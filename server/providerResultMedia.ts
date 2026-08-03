@@ -9,7 +9,12 @@ export type ProviderResultMediaKind = "audio" | "image" | "video";
 
 export class ProviderResultMediaError extends Error {
   constructor(
-    readonly code: "CANCELLED" | "FORMAT" | "NETWORK" | "REMOTE",
+    readonly code:
+      | "CANCELLED"
+      | "FORMAT"
+      | "NETWORK"
+      | "PROXY_CONFIGURATION"
+      | "REMOTE",
     message: string,
   ) {
     super(message);
@@ -141,6 +146,8 @@ export async function downloadProviderResultMedia(input: {
         error.code,
         error.code === "FORMAT"
           ? "模型结果地址不可安全访问"
+          : error.code === "PROXY_CONFIGURATION"
+            ? "本机代理地址模式阻止安全下载"
           : "模型结果地址暂时无法解析",
       );
     }

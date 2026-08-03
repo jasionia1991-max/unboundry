@@ -166,6 +166,7 @@ export type RelayProviderErrorCode =
   | "FORMAT"
   | "NETWORK"
   | "PERMISSION"
+  | "PROXY_CONFIGURATION"
   | "RATE_LIMIT"
   | "REMOTE"
   | "TIMEOUT";
@@ -176,6 +177,7 @@ const errorMessages: Record<RelayProviderErrorCode, string> = {
   FORMAT: "中转站请求或响应格式无法安全识别",
   NETWORK: "无法连接中转站",
   PERMISSION: "当前API Key没有所选模型或接口权限",
+  PROXY_CONFIGURATION: "本机代理地址模式阻止安全连接，请管理员检查代理设置",
   RATE_LIMIT: "中转站正在限流，请稍后再试",
   REMOTE: "中转站暂时无法完成请求",
   TIMEOUT: "等待中转站响应超时；异步任务可能仍在运行",

@@ -28,6 +28,7 @@ import {
 } from "./multiProtocolRelay";
 import {
   OutboundDestinationError,
+  OutboundProxyConfigurationError,
   fetchPublicHttps,
 } from "./outboundNetwork";
 import {
@@ -386,6 +387,7 @@ type CatalogRemoteErrorCode =
   | "FORMAT"
   | "NETWORK"
   | "PERMISSION"
+  | "PROXY_CONFIGURATION"
   | "RATE_LIMIT"
   | "REMOTE";
 
@@ -1006,7 +1008,6 @@ async function syncProfileKeyProviderCatalog(
       }
     } else {
       const requestUrl = remoteCatalogUrl(profile);
-      requestCount += 1;
       const requestInit = {
         headers: {
           Accept: "application/json",
@@ -1016,9 +1017,18 @@ async function syncProfileKeyProviderCatalog(
         redirect: "error",
         signal: controller.signal,
       } satisfies RequestInit;
-      const response = profile.driver === "openai-compatible"
-        ? await fetchPublicHttps(requestUrl, requestInit, { fetcher })
-        : await (fetcher ?? fetch)(requestUrl, requestInit);
+      let response: Response;
+      if (profile.driver === "openai-compatible") {
+        response = await fetchPublicHttps(requestUrl, requestInit, {
+          beforeRequest: () => {
+            requestCount += 1;
+          },
+          fetcher,
+        });
+      } else {
+        requestCount += 1;
+        response = await (fetcher ?? fetch)(requestUrl, requestInit);
+      }
       if (!response.ok) throw remoteCatalogErrorForStatus(response.status);
       models = normalizeRemoteCatalog(
         await readLimitedCatalogJson(response),
@@ -1080,9 +1090,11 @@ async function syncProfileKeyProviderCatalog(
       controlPlaneRequests: requestCount,
     };
   } catch (caught) {
-    let error: unknown = caught instanceof OutboundDestinationError
+    let error: unknown = caught instanceof OutboundProxyConfigurationError
       ? new CatalogRemoteError(caught.code)
-      : caught instanceof CatalogRemoteError ||
+      : caught instanceof OutboundDestinationError
+        ? new CatalogRemoteError(caught.code)
+        : caught instanceof CatalogRemoteError ||
           caught instanceof CatalogSyncError
         ? caught
         : new CatalogRemoteError("NETWORK");
@@ -1146,7 +1158,10 @@ export async function syncProviderCatalog(
   return syncProfileKeyProviderCatalog(profile, fetcher, options);
 }
 
-function syncErrorMessage(error: unknown, driver?: ProviderDriver) {
+export function providerCatalogSyncErrorMessage(
+  error: unknown,
+  driver?: ProviderDriver,
+) {
   const code = catalogErrorCode(error);
   if (code === "AUTH") {
     return driver === "volcengine-ark"
@@ -1157,6 +1172,9 @@ function syncErrorMessage(error: unknown, driver?: ProviderDriver) {
     return driver === "volcengine-ark"
       ? "AK/SK有效，但没有读取方舟模型目录的权限"
       : "API Key可用，但没有读取模型目录的权限";
+  }
+  if (code === "PROXY_CONFIGURATION") {
+    return "本机代理地址模式阻止目录同步，已保留上次结果";
   }
   if (code === "RATE_LIMIT") return "平台暂时限流，请稍后再同步";
   if (code === "CONFIG_CHANGED" || code === "STALE") {
@@ -1597,7 +1615,7 @@ export async function adminProviderCatalogApi(
       });
     } catch (error) {
       json(response, 400, {
-        error: syncErrorMessage(error, driver),
+        error: providerCatalogSyncErrorMessage(error, driver),
         paidGenerationRequests: 0,
       });
     }

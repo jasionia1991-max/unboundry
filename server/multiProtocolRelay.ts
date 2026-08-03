@@ -7,6 +7,7 @@ import type { ProviderProfile } from "./providerProfiles";
 import {
   fetchPublicHttps,
   OutboundDestinationError,
+  OutboundProxyConfigurationError,
 } from "./outboundNetwork";
 
 export const relayMaximumResponseBytes = 5 * 1_024 * 1_024;
@@ -19,6 +20,7 @@ export type RelayRemoteErrorCode =
   | "FORMAT"
   | "NETWORK"
   | "PERMISSION"
+  | "PROXY_CONFIGURATION"
   | "RATE_LIMIT"
   | "REMOTE";
 
@@ -222,6 +224,9 @@ export async function relayGetJson(
     );
   } catch (error) {
     if (error instanceof RelayRemoteError) throw error;
+    if (error instanceof OutboundProxyConfigurationError) {
+      throw new RelayRemoteError(error.code);
+    }
     if (error instanceof OutboundDestinationError) {
       throw new RelayRemoteError(error.code);
     }
@@ -413,6 +418,18 @@ function relayModelId(record: Record<string, unknown>) {
 }
 
 function normalizeRelayModel(raw: unknown) {
+  if (typeof raw === "string") {
+    const providerModelId = boundedString(raw, 2_048);
+    if (!providerModelId) return undefined;
+    return {
+      capability: "unknown" as const,
+      discoveryId: `multi-protocol-relay:${providerModelId}`,
+      displayName: providerModelId,
+      providerModelId,
+      source: "multi-protocol-relay-account-catalog" as const,
+      status: "available",
+    } satisfies RelayCatalogModel;
+  }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const record = raw as Record<string, unknown>;
   const providerModelId = relayModelId(record);
@@ -588,6 +605,7 @@ function normalizeRelayCatalog(
 function mayUseBasicCatalog(error: unknown) {
   return error instanceof RelayRemoteError &&
     (error.code === "FORMAT" ||
+      error.code === "NETWORK" ||
       (error.code === "REMOTE" && [404, 405, 501].includes(error.status ?? 0)));
 }
 
@@ -602,10 +620,13 @@ export async function fetchRelayModelCatalog(
 ): Promise<RelayCatalogResult> {
   try {
     const enhanced = await relayGetJson(profile, "/skills/models", fetcher, options);
-    return {
-      endpoint: "enhanced",
-      models: normalizeRelayCatalog(enhanced, "models", profile.apiKey),
-    };
+    const models = normalizeRelayCatalog(enhanced, "models", profile.apiKey);
+    if (models.length) {
+      return {
+        endpoint: "enhanced",
+        models,
+      };
+    }
   } catch (error) {
     if (!mayUseBasicCatalog(error)) throw error;
   }
@@ -773,6 +794,9 @@ export function relayReadOnlyErrorMessage(error: unknown) {
   const code = relayReadOnlyErrorCode(error);
   if (code === "AUTH") return "API Key已失效";
   if (code === "PERMISSION") return "API Key没有读取该资料的权限";
+  if (code === "PROXY_CONFIGURATION") {
+    return "本机代理地址模式阻止安全读取，请调整代理设置后重试";
+  }
   if (code === "RATE_LIMIT") return "平台暂时限流，请稍后重试";
   if (code === "FORMAT") return "平台返回格式暂时无法识别";
   if (code === "REMOTE") return "平台暂时不可用";

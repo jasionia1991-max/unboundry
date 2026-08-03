@@ -1258,7 +1258,9 @@ function ProviderModelCatalogSection({
         ? profile.hasApiKey
         : false;
   const catalogStateMessage =
-    catalog.keyStatus === "invalid"
+    catalog.errorCode === "PROXY_CONFIGURATION"
+      ? "本机代理地址模式阻止目录同步，已保留上次结果"
+      : catalog.keyStatus === "invalid"
       ? capabilities.credentialMode === "separate"
         ? "目录凭证已失效，请修改AK/SK后重新同步。"
         : "当前平台Key已失效，请修改连接后重新检查。"

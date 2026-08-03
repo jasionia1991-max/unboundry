@@ -2,10 +2,11 @@ import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { ClientRequest, IncomingMessage } from "node:http";
 import { createServer } from "node:http";
+import { createServer as createNetServer } from "node:net";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Readable } from "node:stream";
+import { Duplex, Readable } from "node:stream";
 import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "@playwright/test";
 import { authGate } from "../server/auth";
@@ -55,6 +56,37 @@ test("outbound destination guard rejects IPv6 transition and mixed private DNS a
       { address: "::ffff:7f00:1", family: 6 },
     ],
   )).rejects.toMatchObject({ code: "FORMAT" });
+});
+
+test("Fake-IP proxy timeout cancels every pending socket without an unhandled abort", async () => {
+  const sockets = new Set<Duplex>();
+  const proxy = createNetServer((socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+  });
+  await new Promise<void>((resolve, reject) => {
+    proxy.once("error", reject);
+    proxy.listen(0, "127.0.0.1", () => resolve());
+  });
+  const address = proxy.address();
+  expect(address && typeof address === "object").toBe(true);
+  try {
+    await expect(fetchPublicHttps(
+      "https://api.fake-ip-timeout.invalid/v1/models",
+      { method: "GET" },
+      {
+        proxyUrl: `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`,
+        resolver: async () => [{ address: "198.18.0.160", family: 4 }],
+        timeoutMs: 40,
+      },
+    )).rejects.toMatchObject({ name: "TimeoutError" });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  } finally {
+    for (const socket of sockets) socket.destroy();
+    await new Promise<void>((resolve, reject) => {
+      proxy.close((error) => error ? reject(error) : resolve());
+    });
+  }
 });
 
 test("secure HTTPS transport pins the validated IPv4 or IPv6 answer and returns a standard Response", async () => {
@@ -144,6 +176,584 @@ test("secure HTTPS transport aborts unresolved DNS at its timeout without openin
     },
   )).rejects.toMatchObject({ name: "TimeoutError" });
   expect(requestCount).toBe(0);
+});
+
+class HttpConnectFixtureSocket extends Duplex {
+  private connected = false;
+  private handledHttpsRequest = false;
+  private requestBuffer = Buffer.alloc(0);
+  private tlsHostname = "";
+
+  constructor(
+    private readonly onConnectRequest: (request: string) => void,
+    private readonly onHttpsRequest?: (
+      request: string,
+      tlsHostname: string,
+    ) => unknown,
+  ) {
+    super();
+  }
+
+  override _read() {}
+
+  setTlsHostname(hostname: string) {
+    this.tlsHostname = hostname;
+  }
+
+  override _write(
+    chunk: Buffer | string,
+    _encoding: BufferEncoding,
+    callback: (error?: Error | null) => void,
+  ) {
+    if (!this.connected) {
+      this.connected = true;
+      this.onConnectRequest(Buffer.from(chunk).toString("latin1"));
+      callback();
+      queueMicrotask(() => {
+        this.push(Buffer.from(
+          "HTTP/1.1 200 Connection established\r\n\r\n",
+          "latin1",
+        ));
+      });
+      return;
+    }
+    this.requestBuffer = Buffer.concat([
+      this.requestBuffer,
+      Buffer.from(chunk),
+    ]);
+    callback();
+    if (!this.onHttpsRequest || this.handledHttpsRequest) return;
+    const boundary = this.requestBuffer.indexOf("\r\n\r\n");
+    if (boundary < 0) return;
+    const header = this.requestBuffer.subarray(0, boundary).toString("latin1");
+    const contentLength = Number(
+      /^content-length:\s*(\d+)\s*$/im.exec(header)?.[1] ?? 0,
+    );
+    const completeLength = boundary + 4 + contentLength;
+    if (this.requestBuffer.length < completeLength) return;
+    const rawRequest = this.requestBuffer.subarray(0, completeLength)
+      .toString("utf8");
+    this.handledHttpsRequest = true;
+    const body = Buffer.from(JSON.stringify(
+      this.onHttpsRequest(rawRequest, this.tlsHostname),
+    ), "utf8");
+    queueMicrotask(() => {
+      this.push(Buffer.concat([
+        Buffer.from(
+          "HTTP/1.1 200 OK\r\n" +
+            "Content-Type: application/json\r\n" +
+            `Content-Length: ${body.byteLength}\r\n` +
+            "Connection: close\r\n\r\n",
+          "latin1",
+        ),
+        body,
+      ]));
+      this.push(null);
+    });
+  }
+}
+
+function incomingJson(body: unknown, status = 200) {
+  const incoming = Readable.from([
+    Buffer.from(JSON.stringify(body), "utf8"),
+  ]) as IncomingMessage;
+  Object.assign(incoming, {
+    rawHeaders: ["Content-Type", "application/json"],
+    statusCode: status,
+    statusMessage: status === 200 ? "OK" : "Error",
+  });
+  return incoming;
+}
+
+function parseFixtureHttpRequest(request: string) {
+  const [head, body = ""] = request.split("\r\n\r\n", 2);
+  const [requestLine, ...headerLines] = head.split("\r\n");
+  const [method, path] = requestLine.split(" ");
+  const headers = new Headers();
+  for (const line of headerLines) {
+    const separator = line.indexOf(":");
+    if (separator > 0) {
+      headers.append(
+        line.slice(0, separator),
+        line.slice(separator + 1).trim(),
+      );
+    }
+  }
+  return { body, headers, method, path };
+}
+
+async function fixtureDelay(milliseconds: number, signal: AbortSignal) {
+  await new Promise<void>((resolve, reject) => {
+    const finished = () => {
+      signal.removeEventListener("abort", aborted);
+      resolve();
+    };
+    const timer = setTimeout(finished, milliseconds);
+    const aborted = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    signal.addEventListener("abort", aborted, { once: true });
+    if (signal.aborted) aborted();
+  });
+}
+
+test("Fake-IP HTTPS transport resolves through authenticated DoH and CONNECTs only verified IP addresses", async () => {
+  const connectRequests: string[] = [];
+  const httpsRequests: Array<{ request: string; tlsHostname: string }> = [];
+  const proxyUrls: string[] = [];
+  const sockets: HttpConnectFixtureSocket[] = [];
+  const tlsHostnames: string[] = [];
+  let providerRequestCount = 0;
+
+  const response = await fetchPublicHttps(
+    "https://api.fake-ip.invalid/v1/skills/models?scope=all&limit=1",
+    {
+      body: JSON.stringify({ prompt: "fixture-only" }),
+      headers: {
+        Authorization: "Bearer fixture-secret",
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    },
+    {
+      beforeRequest: () => {
+        providerRequestCount += 1;
+      },
+      proxySocketFactory: async (proxy) => {
+        proxyUrls.push(proxy.toString());
+        const socket = new HttpConnectFixtureSocket(
+          (request) => {
+            connectRequests.push(request);
+          },
+          (request, tlsHostname) => {
+            httpsRequests.push({ request, tlsHostname });
+            const parsed = parseFixtureHttpRequest(request);
+            if (tlsHostname === "cloudflare-dns.com") {
+              const type = new URL(
+                parsed.path,
+                "https://cloudflare-dns.com",
+              ).searchParams.get("type");
+              return type === "A"
+                ? {
+                    Answer: [{ data: "8.8.4.4", type: 1 }],
+                    Status: 0,
+                  }
+                : {
+                    Answer: [{
+                      data: "2001:4860:4860::8844",
+                      type: 28,
+                    }],
+                    Status: 0,
+                  };
+            }
+            return { proxied: true };
+          },
+        );
+        sockets.push(socket);
+        return socket;
+      },
+      proxyUrl: "http://127.0.0.1:49111",
+      resolver: async () => [{ address: "198.18.0.160", family: 4 }],
+      targetTlsFactory: async (socket, hostname) => {
+        tlsHostnames.push(hostname);
+        expect(socket).toBeInstanceOf(HttpConnectFixtureSocket);
+        (socket as HttpConnectFixtureSocket).setTlsHostname(hostname);
+        return socket;
+      },
+    },
+  );
+
+  expect(response).toBeInstanceOf(Response);
+  expect(await response.json()).toEqual({ proxied: true });
+  expect(connectRequests.map((request) => request.split("\r\n", 1)[0]))
+    .toEqual([
+      "CONNECT 1.1.1.1:443 HTTP/1.1",
+      "CONNECT 1.1.1.1:443 HTTP/1.1",
+      "CONNECT 8.8.4.4:443 HTTP/1.1",
+      "CONNECT [2001:4860:4860::8844]:443 HTTP/1.1",
+    ]);
+  expect(connectRequests.join("\n")).not.toContain("cloudflare-dns.com");
+  expect(connectRequests.join("\n")).not.toContain("api.fake-ip.invalid");
+  expect(proxyUrls).toEqual(Array(4).fill("http://127.0.0.1:49111/"));
+  expect(tlsHostnames).toEqual([
+    "cloudflare-dns.com",
+    "cloudflare-dns.com",
+    "api.fake-ip.invalid",
+    "api.fake-ip.invalid",
+  ]);
+  expect(httpsRequests.map((request) => request.tlsHostname)).toEqual([
+    "cloudflare-dns.com",
+    "cloudflare-dns.com",
+    "api.fake-ip.invalid",
+  ]);
+  const providerRequests = httpsRequests.filter((request) =>
+    request.tlsHostname === "api.fake-ip.invalid"
+  );
+  expect(providerRequests).toHaveLength(1);
+  const providerRequest = parseFixtureHttpRequest(providerRequests[0].request);
+  expect(providerRequest).toMatchObject({
+    body: JSON.stringify({ prompt: "fixture-only" }),
+    method: "POST",
+    path: "/v1/skills/models?scope=all&limit=1",
+  });
+  expect(providerRequest.headers.get("authorization"))
+    .toBe("Bearer fixture-secret");
+  expect(providerRequest.headers.get("content-type")).toBe("application/json");
+  expect(providerRequest.headers.get("host")).toBe("api.fake-ip.invalid");
+  expect(providerRequestCount).toBe(1);
+  await expect.poll(() => sockets.every((socket) => socket.destroyed))
+    .toBe(true);
+});
+
+test("Fake-IP races 24 target TLS handshakes and sends one Provider request through the later winner", async () => {
+  const publicAddresses = Array.from(
+    { length: 24 },
+    (_, index) => `8.8.4.${index + 1}`,
+  );
+  const winningAddress = publicAddresses[19];
+  const authorityBySocket = new WeakMap<Duplex, string>();
+  const connectRequests: string[] = [];
+  const httpsRequests: Array<{ request: string; tlsHostname: string }> = [];
+  const targetSockets: HttpConnectFixtureSocket[] = [];
+  let activeTargetTls = 0;
+  let maximumActiveTargetTls = 0;
+  let providerBoundaryCount = 0;
+  let targetTlsAttempts = 0;
+  const targetHostname = "api.fake-ip-failover.invalid";
+
+  const response = await fetchPublicHttps(
+    `https://${targetHostname}/v1/generate?fixture=retry-boundary`,
+    {
+      body: JSON.stringify({ prompt: "send-once" }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    },
+    {
+      beforeRequest: () => {
+        providerBoundaryCount += 1;
+      },
+      proxySocketFactory: async () => {
+        let socket: HttpConnectFixtureSocket;
+        socket = new HttpConnectFixtureSocket((request) => {
+          connectRequests.push(request);
+          authorityBySocket.set(
+            socket,
+            request.split("\r\n", 1)[0].split(" ")[1],
+          );
+        },
+        (request, tlsHostname) => {
+          httpsRequests.push({ request, tlsHostname });
+          if (tlsHostname === "cloudflare-dns.com") {
+            const type = new URL(
+              parseFixtureHttpRequest(request).path,
+              "https://cloudflare-dns.com",
+            ).searchParams.get("type");
+            return {
+              Answer: type === "A"
+                ? publicAddresses.map((address) => ({
+                    data: address,
+                    type: 1,
+                  }))
+                : [],
+              Status: 0,
+            };
+          }
+          return { generated: true };
+        });
+        return socket;
+      },
+      proxyUrl: "http://127.0.0.1:49111",
+      resolver: async () => [{ address: "198.18.0.160", family: 4 }],
+      targetTlsFactory: async (rawSocket, hostname, signal) => {
+        const socket = rawSocket as HttpConnectFixtureSocket;
+        if (hostname !== targetHostname) {
+          socket.setTlsHostname(hostname);
+          return socket;
+        }
+        targetSockets.push(socket);
+        targetTlsAttempts += 1;
+        activeTargetTls += 1;
+        maximumActiveTargetTls = Math.max(
+          maximumActiveTargetTls,
+          activeTargetTls,
+        );
+        try {
+          const isWinner = authorityBySocket.get(socket) ===
+            `${winningAddress}:443`;
+          await fixtureDelay(isWinner ? 10 : 80, signal);
+          if (!isWinner) {
+            throw new Error("fixture target TLS handshake failed");
+          }
+          socket.setTlsHostname(hostname);
+          return socket;
+        } finally {
+          activeTargetTls -= 1;
+        }
+      },
+    },
+  );
+
+  expect(await response.json()).toEqual({ generated: true });
+  const targetConnectAuthorities = connectRequests.slice(2).map((request) =>
+    request.split("\r\n", 1)[0].split(" ")[1]
+  );
+  expect(new Set(targetConnectAuthorities)).toEqual(new Set(
+    publicAddresses.map((address) => `${address}:443`),
+  ));
+  expect(targetTlsAttempts).toBe(24);
+  expect(maximumActiveTargetTls).toBe(24);
+  expect(providerBoundaryCount).toBe(1);
+  const providerRequests = httpsRequests.filter((request) =>
+    request.tlsHostname === targetHostname
+  );
+  expect(providerRequests).toHaveLength(1);
+  expect(parseFixtureHttpRequest(providerRequests[0].request)).toMatchObject({
+    body: JSON.stringify({ prompt: "send-once" }),
+    method: "POST",
+    path: "/v1/generate?fixture=retry-boundary",
+  });
+  await expect.poll(() =>
+    targetSockets.every((socket) => socket.destroyed)
+  ).toBe(true);
+});
+
+test("Fake-IP sends nothing and destroys all 24 target sockets when every TLS handshake fails", async () => {
+  const publicAddresses = Array.from(
+    { length: 24 },
+    (_, index) => `8.8.4.${index + 1}`,
+  );
+  const authorityBySocket = new WeakMap<Duplex, string>();
+  const connectRequests: string[] = [];
+  const targetSockets: HttpConnectFixtureSocket[] = [];
+  let activeTargetTls = 0;
+  let maximumActiveTargetTls = 0;
+  let providerBoundaryCount = 0;
+  let providerHttpRequestCount = 0;
+  let targetTlsAttempts = 0;
+  const targetHostname = "api.fake-ip-all-fail.invalid";
+
+  await expect(fetchPublicHttps(
+    `https://${targetHostname}/v1/generate`,
+    {
+      body: JSON.stringify({ prompt: "must-not-send" }),
+      method: "POST",
+    },
+    {
+      beforeRequest: () => {
+        providerBoundaryCount += 1;
+      },
+      proxySocketFactory: async () => {
+        let socket: HttpConnectFixtureSocket;
+        socket = new HttpConnectFixtureSocket((request) => {
+          connectRequests.push(request);
+          authorityBySocket.set(
+            socket,
+            request.split("\r\n", 1)[0].split(" ")[1],
+          );
+        },
+        (request, tlsHostname) => {
+          if (tlsHostname === targetHostname) {
+            providerHttpRequestCount += 1;
+          }
+          const type = new URL(
+            parseFixtureHttpRequest(request).path,
+            "https://cloudflare-dns.com",
+          ).searchParams.get("type");
+          return {
+            Answer: type === "A"
+              ? publicAddresses.map((address) => ({
+                  data: address,
+                  type: 1,
+                }))
+              : [],
+            Status: 0,
+          };
+        });
+        return socket;
+      },
+      proxyUrl: "http://127.0.0.1:49111",
+      resolver: async () => [{ address: "198.18.0.160", family: 4 }],
+      targetTlsFactory: async (rawSocket, hostname, signal) => {
+        const socket = rawSocket as HttpConnectFixtureSocket;
+        if (hostname !== targetHostname) {
+          socket.setTlsHostname(hostname);
+          return socket;
+        }
+        targetSockets.push(socket);
+        targetTlsAttempts += 1;
+        activeTargetTls += 1;
+        maximumActiveTargetTls = Math.max(
+          maximumActiveTargetTls,
+          activeTargetTls,
+        );
+        try {
+          const lastOctet = Number(
+            authorityBySocket.get(socket)?.split(/[.:]/).at(-2) ?? 0,
+          );
+          await fixtureDelay(10 + lastOctet % 3, signal);
+          throw new Error("fixture target TLS handshake failed");
+        } finally {
+          activeTargetTls -= 1;
+        }
+      },
+    },
+  )).rejects.toMatchObject({ code: "NETWORK" });
+
+  const targetConnectAuthorities = connectRequests.slice(2).map((request) =>
+    request.split("\r\n", 1)[0].split(" ")[1]
+  );
+  expect(new Set(targetConnectAuthorities)).toEqual(new Set(
+    publicAddresses.map((address) => `${address}:443`),
+  ));
+  expect(targetTlsAttempts).toBe(24);
+  expect(maximumActiveTargetTls).toBe(24);
+  expect(providerBoundaryCount).toBe(0);
+  expect(providerHttpRequestCount).toBe(0);
+  expect(targetSockets.every((socket) => socket.destroyed)).toBe(true);
+});
+
+test("literal Fake-IP URLs and mixed Fake-IP DNS answers never enter the proxy path", async () => {
+  let openedSocket = 0;
+  let openedRequest = 0;
+  const guardedDependencies = {
+    proxySocketFactory: async () => {
+      openedSocket += 1;
+      throw new Error("must not open a proxy socket");
+    },
+    proxyUrl: "http://127.0.0.1:49111",
+    requester: (() => {
+      openedRequest += 1;
+      throw new Error("must not open an HTTPS request");
+    }) as NonNullable<Parameters<typeof fetchPublicHttps>[2]>["requester"],
+  };
+
+  await expect(fetchPublicHttps(
+    "https://198.18.0.160/v1/models",
+    { method: "GET" },
+    guardedDependencies,
+  )).rejects.toMatchObject({ code: "FORMAT" });
+
+  for (const secondAddress of [
+    { address: "10.0.0.1", family: 4 },
+    { address: "8.8.8.8", family: 4 },
+  ]) {
+    await expect(fetchPublicHttps(
+      "https://api.mixed-fake-ip.invalid/v1/models",
+      { method: "GET" },
+      {
+        ...guardedDependencies,
+        resolver: async () => [
+          { address: "198.18.0.160", family: 4 },
+          secondAddress,
+        ],
+      },
+    )).rejects.toMatchObject({ code: "FORMAT" });
+  }
+
+  expect(openedSocket).toBe(0);
+  expect(openedRequest).toBe(0);
+});
+
+test("Fake-IP HTTPS transport rejects missing or non-loopback proxy configuration before any request", async () => {
+  for (const proxyUrl of [
+    null,
+    "http://192.168.1.2:8080",
+    "http://localhost:8080",
+    "socks5://127.0.0.1:1080",
+    "http://user:password@127.0.0.1:8080",
+    "http://127.0.0.1:8080/proxy-path",
+  ]) {
+    let openedSocket = 0;
+    let openedRequest = 0;
+    await expect(fetchPublicHttps(
+      "https://api.fake-ip.invalid/v1/models",
+      { method: "GET" },
+      {
+        proxySocketFactory: async () => {
+          openedSocket += 1;
+          throw new Error("must not open a proxy socket");
+        },
+        proxyUrl,
+        requester: (() => {
+          openedRequest += 1;
+          throw new Error("must not open an HTTPS request");
+        }) as NonNullable<Parameters<typeof fetchPublicHttps>[2]>["requester"],
+        resolver: async () => [{ address: "198.18.0.160", family: 4 }],
+      },
+    )).rejects.toMatchObject({ code: "PROXY_CONFIGURATION" });
+    expect(openedSocket).toBe(0);
+    expect(openedRequest).toBe(0);
+  }
+});
+
+test("ordinary DNS failure remains a network error and never falls through to the Fake-IP proxy", async () => {
+  let openedSocket = 0;
+  await expect(fetchPublicHttps(
+    "https://ordinary-dns-failure.invalid/v1/models",
+    { method: "GET" },
+    {
+      proxySocketFactory: async () => {
+        openedSocket += 1;
+        throw new Error("must not open a proxy socket");
+      },
+      proxyUrl: "http://127.0.0.1:49111",
+      resolver: async () => {
+        throw new Error("ENOTFOUND");
+      },
+    },
+  )).rejects.toMatchObject({ code: "NETWORK" });
+  expect(openedSocket).toBe(0);
+});
+
+test("Fake-IP HTTPS transport fails closed when DoH returns any non-public address", async () => {
+  const connectRequests: string[] = [];
+  let providerRequestCount = 0;
+  let targetRequestCount = 0;
+  const requester = ((
+    url: URL,
+    options: { agent?: false | { createConnection?: () => Duplex } },
+    respond: (response: IncomingMessage) => void,
+  ) => {
+    const request = new EventEmitter() as ClientRequest;
+    request.end = (() => {
+      expect(options.agent).not.toBe(false);
+      expect(options.agent && options.agent.createConnection?.())
+        .toBeInstanceOf(Duplex);
+      const type = url.searchParams.get("type");
+      if (url.hostname !== "cloudflare-dns.com") {
+        targetRequestCount += 1;
+      }
+      respond(incomingJson({
+        Answer: type === "A" ? [{ data: "10.0.0.1", type: 1 }] : [],
+        Status: 0,
+      }));
+      return request;
+    }) as ClientRequest["end"];
+    return request;
+  }) as NonNullable<Parameters<typeof fetchPublicHttps>[2]>["requester"];
+
+  await expect(fetchPublicHttps(
+    "https://api.fake-ip.invalid/v1/models",
+    { method: "GET" },
+    {
+      beforeRequest: () => {
+        providerRequestCount += 1;
+      },
+      proxySocketFactory: async () =>
+        new HttpConnectFixtureSocket((request) => {
+          connectRequests.push(request);
+        }),
+      proxyUrl: "http://127.0.0.1:49111",
+      requester,
+      resolver: async () => [{ address: "198.18.0.160", family: 4 }],
+      targetTlsFactory: async (socket) => socket,
+    },
+  )).rejects.toMatchObject({ code: "FORMAT" });
+
+  expect(connectRequests).toHaveLength(2);
+  expect(targetRequestCount).toBe(0);
+  expect(providerRequestCount).toBe(0);
 });
 
 async function temporaryDataDirectory<T>(run: (directory: string) => Promise<T>) {
@@ -592,6 +1202,72 @@ test("multi-protocol relay verifies, syncs enhanced and fallback catalogs, and e
     } finally {
       store.close();
     }
+  });
+});
+
+test("relay accepts bounded string model ids and falls back when an enhanced list has no usable model", async () => {
+  await temporaryDataDirectory(async () => {
+    const stringProfile = await saveProviderProfile({
+      apiKey: `string-${randomUUID()}`,
+      baseUrl: "https://string-list.relay.example/v1",
+      driver: "multi-protocol-relay",
+      label: "String list relay",
+    });
+    const stringCatalog = await syncProviderCatalog(
+      stringProfile.id,
+      (async () => jsonResponse({ models: ["vendor/string-model"] })) as typeof fetch,
+    );
+    expect(stringCatalog.controlPlaneRequests).toBe(1);
+    expect(stringCatalog.catalog.models).toMatchObject([{
+      providerModelId: "vendor/string-model",
+      status: "available",
+    }]);
+
+    const fallbackProfile = await saveProviderProfile({
+      apiKey: `empty-${randomUUID()}`,
+      baseUrl: "https://empty-enhanced.relay.example/v1",
+      driver: "multi-protocol-relay",
+      label: "Empty enhanced relay",
+    });
+    const requests: string[] = [];
+    const fallback = await syncProviderCatalog(
+      fallbackProfile.id,
+      (async (input) => {
+        requests.push(String(input));
+        return requests.length === 1
+          ? jsonResponse({ models: [{ unsupported_field: true }] })
+          : jsonResponse({ data: [{ id: "vendor/basic-model" }] });
+      }) as typeof fetch,
+    );
+    expect(requests).toEqual([
+      "https://empty-enhanced.relay.example/v1/skills/models",
+      "https://empty-enhanced.relay.example/v1/models",
+    ]);
+    expect(fallback.controlPlaneRequests).toBe(2);
+    expect(fallback.catalog.models).toMatchObject([{
+      providerModelId: "vendor/basic-model",
+      status: "available",
+    }]);
+
+    const networkFallbackProfile = await saveProviderProfile({
+      apiKey: `network-${randomUUID()}`,
+      baseUrl: "https://network-enhanced.relay.example/v1",
+      driver: "multi-protocol-relay",
+      label: "Network enhanced relay",
+    });
+    let networkRequests = 0;
+    const networkFallback = await syncProviderCatalog(
+      networkFallbackProfile.id,
+      (async () => {
+        networkRequests += 1;
+        if (networkRequests === 1) throw new Error("fixture network failure");
+        return jsonResponse({ data: [{ id: "vendor/network-basic" }] });
+      }) as typeof fetch,
+    );
+    expect(networkRequests).toBe(2);
+    expect(networkFallback.catalog.models).toMatchObject([{
+      providerModelId: "vendor/network-basic",
+    }]);
   });
 });
 

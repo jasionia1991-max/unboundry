@@ -24,6 +24,7 @@ import {
 } from "./multiProtocolRelay";
 import {
   OutboundDestinationError,
+  OutboundProxyConfigurationError,
   fetchPublicHttps,
 } from "./outboundNetwork";
 import { providerCatalogCapabilities } from "./providerCatalogCapabilities";
@@ -1144,6 +1145,7 @@ class ProviderVerificationError extends Error {
       | "NETWORK"
       | "NOT_SUPPORTED"
       | "PERMISSION"
+      | "PROXY_CONFIGURATION"
       | "RATE_LIMIT"
       | "REMOTE",
   ) {
@@ -1311,6 +1313,11 @@ export async function verifyProviderProfile(
       status: "verified",
     };
   } catch (error) {
+    if (error instanceof OutboundProxyConfigurationError) {
+      const mapped = new ProviderVerificationError(error.code);
+      await recordCurrentKeyCheck(profile, "unknown");
+      throw mapped;
+    }
     if (error instanceof OutboundDestinationError) {
       const mapped = new ProviderVerificationError(error.code);
       await recordCurrentKeyCheck(profile, "unknown");
@@ -1339,11 +1346,14 @@ export async function verifyProviderProfile(
   }
 }
 
-function verificationMessage(error: unknown) {
+export function providerVerificationErrorMessage(error: unknown) {
   if (!(error instanceof ProviderVerificationError)) return "暂时无法确认API Key是否有效";
   if (error.code === "AUTH") return "API Key已失效";
   if (error.code === "CONFIG_CHANGED") return "连接资料已修改，请重新检查Key";
   if (error.code === "PERMISSION") return "暂时无法确认API Key是否有效";
+  if (error.code === "PROXY_CONFIGURATION") {
+    return "本机代理地址模式阻止安全检查，暂时无法确认API Key是否有效";
+  }
   if (error.code === "RATE_LIMIT") return "平台限流，暂时无法确认API Key是否有效";
   if (error.code === "FORMAT") return "平台返回异常，暂时无法确认API Key是否有效";
   if (error.code === "NOT_SUPPORTED") {
@@ -1436,7 +1446,7 @@ export async function adminProviderProfilesApi(
       });
     } catch (error) {
       json(response, 400, {
-        error: verificationMessage(error),
+        error: providerVerificationErrorMessage(error),
         paidGenerationRequests: 0,
       });
     }

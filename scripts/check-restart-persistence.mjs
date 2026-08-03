@@ -65,7 +65,14 @@ async function stop(child) {
   if (child.exitCode !== null) return;
   const exited = new Promise((resolve) => child.once("exit", resolve));
   child.kill("SIGTERM");
-  await exited;
+  const forceStop = setTimeout(() => {
+    if (child.exitCode === null) child.kill("SIGKILL");
+  }, 2_000);
+  try {
+    await exited;
+  } finally {
+    clearTimeout(forceStop);
+  }
 }
 
 async function jsonRequest(path, init) {
