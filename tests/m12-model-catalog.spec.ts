@@ -1,0 +1,803 @@
+import { spawn, type ChildProcess } from "node:child_process";
+import { readFile, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { expect, test } from "@playwright/test";
+import type {
+  ModelParameterField,
+  ModelParameterSchema,
+  ModelReferenceInputs,
+} from "../types/modelParameters";
+
+const port = 4195;
+const origin = `http://127.0.0.1:${port}`;
+const vite = join(process.cwd(), "node_modules/vite/bin/vite.js");
+
+async function startServer(dataDirectory: string) {
+  const child = spawn(
+    process.execPath,
+    [vite, "--host", "127.0.0.1", "--port", String(port), "--strictPort"],
+    {
+      env: {
+        ...process.env,
+        TAPNOW_DATA_DIR: dataDirectory,
+        TAPNOW_TEST_AUTH_BYPASS: undefined,
+      },
+      stdio: "ignore",
+    },
+  );
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    if (child.exitCode !== null) break;
+    try {
+      if ((await fetch(`${origin}/api/auth/status`)).ok) return child;
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  child.kill("SIGTERM");
+  throw new Error("Model catalog test server did not start");
+}
+
+async function stopServer(child: ChildProcess) {
+  if (child.exitCode !== null) return;
+  child.kill("SIGTERM");
+  await new Promise((resolve) => child.once("exit", resolve));
+}
+
+function cookie(response: Response) {
+  return response.headers.get("set-cookie")?.split(";")[0] ?? "";
+}
+
+function request(
+  path: string,
+  options: RequestInit & { cookie?: string } = {},
+) {
+  const { cookie: session, ...init } = options;
+  return fetch(`${origin}${path}`, {
+    ...init,
+    headers: {
+      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...(session ? { Cookie: session } : {}),
+      ...init.headers,
+    },
+  });
+}
+
+test("only administrators manage models while users receive a safe published catalog", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-models-"));
+  let server: ChildProcess | undefined;
+  try {
+    server = await startServer(dataDirectory);
+    expect((await request("/api/models")).status).toBe(401);
+
+    const bootstrap = await request("/api/auth/bootstrap", {
+      body: JSON.stringify({
+        displayName: "Owner",
+        loginName: "owner",
+        password: "owner-password-123",
+      }),
+      method: "POST",
+    });
+    expect(bootstrap.status).toBe(201);
+    const adminCookie = cookie(bootstrap);
+
+    const seeded = await request("/api/admin/models", {
+      cookie: adminCookie,
+    });
+    expect(seeded.status).toBe(200);
+    expect((await seeded.json()).models).toHaveLength(0);
+
+    const arkProviderResponse = await request("/api/admin/providers", {
+      body: JSON.stringify({
+        apiKey: "test-ark-key-12345",
+        baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+        driver: "volcengine-ark",
+        label: "Test Ark",
+      }),
+      cookie: adminCookie,
+      method: "POST",
+    });
+    expect(arkProviderResponse.status).toBe(201);
+    const arkProvider = (await arkProviderResponse.json()).profile as { id: string };
+    const providerStatusBefore = await (
+      await request("/api/generation-tasks/status", { cookie: adminCookie })
+    ).json() as { paidProviderRequests: number };
+    expect(providerStatusBefore.paidProviderRequests).toBe(0);
+
+    const seedanceResponse = await request("/api/admin/models", {
+      body: JSON.stringify({
+        capability: "video",
+        displayName: "Seedance Constraint Guard",
+        isDefault: false,
+        maxCostMicrounits: 0,
+        providerModelId: "doubao-seedance-2-0-mini-260615",
+        providerProfileId: arkProvider.id,
+        sortOrder: 4,
+        status: "draft",
+      }),
+      cookie: adminCookie,
+      method: "POST",
+    });
+    expect(seedanceResponse.status).toBe(201);
+    const seedance = (await seedanceResponse.json()).model as {
+      id: string;
+      parameterSchema: ModelParameterSchema;
+    };
+
+    const withoutReferencePolicy = structuredClone(seedance.parameterSchema);
+    withoutReferencePolicy.referencePolicy = undefined;
+    expect((await request(`/api/admin/models/${seedance.id}`, {
+      body: JSON.stringify({ parameterSchema: withoutReferencePolicy }),
+      cookie: adminCookie,
+      method: "PATCH",
+    })).status).toBe(400);
+
+    const withoutInputPolicy = structuredClone(seedance.parameterSchema);
+    withoutInputPolicy.inputPolicy = undefined;
+    expect((await request(`/api/admin/models/${seedance.id}`, {
+      body: JSON.stringify({ parameterSchema: withoutInputPolicy }),
+      cookie: adminCookie,
+      method: "PATCH",
+    })).status).toBe(400);
+
+    const withoutRolePolicies = structuredClone(seedance.parameterSchema);
+    withoutRolePolicies.inputPolicy!.rolePolicies = undefined;
+    expect((await request(`/api/admin/models/${seedance.id}`, {
+      body: JSON.stringify({ parameterSchema: withoutRolePolicies }),
+      cookie: adminCookie,
+      method: "PATCH",
+    })).status).toBe(400);
+
+    const relaxedPrompt = structuredClone(seedance.parameterSchema);
+    relaxedPrompt.inputPolicy!.promptPolicy = "own-or-upstream-text";
+    expect((await request(`/api/admin/models/${seedance.id}`, {
+      body: JSON.stringify({ parameterSchema: relaxedPrompt }),
+      cookie: adminCookie,
+      method: "PATCH",
+    })).status).toBe(400);
+
+    const narrowed = structuredClone(seedance.parameterSchema);
+    narrowed.inputPolicy!.roles!.image = narrowed.inputPolicy!.roles!.image
+      ?.filter((role) => role !== "subject");
+    const narrowedMultimodal = narrowed.inputPolicy!.rolePolicies!
+      .find((policy) => policy.enabledWhen?.[0]?.value === "multimodal")!;
+    narrowedMultimodal.roles.image = narrowedMultimodal.roles.image
+      ?.filter((role) => role !== "subject");
+    narrowedMultimodal.limits = narrowedMultimodal.limits
+      ?.filter((limit) => !(limit.kind === "image" && limit.role === "subject"));
+    expect((await request(`/api/admin/models/${seedance.id}`, {
+      body: JSON.stringify({ parameterSchema: narrowed }),
+      cookie: adminCookie,
+      method: "PATCH",
+    })).status).toBe(200);
+
+    expect((await request(`/api/admin/models/${seedance.id}`, {
+      body: JSON.stringify({ status: "published" }),
+      cookie: adminCookie,
+      method: "PATCH",
+    })).status).toBe(200);
+    const weakAssetId = "seedance-constraint-guard-image";
+    const weakAsset = await readFile(resolve(
+      process.cwd(),
+      "spec/reference/tapnow-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+    ));
+    expect((await request(`/api/assets/${weakAssetId}`, {
+      body: weakAsset,
+      cookie: adminCookie,
+      headers: {
+        "Content-Type": "image/png",
+        "X-File-Name": "constraint-guard.png",
+      },
+      method: "POST",
+    })).status).toBe(201);
+    const weakCanvasId = "seedance-stored-policy-guard";
+    const weakCanvas = await request(`/api/canvas/${weakCanvasId}`, {
+      body: JSON.stringify({
+        edges: [{
+          data: { inputOrder: 1, inputRole: "reference-image" },
+          id: "weak-image-edge",
+          source: "weak-image-source",
+          target: "weak-video-target",
+        }],
+        nodes: [
+          {
+            data: {
+              assetId: weakAssetId,
+              imageSrc: `/api/assets/${weakAssetId}`,
+              title: "异常存量测试图",
+            },
+            id: "weak-image-source",
+            type: "image",
+          },
+          { data: { title: "异常存量Video" }, id: "weak-video-target", type: "video" },
+        ],
+        revision: 0,
+        viewport: { x: 0, y: 0, zoom: 1 },
+      }),
+      cookie: adminCookie,
+      method: "PUT",
+    });
+    expect(weakCanvas.status).toBe(200);
+    const weakCanvasRevision = (await weakCanvas.json()).revision as number;
+    const weakenedStoredSchema = structuredClone(seedance.parameterSchema);
+    weakenedStoredSchema.referencePolicy = undefined;
+    weakenedStoredSchema.inputPolicy = undefined;
+    const directDatabase = new DatabaseSync(join(dataDirectory, "tapnow.sqlite"));
+    try {
+      directDatabase.prepare(`
+        UPDATE model_profiles
+        SET default_parameters = ?
+        WHERE id = ?
+      `).run(JSON.stringify(weakenedStoredSchema), seedance.id);
+    } finally {
+      directDatabase.close();
+    }
+
+    const guardedCatalog = await (
+      await request("/api/admin/models", { cookie: adminCookie })
+    ).json() as { models: Array<{ id: string; parameterSchema: ModelParameterSchema }> };
+    const guardedSeedance = guardedCatalog.models.find((model) => model.id === seedance.id);
+    expect(guardedSeedance?.parameterSchema.referencePolicy?.modes).toHaveProperty("text");
+    expect(guardedSeedance?.parameterSchema.inputPolicy?.rolePolicies).toHaveLength(3);
+
+    const guardedPreflight = await request("/api/generation-tasks/preflight", {
+      body: JSON.stringify({
+        canvasId: weakCanvasId,
+        canvasRevision: weakCanvasRevision,
+        idempotencyKey: "seedance-stored-policy-guard-request",
+        inputSchemaVersion: 1,
+        kind: "video",
+        model: seedance.id,
+        nodeId: "weak-video-target",
+        ownPrompt: "必须使用安全Provider底线",
+        parameters: { inputMode: "text" },
+        prompt: "不信任客户端Prompt",
+      }),
+      cookie: adminCookie,
+      method: "POST",
+    });
+    expect(guardedPreflight.status).toBe(200);
+    const guardedPreflightBody = await guardedPreflight.json() as {
+      canSubmit: boolean;
+      problems: Array<{ code: string }>;
+      providerRequests: number;
+    };
+    expect(guardedPreflightBody.canSubmit).toBe(false);
+    expect(guardedPreflightBody.problems.map((problem) => problem.code))
+      .toContain("ROLE_UNSUPPORTED");
+    expect(guardedPreflightBody.providerRequests).toBe(0);
+
+    const providerStatusAfter = await (
+      await request("/api/generation-tasks/status", { cookie: adminCookie })
+    ).json() as { paidProviderRequests: number };
+    expect(providerStatusAfter.paidProviderRequests).toBe(0);
+
+    const wrongDoubaoProvider = await request("/api/admin/models", {
+      body: JSON.stringify({
+        capability: "text",
+        displayName: "Wrong Doubao",
+        isDefault: false,
+        providerModelId: "doubao-seed-2-0-lite-260428",
+        sortOrder: 5,
+        status: "draft",
+      }),
+      cookie: adminCookie,
+      method: "POST",
+    });
+    expect(wrongDoubaoProvider.status).toBe(400);
+
+    const correctDoubaoProvider = await request("/api/admin/models", {
+      body: JSON.stringify({
+        capability: "text",
+        displayName: "Correct Doubao",
+        isDefault: false,
+        providerModelId: "doubao-seed-2-0-lite-260428",
+        providerProfileId: arkProvider.id,
+        sortOrder: 6,
+        status: "draft",
+      }),
+      cookie: adminCookie,
+      method: "POST",
+    });
+    expect(correctDoubaoProvider.status).toBe(201);
+    const correctDoubao = (await correctDoubaoProvider.json()).model as {
+      id: string;
+      parameterSchema: { fields: Array<{ key: string }> };
+    };
+    expect(correctDoubao.parameterSchema.fields.map((field) => field.key)).toEqual([
+      "inputMode",
+      "thinkingLevel",
+      "responseFormat",
+      "outputCount",
+    ]);
+    expect((await request(`/api/admin/models/${correctDoubao.id}`, {
+      body: JSON.stringify({ providerProfileId: "provider-unconfigured" }),
+      cookie: adminCookie,
+      method: "PATCH",
+    })).status).toBe(400);
+
+    const created = await request("/api/admin/models", {
+      body: JSON.stringify({
+        capability: "image",
+        displayName: "Private Image Model",
+        isDefault: false,
+        parameterSchema: {
+          fields: [
+            {
+              defaultValue: "1:1",
+              key: "aspectRatio",
+              label: "比例",
+              options: [
+                { label: "自适应", value: "auto" },
+                { label: "1:1", value: "1:1" },
+              ],
+              type: "select",
+            },
+            {
+              defaultValue: "high",
+              key: "quality",
+              label: "画质",
+              options: [
+                { label: "自动", value: "auto" },
+                { label: "高", value: "high" },
+              ],
+              type: "select",
+            },
+            {
+              defaultValue: 1,
+              key: "outputCount",
+              label: "数量",
+              options: [{ label: "1×", value: 1 }],
+              type: "select",
+            },
+          ],
+          referenceInputs: { audio: 0, image: 2, video: 0 },
+          version: 1,
+        },
+        providerModelId: "internal/image-v1",
+        sortOrder: 20,
+        status: "draft",
+      }),
+      cookie: adminCookie,
+      method: "POST",
+    });
+    expect(created.status).toBe(201);
+    const model = (await created.json()).model as { id: string };
+
+    const beforePublish = await (
+      await request("/api/models?capability=image", { cookie: adminCookie })
+    ).json();
+    expect(
+      beforePublish.models.map((item: { displayName: string }) => item.displayName),
+    ).not.toContain("Private Image Model");
+
+    expect(
+      (
+        await request(`/api/admin/models/${model.id}`, {
+          body: JSON.stringify({ isDefault: true, status: "published" }),
+          cookie: adminCookie,
+          method: "PATCH",
+        })
+      ).status,
+    ).toBe(200);
+
+    const account = await request("/api/admin/users", {
+      body: JSON.stringify({
+        displayName: "Ordinary",
+        loginName: "ordinary",
+        password: "ordinary-pass-123",
+      }),
+      cookie: adminCookie,
+      method: "POST",
+    });
+    expect(account.status).toBe(201);
+    const login = await request("/api/auth/login", {
+      body: JSON.stringify({
+        loginName: "ordinary",
+        password: "ordinary-pass-123",
+      }),
+      method: "POST",
+    });
+    const userCookie = cookie(login);
+
+    expect(
+      (await request("/api/admin/models", { cookie: userCookie })).status,
+    ).toBe(403);
+    const publicResponse = await request("/api/models?capability=image", {
+      cookie: userCookie,
+    });
+    expect(publicResponse.status).toBe(200);
+    const publicBody = await publicResponse.json();
+    const published = publicBody.models.find(
+      (item: { displayName: string }) =>
+        item.displayName === "Private Image Model",
+    );
+    expect(published).toMatchObject({
+      capability: "image",
+      imageParameters: {
+        aspectRatios: ["auto", "1:1"],
+        maxReferenceImages: 2,
+        qualities: ["auto", "high"],
+      },
+      isDefault: true,
+      parameterSchema: {
+        referenceInputs: { audio: 0, image: 2, video: 0 },
+        version: 2,
+      },
+    });
+    expect(published).not.toHaveProperty("providerModelId");
+    expect(published).not.toHaveProperty("providerName");
+    expect(publicBody).toMatchObject({ generationEnabled: false });
+
+    expect(
+      (
+        await request(`/api/admin/models/${model.id}`, {
+          body: JSON.stringify({
+            parameterSchema: {
+              fields: [{ key: "provider_raw_option", options: ["unsafe"] }],
+              referenceInputs: { audio: 0, image: 0, video: 0 },
+              version: 1,
+            },
+          }),
+          cookie: adminCookie,
+          method: "PATCH",
+        })
+      ).status,
+    ).toBe(400);
+
+    expect(
+      (
+        await request(`/api/admin/models/${model.id}`, {
+          body: JSON.stringify({ status: "disabled" }),
+          cookie: adminCookie,
+          method: "PATCH",
+        })
+      ).status,
+    ).toBe(200);
+    const afterDisable = await (
+      await request("/api/models?capability=image", { cookie: userCookie })
+    ).json();
+    expect(
+      afterDisable.models.map((item: { displayName: string }) => item.displayName),
+    ).not.toContain("Private Image Model");
+  } finally {
+    if (server) await stopServer(server);
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("administrator model center is visible and published models reach new node controls", async ({
+  page,
+}) => {
+  await page.goto("/admin/models");
+  await expect(page.getByTestId("admin-models-page")).toBeVisible();
+  await expect(page.getByText("保护条件不完整时不会提交真实生成。"))
+    .toBeVisible();
+  await expect(page.locator(".model-list article")).toHaveCount(0);
+  await expect(page.getByTestId("model-list-empty")).toContainText(
+    "暂无已配置模型",
+  );
+
+  const createdResponse = await page.request.post("/api/admin/models", {
+    data: {
+      capability: "image",
+      displayName: "Image Test Model",
+      isDefault: true,
+      providerModelId: "test/image-model",
+      sortOrder: 10,
+      status: "published",
+    },
+  });
+  expect(createdResponse.status()).toBe(201);
+  const created = (await createdResponse.json()).model as { id: string };
+  const alternateResponse = await page.request.post("/api/admin/models", {
+    data: {
+      capability: "image",
+      displayName: "Image Alternate Model",
+      isDefault: false,
+      providerModelId: "test/image-alternate",
+      sortOrder: 20,
+      status: "published",
+    },
+  });
+  expect(alternateResponse.status()).toBe(201);
+  const alternate = (await alternateResponse.json()).model as { id: string };
+
+  await page.reload();
+  const createdCard = page.locator(".model-list article").filter({
+    hasText: "Image Test Model",
+  });
+  await createdCard.getByRole("button", { name: "参数设置" }).click();
+  const editor = createdCard.locator(".admin-model-parameter-edit");
+  await expect(editor).toBeVisible();
+  const alternateCard = page.locator(".model-list article").filter({
+    hasText: "Image Alternate Model",
+  });
+  await expect.poll(async () => {
+    const editorBox = await editor.boundingBox();
+    const nextCardBox = await alternateCard.boundingBox();
+    return Boolean(
+      editorBox && nextCardBox && nextCardBox.y >= editorBox.y + editorBox.height,
+    );
+  }).toBe(true);
+  const ratioSection = editor.locator('[data-parameter-key="aspectRatio"]');
+  await ratioSection.locator(".admin-model-parameter-options label").filter({
+    hasText: "1:1",
+  }).getByRole("checkbox").check();
+  await ratioSection.locator(".admin-model-parameter-default").getByRole("combobox").click();
+  await ratioSection.getByRole("option", { name: "1:1" }).click();
+  await editor.getByRole("button", { name: "保存参数设置" }).click();
+  await expect(createdCard).toContainText("比例");
+
+  await page.goto("/");
+  await page.getByTestId("add-node").click();
+  await page
+    .getByTestId("add-node-menu")
+    .getByRole("menuitem", { name: "图片", exact: true })
+    .click();
+  const imageModel = page.getByTestId("image-model-control");
+  await expect(imageModel).toBeVisible();
+  const modelTrigger = imageModel.getByRole("combobox");
+  await expect(modelTrigger).toHaveAttribute("data-value", created.id);
+  await expect(modelTrigger).toContainText("Image Test Model");
+  await modelTrigger.click();
+  const modelOptions = imageModel.getByRole("listbox");
+  await expect(modelOptions).toBeVisible();
+  await expect(
+    modelOptions.getByRole("option", { name: /Image Test Model/ }),
+  ).toHaveAttribute("data-selected", "true");
+  await expect(
+    modelOptions.getByRole("option", { name: /Image Test Model/ }),
+  ).toHaveCSS("background-color", "rgb(58, 58, 61)");
+  await modelOptions
+    .getByRole("option", { name: /Image Alternate Model/ })
+    .click();
+  await expect(modelTrigger).toHaveAttribute("data-value", alternate.id);
+  await expect(modelTrigger).toContainText("Image Alternate Model");
+  const imageParameters = page.getByRole("button", { name: "图片参数" });
+  await expect(imageParameters).toContainText("自适应 · 自动");
+  await imageParameters.click();
+  const parameterPanel = page.getByRole("dialog", { name: "图片生成参数" });
+  await expect(parameterPanel).toBeVisible();
+  await expect(parameterPanel.getByRole("group", { name: "画质" })).toContainText(
+    "自动",
+  );
+  await expect(
+    parameterPanel.getByRole("button", { name: "自动画质" }),
+  ).toBeEnabled();
+  await expect(
+    parameterPanel.getByRole("button", { name: "高画质" }),
+  ).toBeDisabled();
+  await expect(
+    parameterPanel.getByRole("button", { name: "1K画质" }),
+  ).toBeDisabled();
+  await expect(
+    parameterPanel.getByRole("button", { name: "自适应比例" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    parameterPanel.getByRole("button", { name: "5:4比例" }),
+  ).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Generate" })).toBeDisabled();
+
+  await page.goto("/__fixture/node.image.prompt-ready");
+  const fixtureModel = page.getByTestId("image-model-control");
+  await expect(fixtureModel).toContainText("Image Test Model");
+  await expect(fixtureModel).not.toContainText("Nano Banana 2 Lite");
+});
+
+test("Seedance admin rules keep Provider floors locked while allowing lower mode limits", async ({
+  page,
+}) => {
+  const generationPosts: string[] = [];
+  page.on("request", (request) => {
+    if (
+      request.method() === "POST" &&
+      (/\/api\/generation-tasks/.test(request.url()) || /openrouter|volces/i.test(request.url()))
+    ) {
+      generationPosts.push(request.url());
+    }
+  });
+  const providerResponse = await page.request.post("/api/admin/providers", {
+    data: {
+      apiKey: "test-p3-ark-key-12345",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      driver: "volcengine-ark",
+      label: "P3 Constraint Ark",
+    },
+  });
+  expect(providerResponse.status()).toBe(201);
+  const provider = (await providerResponse.json()).profile as { id: string };
+  const modelResponse = await page.request.post("/api/admin/models", {
+    data: {
+      capability: "video",
+      displayName: "Seedance Rule Guard UI",
+      isDefault: false,
+      maxCostMicrounits: 0,
+      providerModelId: "doubao-seedance-2-0-mini-260615",
+      providerProfileId: provider.id,
+      sortOrder: 45,
+      status: "draft",
+    },
+  });
+  expect(modelResponse.status()).toBe(201);
+
+  await page.goto("/admin/models?v=seedance-provider-rule-guard");
+  const card = page.locator(".model-list article").filter({ hasText: "Seedance Rule Guard UI" });
+  await card.getByRole("button", { name: "参数设置" }).click();
+  const editor = card.locator(".admin-model-parameter-edit");
+  const inputModeToggle = editor.locator('[data-parameter-key="inputMode"]')
+    .locator(".admin-model-parameter-enable input");
+  await expect(inputModeToggle).toBeDisabled();
+
+  const imageRoles = editor.locator('.admin-model-upstream-inputs [data-input-kind="image"]');
+  await expect(imageRoles.getByText("首帧", { exact: true }).locator("..").getByRole("checkbox"))
+    .toBeDisabled();
+  await expect(imageRoles.getByText("普通参考", { exact: true }).locator("..").getByRole("checkbox"))
+    .toBeDisabled();
+  await expect(editor.getByText("已被某种生成方式使用的角色不能从全局单独删除，避免模式规则与全局规则冲突。"))
+    .toBeVisible();
+
+  const referencePolicyToggle = editor.locator(
+    '.admin-model-reference-limits > .admin-model-reference-heading input[type="checkbox"]',
+  );
+  await expect(referencePolicyToggle).toBeDisabled();
+  await expect(editor.getByText("Provider要求保留分模式校验；可以在当前上限内继续收紧数量和组合。"))
+    .toBeVisible();
+
+  await editor.getByLabel("multimodal组合1image上限").fill("8");
+  await editor.getByRole("button", { name: "保存参数设置" }).click();
+  const models = await (await page.request.get("/api/admin/models")).json() as {
+    models: Array<{ displayName: string; parameterSchema: ModelParameterSchema }>;
+  };
+  const stored = models.models.find((model) => model.displayName === "Seedance Rule Guard UI");
+  expect(stored?.parameterSchema.referencePolicy?.modes.multimodal.sets[0].image).toBe(8);
+  const status = await (await page.request.get("/api/generation-tasks/status")).json() as {
+    paidProviderRequests: number;
+  };
+  expect(status.paidProviderRequests).toBe(0);
+  expect(generationPosts).toEqual([]);
+});
+
+test("administrator configures future-model conditions, unavailable options and reference combinations", async ({
+  page,
+}) => {
+  const generationPosts: string[] = [];
+  page.on("request", (request) => {
+    if (
+      request.method() === "POST" &&
+      (/\/api\/generation-tasks/.test(request.url()) || /openrouter|volces/i.test(request.url()))
+    ) {
+      generationPosts.push(request.url());
+    }
+  });
+  const response = await page.request.post("/api/admin/models", {
+    data: {
+      capability: "video",
+      displayName: "Future Video Model",
+      isDefault: false,
+      parameterSchema: {
+        fields: [
+          {
+            defaultValue: "first-last-frame",
+            group: "input",
+            key: "inputMode",
+            label: "生成方式",
+            options: [
+              { label: "首尾帧", value: "first-last-frame" },
+              { label: "参考", value: "reference" },
+            ],
+            summary: true,
+            type: "select",
+          },
+          {
+            defaultValue: "540p",
+            group: "main",
+            key: "resolution",
+            label: "清晰度",
+            options: [
+              { label: "540p", value: "540p" },
+              { label: "720p", value: "720p" },
+            ],
+            summary: true,
+            type: "select",
+          },
+          {
+            defaultValue: false,
+            group: "advanced",
+            key: "multiShot",
+            label: "多镜头",
+            options: [
+              { label: "开启", value: true },
+              { label: "关闭", value: false },
+            ],
+            type: "boolean",
+            visibleWhen: [{ key: "inputMode", operator: "equals", value: "reference" }],
+          },
+        ],
+        groups: [],
+        referenceInputs: { audio: 0, image: 5, video: 2 },
+        referencePolicy: {
+          modeKey: "inputMode",
+          modes: {
+            "first-last-frame": { sets: [{ audio: 0, image: 2, video: 0 }] },
+            reference: {
+              sets: [
+                { audio: 0, image: 3, video: 2 },
+                { audio: 0, image: 5, video: 0 },
+              ],
+            },
+          },
+        },
+        version: 2,
+      },
+      providerModelId: "test/future-video-model",
+      sortOrder: 50,
+      status: "draft",
+    },
+  });
+  expect(response.status()).toBe(201);
+
+  await page.goto("/admin/models?v=model-contract-admin-v2");
+  const card = page.locator(".model-list article").filter({ hasText: "Future Video Model" });
+  await card.getByRole("button", { name: "参数设置" }).click();
+  const editor = card.locator(".admin-model-parameter-edit");
+  await expect(editor.getByText("模型参数 · 第2版规则")).toBeVisible();
+
+  await editor.getByRole("button", { name: "新增参数" }).click();
+  await editor.getByPlaceholder("例如：安全等级").fill("动态程度");
+  await editor.getByRole("button", { name: "添加到节点" }).click();
+  await expect(editor.getByText("动态程度", { exact: true })).toBeVisible();
+  await expect(editor.getByText("待平台适配", { exact: true })).toBeVisible();
+
+  const inputModeSection = editor.locator('[data-parameter-key="inputMode"]');
+  await expect(inputModeSection.locator(".admin-model-parameter-enable")).toContainText("输入区");
+  await expect(inputModeSection.locator(".admin-model-parameter-enable input")).toBeEnabled();
+  const unconstrainedImageRole = editor.locator(
+    '.admin-model-upstream-inputs [data-input-kind="image"]',
+  ).getByText("普通参考", { exact: true }).locator("..").getByRole("checkbox");
+  await expect(unconstrainedImageRole).toBeEnabled();
+  await expect(editor.locator(
+    '.admin-model-reference-limits > .admin-model-reference-heading input[type="checkbox"]',
+  )).toBeEnabled();
+
+  const resolutionSection = editor.locator('[data-parameter-key="resolution"]');
+  const optionState = resolutionSection.locator(".admin-model-option-states > label").filter({
+    hasText: "720p",
+  });
+  await optionState.getByRole("combobox").click();
+  await optionState.getByRole("option", { name: "显示但禁用" }).click();
+
+  const multiShotSection = editor.locator('[data-parameter-key="multiShot"]');
+  await expect(multiShotSection.locator(".admin-model-parameter-condition"))
+    .toContainText("当生成方式为");
+  await expect(multiShotSection.locator(".admin-model-parameter-condition"))
+    .toContainText("参考");
+
+  const referenceMode = editor.locator(".admin-model-reference-modes > div").filter({
+    hasText: "参考",
+  });
+  await expect(referenceMode.locator(".admin-model-reference-set")).toHaveCount(2);
+  await referenceMode.getByRole("button", { name: "添加另一种组合" }).click();
+  await expect(referenceMode.locator(".admin-model-reference-set")).toHaveCount(3);
+
+  await editor.getByRole("button", { name: "保存参数设置" }).click();
+  const adminModels = await page.request.get("/api/admin/models");
+  const stored = ((await adminModels.json()).models as Array<{
+    displayName: string;
+    parameterSchema: {
+      fields: ModelParameterField[];
+      referencePolicy?: { modes: Record<string, { sets: ModelReferenceInputs[] }> };
+      version: number;
+    };
+  }>).find((model) => model.displayName === "Future Video Model");
+  expect(stored?.parameterSchema.version).toBe(2);
+  expect(stored?.parameterSchema.fields.find((field) => field.key === "resolution")?.options)
+    .toContainEqual(expect.objectContaining({ availability: "disabled", value: "720p" }));
+  expect(stored?.parameterSchema.fields).toContainEqual(expect.objectContaining({
+    label: "动态程度",
+    providerStatus: "pending",
+    type: "select",
+  }));
+  expect(stored?.parameterSchema.referencePolicy?.modes.reference.sets).toHaveLength(3);
+  expect(generationPosts).toEqual([]);
+});

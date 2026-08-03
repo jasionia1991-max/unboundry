@@ -1,0 +1,113 @@
+{
+  "status": "FROZEN",
+  "acceptedByUser": "2026-07-31",
+  "visibleRecheckCompleted": "2026-07-31",
+  "scopeAdjustment": "社区功能和右上角社区入口已由用户取消",
+  "sourceFixture": "shell.empty.primary",
+  "viewports": [
+    {
+      "name": "desktop-1440x900-1x",
+      "width": 1440,
+      "height": 900,
+      "deviceScaleFactor": 1,
+      "screenshot": "spec/reference/m0-shell/shell-empty-1440x900-1x.png",
+      "elements": {
+        "projectArea": [16, 16, 320, 40],
+        "logoButton": [16, 18, 40, 36],
+        "titleInput": [56, 16, 280, 20],
+        "topRight": [1385, 16, 40, 40],
+        "credits": [1215.6, 16, 65.4, 40],
+        "share": [1385, 16, 40, 40],
+        "leftToolbar": [15, 295, 54, 294],
+        "addNode": [22, 302, 40, 40],
+        "nodeSearch": [23, 350, 38, 38],
+        "assets": [23, 394, 38, 38],
+        "templates": [23, 438, 38, 38],
+        "history": [23, 482, 38, 38],
+        "userAvatar": [22, 541, 40, 40],
+        "emptyQuickActions": [398, 408, 644, 84],
+        "quickActionBadge": [573.4, 408, 82, 34],
+        "textToVideo": [398, 454, 128, 38],
+        "replaceBackground": [534, 454, 128, 38],
+        "firstLastFrameVideo": [670, 454, 142, 38],
+        "audioToVideo": [820, 454, 128, 38],
+        "quickTemplate": [956, 454, 86, 38],
+        "bottomControls": [15, 845, 205, 40],
+        "minimapToggle": [23, 851, 28, 28],
+        "snapToggle": [59, 851, 28, 28],
+        "fitView": [95, 851, 28, 28],
+        "zoomTrack": [131, 862, 77, 6],
+        "help": [232, 845, 40, 40],
+        "agentBubble": [1372, 832, 44, 44]
+      }
+    },
+    {
+      "name": "minimum-1280x720-2x",
+      "width": 1280,
+      "height": 720,
+      "deviceScaleFactor": 2,
+      "screenshot": "spec/reference/m0-shell/shell-empty-1280x720-2x.png",
+      "elements": {
+        "projectArea": [16, 16, 320, 40],
+        "topRight": [1225, 16, 40, 40],
+        "leftToolbar": [15, 205, 54, 294],
+        "emptyQuickActions": [318, 318, 644, 84],
+        "bottomControls": [15, 665, 205, 40],
+        "help": [232, 665, 40, 40],
+        "agentBubble": [1212, 652, 44, 44]
+      }
+    },
+    {
+      "name": "desktop-1512x982-2x",
+      "width": 1512,
+      "height": 982,
+      "deviceScaleFactor": 2,
+      "screenshot": "spec/reference/m0-shell/shell-empty-1512x982-2x.png",
+      "elements": {
+        "projectArea": [16, 16, 320, 40],
+        "topRight": [1457, 16, 40, 40],
+        "leftToolbar": [15, 336, 54, 294],
+        "emptyQuickActions": [434, 449, 644, 84],
+        "bottomControls": [15, 927, 205, 40],
+        "help": [232, 927, 40, 40],
+        "agentBubble": [1444, 914, 44, 44]
+      }
+    },
+    {
+      "name": "desktop-1920x1080-1x",
+      "width": 1920,
+      "height": 1080,
+      "deviceScaleFactor": 1,
+      "screenshot": "spec/reference/m0-shell/shell-empty-1920x1080-1x.png",
+      "elements": {
+        "projectArea": [16, 16, 320, 40],
+        "logoButton": [16, 18, 40, 36],
+        "titleInput": [56, 16, 280, 20],
+        "topRight": [1865, 16, 40, 40],
+        "credits": [1695.6, 16, 65.4, 40],
+        "share": [1865, 16, 40, 40],
+        "leftToolbar": [15, 385, 54, 294],
+        "addNode": [22, 392, 40, 40],
+        "nodeSearch": [23, 440, 38, 38],
+        "assets": [23, 484, 38, 38],
+        "templates": [23, 528, 38, 38],
+        "history": [23, 572, 38, 38],
+        "userAvatar": [22, 631, 40, 40],
+        "emptyQuickActions": [638, 498, 644, 84],
+        "quickActionBadge": [813.4, 498, 82, 34],
+        "textToVideo": [638, 544, 128, 38],
+        "replaceBackground": [774, 544, 128, 38],
+        "firstLastFrameVideo": [910, 544, 142, 38],
+        "audioToVideo": [1060, 544, 128, 38],
+        "quickTemplate": [1196, 544, 86, 38],
+        "bottomControls": [15, 1025, 205, 40],
+        "minimapToggle": [23, 1031, 28, 28],
+        "snapToggle": [59, 1031, 28, 28],
+        "fitView": [95, 1031, 28, 28],
+        "zoomTrack": [131, 1042, 77, 6],
+        "help": [232, 1025, 40, 40],
+        "agentBubble": [1852, 1012, 44, 44]
+      }
+    }
+  ]
+}

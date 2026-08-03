@@ -1,0 +1,667 @@
+import {
+  createHash,
+  randomBytes,
+  randomUUID,
+  scrypt,
+  timingSafeEqual,
+} from "node:crypto";
+import { readdir, stat } from "node:fs/promises";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { join } from "node:path";
+import type { DatabaseSync } from "node:sqlite";
+import { appDataDirectory, openAppDatabase } from "./database";
+
+export type RequestIdentity = {
+  bypass: boolean;
+  displayName: string;
+  role: "admin" | "user";
+  userId: string;
+};
+
+type UserRow = {
+  display_name: string;
+  id: string;
+  login_name: string;
+  password_hash: string;
+  role: "admin" | "user";
+  status: "active" | "disabled";
+};
+
+type UserInput = {
+  displayName?: unknown;
+  loginName?: unknown;
+  password?: unknown;
+};
+
+const cookieName = "tapnow_session";
+const sessionLifetimeMs = 7 * 24 * 60 * 60 * 1_000;
+const requestIdentities = new WeakMap<IncomingMessage, RequestIdentity>();
+let database: DatabaseSync | undefined;
+let databaseDirectory = "";
+
+function db() {
+  const directory = appDataDirectory();
+  if (database && databaseDirectory === directory) return database;
+  database?.close();
+  database = openAppDatabase();
+  databaseDirectory = directory;
+  return database;
+}
+
+function json(response: ServerResponse, status: number, body: unknown) {
+  response.statusCode = status;
+  response.setHeader("Cache-Control", "no-store");
+  response.setHeader("Content-Type", "application/json; charset=utf-8");
+  response.end(JSON.stringify(body));
+}
+
+function cookieValue(request: IncomingMessage, name: string) {
+  for (const part of String(request.headers.cookie ?? "").split(";")) {
+    const [candidate, ...value] = part.trim().split("=");
+    if (candidate === name) return value.join("=");
+  }
+}
+
+function sessionCookie(token: string, maxAge: number) {
+  const secure =
+    process.env.TAPNOW_SECURE_COOKIES === "1" ||
+    process.env.NODE_ENV === "production";
+  return [
+    `${cookieName}=${token}`,
+    "HttpOnly",
+    "Path=/",
+    "SameSite=Strict",
+    `Max-Age=${maxAge}`,
+    secure ? "Secure" : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
+}
+
+function tokenHash(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function passwordInput(input: UserInput) {
+  const loginName =
+    typeof input.loginName === "string"
+      ? input.loginName.trim().toLocaleLowerCase()
+      : "";
+  const displayName =
+    typeof input.displayName === "string" ? input.displayName.trim() : "";
+  const password = typeof input.password === "string" ? input.password : "";
+  if (
+    !/^[a-z0-9][a-z0-9._-]{2,39}$/i.test(loginName) ||
+    displayName.length < 1 ||
+    displayName.length > 60 ||
+    password.length < 12 ||
+    password.length > 200
+  ) {
+    throw new Error("账号名需为 3–40 位，密码至少 12 位");
+  }
+  return { displayName, loginName, password };
+}
+
+async function readBody<T>(request: IncomingMessage) {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of request) {
+    const bytes = Buffer.from(chunk);
+    size += bytes.length;
+    if (size > 64 * 1_024) throw new Error("请求内容过大");
+    chunks.push(bytes);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
+}
+
+function derivePassword(password: string, salt: Buffer) {
+  return new Promise<Buffer>((resolve, reject) => {
+    scrypt(password, salt, 64, { N: 16_384, p: 1, r: 8 }, (error, key) => {
+      if (error) reject(error);
+      else resolve(key);
+    });
+  });
+}
+
+async function hashPassword(password: string) {
+  const salt = randomBytes(16);
+  const key = await derivePassword(password, salt);
+  return `scrypt$16384$8$1$${salt.toString("hex")}$${key.toString("hex")}`;
+}
+
+async function verifyPassword(password: string, encoded?: string) {
+  const fallback =
+    "scrypt$16384$8$1$00000000000000000000000000000000$" + "00".repeat(64);
+  const parts = (encoded ?? fallback).split("$");
+  if (
+    parts.length !== 6 ||
+    parts[0] !== "scrypt" ||
+    parts[1] !== "16384" ||
+    parts[2] !== "8" ||
+    parts[3] !== "1"
+  ) {
+    return false;
+  }
+  const salt = Buffer.from(parts[4], "hex");
+  const expected = Buffer.from(parts[5], "hex");
+  const actual = await derivePassword(password, salt);
+  return (
+    expected.length === actual.length && timingSafeEqual(expected, actual)
+  );
+}
+
+function publicUser(row: UserRow) {
+  return {
+    displayName: row.display_name,
+    id: row.id,
+    loginName: row.login_name,
+    role: row.role,
+    status: row.status,
+  };
+}
+
+function isLoopback(request: IncomingMessage) {
+  const address = request.socket.remoteAddress ?? "";
+  return (
+    address === "127.0.0.1" ||
+    address === "::1" ||
+    address === "::ffff:127.0.0.1"
+  );
+}
+
+function isMutationAllowed(request: IncomingMessage) {
+  if (["GET", "HEAD", "OPTIONS"].includes(request.method ?? "")) return true;
+  const origin = request.headers.origin;
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === request.headers.host;
+  } catch {
+    return false;
+  }
+}
+
+async function existingMedia() {
+  const directory = join(appDataDirectory(), "media");
+  const entries: Array<{
+    byteSize: number;
+    id: string;
+    kind: "audio" | "image" | "video";
+    storageName: string;
+  }> = [];
+  try {
+    for (const item of await readdir(directory, { withFileTypes: true })) {
+      if (!item.isFile() || item.name.endsWith(".uploading")) continue;
+      const extension = item.name.split(".").at(-1)?.toLocaleLowerCase();
+      const kind =
+        extension === "png"
+          ? "image"
+          : extension === "mp4"
+            ? "video"
+            : ["wav", "mp3", "m4a", "aac"].includes(extension ?? "")
+              ? "audio"
+              : undefined;
+      if (!kind) continue;
+      entries.push({
+        byteSize: (await stat(join(directory, item.name))).size,
+        id: kind === "image" ? item.name.replace(/\.png$/i, "") : item.name,
+        kind,
+        storageName: item.name,
+      });
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  return entries;
+}
+
+function recordAudit(
+  store: DatabaseSync,
+  actorUserId: string,
+  action: string,
+  targetUserId: string | null,
+  details: Record<string, unknown>,
+) {
+  store
+    .prepare(`
+      INSERT INTO admin_audit_events (
+        actor_user_id, action, target_user_id, details, created_at
+      )
+      VALUES (?, ?, ?, ?, ?)
+    `)
+    .run(
+      actorUserId,
+      action,
+      targetUserId,
+      JSON.stringify(details),
+      new Date().toISOString(),
+    );
+}
+
+function createSession(
+  store: DatabaseSync,
+  userId: string,
+  response: ServerResponse,
+) {
+  const token = randomBytes(32).toString("base64url");
+  const now = new Date();
+  store
+    .prepare(`
+      INSERT INTO sessions (
+        id, token_hash, user_id, expires_at, created_at, last_seen_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?)
+    `)
+    .run(
+      randomUUID(),
+      tokenHash(token),
+      userId,
+      new Date(now.getTime() + sessionLifetimeMs).toISOString(),
+      now.toISOString(),
+      now.toISOString(),
+    );
+  response.setHeader(
+    "Set-Cookie",
+    sessionCookie(token, Math.floor(sessionLifetimeMs / 1_000)),
+  );
+}
+
+function clearSession(request: IncomingMessage, response: ServerResponse) {
+  const token = cookieValue(request, cookieName);
+  if (token) {
+    db().prepare("DELETE FROM sessions WHERE token_hash = ?").run(tokenHash(token));
+  }
+  response.setHeader("Set-Cookie", sessionCookie("", 0));
+}
+
+async function authenticate(request: IncomingMessage) {
+  const token = cookieValue(request, cookieName);
+  if (!token) return undefined;
+  const row = db()
+    .prepare(`
+      SELECT
+        users.id,
+        users.login_name,
+        users.display_name,
+        users.password_hash,
+        users.role,
+        users.status
+      FROM sessions
+      JOIN users ON users.id = sessions.user_id
+      WHERE
+        sessions.token_hash = ?
+        AND sessions.expires_at > ?
+        AND users.status = 'active'
+    `)
+    .get(tokenHash(token), new Date().toISOString()) as UserRow | undefined;
+  if (!row) return undefined;
+  const identity: RequestIdentity = {
+    bypass: false,
+    displayName: row.display_name,
+    role: row.role,
+    userId: row.id,
+  };
+  requestIdentities.set(request, identity);
+  return { identity, row };
+}
+
+export function requestIdentity(request: IncomingMessage) {
+  return requestIdentities.get(request);
+}
+
+export async function authGate(
+  request: IncomingMessage,
+  response: ServerResponse,
+  next: () => void,
+) {
+  if (process.env.TAPNOW_TEST_AUTH_BYPASS === "1") {
+    const timestamp = new Date().toISOString();
+    db()
+      .prepare(`
+        INSERT OR IGNORE INTO users (
+          id, login_name, display_name, password_hash, role, status,
+          created_at, updated_at
+        )
+        VALUES (
+          '__test__', '__test__', 'Test User', 'test-only', 'admin', 'active',
+          ?, ?
+        )
+      `)
+      .run(timestamp, timestamp);
+    requestIdentities.set(request, {
+      bypass: true,
+      displayName: "Test User",
+      role: "admin",
+      userId: "__test__",
+    });
+    next();
+    return;
+  }
+  if (!isMutationAllowed(request)) {
+    json(response, 403, { error: "请求来源无效" });
+    return;
+  }
+  if (!(await authenticate(request))) {
+    json(response, 401, { error: "请先登录" });
+    return;
+  }
+  next();
+}
+
+export async function authApi(
+  request: IncomingMessage,
+  response: ServerResponse,
+) {
+  const path = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+    /^\/+/,
+    "",
+  );
+  const store = db();
+
+  if (request.method === "GET" && path === "status") {
+    if (process.env.TAPNOW_TEST_AUTH_BYPASS === "1") {
+      json(response, 200, {
+        authenticated: true,
+        bootstrapRequired: false,
+        user: {
+          displayName: "Test User",
+          id: "__test__",
+          loginName: "test-user",
+          role: "admin",
+          status: "active",
+        },
+      });
+      return;
+    }
+    const count = Number(
+      (store.prepare("SELECT COUNT(*) AS count FROM users").get() as {
+        count: number;
+      }).count,
+    );
+    const session = await authenticate(request);
+    json(response, 200, {
+      authenticated: Boolean(session),
+      bootstrapRequired: count === 0,
+      user: session ? publicUser(session.row) : undefined,
+    });
+    return;
+  }
+
+  if (request.method === "POST" && path === "bootstrap") {
+    if (!isMutationAllowed(request)) {
+      json(response, 403, { error: "请求来源无效" });
+      return;
+    }
+    if (!isLoopback(request) && process.env.TAPNOW_BOOTSTRAP_REMOTE !== "1") {
+      json(response, 403, { error: "首次管理员只能在服务器本机创建" });
+      return;
+    }
+    try {
+      const input = passwordInput(await readBody<UserInput>(request));
+      const passwordHash = await hashPassword(input.password);
+      const media = await existingMedia();
+      const userId = randomUUID();
+      const timestamp = new Date().toISOString();
+      store.exec("BEGIN IMMEDIATE");
+      try {
+        const count = Number(
+          (store.prepare("SELECT COUNT(*) AS count FROM users").get() as {
+            count: number;
+          }).count,
+        );
+        if (count !== 0) throw new Error("管理员已经创建");
+        store
+          .prepare(`
+            INSERT INTO users (
+              id, login_name, display_name, password_hash, role, status,
+              created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, 'admin', 'active', ?, ?)
+          `)
+          .run(
+            userId,
+            input.loginName,
+            input.displayName,
+            passwordHash,
+            timestamp,
+            timestamp,
+          );
+        store
+          .prepare("UPDATE canvas_documents SET owner_id = ? WHERE owner_id IS NULL")
+          .run(userId);
+        store
+          .prepare("UPDATE project_metadata SET owner_id = ? WHERE owner_id IS NULL")
+          .run(userId);
+        store
+          .prepare("UPDATE asset_history SET owner_id = ? WHERE owner_id IS NULL")
+          .run(userId);
+        store
+          .prepare("UPDATE generation_tasks SET owner_id = ? WHERE owner_id IS NULL")
+          .run(userId);
+        const register = store.prepare(`
+          INSERT OR IGNORE INTO media_assets (
+            kind, id, owner_id, storage_name, byte_size, created_at, updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+        for (const item of media) {
+          register.run(
+            item.kind,
+            item.id,
+            userId,
+            item.storageName,
+            item.byteSize,
+            timestamp,
+            timestamp,
+          );
+        }
+        recordAudit(store, userId, "bootstrap_admin", userId, {
+          claimedMedia: media.length,
+        });
+        createSession(store, userId, response);
+        store.exec("COMMIT");
+      } catch (error) {
+        store.exec("ROLLBACK");
+        throw error;
+      }
+      const row = store
+        .prepare("SELECT * FROM users WHERE id = ?")
+        .get(userId) as UserRow;
+      json(response, 201, { user: publicUser(row) });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "无法创建管理员";
+      json(response, message === "管理员已经创建" ? 409 : 400, {
+        error: message,
+      });
+    }
+    return;
+  }
+
+  if (request.method === "POST" && path === "login") {
+    if (!isMutationAllowed(request)) {
+      json(response, 403, { error: "请求来源无效" });
+      return;
+    }
+    try {
+      const body = await readBody<{ loginName?: unknown; password?: unknown }>(
+        request,
+      );
+      const loginName =
+        typeof body.loginName === "string"
+          ? body.loginName.trim().toLocaleLowerCase()
+          : "";
+      const password = typeof body.password === "string" ? body.password : "";
+      const row = store
+        .prepare("SELECT * FROM users WHERE login_name = ? COLLATE NOCASE")
+        .get(loginName) as UserRow | undefined;
+      const valid = await verifyPassword(password, row?.password_hash);
+      if (!valid || !row || row.status !== "active") {
+        json(response, 401, { error: "账号或密码不正确，或账号已停用" });
+        return;
+      }
+      createSession(store, row.id, response);
+      json(response, 200, { user: publicUser(row) });
+    } catch {
+      json(response, 400, { error: "登录信息无效" });
+    }
+    return;
+  }
+
+  if (request.method === "POST" && path === "logout") {
+    if (!isMutationAllowed(request)) {
+      json(response, 403, { error: "请求来源无效" });
+      return;
+    }
+    clearSession(request, response);
+    json(response, 200, { loggedOut: true });
+    return;
+  }
+
+  response.setHeader("Allow", "GET, POST");
+  json(response, 404, { error: "登录接口不存在" });
+}
+
+export function accountContextApi(
+  request: IncomingMessage,
+  response: ServerResponse,
+) {
+  if (request.method !== "GET") {
+    response.setHeader("Allow", "GET");
+    json(response, 405, { error: "账号上下文只支持读取" });
+    return;
+  }
+  const identity = requestIdentity(request);
+  if (!identity) {
+    json(response, 401, { error: "请先登录" });
+    return;
+  }
+  const row = db().prepare("SELECT * FROM users WHERE id = ?").get(
+    identity.userId,
+  ) as UserRow | undefined;
+  if (!row) {
+    json(response, 404, { error: "账号不存在" });
+    return;
+  }
+  json(response, 200, {
+    permissions: {
+      manageAccounts: row.role === "admin",
+      manageModels: row.role === "admin",
+      manageProviders: row.role === "admin",
+      manageStorage: row.role === "admin",
+      readOwnData: true,
+      submitOwnTasks: true,
+      writeOwnData: true,
+    },
+    user: publicUser(row),
+    workspace: {
+      id: `personal:${row.id}`,
+      teamEnabled: false,
+      type: "personal",
+    },
+  });
+}
+
+export async function adminUsersApi(
+  request: IncomingMessage,
+  response: ServerResponse,
+) {
+  if (!isMutationAllowed(request)) {
+    json(response, 403, { error: "请求来源无效" });
+    return;
+  }
+  const session = await authenticate(request);
+  if (!session || session.identity.role !== "admin") {
+    json(response, 403, { error: "只有管理员可以操作账号" });
+    return;
+  }
+  const store = db();
+  const path = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+    /^\/+/,
+    "",
+  );
+
+  if (request.method === "GET" && !path) {
+    const users = (
+      store
+        .prepare(`
+          SELECT id, login_name, display_name, role, status
+          FROM users
+          ORDER BY created_at ASC
+        `)
+        .all() as UserRow[]
+    ).map(publicUser);
+    json(response, 200, { users });
+    return;
+  }
+
+  if (request.method === "POST" && !path) {
+    try {
+      const input = passwordInput(await readBody<UserInput>(request));
+      const id = randomUUID();
+      const timestamp = new Date().toISOString();
+      store
+        .prepare(`
+          INSERT INTO users (
+            id, login_name, display_name, password_hash, role, status,
+            created_at, updated_at
+          )
+          VALUES (?, ?, ?, ?, 'user', 'active', ?, ?)
+        `)
+        .run(
+          id,
+          input.loginName,
+          input.displayName,
+          await hashPassword(input.password),
+          timestamp,
+          timestamp,
+        );
+      recordAudit(store, session.identity.userId, "create_user", id, {
+        loginName: input.loginName,
+      });
+      const row = store.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow;
+      json(response, 201, { user: publicUser(row) });
+    } catch (error) {
+      const message = String((error as Error).message ?? "");
+      json(response, /UNIQUE/i.test(message) ? 409 : 400, {
+        error: /UNIQUE/i.test(message) ? "账号名已存在" : "账号信息无效",
+      });
+    }
+    return;
+  }
+
+  if (request.method === "PATCH" && /^[a-f0-9-]{36}$/i.test(path)) {
+    try {
+      const body = await readBody<{ status?: unknown }>(request);
+      if (body.status !== "active" && body.status !== "disabled") {
+        throw new Error("Invalid status");
+      }
+      if (path === session.identity.userId && body.status === "disabled") {
+        json(response, 400, { error: "不能停用当前登录的管理员" });
+        return;
+      }
+      const result = store
+        .prepare(`
+          UPDATE users SET status = ?, updated_at = ? WHERE id = ?
+        `)
+        .run(body.status, new Date().toISOString(), path);
+      if (result.changes !== 1) {
+        json(response, 404, { error: "账号不存在" });
+        return;
+      }
+      if (body.status === "disabled") {
+        store.prepare("DELETE FROM sessions WHERE user_id = ?").run(path);
+      }
+      recordAudit(store, session.identity.userId, "set_user_status", path, {
+        status: body.status,
+      });
+      const row = store.prepare("SELECT * FROM users WHERE id = ?").get(path) as UserRow;
+      json(response, 200, { user: publicUser(row) });
+    } catch {
+      json(response, 400, { error: "账号状态无效" });
+    }
+    return;
+  }
+
+  response.setHeader("Allow", "GET, POST, PATCH");
+  json(response, 404, { error: "账号接口不存在" });
+}

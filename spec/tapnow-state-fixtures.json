@@ -1,0 +1,2902 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "2026-08-02",
+  "source": {
+    "report": "../../TAPNOW_CANVAS_FULL_SURVEY_2026-07-27.md",
+    "tapnowVersion": "v2.12.2",
+    "projectTitle": "Next Big Thing (0727)",
+    "referenceUrl": "https://app.tapnow.ai/canvas/0c6cf6c2-e6fb-4384-a1e6-da39b8c1a0b3",
+    "rule": "Only verified observations are expected behavior. Items marked OPEN must not be guessed."
+  },
+  "evidenceSources": {
+    "TN-NBT-0727": {
+      "kind": "CURRENT_SURVEY",
+      "project": "Next Big Thing (0727)",
+      "tapnowVersion": "v2.12.2",
+      "location": "../../TAPNOW_CANVAS_FULL_SURVEY_2026-07-27.md",
+      "priority": 1
+    },
+    "TN-VS-0727": {
+      "kind": "LIVE_MEASURED",
+      "project": "Visual Strategy (0723)",
+      "tapnowVersion": "v2.12.2",
+      "location": "TAPNOW_REFERENCE_EVIDENCE_CATALOG.md",
+      "upstream": "/Users/mymy/Documents/Codex/2026-07-05/desktop-aicat-blueprint-md-14kb-6/work/lumino-web/docs/evidence/tapnow-full-stage0-20260727/README.md",
+      "priority": 2
+    },
+    "TN-VS-0724": {
+      "kind": "SCREENSHOT_MANIFEST",
+      "project": "Visual Strategy (0723)",
+      "tapnowVersion": "v2.12.2-final-freeze",
+      "location": "TAPNOW_REFERENCE_EVIDENCE_CATALOG.md",
+      "upstream": "/Users/mymy/Documents/Codex/2026-07-05/desktop-aicat-blueprint-md-14kb-6/work/lumino-web/docs/evidence/tapnow-states/manifest.json",
+      "screenshotCount": 40,
+      "priority": 3
+    },
+    "TN-PIXEL-0724": {
+      "kind": "MEASURED_AND_DERIVED",
+      "project": "Visual Strategy (0723)",
+      "location": "TAPNOW_REFERENCE_EVIDENCE_CATALOG.md",
+      "priority": 3
+    },
+    "TN-NBT-G02-0727": {
+      "kind": "LIVE_MEASURED",
+      "project": "Next Big Thing (0727)",
+      "tapnowVersion": "v2.12.2",
+      "location": "TAPNOW_G0_2_LIVE_SURVEY_2026-07-27.md",
+      "priority": 1
+    },
+    "TN-G02-SANDBOX-0727": {
+      "kind": "LIVE_MEASURED",
+      "project": "Codex TapNow G0.2 Sandbox 0727",
+      "tapnowVersion": "v2.12.2",
+      "referenceUrl": "https://app.tapnow.ai/canvas/cc209243-cc9c-4436-b335-cbd0505e9bbf",
+      "location": "TAPNOW_G0_2_LIVE_SURVEY_2026-07-27.md",
+      "priority": 1
+    },
+    "TN-UPSTREAM-0802": {
+      "kind": "LIVE_OBSERVED",
+      "project": "Upstream Input Survey 2026-08-02",
+      "tapnowVersion": "CURRENT_OBSERVED",
+      "referenceUrl": "https://app.tapnow.ai/canvas/1c7cea5a-1eac-4d58-a047-ed3627e84767",
+      "location": "TAPNOW_UPSTREAM_INPUT_SURVEY_2026-08-02.md",
+      "priority": 1
+    }
+  },
+  "viewports": {
+    "desktopPrimary": {
+      "width": 1135,
+      "height": 917,
+      "dpr": 2,
+      "coverage": "full static shell and overlays",
+      "initialViewport": {
+        "x": 0,
+        "y": 0,
+        "zoom": 1
+      }
+    },
+    "desktopDynamic": {
+      "width": 1280,
+      "height": 720,
+      "dpr": 2,
+      "coverage": "dynamic nodes, generation, persistence"
+    },
+    "pointerSupplement": {
+      "width": 1728,
+      "height": 882,
+      "zoom": 1.3,
+      "coverage": "drag, resize, upload, manual connection"
+    },
+    "densePrimary": {
+      "width": 1280,
+      "height": 720,
+      "dpr": 2,
+      "sourceId": "TN-VS-0724",
+      "coverage": "dense canvas, panels, nodes, image editors, Agent"
+    },
+    "denseWide": {
+      "width": 1440,
+      "height": 900,
+      "dpr": 1,
+      "sourceId": "TN-VS-0724",
+      "coverage": "extended viewport screenshot"
+    },
+    "denseFullHd": {
+      "width": 1920,
+      "height": 1080,
+      "dpr": 1,
+      "sourceId": "TN-VS-0724",
+      "coverage": "extended viewport screenshot"
+    },
+    "planned": [
+      {
+        "width": 1440,
+        "height": 900,
+        "dpr": 1,
+        "status": "VERIFIED_HISTORICAL_REFERENCE",
+        "sourceId": "TN-VS-0724"
+      },
+      {
+        "width": 1512,
+        "height": 982,
+        "dpr": 2,
+        "status": "OPEN"
+      },
+      {
+        "width": 1920,
+        "height": 1080,
+        "dpr": 1,
+        "status": "VERIFIED_HISTORICAL_REFERENCE",
+        "sourceId": "TN-VS-0724"
+      },
+      {
+        "name": "minimum-supported-width",
+        "status": "OPEN"
+      }
+    ]
+  },
+  "theme": {
+    "fontFamily": "Inter, -apple-system, system-ui, \"Segoe UI\", Roboto, sans-serif",
+    "defaultFontSize": 16,
+    "defaultLineHeight": 24,
+    "defaultText": "#f5f5f5",
+    "pageBackground": "#000000",
+    "tokens": {
+      "background": "#0f0f0f",
+      "canvas": "#0a0a0a",
+      "border": "#ffffff1a",
+      "card": "#1f1f1f",
+      "muted": "#2b2b2b",
+      "popover": "#262626",
+      "primary": "#1fa2dc",
+      "tapPrimary1": "#33a8ff"
+    },
+    "grid": {
+      "spacing": 20,
+      "patternTranslate": [
+        -11,
+        -11
+      ],
+      "dot": {
+        "cx": 0.5,
+        "cy": 0.5,
+        "r": 0.5,
+        "color": "rgba(255,255,255,0.3)"
+      }
+    },
+    "transition": "150ms cubic-bezier(0.4, 0, 0.2, 1)"
+  },
+  "observedContracts": {
+    "canvas": [
+      "/api/canvas/v1/canvases/:canvasId?with_nodes&with_connections",
+      "/api/canvas/v1/canvases/:canvasId/config",
+      "/api/canvas/v1/canvases?limit&parent_filter&sort_by&sort_order&type",
+      "/api/canvas/v1/canvas/plugins/:pluginId"
+    ],
+    "templates": [
+      "/api/canvas/v1/official-template-categories?template_type",
+      "/api/canvas/v1/official-templates?template_type&is_homepage_featured&with_template_data&limit&offset&language_regions"
+    ],
+    "agent": [
+      "/api/agent-gateway/v1/models",
+      "/api/agent-gateway/v1/skills",
+      "/api/agent-gateway/v1/conversations/suggestions/dynamic"
+    ],
+    "characters": [
+      "/api/canvas/v1/character-library/categories",
+      "/api/canvas/v1/character-library/characters?limit&offset&with_total",
+      "/api/canvas/v1/character-library/filter-options"
+    ],
+    "library": [
+      "/api/library/v1/spaces/SPACE_TYPE_PRIVATE/folders",
+      "/api/library/v1/spaces/SPACE_TYPE_TEAM/folders",
+      "/api/library/v1/folders/:folderId/assets?page&page_size"
+    ],
+    "account": [
+      "/api/public/v1/users/me",
+      "/api/public/v1/organizations",
+      "/api/billing/v2/wallet/balance",
+      "/api/bff/billing/init?orgId&userId",
+      "/api/bff/platform/config?keys"
+    ],
+    "status": "REFERENCE_SHAPE_ONLY",
+    "rule": "The replica must define its own API. These routes prove visible capability boundaries, not an API to copy.",
+    "replicaImplementation": {
+      "status": "PASS",
+      "acceptedAt": "2026-08-02",
+      "openapi": "/api/openapi.json",
+      "adminView": "/admin/api-contract",
+      "paths": [
+        "/api/canvas/{canvasId}",
+        "/api/project-title/{projectId}",
+        "/api/models",
+        "/api/account-context",
+        "/api/templates",
+        "/api/agent-config",
+        "/api/characters",
+        "/api/library"
+      ],
+      "operationCount": 10,
+      "covers": [
+        "canvas nodes, edges, viewport and revision",
+        "project title",
+        "safe published model parameter configuration",
+        "current account and personal workspace permissions",
+        "template catalog and optional graph data",
+        "display-only Agent configuration with execution disabled",
+        "AI character categories, filters and pagination",
+        "personal and read-only team library spaces, folders and paged assets"
+      ],
+      "authRequired": true,
+      "providerRequests": 0,
+      "rule": "Self-owned contract only; do not copy upstream private APIs."
+    }
+  },
+  "acceptanceBatch": {
+    "acceptedAt": "2026-08-02",
+    "completed": 10,
+    "nextBatchAccepted": 0,
+    "nextBatchTarget": 10,
+    "items": [
+      "node upstream-input rules and future model schema",
+      "Seedance ratios and reference limits",
+      "Doubao Seed text parameters and upstream inputs",
+      "creator cleanup and selected-edge visibility",
+      "API-006 current account context",
+      "API-002 template catalog",
+      "API-003 safe Agent configuration",
+      "API-004 AI character catalog",
+      "API-005 personal and team library catalog",
+      "8-path 10-operation API overview and full regression"
+    ]
+  },
+  "fixtures": [
+    {
+      "id": "shell.empty.primary",
+      "kind": "shell",
+      "status": "VERIFIED",
+      "viewport": "desktopPrimary",
+      "state": {
+        "nodes": [],
+        "edges": [],
+        "zoom": 1,
+        "pageOverflow": "hidden",
+        "canvasRole": "application",
+        "canvasCursor": "pointer",
+        "placeholderVisible": true
+      },
+      "elements": {
+        "projectArea": [16, 16, 320, 40],
+        "logoButton": [16, 18, 40, 36],
+        "titleInput": [56, 16, 280, 20],
+        "topRight": [1080, 16, 40, 40],
+        "credits": [910.6, 16, 65.4, 40],
+        "share": [1080, 16, 40, 40],
+        "leftToolbar": [15, 303.5, 54, 294],
+        "addNode": [22, 310.5, 40, 40],
+        "nodeSearch": [23, 358.5, 38, 38],
+        "assets": [23, 402.5, 38, 38],
+        "templates": [23, 446.5, 38, 38],
+        "history": [23, 490.5, 38, 38],
+        "userAvatar": [22, 549.5, 40, 40],
+        "emptyQuickActions": [245.5, 416.5, 644, 84],
+        "quickActionBadge": [420.9, 416.5, 82, 34],
+        "textToVideo": [245.5, 462.5, 128, 38],
+        "replaceBackground": [381.5, 462.5, 128, 38],
+        "firstLastFrameVideo": [517.5, 462.5, 142, 38],
+        "audioToVideo": [667.5, 462.5, 128, 38],
+        "quickTemplate": [803.5, 462.5, 86, 38],
+        "bottomControls": [15, 862, 205, 40],
+        "minimapToggle": [23, 868, 28, 28],
+        "snapToggle": [59, 868, 28, 28],
+        "fitView": [95, 868, 28, 28],
+        "zoomTrack": [131, 879, 77, 6],
+        "help": [232, 862, 40, 40],
+        "agentBubble": [1067, 849, 44, 44]
+      },
+      "sourceSections": [
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    {
+      "id": "menu.add-node.double-click",
+      "kind": "menu",
+      "status": "VERIFIED",
+      "viewport": "desktopPrimary",
+      "trigger": "double click blank canvas; add-node button behavior requires retest",
+      "elements": {
+        "menu": [499, 300, 289, 510],
+        "textRowY": 345,
+        "imageRowY": 401,
+        "videoRowY": 457,
+        "audioRowY": 513,
+        "worldRowY": 569,
+        "playlistRowY": 661,
+        "uploadRowY": 753,
+        "rowHeight": 52,
+        "contentWidth": 278
+      },
+      "items": [
+        "文本",
+        "图片",
+        "视频",
+        "音频",
+        "3D 世界",
+        "播放列表",
+        "上传"
+      ],
+      "disabled": [
+        "3D 世界"
+      ],
+      "currentRun": {
+        "sourceId": "TN-NBT-G02-0727",
+        "doubleClickMenu": [620, 190, 288, 510],
+        "imageEditorItemPresent": false,
+        "storyboardOrTableItemPresent": false,
+        "addButtonOpenedMenu": false,
+        "addButtonRequiresRetest": true
+      },
+      "sourceSections": [
+        "4.1"
+      ]
+    },
+    {
+      "id": "modal.node-search.empty",
+      "kind": "modal",
+      "status": "VERIFIED",
+      "viewport": "desktopPrimary",
+      "elements": {
+        "modal": [247.5, 238.5, 640, 440]
+      },
+      "placeholder": "搜索节点...",
+      "description": "按标题、Prompt 或文本搜索画布节点。",
+      "categories": [
+        "全部",
+        "图片",
+        "视频",
+        "文本",
+        "音频",
+        "World",
+        "分组"
+      ],
+      "emptyText": "暂无可搜索节点",
+      "heightRule": {
+        "type": "content-driven",
+        "cssMaxHeight": "min(520px, calc(100vh - 72px))",
+        "emptyCanvas": [247.5, 238.5, 640, 440],
+        "oneTextResult": [247.5, 360.5, 640, 196],
+        "resultRow": [256.5, 487.5, 622, 60],
+        "noMatchText": "未找到匹配节点",
+        "sourceId": "TN-NBT-G02-0727"
+      },
+      "sourceSections": [
+        "4.2"
+      ]
+    },
+    {
+      "id": "interaction.node-search.populated",
+      "kind": "interaction",
+      "status": "DERIVED",
+      "viewport": "desktopPrimary",
+      "description": "SURF-003确定性验收页：使用真实节点数据验证标题、Prompt、正文搜索和结果定位。",
+      "sourceSections": [
+        "4.2"
+      ]
+    },
+    {
+      "id": "panel.assets.personal-empty",
+      "kind": "panel",
+      "status": "VERIFIED",
+      "viewport": "desktopPrimary",
+      "elements": {
+        "panel": [16, 64, 320, 793],
+        "search": [24.5, 170.5, 303, 32]
+      },
+      "tabs": [
+        "个人",
+        "团队"
+      ],
+      "folders": [
+        "收藏",
+        "角色",
+        "场景",
+        "道具",
+        "风格",
+        "音效",
+        "Others"
+      ],
+      "emptyText": "该文件夹暂无素材",
+      "sourceSections": [
+        "4.3"
+      ]
+    },
+    {
+      "id": "panel.assets.drag-ready",
+      "kind": "interaction",
+      "status": "VERIFIED",
+      "viewport": "desktopPrimary",
+      "state": {
+        "folder": "Others",
+        "draggableAssets": [
+          {
+            "kind": "image",
+            "label": "森林光影"
+          },
+          {
+            "kind": "video",
+            "label": "海边镜头"
+          },
+          {
+            "kind": "audio",
+            "label": "环境音乐"
+          }
+        ],
+        "dropCreatesNodeAtPointer": true,
+        "sourceAssetRemains": true,
+        "reloadPersistence": true,
+        "paidProviderRequests": 0,
+        "userAcceptance": "2026-07-31 user confirmed image, video, and audio drag-to-canvas behavior and the real audio waveform"
+      },
+      "sourceSections": [
+        "4.3"
+      ]
+    },
+    {
+      "id": "overlay.ai-characters.loaded",
+      "kind": "overlay",
+      "status": "VERIFIED",
+      "viewport": "desktopPrimary",
+      "layout": {
+        "columns": 5,
+        "loadedCards": 60
+      },
+      "categories": [
+        "全部角色",
+        "古代历史",
+        "近代历史",
+        "当代现实",
+        "科幻未来",
+        "架空幻想"
+      ],
+      "filters": {
+        "性别": [
+          "男",
+          "女",
+          "中性"
+        ],
+        "年龄段": [
+          "青年",
+          "中年",
+          "老年",
+          "少年",
+          "幼年"
+        ],
+        "物种": [
+          "人类",
+          "机械体",
+          "妖怪",
+          "其他",
+          "神明",
+          "亡灵",
+          "外星种族",
+          "精灵",
+          "兽人",
+          "矮人"
+        ],
+        "体格": [
+          "纤细",
+          "标准",
+          "健壮",
+          "壮硕",
+          "非人形"
+        ],
+        "身高": [
+          "中等",
+          "高挑",
+          "矮小"
+        ],
+        "肤色": [
+          "中等",
+          "浅",
+          "深",
+          "极浅",
+          "极深",
+          "非自然色"
+        ],
+        "发长": [
+          "短发",
+          "长发",
+          "中长",
+          "极短",
+          "遮盖",
+          "光头"
+        ],
+        "发色": [
+          "黑",
+          "无",
+          "灰白",
+          "深棕",
+          "金",
+          "白",
+          "浅棕",
+          "彩色",
+          "红"
+        ],
+        "气质": [
+          "飒爽",
+          "清冷",
+          "稚嫩",
+          "威严",
+          "温柔",
+          "儒雅",
+          "憨厚",
+          "沧桑",
+          "霸气",
+          "阴鸷",
+          "妩媚",
+          "癫狂"
+        ]
+      },
+      "footer": "加载更多",
+      "sourceSections": [
+        "4.4"
+      ]
+    },
+    {
+      "id": "panel.templates.public",
+      "kind": "panel",
+      "status": "VERIFIED",
+      "viewport": "desktopPrimary",
+      "elements": {
+        "panel": [75, 417, 500, 500],
+        "firstUseNotice": [75, 247.27, 500, 159.73],
+        "browseAll": [17.5, 108.5, 1100, 700]
+      },
+      "tabs": [
+        "公共模板",
+        "我的模板"
+      ],
+      "cardColumns": 3,
+      "sourceSections": [
+        "4.5"
+      ]
+    },
+    {
+      "id": "mode.comment.armed",
+      "kind": "interaction-mode",
+      "status": "VERIFIED",
+      "viewport": "desktopPrimary",
+      "state": {
+        "toolbarButtonActive": true,
+        "canvasCursor": "custom-comment-svg",
+        "cursorHotspot": [12, 12],
+        "nextCanvasClickCreatesComment": true
+      },
+      "sourceSections": [
+        "4.6"
+      ]
+    },
+    {
+      "id": "panel.history.final",
+      "kind": "panel",
+      "status": "VERIFIED",
+      "viewport": "desktopPrimary",
+      "elements": {
+        "panel": [75, 497, 420, 420],
+        "browseAll": [0, 109, 1135, 700]
+      },
+      "counts": {
+        "image": 2,
+        "video": 1,
+        "audio": 4,
+        "world3d": 0
+      },
+      "credits": 44,
+      "sourceSections": [
+        "4.7",
+        "15.7"
+      ]
+    },
+    {
+      "id": "menu.user.free-plan",
+      "kind": "menu",
+      "status": "VERIFIED",
+      "viewport": "desktopPrimary",
+      "state": {
+        "plan": "FREE",
+        "surveyInitialCredits": 99,
+        "limit": "∞"
+      },
+      "items": [
+        "创建团队",
+        "个人主页",
+        "简体中文",
+        "赚取 Tapies",
+        "账户管理",
+        "合作中心",
+        "帮助中心",
+        "登出账号"
+      ],
+      "privacyOmissions": [
+        "email",
+        "user id",
+        "organization id",
+        "avatar url"
+      ],
+      "sourceSections": [
+        "4.8"
+      ]
+    },
+    {
+      "id": "menu.project",
+      "kind": "menu",
+      "status": "VERIFIED",
+      "viewport": "desktopPrimary",
+      "elements": {
+        "menu": [16, 62, 200, 139]
+      },
+      "style": {
+        "background": "#262626",
+        "border": "1px rgba(255,255,255,.1)",
+        "borderRadius": 10,
+        "padding": 4
+      },
+      "items": [
+        "重命名",
+        "新建项目",
+        "删除"
+      ],
+      "productDecision": "私有版暂不提供工作空间、TapTV和竞技场入口；用户于2026-07-31明确要求移除这些不可用占位项。",
+      "sourceSections": [
+        "5.1"
+      ]
+    },
+    {
+      "id": "overlay.settings.subscription",
+      "kind": "overlay",
+      "status": "VERIFIED",
+      "viewport": "desktopPrimary",
+      "navigation": [
+        "订阅套餐",
+        "礼包超市",
+        "充值积分",
+        "团队权益",
+        "奖励中心",
+        "账单记录",
+        "用量看板",
+        "个人设置",
+        "团队设置",
+        "使用教程",
+        "Agent 教程",
+        "v2.12.2",
+        "登出"
+      ],
+      "dynamicCommercialValuesFrozen": false,
+      "sourceSections": [
+        "5.2"
+      ]
+    },
+    {
+      "id": "modal.community",
+      "kind": "modal",
+      "status": "VERIFIED",
+      "viewport": "desktopPrimary",
+      "elements": {
+        "dialog": [814, 70, 258, 386],
+        "discord": [831, 87, 224, 40],
+        "qr": [847, 159, 192, 192]
+      },
+      "description": "加入我们的社区，积极参与，赢取Tapies奖励！",
+      "caption": "扫码加微信社群",
+      "discordUrl": "https://discord.gg/rhVNThGWcQ",
+      "content": [
+        "Discord link",
+        "QR code"
+      ],
+      "sourceSections": [
+        "5.3"
+      ]
+    },
+    {
+      "id": "popover.share",
+      "kind": "popover",
+      "status": "VERIFIED_NO_SIDE_EFFECT",
+      "viewport": "desktopPrimary",
+      "elements": {
+        "popover": [770, 70, 350, 266]
+      },
+      "actions": [
+        {
+          "name": "在 TapTV 上发布",
+          "button": "发布"
+        },
+        {
+          "name": "通过链接分享",
+          "button": "分享"
+        },
+        {
+          "name": "移动到团队项目",
+          "button": "移动"
+        }
+      ],
+      "privateReplicaDisposition": {
+        "在 TapTV 上发布": "removed by user scope decision",
+        "通过链接分享": "removed by user scope decision",
+        "移动到团队项目": "disabled"
+      },
+      "sourceSections": [
+        "5.4"
+      ]
+    },
+    {
+      "id": "modal.keyboard-shortcuts",
+      "kind": "modal",
+      "status": "VERIFIED",
+      "viewport": "desktopPrimary",
+      "elements": {
+        "modal": [247.5, 336, 640, 566]
+      },
+      "columns": 2,
+      "shortcuts": {
+        "删除": "⌫",
+        "撤销": "⌘ Z",
+        "重做": "⇧ ⌘ Z",
+        "复制": "⌘ C",
+        "粘贴": "⌘ V",
+        "Search nodes": "⌘ F",
+        "多选": "⇧",
+        "放大": "⌘ +",
+        "缩小": "⌘ -",
+        "切割": "C",
+        "向左裁切": "Q",
+        "向右裁切": "E",
+        "打开/关闭Agent": "⌘ J",
+        "焦点编辑": "⌘ I",
+        "语音输入": "长按 V",
+        "完成语音输入": "V"
+      },
+      "sourceSections": [
+        "6"
+      ]
+    },
+    {
+      "id": "panel.agent.expanded-empty",
+      "kind": "panel",
+      "status": "VERIFIED",
+      "viewport": "desktopPrimary",
+      "elements": {
+        "canvas": [0, 0, 655, 917],
+        "agent": [655, 0, 480, 917],
+        "suggestionA": [670.1, 371.8, 223.3, 148.5],
+        "suggestionB": [897.2, 372.7, 222.2, 146.6],
+        "prompt": [679.5, 804.5, 431, 48],
+        "add": [671.5, 871.5, 26, 26],
+        "confirmationMode": [705.5, 871.5, 110, 26],
+        "model": [944.6, 871.5, 99.9, 26],
+        "voice": [1050.5, 868.5, 32, 32],
+        "send": [1086.5, 868.5, 32, 32]
+      },
+      "state": {
+        "canvasIsClippedNotScaled": true,
+        "promptEditor": "Tiptap/ProseMirror",
+        "sendDisabledWhenEmpty": true,
+        "category": "头脑风暴"
+      },
+      "suggestions": [
+        "体验 Brainstorm 模式设计人物关系",
+        "体验 Brainstorm 模式扩展世界观"
+      ],
+      "sourceSections": [
+        "7.1",
+        "7.2"
+      ]
+    },
+    {
+      "id": "menu.agent.add-and-model",
+      "kind": "menu",
+      "status": "VERIFIED",
+      "viewport": "desktopPrimary",
+      "addItems": [
+        "从画布添加",
+        "上传附件",
+        "技能",
+        "头脑风暴",
+        "全部插件"
+      ],
+      "confirmationModes": [
+        "手动确认",
+        "自动生成"
+      ],
+      "models": [
+        "Auto switch",
+        "Sonnet 5",
+        "Sonnet 4.6",
+        "Opus 4.8",
+        "Opus 4.7",
+        "Opus 4.6",
+        "Kimi 2.7",
+        "Kimi 2.6",
+        "编辑",
+        "如何选择模型？"
+      ],
+      "comingSoon": [
+        "Fable 5",
+        "GPT-5.5",
+        "Gemini 3.5 Flash",
+        "Gemini 3.1 Pro"
+      ],
+      "modelsAreDynamic": true,
+      "sourceSections": [
+        "7.3",
+        "7.4",
+        "7.5"
+      ]
+    },
+    {
+      "id": "panel.agent.voice",
+      "kind": "interaction",
+      "status": "VERIFIED",
+      "state": {
+        "microphonePermissionRequestedByUserAction": true,
+        "recordingIsLocalOnly": true,
+        "recordingCanStop": true,
+        "recordingCanCancelWithoutResidue": true,
+        "permissionDenialHasVisibleFeedback": true,
+        "transcription": "DISABLED_NO_AUTHORIZED_SERVICE",
+        "paidProviderRequests": 0,
+        "userAcceptance": "2026-07-31 user confirmed local recording and the corrected compact project-aligned voice UI"
+      },
+      "sourceSections": [
+        "7.2",
+        "6"
+      ]
+    },
+    {
+      "id": "panel.agent.files-empty",
+      "kind": "panel",
+      "status": "VERIFIED",
+      "viewport": "desktopPrimary",
+      "elements": {
+        "panel": [323, 0, 320, 200]
+      },
+      "title": "文件",
+      "emptyText": "暂无输出",
+      "sourceSections": [
+        "7.6"
+      ]
+    },
+    {
+      "id": "menu.canvas-context.blank",
+      "kind": "menu",
+      "status": "VERIFIED",
+      "viewport": "desktopPrimary",
+      "elements": {
+        "menu": [499, 300, 240, 357],
+        "list": [504, 305, 230, 347]
+      },
+      "items": [
+        "上传",
+        "添加资产",
+        "添加节点",
+        "添加辅助工具",
+        "撤销 ⌘Z",
+        "重做 ⇧⌘Z",
+        "粘贴 ⌘V"
+      ],
+      "disabled": [
+        "撤销",
+        "重做",
+        "粘贴"
+      ],
+      "sourceSections": [
+        "8.1"
+      ]
+    },
+    {
+      "id": "menu.canvas-context.node",
+      "kind": "menu",
+      "status": "VERIFIED",
+      "viewport": "desktopPrimary",
+      "elements": {
+        "menu": [399, 338, 240, 463],
+        "list": [404, 343, 230, 453]
+      },
+      "items": [
+        "保存到素材库",
+        "应用所有历史",
+        "下载",
+        "复制 ⌘C",
+        "粘贴 ⌘V",
+        "副本",
+        "删除 ⌫,del",
+        "复制到剪贴板",
+        "反馈问题"
+      ],
+      "disabledInPrivateFixture": [
+        "保存到素材库",
+        "应用所有历史",
+        "粘贴",
+        "复制到剪贴板",
+        "反馈问题"
+      ],
+      "behavior": [
+        "node context Copy writes only the same-canvas internal clipboard",
+        "blank canvas Paste becomes enabled after Copy",
+        "Paste and Duplicate create a selected 40px offset copy",
+        "Delete removes the node and its incident edges",
+        "native and browser clipboard are not changed"
+      ],
+      "sourceSections": [
+        "8.2"
+      ]
+    },
+    {
+      "id": "panel.minimap.empty",
+      "kind": "panel",
+      "status": "VERIFIED",
+      "viewport": "desktopPrimary",
+      "elements": {
+        "minimap": [16, 709, 198, 148]
+      },
+      "nodeRects": 0,
+      "sourceSections": [
+        "3.5"
+      ]
+    },
+    {
+      "id": "node.text.empty",
+      "kind": "node",
+      "status": "VERIFIED",
+      "nodeType": "text",
+      "logicalSize": [250, 250],
+      "title": "Text",
+      "ports": [
+        "left-target",
+        "right-source"
+      ],
+      "state": {
+        "contentEditable": false,
+        "selected": false,
+        "zIndex": 0
+      },
+      "sourceSections": [
+        "14.2",
+        "14.4"
+      ]
+    },
+    {
+      "id": "node.text.selected-editing",
+      "kind": "node",
+      "status": "VERIFIED",
+      "nodeType": "text",
+      "logicalSize": [250, 250],
+      "state": {
+        "selected": true,
+        "zIndex": 1000,
+        "titleInputTestId": "canvas-node-title",
+        "titlePlaceholder": "请输入标题",
+        "contentEditable": true,
+        "escapeExitsEdit": true,
+        "firstEscapeClearsSelection": false,
+        "blankClickClearsSelection": true,
+        "resizeLines": 4,
+        "resizeHandles": 4,
+        "cornerHandleSize": [24, 24],
+        "toolbarHeight": 48,
+        "observedToolbarWidth": 617,
+        "toolbarItems": [
+          "背景颜色",
+          "标题 1",
+          "标题 2",
+          "标题 3",
+          "正文",
+          "粗体",
+          "斜体",
+          "无序列表",
+          "有序列表",
+          "分割线",
+          "Pin",
+          "复制全部",
+          "保存到素材库",
+          "全屏"
+        ],
+        "sourceId": "TN-NBT-G02-0727"
+      },
+      "sourceSections": [
+        "14.4"
+      ]
+    },
+    {
+      "id": "node.text.creator-open",
+      "kind": "node",
+      "status": "VERIFIED",
+      "nodeType": "text",
+      "logicalSize": [250, 250],
+      "state": {
+        "selected": true,
+        "creatorSize": [628, 200],
+        "referenceSlot": true,
+        "promptPlaceholder": "描述任何你想要生成的内容",
+        "model": "Gemini 3.1 Flash Lite",
+        "count": "1×",
+        "unitCost": 1
+      },
+      "sourceImages": [
+        "38-text-selected-ai-creator-v2122-1728x826.png",
+        "39-text-editing-ai-creator-v2122-1728x826.png"
+      ],
+      "sourceSections": [
+        "14.4"
+      ]
+    },
+    {
+      "id": "node.image.empty",
+      "kind": "node",
+      "status": "VERIFIED",
+      "nodeType": "image",
+      "logicalSize": [250, 250],
+      "title": "Image",
+      "ports": [
+        "left-target",
+        "right-source"
+      ],
+      "actions": [
+        "上传"
+      ],
+      "sourceSections": [
+        "14.2",
+        "14.5"
+      ]
+    },
+    {
+      "id": "node.image.prompt-ready",
+      "kind": "node",
+      "status": "VERIFIED",
+      "nodeType": "image",
+      "state": {
+        "promptSize": [678, 80],
+        "model": "Nano Banana 2 Lite",
+        "size": "自适应 · 1K",
+        "count": "1×",
+        "unitCost": 5,
+        "generateDisabledWhenPromptEmpty": true
+      },
+      "sourceSections": [
+        "14.5"
+      ]
+    },
+    {
+      "id": "node.image.generating",
+      "kind": "node",
+      "status": "VERIFIED",
+      "nodeType": "image",
+      "state": {
+        "generateAriaLabel": "Generating...",
+        "controlsDisabled": true,
+        "loadingGrid": [18, 18],
+        "backgroundScale": 1.9,
+        "backgroundBlurPx": 42,
+        "backgroundOpacity": 0.22,
+        "easing": "cubic-bezier(0.16,1,0.3,1)"
+      },
+      "sourceSections": [
+        "14.5"
+      ]
+    },
+    {
+      "id": "node.image.reference-ready",
+      "kind": "node",
+      "status": "VERIFIED",
+      "nodeType": "image",
+      "state": {
+        "sourceNodeType": "image",
+        "targetNodeType": "image",
+        "incomingEdgeIsSourceOfTruth": true,
+        "referenceThumbnailVisible": true,
+        "removeThumbnailRemovesEdge": true,
+        "undoRestoresThumbnailAndEdge": true,
+        "providerCapabilityLimitApplied": true,
+        "paidProviderRequests": 0,
+        "userAcceptance": "2026-08-01 user confirmed the visible image reference edge, thumbnail, removal, and undo flow"
+      },
+      "sourceSections": [
+        "14.5",
+        "2026-07-31 TapNow live single-image input"
+      ]
+    },
+    {
+      "id": "node.image.success",
+      "kind": "node",
+      "status": "VERIFIED",
+      "nodeType": "image",
+      "logicalSize": [250, 250],
+      "state": {
+        "mediaElement": "img",
+        "objectFit": "contain",
+        "favoriteButtonSize": [28, 28],
+        "promptRetained": true,
+        "parametersRetained": true
+      },
+      "billing": {
+        "before": 99,
+        "after": 94,
+        "charged": 5
+      },
+      "sourceSections": [
+        "14.5"
+      ]
+    },
+    {
+      "id": "node.video.empty",
+      "kind": "node",
+      "status": "VERIFIED",
+      "nodeType": "video",
+      "logicalSize": [444, 250],
+      "title": "Video",
+      "ports": [
+        "left-target",
+        "right-source"
+      ],
+      "state": {
+        "model": "Seedance 2.0 Mini",
+        "mode": "全能参考",
+        "aspectRatio": "16:9",
+        "resolution": "480p",
+        "duration": "5s",
+        "count": "1×",
+        "unitCost": 30
+      },
+      "sourceSections": [
+        "14.2",
+        "14.6"
+      ]
+    },
+    {
+      "id": "node.video.generating",
+      "kind": "node",
+      "status": "VERIFIED",
+      "nodeType": "video",
+      "state": {
+        "generateAriaLabel": "Generating...",
+        "generateDisabled": true,
+        "modelDisabled": true,
+        "modeDisabled": true,
+        "countDisabled": true,
+        "spinnerVisible": true
+      },
+      "sourceSections": [
+        "15.2"
+      ]
+    },
+    {
+      "id": "node.video.success",
+      "kind": "node",
+      "status": "VERIFIED",
+      "nodeType": "video",
+      "state": {
+        "mediaElement": "video",
+        "actualDurationSeconds": 5.088,
+        "displayDuration": "5.1s",
+        "mediaSize": [836, 480],
+        "readyState": 4,
+        "muted": true,
+        "nativeControls": false,
+        "playerChrome": {
+          "centerPlayOverlay": false,
+          "visibleWhen": ["hover", "selected"],
+          "hiddenWhenNeutral": true,
+          "muteButtonSize": [28, 28],
+          "muteButtonOffset": [12, 12],
+          "bottomPlayButtonSize": [24, 24],
+          "progressStepSeconds": 0.1,
+          "progressShowsCurrentAndTotal": true,
+          "fullscreenButtonSize": [24, 24]
+        },
+        "playback": {
+          "playFromEndedRestartsAtZero": true,
+          "pauseAndEndedRestorePlayIcon": true,
+          "muteButtonTogglesVideoMuted": true,
+          "progressInputSeeksCurrentTime": true
+        },
+        "detailDialog": {
+          "viewportSample": [1135, 917],
+          "dialogBounds": [24, 20.5, 1087, 876],
+          "viewerWidth": 801,
+          "sidePanelWidth": 284,
+          "sidePanelInnerWidth": 252,
+          "promptBoxSize": [252, 180],
+          "closeButtonSize": [32, 32],
+          "actionButtonSize": [252, 32],
+          "sections": ["提示词", "信息"],
+          "infoFields": [
+            "模型",
+            "质量",
+            "宽高比",
+            "时长",
+            "文件大小",
+            "生成音频",
+            "创建日期",
+            "创建者"
+          ],
+          "actions": ["应用到画布", "下载"],
+          "playerControls": [
+            "播放/暂停",
+            "进度",
+            "当前时间/总时长",
+            "音量",
+            "浏览器全屏"
+          ]
+        },
+        "historyIncrement": 1,
+        "balanceMayLagSuccess": true
+      },
+      "billing": {
+        "before": 74,
+        "after": 44,
+        "charged": 30
+      },
+      "sourceSections": [
+        "15.2"
+      ]
+    },
+    {
+      "id": "node.audio.empty",
+      "kind": "node",
+      "status": "VERIFIED",
+      "nodeType": "audio",
+      "logicalSize": [444, 250],
+      "title": "Audio",
+      "state": {
+        "model": "Mureka V8",
+        "scene": "音乐",
+        "duration": "自适应",
+        "promptPlaceholder": "描述你想要生成的任何内容",
+        "lyricsPlaceholder": "在此输入或粘贴歌词...",
+        "unitCost": 10,
+        "generateDisabledWhenPromptEmpty": true
+      },
+      "sourceSections": [
+        "14.2",
+        "14.7"
+      ]
+    },
+    {
+      "id": "node.audio.success",
+      "kind": "node",
+      "status": "VERIFIED",
+      "nodeType": "audio",
+      "state": {
+        "resultsPerSubmission": 2,
+        "displayDuration": "03:04",
+        "actions": [
+          "下载",
+          "后退 10 秒",
+          "播放/暂停",
+          "前进 10 秒"
+        ],
+        "playAriaLabel": "play",
+        "pauseAriaLabel": "pause",
+        "seekStepSeconds": 10
+      },
+      "billing": {
+        "before": 94,
+        "after": 74,
+        "unitCost": 10,
+        "charged": 20
+      },
+      "sourceSections": [
+        "14.7"
+      ]
+    },
+    {
+      "id": "node.playlist.empty",
+      "kind": "node",
+      "status": "VERIFIED_PARTIAL",
+      "nodeType": "playlist",
+      "logicalSize": [960, 104],
+      "title": "Playlist",
+      "state": {
+        "timelineStart": "00:00",
+        "timelineEnd": "01:00",
+        "emptyText": "轻点 + 在画布上选取视频",
+        "addClipButtonSize": [48, 48],
+        "addClipAriaLabel": "添加片段",
+        "minObservedSize": [250, 104],
+        "independentWidthHeightResize": true,
+        "sourceId": "TN-NBT-G02-0727"
+      },
+      "openBehavior": [
+        "real clip ordering",
+        "C/Q/E editing",
+        "trim",
+        "export"
+      ],
+      "sourceSections": [
+        "14.8"
+      ]
+    },
+    {
+      "id": "node.playlist.workflow",
+      "kind": "workflow",
+      "status": "VERIFIED_LOCAL",
+      "nodeType": "playlist",
+      "state": {
+        "sourceVideoCount": 2,
+        "playlistStartsEmpty": true,
+        "supportsPickOrderCutUndoAndExport": true
+      },
+      "sourceSections": [
+        "14.8"
+      ]
+    },
+    {
+      "id": "node.playlist.pick-ready",
+      "kind": "interaction",
+      "status": "LOCAL_ACCEPTANCE",
+      "nodeType": "playlist",
+      "state": {
+        "sourceVideos": 2,
+        "playlistSelected": true,
+        "playlistEmpty": true,
+        "paidProviderRequests": 0
+      },
+      "sourceSections": [
+        "14.8"
+      ]
+    },
+    {
+      "id": "node.playlist.clips-ready",
+      "kind": "interaction",
+      "status": "LOCAL_ACCEPTANCE",
+      "nodeType": "playlist",
+      "state": {
+        "sourceVideoRatios": ["9:16", "16:9"],
+        "playlistClips": 2,
+        "playlistSelected": true,
+        "totalDurationSeconds": 9.088,
+        "paidProviderRequests": 0
+      },
+      "sourceSections": [
+        "14.8"
+      ]
+    },
+    {
+      "id": "node.group.selected",
+      "kind": "node",
+      "status": "VERIFIED",
+      "nodeType": "group",
+      "title": "新建组",
+      "state": {
+        "sizeFromSelectionBounds": true,
+        "observedSize": [965.06, 300.3],
+        "outerNodeBorderRadius": 16,
+        "innerVisibleBorderRadius": 12,
+        "movable": true,
+        "resizable": true,
+        "handlesExistButInvisible": true,
+        "currentObservedSize": [1000, 290],
+        "currentToolbarSize": [341, 48],
+        "sourceId": "TN-NBT-G02-0727"
+      },
+      "toolbar": [
+        "颜色",
+        "布局",
+        "整组执行",
+        "创建模板",
+        "解组"
+      ],
+      "sourceSections": [
+        "14.10"
+      ]
+    },
+    {
+      "id": "workflow.text-to-video.created",
+      "kind": "workflow",
+      "status": "VERIFIED",
+      "trigger": "文字生视频",
+      "result": {
+        "nodes": [
+          {
+            "type": "text",
+            "size": [250, 250],
+            "prefilledPrompt": true
+          },
+          {
+            "type": "video",
+            "size": [444, 250]
+          }
+        ],
+        "edges": [
+          {
+            "sourceType": "text",
+            "targetType": "video",
+            "curve": "cubic-bezier",
+            "animatedHighlight": true,
+            "animationDurationSeconds": 2,
+            "marker": null
+          }
+        ]
+      },
+      "sourceSections": [
+        "14.3"
+      ],
+      "implementationProbe": {
+        "status": "AUTOMATED_PASS",
+        "trigger": "quick-text-video",
+        "initialNodeCount": 0,
+        "resultNodeCount": 2,
+        "resultEdgeCount": 1,
+        "textSize": [250, 250],
+        "videoSize": [444, 250],
+        "prefilledPrompt": true,
+        "animatedHighlightDurationSeconds": 2,
+        "marker": null
+      }
+    },
+    {
+      "id": "interaction.selection-and-keyboard-move",
+      "kind": "interaction",
+      "status": "VERIFIED",
+      "assertions": {
+        "selectedZIndex": 1000,
+        "shiftClickAddsSelection": true,
+        "arrowMovePx": 5,
+        "shiftArrowMovePx": 20
+      },
+      "sourceSections": [
+        "14.9"
+      ]
+    },
+    {
+      "id": "interaction.snap-to-grid",
+      "kind": "interaction",
+      "status": "VERIFIED",
+      "assertions": {
+        "activeAttribute": "data-active=true",
+        "gridRemainsVisible": true,
+        "gridSize": 20,
+        "logicalPositionRoundedToGrid": true
+      },
+      "sourceSections": [
+        "14.9"
+      ]
+    },
+    {
+      "id": "interaction.pointer-drag-at-1.3",
+      "kind": "interaction",
+      "status": "VERIFIED",
+      "viewport": "pointerSupplement",
+      "before": {
+        "logicalPosition": [796.74, 60.24],
+        "screenTopLeft": [1095.075, 278.5]
+      },
+      "after": {
+        "logicalPosition": [758.278, 117.932],
+        "screenTopLeft": [1045.075, 353.5]
+      },
+      "assertion": "screen delta divided by 1.3 equals logical delta",
+      "sourceSections": [
+        "15.3"
+      ]
+    },
+    {
+      "id": "interaction.resize-bottom-right",
+      "kind": "interaction",
+      "status": "VERIFIED_PARTIAL",
+      "viewport": "pointerSupplement",
+      "before": {
+        "logicalSize": [250, 250]
+      },
+      "after": {
+        "logicalSize": [342, 311]
+      },
+      "assertions": {
+        "positionUnchanged": true,
+        "aspectRatioUnlocked": true
+      },
+      "openBehavior": [
+        "minimum size",
+        "maximum size",
+        "all media aspect-ratio rules"
+      ],
+      "sourceSections": [
+        "15.4"
+      ]
+    },
+    {
+      "id": "interaction.fit-five-nodes",
+      "kind": "interaction",
+      "status": "IMPLEMENTATION_PROBE",
+      "assertions": {
+        "nodeCount": 5,
+        "allNodesVisibleAfterFit": true
+      },
+      "sourceSections": [
+        "CANVAS-012"
+      ]
+    },
+    {
+      "id": "interaction.upload-image",
+      "kind": "interaction",
+      "status": "VERIFIED",
+      "input": {
+        "fixturePath": "../../fixtures/tapnow-survey-upload.png",
+        "mime": "image/png",
+        "sizeBytes": 190,
+        "dimensions": [8, 8]
+      },
+      "result": {
+        "nodeType": "image",
+        "title": "tapnow-survey-upload",
+        "logicalSize": [250, 250],
+        "replaceAction": true,
+        "addedToGeneratedHistory": false
+      },
+      "sourceSections": [
+        "15.5",
+        "15.7"
+      ]
+    },
+    {
+      "id": "interaction.manual-connect-image-to-video",
+      "kind": "interaction",
+      "status": "VERIFIED",
+      "beforeEdgeCount": 1,
+      "afterEdgeCount": 2,
+      "result": {
+        "newEdge": "image-source to video-target",
+        "existingTextVideoEdgePreserved": true,
+        "multipleInputsToVideoTarget": true
+      },
+      "sourceSections": [
+        "15.6"
+      ]
+    },
+    {
+      "id": "interaction.multi-source-connect-to-node",
+      "kind": "interaction",
+      "status": "VERIFIED_USER_AND_LIVE",
+      "assertions": {
+        "minimumSelectedNodeCount": 2,
+        "individualSelectedNodeHandlesHidden": true,
+        "sharedRightHandleCount": 1,
+        "sharedRightHandleScreenSize": [20, 20],
+        "sharedRightHandleOffsetFromSelectionRightPx": 12,
+        "sharedRightHandleVerticalPosition": "selection envelope center",
+        "dragPreviewCountMatchesSelectedNodeCount": true,
+        "dropOnTargetNodeBodyCreatesOneEdgePerSelectedSource": true,
+        "marqueeSelectingConnectedNodesShowsScissors": false,
+        "blankDropOpensCombinedGenerationMenu": true,
+        "blankDropMenuTitle": "引用所有选中的节点生成"
+      },
+      "evidence": {
+        "userScreenshot": "spec/reference/user-acceptance-2026-07-27/multi-source-connect-tapnow.png",
+        "regressionScreenshot": "spec/reference/user-acceptance-2026-07-27/multi-selection-scissors-regression.png",
+        "liveSelectedNodeCount": 3,
+        "liveSelectionScreenRect": [192.298, 165.543, 664.633, 172.873],
+        "liveSharedHandleScreenRect": [868.93, 241.977, 20, 20],
+        "liveBlankDropPreviewCount": 3
+      },
+      "sourceSections": [
+        "31"
+      ]
+    },
+    {
+      "id": "interaction.delete-cascade-and-undo",
+      "kind": "interaction",
+      "status": "VERIFIED_PARTIAL",
+      "assertions": {
+        "backspaceDeletesWithoutConfirmation": true,
+        "incidentEdgesDeleted": true,
+        "cmdZRestoresDeletedDuplicate": true,
+        "restoredNodeGetsNewId": true,
+        "assetReferencePreserved": true
+      },
+      "openBehavior": [
+        "repeatable Shift+Cmd+Z redo",
+        "independent edge deletion"
+      ],
+      "implementationProbe": {
+        "status": "AUTOMATED_PASS",
+        "before": {
+          "nodeCount": 3,
+          "edgeCount": 2
+        },
+        "afterBackspace": {
+          "nodeCount": 2,
+          "edgeCount": 0
+        },
+        "afterCmdZ": {
+          "nodeCount": 3,
+          "edgeCount": 2,
+          "restoredNodeIdChanged": true,
+          "assetReferencePreserved": true,
+          "restoredNodeSelected": true
+        }
+      },
+      "sourceSections": [
+        "14.11",
+        "15.7"
+      ]
+    },
+    {
+      "id": "persistence.nodes-assets-viewport",
+      "kind": "persistence",
+      "status": "VERIFIED",
+      "beforeReload": {
+        "nodeCount": 6,
+        "credits": 74
+      },
+      "afterReload": {
+        "nodeCount": 6,
+        "imageDuplicatesShareAsset": true,
+        "audioDisplay": "00:00/03:04",
+        "viewportRestored": true,
+        "credits": 74
+      },
+      "sourceSections": [
+        "14.13"
+      ]
+    },
+    {
+      "id": "persistence.final-clean-canvas",
+      "kind": "persistence",
+      "status": "VERIFIED",
+      "state": {
+        "nodeCount": 0,
+        "edgeCount": 0,
+        "placeholderVisible": true,
+        "credits": 44,
+        "history": {
+          "image": 2,
+          "video": 1,
+          "audio": 4
+        }
+      },
+      "sourceSections": [
+        "15.7"
+      ]
+    },
+    {
+      "id": "persistence.revision-conflict",
+      "kind": "persistence",
+      "status": "VERIFIED",
+      "state": {
+        "nodeCount": 1,
+        "twoTabsShareRevision": true,
+        "staleWriterGets409": true,
+        "silentOverwriteForbidden": true,
+        "reloadLatestAction": true,
+        "userAcceptance": "2026-07-31 user confirmed the visible conflict message and reload-latest recovery"
+      },
+      "sourceSections": [
+        "15.7"
+      ]
+    },
+    {
+      "id": "legacy.dense-canvas.neutral",
+      "kind": "canvas",
+      "status": "VERIFIED_HISTORICAL_REFERENCE",
+      "sourceId": "TN-VS-0724",
+      "evidenceLevel": "SCREENSHOT_AND_MEASURED",
+      "viewport": "densePrimary",
+      "state": {
+        "nodeCount": 62,
+        "edgeCount": 58,
+        "groupCount": 5,
+        "fitViewport": {
+          "x": 102.734,
+          "y": -21.543,
+          "zoom": 0.15
+        },
+        "savedToCloud": true
+      },
+      "screenshot": "01-neutral-1280x720.png"
+    },
+    {
+      "id": "legacy.dense-canvas.final-v2122",
+      "kind": "canvas",
+      "status": "VERIFIED",
+      "sourceId": "TN-VS-0727",
+      "evidenceLevel": "OBSERVED_AND_MEASURED",
+      "state": {
+        "nodeCount": 63,
+        "edgeCount": 58,
+        "groupCount": 5,
+        "selectedNodeCount": 0,
+        "temporaryCommandNodeCount": 0,
+        "openDialogCount": 0,
+        "openMenuCount": 0,
+        "savedToCloud": true
+      }
+    },
+    {
+      "id": "legacy.node-geometry.families",
+      "kind": "geometry-catalog",
+      "status": "VERIFIED_HISTORICAL_REFERENCE",
+      "sourceId": "TN-PIXEL-0724",
+      "evidenceLevel": "MEASURED",
+      "worldSizes": {
+        "imageWidthsAtHeight250": [250, 300, 301, 320, 438, 447, 448, 453, 458, 800, 804, 1375, 1569, 2022],
+        "videoWidthsAtHeight250": [444, 447, 453],
+        "audio": [[444, 250]],
+        "text": [[250, 250], [395, 250], [398, 250], [539, 653], [1375, 250]],
+        "playlist": [960, 104],
+        "storyboardTable": [1200, 1000],
+        "comment": [48, 48],
+        "groups": [[1839, 780], [1839, 780], [2541, 2342], [2260, 2365], [3443, 2111]]
+      }
+    },
+    {
+      "id": "legacy.node.image-result-toolbar",
+      "kind": "node-toolbar",
+      "status": "VERIFIED",
+      "sourceId": "TN-VS-0727",
+      "evidenceLevel": "MEASURED_AND_TOOLTIP_CONFIRMED",
+      "screenSize": [400, 48],
+      "buttonSize": [40, 40],
+      "padding": 4,
+      "gap": 4,
+      "items": [
+        "裁剪",
+        "多角度",
+        "重绘",
+        "打光",
+        "浏览全部",
+        "Pin",
+        "保存到素材库",
+        "下载",
+        "全屏查看"
+      ],
+      "screenshot": "19-image-deep-tools-toolbar-1280x720.png"
+    },
+    {
+      "id": "legacy.menu.image-more",
+      "kind": "menu",
+      "status": "VERIFIED_HISTORICAL_REFERENCE",
+      "sourceId": "TN-PIXEL-0724",
+      "evidenceLevel": "MEASURED",
+      "viewport": "densePrimary",
+      "elements": {
+        "menu": [613, 95.5, 237.71, 272]
+      },
+      "style": {
+        "background": "#2f2f2f",
+        "borderRadius": 16,
+        "padding": "8px 4px"
+      },
+      "items": [
+        "扩图",
+        "擦除",
+        "标注",
+        "增强",
+        "调整像素",
+        "抠图",
+        "快速切分 2×2",
+        "快速切分 3×3",
+        "快速切分 4×4",
+        "Seedance 合规验证"
+      ],
+      "screenshot": "26-image-more-menu-1280x720.png"
+    },
+    {
+      "id": "legacy.editor.image-crop",
+      "kind": "image-editor",
+      "status": "VERIFIED_HISTORICAL_REFERENCE",
+      "sourceId": "TN-PIXEL-0724",
+      "evidenceLevel": "MEASURED",
+      "viewport": "densePrimary",
+      "elements": {
+        "editor": [146.512, 80, 986.969, 552],
+        "selection": [245.207, 135.195, 789.578, 441.594],
+        "controls": [514, 654, 252, 42],
+        "cancel": [32, 32],
+        "ratio": [82, 32],
+        "confirm": [94, 32],
+        "ratioMenu": [128, 275]
+      },
+      "ratios": [
+        "原图",
+        "1:1",
+        "4:3",
+        "3:4",
+        "16:9",
+        "9:16",
+        "21:9",
+        "自定义"
+      ],
+      "screenshot": "22-image-crop-1280x720.png"
+    },
+    {
+      "id": "legacy.editor.image-multi-angle",
+      "kind": "image-editor",
+      "status": "VERIFIED_HISTORICAL_REFERENCE",
+      "sourceId": "TN-PIXEL-0724",
+      "evidenceLevel": "MEASURED_AND_DERIVED",
+      "designWidth": 600,
+      "observedZoom": 0.819,
+      "observedSize": [491.275, 252.188],
+      "borderRadius": 16,
+      "controls": [
+        "旋转",
+        "倾斜",
+        "缩放",
+        "BK",
+        "L",
+        "R",
+        "T",
+        "B",
+        "重置",
+        "广角",
+        "生成"
+      ],
+      "screenshot": "23-image-multi-angle-1280x720.png"
+    },
+    {
+      "id": "legacy.editor.image-redraw",
+      "kind": "image-editor",
+      "status": "VERIFIED_HISTORICAL_REFERENCE",
+      "sourceId": "TN-PIXEL-0724",
+      "evidenceLevel": "MEASURED",
+      "viewport": "densePrimary",
+      "elements": {
+        "image": [246.64, 140, 786.72, 440],
+        "topToolbar": [447.5, 76, 385, 58],
+        "toolButton": [32, 32],
+        "promptCard": [390, 588, 500, 122],
+        "textarea": [482, 60]
+      },
+      "tools": [
+        "画笔",
+        "框选",
+        "橡皮"
+      ],
+      "screenshot": "24-image-redraw-1280x720.png"
+    },
+    {
+      "id": "legacy.editor.image-lighting",
+      "kind": "image-editor",
+      "status": "VERIFIED_HISTORICAL_REFERENCE",
+      "sourceId": "TN-PIXEL-0724",
+      "evidenceLevel": "MEASURED_AND_DERIVED",
+      "designSize": [602, 340],
+      "observedZoom": 0.9,
+      "observedRect": [369.1, 375.3, 541.8, 306],
+      "previewSize": [289.8, 289.8],
+      "borderRadius": 24,
+      "controls": [
+        "全局亮度",
+        "色温",
+        "主光源方向",
+        "轮廓光",
+        "生成"
+      ],
+      "screenshot": "25-image-lighting-1280x720.png"
+    },
+    {
+      "id": "legacy.node.storyboard-table",
+      "kind": "node",
+      "status": "VERIFIED",
+      "sourceId": "TN-VS-0727",
+      "evidenceLevel": "OBSERVED_AND_MEASURED",
+      "nodeType": "storyboard-table",
+      "logicalSize": [1200, 1000],
+      "state": {
+        "completeShotCards": 2,
+        "loadingShotCards": 1,
+        "fields": [
+          "媒体",
+          "分镜编号",
+          "时长",
+          "画面描述",
+          "景别/机位"
+        ],
+        "views": [
+          "Default",
+          "创意视图"
+        ],
+        "toolbar": [
+          "最大化",
+          "视图切换"
+        ]
+      },
+      "screenshot": "13-storyboard-table-region-1280x720.png"
+    },
+    {
+      "id": "legacy.node.comment",
+      "kind": "node",
+      "status": "VERIFIED",
+      "sourceId": "TN-VS-0727",
+      "evidenceLevel": "OBSERVED_AND_MEASURED",
+      "nodeType": "comment",
+      "logicalSize": [48, 48],
+      "popover": {
+        "width": 300,
+        "emptyHeight": 73,
+        "background": "#0f0f0f",
+        "borderRadius": 12,
+        "textareaSize": [282, 54],
+        "placeholder": "回复讨论...",
+        "maxLength": 200,
+        "submitDisabledWhenEmpty": true
+      }
+    },
+    {
+      "id": "legacy.node.group-dense-selected",
+      "kind": "node",
+      "status": "VERIFIED",
+      "sourceId": "TN-VS-0727",
+      "evidenceLevel": "OBSERVED_AND_MEASURED",
+      "nodeType": "group",
+      "logicalSize": [3443, 2111],
+      "toolbarSize": [390, 48],
+      "cornerHandleSize": [24, 24],
+      "toolbar": [
+        "颜色",
+        "布局",
+        "整组执行",
+        "更新模板",
+        "解组",
+        "下载全部"
+      ],
+      "layouts": [
+        "宫格布局",
+        "水平布局"
+      ],
+      "colors": [
+        "重置",
+        "红",
+        "橙",
+        "黄",
+        "绿",
+        "青",
+        "蓝",
+        "紫"
+      ],
+      "screenshot": "34-group-resizing-1728x882.png"
+    },
+    {
+      "id": "legacy.interaction.source-aware-connect-menu",
+      "kind": "interaction",
+      "status": "VERIFIED",
+      "sourceId": "TN-VS-0727",
+      "evidenceLevel": "OBSERVED",
+      "steps": [
+        "drag from source plus",
+        "show temporary bezier edge",
+        "drop on blank canvas",
+        "retain temporary edge",
+        "open source-aware action menu"
+      ],
+      "assertions": {
+        "videoAndAudioMenusDiffer": true,
+        "cancelRemovesTemporaryEdge": true,
+        "cancelRemovesCommandNode": true
+      },
+      "screenshot": "35-edge-connecting-1728x882.png"
+    },
+    {
+      "id": "legacy.interaction.invalid-same-side-edge",
+      "kind": "interaction",
+      "status": "VERIFIED",
+      "sourceId": "TN-VS-0724",
+      "evidenceLevel": "SCREENSHOT_AND_OBSERVED",
+      "assertions": {
+        "sameSideConnectionRetained": false,
+        "temporaryPreviewVisibleDuringGesture": true,
+        "selfConnectionRetained": false,
+        "duplicateConnectionRetained": false,
+        "reverseCycleRetained": false,
+        "unrelatedValidConnectionRetained": true
+      },
+      "implementationProbe": {
+        "status": "AUTOMATED_PASS",
+        "initialEdge": "probe-a to probe-b",
+        "invalidAttemptsKeepEdgeCount": 1,
+        "independentProbeBToProbeCRaisesEdgeCountTo": 2,
+        "explicitEdgeUpdaterCount": 0
+      },
+      "screenshot": "36-edge-invalid-same-side-1728x882.png"
+    },
+    {
+      "id": "interaction.source-aware-connect-menus-current",
+      "kind": "interaction",
+      "status": "VERIFIED",
+      "sourceId": "TN-NBT-G02-0727",
+      "viewport": "desktopPrimary",
+      "rowSize": [278, 52],
+      "menus": {
+        "image": [
+          "文本生成",
+          "图片生成",
+          "视频生成",
+          "图片编辑器",
+          "3D 世界 Beta"
+        ],
+        "video": [
+          "文本生成",
+          "音频生成",
+          "视频编辑",
+          "3D 世界 Beta"
+        ],
+        "audio": [
+          "视频生成",
+          "数字人视频"
+        ]
+      },
+      "assertions": {
+        "allItemsObservedEnabled": true,
+        "outsideClickClosesMenu": true,
+        "otherNodeClickClosesMenu": true,
+        "cancelLeavesNoTemporaryEdge": true,
+        "cancelLeavesNoCommandNode": true
+      },
+      "implementationProbe": {
+        "status": "AUTOMATED_PASS",
+        "menuOuterWidth": 288,
+        "menuPadding": 4,
+        "menuTitleHeight": 40,
+        "menuContentWidth": 278,
+        "rowHeight": 52,
+        "rowGap": 4,
+        "menuOuterHeights": {
+          "image": 326,
+          "video": 270,
+          "audio": 158
+        },
+        "iconBoxSize": 36,
+        "sourceLineFollowsMovedNode": true,
+        "otherNodeClickClosesMenuAndPreview": true,
+        "cancelLeavesNodeCount": 3,
+        "cancelLeavesEdgeCount": 0
+      }
+    },
+    {
+      "id": "interaction.resize-text-playlist-current",
+      "kind": "interaction",
+      "status": "VERIFIED_PARTIAL",
+      "sourceId": "TN-NBT-G02-0727",
+      "text": {
+        "minimumObserved": [250, 250],
+        "freeResizeSample": [450, 320]
+      },
+      "playlist": {
+        "minimumObserved": [250, 104],
+        "freeResizeSample": [250, 239],
+        "defaultRestored": [960, 104]
+      }
+    },
+    {
+      "id": "interaction.upload-media-sandbox-current",
+      "kind": "interaction",
+      "status": "VERIFIED",
+      "sourceId": "TN-G02-SANDBOX-0727",
+      "viewport": "desktopPrimary",
+      "inputs": {
+        "image": {
+          "mime": "image/png",
+          "dimensions": [320, 180],
+          "sensitive": false
+        },
+        "video": {
+          "mime": "video/mp4",
+          "dimensions": [320, 180],
+          "durationSeconds": 1,
+          "fps": 24,
+          "codec": "H.264",
+          "sensitive": false
+        },
+        "audio": {
+          "mime": "audio/wav",
+          "durationSeconds": 1,
+          "sampleRate": 44100,
+          "channels": 1,
+          "codec": "PCM 16-bit",
+          "sensitive": false
+        }
+      },
+      "results": {
+        "image": {
+          "emptyLogicalSize": [250, 250],
+          "uploadedLogicalSize": [444, 250],
+          "naturalSize": [320, 180],
+          "resizeControlCount": 0
+        },
+        "video": {
+          "emptyLogicalSize": [444, 250],
+          "uploadedLogicalSize": [444, 250],
+          "videoWidth": 320,
+          "videoHeight": 180,
+          "durationSeconds": 1,
+          "readyState": 4,
+          "muted": true,
+          "nativeControls": false,
+          "playbackReachedEnd": true,
+          "resizeControlCount": 0
+        },
+        "audio": {
+          "emptyLogicalSize": [444, 250],
+          "uploadedLogicalSize": [444, 250],
+          "timeLabel": "00:00/00:01",
+          "playPauseTransitionObserved": true,
+          "playbackReturnedToPlay": true,
+          "resizeControlCount": 0
+        }
+      }
+    },
+    {
+      "id": "interaction.group-comment-resize-sandbox-current",
+      "kind": "interaction",
+      "status": "VERIFIED_PARTIAL",
+      "sourceId": "TN-G02-SANDBOX-0727",
+      "group": {
+        "members": ["image", "video"],
+        "initialLogicalSize": [1034, 290],
+        "resizeLineCount": 4,
+        "resizeHandleCount": 4,
+        "minimumObservedForThisComposition": [312, 147],
+        "smallerDragClamped": true,
+        "deleteCascadesToMembers": true,
+        "globalMinimumResolved": false
+      },
+      "comment": {
+        "anchorLogicalSize": [48, 48],
+        "characterLimit": 200,
+        "emptySubmitDisabled": true,
+        "resizeControlCount": 0
+      }
+    },
+    {
+      "id": "interaction.edge-clipboard-sandbox-current",
+      "kind": "interaction",
+      "status": "VERIFIED_PARTIAL",
+      "sourceId": "TN-G02-SANDBOX-0727",
+      "edges": {
+        "selfConnectionCreatesStableEdge": false,
+        "sourceToSourceCreatesStableEdge": false,
+        "duplicateAttemptCreatesStableSecondEdge": false,
+        "cycleAttemptCreatesStableReverseEdge": false,
+        "duplicateAndCycleAttemptBehavior": "temporary command node and edge; Fit View dismisses them",
+        "groupDeleteRemovesSelectedEdge": true,
+        "unrelatedNodesRemainAfterCascade": true
+      },
+      "clipboard": {
+        "contextCopyPasteCreatesDuplicateNode": true,
+        "duplicateType": "audio",
+        "duplicateLogicalSize": [444, 250],
+        "duplicateSelected": true,
+        "browserVirtualClipboardChanged": false,
+        "browserVirtualClipboardRestored": true,
+        "scope": "same canvas internal clipboard only"
+      },
+      "cleanup": {
+        "finalNodeCount": 0,
+        "finalEdgeCount": 0,
+        "savedToCloud": true,
+        "reloaded": false
+      }
+    },
+    {
+      "id": "interaction.edge-delete-reconnect-download-sandbox-current",
+      "kind": "interaction",
+      "status": "VERIFIED_PARTIAL",
+      "sourceId": "TN-G02-SANDBOX-0727",
+      "edgeOnlyDelete": {
+        "setup": "two non-overlapping empty Image nodes with one stable direct edge",
+        "selectedEdgeCount": 1,
+        "selectedNodeCount": 0,
+        "action": "Backspace",
+        "afterEdgeCount": 0,
+        "bothEndpointNodesPreserved": true,
+        "status": "VERIFIED"
+      },
+      "userVisualCorrection20260727": {
+        "status": "USER_VERIFIED_TAPNOW_BEHAVIOR_IMPLEMENTATION_RECHECK_PENDING",
+        "edgeDeletePrimaryUi": {
+          "trigger": [
+            "click edge",
+            "rest pointer on edge"
+          ],
+          "control": "centered scissors button",
+          "buttonSize": [32, 32],
+          "effect": "delete only the edge and preserve both endpoint nodes"
+        },
+        "grid": {
+          "baseGap": 20,
+          "baseDotRadius": 0.5,
+          "gapAndRadiusScaleWithZoom": true,
+          "zoomInResult": "clearer",
+          "zoomOutResult": "weaker"
+        },
+        "nodeHandles": {
+          "idleVisible": false,
+          "hoverVisible": true,
+          "selectedVisible": true,
+          "selectedMouseLeaveVisible": true
+        },
+        "hoverOnlyEdgeDeleteControl": {
+          "mouseLeaveHidesControl": true,
+          "movingFromEdgeOntoScissorsKeepsControl": true
+        },
+        "connectionDrop": {
+          "start": "source node handle",
+          "finish": "any visible body point of target node",
+          "targetHandlePrecisionRequired": false
+        },
+        "evidence": [
+          "reference/user-acceptance-2026-07-27/edge-scissors-tapnow.png",
+          "reference/user-acceptance-2026-07-27/grid-local-before.png",
+          "reference/user-acceptance-2026-07-27/grid-tapnow-reference.png"
+        ]
+      },
+      "reconnect": {
+        "setup": "three empty Image nodes and one selected stable direct edge",
+        "edgeUpdaterCount": 0,
+        "visibleEndpointUpdater": false,
+        "attempts": [
+          "drag original target handle to third node target",
+          "drag visible selected edge end to third node target"
+        ],
+        "originalStableEdgePreserved": true,
+        "temporaryCommandNodeAndEdgeCreated": true,
+        "fitViewDismissesTemporaryCommandState": true,
+        "successfulTargetRewriteObserved": false,
+        "status": "VERIFIED_FAILED_OR_CANCELLED_PATH_ONLY"
+      },
+      "videoDownload": {
+        "input": "320x180, 1 second, H.264 synthetic MP4",
+        "toolbarButtonIndexZeroBased": 8,
+        "tooltip": "下载",
+        "enabled": true,
+        "browserDownloadEventObserved": false,
+        "newTabObserved": false,
+        "matchingOsDownloadObserved": false,
+        "visibleSuccessOrFailureFeedback": false,
+        "status": "UNRESOLVED_FILE_RESULT"
+      },
+      "sandboxPersistence": {
+        "savedNodeCount": 3,
+        "savedEdgeCount": 0,
+        "afterReloadNodeCount": 3,
+        "afterReloadEdgeCount": 0,
+        "finalCleanupNodeCount": 0,
+        "finalCleanupEdgeCount": 0,
+        "finalSavedToCloud": true
+      }
+    },
+    {
+      "id": "interaction.storyboard-entry-template-sandbox-current",
+      "kind": "interaction",
+      "status": "VERIFIED_CURRENT_ENTRY_ABSENT",
+      "sourceId": "TN-G02-SANDBOX-0727",
+      "viewport": "desktopPrimary",
+      "createMenu": {
+        "items": [
+          "文本",
+          "图片",
+          "视频",
+          "音频",
+          "3D 世界 Beta",
+          "播放列表 Beta",
+          "上传"
+        ],
+        "storyboardOrTableItemPresent": false
+      },
+      "templateSearch": {
+        "query": "分镜",
+        "matchingTitles": [
+          "Json大师电影分镜",
+          "分镜大师"
+        ],
+        "appliedTemplate": "分镜大师",
+        "generationTriggered": false
+      },
+      "instantiatedGraph": {
+        "nodeCount": 26,
+        "edgeCount": 31,
+        "nodeTypes": {
+          "group": 1,
+          "text": 1,
+          "image": 15,
+          "video": 9,
+          "storyboardOrTable": 0
+        },
+        "groupLogicalSize": [2513.43, 5083],
+        "textLogicalSize": [355, 851]
+      },
+      "assertions": {
+        "templateIsGenericNodeComposition": true,
+        "currentStoryboardCreationPathResolved": false,
+        "mustNotInventCreateMenuItem": true
+      }
+    },
+    {
+      "id": "interaction.resize-large-text-playlist-sandbox-current",
+      "kind": "interaction",
+      "status": "VERIFIED_LARGE_SAMPLES",
+      "sourceId": "TN-G02-SANDBOX-0727",
+      "viewport": "desktopPrimary",
+      "text": {
+        "defaultLogicalSize": [250, 250],
+        "largeStableSample": [2671, 3530],
+        "clampObservedAtSample": false
+      },
+      "playlist": {
+        "defaultLogicalSize": [960, 104],
+        "firstCreateHelpShown": true,
+        "largeStableSample": [2057, 3785],
+        "clampObservedAtSample": false
+      },
+      "assertions": {
+        "samplesAreNotGlobalMaximumClaims": true,
+        "widthAndHeightCanGrowIndependently": true
+      }
+    },
+    {
+      "id": "interaction.group-text-playlist-large-sandbox-current",
+      "kind": "interaction",
+      "status": "VERIFIED_LARGE_SAMPLE",
+      "sourceId": "TN-G02-SANDBOX-0727",
+      "viewport": "desktopPrimary",
+      "members": {
+        "textLogicalSize": [2671, 3530],
+        "playlistLogicalSize": [2057, 3785]
+      },
+      "initialGroupLogicalSize": [4887.67, 3898],
+      "selectionEnvelopePadding": {
+        "top": 20,
+        "right": 20,
+        "bottom": 20,
+        "left": 20
+      },
+      "resizeLineCount": 4,
+      "resizeHandleCount": 4,
+      "expandedGroupLogicalSize": [5047, 4024],
+      "childrenResizeWithGroup": false,
+      "clampObservedAtSample": false,
+      "globalMaximumResolved": false,
+      "cleanup": {
+        "finalNodeCount": 0,
+        "finalEdgeCount": 0,
+        "savedToCloud": true
+      }
+    },
+    {
+      "id": "legacy.responsive.1440x900",
+      "kind": "responsive",
+      "status": "VERIFIED_HISTORICAL_REFERENCE",
+      "sourceId": "TN-VS-0724",
+      "evidenceLevel": "SCREENSHOT",
+      "viewport": "denseWide",
+      "screenshot": "29-viewport-1440x900.png"
+    },
+    {
+      "id": "legacy.responsive.1920x1080",
+      "kind": "responsive",
+      "status": "VERIFIED_HISTORICAL_REFERENCE",
+      "sourceId": "TN-VS-0724",
+      "evidenceLevel": "SCREENSHOT",
+      "viewport": "denseFullHd",
+      "screenshot": "30-viewport-1920x1080.png"
+    },
+    {
+      "id": "interaction.edge-auto-scroll-and-collision",
+      "kind": "interaction",
+      "status": "LOCAL_CANDIDATE",
+      "sourceId": "TAPNOW-LIVE-2026-07-31-OPEN-001",
+      "evidenceLevel": "LIVE_POINTER_AND_DOM",
+      "viewport": "1280x720@2x",
+      "nodes": [
+        {
+          "id": "collision-a",
+          "position": [300, 260],
+          "size": [250, 250]
+        },
+        {
+          "id": "collision-b",
+          "position": [700, 260],
+          "size": [250, 250]
+        }
+      ],
+      "observedTapNowBehavior": {
+        "edgeAutoPanDirections": [
+          "left",
+          "right",
+          "top",
+          "bottom"
+        ],
+        "zoomUnchanged": true,
+        "snapDisabledCollisionRule": "普通拖动允许顶层节点互相重叠",
+        "snapEnabledCollisionRule": "点击左下角网格吸附后，节点吸附到网格并保留最后一个未碰撞位置",
+        "groupAndChildCollision": "未在本轮扩大推断"
+      }
+    },
+    {
+      "id": "research.upstream-inputs.ready-20260802",
+      "kind": "research",
+      "status": "VERIFIED_TAPNOW_EVIDENCE_ONLY",
+      "sourceId": "TN-UPSTREAM-0802",
+      "evidenceLevel": "LIVE_OBSERVED",
+      "nodeCount": 8,
+      "edgeCount": 9,
+      "tapnowDirectMatrix": {
+        "Text": ["Image", "Video", "Audio"],
+        "Image": ["Text", "Image", "Video"],
+        "Video": ["Text", "Video"],
+        "Audio": ["Video"]
+      },
+      "readySources": ["image", "video", "audio"],
+      "reload": {
+        "before": {"nodeCount": 8, "edgeCount": 9},
+        "after": {"nodeCount": 8, "edgeCount": 9},
+        "mediaReady": true
+      },
+      "noGenerate": true,
+      "providerRequests": 0,
+      "replicaDecision": {
+        "textTargetAccepts": ["Text", "Image", "Video", "Audio"],
+        "finalAllowed": 11,
+        "finalForbidden": 5
+      },
+      "statusBoundary": "NOT_ACCEPTANCE_PASS"
+    }
+  ],
+  "openEvidence": [
+    {
+      "id": "open.canvas.edge-auto-scroll-and-collision",
+      "status": "PASS",
+      "resolved": [
+        "dragging at each viewport edge auto-pans without changing zoom",
+        "normal dragging allows top-level node overlap",
+        "20px snap mode prevents top-level overlap while preserving the last valid position"
+      ],
+      "userAcceptance": "2026-07-31 user accepted the corrected snap-dependent collision behavior"
+    },
+    {
+      "id": "open.resize-limits-and-media-ratios",
+      "status": "RESOLVED_CURRENT",
+      "resolved": [
+        "Text minimum 250x250 and free width/height resize",
+        "Playlist minimum observed 250x104 and free width/height resize",
+        "Image empty 250x250 and uploaded 16:9 sample 444x250",
+        "Image, Video, Audio, and Comment expose no resize controls in tested current states",
+        "Image+Video Group minimum observed 312x147 for that composition",
+        "Comment anchor is fixed 48x48 in the tested state",
+        "Text expanded to 2671x3530 without an observed clamp",
+        "Playlist expanded to 2057x3785 without an observed clamp",
+        "Text+Playlist Group uses a 20px selection-envelope padding and expanded to 5047x4024 without resizing its children"
+      ],
+      "resolutionBoundary": [
+        "No global hard maximum is registered because no clamp was observed in the tested large Text, Playlist, and Group samples",
+        "Historical Storyboard/Table remains load/render-only because the current product exposes no create or resize entry",
+        "Storyboard/Table create, edit, resize, and refresh lifecycle remains tracked independently by OPEN-019",
+        "Additional Group compositions are reopened only if current implementation behavior diverges from the two accepted compositions"
+      ]
+    },
+    {
+      "id": "open.edges.invalid-duplicate-reconnect-delete",
+      "status": "RESOLVED_CURRENT",
+      "resolved": [
+        "same-side connection rejected",
+        "self connection creates no stable edge",
+        "source-to-source role mismatch creates no stable edge",
+        "duplicate attempt creates no second stable edge and transient command state is dismissible",
+        "two-node cycle attempt creates no stable reverse edge and transient command state is dismissible",
+        "group deletion removes incident selected edge while unrelated nodes remain",
+        "edge-only selection and Backspace delete the edge while preserving both endpoint nodes",
+        "failed or cancelled endpoint drag preserves the original stable edge",
+        "selected current default edge exposes no explicit edge updater",
+        "current local default edges intentionally disable endpoint reconnection to match the observed TapNow default-edge behavior"
+      ],
+      "resolutionBoundary": [
+        "do not invent successful endpoint reconnection for current default edges",
+        "reopen only if a distinct TapNow edge type with a visible updater and successful reconnect behavior is observed"
+      ]
+    },
+    {
+      "id": "open.clipboard.cross-canvas",
+      "status": "RESOLVED_CURRENT",
+      "resolved": [
+        "same-canvas node context Copy then Paste creates an offset duplicate",
+        "the tested context-copy path did not change Browser virtual clipboard",
+        "Browser virtual clipboard was restored exactly",
+        "TapNow live same-tab shortcut paste changed the source canvas from 4 to 5 nodes",
+        "TapNow live cross-tab shortcut paste left the destination canvas unchanged at 5 nodes",
+        "the temporary same-tab duplicate was deleted and the source canvas returned to 4 nodes"
+      ],
+      "resolutionBoundary": [
+        "current TapNow node Copy is a same-canvas internal operation rather than a cross-canvas system-clipboard format",
+        "do not invent a private cross-canvas node payload",
+        "reopen only if TapNow exposes a distinct verified node-transfer workflow"
+      ]
+    },
+    {
+      "id": "open.upload.video-audio",
+      "status": "RESOLVED",
+      "resolution": "Synthetic non-sensitive MP4 and WAV uploads completed; both played successfully in current Video and Audio nodes."
+    },
+    {
+      "id": "open.video.download",
+      "status": "PASS",
+      "resolved": [
+        "Video toolbar button index 8 has tooltip Download and is enabled",
+        "Audio and Video download entry points were both triggered",
+        "local Video download produced Video.mp4 with SHA-256 a9ac608ba2c2df35e0c883a1decba7351180b3288b17e11c6d186d6fd49f8f2c",
+        "local Audio download produced audio-result-1.mp3 with SHA-256 94ba40d073c6699518b02bee9c0801b17bdcfaaff8319345f224bc002f385a3a",
+        "both downloaded files matched their playable source fixtures byte for byte"
+      ],
+      "historicalTapNowAttempt": "Video click produced no Browser download event within 3 seconds, no new tab, no matching OS download, and no visible feedback.",
+      "userAcceptance": "2026-07-31 user confirmed downloads work and accepted the corrected unified Audio toolbar UI"
+    },
+    {
+      "id": "open.playlist.full-edit-and-export",
+      "status": "OPEN"
+    },
+    {
+      "id": "open.jobs.cancel-fail-timeout-retry-refund",
+      "status": "PASS",
+      "implementationFoundation": {
+        "persistentTable": true,
+        "requestFingerprint": true,
+        "canvasScopedIdempotencyKey": true,
+        "duplicateRequestReturnsSameTask": true,
+        "differentRequestReusingKeyRejected": true,
+        "runningTaskReopensAsRecovering": true,
+        "appendOnlyStateEvents": true,
+        "readOnlyFrontendTaskClient": true,
+        "serverProviderContract": true,
+        "concreteProviderConfigured": true,
+        "taskRunnerEnabled": true,
+        "submissionEnabled": true,
+        "realImageSuccessAccepted": true,
+        "realImageRestartRecoveryAccepted": true,
+        "realCancellationAccepted": true,
+        "realTimeoutAccepted": true,
+        "sameTaskRetryAccepted": true,
+        "serviceRestartFailureAccepted": true
+      },
+      "successfulTaskRestartEvidence": {
+        "status": "PASS",
+        "acceptedAt": "2026-08-01",
+        "taskId": "438b50dd-cd9c-42ed-8321-1fcbd49adf35",
+        "taskState": "success",
+        "attempt": 1,
+        "taskCountBeforeAndAfter": 3,
+        "taskEventCountBeforeAndAfter": 3,
+        "historyCountBeforeAndAfter": 13,
+        "resultHistoryCountBeforeAndAfter": 1,
+        "mediaCountBeforeAndAfter": 280,
+        "resultMediaCountBeforeAndAfter": 1,
+        "canvasNodeCountBeforeAndAfter": 9,
+        "canvasEdgeCountBeforeAndAfter": 4,
+        "resultAssetId": "4c41d5cc-37c9-48df-a569-fb721906048d",
+        "resultSha256": "9690d085e95e520751d96924499ea81cece6812bd3417fbbc2dc1ac29b9ea853",
+        "privateOssReadable": true,
+        "imageHistoryAccepted": true,
+        "fullscreenAccepted": true,
+        "downloadAccepted": true,
+        "openRouterGenerationRequests": 0,
+        "duplicateTasksCreated": 0,
+        "duplicateHistoryCreated": 0
+      },
+      "exceptionLifecycleEvidence": {
+        "status": "PASS",
+        "acceptedAt": "2026-08-01",
+        "cancelledTask": {
+          "taskId": "6a9fbe16-d234-4a0e-badf-d19f2b54ffae",
+          "events": ["queued", "running", "cancelled"],
+          "attempt": 1,
+          "errorCode": "USER_CANCELLED",
+          "resultPublished": false
+        },
+        "timeoutRetryTask": {
+          "taskId": "327c2051-c2d4-4c96-9c41-f30525cd9556",
+          "events": [
+            "queued",
+            "running",
+            "failed",
+            "retrying",
+            "queued",
+            "running",
+            "success"
+          ],
+          "firstErrorCode": "TIMEOUT",
+          "attempt": 2,
+          "duplicateTaskCreated": false,
+          "resultAssetId": "f6649f18-a944-4b39-82b3-1970fd1a89d0",
+          "resultSha256": "2731e15c9bfd0ba9bbdc300ede433dd218ce4a804c445a29eecee6c1eafc997a"
+        },
+        "restartFailureTask": {
+          "taskId": "6a1ecfa4-a9f8-4c04-adc1-d6548982cbf8",
+          "events": ["queued", "running", "recovering", "failed"],
+          "attempt": 1,
+          "errorCode": "SERVICE_RESTARTED",
+          "automaticResubmission": false,
+          "resultPublished": false
+        }
+      },
+      "notApplicable": "Refund and credit restoration are outside the current product after the user removed all quota and credit accounting.",
+      "safetyBoundary": "Future paid Provider tests still require separate explicit user approval.",
+      "userAcceptance": "2026-08-01 user accepted cancellation, timeout, same-task retry success, and service-restart recovery failure"
+    },
+    {
+      "id": "local.video.seedance-2-mini-real-path",
+      "status": "PASS",
+      "acceptedAt": "2026-08-01",
+      "taskId": "788ebeaa-b37d-499a-becc-64ae16f2a9f5",
+      "providerTaskId": "cgt-20260801165221-6fsd7",
+      "parameters": {
+        "aspectRatio": "16:9",
+        "resolution": "480p",
+        "durationSeconds": 5,
+        "generateAudio": false,
+        "count": 1
+      },
+      "state": "success",
+      "attempt": 1,
+      "actualCostMicrounits": 708932,
+      "costCurrency": "CNY",
+      "resultAssetId": "f8820894-6445-4276-8914-dac91889f769.mp4",
+      "resultBytes": 802735,
+      "resultSha256": "2a57db544db15161f08976acd701ffbd2ecf52530ab7d0df8ab62ae641dbacc9",
+      "privateOssReady": true,
+      "historyPreviewAccepted": true,
+      "playbackAccepted": true,
+      "downloadAccepted": true,
+      "restartRecoveryAccepted": true,
+      "taskCountAfterRestart": 7,
+      "videoTaskCountAfterRestart": 1
+    },
+    {
+      "id": "local.ui.material-resize-model-parameters-history-typography",
+      "status": "PASS",
+      "acceptedAt": "2026-08-01",
+      "materialFitDefault": true,
+      "manualResizeAfterFit": true,
+      "manualResizePersists": true,
+      "sharedModelParameterRegistry": true,
+      "futureModelConfigurationSupported": true,
+      "customGrayMenus": true,
+      "macOsNativeFontStack": true,
+      "allowedFontSizes": ["12px", "14px"],
+      "historyActions": ["preview", "download", "add-to-canvas"]
+    },
+    {
+      "id": "local.ops.loopback-only",
+      "status": "PASS",
+      "acceptedAt": "2026-08-01",
+      "listenAddress": "127.0.0.1",
+      "port": 4173,
+      "localReachable": true,
+      "lanReachable": false,
+      "serverDeployed": false
+    },
+    {
+      "id": "local.api.self-owned-contract",
+      "status": "PASS",
+      "acceptedAt": "2026-08-01",
+      "openapiVersion": "3.1.0",
+      "documentPath": "/api/openapi.json",
+      "adminView": "/admin/api-contract",
+      "pathCount": 3,
+      "operationCount": 5,
+      "authRequired": true,
+      "providerRequests": 0,
+      "fullRegressionPassed": 131,
+      "controlledSkipped": 1,
+      "userAcceptance": "User understood and accepted the private data contract explanation"
+    },
+    {
+      "id": "open.conflicts.multi-tab-and-realtime",
+      "status": "PARTIAL",
+      "multiTabWriteConflict": {
+        "status": "RESOLVED_CURRENT",
+        "coveredBy": "DATA-005",
+        "fixture": "persistence.revision-conflict",
+        "evidence": [
+          "Two pages start from the same revision.",
+          "The stale writer receives HTTP 409.",
+          "The server keeps the first saved content.",
+          "Reload latest restores the second page.",
+          "User accepted the visible flow."
+        ]
+      },
+      "multiUserRealtime": {
+        "status": "PAUSED",
+        "coveredBy": "OPEN-009",
+        "reason": "The current product is for limited personal use and team projects are deferred by user scope.",
+        "reopenCondition": "Team projects and two real authorized accounts are available."
+      }
+    },
+    {
+      "id": "open.sharing-clone-publish-team-move",
+      "status": "OPEN_OR_PRIVATE_NA"
+    },
+    {
+      "id": "open.conflict.add-menu-image-editor",
+      "status": "RESOLVED_CURRENT",
+      "conflictId": "CF-ADD-01",
+      "resolution": "Current creation menu has no standalone Image Editor; historical node remains a historical state."
+    },
+    {
+      "id": "open.conflict.search-height",
+      "status": "RESOLVED",
+      "conflictId": "CF-SEARCH-01",
+      "resolution": "Content-driven height capped by min(520px, 100vh-72px)."
+    },
+    {
+      "id": "open.conflict.text-toolbar-items",
+      "status": "RESOLVED",
+      "conflictId": "CF-TEXT-01",
+      "resolution": "Selected and editing Text show the full 14-item 617x48 toolbar."
+    },
+    {
+      "id": "open.conflict.playlist-timeline-end",
+      "status": "RESOLVED_STATE_DEPENDENT",
+      "conflictId": "CF-PLAY-01",
+      "resolution": "Current new empty Playlist ends at 01:00; historical populated state ends at 00:50."
+    },
+    {
+      "id": "open.conflict.group-radius",
+      "status": "RESOLVED_LAYERED",
+      "conflictId": "CF-GROUP-01",
+      "resolution": "Outer React Flow node radius is 16px; inner visible Group frame radius is 12px."
+    },
+    {
+      "id": "open.image-advanced-runtime-semantics",
+      "status": "RESOLVED_CURRENT",
+      "resolution": "IMGEDIT-001 through 006, 008, and 009 are user-accepted; IMGEDIT-007 lighting remains implemented but disabled and separately PAUSED by user decision."
+    },
+    {
+      "id": "open.video-result-toolbar-items",
+      "status": "RESOLVED",
+      "screenSize": [442, 48],
+      "buttonSize": [40, 40],
+      "items": [
+        "剪辑",
+        "增强",
+        "替换",
+        "移除",
+        "截帧",
+        "浏览全部",
+        "Pin",
+        "保存到素材库",
+        "下载",
+        "全屏查看"
+      ],
+      "resolution": "2026-07-28 current TapNow live DOM, SVG order, bounds and pointer-hover tooltips."
+    },
+    {
+      "id": "open.connection-source-aware-menu-items",
+      "status": "RESOLVED",
+      "resolution": "Image 5 items, Video 4 items, Audio 2 items; outside cancel leaves no edge or command node."
+    },
+    {
+      "id": "open.storyboard-editing-lifecycle",
+      "status": "BLOCK",
+      "currentFindings": [
+        "Current blank-canvas create menu contains no Storyboard or Table item",
+        "Applying the public template 分镜大师 creates 1 Group, 1 Text, 15 Image, and 9 Video nodes with no Storyboard/Table node",
+        "Historical 1200x1000 Storyboard/Table remains valid load/render evidence only"
+      ],
+      "remaining": [
+        "reachable current creation path",
+        "card add/edit/delete",
+        "loading state",
+        "Default and 创意视图 switching",
+        "resize behavior",
+        "reload persistence"
+      ],
+      "safetyBoundary": "Keep the accepted historical load/render state and do not invent a current creation or editing path."
+    },
+    {
+      "id": "open.group-actions-runtime",
+      "status": "PASS",
+      "fixture": "legacy.node.group-dense-selected",
+      "actions": {
+        "runAll": "DISABLED_NO_REAL_GENERATION_QUEUE",
+        "updateTemplate": "DISABLED_NO_TEMPLATE_BACKEND",
+        "downloadAll": {
+          "status": "AUTOMATED_PASS",
+          "assetCount": 6,
+          "result": "Six distinct SVG downloads complete successfully."
+        }
+      },
+      "paidProviderRequests": 0,
+      "userAcceptance": "2026-07-31 user confirmed the visible Group action state and download-all behavior"
+    },
+    {
+      "id": "open.agent-conversation-tool-protocol",
+      "status": "BLOCK",
+      "blocked": [
+        "No real Agent backend, tool-call protocol, or authorization model is connected.",
+        "Confirmation, rejection, failure, and recovery cannot be validated without real commands."
+      ],
+      "safetyBoundary": "Keep message execution disabled and do not fabricate Agent or tool results.",
+      "reopenCondition": "A real Agent backend and permission protocol are explicitly authorized and available."
+    },
+    {
+      "id": "open.voice-permission-recording",
+      "status": "PASS",
+      "fixture": "panel.agent.voice",
+      "resolved": [
+        "Permission is requested only after a user action.",
+        "Allowed microphone input records locally and can stop, preview, clear, or cancel.",
+        "Denied permission produces visible feedback and a retry action.",
+        "No recording or incomplete result is uploaded."
+      ],
+      "blocked": [
+        "Transcription remains unavailable because no transcription service is authorized."
+      ],
+      "paidProviderRequests": 0,
+      "userAcceptance": "2026-07-31 user confirmed local recording and the corrected compact project-aligned voice UI"
+    },
+    {
+      "id": "open.library-template-history-lifecycle",
+      "status": "PASS",
+      "resolved": [
+        "Public template search, preview, and apply path",
+        "分镜大师 instantiates 26 nodes and 31 edges without triggering generation",
+        "Account history survives canvas-node deletion and reload through DATA-003",
+        "Local image, video, and audio assets drag onto the canvas and survive reload without removing the source asset"
+      ],
+      "blocked": [
+        "template create/update",
+        "template error and rollback"
+      ],
+      "fixture": "panel.assets.drag-ready",
+      "paidProviderRequests": 0,
+      "userAcceptance": "2026-07-31 user confirmed local image, video, and audio drag-to-canvas behavior and the real audio waveform"
+    },
+    {
+      "id": "open.responsive-1512-min-width",
+      "status": "PASS",
+      "resolved": [
+        "1512x982 CSS viewport anchors at DPR 2",
+        "no page-level overflow at 1512x982",
+        "1280px minimum reliable supported width grounded by 28 TapNow 1280x720 DPR 2 references",
+        "1280x720 DPR 2 anchors and no page-level overflow"
+      ],
+      "remaining": [
+      ],
+      "accepted": [
+        "visible user acceptance of both responsive previews"
+      ],
+      "fixture": "responsive-preview/1512x982 and responsive-preview/1280x720",
+      "userAcceptance": "PASS"
+    },
+    {
+      "id": "open.persistence-reload-resurrection",
+      "status": "RESOLVED_CURRENT",
+      "evidence": "After confirmed 0 nodes/0 edges and cloud save, reload stabilized at 2 unknown image nodes/1 edge with different IDs.",
+      "upstreamCause": "UNKNOWN_AND_NOT_CLAIMED",
+      "localResolution": [
+        "DATA-002 keeps a cleared 0-node 0-edge canvas empty after reload",
+        "DATA-005 rejects stale revisions with 409 and preserves the newest server state",
+        "five persistence and multi-tab regression checks passed again on 2026-07-31"
+      ],
+      "userAcceptance": "COVERED_BY_DATA-002_AND_DATA-005"
+    },
+    {
+      "id": "open.upstream-input-replication",
+      "status": "PLANNED_PRODUCT_EXTENSION",
+      "currentImplementation": [
+        "Canvas only performs generic connection validation",
+        "Image tasks only consume Image references",
+        "Video and Audio tasks only consume their own prompt",
+        "Text real Provider task is not connected"
+      ],
+      "targetRules": {
+        "allowed": 11,
+        "forbidden": 5,
+        "textTargetAccepts": ["Text", "Image", "Video", "Audio"]
+      },
+      "phases": ["P0", "P1", "P2", "P3", "P4", "P5", "P6"],
+      "acceptanceStatus": "INPUT-001_THROUGH_INPUT-007_PARTIAL",
+      "paidProviderRequests": 0,
+      "safetyBoundary": "Do not mark PASS before implementation, automated verification, and user acceptance."
+    }
+  ]
+}
