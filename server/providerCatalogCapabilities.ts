@@ -1,4 +1,5 @@
 import type { ProviderDriver } from "./providerProfiles";
+import type { RelayReadOnlyResource } from "./multiProtocolRelay";
 
 export type ProviderCatalogSupport =
   | "full"
@@ -23,7 +24,9 @@ export type ProviderCatalogCapabilities = {
   supported: boolean;
   supportsEndpoints: boolean;
   supportsImport: boolean;
+  supportsReadOnlyManagement: boolean;
   supportsSync: boolean;
+  readOnlyResources: RelayReadOnlyResource[];
 };
 
 const capabilities: Record<ProviderDriver, ProviderCatalogCapabilities> = {
@@ -37,7 +40,9 @@ const capabilities: Record<ProviderDriver, ProviderCatalogCapabilities> = {
     supported: true,
     supportsEndpoints: true,
     supportsImport: true,
+    supportsReadOnlyManagement: false,
     supportsSync: true,
+    readOnlyResources: [],
   },
   openrouter: {
     credentialMode: "profile-api-key",
@@ -48,7 +53,9 @@ const capabilities: Record<ProviderDriver, ProviderCatalogCapabilities> = {
     supported: true,
     supportsEndpoints: false,
     supportsImport: true,
+    supportsReadOnlyManagement: false,
     supportsSync: true,
+    readOnlyResources: [],
   },
   "openai-compatible": {
     credentialMode: "profile-api-key",
@@ -59,7 +66,28 @@ const capabilities: Record<ProviderDriver, ProviderCatalogCapabilities> = {
     supported: true,
     supportsEndpoints: false,
     supportsImport: true,
+    supportsReadOnlyManagement: false,
     supportsSync: true,
+    readOnlyResources: [],
+  },
+  "multi-protocol-relay": {
+    credentialMode: "profile-api-key",
+    description: "优先读取扩展模型目录，并可安全查看余额、用量、价格和任务状态。",
+    modelLabel: "当前Key可见模型",
+    scope: "account",
+    support: "models",
+    supported: true,
+    supportsEndpoints: false,
+    supportsImport: true,
+    supportsReadOnlyManagement: true,
+    supportsSync: true,
+    readOnlyResources: [
+      "balance",
+      "usage",
+      "pricing",
+      "task-status",
+      "model-detail",
+    ],
   },
   mureka: {
     credentialMode: "none",
@@ -70,7 +98,9 @@ const capabilities: Record<ProviderDriver, ProviderCatalogCapabilities> = {
     supported: false,
     supportsEndpoints: false,
     supportsImport: false,
+    supportsReadOnlyManagement: false,
     supportsSync: false,
+    readOnlyResources: [],
   },
 };
 

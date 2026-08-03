@@ -27,6 +27,7 @@ import {
   safelyRetryableGenerationTask,
 } from "../generation/generationRetry";
 import {
+  cancelGenerationTask,
   clearGenerationSubmissionIntent,
   ensureGenerationTask,
   GenerationRequestError,
@@ -178,6 +179,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     : [];
   const [currentTime, setCurrentTime] = useState(0);
   const generating = Boolean(data.audioGenerating);
+  const [activeTaskId, setActiveTaskId] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
   const [modelSwitchProblem, setModelSwitchProblem] = useState("");
   const [playing, setPlaying] = useState(false);
@@ -275,6 +277,8 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     selectedAudioModel &&
     selectedAudioModel.generationAvailable !== false,
   );
+  const relayCancellationAvailable =
+    selectedAudioModel?.providerProtocol === "media-generate";
 
   useEffect(() => {
     setModelSwitchProblem("");
@@ -304,6 +308,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       previous === undefined || previous === audioGenerationInputKey
     )) return;
     setRetryTaskId(undefined);
+    setActiveTaskId(undefined);
     setServerInputProblems([]);
     if (data.audioGenerationTaskId || data.audioGenerationInputKey) {
       clearGenerationSubmissionIntent(
@@ -369,6 +374,32 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       : node));
     setUploadError(visibleMessage);
     setRetryTaskId(retryAllowed ? taskId : undefined);
+  };
+
+  const persistAudioGenerationCancellation = (
+    taskId: string,
+    message: string,
+  ) => {
+    setNodes((nodes) => nodes.map((node) => node.id === id
+      ? {
+          ...node,
+          data: {
+            ...node.data,
+            audioGenerationError: message,
+            audioGenerationErrorCode: undefined,
+            audioGenerationInputKey: undefined,
+            audioGenerating: false,
+            audioGenerationRetryAllowed: undefined,
+            audioGenerationRetryBlockCode: undefined,
+            audioGenerationRetryBlockReason: undefined,
+            audioGenerationTaskId: undefined,
+          },
+        }
+      : node));
+    setUploadError(message);
+    setRetryTaskId(undefined);
+    setActiveTaskId(undefined);
+    clearGenerationSubmissionIntent("audio", canvasId, id, taskId);
   };
 
   useEffect(() => {
@@ -534,6 +565,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
         audioGenerationRequestInput,
       );
       submittedTaskId = submitted.id;
+      setActiveTaskId(submitted.id);
       checkpoint();
       setNodes((nodes) => nodes.map((node) => node.id === id
         ? {
@@ -551,7 +583,15 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
             },
           }
         : node));
+      setSubmitting(false);
       const task = await waitForGenerationTask(submitted.id);
+      if (task.state === "cancelled") {
+        persistAudioGenerationCancellation(
+          task.id,
+          task.errorMessage ?? "音频生成已取消",
+        );
+        return;
+      }
       if (task.state !== "success") {
         persistAudioGenerationFailure(
           task.id,
@@ -591,6 +631,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       }
     } finally {
       setSubmitting(false);
+      setActiveTaskId(undefined);
     }
   };
 
@@ -598,6 +639,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     if (!retryTaskId || !retryAvailable || generating || submitting) return;
     const taskId = retryTaskId;
     setUploadError("");
+    setActiveTaskId(taskId);
     setServerInputProblems([]);
     setNodes((nodes) => nodes.map((node) => node.id === id
       ? {
@@ -618,6 +660,13 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     try {
       await retryGenerationTask(taskId);
       const task = await waitForGenerationTask(taskId);
+      if (task.state === "cancelled") {
+        persistAudioGenerationCancellation(
+          task.id,
+          task.errorMessage ?? "音频生成已取消",
+        );
+        return;
+      }
       if (task.state !== "success") {
         persistAudioGenerationFailure(
           task.id,
@@ -651,6 +700,22 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
           ? error.message
           : "任务状态暂时无法确认，不能一键重试，请稍后刷新查看",
       );
+    } finally {
+      setActiveTaskId(undefined);
+    }
+  };
+
+  const cancelAudioGeneration = async () => {
+    if (!activeTaskId || !relayCancellationAvailable) return;
+    try {
+      const task = await cancelGenerationTask(activeTaskId);
+      if (task.state !== "cancelled") return;
+      persistAudioGenerationCancellation(
+        task.id,
+        task.errorMessage ?? "已停止本地等待，上游任务可能仍在运行",
+      );
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "取消生成失败");
     }
   };
 
@@ -709,27 +774,13 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
           return;
         }
         if (latest.state === "cancelled") {
-          const message = latest.errorMessage ?? "音频生成已取消";
-          setNodes((nodes) => nodes.map((node) => node.id === id
-            ? {
-                ...node,
-                data: {
-                  ...node.data,
-                  audioGenerationError: message,
-                  audioGenerationErrorCode: undefined,
-                  audioGenerationInputKey: undefined,
-                  audioGenerating: false,
-                  audioGenerationRetryAllowed: undefined,
-                  audioGenerationRetryBlockCode: undefined,
-                  audioGenerationRetryBlockReason: undefined,
-                  audioGenerationTaskId: undefined,
-                },
-              }
-            : node));
-          setUploadError(message);
-          clearGenerationSubmissionIntent("audio", canvasId, id, latest.id);
+          persistAudioGenerationCancellation(
+            latest.id,
+            latest.errorMessage ?? "音频生成已取消",
+          );
           return;
         }
+        setActiveTaskId(latest.id);
         setNodes((nodes) => nodes.map((node) => node.id === id
           ? {
               ...node,
@@ -760,26 +811,13 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
               finished.retryBlockReason,
             );
           } else if (finished.state === "cancelled") {
-            const message = finished.errorMessage ?? "音频生成已取消";
-            setNodes((nodes) => nodes.map((node) => node.id === id
-              ? {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    audioGenerationError: message,
-                    audioGenerationErrorCode: undefined,
-                    audioGenerationInputKey: undefined,
-                    audioGenerating: false,
-                    audioGenerationRetryAllowed: undefined,
-                    audioGenerationRetryBlockCode: undefined,
-                    audioGenerationRetryBlockReason: undefined,
-                    audioGenerationTaskId: undefined,
-                  },
-                }
-              : node));
-            setUploadError(message);
+            persistAudioGenerationCancellation(
+              finished.id,
+              finished.errorMessage ?? "音频生成已取消",
+            );
           }
         }
+        setActiveTaskId(undefined);
       })
       .catch((error) => {
         if (!(error instanceof DOMException && error.name === "AbortError")) {
@@ -1266,8 +1304,10 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
           )}
           <button
             aria-label={
-              generating
-                ? "Generating..."
+              generating && activeTaskId && relayCancellationAvailable
+                ? "取消生成"
+                : generating
+                  ? "Generating..."
                 : submitting
                   ? "Submitting..."
                   : "Generate"
@@ -1281,24 +1321,33 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
                 : audioModelUnavailableReason
                   ? audioModelUnavailableReason
                 : generating
-                    ? "Mureka 暂不支持安全取消，任务会继续保存结果"
+                    ? relayCancellationAvailable
+                      ? "停止本地等待；上游任务可能仍在运行"
+                      : "Mureka 暂不支持安全取消，任务会继续保存结果"
                     : canvasRevision === undefined
                       ? "画布正在保存"
                       : inputProblems[0]?.message
             }
             disabled={
-              generating ||
               submitting ||
-              !inputPreflight.canSubmit ||
-              serverInputProblems.length > 0 ||
-              !selectedAudioModel ||
-              selectedAudioModel.generationAvailable === false ||
-              canvasRevision === undefined
+              (generating
+                ? !activeTaskId || !relayCancellationAvailable
+                : !inputPreflight.canSubmit ||
+                  serverInputProblems.length > 0 ||
+                  !selectedAudioModel ||
+                  selectedAudioModel.generationAvailable === false ||
+                  canvasRevision === undefined)
             }
-            onClick={() => void generateAudio()}
+            onClick={() =>
+              void (generating ? cancelAudioGeneration() : generateAudio())
+            }
             type="button"
           >
-            {generating ? "…" : "↑"}
+            {generating && activeTaskId && relayCancellationAvailable
+              ? "×"
+              : generating
+                ? "…"
+                : "↑"}
           </button>
         </div>
       </NodeToolbar>

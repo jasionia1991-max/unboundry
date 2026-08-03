@@ -376,6 +376,14 @@ test("large discovered catalogs stay searchable with the selected action always 
   const section = page.getByTestId("provider-model-catalog-catalog-large");
   await section.getByRole("button", { name: "查看发现模型" }).click();
   await expect(section).toContainText("已选0个／共337个");
+  await expect(section.locator(".provider-catalog-model-list > div")).toHaveCount(50);
+  await expect(section.getByRole("navigation", { name: "发现模型分页" }))
+    .toContainText("第1页／共7页");
+  await section.getByRole("button", { name: "下一页目录" }).click();
+  await expect(section.getByRole("navigation", { name: "发现模型分页" }))
+    .toContainText("第2页／共7页");
+  await expect(section.locator(".provider-catalog-model-list > div").first())
+    .toContainText("Catalog Model 50");
   await section.getByLabel("搜索发现模型").fill("target-commerce");
   await expect(section).toContainText("找到1个");
   await expect(section.locator(".provider-catalog-model-list > div")).toHaveCount(1);

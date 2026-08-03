@@ -538,6 +538,7 @@ export const openApiDocument = {
                 "id",
                 "displayName",
                 "capability",
+                "providerProtocol",
                 "isDefault",
                 "generationAvailable",
                 "generationUnavailableReason",
@@ -550,6 +551,18 @@ export const openApiDocument = {
                 capability: {
                   type: "string",
                   enum: ["text", "image", "video", "audio"],
+                },
+                providerProtocol: {
+                  type: "string",
+                  enum: [
+                    "native",
+                    "openai-chat",
+                    "openai-responses",
+                    "claude-messages",
+                    "gemini-generate-content",
+                    "gpt-image",
+                    "media-generate",
+                  ],
                 },
                 isDefault: { type: "boolean" },
                 generationAvailable: { type: "boolean" },

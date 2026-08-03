@@ -1284,35 +1284,18 @@ test("only capability success or an explicit Provider/model update clears an aut
       ]) {
         const summary = await incidentRequest(`/api/generation-tasks/${id}`);
         expect(summary.status).toBe(200);
-        expect(await summary.json()).toMatchObject({ retryAllowed: true });
+        expect(await summary.json()).toMatchObject({
+          retryAllowed: false,
+          retryBlockCode: "RETRY_SNAPSHOT_CHANGED",
+        });
         const response = await incidentRequest(
           `/api/generation-tasks/${id}/retry`,
           { method: "POST" },
         );
-        expect(response.status).toBe(202);
-      }
-      for (let attempt = 0; attempt < 100; attempt += 1) {
-        const outcomes = database.prepare(`
-          SELECT id, attempt, provider_task_id, state
-          FROM generation_tasks
-          WHERE id IN (?, ?)
-          ORDER BY id
-        `).all(
-          "retry-video-network-with-id",
-          "retry-audio-download-with-id",
-        ) as Array<{
-          attempt: number;
-          id: string;
-          provider_task_id: string | null;
-          state: string;
-        }>;
-        if (
-          outcomes.length === 2 &&
-          outcomes.every(({ attempt, provider_task_id, state }) =>
-            attempt === 2 && Boolean(provider_task_id) && state === "failed"
-          )
-        ) break;
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(response.status).toBe(409);
+        expect(await response.json()).toMatchObject({
+          code: "RETRY_SNAPSHOT_CHANGED",
+        });
       }
       expect(database.prepare(`
         SELECT id, attempt, provider_task_id, state
@@ -1324,13 +1307,13 @@ test("only capability success or an explicit Provider/model update clears an aut
         "retry-audio-download-with-id",
       )).toEqual([
         {
-          attempt: 2,
+          attempt: 1,
           id: "retry-audio-download-with-id",
           provider_task_id: "audio-provider-task-resume",
           state: "failed",
         },
         {
-          attempt: 2,
+          attempt: 1,
           id: "retry-video-network-with-id",
           provider_task_id: "video-provider-task-resume",
           state: "failed",

@@ -666,7 +666,10 @@ export async function waitForGenerationTask(
   taskId: string,
   signal?: AbortSignal,
 ) {
-  for (let attempt = 0; attempt < 180; attempt += 1) {
+  // Generic relay media is allowed to poll for at most 15 minutes server-side.
+  // Keep the browser waiting slightly longer so it never reports a false local
+  // failure while the durable server task is still running.
+  for (let attempt = 0; attempt < 960; attempt += 1) {
     const task = await getGenerationTask(taskId, signal);
     if (["success", "failed", "cancelled"].includes(task.state)) return task;
     await new Promise<void>((resolve, reject) => {

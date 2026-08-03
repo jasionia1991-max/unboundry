@@ -671,6 +671,7 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     const taskId = data.textGenerationTaskId;
     if (
       !taskId ||
+      !selectedTextModel ||
       activeTaskRef.current === taskId ||
       recoveryTaskRef.current?.taskId === taskId ||
       (!data.textGenerating && data.content)
@@ -745,11 +746,14 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     data.textGenerationRetryBlockCode,
     data.textGenerationRetryBlockReason,
     data.textGenerationTaskId,
+    generationInputKey,
+    selectedTextModel?.id,
   ]);
 
   useEffect(() => {
     if (
       data.textGenerationTaskId ||
+      !selectedTextModel ||
       canvasId !== "default" ||
       (!data.textGenerating && data.content)
     ) return;
@@ -811,6 +815,7 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     data.textGenerationTaskId,
     generationInputKey,
     id,
+    selectedTextModel?.id,
   ]);
 
   const generateText = async () => {

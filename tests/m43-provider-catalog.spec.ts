@@ -1147,7 +1147,7 @@ test("Ark catalog administration UI stays local and imports only reviewed drafts
       const listBox = list.getBoundingClientRect();
       const rows = Array.from(list.querySelectorAll<HTMLElement>(":scope > div"));
       const importButton = section.querySelector<HTMLElement>(
-        ".provider-catalog-toolbar button",
+        ".provider-catalog-bulk-bar button",
       )!;
       return {
         importButtonFits:

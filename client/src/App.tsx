@@ -18,6 +18,11 @@ import {
   type ModelReferenceInputs,
   type ModelUpstreamInputKind,
 } from "../../types/modelParameters";
+import {
+  relayProviderProtocols,
+  providerProtocolSupportsCapability,
+  type ProviderProtocol,
+} from "../../types/relayProtocols";
 
 type Fixture = {
   id: string;
@@ -65,6 +70,7 @@ type AdminModel = {
   providerProfileId: string;
   providerModelId: string;
   providerName: string;
+  providerProtocol?: ProviderProtocol;
   references?: {
     activeTasks: number;
     canvasDocuments: number;
@@ -76,6 +82,7 @@ type AdminModel = {
 
 type ProviderDriver =
   | "mureka"
+  | "multi-protocol-relay"
   | "openai-compatible"
   | "openrouter"
   | "volcengine-ark";
@@ -91,6 +98,7 @@ type AdminProviderProfile = {
   lastVerifiedAt?: string;
   label: string;
   modelCatalog?: AdminProviderModelCatalog;
+  readOnlySummary?: AdminProviderReadOnlySummary;
   status: "saved" | "verified";
   updatedAt: string;
 };
@@ -116,6 +124,7 @@ type AdminProviderModelCatalog = {
   supported?: boolean;
   supportsEndpoints?: boolean;
   supportsImport?: boolean;
+  supportsReadOnlyManagement?: boolean;
   supportsSync?: boolean;
   syncedAt?: string;
 };
@@ -127,13 +136,37 @@ type AdminProviderDiscoveredModel = {
   metadata?: {
     contextLength?: number;
     inputModalities?: string[];
+    modelType?: string;
     outputModalities?: string[];
+    pricingHint?: string;
     pricingSummary?: string;
+    protocols?: ProviderProtocol[];
     supportedParameters?: string[];
   };
   providerModelId: string;
   source: string;
   status: string;
+};
+
+type AdminProviderReadOnlyMetric = {
+  available?: boolean;
+  checkedAt?: string;
+  parsed?: boolean;
+  summary?: Record<string, boolean | number | string | null>;
+};
+
+type AdminProviderReadOnlySummary = {
+  balance?: AdminProviderReadOnlyMetric;
+  checkedAt?: string;
+  usage?: AdminProviderReadOnlyMetric;
+};
+
+type AdminProviderReadOnlyDescriptor = {
+  available: boolean;
+  resources?: {
+    balance?: { supported?: boolean };
+    usage?: { supported?: boolean };
+  };
 };
 
 type AdminProviderCatalogDetails = {
@@ -573,6 +606,11 @@ const providerDriverDetails: Record<
     description: "歌曲、纯音乐及后续音乐处理模型",
     label: "Mureka",
   },
+  "multi-protocol-relay": {
+    baseUrl: "",
+    description: "统一接入 OpenAI、Claude、Gemini 与媒体生成协议",
+    label: "多协议中转站",
+  },
   openrouter: {
     baseUrl: "https://openrouter.ai/api/v1",
     description: "统一管理文字、图片及后续可用模型",
@@ -589,6 +627,26 @@ const providerDriverDetails: Record<
     label: "OpenAI 兼容中转站",
   },
 };
+
+const providerProtocolLabels: Record<ProviderProtocol, string> = {
+  native: "平台原生协议",
+  "openai-chat": "OpenAI Chat",
+  "openai-responses": "OpenAI Responses",
+  "claude-messages": "Claude Messages",
+  "gemini-generate-content": "Gemini GenerateContent",
+  "gpt-image": "GPT Image",
+  "media-generate": "媒体生成",
+};
+
+function providerBaseUrlEditable(driver: ProviderDriver) {
+  return driver === "openai-compatible" || driver === "multi-protocol-relay";
+}
+
+function relayProtocolsForCapability(capability: ModelCapability) {
+  return relayProviderProtocols.filter((protocol) =>
+    providerProtocolSupportsCapability(protocol, capability),
+  );
+}
 
 function providerKeyStatusLabel(status: AdminProviderProfile["keyStatus"]) {
   if (status === "valid") return "Key有效";
@@ -765,6 +823,14 @@ function providerCatalogModelMetadata(
     .filter(Boolean);
   if (input?.length) items.push(`输入：${input.join("/")}`);
   if (output?.length) items.push(`输出：${output.join("/")}`);
+  if (metadata.modelType?.trim()) {
+    items.push(`类型：${metadata.modelType.trim().slice(0, 36)}`);
+  }
+  const protocols = metadata.protocols
+    ?.filter((protocol) => protocol !== "native")
+    .slice(0, 4)
+    .map((protocol) => providerProtocolLabels[protocol]);
+  if (protocols?.length) items.push(`协议：${protocols.join("/")}`);
   if (
     typeof metadata.contextLength === "number" &&
     Number.isFinite(metadata.contextLength) &&
@@ -772,8 +838,9 @@ function providerCatalogModelMetadata(
   ) {
     items.push(`上下文：${Math.floor(metadata.contextLength).toLocaleString("zh-CN")}`);
   }
-  if (metadata.pricingSummary?.trim()) {
-    items.push(`价格：${metadata.pricingSummary.trim().slice(0, 80)}`);
+  const pricing = metadata.pricingSummary?.trim() || metadata.pricingHint?.trim();
+  if (pricing) {
+    items.push(`价格：${pricing.slice(0, 80)}`);
   }
   if (metadata.supportedParameters?.length) {
     items.push(
@@ -785,6 +852,36 @@ function providerCatalogModelMetadata(
     );
   }
   return items.slice(0, 5);
+}
+
+function discoveredRelayProtocols(model: AdminProviderDiscoveredModel) {
+  return (model.metadata?.protocols ?? []).filter(
+    (protocol): protocol is Exclude<ProviderProtocol, "native"> =>
+      relayProviderProtocols.includes(
+        protocol as Exclude<ProviderProtocol, "native">,
+      ),
+  );
+}
+
+function relayProtocolOptionsForModel(
+  model: AdminProviderDiscoveredModel,
+  capability?: ModelCapability,
+) {
+  const declared = discoveredRelayProtocols(model);
+  return (declared.length ? declared : relayProviderProtocols).filter(
+    (protocol) =>
+      !capability || providerProtocolSupportsCapability(protocol, capability),
+  );
+}
+
+function discoveredModelAcceptsRelayProtocol(
+  model: AdminProviderDiscoveredModel,
+  protocol: Exclude<ProviderProtocol, "native"> | undefined,
+  capability?: ModelCapability,
+) {
+  return Boolean(
+    protocol && relayProtocolOptionsForModel(model, capability).includes(protocol),
+  );
 }
 
 function providerCatalogRemoteStatusLabel(status: string) {
@@ -831,6 +928,9 @@ const emptyProviderModelCatalog: AdminProviderModelCatalog = {
   snapshotStale: false,
 };
 
+const providerCatalogPageSize = 50;
+const providerCatalogSelectionLimit = 100;
+
 function ProviderModelCatalogSection({
   onProfilesChanged,
   profile,
@@ -854,8 +954,15 @@ function ProviderModelCatalogSection({
   const [catalogCapability, setCatalogCapability] = useState<
     "all" | ModelCapability
   >("all");
+  const [catalogProtocol, setCatalogProtocol] = useState<
+    "all" | Exclude<ProviderProtocol, "native">
+  >("all");
+  const [catalogPage, setCatalogPage] = useState(1);
   const [unknownCapabilities, setUnknownCapabilities] = useState<
     Record<string, ModelCapability>
+  >({});
+  const [selectedProtocols, setSelectedProtocols] = useState<
+    Record<string, Exclude<ProviderProtocol, "native">>
   >({});
   const [importing, setImporting] = useState(false);
   const [feedback, setFeedback] = useState<{
@@ -941,6 +1048,24 @@ function ProviderModelCatalogSection({
         result.models.some((model) => model.discoveryId === id),
       ),
     );
+    setSelectedProtocols((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([id, protocol]) => {
+          const model = result.models.find(
+            (candidate) => candidate.discoveryId === id,
+          );
+          if (!model) return false;
+          const capability = model.capability === "unknown"
+            ? unknownCapabilities[id]
+            : model.capability;
+          return discoveredModelAcceptsRelayProtocol(
+            model,
+            protocol,
+            capability,
+          );
+        }),
+      ) as Record<string, Exclude<ProviderProtocol, "native">>,
+    );
     return result;
   };
 
@@ -996,11 +1121,24 @@ function ProviderModelCatalogSection({
   };
 
   const setModelSelected = (discoveryId: string, selected: boolean) => {
+    if (
+      selected &&
+      !selectedIds.includes(discoveryId) &&
+      selectedIds.length >= providerCatalogSelectionLimit
+    ) {
+      setFeedback({
+        message: `单次最多选择 ${providerCatalogSelectionLimit} 个模型，请先添加当前选择。`,
+        status: "error",
+      });
+      return;
+    }
     setSelectedIds((current) =>
       selected
         ? current.includes(discoveryId)
           ? current
-          : [...current, discoveryId]
+          : current.length >= providerCatalogSelectionLimit
+            ? current
+            : [...current, discoveryId]
         : current.filter((id) => id !== discoveryId),
     );
   };
@@ -1017,21 +1155,56 @@ function ProviderModelCatalogSection({
       ) {
         return false;
       }
+      if (
+        profile.driver === "multi-protocol-relay" &&
+        catalogProtocol !== "all" &&
+        discoveredRelayProtocols(model).length > 0 &&
+        !discoveredRelayProtocols(model).includes(catalogProtocol)
+      ) {
+        return false;
+      }
       if (!normalizedCatalogQuery) return true;
       return `${model.displayName}\n${model.providerModelId}`
         .toLocaleLowerCase("zh-CN")
         .includes(normalizedCatalogQuery);
     }) ?? [];
+  const catalogPageCount = Math.max(
+    1,
+    Math.ceil(filteredModels.length / providerCatalogPageSize),
+  );
+  const visibleCatalogPage = Math.min(catalogPage, catalogPageCount);
+  const visibleModels = filteredModels.slice(
+    (visibleCatalogPage - 1) * providerCatalogPageSize,
+    visibleCatalogPage * providerCatalogPageSize,
+  );
   const missingCapability = selectedModels.some(
     (model) =>
       model.capability === "unknown" && !unknownCapabilities[model.discoveryId],
   );
+  const missingProtocol = profile.driver === "multi-protocol-relay" &&
+    selectedModels.some((model) => {
+      const capability = model.capability === "unknown"
+        ? unknownCapabilities[model.discoveryId]
+        : model.capability;
+      return !discoveredModelAcceptsRelayProtocol(
+        model,
+        selectedProtocols[model.discoveryId],
+        capability,
+      );
+    });
+  const selectionLimitReached =
+    selectedIds.length >= providerCatalogSelectionLimit;
+  const catalogImportReady = catalog.keyStatus === "valid" &&
+    Boolean(catalog.syncedAt);
 
   const importModels = async () => {
     if (
       !capabilities.supportsImport ||
+      !catalogImportReady ||
       selectedModels.length === 0 ||
-      missingCapability
+      selectedModels.length > providerCatalogSelectionLimit ||
+      missingCapability ||
+      missingProtocol
     ) return;
     setImporting(true);
     setFeedback(undefined);
@@ -1049,6 +1222,9 @@ function ProviderModelCatalogSection({
                 ? { capability: unknownCapabilities[model.discoveryId] }
                 : {}),
               discoveryId: model.discoveryId,
+              ...(profile.driver === "multi-protocol-relay"
+                ? { providerProtocol: selectedProtocols[model.discoveryId] }
+                : {}),
             })),
           }),
           method: "POST",
@@ -1056,6 +1232,7 @@ function ProviderModelCatalogSection({
       );
       setSelectedIds([]);
       setUnknownCapabilities({});
+      setSelectedProtocols({});
       await onProfilesChanged();
       setFeedback({
         message:
@@ -1287,7 +1464,10 @@ function ProviderModelCatalogSection({
                       <div className="provider-catalog-toolbar">
                         <input
                           aria-label="搜索发现模型"
-                          onChange={(event) => setCatalogQuery(event.target.value)}
+                          onChange={(event) => {
+                            setCatalogQuery(event.target.value);
+                            setCatalogPage(1);
+                          }}
                           placeholder="搜索模型名称或内部编号"
                           type="search"
                           value={catalogQuery}
@@ -1295,9 +1475,12 @@ function ProviderModelCatalogSection({
                         <select
                           aria-label="筛选节点类型"
                           onChange={(event) =>
-                            setCatalogCapability(
-                              event.target.value as "all" | ModelCapability,
-                            )
+                            {
+                              setCatalogCapability(
+                                event.target.value as "all" | ModelCapability,
+                              );
+                              setCatalogPage(1);
+                            }
                           }
                           value={catalogCapability}
                         >
@@ -1307,27 +1490,35 @@ function ProviderModelCatalogSection({
                           <option value="video">视频</option>
                           <option value="audio">音频</option>
                         </select>
+                        {profile.driver === "multi-protocol-relay" && (
+                          <select
+                            aria-label="筛选调用协议"
+                            onChange={(event) =>
+                              {
+                                setCatalogProtocol(
+                                  event.target.value as
+                                    | "all"
+                                    | Exclude<ProviderProtocol, "native">,
+                                );
+                                setCatalogPage(1);
+                              }
+                            }
+                            value={catalogProtocol}
+                          >
+                            <option value="all">全部协议</option>
+                            {relayProviderProtocols.map((protocol) => (
+                              <option key={protocol} value={protocol}>
+                                {providerProtocolLabels[protocol]}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                         <span>
-                          已选{selectedModels.length}个／共{details.models.length}个
+                          共{details.models.length}个
                           {filteredModels.length !== details.models.length
                             ? ` · 找到${filteredModels.length}个`
                             : ""}
                         </span>
-                        {capabilities.supportsImport && (
-                          <button
-                            disabled={
-                              importing ||
-                              selectedModels.length === 0 ||
-                              missingCapability
-                            }
-                            onClick={() => void importModels()}
-                            type="button"
-                          >
-                            {importing
-                              ? "正在添加…"
-                              : `添加到模型中心（${selectedModels.length}）`}
-                          </button>
-                        )}
                       </div>
                       <p className="provider-catalog-toolbar-note">
                         勾选后默认保持停用；管理员检查参数并手动发布后，普通用户才会看到。
@@ -1337,12 +1528,35 @@ function ProviderModelCatalogSection({
                           所选的待识别模型需要先选择节点类型。
                         </p>
                       )}
+                      {missingProtocol && (
+                        <p className="provider-catalog-warning">
+                          所选的中转模型需要选择当前目录与节点类型兼容的调用协议。
+                        </p>
+                      )}
+                      {selectionLimitReached && (
+                        <p className="provider-catalog-warning">
+                          单次最多选择 {providerCatalogSelectionLimit} 个模型；请先添加当前选择，再继续下一批。
+                        </p>
+                      )}
+                      {!catalogImportReady && (
+                        <p className="provider-catalog-warning">
+                          连接资料或Key状态已变化，请先重新同步目录再添加模型。
+                        </p>
+                      )}
                       {filteredModels.length > 0 ? (
+                        <>
                         <div className="provider-catalog-model-list">
-                          {filteredModels.map((model) => {
+                          {visibleModels.map((model) => {
                             const checked = selectedIds.includes(model.discoveryId);
                             const metadataItems = providerCatalogModelMetadata(
                               model.metadata,
+                            );
+                            const resolvedCapability = model.capability === "unknown"
+                              ? unknownCapabilities[model.discoveryId]
+                              : model.capability;
+                            const protocolOptions = relayProtocolOptionsForModel(
+                              model,
+                              resolvedCapability,
                             );
                             return (
                               <div key={model.discoveryId}>
@@ -1350,6 +1564,7 @@ function ProviderModelCatalogSection({
                                   <input
                                     className="admin-compact-checkbox"
                                     checked={checked}
+                                    disabled={!checked && selectionLimitReached}
                                     onChange={(event) =>
                                       setModelSelected(
                                         model.discoveryId,
@@ -1382,37 +1597,131 @@ function ProviderModelCatalogSection({
                                     )}
                                   </span>
                                 </label>
-                                {model.capability === "unknown" ? (
-                                  <select
-                                    aria-label={`${model.displayName}节点类型`}
-                                    onChange={(event) =>
-                                      setUnknownCapabilities((current) => ({
-                                        ...current,
-                                        [model.discoveryId]: event.target
-                                          .value as ModelCapability,
-                                      }))
-                                    }
-                                    value={unknownCapabilities[model.discoveryId] ?? ""}
-                                  >
-                                    <option value="">选择节点类型</option>
-                                    <option value="text">文字</option>
-                                    <option value="image">图片</option>
-                                    <option value="video">视频</option>
-                                    <option value="audio">音频</option>
-                                  </select>
-                                ) : (
-                                  <span className="provider-catalog-capability">
-                                    {providerCatalogCapabilityLabel(model.capability)}
-                                  </span>
-                                )}
+                                <div className="provider-catalog-row-controls">
+                                  {model.capability === "unknown" ? (
+                                    <select
+                                      aria-label={`${model.displayName}节点类型`}
+                                      onChange={(event) => {
+                                        const nextCapability = event.target
+                                          .value as ModelCapability;
+                                        setUnknownCapabilities((current) => ({
+                                          ...current,
+                                          [model.discoveryId]: nextCapability,
+                                        }));
+                                        const selectedProtocol =
+                                          selectedProtocols[model.discoveryId];
+                                        if (
+                                          selectedProtocol &&
+                                          !providerProtocolSupportsCapability(
+                                            selectedProtocol,
+                                            nextCapability,
+                                          )
+                                        ) {
+                                          setSelectedProtocols((current) => {
+                                            const next = { ...current };
+                                            delete next[model.discoveryId];
+                                            return next;
+                                          });
+                                        }
+                                      }}
+                                      value={unknownCapabilities[model.discoveryId] ?? ""}
+                                    >
+                                      <option value="">选择节点类型</option>
+                                      <option value="text">文字</option>
+                                      <option value="image">图片</option>
+                                      <option value="video">视频</option>
+                                      <option value="audio">音频</option>
+                                    </select>
+                                  ) : (
+                                    <span className="provider-catalog-capability">
+                                      {providerCatalogCapabilityLabel(model.capability)}
+                                    </span>
+                                  )}
+                                  {profile.driver === "multi-protocol-relay" && (
+                                    <select
+                                      aria-label={`${model.displayName}调用协议`}
+                                      onChange={(event) =>
+                                        setSelectedProtocols((current) => ({
+                                          ...current,
+                                          [model.discoveryId]: event.target.value as
+                                            Exclude<ProviderProtocol, "native">,
+                                        }))
+                                      }
+                                      value={selectedProtocols[model.discoveryId] ?? ""}
+                                    >
+                                      <option value="">选择调用协议</option>
+                                      {protocolOptions.map((protocol) => (
+                                        <option key={protocol} value={protocol}>
+                                          {providerProtocolLabels[protocol]}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  )}
+                                </div>
                               </div>
                             );
                           })}
                         </div>
+                        {catalogPageCount > 1 && (
+                          <nav
+                            aria-label="发现模型分页"
+                            className="provider-catalog-pagination"
+                          >
+                            <button
+                              aria-label="上一页目录"
+                              disabled={visibleCatalogPage === 1}
+                              onClick={() =>
+                                setCatalogPage(Math.max(1, visibleCatalogPage - 1))
+                              }
+                              type="button"
+                            >
+                              上一页
+                            </button>
+                            <span>
+                              第{visibleCatalogPage}页／共{catalogPageCount}页
+                            </span>
+                            <button
+                              aria-label="下一页目录"
+                              disabled={visibleCatalogPage === catalogPageCount}
+                              onClick={() =>
+                                setCatalogPage(
+                                  Math.min(catalogPageCount, visibleCatalogPage + 1),
+                                )
+                              }
+                              type="button"
+                            >
+                              下一页
+                            </button>
+                          </nav>
+                        )}
+                        </>
                       ) : (
                         <p className="provider-catalog-filter-empty">
                           没有符合当前搜索和类型条件的模型。
                         </p>
+                      )}
+                      {capabilities.supportsImport && (
+                        <div className="provider-catalog-bulk-bar">
+                          <span>
+                            已选{selectedModels.length}个／共{details.models.length}个
+                          </span>
+                          <button
+                            disabled={
+                              importing ||
+                              !catalogImportReady ||
+                              selectedModels.length === 0 ||
+                              selectedModels.length > providerCatalogSelectionLimit ||
+                              missingCapability ||
+                              missingProtocol
+                            }
+                            onClick={() => void importModels()}
+                            type="button"
+                          >
+                            {importing
+                              ? "正在添加…"
+                              : `添加到模型中心（${selectedModels.length}）`}
+                          </button>
+                        </div>
                       )}
                     </>
                   ) : (
@@ -1456,6 +1765,120 @@ function ProviderModelCatalogSection({
           </p>
         </>
       )}
+    </section>
+  );
+}
+
+function relayReadOnlyMetricText(metric?: AdminProviderReadOnlyMetric) {
+  if (!metric?.available || metric.parsed === false || !metric.summary) return "";
+  const metricValue = (value: unknown) => {
+    if (Array.isArray(value)) return value.join("/").slice(0, 80);
+    if (value && typeof value === "object") {
+      return Object.entries(value as Record<string, unknown>)
+        .slice(0, 8)
+        .map(([key, count]) => `${key} ${String(count)}`)
+        .join("/")
+        .slice(0, 80);
+    }
+    return String(value).slice(0, 80);
+  };
+  return Object.entries(metric.summary)
+    .filter(([, value]) => value !== null && value !== "")
+    .slice(0, 6)
+    .map(([key, value]) => `${key}：${metricValue(value)}`)
+    .join(" · ");
+}
+
+function ProviderRelayReadOnlySection({
+  profile,
+}: {
+  profile: AdminProviderProfile;
+}) {
+  const [summary, setSummary] = useState<AdminProviderReadOnlySummary | undefined>(
+    profile.readOnlySummary,
+  );
+  const [loading, setLoading] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const balanceText = relayReadOnlyMetricText(summary?.balance);
+  const usageText = relayReadOnlyMetricText(summary?.usage);
+
+  useEffect(() => {
+    setSummary(profile.readOnlySummary);
+  }, [profile.readOnlySummary]);
+
+  const loadReadOnlySummary = async () => {
+    setLoading(true);
+    setFeedback("");
+    try {
+      const base = `/api/admin/provider-catalog/${encodeURIComponent(profile.id)}/readonly`;
+      const descriptor = await jsonRequest<AdminProviderReadOnlyDescriptor>(base);
+      const requested = await Promise.all(
+        (["balance", "usage"] as const).map(async (resource) => {
+          if (!descriptor.resources?.[resource]?.supported) {
+            return [resource, undefined] as const;
+          }
+          try {
+            return [
+              resource,
+              await jsonRequest<AdminProviderReadOnlyMetric>(`${base}/${resource}`),
+            ] as const;
+          } catch {
+            return [resource, undefined] as const;
+          }
+        }),
+      );
+      const next = Object.fromEntries(requested) as AdminProviderReadOnlySummary;
+      const hasVisibleData = Boolean(
+        relayReadOnlyMetricText(next.balance) || relayReadOnlyMetricText(next.usage),
+      );
+      setSummary(hasVisibleData ? next : undefined);
+      setFeedback(
+        hasVisibleData
+          ? "只读信息已更新，不会创建生成任务。"
+          : "平台没有返回可展示的余额或用量资料。",
+      );
+    } catch (caught) {
+      setSummary(undefined);
+      setFeedback(
+        caught instanceof Error ? caught.message : "只读信息暂时不可用",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <section className="provider-relay-readonly" data-testid={`provider-relay-readonly-${profile.id}`}>
+      <div className="provider-relay-readonly-heading">
+        <div>
+          <strong>可选只读信息</strong>
+          <span>仅在平台返回可解析资料后显示余额或用量，不涉及生成。</span>
+        </div>
+        <button
+          disabled={loading}
+          onClick={() => void loadReadOnlySummary()}
+          type="button"
+        >
+          {loading ? "读取中…" : "读取余额/用量"}
+        </button>
+      </div>
+      {(balanceText || usageText) && (
+        <div className="provider-relay-readonly-cards">
+          {balanceText && (
+            <div title={balanceText}>
+              <strong>余额</strong>
+              <span>{balanceText}</span>
+            </div>
+          )}
+          {usageText && (
+            <div title={usageText}>
+              <strong>用量</strong>
+              <span>{usageText}</span>
+            </div>
+          )}
+        </div>
+      )}
+      {feedback && <p role="status">{feedback}</p>}
     </section>
   );
 }
@@ -1702,7 +2125,7 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
                 maxLength={300}
                 onChange={(event) => setBaseUrl(event.target.value)}
                 placeholder="https://api.example.com/v1"
-                readOnly={driver !== "openai-compatible"}
+                readOnly={!providerBaseUrlEditable(driver)}
                 required
                 value={baseUrl}
               />
@@ -1750,7 +2173,7 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
                   <div className="provider-profile-summary">
                     <span>{providerDriverDetails[profile.driver].label}</span>
                     <strong>{profile.label}</strong>
-                    <small>{profile.baseUrl}</small>
+                    <small title={profile.baseUrl}>{profile.baseUrl}</small>
                   </div>
                   <div className="provider-profile-actions">
                     <b data-key-status={profile.keyStatus}>
@@ -1780,9 +2203,46 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
                         ? "收起设置"
                         : profile.keyStatus === "invalid"
                           ? "更新Key"
-                          : "连接设置"}
+                          : "修改"}
                     </button>
                   </div>
+                  {profile.driver === "multi-protocol-relay" && (
+                    <dl className="provider-relay-summary">
+                      <div>
+                        <dt>第三方身份</dt>
+                        <dd>第三方中转站</dd>
+                      </div>
+                      <div>
+                        <dt>Key状态</dt>
+                        <dd>{providerKeyStatusLabel(profile.keyStatus)}</dd>
+                      </div>
+                      <div>
+                        <dt>目录状态</dt>
+                        <dd>
+                          {providerCatalogStatusLabel(
+                            profile.modelCatalog ?? emptyProviderModelCatalog,
+                            providerCatalogCapabilities(
+                              profile,
+                              profile.modelCatalog ?? emptyProviderModelCatalog,
+                            ),
+                            false,
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>模型数量</dt>
+                        <dd>{profile.modelCatalog?.modelCount ?? 0}</dd>
+                      </div>
+                      <div>
+                        <dt>上次检查</dt>
+                        <dd>
+                          {providerCatalogDate(
+                            profile.lastCheckedAt ?? profile.modelCatalog?.checkedAt,
+                          )}
+                        </dd>
+                      </div>
+                    </dl>
+                  )}
                   {connectionSettingsId === profile.id && (
                     <form
                       className="provider-inline-settings"
@@ -1825,7 +2285,7 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
                           onChange={(event) =>
                             setConnectionBaseUrl(event.target.value)
                           }
-                          readOnly={profile.driver !== "openai-compatible"}
+                          readOnly={!providerBaseUrlEditable(profile.driver)}
                           required
                           value={connectionBaseUrl}
                         />
@@ -1862,6 +2322,9 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
                     >
                       {testFeedback[profile.id].message}
                     </p>
+                  )}
+                  {profile.driver === "multi-protocol-relay" && (
+                    <ProviderRelayReadOnlySection profile={profile} />
                   )}
                   <ProviderModelCatalogSection
                     onProfilesChanged={load}
@@ -2872,6 +3335,9 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
     Array<{ displayName: string; driver: ProviderDriver; id: string; status: string }>
   >([]);
   const [providerProfileId, setProviderProfileId] = useState("");
+  const [providerProtocol, setProviderProtocol] = useState<ProviderProtocol | "">(
+    "",
+  );
   const [capability, setCapability] =
     useState<AdminModel["capability"]>("image");
   const [capabilityOpen, setCapabilityOpen] = useState(false);
@@ -2887,6 +3353,8 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
     useState<ModelParameterSchema>();
   const [editingParameterProviderProfileId, setEditingParameterProviderProfileId] =
     useState("");
+  const [editingParameterProviderProtocol, setEditingParameterProviderProtocol] =
+    useState<ProviderProtocol | "">("");
   const [showArchived, setShowArchived] = useState(false);
   const [lifecycleBusyId, setLifecycleBusyId] = useState("");
   const [modelNotice, setModelNotice] = useState("");
@@ -2948,6 +3416,13 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
     providerModelId,
     selectedProvider?.driver,
   );
+  const selectedProviderUsesRelay =
+    selectedProvider?.driver === "multi-protocol-relay";
+  const relayProtocolReady =
+    !selectedProviderUsesRelay ||
+    (providerProtocol !== "" &&
+      providerProtocol !== "native" &&
+      providerProtocolSupportsCapability(providerProtocol, capability));
   const selectedCurrency = selectedProvider?.driver === "volcengine-ark" ? "CNY" : "USD";
   const selectedCurrencyLabel = selectedCurrency === "CNY" ? "人民币" : "美元";
   const recommendedParameterSchema = (
@@ -2971,6 +3446,10 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
       setError("这个豆包模型必须选择火山方舟连接");
       return;
     }
+    if (!relayProtocolReady) {
+      setError("请为多协议中转模型明确选择调用协议");
+      return;
+    }
     try {
       await jsonRequest("/api/admin/models", {
         body: JSON.stringify({
@@ -2981,6 +3460,9 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
           parameterSchema,
           providerModelId,
           providerProfileId,
+          providerProtocol: selectedProviderUsesRelay
+            ? providerProtocol
+            : "native",
           sortOrder: 100,
           status: publish ? "published" : "draft",
         }),
@@ -2990,6 +3472,7 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
       setProviderModelId("");
       setPublish(false);
       setMaxCostValue("0");
+      setProviderProtocol(selectedProviderUsesRelay ? "" : "native");
       setParameterSchema(defaultParameterSchema(capability));
       await load();
     } catch (caught) {
@@ -3002,7 +3485,7 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
     update: Partial<
       Pick<
         AdminModel,
-        "isDefault" | "maxCostMicrounits" | "parameterSchema" | "providerProfileId" | "status"
+        "isDefault" | "maxCostMicrounits" | "parameterSchema" | "providerProfileId" | "providerProtocol" | "status"
       >
     >,
   ) => {
@@ -3048,6 +3531,7 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
         setEditingParameterModelId("");
         setEditingParameterSchema(undefined);
         setEditingParameterProviderProfileId("");
+        setEditingParameterProviderProtocol("");
       }
       setModelNotice(
         action === "archive"
@@ -3071,6 +3555,18 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
     const editingProvider = providers.find(
       (provider) => provider.id === editingParameterProviderProfileId,
     );
+    if (
+      editingProvider?.driver === "multi-protocol-relay" &&
+      (editingParameterProviderProtocol === "" ||
+        editingParameterProviderProtocol === "native" ||
+        !providerProtocolSupportsCapability(
+          editingParameterProviderProtocol,
+          model.capability,
+        ))
+    ) {
+      setError("请为多协议中转模型明确选择调用协议");
+      return;
+    }
     const constraints = providerParameterSchema({
       capability: model.capability,
       providerDriver: editingProvider?.driver,
@@ -3087,10 +3583,15 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
     await updateModel(model, {
       parameterSchema,
       providerProfileId: editingParameterProviderProfileId || model.providerProfileId,
+      providerProtocol:
+        editingProvider?.driver === "multi-protocol-relay"
+          ? editingParameterProviderProtocol as ProviderProtocol
+          : "native",
     });
     setEditingParameterModelId("");
     setEditingParameterSchema(undefined);
     setEditingParameterProviderProfileId("");
+    setEditingParameterProviderProtocol("");
   };
 
   const labels: Record<AdminModel["capability"], string> = {
@@ -3101,6 +3602,7 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
   };
   const providerLabels: Record<ProviderDriver, string> = {
     mureka: "Mureka",
+    "multi-protocol-relay": "多协议中转站",
     "openai-compatible": "OpenAI兼容平台",
     openrouter: "OpenRouter",
     "volcengine-ark": "火山方舟",
@@ -3173,6 +3675,11 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
                       key={provider.id}
                       onClick={() => {
                         setProviderProfileId(provider.id);
+                        setProviderProtocol(
+                          provider.driver === "multi-protocol-relay"
+                            ? ""
+                            : "native",
+                        );
                         setParameterSchema(recommendedParameterSchema(
                           capability,
                           providerModelId,
@@ -3223,6 +3730,16 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
                       key={option.value}
                       onClick={() => {
                         setCapability(option.value);
+                        if (
+                          selectedProviderUsesRelay &&
+                          providerProtocol !== "" &&
+                          !providerProtocolSupportsCapability(
+                            providerProtocol,
+                            option.value,
+                          )
+                        ) {
+                          setProviderProtocol("");
+                        }
                         setParameterSchema(recommendedParameterSchema(
                           option.value,
                           providerModelId,
@@ -3241,6 +3758,27 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
                 </div>
               )}
             </div>
+            {selectedProviderUsesRelay && (
+              <label className="model-provider-protocol">
+                <span>调用协议</span>
+                <select
+                  aria-label="调用协议"
+                  onChange={(event) =>
+                    setProviderProtocol(event.target.value as ProviderProtocol | "")
+                  }
+                  required
+                  value={providerProtocol}
+                >
+                  <option value="">请明确选择调用协议</option>
+                  {relayProtocolsForCapability(capability).map((protocol) => (
+                    <option key={protocol} value={protocol}>
+                      {providerProtocolLabels[protocol]}
+                    </option>
+                  ))}
+                </select>
+                <small>协议由管理员明确配置，不根据模型名称猜测。</small>
+              </label>
+            )}
             <input
               maxLength={80}
               onChange={(event) => setDisplayName(event.target.value)}
@@ -3258,6 +3796,7 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
                 );
                 if (/^doubao-(?:seed|seedance)-/i.test(nextModelId) && arkProvider) {
                   setProviderProfileId(arkProvider.id);
+                  setProviderProtocol("native");
                   setParameterSchema(knownModelParameterSchema({
                     capability,
                     providerDriver: arkProvider.driver,
@@ -3315,7 +3854,12 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
               />
               <span>创建后立即发布给普通用户</span>
             </label>
-            <button disabled={!providerProfileId || selectedProviderMismatch} type="submit">
+            <button
+              disabled={
+                !providerProfileId || selectedProviderMismatch || !relayProtocolReady
+              }
+              type="submit"
+            >
               保存模型
             </button>
           </form>
@@ -3369,6 +3913,15 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
                   <br />
                   {providerLabels[model.providerDriver]}（{model.providerName}） ·{" "}
                   {model.providerConnected ? "Provider已连接" : "Provider未连接"}
+                  {model.providerDriver === "multi-protocol-relay" && (
+                    <>
+                      <br />
+                      调用协议：
+                      {model.providerProtocol
+                        ? providerProtocolLabels[model.providerProtocol]
+                        : "未设置（不可生成）"}
+                    </>
+                  )}
                   <br />
                   单次费用保护：
                   {model.maxCostMicrounits > 0
@@ -3393,6 +3946,14 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
                 ) && (
                   <div className="model-provider-warning" role="alert">
                     平台选择错误：这个豆包模型应连接火山方舟。
+                  </div>
+                )}
+                {!model.archived && !model.canDelete && model.deleteBlockedReason && (
+                  <div
+                    className="model-delete-protection"
+                    title={model.deleteBlockedReason}
+                  >
+                    删除保护：{model.deleteBlockedReason}
                   </div>
                 )}
               </div>
@@ -3480,10 +4041,17 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
                           setEditingParameterModelId("");
                           setEditingParameterSchema(undefined);
                           setEditingParameterProviderProfileId("");
+                          setEditingParameterProviderProtocol("");
                         } else {
                           setEditingParameterModelId(model.id);
                           setEditingParameterSchema(model.parameterSchema);
                           setEditingParameterProviderProfileId(model.providerProfileId);
+                          setEditingParameterProviderProtocol(
+                            model.providerProtocol ??
+                              (model.providerDriver === "multi-protocol-relay"
+                                ? ""
+                                : "native"),
+                          );
                         }
                       }}
                       type="button"
@@ -3528,6 +4096,11 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
                           key={provider.id}
                           onClick={() => {
                             setEditingParameterProviderProfileId(provider.id);
+                            setEditingParameterProviderProtocol(
+                              provider.driver === "multi-protocol-relay"
+                                ? ""
+                                : "native",
+                            );
                             setEditingParameterSchema(knownModelParameterSchema({
                               capability: model.capability,
                               providerDriver: provider.driver,
@@ -3540,6 +4113,33 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
                         </button>
                       ))}
                     </div>
+                    {providers.find(
+                      (provider) =>
+                        provider.id === editingParameterProviderProfileId,
+                    )?.driver === "multi-protocol-relay" && (
+                      <label className="model-provider-protocol">
+                        <span>调用协议</span>
+                        <select
+                          aria-label={`${model.displayName}调用协议`}
+                          onChange={(event) =>
+                            setEditingParameterProviderProtocol(
+                              event.target.value as ProviderProtocol | "",
+                            )
+                          }
+                          value={editingParameterProviderProtocol}
+                        >
+                          <option value="">请明确选择调用协议</option>
+                          {relayProtocolsForCapability(model.capability).map(
+                            (protocol) => (
+                              <option key={protocol} value={protocol}>
+                                {providerProtocolLabels[protocol]}
+                              </option>
+                            ),
+                          )}
+                        </select>
+                        <small>不根据模型名称自动判断协议。</small>
+                      </label>
+                    )}
                   </div>
                   <AdminModelParameterEditor
                     capability={model.capability}
@@ -3555,6 +4155,18 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
                   />
                   <div className="admin-model-parameter-save">
                     <button
+                      disabled={
+                        providers.find(
+                          (provider) =>
+                            provider.id === editingParameterProviderProfileId,
+                        )?.driver === "multi-protocol-relay" &&
+                        (editingParameterProviderProtocol === "" ||
+                          editingParameterProviderProtocol === "native" ||
+                          !providerProtocolSupportsCapability(
+                            editingParameterProviderProtocol,
+                            model.capability,
+                          ))
+                      }
                       onClick={() => void saveModelParameters(model)}
                       type="button"
                     >

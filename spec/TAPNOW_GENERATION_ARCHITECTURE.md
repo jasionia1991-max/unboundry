@@ -1,6 +1,6 @@
 # TapNow 生成链路结构
 
-状态：`AUTHORITATIVE / IMAGE REAL PATH ACCEPTED / VIDEO REAL PATH ACCEPTED / UPSTREAM INPUT PARTIAL / MULTI-PROTOCOL RELAY P0-P7 APPROVED / AUDIO REAL GENERATION DEFERRED`  
+状态：`AUTHORITATIVE / IMAGE REAL PATH ACCEPTED / VIDEO REAL PATH ACCEPTED / UPSTREAM INPUT PARTIAL / MULTI-PROTOCOL RELAY LOCAL CANDIDATE USER_RECHECK / AUDIO REAL GENERATION DEFERRED`
 更新时间：2026-08-03
 
 ## 1. 对齐边界
@@ -126,6 +126,7 @@ TapNow实测与本项目产品决定分开：TapNow当前Text目标只接受Imag
 - 数据库：任务、事件、请求指纹、模型快照、结果素材引用和账号历史均已持久化；内部`running→recovering`基础检查通过。
 - 媒体：旧图片/视频/音频继续支持本机读取；新图片和真实Seedance视频结果可写入私有阿里云OSS并通过短时签名地址、Range和下载读取。
 - Provider：OpenRouter GPT Image 2真实图片与火山方舟Seedance 2.0 Mini真实视频均已成功；视频结果通过播放、下载、历史操作、刷新和服务重启恢复人工验收。
+- 多协议中转：本地候选已增加显式协议模型配置、OpenAI Chat/Responses、Claude Messages、Gemini GenerateContent、GPT Image和通用媒体适配；目录、只读管理和适配器专项均使用模拟响应，真实生成任务和收费Provider请求为0。`RELAY-001～012`统一为USER_RECHECK。
 - 参考图：edge、缩略片、删除/撤销同步、账号归属、模型上限和OpenRouter `input_references`安全传参已完成，`GEN-009`于2026-08-01人工通过；本轮没有增加收费请求。
 - 入参调研：TapNow两轮实页勘测已完成，8节点/9边和三类ready素材刷新恢复均有证据；本轮未点击Generate。该证据不等于本地统一入参实现完成。
 - 入参实现缺口：Canvas仍未按目标类型和模型能力限制连线；Image尚未读取上游Text；Video/Audio尚未把edge输入带入任务；Text真实生成任务未接通；角色、组合和统一输入快照尚未完成。`INPUT-001～007`保持PARTIAL。
@@ -177,4 +178,4 @@ TapNow实测与本项目产品决定分开：TapNow当前Text目标只接受Imag
 
 模型目录只负责发现候选项；协议、节点类型、输入规则和费用保护必须由管理员确认后保存。不能根据模型名称猜测协议，也不能把第三方原始字段直接透传给Provider。
 
-当前阶段先使用fixture完成连接、目录、协议映射、异步轮询、错误分类和回归，收费Provider请求必须为0。实现完成后`RELAY-001～012`只能进入`USER_RECHECK`；真实调用由用户另行提供本机后台配置并逐次授权。
+当前本地候选已用fixture覆盖连接、目录、协议映射、异步轮询、错误分类和回归；所有中转真实HTTPS外连共用“全DNS结果校验+实际连接IP固定”传输，禁止重定向和二次解析。自动检查保持收费Provider请求为0。`RELAY-001～012`现统一进入`USER_RECHECK`，未经用户实页确认不得标PASS；真实调用仍由用户在本机后台配置并逐次授权。

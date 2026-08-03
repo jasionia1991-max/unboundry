@@ -1059,6 +1059,43 @@ const migrations: readonly Migration[] = [
       END;
     `,
   },
+  {
+    version: 22,
+    name: "provider-model-protocol",
+    prepare(database) {
+      const columns = new Set(
+        (database.prepare("PRAGMA table_info(model_profiles)").all() as Array<{
+          name: string;
+        }>).map((column) => column.name),
+      );
+      if (!columns.has("provider_protocol")) {
+        database.exec(`
+          ALTER TABLE model_profiles
+          ADD COLUMN provider_protocol TEXT NOT NULL DEFAULT 'native'
+          CHECK (
+            provider_protocol IN (
+              'native',
+              'openai-chat',
+              'openai-responses',
+              'claude-messages',
+              'gemini-generate-content',
+              'gpt-image',
+              'media-generate'
+            )
+          )
+        `);
+      }
+    },
+    sql: `
+      CREATE INDEX IF NOT EXISTS model_profiles_provider_protocol
+        ON model_profiles (
+          provider_profile_id,
+          provider_protocol,
+          provider_model_id,
+          capability
+        );
+    `,
+  },
 ];
 
 export const currentSchemaVersion = migrations.at(-1)?.version ?? 0;

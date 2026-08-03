@@ -1,6 +1,6 @@
 # TapNow 管理员模型中心、账号权限与 OSS 实施规划
 
-状态：`AUTHORITATIVE PLAN / PHASE A-F ACCEPTED / PHASE G VIDEO + API-001～006 ACCEPTED / PHASE H INPUT PARTIAL / PHASE I MULTI-PROTOCOL RELAY APPROVED / AUDIO REAL GENERATION+DEPLOY DEFERRED`  
+状态：`AUTHORITATIVE PLAN / PHASE A-F ACCEPTED / PHASE G VIDEO + API-001～006 ACCEPTED / PHASE H INPUT PARTIAL / PHASE I MULTI-PROTOCOL RELAY USER_RECHECK / AUDIO REAL GENERATION+DEPLOY DEFERRED`
 更新时间：2026-08-03
 
 ## 1. 已确认的产品决定
@@ -249,13 +249,13 @@
 
 管理页只保存平台中立能力和允许值；Provider私有字段映射只在服务端adapter中维护。切换模型遇到不兼容引用时默认保留edge并说明冲突，不静默删除用户内容。
 
-阶段H的P0和P1是当前下一执行项；默认全部使用fixture和零Provider检查。任何真实图片、视频或音频生成仍须用户逐次明确授权。
+阶段H的P0和P1已有本地候选实现，`INPUT-001～007`仍等待后续逐项人工验收；默认全部使用fixture和零Provider检查。任何真实图片、视频或音频生成仍须用户逐次明确授权。
 
 ### 阶段 I：多协议中转站
 
 依据：`TAPNOW_RELAY_PROVIDER_INTEGRATION_PLAN.md`。
 
-当前状态：用户已批准P0～P7一次性实施；`RELAY-001～012`均为NOT_STARTED，不得提前标PASS。
+当前状态：P0～P7本地候选、fixture与零Provider自动门禁已完成；`RELAY-001～012`均为USER_RECHECK，未经用户实页确认不得标PASS。
 
 实施范围：
 
@@ -267,6 +267,8 @@
 6. 模型停用与安全删除，保护默认模型、节点引用和历史任务。
 
 实施默认全部使用fixture和零Provider检查。第三方真实Key只允许用户在本机管理员页面填写，不在聊天中提供或回显；任何真实生成仍须逐次明确授权。
+
+候选实现保持现有管理员主流程“平台连接→目录发现→模型中心草稿→人工发布给节点”。中转站目录同步不会自动发布模型或改变默认模型；协议按模型显式保存，停用/删除继续保护默认模型、节点引用和历史任务。只读目录与管理检查、文字/图片/媒体协议映射及管理UI专项均不创建真实生成任务，收费Provider请求数为0。
 
 ## 5. 当前实施顺序
 

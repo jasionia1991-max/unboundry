@@ -26,6 +26,7 @@ import {
 import { probeTrustedMediaDuration } from "./mediaMetadata";
 
 const maxAudioBytes = 50 * 1024 * 1024;
+const generatedAudioProbeBytes = 64 * 1024;
 
 function audioPath(id: string) {
   const directory = join(
@@ -107,12 +108,12 @@ async function readAudio(request: IncomingMessage) {
   return Buffer.concat(chunks);
 }
 
-function validateWav(bytes: Buffer) {
+function validateWav(bytes: Buffer, totalSize = bytes.length) {
   if (
     bytes.length < 44 ||
     bytes.toString("ascii", 0, 4) !== "RIFF" ||
     bytes.toString("ascii", 8, 12) !== "WAVE" ||
-    bytes.readUInt32LE(4) + 8 > bytes.length
+    bytes.readUInt32LE(4) + 8 > totalSize
   ) {
     throw new Error("Invalid WAV audio");
   }
@@ -124,8 +125,9 @@ function validateWav(bytes: Buffer) {
     const type = bytes.toString("ascii", offset, offset + 4);
     const length = bytes.readUInt32LE(offset + 4);
     const end = offset + 8 + length;
-    if (end > bytes.length) throw new Error("Invalid WAV audio");
+    if (end > totalSize) throw new Error("Invalid WAV audio");
     if (type === "fmt " && length >= 16) {
+      if (offset + 24 > bytes.length) throw new Error("Invalid WAV audio");
       const codec = bytes.readUInt16LE(offset + 8);
       const channels = bytes.readUInt16LE(offset + 10);
       const sampleRate = bytes.readUInt32LE(offset + 12);
@@ -137,17 +139,27 @@ function validateWav(bytes: Buffer) {
         sampleRate <= 384_000;
     }
     if (type === "data" && length > 0) samples = true;
+    if (end > bytes.length) break;
     offset = end + (length % 2);
   }
   if (!format || !samples) throw new Error("Invalid WAV audio");
 }
 
-export async function saveGeneratedMp3(input: {
+export async function saveGeneratedAudio(input: {
   body: ReadableStream<Uint8Array>;
+  contentType: "audio/aac" | "audio/mp4" | "audio/mpeg" | "audio/wav";
   label: string;
   ownerId: string;
 }) {
-  const id = `${randomUUID()}.mp3`;
+  const extension = input.contentType === "audio/wav"
+    ? "wav"
+    : input.contentType === "audio/mp4"
+      ? "m4a"
+      : input.contentType === "audio/aac"
+        ? "aac"
+        : "mp3";
+  const id = `${randomUUID()}.${extension}`;
+  const format = audioFormat(id)!;
   const path = audioPath(id);
   const temporary = `${path.file}.${randomUUID()}.generating`;
   const checksum = createHash("sha256");
@@ -167,26 +179,31 @@ export async function saveGeneratedMp3(input: {
         await reader.cancel();
         throw new Error("Generated audio is too large");
       }
-      if (header.length < 16) {
-        header = Buffer.concat([header, bytes]).subarray(0, 16);
+      if (header.length < generatedAudioProbeBytes) {
+        const remainingProbeBytes = generatedAudioProbeBytes - header.length;
+        header = Buffer.concat([header, bytes.subarray(0, remainingProbeBytes)]);
       }
       checksum.update(bytes);
       await handle.write(bytes);
     }
     await handle.close();
     handle = undefined;
-    audioFormat(id)!.validate(header);
+    if (input.contentType === "audio/wav") {
+      validateWav(header, size);
+    } else {
+      format.validate(header);
+    }
     const durationSeconds = await probeTrustedMediaDuration(temporary);
     const checksumSha256 = checksum.digest("hex");
     const routing = await storageMediaRoutingState();
     if (routing.enabled && routing.profile) {
-      const objectKey = createAliyunOssObjectKey("audio", "mp3");
+      const objectKey = createAliyunOssObjectKey("audio", extension);
       await publishCloudObject({
         commit: () =>
           registerMediaForOwner(input.ownerId, {
             byteSize: size,
             checksumSha256,
-            contentType: "audio/mpeg",
+            contentType: format.contentType,
             durationSeconds,
             id,
             kind: "audio",
@@ -199,7 +216,7 @@ export async function saveGeneratedMp3(input: {
           uploadPrivateAliyunOssObject({
             byteSize: size,
             checksumSha256,
-            contentType: "audio/mpeg",
+            contentType: format.contentType,
             credentials: routing.profile!,
             filePath: temporary,
             objectKey,
@@ -211,7 +228,7 @@ export async function saveGeneratedMp3(input: {
       registerMediaForOwner(input.ownerId, {
         byteSize: size,
         checksumSha256,
-        contentType: "audio/mpeg",
+        contentType: format.contentType,
         durationSeconds,
         id,
         kind: "audio",
@@ -242,7 +259,7 @@ export async function saveGeneratedMp3(input: {
     return {
       assetId: id,
       byteSize: size,
-      contentType: "audio/mpeg",
+      contentType: format.contentType,
       durationSeconds,
       storageBackend: routing.enabled && routing.profile ? "oss" as const : "local" as const,
       url: `/api/audio-assets/${id}`,
@@ -253,6 +270,14 @@ export async function saveGeneratedMp3(input: {
     await rm(path.file, { force: true });
     throw error;
   }
+}
+
+export function saveGeneratedMp3(input: {
+  body: ReadableStream<Uint8Array>;
+  label: string;
+  ownerId: string;
+}) {
+  return saveGeneratedAudio({ ...input, contentType: "audio/mpeg" });
 }
 
 export async function audioStorage(

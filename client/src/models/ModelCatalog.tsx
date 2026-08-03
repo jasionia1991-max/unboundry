@@ -9,6 +9,7 @@ import type {
   ModelCapability,
   ModelParameterSchema,
 } from "../../../types/modelParameters";
+import type { ProviderProtocol } from "../../../types/relayProtocols";
 
 export type { ModelCapability } from "../../../types/modelParameters";
 
@@ -38,6 +39,7 @@ export type PublishedModel = {
   isDefault: boolean;
   mediaInputPolicy?: "seedance-2";
   parameterSchema?: ModelParameterSchema;
+  providerProtocol?: ProviderProtocol;
 };
 
 export type ModelCatalogStatus = "error" | "loading" | "ready";

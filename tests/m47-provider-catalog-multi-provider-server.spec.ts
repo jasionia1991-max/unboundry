@@ -11,7 +11,11 @@ import {
   importProviderCatalogDrafts,
   syncProviderCatalog,
 } from "../server/providerCatalog";
-import { saveProviderProfile } from "../server/providerProfiles";
+import {
+  saveProviderProfile,
+  setProviderProfileAfterDocumentWriteHookForTests,
+  verifyProviderProfile,
+} from "../server/providerProfiles";
 
 type RecordedRequest = {
   authorization: string | null;
@@ -308,6 +312,139 @@ test("OpenAI-compatible snapshots and imports stay profile-scoped, disabled and 
       store.close();
     }
     expect(providerAttemptCounts(directory)).toEqual(beforeAttempts);
+  });
+});
+
+test("OpenAI-compatible private destinations are rejected before a Bearer key is sent", async () => {
+  await withTemporaryData("compatible-private-destination", async (directory) => {
+    const profile = await saveProviderProfile({
+      apiKey: `private-${randomUUID()}`,
+      baseUrl: "https://127.0.0.1/v1",
+      driver: "openai-compatible",
+      label: "Blocked compatible catalog",
+    });
+    const beforeAttempts = providerAttemptCounts(directory);
+    let fetchCalls = 0;
+    const forbiddenFetcher = (async () => {
+      fetchCalls += 1;
+      throw new Error("private destination fetch must not run");
+    }) as typeof fetch;
+
+    await expect(verifyProviderProfile(profile.id, forbiddenFetcher))
+      .rejects.toThrow("FORMAT");
+    await expect(syncProviderCatalog(profile.id, forbiddenFetcher))
+      .rejects.toThrow("FORMAT");
+    expect(fetchCalls).toBe(0);
+    expect(providerAttemptCounts(directory)).toEqual(beforeAttempts);
+  });
+});
+
+test("profile-key catalogs discard normalized fields that reflect the saved key", async () => {
+  await withTemporaryData("catalog-secret-reflection", async (directory) => {
+    for (const driver of ["openrouter", "openai-compatible"] as const) {
+      const apiKey = `${driver}-${randomUUID()}`;
+      const profile = await saveProviderProfile({
+        apiKey,
+        baseUrl: driver === "openrouter"
+          ? "https://openrouter.ai/api/v1"
+          : "https://reflection.example.test/v1",
+        driver,
+        label: `${driver} reflection guard`,
+      });
+      const synced = await syncProviderCatalog(
+        profile.id,
+        jsonFetcher([], {
+          data: [
+            {
+              architecture: { output_modalities: ["text"] },
+              id: `safe/${driver}`,
+              name: "Safe model",
+            },
+            {
+              architecture: { output_modalities: ["text"] },
+              id: apiKey,
+              name: "Reflected id",
+            },
+            {
+              architecture: { output_modalities: ["text"] },
+              id: `reflected-name/${driver}`,
+              name: encodeURIComponent(apiKey),
+            },
+            {
+              architecture: { output_modalities: ["text"] },
+              id: `reflected-metadata/${driver}`,
+              supported_parameters: [apiKey],
+            },
+          ],
+        }),
+      );
+      expect(synced.catalog.models).toHaveLength(1);
+      expect(synced.catalog.models[0].providerModelId).toBe(`safe/${driver}`);
+      expect(JSON.stringify(synced.catalog)).not.toContain(apiKey);
+      const store = databaseAt(directory, true);
+      try {
+        const row = store.prepare(`
+          SELECT catalog_models FROM provider_profiles WHERE id = ?
+        `).get(profile.id) as { catalog_models: string };
+        expect(row.catalog_models).not.toContain(apiKey);
+      } finally {
+        store.close();
+      }
+    }
+  });
+});
+
+test("catalog import rejects the encrypted-document to SQLite crash window", async () => {
+  await withTemporaryData("catalog-import-stale-revision", async (directory) => {
+    const previousBarrier = process.env.TAPNOW_TEST_PROVIDER_PROFILE_BARRIER;
+    process.env.TAPNOW_TEST_PROVIDER_PROFILE_BARRIER = "1";
+    const actorUserId = `catalog-admin-${randomUUID()}`;
+    const profile = await saveProviderProfile({
+      apiKey: `before-${randomUUID()}`,
+      baseUrl: "https://stale.example.test/v1",
+      driver: "openai-compatible",
+      label: "Before crash",
+    });
+    addAdmin(directory, actorUserId);
+    await syncProviderCatalog(
+      profile.id,
+      jsonFetcher([], {
+        data: [{ id: "vendor/stale", output_modalities: ["text"] }],
+      }),
+    );
+    try {
+      setProviderProfileAfterDocumentWriteHookForTests(async () => {
+        throw new Error("simulated crash after encrypted document rename");
+      });
+      await expect(saveProviderProfile({
+        apiKey: `after-${randomUUID()}`,
+        baseUrl: "https://stale.example.test/v1",
+        driver: "openai-compatible",
+        label: "After crash",
+      }, profile.id)).rejects.toThrow("simulated crash");
+    } finally {
+      setProviderProfileAfterDocumentWriteHookForTests(undefined);
+      if (previousBarrier === undefined) {
+        delete process.env.TAPNOW_TEST_PROVIDER_PROFILE_BARRIER;
+      } else {
+        process.env.TAPNOW_TEST_PROVIDER_PROFILE_BARRIER = previousBarrier;
+      }
+    }
+
+    await expect(importProviderCatalogDrafts(
+      profile.id,
+      [{ capability: "text", discoveryId: "openai-compatible:vendor/stale" }],
+      actorUserId,
+    )).rejects.toThrow("Provider profile not found");
+    const store = databaseAt(directory, true);
+    try {
+      expect(store.prepare(`
+        SELECT COUNT(*) AS count FROM model_profiles
+        WHERE provider_profile_id = ?
+      `).get(profile.id)).toEqual({ count: 0 });
+    } finally {
+      store.close();
+    }
   });
 });
 

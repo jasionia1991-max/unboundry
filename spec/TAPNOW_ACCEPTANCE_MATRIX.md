@@ -5,7 +5,7 @@
 状态：`AUTHORITATIVE`  
 状态夹具：`tapnow-state-fixtures.json`
 
-当前176条记录中：129条`PASS`、12条`NOT_STARTED`、4条`BLOCK`、8条`PARTIAL`、3条`PAUSED`、6条`N/A/NOT_APPLICABLE`，其余14条为已裁决的`RESOLVED*`状态。当前没有等待人工确认的`USER_RECHECK`；第二批10次人工验收已于2026-08-02统一同步，下一批从0/10重新计数。节点入参两轮TapNow证据已完成，但`INPUT-001～007`实现和人工验收尚未完成，不得提前标PASS。2026-08-03按用户明确要求提前登记`RELAY-001～012`，不计入常规10次人工验收同步。
+当前176条记录中：129条`PASS`、12条`USER_RECHECK`、4条`BLOCK`、8条`PARTIAL`、3条`PAUSED`、6条`N/A/NOT_APPLICABLE`，其余14条为已裁决的`RESOLVED*`状态；当前没有`NOT_STARTED`。第二批10次人工验收已于2026-08-02统一同步，下一批仍从0/10重新计数。节点入参两轮TapNow证据已完成，但`INPUT-001～007`实现和人工验收尚未完成，统一保持`PARTIAL`。2026-08-03按用户明确要求提前同步`RELAY-001～012`本地候选结果，统一进入`USER_RECHECK`且不计入常规10次人工验收同步；未经用户实页确认不得标PASS。
 
 ## 1. 判定规则
 
@@ -215,18 +215,18 @@
 
 | ID | 优先级 | 项目 | 验收动作与断言 | 实现状态 |
 |---|---|---|---|---|
-| RELAY-001 | P0 | 多协议平台连接与密钥安全 | 第三方身份、基址、协议和Key状态清晰；密钥不进入浏览器、日志、业务数据库、产物或错误响应 | NOT_STARTED |
-| RELAY-002 | P0 | Key与目录只读检查 | 检查只调用目录GET；不得调用聊天、图片、视频或音频生成接口 | NOT_STARTED |
-| RELAY-003 | P0 | 目录兼容与回退 | 增强目录和`/v1/models`均可解析；分页、异常、去重和重复同步安全 | NOT_STARTED |
-| RELAY-004 | P1 | 模型发现UI | 搜索、节点类型/协议筛选、紧凑复选框、长文本截断和固定批量操作栏无覆盖 | NOT_STARTED |
-| RELAY-005 | P0 | 导入模型中心草稿 | 已选模型生成候选草稿；不自动发布、不改变默认模型、不重复创建 | NOT_STARTED |
-| RELAY-006 | P0 | OpenAI文字协议 | Chat Completions与Responses使用统一任务快照、结果和错误分类 | NOT_STARTED |
-| RELAY-007 | P0 | Claude文字协议 | Messages协议映射准确，不根据模型名称猜协议 | NOT_STARTED |
-| RELAY-008 | P0 | Gemini文字协议 | GenerateContent协议映射准确，Key和原始响应不泄露 | NOT_STARTED |
-| RELAY-009 | P0 | 图片协议 | GPT Image和通用图片任务复用统一入参、安全素材与私有结果发布 | NOT_STARTED |
-| RELAY-010 | P0 | 视频异步任务 | 通用媒体提交、轮询、重启恢复、结果校验和发布完整 | NOT_STARTED |
-| RELAY-011 | P0 | 音频异步任务 | 通用媒体提交、轮询、格式/时长校验和发布完整；不恢复Mureka收费重试 | NOT_STARTED |
-| RELAY-012 | P0 | 停用、安全删除与全局回归 | 默认、节点、任务引用受保护；现有OpenRouter、火山方舟、Mureka和已验收画布不降级 | NOT_STARTED |
+| RELAY-001 | P0 | 多协议平台连接与密钥安全 | 第三方身份、基址、协议和Key状态清晰；密钥不进入浏览器、日志、业务数据库、产物或错误响应；真实HTTPS连接绑定已校验公网IP，阻止DNS重绑定 | USER_RECHECK |
+| RELAY-002 | P0 | Key与目录只读检查 | 检查只调用目录GET；不得调用聊天、图片、视频或音频生成接口 | USER_RECHECK |
+| RELAY-003 | P0 | 目录兼容与回退 | 增强目录和`/v1/models`均可解析；分页、异常、去重和重复同步安全 | USER_RECHECK |
+| RELAY-004 | P1 | 模型发现UI | 搜索、节点类型/协议筛选、紧凑复选框、长文本截断和固定批量操作栏无覆盖 | USER_RECHECK |
+| RELAY-005 | P0 | 导入模型中心草稿 | 已选模型生成候选草稿；不自动发布、不改变默认模型、不重复创建 | USER_RECHECK |
+| RELAY-006 | P0 | OpenAI文字协议 | Chat Completions与Responses使用统一任务快照、结果和错误分类 | USER_RECHECK |
+| RELAY-007 | P0 | Claude文字协议 | Messages协议映射准确，不根据模型名称猜协议 | USER_RECHECK |
+| RELAY-008 | P0 | Gemini文字协议 | GenerateContent协议映射准确，Key和原始响应不泄露 | USER_RECHECK |
+| RELAY-009 | P0 | 图片协议 | GPT Image和通用图片任务复用统一入参、安全素材与私有结果发布 | USER_RECHECK |
+| RELAY-010 | P0 | 视频异步任务 | 通用媒体提交、轮询、重启恢复、结果校验和发布完整 | USER_RECHECK |
+| RELAY-011 | P0 | 音频异步任务 | 通用媒体提交、轮询、格式/时长校验和发布完整；不恢复Mureka收费重试 | USER_RECHECK |
+| RELAY-012 | P0 | 停用、安全删除与全局回归 | 默认、节点、任务引用受保护；现有OpenRouter、火山方舟、Mureka和已验收画布不降级 | USER_RECHECK |
 
 ## 11. 图片高级编辑
 
@@ -283,7 +283,7 @@
 | M4 | MEDIA-001～MEDIA-005、IMGEDIT-001～IMGEDIT-009 |
 | M5 | GEN-001～GEN-009、DATA-003～DATA-004 |
 | M5.1 | INPUT-001～INPUT-007；先完成P0+P1，再逐项进入用户真实浏览器验收 |
-| M5.2 | RELAY-001～RELAY-012；先完成零费用fixture和全局回归，再进入用户真实浏览器验收 |
+| M5.2 | RELAY-001～RELAY-012；零费用fixture和候选回归已完成，当前等待用户真实浏览器验收 |
 | M6 | PLAY-001～PLAY-004，且 OPEN-002/003/005/006/014 已裁决 |
 | M7 | SURF-002～SURF-017 |
 | M8 | AGENT-001～AGENT-005 |

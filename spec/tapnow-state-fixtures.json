@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "fixtureVersion": "2026-08-02",
+  "fixtureVersion": "2026-08-03",
   "source": {
     "report": "../../TAPNOW_CANVAS_FULL_SURVEY_2026-07-27.md",
     "tapnowVersion": "v2.12.2",
@@ -2441,6 +2441,68 @@
         "finalForbidden": 5
       },
       "statusBoundary": "NOT_ACCEPTANCE_PASS"
+    },
+    {
+      "id": "admin.provider.multi-protocol-relay-candidate",
+      "kind": "admin",
+      "status": "LOCAL_CANDIDATE",
+      "sourceId": "LOCAL-RELAY-2026-08-03",
+      "evidenceLevel": "ZERO_PROVIDER_AUTOMATION",
+      "routes": ["/admin/providers", "/admin/models"],
+      "connection": {
+        "driver": "multi-protocol-relay",
+        "authMode": "bearer",
+        "keyStoredServerSide": true,
+        "keyExposedToBrowser": false,
+        "modifyAction": "REAL_EDIT_FORM"
+      },
+      "catalog": {
+        "enhancedEndpoint": "/v1/skills/models",
+        "fallbackEndpoint": "/v1/models",
+        "readOnlyResources": ["balance", "usage", "pricing", "task-status", "model-detail"],
+        "importBehavior": "UNPUBLISHED_MODEL_DRAFT_ONLY",
+        "duplicateKey": "providerConnectionId + providerModelId + capability + providerProtocol",
+        "capabilityBehavior": "The same provider model may be configured independently for different node capabilities."
+      },
+      "protocols": [
+        "openai-chat",
+        "openai-responses",
+        "claude-messages",
+        "gemini-generate-content",
+        "gpt-image",
+        "media-generate"
+      ],
+      "ui": {
+        "searchAndFilters": true,
+        "compactCheckboxPx": 16,
+        "longTextClamped": true,
+        "stickyBatchAction": true,
+        "maximumSelectionPerImport": 100
+      },
+      "safety": {
+        "dnsRebindingBlockedByPinnedPublicIp": true,
+        "realGenerationTasksCreated": 0,
+        "paidProviderRequests": 0,
+        "temporaryResultUrlsPersisted": false,
+        "providerCancelClaimed": false
+      },
+      "automatedEvidence": [
+        "m53-multi-protocol-relay-server",
+        "m53-relay-provider-adapters",
+        "m54-provider-result-media",
+        "m55-relay-model-protocol",
+        "m56-multi-protocol-relay-ui",
+        "m57-relay-generation-runtime"
+      ],
+      "acceptanceIds": [
+        "RELAY-001", "RELAY-002", "RELAY-003", "RELAY-004",
+        "RELAY-005", "RELAY-006", "RELAY-007", "RELAY-008",
+        "RELAY-009", "RELAY-010", "RELAY-011", "RELAY-012"
+      ],
+      "acceptanceStatus": "USER_RECHECK",
+      "inputAcceptanceStatus": "INPUT-001_THROUGH_INPUT-007_PARTIAL",
+      "userAcceptance": "PENDING",
+      "safetyBoundary": "Local candidate and zero-Provider automation only; do not mark PASS before user acceptance or use a real key in automated checks."
     }
   ],
   "openEvidence": [

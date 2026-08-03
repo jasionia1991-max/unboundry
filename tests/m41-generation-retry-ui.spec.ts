@@ -553,3 +553,134 @@ for (const kind of ["image", "video"] as const) {
     expect(routes.providerRequests()).toBe(0);
   });
 }
+
+test("relay audio exposes local-only cancellation while Mureka remains unchanged", async ({
+  page,
+  request,
+}) => {
+  let cancelled = false;
+  let cancelRequests = 0;
+  const externalRequests: string[] = [];
+  page.on("request", (outbound) => {
+    const url = new URL(outbound.url());
+    if (url.origin !== "http://127.0.0.1:4173") {
+      externalRequests.push(outbound.url());
+    }
+  });
+  await page.route("**/api/models", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        generationEnabled: true,
+        models: [{
+          capability: "audio",
+          displayName: "Relay Audio fixture",
+          generationAvailable: true,
+          generationUnavailableReason: "",
+          generationUnavailableReasonCode: null,
+          id: modelInputs.audio.id,
+          isDefault: true,
+          parameterSchema: schemas.audio,
+          providerProtocol: "media-generate",
+        }],
+      },
+      status: 200,
+    });
+  });
+  await page.route("**/api/generation-tasks**", async (route) => {
+    const inbound = route.request();
+    const url = new URL(inbound.url());
+    if (url.pathname.endsWith("/status")) {
+      await route.fulfill({ json: { submissionEnabled: true }, status: 200 });
+      return;
+    }
+    if (url.pathname.endsWith("/preflight")) {
+      await route.fulfill({
+        json: { canEnqueue: true, canSubmit: true, problems: [] },
+        status: 200,
+      });
+      return;
+    }
+    if (url.pathname.endsWith("/by-idempotency")) {
+      await route.fulfill({ json: { error: "not found" }, status: 404 });
+      return;
+    }
+    const task = {
+      attempt: 1,
+      canvasId: "default",
+      costCurrency: "USD",
+      createdAt: "2026-08-03T12:00:00.000Z",
+      ...(cancelled
+        ? {
+            errorMessage: "已停止本地等待和结果发布；中转站任务可能仍在运行",
+          }
+        : {}),
+      id: "relay-audio-cancel-task",
+      kind: "audio",
+      model: modelInputs.audio.id,
+      nodeId: nodeId("audio"),
+      prompt: "audio 原始提示词",
+      state: cancelled ? "cancelled" : "running",
+      updatedAt: "2026-08-03T12:00:01.000Z",
+    };
+    if (
+      url.pathname === "/api/generation-tasks" &&
+      inbound.method() === "POST"
+    ) {
+      await route.fulfill({ json: { ...task, state: "queued" }, status: 202 });
+      return;
+    }
+    if (
+      url.pathname.endsWith("/relay-audio-cancel-task") &&
+      inbound.method() === "DELETE"
+    ) {
+      cancelRequests += 1;
+      cancelled = true;
+      await route.fulfill({
+        json: {
+          ...task,
+          errorMessage: "已停止本地等待和结果发布；中转站任务可能仍在运行",
+          state: "cancelled",
+        },
+        status: 200,
+      });
+      return;
+    }
+    if (
+      url.pathname.endsWith("/relay-audio-cancel-task") &&
+      inbound.method() === "GET"
+    ) {
+      await route.fulfill({ json: task, status: 200 });
+      return;
+    }
+    if (url.pathname === "/api/generation-tasks") {
+      await route.fulfill({ json: { tasks: [] }, status: 200 });
+      return;
+    }
+    await route.fulfill({ json: { error: "unexpected" }, status: 404 });
+  });
+
+  await request.delete("/api/canvas/default");
+  expect((await request.put("/api/canvas/default", {
+    data: {
+      edges: [],
+      nodes: canvasNodes("audio"),
+      revision: 0,
+      viewport: { x: 0, y: 0, zoom: 0.75 },
+    },
+  })).ok()).toBeTruthy();
+  await page.goto("/");
+  await expect(page.getByTestId("canvas-world"))
+    .toHaveAttribute("data-persistence-ready", "true");
+  await selectNode(page, "audio");
+  const creator = page.getByTestId("audio-creator");
+  await creator.getByRole("button", { name: "Generate" }).click();
+  const cancel = creator.getByRole("button", { name: "取消生成" });
+  await expect(cancel).toBeVisible();
+  await expect(cancel).toBeEnabled();
+  await cancel.click();
+  await expect(page.getByTestId(`audio-node-${nodeId("audio")}`))
+    .toContainText("中转站任务可能仍在运行");
+  expect(cancelRequests).toBe(1);
+  expect(externalRequests).toEqual([]);
+});

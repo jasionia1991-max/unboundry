@@ -1,6 +1,6 @@
 # TapNow 多协议中转站接入实施计划
 
-状态：`AUTHORITATIVE PLAN / APPROVED / NOT IMPLEMENTED / NOT ACCEPTED`  
+状态：`AUTHORITATIVE / LOCAL CANDIDATE IMPLEMENTED / USER_RECHECK / NOT ACCEPTED`
 更新时间：2026-08-03
 
 ## 1. 目标与边界
@@ -79,7 +79,7 @@
 
 1. 增加多协议中转站平台类型和管理员表单。
 2. 连接检查只调用只读目录接口；禁止任何生成POST。
-3. 统一地址规范化、HTTPS/本机测试地址边界、超时、响应大小和重定向限制。
+3. 统一地址规范化、HTTPS/本机测试地址边界、超时、响应大小和重定向限制；真实请求必须绑定到预先校验通过的公网IP，禁止二次DNS解析绕过内网边界。
 4. 安全错误只区分Key无效、权限不足、目录不可读、地址错误、限流、超时和上游异常，不回显密钥或原始敏感正文。
 
 ### P1：目录、筛选和导入草稿
@@ -88,7 +88,7 @@
 2. 统一解析模型ID、名称、输入/输出模态、能力、上下文、价格提示和可用协议。
 3. 支持搜索、节点类型筛选、协议筛选、分页/虚拟列表和紧凑复选框。
 4. 使用固定操作栏展示已选择数量和“添加到模型中心”，不要求滚到列表底部。
-5. 去重规则以`providerConnectionId + providerModelId + protocol`为准；重复同步不重复创建模型。
+5. 去重规则以`providerConnectionId + providerModelId + capability + providerProtocol`为准；重复同步不重复创建模型，同一Provider模型可面向不同节点能力独立配置。
 
 ### P2：文字模型多协议闭环
 
@@ -135,20 +135,30 @@
 
 | ID | 验收项 | 自动检查要求 | 人工验收前状态 |
 |---|---|---|---|
-| RELAY-001 | 多协议平台连接与密钥安全 | 密钥不进浏览器、日志、数据库业务字段、产物和错误响应 | NOT_STARTED |
-| RELAY-002 | Key与目录只读检查 | 仅GET目录；收费Provider请求数为0 | NOT_STARTED |
-| RELAY-003 | 增强目录与基础目录回退 | fixture覆盖两种响应、分页、去重和异常 | NOT_STARTED |
-| RELAY-004 | 搜索、筛选、紧凑列表和固定操作栏 | 12/14px、16px复选框、无覆盖和长列表可操作 | NOT_STARTED |
-| RELAY-005 | 导入模型中心草稿 | 重复同步不重复，未发布模型不进入节点 | NOT_STARTED |
-| RELAY-006 | OpenAI Chat/Responses映射 | fixture覆盖请求快照、结果、错误和取消边界 | NOT_STARTED |
-| RELAY-007 | Claude Messages映射 | fixture覆盖请求快照、结果和错误 | NOT_STARTED |
-| RELAY-008 | Gemini GenerateContent映射 | fixture覆盖请求快照、结果和错误 | NOT_STARTED |
-| RELAY-009 | GPT Image与通用图片映射 | 零Provider fixture覆盖参考素材、结果和失败 | NOT_STARTED |
-| RELAY-010 | 通用视频异步任务 | 零Provider fixture覆盖提交、轮询、恢复和发布 | NOT_STARTED |
-| RELAY-011 | 通用音频异步任务 | 零Provider fixture覆盖提交、轮询、格式校验和发布 | NOT_STARTED |
-| RELAY-012 | 模型停用/安全删除与回归 | 默认/引用/任务保护，现有OpenRouter、方舟、Mureka不降级 | NOT_STARTED |
+| RELAY-001 | 多协议平台连接与密钥安全 | 密钥不进浏览器、日志、数据库业务字段、产物和错误响应 | USER_RECHECK |
+| RELAY-002 | Key与目录只读检查 | 仅GET目录；收费Provider请求数为0 | USER_RECHECK |
+| RELAY-003 | 增强目录与基础目录回退 | fixture覆盖两种响应、分页、去重和异常 | USER_RECHECK |
+| RELAY-004 | 搜索、筛选、紧凑列表和固定操作栏 | 12/14px、16px复选框、无覆盖和长列表可操作 | USER_RECHECK |
+| RELAY-005 | 导入模型中心草稿 | 重复同步不重复，未发布模型不进入节点 | USER_RECHECK |
+| RELAY-006 | OpenAI Chat/Responses映射 | fixture覆盖请求快照、结果、错误和取消边界 | USER_RECHECK |
+| RELAY-007 | Claude Messages映射 | fixture覆盖请求快照、结果和错误 | USER_RECHECK |
+| RELAY-008 | Gemini GenerateContent映射 | fixture覆盖请求快照、结果和错误 | USER_RECHECK |
+| RELAY-009 | GPT Image与通用图片映射 | 零Provider fixture覆盖参考素材、结果和失败 | USER_RECHECK |
+| RELAY-010 | 通用视频异步任务 | 零Provider fixture覆盖提交、轮询、恢复和发布 | USER_RECHECK |
+| RELAY-011 | 通用音频异步任务 | 零Provider fixture覆盖提交、轮询、格式校验和发布 | USER_RECHECK |
+| RELAY-012 | 模型停用/安全删除与回归 | 默认/引用/任务保护，现有OpenRouter、方舟、Mureka不降级 | USER_RECHECK |
 
 实现完成只能进入`USER_RECHECK`。没有用户自己的中转站Key和人工实页确认，不得把`RELAY-001～012`标为PASS。自动检查不得创建真实聊天、图片、视频或音频任务。
+
+### 5.1 2026-08-03候选实现快照
+
+- 平台连接、增强目录与`/v1/models`回退、只读余额/用量/价格/任务状态查询已进入本地候选。
+- 模型发现页具备搜索、节点类型与协议筛选、紧凑复选框、长文本收敛和固定批量操作栏；目录导入只产生未发布草稿。
+- 模型保存明确记录协议；OpenAI Chat/Responses、Claude Messages、Gemini GenerateContent、GPT Image和通用媒体映射均使用服务端适配器，不按模型名猜协议。
+- 通用媒体结果须经过地址、类型、大小和私网边界校验后进入项目私有媒体；短期结果地址不进入任务快照。
+- 目录、Key检查、生成提交/轮询和结果媒体下载共用安全HTTPS传输：校验全部DNS结果后把实际socket固定到同一公网IPv4/IPv6，TLS仍校验原域名，不跟随重定向。
+- fixture与专项检查使用本地模拟响应，真实聊天、图片、视频和音频任务创建数为0，收费Provider请求数为0。
+- 这一快照只证明本地候选和自动门禁，不证明用户的真实中转站Key、具体模型权限或真实生成可用；12项统一等待用户实页复验。
 
 ## 6. 交付物
 

@@ -18,10 +18,19 @@ import { DatabaseSync } from "node:sqlite";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
 import { generationProviderAttemptCounts } from "./generationTaskStore";
+import {
+  RelayRemoteError,
+  fetchRelayModelCatalog,
+} from "./multiProtocolRelay";
+import {
+  OutboundDestinationError,
+  fetchPublicHttps,
+} from "./outboundNetwork";
 import { providerCatalogCapabilities } from "./providerCatalogCapabilities";
 
 export type ProviderDriver =
   | "mureka"
+  | "multi-protocol-relay"
   | "openai-compatible"
   | "openrouter"
   | "volcengine-ark";
@@ -83,6 +92,7 @@ const associatedData = Buffer.from("tapnow:provider-profiles:v1", "utf8");
 const documentLockAcquireTimeoutMs = 5_000;
 const drivers: readonly ProviderDriver[] = [
   "mureka",
+  "multi-protocol-relay",
   "openrouter",
   "volcengine-ark",
   "openai-compatible",
@@ -484,7 +494,8 @@ function metadataStatus(store: DatabaseSync, profile: ProviderProfile) {
         profile.driver === "volcengine-ark"
           ? Boolean(profile.arkControlPlane)
           : profile.driver === "openrouter" ||
-              profile.driver === "openai-compatible"
+              profile.driver === "openai-compatible" ||
+              profile.driver === "multi-protocol-relay"
             ? Boolean(profile.apiKey)
             : false,
       keyStatus: (row?.catalog_key_status ?? "unchecked") as ProviderCatalogKeyStatus,
@@ -792,6 +803,33 @@ export async function getProviderProfile(profileId: string) {
   return document.profiles.find((profile) => profile.id === profileId);
 }
 
+/**
+ * Holds the cross-process Provider document lock while a server-only caller
+ * validates the matching SQLite metadata and applies one local mutation.
+ */
+export async function acquireProviderConfigurationLease(profileId: string) {
+  const lock = await acquireDocumentLock();
+  try {
+    const document = await readDocument();
+    const profile = document.profiles.find(
+      (candidate) => candidate.id === profileId,
+    );
+    if (!profile) throw new Error("Provider profile not found");
+    let released = false;
+    return {
+      profile,
+      release() {
+        if (released) return;
+        released = true;
+        lock.finish(false);
+      },
+    };
+  } catch (error) {
+    lock.finish(false);
+    throw error;
+  }
+}
+
 function generationProfileState(
   profileId: string,
   profile: ProviderProfile | undefined,
@@ -944,7 +982,8 @@ export async function saveProviderProfile(
     profileKeyCatalogChanged = Boolean(
       current &&
         (cleaned.driver === "openrouter" ||
-          cleaned.driver === "openai-compatible") &&
+          cleaned.driver === "openai-compatible" ||
+          cleaned.driver === "multi-protocol-relay") &&
         (current.driver !== cleaned.driver ||
           current.apiKey !== cleaned.apiKey ||
           current.baseUrl !== cleaned.baseUrl),
@@ -1185,7 +1224,8 @@ function verificationSuccessMessage(
 ) {
   if (
     profile.driver === "openrouter" ||
-    profile.driver === "openai-compatible"
+    profile.driver === "openai-compatible" ||
+    profile.driver === "multi-protocol-relay"
   ) {
     return `API Key有效。可读取模型：${modelCount} 个。`;
   }
@@ -1197,7 +1237,7 @@ function verificationSuccessMessage(
 
 export async function verifyProviderProfile(
   profileId: string,
-  fetcher: typeof fetch = fetch,
+  fetcher?: typeof fetch,
 ): Promise<ProviderVerification> {
   const document = await readDocument();
   const profile = document.profiles.find(
@@ -1211,7 +1251,21 @@ export async function verifyProviderProfile(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
   try {
-    const response = await fetcher(modelListUrl(profile), {
+    if (profile.driver === "multi-protocol-relay") {
+      const catalog = await fetchRelayModelCatalog(profile, fetcher, {
+        signal: controller.signal,
+        timeoutMs: 10_000,
+      });
+      await recordCurrentKeyCheck(profile, "valid");
+      return {
+        latencyMs: Math.max(0, Date.now() - startedAt),
+        message: verificationSuccessMessage(profile, catalog.models.length),
+        modelCount: catalog.models.length,
+        status: "verified",
+      };
+    }
+    const requestUrl = modelListUrl(profile);
+    const requestInit = {
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${profile.apiKey}`,
@@ -1219,7 +1273,10 @@ export async function verifyProviderProfile(
       method: "GET",
       redirect: "error",
       signal: controller.signal,
-    });
+    } satisfies RequestInit;
+    const response = profile.driver === "openai-compatible"
+      ? await fetchPublicHttps(requestUrl, requestInit, { fetcher })
+      : await (fetcher ?? fetch)(requestUrl, requestInit);
     if (response.status === 401) {
       throw new ProviderVerificationError("AUTH");
     }
@@ -1254,6 +1311,19 @@ export async function verifyProviderProfile(
       status: "verified",
     };
   } catch (error) {
+    if (error instanceof OutboundDestinationError) {
+      const mapped = new ProviderVerificationError(error.code);
+      await recordCurrentKeyCheck(profile, "unknown");
+      throw mapped;
+    }
+    if (error instanceof RelayRemoteError) {
+      const mapped = new ProviderVerificationError(error.code);
+      await recordCurrentKeyCheck(
+        profile,
+        mapped.code === "AUTH" ? "invalid" : "unknown",
+      );
+      throw mapped;
+    }
     if (error instanceof ProviderVerificationError) {
       if (error.code === "CONFIG_CHANGED") throw error;
       await recordCurrentKeyCheck(

@@ -114,6 +114,7 @@ type GenerationTaskEventRow = {
 
 const identifierPattern = /^[a-z0-9._-]+$/i;
 const idempotencyPattern = /^[a-z0-9._:-]+$/i;
+const providerTaskIdPattern = /^[a-z0-9._:-]+$/i;
 
 const allowedTransitions: Record<
   GenerationTaskState,
@@ -816,7 +817,15 @@ export function createGenerationTaskStore(dataDirectory: string) {
           preserveProviderTaskId &&
           (
             nextState !== "retrying" ||
-            (current.kind !== "video" && current.kind !== "audio") ||
+            (
+              current.kind !== "video" &&
+              current.kind !== "audio" &&
+              !(
+                current.kind === "image" &&
+                (JSON.parse(current.model_configuration) as Record<string, unknown>)
+                  .providerProtocol === "media-generate"
+              )
+            ) ||
             !current.provider_task_id
           )
         ) {
@@ -966,7 +975,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
     },
 
     setProviderTaskId(id: string, providerTaskId: string) {
-      if (!identifierPattern.test(providerTaskId) || providerTaskId.length > 160) {
+      if (!providerTaskIdPattern.test(providerTaskId) || providerTaskId.length > 160) {
         throw new Error("Invalid Provider task ID");
       }
       const result = database.prepare(`

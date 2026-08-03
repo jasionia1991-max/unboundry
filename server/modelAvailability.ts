@@ -1,4 +1,8 @@
 import type { ModelCapability } from "../types/modelParameters";
+import {
+  providerProtocolSupportsCapability,
+  type ProviderProtocol,
+} from "../types/relayProtocols";
 
 export type ModelGenerationUnavailableReasonCode =
   | "ADAPTER_UNSUPPORTED"
@@ -30,6 +34,7 @@ export type ModelRuntimeAvailabilityInput = {
   modelConfigurationUpdatedAt?: string;
   providerDriver: string;
   providerModelId: string;
+  providerProtocol?: ProviderProtocol;
   providerConfigurationUpdatedAt?: string;
   providerConfigurationVersionAligned?: boolean;
   providerStatus: "disabled" | "enabled";
@@ -60,9 +65,20 @@ function unavailable(
 export function modelGenerationAdapterSupported(
   input: Pick<
     ModelRuntimeAvailabilityInput,
-    "capability" | "costCurrency" | "providerDriver" | "providerModelId"
+    | "capability"
+    | "costCurrency"
+    | "providerDriver"
+    | "providerModelId"
+    | "providerProtocol"
   >,
 ) {
+  const protocol = input.providerProtocol ?? "native";
+  if (
+    input.providerDriver === "multi-protocol-relay" &&
+    protocol !== "native"
+  ) {
+    return providerProtocolSupportsCapability(protocol, input.capability);
+  }
   if (input.capability === "text") {
     return input.providerDriver === "volcengine-ark" &&
       input.costCurrency === "CNY" &&

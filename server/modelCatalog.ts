@@ -15,11 +15,17 @@ import {
 } from "./providerProfiles";
 import {
   cleanParameterSchema,
+  isCustomParameterField,
   knownModelParameterSchema,
   providerParameterSchema,
   validateParameterSchemaConstraints,
   type ModelParameterSchema,
 } from "../types/modelParameters";
+import {
+  isProviderProtocol,
+  providerProtocolSupportsCapability,
+  type ProviderProtocol,
+} from "../types/relayProtocols";
 
 type Capability = "audio" | "image" | "text" | "video";
 type ModelStatus = "disabled" | "draft" | "published";
@@ -44,6 +50,7 @@ type ModelRow = {
   provider_configuration_updated_at: string | null;
   provider_profile_id: string;
   provider_model_id: string;
+  provider_protocol: ProviderProtocol;
   provider_status: "disabled" | "enabled";
   published_at: string | null;
   sort_order: number;
@@ -104,12 +111,116 @@ let databaseDirectory = "";
 function assertProviderModelCompatibility(
   providerDriver: string,
   providerModelId: string,
+  providerProtocol: ProviderProtocol,
+  capability: Capability,
 ) {
   if (
     /^doubao-(?:seed|seedance)-/i.test(providerModelId) &&
     providerDriver !== "volcengine-ark"
   ) {
     throw new Error("Doubao models must use a Volcengine Ark provider");
+  }
+  const relayDriver = providerDriver === "multi-protocol-relay";
+  if (relayDriver && providerProtocol === "native") {
+    throw new Error("Relay models require an explicit protocol");
+  }
+  if (!relayDriver && providerProtocol !== "native") {
+    throw new Error("This provider does not use a relay protocol");
+  }
+  if (!providerProtocolSupportsCapability(providerProtocol, capability)) {
+    throw new Error("Provider protocol does not support this node type");
+  }
+}
+
+const relayTextProtocolInputs: Partial<
+  Record<ProviderProtocol, ReadonlySet<Capability>>
+> = {
+  "claude-messages": new Set(["text", "image"]),
+  "gemini-generate-content": new Set(["text", "image", "video", "audio"]),
+  "openai-chat": new Set(["text", "image"]),
+  "openai-responses": new Set(["text", "image", "audio"]),
+};
+
+const relayMediaRoles: Record<"audio" | "image" | "video", ReadonlySet<string>> = {
+  audio: new Set(["context-audio", "reference-audio", "subject"]),
+  image: new Set([
+    "context-image",
+    "first-frame",
+    "last-frame",
+    "reference-image",
+    "subject",
+  ]),
+  video: new Set(["context-video", "reference-video", "subject"]),
+};
+
+function configuredRoles(
+  schema: ModelParameterSchema,
+  kind: "audio" | "image" | "video",
+) {
+  const roles = [
+    ...(schema.inputPolicy?.roles?.[kind] ?? []),
+    ...(schema.inputPolicy?.rolePolicies ?? []).flatMap((policy) => [
+      ...(policy.roles[kind] ?? []),
+      ...(policy.assignment?.[kind] ?? []),
+      ...(policy.limits ?? [])
+        .filter((limit) => limit.kind === kind)
+        .map((limit) => limit.role),
+    ]),
+  ];
+  return new Set(roles);
+}
+
+function assertRelaySchemaCompatibility(input: {
+  capability: Capability;
+  driver: string;
+  protocol: ProviderProtocol;
+  schema: ModelParameterSchema;
+  status: ModelStatus;
+}) {
+  if (input.driver !== "multi-protocol-relay") return;
+  if (
+    input.status === "published" &&
+    input.schema.fields.some(isCustomParameterField)
+  ) {
+    throw new Error("待映射参数完成服务端适配前不能发布");
+  }
+  const outputCount = input.schema.fields.find((field) =>
+    field.key === "outputCount"
+  );
+  if (
+    input.status === "published" &&
+    outputCount &&
+    (outputCount.defaultValue !== 1 ||
+      outputCount.options.some((option) => option.value !== 1))
+  ) {
+    throw new Error("当前中转任务只支持单结果配置");
+  }
+  const allowedTextInputs = relayTextProtocolInputs[input.protocol];
+  if (allowedTextInputs) {
+    for (const kind of capabilities) {
+      if (allowedTextInputs.has(kind)) continue;
+      if (
+        input.schema.upstreamInputs?.[kind].supported ||
+        (input.schema.inputPolicy?.required?.[kind] ?? 0) > 0 ||
+        (input.schema.inputPolicy?.roles?.[kind]?.length ?? 0) > 0 ||
+        (input.schema.inputPolicy?.rolePolicies ?? []).some((policy) =>
+          (policy.roles[kind]?.length ?? 0) > 0 ||
+          (policy.assignment?.[kind]?.length ?? 0) > 0 ||
+          (policy.limits ?? []).some((limit) => limit.kind === kind)
+        )
+      ) {
+        throw new Error("当前调用协议不支持已配置的上游类型");
+      }
+    }
+  }
+  if (input.protocol === "media-generate") {
+    for (const kind of ["audio", "image", "video"] as const) {
+      for (const role of configuredRoles(input.schema, kind)) {
+        if (!relayMediaRoles[kind].has(role)) {
+          throw new Error("当前通用媒体适配器尚未映射该输入角色");
+        }
+      }
+    }
   }
 }
 
@@ -175,6 +286,7 @@ function adminModel(
     providerDriver: row.provider_driver,
     providerProfileId: row.provider_profile_id,
     providerModelId: row.provider_model_id,
+    providerProtocol: row.provider_protocol,
     providerName: row.provider_display_name,
     everPublished: Boolean(row.published_at),
     sortOrder: row.sort_order,
@@ -191,6 +303,7 @@ function modelRows(store: DatabaseSync) {
         model_profiles.display_name,
         model_profiles.provider_profile_id,
         model_profiles.provider_model_id,
+        model_profiles.provider_protocol,
         model_profiles.capability,
         model_profiles.archived_at,
         model_profiles.cost_currency,
@@ -297,6 +410,7 @@ async function modelRuntimeAvailability(rows: ModelRow[]) {
         modelConfigurationUpdatedAt: row.model_configuration_updated_at,
         providerDriver: row.provider_driver,
         providerModelId: row.provider_model_id,
+        providerProtocol: row.provider_protocol,
         providerConfigurationUpdatedAt:
           row.provider_configuration_updated_at ?? undefined,
         providerConfigurationVersionAligned: configurationAligned,
@@ -527,6 +641,7 @@ function cleanModelInput(input: {
   maxCostMicrounits?: unknown;
   providerModelId?: unknown;
   providerProfileId?: unknown;
+  providerProtocol?: unknown;
   sortOrder?: unknown;
   status?: unknown;
   parameterSchema?: unknown;
@@ -541,6 +656,9 @@ function cleanModelInput(input: {
     typeof input.providerProfileId === "string"
       ? input.providerProfileId.trim()
       : "provider-unconfigured";
+  const providerProtocol = input.providerProtocol === undefined
+    ? "native"
+    : input.providerProtocol;
   const capability = input.capability as Capability;
   const status = input.status as ModelStatus;
   const sortOrder = Number(input.sortOrder ?? 100);
@@ -550,6 +668,7 @@ function cleanModelInput(input: {
     displayName.length > 80 ||
     providerModelId.length < 1 ||
     providerModelId.length > 160 ||
+    !isProviderProtocol(providerProtocol) ||
     !/^[a-z0-9-]{3,80}$/i.test(providerProfileId) ||
     !capabilities.includes(capability) ||
     !statuses.includes(status) ||
@@ -573,6 +692,7 @@ function cleanModelInput(input: {
     maxCostMicrounits,
     providerModelId,
     providerProfileId,
+    providerProtocol,
     sortOrder,
     status,
     parameterSchema: input.parameterSchema,
@@ -614,6 +734,7 @@ export async function publicModelsApi(
       imageParameters: imageParameters(row),
       mediaInputPolicy: mediaInputPolicy(row),
       parameterSchema: parameterSchema(row),
+      providerProtocol: row.provider_protocol,
       isDefault: Boolean(row.is_default),
       ...availability.get(row.id)!,
     })),
@@ -889,7 +1010,12 @@ export async function adminModelsApi(
           | { driver: string; id: string }
           | undefined;
       if (!provider) throw new Error("Provider profile not found");
-      assertProviderModelCompatibility(provider.driver, input.providerModelId);
+      assertProviderModelCompatibility(
+        provider.driver,
+        input.providerModelId,
+        input.providerProtocol,
+        input.capability,
+      );
       const costCurrency = provider.driver === "volcengine-ark" ? "CNY" : "USD";
       const constraints = providerParameterSchema({
         capability: input.capability,
@@ -905,23 +1031,32 @@ export async function adminModelsApi(
           providerModelId: input.providerModelId,
         }),
       ), constraints);
+      assertRelaySchemaCompatibility({
+        capability: input.capability,
+        driver: provider.driver,
+        protocol: input.providerProtocol,
+        schema,
+        status: input.status,
+      });
       store.exec("BEGIN IMMEDIATE");
       try {
         store
           .prepare(`
             INSERT INTO model_profiles (
               id, display_name, provider_profile_id, provider_model_id,
-              capability, status, default_parameters, max_cost_microunits,
+              provider_protocol, capability, status, default_parameters,
+              max_cost_microunits,
               cost_currency,
               created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `)
           .run(
             id,
             input.displayName,
             input.providerProfileId,
             input.providerModelId,
+            input.providerProtocol,
             input.capability,
             input.status,
             JSON.stringify(schema),
@@ -959,6 +1094,7 @@ export async function adminModelsApi(
         audit(store, identity.userId, "create_model", id, {
           capability: input.capability,
           providerProfileId: input.providerProfileId,
+          providerProtocol: input.providerProtocol,
           status: input.status,
         });
         store.exec("COMMIT");
@@ -994,6 +1130,7 @@ export async function adminModelsApi(
         maxCostMicrounits?: unknown;
         providerModelId?: unknown;
         providerProfileId?: unknown;
+        providerProtocol?: unknown;
         parameterSchema?: unknown;
         sortOrder?: unknown;
         status?: unknown;
@@ -1009,6 +1146,7 @@ export async function adminModelsApi(
           body.maxCostMicrounits ?? current.max_cost_microunits,
         providerModelId: body.providerModelId ?? current.provider_model_id,
         providerProfileId: body.providerProfileId ?? current.provider_profile_id,
+        providerProtocol: body.providerProtocol ?? current.provider_protocol,
         sortOrder: body.sortOrder ?? current.sort_order,
         status: nextStatus,
         parameterSchema: body.parameterSchema ?? parameterSchema(current),
@@ -1033,7 +1171,12 @@ export async function adminModelsApi(
           | { driver: string; id: string }
           | undefined;
       if (!provider) throw new Error("Provider profile not found");
-      assertProviderModelCompatibility(provider.driver, input.providerModelId);
+      assertProviderModelCompatibility(
+        provider.driver,
+        input.providerModelId,
+        input.providerProtocol,
+        current.capability,
+      );
       const providerChanged = input.providerProfileId !== current.provider_profile_id;
       const nextParameterSchema = body.parameterSchema ?? (providerChanged
         ? knownModelParameterSchema({
@@ -1044,6 +1187,29 @@ export async function adminModelsApi(
         : parameterSchema(current));
       const costCurrency = provider.driver === "volcengine-ark" ? "CNY" : "USD";
       const timestamp = new Date().toISOString();
+      const validatedSchema = validateParameterSchemaConstraints(
+        cleanParameterSchema(
+          current.capability,
+          nextParameterSchema,
+          knownModelParameterSchema({
+            capability: current.capability,
+            providerDriver: provider.driver,
+            providerModelId: input.providerModelId,
+          }),
+        ),
+        providerParameterSchema({
+          capability: current.capability,
+          providerDriver: provider.driver,
+          providerModelId: input.providerModelId,
+        }),
+      );
+      assertRelaySchemaCompatibility({
+        capability: current.capability,
+        driver: provider.driver,
+        protocol: input.providerProtocol,
+        schema: validatedSchema,
+        status: input.status,
+      });
       store.exec("BEGIN IMMEDIATE");
       try {
         if (input.isDefault) {
@@ -1062,6 +1228,7 @@ export async function adminModelsApi(
               display_name = ?,
               provider_profile_id = ?,
               provider_model_id = ?,
+              provider_protocol = ?,
               status = ?,
               max_cost_microunits = ?,
               cost_currency = ?,
@@ -1073,25 +1240,11 @@ export async function adminModelsApi(
             input.displayName,
             input.providerProfileId,
             input.providerModelId,
+            input.providerProtocol,
             input.status,
             input.maxCostMicrounits,
             costCurrency,
-            JSON.stringify(validateParameterSchemaConstraints(
-              cleanParameterSchema(
-                current.capability,
-                nextParameterSchema,
-                knownModelParameterSchema({
-                  capability: current.capability,
-                  providerDriver: provider.driver,
-                  providerModelId: input.providerModelId,
-                }),
-              ),
-              providerParameterSchema({
-                capability: current.capability,
-                providerDriver: provider.driver,
-                providerModelId: input.providerModelId,
-              }),
-            )),
+            JSON.stringify(validatedSchema),
             timestamp,
             path,
           );
@@ -1119,6 +1272,7 @@ export async function adminModelsApi(
         audit(store, identity.userId, "update_model", path, {
           isDefault: input.isDefault,
           providerProfileId: input.providerProfileId,
+          providerProtocol: input.providerProtocol,
           status: input.status,
         });
         store.exec("COMMIT");

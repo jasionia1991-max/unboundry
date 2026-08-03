@@ -4,6 +4,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
 import {
+  acquireProviderConfigurationLease,
   getArkControlPlaneCredentials,
   getProviderProfile,
   prepareArkControlPlaneCredentials,
@@ -17,6 +18,19 @@ import {
   providerCatalogCapabilities,
 } from "./providerCatalogCapabilities";
 import {
+  RelayRemoteError,
+  fetchRelayModelCatalog,
+  readRelayManagementResource,
+  relayReadOnlyDescriptor,
+  relayReadOnlyErrorCode,
+  relayReadOnlyErrorMessage,
+  type RelayReadOnlyResource,
+} from "./multiProtocolRelay";
+import {
+  OutboundDestinationError,
+  fetchPublicHttps,
+} from "./outboundNetwork";
+import {
   ArkControlPlaneError,
   VOLCENGINE_ARK_CONTROL_PLANE_TIMEOUT_MS,
   discoverArkCatalog,
@@ -25,6 +39,12 @@ import {
   knownModelParameterSchema,
   type ModelCapability,
 } from "../types/modelParameters";
+import {
+  isProviderProtocol,
+  providerProtocolSupportsCapability,
+  relayProviderProtocols,
+  type ProviderProtocol,
+} from "../types/relayProtocols";
 
 type CatalogSnapshotRow = {
   catalog_checked_at: string | null;
@@ -37,18 +57,23 @@ type CatalogSnapshotRow = {
   catalog_models: string;
   catalog_synced_at: string | null;
   driver: ProviderDriver;
+  provider_configuration_version: number;
 };
 
 type ImportSelection = {
   capability?: unknown;
   discoveryId?: unknown;
+  providerProtocol?: unknown;
 };
 
 export type ProviderCatalogModelMetadata = {
   contextLength?: number;
   inputModalities?: string[];
+  modelType?: string;
+  modalities?: string[];
   outputModalities?: string[];
   pricingSummary?: string;
+  protocols?: Exclude<ProviderProtocol, "native">[];
   supportedParameters?: string[];
 };
 
@@ -61,6 +86,7 @@ export type ProviderCatalogDiscoveredModel = {
   source:
     | "openai-compatible-public-catalog"
     | "openrouter-account-catalog"
+    | "multi-protocol-relay-account-catalog"
     | "volcengine-ark-control-plane";
   status: string;
 };
@@ -125,7 +151,8 @@ function snapshotRow(store: DatabaseSync, profileId: string) {
       catalog_model_count,
       catalog_models,
       catalog_synced_at,
-      driver
+      driver,
+      provider_configuration_version
     FROM provider_profiles
     WHERE id = ?
   `).get(profileId) as CatalogSnapshotRow | undefined;
@@ -182,6 +209,25 @@ function parseSnapshotMetadata(value: unknown) {
   ) {
     throw new Error("Invalid catalog snapshot");
   }
+  const modelType = record.modelType;
+  if (
+    modelType !== undefined &&
+    (typeof modelType !== "string" || !modelType || modelType.length > 80)
+  ) {
+    throw new Error("Invalid catalog snapshot");
+  }
+  const protocols = record.protocols === undefined
+    ? undefined
+    : safeSnapshotStringArray(record.protocols);
+  if (
+    protocols?.some((protocol) =>
+      !relayProviderProtocols.includes(
+        protocol as Exclude<ProviderProtocol, "native">,
+      )
+    )
+  ) {
+    throw new Error("Invalid catalog snapshot");
+  }
   return {
     ...(contextLength !== undefined
       ? { contextLength: Number(contextLength) }
@@ -189,10 +235,17 @@ function parseSnapshotMetadata(value: unknown) {
     ...(record.inputModalities !== undefined
       ? { inputModalities: safeSnapshotStringArray(record.inputModalities) }
       : {}),
+    ...(modelType !== undefined ? { modelType } : {}),
+    ...(record.modalities !== undefined
+      ? { modalities: safeSnapshotStringArray(record.modalities) }
+      : {}),
     ...(record.outputModalities !== undefined
       ? { outputModalities: safeSnapshotStringArray(record.outputModalities) }
       : {}),
     ...(pricingSummary !== undefined ? { pricingSummary } : {}),
+    ...(protocols !== undefined
+      ? { protocols: protocols as Exclude<ProviderProtocol, "native">[] }
+      : {}),
     ...(record.supportedParameters !== undefined
       ? { supportedParameters: safeSnapshotStringArray(record.supportedParameters) }
       : {}),
@@ -203,6 +256,9 @@ function catalogModelSource(driver: ProviderDriver) {
   if (driver === "openrouter") return "openrouter-account-catalog" as const;
   if (driver === "openai-compatible") {
     return "openai-compatible-public-catalog" as const;
+  }
+  if (driver === "multi-protocol-relay") {
+    return "multi-protocol-relay-account-catalog" as const;
   }
   return "volcengine-ark-control-plane" as const;
 }
@@ -787,6 +843,31 @@ function remotePricingSummary(value: unknown) {
   return parts.length ? parts.join(" · ").slice(0, 320) : undefined;
 }
 
+function containsProfileSecret(value: unknown, secret: string): boolean {
+  if (!secret) return false;
+  if (typeof value === "string") {
+    if (value.includes(secret) || value.includes(encodeURIComponent(secret))) {
+      return true;
+    }
+    try {
+      return decodeURIComponent(value).includes(secret);
+    } catch {
+      return false;
+    }
+  }
+  if (Array.isArray(value)) {
+    return value.some((item) => containsProfileSecret(item, secret));
+  }
+  if (value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).some(
+      ([key, item]) =>
+        containsProfileSecret(key, secret) ||
+        containsProfileSecret(item, secret),
+    );
+  }
+  return false;
+}
+
 function normalizeRemoteCatalogModel(
   raw: unknown,
   driver: "openai-compatible" | "openrouter",
@@ -848,14 +929,18 @@ function normalizeRemoteCatalogModel(
 function normalizeRemoteCatalog(
   body: Record<string, unknown>,
   driver: "openai-compatible" | "openrouter",
+  apiKey: string,
 ) {
   if (!Array.isArray(body.data) || body.data.length > catalogMaximumModels) {
     throw new CatalogRemoteError("FORMAT");
   }
   const models = new Map<string, ProviderCatalogDiscoveredModel>();
   for (const item of body.data) {
+    if (containsProfileSecret(item, apiKey)) continue;
     const model = normalizeRemoteCatalogModel(item, driver);
-    if (model) models.set(model.providerModelId, model);
+    if (model && !containsProfileSecret(model, apiKey)) {
+      models.set(model.providerModelId, model);
+    }
   }
   return [...models.values()];
 }
@@ -869,12 +954,13 @@ function remoteCatalogErrorForStatus(status: number) {
 
 async function syncProfileKeyProviderCatalog(
   profile: ProviderProfile,
-  fetcher: typeof fetch,
+  fetcher: typeof fetch | undefined,
   options: { maximumDurationMs?: number },
 ) {
   if (
     profile.driver !== "openrouter" &&
-    profile.driver !== "openai-compatible"
+    profile.driver !== "openai-compatible" &&
+    profile.driver !== "multi-protocol-relay"
   ) {
     throw new CatalogSyncError("NOT_SUPPORTED");
   }
@@ -899,21 +985,47 @@ async function syncProfileKeyProviderCatalog(
     syncClaimed = true;
     remainingProfileCatalogSyncDurationMs(deadline, controller.signal);
     assertProfileCatalogSyncCurrent(db(), profile, syncToken);
-    requestCount += 1;
-    const response = await fetcher(remoteCatalogUrl(profile), {
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${profile.apiKey}`,
-      },
-      method: "GET",
-      redirect: "error",
-      signal: controller.signal,
-    });
-    if (!response.ok) throw remoteCatalogErrorForStatus(response.status);
-    const models = normalizeRemoteCatalog(
-      await readLimitedCatalogJson(response),
-      profile.driver,
-    );
+    let models: ProviderCatalogDiscoveredModel[];
+    if (profile.driver === "multi-protocol-relay") {
+      try {
+        models = (await fetchRelayModelCatalog(profile, fetcher, {
+          beforeRequest: () => {
+            requestCount += 1;
+          },
+          signal: controller.signal,
+          timeoutMs: remainingProfileCatalogSyncDurationMs(
+            deadline,
+            controller.signal,
+          ),
+        })).models;
+      } catch (error) {
+        if (error instanceof RelayRemoteError) {
+          throw new CatalogRemoteError(error.code);
+        }
+        throw error;
+      }
+    } else {
+      const requestUrl = remoteCatalogUrl(profile);
+      requestCount += 1;
+      const requestInit = {
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${profile.apiKey}`,
+        },
+        method: "GET",
+        redirect: "error",
+        signal: controller.signal,
+      } satisfies RequestInit;
+      const response = profile.driver === "openai-compatible"
+        ? await fetchPublicHttps(requestUrl, requestInit, { fetcher })
+        : await (fetcher ?? fetch)(requestUrl, requestInit);
+      if (!response.ok) throw remoteCatalogErrorForStatus(response.status);
+      models = normalizeRemoteCatalog(
+        await readLimitedCatalogJson(response),
+        profile.driver,
+        profile.apiKey,
+      );
+    }
     remainingProfileCatalogSyncDurationMs(deadline, controller.signal);
     assertProfileCatalogSyncCurrent(db(), profile, syncToken);
     if (!(await sameProfileCatalogRevision(profile))) {
@@ -968,9 +1080,10 @@ async function syncProfileKeyProviderCatalog(
       controlPlaneRequests: requestCount,
     };
   } catch (caught) {
-    let error: unknown =
-      caught instanceof CatalogRemoteError ||
-        caught instanceof CatalogSyncError
+    let error: unknown = caught instanceof OutboundDestinationError
+      ? new CatalogRemoteError(caught.code)
+      : caught instanceof CatalogRemoteError ||
+          caught instanceof CatalogSyncError
         ? caught
         : new CatalogRemoteError("NETWORK");
     try {
@@ -1018,7 +1131,7 @@ async function syncProfileKeyProviderCatalog(
 
 export async function syncProviderCatalog(
   profileId: string,
-  fetcher: typeof fetch = fetch,
+  fetcher?: typeof fetch,
   options: { maximumDurationMs?: number } = {},
 ) {
   const profile = await getProviderProfile(profileId);
@@ -1028,7 +1141,7 @@ export async function syncProviderCatalog(
     throw new CatalogSyncError("NOT_SUPPORTED");
   }
   if (profile.driver === "volcengine-ark") {
-    return syncArkProviderCatalog(profileId, fetcher, options);
+    return syncArkProviderCatalog(profileId, fetcher ?? fetch, options);
   }
   return syncProfileKeyProviderCatalog(profile, fetcher, options);
 }
@@ -1062,10 +1175,24 @@ function importableModels(
   store: DatabaseSync,
   profileId: string,
   driver: ProviderDriver,
+  expectedConfigurationVersion?: number,
 ) {
   const row = snapshotRow(store, profileId);
-  if (!row || row.driver !== driver) {
+  if (
+    !row ||
+    row.driver !== driver ||
+    (expectedConfigurationVersion !== undefined &&
+      Number(row.provider_configuration_version) !== expectedConfigurationVersion)
+  ) {
     throw new Error("Provider profile not found");
+  }
+  if (
+    row.catalog_key_status !== "valid" ||
+    !row.catalog_checked_at ||
+    !row.catalog_synced_at ||
+    row.catalog_last_error_code
+  ) {
+    throw new Error("Provider catalog must be synchronized again before import");
   }
   return parseSnapshotModels(row.catalog_models, driver);
 }
@@ -1094,7 +1221,35 @@ function cleanImportSelection(
   ) {
     throw new Error("Discovered model is invalid");
   }
-  return { capability: capability as ModelCapability, model };
+  const relay = model.source === "multi-protocol-relay-account-catalog";
+  const requestedProtocol = selection.providerProtocol;
+  const declaredRelayProtocols = model.metadata?.protocols;
+  const providerProtocol = relay
+    ? isProviderProtocol(requestedProtocol) && requestedProtocol !== "native"
+      ? requestedProtocol
+      : undefined
+    : "native";
+  if (
+    !providerProtocol ||
+    !providerProtocolSupportsCapability(
+      providerProtocol,
+      capability as ModelCapability,
+    ) ||
+    (
+      relay &&
+      Boolean(declaredRelayProtocols?.length) &&
+      !declaredRelayProtocols?.includes(
+        providerProtocol as Exclude<ProviderProtocol, "native">,
+      )
+    )
+  ) {
+    throw new Error("Model protocol is required or incompatible");
+  }
+  return {
+    capability: capability as ModelCapability,
+    model,
+    providerProtocol,
+  };
 }
 
 function importCatalogDrafts(
@@ -1102,45 +1257,68 @@ function importCatalogDrafts(
   rawSelections: unknown,
   actorUserId: string,
   expectedDriver?: ProviderDriver,
+  expectedConfigurationVersion?: number,
 ) {
   if (!Array.isArray(rawSelections) || rawSelections.length < 1 || rawSelections.length > 100) {
     throw new Error("Invalid import selection");
   }
   const store = db();
-  const profile = store.prepare(`
-    SELECT id, driver
-    FROM provider_profiles
-    WHERE id = ?
-  `).get(profileId) as { driver: ProviderDriver; id: string } | undefined;
-  if (!profile || (expectedDriver && profile.driver !== expectedDriver)) {
-    throw new Error("Provider profile not found");
-  }
-  const catalogCapabilities = providerCatalogCapabilities(profile.driver);
-  if (!catalogCapabilities.supportsImport) {
-    throw new Error("Provider catalog import is not supported");
-  }
-  const discovered = importableModels(store, profileId, profile.driver);
-  const uniqueSelections = new Map<string, ReturnType<typeof cleanImportSelection>>();
-  for (const raw of rawSelections) {
-    if (!raw || typeof raw !== "object") throw new Error("Invalid import selection");
-    const selection = cleanImportSelection(raw as ImportSelection, discovered);
-    uniqueSelections.set(
-      `${selection.model.discoveryId}:${selection.capability}`,
-      selection,
-    );
-  }
   let imported = 0;
   let restored = 0;
   let skipped = 0;
   const timestamp = new Date().toISOString();
   store.exec("BEGIN IMMEDIATE");
   try {
+    const profile = store.prepare(`
+      SELECT id, driver, provider_configuration_version
+      FROM provider_profiles
+      WHERE id = ?
+    `).get(profileId) as
+      | {
+          driver: ProviderDriver;
+          id: string;
+          provider_configuration_version: number;
+        }
+      | undefined;
+    if (
+      !profile ||
+      (expectedDriver && profile.driver !== expectedDriver) ||
+      (expectedConfigurationVersion !== undefined &&
+        Number(profile.provider_configuration_version) !==
+          expectedConfigurationVersion)
+    ) {
+      throw new Error("Provider profile not found");
+    }
+    const catalogCapabilities = providerCatalogCapabilities(profile.driver);
+    if (!catalogCapabilities.supportsImport) {
+      throw new Error("Provider catalog import is not supported");
+    }
+    const discovered = importableModels(
+      store,
+      profileId,
+      profile.driver,
+      expectedConfigurationVersion,
+    );
+    const uniqueSelections = new Map<
+      string,
+      ReturnType<typeof cleanImportSelection>
+    >();
+    for (const raw of rawSelections) {
+      if (!raw || typeof raw !== "object") {
+        throw new Error("Invalid import selection");
+      }
+      const selection = cleanImportSelection(raw as ImportSelection, discovered);
+      uniqueSelections.set(
+        `${selection.model.discoveryId}:${selection.capability}:${selection.providerProtocol}`,
+        selection,
+      );
+    }
     const maximumOrder = store.prepare(`
       SELECT COALESCE(MAX(sort_order), 0) AS maximum
       FROM node_model_bindings
     `).get() as { maximum: number };
     let sortOrder = Number(maximumOrder.maximum) + 10;
-    for (const { capability, model } of uniqueSelections.values()) {
+    for (const { capability, model, providerProtocol } of uniqueSelections.values()) {
       const existing = store.prepare(`
         SELECT id, archived_at, status
         FROM model_profiles
@@ -1148,8 +1326,9 @@ function importCatalogDrafts(
           provider_profile_id = ?
           AND provider_model_id = ?
           AND capability = ?
+          AND provider_protocol = ?
         LIMIT 1
-      `).get(profileId, model.providerModelId, capability) as
+      `).get(profileId, model.providerModelId, capability, providerProtocol) as
         | { archived_at: string | null; id: string; status: string }
         | undefined;
       if (existing) {
@@ -1171,6 +1350,7 @@ function importCatalogDrafts(
             capability,
             modelId: existing.id,
             providerModelId: model.providerModelId,
+            providerProtocol,
             restoredStatus,
             source: "provider-catalog-import",
           });
@@ -1184,15 +1364,16 @@ function importCatalogDrafts(
       store.prepare(`
         INSERT INTO model_profiles (
           id, display_name, provider_profile_id, provider_model_id,
-          capability, status, default_parameters, max_cost_microunits,
+          provider_protocol, capability, status, default_parameters, max_cost_microunits,
           cost_currency, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, 'draft', ?, 0, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, 0, ?, ?, ?)
       `).run(
         modelId,
         model.displayName.slice(0, 80),
         profileId,
         model.providerModelId,
+        providerProtocol,
         capability,
         JSON.stringify(knownModelParameterSchema({
           capability,
@@ -1220,7 +1401,7 @@ function importCatalogDrafts(
     });
     store.exec("COMMIT");
   } catch (error) {
-    store.exec("ROLLBACK");
+    if (store.isTransaction) store.exec("ROLLBACK");
     throw error;
   }
   return {
@@ -1248,16 +1429,45 @@ export async function importProviderCatalogDrafts(
   rawSelections: unknown,
   actorUserId: string,
 ) {
-  const profile = await getProviderProfile(profileId);
-  if (!profile || !providerCatalogCapabilities(profile.driver).supportsImport) {
-    throw new Error("Provider catalog import is not supported");
+  const lease = await acquireProviderConfigurationLease(profileId);
+  try {
+    const { profile } = lease;
+    if (!providerCatalogCapabilities(profile.driver).supportsImport) {
+      throw new Error("Provider catalog import is not supported");
+    }
+    return importCatalogDrafts(
+      profileId,
+      rawSelections,
+      actorUserId,
+      profile.driver,
+      providerConfigurationVersion(profile),
+    );
+  } finally {
+    lease.release();
   }
-  return importCatalogDrafts(
-    profileId,
-    rawSelections,
-    actorUserId,
-    profile.driver,
-  );
+}
+
+export async function getProviderReadOnlyDescriptor(profileId: string) {
+  const profile = await getProviderProfile(profileId);
+  if (!profile) throw new Error("Provider profile not found");
+  if (profile.driver !== "multi-protocol-relay") {
+    throw new CatalogSyncError("NOT_SUPPORTED");
+  }
+  return relayReadOnlyDescriptor();
+}
+
+export async function readProviderReadOnlyResource(
+  profileId: string,
+  resource: RelayReadOnlyResource,
+  options: { model?: string } = {},
+  fetcher?: typeof fetch,
+) {
+  const profile = await getProviderProfile(profileId);
+  if (!profile) throw new Error("Provider profile not found");
+  if (profile.driver !== "multi-protocol-relay") {
+    throw new CatalogSyncError("NOT_SUPPORTED");
+  }
+  return readRelayManagementResource(profile, resource, options, fetcher);
 }
 
 export async function adminProviderCatalogApi(
@@ -1272,12 +1482,18 @@ export async function adminProviderCatalogApi(
   const path = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
     /^\/+/, "",
   );
-  const match = path.match(/^([a-f0-9-]{36})(?:\/(credentials|sync|import))?$/i);
+  const match = path.match(
+    /^([a-f0-9-]{36})(?:\/(credentials|sync|import|readonly)(?:\/(balance|usage|pricing|task-status|model-detail))?)?$/i,
+  );
   if (!match) {
     json(response, 404, { error: "Provider catalog endpoint not found" });
     return;
   }
-  const [, profileId, action = ""] = match;
+  const [, profileId, action = "", resource = ""] = match;
+  if (resource && action !== "readonly") {
+    json(response, 404, { error: "Provider catalog endpoint not found" });
+    return;
+  }
   if (request.method === "GET" && !action) {
     try {
       json(response, 200, {
@@ -1286,6 +1502,59 @@ export async function adminProviderCatalogApi(
       });
     } catch {
       json(response, 404, { error: "平台模型目录不存在" });
+    }
+    return;
+  }
+  if (request.method === "GET" && action === "readonly" && !resource) {
+    try {
+      json(response, 200, await getProviderReadOnlyDescriptor(profileId));
+    } catch {
+      json(response, 400, {
+        available: false,
+        error: "当前平台连接不支持该只读资料",
+        paidGenerationRequests: 0,
+        providerReadOnlyRequests: 0,
+      });
+    }
+    return;
+  }
+  if (request.method === "GET" && action === "readonly" && resource) {
+    const normalizedResource = resource as RelayReadOnlyResource;
+    const model = new URL(request.url ?? "/", "http://127.0.0.1")
+      .searchParams.get("model") ?? undefined;
+    if (
+      (normalizedResource === "pricing" ||
+        normalizedResource === "model-detail") &&
+      (!model || model.length > 2_048)
+    ) {
+      json(response, 400, {
+        available: false,
+        code: "FORMAT",
+        error: "请选择需要查看的模型",
+        paidGenerationRequests: 0,
+        providerReadOnlyRequests: 0,
+      });
+      return;
+    }
+    try {
+      json(
+        response,
+        200,
+        await readProviderReadOnlyResource(
+          profileId,
+          normalizedResource,
+          { model },
+        ),
+      );
+    } catch (error) {
+      json(response, 400, {
+        available: false,
+        code: relayReadOnlyErrorCode(error),
+        error: relayReadOnlyErrorMessage(error),
+        paidGenerationRequests: 0,
+        providerReadOnlyRequests:
+          error instanceof CatalogSyncError ? 0 : 1,
+      });
     }
     return;
   }
