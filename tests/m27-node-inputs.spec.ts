@@ -9,6 +9,7 @@ import { resolve } from "node:path";
 import {
   NODE_INPUT_MATRIX,
   isNodeInputConnectionAllowed,
+  moveNodeInputEdge,
   resolveNodeInputs,
 } from "../types/nodeInputs";
 import {
@@ -17,6 +18,7 @@ import {
   knownModelParameterSchema,
 } from "../types/modelParameters";
 import { canvasDocumentFingerprint } from "../client/src/canvas/canvasDocumentFingerprint";
+import { persistedNodeOwnPrompt } from "../server/inputPreflight";
 
 function zeroProviderInputSchema() {
   const schema = knownModelParameterSchema({
@@ -244,6 +246,63 @@ test("product node input matrix contains exactly 11 allowed and 5 forbidden pair
     .toEqual(["image->audio", "video->image", "video->audio", "audio->image", "audio->audio"]);
 });
 
+test("shared input ordering compacts durable edge order without changing graph topology", () => {
+  const edges = [
+    { data: { inputOrder: 7, inputRole: "instruction" }, id: "text", source: "a", target: "target" },
+    { data: { inputOrder: 11, inputRole: "reference-image" }, id: "image", source: "b", target: "target" },
+    { data: { inputOrder: 1 }, id: "other", source: "c", target: "other-target" },
+  ];
+  const moved = moveNodeInputEdge(edges, "target", "image", "backward");
+  expect(moved.map((edge) => edge.id)).toEqual(["text", "image", "other"]);
+  expect(moved.find((edge) => edge.id === "image")?.data).toEqual({
+    inputOrder: 1,
+    inputRole: "reference-image",
+  });
+  expect(moved.find((edge) => edge.id === "text")?.data).toEqual({
+    inputOrder: 2,
+    inputRole: "instruction",
+  });
+  expect(moved.find((edge) => edge.id === "other")).toBe(edges[2]);
+  expect(moveNodeInputEdge(moved, "target", "image", "backward")).toEqual(moved);
+});
+
+test("moving multiple Text references changes the final Prompt in the same durable order", () => {
+  const nodes = [
+    { data: { content: "母版A" }, id: "text-a", type: "text" },
+    { data: { content: "母版B" }, id: "text-b", type: "text" },
+    { data: {}, id: "target", type: "image" },
+  ];
+  const edges = [
+    { data: { inputOrder: 1, inputRole: "instruction" }, id: "a", source: "text-a", target: "target" },
+    { data: { inputOrder: 2, inputRole: "instruction" }, id: "b", source: "text-b", target: "target" },
+  ];
+  const before = resolveNodeInputs({
+    edges,
+    nodes,
+    ownPrompt: "本节点",
+    targetId: "target",
+    targetKind: "image",
+  });
+  expect(before.finalPrompt).toBe("母版A\n\n母版B\n\n本节点");
+  const after = resolveNodeInputs({
+    edges: moveNodeInputEdge(edges, "target", "b", "backward"),
+    nodes,
+    ownPrompt: "本节点",
+    targetId: "target",
+    targetKind: "image",
+  });
+  expect(after.finalPrompt).toBe("母版B\n\n母版A\n\n本节点");
+});
+
+test("server prompt fields cover Text Image Video and Audio target nodes", () => {
+  expect([
+    persistedNodeOwnPrompt({ data: { textPrompt: "  文字指令  " } }, "text"),
+    persistedNodeOwnPrompt({ data: { imagePrompt: "  图片指令  " } }, "image"),
+    persistedNodeOwnPrompt({ data: { videoPrompt: "  视频指令  " } }, "video"),
+    persistedNodeOwnPrompt({ data: { audioPrompt: "  音频指令  " } }, "audio"),
+  ]).toEqual(["文字指令", "图片指令", "视频指令", "音频指令"]);
+});
+
 test("edge-only resolver merges prompt and stores stable source metadata without URLs", () => {
   const result = resolveNodeInputs({
     edges: [
@@ -331,7 +390,12 @@ test("resolver exposes empty, uploading, ready, invalid and missing without dele
       { id: "uploading", source: "uploading", target: "target" },
       { id: "ready", source: "ready", target: "target" },
       { id: "invalid", source: "invalid", target: "target" },
-      { id: "missing", source: "missing", target: "target" },
+      {
+        data: { inputOrder: 6, inputRole: "context-text" },
+        id: "missing",
+        source: "missing",
+        target: "target",
+      },
     ],
     nodes: [
       { id: "empty", type: "text", data: { content: "" } },
@@ -357,6 +421,11 @@ test("resolver exposes empty, uploading, ready, invalid and missing without dele
     "invalid",
     "missing",
   ]);
+  expect(result.inputs.at(-1)).toMatchObject({
+    edgeId: "missing",
+    order: 6,
+    role: "context-text",
+  });
 });
 
 test("administrator model schema keeps roles, required counts and switch policy", () => {
@@ -464,6 +533,88 @@ test("generation submission cannot bypass persisted-edge preflight by omitting t
   expect(after.paidProviderRequests).toBe(before.paidProviderRequests);
 });
 
+test("server reads the persisted target Prompt and rejects a forged v1 ownPrompt without tasks", async ({
+  request,
+}) => {
+  const modelId = await ensureZeroProviderInputModel(request);
+  const canvasId = `node-input-persisted-prompt-${Date.now()}`;
+  const persistedPrompt = "已保存的商品白底图指令";
+  const forgedPrompt = "客户端伪造的本节点Prompt";
+  const before = await (await request.get("/api/generation-tasks/status")).json() as {
+    paidProviderRequests: number;
+  };
+
+  try {
+    const saved = await request.put(`/api/canvas/${canvasId}`, {
+      data: {
+        edges: [],
+        nodes: [{
+          data: { imagePrompt: persistedPrompt, imagePromptReady: true },
+          id: "persisted-prompt-target",
+          type: "image",
+        }],
+        revision: 0,
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+    expect(saved.ok()).toBeTruthy();
+    const canvasRevision = (await saved.json() as { graphRevision: number }).graphRevision;
+    const base = {
+      canvasId,
+      canvasRevision,
+      inputSchemaVersion: 1,
+      kind: "image",
+      model: modelId,
+      nodeId: "persisted-prompt-target",
+      parameters: { inputMode: "text" },
+      prompt: "客户端伪造的最终Prompt",
+    };
+
+    const acceptedPreflight = await request.post("/api/generation-tasks/preflight", {
+      data: { ...base, ownPrompt: persistedPrompt },
+    });
+    expect(acceptedPreflight.ok()).toBeTruthy();
+    await expect(acceptedPreflight.json()).resolves.toMatchObject({
+      canSubmit: true,
+      finalPrompt: persistedPrompt,
+      providerRequests: 0,
+    });
+
+    const forgedPreflight = await request.post("/api/generation-tasks/preflight", {
+      data: { ...base, ownPrompt: forgedPrompt },
+    });
+    expect(forgedPreflight.status()).toBe(409);
+    await expect(forgedPreflight.json()).resolves.toMatchObject({
+      code: "CANVAS_NOT_SAVED",
+      revision: canvasRevision,
+    });
+
+    const forgedSubmission = await request.post("/api/generation-tasks", {
+      data: {
+        ...base,
+        idempotencyKey: `forged-prompt-${Date.now()}`,
+        ownPrompt: forgedPrompt,
+      },
+    });
+    expect(forgedSubmission.status()).toBe(409);
+    await expect(forgedSubmission.json()).resolves.toMatchObject({
+      code: "CANVAS_NOT_SAVED",
+      revision: canvasRevision,
+    });
+
+    const tasks = await (await request.get(
+      `/api/generation-tasks?canvasId=${encodeURIComponent(canvasId)}`,
+    )).json() as { tasks: unknown[] };
+    expect(tasks.tasks).toEqual([]);
+    const after = await (await request.get("/api/generation-tasks/status")).json() as {
+      paidProviderRequests: number;
+    };
+    expect(after.paidProviderRequests).toBe(before.paidProviderRequests);
+  } finally {
+    await request.delete(`/api/canvas/${canvasId}`);
+  }
+});
+
 test("server rejects forged ready media, invalid role/order and a stale canvas without tasks", async ({
   request,
 }) => {
@@ -483,7 +634,7 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
       }],
       nodes: [
         { data: { content: "白底商品图" }, id: "instruction", type: "text" },
-        { data: {}, id: "target", type: "image" },
+        { data: { imagePrompt: "正面平铺" }, id: "target", type: "image" },
       ],
       revision: 0,
       viewport: { x: 0, y: 0, zoom: 1 },
@@ -534,7 +685,7 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
           id: "missing-image",
           type: "image",
         },
-        { data: {}, id: "target", type: "image" },
+        { data: { imagePrompt: "白底商品图" }, id: "target", type: "image" },
       ],
       revision: 0,
       viewport: { x: 0, y: 0, zoom: 1 },
@@ -572,7 +723,7 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
   const staleCreate = await request.put(`/api/canvas/${staleCanvasId}`, {
     data: {
       edges: [],
-      nodes: [{ data: {}, id: "target", type: "image" }],
+      nodes: [{ data: { imagePrompt: "白底商品图" }, id: "target", type: "image" }],
       revision: 0,
       viewport: { x: 0, y: 0, zoom: 1 },
     },
@@ -582,7 +733,11 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
   const staleAdvance = await request.put(`/api/canvas/${staleCanvasId}`, {
     data: {
       edges: [],
-      nodes: [{ data: { title: "已保存的新版本" }, id: "target", type: "image" }],
+      nodes: [{
+        data: { imagePrompt: "白底商品图", title: "已保存的新版本" },
+        id: "target",
+        type: "image",
+      }],
       revision: staleRevision,
       viewport: { x: 1, y: 0, zoom: 1 },
     },
@@ -640,7 +795,11 @@ test("allowed Video media edges pass zero-cost preflight without creating a task
           id: "source-image",
           type: "image",
         },
-        { data: {}, id: "target-video", type: "video" },
+        {
+          data: { videoPrompt: "让服装轻微转动" },
+          id: "target-video",
+          type: "video",
+        },
       ],
       revision: 0,
       viewport: { x: 0, y: 0, zoom: 1 },
@@ -826,7 +985,7 @@ test("first ready Image edge switches an Image target mode with the edge and per
   await page.locator('.react-flow__node[data-id="first-mode-target"]').click();
   await expect(creator.getByRole("button", { exact: true, name: "图片参考" }))
     .toBeVisible();
-  await cards.getByRole("button", { name: "移除参考图 服装照片" }).click();
+  await cards.getByRole("button", { name: "删除引用 服装照片" }).click();
   await expect(world).toHaveAttribute("data-edge-count", "1");
   await expect(creator.getByRole("button", { exact: true, name: "图片参考" }))
     .toBeVisible();
@@ -892,7 +1051,41 @@ test("Image Text+Image input cards merge, delete, undo and survive refresh with 
   await expect(page.getByTestId("image-final-prompt")).toContainText("母版 + 本节点补充");
   await expect(page.getByTestId("image-final-prompt")).toContainText("正面平铺");
 
-  await cards.getByRole("button", { name: "移除参考图 服装照片" }).click();
+  await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+  await cards.getByRole("button", { name: "删除引用 白底图提示词母版" }).click();
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute("data-edge-count", "1");
+  await expect(cards.locator('[data-input-kind="text"]')).toHaveCount(0);
+  await expect(page.getByTestId("image-final-prompt")).toHaveCount(0);
+  await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+  const ownOnlyResponse = await request.post("/api/generation-tasks/preflight", {
+    data: {
+      canvasId: "node.image.text-image-input",
+      kind: "image",
+      model: modelId,
+      nodeId: "input-target-image",
+      ownPrompt: "正面平铺，展示领口细节。",
+      parameters: { inputMode: "image" },
+    },
+  });
+  expect(ownOnlyResponse.ok()).toBeTruthy();
+  await expect(ownOnlyResponse.json()).resolves.toMatchObject({
+    finalPrompt: "正面平铺，展示领口细节。",
+    providerRequests: 0,
+    snapshot: [{
+      assetId: garmentAssetId,
+      kind: "image",
+      order: 2,
+      role: "reference-image",
+      sourceNodeId: "input-garment-image",
+    }],
+  });
+  await page.keyboard.press("Meta+z");
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute("data-edge-count", "2");
+  await expect(cards.locator('[data-input-kind="text"]')).toHaveCount(1);
+  await expect(page.getByTestId("image-final-prompt")).toContainText("母版 + 本节点补充");
+  await expect(page.getByTestId("image-final-prompt")).toContainText("电商白底产品图");
+
+  await cards.getByRole("button", { name: "删除引用 服装照片" }).click();
   await expect(page.getByTestId("canvas-world")).toHaveAttribute("data-edge-count", "1");
   await expect.poll(async () => {
     const document = await (await request.get("/api/canvas/node.image.text-image-input")).json() as {
@@ -950,8 +1143,13 @@ test("saved whole-node deletion followed by undo is durable across refresh", asy
   page,
   request,
 }) => {
-  await useZeroProviderInputModel(page);
+  const modelId = await ensureZeroProviderInputModel(request);
+  await ensureGarmentAsset(request);
+  await useZeroProviderInputModel(page, modelId);
   await request.delete("/api/canvas/node.image.text-image-input");
+  const before = await (await request.get("/api/generation-tasks/status")).json() as {
+    paidProviderRequests: number;
+  };
   await page.goto("/__fixture/node.image.text-image-input");
   const world = page.getByTestId("canvas-world");
   await expect(world).toHaveAttribute("data-persistence-ready", "true");
@@ -980,11 +1178,65 @@ test("saved whole-node deletion followed by undo is durable across refresh", asy
   }).toEqual([3, 2]);
   await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
 
+  const restoredDocument = await (await request.get(
+    "/api/canvas/node.image.text-image-input",
+  )).json() as {
+    edges: Array<{ data?: { inputOrder?: number; inputRole?: string }; source: string; target: string }>;
+    nodes: Array<{ data?: { content?: string; title?: string }; id: string; type: string }>;
+  };
+  const restoredTexts = restoredDocument.nodes.filter((node) => node.type === "text");
+  expect(restoredTexts).toHaveLength(1);
+  expect(restoredTexts[0].data).toMatchObject({
+    content: "电商白底产品图，保留服装材质和版型，干净柔和棚拍光线。",
+    title: "白底图提示词母版",
+  });
+  expect(restoredTexts[0].id).toMatch(/^input-master-text-restored-/);
+  expect(restoredDocument.edges.filter((edge) => edge.source === restoredTexts[0].id))
+    .toEqual([expect.objectContaining({
+      data: { inputOrder: 1, inputRole: "instruction" },
+      target: "input-target-image",
+    })]);
+
+  const restoredPreflight = await request.post("/api/generation-tasks/preflight", {
+    data: {
+      canvasId: "node.image.text-image-input",
+      kind: "image",
+      model: modelId,
+      nodeId: "input-target-image",
+      ownPrompt: "",
+      parameters: { inputMode: "image" },
+    },
+  });
+  expect(restoredPreflight.ok()).toBeTruthy();
+  await expect(restoredPreflight.json()).resolves.toMatchObject({
+    finalPrompt: "电商白底产品图，保留服装材质和版型，干净柔和棚拍光线。",
+    providerRequests: 0,
+    snapshot: [
+      {
+        kind: "text",
+        order: 1,
+        role: "instruction",
+        sourceNodeId: restoredTexts[0].id,
+      },
+      {
+        assetId: garmentAssetId,
+        kind: "image",
+        order: 2,
+        role: "reference-image",
+        sourceNodeId: "input-garment-image",
+      },
+    ],
+  });
+
   await page.reload();
   await expect(world).toHaveAttribute("data-persistence-ready", "true");
   await expect(world).toHaveAttribute("data-node-count", "3");
   await expect(world).toHaveAttribute("data-edge-count", "2");
   await expect(page.locator('.react-flow__node[data-id^="input-master-text-restored-"]')).toHaveCount(1);
+  const after = await (await request.get("/api/generation-tasks/status")).json() as {
+    paidProviderRequests: number;
+  };
+  expect(after.paidProviderRequests).toBe(before.paidProviderRequests);
 });
 
 test("pagehide latest snapshot wins when an older same-session save is still pending", async ({

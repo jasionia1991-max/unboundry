@@ -541,7 +541,14 @@ test.describe.serial("trusted duration blocks an invalid paid Video request befo
             id: `p3-duration-source-${index + 1}`,
             type: "video",
           })),
-          { data: { title: "目标视频" }, id: "p3-duration-target", type: "video" },
+          {
+            data: {
+              title: "目标视频",
+              videoPrompt: "使用两段参考视频生成完整镜头",
+            },
+            id: "p3-duration-target",
+            type: "video",
+          },
         ],
         revision: 0,
         viewport: { x: 0, y: 0, zoom: 1 },

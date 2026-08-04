@@ -29,15 +29,17 @@ const stateLabel = {
 export function UpstreamInputCards({
   disabled,
   inputs,
+  onMove,
   onRemove,
   onRoleChange,
   problems,
-  removeLabel = "移除引用",
+  removeLabel = "删除引用",
   roleOptions,
   testId = "upstream-inputs",
 }: {
   disabled?: boolean;
   inputs: ResolvedNodeInput[];
+  onMove?: (edgeId: string, direction: "backward" | "forward") => void;
   onRemove: (edgeId: string) => void;
   onRoleChange?: (edgeId: string, role: NodeInputRole) => void;
   problems: NodeInputProblem[];
@@ -54,7 +56,7 @@ export function UpstreamInputCards({
         className="upstream-input-cards"
         data-testid={testId}
       >
-        {inputs.map((input) => {
+        {inputs.map((input, inputIndex) => {
           const configuredRoles = roleOptions?.(input) ?? [];
           const choices = configuredRoles.includes(input.role)
             ? configuredRoles
@@ -99,10 +101,13 @@ export function UpstreamInputCards({
                       className="upstream-input-role"
                       data-testid={`upstream-input-role-${input.edgeId}`}
                       disabled={disabled}
-                      onChange={(event) => onRoleChange(
-                        input.edgeId,
-                        event.target.value as NodeInputRole,
-                      )}
+                      onChange={(event) => {
+                        onRoleChange(
+                          input.edgeId,
+                          event.target.value as NodeInputRole,
+                        );
+                        event.currentTarget.blur();
+                      }}
                       value={input.role}
                     >
                       {choices.map((role) => (
@@ -126,12 +131,30 @@ export function UpstreamInputCards({
                   </small>
                 )}
               </span>
-              <button
-                aria-label={`${removeLabel} ${input.title}`}
-                disabled={disabled}
-                onClick={() => onRemove(input.edgeId)}
-                type="button"
-              >×</button>
+              <span className="upstream-input-actions">
+                {onMove && inputs.length > 1 && (
+                  <>
+                    <button
+                      aria-label={`向前移动 ${input.title}`}
+                      disabled={disabled || inputIndex === 0}
+                      onClick={() => onMove(input.edgeId, "backward")}
+                      type="button"
+                    >←</button>
+                    <button
+                      aria-label={`向后移动 ${input.title}`}
+                      disabled={disabled || inputIndex === inputs.length - 1}
+                      onClick={() => onMove(input.edgeId, "forward")}
+                      type="button"
+                    >→</button>
+                  </>
+                )}
+                <button
+                  aria-label={`${removeLabel} ${input.title}`}
+                  disabled={disabled}
+                  onClick={() => onRemove(input.edgeId)}
+                  type="button"
+                >×</button>
+              </span>
             </div>
           );
         })}

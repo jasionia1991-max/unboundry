@@ -173,6 +173,62 @@ function assertP1Graph(document, expected) {
   assert.doesNotMatch(serialized, /"signedUrl"/i);
 }
 
+function assertP1UndoGraph(document, expected) {
+  assert.equal(document.nodes.length, 3, "Restored P1 graph must contain exactly three nodes");
+  assert.equal(document.edges.length, 2, "Restored P1 graph must contain exactly two edges");
+  assert.deepEqual(document.nodes, expected.nodes);
+  assert.deepEqual(document.edges, expected.edges);
+  assert.deepEqual(document.viewport, expected.viewport);
+
+  const nodeIds = document.nodes.map((node) => node.id);
+  const edgeIds = document.edges.map((edge) => edge.id);
+  assert.equal(new Set(nodeIds).size, nodeIds.length, "Restored node IDs must stay unique");
+  assert.equal(new Set(edgeIds).size, edgeIds.length, "Restored edge IDs must stay unique");
+  const textNodes = document.nodes.filter((node) => node.type === "text");
+  assert.equal(textNodes.length, 1, "Undo must restore exactly one Text source");
+  const textNode = textNodes[0];
+  const target = document.nodes.find((node) => node.id === "p1-restart-target-image");
+  assert.equal(
+    `${textNode.data.content}\n\n${target.data.imagePrompt}`,
+    "电商白底图提示词母版正文\n\n本节点补充：保持服装原有版型",
+    "Restored graph must still compose the same final Prompt",
+  );
+  const textEdges = document.edges.filter((edge) => edge.source === textNode.id);
+  assert.equal(textEdges.length, 1, "Undo must restore exactly one remapped Text edge");
+  assert.equal(textEdges[0].target, "p1-restart-target-image");
+  assert.equal(textEdges[0].data.inputOrder, 1);
+  assert.equal(textEdges[0].data.inputRole, "instruction");
+  const snapshot = document.edges
+    .slice()
+    .sort((left, right) => left.data.inputOrder - right.data.inputOrder)
+    .map((edge) => {
+      const source = document.nodes.find((node) => node.id === edge.source);
+      return {
+        ...(source.type === "image" ? { assetId: source.data.assetId } : {}),
+        kind: source.type,
+        order: edge.data.inputOrder,
+        role: edge.data.inputRole,
+        sourceNodeId: source.id,
+      };
+    });
+  assert.deepEqual(snapshot, [
+    {
+      kind: "text",
+      order: 1,
+      role: "instruction",
+      sourceNodeId: "p1-restart-source-text-restored-1",
+    },
+    {
+      assetId: "asset-p1-garment-photo",
+      kind: "image",
+      order: 2,
+      role: "reference-image",
+      sourceNodeId: "p1-restart-source-image",
+    },
+  ]);
+  assert.doesNotMatch(JSON.stringify(snapshot), /https?:|signed|signature/i);
+}
+
 function assertP3VideoGraph(document, expected) {
   assert.equal(document.nodes.length, 5, "P3 Video graph must contain exactly five nodes");
   assert.equal(document.edges.length, 4, "P3 Video graph must contain exactly four edges");
@@ -359,6 +415,35 @@ const persistedCanvas = {
     : node),
 };
 
+const undoCanvasId = "restart-p1-text-delete-undo";
+const undoRestoredCanvas = {
+  ...canvas,
+  revision: 2,
+  saveSequence: 3,
+  nodes: canvas.nodes.map((node) => node.id === "p1-restart-source-text"
+    ? { ...node, id: "p1-restart-source-text-restored-1" }
+    : node),
+  edges: canvas.edges.map((edge) => edge.id === "p1-restart-text-to-image"
+    ? {
+        ...edge,
+        id: "p1-restart-text-to-image-restored-1-0",
+        source: "p1-restart-source-text-restored-1",
+      }
+    : edge),
+};
+const undoRestoredExpected = {
+  ...undoRestoredCanvas,
+  nodes: undoRestoredCanvas.nodes.map((node) => node.id === "p1-restart-source-image"
+    ? {
+        ...node,
+        data: {
+          ...node.data,
+          imageSrc: "/api/assets/asset-p1-garment-photo",
+        },
+      }
+    : node),
+};
+
 const p3CanvasId = "restart-p3-video-multimodal-input";
 const p3Canvas = {
   revision: 0,
@@ -482,6 +567,42 @@ try {
     tasks: 0,
   });
 
+  const undoInitial = await jsonRequest(`/api/canvas/${undoCanvasId}`, {
+    body: JSON.stringify(canvas),
+    headers: { "Content-Type": "application/json" },
+    method: "PUT",
+  });
+  assert.equal(undoInitial.revision, 1);
+  const undoDeleted = await jsonRequest(`/api/canvas/${undoCanvasId}`, {
+    body: JSON.stringify({
+      ...canvas,
+      revision: 1,
+      saveSequence: 2,
+      nodes: canvas.nodes.filter((node) => node.id !== "p1-restart-source-text"),
+      edges: canvas.edges.filter((edge) => edge.source !== "p1-restart-source-text"),
+    }),
+    headers: { "Content-Type": "application/json" },
+    method: "PUT",
+  });
+  assert.equal(undoDeleted.revision, 2);
+  const afterDelete = await jsonRequest(`/api/canvas/${undoCanvasId}`);
+  assert.equal(afterDelete.nodes.length, 2);
+  assert.equal(afterDelete.edges.length, 1);
+  const undoRestored = await jsonRequest(`/api/canvas/${undoCanvasId}`, {
+    body: JSON.stringify(undoRestoredCanvas),
+    headers: { "Content-Type": "application/json" },
+    method: "PUT",
+  });
+  assert.equal(undoRestored.revision, 3);
+  const beforeUndoRestart = await jsonRequest(`/api/canvas/${undoCanvasId}`);
+  assertP1UndoGraph(beforeUndoRestart, undoRestoredExpected);
+  await generationStatus();
+  assert.deepEqual(databaseGenerationCounts(), {
+    events: 0,
+    paidProviderRequests: 0,
+    tasks: 0,
+  });
+
   const p3Saved = await jsonRequest(`/api/canvas/${p3CanvasId}`, {
     body: JSON.stringify(p3Canvas),
     headers: { "Content-Type": "application/json" },
@@ -505,6 +626,13 @@ try {
     const restored = await jsonRequest(`/api/canvas/${canvasId}`);
     assert.equal(restored.revision, 1, `P1 revision changed after restart ${restartNumber}`);
     assertP1Graph(restored, persistedCanvas);
+    const undoAfterRestart = await jsonRequest(`/api/canvas/${undoCanvasId}`);
+    assert.equal(
+      undoAfterRestart.revision,
+      3,
+      `P1 delete/undo revision changed after restart ${restartNumber}`,
+    );
+    assertP1UndoGraph(undoAfterRestart, undoRestoredExpected);
     const p3Restored = await jsonRequest(`/api/canvas/${p3CanvasId}`);
     assert.equal(p3Restored.revision, 1, `P3 revision changed after restart ${restartNumber}`);
     assertP3VideoGraph(p3Restored, p3Canvas);
@@ -516,7 +644,7 @@ try {
     });
   }
   console.log(
-    "restart persistence: P1 Text+Image and P3 Video multimodal graphs, roles and order restored through two restarts; stable internal media routes only; zero generation tasks and zero Provider requests",
+    "restart persistence: P1 undo-shaped remapped graph plus Text+Image and P3 Video graphs, cards, final Prompt, roles and order restored through two restarts; stable internal media routes only; zero generation tasks and zero Provider requests",
   );
 } finally {
   if (server?.exitCode === null) await stop(server);

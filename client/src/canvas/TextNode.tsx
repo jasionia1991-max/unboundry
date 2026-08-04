@@ -30,7 +30,9 @@ import {
   submissionParameterValues,
 } from "../../../types/modelParameters";
 import {
+  availableNodeInputRoles,
   blockedModelSwitchProblem,
+  moveNodeInputEdge,
   resolveNodeInputs,
   type NodeInputProblem,
 } from "../../../types/nodeInputs";
@@ -1007,7 +1009,15 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
           </button>
         )}
         <UpstreamInputCards
+          disabled={Boolean(data.textGenerating || submitting)}
           inputs={inputPreflight.inputs}
+          onMove={(edgeId, direction) => {
+            checkpoint();
+            setNodes((nodes) => nodes.map((node) => node.id === id
+              ? { ...node, data: clearFailedTextGeneration(node.data) }
+              : node));
+            setEdges((edges) => moveNodeInputEdge(edges, id, edgeId, direction));
+          }}
           onRemove={(edgeId) => {
             checkpoint();
             setNodes((nodes) => nodes.map((node) => node.id === id
@@ -1015,8 +1025,22 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
               : node));
             setEdges((edges) => edges.filter((edge) => edge.id !== edgeId));
           }}
+          onRoleChange={(edgeId, role) => {
+            checkpoint();
+            setNodes((nodes) => nodes.map((node) => node.id === id
+              ? { ...node, data: clearFailedTextGeneration(node.data) }
+              : node));
+            setEdges((edges) => edges.map((edge) => edge.id === edgeId
+              ? { ...edge, data: { ...edge.data, inputRole: role } }
+              : edge));
+          }}
           problems={inputProblems}
-          removeLabel="移除上游输入"
+          roleOptions={(input) => availableNodeInputRoles({
+            kind: input.kind,
+            modelSchema: selectedTextModel?.parameterSchema,
+            parameters: textSubmissionParameters,
+            targetKind: "text",
+          })}
           testId="text-upstream-inputs"
         />
         <GenerationAvailabilityNotice

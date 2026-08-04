@@ -54,7 +54,9 @@ import {
   submissionParameterValues,
 } from "../../../types/modelParameters";
 import {
+  availableNodeInputRoles,
   blockedModelSwitchProblem,
+  moveNodeInputEdge,
   resolveNodeInputs,
   type NodeInputProblem,
 } from "../../../types/nodeInputs";
@@ -1230,17 +1232,18 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   const [transientUploadError, setTransientUploadError] = useState("");
   const uploading = data.inputState === "uploading";
   const referenceLimit = imageParameters.maxReferenceImages ?? 0;
+  const imageInputSchema = selectedImageModel
+    ? {
+        ...imageParameterSchema,
+        referenceInputs: {
+          ...imageParameterSchema.referenceInputs,
+          image: referenceLimit,
+        },
+      }
+    : undefined;
   const inputPreflight = resolveNodeInputs({
     edges: canvasEdges,
-    modelSchema: selectedImageModel
-      ? {
-          ...imageParameterSchema,
-          referenceInputs: {
-            ...imageParameterSchema.referenceInputs,
-            image: referenceLimit,
-          },
-        }
-      : undefined,
+    modelSchema: imageInputSchema,
     nodes: canvasNodes,
     ownPrompt: promptControl.committedValue,
     parameters: imageSubmissionParameterValues,
@@ -2294,12 +2297,27 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
         <UpstreamInputCards
           disabled={generating}
           inputs={inputPreflight.inputs}
+          onMove={(edgeId, direction) => {
+            checkpoint();
+            setEdges((edges) => moveNodeInputEdge(edges, id, edgeId, direction));
+          }}
           onRemove={(edgeId) => {
             checkpoint();
             setEdges((edges) => edges.filter((edge) => edge.id !== edgeId));
           }}
+          onRoleChange={(edgeId, role) => {
+            checkpoint();
+            setEdges((edges) => edges.map((edge) => edge.id === edgeId
+              ? { ...edge, data: { ...edge.data, inputRole: role } }
+              : edge));
+          }}
           problems={inputProblems}
-          removeLabel="移除参考图"
+          roleOptions={(input) => availableNodeInputRoles({
+            kind: input.kind,
+            modelSchema: imageInputSchema,
+            parameters: imageSubmissionParameterValues,
+            targetKind: "image",
+          })}
           testId="image-creator-references"
         />
         <GenerationAvailabilityNotice
@@ -2307,7 +2325,10 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
           kind="image"
           reason={imageModelUnavailableReason}
         />
-        {inputPreflight.inputs.some((input) => input.kind === "text") && (
+        {inputPreflight.inputs.some((input) =>
+          input.kind === "text" &&
+          input.state === "ready" &&
+          input.compatibility === "compatible") && (
           <div className="image-creator-final-prompt" data-testid="image-final-prompt">
             <span>{promptControl.committedValue.trim() ? "母版 + 本节点补充" : "使用上游母版"}</span>
             <strong>{inputPreflight.finalPrompt}</strong>

@@ -49,6 +49,7 @@ import {
 import {
   availableNodeInputRoles,
   blockedModelSwitchProblem,
+  moveNodeInputEdge,
   resolveNodeInputs,
   type NodeInputProblem,
 } from "../../../types/nodeInputs";
@@ -1204,6 +1205,10 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
         <UpstreamInputCards
           disabled={generating}
           inputs={inputPreflight.inputs}
+          onMove={(edgeId, direction) => {
+            checkpoint();
+            setEdges((edges) => moveNodeInputEdge(edges, id, edgeId, direction));
+          }}
           onRemove={(edgeId) => {
             checkpoint();
             setEdges((edges) => edges.filter((edge) => edge.id !== edgeId));
@@ -1223,8 +1228,8 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
           problems={inputProblems}
           roleOptions={(input) => availableNodeInputRoles({
             kind: input.kind,
-            modelSchema: videoParameterSchema,
-            parameters: videoParameters,
+            modelSchema: selectedVideoModel?.parameterSchema,
+            parameters: videoSubmissionParameters,
             targetKind: "video",
           })}
         />

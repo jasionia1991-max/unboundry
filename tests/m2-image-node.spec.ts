@@ -383,7 +383,7 @@ test("Image reference chip follows the incoming edge and undo restores both", as
   await expect(page.locator('.react-flow__edge[data-id="edge-image-reference"]'))
     .toHaveCount(1);
 
-  await references.getByRole("button", { name: "移除参考图 人物参考图" })
+  await references.getByRole("button", { name: "删除引用 人物参考图" })
     .click();
   await expect(references).toHaveCount(0);
   await expect(page.locator('.react-flow__edge[data-id="edge-image-reference"]'))

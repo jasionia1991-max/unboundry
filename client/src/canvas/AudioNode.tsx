@@ -47,7 +47,9 @@ import {
   submissionParameterValues,
 } from "../../../types/modelParameters";
 import {
+  availableNodeInputRoles,
   blockedModelSwitchProblem,
+  moveNodeInputEdge,
   resolveNodeInputs,
   type NodeInputProblem,
 } from "../../../types/nodeInputs";
@@ -259,6 +261,14 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     ...inputPreflight.problems,
     ...serverInputProblems,
   ];
+  const hasCompatibleUpstreamText = inputPreflight.inputs.some((input) =>
+    input.kind === "text" &&
+    input.state === "ready" &&
+    input.compatibility === "compatible" &&
+    !input.reason);
+  const independentLyrics = typeof audioSubmissionParameters.lyrics === "string"
+    ? audioSubmissionParameters.lyrics.trim()
+    : "";
   const inputFeedbackKey = JSON.stringify({
     edges: inputPreflight.inputs.map((input) => ({
       assetId: input.assetId,
@@ -1202,21 +1212,64 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
         <UpstreamInputCards
           disabled={generating}
           inputs={inputPreflight.inputs}
+          onMove={(edgeId, direction) => {
+            checkpoint();
+            setEdges((edges) => moveNodeInputEdge(edges, id, edgeId, direction));
+          }}
           onRemove={(edgeId) => {
             checkpoint();
             setEdges((edges) => edges.filter((edge) => edge.id !== edgeId));
           }}
+          onRoleChange={(edgeId, role) => {
+            checkpoint();
+            setEdges((edges) => edges.map((edge) => edge.id === edgeId
+              ? {
+                  ...edge,
+                  data: {
+                    ...edge.data,
+                    inputRole: role,
+                  },
+                }
+              : edge));
+          }}
           problems={inputProblems}
+          roleOptions={(input) => availableNodeInputRoles({
+            kind: input.kind,
+            modelSchema: selectedAudioModel?.parameterSchema,
+            parameters: audioSubmissionParameters,
+            targetKind: "audio",
+          })}
         />
         <GenerationAvailabilityNotice
           canvasId={canvasId}
           kind="audio"
           reason={audioModelUnavailableReason}
         />
+        {hasCompatibleUpstreamText && (
+          <div
+            className="image-creator-final-prompt audio-creator-final-prompt"
+            data-testid="audio-final-prompt"
+          >
+            <span>
+              {promptControl.committedValue.trim()
+                ? "母版 + 本节点补充"
+                : "使用上游母版"}
+            </span>
+            <strong data-testid="audio-final-prompt-value">
+              {inputPreflight.finalPrompt}
+            </strong>
+            {independentLyrics && (
+              <span data-testid="audio-lyrics-source">
+                歌词由音频参数独立提供，不并入最终Prompt
+              </span>
+            )}
+          </div>
+        )}
         <textarea
           aria-label="音频提示词"
           data-canvas-text-edit="graph"
           data-composition-active={promptControl.composing || undefined}
+          data-testid="audio-creator-prompt"
           onBlur={() => promptControl.blur()}
           onChange={(event) =>
             promptControl.change(

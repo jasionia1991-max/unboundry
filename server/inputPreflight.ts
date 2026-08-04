@@ -12,9 +12,27 @@ import { normalizePersistedMediaNodes } from "../types/persistedMediaSources";
 
 type CanvasRow = { edges: string; graph_revision: number; nodes: string };
 
+const nodePromptKeys: Record<NodeInputKind, string> = {
+  audio: "audioPrompt",
+  image: "imagePrompt",
+  text: "textPrompt",
+  video: "videoPrompt",
+};
+
+export function persistedNodeOwnPrompt(
+  node: { data?: Record<string, unknown> },
+  kind: NodeInputKind,
+) {
+  const value = node.data?.[nodePromptKeys[kind]];
+  return typeof value === "string" ? value.trim() : "";
+}
+
 export class CanvasRevisionConflictError extends Error {
-  constructor(readonly revision: number) {
-    super("画布内容还在保存，请等待保存完成后重试");
+  constructor(
+    readonly revision: number,
+    message = "画布内容还在保存，请等待保存完成后重试",
+  ) {
+    super(message);
     this.name = "CanvasRevisionConflictError";
   }
 }
@@ -52,12 +70,11 @@ export function resolvePersistedNodeInputs(input: {
   canvasId: string;
   expectedRevision?: number;
   modelSchema?: ModelParameterSchema;
-  ownPrompt?: string;
   ownerId: string;
   parameters?: Record<string, ModelParameterValue>;
   targetId: string;
   targetKind: NodeInputKind;
-}): NodeInputPreflight & { canvasRevision: number } {
+}): NodeInputPreflight & { canvasRevision: number; persistedOwnPrompt: string } {
   const database = openAppDatabase();
   try {
     const row = (input.bypass
@@ -92,17 +109,19 @@ export function resolvePersistedNodeInputs(input: {
     if (!target || target.type !== input.targetKind) {
       throw new Error("目标节点不存在或类型不匹配");
     }
+    const persistedOwnPrompt = persistedNodeOwnPrompt(target, input.targetKind);
     return {
       ...resolveNodeInputs({
         edges,
         modelSchema: input.modelSchema,
         nodes,
-        ownPrompt: input.ownPrompt,
+        ownPrompt: persistedOwnPrompt,
         parameters: input.parameters,
         targetId: input.targetId,
         targetKind: input.targetKind,
       }),
       canvasRevision: row.graph_revision,
+      persistedOwnPrompt,
     };
   } finally {
     database.close();

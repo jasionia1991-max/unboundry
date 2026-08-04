@@ -433,7 +433,14 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
           { data: { assetId: serverImageAssetId, imageSrc: `/api/assets/${serverImageAssetId}` }, id: "server-image", type: "image" },
           { data: { assetId: serverVideoAssetId, videoSrc: `/api/video-assets/${serverVideoAssetId}` }, id: "server-video-source", type: "video" },
           { data: { assetId: serverAudioAssetId, audioSrc: `/api/audio-assets/${serverAudioAssetId}` }, id: "server-audio", type: "audio" },
-          { data: { title: "服务端Video目标" }, id: "server-video", type: "video" },
+          {
+            data: {
+              title: "服务端Video目标",
+              videoPrompt: "服务端持久化画布对应的本节点Prompt",
+            },
+            id: "server-video",
+            type: "video",
+          },
         ],
         revision: 0,
         viewport: { x: 0, y: 0, zoom: 1 },
@@ -617,7 +624,7 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
     await expect(creator.getByRole("button", { exact: true, name: "全能参考" }))
       .toBeVisible();
     await page.getByTestId("upstream-input-p3-ui-image-2")
-      .getByRole("button", { name: /移除/ })
+      .getByRole("button", { name: /删除引用/ })
       .click();
     await expect(world).toHaveAttribute("data-edge-count", "1");
     await expect(creator.getByRole("button", { exact: true, name: "全能参考" }))

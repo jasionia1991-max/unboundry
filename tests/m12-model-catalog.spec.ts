@@ -209,7 +209,14 @@ test("only administrators manage models while users receive a safe published cat
             id: "weak-image-source",
             type: "image",
           },
-          { data: { title: "异常存量Video" }, id: "weak-video-target", type: "video" },
+          {
+            data: {
+              title: "异常存量Video",
+              videoPrompt: "必须使用安全Provider底线",
+            },
+            id: "weak-video-target",
+            type: "video",
+          },
         ],
         revision: 0,
         viewport: { x: 0, y: 0, zoom: 1 },
@@ -629,7 +636,9 @@ test("Seedance admin rules keep Provider floors locked while allowing lower mode
     .locator(".admin-model-parameter-enable input");
   await expect(inputModeToggle).toBeDisabled();
 
-  const imageRoles = editor.locator('.admin-model-upstream-inputs [data-input-kind="image"]');
+  const baseInputPolicy = editor.locator(".admin-model-upstream-inputs")
+    .filter({ hasText: "入参角色与必填条件" });
+  const imageRoles = baseInputPolicy.locator('[data-input-kind="image"]');
   await expect(imageRoles.getByText("首帧", { exact: true }).locator("..").getByRole("checkbox"))
     .toBeDisabled();
   await expect(imageRoles.getByText("普通参考", { exact: true }).locator("..").getByRole("checkbox"))
@@ -755,7 +764,19 @@ test("administrator configures future-model conditions, unavailable options and 
   const unconstrainedImageRole = editor.locator(
     '.admin-model-upstream-inputs [data-input-kind="image"]',
   ).getByText("普通参考", { exact: true }).locator("..").getByRole("checkbox");
+  await expect(unconstrainedImageRole).toBeDisabled();
+  await expect(unconstrainedImageRole).toHaveAttribute(
+    "title",
+    "每种已启用的上游类型至少保留一个角色",
+  );
+  const additionalImageRole = editor.locator(
+    '.admin-model-upstream-inputs [data-input-kind="image"]',
+  ).getByText("主体", { exact: true }).locator("..").getByRole("checkbox");
+  await expect(additionalImageRole).toBeEnabled();
+  await additionalImageRole.check();
   await expect(unconstrainedImageRole).toBeEnabled();
+  await additionalImageRole.uncheck();
+  await expect(unconstrainedImageRole).toBeDisabled();
   await expect(editor.locator(
     '.admin-model-reference-limits > .admin-model-reference-heading input[type="checkbox"]',
   )).toBeEnabled();
@@ -799,5 +820,204 @@ test("administrator configures future-model conditions, unavailable options and 
     type: "select",
   }));
   expect(stored?.parameterSchema.referencePolicy?.modes.reference.sets).toHaveLength(3);
+  expect(generationPosts).toEqual([]);
+});
+
+test("all four node model types persist the shared upstream input contract without Provider requests", async ({
+  page,
+}) => {
+  const generationPosts: string[] = [];
+  page.on("request", (request) => {
+    if (
+      request.method() === "POST" &&
+      (/\/api\/generation-tasks/.test(request.url()) || /openrouter|volces|mureka/i.test(request.url()))
+    ) {
+      generationPosts.push(request.url());
+    }
+  });
+  const cases = [
+    {
+      capability: "text",
+      displayName: "Universal Input Text",
+      forbiddenKinds: [],
+      mediaKind: "image",
+      mediaLabel: "图片",
+      mediaRole: "context-image",
+      role: "context-text",
+    },
+    {
+      capability: "image",
+      displayName: "Universal Input Image",
+      forbiddenKinds: ["video", "audio"],
+      mediaKind: "image",
+      mediaLabel: "图片",
+      mediaRole: "reference-image",
+      role: "instruction",
+    },
+    {
+      capability: "video",
+      displayName: "Universal Input Video",
+      forbiddenKinds: [],
+      mediaKind: "video",
+      mediaLabel: "视频",
+      mediaRole: "reference-video",
+      role: "instruction",
+    },
+    {
+      capability: "audio",
+      displayName: "Universal Input Audio",
+      forbiddenKinds: ["image", "video", "audio"],
+      role: "instruction",
+    },
+  ] as const;
+
+  for (const item of cases) {
+    const response = await page.request.post("/api/admin/models", {
+      data: {
+        capability: item.capability,
+        displayName: item.displayName,
+        isDefault: false,
+        maxCostMicrounits: 0,
+        providerModelId: `test/${item.capability}-universal-input`,
+        sortOrder: 80,
+        status: "draft",
+      },
+    });
+    expect(response.status()).toBe(201);
+  }
+
+  await page.goto("/admin/models?v=universal-node-input-contract");
+  for (const item of cases) {
+    const card = page.locator(".model-list article").filter({ hasText: item.displayName });
+    await card.getByRole("button", { name: "参数设置" }).click();
+    const editor = card.locator(".admin-model-parameter-edit");
+
+    const upstream = editor.locator(".admin-model-upstream-inputs")
+      .filter({ hasText: "上游输入规则" });
+    await expect(upstream.locator(".admin-model-upstream-list > [data-input-kind]"))
+      .toHaveCount(4);
+    const textRule = upstream.locator('[data-input-kind="text"]');
+    await expect(textRule.getByRole("checkbox")).toBeChecked();
+    await textRule.getByRole("combobox", { name: "文字上游数量规则" }).click();
+    await textRule.getByRole("option", { name: "固定画布数量" }).click();
+    await textRule.getByRole("spinbutton", { name: "文字上游输入上限" }).fill("2");
+    for (const forbiddenKind of item.forbiddenKinds) {
+      await expect(
+        upstream.locator(`[data-input-kind="${forbiddenKind}"]`).getByRole("checkbox"),
+      ).toBeDisabled();
+    }
+    if ("mediaKind" in item) {
+      const mediaRule = upstream.locator(`[data-input-kind="${item.mediaKind}"]`);
+      await mediaRule.getByRole("checkbox").check();
+      await mediaRule.getByRole("spinbutton", {
+        name: `${item.mediaLabel}上游输入上限`,
+      }).fill("2");
+    }
+
+    const basePolicy = editor.locator(".admin-model-upstream-inputs")
+      .filter({ hasText: "入参角色与必填条件" });
+    const textPolicy = basePolicy.locator('[data-input-kind="text"]');
+    await expect(textPolicy.getByRole("checkbox")).toBeChecked();
+    await textPolicy.getByRole("spinbutton", { name: "text必填数量" }).fill("1");
+    await basePolicy.getByRole("combobox", { name: "模型切换规则" }).click();
+    await basePolicy.getByRole("option", { name: "有不兼容引用时禁止切换" }).click();
+
+    const conditional = editor.locator(".admin-model-upstream-inputs")
+      .filter({ hasText: "按生成方式设置角色与必填" });
+    await conditional.getByRole("checkbox", {
+      name: "按生成方式设置角色与必填",
+    }).check();
+    const modePolicy = conditional.locator('[data-role-policy="0"]');
+    const modeTextPolicy = modePolicy.locator(
+      ':scope > .admin-model-upstream-list > [data-input-kind="text"]',
+    );
+    const roleDetails = modeTextPolicy.locator(`[data-input-role="${item.role}"]`);
+    await roleDetails.getByRole("spinbutton").first().fill("1");
+    await roleDetails.getByRole("checkbox", { name: /按顺序自动分配/ }).check();
+    if ("mediaKind" in item) {
+      const modeMediaPolicy = modePolicy.locator(
+        `:scope > .admin-model-upstream-list > [data-input-kind="${item.mediaKind}"]`,
+      );
+      const mediaRoleDetails = modeMediaPolicy.locator(
+        `[data-input-role="${item.mediaRole}"]`,
+      );
+      await mediaRoleDetails.getByRole("spinbutton").first().fill("1");
+      await mediaRoleDetails.getByRole("checkbox", { name: /按顺序自动分配/ }).check();
+    }
+
+    const combinations = editor.locator(".admin-model-reference-limits")
+      .filter({ hasText: "参考素材组合" });
+    await combinations.getByRole("checkbox", {
+      name: "按生成方式分别设置素材组合",
+    }).check();
+    await expect(combinations.locator(".admin-model-reference-modes > div"))
+      .toHaveCount(1);
+    if ("mediaKind" in item) {
+      await combinations.getByRole("spinbutton", {
+        name: `text组合1${item.mediaKind}上限`,
+      }).fill("2");
+    }
+
+    await editor.getByRole("button", { name: "保存参数设置" }).click();
+  }
+
+  const stored = await (await page.request.get("/api/admin/models")).json() as {
+    models: Array<{
+      displayName: string;
+      parameterSchema: ModelParameterSchema;
+    }>;
+  };
+  for (const item of cases) {
+    const model = stored.models.find((candidate) => candidate.displayName === item.displayName);
+    expect(model?.parameterSchema.upstreamInputs?.text).toMatchObject({
+      limitMode: "fixed",
+      maxCount: 2,
+      supported: true,
+    });
+    expect(model?.parameterSchema.inputPolicy).toMatchObject({
+      required: { text: 1 },
+      switchPolicy: "block-switch",
+    });
+    expect(model?.parameterSchema.inputPolicy?.roles?.text).toContain(item.role);
+    expect(model?.parameterSchema.inputPolicy?.rolePolicies?.[0]).toMatchObject({
+      assignment: {
+        text: [item.role],
+      },
+      limits: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "text",
+          maxCount: 2,
+          minCount: 1,
+          role: item.role,
+        }),
+      ]),
+      roles: { text: [item.role] },
+    });
+    expect(model?.parameterSchema.referencePolicy?.modes).toHaveProperty("text");
+    if ("mediaKind" in item) {
+      expect(model?.parameterSchema.upstreamInputs?.[item.mediaKind]).toMatchObject({
+        limitMode: "fixed",
+        maxCount: 2,
+        supported: true,
+      });
+      expect(model?.parameterSchema.inputPolicy?.roles?.[item.mediaKind])
+        .toContain(item.mediaRole);
+      expect(model?.parameterSchema.inputPolicy?.rolePolicies?.[0])
+        .toMatchObject({
+          assignment: { [item.mediaKind]: [item.mediaRole] },
+          limits: expect.arrayContaining([
+            expect.objectContaining({
+              kind: item.mediaKind,
+              maxCount: 2,
+              minCount: 1,
+              role: item.mediaRole,
+            }),
+          ]),
+          roles: { [item.mediaKind]: [item.mediaRole] },
+        });
+      expect(model?.parameterSchema.referencePolicy?.modes.text.sets[0])
+        .toMatchObject({ [item.mediaKind]: 2 });
+    }
+  }
   expect(generationPosts).toEqual([]);
 });

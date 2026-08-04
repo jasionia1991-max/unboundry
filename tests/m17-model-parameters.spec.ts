@@ -572,7 +572,7 @@ test("text node shows connected multimodal inputs, removes only the selected edg
   await expect(inputs).toContainText("视频资料");
   await expect(inputs).toContainText("音频资料");
   await expect(page.getByRole("button", { name: "Generate" })).toBeDisabled();
-  await inputs.getByRole("button", { name: "移除上游输入 视频资料" }).click();
+  await inputs.getByRole("button", { name: "删除引用 视频资料" }).click();
   await expect(inputs.locator(":scope > div")).toHaveCount(3);
   await expect(page.getByTestId("canvas-world")).toHaveAttribute("data-edge-count", "3");
   await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");

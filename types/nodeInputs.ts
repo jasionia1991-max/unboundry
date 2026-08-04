@@ -266,6 +266,54 @@ export function nextNodeInputOrder(
   return maximum + 1;
 }
 
+/**
+ * Moves one durable input reference without changing the graph topology.
+ * Orders are compacted after every move so a later delete/undo/reload cannot
+ * leave duplicate or ambiguous positions behind.
+ */
+export function moveNodeInputEdge<T extends GraphEdge>(
+  edges: readonly T[],
+  targetId: string,
+  edgeId: string,
+  direction: "backward" | "forward",
+): T[] {
+  const incoming = edges
+    .map((edge, index) => ({ edge, index }))
+    .filter(({ edge }) => edge.target === targetId)
+    .sort((left, right) => {
+      const leftOrder = Number(left.edge.data?.inputOrder);
+      const rightOrder = Number(right.edge.data?.inputOrder);
+      const safeLeft = Number.isSafeInteger(leftOrder) && leftOrder >= 1
+        ? leftOrder
+        : left.index + 1;
+      const safeRight = Number.isSafeInteger(rightOrder) && rightOrder >= 1
+        ? rightOrder
+        : right.index + 1;
+      return safeLeft - safeRight || left.index - right.index;
+    });
+  const currentIndex = incoming.findIndex(({ edge }) => edge.id === edgeId);
+  const nextIndex = direction === "backward" ? currentIndex - 1 : currentIndex + 1;
+  if (currentIndex < 0 || nextIndex < 0 || nextIndex >= incoming.length) {
+    return [...edges];
+  }
+  [incoming[currentIndex], incoming[nextIndex]] = [
+    incoming[nextIndex],
+    incoming[currentIndex],
+  ];
+  const orders = new Map(
+    incoming.map(({ edge }, index) => [edge.id, index + 1]),
+  );
+  return edges.map((edge) => edge.target === targetId && orders.has(edge.id)
+    ? {
+        ...edge,
+        data: {
+          ...edge.data,
+          inputOrder: orders.get(edge.id),
+        },
+      }
+    : edge);
+}
+
 function summaryFor(node: GraphNode, kind: NodeInputKind) {
   const data = node.data ?? {};
   if (kind === "text") return text(data.content).slice(0, 120);
@@ -334,13 +382,19 @@ export function resolveNodeInputs(input: {
     .map((edge, index): ResolvedNodeInput => {
       const source = byId.get(edge.source);
       if (!source) {
+        const configuredRole = edge.data?.inputRole;
+        const configuredOrder = Number(edge.data?.inputOrder);
         return {
           compatibility: "blocked",
           edgeId: edge.id,
           kind: "text",
-          order: index + 1,
+          order: Number.isSafeInteger(configuredOrder) && configuredOrder >= 1
+            ? configuredOrder
+            : index + 1,
           reason: "来源节点已不存在",
-          role: "instruction",
+          role: typeof configuredRole === "string"
+            ? configuredRole as NodeInputRole
+            : "instruction",
           sourceNodeId: edge.source,
           state: "missing",
           summary: "无法找到来源节点",

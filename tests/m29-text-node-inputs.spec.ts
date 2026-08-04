@@ -24,7 +24,7 @@ const allTextUpstreamInputs = {
 
 const textInputRoles = {
   audio: ["context-audio"],
-  image: ["context-image"],
+  image: ["context-image", "subject"],
   text: ["context-text"],
   video: ["context-video"],
 };
@@ -495,6 +495,69 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
     await expect(page.getByTestId("text-creator-prompt")).toHaveValue("本节点生成指令");
     await expect(page.getByTestId("upstream-input-problem")).toHaveCount(0);
 
+    const imageRole = cards.getByLabel("上游图片角色");
+    await imageRole.focus();
+    await imageRole.selectOption("subject");
+    await expect(imageRole).not.toBeFocused();
+    await expect(cards.locator('[data-input-kind="image"]'))
+      .toHaveAttribute("data-input-role", "subject");
+    await expect.poll(async () => {
+      const response = await request.get(`/api/canvas/${rootCanvasId}`);
+      const document = await response.json() as CanvasDocument;
+      return (document.edges.find((edge) => edge.id === "p2-edge-image")?.data as {
+        inputRole?: string;
+      })?.inputRole;
+    }).toBe("subject");
+    await page.keyboard.press("Meta+z");
+    await expect(cards.locator('[data-input-kind="image"]'))
+      .toHaveAttribute("data-input-role", "context-image");
+    await expect.poll(async () => {
+      const response = await request.get(`/api/canvas/${rootCanvasId}`);
+      const document = await response.json() as CanvasDocument;
+      return (document.edges.find((edge) => edge.id === "p2-edge-image")?.data as {
+        inputRole?: string;
+      })?.inputRole;
+    }).toBe("context-image");
+
+    await cards.getByRole("button", { name: "向前移动 上游音频" }).click();
+    await expect(cards.locator("[data-input-kind]").nth(2))
+      .toHaveAttribute("data-input-kind", "audio");
+    await expect.poll(async () => {
+      const response = await request.get(`/api/canvas/${rootCanvasId}`);
+      const document = await response.json() as CanvasDocument;
+      return document.edges.map((edge) => ({
+        id: edge.id,
+        order: (edge.data as { inputOrder?: number }).inputOrder,
+      }));
+    }).toEqual([
+      { id: "p2-edge-text", order: 1 },
+      { id: "p2-edge-image", order: 2 },
+      { id: "p2-edge-video", order: 4 },
+      { id: "p2-edge-audio", order: 3 },
+    ]);
+    await page.reload();
+    await expect(world).toHaveAttribute("data-persistence-ready", "true");
+    await page.locator('.react-flow__node[data-id="p2-target-text"]').click();
+    await expect(cards.locator("[data-input-kind]").nth(2))
+      .toHaveAttribute("data-input-kind", "audio");
+    await cards.getByRole("button", { name: "向后移动 上游音频" }).click();
+    await expect(cards.locator("[data-input-kind]").nth(2))
+      .toHaveAttribute("data-input-kind", "video");
+    await expect.poll(async () => {
+      const response = await request.get(`/api/canvas/${rootCanvasId}`);
+      const document = await response.json() as CanvasDocument;
+      return document.edges.map((edge) => (edge.data as { inputOrder?: number }).inputOrder);
+    }).toEqual([1, 2, 3, 4]);
+    await cards.getByRole("button", { name: "向前移动 上游音频" }).click();
+    await page.keyboard.press("Meta+z");
+    await expect(cards.locator("[data-input-kind]").nth(2))
+      .toHaveAttribute("data-input-kind", "video");
+    await expect.poll(async () => {
+      const response = await request.get(`/api/canvas/${rootCanvasId}`);
+      const document = await response.json() as CanvasDocument;
+      return document.edges.map((edge) => (edge.data as { inputOrder?: number }).inputOrder);
+    }).toEqual([1, 2, 3, 4]);
+
     const modelControl = page.getByTestId("text-model-control");
     await expect(modelControl.getByRole("combobox")).toContainText(compatibleModelName);
     await modelControl.getByRole("combobox").click();
@@ -509,7 +572,7 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
     await expect(page.getByTestId("upstream-input-problem"))
       .toContainText("当前模型不支持image类型上游");
 
-    await cards.getByRole("button", { name: "移除上游输入 上游音频" }).click();
+    await cards.getByRole("button", { name: "删除引用 上游音频" }).click();
     await expect(world).toHaveAttribute("data-edge-count", "3");
     await expect.poll(async () => {
       const response = await request.get(`/api/canvas/${rootCanvasId}`);
@@ -555,6 +618,7 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
           data: {
             label: "Text",
             textModelId: compatibleModelId,
+            textPrompt: "本节点文字生成指令",
             title: "服务端文字目标",
           },
           id: "server-text-target",

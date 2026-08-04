@@ -533,40 +533,29 @@ function persistedSubmissionInputs(input: {
   parameters: Record<string, ModelParameterValue>;
   targetKind: NodeInputKind;
 }) {
-  const suppliedOwnPrompt = typeof input.body.ownPrompt === "string"
-    ? input.body.ownPrompt
-    : String(input.body.prompt ?? "");
-  const resolve = (ownPrompt: string) => resolvePersistedNodeInputs({
+  const resolved = resolvePersistedNodeInputs({
     bypass: input.bypass,
     canvasId: String(input.body.canvasId ?? ""),
     expectedRevision: input.body.canvasRevision,
     modelSchema: input.modelSchema,
-    ownPrompt,
     ownerId: input.ownerId,
     parameters: input.parameters,
     targetId: String(input.body.nodeId ?? ""),
     targetKind: input.targetKind,
   });
-  const resolved = resolve(suppliedOwnPrompt);
-  if (typeof input.body.ownPrompt === "string") return resolved;
+  const { persistedOwnPrompt, ...persisted } = resolved;
   if (input.body.inputSchemaVersion === 1) {
-    throw new Error("节点输入版本1缺少本节点Prompt");
+    if (typeof input.body.ownPrompt !== "string") {
+      throw new Error("节点输入版本1缺少本节点Prompt");
+    }
+    if (input.body.ownPrompt.trim() !== persistedOwnPrompt) {
+      throw new CanvasRevisionConflictError(
+        persisted.canvasRevision,
+        "本节点Prompt与已保存画布不一致，请等待保存完成后重试",
+      );
+    }
   }
-
-  // Before inputSchemaVersion=1, image clients sent the already-merged prompt.
-  // Keep that legacy request shape safe without accepting client-supplied inputs
-  // or references as graph facts.
-  const persistedUpstreamText = resolved.inputs
-    .filter((item) => item.kind === "text" && item.state === "ready")
-    .map((item) => item.text)
-    .filter(Boolean)
-    .join("\n\n");
-  if (!persistedUpstreamText) return resolved;
-  if (suppliedOwnPrompt === persistedUpstreamText) return resolve("");
-  const mergedPrefix = `${persistedUpstreamText}\n\n`;
-  return suppliedOwnPrompt.startsWith(mergedPrefix)
-    ? resolve(suppliedOwnPrompt.slice(mergedPrefix.length))
-    : resolved;
+  return persisted;
 }
 
 const mediaLimits = {

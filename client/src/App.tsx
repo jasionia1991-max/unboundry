@@ -9,6 +9,7 @@ import {
   providerParameterSchema,
   textOnlyUpstreamInputs,
   type ModelCapability,
+  type ModelInputRolePolicy,
   type ModelParameterAvailability,
   type ModelParameterField,
   type ModelNodeInputPolicy,
@@ -2949,11 +2950,106 @@ function AdminModelParameterEditor({
       : item));
   };
 
+  const inputKinds = ["text", "image", "video", "audio"] as const;
+  const inputKindLabels: Record<ModelUpstreamInputKind, string> = {
+    audio: "音频",
+    image: "图片",
+    text: "文字",
+    video: "视频",
+  };
+  const inputMode = schema.fields.find((field) => field.key === "inputMode");
+  const inputRoleOptions: Record<
+    ModelUpstreamInputKind,
+    Array<{ label: string; value: string }>
+  > = {
+    audio: capability === "text"
+      ? [{ label: "音频上下文", value: "context-audio" }]
+      : [{ label: "参考音频", value: "reference-audio" }],
+    image: capability === "text"
+      ? [{ label: "图片上下文", value: "context-image" }]
+      : capability === "video"
+        ? [
+            { label: "普通参考", value: "reference-image" },
+            { label: "首帧", value: "first-frame" },
+            { label: "尾帧", value: "last-frame" },
+            { label: "主体", value: "subject" },
+          ]
+        : [{ label: "参考图片", value: "reference-image" }],
+    text: capability === "text"
+      ? [{ label: "文字上下文", value: "context-text" }]
+      : [{ label: "生成指令", value: "instruction" }],
+    video: capability === "text"
+      ? [{ label: "视频上下文", value: "context-video" }]
+      : capability === "video"
+        ? [
+            { label: "普通参考", value: "reference-video" },
+            { label: "主体", value: "subject" },
+          ]
+        : [{ label: "参考视频", value: "reference-video" }],
+  };
+  const productAllowsUpstream = (kind: ModelUpstreamInputKind) =>
+    capability === "text" ||
+    capability === "video" ||
+    kind === "text" ||
+    (capability === "image" && kind === "image");
+  const implicitUpstreamInputs = Object.fromEntries(inputKinds.map((kind) => {
+    if (capability === "text") {
+      return [kind, { ...textOnlyUpstreamInputs[kind] }];
+    }
+    if (kind === "text") {
+      return [kind, { limitMode: "context" as const, supported: true }];
+    }
+    const count = productAllowsUpstream(kind)
+      ? schema.referenceInputs[kind as keyof ModelReferenceInputs]
+      : 0;
+    return [kind, {
+      limitMode: "fixed" as const,
+      maxCount: count,
+      supported: count > 0,
+    }];
+  })) as NonNullable<ModelParameterSchema["upstreamInputs"]>;
+  const upstreamInputs = schema.upstreamInputs ?? implicitUpstreamInputs;
+  const inputPolicy: ModelNodeInputPolicy = schema.inputPolicy ?? {
+    switchPolicy: "keep-edge",
+  };
+  const upstreamConstraint = (kind: ModelUpstreamInputKind) => {
+    if (!productAllowsUpstream(kind)) {
+      return { limitMode: "fixed" as const, maxCount: 0, supported: false };
+    }
+    const explicit = constraints?.upstreamInputs?.[kind];
+    if (explicit) return explicit;
+    if (constraints && kind !== "text") {
+      const maximum = constraints.referenceInputs[kind];
+      return {
+        limitMode: "fixed" as const,
+        maxCount: maximum,
+        supported: maximum > 0,
+      };
+    }
+    return undefined;
+  };
+  const maximumUpstreamCount = (kind: ModelUpstreamInputKind) => {
+    const allowed = upstreamConstraint(kind);
+    return allowed?.limitMode === "fixed"
+      ? allowed.maxCount ?? 0
+      : 16;
+  };
+  const effectiveRoles = (kind: ModelUpstreamInputKind) => {
+    const configured = inputPolicy.roles?.[kind];
+    return configured?.length
+      ? configured
+      : [inputRoleOptions[kind][0].value];
+  };
+  const updateInputPolicy = (next: ModelNodeInputPolicy) =>
+    onChange({ ...schema, inputPolicy: next });
+
   const setReferenceLimit = (
     kind: keyof ModelParameterSchema["referenceInputs"],
     raw: string,
   ) => {
-    const maximum = constraints?.referenceInputs[kind] ?? 16;
+    const maximum = productAllowsUpstream(kind)
+      ? constraints?.referenceInputs[kind] ?? 16
+      : 0;
     const value = Math.max(0, Math.min(maximum, Math.round(Number(raw) || 0)));
     onChange({
       ...schema,
@@ -2988,7 +3084,6 @@ function AdminModelParameterEditor({
       onChange({ ...rest, referenceInputs: schema.referenceInputs });
       return;
     }
-    const inputMode = schema.fields.find((field) => field.key === "inputMode");
     if (!inputMode) return;
     const modes = Object.fromEntries(inputMode.options.map((option) => {
       const constraintSets = constraints?.referencePolicy?.modes[String(option.value)]?.sets;
@@ -3009,10 +3104,17 @@ function AdminModelParameterEditor({
   ) => {
     if (!schema.referencePolicy) return;
     const constraintSets = constraints?.referencePolicy?.modes[mode]?.sets;
-    const maximum = constraintSets?.reduce(
+    const providerMaximum = constraintSets?.reduce(
       (value, set) => Math.max(value, set[kind]),
       0,
     ) ?? constraints?.referenceInputs[kind] ?? 16;
+    const inputRule = upstreamInputs[kind];
+    const inputMaximum = inputRule.supported && inputRule.limitMode === "fixed"
+      ? inputRule.maxCount ?? 0
+      : 16;
+    const maximum = productAllowsUpstream(kind)
+      ? Math.min(providerMaximum, inputMaximum)
+      : 0;
     const value = Math.max(0, Math.min(maximum, Math.round(Number(raw) || 0)));
     const modes = Object.fromEntries(Object.entries(schema.referencePolicy.modes).map(([key, entry]) => [
       key,
@@ -3043,8 +3145,6 @@ function AdminModelParameterEditor({
     });
   };
 
-  const inputMode = schema.fields.find((field) => field.key === "inputMode");
-  const upstreamInputs = schema.upstreamInputs ?? textOnlyUpstreamInputs;
   const updateUpstreamInput = (
     kind: ModelUpstreamInputKind,
     patch: Partial<(typeof upstreamInputs)[ModelUpstreamInputKind]>,
@@ -3062,17 +3162,60 @@ function AdminModelParameterEditor({
     kind: ModelUpstreamInputKind,
     supported: boolean,
   ) => {
-    updateUpstreamInput(kind, {
-      supported,
-      ...(supported && upstreamInputs[kind].limitMode === "fixed"
-        ? { maxCount: Math.max(1, upstreamInputs[kind].maxCount ?? 1) }
-        : {}),
+    const allowed = upstreamConstraint(kind);
+    if (!productAllowsUpstream(kind) || (supported && allowed && !allowed.supported)) return;
+    const current = upstreamInputs[kind];
+    const nextPolicy = supported
+      ? {
+          ...inputPolicy,
+          roles: {
+            ...inputPolicy.roles,
+            [kind]: effectiveRoles(kind),
+          },
+        }
+      : {
+          ...inputPolicy,
+          required: { ...inputPolicy.required, [kind]: 0 },
+          ...(!constraints?.inputPolicy
+            ? {
+                rolePolicies: inputPolicy.rolePolicies?.map((policy) => ({
+                  ...policy,
+                  assignment: policy.assignment
+                    ? { ...policy.assignment, [kind]: [] }
+                    : undefined,
+                  limits: policy.limits?.filter((limit) => limit.kind !== kind),
+                  roles: { ...policy.roles, [kind]: [] },
+                })),
+                roles: { ...inputPolicy.roles, [kind]: [] },
+              }
+            : {}),
+        };
+    onChange({
+      ...schema,
+      inputPolicy: nextPolicy,
+      upstreamInputs: {
+        ...upstreamInputs,
+        [kind]: {
+          ...current,
+          supported,
+          ...(supported && current.limitMode === "fixed"
+            ? {
+                maxCount: Math.max(
+                  1,
+                  Math.min(maximumUpstreamCount(kind), current.maxCount ?? 1),
+                ),
+              }
+            : {}),
+        },
+      },
     });
   };
   const setUpstreamLimitMode = (
     kind: ModelUpstreamInputKind,
     limitMode: "context" | "fixed",
   ) => {
+    const allowed = upstreamConstraint(kind);
+    if (limitMode === "context" && allowed?.limitMode === "fixed") return;
     updateUpstreamInput(kind, {
       limitMode,
       ...(limitMode === "fixed"
@@ -3081,43 +3224,160 @@ function AdminModelParameterEditor({
     });
   };
   const setUpstreamMaxCount = (kind: ModelUpstreamInputKind, raw: string) => {
-    const value = Math.max(1, Math.min(16, Math.round(Number(raw) || 1)));
-    updateUpstreamInput(kind, { maxCount: value });
+    const value = Math.max(
+      1,
+      Math.min(maximumUpstreamCount(kind), Math.round(Number(raw) || 1)),
+    );
+    onChange({
+      ...schema,
+      inputPolicy: {
+        ...inputPolicy,
+        required: {
+          ...inputPolicy.required,
+          [kind]: Math.min(inputPolicy.required?.[kind] ?? 0, value),
+        },
+      },
+      upstreamInputs: {
+        ...upstreamInputs,
+        [kind]: { ...upstreamInputs[kind], maxCount: value },
+      },
+    });
   };
-  const inputPolicy: ModelNodeInputPolicy = schema.inputPolicy ?? {
-    switchPolicy: "keep-edge",
-  };
-  const inputRoleOptions: Record<ModelUpstreamInputKind, Array<{ label: string; value: string }>> = {
-    audio: capability === "text"
-      ? [{ label: "音频上下文", value: "context-audio" }]
-      : [{ label: "参考音频", value: "reference-audio" }],
-    image: capability === "text"
-      ? [{ label: "图片上下文", value: "context-image" }]
-      : capability === "video"
-        ? [
-            { label: "普通参考", value: "reference-image" },
-            { label: "首帧", value: "first-frame" },
-            { label: "尾帧", value: "last-frame" },
-            { label: "主体", value: "subject" },
-          ]
-        : [{ label: "参考图片", value: "reference-image" }],
-    text: capability === "text"
-      ? [{ label: "文字上下文", value: "context-text" }]
-      : [{ label: "生成指令", value: "instruction" }],
-    video: capability === "text"
-      ? [{ label: "视频上下文", value: "context-video" }]
-      : capability === "video"
-        ? [
-            { label: "普通参考", value: "reference-video" },
-            { label: "主体", value: "subject" },
-          ]
-        : [{ label: "参考视频", value: "reference-video" }],
-  };
-  const updateInputPolicy = (next: typeof inputPolicy) =>
-    onChange({ ...schema, inputPolicy: next });
   const roleUsedByModePolicy = (kind: ModelUpstreamInputKind, role: string) =>
     inputPolicy.rolePolicies?.some((policy) =>
       policy.roles[kind]?.includes(role)) ?? false;
+  const modeRolePoliciesLocked = Boolean(constraints?.inputPolicy);
+  const setModeRolePoliciesEnabled = (enabled: boolean) => {
+    if (modeRolePoliciesLocked || !inputMode?.options.length) return;
+    const configuredRoles = Object.fromEntries(inputKinds.map((kind) => [
+      kind,
+      upstreamInputs[kind].supported && productAllowsUpstream(kind)
+        ? effectiveRoles(kind)
+        : [],
+    ])) as ModelInputRolePolicy["roles"];
+    updateInputPolicy({
+      ...inputPolicy,
+      roles: enabled
+        ? { ...inputPolicy.roles, ...configuredRoles }
+        : inputPolicy.roles,
+      rolePolicies: enabled
+        ? inputMode.options.map((option): ModelInputRolePolicy => ({
+            enabledWhen: [{
+              key: inputMode.key,
+              operator: "equals",
+              value: option.value,
+            }],
+            roles: configuredRoles,
+          }))
+        : undefined,
+    });
+  };
+  const updateModeRolePolicy = (
+    index: number,
+    update: (policy: ModelInputRolePolicy) => ModelInputRolePolicy,
+  ) => {
+    if (modeRolePoliciesLocked || !inputPolicy.rolePolicies?.[index]) return;
+    updateInputPolicy({
+      ...inputPolicy,
+      rolePolicies: inputPolicy.rolePolicies.map((policy, policyIndex) =>
+        policyIndex === index ? update(policy) : policy),
+    });
+  };
+  const setModeRole = (
+    policyIndex: number,
+    kind: ModelUpstreamInputKind,
+    role: string,
+    enabled: boolean,
+  ) => {
+    const policies = inputPolicy.rolePolicies;
+    const policy = policies?.[policyIndex];
+    if (modeRolePoliciesLocked || !policy) return;
+    const roles = policy.roles[kind] ?? [];
+    const nextRoles = enabled
+      ? [...new Set([...roles, role])]
+      : roles.filter((candidate) => candidate !== role);
+    const nextPolicy = {
+      ...policy,
+      assignment: policy.assignment
+        ? {
+            ...policy.assignment,
+            [kind]: (policy.assignment[kind] ?? []).filter((candidate) =>
+              candidate !== role),
+          }
+        : undefined,
+      limits: enabled
+        ? policy.limits
+        : policy.limits?.filter((limit) =>
+            limit.kind !== kind || limit.role !== role),
+      roles: { ...policy.roles, [kind]: nextRoles },
+    };
+    const globalRoles = enabled
+      ? [...new Set([...effectiveRoles(kind), role])]
+      : effectiveRoles(kind);
+    onChange({
+      ...schema,
+      inputPolicy: {
+        ...inputPolicy,
+        rolePolicies: policies!.map((candidate, index) =>
+          index === policyIndex ? nextPolicy : candidate),
+        roles: { ...inputPolicy.roles, [kind]: globalRoles },
+      },
+    });
+  };
+  const modeRoleLimit = (
+    policy: ModelInputRolePolicy,
+    kind: ModelUpstreamInputKind,
+    role: string,
+  ) => policy.limits?.find((limit) =>
+    limit.kind === kind && limit.role === role) ?? {
+      kind,
+      maxCount: upstreamInputs[kind].limitMode === "fixed"
+        ? upstreamInputs[kind].maxCount ?? 1
+        : 16,
+      minCount: 0,
+      role,
+    };
+  const setModeRoleLimit = (
+    policyIndex: number,
+    kind: ModelUpstreamInputKind,
+    role: string,
+    key: "maxCount" | "minCount",
+    raw: string,
+  ) => updateModeRolePolicy(policyIndex, (policy) => {
+    const current = modeRoleLimit(policy, kind, role);
+    const maximum = upstreamInputs[kind].limitMode === "fixed"
+      ? upstreamInputs[kind].maxCount ?? 1
+      : 16;
+    const requested = Math.max(0, Math.min(maximum, Math.round(Number(raw) || 0)));
+    const next = key === "minCount"
+      ? { ...current, maxCount: Math.max(current.maxCount, requested), minCount: requested }
+      : { ...current, maxCount: Math.max(current.minCount, requested) };
+    return {
+      ...policy,
+      limits: [
+        ...(policy.limits ?? []).filter((limit) =>
+          limit.kind !== kind || limit.role !== role),
+        next,
+      ],
+    };
+  });
+  const setModeRoleAssignment = (
+    policyIndex: number,
+    kind: ModelUpstreamInputKind,
+    role: string,
+    enabled: boolean,
+  ) => updateModeRolePolicy(policyIndex, (policy) => {
+    const assigned = policy.assignment?.[kind] ?? [];
+    const allowedOrder = inputRoleOptions[kind].map((option) => option.value);
+    const nextAssigned = (enabled
+      ? [...new Set([...assigned, role])]
+      : assigned.filter((candidate) => candidate !== role))
+      .sort((left, right) => allowedOrder.indexOf(left) - allowedOrder.indexOf(right));
+    return {
+      ...policy,
+      assignment: { ...policy.assignment, [kind]: nextAssigned },
+    };
+  });
 
   return (
     <div className="admin-model-parameters">
@@ -3243,52 +3503,78 @@ function AdminModelParameterEditor({
           <span>连线保留在画布，模型只决定当前能否提交</span>
         </div>
         <div className="admin-model-upstream-list">
-          {(["text", "image", "video", "audio"] as const).map((kind) => {
-            const roles = inputPolicy.roles?.[kind] ?? [];
+          {inputKinds.map((kind) => {
+            const roles = effectiveRoles(kind);
+            const supported = upstreamInputs[kind].supported && productAllowsUpstream(kind);
+            const requiredMaximum = upstreamInputs[kind].limitMode === "fixed"
+              ? upstreamInputs[kind].maxCount ?? 0
+              : 16;
             return (
               <div data-input-kind={kind} key={`policy-${kind}`}>
-                <strong>{kind === "text" ? "文字" : kind === "image" ? "图片" : kind === "video" ? "视频" : "音频"}</strong>
+                <strong>{inputKindLabels[kind]}</strong>
                 <label>
                   <span>最少数量</span>
                   <input
                     aria-label={`${kind}必填数量`}
-                    max="16"
+                    disabled={!supported}
+                    max={String(requiredMaximum)}
                     min="0"
                     onChange={(event) => updateInputPolicy({
                       ...inputPolicy,
                       required: {
                         ...inputPolicy.required,
-                        [kind]: Math.max(0, Math.min(16, Math.round(Number(event.target.value) || 0))),
+                        [kind]: Math.max(
+                          0,
+                          Math.min(
+                            requiredMaximum,
+                            Math.round(Number(event.target.value) || 0),
+                          ),
+                        ),
                       },
                     })}
                     type="number"
-                    value={inputPolicy.required?.[kind] ?? 0}
+                    value={supported ? inputPolicy.required?.[kind] ?? 0 : 0}
                   />
                 </label>
                 <div className="admin-model-parameter-options">
-                  {inputRoleOptions[kind].map((role) => (
-                    <label data-selected={roles.includes(role.value) ? "true" : "false"} key={role.value}>
-                      <input
-                        className="admin-compact-checkbox"
-                        checked={roles.includes(role.value)}
-                        disabled={roles.includes(role.value) && roleUsedByModePolicy(kind, role.value)}
-                        onChange={(event) => updateInputPolicy({
-                          ...inputPolicy,
-                          roles: {
-                            ...inputPolicy.roles,
-                            [kind]: event.target.checked
-                              ? [...roles, role.value]
-                              : roles.filter((value) => value !== role.value),
-                          },
-                        })}
-                        title={roleUsedByModePolicy(kind, role.value)
-                          ? "该角色正在生成方式规则中使用，不能从全局规则单独删除"
-                          : undefined}
-                        type="checkbox"
-                      />
-                      <span>{role.label}</span>
-                    </label>
-                  ))}
+                  {inputRoleOptions[kind].map((role) => {
+                    const selected = roles.includes(role.value);
+                    const usedByMode = roleUsedByModePolicy(kind, role.value);
+                    const providerRoles = constraints?.inputPolicy?.roles?.[kind];
+                    const providerForbids = Boolean(
+                      providerRoles && !providerRoles.includes(role.value),
+                    );
+                    const lastRole = selected && roles.length === 1;
+                    return (
+                      <label data-selected={supported && selected ? "true" : "false"} key={role.value}>
+                        <input
+                          className="admin-compact-checkbox"
+                          checked={supported && selected}
+                          disabled={
+                            !supported ||
+                            providerForbids ||
+                            (selected && (lastRole || usedByMode))
+                          }
+                          onChange={(event) => updateInputPolicy({
+                            ...inputPolicy,
+                            roles: {
+                              ...inputPolicy.roles,
+                              [kind]: event.target.checked
+                                ? [...new Set([...roles, role.value])]
+                                : roles.filter((value) => value !== role.value),
+                            },
+                          })}
+                          title={usedByMode
+                            ? "该角色正在生成方式规则中使用，不能从全局规则单独删除"
+                            : lastRole
+                              ? "每种已启用的上游类型至少保留一个角色"
+                              : undefined}
+                          type="checkbox"
+                        />
+                        <span>{role.label}</span>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -3313,67 +3599,65 @@ function AdminModelParameterEditor({
           />
         </label>
       </section>
-      {capability === "text" && (
-        <section className="admin-model-upstream-inputs">
-          <div className="admin-model-reference-heading">
-            <strong>上游输入规则</strong>
-            <span>控制连到文字节点的内容</span>
-          </div>
-          <div className="admin-model-upstream-list">
-            {(["text", "image", "video", "audio"] as const).map((kind) => {
-              const rule = upstreamInputs[kind];
-              const allowed = constraints?.upstreamInputs?.[kind];
-              const label = kind === "text"
-                ? "文字"
-                : kind === "image"
-                  ? "图片"
-                  : kind === "video" ? "视频" : "音频";
-              const note = allowed?.note ?? rule.note;
-              return (
-                <div data-input-kind={kind} key={kind}>
-                  <label className="admin-model-upstream-enable">
-                    <input
-                      className="admin-compact-checkbox"
-                      checked={rule.supported}
-                      disabled={Boolean(allowed && !allowed.supported)}
-                      onChange={(event) => setUpstreamSupported(kind, event.target.checked)}
-                      type="checkbox"
-                    />
-                    <strong>{label}</strong>
-                  </label>
-                  {rule.supported && (
-                    <div className="admin-model-upstream-limit">
-                      <AdminParameterDefaultSelect
-                        onChange={(value) => setUpstreamLimitMode(
-                          kind,
-                          value as "context" | "fixed",
-                        )}
-                        options={[
-                          ...(allowed?.limitMode === "fixed"
-                            ? []
-                            : [{ label: "按上下文动态计算", value: "context" }]),
-                          { label: "固定画布数量", value: "fixed" },
-                        ]}
-                        value={rule.limitMode}
-                      />
-                      {rule.limitMode === "fixed" && (
-                        <input
-                          aria-label={`${label}上游输入上限`}
-                          max="16"
-                          min="1"
-                          onChange={(event) => setUpstreamMaxCount(kind, event.target.value)}
-                          type="number"
-                          value={rule.maxCount ?? 1}
-                        />
+      <section className="admin-model-upstream-inputs">
+        <div className="admin-model-reference-heading">
+          <strong>上游输入规则</strong>
+          <span>统一设置节点可接收的类型和数量</span>
+        </div>
+        <div className="admin-model-upstream-list">
+          {inputKinds.map((kind) => {
+            const rule = upstreamInputs[kind];
+            const allowed = upstreamConstraint(kind);
+            const label = inputKindLabels[kind];
+            const baselineAllowed = productAllowsUpstream(kind);
+            const note = allowed?.note ?? rule.note;
+            return (
+              <div data-input-kind={kind} key={kind}>
+                <label className="admin-model-upstream-enable">
+                  <input
+                    className="admin-compact-checkbox"
+                    checked={baselineAllowed && rule.supported}
+                    disabled={!baselineAllowed || Boolean(allowed && !allowed.supported)}
+                    onChange={(event) => setUpstreamSupported(kind, event.target.checked)}
+                    type="checkbox"
+                  />
+                  <strong>{label}</strong>
+                </label>
+                {baselineAllowed && rule.supported && (
+                  <div className="admin-model-upstream-limit">
+                    <AdminParameterDefaultSelect
+                      ariaLabel={`${label}上游数量规则`}
+                      onChange={(value) => setUpstreamLimitMode(
+                        kind,
+                        value as "context" | "fixed",
                       )}
-                    </div>
-                  )}
-                  {rule.supported && note && <small>{note}</small>}
-                </div>
-              );
-            })}
-          </div>
-          <label className="admin-model-parameter-default">
+                      options={[
+                        ...(allowed?.limitMode === "fixed"
+                          ? []
+                          : [{ label: "按上下文动态计算", value: "context" }]),
+                        { label: "固定画布数量", value: "fixed" },
+                      ]}
+                      value={rule.limitMode}
+                    />
+                    {rule.limitMode === "fixed" && (
+                      <input
+                        aria-label={`${label}上游输入上限`}
+                        max={String(maximumUpstreamCount(kind))}
+                        min="1"
+                        onChange={(event) => setUpstreamMaxCount(kind, event.target.value)}
+                        type="number"
+                        value={rule.maxCount ?? 1}
+                      />
+                    )}
+                  </div>
+                )}
+                {!baselineAllowed && <small>当前项目连线规则不允许该类型</small>}
+                {baselineAllowed && rule.supported && note && <small>{note}</small>}
+              </div>
+            );
+          })}
+        </div>
+        {capability === "text" && <label className="admin-model-parameter-default">
             <span>目标 Prompt 规则</span>
             <AdminParameterDefaultSelect
               ariaLabel="文字目标Prompt规则"
@@ -3387,16 +3671,155 @@ function AdminModelParameterEditor({
               ]}
               value={inputPolicy.promptPolicy ?? "own-required"}
             />
-          </label>
-          <small>“按上下文动态计算”表示平台没有固定素材数量，最终仍受模型输入长度限制。</small>
-        </section>
-      )}
-      {capability !== "text" && <section className="admin-model-reference-limits">
-        <div className="admin-model-reference-heading">
-          <strong>参考素材规则</strong>
-          {inputMode && inputMode.options.length > 1 && (
+          </label>}
+        <small>“按上下文动态计算”表示平台没有固定素材数量，最终仍受模型输入长度限制。</small>
+      </section>
+      {inputMode?.options.length ? (
+        <section className="admin-model-upstream-inputs">
+          <div className="admin-model-reference-heading">
+            <strong>按生成方式设置角色与必填</strong>
             <label>
               <input
+                aria-label="按生成方式设置角色与必填"
+                className="admin-compact-checkbox"
+                checked={Boolean(inputPolicy.rolePolicies?.length)}
+                disabled={modeRolePoliciesLocked}
+                onChange={(event) => setModeRolePoliciesEnabled(event.target.checked)}
+                title={modeRolePoliciesLocked
+                  ? "Provider已固定这组生成方式规则"
+                  : undefined}
+                type="checkbox"
+              />
+              <span>{modeRolePoliciesLocked ? "Provider固定" : "分方式设置"}</span>
+            </label>
+          </div>
+          {inputPolicy.rolePolicies?.length ? (
+            <div className="admin-model-reference-modes">
+              {inputPolicy.rolePolicies.map((policy, policyIndex) => {
+                const condition = policy.enabledWhen?.[0];
+                const option = inputMode.options.find((candidate) =>
+                  candidate.value === condition?.value);
+                const modeLabel = option?.label ?? `规则${policyIndex + 1}`;
+                return (
+                  <div data-role-policy={policyIndex} key={`${condition?.key ?? "rule"}-${String(condition?.value ?? policyIndex)}`}>
+                    <strong>{modeLabel}</strong>
+                    <div className="admin-model-upstream-list">
+                      {inputKinds.map((kind) => {
+                        const roles = policy.roles[kind] ?? [];
+                        const supported = upstreamInputs[kind].supported &&
+                          productAllowsUpstream(kind);
+                        return (
+                          <div data-input-kind={kind} key={`${policyIndex}-${kind}`}>
+                            <strong>{inputKindLabels[kind]}</strong>
+                            <div className="admin-model-parameter-options">
+                              {inputRoleOptions[kind].map((role) => {
+                                const selected = roles.includes(role.value);
+                                return (
+                                  <label data-selected={selected ? "true" : "false"} key={role.value}>
+                                    <input
+                                      className="admin-compact-checkbox"
+                                      checked={selected}
+                                      disabled={modeRolePoliciesLocked || !supported}
+                                      onChange={(event) => setModeRole(
+                                        policyIndex,
+                                        kind,
+                                        role.value,
+                                        event.target.checked,
+                                      )}
+                                      type="checkbox"
+                                    />
+                                    <span>{role.label}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                            {roles.map((role) => {
+                              const roleOption = inputRoleOptions[kind].find((item) =>
+                                item.value === role);
+                              const limit = modeRoleLimit(policy, kind, role);
+                              const assigned = policy.assignment?.[kind]?.includes(role) ?? false;
+                              return (
+                                <div className="admin-model-reference-set" data-input-role={role} key={`${kind}-${role}`}>
+                                  <span>{roleOption?.label ?? role}</span>
+                                  <label>
+                                    <span>最少</span>
+                                    <input
+                                      aria-label={`${modeLabel}${inputKindLabels[kind]}${roleOption?.label ?? role}最少数量`}
+                                      disabled={modeRolePoliciesLocked}
+                                      max={String(limit.maxCount)}
+                                      min="0"
+                                      onChange={(event) => setModeRoleLimit(
+                                        policyIndex,
+                                        kind,
+                                        role,
+                                        "minCount",
+                                        event.target.value,
+                                      )}
+                                      type="number"
+                                      value={limit.minCount}
+                                    />
+                                  </label>
+                                  <label>
+                                    <span>最多</span>
+                                    <input
+                                      aria-label={`${modeLabel}${inputKindLabels[kind]}${roleOption?.label ?? role}最多数量`}
+                                      disabled={modeRolePoliciesLocked}
+                                      max={String(
+                                        upstreamInputs[kind].limitMode === "fixed"
+                                          ? upstreamInputs[kind].maxCount ?? 1
+                                          : 16,
+                                      )}
+                                      min={String(limit.minCount)}
+                                      onChange={(event) => setModeRoleLimit(
+                                        policyIndex,
+                                        kind,
+                                        role,
+                                        "maxCount",
+                                        event.target.value,
+                                      )}
+                                      type="number"
+                                      value={limit.maxCount}
+                                    />
+                                  </label>
+                                  <label>
+                                    <span>自动分配</span>
+                                    <input
+                                      aria-label={`${modeLabel}${inputKindLabels[kind]}${roleOption?.label ?? role}按顺序自动分配`}
+                                      className="admin-compact-checkbox"
+                                      checked={assigned}
+                                      disabled={modeRolePoliciesLocked}
+                                      onChange={(event) => setModeRoleAssignment(
+                                        policyIndex,
+                                        kind,
+                                        role,
+                                        event.target.checked,
+                                      )}
+                                      type="checkbox"
+                                    />
+                                  </label>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <small>开启后，可分别设置每种生成方式允许的角色、必填数量和自动分配顺序。</small>
+          )}
+        </section>
+      ) : null}
+      <section className="admin-model-reference-limits">
+        <div className="admin-model-reference-heading">
+          <strong>参考素材组合</strong>
+          {inputMode && (
+            <label>
+              <input
+                aria-label="按生成方式分别设置素材组合"
                 className="admin-compact-checkbox"
                 checked={Boolean(schema.referencePolicy)}
                 disabled={Boolean(constraints?.referencePolicy)}
@@ -3419,8 +3842,15 @@ function AdminModelParameterEditor({
               <span>{kind === "image" ? "图片" : kind === "video" ? "视频" : "音频"}</span>
               <input
                 aria-label={`${kind}参考素材上限`}
-                disabled={(constraints?.referenceInputs[kind] ?? 16) === 0}
-                max={String(constraints?.referenceInputs[kind] ?? 16)}
+                disabled={
+                  !productAllowsUpstream(kind) ||
+                  (constraints?.referenceInputs[kind] ?? 16) === 0
+                }
+                max={String(
+                  productAllowsUpstream(kind)
+                    ? constraints?.referenceInputs[kind] ?? 16
+                    : 0,
+                )}
                 min="0"
                 onChange={(event) => setReferenceLimit(kind, event.target.value)}
                 type="number"
@@ -3465,7 +3895,7 @@ function AdminModelParameterEditor({
           </div>
         )}
         <small>填0表示不接收；“另一种组合”用于表达不同素材搭配方案。</small>
-      </section>}
+      </section>
     </div>
   );
 }

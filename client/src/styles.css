@@ -12278,7 +12278,7 @@ sup {
   display: grid;
   flex: 0 0 200px;
   gap: 7px;
-  grid-template-columns: 38px minmax(0, 1fr) 22px;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
   min-height: 44px;
   padding: 4px;
 }
@@ -12376,7 +12376,13 @@ sup {
   font-size: var(--tap-font-secondary);
 }
 
-.upstream-input-card > button {
+.upstream-input-actions {
+  align-items: center;
+  display: flex;
+  gap: 1px;
+}
+
+.upstream-input-actions > button {
   background: transparent;
   border: 0;
   color: #aaa;
@@ -12384,7 +12390,12 @@ sup {
   font-size: var(--tap-font-primary);
   height: 22px;
   padding: 0;
-  width: 22px;
+  width: 18px;
+}
+
+.upstream-input-actions > button:disabled {
+  cursor: default;
+  opacity: 0.32;
 }
 
 .upstream-input-copy .upstream-input-card-reason {
