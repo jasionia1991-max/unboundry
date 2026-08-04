@@ -1,6 +1,6 @@
 # TapNow 管理员模型中心、账号权限与 OSS 实施规划
 
-状态：`AUTHORITATIVE PLAN / PHASE A-F ACCEPTED / PHASE G VIDEO + API-001～006 ACCEPTED / PHASE H INPUT PARTIAL / PHASE I RELAY-001～008+010 PASS, IMAGE-AUDIO-DELETE USER_RECHECK / AUDIO REAL GENERATION+DEPLOY DEFERRED`
+状态：`AUTHORITATIVE PLAN / PHASE A-F ACCEPTED / PHASE G VIDEO + API-001～006 ACCEPTED / PHASE H INPUT PARTIAL / PHASE I RELAY-001～012 ACCEPTED / MUREKA AUDIO REAL GENERATION+DEPLOY DEFERRED`
 更新时间：2026-08-04
 
 ## 1. 已确认的产品决定
@@ -227,7 +227,7 @@
 - 火山方舟Seedance 2.0 Mini已使用16:9、480p、5秒、关闭生成音频和1个结果完成一次用户授权真实视频生成；应用任务`788ebeaa-b37d-499a-becc-64ae16f2a9f5`、方舟任务`cgt-20260801165221-6fsd7`均保持唯一。
 - 视频结果`f8820894-6445-4276-8914-dac91889f769.mp4`已进入私有OSS，SHA-256为`2a57db544db15161f08976acd701ffbd2ecf52530ab7d0df8ab62ae641dbacc9`；播放、下载、历史预览/重新上画布、刷新和服务重启恢复均由用户确认。
 - 管理员模型参数结构已扩展为Text/Image/Video/Audio共享注册表，Seedance比例、分辨率、时长、生成音频和数量均来自管理员允许值；以后新增模型使用同一设置逻辑。
-- Audio Provider尚未接通；正式服务器HTTPS、进程守护、定时备份与回滚演练未开始。当前开发服务只绑定`127.0.0.1:4173`，不得表述为已部署。
+- 中转站Doubao TTS已经验收通过；独立的Mureka Audio真实生成仍因`RATE_LIMIT`暂停，未经新授权不得重试。正式服务器HTTPS、进程守护、定时备份与回滚演练未开始。当前开发服务只绑定`127.0.0.1:4173`，不得表述为已部署。
 - 自有OpenAPI 3.1契约和管理员说明页已通过`API-001～006`，现有8条路径、10个操作覆盖画布、项目标题、安全模型配置、当前账号、模板、Agent界面配置、AI角色与素材目录；不复用TapNow私有接口。
 - Agent菜单只读取管理员明确设为默认的已发布文字模型，当前为Doubao Seed；新增普通文字模型不会自动混入，真实Agent执行继续关闭。
 
@@ -235,7 +235,7 @@
 
 依据：`TAPNOW_UPSTREAM_INPUT_SURVEY_2026-08-02.md`与`TAPNOW_UPSTREAM_INPUT_REPLICATION_PLAN.md`。
 
-当前状态：两轮TapNow证据和产品规则已确定；本地实现尚未完成，`INPUT-001～007`保持PARTIAL。
+当前状态：两轮TapNow证据和产品规则已确定，P0/P1已有本地候选；完整矩阵及后续人工验收尚未完成，`INPUT-001～007`保持PARTIAL。
 
 实施顺序：
 
@@ -255,7 +255,7 @@
 
 依据：`TAPNOW_RELAY_PROVIDER_INTEGRATION_PLAN.md`。
 
-当前状态：P0～P7本地候选与零Provider fixture自动门禁已完成；用户已确认真实连接、只读目录、129模型完整组合目录、分类筛选和模型草稿流程，`RELAY-001～005`已PASS。真实Video单节点及零费用刷新/重启/去重恢复证据已闭合，`RELAY-010`已PASS；用户已在真实画布找到并确认OpenAI Chat/Responses、Claude和Gemini四条文字结果，`RELAY-006～008`已PASS；`RELAY-009/011/012`继续USER_RECHECK。
+当前状态：P0～P7本地候选与零Provider fixture自动门禁已完成；真实连接、只读目录、129模型组合目录、分类、草稿、文字、图片、视频、音频、恢复和安全删除保护均已完成用户确认，`RELAY-001～012`全部PASS。收口复验没有新增收费Provider请求、生成任务或真实数据删除。
 
 实施范围：
 
@@ -275,7 +275,8 @@
 - 优创增强目录101条与基础目录55条合并去重为129条，分类为文字55、图片17、视频50、音频7；真实分类筛选与模型草稿导入由用户确认。
 - `grok-video-3.5`先建立草稿、后由管理员手动发布；没有自动发布或改变默认模型。
 - 真实Video任务`8275d86c-602e-42ab-b444-969224dea601`按`queued→running→success`完成，第三方任务ID`93467467`；1,493,430字节结果进入私有OSS和唯一历史。
-- 现有Video结果的刷新、服务重启恢复及任务/历史/媒体去重已稳定，`RELAY-010`已关闭为PASS。OpenAI Chat/Responses、Claude和Gemini四条文字结果已由用户在真实画布确认内容、刷新恢复和唯一性，`RELAY-006～008`关闭为PASS。安全删除自动检查只删除隔离草稿`relay-delete-fixture-20260804`，仍保护已发布/默认/历史模型；下一步是用户可见复验已有图片、音频与安全删除/全局回归，不再发起收费自动请求。
+- 现有Video结果的刷新、服务重启恢复及任务/历史/媒体去重已稳定。OpenAI Chat/Responses、Claude和Gemini四条文字结果已由用户确认；两张`reply ok`图片和`reply hello` Doubao TTS也在真实画布、历史、刷新及服务重启后保持唯一，音频实际播放成功。
+- 安全删除只处理隔离草稿`relay-delete-fixture-20260804`，创建/归档/永久删除审计完整且无残留；本轮没有重建草稿或删除真实数据。真实模型中心13个模型、8个中转模型和4个默认保护项保持不变，隔离自动检查31/31通过。`RELAY-001～012`至此全部关闭为PASS，后续回到阶段H，不再重复中转站验收。
 
 ## 5. 当前实施顺序
 
@@ -288,7 +289,7 @@ A 数据保护
 → F 真实图片生成
 → G 真实视频已通过（Audio/部署暂缓）
 → H 节点入参与引用端到端优化
-→ I 多协议中转站目录、文字协议和Video真实结果恢复已通过，图片/音频/安全删除待验
+→ I 多协议中转站RELAY-001～012已通过
 → Audio真实生成与正式部署另行恢复
 ```
 

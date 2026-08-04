@@ -258,7 +258,7 @@
   "acceptanceBatch": {
     "acceptedAt": "2026-08-02",
     "completed": 10,
-    "nextBatchAccepted": 5,
+    "nextBatchAccepted": 6,
     "nextBatchTarget": 10,
     "items": [
       "node upstream-input rules and future model schema",
@@ -277,7 +277,8 @@
       "RELAY-010 real Video zero-cost refresh, service-restart recovery, and deduplication closure",
       "RELAY-006 through RELAY-008 user-visible text result persistence and uniqueness",
       "canvas search-focus, zoom, viewport-save, and creator-stability regression closure",
-      "single shared multi-selection toolbar and existing Group lifecycle regression closure"
+      "single shared multi-selection toolbar and existing Group lifecycle regression closure",
+      "RELAY-009, RELAY-011, and RELAY-012 existing image, Doubao TTS, safe-deletion, refresh, and service-restart closure"
     ]
   },
   "fixtures": [
@@ -2596,6 +2597,7 @@
             "protocol": "gpt-image",
             "taskId": "b4bd07a5-9a2b-47f2-8d0f-59a369aa6e71",
             "assetId": "0f98c0b7-6ec8-470c-9840-0b94c2efaaa1",
+            "userVisibleAcceptance": "PASS",
             "status": "success"
           },
           {
@@ -2603,6 +2605,7 @@
             "capability": "image",
             "taskId": "2617ceee-acd7-4ccd-b2f9-cd44b3a3e4aa",
             "assetId": "12f84f21-0f2b-4c2e-836d-1b64f57dd5d0",
+            "userVisibleAcceptance": "PASS",
             "status": "success"
           },
           {
@@ -2617,18 +2620,44 @@
             "emotionScalePersisted": false,
             "emotionScaleSent": false,
             "uiPlayerOssAutomation": "PASS",
-            "userVisibleAcceptance": "USER_RECHECK",
+            "userVisibleAcceptance": "PASS",
             "status": "success"
           }
         ]
       },
       "automatedSafeDeletion": {
         "isolatedDraftId": "relay-delete-fixture-20260804",
+        "modelRecordId": "ea98a493-5989-47c6-9c48-e3a18988a6bb",
+        "auditEventIds": [106, 107, 108],
         "archiveBeforePermanentDelete": true,
         "publishedModelProtected": true,
         "defaultModelProtected": true,
         "historyReferencedModelProtected": true,
-        "acceptanceStatus": "USER_RECHECK"
+        "residualModelRecords": 0,
+        "residualBindings": 0,
+        "residualTasks": 0,
+        "acceptanceStatus": "PASS"
+      },
+      "finalUserVisibleClosure": {
+        "acceptedAt": "2026-08-04",
+        "imageHistoryLabels": ["reply ok", "reply ok"],
+        "audioHistoryLabel": "reply hello",
+        "refreshRecovered": true,
+        "serviceRestartRecovered": true,
+        "taskCount": 3,
+        "mediaCount": 3,
+        "historyCount": 3,
+        "canvasNodeCount": 3,
+        "allUnique": true,
+        "audioPlaybackConfirmed": true,
+        "realModelCount": 13,
+        "relayModelCount": 8,
+        "defaultProtectedModelCount": 4,
+        "isolatedAutomationPassed": 31,
+        "isolatedAutomationTotal": 31,
+        "paidProviderRequests": 0,
+        "newGenerationTasks": 0,
+        "realDataDeletions": 0
       },
       "automatedEvidence": [
         "m53-multi-protocol-relay-server",
@@ -2646,13 +2675,13 @@
         "RELAY-009", "RELAY-010", "RELAY-011", "RELAY-012"
       ],
       "acceptanceStatus": {
-        "pass": ["RELAY-001", "RELAY-002", "RELAY-003", "RELAY-004", "RELAY-005", "RELAY-006", "RELAY-007", "RELAY-008", "RELAY-010"],
+        "pass": ["RELAY-001", "RELAY-002", "RELAY-003", "RELAY-004", "RELAY-005", "RELAY-006", "RELAY-007", "RELAY-008", "RELAY-009", "RELAY-010", "RELAY-011", "RELAY-012"],
         "partial": [],
-        "userRecheck": ["RELAY-009", "RELAY-011", "RELAY-012"]
+        "userRecheck": []
       },
       "inputAcceptanceStatus": "INPUT-001_THROUGH_INPUT-007_PARTIAL",
-      "userAcceptance": "2026-08-04 user accepted the real connection, complete catalog, filters, draft flow, real Video recovery and deduplication closure, and the four persisted unique OpenAI Chat/Responses, Claude, and Gemini text results",
-      "safetyBoundary": "Do not mark RELAY-009, RELAY-011, or RELAY-012 PASS before user-visible confirmation; no further paid Provider requests are authorized by this evidence batch."
+      "userAcceptance": "2026-08-04 user accepted the real connection, complete catalog, filters, draft flow, text protocols, image protocols, real Video recovery, Doubao TTS playback, safe deletion protection, persistence, and uniqueness; RELAY-001 through RELAY-012 are PASS",
+      "safetyBoundary": "RELAY-001 through RELAY-012 are user accepted; do not create further paid Provider requests, retry Mureka, repeat safe deletion, or disturb existing real results without new authorization."
     }
   ],
   "openEvidence": [

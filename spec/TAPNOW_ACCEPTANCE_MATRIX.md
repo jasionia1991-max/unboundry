@@ -5,7 +5,7 @@
 状态：`AUTHORITATIVE`  
 状态夹具：`tapnow-state-fixtures.json`
 
-当前176条记录中：138条`PASS`、3条`USER_RECHECK`、4条`BLOCK`、8条`PARTIAL`、3条`PAUSED`、6条`N/A/NOT_APPLICABLE`，其余14条为已裁决的`RESOLVED*`状态；当前没有`NOT_STARTED`。第二批10次人工验收已于2026-08-02统一同步；2026-08-04用户再次明确要求提前同步，当前下一批为5/10：中转站连接/目录/发现/草稿、`RELAY-010`零费用恢复去重、`RELAY-006～008`文字结果可见复验、画布搜索缩放回归、多选统一工具栏与打组生命周期各计1项。`RELAY-009/011/012`仍为`USER_RECHECK`，`INPUT-001～007`仍为`PARTIAL`，不得提前标PASS。
+当前176条记录中：141条`PASS`、0条`USER_RECHECK`、4条`BLOCK`、8条`PARTIAL`、3条`PAUSED`、6条`N/A/NOT_APPLICABLE`，其余14条为已裁决的`RESOLVED*`状态；当前没有`NOT_STARTED`。第二批10次人工验收已于2026-08-02统一同步；2026-08-04用户再次明确要求提前同步，当前下一批为6/10：前5项保持不变，第6项为`RELAY-009/011/012`两张既有图片、Doubao TTS、安全删除保护及刷新/服务重启联合复验。本次一次用户确认按1项计数，不按验收行数重复累加。`INPUT-001～007`仍为`PARTIAL`，不得提前标PASS。
 
 ## 1. 判定规则
 
@@ -223,16 +223,16 @@
 | RELAY-006 | P0 | OpenAI文字协议 | Chat Completions与Responses使用统一任务快照、结果和错误分类；两条真实结果已由用户在真实画布找到，刷新后保留且无重复 | PASS |
 | RELAY-007 | P0 | Claude文字协议 | Messages协议映射准确，不根据模型名称猜协议；真实结果已由用户在真实画布确认 | PASS |
 | RELAY-008 | P0 | Gemini文字协议 | GenerateContent协议映射准确，Key和原始响应不泄露；真实结果已由用户在真实画布确认 | PASS |
-| RELAY-009 | P0 | 图片协议 | GPT Image和通用图片任务复用统一入参、安全素材与私有结果发布 | USER_RECHECK |
+| RELAY-009 | P0 | 图片协议 | GPT Image和通用图片任务复用统一入参、安全素材与私有结果发布；两张既有结果经真实画布、历史、刷新和服务重启确认唯一恢复 | PASS |
 | RELAY-010 | P0 | 视频异步任务 | 通用媒体提交、轮询、重启恢复、结果校验和发布完整 | PASS |
-| RELAY-011 | P0 | 音频异步任务 | 通用媒体提交、轮询、格式/时长校验和发布完整；不恢复Mureka收费重试 | USER_RECHECK |
-| RELAY-012 | P0 | 停用、安全删除与全局回归 | 默认、节点、任务引用受保护；现有OpenRouter、火山方舟、Mureka和已验收画布不降级 | USER_RECHECK |
+| RELAY-011 | P0 | 音频异步任务 | 通用媒体提交、轮询、格式/时长校验和发布完整；既有Doubao TTS刷新/重启后可播放且唯一，不恢复Mureka收费重试 | PASS |
+| RELAY-012 | P0 | 停用、安全删除与全局回归 | 默认、节点、任务引用受保护；隔离草稿删除审计无残留，现有OpenRouter、火山方舟、Mureka和已验收画布不降级 | PASS |
 
 2026-08-04本地真实证据：优创增强目录101条与基础目录55条合并去重为129条（文字55、图片17、视频50、音频7），用户确认分类和草稿流程通过。真实Video任务`8275d86c-602e-42ab-b444-969224dea601`按`queued→running→success`完成，后续零费用刷新、服务重启恢复和去重复验全部稳定；任务、attempt、events、素材、历史哈希不变，任务/历史/媒体均唯一。结果SHA-256为`969acbb31c7eed3ab82ecb3df88c7a2394fb5a1813ee094353a3dbeccbe9f412`、1,493,430字节、5.042秒；用户确认单节点生成成功，故`RELAY-010`为`PASS`。
 
-2026-08-04用户授权的真实API自动验证共7次，全部成功、无失败、无重复：`openai-chat` task `ff1014f8-1e0a-415a-9ebe-7a5296a50c5f`；`openai-responses` task `b2d27319-cc77-4528-a17b-fff282b03e9e`；`claude-messages` task `f554282e-f332-4a6a-8f18-fb72bcf7bbda`；`gemini-generate-content` task `0be7fd67-c1e2-4c06-950d-76dcf46d573c`；`gpt-image` task `b4bd07a5-9a2b-47f2-8d0f-59a369aa6e71`、asset `0f98c0b7-6ec8-470c-9840-0b94c2efaaa1`；`media-generate`图片 task `2617ceee-acd7-4ccd-b2f9-cd44b3a3e4aa`、asset `12f84f21-0f2b-4c2e-836d-1b64f57dd5d0`；Doubao TTS task `d8deb41b-0a7f-428c-8242-6603c12966cc`、asset `8775c5e5-9a8e-4bcc-9d5d-4f3de68be4b2.mp3`，`audio/mpeg`、32,892字节、1.632秒。收费Provider边界由1增至8，本批后不再发起收费请求。用户后续在真实画布找到并一次性确认OpenAI Chat/Responses、Claude、Gemini四条文字结果，刷新后继续存在且无重复，因此`RELAY-006～008`正式`PASS`。图片、音频和安全删除仍等待用户可见复验，`RELAY-009/011/012`保持`USER_RECHECK`。
+2026-08-04用户授权的真实API自动验证共7次，全部成功、无失败、无重复：`openai-chat` task `ff1014f8-1e0a-415a-9ebe-7a5296a50c5f`；`openai-responses` task `b2d27319-cc77-4528-a17b-fff282b03e9e`；`claude-messages` task `f554282e-f332-4a6a-8f18-fb72bcf7bbda`；`gemini-generate-content` task `0be7fd67-c1e2-4c06-950d-76dcf46d573c`；`gpt-image` task `b4bd07a5-9a2b-47f2-8d0f-59a369aa6e71`、asset `0f98c0b7-6ec8-470c-9840-0b94c2efaaa1`；`media-generate`图片 task `2617ceee-acd7-4ccd-b2f9-cd44b3a3e4aa`、asset `12f84f21-0f2b-4c2e-836d-1b64f57dd5d0`；Doubao TTS task `d8deb41b-0a7f-428c-8242-6603c12966cc`、asset `8775c5e5-9a8e-4bcc-9d5d-4f3de68be4b2.mp3`，`audio/mpeg`、32,892字节、1.632秒。收费Provider边界由1增至8，本批后不再发起收费请求。用户先确认四条文字结果；随后又确认两张`reply ok`图片和`reply hello`音频在真实画布、历史、刷新及只重启本项目4173服务后仍完整、唯一，音频实际播放成功，因此`RELAY-006～009、011`正式`PASS`。
 
-安全删除自动证据仅处理隔离草稿`relay-delete-fixture-20260804`，先归档再永久删除；已发布、默认和历史引用模型仍受保护，因此`RELAY-012`仍为`USER_RECHECK`。TTS的`emotion=auto`没有持久化或发送`emotionScale`；UI、播放器和OSS自动检查已通过，但音频仍等待用户可见确认。
+安全删除只使用隔离草稿`relay-delete-fixture-20260804`，其创建、归档、永久删除审计完整且当前无残留；本次用户复验没有重新造草稿或删除真实数据。真实模型中心13个模型、8个中转模型和4个默认保护项在刷新、服务重启后保持不变，隔离自动检查31/31通过，收费Provider请求0、新生成任务0、真实数据删除0。用户确认保护报告后，`RELAY-012`正式`PASS`。TTS的`emotion=auto`没有持久化或发送`emotionScale`；Mureka `RATE_LIMIT`任务未重试。
 
 ## 11. 图片高级编辑
 
@@ -289,7 +289,7 @@
 | M4 | MEDIA-001～MEDIA-005、IMGEDIT-001～IMGEDIT-009 |
 | M5 | GEN-001～GEN-009、DATA-003～DATA-004 |
 | M5.1 | INPUT-001～INPUT-007；先完成P0+P1，再逐项进入用户真实浏览器验收 |
-| M5.2 | RELAY-001～008、010已PASS；RELAY-009/011/012的真实自动验证已成功，继续等待用户可见验收 |
+| M5.2 | RELAY-001～012全部PASS；现有真实结果与安全删除保护不再重复验收或触发收费请求 |
 | M6 | PLAY-001～PLAY-004，且 OPEN-002/003/005/006/014 已裁决 |
 | M7 | SURF-002～SURF-017 |
 | M8 | AGENT-001～AGENT-005 |

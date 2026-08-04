@@ -462,7 +462,7 @@
 - Video目标接收四类来源并保持Seedance 2.0全能参考；当前面板显示最多9图/3视频/3音频及比例、清晰度、时长、生成音频参数。费用105高于页面余额44时按钮禁用，但页面未提供明确原因，因此余额不足只记录为推断，不冒充Provider验证。
 - 刷新前后均为8节点/9边；三类来源素材、Text/Video目标Prompt、引用、模型和模式均恢复。没有新增结果节点、生成任务或历史记录。
 - 用户随后明确产品增强：本项目Text目标必须接受Text、Image、Video、Audio四类上游，因此本项目最终矩阵为11允许/5禁止。该决定写入实施规格，但不改写TapNow当前Text只接受Image/Video直接连线的实测事实。
-- 完整实现计划位于`TAPNOW_UPSTREAM_INPUT_REPLICATION_PLAN.md`，状态为`PLANNED / NOT_IMPLEMENTED / NOT_ACCEPTANCE_PASS`。
+- 完整实现计划位于`TAPNOW_UPSTREAM_INPUT_REPLICATION_PLAN.md`，当前为`P0/P1 LOCAL CANDIDATE IMPLEMENTED / INPUT-001～007 PARTIAL / NOT ACCEPTANCE PASS`；候选实现不等于完整人工验收。
 
 ## 8.13 本项目多协议中转站真实目录与Video单节点（2026-08-04）
 
@@ -478,7 +478,8 @@
 - 两条真实图片链路分别为GPT Image task `b4bd07a5-9a2b-47f2-8d0f-59a369aa6e71`、asset `0f98c0b7-6ec8-470c-9840-0b94c2efaaa1`，以及通用`media-generate` task `2617ceee-acd7-4ccd-b2f9-cd44b3a3e4aa`、asset `12f84f21-0f2b-4c2e-836d-1b64f57dd5d0`；两者均为私有OSS ready。
 - Doubao TTS task `d8deb41b-0a7f-428c-8242-6603c12966cc`成功发布asset `8775c5e5-9a8e-4bcc-9d5d-4f3de68be4b2.mp3`，类型`audio/mpeg`、32,892字节、1.632秒；`emotion=auto`时没有持久化或发送`emotionScale`。重启后真实画布播放器可见并实际播放成功。
 - 收费Provider边界由1增至8，正好对应本批7次授权请求；本批结束后没有继续发起收费请求。安全删除自动证据只处理隔离草稿`relay-delete-fixture-20260804`，先归档后永久删除，已发布、默认及历史引用模型继续受保护。
-- 上述真实自动验证本身不等于用户可见`USER PASS`。用户后续在真实画布找到并一次性确认OpenAI Chat/Responses、Claude和Gemini四条文字结果，内容完整、刷新恢复且没有重复，因此`RELAY-006～008`正式PASS。`RELAY-009/011/012`继续USER_RECHECK，`INPUT-001～007`继续PARTIAL；Mureka Audio暂停和正式部署暂停均不改变。
+- 上述真实自动验证本身不等于用户可见`USER PASS`。用户先在真实画布确认OpenAI Chat/Responses、Claude和Gemini四条文字结果；随后又确认两张`reply ok`图片和`reply hello` Doubao TTS在画布、历史、刷新及只重启本项目4173服务后完整、唯一，音频实际播放成功。三条既有任务、素材、历史和画布节点均各自唯一，因此`RELAY-006～009、011`正式PASS。
+- 安全删除隔离草稿`relay-delete-fixture-20260804`已有创建、归档、永久删除审计且无残留，本轮没有重新创建草稿或删除真实数据。真实模型中心13个模型、8个中转模型和4个默认保护项在刷新及服务重启后保持不变，隔离自动检查31/31通过，收费Provider请求0、新生成任务0、真实数据删除0。用户确认保护报告后`RELAY-012`正式PASS；至此`RELAY-001～012`全部PASS。`INPUT-001～007`继续PARTIAL，Mureka Audio真实生成暂停和正式部署暂停均不改变。
 
 ## 8.14 本项目搜索缩放、多选与打组回归（2026-08-04）
 

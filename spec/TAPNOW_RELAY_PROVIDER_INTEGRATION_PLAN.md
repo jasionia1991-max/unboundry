@@ -1,6 +1,6 @@
 # TapNow 多协议中转站接入实施计划
 
-状态：`AUTHORITATIVE / RELAY-001～008、010 PASS / RELAY-009、011～012 USER_RECHECK`
+状态：`AUTHORITATIVE / RELAY-001～012 PASS`
 更新时间：2026-08-04
 
 ## 1. 目标与边界
@@ -143,10 +143,10 @@
 | RELAY-006 | OpenAI Chat/Responses映射 | fixture覆盖请求快照、结果、错误和取消边界；两条真实结果已由用户确认内容、刷新恢复与唯一性 | PASS |
 | RELAY-007 | Claude Messages映射 | fixture覆盖请求快照、结果和错误；真实结果已由用户在真实画布确认 | PASS |
 | RELAY-008 | Gemini GenerateContent映射 | fixture覆盖请求快照、结果和错误；真实结果已由用户在真实画布确认 | PASS |
-| RELAY-009 | GPT Image与通用图片映射 | 零Provider fixture覆盖参考素材、结果和失败 | USER_RECHECK |
+| RELAY-009 | GPT Image与通用图片映射 | fixture覆盖参考素材、结果和失败；两张既有结果经真实画布、历史、刷新和服务重启确认唯一恢复 | PASS |
 | RELAY-010 | 通用视频异步任务 | fixture覆盖提交、轮询、恢复和发布；真实单节点及零费用刷新/重启/去重恢复闭环通过 | PASS |
-| RELAY-011 | 通用音频异步任务 | 零Provider fixture覆盖提交、轮询、格式校验和发布 | USER_RECHECK |
-| RELAY-012 | 模型停用/安全删除与回归 | 默认/引用/任务保护，现有OpenRouter、方舟、Mureka不降级 | USER_RECHECK |
+| RELAY-011 | 通用音频异步任务 | fixture覆盖提交、轮询、格式校验和发布；既有Doubao TTS刷新/重启后可播放且唯一 | PASS |
+| RELAY-012 | 模型停用/安全删除与回归 | 默认/引用/任务保护，隔离草稿删除无残留，现有OpenRouter、方舟、Mureka不降级 | PASS |
 
 实现完成只能进入`USER_RECHECK`。只有用户自己的真实连接、对应自动门禁和人工实页确认同时满足，单项才可转为`PASS`。自动检查不得创建真实聊天、图片、视频或音频任务；用户手动授权的真实生成必须与目录检查和自动检查分开记录。
 
@@ -168,16 +168,23 @@
 - 用户使用该模型手动创建真实Video任务`8275d86c-602e-42ab-b444-969224dea601`，协议为`media-generate`，第三方任务ID为`93467467`。任务按`queued→running→success`完成且attempt为1。
 - 结果`f5ae0f1d-0e97-4923-88ef-6a39f292eea6.mp4`为1,493,430字节、5.042秒，SHA-256为`969acbb31c7eed3ab82ecb3df88c7a2394fb5a1813ee094353a3dbeccbe9f412`，已进入私有OSS并登记唯一历史。此次手动生成对应1条Provider边界记录。
 - 该结果已完成零费用刷新、服务重启恢复和任务/历史/媒体去重检查；任务、attempt、events、asset、history哈希稳定，三类记录均唯一。用户确认单节点生成成功，因此`RELAY-010`为`PASS`。
-- 用户后续在真实画布找到并一次性确认OpenAI Chat/Responses、Claude和Gemini四条文字结果，刷新后保留且没有重复，`RELAY-006～008`正式`PASS`。`RELAY-009/011/012`继续`USER_RECHECK`；Mureka Audio的`RATE_LIMIT`暂停和`INPUT-001～007`的`PARTIAL`状态均不改变。
+- 用户后续在真实画布找到并一次性确认OpenAI Chat/Responses、Claude和Gemini四条文字结果，刷新后保留且没有重复，`RELAY-006～008`正式`PASS`。随后又完成图片、Doubao TTS和安全删除保护联合复验，详见5.4；Mureka Audio的`RATE_LIMIT`暂停和`INPUT-001～007`的`PARTIAL`状态均不改变。
 
 ### 5.3 2026-08-04真实协议自动验证与安全删除
 
 - 用户授权的7次真实API调用均成功，无失败和重复：`openai-chat` task `ff1014f8-1e0a-415a-9ebe-7a5296a50c5f`；`openai-responses` task `b2d27319-cc77-4528-a17b-fff282b03e9e`；`claude-messages` task `f554282e-f332-4a6a-8f18-fb72bcf7bbda`；`gemini-generate-content` task `0be7fd67-c1e2-4c06-950d-76dcf46d573c`。
 - 图片：`gpt-image` task `b4bd07a5-9a2b-47f2-8d0f-59a369aa6e71`、asset `0f98c0b7-6ec8-470c-9840-0b94c2efaaa1`；`media-generate` task `2617ceee-acd7-4ccd-b2f9-cd44b3a3e4aa`、asset `12f84f21-0f2b-4c2e-836d-1b64f57dd5d0`。
-- 音频：Doubao TTS task `d8deb41b-0a7f-428c-8242-6603c12966cc`、asset `8775c5e5-9a8e-4bcc-9d5d-4f3de68be4b2.mp3`，`audio/mpeg`、32,892字节、1.632秒。`emotion=auto`未持久化或发送`emotionScale`；UI、播放器和OSS自动检查通过，仍等待用户可见确认。
-- 收费Provider边界计数由1增至8。真实自动验证本身不等于`USER PASS`；用户后续只对四条文字结果完成可见复验，因此`RELAY-006～008`可据用户验收改为PASS，图片、音频和安全删除仍不得提前PASS。
-- 安全删除只使用隔离草稿`relay-delete-fixture-20260804`，先归档后永久删除；已发布、默认、历史引用模型仍受保护，`RELAY-012`仍为`USER_RECHECK`。
+- 音频：Doubao TTS task `d8deb41b-0a7f-428c-8242-6603c12966cc`、asset `8775c5e5-9a8e-4bcc-9d5d-4f3de68be4b2.mp3`，`audio/mpeg`、32,892字节、1.632秒。`emotion=auto`未持久化或发送`emotionScale`；UI、播放器和OSS自动检查通过。
+- 收费Provider边界计数由1增至8。真实自动验证本身不等于`USER PASS`；各结果只在用户完成后续可见复验后才转为PASS。
+- 安全删除只使用隔离草稿`relay-delete-fixture-20260804`，先归档后永久删除；已发布、默认、历史引用模型继续受保护。
 - 本轮真实调用已结束，不再自动发起收费Provider请求。
+
+### 5.4 2026-08-04图片、音频与安全删除用户收口
+
+- GPT Image task `b4bd07a5-9a2b-47f2-8d0f-59a369aa6e71`和通用图片 task `2617ceee-acd7-4ccd-b2f9-cd44b3a3e4aa`均在真实画布与图片历史完整显示；两张均为1254×1254，任务、素材、历史和画布节点各自唯一。刷新和只重启本项目4173服务后仍保持完整、唯一，`RELAY-009`经用户确认PASS。
+- Doubao TTS task `d8deb41b-0a7f-428c-8242-6603c12966cc`在画布和音频历史中只有1份，1.632秒媒体就绪并实际播放成功；刷新和服务重启后仍可播放且无重复，`RELAY-011`经用户确认PASS。Mureka `RATE_LIMIT`任务未重试。
+- 隔离草稿已有创建、归档、永久删除审计且当前无残留，本轮没有重新造草稿或删除真实数据。真实模型中心13个模型、8个中转模型和4个默认保护项在刷新及服务重启后保持不变，不应出现的永久删除入口没有出现；`RELAY-012`经用户确认PASS。
+- 服务端模型生命周期1/1、Relay/Admin UI 13/13、Provider媒体安全5/5、Relay运行时8/8、Audio播放4/4，共31/31通过。本轮收费Provider请求0、新生成任务0、真实数据删除0。`RELAY-001～012`至此全部PASS。
 
 ## 6. 交付物
 
