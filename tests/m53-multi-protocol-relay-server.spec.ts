@@ -794,60 +794,77 @@ test("multi-protocol relay verifies, syncs enhanced and fallback catalogs, and e
         method: init?.method,
         url: String(input),
       });
-      return jsonResponse({
-        models: [{
-          id: "zeta/image-model",
-          name: "Zeta Image",
-          output_modalities: ["image"],
-          pricing: { currency: "USD", image: "0.02" },
-          protocols: ["gpt-image"],
-          type: "图片",
-        }],
-        total: 1,
-        type: "list",
-      });
+      return String(input).endsWith("/skills/models")
+        ? jsonResponse({
+            models: [{
+              display_name: "Zeta Image",
+              name: "zeta/image-model",
+              output_modalities: ["image"],
+              pricing: { currency: "USD", image: "0.02" },
+              protocols: ["gpt-image"],
+              type: "图片",
+            }],
+            total: 1,
+            type: "list",
+          })
+        : jsonResponse({ data: [{ id: "zeta/image-model" }] });
     }) as typeof fetch);
     expect(verification.modelCount).toBe(1);
-    expect(verificationRequests).toEqual([{
-      authorization: `Bearer ${secret}`,
-      method: "GET",
-      url: "https://api.relay.example/v1/skills/models",
-    }]);
+    expect(verificationRequests).toEqual([
+      {
+        authorization: `Bearer ${secret}`,
+        method: "GET",
+        url: "https://api.relay.example/v1/skills/models",
+      },
+      {
+        authorization: `Bearer ${secret}`,
+        method: "GET",
+        url: "https://api.relay.example/v1/models",
+      },
+    ]);
 
     const syncRequests: Array<{ method: string | undefined; url: string }> = [];
     const synced = await syncProviderCatalog(profile.id, (async (input, init) => {
       syncRequests.push({ method: init?.method, url: String(input) });
-      return jsonResponse({
+      return String(input).endsWith("/skills/models")
+        ? jsonResponse({
         models: [{
-          id: "same/model",
-          name: "Sparse duplicate",
+          display_name: "Sparse duplicate",
+          name: "same/model",
         }, {
-          id: "same/model",
+          display_name: "Rich duplicate",
           input_modalities: ["image", "text"],
-          name: "Rich duplicate",
+          name: "same/model",
           output_modalities: ["text"],
           pricing_hint: "0.01 / request",
           protocols: ["openai-chat", "claude-messages", "not-supported"],
           type: "chat",
         }, {
-          id: "alpha/video-model",
+          name: "alpha/video-model",
           modalities: ["video"],
           protocol: "media-generate",
           type: "视频",
         }, {
-          id: secret,
-          name: "must never be exposed",
+          display_name: "must never be exposed",
+          name: secret,
           protocols: ["openai-chat"],
         }],
         total: 4,
         type: "list",
-      });
+          })
+        : jsonResponse({ data: [{ id: "same/model", name: "Basic same" }] });
     }) as typeof fetch);
-    expect(syncRequests).toEqual([{
-      method: "GET",
-      url: "https://api.relay.example/v1/skills/models",
-    }]);
-    expect(synced.controlPlaneRequests).toBe(1);
+    expect(syncRequests).toEqual([
+      {
+        method: "GET",
+        url: "https://api.relay.example/v1/skills/models",
+      },
+      {
+        method: "GET",
+        url: "https://api.relay.example/v1/models",
+      },
+    ]);
+    expect(synced.controlPlaneRequests).toBe(2);
     expect(synced.catalog.models.map((model) => model.providerModelId)).toEqual([
       "alpha/video-model",
       "same/model",
@@ -1205,7 +1222,7 @@ test("multi-protocol relay verifies, syncs enhanced and fallback catalogs, and e
   });
 });
 
-test("relay accepts bounded string model ids and falls back when an enhanced list has no usable model", async () => {
+test("relay accepts bounded string model ids, falls back only for a real empty enhanced list, and fails closed otherwise", async () => {
   await temporaryDataDirectory(async () => {
     const stringProfile = await saveProviderProfile({
       apiKey: `string-${randomUUID()}`,
@@ -1215,9 +1232,11 @@ test("relay accepts bounded string model ids and falls back when an enhanced lis
     });
     const stringCatalog = await syncProviderCatalog(
       stringProfile.id,
-      (async () => jsonResponse({ models: ["vendor/string-model"] })) as typeof fetch,
+      (async (input) => String(input).endsWith("/skills/models")
+        ? jsonResponse({ models: ["vendor/string-model"] })
+        : jsonResponse({ data: ["vendor/string-model"] })) as typeof fetch,
     );
-    expect(stringCatalog.controlPlaneRequests).toBe(1);
+    expect(stringCatalog.controlPlaneRequests).toBe(2);
     expect(stringCatalog.catalog.models).toMatchObject([{
       providerModelId: "vendor/string-model",
       status: "available",
@@ -1235,7 +1254,7 @@ test("relay accepts bounded string model ids and falls back when an enhanced lis
       (async (input) => {
         requests.push(String(input));
         return requests.length === 1
-          ? jsonResponse({ models: [{ unsupported_field: true }] })
+          ? jsonResponse({ models: [], total: 0 })
           : jsonResponse({ data: [{ id: "vendor/basic-model" }] });
       }) as typeof fetch,
     );
@@ -1249,6 +1268,25 @@ test("relay accepts bounded string model ids and falls back when an enhanced lis
       status: "available",
     }]);
 
+    const malformedProfile = await saveProviderProfile({
+      apiKey: `malformed-${randomUUID()}`,
+      baseUrl: "https://malformed-enhanced.relay.example/v1",
+      driver: "multi-protocol-relay",
+      label: "Malformed enhanced relay",
+    });
+    let malformedRequests = 0;
+    await expect(syncProviderCatalog(
+      malformedProfile.id,
+      (async () => {
+        malformedRequests += 1;
+        return jsonResponse({
+          models: [{ unsupported_field: true }],
+          total: 1,
+        });
+      }) as typeof fetch,
+    )).rejects.toMatchObject({ code: "FORMAT" });
+    expect(malformedRequests).toBe(1);
+
     const networkFallbackProfile = await saveProviderProfile({
       apiKey: `network-${randomUUID()}`,
       baseUrl: "https://network-enhanced.relay.example/v1",
@@ -1256,18 +1294,14 @@ test("relay accepts bounded string model ids and falls back when an enhanced lis
       label: "Network enhanced relay",
     });
     let networkRequests = 0;
-    const networkFallback = await syncProviderCatalog(
+    await expect(syncProviderCatalog(
       networkFallbackProfile.id,
       (async () => {
         networkRequests += 1;
-        if (networkRequests === 1) throw new Error("fixture network failure");
-        return jsonResponse({ data: [{ id: "vendor/network-basic" }] });
+        throw new Error("fixture network failure");
       }) as typeof fetch,
-    );
-    expect(networkRequests).toBe(2);
-    expect(networkFallback.catalog.models).toMatchObject([{
-      providerModelId: "vendor/network-basic",
-    }]);
+    )).rejects.toMatchObject({ code: "NETWORK" });
+    expect(networkRequests).toBe(1);
   });
 });
 

@@ -1615,6 +1615,13 @@ export function CanvasShell({
       );
     }
   }, [durableFixture]);
+  const markSaveConflict = useCallback(() => {
+    setSaveConflict(true);
+    setSaveStatus("检测到另一页面的更新");
+  }, []);
+  const markSaveSuccess = useCallback(() => {
+    setSaveStatus("已保存到云端");
+  }, []);
 
   return (
     <main
@@ -1646,11 +1653,8 @@ export function CanvasShell({
           setAssetsOpen(true);
         }}
         onSearchIndexChange={setNodeSearchEntries}
-        onSaveConflict={() => {
-          setSaveConflict(true);
-          setSaveStatus("检测到另一页面的更新");
-        }}
-        onSaveSuccess={() => setSaveStatus("已保存到云端")}
+        onSaveConflict={markSaveConflict}
+        onSaveSuccess={markSaveSuccess}
         onSaveStart={markSaving}
         onViewportChange={setViewport}
         shellMenuCommand={shellMenuCommand}

@@ -197,6 +197,29 @@ export const parameterOptionCatalog: Record<string, ModelParameterCatalogEntry> 
     summary: true,
     type: "select",
   },
+  emotion: {
+    capability: ["audio"],
+    group: "main",
+    label: "情绪",
+    options: options([
+      ["自动", "auto"],
+      ["愉快", "happy"],
+      ["伤感", "sad"],
+      ["愤怒", "angry"],
+      ["恐惧", "fearful"],
+      ["惊讶", "surprised"],
+      ["平静", "calm"],
+    ]),
+    summary: true,
+    type: "select",
+  },
+  emotionScale: {
+    capability: ["audio"],
+    group: "advanced",
+    label: "情绪强度",
+    options: options([1, 2, 3, 4, 5]),
+    type: "select",
+  },
   duration: {
     capability: ["video", "audio"],
     group: "main",
@@ -212,7 +235,10 @@ export const parameterOptionCatalog: Record<string, ModelParameterCatalogEntry> 
     capability: ["audio"],
     group: "output",
     label: "格式",
-    options: ["mp3", "wav", "m4a"].map((value) => ({ label: value.toUpperCase(), value })),
+    options: ["mp3", "wav", "m4a", "ogg_opus"].map((value) => ({
+      label: value === "ogg_opus" ? "OGG Opus" : value.toUpperCase(),
+      value,
+    })),
     summary: true,
     type: "select",
   },
@@ -269,6 +295,17 @@ export const parameterOptionCatalog: Record<string, ModelParameterCatalogEntry> 
     summary: true,
     type: "select",
   },
+  maxOutputTokens: {
+    capability: ["text"],
+    group: "output",
+    label: "最大输出Token",
+    options: [16, 32, 64, 128, 256, 512, 1024, 2048, 4096].map((value) => ({
+      label: `${value} Token`,
+      value,
+    })),
+    summary: true,
+    type: "select",
+  },
   musicGenerationMode: {
     capability: ["audio"],
     group: "main",
@@ -315,6 +352,29 @@ export const parameterOptionCatalog: Record<string, ModelParameterCatalogEntry> 
     summary: true,
     type: "select",
   },
+  speaker: {
+    capability: ["audio"],
+    group: "main",
+    label: "音色",
+    options: options([["Vivi 2.0", "zh_female_vv_uranus_bigtts"]]),
+    summary: true,
+    type: "select",
+  },
+  speechRate: {
+    capability: ["audio"],
+    group: "main",
+    label: "语速",
+    options: options([
+      ["-50", "-50"],
+      ["-25", "-25"],
+      ["0", "0"],
+      ["25", "25"],
+      ["50", "50"],
+      ["100", "100"],
+    ]),
+    summary: true,
+    type: "select",
+  },
   responseFormat: {
     capability: ["text"],
     group: "output",
@@ -356,6 +416,17 @@ export const parameterOptionCatalog: Record<string, ModelParameterCatalogEntry> 
       ["中", "medium"],
       ["高", "high"],
     ]),
+    summary: true,
+    type: "select",
+  },
+  temperature: {
+    capability: ["text"],
+    group: "main",
+    label: "Temperature",
+    options: [0, 0.2, 0.5, 0.7, 1].map((value) => ({
+      label: `T ${value}`,
+      value,
+    })),
     summary: true,
     type: "select",
   },
@@ -463,11 +534,77 @@ export function defaultParameterSchema(capability: ModelCapability): ModelParame
   );
 }
 
+function relayTextParameterFields() {
+  return [
+    catalogField("inputMode", ["text"], "text"),
+    catalogField("maxOutputTokens", [16, 32, 64, 128, 256, 512, 1024, 2048, 4096], 64),
+    catalogField("temperature", [0, 0.2, 0.5, 0.7, 1], 0),
+    catalogField("outputCount", [1], 1),
+  ];
+}
+
+function relayTextParameterSchema() {
+  return schema(
+    relayTextParameterFields(),
+    emptyReferenceInputs,
+    undefined,
+    textOnlyUpstreamInputs,
+  );
+}
+
+function relayDoubaoTtsParameterFields() {
+  const nonAutomaticEmotion: ModelParameterCondition[] = [{
+    key: "emotion",
+    operator: "notEquals",
+    value: "auto",
+  }];
+  return [
+    catalogField("inputMode", ["text"], "text"),
+    catalogField(
+      "speaker",
+      ["zh_female_vv_uranus_bigtts"],
+      "zh_female_vv_uranus_bigtts",
+    ),
+    catalogField("speechRate", ["-50", "-25", "0", "25", "50", "100"], "0"),
+    catalogField(
+      "emotion",
+      ["auto", "happy", "sad", "angry", "fearful", "surprised", "calm"],
+      "auto",
+    ),
+    catalogField("emotionScale", [1, 2, 3, 4, 5], 4, {
+      enabledWhen: nonAutomaticEmotion,
+      visibleWhen: nonAutomaticEmotion,
+    }),
+    catalogField("format", ["mp3", "wav", "ogg_opus"], "mp3"),
+    catalogField("outputCount", [1], 1),
+  ];
+}
+
+function relayDoubaoTtsParameterSchema() {
+  return schema(relayDoubaoTtsParameterFields());
+}
+
 export function providerParameterSchema(input: {
   capability: ModelCapability;
   providerDriver?: string;
   providerModelId?: string;
 }): ModelParameterSchema | undefined {
+  if (
+    input.capability === "text" &&
+    input.providerDriver === "multi-protocol-relay"
+  ) {
+    // Keep Provider request controls bounded without constraining the separate
+    // protocol-aware upstream input policy. Chat, Responses, Claude and Gemini
+    // each validate their supported input kinds before publication.
+    return schema(relayTextParameterFields());
+  }
+  if (
+    input.capability === "audio" &&
+    input.providerDriver === "multi-protocol-relay" &&
+    input.providerModelId === "doubao-tts-2.0"
+  ) {
+    return relayDoubaoTtsParameterSchema();
+  }
   if (
     input.capability === "audio" &&
     input.providerDriver === "mureka"
@@ -641,6 +778,19 @@ export function knownModelParameterSchema(input: {
   providerDriver?: string;
   providerModelId?: string;
 }): ModelParameterSchema {
+  if (
+    input.capability === "text" &&
+    input.providerDriver === "multi-protocol-relay"
+  ) {
+    return relayTextParameterSchema();
+  }
+  if (
+    input.capability === "audio" &&
+    input.providerDriver === "multi-protocol-relay" &&
+    input.providerModelId === "doubao-tts-2.0"
+  ) {
+    return relayDoubaoTtsParameterSchema();
+  }
   return providerParameterSchema(input) ?? defaultParameterSchema(input.capability);
 }
 
@@ -702,6 +852,39 @@ export function activeParameterFields(
   values: Record<string, ModelParameterValue>,
 ) {
   return schemaInput.fields.filter((field) => parameterFieldVisible(field, values));
+}
+
+/**
+ * Fields that may cross the generation boundary. A field can remain visible in
+ * the editor while disabled, so submission must apply both condition sets
+ * instead of treating visibility as permission to forward a value.
+ */
+export function submittableParameterFields(
+  schemaInput: ModelParameterSchema,
+  values: Record<string, ModelParameterValue>,
+) {
+  return schemaInput.fields.filter((field) =>
+    parameterFieldEnabled(field, values)
+  );
+}
+
+/**
+ * Build the browser-side request snapshot from the same condition semantics
+ * enforced by validateParameterValues on the server. Inactive values remain in
+ * the node editor state so switching a mode back does not erase user input,
+ * but they never enter an idempotency key or Provider-bound task snapshot.
+ */
+export function submissionParameterValues(
+  schemaInput: ModelParameterSchema,
+  input: unknown,
+): Record<string, ModelParameterValue> {
+  const normalized = normalizeParameterValues(schemaInput, input);
+  return Object.fromEntries(
+    submittableParameterFields(schemaInput, normalized).map((field) => [
+      field.key,
+      normalized[field.key],
+    ]),
+  );
 }
 
 export function referenceSetsForValues(
@@ -1031,7 +1214,7 @@ export function validateParameterValues(
   }
   for (const item of schemaInput.fields) {
     const candidate = values[item.key] ?? item.defaultValue;
-    if (!parameterFieldVisible(item, resolved)) continue;
+    if (!parameterFieldEnabled(item, resolved)) continue;
     if (item.type === "text" || item.type === "textarea") {
       if (typeof candidate !== "string" || candidate.length > (item.maxLength ?? 20_000)) {
         throw new Error("Unsupported model parameter value");
@@ -1059,7 +1242,12 @@ export function validateParameterValues(
     }
     resolved[item.key] = selected.value;
   }
-  return Object.fromEntries(activeParameterFields(schemaInput, resolved).map((item) => [item.key, resolved[item.key]]));
+  return Object.fromEntries(
+    submittableParameterFields(schemaInput, resolved).map((item) => [
+      item.key,
+      resolved[item.key],
+    ]),
+  );
 }
 
 function cleanAvailability(value: unknown): ModelParameterAvailability | undefined {

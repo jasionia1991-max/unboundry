@@ -44,14 +44,14 @@ const textFixtures: TextFixture[] = [
       usage: { completion_tokens: 7, prompt_tokens: 5, total_tokens: 12 },
     },
     expectedBody: {
-      max_tokens: 256,
+      max_tokens: 64,
       messages: [
         { content: "System fixture", role: "system" },
         { content: "Hello", role: "user" },
         { content: "Earlier answer", role: "assistant" },
       ],
       model: "fixture/model-v1",
-      temperature: 0.4,
+      temperature: 0,
     },
     expectedPath: "/v1/chat/completions",
     expectedText: "OpenAI chat result",
@@ -68,9 +68,9 @@ const textFixtures: TextFixture[] = [
         { content: "Earlier answer", role: "assistant" },
       ],
       instructions: "System fixture",
-      max_output_tokens: 256,
+      max_output_tokens: 64,
       model: "fixture/model-v1",
-      temperature: 0.4,
+      temperature: 0,
     },
     expectedPath: "/v1/responses",
     expectedText: "Responses result",
@@ -82,14 +82,14 @@ const textFixtures: TextFixture[] = [
       usage: { input_tokens: 9, output_tokens: 11 },
     },
     expectedBody: {
-      max_tokens: 256,
+      max_tokens: 64,
       messages: [
         { content: "Hello", role: "user" },
         { content: "Earlier answer", role: "assistant" },
       ],
       model: "fixture/model-v1",
       system: "System fixture",
-      temperature: 0.4,
+      temperature: 0,
     },
     expectedPath: "/v1/messages",
     expectedText: "Claude result",
@@ -109,7 +109,7 @@ const textFixtures: TextFixture[] = [
         { parts: [{ text: "Hello" }], role: "user" },
         { parts: [{ text: "Earlier answer" }], role: "model" },
       ],
-      generationConfig: { maxOutputTokens: 256, temperature: 0.4 },
+      generationConfig: { maxOutputTokens: 64, temperature: 0 },
       systemInstruction: { parts: [{ text: "System fixture" }] },
     },
     expectedPath: "/v1beta/models/fixture%2Fmodel-v1:generateContent",
@@ -124,14 +124,14 @@ for (const fixture of textFixtures) {
     const result = await requestRelayText(connection, {
       capability: "text",
       instructions: " System fixture ",
-      maxOutputTokens: 256,
+      maxOutputTokens: 64,
       messages: [
         { role: "user", text: " Hello " },
         { role: "assistant", text: " Earlier answer " },
       ],
       model: "fixture/model-v1",
       providerProtocol: fixture.protocol,
-      temperature: 0.4,
+      temperature: 0,
     }, {
       fetcher: async (input, init) => {
         calls.push({ init, url: String(input) });
@@ -580,6 +580,54 @@ test("generic media submission accepts image, video and audio fixtures only", as
     ["video_task_202"],
     ["audio_a"],
   ]);
+});
+
+test("Doubao TTS accepts documented params and rejects unsafe or unknown fields before fetch", async () => {
+  const bodies: Record<string, unknown>[] = [];
+  let calls = 0;
+  const fetcher: typeof fetch = async (_input, init) => {
+    calls += 1;
+    bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    return jsonResponse({ task_id: "doubao_tts_fixture_001" });
+  };
+  const validParams = {
+    emotion: "happy",
+    emotion_scale: 4,
+    format: "mp3",
+    speaker: "zh_female_vv_uranus_bigtts",
+    speech_rate: "0",
+  };
+
+  await expect(submitRelayMedia(connection, {
+    capability: "audio",
+    model: "doubao-tts-2.0",
+    params: validParams,
+    prompt: "Read the fixture sentence",
+    providerProtocol: "media-generate",
+  }, { fetcher })).resolves.toMatchObject({
+    externalTaskId: "doubao_tts_fixture_001",
+    state: "queued",
+  });
+  expect(bodies).toEqual([{
+    model: "doubao-tts-2.0",
+    params: validParams,
+    prompt: "Read the fixture sentence",
+  }]);
+
+  const rejectedParams: RelayMediaGenerateRequest["params"][] = [
+    { undocumented_parameter: "must-not-pass" },
+    { notify_url: "https://callback.example.test/result" },
+  ];
+  for (const params of rejectedParams) {
+    await expect(submitRelayMedia(connection, {
+      capability: "audio",
+      model: "doubao-tts-2.0",
+      params,
+      prompt: "fixture",
+      providerProtocol: "media-generate",
+    }, { fetcher })).rejects.toMatchObject({ code: "FORMAT" });
+  }
+  expect(calls).toBe(1);
 });
 
 test("generic media rejects multiple remote task IDs after one POST", async () => {

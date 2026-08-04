@@ -18,8 +18,14 @@ import {
   providerCatalogCapabilities,
 } from "./providerCatalogCapabilities";
 import {
+  parseProviderCatalogDiagnostics,
+  serializeProviderCatalogDiagnostics,
+  type ProviderCatalogDiagnostics,
+} from "./providerCatalogDiagnostics";
+import {
   RelayRemoteError,
   fetchRelayModelCatalog,
+  inferRelayCatalogModelHints,
   readRelayManagementResource,
   relayReadOnlyDescriptor,
   relayReadOnlyErrorCode,
@@ -50,6 +56,7 @@ import {
 type CatalogSnapshotRow = {
   catalog_checked_at: string | null;
   catalog_control_request_count: number;
+  catalog_diagnostics: string;
   catalog_endpoint_count: number;
   catalog_endpoints: string;
   catalog_key_status: ProviderCatalogKeyStatus;
@@ -145,6 +152,7 @@ function snapshotRow(store: DatabaseSync, profileId: string) {
     SELECT
       catalog_checked_at,
       catalog_control_request_count,
+      catalog_diagnostics,
       catalog_endpoint_count,
       catalog_endpoints,
       catalog_key_status,
@@ -280,13 +288,21 @@ function parseSnapshotModels(
     ) {
       throw new Error("Invalid catalog snapshot");
     }
+    const providerModelId = requiredSnapshotString(record, "providerModelId");
+    const displayName = requiredSnapshotString(record, "displayName");
     const metadata = parseSnapshotMetadata(record.metadata);
+    const inferred = driver === "multi-protocol-relay"
+      ? inferRelayCatalogModelHints(providerModelId, displayName)
+      : { capability: "unknown" as const };
+    const resolvedCapability = capability === "unknown"
+      ? inferred.capability
+      : capability as ModelCapability;
     return {
-      capability: capability as ProviderCatalogDiscoveredModel["capability"],
+      capability: resolvedCapability,
       discoveryId: requiredSnapshotString(record, "discoveryId"),
-      displayName: requiredSnapshotString(record, "displayName"),
+      displayName,
       ...(metadata ? { metadata } : {}),
-      providerModelId: requiredSnapshotString(record, "providerModelId"),
+      providerModelId,
       source: catalogModelSource(driver),
       status: requiredSnapshotString(record, "status", 160),
     };
@@ -332,6 +348,7 @@ function publicCatalog(store: DatabaseSync, profileId: string) {
   if (!row) throw new Error("Provider profile not found");
   return {
     ...providerCatalogCapabilities(row.driver),
+    ...parseProviderCatalogDiagnostics(row.catalog_diagnostics),
     checkedAt: row.catalog_checked_at ?? undefined,
     controlRequestCount: Number(row.catalog_control_request_count),
     endpointCount: Number(row.catalog_endpoint_count),
@@ -591,6 +608,7 @@ export async function syncArkProviderCatalog(
           catalog_model_count = ?,
           catalog_endpoint_count = ?,
           catalog_control_request_count = catalog_control_request_count + ?,
+          catalog_diagnostics = '{}',
           catalog_sync_token = NULL
         WHERE
           id = ?
@@ -982,6 +1000,7 @@ async function syncProfileKeyProviderCatalog(
   let requestCount = 0;
   let syncClaimed = false;
   let requestsRecorded = false;
+  let catalogDiagnostics: ProviderCatalogDiagnostics = {};
   try {
     claimProfileCatalogSync(db(), profile, syncToken);
     syncClaimed = true;
@@ -990,7 +1009,7 @@ async function syncProfileKeyProviderCatalog(
     let models: ProviderCatalogDiscoveredModel[];
     if (profile.driver === "multi-protocol-relay") {
       try {
-        models = (await fetchRelayModelCatalog(profile, fetcher, {
+        const relayCatalog = await fetchRelayModelCatalog(profile, fetcher, {
           beforeRequest: () => {
             requestCount += 1;
           },
@@ -999,7 +1018,19 @@ async function syncProfileKeyProviderCatalog(
             deadline,
             controller.signal,
           ),
-        })).models;
+        });
+        models = relayCatalog.models;
+        catalogDiagnostics = {
+          capabilityCounts: relayCatalog.capabilityCounts,
+          catalogSource: relayCatalog.catalogSource,
+          ...(relayCatalog.fallbackReason
+            ? { fallbackReason: relayCatalog.fallbackReason }
+            : {}),
+          rejectedModelCount: relayCatalog.rejectedModelCount,
+          ...(relayCatalog.reportedModelCount !== undefined
+            ? { reportedModelCount: relayCatalog.reportedModelCount }
+            : {}),
+        };
       } catch (error) {
         if (error instanceof RelayRemoteError) {
           throw new CatalogRemoteError(error.code);
@@ -1043,6 +1074,24 @@ async function syncProfileKeyProviderCatalog(
     }
     const timestamp = new Date().toISOString();
     const store = db();
+    if (
+      profile.driver === "multi-protocol-relay" &&
+      catalogDiagnostics.catalogSource === "basic-fallback"
+    ) {
+      const previous = snapshotRow(store, profile.id);
+      const previousDiagnostics = previous
+        ? parseProviderCatalogDiagnostics(previous.catalog_diagnostics)
+        : {};
+      if (
+        previous?.catalog_model_count &&
+        (previousDiagnostics.catalogSource === "enhanced" ||
+          previousDiagnostics.catalogSource === "enhanced+basic")
+      ) {
+        // A temporary enhanced-directory outage must not downgrade a known
+        // complete snapshot to the smaller compatibility-only catalog.
+        throw new CatalogRemoteError("FORMAT");
+      }
+    }
     store.exec("BEGIN IMMEDIATE");
     try {
       remainingProfileCatalogSyncDurationMs(deadline, controller.signal);
@@ -1058,6 +1107,7 @@ async function syncProfileKeyProviderCatalog(
           catalog_model_count = ?,
           catalog_endpoint_count = 0,
           catalog_control_request_count = catalog_control_request_count + ?,
+          catalog_diagnostics = ?,
           catalog_sync_token = NULL
         WHERE
           id = ?
@@ -1070,6 +1120,7 @@ async function syncProfileKeyProviderCatalog(
         JSON.stringify(models),
         models.length,
         requestCount,
+        serializeProviderCatalogDiagnostics(catalogDiagnostics),
         profile.id,
         profile.driver,
         providerConfigurationVersion(profile),

@@ -77,7 +77,13 @@ test("Provider Key与目录严格透传代理配置错误并保留目录快照",
       });
       await syncProviderCatalog(
         profile.id,
-        (async () => jsonResponse(successCatalog(driver))) as typeof fetch,
+        (async (input) =>
+          jsonResponse(
+            driver === "multi-protocol-relay" &&
+                new URL(String(input)).pathname.endsWith("/v1/models")
+              ? { data: [{ id: "vendor/last-good", output_modalities: ["text"] }] }
+              : successCatalog(driver),
+          )) as typeof fetch,
       );
       const lastGood = await getProviderCatalog(profile.id);
       expect(lastGood.models).toHaveLength(1);

@@ -100,11 +100,20 @@ function acceptedTypes(kind: ProviderResultMediaKind) {
     ? new Set(["image/png"])
     : kind === "video"
       ? new Set(["video/mp4"])
-      : new Set(["audio/aac", "audio/mp4", "audio/mpeg", "audio/wav"]);
+      : new Set([
+          "audio/aac",
+          "audio/mp4",
+          "audio/mpeg",
+          "audio/ogg",
+          "audio/wav",
+        ]);
 }
 
 function normalizedContentType(value: string | null) {
-  return String(value ?? "").split(";", 1)[0].trim().toLowerCase();
+  const normalized = String(value ?? "").split(";", 1)[0].trim().toLowerCase();
+  return normalized === "application/ogg" || normalized === "audio/opus"
+    ? "audio/ogg"
+    : normalized;
 }
 
 export async function downloadProviderResultMedia(input: {

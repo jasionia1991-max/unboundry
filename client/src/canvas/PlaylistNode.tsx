@@ -16,6 +16,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useCanvasCheckpoint } from "./CanvasHistory";
+import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
 import { mergePlaylist } from "./playlistExport";
 import type { PlaylistClip, ProbeNodeType } from "./ProbeNode";
@@ -382,6 +383,7 @@ export function PlaylistNode({
   id,
   selected,
 }: NodeProps<ProbeNodeType>) {
+  const singleNodeChrome = useSingleNodeChrome(selected);
   const hoverHead = useRef<HTMLSpanElement>(null);
   const hoverTimer = useRef<number | undefined>(undefined);
   const editShortcutHandler = useRef<(event: KeyboardEvent) => void>(() => {});
@@ -472,14 +474,14 @@ export function PlaylistNode({
   }, [data.title]);
 
   useEffect(() => {
-    if (selected && hasClips) setPlayerOpen(true);
-    if (!selected) {
+    if (singleNodeChrome && hasClips) setPlayerOpen(true);
+    if (!singleNodeChrome) {
       setExportMenu(false);
       setHoverTime(null);
       setPlaying(false);
       setPlayerOpen(false);
     }
-  }, [hasClips, selected]);
+  }, [hasClips, singleNodeChrome]);
 
   useEffect(() => {
     setCurrentTime((value) => Math.min(value, total));
@@ -889,7 +891,7 @@ export function PlaylistNode({
   };
 
   editShortcutHandler.current = (event: KeyboardEvent) => {
-      if (!selected || !hasClips) return;
+      if (!singleNodeChrome || !hasClips) return;
       if (
         event.metaKey ||
         event.ctrlKey ||
@@ -949,7 +951,7 @@ export function PlaylistNode({
     <>
       <NodeResizer
         color="transparent"
-        isVisible={selected}
+        isVisible={singleNodeChrome}
         minHeight={104}
         minWidth={250}
         onResizeStart={() => checkpoint()}
@@ -960,7 +962,7 @@ export function PlaylistNode({
         className="playlist-node"
         data-picking={data.playlistPicking || undefined}
       >
-        {selected && hasClips && (
+        {singleNodeChrome && hasClips && (
           <div
             className="playlist-node-actions nodrag nopan"
             data-testid="playlist-node-actions"
@@ -1098,7 +1100,7 @@ export function PlaylistNode({
             <rect height="14" rx="2" width="14" x="3" y="3" />
             <path d="M3 7h3M3 13h3M14 7h3M14 13h3M7 3v14M13 3v14" />
           </svg>
-          {selected ? (
+          {singleNodeChrome ? (
             <input
               aria-label="Playlist 标题"
               className="nodrag"
@@ -1444,7 +1446,7 @@ export function PlaylistNode({
           </output>,
           document.body,
         )}
-      {selected && hasClips && !data.playlistPicking && playerOpen && (
+      {singleNodeChrome && hasClips && !data.playlistPicking && playerOpen && (
         <PlaylistPlayer
           clips={clips}
           currentTime={previewTime}

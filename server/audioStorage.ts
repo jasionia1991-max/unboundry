@@ -87,6 +87,22 @@ function audioFormat(id: string) {
       },
     };
   }
+  if (extension === "ogg") {
+    return {
+      contentType: "audio/ogg",
+      requestTypes: ["audio/ogg", "application/ogg"],
+      validate: (bytes: Buffer) => {
+        if (
+          bytes.length < 36 ||
+          bytes.toString("ascii", 0, 4) !== "OggS" ||
+          bytes[4] !== 0 ||
+          bytes.indexOf(Buffer.from("OpusHead", "ascii")) < 0
+        ) {
+          throw new Error("Invalid OGG Opus audio");
+        }
+      },
+    };
+  }
 }
 
 function json(response: ServerResponse, status: number, body: unknown) {
@@ -147,7 +163,12 @@ function validateWav(bytes: Buffer, totalSize = bytes.length) {
 
 export async function saveGeneratedAudio(input: {
   body: ReadableStream<Uint8Array>;
-  contentType: "audio/aac" | "audio/mp4" | "audio/mpeg" | "audio/wav";
+  contentType:
+    | "audio/aac"
+    | "audio/mp4"
+    | "audio/mpeg"
+    | "audio/ogg"
+    | "audio/wav";
   label: string;
   ownerId: string;
 }) {
@@ -157,7 +178,9 @@ export async function saveGeneratedAudio(input: {
       ? "m4a"
       : input.contentType === "audio/aac"
         ? "aac"
-        : "mp3";
+        : input.contentType === "audio/ogg"
+          ? "ogg"
+          : "mp3";
   const id = `${randomUUID()}.${extension}`;
   const format = audioFormat(id)!;
   const path = audioPath(id);

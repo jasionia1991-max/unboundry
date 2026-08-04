@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -99,6 +100,30 @@ test("Provider media download is unauthenticated, redirect-free and type checked
     url: "https://cdn.example.test/result.m4a",
   });
   expect(audio.contentType).toBe("audio/mp4");
+
+  for (const remoteType of ["audio/ogg; codecs=opus", "application/ogg"]) {
+    const ogg = await downloadProviderResultMedia({
+      apiKey: "safe-key",
+      fetcher: (async () => new Response(Buffer.from("OggS OpusHead"), {
+        headers: { "Content-Type": remoteType },
+      })) as typeof fetch,
+      kind: "audio",
+      resolver: publicResolver,
+      url: "https://cdn.example.test/result.ogg",
+    });
+    expect(ogg.contentType).toBe("audio/ogg");
+  }
+  const opaqueOgg = await downloadProviderResultMedia({
+    apiKey: "safe-key",
+    expectedContentType: "audio/ogg",
+    fetcher: (async () => new Response(Buffer.from("OggS OpusHead"), {
+      headers: { "Content-Type": "application/octet-stream" },
+    })) as typeof fetch,
+    kind: "audio",
+    resolver: publicResolver,
+    url: "https://cdn.example.test/result-opaque.ogg",
+  });
+  expect(opaqueOgg.contentType).toBe("audio/ogg");
 });
 
 test("Provider result DNS rebinding to a private address is blocked before download", async () => {
@@ -157,6 +182,80 @@ test("generated WAV reads a complete probe and is saved without a Provider reque
     expect(saved.assetId).toMatch(/\.wav$/);
     expect(saved.durationSeconds).toBeGreaterThan(0);
     expect(await readFile(join(directory, "media", saved.assetId))).toEqual(fixture);
+  } finally {
+    if (previousDataDirectory === undefined) delete process.env.TAPNOW_DATA_DIR;
+    else process.env.TAPNOW_DATA_DIR = previousDataDirectory;
+    await rm(directory, { force: true, recursive: true });
+  }
+});
+
+test("generated OGG Opus is probed and persisted with its canonical private-media type", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "tapnow-relay-ogg-"));
+  const previousDataDirectory = process.env.TAPNOW_DATA_DIR;
+  process.env.TAPNOW_DATA_DIR = directory;
+  try {
+    const ownerId = "relay-ogg-owner";
+    const timestamp = new Date().toISOString();
+    const database = openAppDatabase(directory);
+    database.prepare(`
+      INSERT INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, 'user', 'active', ?, ?)
+    `).run(ownerId, ownerId, "Relay OGG", "fixture-only", timestamp, timestamp);
+    database.close();
+
+    const fixturePath = join(directory, "fixture.ogg");
+    execFileSync("ffmpeg", [
+      "-y",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=660:duration=0.25",
+      "-c:a",
+      "libopus",
+      fixturePath,
+    ]);
+    const fixture = await readFile(fixturePath);
+    const saved = await saveGeneratedAudio({
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(fixture.subarray(0, 17));
+          controller.enqueue(fixture.subarray(17));
+          controller.close();
+        },
+      }),
+      contentType: "audio/ogg",
+      label: "OGG Opus fixture",
+      ownerId,
+    });
+
+    expect(saved).toMatchObject({
+      byteSize: fixture.length,
+      contentType: "audio/ogg",
+      storageBackend: "local",
+    });
+    expect(saved.assetId).toMatch(/\.ogg$/);
+    expect(saved.durationSeconds).toBeGreaterThan(0);
+    expect(await readFile(join(directory, "media", saved.assetId))).toEqual(fixture);
+
+    const checkDatabase = openAppDatabase(directory);
+    const persisted = checkDatabase.prepare(`
+      SELECT content_type, duration_status, owner_id, storage_backend,
+             storage_status
+      FROM media_assets
+      WHERE kind = 'audio' AND id = ?
+    `).get(saved.assetId) as Record<string, unknown>;
+    checkDatabase.close();
+    expect(persisted).toEqual({
+      content_type: "audio/ogg",
+      duration_status: "ready",
+      owner_id: ownerId,
+      storage_backend: "local",
+      storage_status: "ready",
+    });
   } finally {
     if (previousDataDirectory === undefined) delete process.env.TAPNOW_DATA_DIR;
     else process.env.TAPNOW_DATA_DIR = previousDataDirectory;

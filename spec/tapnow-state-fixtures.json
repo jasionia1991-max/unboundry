@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "fixtureVersion": "2026-08-03",
+  "fixtureVersion": "2026-08-04",
   "source": {
     "report": "../../TAPNOW_CANVAS_FULL_SURVEY_2026-07-27.md",
     "tapnowVersion": "v2.12.2",
@@ -229,13 +229,36 @@
       ],
       "authRequired": true,
       "providerRequests": 0,
-      "rule": "Self-owned contract only; do not copy upstream private APIs."
+      "rule": "Self-owned contract only; do not copy upstream private APIs.",
+      "canvasRegression20260804": {
+        "status": "PASS",
+        "userAcceptedAt": "2026-08-04",
+        "zoom": {
+          "searchFocusConsumedOnce": true,
+          "zoomOverNodeInputAndCreator": true,
+          "viewportSaveBlocksGeneration": false,
+          "saveBannerVisibleDuringViewportOnlyChange": false,
+          "creatorFlickerDuringZoom": false,
+          "automatedEvidence": "m62-canvas-zoom-persistence 5/5"
+        },
+        "multiSelection": {
+          "sharedToolbarCount": 1,
+          "individualNodeChromeVisible": false,
+          "nativeTextSelectionOnCanvas": false,
+          "editableTextSelectionPreserved": true,
+          "existingGroupLifecyclePreserved": true,
+          "groupUndoRefreshDeleteRestoreUnique": true,
+          "automatedEvidence": "m63-multiselect-group-ui 3/3; related regression 45/45"
+        },
+        "paidProviderRequests": 0,
+        "realGenerationTasksCreated": 0
+      }
     }
   },
   "acceptanceBatch": {
     "acceptedAt": "2026-08-02",
     "completed": 10,
-    "nextBatchAccepted": 0,
+    "nextBatchAccepted": 5,
     "nextBatchTarget": 10,
     "items": [
       "node upstream-input rules and future model schema",
@@ -248,6 +271,13 @@
       "API-004 AI character catalog",
       "API-005 personal and team library catalog",
       "8-path 10-operation API overview and full regression"
+    ],
+    "nextBatchItems": [
+      "multi-protocol relay connection, complete 129-model catalog, discovery filters, and model-center draft import",
+      "RELAY-010 real Video zero-cost refresh, service-restart recovery, and deduplication closure",
+      "RELAY-006 through RELAY-008 user-visible text result persistence and uniqueness",
+      "canvas search-focus, zoom, viewport-save, and creator-stability regression closure",
+      "single shared multi-selection toolbar and existing Group lifecycle regression closure"
     ]
   },
   "fixtures": [
@@ -2445,9 +2475,9 @@
     {
       "id": "admin.provider.multi-protocol-relay-candidate",
       "kind": "admin",
-      "status": "LOCAL_CANDIDATE",
-      "sourceId": "LOCAL-RELAY-2026-08-03",
-      "evidenceLevel": "ZERO_PROVIDER_AUTOMATION",
+      "status": "MIXED_ACCEPTANCE",
+      "sourceId": "LOCAL-RELAY-2026-08-04",
+      "evidenceLevel": "ZERO_PROVIDER_AUTOMATION_AND_REAL_USER_ACCEPTANCE",
       "routes": ["/admin/providers", "/admin/models"],
       "connection": {
         "driver": "multi-protocol-relay",
@@ -2462,7 +2492,19 @@
         "readOnlyResources": ["balance", "usage", "pricing", "task-status", "model-detail"],
         "importBehavior": "UNPUBLISHED_MODEL_DRAFT_ONLY",
         "duplicateKey": "providerConnectionId + providerModelId + capability + providerProtocol",
-        "capabilityBehavior": "The same provider model may be configured independently for different node capabilities."
+        "capabilityBehavior": "The same provider model may be configured independently for different node capabilities.",
+        "realCatalog": {
+          "source": "enhanced+basic",
+          "enhancedCount": 101,
+          "basicCount": 55,
+          "mergedCount": 129,
+          "capabilityCounts": {
+            "text": 55,
+            "image": 17,
+            "video": 50,
+            "audio": 7
+          }
+        }
       },
       "protocols": [
         "openai-chat",
@@ -2481,10 +2523,112 @@
       },
       "safety": {
         "dnsRebindingBlockedByPinnedPublicIp": true,
-        "realGenerationTasksCreated": 0,
-        "paidProviderRequests": 0,
+        "catalogGenerationTasksCreated": 0,
+        "automatedPaidProviderRequests": 0,
+        "userAuthorizedRealGenerationTasksCreated": 8,
+        "userAuthorizedProviderBoundaryRequests": 8,
         "temporaryResultUrlsPersisted": false,
         "providerCancelClaimed": false
+      },
+      "realVideoTask": {
+        "acceptanceStatus": "PASS",
+        "taskId": "8275d86c-602e-42ab-b444-969224dea601",
+        "providerTaskId": "93467467",
+        "protocol": "media-generate",
+        "events": ["queued", "running", "success"],
+        "attempt": 1,
+        "resultAssetId": "f5ae0f1d-0e97-4923-88ef-6a39f292eea6.mp4",
+        "resultBytes": 1493430,
+        "resultDurationSeconds": 5.042,
+        "resultSha256": "969acbb31c7eed3ab82ecb3df88c7a2394fb5a1813ee094353a3dbeccbe9f412",
+        "privateOssReady": true,
+        "uniqueHistoryRecord": true,
+        "restartRecovery": {
+          "refreshRecovered": true,
+          "serviceRestartRecovered": true,
+          "taskHashStable": true,
+          "attemptHashStable": true,
+          "eventsHashStable": true,
+          "assetHashStable": true,
+          "historyHashStable": true,
+          "uniqueTask": true,
+          "uniqueHistory": true,
+          "uniqueMedia": true,
+          "providerRequests": 0
+        },
+        "remaining": []
+      },
+      "realProtocolValidation": {
+        "authorizedByUser": true,
+        "providerBoundaryBefore": 1,
+        "providerBoundaryAfter": 8,
+        "newProviderRequests": 7,
+        "allSucceeded": true,
+        "failures": 0,
+        "duplicates": 0,
+        "automatedRealValidationIsUserPass": false,
+        "tasks": [
+          {
+            "protocol": "openai-chat",
+            "taskId": "ff1014f8-1e0a-415a-9ebe-7a5296a50c5f",
+            "userVisibleAcceptance": "PASS",
+            "status": "success"
+          },
+          {
+            "protocol": "openai-responses",
+            "taskId": "b2d27319-cc77-4528-a17b-fff282b03e9e",
+            "userVisibleAcceptance": "PASS",
+            "status": "success"
+          },
+          {
+            "protocol": "claude-messages",
+            "taskId": "f554282e-f332-4a6a-8f18-fb72bcf7bbda",
+            "userVisibleAcceptance": "PASS",
+            "status": "success"
+          },
+          {
+            "protocol": "gemini-generate-content",
+            "taskId": "0be7fd67-c1e2-4c06-950d-76dcf46d573c",
+            "userVisibleAcceptance": "PASS",
+            "status": "success"
+          },
+          {
+            "protocol": "gpt-image",
+            "taskId": "b4bd07a5-9a2b-47f2-8d0f-59a369aa6e71",
+            "assetId": "0f98c0b7-6ec8-470c-9840-0b94c2efaaa1",
+            "status": "success"
+          },
+          {
+            "protocol": "media-generate",
+            "capability": "image",
+            "taskId": "2617ceee-acd7-4ccd-b2f9-cd44b3a3e4aa",
+            "assetId": "12f84f21-0f2b-4c2e-836d-1b64f57dd5d0",
+            "status": "success"
+          },
+          {
+            "protocol": "doubao-tts",
+            "capability": "audio",
+            "taskId": "d8deb41b-0a7f-428c-8242-6603c12966cc",
+            "assetId": "8775c5e5-9a8e-4bcc-9d5d-4f3de68be4b2.mp3",
+            "mimeType": "audio/mpeg",
+            "bytes": 32892,
+            "durationSeconds": 1.632,
+            "emotion": "auto",
+            "emotionScalePersisted": false,
+            "emotionScaleSent": false,
+            "uiPlayerOssAutomation": "PASS",
+            "userVisibleAcceptance": "USER_RECHECK",
+            "status": "success"
+          }
+        ]
+      },
+      "automatedSafeDeletion": {
+        "isolatedDraftId": "relay-delete-fixture-20260804",
+        "archiveBeforePermanentDelete": true,
+        "publishedModelProtected": true,
+        "defaultModelProtected": true,
+        "historyReferencedModelProtected": true,
+        "acceptanceStatus": "USER_RECHECK"
       },
       "automatedEvidence": [
         "m53-multi-protocol-relay-server",
@@ -2492,17 +2636,23 @@
         "m54-provider-result-media",
         "m55-relay-model-protocol",
         "m56-multi-protocol-relay-ui",
-        "m57-relay-generation-runtime"
+        "m57-relay-generation-runtime",
+        "m58-provider-proxy-configuration",
+        "m59-relay-catalog-inference"
       ],
       "acceptanceIds": [
         "RELAY-001", "RELAY-002", "RELAY-003", "RELAY-004",
         "RELAY-005", "RELAY-006", "RELAY-007", "RELAY-008",
         "RELAY-009", "RELAY-010", "RELAY-011", "RELAY-012"
       ],
-      "acceptanceStatus": "USER_RECHECK",
+      "acceptanceStatus": {
+        "pass": ["RELAY-001", "RELAY-002", "RELAY-003", "RELAY-004", "RELAY-005", "RELAY-006", "RELAY-007", "RELAY-008", "RELAY-010"],
+        "partial": [],
+        "userRecheck": ["RELAY-009", "RELAY-011", "RELAY-012"]
+      },
       "inputAcceptanceStatus": "INPUT-001_THROUGH_INPUT-007_PARTIAL",
-      "userAcceptance": "PENDING",
-      "safetyBoundary": "Local candidate and zero-Provider automation only; do not mark PASS before user acceptance or use a real key in automated checks."
+      "userAcceptance": "2026-08-04 user accepted the real connection, complete catalog, filters, draft flow, real Video recovery and deduplication closure, and the four persisted unique OpenAI Chat/Responses, Claude, and Gemini text results",
+      "safetyBoundary": "Do not mark RELAY-009, RELAY-011, or RELAY-012 PASS before user-visible confirmation; no further paid Provider requests are authorized by this evidence batch."
     }
   ],
   "openEvidence": [
@@ -2943,12 +3093,13 @@
     },
     {
       "id": "open.upstream-input-replication",
-      "status": "PLANNED_PRODUCT_EXTENSION",
+      "status": "LOCAL_CANDIDATE_PARTIAL",
       "currentImplementation": [
-        "Canvas only performs generic connection validation",
-        "Image tasks only consume Image references",
-        "Video and Audio tasks only consume their own prompt",
-        "Text real Provider task is not connected"
+        "Canvas applies the 11-allowed and 5-forbidden typed connection matrix",
+        "all four nodes share edge-derived input resolution and input cards",
+        "Image composes upstream Text and own Prompt while persisting Image asset references",
+        "Text, Video, and Audio produce versioned input snapshots and use server-side persisted-canvas preflight",
+        "model rules cover input kinds, limits, roles, combinations, prompt policy, and switch behavior"
       ],
       "targetRules": {
         "allowed": 11,
@@ -2956,9 +3107,17 @@
         "textTargetAccepts": ["Text", "Image", "Video", "Audio"]
       },
       "phases": ["P0", "P1", "P2", "P3", "P4", "P5", "P6"],
+      "remaining": [
+        "complete manual 11/5 matrix acceptance",
+        "Text four-kind upstream acceptance",
+        "Video multimodal roles and limits",
+        "Audio Text, Prompt, and lyrics merge acceptance",
+        "model-switch incompatibility acceptance",
+        "delete, undo, refresh, restart, and deduplication closure"
+      ],
       "acceptanceStatus": "INPUT-001_THROUGH_INPUT-007_PARTIAL",
       "paidProviderRequests": 0,
-      "safetyBoundary": "Do not mark PASS before implementation, automated verification, and user acceptance."
+      "safetyBoundary": "Do not reimplement P0/P1 or mark any INPUT item PASS before its remaining manual acceptance is complete."
     }
   ]
 }

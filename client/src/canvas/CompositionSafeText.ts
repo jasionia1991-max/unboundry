@@ -99,6 +99,10 @@ function useCompositionSafeValue<Value>({
 
   useEffect(() => {
     if (equalRef.current(value, committed.current)) return;
+    // The focused control owns its edit session. A parent render can briefly
+    // carry the previous persisted value while React Flow propagates the local
+    // node update; treating that stale echo as authoritative loses keystrokes.
+    if (sessionStarted.current) return;
     committed.current = value;
     draftRef.current = value;
     composingRef.current = false;

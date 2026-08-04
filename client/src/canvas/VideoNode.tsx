@@ -11,6 +11,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useCanvasCheckpoint } from "./CanvasHistory";
+import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
 import { fitVisualMediaSize } from "./mediaGeometry";
 import { NodeModelControl } from "./NodeModelControl";
@@ -43,6 +44,7 @@ import {
   defaultParameterValues,
   normalizeParameterValues,
   parameterKeysForGroups,
+  submissionParameterValues,
 } from "../../../types/modelParameters";
 import {
   availableNodeInputRoles,
@@ -173,6 +175,7 @@ function ExpandIcon() {
 }
 
 export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
+  const singleNodeChrome = useSingleNodeChrome(selected);
   const inputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const fullscreenVideoRef = useRef<HTMLVideoElement>(null);
@@ -193,6 +196,9 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     defaultParameterSchema("video");
   const videoParameters = selectedVideoModel
     ? normalizeParameterValues(videoParameterSchema, data.videoParameters)
+    : {};
+  const videoSubmissionParameters = selectedVideoModel
+    ? submissionParameterValues(videoParameterSchema, videoParameters)
     : {};
   const videoInputParameterKeys = parameterKeysForGroups(videoParameterSchema, ["input"]);
   const videoMainParameterKeys = parameterKeysForGroups(
@@ -226,6 +232,10 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   const uploadOperation = useRef(0);
   const [volume, setVolume] = useState(1);
   const [volumeOpen, setVolumeOpen] = useState(false);
+
+  useEffect(() => {
+    if (!singleNodeChrome) setVolumeOpen(false);
+  }, [singleNodeChrome]);
   const promptControl = useCompositionSafeText({
     onCommit: (nextPrompt) => {
       setPrompt(nextPrompt);
@@ -262,7 +272,7 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     modelSchema: selectedVideoModel?.parameterSchema,
     nodes: canvasNodes,
     ownPrompt: promptControl.committedValue,
-    parameters: videoParameters,
+    parameters: videoSubmissionParameters,
     targetId: id,
     targetKind: "video",
   });
@@ -272,7 +282,7 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   const inputFeedbackFingerprint = JSON.stringify({
     edges: canvasEdges.map((edge) => [edge.id, edge.source, edge.target, edge.data]),
     model: selectedVideoModel?.id,
-    parameters: videoParameters,
+    parameters: videoSubmissionParameters,
     prompt: promptControl.committedValue,
     revision: canvasRevision,
   });
@@ -280,7 +290,7 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     inputs: inputPreflight.inputs,
     modelId: selectedVideoModel?.id,
     ownPrompt: promptControl.committedValue,
-    parameters: videoParameters,
+    parameters: videoSubmissionParameters,
     prompt: inputPreflight.finalPrompt,
   });
   const videoGenerationRequestInput = {
@@ -291,7 +301,7 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     model: selectedVideoModel?.id,
     nodeId: id,
     ownPrompt: promptControl.committedValue,
-    parameters: videoParameters,
+    parameters: videoSubmissionParameters,
     prompt: inputPreflight.finalPrompt,
   };
   const stableGenerationInputKey = useRef<string | undefined>(undefined);
@@ -1092,7 +1102,7 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     <>
       <NodeResizer
         color="transparent"
-        isVisible={selected}
+        isVisible={singleNodeChrome}
         minHeight={135}
         minWidth={240}
         onResizeStart={() => checkpoint()}
@@ -1101,12 +1111,12 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
         label="上传视频"
         onUpload={() => inputRef.current?.click()}
         testId="video-empty-upload-toolbar"
-        visible={selected && !data.videoSrc && !generating && !uploading}
+        visible={singleNodeChrome && !data.videoSrc && !generating && !uploading}
       />
       <NodeToolbar
         className="media-node-toolbar video-node-toolbar nodrag nopan nowheel"
         data-testid="video-node-toolbar"
-        isVisible={Boolean(data.videoSrc && selected && !generating && !uploading)}
+        isVisible={Boolean(data.videoSrc && singleNodeChrome && !generating && !uploading)}
         offset={28}
         position={Position.Top}
       >
@@ -1187,7 +1197,7 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       <NodeToolbar
         className="video-creator nodrag nopan nowheel"
         data-testid="video-creator"
-        isVisible={Boolean(data.videoPromptReady && selected)}
+        isVisible={Boolean(data.videoPromptReady && singleNodeChrome)}
         offset={16}
         position={Position.Bottom}
       >
@@ -1400,7 +1410,7 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
           <rect height="14" rx="3" width="16" x="1" y="2" />
           <path d="m7 6 5 3-5 3Z" />
         </svg>
-        {selected ? (
+        {singleNodeChrome ? (
           <input
             aria-label="Video 标题"
             data-canvas-text-edit="graph"

@@ -105,6 +105,14 @@ type AdminProviderProfile = {
 
 type AdminProviderModelCatalog = {
   accessKeyIdMask?: string;
+  capabilityCounts?: {
+    audio: number;
+    image: number;
+    text: number;
+    unknown: number;
+    video: number;
+  };
+  catalogSource?: "enhanced" | "enhanced+basic" | "basic-fallback";
   checkedAt?: string;
   configuredModelCount: number;
   controlRequestCount: number;
@@ -113,11 +121,14 @@ type AdminProviderModelCatalog = {
   endpointCount: number;
   endpointLabel?: string;
   errorCode?: string;
+  fallbackReason?: "EMPTY" | "NOT_SUPPORTED";
   hasCredentials: boolean;
   keyStatus: "invalid" | "permission" | "unchecked" | "unknown" | "valid";
   modelLabel?: string;
   modelCount: number;
   projectName?: string;
+  rejectedModelCount?: number;
+  reportedModelCount?: number;
   scope?: "account" | "manual" | "public";
   snapshotStale: boolean;
   support?: "full" | "manual" | "models" | "unsupported";
@@ -764,6 +775,49 @@ function providerCatalogDate(value?: string) {
   return date.toLocaleString("zh-CN", { hour12: false });
 }
 
+function providerCatalogSnapshotSourceLabel(
+  source: AdminProviderModelCatalog["catalogSource"],
+) {
+  if (source === "enhanced") return "全量增强目录";
+  if (source === "enhanced+basic") return "完整组合目录";
+  if (source === "basic-fallback") return "兼容目录（仅聊天模型）";
+  return "";
+}
+
+function providerCatalogFallbackMessage(
+  catalog: AdminProviderModelCatalog,
+) {
+  if (catalog.catalogSource !== "basic-fallback") return "";
+  if (catalog.fallbackReason === "NOT_SUPPORTED") {
+    return "平台不支持全量增强目录，当前使用兼容目录，仅显示聊天模型。";
+  }
+  if (catalog.fallbackReason === "EMPTY") {
+    return "全量增强目录没有返回可用模型，当前使用兼容目录，仅显示聊天模型。";
+  }
+  return "当前使用兼容目录，仅显示聊天模型。";
+}
+
+function providerCatalogCompletenessMessage(
+  catalog: AdminProviderModelCatalog,
+) {
+  const rejected = catalog.rejectedModelCount ?? 0;
+  const reported = catalog.reportedModelCount;
+  const countLabel = catalog.catalogSource === "enhanced+basic"
+    ? "合并后"
+    : "平台报告";
+  if (rejected > 0) {
+    return `${countLabel} ${reported ?? catalog.modelCount + rejected} 个，已保存 ${catalog.modelCount} 个；${rejected} 条格式不完整记录未进入目录。`;
+  }
+  if (
+    typeof reported === "number" &&
+    Number.isFinite(reported) &&
+    reported !== catalog.modelCount
+  ) {
+    return `${countLabel} ${reported} 个，已保存 ${catalog.modelCount} 个，数量尚未完全对齐。`;
+  }
+  return "";
+}
+
 function providerCatalogCapabilityLabel(
   capability: AdminProviderDiscoveredModel["capability"],
 ) {
@@ -952,7 +1006,7 @@ function ProviderModelCatalogSection({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [catalogQuery, setCatalogQuery] = useState("");
   const [catalogCapability, setCatalogCapability] = useState<
-    "all" | ModelCapability
+    "all" | "unknown" | ModelCapability
   >("all");
   const [catalogProtocol, setCatalogProtocol] = useState<
     "all" | Exclude<ProviderProtocol, "native">
@@ -1149,9 +1203,12 @@ function ProviderModelCatalogSection({
   const normalizedCatalogQuery = catalogQuery.trim().toLocaleLowerCase("zh-CN");
   const filteredModels =
     details?.models.filter((model) => {
+      const resolvedCapability = model.capability === "unknown"
+        ? unknownCapabilities[model.discoveryId] ?? "unknown"
+        : model.capability;
       if (
         catalogCapability !== "all" &&
-        model.capability !== catalogCapability
+        resolvedCapability !== catalogCapability
       ) {
         return false;
       }
@@ -1257,8 +1314,15 @@ function ProviderModelCatalogSection({
       : capabilities.credentialMode === "profile-api-key"
         ? profile.hasApiKey
         : false;
+  const catalogSourceLabel = providerCatalogSnapshotSourceLabel(
+    catalog.catalogSource,
+  );
+  const catalogFallbackMessage = providerCatalogFallbackMessage(catalog);
+  const catalogCompletenessMessage = providerCatalogCompletenessMessage(catalog);
   const catalogStateMessage =
-    catalog.errorCode === "PROXY_CONFIGURATION"
+    catalog.errorCode === "FORMAT"
+      ? "平台返回格式异常，已保留上次同步结果。"
+      : catalog.errorCode === "PROXY_CONFIGURATION"
       ? "本机代理地址模式阻止目录同步，已保留上次结果"
       : catalog.keyStatus === "invalid"
       ? capabilities.credentialMode === "separate"
@@ -1420,6 +1484,63 @@ function ProviderModelCatalogSection({
             </div>
           </dl>
 
+          {(catalogSourceLabel || catalog.capabilityCounts) && (
+            <div
+              className="provider-catalog-diagnostics"
+              data-catalog-source={catalog.catalogSource ?? "legacy"}
+            >
+              {catalogSourceLabel && (
+                <p className="provider-catalog-source-summary">
+                  <strong>
+                    {catalog.snapshotStale ? "保留快照来源" : "目录来源"}：
+                    {catalogSourceLabel}
+                  </strong>
+                  {typeof catalog.reportedModelCount === "number" && (
+                    <span>
+                      {catalog.catalogSource === "enhanced+basic"
+                        ? "合并后"
+                        : "平台报告"}：
+                      {catalog.reportedModelCount} 个
+                    </span>
+                  )}
+                  <span>已保存：{catalog.modelCount} 个</span>
+                  {catalog.catalogSource === "enhanced+basic" && (
+                    <span>增强目录与兼容目录已只读获取并去重合并</span>
+                  )}
+                </p>
+              )}
+              {catalog.capabilityCounts && (
+                <dl
+                  aria-label="模型类型统计"
+                  className="provider-catalog-capability-counts"
+                >
+                  <div>
+                    <dt>文字</dt>
+                    <dd>{catalog.capabilityCounts.text}</dd>
+                  </div>
+                  <div>
+                    <dt>图片</dt>
+                    <dd>{catalog.capabilityCounts.image}</dd>
+                  </div>
+                  <div>
+                    <dt>视频</dt>
+                    <dd>{catalog.capabilityCounts.video}</dd>
+                  </div>
+                  <div>
+                    <dt>音频</dt>
+                    <dd>{catalog.capabilityCounts.audio}</dd>
+                  </div>
+                  {catalog.capabilityCounts.unknown > 0 && (
+                    <div>
+                      <dt>待识别</dt>
+                      <dd>{catalog.capabilityCounts.unknown}</dd>
+                    </div>
+                  )}
+                </dl>
+              )}
+            </div>
+          )}
+
           {catalogStateMessage && (
             <p
               className="provider-catalog-state-note"
@@ -1429,12 +1550,24 @@ function ProviderModelCatalogSection({
             </p>
           )}
 
+          {catalogFallbackMessage && (
+            <p className="provider-catalog-state-note" data-state="fallback">
+              {catalogFallbackMessage}
+            </p>
+          )}
+
+          {catalogCompletenessMessage && (
+            <p className="provider-catalog-state-note" data-state="warning">
+              {catalogCompletenessMessage}
+            </p>
+          )}
+
           <div className="provider-catalog-sync-row">
             <span>
               上次同步：{providerCatalogDate(catalog.syncedAt)}
               {catalog.snapshotStale ? " · 目录资料可能已过期" : ""}
             </span>
-            <div>
+            <div className="provider-catalog-sync-actions">
               {capabilities.supportsSync && (
                 <button
                   disabled={!catalogCredentialReady || syncing}
@@ -1479,7 +1612,10 @@ function ProviderModelCatalogSection({
                           onChange={(event) =>
                             {
                               setCatalogCapability(
-                                event.target.value as "all" | ModelCapability,
+                                event.target.value as
+                                  | "all"
+                                  | "unknown"
+                                  | ModelCapability,
                               );
                               setCatalogPage(1);
                             }
@@ -1491,6 +1627,9 @@ function ProviderModelCatalogSection({
                           <option value="image">图片</option>
                           <option value="video">视频</option>
                           <option value="audio">音频</option>
+                          {details.models.some(
+                            (model) => model.capability === "unknown",
+                          ) && <option value="unknown">待识别</option>}
                         </select>
                         {profile.driver === "multi-protocol-relay" && (
                           <select

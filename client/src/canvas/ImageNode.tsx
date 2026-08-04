@@ -16,6 +16,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useCanvasCheckpoint } from "./CanvasHistory";
+import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
 import { uploadImageAsset, uploadPngAsset } from "./imageAsset";
 import { withImageReferenceInputMode } from "./imageReferenceMode";
@@ -50,6 +51,7 @@ import {
   defaultParameterValues,
   normalizeParameterValues,
   parameterKeysForGroups,
+  submissionParameterValues,
 } from "../../../types/modelParameters";
 import {
   blockedModelSwitchProblem,
@@ -1125,6 +1127,7 @@ function ImageLightingPanel({
 }
 
 export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
+  const singleNodeChrome = useSingleNodeChrome(selected);
   const inputRef = useRef<HTMLInputElement>(null);
   const moreRef = useRef<HTMLSpanElement>(null);
   const uploadInFlight = useRef(false);
@@ -1199,6 +1202,13 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     imageParameters.qualities,
     String(imageParameterValues.quality ?? data.imageQuality ?? ""),
   );
+  const imageSubmissionParameterValues = selectedImageModel
+    ? submissionParameterValues(imageParameterSchema, {
+        ...imageParameterValues,
+        aspectRatio,
+        quality,
+      })
+    : {};
   const generatedSuccess = Boolean(data.imageGeneratedSuccess);
   const generating = Boolean(data.imageGenerating);
   const preview = data.imageSrc;
@@ -1233,7 +1243,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       : undefined,
     nodes: canvasNodes,
     ownPrompt: promptControl.committedValue,
-    parameters: imageParameterValues,
+    parameters: imageSubmissionParameterValues,
     targetId: id,
     targetKind: "image",
   });
@@ -1254,7 +1264,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       state: input.state,
     })),
     model: selectedImageModel?.id,
-    parameters: imageParameterValues,
+    parameters: imageSubmissionParameterValues,
     prompt: promptControl.committedValue,
     revision: canvasRevision,
   });
@@ -1262,11 +1272,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     inputs: inputPreflight.inputs,
     modelId: selectedImageModel?.id,
     ownPrompt: promptControl.committedValue,
-    parameters: {
-      ...imageParameterValues,
-      aspectRatio,
-      quality,
-    },
+    parameters: imageSubmissionParameterValues,
     prompt: inputPreflight.finalPrompt,
   });
   const stableGenerationInputKey = useRef<string | undefined>(undefined);
@@ -1430,9 +1436,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     nodeId: id,
     ownPrompt: promptControl.committedValue,
     parameters: {
-      ...imageParameterValues,
-      aspectRatio,
-      quality,
+      ...imageSubmissionParameterValues,
       references: incomingImageReferences.map((reference) => ({
         assetId: reference.assetId,
         kind: "image" as const,
@@ -1859,6 +1863,15 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   }, [moreOpen]);
 
   useEffect(() => {
+    if (singleNodeChrome) return;
+    setCropOpen(false);
+    setLightingOpen(false);
+    setMultiAngleOpen(false);
+    setMoreOpen(false);
+    setRedrawOpen(false);
+  }, [singleNodeChrome]);
+
+  useEffect(() => {
     if (!fullscreen) return;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setFullscreen(false);
@@ -2066,7 +2079,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     <>
       <NodeResizer
         color="transparent"
-        isVisible={selected}
+        isVisible={singleNodeChrome}
         minHeight={120}
         minWidth={120}
         onResizeStart={() => checkpoint()}
@@ -2075,12 +2088,12 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
         label="上传图片"
         onUpload={() => inputRef.current?.click()}
         testId="image-empty-upload-toolbar"
-        visible={selected && !preview && !generating && !uploading}
+        visible={singleNodeChrome && !preview && !generating && !uploading}
       />
       <NodeToolbar
         className="media-node-toolbar image-node-toolbar nodrag nopan nowheel"
         data-testid="image-node-toolbar"
-        isVisible={Boolean(preview && selected && !generating && !uploading && !redrawOpen)}
+        isVisible={Boolean(preview && singleNodeChrome && !generating && !uploading && !redrawOpen)}
         offset={28}
         position={Position.Top}
       >
@@ -2247,7 +2260,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       )}
       <NodeToolbar
         className="image-multi-angle-toolbar"
-        isVisible={Boolean(preview && selected && multiAngleOpen)}
+        isVisible={Boolean(preview && singleNodeChrome && multiAngleOpen)}
         offset={16}
         position={Position.Bottom}
       >
@@ -2260,7 +2273,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       </NodeToolbar>
       <NodeToolbar
         className="image-lighting-toolbar"
-        isVisible={Boolean(preview && selected && lightingOpen)}
+        isVisible={Boolean(preview && singleNodeChrome && lightingOpen)}
         offset={16}
         position={Position.Bottom}
       >
@@ -2274,7 +2287,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       <NodeToolbar
         className="image-creator nodrag nopan nowheel"
         data-testid="image-creator"
-        isVisible={Boolean(data.imagePromptReady && selected)}
+        isVisible={Boolean(data.imagePromptReady && singleNodeChrome)}
         offset={16}
         position={Position.Bottom}
       >
@@ -2545,7 +2558,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
           <circle cx="12.5" cy="6.5" r="1.5" />
           <path d="m3 14 4-4 3 3 2-2 3 3" />
         </svg>
-        {selected ? (
+        {singleNodeChrome ? (
           <input
             aria-label="Image 标题"
             data-canvas-text-edit="graph"

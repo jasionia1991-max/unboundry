@@ -55,8 +55,13 @@ export type RelayCatalogModel = {
 };
 
 export type RelayCatalogResult = {
+  capabilityCounts: Record<ModelCapability | "unknown", number>;
+  catalogSource: "basic-fallback" | "enhanced" | "enhanced+basic";
   endpoint: "basic" | "enhanced";
+  fallbackReason?: "EMPTY" | "NOT_SUPPORTED";
   models: RelayCatalogModel[];
+  rejectedModelCount: number;
+  reportedModelCount?: number;
 };
 
 export type RelayReadOnlyResource =
@@ -328,7 +333,27 @@ function protocolForValue(value: string) {
     : undefined;
 }
 
-function normalizedProtocols(record: Record<string, unknown>) {
+function protocolForEndpoint(value: string) {
+  const token = value.trim().toLowerCase();
+  if (/\/chat\/completions(?:\?|$)/.test(token)) return "openai-chat" as const;
+  if (/\/responses(?:\?|$)/.test(token)) return "openai-responses" as const;
+  if (/\/messages(?:\?|$)/.test(token)) return "claude-messages" as const;
+  if (/generate-?content|generatecontent/.test(token)) {
+    return "gemini-generate-content" as const;
+  }
+  if (/\/images(?:\/|\?|$)/.test(token)) return "gpt-image" as const;
+  return undefined;
+}
+
+function officialEnhancedModelType(modelType: string | undefined) {
+  return modelType?.trim().toLowerCase().replace(/[\s_]+/g, "-");
+}
+
+function normalizedProtocols(
+  record: Record<string, unknown>,
+  endpoint: RelayCatalogResult["endpoint"],
+  modelType: string | undefined,
+) {
   const raw = record.protocols ?? record.protocol ??
     record.api_protocols ?? record.api_protocol;
   const values = Array.isArray(raw)
@@ -343,8 +368,192 @@ function normalizedProtocols(record: Record<string, unknown>) {
     const protocol = value ? protocolForValue(value) : undefined;
     if (protocol) discovered.add(protocol);
   }
+  if (endpoint === "enhanced") {
+    const type = officialEnhancedModelType(modelType);
+    const mediaType = type === "image" || type === "video" ||
+      type === "audio" || type === "tts" || type === "music";
+    const endpointValues = [record.api_endpoint, record.api_endpoints]
+      .flatMap((value) => Array.isArray(value) ? value : [value]);
+    if (endpointValues.length > 20) return undefined;
+    for (const item of endpointValues) {
+      const endpointRecord = item && typeof item === "object" &&
+          !Array.isArray(item)
+        ? item as Record<string, unknown>
+        : undefined;
+      const endpointValue = endpointRecord
+        ? endpointRecord.endpoint ?? endpointRecord.url ?? endpointRecord.path
+        : item;
+      const value = boundedString(endpointValue, 2_048);
+      const endpointProtocol = value ? protocolForEndpoint(value) : undefined;
+      if (endpointProtocol) discovered.add(endpointProtocol);
+      const declaredFormat = endpointRecord
+        ? boundedString(
+            endpointRecord.format ?? endpointRecord.api_format ??
+              endpointRecord.protocol,
+            80,
+          )
+        : undefined;
+      const declaredProtocol = declaredFormat
+        ? protocolForValue(declaredFormat)
+        : undefined;
+      if (declaredProtocol) discovered.add(declaredProtocol);
+      if (!mediaType && declaredFormat) {
+        const format = declaredFormat.toLowerCase();
+        if (format === "openai" || format === "openai-compatible") {
+          discovered.add("openai-chat");
+        } else if (format === "anthropic" || format === "claude") {
+          discovered.add("claude-messages");
+        } else if (format === "gemini" || format === "google") {
+          discovered.add("gemini-generate-content");
+        }
+      }
+    }
+    if (mediaType && discovered.size === 0) {
+      discovered.add("media-generate");
+    } else if (!mediaType) {
+      const apiFormat = boundedString(record.api_format, 80)?.toLowerCase();
+      if (apiFormat === "openai" || apiFormat === "openai-compatible") {
+        discovered.add("openai-chat");
+      } else if (apiFormat === "anthropic" || apiFormat === "claude") {
+        discovered.add("claude-messages");
+      } else if (apiFormat === "gemini" || apiFormat === "google") {
+        discovered.add("gemini-generate-content");
+      }
+    }
+  }
   const result = relayProviderProtocols.filter((item) => discovered.has(item));
   return result.length ? result : undefined;
+}
+
+export type RelayCatalogModelInference = {
+  capability: ModelCapability | "unknown";
+};
+
+function relayModelIdentities(
+  providerModelId: string,
+  displayName?: string,
+) {
+  return [...new Set([providerModelId, displayName]
+    .filter((value): value is string => Boolean(value?.trim()))
+    .map((value) => value.trim().toLowerCase().replace(/[\s_]+/g, "-")))];
+}
+
+function matchesRelayIdentity(
+  identities: string[],
+  patterns: readonly RegExp[],
+) {
+  return identities.some((identity) =>
+    patterns.some((pattern) => pattern.test(identity))
+  );
+}
+
+const relayImageModelPatterns = [
+  /(?:^|\/)(?:doubao-)?seedream(?=$|[-.\d])/,
+  /(?:^|\/)gpt-image(?=$|[-.\d])/,
+  /(?:^|\/)dall-e(?=$|[-.\d])/,
+  /(?:^|\/)imagen(?=$|[-.\d])/,
+  /(?:^|\/)flux(?=$|[-.\d])/,
+  /(?:^|\/)stable-diffusion(?=$|[-.\d])/,
+  /(?:^|\/)sdxl(?=$|[-.\d])/,
+  /(?:^|\/)recraft(?=$|[-.\d])/,
+  /(?:^|\/)ideogram(?=$|[-.\d])/,
+  /(?:^|\/)midjourney(?=$|[-.\d])/,
+  /(?:^|\/)cogview(?=$|[-.\d])/,
+  /(?:^|\/)kolors(?=$|[-.\d])/,
+  /(?:^|\/)hidream(?=$|[-.\d])/,
+  /(?:^|\/)jimeng(?=$|[-.\d])/,
+  /(?:^|\/)qwen(?:[\d.-]+)?-image(?=$|[-.\d])/,
+  /(?:^|\/)gemini(?:[\d.-]+)?-image(?=$|[-.\d])/,
+  /(?:^|\/)grok(?:[\d.-]+)?-image(?=$|[-.\d])/,
+] as const;
+
+const relayVideoModelPatterns = [
+  /(?:^|\/)(?:doubao-)?seedance(?=$|[-.\d])/,
+  /(?:^|\/)sora(?=$|[-.\d])/,
+  /(?:^|\/)veo(?=$|[-.\d])/,
+  /(?:^|\/)kling(?=$|[-.\d])/,
+  /(?:^|\/)hailuo(?=$|[-.\d])/,
+  /(?:^|\/)vidu(?=$|[-.\d])/,
+  /(?:^|\/)runway(?=$|[-.\d])/,
+  /(?:^|\/)cogvideo(?=$|[-.\d])/,
+  /(?:^|\/)hunyuan-video(?=$|[-.\d])/,
+  /(?:^|\/)wan(?:[\d.-]+)?-(?:i2v|t2v|video)(?=$|[-.\d])/,
+  /(?:^|\/)luma-ray(?=$|[-.\d])/,
+] as const;
+
+const relayAudioModelPatterns = [
+  /(?:^|\/)mureka(?=$|[-.\d])/,
+  /(?:^|\/)suno(?=$|[-.\d])/,
+  /(?:^|\/)elevenlabs(?=$|[-.\d])/,
+  /(?:^|\/)fish-speech(?=$|[-.\d])/,
+  /(?:^|[/.-])tts(?=$|[-.\d])/,
+  /(?:^|\/)text-to-speech(?=$|[-.\d])/,
+  /(?:^|\/)(?:musicgen|music-generation|audio-generation)(?=$|[-.\d])/,
+  /(?:^|\/)gpt-[^/]*-audio(?=$|[-.\d])/,
+] as const;
+
+const relayClaudeTextPatterns = [
+  /(?:^|\/)claude(?=$|[-.\d])/,
+] as const;
+
+const relayGeminiTextPatterns = [
+  /(?:^|\/)gemini(?=$|[-.\d])/,
+] as const;
+
+const relayOpenAiTextPatterns = [
+  /(?:^|\/)gpt(?=$|[-.\d])/,
+  /(?:^|\/)o(?:1|3|4)(?=$|[-.\d])/,
+] as const;
+
+const relayOpenAiCompatibleTextPatterns = [
+  /(?:^|\/)deepseek(?=$|[-.\d])/,
+  /(?:^|\/)doubao-seed(?=$|[-.\d])/,
+  /(?:^|\/)glm(?=$|[-.\d])/,
+  /(?:^|\/)grok(?=$|[-.\d])/,
+  /(?:^|\/)kimi(?=$|[-.\d])/,
+  /(?:^|\/)mimo(?=$|[-.\d])/,
+  /(?:^|\/)minimax(?=$|[-.\d])/,
+  /(?:^|\/)qwen(?=$|[-.\d])/,
+  /(?:^|\/)(?:stepfun|step)(?=$|[-.\d])/,
+  /(?:^|\/)(?:llama|mistral|mixtral)(?=$|[-.\d])/,
+  /(?:^|\/)(?:command-r|cohere)(?=$|[-.\d])/,
+  /(?:^|\/)(?:baichuan|chatglm)(?=$|[-.\d])/,
+] as const;
+
+/**
+ * Infers only model families whose output kind is stable enough to be useful.
+ * Protocols are never inferred from a name: a relay can expose Claude, Gemini
+ * or GPT models through a different compatible API. Generic words such as
+ * image, video, vision, audio or embedding also do not decide a type, because
+ * they often describe inputs or understanding models rather than outputs.
+ */
+export function inferRelayCatalogModelHints(
+  providerModelId: string,
+  displayName?: string,
+): RelayCatalogModelInference {
+  const identities = relayModelIdentities(providerModelId, displayName);
+  if (matchesRelayIdentity(identities, relayImageModelPatterns)) {
+    return { capability: "image" };
+  }
+  if (matchesRelayIdentity(identities, relayVideoModelPatterns)) {
+    return { capability: "video" };
+  }
+  if (matchesRelayIdentity(identities, relayAudioModelPatterns)) {
+    return { capability: "audio" };
+  }
+  if (matchesRelayIdentity(identities, relayClaudeTextPatterns)) {
+    return { capability: "text" };
+  }
+  if (matchesRelayIdentity(identities, relayGeminiTextPatterns)) {
+    return { capability: "text" };
+  }
+  if (matchesRelayIdentity(identities, relayOpenAiTextPatterns)) {
+    return { capability: "text" };
+  }
+  if (matchesRelayIdentity(identities, relayOpenAiCompatibleTextPatterns)) {
+    return { capability: "text" };
+  }
+  return { capability: "unknown" };
 }
 
 function safePricingSummary(value: unknown) {
@@ -389,17 +598,26 @@ function capabilityFromHints(
   allModalities: string[] | undefined,
   modelType: string | undefined,
   protocols: Exclude<ProviderProtocol, "native">[] | undefined,
+  inferredCapability: ModelCapability | "unknown" = "unknown",
 ) {
   const outputs = outputModalities?.length ? outputModalities : allModalities;
   if (outputs?.length === 1 && modalities.has(outputs[0])) {
     return outputs[0] as ModelCapability;
   }
-  const type = modelType?.toLowerCase();
+  const type = modelType?.trim().toLowerCase().replace(/[\s_]+/g, "-");
   if (type) {
-    if (/(?:image|图像|图片|生图)/.test(type)) return "image" as const;
-    if (/(?:video|视频)/.test(type)) return "video" as const;
-    if (/(?:audio|music|音频|音乐)/.test(type)) return "audio" as const;
-    if (/(?:text|chat|llm|文字|文本|对话)/.test(type)) return "text" as const;
+    if (/^(?:image|image-generation|image-generator|text-to-image|图像|图片|生图)$/.test(type)) {
+      return "image" as const;
+    }
+    if (/^(?:video|video-generation|video-generator|text-to-video|image-to-video|视频|生成视频)$/.test(type)) {
+      return "video" as const;
+    }
+    if (/^(?:audio|audio-generation|music|music-generation|text-to-speech|tts|音频|音乐|语音生成)$/.test(type)) {
+      return "audio" as const;
+    }
+    if (/^(?:text|chat|chat-completion|llm|language-model|文字|文本|对话)$/.test(type)) {
+      return "text" as const;
+    }
   }
   if (
     protocols?.length === 1 &&
@@ -407,22 +625,32 @@ function capabilityFromHints(
   ) {
     return protocols[0] === "gpt-image" ? "image" as const : "text" as const;
   }
-  return "unknown" as const;
+  return inferredCapability;
 }
 
-function relayModelId(record: Record<string, unknown>) {
+function relayModelId(
+  record: Record<string, unknown>,
+  endpoint: RelayCatalogResult["endpoint"],
+) {
   return boundedString(
-    record.id ?? record.model_id ?? record.model_name ?? record.model,
+    endpoint === "enhanced"
+      ? record.name ?? record.id ?? record.model_id ?? record.model_name ??
+        record.model
+      : record.id ?? record.model_id ?? record.model_name ?? record.model,
     2_048,
   );
 }
 
-function normalizeRelayModel(raw: unknown) {
+function normalizeRelayModel(
+  raw: unknown,
+  endpoint: RelayCatalogResult["endpoint"],
+) {
   if (typeof raw === "string") {
     const providerModelId = boundedString(raw, 2_048);
     if (!providerModelId) return undefined;
+    const inferred = inferRelayCatalogModelHints(providerModelId);
     return {
-      capability: "unknown" as const,
+      capability: inferred.capability,
       discoveryId: `multi-protocol-relay:${providerModelId}`,
       displayName: providerModelId,
       providerModelId,
@@ -432,8 +660,15 @@ function normalizeRelayModel(raw: unknown) {
   }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const record = raw as Record<string, unknown>;
-  const providerModelId = relayModelId(record);
+  const providerModelId = relayModelId(record, endpoint);
   if (!providerModelId) return undefined;
+  const displayName =
+    boundedString(
+      record.display_name ?? record.displayName ?? record.title ??
+        (endpoint === "basic" ? record.name : undefined),
+      160,
+    ) ??
+    providerModelId;
   const architecture =
     record.architecture && typeof record.architecture === "object" &&
       !Array.isArray(record.architecture)
@@ -455,11 +690,12 @@ function normalizeRelayModel(raw: unknown) {
   const allModalities = normalizedModalities(
     Array.isArray(record.modalities) ? record.modalities : record.modality,
   );
-  const protocols = normalizedProtocols(record);
   const modelType = boundedString(
     record.type ?? record.model_type ?? record.category,
     80,
   );
+  const inferred = inferRelayCatalogModelHints(providerModelId, displayName);
+  const protocols = normalizedProtocols(record, endpoint, modelType);
   const contextCandidate = record.context_length ?? record.contextLength;
   const contextLength = Number.isSafeInteger(contextCandidate) &&
       Number(contextCandidate) >= 1 && Number(contextCandidate) <= 100_000_000
@@ -489,11 +725,10 @@ function normalizeRelayModel(raw: unknown) {
       allModalities,
       modelType,
       protocols,
+      inferred.capability,
     ),
     discoveryId: `multi-protocol-relay:${providerModelId}`,
-    displayName:
-      boundedString(record.display_name ?? record.displayName ?? record.name, 160) ??
-      providerModelId,
+    displayName,
     ...(Object.keys(metadata).length ? { metadata } : {}),
     providerModelId,
     source: "multi-protocol-relay-account-catalog" as const,
@@ -512,6 +747,7 @@ function mergedStringList(
 function mergeRelayModels(
   left: RelayCatalogModel,
   right: RelayCatalogModel,
+  preferredSide?: "left" | "right",
 ): RelayCatalogModel {
   const metadata: RelayCatalogMetadata = {
     ...(Math.max(left.metadata?.contextLength ?? 0, right.metadata?.contextLength ?? 0)
@@ -550,21 +786,29 @@ function mergeRelayModels(
       ? { supportedParameters: mergedStringList(left.metadata?.supportedParameters, right.metadata?.supportedParameters) }
       : {}),
   };
+  const leftScore = Object.keys(left.metadata ?? {}).length;
+  const rightScore = Object.keys(right.metadata ?? {}).length;
+  const preferred = preferredSide === "left"
+    ? left
+    : preferredSide === "right"
+      ? right
+      : rightScore > leftScore
+        ? right
+        : leftScore > rightScore
+          ? left
+          : [left, right].sort((a, b) =>
+              a.displayName.localeCompare(b.displayName, "en")
+            )[0];
   const capability = capabilityFromHints(
     metadata.outputModalities,
     metadata.modalities,
     metadata.modelType,
     metadata.protocols,
+    inferRelayCatalogModelHints(
+      left.providerModelId,
+      preferred.displayName,
+    ).capability,
   );
-  const leftScore = Object.keys(left.metadata ?? {}).length;
-  const rightScore = Object.keys(right.metadata ?? {}).length;
-  const preferred = rightScore > leftScore
-    ? right
-    : leftScore > rightScore
-      ? left
-      : [left, right].sort((a, b) =>
-          a.displayName.localeCompare(b.displayName, "en")
-        )[0];
   return {
     capability,
     discoveryId: left.discoveryId,
@@ -582,31 +826,88 @@ function normalizeRelayCatalog(
   body: Record<string, unknown>,
   key: "data" | "models",
   apiKey: string,
+  endpoint: RelayCatalogResult["endpoint"],
 ) {
   const raw = body[key];
   if (!Array.isArray(raw) || raw.length > relayMaximumModels) {
     throw new RelayRemoteError("FORMAT");
   }
+  const reported = body.total;
+  const reportedModelCount = reported === undefined
+    ? undefined
+    : Number.isSafeInteger(reported) && Number(reported) >= 0 &&
+        Number(reported) <= relayMaximumModels
+      ? Number(reported)
+      : undefined;
+  if (reported !== undefined && reportedModelCount === undefined) {
+    throw new RelayRemoteError("FORMAT");
+  }
+  if (reportedModelCount !== undefined && reportedModelCount !== raw.length) {
+    // A partial page must never replace a previously complete snapshot.
+    throw new RelayRemoteError("FORMAT");
+  }
   const deduplicated = new Map<string, RelayCatalogModel>();
+  let rejectedModelCount = 0;
   for (const item of raw) {
-    const model = normalizeRelayModel(item);
-    if (!model || containsRelaySecret(model, apiKey)) continue;
+    const model = normalizeRelayModel(item, endpoint);
+    if (!model || containsRelaySecret(model, apiKey)) {
+      rejectedModelCount += 1;
+      continue;
+    }
     const current = deduplicated.get(model.providerModelId);
     deduplicated.set(
       model.providerModelId,
       current ? mergeRelayModels(current, model) : model,
     );
   }
-  return [...deduplicated.values()].sort((left, right) =>
+  const models = [...deduplicated.values()].sort((left, right) =>
     left.providerModelId.localeCompare(right.providerModelId, "en")
   );
+  if (raw.length > 0 && models.length === 0) {
+    throw new RelayRemoteError("FORMAT");
+  }
+  return {
+    models,
+    rawModelCount: raw.length,
+    rejectedModelCount,
+    ...(reportedModelCount !== undefined ? { reportedModelCount } : {}),
+  };
 }
 
 function mayUseBasicCatalog(error: unknown) {
   return error instanceof RelayRemoteError &&
-    (error.code === "FORMAT" ||
-      error.code === "NETWORK" ||
-      (error.code === "REMOTE" && [404, 405, 501].includes(error.status ?? 0)));
+    error.code === "REMOTE" && [404, 405, 501].includes(error.status ?? 0);
+}
+
+function relayCapabilityCounts(models: RelayCatalogModel[]) {
+  const counts: RelayCatalogResult["capabilityCounts"] = {
+    audio: 0,
+    image: 0,
+    text: 0,
+    unknown: 0,
+    video: 0,
+  };
+  for (const model of models) counts[model.capability] += 1;
+  return counts;
+}
+
+function mergeRelayCatalogModels(
+  enhanced: RelayCatalogModel[],
+  basic: RelayCatalogModel[],
+) {
+  const merged = new Map(
+    basic.map((model) => [model.providerModelId, model] as const),
+  );
+  for (const model of enhanced) {
+    const existing = merged.get(model.providerModelId);
+    merged.set(
+      model.providerModelId,
+      existing ? mergeRelayModels(existing, model, "right") : model,
+    );
+  }
+  return [...merged.values()].sort((left, right) =>
+    left.providerModelId.localeCompare(right.providerModelId, "en")
+  );
 }
 
 export async function fetchRelayModelCatalog(
@@ -618,22 +919,70 @@ export async function fetchRelayModelCatalog(
     timeoutMs?: number;
   } = {},
 ): Promise<RelayCatalogResult> {
+  let fallbackReason: RelayCatalogResult["fallbackReason"];
   try {
     const enhanced = await relayGetJson(profile, "/skills/models", fetcher, options);
-    const models = normalizeRelayCatalog(enhanced, "models", profile.apiKey);
-    if (models.length) {
+    const normalized = normalizeRelayCatalog(
+      enhanced,
+      "models",
+      profile.apiKey,
+      "enhanced",
+    );
+    if (normalized.rawModelCount > 0) {
+      let basic: ReturnType<typeof normalizeRelayCatalog>;
+      try {
+        basic = normalizeRelayCatalog(
+          await relayGetJson(profile, "/models", fetcher, options),
+          "data",
+          profile.apiKey,
+          "basic",
+        );
+      } catch (error) {
+        if (!mayUseBasicCatalog(error)) throw error;
+        return {
+          capabilityCounts: relayCapabilityCounts(normalized.models),
+          catalogSource: "enhanced",
+          endpoint: "enhanced",
+          models: normalized.models,
+          rejectedModelCount: normalized.rejectedModelCount,
+          ...(normalized.reportedModelCount !== undefined
+            ? { reportedModelCount: normalized.reportedModelCount }
+            : {}),
+        };
+      }
+      const models = mergeRelayCatalogModels(normalized.models, basic.models);
       return {
+        capabilityCounts: relayCapabilityCounts(models),
+        catalogSource: "enhanced+basic",
         endpoint: "enhanced",
         models,
+        rejectedModelCount:
+          normalized.rejectedModelCount + basic.rejectedModelCount,
+        reportedModelCount: models.length,
       };
     }
+    fallbackReason = "EMPTY";
   } catch (error) {
     if (!mayUseBasicCatalog(error)) throw error;
+    fallbackReason = "NOT_SUPPORTED";
   }
   const basic = await relayGetJson(profile, "/models", fetcher, options);
+  const normalized = normalizeRelayCatalog(
+    basic,
+    "data",
+    profile.apiKey,
+    "basic",
+  );
   return {
+    capabilityCounts: relayCapabilityCounts(normalized.models),
+    catalogSource: "basic-fallback",
     endpoint: "basic",
-    models: normalizeRelayCatalog(basic, "data", profile.apiKey),
+    fallbackReason,
+    models: normalized.models,
+    rejectedModelCount: normalized.rejectedModelCount,
+    ...(normalized.reportedModelCount !== undefined
+      ? { reportedModelCount: normalized.reportedModelCount }
+      : {}),
   };
 }
 
@@ -714,7 +1063,7 @@ function safeGenericSummary(body: Record<string, unknown>, apiKey = "") {
 function modelDetailSummary(body: Record<string, unknown>, apiKey: string) {
   const records = nestedRecords(body);
   for (const record of records) {
-    const model = normalizeRelayModel(record);
+    const model = normalizeRelayModel(record, "basic");
     if (!model || containsRelaySecret(model, apiKey)) continue;
     const summary: RelayReadOnlySummary = {
       modelId: model.providerModelId,

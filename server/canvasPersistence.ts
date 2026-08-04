@@ -3,6 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { appDataDirectory, openAppDatabase } from "./database";
 import { requestIdentity } from "./auth";
 import { normalizePersistedMediaNodes } from "../types/persistedMediaSources";
+import { canvasGraphFingerprint } from "../types/canvasFingerprint";
 
 type CanvasDocument = {
   edges: unknown[];
@@ -112,7 +113,8 @@ export async function canvasPersistence(
     identity.bypass
       ? store
           .prepare(`
-            SELECT revision, nodes, edges, viewport, save_session_id, save_sequence
+            SELECT revision, graph_revision, nodes, edges, viewport,
+                   save_session_id, save_sequence
             FROM canvas_documents
             WHERE id = ?
             ORDER BY owner_id IS NULL DESC
@@ -121,7 +123,8 @@ export async function canvasPersistence(
           .get(id)
       : store
           .prepare(`
-            SELECT revision, nodes, edges, viewport, save_session_id, save_sequence
+            SELECT revision, graph_revision, nodes, edges, viewport,
+                   save_session_id, save_sequence
             FROM canvas_documents
             WHERE owner_id = ? AND id = ?
           `)
@@ -129,6 +132,7 @@ export async function canvasPersistence(
   ) as
     | {
         edges: string;
+        graph_revision: number;
         nodes: string;
         revision: number;
         save_sequence: number;
@@ -144,6 +148,7 @@ export async function canvasPersistence(
     }
     json(response, 200, {
       edges: JSON.parse(row.edges),
+      graphRevision: row.graph_revision,
       nodes: JSON.parse(row.nodes),
       revision: row.revision,
       viewport: JSON.parse(row.viewport),
@@ -173,6 +178,7 @@ export async function canvasPersistence(
     if (document.revision !== currentRevision && !sameSessionNewerSave) {
       json(response, 409, {
         error: "Revision conflict",
+        graphRevision: row?.graph_revision ?? 0,
         revision: currentRevision,
         saveSequence: row?.save_sequence ?? 0,
         saveSessionId: row?.save_session_id ?? null,
@@ -180,16 +186,29 @@ export async function canvasPersistence(
       return;
     }
     const revision = currentRevision + 1;
+    const nodes = normalizePersistedMediaNodes(document.nodes);
+    const edges = document.edges;
+    const graphChanged = !row || canvasGraphFingerprint({
+      edges,
+      nodes,
+    }) !== canvasGraphFingerprint({
+      edges: JSON.parse(row.edges) as unknown[],
+      nodes: JSON.parse(row.nodes) as unknown[],
+    });
+    const graphRevision = row
+      ? row.graph_revision + (graphChanged ? 1 : 0)
+      : 1;
     const ownerId = identity.bypass ? "__test__" : identity.userId;
     store
       .prepare(`
         INSERT INTO canvas_documents (
-          owner_id, id, revision, nodes, edges, viewport, updated_at,
+          owner_id, id, revision, graph_revision, nodes, edges, viewport, updated_at,
           save_session_id, save_sequence
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(owner_id, id) DO UPDATE SET
           revision = excluded.revision,
+          graph_revision = excluded.graph_revision,
           nodes = excluded.nodes,
           edges = excluded.edges,
           viewport = excluded.viewport,
@@ -201,14 +220,15 @@ export async function canvasPersistence(
         ownerId,
         id,
         revision,
-        JSON.stringify(normalizePersistedMediaNodes(document.nodes)),
-        JSON.stringify(document.edges),
+        graphRevision,
+        JSON.stringify(nodes),
+        JSON.stringify(edges),
         JSON.stringify(document.viewport),
         new Date().toISOString(),
         document.saveSessionId ?? null,
         document.saveSequence ?? 0,
       );
-    json(response, 200, { revision });
+    json(response, 200, { graphRevision, revision });
   } catch (error) {
     json(response, 400, {
       error: error instanceof Error ? error.message : "Invalid request",

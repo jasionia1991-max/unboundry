@@ -423,16 +423,19 @@ export function createGenerationTaskStore(dataDirectory: string) {
       try {
         if (normalized.expectedCanvasRevision !== undefined) {
           const canvas = database.prepare(`
-            SELECT revision
+            SELECT graph_revision
             FROM canvas_documents
             WHERE owner_id = ? AND id = ?
           `).get(
             normalized.ownerId ?? "__test__",
             normalized.canvasId,
-          ) as { revision: number } | undefined;
-          if (!canvas || canvas.revision !== normalized.expectedCanvasRevision) {
+          ) as { graph_revision: number } | undefined;
+          if (
+            !canvas ||
+            canvas.graph_revision !== normalized.expectedCanvasRevision
+          ) {
             throw new GenerationTaskCanvasRevisionConflictError(
-              canvas?.revision ?? -1,
+              canvas?.graph_revision ?? -1,
             );
           }
         }

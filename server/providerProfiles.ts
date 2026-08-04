@@ -28,6 +28,7 @@ import {
   fetchPublicHttps,
 } from "./outboundNetwork";
 import { providerCatalogCapabilities } from "./providerCatalogCapabilities";
+import { parseProviderCatalogDiagnostics } from "./providerCatalogDiagnostics";
 
 export type ProviderDriver =
   | "mureka"
@@ -448,6 +449,7 @@ function metadataStatus(store: DatabaseSync, profile: ProviderProfile) {
         catalog_checked_at,
         catalog_synced_at,
         catalog_last_error_code,
+        catalog_diagnostics,
         catalog_model_count,
         catalog_endpoint_count,
         catalog_control_request_count,
@@ -468,6 +470,7 @@ function metadataStatus(store: DatabaseSync, profile: ProviderProfile) {
         catalog_endpoint_count: number;
         catalog_key_status: ProviderCatalogKeyStatus;
         catalog_last_error_code: string | null;
+        catalog_diagnostics: string;
         catalog_model_count: number;
         catalog_synced_at: string | null;
         configured_model_count: number;
@@ -483,6 +486,7 @@ function metadataStatus(store: DatabaseSync, profile: ProviderProfile) {
         : undefined,
     modelCatalog: {
       ...providerCatalogCapabilities(profile.driver),
+      ...parseProviderCatalogDiagnostics(row?.catalog_diagnostics ?? "{}"),
       accessKeyIdMask: profile.arkControlPlane
         ? `••••${profile.arkControlPlane.accessKeyId.slice(-4)}`
         : undefined,
@@ -585,9 +589,11 @@ function ensureMetadata(store: DatabaseSync, profile: ProviderProfile) {
           catalog_models = CASE WHEN ? THEN '[]' ELSE catalog_models END,
           catalog_endpoints = CASE WHEN ? THEN '[]' ELSE catalog_endpoints END,
           catalog_model_count = CASE WHEN ? THEN 0 ELSE catalog_model_count END,
-          catalog_endpoint_count = CASE WHEN ? THEN 0 ELSE catalog_endpoint_count END
+          catalog_endpoint_count = CASE WHEN ? THEN 0 ELSE catalog_endpoint_count END,
+          catalog_diagnostics = CASE WHEN ? THEN '{}' ELSE catalog_diagnostics END
         WHERE id = ? AND provider_configuration_version = ?
       `).run(
+        catalogCredentialChanged ? 1 : 0,
         catalogCredentialChanged ? 1 : 0,
         catalogCredentialChanged ? 1 : 0,
         catalogCredentialChanged ? 1 : 0,
@@ -631,6 +637,7 @@ function ensureMetadata(store: DatabaseSync, profile: ProviderProfile) {
         catalog_endpoints = CASE WHEN ? THEN '[]' ELSE catalog_endpoints END,
         catalog_model_count = CASE WHEN ? THEN 0 ELSE catalog_model_count END,
         catalog_endpoint_count = CASE WHEN ? THEN 0 ELSE catalog_endpoint_count END,
+        catalog_diagnostics = CASE WHEN ? THEN '{}' ELSE catalog_diagnostics END,
         updated_at = ?
       WHERE id = ? AND provider_configuration_version = ?
     `).run(
@@ -642,6 +649,7 @@ function ensureMetadata(store: DatabaseSync, profile: ProviderProfile) {
       markCatalogStale ? 1 : 0,
       clearCatalog ? 1 : 0,
       markCatalogStale ? 1 : 0,
+      clearCatalog ? 1 : 0,
       clearCatalog ? 1 : 0,
       clearCatalog ? 1 : 0,
       clearCatalog ? 1 : 0,
@@ -693,6 +701,7 @@ function resetMetadata(
           WHEN ? THEN 0
           ELSE catalog_endpoint_count
         END,
+        catalog_diagnostics = CASE WHEN ? THEN '{}' ELSE catalog_diagnostics END,
         updated_at = ?
       WHERE id = ? AND provider_configuration_version = ?
     `)
@@ -706,6 +715,7 @@ function resetMetadata(
       resetCatalog ? 1 : 0,
       resetCatalog ? 1 : 0,
       invalidateProfileKeyCatalog ? 1 : 0,
+      resetCatalog ? 1 : 0,
       resetCatalog ? 1 : 0,
       resetCatalog ? 1 : 0,
       resetCatalog ? 1 : 0,

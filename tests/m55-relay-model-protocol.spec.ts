@@ -82,6 +82,14 @@ test("relay models persist an explicit compatible protocol without Provider requ
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     expect(created.body.model).toMatchObject({
       capability: "text",
+      parameterSchema: {
+        fields: [
+          expect.objectContaining({ defaultValue: "text", key: "inputMode" }),
+          expect.objectContaining({ defaultValue: 64, key: "maxOutputTokens" }),
+          expect.objectContaining({ defaultValue: 0, key: "temperature" }),
+          expect.objectContaining({ defaultValue: 1, key: "outputCount" }),
+        ],
+      },
       providerDriver: "multi-protocol-relay",
       providerProtocol: "claude-messages",
       status: "draft",
@@ -141,6 +149,47 @@ test("relay models persist an explicit compatible protocol without Provider requ
       { parameterSchema: multiOutputSchema, status: "published" },
     );
     expect(rejectedMultiOutput.status).toBe(400);
+
+    const unboundedTextSchema = structuredClone(
+      updated.body.model.parameterSchema,
+    );
+    unboundedTextSchema.fields.find(
+      (field: { key: string }) => field.key === "maxOutputTokens",
+    ).options.push({ label: "8192 Token", value: 8192 });
+    const rejectedUnboundedText = await api(
+      started.origin,
+      "PATCH",
+      `/api/admin/models/${created.body.model.id}`,
+      { parameterSchema: unboundedTextSchema, status: "published" },
+    );
+    expect(rejectedUnboundedText.status).toBe(400);
+
+    const ttsCreated = await api(started.origin, "POST", "/api/admin/models", {
+      capability: "audio",
+      displayName: "Doubao TTS 2.0 Fixture",
+      isDefault: false,
+      maxCostMicrounits: 1_000_000,
+      providerModelId: "doubao-tts-2.0",
+      providerProfileId: profile.id,
+      providerProtocol: "media-generate",
+      sortOrder: 110,
+      status: "draft",
+    });
+    expect(ttsCreated.status, JSON.stringify(ttsCreated.body)).toBe(201);
+    expect(ttsCreated.body.model.parameterSchema.fields.map(
+      (field: { defaultValue: unknown; key: string }) => [field.key, field.defaultValue],
+    )).toEqual([
+      ["inputMode", "text"],
+      ["speaker", "zh_female_vv_uranus_bigtts"],
+      ["speechRate", "0"],
+      ["emotion", "auto"],
+      ["emotionScale", 4],
+      ["format", "mp3"],
+      ["outputCount", 1],
+    ]);
+    expect(ttsCreated.body.model.parameterSchema.fields.map(
+      (field: { key: string }) => field.key,
+    )).not.toEqual(expect.arrayContaining(["duration", "audioMode"]));
 
     const store = new DatabaseSync(join(directory, "tapnow.sqlite"), { readOnly: true });
     try {

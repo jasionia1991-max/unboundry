@@ -20,13 +20,21 @@ import {
   type ReactFlowInstance,
   type Viewport,
 } from "@xyflow/react";
-import { useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type WheelEvent as ReactWheelEvent,
+} from "react";
 import { AudioNode } from "./AudioNode";
 import {
   CanvasCheckpointContext,
   closestEditableControl,
   useCanvasCheckpoint,
 } from "./CanvasHistory";
+import { CanvasSelectionUiContext } from "./CanvasSelectionContext";
 import { GroupNode } from "./GroupNode";
 import { ImageNode } from "./ImageNode";
 import { uploadImageAsset } from "./imageAsset";
@@ -39,7 +47,11 @@ import { TextNode } from "./TextNode";
 import { VideoNode } from "./VideoNode";
 import { fitVisualMediaSize, NODE_DEFAULT_SIZES } from "./mediaGeometry";
 import { trustedMediaPatch } from "./mediaInputMetadata";
-import { canvasDocumentFingerprint } from "./canvasDocumentFingerprint";
+import {
+  canvasDocumentFingerprint,
+  canvasGraphFingerprint,
+} from "./canvasDocumentFingerprint";
+import { zoomViewportAtScreenPoint } from "./viewportMath";
 import { GenerationCanvasContext } from "../generation/GenerationCanvasContext";
 import {
   resolvePublishedModel,
@@ -1722,13 +1734,19 @@ export function CanvasSurface({
   const [persistenceReady, setPersistenceReady] = useState(!persistenceFixture);
   const [confirmedPersistenceRevision, setConfirmedPersistenceRevision] =
     useState<number>();
+  const [confirmedGraphRevision, setConfirmedGraphRevision] =
+    useState<number>();
   const persistenceRevision = useRef(0);
+  const persistenceGraphRevision = useRef(0);
   const persistenceConflict = useRef(false);
   const persistenceDirty = useRef(false);
   const persistenceSessionId = useRef(crypto.randomUUID());
   const persistenceSaveSequence = useRef(0);
-  const persistenceSentFingerprints = useRef(new Map<number, string>());
+  const persistenceSentFingerprints = useRef(
+    new Map<number, { document: string; graph: string }>(),
+  );
   const persistedDocumentFingerprint = useRef("");
+  const persistedGraphFingerprint = useRef("");
   const persistenceInFlightFingerprint = useRef<string | undefined>(undefined);
   const persistenceHydrationTimer = useRef<number | undefined>(undefined);
   const persistenceSaveTimer = useRef<number | undefined>(undefined);
@@ -1736,6 +1754,7 @@ export function CanvasSurface({
   const persistenceQueued = useRef<{
     edges: CuttableEdge[];
     fingerprint: string;
+    graphFingerprint: string;
     nodes: ProbeNodeType[];
     viewport: Viewport;
   } | undefined>(undefined);
@@ -1753,6 +1772,9 @@ export function CanvasSurface({
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
   const viewportRef = useRef(viewport);
+  const pendingWheelViewport = useRef<Viewport | undefined>(undefined);
+  const wheelViewportFrame = useRef<number | undefined>(undefined);
+  const consumedFocusNodeSequence = useRef(0);
   const nodeDragging = useRef(false);
   const restoreSequence = useRef(0);
   const clipboardPasteSequence = useRef(0);
@@ -1958,17 +1980,25 @@ export function CanvasSurface({
   }, [nodes, onSearchIndexChange, persistenceReady]);
 
   useEffect(() => {
-    if (!focusNodeRequest || !flowInstance.current || !worldRef.current) return;
+    if (
+      !focusNodeRequest ||
+      focusNodeRequest.sequence <= consumedFocusNodeSequence.current ||
+      !flowInstance.current ||
+      !worldRef.current
+    ) {
+      return;
+    }
     const node = nodesRef.current.find(
       (candidate) => candidate.id === focusNodeRequest.id,
     );
     if (!node) return;
+    consumedFocusNodeSequence.current = focusNodeRequest.sequence;
     const size = nodeSize(node);
     const internalNode = flowInstance.current.getInternalNode(node.id);
     const position =
       internalNode?.internals.positionAbsolute ?? node.position;
     const bounds = worldRef.current.getBoundingClientRect();
-    const zoom = Math.max(0.85, Math.min(1, viewport.zoom));
+    const zoom = Math.max(0.85, Math.min(1, viewportRef.current.zoom));
     setNodes((current) =>
       current.map((candidate) => ({
         ...candidate,
@@ -1981,16 +2011,16 @@ export function CanvasSurface({
       y: bounds.height / 2 - (position.y + size.height / 2) * zoom,
       zoom,
     });
-  }, [focusNodeRequest, onViewportChange, setNodes, viewport.zoom]);
+  }, [focusNodeRequest, onViewportChange, persistenceReady, setNodes]);
 
-  const pushHistory = (entry: HistoryEntry) => {
+  const pushHistory = useCallback((entry: HistoryEntry) => {
     redoHistory.current = [];
     history.current.push(entry);
     if (history.current.length > 50) {
       history.current.shift();
     }
-  };
-  const cloneNodes = (current: ProbeNodeType[]) =>
+  }, []);
+  const cloneNodes = useCallback((current: ProbeNodeType[]) =>
     current.map((node) => ({
       ...node,
       data: {
@@ -2000,14 +2030,14 @@ export function CanvasSurface({
       measured: node.measured ? { ...node.measured } : undefined,
       position: { ...node.position },
       style: node.style ? { ...node.style } : undefined,
-    }));
-  const cloneEdges = (current: CuttableEdge[]) =>
+    })), []);
+  const cloneEdges = useCallback((current: CuttableEdge[]) =>
     current.map((edge) => ({
       ...edge,
       data: edge.data ? { ...edge.data } : undefined,
       style: edge.style ? { ...edge.style } : undefined,
-    }));
-  const canvasSnapshot = (
+    })), []);
+  const canvasSnapshot = useCallback((
     currentNodes = nodesRef.current,
     currentEdges = edgesRef.current,
     currentViewport = viewportRef.current,
@@ -2020,16 +2050,55 @@ export function CanvasSurface({
     return {
       ...document,
       fingerprint: canvasDocumentFingerprint(document),
+      graphFingerprint: canvasGraphFingerprint(document),
     };
-  };
-  const checkpoint = (includeHistory = true) => {
+  }, [cloneEdges, cloneNodes]);
+  const checkpoint = useCallback((includeHistory = true) => {
     if (!includeHistory) return;
     pushHistory({
       edges: cloneEdges(edgesRef.current),
       kind: "snapshot",
       nodes: cloneNodes(nodesRef.current),
     });
-  };
+  }, [cloneEdges, cloneNodes, pushHistory]);
+  const handleCanvasWheelCapture = useCallback(
+    (event: ReactWheelEvent<HTMLDivElement>) => {
+      if (!event.ctrlKey || event.deltaY === 0 || !worldRef.current) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const bounds = worldRef.current.getBoundingClientRect();
+      const current = pendingWheelViewport.current ?? viewportRef.current;
+      const next = zoomViewportAtScreenPoint(
+        current,
+        {
+          x: event.clientX - bounds.left,
+          y: event.clientY - bounds.top,
+        },
+        {
+          deltaMode: event.deltaMode,
+          deltaY: event.deltaY,
+          macOs: /Mac|iPhone|iPad|iPod/.test(navigator.platform),
+        },
+      );
+      if (next === current) return;
+      viewportRef.current = next;
+      pendingWheelViewport.current = next;
+      if (wheelViewportFrame.current !== undefined) return;
+      wheelViewportFrame.current = window.requestAnimationFrame(() => {
+        wheelViewportFrame.current = undefined;
+        const pending = pendingWheelViewport.current;
+        pendingWheelViewport.current = undefined;
+        if (pending) onViewportChange(pending);
+      });
+    },
+    [onViewportChange],
+  );
+
+  useEffect(() => () => {
+    if (wheelViewportFrame.current !== undefined) {
+      window.cancelAnimationFrame(wheelViewportFrame.current);
+    }
+  }, []);
   const copyNodeInternally = (nodeId: string) => {
     const node = nodesRef.current.find((candidate) => candidate.id === nodeId);
     if (!node) return false;
@@ -2436,6 +2505,7 @@ export function CanvasSurface({
   useEffect(() => {
     if (!persistenceFixture) return;
     setConfirmedPersistenceRevision(undefined);
+    setConfirmedGraphRevision(undefined);
     const controller = new AbortController();
     const url = `/api/canvas/${persistenceId}`;
     void fetch(url, { headers: { Accept: "application/json" }, signal: controller.signal })
@@ -2450,10 +2520,10 @@ export function CanvasSurface({
             saveSessionId: persistenceSessionId.current,
             viewport,
           };
-          persistenceSentFingerprints.current.set(
-            saveSequence,
-            canvasDocumentFingerprint(initial),
-          );
+          persistenceSentFingerprints.current.set(saveSequence, {
+            document: canvasDocumentFingerprint(initial),
+            graph: canvasGraphFingerprint(initial),
+          });
           const created = await fetch(url, {
             body: JSON.stringify(initial),
             headers: { "Content-Type": "application/json" },
@@ -2461,27 +2531,39 @@ export function CanvasSurface({
             signal: controller.signal,
           });
           if (!created.ok) throw new Error(`Canvas create failed: ${created.status}`);
-          return { ...initial, ...(await created.json() as { revision: number }) };
+          return {
+            ...initial,
+            ...(await created.json() as {
+              graphRevision: number;
+              revision: number;
+            }),
+          };
         }
         if (!response.ok) throw new Error(`Canvas load failed: ${response.status}`);
         return await response.json() as {
           edges: CuttableEdge[];
+          graphRevision?: number;
           nodes: ProbeNodeType[];
           revision: number;
           viewport: Viewport;
         };
       })
       .then((document) => {
-        const persistedFingerprint = canvasDocumentFingerprint(document);
         const hydratedDocument = {
           ...document,
           nodes: normalizePersistedMediaNodes(document.nodes),
         };
+        const persistedFingerprint = canvasDocumentFingerprint(hydratedDocument);
+        const graphFingerprint = canvasGraphFingerprint(hydratedDocument);
+        const graphRevision = document.graphRevision ?? document.revision;
         persistenceRevision.current = document.revision;
+        persistenceGraphRevision.current = graphRevision;
         setConfirmedPersistenceRevision(document.revision);
+        setConfirmedGraphRevision(graphRevision);
         persistenceConflict.current = false;
         persistenceDirty.current = false;
         persistedDocumentFingerprint.current = persistedFingerprint;
+        persistedGraphFingerprint.current = graphFingerprint;
         setNodes(hydratedDocument.nodes);
         setEdges(hydratedDocument.edges);
         onViewportChange(hydratedDocument.viewport);
@@ -2494,7 +2576,9 @@ export function CanvasSurface({
       .catch(() => {
         if (!controller.signal.aborted) {
           setConfirmedPersistenceRevision(undefined);
+          setConfirmedGraphRevision(undefined);
           persistedDocumentFingerprint.current = canvasSnapshot().fingerprint;
+          persistedGraphFingerprint.current = canvasSnapshot().graphFingerprint;
           setPersistenceReady(true);
         }
       });
@@ -2502,7 +2586,14 @@ export function CanvasSurface({
       controller.abort();
       window.clearTimeout(persistenceHydrationTimer.current);
     };
-  }, [persistenceFixture, persistenceId, setEdges, setNodes]);
+  }, [
+    canvasSnapshot,
+    onViewportChange,
+    persistenceFixture,
+    persistenceId,
+    setEdges,
+    setNodes,
+  ]);
 
   useEffect(() => {
     if (
@@ -2546,10 +2637,10 @@ export function CanvasSurface({
           persistenceQueued.current = undefined;
           const saveSequence = ++persistenceSaveSequence.current;
           persistenceInFlightFingerprint.current = document.fingerprint;
-          persistenceSentFingerprints.current.set(
-            saveSequence,
-            document.fingerprint,
-          );
+          persistenceSentFingerprints.current.set(saveSequence, {
+            document: document.fingerprint,
+            graph: document.graphFingerprint,
+          });
           const response = await fetch(`/api/canvas/${persistenceId}`, {
             body: JSON.stringify({
               edges: document.edges,
@@ -2565,6 +2656,7 @@ export function CanvasSurface({
           });
           if (response.status === 409) {
             const conflict = await response.json() as {
+              graphRevision?: number;
               revision?: number;
               saveSequence?: number;
               saveSessionId?: string | null;
@@ -2575,17 +2667,24 @@ export function CanvasSurface({
               Number(conflict.saveSequence) >= saveSequence;
             if (supersededBySameSession) {
               persistenceRevision.current = Number(conflict.revision);
+              persistenceGraphRevision.current = Number(
+                conflict.graphRevision ?? conflict.revision,
+              );
               setConfirmedPersistenceRevision(Number(conflict.revision));
+              setConfirmedGraphRevision(persistenceGraphRevision.current);
               const confirmedFingerprint = persistenceSentFingerprints.current.get(
                 Number(conflict.saveSequence),
               );
               if (confirmedFingerprint) {
-                persistedDocumentFingerprint.current = confirmedFingerprint;
+                persistedDocumentFingerprint.current =
+                  confirmedFingerprint.document;
+                persistedGraphFingerprint.current = confirmedFingerprint.graph;
               }
             } else {
               failed = true;
               persistenceConflict.current = true;
               setConfirmedPersistenceRevision(undefined);
+              setConfirmedGraphRevision(undefined);
               persistenceQueued.current = undefined;
               onSaveConflict();
               break;
@@ -2595,10 +2694,16 @@ export function CanvasSurface({
             persistenceQueued.current = canvasSnapshot();
             break;
           } else {
-            const { revision } = await response.json() as { revision: number };
+            const { graphRevision, revision } = await response.json() as {
+              graphRevision: number;
+              revision: number;
+            };
             persistenceRevision.current = revision;
+            persistenceGraphRevision.current = graphRevision;
             setConfirmedPersistenceRevision(revision);
+            setConfirmedGraphRevision(graphRevision);
             persistedDocumentFingerprint.current = document.fingerprint;
+            persistedGraphFingerprint.current = document.graphFingerprint;
           }
 
           const latest = canvasSnapshot();
@@ -2609,6 +2714,9 @@ export function CanvasSurface({
             persistenceDirty.current = false;
           }
         }
+      } catch {
+        failed = true;
+        persistenceQueued.current = canvasSnapshot();
       } finally {
         persistenceInFlightFingerprint.current = undefined;
         persistenceSaving.current = false;
@@ -2642,6 +2750,7 @@ export function CanvasSurface({
     }, 50);
     return () => window.clearTimeout(persistenceSaveTimer.current);
   }, [
+    canvasSnapshot,
     edges,
     nodes,
     onSaveConflict,
@@ -2716,7 +2825,10 @@ export function CanvasSurface({
       }
       window.clearTimeout(persistenceSaveTimer.current);
       const saveSequence = ++persistenceSaveSequence.current;
-      persistenceSentFingerprints.current.set(saveSequence, latest.fingerprint);
+      persistenceSentFingerprints.current.set(saveSequence, {
+        document: latest.fingerprint,
+        graph: latest.graphFingerprint,
+      });
       void fetch(`/api/canvas/${persistenceId}`, {
         body: JSON.stringify({
           edges: latest.edges,
@@ -2733,7 +2845,13 @@ export function CanvasSurface({
     };
     window.addEventListener("pagehide", flushBeforeReload);
     return () => window.removeEventListener("pagehide", flushBeforeReload);
-  }, [persistenceFixture, persistenceId, persistenceReady]);
+  }, [
+    canvasSnapshot,
+    cloneNodes,
+    persistenceFixture,
+    persistenceId,
+    persistenceReady,
+  ]);
 
   useEffect(() => {
     const cancelBatchConnection = (event: KeyboardEvent) => {
@@ -2754,6 +2872,26 @@ export function CanvasSurface({
       const target = closestEditableControl(event.target);
       const commandKey = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
+      if (!target && commandKey && !event.shiftKey && key === "a") {
+        const selectableIds = new Set(
+          nodesRef.current
+            .filter((node) => !node.parentId)
+            .map((node) => node.id),
+        );
+        if (selectableIds.size) {
+          event.preventDefault();
+          event.stopPropagation();
+          window.getSelection()?.removeAllRanges();
+          setNodes((current) =>
+            current.map((node) => ({
+              ...node,
+              selected: selectableIds.has(node.id),
+            })),
+          );
+          setPrimaryId(nodesRef.current.filter((node) => !node.parentId).at(-1)?.id);
+        }
+        return;
+      }
       if (!target && commandKey && !event.shiftKey && key === "c") {
         const selected =
           nodesRef.current.find((node) => node.id === primaryId) ??
@@ -2811,21 +2949,23 @@ export function CanvasSurface({
       }
 
       const sequence = ++restoreSequence.current;
+      const deletedNodes = [
+        ...new Map(entry.nodes.map((node) => [node.id, node])).values(),
+      ];
       const restoredIds = new Map(
-        entry.nodes.map((node) => [
+        deletedNodes.map((node) => [
           node.id,
           `${node.id}-restored-${sequence}`,
         ]),
       );
       setNodes((current) => [
         ...current,
-        ...entry.nodes.map((node) => ({
+        ...deletedNodes.map((node) => ({
           ...node,
           id: restoredIds.get(node.id)!,
           parentId: node.parentId
             ? (restoredIds.get(node.parentId) ?? node.parentId)
             : undefined,
-          selected: true,
         })),
       ]);
       setEdges((current) => [
@@ -2876,10 +3016,15 @@ export function CanvasSurface({
   );
   const activePlaylist = nodes.find((node) => node.data.playlistPicking);
   const selectedNodeCount = selectedNodes.length;
+  const canGroupSelection =
+    selectedNodeCount > 1 && groupCandidates.length === selectedNodeCount;
   const selectionBounds =
     selectedNodeCount > 1
       ? selectedNodes.reduce(
           (bounds, node) => {
+            const absolutePosition =
+              flowInstance.current?.getInternalNode(node.id)?.internals
+                .positionAbsolute ?? node.position;
             const width =
               node.measured?.width ??
               (typeof node.style?.width === "number" ? node.style.width : 0);
@@ -2887,10 +3032,10 @@ export function CanvasSurface({
               node.measured?.height ??
               (typeof node.style?.height === "number" ? node.style.height : 0);
             return {
-              bottom: Math.max(bounds.bottom, node.position.y + height),
-              left: Math.min(bounds.left, node.position.x),
-              right: Math.max(bounds.right, node.position.x + width),
-              top: Math.min(bounds.top, node.position.y),
+              bottom: Math.max(bounds.bottom, absolutePosition.y + height),
+              left: Math.min(bounds.left, absolutePosition.x),
+              right: Math.max(bounds.right, absolutePosition.x + width),
+              top: Math.min(bounds.top, absolutePosition.y),
             };
           },
           {
@@ -2909,18 +3054,18 @@ export function CanvasSurface({
           viewport.y,
       }
     : undefined;
-  const groupActionAnchor =
-    selectionBounds && groupCandidates.length > 1
+  const multiSelectionToolbarAnchor =
+    selectionBounds
       ? {
           x:
             ((selectionBounds.left + selectionBounds.right) / 2) *
               viewport.zoom +
             viewport.x,
-          y: selectionBounds.top * viewport.zoom + viewport.y - 72,
+          y: selectionBounds.top * viewport.zoom + viewport.y - 8,
         }
       : undefined;
   const createGroup = () => {
-    if (groupCandidates.length < 2) return;
+    if (!canGroupSelection) return;
     const bounds = groupCandidates.reduce(
       (result, node) => {
         const size = nodeSize(node);
@@ -3003,19 +3148,43 @@ export function CanvasSurface({
     !persistenceConflict.current &&
     confirmedPersistenceRevision !== undefined &&
     confirmedPersistenceRevision === persistenceRevision.current &&
-    canvasDocumentFingerprint({ edges, nodes, viewport }) ===
-      persistedDocumentFingerprint.current
-      ? confirmedPersistenceRevision
+    confirmedGraphRevision !== undefined &&
+    confirmedGraphRevision === persistenceGraphRevision.current &&
+    canvasGraphFingerprint({ edges, nodes }) ===
+      persistedGraphFingerprint.current
+      ? confirmedGraphRevision
       : undefined;
+  const generationCanvasContextValue = useMemo(
+    () => ({
+      canvasId: persistenceId,
+      canvasRevision: generationCanvasRevision,
+    }),
+    [generationCanvasRevision, persistenceId],
+  );
+  const canvasSelectionUiContextValue = useMemo(
+    () => ({ selectedNodeCount }),
+    [selectedNodeCount],
+  );
+
+  useEffect(() => {
+    if (selectedNodeCount <= 1) return;
+    window.getSelection()?.removeAllRanges();
+    const activeElement = document.activeElement;
+    if (
+      activeElement instanceof HTMLElement &&
+      (activeElement.closest(".react-flow__node") ||
+        activeElement.closest(".react-flow__node-toolbar"))
+    ) {
+      activeElement.blur();
+    }
+  }, [selectedNodeCount]);
 
   return (
     <GenerationCanvasContext.Provider
-      value={{
-        canvasId: persistenceId,
-        canvasRevision: generationCanvasRevision,
-      }}
+      value={generationCanvasContextValue}
     >
       <CanvasCheckpointContext.Provider value={checkpoint}>
+      <CanvasSelectionUiContext.Provider value={canvasSelectionUiContextValue}>
       <div
       aria-label="画布"
       className="canvas-world"
@@ -3041,6 +3210,7 @@ export function CanvasSurface({
       data-persistence-ready={persistenceReady ? "true" : "false"}
       data-selected-node-count={selectedNodeCount}
       data-selected-edge-count={edges.filter((edge) => edge.selected).length}
+      onWheelCapture={handleCanvasWheelCapture}
       onDragOver={(event) => {
         if (
           Array.from(event.dataTransfer.types).includes(
@@ -3244,10 +3414,16 @@ export function CanvasSurface({
           const children = nodesRef.current.filter(
             (node) => node.parentId && groupIds.has(node.parentId),
           );
+          const deletingNodeIds = new Set(
+            deletingNodes.map((node) => node.id),
+          );
           const childIds = new Set(children.map((node) => node.id));
           const edgeIds = new Set(deletingEdges.map((edge) => edge.id));
           return {
-            nodes: [...deletingNodes, ...children],
+            nodes: [
+              ...deletingNodes,
+              ...children.filter((node) => !deletingNodeIds.has(node.id)),
+            ],
             edges: [
               ...deletingEdges,
               ...edgesRef.current.filter(
@@ -3408,12 +3584,12 @@ export function CanvasSurface({
           setPrimaryId(selectedNodes.at(-1)?.id)
         }
         onViewportChange={onViewportChange}
-        panOnDrag={interactive ? [1, 2] : true}
+        panOnDrag={agentReferenceMode ? true : [1, 2]}
         panOnScroll
         panOnScrollSpeed={1.2}
         proOptions={{ hideAttribution: true }}
         selectionMode={SelectionMode.Partial}
-        selectionOnDrag={interactive}
+        selectionOnDrag={!agentReferenceMode}
         snapGrid={[20, 20]}
         snapToGrid={snapEnabled}
         viewport={viewport}
@@ -3771,6 +3947,9 @@ export function CanvasSurface({
             event.currentTarget.setPointerCapture(event.pointerId);
             const worldRect = worldRef.current.getBoundingClientRect();
             const sources = selectedNodes.map((node) => {
+              const absolutePosition =
+                flowInstance.current?.getInternalNode(node.id)?.internals
+                  .positionAbsolute ?? node.position;
               const width =
                 node.measured?.width ??
                 (typeof node.style?.width === "number" ? node.style.width : 0);
@@ -3781,9 +3960,10 @@ export function CanvasSurface({
                   : 0);
               return {
                 id: node.id,
-                x: (node.position.x + width) * viewport.zoom + viewport.x,
+                x:
+                  (absolutePosition.x + width) * viewport.zoom + viewport.x,
                 y:
-                  (node.position.y + height / 2) * viewport.zoom + viewport.y,
+                  (absolutePosition.y + height / 2) * viewport.zoom + viewport.y,
               };
             });
 
@@ -3835,13 +4015,25 @@ export function CanvasSurface({
           type="button"
         />
       )}
-      {groupActionAnchor && (
+      {multiSelectionToolbarAnchor && (
         <div
           className="multi-selection-toolbar nodrag nopan"
           data-testid="multi-selection-toolbar"
-          style={{ left: groupActionAnchor.x, top: groupActionAnchor.y }}
+          style={{
+            left: multiSelectionToolbarAnchor.x,
+            top: multiSelectionToolbarAnchor.y,
+          }}
         >
-          <button onClick={createGroup} type="button">
+          <button
+            disabled={!canGroupSelection}
+            onClick={createGroup}
+            title={
+              canGroupSelection
+                ? "将已选节点打组"
+                : "只能将两个或更多未打组的顶层节点打组"
+            }
+            type="button"
+          >
             <svg aria-hidden="true" viewBox="0 0 24 24">
               <rect height="14" rx="2" width="14" x="3" y="7" />
               <path d="M7 7V4h14v14h-4" />
@@ -3967,6 +4159,7 @@ export function CanvasSurface({
         />
       )}
       </div>
+      </CanvasSelectionUiContext.Provider>
       </CanvasCheckpointContext.Provider>
     </GenerationCanvasContext.Provider>
   );

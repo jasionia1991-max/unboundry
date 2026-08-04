@@ -10,7 +10,7 @@ import {
 } from "../types/nodeInputs";
 import { normalizePersistedMediaNodes } from "../types/persistedMediaSources";
 
-type CanvasRow = { edges: string; nodes: string; revision: number };
+type CanvasRow = { edges: string; graph_revision: number; nodes: string };
 
 export class CanvasRevisionConflictError extends Error {
   constructor(readonly revision: number) {
@@ -29,18 +29,18 @@ export function assertPersistedCanvasRevision(input: {
   try {
     const row = (input.bypass
       ? database.prepare(`
-          SELECT revision FROM canvas_documents
+          SELECT graph_revision FROM canvas_documents
           WHERE id = ? ORDER BY owner_id = '__test__' DESC, owner_id IS NULL DESC
           LIMIT 1
         `).get(input.canvasId)
       : database.prepare(`
-          SELECT revision FROM canvas_documents
+          SELECT graph_revision FROM canvas_documents
           WHERE owner_id = ? AND id = ?
         `).get(input.ownerId, input.canvasId)) as
-      | { revision: number }
+      | { graph_revision: number }
       | undefined;
-    if (!row || row.revision !== input.expectedRevision) {
-      throw new CanvasRevisionConflictError(row?.revision ?? -1);
+    if (!row || row.graph_revision !== input.expectedRevision) {
+      throw new CanvasRevisionConflictError(row?.graph_revision ?? -1);
     }
   } finally {
     database.close();
@@ -62,20 +62,20 @@ export function resolvePersistedNodeInputs(input: {
   try {
     const row = (input.bypass
       ? database.prepare(`
-          SELECT nodes, edges, revision FROM canvas_documents
+          SELECT nodes, edges, graph_revision FROM canvas_documents
           WHERE id = ? ORDER BY owner_id = '__test__' DESC, owner_id IS NULL DESC
           LIMIT 1
         `).get(input.canvasId)
       : database.prepare(`
-          SELECT nodes, edges, revision FROM canvas_documents
+          SELECT nodes, edges, graph_revision FROM canvas_documents
           WHERE owner_id = ? AND id = ?
         `).get(input.ownerId, input.canvasId)) as CanvasRow | undefined;
     if (!row) throw new Error("画布还没有保存，请稍后重试");
     if (
       input.expectedRevision !== undefined &&
-      input.expectedRevision !== row.revision
+      input.expectedRevision !== row.graph_revision
     ) {
-      throw new CanvasRevisionConflictError(row.revision);
+      throw new CanvasRevisionConflictError(row.graph_revision);
     }
     const nodes = normalizePersistedMediaNodes(JSON.parse(row.nodes) as Array<{
       data?: Record<string, unknown>;
@@ -102,7 +102,7 @@ export function resolvePersistedNodeInputs(input: {
         targetId: input.targetId,
         targetKind: input.targetKind,
       }),
-      canvasRevision: row.revision,
+      canvasRevision: row.graph_revision,
     };
   } finally {
     database.close();

@@ -289,6 +289,252 @@ test("Provider model directories follow declared capabilities without paid reque
   expect(generationRequests).toEqual([]);
 });
 
+test("Provider catalog action bars stay anchored across providers and viewport widths", async ({
+  baseURL,
+  page,
+}) => {
+  const localOrigin = new URL(baseURL ?? "http://127.0.0.1:4173").origin;
+  const externalRequests: string[] = [];
+  const generationRequests: string[] = [];
+  const catalogRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.origin !== localOrigin) externalRequests.push(request.url());
+    if (url.pathname.startsWith("/api/generation-tasks")) {
+      generationRequests.push(`${request.method()} ${url.pathname}`);
+    }
+  });
+
+  const providers = [{
+    apiKeyMask: "••••ark",
+    baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+    driver: "volcengine-ark",
+    hasApiKey: true,
+    id: "action-row-ark",
+    keyStatus: "valid",
+    label: "Ark",
+    modelCatalog: catalog({
+      accessKeyIdMask: "••••ak",
+      configuredModelCount: 2,
+      credentialMode: "separate",
+      description: "读取火山方舟官方模型和当前账号Endpoint。",
+      endpointCount: 1,
+      endpointLabel: "Endpoint",
+      modelCount: 143,
+      modelLabel: "官方模型",
+      projectName: "default",
+      scope: "account",
+      support: "full",
+      supported: true,
+      supportsEndpoints: true,
+      supportsImport: true,
+      supportsSync: true,
+    }),
+    status: "verified",
+    updatedAt: checkedAt,
+  }, {
+    apiKeyMask: "••••router",
+    baseUrl: "https://openrouter.ai/api/v1",
+    driver: "openrouter",
+    hasApiKey: true,
+    id: "action-row-openrouter",
+    keyStatus: "valid",
+    label: "OpenRouter",
+    modelCatalog: catalog({
+      credentialMode: "profile-api-key",
+      description: "读取当前Key可见的OpenRouter模型和能力资料。",
+      modelCount: 337,
+      modelLabel: "当前Key可见模型",
+      scope: "account",
+      support: "models",
+      supported: true,
+      supportsEndpoints: false,
+      supportsImport: true,
+      supportsSync: true,
+    }),
+    status: "verified",
+    updatedAt: checkedAt,
+  }, {
+    apiKeyMask: "••••relay",
+    baseUrl: "https://relay.example.test/v1",
+    driver: "multi-protocol-relay",
+    hasApiKey: true,
+    id: "action-row-relay",
+    keyStatus: "valid",
+    label: "多协议中转站",
+    modelCatalog: catalog({
+      credentialMode: "profile-api-key",
+      description: "读取中转站当前Key可见模型。",
+      modelCount: 3,
+      modelLabel: "当前Key可见模型",
+      scope: "account",
+      snapshotStale: true,
+      support: "models",
+      supported: true,
+      supportsEndpoints: false,
+      supportsImport: true,
+      supportsReadOnlyManagement: true,
+      supportsSync: true,
+    }),
+    status: "verified",
+    updatedAt: checkedAt,
+  }];
+
+  await page.route("**/api/admin/providers", async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        paidProviderRequests: 0,
+        profiles: providers,
+        providerSecretsStoredInBrowser: false,
+        realGenerationEnabled: false,
+        supportedDrivers: [
+          "multi-protocol-relay",
+          "openrouter",
+          "volcengine-ark",
+        ],
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+  await page.route("**/api/admin/provider-catalog/**", async (route) => {
+    const url = new URL(route.request().url());
+    catalogRequests.push(`${route.request().method()} ${url.pathname}`);
+    if (url.pathname.endsWith("/sync")) {
+      const provider = providers.find((candidate) =>
+        url.pathname.includes(candidate.id)
+      );
+      await route.fulfill({
+        body: JSON.stringify({
+          catalog: provider?.modelCatalog,
+          controlPlaneRequests: 1,
+          message: "目录已同步，付费生成请求为0。",
+          paidGenerationRequests: 0,
+        }),
+        contentType: "application/json",
+        status: 200,
+      });
+      return;
+    }
+    await route.fulfill({
+      body: JSON.stringify({
+        endpoints: [],
+        models: [{
+          capability: "text",
+          discoveryId: `${url.pathname}:model`,
+          displayName: "Layout Fixture Model",
+          metadata: {
+            inputModalities: ["text"],
+            outputModalities: ["text"],
+            protocols: ["openai-chat"],
+          },
+          providerModelId: "fixture/layout-model",
+          source: "fixture-account-catalog",
+          status: "available",
+        }],
+        paidGenerationRequests: 0,
+        syncedAt: checkedAt,
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+
+  await page.goto("/admin/providers");
+  const sections = providers.map((provider) =>
+    page.getByTestId(`provider-model-catalog-${provider.id}`)
+  );
+  for (const section of sections) {
+    await section.getByRole("button", { name: "查看发现模型" }).click();
+    await expect(section.getByRole("button", { name: "收起发现模型" }))
+      .toBeVisible();
+  }
+  await sections[0].getByRole("button", { name: "同步模型" }).click();
+  await expect(sections[0]).toContainText("目录已同步，付费生成请求为0。");
+
+  for (const width of [1135, 961, 760, 560]) {
+    await page.setViewportSize({ height: 917, width });
+    for (const section of sections) {
+      const geometry = await section.evaluate((element) => {
+        const row = element.querySelector<HTMLElement>(
+          ".provider-catalog-sync-row",
+        )!;
+        const actions = row.querySelector<HTMLElement>(":scope > div")!;
+        const buttons = Array.from(
+          actions.querySelectorAll<HTMLButtonElement>("button"),
+        );
+        const rowBox = row.getBoundingClientRect();
+        const actionsBox = actions.getBoundingClientRect();
+        const buttonBoxes = buttons.map((button) => {
+          const box = button.getBoundingClientRect();
+          return {
+            height: box.height,
+            left: box.left,
+            top: box.top,
+            whiteSpace: getComputedStyle(button).whiteSpace,
+            width: box.width,
+          };
+        });
+        const fontSizes = new Set([
+          getComputedStyle(row.querySelector(":scope > span")!).fontSize,
+          ...buttons.map((button) => getComputedStyle(button).fontSize),
+        ]);
+        return {
+          actions: {
+            left: actionsBox.left,
+            right: actionsBox.right,
+            top: actionsBox.top,
+            width: actionsBox.width,
+          },
+          buttons: buttonBoxes,
+          fontSizes: Array.from(fontSizes),
+          horizontalOverflow: row.scrollWidth - row.clientWidth,
+          row: {
+            left: rowBox.left,
+            right: rowBox.right,
+            top: rowBox.top,
+            width: rowBox.width,
+          },
+        };
+      });
+      expect(geometry.horizontalOverflow).toBeLessThanOrEqual(1);
+      expect(geometry.fontSizes.every((size) => ["12px", "14px"].includes(size)))
+        .toBe(true);
+      expect(geometry.buttons.every((button) => button.whiteSpace === "nowrap"))
+        .toBe(true);
+      expect(Math.abs(geometry.buttons[0].top - geometry.buttons[1].top))
+        .toBeLessThanOrEqual(1);
+      if (width > 760) {
+        expect(Math.abs(geometry.actions.right - geometry.row.right))
+          .toBeLessThanOrEqual(1);
+        expect(Math.abs(geometry.actions.top - geometry.row.top))
+          .toBeLessThanOrEqual(1);
+      } else {
+        expect(Math.abs(geometry.actions.left - geometry.row.left))
+          .toBeLessThanOrEqual(1);
+        expect(Math.abs(geometry.actions.width - geometry.row.width))
+          .toBeLessThanOrEqual(1);
+        expect(Math.abs(geometry.buttons[0].width - geometry.buttons[1].width))
+          .toBeLessThanOrEqual(1);
+      }
+    }
+    const pageOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(pageOverflow).toBeLessThanOrEqual(1);
+  }
+
+  expect(catalogRequests).toEqual([
+    "GET /api/admin/provider-catalog/action-row-ark",
+    "GET /api/admin/provider-catalog/action-row-openrouter",
+    "GET /api/admin/provider-catalog/action-row-relay",
+    "POST /api/admin/provider-catalog/action-row-ark/sync",
+    "GET /api/admin/provider-catalog/action-row-ark",
+  ]);
+  expect(externalRequests).toEqual([]);
+  expect(generationRequests).toEqual([]);
+});
+
 test("large discovered catalogs stay searchable with the selected action always above the list", async ({
   page,
 }) => {

@@ -1474,10 +1474,14 @@ const relayMediaParameterNames: Record<
   audio: {
     audioMode: "audio_mode",
     duration: "duration",
+    emotion: "emotion",
+    emotionScale: "emotion_scale",
     format: "format",
     lyrics: "lyrics",
     lyricsMode: "lyrics_mode",
     musicGenerationMode: "generation_mode",
+    speaker: "speaker",
+    speechRate: "speech_rate",
     vocalGender: "vocal_gender",
   },
   image: {
@@ -1534,6 +1538,14 @@ export async function relayMediaParametersForTask(
       name === "references"
     ) continue;
     if (relayUiOnlyParameterNames.has(name)) continue;
+    // Older queued snapshots may predate condition-aware submission filtering.
+    // Keep the execution boundary safe as well: the TTS contract forbids an
+    // emotion scale while automatic emotion selection is active.
+    if (
+      task.kind === "audio" &&
+      name === "emotionScale" &&
+      task.parameters.emotion === "auto"
+    ) continue;
     if (
       typeof value === "boolean" ||
       typeof value === "number" ||
@@ -1632,6 +1644,7 @@ async function readGeneratedPngBody(body: ReadableStream<Uint8Array>) {
 }
 
 async function saveRelayMediaOutput(input: {
+  expectedAudioContentType?: string;
   output: RelayTransientMediaOutput;
   ownerId: string;
   profile: ProviderProfile;
@@ -1651,7 +1664,8 @@ async function saveRelayMediaOutput(input: {
   }
   const downloaded = await downloadProviderResultMedia({
     apiKey: input.profile.apiKey,
-    expectedContentType: input.output.mimeType,
+    expectedContentType:
+      input.output.mimeType ?? input.expectedAudioContentType,
     kind: input.output.kind,
     signal: input.signal,
     url: input.output.transientUrl,
@@ -1678,11 +1692,20 @@ async function saveRelayMediaOutput(input: {
       | "audio/aac"
       | "audio/mp4"
       | "audio/mpeg"
+      | "audio/ogg"
       | "audio/wav",
     label: input.prompt.slice(0, 120),
     ownerId: input.ownerId,
   });
   return saved.assetId;
+}
+
+function relayAudioResultContentType(format: unknown) {
+  if (format === "ogg_opus") return "audio/ogg";
+  if (format === "wav") return "audio/wav";
+  if (format === "m4a") return "audio/mp4";
+  if (format === "aac") return "audio/aac";
+  return format === "mp3" ? "audio/mpeg" : undefined;
 }
 
 async function completeRelayMediaTask(input: {
@@ -1817,6 +1840,9 @@ async function executeRelayMediaTask(
     if (status.state === "success") {
       if (status.outputs.length !== 1) throw new RelayProviderError("FORMAT");
       const resultAssetId = await saveRelayMediaOutput({
+        expectedAudioContentType: kind === "audio"
+          ? relayAudioResultContentType(running.parameters.format)
+          : undefined,
         output: status.outputs[0],
         ownerId,
         profile,

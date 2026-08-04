@@ -10,6 +10,7 @@ import {
 } from "@xyflow/react";
 import { useEffect, useRef, useState } from "react";
 import { useCanvasCheckpoint } from "./CanvasHistory";
+import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
 import { NODE_DEFAULT_SIZES } from "./mediaGeometry";
 import { NodeModelControl } from "./NodeModelControl";
@@ -43,6 +44,7 @@ import {
   defaultParameterValues,
   normalizeParameterValues,
   parameterKeysForGroups,
+  submissionParameterValues,
 } from "../../../types/modelParameters";
 import {
   blockedModelSwitchProblem,
@@ -78,6 +80,22 @@ function waveform(buffer: AudioBuffer, bars = 64) {
   });
   const max = Math.max(...peaks, 0.01);
   return peaks.map((peak) => Math.round(6 + (peak / max) * 52));
+}
+
+function generatedAudioExtension(task: GenerationTaskSummary) {
+  const storedExtension = task.resultAssetId?.split(".").at(-1)?.toLowerCase();
+  if (["aac", "m4a", "mp3", "ogg", "wav"].includes(storedExtension ?? "")) {
+    return storedExtension!;
+  }
+  return task.resultMedia?.contentType === "audio/ogg"
+    ? "ogg"
+    : task.resultMedia?.contentType === "audio/wav"
+      ? "wav"
+      : task.resultMedia?.contentType === "audio/mp4"
+        ? "m4a"
+        : task.resultMedia?.contentType === "audio/aac"
+          ? "aac"
+          : "mp3";
 }
 
 function hasReadyAudioMedia(node?: ProbeNodeType) {
@@ -126,6 +144,7 @@ async function discardUnadoptedAudioAsset(assetId: string) {
 }
 
 export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
+  const singleNodeChrome = useSingleNodeChrome(selected);
   const inputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const uploadBaseline = useRef<ProbeNodeType | undefined>(undefined);
@@ -150,6 +169,9 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     defaultParameterSchema("audio");
   const audioParameters = selectedAudioModel
     ? normalizeParameterValues(audioParameterSchema, data.audioParameters)
+    : {};
+  const audioSubmissionParameters = selectedAudioModel
+    ? submissionParameterValues(audioParameterSchema, audioParameters)
     : {};
   const visibleAudioParameterKeys = new Set(
     activeParameterFields(audioParameterSchema, audioParameters).map(
@@ -226,7 +248,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     modelSchema: selectedAudioModel?.parameterSchema,
     nodes: canvasNodes,
     ownPrompt: promptControl.committedValue,
-    parameters: audioParameters,
+    parameters: audioSubmissionParameters,
     targetId: id,
     targetKind: "audio",
   });
@@ -247,7 +269,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       state: input.state,
     })),
     model: selectedAudioModel?.id,
-    parameters: audioParameters,
+    parameters: audioSubmissionParameters,
     prompt: promptControl.committedValue,
     revision: canvasRevision,
   });
@@ -255,7 +277,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     inputs: inputPreflight.inputs,
     modelId: selectedAudioModel?.id,
     ownPrompt: promptControl.committedValue,
-    parameters: audioParameters,
+    parameters: audioSubmissionParameters,
     prompt: inputPreflight.finalPrompt,
   });
   const audioGenerationRequestInput = {
@@ -266,7 +288,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     model: selectedAudioModel?.id,
     nodeId: id,
     ownPrompt: promptControl.committedValue,
-    parameters: audioParameters,
+    parameters: audioSubmissionParameters,
     prompt: inputPreflight.finalPrompt,
   };
   const stableGenerationInputKey = useRef<string | undefined>(undefined);
@@ -518,7 +540,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
                   : {}),
                 audioDuration: task.resultMedia?.durationSeconds ?? node.data.audioDuration,
                 audioFileSize: task.resultMedia?.byteSize ?? node.data.audioFileSize,
-                audioFileName: `${(cleanPrompt || "Mureka 音频").slice(0, 60)}.mp3`,
+                audioFileName: `${(cleanPrompt || "生成音频").slice(0, 60)}.${generatedAudioExtension(task)}`,
                 audioGeneratedResult: true,
                 audioGenerationError: undefined,
                 audioGenerationErrorCode: undefined,
@@ -970,7 +992,10 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
               ? "m4a"
               : file.type === "audio/aac" || file.type === "audio/x-aac"
                 ? "aac"
-                : undefined;
+                : file.type === "audio/ogg" ||
+                    file.type === "application/ogg"
+                  ? "ogg"
+                  : undefined;
       if (!extension) throw new Error("当前音频格式不受支持");
       requestedAssetId = `${crypto.randomUUID()}.${extension}`;
       const response = await fetch(`/api/audio-assets/${requestedAssetId}`, {
@@ -1112,7 +1137,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     <>
       <NodeResizer
         color="transparent"
-        isVisible={selected}
+        isVisible={singleNodeChrome}
         minHeight={160}
         minWidth={280}
         onResizeStart={() => checkpoint()}
@@ -1121,12 +1146,12 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
         label="上传音频"
         onUpload={() => inputRef.current?.click()}
         testId="audio-empty-upload-toolbar"
-        visible={selected && !data.audioSrc && !generating && !uploading}
+        visible={singleNodeChrome && !data.audioSrc && !generating && !uploading}
       />
       <NodeToolbar
         className="media-node-toolbar audio-node-toolbar nodrag nopan nowheel"
         data-testid="audio-node-toolbar"
-        isVisible={Boolean(data.audioSrc && selected && !uploading)}
+        isVisible={Boolean(data.audioSrc && singleNodeChrome && !uploading)}
         offset={12}
         position={Position.Top}
       >
@@ -1170,7 +1195,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       <NodeToolbar
         className="audio-creator nodrag nopan nowheel"
         data-testid="audio-creator"
-        isVisible={Boolean(data.audioPromptReady && selected)}
+        isVisible={Boolean(data.audioPromptReady && singleNodeChrome)}
         offset={16}
         position={Position.Bottom}
       >
@@ -1362,7 +1387,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
         <svg aria-hidden="true" viewBox="0 0 18 18">
           <path d="M7 14a3 3 0 1 1-2-2.82V5l9-2v8a3 3 0 1 1-2-2.82V5.5L7 6.6Z" />
         </svg>
-        {selected ? (
+        {singleNodeChrome ? (
           <input
             aria-label="Audio 标题"
             data-canvas-text-edit="graph"

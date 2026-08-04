@@ -1,7 +1,7 @@
 # TapNow 多协议中转站接入实施计划
 
-状态：`AUTHORITATIVE / LOCAL CANDIDATE IMPLEMENTED / USER_RECHECK / NOT ACCEPTED`
-更新时间：2026-08-03
+状态：`AUTHORITATIVE / RELAY-001～008、010 PASS / RELAY-009、011～012 USER_RECHECK`
+更新时间：2026-08-04
 
 ## 1. 目标与边界
 
@@ -135,20 +135,20 @@
 
 | ID | 验收项 | 自动检查要求 | 人工验收前状态 |
 |---|---|---|---|
-| RELAY-001 | 多协议平台连接与密钥安全 | 密钥不进浏览器、日志、数据库业务字段、产物和错误响应 | USER_RECHECK |
-| RELAY-002 | Key与目录只读检查 | 仅GET目录；收费Provider请求数为0 | USER_RECHECK |
-| RELAY-003 | 增强目录与基础目录回退 | fixture覆盖两种响应、分页、去重和异常 | USER_RECHECK |
-| RELAY-004 | 搜索、筛选、紧凑列表和固定操作栏 | 12/14px、16px复选框、无覆盖和长列表可操作 | USER_RECHECK |
-| RELAY-005 | 导入模型中心草稿 | 重复同步不重复，未发布模型不进入节点 | USER_RECHECK |
-| RELAY-006 | OpenAI Chat/Responses映射 | fixture覆盖请求快照、结果、错误和取消边界 | USER_RECHECK |
-| RELAY-007 | Claude Messages映射 | fixture覆盖请求快照、结果和错误 | USER_RECHECK |
-| RELAY-008 | Gemini GenerateContent映射 | fixture覆盖请求快照、结果和错误 | USER_RECHECK |
+| RELAY-001 | 多协议平台连接与密钥安全 | 密钥不进浏览器、日志、数据库业务字段、产物和错误响应 | PASS |
+| RELAY-002 | Key与目录只读检查 | 仅GET目录；目录同步不创建生成任务 | PASS |
+| RELAY-003 | 增强目录与基础目录回退 | fixture覆盖两种响应、分页、去重和异常；真实目录合并为129条 | PASS |
+| RELAY-004 | 搜索、筛选、紧凑列表和固定操作栏 | 12/14px、16px复选框、无覆盖和长列表可操作 | PASS |
+| RELAY-005 | 导入模型中心草稿 | 重复同步不重复，未发布模型不进入节点 | PASS |
+| RELAY-006 | OpenAI Chat/Responses映射 | fixture覆盖请求快照、结果、错误和取消边界；两条真实结果已由用户确认内容、刷新恢复与唯一性 | PASS |
+| RELAY-007 | Claude Messages映射 | fixture覆盖请求快照、结果和错误；真实结果已由用户在真实画布确认 | PASS |
+| RELAY-008 | Gemini GenerateContent映射 | fixture覆盖请求快照、结果和错误；真实结果已由用户在真实画布确认 | PASS |
 | RELAY-009 | GPT Image与通用图片映射 | 零Provider fixture覆盖参考素材、结果和失败 | USER_RECHECK |
-| RELAY-010 | 通用视频异步任务 | 零Provider fixture覆盖提交、轮询、恢复和发布 | USER_RECHECK |
+| RELAY-010 | 通用视频异步任务 | fixture覆盖提交、轮询、恢复和发布；真实单节点及零费用刷新/重启/去重恢复闭环通过 | PASS |
 | RELAY-011 | 通用音频异步任务 | 零Provider fixture覆盖提交、轮询、格式校验和发布 | USER_RECHECK |
 | RELAY-012 | 模型停用/安全删除与回归 | 默认/引用/任务保护，现有OpenRouter、方舟、Mureka不降级 | USER_RECHECK |
 
-实现完成只能进入`USER_RECHECK`。没有用户自己的中转站Key和人工实页确认，不得把`RELAY-001～012`标为PASS。自动检查不得创建真实聊天、图片、视频或音频任务。
+实现完成只能进入`USER_RECHECK`。只有用户自己的真实连接、对应自动门禁和人工实页确认同时满足，单项才可转为`PASS`。自动检查不得创建真实聊天、图片、视频或音频任务；用户手动授权的真实生成必须与目录检查和自动检查分开记录。
 
 ### 5.1 2026-08-03候选实现快照
 
@@ -159,6 +159,25 @@
 - 目录、Key检查、生成提交/轮询和结果媒体下载共用安全HTTPS传输：校验全部DNS结果后把实际socket固定到同一公网IPv4/IPv6，TLS仍校验原域名，不跟随重定向。
 - fixture与专项检查使用本地模拟响应，真实聊天、图片、视频和音频任务创建数为0，收费Provider请求数为0。
 - 这一快照只证明本地候选和自动门禁，不证明用户的真实中转站Key、具体模型权限或真实生成可用；12项统一等待用户实页复验。
+
+### 5.2 2026-08-04真实目录与Video单节点验收
+
+- 用户已在本机管理员页面完成优创真实Key检查、目录同步、分类筛选、模型草稿导入和手动发布；密钥没有进入聊天或文档。
+- 真实目录同时读取`/v1/skills/models`与`/v1/models`。增强目录返回101条，基础目录返回55条；按模型ID与能力合并去重后保存129条，分类为文字55、图片17、视频50、音频7。目录诊断、同步和筛选均未创建生成任务。
+- 已选Video模型先于`2026-08-04T03:54:42.704Z`创建模型中心草稿，再由管理员于`03:55:01.914Z`手动发布，证明目录导入没有自动发布或改变默认模型。`RELAY-001～005`由用户确认后正式PASS。
+- 用户使用该模型手动创建真实Video任务`8275d86c-602e-42ab-b444-969224dea601`，协议为`media-generate`，第三方任务ID为`93467467`。任务按`queued→running→success`完成且attempt为1。
+- 结果`f5ae0f1d-0e97-4923-88ef-6a39f292eea6.mp4`为1,493,430字节、5.042秒，SHA-256为`969acbb31c7eed3ab82ecb3df88c7a2394fb5a1813ee094353a3dbeccbe9f412`，已进入私有OSS并登记唯一历史。此次手动生成对应1条Provider边界记录。
+- 该结果已完成零费用刷新、服务重启恢复和任务/历史/媒体去重检查；任务、attempt、events、asset、history哈希稳定，三类记录均唯一。用户确认单节点生成成功，因此`RELAY-010`为`PASS`。
+- 用户后续在真实画布找到并一次性确认OpenAI Chat/Responses、Claude和Gemini四条文字结果，刷新后保留且没有重复，`RELAY-006～008`正式`PASS`。`RELAY-009/011/012`继续`USER_RECHECK`；Mureka Audio的`RATE_LIMIT`暂停和`INPUT-001～007`的`PARTIAL`状态均不改变。
+
+### 5.3 2026-08-04真实协议自动验证与安全删除
+
+- 用户授权的7次真实API调用均成功，无失败和重复：`openai-chat` task `ff1014f8-1e0a-415a-9ebe-7a5296a50c5f`；`openai-responses` task `b2d27319-cc77-4528-a17b-fff282b03e9e`；`claude-messages` task `f554282e-f332-4a6a-8f18-fb72bcf7bbda`；`gemini-generate-content` task `0be7fd67-c1e2-4c06-950d-76dcf46d573c`。
+- 图片：`gpt-image` task `b4bd07a5-9a2b-47f2-8d0f-59a369aa6e71`、asset `0f98c0b7-6ec8-470c-9840-0b94c2efaaa1`；`media-generate` task `2617ceee-acd7-4ccd-b2f9-cd44b3a3e4aa`、asset `12f84f21-0f2b-4c2e-836d-1b64f57dd5d0`。
+- 音频：Doubao TTS task `d8deb41b-0a7f-428c-8242-6603c12966cc`、asset `8775c5e5-9a8e-4bcc-9d5d-4f3de68be4b2.mp3`，`audio/mpeg`、32,892字节、1.632秒。`emotion=auto`未持久化或发送`emotionScale`；UI、播放器和OSS自动检查通过，仍等待用户可见确认。
+- 收费Provider边界计数由1增至8。真实自动验证本身不等于`USER PASS`；用户后续只对四条文字结果完成可见复验，因此`RELAY-006～008`可据用户验收改为PASS，图片、音频和安全删除仍不得提前PASS。
+- 安全删除只使用隔离草稿`relay-delete-fixture-20260804`，先归档后永久删除；已发布、默认、历史引用模型仍受保护，`RELAY-012`仍为`USER_RECHECK`。
+- 本轮真实调用已结束，不再自动发起收费Provider请求。
 
 ## 6. 交付物
 

@@ -1,7 +1,7 @@
 # TapNow 管理员模型中心、账号权限与 OSS 实施规划
 
-状态：`AUTHORITATIVE PLAN / PHASE A-F ACCEPTED / PHASE G VIDEO + API-001～006 ACCEPTED / PHASE H INPUT PARTIAL / PHASE I MULTI-PROTOCOL RELAY USER_RECHECK / AUDIO REAL GENERATION+DEPLOY DEFERRED`
-更新时间：2026-08-03
+状态：`AUTHORITATIVE PLAN / PHASE A-F ACCEPTED / PHASE G VIDEO + API-001～006 ACCEPTED / PHASE H INPUT PARTIAL / PHASE I RELAY-001～008+010 PASS, IMAGE-AUDIO-DELETE USER_RECHECK / AUDIO REAL GENERATION+DEPLOY DEFERRED`
+更新时间：2026-08-04
 
 ## 1. 已确认的产品决定
 
@@ -255,7 +255,7 @@
 
 依据：`TAPNOW_RELAY_PROVIDER_INTEGRATION_PLAN.md`。
 
-当前状态：P0～P7本地候选、fixture与零Provider自动门禁已完成；`RELAY-001～012`均为USER_RECHECK，未经用户实页确认不得标PASS。
+当前状态：P0～P7本地候选与零Provider fixture自动门禁已完成；用户已确认真实连接、只读目录、129模型完整组合目录、分类筛选和模型草稿流程，`RELAY-001～005`已PASS。真实Video单节点及零费用刷新/重启/去重恢复证据已闭合，`RELAY-010`已PASS；用户已在真实画布找到并确认OpenAI Chat/Responses、Claude和Gemini四条文字结果，`RELAY-006～008`已PASS；`RELAY-009/011/012`继续USER_RECHECK。
 
 实施范围：
 
@@ -268,7 +268,14 @@
 
 实施默认全部使用fixture和零Provider检查。第三方真实Key只允许用户在本机管理员页面填写，不在聊天中提供或回显；任何真实生成仍须逐次明确授权。
 
-候选实现保持现有管理员主流程“平台连接→目录发现→模型中心草稿→人工发布给节点”。中转站目录同步不会自动发布模型或改变默认模型；协议按模型显式保存，停用/删除继续保护默认模型、节点引用和历史任务。只读目录与管理检查、文字/图片/媒体协议映射及管理UI专项均不创建真实生成任务，收费Provider请求数为0。
+实现保持现有管理员主流程“平台连接→目录发现→模型中心草稿→人工发布给节点”。中转站目录同步不会自动发布模型或改变默认模型；协议按模型显式保存，停用/删除继续保护默认模型、节点引用和历史任务。零Provider fixture检查仍为0请求；2026-08-04用户授权的真实协议验证另行使Provider边界由1增至8，7次均成功、无失败和重复。这些自动真实证据不等于用户可见PASS。
+
+阶段I真实验收记录（2026-08-04）：
+
+- 优创增强目录101条与基础目录55条合并去重为129条，分类为文字55、图片17、视频50、音频7；真实分类筛选与模型草稿导入由用户确认。
+- `grok-video-3.5`先建立草稿、后由管理员手动发布；没有自动发布或改变默认模型。
+- 真实Video任务`8275d86c-602e-42ab-b444-969224dea601`按`queued→running→success`完成，第三方任务ID`93467467`；1,493,430字节结果进入私有OSS和唯一历史。
+- 现有Video结果的刷新、服务重启恢复及任务/历史/媒体去重已稳定，`RELAY-010`已关闭为PASS。OpenAI Chat/Responses、Claude和Gemini四条文字结果已由用户在真实画布确认内容、刷新恢复和唯一性，`RELAY-006～008`关闭为PASS。安全删除自动检查只删除隔离草稿`relay-delete-fixture-20260804`，仍保护已发布/默认/历史模型；下一步是用户可见复验已有图片、音频与安全删除/全局回归，不再发起收费自动请求。
 
 ## 5. 当前实施顺序
 
@@ -281,7 +288,7 @@ A 数据保护
 → F 真实图片生成
 → G 真实视频已通过（Audio/部署暂缓）
 → H 节点入参与引用端到端优化
-→ I 多协议中转站连接、目录、模型草稿和生成适配
+→ I 多协议中转站目录、文字协议和Video真实结果恢复已通过，图片/音频/安全删除待验
 → Audio真实生成与正式部署另行恢复
 ```
 

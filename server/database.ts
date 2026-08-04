@@ -16,6 +16,25 @@ type Migration = {
   version: number;
 };
 
+function addColumnIfMissing(
+  database: DatabaseSync,
+  tableName: string,
+  columnName: string,
+  definition: string,
+) {
+  const sqlIdentifier = /^[A-Za-z_][A-Za-z0-9_]*$/;
+  if (!sqlIdentifier.test(tableName) || !sqlIdentifier.test(columnName)) {
+    throw new Error("Unsafe migration identifier");
+  }
+  const columns = database
+    .prepare(`PRAGMA table_info("${tableName}")`)
+    .all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === columnName)) return;
+  database.exec(
+    `ALTER TABLE "${tableName}" ADD COLUMN "${columnName}" ${definition}`,
+  );
+}
+
 const migrations: readonly Migration[] = [
   {
     version: 1,
@@ -1096,6 +1115,39 @@ const migrations: readonly Migration[] = [
         );
     `,
   },
+  {
+    version: 23,
+    name: "provider-catalog-diagnostics",
+    prepare(database) {
+      // Imported/local databases can contain the physical column while their
+      // migration ledger still predates it. Reconcile that recoverable shape
+      // under the migration write lock instead of replaying ALTER TABLE.
+      addColumnIfMissing(
+        database,
+        "provider_profiles",
+        "catalog_diagnostics",
+        "TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(catalog_diagnostics))",
+      );
+    },
+    sql: "",
+  },
+  {
+    version: 24,
+    name: "canvas-graph-revision",
+    prepare(database) {
+      addColumnIfMissing(
+        database,
+        "canvas_documents",
+        "graph_revision",
+        "INTEGER NOT NULL DEFAULT 0 CHECK (graph_revision >= 0)",
+      );
+    },
+    sql: `
+      UPDATE canvas_documents
+      SET graph_revision = revision
+      WHERE graph_revision = 0 AND revision > 0;
+    `,
+  },
 ];
 
 export const currentSchemaVersion = migrations.at(-1)?.version ?? 0;
@@ -1285,40 +1337,30 @@ export function openAppDatabase(dataDirectory = appDataDirectory()) {
     );
   `);
 
-  const appliedRows = database
-    .prepare("SELECT version, name FROM schema_migrations ORDER BY version")
-    .all() as Array<{ name: string; version: number }>;
-  const knownVersions = new Map(
-    migrations.map(({ name, version }) => [version, name]),
-  );
-  for (const row of appliedRows) {
-    if (knownVersions.get(row.version) !== row.name) {
-      database.close();
-      throw new Error(`Unknown database migration ${row.version}:${row.name}`);
-    }
-  }
-
-  const appliedVersions = new Set(appliedRows.map(({ version }) => version));
-  for (const migration of migrations) {
-    if (appliedVersions.has(migration.version)) continue;
+  let migrationTransactionOpen = false;
+  try {
+    // Lock the whole migration plan before reading its ledger. A second OS
+    // process waits here, then observes the first process's committed plan;
+    // it can never act on a pre-lock schema snapshot or see a partial version
+    // sequence.
     database.exec("BEGIN IMMEDIATE");
-    try {
-      // Another OS process may have completed this migration while this
-      // connection waited for BEGIN IMMEDIATE. Re-read under the write lock so
-      // ALTER TABLE is never replayed from a stale pre-lock snapshot.
-      const concurrentlyApplied = database.prepare(`
-        SELECT name FROM schema_migrations WHERE version = ?
-      `).get(migration.version) as { name: string } | undefined;
-      if (concurrentlyApplied) {
-        if (concurrentlyApplied.name !== migration.name) {
-          throw new Error(
-            `Unknown database migration ${migration.version}:${concurrentlyApplied.name}`,
-          );
-        }
-        database.exec("COMMIT");
-        appliedVersions.add(migration.version);
-        continue;
+    migrationTransactionOpen = true;
+
+    const appliedRows = database
+      .prepare("SELECT version, name FROM schema_migrations ORDER BY version")
+      .all() as Array<{ name: string; version: number }>;
+    const knownVersions = new Map(
+      migrations.map(({ name, version }) => [version, name]),
+    );
+    for (const row of appliedRows) {
+      if (knownVersions.get(row.version) !== row.name) {
+        throw new Error(`Unknown database migration ${row.version}:${row.name}`);
       }
+    }
+
+    const appliedVersions = new Set(appliedRows.map(({ version }) => version));
+    for (const migration of migrations) {
+      if (appliedVersions.has(migration.version)) continue;
       migration.prepare?.(database);
       database.exec(migration.sql);
       database
@@ -1327,14 +1369,21 @@ export function openAppDatabase(dataDirectory = appDataDirectory()) {
           VALUES (?, ?, ?)
         `)
         .run(migration.version, migration.name, new Date().toISOString());
-      database.exec(`PRAGMA user_version = ${migration.version}`);
-      database.exec("COMMIT");
-      appliedVersions.add(migration.version);
-    } catch (error) {
-      database.exec("ROLLBACK");
-      database.close();
-      throw error;
     }
+    database.exec(`PRAGMA user_version = ${currentSchemaVersion}`);
+    database.exec("COMMIT");
+    migrationTransactionOpen = false;
+  } catch (error) {
+    if (migrationTransactionOpen) {
+      try {
+        database.exec("ROLLBACK");
+      } catch {
+        // Preserve the migration failure; close() below releases any lock even
+        // when SQLite has already rolled the transaction back internally.
+      }
+    }
+    database.close();
+    throw error;
   }
 
   backfillLocalMediaChecksums(database, dataDirectory);

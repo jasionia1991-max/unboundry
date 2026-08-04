@@ -683,13 +683,18 @@ test("two OS processes can migrate the same v18 database exactly once", async ()
       );
       expect(names.has("provider_configuration_version")).toBe(true);
       expect(names.has("catalog_sync_token")).toBe(true);
+      expect(names.has("catalog_diagnostics")).toBe(true);
       expect(database.prepare(`
         SELECT version, COUNT(*) AS count
-        FROM schema_migrations WHERE version IN (19, 20)
+        FROM schema_migrations WHERE version >= 19
         GROUP BY version ORDER BY version
       `).all()).toEqual([
         { count: 1, version: 19 },
         { count: 1, version: 20 },
+        { count: 1, version: 21 },
+        { count: 1, version: 22 },
+        { count: 1, version: 23 },
+        { count: 1, version: 24 },
       ]);
     } finally {
       database.close();

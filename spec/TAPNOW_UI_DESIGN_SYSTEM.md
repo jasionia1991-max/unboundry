@@ -14,7 +14,7 @@
 - TapNow 事实以 `TAPNOW_REFERENCE_EVIDENCE_CATALOG.md`、状态 fixture 和实页勘测为准。
 - 节点入参的产品规则以生成架构、两轮上游勘测和复制计划为准。
 - 当前代码、CSS 和自动检查用来证明“现在实际如何显示”，不能单独把人工待验收项目改成 PASS。
-- `INPUT-001～INPUT-007`继续保持 PARTIAL；本文件不改变验收计数，不计入下一批 0/10。
+- `INPUT-001～INPUT-007`继续保持 PARTIAL；本文件不改变验收状态。下一批计数由`TASKS.md`与验收矩阵维护，2026-08-04用户明确要求提前同步后当前为5/10。
 
 文中使用三个标记：
 
@@ -283,6 +283,9 @@ Focus：
 - zoom 范围 `0.15～2`。
 - screen UI 不随 Canvas zoom 缩放；节点、Group、端口、edge 使用 world 坐标。
 - 固定锚点和响应式误差上限为 1 CSS px。
+- `硬契约`：搜索定位只消费一次，不得在后续缩放中反复拉回viewport。
+- `硬契约`：光标在节点、input/textarea/contenteditable或打开的Creator上时，画布缩放仍必须生效；缩放事件应按画面帧合并，不得使Creator闪烁或丢失焦点。
+- `硬契约`：viewport保存与节点/edge内容保存分层；纯缩放不得显示“画布正在保存”、不得阻塞生成。
 
 ### 6.2 节点外观
 
@@ -327,6 +330,13 @@ Focus：
 - 常规图标按钮 40×40px，hover 显示灰底；tooltip 为 12px。
 - Text 格式栏、Image/Video 工具栏的已验收尺寸继续按各自 fixture，不强行统一总宽度。
 - 工具不可用时必须真实 disabled，不显示假动作成功。
+
+#### 6.5.1 多选公共工具栏
+
+- `硬契约`：选中两个或以上节点时，全屏只能显示一条 screen-space 公共工具栏。
+- 多选成员的单节点Toolbar、Creator、标题输入、播放器、临时菜单和resize chrome必须全部收起；回到单选时立即恢复原节点界面。
+- 画布非编辑区的拉框和`Cmd+A`不得产生浏览器原生文字选区；input、textarea、select和contenteditable区域仍允许正常选字。
+- 公共“打组”只在全部已选项均为可打组的顶层普通节点时启用，继续使用既有Group的20px包围盒、父子坐标、撤销和持久化契约；不得静默只组合部分已选节点，不得给子节点强加`extent: parent`。
 
 `待裁决`：`TASKS.md`保留 Audio 工具栏 `215×48`的人工验收记录，而当前自动检查断言 `183×48`。本文件不选择任何一方覆盖另一方；后续涉及 Audio 工具栏时必须先做证据裁决，不能顺手修改。
 
@@ -543,6 +553,8 @@ Focus：
 - 节点默认尺寸、媒体比例与人工 resize：`tests/m2-node-geometry.spec.ts`
 - Text/Image/Video/Audio 节点视觉：`tests/m2-*-node.spec.ts`
 - 来源感知菜单与 edge：`tests/m1-source-menu.spec.ts`、`tests/m1-minimap-edge.spec.ts`
+- 搜索定位、节点上缩放、viewport保存与Creator稳定：`tests/m62-canvas-zoom-persistence.spec.ts`
+- 多选公共工具栏、原生文字选区与Group生命周期：`tests/m63-multiselect-group-ui.spec.ts`
 - 统一输入、卡片、删除/撤销、模型切换和服务端预检：`tests/m27-node-inputs.spec.ts`及后续输入专项
 - Provider 模型目录与紧凑 checkbox：`tests/m43-provider-catalog.spec.ts`
 

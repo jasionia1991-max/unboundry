@@ -9,6 +9,7 @@ const mediaDirectory = mkdtempSync(join(tmpdir(), "tapnow-audio-test-"));
 const commonAudio = [
   { codec: "libmp3lame", extension: "mp3", mimeType: "audio/mpeg" },
   { codec: "aac", extension: "m4a", mimeType: "audio/mp4" },
+  { codec: "libopus", extension: "ogg", mimeType: "audio/ogg" },
 ].map((format) => {
   const file = join(mediaDirectory, `probe.${format.extension}`);
   execFileSync("ffmpeg", [

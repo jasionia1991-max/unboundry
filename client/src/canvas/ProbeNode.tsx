@@ -6,6 +6,7 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import { useCanvasCheckpoint } from "./CanvasHistory";
+import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import type { ModelParameterValue } from "../../../types/modelParameters";
 import type { NodeInputState } from "../../../types/nodeInputs";
 
@@ -139,6 +140,7 @@ export function ProbeNode({
   id,
   selected,
 }: NodeProps<ProbeNodeType>) {
+  const singleNodeChrome = useSingleNodeChrome(selected);
   const group = data.variant === "group";
   const checkpoint = useCanvasCheckpoint();
 
@@ -146,7 +148,7 @@ export function ProbeNode({
     <>
       <NodeResizer
         color="transparent"
-        isVisible={selected}
+        isVisible={singleNodeChrome}
         onResizeStart={() => checkpoint()}
       />
       {!group && (

@@ -1,11 +1,11 @@
 # TapNow 绿地复刻验收矩阵
 
 基线日期：2026-07-27  
-当前状态更新：2026-08-03  
+当前状态更新：2026-08-04
 状态：`AUTHORITATIVE`  
 状态夹具：`tapnow-state-fixtures.json`
 
-当前176条记录中：129条`PASS`、12条`USER_RECHECK`、4条`BLOCK`、8条`PARTIAL`、3条`PAUSED`、6条`N/A/NOT_APPLICABLE`，其余14条为已裁决的`RESOLVED*`状态；当前没有`NOT_STARTED`。第二批10次人工验收已于2026-08-02统一同步，下一批仍从0/10重新计数。节点入参两轮TapNow证据已完成，但`INPUT-001～007`实现和人工验收尚未完成，统一保持`PARTIAL`。2026-08-03按用户明确要求提前同步`RELAY-001～012`本地候选结果，统一进入`USER_RECHECK`且不计入常规10次人工验收同步；未经用户实页确认不得标PASS。
+当前176条记录中：138条`PASS`、3条`USER_RECHECK`、4条`BLOCK`、8条`PARTIAL`、3条`PAUSED`、6条`N/A/NOT_APPLICABLE`，其余14条为已裁决的`RESOLVED*`状态；当前没有`NOT_STARTED`。第二批10次人工验收已于2026-08-02统一同步；2026-08-04用户再次明确要求提前同步，当前下一批为5/10：中转站连接/目录/发现/草稿、`RELAY-010`零费用恢复去重、`RELAY-006～008`文字结果可见复验、画布搜索缩放回归、多选统一工具栏与打组生命周期各计1项。`RELAY-009/011/012`仍为`USER_RECHECK`，`INPUT-001～007`仍为`PARTIAL`，不得提前标PASS。
 
 ## 1. 判定规则
 
@@ -99,8 +99,8 @@
 | CANVAS-007 | P0 | `workflow.text-to-video.created` | 空态点击“文字生视频”后快捷入口隐藏，生成250×250 Text、444×250 Video及Text→Video三次贝塞尔连线；Text预填英文电影镜头Prompt；连线无箭头并有2秒循环白色高光 | 截图、自动graph/尺寸/computed style、用户实页复查 | PASS |
 | CANVAS-008 | P0 | `interaction.delete-cascade-and-undo`、`interaction.group-comment-resize-sandbox-current`、`interaction.edge-delete-reconnect-download-sandbox-current` | 节点可用 Backspace 无确认删除并级联；连线被点击或鼠标停留约 0.7 秒后，中央出现 32×32剪刀按钮；仅悬浮触发时移出连线/剪刀区域即消失，点击触发时保持；点击剪刀只删连线且保留两端节点 | 连线部分和节点级联均获用户实页确认、自动graph diff | PASS |
 | CANVAS-009 | P0 | `interaction.delete-cascade-and-undo` | Cmd+Z 恢复副本，新 node ID、同 asset 引用 | 自动graph/asset JSON、用户实页复查 | PASS |
-| CANVAS-010 | P1 | `interaction.selection-and-keyboard-move` | 框选、反选、点击空白清选和工具栏显隐正确；多选整体框为半透明灰底、灰色1px实线、16px圆角且无蓝色阴影 | 用户实页复查、自动指针操作、computed style、选择快照 | PASS |
-| CANVAS-011 | P0 | — | zoom 范围 0.15–2；左键拖空白框选，普通触控板双指横向/纵向滑动按1.2系数平移且zoom不变，捏合缩放；缩放中心和平移手感一致 | 用户实页复查、TapNow活体对照、自动指针操作、viewport JSON | PASS |
+| CANVAS-010 | P1 | `interaction.selection-and-keyboard-move` | 框选、反选、点击空白清选和工具栏显隐正确；多选整体框为半透明灰底、灰色1px实线、16px圆角且无蓝色阴影；多选只显示一条公共工具栏，单节点工具栏、Creator、标题输入、播放器和resize chrome全部收起；画布`Cmd+A`不产生原生文字选区，输入控件内`Cmd+A`仍只选文字 | 2026-08-04用户实页复查、`m63-multiselect-group-ui`3/3、相关回归45/45、computed style与选择快照 | PASS |
+| CANVAS-011 | P0 | — | zoom 范围 0.15–2；左键拖空白框选，普通触控板双指横向/纵向滑动按1.2系数平移且zoom不变，捏合缩放；搜索定位只消费一次，光标在节点、输入框或Creator上仍可缩放；纯viewport保存不阻塞生成、不显示保存提示且面板不闪烁 | 2026-08-04用户实页复查、TapNow活体对照、`m62-canvas-zoom-persistence`5/5、viewport/graph版本快照 | PASS |
 | CANVAS-012 | P1 | `interaction.fit-five-nodes` | 5 节点 fit view 得到全节点可见和近似参考矩阵 | 自动前后可见性、viewport | PASS |
 | CANVAS-013 | P1 | `interaction.selection-and-keyboard-move` | 有节点小地图 rect、selected、mask 和导航一致；198×148内容区外侧1px边线连续无断口；200×150拖动层按2倍系数反向平移且zoom不变，单击/滚轮无动作 | 用户实页复查、TapNow活体对照、自动 SVG DOM、拖动与滚轮 viewport | PASS |
 | CANVAS-014 | P0 | `interaction.source-aware-connect-menus-current` | Image/Video/Audio 连线松到空白打开各自的5项/4项/2项来源菜单；外框宽288、内边距4、标题区40、内容宽278、行高52、间距4、图标框36；拖动来源节点时临时线保持连接；点击空白或其他节点后临时线、菜单和临时节点均清理，原3节点/0正式连线不变 | 活体DOM、自动菜单尺寸、拖动跟随、点击其他节点关闭、graph、用户实页复查 | PASS |
@@ -121,7 +121,7 @@
 | NODE-007 | P0 | `node.video.empty`、`node.video.success`、`interaction.upload-media-sandbox-current` | Video空态444×250；上传后保持原始比例，横向高250、竖向宽250且576×1024为250×444；隐藏左侧加号、保留右侧加号；无resize control；节点内无中央大播放图标，选中/悬浮显示静音、播放、0.1秒进度、时长和放大；详情含播放器、音量、252×180提示词、八项信息、应用到画布及下载；支持上传、替换、拖动、标题和Cmd+Z | 2026-07-28真实TapNow活体DOM/坐标/播放状态、自动检查、用户实页复查 | PASS |
 | NODE-008 | P0 | `node.audio.empty`、`node.audio.success`、`interaction.upload-media-sandbox-current` | Audio空态/上传态均444×250且无resize control；上传后隐藏左侧加号；波形由真实音频采样生成，播放位置逐帧更新；替换仅悬浮显示，下载位于选中态上方48px工具栏；支持±10秒、播放/暂停、拖动、中英文标题及Cmd+Z | 2026-07-28真实TapNow活体DOM/尺寸/工具栏、真实WAV解码与播放自动检查、用户实页复查 | PASS |
 | NODE-009 | P0 | `node.playlist.empty`、`node.playlist.workflow`、`interaction.resize-large-text-playlist-sandbox-current` | Playlist 默认960×104、时间尺、空态一致；所有状态隐藏左右连接加号；仅有片段且选中时左侧显示两个50×50切割/导出按钮，左偏58px、间隔8px；宽高可独立扩大，至少到2057×3785不clamp；片段选择、删除、裁剪、排序、双播放头、缩放预览与导出行为一致 | TapNow活体DOM、用户截图、本地bounds、真实媒体自动检查、用户实页复查 | PASS |
-| NODE-010 | P0 | `node.group.selected`、`interaction.group-comment-resize-sandbox-current`、`interaction.group-text-playlist-large-sandbox-current` | 外接矩形建组、默认标题、圆角、8个resize control；Image+Video样本缩至312×147；Text+Playlist按四周20px包围盒建组并可扩至5047×4024且不缩放子节点；整体移动、解组和删除/撤回保持正确父子关系 | TapNow活体DOM、graph diff、本地自动检查、用户实页复查 | PASS |
+| NODE-010 | P0 | `node.group.selected`、`interaction.group-comment-resize-sandbox-current`、`interaction.group-text-playlist-large-sandbox-current` | 外接矩形建组、默认标题、圆角、8个resize control；Image+Video样本缩至312×147；Text+Playlist按四周20px包围盒建组并可扩至5047×4024且不缩放子节点；公共多选工具栏只在全部已选项可打组时启用；建组、撤销建组、刷新、删除Group、撤销删除及再刷新保持父子关系、edge和唯一性 | TapNow活体DOM、graph diff、`m63-multiselect-group-ui`、用户实页复查 | PASS |
 | NODE-011 | P0 | 全部节点 | 当前范围内七类节点为独立产品实现，无巨型 GenericNode 条件树；Comment已由用户移出范围 | 七类组件注册与实现边界代码审查 | PASS |
 | NODE-012 | P1 | 全部节点 | 标题、端口、工具栏、resize chrome 的 hover/focus/selected 状态一致；Image工具栏400×48/9按钮、Video工具栏442×48/10按钮已通过用户复查，高级按钮功能不在视觉候选中伪报完成 | 2026-07-28活体DOM尺寸、状态截图集、自动bounds、各节点用户实页复查 | PASS |
 | NODE-013 | P1 | `legacy.node-geometry.families` | 节点首次按内部素材比例自动适配；自动尺寸、比例派生和之后的用户八向resize互不混淆，手动尺寸刷新后保留 | 尺寸族fixture、节点几何与刷新专项自动检查、2026-08-01用户实页复验 | PASS |
@@ -153,13 +153,13 @@
 
 | ID | 优先级 | 项目 | 验收动作与断言 | 当前证据/缺口 | 实现状态 |
 |---|---|---|---|---|---|
-| INPUT-001 | P0 | 类型化连线矩阵 | 本项目允许11种组合：Text目标接收四类，Image接收Text/Image，Video接收四类，Audio只接收Text；其余5种不落edge并打开来源感知菜单 | TapNow两轮实测为9允许/7拒绝；用户明确扩展Text目标。当前Canvas仍只拒绝自连、重复和反向环 | PARTIAL |
-| INPUT-002 | P0 | 统一输入解析与UI状态 | 从edge解析来源及`empty/uploading/ready/invalid/missing`；统一引用卡、角色、顺序、阻塞原因、删除/撤销和刷新恢复 | Text已有局部上游卡；四节点尚无共享解析器和完整状态组件 | PARTIAL |
-| INPUT-003 | P0 | Image的Text+Image闭环 | 上游Text作为提示词母版，上游Image作为参考图；自身Prompt为空可用母版，两者都有时显示最终合并Prompt；服务端保存不可变输入快照 | Image参考图真实链路已PASS，但当前Image组件不读取上游Text，提交Prompt仍只取自身输入 | PARTIAL |
-| INPUT-004 | P0 | Text四类上游 | Text、Image、Video、Audio均可作为理解输入；自身指令默认必填，模型可配置上游Text替代；不支持媒体时保留edge并显示模型不兼容 | 当前Text UI可显示四类上游并读取第2版规则，但Generate固定禁用且无Text任务/Provider映射 | PARTIAL |
-| INPUT-005 | P0 | Video全能参考 | Text、Image、Video、Audio卡片及首帧/尾帧/主体/普通参考角色；Seedance当前规则最多9图/3视频/3音频；提交前完成参数、费用和Provider能力预检 | TapNowready素材与模式已实测；当前Video组件和服务端仍拒绝真实非Text参考提交 | PARTIAL |
-| INPUT-006 | P1 | Audio文字合并 | 只接受Text上游；区分上游母版、自身Prompt和歌词，展示最终合并结果；重试不得重复任务 | TapNow上游Text可启用提交已实测；当前Audio组件未读取edge，Mureka真实生成另由`AUDIO-REAL-001`暂缓 | PARTIAL |
-| INPUT-007 | P0 | 新模型、预检和持久化 | 管理员配置输入类型、数量、角色、组合、必填条件和Provider适配；不兼容切换不静默删引用；刷新/重启/复制/删除/重试不重复 | 第2版参数和参考数量已PASS；角色、组合、统一Provider输入快照及完整回归尚未实现 | PARTIAL |
+| INPUT-001 | P0 | 类型化连线矩阵 | 本项目允许11种组合：Text目标接收四类，Image接收Text/Image，Video接收四类，Audio只接收Text；其余5种不落edge并打开来源感知菜单 | TapNow两轮实测为9允许/7拒绝；本地11/5矩阵、自连/重复/反向保护和来源感知菜单已有候选，完整人工矩阵尚未逐条收口 | PARTIAL |
+| INPUT-002 | P0 | 统一输入解析与UI状态 | 从edge解析来源及`empty/uploading/ready/invalid/missing`；统一引用卡、角色、顺序、阻塞原因、删除/撤销和刷新恢复 | 四节点已共用edge解析器、引用卡和阻塞状态；删除/撤销后刷新与服务重启的全局唯一性仍待收口 | PARTIAL |
+| INPUT-003 | P0 | Image的Text+Image闭环 | 上游Text作为提示词母版，上游Image作为参考图；自身Prompt为空可用母版，两者都有时显示最终合并Prompt；服务端保存不可变输入快照 | Text+Image、最终Prompt预览、assetId输入快照及前后端预检已有候选；经历撤销持久化修复后仍需最后一次零费用恢复闭环 | PARTIAL |
+| INPUT-004 | P0 | Text四类上游 | Text、Image、Video、Audio均可作为理解输入；自身指令默认必填，模型可配置上游Text替代；不支持媒体时保留edge并显示模型不兼容 | Text已接共享解析、四类引用卡、任务快照和真实任务入口；四种来源及不同协议尚未逐项人工通过 | PARTIAL |
+| INPUT-005 | P0 | Video全能参考 | Text、Image、Video、Audio卡片及首帧/尾帧/主体/普通参考角色；Seedance当前规则最多9图/3视频/3音频；提交前完成参数、费用和Provider能力预检 | Video已接四类解析、角色、数量、阻塞原因和任务快照；当前真实单节点Video成功不代表多模态全能参考已通过 | PARTIAL |
+| INPUT-006 | P1 | Audio文字合并 | 只接受Text上游；区分上游母版、自身Prompt和歌词，展示最终合并结果；重试不得重复任务 | Audio已接上游Text解析和合并候选；零Provider持久化尚待人工确认，Mureka真实生成仍由`AUDIO-REAL-001`暂缓 | PARTIAL |
+| INPUT-007 | P0 | 新模型、预检和持久化 | 管理员配置输入类型、数量、角色、组合、必填条件和Provider适配；不兼容切换不静默删引用；刷新/重启/复制/删除/重试不重复 | 管理页、共享角色/组合/Prompt策略、服务端重解析和输入快照已有候选；模型切换与完整持久化回归尚未人工收口 | PARTIAL |
 
 ## 8. 持久化、历史和权限
 
@@ -215,18 +215,24 @@
 
 | ID | 优先级 | 项目 | 验收动作与断言 | 实现状态 |
 |---|---|---|---|---|
-| RELAY-001 | P0 | 多协议平台连接与密钥安全 | 第三方身份、基址、协议和Key状态清晰；密钥不进入浏览器、日志、业务数据库、产物或错误响应；真实HTTPS连接绑定已校验公网IP，阻止DNS重绑定 | USER_RECHECK |
-| RELAY-002 | P0 | Key与目录只读检查 | 检查只调用目录GET；不得调用聊天、图片、视频或音频生成接口 | USER_RECHECK |
-| RELAY-003 | P0 | 目录兼容与回退 | 增强目录和`/v1/models`均可解析；分页、异常、去重和重复同步安全 | USER_RECHECK |
-| RELAY-004 | P1 | 模型发现UI | 搜索、节点类型/协议筛选、紧凑复选框、长文本截断和固定批量操作栏无覆盖 | USER_RECHECK |
-| RELAY-005 | P0 | 导入模型中心草稿 | 已选模型生成候选草稿；不自动发布、不改变默认模型、不重复创建 | USER_RECHECK |
-| RELAY-006 | P0 | OpenAI文字协议 | Chat Completions与Responses使用统一任务快照、结果和错误分类 | USER_RECHECK |
-| RELAY-007 | P0 | Claude文字协议 | Messages协议映射准确，不根据模型名称猜协议 | USER_RECHECK |
-| RELAY-008 | P0 | Gemini文字协议 | GenerateContent协议映射准确，Key和原始响应不泄露 | USER_RECHECK |
+| RELAY-001 | P0 | 多协议平台连接与密钥安全 | 第三方身份、基址、协议和Key状态清晰；密钥不进入浏览器、日志、业务数据库、产物或错误响应；真实HTTPS连接绑定已校验公网IP，阻止DNS重绑定 | PASS |
+| RELAY-002 | P0 | Key与目录只读检查 | 检查只调用目录GET；不得调用聊天、图片、视频或音频生成接口 | PASS |
+| RELAY-003 | P0 | 目录兼容与回退 | 增强目录和`/v1/models`均可解析；分页、异常、去重和重复同步安全 | PASS |
+| RELAY-004 | P1 | 模型发现UI | 搜索、节点类型/协议筛选、紧凑复选框、长文本截断和固定批量操作栏无覆盖 | PASS |
+| RELAY-005 | P0 | 导入模型中心草稿 | 已选模型生成候选草稿；不自动发布、不改变默认模型、不重复创建 | PASS |
+| RELAY-006 | P0 | OpenAI文字协议 | Chat Completions与Responses使用统一任务快照、结果和错误分类；两条真实结果已由用户在真实画布找到，刷新后保留且无重复 | PASS |
+| RELAY-007 | P0 | Claude文字协议 | Messages协议映射准确，不根据模型名称猜协议；真实结果已由用户在真实画布确认 | PASS |
+| RELAY-008 | P0 | Gemini文字协议 | GenerateContent协议映射准确，Key和原始响应不泄露；真实结果已由用户在真实画布确认 | PASS |
 | RELAY-009 | P0 | 图片协议 | GPT Image和通用图片任务复用统一入参、安全素材与私有结果发布 | USER_RECHECK |
-| RELAY-010 | P0 | 视频异步任务 | 通用媒体提交、轮询、重启恢复、结果校验和发布完整 | USER_RECHECK |
+| RELAY-010 | P0 | 视频异步任务 | 通用媒体提交、轮询、重启恢复、结果校验和发布完整 | PASS |
 | RELAY-011 | P0 | 音频异步任务 | 通用媒体提交、轮询、格式/时长校验和发布完整；不恢复Mureka收费重试 | USER_RECHECK |
 | RELAY-012 | P0 | 停用、安全删除与全局回归 | 默认、节点、任务引用受保护；现有OpenRouter、火山方舟、Mureka和已验收画布不降级 | USER_RECHECK |
+
+2026-08-04本地真实证据：优创增强目录101条与基础目录55条合并去重为129条（文字55、图片17、视频50、音频7），用户确认分类和草稿流程通过。真实Video任务`8275d86c-602e-42ab-b444-969224dea601`按`queued→running→success`完成，后续零费用刷新、服务重启恢复和去重复验全部稳定；任务、attempt、events、素材、历史哈希不变，任务/历史/媒体均唯一。结果SHA-256为`969acbb31c7eed3ab82ecb3df88c7a2394fb5a1813ee094353a3dbeccbe9f412`、1,493,430字节、5.042秒；用户确认单节点生成成功，故`RELAY-010`为`PASS`。
+
+2026-08-04用户授权的真实API自动验证共7次，全部成功、无失败、无重复：`openai-chat` task `ff1014f8-1e0a-415a-9ebe-7a5296a50c5f`；`openai-responses` task `b2d27319-cc77-4528-a17b-fff282b03e9e`；`claude-messages` task `f554282e-f332-4a6a-8f18-fb72bcf7bbda`；`gemini-generate-content` task `0be7fd67-c1e2-4c06-950d-76dcf46d573c`；`gpt-image` task `b4bd07a5-9a2b-47f2-8d0f-59a369aa6e71`、asset `0f98c0b7-6ec8-470c-9840-0b94c2efaaa1`；`media-generate`图片 task `2617ceee-acd7-4ccd-b2f9-cd44b3a3e4aa`、asset `12f84f21-0f2b-4c2e-836d-1b64f57dd5d0`；Doubao TTS task `d8deb41b-0a7f-428c-8242-6603c12966cc`、asset `8775c5e5-9a8e-4bcc-9d5d-4f3de68be4b2.mp3`，`audio/mpeg`、32,892字节、1.632秒。收费Provider边界由1增至8，本批后不再发起收费请求。用户后续在真实画布找到并一次性确认OpenAI Chat/Responses、Claude、Gemini四条文字结果，刷新后继续存在且无重复，因此`RELAY-006～008`正式`PASS`。图片、音频和安全删除仍等待用户可见复验，`RELAY-009/011/012`保持`USER_RECHECK`。
+
+安全删除自动证据仅处理隔离草稿`relay-delete-fixture-20260804`，先归档再永久删除；已发布、默认和历史引用模型仍受保护，因此`RELAY-012`仍为`USER_RECHECK`。TTS的`emotion=auto`没有持久化或发送`emotionScale`；UI、播放器和OSS自动检查已通过，但音频仍等待用户可见确认。
 
 ## 11. 图片高级编辑
 
@@ -283,7 +289,7 @@
 | M4 | MEDIA-001～MEDIA-005、IMGEDIT-001～IMGEDIT-009 |
 | M5 | GEN-001～GEN-009、DATA-003～DATA-004 |
 | M5.1 | INPUT-001～INPUT-007；先完成P0+P1，再逐项进入用户真实浏览器验收 |
-| M5.2 | RELAY-001～RELAY-012；零费用fixture和候选回归已完成，当前等待用户真实浏览器验收 |
+| M5.2 | RELAY-001～008、010已PASS；RELAY-009/011/012的真实自动验证已成功，继续等待用户可见验收 |
 | M6 | PLAY-001～PLAY-004，且 OPEN-002/003/005/006/014 已裁决 |
 | M7 | SURF-002～SURF-017 |
 | M8 | AGENT-001～AGENT-005 |

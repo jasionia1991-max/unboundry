@@ -1,7 +1,7 @@
 # TapNow 生成链路结构
 
-状态：`AUTHORITATIVE / IMAGE REAL PATH ACCEPTED / VIDEO REAL PATH ACCEPTED / UPSTREAM INPUT PARTIAL / MULTI-PROTOCOL RELAY LOCAL CANDIDATE USER_RECHECK / AUDIO REAL GENERATION DEFERRED`
-更新时间：2026-08-03
+状态：`AUTHORITATIVE / IMAGE REAL PATH ACCEPTED / VIDEO REAL PATH ACCEPTED / UPSTREAM INPUT PARTIAL / MULTI-PROTOCOL RELAY DIRECTORY + TEXT PROTOCOLS + REAL VIDEO RECOVERY ACCEPTED / RELAY IMAGE-AUDIO-DELETE USER_RECHECK / AUDIO REAL GENERATION DEFERRED`
+更新时间：2026-08-04
 
 ## 1. 对齐边界
 
@@ -126,10 +126,10 @@ TapNow实测与本项目产品决定分开：TapNow当前Text目标只接受Imag
 - 数据库：任务、事件、请求指纹、模型快照、结果素材引用和账号历史均已持久化；内部`running→recovering`基础检查通过。
 - 媒体：旧图片/视频/音频继续支持本机读取；新图片和真实Seedance视频结果可写入私有阿里云OSS并通过短时签名地址、Range和下载读取。
 - Provider：OpenRouter GPT Image 2真实图片与火山方舟Seedance 2.0 Mini真实视频均已成功；视频结果通过播放、下载、历史操作、刷新和服务重启恢复人工验收。
-- 多协议中转：本地候选已增加显式协议模型配置、OpenAI Chat/Responses、Claude Messages、Gemini GenerateContent、GPT Image和通用媒体适配；目录、只读管理和适配器专项均使用模拟响应，真实生成任务和收费Provider请求为0。`RELAY-001～012`统一为USER_RECHECK。
+- 多协议中转：显式协议模型配置、OpenAI Chat/Responses、Claude Messages、Gemini GenerateContent、GPT Image和通用媒体适配均已进入统一任务体系。`RELAY-001～005`已PASS；优创真实Video任务`8275d86c-602e-42ab-b444-969224dea601`的刷新、服务重启恢复和去重复验已闭环，`RELAY-010`经用户确认PASS。用户授权的7次真实协议自动验证均成功，Provider边界由1增至8；用户后续在真实画布找到并确认OpenAI Chat/Responses、Claude和Gemini四条文字结果，`RELAY-006～008`正式PASS。`RELAY-009/011/012`继续USER_RECHECK。
 - 参考图：edge、缩略片、删除/撤销同步、账号归属、模型上限和OpenRouter `input_references`安全传参已完成，`GEN-009`于2026-08-01人工通过；本轮没有增加收费请求。
 - 入参调研：TapNow两轮实页勘测已完成，8节点/9边和三类ready素材刷新恢复均有证据；本轮未点击Generate。该证据不等于本地统一入参实现完成。
-- 入参实现缺口：Canvas仍未按目标类型和模型能力限制连线；Image尚未读取上游Text；Video/Audio尚未把edge输入带入任务；Text真实生成任务未接通；角色、组合和统一输入快照尚未完成。`INPUT-001～007`保持PARTIAL。
+- 入参实现状态：11允许/5禁止矩阵、共享edge解析器、四类引用卡、角色/顺序/阻塞原因、版本化任务快照、服务端重解析、Image的Text+Image合并及Text/Video/Audio任务入口均已有本地候选。尚缺完整人工矩阵、Text四类上游、Video全能参考角色/上限、Audio文字合并、模型切换及删除/撤销/刷新/重启去重收口，因此`INPUT-001～007`继续保持PARTIAL。
 - 恢复：真实图片任务`438b50dd-cd9c-42ed-8321-1fcbd49adf35`和真实视频任务`788ebeaa-b37d-499a-becc-64ae16f2a9f5`在服务完全停止并重启后均保持唯一任务、历史、媒体与画布引用，私有OSS结果仍可读。
 - 异常：真实取消、TIMEOUT、同任务重试成功及服务重启`running→recovering→failed`均有数据库事件和用户实页证据；`GEN-006/OPEN-007`于2026-08-01人工通过。
 - 接口：自有OpenAPI 3.1契约现有8条路径、10个操作，覆盖画布、项目标题、安全模型配置、当前账号、模板、Agent界面配置、AI角色和素材目录；`API-001～006`均已人工通过。
@@ -152,12 +152,11 @@ TapNow实测与本项目产品决定分开：TapNow当前Text目标只接受Imag
 
 继续执行：
 
-1. 先执行入参P0：统一解析器、11/5类型矩阵、引用卡UI和preflight，全程Provider请求必须为0。
-2. 再执行P1：Image的“上游文字母版+参考图片”闭环；先完成零费用提交快照验收，真实生成仍须另行授权。
-3. 随后按P2～P6完成Text四类上游、Video全能参考、Audio文字合并、未来模型规则和完整持久化回归。
-4. Audio真实生成继续等待Mureka官网状态确认和新授权；任何可能收费的补测必须再次获得用户许可。
-5. 已完成的自有数据契约只按实际功能维护，不照抄TapNow私有协议；新增接口必须继续经过账号隔离和密钥暴露检查。
-6. 最后完成正式服务器HTTPS、进程守护、备份恢复和回滚演练；当前不得提前部署。
+1. 先完成`RELAY-009/011/012`的用户可见复验：两张已有真实图片、已有Doubao TTS音频和隔离草稿的安全删除/全局回归。不重新生成，不再继续触发收费Provider。
+2. 用户可见复验完成后回到入参计划：先收口已完成候选的P0/P1全局持久化，不重复已验收步骤；再按P2～P6完成Text四类上游、Video多模态参考、Audio文字合并、未来模型规则和模型切换不兼容保留。
+3. Audio真实生成继续等待Mureka官网状态确认和新授权；中转站Audio也不能被当成Mureka恢复验收。
+4. 已完成的自有数据契约只按实际功能维护，不照抄TapNow私有协议；新增接口必须继续经过账号隔离和密钥暴露检查。
+5. 最后完成正式服务器HTTPS、进程守护、备份恢复和回滚演练；当前不得提前部署。
 
 ## 8. 多协议中转站扩展
 
@@ -178,4 +177,4 @@ TapNow实测与本项目产品决定分开：TapNow当前Text目标只接受Imag
 
 模型目录只负责发现候选项；协议、节点类型、输入规则和费用保护必须由管理员确认后保存。不能根据模型名称猜测协议，也不能把第三方原始字段直接透传给Provider。
 
-当前本地候选已用fixture覆盖连接、目录、协议映射、异步轮询、错误分类和回归；所有中转真实HTTPS外连共用“全DNS结果校验+实际连接IP固定”传输，禁止重定向和二次解析。自动检查保持收费Provider请求为0。`RELAY-001～012`现统一进入`USER_RECHECK`，未经用户实页确认不得标PASS；真实调用仍由用户在本机后台配置并逐次授权。
+当前实现已用fixture覆盖连接、目录、协议映射、异步轮询、错误分类和回归；自动fixture检查保持收费Provider请求为0。2026-08-04真实优创目录由增强101条与基础55条合并为129条，`RELAY-001～005`经用户确认PASS。真实Video任务`8275d86c-602e-42ab-b444-969224dea601`的零费用刷新/重启/去重复验稳定，`RELAY-010`经用户确认PASS。另经用户授权完成OpenAI Chat/Responses、Claude、Gemini、GPT Image、通用图片和Doubao TTS共7次真实自动验证，全部成功且无重复，Provider边界由1增至8。用户后续在真实画布找到并确认OpenAI Chat/Responses、Claude和Gemini四条文字结果，`RELAY-006～008`正式PASS。两张图片、Doubao TTS和安全删除继续等待用户可见复验，`RELAY-009/011/012`保持USER_RECHECK。

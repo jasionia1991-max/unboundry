@@ -15,6 +15,7 @@ import {
   parameterFieldVisible,
   providerParameterSchema,
   referenceLimitsForValues,
+  submissionParameterValues,
   validateParameterSchemaConstraints,
   validateParameterValues,
 } from "../types/modelParameters";
@@ -142,6 +143,143 @@ test("future models use the safe shared parameter registry", () => {
     referenceInputs: { audio: 0, image: 0, video: 0 },
     version: 1,
   }), constraints)).toThrow("not supported");
+});
+
+test("relay Text models use bounded output and temperature controls without changing generic Text defaults", () => {
+  const relay = knownModelParameterSchema({
+    capability: "text",
+    providerDriver: "multi-protocol-relay",
+    providerModelId: "gpt-5.4-nano",
+  });
+  expect(relay.fields.map((field) => field.key)).toEqual([
+    "inputMode",
+    "maxOutputTokens",
+    "temperature",
+    "outputCount",
+  ]);
+  expect(defaultParameterValues(relay)).toEqual({
+    inputMode: "text",
+    maxOutputTokens: 64,
+    outputCount: 1,
+    temperature: 0,
+  });
+  expect(relay.fields.find((field) => field.key === "maxOutputTokens")?.options
+    .map((option) => option.value)).toEqual([
+      16, 32, 64, 128, 256, 512, 1024, 2048, 4096,
+    ]);
+  expect(relay.fields.find((field) => field.key === "temperature")?.options
+    .map((option) => option.value)).toEqual([0, 0.2, 0.5, 0.7, 1]);
+  expect(validateParameterValues(relay, {
+    inputMode: "text",
+    maxOutputTokens: 16,
+    outputCount: 1,
+    temperature: 0.2,
+  })).toEqual({
+    inputMode: "text",
+    maxOutputTokens: 16,
+    outputCount: 1,
+    temperature: 0.2,
+  });
+  expect(() => validateParameterValues(relay, {
+    maxOutputTokens: 8192,
+  })).toThrow("Unsupported model parameter value");
+  expect(() => validateParameterValues(relay, {
+    temperature: 2,
+  })).toThrow("Unsupported model parameter value");
+
+  const constraints = providerParameterSchema({
+    capability: "text",
+    providerDriver: "multi-protocol-relay",
+    providerModelId: "gpt-5.4-nano",
+  });
+  const unsupported = structuredClone(relay);
+  unsupported.fields.push(defaultParameterSchema("text").fields.find(
+    (field) => field.key === "creativity",
+  )!);
+  expect(() => validateParameterSchemaConstraints(unsupported, constraints))
+    .toThrow("not supported");
+
+  expect(defaultParameterValues(defaultParameterSchema("text"))).toEqual({
+    creativity: "balanced",
+    inputMode: "text",
+    outputCount: 1,
+    responseFormat: "plain",
+  });
+});
+
+test("relay doubao TTS uses only its documented bounded controls", () => {
+  const relay = knownModelParameterSchema({
+    capability: "audio",
+    providerDriver: "multi-protocol-relay",
+    providerModelId: "doubao-tts-2.0",
+  });
+  expect(relay.fields.map((field) => field.key)).toEqual([
+    "inputMode",
+    "speaker",
+    "speechRate",
+    "emotion",
+    "emotionScale",
+    "format",
+    "outputCount",
+  ]);
+  expect(defaultParameterValues(relay)).toEqual({
+    emotion: "auto",
+    emotionScale: 4,
+    format: "mp3",
+    inputMode: "text",
+    outputCount: 1,
+    speaker: "zh_female_vv_uranus_bigtts",
+    speechRate: "0",
+  });
+  expect(relay.fields.some((field) => field.key === "duration")).toBe(false);
+  expect(relay.fields.some((field) => field.key === "audioMode")).toBe(false);
+  expect(parameterFieldVisible(
+    relay.fields.find((field) => field.key === "emotionScale")!,
+    defaultParameterValues(relay),
+  )).toBe(false);
+  expect(parameterFieldVisible(
+    relay.fields.find((field) => field.key === "emotionScale")!,
+    { ...defaultParameterValues(relay), emotion: "happy" },
+  )).toBe(true);
+  const automaticValues = defaultParameterValues(relay);
+  expect(submissionParameterValues(relay, automaticValues)).toEqual({
+    emotion: "auto",
+    format: "mp3",
+    inputMode: "text",
+    outputCount: 1,
+    speaker: "zh_female_vv_uranus_bigtts",
+    speechRate: "0",
+  });
+  expect(validateParameterValues(relay, automaticValues)).toEqual(
+    submissionParameterValues(relay, automaticValues),
+  );
+
+  const enabledOnly = structuredClone(relay);
+  const enabledOnlyScale = enabledOnly.fields.find(
+    (field) => field.key === "emotionScale",
+  )!;
+  enabledOnlyScale.visibleWhen = undefined;
+  expect(parameterFieldVisible(enabledOnlyScale, automaticValues)).toBe(true);
+  expect(submissionParameterValues(enabledOnly, automaticValues))
+    .not.toHaveProperty("emotionScale");
+  expect(validateParameterValues(enabledOnly, automaticValues))
+    .not.toHaveProperty("emotionScale");
+  expect(validateParameterValues(relay, {
+    emotion: "happy",
+    emotionScale: 2,
+    format: "wav",
+    inputMode: "text",
+    outputCount: 1,
+    speaker: "zh_female_vv_uranus_bigtts",
+    speechRate: "-25",
+  })).toMatchObject({
+    emotion: "happy",
+    emotionScale: 2,
+    format: "wav",
+    outputCount: 1,
+    speaker: "zh_female_vv_uranus_bigtts",
+    speechRate: "-25",
+  });
 });
 
 test("Seedance Provider input floors cannot be omitted while narrower active modes remain valid", () => {

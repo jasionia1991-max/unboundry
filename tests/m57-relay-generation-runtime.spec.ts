@@ -99,8 +99,9 @@ test("Gemini relay Text materializes ordered four-kind context once and persists
           { assetId: "video.mp4", kind: "video", order: 3, role: "context-video", sourceNodeId: "video-up" },
           { assetId: "audio.mp3", kind: "audio", order: 4, role: "context-audio", sourceNodeId: "audio-up" },
         ],
-        maxOutputTokens: 512,
+        maxOutputTokens: 64,
         outputCount: 1,
+        temperature: 0,
       },
       prompt: "根据四类上下文生成说明",
       providerModelId: "gemini-fixture-model",
@@ -144,6 +145,7 @@ test("Gemini relay Text materializes ordered four-kind context once and persists
         ],
         role: "user",
       }],
+      generationConfig: { maxOutputTokens: 64, temperature: 0 },
     });
     expect(store.get(created.task.id)).toMatchObject({
       actualCostMicrounits: 2_000_000,
@@ -235,6 +237,63 @@ test("relay media parameters use explicit role mapping and keep transient URLs o
     }),
     async () => "https://signed.example.test/unused",
   )).rejects.toMatchObject({ code: "FORMAT" });
+});
+
+test("Doubao TTS relay audio maps documented UI fields without forwarding snapshots", async () => {
+  const task = relayTask("audio", "media-generate", {
+    providerModelId: "doubao-tts-2.0",
+    parameters: {
+      emotion: "happy",
+      emotionScale: 4,
+      format: "mp3",
+      inputSchemaVersion: 1,
+      inputs: [],
+      outputCount: 1,
+      speaker: "zh_female_vv_uranus_bigtts",
+      speechRate: "0",
+    },
+  });
+  const before = JSON.stringify(task.parameters);
+  const materialized = await relayMediaParametersForTask(
+    task,
+    async () => "https://signed.example.test/unused",
+  );
+
+  expect(materialized).toEqual({
+    emotion: "happy",
+    emotion_scale: 4,
+    format: "mp3",
+    speaker: "zh_female_vv_uranus_bigtts",
+    speech_rate: "0",
+  });
+  expect(JSON.stringify(task.parameters)).toBe(before);
+  expect(before).not.toContain("signed.example.test");
+});
+
+test("Doubao TTS execution drops stale emotion scale while automatic emotion is active", async () => {
+  const task = relayTask("audio", "media-generate", {
+    providerModelId: "doubao-tts-2.0",
+    parameters: {
+      emotion: "auto",
+      emotionScale: 5,
+      format: "ogg_opus",
+      inputSchemaVersion: 1,
+      inputs: [],
+      outputCount: 1,
+      speaker: "zh_female_vv_uranus_bigtts",
+      speechRate: "0",
+    },
+  });
+
+  await expect(relayMediaParametersForTask(
+    task,
+    async () => "https://signed.example.test/unused",
+  )).resolves.toEqual({
+    emotion: "auto",
+    format: "ogg_opus",
+    speaker: "zh_female_vv_uranus_bigtts",
+    speech_rate: "0",
+  });
 });
 
 test("GPT Image maps supported canvas ratios to its bounded size contract", () => {

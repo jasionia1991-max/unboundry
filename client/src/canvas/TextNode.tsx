@@ -10,6 +10,7 @@ import {
 } from "@xyflow/react";
 import { useEffect, useRef, useState } from "react";
 import { useCanvasCheckpoint } from "./CanvasHistory";
+import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import {
   useCompositionSafeRichText,
   useCompositionSafeText,
@@ -26,6 +27,7 @@ import {
   defaultParameterValues,
   normalizeParameterValues,
   parameterKeysForGroups,
+  submissionParameterValues,
 } from "../../../types/modelParameters";
 import {
   blockedModelSwitchProblem,
@@ -240,6 +242,7 @@ function ToolIcon({ name }: { name: ToolName }) {
 }
 
 export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
+  const singleNodeChrome = useSingleNodeChrome(selected);
   const [background, setBackground] = useState("#1f1f1f");
   const [bodyEditing, setBodyEditing] = useState(false);
   const [empty, setEmpty] = useState(!data.content);
@@ -348,6 +351,9 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   const textParameters = selectedTextModel
     ? normalizeParameterValues(textParameterSchema, data.textParameters)
     : {};
+  const textSubmissionParameters = selectedTextModel
+    ? submissionParameterValues(textParameterSchema, textParameters)
+    : {};
   const textInputParameterKeys = parameterKeysForGroups(textParameterSchema, ["input"])
     .filter((key) => {
       const field = textParameterSchema.fields.find((item) => item.key === key);
@@ -366,7 +372,7 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     modelSchema: selectedTextModel?.parameterSchema,
     nodes: canvasNodes,
     ownPrompt: promptControl.committedValue,
-    parameters: textParameters,
+    parameters: textSubmissionParameters,
     targetId: id,
     targetKind: "text",
   });
@@ -378,14 +384,14 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     model: selectedTextModel?.id,
     nodeId: id,
     ownPrompt: promptControl.committedValue,
-    parameters: textParameters,
+    parameters: textSubmissionParameters,
     prompt: inputPreflight.finalPrompt,
   };
   const generationInputKey = createGenerationInputKey({
     inputs: inputPreflight.inputs,
     modelId: selectedTextModel?.id,
     ownPrompt: promptControl.committedValue,
-    parameters: textParameters,
+    parameters: textSubmissionParameters,
     prompt: inputPreflight.finalPrompt,
   });
   const stableGenerationInputKey = useRef<string | undefined>(undefined);
@@ -441,16 +447,6 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   const upstreamProblem = inputProblems.find(
     (problem) => incomingInputs.length > 0 || problem.code !== "PROMPT_MISSING",
   )?.message ?? "";
-  const savingProblem =
-    canvasId === "default" &&
-    canvasRevision === undefined &&
-    inputPreflight.canSubmit &&
-    !data.textGenerating &&
-    !submitting &&
-    !recoveringTask
-      ? "画布正在保存，保存完成后可生成"
-      : "";
-
   useEffect(() => {
     setModelSwitchProblem("");
   }, [canvasEdges]);
@@ -495,10 +491,10 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   ]);
 
   useEffect(() => {
-    if (!selected) {
+    if (!singleNodeChrome) {
       setBodyEditing(false);
     }
-  }, [selected]);
+  }, [singleNodeChrome]);
 
   useEffect(() => {
     const nextValue = storedRichTextValue(
@@ -945,7 +941,7 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       <NodeToolbar
         className="text-node-toolbar nodrag nopan"
         data-testid="text-node-toolbar"
-        isVisible={selected}
+        isVisible={singleNodeChrome}
         offset={48}
         position={Position.Top}
       >
@@ -975,9 +971,9 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       <NodeToolbar
         className="text-creator nodrag nopan nowheel"
         data-has-upstream={incomingInputs.length ? "true" : undefined}
-        data-upstream-problem={upstreamProblem || savingProblem ? "true" : undefined}
+        data-upstream-problem={upstreamProblem ? "true" : undefined}
         data-testid="text-creator"
-        isVisible={selected}
+        isVisible={singleNodeChrome}
         offset={16}
         position={Position.Bottom}
       >
@@ -1035,15 +1031,6 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
             role="status"
           >
             {upstreamProblem}
-          </div>
-        )}
-        {savingProblem && (
-          <div
-            className="upstream-input-problem"
-            data-testid="text-generation-saving"
-            role="status"
-          >
-            {savingProblem}
           </div>
         )}
         <textarea
@@ -1193,7 +1180,9 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
                     ? retryableTask
                       ? "正在重试原生成任务"
                       : "正在提交文字生成"
-                    : savingProblem ||
+                    : (canvasRevision === undefined
+                        ? "画布正在保存"
+                        : undefined) ||
                       textModelUnavailableReason ||
                       (blockedFailedTask
                         ? retryBlockReason ||
@@ -1217,7 +1206,7 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
 
       <NodeResizer
         color="transparent"
-        isVisible={selected}
+        isVisible={singleNodeChrome}
         minHeight={250}
         minWidth={250}
         onResizeStart={() => checkpoint()}
@@ -1239,7 +1228,7 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
           <svg aria-hidden="true" viewBox="0 0 14 14">
             <path d="M9.7 10.84H2.04M7.8 7H2.04M11.96 3.16H2.04" />
           </svg>
-          {selected ? (
+          {singleNodeChrome ? (
             <input
               aria-label="Text 标题"
               data-canvas-text-edit="graph"

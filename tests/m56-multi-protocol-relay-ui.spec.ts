@@ -277,6 +277,312 @@ test("多协议中转站在Provider页面支持明确协议、批量导入和可
   expect(generationRequests).toEqual([]);
 });
 
+test("待识别目录模型可单独查看并在手动定类后进入对应分类", async ({
+  baseURL,
+  page,
+}) => {
+  const localOrigin = new URL(baseURL ?? "http://127.0.0.1:4173").origin;
+  const externalRequests: string[] = [];
+  const generationRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.origin !== localOrigin) externalRequests.push(request.url());
+    if (url.pathname.startsWith("/api/generation-tasks")) {
+      generationRequests.push(`${request.method()} ${url.pathname}`);
+    }
+  });
+
+  const profile = {
+    apiKeyMask: "••••unknown",
+    baseUrl: "https://relay.example.test/v1",
+    driver: "multi-protocol-relay",
+    hasApiKey: true,
+    id: "relay-unknown-filter",
+    keyStatus: "valid",
+    label: "待识别目录",
+    modelCatalog: { ...relayCatalog(), modelCount: 2 },
+    status: "verified",
+    updatedAt: checkedAt,
+  };
+  await page.route("**/api/admin/providers", async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        paidProviderRequests: 0,
+        profiles: [profile],
+        providerSecretsStoredInBrowser: false,
+        realGenerationEnabled: false,
+        supportedDrivers: ["multi-protocol-relay"],
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+  await page.route(
+    "**/api/admin/provider-catalog/relay-unknown-filter",
+    async (route) => {
+      await route.fulfill({
+        body: JSON.stringify({
+          endpoints: [],
+          models: [
+            {
+              capability: "unknown",
+              discoveryId: "relay:opaque-model",
+              displayName: "Opaque Model",
+              providerModelId: "vendor/opaque-model",
+              source: "multi-protocol-relay-account-catalog",
+              status: "available",
+            },
+            {
+              capability: "image",
+              discoveryId: "relay:image-model",
+              displayName: "Known Image Model",
+              providerModelId: "vendor/image-model",
+              source: "multi-protocol-relay-account-catalog",
+              status: "available",
+            },
+          ],
+          paidGenerationRequests: 0,
+          syncedAt: checkedAt,
+        }),
+        contentType: "application/json",
+        status: 200,
+      });
+    },
+  );
+
+  await page.goto("/admin/providers");
+  const catalog = page.getByTestId(
+    "provider-model-catalog-relay-unknown-filter",
+  );
+  await catalog.getByRole("button", { name: "查看发现模型" }).click();
+  const typeFilter = catalog.getByLabel("筛选节点类型");
+  await expect(typeFilter.locator('option[value="unknown"]')).toHaveText(
+    "待识别",
+  );
+  await typeFilter.selectOption("unknown");
+  await expect(catalog.locator(".provider-catalog-model-list > div"))
+    .toHaveCount(1);
+  await expect(catalog).toContainText("Opaque Model");
+  await catalog.getByLabel("Opaque Model节点类型").selectOption("image");
+  await expect(catalog).toContainText("没有符合当前搜索和类型条件的模型");
+  await typeFilter.selectOption("image");
+  await expect(catalog.locator(".provider-catalog-model-list > div"))
+    .toHaveCount(2);
+  await expect(catalog).toContainText("Opaque Model");
+  await expect(catalog).toContainText("Known Image Model");
+
+  expect(externalRequests).toEqual([]);
+  expect(generationRequests).toEqual([]);
+});
+
+test("中转目录明确显示组合来源、类型统计、兼容回退和格式异常", async ({
+  baseURL,
+  page,
+}) => {
+  const localOrigin = new URL(baseURL ?? "http://127.0.0.1:4173").origin;
+  const externalRequests: string[] = [];
+  const generationRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.origin !== localOrigin) externalRequests.push(request.url());
+    if (url.pathname.startsWith("/api/generation-tasks")) {
+      generationRequests.push(`${request.method()} ${url.pathname}`);
+    }
+  });
+
+  const profiles = [{
+    apiKeyMask: "••••combined",
+    baseUrl: "https://combined.relay.example/v1",
+    driver: "multi-protocol-relay",
+    hasApiKey: true,
+    id: "relay-combined-catalog",
+    keyStatus: "valid",
+    label: "完整组合目录中转站",
+    modelCatalog: {
+      ...relayCatalog(),
+      capabilityCounts: {
+        audio: 7,
+        image: 17,
+        text: 55,
+        unknown: 0,
+        video: 50,
+      },
+      catalogSource: "enhanced+basic",
+      modelCount: 129,
+      rejectedModelCount: 0,
+      reportedModelCount: 129,
+    },
+    status: "verified",
+    updatedAt: checkedAt,
+  }, {
+    apiKeyMask: "••••full",
+    baseUrl: "https://full.relay.example/v1",
+    driver: "multi-protocol-relay",
+    hasApiKey: true,
+    id: "relay-full-catalog",
+    keyStatus: "valid",
+    label: "全量目录中转站",
+    modelCatalog: {
+      ...relayCatalog(),
+      capabilityCounts: {
+        audio: 7,
+        image: 17,
+        text: 27,
+        unknown: 0,
+        video: 50,
+      },
+      catalogSource: "enhanced",
+      modelCount: 101,
+      rejectedModelCount: 0,
+      reportedModelCount: 101,
+    },
+    status: "verified",
+    updatedAt: checkedAt,
+  }, {
+    apiKeyMask: "••••basic",
+    baseUrl: "https://basic.relay.example/v1",
+    driver: "multi-protocol-relay",
+    hasApiKey: true,
+    id: "relay-basic-fallback",
+    keyStatus: "valid",
+    label: "兼容目录中转站",
+    modelCatalog: {
+      ...relayCatalog(),
+      capabilityCounts: {
+        audio: 0,
+        image: 0,
+        text: 55,
+        unknown: 0,
+        video: 0,
+      },
+      catalogSource: "basic-fallback",
+      fallbackReason: "NOT_SUPPORTED",
+      modelCount: 55,
+      rejectedModelCount: 0,
+      reportedModelCount: 55,
+    },
+    status: "verified",
+    updatedAt: checkedAt,
+  }, {
+    apiKeyMask: "••••format",
+    baseUrl: "https://format.relay.example/v1",
+    driver: "multi-protocol-relay",
+    hasApiKey: true,
+    id: "relay-format-snapshot",
+    keyStatus: "unknown",
+    label: "保留目录中转站",
+    modelCatalog: {
+      ...relayCatalog(),
+      capabilityCounts: {
+        audio: 7,
+        image: 17,
+        text: 55,
+        unknown: 0,
+        video: 50,
+      },
+      catalogSource: "enhanced",
+      errorCode: "FORMAT",
+      keyStatus: "unknown",
+      modelCount: 129,
+      rejectedModelCount: 0,
+      reportedModelCount: 129,
+      snapshotStale: true,
+    },
+    status: "verified",
+    updatedAt: checkedAt,
+  }];
+
+  await page.route("**/api/admin/providers", async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        paidProviderRequests: 0,
+        profiles,
+        providerSecretsStoredInBrowser: false,
+        realGenerationEnabled: false,
+        supportedDrivers: ["multi-protocol-relay"],
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+
+  await page.goto("/admin/providers");
+
+  const combined = page.getByTestId(
+    "provider-model-catalog-relay-combined-catalog",
+  );
+  await expect(combined).toContainText("当前Key可见模型129");
+  await expect(combined).toContainText("目录来源：完整组合目录");
+  await expect(combined).toContainText("合并后：129 个");
+  await expect(combined).not.toContainText("平台报告：129 个");
+  await expect(combined).toContainText("已保存：129 个");
+  await expect(combined).toContainText(
+    "增强目录与兼容目录已只读获取并去重合并",
+  );
+  const combinedCounts = combined.getByLabel("模型类型统计");
+  await expect(combinedCounts).toContainText("文字55");
+  await expect(combinedCounts).toContainText("图片17");
+  await expect(combinedCounts).toContainText("视频50");
+  await expect(combinedCounts).toContainText("音频7");
+  await expect(combined).not.toContainText("数量尚未完全对齐");
+
+  const full = page.getByTestId("provider-model-catalog-relay-full-catalog");
+  await expect(full).toContainText("当前Key可见模型101");
+  await expect(full).toContainText("目录来源：全量增强目录");
+  await expect(full).toContainText("平台报告：101 个");
+  const fullCounts = full.getByLabel("模型类型统计");
+  await expect(fullCounts).toContainText("文字27");
+  await expect(fullCounts).toContainText("图片17");
+  await expect(fullCounts).toContainText("视频50");
+  await expect(fullCounts).toContainText("音频7");
+  await expect(full).not.toContainText("仅显示聊天模型");
+
+  const fallback = page.getByTestId(
+    "provider-model-catalog-relay-basic-fallback",
+  );
+  await expect(fallback).toContainText(
+    "目录来源：兼容目录（仅聊天模型）",
+  );
+  await expect(fallback).toContainText(
+    "平台不支持全量增强目录，当前使用兼容目录，仅显示聊天模型。",
+  );
+  await expect(fallback.getByLabel("模型类型统计")).toContainText(
+    "文字55图片0视频0音频0",
+  );
+
+  const format = page.getByTestId(
+    "provider-model-catalog-relay-format-snapshot",
+  );
+  await expect(format).toContainText("保留快照来源：全量增强目录");
+  await expect(format).toContainText(
+    "平台返回格式异常，已保留上次同步结果。",
+  );
+
+  for (const width of [902, 560]) {
+    await page.setViewportSize({ height: 917, width });
+    for (const section of [combined, full, fallback, format]) {
+      const diagnostics = section.locator(".provider-catalog-diagnostics");
+      await expect(diagnostics).toBeVisible();
+      const geometry = await diagnostics.evaluate((element) => ({
+        fontSizes: Array.from(element.querySelectorAll<HTMLElement>("*"))
+          .map((candidate) => getComputedStyle(candidate).fontSize),
+        overflow: element.scrollWidth - element.clientWidth,
+      }));
+      expect(geometry.overflow).toBeLessThanOrEqual(1);
+      expect(
+        geometry.fontSizes.every((size) => ["12px", "14px"].includes(size)),
+      ).toBe(true);
+    }
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(1);
+  }
+
+  expect(externalRequests).toEqual([]);
+  expect(generationRequests).toEqual([]);
+});
+
 test("目录批量选择在第100个时明确限制本次添加", async ({
   page,
 }) => {

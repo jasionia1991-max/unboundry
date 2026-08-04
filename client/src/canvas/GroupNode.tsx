@@ -10,6 +10,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useCanvasCheckpoint } from "./CanvasHistory";
+import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
 import type { ProbeNodeType } from "./ProbeNode";
 
@@ -40,6 +41,7 @@ export function GroupNode({
   id,
   selected,
 }: NodeProps<ProbeNodeType>) {
+  const singleNodeChrome = useSingleNodeChrome(selected);
   const checkpoint = useCanvasCheckpoint();
   const { getNode, getNodes, setNodes } = useReactFlow<ProbeNodeType>();
   const { zoom } = useViewport();
@@ -60,11 +62,11 @@ export function GroupNode({
   });
 
   useEffect(() => {
-    if (!selected) {
+    if (!singleNodeChrome) {
       setColorMenu(false);
       setLayoutMenu(false);
     }
-  }, [selected]);
+  }, [singleNodeChrome]);
 
   const updateData = (patch: Partial<ProbeNodeType["data"]>) =>
     setNodes((nodes) =>
@@ -217,12 +219,12 @@ export function GroupNode({
           height: 24 * scale,
           width: 24 * scale,
         }}
-        isVisible={selected}
+        isVisible={singleNodeChrome}
         minHeight={147}
         minWidth={312}
         onResizeStart={() => checkpoint()}
       />
-      {selected && (
+      {singleNodeChrome && (
         <div
           className="group-node-toolbar nodrag nopan"
           data-testid="group-node-toolbar"
@@ -312,7 +314,7 @@ export function GroupNode({
           <rect height="12" rx="2" width="14" x="3" y="7" />
           <path d="M7 7V4h14v12h-4" />
         </svg>
-        {selected ? (
+        {singleNodeChrome ? (
           <input
             aria-label="组合框标题"
             data-canvas-text-edit="graph"

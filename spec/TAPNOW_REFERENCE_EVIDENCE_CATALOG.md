@@ -2,7 +2,7 @@
 
 状态：`AUTHORITATIVE / EVIDENCE ONLY`  
 整理日期：2026-07-27  
-最近追加：2026-08-02（TapNow节点入参两轮实页勘测、ready素材刷新证据及本项目Text四类上游产品决定）  
+最近追加：2026-08-04（本项目多协议文字结果用户复验、搜索缩放回归及多选/打组生命周期；不反写为TapNow内部事实）
 用途：把历史 Lumino Web 仓库中的 TapNow 调研证据提取为当前绿地项目的产品规格输入。
 
 ## 1. 使用边界
@@ -463,6 +463,33 @@
 - 刷新前后均为8节点/9边；三类来源素材、Text/Video目标Prompt、引用、模型和模式均恢复。没有新增结果节点、生成任务或历史记录。
 - 用户随后明确产品增强：本项目Text目标必须接受Text、Image、Video、Audio四类上游，因此本项目最终矩阵为11允许/5禁止。该决定写入实施规格，但不改写TapNow当前Text只接受Image/Video直接连线的实测事实。
 - 完整实现计划位于`TAPNOW_UPSTREAM_INPUT_REPLICATION_PLAN.md`，状态为`PLANNED / NOT_IMPLEMENTED / NOT_ACCEPTANCE_PASS`。
+
+## 8.13 本项目多协议中转站真实目录与Video单节点（2026-08-04）
+
+本节是本项目自有Provider实现和用户验收证据，不是TapNow网页、接口或内部架构证据。
+
+- 优创真实Key与连接由用户在本机管理员页面配置和检查；完整Key没有进入聊天、本文档、浏览器响应、业务数据库或管理审计。
+- 实际增强目录`/v1/skills/models`返回101条，基础目录`/v1/models`返回55条。服务端按模型ID与能力合并去重后保存129条：文字55、图片17、视频50、音频7。用户确认分类筛选不再全部显示0，目录和草稿流程通过。
+- 已选Video模型先创建为未发布草稿，再由管理员手动发布；目录同步没有自动发布、改变默认模型或创建生成任务。结合零Provider自动门禁，`RELAY-001～005`正式PASS。
+- 用户随后主动创建真实Video任务`8275d86c-602e-42ab-b444-969224dea601`，模型协议为`media-generate`，第三方任务ID为`93467467`。事件为`queued→running→success`、attempt 1，对应1条真实Provider边界记录。
+- 结果素材`f5ae0f1d-0e97-4923-88ef-6a39f292eea6.mp4`为1,493,430字节，实际时长5.042秒，SHA-256为`969acbb31c7eed3ab82ecb3df88c7a2394fb5a1813ee094353a3dbeccbe9f412`；存储状态为私有OSS ready，账号历史中只有一条同ID记录。
+- 同一结果随后完成零费用刷新、服务重启恢复和任务/历史/媒体去重检查；task、attempt、events、asset、history哈希均保持稳定，任务、历史和媒体记录各自唯一。用户已确认单节点生成成功，因此`RELAY-010`正式PASS，不需要也没有重新付费生成。
+- 用户另行授权7次真实API自动验证，全部成功、无失败、无重复：OpenAI Chat task `ff1014f8-1e0a-415a-9ebe-7a5296a50c5f`；OpenAI Responses task `b2d27319-cc77-4528-a17b-fff282b03e9e`；Claude Messages task `f554282e-f332-4a6a-8f18-fb72bcf7bbda`；Gemini GenerateContent task `0be7fd67-c1e2-4c06-950d-76dcf46d573c`。
+- 两条真实图片链路分别为GPT Image task `b4bd07a5-9a2b-47f2-8d0f-59a369aa6e71`、asset `0f98c0b7-6ec8-470c-9840-0b94c2efaaa1`，以及通用`media-generate` task `2617ceee-acd7-4ccd-b2f9-cd44b3a3e4aa`、asset `12f84f21-0f2b-4c2e-836d-1b64f57dd5d0`；两者均为私有OSS ready。
+- Doubao TTS task `d8deb41b-0a7f-428c-8242-6603c12966cc`成功发布asset `8775c5e5-9a8e-4bcc-9d5d-4f3de68be4b2.mp3`，类型`audio/mpeg`、32,892字节、1.632秒；`emotion=auto`时没有持久化或发送`emotionScale`。重启后真实画布播放器可见并实际播放成功。
+- 收费Provider边界由1增至8，正好对应本批7次授权请求；本批结束后没有继续发起收费请求。安全删除自动证据只处理隔离草稿`relay-delete-fixture-20260804`，先归档后永久删除，已发布、默认及历史引用模型继续受保护。
+- 上述真实自动验证本身不等于用户可见`USER PASS`。用户后续在真实画布找到并一次性确认OpenAI Chat/Responses、Claude和Gemini四条文字结果，内容完整、刷新恢复且没有重复，因此`RELAY-006～008`正式PASS。`RELAY-009/011/012`继续USER_RECHECK，`INPUT-001～007`继续PARTIAL；Mureka Audio暂停和正式部署暂停均不改变。
+
+## 8.14 本项目搜索缩放、多选与打组回归（2026-08-04）
+
+本节是本项目代码、零费用自动检查和用户真实画布验收证据，不推断TapNow内部保存架构。
+
+- 搜索定位请求改为一次消费，不再在后续缩放中反复把画布拉回。节点、文字输入和已打开Creator上的缩放由画布统一接管；viewport保存与节点/edge图内容版本分开，纯缩放不再显示“画布正在保存”生成门禁或使Creator闪烁。
+- `m62-canvas-zoom-persistence`5/5、画布/文字/撤销/刷新组合37/37、入参/生成安全/迁移53/53通过，收费Provider请求0、未创建真实生成任务。用户实页确认搜索后缩放、节点/输入框上缩放、无保存提示和无闪烁通过。
+- TapNow对照中，多个已选节点只有一条画布级工具栏，并从其“打组”入口进入Group。本地旧问题是将`selected`同时解释为“多选成员”和“单节点编辑态”，导致每个节点都打开自己的工具栏、Creator、标题输入、播放器或resize chrome。
+- 本地已将选择成员与单节点编辑chrome分离，Text/Image/Video/Audio/Playlist/Group/Probe统一使用运行时选择上下文。多选只保留一条公共工具栏；画布非编辑区不产生浏览器原生蓝色文字选区，输入控件内`Cmd+A`仍只选文字。
+- “打组”不新建另一套Group。它继续调用已人工PASS的四周20px包围盒、相对坐标、整体移动、解组和持久化链路，只在全部已选项均为可打组的顶层普通节点时启用。建组、撤销建组、刷新、删除Group、撤销删除和再刷新均保持父子关系、edge和唯一性。
+- `m63-multiselect-group-ui`3/3、相关回归45/45、原缩放专项5/5、构建和绿地检查通过，收费Provider请求0、未创建真实生成任务。用户实页确认多选统一工具栏与打组生命周期通过；这只是对已PASS的`CANVAS-010/011`、`NODE-010/016`和`OPEN-020`做回归收口，不重做或扩大Group范围。
 
 ## 11. 已发现的开放冲突
 
