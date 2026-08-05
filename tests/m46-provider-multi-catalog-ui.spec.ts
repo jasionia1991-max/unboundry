@@ -633,7 +633,11 @@ test("large discovered catalogs stay searchable with the selected action always 
   await section.getByLabel("搜索发现模型").fill("target-commerce");
   await expect(section).toContainText("找到1个");
   await expect(section.locator(".provider-catalog-model-list > div")).toHaveCount(1);
-  await section.getByLabel("筛选节点类型").selectOption("text");
+  const capabilityFilter = section.getByLabel("筛选节点类型");
+  await capabilityFilter.click();
+  await capabilityFilter.locator("..")
+    .locator('[role="option"][data-value="text"]')
+    .click();
   await expect(section.locator(".provider-catalog-model-list > div")).toHaveCount(1);
   const targetCheckbox = section.getByRole("checkbox", {
     name: /Target Commerce Model/,

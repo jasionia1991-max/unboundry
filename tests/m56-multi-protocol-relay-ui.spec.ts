@@ -234,7 +234,11 @@ test("多协议中转站在Provider页面支持明确协议、批量导入和可
   await catalog.getByRole("button", { name: "查看发现模型" }).click();
   await expect(catalog.getByLabel("搜索发现模型")).toBeVisible();
   await expect(catalog.getByLabel("筛选节点类型")).toBeVisible();
-  await catalog.getByLabel("筛选调用协议").selectOption("openai-chat");
+  const protocolFilter = catalog.getByLabel("筛选调用协议");
+  await protocolFilter.click();
+  await protocolFilter.locator("..")
+    .locator('[role="option"][data-value="openai-chat"]')
+    .click();
   await expect(catalog.locator(".provider-catalog-model-list > div")).toHaveCount(1);
   await expect(
     catalog.locator("strong[title^='Commerce Assistant']"),
@@ -243,23 +247,25 @@ test("多协议中转站在Provider页面支持明确协议、批量导入和可
   await expect(checkbox).toHaveCSS("width", "16px");
   await expect(checkbox).toHaveCSS("height", "16px");
   await checkbox.check();
-  await catalog
-    .getByLabel(/Commerce Assistant.*调用协议/)
-    .selectOption("openai-responses");
+  const commerceProtocol = catalog.getByLabel(/Commerce Assistant.*调用协议/);
+  await commerceProtocol.click();
+  await commerceProtocol.locator("..")
+    .locator('[role="option"][data-value="openai-responses"]')
+    .click();
   const bulkBar = catalog.locator(".provider-catalog-bulk-bar");
   await expect(bulkBar).toContainText("已选1个／共3个");
   await expect(bulkBar).toHaveCSS("position", "sticky");
   await catalog.getByRole("button", { name: "同步模型" }).click();
-  await expect(
-    catalog.getByLabel(/Commerce Assistant.*调用协议/),
-  ).toHaveValue("");
+  await expect(commerceProtocol).toHaveAttribute("data-value", "");
+  await expect(commerceProtocol).toContainText("选择调用协议");
   await expect(catalog).toContainText("需要选择当前目录与节点类型兼容的调用协议");
   await expect(
     bulkBar.getByRole("button", { name: "添加到模型中心（1）" }),
   ).toBeDisabled();
-  await catalog
-    .getByLabel(/Commerce Assistant.*调用协议/)
-    .selectOption("openai-chat");
+  await commerceProtocol.click();
+  await commerceProtocol.locator("..")
+    .locator('[role="option"][data-value="openai-chat"]')
+    .click();
   await bulkBar.getByRole("button", { name: "添加到模型中心（1）" }).click();
   await expect.poll(() => importBody).toEqual({
     models: [{ discoveryId: "relay:commerce-text", providerProtocol: "openai-chat" }],
@@ -356,16 +362,24 @@ test("待识别目录模型可单独查看并在手动定类后进入对应分�
   );
   await catalog.getByRole("button", { name: "查看发现模型" }).click();
   const typeFilter = catalog.getByLabel("筛选节点类型");
-  await expect(typeFilter.locator('option[value="unknown"]')).toHaveText(
-    "待识别",
-  );
-  await typeFilter.selectOption("unknown");
+  await typeFilter.click();
+  const unknownOption = typeFilter.locator("..")
+    .locator('[role="option"][data-value="unknown"]');
+  await expect(unknownOption).toHaveText("待识别");
+  await unknownOption.click();
   await expect(catalog.locator(".provider-catalog-model-list > div"))
     .toHaveCount(1);
   await expect(catalog).toContainText("Opaque Model");
-  await catalog.getByLabel("Opaque Model节点类型").selectOption("image");
+  const opaqueCapability = catalog.getByLabel("Opaque Model节点类型");
+  await opaqueCapability.click();
+  await opaqueCapability.locator("..")
+    .locator('[role="option"][data-value="image"]')
+    .click();
   await expect(catalog).toContainText("没有符合当前搜索和类型条件的模型");
-  await typeFilter.selectOption("image");
+  await typeFilter.click();
+  await typeFilter.locator("..")
+    .locator('[role="option"][data-value="image"]')
+    .click();
   await expect(catalog.locator(".provider-catalog-model-list > div"))
     .toHaveCount(2);
   await expect(catalog).toContainText("Opaque Model");
@@ -774,7 +788,11 @@ test("模型中心对中转模型必须明确协议，并且只有可删除模�
   await page.getByPlaceholder("用户看到的模型名称").fill("新图片模型");
   await page.getByPlaceholder("内部模型编号").fill("vendor/new-image");
   await expect(createButton).toBeDisabled();
-  await page.getByLabel("调用协议", { exact: true }).selectOption("gpt-image");
+  const createProtocol = page.getByLabel("调用协议", { exact: true });
+  await createProtocol.click();
+  await createProtocol.locator("..")
+    .locator('[role="option"][data-value="gpt-image"]')
+    .click();
   await expect(createButton).toBeEnabled();
   await createButton.click();
   await expect.poll(() => createBody).toMatchObject({
@@ -792,9 +810,11 @@ test("模型中心对中转模型必须明确协议，并且只有可删除模�
   );
   await expect(protectedModel.getByRole("button", { name: "永久删除" })).toHaveCount(0);
   await protectedModel.getByRole("button", { name: "参数设置" }).click();
-  await protectedModel
-    .getByLabel("Protected Relay Text调用协议")
-    .selectOption("openai-chat");
+  const editProtocol = protectedModel.getByLabel("Protected Relay Text调用协议");
+  await editProtocol.click();
+  await editProtocol.locator("..")
+    .locator('[role="option"][data-value="openai-chat"]')
+    .click();
   await protectedModel.getByRole("button", { name: "保存参数设置" }).click();
   await expect.poll(() => patchBody).toMatchObject({
     providerProfileId: "relay-model-provider",

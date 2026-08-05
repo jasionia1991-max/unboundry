@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CanvasShell } from "./canvas/CanvasShell";
 import { ModelCatalogProvider } from "./models/ModelCatalog";
+import { GrayMenuSelect } from "./ui/GrayMenuSelect";
 import {
   defaultParameterSchema,
   isCustomParameterField,
@@ -1608,52 +1609,48 @@ function ProviderModelCatalogSection({
                           type="search"
                           value={catalogQuery}
                         />
-                        <select
-                          aria-label="筛选节点类型"
-                          onChange={(event) =>
-                            {
-                              setCatalogCapability(
-                                event.target.value as
+                        <GrayMenuSelect
+                          ariaLabel="筛选节点类型"
+                          onChange={(value) => {
+                            setCatalogCapability(
+                              value as "all" | "unknown" | ModelCapability,
+                            );
+                            setCatalogPage(1);
+                          }}
+                          options={[
+                            { label: "全部类型", value: "all" },
+                            { label: "文字", value: "text" },
+                            { label: "图片", value: "image" },
+                            { label: "视频", value: "video" },
+                            { label: "音频", value: "audio" },
+                            ...(details.models.some(
+                              (model) => model.capability === "unknown",
+                            )
+                              ? [{ label: "待识别", value: "unknown" }]
+                              : []),
+                          ]}
+                          value={catalogCapability}
+                        />
+                        {profile.driver === "multi-protocol-relay" && (
+                          <GrayMenuSelect
+                            ariaLabel="筛选调用协议"
+                            onChange={(value) => {
+                              setCatalogProtocol(
+                                value as
                                   | "all"
-                                  | "unknown"
-                                  | ModelCapability,
+                                  | Exclude<ProviderProtocol, "native">,
                               );
                               setCatalogPage(1);
-                            }
-                          }
-                          value={catalogCapability}
-                        >
-                          <option value="all">全部类型</option>
-                          <option value="text">文字</option>
-                          <option value="image">图片</option>
-                          <option value="video">视频</option>
-                          <option value="audio">音频</option>
-                          {details.models.some(
-                            (model) => model.capability === "unknown",
-                          ) && <option value="unknown">待识别</option>}
-                        </select>
-                        {profile.driver === "multi-protocol-relay" && (
-                          <select
-                            aria-label="筛选调用协议"
-                            onChange={(event) =>
-                              {
-                                setCatalogProtocol(
-                                  event.target.value as
-                                    | "all"
-                                    | Exclude<ProviderProtocol, "native">,
-                                );
-                                setCatalogPage(1);
-                              }
-                            }
+                            }}
+                            options={[
+                              { label: "全部协议", value: "all" },
+                              ...relayProviderProtocols.map((protocol) => ({
+                                label: providerProtocolLabels[protocol],
+                                value: protocol,
+                              })),
+                            ]}
                             value={catalogProtocol}
-                          >
-                            <option value="all">全部协议</option>
-                            {relayProviderProtocols.map((protocol) => (
-                              <option key={protocol} value={protocol}>
-                                {providerProtocolLabels[protocol]}
-                              </option>
-                            ))}
-                          </select>
+                          />
                         )}
                         <span>
                           共{details.models.length}个
@@ -1741,11 +1738,10 @@ function ProviderModelCatalogSection({
                                 </label>
                                 <div className="provider-catalog-row-controls">
                                   {model.capability === "unknown" ? (
-                                    <select
-                                      aria-label={`${model.displayName}节点类型`}
-                                      onChange={(event) => {
-                                        const nextCapability = event.target
-                                          .value as ModelCapability;
+                                    <GrayMenuSelect
+                                      ariaLabel={`${model.displayName}节点类型`}
+                                      onChange={(value) => {
+                                        const nextCapability = value as ModelCapability;
                                         setUnknownCapabilities((current) => ({
                                           ...current,
                                           [model.discoveryId]: nextCapability,
@@ -1766,38 +1762,37 @@ function ProviderModelCatalogSection({
                                           });
                                         }
                                       }}
+                                      options={[
+                                        { label: "文字", value: "text" },
+                                        { label: "图片", value: "image" },
+                                        { label: "视频", value: "video" },
+                                        { label: "音频", value: "audio" },
+                                      ]}
+                                      placeholder="选择节点类型"
                                       value={unknownCapabilities[model.discoveryId] ?? ""}
-                                    >
-                                      <option value="">选择节点类型</option>
-                                      <option value="text">文字</option>
-                                      <option value="image">图片</option>
-                                      <option value="video">视频</option>
-                                      <option value="audio">音频</option>
-                                    </select>
+                                    />
                                   ) : (
                                     <span className="provider-catalog-capability">
                                       {providerCatalogCapabilityLabel(model.capability)}
                                     </span>
                                   )}
                                   {profile.driver === "multi-protocol-relay" && (
-                                    <select
-                                      aria-label={`${model.displayName}调用协议`}
-                                      onChange={(event) =>
+                                    <GrayMenuSelect
+                                      ariaLabel={`${model.displayName}调用协议`}
+                                      onChange={(value) =>
                                         setSelectedProtocols((current) => ({
                                           ...current,
-                                          [model.discoveryId]: event.target.value as
+                                          [model.discoveryId]: value as
                                             Exclude<ProviderProtocol, "native">,
                                         }))
                                       }
+                                      options={protocolOptions.map((protocol) => ({
+                                        label: providerProtocolLabels[protocol],
+                                        value: protocol,
+                                      }))}
+                                      placeholder="选择调用协议"
                                       value={selectedProtocols[model.discoveryId] ?? ""}
-                                    >
-                                      <option value="">选择调用协议</option>
-                                      {protocolOptions.map((protocol) => (
-                                        <option key={protocol} value={protocol}>
-                                          {providerProtocolLabels[protocol]}
-                                        </option>
-                                      ))}
-                                    </select>
+                                    />
                                   )}
                                 </div>
                               </div>
@@ -2499,93 +2494,22 @@ function AdminParameterDefaultSelect({
   options: ModelParameterOption[];
   value: ModelParameterValue;
 }) {
-  const [open, setOpen] = useState(false);
-  const [placement, setPlacement] = useState<"down" | "up">("down");
-  const controlRef = useRef<HTMLDivElement>(null);
-  const selected = options.find((option) => option.value === value) ?? options[0];
-
-  useEffect(() => {
-    if (!open) return;
-    const closeOutside = (event: PointerEvent) => {
-      if (!controlRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const closeEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("pointerdown", closeOutside);
-    document.addEventListener("keydown", closeEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOutside);
-      document.removeEventListener("keydown", closeEscape);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const updatePlacement = () => {
-      const control = controlRef.current;
-      const menu = control?.querySelector<HTMLElement>(
-        ".admin-parameter-select-menu",
-      );
-      if (!control || !menu) return;
-      const controlBox = control.getBoundingClientRect();
-      const menuHeight = menu.getBoundingClientRect().height;
-      const spaceBelow = window.innerHeight - controlBox.bottom - 8;
-      const spaceAbove = controlBox.top - 8;
-      setPlacement(
-        spaceBelow < menuHeight && spaceAbove > spaceBelow ? "up" : "down",
-      );
-    };
-    updatePlacement();
-    window.addEventListener("resize", updatePlacement);
-    window.addEventListener("scroll", updatePlacement, true);
-    return () => {
-      window.removeEventListener("resize", updatePlacement);
-      window.removeEventListener("scroll", updatePlacement, true);
-    };
-  }, [open, options.length]);
-
   return (
-    <div
+    <GrayMenuSelect
+      ariaLabel={ariaLabel}
+      chevronClassName="admin-parameter-select-chevron"
       className="admin-parameter-select"
-      data-open={open ? "true" : "false"}
-      data-placement={placement}
-      ref={controlRef}
-    >
-      <button
-        aria-label={ariaLabel}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        className="admin-parameter-select-trigger"
-        onClick={() => setOpen((current) => !current)}
-        role="combobox"
-        type="button"
-      >
-        <span>{selected?.label ?? "未设置"}</span>
-        <span aria-hidden="true" className="admin-parameter-select-chevron" />
-      </button>
-      {open && (
-        <div className="admin-parameter-select-menu" role="listbox">
-          {options.map((option) => (
-            <button
-              aria-selected={option.value === value}
-              className="admin-parameter-select-option"
-              data-selected={option.value === value ? "true" : "false"}
-              key={String(option.value)}
-              onClick={() => {
-                onChange(option.value);
-                setOpen(false);
-              }}
-              role="option"
-              type="button"
-            >
-              <span>{option.label}</span>
-              {option.value === value && <span aria-hidden="true">✓</span>}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+      menuClassName="admin-parameter-select-menu"
+      onChange={(nextValue) => onChange(nextValue as ModelParameterValue)}
+      optionClassName="admin-parameter-select-option"
+      options={options.map((option) => ({
+        label: option.label,
+        value: String(option.value),
+      }))}
+      placeholder="未设置"
+      triggerClassName="admin-parameter-select-trigger"
+      value={String(value)}
+    />
   );
 }
 
@@ -3116,7 +3040,7 @@ function AdminModelParameterEditor({
       ? Math.min(providerMaximum, inputMaximum)
       : 0;
     const value = Math.max(0, Math.min(maximum, Math.round(Number(raw) || 0)));
-    const modes = Object.fromEntries(Object.entries(schema.referencePolicy.modes).map(([key, entry]) => [
+    const modes = Object.fromEntries(Object.entries(schema.referencePolicy.modes ?? {}).map(([key, entry]) => [
       key,
       key === mode
         ? { sets: entry.sets.map((set, setIndex) => setIndex === index ? { ...set, [kind]: value } : set) }
@@ -3127,7 +3051,7 @@ function AdminModelParameterEditor({
 
   const addReferenceSet = (mode: string) => {
     if (!schema.referencePolicy) return;
-    const current = schema.referencePolicy.modes[mode];
+    const current = schema.referencePolicy.modes?.[mode];
     if (!current || current.sets.length >= 4) return;
     saveReferencePolicy({
       ...schema.referencePolicy.modes,
@@ -3137,7 +3061,7 @@ function AdminModelParameterEditor({
 
   const removeReferenceSet = (mode: string, index: number) => {
     if (!schema.referencePolicy) return;
-    const current = schema.referencePolicy.modes[mode];
+    const current = schema.referencePolicy.modes?.[mode];
     if (!current || current.sets.length <= 1) return;
     saveReferencePolicy({
       ...schema.referencePolicy.modes,
@@ -3861,7 +3785,7 @@ function AdminModelParameterEditor({
         </div>}
         {schema.referencePolicy && (
           <div className="admin-model-reference-modes">
-            {Object.entries(schema.referencePolicy.modes).map(([mode, entry]) => {
+            {Object.entries(schema.referencePolicy.modes ?? {}).map(([mode, entry]) => {
               const modeLabel = inputMode?.options.find((option) => String(option.value) === mode)?.label ?? mode;
               return (
                 <div key={mode}>
@@ -4332,21 +4256,20 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
             {selectedProviderUsesRelay && (
               <label className="model-provider-protocol">
                 <span>调用协议</span>
-                <select
-                  aria-label="调用协议"
-                  onChange={(event) =>
-                    setProviderProtocol(event.target.value as ProviderProtocol | "")
+                <GrayMenuSelect
+                  ariaLabel="调用协议"
+                  onChange={(value) =>
+                    setProviderProtocol(value as ProviderProtocol | "")
                   }
-                  required
+                  options={relayProtocolsForCapability(capability).map(
+                    (protocol) => ({
+                      label: providerProtocolLabels[protocol],
+                      value: protocol,
+                    }),
+                  )}
+                  placeholder="请明确选择调用协议"
                   value={providerProtocol}
-                >
-                  <option value="">请明确选择调用协议</option>
-                  {relayProtocolsForCapability(capability).map((protocol) => (
-                    <option key={protocol} value={protocol}>
-                      {providerProtocolLabels[protocol]}
-                    </option>
-                  ))}
-                </select>
+                />
                 <small>协议由管理员明确配置，不根据模型名称猜测。</small>
               </label>
             )}
@@ -4690,24 +4613,22 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
                     )?.driver === "multi-protocol-relay" && (
                       <label className="model-provider-protocol">
                         <span>调用协议</span>
-                        <select
-                          aria-label={`${model.displayName}调用协议`}
-                          onChange={(event) =>
+                        <GrayMenuSelect
+                          ariaLabel={`${model.displayName}调用协议`}
+                          onChange={(value) =>
                             setEditingParameterProviderProtocol(
-                              event.target.value as ProviderProtocol | "",
+                              value as ProviderProtocol | "",
                             )
                           }
+                          options={relayProtocolsForCapability(
+                            model.capability,
+                          ).map((protocol) => ({
+                            label: providerProtocolLabels[protocol],
+                            value: protocol,
+                          }))}
+                          placeholder="请明确选择调用协议"
                           value={editingParameterProviderProtocol}
-                        >
-                          <option value="">请明确选择调用协议</option>
-                          {relayProtocolsForCapability(model.capability).map(
-                            (protocol) => (
-                              <option key={protocol} value={protocol}>
-                                {providerProtocolLabels[protocol]}
-                              </option>
-                            ),
-                          )}
-                        </select>
+                        />
                         <small>不根据模型名称自动判断协议。</small>
                       </label>
                     )}

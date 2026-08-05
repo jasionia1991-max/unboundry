@@ -306,13 +306,13 @@ test.describe.serial("compact upstream references stay one-row and zero Provider
     await expect(imageDetails.getByText(longProblem, { exact: true })).toBeVisible();
     await expect(creator.getByText(longProblem, { exact: true })).toHaveCount(1);
 
-    const role = imageDetails.getByRole("combobox", { name: `${imageTitle}角色` });
+    const role = imageDetails.getByRole("group", { name: `${imageTitle}角色` });
     await expect(role).toBeVisible();
-    await expect(role.locator("option")).toHaveCount(2);
-    await role.selectOption("subject");
+    await expect(role.locator('[role="radio"]')).toHaveCount(2);
+    await role.locator('[data-value="subject"]').click();
     await expect(references.locator('[data-input-kind="image"]'))
       .toHaveAttribute("data-input-role", "subject");
-    await role.selectOption("context-image");
+    await role.locator('[data-value="context-image"]').click();
 
     const moveBackward = imageDetails.getByRole("button", { name: `向前移动 ${imageTitle}` });
     const moveForward = imageDetails.getByRole("button", { name: `向后移动 ${imageTitle}` });

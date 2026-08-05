@@ -497,10 +497,8 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
 
     await cards.getByRole("button", { name: "查看引用 上游图片" }).click();
     const imageDetails = page.getByRole("dialog", { name: "上游图片引用详情" });
-    const imageRole = imageDetails.getByLabel("上游图片角色");
-    await imageRole.focus();
-    await imageRole.selectOption("subject");
-    await expect(imageRole).not.toBeFocused();
+    const imageRole = imageDetails.getByRole("group", { name: "上游图片角色" });
+    await imageRole.locator('[data-value="subject"]').click();
     await expect(cards.locator('[data-input-kind="image"]'))
       .toHaveAttribute("data-input-role", "subject");
     await expect.poll(async () => {

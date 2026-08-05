@@ -4,6 +4,7 @@ import type {
   NodeInputProblem,
   NodeInputRole,
 } from "../../../types/nodeInputs";
+import { InlineOptionGroup } from "../ui/InlineOptionGroup";
 import { useCreatorOverlayCoordinator } from "./CreatorOverlayCoordinator";
 
 const kindLabel = { audio: "音频", image: "图片", text: "文字", video: "视频" } as const;
@@ -313,21 +314,19 @@ export function UpstreamInputCards({
           <label className="upstream-input-role-row">
             <span>角色</span>
             {activeRoleChoices.length > 1 && onRoleChange ? (
-              <select
-                aria-label={`${activeInput.title}角色`}
-                className="upstream-input-role"
-                data-testid={`upstream-input-role-${activeInput.edgeId}`}
+              <InlineOptionGroup
+                ariaLabel={`${activeInput.title}角色`}
                 disabled={disabled}
-                onChange={(event) => {
-                  onRoleChange(activeInput.edgeId, event.target.value as NodeInputRole);
-                  event.currentTarget.blur();
+                onChange={(role) => {
+                  onRoleChange(activeInput.edgeId, role as NodeInputRole);
                 }}
+                options={activeRoleChoices.map((role) => ({
+                  label: roleLabel[role] ?? role,
+                  value: role,
+                }))}
+                testId={`upstream-input-role-${activeInput.edgeId}`}
                 value={activeInput.role}
-              >
-                {activeRoleChoices.map((role) => (
-                  <option key={role} value={role}>{roleLabel[role] ?? role}</option>
-                ))}
-              </select>
+              />
             ) : <strong>{roleLabel[activeInput.role] ?? activeInput.role}</strong>}
           </label>
           {activeDirectProblem && (

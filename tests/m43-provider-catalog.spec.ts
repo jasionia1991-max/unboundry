@@ -1164,7 +1164,11 @@ test("Ark catalog administration UI stays local and imports only reviewed drafts
     expect(geometry.horizontalOverflow).toBeLessThanOrEqual(1);
     expect(geometry.rowsContained).toBe(true);
   }
-  await catalogSection.getByLabel("Future Model节点类型").selectOption("video");
+  const futureModelCapability = catalogSection.getByLabel("Future Model节点类型");
+  await futureModelCapability.click();
+  await futureModelCapability.locator("..")
+    .locator('[role="option"][data-value="video"]')
+    .click();
   await catalogSection.getByRole("button", {
     name: "添加到模型中心（1）",
   }).click();
