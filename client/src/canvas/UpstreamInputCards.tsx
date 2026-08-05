@@ -1,8 +1,10 @@
+import { useEffect, useRef, useState } from "react";
 import type {
   ResolvedNodeInput,
   NodeInputProblem,
   NodeInputRole,
 } from "../../../types/nodeInputs";
+import { useCreatorOverlayCoordinator } from "./CreatorOverlayCoordinator";
 
 const kindLabel = { audio: "音频", image: "图片", text: "文字", video: "视频" } as const;
 const roleLabel: Record<string, string> = {
@@ -26,6 +28,53 @@ const stateLabel = {
   uploading: "上传中",
 } as const;
 
+function InputKindPreview({ input }: { input: ResolvedNodeInput }) {
+  if (input.kind === "image" && input.preview) {
+    return <img alt={input.title} draggable={false} src={input.preview} />;
+  }
+  if (input.kind === "video" && input.preview) {
+    return <video aria-hidden="true" muted playsInline preload="metadata" src={input.preview} />;
+  }
+  if (input.kind === "audio" && input.waveform?.length) {
+    return (
+      <span className="upstream-input-waveform">
+        {input.waveform.slice(0, 10).map((height, index) => (
+          <i key={index} style={{ height: `${Math.max(3, Math.min(16, height / 3))}px` }} />
+        ))}
+      </span>
+    );
+  }
+  if (input.kind === "text") {
+    return (
+      <svg aria-hidden="true" className="upstream-input-kind-icon" viewBox="0 0 20 20">
+        <path d="M5 6h10M5 10h8M5 14h6" />
+      </svg>
+    );
+  }
+  if (input.kind === "image") {
+    return (
+      <svg aria-hidden="true" className="upstream-input-kind-icon" viewBox="0 0 20 20">
+        <rect height="13" rx="2" width="15" x="2.5" y="3.5" />
+        <circle cx="13" cy="7.5" r="1.25" />
+        <path d="m4.5 14 4-4 3 3 1.5-1.5 2.5 2.5" />
+      </svg>
+    );
+  }
+  if (input.kind === "video") {
+    return (
+      <svg aria-hidden="true" className="upstream-input-kind-icon" viewBox="0 0 20 20">
+        <rect height="13" rx="2" width="15" x="2.5" y="3.5" />
+        <path d="m8 7 5 3-5 3Z" />
+      </svg>
+    );
+  }
+  return (
+    <svg aria-hidden="true" className="upstream-input-kind-icon" viewBox="0 0 20 20">
+      <path d="M4 11V9M7 14V6M10 16V4M13 13V7M16 11V9" />
+    </svg>
+  );
+}
+
 export function UpstreamInputCards({
   disabled,
   inputs,
@@ -47,122 +96,293 @@ export function UpstreamInputCards({
   roleOptions?: (input: ResolvedNodeInput) => readonly NodeInputRole[];
   testId?: string;
 }) {
+  const areaRef = useRef<HTMLDivElement>(null);
+  const [openEdgeId, setOpenEdgeId] = useState<string>();
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const [globalProblemOpen, setGlobalProblemOpen] = useState(false);
+  const announceOpen = useCreatorOverlayCoordinator(() => {
+    setOpenEdgeId(undefined);
+    setOverflowOpen(false);
+    setGlobalProblemOpen(false);
+  });
+  const hasOverflow = inputs.length > 4;
+  const hasAreaProblems = problems.some((problem) => !problem.edgeId);
+
+  useEffect(() => {
+    if (!openEdgeId || inputs.some((input) => input.edgeId === openEdgeId)) {
+      return;
+    }
+    setOpenEdgeId(undefined);
+  }, [inputs, openEdgeId]);
+
+  useEffect(() => {
+    if (hasOverflow || !overflowOpen) return;
+    setOverflowOpen(false);
+  }, [hasOverflow, overflowOpen]);
+
+  useEffect(() => {
+    if (hasAreaProblems || !globalProblemOpen) return;
+    setGlobalProblemOpen(false);
+  }, [globalProblemOpen, hasAreaProblems]);
+
+  useEffect(() => {
+    if (!openEdgeId && !overflowOpen && !globalProblemOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!areaRef.current?.contains(event.target as Node)) {
+        setOpenEdgeId(undefined);
+        setOverflowOpen(false);
+        setGlobalProblemOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", closeOutside, true);
+    return () => document.removeEventListener("pointerdown", closeOutside, true);
+  }, [globalProblemOpen, openEdgeId, overflowOpen]);
+
   if (!inputs.length) return null;
-  const areaProblem = problems.find((problem) => !problem.edgeId) ?? problems[0];
+
+  const inputProblem = (input: ResolvedNodeInput) => input.reason ?? problems.find(
+    (problem) => problem.edgeId === input.edgeId,
+  )?.message;
+  const visibleInputs = hasOverflow ? inputs.slice(0, 3) : inputs;
+  const overflowInputs = hasOverflow ? inputs.slice(3) : [];
+  const activeInput = inputs.find((input) => input.edgeId === openEdgeId);
+  const activeIndex = activeInput ? inputs.indexOf(activeInput) : -1;
+  const activeDirectProblem = activeInput ? inputProblem(activeInput) : undefined;
+  const activeConfiguredRoles = activeInput ? roleOptions?.(activeInput) ?? [] : [];
+  const activeRoleChoices = activeInput && activeConfiguredRoles.includes(activeInput.role)
+    ? activeConfiguredRoles
+    : activeInput
+      ? [activeInput.role, ...activeConfiguredRoles]
+      : [];
+  const activeVisibleState = activeInput?.compatibility === "blocked" && activeInput.state === "ready"
+    ? "当前模型不兼容"
+    : activeInput
+      ? stateLabel[activeInput.state]
+      : "";
+  const areaProblems = problems.filter((problem, problemIndex) =>
+    !problem.edgeId &&
+    problems.findIndex((candidate) => candidate.message === problem.message) === problemIndex);
+
+  const renderInput = (input: ResolvedNodeInput) => {
+    const directProblem = inputProblem(input);
+    const detailsOpen = openEdgeId === input.edgeId;
+    const detailsId = `upstream-input-details-${input.edgeId}`;
+    const visibleState = input.compatibility === "blocked" && input.state === "ready"
+      ? "当前模型不兼容"
+      : stateLabel[input.state];
+    const hasMediaPreview = (input.kind === "image" || input.kind === "video") && Boolean(input.preview);
+    return (
+      <div
+        className="upstream-input-card"
+        data-details-open={detailsOpen ? "true" : undefined}
+        data-input-compatibility={input.compatibility}
+        data-input-kind={input.kind}
+        data-input-role={input.role}
+        data-input-state={input.state}
+        data-testid={`upstream-input-${input.sourceNodeId}`}
+        key={input.edgeId}
+        title={directProblem ?? input.summary}
+      >
+        <button
+          aria-controls={detailsId}
+          aria-expanded={detailsOpen}
+          aria-label={`查看引用 ${input.title}`}
+          className="upstream-input-trigger"
+          onClick={() => {
+            if (openEdgeId !== input.edgeId) announceOpen();
+            setOverflowOpen(false);
+            setGlobalProblemOpen(false);
+            setOpenEdgeId((current) => current === input.edgeId ? undefined : input.edgeId);
+          }}
+          title={`${input.title} · ${visibleState}`}
+          type="button"
+        >
+          <span
+            className="upstream-input-preview"
+            data-has-media={hasMediaPreview ? "true" : "false"}
+            data-kind={input.kind}
+          >
+            <InputKindPreview input={input} />
+          </span>
+          <span
+            aria-hidden="true"
+            className="upstream-input-state-mark"
+            data-problem={
+              directProblem ||
+              input.compatibility === "blocked" ||
+              input.state === "invalid" ||
+              input.state === "missing"
+                ? "true"
+                : undefined
+            }
+            data-state={input.state}
+            title={visibleState}
+          />
+        </button>
+        <button
+          aria-label={`${removeLabel} ${input.title}`}
+          className="upstream-input-quick-remove"
+          disabled={disabled}
+          onClick={() => onRemove(input.edgeId)}
+          type="button"
+        >×</button>
+        {directProblem && !detailsOpen && (
+          <span
+            className="sr-only"
+            data-testid={`upstream-input-reason-${input.edgeId}`}
+            role="status"
+          >
+            {directProblem}
+          </span>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <div className="upstream-input-area" data-testid="upstream-inputs">
+    <div
+      className="upstream-input-area"
+      data-testid="upstream-input-area"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          setOpenEdgeId(undefined);
+          setOverflowOpen(false);
+          setGlobalProblemOpen(false);
+        }
+      }}
+      ref={areaRef}
+    >
       <div
         aria-label="上游引用"
         className="upstream-input-cards"
         data-testid={testId}
       >
-        {inputs.map((input, inputIndex) => {
-          const configuredRoles = roleOptions?.(input) ?? [];
-          const choices = configuredRoles.includes(input.role)
-            ? configuredRoles
-            : [input.role, ...configuredRoles];
-          const directProblem = input.reason ?? problems.find(
-            (problem) => problem.edgeId === input.edgeId,
-          )?.message;
-          const currentRoleLabel = roleLabel[input.role] ?? input.role;
-          return (
+        {visibleInputs.map(renderInput)}
+        {hasOverflow && (
+          <div className="upstream-input-overflow" data-open={overflowOpen ? "true" : undefined}>
+            <button
+              aria-controls={`${testId}-overflow-panel`}
+              aria-expanded={overflowOpen}
+              aria-label={`查看其余${overflowInputs.length}个引用`}
+              className="upstream-input-overflow-trigger"
+              data-testid="upstream-input-overflow-trigger"
+              onClick={() => {
+                if (!overflowOpen) announceOpen();
+                setOpenEdgeId(undefined);
+                setGlobalProblemOpen(false);
+                setOverflowOpen((current) => !current);
+              }}
+              type="button"
+            >+{overflowInputs.length}</button>
             <div
-              className="upstream-input-card"
-              data-input-compatibility={input.compatibility}
-              data-input-kind={input.kind}
-              data-input-role={input.role}
-              data-input-state={input.state}
-              data-testid={`upstream-input-${input.sourceNodeId}`}
-              key={input.edgeId}
-              title={directProblem ?? input.summary}
+              aria-label="其余上游引用"
+              className="upstream-input-overflow-panel"
+              hidden={!overflowOpen}
+              id={`${testId}-overflow-panel`}
+              role="dialog"
             >
-              <span className="upstream-input-preview" data-kind={input.kind}>
-                {input.kind === "image" && input.preview ? (
-                  <img alt={input.title} draggable={false} src={input.preview} />
-                ) : input.kind === "video" && input.preview ? (
-                  <video aria-hidden="true" muted playsInline preload="metadata" src={input.preview} />
-                ) : input.kind === "audio" && input.waveform?.length ? (
-                  <span className="upstream-input-waveform">
-                    {input.waveform.slice(0, 12).map((height, index) => (
-                      <i key={index} style={{ height: `${Math.max(3, Math.min(18, height / 3))}px` }} />
-                    ))}
-                  </span>
-                ) : (
-                  <span aria-hidden="true">{kindLabel[input.kind].slice(0, 1)}</span>
-                )}
-              </span>
-              <span className="upstream-input-copy">
-                <strong>{input.title}</strong>
-                <small title={input.kind === "text" ? input.summary : undefined}>
-                  {input.kind === "text" && input.summary ? `${input.summary} · ` : ""}
-                  #{input.order} · {choices.length > 1 && onRoleChange ? (
-                    <select
-                      aria-label={`${input.title}角色`}
-                      className="upstream-input-role"
-                      data-testid={`upstream-input-role-${input.edgeId}`}
-                      disabled={disabled}
-                      onChange={(event) => {
-                        onRoleChange(
-                          input.edgeId,
-                          event.target.value as NodeInputRole,
-                        );
-                        event.currentTarget.blur();
-                      }}
-                      value={input.role}
-                    >
-                      {choices.map((role) => (
-                        <option key={role} value={role}>
-                          {roleLabel[role] ?? role}
-                        </option>
-                      ))}
-                    </select>
-                  ) : currentRoleLabel} · {stateLabel[input.state]}
-                  {input.compatibility === "blocked" && input.state === "ready"
-                    ? " · 当前模型不兼容"
-                    : ""}
-                </small>
-                {directProblem && (
-                  <small
-                    className="upstream-input-card-reason"
-                    data-testid={`upstream-input-reason-${input.edgeId}`}
-                    role="status"
-                  >
-                    {directProblem}
-                  </small>
-                )}
-              </span>
-              <span className="upstream-input-actions">
-                {onMove && inputs.length > 1 && (
-                  <>
-                    <button
-                      aria-label={`向前移动 ${input.title}`}
-                      disabled={disabled || inputIndex === 0}
-                      onClick={() => onMove(input.edgeId, "backward")}
-                      type="button"
-                    >←</button>
-                    <button
-                      aria-label={`向后移动 ${input.title}`}
-                      disabled={disabled || inputIndex === inputs.length - 1}
-                      onClick={() => onMove(input.edgeId, "forward")}
-                      type="button"
-                    >→</button>
-                  </>
-                )}
-                <button
-                  aria-label={`${removeLabel} ${input.title}`}
-                  disabled={disabled}
-                  onClick={() => onRemove(input.edgeId)}
-                  type="button"
-                >×</button>
-              </span>
+              {overflowInputs.map(renderInput)}
             </div>
-          );
-        })}
+          </div>
+        )}
       </div>
-      {areaProblem && (
-        <div className="upstream-input-problem" data-testid="upstream-input-problem" role="status">
-          {areaProblem.message}
+      {activeInput && (
+        <div
+          aria-label={`${activeInput.title}引用详情`}
+          className="upstream-input-details"
+          data-testid={`upstream-input-details-${activeInput.edgeId}`}
+          id={`upstream-input-details-${activeInput.edgeId}`}
+          role="dialog"
+        >
+          <div className="upstream-input-details-heading">
+            <span>
+              <strong>{activeInput.title}</strong>
+              <small>
+                {kindLabel[activeInput.kind]} · #{activeInput.order} · {activeVisibleState}
+              </small>
+            </span>
+            <button
+              aria-label={`关闭 ${activeInput.title}引用详情`}
+              onClick={() => setOpenEdgeId(undefined)}
+              type="button"
+            >×</button>
+          </div>
+          {activeInput.summary && (
+            <p className="upstream-input-summary">{activeInput.summary}</p>
+          )}
+          <label className="upstream-input-role-row">
+            <span>角色</span>
+            {activeRoleChoices.length > 1 && onRoleChange ? (
+              <select
+                aria-label={`${activeInput.title}角色`}
+                className="upstream-input-role"
+                data-testid={`upstream-input-role-${activeInput.edgeId}`}
+                disabled={disabled}
+                onChange={(event) => {
+                  onRoleChange(activeInput.edgeId, event.target.value as NodeInputRole);
+                  event.currentTarget.blur();
+                }}
+                value={activeInput.role}
+              >
+                {activeRoleChoices.map((role) => (
+                  <option key={role} value={role}>{roleLabel[role] ?? role}</option>
+                ))}
+              </select>
+            ) : <strong>{roleLabel[activeInput.role] ?? activeInput.role}</strong>}
+          </label>
+          {activeDirectProblem && (
+            <p
+              className="upstream-input-card-reason"
+              data-testid={`upstream-input-reason-${activeInput.edgeId}`}
+              role="status"
+            >
+              {activeDirectProblem}
+            </p>
+          )}
+          {onMove && inputs.length > 1 && (
+            <div className="upstream-input-actions">
+              <button
+                aria-label={`向前移动 ${activeInput.title}`}
+                disabled={disabled || activeIndex === 0}
+                onClick={() => onMove(activeInput.edgeId, "backward")}
+                type="button"
+              >← 向前</button>
+              <button
+                aria-label={`向后移动 ${activeInput.title}`}
+                disabled={disabled || activeIndex === inputs.length - 1}
+                onClick={() => onMove(activeInput.edgeId, "forward")}
+                type="button"
+              >向后 →</button>
+            </div>
+          )}
         </div>
+      )}
+      {areaProblems.length > 0 && (
+        <details
+          className="upstream-input-global-problem"
+          data-testid="upstream-input-problem"
+          onToggle={(event) => {
+            const nextOpen = event.currentTarget.open;
+            if (nextOpen && !globalProblemOpen) {
+              announceOpen();
+              setOpenEdgeId(undefined);
+              setOverflowOpen(false);
+            }
+            if (nextOpen !== globalProblemOpen) setGlobalProblemOpen(nextOpen);
+          }}
+          open={globalProblemOpen}
+          role="status"
+        >
+          <summary title={areaProblems[0].message}>
+            <span aria-hidden="true">!</span>
+            <span>{areaProblems.length > 1 ? `${areaProblems.length}个输入问题` : "输入受阻"}</span>
+          </summary>
+          <div>
+            {areaProblems.map((problem) => (
+              <p key={`${problem.code}-${problem.message}`}>{problem.message}</p>
+            ))}
+          </div>
+        </details>
       )}
     </div>
   );

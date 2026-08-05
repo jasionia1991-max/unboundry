@@ -495,7 +495,9 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
     await expect(page.getByTestId("text-creator-prompt")).toHaveValue("本节点生成指令");
     await expect(page.getByTestId("upstream-input-problem")).toHaveCount(0);
 
-    const imageRole = cards.getByLabel("上游图片角色");
+    await cards.getByRole("button", { name: "查看引用 上游图片" }).click();
+    const imageDetails = page.getByRole("dialog", { name: "上游图片引用详情" });
+    const imageRole = imageDetails.getByLabel("上游图片角色");
     await imageRole.focus();
     await imageRole.selectOption("subject");
     await expect(imageRole).not.toBeFocused();
@@ -519,7 +521,9 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
       })?.inputRole;
     }).toBe("context-image");
 
-    await cards.getByRole("button", { name: "向前移动 上游音频" }).click();
+    await cards.getByRole("button", { name: "查看引用 上游音频" }).click();
+    let audioDetails = page.getByRole("dialog", { name: "上游音频引用详情" });
+    await audioDetails.getByRole("button", { name: "向前移动 上游音频" }).click();
     await expect(cards.locator("[data-input-kind]").nth(2))
       .toHaveAttribute("data-input-kind", "audio");
     await expect.poll(async () => {
@@ -540,7 +544,9 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
     await page.locator('.react-flow__node[data-id="p2-target-text"]').click();
     await expect(cards.locator("[data-input-kind]").nth(2))
       .toHaveAttribute("data-input-kind", "audio");
-    await cards.getByRole("button", { name: "向后移动 上游音频" }).click();
+    await cards.getByRole("button", { name: "查看引用 上游音频" }).click();
+    audioDetails = page.getByRole("dialog", { name: "上游音频引用详情" });
+    await audioDetails.getByRole("button", { name: "向后移动 上游音频" }).click();
     await expect(cards.locator("[data-input-kind]").nth(2))
       .toHaveAttribute("data-input-kind", "video");
     await expect.poll(async () => {
@@ -548,7 +554,7 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
       const document = await response.json() as CanvasDocument;
       return document.edges.map((edge) => (edge.data as { inputOrder?: number }).inputOrder);
     }).toEqual([1, 2, 3, 4]);
-    await cards.getByRole("button", { name: "向前移动 上游音频" }).click();
+    await audioDetails.getByRole("button", { name: "向前移动 上游音频" }).click();
     await page.keyboard.press("Meta+z");
     await expect(cards.locator("[data-input-kind]").nth(2))
       .toHaveAttribute("data-input-kind", "video");
@@ -557,6 +563,7 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
       const document = await response.json() as CanvasDocument;
       return document.edges.map((edge) => (edge.data as { inputOrder?: number }).inputOrder);
     }).toEqual([1, 2, 3, 4]);
+    await audioDetails.getByRole("button", { name: "关闭 上游音频引用详情" }).click();
 
     const modelControl = page.getByTestId("text-model-control");
     await expect(modelControl.getByRole("combobox")).toContainText(compatibleModelName);
@@ -569,7 +576,8 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
       await expect(cards.locator(`[data-input-kind="${kind}"]`))
         .toHaveAttribute("data-input-compatibility", "blocked");
     }
-    await expect(page.getByTestId("upstream-input-problem"))
+    await cards.getByRole("button", { name: "查看引用 上游图片" }).click();
+    await expect(page.getByTestId("upstream-input-reason-p2-edge-image"))
       .toContainText("当前模型不支持image类型上游");
 
     await cards.getByRole("button", { name: "删除引用 上游音频" }).click();

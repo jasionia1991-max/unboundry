@@ -211,7 +211,9 @@ test("Audio Text card, Prompt merge, independent lyrics and delete undo reload s
       .toHaveValue(lyrics);
     await mainParameterTrigger.click();
 
-    const role = creator.getByRole("combobox", { name: "配乐母版角色" });
+    await card.getByRole("button", { name: "查看引用 配乐母版" }).click();
+    const role = creator.getByRole("dialog", { name: "配乐母版引用详情" })
+      .getByRole("combobox", { name: "配乐母版角色" });
     await role.selectOption("context-text");
     await expect(card).toHaveAttribute("data-input-role", "context-text");
 

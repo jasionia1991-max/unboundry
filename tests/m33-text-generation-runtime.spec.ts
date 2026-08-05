@@ -657,7 +657,10 @@ test("a persisted pending Text task replaces old content after refresh without a
     await expect(restoredDownstreamCards).toHaveCount(1);
     await expect(restoredDownstreamCards)
       .toHaveAttribute("data-input-state", "ready");
-    await expect(restoredDownstreamCards)
+    await restoredDownstreamCards
+      .getByRole("button", { name: "查看引用 刷新恢复目标" })
+      .click();
+    await expect(page.getByRole("dialog", { name: "刷新恢复目标引用详情" }))
       .toContainText("刷新恢复的新商品描述");
     await expect.poll(async () => {
       const response = await request.get("/api/canvas/default");

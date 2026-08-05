@@ -2997,7 +2997,6 @@ export function CanvasSurface({
               className: [edge.className, "connected-to-selected-node"]
                 .filter(Boolean)
                 .join(" "),
-              zIndex: Math.max(edge.zIndex ?? 0, 1001),
             }
           : edge,
       )
@@ -3289,6 +3288,7 @@ export function CanvasSurface({
         edgeTypes={edgeTypes}
         edgesReconnectable={false}
         elementsSelectable={!agentReferenceMode}
+        elevateEdgesOnSelect={false}
         elevateNodesOnSelect
         isValidConnection={isValidConnection}
         maxZoom={2}
@@ -3604,6 +3604,34 @@ export function CanvasSurface({
           size={1}
           variant={BackgroundVariant.Dots}
         />
+        {batchDrag && (
+          <svg
+            aria-hidden="true"
+            className="canvas-connection-preview batch-connection-preview"
+            data-testid="batch-connection-preview"
+          >
+            {batchDrag.sources.map((source) => {
+              const middleX = (source.x + batchDrag.cursor.x) / 2;
+              return (
+                <path
+                  d={`M${source.x},${source.y} C${middleX},${source.y} ${middleX},${batchDrag.cursor.y} ${batchDrag.cursor.x},${batchDrag.cursor.y}`}
+                  key={source.id}
+                />
+              );
+            })}
+          </svg>
+        )}
+        {sourceConnectMenu && sourceMenuAnchor && (
+          <svg
+            aria-hidden="true"
+            className="canvas-connection-preview source-connect-preview"
+            data-testid="source-connect-preview"
+          >
+            <path
+              d={`M${sourceMenuAnchor.x},${sourceMenuAnchor.y} C${(sourceMenuAnchor.x + sourceConnectMenu.drop.x) / 2},${sourceMenuAnchor.y} ${(sourceMenuAnchor.x + sourceConnectMenu.drop.x) / 2},${sourceConnectMenu.drop.y} ${sourceConnectMenu.drop.x},${sourceConnectMenu.drop.y}`}
+            />
+          </svg>
+        )}
         <ConnectionEscapeGuard />
         {minimapOpen && (
           <MiniMap
@@ -3914,23 +3942,6 @@ export function CanvasSurface({
           )}
         </div>
       )}
-      {batchDrag && (
-        <svg
-          aria-hidden="true"
-          className="batch-connection-preview"
-          data-testid="batch-connection-preview"
-        >
-          {batchDrag.sources.map((source) => {
-            const middleX = (source.x + batchDrag.cursor.x) / 2;
-            return (
-              <path
-                d={`M${source.x},${source.y} C${middleX},${source.y} ${middleX},${batchDrag.cursor.y} ${batchDrag.cursor.x},${batchDrag.cursor.y}`}
-                key={source.id}
-              />
-            );
-          })}
-        </svg>
-      )}
       {batchAnchor && (
         <button
           aria-label="连接所有已选节点"
@@ -4043,50 +4054,39 @@ export function CanvasSurface({
         </div>
       )}
       {sourceConnectMenu && sourceMenuAnchor && (
-        <>
-          <svg
-            aria-hidden="true"
-            className="source-connect-preview"
-            data-testid="source-connect-preview"
-          >
-            <path
-              d={`M${sourceMenuAnchor.x},${sourceMenuAnchor.y} C${(sourceMenuAnchor.x + sourceConnectMenu.drop.x) / 2},${sourceMenuAnchor.y} ${(sourceMenuAnchor.x + sourceConnectMenu.drop.x) / 2},${sourceConnectMenu.drop.y} ${sourceConnectMenu.drop.x},${sourceConnectMenu.drop.y}`}
-            />
-          </svg>
-          <div
-            aria-label={`${sourceConnectMenu.kind} 来源操作`}
-            className="source-connect-menu nodrag nopan"
-            data-source-kind={sourceConnectMenu.kind}
-            data-testid="source-connect-menu"
-            role="menu"
-            style={{
-              left: sourceConnectMenu.drop.x,
-              top: sourceConnectMenu.drop.y,
-            }}
-          >
-            <div className="source-connect-menu-title">引用该节点生成</div>
-            <div className="source-connect-menu-items">
-              {sourceMenuItems[sourceConnectMenu.kind].map((item) => (
-                <button key={item.label} role="menuitem" type="button">
-                  <span className="source-connect-menu-icon">
-                    <SourceMenuIcon name={item.icon} />
+        <div
+          aria-label={`${sourceConnectMenu.kind} 来源操作`}
+          className="source-connect-menu nodrag nopan"
+          data-source-kind={sourceConnectMenu.kind}
+          data-testid="source-connect-menu"
+          role="menu"
+          style={{
+            left: sourceConnectMenu.drop.x,
+            top: sourceConnectMenu.drop.y,
+          }}
+        >
+          <div className="source-connect-menu-title">引用该节点生成</div>
+          <div className="source-connect-menu-items">
+            {sourceMenuItems[sourceConnectMenu.kind].map((item) => (
+              <button key={item.label} role="menuitem" type="button">
+                <span className="source-connect-menu-icon">
+                  <SourceMenuIcon name={item.icon} />
+                </span>
+                <span className="source-connect-menu-copy">
+                  <span className="source-connect-menu-label">
+                    {item.label}
+                    {"beta" in item && item.beta && (
+                      <span className="source-connect-menu-beta">Beta</span>
+                    )}
                   </span>
-                  <span className="source-connect-menu-copy">
-                    <span className="source-connect-menu-label">
-                      {item.label}
-                      {"beta" in item && item.beta && (
-                        <span className="source-connect-menu-beta">Beta</span>
-                      )}
-                    </span>
-                    <span className="source-connect-menu-description">
-                      {item.description}
-                    </span>
+                  <span className="source-connect-menu-description">
+                    {item.description}
                   </span>
-                </button>
-              ))}
-            </div>
+                </span>
+              </button>
+            ))}
           </div>
-        </>
+        </div>
       )}
       {activePlaylist && (
         <div

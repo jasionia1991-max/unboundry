@@ -1,4 +1,6 @@
+import { useState } from "react";
 import type { GenerationTaskKind } from "../generation/generationTasks";
+import { useCreatorOverlayCoordinator } from "./CreatorOverlayCoordinator";
 
 /**
  * Real-canvas runtime blockers are visible without changing the accepted
@@ -14,15 +16,26 @@ export function GenerationAvailabilityNotice({
   kind: GenerationTaskKind;
   reason?: string;
 }) {
+  const [open, setOpen] = useState(false);
+  const announceOpen = useCreatorOverlayCoordinator(() => setOpen(false));
   const message = reason?.trim() ?? "";
   if (canvasId !== "default" || !message) return null;
   return (
-    <div
-      className="upstream-input-problem generation-availability-notice"
+    <details
+      className="generation-availability-notice"
       data-testid={`${kind}-generation-unavailable`}
+      onToggle={(event) => {
+        const nextOpen = event.currentTarget.open;
+        if (nextOpen && !open) announceOpen();
+        if (nextOpen !== open) setOpen(nextOpen);
+      }}
+      open={open}
       role="status"
     >
-      当前无法生成：{message}
-    </div>
+      <summary aria-label="暂不可生成" title={`当前无法生成：${message}`}>
+        <span aria-hidden="true" />
+      </summary>
+      <p>当前无法生成：{message}</p>
+    </details>
   );
 }

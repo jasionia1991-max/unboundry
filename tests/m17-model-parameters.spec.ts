@@ -567,10 +567,10 @@ test("text node shows connected multimodal inputs, removes only the selected edg
   ).toHaveCount(0);
   const inputs = page.getByTestId("text-upstream-inputs");
   await expect(inputs.locator(":scope > div")).toHaveCount(4);
-  await expect(inputs).toContainText("文字资料");
-  await expect(inputs).toContainText("图片资料");
-  await expect(inputs).toContainText("视频资料");
-  await expect(inputs).toContainText("音频资料");
+  for (const title of ["文字资料", "图片资料", "视频资料", "音频资料"]) {
+    await expect(inputs.getByRole("button", { name: `查看引用 ${title}` }))
+      .toBeVisible();
+  }
   await expect(page.getByRole("button", { name: "Generate" })).toBeDisabled();
   await inputs.getByRole("button", { name: "删除引用 视频资料" }).click();
   await expect(inputs.locator(":scope > div")).toHaveCount(3);

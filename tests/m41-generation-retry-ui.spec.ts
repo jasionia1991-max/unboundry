@@ -555,15 +555,17 @@ for (const kind of ["image", "video"] as const) {
 }
 
 test("relay audio exposes local-only cancellation while Mureka remains unchanged", async ({
+  baseURL,
   page,
   request,
 }) => {
   let cancelled = false;
   let cancelRequests = 0;
   const externalRequests: string[] = [];
+  const localOrigin = new URL(baseURL!).origin;
   page.on("request", (outbound) => {
     const url = new URL(outbound.url());
-    if (url.origin !== "http://127.0.0.1:4173") {
+    if (url.origin !== localOrigin) {
       externalRequests.push(outbound.url());
     }
   });

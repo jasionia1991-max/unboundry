@@ -968,8 +968,8 @@ test("first ready Image edge switches an Image target mode with the edge and per
     .toBeVisible();
   const cards = page.getByTestId("image-creator-references");
   await expect(cards.locator(":scope > div")).toHaveCount(2);
-  await expect(cards).toContainText("生成指令");
-  await expect(cards).toContainText("参考图片");
+  await expect(cards.locator('[data-input-role="instruction"]')).toHaveCount(1);
+  await expect(cards.locator('[data-input-role="reference-image"]')).toHaveCount(1);
   await expect(page.getByTestId("image-final-prompt")).toContainText("母版 + 本节点补充");
 
   await page.keyboard.press("Meta+z");
@@ -1042,8 +1042,8 @@ test("Image Text+Image input cards merge, delete, undo and survive refresh with 
   );
   const cards = page.getByTestId("image-creator-references");
   await expect(cards.locator(":scope > div")).toHaveCount(2);
-  await expect(cards).toContainText("生成指令");
-  await expect(cards).toContainText("参考图片");
+  await expect(cards.locator('[data-input-role="instruction"]')).toHaveCount(1);
+  await expect(cards.locator('[data-input-role="reference-image"]')).toHaveCount(1);
   await expect(page.getByTestId("image-final-prompt")).toContainText("使用上游母版");
   await expect(page.getByTestId("image-final-prompt")).toContainText("电商白底产品图");
 
