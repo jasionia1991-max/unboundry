@@ -26,6 +26,10 @@ function addColumnIfMissing(
   if (!sqlIdentifier.test(tableName) || !sqlIdentifier.test(columnName)) {
     throw new Error("Unsafe migration identifier");
   }
+  const table = database
+    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`)
+    .get(tableName);
+  if (!table) return;
   const columns = database
     .prepare(`PRAGMA table_info("${tableName}")`)
     .all() as Array<{ name: string }>;

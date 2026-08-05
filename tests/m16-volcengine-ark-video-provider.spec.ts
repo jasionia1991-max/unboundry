@@ -259,6 +259,64 @@ test("Seedance Mini rejects unsupported parameters before any Provider request",
   expect(calls).toBe(0);
 });
 
+test("Seedance adapter limits are model-driven so future Seedance releases do not require adapter edits", async () => {
+  const limits = {
+    counts: { audio: 3, image: 9, video: 3 },
+    durationMax: 30,
+    durationMin: 4,
+    maxBytes: {
+      audio: 30 * 1024 * 1024,
+      image: 20 * 1024 * 1024,
+      video: 200 * 1024 * 1024,
+    },
+    ratios: ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9"],
+    resolutions: ["480p", "720p", "1080p"],
+  };
+  let body: Record<string, unknown> | undefined;
+  const created = await createVolcengineArkVideoTask(
+    profile,
+    {
+      duration: 30,
+      limits,
+      model: "doubao-seedance-2-5-260628",
+      prompt: "未来Seedance模型",
+      ratio: "16:9",
+      resolution: "1080p",
+    },
+    async (_input, init) => {
+      body = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({ id: "cgt-future-001" }), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      });
+    },
+  );
+  expect(created).toEqual({ id: "cgt-future-001" });
+  expect(body).toMatchObject({
+    duration: 30,
+    model: "doubao-seedance-2-5-260628",
+    ratio: "16:9",
+    resolution: "1080p",
+  });
+  let calls = 0;
+  await expect(createVolcengineArkVideoTask(
+    profile,
+    {
+      duration: 31,
+      limits,
+      model: "doubao-seedance-2-5-260628",
+      prompt: "超上限",
+      ratio: "16:9",
+      resolution: "1080p",
+    },
+    async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ id: "must-not-run" }), { status: 200 });
+    },
+  )).rejects.toMatchObject({ code: "FORMAT" });
+  expect(calls).toBe(0);
+});
+
 test("Seedance Mini status and cancellation use the original Provider task", async () => {
   const calls: Array<{ method: string; url: string }> = [];
   const fetcher: typeof fetch = async (input, init) => {

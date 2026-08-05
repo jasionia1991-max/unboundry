@@ -1,7 +1,9 @@
 import {
   defaultParameterValues,
   referenceSetsForValues,
+  seedance2ReferenceMediaRules,
   type ModelParameterCondition,
+  type ModelReferenceMediaRules,
   type ModelParameterSchema,
   type ModelParameterValue,
 } from "./modelParameters";
@@ -680,7 +682,28 @@ export function resolveNodeInputs(input: {
     }
   }
 
+  const referenceMediaRules = input.modelSchema?.referenceMediaRules;
   if (input.mediaInputPolicy === "seedance-2") {
+    const rules: ModelReferenceMediaRules =
+      referenceMediaRules ?? seedance2ReferenceMediaRules;
+    const mediaFormatLabel = (contentType: string) => {
+      if (contentType === "audio/mpeg") return "MP3";
+      if (contentType === "audio/wav") return "WAV";
+      if (contentType === "video/mp4") return "MP4";
+      if (contentType === "image/png") return "PNG";
+      return contentType;
+    };
+    const durationLabel = (rule: {
+      maxDurationSeconds?: number;
+      minDurationSeconds?: number;
+    }) => rule.minDurationSeconds !== undefined &&
+        rule.maxDurationSeconds !== undefined
+      ? `${rule.minDurationSeconds}至${rule.maxDurationSeconds}秒之间`
+      : rule.minDurationSeconds !== undefined
+        ? `至少${rule.minDurationSeconds}秒`
+        : rule.maxDurationSeconds !== undefined
+          ? `不超过${rule.maxDurationSeconds}秒`
+          : undefined;
     const policyProblem = (item: ResolvedNodeInput, message: string) => {
       blockInputs([item], message);
       problems.push({ code: "INVALID", edgeId: item.edgeId, message });
@@ -703,6 +726,8 @@ export function resolveNodeInputs(input: {
     let base64Bytes = 32 * 1_024 +
       new TextEncoder().encode(policyPrompt).byteLength;
     for (const item of policyInputs) {
+      const rule = rules[item.kind as "audio" | "image" | "video"];
+      if (!rule) continue;
       if (
         item.metadataStatus !== "ready" ||
         !Number.isSafeInteger(item.byteSize) ||
@@ -713,58 +738,74 @@ export function resolveNodeInputs(input: {
         policyProblem(item, `${item.title}正在等待服务端确认素材格式、大小和时长`);
         continue;
       }
-      const supported = item.kind === "image"
-        ? item.contentType === "image/png"
-        : item.kind === "video"
-          ? item.contentType === "video/mp4"
-          : item.contentType === "audio/mpeg" || item.contentType === "audio/wav";
-      if (!supported) {
+      if (!rule.contentTypes.includes(item.contentType)) {
         policyProblem(
           item,
           item.kind === "audio"
-            ? `${item.title}不是当前视频模型支持的MP3或WAV`
+            ? `${item.title}不是当前视频模型支持的${rule.contentTypes.map(mediaFormatLabel).join("或")}`
             : `${item.title}的格式不受当前视频模型支持`,
         );
         continue;
       }
-      const maximumBytes = item.kind === "video"
-        ? 200 * 1_024 * 1_024
-        : item.kind === "audio"
-          ? 15 * 1_024 * 1_024
-          : 20 * 1_024 * 1_024;
-      if (item.byteSize > maximumBytes) {
+      if (item.byteSize > rule.maxBytes) {
         policyProblem(
           item,
           item.kind === "video"
-            ? `${item.title}超过单个参考视频200MB上限`
+            ? `${item.title}超过单个参考视频${Math.round(rule.maxBytes / (1024 * 1024))}MB上限`
             : item.kind === "audio"
-              ? `${item.title}超过单个参考音频15MB上限`
+              ? `${item.title}超过单个参考音频${Math.round(rule.maxBytes / (1024 * 1024))}MB上限`
               : `${item.title}超过本项目图片安全上限`,
         );
         continue;
       }
       if (item.kind === "video" || item.kind === "audio") {
+        const durationRule = rule as {
+          maxDurationSeconds?: number;
+          maxTotalDurationSeconds?: number;
+          minDurationSeconds?: number;
+        };
         if (
-          !Number.isFinite(item.durationSeconds) ||
-          item.durationSeconds! < 2 ||
-          item.durationSeconds! > 15
+          durationRule.minDurationSeconds !== undefined ||
+          durationRule.maxDurationSeconds !== undefined
         ) {
-          policyProblem(
-            item,
-            `${item.title}时长必须在2至15秒之间`,
-          );
-          continue;
+          const minimum = durationRule.minDurationSeconds ?? 0;
+          const maximum =
+            durationRule.maxDurationSeconds ?? Number.POSITIVE_INFINITY;
+          if (
+            !Number.isFinite(item.durationSeconds) ||
+            item.durationSeconds! < minimum ||
+            item.durationSeconds! > maximum
+          ) {
+            const label = durationLabel(durationRule) ?? "符合模型要求";
+            policyProblem(
+              item,
+              `${item.title}时长必须在${label}`,
+            );
+            continue;
+          }
         }
         if (item.kind === "video") {
           videoDuration += item.durationSeconds!;
-          if (videoDuration > 15) {
-            policyProblem(item, `${item.title}使参考视频总时长超过15秒`);
+          if (
+            durationRule.maxTotalDurationSeconds !== undefined &&
+            videoDuration > durationRule.maxTotalDurationSeconds
+          ) {
+            policyProblem(
+              item,
+              `${item.title}使参考视频总时长超过${durationRule.maxTotalDurationSeconds}秒`,
+            );
             continue;
           }
         } else {
           audioDuration += item.durationSeconds!;
-          if (audioDuration > 15) {
-            policyProblem(item, `${item.title}使参考音频总时长超过15秒`);
+          if (
+            durationRule.maxTotalDurationSeconds !== undefined &&
+            audioDuration > durationRule.maxTotalDurationSeconds
+          ) {
+            policyProblem(
+              item,
+              `${item.title}使参考音频总时长超过${durationRule.maxTotalDurationSeconds}秒`,
+            );
             continue;
           }
         }
@@ -785,7 +826,11 @@ export function resolveNodeInputs(input: {
         }
       }
     }
-    if (audioDuration > 0 && !hasVisualReference) {
+    if (
+      rules.audioRequiresVisual === true &&
+      audioDuration > 0 &&
+      !hasVisualReference
+    ) {
       const firstAudio = policyInputs.find((item) => item.kind === "audio");
       const message = "参考音频不能单独用于当前视频模型，请至少再连接一个图片或视频";
       if (firstAudio) policyProblem(firstAudio, message);

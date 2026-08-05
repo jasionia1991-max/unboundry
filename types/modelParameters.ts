@@ -111,6 +111,21 @@ export type ModelReferencePolicy = {
   modes: Record<string, ModelReferenceMode>;
 };
 
+export type ModelReferenceMediaRule = {
+  contentTypes: string[];
+  maxBytes: number;
+  maxDurationSeconds?: number;
+  maxTotalDurationSeconds?: number;
+  minDurationSeconds?: number;
+};
+
+export type ModelReferenceMediaRules = {
+  audio?: ModelReferenceMediaRule;
+  audioRequiresVisual?: boolean;
+  image?: ModelReferenceMediaRule;
+  video?: ModelReferenceMediaRule;
+};
+
 /**
  * Version 2 is deliberately provider-neutral. The browser only stores keys from
  * this registry; a server-side Provider adapter remains responsible for mapping
@@ -121,6 +136,7 @@ export type ModelParameterSchema = {
   groups: ModelParameterGroup[];
   referenceInputs: ModelReferenceInputs;
   inputPolicy?: ModelNodeInputPolicy;
+  referenceMediaRules?: ModelReferenceMediaRules;
   referencePolicy?: ModelReferencePolicy;
   upstreamInputs?: ModelUpstreamInputs;
   version: 2;
@@ -483,12 +499,16 @@ function schema(
   referencePolicy?: ModelReferencePolicy,
   upstreamInputs?: ModelUpstreamInputs,
   inputPolicy?: ModelNodeInputPolicy,
+  referenceMediaRules?: ModelReferenceMediaRules,
 ): ModelParameterSchema {
   return {
     fields,
     groups: defaultParameterGroups.map((group) => ({ ...group })),
     inputPolicy,
     referenceInputs: { ...referenceInputs },
+    ...(referenceMediaRules
+      ? { referenceMediaRules: cleanReferenceMediaRules(referenceMediaRules) }
+      : {}),
     referencePolicy,
     upstreamInputs,
     version: 2,
@@ -582,6 +602,138 @@ function relayDoubaoTtsParameterFields() {
 
 function relayDoubaoTtsParameterSchema() {
   return schema(relayDoubaoTtsParameterFields());
+}
+
+/**
+ * Official Seedance 2.0 reference-material contract used as both the default
+ * and the Provider-side ceiling for Volcengine ARK Seedance video models.
+ */
+export const seedance2ReferenceMediaRules: ModelReferenceMediaRules = {
+  audio: {
+    contentTypes: ["audio/mpeg", "audio/wav"],
+    maxBytes: 15 * 1024 * 1024,
+    maxDurationSeconds: 15,
+    maxTotalDurationSeconds: 15,
+    minDurationSeconds: 2,
+  },
+  audioRequiresVisual: true,
+  image: {
+    contentTypes: ["image/png"],
+    maxBytes: 20 * 1024 * 1024,
+  },
+  video: {
+    contentTypes: ["video/mp4"],
+    maxBytes: 200 * 1024 * 1024,
+    maxDurationSeconds: 15,
+    maxTotalDurationSeconds: 15,
+    minDurationSeconds: 2,
+  },
+};
+
+/**
+ * Provider-family ceiling for Volcengine ARK Seedance video models. Individual
+ * model schemas may tighten these values; the ceiling only blocks values that
+ * no current Seedance model is expected to accept.
+ */
+export const seedanceFamilyReferenceMediaRules: ModelReferenceMediaRules = {
+  audio: {
+    contentTypes: ["audio/mpeg", "audio/wav"],
+    maxBytes: 30 * 1024 * 1024,
+    maxDurationSeconds: 30,
+    maxTotalDurationSeconds: 30,
+    minDurationSeconds: 2,
+  },
+  audioRequiresVisual: true,
+  image: {
+    contentTypes: ["image/png"],
+    maxBytes: 20 * 1024 * 1024,
+  },
+  video: {
+    contentTypes: ["video/mp4"],
+    maxBytes: 200 * 1024 * 1024,
+    maxDurationSeconds: 30,
+    maxTotalDurationSeconds: 30,
+    minDurationSeconds: 2,
+  },
+};
+
+function seedanceParameterSchema(mini: boolean): ModelParameterSchema {
+  const pendingPaidVerificationReason = "尚未完成本项目真实付费验证";
+  const durations = mini
+    ? [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    : [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30];
+  const resolutionOptions = mini ? ["480p", "720p"] : ["480p", "720p", "1080p"];
+  return schema([
+    catalogField("inputMode", ["text", "first-last-frame", "multimodal"], "text"),
+    catalogField("aspectRatio", ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9"], "16:9"),
+    markOptionsDisabled(
+      catalogField("resolution", resolutionOptions, "480p"),
+      mini ? ["720p"] : [],
+      pendingPaidVerificationReason,
+    ),
+    markOptionsDisabled(
+      catalogField("duration", durations, 5),
+      mini ? durations.filter((value) => value > 5) : [],
+      pendingPaidVerificationReason,
+    ),
+    catalogField("generateAudio", [true, false], true),
+    catalogField("outputCount", [1], 1),
+  ], { audio: 3, image: 9, video: 3 }, {
+    modeKey: "inputMode",
+    modes: {
+      "first-last-frame": { sets: [{ audio: 0, image: 2, video: 0 }] },
+      multimodal: { sets: [{ audio: 3, image: 9, video: 3 }] },
+      text: { sets: [{ ...emptyReferenceInputs }] },
+    },
+  }, {
+    audio: { limitMode: "fixed", maxCount: 3, supported: true },
+    image: { limitMode: "fixed", maxCount: 9, supported: true },
+    text: { limitMode: "context", supported: true },
+    video: { limitMode: "fixed", maxCount: 3, supported: true },
+  }, {
+    promptPolicy: "own-required",
+    required: {},
+    rolePolicies: [
+      {
+        enabledWhen: [{ key: "inputMode", operator: "equals", value: "text" }],
+        roles: { audio: [], image: [], text: ["instruction"], video: [] },
+      },
+      {
+        assignment: { image: ["first-frame", "last-frame"] },
+        enabledWhen: [{ key: "inputMode", operator: "equals", value: "first-last-frame" }],
+        limits: [
+          { kind: "image", maxCount: 1, minCount: 1, role: "first-frame" },
+          { kind: "image", maxCount: 1, minCount: 1, role: "last-frame" },
+        ],
+        roles: {
+          audio: [],
+          image: ["first-frame", "last-frame"],
+          text: ["instruction"],
+          video: [],
+        },
+      },
+      {
+        enabledWhen: [{ key: "inputMode", operator: "equals", value: "multimodal" }],
+        limits: [
+          { kind: "image", maxCount: 1, minCount: 0, role: "subject" },
+          { kind: "video", maxCount: 1, minCount: 0, role: "subject" },
+        ],
+        roles: {
+          audio: ["reference-audio"],
+          image: ["subject", "reference-image"],
+          text: ["instruction"],
+          video: ["subject", "reference-video"],
+        },
+      },
+    ],
+    roles: {
+      audio: ["reference-audio"],
+      image: ["first-frame", "last-frame", "subject", "reference-image"],
+      text: ["instruction"],
+      video: ["subject", "reference-video"],
+    },
+    switchPolicy: "keep-edge",
+  }, mini ? seedance2ReferenceMediaRules : seedanceFamilyReferenceMediaRules);
 }
 
 export function providerParameterSchema(input: {
@@ -695,80 +847,11 @@ export function providerParameterSchema(input: {
   if (
     input.capability === "video" &&
     input.providerDriver === "volcengine-ark" &&
-    /^doubao-seedance-2-0-mini-/i.test(input.providerModelId ?? "")
+    /^doubao-seedance-/i.test(input.providerModelId ?? "")
   ) {
-    const pendingPaidVerificationReason = "尚未完成本项目真实付费验证";
-    return schema([
-      catalogField("inputMode", ["text", "first-last-frame", "multimodal"], "text"),
-      catalogField("aspectRatio", ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9"], "16:9"),
-      markOptionsDisabled(
-        catalogField("resolution", ["480p", "720p"], "480p"),
-        ["720p"],
-        pendingPaidVerificationReason,
-      ),
-      markOptionsDisabled(
-        catalogField("duration", [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], 5),
-        [6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
-        pendingPaidVerificationReason,
-      ),
-      catalogField("generateAudio", [true, false], true),
-      catalogField("outputCount", [1], 1),
-    ], { audio: 3, image: 9, video: 3 }, {
-      modeKey: "inputMode",
-      modes: {
-        "first-last-frame": { sets: [{ audio: 0, image: 2, video: 0 }] },
-        multimodal: { sets: [{ audio: 3, image: 9, video: 3 }] },
-        text: { sets: [{ ...emptyReferenceInputs }] },
-      },
-    }, {
-      audio: { limitMode: "fixed", maxCount: 3, supported: true },
-      image: { limitMode: "fixed", maxCount: 9, supported: true },
-      text: { limitMode: "context", supported: true },
-      video: { limitMode: "fixed", maxCount: 3, supported: true },
-    }, {
-      promptPolicy: "own-required",
-      required: {},
-      rolePolicies: [
-        {
-          enabledWhen: [{ key: "inputMode", operator: "equals", value: "text" }],
-          roles: { audio: [], image: [], text: ["instruction"], video: [] },
-        },
-        {
-          assignment: { image: ["first-frame", "last-frame"] },
-          enabledWhen: [{ key: "inputMode", operator: "equals", value: "first-last-frame" }],
-          limits: [
-            { kind: "image", maxCount: 1, minCount: 1, role: "first-frame" },
-            { kind: "image", maxCount: 1, minCount: 1, role: "last-frame" },
-          ],
-          roles: {
-            audio: [],
-            image: ["first-frame", "last-frame"],
-            text: ["instruction"],
-            video: [],
-          },
-        },
-        {
-          enabledWhen: [{ key: "inputMode", operator: "equals", value: "multimodal" }],
-          limits: [
-            { kind: "image", maxCount: 1, minCount: 0, role: "subject" },
-            { kind: "video", maxCount: 1, minCount: 0, role: "subject" },
-          ],
-          roles: {
-            audio: ["reference-audio"],
-            image: ["subject", "reference-image"],
-            text: ["instruction"],
-            video: ["subject", "reference-video"],
-          },
-        },
-      ],
-      roles: {
-        audio: ["reference-audio"],
-        image: ["first-frame", "last-frame", "subject", "reference-image"],
-        text: ["instruction"],
-        video: ["subject", "reference-video"],
-      },
-      switchPolicy: "keep-edge",
-    });
+    return seedanceParameterSchema(
+      /^doubao-seedance-2-0-mini-/i.test(input.providerModelId ?? ""),
+    );
   }
   return undefined;
 }
@@ -790,6 +873,13 @@ export function knownModelParameterSchema(input: {
     input.providerModelId === "doubao-tts-2.0"
   ) {
     return relayDoubaoTtsParameterSchema();
+  }
+  if (
+    input.capability === "video" &&
+    input.providerDriver === "volcengine-ark" &&
+    /^doubao-seedance-2-0-mini-/i.test(input.providerModelId ?? "")
+  ) {
+    return seedanceParameterSchema(true);
   }
   return providerParameterSchema(input) ?? defaultParameterSchema(input.capability);
 }
@@ -1006,6 +1096,49 @@ export function validateParameterSchemaConstraints(
       ) {
         throw new Error("Model reference policy is required by this Provider model");
       }
+    }
+  }
+  if (constraints.referenceMediaRules) {
+    const rules = schemaInput.referenceMediaRules;
+    if (!rules) {
+      throw new Error("Model reference media rules are required by this Provider model");
+    }
+    for (const kind of ["audio", "image", "video"] as const) {
+      const allowed = constraints.referenceMediaRules[kind];
+      const configured = rules[kind];
+      if (allowed && !configured) {
+        throw new Error("Model reference media rules are required by this Provider model");
+      }
+      if (!allowed || !configured) continue;
+      if (configured.maxBytes > allowed.maxBytes) {
+        throw new Error("Model reference media rule is not supported by this Provider model");
+      }
+      if (
+        (configured.minDurationSeconds ?? 0) < (allowed.minDurationSeconds ?? 0) ||
+        (configured.maxDurationSeconds ?? Number.POSITIVE_INFINITY) >
+          (allowed.maxDurationSeconds ?? Number.POSITIVE_INFINITY)
+      ) {
+        throw new Error("Model reference media rule is not supported by this Provider model");
+      }
+      if (
+        (configured.maxTotalDurationSeconds ?? Number.POSITIVE_INFINITY) >
+        (allowed.maxTotalDurationSeconds ?? Number.POSITIVE_INFINITY)
+      ) {
+        throw new Error("Model reference media rule is not supported by this Provider model");
+      }
+      if (
+        configured.contentTypes.some(
+          (contentType) => !allowed.contentTypes.includes(contentType),
+        )
+      ) {
+        throw new Error("Model reference media rule is not supported by this Provider model");
+      }
+    }
+    if (
+      constraints.referenceMediaRules.audioRequiresVisual &&
+      rules.audioRequiresVisual !== true
+    ) {
+      throw new Error("Model reference media rules are required by this Provider model");
     }
   }
   if (constraints.upstreamInputs && !schemaInput.upstreamInputs) {
@@ -1385,6 +1518,69 @@ function cleanInputRoleMap(
   })) as Partial<Record<ModelUpstreamInputKind, string[]>>;
 }
 
+function cleanReferenceMediaRules(value: unknown): ModelReferenceMediaRules {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Invalid model reference media rules");
+  }
+  const raw = value as Record<string, unknown>;
+  const duration = (candidate: unknown): number | undefined => {
+    if (candidate === undefined || candidate === null || candidate === "") {
+      return undefined;
+    }
+    const parsed = Number(candidate);
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 86_400) {
+      throw new Error("Invalid model reference media rule");
+    }
+    return parsed;
+  };
+  const rule = (
+    key: "audio" | "image" | "video",
+  ): ModelReferenceMediaRule | undefined => {
+    const candidate = raw[key];
+    if (candidate === undefined || candidate === null) return undefined;
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      throw new Error("Invalid model reference media rule");
+    }
+    const item = candidate as Partial<ModelReferenceMediaRule>;
+    const contentTypes = Array.isArray(item.contentTypes)
+      ? [...new Set(item.contentTypes.map((entry) =>
+          String(entry).trim()).filter(Boolean))]
+      : [];
+    if (contentTypes.length < 1 || contentTypes.length > 8) {
+      throw new Error("Invalid model reference media rule");
+    }
+    const maxBytes = Number(item.maxBytes);
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 2_147_483_647) {
+      throw new Error("Invalid model reference media rule");
+    }
+    const minDurationSeconds = duration(item.minDurationSeconds);
+    const maxDurationSeconds = duration(item.maxDurationSeconds);
+    const maxTotalDurationSeconds = duration(item.maxTotalDurationSeconds);
+    if (
+      minDurationSeconds !== undefined &&
+      maxDurationSeconds !== undefined &&
+      minDurationSeconds > maxDurationSeconds
+    ) {
+      throw new Error("Invalid model reference media rule");
+    }
+    return {
+      contentTypes,
+      maxBytes,
+      ...(minDurationSeconds !== undefined ? { minDurationSeconds } : {}),
+      ...(maxDurationSeconds !== undefined ? { maxDurationSeconds } : {}),
+      ...(maxTotalDurationSeconds !== undefined ? { maxTotalDurationSeconds } : {}),
+    };
+  };
+  return {
+    ...(rule("audio") ? { audio: rule("audio") } : {}),
+    ...(typeof raw.audioRequiresVisual === "boolean"
+      ? { audioRequiresVisual: raw.audioRequiresVisual }
+      : {}),
+    ...(rule("image") ? { image: rule("image") } : {}),
+    ...(rule("video") ? { video: rule("video") } : {}),
+  };
+}
+
 export function cleanParameterSchema(
   capability: ModelCapability,
   input: unknown,
@@ -1488,6 +1684,10 @@ export function cleanParameterSchema(
     } satisfies ModelParameterField;
   });
   const referenceInputs = cleanReferenceInputs(candidate.referenceInputs);
+  const referenceMediaRules = candidate.version === 2 &&
+      candidate.referenceMediaRules !== undefined
+    ? cleanReferenceMediaRules(candidate.referenceMediaRules)
+    : undefined;
   const upstreamInputs = cleanUpstreamInputs(
     candidate.upstreamInputs,
     fallback.upstreamInputs,
@@ -1632,6 +1832,9 @@ export function cleanParameterSchema(
     groups: defaultParameterGroups.map((group) => ({ ...group })),
     inputPolicy,
     referenceInputs,
+    ...(referenceMediaRules
+      ? { referenceMediaRules }
+      : {}),
     referencePolicy,
     upstreamInputs,
     version: 2,

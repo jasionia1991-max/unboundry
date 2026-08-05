@@ -72,7 +72,7 @@ test("every Admin checkbox declares the shared control and text inputs stay isol
     .map(([input]) => input)
     .filter((input) => /type="checkbox"/.test(input));
 
-  expect(checkboxInputs).toHaveLength(7);
+  expect(checkboxInputs).toHaveLength(12);
   for (const input of checkboxInputs) {
     expect(input).toContain('className="admin-compact-checkbox"');
   }
@@ -170,7 +170,7 @@ test("all model-admin checkbox roles use the compact gray control without paid r
   );
   await expect(
     page.locator(
-      '.admin-model-reference-heading input[type="checkbox"]',
+      '.admin-model-reference-limits .admin-model-reference-heading input[type="checkbox"]',
     ),
   ).toBeVisible();
 

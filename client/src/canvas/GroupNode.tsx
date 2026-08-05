@@ -10,6 +10,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useCanvasCheckpoint } from "./CanvasHistory";
+import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
 import type { ProbeNodeType } from "./ProbeNode";
@@ -43,7 +44,8 @@ export function GroupNode({
 }: NodeProps<ProbeNodeType>) {
   const singleNodeChrome = useSingleNodeChrome(selected);
   const checkpoint = useCanvasCheckpoint();
-  const { getNode, getNodes, setNodes } = useReactFlow<ProbeNodeType>();
+  const { getNode, getNodes } = useReactFlow<ProbeNodeType>();
+  const { setNodes } = useCanvasGraphMutation();
   const { zoom } = useViewport();
   const [colorMenu, setColorMenu] = useState(false);
   const [layoutMenu, setLayoutMenu] = useState(false);

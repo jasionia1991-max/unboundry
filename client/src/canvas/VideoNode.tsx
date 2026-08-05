@@ -11,6 +11,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useCanvasCheckpoint } from "./CanvasHistory";
+import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
 import { fitVisualMediaSize } from "./mediaGeometry";
@@ -180,11 +181,12 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   const inputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const fullscreenVideoRef = useRef<HTMLVideoElement>(null);
-  const { getNode, setEdges, setNodes } = useReactFlow<ProbeNodeType>();
+  const { getNode } = useReactFlow<ProbeNodeType>();
+  const { setEdges, setNodes } = useCanvasGraphMutation();
   const canvasEdges = useEdges();
   const canvasNodes = useNodes<ProbeNodeType>();
   const checkpoint = useCanvasCheckpoint();
-  const { canvasId, canvasRevision } = useGenerationCanvas();
+  const { canvasId, canvasRevision, flushCanvasSave } = useGenerationCanvas();
   const videoModelSelection = usePublishedModelSelection(
     "video",
     data.videoModelId,
@@ -542,6 +544,7 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     setSubmitting(true);
     let submittedTaskId: string | undefined;
     try {
+      await flushCanvasSave();
       const { task: submitted } = await ensureGenerationTask(
         "video",
         videoGenerationRequestInput,

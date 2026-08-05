@@ -8,7 +8,9 @@ import {
   MiniMap,
   ReactFlow,
   SelectionMode,
+  useEdges,
   useEdgesState,
+  useNodes,
   useNodesState,
   useReactFlow,
   useStoreApi,
@@ -29,6 +31,7 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import { AudioNode } from "./AudioNode";
+import { CanvasGraphMutationContext } from "./CanvasGraphMutationContext";
 import {
   CanvasCheckpointContext,
   closestEditableControl,
@@ -45,6 +48,7 @@ import { hasInteractionProbeNodes } from "./probeFixtures";
 import { StoryboardTableNode } from "./StoryboardTableNode";
 import { TextNode } from "./TextNode";
 import { VideoNode } from "./VideoNode";
+import type { CuttableEdge } from "./canvasTypes";
 import { fitVisualMediaSize, NODE_DEFAULT_SIZES } from "./mediaGeometry";
 import { trustedMediaPatch } from "./mediaInputMetadata";
 import {
@@ -72,15 +76,6 @@ import {
 import { normalizePersistedMediaNodes } from "../../../types/persistedMediaSources";
 
 const emptyNodes: ProbeNodeType[] = [];
-type CuttableEdge = Edge<
-  {
-    animatedHighlight?: boolean;
-    cutIndicator?: "click" | "hover";
-    inputOrder?: number;
-    inputRole?: string;
-  },
-  "cuttable"
->;
 type HistoryEntry =
   | {
       edges: CuttableEdge[];
@@ -1651,6 +1646,23 @@ function createProbeEdges(fixtureId?: string): CuttableEdge[] {
   return emptyEdges;
 }
 
+function canvasSyncChannel(canvasId: string) {
+  return typeof BroadcastChannel === "undefined"
+    ? null
+    : new BroadcastChannel(`tapnow-canvas-sync:${canvasId}`);
+}
+
+function broadcastCanvasSaved(
+  canvasId: string,
+  revision: number,
+  sessionId: string,
+) {
+  const channel = canvasSyncChannel(canvasId);
+  if (!channel) return;
+  channel.postMessage({ canvasId, revision, sessionId, type: "saved" });
+  channel.close();
+}
+
 export function CanvasSurface({
   agentReferenceMode,
   fixtureId,
@@ -1740,6 +1752,7 @@ export function CanvasSurface({
   const persistenceGraphRevision = useRef(0);
   const persistenceConflict = useRef(false);
   const persistenceDirty = useRef(false);
+  const drainPersistenceQueueRef = useRef<() => void>(() => {});
   const persistenceSessionId = useRef(crypto.randomUUID());
   const persistenceSaveSequence = useRef(0);
   const persistenceSentFingerprints = useRef(
@@ -2053,6 +2066,8 @@ export function CanvasSurface({
       graphFingerprint: canvasGraphFingerprint(document),
     };
   }, [cloneEdges, cloneNodes]);
+  const canvasSnapshotRef = useRef(canvasSnapshot);
+  canvasSnapshotRef.current = canvasSnapshot;
   const checkpoint = useCallback((includeHistory = true) => {
     if (!includeHistory) return;
     pushHistory({
@@ -2702,6 +2717,11 @@ export function CanvasSurface({
             persistenceGraphRevision.current = graphRevision;
             setConfirmedPersistenceRevision(revision);
             setConfirmedGraphRevision(graphRevision);
+            broadcastCanvasSaved(
+              persistenceId,
+              revision,
+              persistenceSessionId.current,
+            );
             persistedDocumentFingerprint.current = document.fingerprint;
             persistedGraphFingerprint.current = document.graphFingerprint;
           }
@@ -2720,6 +2740,7 @@ export function CanvasSurface({
       } finally {
         persistenceInFlightFingerprint.current = undefined;
         persistenceSaving.current = false;
+        drainPersistenceQueueRef.current = drainPersistenceQueue;
         if (
           !failed &&
           !persistenceConflict.current &&
@@ -2747,7 +2768,7 @@ export function CanvasSurface({
     persistenceSaveTimer.current = window.setTimeout(() => {
       persistenceQueued.current = canvasSnapshot();
       void drainPersistenceQueue();
-    }, 50);
+    }, 1_000);
     return () => window.clearTimeout(persistenceSaveTimer.current);
   }, [
     canvasSnapshot,
@@ -2761,6 +2782,37 @@ export function CanvasSurface({
     persistenceReady,
     viewport,
   ]);
+
+  useEffect(() => {
+    if (!persistenceFixture || !persistenceReady) return;
+    const channel = canvasSyncChannel(persistenceId);
+    if (!channel) return;
+    const onExternalSave = (event: MessageEvent) => {
+      const data = event.data as
+        | {
+            canvasId?: string;
+            revision?: number;
+            sessionId?: string;
+            type?: string;
+          }
+        | undefined;
+      if (
+        !data ||
+        data.type !== "saved" ||
+        data.canvasId !== persistenceId ||
+        data.sessionId === persistenceSessionId.current
+      ) {
+        return;
+      }
+      if (persistenceDirty.current || persistenceSaving.current) return;
+      window.location.reload();
+    };
+    channel.addEventListener("message", onExternalSave);
+    return () => {
+      channel.removeEventListener("message", onExternalSave);
+      channel.close();
+    };
+  }, [persistenceFixture, persistenceId, persistenceReady]);
 
   useEffect(() => {
     if (!persistenceFixture || !persistenceReady) return;
@@ -3153,12 +3205,29 @@ export function CanvasSurface({
       persistedGraphFingerprint.current
       ? confirmedGraphRevision
       : undefined;
+  const flushCanvasSave = useCallback(async () => {
+    if (persistenceConflict.current) {
+      throw new Error("画布保存状态异常，请刷新后重试");
+    }
+    if (persistenceDirty.current && !persistenceSaving.current) {
+      persistenceQueued.current = canvasSnapshotRef.current();
+      drainPersistenceQueueRef.current();
+    }
+    const deadline = Date.now() + 8_000;
+    while (persistenceDirty.current || persistenceSaving.current) {
+      if (Date.now() > deadline) {
+        throw new Error("画布保存超时，请稍后重试");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    }
+  }, []);
   const generationCanvasContextValue = useMemo(
     () => ({
       canvasId: persistenceId,
       canvasRevision: generationCanvasRevision,
+      flushCanvasSave,
     }),
-    [generationCanvasRevision, persistenceId],
+    [flushCanvasSave, generationCanvasRevision, persistenceId],
   );
   const canvasSelectionUiContextValue = useMemo(
     () => ({ selectedNodeCount }),
@@ -3182,6 +3251,7 @@ export function CanvasSurface({
     <GenerationCanvasContext.Provider
       value={generationCanvasContextValue}
     >
+      <CanvasGraphMutationContext.Provider value={{ setEdges, setNodes }}>
       <CanvasCheckpointContext.Provider value={checkpoint}>
       <CanvasSelectionUiContext.Provider value={canvasSelectionUiContextValue}>
       <div
@@ -4161,6 +4231,7 @@ export function CanvasSurface({
       </div>
       </CanvasSelectionUiContext.Provider>
       </CanvasCheckpointContext.Provider>
+      </CanvasGraphMutationContext.Provider>
     </GenerationCanvasContext.Provider>
   );
 }

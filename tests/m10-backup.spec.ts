@@ -85,6 +85,14 @@ test("trusted-duration migration preserves historical media and marks it unverif
         name TEXT NOT NULL,
         applied_at TEXT NOT NULL
       );
+      CREATE TABLE canvas_documents (
+        id TEXT PRIMARY KEY,
+        revision INTEGER NOT NULL,
+        nodes TEXT NOT NULL,
+        edges TEXT NOT NULL,
+        viewport TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
       CREATE TABLE media_assets (
         kind TEXT NOT NULL,
         id TEXT NOT NULL,

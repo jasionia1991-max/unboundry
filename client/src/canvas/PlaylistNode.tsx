@@ -16,6 +16,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useCanvasCheckpoint } from "./CanvasHistory";
+import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
 import { mergePlaylist } from "./playlistExport";
@@ -406,8 +407,9 @@ export function PlaylistNode({
   const viewportAnimation = useRef<number | undefined>(undefined);
   const zoomAnimation = useRef<number | undefined>(undefined);
   const zoomValue = useRef(1);
-  const { getNode, getViewport, screenToFlowPosition, setNodes } =
+  const { getNode, getViewport, screenToFlowPosition } =
     useReactFlow<ProbeNodeType>();
+  const { setNodes } = useCanvasGraphMutation();
   const [activeClipId, setActiveClipId] = useState<string>();
   const [currentTime, setCurrentTime] = useState(0);
   const [dragVisual, setDragVisual] = useState<{

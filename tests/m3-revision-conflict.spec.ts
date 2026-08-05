@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("a stale second tab cannot silently overwrite the first tab", async ({
+test("last tab to save wins and other tabs converge to the latest content", async ({
   context,
   page,
   request,
@@ -14,11 +14,6 @@ test("a stale second tab cannot silently overwrite the first tab", async ({
   const secondWorld = secondPage.getByTestId("canvas-world");
   await expect(firstWorld).toHaveAttribute("data-persistence-ready", "true");
   await expect(secondWorld).toHaveAttribute("data-persistence-ready", "true");
-
-  const before = await (
-    await request.get("/api/canvas/persistence.revision-conflict")
-  ).json() as { revision: number };
-  expect(before.revision).toBe(1);
 
   const firstNode = page.locator('[data-id="conflict-node"]');
   const firstBox = (await firstNode.boundingBox())!;
@@ -36,10 +31,6 @@ test("a stale second tab cannot silently overwrite the first tab", async ({
     })
     .toBeGreaterThan(480);
 
-  const saved = await (
-    await request.get("/api/canvas/persistence.revision-conflict")
-  ).json() as { nodes: Array<{ position: { x: number; y: number } }> };
-
   const secondNode = secondPage.locator('[data-id="conflict-node"]');
   const secondBox = (await secondNode.boundingBox())!;
   await secondPage.mouse.move(secondBox.x + 100, secondBox.y + 100);
@@ -47,16 +38,21 @@ test("a stale second tab cannot silently overwrite the first tab", async ({
   await secondPage.mouse.move(secondBox.x - 80, secondBox.y + 180, { steps: 5 });
   await secondPage.mouse.up();
 
-  await expect(secondPage.getByTestId("save-conflict")).toBeVisible();
-  const afterConflict = await (
-    await request.get("/api/canvas/persistence.revision-conflict")
-  ).json() as { nodes: Array<{ position: { x: number; y: number } }> };
-  expect(afterConflict.nodes[0].position).toEqual(saved.nodes[0].position);
+  // The second tab is the last writer: its save must be accepted without a
+  // conflict dialog and become the stored document.
+  await expect.poll(async () => {
+    const document = await (
+      await request.get("/api/canvas/persistence.revision-conflict")
+    ).json() as { nodes: Array<{ position: { x: number } }> };
+    return document.nodes[0].position.x;
+  }).toBeLessThan(480);
+  await expect(secondPage.getByTestId("save-conflict")).toHaveCount(0);
 
-  await secondPage.getByRole("button", { name: "重新载入" }).click();
-  await expect(secondWorld).toHaveAttribute("data-persistence-ready", "true");
-  const reloadedBox = (await secondNode.boundingBox())!;
-  const currentFirstBox = (await firstNode.boundingBox())!;
-  expect(reloadedBox.x).toBeCloseTo(currentFirstBox.x, 0);
-  expect(reloadedBox.y).toBeCloseTo(currentFirstBox.y, 0);
+  // The first tab receives the sync notification and converges to the latest
+  // content without any manual reload.
+  await expect.poll(async () => {
+    const first = await firstNode.boundingBox();
+    const second = await secondNode.boundingBox();
+    return first && second ? Math.abs(first.x - second.x) < 1 : -1;
+  }).toBe(true);
 });

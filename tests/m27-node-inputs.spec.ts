@@ -1287,7 +1287,7 @@ test("pagehide latest snapshot wins when an older same-session save is still pen
   await expect(world).toHaveAttribute("data-edge-count", "2");
 });
 
-test("server orders same-session saves and keeps different-tab conflicts", async ({ request }) => {
+test("server orders same-session saves and lets different tabs last-write-win", async ({ request }) => {
   const canvasId = `persistence.sequence-${Date.now()}`;
   const url = `/api/canvas/${canvasId}`;
   const session = "session-12345678";
@@ -1353,7 +1353,7 @@ test("server orders same-session saves and keeps different-tab conflicts", async
       viewport,
     },
   });
-  expect(differentTab.status()).toBe(409);
+  expect(differentTab.ok()).toBeTruthy();
   const stored = await (await request.get(url)).json() as { nodes: Array<{ id: string }> };
-  expect(stored.nodes).toEqual([{ id: "latest" }]);
+  expect(stored.nodes).toEqual([{ id: "other-tab" }]);
 });

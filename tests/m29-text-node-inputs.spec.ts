@@ -692,4 +692,32 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
     };
     expect(after.paidProviderRequests).toBe(before.paidProviderRequests);
   });
+
+  test("creator prompt autosaves after idle without blur", async ({
+    page,
+    request,
+  }) => {
+    await page.goto("/");
+    const world = page.getByTestId("canvas-world");
+    await expect(world).toHaveAttribute("data-persistence-ready", "true");
+    await page.locator('.react-flow__node[data-id="p2-target-text"]').click({
+      position: { x: 12, y: 12 },
+    });
+    const prompt = page.getByTestId("text-creator-prompt");
+    await prompt.fill("自动保存验证");
+    await expect
+      .poll(
+        async () => {
+          const document = await (
+            await request.get(`/api/canvas/${rootCanvasId}`)
+          ).json() as {
+            nodes: Array<{ data?: { textPrompt?: string }; id: string }>;
+          };
+          return document.nodes.find((node) => node.id === "p2-target-text")
+            ?.data?.textPrompt;
+        },
+        { timeout: 8_000 },
+      )
+      .toBe("自动保存验证");
+  });
 });

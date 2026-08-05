@@ -9,8 +9,12 @@ import {
   arkVideoMediaProblem,
   assertArkVideoBase64Budget,
   assertArkVideoMediaCombination,
+  genericReferenceMediaRules,
 } from "../server/providerMedia";
-import { knownModelParameterSchema } from "../types/modelParameters";
+import {
+  defaultParameterSchema,
+  knownModelParameterSchema,
+} from "../types/modelParameters";
 import { resolveNodeInputs } from "../types/nodeInputs";
 import {
   GenerationRequestError,
@@ -69,6 +73,28 @@ test("Ark paid-video media policy enforces official size, format and trusted dur
     ...validAudio,
     durationSeconds: 1.999,
   })).toContain("2至15秒");
+});
+
+test("reference media rules are model-driven: generic tasks are not bound by the Seedance 2-15s contract", () => {
+  const longAudio = media({
+    byteSize: 500 * 1024,
+    contentType: "audio/mpeg",
+    durationSeconds: 184,
+    objectKey: "objects/2026/08/audio/test-long.mp3",
+    storageName: "test-long.mp3",
+  });
+  expect(arkVideoMediaProblem("audio", longAudio, genericReferenceMediaRules))
+    .toBeUndefined();
+  expect(arkVideoMediaProblem("audio", longAudio)).toContain("2至15秒");
+  expect(arkVideoMediaProblem("audio", longAudio, {
+    audio: {
+      contentTypes: ["audio/mpeg", "audio/wav"],
+      maxBytes: 30 * 1024 * 1024,
+      maxDurationSeconds: 30,
+      maxTotalDurationSeconds: 30,
+      minDurationSeconds: 2,
+    },
+  })).toContain("2至30秒之间");
 });
 
 test("Ark paid-video media policy enforces separate 15-second totals and forbids audio-only input", () => {
@@ -217,6 +243,152 @@ test("Video UI policy uses server metadata and assigns totals and Base64 failure
     edgeId: "edge-image-crossing",
     message: expect.stringContaining("Base64提交内容超过64MB"),
   }));
+});
+
+test("Video UI policy follows the model's reference media rules instead of hardcoded values", () => {
+  const target = { data: { title: "目标视频" }, id: "target", type: "video" };
+  const source = (
+    id: string,
+    kind: "audio" | "image" | "video",
+    data: Record<string, unknown>,
+  ) => ({
+    data: {
+      assetId: `${id}.${kind === "image" ? "png" : kind === "video" ? "mp4" : "mp3"}`,
+      [`${kind}Src`]: `/api/${kind}/${id}`,
+      mediaMetadataSource: "server",
+      mediaMetadataStatus: "ready",
+      title: id,
+      ...data,
+    },
+    id,
+    type: kind,
+  });
+  const edge = (id: string, order: number) => ({
+    data: { inputOrder: order },
+    id: `edge-${id}`,
+    source: id,
+    target: "target",
+  });
+  const schema = knownModelParameterSchema({
+    capability: "video",
+    providerDriver: "volcengine-ark",
+    providerModelId: "doubao-seedance-2-0-mini-260615",
+  });
+  schema.referenceMediaRules = {
+    ...schema.referenceMediaRules,
+    audio: {
+      contentTypes: ["audio/mpeg", "audio/wav"],
+      maxBytes: 30 * 1024 * 1024,
+      maxDurationSeconds: 30,
+      maxTotalDurationSeconds: 30,
+      minDurationSeconds: 2,
+    },
+    video: {
+      contentTypes: ["video/mp4"],
+      maxBytes: 200 * 1024 * 1024,
+      maxDurationSeconds: 30,
+      maxTotalDurationSeconds: 30,
+      minDurationSeconds: 2,
+    },
+  };
+  const audio = source("audio-20s", "audio", {
+    mediaByteSize: 1_024,
+    mediaContentType: "audio/mpeg",
+    mediaDurationSeconds: 20,
+    mediaStorageBackend: "oss",
+  });
+  const image = source("image-ref", "image", {
+    mediaByteSize: 1_024,
+    mediaContentType: "image/png",
+    mediaStorageBackend: "oss",
+  });
+  const accepted = resolveNodeInputs({
+    edges: [edge(image.id, 1), edge(audio.id, 2)],
+    mediaInputPolicy: "seedance-2",
+    modelSchema: schema,
+    nodes: [audio, image, target],
+    ownPrompt: "测试可配置时长",
+    parameters: { inputMode: "multimodal" },
+    targetId: "target",
+    targetKind: "video",
+  });
+  expect(accepted.problems).not.toEqual(expect.arrayContaining([
+    expect.objectContaining({ message: expect.stringContaining("时长") }),
+  ]));
+
+  const tooLong = source("audio-31s", "audio", {
+    mediaByteSize: 1_024,
+    mediaContentType: "audio/mpeg",
+    mediaDurationSeconds: 31,
+    mediaStorageBackend: "oss",
+  });
+  const rejected = resolveNodeInputs({
+    edges: [edge(image.id, 1), edge(tooLong.id, 2)],
+    mediaInputPolicy: "seedance-2",
+    modelSchema: schema,
+    nodes: [image, tooLong, target],
+    ownPrompt: "测试可配置时长",
+    parameters: { inputMode: "multimodal" },
+    targetId: "target",
+    targetKind: "video",
+  });
+  expect(rejected.problems).toContainEqual(expect.objectContaining({
+    edgeId: `edge-${tooLong.id}`,
+    message: expect.stringContaining("2至30秒之间"),
+  }));
+});
+
+test("Text models without Seedance reference rules accept long context audio", () => {
+  const target = { data: { title: "目标文字" }, id: "target", type: "text" };
+  const audio = {
+    data: {
+      assetId: "long-audio.mp3",
+      audioSrc: "/api/audio/long-audio",
+      mediaByteSize: 500 * 1024,
+      mediaContentType: "audio/mpeg",
+      mediaDurationSeconds: 184,
+      mediaMetadataSource: "server",
+      mediaMetadataStatus: "ready",
+      title: "长音频",
+    },
+    id: "audio-long",
+    type: "audio",
+  };
+  const schema = defaultParameterSchema("text");
+  schema.upstreamInputs = {
+    audio: { limitMode: "context", supported: true },
+    image: { limitMode: "context", supported: true },
+    text: { limitMode: "context", supported: true },
+    video: { limitMode: "context", supported: true },
+  };
+  schema.inputPolicy = {
+    promptPolicy: "own-or-upstream-text",
+    required: {},
+    roles: {
+      audio: ["context-audio"],
+      image: ["context-image"],
+      video: ["context-video"],
+    },
+    switchPolicy: "keep-edge",
+  };
+  const result = resolveNodeInputs({
+    edges: [{
+      data: { inputOrder: 1, inputRole: "context-audio" },
+      id: "edge-audio-long",
+      source: audio.id,
+      target: target.id,
+    }],
+    modelSchema: schema,
+    nodes: [audio, target],
+    ownPrompt: "整理以上信息",
+    targetId: target.id,
+    targetKind: "text",
+  });
+  expect(result.problems).not.toEqual(expect.arrayContaining([
+    expect.objectContaining({ message: expect.stringContaining("2至15秒") }),
+  ]));
+  expect(result.inputs.find((item) => item.edgeId === "edge-audio-long"))
+    .toMatchObject({ compatibility: "compatible", durationSeconds: 184 });
 });
 
 test("client preserves structured 409 problems for exact reference cards without a network call", async () => {

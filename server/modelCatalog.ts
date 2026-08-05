@@ -98,7 +98,7 @@ function imageParameters(row: ModelRow) {
 function mediaInputPolicy(row: ModelRow) {
   return row.capability === "video" &&
       row.provider_driver === "volcengine-ark" &&
-      /^doubao-seedance-2-0-mini-[a-z0-9-]+$/i.test(row.provider_model_id)
+      /^doubao-seedance-[a-z0-9-]+$/i.test(row.provider_model_id)
     ? "seedance-2" as const
     : undefined;
 }

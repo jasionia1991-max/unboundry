@@ -10,6 +10,7 @@ import {
 } from "@xyflow/react";
 import { useEffect, useRef, useState } from "react";
 import { useCanvasCheckpoint } from "./CanvasHistory";
+import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
 import { NODE_DEFAULT_SIZES } from "./mediaGeometry";
@@ -154,11 +155,12 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   const uploadInFlight = useRef(false);
   const uploadOperation = useRef(0);
   const waveformSourceAttempted = useRef<string | undefined>(undefined);
-  const { getNode, setEdges, setNodes } = useReactFlow<ProbeNodeType>();
+  const { getNode } = useReactFlow<ProbeNodeType>();
+  const { setEdges, setNodes } = useCanvasGraphMutation();
   const canvasEdges = useEdges();
   const canvasNodes = useNodes<ProbeNodeType>();
   const checkpoint = useCanvasCheckpoint();
-  const { canvasId, canvasRevision } = useGenerationCanvas();
+  const { canvasId, canvasRevision, flushCanvasSave } = useGenerationCanvas();
   const audioModelSelection = usePublishedModelSelection(
     "audio",
     data.audioModelId,
@@ -592,6 +594,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     setSubmitting(true);
     let submittedTaskId: string | undefined;
     try {
+      await flushCanvasSave();
       const { task: submitted } = await ensureGenerationTask(
         "audio",
         audioGenerationRequestInput,

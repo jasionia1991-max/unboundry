@@ -145,6 +145,81 @@ test("future models use the safe shared parameter registry", () => {
   }), constraints)).toThrow("not supported");
 });
 
+test("Seedance reference media rules are model-driven and future models inherit a wider family ceiling", () => {
+  const mini = knownModelParameterSchema({
+    capability: "video",
+    providerDriver: "volcengine-ark",
+    providerModelId: "doubao-seedance-2-0-mini-260615",
+  });
+  expect(mini.referenceMediaRules?.audio).toMatchObject({
+    maxBytes: 15 * 1024 * 1024,
+    maxDurationSeconds: 15,
+    maxTotalDurationSeconds: 15,
+    minDurationSeconds: 2,
+  });
+  expect(mini.referenceMediaRules?.audioRequiresVisual).toBe(true);
+  const miniDurations = mini.fields.find((field) => field.key === "duration")!
+    .options.map((option) => option.value);
+  expect(miniDurations).toContain(15);
+  expect(miniDurations).not.toContain(16);
+
+  const future = knownModelParameterSchema({
+    capability: "video",
+    providerDriver: "volcengine-ark",
+    providerModelId: "doubao-seedance-2-5-260628",
+  });
+  const futureDurations = future.fields.find((field) => field.key === "duration")!
+    .options.map((option) => option.value);
+  expect(futureDurations).toContain(30);
+  expect(future.referenceMediaRules?.audio).toMatchObject({
+    maxDurationSeconds: 30,
+    maxTotalDurationSeconds: 30,
+    minDurationSeconds: 2,
+  });
+
+  const familyConstraints = providerParameterSchema({
+    capability: "video",
+    providerDriver: "volcengine-ark",
+    providerModelId: "doubao-seedance-2-5-260628",
+  })!;
+  const tightened = cleanParameterSchema("video", {
+    ...structuredClone(future),
+    referenceMediaRules: {
+      audio: {
+        contentTypes: ["audio/mpeg", "audio/wav"],
+        maxBytes: 20 * 1024 * 1024,
+        maxDurationSeconds: 25,
+        maxTotalDurationSeconds: 25,
+        minDurationSeconds: 2,
+      },
+      audioRequiresVisual: true,
+      image: { contentTypes: ["image/png"], maxBytes: 20 * 1024 * 1024 },
+      video: {
+        contentTypes: ["video/mp4"],
+        maxBytes: 200 * 1024 * 1024,
+        maxDurationSeconds: 30,
+        maxTotalDurationSeconds: 30,
+        minDurationSeconds: 2,
+      },
+    },
+  }, future);
+  expect(() => validateParameterSchemaConstraints(tightened, familyConstraints))
+    .not.toThrow();
+
+  const over = cleanParameterSchema("video", {
+    ...structuredClone(future),
+    referenceMediaRules: {
+      ...future.referenceMediaRules,
+      audio: {
+        ...future.referenceMediaRules!.audio!,
+        maxBytes: 31 * 1024 * 1024,
+      },
+    },
+  }, future);
+  expect(() => validateParameterSchemaConstraints(over, familyConstraints))
+    .toThrow("not supported");
+});
+
 test("relay Text models use bounded output and temperature controls without changing generic Text defaults", () => {
   const relay = knownModelParameterSchema({
     capability: "text",

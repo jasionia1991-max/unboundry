@@ -16,6 +16,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useCanvasCheckpoint } from "./CanvasHistory";
+import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
 import { uploadImageAsset, uploadPngAsset } from "./imageAsset";
@@ -1135,7 +1136,8 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   const uploadInFlight = useRef(false);
   const uploadBaseline = useRef<ProbeNodeType | undefined>(undefined);
   const uploadOperation = useRef(0);
-  const { getEdges, getNode, setEdges, setNodes } = useReactFlow<ProbeNodeType>();
+  const { getEdges, getNode } = useReactFlow<ProbeNodeType>();
+  const { setEdges, setNodes } = useCanvasGraphMutation();
   const canvasEdges = useEdges();
   const canvasNodes = useNodes<ProbeNodeType>();
   const checkpoint = useCanvasCheckpoint();
@@ -1165,7 +1167,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     onEditSessionStart: checkpoint,
     value: data.title ?? "Image",
   });
-  const { canvasId, canvasRevision } = useGenerationCanvas();
+  const { canvasId, canvasRevision, flushCanvasSave } = useGenerationCanvas();
   const imageModelSelection = usePublishedModelSelection(
     "image",
     data.imageModelId,
@@ -1552,6 +1554,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     setSubmitting(true);
     let submittedTaskId: string | undefined;
     try {
+      await flushCanvasSave();
       const { task: submitted } = await ensureGenerationTask(
         "image",
         imageGenerationRequestInput,

@@ -21,6 +21,28 @@ export type ArkVideoMediaInput = {
   url: string;
 };
 
+export type ArkVideoLimits = {
+  counts: { audio: number; image: number; video: number };
+  durationMax: number;
+  durationMin: number;
+  maxBytes: { audio: number; image: number; video: number };
+  ratios: string[];
+  resolutions: string[];
+};
+
+export const defaultArkVideoLimits: ArkVideoLimits = {
+  counts: { audio: 3, image: 9, video: 3 },
+  durationMax: 15,
+  durationMin: 4,
+  maxBytes: {
+    audio: 15 * 1024 * 1024,
+    image: 20 * 1024 * 1024,
+    video: 200 * 1024 * 1024,
+  },
+  ratios: ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9"],
+  resolutions: ["480p", "720p"],
+};
+
 export class VolcengineArkVideoError extends Error {
   constructor(
     readonly code:
@@ -51,12 +73,17 @@ const providerRole = {
   subject: undefined,
 } as const;
 
-function safeProviderMediaUrl(kind: ArkVideoMediaInput["kind"], value: unknown) {
+function safeProviderMediaUrl(
+  kind: ArkVideoMediaInput["kind"],
+  value: unknown,
+  limits: ArkVideoLimits,
+) {
   if (typeof value !== "string") return false;
   if (
     kind === "image" &&
     value.startsWith("data:image/png;base64,") &&
-    value.length <= 28_000_000
+    value.length <=
+      Math.ceil(limits.maxBytes.image / 3) * 4 + 128
   ) {
     return /^[a-z0-9+/]+=*$/i.test(value.slice("data:image/png;base64,".length));
   }
@@ -64,7 +91,8 @@ function safeProviderMediaUrl(kind: ArkVideoMediaInput["kind"], value: unknown) 
     kind === "audio" &&
     (value.startsWith("data:audio/mp3;base64,") ||
       value.startsWith("data:audio/wav;base64,")) &&
-    value.length <= 21_100_000
+    value.length <=
+      Math.ceil(limits.maxBytes.audio / 3) * 4 + 128
   ) {
     return /^[a-z0-9+/]+=*$/i.test(value.slice(value.indexOf(",") + 1));
   }
@@ -80,7 +108,10 @@ function safeProviderMediaUrl(kind: ArkVideoMediaInput["kind"], value: unknown) 
   }
 }
 
-function normalizeMediaInputs(value: unknown): ArkVideoMediaInput[] {
+function normalizeMediaInputs(
+  value: unknown,
+  limits: ArkVideoLimits = defaultArkVideoLimits,
+): ArkVideoMediaInput[] {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > 15) {
     throw new VolcengineArkVideoError("FORMAT", "视频参考素材数量无效");
@@ -100,7 +131,11 @@ function normalizeMediaInputs(value: unknown): ArkVideoMediaInput[] {
       seenOrders.has(Number(item.order)) ||
       typeof item.role !== "string" ||
       !(item.role in providerRole) ||
-      !safeProviderMediaUrl(item.kind as ArkVideoMediaInput["kind"], item.url)
+      !safeProviderMediaUrl(
+        item.kind as ArkVideoMediaInput["kind"],
+        item.url,
+        limits,
+      )
     ) {
       throw new VolcengineArkVideoError("FORMAT", "视频参考素材无效");
     }
@@ -130,7 +165,11 @@ function normalizeMediaInputs(value: unknown): ArkVideoMediaInput[] {
       url: item.url!,
     };
   }).sort((left, right) => left.order - right.order);
-  if (counts.image > 9 || counts.video > 3 || counts.audio > 3) {
+  if (
+    counts.image > limits.counts.image ||
+    counts.video > limits.counts.video ||
+    counts.audio > limits.counts.audio
+  ) {
     throw new VolcengineArkVideoError("FORMAT", "视频参考素材超过当前模型上限");
   }
   return normalized;
@@ -228,6 +267,7 @@ export async function createVolcengineArkVideoTask(
     duration?: number;
     generateAudio?: boolean;
     inputs?: ArkVideoMediaInput[];
+    limits?: ArkVideoLimits;
     model: string;
     prompt: string;
     ratio?: string;
@@ -241,16 +281,17 @@ export async function createVolcengineArkVideoTask(
   const duration = input.duration ?? 5;
   const ratio = input.ratio ?? "16:9";
   const resolution = input.resolution ?? "480p";
-  const mediaInputs = normalizeMediaInputs(input.inputs);
+  const limits = input.limits ?? defaultArkVideoLimits;
+  const mediaInputs = normalizeMediaInputs(input.inputs, limits);
   if (
     !prompt ||
     prompt.length > 10_000 ||
-    !/^doubao-seedance-2-0-mini-[a-z0-9-]+$/i.test(input.model) ||
+    !/^doubao-seedance-[a-z0-9-]+$/i.test(input.model) ||
     !Number.isInteger(duration) ||
-    duration < 4 ||
-    duration > 15 ||
-    !["16:9", "4:3", "1:1", "3:4", "9:16", "21:9"].includes(ratio) ||
-    !["480p", "720p"].includes(resolution) ||
+    duration < limits.durationMin ||
+    duration > limits.durationMax ||
+    !limits.ratios.includes(ratio) ||
+    !limits.resolutions.includes(resolution) ||
     (input.generateAudio !== undefined && typeof input.generateAudio !== "boolean")
   ) {
     throw new VolcengineArkVideoError("FORMAT", "视频生成参数无效");

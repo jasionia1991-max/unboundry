@@ -701,6 +701,24 @@ export function CanvasShell({
     asset: CanvasLibraryAsset;
     sequence: number;
   }>();
+  // Infinite-canvas rule: zoom gestures must never zoom the browser page.
+  // Ctrl+wheel / trackpad pinch anywhere in the app is consumed in the capture
+  // phase so the surrounding chrome stays fixed; the canvas world handler
+  // still converts the same gesture into canvas zoom.
+  useEffect(() => {
+    const blockBrowserPageZoom = (event: WheelEvent) => {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+    };
+    window.addEventListener("wheel", blockBrowserPageZoom, {
+      capture: true,
+      passive: false,
+    });
+    return () =>
+      window.removeEventListener("wheel", blockBrowserPageZoom, {
+        capture: true,
+      } as EventListenerOptions);
+  }, []);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);

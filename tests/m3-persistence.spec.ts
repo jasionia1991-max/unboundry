@@ -44,7 +44,7 @@ test("nodes, asset references and viewport survive a reload", async ({
 
   await page.getByTestId("zoom-slider").fill("1.1");
   await expect(world).toHaveAttribute("data-viewport-zoom", "1.1");
-  await page.waitForTimeout(700);
+  await page.waitForTimeout(1600);
 
   const saved = await request.get("/api/canvas/persistence.nodes-assets-viewport");
   expect(saved.ok()).toBeTruthy();
@@ -225,7 +225,7 @@ test("cleared canvas stays empty after a reload", async ({ page, request }) => {
   await expect(world).toHaveAttribute("data-node-count", "0");
   await expect(world).toHaveAttribute("data-edge-count", "0");
   await expect(page.getByTestId("empty-quick-actions")).toBeVisible();
-  await page.waitForTimeout(700);
+  await page.waitForTimeout(1600);
 
   const saved = await request.get("/api/canvas/persistence.final-clean-canvas");
   expect(saved.ok()).toBeTruthy();

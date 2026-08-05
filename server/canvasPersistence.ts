@@ -169,15 +169,15 @@ export async function canvasPersistence(
       return;
     }
     const currentRevision = row?.revision ?? 0;
-    const sameSessionNewerSave = Boolean(
+    const sameSessionOlderSave = Boolean(
       row &&
       document.saveSessionId &&
       row.save_session_id === document.saveSessionId &&
-      Number(document.saveSequence) > row.save_sequence,
+      Number(document.saveSequence) <= row.save_sequence,
     );
-    if (document.revision !== currentRevision && !sameSessionNewerSave) {
+    if (sameSessionOlderSave) {
       json(response, 409, {
-        error: "Revision conflict",
+        error: "Superseded same-session save",
         graphRevision: row?.graph_revision ?? 0,
         revision: currentRevision,
         saveSequence: row?.save_sequence ?? 0,

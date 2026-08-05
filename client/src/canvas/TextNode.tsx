@@ -10,6 +10,7 @@ import {
 } from "@xyflow/react";
 import { useEffect, useRef, useState } from "react";
 import { useCanvasCheckpoint } from "./CanvasHistory";
+import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import {
   useCompositionSafeRichText,
@@ -274,11 +275,11 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     controller: AbortController;
     taskId: string;
   } | null>(null);
-  const { setEdges, setNodes } = useReactFlow<ProbeNodeType>();
+  const { setEdges, setNodes } = useCanvasGraphMutation();
   const canvasEdges = useEdges();
   const canvasNodes = useNodes<ProbeNodeType>();
   const checkpoint = useCanvasCheckpoint();
-  const { canvasId, canvasRevision } = useGenerationCanvas();
+  const { canvasId, canvasRevision, flushCanvasSave } = useGenerationCanvas();
   const titleControl = useCompositionSafeText({
     onCommit: (nextTitle) => {
       setNodes((nodes) =>
@@ -831,6 +832,7 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     setServerInputProblems([]);
     let taskId: string | undefined;
     try {
+      await flushCanvasSave();
       const { task: submitted } = await ensureGenerationTask(
         "text",
         textGenerationRequestInput,

@@ -65,12 +65,13 @@ test("the private API documents and reads canvas, project and model configuratio
     data: canvasDocument,
   });
   expect(saveCanvas.ok()).toBeTruthy();
-  expect(await saveCanvas.json()).toEqual({ revision: 1 });
+  expect(await saveCanvas.json()).toEqual({ graphRevision: 1, revision: 1 });
 
   const readCanvas = await request.get(`/api/canvas/${canvasId}`);
   expect(readCanvas.ok()).toBeTruthy();
   expect(await readCanvas.json()).toEqual({
     ...canvasDocument,
+    graphRevision: 1,
     revision: 1,
   });
 

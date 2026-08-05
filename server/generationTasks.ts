@@ -26,8 +26,10 @@ import {
   arkVideoBase64EnvelopeBytes,
   arkVideoMediaProblem,
   arkVideoMediaRecordForOwner,
+  arkVideoMediaRules,
   assertArkVideoMediaCombination,
   assertArkVideoBase64Budget,
+  genericReferenceMediaRules,
   ProviderMediaError,
   providerMediaUrlForOwner,
   type ArkVideoMediaRecord,
@@ -57,8 +59,10 @@ import {
 import {
   cancelVolcengineArkVideoTask,
   createVolcengineArkVideoTask,
+  defaultArkVideoLimits,
   getVolcengineArkVideoTask,
   seedanceMiniAudioPriceMicrounitsPerThousandTokens,
+  type ArkVideoLimits,
   type ArkVideoMediaInput,
   VolcengineArkVideoError,
 } from "./volcengineArkVideoProvider";
@@ -89,6 +93,7 @@ import {
   providerParameterSchema,
   validateParameterSchemaConstraints,
   validateParameterValues,
+  type ModelReferenceMediaRules,
   type ModelParameterSchema,
   type ModelParameterValue,
 } from "../types/modelParameters";
@@ -117,6 +122,53 @@ const runningAudioRequests = new Map<string, AbortController>();
 const runningTextRequests = new Map<string, AbortController>();
 
 type RelayProtocol = Exclude<ProviderProtocol, "native">;
+
+function referenceMediaRulesForTask(task: {
+  modelConfiguration: Record<string, unknown>;
+}): ModelReferenceMediaRules | undefined {
+  const raw = task.modelConfiguration.parameterSchema;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const rules = (raw as ModelParameterSchema).referenceMediaRules;
+  if (!rules || typeof rules !== "object" || Array.isArray(rules)) {
+    return undefined;
+  }
+  return rules;
+}
+
+function adapterVideoLimitsForTask(task: GenerationTask): ArkVideoLimits {
+  const snapshot = task.modelConfiguration.parameterSchema as
+    | ModelParameterSchema
+    | undefined;
+  const rules = referenceMediaRulesForTask(task) ?? arkVideoMediaRules;
+  const field = (key: string) =>
+    snapshot?.fields.find((item) => item.key === key);
+  const durationOptions = (field("duration")?.options ?? [])
+    .map((option) => Number(option.value))
+    .filter((value) => Number.isInteger(value) && value >= 0 && value <= 300)
+    .sort((left, right) => left - right);
+  const ratios = (field("aspectRatio")?.options ?? [])
+    .map((option) => String(option.value));
+  const resolutions = (field("resolution")?.options ?? [])
+    .map((option) => String(option.value));
+  return {
+    counts: {
+      audio: snapshot?.referenceInputs.audio ?? 3,
+      image: snapshot?.referenceInputs.image ?? 9,
+      video: snapshot?.referenceInputs.video ?? 3,
+    },
+    durationMax: durationOptions.at(-1) ?? defaultArkVideoLimits.durationMax,
+    durationMin: durationOptions[0] ?? defaultArkVideoLimits.durationMin,
+    maxBytes: {
+      audio: rules.audio?.maxBytes ?? defaultArkVideoLimits.maxBytes.audio,
+      image: rules.image?.maxBytes ?? defaultArkVideoLimits.maxBytes.image,
+      video: rules.video?.maxBytes ?? defaultArkVideoLimits.maxBytes.video,
+    },
+    ratios: ratios.length ? ratios : defaultArkVideoLimits.ratios,
+    resolutions: resolutions.length
+      ? resolutions
+      : defaultArkVideoLimits.resolutions,
+  };
+}
 
 function taskProviderProtocol(
   task: Pick<GenerationTask, "modelConfiguration">,
@@ -718,6 +770,7 @@ function strictGenerationPreflight(input: {
     parameters,
     targetKind: input.targetKind,
   });
+  const referenceMediaRules = schema.referenceMediaRules ?? arkVideoMediaRules;
   if (
     input.requireFreshRevision &&
     input.body.canvasRevision === undefined &&
@@ -940,7 +993,11 @@ function strictGenerationPreflight(input: {
       }
     }
     if (paidArkVideo) {
-      const officialProblem = arkVideoMediaProblem(resolved.kind, media);
+      const officialProblem = arkVideoMediaProblem(
+        resolved.kind,
+        media,
+        referenceMediaRules,
+      );
       if (officialProblem) {
         appendProblem(persisted, {
           code: "INVALID",
@@ -953,11 +1010,13 @@ function strictGenerationPreflight(input: {
       if (resolved.kind === "video") {
         paidVisualReferences += 1;
         const nextDuration = paidVideoDuration + media.durationSeconds!;
-        if (nextDuration > 15) {
+        const maximum =
+          referenceMediaRules.video?.maxTotalDurationSeconds;
+        if (maximum !== undefined && nextDuration > maximum) {
           appendProblem(persisted, {
             code: "INVALID",
             edgeId: resolved.edgeId,
-            message: `${resolved.title}使参考视频总时长超过15秒`,
+            message: `${resolved.title}使参考视频总时长超过${maximum}秒`,
           });
           continue;
         }
@@ -967,11 +1026,13 @@ function strictGenerationPreflight(input: {
         paidAudioReferences += 1;
         paidFirstAudioEdgeId ??= resolved.edgeId;
         const nextDuration = paidAudioDuration + media.durationSeconds!;
-        if (nextDuration > 15) {
+        const maximum =
+          referenceMediaRules.audio?.maxTotalDurationSeconds;
+        if (maximum !== undefined && nextDuration > maximum) {
           appendProblem(persisted, {
             code: "INVALID",
             edgeId: resolved.edgeId,
-            message: `${resolved.title}使参考音频总时长超过15秒`,
+            message: `${resolved.title}使参考音频总时长超过${maximum}秒`,
           });
           continue;
         }
@@ -1321,7 +1382,9 @@ export async function executeTextTaskWithDependencies(
         kind: snapshot.kind,
         ownerId: running.ownerId!,
       };
-      const url = await dependencies.mediaUrlForOwner(mediaInput);
+      const url = await dependencies.mediaUrlForOwner(mediaInput, {
+        rules: referenceMediaRulesForTask(running) ?? genericReferenceMediaRules,
+      });
       inputs.push({
         kind: snapshot.kind,
         order: snapshot.order,
@@ -1512,7 +1575,7 @@ function appendRelayMediaParam(
 }
 
 export async function relayMediaParametersForTask(
-  task: Pick<GenerationTask, "kind" | "ownerId" | "parameters">,
+  task: Pick<GenerationTask, "kind" | "modelConfiguration" | "ownerId" | "parameters">,
   mediaUrlForOwner: typeof providerMediaUrlForOwner,
 ) {
   if (
@@ -1597,6 +1660,8 @@ export async function relayMediaParametersForTask(
         assetId: input.assetId,
         kind: input.kind,
         ownerId: task.ownerId,
+      }, {
+        rules: referenceMediaRulesForTask(task) ?? genericReferenceMediaRules,
       }),
     );
   }
@@ -2075,15 +2140,16 @@ function videoTaskMediaSnapshots(value: unknown): Array<
 
 async function arkVideoMediaInputs(task: GenerationTask): Promise<ArkVideoMediaInput[]> {
   const snapshots = videoTaskMediaSnapshots(task.parameters.inputs);
+  const rules = referenceMediaRulesForTask(task) ?? arkVideoMediaRules;
   const validated = snapshots.map((snapshot): ArkVideoMediaRecord => ({
     kind: snapshot.kind,
     media: arkVideoMediaRecordForOwner({
       assetId: snapshot.assetId,
       kind: snapshot.kind,
       ownerId: task.ownerId!,
-    }),
+    }, rules),
   }));
-  assertArkVideoMediaCombination(validated);
+  assertArkVideoMediaCombination(validated, rules);
   assertArkVideoBase64Budget(
     validated,
     arkVideoBase64EnvelopeBytes(task.prompt),
@@ -2098,7 +2164,7 @@ async function arkVideoMediaInputs(task: GenerationTask): Promise<ArkVideoMediaI
         assetId: snapshot.assetId,
         kind: snapshot.kind,
         ownerId: task.ownerId!,
-      }),
+      }, { rules }),
     });
   }
   return inputs;
@@ -2167,6 +2233,7 @@ async function executeVideoTask(taskId: string) {
                 : 5,
               generateAudio: running.parameters.generateAudio !== false,
               inputs,
+              limits: adapterVideoLimitsForTask(running),
               model: running.providerModelId!,
               prompt: running.prompt,
               ratio: typeof running.parameters.aspectRatio === "string"

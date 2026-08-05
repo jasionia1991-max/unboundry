@@ -40,9 +40,9 @@ test("drag pan, scroll pan, pinch zoom, slider and fit preserve screen chrome", 
   );
 
   await page.mouse.move(800, 300);
-  await page.mouse.down();
+  await page.mouse.down({ button: "middle" });
   await page.mouse.move(850, 375);
-  await page.mouse.up();
+  await page.mouse.up({ button: "middle" });
   expect(Number(await world.getAttribute("data-viewport-x"))).toBeCloseTo(50);
   expect(Number(await world.getAttribute("data-viewport-y"))).toBeCloseTo(75);
   expect(await topRight.boundingBox()).toEqual(frozenTopRight);
@@ -68,6 +68,8 @@ test("drag pan, scroll pan, pinch zoom, slider and fit preserve screen chrome", 
   await expect
     .poll(async () => Number(await world.getAttribute("data-viewport-zoom")))
     .toBeGreaterThan(1);
+  expect(await topRight.boundingBox()).toEqual(frozenTopRight);
+  expect(await page.evaluate(() => window.visualViewport?.scale ?? 1)).toBe(1);
 
   await page.getByTestId("fit-view").click();
   await expect(world).toHaveAttribute("data-viewport-zoom", "1");

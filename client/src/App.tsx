@@ -15,6 +15,7 @@ import {
   type ModelParameterField,
   type ModelNodeInputPolicy,
   type ModelParameterOption,
+  type ModelReferenceMediaRule,
   type ModelParameterSchema,
   type ModelParameterValue,
   type ModelReferenceInputs,
@@ -2942,7 +2943,7 @@ function AdminModelParameterEditor({
     }
     const explicit = constraints?.upstreamInputs?.[kind];
     if (explicit) return explicit;
-    if (constraints && kind !== "text") {
+    if (constraints && capability !== "text" && kind !== "text") {
       const maximum = constraints.referenceInputs[kind];
       return {
         limitMode: "fixed" as const,
@@ -2978,6 +2979,51 @@ function AdminModelParameterEditor({
     onChange({
       ...schema,
       referenceInputs: { ...schema.referenceInputs, [kind]: value },
+    });
+  };
+
+  const referenceMediaKinds = ["image", "video", "audio"] as const;
+  const referenceMediaKindLabels: Record<"audio" | "image" | "video", string> = {
+    audio: "音频",
+    image: "图片",
+    video: "视频",
+  };
+  const defaultReferenceMediaRule = (
+    kind: "audio" | "image" | "video",
+  ): ModelReferenceMediaRule => {
+    const allowed = constraints?.referenceMediaRules?.[kind];
+    if (allowed) return { ...allowed, contentTypes: [...allowed.contentTypes] };
+    return kind === "audio"
+      ? { contentTypes: ["audio/mpeg", "audio/wav"], maxBytes: 15 * 1024 * 1024 }
+      : kind === "video"
+        ? { contentTypes: ["video/mp4"], maxBytes: 200 * 1024 * 1024 }
+        : { contentTypes: ["image/png"], maxBytes: 20 * 1024 * 1024 };
+  };
+  const setReferenceMediaEnabled = (
+    kind: "audio" | "image" | "video",
+    enabled: boolean,
+  ) => {
+    const current = schema.referenceMediaRules ?? {};
+    onChange({
+      ...schema,
+      referenceMediaRules: {
+        ...current,
+        [kind]: enabled ? defaultReferenceMediaRule(kind) : undefined,
+      },
+    });
+  };
+  const setReferenceMediaRule = (
+    kind: "audio" | "image" | "video",
+    patch: Partial<ModelReferenceMediaRule>,
+  ) => {
+    const current = schema.referenceMediaRules?.[kind];
+    if (!current) return;
+    onChange({
+      ...schema,
+      referenceMediaRules: {
+        ...schema.referenceMediaRules,
+        [kind]: { ...current, ...patch },
+      },
     });
   };
 
@@ -3819,6 +3865,169 @@ function AdminModelParameterEditor({
           </div>
         )}
         <small>填0表示不接收；“另一种组合”用于表达不同素材搭配方案。</small>
+      </section>
+      <section className="admin-model-reference-file-rules">
+        <div className="admin-model-reference-heading">
+          <strong>参考素材文件规则</strong>
+          <span>单段格式/大小/时长、总时长上限；Provider 上限内可自行收紧，模型升级时直接在这里调整。</span>
+        </div>
+        {constraints?.referenceMediaRules && (
+          <small>Provider 要求保留文件规则；只能在当前上限内收紧。</small>
+        )}
+        <div className="admin-model-reference-media-grid">
+          {referenceMediaKinds.map((kind) => {
+            const constraint = constraints?.referenceMediaRules?.[kind];
+            const rule = schema.referenceMediaRules?.[kind];
+            const enabled = Boolean(rule) || Boolean(constraint);
+            return (
+              <div className="admin-model-reference-media-rule" data-kind={kind} key={kind}>
+                <label className="admin-model-reference-media-enable">
+                  <input
+                    aria-label={`启用${referenceMediaKindLabels[kind]}素材规则`}
+                    checked={enabled}
+                    className="admin-compact-checkbox"
+                    disabled={Boolean(constraint)}
+                    onChange={(event) =>
+                      setReferenceMediaEnabled(kind, event.target.checked)}
+                    title={constraint
+                      ? "Provider要求保留该素材规则"
+                      : undefined}
+                    type="checkbox"
+                  />
+                  <strong>{referenceMediaKindLabels[kind]}</strong>
+                </label>
+                {enabled && rule && (
+                  <div className="admin-model-reference-media-fields">
+                    <label>
+                      <span>单段上限(MB)</span>
+                      <input
+                        aria-label={`${referenceMediaKindLabels[kind]}单段大小上限`}
+                        max={String(
+                          constraint
+                            ? Math.floor(constraint.maxBytes / (1024 * 1024))
+                            : 512,
+                        )}
+                        min="1"
+                        onChange={(event) =>
+                          setReferenceMediaRule(kind, {
+                            maxBytes: Math.max(
+                              1,
+                              Math.round(
+                                Number(event.target.value) || 1,
+                              ),
+                            ) * 1024 * 1024,
+                          })}
+                        type="number"
+                        value={Math.round(rule.maxBytes / (1024 * 1024))}
+                      />
+                    </label>
+                    {kind !== "image" && (
+                      <>
+                        <label>
+                          <span>单段最短(秒)</span>
+                          <input
+                            aria-label={`${referenceMediaKindLabels[kind]}单段最短时长`}
+                            min="0"
+                            onChange={(event) =>
+                              setReferenceMediaRule(kind, {
+                                minDurationSeconds:
+                                  event.target.value === ""
+                                    ? undefined
+                                    : Math.max(
+                                        0,
+                                        Math.round(Number(event.target.value) || 0),
+                                      ),
+                              })}
+                            placeholder="不限"
+                            type="number"
+                            value={rule.minDurationSeconds ?? ""}
+                          />
+                        </label>
+                        <label>
+                          <span>单段最长(秒)</span>
+                          <input
+                            aria-label={`${referenceMediaKindLabels[kind]}单段最长时长`}
+                            min="0"
+                            onChange={(event) =>
+                              setReferenceMediaRule(kind, {
+                                maxDurationSeconds:
+                                  event.target.value === ""
+                                    ? undefined
+                                    : Math.max(
+                                        0,
+                                        Math.round(Number(event.target.value) || 0),
+                                      ),
+                              })}
+                            placeholder="不限"
+                            type="number"
+                            value={rule.maxDurationSeconds ?? ""}
+                          />
+                        </label>
+                        <label>
+                          <span>总时长上限(秒)</span>
+                          <input
+                            aria-label={`${referenceMediaKindLabels[kind]}参考素材总时长上限`}
+                            min="0"
+                            onChange={(event) =>
+                              setReferenceMediaRule(kind, {
+                                maxTotalDurationSeconds:
+                                  event.target.value === ""
+                                    ? undefined
+                                    : Math.max(
+                                        0,
+                                        Math.round(Number(event.target.value) || 0),
+                                      ),
+                              })}
+                            placeholder="不限"
+                            type="number"
+                            value={rule.maxTotalDurationSeconds ?? ""}
+                          />
+                        </label>
+                      </>
+                    )}
+                    <label className="admin-model-reference-media-formats">
+                      <span>格式(MIME,逗号分隔)</span>
+                      <input
+                        aria-label={`${referenceMediaKindLabels[kind]}允许格式`}
+                        onChange={(event) => {
+                          const contentTypes = event.target.value
+                            .split(",")
+                            .map((entry) => entry.trim())
+                            .filter(Boolean);
+                          if (contentTypes.length) {
+                            setReferenceMediaRule(kind, { contentTypes });
+                          }
+                        }}
+                        value={rule.contentTypes.join(",")}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {schema.referenceMediaRules?.audio && (
+          <label className="admin-model-reference-audio-visual">
+            <input
+              checked={schema.referenceMediaRules.audioRequiresVisual === true}
+              className="admin-compact-checkbox"
+              disabled={Boolean(
+                constraints?.referenceMediaRules?.audioRequiresVisual,
+              )}
+              onChange={(event) =>
+                onChange({
+                  ...schema,
+                  referenceMediaRules: {
+                    ...schema.referenceMediaRules,
+                    audioRequiresVisual: event.target.checked,
+                  },
+                })}
+              type="checkbox"
+            />
+            <span>参考音频必须搭配图片或视频</span>
+          </label>
+        )}
       </section>
     </div>
   );

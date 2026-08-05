@@ -91,7 +91,7 @@ export function modelGenerationAdapterSupported(
   if (input.capability === "video") {
     return input.providerDriver === "volcengine-ark" &&
       input.costCurrency === "CNY" &&
-      /^doubao-seedance-2-0-mini-[a-z0-9-]+$/i.test(input.providerModelId);
+      /^doubao-seedance-[a-z0-9-]+$/i.test(input.providerModelId);
   }
   return input.providerDriver === "mureka" &&
     input.costCurrency === "USD" &&

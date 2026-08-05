@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import { basename, join } from "node:path";
 import { open, readFile, stat } from "node:fs/promises";
+import {
+  seedance2ReferenceMediaRules,
+  type ModelReferenceMediaRules,
+} from "../types/modelParameters";
 import { createPrivateAliyunOssReadUrl } from "./aliyunOss";
 import {
   readableMediaForOwner,
@@ -22,20 +26,26 @@ export class ProviderMediaError extends Error {
   }
 }
 
-const mediaRules = {
+/**
+ * Generic execution-time guard for tasks whose model schema does not define
+ * reference-material rules. Format and size only; duration is model-specific.
+ */
+export const genericReferenceMediaRules: ModelReferenceMediaRules = {
   audio: {
-    contentTypes: new Set(["audio/mpeg", "audio/wav"]),
-    maximumBytes: 15 * 1024 * 1024,
+    contentTypes: ["audio/aac", "audio/mp4", "audio/mpeg", "audio/wav"],
+    maxBytes: 50 * 1024 * 1024,
   },
   image: {
-    contentTypes: new Set(["image/png"]),
-    maximumBytes: 20 * 1024 * 1024,
+    contentTypes: ["image/png"],
+    maxBytes: 20 * 1024 * 1024,
   },
   video: {
-    contentTypes: new Set(["video/mp4"]),
-    maximumBytes: 200 * 1024 * 1024,
+    contentTypes: ["video/mp4"],
+    maxBytes: 500 * 1024 * 1024,
   },
-} as const;
+};
+
+export const arkVideoMediaRules = seedance2ReferenceMediaRules;
 
 export const arkVideoBase64BudgetBytes = 64 * 1_024 * 1_024;
 export function arkVideoBase64EnvelopeBytes(prompt: string) {
@@ -78,8 +88,20 @@ export function assertArkVideoBase64Budget(
   return total;
 }
 
-export function arkVideoMediaProblem(kind: MediaKind, media: MediaRecord) {
-  const rule = mediaRules[kind];
+function mediaFormatLabel(contentType: string) {
+  if (contentType === "audio/mpeg") return "MP3";
+  if (contentType === "audio/wav") return "WAV";
+  if (contentType === "video/mp4") return "MP4";
+  if (contentType === "image/png") return "PNG";
+  return contentType;
+}
+
+export function arkVideoMediaProblem(
+  kind: MediaKind,
+  media: MediaRecord,
+  rules: ModelReferenceMediaRules = arkVideoMediaRules,
+) {
+  const rule = rules[kind];
   if (
     !Number.isSafeInteger(media.byteSize) ||
     media.byteSize < 1 ||
@@ -87,19 +109,26 @@ export function arkVideoMediaProblem(kind: MediaKind, media: MediaRecord) {
   ) {
     return "参考素材的大小或校验信息无效";
   }
-  if (!rule.contentTypes.has(media.contentType as never)) {
+  if (!rule) return undefined;
+  if (!rule.contentTypes.includes(media.contentType)) {
     return kind === "audio"
-      ? "参考音频仅支持MP3或WAV格式"
+      ? `参考音频仅支持${rule.contentTypes.map(mediaFormatLabel).join("或")}格式`
       : "参考素材的文件类型不受当前视频模型支持";
   }
-  if (media.byteSize > rule.maximumBytes) {
+  if (media.byteSize > rule.maxBytes) {
     return kind === "video"
-      ? "单个参考视频不得超过200MB"
+      ? `单个参考视频不得超过${Math.round(rule.maxBytes / (1024 * 1024))}MB`
       : kind === "audio"
-        ? "单个参考音频不得超过15MB"
+        ? `单个参考音频不得超过${Math.round(rule.maxBytes / (1024 * 1024))}MB`
         : "单张参考图片超过本项目安全上限";
   }
   if (kind === "image") return undefined;
+  if (
+    rule.minDurationSeconds === undefined &&
+    rule.maxDurationSeconds === undefined
+  ) {
+    return undefined;
+  }
   if (
     media.durationStatus !== "ready" ||
     !media.durationSource ||
@@ -109,19 +138,30 @@ export function arkVideoMediaProblem(kind: MediaKind, media: MediaRecord) {
       ? "参考视频时长尚未经过服务端校验，请重新上传"
       : "参考音频时长尚未经过服务端校验，请重新上传";
   }
-  if (media.durationSeconds! < 2 || media.durationSeconds! > 15) {
+  const minimum = rule.minDurationSeconds ?? 0;
+  const maximum = rule.maxDurationSeconds ?? Number.POSITIVE_INFINITY;
+  if (media.durationSeconds! < minimum || media.durationSeconds! > maximum) {
+    const label = rule.minDurationSeconds !== undefined &&
+        rule.maxDurationSeconds !== undefined
+      ? `${rule.minDurationSeconds}至${rule.maxDurationSeconds}秒之间`
+      : rule.minDurationSeconds !== undefined
+        ? `至少${rule.minDurationSeconds}秒`
+        : `不超过${rule.maxDurationSeconds}秒`;
     return kind === "video"
-      ? "单个参考视频时长必须在2至15秒之间"
-      : "单个参考音频时长必须在2至15秒之间";
+      ? `单个参考视频时长必须在${label}`
+      : `单个参考音频时长必须在${label}`;
   }
 }
 
-export function assertArkVideoMediaCombination(inputs: ArkVideoMediaRecord[]) {
+export function assertArkVideoMediaCombination(
+  inputs: ArkVideoMediaRecord[],
+  rules: ModelReferenceMediaRules = arkVideoMediaRules,
+) {
   let audioDuration = 0;
   let videoDuration = 0;
   let visualReferences = 0;
   for (const input of inputs) {
-    const problem = arkVideoMediaProblem(input.kind, input.media);
+    const problem = arkVideoMediaProblem(input.kind, input.media, rules);
     if (problem) throw new ProviderMediaError("MEDIA_INVALID", problem);
     if (input.kind === "image") visualReferences += 1;
     if (input.kind === "video") {
@@ -130,19 +170,31 @@ export function assertArkVideoMediaCombination(inputs: ArkVideoMediaRecord[]) {
     }
     if (input.kind === "audio") audioDuration += input.media.durationSeconds!;
   }
-  if (videoDuration > 15) {
+  const videoTotalMaximum = rules.video?.maxTotalDurationSeconds;
+  if (
+    videoTotalMaximum !== undefined &&
+    videoDuration > videoTotalMaximum
+  ) {
     throw new ProviderMediaError(
       "MEDIA_INVALID",
-      "所有参考视频的总时长不得超过15秒",
+      `所有参考视频的总时长不得超过${videoTotalMaximum}秒`,
     );
   }
-  if (audioDuration > 15) {
+  const audioTotalMaximum = rules.audio?.maxTotalDurationSeconds;
+  if (
+    audioTotalMaximum !== undefined &&
+    audioDuration > audioTotalMaximum
+  ) {
     throw new ProviderMediaError(
       "MEDIA_INVALID",
-      "所有参考音频的总时长不得超过15秒",
+      `所有参考音频的总时长不得超过${audioTotalMaximum}秒`,
     );
   }
-  if (audioDuration > 0 && visualReferences === 0) {
+  if (
+    rules.audioRequiresVisual === true &&
+    audioDuration > 0 &&
+    visualReferences === 0
+  ) {
     throw new ProviderMediaError(
       "MEDIA_INVALID",
       "参考音频不能单独用于当前视频模型，请至少再连接一个图片或视频",
@@ -154,7 +206,7 @@ export function arkVideoMediaRecordForOwner(input: {
   assetId: string;
   kind: MediaKind;
   ownerId: string;
-}) {
+}, rules: ModelReferenceMediaRules = arkVideoMediaRules) {
   if (
     !/^[a-z0-9._-]{1,160}$/i.test(input.assetId) ||
     !/^[a-z0-9._-]{1,160}$/i.test(input.ownerId)
@@ -168,7 +220,7 @@ export function arkVideoMediaRecordForOwner(input: {
       "参考素材不存在、尚未保存或不属于当前账号",
     );
   }
-  const problem = arkVideoMediaProblem(input.kind, media);
+  const problem = arkVideoMediaProblem(input.kind, media, rules);
   if (problem) throw new ProviderMediaError("MEDIA_INVALID", problem);
   return media;
 }
@@ -245,8 +297,8 @@ export async function providerMediaUrlForOwner(input: {
   assetId: string;
   kind: MediaKind;
   ownerId: string;
-}) {
-  const media = arkVideoMediaRecordForOwner(input);
+}, options: { rules?: ModelReferenceMediaRules } = {}) {
+  const media = arkVideoMediaRecordForOwner(input, options.rules);
 
   if (media.storageBackend === "oss") {
     const profile = await activeStorageProfile();
