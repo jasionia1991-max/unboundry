@@ -1152,6 +1152,25 @@ const migrations: readonly Migration[] = [
       WHERE graph_revision = 0 AND revision > 0;
     `,
   },
+  {
+    version: 25,
+    name: "media-asset-dimensions",
+    prepare(database) {
+      addColumnIfMissing(
+        database,
+        "media_assets",
+        "media_width",
+        "INTEGER CHECK (media_width IS NULL OR media_width > 0)",
+      );
+      addColumnIfMissing(
+        database,
+        "media_assets",
+        "media_height",
+        "INTEGER CHECK (media_height IS NULL OR media_height > 0)",
+      );
+    },
+    sql: "",
+  },
 ];
 
 export const currentSchemaVersion = migrations.at(-1)?.version ?? 0;

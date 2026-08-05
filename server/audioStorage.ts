@@ -23,7 +23,7 @@ import {
   activeStorageProfile,
   storageMediaRoutingState,
 } from "./secureStorageProfiles";
-import { probeTrustedMediaDuration } from "./mediaMetadata";
+import { probeTrustedMediaMetadata } from "./mediaMetadata";
 
 const maxAudioBytes = 50 * 1024 * 1024;
 const generatedAudioProbeBytes = 64 * 1024;
@@ -216,7 +216,7 @@ export async function saveGeneratedAudio(input: {
     } else {
       format.validate(header);
     }
-    const durationSeconds = await probeTrustedMediaDuration(temporary);
+    const metadata = await probeTrustedMediaMetadata(temporary);
     const checksumSha256 = checksum.digest("hex");
     const routing = await storageMediaRoutingState();
     if (routing.enabled && routing.profile) {
@@ -227,7 +227,7 @@ export async function saveGeneratedAudio(input: {
             byteSize: size,
             checksumSha256,
             contentType: format.contentType,
-            durationSeconds,
+            durationSeconds: metadata.durationSeconds,
             id,
             kind: "audio",
             objectKey,
@@ -252,7 +252,7 @@ export async function saveGeneratedAudio(input: {
         byteSize: size,
         checksumSha256,
         contentType: format.contentType,
-        durationSeconds,
+        durationSeconds: metadata.durationSeconds,
         id,
         kind: "audio",
         storageName: id,
@@ -283,7 +283,7 @@ export async function saveGeneratedAudio(input: {
       assetId: id,
       byteSize: size,
       contentType: format.contentType,
-      durationSeconds,
+      durationSeconds: metadata.durationSeconds,
       storageBackend: routing.enabled && routing.profile ? "oss" as const : "local" as const,
       url: `/api/audio-assets/${id}`,
     };
@@ -429,7 +429,7 @@ export async function audioStorage(
     format.validate(bytes);
     await mkdir(path.directory, { recursive: true });
     await writeFile(temporary, bytes, { flag: "wx" });
-    const durationSeconds = await probeTrustedMediaDuration(temporary);
+    const metadata = await probeTrustedMediaMetadata(temporary);
     const checksumSha256 = createHash("sha256").update(bytes).digest("hex");
     const routing = await storageMediaRoutingState();
     if (routing.enabled && routing.profile) {
@@ -440,7 +440,7 @@ export async function audioStorage(
           byteSize: bytes.length,
           checksumSha256,
           contentType: format.contentType,
-          durationSeconds,
+          durationSeconds: metadata.durationSeconds,
           id,
           kind: "audio",
           objectKey,
@@ -464,7 +464,7 @@ export async function audioStorage(
         byteSize: bytes.length,
         checksumSha256,
         contentType: format.contentType,
-        durationSeconds,
+        durationSeconds: metadata.durationSeconds,
         id,
         kind: "audio",
         storageName: id,
@@ -475,7 +475,7 @@ export async function audioStorage(
       assetId: id,
       byteSize: bytes.length,
       contentType: format.contentType,
-      durationSeconds,
+      durationSeconds: metadata.durationSeconds,
       fileName: decodeURIComponent(rawName).slice(0, 240),
       size: bytes.length,
       storageBackend: routing.enabled && routing.profile ? "oss" : "local",

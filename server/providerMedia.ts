@@ -122,6 +122,20 @@ export function arkVideoMediaProblem(
         ? `单个参考音频不得超过${Math.round(rule.maxBytes / (1024 * 1024))}MB`
         : "单张参考图片超过本项目安全上限";
   }
+  if (kind === "video") {
+    const pixelMinimum = rule.minPixelCount ?? 409_600;
+    if (
+      !Number.isSafeInteger(media.mediaWidth) ||
+      !Number.isSafeInteger(media.mediaHeight) ||
+      media.mediaWidth! < 1 ||
+      media.mediaHeight! < 1
+    ) {
+      return "参考视频分辨率尚未经过服务端校验，请重新上传";
+    }
+    if (media.mediaWidth! * media.mediaHeight! < pixelMinimum) {
+      return `参考视频分辨率过低，总像素需至少${pixelMinimum}（例如640×640或1280×720）`;
+    }
+  }
   if (kind === "image") return undefined;
   if (
     rule.minDurationSeconds === undefined &&

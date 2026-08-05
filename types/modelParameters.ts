@@ -117,6 +117,7 @@ export type ModelReferenceMediaRule = {
   maxDurationSeconds?: number;
   maxTotalDurationSeconds?: number;
   minDurationSeconds?: number;
+  minPixelCount?: number;
 };
 
 export type ModelReferenceMediaRules = {
@@ -626,6 +627,7 @@ export const seedance2ReferenceMediaRules: ModelReferenceMediaRules = {
     maxBytes: 200 * 1024 * 1024,
     maxDurationSeconds: 15,
     maxTotalDurationSeconds: 15,
+    minPixelCount: 409_600,
     minDurationSeconds: 2,
   },
 };

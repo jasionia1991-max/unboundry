@@ -166,6 +166,33 @@ async function limitedJson(response: Response) {
   }
 }
 
+async function providerErrorText(response: Response) {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > 4_096) {
+      await reader.cancel();
+      break;
+    }
+    chunks.push(value);
+  }
+  try {
+    const bytes = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
+    const body = JSON.parse(bytes.toString("utf8")) as {
+      error?: { message?: unknown };
+    };
+    const message = body.error?.message;
+    return typeof message === "string" ? message.slice(0, 400) : "";
+  } catch {
+    return "";
+  }
+}
+
 function outputText(body: Record<string, unknown>) {
   const output = Array.isArray(body.output) ? body.output : [];
   const parts: string[] = [];
@@ -265,7 +292,11 @@ export async function createVolcengineArkTextResponse(
       throw new VolcengineArkTextError("RATE_LIMIT", "火山方舟正在限流，请稍后再试");
     }
     if (!response.ok) {
-      throw new VolcengineArkTextError("REMOTE", "火山方舟暂时无法完成文字生成");
+      const message = await providerErrorText(response);
+      throw new VolcengineArkTextError(
+        "REMOTE",
+        message || "火山方舟暂时无法完成文字生成",
+      );
     }
     const body = await limitedJson(response);
     if (body.status !== "completed") {

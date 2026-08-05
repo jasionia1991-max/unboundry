@@ -216,6 +216,33 @@ async function limitedJson(response: Response) {
   }
 }
 
+async function providerErrorText(response: Response) {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > 4_096) {
+      await reader.cancel();
+      break;
+    }
+    chunks.push(value);
+  }
+  try {
+    const bytes = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
+    const body = JSON.parse(bytes.toString("utf8")) as {
+      error?: { message?: unknown };
+    };
+    const message = body.error?.message;
+    return typeof message === "string" ? message.slice(0, 400) : "";
+  } catch {
+    return "";
+  }
+}
+
 async function requestJson(
   profile: ProviderProfile,
   path: string,
@@ -248,7 +275,11 @@ async function requestJson(
       throw new VolcengineArkVideoError("RATE_LIMIT", "火山方舟正在限流，请稍后再试");
     }
     if (!response.ok) {
-      throw new VolcengineArkVideoError("REMOTE", "火山方舟暂时无法处理视频任务");
+      const message = await providerErrorText(response);
+      throw new VolcengineArkVideoError(
+        "REMOTE",
+        message || "火山方舟暂时无法处理视频任务",
+      );
     }
     if (response.status === 204) return {};
     return limitedJson(response);

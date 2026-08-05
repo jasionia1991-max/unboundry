@@ -41,6 +41,8 @@ export type ResolvedNodeInput = {
   /** Whether an empty Text source has an instruction waiting to be run. */
   hasGenerationPrompt?: boolean;
   kind: NodeInputKind;
+  mediaHeight?: number;
+  mediaWidth?: number;
   metadataStatus?: "failed" | "pending" | "ready";
   order: number;
   preview?: string;
@@ -430,6 +432,16 @@ export function resolveNodeInputs(input: {
           ? Boolean(text(sourceData.textPrompt))
           : undefined,
         kind,
+        mediaHeight: kind === "video" &&
+            Number.isFinite(Number(sourceData.videoHeight)) &&
+            Number(sourceData.videoHeight) > 0
+          ? Number(sourceData.videoHeight)
+          : undefined,
+        mediaWidth: kind === "video" &&
+            Number.isFinite(Number(sourceData.videoWidth)) &&
+            Number(sourceData.videoWidth) > 0
+          ? Number(sourceData.videoWidth)
+          : undefined,
         metadataStatus: trustedMetadata &&
             (sourceData.mediaMetadataStatus === "ready" ||
               sourceData.mediaMetadataStatus === "pending" ||
@@ -757,6 +769,20 @@ export function resolveNodeInputs(input: {
               : `${item.title}超过本项目图片安全上限`,
         );
         continue;
+      }
+      if (item.kind === "video") {
+        const pixelMinimum = rule.minPixelCount ?? 409_600;
+        if (
+          item.mediaWidth !== undefined &&
+          item.mediaHeight !== undefined &&
+          item.mediaWidth * item.mediaHeight < pixelMinimum
+        ) {
+          policyProblem(
+            item,
+            `${item.title}分辨率过低，参考视频总像素需至少${pixelMinimum}（例如640×640或1280×720）`,
+          );
+          continue;
+        }
       }
       if (item.kind === "video" || item.kind === "audio") {
         const durationRule = rule as {

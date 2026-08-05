@@ -13,6 +13,8 @@ export type MediaRecord = {
   durationSeconds: number | null;
   durationSource: "provider-task" | "server-probe" | null;
   durationStatus: "failed" | "not-applicable" | "pending" | "ready";
+  mediaHeight: number | null;
+  mediaWidth: number | null;
   objectKey: string;
   storageBackend: MediaStorageBackend;
   storageName: string;
@@ -69,7 +71,8 @@ export function readableMediaForOwner(
     .prepare(`
       SELECT
         byte_size, checksum_sha256, content_type, duration_seconds,
-        duration_source, duration_status, object_key, storage_backend,
+        duration_source, duration_status, media_height, media_width,
+        object_key, storage_backend,
         storage_name, storage_status
       FROM media_assets
       WHERE kind = ? AND id = ? AND owner_id = ?
@@ -82,6 +85,8 @@ export function readableMediaForOwner(
         duration_seconds: number | null;
         duration_source: "provider-task" | "server-probe" | null;
         duration_status: "failed" | "not-applicable" | "pending" | "ready";
+        media_height: number | null;
+        media_width: number | null;
         object_key: string;
         storage_backend: MediaStorageBackend;
         storage_name: string;
@@ -97,6 +102,8 @@ export function readableMediaForOwner(
       row.duration_seconds === null ? null : Number(row.duration_seconds),
     durationSource: row.duration_source,
     durationStatus: row.duration_status,
+    mediaHeight: row.media_height,
+    mediaWidth: row.media_width,
     objectKey: row.object_key,
     storageBackend: row.storage_backend,
     storageName: row.storage_name,
@@ -127,6 +134,8 @@ export function registerMedia(
     durationSeconds?: number;
     id: string;
     kind: MediaKind;
+    mediaHeight?: number;
+    mediaWidth?: number;
     objectKey?: string;
     storageBackend?: MediaStorageBackend;
     storageName: string;
@@ -150,6 +159,8 @@ export function registerMediaForOwner(
     durationSeconds?: number;
     id: string;
     kind: MediaKind;
+    mediaHeight?: number;
+    mediaWidth?: number;
     objectKey?: string;
     storageBackend?: MediaStorageBackend;
     storageName: string;
@@ -162,9 +173,10 @@ export function registerMediaForOwner(
       INSERT INTO media_assets (
         kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
         storage_backend, object_key, content_type, checksum_sha256,
-        storage_status, duration_seconds, duration_source, duration_status
+        storage_status, duration_seconds, duration_source, duration_status,
+        media_width, media_height
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(kind, id) DO UPDATE SET
         storage_name = excluded.storage_name,
         byte_size = excluded.byte_size,
@@ -176,7 +188,9 @@ export function registerMediaForOwner(
         storage_status = excluded.storage_status,
         duration_seconds = excluded.duration_seconds,
         duration_source = excluded.duration_source,
-        duration_status = excluded.duration_status
+        duration_status = excluded.duration_status,
+        media_width = excluded.media_width,
+        media_height = excluded.media_height
       WHERE media_assets.owner_id = excluded.owner_id
     `)
     .run(
@@ -197,6 +211,8 @@ export function registerMediaForOwner(
       input.durationSeconds === undefined
         ? input.kind === "image" ? "not-applicable" : "pending"
         : "ready",
+      input.mediaWidth ?? null,
+      input.mediaHeight ?? null,
     );
   if (result.changes !== 1) throw new Error("Asset belongs to another account");
 }

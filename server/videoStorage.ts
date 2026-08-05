@@ -23,7 +23,7 @@ import {
   activeStorageProfile,
   storageMediaRoutingState,
 } from "./secureStorageProfiles";
-import { probeTrustedMediaDuration } from "./mediaMetadata";
+import { probeTrustedMediaMetadata } from "./mediaMetadata";
 
 const maxVideoBytes = 500 * 1024 * 1024;
 
@@ -78,7 +78,7 @@ export async function saveGeneratedMp4(input: {
     if (size < 12 || header.toString("ascii", 4, 8) !== "ftyp") {
       throw new Error("Invalid generated MP4 video");
     }
-    const durationSeconds = await probeTrustedMediaDuration(temporary);
+    const metadata = await probeTrustedMediaMetadata(temporary);
     const checksumSha256 = checksum.digest("hex");
     const routing = await storageMediaRoutingState();
     if (routing.enabled && routing.profile) {
@@ -89,9 +89,11 @@ export async function saveGeneratedMp4(input: {
             byteSize: size,
             checksumSha256,
             contentType: "video/mp4",
-            durationSeconds,
+            durationSeconds: metadata.durationSeconds,
             id,
             kind: "video",
+            mediaHeight: metadata.height,
+            mediaWidth: metadata.width,
             objectKey,
             storageBackend: "oss",
             storageName: id,
@@ -114,9 +116,11 @@ export async function saveGeneratedMp4(input: {
         byteSize: size,
         checksumSha256,
         contentType: "video/mp4",
-        durationSeconds,
+        durationSeconds: metadata.durationSeconds,
         id,
         kind: "video",
+        mediaHeight: metadata.height,
+        mediaWidth: metadata.width,
         storageName: id,
       });
     }
@@ -145,7 +149,7 @@ export async function saveGeneratedMp4(input: {
       assetId: id,
       byteSize: size,
       contentType: "video/mp4",
-      durationSeconds,
+      durationSeconds: metadata.durationSeconds,
       storageBackend: routing.enabled && routing.profile ? "oss" as const : "local" as const,
       url: `/api/video-assets/${id}`,
     };
@@ -294,7 +298,7 @@ export async function videoStorage(
     ) {
       throw new Error("Invalid MP4 video");
     }
-    const durationSeconds = await probeTrustedMediaDuration(temporary);
+    const metadata = await probeTrustedMediaMetadata(temporary);
     const checksumSha256 = checksum.digest("hex");
     const routing = await storageMediaRoutingState();
     if (routing.enabled && routing.profile) {
@@ -304,9 +308,11 @@ export async function videoStorage(
           byteSize: size,
           checksumSha256,
           contentType: "video/mp4",
-          durationSeconds,
+          durationSeconds: metadata.durationSeconds,
           id,
           kind: "video",
+          mediaHeight: metadata.height,
+          mediaWidth: metadata.width,
           objectKey,
           storageBackend: "oss",
           storageName: id,
@@ -328,9 +334,11 @@ export async function videoStorage(
         byteSize: size,
         checksumSha256,
         contentType: "video/mp4",
-        durationSeconds,
+        durationSeconds: metadata.durationSeconds,
         id,
         kind: "video",
+        mediaHeight: metadata.height,
+        mediaWidth: metadata.width,
         storageName: id,
       });
     }
@@ -340,7 +348,7 @@ export async function videoStorage(
       byteSize: size,
       contentType: "video/mp4",
       fileName: decodeURIComponent(rawName).slice(0, 240),
-      durationSeconds,
+      durationSeconds: metadata.durationSeconds,
       size,
       storageBackend: routing.enabled && routing.profile ? "oss" : "local",
       url: `/api/video-assets/${id}`,

@@ -29,6 +29,8 @@ function media(input: Partial<MediaRecord> = {}): MediaRecord {
     durationSeconds: 8,
     durationSource: "server-probe",
     durationStatus: "ready",
+    mediaHeight: 720,
+    mediaWidth: 1280,
     objectKey: "objects/2026/08/video/test.mp4",
     storageBackend: "oss",
     storageName: "test.mp4",
@@ -52,6 +54,14 @@ test("Ark paid-video media policy enforces official size, format and trusted dur
     durationSource: null,
     durationStatus: "pending",
   }))).toContain("服务端校验");
+  expect(arkVideoMediaProblem("video", media({
+    mediaHeight: 360,
+    mediaWidth: 640,
+  }))).toContain("分辨率过低");
+  expect(arkVideoMediaProblem("video", media({
+    mediaHeight: null,
+    mediaWidth: null,
+  }))).toContain("尚未经过服务端校验");
 
   const validAudio = media({
     byteSize: 15 * 1_024 * 1_024,
@@ -438,7 +448,7 @@ const videoFiles = [1, 2].map((index) => {
     "-f",
     "lavfi",
     "-i",
-    `color=c=${index === 1 ? "blue" : "red"}:s=640x360:r=24:d=8`,
+    `color=c=${index === 1 ? "blue" : "red"}:s=1280x720:r=24:d=8`,
     "-c:v",
     "libx264",
     "-pix_fmt",
