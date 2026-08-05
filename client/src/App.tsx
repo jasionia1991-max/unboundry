@@ -3921,6 +3921,150 @@ function AdminModelParameterEditor({
                         value={Math.round(rule.maxBytes / (1024 * 1024))}
                       />
                     </label>
+                    {kind === "image" && (
+                      <>
+                        <label>
+                          <span>最小宽(px)</span>
+                          <input
+                            aria-label="参考图片最小宽度"
+                            min="1"
+                            onChange={(event) =>
+                              setReferenceMediaRule(kind, {
+                                minWidth: event.target.value === ""
+                                  ? undefined
+                                  : Math.max(1, Math.round(Number(event.target.value) || 0)),
+                              })}
+                            placeholder="不限"
+                            type="number"
+                            value={rule.minWidth ?? ""}
+                          />
+                        </label>
+                        <label>
+                          <span>最大宽(px)</span>
+                          <input
+                            aria-label="参考图片最大宽度"
+                            min="1"
+                            onChange={(event) =>
+                              setReferenceMediaRule(kind, {
+                                maxWidth: event.target.value === ""
+                                  ? undefined
+                                  : Math.max(1, Math.round(Number(event.target.value) || 0)),
+                              })}
+                            placeholder="不限"
+                            type="number"
+                            value={rule.maxWidth ?? ""}
+                          />
+                        </label>
+                        <label>
+                          <span>最小高(px)</span>
+                          <input
+                            aria-label="参考图片最小高度"
+                            min="1"
+                            onChange={(event) =>
+                              setReferenceMediaRule(kind, {
+                                minHeight: event.target.value === ""
+                                  ? undefined
+                                  : Math.max(1, Math.round(Number(event.target.value) || 0)),
+                              })}
+                            placeholder="不限"
+                            type="number"
+                            value={rule.minHeight ?? ""}
+                          />
+                        </label>
+                        <label>
+                          <span>最大高(px)</span>
+                          <input
+                            aria-label="参考图片最大高度"
+                            min="1"
+                            onChange={(event) =>
+                              setReferenceMediaRule(kind, {
+                                maxHeight: event.target.value === ""
+                                  ? undefined
+                                  : Math.max(1, Math.round(Number(event.target.value) || 0)),
+                              })}
+                            placeholder="不限"
+                            type="number"
+                            value={rule.maxHeight ?? ""}
+                          />
+                        </label>
+                        <label>
+                          <span>宽高比下限</span>
+                          <input
+                            aria-label="参考图片宽高比下限"
+                            min="0.1"
+                            step="0.1"
+                            onChange={(event) =>
+                              setReferenceMediaRule(kind, {
+                                minAspectRatio: event.target.value === ""
+                                  ? undefined
+                                  : Math.max(
+                                      0.1,
+                                      Math.round(Number(event.target.value) * 100) / 100,
+                                    ),
+                              })}
+                            placeholder="不限"
+                            type="number"
+                            value={rule.minAspectRatio ?? ""}
+                          />
+                        </label>
+                        <label>
+                          <span>宽高比上限</span>
+                          <input
+                            aria-label="参考图片宽高比上限"
+                            min="0.1"
+                            step="0.1"
+                            onChange={(event) =>
+                              setReferenceMediaRule(kind, {
+                                maxAspectRatio: event.target.value === ""
+                                  ? undefined
+                                  : Math.max(
+                                      0.1,
+                                      Math.round(Number(event.target.value) * 100) / 100,
+                                    ),
+                              })}
+                            placeholder="不限"
+                            type="number"
+                            value={rule.maxAspectRatio ?? ""}
+                          />
+                        </label>
+                      </>
+                    )}
+                    {kind === "video" && (
+                      <>
+                        <label>
+                          <span>最小总像素</span>
+                          <input
+                            aria-label={`${referenceMediaKindLabels[kind]}最小总像素`}
+                            min="1"
+                            onChange={(event) =>
+                              setReferenceMediaRule(kind, {
+                                minPixelCount: event.target.value === ""
+                                  ? undefined
+                                  : Math.max(1, Math.round(Number(event.target.value) || 0)),
+                              })}
+                            placeholder="不限"
+                            type="number"
+                            value={rule.minPixelCount ?? ""}
+                          />
+                        </label>
+                        <label>
+                          <span>最大总像素</span>
+                          <input
+                            aria-label={`${referenceMediaKindLabels[kind]}最大总像素`}
+                            min="1"
+                            onChange={(event) =>
+                              setReferenceMediaRule(kind, {
+                                maxPixelCount: event.target.value === ""
+                                  ? undefined
+                                  : Math.max(1, Math.round(Number(event.target.value) || 0)),
+                              })}
+                            placeholder="不限"
+                            type="number"
+                            value={rule.maxPixelCount ?? ""}
+                          />
+                        </label>
+                      </>
+                    )}
                     {kind !== "image" && (
                       <>
                         <label>

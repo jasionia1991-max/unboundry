@@ -24,6 +24,7 @@ import {
 } from "../models/ModelCatalog";
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
 import { visibleGenerationError } from "../generation/generationErrors";
+import { ProviderErrorNotice } from "../generation/ProviderErrorNotice";
 import {
   generationFailureMessage,
   generationInputKey as createGenerationInputKey,
@@ -1463,7 +1464,7 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       >
         {(transientUploadError || uploadError) && (
           <div className="image-node-upload-error video-node-upload-error" role="alert">
-            <span>{transientUploadError || uploadError}</span>
+            <ProviderErrorNotice message={transientUploadError || uploadError} />
             {retryAvailable && (
               <button
                 aria-label="重试生成"

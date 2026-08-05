@@ -1536,6 +1536,77 @@ sup {
   cursor: pointer;
 }
 
+.provider-error-notice {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.provider-error-summary {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.provider-error-notice > button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 0 8px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 6px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  font: inherit;
+  font-size: var(--tap-font-secondary);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.provider-error-detail {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.provider-error-detail code {
+  display: block;
+  max-height: 120px;
+  overflow: auto;
+  color: #d8b0b0;
+  font-size: var(--tap-font-secondary);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.provider-error-detail button {
+  display: inline-flex;
+  height: 20px;
+  margin-top: 6px;
+  padding: 0 8px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 6px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  font: inherit;
+  font-size: var(--tap-font-secondary);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
 .image-node-replace {
   position: absolute;
   top: 16px;
@@ -11149,6 +11220,9 @@ sup {
 
 .admin-card .admin-model-reference-set input[type="number"] {
   width: 100%;
+  height: 31px;
+  padding: 0 7px;
+  border-radius: 8px;
 }
 
 .admin-card .admin-model-reference-modes button {
@@ -11178,6 +11252,9 @@ sup {
 
 .admin-card .admin-model-reference-global input[type="number"] {
   width: 100%;
+  height: 31px;
+  padding: 0 7px;
+  border-radius: 8px;
 }
 
 .admin-model-upstream-inputs > .admin-model-reference-heading {

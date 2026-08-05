@@ -187,8 +187,9 @@ export class RelayProviderError extends Error {
   constructor(
     readonly code: RelayProviderErrorCode,
     readonly providerTaskMayStillRun = false,
+    message?: string,
   ) {
-    super(errorMessages[code]);
+    super(message || errorMessages[code]);
     this.name = "RelayProviderError";
   }
 }
@@ -417,6 +418,40 @@ function remoteError(status: number) {
   return new RelayProviderError("REMOTE");
 }
 
+async function providerErrorText(response: Response) {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > 4_096) {
+      await reader.cancel();
+      break;
+    }
+    chunks.push(value);
+  }
+  const text = Buffer.concat(
+    chunks.map((chunk) => Buffer.from(chunk)),
+  ).toString("utf8");
+  try {
+    const body = JSON.parse(text) as {
+      error?: { message?: unknown };
+      message?: unknown;
+    };
+    const message = typeof body.error?.message === "string"
+      ? body.error.message
+      : typeof body.message === "string"
+        ? body.message
+        : "";
+    return message.replace(/\s+/g, " ").trim().slice(0, 400);
+  } catch {
+    return text.replace(/\s+/g, " ").trim().slice(0, 400);
+  }
+}
+
 async function readLimitedJson(response: Response, maximumBytes: number) {
   const declared = Number(response.headers.get("Content-Length"));
   if (Number.isFinite(declared) && declared > maximumBytes) {
@@ -505,7 +540,13 @@ async function relayJsonRequest(input: {
         : input.execution.fetcher,
       resolver: input.execution.resolver,
     });
-    if (!response.ok) throw remoteError(response.status);
+    if (!response.ok) {
+      const providerText = await providerErrorText(response);
+      const error = remoteError(response.status);
+      throw providerText
+        ? new RelayProviderError(error.code, error.providerTaskMayStillRun, providerText)
+        : error;
+    }
     return await readLimitedJson(response, input.maximumResponseBytes);
   } catch (error) {
     if (error instanceof RelayProviderError) throw error;

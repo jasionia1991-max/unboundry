@@ -42,11 +42,13 @@ const murekaAudioErrorMessages: Record<MurekaAudioErrorCode, string> = {
 };
 
 export class MurekaAudioError extends Error {
-  constructor(public readonly code: MurekaAudioErrorCode) {
-    // Provider-controlled text must never become an application error. Keeping
-    // the message derived exclusively from our local code also protects every
-    // persistence and HTTP path that serializes this error later.
-    super(murekaAudioErrorMessages[code]);
+  constructor(
+    public readonly code: MurekaAudioErrorCode,
+    providerMessage?: string,
+  ) {
+    // Provider text is sanitized and length-capped before it may reach the UI;
+    // the local default remains the fallback whenever no safe message exists.
+    super(providerMessage || murekaAudioErrorMessages[code]);
     this.name = "MurekaAudioError";
   }
 }
@@ -214,7 +216,15 @@ async function murekaRequest(
       : status === 429
         ? "RATE_LIMIT"
         : "REMOTE";
-    throw new MurekaAudioError(code);
+    const message = body && typeof body === "object" &&
+        !Array.isArray(body) &&
+        typeof (body as Record<string, unknown>).message === "string"
+      ? String((body as Record<string, unknown>).message)
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 200)
+      : "";
+    throw new MurekaAudioError(code, message);
   }
   return body;
 }

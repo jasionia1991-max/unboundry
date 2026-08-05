@@ -122,18 +122,55 @@ export function arkVideoMediaProblem(
         ? `单个参考音频不得超过${Math.round(rule.maxBytes / (1024 * 1024))}MB`
         : "单张参考图片超过本项目安全上限";
   }
-  if (kind === "video") {
-    const pixelMinimum = rule.minPixelCount ?? 409_600;
+  const dimensionFields = [
+    rule.maxAspectRatio,
+    rule.maxHeight,
+    rule.maxPixelCount,
+    rule.maxWidth,
+    rule.minAspectRatio,
+    rule.minHeight,
+    rule.minPixelCount,
+    rule.minWidth,
+  ];
+  if (dimensionFields.some((value) => value !== undefined)) {
+    const label = kind === "video" ? "参考视频" : "参考图片";
     if (
       !Number.isSafeInteger(media.mediaWidth) ||
       !Number.isSafeInteger(media.mediaHeight) ||
       media.mediaWidth! < 1 ||
       media.mediaHeight! < 1
     ) {
-      return "参考视频分辨率尚未经过服务端校验，请重新上传";
+      return `${label}分辨率尚未经过服务端校验，请重新上传`;
     }
-    if (media.mediaWidth! * media.mediaHeight! < pixelMinimum) {
-      return `参考视频分辨率过低，总像素需至少${pixelMinimum}（例如640×640或1280×720）`;
+    const width = media.mediaWidth!;
+    const height = media.mediaHeight!;
+    if (rule.minWidth !== undefined && width < rule.minWidth) {
+      return `${label}宽度需至少${rule.minWidth}px`;
+    }
+    if (rule.maxWidth !== undefined && width > rule.maxWidth) {
+      return `${label}宽度需不超过${rule.maxWidth}px`;
+    }
+    if (rule.minHeight !== undefined && height < rule.minHeight) {
+      return `${label}高度需至少${rule.minHeight}px`;
+    }
+    if (rule.maxHeight !== undefined && height > rule.maxHeight) {
+      return `${label}高度需不超过${rule.maxHeight}px`;
+    }
+    const pixels = width * height;
+    if (rule.minPixelCount !== undefined && pixels < rule.minPixelCount) {
+      return kind === "video"
+        ? `参考视频分辨率过低，总像素需至少${rule.minPixelCount}（例如640×640或1280×720）`
+        : `${label}总像素需至少${rule.minPixelCount}`;
+    }
+    if (rule.maxPixelCount !== undefined && pixels > rule.maxPixelCount) {
+      return `${label}总像素需不超过${rule.maxPixelCount}`;
+    }
+    const aspectRatio = width / height;
+    if (rule.minAspectRatio !== undefined && aspectRatio < rule.minAspectRatio) {
+      return `${label}宽高比需至少${rule.minAspectRatio}`;
+    }
+    if (rule.maxAspectRatio !== undefined && aspectRatio > rule.maxAspectRatio) {
+      return `${label}宽高比需不超过${rule.maxAspectRatio}`;
     }
   }
   if (kind === "image") return undefined;

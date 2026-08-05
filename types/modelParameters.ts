@@ -115,9 +115,16 @@ export type ModelReferenceMediaRule = {
   contentTypes: string[];
   maxBytes: number;
   maxDurationSeconds?: number;
+  maxAspectRatio?: number;
+  maxHeight?: number;
+  maxPixelCount?: number;
   maxTotalDurationSeconds?: number;
+  maxWidth?: number;
+  minAspectRatio?: number;
   minDurationSeconds?: number;
+  minHeight?: number;
   minPixelCount?: number;
+  minWidth?: number;
 };
 
 export type ModelReferenceMediaRules = {
@@ -620,12 +627,19 @@ export const seedance2ReferenceMediaRules: ModelReferenceMediaRules = {
   audioRequiresVisual: true,
   image: {
     contentTypes: ["image/png"],
-    maxBytes: 20 * 1024 * 1024,
+    maxBytes: 30 * 1024 * 1024,
+    maxAspectRatio: 2.5,
+    maxHeight: 6000,
+    maxWidth: 6000,
+    minAspectRatio: 0.4,
+    minHeight: 300,
+    minWidth: 300,
   },
   video: {
     contentTypes: ["video/mp4"],
     maxBytes: 200 * 1024 * 1024,
     maxDurationSeconds: 15,
+    maxPixelCount: 8_295_044,
     maxTotalDurationSeconds: 15,
     minPixelCount: 409_600,
     minDurationSeconds: 2,
@@ -648,12 +662,19 @@ export const seedanceFamilyReferenceMediaRules: ModelReferenceMediaRules = {
   audioRequiresVisual: true,
   image: {
     contentTypes: ["image/png"],
-    maxBytes: 20 * 1024 * 1024,
+    maxBytes: 30 * 1024 * 1024,
+    maxAspectRatio: 2.5,
+    maxHeight: 6000,
+    maxWidth: 6000,
+    minAspectRatio: 0.4,
+    minHeight: 300,
+    minWidth: 300,
   },
   video: {
     contentTypes: ["video/mp4"],
     maxBytes: 200 * 1024 * 1024,
     maxDurationSeconds: 30,
+    maxPixelCount: 8_295_044,
     maxTotalDurationSeconds: 30,
     minDurationSeconds: 2,
   },
@@ -1135,6 +1156,27 @@ export function validateParameterSchemaConstraints(
       ) {
         throw new Error("Model reference media rule is not supported by this Provider model");
       }
+      const enforceBound = (
+        configuredValue: number | undefined,
+        allowedValue: number | undefined,
+        minimum: boolean,
+      ) => {
+        if (allowedValue === undefined || configuredValue === undefined) return;
+        if (minimum && configuredValue < allowedValue) {
+          throw new Error("Model reference media rule is not supported by this Provider model");
+        }
+        if (!minimum && configuredValue > allowedValue) {
+          throw new Error("Model reference media rule is not supported by this Provider model");
+        }
+      };
+      enforceBound(configured.minWidth, allowed.minWidth, true);
+      enforceBound(configured.maxWidth, allowed.maxWidth, false);
+      enforceBound(configured.minHeight, allowed.minHeight, true);
+      enforceBound(configured.maxHeight, allowed.maxHeight, false);
+      enforceBound(configured.minPixelCount, allowed.minPixelCount, true);
+      enforceBound(configured.maxPixelCount, allowed.maxPixelCount, false);
+      enforceBound(configured.minAspectRatio, allowed.minAspectRatio, true);
+      enforceBound(configured.maxAspectRatio, allowed.maxAspectRatio, false);
     }
     if (
       constraints.referenceMediaRules.audioRequiresVisual &&
@@ -1535,6 +1577,29 @@ function cleanReferenceMediaRules(value: unknown): ModelReferenceMediaRules {
     }
     return parsed;
   };
+  const dimension = (
+    candidate: unknown,
+    maximum: number,
+  ): number | undefined => {
+    if (candidate === undefined || candidate === null || candidate === "") {
+      return undefined;
+    }
+    const parsed = Number(candidate);
+    if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > maximum) {
+      throw new Error("Invalid model reference media rule");
+    }
+    return parsed;
+  };
+  const ratio = (candidate: unknown): number | undefined => {
+    if (candidate === undefined || candidate === null || candidate === "") {
+      return undefined;
+    }
+    const parsed = Number(candidate);
+    if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 100) {
+      throw new Error("Invalid model reference media rule");
+    }
+    return Math.round(parsed * 100) / 100;
+  };
   const rule = (
     key: "audio" | "image" | "video",
   ): ModelReferenceMediaRule | undefined => {
@@ -1555,6 +1620,14 @@ function cleanReferenceMediaRules(value: unknown): ModelReferenceMediaRules {
     if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 2_147_483_647) {
       throw new Error("Invalid model reference media rule");
     }
+    const minWidth = dimension(item.minWidth, 100_000);
+    const maxWidth = dimension(item.maxWidth, 100_000);
+    const minHeight = dimension(item.minHeight, 100_000);
+    const maxHeight = dimension(item.maxHeight, 100_000);
+    const minPixelCount = dimension(item.minPixelCount, 1_000_000_000);
+    const maxPixelCount = dimension(item.maxPixelCount, 1_000_000_000);
+    const minAspectRatio = ratio(item.minAspectRatio);
+    const maxAspectRatio = ratio(item.maxAspectRatio);
     const minDurationSeconds = duration(item.minDurationSeconds);
     const maxDurationSeconds = duration(item.maxDurationSeconds);
     const maxTotalDurationSeconds = duration(item.maxTotalDurationSeconds);
@@ -1565,9 +1638,25 @@ function cleanReferenceMediaRules(value: unknown): ModelReferenceMediaRules {
     ) {
       throw new Error("Invalid model reference media rule");
     }
+    if (
+      (minWidth !== undefined && maxWidth !== undefined && minWidth > maxWidth) ||
+      (minHeight !== undefined && maxHeight !== undefined && minHeight > maxHeight) ||
+      (minPixelCount !== undefined && maxPixelCount !== undefined && minPixelCount > maxPixelCount) ||
+      (minAspectRatio !== undefined && maxAspectRatio !== undefined && minAspectRatio > maxAspectRatio)
+    ) {
+      throw new Error("Invalid model reference media rule");
+    }
     return {
       contentTypes,
       maxBytes,
+      ...(minWidth !== undefined ? { minWidth } : {}),
+      ...(maxWidth !== undefined ? { maxWidth } : {}),
+      ...(minHeight !== undefined ? { minHeight } : {}),
+      ...(maxHeight !== undefined ? { maxHeight } : {}),
+      ...(minPixelCount !== undefined ? { minPixelCount } : {}),
+      ...(maxPixelCount !== undefined ? { maxPixelCount } : {}),
+      ...(minAspectRatio !== undefined ? { minAspectRatio } : {}),
+      ...(maxAspectRatio !== undefined ? { maxAspectRatio } : {}),
       ...(minDurationSeconds !== undefined ? { minDurationSeconds } : {}),
       ...(maxDurationSeconds !== undefined ? { maxDurationSeconds } : {}),
       ...(maxTotalDurationSeconds !== undefined ? { maxTotalDurationSeconds } : {}),

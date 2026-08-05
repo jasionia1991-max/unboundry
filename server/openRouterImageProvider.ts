@@ -45,6 +45,40 @@ const aspectRatios = new Set([
 const maxResponseBytes = 30 * 1024 * 1024;
 const maxImageBytes = 20 * 1024 * 1024;
 
+async function providerErrorText(response: Response) {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > 4_096) {
+      await reader.cancel();
+      break;
+    }
+    chunks.push(value);
+  }
+  const text = Buffer.concat(
+    chunks.map((chunk) => Buffer.from(chunk)),
+  ).toString("utf8");
+  try {
+    const body = JSON.parse(text) as {
+      error?: { message?: unknown };
+      message?: unknown;
+    };
+    const message = typeof body.error?.message === "string"
+      ? body.error.message
+      : typeof body.message === "string"
+        ? body.message
+        : "";
+    return message.replace(/\s+/g, " ").trim().slice(0, 400);
+  } catch {
+    return text.replace(/\s+/g, " ").trim().slice(0, 400);
+  }
+}
+
 async function limitedJson(response: Response) {
   if (!response.body) throw new OpenRouterImageError("FORMAT", "模型没有返回图片");
   const reader = response.body.getReader();
@@ -148,7 +182,11 @@ export async function generateOpenRouterImage(
       throw new OpenRouterImageError("RATE_LIMIT", "模型平台正在限流，请稍后再试");
     }
     if (!response.ok) {
-      throw new OpenRouterImageError("REMOTE", "模型平台暂时无法生成图片");
+      const message = await providerErrorText(response);
+      throw new OpenRouterImageError(
+        "REMOTE",
+        message || "模型平台暂时无法生成图片",
+      );
     }
     const body = await limitedJson(response);
     const image = body.data?.[0];

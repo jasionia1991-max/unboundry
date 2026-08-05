@@ -235,6 +235,8 @@ export async function saveGeneratedPng(input: {
             contentType: "image/png",
             id,
             kind: "image",
+            mediaHeight: dimensions.height,
+            mediaWidth: dimensions.width,
             objectKey,
             storageBackend: "oss",
             storageName: `${id}.png`,
@@ -259,6 +261,8 @@ export async function saveGeneratedPng(input: {
         contentType: "image/png",
         id,
         kind: "image",
+        mediaHeight: dimensions.height,
+        mediaWidth: dimensions.width,
         storageName: `${id}.png`,
       });
     }

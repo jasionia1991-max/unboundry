@@ -62,6 +62,31 @@ test("Ark paid-video media policy enforces official size, format and trusted dur
     mediaHeight: null,
     mediaWidth: null,
   }))).toContain("尚未经过服务端校验");
+  expect(arkVideoMediaProblem("video", media({
+    mediaHeight: 4_000,
+    mediaWidth: 5_000,
+  }))).toContain("总像素需不超过8295044");
+  expect(arkVideoMediaProblem("image", media({
+    contentType: "image/png",
+    mediaHeight: 100,
+    mediaWidth: 100,
+    objectKey: "objects/2026/08/image/test.png",
+    storageName: "test.png",
+  }))).toContain("宽度需至少300px");
+  expect(arkVideoMediaProblem("image", media({
+    contentType: "image/png",
+    mediaHeight: 1_000,
+    mediaWidth: 3_000,
+    objectKey: "objects/2026/08/image/test.png",
+    storageName: "test.png",
+  }))).toContain("宽高比需不超过2.5");
+  expect(arkVideoMediaProblem("image", media({
+    contentType: "image/png",
+    mediaHeight: null,
+    mediaWidth: null,
+    objectKey: "objects/2026/08/image/test.png",
+    storageName: "test.png",
+  }))).toContain("尚未经过服务端校验");
 
   const validAudio = media({
     byteSize: 15 * 1_024 * 1_024,

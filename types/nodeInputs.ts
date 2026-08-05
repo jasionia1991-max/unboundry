@@ -3,6 +3,7 @@ import {
   referenceSetsForValues,
   seedance2ReferenceMediaRules,
   type ModelParameterCondition,
+  type ModelReferenceMediaRule,
   type ModelReferenceMediaRules,
   type ModelParameterSchema,
   type ModelParameterValue,
@@ -110,6 +111,97 @@ export function blockedModelSwitchProblem(
         modelSwitchBlockingCodes.has(problem.code),
       )
     : undefined;
+}
+
+function referenceFileRuleProblem(
+  item: ResolvedNodeInput,
+  rule: ModelReferenceMediaRule,
+): string | undefined {
+  const mediaFormatLabel = (contentType: string) => {
+    if (contentType === "audio/mpeg") return "MP3";
+    if (contentType === "audio/wav") return "WAV";
+    if (contentType === "video/mp4") return "MP4";
+    if (contentType === "image/png") return "PNG";
+    return contentType;
+  };
+  if (!rule.contentTypes.includes(item.contentType!)) {
+    return item.kind === "audio"
+      ? `不是当前模型支持的${rule.contentTypes.map(mediaFormatLabel).join("或")}格式`
+      : "格式不受当前模型支持";
+  }
+  if (item.byteSize! > rule.maxBytes) {
+    return item.kind === "video"
+      ? `超过单个参考视频${Math.round(rule.maxBytes / (1024 * 1024))}MB上限`
+      : item.kind === "audio"
+        ? `超过单个参考音频${Math.round(rule.maxBytes / (1024 * 1024))}MB上限`
+        : "超过本项目图片安全上限";
+  }
+  const width = item.mediaWidth;
+  const height = item.mediaHeight;
+  if (width !== undefined && height !== undefined) {
+    const dimensionFields = [
+      rule.maxAspectRatio,
+      rule.maxHeight,
+      rule.maxPixelCount,
+      rule.maxWidth,
+      rule.minAspectRatio,
+      rule.minHeight,
+      rule.minPixelCount,
+      rule.minWidth,
+    ];
+    if (dimensionFields.some((value) => value !== undefined)) {
+      const label = item.kind === "video" ? "参考视频" : "参考图片";
+      if (rule.minWidth !== undefined && width < rule.minWidth) {
+        return `${label}宽度需至少${rule.minWidth}px`;
+      }
+      if (rule.maxWidth !== undefined && width > rule.maxWidth) {
+        return `${label}宽度需不超过${rule.maxWidth}px`;
+      }
+      if (rule.minHeight !== undefined && height < rule.minHeight) {
+        return `${label}高度需至少${rule.minHeight}px`;
+      }
+      if (rule.maxHeight !== undefined && height > rule.maxHeight) {
+        return `${label}高度需不超过${rule.maxHeight}px`;
+      }
+      const pixels = width * height;
+      if (rule.minPixelCount !== undefined && pixels < rule.minPixelCount) {
+        return item.kind === "video"
+          ? `分辨率过低，总像素需至少${rule.minPixelCount}（例如640×640或1280×720）`
+          : `${label}总像素需至少${rule.minPixelCount}`;
+      }
+      if (rule.maxPixelCount !== undefined && pixels > rule.maxPixelCount) {
+        return `${label}总像素需不超过${rule.maxPixelCount}`;
+      }
+      const aspectRatio = width / height;
+      if (rule.minAspectRatio !== undefined && aspectRatio < rule.minAspectRatio) {
+        return `${label}宽高比需至少${rule.minAspectRatio}`;
+      }
+      if (rule.maxAspectRatio !== undefined && aspectRatio > rule.maxAspectRatio) {
+        return `${label}宽高比需不超过${rule.maxAspectRatio}`;
+      }
+    }
+  }
+  if (item.kind === "video" || item.kind === "audio") {
+    const minimum = rule.minDurationSeconds ?? 0;
+    const maximum =
+      rule.maxDurationSeconds ?? Number.POSITIVE_INFINITY;
+    if (
+      (rule.minDurationSeconds !== undefined ||
+        rule.maxDurationSeconds !== undefined) &&
+      (!Number.isFinite(item.durationSeconds) ||
+        item.durationSeconds! < minimum ||
+        item.durationSeconds! > maximum)
+    ) {
+      const label = rule.minDurationSeconds !== undefined &&
+          rule.maxDurationSeconds !== undefined
+        ? `${rule.minDurationSeconds}至${rule.maxDurationSeconds}秒之间`
+        : rule.minDurationSeconds !== undefined
+          ? `至少${rule.minDurationSeconds}秒`
+          : `不超过${rule.maxDurationSeconds}秒`;
+      return `时长必须在${label}`;
+    }
+  }
+  return undefined;
 }
 
 type GraphNode = {
@@ -695,27 +787,37 @@ export function resolveNodeInputs(input: {
   }
 
   const referenceMediaRules = input.modelSchema?.referenceMediaRules;
+  if (referenceMediaRules && input.mediaInputPolicy !== "seedance-2") {
+    const genericPolicyProblem = (item: ResolvedNodeInput, message: string) => {
+      blockInputs([item], message);
+      problems.push({ code: "INVALID", edgeId: item.edgeId, message });
+    };
+    const genericPolicyInputs = inputs.filter((item) =>
+      item.kind !== "text" &&
+      item.state === "ready" &&
+      item.compatibility === "compatible");
+    for (const item of genericPolicyInputs) {
+      const rule = referenceMediaRules[item.kind as "audio" | "image" | "video"];
+      if (!rule) continue;
+      if (
+        item.metadataStatus !== "ready" ||
+        !Number.isSafeInteger(item.byteSize) ||
+        !item.byteSize ||
+        !item.contentType ||
+        !item.storageBackend
+      ) {
+        genericPolicyProblem(item, `${item.title}正在等待服务端确认素材格式、大小和时长`);
+        continue;
+      }
+      const fileProblem = referenceFileRuleProblem(item, rule);
+      if (fileProblem) {
+        genericPolicyProblem(item, `${item.title}${fileProblem}`);
+      }
+    }
+  }
   if (input.mediaInputPolicy === "seedance-2") {
     const rules: ModelReferenceMediaRules =
       referenceMediaRules ?? seedance2ReferenceMediaRules;
-    const mediaFormatLabel = (contentType: string) => {
-      if (contentType === "audio/mpeg") return "MP3";
-      if (contentType === "audio/wav") return "WAV";
-      if (contentType === "video/mp4") return "MP4";
-      if (contentType === "image/png") return "PNG";
-      return contentType;
-    };
-    const durationLabel = (rule: {
-      maxDurationSeconds?: number;
-      minDurationSeconds?: number;
-    }) => rule.minDurationSeconds !== undefined &&
-        rule.maxDurationSeconds !== undefined
-      ? `${rule.minDurationSeconds}至${rule.maxDurationSeconds}秒之间`
-      : rule.minDurationSeconds !== undefined
-        ? `至少${rule.minDurationSeconds}秒`
-        : rule.maxDurationSeconds !== undefined
-          ? `不超过${rule.maxDurationSeconds}秒`
-          : undefined;
     const policyProblem = (item: ResolvedNodeInput, message: string) => {
       blockInputs([item], message);
       problems.push({ code: "INVALID", edgeId: item.edgeId, message });
@@ -750,39 +852,10 @@ export function resolveNodeInputs(input: {
         policyProblem(item, `${item.title}正在等待服务端确认素材格式、大小和时长`);
         continue;
       }
-      if (!rule.contentTypes.includes(item.contentType)) {
-        policyProblem(
-          item,
-          item.kind === "audio"
-            ? `${item.title}不是当前视频模型支持的${rule.contentTypes.map(mediaFormatLabel).join("或")}`
-            : `${item.title}的格式不受当前视频模型支持`,
-        );
+      const fileProblem = referenceFileRuleProblem(item, rule);
+      if (fileProblem) {
+        policyProblem(item, `${item.title}${fileProblem}`);
         continue;
-      }
-      if (item.byteSize > rule.maxBytes) {
-        policyProblem(
-          item,
-          item.kind === "video"
-            ? `${item.title}超过单个参考视频${Math.round(rule.maxBytes / (1024 * 1024))}MB上限`
-            : item.kind === "audio"
-              ? `${item.title}超过单个参考音频${Math.round(rule.maxBytes / (1024 * 1024))}MB上限`
-              : `${item.title}超过本项目图片安全上限`,
-        );
-        continue;
-      }
-      if (item.kind === "video") {
-        const pixelMinimum = rule.minPixelCount ?? 409_600;
-        if (
-          item.mediaWidth !== undefined &&
-          item.mediaHeight !== undefined &&
-          item.mediaWidth * item.mediaHeight < pixelMinimum
-        ) {
-          policyProblem(
-            item,
-            `${item.title}分辨率过低，参考视频总像素需至少${pixelMinimum}（例如640×640或1280×720）`,
-          );
-          continue;
-        }
       }
       if (item.kind === "video" || item.kind === "audio") {
         const durationRule = rule as {
@@ -790,26 +863,6 @@ export function resolveNodeInputs(input: {
           maxTotalDurationSeconds?: number;
           minDurationSeconds?: number;
         };
-        if (
-          durationRule.minDurationSeconds !== undefined ||
-          durationRule.maxDurationSeconds !== undefined
-        ) {
-          const minimum = durationRule.minDurationSeconds ?? 0;
-          const maximum =
-            durationRule.maxDurationSeconds ?? Number.POSITIVE_INFINITY;
-          if (
-            !Number.isFinite(item.durationSeconds) ||
-            item.durationSeconds! < minimum ||
-            item.durationSeconds! > maximum
-          ) {
-            const label = durationLabel(durationRule) ?? "符合模型要求";
-            policyProblem(
-              item,
-              `${item.title}时长必须在${label}`,
-            );
-            continue;
-          }
-        }
         if (item.kind === "video") {
           videoDuration += item.durationSeconds!;
           if (
