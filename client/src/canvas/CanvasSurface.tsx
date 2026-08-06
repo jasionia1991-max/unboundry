@@ -2263,8 +2263,10 @@ export function CanvasSurface({
         position,
         selected: true,
         data: {
+          audioPromptReady: asset.kind === "audio" || undefined,
           assetId: asset.id,
           audioSrc: asset.kind === "audio" ? asset.src : undefined,
+          imagePromptReady: asset.kind === "image" || undefined,
           imageSrc: asset.kind === "image" ? asset.src : undefined,
           label:
             asset.kind === "audio"
@@ -2274,6 +2276,7 @@ export function CanvasSurface({
                 : "Video",
           sourceKind: asset.kind,
           title: asset.label,
+          videoPromptReady: asset.kind === "video" || undefined,
           videoSrc: asset.kind === "video" ? asset.src : undefined,
         },
         style:
@@ -2320,6 +2323,7 @@ export function CanvasSurface({
               storageBackend: asset.storageBackend,
             }),
             assetId: asset.assetId,
+            imagePromptReady: true,
             imageSrc: asset.url,
             label: "Image",
             sourceKind: "image",
@@ -3245,8 +3249,15 @@ export function CanvasSurface({
       canvasId: persistenceId,
       canvasRevision: generationCanvasRevision,
       flushCanvasSave,
+      isFixture: Boolean(fixtureId),
     }),
-    [accountId, flushCanvasSave, generationCanvasRevision, persistenceId],
+    [
+      accountId,
+      fixtureId,
+      flushCanvasSave,
+      generationCanvasRevision,
+      persistenceId,
+    ],
   );
   const canvasSelectionUiContextValue = useMemo(
     () => ({ selectedNodeCount }),

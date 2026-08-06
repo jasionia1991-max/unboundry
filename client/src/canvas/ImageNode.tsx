@@ -1173,6 +1173,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     canvasId,
     canvasRevision,
     flushCanvasSave,
+    isFixture,
   } = useGenerationCanvas();
   const imageModelSelection = usePublishedModelSelection(
     "image",
@@ -1286,6 +1287,11 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     parameters: imageSubmissionParameterValues,
     prompt: inputPreflight.finalPrompt,
   });
+  // 只有“当前输入”对应的生成结果才视为已完成；改提示词/参数/参考后允许重新生成。
+  const generatedForCurrentInput = Boolean(
+    data.imageGeneratedSuccess &&
+    data.imageGenerationInputKey === imageGenerationInputKey,
+  );
   const stableGenerationInputKey = useRef<string | undefined>(undefined);
 
   useEffect(() => {
@@ -1381,7 +1387,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
 
   useEffect(() => {
     if (
-      canvasId !== "default" ||
+      isFixture ||
       !data.assetId ||
       !data.imageSrc ||
       data.mediaMetadataSource === "server" ||
@@ -1528,7 +1534,6 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
                 imageGeneratedSuccess: true,
                 imageGenerationError: undefined,
                 imageGenerationErrorCode: undefined,
-                imageGenerationInputKey: undefined,
                 imageGenerating: false,
                 imageGenerationRetryAllowed: undefined,
                 imageGenerationRetryBlockCode: undefined,
@@ -1549,7 +1554,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       !cleanPrompt ||
       generating ||
       submitting ||
-      canvasId !== "default" ||
+      isFixture ||
       canvasRevision === undefined ||
       !selectedImageModel ||
       selectedImageModel.generationAvailable === false ||
@@ -1744,7 +1749,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   };
 
   useEffect(() => {
-    if (preview || canvasId !== "default") return;
+    if (preview || isFixture) return;
     const controller = new AbortController();
     void recoverPendingGenerationTask(
       "image",
@@ -2438,7 +2443,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
             selectedId={imageModelSelection.selectedId}
             selectedName={imageModelSelection.displayName}
           />
-          {canvasId === "default" ? (
+          {!isFixture ? (
             <ImageParameterControl
               aspectRatio={aspectRatio}
               disabled={generating}
@@ -2553,7 +2558,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
             data-tooltip={
               generating && activeTaskId
                 ? "取消本次生成"
-                : canvasId !== "default"
+                : isFixture
                 ? "验收页面不会调用真实生成"
                 : !selectedImageModel
                   ? "管理员尚未发布图片模型"
@@ -2562,17 +2567,17 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
                 : canvasRevision === undefined
                   ? "画布正在保存"
                 : referenceProblem ||
-                  (generatedSuccess ? "当前节点已生成" : undefined)
+                  (generatedForCurrentInput ? "当前节点已生成" : undefined)
             }
             disabled={
               submitting ||
               (generating
                 ? !activeTaskId
-                : generatedSuccess ||
+                : generatedForCurrentInput ||
                   !inputPreflight.canSubmit ||
                   !referencesSupported ||
                   selectedImageModel?.generationAvailable === false ||
-                  (canvasId === "default" &&
+                  (!isFixture &&
                     (!selectedImageModel || canvasRevision === undefined)))
             }
             onClick={() =>

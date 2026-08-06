@@ -166,6 +166,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     canvasId,
     canvasRevision,
     flushCanvasSave,
+    isFixture,
   } = useGenerationCanvas();
   const audioModelSelection = usePublishedModelSelection(
     "audio",
@@ -476,7 +477,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
 
   useEffect(() => {
     if (
-      canvasId !== "default" ||
+      isFixture ||
       !data.assetId ||
       !data.audioSrc ||
       data.mediaMetadataSource === "server" ||
@@ -588,7 +589,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       !cleanPrompt ||
       generating ||
       submitting ||
-      canvasId !== "default" ||
+      isFixture ||
       canvasRevision === undefined ||
       !inputPreflight.canSubmit ||
       serverInputProblems.length > 0 ||
@@ -763,7 +764,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   };
 
   useEffect(() => {
-    if (data.audioSrc || canvasId !== "default") return;
+    if (data.audioSrc || isFixture) return;
     const controller = new AbortController();
     void recoverPendingGenerationTask(
       "audio",
@@ -1404,7 +1405,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
             }
             className="audio-creator-generate"
             data-tooltip={
-              canvasId !== "default"
+              isFixture
                 ? "验收页面不会调用真实生成"
                 : !selectedAudioModel
                   ? "管理员尚未发布音频模型"

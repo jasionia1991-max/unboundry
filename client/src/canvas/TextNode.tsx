@@ -284,6 +284,7 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     canvasId,
     canvasRevision,
     flushCanvasSave,
+    isFixture,
   } = useGenerationCanvas();
   const titleControl = useCompositionSafeText({
     onCommit: (nextTitle) => {
@@ -759,7 +760,7 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     if (
       data.textGenerationTaskId ||
       !selectedTextModel ||
-      canvasId !== "default" ||
+      isFixture ||
       (!data.textGenerating && data.content)
     ) return;
     const controller = new AbortController();
@@ -831,7 +832,7 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       selectedTextModel.generationAvailable === false ||
       submitting ||
       data.textGenerating ||
-      canvasId !== "default" ||
+      isFixture ||
       canvasRevision === undefined
     ) return;
     setSubmitting(true);
@@ -1193,7 +1194,7 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
               submitting ||
               recoveringTask ||
               data.textGenerating ||
-              canvasId !== "default" ||
+              isFixture ||
               canvasRevision === undefined ||
               !selectedTextModel ||
               selectedTextModel.generationAvailable === false ||

@@ -192,6 +192,7 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     canvasId,
     canvasRevision,
     flushCanvasSave,
+    isFixture,
   } = useGenerationCanvas();
   const videoModelSelection = usePublishedModelSelection(
     "video",
@@ -302,6 +303,11 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     parameters: videoSubmissionParameters,
     prompt: inputPreflight.finalPrompt,
   });
+  // 只有“当前输入”对应的结果才视为已完成；修改提示词/参数/参考后允许重新生成。
+  const generatedForCurrentInput = Boolean(
+    generatedSuccess &&
+    data.videoGenerationInputKey === videoGenerationInputKey,
+  );
   const videoGenerationRequestInput = {
     canvasId,
     canvasRevision,
@@ -445,7 +451,7 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
 
   useEffect(() => {
     if (
-      canvasId !== "default" ||
+      isFixture ||
       !data.assetId ||
       data.mediaMetadataSource === "server" ||
       data.inputState === "uploading" ||
@@ -514,7 +520,6 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
                 videoCreatedAt: new Intl.DateTimeFormat("zh-CN").format(new Date()),
                 videoGenerationError: undefined,
                 videoGenerationErrorCode: undefined,
-                videoGenerationInputKey: undefined,
                 videoGenerating: false,
                 videoGenerationRetryAllowed: undefined,
                 videoGenerationRetryBlockCode: undefined,
@@ -539,7 +544,7 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       uploading ||
       submitting ||
       generatedSuccess ||
-      canvasId !== "default" ||
+      isFixture ||
       canvasRevision === undefined ||
       !inputPreflight.canSubmit ||
       !selectedVideoModel ||
@@ -724,7 +729,7 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   }, [data.videoPrompt]);
 
   useEffect(() => {
-    if (data.videoSrc || canvasId !== "default") return;
+    if (data.videoSrc || isFixture) return;
     const controller = new AbortController();
     void recoverPendingGenerationTask(
       "video",
@@ -1384,9 +1389,9 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
             }
             className="video-creator-generate"
             data-tooltip={
-              canvasId !== "default"
+              isFixture
                 ? "验收页面不会调用真实生成"
-                : generatedSuccess
+                : generatedForCurrentInput
                   ? "当前节点已有结果"
                 : !selectedVideoModel
                   ? "管理员尚未发布视频模型"
@@ -1401,7 +1406,7 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
               uploading ||
               (generating
                 ? !activeTaskId
-                : generatedSuccess ||
+                : generatedForCurrentInput ||
                   !inputPreflight.canSubmit ||
                   serverInputProblems.length > 0 ||
                   !selectedVideoModel ||
