@@ -589,19 +589,58 @@ export const openApiDocument = {
             type: "array",
             items: {
               type: "object",
-              required: ["id", "title", "tone", "categories"],
+              required: ["id", "title", "description", "previewImage", "categories"],
               properties: {
                 id: { type: "string" },
                 title: { type: "string" },
-                tone: { type: "string" },
+                description: { type: "string" },
+                previewImage: { type: "string" },
                 categories: { type: "array", items: { type: "string" } },
                 graph: {
                   type: "object",
                   required: ["version", "nodes", "edges"],
                   properties: {
                     version: { type: "integer", const: 1 },
-                    nodes: { type: "array", items: { type: "object" } },
-                    edges: { type: "array", items: { type: "object" } },
+                    nodes: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        required: ["id", "type", "position", "data", "style", "zIndex"],
+                        properties: {
+                          id: { type: "string" },
+                          type: { type: "string", enum: ["group", "image", "text", "video"] },
+                          parentId: { type: "string" },
+                          position: {
+                            type: "object",
+                            required: ["x", "y"],
+                            properties: {
+                              x: { type: "number" },
+                              y: { type: "number" },
+                            },
+                          },
+                          data: { type: "object" },
+                          style: { type: "object" },
+                          zIndex: { type: "integer" },
+                        },
+                        additionalProperties: false,
+                      },
+                    },
+                    edges: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        required: ["id", "source", "target", "sourceHandle", "targetHandle", "type"],
+                        properties: {
+                          id: { type: "string" },
+                          source: { type: "string" },
+                          target: { type: "string" },
+                          sourceHandle: { type: "string", const: "source" },
+                          targetHandle: { type: "string", const: "target" },
+                          type: { type: "string", const: "cuttable" },
+                        },
+                        additionalProperties: false,
+                      },
+                    },
                   },
                   additionalProperties: false,
                 },

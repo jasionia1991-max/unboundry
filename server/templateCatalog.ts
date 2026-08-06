@@ -1,95 +1,200 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import templateCatalogData from "./templateCatalogData.json";
 
-type TemplateNode = {
-  data: { title: string };
+type RawTemplateNode = {
+  data?: {
+    params?: { aspectRatio?: string; imageSize?: string };
+    prompt?: string;
+    text?: string;
+    title?: string;
+  };
+  height?: number;
   id: string;
-  position: { x: number; y: number };
-  type: "group" | "image" | "text" | "video";
+  parentId?: string;
+  position?: { x: number; y: number };
+  type: string;
+  width?: number;
 };
 
-type TemplateEdge = {
+type RawTemplateEdge = {
   id: string;
   source: string;
+  sourceHandle?: string;
   target: string;
+  targetHandle?: string;
+};
+
+type TemplateGraphNode = {
+  data: {
+    content?: string;
+    imageAspectRatio?: string;
+    imagePrompt?: string;
+    imagePromptReady?: boolean;
+    imageQuality?: string;
+    label: string;
+    sourceKind?: "image";
+    textPrompt?: string;
+    textPromptReady?: boolean;
+    title?: string;
+  };
+  id: string;
+  parentId?: string;
+  position: { x: number; y: number };
+  style: { height: number; width: number };
+  type: "group" | "image" | "text" | "video";
+  zIndex: number;
+};
+
+type TemplateGraphEdge = {
+  id: string;
+  source: string;
+  sourceHandle: "source";
+  target: string;
+  targetHandle: "target";
   type: "cuttable";
+};
+
+type TemplateGraph = {
+  edges: TemplateGraphEdge[];
+  nodes: TemplateGraphNode[];
+  version: 1;
 };
 
 type TemplateRecord = {
   categories: string[];
+  description: string;
   id: string;
+  previewImage: string;
   title: string;
-  tone: string;
 };
 
-const categories = [
-  "最近使用",
-  "我的模板",
-  "全部",
-  "Seedance 2.0",
-  "广告",
-  "电商",
-  "影视",
-  "生活",
-  "工具",
-  "有趣",
-  "ACG",
-];
+type TemplateCatalogDataRecord = {
+  categories: string[];
+  description: string;
+  edges: RawTemplateEdge[];
+  id: string;
+  nodes: RawTemplateNode[];
+  previewImage: string;
+  sourceTemplateId: string;
+  title: string;
+};
 
-const templates: TemplateRecord[] = [
-  { categories: ["广告", "电商"], id: "tech-product-ad", title: "Tech Product Ad", tone: "tech" },
-  { categories: ["广告", "有趣"], id: "f1-rapid-tire-swap", title: "F1 Rapid Tire Swap", tone: "racing" },
-  { categories: ["影视", "有趣"], id: "monster-clash-pov", title: "Monster Clash POV", tone: "monster" },
-  { categories: ["影视"], id: "cave-monster-clash", title: "Cave Monster Clash", tone: "cave" },
-  { categories: ["影视", "ACG"], id: "heroic-film-hymn", title: "英雄史诗电影赞歌", tone: "hero" },
-  { categories: ["影视", "工具"], id: "nine-shot-film", title: "九宫格多景别电影演绎", tone: "storyboard" },
-  { categories: ["影视", "工具"], id: "camera-angle-effects", title: "景别×视角×特效镜头大全", tone: "camera" },
-  { categories: ["Seedance 2.0", "ACG"], id: "one-tap-idol-stage", title: "One-Tap Idol Stage", tone: "idol" },
-  { categories: ["Seedance 2.0", "有趣"], id: "riding-flight-pov", title: "Riding Flight POV", tone: "flight" },
-  { categories: ["广告", "电商"], id: "product-commerce-set", title: "通用产品全套电商图", tone: "product" },
-  { categories: ["影视", "工具"], id: "json-film-storyboard", title: "Json大师电影分镜", tone: "json" },
-  { categories: ["影视", "工具"], id: "storyboard-master", title: "分镜大师", tone: "shots" },
-];
+const categories = ["最近使用", "我的模板", "全部", "电商"];
 
-function storyboardMasterGraph() {
-  const nodes: TemplateNode[] = [
-    {
-      data: { title: "分镜大师" },
-      id: "template-group",
-      position: { x: 0, y: 0 },
-      type: "group",
+const records = Object.values(
+  templateCatalogData as Record<string, TemplateCatalogDataRecord>,
+);
+
+const templates: TemplateRecord[] = records.map((record) => ({
+  categories: record.categories,
+  description: record.description,
+  id: record.id,
+  previewImage: record.previewImage,
+  title: record.title,
+}));
+
+function localNodeType(rawType: string): TemplateGraphNode["type"] {
+  if (rawType === "image" || rawType === "text") return rawType;
+  if (rawType === "video" || rawType === "group") return rawType;
+  return "text";
+}
+
+export function buildTemplateGraph(record: TemplateCatalogDataRecord): TemplateGraph {
+  const rawNodes = record.nodes;
+  let left = Number.POSITIVE_INFINITY;
+  let top = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+  for (const raw of rawNodes) {
+    const position = raw.position ?? { x: 0, y: 0 };
+    const width = raw.width ?? 250;
+    const height = raw.height ?? 250;
+    left = Math.min(left, position.x);
+    top = Math.min(top, position.y);
+    right = Math.max(right, position.x + width);
+    bottom = Math.max(bottom, position.y + height);
+  }
+  if (!Number.isFinite(left) || !Number.isFinite(top)) {
+    left = 0;
+    top = 0;
+    right = 800;
+    bottom = 600;
+  }
+  const groupId = "template-group";
+  const groupPosition = { x: left - 24, y: top - 24 };
+  const idMap = new Map<string, string>();
+  const incomingByNode = new Map<string, RawTemplateEdge[]>();
+  for (const edge of record.edges) {
+    incomingByNode.set(edge.target, [
+      ...(incomingByNode.get(edge.target) ?? []),
+      edge,
+    ]);
+  }
+  const nodes: TemplateGraphNode[] = [];
+  rawNodes.forEach((raw, index) => {
+    const localId = `template-node-${index + 1}`;
+    idMap.set(raw.id, localId);
+    const position = raw.position ?? { x: 0, y: 0 };
+    const type = localNodeType(raw.type);
+    const data: TemplateGraphNode["data"] = {
+      label: type === "text" ? "Text" : type === "image" ? "Image" : "Group",
+      title: raw.data?.title ?? (type === "text" ? "Text" : "Image"),
+    };
+    if (type === "text") {
+      const prompt = raw.data?.prompt ?? "";
+      const text = raw.data?.text ?? "";
+      data.textPrompt = prompt || text;
+      data.textPromptReady = true;
+      if (text) data.content = text;
+    } else if (type === "image") {
+      data.sourceKind = "image";
+      const prompt = raw.data?.prompt?.trim() ?? "";
+      const isPureInput = !prompt && (incomingByNode.get(raw.id)?.length ?? 0) === 0;
+      data.imagePromptReady = !isPureInput;
+      if (prompt) data.imagePrompt = prompt;
+      if (raw.data?.params?.aspectRatio) {
+        data.imageAspectRatio = raw.data.params.aspectRatio;
+      }
+      if (raw.data?.params?.imageSize) {
+        data.imageQuality = raw.data.params.imageSize.toLocaleLowerCase();
+      }
+    }
+    nodes.push({
+      id: localId,
+      type,
+      position: {
+        x: position.x - groupPosition.x,
+        y: position.y - groupPosition.y,
+      },
+      parentId: groupId,
+      data,
+      style: {
+        height: raw.height ?? 250,
+        width: raw.width ?? 250,
+      },
+      zIndex: 1,
+    });
+  });
+  nodes.unshift({
+    id: groupId,
+    type: "group",
+    position: groupPosition,
+    data: { label: "Group", title: record.title },
+    style: {
+      height: bottom - top + 48,
+      width: right - left + 48,
     },
-    {
-      data: { title: "分镜描述" },
-      id: "template-text",
-      position: { x: 80, y: 80 },
-      type: "text",
-    },
-    ...Array.from({ length: 15 }, (_, index): TemplateNode => ({
-      data: { title: `分镜图片 ${index + 1}` },
-      id: `template-image-${index + 1}`,
-      position: { x: 480 + (index % 3) * 320, y: 80 + Math.floor(index / 3) * 300 },
-      type: "image",
-    })),
-    ...Array.from({ length: 9 }, (_, index): TemplateNode => ({
-      data: { title: `分镜视频 ${index + 1}` },
-      id: `template-video-${index + 1}`,
-      position: { x: 1500 + (index % 2) * 500, y: 80 + Math.floor(index / 2) * 330 },
-      type: "video",
-    })),
-  ];
-  const chainEdges = nodes.slice(1).map((node, index): TemplateEdge => ({
+    zIndex: 0,
+  });
+  const edges: TemplateGraphEdge[] = record.edges.map((edge, index) => ({
     id: `template-edge-${index + 1}`,
-    source: nodes[index].id,
-    target: node.id,
+    source: idMap.get(edge.source) ?? edge.source,
+    target: idMap.get(edge.target) ?? edge.target,
+    sourceHandle: "source",
+    targetHandle: "target",
     type: "cuttable",
   }));
-  const branchEdges = Array.from({ length: 6 }, (_, index): TemplateEdge => ({
-    id: `template-branch-${index + 1}`,
-    source: `template-image-${index + 1}`,
-    target: `template-video-${index + 1}`,
-    type: "cuttable",
-  }));
-  return { edges: [...chainEdges, ...branchEdges], nodes, version: 1 };
+  return { edges, nodes, version: 1 };
 }
 
 function json(response: ServerResponse, status: number, body: unknown) {
@@ -142,12 +247,13 @@ export function templateCatalogApi(
         (!query || template.title.toLocaleLowerCase().includes(query)) &&
         (!category || category === "全部" || category === "最近使用" || template.categories.includes(category)),
       );
-  const items = matches.slice(offset, offset + limit).map((template) => ({
-    ...template,
-    graph: includeGraph && template.id === "storyboard-master"
-      ? storyboardMasterGraph()
-      : undefined,
-  }));
+  const items = matches.slice(offset, offset + limit).map((template) => {
+    const record = records.find((candidate) => candidate.id === template.id);
+    return {
+      ...template,
+      graph: includeGraph && record ? buildTemplateGraph(record) : undefined,
+    };
+  });
 
   json(response, 200, {
     categories,

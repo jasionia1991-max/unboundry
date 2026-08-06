@@ -1,0 +1,734 @@
+{
+ "ecommerce-detail-workflow": {
+  "id": "0786e042-095e-4551-b91b-365492e91241",
+  "title": "电商详情页工作流",
+  "description": "请根据列出的产品策略、产品图片、品牌logo，设计一套适合小红书审美的电商详情页",
+  "previewImage": "/templates/ecommerce-detail-workflow.png",
+  "categories": [
+   "电商"
+  ],
+  "sourceTemplateId": "a69590fb-4727-488d-8f95-b5175e4637a9",
+  "nodes": [
+   {
+    "id": "c3f66b20-3925-484c-ae49-69d3023fcb13",
+    "type": "image",
+    "position": {
+     "x": 59.08163825436782,
+     "y": 1188.3332539327669
+    },
+    "width": 250,
+    "height": 333,
+    "parentId": "2d414003-0d61-4c4b-b72f-64c831f66234",
+    "data": {
+     "title": "平铺图",
+     "params": {
+      "aspectRatio": "Auto",
+      "imageSize": "1K"
+     }
+    }
+   },
+   {
+    "id": "f26bb642-9898-4fd6-a1d4-fb0d7b383183",
+    "type": "image",
+    "position": {
+     "x": 53.79686991385313,
+     "y": 2167.97412718571
+    },
+    "width": 250,
+    "height": 333,
+    "parentId": "2d414003-0d61-4c4b-b72f-64c831f66234",
+    "data": {
+     "title": "模特上身图",
+     "params": {
+      "aspectRatio": "Auto",
+      "imageSize": "1K"
+     }
+    }
+   },
+   {
+    "id": "fe657045-654c-4693-8285-f71b1d0d1d6d",
+    "type": "image",
+    "position": {
+     "x": 2633.958448241724,
+     "y": 2431.562625280746
+    },
+    "width": 250,
+    "height": 334,
+    "parentId": "2d414003-0d61-4c4b-b72f-64c831f66234",
+    "data": {
+     "title": "Image",
+     "prompt": "请按照给到的信息和我给你的图片素材，生成详情页4对应的图片",
+     "params": {
+      "aspectRatio": "3:4",
+      "imageSize": "4K"
+     }
+    }
+   },
+   {
+    "id": "8d49342a-d21f-48bd-8af0-07faa4dd82e8",
+    "type": "text",
+    "position": {
+     "x": 915.1314241228245,
+     "y": 1553.9209940334028
+    },
+    "width": 250,
+    "height": 250,
+    "parentId": "2d414003-0d61-4c4b-b72f-64c831f66234",
+    "data": {
+     "title": "输出产品策略",
+     "text": "作为一名顶尖电商视觉设计师，针对这款黑色机能风背带裤（Snowboard Bib/Overalls），我将通过以下10个维度的自问自答来构建其详情页设计方案：\n\n### 1. **核心视觉风格（Tone & Manner）应该如何定调？**\n**答：** 定调为 **「Urban Outdoor / 都市户外机能风」**。\n考虑到产品是黑色的背带裤，带有工装口袋和卡扣设计，既具备滑雪裤的功能性，又具备街头潮牌的廓形。\n*   **背景：** 摒弃全白背景，采用**水泥灰、冷钢色或雪山纹理**的低饱和度背景，以突显黑色主体的质感，营造“冷峻”、“硬核”的氛围。\n*   **元素：** 融入工业设计元素，如十字准星、经纬度坐标、线条框，增强“专业装备”的视觉暗示。\n\n### 2. **如何精准锁定并打动目标用户？**\n**答：** 目标用户为 **Z世代滑雪爱好者及街头潮流人群**。\n他们在意的不止是保暖，更是“帅”和“个性”。\n*   **首屏设计：** 必须使用模特佩戴雪镜的那张全身照作为Hero Image（头图），配合大字号的英文Slogan（如 \"UNBOUNDED EXPLORATION\"），瞬间拉满潮流感，传达“这不仅仅是一条裤子，这是一种生活态度”。\n\n### 3. **配色方案如何制定以避免黑色产品的沉闷感？**\n**答：** 采用 **「黑白灰主调 + 荧光电光色点缀」**。\n*   **主色：** 黑色（产品）、冷灰（背景）、白色（文字）。\n*   **点缀色：** 选用 **高亮酸性绿（Acid Green）** 或 **信号橙（Signal Orange）** 作为价格、购买按钮、核心卖点Icon的颜色。这种高反差配色不仅符合机能美学，还能在黑灰色调中有效引导视线聚焦。\n\n### 4. **字体排印（Typography）应该怎么选？**\n**答：** 混搭 **粗体无衬线字（Bold Sans-serif）** 与 **等宽字体（Monospace）**。\n*   **标题：** 使用粗壮有力的无衬线字体（如Impact或Helvatica Now Heavy），体现力量感。\n*   **参数/说明：** 使用类似于代码或打印机效果的等宽字体，强化“精密”、“技术参数”的感觉。\n\n### 5. **详情页的叙事逻辑（Storytelling）如何安排？**\n**答：** 遵循 **「视觉冲击 -> 场景代入 -> 硬核解析 -> 细节种草 -> 尺码消除顾虑」** 的AIDA模型。\n1.  **Poster区：** 模特大片，展示上身廓形。\n2.  **场景区：** 展示滑雪场（Snow）与城市街头（Street）两种背景合成图，强调“雪地与街头自由切换”。\n3.  **功能区：** 面料科技解析。\n4.  **细节区：** 放大镜式的局部特写。\n5.  **导购区：** 尺码表与模特试穿报告。\n\n### 6. **如何可视化产品的“功能性”卖点？**\n**答：** 将抽象功能 **「图标化（Iconography）」** 和 **「透视化」**。\n*   这款裤子看起来有防水防风属性。设计一套专属的线性Icon，分别代表：防水指数、透气性、耐磨面料、立体剪裁。\n*   针对多口袋设计，使用**引线标注**的方式，像解构机械图纸一样，指出每个口袋的位置和建议用途（如：雪卡袋、手机袋、工具袋）。\n\n### 7. **黑色产品最难展示细节，如何处理细节展示图？**\n**答：** 采用 **「高光侧逆光拍摄 + 局部高对比度处理」**。\n*   黑色的层次感全靠光影。在细节展示板块（如腰部卡扣、拉链、裤脚），后期需要提高暗部亮度，强化高光，展现面料的纹理（是磨砂还是尼龙光泽）。\n*   特别展示**腰带卡扣（Buckle）**和**肩带调节系统**的特写，这是机能风的灵魂所在，暗示产品的五金件质量过硬。\n\n### 8. **如何解决Oversize版型的尺码选择焦虑？**\n**答：** 建立 **「动态尺码参考坐标系」**。\n*   由于是宽松版型，用户很难把握大小。不仅要提供传统的尺码表，还要制作一个可视化的**“身高-体重矩阵图”**。\n*   必须标注**模特参数**（身高、体重、试穿尺码、穿着效果描述），并在图中用虚线标出模特的肩宽、腰线位置，给用户直观的比例参考。\n\n### 9. **如何进行关联搭配（Cross-selling）设计？**\n**答：** 打造 **「Total Look（整体造型）」** 指南。\n*   图中的白色卫衣搭配非常干净。在详情页中插入“Styling Guide”板块。\n*   **Look A：** 搭配同色系冲锋衣 + 雪镜 = 专业滑雪Look。\n*   **Look B：** 搭配亮色连帽卫衣 + 板鞋 = 城市露营/滑板Look。\n*   以此提高店铺内上装的连带购买率。\n\n### 10. **移动端（手机屏）体验如何特别优化？**\n**答：** 遵循 **「一屏一卖点」** 原则。\n*   避免PC端的长图直接缩小。字体必须放大到14px以上。\n*   **首屏视频化：** 头图位置建议放置5-10秒的短视频，展示模特走路时的裤腿摆动（展示垂坠感）以及穿脱背带的动作（展示易用性）。\n*   **长图切片：** 保证加载速度，同时在每屏之间留有“呼吸感”，不要让密集的文字压迫用户，利用大面积的留白（或留灰）突出黑色产品本身。",
+     "prompt": "你是一位顶尖电商视觉设计师，你要为图中这款商品设计电商详情页设计，你觉得应该怎么设计？给自己出10个问题，再依次解答。"
+    }
+   },
+   {
+    "id": "c7c397e2-16fe-4063-8ea9-cdad9a346c60",
+    "type": "image",
+    "position": {
+     "x": 2627.0993218987564,
+     "y": 1308.6220159096824
+    },
+    "width": 250,
+    "height": 334,
+    "parentId": "2d414003-0d61-4c4b-b72f-64c831f66234",
+    "data": {
+     "title": "Image",
+     "prompt": "请按照给到的信息和我给你的图片素材，生成详情页1对应的图片",
+     "params": {
+      "aspectRatio": "Auto",
+      "imageSize": "4K"
+     }
+    }
+   },
+   {
+    "id": "a372cccd-e02a-46a7-8a45-374a9d30418d",
+    "type": "image",
+    "position": {
+     "x": 2614.615456155615,
+     "y": 2042.8074521370995
+    },
+    "width": 250,
+    "height": 334,
+    "parentId": "2d414003-0d61-4c4b-b72f-64c831f66234",
+    "data": {
+     "title": "Image",
+     "prompt": "请按照给到的信息和我给你的图片素材，生成详情页3对应的图片",
+     "params": {
+      "aspectRatio": "3:4",
+      "imageSize": "4K"
+     }
+    }
+   },
+   {
+    "id": "30bc6a5b-231f-4cfe-b4b3-09081b9db889",
+    "type": "image",
+    "position": {
+     "x": 2624.588747023844,
+     "y": 1675.4040956348135
+    },
+    "width": 250,
+    "height": 334,
+    "parentId": "2d414003-0d61-4c4b-b72f-64c831f66234",
+    "data": {
+     "title": "Image",
+     "prompt": "请按照给到的信息和我给你的图片素材，生成详情页2对应的图片",
+     "params": {
+      "aspectRatio": "3:4",
+      "imageSize": "4K"
+     }
+    }
+   },
+   {
+    "id": "b2219fa8-9e57-4b96-96fb-fb1169d13203",
+    "type": "image",
+    "position": {
+     "x": 2608.7917135476982,
+     "y": 20
+    },
+    "width": 250,
+    "height": 334,
+    "parentId": "2d414003-0d61-4c4b-b72f-64c831f66234",
+    "data": {
+     "title": "单张，需要自己剪裁",
+     "prompt": "请根据列出的产品策略、产品图片、品牌logo，设计一套适合小红书审美的电商详情页，中文，每一页的排版和文字信息由你设计，每一页详情页不要改变产品本身的细节，一定要受年轻人喜欢，详情页要突出产品的核心卖点",
+     "params": {
+      "aspectRatio": "Auto",
+      "imageSize": "4K"
+     }
+    }
+   },
+   {
+    "id": "c5e78b28-ffa5-48d5-a0be-2d1c189ca53a",
+    "type": "image",
+    "position": {
+     "x": 20,
+     "y": 2908.285369928665
+    },
+    "width": 254,
+    "height": 250,
+    "parentId": "2d414003-0d61-4c4b-b72f-64c831f66234",
+    "data": {
+     "title": "品牌logo",
+     "params": {
+      "aspectRatio": "Auto",
+      "imageSize": "1K"
+     }
+    }
+   },
+   {
+    "id": "908d9a4b-62aa-4516-a68d-64712986a695",
+    "type": "image",
+    "position": {
+     "x": 2622.1303107388508,
+     "y": 2833.105959455026
+    },
+    "width": 250,
+    "height": 334,
+    "parentId": "2d414003-0d61-4c4b-b72f-64c831f66234",
+    "data": {
+     "title": "Image",
+     "prompt": "请按照给到的信息和我给你的图片素材，生成详情页5对应的图片",
+     "params": {
+      "aspectRatio": "3:4",
+      "imageSize": "4K"
+     }
+    }
+   },
+   {
+    "id": "3d9eb67c-c19c-488d-a4b5-8e8526f61df0",
+    "type": "text",
+    "position": {
+     "x": 1704.8045200868346,
+     "y": 2430.7682960262155
+    },
+    "width": 324,
+    "height": 406,
+    "parentId": "2d414003-0d61-4c4b-b72f-64c831f66234",
+    "data": {
+     "title": "分页图策略输出",
+     "text": "这份设计方案专为 **小红书（Xiaohongshu）** 平台定制，核心策略是 **「轻量化信息 + 强视觉冲击 + 情绪价值」**。我们将原本枯燥的详情页转化为类似潮流杂志（Zine）的排版。\n\n整体视觉基调：\n*   **风格：** Urban Techwear / 酸性设计（Acid Graphics） / 极简工业风\n*   **配色：** 酷灰背景（Cool Grey）+ 极致黑（产品）+ **酸性绿（Acid Green）** 作为高亮文字/装饰点缀。\n*   **尺寸：** 750:1000 (竖屏)\n\n以下是5张详情页的结构化设计与AI提示词拆解：\n\n---\n\n### Page 1: 封面海报 (The Hook)\n**设计意图：** 停止划动，利用模特带雪镜的酷感，建立“机能潮人”的第一印象。\n*   **排版布局：** 杂志封面式排版。模特图片铺满或占据80%版面，品牌Logo放大置于顶部或作为背景纹理。\n*   **视觉元素：** 模特全身照（带雪镜），背景叠加十字准星、经纬度线条，营造精密装备感。\n*   **文案信息：**\n    *   主标题：**RATATA / 无界探索** (大号字体)\n    *   副标题：URBAN OUTDOOR SERIES\n    *   标签：#机能背带裤 #雪季装备 #OOTD\n*   **设计细节：** 标题字使用粗体无衬线字，颜色使用白色，带有酸性绿的下划线。\n\n> **AI绘画提示词 (Prompt):**\n> **[Page 1 Design]**: An e-commerce poster design for a mobile screen, aspect ratio 3:4. **Subject**: A cool Asian male model wearing black snowboard overalls and ski goggles, posing casually with one hand adjusting the goggles. **Background**: Solid industrial grey background with subtle topographic map textures. **Typography**: Large, bold white sans-serif text at the top reads \"RATATA\", below it \"URBAN OUTDOOR\". **Details**: Add neon acid green graphic elements like crosshairs and tech-lines overlaying the image. High-end streetwear magazine cover style, minimalistic, 8k resolution, clean UI. --ar 3:4\n\n---\n\n### Page 2: 风格与场景 (The Vibe)\n**设计意图：** 强调“雪地”与“街头”的双重适用性，解决用户“只能滑雪穿吗？”的疑虑。\n*   **排版布局：** 上下分层结构。\n*   **视觉元素：** 上半部分保留模特上半身特写（突出白色卫衣内搭的干净感），下半部分使用色块分割，放入“雪山”和“街道”的黑白剪影图标。\n*   **文案信息：**\n    *   核心卖点：**雪场 / 街头 // 随意切换**\n    *   描述：宽松版型，内搭卫衣不臃肿。从城市漫游到雪地撒野，一条裤子搞定。\n    *   装饰字：CITY / SNOW\n*   **设计细节：** 文字排版采用左对齐，配合类似“代码块”的排版装饰。\n\n> **AI绘画提示词 (Prompt):**\n> **[Page 2 Design]**: Mobile UI design for a fashion product detail page, aspect ratio 3:4. **Layout**: Split composition. Top half shows a close-up of the black overalls chest area and white hoodie texture, high contrast lighting. Bottom half is a clean layout block in dark grey. **Graphics**: Minimalist icons representing a \"Snow Mountain\" and a \"City Skyline\" in acid green neon lines. **Text**: Bold Chinese typography \"雪场 / 街头\" (Snow/Street) and \"随意切换\" (Switch Freely). **Style**: Techwear aesthetic, clean lines, information visualization, futuristic vibe. --ar 3:4\n\n---\n\n### Page 3: 机能细节解析 (The Tech)\n**设计意图：** 利用平铺图展示硬核功能，通过局部放大体现做工。\n*   **排版布局：** 居中展示产品的正面平铺图（去除背景），四周通过“引线（Callout lines）”指向具体细节。\n*   **视觉元素：** 黑色背带裤正面平铺图。引线指向：侧边口袋、卡扣、裤脚。每个引线末端有圆形的放大镜效果图。\n*   **文案信息：**\n    *   标题：**硬核机能解析**\n    *   引线1：多功能立体口袋 (Multi-pockets)\n    *   引线2：定制树脂卡扣 (Resin Buckle)\n    *   引线3：立体剪裁裤脚 (3D Cut)\n*   **设计细节：** 引线使用高亮的酸性绿色，背景为深灰色的网格纸（Grid Paper）纹理。\n\n> **AI绘画提示词 (Prompt):**\n> **[Page 3 Design]**: Product feature breakdown graphic, mobile format, aspect ratio 3:4. **Center Subject**: Flat lay of black technical overalls isolated on a dark grey technical grid background. **Graphics**: Bright acid green callout lines pointing to specific parts of the pants (pockets, buckles, hem). At the end of each line, a circular zoom-in bubble showing fabric texture. **Text**: Technical font in white and green, labeling features like \"POCKETS\", \"BUCKLE\", \"FABRIC\". **Style**: Industrial design blueprint, schematic look, high contrast, professional gear presentation. --ar 3:4\n\n---\n\n### Page 4: 背面与结构 (The Structure)\n**设计意图：** 展示背带系统的美感，机能风的背带设计通常是亮点。\n*   **排版布局：** 极简留白。\n*   **视觉元素：** 背面平铺图居中。背景使用巨大的、半透明的RATATA Logo（三角形松树标志）作为底纹。\n*   **文案信息：**\n    *   标题：**背部工装系统**\n    *   描述：可调节背带，舒适不掉肩。高腰护腰设计，防风防雪。\n    *   英文装饰：ADJUSTABLE SYSTEM // HIGH PERFORMANCE\n*   **设计细节：** 强调黑色的深邃感，光影要打出面料的质感（稍微有点反光的感觉）。\n\n> **AI绘画提示词 (Prompt):**\n> **[Page 4 Design]**: Minimalist fashion product page, mobile format, aspect ratio 3:4. **Subject**: Flat lay of the *back side* of black snowboard overalls. **Background**: A very light grey background with a giant, semi-transparent watermark of a triangular pine tree logo. **Text**: Clean, Swiss-style typography in black and grey, describing \"ADJUSTABLE SYSTEM\". **Lighting**: Studio lighting highlighting the texture of the straps and the back panel. **Vibe**: Premium, understated luxury, structural beauty. --ar 3:4\n\n---\n\n### Page 5: 尺码与导购 (The Guide)\n**设计意图：** 消除购买顾虑，临门一脚促成转化。\n*   **排版布局：** 数据可视化表格。\n*   **视觉元素：** 页面上方放置模特全身小图作为参考。下方是黑底白字的尺码矩阵表。\n*   **文案信息：**\n    *   标题：**选码指南 / SIZE GUIDE**\n    *   模特参数框：身高180cm / 体重65kg / 试穿L码 (宽松)\n    *   表格列：尺码 (M/L/XL) - 裤长 - 腰围 - 臀围\n    *   底部CTA按钮：**[ 点击购买 探索雪域 ]** (模拟按钮样式，酸性绿填充，黑色文字)\n*   **设计细节：** 表格不要用传统的Excel线条，用断开的线段或“+”号作为交叉点，保持机能感。\n\n> **AI绘画提示词 (Prompt):**\n> **[Page 5 Design]**: Size guide interface design for mobile e-commerce, aspect ratio 3:4. **Top**: Small thumbnail of the model wearing the pants. **Main**: A futuristic, data-visualization style size chart on a black background. Numbers are in a monospace digital font (white). **Bottom**: A prominent call-to-action button in neon acid green with bold black text \"SHOP NOW\". **Details**: Tech-interface elements, loading bars, battery icons decoration. **Style**: Cyberpunk UI, user-friendly but edgy, high clarity. --ar 3:4",
+     "prompt": "请根据列出的产品策略、产品图片、品牌logo，设计一套适合小红书审美的电商详情页，中文，每一张尺寸750:1000，一共5张，每一页的排版和文字信息由你设计，输出提示词，记得结构化拆开，我会让下一步的AI来识别你的生成结果然后去分布生图，每一页详情页不要改变产品本身的细节，一定要受年轻人喜欢，详情页要突出产品的核心卖点"
+    }
+   }
+  ],
+  "edges": [
+   {
+    "id": "30c6869c-3bb4-4b64-8e38-44ce1e3a3a58",
+    "source": "c3f66b20-3925-484c-ae49-69d3023fcb13",
+    "target": "fe657045-654c-4693-8285-f71b1d0d1d6d",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "f907f16a-e54c-47e3-9262-00c474748453",
+    "source": "f26bb642-9898-4fd6-a1d4-fb0d7b383183",
+    "target": "c7c397e2-16fe-4063-8ea9-cdad9a346c60",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "da6719b0-76f8-46fa-9c4f-d3371aac9d51",
+    "source": "c3f66b20-3925-484c-ae49-69d3023fcb13",
+    "target": "8d49342a-d21f-48bd-8af0-07faa4dd82e8",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "6337662b-5a54-438f-9b2e-217763fd5a86",
+    "source": "c3f66b20-3925-484c-ae49-69d3023fcb13",
+    "target": "a372cccd-e02a-46a7-8a45-374a9d30418d",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "406ba0d0-d4c7-40af-bfcc-5e6b415ec2bf",
+    "source": "c3f66b20-3925-484c-ae49-69d3023fcb13",
+    "target": "30bc6a5b-231f-4cfe-b4b3-09081b9db889",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "634d9274-6ad6-40cc-9633-99107123a4a6",
+    "source": "3d9eb67c-c19c-488d-a4b5-8e8526f61df0",
+    "target": "30bc6a5b-231f-4cfe-b4b3-09081b9db889",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "580327ce-529e-4054-b402-9cc303bdd394",
+    "source": "c5e78b28-ffa5-48d5-a0be-2d1c189ca53a",
+    "target": "b2219fa8-9e57-4b96-96fb-fb1169d13203",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "3331384f-5e04-4d36-b145-909b2ba62f35",
+    "source": "c5e78b28-ffa5-48d5-a0be-2d1c189ca53a",
+    "target": "c7c397e2-16fe-4063-8ea9-cdad9a346c60",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "24fd6a17-d809-45ba-8c55-3794b85398ac",
+    "source": "3d9eb67c-c19c-488d-a4b5-8e8526f61df0",
+    "target": "908d9a4b-62aa-4516-a68d-64712986a695",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "bf4b817b-845a-4814-9408-3e6d8510419a",
+    "source": "c3f66b20-3925-484c-ae49-69d3023fcb13",
+    "target": "b2219fa8-9e57-4b96-96fb-fb1169d13203",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "ee610ff4-dc2e-494c-bfe9-16506e3adcb4",
+    "source": "3d9eb67c-c19c-488d-a4b5-8e8526f61df0",
+    "target": "fe657045-654c-4693-8285-f71b1d0d1d6d",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "835b68dc-dddc-4df6-9a5a-d7b94b2914be",
+    "source": "c5e78b28-ffa5-48d5-a0be-2d1c189ca53a",
+    "target": "a372cccd-e02a-46a7-8a45-374a9d30418d",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "d993d069-ca5c-4647-9012-00359431501c",
+    "source": "c5e78b28-ffa5-48d5-a0be-2d1c189ca53a",
+    "target": "3d9eb67c-c19c-488d-a4b5-8e8526f61df0",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "dfda0f66-30bd-496a-a37e-3735beeb3f71",
+    "source": "f26bb642-9898-4fd6-a1d4-fb0d7b383183",
+    "target": "30bc6a5b-231f-4cfe-b4b3-09081b9db889",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "173beef1-796b-4fd1-8807-d42bcc6f20ef",
+    "source": "f26bb642-9898-4fd6-a1d4-fb0d7b383183",
+    "target": "b2219fa8-9e57-4b96-96fb-fb1169d13203",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "3c4697a4-ed1e-4fdb-8fd0-9ec388c13771",
+    "source": "8d49342a-d21f-48bd-8af0-07faa4dd82e8",
+    "target": "3d9eb67c-c19c-488d-a4b5-8e8526f61df0",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "5521a681-d553-496a-987d-caedb8f1ef31",
+    "source": "3d9eb67c-c19c-488d-a4b5-8e8526f61df0",
+    "target": "a372cccd-e02a-46a7-8a45-374a9d30418d",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "d67fe236-f914-4e4c-a4fc-a060a9ddebcc",
+    "source": "f26bb642-9898-4fd6-a1d4-fb0d7b383183",
+    "target": "8d49342a-d21f-48bd-8af0-07faa4dd82e8",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "764c308c-3c4c-47a2-83bc-ef57931747ca",
+    "source": "c3f66b20-3925-484c-ae49-69d3023fcb13",
+    "target": "908d9a4b-62aa-4516-a68d-64712986a695",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "43774ba9-a249-4ce0-a1dc-e5ec23e5948c",
+    "source": "8d49342a-d21f-48bd-8af0-07faa4dd82e8",
+    "target": "b2219fa8-9e57-4b96-96fb-fb1169d13203",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "62c2d82e-0178-42a0-a729-ecde10d0344f",
+    "source": "c5e78b28-ffa5-48d5-a0be-2d1c189ca53a",
+    "target": "fe657045-654c-4693-8285-f71b1d0d1d6d",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "51b787e0-c4f1-4eb0-9fa2-a88dd63227d5",
+    "source": "3d9eb67c-c19c-488d-a4b5-8e8526f61df0",
+    "target": "c7c397e2-16fe-4063-8ea9-cdad9a346c60",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "5a94122c-ca61-4f59-b0ab-103b6a7d9b8d",
+    "source": "f26bb642-9898-4fd6-a1d4-fb0d7b383183",
+    "target": "3d9eb67c-c19c-488d-a4b5-8e8526f61df0",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "95cf8491-95dd-45e6-a707-fd2a5afa14fd",
+    "source": "c3f66b20-3925-484c-ae49-69d3023fcb13",
+    "target": "c7c397e2-16fe-4063-8ea9-cdad9a346c60",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "09aa0fea-c3c5-4f49-ad85-e09af720157d",
+    "source": "f26bb642-9898-4fd6-a1d4-fb0d7b383183",
+    "target": "fe657045-654c-4693-8285-f71b1d0d1d6d",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "991eb724-cf65-4f6c-acda-0e224a9296df",
+    "source": "c5e78b28-ffa5-48d5-a0be-2d1c189ca53a",
+    "target": "30bc6a5b-231f-4cfe-b4b3-09081b9db889",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "e59fbda2-aa79-4ed0-b6c1-9c01c3d91a55",
+    "source": "c5e78b28-ffa5-48d5-a0be-2d1c189ca53a",
+    "target": "908d9a4b-62aa-4516-a68d-64712986a695",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "d72bbd6b-4cde-404f-8620-6691195b6bfd",
+    "source": "f26bb642-9898-4fd6-a1d4-fb0d7b383183",
+    "target": "a372cccd-e02a-46a7-8a45-374a9d30418d",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "0c087c73-402d-4388-95b1-672d4ec22e0f",
+    "source": "c3f66b20-3925-484c-ae49-69d3023fcb13",
+    "target": "3d9eb67c-c19c-488d-a4b5-8e8526f61df0",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   }
+  ]
+ },
+ "ecommerce-image-expert-213": {
+  "id": "aaf7cc53-a595-45da-a6bb-7c93309e0962",
+  "title": "213.电商图片生成专家",
+  "description": "上传产品图，一键直出商品主图、详情页、宣传海报、卖点图、场景图、漫画宣传图",
+  "previewImage": "/templates/ecommerce-image-expert-213.png",
+  "categories": [
+   "电商"
+  ],
+  "sourceTemplateId": "9a2d14af-92f9-4fda-855d-6fff11c1c06b",
+  "nodes": [
+   {
+    "id": "5737f46d-a9d7-4905-9493-d727a9582b78",
+    "type": "image",
+    "position": {
+     "x": 711.0525311553884,
+     "y": 559.2979004384724
+    },
+    "width": 250,
+    "height": 250,
+    "parentId": "group-307fd084-e323-468c-b4af-7cb4024b2194",
+    "data": {
+     "title": "生成商品主图",
+     "params": {
+      "aspectRatio": "1:1",
+      "imageSize": "1K"
+     }
+    }
+   },
+   {
+    "id": "607cf044-5454-43e6-b818-16ae4f722f4d",
+    "type": "text",
+    "position": {
+     "x": 372.0138957869576,
+     "y": 1442.738557169565
+    },
+    "width": 250,
+    "height": 250,
+    "parentId": "group-307fd084-e323-468c-b4af-7cb4024b2194",
+    "data": {
+     "title": "生成Bentobox指令",
+     "text": "绘制一张信息图表幻灯片，采用苹果发布会Bento网格布局完全一致的风格设计。背景为简洁统一的深色模式。\n\n构图是由模块化的矩形和正方形区块组成的紧凑网格，每个网格里是一个产品的性能参数或卖点。\n\n核心焦点模块： 中央放置一个未来感十足、设计感强烈的产品。采用高端的四分之三视角，展示其工业设计。醒目的边缘光突出产品轮廓。"
+    }
+   },
+   {
+    "id": "ed4a8227-637a-4d2a-a7d1-d2ff696a3a43",
+    "type": "image",
+    "position": {
+     "x": 712.108798275799,
+     "y": 893.2460834743019
+    },
+    "width": 250,
+    "height": 448,
+    "parentId": "group-307fd084-e323-468c-b4af-7cb4024b2194",
+    "data": {
+     "title": "生成商品详情图指令",
+     "params": {
+      "aspectRatio": "9:16",
+      "imageSize": "4K"
+     }
+    }
+   },
+   {
+    "id": "b756d638-c234-4327-af05-6dacdacedb83",
+    "type": "image",
+    "position": {
+     "x": 705.9776546945095,
+     "y": 1801.8067697324263
+    },
+    "width": 250,
+    "height": 334,
+    "parentId": "group-307fd084-e323-468c-b4af-7cb4024b2194",
+    "data": {
+     "title": "场景图",
+     "params": {
+      "aspectRatio": "3:4",
+      "imageSize": "2K"
+     }
+    }
+   },
+   {
+    "id": "625c99ff-8eae-4fda-a914-b9b68725d8a6",
+    "type": "image",
+    "position": {
+     "x": 716.7027816073623,
+     "y": 21.987519684998006
+    },
+    "width": 250,
+    "height": 448,
+    "parentId": "group-307fd084-e323-468c-b4af-7cb4024b2194",
+    "data": {
+     "title": "生成宣传海报",
+     "prompt": "\n",
+     "params": {
+      "aspectRatio": "9:16",
+      "imageSize": "1K"
+     }
+    }
+   },
+   {
+    "id": "4c9b470f-6a28-423f-9fd7-e57a04523748",
+    "type": "text",
+    "position": {
+     "x": 376.2346620611106,
+     "y": 557.4039725762991
+    },
+    "width": 250,
+    "height": 250,
+    "parentId": "group-307fd084-e323-468c-b4af-7cb4024b2194",
+    "data": {
+     "title": "生成商品主图指令",
+     "text": "设计这个产品在淘宝的商品头图，其中包括了：\n1.品牌logo\n2.价格（在画面底部）：活动到手价 【¥2199】\n3.产品名：【Action 5 Pro】\n4.权益：【赠送原厂配件、12期免息】\n5.性能：【4K超清、防水防抖】"
+    }
+   },
+   {
+    "id": "138370f4-912a-4325-8f34-af09caf2a40a",
+    "type": "image",
+    "position": {
+     "x": 20,
+     "y": 466.22149057132697
+    },
+    "width": 250,
+    "height": 444,
+    "parentId": "group-307fd084-e323-468c-b4af-7cb4024b2194",
+    "data": {
+     "title": "image",
+     "params": {
+      "aspectRatio": "Auto",
+      "imageSize": "1K"
+     }
+    }
+   },
+   {
+    "id": "99d8bab5-c675-4d1f-9364-e392a2c48121",
+    "type": "text",
+    "position": {
+     "x": 379.3636685351157,
+     "y": 20
+    },
+    "width": 250,
+    "height": 250,
+    "parentId": "group-307fd084-e323-468c-b4af-7cb4024b2194",
+    "data": {
+     "title": "生成宣传海报指令",
+     "text": "设计这个产品的宣传海报，高端大气有冲击力"
+    }
+   },
+   {
+    "id": "099ab9f5-637a-4c77-8543-f2fbd3a49860",
+    "type": "text",
+    "position": {
+     "x": 375.98212700541626,
+     "y": 892.0573739817892
+    },
+    "width": 250,
+    "height": 250,
+    "parentId": "group-307fd084-e323-468c-b4af-7cb4024b2194",
+    "data": {
+     "title": "生成商品详情图指令",
+     "text": "生成这个商品在淘宝售卖的商品详情图\n内容：自行搜索"
+    }
+   },
+   {
+    "id": "5b91ac9d-f2bd-4e32-add9-5e6a34ff8df9",
+    "type": "image",
+    "position": {
+     "x": 706.77259271615,
+     "y": 1444.0055976005165
+    },
+    "width": 335,
+    "height": 250,
+    "parentId": "group-307fd084-e323-468c-b4af-7cb4024b2194",
+    "data": {
+     "title": "Bentobox风格卖点图",
+     "params": {
+      "aspectRatio": "4:3",
+      "imageSize": "1K"
+     }
+    }
+   },
+   {
+    "id": "c1e552d7-d546-40df-bd32-21e4aaab0fd1",
+    "type": "text",
+    "position": {
+     "x": 369.8652937145034,
+     "y": 1798.4810842066406
+    },
+    "width": 250,
+    "height": 250,
+    "parentId": "group-307fd084-e323-468c-b4af-7cb4024b2194",
+    "data": {
+     "title": "场景图指令",
+     "text": "生成这个产品的使用场景图，高端大气上档次"
+    }
+   },
+   {
+    "id": "28f76d22-b004-436d-9b20-bc07899e5473",
+    "type": "image",
+    "position": {
+     "x": 711.1878926030261,
+     "y": 2261.4986215501626
+    },
+    "width": 250,
+    "height": 334,
+    "parentId": "group-307fd084-e323-468c-b4af-7cb4024b2194",
+    "data": {
+     "title": "图片生成",
+     "params": {
+      "aspectRatio": "3:4",
+      "imageSize": "1K"
+     }
+    }
+   },
+   {
+    "id": "text-c5286b2a-53e8-4ebd-8cfe-30690658c22c",
+    "type": "text",
+    "position": {
+     "x": 369.5234934807728,
+     "y": 2301.173542987277
+    },
+    "width": 250,
+    "height": 250,
+    "parentId": "group-307fd084-e323-468c-b4af-7cb4024b2194",
+    "data": {
+     "title": "Text",
+     "text": "生成一组可爱的漫画，用于讲述一个故事，表现这款产品的功能"
+    }
+   }
+  ],
+  "edges": [
+   {
+    "id": "b7461e1a-b3d7-40fe-b205-16ec595aa508",
+    "source": "99d8bab5-c675-4d1f-9364-e392a2c48121",
+    "target": "625c99ff-8eae-4fda-a914-b9b68725d8a6",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "9e89a77d-301f-4faf-854c-a3db2630ce7c",
+    "source": "138370f4-912a-4325-8f34-af09caf2a40a",
+    "target": "ed4a8227-637a-4d2a-a7d1-d2ff696a3a43",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "45cfb027-7eff-470f-ae4d-cf25973270f2",
+    "source": "607cf044-5454-43e6-b818-16ae4f722f4d",
+    "target": "5b91ac9d-f2bd-4e32-add9-5e6a34ff8df9",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "758e9537-7d78-41d3-b4cf-8e00a80f97b6",
+    "source": "138370f4-912a-4325-8f34-af09caf2a40a",
+    "target": "5737f46d-a9d7-4905-9493-d727a9582b78",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "37ac935c-397c-44eb-8cc0-6c1ec713e565",
+    "source": "4c9b470f-6a28-423f-9fd7-e57a04523748",
+    "target": "5737f46d-a9d7-4905-9493-d727a9582b78",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "8ef71f2f-c4b4-43f8-a67d-01eeba715fc9",
+    "source": "138370f4-912a-4325-8f34-af09caf2a40a",
+    "target": "b756d638-c234-4327-af05-6dacdacedb83",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "c549e36e-18a6-4d90-b384-3fc5fef5e87a",
+    "source": "138370f4-912a-4325-8f34-af09caf2a40a",
+    "target": "5b91ac9d-f2bd-4e32-add9-5e6a34ff8df9",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "08942d79-c296-4834-9fba-bb88794e051d",
+    "source": "138370f4-912a-4325-8f34-af09caf2a40a",
+    "target": "625c99ff-8eae-4fda-a914-b9b68725d8a6",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "6b3122b8-f49e-44eb-8c51-dd4c1df26d20",
+    "source": "c1e552d7-d546-40df-bd32-21e4aaab0fd1",
+    "target": "b756d638-c234-4327-af05-6dacdacedb83",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "a142334a-64d4-4691-a745-d742ac49ce9d",
+    "source": "138370f4-912a-4325-8f34-af09caf2a40a",
+    "target": "28f76d22-b004-436d-9b20-bc07899e5473",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "277e3582-6bfb-472d-952c-c49055c64f03",
+    "source": "text-c5286b2a-53e8-4ebd-8cfe-30690658c22c",
+    "target": "28f76d22-b004-436d-9b20-bc07899e5473",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   },
+   {
+    "id": "a0f3d7c2-template-fix-detail-instruction",
+    "source": "099ab9f5-637a-4c77-8543-f2fbd3a49860",
+    "target": "ed4a8227-637a-4d2a-a7d1-d2ff696a3a43",
+    "sourceHandle": "right",
+    "targetHandle": "left"
+   }
+  ]
+ }
+}

@@ -41,6 +41,17 @@ import { UpstreamInputCards } from "./UpstreamInputCards";
 import { GenerationAvailabilityNotice } from "./GenerationAvailabilityNotice";
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
 import {
+  useWorkflowExecution,
+  type NodeRunResult,
+} from "../generation/WorkflowExecutionProvider";
+import {
+  friendlyGenerationMessage,
+  generationMessageFallback,
+} from "../generation/friendlyGenerationMessage";
+import type {
+  NodeGenerationOutcome,
+} from "../generation/workflowExecution";
+import {
   generationFailureMessage,
   generationInputKey as createGenerationInputKey,
   generationRetryBlockReason,
@@ -276,6 +287,8 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     taskId: string;
   } | null>(null);
   const { setEdges, setNodes } = useCanvasGraphMutation();
+  const { getNodes } = useReactFlow<ProbeNodeType>();
+  const { register: registerWorkflowNode } = useWorkflowExecution();
   const canvasEdges = useEdges();
   const canvasNodes = useNodes<ProbeNodeType>();
   const checkpoint = useCanvasCheckpoint();
@@ -825,7 +838,7 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     selectedTextModel?.id,
   ]);
 
-  const generateText = async () => {
+  const generateText = async (): Promise<NodeGenerationOutcome> => {
     if (
       !inputPreflight.canSubmit ||
       !selectedTextModel ||
@@ -834,7 +847,7 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       data.textGenerating ||
       isFixture ||
       canvasRevision === undefined
-    ) return;
+    ) return { status: "skipped" };
     setSubmitting(true);
     setGenerationError("");
     setServerInputProblems([]);
@@ -866,17 +879,32 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
           }
         : node));
       await finishTextTask(submitted.id);
+      const finished = getNodes().find((node) => node.id === id);
+      if (
+        finished?.data.textGenerationError ||
+        finished?.data.textGenerationErrorCode
+      ) {
+        return {
+          message: friendlyGenerationMessage(
+            finished.data.textGenerationError,
+            "text",
+          ),
+          status: "failed",
+        };
+      }
+      return { status: "success" };
     } catch (error) {
       if (error instanceof GenerationRequestError && error.problems.length) {
         setServerInputProblems(error.problems);
       }
       const message = error instanceof Error
         ? error.message
-        : "文字生成失败，请稍后再试";
+        : generationMessageFallback("text");
+      const friendly = friendlyGenerationMessage(message, "text");
       if (taskId) {
         persistTextGenerationFailure(
           taskId,
-          message,
+          friendly,
           error instanceof GenerationRequestError
             ? error.code
             : "TASK_STATUS_UNKNOWN",
@@ -889,13 +917,51 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
             : "任务状态暂时无法确认，不能一键重试，请稍后刷新查看",
         );
       } else {
-        setGenerationError(message);
+        setGenerationError(friendly);
       }
+      return { message: friendly, status: "failed" };
     } finally {
       if (taskId && activeTaskRef.current === taskId) activeTaskRef.current = null;
       setSubmitting(false);
     }
   };
+
+  const runWorkflowNode = async (): Promise<NodeRunResult> => {
+    const before = getNodes().find((node) => node.id === id);
+    if (!before) return { status: "failed" };
+    if (isFixture || canvasRevision === undefined) {
+      return { status: "skipped" };
+    }
+    if (
+      before.data.textGenerating === true ||
+      before.data.inputState === "uploading"
+    ) {
+      return { message: "节点正在生成中", status: "busy" };
+    }
+    const outcome = await generateText();
+    if (outcome.status === "failed") {
+      return { message: outcome.message, status: "failed" };
+    }
+    if (outcome.status === "skipped") {
+      return {
+        message: inputPreflight.problems[0]?.message,
+        status: "skipped",
+      };
+    }
+    return { status: "success" };
+  };
+
+  const runWorkflowNodeRef = useRef<() => Promise<NodeRunResult>>(
+    async () => ({ status: "skipped" }),
+  );
+  runWorkflowNodeRef.current = runWorkflowNode;
+  useEffect(
+    () =>
+      registerWorkflowNode(id, {
+        run: () => runWorkflowNodeRef.current(),
+      }),
+    [id, registerWorkflowNode],
+  );
 
   const retryText = async () => {
     const taskId = data.textGenerationTaskId;

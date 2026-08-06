@@ -14,6 +14,9 @@ import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
 import type { ProbeNodeType } from "./ProbeNode";
+import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
+import { useWorkflowExecution } from "../generation/WorkflowExecutionProvider";
+import { isExecutableWorkflowNode } from "../generation/workflowExecution";
 
 const colors = [
   "transparent",
@@ -44,9 +47,28 @@ export function GroupNode({
 }: NodeProps<ProbeNodeType>) {
   const singleNodeChrome = useSingleNodeChrome(selected);
   const checkpoint = useCanvasCheckpoint();
-  const { getNode, getNodes } = useReactFlow<ProbeNodeType>();
+  const { getEdges, getNode, getNodes } = useReactFlow<ProbeNodeType>();
   const { setNodes } = useCanvasGraphMutation();
   const { zoom } = useViewport();
+  const { isFixture } = useGenerationCanvas();
+  const { cancelGroup, executeGroup, executingGroupIds } =
+    useWorkflowExecution();
+  const executing = executingGroupIds.has(id);
+  const allNodes = getNodes();
+  const childNodes = allNodes.filter((node) => node.parentId === id);
+  const incomingTextTargets = new Set(
+    getEdges()
+      .filter(
+        (edge) =>
+          allNodes.find((node) => node.id === edge.source)?.type === "text",
+      )
+      .map((edge) => edge.target),
+  );
+  const hasExecutableChild = childNodes.some((node) =>
+    isExecutableWorkflowNode(node, {
+      hasIncomingText: incomingTextTargets.has(node.id),
+    }),
+  );
   const [colorMenu, setColorMenu] = useState(false);
   const [layoutMenu, setLayoutMenu] = useState(false);
   const titleControl = useCompositionSafeText({
@@ -260,8 +282,35 @@ export function GroupNode({
               <rect height="6" rx="1" width="6" x="14" y="14" />
             </svg>
           </button>
-          <button disabled title="生成任务阶段实现" type="button">
-            整组执行
+          <button
+            aria-label={executing ? "取消整组执行" : "整组执行"}
+            data-testid="group-execute-button"
+            disabled={!hasExecutableChild || isFixture}
+            onClick={() => {
+              if (executing) {
+                cancelGroup(id);
+              } else {
+                void executeGroup(id);
+              }
+            }}
+            title={
+              isFixture
+                ? "验收页面不会触发真实生成"
+                : !hasExecutableChild
+                  ? "组内没有可执行的生成节点"
+                  : executing
+                    ? "取消整组执行"
+                    : "整组执行"
+            }
+            type="button"
+          >
+            {executing && (
+              <span
+                aria-hidden="true"
+                className="group-execute-spinner"
+              />
+            )}
+            {executing ? "取消" : "整组执行"}
           </button>
           <button disabled title="模板阶段实现" type="button">
             {data.groupTemplate ? "更新模板" : "创建模板"}

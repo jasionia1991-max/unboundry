@@ -57,6 +57,7 @@ import {
 } from "./canvasDocumentFingerprint";
 import { zoomViewportAtScreenPoint } from "./viewportMath";
 import { GenerationCanvasContext } from "../generation/GenerationCanvasContext";
+import { WorkflowExecutionProvider } from "../generation/WorkflowExecutionProvider";
 import {
   resolvePublishedModel,
   type PublishedModel,
@@ -116,7 +117,27 @@ export type AgentCanvasReference = {
 };
 
 export type CanvasShellMenuCommand = {
-  action: "dismiss" | "toggle-add";
+  action: "apply-template" | "dismiss" | "toggle-add";
+  graph?: {
+    edges: Array<{
+      id: string;
+      source: string;
+      sourceHandle: "source";
+      target: string;
+      targetHandle: "target";
+      type: "cuttable";
+    }>;
+    nodes: Array<{
+      data: Record<string, unknown> & { label: string };
+      id: string;
+      parentId?: string;
+      position: { x: number; y: number };
+      style?: { height: number; width: number };
+      type: "group" | "image" | "text" | "video";
+      zIndex?: number;
+    }>;
+    version: 1;
+  };
   sequence: number;
 };
 export type CanvasSearchEntry = {
@@ -1719,6 +1740,8 @@ export function CanvasSurface({
   const persistenceId = projectId ?? fixtureId ?? "default";
   const imageModels = usePublishedModels("image");
   const videoModels = usePublishedModels("video");
+  const imageModelsRef = useRef(imageModels);
+  imageModelsRef.current = imageModels;
   const persistenceFixture =
     Boolean(projectId) ||
     !fixtureId ||
@@ -1752,6 +1775,22 @@ export function CanvasSurface({
   const [uploadError, setUploadError] = useState("");
   const [uploading, setUploading] = useState(false);
   const [playlistToast, setPlaylistToast] = useState("");
+  const [workflowToast, setWorkflowToast] = useState<{
+    kind: "error" | "info" | "success";
+    message: string;
+  }>();
+  const workflowToastTimer = useRef<number | undefined>(undefined);
+  const showWorkflowToast = useCallback(
+    (message: string, kind: "error" | "info" | "success" = "info") => {
+      setWorkflowToast({ kind, message });
+      window.clearTimeout(workflowToastTimer.current);
+      workflowToastTimer.current = window.setTimeout(
+        () => setWorkflowToast(undefined),
+        2_600,
+      );
+    },
+    [],
+  );
   const [persistenceReady, setPersistenceReady] = useState(!persistenceFixture);
   const [confirmedPersistenceRevision, setConfirmedPersistenceRevision] =
     useState<number>();
@@ -1785,6 +1824,7 @@ export function CanvasSurface({
   const blankContextMenuRef = useRef<HTMLDivElement>(null);
   const nodeContextMenuRef = useRef<HTMLDivElement>(null);
   const internalClipboard = useRef<ProbeNodeType | undefined>(undefined);
+  const appliedTemplateSequence = useRef<number | undefined>(undefined);
   const flowInstance = useRef<
     ReactFlowInstance<ProbeNodeType, CuttableEdge> | undefined
   >(undefined);
@@ -2085,6 +2125,78 @@ export function CanvasSurface({
       nodes: cloneNodes(nodesRef.current),
     });
   }, [cloneEdges, cloneNodes, pushHistory]);
+
+  useEffect(() => {
+    if (shellMenuCommand?.action !== "apply-template") return;
+    if (shellMenuCommand.sequence === appliedTemplateSequence.current) return;
+    appliedTemplateSequence.current = shellMenuCommand.sequence;
+    const graph = shellMenuCommand.graph;
+    if (!graph || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) {
+      return;
+    }
+    const idMap = new Map<string, string>();
+    const appliedNodes: ProbeNodeType[] = graph.nodes.map((source) => {
+      const id = `${source.type}-${crypto.randomUUID()}`;
+      idMap.set(source.id, id);
+      return {
+        id,
+        type: source.type,
+        position: source.position,
+        data: {
+          ...source.data,
+          label: source.data.label ?? "Node",
+          title: typeof source.data.title === "string"
+            ? source.data.title
+            : source.data.label ?? "Node",
+        },
+        style: source.style ??
+          (source.type === "group"
+            ? { height: 500, width: 800 }
+            : NODE_DEFAULT_SIZES[source.type]),
+        zIndex: source.zIndex,
+        selected: false,
+      };
+    }).map((node, index) => ({
+      ...node,
+      parentId: graph.nodes[index].parentId
+        ? idMap.get(graph.nodes[index].parentId!)
+        : undefined,
+    }));
+    const groupNode = appliedNodes.find((node) => node.type === "group");
+    const appliedEdges: CuttableEdge[] = graph.edges.map((edge) => ({
+      id: `template-edge-${crypto.randomUUID()}`,
+      source: idMap.get(edge.source) ?? edge.source,
+      target: idMap.get(edge.target) ?? edge.target,
+      sourceHandle: "source",
+      targetHandle: "target",
+      type: "cuttable",
+    }));
+    const nodeTypeById = new Map(
+      appliedNodes.map((node) => [node.id, node.type]),
+    );
+    const imageTargetsWithImageInput = new Set(
+      appliedEdges
+        .filter((edge) =>
+          nodeTypeById.get(edge.target) === "image" &&
+          nodeTypeById.get(edge.source) === "image")
+        .map((edge) => edge.target),
+    );
+    const preparedNodes = appliedNodes.map((node) =>
+      node.type === "image" && imageTargetsWithImageInput.has(node.id)
+        ? withImageReferenceInputMode(node, imageModelsRef.current)
+        : node,
+    );
+    checkpoint();
+    setNodes((current) => [
+      ...current.map((node) => ({ ...node, selected: false })),
+      ...preparedNodes,
+    ]);
+    setEdges((current) => [...current, ...appliedEdges]);
+    if (groupNode) setPrimaryId(groupNode.id);
+    window.requestAnimationFrame(() => {
+      void flowInstance.current?.fitView({ duration: 0, padding: 0.2 });
+    });
+  }, [checkpoint, setEdges, setNodes, shellMenuCommand]);
   const handleCanvasWheelCapture = useCallback(
     (event: ReactWheelEvent<HTMLDivElement>) => {
       if (!event.ctrlKey || event.deltaY === 0 || !worldRef.current) return;
@@ -3281,6 +3393,11 @@ export function CanvasSurface({
     <GenerationCanvasContext.Provider
       value={generationCanvasContextValue}
     >
+      <WorkflowExecutionProvider
+        getEdges={() => edgesRef.current}
+        getNodes={() => nodesRef.current}
+        notify={showWorkflowToast}
+      >
       <CanvasGraphMutationContext.Provider value={{ setEdges, setNodes }}>
       <CanvasCheckpointContext.Provider value={checkpoint}>
       <CanvasSelectionUiContext.Provider value={canvasSelectionUiContextValue}>
@@ -4218,6 +4335,15 @@ export function CanvasSurface({
           {playlistToast}
         </div>
       )}
+      {workflowToast && (
+        <div
+          className={`workflow-run-toast workflow-run-toast-${workflowToast.kind}`}
+          data-testid="workflow-run-toast"
+          role="status"
+        >
+          {workflowToast.message}
+        </div>
+      )}
       {minimapOpen && (
         <div
           aria-label="拖动小地图"
@@ -4262,6 +4388,7 @@ export function CanvasSurface({
       </CanvasSelectionUiContext.Provider>
       </CanvasCheckpointContext.Provider>
       </CanvasGraphMutationContext.Provider>
+      </WorkflowExecutionProvider>
     </GenerationCanvasContext.Provider>
   );
 }

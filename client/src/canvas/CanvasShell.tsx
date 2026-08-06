@@ -45,9 +45,31 @@ type ProjectTitleRecord = {
 
 type TemplateCatalogCard = {
   categories: string[];
+  description?: string;
+  graph?: {
+    edges: Array<{
+      id: string;
+      source: string;
+      sourceHandle: "source";
+      target: string;
+      targetHandle: "target";
+      type: "cuttable";
+    }>;
+    nodes: Array<{
+      data: Record<string, unknown> & { label: string };
+      id: string;
+      parentId?: string;
+      position: { x: number; y: number };
+      style?: { height: number; width: number };
+      type: "group" | "image" | "text" | "video";
+      zIndex?: number;
+    }>;
+    version: 1;
+  };
   id: string;
+  previewImage?: string;
   title: string;
-  tone: string;
+  tone?: string;
 };
 
 type TemplateCatalogResponse = {
@@ -870,6 +892,18 @@ export function CanvasShell({
     }));
   };
 
+  const applyTemplate = (template: TemplateCatalogCard) => {
+    if (!template.graph) return;
+    setTemplateNoticeOpen(false);
+    setTemplatesOpen(false);
+    setTemplateBrowseAllOpen(false);
+    setShellMenuCommand((current) => ({
+      action: "apply-template",
+      graph: template.graph,
+      sequence: (current?.sequence ?? 0) + 1,
+    }));
+  };
+
   const closePrimarySurfaces = (dismissCanvasMenu = true) => {
     setNodeSearchOpen(false);
     setAssetsOpen(false);
@@ -1005,7 +1039,7 @@ export function CanvasShell({
     const controller = new AbortController();
     const parameters = new URLSearchParams({
       category: templateBrowseAllOpen ? templateBrowseCategory : "全部",
-      includeGraph: "false",
+      includeGraph: "true",
       limit: "100",
       offset: "0",
       q: templateSearch.trim(),
@@ -2631,17 +2665,31 @@ export function CanvasShell({
                 className="templates-grid"
                 data-testid="templates-grid"
               >
-                {visibleTemplateCards.slice(0, 10).map(({ id, title, tone }) => (
-                  <article className="template-card" key={id}>
+                {visibleTemplateCards.slice(0, 10).map((card) => (
+                  <article
+                    className="template-card"
+                    key={card.id}
+                    onClick={() => applyTemplate(card)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        applyTemplate(card);
+                      }
+                    }}
+                  >
                     <div
-                      aria-label={title}
+                      aria-label={card.title}
                       className="template-card-art"
-                      data-tone={tone}
+                      data-preview={card.previewImage ? true : undefined}
                       role="img"
                     >
-                      <span />
+                      {card.previewImage
+                        ? <img alt="" src={card.previewImage} />
+                        : <span />}
                     </div>
-                    <p>{title}</p>
+                    <p>{card.title}</p>
                   </article>
                 ))}
               </div>
@@ -2762,17 +2810,31 @@ export function CanvasShell({
                   aria-label="全部模板卡片"
                   className="template-browser-grid"
                 >
-                  {visibleTemplateCards.map(({ id, title, tone }) => (
-                    <article className="template-browser-card" key={id}>
+                  {visibleTemplateCards.map((card) => (
+                    <article
+                      className="template-browser-card"
+                      key={card.id}
+                      onClick={() => applyTemplate(card)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          applyTemplate(card);
+                        }
+                      }}
+                    >
                       <div
-                        aria-label={title}
+                        aria-label={card.title}
                         className="template-card-art"
-                        data-tone={tone}
+                        data-preview={card.previewImage ? true : undefined}
                         role="img"
                       >
-                        <span />
+                        {card.previewImage
+                          ? <img alt="" src={card.previewImage} />
+                          : <span />}
                       </div>
-                      <p>{title}</p>
+                      <p>{card.title}</p>
                     </article>
                   ))}
                 </div>

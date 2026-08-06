@@ -22,6 +22,17 @@ import {
   usePublishedModelSelection,
 } from "../models/ModelCatalog";
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
+import {
+  useWorkflowExecution,
+  type NodeRunResult,
+} from "../generation/WorkflowExecutionProvider";
+import {
+  friendlyGenerationMessage,
+  generationMessageFallback,
+} from "../generation/friendlyGenerationMessage";
+import type {
+  NodeGenerationOutcome,
+} from "../generation/workflowExecution";
 import { visibleGenerationError } from "../generation/generationErrors";
 import { ProviderErrorNotice } from "../generation/ProviderErrorNotice";
 import {
@@ -156,7 +167,8 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   const uploadInFlight = useRef(false);
   const uploadOperation = useRef(0);
   const waveformSourceAttempted = useRef<string | undefined>(undefined);
-  const { getNode } = useReactFlow<ProbeNodeType>();
+  const { getNode, getNodes } = useReactFlow<ProbeNodeType>();
+  const { register: registerWorkflowNode } = useWorkflowExecution();
   const { setEdges, setNodes } = useCanvasGraphMutation();
   const canvasEdges = useEdges();
   const canvasNodes = useNodes<ProbeNodeType>();
@@ -583,7 +595,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     clearGenerationSubmissionIntent("audio", canvasId, id, task.id, accountId);
   };
 
-  const generateAudio = async () => {
+  const generateAudio = async (): Promise<NodeGenerationOutcome> => {
     const cleanPrompt = inputPreflight.finalPrompt;
     if (
       !cleanPrompt ||
@@ -595,7 +607,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       serverInputProblems.length > 0 ||
       !selectedAudioModel ||
       selectedAudioModel.generationAvailable === false
-    ) return;
+    ) return { status: "skipped" };
     setUploadError("");
     setServerInputProblems([]);
     setRetryTaskId(undefined);
@@ -634,35 +646,46 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
           task.id,
           task.errorMessage ?? "音频生成已取消",
         );
-        return;
+        return {
+          message: friendlyGenerationMessage(
+            task.errorMessage ?? "音频生成已取消",
+            "audio",
+          ),
+          status: "failed",
+        };
       }
       if (task.state !== "success") {
         persistAudioGenerationFailure(
           task.id,
-          task.errorMessage ?? "音频生成失败，请稍后再试",
+          friendlyGenerationMessage(task.errorMessage, "audio"),
           task.errorCode,
           safelyRetryableGenerationTask(task),
           task.retryBlockCode,
           task.retryBlockReason,
         );
-        return;
+        return {
+          message: friendlyGenerationMessage(task.errorMessage, "audio"),
+          status: "failed",
+        };
       }
       applyGeneratedAudio(task, promptControl.committedValue.trim());
       setRetryTaskId(undefined);
+      return { status: "success" };
     } catch (error) {
       if (error instanceof GenerationRequestError) {
         setServerInputProblems(error.problems);
       }
       const message = error instanceof Error
         ? error.message
-        : "音频生成失败，请稍后再试";
+        : generationMessageFallback("audio");
+      const friendly = friendlyGenerationMessage(message, "audio");
       if (submittedTaskId) {
         const errorCode = error instanceof GenerationRequestError
           ? error.code
           : "TASK_STATUS_UNKNOWN";
         persistAudioGenerationFailure(
           submittedTaskId,
-          message,
+          friendly,
           errorCode,
           false,
           errorCode,
@@ -671,13 +694,51 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
             : "任务状态暂时无法确认，不能一键重试，请稍后刷新查看",
         );
       } else {
-        setUploadError(message);
+        setUploadError(friendly);
       }
+      return { message: friendly, status: "failed" };
     } finally {
       setSubmitting(false);
       setActiveTaskId(undefined);
     }
   };
+
+  const runWorkflowNode = async (): Promise<NodeRunResult> => {
+    const before = getNodes().find((node) => node.id === id);
+    if (!before) return { status: "failed" };
+    if (isFixture || canvasRevision === undefined) {
+      return { status: "skipped" };
+    }
+    if (
+      before.data.audioGenerating === true ||
+      before.data.inputState === "uploading"
+    ) {
+      return { message: "节点正在生成中", status: "busy" };
+    }
+    const outcome = await generateAudio();
+    if (outcome.status === "failed") {
+      return { message: outcome.message, status: "failed" };
+    }
+    if (outcome.status === "skipped") {
+      return {
+        message: inputPreflight.problems[0]?.message,
+        status: "skipped",
+      };
+    }
+    return { status: "success" };
+  };
+
+  const runWorkflowNodeRef = useRef<() => Promise<NodeRunResult>>(
+    async () => ({ status: "skipped" }),
+  );
+  runWorkflowNodeRef.current = runWorkflowNode;
+  useEffect(
+    () =>
+      registerWorkflowNode(id, {
+        run: () => runWorkflowNodeRef.current(),
+      }),
+    [id, registerWorkflowNode],
+  );
 
   const retryAudioGeneration = async () => {
     if (!retryTaskId || !retryAvailable || generating || submitting) return;

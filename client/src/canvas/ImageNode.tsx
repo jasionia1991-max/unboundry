@@ -30,6 +30,17 @@ import {
   usePublishedModelSelection,
 } from "../models/ModelCatalog";
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
+import {
+  useWorkflowExecution,
+  type NodeRunResult,
+} from "../generation/WorkflowExecutionProvider";
+import {
+  friendlyGenerationMessage,
+  generationMessageFallback,
+} from "../generation/friendlyGenerationMessage";
+import type {
+  NodeGenerationOutcome,
+} from "../generation/workflowExecution";
 import { visibleGenerationError } from "../generation/generationErrors";
 import { ProviderErrorNotice } from "../generation/ProviderErrorNotice";
 import {
@@ -1137,7 +1148,8 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   const uploadInFlight = useRef(false);
   const uploadBaseline = useRef<ProbeNodeType | undefined>(undefined);
   const uploadOperation = useRef(0);
-  const { getEdges, getNode } = useReactFlow<ProbeNodeType>();
+  const { getEdges, getNode, getNodes } = useReactFlow<ProbeNodeType>();
+  const { register: registerWorkflowNode } = useWorkflowExecution();
   const { setEdges, setNodes } = useCanvasGraphMutation();
   const canvasEdges = useEdges();
   const canvasNodes = useNodes<ProbeNodeType>();
@@ -1548,7 +1560,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     clearGenerationSubmissionIntent("image", canvasId, id, task.id, accountId);
   };
 
-  const generateImage = async () => {
+  const generateImage = async (): Promise<NodeGenerationOutcome> => {
     const cleanPrompt = inputPreflight.finalPrompt;
     if (
       !cleanPrompt ||
@@ -1559,7 +1571,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       !selectedImageModel ||
       selectedImageModel.generationAvailable === false ||
       !referencesSupported
-    ) return;
+    ) return { status: "skipped" };
     setUploadError("");
     setServerInputProblems([]);
     setRetryTaskId(undefined);
@@ -1604,30 +1616,38 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       if (task.state !== "success") {
         persistImageGenerationFailure(
           task.id,
-          task.errorMessage ?? "图片生成失败，请稍后再试",
+          friendlyGenerationMessage(
+            task.errorMessage,
+            "image",
+          ),
           task.errorCode,
           safelyRetryableGenerationTask(task),
           task.retryBlockCode,
           task.retryBlockReason,
         );
-        return;
+        return {
+          message: friendlyGenerationMessage(task.errorMessage, "image"),
+          status: "failed",
+        };
       }
       applyGeneratedImage(task);
       setRetryTaskId(undefined);
+      return { status: "success" };
     } catch (error) {
       if (error instanceof GenerationRequestError) {
         setServerInputProblems(error.problems);
       }
       const message = error instanceof Error
         ? error.message
-        : "图片生成失败，请稍后再试";
+        : generationMessageFallback("image");
+      const friendly = friendlyGenerationMessage(message, "image");
       if (submittedTaskId) {
         const errorCode = error instanceof GenerationRequestError
           ? error.code
           : "TASK_STATUS_UNKNOWN";
         persistImageGenerationFailure(
           submittedTaskId,
-          message,
+          friendly,
           errorCode,
           false,
           errorCode,
@@ -1636,13 +1656,51 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
             : "任务状态暂时无法确认，不能一键重试，请稍后刷新查看",
         );
       } else {
-        setUploadError(message);
+        setUploadError(friendly);
       }
+      return { message: friendly, status: "failed" };
     } finally {
       setSubmitting(false);
       setActiveTaskId(undefined);
     }
   };
+
+  const runWorkflowNode = async (): Promise<NodeRunResult> => {
+    const before = getNodes().find((node) => node.id === id);
+    if (!before) return { status: "failed" };
+    if (isFixture || canvasRevision === undefined) {
+      return { status: "skipped" };
+    }
+    if (
+      before.data.imageGenerating === true ||
+      before.data.inputState === "uploading"
+    ) {
+      return { message: "节点正在生成中", status: "busy" };
+    }
+    const outcome = await generateImage();
+    if (outcome.status === "failed") {
+      return { message: outcome.message, status: "failed" };
+    }
+    if (outcome.status === "skipped") {
+      return {
+        message: inputPreflight.problems[0]?.message,
+        status: "skipped",
+      };
+    }
+    return { status: "success" };
+  };
+
+  const runWorkflowNodeRef = useRef<() => Promise<NodeRunResult>>(
+    async () => ({ status: "skipped" }),
+  );
+  runWorkflowNodeRef.current = runWorkflowNode;
+  useEffect(
+    () =>
+      registerWorkflowNode(id, {
+        run: () => runWorkflowNodeRef.current(),
+      }),
+    [id, registerWorkflowNode],
+  );
 
   const retryImageGeneration = async () => {
     if (!retryTaskId || !retryAvailable || generating || submitting) return;

@@ -801,9 +801,9 @@ test("workflow templates match panel, notice, tabs and browse-all states", async
   await panel.getByRole("tab", { name: "我的模板" }).click();
   await expect(panel.getByText("暂无我的模板", { exact: true })).toBeVisible();
   await panel.getByRole("tab", { name: "公共模板" }).click();
-  await panel.getByRole("searchbox", { name: "搜索资产包..." }).fill("分镜");
-  await expect(panel.getByText("Json大师电影分镜", { exact: true })).toBeVisible();
-  await expect(panel.getByText("分镜大师", { exact: true })).toBeVisible();
+  await panel.getByRole("searchbox", { name: "搜索资产包..." }).fill("电商");
+  await expect(panel.getByText("电商详情页工作流", { exact: true })).toBeVisible();
+  await expect(panel.getByText("213.电商图片生成专家", { exact: true })).toBeVisible();
 
   await panel.getByRole("button", { name: "浏览全部" }).click();
   const browser = page.getByTestId("template-browser");
