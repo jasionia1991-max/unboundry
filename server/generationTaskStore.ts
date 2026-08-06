@@ -681,11 +681,16 @@ export function createGenerationTaskStore(dataDirectory: string) {
           WHERE
             provider_profile_id = ?
             AND kind = ?
+            AND owner_id = ?
             AND state = 'failed'
             AND error_code IN ('AUTH', 'PERMISSION')
           ORDER BY updated_at DESC, rowid DESC
           LIMIT 1
-        `).get(current.provider_profile_id, current.kind) as
+        `).get(
+          current.provider_profile_id,
+          current.kind,
+          current.owner_id ?? null,
+        ) as
           | { id: string; updated_at: string }
           | undefined;
         const latestSuccess = database.prepare(`
@@ -694,10 +699,15 @@ export function createGenerationTaskStore(dataDirectory: string) {
           WHERE
             provider_profile_id = ?
             AND kind = ?
+            AND owner_id = ?
             AND state = 'success'
           ORDER BY updated_at DESC, rowid DESC
           LIMIT 1
-        `).get(current.provider_profile_id, current.kind) as
+        `).get(
+          current.provider_profile_id,
+          current.kind,
+          current.owner_id ?? null,
+        ) as
           | { updated_at: string }
           | undefined;
         const authFailureAt = latestAuthFailure
@@ -751,12 +761,14 @@ export function createGenerationTaskStore(dataDirectory: string) {
             WHERE
               provider_profile_id = ?
               AND kind = ?
+              AND owner_id = ?
               AND created_at >= ?
             ORDER BY created_at DESC, id DESC
             LIMIT 1
           `).get(
             current.provider_profile_id,
             current.kind,
+            current.owner_id ?? null,
             new Date(recoveryAt).toISOString(),
           );
           if (recoveryAttempt) {
@@ -775,15 +787,17 @@ export function createGenerationTaskStore(dataDirectory: string) {
           INSERT INTO generation_provider_attempts (
             task_id,
             execution_attempt,
+            owner_id,
             provider_profile_id,
             provider_model_id,
             kind,
             evidence,
             created_at
-          ) VALUES (?, ?, ?, ?, ?, 'provider-boundary', ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, 'provider-boundary', ?)
         `).run(
           current.id,
           current.attempt,
+          current.owner_id ?? null,
           current.provider_profile_id,
           current.provider_model_id,
           current.kind,

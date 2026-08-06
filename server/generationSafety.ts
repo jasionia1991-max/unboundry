@@ -449,6 +449,7 @@ export function createGenerationSafetyStore(
         WHERE
           provider_profile_id = ?
           AND kind = ?
+          AND owner_id = ?
           AND state IN ('failed', 'success')
           AND updated_at >= ?
         ORDER BY updated_at DESC
@@ -457,6 +458,7 @@ export function createGenerationSafetyStore(
       .all(
         input.providerProfileId,
         input.kind,
+        input.ownerId,
         cooldownStart,
         row.failure_threshold,
       ) as Array<{

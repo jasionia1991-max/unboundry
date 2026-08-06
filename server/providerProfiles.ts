@@ -29,6 +29,7 @@ import {
 } from "./outboundNetwork";
 import { providerCatalogCapabilities } from "./providerCatalogCapabilities";
 import { parseProviderCatalogDiagnostics } from "./providerCatalogDiagnostics";
+import { secretStoreEncryptionKey } from "./secretStore";
 
 export type ProviderDriver =
   | "mureka"
@@ -47,7 +48,7 @@ export type ArkControlPlaneCredentials = {
 };
 
 export type ProviderProfile = {
-  apiKey: string;
+  apiKey?: string;
   arkControlPlane?: ArkControlPlaneCredentials;
   baseUrl: string;
   configurationVersion?: number;
@@ -91,6 +92,10 @@ type EncryptedDocument = {
 };
 
 const associatedData = Buffer.from("tapnow:provider-profiles:v1", "utf8");
+const accountCredentialAad = Buffer.from(
+  "tapnow:account-credentials:v1",
+  "utf8",
+);
 const documentLockAcquireTimeoutMs = 5_000;
 const drivers: readonly ProviderDriver[] = [
   "mureka",
@@ -128,37 +133,7 @@ function paths() {
 }
 
 async function encryptionKey() {
-  const target = paths();
-  await mkdir(target.directory, { mode: 0o700, recursive: true });
-  try {
-    const existing = await readFile(target.key);
-    if (existing.length !== 32) throw new Error("Invalid secret-store key");
-    return existing;
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      "code" in error &&
-      error.code !== "ENOENT"
-    ) {
-      throw error;
-    }
-  }
-  const created = randomBytes(32);
-  try {
-    await writeFile(target.key, created, { flag: "wx", mode: 0o600 });
-    return created;
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      "code" in error &&
-      error.code === "EEXIST"
-    ) {
-      const existing = await readFile(target.key);
-      if (existing.length !== 32) throw new Error("Invalid secret-store key");
-      return existing;
-    }
-    throw error;
-  }
+  return secretStoreEncryptionKey();
 }
 
 async function readDocument(): Promise<ProviderProfileDocument> {
@@ -373,6 +348,9 @@ export function providerConfigurationVersion(profile: ProviderProfile) {
 export class ProviderGenerationConfigurationError extends Error {
   constructor(
     readonly code:
+      | "ACCOUNT_CREDENTIAL_CHANGED"
+      | "ACCOUNT_CREDENTIAL_INVALID"
+      | "ACCOUNT_CREDENTIAL_MISSING"
       | "PROVIDER_CONFIGURATION_MISMATCH"
       | "PROVIDER_PROFILE_MISSING"
       | "PROVIDER_REVERIFY_REQUIRED",
@@ -382,12 +360,113 @@ export class ProviderGenerationConfigurationError extends Error {
   }
 }
 
+/** Current credential version for one account + connection (0 = 未配置). */
+export function accountCredentialVersion(ownerId: string, profileId: string) {
+  const row = db()
+    .prepare(`
+      SELECT credential_version
+      FROM account_provider_credentials
+      WHERE account_id = ? AND provider_profile_id = ?
+    `)
+    .get(ownerId, profileId) as { credential_version: number } | undefined;
+  return row ? Number(row.credential_version) : 0;
+}
+
+async function encryptAccountApiKey(apiKey: string) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", await encryptionKey(), iv);
+  cipher.setAAD(accountCredentialAad);
+  const ciphertext = Buffer.concat([
+    cipher.update(apiKey, "utf8"),
+    cipher.final(),
+  ]);
+  return [
+    iv.toString("base64"),
+    cipher.getAuthTag().toString("base64"),
+    ciphertext.toString("base64"),
+  ].join("$");
+}
+
+let legacyKeyMigrationScheduled = false;
+
+/**
+ * One-time migration: remove generation API keys from the encrypted Provider
+ * document and write them as the active administrators' own account
+ * credentials. Non-admin accounts never inherit these keys.
+ */
+export async function migrateLegacyProviderKeysIfNeeded() {
+  if (legacyKeyMigrationScheduled) return;
+  legacyKeyMigrationScheduled = true;
+  try {
+    const document = await readDocument();
+    const legacy = document.profiles.filter(
+      (profile) =>
+        Boolean(profile.apiKey) && profile.driver !== "volcengine-ark",
+    );
+    if (!legacy.length) return;
+    const admins = db()
+      .prepare(`
+        SELECT id
+        FROM users
+        WHERE role = 'admin' AND status = 'active'
+      `)
+      .all() as Array<{ id: string }>;
+    if (!admins.length) {
+      legacyKeyMigrationScheduled = false;
+      return;
+    }
+    const payloads = await Promise.all(
+      legacy.map(async (profile) => ({
+        encrypted: await encryptAccountApiKey(profile.apiKey!),
+        profileId: profile.id,
+      })),
+    );
+    const timestamp = new Date().toISOString();
+    const insert = db().prepare(`
+      INSERT INTO account_provider_credentials (
+        account_id, provider_profile_id, encrypted_key, key_status,
+        key_checked_at, credential_version, updated_at
+      )
+      VALUES (?, ?, ?, 'unchecked', NULL, 1, ?)
+      ON CONFLICT(account_id, provider_profile_id) DO UPDATE SET
+        encrypted_key = excluded.encrypted_key,
+        key_status = 'unchecked',
+        key_checked_at = NULL,
+        credential_version = 1,
+        updated_at = excluded.updated_at
+    `);
+    await mutateDocument((current) => {
+      for (const payload of payloads) {
+        const profile = current.profiles.find(
+          (candidate) => candidate.id === payload.profileId,
+        );
+        if (profile?.apiKey) {
+          delete profile.apiKey;
+        }
+        for (const admin of admins) {
+          insert.run(
+            admin.id,
+            payload.profileId,
+            payload.encrypted,
+            timestamp,
+          );
+        }
+      }
+    });
+  } catch (error) {
+    legacyKeyMigrationScheduled = false;
+    throw error;
+  }
+}
+
 export type ProviderGenerationProfileState = {
   configurationAligned: boolean;
   documentConfigurationVersion?: number;
   metadataConfigurationVersion?: number;
   profile?: ProviderProfile;
   reason:
+    | "account-credential-invalid"
+    | "account-credential-missing"
     | "configuration-mismatch"
     | "missing"
     | "ready"
@@ -438,9 +517,7 @@ function cleanProfileInput(
   if (
     !drivers.includes(driver) ||
     !label ||
-    !validBaseUrl(baseUrl) ||
-    apiKey.length < 8 ||
-    /\s/.test(apiKey)
+    !validBaseUrl(baseUrl)
   ) {
     throw new Error("Provider configuration is invalid");
   }
@@ -537,7 +614,9 @@ function metadataStatus(store: DatabaseSync, profile: ProviderProfile) {
 function publicProfile(profile: ProviderProfile, store = db()) {
   const metadata = metadataStatus(store, profile);
   return {
-    apiKeyMask: `••••${profile.apiKey.slice(-4)}`,
+    apiKeyMask: profile.apiKey
+      ? `••••${profile.apiKey.slice(-4)}`
+      : undefined,
     baseUrl: profile.baseUrl,
     driver: profile.driver,
     hasApiKey: Boolean(profile.apiKey),
@@ -916,8 +995,52 @@ function generationProfileState(
   };
 }
 
+async function accountKeyForOwner(ownerId: string, profileId: string) {
+  const row = db()
+    .prepare(`
+      SELECT encrypted_key
+      FROM account_provider_credentials
+      WHERE account_id = ? AND provider_profile_id = ?
+    `)
+    .get(ownerId, profileId) as { encrypted_key: string } | undefined;
+  if (!row) return undefined;
+  try {
+    const parts = row.encrypted_key.split("$");
+    if (parts.length !== 3) return undefined;
+    const iv = Buffer.from(parts[0], "base64");
+    const tag = Buffer.from(parts[1], "base64");
+    const ciphertext = Buffer.from(parts[2], "base64");
+    if (iv.length !== 12 || tag.length !== 16) return undefined;
+    const decipher = createDecipheriv(
+      "aes-256-gcm",
+      await encryptionKey(),
+      iv,
+    );
+    decipher.setAAD(accountCredentialAad);
+    decipher.setAuthTag(tag);
+    return Buffer.concat([
+      decipher.update(ciphertext),
+      decipher.final(),
+    ]).toString("utf8");
+  } catch {
+    return undefined;
+  }
+}
+
 function profileForGenerationState(state: ProviderGenerationProfileState) {
   if (state.reason === "ready" && state.profile) return state.profile;
+  if (state.reason === "account-credential-missing") {
+    throw new ProviderGenerationConfigurationError(
+      "ACCOUNT_CREDENTIAL_MISSING",
+      "未配置你的平台密钥",
+    );
+  }
+  if (state.reason === "account-credential-invalid") {
+    throw new ProviderGenerationConfigurationError(
+      "ACCOUNT_CREDENTIAL_INVALID",
+      "你的平台密钥无效",
+    );
+  }
   if (state.reason === "missing") {
     throw new ProviderGenerationConfigurationError(
       "PROVIDER_PROFILE_MISSING",
@@ -938,9 +1061,49 @@ function profileForGenerationState(state: ProviderGenerationProfileState) {
 
 export async function getProviderGenerationProfileState(
   profileId: string,
+  ownerId: string,
 ): Promise<ProviderGenerationProfileState> {
   const profile = await getProviderProfile(profileId);
-  return generationProfileState(profileId, profile, db());
+  const state = generationProfileState(profileId, profile, db());
+  if (state.reason !== "ready" || !state.profile) return state;
+  const credential = db()
+    .prepare(`
+      SELECT key_status
+      FROM account_provider_credentials
+      WHERE account_id = ? AND provider_profile_id = ?
+    `)
+    .get(ownerId, profileId) as
+    | { key_status: "invalid" | "unchecked" | "unknown" | "valid" }
+    | undefined;
+  if (!credential) {
+    if (state.profile.apiKey) {
+      return {
+        ...state,
+        profile: { ...state.profile },
+      };
+    }
+    return {
+      ...state,
+      reason: "account-credential-missing",
+    };
+  }
+  if (credential.key_status === "invalid") {
+    return {
+      ...state,
+      reason: "account-credential-invalid",
+    };
+  }
+  const key = await accountKeyForOwner(ownerId, profileId);
+  if (!key) {
+    return {
+      ...state,
+      reason: "account-credential-missing",
+    };
+  }
+  return {
+    ...state,
+    profile: { ...state.profile, apiKey: key },
+  };
 }
 
 /**
@@ -950,9 +1113,10 @@ export async function getProviderGenerationProfileState(
  */
 export async function getProviderProfileForGeneration(
   profileId: string,
+  ownerId: string,
 ): Promise<ProviderProfile> {
   return profileForGenerationState(
-    await getProviderGenerationProfileState(profileId),
+    await getProviderGenerationProfileState(profileId, ownerId),
   );
 }
 
@@ -963,6 +1127,7 @@ export async function getProviderProfileForGeneration(
  */
 export async function acquireProviderGenerationRequestLease(
   profileId: string,
+  ownerId: string,
 ): Promise<ProviderGenerationRequestLease> {
   let lock: Awaited<ReturnType<typeof acquireDocumentLock>>;
   try {
@@ -978,9 +1143,13 @@ export async function acquireProviderGenerationRequestLease(
     const profile = document.profiles.find(
       (candidate) => candidate.id === profileId,
     );
-    const ready = profileForGenerationState(
-      generationProfileState(profileId, profile, db()),
-    );
+    const state = generationProfileState(profileId, profile, db());
+    const ready =
+      state.reason === "ready"
+        ? profileForGenerationState(
+            await getProviderGenerationProfileState(profileId, ownerId),
+          )
+        : profileForGenerationState(state);
     let released = false;
     return {
       profile: ready,
@@ -1172,6 +1341,7 @@ class ProviderVerificationError extends Error {
       | "CONFIG_CHANGED"
       | "FORMAT"
       | "NETWORK"
+      | "NOT_CONFIGURED"
       | "NOT_SUPPORTED"
       | "PERMISSION"
       | "PROXY_CONFIGURATION"
@@ -1266,18 +1436,14 @@ function verificationSuccessMessage(
   return "API Key有效。账户接口可读。";
 }
 
-export async function verifyProviderProfile(
-  profileId: string,
+/**
+ * Read-only Provider key probe used by both admin connection checks and
+ * per-account credential verification. Never records anything.
+ */
+export async function probeProviderKey(
+  profile: ProviderProfile,
   fetcher?: typeof fetch,
 ): Promise<ProviderVerification> {
-  const document = await readDocument();
-  const profile = document.profiles.find(
-    (candidate) => candidate.id === profileId,
-  );
-  if (!profile) throw new ProviderVerificationError("FORMAT");
-  if (!ensureMetadata(db(), profile)) {
-    throw new ProviderVerificationError("CONFIG_CHANGED");
-  }
   const startedAt = Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
@@ -1287,7 +1453,6 @@ export async function verifyProviderProfile(
         signal: controller.signal,
         timeoutMs: 10_000,
       });
-      await recordCurrentKeyCheck(profile, "valid");
       return {
         latencyMs: Math.max(0, Date.now() - startedAt),
         message: verificationSuccessMessage(profile, catalog.models.length),
@@ -1334,7 +1499,6 @@ export async function verifyProviderProfile(
     const modelCount = profile.driver === "mureka"
       ? 0
       : (models as unknown[]).length;
-    await recordCurrentKeyCheck(profile, "valid");
     return {
       latencyMs: Math.max(0, Date.now() - startedAt),
       message: verificationSuccessMessage(profile, modelCount),
@@ -1343,23 +1507,54 @@ export async function verifyProviderProfile(
     };
   } catch (error) {
     if (error instanceof OutboundProxyConfigurationError) {
-      const mapped = new ProviderVerificationError(error.code);
-      await recordCurrentKeyCheck(profile, "unknown");
-      throw mapped;
+      throw new ProviderVerificationError(error.code);
     }
     if (error instanceof OutboundDestinationError) {
-      const mapped = new ProviderVerificationError(error.code);
-      await recordCurrentKeyCheck(profile, "unknown");
-      throw mapped;
+      throw new ProviderVerificationError(error.code);
     }
     if (error instanceof RelayRemoteError) {
-      const mapped = new ProviderVerificationError(error.code);
-      await recordCurrentKeyCheck(
-        profile,
-        mapped.code === "AUTH" ? "invalid" : "unknown",
-      );
-      throw mapped;
+      throw new ProviderVerificationError(error.code);
     }
+    if (error instanceof ProviderVerificationError) {
+      throw error;
+    }
+    throw new ProviderVerificationError("NETWORK");
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function verifyProviderProfile(
+  profileId: string,
+  ownerIdOrFetcher?: string | typeof fetch,
+  fetcher?: typeof fetch,
+): Promise<ProviderVerification> {
+  const ownerId =
+    typeof ownerIdOrFetcher === "function" ? undefined : ownerIdOrFetcher;
+  const effectiveFetcher =
+    typeof ownerIdOrFetcher === "function" ? ownerIdOrFetcher : fetcher;
+  const document = await readDocument();
+  const profile = document.profiles.find(
+    (candidate) => candidate.id === profileId,
+  );
+  if (!profile) throw new ProviderVerificationError("FORMAT");
+  if (!ensureMetadata(db(), profile)) {
+    throw new ProviderVerificationError("CONFIG_CHANGED");
+  }
+  let probeProfile = profile;
+  if (ownerId) {
+    const apiKey =
+      (await accountKeyForOwner(ownerId, profileId)) ?? profile.apiKey;
+    if (!apiKey) {
+      throw new ProviderVerificationError("NOT_CONFIGURED");
+    }
+    probeProfile = { ...profile, apiKey };
+  }
+  try {
+    const result = await probeProviderKey(probeProfile, effectiveFetcher);
+    await recordCurrentKeyCheck(profile, "valid");
+    return result;
+  } catch (error) {
     if (error instanceof ProviderVerificationError) {
       if (error.code === "CONFIG_CHANGED") throw error;
       await recordCurrentKeyCheck(
@@ -1370,8 +1565,6 @@ export async function verifyProviderProfile(
     }
     await recordCurrentKeyCheck(profile, "unknown");
     throw new ProviderVerificationError("NETWORK");
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -1379,6 +1572,7 @@ export function providerVerificationErrorMessage(error: unknown) {
   if (!(error instanceof ProviderVerificationError)) return "暂时无法确认API Key是否有效";
   if (error.code === "AUTH") return "API Key已失效";
   if (error.code === "CONFIG_CHANGED") return "连接资料已修改，请重新检查Key";
+  if (error.code === "NOT_CONFIGURED") return "未配置你的平台密钥";
   if (error.code === "PERMISSION") return "暂时无法确认API Key是否有效";
   if (error.code === "PROXY_CONFIGURATION") {
     return "本机代理地址模式阻止安全检查，暂时无法确认API Key是否有效";
@@ -1412,6 +1606,7 @@ export async function adminProviderProfilesApi(
     });
     return;
   }
+  await migrateLegacyProviderKeysIfNeeded().catch(() => undefined);
   const path = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
     /^\/+/,
     "",
@@ -1461,7 +1656,10 @@ export async function adminProviderProfilesApi(
   ) {
     const profileId = path.split("/")[0];
     try {
-      const result = await verifyProviderProfile(profileId);
+      const result = await verifyProviderProfile(
+        profileId,
+        identity.userId,
+      );
       const document = await readDocument();
       const profile = document.profiles.find(
         (candidate) => candidate.id === profileId,

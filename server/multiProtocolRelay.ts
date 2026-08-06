@@ -919,6 +919,7 @@ export async function fetchRelayModelCatalog(
     timeoutMs?: number;
   } = {},
 ): Promise<RelayCatalogResult> {
+  if (!profile.apiKey) throw new RelayRemoteError("AUTH");
   let fallbackReason: RelayCatalogResult["fallbackReason"];
   try {
     const enhanced = await relayGetJson(profile, "/skills/models", fetcher, options);
@@ -1109,6 +1110,7 @@ export async function readRelayManagementResource(
   options: { model?: string } = {},
   fetcher?: typeof fetch,
 ): Promise<RelayReadOnlyResult> {
+  if (!profile.apiKey) throw new RelayRemoteError("AUTH");
   const model = boundedString(options.model, 2_048);
   if ((resource === "pricing" || resource === "model-detail") && !model) {
     throw new RelayRemoteError("FORMAT");

@@ -148,6 +148,9 @@ if (
 ) {
   throw new Error("Invalid backup manifest");
 }
+const expectedSecrets = Array.isArray(manifest.secrets?.files)
+  ? manifest.secrets.files
+  : [];
 
 const restoredDirectory = await mkdtemp(join(tmpdir(), "tapnow-restore-"));
 let runtime;
@@ -159,6 +162,15 @@ try {
     errorOnExist: true,
     recursive: true,
   });
+  try {
+    await cp(
+      join(backupDirectory, "secrets"),
+      join(restoredDirectory, "secrets"),
+      { errorOnExist: true, recursive: true },
+    );
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
 
   const databasePath = join(restoredDirectory, "tapnow.sqlite");
   if ((await sha256(databasePath)) !== manifest.database.sha256) {
@@ -186,6 +198,15 @@ try {
   const media = await restoredMedia(join(restoredDirectory, "media"));
   if (JSON.stringify(media) !== JSON.stringify(manifest.media.files)) {
     throw new Error("Restored media contents do not match the manifest");
+  }
+  let secrets = [];
+  try {
+    secrets = await restoredMedia(join(restoredDirectory, "secrets"));
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+  if (JSON.stringify(secrets) !== JSON.stringify(expectedSecrets)) {
+    throw new Error("Restored encrypted secrets do not match the manifest");
   }
 
   let runtimeVerified = false;

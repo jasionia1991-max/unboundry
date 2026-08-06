@@ -14,6 +14,8 @@ import type { ProviderProtocol } from "../../../types/relayProtocols";
 export type { ModelCapability } from "../../../types/modelParameters";
 
 export type ModelGenerationUnavailableReasonCode =
+  | "ACCOUNT_CREDENTIAL_INVALID"
+  | "ACCOUNT_CREDENTIAL_MISSING"
   | "ADAPTER_UNSUPPORTED"
   | "PROVIDER_AUTH_FAILED"
   | "PROVIDER_RECOVERY_ATTEMPT_USED"

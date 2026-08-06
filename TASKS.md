@@ -1,7 +1,7 @@
 # TapNow 绿地复刻当前任务
 
 更新时间：2026-08-07
-状态：`绿地画布主体已验收 / 图片与Seedance真实链路已PASS / API-001～006已PASS / 节点入参INPUT-001～005、007已PASS，INPUT-006保持PARTIAL / 多协议中转站RELAY-001～012全部PASS / 画布搜索缩放与多选打组回归已PASS / Mureka Audio真实生成暂缓 / 功能1（我的模板）、功能2（批量下载）已实施待验收，功能3待实施 / 正式部署未开始`
+状态：`绿地画布主体已验收 / 图片与Seedance真实链路已PASS / API-001～006已PASS / 节点入参INPUT-001～005、007已PASS，INPUT-006保持PARTIAL / 多协议中转站RELAY-001～012全部PASS / 画布搜索缩放与多选打组回归已PASS / Mureka Audio真实生成暂缓 / 功能1（我的模板）、功能2（批量下载）、功能3（账号私有平台密钥）已实施待验收 / 正式部署未开始`
 唯一产品目标：从空仓库完整复刻 TapNow 画布，不复用 Lumino/Lumino Web 的代码、组件、CSS、数据、后端、测试或部署。
 
 ### 2026-08-06 多项目（项目制画布）功能
@@ -777,3 +777,11 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - OpenAPI 新增 `downloadGroupResults`（12 条路径/16 个操作），m20 契约同步。
 - 验证：`tsc --noEmit` 与生产构建通过；m72 专项 7/7；回归 m0/m2-group/m20/m22/m63/m66/m69/m70/m71/m72 共 87/88 通过（唯一失败仍为 m0 P1 基线）。
 - 延后问题清单：OSS 中途断流按“临时文件字节数不符→跳过”处理，无内存整包缓冲；极端情况下断流前的临时文件会清理。其余无阻塞项。
+
+### 2026-08-07 功能3：账号私有平台密钥（已实施，待用户实页验收）
+
+- 第一步 数据与接口：v29 迁移新增 `account_provider_credentials`（AES-256-GCM + `config-master.key` 加密，永不返回明文）与 `generation_provider_attempts.owner_id`（存量按任务回填）；新增 `GET/PUT/DELETE /api/account-credentials/:profileId` 与 `POST .../verify`（只读校验，零生成费用），仅返回掩码；`account-context` 增加 `manageOwnCredentials`；OpenAPI 同步（15 路径/20 操作）；旧全局 key 迁移到全部活跃管理员账号凭据并清空文档（幂等、无管理员时延后），迁移在首管理员创建与管理员平台 API 上触发；`composeExecutionProfile` 以“连接定义（全局）+ 当前账号 key”合成执行 profile。
+- 第二步 生成链路 owner 维度：`resolveModel/generationAvailability/modelRuntimeAvailability/publicModelsApi` 全部按 owner 过滤鉴权/成功/尝试统计并纳入 `ACCOUNT_CREDENTIAL_MISSING/INVALID` 原因码；任务提交在 `model_configuration.credentialVersion` 快照；执行侧 `getProviderProfileForGeneration/acquireProviderGenerationRequestLease` 改为 owner 感知，`requireTaskProviderSnapshot` 校验版本，不符即友好失败「你的平台密钥已变更，请重新提交」；`recordProviderAttempt` 的 AUTH/成功/恢复槽与 `generationSafety.admission` 连续失败熔断全部按 owner 隔离；管理员目录同步/只读资料/连接检查使用管理员自己的凭据（方舟 AK/SK 保留在全局）。
+- 第三步 UI 与收口：账号浮层新增「我的连接」入口 + `/connections` 页面（只显示有已发布模型的平台，每行填/存/校验/删自己的 key，顶部说明密钥仅本人可见）；管理员平台连接页移除生成 API Key 字段与掩码展示（方舟目录 AK/SK 页保留）；删除账号级联清理凭据；备份脚本纳入 `data/secrets` 加密凭据并在 manifest 记录/恢复校验。
+- 验证：`tsc --noEmit` 与生产构建通过；m73 专项 5/5（加密往返/版本/owner 隔离/verify AUTH→invalid、success→valid/API 掩码与删除/我的连接页与管理员页无 key 字段）；m74 专项 3/3（旧 key 迁移仅给管理员且文档无 key、credentialVersion 不符在 Provider 调用前失败、A 坏 key 不影响 B/管理员且无回退、删除账号级联清凭据）；Provider/账号大回归 107/111（隔离端口 4197）：4 项失败均为既有基线或端口差异——m26 Mureka 错误文案/回显 2 项（基线代码即透传远端 message）、m38 重试快照 1 项（TASKS 已记录基线）、m46 大目录外部请求计数 1 项（4197 端口过滤差异，4174 配置复跑通过）；功能1/2 回归 86/88（m0 P1 基线 + m63 偶发时序复跑通过）。
+- 延后问题清单：①m26 两项与 m38 重试快照为既有基线失败，未纳入本批修复（触发条件/影响已记录）；②组合大跑时 m2/m7/m8/m24/m25 等“零 Provider 请求”计数会把 `/src/generation/*` 模块 URL 计入（文件名含 Provider/generation），属测试过滤脆弱性，未改产品行为；③m14 账号权限测试需无 bypass 环境（其独立配置语义），组合跑配置差异已记录；④m30 纯函数单测在当前 Node 25 环境基线失败（与服务器无关，待环境回 Node 22 复核）。

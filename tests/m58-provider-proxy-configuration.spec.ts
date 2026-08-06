@@ -265,7 +265,7 @@ test("平台连接页展示可执行的Key和目录代理提示", async ({
 
   await page.goto("/admin/providers");
   const article = page.getByRole("article").filter({ hasText: "代理配置测试站" });
-  await article.getByRole("button", { name: "检查Key" }).click();
+  await article.getByRole("button", { name: "检查连接" }).click();
   await expect(article.locator(".provider-test-feedback")).toHaveText(
     keyProxyMessage,
   );

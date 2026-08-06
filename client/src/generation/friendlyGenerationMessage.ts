@@ -107,6 +107,9 @@ const generationErrorCodeMessages: Record<
   string,
   string | ((kind: GenerationMessageKind) => string)
 > = {
+  ACCOUNT_CREDENTIAL_CHANGED: "你的平台密钥已变更，请重新提交生成",
+  ACCOUNT_CREDENTIAL_INVALID: "你的平台密钥无效，请到「我的连接」更新后再试",
+  ACCOUNT_CREDENTIAL_MISSING: "未配置你的平台密钥，请到「我的连接」填写后再试",
   ADAPTER_UNSUPPORTED: "该模型尚未接入安全生成服务，请联系管理员",
   CANVAS_NOT_SAVED: "画布内容还在保存，请等待自动保存完成后再试",
   COST_LIMIT: "今日或本月生成费用额度已用完，请明天再试或联系管理员调整上限",

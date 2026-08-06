@@ -1238,6 +1238,48 @@ const migrations: readonly Migration[] = [
         ON user_templates (owner_id, updated_at DESC);
     `,
   },
+  {
+    version: 29,
+    name: "account-provider-credentials",
+    prepare(database) {
+      addColumnIfMissing(
+        database,
+        "generation_provider_attempts",
+        "owner_id",
+        "TEXT",
+      );
+    },
+    sql: `
+      CREATE TABLE IF NOT EXISTS account_provider_credentials (
+        account_id TEXT NOT NULL,
+        provider_profile_id TEXT NOT NULL,
+        encrypted_key TEXT NOT NULL,
+        key_status TEXT NOT NULL DEFAULT 'unchecked' CHECK (
+          key_status IN ('unchecked', 'valid', 'invalid', 'unknown')
+        ),
+        key_checked_at TEXT,
+        credential_version INTEGER NOT NULL DEFAULT 1
+          CHECK (credential_version >= 1),
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (account_id, provider_profile_id),
+        FOREIGN KEY (account_id) REFERENCES users(id),
+        FOREIGN KEY (provider_profile_id) REFERENCES provider_profiles(id)
+      );
+      CREATE INDEX IF NOT EXISTS generation_provider_attempts_owner_profile_created
+        ON generation_provider_attempts (
+          owner_id,
+          provider_profile_id,
+          created_at DESC
+        );
+      UPDATE generation_provider_attempts
+      SET owner_id = (
+        SELECT generation_tasks.owner_id
+        FROM generation_tasks
+        WHERE generation_tasks.id = generation_provider_attempts.task_id
+      )
+      WHERE owner_id IS NULL;
+    `,
+  },
 ];
 
 export const currentSchemaVersion = migrations.at(-1)?.version ?? 0;

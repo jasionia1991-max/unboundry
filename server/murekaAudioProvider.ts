@@ -251,7 +251,7 @@ export async function createMurekaAudioTask(
   const id = typeof body.id === "string" ? body.id.trim() : "";
   if (
     !/^[a-z0-9._-]{1,160}$/i.test(id) ||
-    containsProviderKey(id, profile.apiKey)
+    containsProviderKey(id, profile.apiKey ?? "")
   ) {
     throw new MurekaAudioError("FORMAT");
   }
@@ -315,7 +315,7 @@ export async function getMurekaAudioTask(
     parsed.protocol !== "https:" ||
     parsed.username ||
     parsed.password ||
-    containsProviderKey(parsed.toString(), profile.apiKey)
+    containsProviderKey(parsed.toString(), profile.apiKey ?? "")
   ) {
     throw new MurekaAudioError("FORMAT");
   }
@@ -345,7 +345,7 @@ export async function downloadMurekaAudioResult(
     parsed.protocol !== "https:" ||
     parsed.username ||
     parsed.password ||
-    containsProviderKey(parsed.toString(), profile.apiKey)
+    containsProviderKey(parsed.toString(), profile.apiKey ?? "")
   ) {
     throw new MurekaAudioError("FORMAT");
   }

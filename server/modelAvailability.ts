@@ -5,6 +5,8 @@ import {
 } from "../types/relayProtocols";
 
 export type ModelGenerationUnavailableReasonCode =
+  | "ACCOUNT_CREDENTIAL_INVALID"
+  | "ACCOUNT_CREDENTIAL_MISSING"
   | "ADAPTER_UNSUPPORTED"
   | "PROVIDER_AUTH_FAILED"
   | "PROVIDER_CONFIGURATION_MISMATCH"
@@ -22,6 +24,7 @@ export type ModelRuntimeAvailability = {
 };
 
 export type ModelRuntimeAvailabilityInput = {
+  accountCredentialState?: "invalid" | "missing" | "valid";
   capability: ModelCapability;
   costCurrency: "CNY" | "USD";
   emergencyStop: boolean;
@@ -147,6 +150,18 @@ export function evaluateModelRuntimeAvailability(
     return unavailable(
       "PROVIDER_REVERIFY_REQUIRED",
       "平台连接资料已更新，请管理员完成只读连接检查",
+    );
+  }
+  if (input.accountCredentialState === "missing") {
+    return unavailable(
+      "ACCOUNT_CREDENTIAL_MISSING",
+      "未配置你的平台密钥",
+    );
+  }
+  if (input.accountCredentialState === "invalid") {
+    return unavailable(
+      "ACCOUNT_CREDENTIAL_INVALID",
+      "你的平台密钥无效",
     );
   }
   const latestAuthFailureAt = timestamp(input.latestAuthFailureAt);

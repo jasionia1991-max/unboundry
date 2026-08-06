@@ -94,7 +94,7 @@ type ProviderDriver =
   | "volcengine-ark";
 
 type AdminProviderProfile = {
-  apiKeyMask: string;
+  apiKeyMask?: string;
   baseUrl: string;
   driver: ProviderDriver;
   hasApiKey: boolean;
@@ -1444,8 +1444,8 @@ function ProviderModelCatalogSection({
             >
               <span>
                 {profile.hasApiKey
-                  ? "使用当前连接已保存的API Key"
-                  : "当前连接尚未保存API Key"}
+                  ? "使用管理员自己的平台密钥（在「我的连接」填写）"
+                  : "管理员尚未在「我的连接」填写该平台密钥"}
               </span>
               {catalog.checkedAt && (
                 <span>上次检查：{providerCatalogDate(catalog.checkedAt)}</span>
@@ -2072,7 +2072,6 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
   const [baseUrl, setBaseUrl] = useState(
     providerDriverDetails.openrouter.baseUrl,
   );
-  const [apiKey, setApiKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [testingId, setTestingId] = useState("");
   const [testFeedback, setTestFeedback] = useState<
@@ -2081,7 +2080,6 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
   const [connectionSettingsId, setConnectionSettingsId] = useState("");
   const [connectionLabel, setConnectionLabel] = useState("");
   const [connectionBaseUrl, setConnectionBaseUrl] = useState("");
-  const [connectionApiKey, setConnectionApiKey] = useState("");
   const [connectionBusy, setConnectionBusy] = useState(false);
   const [connectionError, setConnectionError] = useState("");
   const [error, setError] = useState("");
@@ -2106,7 +2104,6 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
   };
 
   const resetForm = () => {
-    setApiKey("");
     setBaseUrl(providerDriverDetails.openrouter.baseUrl);
     setDriver("openrouter");
     setLabel("");
@@ -2115,14 +2112,12 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
   const openConnectionSettings = (profile: AdminProviderProfile) => {
     if (connectionSettingsId === profile.id) {
       setConnectionSettingsId("");
-      setConnectionApiKey("");
       setConnectionError("");
       return;
     }
     setConnectionSettingsId(profile.id);
     setConnectionLabel(profile.label);
     setConnectionBaseUrl(profile.baseUrl);
-    setConnectionApiKey("");
     setConnectionError("");
     setNotice("");
   };
@@ -2131,7 +2126,6 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
     setConnectionSettingsId("");
     setConnectionLabel("");
     setConnectionBaseUrl("");
-    setConnectionApiKey("");
     setConnectionError("");
   };
 
@@ -2144,7 +2138,7 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
       await jsonRequest(
         "/api/admin/providers",
         {
-          body: JSON.stringify({ apiKey, baseUrl, driver, label }),
+          body: JSON.stringify({ baseUrl, driver, label }),
           method: "POST",
         },
       );
@@ -2173,7 +2167,6 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
         `/api/admin/providers/${encodeURIComponent(profile.id)}`,
         {
           body: JSON.stringify({
-            apiKey: connectionApiKey,
             baseUrl: connectionBaseUrl,
             driver: profile.driver,
             label: connectionLabel,
@@ -2183,7 +2176,7 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
       );
       closeConnectionSettings();
       setNotice(
-        "连接设置已加密保存；尚未重新检查Key，也没有发起生成或产生费用。",
+        "连接设置已保存；生成密钥由每个账号在「我的连接」填写。",
       );
       await load();
     } catch (caught) {
@@ -2192,7 +2185,6 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
       );
     } finally {
       setConnectionBusy(false);
-      setConnectionApiKey("");
     }
   };
 
@@ -2251,9 +2243,9 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
       </header>
       <div className="model-safety-banner provider-safety-banner">
         <div>
-          <strong>这里只保存平台账号</strong>
+          <strong>这里只保存平台连接</strong>
           <span>
-            保存不会连接平台、不会生成内容，当前付费请求为0。
+            生成 API Key 由每个账号在「我的连接」自行填写；保存不会连接平台、不会生成内容，当前付费请求为0。
           </span>
         </div>
         <button
@@ -2269,7 +2261,7 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
       <div className="provider-admin-layout">
         <section className="admin-card provider-create-card">
           <h1>添加平台连接</h1>
-          <p>选择平台后，只填写名称和密钥；复杂接口规则不在这里暴露。</p>
+          <p>选择平台后，只填写名称和地址；生成密钥由每个账号在「我的连接」填写。</p>
           <form onSubmit={save}>
             <div className="provider-driver-grid" aria-label="平台类型">
               {(Object.keys(providerDriverDetails) as ProviderDriver[]).map(
@@ -2312,20 +2304,6 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
                 value={baseUrl}
               />
             </label>
-            <label>
-              <span>API Key</span>
-              <input
-                autoComplete="new-password"
-                maxLength={500}
-                onChange={(event) => setApiKey(event.target.value)}
-                placeholder={
-                  "保存后不再明文显示"
-                }
-                required
-                type="password"
-                value={apiKey}
-              />
-            </label>
             <button disabled={busy} type="submit">
               {busy ? "正在加密保存…" : "加密保存连接"}
             </button>
@@ -2361,7 +2339,6 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
                     <b data-key-status={profile.keyStatus}>
                       {providerKeyStatusLabel(profile.keyStatus)}
                     </b>
-                    <small>{profile.apiKeyMask}</small>
                     {profile.lastCheckedAt && (
                       <small className="provider-key-checked-at">
                         {providerKeyCheckedAt(profile.lastCheckedAt)}
@@ -2374,7 +2351,7 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
                     >
                       {testingId === profile.id
                         ? "检查中…"
-                        : "检查Key"}
+                        : "检查连接"}
                     </button>
                     <button
                       aria-expanded={connectionSettingsId === profile.id}
@@ -2383,9 +2360,7 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
                     >
                       {connectionSettingsId === profile.id
                         ? "收起设置"
-                        : profile.keyStatus === "invalid"
-                          ? "更新Key"
-                          : "修改"}
+                        : "编辑连接"}
                     </button>
                   </div>
                   {profile.driver === "multi-protocol-relay" && (
@@ -2436,7 +2411,7 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
                         <div>
                           <strong>连接设置</strong>
                           <span>
-                            Key留空会保留原密钥；保存后需重新检查Key。
+                            生成密钥由每个账号在「我的连接」填写；保存后连接检查状态会重置。
                           </span>
                         </div>
                         <button
@@ -2470,20 +2445,6 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
                           readOnly={!providerBaseUrlEditable(profile.driver)}
                           required
                           value={connectionBaseUrl}
-                        />
-                      </label>
-                      <label>
-                        <span>API Key</span>
-                        <input
-                          aria-label={`${profile.label}API Key`}
-                          autoComplete="new-password"
-                          maxLength={500}
-                          onChange={(event) =>
-                            setConnectionApiKey(event.target.value)
-                          }
-                          placeholder="不填写则保留原密钥"
-                          type="password"
-                          value={connectionApiKey}
                         />
                       </label>
                       {connectionError && (
@@ -6097,6 +6058,22 @@ const apiOperationDetails: Record<string, { detail: string; label: string }> = {
     label: "下载组结果",
     detail: "把组内成功生成的结果打包为 ZIP，文字结果保存为 txt。",
   },
+  listAccountCredentials: {
+    label: "读取我的平台密钥",
+    detail: "只返回当前账号在各平台的密钥状态与掩码。",
+  },
+  saveAccountCredential: {
+    label: "保存我的平台密钥",
+    detail: "把当前账号自己的平台密钥加密保存，仅本人可见。",
+  },
+  deleteAccountCredential: {
+    label: "删除我的平台密钥",
+    detail: "删除当前账号在某平台的密钥，不影响其他账号。",
+  },
+  verifyAccountCredential: {
+    label: "校验我的平台密钥",
+    detail: "对当前账号的密钥做只读校验，不产生生成费用。",
+  },
 };
 
 function AdminApiContract({ currentUser }: { currentUser: AuthUser }) {
@@ -6185,6 +6162,235 @@ function AdminApiContract({ currentUser }: { currentUser: AuthUser }) {
           </section>
         )}
       </div>
+    </main>
+  );
+}
+
+type AccountCredentialItem = {
+  apiKeyMask?: string;
+  baseUrl: string;
+  credentialVersion: number;
+  driver: string;
+  keyCheckedAt?: string;
+  keyStatus: "invalid" | "unchecked" | "unknown" | "valid";
+  label: string;
+  profileId: string;
+  updatedAt?: string;
+};
+
+function accountCredentialStatusLabel(status: AccountCredentialItem["keyStatus"]) {
+  if (status === "valid") return "有效";
+  if (status === "invalid") return "无效";
+  if (status === "unknown") return "未知";
+  return "未检查";
+}
+
+function MyConnectionsPage({ currentUser }: { currentUser: AuthUser }) {
+  const [items, setItems] = useState<AccountCredentialItem[]>([]);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [keyInputs, setKeyInputs] = useState<Record<string, string>>({});
+  const [busyId, setBusyId] = useState("");
+  const [feedback, setFeedback] = useState<
+    Record<string, { message: string; status: "error" | "success" }>
+  >({});
+
+  const load = () =>
+    jsonRequest<{ items: AccountCredentialItem[] }>(
+      "/api/account-credentials",
+    )
+      .then((body) => setItems(body.items))
+      .catch((caught) =>
+        setError(
+          caught instanceof Error ? caught.message : "平台密钥状态读取失败",
+        ),
+      );
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const save = async (item: AccountCredentialItem) => {
+    const apiKey = keyInputs[item.profileId] ?? "";
+    setBusyId(item.profileId);
+    setError("");
+    setNotice("");
+    try {
+      await jsonRequest(
+        `/api/account-credentials/${encodeURIComponent(item.profileId)}`,
+        { body: JSON.stringify({ apiKey }), method: "PUT" },
+      );
+      setKeyInputs((current) => ({ ...current, [item.profileId]: "" }));
+      setNotice(`「${item.label}」的密钥已加密保存`);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "密钥保存失败");
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  const verify = async (item: AccountCredentialItem) => {
+    setBusyId(item.profileId);
+    setError("");
+    setNotice("");
+    try {
+      const result = await jsonRequest<{
+        verification: { message: string };
+      }>(`/api/account-credentials/${encodeURIComponent(item.profileId)}/verify`, {
+        method: "POST",
+      });
+      setFeedback((current) => ({
+        ...current,
+        [item.profileId]: {
+          message: result.verification.message,
+          status: "success",
+        },
+      }));
+      await load();
+    } catch (caught) {
+      setFeedback((current) => ({
+        ...current,
+        [item.profileId]: {
+          message:
+            caught instanceof Error ? caught.message : "密钥校验失败",
+          status: "error",
+        },
+      }));
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  const remove = async (item: AccountCredentialItem) => {
+    setBusyId(item.profileId);
+    setError("");
+    setNotice("");
+    try {
+      await jsonRequest(
+        `/api/account-credentials/${encodeURIComponent(item.profileId)}`,
+        { method: "DELETE" },
+      );
+      setNotice(`「${item.label}」的密钥已删除`);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "密钥删除失败");
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  return (
+    <main
+      className="admin-page connections-page"
+      data-testid="connections-page"
+    >
+      <header>
+        <div>
+          <span aria-hidden="true" className="replica-mark" />
+          <div>
+            <strong>我的连接</strong>
+            <small>{currentUser.displayName}</small>
+          </div>
+        </div>
+        <button onClick={() => { window.location.href = "/"; }} type="button">
+          返回画布
+        </button>
+      </header>
+      <section className="admin-card connections-intro">
+        <h1>我的平台密钥</h1>
+        <p>
+          每个平台只需填写你自己的 API Key。密钥只属于当前账号，管理员与其他人不可见。
+        </p>
+      </section>
+      {notice && (
+        <p className="storage-admin-notice provider-page-message">{notice}</p>
+      )}
+      {error && <p className="auth-error" role="alert">{error}</p>}
+      <section className="admin-card connections-list">
+        <div className="api-contract-heading">
+          <div>
+            <span>平台列表</span>
+            <h2>有已发布模型的平台</h2>
+          </div>
+          <b>{items.length} 个</b>
+        </div>
+        {items.length === 0 ? (
+          <div className="model-list-empty">
+            <strong>暂无可用平台</strong>
+            <span>管理员发布模型后，这里会出现可填写密钥的平台。</span>
+          </div>
+        ) : (
+          <div className="connections-grid">
+            {items.map((item) => (
+              <article
+                className="connection-row"
+                data-testid={`connection-row-${item.profileId}`}
+                key={item.profileId}
+              >
+                <div className="connection-summary">
+                  <strong>{item.label}</strong>
+                  <small title={item.baseUrl}>
+                    {item.baseUrl} · {item.driver}
+                  </small>
+                  <div className="connection-status">
+                    <b data-key-status={item.keyStatus}>
+                      {accountCredentialStatusLabel(item.keyStatus)}
+                    </b>
+                    {item.apiKeyMask && <span>{item.apiKeyMask}</span>}
+                  </div>
+                </div>
+                <div className="connection-controls">
+                  <input
+                    aria-label={`${item.label} 的 API Key`}
+                    autoComplete="new-password"
+                    maxLength={500}
+                    onChange={(event) =>
+                      setKeyInputs((current) => ({
+                        ...current,
+                        [item.profileId]: event.target.value,
+                      }))
+                    }
+                    placeholder="填写你自己的 API Key"
+                    type="password"
+                    value={keyInputs[item.profileId] ?? ""}
+                  />
+                  <button
+                    disabled={busyId === item.profileId}
+                    onClick={() => void save(item)}
+                    type="button"
+                  >
+                    {busyId === item.profileId ? "保存中…" : "保存"}
+                  </button>
+                  <button
+                    disabled={busyId === item.profileId || !item.apiKeyMask}
+                    onClick={() => void verify(item)}
+                    type="button"
+                  >
+                    校验
+                  </button>
+                  <button
+                    disabled={busyId === item.profileId || !item.apiKeyMask}
+                    onClick={() => void remove(item)}
+                    type="button"
+                  >
+                    删除
+                  </button>
+                </div>
+                {feedback[item.profileId] && (
+                  <p
+                    className="connection-feedback"
+                    data-status={feedback[item.profileId].status}
+                    role="status"
+                  >
+                    {feedback[item.profileId].message}
+                  </p>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
     </main>
   );
 }
@@ -6318,6 +6524,9 @@ function AuthenticatedApplication({
     }
     return <AdminApiContract currentUser={status.user} />;
   }
+  if (window.location.pathname === "/connections") {
+    return <MyConnectionsPage currentUser={status.user} />;
+  }
 
   return (
     <>
@@ -6343,6 +6552,12 @@ function AuthenticatedApplication({
             type="button"
           >
             工作空间
+          </button>
+          <button
+            onClick={() => { window.location.href = "/connections"; }}
+            type="button"
+          >
+            我的连接
           </button>
           {status.user.role === "admin" && (
             <>

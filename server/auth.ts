@@ -467,6 +467,9 @@ export async function authApi(
         store.exec("ROLLBACK");
         throw error;
       }
+      await import("./providerProfiles")
+        .then((module) => module.migrateLegacyProviderKeysIfNeeded())
+        .catch(() => undefined);
       const row = store
         .prepare("SELECT * FROM users WHERE id = ?")
         .get(userId) as UserRow;
@@ -548,6 +551,7 @@ export function accountContextApi(
   }
   json(response, 200, {
     permissions: {
+      manageOwnCredentials: true,
       manageAccounts: row.role === "admin",
       manageModels: row.role === "admin",
       manageProviders: row.role === "admin",
@@ -730,6 +734,9 @@ export async function adminUsersApi(
           `)
           .run(targetId);
         store.prepare("DELETE FROM generation_tasks WHERE owner_id = ?").run(targetId);
+        store
+          .prepare("DELETE FROM account_provider_credentials WHERE account_id = ?")
+          .run(targetId);
         store.prepare("DELETE FROM canvas_documents WHERE owner_id = ?").run(targetId);
         store.prepare("DELETE FROM project_metadata WHERE owner_id = ?").run(targetId);
         store

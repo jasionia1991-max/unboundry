@@ -12,6 +12,7 @@ import {
   type ModelRuntimeAvailability,
 } from "./modelAvailability";
 import {
+  getProviderGenerationProfileState,
   listProviderProfiles,
   providerConfigurationVersion,
   type ProviderProfile,
@@ -305,7 +306,7 @@ function adminModel(
   };
 }
 
-function modelRows(store: DatabaseSync) {
+function modelRows(store: DatabaseSync, ownerId: string) {
   return store
     .prepare(`
       SELECT
@@ -343,6 +344,7 @@ function modelRows(store: DatabaseSync) {
           WHERE
             auth_task.provider_profile_id = model_profiles.provider_profile_id
             AND auth_task.kind = model_profiles.capability
+            AND auth_task.owner_id = ?
             AND auth_task.state = 'failed'
             AND auth_task.error_code IN ('AUTH', 'PERMISSION')
         ) AS latest_auth_failure_at,
@@ -352,6 +354,7 @@ function modelRows(store: DatabaseSync) {
           WHERE
             success_task.provider_profile_id = model_profiles.provider_profile_id
             AND success_task.kind = model_profiles.capability
+            AND success_task.owner_id = ?
             AND success_task.state = 'success'
         ) AS latest_capability_success_at,
         (
@@ -360,6 +363,7 @@ function modelRows(store: DatabaseSync) {
           WHERE
             provider_attempt.provider_profile_id = model_profiles.provider_profile_id
             AND provider_attempt.kind = model_profiles.capability
+            AND provider_attempt.owner_id = ?
         ) AS latest_provider_attempt_at,
         node_model_bindings.enabled,
         node_model_bindings.is_default,
@@ -380,10 +384,10 @@ function modelRows(store: DatabaseSync) {
         node_model_bindings.sort_order,
         model_profiles.created_at
     `)
-    .all() as ModelRow[];
+    .all(ownerId, ownerId, ownerId) as ModelRow[];
 }
 
-async function modelRuntimeAvailability(rows: ModelRow[]) {
+async function modelRuntimeAvailability(rows: ModelRow[], ownerId: string) {
   const storedProviders = new Map<string, ProviderProfile>();
   try {
     const document = await listProviderProfiles();
@@ -395,7 +399,9 @@ async function modelRuntimeAvailability(rows: ModelRow[]) {
   }
   const safety = generationSafetyStatus();
   return new Map(
-    rows.map((row) => {
+    await Promise.all(
+      rows.map(
+        async (row): Promise<[string, ModelRuntimeAvailability]> => {
       const storedProvider = storedProviders.get(row.provider_profile_id);
       const configurationAligned = Boolean(
         storedProvider &&
@@ -404,9 +410,29 @@ async function modelRuntimeAvailability(rows: ModelRow[]) {
           providerConfigurationVersion(storedProvider) &&
         row.provider_driver === storedProvider.driver,
       );
+      const providerState = await getProviderGenerationProfileState(
+        row.provider_profile_id,
+        ownerId,
+      ).catch(() => undefined);
+      const credentialReady = Boolean(
+        providerState &&
+        (
+          providerState.reason === "ready" ||
+          providerState.reason === "account-credential-missing" ||
+          providerState.reason === "account-credential-invalid"
+        ),
+      );
       return [
         row.id,
         evaluateModelRuntimeAvailability({
+        accountCredentialState:
+          providerState?.reason === "account-credential-missing"
+            ? "missing"
+            : providerState?.reason === "account-credential-invalid"
+              ? "invalid"
+              : providerState?.reason === "ready"
+                ? "valid"
+                : undefined,
         capability: row.capability,
         costCurrency: row.cost_currency,
         emergencyStop: safety.emergencyStop,
@@ -424,12 +450,16 @@ async function modelRuntimeAvailability(rows: ModelRow[]) {
           row.provider_configuration_updated_at ?? undefined,
         providerConfigurationVersionAligned: configurationAligned,
         providerStatus: configurationAligned
-          ? row.provider_status
+          ? credentialReady
+            ? "enabled"
+            : row.provider_status
           : "disabled",
         storedProviderDriver: storedProvider?.driver,
         }),
       ];
-    }),
+        },
+      ),
+    ),
   );
 }
 
@@ -717,20 +747,25 @@ export async function publicModelsApi(
     json(response, 405, { error: "Method not allowed" });
     return;
   }
+  const identity = requestIdentity(request);
+  if (!identity) {
+    json(response, 401, { error: "请先登录" });
+    return;
+  }
   const requestUrl = new URL(request.url ?? "", "http://127.0.0.1");
   const capability = requestUrl.searchParams.get("capability");
   if (capability && !capabilities.includes(capability as Capability)) {
     json(response, 400, { error: "Invalid model capability" });
     return;
   }
-  const rows = modelRows(db()).filter(
+  const rows = modelRows(db(), identity.userId).filter(
     (row) =>
       row.archived_at === null &&
       row.status === "published" &&
       row.enabled === 1 &&
       (!capability || row.capability === capability),
   );
-  const availability = await modelRuntimeAvailability(rows);
+  const availability = await modelRuntimeAvailability(rows, identity.userId);
   json(response, 200, {
     generationEnabled: rows.some(
       (row) => availability.get(row.id)?.generationAvailable,
@@ -766,8 +801,11 @@ export async function adminModelsApi(
   );
 
   if (request.method === "GET" && !path) {
-    const rows = modelRows(store);
-    const availability = await modelRuntimeAvailability(rows);
+    const rows = modelRows(store, identity.userId);
+    const availability = await modelRuntimeAvailability(
+      rows,
+      identity.userId,
+    );
     const references = modelReferenceCountsById(
       store,
       rows.map((row) => row.id),
@@ -814,7 +852,9 @@ export async function adminModelsApi(
     let next: ModelRow | undefined;
     store.exec("BEGIN IMMEDIATE");
     try {
-      const current = modelRows(store).find((row) => row.id === modelId);
+      const current = modelRows(store, identity.userId).find(
+        (row) => row.id === modelId,
+      );
       if (!current) {
         const rejection: LifecycleRejection = {
           code: "NOT_FOUND",
@@ -901,7 +941,9 @@ export async function adminModelsApi(
           status: current.status,
         });
       }
-      next = modelRows(store).find((row) => row.id === modelId);
+      next = modelRows(store, identity.userId).find(
+        (row) => row.id === modelId,
+      );
       store.exec("COMMIT");
     } catch {
       if (store.isTransaction) store.exec("ROLLBACK");
@@ -925,7 +967,10 @@ export async function adminModelsApi(
       });
       return;
     }
-    const availability = await modelRuntimeAvailability([next]);
+    const availability = await modelRuntimeAvailability(
+      [next],
+      identity.userId,
+    );
     json(response, 200, {
       model: adminModel(
         next,
@@ -940,7 +985,9 @@ export async function adminModelsApi(
   if (request.method === "DELETE" && /^[a-z0-9-]{3,80}$/i.test(path)) {
     store.exec("BEGIN IMMEDIATE");
     try {
-      const current = modelRows(store).find((row) => row.id === path);
+      const current = modelRows(store, identity.userId).find(
+        (row) => row.id === path,
+      );
       if (!current) {
         const rejection: LifecycleRejection = {
           code: "NOT_FOUND",
@@ -1111,8 +1158,13 @@ export async function adminModelsApi(
         store.exec("ROLLBACK");
         throw error;
       }
-      const row = modelRows(store).find((candidate) => candidate.id === id)!;
-      const availability = await modelRuntimeAvailability([row]);
+      const row = modelRows(store, identity.userId).find(
+        (candidate) => candidate.id === id,
+      )!;
+      const availability = await modelRuntimeAvailability(
+        [row],
+        identity.userId,
+      );
       json(response, 201, {
         model: adminModel(
           row,
@@ -1127,7 +1179,9 @@ export async function adminModelsApi(
   }
 
   if (request.method === "PATCH" && /^[a-z0-9-]{3,80}$/i.test(path)) {
-    const current = modelRows(store).find((candidate) => candidate.id === path);
+    const current = modelRows(store, identity.userId).find(
+      (candidate) => candidate.id === path,
+    );
     if (!current) {
       json(response, 404, { error: "Model profile not found" });
       return;
@@ -1289,8 +1343,13 @@ export async function adminModelsApi(
         store.exec("ROLLBACK");
         throw error;
       }
-      const row = modelRows(store).find((candidate) => candidate.id === path)!;
-      const availability = await modelRuntimeAvailability([row]);
+      const row = modelRows(store, identity.userId).find(
+        (candidate) => candidate.id === path,
+      )!;
+      const availability = await modelRuntimeAvailability(
+        [row],
+        identity.userId,
+      );
       json(response, 200, {
         model: adminModel(
           row,

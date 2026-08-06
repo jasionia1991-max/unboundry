@@ -269,6 +269,150 @@ export const openApiDocument = {
         },
       },
     },
+    "/api/account-credentials": {
+      get: {
+        operationId: "listAccountCredentials",
+        summary: "List connections with published models and this account's key state",
+        responses: {
+          "200": {
+            description: "Safe connection summaries with key masks only",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["items"],
+                  properties: {
+                    items: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        required: [
+                          "profileId",
+                          "label",
+                          "driver",
+                          "baseUrl",
+                          "keyStatus",
+                          "credentialVersion",
+                        ],
+                        properties: {
+                          profileId: { type: "string" },
+                          label: { type: "string" },
+                          driver: { type: "string" },
+                          baseUrl: { type: "string" },
+                          apiKeyMask: { type: "string" },
+                          keyStatus: {
+                            type: "string",
+                            enum: ["unchecked", "valid", "invalid", "unknown"],
+                          },
+                          keyCheckedAt: { type: "string" },
+                          credentialVersion: { type: "integer", minimum: 0 },
+                          updatedAt: { type: "string" },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "401": { description: "Sign-in required" },
+        },
+      },
+    },
+    "/api/account-credentials/{profileId}": {
+      put: {
+        operationId: "saveAccountCredential",
+        summary: "Save or replace the current account's key for one connection",
+        parameters: [
+          {
+            in: "path",
+            name: "profileId",
+            required: true,
+            schema: { type: "string", pattern: "^[a-f0-9-]{36}$" },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["apiKey"],
+                properties: {
+                  apiKey: { type: "string", minLength: 8, maxLength: 500 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Saved key mask and version" },
+          "400": { description: "Invalid key or connection" },
+          "401": { description: "Sign-in required" },
+        },
+      },
+      delete: {
+        operationId: "deleteAccountCredential",
+        summary: "Delete the current account's key for one connection",
+        parameters: [
+          {
+            in: "path",
+            name: "profileId",
+            required: true,
+            schema: { type: "string", pattern: "^[a-f0-9-]{36}$" },
+          },
+        ],
+        responses: {
+          "200": { description: "Deleted" },
+          "401": { description: "Sign-in required" },
+          "404": { description: "Credential not found" },
+        },
+      },
+    },
+    "/api/account-credentials/{profileId}/verify": {
+      post: {
+        operationId: "verifyAccountCredential",
+        summary: "Read-only verification of the current account's key",
+        parameters: [
+          {
+            in: "path",
+            name: "profileId",
+            required: true,
+            schema: { type: "string", pattern: "^[a-f0-9-]{36}$" },
+          },
+        ],
+        responses: {
+          "200": {
+            description: "Verification result and key status",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["keyStatus"],
+                  properties: {
+                    keyStatus: {
+                      type: "string",
+                      enum: ["invalid", "unknown", "valid"],
+                    },
+                    verification: {
+                      type: "object",
+                      properties: {
+                        latencyMs: { type: "integer" },
+                        message: { type: "string" },
+                        modelCount: { type: "integer" },
+                        status: { type: "string" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "400": { description: "Missing or invalid key" },
+          "401": { description: "Sign-in required" },
+        },
+      },
+    },
     "/api/templates": {
       get: {
         operationId: "listTemplates",

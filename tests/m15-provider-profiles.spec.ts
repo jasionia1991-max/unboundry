@@ -94,7 +94,6 @@ test("only administrators save encrypted Provider profiles and no secret reaches
 
     const saved = await request("/api/admin/providers", {
       body: JSON.stringify({
-        apiKey: secret,
         baseUrl: "https://openrouter.ai/api/v1",
         driver: "openrouter",
         label: "Production OpenRouter",
@@ -106,23 +105,24 @@ test("only administrators save encrypted Provider profiles and no secret reaches
     const savedText = await saved.text();
     expect(savedText).not.toContain(secret);
     const savedBody = JSON.parse(savedText) as {
-      profile: { apiKeyMask: string; id: string };
+      profile: { id: string };
     };
     expect(savedBody).toMatchObject({
       profile: {
-        apiKeyMask: `••••${secret.slice(-4)}`,
         driver: "openrouter",
-        hasApiKey: true,
+        hasApiKey: false,
         keyStatus: "unchecked",
         label: "Production OpenRouter",
         status: "saved",
       },
     });
+    expect(
+      (savedBody.profile as { apiKeyMask?: string }).apiKeyMask,
+    ).toBeUndefined();
     const updated = await request(
       `/api/admin/providers/${savedBody.profile.id}`,
       {
         body: JSON.stringify({
-          apiKey: "",
           baseUrl: "https://openrouter.ai/api/v1",
           driver: "openrouter",
           label: "Primary OpenRouter",
@@ -134,7 +134,7 @@ test("only administrators save encrypted Provider profiles and no secret reaches
     expect(updated.status).toBe(200);
     expect(await updated.json()).toMatchObject({
       profile: {
-        apiKeyMask: `••••${secret.slice(-4)}`,
+        hasApiKey: false,
         keyStatus: "unchecked",
         label: "Primary OpenRouter",
       },
@@ -287,6 +287,7 @@ test("read-only Provider verification checks model lists without generating", as
     let requestedMethod = "";
     const verification = await verifyProviderProfile(
       profile.id,
+      "__test__",
       async (input, init) => {
         requestedUrl = String(input);
         requestedAuthorization = new Headers(init?.headers).get(
@@ -355,6 +356,7 @@ test("read-only Provider verification checks model lists without generating", as
     let arkRequestedUrl = "";
     const arkVerification = await verifyProviderProfile(
       ark.id,
+      "__test__",
       async (input, init) => {
         arkFetchCalled = true;
         arkRequestedUrl = String(input);
@@ -385,6 +387,7 @@ test("read-only Provider verification checks model lists without generating", as
     let murekaRequestedUrl = "";
     const murekaVerification = await verifyProviderProfile(
       mureka.id,
+      "__test__",
       async (input, init) => {
         murekaRequestedUrl = String(input);
         expect(init?.method).toBe("GET");
@@ -485,9 +488,9 @@ test("Provider Key status persists invalid and uncertain rechecks without stale 
     ];
 
     for (const check of uncertainChecks) {
-      await verifyProviderProfile(profile.id, async () => validResponse());
+      await verifyProviderProfile(profile.id, "__test__", async () => validResponse());
       await expect(
-        verifyProviderProfile(profile.id, check.fetcher),
+        verifyProviderProfile(profile.id, "__test__", check.fetcher),
       ).rejects.toThrow(check.code);
       expect(readStatus()).toMatchObject({
         key_checked_at: expect.any(String),
@@ -496,10 +499,11 @@ test("Provider Key status persists invalid and uncertain rechecks without stale 
       });
     }
 
-    await verifyProviderProfile(profile.id, async () => validResponse());
+    await verifyProviderProfile(profile.id, "__test__", async () => validResponse());
     await expect(
       verifyProviderProfile(
         profile.id,
+        "__test__",
         async () => new Response(JSON.stringify({ error: "unauthorized" }), {
           status: 401,
         }),
@@ -519,7 +523,7 @@ test("Provider Key status persists invalid and uncertain rechecks without stale 
     const responseReleased = new Promise<void>((resolve) => {
       releaseResponse = resolve;
     });
-    const staleCheck = verifyProviderProfile(profile.id, async () => {
+    const staleCheck = verifyProviderProfile(profile.id, "__test__", async () => {
       signalRequestStarted();
       await responseReleased;
       return validResponse();
@@ -573,7 +577,7 @@ test("administrator Provider page stays simple and makes zero external requests"
 
   const secret = ["sk", "browser", randomUUID()].join("-");
   await page.getByLabel("连接名称").fill("Browser OpenRouter");
-  await page.getByLabel("API Key").fill(secret);
+  await expect(page.getByLabel("API Key")).toHaveCount(0);
   await page.getByRole("button", { name: "加密保存连接" }).click();
 
   await expect(page.getByText("连接资料已加密保存")).toBeVisible();
@@ -583,11 +587,8 @@ test("administrator Provider page stays simple and makes zero external requests"
   await expect(browserProfile).toBeVisible();
   await expect(browserProfile.locator('[data-key-status="unchecked"]'))
     .toHaveText("Key未检查");
-  await expect(browserProfile.getByText(`••••${secret.slice(-4)}`))
+  await expect(browserProfile.getByRole("button", { name: "检查连接" }))
     .toBeVisible();
-  await expect(browserProfile.getByRole("button", { name: "检查Key" }))
-    .toBeVisible();
-  await expect(page.getByLabel("API Key")).toHaveValue("");
   await expect(page.locator("body")).not.toContainText(secret);
 
   const mockedProfileId = "11111111-1111-4111-8111-111111111111";
@@ -654,10 +655,10 @@ test("administrator Provider page stays simple and makes zero external requests"
   );
   await page.reload();
   await expect(page.locator('[data-key-status="valid"]')).toHaveText("Key有效");
-  await page.getByRole("button", { name: "检查Key" }).click();
+  await page.getByRole("button", { name: "检查连接" }).click();
   await expect(page.getByRole("status"))
     .toHaveText("API Key有效。可读取模型：37 个。");
-  await page.getByRole("button", { name: "检查Key" }).click();
+  await page.getByRole("button", { name: "检查连接" }).click();
   await expect(page.locator('[data-key-status="invalid"]')).toHaveText("Key已失效");
   await expect(page.getByRole("status")).toHaveText("API Key已失效");
   expect(externalRequests).toEqual([]);

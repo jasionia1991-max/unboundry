@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
+import { composeExecutionProfile } from "./accountCredentials";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
 import {
@@ -436,6 +437,7 @@ function catalogErrorCode(error: unknown) {
 class CatalogSyncError extends Error {
   constructor(
     readonly code:
+      | "AUTH"
       | "CONFIG_CHANGED"
       | "NOT_CONFIGURED"
       | "NOT_SUPPORTED"
@@ -977,6 +979,7 @@ async function syncProfileKeyProviderCatalog(
   fetcher: typeof fetch | undefined,
   options: { maximumDurationMs?: number },
 ) {
+  if (!profile.apiKey) throw new CatalogSyncError("AUTH");
   if (
     profile.driver !== "openrouter" &&
     profile.driver !== "openai-compatible" &&
@@ -1194,9 +1197,22 @@ async function syncProfileKeyProviderCatalog(
 
 export async function syncProviderCatalog(
   profileId: string,
-  fetcher?: typeof fetch,
+  ownerIdOrFetcher?: string | typeof fetch,
+  fetcherOrOptions?: typeof fetch | { maximumDurationMs?: number },
   options: { maximumDurationMs?: number } = {},
 ) {
+  const ownerId =
+    typeof ownerIdOrFetcher === "function" ? undefined : ownerIdOrFetcher;
+  const fetcher =
+    typeof ownerIdOrFetcher === "function"
+      ? ownerIdOrFetcher
+      : typeof fetcherOrOptions === "function"
+        ? fetcherOrOptions
+        : undefined;
+  const mergedOptions =
+    typeof fetcherOrOptions === "function"
+      ? options
+      : (fetcherOrOptions ?? options);
   const profile = await getProviderProfile(profileId);
   if (!profile) throw new CatalogSyncError("CONFIG_CHANGED");
   const capabilities = providerCatalogCapabilities(profile.driver);
@@ -1204,9 +1220,16 @@ export async function syncProviderCatalog(
     throw new CatalogSyncError("NOT_SUPPORTED");
   }
   if (profile.driver === "volcengine-ark") {
-    return syncArkProviderCatalog(profileId, fetcher ?? fetch, options);
+    return syncArkProviderCatalog(
+      profileId,
+      fetcher ?? fetch,
+      mergedOptions,
+    );
   }
-  return syncProfileKeyProviderCatalog(profile, fetcher, options);
+  const composed = ownerId
+    ? await composeExecutionProfile(db(), ownerId, profile)
+    : profile;
+  return syncProfileKeyProviderCatalog(composed, fetcher, mergedOptions);
 }
 
 export function providerCatalogSyncErrorMessage(
@@ -1528,15 +1551,32 @@ export async function getProviderReadOnlyDescriptor(profileId: string) {
 export async function readProviderReadOnlyResource(
   profileId: string,
   resource: RelayReadOnlyResource,
-  options: { model?: string } = {},
+  ownerIdOrOptions: string | { model?: string } = {},
+  optionsOrFetcher: { model?: string } | typeof fetch = {},
   fetcher?: typeof fetch,
 ) {
+  const ownerId =
+    typeof ownerIdOrOptions === "string" ? ownerIdOrOptions : undefined;
+  const mergedOptions =
+    typeof ownerIdOrOptions === "string"
+      ? (optionsOrFetcher as { model?: string })
+      : ownerIdOrOptions;
+  const effectiveFetcher =
+    typeof optionsOrFetcher === "function" ? optionsOrFetcher : fetcher;
   const profile = await getProviderProfile(profileId);
   if (!profile) throw new Error("Provider profile not found");
   if (profile.driver !== "multi-protocol-relay") {
     throw new CatalogSyncError("NOT_SUPPORTED");
   }
-  return readRelayManagementResource(profile, resource, options, fetcher);
+  const composed = ownerId
+    ? await composeExecutionProfile(db(), ownerId, profile)
+    : profile;
+  return readRelayManagementResource(
+    composed,
+    resource,
+    mergedOptions,
+    effectiveFetcher,
+  );
 }
 
 export async function adminProviderCatalogApi(
@@ -1612,6 +1652,7 @@ export async function adminProviderCatalogApi(
         await readProviderReadOnlyResource(
           profileId,
           normalizedResource,
+          identity.userId,
           { model },
         ),
       );
@@ -1649,7 +1690,10 @@ export async function adminProviderCatalogApi(
       const profile = await getProviderProfile(profileId);
       if (!profile) throw new CatalogSyncError("CONFIG_CHANGED");
       driver = profile.driver;
-      const result = await syncProviderCatalog(profileId);
+      const result = await syncProviderCatalog(
+        profileId,
+        identity.userId,
+      );
       const catalogCapabilities = providerCatalogCapabilities(profile.driver);
       audit(db(), identity.userId, "provider_catalog.sync", profileId, {
         controlPlaneRequests: result.controlPlaneRequests,

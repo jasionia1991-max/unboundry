@@ -227,7 +227,9 @@ test("Provider model directories follow declared capabilities without paid reque
     "provider-model-catalog-catalog-openrouter",
   );
   await expect(openRouter).toContainText("当前Key可见模型2");
-  await expect(openRouter).toContainText("使用当前连接已保存的API Key");
+  await expect(openRouter).toContainText(
+    "使用管理员自己的平台密钥（在「我的连接」填写）",
+  );
   await expect(
     openRouter.getByRole("button", { name: /配置目录凭证/ }),
   ).toHaveCount(0);
@@ -653,7 +655,7 @@ test("large discovered catalogs stay searchable with the selected action always 
   expect(externalRequests).toEqual([]);
 });
 
-test("saved Provider connections edit inside their own card and keep the existing key when blank", async ({
+test("saved Provider connections edit inside their own card without a generation key field", async ({
   page,
 }) => {
   const profile = {
@@ -712,18 +714,23 @@ test("saved Provider connections edit inside their own card and keep the existin
 
   await page.goto("/admin/providers");
   const card = page.locator(".provider-profile-list article").first();
-  await card.getByRole("button", { name: "更新Key" }).click();
-  await expect(card.getByText("Key留空会保留原密钥")).toBeVisible();
+  await card.getByRole("button", { name: "编辑连接" }).click();
+  await expect(
+    card.getByText("生成密钥由每个账号在「我的连接」填写"),
+  ).toBeVisible();
+  await expect(
+    card.getByRole("textbox", { name: /API Key/ }),
+  ).toHaveCount(0);
   await card.getByLabel("Inline OpenRouter连接名称").fill("Updated OpenRouter");
   await card.getByRole("button", { name: "保存连接设置" }).click();
   await expect.poll(() => patchBody).toMatchObject({
-    apiKey: "",
     baseUrl: "https://openrouter.ai/api/v1",
     driver: "openrouter",
     label: "Updated OpenRouter",
   });
-  await expect(page.getByText("连接设置已加密保存")).toBeVisible();
-  await expect(card.getByRole("button", { name: "更新Key" })).toBeVisible();
+  expect(patchBody!.apiKey).toBeUndefined();
+  await expect(page.getByText("连接设置已保存")).toBeVisible();
+  await expect(card.getByRole("button", { name: "编辑连接" })).toBeVisible();
 });
 
 test("Provider catalog explains unchecked, invalid, and unknown states", async ({

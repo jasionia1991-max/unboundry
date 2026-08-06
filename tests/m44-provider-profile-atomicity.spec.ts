@@ -221,7 +221,7 @@ test("split document and metadata versions block a real task before fake fetch",
       driver: "volcengine-ark",
       label: "Ark split",
     });
-    await verifyProviderProfile(original.id, async () =>
+    await verifyProviderProfile(original.id, "__test__", async () =>
       new Response(JSON.stringify({ items: [] }), { status: 200 }));
     const updated = await saveProviderProfile({
       apiKey: `ark-new-${randomUUID()}`,
@@ -241,9 +241,11 @@ test("split document and metadata versions block a real task before fake fetch",
     `).run(providerConfigurationVersion(original), original.id);
     database.close();
 
-    await expect(getProviderProfileForGeneration(original.id)).rejects
+    await expect(getProviderProfileForGeneration(original.id, "__test__")).rejects
       .toMatchObject({ code: "PROVIDER_CONFIGURATION_MISMATCH" });
-    expect(await getProviderGenerationProfileState(original.id)).toMatchObject({
+    expect(
+      await getProviderGenerationProfileState(original.id, "__test__"),
+    ).toMatchObject({
       configurationAligned: false,
       documentConfigurationVersion: providerConfigurationVersion(updated),
       metadataConfigurationVersion: providerConfigurationVersion(original),
@@ -310,7 +312,7 @@ test("a request lease releases after fake fetch starts instead of waiting for it
       driver: "volcengine-ark",
       label: "Fetch lease profile",
     });
-    await verifyProviderProfile(profile.id, async () =>
+    await verifyProviderProfile(profile.id, "__test__", async () =>
       new Response(JSON.stringify({ items: [] }), { status: 200 }));
     store = createGenerationTaskStore(directory);
     const created = store.create({
@@ -391,7 +393,7 @@ test("a request lease waits across the document-to-metadata window without using
       driver: "volcengine-ark",
       label: "Reader lock profile",
     });
-    await verifyProviderProfile(profile.id, async () =>
+    await verifyProviderProfile(profile.id, "__test__", async () =>
       new Response(JSON.stringify({ items: [] }), { status: 200 }));
     store = createGenerationTaskStore(directory);
     const created = store.create({
@@ -574,7 +576,7 @@ test("version zero and metadata-ahead states fail closed without losing usable s
     } finally {
       ahead.close();
     }
-    await expect(getProviderProfileForGeneration(profile.id)).rejects
+    await expect(getProviderProfileForGeneration(profile.id, "__test__")).rejects
       .toMatchObject({ code: "PROVIDER_CONFIGURATION_MISMATCH" });
   } finally {
     restoreDataDirectory(previous);
@@ -596,13 +598,13 @@ test("a late old Key check cannot write green after the metadata CAS changes", a
     const validResponse = () => new Response(JSON.stringify({ data: [] }), {
       status: 200,
     });
-    await verifyProviderProfile(profile.id, async () => validResponse());
+    await verifyProviderProfile(profile.id, "__test__", async () => validResponse());
 
     let release = () => {};
     let started = () => {};
     const requestStarted = new Promise<void>((resolve) => { started = resolve; });
     const requestReleased = new Promise<void>((resolve) => { release = resolve; });
-    const late = verifyProviderProfile(profile.id, async () => {
+    const late = verifyProviderProfile(profile.id, "__test__", async () => {
       started();
       await requestReleased;
       return validResponse();
@@ -695,6 +697,11 @@ test("two OS processes can migrate the same v18 database exactly once", async ()
         { count: 1, version: 22 },
         { count: 1, version: 23 },
         { count: 1, version: 24 },
+        { count: 1, version: 25 },
+        { count: 1, version: 26 },
+        { count: 1, version: 27 },
+        { count: 1, version: 28 },
+        { count: 1, version: 29 },
       ]);
     } finally {
       database.close();

@@ -21,6 +21,9 @@ test("the private API documents and reads canvas, project and model configuratio
   expect(specification.info.title).toBe("TapNow Private Replica API");
   expect(Object.keys(specification.paths).sort()).toEqual([
     "/api/account-context",
+    "/api/account-credentials",
+    "/api/account-credentials/{profileId}",
+    "/api/account-credentials/{profileId}/verify",
     "/api/agent-config",
     "/api/canvas/{canvasId}",
     "/api/canvas/{canvasId}/group-download",
@@ -35,7 +38,11 @@ test("the private API documents and reads canvas, project and model configuratio
   ]);
   const specificationText = JSON.stringify(specification);
   expect(specificationText).not.toContain("app.tapnow.ai");
-  expect(specificationText).not.toMatch(/accessKey|apiKey|secret|password/i);
+  expect(specificationText).not.toMatch(/accessKey|secret|password/i);
+  // apiKey 只允许作为请求体字段名出现，任何响应 schema 或说明文本不得含密钥值。
+  expect(specificationText).not.toMatch(
+    /responses[\s\S]{0,200}?apiKey/i,
+  );
 
   const canvasDocument = {
     revision: 0,
@@ -118,8 +125,8 @@ test("the private API documents and reads canvas, project and model configuratio
   await expect(page.getByTestId("admin-api-contract-page")).toBeVisible();
   await expect(page.getByRole("heading", { name: "项目自己的数据接口" }))
     .toBeVisible();
-  await expect(page.locator(".api-contract-grid article")).toHaveCount(16);
-  await expect(page.getByText("当前共 12 条接口路径", { exact: true }))
+  await expect(page.locator(".api-contract-grid article")).toHaveCount(20);
+  await expect(page.getByText("当前共 15 条接口路径", { exact: true }))
     .toBeVisible();
 
   await request.delete(`/api/canvas/${canvasId}`);

@@ -29,6 +29,7 @@ import { adminProviderProfilesApi } from "./server/providerProfiles";
 import { adminProviderCatalogApi } from "./server/providerCatalog";
 import { adminStorageApi } from "./server/storageAdmin";
 import { openApi } from "./server/openApi";
+import { accountCredentialsApi } from "./server/accountCredentialsApi";
 import { templateCatalogApi } from "./server/templateCatalog";
 import { agentConfigurationApi } from "./server/agentConfiguration";
 import { characterCatalogApi } from "./server/characterCatalog";
@@ -153,6 +154,9 @@ function authenticationApi(): Plugin {
     });
     middlewares.use("/api/account-context", (request, response) => {
       accountContextApi(request, response);
+    });
+    middlewares.use("/api/account-credentials", (request, response) => {
+      void accountCredentialsApi(request, response);
     });
   };
   return {

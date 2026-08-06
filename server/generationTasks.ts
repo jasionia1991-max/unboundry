@@ -40,6 +40,7 @@ import {
 } from "./providerMedia";
 import {
   acquireProviderGenerationRequestLease,
+  accountCredentialVersion,
   getProviderGenerationProfileState,
   getProviderProfileForGeneration,
   providerConfigurationVersion,
@@ -199,6 +200,9 @@ function assertRelayProfile(
   ) {
     throw new RelayProviderError("FORMAT");
   }
+  if (!profile.apiKey) {
+    throw new RelayProviderError("AUTH");
+  }
   return {
     apiKey: profile.apiKey,
     baseUrl: profile.baseUrl,
@@ -209,6 +213,7 @@ function assertRelayProfile(
 function requireTaskProviderSnapshot(
   task: Pick<GenerationTask, "modelConfiguration">,
   profile: ProviderProfile,
+  ownerId: string,
 ) {
   const expectedDriver = task.modelConfiguration.providerDriver;
   const expectedVersion = task.modelConfiguration.providerConfigurationVersion;
@@ -222,6 +227,17 @@ function requireTaskProviderSnapshot(
     throw new ProviderGenerationConfigurationError(
       "PROVIDER_CONFIGURATION_MISMATCH",
       "平台连接配置已变化，已阻止旧任务继续请求",
+    );
+  }
+  const expectedCredentialVersion = task.modelConfiguration.credentialVersion;
+  if (
+    typeof expectedCredentialVersion === "number" &&
+    expectedCredentialVersion > 0 &&
+    accountCredentialVersion(ownerId, profile.id) !== expectedCredentialVersion
+  ) {
+    throw new ProviderGenerationConfigurationError(
+      "ACCOUNT_CREDENTIAL_CHANGED",
+      "你的平台密钥已变更，请重新提交",
     );
   }
   return profile;
@@ -297,10 +313,14 @@ function fetchWithProviderLease(
 async function withProviderRequestLease<T>(input: {
   expected?: ProviderProfile;
   fetcher: typeof fetch;
+  ownerId: string;
   profileId: string;
   request: (profile: ProviderProfile, fetcher: typeof fetch) => Promise<T>;
 }) {
-  const lease = await acquireProviderGenerationRequestLease(input.profileId);
+  const lease = await acquireProviderGenerationRequestLease(
+    input.profileId,
+    input.ownerId,
+  );
   try {
     const profile = input.expected
       ? requireSameProviderConfiguration(input.expected, lease.profile)
@@ -505,7 +525,7 @@ function imageReferences(value: unknown): ImageReference[] {
   });
 }
 
-function resolveModel(kind: NodeInputKind, modelId?: string) {
+function resolveModel(kind: NodeInputKind, modelId: string | undefined, ownerId: string) {
   const database = openAppDatabase();
   try {
     return database.prepare(`
@@ -537,6 +557,7 @@ function resolveModel(kind: NodeInputKind, modelId?: string) {
           WHERE
             auth_task.provider_profile_id = model_profiles.provider_profile_id
             AND auth_task.kind = model_profiles.capability
+            AND auth_task.owner_id = ?
             AND auth_task.state = 'failed'
             AND auth_task.error_code IN ('AUTH', 'PERMISSION')
         ) AS latest_auth_failure_at,
@@ -546,6 +567,7 @@ function resolveModel(kind: NodeInputKind, modelId?: string) {
           WHERE
             success_task.provider_profile_id = model_profiles.provider_profile_id
             AND success_task.kind = model_profiles.capability
+            AND success_task.owner_id = ?
             AND success_task.state = 'success'
         ) AS latest_capability_success_at,
         (
@@ -554,6 +576,7 @@ function resolveModel(kind: NodeInputKind, modelId?: string) {
           WHERE
             provider_attempt.provider_profile_id = model_profiles.provider_profile_id
             AND provider_attempt.kind = model_profiles.capability
+            AND provider_attempt.owner_id = ?
         ) AS latest_provider_attempt_at
       FROM model_profiles
       JOIN provider_profiles
@@ -573,7 +596,16 @@ function resolveModel(kind: NodeInputKind, modelId?: string) {
         node_model_bindings.sort_order,
         model_profiles.created_at
       LIMIT 1
-    `).get(kind, kind, modelId ?? null, modelId ?? null, modelId ?? null) as
+    `).get(
+      ownerId,
+      ownerId,
+      ownerId,
+      kind,
+      kind,
+      modelId ?? null,
+      modelId ?? null,
+      modelId ?? null,
+    ) as
       | GenerationModelRow
       | undefined;
   } finally {
@@ -655,17 +687,27 @@ async function generationRuntimeDecision(input: {
   });
   const providerState = await getProviderGenerationProfileState(
     input.model.provider_profile_id,
+    input.ownerId,
   ).catch(() => ({
     configurationAligned: false as const,
     profile: undefined,
     reason: "configuration-mismatch" as const,
   }));
   const storedProfile = providerState.profile;
+  const accountCredentialState =
+    providerState.reason === "account-credential-missing"
+      ? ("missing" as const)
+      : providerState.reason === "account-credential-invalid"
+        ? ("invalid" as const)
+        : providerState.reason === "ready"
+          ? ("valid" as const)
+          : undefined;
   const configured = Boolean(
     storedProfile && storedProfile.driver === input.model.provider_driver,
   );
   const safetyStatus = generationSafetyStatus();
   const availability = evaluateModelRuntimeAvailability({
+    accountCredentialState,
     capability: input.kind,
     costCurrency: input.model.cost_currency,
     emergencyStop: safetyStatus.emergencyStop,
@@ -684,7 +726,11 @@ async function generationRuntimeDecision(input: {
     providerConfigurationVersionAligned:
       providerState.configurationAligned,
     providerStatus:
-      providerState.reason === "ready" ? "enabled" : "disabled",
+      providerState.reason === "ready" ||
+      providerState.reason === "account-credential-missing" ||
+      providerState.reason === "account-credential-invalid"
+        ? "enabled"
+        : "disabled",
     storedProviderDriver: storedProfile?.driver,
   });
   const safety = createGenerationSafetyStore();
@@ -726,6 +772,10 @@ async function generationRuntimeDecision(input: {
       adapterSupported,
       configured,
     },
+    credentialVersion: accountCredentialVersion(
+      input.ownerId,
+      input.model.provider_profile_id,
+    ),
     providerBalance: {
       checked: false,
       reason: "零Provider预检不读取Provider账户余额",
@@ -1092,7 +1142,7 @@ function strictGenerationPreflight(input: {
   return { ...persisted, parameters, references };
 }
 
-async function generationAvailability() {
+async function generationAvailability(ownerId: string) {
   const database = openAppDatabase();
   try {
     const rows = database.prepare(`
@@ -1125,6 +1175,7 @@ async function generationAvailability() {
           WHERE
             auth_task.provider_profile_id = model_profiles.provider_profile_id
             AND auth_task.kind = model_profiles.capability
+            AND auth_task.owner_id = ?
             AND auth_task.state = 'failed'
             AND auth_task.error_code IN ('AUTH', 'PERMISSION')
         ) AS latest_auth_failure_at,
@@ -1134,6 +1185,7 @@ async function generationAvailability() {
           WHERE
             success_task.provider_profile_id = model_profiles.provider_profile_id
             AND success_task.kind = model_profiles.capability
+            AND success_task.owner_id = ?
             AND success_task.state = 'success'
         ) AS latest_capability_success_at,
         (
@@ -1142,6 +1194,7 @@ async function generationAvailability() {
           WHERE
             provider_attempt.provider_profile_id = model_profiles.provider_profile_id
             AND provider_attempt.kind = model_profiles.capability
+            AND provider_attempt.owner_id = ?
         ) AS latest_provider_attempt_at
       FROM model_profiles
       JOIN provider_profiles
@@ -1153,7 +1206,9 @@ async function generationAvailability() {
         model_profiles.status = 'published'
         AND model_profiles.capability IN ('text', 'audio', 'image', 'video')
         AND node_model_bindings.enabled = 1
-    `).all() as Array<GenerationModelRow & { capability: NodeInputKind }>;
+    `).all(ownerId, ownerId, ownerId) as Array<
+      GenerationModelRow & { capability: NodeInputKind }
+    >;
     const configuredKinds = new Set<NodeInputKind>();
     const configuredCurrencies: Record<NodeInputKind, Set<"CNY" | "USD">> = {
       audio: new Set(),
@@ -1164,6 +1219,7 @@ async function generationAvailability() {
     await Promise.all(rows.map(async (row) => {
       const providerState = await getProviderGenerationProfileState(
         row.provider_profile_id,
+        ownerId,
       ).catch(() => ({
         configurationAligned: false as const,
         profile: undefined,
@@ -1171,6 +1227,14 @@ async function generationAvailability() {
       }));
       const profile = providerState.profile;
       const availability = evaluateModelRuntimeAvailability({
+        accountCredentialState:
+          providerState.reason === "account-credential-missing"
+            ? "missing"
+            : providerState.reason === "account-credential-invalid"
+              ? "invalid"
+              : providerState.reason === "ready"
+                ? "valid"
+                : undefined,
         capability: row.capability,
         costCurrency: row.cost_currency,
         emergencyStop: false,
@@ -1189,7 +1253,11 @@ async function generationAvailability() {
         providerConfigurationVersionAligned:
           providerState.configurationAligned,
         providerStatus:
-          providerState.reason === "ready" ? "enabled" : "disabled",
+          providerState.reason === "ready" ||
+          providerState.reason === "account-credential-missing" ||
+          providerState.reason === "account-credential-invalid"
+            ? "enabled"
+            : "disabled",
         storedProviderDriver: profile?.driver,
       });
       if (availability.generationAvailable) {
@@ -1343,7 +1411,10 @@ function relayContextMimeType(input: {
 export async function executeTextTaskWithDependencies(
   taskId: string,
   dependencies: {
-    acquireProfile: typeof acquireProviderGenerationRequestLease;
+    acquireProfile: (
+      profileId: string,
+      ownerId: string,
+    ) => Promise<ProviderGenerationRequestLease>;
     fetcher: typeof fetch;
     mediaContentTypeForOwner?: (input: {
       assetId: string;
@@ -1414,10 +1485,13 @@ export async function executeTextTaskWithDependencies(
         });
       }
     }
-    const lease = await dependencies.acquireProfile(running.providerProfileId);
+    const lease = await dependencies.acquireProfile(
+      running.providerProfileId,
+      running.ownerId!,
+    );
     let result: { providerUsageTokens?: number; text: string };
     try {
-      requireTaskProviderSnapshot(running, lease.profile);
+      requireTaskProviderSnapshot(running, lease.profile, running.ownerId!);
       const leasedFetch = fetchWithProviderLease(lease, dependencies.fetcher);
       if (protocol === "native") {
         if (lease.profile.driver !== "volcengine-ark") {
@@ -1727,7 +1801,7 @@ async function saveRelayMediaOutput(input: {
     return saved.assetId;
   }
   const downloaded = await downloadProviderResultMedia({
-    apiKey: input.profile.apiKey,
+    apiKey: input.profile.apiKey!,
     expectedContentType:
       input.output.mimeType ?? input.expectedAudioContentType,
     kind: input.output.kind,
@@ -1838,7 +1912,11 @@ async function executeRelayMediaTask(
   if (protocol !== "media-generate") throw new RelayProviderError("FORMAT");
   const profile = requireTaskProviderSnapshot(
     running,
-    await getProviderProfileForGeneration(running.providerProfileId),
+    await getProviderProfileForGeneration(
+      running.providerProfileId,
+      running.ownerId!,
+    ),
+    running.ownerId!,
   );
   const connection = assertRelayProfile(profile, protocol);
   let providerTaskId = running.providerTaskId;
@@ -1850,6 +1928,7 @@ async function executeRelayMediaTask(
     const submission = await withProviderRequestLease({
       expected: profile,
       fetcher: fetch,
+      ownerId: ownerId,
       profileId: running.providerProfileId,
       request: (currentProfile, leasedFetch) =>
         submitRelayMedia(
@@ -1878,6 +1957,7 @@ async function executeRelayMediaTask(
     const status = await withProviderRequestLease({
       expected: profile,
       fetcher: fetch,
+      ownerId: ownerId,
       profileId: running.providerProfileId,
       request: (currentProfile, leasedFetch) =>
         pollRelayMediaTask(
@@ -1957,10 +2037,11 @@ async function executeImageTask(taskId: string) {
     if (protocol === "native") {
       const result = await withProviderRequestLease({
         fetcher: fetch,
+        ownerId: current.ownerId,
         profileId: running.providerProfileId,
         request: (profile, leasedFetch) =>
           generateOpenRouterImage(
-            requireTaskProviderSnapshot(running, profile),
+            requireTaskProviderSnapshot(running, profile, current.ownerId!),
             {
               aspectRatio:
                 typeof running.parameters.aspectRatio === "string"
@@ -1996,12 +2077,17 @@ async function executeImageTask(taskId: string) {
     if (protocol !== "gpt-image") throw new RelayProviderError("FORMAT");
     const profile = requireTaskProviderSnapshot(
       running,
-      await getProviderProfileForGeneration(running.providerProfileId),
+      await getProviderProfileForGeneration(
+        running.providerProfileId,
+        current.ownerId,
+      ),
+      current.ownerId,
     );
     assertRelayProfile(profile, protocol);
     const relayResult = await withProviderRequestLease({
       expected: profile,
       fetcher: fetch,
+      ownerId: current.ownerId,
       profileId: running.providerProfileId,
       request: (currentProfile, leasedFetch) =>
         requestRelayGptImage(
@@ -2222,7 +2308,11 @@ async function executeVideoTask(taskId: string) {
   try {
     const profile = requireTaskProviderSnapshot(
       running,
-      await getProviderProfileForGeneration(running.providerProfileId),
+      await getProviderProfileForGeneration(
+        running.providerProfileId,
+        running.ownerId!,
+      ),
+      running.ownerId!,
     );
     if (profile.driver !== "volcengine-ark") {
       throw new VolcengineArkVideoError("FORMAT", "视频模型配置已失效");
@@ -2233,6 +2323,7 @@ async function executeVideoTask(taskId: string) {
       const created = await withProviderRequestLease({
         expected: profile,
         fetcher: fetch,
+        ownerId: running.ownerId!,
         profileId: running.providerProfileId,
         request: (currentProfile, leasedFetch) =>
           createVolcengineArkVideoTask(
@@ -2267,6 +2358,7 @@ async function executeVideoTask(taskId: string) {
       const status = await withProviderRequestLease({
         expected: profile,
         fetcher: fetch,
+        ownerId: running.ownerId!,
         profileId: running.providerProfileId,
         request: (currentProfile, leasedFetch) =>
           getVolcengineArkVideoTask(
@@ -2402,7 +2494,11 @@ async function executeAudioTask(taskId: string) {
   try {
     const profile = requireTaskProviderSnapshot(
       running,
-      await getProviderProfileForGeneration(running.providerProfileId),
+      await getProviderProfileForGeneration(
+        running.providerProfileId,
+        running.ownerId!,
+      ),
+      running.ownerId!,
     );
     if (profile.driver !== "mureka") {
       throw new MurekaAudioError("FORMAT");
@@ -2413,6 +2509,7 @@ async function executeAudioTask(taskId: string) {
       const created = await withProviderRequestLease({
         expected: profile,
         fetcher: fetch,
+        ownerId: running.ownerId!,
         profileId: running.providerProfileId,
         request: (currentProfile, leasedFetch) =>
           createMurekaAudioTask(
@@ -2440,6 +2537,7 @@ async function executeAudioTask(taskId: string) {
       const status = await withProviderRequestLease({
         expected: profile,
         fetcher: fetch,
+        ownerId: running.ownerId!,
         profileId: running.providerProfileId,
         request: (currentProfile, leasedFetch) =>
           getMurekaAudioTask(
@@ -2696,7 +2794,7 @@ export function retrySafetyDecision(task: GenerationTask): RetrySafetyDecision {
         : "上次视频或音频请求可能已经创建，但没有保存平台任务编号；为避免重复扣费，不能创建新任务",
     };
   }
-  const model = resolveModel(task.kind, task.model);
+  const model = resolveModel(task.kind, task.model, task.ownerId ?? "");
   if (
     !model ||
     model.provider_profile_id !== task.providerProfileId ||
@@ -2727,7 +2825,7 @@ export function retrySafetyDecision(task: GenerationTask): RetrySafetyDecision {
 }
 
 function resumeProviderTaskSnapshotProblem(task: GenerationTask) {
-  const model = resolveModel(task.kind, task.model);
+  const model = resolveModel(task.kind, task.model, task.ownerId ?? "");
   if (!model) return "原模型已停用、归档或不可用";
   if (
     model.provider_profile_id !== task.providerProfileId ||
@@ -2774,6 +2872,7 @@ async function cancelGenerationTask(task: GenerationTask) {
     if (!task.providerProfileId) throw new Error("Provider profile not found");
     await withProviderRequestLease({
       fetcher: fetch,
+      ownerId: task.ownerId ?? "",
       profileId: task.providerProfileId,
       request: (profile, leasedFetch) =>
         cancelVolcengineArkVideoTask(
@@ -2843,7 +2942,9 @@ export async function generationTasks(
   if (request.method === "GET" && path === "status") {
     taskStore();
     const safety = generationSafetyStatus();
-    const availability = await generationAvailability();
+    const availability = await generationAvailability(
+      identity.bypass ? "__test__" : identity.userId,
+    );
     const { providerCurrencies, ...publicAvailability } = availability;
     const currencyBudgetReady = (kind: NodeInputKind) =>
       providerCurrencies[kind].some((currency) =>
@@ -3005,7 +3106,11 @@ export async function generationTasks(
         if (!task.providerProfileId) throw new Error("Provider profile missing");
         requireTaskProviderSnapshot(
           task,
-          await getProviderProfileForGeneration(task.providerProfileId),
+          await getProviderProfileForGeneration(
+            task.providerProfileId,
+            task.ownerId ?? "",
+          ),
+          task.ownerId ?? "",
         );
       } catch {
         json(response, 409, {
@@ -3082,7 +3187,11 @@ export async function generationTasks(
         json(response, 400, { error: "输入类型无效" });
         return;
       }
-      const model = resolveModel(body.kind, body.model);
+      const model = resolveModel(
+        body.kind,
+        body.model,
+        identity.bypass ? "__test__" : identity.userId,
+      );
       if (!model) {
         const message = missingModelMessage(body.kind);
         json(response, 409, {
@@ -3148,7 +3257,11 @@ export async function generationTasks(
         });
         return;
       }
-      const model = resolveModel(body.kind, body.model);
+      const model = resolveModel(
+        body.kind,
+        body.model,
+        identity.bypass ? "__test__" : identity.userId,
+      );
       if (!model) {
         const message = missingModelMessage(body.kind);
         json(response, 503, {
@@ -3252,6 +3365,7 @@ export async function generationTasks(
         kind: body.kind,
         model: model.id,
         modelConfiguration: {
+          credentialVersion: runtime.credentialVersion,
           modelId: model.id,
           parameterSchema: schema,
           providerConfigurationVersion: providerConfigurationVersion(

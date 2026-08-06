@@ -216,7 +216,7 @@ test("多协议中转站在Provider页面支持明确协议、批量导入和可
   await expect(profileCard).toContainText("目录状态目录可读取");
   await expect(profileCard).toContainText("模型数量3");
   await expect(profileCard).toContainText("上次检查");
-  await profileCard.getByRole("button", { name: "修改" }).click();
+  await profileCard.getByRole("button", { name: "编辑连接" }).click();
   await expect(profileCard.getByLabel("业务中转站接口地址")).toBeEditable();
   await profileCard.getByRole("button", { name: "取消" }).click();
 

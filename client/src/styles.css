@@ -6007,7 +6007,7 @@ sup {
 
 .tasks-row-time {
   color: #71717a;
-  font-size: 12px;
+  font-size: var(--tap-font-secondary);
 }
 
 .tasks-row-actions {
@@ -10770,6 +10770,165 @@ sup {
   color: #d6d6d9;
   background: #303032;
   cursor: pointer;
+}
+
+.connections-page {
+  padding-bottom: 36px;
+}
+
+.connections-page .connections-intro,
+.connections-page .connections-list {
+  max-width: 960px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.connections-intro h1 {
+  margin: 0 0 6px;
+  font-size: var(--tap-font-primary);
+  font-weight: 650;
+}
+
+.connections-intro p {
+  margin: 0;
+  color: #b9b9b9;
+  font-size: var(--tap-font-secondary);
+  line-height: 20px;
+}
+
+.connections-list {
+  margin-top: 20px;
+}
+
+.connections-grid {
+  display: grid;
+  margin-top: 16px;
+  gap: 12px;
+}
+
+.connection-row {
+  display: grid;
+  padding: 14px;
+  gap: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: #171718;
+}
+
+.connection-summary {
+  display: grid;
+  gap: 3px;
+}
+
+.connection-summary strong {
+  color: #f2f2f2;
+  font-size: var(--tap-font-primary);
+  font-weight: 650;
+}
+
+.connection-summary > small {
+  overflow: hidden;
+  color: #9a9a9f;
+  font-size: var(--tap-font-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.connection-status {
+  display: flex;
+  margin-top: 4px;
+  align-items: center;
+  gap: 8px;
+}
+
+.connection-status b {
+  display: inline-flex;
+  min-height: 22px;
+  padding: 0 9px;
+  align-items: center;
+  border-radius: 999px;
+  font-size: var(--tap-font-secondary);
+  font-weight: 500;
+}
+
+.connection-status b[data-key-status="valid"] {
+  color: #bfe6d0;
+  background: rgba(74, 169, 116, 0.16);
+}
+
+.connection-status b[data-key-status="invalid"] {
+  color: #ff9ea6;
+  background: rgba(201, 72, 85, 0.16);
+}
+
+.connection-status b[data-key-status="unknown"],
+.connection-status b[data-key-status="unchecked"] {
+  color: #e3bd90;
+  background: rgba(184, 128, 65, 0.16);
+}
+
+.connection-status span {
+  color: #7a7a7a;
+  font-size: var(--tap-font-secondary);
+}
+
+.connection-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.connection-controls input {
+  min-width: 280px;
+  height: 34px;
+  padding: 0 10px;
+  flex: 1;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 9px;
+  outline: none;
+  color: #efefef;
+  background: #141415;
+  font-size: var(--tap-font-primary);
+}
+
+.connection-controls input:focus {
+  border-color: rgba(255, 255, 255, 0.38);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
+}
+
+.connection-controls button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  color: #c8c8c8;
+  background: rgba(255, 255, 255, 0.07);
+  cursor: pointer;
+  font-size: var(--tap-font-primary);
+}
+
+.connection-controls button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.connection-controls button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.connection-feedback {
+  margin: 0;
+  font-size: var(--tap-font-secondary);
+  line-height: 18px;
+}
+
+.connection-feedback[data-status="success"] {
+  color: #bfe6d0;
+}
+
+.connection-feedback[data-status="error"] {
+  color: #ff9ea6;
 }
 
 .provider-driver-grid {

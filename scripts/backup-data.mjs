@@ -114,6 +114,16 @@ try {
   await mkdir(join(directory, "media"));
 }
 
+const sourceSecretsDirectory = join(dataDirectory, "secrets");
+try {
+  await cp(sourceSecretsDirectory, join(directory, "secrets"), {
+    errorOnExist: true,
+    recursive: true,
+  });
+} catch (error) {
+  if (error?.code !== "ENOENT") throw error;
+}
+
 const backupDatabasePath = join(directory, "tapnow.sqlite");
 const backupDatabase = new DatabaseSync(backupDatabasePath, { readOnly: true });
 const quickCheck = backupDatabase.prepare("PRAGMA quick_check").get().quick_check;
@@ -129,6 +139,7 @@ if (quickCheck !== "ok" || schemaVersion !== currentSchemaVersion) {
 
 const databaseDetails = await stat(backupDatabasePath);
 const media = await mediaManifest(join(directory, "media"));
+const secrets = await mediaManifest(join(directory, "secrets"));
 const manifest = {
   format: 1,
   createdAt: new Date().toISOString(),
@@ -143,6 +154,9 @@ const manifest = {
   media: {
     bytes: media.reduce((total, entry) => total + entry.size, 0),
     files: media,
+  },
+  secrets: {
+    files: secrets,
   },
   source: {
     dataDirectoryName: basename(dataDirectory),

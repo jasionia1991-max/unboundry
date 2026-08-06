@@ -15,7 +15,7 @@ import { DatabaseSync } from "node:sqlite";
 import { saveGeneratedMp3 } from "../server/audioStorage";
 import { openAppDatabase } from "../server/database";
 
-const profile: ProviderProfile = {
+const profile: ProviderProfile & { apiKey: string } = {
   apiKey: "test-secret-never-returned",
   baseUrl: "https://api.mureka.ai",
   createdAt: "2026-08-02T00:00:00.000Z",
