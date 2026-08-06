@@ -61,6 +61,61 @@ export const openApiDocument = {
         },
       },
     },
+    "/api/canvas/{canvasId}/group-download": {
+      post: {
+        operationId: "downloadGroupResults",
+        summary: "Pack successful generation results of a group into a ZIP",
+        parameters: [
+          {
+            in: "path",
+            name: "canvasId",
+            required: true,
+            schema: { type: "string", pattern: "^[a-zA-Z0-9._-]+$" },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                oneOf: [
+                  {
+                    type: "object",
+                    required: ["groupId"],
+                    properties: {
+                      groupId: { type: "string", maxLength: 200 },
+                    },
+                  },
+                  {
+                    type: "object",
+                    required: ["nodeIds"],
+                    properties: {
+                      nodeIds: {
+                        type: "array",
+                        items: { type: "string", maxLength: 200 },
+                        maxItems: 500,
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "ZIP archive of successful results",
+            content: {
+              "application/zip": { schema: { type: "string", format: "binary" } },
+            },
+          },
+          "400": { description: "No results, invalid payload or over limits" },
+          "401": { description: "Sign-in required" },
+          "404": { description: "Canvas or group not found" },
+        },
+      },
+    },
     "/api/project-title/{projectId}": {
       get: {
         operationId: "readProjectTitle",

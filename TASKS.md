@@ -1,7 +1,7 @@
 # TapNow 绿地复刻当前任务
 
 更新时间：2026-08-07
-状态：`绿地画布主体已验收 / 图片与Seedance真实链路已PASS / API-001～006已PASS / 节点入参INPUT-001～005、007已PASS，INPUT-006保持PARTIAL / 多协议中转站RELAY-001～012全部PASS / 画布搜索缩放与多选打组回归已PASS / Mureka Audio真实生成暂缓 / 功能1（我的模板）已实施待验收，功能2/3待实施 / 正式部署未开始`
+状态：`绿地画布主体已验收 / 图片与Seedance真实链路已PASS / API-001～006已PASS / 节点入参INPUT-001～005、007已PASS，INPUT-006保持PARTIAL / 多协议中转站RELAY-001～012全部PASS / 画布搜索缩放与多选打组回归已PASS / Mureka Audio真实生成暂缓 / 功能1（我的模板）、功能2（批量下载）已实施待验收，功能3待实施 / 正式部署未开始`
 唯一产品目标：从空仓库完整复刻 TapNow 画布，不复用 Lumino/Lumino Web 的代码、组件、CSS、数据、后端、测试或部署。
 
 ### 2026-08-06 多项目（项目制画布）功能
@@ -767,3 +767,13 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - 小点5 封面三级规则：保存时先查画布内 success 的 image/video 生成任务（owner 过滤）→ 模板图内第一个图片/视频 assetId → 无则浅蓝渐变占位；列表返回 cover + previewImage（视频封面用 `<video>` 渲染）。
 - 验证：`tsc --noEmit` 与生产构建通过；新增 m71 专项 9 项（保存/分页/搜索/删除、非法输入、数据层 owner 隔离、封面三级、序列化器清洗/归一化/角色顺序、7 类型模板、真实画布保存→面板列出→删除、空组禁用）；相关回归 m0/m2-group/m20/m22-template/m22-group-execution/m63/m66/m69/m70 共 79/81 通过，2 项失败均为非本批问题：m0 P1 文字创作栏基线已知失败；m63「建组撤销恢复」首次运行偶发坐标时序失败、单独复跑通过（已记录为抖动）。
 - 延后问题清单：无阻塞项。m63 偶发时序抖动暂不修（低危、复跑通过、与本批无关）。
+
+### 2026-08-07 功能2：批量下载 ZIP（已实施，待用户实页验收）
+
+- 小点1 依赖：新增运行时依赖 `archiver@8.0.0`（ESM、ZipArchive）；本仓库自写最小类型声明 `types/archiver.d.ts`（官方类型缺失默认导出）。
+- 小点2 服务端 `POST /api/canvas/:id/group-download`（`server/groupDownload.ts` + vite 中间件路由）：owner 校验画布与任务；body 支持 `{groupId}` 或 `{nodeIds}`；以 `generation_tasks` 为准只查 `state='success'` 且结果非空的任务；命名“节点标题-序号.扩展名”（清洗非法字符、中文保留、80 字符上限、序号去重）；文字转 `.txt`；上限 500MB/200 个文件；空结果 400 中文提示；本地文件缺失/大小不一致跳过，OSS 结果先流式落临时盘再校验字节数（失败跳过）；跳过项写入 ZIP 内 `下载说明.txt` 并返回 `X-Download-Skipped` 头；响应流式 `application/zip` + RFC5987 文件名。
+- 小点3 GroupNode「下载全部」接入接口：真实画布 POST → blob → 浏览器下载，toast「正在打包生成结果…/下载完成/失败原因」；验收 fixture 保留原逐素材下载行为；空组禁用。
+- 小点4 集成测试：`unzip` 解包 + SHA-256 内容哈希逐项比对（image/video/audio/text 混合）、缺失文件跳过并生成说明、nodeIds 直传、空组/未知画布/非法请求、真实画布按钮点击下载。
+- OpenAPI 新增 `downloadGroupResults`（12 条路径/16 个操作），m20 契约同步。
+- 验证：`tsc --noEmit` 与生产构建通过；m72 专项 7/7；回归 m0/m2-group/m20/m22/m63/m66/m69/m70/m71/m72 共 87/88 通过（唯一失败仍为 m0 P1 基线）。
+- 延后问题清单：OSS 中途断流按“临时文件字节数不符→跳过”处理，无内存整包缓冲；极端情况下断流前的临时文件会清理。其余无阻塞项。

@@ -22,6 +22,7 @@ export default defineConfig({
     /m69-edge-selection-highlight\.spec\.ts/,
     /m70-template-placement\.spec\.ts/,
     /m71-user-templates\.spec\.ts/,
+    /m72-group-download\.spec\.ts/,
   ],
   timeout: 30_000,
   use: {

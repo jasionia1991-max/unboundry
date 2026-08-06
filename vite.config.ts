@@ -16,6 +16,7 @@ import { audioStorage } from "./server/audioStorage";
 import { videoStorage } from "./server/videoStorage";
 import { mediaMetadataApi } from "./server/mediaMetadataApi";
 import { generationTasks } from "./server/generationTasks";
+import { groupDownloadApi } from "./server/groupDownload";
 import { adminGenerationSafetyApi } from "./server/generationSafety";
 import {
   accountContextApi,
@@ -374,16 +375,20 @@ function playlistThumbnailApi(): Plugin {
 }
 
 function canvasPersistenceApi(): Plugin {
-  const handler = (
+  const canvasHandler = (
     request: Parameters<typeof canvasPersistence>[0],
     response: Parameters<typeof canvasPersistence>[1],
   ) => {
+    if (/\/group-download(?:\?|$)/i.test(request.url ?? "")) {
+      void groupDownloadApi(request, response);
+      return;
+    }
     void canvasPersistence(request, response);
   };
   return {
     name: "tapnow-canvas-persistence-api",
     configurePreviewServer(server) {
-      server.middlewares.use("/api/canvas", handler);
+      server.middlewares.use("/api/canvas", canvasHandler);
       server.middlewares.use("/api/history", (request, response) => {
         void accountHistory(request, response);
       });
@@ -407,7 +412,7 @@ function canvasPersistenceApi(): Plugin {
       });
     },
     configureServer(server) {
-      server.middlewares.use("/api/canvas", handler);
+      server.middlewares.use("/api/canvas", canvasHandler);
       server.middlewares.use("/api/history", (request, response) => {
         void accountHistory(request, response);
       });

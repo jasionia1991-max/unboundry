@@ -6093,6 +6093,10 @@ const apiOperationDetails: Record<string, { detail: string; label: string }> = {
     label: "保存项目名称",
     detail: "保存当前账号的项目名称和更新时间。",
   },
+  downloadGroupResults: {
+    label: "下载组结果",
+    detail: "把组内成功生成的结果打包为 ZIP，文字结果保存为 txt。",
+  },
 };
 
 function AdminApiContract({ currentUser }: { currentUser: AuthUser }) {

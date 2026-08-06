@@ -80,6 +80,7 @@ export function GroupNode({
   const [templateCategory, setTemplateCategory] = useState("");
   const [templateSaving, setTemplateSaving] = useState(false);
   const [templateError, setTemplateError] = useState("");
+  const [downloadBusy, setDownloadBusy] = useState(false);
   const titleControl = useCompositionSafeText({
     onCommit: (title) => {
       setNodes((nodes) =>
@@ -225,16 +226,62 @@ export function GroupNode({
     setLayoutMenu(false);
   };
 
-  const downloadAll = () => {
+  const downloadAll = async () => {
     const children = getNodes().filter((node) => node.parentId === id);
-    for (const [index, child] of children.entries()) {
-      const source =
-        child.data.imageSrc ?? child.data.videoSrc ?? child.data.audioSrc;
-      if (!source) continue;
+    if (isFixture) {
+      // 验收页不触达真实服务端，沿用逐素材下载行为供 fixture 检查。
+      for (const [index, child] of children.entries()) {
+        const source =
+          child.data.imageSrc ?? child.data.videoSrc ?? child.data.audioSrc;
+        if (!source) continue;
+        const link = document.createElement("a");
+        link.href = source;
+        link.download = `${index + 1}-${child.data.title ?? child.data.label}`;
+        link.click();
+      }
+      return;
+    }
+    if (downloadBusy) return;
+    setDownloadBusy(true);
+    notify("正在打包生成结果…");
+    try {
+      const response = await fetch(
+        `/api/canvas/${encodeURIComponent(canvasId)}/group-download`,
+        {
+          body: JSON.stringify({ groupId: id }),
+          headers: {
+            Accept: "application/zip",
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+        },
+      );
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(body.error ?? "下载失败");
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition") ?? "";
+      const filenameMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+      const filename = filenameMatch
+        ? decodeURIComponent(filenameMatch[1])
+        : "工作流结果.zip";
+      const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.href = source;
-      link.download = `${index + 1}-${child.data.title ?? child.data.label}`;
+      link.href = url;
+      link.download = filename;
       link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      notify("下载完成", "success");
+    } catch (error) {
+      notify(
+        error instanceof Error ? error.message : "下载失败",
+        "error",
+      );
+    } finally {
+      setDownloadBusy(false);
     }
   };
 
@@ -408,8 +455,11 @@ export function GroupNode({
           </button>
           <button
             aria-label="下载全部"
-            disabled={!hasDownload}
-            onClick={downloadAll}
+            data-testid="group-download-button"
+            disabled={
+              (isFixture ? !hasDownload : childCount === 0) || downloadBusy
+            }
+            onClick={() => void downloadAll()}
             type="button"
           >
             <svg aria-hidden="true" viewBox="0 0 24 24">
