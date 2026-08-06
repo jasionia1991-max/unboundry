@@ -1852,6 +1852,8 @@ export function CanvasSurface({
   const templateFitCancel = useRef<(() => void) | undefined>(undefined);
   const templateViewportAnimating = useRef(false);
   const lastAnimatedViewport = useRef<Viewport | undefined>(undefined);
+  const templateFitDeadline = useRef(0);
+  const templateFitHardStop = useRef<number | undefined>(undefined);
   const flowInstance = useRef<
     ReactFlowInstance<ProbeNodeType, CuttableEdge> | undefined
   >(undefined);
@@ -1948,6 +1950,17 @@ export function CanvasSurface({
       setUploadError("");
       return;
     }
+    // 其他命令（例如 apply-template）只清理浮层，绝不切换“添加节点”菜单。
+    const clearTransientMenus = () => {
+      setUploadError("");
+      setBlankContextMenu(undefined);
+      setNodeContextMenu(undefined);
+      setSourceConnectMenu(undefined);
+    };
+    if (shellMenuCommand.action !== "toggle-add") {
+      clearTransientMenus();
+      return;
+    }
     if (!worldRef.current) return;
     const bounds = worldRef.current.getBoundingClientRect();
     const x = Math.max(8, Math.min(80, bounds.width - 296));
@@ -1963,10 +1976,7 @@ export function CanvasSurface({
             screen: { x, y },
           },
     );
-    setUploadError("");
-    setBlankContextMenu(undefined);
-    setNodeContextMenu(undefined);
-    setSourceConnectMenu(undefined);
+    clearTransientMenus();
   }, [shellMenuCommand]);
 
   useEffect(() => {
@@ -2146,6 +2156,11 @@ export function CanvasSurface({
   canvasSnapshotRef.current = canvasSnapshot;
   const cancelTemplateFit = useCallback(() => {
     templateViewportAnimating.current = false;
+    templateFitDeadline.current = 0;
+    if (templateFitHardStop.current !== undefined) {
+      window.clearTimeout(templateFitHardStop.current);
+      templateFitHardStop.current = undefined;
+    }
     templateFitCancel.current?.();
     templateFitCancel.current = undefined;
     lastAnimatedViewport.current = undefined;
@@ -2321,6 +2336,19 @@ export function CanvasSurface({
         const startedAt = performance.now();
         let frame = 0;
         templateViewportAnimating.current = true;
+        templateFitDeadline.current = startedAt + 1_600;
+        templateFitHardStop.current = window.setTimeout(() => {
+          templateViewportAnimating.current = false;
+          templateFitHardStop.current = undefined;
+          // rAF 被节流/暂停时保存调度 effect 可能不再触发；
+          // 直接在硬性期限后补一次保存，避免“保存中”卡死。
+          const latest = canvasSnapshot();
+          if (latest.fingerprint !== persistedDocumentFingerprint.current) {
+            persistenceQueued.current = latest;
+            persistenceDirty.current = true;
+            void drainPersistenceQueueRef.current();
+          }
+        }, 1_600);
         const step = (now: number) => {
           const progress = Math.min(
             1,
@@ -2340,6 +2368,11 @@ export function CanvasSurface({
             // 最后一帧先关“动画闸门”，再提交最终镜头，确保只触发一次保存。
             templateViewportAnimating.current = false;
             templateFitCancel.current = undefined;
+            templateFitDeadline.current = 0;
+            if (templateFitHardStop.current !== undefined) {
+              window.clearTimeout(templateFitHardStop.current);
+              templateFitHardStop.current = undefined;
+            }
           }
           onViewportChange(next);
           if (progress < 1) {
@@ -2350,6 +2383,11 @@ export function CanvasSurface({
         templateFitCancel.current = () => {
           window.cancelAnimationFrame(frame);
           templateViewportAnimating.current = false;
+          templateFitDeadline.current = 0;
+          if (templateFitHardStop.current !== undefined) {
+            window.clearTimeout(templateFitHardStop.current);
+            templateFitHardStop.current = undefined;
+          }
         };
       }, 100);
     });
@@ -2924,8 +2962,11 @@ export function CanvasSurface({
       return;
     }
     if (templateViewportAnimating.current) {
-      // 镜头动画期间不触发保存调度，动画结束提交最终镜头时只保存一次。
-      return;
+      // 镜头动画期间不触发保存调度，动画结束提交最终镜头时只保存一次；
+      // 若 rAF 被节流/暂停导致动画迟迟不结束，超过硬性期限后放行保存，避免“保存中”卡死。
+      if (performance.now() < templateFitDeadline.current) return;
+      templateViewportAnimating.current = false;
+      templateFitHardStop.current = undefined;
     }
 
     const liveDocument = canvasSnapshot();
@@ -2967,17 +3008,17 @@ export function CanvasSurface({
             document: document.fingerprint,
             graph: document.graphFingerprint,
           });
+          const payload = JSON.stringify({
+            edges: document.edges,
+            nodes: document.nodes,
+            revision: persistenceRevision.current,
+            saveSequence,
+            saveSessionId: persistenceSessionId.current,
+            viewport: document.viewport,
+          });
           const response = await fetch(`/api/canvas/${persistenceId}`, {
-            body: JSON.stringify({
-              edges: document.edges,
-              nodes: document.nodes,
-              revision: persistenceRevision.current,
-              saveSequence,
-              saveSessionId: persistenceSessionId.current,
-              viewport: document.viewport,
-            }),
+            body: payload,
             headers: { "Content-Type": "application/json" },
-            keepalive: true,
             method: "PUT",
           });
           if (response.status === 409) {
@@ -3226,19 +3267,24 @@ export function CanvasSurface({
         document: latest.fingerprint,
         graph: latest.graphFingerprint,
       });
-      void fetch(`/api/canvas/${persistenceId}`, {
-        body: JSON.stringify({
-          edges: latest.edges,
-          nodes: latest.nodes,
-          revision: persistenceRevision.current,
-          saveSequence,
-          saveSessionId: persistenceSessionId.current,
-          viewport: latest.viewport,
-        }),
-        headers: { "Content-Type": "application/json" },
-        keepalive: true,
-        method: "PUT",
+      // keepalive 有约 64KB 的浏览器硬上限，超限会直接失败；
+      // 页面卸载时的兜底保存只在小负载下尽力而为，大负载依赖常规防抖保存。
+      const payload = JSON.stringify({
+        edges: latest.edges,
+        nodes: latest.nodes,
+        revision: persistenceRevision.current,
+        saveSequence,
+        saveSessionId: persistenceSessionId.current,
+        viewport: latest.viewport,
       });
+      if (new Blob([payload]).size <= 60 * 1024) {
+        void fetch(`/api/canvas/${persistenceId}`, {
+          body: payload,
+          headers: { "Content-Type": "application/json" },
+          keepalive: true,
+          method: "PUT",
+        }).catch(() => {});
+      }
     };
     window.addEventListener("pagehide", flushBeforeReload);
     return () => window.removeEventListener("pagehide", flushBeforeReload);

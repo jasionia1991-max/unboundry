@@ -207,6 +207,7 @@ test("importing a template on a real project centers it and settles the save sta
     .filter({ hasText: "电商详情页工作流" })
     .click();
   await expect.poll(() => world.getAttribute("data-node-count")).toBe("12");
+  await expect(page.getByTestId("add-node-menu")).toHaveCount(0);
 
   let lastViewport = "";
   await expect
