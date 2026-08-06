@@ -26,9 +26,11 @@ export type GenerationSafetySettings = {
   perUserConcurrency: number;
   requestsPerMinute: number;
   runningTaskPolicy: RunningTaskPolicy;
+  singleTaskDefaultCostCnyMicrounits: number;
   textConcurrency: number;
   unknownCostPolicy: "block";
   updatedAt: string;
+  usdToCnyRateMicrounits: number;
   videoConcurrency: number;
 };
 
@@ -48,6 +50,26 @@ export type GenerationAdmission =
       message: string;
     };
 
+/**
+ * A model's own per-task cap wins when set; otherwise the global default
+ * applies. USD defaults are converted from the CNY default with the editable
+ * exchange rate. One shared helper keeps the model catalog, the submit path
+ * and the paid-model safety checks on the same value.
+ */
+export function effectiveSingleTaskCostMicrounits(
+  model: { cost_currency: "CNY" | "USD"; max_cost_microunits: number },
+  safety: GenerationSafetySettings,
+) {
+  if (model.max_cost_microunits > 0) return model.max_cost_microunits;
+  if (model.cost_currency === "CNY") {
+    return safety.singleTaskDefaultCostCnyMicrounits;
+  }
+  return Math.round(
+    safety.singleTaskDefaultCostCnyMicrounits * 1_000_000 /
+      Math.max(safety.usdToCnyRateMicrounits, 1),
+  );
+}
+
 type SafetyRow = {
   audio_concurrency: number;
   cooldown_minutes: number;
@@ -62,9 +84,11 @@ type SafetyRow = {
   per_user_concurrency: number;
   requests_per_minute: number;
   running_task_policy: RunningTaskPolicy;
+  single_task_default_cost_cny_microunits: number;
   text_concurrency: number;
   unknown_cost_policy: "block";
   updated_at: string;
+  usd_to_cny_rate_microunits: number;
   video_concurrency: number;
 };
 
@@ -120,9 +144,13 @@ function toSettings(row: SafetyRow): GenerationSafetySettings {
     perUserConcurrency: Number(row.per_user_concurrency),
     requestsPerMinute: Number(row.requests_per_minute),
     runningTaskPolicy: row.running_task_policy,
+    singleTaskDefaultCostCnyMicrounits: Number(
+      row.single_task_default_cost_cny_microunits,
+    ),
     textConcurrency: Number(row.text_concurrency),
     unknownCostPolicy: "block",
     updatedAt: row.updated_at,
+    usdToCnyRateMicrounits: Number(row.usd_to_cny_rate_microunits),
     videoConcurrency: Number(row.video_concurrency),
   };
 }
@@ -212,11 +240,23 @@ function cleanSettings(input: Partial<SafetyInput>): SafetyInput {
       "请求频率",
     ),
     runningTaskPolicy: input.runningTaskPolicy as RunningTaskPolicy,
+    singleTaskDefaultCostCnyMicrounits: cleanInteger(
+      input.singleTaskDefaultCostCnyMicrounits ?? 0,
+      0,
+      1_000_000_000_000,
+      "单次任务默认费用",
+    ),
     textConcurrency: cleanInteger(
       input.textConcurrency,
       1,
       20,
       "文字并发",
+    ),
+    usdToCnyRateMicrounits: cleanInteger(
+      input.usdToCnyRateMicrounits ?? 7_200_000,
+      10_000,
+      1_000_000_000_000,
+      "美元汇率",
     ),
     videoConcurrency: cleanInteger(
       input.videoConcurrency,
@@ -240,7 +280,10 @@ export function createGenerationSafetyStore(
   }
 
   function update(input: Partial<SafetyInput>) {
-    const clean = cleanSettings(input);
+    // Legacy clients and old tests may PUT a settings object without the
+    // global-budget fields. Missing fields keep their current stored value
+    // instead of being silently reset to defaults.
+    const clean = cleanSettings({ ...settings(), ...input });
     const timestamp = new Date().toISOString();
     database
       .prepare(`
@@ -261,6 +304,8 @@ export function createGenerationSafetyStore(
           failure_threshold = ?,
           cooldown_minutes = ?,
           running_task_policy = ?,
+          single_task_default_cost_cny_microunits = ?,
+          usd_to_cny_rate_microunits = ?,
           updated_at = ?
         WHERE id = 1
       `)
@@ -280,6 +325,8 @@ export function createGenerationSafetyStore(
         clean.failureThreshold,
         clean.cooldownMinutes,
         clean.runningTaskPolicy,
+        clean.singleTaskDefaultCostCnyMicrounits,
+        clean.usdToCnyRateMicrounits,
         timestamp,
       );
     return settings();
@@ -431,31 +478,82 @@ export function createGenerationSafetyStore(
       .prepare(`
         SELECT
           COALESCE(SUM(
-            CASE WHEN created_at >= ? THEN actual_cost_microunits ELSE 0 END
+            CASE
+              WHEN cost_currency = 'CNY' AND created_at >= ?
+              THEN actual_cost_microunits ELSE 0
+            END
           ), 0) AS daily,
           COALESCE(SUM(
-            CASE WHEN created_at >= ? THEN actual_cost_microunits ELSE 0 END
+            CASE
+              WHEN cost_currency = 'USD' AND created_at >= ?
+              THEN actual_cost_microunits ELSE 0
+            END
+          ), 0) AS usd_daily,
+          COALESCE(SUM(
+            CASE
+              WHEN cost_currency = 'CNY' AND created_at >= ?
+              THEN actual_cost_microunits ELSE 0
+            END
+          ), 0) AS cny_monthly,
+          COALESCE(SUM(
+            CASE
+              WHEN cost_currency = 'USD' AND created_at >= ?
+              THEN actual_cost_microunits ELSE 0
+            END
           ), 0) AS monthly
         FROM generation_tasks
-        WHERE actual_cost_microunits IS NOT NULL AND cost_currency = ?
+        WHERE actual_cost_microunits IS NOT NULL
       `)
-      .get(dayStart.toISOString(), monthStart.toISOString(), costCurrency) as {
-      daily: number;
-      monthly: number;
-    };
-    const dailyLimit = costCurrency === "CNY"
-      ? row.daily_cost_limit_cny_microunits
-      : row.daily_cost_limit_microunits;
-    const monthlyLimit = costCurrency === "CNY"
-      ? row.monthly_cost_limit_cny_microunits
-      : row.monthly_cost_limit_microunits;
+      .get(
+        dayStart.toISOString(),
+        dayStart.toISOString(),
+        monthStart.toISOString(),
+        monthStart.toISOString(),
+      ) as {
+        daily: number;
+        monthly: number;
+        usd_daily: number;
+        cny_monthly: number;
+      };
+    const estimated = input.estimatedCostMicrounits;
+    const cnyDailyLimit = Number(row.daily_cost_limit_cny_microunits);
+    const cnyMonthlyLimit = Number(row.monthly_cost_limit_cny_microunits);
+    const rate = Math.max(Number(row.usd_to_cny_rate_microunits), 1);
+    const usdDailyLimit = cnyDailyLimit === 0
+      ? 0
+      : Math.round(cnyDailyLimit * 1_000_000 / rate);
+    const usdMonthlyLimit = cnyMonthlyLimit === 0
+      ? 0
+      : Math.round(cnyMonthlyLimit * 1_000_000 / rate);
+    const estimatedCny = costCurrency === "CNY"
+      ? estimated
+      : Math.round(estimated * rate / 1_000_000);
+    const estimatedUsd = costCurrency === "USD"
+      ? estimated
+      : Math.round(estimated * 1_000_000 / rate);
+    const usdToCny = (usd: number) =>
+      Math.round(usd * rate / 1_000_000);
+    const overLimit = (spent: number, extra: number, limit: number) =>
+      limit === 0 || spent + extra > limit;
+    const cnyDaily = Number(costs.daily);
+    const usdDaily = Number(costs.usd_daily);
+    const cnyMonthly = Number(costs.cny_monthly);
+    const usdMonthly = Number(costs.monthly);
     if (
-      dailyLimit === 0 ||
-      monthlyLimit === 0 ||
-      Number(costs.daily) + input.estimatedCostMicrounits >
-        dailyLimit ||
-      Number(costs.monthly) + input.estimatedCostMicrounits >
-        monthlyLimit
+      overLimit(cnyDaily, estimatedCny, cnyDailyLimit) ||
+      overLimit(cnyMonthly, estimatedCny, cnyMonthlyLimit) ||
+      overLimit(usdDaily, estimatedUsd, usdDailyLimit) ||
+      overLimit(usdMonthly, estimatedUsd, usdMonthlyLimit) ||
+      overLimit(
+        cnyDaily + usdToCny(usdDaily),
+        estimatedCny,
+        cnyDailyLimit,
+      ) ||
+      overLimit(
+        cnyMonthly + usdToCny(usdMonthly),
+        estimatedCny,
+        cnyMonthlyLimit,
+      )
     ) {
       return {
         allowed: false,
@@ -512,7 +610,6 @@ function providerStatus() {
       WHERE
         model_profiles.status = 'published'
         AND model_profiles.capability IN ('image', 'video')
-        AND model_profiles.max_cost_microunits > 0
         AND provider_profiles.status = 'enabled'
         AND node_model_bindings.enabled = 1
         AND (

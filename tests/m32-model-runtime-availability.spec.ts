@@ -9,7 +9,6 @@ const readyImage: ModelRuntimeAvailabilityInput = {
   costCurrency: "USD",
   emergencyStop: false,
   globalEnabled: true,
-  maxCostMicrounits: 5_000_000,
   providerDriver: "openrouter",
   providerModelId: "openai/gpt-image-2",
   providerStatus: "enabled",
@@ -52,10 +51,6 @@ test("model runtime reasons are stable, Chinese, and Provider-request free", () 
           modelConfigurationUpdatedAt: "2026-08-03T03:37:27.000Z",
           providerConfigurationUpdatedAt: "2026-08-03T03:37:26.000Z",
         },
-      },
-      {
-        expectedCode: "COST_LIMIT_NOT_CONFIGURED",
-        input: { ...readyImage, maxCostMicrounits: 0 },
       },
       {
         expectedCode: "EMERGENCY_STOP",
@@ -162,7 +157,6 @@ test("the shipped Doubao Seed text adapter uses the same runtime gates", () => {
     costCurrency: "CNY",
     emergencyStop: false,
     globalEnabled: true,
-    maxCostMicrounits: 5_000_000,
     providerDriver: "volcengine-ark",
     providerModelId: "doubao-seed-2-0-lite-260428",
     providerStatus: "enabled",
@@ -186,7 +180,6 @@ test("platform stop reasons stay consistent even when model setup also needs wor
   expect(evaluateModelRuntimeAvailability({
     ...readyImage,
     globalEnabled: false,
-    maxCostMicrounits: 0,
     providerModelId: "unsupported/image-model",
     providerStatus: "disabled",
     storedProviderDriver: undefined,

@@ -3,7 +3,11 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { imageReferenceForProvider, saveGeneratedPng } from "./assetStorage";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
-import { createGenerationSafetyStore, generationSafetyStatus } from "./generationSafety";
+import {
+  createGenerationSafetyStore,
+  effectiveSingleTaskCostMicrounits,
+  generationSafetyStatus,
+} from "./generationSafety";
 import {
   createGenerationTaskStore,
   failRecoveredGenerationTasks,
@@ -670,7 +674,6 @@ async function generationRuntimeDecision(input: {
       input.model.latest_capability_success_at ?? undefined,
     latestProviderAttemptAt:
       input.model.latest_provider_attempt_at ?? undefined,
-    maxCostMicrounits: input.model.max_cost_microunits,
     latestAuthFailureAt: input.model.latest_auth_failure_at ?? undefined,
     modelConfigurationUpdatedAt: input.model.model_configuration_updated_at,
     providerDriver: input.model.provider_driver,
@@ -685,10 +688,14 @@ async function generationRuntimeDecision(input: {
     storedProviderDriver: storedProfile?.driver,
   });
   const safety = createGenerationSafetyStore();
+  const effectiveCost = effectiveSingleTaskCostMicrounits(
+    input.model,
+    safetyStatus,
+  );
   const safetyAdmission = (() => {
     try {
       return safety.admission({
-        estimatedCostMicrounits: input.model.max_cost_microunits,
+        estimatedCostMicrounits: effectiveCost,
         costCurrency: input.model.cost_currency,
         kind: input.kind,
         ownerId: input.ownerId,
@@ -713,7 +720,7 @@ async function generationRuntimeDecision(input: {
       safetyAdmission.allowed,
     costCurrency: input.model.cost_currency,
     enqueueProblem,
-    estimatedCostMicrounits: input.model.max_cost_microunits,
+    estimatedCostMicrounits: effectiveCost,
     ...availability,
     provider: {
       adapterSupported,
@@ -758,6 +765,10 @@ function strictGenerationPreflight(input: {
   requireFreshRevision: boolean;
   targetKind: NodeInputKind;
 }): StrictGenerationPreflight {
+  const effectiveCost = effectiveSingleTaskCostMicrounits(
+    input.model,
+    generationSafetyStatus(),
+  );
   const schema = generationModelSchema(input.targetKind, input.model);
   const submittedParameters = { ...(input.body.parameters ?? {}) };
   delete submittedParameters.references;
@@ -787,7 +798,7 @@ function strictGenerationPreflight(input: {
 
   const paidArkVideo = input.targetKind === "video" &&
     input.model.provider_driver === "volcengine-ark" &&
-    input.model.max_cost_microunits > 0 &&
+    effectiveCost > 0 &&
     modelGenerationAdapterSupported({
       capability: "video",
       costCurrency: input.model.cost_currency,
@@ -797,7 +808,7 @@ function strictGenerationPreflight(input: {
     });
   const paidArkText = input.targetKind === "text" &&
     input.model.provider_driver === "volcengine-ark" &&
-    input.model.max_cost_microunits > 0 &&
+    effectiveCost > 0 &&
     modelGenerationAdapterSupported({
       capability: "text",
       costCurrency: input.model.cost_currency,
@@ -807,7 +818,7 @@ function strictGenerationPreflight(input: {
     });
   const paidMurekaAudio = input.targetKind === "audio" &&
     input.model.provider_driver === "mureka" &&
-    input.model.max_cost_microunits > 0 &&
+    effectiveCost > 0 &&
     modelGenerationAdapterSupported({
       capability: "audio",
       costCurrency: input.model.cost_currency,
@@ -1168,7 +1179,6 @@ async function generationAvailability() {
           row.latest_capability_success_at ?? undefined,
         latestProviderAttemptAt:
           row.latest_provider_attempt_at ?? undefined,
-        maxCostMicrounits: row.max_cost_microunits,
         latestAuthFailureAt: row.latest_auth_failure_at ?? undefined,
         modelConfigurationUpdatedAt: row.model_configuration_updated_at,
         providerDriver: row.provider_driver,
@@ -3233,7 +3243,10 @@ export async function generationTasks(
       const created = taskStore().create({
         canvasId: String(body.canvasId ?? ""),
         expectedCanvasRevision: body.canvasRevision,
-        estimatedCostMicrounits: model.max_cost_microunits,
+        estimatedCostMicrounits: effectiveSingleTaskCostMicrounits(
+          model,
+          generationSafetyStatus(),
+        ),
         costCurrency: model.cost_currency,
         idempotencyKey: String(body.idempotencyKey || randomUUID()),
         kind: body.kind,

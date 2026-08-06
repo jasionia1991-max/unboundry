@@ -3,7 +3,10 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
-import { generationSafetyStatus } from "./generationSafety";
+import {
+  effectiveSingleTaskCostMicrounits,
+  generationSafetyStatus,
+} from "./generationSafety";
 import {
   evaluateModelRuntimeAvailability,
   type ModelRuntimeAvailability,
@@ -270,6 +273,13 @@ function adminModel(
     displayName: row.display_name,
     enabled: Boolean(row.enabled),
     ...availability,
+    effectiveMaxCostMicrounits: effectiveSingleTaskCostMicrounits(
+      {
+        cost_currency: row.cost_currency,
+        max_cost_microunits: row.max_cost_microunits,
+      },
+      generationSafetyStatus(),
+    ),
     id: row.id,
     isDefault: Boolean(row.is_default),
     maxCostMicrounits: Number(row.max_cost_microunits),
@@ -406,7 +416,6 @@ async function modelRuntimeAvailability(rows: ModelRow[]) {
         latestProviderAttemptAt:
           row.latest_provider_attempt_at ?? undefined,
         latestAuthFailureAt: row.latest_auth_failure_at ?? undefined,
-        maxCostMicrounits: Number(row.max_cost_microunits),
         modelConfigurationUpdatedAt: row.model_configuration_updated_at,
         providerDriver: row.provider_driver,
         providerModelId: row.provider_model_id,

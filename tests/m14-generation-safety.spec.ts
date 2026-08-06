@@ -14,16 +14,20 @@ const imageProviderId = "provider-image-test";
 const baseSettings = {
   audioConcurrency: 1,
   cooldownMinutes: 30,
+  dailyCostLimitCnyMicrounits: 10_000_000,
   dailyCostLimitMicrounits: 10_000_000,
   emergencyStop: false,
   failureThreshold: 3,
   globalEnabled: true,
   imageConcurrency: 1,
+  monthlyCostLimitCnyMicrounits: 10_000_000,
   monthlyCostLimitMicrounits: 10_000_000,
   perUserConcurrency: 1,
   requestsPerMinute: 10,
   runningTaskPolicy: "wait" as const,
+  singleTaskDefaultCostCnyMicrounits: 20_000_000,
   textConcurrency: 1,
+  usdToCnyRateMicrounits: 7_200_000,
   videoConcurrency: 1,
 };
 
@@ -86,7 +90,9 @@ test("generation safety blocks globally, by cost, frequency, concurrency and fai
       emergencyStop: false,
       globalEnabled: false,
       monthlyCostLimitMicrounits: 0,
+      singleTaskDefaultCostCnyMicrounits: 20_000_000,
       unknownCostPolicy: "block",
+      usdToCnyRateMicrounits: 7_200_000,
     });
     expect(
       safety.admission({
@@ -186,8 +192,8 @@ test("generation safety blocks globally, by cost, frequency, concurrency and fai
 
     safety.update({
       ...baseSettings,
-      dailyCostLimitMicrounits: 100_000_000,
-      monthlyCostLimitMicrounits: 100_000_000,
+      dailyCostLimitCnyMicrounits: 100_000_000,
+      monthlyCostLimitCnyMicrounits: 100_000_000,
       perUserConcurrency: 5,
       requestsPerMinute: 1,
     });
@@ -202,8 +208,8 @@ test("generation safety blocks globally, by cost, frequency, concurrency and fai
 
     safety.update({
       ...baseSettings,
-      dailyCostLimitMicrounits: 100_000_000,
-      monthlyCostLimitMicrounits: 100_000_000,
+      dailyCostLimitCnyMicrounits: 100_000_000,
+      monthlyCostLimitCnyMicrounits: 100_000_000,
       perUserConcurrency: 5,
       requestsPerMinute: 10,
     });
@@ -433,7 +439,10 @@ test("administrator safety center is visible without Provider requests", async (
 }) => {
   const providerRequests: string[] = [];
   page.on("request", (requestEvent) => {
-    if (/provider/i.test(requestEvent.url())) {
+    if (
+      /provider/i.test(requestEvent.url()) &&
+      !requestEvent.url().includes("/src/")
+    ) {
       providerRequests.push(requestEvent.url());
     }
   });
@@ -444,8 +453,8 @@ test("administrator safety center is visible without Provider requests", async (
   await expect(page.getByTestId("generation-global-toggle")).toHaveText(
     "开启总开关",
   );
-  await expect(page.getByLabel("每日上限（美元）")).toHaveValue("0");
-  await expect(page.getByLabel("每月上限（美元）")).toHaveValue("0");
+  await expect(page.getByLabel("每日全局预算（¥）")).toHaveValue("0");
+  await expect(page.getByLabel("每月全局预算（¥）")).toHaveValue("0");
   await expect(page.getByTestId("running-task-policy")).toContainText(
     "等待完成",
   );
@@ -462,4 +471,109 @@ test("administrator safety center is visible without Provider requests", async (
   await expect(page.getByText("紧急停止已解除")).toBeVisible();
   await page.getByTestId("generation-global-toggle").click();
   await expect(page.getByText("真实生成总开关关闭")).toBeVisible();
+});
+
+test("global budget derives the USD line and enforces the merged total", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-safety-global-"));
+  const safety = createGenerationSafetyStore(dataDirectory);
+  const database = openAppDatabase(dataDirectory);
+  try {
+    safety.update({
+      ...baseSettings,
+      dailyCostLimitCnyMicrounits: 100_000_000,
+      monthlyCostLimitCnyMicrounits: 1_000_000_000,
+      perUserConcurrency: 20,
+      requestsPerMinute: 120,
+    });
+
+    // Derived USD daily line: ¥100 / 7.2 = $13.888…
+    expect(
+      safety.admission({
+        estimatedCostMicrounits: 10_000_000,
+        kind: "image",
+        ownerId: "global-owner",
+        providerProfileId: "global-provider",
+      }),
+    ).toEqual({ allowed: true, code: "ALLOWED" });
+    expect(
+      safety.admission({
+        estimatedCostMicrounits: 20_000_000,
+        kind: "image",
+        ownerId: "global-owner",
+        providerProfileId: "global-provider",
+      }),
+    ).toMatchObject({ allowed: false, code: "COST_LIMIT" });
+
+    // Seed CNY ¥60 + USD $5 (≈¥36) actuals; a new CNY ¥5 task pushes the
+    // merged total to ¥101, over the ¥100 global budget, even though each
+    // currency line is still within its own limit.
+    const now = new Date().toISOString();
+    const insertActual = database.prepare(`
+      INSERT INTO generation_tasks (
+        id, canvas_id, node_id, kind, prompt, model, parameters,
+        idempotency_key, request_fingerprint, state, attempt,
+        error_code, error_message, created_at, updated_at, owner_id,
+        estimated_cost_microunits, actual_cost_microunits,
+        cost_currency, provider_profile_id
+      )
+      VALUES (?, ?, ?, 'image', 'test', NULL, '{}', ?, ?, 'success', 0,
+        NULL, NULL, ?, ?, ?, NULL, ?, ?, ?)
+    `);
+    insertActual.run(
+      "global-cny",
+      "canvas-global",
+      "node-cny",
+      "key-cny",
+      "fingerprint-cny",
+      now,
+      now,
+      "global-owner",
+      60_000_000,
+      "CNY",
+      "global-provider",
+    );
+    insertActual.run(
+      "global-usd",
+      "canvas-global",
+      "node-usd",
+      "key-usd",
+      "fingerprint-usd",
+      now,
+      now,
+      "global-owner",
+      5_000_000,
+      "USD",
+      "global-provider",
+    );
+    expect(
+      safety.admission({
+        estimatedCostMicrounits: 5_000_000,
+        costCurrency: "CNY",
+        kind: "image",
+        ownerId: "global-owner",
+        providerProfileId: "global-provider",
+      }),
+    ).toMatchObject({ allowed: false, code: "COST_LIMIT" });
+  } finally {
+    database.close();
+    safety.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("legacy settings updates without global fields keep current values", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-safety-legacy-"));
+  const safety = createGenerationSafetyStore(dataDirectory);
+  try {
+    safety.update({ ...baseSettings });
+    safety.update({ globalEnabled: true });
+    const settings = safety.settings();
+    expect(settings.singleTaskDefaultCostCnyMicrounits).toBe(20_000_000);
+    expect(settings.usdToCnyRateMicrounits).toBe(7_200_000);
+    expect(settings.dailyCostLimitCnyMicrounits).toBe(10_000_000);
+    expect(settings.monthlyCostLimitCnyMicrounits).toBe(10_000_000);
+  } finally {
+    safety.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
 });

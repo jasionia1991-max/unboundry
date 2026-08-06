@@ -714,7 +714,6 @@ export const openApiDocument = {
                     "PROVIDER_PROFILE_MISSING",
                     "PROVIDER_DRIVER_MISMATCH",
                     "PROVIDER_REVERIFY_REQUIRED",
-                    "COST_LIMIT_NOT_CONFIGURED",
                     "EMERGENCY_STOP",
                     "GLOBAL_GENERATION_DISABLED",
                     null,

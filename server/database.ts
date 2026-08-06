@@ -1200,6 +1200,25 @@ const migrations: readonly Migration[] = [
       WHERE id = 'default' AND is_project = 0;
     `,
   },
+  {
+    version: 27,
+    name: "global-cost-budget",
+    prepare(database) {
+      addColumnIfMissing(
+        database,
+        "generation_safety_settings",
+        "single_task_default_cost_cny_microunits",
+        "INTEGER NOT NULL DEFAULT 20000000 CHECK (single_task_default_cost_cny_microunits BETWEEN 0 AND 1000000000000)",
+      );
+      addColumnIfMissing(
+        database,
+        "generation_safety_settings",
+        "usd_to_cny_rate_microunits",
+        "INTEGER NOT NULL DEFAULT 7200000 CHECK (usd_to_cny_rate_microunits BETWEEN 10000 AND 1000000000000)",
+      );
+    },
+    sql: "",
+  },
 ];
 
 export const currentSchemaVersion = migrations.at(-1)?.version ?? 0;

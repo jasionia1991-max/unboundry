@@ -64,6 +64,7 @@ type AdminModel = {
   deleteBlockedReason?: string;
   displayName: string;
   enabled: boolean;
+  effectiveMaxCostMicrounits?: number;
   everPublished?: boolean;
   id: string;
   isDefault: boolean;
@@ -246,20 +247,22 @@ type StorageTestFeedback = {
 type GenerationSafetySettings = {
   audioConcurrency: number;
   cooldownMinutes: number;
-  dailyCostLimitMicrounits: number;
   dailyCostLimitCnyMicrounits: number;
+  dailyCostLimitMicrounits: number;
   emergencyStop: boolean;
   failureThreshold: number;
   globalEnabled: boolean;
   imageConcurrency: number;
-  monthlyCostLimitMicrounits: number;
   monthlyCostLimitCnyMicrounits: number;
+  monthlyCostLimitMicrounits: number;
   perUserConcurrency: number;
   requestsPerMinute: number;
   runningTaskPolicy: "cancel" | "wait";
+  singleTaskDefaultCostCnyMicrounits: number;
   textConcurrency: number;
   unknownCostPolicy: "block";
   updatedAt: string;
+  usdToCnyRateMicrounits: number;
   videoConcurrency: number;
 };
 
@@ -4721,7 +4724,7 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
               schema={parameterSchema}
             />
             <label className="model-cost-field">
-              <span>单次费用保护（{selectedCurrencyLabel}）</span>
+              <span>单次费用保护（{selectedCurrencyLabel}，留空使用全局默认）</span>
               <input
                 max="100"
                 min="0"
@@ -4730,7 +4733,7 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
                 type="number"
                 value={maxCostValue}
               />
-              <small>填0会继续禁止真实生成；这是单次最高预留额度，不是实际扣费。</small>
+              <small>留空/0 表示使用全局默认单次上限；这是单次最高预留额度，不是实际扣费。</small>
             </label>
             <label className="model-publish-check">
               <input
@@ -4814,7 +4817,7 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
                   单次费用保护：
                   {model.maxCostMicrounits > 0
                     ? `${model.costCurrency === "CNY" ? "¥" : "$"}${(model.maxCostMicrounits / 1_000_000).toFixed(2)}`
-                    : "未设置（生成禁用）"}
+                    : `未设置（使用全局默认 ${model.costCurrency === "CNY" ? "¥" : "$"}${((model.effectiveMaxCostMicrounits ?? 0) / 1_000_000).toFixed(2)}）`}
                   <br />
                   可调参数：
                   {model.parameterSchema.fields.length
@@ -4881,11 +4884,13 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
                 ) : (
                   <>
                     <label className="model-cost-inline-field">
-                      <span>单次上限（{model.costCurrency === "CNY" ? "人民币" : "美元"}）</span>
+                      <span>单次上限（{model.costCurrency === "CNY" ? "人民币" : "美元"}，留空用全局默认）</span>
                       <input
                         aria-label={`${model.displayName}单次费用保护（${model.costCurrency === "CNY" ? "人民币" : "美元"}）`}
                         className="model-cost-inline"
-                        defaultValue={(model.maxCostMicrounits / 1_000_000).toFixed(2)}
+                        defaultValue={model.maxCostMicrounits > 0
+                          ? (model.maxCostMicrounits / 1_000_000).toFixed(2)
+                          : ""}
                         max="100"
                         min="0"
                         onBlur={(event) => {
@@ -4898,6 +4903,7 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
                         }}
                         step="0.01"
                         type="number"
+                        placeholder="使用全局默认"
                       />
                     </label>
                     <button
@@ -5659,12 +5665,23 @@ function AdminGenerationSafety({
       | "dailyCostLimitMicrounits"
       | "monthlyCostLimitMicrounits"
       | "dailyCostLimitCnyMicrounits"
-      | "monthlyCostLimitCnyMicrounits",
+      | "monthlyCostLimitCnyMicrounits"
+      | "singleTaskDefaultCostCnyMicrounits",
     value: string,
   ) => {
     const microunits = Math.round(Number(value || 0) * 1_000_000);
     setDraft((current) =>
       current ? { ...current, [key]: microunits } : current,
+    );
+  };
+
+  const setRate = (value: string) => {
+    const microunits = Math.max(
+      10_000,
+      Math.round(Number(value || 7.2) * 1_000_000),
+    );
+    setDraft((current) =>
+      current ? { ...current, usdToCnyRateMicrounits: microunits } : current,
     );
   };
 
@@ -5869,43 +5886,13 @@ function AdminGenerationSafety({
               <div className="safety-section-heading">
                 <div>
                   <span>用户端不显示额度</span>
-                  <h2>费用停止线</h2>
+                  <h2>全局额度（人民币）</h2>
                 </div>
-                <b>0 即阻止对应币种</b>
+                <b>0 即阻止所有生成</b>
               </div>
               <div className="safety-field-grid">
                 <label>
-                  <span>每日上限（美元）</span>
-                  <input
-                    min={0}
-                    onChange={(event) =>
-                      setCost(
-                        "dailyCostLimitMicrounits",
-                        event.target.value,
-                      )
-                    }
-                    step="0.01"
-                    type="number"
-                    value={draft.dailyCostLimitMicrounits / 1_000_000}
-                  />
-                </label>
-                <label>
-                  <span>每月上限（美元）</span>
-                  <input
-                    min={0}
-                    onChange={(event) =>
-                      setCost(
-                        "monthlyCostLimitMicrounits",
-                        event.target.value,
-                      )
-                    }
-                    step="0.01"
-                    type="number"
-                    value={draft.monthlyCostLimitMicrounits / 1_000_000}
-                  />
-                </label>
-                <label>
-                  <span>每日上限（人民币）</span>
+                  <span>每日全局预算（¥）</span>
                   <input
                     min={0}
                     onChange={(event) =>
@@ -5920,7 +5907,7 @@ function AdminGenerationSafety({
                   />
                 </label>
                 <label>
-                  <span>每月上限（人民币）</span>
+                  <span>每月全局预算（¥）</span>
                   <input
                     min={0}
                     onChange={(event) =>
@@ -5934,9 +5921,43 @@ function AdminGenerationSafety({
                     value={draft.monthlyCostLimitCnyMicrounits / 1_000_000}
                   />
                 </label>
+                <label>
+                  <span>单次任务默认上限（¥）</span>
+                  <input
+                    min={0}
+                    onChange={(event) =>
+                      setCost(
+                        "singleTaskDefaultCostCnyMicrounits",
+                        event.target.value,
+                      )
+                    }
+                    step="0.01"
+                    type="number"
+                    value={draft.singleTaskDefaultCostCnyMicrounits / 1_000_000}
+                  />
+                </label>
+                <label>
+                  <span>汇率：1 美元 = ? 人民币</span>
+                  <input
+                    min={0.01}
+                    onChange={(event) => setRate(event.target.value)}
+                    step="0.01"
+                    type="number"
+                    value={draft.usdToCnyRateMicrounits / 1_000_000}
+                  />
+                </label>
               </div>
               <p className="safety-help">
-                无法确定费用的任务始终在调用Provider前阻止，不能无限放行。
+                美元任务按汇率折算进同一预算：每日美元线 ≈ $
+                {(draft.dailyCostLimitCnyMicrounits /
+                  Math.max(draft.usdToCnyRateMicrounits, 1)).toFixed(2)}
+                ，每月美元线 ≈ $
+                {(draft.monthlyCostLimitCnyMicrounits /
+                  Math.max(draft.usdToCnyRateMicrounits, 1)).toFixed(2)}
+                。历史成本仍按原币种记录，不会重算。
+              </p>
+              <p className="safety-help">
+                模型未单独设置单次费用时，使用上面的“单次任务默认上限”；无法确定费用的任务始终在调用前阻止。
               </p>
             </section>
             <section className="admin-card">

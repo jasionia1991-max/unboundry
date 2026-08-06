@@ -12,7 +12,6 @@ export type ModelGenerationUnavailableReasonCode =
   | "PROVIDER_PROFILE_MISSING"
   | "PROVIDER_DRIVER_MISMATCH"
   | "PROVIDER_REVERIFY_REQUIRED"
-  | "COST_LIMIT_NOT_CONFIGURED"
   | "EMERGENCY_STOP"
   | "GLOBAL_GENERATION_DISABLED";
 
@@ -29,7 +28,6 @@ export type ModelRuntimeAvailabilityInput = {
   globalEnabled: boolean;
   latestCapabilitySuccessAt?: string;
   latestProviderAttemptAt?: string;
-  maxCostMicrounits: number;
   latestAuthFailureAt?: string;
   modelConfigurationUpdatedAt?: string;
   providerDriver: string;
@@ -185,15 +183,6 @@ export function evaluateModelRuntimeAvailability(
         `${capabilityName}模型配置更新后的恢复尝试已使用，请等待结果或由管理员再次更新配置`,
       );
     }
-  }
-  if (
-    !Number.isSafeInteger(input.maxCostMicrounits) ||
-    input.maxCostMicrounits <= 0
-  ) {
-    return unavailable(
-      "COST_LIMIT_NOT_CONFIGURED",
-      "管理员尚未设置模型单次费用上限",
-    );
   }
   return {
     generationAvailable: true,
