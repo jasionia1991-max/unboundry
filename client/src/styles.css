@@ -5433,6 +5433,36 @@ sup {
   stroke-dasharray: 0;
 }
 
+.connected-to-selected-node .react-flow__edge-path {
+  stroke: rgba(255, 255, 255, 0.68);
+  stroke-width: 1.25;
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.1));
+  transition: stroke 180ms ease;
+}
+
+.edge-selection-flow {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.92);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 8 128;
+  pointer-events: none;
+  animation: edge-selection-flow 1.8s linear infinite;
+}
+
+@keyframes edge-selection-flow {
+  to {
+    stroke-dashoffset: -136;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .edge-selection-flow {
+    display: none;
+    animation: none;
+  }
+}
+
 .canvas-world .react-flow__viewport {
   isolation: isolate;
 }

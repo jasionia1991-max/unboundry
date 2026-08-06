@@ -56,6 +56,11 @@ import {
   canvasGraphFingerprint,
 } from "./canvasDocumentFingerprint";
 import { zoomViewportAtScreenPoint } from "./viewportMath";
+import {
+  connectedEdgeFlowDirections,
+  selectionFlowAnimatedEdgeIds,
+  stripSelectionFlowMarkers,
+} from "./selectionFlow";
 import { GenerationCanvasContext } from "../generation/GenerationCanvasContext";
 import { WorkflowExecutionProvider } from "../generation/WorkflowExecutionProvider";
 import {
@@ -373,6 +378,15 @@ function CuttableEdge({
         path={path}
         style={style}
       />
+      {data?.flowAnimated && (
+        <path
+          className="edge-selection-flow"
+          d={path}
+          style={{
+            animationDirection: data.flowDirection === -1 ? "reverse" : "normal",
+          }}
+        />
+      )}
       {data?.animatedHighlight && (
         <path className="workflow-edge-highlight" d={path} />
       )}
@@ -2698,6 +2712,13 @@ export function CanvasSurface({
         const hydratedDocument = {
           ...document,
           nodes: normalizePersistedMediaNodes(document.nodes),
+          edges: (document.edges ?? []).map((edge) =>
+            stripSelectionFlowMarkers(
+              edge.style && typeof edge.style === "object"
+                ? { ...edge, style: undefined }
+                : edge,
+            ),
+          ),
         };
         const persistedFingerprint = canvasDocumentFingerprint(hydratedDocument);
         const graphFingerprint = canvasGraphFingerprint(hydratedDocument);
@@ -3147,7 +3168,7 @@ export function CanvasSurface({
           nodes: cloneNodes(nodesRef.current),
         });
         setNodes(cloneNodes(redo.nodes));
-        setEdges(cloneEdges(redo.edges));
+        setEdges(cloneEdges(redo.edges).map(stripSelectionFlowMarkers));
         return;
       }
 
@@ -3165,7 +3186,7 @@ export function CanvasSurface({
       });
       if (entry.kind === "snapshot") {
         setNodes(cloneNodes(entry.nodes));
-        setEdges(cloneEdges(entry.edges));
+        setEdges(cloneEdges(entry.edges).map(stripSelectionFlowMarkers));
         return;
       }
 
@@ -3192,7 +3213,7 @@ export function CanvasSurface({
       setEdges((current) => [
         ...current,
         ...entry.edges.map((edge, index) => ({
-          ...edge,
+          ...stripSelectionFlowMarkers(edge),
           id: `${edge.id}-restored-${sequence}-${index}`,
           selected: false,
           source: restoredIds.get(edge.source) ?? edge.source,
@@ -3210,14 +3231,33 @@ export function CanvasSurface({
 
   const selectedNodes = nodes.filter((node) => node.selected);
   const selectedNodeIds = new Set(selectedNodes.map((node) => node.id));
+  const edgeFlowDirections = connectedEdgeFlowDirections(
+    nodes,
+    edges,
+    selectedNodeIds,
+  );
+  const flowAnimatedEdgeIds = selectionFlowAnimatedEdgeIds(
+    edges,
+    selectedNodeIds,
+  );
   const visibleEdges = selectedNodeIds.size
     ? edges.map((edge) =>
         selectedNodeIds.has(edge.source) || selectedNodeIds.has(edge.target)
           ? {
               ...edge,
-              className: [edge.className, "connected-to-selected-node"]
-                .filter(Boolean)
-                .join(" "),
+              className: Array.from(
+                new Set(
+                  [edge.className ?? "", "connected-to-selected-node"]
+                    .join(" ")
+                    .split(/\s+/)
+                    .filter(Boolean),
+                ),
+              ).join(" "),
+              data: {
+                ...(edge.data ?? {}),
+                flowAnimated: flowAnimatedEdgeIds.has(edge.id),
+                flowDirection: edgeFlowDirections.get(edge.id) ?? 1,
+              },
             }
           : edge,
       )
@@ -3565,11 +3605,8 @@ export function CanvasSurface({
       <ReactFlow
         autoPanOnNodeDrag
         autoPanSpeed={15}
-        connectionLineStyle={{ stroke: "#7a7a7a", strokeWidth: 1.5 }}
-        defaultEdgeOptions={{
-          interactionWidth: 20,
-          style: { stroke: "#7a7a7a", strokeWidth: 1.5 },
-        }}
+        connectionLineStyle={{ stroke: "#ffffff60", strokeWidth: 1 }}
+        defaultEdgeOptions={{ interactionWidth: 20 }}
         deleteKeyCode={["Backspace", "Delete"]}
         edges={visibleEdges}
         edgeTypes={edgeTypes}
@@ -3686,7 +3723,7 @@ export function CanvasSurface({
         onEdgesChange={onEdgesChange}
         onDelete={({ edges: deletedEdges, nodes: deletedNodes }) => {
           pushHistory({
-            edges: cloneEdges(deletedEdges),
+            edges: deletedEdges.map(stripSelectionFlowMarkers),
             kind: "delete",
             nodes: cloneNodes(deletedNodes),
           });
