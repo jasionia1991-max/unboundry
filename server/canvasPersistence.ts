@@ -73,6 +73,10 @@ export function hasOtherOwnerProject(
   id: string,
 ) {
   if (bypass) return false;
+  // `default` 是每个账号各自继承的旧画布：首管理员的项目表里虽然有同名的
+  // default 项目行，但其他账号也必须能创建/保存自己的 default 画布，
+  // 因此 default 不参与“跨账号项目 ID”守卫。
+  if (id === "default") return false;
   return Boolean(store.prepare(`
     SELECT 1
     FROM project_metadata

@@ -161,7 +161,12 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   const canvasEdges = useEdges();
   const canvasNodes = useNodes<ProbeNodeType>();
   const checkpoint = useCanvasCheckpoint();
-  const { canvasId, canvasRevision, flushCanvasSave } = useGenerationCanvas();
+  const {
+    accountId,
+    canvasId,
+    canvasRevision,
+    flushCanvasSave,
+  } = useGenerationCanvas();
   const audioModelSelection = usePublishedModelSelection(
     "audio",
     data.audioModelId,
@@ -351,6 +356,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
         canvasId,
         id,
         data.audioGenerationTaskId,
+        accountId,
       );
       setUploadError("");
       setNodes((nodes) => nodes.map((node) => node.id === id
@@ -434,7 +440,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     setUploadError(message);
     setRetryTaskId(undefined);
     setActiveTaskId(undefined);
-    clearGenerationSubmissionIntent("audio", canvasId, id, taskId);
+    clearGenerationSubmissionIntent("audio", canvasId, id, taskId, accountId);
   };
 
   useEffect(() => {
@@ -573,7 +579,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
           : node,
       ),
     );
-    clearGenerationSubmissionIntent("audio", canvasId, id, task.id);
+    clearGenerationSubmissionIntent("audio", canvasId, id, task.id, accountId);
   };
 
   const generateAudio = async () => {
@@ -599,6 +605,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       const { task: submitted } = await ensureGenerationTask(
         "audio",
         audioGenerationRequestInput,
+        accountId,
       );
       submittedTaskId = submitted.id;
       setActiveTaskId(submitted.id);
@@ -764,6 +771,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       id,
       controller.signal,
       audioGenerationRequestInput,
+      accountId,
     )
       .then(async (pending) => ({
         recoveredIntent: Boolean(pending),

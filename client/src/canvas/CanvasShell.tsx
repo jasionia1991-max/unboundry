@@ -95,13 +95,16 @@ type AgentVoiceState =
 
 const defaultProjectTitle = "Codex TapNow G0.2 Sandbox 0727";
 
-function projectTitleStorageKey(id: string) {
-  return `tapnow-project-title:${id}`;
+function projectTitleStorageKey(userId: string, id: string) {
+  return `tapnow-project-title:v2:${userId}:${id}`;
 }
 
-function readProjectTitleDraft(id: string): ProjectTitleRecord | undefined {
+function readProjectTitleDraft(
+  userId: string,
+  id: string,
+): ProjectTitleRecord | undefined {
   try {
-    const value = window.localStorage.getItem(projectTitleStorageKey(id));
+    const value = window.localStorage.getItem(projectTitleStorageKey(userId, id));
     if (!value) return undefined;
     const record = JSON.parse(value) as ProjectTitleRecord;
     if (
@@ -117,10 +120,14 @@ function readProjectTitleDraft(id: string): ProjectTitleRecord | undefined {
   }
 }
 
-function writeProjectTitleDraft(id: string, record: ProjectTitleRecord) {
+function writeProjectTitleDraft(
+  userId: string,
+  id: string,
+  record: ProjectTitleRecord,
+) {
   try {
     window.localStorage.setItem(
-      projectTitleStorageKey(id),
+      projectTitleStorageKey(userId, id),
       JSON.stringify(record),
     );
   } catch {
@@ -585,6 +592,7 @@ export function CanvasShell({
   onAccountOpenChange,
   onProjectMissing,
   projectId,
+  userId = "",
   userInitial = "M",
 }: {
   accountOpen: boolean;
@@ -592,11 +600,12 @@ export function CanvasShell({
   onAccountOpenChange: (open: boolean) => void;
   onProjectMissing?: () => void;
   projectId?: string;
+  userId?: string;
   userInitial: string;
 }) {
   const projectTitleId = projectId ?? fixtureId ?? "default";
   const initialProjectTitle =
-    readProjectTitleDraft(projectTitleId) ??
+    readProjectTitleDraft(userId, projectTitleId) ??
     ({ title: defaultProjectTitle, updatedAt: 0 } satisfies ProjectTitleRecord);
   const [viewport, setViewport] = useState<Viewport>(() =>
     fixtureId === "legacy.dense-canvas.neutral"
@@ -760,6 +769,7 @@ export function CanvasShell({
   const [agentVoiceSeconds, setAgentVoiceSeconds] = useState(0);
   const [agentVoiceUrl, setAgentVoiceUrl] = useState<string>();
   const [saveConflict, setSaveConflict] = useState(false);
+  const [saveConflictMessage, setSaveConflictMessage] = useState("");
   const [graphHasContent, setGraphHasContent] = useState(() =>
     hasInteractionProbeNodes(fixtureId),
   );
@@ -1130,7 +1140,7 @@ export function CanvasShell({
       );
       const record = { title, updatedAt };
       projectTitleUpdatedAt.current = updatedAt;
-      writeProjectTitleDraft(projectTitleId, record);
+      writeProjectTitleDraft(userId, projectTitleId, record);
       setSaveStatus("保存中...");
       void fetch(`/api/project-title/${encodeURIComponent(projectTitleId)}`, {
         body: JSON.stringify(record),
@@ -1144,7 +1154,7 @@ export function CanvasShell({
         })
         .catch(() => setSaveStatus("项目名称保存失败"));
     },
-    [projectTitleId],
+    [projectTitleId, userId],
   );
   const projectTitleControl = useCompositionSafeText({
     onCommit: (title) => {
@@ -1172,13 +1182,13 @@ export function CanvasShell({
       { method: "DELETE" },
     );
     if (!response.ok) return;
-    clearProjectLocalKeys(projectId);
+    clearProjectLocalKeys(projectId, userId);
     window.location.href = "/canvas/projects";
   };
 
   useEffect(() => {
     const controller = new AbortController();
-    const local = readProjectTitleDraft(projectTitleId);
+    const local = readProjectTitleDraft(userId, projectTitleId);
     void fetch(`/api/project-title/${encodeURIComponent(projectTitleId)}`, {
       headers: { Accept: "application/json" },
       signal: controller.signal,
@@ -1208,13 +1218,13 @@ export function CanvasShell({
           }
           return;
         }
-        const current = readProjectTitleDraft(projectTitleId) ?? local;
+        const current = readProjectTitleDraft(userId, projectTitleId) ?? local;
         if (
           !current ||
           serverRecord.updatedAt > current.updatedAt
         ) {
           projectTitleUpdatedAt.current = serverRecord.updatedAt;
-          writeProjectTitleDraft(projectTitleId, serverRecord);
+          writeProjectTitleDraft(userId, projectTitleId, serverRecord);
           setProjectTitleValue(serverRecord.title);
           return;
         }
@@ -1666,9 +1676,10 @@ export function CanvasShell({
       );
     }
   }, [durableFixture]);
-  const markSaveConflict = useCallback(() => {
+  const markSaveConflict = useCallback((message?: string) => {
     setSaveConflict(true);
-    setSaveStatus("检测到另一页面的更新");
+    setSaveConflictMessage(message?.trim() || "另一页面已经保存了更新");
+    setSaveStatus("保存失败");
   }, []);
   const markSaveSuccess = useCallback(() => {
     setSaveStatus("已保存到云端");
@@ -1684,6 +1695,7 @@ export function CanvasShell({
       data-testid="canvas-shell"
     >
       <CanvasSurface
+        accountId={userId}
         agentReferenceMode={agentReferenceMode}
         fixtureId={fixtureId}
         onProjectMissing={onProjectMissing}
@@ -1762,9 +1774,15 @@ export function CanvasShell({
           data-testid="save-conflict"
         >
           <div>
-            <strong>另一页面已经保存了更新</strong>
-            <span>为防止覆盖，请重新载入最新内容。</span>
+            <strong>{saveConflictMessage}</strong>
+            <span>为避免覆盖，请重新载入最新内容，或返回工作空间。</span>
           </div>
+          <button
+            onClick={() => { window.location.href = "/canvas/projects"; }}
+            type="button"
+          >
+            返回工作空间
+          </button>
           <button onClick={() => window.location.reload()} type="button">
             重新载入
           </button>
@@ -1822,17 +1840,15 @@ export function CanvasShell({
           ref={projectMenu}
         >
           <span className="project-menu-label">项目</span>
-          {projectId && (
-            <button
-              onClick={() => {
-                setProjectMenuOpen(false);
-                window.location.href = "/canvas/projects";
-              }}
-              type="button"
-            >
-              返回工作空间
-            </button>
-          )}
+          <button
+            onClick={() => {
+              setProjectMenuOpen(false);
+              window.location.href = "/canvas/projects";
+            }}
+            type="button"
+          >
+            {projectId ? "返回工作空间" : "工作空间"}
+          </button>
           <button
             onClick={() => {
               setProjectMenuOpen(false);

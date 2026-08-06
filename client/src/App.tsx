@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CanvasShell } from "./canvas/CanvasShell";
 import { ModelCatalogProvider } from "./models/ModelCatalog";
 import { WorkspacePage } from "./projects/WorkspacePage";
+import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { GrayMenuSelect } from "./ui/GrayMenuSelect";
 import {
   defaultParameterSchema,
@@ -493,6 +494,7 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
   const [loginName, setLoginName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [deleting, setDeleting] = useState<AuthUser>();
 
   const load = () =>
     jsonRequest<{ users: AuthUser[] }>("/api/admin/users")
@@ -534,6 +536,20 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "账号状态修改失败");
+    }
+  };
+
+  const deleteUser = async (user: AuthUser) => {
+    setError("");
+    try {
+      await jsonRequest(`/api/admin/users/${encodeURIComponent(user.id)}`, {
+        method: "DELETE",
+      });
+      setDeleting(undefined);
+      await load();
+    } catch (caught) {
+      setDeleting(undefined);
+      setError(caught instanceof Error ? caught.message : "账号删除失败");
     }
   };
 
@@ -597,19 +613,41 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
             <article key={user.id}>
               <div>
                 <strong>{user.displayName}</strong>
-                <span>@{user.loginName} · {user.role === "admin" ? "管理员" : "普通用户"}</span>
+                <span>
+                  登录名：{user.loginName} ·{" "}
+                  {user.role === "admin" ? "管理员" : "普通用户"}
+                </span>
               </div>
-              <button
-                disabled={user.id === currentUser.id}
-                onClick={() => void setStatus(user)}
-                type="button"
-              >
-                {user.status === "active" ? "停用" : "启用"}
-              </button>
+              <div className="account-list-actions">
+                <button
+                  disabled={user.id === currentUser.id}
+                  onClick={() => void setStatus(user)}
+                  type="button"
+                >
+                  {user.status === "active" ? "停用" : "启用"}
+                </button>
+                <button
+                  className="account-delete"
+                  disabled={user.id === currentUser.id}
+                  onClick={() => setDeleting(user)}
+                  type="button"
+                >
+                  删除
+                </button>
+              </div>
             </article>
           ))}
         </section>
       </div>
+      {deleting && (
+        <ConfirmDialog
+          danger
+          message={`确定要删除账号「${deleting.displayName}」（登录名：${deleting.loginName}）？该账号下的项目、画布、生成记录和素材记录都会一并删除，且无法恢复。`}
+          onCancel={() => setDeleting(undefined)}
+          onConfirm={() => void deleteUser(deleting)}
+          title="确认删除账号"
+        />
+      )}
     </main>
   );
 }
@@ -6255,6 +6293,7 @@ function AuthenticatedApplication({
         fixtureId={fixtureId}
         onAccountOpenChange={setAccountOpen}
         projectId={projectId}
+        userId={status.user.id}
         userInitial={status.user.displayName.trim().charAt(0).toLocaleUpperCase() || "M"}
         workspace={workspace}
       />
@@ -6266,6 +6305,12 @@ function AuthenticatedApplication({
         >
           <strong>{status.user.displayName}</strong>
           <span>@{status.user.loginName}</span>
+          <button
+            onClick={() => { window.location.href = "/canvas/projects"; }}
+            type="button"
+          >
+            工作空间
+          </button>
           {status.user.role === "admin" && (
             <>
               <button
@@ -6326,6 +6371,7 @@ function CanvasApplication({
   fixtureId,
   onAccountOpenChange,
   projectId,
+  userId,
   userInitial,
   workspace,
 }: {
@@ -6333,11 +6379,12 @@ function CanvasApplication({
   fixtureId?: string;
   onAccountOpenChange: (open: boolean) => void;
   projectId?: string;
+  userId?: string;
   userInitial: string;
   workspace?: boolean;
 }) {
   if (workspace) {
-    return <WorkspacePage />;
+    return <WorkspacePage userId={userId} />;
   }
   return (
     <ModelCatalogProvider>
@@ -6349,6 +6396,7 @@ function CanvasApplication({
           window.location.href = "/canvas/projects";
         }}
         projectId={projectId}
+        userId={userId}
         userInitial={userInitial}
       />
     </ModelCatalogProvider>

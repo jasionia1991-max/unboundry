@@ -1,6 +1,8 @@
 import { createContext, useContext } from "react";
 
 export type GenerationCanvasState = {
+  /** 当前登录账号 ID，用于把本地草稿/同步频道按账号隔离。 */
+  accountId: string;
   canvasId: string;
   /** Present only when the exact graph currently on screen is durably saved. */
   canvasRevision?: number;
@@ -9,6 +11,7 @@ export type GenerationCanvasState = {
 };
 
 export const GenerationCanvasContext = createContext<GenerationCanvasState>({
+  accountId: "",
   canvasId: "",
   flushCanvasSave: async () => {},
 });

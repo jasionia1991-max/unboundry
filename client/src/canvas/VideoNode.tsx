@@ -187,7 +187,12 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   const canvasEdges = useEdges();
   const canvasNodes = useNodes<ProbeNodeType>();
   const checkpoint = useCanvasCheckpoint();
-  const { canvasId, canvasRevision, flushCanvasSave } = useGenerationCanvas();
+  const {
+    accountId,
+    canvasId,
+    canvasRevision,
+    flushCanvasSave,
+  } = useGenerationCanvas();
   const videoModelSelection = usePublishedModelSelection(
     "video",
     data.videoModelId,
@@ -344,6 +349,7 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
         canvasId,
         id,
         data.videoGenerationTaskId,
+        accountId,
       );
       setUploadError("");
       setNodes((nodes) => nodes.map((node) => node.id === id
@@ -522,7 +528,7 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
           : node,
       ),
     );
-    clearGenerationSubmissionIntent("video", canvasId, id, task.id);
+    clearGenerationSubmissionIntent("video", canvasId, id, task.id, accountId);
   };
 
   const generateVideo = async () => {
@@ -549,6 +555,7 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       const { task: submitted } = await ensureGenerationTask(
         "video",
         videoGenerationRequestInput,
+        accountId,
       );
       submittedTaskId = submitted.id;
       setActiveTaskId(submitted.id);
@@ -700,7 +707,7 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
         : node));
       setUploadError(message);
       setRetryTaskId(undefined);
-      clearGenerationSubmissionIntent("video", canvasId, id, task.id);
+      clearGenerationSubmissionIntent("video", canvasId, id, task.id, accountId);
       setActiveTaskId(undefined);
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : "取消生成失败");
@@ -725,6 +732,7 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       id,
       controller.signal,
       videoGenerationRequestInput,
+      accountId,
     )
       .then(async (pending) => ({
         recoveredIntent: Boolean(pending),

@@ -1646,24 +1646,27 @@ function createProbeEdges(fixtureId?: string): CuttableEdge[] {
   return emptyEdges;
 }
 
-function canvasSyncChannel(canvasId: string) {
+function canvasSyncChannel(accountId: string, canvasId: string) {
+  const scope = accountId ? `${accountId}:${canvasId}` : canvasId;
   return typeof BroadcastChannel === "undefined"
     ? null
-    : new BroadcastChannel(`tapnow-canvas-sync:${canvasId}`);
+    : new BroadcastChannel(`tapnow-canvas-sync:${scope}`);
 }
 
 function broadcastCanvasSaved(
+  accountId: string,
   canvasId: string,
   revision: number,
   sessionId: string,
 ) {
-  const channel = canvasSyncChannel(canvasId);
+  const channel = canvasSyncChannel(accountId, canvasId);
   if (!channel) return;
   channel.postMessage({ canvasId, revision, sessionId, type: "saved" });
   channel.close();
 }
 
 export function CanvasSurface({
+  accountId,
   agentReferenceMode,
   fixtureId,
   focusNodeRequest,
@@ -1686,6 +1689,7 @@ export function CanvasSurface({
   textVideoStarted,
   viewport,
 }: {
+  accountId?: string;
   agentReferenceMode?: boolean;
   fixtureId?: string;
   focusNodeRequest?: { id: string; sequence: number };
@@ -1701,7 +1705,7 @@ export function CanvasSurface({
   onProjectMissing?: () => void;
   onReady: (fitView: () => void) => void;
   onSearchIndexChange?: (entries: CanvasSearchEntry[]) => void;
-  onSaveConflict: () => void;
+  onSaveConflict: (message?: string) => void;
   onSaveSuccess: () => void;
   onSaveStart: () => void;
   onViewportChange: (viewport: Viewport) => void;
@@ -2683,6 +2687,7 @@ export function CanvasSurface({
           });
           if (response.status === 409) {
             const conflict = await response.json() as {
+              error?: string;
               graphRevision?: number;
               revision?: number;
               saveSequence?: number;
@@ -2713,7 +2718,7 @@ export function CanvasSurface({
               setConfirmedPersistenceRevision(undefined);
               setConfirmedGraphRevision(undefined);
               persistenceQueued.current = undefined;
-              onSaveConflict();
+              onSaveConflict(conflict.error);
               break;
             }
           } else if (!response.ok) {
@@ -2730,6 +2735,7 @@ export function CanvasSurface({
             setConfirmedPersistenceRevision(revision);
             setConfirmedGraphRevision(graphRevision);
             broadcastCanvasSaved(
+              accountId ?? "",
               persistenceId,
               revision,
               persistenceSessionId.current,
@@ -2797,7 +2803,7 @@ export function CanvasSurface({
 
   useEffect(() => {
     if (!persistenceFixture || !persistenceReady) return;
-    const channel = canvasSyncChannel(persistenceId);
+    const channel = canvasSyncChannel(accountId ?? "", persistenceId);
     if (!channel) return;
     const onExternalSave = (event: MessageEvent) => {
       const data = event.data as
@@ -2824,7 +2830,7 @@ export function CanvasSurface({
       channel.removeEventListener("message", onExternalSave);
       channel.close();
     };
-  }, [persistenceFixture, persistenceId, persistenceReady]);
+  }, [accountId, persistenceFixture, persistenceId, persistenceReady]);
 
   useEffect(() => {
     if (!persistenceFixture || !persistenceReady) return;
@@ -3235,11 +3241,12 @@ export function CanvasSurface({
   }, []);
   const generationCanvasContextValue = useMemo(
     () => ({
+      accountId: accountId ?? "",
       canvasId: persistenceId,
       canvasRevision: generationCanvasRevision,
       flushCanvasSave,
     }),
-    [flushCanvasSave, generationCanvasRevision, persistenceId],
+    [accountId, flushCanvasSave, generationCanvasRevision, persistenceId],
   );
   const canvasSelectionUiContextValue = useMemo(
     () => ({ selectedNodeCount }),

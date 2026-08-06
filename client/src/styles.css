@@ -1703,6 +1703,25 @@ sup {
   background: #3a3a3d;
 }
 
+.workspace-back-button {
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  color: #dedee0;
+  background: #181819;
+  font: inherit;
+  font-size: var(--tap-font-primary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.workspace-back-button:hover {
+  border-color: rgba(255, 255, 255, 0.24);
+  color: #f0f0f2;
+  background: #262629;
+}
+
 .workspace-status,
 .workspace-error {
   margin: 12px 0;
@@ -9765,6 +9784,12 @@ sup {
   margin-top: 4px;
   color: #858589;
   font-size: var(--tap-font-secondary);
+}
+
+.account-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .account-list button:disabled {

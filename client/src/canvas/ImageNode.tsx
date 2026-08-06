@@ -1168,7 +1168,12 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     onEditSessionStart: checkpoint,
     value: data.title ?? "Image",
   });
-  const { canvasId, canvasRevision, flushCanvasSave } = useGenerationCanvas();
+  const {
+    accountId,
+    canvasId,
+    canvasRevision,
+    flushCanvasSave,
+  } = useGenerationCanvas();
   const imageModelSelection = usePublishedModelSelection(
     "image",
     data.imageModelId,
@@ -1318,6 +1323,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
         canvasId,
         id,
         data.imageGenerationTaskId,
+        accountId,
       );
       setUploadError("");
       setNodes((nodes) => nodes.map((node) => node.id === id
@@ -1534,7 +1540,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
           : node,
       ),
     );
-    clearGenerationSubmissionIntent("image", canvasId, id, task.id);
+    clearGenerationSubmissionIntent("image", canvasId, id, task.id, accountId);
   };
 
   const generateImage = async () => {
@@ -1559,6 +1565,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       const { task: submitted } = await ensureGenerationTask(
         "image",
         imageGenerationRequestInput,
+        accountId,
       );
       submittedTaskId = submitted.id;
       setActiveTaskId(submitted.id);
@@ -1727,7 +1734,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       );
       setUploadError(message);
       setRetryTaskId(undefined);
-      clearGenerationSubmissionIntent("image", canvasId, id, task.id);
+      clearGenerationSubmissionIntent("image", canvasId, id, task.id, accountId);
       setActiveTaskId(undefined);
     } catch (error) {
       setUploadError(
@@ -1745,6 +1752,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       id,
       controller.signal,
       imageGenerationRequestInput,
+      accountId,
     )
       .then(async (pending) => ({
         recoveredIntent: Boolean(pending),
@@ -1780,7 +1788,13 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
           );
           setUploadError(message);
           setRetryTaskId(undefined);
-          clearGenerationSubmissionIntent("image", canvasId, id, latest.id);
+          clearGenerationSubmissionIntent(
+            "image",
+            canvasId,
+            id,
+            latest.id,
+            accountId,
+          );
         } else if (latest?.state === "failed") {
           const matchesPersistedInput =
             recoveredIntent || (

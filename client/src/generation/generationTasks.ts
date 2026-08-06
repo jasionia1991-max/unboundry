@@ -216,11 +216,12 @@ function requestSignature(kind: GenerationTaskKind, input: RecoverableGeneration
 }
 
 function submissionIntentSlot(
+  accountId: string,
   kind: GenerationTaskKind,
   canvasId: string,
   nodeId: string,
 ) {
-  return `tapnow:generation-submission:v1:${encodeURIComponent(canvasId)}:${kind}:${encodeURIComponent(nodeId)}`;
+  return `tapnow:generation-submission:v2:${encodeURIComponent(accountId)}:${encodeURIComponent(canvasId)}:${kind}:${encodeURIComponent(nodeId)}`;
 }
 
 function validIntent(
@@ -241,11 +242,12 @@ function validIntent(
 }
 
 function readSubmissionIntent(
+  accountId: string,
   kind: GenerationTaskKind,
   canvasId: string,
   nodeId: string,
 ) {
-  const slot = submissionIntentSlot(kind, canvasId, nodeId);
+  const slot = submissionIntentSlot(accountId, kind, canvasId, nodeId);
   try {
     const serialized = window.localStorage.getItem(slot);
     if (serialized) {
@@ -263,8 +265,16 @@ function readSubmissionIntent(
   return submissionIntentMemory.get(slot);
 }
 
-function writeSubmissionIntent(intent: GenerationSubmissionIntent) {
-  const slot = submissionIntentSlot(intent.kind, intent.canvasId, intent.nodeId);
+function writeSubmissionIntent(
+  accountId: string,
+  intent: GenerationSubmissionIntent,
+) {
+  const slot = submissionIntentSlot(
+    accountId,
+    intent.kind,
+    intent.canvasId,
+    intent.nodeId,
+  );
   submissionIntentMemory.set(slot, intent);
   try {
     window.localStorage.setItem(slot, JSON.stringify(intent));
@@ -274,11 +284,12 @@ function writeSubmissionIntent(intent: GenerationSubmissionIntent) {
 }
 
 function prepareGenerationSubmission(
+  accountId: string,
   kind: GenerationTaskKind,
   input: RecoverableGenerationInput,
 ) {
   const signature = requestSignature(kind, input);
-  const current = readSubmissionIntent(kind, input.canvasId, input.nodeId);
+  const current = readSubmissionIntent(accountId, kind, input.canvasId, input.nodeId);
   if (current?.requestSignature === signature) return current;
   const intent: GenerationSubmissionIntent = {
     canvasId: input.canvasId,
@@ -290,15 +301,16 @@ function prepareGenerationSubmission(
     version: 1,
   };
   // This write deliberately happens before preflight and before the paid POST.
-  writeSubmissionIntent(intent);
+  writeSubmissionIntent(accountId, intent);
   return intent;
 }
 
 function rememberGenerationTask(
+  accountId: string,
   intent: GenerationSubmissionIntent,
   task: GenerationTaskSummary,
 ) {
-  writeSubmissionIntent({
+  writeSubmissionIntent(accountId, {
     ...intent,
     taskId: task.id,
     updatedAt: new Date().toISOString(),
@@ -310,9 +322,10 @@ export function clearGenerationSubmissionIntent(
   canvasId: string,
   nodeId: string,
   taskId?: string,
+  accountId = "",
 ) {
-  const slot = submissionIntentSlot(kind, canvasId, nodeId);
-  const current = readSubmissionIntent(kind, canvasId, nodeId);
+  const slot = submissionIntentSlot(accountId, kind, canvasId, nodeId);
+  const current = readSubmissionIntent(accountId, kind, canvasId, nodeId);
   if (taskId && current && current.taskId !== taskId) return;
   submissionIntentMemory.delete(slot);
   try {
@@ -342,14 +355,15 @@ export async function recoverPendingGenerationTask(
   nodeId: string,
   signal?: AbortSignal,
   currentInput?: RecoverableGenerationInput,
+  accountId = "",
 ) {
-  const intent = readSubmissionIntent(kind, canvasId, nodeId);
+  const intent = readSubmissionIntent(accountId, kind, canvasId, nodeId);
   if (!intent) return undefined;
   if (
     currentInput &&
     intent.requestSignature !== requestSignature(kind, currentInput)
   ) {
-    clearGenerationSubmissionIntent(kind, canvasId, nodeId, intent.taskId);
+    clearGenerationSubmissionIntent(kind, canvasId, nodeId, intent.taskId, accountId);
     return undefined;
   }
   const task = await getGenerationTaskByIdempotency(
@@ -359,10 +373,10 @@ export async function recoverPendingGenerationTask(
   );
   if (!task) return undefined;
   if (task.canvasId !== canvasId || task.kind !== kind || task.nodeId !== nodeId) {
-    clearGenerationSubmissionIntent(kind, canvasId, nodeId);
+    clearGenerationSubmissionIntent(kind, canvasId, nodeId, undefined, accountId);
     return undefined;
   }
-  rememberGenerationTask(intent, task);
+  rememberGenerationTask(accountId, intent, task);
   return task;
 }
 
@@ -388,8 +402,9 @@ async function postGeneration(
 export async function ensureGenerationTask(
   kind: GenerationTaskKind,
   input: RecoverableGenerationInput,
+  accountId = "",
 ): Promise<EnsuredGenerationTask> {
-  const intent = prepareGenerationSubmission(kind, input);
+  const intent = prepareGenerationSubmission(accountId, kind, input);
   const prepared = { ...input, idempotencyKey: intent.idempotencyKey };
   const existing = await getGenerationTaskByIdempotency(
     input.canvasId,
@@ -408,14 +423,20 @@ export async function ensureGenerationTask(
       );
     }
     if (existing.state === "cancelled") {
-      clearGenerationSubmissionIntent(kind, input.canvasId, input.nodeId);
+      clearGenerationSubmissionIntent(
+        kind,
+        input.canvasId,
+        input.nodeId,
+        undefined,
+        accountId,
+      );
       throw new GenerationRequestError(
         existing.errorMessage ?? "生成任务已取消",
         409,
         existing.errorCode ?? "USER_CANCELLED",
       );
     }
-    rememberGenerationTask(intent, existing);
+    rememberGenerationTask(accountId, intent, existing);
     return { idempotencyKey: intent.idempotencyKey, recovered: true, task: existing };
   }
 
@@ -433,7 +454,7 @@ export async function ensureGenerationTask(
 
   try {
     const task = await postGeneration(kind, prepared);
-    rememberGenerationTask(intent, task);
+    rememberGenerationTask(accountId, intent, task);
     return { idempotencyKey: intent.idempotencyKey, recovered: false, task };
   } catch (error) {
     // The POST may have reached the server even when its response did not reach
@@ -445,7 +466,7 @@ export async function ensureGenerationTask(
         intent.idempotencyKey,
       );
       if (recovered) {
-        rememberGenerationTask(intent, recovered);
+        rememberGenerationTask(accountId, intent, recovered);
         return {
           idempotencyKey: intent.idempotencyKey,
           recovered: true,
@@ -464,7 +485,13 @@ export async function ensureGenerationTask(
       // compact-signature collision) must not permanently poison this node.
       // The server confirmed that no task owned by the current user can be
       // recovered under it, so the next explicit click may safely mint a key.
-      clearGenerationSubmissionIntent(kind, input.canvasId, input.nodeId);
+      clearGenerationSubmissionIntent(
+        kind,
+        input.canvasId,
+        input.nodeId,
+        undefined,
+        accountId,
+      );
     }
     throw error;
   }

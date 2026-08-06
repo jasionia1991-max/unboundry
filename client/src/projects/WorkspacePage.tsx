@@ -50,7 +50,7 @@ function dateTime(timestamp: number | null) {
   )} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-export function WorkspacePage() {
+export function WorkspacePage({ userId = "" }: { userId?: string }) {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -161,7 +161,7 @@ export function WorkspacePage() {
       setError("删除项目失败，请稍后再试");
       return;
     }
-    clearProjectLocalKeys(id);
+    clearProjectLocalKeys(id, userId);
     await load();
   };
 
@@ -204,7 +204,7 @@ export function WorkspacePage() {
         failed = true;
         break;
       }
-      clearProjectLocalKeys(id);
+      clearProjectLocalKeys(id, userId);
     }
     if (failed) setError("部分项目删除失败，请刷新后再试");
     setSelectedIds(new Set());
@@ -298,6 +298,14 @@ export function WorkspacePage() {
           <span>我的项目</span>
         </div>
         <div className="workspace-toolbar">
+          <button
+            className="workspace-back-button"
+            data-testid="workspace-back"
+            onClick={() => { window.location.href = "/"; }}
+            type="button"
+          >
+            返回画布
+          </button>
           <input
             aria-label="搜索项目"
             className="workspace-search"

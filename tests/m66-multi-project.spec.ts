@@ -336,6 +336,31 @@ test("canvas project menu creates, returns to workspace and deletes", async ({
   await request.delete(`/api/projects/${created.id}`);
 });
 
+test("workspace entry points are visible from the default canvas and workspace returns to canvas", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-persistence-ready",
+    "true",
+  );
+
+  await page.getByTestId("logo-button").click();
+  await page.getByTestId("project-menu").getByText("工作空间").click();
+  await expect(page).toHaveURL(/\/canvas\/projects$/);
+  await expect(page.getByTestId("workspace-page")).toBeVisible();
+
+  await page.getByTestId("workspace-back").click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByTestId("canvas-shell")).toBeVisible();
+
+  await page.getByTestId("user-avatar").click();
+  await expect(page.getByTestId("account-popover")).toBeVisible();
+  await page.getByTestId("account-popover").getByText("工作空间").click();
+  await expect(page).toHaveURL(/\/canvas\/projects$/);
+  await expect(page.getByTestId("workspace-page")).toBeVisible();
+});
+
 test("selection mode selects cards, shows bottom bar and deletes selected", async ({
   page,
   request,

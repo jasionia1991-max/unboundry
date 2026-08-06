@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { openAppDatabase } from "../server/database";
 
 const port = 4194;
 const origin = `http://127.0.0.1:${port}`;
@@ -172,6 +173,377 @@ test("admin bootstrap, account control and per-user data isolation are enforced"
     expect(
       (await request("/api/canvas/shared", { cookie: userCookie })).status,
     ).toBe(401);
+  } finally {
+    if (server) await stopServer(server);
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("admin can delete accounts with owned data and cannot delete the current admin", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-auth-delete-"));
+  let server: ChildProcess | undefined;
+  try {
+    server = await startServer(dataDirectory);
+
+    const bootstrap = await request("/api/auth/bootstrap", {
+      body: JSON.stringify({
+        displayName: "Owner",
+        loginName: "owner",
+        password: "owner-password-123",
+      }),
+      method: "POST",
+    });
+    expect(bootstrap.status).toBe(201);
+    const adminCookie = cookie(bootstrap);
+    const adminId = (
+      (await (await request("/api/auth/status", { cookie: adminCookie })).json())
+        .user as { id: string }
+    ).id;
+
+    expect(
+      (
+        await request("/api/canvas/shared", {
+          body: JSON.stringify({
+            edges: [],
+            nodes: [{ id: "admin-keep-node" }],
+            revision: 0,
+            viewport: { x: 0, y: 0, zoom: 1 },
+          }),
+          cookie: adminCookie,
+          method: "PUT",
+        })
+      ).status,
+    ).toBe(200);
+
+    const created = await request("/api/admin/users", {
+      body: JSON.stringify({
+        displayName: "To Delete",
+        loginName: "todelete",
+        password: "todelete-pass-123",
+      }),
+      cookie: adminCookie,
+      method: "POST",
+    });
+    expect(created.status).toBe(201);
+    const ordinaryId = ((await created.json()).user as { id: string }).id;
+
+    const login = await request("/api/auth/login", {
+      body: JSON.stringify({
+        loginName: "todelete",
+        password: "todelete-pass-123",
+      }),
+      method: "POST",
+    });
+    expect(login.status).toBe(200);
+    const userCookie = cookie(login);
+
+    expect(
+      (
+        await request("/api/canvas/shared", {
+          body: JSON.stringify({
+            edges: [],
+            nodes: [{ id: "delete-me-node" }],
+            revision: 0,
+            viewport: { x: 0, y: 0, zoom: 1 },
+          }),
+          cookie: userCookie,
+          method: "PUT",
+        })
+      ).status,
+    ).toBe(200);
+
+    const listBefore = await (
+      await request("/api/admin/users", { cookie: adminCookie })
+    ).json();
+    expect(
+      (listBefore.users as Array<{ id: string }>).some(
+        (user) => user.id === ordinaryId,
+      ),
+    ).toBe(true);
+
+    expect(
+      (
+        await request(`/api/admin/users/${adminId}`, {
+          cookie: adminCookie,
+          method: "DELETE",
+        })
+      ).status,
+    ).toBe(400);
+
+    expect(
+      (
+        await request(`/api/admin/users/${ordinaryId}`, {
+          cookie: adminCookie,
+          method: "DELETE",
+        })
+      ).status,
+    ).toBe(200);
+
+    const listAfter = await (
+      await request("/api/admin/users", { cookie: adminCookie })
+    ).json();
+    expect(
+      (listAfter.users as Array<{ id: string }>).some(
+        (user) => user.id === ordinaryId,
+      ),
+    ).toBe(false);
+
+    expect(
+      (
+        await request("/api/auth/login", {
+          body: JSON.stringify({
+            loginName: "todelete",
+            password: "todelete-pass-123",
+          }),
+          method: "POST",
+        })
+      ).status,
+    ).toBe(401);
+
+    const db = openAppDatabase(dataDirectory);
+    expect(
+      (
+        db
+          .prepare("SELECT COUNT(*) AS count FROM canvas_documents WHERE owner_id = ?")
+          .get(ordinaryId) as { count: number }
+      ).count,
+    ).toBe(0);
+    expect(
+      (
+        db
+          .prepare("SELECT COUNT(*) AS count FROM users WHERE id = ?")
+          .get(ordinaryId) as { count: number }
+      ).count,
+    ).toBe(0);
+
+    const secondAdminId = "22222222-2222-4222-8222-222222222222";
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      )
+      VALUES (?, ?, ?, 'second-admin-hash', 'admin', 'active', ?, ?)
+    `).run(secondAdminId, "secondadmin", "Second Admin", now, now);
+    db.close();
+
+    expect(
+      (
+        await request(`/api/admin/users/${secondAdminId}`, {
+          cookie: adminCookie,
+          method: "DELETE",
+        })
+      ).status,
+    ).toBe(200);
+
+    const adminCanvas = await (
+      await request("/api/canvas/shared", { cookie: adminCookie })
+    ).json();
+    expect(adminCanvas.nodes).toEqual([{ id: "admin-keep-node" }]);
+  } finally {
+    if (server) await stopServer(server);
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("ordinary accounts can save their own default canvas while cross-account project ids stay isolated", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-auth-default-"));
+  let server: ChildProcess | undefined;
+  try {
+    server = await startServer(dataDirectory);
+
+    const bootstrap = await request("/api/auth/bootstrap", {
+      body: JSON.stringify({
+        displayName: "Owner",
+        loginName: "owner",
+        password: "owner-password-123",
+      }),
+      method: "POST",
+    });
+    expect(bootstrap.status).toBe(201);
+    const adminCookie = cookie(bootstrap);
+    const adminId = (
+      (await (await request("/api/auth/status", { cookie: adminCookie })).json())
+        .user as { id: string }
+    ).id;
+
+    // 真实库迁移后的形态：首管理员拥有 is_project=1 的 default 项目行。
+    const store = openAppDatabase(dataDirectory);
+    const now = Date.now();
+    store
+      .prepare(`
+        INSERT INTO project_metadata (
+          owner_id, id, title, updated_at, is_project, created_at
+        )
+        VALUES (?, 'default', 'Codex Sandbox', ?, 1, ?)
+      `)
+      .run(adminId, now, now);
+    store.close();
+
+    const created = await request("/api/admin/users", {
+      body: JSON.stringify({
+        displayName: "Plain",
+        loginName: "plain",
+        password: "plain-pass-12345",
+      }),
+      cookie: adminCookie,
+      method: "POST",
+    });
+    expect(created.status).toBe(201);
+
+    const login = await request("/api/auth/login", {
+      body: JSON.stringify({
+        loginName: "plain",
+        password: "plain-pass-12345",
+      }),
+      method: "POST",
+    });
+    expect(login.status).toBe(200);
+    const userCookie = cookie(login);
+
+    const createDefault = await request("/api/canvas/default", {
+      body: JSON.stringify({
+        edges: [],
+        nodes: [{ id: "mine-node" }],
+        revision: 0,
+        saveSequence: 1,
+        saveSessionId: "plain-session-0001",
+        viewport: { x: 0, y: 0, zoom: 1 },
+      }),
+      cookie: userCookie,
+      method: "PUT",
+    });
+    expect(createDefault.status).toBe(200);
+
+    const savedDefault = await (
+      await request("/api/canvas/default", { cookie: userCookie })
+    ).json();
+    expect(savedDefault.nodes).toEqual([{ id: "mine-node" }]);
+
+    const titlePut = await request("/api/project-title/default", {
+      body: JSON.stringify({ title: "我的画布", updatedAt: Date.now() }),
+      cookie: userCookie,
+      method: "PUT",
+    });
+    expect(titlePut.status).toBe(200);
+    const titleGet = await (
+      await request("/api/project-title/default", { cookie: userCookie })
+    ).json();
+    expect(titleGet.title).toBe("我的画布");
+
+    const adminProject = await request("/api/projects", {
+      body: "{}",
+      cookie: adminCookie,
+      method: "POST",
+    });
+    expect(adminProject.status).toBe(201);
+    const adminProjectId = ((await adminProject.json()) as { id: string }).id;
+
+    expect(
+      (
+        await request(`/api/canvas/${adminProjectId}`, {
+          cookie: userCookie,
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await request(`/api/canvas/${adminProjectId}`, {
+          body: JSON.stringify({
+            edges: [],
+            nodes: [],
+            revision: 0,
+            saveSequence: 1,
+            saveSessionId: "plain-session-0001",
+            viewport: { x: 0, y: 0, zoom: 1 },
+          }),
+          cookie: userCookie,
+          method: "PUT",
+        })
+      ).status,
+    ).toBe(409);
+
+    const storeAfter = openAppDatabase(dataDirectory);
+    expect(
+      (
+        storeAfter
+          .prepare(
+            "SELECT COUNT(*) AS count FROM canvas_documents WHERE owner_id = ? AND id = 'default'",
+          )
+          .get(adminId) as { count: number }
+      ).count,
+    ).toBe(0);
+    storeAfter.close();
+  } finally {
+    if (server) await stopServer(server);
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("admin can disable and delete accounts whose ids are not uuid-shaped", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-auth-nonuuid-"));
+  let server: ChildProcess | undefined;
+  try {
+    server = await startServer(dataDirectory);
+
+    const bootstrap = await request("/api/auth/bootstrap", {
+      body: JSON.stringify({
+        displayName: "Owner",
+        loginName: "owner",
+        password: "owner-password-123",
+      }),
+      method: "POST",
+    });
+    expect(bootstrap.status).toBe(201);
+    const adminCookie = cookie(bootstrap);
+
+    const store = openAppDatabase(dataDirectory);
+    const now = new Date().toISOString();
+    for (const [id, login] of [
+      ["cua-tester", "cuatester"],
+      ["legacy.admin", "legacyadmin"],
+    ] as const) {
+      store
+        .prepare(`
+          INSERT INTO users (
+            id, login_name, display_name, password_hash, role, status,
+            created_at, updated_at
+          )
+          VALUES (?, ?, ?, 'legacy-hash', 'admin', 'active', ?, ?)
+        `)
+        .run(id, login, id, now, now);
+    }
+    store.close();
+
+    const patch = await request("/api/admin/users/cua-tester", {
+      body: JSON.stringify({ status: "disabled" }),
+      cookie: adminCookie,
+      method: "PATCH",
+    });
+    expect(patch.status).toBe(200);
+    const reenable = await request("/api/admin/users/cua-tester", {
+      body: JSON.stringify({ status: "active" }),
+      cookie: adminCookie,
+      method: "PATCH",
+    });
+    expect(reenable.status).toBe(200);
+
+    for (const id of ["cua-tester", "legacy.admin"]) {
+      const removed = await request(
+        `/api/admin/users/${encodeURIComponent(id)}`,
+        { cookie: adminCookie, method: "DELETE" },
+      );
+      expect(removed.status).toBe(200);
+    }
+
+    const list = await (
+      await request("/api/admin/users", { cookie: adminCookie })
+    ).json();
+    expect(
+      (list.users as Array<{ id: string }>).some(
+        (user) => user.id === "cua-tester" || user.id === "legacy.admin",
+      ),
+    ).toBe(false);
   } finally {
     if (server) await stopServer(server);
     await rm(dataDirectory, { force: true, recursive: true });

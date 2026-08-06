@@ -279,7 +279,12 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   const canvasEdges = useEdges();
   const canvasNodes = useNodes<ProbeNodeType>();
   const checkpoint = useCanvasCheckpoint();
-  const { canvasId, canvasRevision, flushCanvasSave } = useGenerationCanvas();
+  const {
+    accountId,
+    canvasId,
+    canvasRevision,
+    flushCanvasSave,
+  } = useGenerationCanvas();
   const titleControl = useCompositionSafeText({
     onCommit: (nextTitle) => {
       setNodes((nodes) =>
@@ -477,6 +482,7 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       canvasId,
       id,
       data.textGenerationTaskId,
+      accountId,
     );
     setGenerationError("");
     setServerInputProblems([]);
@@ -588,7 +594,7 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
         }
       : node));
     setGenerationError("");
-    clearGenerationSubmissionIntent("text", canvasId, id, task.id);
+    clearGenerationSubmissionIntent("text", canvasId, id, task.id, accountId);
   };
 
   const persistTextGenerationFailure = (
@@ -640,7 +646,7 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
           },
         }
       : node));
-    clearGenerationSubmissionIntent("text", canvasId, id, taskId);
+    clearGenerationSubmissionIntent("text", canvasId, id, taskId, accountId);
   };
 
   const finishTextTask = async (taskId: string, signal?: AbortSignal) => {
@@ -763,6 +769,7 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       id,
       controller.signal,
       textGenerationRequestInput,
+      accountId,
     )
       .then(async (task) => {
         if (!task) return;
@@ -836,6 +843,7 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       const { task: submitted } = await ensureGenerationTask(
         "text",
         textGenerationRequestInput,
+        accountId,
       );
       taskId = submitted.id;
       activeTaskRef.current = taskId;

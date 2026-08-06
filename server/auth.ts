@@ -5,11 +5,13 @@ import {
   scrypt,
   timingSafeEqual,
 } from "node:crypto";
-import { readdir, stat } from "node:fs/promises";
+import { readdir, rm, stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
+import { deletePrivateAliyunOssObject } from "./aliyunOss";
 import { appDataDirectory, openAppDatabase } from "./database";
+import { activeStorageProfile } from "./secureStorageProfiles";
 
 export type RequestIdentity = {
   bypass: boolean;
@@ -36,6 +38,8 @@ type UserInput = {
 const cookieName = "tapnow_session";
 const sessionLifetimeMs = 7 * 24 * 60 * 60 * 1_000;
 const requestIdentities = new WeakMap<IncomingMessage, RequestIdentity>();
+// 用户 ID 支持 UUID 与测试/早期写入的非 UUID ID（如 __test__、cua-tester）。
+const userIdPattern = /^[a-z0-9._-]{1,80}$/i;
 let database: DatabaseSync | undefined;
 let databaseDirectory = "";
 
@@ -629,7 +633,7 @@ export async function adminUsersApi(
     return;
   }
 
-  if (request.method === "PATCH" && /^[a-f0-9-]{36}$/i.test(path)) {
+  if (request.method === "PATCH" && userIdPattern.test(path)) {
     try {
       const body = await readBody<{ status?: unknown }>(request);
       if (body.status !== "active" && body.status !== "disabled") {
@@ -662,6 +666,134 @@ export async function adminUsersApi(
     return;
   }
 
-  response.setHeader("Allow", "GET, POST, PATCH");
+  if (request.method === "DELETE" && userIdPattern.test(path)) {
+    try {
+      const targetId = path;
+      if (targetId === session.identity.userId) {
+        json(response, 400, { error: "不能删除当前登录的管理员账号" });
+        return;
+      }
+      const target = store.prepare("SELECT * FROM users WHERE id = ?").get(
+        targetId,
+      ) as UserRow | undefined;
+      if (!target) {
+        json(response, 404, { error: "账号不存在" });
+        return;
+      }
+      if (target.role === "admin") {
+        const activeAdmins = Number(
+          (
+            store
+              .prepare(`
+                SELECT COUNT(*) AS count
+                FROM users
+                WHERE role = 'admin' AND status = 'active'
+              `)
+              .get() as { count: number }
+          ).count,
+        );
+        if (activeAdmins <= 1) {
+          json(response, 400, { error: "不能删除最后一个管理员账号" });
+          return;
+        }
+      }
+
+      const mediaRows = store
+        .prepare(`
+          SELECT storage_backend, storage_name, object_key
+          FROM media_assets
+          WHERE owner_id = ?
+        `)
+        .all(targetId) as Array<{
+        objectKey: string | null;
+        storageBackend: string;
+        storageName: string;
+      }>;
+
+      store.exec("BEGIN IMMEDIATE");
+      try {
+        store.prepare("DELETE FROM sessions WHERE user_id = ?").run(targetId);
+        store
+          .prepare(`
+            DELETE FROM generation_provider_attempts
+            WHERE task_id IN (
+              SELECT id FROM generation_tasks WHERE owner_id = ?
+            )
+          `)
+          .run(targetId);
+        store
+          .prepare(`
+            DELETE FROM generation_task_events
+            WHERE task_id IN (
+              SELECT id FROM generation_tasks WHERE owner_id = ?
+            )
+          `)
+          .run(targetId);
+        store.prepare("DELETE FROM generation_tasks WHERE owner_id = ?").run(targetId);
+        store.prepare("DELETE FROM canvas_documents WHERE owner_id = ?").run(targetId);
+        store.prepare("DELETE FROM project_metadata WHERE owner_id = ?").run(targetId);
+        store
+          .prepare("DELETE FROM asset_history WHERE owner_id = ? OR account_id = ?")
+          .run(targetId, targetId);
+        store.prepare("DELETE FROM media_assets WHERE owner_id = ?").run(targetId);
+        store
+          .prepare(
+            "DELETE FROM admin_audit_events WHERE actor_user_id = ? OR target_user_id = ?",
+          )
+          .run(targetId, targetId);
+        const removed = store.prepare("DELETE FROM users WHERE id = ?").run(targetId);
+        if (removed.changes !== 1) {
+          store.exec("ROLLBACK");
+          json(response, 404, { error: "账号不存在" });
+          return;
+        }
+        store.exec("COMMIT");
+      } catch (error) {
+        store.exec("ROLLBACK");
+        throw error;
+      }
+
+      recordAudit(store, session.identity.userId, "delete_user", targetId, {
+        loginName: target.login_name,
+        role: target.role,
+      });
+      await removeAccountMediaFiles(mediaRows);
+      json(response, 200, { deleted: true, userId: targetId });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "账号删除失败";
+      json(response, 400, { error: message });
+    }
+    return;
+  }
+
+  response.setHeader("Allow", "GET, POST, PATCH, DELETE");
   json(response, 404, { error: "账号接口不存在" });
+}
+
+async function removeAccountMediaFiles(
+  rows: Array<{
+    objectKey: string | null;
+    storageBackend: string;
+    storageName: string;
+  }>,
+) {
+  for (const row of rows) {
+    try {
+      if (row.storageBackend === "oss") {
+        const profile = await activeStorageProfile();
+        if (profile && row.objectKey) {
+          await deletePrivateAliyunOssObject(row.objectKey, profile);
+        }
+      } else if (
+        row.storageName &&
+        basename(row.storageName) === row.storageName
+      ) {
+        await rm(join(appDataDirectory(), "media", row.storageName), {
+          force: true,
+        });
+      }
+    } catch {
+      // 账号删除不因媒体文件清理失败而中断；记录行已删除，残留文件由存储清理兜底。
+    }
+  }
 }
