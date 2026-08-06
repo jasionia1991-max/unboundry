@@ -18,4 +18,6 @@
 
 补充（用户反馈三次修复）：卡片右上「⋯」改为悬停卡片才浮现（默认 opacity 0 + pointer-events none，hover/focus-visible/菜单展开时显示，120ms 过渡）；删除图标改用标准 Feather trash-2 线条图标（18px、stroke 2），不再变形。自动化：m66 新增悬停断言（hover 前 opacity 0 → hover 后 1）11/11 通过；CUA 复验垃圾桶图标线条清晰、灰色、与关闭×尺寸协调（截图 /tmp/cua_trash_icon.png）；CUA 合成悬停不触发 CSS :hover，悬停行为以 Playwright 真实浏览器断言为准。
 
+补充（多账号隔离审计 2026-08-06）：代码审计确认 users/sessions/角色体系存在，项目/画布/标题/任务/素材/历史均按 owner_id 隔离；双账号实测：A 读不到 B 的项目列表/画布/标题/任务/素材（404/空/0），B 也不能覆盖 A 的素材（400）。发现并修复一处隔离缺口：此前任意账号可用他人项目 id PUT 创建「幻影」画布/标题行（读取已隔离，但可占用 id）；现已在 canvasPersistence（GET/PUT）与 projectTitle（GET/PUT/DELETE）增加跨账号项目 id 守卫（非 bypass 生效），修复后 A 对 B 项目 id 的读写返回 404/409。单元测试 hasOtherOwnerProject 已加入 m66；m66/m20 11/11 通过。
+
 环境说明：2026-08-06 03:48 后 cua-driver AX 树曾持续失败（已标记 blocked）；用户恢复环境后（10:2x 重试成功），本表已按步骤补齐 CUA 实测。最终全量 CUA 覆盖：工作空间新建/搜索/列表/重命名/删除确认、项目画布加载与改名持久化、画布项目菜单、默认项目兼容、/api/projects 直接访问。

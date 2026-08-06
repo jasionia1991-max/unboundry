@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openAppDatabase } from "../server/database";
+import { hasOtherOwnerProject } from "../server/canvasPersistence";
 import { deleteProjectRows, projectCover } from "../server/projects";
 
 const onePixelPng = Buffer.from(
@@ -528,6 +529,39 @@ test("cover priority and delete rows are enforced at the store level", () => {
         "SELECT 1 FROM generation_provider_attempts WHERE task_id = 'task-1'",
       ).get(),
     ).toBeUndefined();
+    db.close();
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+test("project ids are owner-isolated for canvas and title writes", () => {
+  const directory = mkdtempSync(join(tmpdir(), "tapnow-owner-isolation-"));
+  try {
+    const db = openAppDatabase(directory);
+    const now = new Date().toISOString();
+    for (const [id, login] of [
+      ["u1", "u1"],
+      ["u2", "u2"],
+    ] as const) {
+      db.prepare(`
+        INSERT INTO users (
+          id, login_name, display_name, password_hash, role, status,
+          created_at, updated_at
+        )
+        VALUES (?, ?, ?, 'x', 'user', 'active', ?, ?)
+      `).run(id, login, login, now, now);
+    }
+    db.prepare(`
+      INSERT INTO project_metadata (
+        owner_id, id, title, updated_at, is_project, created_at
+      )
+      VALUES ('u1', 'p1', 'P1', 1, 1, 1)
+    `).run();
+    expect(hasOtherOwnerProject(db, false, "u2", "p1")).toBe(true);
+    expect(hasOtherOwnerProject(db, false, "u1", "p1")).toBe(false);
+    expect(hasOtherOwnerProject(db, true, "u2", "p1")).toBe(false);
+    expect(hasOtherOwnerProject(db, false, "u2", "not-a-project")).toBe(false);
     db.close();
   } finally {
     rmSync(directory, { force: true, recursive: true });

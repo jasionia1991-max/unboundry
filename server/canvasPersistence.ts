@@ -66,6 +66,25 @@ function projectTombstone(
       `).get(ownerId, id);
 }
 
+export function hasOtherOwnerProject(
+  store: DatabaseSync,
+  bypass: boolean,
+  ownerId: string,
+  id: string,
+) {
+  if (bypass) return false;
+  return Boolean(store.prepare(`
+    SELECT 1
+    FROM project_metadata
+    WHERE
+      id = ?
+      AND is_project = 1
+      AND deleted_at IS NULL
+      AND owner_id != ?
+    LIMIT 1
+  `).get(id, ownerId));
+}
+
 function touchProjectUpdatedAt(
   store: DatabaseSync,
   bypass: boolean,
@@ -188,6 +207,10 @@ export async function canvasPersistence(
       json(response, 404, { error: "Canvas not found" });
       return;
     }
+    if (hasOtherOwnerProject(store, Boolean(identity.bypass), identity.userId, id)) {
+      json(response, 404, { error: "Canvas not found" });
+      return;
+    }
     if (!row) {
       json(response, 404, { error: "Canvas not found" });
       return;
@@ -233,6 +256,10 @@ export async function canvasPersistence(
     }
     if (projectTombstone(store, Boolean(identity.bypass), identity.userId, id)) {
       json(response, 409, { error: "项目已删除，请返回工作空间" });
+      return;
+    }
+    if (hasOtherOwnerProject(store, Boolean(identity.bypass), identity.userId, id)) {
+      json(response, 409, { error: "项目不存在或不属于当前账号" });
       return;
     }
     const revision = currentRevision + 1;
@@ -420,6 +447,10 @@ export async function projectTitle(
     return;
   }
   if (request.method === "DELETE") {
+    if (hasOtherOwnerProject(store, Boolean(identity.bypass), identity.userId, id)) {
+      json(response, 404, { error: "Project title not found" });
+      return;
+    }
     if (identity.bypass) {
       store.prepare("DELETE FROM project_metadata WHERE id = ?").run(id);
     } else {
@@ -451,6 +482,10 @@ export async function projectTitle(
           .get(identity.userId, id)) as ProjectTitle | undefined;
 
   if (request.method === "GET") {
+    if (hasOtherOwnerProject(store, Boolean(identity.bypass), identity.userId, id)) {
+      json(response, 404, { error: "Project title not found" });
+      return;
+    }
     const row = read();
     if (!row) {
       json(response, 404, { error: "Project title not found" });
@@ -479,6 +514,10 @@ export async function projectTitle(
     }
     if (projectTombstone(store, Boolean(identity.bypass), identity.userId, id)) {
       json(response, 409, { error: "项目已删除，请返回工作空间" });
+      return;
+    }
+    if (hasOtherOwnerProject(store, Boolean(identity.bypass), identity.userId, id)) {
+      json(response, 409, { error: "项目不存在或不属于当前账号" });
       return;
     }
     const ownerId = identity.bypass ? "__test__" : identity.userId;
