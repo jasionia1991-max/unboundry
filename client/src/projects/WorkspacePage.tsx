@@ -65,6 +65,19 @@ export function WorkspacePage({ userId = "" }: { userId?: string }) {
   const [menuFor, setMenuFor] = useState<string>();
   const renameInputRef = useRef<HTMLInputElement>(null);
   const selectMode = selectedIds.size > 0;
+  const fromProject = useMemo(
+    () =>
+      new URLSearchParams(window.location.search).get("from")?.trim() || "",
+    [],
+  );
+
+  const rememberLastProject = (id: string) => {
+    try {
+      sessionStorage.setItem(`tapnow:last-project:${userId}`, id);
+    } catch {
+      // 隐私模式等场景忽略。
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -166,7 +179,58 @@ export function WorkspacePage({ userId = "" }: { userId?: string }) {
   };
 
   const openProject = (id: string) => {
+    rememberLastProject(id);
     window.location.href = `/canvas/${id}`;
+  };
+
+  const backToCanvas = async () => {
+    const candidates = fromProject ? [fromProject] : [];
+    try {
+      const last = sessionStorage.getItem(`tapnow:last-project:${userId}`);
+      if (last && !candidates.includes(last)) candidates.push(last);
+    } catch {
+      // 无本标签页记录时直接回落默认画布。
+    }
+    if (candidates.length > 0) {
+      try {
+        const response = await fetch("/api/projects", {
+          headers: { Accept: "application/json" },
+        });
+        if (response.ok) {
+          const body = (await response.json()) as {
+            projects: Array<{ id: string }>;
+          };
+          const alive = new Set(body.projects.map((project) => project.id));
+          for (const id of candidates) {
+            if (alive.has(id)) {
+              window.location.href = `/canvas/${encodeURIComponent(id)}`;
+              return;
+            }
+          }
+        }
+      } catch {
+        // 列表读取失败时直接尝试第一个候选，项目缺失由画布页处理。
+        if (candidates[0]) {
+          window.location.href = `/canvas/${encodeURIComponent(candidates[0])}`;
+          return;
+        }
+      }
+    }
+    window.location.href = "/";
+  };
+
+  const cloneProject = async (project: ProjectSummary) => {
+    setMenuFor(undefined);
+    try {
+      const response = await fetch(
+        `/api/projects/${encodeURIComponent(project.id)}/clone`,
+        { method: "POST" },
+      );
+      if (!response.ok) throw new Error("克隆项目失败");
+      await load();
+    } catch {
+      setError("克隆项目失败，请稍后再试");
+    }
   };
 
   const selectProject = (id: string) => {
@@ -301,7 +365,7 @@ export function WorkspacePage({ userId = "" }: { userId?: string }) {
           <button
             className="workspace-back-button"
             data-testid="workspace-back"
-            onClick={() => { window.location.href = "/"; }}
+            onClick={() => void backToCanvas()}
             type="button"
           >
             返回画布
@@ -425,6 +489,12 @@ export function WorkspacePage({ userId = "" }: { userId?: string }) {
                     </button>
                     <button onClick={() => startRename(project)} type="button">
                       重命名
+                    </button>
+                    <button
+                      onClick={() => void cloneProject(project)}
+                      type="button"
+                    >
+                      克隆
                     </button>
                     <button
                       onClick={() => {

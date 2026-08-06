@@ -44,10 +44,16 @@ import {
   useWorkflowExecution,
   type NodeRunResult,
 } from "../generation/WorkflowExecutionProvider";
+import { createSaveGateRun } from "../generation/saveGate";
 import {
   friendlyGenerationMessage,
   generationMessageFallback,
 } from "../generation/friendlyGenerationMessage";
+import {
+  isTransientPollingError,
+  POLLING_PAUSED_MESSAGE,
+  waitForGenerationTaskWithPause,
+} from "../generation/taskPolling";
 import type {
   NodeGenerationOutcome,
 } from "../generation/workflowExecution";
@@ -263,6 +269,8 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   const [pinned, setPinned] = useState(false);
   const [saved, setSaved] = useState(false);
   const [modelSwitchProblem, setModelSwitchProblem] = useState("");
+  const [pollingPausedTaskId, setPollingPausedTaskId] = useState<string>();
+  const pollingPausedTaskIdRef = useRef<string | undefined>(undefined);
   const [generationError, setGenerationError] = useState(
     data.textGenerationError ?? "",
   );
@@ -298,6 +306,7 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     canvasRevision,
     flushCanvasSave,
     isFixture,
+    waitForCanvasRevision,
   } = useGenerationCanvas();
   const titleControl = useCompositionSafeText({
     onCommit: (nextTitle) => {
@@ -622,6 +631,8 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     const visibleMessage = generationFailureMessage(
       message,
       retryAllowed ? undefined : retryBlockReason,
+      errorCode,
+      "text",
     );
     setGenerationError(visibleMessage);
     setNodes((nodes) => nodes.map((node) => node.id === id
@@ -664,9 +675,21 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   };
 
   const finishTextTask = async (taskId: string, signal?: AbortSignal) => {
-    const task = await waitForGenerationTask(taskId, signal);
+    let task: Awaited<ReturnType<typeof waitForGenerationTask>>;
+    try {
+      task = await waitForGenerationTaskWithPause(taskId, () => {
+        pollingPausedTaskIdRef.current = taskId;
+        setPollingPausedTaskId(taskId);
+        setGenerationError(POLLING_PAUSED_MESSAGE);
+      }, signal);
+    } catch (error) {
+      if (pollingPausedTaskIdRef.current === taskId) return;
+      throw error;
+    }
     if (task.state === "success") {
       applyGeneratedText(task);
+      pollingPausedTaskIdRef.current = undefined;
+      setPollingPausedTaskId(undefined);
       return;
     }
     if (task.state === "cancelled") {
@@ -879,6 +902,9 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
           }
         : node));
       await finishTextTask(submitted.id);
+      if (pollingPausedTaskIdRef.current === submitted.id) {
+        return { message: POLLING_PAUSED_MESSAGE, status: "failed" };
+      }
       const finished = getNodes().find((node) => node.id === id);
       if (
         finished?.data.textGenerationError ||
@@ -958,9 +984,13 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   useEffect(
     () =>
       registerWorkflowNode(id, {
-        run: () => runWorkflowNodeRef.current(),
+        run: createSaveGateRun(
+          waitForCanvasRevision,
+          () => runWorkflowNodeRef.current(),
+          "text",
+        ),
       }),
-    [id, registerWorkflowNode],
+    [id, registerWorkflowNode, waitForCanvasRevision],
   );
 
   const retryText = async () => {
@@ -1012,6 +1042,31 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     } finally {
       if (activeTaskRef.current === taskId) activeTaskRef.current = null;
       setSubmitting(false);
+    }
+  };
+
+  const resumeTextPolling = async () => {
+    const taskId = pollingPausedTaskIdRef.current;
+    if (!taskId) return;
+    pollingPausedTaskIdRef.current = undefined;
+    setPollingPausedTaskId(undefined);
+    setGenerationError("");
+    try {
+      await finishTextTask(taskId);
+      const finished = getNodes().find((node) => node.id === id);
+      if (finished?.data.textGenerationError) {
+        setGenerationError(finished.data.textGenerationError);
+      }
+    } catch (error) {
+      if (isTransientPollingError(error)) {
+        pollingPausedTaskIdRef.current = taskId;
+        setPollingPausedTaskId(taskId);
+        setGenerationError(POLLING_PAUSED_MESSAGE);
+        return;
+      }
+      setGenerationError(
+        error instanceof Error ? error.message : "文字生成失败，请稍后再试",
+      );
     }
   };
 
@@ -1250,6 +1305,15 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
             />
           ) : (
             <button aria-label="生成数量" disabled title="暂未开放" type="button">1×</button>
+          )}
+          {pollingPausedTaskId && (
+            <button
+              aria-label="重新检查任务状态"
+              onClick={() => void resumeTextPolling()}
+              type="button"
+            >
+              重新检查
+            </button>
           )}
           <button
             aria-label={retryableTask ? "Retry generation" : "Generate"}

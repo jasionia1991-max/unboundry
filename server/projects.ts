@@ -194,7 +194,12 @@ export async function projectsApi(
     /^\/+/,
     "",
   );
-  if (id && !projectIdPattern.test(id)) {
+  const cloneSuffix = id.match(/^([a-z0-9._-]+)\/clone$/i);
+  if (
+    id &&
+    !projectIdPattern.test(id) &&
+    !(request.method === "POST" && cloneSuffix)
+  ) {
     json(response, 400, { error: "Invalid project ID" });
     return;
   }
@@ -280,6 +285,70 @@ export async function projectsApi(
     } catch {
       json(response, 400, { error: "Project could not be created" });
     }
+    return;
+  }
+
+  const cloneMatch = id.match(/^([a-z0-9._-]+)\/clone$/i);
+  if (request.method === "POST" && cloneMatch) {
+    const sourceId = cloneMatch[1];
+    const row = projectRowFor(store, ownerId, sourceId);
+    if (!row) {
+      json(response, 404, { error: "Project not found" });
+      return;
+    }
+    const canvas = (
+      identity.bypass
+        ? store.prepare(`
+            SELECT nodes, edges, viewport
+            FROM canvas_documents
+            WHERE id = ?
+            ORDER BY owner_id IS NULL DESC
+            LIMIT 1
+          `).get(sourceId)
+        : store.prepare(`
+            SELECT nodes, edges, viewport
+            FROM canvas_documents
+            WHERE owner_id = ? AND id = ?
+          `).get(ownerId, sourceId)
+    ) as
+      | { edges: string; nodes: string; viewport: string }
+      | undefined;
+    const projectId = randomUUID();
+    const now = Date.now();
+    const title = `${row.title} 副本`.slice(0, 120);
+    store.exec("BEGIN IMMEDIATE");
+    try {
+      store.prepare(`
+        INSERT INTO project_metadata (
+          owner_id, id, title, updated_at, is_project, created_at
+        )
+        VALUES (?, ?, ?, ?, 1, ?)
+      `).run(ownerId, projectId, title, now, now);
+      store.prepare(`
+        INSERT INTO canvas_documents (
+          owner_id, id, revision, graph_revision, nodes, edges, viewport,
+          updated_at, save_sequence
+        )
+        VALUES (?, ?, 1, 1, ?, ?, ?, ?, 0)
+      `).run(
+        ownerId,
+        projectId,
+        canvas?.nodes ?? "[]",
+        canvas?.edges ?? "[]",
+        canvas?.viewport ?? defaultViewport,
+        new Date(now).toISOString(),
+      );
+      store.exec("COMMIT");
+    } catch (error) {
+      store.exec("ROLLBACK");
+      throw error;
+    }
+    json(response, 201, {
+      createdAt: now,
+      id: projectId,
+      title,
+      updatedAt: now,
+    });
     return;
   }
 

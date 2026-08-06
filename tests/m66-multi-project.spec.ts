@@ -170,6 +170,59 @@ test.describe("multi-project API", () => {
     const assetRead = await request.get(`/api/assets/${assetId}`);
     expect([200, 307]).toContain(assetRead.status());
   });
+
+  test("clone copies the canvas into a new titled project", async ({
+    page,
+    request,
+  }) => {
+    const created = await request.post("/api/projects", {
+      data: { title: "源项目" },
+    });
+    expect(created.status()).toBe(201);
+    const source = (await created.json()) as { id: string; title: string };
+    expect(source.title).toBe("源项目");
+
+    const saved = await request.put(`/api/canvas/${source.id}`, {
+      data: {
+        edges: [],
+        nodes: [
+          {
+            data: { label: "Text", title: "文字" },
+            id: "clone-text",
+            position: { x: 80, y: 100 },
+            type: "text",
+          },
+        ],
+        revision: 1,
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+    expect(saved.ok()).toBeTruthy();
+
+    const cloned = await request.post(`/api/projects/${source.id}/clone`);
+    expect(cloned.status()).toBe(201);
+    const copy = (await cloned.json()) as { id: string; title: string };
+    expect(copy.id).not.toBe(source.id);
+    expect(copy.title).toBe("源项目 副本");
+
+    const canvas = await request.get(`/api/canvas/${copy.id}`);
+    expect(canvas.ok()).toBeTruthy();
+    const document = (await canvas.json()) as {
+      nodes: Array<{ id: string; type: string }>;
+    };
+    expect(document.nodes).toEqual([
+      expect.objectContaining({ id: "clone-text", type: "text" }),
+    ]);
+
+    await page.goto("/canvas/projects");
+    await page.getByTestId(`project-card-${source.id}`).hover();
+    await page.getByTestId(`project-menu-${source.id}`).click();
+    await page
+      .getByTestId(`project-menu-pop-${source.id}`)
+      .getByRole("button", { name: "克隆" })
+      .click();
+    await expect(page.getByTestId(`project-card-${copy.id}`)).toBeVisible();
+  });
 });
 
 test.describe("multi-project routing", () => {
@@ -317,7 +370,7 @@ test("canvas project menu creates, returns to workspace and deletes", async ({
 
   await page.getByTestId("logo-button").click();
   await page.getByTestId("project-menu").getByText("返回工作空间").click();
-  await expect(page).toHaveURL(/\/canvas\/projects$/);
+  await expect(page).toHaveURL(/\/canvas\/projects\?from=/);
 
   await page.goto(`/canvas/${newId}`);
   await page.getByTestId("logo-button").click();
@@ -334,6 +387,33 @@ test("canvas project menu creates, returns to workspace and deletes", async ({
   };
   expect(list.projects.some((project) => project.id === newId)).toBeFalsy();
   await request.delete(`/api/projects/${created.id}`);
+});
+
+test("workspace back returns to the originating project, not the default canvas", async ({
+  page,
+  request,
+}) => {
+  const created = await request.post("/api/projects", { data: {} });
+  expect(created.status()).toBe(201);
+  const project = (await created.json()) as { id: string };
+
+  await page.goto(`/canvas/${project.id}`);
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-persistence-ready",
+    "true",
+  );
+  await page.getByTestId("logo-button").click();
+  await page.getByTestId("project-menu").getByText("返回工作空间").click();
+  await expect(page).toHaveURL(/\/canvas\/projects\?from=/);
+
+  await page.getByTestId("workspace-back").click();
+  await expect(page).toHaveURL(new RegExp(`/canvas/${project.id}$`));
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-persistence-ready",
+    "true",
+  );
+
+  await request.delete(`/api/projects/${project.id}`);
 });
 
 test("workspace entry points are visible from the default canvas and workspace returns to canvas", async ({

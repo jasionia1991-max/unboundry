@@ -303,13 +303,13 @@
         "topRight": [1080, 16, 40, 40],
         "credits": [910.6, 16, 65.4, 40],
         "share": [1080, 16, 40, 40],
-        "leftToolbar": [15, 303.5, 54, 294],
-        "addNode": [22, 310.5, 40, 40],
-        "nodeSearch": [23, 358.5, 38, 38],
-        "assets": [23, 402.5, 38, 38],
-        "templates": [23, 446.5, 38, 38],
-        "history": [23, 490.5, 38, 38],
-        "userAvatar": [22, 549.5, 40, 40],
+        "leftToolbar": [15, 284.5, 54, 340],
+        "addNode": [22, 291.5, 40, 40],
+        "nodeSearch": [23, 339.5, 38, 38],
+        "assets": [23, 383.5, 38, 38],
+        "templates": [23, 427.5, 38, 38],
+        "history": [23, 471.5, 38, 38],
+        "userAvatar": [22, 558.5, 40, 40],
         "emptyQuickActions": [245.5, 416.5, 644, 84],
         "quickActionBadge": [420.9, 416.5, 82, 34],
         "textToVideo": [245.5, 462.5, 128, 38],
@@ -666,7 +666,7 @@
       "status": "VERIFIED",
       "viewport": "desktopPrimary",
       "elements": {
-        "menu": [16, 62, 200, 139]
+        "menu": [16, 62, 200, 203]
       },
       "style": {
         "background": "#262626",
@@ -675,8 +675,10 @@
         "padding": 4
       },
       "items": [
+        "工作空间",
         "重命名",
         "新建项目",
+        "克隆项目",
         "删除"
       ],
       "productDecision": "私有版暂不提供工作空间、TapTV和竞技场入口；用户于2026-07-31明确要求移除这些不可用占位项。",

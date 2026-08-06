@@ -6,6 +6,7 @@ import {
   type WorkflowNodeShape,
 } from "../client/src/generation/workflowExecution";
 import { friendlyGenerationMessage } from "../client/src/generation/friendlyGenerationMessage";
+import { createSaveGateRun } from "../client/src/generation/saveGate";
 
 test("workflow layering puts a chain in order and branches into the same layer", () => {
   const nodes: WorkflowNodeShape[] = [
@@ -174,6 +175,48 @@ test("friendly generation messages avoid long English and jargon", () => {
   expect(friendlyGenerationMessage("请求过于频繁，请稍后再试", "text"))
     .toBe("操作太频繁，请稍后再试");
   expect(friendlyGenerationMessage("短中文提示", "text")).toBe("短中文提示");
+});
+
+test("save gate waits for a durable canvas revision before running the node", async () => {
+  let revisionConfirmed = false;
+  const calls: string[] = [];
+  const run = createSaveGateRun(
+    async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      revisionConfirmed = true;
+      return 42;
+    },
+    async () => {
+      calls.push("run");
+      return { status: "success" as const };
+    },
+    "text",
+  );
+  const pending = run();
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  expect(calls).toEqual([]);
+  expect(await pending).toEqual({ status: "success" });
+  expect(revisionConfirmed).toBe(true);
+  expect(calls).toEqual(["run"]);
+});
+
+test("save gate turns a save failure into a friendly node failure", async () => {
+  let runCalled = false;
+  const run = createSaveGateRun(
+    async () => {
+      throw new Error("画布保存状态异常");
+    },
+    async () => {
+      runCalled = true;
+      return { status: "success" };
+    },
+    "video",
+  );
+  await expect(run()).resolves.toMatchObject({
+    message: "画布保存状态异常，请刷新页面后重试",
+    status: "failed",
+  });
+  expect(runCalled).toBe(false);
 });
 
 test("group run stays disabled on acceptance fixtures and makes no provider requests", async ({

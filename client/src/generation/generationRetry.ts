@@ -1,6 +1,10 @@
 import type { ModelParameterValue } from "../../../types/modelParameters";
 import type { ResolvedNodeInput } from "../../../types/nodeInputs";
 import type { GenerationTaskSummary } from "./generationTasks";
+import {
+  friendlyGenerationMessage,
+  type GenerationMessageKind,
+} from "./friendlyGenerationMessage";
 
 export const RETRY_OUTCOME_UNKNOWN_MESSAGE =
   "上次生成结果无法确认，为避免重复扣费，不能一键重试；请先到模型平台核对任务记录，确认后修改生成内容再提交";
@@ -61,9 +65,14 @@ export function generationRetryBlockReason(
 export function generationFailureMessage(
   message: string,
   retryBlockReason?: string,
+  errorCode?: string,
+  kind?: GenerationMessageKind,
 ) {
-  if (!retryBlockReason || message.includes(retryBlockReason)) return message;
-  return `${message}；${retryBlockReason}`;
+  const visible = errorCode && kind
+    ? friendlyGenerationMessage(message, kind, errorCode)
+    : message;
+  if (!retryBlockReason || visible.includes(retryBlockReason)) return visible;
+  return `${visible}；${retryBlockReason}`;
 }
 
 export function safelyRetryableGenerationTask(

@@ -4668,6 +4668,8 @@ sup {
 }
 
 .react-flow__node-group {
+  background: rgba(83, 83, 83, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 16px;
 }
 
@@ -4675,11 +4677,15 @@ sup {
   outline: 0;
 }
 
+.react-flow__node-group.selected {
+  border: 2px solid rgba(255, 255, 255, 0.32);
+}
+
 .group-node-body {
   width: 100%;
   height: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: 12px;
+  border: 1px solid transparent;
+  border-radius: 16px;
   transition: background 160ms ease;
 }
 
@@ -5417,8 +5423,14 @@ sup {
 }
 
 .react-flow__edge-path {
-  stroke: #7a7a7a;
-  stroke-width: 1.5;
+  stroke: #ffffff60;
+  stroke-width: 1;
+}
+
+/* 对齐 TapNow：禁用 React Flow 的虚线动画，连线始终为连续实线。 */
+.react-flow__edge.animated path {
+  animation: none !important;
+  stroke-dasharray: 0;
 }
 
 .canvas-world .react-flow__viewport {
@@ -5440,8 +5452,8 @@ sup {
 }
 
 .react-flow__edge.selected .react-flow__edge-path {
-  stroke: #f5f5f5;
-  stroke-width: 2;
+  stroke: #ffffff;
+  stroke-width: 1;
 }
 
 .cut-edge-button {
@@ -5731,6 +5743,187 @@ sup {
   white-space: nowrap;
 }
 
+.save-conflict-toast {
+  position: absolute;
+  top: 72px;
+  left: 50%;
+  z-index: 60;
+  max-width: min(560px, calc(100vw - 80px));
+  padding: 9px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  color: #f2f2f2;
+  background: rgba(48, 38, 26, 0.94);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.42);
+  font-size: var(--tap-font-primary);
+  line-height: 18px;
+  transform: translateX(-50%);
+}
+
+.tasks-panel {
+  position: absolute;
+  bottom: 0;
+  left: var(--tap-dock-clear-left);
+  z-index: 45;
+  display: flex;
+  width: min(420px, calc(100vw - var(--tap-dock-clear-left) - 8px));
+  height: 420px;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px 14px 0 0;
+  color: #d8d8d8;
+  background: rgba(31, 31, 31, 0.98);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(24px);
+}
+
+.tasks-panel-header {
+  display: flex;
+  height: 46px;
+  padding: 0 14px;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.tasks-panel-header strong {
+  font-size: var(--tap-font-primary);
+  color: #f2f2f2;
+}
+
+.tasks-panel-header span {
+  font-size: var(--tap-font-secondary);
+  color: #858585;
+}
+
+.tasks-divider {
+  height: 1px;
+  margin: 0 10px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.tasks-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  padding: 10px 12px 14px;
+  overflow-y: auto;
+}
+
+.tasks-group h3 {
+  display: flex;
+  margin: 0 0 6px;
+  align-items: center;
+  gap: 6px;
+  color: #858585;
+  font-size: var(--tap-font-secondary);
+  font-weight: 500;
+}
+
+.tasks-group h3 span {
+  color: #1fa2dc;
+}
+
+.tasks-group ul {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+}
+
+.tasks-row {
+  display: grid;
+  padding: 7px 8px;
+  grid-template-columns: 34px minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.tasks-row-kind {
+  color: #a1a1aa;
+  font-size: var(--tap-font-secondary);
+}
+
+.tasks-row-prompt {
+  overflow: hidden;
+  color: #e4e4e7;
+  font-size: var(--tap-font-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tasks-row-state {
+  font-size: var(--tap-font-secondary);
+}
+
+.tasks-state-queued,
+.tasks-state-recovering,
+.tasks-state-retrying,
+.tasks-state-running {
+  color: #1fa2dc;
+}
+
+.tasks-state-failed {
+  color: #f87171;
+}
+
+.tasks-state-success {
+  color: #4ade80;
+}
+
+.tasks-state-cancelled {
+  color: #858585;
+}
+
+.tasks-row-time {
+  color: #71717a;
+  font-size: 12px;
+}
+
+.tasks-row-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.tasks-row-actions button {
+  padding: 3px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  color: #d8d8d8;
+  background: transparent;
+  font-size: var(--tap-font-secondary);
+  cursor: pointer;
+}
+
+.tasks-row-actions button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.tasks-row-actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.tasks-empty {
+  margin: auto;
+  padding: 24px;
+  color: #858585;
+  font-size: var(--tap-font-secondary);
+  text-align: center;
+}
+
+.tasks-error {
+  padding: 10px 14px 0;
+  color: #f87171;
+  font-size: var(--tap-font-secondary);
+}
+
 .top-right {
   position: absolute;
   top: 16px;
@@ -5843,11 +6036,11 @@ sup {
 
 .left-toolbar {
   position: absolute;
-  top: calc(50% - 155px);
+  top: calc(50% - 174px);
   left: var(--tap-dock-left);
   z-index: 90;
   width: 54px;
-  height: 294px;
+  height: 340px;
   border: 1px solid var(--tap-border);
   border-radius: 32px;
   background: #1c1c1c;
@@ -7578,9 +7771,13 @@ sup {
   top: 186px;
 }
 
+.dock-tasks {
+  top: 230px;
+}
+
 .user-avatar {
   position: absolute;
-  top: 246px;
+  top: 274px;
   left: 6px;
   width: 40px;
   height: 40px;

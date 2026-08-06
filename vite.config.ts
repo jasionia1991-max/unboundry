@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 import { playlistExport } from "./server/playlistExport";
 import { playlistThumbnails } from "./server/playlistThumbnails";
+import { appDataDirectory } from "./server/database";
 import {
   accountHistory,
   canvasPersistence,
@@ -88,6 +89,34 @@ function devFixtureApi(): Plugin {
           response.end(JSON.stringify({ error: "Fixture source unavailable" }));
         }
       });
+    },
+  };
+}
+
+function testDataDirectoryApi(): Plugin {
+  const install = (middlewares: {
+    use: (path: string, handler: (...args: any[]) => void) => void;
+  }) => {
+    middlewares.use("/api/test-data-directory", (request, response) => {
+      if (process.env.TAPNOW_TEST_AUTH_BYPASS !== "1") {
+        response.statusCode = 404;
+        response.end("{}");
+        return;
+      }
+      response.setHeader("Cache-Control", "no-store");
+      response.setHeader("Content-Type", "application/json; charset=utf-8");
+      response.end(
+        JSON.stringify({ dataDirectory: appDataDirectory() }),
+      );
+    });
+  };
+  return {
+    name: "tapnow-test-data-directory-api",
+    configurePreviewServer(server) {
+      install(server.middlewares);
+    },
+    configureServer(server) {
+      install(server.middlewares);
     },
   };
 }
@@ -427,6 +456,7 @@ export default defineConfig({
     plugins: [
       react(),
       devFixtureApi(),
+      testDataDirectoryApi(),
       authenticationApi(),
       openApiPlugin(),
       modelCatalogApi(),

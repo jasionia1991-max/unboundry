@@ -26,10 +26,16 @@ import {
   useWorkflowExecution,
   type NodeRunResult,
 } from "../generation/WorkflowExecutionProvider";
+import { createSaveGateRun } from "../generation/saveGate";
 import {
   friendlyGenerationMessage,
   generationMessageFallback,
 } from "../generation/friendlyGenerationMessage";
+import {
+  isTransientPollingError,
+  POLLING_PAUSED_MESSAGE,
+  waitForGenerationTaskWithPause,
+} from "../generation/taskPolling";
 import type {
   NodeGenerationOutcome,
 } from "../generation/workflowExecution";
@@ -179,6 +185,7 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     canvasRevision,
     flushCanvasSave,
     isFixture,
+    waitForCanvasRevision,
   } = useGenerationCanvas();
   const audioModelSelection = usePublishedModelSelection(
     "audio",
@@ -235,6 +242,8 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   );
   const [transientUploadError, setTransientUploadError] = useState("");
   const [retryTaskId, setRetryTaskId] = useState<string>();
+  const [pollingPausedTaskId, setPollingPausedTaskId] = useState<string>();
+  const pollingPausedTaskIdRef = useRef<string | undefined>(undefined);
   const [serverInputProblems, setServerInputProblems] = useState<NodeInputProblem[]>([]);
   const uploading = data.inputState === "uploading";
   const promptControl = useCompositionSafeText({
@@ -409,6 +418,8 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     const visibleMessage = generationFailureMessage(
       message,
       retryAllowed ? undefined : retryBlockReason,
+      errorCode,
+      "audio",
     );
     setNodes((nodes) => nodes.map((node) => node.id === id
       ? {
@@ -640,7 +651,19 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
           }
         : node));
       setSubmitting(false);
-      const task = await waitForGenerationTask(submitted.id);
+      let task: Awaited<ReturnType<typeof waitForGenerationTask>>;
+      try {
+        task = await waitForGenerationTaskWithPause(submitted.id, () => {
+          pollingPausedTaskIdRef.current = submitted.id;
+          setPollingPausedTaskId(submitted.id);
+          setUploadError(POLLING_PAUSED_MESSAGE);
+        });
+      } catch (error) {
+        if (pollingPausedTaskIdRef.current === submitted.id) {
+          return { message: POLLING_PAUSED_MESSAGE, status: "failed" };
+        }
+        throw error;
+      }
       if (task.state === "cancelled") {
         persistAudioGenerationCancellation(
           task.id,
@@ -669,6 +692,8 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
         };
       }
       applyGeneratedAudio(task, promptControl.committedValue.trim());
+      pollingPausedTaskIdRef.current = undefined;
+      setPollingPausedTaskId(undefined);
       setRetryTaskId(undefined);
       return { status: "success" };
     } catch (error) {
@@ -735,9 +760,13 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   useEffect(
     () =>
       registerWorkflowNode(id, {
-        run: () => runWorkflowNodeRef.current(),
+        run: createSaveGateRun(
+          waitForCanvasRevision,
+          () => runWorkflowNodeRef.current(),
+          "audio",
+        ),
       }),
-    [id, registerWorkflowNode],
+    [id, registerWorkflowNode, waitForCanvasRevision],
   );
 
   const retryAudioGeneration = async () => {
@@ -810,7 +839,54 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     }
   };
 
+  const resumeAudioPolling = async () => {
+    const taskId = pollingPausedTaskIdRef.current;
+    if (!taskId) return;
+    pollingPausedTaskIdRef.current = undefined;
+    setPollingPausedTaskId(undefined);
+    setUploadError("");
+    try {
+      const task = await waitForGenerationTask(taskId);
+      if (task.state === "cancelled") {
+        persistAudioGenerationCancellation(
+          task.id,
+          task.errorMessage ?? "音频生成已取消",
+        );
+        return;
+      }
+      if (task.state !== "success") {
+        persistAudioGenerationFailure(
+          task.id,
+          friendlyGenerationMessage(task.errorMessage, "audio", task.errorCode),
+          task.errorCode,
+          safelyRetryableGenerationTask(task),
+          task.retryBlockCode,
+          task.retryBlockReason,
+        );
+        return;
+      }
+      applyGeneratedAudio(task, promptControl.committedValue.trim());
+      setRetryTaskId(undefined);
+    } catch (error) {
+      if (isTransientPollingError(error)) {
+        pollingPausedTaskIdRef.current = taskId;
+        setPollingPausedTaskId(taskId);
+        setUploadError(POLLING_PAUSED_MESSAGE);
+        return;
+      }
+      setUploadError(
+        error instanceof Error ? error.message : "音频生成失败，请稍后再试",
+      );
+    } finally {
+      setActiveTaskId(undefined);
+    }
+  };
+
   const cancelAudioGeneration = async () => {
+    if (pollingPausedTaskIdRef.current) {
+      pollingPausedTaskIdRef.current = undefined;
+      setPollingPausedTaskId(undefined);
+    }
     if (!activeTaskId || !relayCancellationAvailable) return;
     try {
       const task = await cancelGenerationTask(activeTaskId);
@@ -1571,6 +1647,15 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
                 type="button"
               >
                 重试
+              </button>
+            )}
+            {pollingPausedTaskId && (
+              <button
+                aria-label="重新检查任务状态"
+                onClick={() => void resumeAudioPolling()}
+                type="button"
+              >
+                重新检查
               </button>
             )}
           </div>

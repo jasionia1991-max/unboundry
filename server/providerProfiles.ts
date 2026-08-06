@@ -103,6 +103,10 @@ let database: DatabaseSync | undefined;
 let databaseDirectory = "";
 let documentMutation: Promise<void> = Promise.resolve();
 let afterDocumentWriteForTests: (() => Promise<void>) | undefined;
+// In-process queue so concurrent generation submissions never block the event
+// loop on the same SQLite lock. The SQLite lock remains for cross-process
+// writers; the queue makes same-process waiters asynchronous.
+let providerDocumentLockQueue: Promise<void> = Promise.resolve();
 
 function db() {
   const directory = appDataDirectory();
@@ -226,18 +230,25 @@ async function writeDocument(document: ProviderProfileDocument) {
 }
 
 async function acquireDocumentLock() {
-  const target = paths();
-  await mkdir(target.directory, { mode: 0o700, recursive: true });
-  const lockDatabase = new DatabaseSync(target.writeLock, {
-    timeout: documentLockAcquireTimeoutMs,
+  let releaseQueue!: () => void;
+  const previous = providerDocumentLockQueue;
+  providerDocumentLockQueue = new Promise<void>((resolve) => {
+    releaseQueue = resolve;
   });
-  await chmod(target.writeLock, 0o600);
-  const lockFile = await stat(target.writeLock);
-  if (!lockFile.isFile()) {
-    lockDatabase.close();
-    throw new Error("Provider configuration lock is invalid");
-  }
+  await previous;
+  const target = paths();
+  let lockDatabase: DatabaseSync | undefined;
   try {
+    await mkdir(target.directory, { mode: 0o700, recursive: true });
+    lockDatabase = new DatabaseSync(target.writeLock, {
+      timeout: documentLockAcquireTimeoutMs,
+    });
+    await chmod(target.writeLock, 0o600);
+    const lockFile = await stat(target.writeLock);
+    if (!lockFile.isFile()) {
+      lockDatabase.close();
+      throw new Error("Provider configuration lock is invalid");
+    }
     lockDatabase.exec(`PRAGMA busy_timeout = ${documentLockAcquireTimeoutMs}`);
     lockDatabase.exec(`
       CREATE TABLE IF NOT EXISTS provider_profile_write_lock (
@@ -256,9 +267,16 @@ async function acquireDocumentLock() {
     if (!lockDatabase.isTransaction) {
       throw new Error("Provider configuration lock was not acquired");
     }
-  } catch {
-    lockDatabase.close();
-    throw new Error("Provider configuration is busy");
+  } catch (error) {
+    lockDatabase?.close();
+    releaseQueue();
+    if (
+      error instanceof Error &&
+      /database is locked|locked|busy/i.test(error.message)
+    ) {
+      throw new Error("Provider configuration is busy");
+    }
+    throw error;
   }
   let released = false;
   return {
@@ -269,6 +287,7 @@ async function acquireDocumentLock() {
       } finally {
         released = true;
         lockDatabase.close();
+        releaseQueue();
       }
     },
   };

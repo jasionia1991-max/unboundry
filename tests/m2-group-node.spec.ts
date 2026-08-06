@@ -96,6 +96,38 @@ test("Selected Group matches the frozen shell and title behavior", async ({
   );
 });
 
+test("Group layout reflows children into grid and horizontal positions", async ({
+  page,
+}) => {
+  await page.goto("/__fixture/node.group.selected");
+  const image = page.getByTestId("image-node-group-image");
+  const video = page.getByTestId("video-node-group-video");
+  const group = page.locator(".react-flow__node-group");
+  const beforeImage = (await image.boundingBox())!;
+  const beforeVideo = (await video.boundingBox())!;
+  const beforeGroup = (await group.boundingBox())!;
+
+  await page.getByRole("button", { name: "组合框布局" }).click();
+  await expect(page.getByRole("button", { name: "宫格" })).toBeVisible();
+  await page.getByRole("button", { name: "宫格" }).click();
+  await expect
+    .poll(async () => (await video.boundingBox())?.x ?? -1)
+    .not.toBe(beforeVideo.x);
+  await expect
+    .poll(async () => (await group.boundingBox())?.width ?? -1)
+    .not.toBe(beforeGroup.width);
+
+  await page.getByRole("button", { name: "组合框布局" }).click();
+  await expect(page.getByRole("button", { name: "水平" })).toBeVisible();
+  await page.getByRole("button", { name: "水平" }).click();
+  await expect
+    .poll(async () => (await video.boundingBox())?.x ?? -1)
+    .not.toBe(beforeVideo.x);
+  await expect
+    .poll(async () => (await group.boundingBox())?.width ?? -1)
+    .not.toBe(beforeGroup.width);
+});
+
 test("Dense template Group keeps the frozen geometry and chrome", async ({
   page,
 }) => {

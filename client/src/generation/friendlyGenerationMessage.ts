@@ -103,6 +103,60 @@ const friendlySubstitutions: ReadonlyArray<{
 
 const technicalPattern = /(request\s*id|error\s*code|exception|stack|trace|undefined|null|\[\w+\]|http[s]?:\/\/)/i;
 
+const generationErrorCodeMessages: Record<
+  string,
+  string | ((kind: GenerationMessageKind) => string)
+> = {
+  ADAPTER_UNSUPPORTED: "该模型尚未接入安全生成服务，请联系管理员",
+  CANVAS_NOT_SAVED: "画布内容还在保存，请等待自动保存完成后再试",
+  COST_LIMIT: "今日或本月生成费用额度已用完，请明天再试或联系管理员调整上限",
+  COST_UNKNOWN: "本次生成费用暂时无法确认，已为你安全拦截",
+  EMERGENCY_STOP: "管理员已紧急停止真实生成",
+  GENERATION_DISABLED: "管理员已关闭真实生成",
+  GENERATION_FAILED: "生成失败，请稍后再试",
+  GENERATION_TASK_NOT_FOUND: "生成任务不存在或已过期，请重新提交",
+  GENERATION_UNAVAILABLE: "当前暂时无法创建生成任务",
+  GLOBAL_DISABLED: "管理员已关闭真实生成",
+  GLOBAL_GENERATION_DISABLED: "管理员已关闭真实生成",
+  IDEMPOTENCY_CONFLICT: "生成任务关联不一致，请修改内容后再试",
+  INPUT_INVALID: "生成参数不符合要求，请检查节点设置",
+  INPUT_SCHEMA_UNSUPPORTED: "生成参数版本与当前模型不匹配，请重新选择模型",
+  KIND_CONCURRENCY: "同类型生成任务已达上限，请等待当前任务完成",
+  MODEL_UNAVAILABLE: "该模型暂时不能生成，请联系管理员检查模型配置",
+  MODEL_UNSUPPORTED: "当前模型不支持该生成方式，请更换模型",
+  OUTPUT_COUNT_UNSUPPORTED: "当前模型不支持该生成数量，请调整后重试",
+  PROVIDER_AUTH_FAILED: (kind) =>
+    `${kind === "text" ? "文字" : kind === "image" ? "图片" : kind === "video" ? "视频" : "音频"}模型连接异常，请联系管理员检查平台连接`,
+  PROVIDER_CANCEL_UNAVAILABLE: "模型平台暂不支持取消，任务会继续保存结果",
+  PROVIDER_CANCELLED: "生成任务已取消",
+  PROVIDER_COOLDOWN: "模型服务连续失败，请稍后再试",
+  PROVIDER_CONFIGURATION_MISMATCH: "平台连接配置已变化，请刷新页面后重新提交",
+  PROVIDER_DRIVER_MISMATCH: "平台连接配置不匹配，请联系管理员",
+  PROVIDER_FAILED: "模型平台未完成本次生成，请重试",
+  PROVIDER_PROFILE_MISSING: "平台安全配置缺失，请联系管理员",
+  PROVIDER_RECOVERY_ATTEMPT_USED: "模型配置更新后的恢复尝试已使用，请等待结果或联系管理员",
+  PROVIDER_REVERIFY_REQUIRED: "平台连接资料已更新，请管理员完成只读连接检查",
+  RATE_LIMIT: "操作太频繁，请稍后再试",
+  RETRY_OUTCOME_UNKNOWN:
+    "上次生成结果无法确认，为避免重复扣费，不能一键重试；请先到模型平台核对任务记录，确认后修改生成内容再提交",
+  RETRY_SNAPSHOT_CHANGED: "任务快照已变化，不能继续旧任务，请重新提交",
+  RETRY_SNAPSHOT_INCOMPATIBLE: "任务快照与当前节点不兼容，请重新提交",
+  SERVICE_RESTARTED: "服务刚刚重启，任务状态已恢复，请重新检查",
+  TASK_NOT_FAILED: "只有失败任务可以重试",
+  USER_CANCELLED: "生成任务已取消",
+  USER_CONCURRENCY: "同时运行的生成任务太多，请等待完成后再试",
+};
+
+export function friendlyGenerationCodeMessage(
+  code: string | undefined,
+  kind: GenerationMessageKind,
+): string | undefined {
+  if (!code) return undefined;
+  const mapped = generationErrorCodeMessages[code];
+  if (typeof mapped === "function") return mapped(kind);
+  return mapped;
+}
+
 /**
  * One friendly Chinese message for any generation error. Server messages that
  * are already short Chinese are kept; long English runs, technical tokens and
@@ -111,9 +165,12 @@ const technicalPattern = /(request\s*id|error\s*code|exception|stack|trace|undef
 export function friendlyGenerationMessage(
   message: string | undefined,
   kind: GenerationMessageKind,
+  code?: string,
 ): string {
   const trimmed = (message ?? "").trim();
-  if (!trimmed) return friendlyFallbacks[kind];
+  if (!trimmed) {
+    return friendlyGenerationCodeMessage(code, kind) ?? friendlyFallbacks[kind];
+  }
   for (const item of friendlySubstitutions) {
     if (item.pattern.test(trimmed)) return item.message;
   }
@@ -128,6 +185,8 @@ export function friendlyGenerationMessage(
   ) {
     return trimmed;
   }
+  const coded = friendlyGenerationCodeMessage(code, kind);
+  if (coded) return coded;
   return friendlyFallbacks[kind];
 }
 

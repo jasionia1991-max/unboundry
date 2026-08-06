@@ -27,10 +27,16 @@ import {
   useWorkflowExecution,
   type NodeRunResult,
 } from "../generation/WorkflowExecutionProvider";
+import { createSaveGateRun } from "../generation/saveGate";
 import {
   friendlyGenerationMessage,
   generationMessageFallback,
 } from "../generation/friendlyGenerationMessage";
+import {
+  isTransientPollingError,
+  POLLING_PAUSED_MESSAGE,
+  waitForGenerationTaskWithPause,
+} from "../generation/taskPolling";
 import type {
   NodeGenerationOutcome,
 } from "../generation/workflowExecution";
@@ -205,6 +211,7 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     canvasRevision,
     flushCanvasSave,
     isFixture,
+    waitForCanvasRevision,
   } = useGenerationCanvas();
   const videoModelSelection = usePublishedModelSelection(
     "video",
@@ -247,6 +254,8 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   );
   const [transientUploadError, setTransientUploadError] = useState("");
   const [retryTaskId, setRetryTaskId] = useState<string>();
+  const [pollingPausedTaskId, setPollingPausedTaskId] = useState<string>();
+  const pollingPausedTaskIdRef = useRef<string | undefined>(undefined);
   const [serverInputProblems, setServerInputProblems] = useState<NodeInputProblem[]>([]);
   const uploadBaseline = useRef<ProbeNodeType | undefined>(undefined);
   const uploadController = useRef<AbortController | undefined>(undefined);
@@ -407,6 +416,8 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     const visibleMessage = generationFailureMessage(
       message,
       retryAllowed ? undefined : retryBlockReason,
+      errorCode,
+      "video",
     );
     setNodes((nodes) => nodes.map((node) => node.id === id
       ? {
@@ -597,7 +608,19 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       // Keep polling under videoGenerating so the same button can safely
       // cancel that task instead of remaining disabled for the whole run.
       setSubmitting(false);
-      const task = await waitForGenerationTask(submitted.id);
+      let task: Awaited<ReturnType<typeof waitForGenerationTask>>;
+      try {
+        task = await waitForGenerationTaskWithPause(submitted.id, () => {
+          pollingPausedTaskIdRef.current = submitted.id;
+          setPollingPausedTaskId(submitted.id);
+          setUploadError(POLLING_PAUSED_MESSAGE);
+        });
+      } catch (error) {
+        if (pollingPausedTaskIdRef.current === submitted.id) {
+          return { message: POLLING_PAUSED_MESSAGE, status: "failed" };
+        }
+        throw error;
+      }
       if (task.state !== "success") {
         persistVideoGenerationFailure(
           task.id,
@@ -613,6 +636,8 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
         };
       }
       applyGeneratedVideo(task, promptControl.committedValue.trim());
+      pollingPausedTaskIdRef.current = undefined;
+      setPollingPausedTaskId(undefined);
       setRetryTaskId(undefined);
       return { status: "success" };
     } catch (error) {
@@ -679,9 +704,13 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   useEffect(
     () =>
       registerWorkflowNode(id, {
-        run: () => runWorkflowNodeRef.current(),
+        run: createSaveGateRun(
+          waitForCanvasRevision,
+          () => runWorkflowNodeRef.current(),
+          "video",
+        ),
       }),
-    [id, registerWorkflowNode],
+    [id, registerWorkflowNode, waitForCanvasRevision],
   );
 
   const retryVideoGeneration = async () => {
@@ -743,7 +772,47 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     }
   };
 
+  const resumeVideoPolling = async () => {
+    const taskId = pollingPausedTaskIdRef.current;
+    if (!taskId) return;
+    pollingPausedTaskIdRef.current = undefined;
+    setPollingPausedTaskId(undefined);
+    setUploadError("");
+    try {
+      const task = await waitForGenerationTask(taskId);
+      if (task.state !== "success") {
+        persistVideoGenerationFailure(
+          task.id,
+          friendlyGenerationMessage(task.errorMessage, "video", task.errorCode),
+          task.errorCode,
+          safelyRetryableGenerationTask(task),
+          task.retryBlockCode,
+          task.retryBlockReason,
+        );
+        return;
+      }
+      applyGeneratedVideo(task, promptControl.committedValue.trim());
+      setRetryTaskId(undefined);
+    } catch (error) {
+      if (isTransientPollingError(error)) {
+        pollingPausedTaskIdRef.current = taskId;
+        setPollingPausedTaskId(taskId);
+        setUploadError(POLLING_PAUSED_MESSAGE);
+        return;
+      }
+      setUploadError(
+        error instanceof Error ? error.message : "视频生成失败，请稍后再试",
+      );
+    } finally {
+      setActiveTaskId(undefined);
+    }
+  };
+
   const cancelVideoGeneration = async () => {
+    if (pollingPausedTaskIdRef.current) {
+      pollingPausedTaskIdRef.current = undefined;
+      setPollingPausedTaskId(undefined);
+    }
     if (!activeTaskId) return;
     try {
       const task = await cancelGenerationTask(activeTaskId);
@@ -1540,6 +1609,15 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
                 type="button"
               >
                 重试
+              </button>
+            )}
+            {pollingPausedTaskId && (
+              <button
+                aria-label="重新检查任务状态"
+                onClick={() => void resumeVideoPolling()}
+                type="button"
+              >
+                重新检查
               </button>
             )}
           </div>

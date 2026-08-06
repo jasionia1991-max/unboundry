@@ -158,6 +158,7 @@ export type CanvasLibraryAsset = {
 export const CANVAS_LIBRARY_ASSET_MIME =
   "application/x-tapnow-library-asset";
 const emptyEdges: CuttableEdge[] = [];
+const PERSIST_DEBOUNCE_MS = 500;
 const nodeSize = (node: ProbeNodeType) => ({
   height:
     node.measured?.height ??
@@ -2778,6 +2779,8 @@ export function CanvasSurface({
       if (persistenceSaving.current || persistenceConflict.current) return;
       persistenceSaving.current = true;
       let failed = false;
+      let conflictRetried = false;
+      let failureNotified = false;
       try {
         while (persistenceQueued.current && !persistenceConflict.current) {
           const document = persistenceQueued.current;
@@ -2828,17 +2831,35 @@ export function CanvasSurface({
                   confirmedFingerprint.document;
                 persistedGraphFingerprint.current = confirmedFingerprint.graph;
               }
+            } else if (
+              !conflictRetried &&
+              Number.isInteger(conflict.revision)
+            ) {
+              // 最后修改者胜：采用服务端最新 revision，用本页最新内容重试一次。
+              conflictRetried = true;
+              persistenceRevision.current = Number(conflict.revision);
+              persistenceGraphRevision.current = Number(
+                conflict.graphRevision ?? conflict.revision,
+              );
+              setConfirmedPersistenceRevision(Number(conflict.revision));
+              setConfirmedGraphRevision(persistenceGraphRevision.current);
             } else {
               failed = true;
               persistenceConflict.current = true;
               setConfirmedPersistenceRevision(undefined);
               setConfirmedGraphRevision(undefined);
               persistenceQueued.current = undefined;
-              onSaveConflict(conflict.error);
+              onSaveConflict(
+                conflict.error || "内容已在其他页面更新，已采用最新版",
+              );
               break;
             }
           } else if (!response.ok) {
             failed = true;
+            if (!failureNotified) {
+              failureNotified = true;
+              onSaveConflict("保存失败，请检查网络，正在自动重试");
+            }
             persistenceQueued.current = canvasSnapshot();
             break;
           } else {
@@ -2902,7 +2923,7 @@ export function CanvasSurface({
     persistenceSaveTimer.current = window.setTimeout(() => {
       persistenceQueued.current = canvasSnapshot();
       void drainPersistenceQueue();
-    }, 1_000);
+    }, PERSIST_DEBOUNCE_MS);
     return () => window.clearTimeout(persistenceSaveTimer.current);
   }, [
     canvasSnapshot,
@@ -2916,6 +2937,20 @@ export function CanvasSurface({
     persistenceReady,
     viewport,
   ]);
+
+  useEffect(() => {
+    const hasPendingChanges = () =>
+      persistenceDirty.current ||
+      persistenceSaving.current ||
+      Boolean(persistenceQueued.current);
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasPendingChanges()) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, []);
 
   useEffect(() => {
     if (!persistenceFixture || !persistenceReady) return;
@@ -3339,6 +3374,8 @@ export function CanvasSurface({
       persistedGraphFingerprint.current
       ? confirmedGraphRevision
       : undefined;
+  const generationCanvasRevisionRef = useRef<number | undefined>(undefined);
+  generationCanvasRevisionRef.current = generationCanvasRevision;
   const flushCanvasSave = useCallback(async () => {
     if (persistenceConflict.current) {
       throw new Error("画布保存状态异常，请刷新后重试");
@@ -3355,6 +3392,37 @@ export function CanvasSurface({
       await new Promise((resolve) => setTimeout(resolve, 60));
     }
   }, []);
+  const waitForCanvasRevision = useCallback(async (timeoutMs = 8_000) => {
+    if (persistenceConflict.current) {
+      throw new Error("画布保存状态异常，请刷新后重试");
+    }
+    if (persistenceDirty.current && !persistenceSaving.current) {
+      persistenceQueued.current = canvasSnapshotRef.current();
+      drainPersistenceQueueRef.current();
+    }
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (!persistenceDirty.current && !persistenceSaving.current) {
+        const revision = generationCanvasRevisionRef.current;
+        if (revision !== undefined) {
+          // Let the latest render commit the confirmed revision before the
+          // caller reads a fresh node closure. A timeout fallback keeps the
+          // wait working even when requestAnimationFrame is throttled.
+          await new Promise((resolve) => {
+            const fallback = window.setTimeout(resolve, 100);
+            window.requestAnimationFrame(() => {
+              window.clearTimeout(fallback);
+              resolve(null);
+            });
+          });
+          const latest = generationCanvasRevisionRef.current;
+          if (latest !== undefined) return latest;
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    }
+    throw new Error("画布保存超时，请稍后再试");
+  }, []);
   const generationCanvasContextValue = useMemo(
     () => ({
       accountId: accountId ?? "",
@@ -3362,6 +3430,7 @@ export function CanvasSurface({
       canvasRevision: generationCanvasRevision,
       flushCanvasSave,
       isFixture: Boolean(fixtureId),
+      waitForCanvasRevision,
     }),
     [
       accountId,
@@ -3369,6 +3438,7 @@ export function CanvasSurface({
       flushCanvasSave,
       generationCanvasRevision,
       persistenceId,
+      waitForCanvasRevision,
     ],
   );
   const canvasSelectionUiContextValue = useMemo(

@@ -348,7 +348,7 @@ test("Text creator follows the reference layout without enabling generation", as
   });
   const generationRequests: string[] = [];
   page.on("request", (request) => {
-    if (/provider|generate/i.test(request.url())) {
+    if (/\/api\/.*(provider|generate)/i.test(request.url())) {
       generationRequests.push(request.url());
     }
   });

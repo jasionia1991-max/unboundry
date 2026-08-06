@@ -34,10 +34,16 @@ import {
   useWorkflowExecution,
   type NodeRunResult,
 } from "../generation/WorkflowExecutionProvider";
+import { createSaveGateRun } from "../generation/saveGate";
 import {
   friendlyGenerationMessage,
   generationMessageFallback,
 } from "../generation/friendlyGenerationMessage";
+import {
+  isTransientPollingError,
+  POLLING_PAUSED_MESSAGE,
+  waitForGenerationTaskWithPause,
+} from "../generation/taskPolling";
 import type {
   NodeGenerationOutcome,
 } from "../generation/workflowExecution";
@@ -1186,6 +1192,7 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     canvasRevision,
     flushCanvasSave,
     isFixture,
+    waitForCanvasRevision,
   } = useGenerationCanvas();
   const imageModelSelection = usePublishedModelSelection(
     "image",
@@ -1246,6 +1253,8 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   const [modelSwitchProblem, setModelSwitchProblem] = useState("");
   const [redrawOpen, setRedrawOpen] = useState(false);
   const [retryTaskId, setRetryTaskId] = useState<string>();
+  const [pollingPausedTaskId, setPollingPausedTaskId] = useState<string>();
+  const pollingPausedTaskIdRef = useRef<string | undefined>(undefined);
   const [serverInputProblems, setServerInputProblems] = useState<NodeInputProblem[]>([]);
   const [uploadError, setUploadError] = useState(
     visibleGenerationError(data.imageGenerationError),
@@ -1494,6 +1503,8 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     const visibleMessage = generationFailureMessage(
       message,
       retryAllowed ? undefined : retryBlockReason,
+      errorCode,
+      "image",
     );
     setNodes((nodes) =>
       nodes.map((node) =>
@@ -1612,7 +1623,19 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
       // Keep polling under imageGenerating so the same button can safely
       // cancel that task instead of remaining disabled for the whole run.
       setSubmitting(false);
-      const task = await waitForGenerationTask(submitted.id);
+      let task: Awaited<ReturnType<typeof waitForGenerationTask>>;
+      try {
+        task = await waitForGenerationTaskWithPause(submitted.id, () => {
+          pollingPausedTaskIdRef.current = submitted.id;
+          setPollingPausedTaskId(submitted.id);
+          setUploadError(POLLING_PAUSED_MESSAGE);
+        });
+      } catch (error) {
+        if (pollingPausedTaskIdRef.current === submitted.id) {
+          return { message: POLLING_PAUSED_MESSAGE, status: "failed" };
+        }
+        throw error;
+      }
       if (task.state !== "success") {
         persistImageGenerationFailure(
           task.id,
@@ -1631,6 +1654,8 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
         };
       }
       applyGeneratedImage(task);
+      pollingPausedTaskIdRef.current = undefined;
+      setPollingPausedTaskId(undefined);
       setRetryTaskId(undefined);
       return { status: "success" };
     } catch (error) {
@@ -1697,9 +1722,13 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
   useEffect(
     () =>
       registerWorkflowNode(id, {
-        run: () => runWorkflowNodeRef.current(),
+        run: createSaveGateRun(
+          waitForCanvasRevision,
+          () => runWorkflowNodeRef.current(),
+          "image",
+        ),
       }),
-    [id, registerWorkflowNode],
+    [id, registerWorkflowNode, waitForCanvasRevision],
   );
 
   const retryImageGeneration = async () => {
@@ -1769,7 +1798,48 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     }
   };
 
+  const resumeImagePolling = async () => {
+    const taskId = pollingPausedTaskIdRef.current;
+    if (!taskId) return;
+    pollingPausedTaskIdRef.current = undefined;
+    setPollingPausedTaskId(undefined);
+    setUploadError("");
+    try {
+      const task = await waitForGenerationTask(taskId);
+      if (task.state !== "success") {
+        persistImageGenerationFailure(
+          task.id,
+          friendlyGenerationMessage(task.errorMessage, "image", task.errorCode),
+          task.errorCode,
+          safelyRetryableGenerationTask(task),
+          task.retryBlockCode,
+          task.retryBlockReason,
+        );
+        return;
+      }
+      applyGeneratedImage(task);
+      setRetryTaskId(undefined);
+    } catch (error) {
+      if (isTransientPollingError(error)) {
+        pollingPausedTaskIdRef.current = taskId;
+        setPollingPausedTaskId(taskId);
+        setUploadError(POLLING_PAUSED_MESSAGE);
+        return;
+      }
+      setUploadError(
+        error instanceof Error ? error.message : "图片生成失败，请稍后再试",
+      );
+    } finally {
+      setActiveTaskId(undefined);
+    }
+  };
+
   const cancelImageGeneration = async () => {
+    const pausedTaskId = pollingPausedTaskIdRef.current;
+    if (pausedTaskId) {
+      pollingPausedTaskIdRef.current = undefined;
+      setPollingPausedTaskId(undefined);
+    }
     if (!activeTaskId) return;
     try {
       const task = await cancelGenerationTask(activeTaskId);
@@ -2714,6 +2784,15 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
                 type="button"
               >
                 重试
+              </button>
+            )}
+            {pollingPausedTaskId && (
+              <button
+                aria-label="重新检查任务状态"
+                onClick={() => void resumeImagePolling()}
+                type="button"
+              >
+                重新检查
               </button>
             )}
           </div>

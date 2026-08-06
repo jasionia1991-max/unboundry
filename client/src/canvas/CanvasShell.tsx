@@ -15,6 +15,7 @@ import {
   type CanvasSearchEntry,
   type CanvasShellMenuCommand,
 } from "./CanvasSurface";
+import { GenerationTasksPanel } from "./GenerationTasksPanel";
 import { useCompositionSafeText } from "./CompositionSafeText";
 import { hasInteractionProbeNodes } from "./probeFixtures";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
@@ -314,6 +315,14 @@ function LineIcon({
         <path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5" />
       </>
     ),
+    tasks: (
+      <>
+        <path d="M9 5h11M9 12h11M9 19h11" />
+        <circle cx="4.5" cy="5" r="1.2" />
+        <circle cx="4.5" cy="12" r="1.2" />
+        <circle cx="4.5" cy="19" r="1.2" />
+      </>
+    ),
     minimap: (
       <>
         <path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0Z" />
@@ -497,6 +506,7 @@ const dockItems = [
   ["assets", "素材库", "assets"],
   ["templates", "工作流/模板", "templates"],
   ["history", "历史", "history"],
+  ["tasks", "生成任务", "tasks"],
 ] as const;
 
 const quickActions = [
@@ -588,6 +598,7 @@ type PrimaryShellSurface =
   | "project"
   | "search"
   | "share"
+  | "tasks"
   | "templates";
 
 const agentAddItems = [
@@ -728,6 +739,7 @@ export function CanvasShell({
   const [historyOpen, setHistoryOpen] = useState(
     fixtureId === "panel.history.final",
   );
+  const [tasksOpen, setTasksOpen] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [historyTab, setHistoryTab] = useState<HistoryKind>("image");
   const [historyItems, setHistoryItems] = useState<HistoryAsset[]>([]);
@@ -820,6 +832,7 @@ export function CanvasShell({
   const assetsPanel = useRef<HTMLElement>(null);
   const templatesPanel = useRef<HTMLElement>(null);
   const historyPanel = useRef<HTMLElement>(null);
+  const tasksPanel = useRef<HTMLElement>(null);
   const titleInput = useRef<HTMLInputElement>(null);
   const projectMenu = useRef<HTMLElement>(null);
   const sharePopover = useRef<HTMLElement>(null);
@@ -914,6 +927,7 @@ export function CanvasShell({
     setHistoryOpen(false);
     setHistoryExpanded(false);
     setHistoryPreviewItem(undefined);
+    setTasksOpen(false);
     setProjectMenuOpen(false);
     setShareOpen(false);
     setHelpMenuOpen(false);
@@ -941,6 +955,7 @@ export function CanvasShell({
     if (surface === "project") setProjectMenuOpen(true);
     if (surface === "search") setNodeSearchOpen(true);
     if (surface === "share") setShareOpen(true);
+    if (surface === "tasks") setTasksOpen(true);
     if (surface === "templates") setTemplatesOpen(true);
   };
 
@@ -1209,6 +1224,17 @@ export function CanvasShell({
     window.location.href = `/canvas/${created.id}`;
   };
 
+  const cloneCurrentProject = async () => {
+    if (!projectId) return;
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(projectId)}/clone`,
+      { method: "POST" },
+    );
+    if (!response.ok) return;
+    const cloned = (await response.json()) as { id: string };
+    window.location.href = `/canvas/${cloned.id}`;
+  };
+
   const deleteCurrentProject = async () => {
     if (!projectId) return;
     const response = await fetch(
@@ -1279,6 +1305,16 @@ export function CanvasShell({
       });
     return () => controller.abort();
   }, [onProjectMissing, projectId, projectTitleId]);
+
+  // 每个标签页独立记住“最近打开的项目”，供工作空间返回时兜底。
+  useEffect(() => {
+    if (!projectId) return;
+    try {
+      sessionStorage.setItem(`tapnow:last-project:${userId}`, projectId);
+    } catch {
+      // 隐私模式等场景忽略；工作空间的 ?from 参数仍是主路径。
+    }
+  }, [projectId, userId]);
 
   useEffect(
     () => () => window.clearTimeout(saveTimer.current),
@@ -1502,6 +1538,12 @@ export function CanvasShell({
                 setOpen: setHistoryOpen,
                 testId: "history",
               }
+            : tasksOpen
+              ? {
+                  element: tasksPanel.current,
+                  setOpen: setTasksOpen,
+                  testId: "tasks",
+                }
             : undefined;
     if (
       !panel ||
@@ -1530,7 +1572,7 @@ export function CanvasShell({
       const switchingPanel =
         event instanceof MouseEvent &&
         (event.target as Element | null)?.closest(
-          '[data-testid="add-node"], [data-testid="node-search"], [data-testid="assets"], [data-testid="templates"], [data-testid="history"], [data-testid="user-avatar"], [data-testid="logo-button"], [data-testid="share"], [data-testid="help"], [data-testid="agent-bubble"]',
+          '[data-testid="add-node"], [data-testid="node-search"], [data-testid="assets"], [data-testid="templates"], [data-testid="history"], [data-testid="tasks"], [data-testid="user-avatar"], [data-testid="logo-button"], [data-testid="share"], [data-testid="help"], [data-testid="agent-bubble"]',
         );
       if (switchingPanel) return;
       panel.setOpen(false);
@@ -1549,6 +1591,7 @@ export function CanvasShell({
     historyOpen,
     historyPreviewItem,
     nodeSearchOpen,
+    tasksOpen,
     templateBrowseAllOpen,
     templatesOpen,
   ]);
@@ -1604,7 +1647,7 @@ export function CanvasShell({
       const switchingSurface =
         event instanceof MouseEvent &&
         (event.target as Element | null)?.closest(
-          '[data-testid="add-node"], [data-testid="node-search"], [data-testid="assets"], [data-testid="templates"], [data-testid="history"], [data-testid="user-avatar"], [data-testid="logo-button"], [data-testid="help"], [data-testid="agent-bubble"]',
+          '[data-testid="add-node"], [data-testid="node-search"], [data-testid="assets"], [data-testid="templates"], [data-testid="history"], [data-testid="tasks"], [data-testid="user-avatar"], [data-testid="logo-button"], [data-testid="help"], [data-testid="agent-bubble"]',
         );
       if (!switchingSurface) restoreShellControlFocus("share");
     };
@@ -1714,6 +1757,7 @@ export function CanvasShell({
     setSaveConflict(true);
     setSaveConflictMessage(message?.trim() || "另一页面已经保存了更新");
     setSaveStatus("保存失败");
+    window.setTimeout(() => setSaveConflict(false), 3_500);
   }, []);
   const markSaveSuccess = useCallback(() => {
     setSaveStatus("已保存到云端");
@@ -1804,22 +1848,10 @@ export function CanvasShell({
       {saveConflict && (
         <section
           aria-live="assertive"
-          className="save-conflict"
+          className="save-conflict-toast"
           data-testid="save-conflict"
         >
-          <div>
-            <strong>{saveConflictMessage}</strong>
-            <span>为避免覆盖，请重新载入最新内容，或返回工作空间。</span>
-          </div>
-          <button
-            onClick={() => { window.location.href = "/canvas/projects"; }}
-            type="button"
-          >
-            返回工作空间
-          </button>
-          <button onClick={() => window.location.reload()} type="button">
-            重新载入
-          </button>
+          {saveConflictMessage}
         </section>
       )}
 
@@ -1877,7 +1909,9 @@ export function CanvasShell({
           <button
             onClick={() => {
               setProjectMenuOpen(false);
-              window.location.href = "/canvas/projects";
+              window.location.href = projectId
+                ? `/canvas/projects?from=${encodeURIComponent(projectId)}`
+                : "/canvas/projects";
             }}
             type="button"
           >
@@ -1897,6 +1931,13 @@ export function CanvasShell({
           </button>
           <button onClick={() => void createProjectFromMenu()} type="button">
             新建项目
+          </button>
+          <button
+            disabled={!projectId}
+            onClick={() => void cloneCurrentProject()}
+            type="button"
+          >
+            克隆项目
           </button>
           <div className="project-menu-divider" />
           <button
@@ -1974,6 +2015,7 @@ export function CanvasShell({
             active={
               (testId === "add-node" && addMenuOpen) ||
               (testId === "history" && historyOpen) ||
+              (testId === "tasks" && tasksOpen) ||
               (testId === "node-search" && nodeSearchOpen) ||
               (testId === "assets" && assetsOpen) ||
               (testId === "templates" && templatesOpen)
@@ -1995,6 +2037,8 @@ export function CanvasShell({
                 ? () => {
                     togglePrimarySurface("history", historyOpen);
                   }
+                : testId === "tasks"
+                  ? () => togglePrimarySurface("tasks", tasksOpen)
                 : undefined
             }
             testId={testId}
@@ -2844,6 +2888,13 @@ export function CanvasShell({
             </div>
           </section>
         </div>
+      )}
+
+      {tasksOpen && (
+        <GenerationTasksPanel
+          canvasId={projectId ?? fixtureId ?? "default"}
+          open={tasksOpen}
+        />
       )}
 
       {historyOpen && (

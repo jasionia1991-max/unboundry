@@ -10,6 +10,12 @@ export type GenerationCanvasState = {
   canvasRevision?: number;
   /** Wait until the current on-screen graph is durably saved before submitting. */
   flushCanvasSave: () => Promise<void>;
+  /**
+   * Wait until the canvas is durably saved AND the latest React render has a
+   * confirmed revision. Used by generation paths that must not read a stale
+   * "canvas is still saving" state from an older render closure.
+   */
+  waitForCanvasRevision: (timeoutMs?: number) => Promise<number>;
 };
 
 export const GenerationCanvasContext = createContext<GenerationCanvasState>({
@@ -17,6 +23,7 @@ export const GenerationCanvasContext = createContext<GenerationCanvasState>({
   canvasId: "",
   isFixture: false,
   flushCanvasSave: async () => {},
+  waitForCanvasRevision: async () => -1,
 });
 
 export function useGenerationCanvas() {
