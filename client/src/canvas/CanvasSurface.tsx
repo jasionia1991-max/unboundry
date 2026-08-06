@@ -61,6 +61,15 @@ import {
   selectionFlowAnimatedEdgeIds,
   stripSelectionFlowMarkers,
 } from "./selectionFlow";
+import {
+  emptyCanvasTemplateSpot,
+  findTemplateSpot,
+  nodePlacementRect,
+  offsetTemplate,
+  templateAnchor,
+  templateBounds,
+  viewportForBounds,
+} from "./templatePlacement";
 import { GenerationCanvasContext } from "../generation/GenerationCanvasContext";
 import { WorkflowExecutionProvider } from "../generation/WorkflowExecutionProvider";
 import {
@@ -1840,6 +1849,9 @@ export function CanvasSurface({
   const nodeContextMenuRef = useRef<HTMLDivElement>(null);
   const internalClipboard = useRef<ProbeNodeType | undefined>(undefined);
   const appliedTemplateSequence = useRef<number | undefined>(undefined);
+  const templateFitCancel = useRef<(() => void) | undefined>(undefined);
+  const templateViewportAnimating = useRef(false);
+  const lastAnimatedViewport = useRef<Viewport | undefined>(undefined);
   const flowInstance = useRef<
     ReactFlowInstance<ProbeNodeType, CuttableEdge> | undefined
   >(undefined);
@@ -2132,6 +2144,31 @@ export function CanvasSurface({
   }, [cloneEdges, cloneNodes]);
   const canvasSnapshotRef = useRef(canvasSnapshot);
   canvasSnapshotRef.current = canvasSnapshot;
+  const cancelTemplateFit = useCallback(() => {
+    templateViewportAnimating.current = false;
+    templateFitCancel.current?.();
+    templateFitCancel.current = undefined;
+    lastAnimatedViewport.current = undefined;
+  }, []);
+  const handleViewportChange = useCallback(
+    (next: Viewport) => {
+      if (templateViewportAnimating.current) {
+        const last = lastAnimatedViewport.current;
+        if (
+          last &&
+          Math.abs(next.x - last.x) < 1e-6 &&
+          Math.abs(next.y - last.y) < 1e-6 &&
+          Math.abs(next.zoom - last.zoom) < 1e-9
+        ) {
+          // React Flow 对我们动画帧的回显，直接忽略。
+          return;
+        }
+        cancelTemplateFit();
+      }
+      onViewportChange(next);
+    },
+    [cancelTemplateFit, onViewportChange],
+  );
   const checkpoint = useCallback((includeHistory = true) => {
     if (!includeHistory) return;
     pushHistory({
@@ -2196,7 +2233,75 @@ export function CanvasSurface({
           nodeTypeById.get(edge.source) === "image")
         .map((edge) => edge.target),
     );
-    const preparedNodes = appliedNodes.map((node) =>
+    const existingNodes = nodesRef.current;
+    const existingById = new Map(
+      existingNodes.map((node) => [node.id, node]),
+    );
+    const obstacles = existingNodes.map((node) =>
+      nodePlacementRect(node, existingById, nodeSize),
+    );
+    const selectedBounds = existingNodes.filter((node) => node.selected)
+      .reduce<{
+        bottom: number;
+        left: number;
+        right: number;
+        top: number;
+      } | undefined>((bounds, node) => {
+        const rect = nodePlacementRect(node, existingById, nodeSize);
+        return bounds
+          ? {
+              bottom: Math.max(bounds.bottom, rect.bottom),
+              left: Math.min(bounds.left, rect.left),
+              right: Math.max(bounds.right, rect.right),
+              top: Math.min(bounds.top, rect.top),
+            }
+          : rect;
+      }, undefined);
+    const worldBounds = worldRef.current?.getBoundingClientRect();
+    const viewport = viewportRef.current;
+    const viewportCenter = worldBounds
+      ? {
+          x: (worldBounds.width / 2 - viewport.x) / viewport.zoom,
+          y: (worldBounds.height / 2 - viewport.y) / viewport.zoom,
+        }
+      : { x: 0, y: 0 };
+    const placementBounds = templateBounds(appliedNodes, nodeSize);
+    const templateSize = {
+      height: placementBounds.height,
+      width: placementBounds.width,
+    };
+    const spot = existingNodes.length === 0
+      ? emptyCanvasTemplateSpot({ templateSize, viewportCenter })
+      : findTemplateSpot({
+          anchor: templateAnchor({
+            selectedBounds,
+            templateSize,
+            viewportCenter,
+          }),
+          obstacles,
+          templateSize,
+        });
+    const positionedNodes = offsetTemplate(appliedNodes, {
+      x: spot.x - placementBounds.left,
+      y: spot.y - placementBounds.top,
+    });
+    const placedBounds = templateBounds(positionedNodes, nodeSize);
+    const targetViewport = worldBounds
+      ? viewportForBounds(
+          {
+            height: placedBounds.height,
+            width: placedBounds.width,
+            x: placedBounds.left,
+            y: placedBounds.top,
+          },
+          worldBounds.width,
+          worldBounds.height,
+          0.15,
+          2,
+          0.2,
+        )
+      : undefined;
+    const preparedNodes = positionedNodes.map((node) =>
       node.type === "image" && imageTargetsWithImageInput.has(node.id)
         ? withImageReferenceInputMode(node, imageModelsRef.current)
         : node,
@@ -2209,12 +2314,58 @@ export function CanvasSurface({
     setEdges((current) => [...current, ...appliedEdges]);
     if (groupNode) setPrimaryId(groupNode.id);
     window.requestAnimationFrame(() => {
-      void flowInstance.current?.fitView({ duration: 0, padding: 0.2 });
+      window.setTimeout(() => {
+        if (!targetViewport) return;
+        cancelTemplateFit();
+        const from = { ...viewportRef.current };
+        const startedAt = performance.now();
+        let frame = 0;
+        templateViewportAnimating.current = true;
+        const step = (now: number) => {
+          const progress = Math.min(
+            1,
+            Math.max(0, (now - startedAt) / 800),
+          );
+          const eased =
+            progress < 0.5
+              ? 4 * progress * progress * progress
+              : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+          const next = {
+            x: from.x + (targetViewport.x - from.x) * eased,
+            y: from.y + (targetViewport.y - from.y) * eased,
+            zoom: from.zoom + (targetViewport.zoom - from.zoom) * eased,
+          };
+          lastAnimatedViewport.current = next;
+          if (progress >= 1) {
+            // 最后一帧先关“动画闸门”，再提交最终镜头，确保只触发一次保存。
+            templateViewportAnimating.current = false;
+            templateFitCancel.current = undefined;
+          }
+          onViewportChange(next);
+          if (progress < 1) {
+            frame = window.requestAnimationFrame(step);
+          }
+        };
+        frame = window.requestAnimationFrame(step);
+        templateFitCancel.current = () => {
+          window.cancelAnimationFrame(frame);
+          templateViewportAnimating.current = false;
+        };
+      }, 100);
     });
-  }, [checkpoint, setEdges, setNodes, shellMenuCommand]);
+    return () => cancelTemplateFit();
+  }, [
+    cancelTemplateFit,
+    checkpoint,
+    onViewportChange,
+    setEdges,
+    setNodes,
+    shellMenuCommand,
+  ]);
   const handleCanvasWheelCapture = useCallback(
     (event: ReactWheelEvent<HTMLDivElement>) => {
       if (!event.ctrlKey || event.deltaY === 0 || !worldRef.current) return;
+      if (templateViewportAnimating.current) cancelTemplateFit();
       event.preventDefault();
       event.stopPropagation();
       const bounds = worldRef.current.getBoundingClientRect();
@@ -2770,6 +2921,10 @@ export function CanvasSurface({
       !persistenceReady ||
       persistenceConflict.current
     ) {
+      return;
+    }
+    if (templateViewportAnimating.current) {
+      // 镜头动画期间不触发保存调度，动画结束提交最终镜头时只保存一次。
       return;
     }
 
@@ -3907,7 +4062,7 @@ export function CanvasSurface({
         onSelectionChange={({ nodes: selectedNodes }) =>
           setPrimaryId(selectedNodes.at(-1)?.id)
         }
-        onViewportChange={onViewportChange}
+        onViewportChange={handleViewportChange}
         panOnDrag={agentReferenceMode ? true : [1, 2]}
         panOnScroll
         panOnScrollSpeed={1.2}
