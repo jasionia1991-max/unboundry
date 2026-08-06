@@ -239,6 +239,82 @@ export const openApiDocument = {
           "401": { description: "Sign-in required" },
         },
       },
+      post: {
+        operationId: "createUserTemplate",
+        summary: "Save the current account's private workflow template",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["title", "graph"],
+                properties: {
+                  title: { type: "string", minLength: 1, maxLength: 40 },
+                  category: { type: "string", maxLength: 40 },
+                  sourceCanvasId: { type: "string", maxLength: 120 },
+                  nodeIds: {
+                    type: "array",
+                    items: { type: "string", maxLength: 200 },
+                    maxItems: 500,
+                  },
+                  graph: {
+                    type: "object",
+                    required: ["nodes", "edges", "version"],
+                    properties: {
+                      nodes: {
+                        type: "array",
+                        maxItems: 500,
+                        items: { type: "object" },
+                      },
+                      edges: {
+                        type: "array",
+                        maxItems: 1000,
+                        items: { type: "object" },
+                      },
+                      version: { type: "integer", const: 1 },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            description: "Saved private template card",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/TemplateCatalogCard" },
+              },
+            },
+          },
+          "400": { description: "Invalid template title, category or graph" },
+          "401": { description: "Sign-in required" },
+        },
+      },
+    },
+    "/api/templates/{templateId}": {
+      delete: {
+        operationId: "deleteUserTemplate",
+        summary: "Delete one of the current account's private templates",
+        parameters: [
+          {
+            in: "path",
+            name: "templateId",
+            required: true,
+            schema: {
+              type: "string",
+              pattern: "^[a-f0-9-]{36}$",
+            },
+          },
+        ],
+        responses: {
+          "200": { description: "Template deleted" },
+          "401": { description: "Sign-in required" },
+          "404": { description: "Template not found or not owned by this account" },
+        },
+      },
     },
     "/api/agent-config": {
       get: {
@@ -608,7 +684,18 @@ export const openApiDocument = {
                         required: ["id", "type", "position", "data", "style", "zIndex"],
                         properties: {
                           id: { type: "string" },
-                          type: { type: "string", enum: ["group", "image", "text", "video"] },
+                          type: {
+                            type: "string",
+                            enum: [
+                              "audio",
+                              "group",
+                              "image",
+                              "playlist",
+                              "storyboard",
+                              "text",
+                              "video",
+                            ],
+                          },
                           parentId: { type: "string" },
                           position: {
                             type: "object",

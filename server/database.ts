@@ -1219,6 +1219,25 @@ const migrations: readonly Migration[] = [
     },
     sql: "",
   },
+  {
+    version: 28,
+    name: "user-templates",
+    sql: `
+      CREATE TABLE IF NOT EXISTS user_templates (
+        id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        category TEXT,
+        graph TEXT NOT NULL,
+        cover_asset_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (owner_id) REFERENCES users(id)
+      );
+      CREATE INDEX IF NOT EXISTS user_templates_owner_updated
+        ON user_templates (owner_id, updated_at DESC);
+    `,
+  },
 ];
 
 export const currentSchemaVersion = migrations.at(-1)?.version ?? 0;

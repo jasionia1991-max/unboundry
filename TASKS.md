@@ -1,7 +1,7 @@
 # TapNow 绿地复刻当前任务
 
 更新时间：2026-08-07
-状态：`绿地画布主体已验收 / 图片与Seedance真实链路已PASS / API-001～006已PASS / 节点入参INPUT-001～005、007已PASS，INPUT-006保持PARTIAL / 多协议中转站RELAY-001～012全部PASS / 画布搜索缩放与多选打组回归已PASS / Mureka Audio真实生成暂缓 / 三个新功能方案已定稿待实施 / 正式部署未开始`
+状态：`绿地画布主体已验收 / 图片与Seedance真实链路已PASS / API-001～006已PASS / 节点入参INPUT-001～005、007已PASS，INPUT-006保持PARTIAL / 多协议中转站RELAY-001～012全部PASS / 画布搜索缩放与多选打组回归已PASS / Mureka Audio真实生成暂缓 / 功能1（我的模板）已实施待验收，功能2/3待实施 / 正式部署未开始`
 唯一产品目标：从空仓库完整复刻 TapNow 画布，不复用 Lumino/Lumino Web 的代码、组件、CSS、数据、后端、测试或部署。
 
 ### 2026-08-06 多项目（项目制画布）功能
@@ -757,3 +757,13 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - 权威方案已写入 `spec/TAPNOW_FEATURES_PLAN_2026-08-07.md`（状态 `APPROVED BY USER`），含数据模型（v28 user_templates / v29 account_provider_credentials）、API、生成链路 owner 维度改造、鉴权统计按账号隔离、迁移/备份、测试与风险预审计。
 - 用户已逐项确认的决策：普通账号只见有已发布模型的平台；同类型多连接各占一行各自填 key；我的模板允许 Audio/Playlist/Storyboard 节点；模板不保留已生成结果只保留提示词/参数/上传素材；ZIP 采用 `archiver` 依赖；备份纳入加密凭据；密钥变更后排队任务友好失败重提交；封面复用项目空间三级规则；下载命名“节点标题-序号.扩展名”、上限 500MB/200 文件。
 - 实施顺序：功能1（我的模板）→ 功能2（批量下载）→ 功能3（账号私 key，内部分“数据与接口 → 生成链路 → UI 与收口”三步）。每个里程碑完成 tsc/构建/回归/CUA 实页测试后交用户验收。当前只更新文档，未改任何代码。
+
+### 2026-08-07 功能1：我的模板（已实施，待用户实页验收）
+
+- 小点1 v28 迁移 + 模板 API 扩展：`user_templates` 表（owner_id/title/category/graph/cover_asset_id/时间戳 + owner 索引）；`GET /api/templates?space=mine` 按 owner 过滤并支持 q/category/limit/offset/includeGraph；`POST /api/templates` 校验标题 1–40 字符、分类白名单、图结构（节点≤500、边≤1000、7 种类型）；`DELETE /api/templates/:id` 仅本人可删（他人/不存在均 404）；OpenAPI 新增 create/delete 操作与 11 条路径。数据层导出 `listUserTemplates/saveUserTemplate/deleteUserTemplate` 供隔离单测。
+- 小点2 序列化器 `client/src/canvas/groupTemplate.ts`：纯函数 `serializeGroupTemplate`，只收集组内节点与两端都在组内的边，组节点归一化到 (0,0)、子节点保持相对坐标；保留提示词/`*Parameters`/边角色与顺序/上传素材 assetId 与可信媒体元数据/组标题与 groupColor；剥离 `*Src`、`*Generating`、`*Generation*` 任务/错误/重试、`audioGeneratedResult`、`imageGeneratedSuccess`、`inputState`、`audioWaveform`、`playlistPicking`、`groupTemplate` 等；拒绝缺失组与 probe 子节点。
+- 小点3 模板图类型放宽：服务端 `TemplateGraphNode.type`、OpenAPI enum、CanvasShell 卡片类型、CanvasSurface 导入命令类型统一扩为 audio/group/image/playlist/storyboard/text/video；公共模板数据不变（m22 契约通过）。
+- 小点4 UI：GroupNode「创建模板/更新模板」启用（fixture 与空组禁用），弹窗（标题≤40、分类 GrayMenuSelect 可选、Escape/外点关闭、toast 成功反馈），保存时带上 canvasId+nodeIds 用于封面；模板面板「我的模板」卡片支持 hover 删除并自动刷新，全屏浏览「我的模板」同样可删；导入继续复用既有 `apply-template`（找空位+平滑镜头链路）。
+- 小点5 封面三级规则：保存时先查画布内 success 的 image/video 生成任务（owner 过滤）→ 模板图内第一个图片/视频 assetId → 无则浅蓝渐变占位；列表返回 cover + previewImage（视频封面用 `<video>` 渲染）。
+- 验证：`tsc --noEmit` 与生产构建通过；新增 m71 专项 9 项（保存/分页/搜索/删除、非法输入、数据层 owner 隔离、封面三级、序列化器清洗/归一化/角色顺序、7 类型模板、真实画布保存→面板列出→删除、空组禁用）；相关回归 m0/m2-group/m20/m22-template/m22-group-execution/m63/m66/m69/m70 共 79/81 通过，2 项失败均为非本批问题：m0 P1 文字创作栏基线已知失败；m63「建组撤销恢复」首次运行偶发坐标时序失败、单独复跑通过（已记录为抖动）。
+- 延后问题清单：无阻塞项。m63 偶发时序抖动暂不修（低危、复跑通过、与本批无关）。

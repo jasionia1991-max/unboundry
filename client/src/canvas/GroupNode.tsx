@@ -9,14 +9,18 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import { useCanvasCheckpoint } from "./CanvasHistory";
 import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
+import { serializeGroupTemplate } from "./groupTemplate";
 import type { ProbeNodeType } from "./ProbeNode";
+import type { CuttableEdge } from "./canvasTypes";
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
 import { useWorkflowExecution } from "../generation/WorkflowExecutionProvider";
 import { isExecutableWorkflowNode } from "../generation/workflowExecution";
+import { GrayMenuSelect } from "../ui/GrayMenuSelect";
 
 const colors = [
   "transparent",
@@ -50,7 +54,7 @@ export function GroupNode({
   const { getEdges, getNode, getNodes } = useReactFlow<ProbeNodeType>();
   const { setNodes } = useCanvasGraphMutation();
   const { zoom } = useViewport();
-  const { isFixture } = useGenerationCanvas();
+  const { canvasId, isFixture, notify } = useGenerationCanvas();
   const { cancelGroup, executeGroup, executingGroupIds } =
     useWorkflowExecution();
   const executing = executingGroupIds.has(id);
@@ -71,6 +75,11 @@ export function GroupNode({
   );
   const [colorMenu, setColorMenu] = useState(false);
   const [layoutMenu, setLayoutMenu] = useState(false);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [templateTitle, setTemplateTitle] = useState("");
+  const [templateCategory, setTemplateCategory] = useState("");
+  const [templateSaving, setTemplateSaving] = useState(false);
+  const [templateError, setTemplateError] = useState("");
   const titleControl = useCompositionSafeText({
     onCommit: (title) => {
       setNodes((nodes) =>
@@ -89,8 +98,20 @@ export function GroupNode({
     if (!singleNodeChrome) {
       setColorMenu(false);
       setLayoutMenu(false);
+      setTemplateDialogOpen(false);
     }
   }, [singleNodeChrome]);
+
+  useEffect(() => {
+    if (!templateDialogOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !templateSaving) {
+        setTemplateDialogOpen(false);
+      }
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [templateDialogOpen, templateSaving]);
 
   const updateData = (patch: Partial<ProbeNodeType["data"]>) =>
     setNodes((nodes) =>
@@ -217,6 +238,54 @@ export function GroupNode({
     }
   };
 
+  const saveTemplate = async () => {
+    const title = templateTitle.trim();
+    if (title.length < 1 || title.length > 40) {
+      setTemplateError("模板标题需为 1–40 个字符");
+      return;
+    }
+    setTemplateSaving(true);
+    setTemplateError("");
+    try {
+      const graph = serializeGroupTemplate({
+        edges: getEdges() as CuttableEdge[],
+        groupId: id,
+        nodes: getNodes(),
+      });
+      const children = getNodes().filter((node) => node.parentId === id);
+      const response = await fetch("/api/templates", {
+        body: JSON.stringify({
+          category: templateCategory || undefined,
+          graph,
+          nodeIds: children.map((node) => node.id),
+          sourceCanvasId: canvasId,
+          title,
+        }),
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const body = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(body.error ?? "模板保存失败");
+      }
+      notify("模板已保存到我的模板", "success");
+      setTemplateDialogOpen(false);
+      setTemplateTitle("");
+      setTemplateCategory("");
+    } catch (error) {
+      setTemplateError(
+        error instanceof Error ? error.message : "模板保存失败",
+      );
+    } finally {
+      setTemplateSaving(false);
+    }
+  };
+
   const scale = 1 / Math.max(zoom, 0.01);
   const toolbarStyle = {
     left: "50%",
@@ -312,7 +381,26 @@ export function GroupNode({
             )}
             {executing ? "取消" : "整组执行"}
           </button>
-          <button disabled title="模板阶段实现" type="button">
+          <button
+            data-testid="group-template-button"
+            disabled={isFixture || childCount === 0}
+            onClick={() => {
+              setTemplateError("");
+              setTemplateTitle("");
+              setTemplateCategory("");
+              setTemplateDialogOpen(true);
+            }}
+            title={
+              isFixture
+                ? "验收页面不会保存模板"
+                : childCount === 0
+                  ? "组内没有节点可保存"
+                  : data.groupTemplate
+                    ? "更新模板"
+                    : "创建模板"
+            }
+            type="button"
+          >
             {data.groupTemplate ? "更新模板" : "创建模板"}
           </button>
           <button onClick={ungroup} type="button">
@@ -405,6 +493,89 @@ export function GroupNode({
         onPointerDown={beginMove}
         style={{ background: data.groupColor ?? "transparent" }}
       />
+      {templateDialogOpen && createPortal(
+        <div
+          className="group-template-dialog-backdrop"
+          data-testid="group-template-dialog-backdrop"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target && !templateSaving) {
+              setTemplateDialogOpen(false);
+            }
+          }}
+        >
+          <div
+            aria-label="保存为模板"
+            aria-modal="true"
+            className="group-template-dialog"
+            role="dialog"
+          >
+            <h2>{data.groupTemplate ? "更新模板" : "保存为模板"}</h2>
+            <label className="group-template-title-field">
+              <span>模板标题</span>
+              <input
+                aria-label="模板标题"
+                maxLength={40}
+                onChange={(event) => {
+                  setTemplateTitle(event.target.value);
+                  setTemplateError("");
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !templateSaving) {
+                    event.preventDefault();
+                    void saveTemplate();
+                  }
+                }}
+                placeholder="输入模板标题"
+                spellCheck={false}
+                value={templateTitle}
+              />
+            </label>
+            <label className="group-template-category-field">
+              <span>模板分类（可选）</span>
+              <GrayMenuSelect
+                ariaLabel="模板分类"
+                onChange={setTemplateCategory}
+                options={[
+                  { label: "不选分类", value: "" },
+                  { label: "电商", value: "电商" },
+                  { label: "广告", value: "广告" },
+                  { label: "影视", value: "影视" },
+                  { label: "生活", value: "生活" },
+                  { label: "工具", value: "工具" },
+                  { label: "有趣", value: "有趣" },
+                  { label: "ACG", value: "ACG" },
+                  { label: "Seedance 2.0", value: "Seedance 2.0" },
+                ]}
+                placeholder="不选分类"
+                testId="group-template-category"
+                value={templateCategory}
+              />
+            </label>
+            {templateError && (
+              <p className="group-template-error" role="alert">
+                {templateError}
+              </p>
+            )}
+            <div className="group-template-dialog-actions">
+              <button
+                disabled={templateSaving}
+                onClick={() => setTemplateDialogOpen(false)}
+                type="button"
+              >
+                取消
+              </button>
+              <button
+                data-testid="group-template-submit"
+                disabled={templateSaving}
+                onClick={() => void saveTemplate()}
+                type="button"
+              >
+                {templateSaving ? "保存中…" : "保存模板"}
+              </button>
+            </div>
+          </div>
+        </div>
+      , document.body)}
     </>
   );
 }

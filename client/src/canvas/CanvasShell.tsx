@@ -46,6 +46,7 @@ type ProjectTitleRecord = {
 
 type TemplateCatalogCard = {
   categories: string[];
+  cover?: { assetId: string; kind: "image" | "video" } | null;
   description?: string;
   graph?: {
     edges: Array<{
@@ -62,7 +63,14 @@ type TemplateCatalogCard = {
       parentId?: string;
       position: { x: number; y: number };
       style?: { height: number; width: number };
-      type: "group" | "image" | "text" | "video";
+      type:
+        | "audio"
+        | "group"
+        | "image"
+        | "playlist"
+        | "storyboard"
+        | "text"
+        | "video";
       zIndex?: number;
     }>;
     version: 1;
@@ -728,6 +736,7 @@ export function CanvasShell({
   const [templateCards, setTemplateCards] = useState<TemplateCatalogCard[]>([]);
   const [templateCatalogError, setTemplateCatalogError] = useState("");
   const [templateCatalogLoading, setTemplateCatalogLoading] = useState(false);
+  const [templateCatalogRevision, setTemplateCatalogRevision] = useState(0);
   const [templateBrowseCategories, setTemplateBrowseCategories] = useState<
     string[]
   >([...initialTemplateBrowseCategories]);
@@ -917,6 +926,32 @@ export function CanvasShell({
     }));
   };
 
+  const deleteUserTemplate = async (template: TemplateCatalogCard) => {
+    if (templateTab !== "我的模板" && templateBrowseCategory !== "我的模板") {
+      return;
+    }
+    try {
+      const response = await fetch(
+        `/api/templates/${encodeURIComponent(template.id)}`,
+        {
+          headers: { Accept: "application/json" },
+          method: "DELETE",
+        },
+      );
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(body.error ?? "模板删除失败");
+      }
+      setTemplateCatalogRevision((revision) => revision + 1);
+    } catch (error) {
+      setTemplateCatalogError(
+        error instanceof Error ? error.message : "模板删除失败",
+      );
+    }
+  };
+
   const closePrimarySurfaces = (dismissCanvasMenu = true) => {
     setNodeSearchOpen(false);
     setAssetsOpen(false);
@@ -1093,6 +1128,7 @@ export function CanvasShell({
     templateBrowseCategory,
     templateSearch,
     templateTab,
+    templateCatalogRevision,
   ]);
   const visibleTemplateCards = templateCards;
   useEffect(() => {
@@ -2723,6 +2759,22 @@ export function CanvasShell({
                       }
                     }}
                   >
+                    {templateTab === "我的模板" && (
+                      <button
+                        aria-label={`删除模板 ${card.title}`}
+                        className="template-card-delete"
+                        data-testid={`template-delete-${card.id}`}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          void deleteUserTemplate(card);
+                        }}
+                        onKeyDown={(event) => event.stopPropagation()}
+                        type="button"
+                      >
+                        ×
+                      </button>
+                    )}
                     <div
                       aria-label={card.title}
                       className="template-card-art"
@@ -2730,7 +2782,16 @@ export function CanvasShell({
                       role="img"
                     >
                       {card.previewImage
-                        ? <img alt="" src={card.previewImage} />
+                        ? card.cover?.kind === "video"
+                          ? (
+                            <video
+                              muted
+                              playsInline
+                              preload="metadata"
+                              src={card.previewImage}
+                            />
+                          )
+                          : <img alt="" src={card.previewImage} />
                         : <span />}
                     </div>
                     <p>{card.title}</p>
@@ -2865,19 +2926,44 @@ export function CanvasShell({
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
                           applyTemplate(card);
-                        }
-                      }}
-                    >
-                      <div
-                        aria-label={card.title}
-                        className="template-card-art"
-                        data-preview={card.previewImage ? true : undefined}
-                        role="img"
+                      }
+                    }}
+                  >
+                    {templateBrowseCategory === "我的模板" && (
+                      <button
+                        aria-label={`删除模板 ${card.title}`}
+                        className="template-card-delete"
+                        data-testid={`template-browser-delete-${card.id}`}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          void deleteUserTemplate(card);
+                        }}
+                        onKeyDown={(event) => event.stopPropagation()}
+                        type="button"
                       >
-                        {card.previewImage
-                          ? <img alt="" src={card.previewImage} />
-                          : <span />}
-                      </div>
+                        ×
+                      </button>
+                    )}
+                    <div
+                      aria-label={card.title}
+                      className="template-card-art"
+                      data-preview={card.previewImage ? true : undefined}
+                      role="img"
+                    >
+                      {card.previewImage
+                        ? card.cover?.kind === "video"
+                          ? (
+                            <video
+                              muted
+                              playsInline
+                              preload="metadata"
+                              src={card.previewImage}
+                            />
+                          )
+                          : <img alt="" src={card.previewImage} />
+                        : <span />}
+                    </div>
                       <p>{card.title}</p>
                     </article>
                   ))}

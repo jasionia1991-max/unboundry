@@ -1,5 +1,9 @@
+import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import templateCatalogData from "./templateCatalogData.json";
+import type { DatabaseSync } from "node:sqlite";
+import templateCatalogData from "./templateCatalogData.json" with { type: "json" };
+import { requestIdentity } from "./auth";
+import { appDataDirectory, openAppDatabase } from "./database";
 
 type RawTemplateNode = {
   data?: {
@@ -24,24 +28,22 @@ type RawTemplateEdge = {
   targetHandle?: string;
 };
 
+export type TemplateNodeType =
+  | "audio"
+  | "group"
+  | "image"
+  | "playlist"
+  | "storyboard"
+  | "text"
+  | "video";
+
 type TemplateGraphNode = {
-  data: {
-    content?: string;
-    imageAspectRatio?: string;
-    imagePrompt?: string;
-    imagePromptReady?: boolean;
-    imageQuality?: string;
-    label: string;
-    sourceKind?: "image";
-    textPrompt?: string;
-    textPromptReady?: boolean;
-    title?: string;
-  };
+  data: Record<string, unknown> & { label: string };
   id: string;
   parentId?: string;
   position: { x: number; y: number };
   style: { height: number; width: number };
-  type: "group" | "image" | "text" | "video";
+  type: TemplateNodeType;
   zIndex: number;
 };
 
@@ -79,7 +81,50 @@ type TemplateCatalogDataRecord = {
   title: string;
 };
 
-const categories = ["最近使用", "我的模板", "全部", "电商"];
+type UserTemplateRow = {
+  category: string | null;
+  cover_asset_id: string | null;
+  created_at: string;
+  graph: string;
+  id: string;
+  title: string;
+  updated_at: string;
+};
+
+export type UserTemplateCard = {
+  categories: string[];
+  cover: { assetId: string; kind: "image" | "video" } | null;
+  createdAt: string;
+  graph?: TemplateGraph;
+  id: string;
+  previewImage?: string;
+  title: string;
+  updatedAt: string;
+};
+
+const categories = [
+  "最近使用",
+  "我的模板",
+  "全部",
+  "Seedance 2.0",
+  "广告",
+  "电商",
+  "影视",
+  "生活",
+  "工具",
+  "有趣",
+  "ACG",
+];
+
+const templateNodeTypeSet = new Set<TemplateNodeType>([
+  "audio",
+  "group",
+  "image",
+  "playlist",
+  "storyboard",
+  "text",
+  "video",
+]);
 
 const records = Object.values(
   templateCatalogData as Record<string, TemplateCatalogDataRecord>,
@@ -93,10 +138,33 @@ const templates: TemplateRecord[] = records.map((record) => ({
   title: record.title,
 }));
 
-function localNodeType(rawType: string): TemplateGraphNode["type"] {
-  if (rawType === "image" || rawType === "text") return rawType;
-  if (rawType === "video" || rawType === "group") return rawType;
+let database: DatabaseSync | undefined;
+let databaseDirectory = "";
+
+function db() {
+  const directory = appDataDirectory();
+  if (database && databaseDirectory === directory) return database;
+  database?.close();
+  database = openAppDatabase();
+  databaseDirectory = directory;
+  return database;
+}
+
+function localNodeType(rawType: string): TemplateNodeType {
+  if (templateNodeTypeSet.has(rawType as TemplateNodeType)) {
+    return rawType as TemplateNodeType;
+  }
   return "text";
+}
+
+function labelForType(type: TemplateNodeType) {
+  if (type === "group") return "Group";
+  if (type === "image") return "Image";
+  if (type === "audio") return "Audio";
+  if (type === "playlist") return "Playlist";
+  if (type === "storyboard") return "Storyboard";
+  if (type === "video") return "Video";
+  return "Text";
 }
 
 export function buildTemplateGraph(record: TemplateCatalogDataRecord): TemplateGraph {
@@ -137,8 +205,8 @@ export function buildTemplateGraph(record: TemplateCatalogDataRecord): TemplateG
     const position = raw.position ?? { x: 0, y: 0 };
     const type = localNodeType(raw.type);
     const data: TemplateGraphNode["data"] = {
-      label: type === "text" ? "Text" : type === "image" ? "Image" : "Group",
-      title: raw.data?.title ?? (type === "text" ? "Text" : "Image"),
+      label: labelForType(type),
+      title: raw.data?.title ?? labelForType(type),
     };
     if (type === "text") {
       const prompt = raw.data?.prompt ?? "";
@@ -212,57 +280,444 @@ function boundedInteger(value: string | null, fallback: number, maximum: number)
     : undefined;
 }
 
-export function templateCatalogApi(
+async function readBody<T>(request: IncomingMessage) {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of request) {
+    const bytes = Buffer.from(chunk);
+    size += bytes.length;
+    if (size > 512 * 1_024) throw new Error("Payload too large");
+    chunks.push(bytes);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function validTemplateGraph(value: unknown): value is TemplateGraph {
+  if (!isRecord(value)) return false;
+  const nodes = value.nodes;
+  const edges = value.edges;
+  if (!Array.isArray(nodes) || nodes.length > 500) return false;
+  if (!Array.isArray(edges) || edges.length > 1000) return false;
+  for (const rawNode of nodes) {
+    if (!isRecord(rawNode)) return false;
+    const type = rawNode.type;
+    if (
+      typeof type !== "string" ||
+      !templateNodeTypeSet.has(type as TemplateNodeType)
+    ) {
+      return false;
+    }
+    if (
+      typeof rawNode.id !== "string" ||
+      rawNode.id.length === 0 ||
+      rawNode.id.length > 200
+    ) {
+      return false;
+    }
+    if (
+      !isRecord(rawNode.position) ||
+      !isFiniteNumber(rawNode.position.x) ||
+      !isFiniteNumber(rawNode.position.y)
+    ) {
+      return false;
+    }
+    if (rawNode.parentId !== undefined && typeof rawNode.parentId !== "string") {
+      return false;
+    }
+    if (rawNode.style !== undefined) {
+      if (!isRecord(rawNode.style)) return false;
+      if (
+        rawNode.style.height !== undefined &&
+        !isFiniteNumber(rawNode.style.height)
+      ) {
+        return false;
+      }
+      if (
+        rawNode.style.width !== undefined &&
+        !isFiniteNumber(rawNode.style.width)
+      ) {
+        return false;
+      }
+    }
+    if (rawNode.zIndex !== undefined && !isFiniteNumber(rawNode.zIndex)) {
+      return false;
+    }
+    if (!isRecord(rawNode.data) || typeof rawNode.data.label !== "string") {
+      return false;
+    }
+  }
+  for (const rawEdge of edges) {
+    if (!isRecord(rawEdge)) return false;
+    for (const key of ["id", "source", "target"] as const) {
+      const value = rawEdge[key];
+      if (
+        typeof value !== "string" ||
+        value.length === 0 ||
+        value.length > 200
+      ) {
+        return false;
+      }
+    }
+    if (
+      rawEdge.sourceHandle !== undefined &&
+      typeof rawEdge.sourceHandle !== "string"
+    ) {
+      return false;
+    }
+    if (
+      rawEdge.targetHandle !== undefined &&
+      typeof rawEdge.targetHandle !== "string"
+    ) {
+      return false;
+    }
+    if (rawEdge.type !== undefined && typeof rawEdge.type !== "string") {
+      return false;
+    }
+    if (rawEdge.data !== undefined && !isRecord(rawEdge.data)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function parseTemplateGraph(value: string): TemplateGraph | undefined {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return validTemplateGraph(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveTemplateCover(
+  store: DatabaseSync,
+  ownerId: string,
+  sourceCanvasId: string,
+  nodeIds: string[],
+  graph: TemplateGraph,
+) {
+  if (sourceCanvasId && nodeIds.length > 0) {
+    const placeholders = nodeIds.map(() => "?").join(",");
+    const task = store
+      .prepare(`
+        SELECT result_asset_id
+        FROM generation_tasks
+        WHERE
+          canvas_id = ?
+          AND owner_id = ?
+          AND state = 'success'
+          AND kind IN ('image', 'video')
+          AND result_asset_id IS NOT NULL
+          AND node_id IN (${placeholders})
+        ORDER BY updated_at DESC, rowid DESC
+        LIMIT 1
+      `)
+      .get(sourceCanvasId, ownerId, ...nodeIds) as
+      | { result_asset_id: string }
+      | undefined;
+    if (task?.result_asset_id) return task.result_asset_id;
+  }
+  for (const node of graph.nodes) {
+    if (node.type !== "image" && node.type !== "video") continue;
+    const assetId = node.data.assetId;
+    if (typeof assetId === "string" && assetId.trim()) return assetId.trim();
+  }
+  return null;
+}
+
+function userTemplateCard(
+  store: DatabaseSync,
+  ownerId: string,
+  row: UserTemplateRow,
+  includeGraph: boolean,
+): UserTemplateCard {
+  let cover: UserTemplateCard["cover"] = null;
+  if (row.cover_asset_id) {
+    const media = store
+      .prepare(`
+        SELECT kind
+        FROM media_assets
+        WHERE id = ? AND owner_id = ?
+      `)
+      .get(row.cover_asset_id, ownerId) as
+      | { kind: "audio" | "image" | "video" }
+      | undefined;
+    let kind = media?.kind;
+    if (kind !== "image" && kind !== "video") {
+      // 素材登记可能已被清理：按模板图内的节点类型兜底，仍可渲染封面。
+      const graph = parseTemplateGraph(row.graph);
+      const node = graph?.nodes.find(
+        (candidate) =>
+          (candidate.type === "image" || candidate.type === "video") &&
+          candidate.data.assetId === row.cover_asset_id,
+      );
+      if (node && (node.type === "image" || node.type === "video")) {
+        kind = node.type;
+      }
+    }
+    if (kind === "image" || kind === "video") {
+      cover = { assetId: row.cover_asset_id, kind };
+    }
+  }
+  return {
+    categories: row.category ? [row.category] : [],
+    cover,
+    createdAt: row.created_at,
+    graph: includeGraph ? parseTemplateGraph(row.graph) : undefined,
+    id: row.id,
+    previewImage: cover
+      ? cover.kind === "video"
+        ? `/api/video-assets/${encodeURIComponent(cover.assetId)}`
+        : `/api/assets/${encodeURIComponent(cover.assetId)}`
+      : undefined,
+    title: row.title,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function listUserTemplates(
+  store: DatabaseSync,
+  ownerId: string,
+  options: {
+    category: string;
+    limit: number;
+    offset: number;
+    query: string;
+  },
+) {
+  const parameters: Array<string | number> = [ownerId];
+  const conditions = ["owner_id = ?"];
+  if (options.query) {
+    conditions.push("title LIKE ? ESCAPE '\\'");
+    parameters.push(`%${options.query.replace(/[\\%_]/g, (char) => `\\${char}`)}%`);
+  }
+  if (
+    options.category &&
+    options.category !== "全部" &&
+    options.category !== "最近使用"
+  ) {
+    conditions.push("category = ?");
+    parameters.push(options.category);
+  }
+  const where = conditions.join(" AND ");
+  const rows = store
+    .prepare(`
+      SELECT
+        id, title, category, graph, cover_asset_id, created_at, updated_at
+      FROM user_templates
+      WHERE ${where}
+      ORDER BY updated_at DESC
+      LIMIT ? OFFSET ?
+    `)
+    .all(...parameters, options.limit, options.offset) as UserTemplateRow[];
+  const total = Number(
+    (
+      store
+        .prepare(`SELECT COUNT(*) AS count FROM user_templates WHERE ${where}`)
+        .get(...parameters) as { count: number }
+    ).count,
+  );
+  return { rows, total };
+}
+
+export function saveUserTemplate(
+  store: DatabaseSync,
+  ownerId: string,
+  input: Record<string, unknown>,
+): UserTemplateRow {
+  const title = typeof input.title === "string" ? input.title.trim() : "";
+  if (title.length < 1 || title.length > 40) {
+    throw new Error("模板标题需为 1–40 个字符");
+  }
+  const category = typeof input.category === "string" ? input.category.trim() : "";
+  if (category && !categories.includes(category)) {
+    throw new Error("模板分类无效");
+  }
+  if (!validTemplateGraph(input.graph)) {
+    throw new Error("模板图结构无效");
+  }
+  const sourceCanvasId =
+    typeof input.sourceCanvasId === "string" ? input.sourceCanvasId.trim() : "";
+  const nodeIds = Array.isArray(input.nodeIds)
+    ? input.nodeIds.filter(
+        (value): value is string => typeof value === "string" && value.length > 0,
+      )
+    : [];
+  const coverAssetId = resolveTemplateCover(
+    store,
+    ownerId,
+    sourceCanvasId,
+    nodeIds,
+    input.graph,
+  );
+  const id = randomUUID();
+  const timestamp = new Date().toISOString();
+  store
+    .prepare(`
+      INSERT INTO user_templates (
+        id, owner_id, title, category, graph, cover_asset_id,
+        created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+    .run(
+      id,
+      ownerId,
+      title,
+      category || null,
+      JSON.stringify(input.graph),
+      coverAssetId,
+      timestamp,
+      timestamp,
+    );
+  return {
+    category: category || null,
+    cover_asset_id: coverAssetId,
+    created_at: timestamp,
+    graph: JSON.stringify(input.graph),
+    id,
+    title,
+    updated_at: timestamp,
+  };
+}
+
+export function deleteUserTemplate(
+  store: DatabaseSync,
+  ownerId: string,
+  templateId: string,
+) {
+  const result = store
+    .prepare(`
+      DELETE FROM user_templates
+      WHERE id = ? AND owner_id = ?
+    `)
+    .run(templateId, ownerId);
+  return result.changes === 1;
+}
+
+export async function templateCatalogApi(
   request: IncomingMessage,
   response: ServerResponse,
 ) {
-  if (request.method !== "GET") {
-    response.setHeader("Allow", "GET");
-    json(response, 405, { error: "模板目录只支持读取" });
-    return;
-  }
+  const identity = requestIdentity(request);
+  const path = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+    /^\/+/,
+    "",
+  );
+  const store = db();
 
-  const url = new URL(request.url ?? "", "http://127.0.0.1");
-  const limit = boundedInteger(url.searchParams.get("limit"), 20, 100);
-  const offset = boundedInteger(url.searchParams.get("offset"), 0, 100_000);
-  if (limit === undefined || offset === undefined || limit === 0) {
-    json(response, 400, { error: "模板分页参数无效" });
-    return;
-  }
-  const space = url.searchParams.get("space") ?? "public";
-  if (space !== "public" && space !== "mine") {
-    json(response, 400, { error: "模板空间无效" });
-    return;
-  }
-  const query = (url.searchParams.get("q") ?? "").trim().toLocaleLowerCase();
-  const category = (url.searchParams.get("category") ?? "全部").trim();
-  if (category && !categories.includes(category)) {
-    json(response, 400, { error: "模板分类无效" });
-    return;
-  }
-  const includeGraph = url.searchParams.get("includeGraph") === "true";
-  const matches = space === "mine"
-    ? []
-    : templates.filter((template) =>
-        (!query || template.title.toLocaleLowerCase().includes(query)) &&
-        (!category || category === "全部" || category === "最近使用" || template.categories.includes(category)),
+  if (request.method === "GET" && !path) {
+    const url = new URL(request.url ?? "", "http://127.0.0.1");
+    const limit = boundedInteger(url.searchParams.get("limit"), 20, 100);
+    const offset = boundedInteger(url.searchParams.get("offset"), 0, 100_000);
+    if (limit === undefined || offset === undefined || limit === 0) {
+      json(response, 400, { error: "模板分页参数无效" });
+      return;
+    }
+    const space = url.searchParams.get("space") ?? "public";
+    if (space !== "public" && space !== "mine") {
+      json(response, 400, { error: "模板空间无效" });
+      return;
+    }
+    const query = (url.searchParams.get("q") ?? "").trim().toLocaleLowerCase();
+    const category = (url.searchParams.get("category") ?? "全部").trim();
+    if (category && !categories.includes(category)) {
+      json(response, 400, { error: "模板分类无效" });
+      return;
+    }
+    const includeGraph = url.searchParams.get("includeGraph") === "true";
+
+    if (space === "mine") {
+      if (!identity) {
+        json(response, 401, { error: "请先登录" });
+        return;
+      }
+      const { rows, total } = listUserTemplates(store, identity.userId, {
+        category,
+        limit,
+        offset,
+        query,
+      });
+      const items = rows.map((row) =>
+        userTemplateCard(store, identity.userId, row, includeGraph),
       );
-  const items = matches.slice(offset, offset + limit).map((template) => {
-    const record = records.find((candidate) => candidate.id === template.id);
-    return {
-      ...template,
-      graph: includeGraph && record ? buildTemplateGraph(record) : undefined,
-    };
-  });
+      json(response, 200, {
+        categories,
+        items,
+        pagination: {
+          hasMore: offset + items.length < total,
+          limit,
+          offset,
+          total,
+        },
+      });
+      return;
+    }
 
-  json(response, 200, {
-    categories,
-    items,
-    pagination: {
-      hasMore: offset + items.length < matches.length,
-      limit,
-      offset,
-      total: matches.length,
-    },
-  });
+    const matches = templates.filter((template) =>
+      (!query || template.title.toLocaleLowerCase().includes(query)) &&
+      (!category || category === "全部" || category === "最近使用" || template.categories.includes(category)),
+    );
+    const items = matches.slice(offset, offset + limit).map((template) => {
+      const record = records.find((candidate) => candidate.id === template.id);
+      return {
+        ...template,
+        graph: includeGraph && record ? buildTemplateGraph(record) : undefined,
+      };
+    });
+
+    json(response, 200, {
+      categories,
+      items,
+      pagination: {
+        hasMore: offset + items.length < matches.length,
+        limit,
+        offset,
+        total: matches.length,
+      },
+    });
+    return;
+  }
+
+  if (request.method === "POST" && !path) {
+    if (!identity) {
+      json(response, 401, { error: "请先登录" });
+      return;
+    }
+    try {
+      const input = await readBody<Record<string, unknown>>(request);
+      const row = saveUserTemplate(store, identity.userId, input);
+      json(response, 201, {
+        template: userTemplateCard(store, identity.userId, row, false),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "模板保存失败";
+      json(response, 400, { error: message });
+    }
+    return;
+  }
+
+  if (request.method === "DELETE" && /^[a-f0-9-]{36}$/i.test(path)) {
+    if (!identity) {
+      json(response, 401, { error: "请先登录" });
+      return;
+    }
+    if (!deleteUserTemplate(store, identity.userId, path.toLocaleLowerCase())) {
+      json(response, 404, { error: "模板不存在" });
+      return;
+    }
+    json(response, 200, { deleted: true, id: path.toLocaleLowerCase() });
+    return;
+  }
+
+  response.setHeader("Allow", "GET, POST, DELETE");
+  json(response, 404, { error: "模板接口不存在" });
 }

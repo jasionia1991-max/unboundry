@@ -6,6 +6,8 @@ export type GenerationCanvasState = {
   canvasId: string;
   /** fixture 验收页面不触发真实生成；真实画布（含项目画布）不受限。 */
   isFixture: boolean;
+  /** 画布级短暂反馈（toast），供节点工具栏等深色浮层复用。 */
+  notify: (message: string, kind?: "error" | "info" | "success") => void;
   /** Present only when the exact graph currently on screen is durably saved. */
   canvasRevision?: number;
   /** Wait until the current on-screen graph is durably saved before submitting. */
@@ -22,6 +24,7 @@ export const GenerationCanvasContext = createContext<GenerationCanvasState>({
   accountId: "",
   canvasId: "",
   isFixture: false,
+  notify: () => undefined,
   flushCanvasSave: async () => {},
   waitForCanvasRevision: async () => -1,
 });

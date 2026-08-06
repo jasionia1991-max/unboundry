@@ -6065,6 +6065,14 @@ const apiOperationDetails: Record<string, { detail: string; label: string }> = {
     label: "读取模板目录",
     detail: "按分类、搜索词和页码读取模板；需要时返回画布节点与连线数据。",
   },
+  createUserTemplate: {
+    label: "保存我的模板",
+    detail: "把当前账号的工作流模板写入私有模板库，仅本人可见。",
+  },
+  deleteUserTemplate: {
+    label: "删除我的模板",
+    detail: "删除当前账号自己的模板，其他账号不可删除或查看。",
+  },
   readAccountContext: {
     label: "读取账号与权限",
     detail: "读取当前账号、个人项目空间和权限，不提供额度或积分接口。",

@@ -147,7 +147,14 @@ export type CanvasShellMenuCommand = {
       parentId?: string;
       position: { x: number; y: number };
       style?: { height: number; width: number };
-      type: "group" | "image" | "text" | "video";
+      type:
+        | "audio"
+        | "group"
+        | "image"
+        | "playlist"
+        | "storyboard"
+        | "text"
+        | "video";
       zIndex?: number;
     }>;
     version: 1;
@@ -3671,6 +3678,7 @@ export function CanvasSurface({
       canvasRevision: generationCanvasRevision,
       flushCanvasSave,
       isFixture: Boolean(fixtureId),
+      notify: showWorkflowToast,
       waitForCanvasRevision,
     }),
     [
@@ -3679,6 +3687,7 @@ export function CanvasSurface({
       flushCanvasSave,
       generationCanvasRevision,
       persistenceId,
+      showWorkflowToast,
       waitForCanvasRevision,
     ],
   );

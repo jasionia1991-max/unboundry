@@ -192,7 +192,7 @@ function templatesApi(): Plugin {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
     middlewares.use("/api/templates", (request, response) => {
-      templateCatalogApi(request, response);
+      void templateCatalogApi(request, response);
     });
   };
   return {
