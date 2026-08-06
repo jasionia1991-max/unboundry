@@ -17,6 +17,8 @@ import {
 } from "./CanvasSurface";
 import { useCompositionSafeText } from "./CompositionSafeText";
 import { hasInteractionProbeNodes } from "./probeFixtures";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { clearProjectLocalKeys } from "../projects/projectStorage";
 
 type ShellButtonProps = {
   label: string;
@@ -581,14 +583,18 @@ export function CanvasShell({
   accountOpen = false,
   fixtureId,
   onAccountOpenChange,
+  onProjectMissing,
+  projectId,
   userInitial = "M",
 }: {
   accountOpen: boolean;
   fixtureId?: string;
   onAccountOpenChange: (open: boolean) => void;
+  onProjectMissing?: () => void;
+  projectId?: string;
   userInitial: string;
 }) {
-  const projectTitleId = fixtureId ?? "default";
+  const projectTitleId = projectId ?? fixtureId ?? "default";
   const initialProjectTitle =
     readProjectTitleDraft(projectTitleId) ??
     ({ title: defaultProjectTitle, updatedAt: 0 } satisfies ProjectTitleRecord);
@@ -720,6 +726,7 @@ export function CanvasShell({
       } as EventListenerOptions);
   }, []);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const [keyboardShortcutsOpen, setKeyboardShortcutsOpen] = useState(false);
@@ -1147,6 +1154,28 @@ export function CanvasShell({
     value: projectTitleValue,
   });
 
+  const createProjectFromMenu = async () => {
+    const response = await fetch("/api/projects", {
+      body: "{}",
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    if (!response.ok) return;
+    const created = (await response.json()) as { id: string };
+    window.location.href = `/canvas/${created.id}`;
+  };
+
+  const deleteCurrentProject = async () => {
+    if (!projectId) return;
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(projectId)}`,
+      { method: "DELETE" },
+    );
+    if (!response.ok) return;
+    clearProjectLocalKeys(projectId);
+    window.location.href = "/canvas/projects";
+  };
+
   useEffect(() => {
     const controller = new AbortController();
     const local = readProjectTitleDraft(projectTitleId);
@@ -1162,6 +1191,10 @@ export function CanvasShell({
       .then((serverRecord) => {
         if (controller.signal.aborted) return;
         if (!serverRecord) {
+          if (projectId) {
+            onProjectMissing?.();
+            return;
+          }
           if (local && local.updatedAt > 0) {
             void fetch(
               `/api/project-title/${encodeURIComponent(projectTitleId)}`,
@@ -1201,7 +1234,7 @@ export function CanvasShell({
         // Keep the synchronous local draft when the server is temporarily absent.
       });
     return () => controller.abort();
-  }, [projectTitleId]);
+  }, [onProjectMissing, projectId, projectTitleId]);
 
   useEffect(
     () => () => window.clearTimeout(saveTimer.current),
@@ -1653,6 +1686,8 @@ export function CanvasShell({
       <CanvasSurface
         agentReferenceMode={agentReferenceMode}
         fixtureId={fixtureId}
+        onProjectMissing={onProjectMissing}
+        projectId={projectId}
         focusNodeRequest={focusNodeRequest}
         historyAssetRequest={historyAssetRequest}
         minimapOpen={minimapOpen}
@@ -1787,6 +1822,17 @@ export function CanvasShell({
           ref={projectMenu}
         >
           <span className="project-menu-label">项目</span>
+          {projectId && (
+            <button
+              onClick={() => {
+                setProjectMenuOpen(false);
+                window.location.href = "/canvas/projects";
+              }}
+              type="button"
+            >
+              返回工作空间
+            </button>
+          )}
           <button
             onClick={() => {
               setProjectMenuOpen(false);
@@ -1799,19 +1845,36 @@ export function CanvasShell({
           >
             重命名
           </button>
-          <button disabled title="暂未开放" type="button">
+          <button onClick={() => void createProjectFromMenu()} type="button">
             新建项目
           </button>
           <div className="project-menu-divider" />
           <button
             className="project-menu-delete"
-            disabled
-            title="为保护当前项目，暂未开放删除"
+            disabled={!projectId || projectId === "default"}
+            onClick={() => setDeleteConfirmOpen(true)}
+            title={
+              projectId === "default"
+                ? "默认项目不能删除"
+                : projectId
+                  ? "删除当前项目"
+                  : "为保护当前项目，暂未开放删除"
+            }
             type="button"
           >
             删除
           </button>
         </menu>
+      )}
+
+      {deleteConfirmOpen && projectId && (
+        <ConfirmDialog
+          danger
+          message={`确定要删除项目「${projectTitleValue}」？画布和生成任务记录将删除，素材库中的媒体会保留。`}
+          onCancel={() => setDeleteConfirmOpen(false)}
+          onConfirm={() => void deleteCurrentProject()}
+          title="确认删除"
+        />
       )}
 
       <nav aria-label="项目操作" className="top-right" data-testid="top-right">

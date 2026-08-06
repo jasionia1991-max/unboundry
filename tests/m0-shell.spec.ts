@@ -944,11 +944,10 @@ test("project menu keeps only the current private-project actions", async ({
     fixture.items,
   );
   await expect(menu.getByRole("button", { name: "重命名" })).toBeEnabled();
-  for (const item of fixture.items.filter((item) => item !== "重命名")) {
-    await expect(
-      menu.getByRole("button", { name: item, exact: true }),
-    ).toBeDisabled();
-  }
+  await expect(menu.getByRole("button", { name: "新建项目", exact: true }))
+    .toBeEnabled();
+  await expect(menu.getByRole("button", { name: "删除", exact: true }))
+    .toBeDisabled();
 
   await menu.getByRole("button", { name: "重命名" }).click();
   const title = page.getByTestId("title-input");

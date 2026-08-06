@@ -110,6 +110,65 @@ export const openApiDocument = {
         },
       },
     },
+    "/api/projects": {
+      get: {
+        operationId: "listProjects",
+        summary: "List owner-scoped projects with cover hints",
+        responses: {
+          "200": {
+            description: "Project summaries",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ProjectList" },
+              },
+            },
+          },
+          "401": { description: "Sign-in required" },
+        },
+      },
+      post: {
+        operationId: "createProject",
+        summary: "Create an owner-scoped project with an empty canvas",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ProjectCreate" },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            description: "Created project",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ProjectSummary" },
+              },
+            },
+          },
+          "400": { description: "Invalid project title" },
+        },
+      },
+    },
+    "/api/projects/{projectId}": {
+      delete: {
+        operationId: "deleteProject",
+        summary: "Tombstone an owner-scoped project and remove its canvas and task records",
+        parameters: [
+          {
+            in: "path",
+            name: "projectId",
+            required: true,
+            schema: { type: "string", pattern: "^[a-zA-Z0-9._-]+$" },
+          },
+        ],
+        responses: {
+          "204": { description: "Project deleted" },
+          "404": { description: "Project not found" },
+          "409": { description: "Default project or active generation tasks" },
+        },
+      },
+    },
     "/api/models": {
       get: {
         operationId: "listPublishedModels",
@@ -479,6 +538,45 @@ export const openApiDocument = {
         properties: {
           title: { type: "string", maxLength: 120 },
           updatedAt: { type: "integer", minimum: 1 },
+        },
+        additionalProperties: false,
+      },
+      ProjectCover: {
+        type: "object",
+        required: ["kind", "assetId"],
+        properties: {
+          kind: { type: "string", enum: ["image", "video", null] },
+          assetId: { type: ["string", "null"] },
+        },
+        additionalProperties: false,
+      },
+      ProjectSummary: {
+        type: "object",
+        required: ["cover", "createdAt", "id", "title", "updatedAt"],
+        properties: {
+          cover: { $ref: "#/components/schemas/ProjectCover" },
+          createdAt: { type: ["integer", "null"] },
+          id: { type: "string" },
+          title: { type: "string", maxLength: 120 },
+          updatedAt: { type: "integer", minimum: 1 },
+        },
+        additionalProperties: false,
+      },
+      ProjectList: {
+        type: "object",
+        required: ["projects"],
+        properties: {
+          projects: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ProjectSummary" },
+          },
+        },
+        additionalProperties: false,
+      },
+      ProjectCreate: {
+        type: "object",
+        properties: {
+          title: { type: "string", maxLength: 120 },
         },
         additionalProperties: false,
       },

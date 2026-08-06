@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CanvasShell } from "./canvas/CanvasShell";
 import { ModelCatalogProvider } from "./models/ModelCatalog";
+import { WorkspacePage } from "./projects/WorkspacePage";
 import { GrayMenuSelect } from "./ui/GrayMenuSelect";
 import {
   defaultParameterSchema,
@@ -287,6 +288,8 @@ const fixtureMatch = window.location.pathname.match(/^\/__fixture\/([^/]+)$/);
 const responsivePreviewMatch = window.location.pathname.match(
   /^\/__responsive-preview\/(1280x720|1440x900|1512x982|1920x1080)$/,
 );
+const projectWorkspaceMatch = window.location.pathname === "/canvas/projects";
+const projectCanvasMatch = window.location.pathname.match(/^\/canvas\/([^/]+)$/);
 
 function ResponsivePreview({
   height,
@@ -6115,7 +6118,15 @@ function AdminApiContract({ currentUser }: { currentUser: AuthUser }) {
   );
 }
 
-function AuthenticatedApplication({ fixtureId }: { fixtureId?: string }) {
+function AuthenticatedApplication({
+  fixtureId,
+  projectId,
+  workspace = false,
+}: {
+  fixtureId?: string;
+  projectId?: string;
+  workspace?: boolean;
+}) {
   const [status, setStatus] = useState<AuthStatus>();
   const [loadError, setLoadError] = useState("");
   const [accountOpen, setAccountOpen] = useState(false);
@@ -6243,7 +6254,9 @@ function AuthenticatedApplication({ fixtureId }: { fixtureId?: string }) {
         accountOpen={accountOpen}
         fixtureId={fixtureId}
         onAccountOpenChange={setAccountOpen}
+        projectId={projectId}
         userInitial={status.user.displayName.trim().charAt(0).toLocaleUpperCase() || "M"}
+        workspace={workspace}
       />
       {accountOpen && (
         <aside
@@ -6312,19 +6325,30 @@ function CanvasApplication({
   accountOpen,
   fixtureId,
   onAccountOpenChange,
+  projectId,
   userInitial,
+  workspace,
 }: {
   accountOpen: boolean;
   fixtureId?: string;
   onAccountOpenChange: (open: boolean) => void;
+  projectId?: string;
   userInitial: string;
+  workspace?: boolean;
 }) {
+  if (workspace) {
+    return <WorkspacePage />;
+  }
   return (
     <ModelCatalogProvider>
       <CanvasShell
         accountOpen={accountOpen}
         fixtureId={fixtureId}
         onAccountOpenChange={onAccountOpenChange}
+        onProjectMissing={() => {
+          window.location.href = "/canvas/projects";
+        }}
+        projectId={projectId}
         userInitial={userInitial}
       />
     </ModelCatalogProvider>
@@ -6420,6 +6444,17 @@ export function App() {
 
   if (fixtureState.state === "ready") {
     return <AuthenticatedApplication fixtureId={fixtureState.fixture.id} />;
+  }
+
+  if (projectWorkspaceMatch) {
+    return <AuthenticatedApplication workspace />;
+  }
+  if (projectCanvasMatch) {
+    return (
+      <AuthenticatedApplication
+        projectId={decodeURIComponent(projectCanvasMatch[1])}
+      />
+    );
   }
 
   return <AuthenticatedApplication />;

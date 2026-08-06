@@ -1171,6 +1171,35 @@ const migrations: readonly Migration[] = [
     },
     sql: "",
   },
+  {
+    version: 26,
+    name: "multi-project-workspace",
+    prepare(database) {
+      addColumnIfMissing(
+        database,
+        "project_metadata",
+        "is_project",
+        "INTEGER NOT NULL DEFAULT 0 CHECK (is_project IN (0, 1))",
+      );
+      addColumnIfMissing(
+        database,
+        "project_metadata",
+        "created_at",
+        "INTEGER CHECK (created_at IS NULL OR created_at > 0)",
+      );
+      addColumnIfMissing(
+        database,
+        "project_metadata",
+        "deleted_at",
+        "INTEGER CHECK (deleted_at IS NULL OR deleted_at > 0)",
+      );
+    },
+    sql: `
+      UPDATE project_metadata
+      SET is_project = 1, created_at = updated_at
+      WHERE id = 'default' AND is_project = 0;
+    `,
+  },
 ];
 
 export const currentSchemaVersion = migrations.at(-1)?.version ?? 0;

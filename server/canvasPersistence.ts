@@ -46,6 +46,48 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.end(JSON.stringify(body));
 }
 
+function projectTombstone(
+  store: DatabaseSync,
+  bypass: boolean,
+  ownerId: string,
+  id: string,
+) {
+  return bypass
+    ? store.prepare(`
+        SELECT 1
+        FROM project_metadata
+        WHERE id = ? AND deleted_at IS NOT NULL
+        LIMIT 1
+      `).get(id)
+    : store.prepare(`
+        SELECT 1
+        FROM project_metadata
+        WHERE owner_id = ? AND id = ? AND deleted_at IS NOT NULL
+      `).get(ownerId, id);
+}
+
+function touchProjectUpdatedAt(
+  store: DatabaseSync,
+  bypass: boolean,
+  ownerId: string,
+  id: string,
+  now: number,
+) {
+  if (bypass) {
+    store.prepare(`
+      UPDATE project_metadata
+      SET updated_at = MAX(updated_at, ?)
+      WHERE id = ? AND is_project = 1 AND deleted_at IS NULL
+    `).run(now, id);
+  } else {
+    store.prepare(`
+      UPDATE project_metadata
+      SET updated_at = MAX(updated_at, ?)
+      WHERE owner_id = ? AND id = ? AND is_project = 1 AND deleted_at IS NULL
+    `).run(now, ownerId, id);
+  }
+}
+
 async function readBody<T>(request: IncomingMessage) {
   const chunks: Buffer[] = [];
   let size = 0;
@@ -142,6 +184,10 @@ export async function canvasPersistence(
     | undefined;
 
   if (request.method === "GET") {
+    if (projectTombstone(store, Boolean(identity.bypass), identity.userId, id)) {
+      json(response, 404, { error: "Canvas not found" });
+      return;
+    }
     if (!row) {
       json(response, 404, { error: "Canvas not found" });
       return;
@@ -183,6 +229,10 @@ export async function canvasPersistence(
         saveSequence: row?.save_sequence ?? 0,
         saveSessionId: row?.save_session_id ?? null,
       });
+      return;
+    }
+    if (projectTombstone(store, Boolean(identity.bypass), identity.userId, id)) {
+      json(response, 409, { error: "项目已删除，请返回工作空间" });
       return;
     }
     const revision = currentRevision + 1;
@@ -228,6 +278,13 @@ export async function canvasPersistence(
         document.saveSessionId ?? null,
         document.saveSequence ?? 0,
       );
+    touchProjectUpdatedAt(
+      store,
+      Boolean(identity.bypass),
+      identity.userId,
+      id,
+      Date.now(),
+    );
     json(response, 200, { graphRevision, revision });
   } catch (error) {
     json(response, 400, {
@@ -418,6 +475,10 @@ export async function projectTitle(
       item.updatedAt < 1
     ) {
       json(response, 400, { error: "Invalid project title" });
+      return;
+    }
+    if (projectTombstone(store, Boolean(identity.bypass), identity.userId, id)) {
+      json(response, 409, { error: "项目已删除，请返回工作空间" });
       return;
     }
     const ownerId = identity.bypass ? "__test__" : identity.userId;

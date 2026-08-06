@@ -1673,12 +1673,14 @@ export function CanvasSurface({
   onAddMenuOpenChange,
   onGraphContentChange,
   onOpenAssets,
+  onProjectMissing,
   onReady,
   onSearchIndexChange,
   onSaveConflict,
   onSaveSuccess,
   onSaveStart,
   onViewportChange,
+  projectId,
   shellMenuCommand,
   snapEnabled,
   textVideoStarted,
@@ -1696,22 +1698,25 @@ export function CanvasSurface({
   onAddMenuOpenChange?: (open: boolean) => void;
   onGraphContentChange: (hasContent: boolean) => void;
   onOpenAssets?: () => void;
+  onProjectMissing?: () => void;
   onReady: (fitView: () => void) => void;
   onSearchIndexChange?: (entries: CanvasSearchEntry[]) => void;
   onSaveConflict: () => void;
   onSaveSuccess: () => void;
   onSaveStart: () => void;
   onViewportChange: (viewport: Viewport) => void;
+  projectId?: string;
   shellMenuCommand?: CanvasShellMenuCommand;
   snapEnabled: boolean;
   textVideoStarted: boolean;
   viewport: Viewport;
 }) {
   const workflowFixture = fixtureId === "workflow.text-to-video.created";
-  const persistenceId = fixtureId ?? "default";
+  const persistenceId = projectId ?? fixtureId ?? "default";
   const imageModels = usePublishedModels("image");
   const videoModels = usePublishedModels("video");
   const persistenceFixture =
+    Boolean(projectId) ||
     !fixtureId ||
     fixtureId.startsWith("persistence.") ||
     fixtureId?.startsWith("node.") ||
@@ -2526,6 +2531,10 @@ export function CanvasSurface({
     void fetch(url, { headers: { Accept: "application/json" }, signal: controller.signal })
       .then(async (response) => {
         if (response.status === 404) {
+          if (projectId) {
+            onProjectMissing?.();
+            return undefined;
+          }
           const saveSequence = ++persistenceSaveSequence.current;
           const initial = {
             edges: createProbeEdges(persistenceId),
@@ -2564,6 +2573,7 @@ export function CanvasSurface({
         };
       })
       .then((document) => {
+        if (!document) return;
         const hydratedDocument = {
           ...document,
           nodes: normalizePersistedMediaNodes(document.nodes),
@@ -2603,9 +2613,11 @@ export function CanvasSurface({
     };
   }, [
     canvasSnapshot,
+    onProjectMissing,
     onViewportChange,
     persistenceFixture,
     persistenceId,
+    projectId,
     setEdges,
     setNodes,
   ]);

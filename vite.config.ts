@@ -9,6 +9,7 @@ import {
   canvasPersistence,
   projectTitle,
 } from "./server/canvasPersistence";
+import { projectsApi } from "./server/projects";
 import { assetStorage } from "./server/assetStorage";
 import { audioStorage } from "./server/audioStorage";
 import { videoStorage } from "./server/videoStorage";
@@ -360,6 +361,9 @@ function canvasPersistenceApi(): Plugin {
       server.middlewares.use("/api/project-title", (request, response) => {
         void projectTitle(request, response);
       });
+      server.middlewares.use("/api/projects", (request, response) => {
+        void projectsApi(request, response);
+      });
       server.middlewares.use("/api/assets", (request, response) => {
         void assetStorage(request, response);
       });
@@ -380,6 +384,9 @@ function canvasPersistenceApi(): Plugin {
       });
       server.middlewares.use("/api/project-title", (request, response) => {
         void projectTitle(request, response);
+      });
+      server.middlewares.use("/api/projects", (request, response) => {
+        void projectsApi(request, response);
       });
       server.middlewares.use("/api/assets", (request, response) => {
         void assetStorage(request, response);

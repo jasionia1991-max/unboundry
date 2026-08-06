@@ -2751,6 +2751,71 @@ export function generationTaskCancellationMode(task: GenerationTask) {
   return "cancel-before-provider" as const;
 }
 
+async function cancelGenerationTask(task: GenerationTask) {
+  const cancellationMode = generationTaskCancellationMode(task);
+  if (cancellationMode === "provider-cancel-unavailable") {
+    const error = new Error(
+      "Mureka 暂不支持安全取消，任务会继续保存结果",
+    );
+    Object.assign(error, { code: "PROVIDER_CANCEL_UNAVAILABLE" });
+    throw error;
+  }
+  if (cancellationMode === "cancel-provider-video" && task.providerTaskId) {
+    if (!task.providerProfileId) throw new Error("Provider profile not found");
+    await withProviderRequestLease({
+      fetcher: fetch,
+      profileId: task.providerProfileId,
+      request: (profile, leasedFetch) =>
+        cancelVolcengineArkVideoTask(
+          profile,
+          task.providerTaskId!,
+          leasedFetch,
+        ),
+    });
+  }
+  const cancellation = {
+    code: "USER_CANCELLED",
+    message: cancellationMode === "cancel-relay-media-local"
+      ? "已停止本地等待和结果发布；中转站任务可能仍在运行"
+      : task.kind === "text"
+        ? "文字生成已取消"
+        : task.kind === "video"
+          ? "视频生成已取消"
+          : task.kind === "audio"
+            ? "音频生成已取消"
+            : "图片生成已取消",
+  };
+  const cancelled =
+    cancellationMode === "cancel-provider-video" ||
+      cancellationMode === "cancel-relay-media-local"
+      ? taskStore().transition(task.id, "cancelled", cancellation)
+      : taskStore().cancelBeforeProviderAttempt(task.id, cancellation);
+  if (!cancelled) throw new Error("Generation task not found");
+  runningImageRequests.get(task.id)?.abort();
+  runningVideoRequests.get(task.id)?.abort();
+  runningAudioRequests.get(task.id)?.abort();
+  runningTextRequests.get(task.id)?.abort();
+}
+
+/**
+ * Cancel every active generation task of a canvas. Used by project deletion so
+ * a removed project cannot leave a live task writing results back afterwards.
+ */
+export async function cancelCanvasGenerationTasks(
+  canvasId: string,
+  ownerId?: string,
+) {
+  const tasks = ownerId === undefined
+    ? taskStore().list(canvasId)
+    : taskStore().listForOwner(canvasId, ownerId);
+  for (const task of tasks) {
+    if (!["queued", "running", "recovering", "retrying"].includes(task.state)) {
+      continue;
+    }
+    await cancelGenerationTask(task);
+  }
+}
+
 export async function generationTasks(
   request: IncomingMessage,
   response: ServerResponse,
@@ -2871,52 +2936,22 @@ export async function generationTasks(
       json(response, 409, { error: "Generation task cannot be cancelled" });
       return;
     }
-    const cancellationMode = generationTaskCancellationMode(task);
-    if (cancellationMode === "provider-cancel-unavailable") {
-      json(response, 409, {
-        code: "PROVIDER_CANCEL_UNAVAILABLE",
-        error: "Mureka 暂不支持安全取消，任务会继续保存结果",
-      });
-      return;
-    }
     try {
-      if (cancellationMode === "cancel-provider-video" && task.providerTaskId) {
-        if (!task.providerProfileId) throw new Error("Provider profile not found");
-        await withProviderRequestLease({
-          fetcher: fetch,
-          profileId: task.providerProfileId,
-          request: (profile, leasedFetch) =>
-            cancelVolcengineArkVideoTask(
-              profile,
-              task.providerTaskId!,
-              leasedFetch,
-            ),
-        });
-      }
-      const cancellation = {
-        code: "USER_CANCELLED",
-        message: cancellationMode === "cancel-relay-media-local"
-          ? "已停止本地等待和结果发布；中转站任务可能仍在运行"
-          : task.kind === "text"
-          ? "文字生成已取消"
-          : task.kind === "video"
-          ? "视频生成已取消"
-          : task.kind === "audio"
-            ? "音频生成已取消"
-            : "图片生成已取消",
-      };
-      const cancelled =
-        cancellationMode === "cancel-provider-video" ||
-          cancellationMode === "cancel-relay-media-local"
-          ? taskStore().transition(path, "cancelled", cancellation)
-          : taskStore().cancelBeforeProviderAttempt(path, cancellation);
+      await cancelGenerationTask(task);
+      const cancelled = taskStore().get(path);
       if (!cancelled) throw new Error("Generation task not found");
-      runningImageRequests.get(path)?.abort();
-      runningVideoRequests.get(path)?.abort();
-      runningAudioRequests.get(path)?.abort();
-      runningTextRequests.get(path)?.abort();
       json(response, 200, taskSummary(cancelled));
     } catch (error) {
+      if (
+        error instanceof Error &&
+        (error as { code?: string }).code === "PROVIDER_CANCEL_UNAVAILABLE"
+      ) {
+        json(response, 409, {
+          code: "PROVIDER_CANCEL_UNAVAILABLE",
+          error: error.message,
+        });
+        return;
+      }
       if (error instanceof GenerationTaskProviderBoundaryError) {
         json(response, 409, {
           code: error.code,
