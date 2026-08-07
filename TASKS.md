@@ -812,3 +812,9 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - 用户确认通过：T-03（全屏删除复测）、T-05（导入即显示复测）、D-02、D-05、D-06、K-06（方舟迁移复测）、K-08、R-01；验收矩阵已同步 PASS。
 - 真实库清理（用户授权）：删除 `account_provider_credentials WHERE account_id='__test__'` 3 条测试残留；删除前一致性备份 `backups/before-test-credential-cleanup-2026-08-07T07-26-54-491Z.sqlite`。`users` 表仍有 1 条 `__test__` 测试用户行，不影响真实登录，是否删除待用户决定。
 - 用户复测通过：D-03/D-04（每节点最新一次成功结果、命名与去重、文件数量均符合预期）。三功能 21 条验收全部 PASS，M11 放行门达成。
+
+### 2026-08-07 下一阶段方案（公共模板 × 账号权限）决策定稿，未开始实施
+
+- 已完成：现状调研（`spec/TAPNOW_NEXT_PHASE_INVESTIGATION_2026-08-07.md`）、多步骤 WBS（`spec/TAPNOW_NEXT_PHASE_WBS_2026-08-07.md`）、逐小点详拆（`spec/TAPNOW_NEXT_PHASE_WBS_DETAIL_2026-08-07.md`）。
+- 8 项决策点已由用户确认：权限表 v30 / 公共模板表 v31；account-context 先加权限数组并暂留布尔字段；公共模板删除用归档+恢复且种子不可物理删除；最近使用先做本地版；`manage_accounts/manage_permissions` 不授予非管理员；P2（普通能力收回）本批不纳入；不加环境开关；不做投稿。
+- 当前状态：`DECISIONS CONFIRMED / IMPLEMENTATION NOT STARTED`。未经用户明确说“开始”，不实施任何代码改动。

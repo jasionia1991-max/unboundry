@@ -1,6 +1,6 @@
 # 下一阶段工作分解（WBS）：公共模板 × 账号权限管理
 
-状态：`DRAFT / PENDING USER APPROVAL 2026-08-07`
+状态：`DECISIONS CONFIRMED 2026-08-07 / IMPLEMENTATION NOT STARTED`
 依据：`spec/TAPNOW_NEXT_PHASE_INVESTIGATION_2026-08-07.md`（现状与行号证据）
 范围：只拆“账号权限管理”与“公共模板”两个需求；正式部署另行立项。
 执行纪律：每个小点依次完成 实现 → 逐行审计 → tsc/构建/单测/集成（临时数据目录）→ 分诊 → 相关回归 → TASKS.md 同步 → commit。
@@ -238,11 +238,15 @@ npx playwright test -c tests/m71-regression.config.ts           # 模板/画布�
 - P1-4/P1-5/P1-6 一个 commit（公共 GET+管理页+入口）；
 - P1-7/P1-8/P1-9 一个 commit（导入兼容+可选最近使用+收口）。
 
-## 决策点（开工前需确认）
+## 已确认决策（2026-08-07 用户确认，实施未开始）
 
-1. 权限表版本号与公共模板表版本号如何分配（v30/v31 顺序）。
-2. account-context：新增数组并暂留布尔字段，还是直接替换。
-3. 公共模板删除：归档+恢复接口（建议）还是硬删。
-4. 最近使用：本批做本地版还是不做。
-5. `manage_accounts/manage_permissions` 是否允许授予非管理员（建议不允许）。
-6. 普通能力收回（P2）本批是否纳入。
+1. 迁移版本号：权限表 v30、公共模板表 v31。
+2. account-context：先新增权限数组，旧布尔字段保留一个版本后删除。
+3. 公共模板删除：归档+恢复；种子模板仅可归档、不可物理删除。
+4. 最近使用：本批做本地版（localStorage，按账号），服务端版以后再说。
+5. `manage_accounts / manage_permissions` 不授予非管理员（权限网格对普通账号禁用）。
+6. 普通能力收回（P2）本批不纳入，另行立项。
+7. 不加权限系统环境开关；回退靠 git 回滚 + 备份恢复。
+8. 不做公共模板投稿；公共模板仅管理员新增/编辑/删除/上下架。
+
+详细解释见 `spec/TAPNOW_NEXT_PHASE_WBS_DETAIL_2026-08-07.md`「决策点定稿」。
