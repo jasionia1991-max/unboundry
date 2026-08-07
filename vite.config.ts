@@ -146,11 +146,11 @@ function authenticationApi(): Plugin {
     middlewares.use("/api/auth", (request, response) => {
       void authApi(request, response);
     });
-    middlewares.use("/api/admin/users", (request, response) => {
-      void adminUsersApi(request, response);
-    });
     middlewares.use("/api", (request, response, next) => {
       void authGate(request, response, next);
+    });
+    middlewares.use("/api/admin/users", (request, response) => {
+      void adminUsersApi(request, response);
     });
     middlewares.use("/api/account-context", (request, response) => {
       accountContextApi(request, response);

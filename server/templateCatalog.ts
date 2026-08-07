@@ -102,7 +102,7 @@ export type UserTemplateCard = {
   updatedAt: string;
 };
 
-const categories = [
+export const categories = [
   "最近使用",
   "我的模板",
   "全部",
@@ -114,6 +114,18 @@ const categories = [
   "工具",
   "有趣",
   "ACG",
+];
+
+// 可保存/发布使用的真实分类白名单（不含筛选桶：最近使用/我的模板/全部）。
+const realCategories = [
+  "电商",
+  "广告",
+  "影视",
+  "生活",
+  "工具",
+  "有趣",
+  "ACG",
+  "Seedance 2.0",
 ];
 
 const templateNodeTypeSet = new Set<TemplateNodeType>([
@@ -300,7 +312,7 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-function validTemplateGraph(value: unknown): value is TemplateGraph {
+export function validTemplateGraph(value: unknown): value is TemplateGraph {
   if (!isRecord(value)) return false;
   const nodes = value.nodes;
   const edges = value.edges;
@@ -433,7 +445,7 @@ function resolveTemplateCover(
   return null;
 }
 
-function userTemplateCard(
+export function userTemplateCard(
   store: DatabaseSync,
   ownerId: string,
   row: UserTemplateRow,
@@ -538,7 +550,7 @@ export function saveUserTemplate(
     throw new Error("模板标题需为 1–40 个字符");
   }
   const category = typeof input.category === "string" ? input.category.trim() : "";
-  if (category && !categories.includes(category)) {
+  if (category && !realCategories.includes(category)) {
     throw new Error("模板分类无效");
   }
   if (!validTemplateGraph(input.graph)) {

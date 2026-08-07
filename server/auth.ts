@@ -577,8 +577,8 @@ export async function adminUsersApi(
     json(response, 403, { error: "请求来源无效" });
     return;
   }
-  const session = await authenticate(request);
-  if (!session || session.identity.role !== "admin") {
+  const identity = requestIdentity(request);
+  if (!identity || identity.role !== "admin") {
     json(response, 403, { error: "只有管理员可以操作账号" });
     return;
   }
@@ -623,7 +623,7 @@ export async function adminUsersApi(
           timestamp,
           timestamp,
         );
-      recordAudit(store, session.identity.userId, "create_user", id, {
+      recordAudit(store, identity.userId, "create_user", id, {
         loginName: input.loginName,
       });
       const row = store.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow;
@@ -643,7 +643,7 @@ export async function adminUsersApi(
       if (body.status !== "active" && body.status !== "disabled") {
         throw new Error("Invalid status");
       }
-      if (path === session.identity.userId && body.status === "disabled") {
+      if (path === identity.userId && body.status === "disabled") {
         json(response, 400, { error: "不能停用当前登录的管理员" });
         return;
       }
@@ -659,7 +659,7 @@ export async function adminUsersApi(
       if (body.status === "disabled") {
         store.prepare("DELETE FROM sessions WHERE user_id = ?").run(path);
       }
-      recordAudit(store, session.identity.userId, "set_user_status", path, {
+      recordAudit(store, identity.userId, "set_user_status", path, {
         status: body.status,
       });
       const row = store.prepare("SELECT * FROM users WHERE id = ?").get(path) as UserRow;
@@ -673,7 +673,7 @@ export async function adminUsersApi(
   if (request.method === "DELETE" && userIdPattern.test(path)) {
     try {
       const targetId = path;
-      if (targetId === session.identity.userId) {
+      if (targetId === identity.userId) {
         json(response, 400, { error: "不能删除当前登录的管理员账号" });
         return;
       }
@@ -760,7 +760,7 @@ export async function adminUsersApi(
         throw error;
       }
 
-      recordAudit(store, session.identity.userId, "delete_user", targetId, {
+      recordAudit(store, identity.userId, "delete_user", targetId, {
         loginName: target.login_name,
         role: target.role,
       });
