@@ -35,6 +35,7 @@ import {
   permissionLabel,
   type AccountPermission,
 } from "../../types/accountPermissions";
+import { REAL_CATEGORIES } from "../../types/templateCategories";
 
 type Fixture = {
   id: string;
@@ -6357,6 +6358,493 @@ function accountCredentialStatusLabel(status: AccountCredentialItem["keyStatus"]
   return "未检查";
 }
 
+type AdminPublicTemplateStatus = "draft" | "published" | "archived";
+
+type AdminPublicTemplate = {
+  categories: string[];
+  createdAt: string;
+  description: string;
+  graph?: Record<string, unknown>;
+  id: string;
+  previewImage?: string;
+  status: AdminPublicTemplateStatus;
+  title: string;
+  updatedAt: string;
+};
+
+function publicTemplateStatusLabel(status: AdminPublicTemplateStatus) {
+  if (status === "published") return "已发布";
+  if (status === "draft") return "草稿";
+  return "已归档";
+}
+
+function AdminTemplatesPage({ currentUser }: { currentUser: AuthUser }) {
+  const [templates, setTemplates] = useState<AdminPublicTemplate[]>([]);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busyId, setBusyId] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<AdminPublicTemplate>();
+  const [archiving, setArchiving] = useState<AdminPublicTemplate>();
+  const [draft, setDraft] = useState({
+    baseTemplateId: "",
+    categories: [] as string[],
+    description: "",
+    graphJson: "",
+    previewImage: "",
+    status: "draft" as AdminPublicTemplateStatus,
+    title: "",
+  });
+  const [modalError, setModalError] = useState("");
+
+  const load = async () => {
+    setError("");
+    try {
+      const body = await jsonRequest<{ items: AdminPublicTemplate[] }>(
+        "/api/admin/templates?limit=100&offset=0&includeGraph=false",
+      );
+      setTemplates(body.items);
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "公共模板列表读取失败",
+      );
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const changeStatus = async (
+    template: AdminPublicTemplate,
+    status: AdminPublicTemplateStatus,
+  ) => {
+    setBusyId(template.id);
+    setError("");
+    setNotice("");
+    try {
+      await jsonRequest(
+        `/api/admin/templates/${encodeURIComponent(template.id)}`,
+        {
+          body: JSON.stringify({ status }),
+          method: "PATCH",
+        },
+      );
+      setNotice(`「${template.title}」已${publicTemplateStatusLabel(status)}`);
+      await load();
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "模板状态修改失败",
+      );
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  const archive = async (template: AdminPublicTemplate) => {
+    setBusyId(template.id);
+    setError("");
+    setNotice("");
+    try {
+      await jsonRequest(
+        `/api/admin/templates/${encodeURIComponent(template.id)}`,
+        { method: "DELETE" },
+      );
+      setArchiving(undefined);
+      setNotice(`「${template.title}」已归档，普通账号不可见`);
+      await load();
+    } catch (caught) {
+      setArchiving(undefined);
+      setError(
+        caught instanceof Error ? caught.message : "模板归档失败",
+      );
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  const openCreate = () => {
+    setEditing(undefined);
+    setModalError("");
+    setDraft({
+      baseTemplateId: "",
+      categories: [],
+      description: "",
+      graphJson: "",
+      previewImage: "",
+      status: "draft",
+      title: "",
+    });
+    setCreating(true);
+  };
+
+  const graphJsonFor = async (templateId: string) => {
+    const body = await jsonRequest<{ items: AdminPublicTemplate[] }>(
+      "/api/admin/templates?limit=100&offset=0&includeGraph=true",
+    );
+    const full = body.items.find((item) => item.id === templateId);
+    return full?.graph ? JSON.stringify(full.graph, null, 2) : "";
+  };
+
+  const openEdit = async (template: AdminPublicTemplate) => {
+    setEditing(template);
+    setModalError("");
+    setDraft({
+      baseTemplateId: "",
+      categories: template.categories,
+      description: template.description ?? "",
+      graphJson: "",
+      previewImage: template.previewImage ?? "",
+      status: template.status,
+      title: template.title,
+    });
+    setCreating(true);
+    try {
+      const graphJson = await graphJsonFor(template.id);
+      setDraft((current) => ({ ...current, graphJson }));
+    } catch {
+      setModalError("模板图读取失败，可直接在编辑时重新填写");
+    }
+  };
+
+  const pickBaseTemplate = async (templateId: string) => {
+    setDraft((current) => ({ ...current, baseTemplateId: templateId }));
+    if (!templateId) return;
+    try {
+      const graphJson = await graphJsonFor(templateId);
+      setDraft((current) => ({
+        ...current,
+        baseTemplateId: templateId,
+        graphJson,
+        title: current.title || templates.find((item) => item.id === templateId)?.title || "",
+      }));
+    } catch {
+      setModalError("模板图读取失败，请手动粘贴 JSON");
+    }
+  };
+
+  const submit = async () => {
+    setModalError("");
+    let graph: unknown;
+    if (draft.graphJson.trim()) {
+      try {
+        graph = JSON.parse(draft.graphJson) as unknown;
+      } catch {
+        setModalError("模板图 JSON 无法解析");
+        return;
+      }
+    }
+    const payload = {
+      category: draft.categories,
+      description: draft.description.trim() || undefined,
+      graph,
+      previewImage: draft.previewImage.trim() || undefined,
+      status: draft.status,
+      title: draft.title,
+    };
+    try {
+      if (editing) {
+        await jsonRequest(
+          `/api/admin/templates/${encodeURIComponent(editing.id)}`,
+          {
+            body: JSON.stringify(payload),
+            method: "PATCH",
+          },
+        );
+        setNotice(`「${draft.title}」已更新`);
+      } else {
+        if (graph === undefined) {
+          setModalError("请填写模板图 JSON，或先选择「基于现有模板」");
+          return;
+        }
+        await jsonRequest("/api/admin/templates", {
+          body: JSON.stringify(payload),
+          method: "POST",
+        });
+        setNotice(`「${draft.title}」已创建`);
+      }
+      setCreating(false);
+      await load();
+    } catch (caught) {
+      setModalError(
+        caught instanceof Error ? caught.message : "模板保存失败",
+      );
+    }
+  };
+
+  return (
+    <main className="admin-page" data-testid="admin-templates-page">
+      <header>
+        <div>
+          <span aria-hidden="true" className="replica-mark" />
+          <div>
+            <strong>公共模板管理</strong>
+            <small>管理员：{currentUser.displayName}</small>
+          </div>
+        </div>
+        <button onClick={() => { window.location.href = "/"; }} type="button">
+          返回画布
+        </button>
+      </header>
+      {notice && (
+        <p className="storage-admin-notice provider-page-message">{notice}</p>
+      )}
+      {error && <p className="auth-error" role="alert">{error}</p>}
+      <section className="admin-card admin-templates-section">
+        <div className="api-contract-heading">
+          <div>
+            <span>公共模板</span>
+            <h1>仅管理员可新增/编辑/上下架；普通账号只能浏览与导入</h1>
+          </div>
+          <button onClick={openCreate} type="button">
+            新建公共模板
+          </button>
+        </div>
+        <div
+          className="admin-templates-grid"
+          data-testid="admin-templates-list"
+        >
+          {templates.length === 0 ? (
+            <p className="model-list-empty">暂无公共模板</p>
+          ) : (
+            templates.map((template) => (
+              <article
+                className="admin-template-card"
+                data-testid={`admin-template-${template.id}`}
+                key={template.id}
+              >
+                <div className="admin-template-art">
+                  {template.previewImage ? (
+                    <img alt="" src={template.previewImage} />
+                  ) : (
+                    <span />
+                  )}
+                </div>
+                <div className="admin-template-info">
+                  <strong>{template.title}</strong>
+                  <span>
+                    {template.categories.length
+                      ? template.categories.join(" / ")
+                      : "未分类"}
+                  </span>
+                  <small>
+                    更新于{" "}
+                    {new Date(template.updatedAt).toLocaleString("zh-CN")}
+                  </small>
+                </div>
+                <b
+                  className="admin-template-status"
+                  data-status={template.status}
+                >
+                  {publicTemplateStatusLabel(template.status)}
+                </b>
+                <div className="admin-template-actions">
+                  {template.status === "draft" && (
+                    <button
+                      disabled={busyId === template.id}
+                      onClick={() => void changeStatus(template, "published")}
+                      type="button"
+                    >
+                      发布
+                    </button>
+                  )}
+                  {template.status === "published" && (
+                    <button
+                      disabled={busyId === template.id}
+                      onClick={() => void changeStatus(template, "draft")}
+                      type="button"
+                    >
+                      下架
+                    </button>
+                  )}
+                  {template.status === "archived" ? (
+                    <button
+                      disabled={busyId === template.id}
+                      onClick={() => void changeStatus(template, "published")}
+                      type="button"
+                    >
+                      恢复
+                    </button>
+                  ) : (
+                    <button
+                      className="admin-template-danger"
+                      disabled={busyId === template.id}
+                      onClick={() => setArchiving(template)}
+                      type="button"
+                    >
+                      归档
+                    </button>
+                  )}
+                  <button
+                    disabled={busyId === template.id}
+                    onClick={() => void openEdit(template)}
+                    type="button"
+                  >
+                    编辑
+                  </button>
+                </div>
+              </article>
+            ))
+          )}
+        </div>
+      </section>
+      {creating && (
+        <div
+          className="admin-template-modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.currentTarget !== event.target) return;
+            setCreating(false);
+          }}
+        >
+          <section
+            aria-label={editing ? "编辑公共模板" : "新建公共模板"}
+            aria-modal="true"
+            className="admin-template-modal"
+            data-testid="admin-template-modal"
+            role="dialog"
+          >
+            <h2>{editing ? "编辑公共模板" : "新建公共模板"}</h2>
+            <label>
+              模板标题（1–40 字符）
+              <input
+                maxLength={40}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    title: event.target.value,
+                  }))
+                }
+                placeholder="例如：电商主图工作流"
+                value={draft.title}
+              />
+            </label>
+            <label>
+              说明（可选）
+              <input
+                maxLength={200}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    description: event.target.value,
+                  }))
+                }
+                placeholder="普通账号看到的模板说明"
+                value={draft.description}
+              />
+            </label>
+            <div className="admin-template-categories">
+              <span>分类（可多选）</span>
+              <div>
+                {REAL_CATEGORIES.map((category) => (
+                  <label key={category}>
+                    <input
+                      checked={draft.categories.includes(category)}
+                      className="admin-compact-checkbox"
+                      onChange={(event) =>
+                        setDraft((current) => ({
+                          ...current,
+                          categories: event.target.checked
+                            ? [...current.categories, category]
+                            : current.categories.filter(
+                                (item) => item !== category,
+                              ),
+                        }))
+                      }
+                      type="checkbox"
+                    />
+                    <span>{category}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <label>
+              封面路径（可选，例如 /templates/demo.png）
+              <input
+                maxLength={500}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    previewImage: event.target.value,
+                  }))
+                }
+                placeholder="/templates/demo.png"
+                value={draft.previewImage}
+              />
+            </label>
+            <label>
+              状态
+              <select
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    status: event.target.value as AdminPublicTemplateStatus,
+                  }))
+                }
+                value={draft.status}
+              >
+                <option value="draft">草稿</option>
+                <option value="published">发布</option>
+              </select>
+            </label>
+            {!editing && (
+              <label>
+                基于现有模板（可选）
+                <select
+                  onChange={(event) => void pickBaseTemplate(event.target.value)}
+                  value={draft.baseTemplateId}
+                >
+                  <option value="">不基于现有模板</option>
+                  {templates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label>
+              模板图 JSON（节点≤500、边≤1000、7 种类型）
+              <textarea
+                className="admin-template-graph-json"
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    graphJson: event.target.value,
+                  }))
+                }
+                placeholder='{"nodes":[...],"edges":[...],"version":1}'
+                spellCheck={false}
+                value={draft.graphJson}
+              />
+            </label>
+            {modalError && (
+              <p className="auth-error" role="alert">{modalError}</p>
+            )}
+            <div className="admin-template-modal-actions">
+              <button onClick={() => setCreating(false)} type="button">
+                取消
+              </button>
+              <button onClick={() => void submit()} type="button">
+                保存
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+      {archiving && (
+        <ConfirmDialog
+          confirmLabel="归档"
+          danger
+          message={`确定要归档公共模板「${archiving.title}」？归档后普通账号不可见，仍可随时恢复；已导入的画布不受影响。`}
+          onCancel={() => setArchiving(undefined)}
+          onConfirm={() => void archive(archiving)}
+          title="确认归档公共模板"
+        />
+      )}
+    </main>
+  );
+}
+
 function MyConnectionsPage({ currentUser }: { currentUser: AuthUser }) {
   const [items, setItems] = useState<AccountCredentialItem[]>([]);
   const [error, setError] = useState("");
@@ -6746,6 +7234,19 @@ function AuthenticatedApplication({
     }
     return <AdminApiContract currentUser={status.user} />;
   }
+  if (window.location.pathname === "/admin/templates") {
+    if (
+      !hasClientPermission(
+        status.permissions,
+        "manage_public_templates",
+        status.user.role,
+      )
+    ) {
+      window.location.replace("/");
+      return null;
+    }
+    return <AdminTemplatesPage currentUser={status.user} />;
+  }
   if (window.location.pathname === "/connections") {
     return <MyConnectionsPage currentUser={status.user} />;
   }
@@ -6756,7 +7257,9 @@ function AuthenticatedApplication({
         accountOpen={accountOpen}
         fixtureId={fixtureId}
         onAccountOpenChange={setAccountOpen}
+        permissions={status.permissions}
         projectId={projectId}
+        role={status.user.role}
         userId={status.user.id}
         userInitial={status.user.displayName.trim().charAt(0).toLocaleUpperCase() || "M"}
         workspace={workspace}
@@ -6843,6 +7346,18 @@ function AuthenticatedApplication({
                 生成安全
               </button>
           )}
+          {hasClientPermission(
+            status.permissions,
+            "manage_public_templates",
+            status.user.role,
+          ) && (
+              <button
+                onClick={() => { window.location.href = "/admin/templates"; }}
+                type="button"
+              >
+                公共模板管理
+              </button>
+          )}
           <button
             onClick={() => {
               void jsonRequest("/api/auth/logout", { method: "POST" }).then(() =>
@@ -6866,7 +7381,9 @@ function CanvasApplication({
   accountOpen,
   fixtureId,
   onAccountOpenChange,
+  permissions,
   projectId,
+  role,
   userId,
   userInitial,
   workspace,
@@ -6874,7 +7391,9 @@ function CanvasApplication({
   accountOpen: boolean;
   fixtureId?: string;
   onAccountOpenChange: (open: boolean) => void;
+  permissions?: AccountPermission[];
   projectId?: string;
+  role?: AuthUser["role"];
   userId?: string;
   userInitial: string;
   workspace?: boolean;
@@ -6891,7 +7410,9 @@ function CanvasApplication({
         onProjectMissing={() => {
           window.location.href = "/canvas/projects";
         }}
+        permissions={permissions}
         projectId={projectId}
+        role={role}
         userId={userId}
         userInitial={userInitial}
       />

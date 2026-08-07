@@ -835,3 +835,17 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - P0-10 回归与收口：tsc/构建通过；m78 专项 7/7（枚举/迁移/服务/API/UI/路由/级联删除）；m11 4/4；m74 大回归 106/111（失败 4 项均为既有基线：m26 Mureka 2 项、m38 重试快照 1 项、m46 4197 端口过滤 1 项且 4174 复跑通过；m44 迁移列表已随 v30 更新转绿）；m0 22/23（唯一失败为既有 P1 creator 基线）；m12/m13/m14/m15/m20/m21/m45/m46（4174）全绿。
 - 延后问题清单：①m26/m38/m46 端口类与 m0 P1 creator 为既有基线失败，未纳入本批；②m44 迁移测试固定迁移列表，后续每新增迁移需同步（已纳入文档连锁）；③`granted_by` 指向已删除管理员的极端场景由显式 DELETE 兜底（当前产品流程只能存在一个管理员，路径不可达）。
 - 状态：P0 实现完成，等待用户实页验收（验收矩阵新增权限条目）。
+
+### 2026-08-07 公共模板 P1 实施（P1-1～P1-9）
+
+- P1-1 v31 迁移：`public_templates`（id/title/description/category JSON 数组/ graph/cover_asset_id/preview_image/status 三态/created_by/updated_by/archived_at + 状态索引）。种子来源：由 `templateCatalogData.json` 经 `buildTemplateGraph` 生成静态 `server/publicTemplateSeeds.json`（2 条，图结构与 m22 契约一致：12/29 与 14/12 含 group），迁移内 `INSERT OR IGNORE`，`created_by` 为空表示内置种子。选静态种子文件是为避免 database ↔ templateCatalog 的模块循环导致 vite 配置打包失败（vite 实测报 `init_database is not a function`）；改种源后需重新生成该文件（m77 迁移测试锁数量/标题/图尺寸，防止漂移）。
+- P1-2 存储层：`templateCatalog.ts` 新增导出 `listPublicTemplates/publicTemplateCard/parsePublicCategory`（封面优先级 preview_image → cover 素材 URL → 渐变占位；结构对齐 userTemplateCard 并保留 description）；`server/adminTemplates.ts` 提供 `savePublicTemplate/updatePublicTemplate/archivePublicTemplate/restorePublicTemplate/deletePublicTemplate`（校验复用 `validTemplateGraph`/`isRealCategory`；状态任意流转；种子不可物理删除；全部写审计 `public_template.*`）。
+- P1-3 管理员 CRUD API：`GET/POST /api/admin/templates`、`PATCH/DELETE /api/admin/templates/:id`（守卫 `manage_public_templates`，无权限 403；DELETE=归档可恢复；OpenAPI 登记）；路由注册在 `/api` authGate 之后。
+- P1-4 公共 GET 改库：`space=public` 只读 `public_templates WHERE status='published'`，响应结构（categories/items/pagination/description/previewImage/graph）与改造前一致；静态 JSON 不再作为运行时数据源。
+- P1-5 管理页：`/admin/templates` 路由（守卫 `manage_public_templates`）+ `AdminTemplatesPage`（列表卡：封面/标题/分类/状态胶囊/更新时间；新建/编辑弹窗：标题/说明/分类多选（`admin-compact-checkbox`）/封面路径/状态/模板图 JSON/基于现有模板；发布/下架/归档(ConfirmDialog)/恢复；12/14px 灰阶紧凑样式）。
+- P1-6 浏览全部管理入口：`CanvasShell` 新增 `permissions/role` 入参（App 渲染点同步），浏览全部侧栏对具备 `manage_public_templates` 的账号显示「管理公共模板」；公共卡片永不显示删除按钮（既有行为不变）。
+- P1-7 上传位兼容：m77 UI 集成测试——管理员发布含上传位节点（无 assetId 的 image/text/group）的公共模板 → 普通账号导入 → 节点正常显示、刷新保持、封面来自 preview_image。
+- P1-8 最近使用本地版：localStorage `tapnow-template-recent:v2:<userId>` 记录最近导入（公共+私有），「最近使用」分类按记录倒序过滤排序；失效（归档/删除）模板静默跳过；无记录回落空态。
+- P1-9 回归收口：tsc/构建通过；m77 专项 6/6（迁移/存储/API 403+CRUD/公共 GET 契约/上传位导入+封面/管理页 CRUD/入口权限+最近使用）；m22/m70/m71/m20/m45/m0 模板批 45/46（唯一失败为既有 m0 P1 creator 基线）；m74 大回归 107/111（失败 4 项均为既有基线：m26 Mureka 2、m38 重试快照 1、m46 4197 端口过滤 1 且 4174 复跑通过；m44 迁移列表已含 v30/v31 转绿）；m78 7/7。
+- 延后问题清单：①既有基线失败 4 项 + m0 P1 creator 未纳入本批；②m46 大目录测试的请求过滤在 4197 端口配置下会把本地资源计入（4174 复跑通过），与本批新增的 account-context 请求无关；③公共模板本期不携带私有素材（决策 9），带图公共模板需等公共素材复制功能立项。
+- 状态：P1 实现完成，等待用户实页验收（验收矩阵新增公共模板条目）。

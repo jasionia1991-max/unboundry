@@ -10,7 +10,7 @@ import {
   isAccountPermission,
   permissionLabel,
 } from "../types/accountPermissions";
-import { openAppDatabase } from "../server/database";
+import { currentSchemaVersion, openAppDatabase } from "../server/database";
 import {
   accountPermissionSet,
   hasPermission,
@@ -123,7 +123,7 @@ test("v30 migration is idempotent and cascades permission rows on account deleti
           }
         ).user_version,
       ),
-    ).toBe(30);
+    ).toBe(currentSchemaVersion);
     const now = timestamp();
     store
       .prepare(`
@@ -153,7 +153,7 @@ test("v30 migration is idempotent and cascades permission rows on account deleti
           }
         ).user_version,
       ),
-    ).toBe(30);
+    ).toBe(currentSchemaVersion);
     expect(
       Number(
         (

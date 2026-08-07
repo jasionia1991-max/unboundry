@@ -20,6 +20,7 @@ import { useCompositionSafeText } from "./CompositionSafeText";
 import { hasInteractionProbeNodes } from "./probeFixtures";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { clearProjectLocalKeys } from "../projects/projectStorage";
+import type { AccountPermission } from "../../../types/accountPermissions";
 
 type ShellButtonProps = {
   label: string;
@@ -128,6 +129,49 @@ const defaultProjectTitle = "Codex TapNow G0.2 Sandbox 0727";
 
 function projectTitleStorageKey(userId: string, id: string) {
   return `tapnow-project-title:v2:${userId}:${id}`;
+}
+
+function recentTemplatesKey(userId: string) {
+  return `tapnow-template-recent:v2:${userId}`;
+}
+
+type RecentTemplateEntry = { at: number; id: string };
+
+function readRecentTemplates(userId: string): RecentTemplateEntry[] {
+  try {
+    const raw = window.localStorage.getItem(recentTemplatesKey(userId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (item): item is RecentTemplateEntry =>
+          Boolean(
+            item &&
+              typeof item === "object" &&
+              typeof (item as RecentTemplateEntry).id === "string" &&
+              Number.isSafeInteger((item as RecentTemplateEntry).at),
+          ),
+      )
+      .sort((left, right) => right.at - left.at);
+  } catch {
+    return [];
+  }
+}
+
+function recordRecentTemplate(userId: string, templateId: string) {
+  try {
+    const current = readRecentTemplates(userId).filter(
+      (item) => item.id !== templateId,
+    );
+    current.unshift({ at: Date.now(), id: templateId });
+    window.localStorage.setItem(
+      recentTemplatesKey(userId),
+      JSON.stringify(current.slice(0, 50)),
+    );
+  } catch {
+    // 本地记录失败只影响「最近使用」排序，不阻塞导入。
+  }
 }
 
 function readProjectTitleDraft(
@@ -632,7 +676,9 @@ export function CanvasShell({
   fixtureId,
   onAccountOpenChange,
   onProjectMissing,
+  permissions,
   projectId,
+  role,
   userId = "",
   userInitial = "M",
 }: {
@@ -640,10 +686,15 @@ export function CanvasShell({
   fixtureId?: string;
   onAccountOpenChange: (open: boolean) => void;
   onProjectMissing?: () => void;
+  permissions?: readonly AccountPermission[];
   projectId?: string;
+  role?: "admin" | "user";
   userId?: string;
   userInitial: string;
 }) {
+  const canManagePublicTemplates =
+    role === "admin" ||
+    permissions?.includes("manage_public_templates") === true;
   const projectTitleId = projectId ?? fixtureId ?? "default";
   const initialProjectTitle =
     readProjectTitleDraft(userId, projectTitleId) ??
@@ -916,6 +967,7 @@ export function CanvasShell({
 
   const applyTemplate = (template: TemplateCatalogCard) => {
     if (!template.graph) return;
+    recordRecentTemplate(userId, template.id);
     setTemplateNoticeOpen(false);
     setTemplatesOpen(false);
     setTemplateBrowseAllOpen(false);
@@ -1104,7 +1156,23 @@ export function CanvasShell({
         return response.json() as Promise<TemplateCatalogResponse>;
       })
       .then((catalog) => {
-        setTemplateCards(catalog.items);
+        if (templateBrowseCategory === "最近使用") {
+          const recent = readRecentTemplates(userId);
+          const recentById = new Map(
+            recent.map((entry) => [entry.id, entry.at]),
+          );
+          setTemplateCards(
+            catalog.items
+              .filter((item) => recentById.has(item.id))
+              .sort(
+                (left, right) =>
+                  (recentById.get(right.id) ?? 0) -
+                  (recentById.get(left.id) ?? 0),
+              ),
+          );
+        } else {
+          setTemplateCards(catalog.items);
+        }
         if (catalog.categories.length) {
           setTemplateBrowseCategories(catalog.categories);
         }
@@ -1127,6 +1195,7 @@ export function CanvasShell({
     templateSearch,
     templateTab,
     templateCatalogRevision,
+    userId,
   ]);
   const visibleTemplateCards = templateCards;
   useEffect(() => {
@@ -2845,6 +2914,18 @@ export function CanvasShell({
                   </button>
                 ))}
               </nav>
+              {canManagePublicTemplates && (
+                <button
+                  className="template-browser-admin-entry"
+                  data-testid="admin-templates-entry"
+                  onClick={() => {
+                    window.location.href = "/admin/templates";
+                  }}
+                  type="button"
+                >
+                  管理公共模板
+                </button>
+              )}
             </aside>
             <div className="template-browser-main">
               <header>

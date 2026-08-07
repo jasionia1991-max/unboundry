@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
+import { isRealCategory } from "../types/templateCategories";
 
 type RawTemplateNode = {
   data?: {
@@ -138,17 +139,6 @@ export const categories = [
 ];
 
 // 可保存/发布使用的真实分类白名单（不含筛选桶：最近使用/我的模板/全部）。
-export const REAL_CATEGORIES = [
-  "电商",
-  "广告",
-  "影视",
-  "生活",
-  "工具",
-  "有趣",
-  "ACG",
-  "Seedance 2.0",
-];
-
 const templateNodeTypeSet = new Set<TemplateNodeType>([
   "audio",
   "group",
@@ -626,6 +616,7 @@ export function listPublicTemplates(
     items: rows.map((row) =>
       publicTemplateCard(store, row, options.includeGraph),
     ),
+    rows,
     total,
   };
 }
@@ -685,7 +676,7 @@ export function saveUserTemplate(
     throw new Error("模板标题需为 1–40 个字符");
   }
   const category = typeof input.category === "string" ? input.category.trim() : "";
-  if (category && !REAL_CATEGORIES.includes(category)) {
+  if (category && !isRealCategory(category)) {
     throw new Error("模板分类无效");
   }
   if (!validTemplateGraph(input.graph)) {

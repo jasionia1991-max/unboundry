@@ -626,3 +626,238 @@ test("a published upload-placeholder template imports for an ordinary account wi
     await rm(dataDirectory, { force: true, recursive: true });
   }
 });
+
+test("admin templates page creates, edits, archives and restores public templates", async ({
+  page,
+}) => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-public-adminui-"));
+  let server: ChildProcess | undefined;
+  try {
+    server = await startServer(dataDirectory);
+    const bootstrap = await page.request.post("/api/auth/bootstrap", {
+      data: {
+        displayName: "Owner",
+        loginName: "owner",
+        password: "owner-password-123",
+      },
+    });
+    expect(bootstrap.status()).toBe(201);
+
+    await page.goto("/admin/templates");
+    await expect(page.getByTestId("admin-templates-page")).toBeVisible();
+    await expect(
+      page.getByTestId("admin-templates-list"),
+    ).toContainText("电商详情页工作流");
+    await expect(
+      page.getByTestId("admin-templates-list"),
+    ).toContainText("213.电商图片生成专家");
+
+    await page.getByRole("button", { name: "新建公共模板" }).click();
+    const modal = page.getByTestId("admin-template-modal");
+    await expect(modal).toBeVisible();
+    await modal.getByLabel(/模板标题/).fill("UI 新建模板");
+    await modal.getByLabel(/说明/).fill("通过管理页创建");
+    await modal.getByRole("checkbox", { name: "工具" }).check();
+    await modal.getByLabel(/状态/).selectOption("published");
+    await modal
+      .getByLabel(/模板图 JSON/)
+      .fill(JSON.stringify(uploadPlaceholderGraph()));
+    await modal.getByRole("button", { name: "保存" }).click();
+    await expect(modal).toHaveCount(0);
+    const createdCard = page
+      .locator(".admin-template-card")
+      .filter({ hasText: "UI 新建模板" });
+    await expect(createdCard).toBeVisible();
+    await expect(createdCard.locator("[data-status='published']")).toBeVisible();
+    const publicList = await page.request.get(
+      "/api/templates?space=public&q=UI 新建模板",
+    );
+    expect(
+      ((await publicList.json()) as { items: Array<{ id: string }> }).items,
+    ).toHaveLength(1);
+
+    await createdCard.getByRole("button", { name: "编辑" }).click();
+    await expect(modal).toBeVisible();
+    await modal.getByLabel(/模板标题/).fill("UI 编辑后");
+    await modal.getByRole("button", { name: "保存" }).click();
+    await expect(
+      page
+        .locator(".admin-template-card")
+        .filter({ hasText: "UI 编辑后" }),
+    ).toBeVisible();
+
+    await page
+      .locator(".admin-template-card")
+      .filter({ hasText: "UI 编辑后" })
+      .getByRole("button", { name: "归档" })
+      .click();
+    await expect(page.getByTestId("confirm-dialog")).toBeVisible();
+    await page.getByTestId("confirm-dialog").getByRole("button", {
+      name: "归档",
+    }).click();
+    await expect(
+      page
+        .locator(".admin-template-card")
+        .filter({ hasText: "UI 编辑后" })
+        .locator("[data-status='archived']"),
+    ).toBeVisible();
+    const hiddenAfterArchive = await page.request.get(
+      "/api/templates?space=public&q=UI 编辑后",
+    );
+    expect(
+      (
+        (await hiddenAfterArchive.json()) as {
+          items: Array<{ id: string }>;
+        }
+      ).items,
+    ).toHaveLength(0);
+
+    await page
+      .locator(".admin-template-card")
+      .filter({ hasText: "UI 编辑后" })
+      .getByRole("button", { name: "恢复" })
+      .click();
+    await expect(
+      page
+        .locator(".admin-template-card")
+        .filter({ hasText: "UI 编辑后" })
+        .locator("[data-status='published']"),
+    ).toBeVisible();
+    const visibleAfterRestore = await page.request.get(
+      "/api/templates?space=public&q=UI 编辑后",
+    );
+    expect(
+      (
+        (await visibleAfterRestore.json()) as {
+          items: Array<{ id: string }>;
+        }
+      ).items,
+    ).toHaveLength(1);
+  } finally {
+    if (server) await stopServer(server);
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("browse-all admin entry follows permissions and recent-used filters by account with silent skips", async ({
+  page,
+}) => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-public-recent-"));
+  let server: ChildProcess | undefined;
+  try {
+    server = await startServer(dataDirectory);
+    const bootstrap = await page.request.post("/api/auth/bootstrap", {
+      data: {
+        displayName: "Owner",
+        loginName: "owner",
+        password: "owner-password-123",
+      },
+    });
+    expect(bootstrap.status()).toBe(201);
+    await page.request.post("/api/admin/users", {
+      data: {
+        displayName: "Ordinary",
+        loginName: "ordinary",
+        password: "ordinary-pass-123",
+      },
+    });
+
+    for (const title of ["最近使用A", "最近使用B"]) {
+      const created = await page.request.post("/api/admin/templates", {
+        data: {
+          category: ["工具"],
+          graph: uploadPlaceholderGraph(),
+          status: "published",
+          title,
+        },
+      });
+      expect(created.status()).toBe(201);
+    }
+
+    // 管理员：浏览全部侧栏显示管理入口。
+    await page.goto("/");
+    await page.getByTestId("templates").click();
+    await page.getByRole("button", { name: "浏览全部" }).click();
+    await expect(page.getByTestId("admin-templates-entry")).toBeVisible();
+    await page.getByRole("button", { name: "关闭全部模板" }).click();
+
+    // 普通账号：无管理入口。
+    await page.request.post("/api/auth/logout");
+    await page.request.post("/api/auth/login", {
+      data: {
+        loginName: "ordinary",
+        password: "ordinary-pass-123",
+      },
+    });
+    await page.goto("/");
+    await page.getByTestId("templates").click();
+    await page.getByRole("button", { name: "浏览全部" }).click();
+    await expect(page.getByTestId("admin-templates-entry")).toHaveCount(0);
+
+    // 先导入 A，再导入 B；「最近使用」应倒序显示 B、A。
+    const browser = page.getByTestId("template-browser");
+    await browser
+      .locator(".template-browser-card")
+      .filter({ hasText: "最近使用A" })
+      .click();
+    await expect(browser).toHaveCount(0);
+    await page.getByTestId("templates").click();
+    await page.getByRole("button", { name: "浏览全部" }).click();
+    await browser
+      .locator(".template-browser-card")
+      .filter({ hasText: "最近使用B" })
+      .click();
+    await expect(browser).toHaveCount(0);
+
+    await page.getByTestId("templates").click();
+    await page.getByRole("button", { name: "浏览全部" }).click();
+    await browser
+      .getByRole("button", { name: "最近使用", exact: true })
+      .click();
+    const recentTitles = await browser
+      .locator(".template-browser-card p")
+      .allTextContents();
+    expect(recentTitles.map((title) => title.trim())).toEqual([
+      "最近使用B",
+      "最近使用A",
+    ]);
+
+    // 管理员归档 A 后，普通账号「最近使用」静默跳过失效模板。
+    await page.request.post("/api/auth/logout");
+    await page.request.post("/api/auth/login", {
+      data: {
+        loginName: "owner",
+        password: "owner-password-123",
+      },
+    });
+    const adminList = await (
+      await page.request.get("/api/admin/templates?q=最近使用A")
+    ).json() as { items: Array<{ id: string }> };
+    const archive = await page.request.delete(
+      `/api/admin/templates/${adminList.items[0].id}`,
+    );
+    expect(archive.status()).toBe(200);
+    await page.request.post("/api/auth/logout");
+    await page.request.post("/api/auth/login", {
+      data: {
+        loginName: "ordinary",
+        password: "ordinary-pass-123",
+      },
+    });
+    await page.reload();
+    await page.getByTestId("templates").click();
+    await page.getByRole("button", { name: "浏览全部" }).click();
+    await browser
+      .getByRole("button", { name: "最近使用", exact: true })
+      .click();
+    await expect(
+      browser.locator(".template-browser-card").filter({ hasText: "最近使用A" }),
+    ).toHaveCount(0);
+    await expect(
+      browser.locator(".template-browser-card").filter({ hasText: "最近使用B" }),
+    ).toBeVisible();
+  } finally {
+    if (server) await stopServer(server);
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});

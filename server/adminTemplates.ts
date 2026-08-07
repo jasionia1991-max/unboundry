@@ -9,12 +9,15 @@ import {
   listPublicTemplates,
   parsePublicCategory,
   publicTemplateCard,
-  REAL_CATEGORIES,
   validTemplateGraph,
   type PublicTemplateCard,
   type PublicTemplateRow,
   type PublicTemplateStatus,
 } from "./templateCatalog";
+import {
+  isRealCategory,
+  REAL_CATEGORIES,
+} from "../types/templateCategories";
 
 const publicStatusSet = new Set<PublicTemplateStatus>([
   "draft",
@@ -80,9 +83,7 @@ function validatedCategory(input: unknown): string[] | null {
   const unique = [...new Set(input)];
   if (
     unique.length > REAL_CATEGORIES.length ||
-    unique.some(
-      (item) => typeof item !== "string" || !REAL_CATEGORIES.includes(item),
-    )
+    unique.some((item) => typeof item !== "string" || !isRealCategory(item))
   ) {
     throw new Error("模板分类无效");
   }
@@ -123,6 +124,18 @@ function validatedPreviewImage(input: unknown): string | null {
   }
   const value = input.trim();
   return value || null;
+}
+
+function adminTemplateItem(
+  store: DatabaseSync,
+  row: PublicTemplateRow,
+  includeGraph: boolean,
+) {
+  return {
+    ...publicTemplateCard(store, row, includeGraph),
+    archivedAt: row.archived_at ?? undefined,
+    status: row.status,
+  };
 }
 
 export function savePublicTemplate(
@@ -332,7 +345,7 @@ export async function adminTemplatesApi(
     const query = (url.searchParams.get("q") ?? "").trim().toLocaleLowerCase();
     const category = (url.searchParams.get("category") ?? "全部").trim();
     const includeGraph = url.searchParams.get("includeGraph") === "true";
-    const { items, total } = listPublicTemplates(store, {
+    const { rows, total } = listPublicTemplates(store, {
       category,
       includeGraph,
       limit,
@@ -341,9 +354,9 @@ export async function adminTemplatesApi(
       status: statusParam,
     });
     json(response, 200, {
-      items,
+      items: rows.map((row) => adminTemplateItem(store, row, includeGraph)),
       pagination: {
-        hasMore: offset + items.length < total,
+        hasMore: offset + rows.length < total,
         limit,
         offset,
         total,
@@ -357,7 +370,7 @@ export async function adminTemplatesApi(
       const input = await readBody<Record<string, unknown>>(request);
       const row = savePublicTemplate(store, identity.userId, input);
       json(response, 201, {
-        template: publicTemplateCard(store, row, true),
+        template: adminTemplateItem(store, row, true),
       });
     } catch (error) {
       json(response, 400, {
@@ -379,7 +392,7 @@ export async function adminTemplatesApi(
       const input = await readBody<Record<string, unknown>>(request);
       const row = updatePublicTemplate(store, identity.userId, templateId, input);
       json(response, 200, {
-        template: publicTemplateCard(store, row, true),
+        template: adminTemplateItem(store, row, true),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "公共模板更新失败";
