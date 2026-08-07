@@ -4,7 +4,7 @@ import {
   safeAliyunOssConnectionError,
   testAliyunOssConnection,
 } from "./aliyunOss";
-import { requestIdentity } from "./auth";
+import { clientAddress, requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
 import { hasPermission } from "./permissions";
 import {
@@ -59,7 +59,7 @@ async function readBody(request: IncomingMessage) {
 }
 
 function localRequest(request: IncomingMessage) {
-  const address = request.socket.remoteAddress ?? "";
+  const address = clientAddress(request);
   return (
     address === "127.0.0.1" ||
     address === "::1" ||
@@ -68,12 +68,21 @@ function localRequest(request: IncomingMessage) {
 }
 
 function secureMutationTransport(request: IncomingMessage) {
-  if (localRequest(request)) return true;
-  if (request.headers["x-forwarded-proto"] === "https") return true;
-  return Boolean(
+  const encrypted = Boolean(
     (request.socket as typeof request.socket & { encrypted?: boolean })
       .encrypted,
   );
+  if (process.env.TAPNOW_TRUST_PROXY === "1") {
+    if (encrypted) return true;
+    if (request.headers["x-forwarded-proto"] === "https") return true;
+    // 直连应用（SSH/本机 curl）不带 X-Forwarded-For，仍按本机放行；
+    // 经反代进来的请求必须携带 https 协议标记，否则拒绝存储写操作。
+    if (!request.headers["x-forwarded-for"]) return localRequest(request);
+    return false;
+  }
+  if (localRequest(request)) return true;
+  if (request.headers["x-forwarded-proto"] === "https") return true;
+  return encrypted;
 }
 
 function audit(

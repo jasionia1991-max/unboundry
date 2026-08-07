@@ -174,8 +174,23 @@ function publicUser(row: UserRow) {
   };
 }
 
+/**
+ * 真实客户端地址。应用直接暴露时用 socket 地址；
+ * 部署在反代（Caddy/nginx）后面时（TAPNOW_TRUST_PROXY=1）取
+ * X-Forwarded-For 的第一个 IP，防止把反代当成本机而放开管理边界。
+ */
+export function clientAddress(request: IncomingMessage) {
+  if (process.env.TAPNOW_TRUST_PROXY === "1") {
+    const forwarded = String(request.headers["x-forwarded-for"] ?? "")
+      .split(",")[0]
+      ?.trim();
+    if (forwarded) return forwarded;
+  }
+  return request.socket.remoteAddress ?? "";
+}
+
 function isLoopback(request: IncomingMessage) {
-  const address = request.socket.remoteAddress ?? "";
+  const address = clientAddress(request);
   return (
     address === "127.0.0.1" ||
     address === "::1" ||

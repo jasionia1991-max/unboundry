@@ -907,3 +907,18 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - 验证：tsc、`npm run build` 通过（仅既有 chunk 体积提示）；m80 专项 4/4（重测不降级、路由关闭存量 OSS 仍 307 读取、无可用配置告警、新素材登记所属配置）；m10/m13/m31/m72 回归合计 30 通过、1 跳过（m13 真实 OSS 专项需 `TAPNOW_REAL_OSS_VERIFY=1`）。
 - 顺带修复：m10「trusted-duration migration」用例的老库 fixture 漏建 `project_metadata`（既有遗漏，与本批无关但导致该用例失败），已补齐；m31 媒体构造补 `storageProfileId`。
 - 待用户：4173 实页刷新确认旧 OSS 素材恢复显示（热重载已生效，无需等待重启）；授权首次真实 OSS 备份上传与反向镜像；STORAGE-004 由 USER_RECHECK 转 PASS 需用户实页确认。
+
+### 2026-08-08 部署方案立项（DRAFT，未改代码）
+
+- 用户确认最终目标：所有开发/优化/修改都是为了以后部署到云服务器，让其他设备（MacBook/Win11/手机）用浏览器访问同一网站操作同一份数据。
+- 已全量盘点现状并产出 `spec/TAPNOW_DEPLOYMENT_PLAN_2026-08-08.md`：运行方式（vite preview + 中间件插件）、数据（SQLite WAL + media + 加密 secrets，约 138MB）、鉴权/安全现状、10 项公网化缺口（反代后回环判定失效、Secure Cookie、上传上限、首管理员初始化、测试残留、代理策略、备案/区域等）、分阶段实施（代码加固→服务器准备→数据迁移→域名 HTTPS→运维备份→收口）、风险与 DEP-001～010 验收清单。
+- 当前仅新增方案文档与 TASKS 记录；等待用户补充信息（域名、服务器区域/配置、Provider 访问方式、是否整体迁移数据）并下令后实施。
+
+### 2026-08-08 部署阶段 1 安全加固（已完成）
+
+- 用户确认「开始加固」，其余服务器/域名信息稍后提供。
+- `TAPNOW_TRUST_PROXY=1` 支持：`auth.ts clientAddress()` 按 `X-Forwarded-For` 首个 IP 判定真实客户端；`storageAdmin` 信任反代时存储写操作必须带 `X-Forwarded-Proto: https`，直连本机（SSH/curl）仍放行；`.env.example` 补充部署环境变量说明。
+- 新增 `tests/m81-deployment-hardening.spec.ts` 2/2：远程伪造环回创建管理员被 403；反代 HTTP 存储写被 400、HTTPS 转发头 201；直连本机管理流不受影响。
+- 测试残留核对：真实库 `__test__` 账号及关联行已为 0（此前删除完成），仅剩历史审计记录 id=151（delete_user 历史，保留）；无需再清理。
+- 回归：tsc、build 通过；m81 2/2、m13 5/6（1 项真实 OSS 专项默认跳过）、m80 4/4。
+- 下一步：等用户提供服务器/域名信息后进入阶段 2（服务器准备）与阶段 3（数据迁移）。
