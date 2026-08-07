@@ -1,6 +1,6 @@
 # 画布丝滑度修复方案（真实 Chrome 实测驱动）
 
-状态：`USER APPROVED 2026-08-08 / STEP 1 DONE (ZOOM REMAINS) / STEP 1b IN PROGRESS`
+状态：`USER APPROVED 2026-08-08 / STEP 1+1b DONE / STEP 2 NEXT`
 依据：真实 Chrome（远程调试 9222）同机同手势实测 + 代码逐层审计 + 仓库内 TapNow 活体证据。
 
 ## 0. 用户确认的两项决策（2026-08-08）
@@ -42,7 +42,9 @@
 
 回退：单独提交可回退；不 push。
 
-STEP 1 实测（真实 Chrome，28 节点临时项目）：平移 118fps/0 长任务/max25ms；拖动 116fps/0 长任务/max25ms；缩放 111fps/仍 2 次长任务（81/53ms）/max75ms。缩放未达标根因：CanvasSurface 为多选工具栏与 data-viewport 属性仍每帧 setState，ReactFlow 子树每帧重建。STEP 1b：ReactFlow 子树 useMemo（handlers 走 ref、visibleEdges/selectedNodeIds 用 useMemo），目标缩放长任务 0、max<30ms。
+STEP 1+1b 实测（真实 Chrome，28 节点临时项目，两轮稳定）：缩放 120/121fps、0 长任务、p95 9ms、max 9ms（达标）；平移 120fps、0 长任务、max 9ms（达标）；拖动 104–106fps、2 次长任务（81/85ms，p95 9ms）。拖动残留归因：节点组件无 memo，位置更新全量重渲染 → STEP 2。
+
+STEP 1b 关键实现：ReactFlow 去掉受控 viewport prop（真正非受控）；viewportRef 为实时真相，data-viewport-* 由 DOM 直写；仅多选状态才同步 React viewport 状态（工具栏定位）；程序化视口变化显式触发交互安静期保证保存；动画期间 tick 不触发保存重查。
 
 ### STEP 2：渲染架构（可视区域 + 缓冲带 + 缓存）
 
