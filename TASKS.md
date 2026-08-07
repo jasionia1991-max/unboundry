@@ -889,5 +889,7 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - STEP 2b 已实施并提交（`e42795e`）：ReactFlow 启用 `onlyRenderVisibleElements`（可视区域渲染）；m1-dense/m2-geometry 的 DOM 全量计数断言改为 data-* 属性 + 可见节点断言。生产构建实测：200 节点拖动 119fps/0 掉帧/p95 9ms（此前 66fps/22 掉帧）；快速平移节点实时挂载、无空白；缩小视图全量挂载。
 - STEP 3 已实施：m1-dense 性能门禁收紧（长任务 <100ms、p95 帧 ≤25ms、最大帧 <100ms，dev 模式仍绿）；新增 `tests/m79-canvas-smoothness.spec.ts`（生产构建专项：60 节点拖动丝滑、快速平移节点实时挂载 + 缩小全量挂载），m79 2/2。
 - 最终一步（用户已按推荐同意在收尾时执行）：4173 由 `vite dev` 切换为 `vite preview`（生产构建）并重启；切换后每次改代码需 rebuild+重启。执行时先备份 plist。
+- 已执行：4173 切换为 `vite preview`（launchd plist 已备份为 `~/Library/LaunchAgents/com.tapnow-replica.4173.plist.bak-20260808`，仅新增 `preview` 参数），服务重启后页面/接口 200。真实 Chrome 60 节点最终复测：缩放 121fps、平移 120fps、拖动 119fps，全部 0 掉帧、0 长任务、最大帧 ≤17ms。
+- 运维约定（切换后生效）：4173 服务生产构建模式，改代码后需 `npm run build` 并 `launchctl kickstart -k gui/$(id -u)/com.tapnow-replica.4173` 生效；开发调试请用独立端口（4174/419x）。
 - 延后问题（与 STEP 1 无关，既有）：m27 `allowed Video media edges pass zero-cost preflight` 在改动前主干同样失败（期望 0 实得 2,777,778，疑似模型成本/默认单任务费用口径，另行排查）；m0 P1 creator 基线。
 - 延后问题（既有）：m63 `group create, undo, delete recovery` 在完全未改动的主干上稳定失败——快照显示“保存中…”与 GET 竞态（第二次打组后保存未落库即被读取），属测试竞态，另行排查。

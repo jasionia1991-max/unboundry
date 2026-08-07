@@ -1,6 +1,6 @@
 # 画布丝滑度修复方案（真实 Chrome 实测驱动）
 
-状态：`USER APPROVED 2026-08-08 / STEP 1+1b+2a+2b+3 DONE / 待执行：4173 切生产预览`
+状态：`DONE 2026-08-08 / STEP 1+1b+2a+2b+3 全部完成 / 4173 已切换 vite preview 并复测达标`
 依据：真实 Chrome（远程调试 9222）同机同手势实测 + 代码逐层审计 + 仓库内 TapNow 活体证据。
 
 ## 0. 用户确认的两项决策（2026-08-08）
@@ -54,7 +54,7 @@ STEP 2b（可视区域渲染）：启用 ReactFlow `onlyRenderVisibleElements`�
 
 STEP 3（门禁）：m1-dense 收紧为长任务 <100ms、p95 ≤25ms、最大帧 <100ms；新增生产构建专项 `m79-canvas-smoothness`（60 节点拖动丝滑、快速平移实时挂载、缩小全量挂载）。
 
-收尾动作：4173 launchd 由 `vite dev` 切换为 `vite preview`（生产构建）并重启；切换后代码变更需 rebuild+restart。
+收尾动作已执行：4173 launchd 切换为 `vite preview`（plist 已备份），真实 Chrome 60 节点最终复测：缩放 121fps、平移 120fps、拖动 119fps，0 掉帧/0 长任务/最大帧 ≤17ms。
 
 ### STEP 2：渲染架构（可视区域 + 缓冲带 + 缓存）
 
