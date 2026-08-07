@@ -31,6 +31,7 @@ import { adminStorageApi } from "./server/storageAdmin";
 import { openApi } from "./server/openApi";
 import { accountCredentialsApi } from "./server/accountCredentialsApi";
 import { templateCatalogApi } from "./server/templateCatalog";
+import { adminTemplatesApi } from "./server/adminTemplates";
 import { agentConfigurationApi } from "./server/agentConfiguration";
 import { characterCatalogApi } from "./server/characterCatalog";
 import { libraryCatalogApi } from "./server/libraryCatalog";
@@ -196,6 +197,9 @@ function templatesApi(): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
+    middlewares.use("/api/admin/templates", (request, response) => {
+      void adminTemplatesApi(request, response);
+    });
     middlewares.use("/api/templates", (request, response) => {
       void templateCatalogApi(request, response);
     });

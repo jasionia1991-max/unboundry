@@ -369,6 +369,197 @@ export const openApiDocument = {
         },
       },
     },
+    "/api/admin/templates": {
+      get: {
+        operationId: "listAdminPublicTemplates",
+        summary: "List public templates in every status for administrators",
+        parameters: [
+          { in: "query", name: "q", schema: { type: "string", maxLength: 120 } },
+          { in: "query", name: "category", schema: { type: "string" } },
+          {
+            in: "query",
+            name: "status",
+            schema: { type: "string", enum: ["draft", "published", "archived"] },
+          },
+          { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          { in: "query", name: "offset", schema: { type: "integer", minimum: 0 } },
+          { in: "query", name: "includeGraph", schema: { type: "boolean" } },
+        ],
+        responses: {
+          "200": {
+            description: "Paged public template management list",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["items", "pagination"],
+                  properties: {
+                    items: {
+                      type: "array",
+                      items: { $ref: "#/components/schemas/TemplateCatalogCard" },
+                    },
+                    pagination: {
+                      type: "object",
+                      required: ["hasMore", "limit", "offset", "total"],
+                      properties: {
+                        hasMore: { type: "boolean" },
+                        limit: { type: "integer" },
+                        offset: { type: "integer" },
+                        total: { type: "integer" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "403": { description: "Requires manage_public_templates" },
+        },
+      },
+      post: {
+        operationId: "createPublicTemplate",
+        summary: "Create a public template (default draft)",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["title", "graph"],
+                properties: {
+                  title: { type: "string", minLength: 1, maxLength: 40 },
+                  description: { type: "string", maxLength: 200 },
+                  category: {
+                    type: "array",
+                    items: { type: "string", maxLength: 40 },
+                    maxItems: 8,
+                  },
+                  previewImage: { type: "string", maxLength: 500 },
+                  status: { type: "string", enum: ["draft", "published"] },
+                  graph: {
+                    type: "object",
+                    required: ["nodes", "edges", "version"],
+                    properties: {
+                      nodes: { type: "array", maxItems: 500, items: { type: "object" } },
+                      edges: { type: "array", maxItems: 1000, items: { type: "object" } },
+                      version: { type: "integer", const: 1 },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            description: "Created public template card",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["template"],
+                  properties: {
+                    template: { $ref: "#/components/schemas/TemplateCatalogCard" },
+                  },
+                },
+              },
+            },
+          },
+          "400": { description: "Invalid title, category, status or graph" },
+          "403": { description: "Requires manage_public_templates" },
+        },
+      },
+    },
+    "/api/admin/templates/{templateId}": {
+      patch: {
+        operationId: "updatePublicTemplate",
+        summary: "Update title, description, category, graph, cover status or preview image",
+        parameters: [
+          {
+            in: "path",
+            name: "templateId",
+            required: true,
+            schema: { type: "string", pattern: "^[a-f0-9-]{36}$" },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  title: { type: "string", minLength: 1, maxLength: 40 },
+                  description: { type: "string", maxLength: 200 },
+                  category: {
+                    type: "array",
+                    items: { type: "string", maxLength: 40 },
+                    maxItems: 8,
+                  },
+                  previewImage: { type: "string", maxLength: 500 },
+                  status: {
+                    type: "string",
+                    enum: ["draft", "published", "archived"],
+                  },
+                  graph: { type: "object" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Updated public template card",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["template"],
+                  properties: {
+                    template: { $ref: "#/components/schemas/TemplateCatalogCard" },
+                  },
+                },
+              },
+            },
+          },
+          "400": { description: "Invalid fields" },
+          "403": { description: "Requires manage_public_templates" },
+          "404": { description: "Template not found" },
+        },
+      },
+      delete: {
+        operationId: "archivePublicTemplate",
+        summary: "Archive a public template (soft delete, restorable)",
+        parameters: [
+          {
+            in: "path",
+            name: "templateId",
+            required: true,
+            schema: { type: "string", pattern: "^[a-f0-9-]{36}$" },
+          },
+        ],
+        responses: {
+          "200": {
+            description: "Template archived; seeds and imported canvases remain intact",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["archived", "id", "status"],
+                  properties: {
+                    archived: { type: "boolean", const: true },
+                    id: { type: "string" },
+                    status: { type: "string", const: "archived" },
+                  },
+                },
+              },
+            },
+          },
+          "403": { description: "Requires manage_public_templates" },
+          "404": { description: "Template not found" },
+        },
+      },
+    },
     "/api/account-credentials": {
       get: {
         operationId: "listAccountCredentials",

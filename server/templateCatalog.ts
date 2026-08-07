@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
-import templateCatalogData from "./templateCatalogData.json" with { type: "json" };
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
 
@@ -56,21 +55,13 @@ type TemplateGraphEdge = {
   type: "cuttable";
 };
 
-type TemplateGraph = {
+export type TemplateGraph = {
   edges: TemplateGraphEdge[];
   nodes: TemplateGraphNode[];
   version: 1;
 };
 
-type TemplateRecord = {
-  categories: string[];
-  description: string;
-  id: string;
-  previewImage: string;
-  title: string;
-};
-
-type TemplateCatalogDataRecord = {
+export type TemplateCatalogDataRecord = {
   categories: string[];
   description: string;
   edges: RawTemplateEdge[];
@@ -91,10 +82,40 @@ type UserTemplateRow = {
   updated_at: string;
 };
 
+export type PublicTemplateStatus = "draft" | "published" | "archived";
+
+export type PublicTemplateRow = {
+  archived_at: string | null;
+  category: string | null;
+  cover_asset_id: string | null;
+  created_by: string | null;
+  created_at: string;
+  description: string | null;
+  graph: string;
+  id: string;
+  preview_image: string | null;
+  status: PublicTemplateStatus;
+  title: string;
+  updated_by: string | null;
+  updated_at: string;
+};
+
 export type UserTemplateCard = {
   categories: string[];
   cover: { assetId: string; kind: "image" | "video" } | null;
   createdAt: string;
+  graph?: TemplateGraph;
+  id: string;
+  previewImage?: string;
+  title: string;
+  updatedAt: string;
+};
+
+export type PublicTemplateCard = {
+  categories: string[];
+  cover: { assetId: string; kind: "image" | "video" } | null;
+  createdAt: string;
+  description: string;
   graph?: TemplateGraph;
   id: string;
   previewImage?: string;
@@ -117,7 +138,7 @@ export const categories = [
 ];
 
 // 可保存/发布使用的真实分类白名单（不含筛选桶：最近使用/我的模板/全部）。
-const realCategories = [
+export const REAL_CATEGORIES = [
   "电商",
   "广告",
   "影视",
@@ -137,18 +158,6 @@ const templateNodeTypeSet = new Set<TemplateNodeType>([
   "text",
   "video",
 ]);
-
-const records = Object.values(
-  templateCatalogData as Record<string, TemplateCatalogDataRecord>,
-);
-
-const templates: TemplateRecord[] = records.map((record) => ({
-  categories: record.categories,
-  description: record.description,
-  id: record.id,
-  previewImage: record.previewImage,
-  title: record.title,
-}));
 
 let database: DatabaseSync | undefined;
 let databaseDirectory = "";
@@ -400,7 +409,7 @@ export function validTemplateGraph(value: unknown): value is TemplateGraph {
   return true;
 }
 
-function parseTemplateGraph(value: string): TemplateGraph | undefined {
+export function parseTemplateGraph(value: string): TemplateGraph | undefined {
   try {
     const parsed = JSON.parse(value) as unknown;
     return validTemplateGraph(parsed) ? parsed : undefined;
@@ -495,6 +504,132 @@ export function userTemplateCard(
   };
 }
 
+export function parsePublicCategory(value: string | null): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function publicTemplateCard(
+  store: DatabaseSync,
+  row: PublicTemplateRow,
+  includeGraph: boolean,
+): PublicTemplateCard {
+  let cover: PublicTemplateCard["cover"] = null;
+  if (row.cover_asset_id) {
+    const media = store
+      .prepare("SELECT kind FROM media_assets WHERE id = ?")
+      .get(row.cover_asset_id) as
+      | { kind: "audio" | "image" | "video" }
+      | undefined;
+    let kind = media?.kind;
+    if (kind !== "image" && kind !== "video") {
+      const graph = parseTemplateGraph(row.graph);
+      const node = graph?.nodes.find(
+        (candidate) =>
+          (candidate.type === "image" || candidate.type === "video") &&
+          candidate.data.assetId === row.cover_asset_id,
+      );
+      if (node && (node.type === "image" || node.type === "video")) {
+        kind = node.type;
+      }
+    }
+    if (kind === "image" || kind === "video") {
+      cover = { assetId: row.cover_asset_id, kind };
+    }
+  }
+  const previewImage =
+    row.preview_image ??
+    (cover
+      ? cover.kind === "video"
+        ? `/api/video-assets/${encodeURIComponent(cover.assetId)}`
+        : `/api/assets/${encodeURIComponent(cover.assetId)}`
+      : undefined);
+  return {
+    categories: parsePublicCategory(row.category),
+    cover,
+    createdAt: row.created_at,
+    description: row.description ?? "",
+    graph: includeGraph ? parseTemplateGraph(row.graph) : undefined,
+    id: row.id,
+    previewImage,
+    title: row.title,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function listPublicTemplates(
+  store: DatabaseSync,
+  options: {
+    category: string;
+    includeGraph: boolean;
+    limit: number;
+    offset: number;
+    query: string;
+    status: PublicTemplateStatus | "";
+  },
+) {
+  const parameters: Array<string | number> = [];
+  const conditions: string[] = [];
+  if (options.status) {
+    conditions.push("status = ?");
+    parameters.push(options.status);
+  }
+  if (options.query) {
+    conditions.push("title LIKE ? ESCAPE '\\'");
+    parameters.push(
+      `%${options.query.replace(/[\\%_]/g, (char) => `\\${char}`)}%`,
+    );
+  }
+  if (
+    options.category &&
+    options.category !== "全部" &&
+    options.category !== "最近使用"
+  ) {
+    conditions.push(`
+      EXISTS (
+        SELECT 1 FROM json_each(public_templates.category)
+        WHERE json_each.value = ?
+      )
+    `);
+    parameters.push(options.category);
+  }
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const rows = store
+    .prepare(`
+      SELECT
+        id, title, description, category, graph, cover_asset_id,
+        preview_image, status, created_by, created_at,
+        updated_by, updated_at, archived_at
+      FROM public_templates
+      ${where}
+      ORDER BY updated_at DESC, rowid DESC
+      LIMIT ? OFFSET ?
+    `)
+    .all(...parameters, options.limit, options.offset) as PublicTemplateRow[];
+  const total = Number(
+    (
+      store
+        .prepare(
+          `SELECT COUNT(*) AS count FROM public_templates ${where}`,
+        )
+        .get(...parameters) as { count: number }
+    ).count,
+  );
+  return {
+    items: rows.map((row) =>
+      publicTemplateCard(store, row, options.includeGraph),
+    ),
+    total,
+  };
+}
+
 export function listUserTemplates(
   store: DatabaseSync,
   ownerId: string,
@@ -550,7 +685,7 @@ export function saveUserTemplate(
     throw new Error("模板标题需为 1–40 个字符");
   }
   const category = typeof input.category === "string" ? input.category.trim() : "";
-  if (category && !realCategories.includes(category)) {
+  if (category && !REAL_CATEGORIES.includes(category)) {
     throw new Error("模板分类无效");
   }
   if (!validTemplateGraph(input.graph)) {
@@ -674,26 +809,23 @@ export async function templateCatalogApi(
       return;
     }
 
-    const matches = templates.filter((template) =>
-      (!query || template.title.toLocaleLowerCase().includes(query)) &&
-      (!category || category === "全部" || category === "最近使用" || template.categories.includes(category)),
-    );
-    const items = matches.slice(offset, offset + limit).map((template) => {
-      const record = records.find((candidate) => candidate.id === template.id);
-      return {
-        ...template,
-        graph: includeGraph && record ? buildTemplateGraph(record) : undefined,
-      };
+    const { items, total } = listPublicTemplates(store, {
+      category,
+      includeGraph,
+      limit,
+      offset,
+      query,
+      status: "published",
     });
 
     json(response, 200, {
       categories,
       items,
       pagination: {
-        hasMore: offset + items.length < matches.length,
+        hasMore: offset + items.length < total,
         limit,
         offset,
-        total: matches.length,
+        total,
       },
     });
     return;

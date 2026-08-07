@@ -8,6 +8,7 @@ import {
 import { execFileSync } from "node:child_process";
 import { basename, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import publicTemplateSeeds from "./publicTemplateSeeds.json" with { type: "json" };
 
 type Migration = {
   name: string;
@@ -1296,6 +1297,55 @@ const migrations: readonly Migration[] = [
       CREATE INDEX IF NOT EXISTS account_permissions_account
         ON account_permissions (account_id, permission);
     `,
+  },
+  {
+    version: 31,
+    name: "public-templates",
+    prepare(database) {
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS public_templates (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          description TEXT,
+          category TEXT CHECK (category IS NULL OR json_valid(category)),
+          graph TEXT NOT NULL,
+          cover_asset_id TEXT,
+          preview_image TEXT,
+          status TEXT NOT NULL DEFAULT 'published'
+            CHECK (status IN ('draft', 'published', 'archived')),
+          created_by TEXT,
+          created_at TEXT NOT NULL,
+          updated_by TEXT,
+          updated_at TEXT NOT NULL,
+          archived_at TEXT,
+          FOREIGN KEY (created_by) REFERENCES users(id),
+          FOREIGN KEY (updated_by) REFERENCES users(id)
+        );
+        CREATE INDEX IF NOT EXISTS public_templates_status_updated
+          ON public_templates (status, updated_at DESC);
+      `);
+      const insert = database.prepare(`
+        INSERT OR IGNORE INTO public_templates (
+          id, title, description, category, graph, cover_asset_id, preview_image,
+          status, created_by, created_at, updated_by, updated_at, archived_at
+        )
+        VALUES (?, ?, ?, ?, ?, NULL, ?, 'published', NULL, ?, NULL, ?, NULL)
+      `);
+      const timestamp = new Date().toISOString();
+      for (const seed of publicTemplateSeeds) {
+        insert.run(
+          seed.id,
+          seed.title,
+          seed.description,
+          JSON.stringify(seed.categories),
+          JSON.stringify(seed.graph),
+          seed.previewImage,
+          timestamp,
+          timestamp,
+        );
+      }
+    },
+    sql: "",
   },
 ];
 

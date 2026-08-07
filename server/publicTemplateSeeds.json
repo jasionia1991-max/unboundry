@@ -1,0 +1,922 @@
+[
+  {
+    "categories": [
+      "电商"
+    ],
+    "description": "请根据列出的产品策略、产品图片、品牌logo，设计一套适合小红书审美的电商详情页",
+    "graph": {
+      "edges": [
+        {
+          "id": "template-edge-1",
+          "source": "template-node-1",
+          "target": "template-node-3",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-2",
+          "source": "template-node-2",
+          "target": "template-node-5",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-3",
+          "source": "template-node-1",
+          "target": "template-node-4",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-4",
+          "source": "template-node-1",
+          "target": "template-node-6",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-5",
+          "source": "template-node-1",
+          "target": "template-node-7",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-6",
+          "source": "template-node-11",
+          "target": "template-node-7",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-7",
+          "source": "template-node-9",
+          "target": "template-node-8",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-8",
+          "source": "template-node-9",
+          "target": "template-node-5",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-9",
+          "source": "template-node-11",
+          "target": "template-node-10",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-10",
+          "source": "template-node-1",
+          "target": "template-node-8",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-11",
+          "source": "template-node-11",
+          "target": "template-node-3",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-12",
+          "source": "template-node-9",
+          "target": "template-node-6",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-13",
+          "source": "template-node-9",
+          "target": "template-node-11",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-14",
+          "source": "template-node-2",
+          "target": "template-node-7",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-15",
+          "source": "template-node-2",
+          "target": "template-node-8",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-16",
+          "source": "template-node-4",
+          "target": "template-node-11",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-17",
+          "source": "template-node-11",
+          "target": "template-node-6",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-18",
+          "source": "template-node-2",
+          "target": "template-node-4",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-19",
+          "source": "template-node-1",
+          "target": "template-node-10",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-20",
+          "source": "template-node-4",
+          "target": "template-node-8",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-21",
+          "source": "template-node-9",
+          "target": "template-node-3",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-22",
+          "source": "template-node-11",
+          "target": "template-node-5",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-23",
+          "source": "template-node-2",
+          "target": "template-node-11",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-24",
+          "source": "template-node-1",
+          "target": "template-node-5",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-25",
+          "source": "template-node-2",
+          "target": "template-node-3",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-26",
+          "source": "template-node-9",
+          "target": "template-node-7",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-27",
+          "source": "template-node-9",
+          "target": "template-node-10",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-28",
+          "source": "template-node-2",
+          "target": "template-node-6",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-29",
+          "source": "template-node-1",
+          "target": "template-node-11",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "template-group",
+          "type": "group",
+          "position": {
+            "x": -4,
+            "y": -4
+          },
+          "data": {
+            "label": "Group",
+            "title": "电商详情页工作流"
+          },
+          "style": {
+            "height": 3195.105959455026,
+            "width": 2911.958448241724
+          },
+          "zIndex": 0
+        },
+        {
+          "id": "template-node-1",
+          "type": "image",
+          "position": {
+            "x": 63.08163825436782,
+            "y": 1192.3332539327669
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Image",
+            "title": "平铺图",
+            "sourceKind": "image",
+            "imagePromptReady": false,
+            "imageAspectRatio": "Auto",
+            "imageQuality": "1k"
+          },
+          "style": {
+            "height": 333,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-2",
+          "type": "image",
+          "position": {
+            "x": 57.79686991385313,
+            "y": 2171.97412718571
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Image",
+            "title": "模特上身图",
+            "sourceKind": "image",
+            "imagePromptReady": false,
+            "imageAspectRatio": "Auto",
+            "imageQuality": "1k"
+          },
+          "style": {
+            "height": 333,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-3",
+          "type": "image",
+          "position": {
+            "x": 2637.958448241724,
+            "y": 2435.562625280746
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Image",
+            "title": "Image",
+            "sourceKind": "image",
+            "imagePromptReady": true,
+            "imagePrompt": "请按照给到的信息和我给你的图片素材，生成详情页4对应的图片",
+            "imageAspectRatio": "3:4",
+            "imageQuality": "4k"
+          },
+          "style": {
+            "height": 334,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-4",
+          "type": "text",
+          "position": {
+            "x": 919.1314241228245,
+            "y": 1557.9209940334028
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Text",
+            "title": "输出产品策略",
+            "textPrompt": "你是一位顶尖电商视觉设计师，你要为图中这款商品设计电商详情页设计，你觉得应该怎么设计？给自己出10个问题，再依次解答。",
+            "textPromptReady": true,
+            "content": "作为一名顶尖电商视觉设计师，针对这款黑色机能风背带裤（Snowboard Bib/Overalls），我将通过以下10个维度的自问自答来构建其详情页设计方案：\n\n### 1. **核心视觉风格（Tone & Manner）应该如何定调？**\n**答：** 定调为 **「Urban Outdoor / 都市户外机能风」**。\n考虑到产品是黑色的背带裤，带有工装口袋和卡扣设计，既具备滑雪裤的功能性，又具备街头潮牌的廓形。\n*   **背景：** 摒弃全白背景，采用**水泥灰、冷钢色或雪山纹理**的低饱和度背景，以突显黑色主体的质感，营造“冷峻”、“硬核”的氛围。\n*   **元素：** 融入工业设计元素，如十字准星、经纬度坐标、线条框，增强“专业装备”的视觉暗示。\n\n### 2. **如何精准锁定并打动目标用户？**\n**答：** 目标用户为 **Z世代滑雪爱好者及街头潮流人群**。\n他们在意的不止是保暖，更是“帅”和“个性”。\n*   **首屏设计：** 必须使用模特佩戴雪镜的那张全身照作为Hero Image（头图），配合大字号的英文Slogan（如 \"UNBOUNDED EXPLORATION\"），瞬间拉满潮流感，传达“这不仅仅是一条裤子，这是一种生活态度”。\n\n### 3. **配色方案如何制定以避免黑色产品的沉闷感？**\n**答：** 采用 **「黑白灰主调 + 荧光电光色点缀」**。\n*   **主色：** 黑色（产品）、冷灰（背景）、白色（文字）。\n*   **点缀色：** 选用 **高亮酸性绿（Acid Green）** 或 **信号橙（Signal Orange）** 作为价格、购买按钮、核心卖点Icon的颜色。这种高反差配色不仅符合机能美学，还能在黑灰色调中有效引导视线聚焦。\n\n### 4. **字体排印（Typography）应该怎么选？**\n**答：** 混搭 **粗体无衬线字（Bold Sans-serif）** 与 **等宽字体（Monospace）**。\n*   **标题：** 使用粗壮有力的无衬线字体（如Impact或Helvatica Now Heavy），体现力量感。\n*   **参数/说明：** 使用类似于代码或打印机效果的等宽字体，强化“精密”、“技术参数”的感觉。\n\n### 5. **详情页的叙事逻辑（Storytelling）如何安排？**\n**答：** 遵循 **「视觉冲击 -> 场景代入 -> 硬核解析 -> 细节种草 -> 尺码消除顾虑」** 的AIDA模型。\n1.  **Poster区：** 模特大片，展示上身廓形。\n2.  **场景区：** 展示滑雪场（Snow）与城市街头（Street）两种背景合成图，强调“雪地与街头自由切换”。\n3.  **功能区：** 面料科技解析。\n4.  **细节区：** 放大镜式的局部特写。\n5.  **导购区：** 尺码表与模特试穿报告。\n\n### 6. **如何可视化产品的“功能性”卖点？**\n**答：** 将抽象功能 **「图标化（Iconography）」** 和 **「透视化」**。\n*   这款裤子看起来有防水防风属性。设计一套专属的线性Icon，分别代表：防水指数、透气性、耐磨面料、立体剪裁。\n*   针对多口袋设计，使用**引线标注**的方式，像解构机械图纸一样，指出每个口袋的位置和建议用途（如：雪卡袋、手机袋、工具袋）。\n\n### 7. **黑色产品最难展示细节，如何处理细节展示图？**\n**答：** 采用 **「高光侧逆光拍摄 + 局部高对比度处理」**。\n*   黑色的层次感全靠光影。在细节展示板块（如腰部卡扣、拉链、裤脚），后期需要提高暗部亮度，强化高光，展现面料的纹理（是磨砂还是尼龙光泽）。\n*   特别展示**腰带卡扣（Buckle）**和**肩带调节系统**的特写，这是机能风的灵魂所在，暗示产品的五金件质量过硬。\n\n### 8. **如何解决Oversize版型的尺码选择焦虑？**\n**答：** 建立 **「动态尺码参考坐标系」**。\n*   由于是宽松版型，用户很难把握大小。不仅要提供传统的尺码表，还要制作一个可视化的**“身高-体重矩阵图”**。\n*   必须标注**模特参数**（身高、体重、试穿尺码、穿着效果描述），并在图中用虚线标出模特的肩宽、腰线位置，给用户直观的比例参考。\n\n### 9. **如何进行关联搭配（Cross-selling）设计？**\n**答：** 打造 **「Total Look（整体造型）」** 指南。\n*   图中的白色卫衣搭配非常干净。在详情页中插入“Styling Guide”板块。\n*   **Look A：** 搭配同色系冲锋衣 + 雪镜 = 专业滑雪Look。\n*   **Look B：** 搭配亮色连帽卫衣 + 板鞋 = 城市露营/滑板Look。\n*   以此提高店铺内上装的连带购买率。\n\n### 10. **移动端（手机屏）体验如何特别优化？**\n**答：** 遵循 **「一屏一卖点」** 原则。\n*   避免PC端的长图直接缩小。字体必须放大到14px以上。\n*   **首屏视频化：** 头图位置建议放置5-10秒的短视频，展示模特走路时的裤腿摆动（展示垂坠感）以及穿脱背带的动作（展示易用性）。\n*   **长图切片：** 保证加载速度，同时在每屏之间留有“呼吸感”，不要让密集的文字压迫用户，利用大面积的留白（或留灰）突出黑色产品本身。"
+          },
+          "style": {
+            "height": 250,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-5",
+          "type": "image",
+          "position": {
+            "x": 2631.0993218987564,
+            "y": 1312.6220159096824
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Image",
+            "title": "Image",
+            "sourceKind": "image",
+            "imagePromptReady": true,
+            "imagePrompt": "请按照给到的信息和我给你的图片素材，生成详情页1对应的图片",
+            "imageAspectRatio": "Auto",
+            "imageQuality": "4k"
+          },
+          "style": {
+            "height": 334,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-6",
+          "type": "image",
+          "position": {
+            "x": 2618.615456155615,
+            "y": 2046.8074521370995
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Image",
+            "title": "Image",
+            "sourceKind": "image",
+            "imagePromptReady": true,
+            "imagePrompt": "请按照给到的信息和我给你的图片素材，生成详情页3对应的图片",
+            "imageAspectRatio": "3:4",
+            "imageQuality": "4k"
+          },
+          "style": {
+            "height": 334,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-7",
+          "type": "image",
+          "position": {
+            "x": 2628.588747023844,
+            "y": 1679.4040956348135
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Image",
+            "title": "Image",
+            "sourceKind": "image",
+            "imagePromptReady": true,
+            "imagePrompt": "请按照给到的信息和我给你的图片素材，生成详情页2对应的图片",
+            "imageAspectRatio": "3:4",
+            "imageQuality": "4k"
+          },
+          "style": {
+            "height": 334,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-8",
+          "type": "image",
+          "position": {
+            "x": 2612.7917135476982,
+            "y": 24
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Image",
+            "title": "单张，需要自己剪裁",
+            "sourceKind": "image",
+            "imagePromptReady": true,
+            "imagePrompt": "请根据列出的产品策略、产品图片、品牌logo，设计一套适合小红书审美的电商详情页，中文，每一页的排版和文字信息由你设计，每一页详情页不要改变产品本身的细节，一定要受年轻人喜欢，详情页要突出产品的核心卖点",
+            "imageAspectRatio": "Auto",
+            "imageQuality": "4k"
+          },
+          "style": {
+            "height": 334,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-9",
+          "type": "image",
+          "position": {
+            "x": 24,
+            "y": 2912.285369928665
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Image",
+            "title": "品牌logo",
+            "sourceKind": "image",
+            "imagePromptReady": false,
+            "imageAspectRatio": "Auto",
+            "imageQuality": "1k"
+          },
+          "style": {
+            "height": 250,
+            "width": 254
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-10",
+          "type": "image",
+          "position": {
+            "x": 2626.1303107388508,
+            "y": 2837.105959455026
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Image",
+            "title": "Image",
+            "sourceKind": "image",
+            "imagePromptReady": true,
+            "imagePrompt": "请按照给到的信息和我给你的图片素材，生成详情页5对应的图片",
+            "imageAspectRatio": "3:4",
+            "imageQuality": "4k"
+          },
+          "style": {
+            "height": 334,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-11",
+          "type": "text",
+          "position": {
+            "x": 1708.8045200868346,
+            "y": 2434.7682960262155
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Text",
+            "title": "分页图策略输出",
+            "textPrompt": "请根据列出的产品策略、产品图片、品牌logo，设计一套适合小红书审美的电商详情页，中文，每一张尺寸750:1000，一共5张，每一页的排版和文字信息由你设计，输出提示词，记得结构化拆开，我会让下一步的AI来识别你的生成结果然后去分布生图，每一页详情页不要改变产品本身的细节，一定要受年轻人喜欢，详情页要突出产品的核心卖点",
+            "textPromptReady": true,
+            "content": "这份设计方案专为 **小红书（Xiaohongshu）** 平台定制，核心策略是 **「轻量化信息 + 强视觉冲击 + 情绪价值」**。我们将原本枯燥的详情页转化为类似潮流杂志（Zine）的排版。\n\n整体视觉基调：\n*   **风格：** Urban Techwear / 酸性设计（Acid Graphics） / 极简工业风\n*   **配色：** 酷灰背景（Cool Grey）+ 极致黑（产品）+ **酸性绿（Acid Green）** 作为高亮文字/装饰点缀。\n*   **尺寸：** 750:1000 (竖屏)\n\n以下是5张详情页的结构化设计与AI提示词拆解：\n\n---\n\n### Page 1: 封面海报 (The Hook)\n**设计意图：** 停止划动，利用模特带雪镜的酷感，建立“机能潮人”的第一印象。\n*   **排版布局：** 杂志封面式排版。模特图片铺满或占据80%版面，品牌Logo放大置于顶部或作为背景纹理。\n*   **视觉元素：** 模特全身照（带雪镜），背景叠加十字准星、经纬度线条，营造精密装备感。\n*   **文案信息：**\n    *   主标题：**RATATA / 无界探索** (大号字体)\n    *   副标题：URBAN OUTDOOR SERIES\n    *   标签：#机能背带裤 #雪季装备 #OOTD\n*   **设计细节：** 标题字使用粗体无衬线字，颜色使用白色，带有酸性绿的下划线。\n\n> **AI绘画提示词 (Prompt):**\n> **[Page 1 Design]**: An e-commerce poster design for a mobile screen, aspect ratio 3:4. **Subject**: A cool Asian male model wearing black snowboard overalls and ski goggles, posing casually with one hand adjusting the goggles. **Background**: Solid industrial grey background with subtle topographic map textures. **Typography**: Large, bold white sans-serif text at the top reads \"RATATA\", below it \"URBAN OUTDOOR\". **Details**: Add neon acid green graphic elements like crosshairs and tech-lines overlaying the image. High-end streetwear magazine cover style, minimalistic, 8k resolution, clean UI. --ar 3:4\n\n---\n\n### Page 2: 风格与场景 (The Vibe)\n**设计意图：** 强调“雪地”与“街头”的双重适用性，解决用户“只能滑雪穿吗？”的疑虑。\n*   **排版布局：** 上下分层结构。\n*   **视觉元素：** 上半部分保留模特上半身特写（突出白色卫衣内搭的干净感），下半部分使用色块分割，放入“雪山”和“街道”的黑白剪影图标。\n*   **文案信息：**\n    *   核心卖点：**雪场 / 街头 // 随意切换**\n    *   描述：宽松版型，内搭卫衣不臃肿。从城市漫游到雪地撒野，一条裤子搞定。\n    *   装饰字：CITY / SNOW\n*   **设计细节：** 文字排版采用左对齐，配合类似“代码块”的排版装饰。\n\n> **AI绘画提示词 (Prompt):**\n> **[Page 2 Design]**: Mobile UI design for a fashion product detail page, aspect ratio 3:4. **Layout**: Split composition. Top half shows a close-up of the black overalls chest area and white hoodie texture, high contrast lighting. Bottom half is a clean layout block in dark grey. **Graphics**: Minimalist icons representing a \"Snow Mountain\" and a \"City Skyline\" in acid green neon lines. **Text**: Bold Chinese typography \"雪场 / 街头\" (Snow/Street) and \"随意切换\" (Switch Freely). **Style**: Techwear aesthetic, clean lines, information visualization, futuristic vibe. --ar 3:4\n\n---\n\n### Page 3: 机能细节解析 (The Tech)\n**设计意图：** 利用平铺图展示硬核功能，通过局部放大体现做工。\n*   **排版布局：** 居中展示产品的正面平铺图（去除背景），四周通过“引线（Callout lines）”指向具体细节。\n*   **视觉元素：** 黑色背带裤正面平铺图。引线指向：侧边口袋、卡扣、裤脚。每个引线末端有圆形的放大镜效果图。\n*   **文案信息：**\n    *   标题：**硬核机能解析**\n    *   引线1：多功能立体口袋 (Multi-pockets)\n    *   引线2：定制树脂卡扣 (Resin Buckle)\n    *   引线3：立体剪裁裤脚 (3D Cut)\n*   **设计细节：** 引线使用高亮的酸性绿色，背景为深灰色的网格纸（Grid Paper）纹理。\n\n> **AI绘画提示词 (Prompt):**\n> **[Page 3 Design]**: Product feature breakdown graphic, mobile format, aspect ratio 3:4. **Center Subject**: Flat lay of black technical overalls isolated on a dark grey technical grid background. **Graphics**: Bright acid green callout lines pointing to specific parts of the pants (pockets, buckles, hem). At the end of each line, a circular zoom-in bubble showing fabric texture. **Text**: Technical font in white and green, labeling features like \"POCKETS\", \"BUCKLE\", \"FABRIC\". **Style**: Industrial design blueprint, schematic look, high contrast, professional gear presentation. --ar 3:4\n\n---\n\n### Page 4: 背面与结构 (The Structure)\n**设计意图：** 展示背带系统的美感，机能风的背带设计通常是亮点。\n*   **排版布局：** 极简留白。\n*   **视觉元素：** 背面平铺图居中。背景使用巨大的、半透明的RATATA Logo（三角形松树标志）作为底纹。\n*   **文案信息：**\n    *   标题：**背部工装系统**\n    *   描述：可调节背带，舒适不掉肩。高腰护腰设计，防风防雪。\n    *   英文装饰：ADJUSTABLE SYSTEM // HIGH PERFORMANCE\n*   **设计细节：** 强调黑色的深邃感，光影要打出面料的质感（稍微有点反光的感觉）。\n\n> **AI绘画提示词 (Prompt):**\n> **[Page 4 Design]**: Minimalist fashion product page, mobile format, aspect ratio 3:4. **Subject**: Flat lay of the *back side* of black snowboard overalls. **Background**: A very light grey background with a giant, semi-transparent watermark of a triangular pine tree logo. **Text**: Clean, Swiss-style typography in black and grey, describing \"ADJUSTABLE SYSTEM\". **Lighting**: Studio lighting highlighting the texture of the straps and the back panel. **Vibe**: Premium, understated luxury, structural beauty. --ar 3:4\n\n---\n\n### Page 5: 尺码与导购 (The Guide)\n**设计意图：** 消除购买顾虑，临门一脚促成转化。\n*   **排版布局：** 数据可视化表格。\n*   **视觉元素：** 页面上方放置模特全身小图作为参考。下方是黑底白字的尺码矩阵表。\n*   **文案信息：**\n    *   标题：**选码指南 / SIZE GUIDE**\n    *   模特参数框：身高180cm / 体重65kg / 试穿L码 (宽松)\n    *   表格列：尺码 (M/L/XL) - 裤长 - 腰围 - 臀围\n    *   底部CTA按钮：**[ 点击购买 探索雪域 ]** (模拟按钮样式，酸性绿填充，黑色文字)\n*   **设计细节：** 表格不要用传统的Excel线条，用断开的线段或“+”号作为交叉点，保持机能感。\n\n> **AI绘画提示词 (Prompt):**\n> **[Page 5 Design]**: Size guide interface design for mobile e-commerce, aspect ratio 3:4. **Top**: Small thumbnail of the model wearing the pants. **Main**: A futuristic, data-visualization style size chart on a black background. Numbers are in a monospace digital font (white). **Bottom**: A prominent call-to-action button in neon acid green with bold black text \"SHOP NOW\". **Details**: Tech-interface elements, loading bars, battery icons decoration. **Style**: Cyberpunk UI, user-friendly but edgy, high clarity. --ar 3:4"
+          },
+          "style": {
+            "height": 406,
+            "width": 324
+          },
+          "zIndex": 1
+        }
+      ],
+      "version": 1
+    },
+    "id": "0786e042-095e-4551-b91b-365492e91241",
+    "previewImage": "/templates/ecommerce-detail-workflow.png",
+    "title": "电商详情页工作流"
+  },
+  {
+    "categories": [
+      "电商"
+    ],
+    "description": "上传产品图，一键直出商品主图、详情页、宣传海报、卖点图、场景图、漫画宣传图",
+    "graph": {
+      "edges": [
+        {
+          "id": "template-edge-1",
+          "source": "template-node-8",
+          "target": "template-node-5",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-2",
+          "source": "template-node-7",
+          "target": "template-node-3",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-3",
+          "source": "template-node-2",
+          "target": "template-node-10",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-4",
+          "source": "template-node-7",
+          "target": "template-node-1",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-5",
+          "source": "template-node-6",
+          "target": "template-node-1",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-6",
+          "source": "template-node-7",
+          "target": "template-node-4",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-7",
+          "source": "template-node-7",
+          "target": "template-node-10",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-8",
+          "source": "template-node-7",
+          "target": "template-node-5",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-9",
+          "source": "template-node-11",
+          "target": "template-node-4",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-10",
+          "source": "template-node-7",
+          "target": "template-node-12",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-11",
+          "source": "template-node-13",
+          "target": "template-node-12",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-12",
+          "source": "template-node-9",
+          "target": "template-node-3",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "template-group",
+          "type": "group",
+          "position": {
+            "x": -4,
+            "y": -4
+          },
+          "data": {
+            "label": "Group",
+            "title": "213.电商图片生成专家"
+          },
+          "style": {
+            "height": 2623.4986215501626,
+            "width": 1069.77259271615
+          },
+          "zIndex": 0
+        },
+        {
+          "id": "template-node-1",
+          "type": "image",
+          "position": {
+            "x": 715.0525311553884,
+            "y": 563.2979004384724
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Image",
+            "title": "生成商品主图",
+            "sourceKind": "image",
+            "imagePromptReady": true,
+            "imageAspectRatio": "1:1",
+            "imageQuality": "1k"
+          },
+          "style": {
+            "height": 250,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-2",
+          "type": "text",
+          "position": {
+            "x": 376.0138957869576,
+            "y": 1446.738557169565
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Text",
+            "title": "生成Bentobox指令",
+            "textPrompt": "绘制一张信息图表幻灯片，采用苹果发布会Bento网格布局完全一致的风格设计。背景为简洁统一的深色模式。\n\n构图是由模块化的矩形和正方形区块组成的紧凑网格，每个网格里是一个产品的性能参数或卖点。\n\n核心焦点模块： 中央放置一个未来感十足、设计感强烈的产品。采用高端的四分之三视角，展示其工业设计。醒目的边缘光突出产品轮廓。",
+            "textPromptReady": true,
+            "content": "绘制一张信息图表幻灯片，采用苹果发布会Bento网格布局完全一致的风格设计。背景为简洁统一的深色模式。\n\n构图是由模块化的矩形和正方形区块组成的紧凑网格，每个网格里是一个产品的性能参数或卖点。\n\n核心焦点模块： 中央放置一个未来感十足、设计感强烈的产品。采用高端的四分之三视角，展示其工业设计。醒目的边缘光突出产品轮廓。"
+          },
+          "style": {
+            "height": 250,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-3",
+          "type": "image",
+          "position": {
+            "x": 716.108798275799,
+            "y": 897.2460834743019
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Image",
+            "title": "生成商品详情图指令",
+            "sourceKind": "image",
+            "imagePromptReady": true,
+            "imageAspectRatio": "9:16",
+            "imageQuality": "4k"
+          },
+          "style": {
+            "height": 448,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-4",
+          "type": "image",
+          "position": {
+            "x": 709.9776546945095,
+            "y": 1805.8067697324263
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Image",
+            "title": "场景图",
+            "sourceKind": "image",
+            "imagePromptReady": true,
+            "imageAspectRatio": "3:4",
+            "imageQuality": "2k"
+          },
+          "style": {
+            "height": 334,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-5",
+          "type": "image",
+          "position": {
+            "x": 720.7027816073623,
+            "y": 25.987519684998006
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Image",
+            "title": "生成宣传海报",
+            "sourceKind": "image",
+            "imagePromptReady": true,
+            "imageAspectRatio": "9:16",
+            "imageQuality": "1k"
+          },
+          "style": {
+            "height": 448,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-6",
+          "type": "text",
+          "position": {
+            "x": 380.2346620611106,
+            "y": 561.4039725762991
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Text",
+            "title": "生成商品主图指令",
+            "textPrompt": "设计这个产品在淘宝的商品头图，其中包括了：\n1.品牌logo\n2.价格（在画面底部）：活动到手价 【¥2199】\n3.产品名：【Action 5 Pro】\n4.权益：【赠送原厂配件、12期免息】\n5.性能：【4K超清、防水防抖】",
+            "textPromptReady": true,
+            "content": "设计这个产品在淘宝的商品头图，其中包括了：\n1.品牌logo\n2.价格（在画面底部）：活动到手价 【¥2199】\n3.产品名：【Action 5 Pro】\n4.权益：【赠送原厂配件、12期免息】\n5.性能：【4K超清、防水防抖】"
+          },
+          "style": {
+            "height": 250,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-7",
+          "type": "image",
+          "position": {
+            "x": 24,
+            "y": 470.22149057132697
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Image",
+            "title": "image",
+            "sourceKind": "image",
+            "imagePromptReady": false,
+            "imageAspectRatio": "Auto",
+            "imageQuality": "1k"
+          },
+          "style": {
+            "height": 444,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-8",
+          "type": "text",
+          "position": {
+            "x": 383.3636685351157,
+            "y": 24
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Text",
+            "title": "生成宣传海报指令",
+            "textPrompt": "设计这个产品的宣传海报，高端大气有冲击力",
+            "textPromptReady": true,
+            "content": "设计这个产品的宣传海报，高端大气有冲击力"
+          },
+          "style": {
+            "height": 250,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-9",
+          "type": "text",
+          "position": {
+            "x": 379.98212700541626,
+            "y": 896.0573739817892
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Text",
+            "title": "生成商品详情图指令",
+            "textPrompt": "生成这个商品在淘宝售卖的商品详情图\n内容：自行搜索",
+            "textPromptReady": true,
+            "content": "生成这个商品在淘宝售卖的商品详情图\n内容：自行搜索"
+          },
+          "style": {
+            "height": 250,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-10",
+          "type": "image",
+          "position": {
+            "x": 710.77259271615,
+            "y": 1448.0055976005165
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Image",
+            "title": "Bentobox风格卖点图",
+            "sourceKind": "image",
+            "imagePromptReady": true,
+            "imageAspectRatio": "4:3",
+            "imageQuality": "1k"
+          },
+          "style": {
+            "height": 250,
+            "width": 335
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-11",
+          "type": "text",
+          "position": {
+            "x": 373.8652937145034,
+            "y": 1802.4810842066406
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Text",
+            "title": "场景图指令",
+            "textPrompt": "生成这个产品的使用场景图，高端大气上档次",
+            "textPromptReady": true,
+            "content": "生成这个产品的使用场景图，高端大气上档次"
+          },
+          "style": {
+            "height": 250,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-12",
+          "type": "image",
+          "position": {
+            "x": 715.1878926030261,
+            "y": 2265.4986215501626
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Image",
+            "title": "图片生成",
+            "sourceKind": "image",
+            "imagePromptReady": true,
+            "imageAspectRatio": "3:4",
+            "imageQuality": "1k"
+          },
+          "style": {
+            "height": 334,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-13",
+          "type": "text",
+          "position": {
+            "x": 373.5234934807728,
+            "y": 2305.173542987277
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Text",
+            "title": "Text",
+            "textPrompt": "生成一组可爱的漫画，用于讲述一个故事，表现这款产品的功能",
+            "textPromptReady": true,
+            "content": "生成一组可爱的漫画，用于讲述一个故事，表现这款产品的功能"
+          },
+          "style": {
+            "height": 250,
+            "width": 250
+          },
+          "zIndex": 1
+        }
+      ],
+      "version": 1
+    },
+    "id": "aaf7cc53-a595-45da-a6bb-7c93309e0962",
+    "previewImage": "/templates/ecommerce-image-expert-213.png",
+    "title": "213.电商图片生成专家"
+  }
+]
