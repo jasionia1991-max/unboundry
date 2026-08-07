@@ -892,5 +892,6 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - 已执行：4173 切换为 `vite preview`（launchd plist 已备份为 `~/Library/LaunchAgents/com.tapnow-replica.4173.plist.bak-20260808`，仅新增 `preview` 参数），服务重启后页面/接口 200。真实 Chrome 60 节点最终复测：缩放 121fps、平移 120fps、拖动 119fps，全部 0 掉帧、0 长任务、最大帧 ≤17ms。
 - 运维约定（切换后生效）：4173 服务生产构建模式，改代码后需 `npm run build` 并 `launchctl kickstart -k gui/$(id -u)/com.tapnow-replica.4173` 生效；开发调试请用独立端口（4174/419x）。
 - 已切回开发模式（用户选择，因后续功能开发需要即时生效/HMR）：4173 launchd 移除 `preview` 参数，服务以 `vite dev` 运行，页面/接口 200；所有性能优化代码仍在，仅 dev 模式检查开销会让拖动手感回退（日常使用建议等功能批次完成后切回成品模式，plist 备份仍在）。
+- 2026-08-08 对齐 TapNow 交互：拖动节点过程中隐藏该节点的功能栏/创作框，松手后恢复（`useSingleNodeChrome` 增加 `dragging` 判定，7 个节点组件传参）。实测：开发模式 28 节点拖动 101→104fps、长任务 3→2（94-111→68-104ms），拖动中创作框/功能栏 DOM 为 0；成品模式维持 0 长任务。新增回归“Text toolbar and creator hide while dragging and return after release”。已知批量跑时 m2-image/audio/video 的“零 Provider 请求”计数会把 /src/generation/* 模块 URL 计入（既有过滤脆弱性，与本次改动无关，单独复跑/单跑通过）。
 - 延后问题（与 STEP 1 无关，既有）：m27 `allowed Video media edges pass zero-cost preflight` 在改动前主干同样失败（期望 0 实得 2,777,778，疑似模型成本/默认单任务费用口径，另行排查）；m0 P1 creator 基线。
 - 延后问题（既有）：m63 `group create, undo, delete recovery` 在完全未改动的主干上稳定失败——快照显示“保存中…”与 GET 竞态（第二次打组后保存未落库即被读取），属测试竞态，另行排查。

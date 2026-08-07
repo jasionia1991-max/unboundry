@@ -47,10 +47,11 @@ function nodeSize(node: ProbeNodeType) {
 
 function GroupNodeImpl({
   data,
+  dragging,
   id,
   selected,
 }: NodeProps<ProbeNodeType>) {
-  const singleNodeChrome = useSingleNodeChrome(selected);
+  const singleNodeChrome = useSingleNodeChrome(selected, dragging);
   const checkpoint = useCanvasCheckpoint();
   const { getEdges, getNode, getNodes } = useReactFlow<ProbeNodeType>();
   const { setNodes } = useCanvasGraphMutation();

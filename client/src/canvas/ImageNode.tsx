@@ -1148,8 +1148,13 @@ function ImageLightingPanel({
   );
 }
 
-function ImageNodeImpl({ data, id, selected }: NodeProps<ProbeNodeType>) {
-  const singleNodeChrome = useSingleNodeChrome(selected);
+function ImageNodeImpl({
+  data,
+  dragging,
+  id,
+  selected,
+}: NodeProps<ProbeNodeType>) {
+  const singleNodeChrome = useSingleNodeChrome(selected, dragging);
   const inputRef = useRef<HTMLInputElement>(null);
   const moreRef = useRef<HTMLSpanElement>(null);
   const uploadInFlight = useRef(false);

@@ -381,10 +381,11 @@ function PlaylistPlayer({
 
 function PlaylistNodeImpl({
   data,
+  dragging,
   id,
   selected,
 }: NodeProps<ProbeNodeType>) {
-  const singleNodeChrome = useSingleNodeChrome(selected);
+  const singleNodeChrome = useSingleNodeChrome(selected, dragging);
   const hoverHead = useRef<HTMLSpanElement>(null);
   const hoverTimer = useRef<number | undefined>(undefined);
   const editShortcutHandler = useRef<(event: KeyboardEvent) => void>(() => {});

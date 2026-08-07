@@ -261,8 +261,13 @@ function ToolIcon({ name }: { name: ToolName }) {
   );
 }
 
-function TextNodeImpl({ data, id, selected }: NodeProps<ProbeNodeType>) {
-  const singleNodeChrome = useSingleNodeChrome(selected);
+function TextNodeImpl({
+  data,
+  dragging,
+  id,
+  selected,
+}: NodeProps<ProbeNodeType>) {
+  const singleNodeChrome = useSingleNodeChrome(selected, dragging);
   const [background, setBackground] = useState("#1f1f1f");
   const [bodyEditing, setBodyEditing] = useState(false);
   const [empty, setEmpty] = useState(!data.content);

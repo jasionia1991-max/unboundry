@@ -164,8 +164,13 @@ async function discardUnadoptedAudioAsset(assetId: string) {
   }
 }
 
-function AudioNodeImpl({ data, id, selected }: NodeProps<ProbeNodeType>) {
-  const singleNodeChrome = useSingleNodeChrome(selected);
+function AudioNodeImpl({
+  data,
+  dragging,
+  id,
+  selected,
+}: NodeProps<ProbeNodeType>) {
+  const singleNodeChrome = useSingleNodeChrome(selected, dragging);
   const inputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const uploadBaseline = useRef<ProbeNodeType | undefined>(undefined);

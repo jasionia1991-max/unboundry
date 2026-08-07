@@ -241,6 +241,29 @@ test("Text prompt commits only the final IME composition value", async ({
   await expect(prompt).toHaveValue("世界");
 });
 
+test("Text toolbar and creator hide while dragging and return after release", async ({
+  page,
+}) => {
+  await page.goto("/__fixture/node.text.creator-open");
+  const creator = page.getByTestId("text-creator");
+  const toolbar = page.getByTestId("text-node-toolbar");
+  await expect(creator).toBeVisible();
+  await expect(toolbar).toBeVisible();
+
+  const node = page.locator(".react-flow__node-text").first();
+  const box = (await node.boundingBox())!;
+  const startX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 60, startY + 40, { steps: 3 });
+  await expect(creator).toHaveCount(0);
+  await expect(toolbar).toHaveCount(0);
+  await page.mouse.up();
+  await expect(creator).toBeVisible();
+  await expect(toolbar).toBeVisible();
+});
+
 test("focused Text controls own undo while canvas undo restores deleted nodes", async ({
   page,
   request,

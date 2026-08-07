@@ -138,10 +138,11 @@ export type ProbeNodeType = Node<
 
 function ProbeNodeImpl({
   data,
+  dragging,
   id,
   selected,
 }: NodeProps<ProbeNodeType>) {
-  const singleNodeChrome = useSingleNodeChrome(selected);
+  const singleNodeChrome = useSingleNodeChrome(selected, dragging);
   const group = data.variant === "group";
   const checkpoint = useCanvasCheckpoint();
 

@@ -194,8 +194,13 @@ function ExpandIcon() {
   );
 }
 
-function VideoNodeImpl({ data, id, selected }: NodeProps<ProbeNodeType>) {
-  const singleNodeChrome = useSingleNodeChrome(selected);
+function VideoNodeImpl({
+  data,
+  dragging,
+  id,
+  selected,
+}: NodeProps<ProbeNodeType>) {
+  const singleNodeChrome = useSingleNodeChrome(selected, dragging);
   const inputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const fullscreenVideoRef = useRef<HTMLVideoElement>(null);
