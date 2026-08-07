@@ -883,5 +883,8 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - STEP 1b 已实施并提交（`11aadf3`）：ReactFlow 改真正非受控（移除受控 viewport prop，instance.setViewport 生效）；普通缩放/平移只更新 ref+DOM 属性，仅多选状态同步 React 状态供工具栏定位（进入多选时同步实时视口）；程序化视口变化显式调度交互安静期保证保存；镜头动画期间不触发保存重查，动画结束只保存一次。
 - STEP 1/1b 实测（真实 Chrome、28 节点临时项目，同手势，两轮稳定）：缩放 120/121fps、0 长任务、最大帧 9ms（达标）；平移 120fps、0 长任务、最大帧 9ms（达标）；拖动 104–106fps、2 次长任务（81/85ms，p95 9ms）。拖动残留归因：节点组件无 memo，位置更新全量重渲染（jsxDEV+节点组件渲染），列入 STEP 2。
 - STEP 1 验收结论：缩放/平移达标；拖动优化转入 STEP 2（React.memo + 稳定 data 引用），完成后再同法复测。
+- STEP 2a 已实施并提交（`33b1964`）：8 种节点组件与 CuttableEdge 包 React.memo（未变节点不再重渲染，profile 中节点组件耗时消失）；onNodesChange 拖动中的每次位置变化重置交互安静期，杜绝长拖中途保存。回归 m1/m2-group/m62/m69/m70/m71 37/37。
+- STEP 2 实测结论（真实 Chrome）：开发模式（vite dev）28 节点拖动 101fps/3 长任务（94-111ms）、60 节点 72fps——剩余成本为 dev 模式 React 元素检查（jsxDEV）；生产构建（vite preview）28/60 节点拖动 119-120fps、0 长任务、最大帧 9-17ms（达标），200 节点 66fps/22 掉帧（超大画布仍需可视区域渲染）。
+- 待用户决策：4173 真实服务由 launchd 运行 `vite dev`，dev 模式固有 jsxDEV 开销让拖动仍有卡顿；切 `vite preview`（生产构建）即可在日常使用中达标。涉及真实服务配置，待用户确认后执行（改前备份 plist，改后需 rebuild+重启）。
 - 延后问题（与 STEP 1 无关，既有）：m27 `allowed Video media edges pass zero-cost preflight` 在改动前主干同样失败（期望 0 实得 2,777,778，疑似模型成本/默认单任务费用口径，另行排查）；m0 P1 creator 基线。
 - 延后问题（既有）：m63 `group create, undo, delete recovery` 在完全未改动的主干上稳定失败——快照显示“保存中…”与 GET 竞态（第二次打组后保存未落库即被读取），属测试竞态，另行排查。

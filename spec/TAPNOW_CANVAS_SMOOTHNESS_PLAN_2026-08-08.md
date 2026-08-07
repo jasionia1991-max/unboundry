@@ -1,6 +1,6 @@
 # 画布丝滑度修复方案（真实 Chrome 实测驱动）
 
-状态：`USER APPROVED 2026-08-08 / STEP 1+1b DONE / STEP 2 NEXT`
+状态：`USER APPROVED 2026-08-08 / STEP 1+1b+2a DONE / 待用户决策：4173 切生产预览`
 依据：真实 Chrome（远程调试 9222）同机同手势实测 + 代码逐层审计 + 仓库内 TapNow 活体证据。
 
 ## 0. 用户确认的两项决策（2026-08-08）
@@ -45,6 +45,10 @@
 STEP 1+1b 实测（真实 Chrome，28 节点临时项目，两轮稳定）：缩放 120/121fps、0 长任务、p95 9ms、max 9ms（达标）；平移 120fps、0 长任务、max 9ms（达标）；拖动 104–106fps、2 次长任务（81/85ms，p95 9ms）。拖动残留归因：节点组件无 memo，位置更新全量重渲染 → STEP 2。
 
 STEP 1b 关键实现：ReactFlow 去掉受控 viewport prop（真正非受控）；viewportRef 为实时真相，data-viewport-* 由 DOM 直写；仅多选状态才同步 React viewport 状态（工具栏定位）；程序化视口变化显式触发交互安静期保证保存；动画期间 tick 不触发保存重查。
+
+STEP 2a（memo）：8 种节点组件与 CuttableEdge 包 React.memo；拖动中的每次位置变化重置交互安静期（防长拖中途保存）。
+
+STEP 2 实测：开发模式拖动仍有 dev 模式 React 元素检查开销（28 节点 3 长任务/60 节点 72fps）；生产构建拖动 28/60 节点 119-120fps、0 长任务（达标），200 节点 66fps（需可视区域渲染）。结论：日常 60 节点级画布在 `vite preview`（生产构建）下已达标；200 节点压力仍需 STEP 2b 可视区域渲染。
 
 ### STEP 2：渲染架构（可视区域 + 缓冲带 + 缓存）
 
