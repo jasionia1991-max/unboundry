@@ -359,8 +359,15 @@ export async function groupDownloadApi(
     json(response, 400, { error: "该组还没有可下载的生成结果" });
     return;
   }
+  // 用户决定（2026-08-07）：每个节点只打包最近一次成功结果。
+  // 查询按 updated_at ASC 排序，逐节点覆盖 Map 后即保留每个节点的最新一条。
+  const latestByNode = new Map<string, (typeof rows)[number]>();
+  for (const row of rows) {
+    latestByNode.set(row.node_id, row);
+  }
+  const dedupedRows = [...latestByNode.values()];
 
-  const assetIds = rows
+  const assetIds = dedupedRows
     .map((row) => row.result_asset_id)
     .filter((value): value is string => Boolean(value));
   const mediaRows = assetIds.length
@@ -386,7 +393,7 @@ export async function groupDownloadApi(
   const skipped: Array<{ nodeTitle: string; reason: string; taskId: string }> =
     [];
   const inputs: DownloadPlanInput[] = [];
-  for (const row of rows) {
+  for (const row of dedupedRows) {
     const nodeTitle = titleByNode.get(row.node_id) ?? "节点";
     if (row.kind === "text") {
       if (!row.result_text) {

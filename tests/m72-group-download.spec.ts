@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -527,6 +528,63 @@ test("group toolbar downloads the packed zip on a real canvas", async ({
   expect(downloads[0].suggestedFilename()).toContain("工作流结果-");
   expect(await downloads[0].failure()).toBeNull();
 
+  await request.delete(`/api/canvas/${project.id}`);
+  await request.delete(`/api/projects/${project.id}`);
+});
+
+test("group download packs only the latest success per node", async ({
+  request,
+}) => {
+  const dataDirectoryResponse = await request.get("/api/test-data-directory");
+  expect(dataDirectoryResponse.ok()).toBeTruthy();
+  const { dataDirectory } = (await dataDirectoryResponse.json()) as {
+    dataDirectory: string;
+  };
+  const project = await setupDownloadCanvas(request, dataDirectory);
+  const store = openAppDatabase(dataDirectory);
+  store
+    .prepare(`
+      INSERT INTO generation_tasks (
+        id, canvas_id, node_id, kind, prompt, model, parameters,
+        idempotency_key, request_fingerprint, state, attempt, owner_id,
+        result_asset_id, result_text, created_at, updated_at
+      )
+      VALUES (
+        'dl-task-text-newer', ?, 'child-text', 'text', '', 'model-1', '{}',
+        'dl-key-text-newer', 'dl-fingerprint-text-newer', 'success', 1,
+        '__test__', NULL, '这是最新的文字结果', ?, ?
+      )
+    `)
+    .run(project.id, "2026-08-07T00:10:00.000Z", "2026-08-07T00:10:00.000Z");
+  store.close();
+
+  const response = await request.post(
+    `/api/canvas/${project.id}/group-download`,
+    { data: { groupId: "dl-group" } },
+  );
+  expect(response.status()).toBe(200);
+  const zipBytes = await response.body();
+  const working = mkdtempSync(join(tmpdir(), "tapnow-zip-latest-"));
+  try {
+    const zipPath = join(working, "result.zip");
+    writeFileSync(zipPath, zipBytes);
+    const output = join(working, "out");
+    mkdirSync(output);
+    execFileSync("unzip", ["-o", zipPath, "-d", output], {
+      stdio: "ignore",
+    });
+    expect(readdirSync(output).sort()).toEqual([
+      "商品图-1.png",
+      "文案-4.txt",
+      "视频-2.mp4",
+      "音频-3.mp3",
+    ]);
+    expect(readFileSync(join(output, "文案-4.txt"), "utf8")).toBe(
+      "这是最新的文字结果",
+    );
+  } finally {
+    rmSync(working, { force: true, recursive: true });
+  }
   await request.delete(`/api/canvas/${project.id}`);
   await request.delete(`/api/projects/${project.id}`);
 });
