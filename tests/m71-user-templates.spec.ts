@@ -743,3 +743,95 @@ test("group toolbar keeps template saving disabled for empty groups", async ({
   await request.delete(`/api/canvas/${project.id}`);
   await request.delete(`/api/projects/${project.id}`);
 });
+
+test("importing a private template renders its image asset without a manual refresh", async ({
+  page,
+  request,
+}) => {
+  const onePixelPng = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  const uploaded = await request.post("/api/assets/hydrate-image", {
+    data: onePixelPng,
+    headers: { "Content-Type": "image/png" },
+  });
+  expect(uploaded.status()).toBe(201);
+
+  const sourceProject = (await (await request.post("/api/projects", { data: {} }))
+    .json()) as { id: string };
+  const saved = await request.post("/api/templates", {
+    data: {
+      category: "电商",
+      graph: {
+        edges: [],
+        nodes: [
+          {
+            data: { label: "Group", title: "素材模板组" },
+            id: "hydrate-group",
+            position: { x: 0, y: 0 },
+            style: { height: 350, width: 700 },
+            type: "group",
+            zIndex: 0,
+          },
+          {
+            data: {
+              assetId: "hydrate-image",
+              label: "Image",
+              title: "模板素材图",
+            },
+            id: "hydrate-image-node",
+            parentId: "hydrate-group",
+            position: { x: 20, y: 20 },
+            style: { height: 250, width: 250 },
+            type: "image",
+            zIndex: 1,
+          },
+          {
+            data: { label: "Text", title: "说明", textPrompt: "说明文字" },
+            id: "hydrate-text-node",
+            parentId: "hydrate-group",
+            position: { x: 300, y: 20 },
+            style: { height: 250, width: 250 },
+            type: "text",
+            zIndex: 1,
+          },
+        ],
+        version: 1,
+      },
+      title: "素材引用导入模板",
+    },
+  });
+  expect(saved.status()).toBe(201);
+
+  const targetProject = (await (await request.post("/api/projects", { data: {} }))
+    .json()) as { id: string };
+  await page.goto(`/canvas/${targetProject.id}`);
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-persistence-ready",
+    "true",
+  );
+  await page.getByTestId("templates").click();
+  const panel = page.getByTestId("templates-panel");
+  await expect(panel).toBeVisible();
+  await panel.getByRole("tab", { name: "我的模板" }).click();
+  await panel.getByText("素材引用导入模板", { exact: true }).click();
+
+  const importedImage = page.locator(".react-flow__node-image img").first();
+  await expect(importedImage).toHaveAttribute(
+    "src",
+    /\/api\/assets\/hydrate-image/,
+  );
+  await page.reload();
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-persistence-ready",
+    "true",
+  );
+  await expect(page.locator(".react-flow__node-image img").first())
+    .toHaveAttribute("src", /\/api\/assets\/hydrate-image/);
+
+  await request.delete(`/api/canvas/${targetProject.id}`);
+  await request.delete(`/api/projects/${targetProject.id}`);
+  await request.delete(`/api/canvas/${sourceProject.id}`);
+  await request.delete(`/api/projects/${sourceProject.id}`);
+});

@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { saveAccountCredential } from "../server/accountCredentials";
 import { openAppDatabase } from "../server/database";
 import { createGenerationSafetyStore } from "../server/generationSafety";
 import {
@@ -744,6 +745,8 @@ test("preserved asynchronous Provider IDs stay resumable and cannot be discarded
 
 test("only capability success or an explicit Provider/model update clears an auth incident", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-auth-reset-"));
+  const previousDataDirectory = process.env.TAPNOW_DATA_DIR;
+  process.env.TAPNOW_DATA_DIR = dataDirectory;
   const safety = createGenerationSafetyStore(dataDirectory);
   let server: ChildProcess | undefined;
   try {
@@ -817,6 +820,31 @@ test("only capability success or an explicit Provider/model update clears an aut
       providerModelId: "openai/gpt-image-2",
       providerProfileId: openRouterProfileId,
     });
+
+    const credentialStore = openAppDatabase(dataDirectory);
+    const timestamp = new Date().toISOString();
+    credentialStore
+      .prepare(`
+        INSERT OR IGNORE INTO users (
+          id, login_name, display_name, password_hash, role, status,
+          created_at, updated_at
+        )
+        VALUES ('__test__', '__test__', 'Test User', 'test-only', 'admin', 'active', ?, ?)
+      `)
+      .run(timestamp, timestamp);
+    await saveAccountCredential(
+      credentialStore,
+      "__test__",
+      arkProfileId,
+      "test-only-ark-reset-key",
+    );
+    await saveAccountCredential(
+      credentialStore,
+      "__test__",
+      openRouterProfileId,
+      "test-only-openrouter-reset-key",
+    );
+    credentialStore.close();
 
     const database = openAppDatabase(dataDirectory);
     try {
@@ -1404,6 +1432,11 @@ test("only capability success or an explicit Provider/model update clears an aut
   } finally {
     safety.close();
     if (server) await stopIncidentServer(server);
+    if (previousDataDirectory === undefined) {
+      delete process.env.TAPNOW_DATA_DIR;
+    } else {
+      process.env.TAPNOW_DATA_DIR = previousDataDirectory;
+    }
     await rm(dataDirectory, { force: true, recursive: true });
   }
 });

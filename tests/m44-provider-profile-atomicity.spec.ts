@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "@playwright/test";
+import { saveAccountCredential } from "../server/accountCredentials";
 import { currentSchemaVersion, openAppDatabase } from "../server/database";
 import { executeTextTaskWithDependencies } from "../server/generationTasks";
 import {
@@ -312,6 +313,24 @@ test("a request lease releases after fake fetch starts instead of waiting for it
       driver: "volcengine-ark",
       label: "Fetch lease profile",
     });
+    const credentialStore = openAppDatabase(directory);
+    const timestamp = new Date().toISOString();
+    credentialStore
+      .prepare(`
+        INSERT OR IGNORE INTO users (
+          id, login_name, display_name, password_hash, role, status,
+          created_at, updated_at
+        )
+        VALUES ('__test__', '__test__', 'Test User', 'test-only', 'admin', 'active', ?, ?)
+      `)
+      .run(timestamp, timestamp);
+    await saveAccountCredential(
+      credentialStore,
+      "__test__",
+      profile.id,
+      "sk-lease-credential-1234",
+    );
+    credentialStore.close();
     await verifyProviderProfile(profile.id, "__test__", async () =>
       new Response(JSON.stringify({ items: [] }), { status: 200 }));
     store = createGenerationTaskStore(directory);
@@ -393,6 +412,24 @@ test("a request lease waits across the document-to-metadata window without using
       driver: "volcengine-ark",
       label: "Reader lock profile",
     });
+    const credentialStore = openAppDatabase(directory);
+    const timestamp = new Date().toISOString();
+    credentialStore
+      .prepare(`
+        INSERT OR IGNORE INTO users (
+          id, login_name, display_name, password_hash, role, status,
+          created_at, updated_at
+        )
+        VALUES ('__test__', '__test__', 'Test User', 'test-only', 'admin', 'active', ?, ?)
+      `)
+      .run(timestamp, timestamp);
+    await saveAccountCredential(
+      credentialStore,
+      "__test__",
+      profile.id,
+      "sk-reader-credential-1234",
+    );
+    credentialStore.close();
     await verifyProviderProfile(profile.id, "__test__", async () =>
       new Response(JSON.stringify({ items: [] }), { status: 200 }));
     store = createGenerationTaskStore(directory);

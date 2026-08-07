@@ -2328,10 +2328,13 @@ export function CanvasSurface({
         ? withImageReferenceInputMode(node, imageModelsRef.current)
         : node,
     );
+    // 模板只保存 assetId，不保存短时/结果地址；落画布时立即重建
+    // durable src（与文档 hydration 同一规则），否则要等刷新才显示素材。
+    const hydratedNodes = normalizePersistedMediaNodes(preparedNodes);
     checkpoint();
     setNodes((current) => [
       ...current.map((node) => ({ ...node, selected: false })),
-      ...preparedNodes,
+      ...hydratedNodes,
     ]);
     setEdges((current) => [...current, ...appliedEdges]);
     if (groupNode) setPrimaryId(groupNode.id);

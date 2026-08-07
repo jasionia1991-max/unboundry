@@ -16,6 +16,7 @@ import {
   getProviderProfile,
   listProviderProfiles,
   migrateLegacyProviderKeysIfNeeded,
+  saveArkControlPlaneCredentials,
   saveProviderProfile,
 } from "../server/providerProfiles";
 
@@ -104,6 +105,30 @@ test("legacy global keys migrate only to active administrators and leave the doc
       label: "Legacy OpenRouter",
     });
     expect((await getProviderProfile(profile.id))?.apiKey).toBe(secret);
+    const manualStore = openAppDatabase(directory);
+    await saveAccountCredential(
+      manualStore,
+      "admin-1",
+      profile.id,
+      "sk-manual-replacement-9999",
+    );
+    manualStore.close();
+    const arkSecret = `ark-key-${randomUUID()}`;
+    const arkProfile = await saveProviderProfile({
+      apiKey: arkSecret,
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      driver: "volcengine-ark",
+      label: "Legacy Ark",
+    });
+    await saveArkControlPlaneCredentials(arkProfile.id, {
+      accessKeyId: "AKLT-legacy-control-plane",
+      projectName: "default",
+      secretAccessKey: "legacy-control-plane-secret",
+    });
+    expect((await getProviderProfile(arkProfile.id))?.apiKey).toBe(arkSecret);
+    expect(
+      (await getProviderProfile(arkProfile.id))?.arkControlPlane?.accessKeyId,
+    ).toBe("AKLT-legacy-control-plane");
 
     await migrateLegacyProviderKeysIfNeeded();
     await migrateLegacyProviderKeysIfNeeded();
@@ -111,16 +136,29 @@ test("legacy global keys migrate only to active administrators and leave the doc
     const document = await listProviderProfiles();
     expect(document.profiles.find((item) => item.id === profile.id)?.apiKey)
       .toBeUndefined();
+    const migratedArk = document.profiles.find(
+      (item) => item.id === arkProfile.id,
+    );
+    expect(migratedArk?.apiKey).toBeUndefined();
+    expect(migratedArk?.arkControlPlane?.accessKeyId).toBe(
+      "AKLT-legacy-control-plane",
+    );
     const migratedStore = openAppDatabase(directory);
     try {
       expect(
         await accountCredentialKey(migratedStore, "admin-1", profile.id),
-      ).toBe(secret);
+      ).toBe("sk-manual-replacement-9999");
       expect(
         await accountCredentialKey(migratedStore, "admin-2", profile.id),
       ).toBe(secret);
       expect(
         await accountCredentialKey(migratedStore, "user-1", profile.id),
+      ).toBeUndefined();
+      expect(
+        await accountCredentialKey(migratedStore, "admin-1", arkProfile.id),
+      ).toBe(arkSecret);
+      expect(
+        await accountCredentialKey(migratedStore, "user-1", arkProfile.id),
       ).toBeUndefined();
     } finally {
       migratedStore.close();

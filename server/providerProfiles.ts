@@ -400,8 +400,7 @@ export async function migrateLegacyProviderKeysIfNeeded() {
   try {
     const document = await readDocument();
     const legacy = document.profiles.filter(
-      (profile) =>
-        Boolean(profile.apiKey) && profile.driver !== "volcengine-ark",
+      (profile) => Boolean(profile.apiKey),
     );
     if (!legacy.length) return;
     const admins = db()
@@ -423,17 +422,11 @@ export async function migrateLegacyProviderKeysIfNeeded() {
     );
     const timestamp = new Date().toISOString();
     const insert = db().prepare(`
-      INSERT INTO account_provider_credentials (
+      INSERT OR IGNORE INTO account_provider_credentials (
         account_id, provider_profile_id, encrypted_key, key_status,
         key_checked_at, credential_version, updated_at
       )
       VALUES (?, ?, ?, 'unchecked', NULL, 1, ?)
-      ON CONFLICT(account_id, provider_profile_id) DO UPDATE SET
-        encrypted_key = excluded.encrypted_key,
-        key_status = 'unchecked',
-        key_checked_at = NULL,
-        credential_version = 1,
-        updated_at = excluded.updated_at
     `);
     await mutateDocument((current) => {
       for (const payload of payloads) {
@@ -1076,12 +1069,6 @@ export async function getProviderGenerationProfileState(
     | { key_status: "invalid" | "unchecked" | "unknown" | "valid" }
     | undefined;
   if (!credential) {
-    if (state.profile.apiKey) {
-      return {
-        ...state,
-        profile: { ...state.profile },
-      };
-    }
     return {
       ...state,
       reason: "account-credential-missing",
