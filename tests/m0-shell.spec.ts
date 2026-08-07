@@ -996,7 +996,7 @@ test("project menu keeps only the current private-project actions", async ({
 test("account popover closes from the avatar, Escape and the canvas", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/canvas");
   const trigger = page.getByTestId("user-avatar");
   const popover = page.getByTestId("account-popover");
 
@@ -1400,7 +1400,7 @@ test("transient dialogs and panels close cleanly and return focus", async ({
 test("fixture and normal canvases share the real account popover contract", async ({
   page,
 }) => {
-  for (const url of ["/", "/__fixture/shell.empty.primary"]) {
+  for (const url of ["/canvas", "/__fixture/shell.empty.primary"]) {
     await page.goto(url);
     const account = page.getByTestId("account-popover");
     const user = page.getByTestId("user-avatar");

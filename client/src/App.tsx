@@ -7280,7 +7280,7 @@ function AuthenticatedApplication({
         role={status.user.role}
         userId={status.user.id}
         userInitial={status.user.displayName.trim().charAt(0).toLocaleUpperCase() || "M"}
-        workspace={workspace}
+        workspace={workspace || window.location.pathname === "/"}
       />
       {accountOpen && (
         <aside

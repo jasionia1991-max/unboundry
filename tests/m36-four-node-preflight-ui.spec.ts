@@ -182,7 +182,7 @@ test("Text, Image, Video and Audio stop after the same non-enqueueable preflight
     });
     expect(saved.ok()).toBeTruthy();
 
-    await page.goto("/");
+    await page.goto("/canvas");
     await expect(page.getByTestId("canvas-world"))
       .toHaveAttribute("data-persistence-ready", "true");
 
@@ -352,7 +352,7 @@ test("all four real-canvas creators show the same visible platform stop reason",
       },
     });
     expect(saved.ok()).toBeTruthy();
-    await page.goto("/");
+    await page.goto("/canvas");
     await expect(page.getByTestId("canvas-world"))
       .toHaveAttribute("data-persistence-ready", "true");
 

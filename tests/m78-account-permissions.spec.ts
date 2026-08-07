@@ -614,7 +614,7 @@ test("ordinary accounts see only granted entries and direct admin routes redirec
     });
     await page.goto("/admin/models");
     await page.waitForURL("/");
-    await page.goto("/");
+    await page.goto("/canvas");
     await page.getByTestId("user-avatar").click();
     const popover = page.getByTestId("account-popover");
     await expect(popover.getByRole("button", { name: "我的连接" })).toBeVisible();
@@ -648,7 +648,7 @@ test("ordinary accounts see only granted entries and direct admin routes redirec
     });
     await page.goto("/admin/models");
     await expect(page.getByTestId("admin-models-page")).toBeVisible();
-    await page.goto("/");
+    await page.goto("/canvas");
     await page.getByTestId("user-avatar").click();
     await expect(
       popover.getByRole("button", { name: "模型中心" }),

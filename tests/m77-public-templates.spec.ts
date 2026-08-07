@@ -775,7 +775,7 @@ test("browse-all admin entry follows permissions and recent-used filters by acco
     }
 
     // 管理员：浏览全部侧栏显示管理入口。
-    await page.goto("/");
+    await page.goto("/canvas");
     await page.getByTestId("templates").click();
     await page.getByRole("button", { name: "浏览全部" }).click();
     await expect(page.getByTestId("admin-templates-entry")).toBeVisible();
@@ -789,7 +789,7 @@ test("browse-all admin entry follows permissions and recent-used filters by acco
         password: "ordinary-pass-123",
       },
     });
-    await page.goto("/");
+    await page.goto("/canvas");
     await page.getByTestId("templates").click();
     await page.getByRole("button", { name: "浏览全部" }).click();
     await expect(page.getByTestId("admin-templates-entry")).toHaveCount(0);

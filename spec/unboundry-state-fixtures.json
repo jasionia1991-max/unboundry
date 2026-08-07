@@ -297,9 +297,9 @@
         "placeholderVisible": true
       },
       "elements": {
-        "projectArea": [16, 16, 320, 40],
-        "logoButton": [16, 18, 40, 36],
-        "titleInput": [56, 16, 280, 20],
+        "projectArea": [16, 16, 344, 40],
+        "logoButton": [16, 18, 46, 42],
+        "titleInput": [66, 16, 280, 20],
         "topRight": [1080, 16, 40, 40],
         "credits": [910.6, 16, 65.4, 40],
         "share": [1080, 16, 40, 40],

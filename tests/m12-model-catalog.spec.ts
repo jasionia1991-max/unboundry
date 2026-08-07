@@ -536,7 +536,7 @@ test("administrator model center is visible and published models reach new node 
   await editor.getByRole("button", { name: "保存参数设置" }).click();
   await expect(createdCard).toContainText("比例");
 
-  await page.goto("/");
+  await page.goto("/canvas");
   await page.getByTestId("add-node").click();
   await page
     .getByTestId("add-node-menu")

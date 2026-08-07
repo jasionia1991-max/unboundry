@@ -331,7 +331,7 @@ test("all four nodes preserve unavailable saved models until an explicit compati
     });
     expect(saved.ok()).toBeTruthy();
 
-    await page.goto("/");
+    await page.goto("/canvas");
     const world = page.getByTestId("canvas-world");
     await expect(world).toHaveAttribute("data-persistence-ready", "true");
     await expect(world).toHaveAttribute("data-edge-count", "1");

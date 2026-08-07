@@ -615,7 +615,7 @@ test("a persisted pending Text task replaces old content after refresh without a
     });
     expect(saved.ok()).toBeTruthy();
 
-    await page.goto("/");
+    await page.goto("/canvas");
     await expect(page.getByTestId("canvas-world"))
       .toHaveAttribute("data-persistence-ready", "true");
     await expect(page.getByTestId("text-node-editor"))
@@ -847,7 +847,7 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
     });
     expect(saved.ok()).toBeTruthy();
 
-    await page.goto("/");
+    await page.goto("/canvas");
     await expect(page.getByTestId("canvas-world"))
       .toHaveAttribute("data-persistence-ready", "true");
     await page.getByTestId(`rf__node-${nodeId}`).click();

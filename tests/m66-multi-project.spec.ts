@@ -419,7 +419,7 @@ test("workspace back returns to the originating project, not the default canvas"
 test("workspace entry points are visible from the default canvas and workspace returns to canvas", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/canvas");
   await expect(page.getByTestId("canvas-world")).toHaveAttribute(
     "data-persistence-ready",
     "true",
@@ -431,7 +431,7 @@ test("workspace entry points are visible from the default canvas and workspace r
   await expect(page.getByTestId("workspace-page")).toBeVisible();
 
   await page.getByTestId("workspace-back").click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/canvas$/);
   await expect(page.getByTestId("canvas-shell")).toBeVisible();
 
   await page.getByTestId("user-avatar").click();

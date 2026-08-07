@@ -51,7 +51,7 @@ test("the stylesheet exposes only two text sizes and the macOS native font stack
 test("canvas, expanded menus, creator controls and every admin page keep two font sizes", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/canvas");
   await expectUnifiedTypography(page);
 
   await page.getByTestId("add-node").click();

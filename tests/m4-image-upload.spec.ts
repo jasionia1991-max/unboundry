@@ -259,7 +259,7 @@ test("the real root canvas saves a newly uploaded image across reload", async ({
   page,
   request,
 }) => {
-  await page.goto("/");
+  await page.goto("/canvas");
   const world = page.getByTestId("canvas-world");
   await expect(world).toHaveAttribute("data-persistence-ready", "true");
   await expect(world).toHaveAttribute("data-node-count", "0");

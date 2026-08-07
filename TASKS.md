@@ -958,3 +958,12 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - 发布脚本：`scripts/deploy.mjs --version X.Y.Z`（改版本号→本地构建→提交打标→rsync→服务器构建重启→版本校验→推 GitHub）。
 - 测试：m82 4/4（版本接口、SSE 首帧、版本变化弹提示、同版本不弹）；m20 1/1；tsc/build 通过。
 - 发布：以 v0.2.0 首次走完整发布流程（见 git 记录）。
+
+### 2026-08-08 主页与图标尺寸（v0.3.0）
+
+- 登录后默认进入主页（`/` = 工作空间项目网格）；默认画布入口为 `/canvas`，项目画布为 `/canvas/:id`。
+- 主页左上角：无界环图标 36px + 「无央」22px 粗体白字（间距 8px、垂直居中），按 TapNow 主页比例实现；工作空间页头部改造为品牌区 + 标题 + 工具栏。
+- 画布左上角图标 28→34px（点击区 46×42，项目区 320→344px，标题区右移）；管理页图标统一 32px。
+- 冻结坐标基线同步：m0 shell 与响应式基线更新 logoButton/titleInput/projectArea；测试根路径统一为 `/canvas`。
+- 测试：m83 2/2（主页品牌与尺寸、画布 34px/管理页 32px）；m0-shell 22/23（唯一失败为既有 P1 creator 基线）；m66 13/13、m82 4/4。
+- 发布：以 v0.3.0 走 `scripts/deploy.mjs` 全自动发布。

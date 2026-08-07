@@ -410,7 +410,7 @@ test("four nodes keep safe retry across autosave, then detach it after semantic 
         viewport: { x: 0, y: 0, zoom: 0.75 },
       },
     })).ok()).toBeTruthy();
-    await page.goto("/");
+    await page.goto("/canvas");
     await expect(page.getByTestId("canvas-world"))
       .toHaveAttribute("data-persistence-ready", "true");
     await generateAndWaitForFailure(page, kind);
@@ -465,7 +465,7 @@ test("four nodes obey server retryAllowed=false before and after refresh", async
         viewport: { x: 0, y: 0, zoom: 0.75 },
       },
     })).ok()).toBeTruthy();
-    await page.goto("/");
+    await page.goto("/canvas");
     await expect(page.getByTestId("canvas-world"))
       .toHaveAttribute("data-persistence-ready", "true");
     await generateAndWaitForFailure(page, kind);
@@ -499,7 +499,7 @@ for (const kind of ["image", "video"] as const) {
       },
     })).ok()).toBeTruthy();
 
-    await page.goto("/");
+    await page.goto("/canvas");
     await expect(page.getByTestId("canvas-world"))
       .toHaveAttribute("data-persistence-ready", "true");
     await selectNode(page, kind);
@@ -671,7 +671,7 @@ test("relay audio exposes local-only cancellation while Mureka remains unchanged
       viewport: { x: 0, y: 0, zoom: 0.75 },
     },
   })).ok()).toBeTruthy();
-  await page.goto("/");
+  await page.goto("/canvas");
   await expect(page.getByTestId("canvas-world"))
     .toHaveAttribute("data-persistence-ready", "true");
   await selectNode(page, "audio");

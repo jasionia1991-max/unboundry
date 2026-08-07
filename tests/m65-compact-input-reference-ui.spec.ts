@@ -503,7 +503,7 @@ test.describe.serial("compact upstream references stay one-row and zero Provider
         "default",
         "用于检查创作框只打开一层状态详情",
       );
-      await page.goto("/");
+      await page.goto("/canvas");
       await expect(page.getByTestId("canvas-world"))
         .toHaveAttribute("data-persistence-ready", "true");
       await page.locator('.react-flow__node[data-id="m65-target-text"]').click({

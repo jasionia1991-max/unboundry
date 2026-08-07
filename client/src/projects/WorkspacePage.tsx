@@ -216,7 +216,7 @@ export function WorkspacePage({ userId = "" }: { userId?: string }) {
         }
       }
     }
-    window.location.href = "/";
+    window.location.href = "/canvas";
   };
 
   const cloneProject = async (project: ProjectSummary) => {
@@ -357,9 +357,15 @@ export function WorkspacePage({ userId = "" }: { userId?: string }) {
   return (
     <main className="workspace-page" data-testid="workspace-page">
       <header className="workspace-header">
-        <div>
-          <strong>工作空间</strong>
-          <span>我的项目</span>
+        <div className="workspace-header-main">
+          <div className="workspace-brand" data-testid="workspace-brand">
+            <span aria-hidden="true" className="replica-mark" />
+            <strong className="workspace-wordmark">无央</strong>
+          </div>
+          <div className="workspace-title">
+            <strong>工作空间</strong>
+            <span>我的项目</span>
+          </div>
         </div>
         <div className="workspace-toolbar">
           <button

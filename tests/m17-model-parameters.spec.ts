@@ -1103,7 +1103,7 @@ test("text, image, video and audio nodes render admin-defined parameters and per
   }
 
   await page.request.delete("/api/canvas/default");
-  await page.goto("/");
+  await page.goto("/canvas");
   const addNode = async (name: "文本" | "图片" | "视频" | "音频") => {
     await page.getByTestId("add-node").click();
     await page.getByTestId("add-node-menu").getByRole("menuitem", {

@@ -89,7 +89,7 @@ test("canvas shows the update notice only when versions differ", async ({
       status: 200,
     }),
   );
-  await page.goto("/");
+  await page.goto("/canvas");
   await expect(page.getByTestId("update-notice")).toBeVisible();
   await expect(page.getByTestId("update-notice")).toContainText(
     "已更新到 v99.0.0",
@@ -102,6 +102,6 @@ test("canvas shows the update notice only when versions differ", async ({
 test("canvas stays quiet when the bundled version matches the server", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/canvas");
   await expect(page.getByTestId("update-notice")).toHaveCount(0);
 });

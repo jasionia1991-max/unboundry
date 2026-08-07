@@ -144,7 +144,7 @@ test("relay Text node exposes bounded defaults and keeps them in zero-Provider p
     });
   });
 
-  await page.goto("/");
+  await page.goto("/canvas");
   await expect(page.getByTestId("canvas-world")).toHaveAttribute(
     "data-persistence-ready",
     "true",
@@ -273,7 +273,7 @@ test("relay doubao TTS node shows only documented controls and reveals emotion s
     });
   });
 
-  await page.goto("/");
+  await page.goto("/canvas");
   await expect(page.getByTestId("canvas-world")).toHaveAttribute(
     "data-persistence-ready",
     "true",

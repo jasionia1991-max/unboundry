@@ -481,7 +481,7 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
       }
     });
 
-    await page.goto("/");
+    await page.goto("/canvas");
     const world = page.getByTestId("canvas-world");
     await expect(world).toHaveAttribute("data-persistence-ready", "true");
     await expect(world).toHaveAttribute("data-edge-count", "4");
@@ -697,7 +697,7 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
     page,
     request,
   }) => {
-    await page.goto("/");
+    await page.goto("/canvas");
     const world = page.getByTestId("canvas-world");
     await expect(world).toHaveAttribute("data-persistence-ready", "true");
     await page.locator('.react-flow__node[data-id="p2-target-text"]').click({
