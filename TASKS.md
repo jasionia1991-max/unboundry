@@ -891,5 +891,6 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - 最终一步（用户已按推荐同意在收尾时执行）：4173 由 `vite dev` 切换为 `vite preview`（生产构建）并重启；切换后每次改代码需 rebuild+重启。执行时先备份 plist。
 - 已执行：4173 切换为 `vite preview`（launchd plist 已备份为 `~/Library/LaunchAgents/com.tapnow-replica.4173.plist.bak-20260808`，仅新增 `preview` 参数），服务重启后页面/接口 200。真实 Chrome 60 节点最终复测：缩放 121fps、平移 120fps、拖动 119fps，全部 0 掉帧、0 长任务、最大帧 ≤17ms。
 - 运维约定（切换后生效）：4173 服务生产构建模式，改代码后需 `npm run build` 并 `launchctl kickstart -k gui/$(id -u)/com.tapnow-replica.4173` 生效；开发调试请用独立端口（4174/419x）。
+- 已切回开发模式（用户选择，因后续功能开发需要即时生效/HMR）：4173 launchd 移除 `preview` 参数，服务以 `vite dev` 运行，页面/接口 200；所有性能优化代码仍在，仅 dev 模式检查开销会让拖动手感回退（日常使用建议等功能批次完成后切回成品模式，plist 备份仍在）。
 - 延后问题（与 STEP 1 无关，既有）：m27 `allowed Video media edges pass zero-cost preflight` 在改动前主干同样失败（期望 0 实得 2,777,778，疑似模型成本/默认单任务费用口径，另行排查）；m0 P1 creator 基线。
 - 延后问题（既有）：m63 `group create, undo, delete recovery` 在完全未改动的主干上稳定失败——快照显示“保存中…”与 GET 竞态（第二次打组后保存未落库即被读取），属测试竞态，另行排查。
