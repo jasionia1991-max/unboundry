@@ -181,7 +181,7 @@ function cleanSettings(input: Partial<SafetyInput>): SafetyInput {
     audioConcurrency: cleanInteger(
       input.audioConcurrency,
       1,
-      20,
+      1_000,
       "音频并发",
     ),
     cooldownMinutes: cleanInteger(
@@ -213,7 +213,7 @@ function cleanSettings(input: Partial<SafetyInput>): SafetyInput {
     imageConcurrency: cleanInteger(
       input.imageConcurrency,
       1,
-      20,
+      1_000,
       "图片并发",
     ),
     monthlyCostLimitMicrounits: cleanInteger(
@@ -231,13 +231,13 @@ function cleanSettings(input: Partial<SafetyInput>): SafetyInput {
     perUserConcurrency: cleanInteger(
       input.perUserConcurrency,
       1,
-      20,
+      1_000,
       "用户并发",
     ),
     requestsPerMinute: cleanInteger(
       input.requestsPerMinute,
       1,
-      120,
+      1_000,
       "请求频率",
     ),
     runningTaskPolicy: input.runningTaskPolicy as RunningTaskPolicy,
@@ -250,7 +250,7 @@ function cleanSettings(input: Partial<SafetyInput>): SafetyInput {
     textConcurrency: cleanInteger(
       input.textConcurrency,
       1,
-      20,
+      1_000,
       "文字并发",
     ),
     usdToCnyRateMicrounits: cleanInteger(
@@ -262,7 +262,7 @@ function cleanSettings(input: Partial<SafetyInput>): SafetyInput {
     videoConcurrency: cleanInteger(
       input.videoConcurrency,
       1,
-      20,
+      1_000,
       "视频并发",
     ),
   };

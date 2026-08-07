@@ -577,3 +577,32 @@ test("legacy settings updates without global fields keep current values", async 
     await rm(dataDirectory, { force: true, recursive: true });
   }
 });
+
+test("concurrency and frequency limits accept high admin values", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-safety-high-"));
+  const safety = createGenerationSafetyStore(dataDirectory);
+  try {
+    safety.update({
+      ...baseSettings,
+      audioConcurrency: 500,
+      imageConcurrency: 500,
+      perUserConcurrency: 500,
+      requestsPerMinute: 500,
+      textConcurrency: 500,
+      videoConcurrency: 500,
+    });
+    const settings = safety.settings();
+    expect(settings.perUserConcurrency).toBe(500);
+    expect(settings.requestsPerMinute).toBe(500);
+    expect(settings.textConcurrency).toBe(500);
+    expect(settings.imageConcurrency).toBe(500);
+    expect(settings.videoConcurrency).toBe(500);
+    expect(settings.audioConcurrency).toBe(500);
+    expect(() =>
+      safety.update({ ...baseSettings, perUserConcurrency: 1001 }),
+    ).toThrow("用户并发");
+  } finally {
+    safety.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});

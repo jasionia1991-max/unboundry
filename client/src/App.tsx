@@ -5939,7 +5939,7 @@ function AdminGenerationSafety({
                 <label>
                   <span>单个用户同时运行</span>
                   <input
-                    max={20}
+                    max={1000}
                     min={1}
                     onChange={(event) =>
                       setNumber("perUserConcurrency", event.target.value)
@@ -5952,7 +5952,7 @@ function AdminGenerationSafety({
                 <label>
                   <span>每分钟最多请求</span>
                   <input
-                    max={120}
+                    max={1000}
                     min={1}
                     onChange={(event) =>
                       setNumber("requestsPerMinute", event.target.value)
@@ -5965,7 +5965,7 @@ function AdminGenerationSafety({
                 <label>
                   <span>文字同时运行</span>
                   <input
-                    max={20}
+                    max={1000}
                     min={1}
                     onChange={(event) =>
                       setNumber("textConcurrency", event.target.value)
@@ -5978,7 +5978,7 @@ function AdminGenerationSafety({
                 <label>
                   <span>图片同时运行</span>
                   <input
-                    max={20}
+                    max={1000}
                     min={1}
                     onChange={(event) =>
                       setNumber("imageConcurrency", event.target.value)
@@ -5991,7 +5991,7 @@ function AdminGenerationSafety({
                 <label>
                   <span>视频同时运行</span>
                   <input
-                    max={20}
+                    max={1000}
                     min={1}
                     onChange={(event) =>
                       setNumber("videoConcurrency", event.target.value)
@@ -6004,7 +6004,7 @@ function AdminGenerationSafety({
                 <label>
                   <span>音频同时运行</span>
                   <input
-                    max={20}
+                    max={1000}
                     min={1}
                     onChange={(event) =>
                       setNumber("audioConcurrency", event.target.value)

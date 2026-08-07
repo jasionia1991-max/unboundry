@@ -1362,6 +1362,75 @@ const migrations: readonly Migration[] = [
     },
     sql: "",
   },
+  {
+    version: 33,
+    name: "generation-safety-concurrency-range",
+    sql: `
+      CREATE TABLE generation_safety_settings_next (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        global_enabled INTEGER NOT NULL DEFAULT 0
+          CHECK (global_enabled IN (0, 1)),
+        emergency_stop INTEGER NOT NULL DEFAULT 0
+          CHECK (emergency_stop IN (0, 1)),
+        per_user_concurrency INTEGER NOT NULL DEFAULT 1
+          CHECK (per_user_concurrency BETWEEN 1 AND 1000),
+        requests_per_minute INTEGER NOT NULL DEFAULT 3
+          CHECK (requests_per_minute BETWEEN 1 AND 1000),
+        image_concurrency INTEGER NOT NULL DEFAULT 1
+          CHECK (image_concurrency BETWEEN 1 AND 1000),
+        video_concurrency INTEGER NOT NULL DEFAULT 1
+          CHECK (video_concurrency BETWEEN 1 AND 1000),
+        audio_concurrency INTEGER NOT NULL DEFAULT 1
+          CHECK (audio_concurrency BETWEEN 1 AND 1000),
+        daily_cost_limit_microunits INTEGER NOT NULL DEFAULT 0
+          CHECK (daily_cost_limit_microunits BETWEEN 0 AND 1000000000000),
+        monthly_cost_limit_microunits INTEGER NOT NULL DEFAULT 0
+          CHECK (monthly_cost_limit_microunits BETWEEN 0 AND 10000000000000),
+        unknown_cost_policy TEXT NOT NULL DEFAULT 'block'
+          CHECK (unknown_cost_policy = 'block'),
+        failure_threshold INTEGER NOT NULL DEFAULT 3
+          CHECK (failure_threshold BETWEEN 1 AND 20),
+        cooldown_minutes INTEGER NOT NULL DEFAULT 30
+          CHECK (cooldown_minutes BETWEEN 1 AND 1440),
+        running_task_policy TEXT NOT NULL DEFAULT 'wait'
+          CHECK (running_task_policy IN ('wait', 'cancel')),
+        updated_at TEXT NOT NULL,
+        daily_cost_limit_cny_microunits INTEGER NOT NULL DEFAULT 0
+          CHECK (daily_cost_limit_cny_microunits BETWEEN 0 AND 1000000000000),
+        monthly_cost_limit_cny_microunits INTEGER NOT NULL DEFAULT 0
+          CHECK (monthly_cost_limit_cny_microunits BETWEEN 0 AND 10000000000000),
+        text_concurrency INTEGER NOT NULL DEFAULT 1
+          CHECK (text_concurrency BETWEEN 1 AND 1000),
+        single_task_default_cost_cny_microunits INTEGER NOT NULL DEFAULT 20000000
+          CHECK (single_task_default_cost_cny_microunits BETWEEN 0 AND 1000000000000),
+        usd_to_cny_rate_microunits INTEGER NOT NULL DEFAULT 7200000
+          CHECK (usd_to_cny_rate_microunits BETWEEN 10000 AND 1000000000000)
+      );
+      INSERT INTO generation_safety_settings_next (
+        id, global_enabled, emergency_stop, per_user_concurrency,
+        requests_per_minute, image_concurrency, video_concurrency,
+        audio_concurrency, daily_cost_limit_microunits,
+        monthly_cost_limit_microunits, unknown_cost_policy,
+        failure_threshold, cooldown_minutes, running_task_policy,
+        updated_at, daily_cost_limit_cny_microunits,
+        monthly_cost_limit_cny_microunits, text_concurrency,
+        single_task_default_cost_cny_microunits, usd_to_cny_rate_microunits
+      )
+      SELECT
+        id, global_enabled, emergency_stop, per_user_concurrency,
+        requests_per_minute, image_concurrency, video_concurrency,
+        audio_concurrency, daily_cost_limit_microunits,
+        monthly_cost_limit_microunits, unknown_cost_policy,
+        failure_threshold, cooldown_minutes, running_task_policy,
+        updated_at, daily_cost_limit_cny_microunits,
+        monthly_cost_limit_cny_microunits, text_concurrency,
+        single_task_default_cost_cny_microunits, usd_to_cny_rate_microunits
+      FROM generation_safety_settings;
+      DROP TABLE generation_safety_settings;
+      ALTER TABLE generation_safety_settings_next
+        RENAME TO generation_safety_settings;
+    `,
+  },
 ];
 
 export const currentSchemaVersion = migrations.at(-1)?.version ?? 0;
