@@ -3984,6 +3984,7 @@ export function CanvasSurface({
         nodesDraggable={!activePlaylist && !agentReferenceMode}
         nodesConnectable
         nodeTypes={nodeTypes}
+        onlyRenderVisibleElements
         onConnect={addConnection}
         onConnectEnd={(event, state) => {
           if (

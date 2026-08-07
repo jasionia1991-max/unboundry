@@ -20,9 +20,12 @@ test("dense canvas keeps 62 nodes, 58 edges and 5 groups responsive", async ({
   await expect(world).toHaveAttribute("data-edge-count", "58");
   await expect(world).toHaveAttribute("data-group-count", "5");
   await expect(world).toHaveAttribute("data-viewport-zoom", "0.15");
-  await expect(page.locator(".react-flow__node")).toHaveCount(62);
-  await expect(page.locator(".react-flow__edge")).toHaveCount(58);
-  await expect(page.locator('[data-node-variant="group"]')).toHaveCount(5);
+  // 可视区域渲染：DOM 只挂载视口内节点，全量计数改由 data-* 属性保证。
+  await expect(page.locator(".react-flow__node").first()).toBeVisible();
+  await expect(page.locator(".react-flow__edge:visible").first()).toBeVisible();
+  await expect(
+    page.locator('[data-node-variant="group"]:visible').first(),
+  ).toBeVisible();
   requests.length = 0;
 
   await page.evaluate(() => {
@@ -39,7 +42,7 @@ test("dense canvas keeps 62 nodes, 58 edges and 5 groups responsive", async ({
     state.denseObserver.observe({ entryTypes: ["longtask"] });
   });
 
-  const node = page.locator('.react-flow__node[data-id="dense-node-1"]');
+  const node = page.locator(".react-flow__node:visible").first();
   const before = await node.boundingBox();
   await page.mouse.move(before!.x + before!.width / 2, before!.y + before!.height / 2);
   await page.mouse.down();

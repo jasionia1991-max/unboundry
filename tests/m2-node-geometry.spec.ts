@@ -20,6 +20,12 @@ test("Node geometry catalog keeps defaults, media adaptation, and user resizing 
     "data-fixture-id",
     "legacy.node-geometry.families",
   );
+  // 可视区域渲染：先缩到最小档让目录页全部节点进入视口，再按类型计数。
+  await page.getByTestId("zoom-slider").fill("0.15");
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-viewport-zoom",
+    "0.15",
+  );
   await expect(page.locator(".react-flow__node-text")).toHaveCount(2);
   await expect(page.locator(".react-flow__node-image")).toHaveCount(3);
   await expect(page.locator(".react-flow__node-video")).toHaveCount(3);
