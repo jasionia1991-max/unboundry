@@ -967,3 +967,12 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - 冻结坐标基线同步：m0 shell 与响应式基线更新 logoButton/titleInput/projectArea；测试根路径统一为 `/canvas`。
 - 测试：m83 2/2（主页品牌与尺寸、画布 34px/管理页 32px）；m0-shell 22/23（唯一失败为既有 P1 creator 基线）；m66 13/13、m82 4/4。
 - 发布：以 v0.3.0 走 `scripts/deploy.mjs` 全自动发布。
+
+### 2026-08-08 品牌升级：霞鹜文楷 + 无框大图标 + 主页铺满（v0.4.0）
+
+- 字体：自托管 LXGW WenKai（OFL 授权，两个 unicode-range 分片覆盖「无」「央」），「无央」保持 22px、白→冰蓝渐变 + 0.12em 字距，下加小字 `UNBOUNDRY`（0.42em 字距）。
+- 图标：去掉深色底框，改为白→冰蓝渐变无界环 + 柔光（drop-shadow）；主页 60px、画布左上角 60px（画布内不出现「无央」文字）、管理页 32px。
+- 主页铺满：去掉 `max-width:1100px` 居中，网格 `minmax(220px,1fr)` + 18px 间距。
+- 画布顶栏几何：project-area 364×64、logo-button 72×64、标题区 76/12、项目菜单下移至 y=84；m0 冻结基线（projectArea/logoButton/titleInput/menu）同步。
+- 测试：m83 2/2（60px 图标尺寸）、m0-shell 24/25（唯一失败为既有 P1 creator 基线）、m66 13/13、m82 4/4；tsc/build 通过。
+- 发布：以 v0.4.0 走 `scripts/deploy.mjs` 全自动发布。

@@ -12,9 +12,9 @@
       "deviceScaleFactor": 1,
       "screenshot": "spec/reference/m0-shell/shell-empty-1440x900-1x.png",
       "elements": {
-        "projectArea": [16, 16, 344, 40],
-        "logoButton": [16, 18, 46, 42],
-        "titleInput": [66, 16, 280, 20],
+        "projectArea": [16, 16, 364, 64],
+        "logoButton": [16, 16, 72, 64],
+        "titleInput": [92, 28, 280, 20],
         "topRight": [1385, 16, 40, 40],
         "credits": [1215.6, 16, 65.4, 40],
         "share": [1385, 16, 40, 40],
@@ -48,7 +48,7 @@
       "deviceScaleFactor": 2,
       "screenshot": "spec/reference/m0-shell/shell-empty-1280x720-2x.png",
       "elements": {
-        "projectArea": [16, 16, 344, 40],
+        "projectArea": [16, 16, 364, 64],
         "topRight": [1225, 16, 40, 40],
         "leftToolbar": [15, 186, 54, 340],
         "emptyQuickActions": [318, 318, 644, 84],
@@ -64,7 +64,7 @@
       "deviceScaleFactor": 2,
       "screenshot": "spec/reference/m0-shell/shell-empty-1512x982-2x.png",
       "elements": {
-        "projectArea": [16, 16, 344, 40],
+        "projectArea": [16, 16, 364, 64],
         "topRight": [1457, 16, 40, 40],
         "leftToolbar": [15, 317, 54, 340],
         "emptyQuickActions": [434, 449, 644, 84],
@@ -80,9 +80,9 @@
       "deviceScaleFactor": 1,
       "screenshot": "spec/reference/m0-shell/shell-empty-1920x1080-1x.png",
       "elements": {
-        "projectArea": [16, 16, 344, 40],
-        "logoButton": [16, 18, 46, 42],
-        "titleInput": [66, 16, 280, 20],
+        "projectArea": [16, 16, 364, 64],
+        "logoButton": [16, 16, 72, 64],
+        "titleInput": [92, 28, 280, 20],
         "topRight": [1865, 16, 40, 40],
         "credits": [1695.6, 16, 65.4, 40],
         "share": [1865, 16, 40, 40],

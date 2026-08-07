@@ -1647,12 +1647,26 @@ sup {
 }
 
 /* 多项目工作空间 */
+@font-face {
+  font-family: "LXGW WenKai";
+  src: url("/fonts/lxgw-wenkai-regular-subset-112.woff2") format("woff2");
+  unicode-range: U+592E;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LXGW WenKai";
+  src: url("/fonts/lxgw-wenkai-regular-subset-118.woff2") format("woff2");
+  unicode-range: U+65E0;
+  font-display: swap;
+}
+
 .workspace-page {
   width: 100%;
-  max-width: 1100px;
+  max-width: none;
   min-height: 100vh;
-  margin: 0 auto;
-  padding: 28px;
+  margin: 0;
+  padding: 20px 28px 44px;
   box-sizing: border-box;
   color: #f5f5f5;
   background: #080808;
@@ -1680,16 +1694,35 @@ sup {
 }
 
 .workspace-brand .replica-mark {
-  width: 36px;
-  height: 36px;
+  width: 60px;
+  height: 60px;
 }
 
 .workspace-header .workspace-wordmark {
-  color: #e8e8ea;
+  font-family: "LXGW WenKai", serif;
   font-size: 22px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  background: linear-gradient(135deg, #f2fbff 20%, #9fdcff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
   white-space: nowrap;
+}
+
+.workspace-mark {
+  display: flex;
+  flex-direction: column;
+  line-height: 1;
+}
+
+.workspace-latin {
+  margin-top: 7px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.42em;
+  color: #7f8790;
+  text-transform: uppercase;
 }
 
 .workspace-title {
@@ -1800,8 +1833,8 @@ sup {
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 18px;
 }
 
 .workspace-card {
@@ -5716,13 +5749,13 @@ sup {
   top: 16px;
   left: 16px;
   z-index: 20;
-  width: 344px;
-  height: 40px;
+  width: 364px;
+  height: 64px;
 }
 
 .project-menu {
   position: absolute;
-  top: 62px;
+  top: 84px;
   left: 16px;
   z-index: 90;
   display: flex;
@@ -5794,32 +5827,32 @@ sup {
 
 .logo-button {
   position: absolute;
-  top: 2px;
+  top: 0;
   left: 0;
-  width: 46px;
-  height: 42px;
+  width: 72px;
+  height: 64px;
   border-radius: 10px;
 }
 
 .logo-button .replica-mark {
-  width: 34px;
-  height: 34px;
+  width: 60px;
+  height: 60px;
 }
 
 .replica-mark {
   display: block;
   width: 32px;
   height: 32px;
-  border-radius: 8px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%239fdcff'/%3E%3Cstop offset='1' stop-color='%23f2fbff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='1' y='1' width='62' height='62' rx='17' fill='%23202024' stroke='rgba(255,255,255,0.12)'/%3E%3Cg transform='translate(19,19)'%3E%3Cpath d='M18.6 6.62c-1.44 0-2.8.56-3.77 1.53L12 10.66 10.48 12h.01L7.8 14.39c-.64.64-1.49.99-2.4.99-1.87 0-3.39-1.51-3.39-3.38S3.53 8.62 5.4 8.62c.91 0 1.76.35 2.44 1.03l1.13 1.14 1.07-1.02-1.19-1.2c-1.04-1.03-2.42-1.59-3.89-1.59C2.68 6.98 1 8.66 1 10.99S2.68 15 5.4 15c1.44 0 2.8-.56 3.77-1.53l2.83-2.83.02.02 1.63-1.63c.64-.64 1.49-.99 2.4-.99 1.87 0 3.39 1.51 3.39 3.38s-1.52 3.38-3.39 3.38c-.9 0-1.76-.35-2.44-1.03l-1.14-1.13-1.07 1.02 1.2 1.2c1.04 1.03 2.42 1.59 3.89 1.59 2.72 0 4.4-1.68 4.4-4.01S21.32 6.62 18.6 6.62z' fill='none' stroke='url(%23a)' stroke-width='1.45' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/g%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%239fdcff'/%3E%3Cstop offset='1' stop-color='%23f2fbff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cg transform='translate(19,19)'%3E%3Cpath d='M18.6 6.62c-1.44 0-2.8.56-3.77 1.53L12 10.66 10.48 12h.01L7.8 14.39c-.64.64-1.49.99-2.4.99-1.87 0-3.39-1.51-3.39-3.38S3.53 8.62 5.4 8.62c.91 0 1.76.35 2.44 1.03l1.13 1.14 1.07-1.02-1.19-1.2c-1.04-1.03-2.42-1.59-3.89-1.59C2.68 6.98 1 8.66 1 10.99S2.68 15 5.4 15c1.44 0 2.8-.56 3.77-1.53l2.83-2.83.02.02 1.63-1.63c.64-.64 1.49-.99 2.4-.99 1.87 0 3.39 1.51 3.39 3.38s-1.52 3.38-3.39 3.38c-.9 0-1.76-.35-2.44-1.03l-1.14-1.13-1.07 1.02 1.2 1.2c1.04 1.03 2.42 1.59 3.89 1.59 2.72 0 4.4-1.68 4.4-4.01S21.32 6.62 18.6 6.62z' fill='none' stroke='url(%23a)' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/g%3E%3C/svg%3E");
   background-size: 100% 100%;
   background-repeat: no-repeat;
+  filter: drop-shadow(0 2px 10px rgba(127, 215, 255, 0.3));
 }
 
 .project-title-wrap {
   position: absolute;
-  top: 0;
-  left: 50px;
+  top: 12px;
+  left: 76px;
   width: 280px;
   height: 40px;
 }

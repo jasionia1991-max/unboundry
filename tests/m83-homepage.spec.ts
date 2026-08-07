@@ -11,8 +11,8 @@ test("homepage shows the brand icon and 无央 wordmark at the agreed sizes", as
   const iconBox = await page
     .locator(".workspace-brand .replica-mark")
     .boundingBox();
-  expect(Math.round(iconBox!.width)).toBe(36);
-  expect(Math.round(iconBox!.height)).toBe(36);
+  expect(Math.round(iconBox!.width)).toBe(60);
+  expect(Math.round(iconBox!.height)).toBe(60);
 
   const wordmarkSize = await page
     .locator(".workspace-wordmark")
@@ -28,8 +28,8 @@ test("canvas top-left icon is 34px and admin pages keep 32px", async ({
   const canvasIcon = await page
     .locator(".logo-button .replica-mark")
     .boundingBox();
-  expect(Math.round(canvasIcon!.width)).toBe(34);
-  expect(Math.round(canvasIcon!.height)).toBe(34);
+  expect(Math.round(canvasIcon!.width)).toBe(60);
+  expect(Math.round(canvasIcon!.height)).toBe(60);
 
   await page.goto("/admin/accounts");
   await expect(page.getByTestId("admin-accounts-page")).toBeVisible();

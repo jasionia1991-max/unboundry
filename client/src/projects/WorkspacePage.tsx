@@ -360,7 +360,10 @@ export function WorkspacePage({ userId = "" }: { userId?: string }) {
         <div className="workspace-header-main">
           <div className="workspace-brand" data-testid="workspace-brand">
             <span aria-hidden="true" className="replica-mark" />
-            <strong className="workspace-wordmark">无央</strong>
+            <span className="workspace-mark">
+              <strong className="workspace-wordmark">无央</strong>
+              <span className="workspace-latin">UNBOUNDRY</span>
+            </span>
           </div>
           <div className="workspace-title">
             <strong>工作空间</strong>
