@@ -1347,6 +1347,21 @@ const migrations: readonly Migration[] = [
     },
     sql: "",
   },
+  {
+    version: 32,
+    name: "public-templates-description",
+    prepare(database) {
+      // 真实库的 v31 是在迁移开发中途被开发服务热重载写入的，缺少 description 列；
+      // 本迁移幂等补齐，保证旧真实库与全新库结构一致。
+      addColumnIfMissing(
+        database,
+        "public_templates",
+        "description",
+        "TEXT",
+      );
+    },
+    sql: "",
+  },
 ];
 
 export const currentSchemaVersion = migrations.at(-1)?.version ?? 0;

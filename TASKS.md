@@ -849,3 +849,12 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - P1-9 回归收口：tsc/构建通过；m77 专项 6/6（迁移/存储/API 403+CRUD/公共 GET 契约/上传位导入+封面/管理页 CRUD/入口权限+最近使用）；m22/m70/m71/m20/m45/m0 模板批 45/46（唯一失败为既有 m0 P1 creator 基线）；m74 大回归 107/111（失败 4 项均为既有基线：m26 Mureka 2、m38 重试快照 1、m46 4197 端口过滤 1 且 4174 复跑通过；m44 迁移列表已含 v30/v31 转绿）；m78 7/7。
 - 延后问题清单：①既有基线失败 4 项 + m0 P1 creator 未纳入本批；②m46 大目录测试的请求过滤在 4197 端口配置下会把本地资源计入（4174 复跑通过），与本批新增的 account-context 请求无关；③公共模板本期不携带私有素材（决策 9），带图公共模板需等公共素材复制功能立项。
 - 状态：P1 实现完成，等待用户实页验收（验收矩阵新增公共模板条目）。
+
+### 2026-08-07 线上 4173 崩溃修复：v32 补列迁移（public_templates.description）
+
+- 现象：用户打开 127.0.0.1:4173 报 `ERR_CONNECTION_REFUSED`；launchd 服务 `com.tapnow-replica.4173`（KeepAlive）反复拉起后再次退出。
+- 根因：真实库的 v31 迁移是开发服务在 09:29 热重载时写入的早期版本，`public_templates` 缺少后来补进的 `description` 列；新代码 `listPublicTemplates` 的 SELECT 引用 description → 每次登录页加载模板目录即抛 `no such column: description`，Node 进程退出。日志证据：`/tmp/tapnow-4173.log` 连续 7 次同类崩溃。
+- 处置：新增 v32 幂等迁移 `addColumnIfMissing(public_templates, description, TEXT)`；先在真实库副本（sqlite3 `.backup`）上演练（副本 user_version 31→32、列补齐、2 条种子保留、`/api/templates` 带 bypass 实测 200/2 条），再 `launchctl kickstart -k` 重启 launchd 服务。重启后真实库 user_version=32、description 列存在、种子 2 条、服务持续存活无新错误。
+- 文档连锁：m44 迁移列表 +v32；m77/m78 改断言 `currentSchemaVersion`。
+- 教训：真实库已热重载执行过的迁移版本，其定义在开发中不能再修改；后续改表一律新增迁移。种子行的 description 为 NULL，公共卡片按 `?? ""` 输出，不影响契约。
+- 验证：m77 6/6、m78 7/7、m44 迁移 1/1、tsc 通过；4173 页面与 `/api/auth/status` 均 200。

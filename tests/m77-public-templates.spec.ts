@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { openAppDatabase } from "../server/database";
+import { currentSchemaVersion, openAppDatabase } from "../server/database";
 import {
   archivePublicTemplate,
   deletePublicTemplate,
@@ -128,7 +128,7 @@ test("v31 migration creates public_templates with the two real seeds idempotentl
           }
         ).user_version,
       ),
-    ).toBe(31);
+    ).toBe(currentSchemaVersion);
     const rows = store
       .prepare(`
         SELECT
@@ -176,7 +176,7 @@ test("v31 migration creates public_templates with the two real seeds idempotentl
           }
         ).user_version,
       ),
-    ).toBe(31);
+    ).toBe(currentSchemaVersion);
     expect(
       Number(
         (
