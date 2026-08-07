@@ -224,7 +224,13 @@ async function murekaRequest(
           .trim()
           .slice(0, 200)
       : "";
-    throw new MurekaAudioError(code, message);
+    // 远端文本可能回显请求密钥：AUTH 一律使用本地友好文案；
+    // 其余情况只要包含密钥就丢弃远端文本，防止密钥进入 UI/日志。
+    const safeMessage =
+      code === "AUTH" || containsProviderKey(message, profile.apiKey ?? "")
+        ? ""
+        : message;
+    throw new MurekaAudioError(code, safeMessage || undefined);
   }
   return body;
 }

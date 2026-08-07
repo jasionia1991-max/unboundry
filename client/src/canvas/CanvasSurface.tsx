@@ -3969,6 +3969,7 @@ export function CanvasSurface({
         autoPanOnNodeDrag
         autoPanSpeed={15}
         connectionLineStyle={{ stroke: "#ffffff60", strokeWidth: 1 }}
+        defaultViewport={viewport}
         defaultEdgeOptions={{ interactionWidth: 20 }}
         deleteKeyCode={["Backspace", "Delete"]}
         edges={visibleEdges}

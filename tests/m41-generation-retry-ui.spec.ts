@@ -512,7 +512,7 @@ for (const kind of ["image", "video"] as const) {
     await expect.poll(() => routes.statusReads(kind)).toBeGreaterThanOrEqual(1);
     const taskId = `cancel-unknown-task-${kind}`;
     const intentSlot =
-      `unboundry:generation-submission:v1:default:${kind}:` +
+      `unboundry:generation-submission:v2:__test__:default:${kind}:` +
       encodeURIComponent(nodeId(kind));
     await expect.poll(async () => page.evaluate(({ intentSlot, taskId }) => {
       const serialized = window.localStorage.getItem(intentSlot);

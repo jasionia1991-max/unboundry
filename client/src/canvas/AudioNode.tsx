@@ -40,7 +40,6 @@ import type {
   NodeGenerationOutcome,
 } from "../generation/workflowExecution";
 import { visibleGenerationError } from "../generation/generationErrors";
-import { ProviderErrorNotice } from "../generation/ProviderErrorNotice";
 import {
   generationFailureMessage,
   generationInputKey as createGenerationInputKey,
@@ -1644,7 +1643,9 @@ function AudioNodeImpl({
             className="image-node-upload-error audio-node-upload-error"
             role="alert"
           >
-            <ProviderErrorNotice message={transientUploadError || uploadError} />
+            <span className="provider-error-summary">
+              {transientUploadError || uploadError}
+            </span>
             {retryAvailable && (
               <button
                 aria-label="重试生成"

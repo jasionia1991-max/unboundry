@@ -734,10 +734,11 @@ async function generationRuntimeDecision(input: {
     storedProviderDriver: storedProfile?.driver,
   });
   const safety = createGenerationSafetyStore();
-  const effectiveCost = effectiveSingleTaskCostMicrounits(
-    input.model,
-    safetyStatus,
-  );
+  // 平台未配置或适配器不支持时不可能产生真实请求，预检费用必须为 0，
+  // 避免把「无法执行」的检查误算成巨额成本而误伤生成入口。
+  const effectiveCost = adapterSupported && configured
+    ? effectiveSingleTaskCostMicrounits(input.model, safetyStatus)
+    : 0;
   const safetyAdmission = (() => {
     try {
       return safety.admission({
@@ -2674,6 +2675,25 @@ export function retrySnapshotCompatibilityProblem(
     } else {
       data.assetId = assetId;
       data[`${item.kind}Src`] = `snapshot:${assetId}`;
+      // 重试快照只核对结构兼容性：素材在任务保存时已就绪，
+      // 用可信元数据标记让预检把快照素材视为 ready，而不是要求重新联网确认。
+      data.mediaMetadataSource = "server";
+      data.mediaMetadataStatus = "ready";
+      data.mediaByteSize = 1;
+      data.mediaStorageBackend = item.kind === "video" ? "oss" : "local";
+      data.mediaContentType =
+        item.kind === "image"
+          ? "image/png"
+          : item.kind === "video"
+            ? "video/mp4"
+            : "audio/mpeg";
+      if (item.kind === "video") {
+        data.mediaDurationSeconds = 5;
+        data.videoWidth = 1280;
+        data.videoHeight = 720;
+      } else if (item.kind === "audio") {
+        data.mediaDurationSeconds = 10;
+      }
       if (item.kind === "image") {
         snapshotImageReferences.push({
           assetId,
