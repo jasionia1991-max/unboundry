@@ -681,6 +681,13 @@ test("group toolbar saves a private template and the my-templates panel lists an
   const browserCard = browser
     .locator(".template-browser-card")
     .filter({ hasText: "从画布保存的模板" });
+  // 回归：浏览全部侧栏的「我的模板」是筛选桶，必须显示本人全部模板，
+  // 不能按字面分类「我的模板」过滤为空。
+  const sidebar = browser.locator(".template-browser-sidebar");
+  await sidebar.getByRole("button", { name: "我的模板", exact: true }).click();
+  await expect(browserCard).toBeVisible();
+  await sidebar.getByRole("button", { name: /^全部/ }).click();
+  await expect(browserCard).toBeVisible();
   const browserDelete = browserCard.getByRole("button", {
     name: "删除模板 从画布保存的模板",
   });

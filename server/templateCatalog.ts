@@ -640,6 +640,7 @@ export function listUserTemplates(
   if (
     options.category &&
     options.category !== "全部" &&
+    options.category !== "我的模板" &&
     options.category !== "最近使用"
   ) {
     conditions.push("category = ?");
