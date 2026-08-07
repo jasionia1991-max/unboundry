@@ -30,6 +30,8 @@ test("dense canvas keeps 62 nodes, 58 edges and 5 groups responsive", async ({
 
   await page.evaluate(() => {
     const state = window as typeof window & {
+      denseFrames?: number[];
+      denseFrameTimer?: number;
       denseLongTasks?: number[];
       denseObserver?: PerformanceObserver;
     };
@@ -40,6 +42,12 @@ test("dense canvas keeps 62 nodes, 58 edges and 5 groups responsive", async ({
       );
     });
     state.denseObserver.observe({ entryTypes: ["longtask"] });
+    state.denseFrames = [];
+    const record = (now: number) => {
+      state.denseFrames!.push(now);
+      state.denseFrameTimer = requestAnimationFrame(record);
+    };
+    state.denseFrameTimer = requestAnimationFrame(record);
   });
 
   const node = page.locator(".react-flow__node:visible").first();
@@ -53,15 +61,26 @@ test("dense canvas keeps 62 nodes, 58 edges and 5 groups responsive", async ({
   await expect(page.locator(".tap-minimap")).toBeVisible();
   await page.waitForTimeout(150);
 
-  const longTasks = await page.evaluate(() => {
+  const frames = await page.evaluate(() => {
     const state = window as typeof window & {
+      denseFrames?: number[];
+      denseFrameTimer?: number;
       denseLongTasks?: number[];
       denseObserver?: PerformanceObserver;
     };
     state.denseObserver?.disconnect();
-    return state.denseLongTasks ?? [];
+    window.cancelAnimationFrame(state.denseFrameTimer!);
+    return {
+      frames: state.denseFrames ?? [],
+      longTasks: state.denseLongTasks ?? [],
+    };
   });
-  expect(longTasks.filter((duration) => duration >= 250)).toEqual([]);
+  const deltas = frames.frames.slice(1).map((now, index) => now - frames.frames[index]);
+  const sorted = [...deltas].sort((left, right) => left - right);
+  const p95 = sorted[Math.floor(sorted.length * 0.95)] ?? 0;
+  expect(frames.longTasks.filter((duration) => duration >= 100)).toEqual([]);
+  expect(p95).toBeLessThanOrEqual(25);
+  expect(Math.max(0, ...deltas)).toBeLessThan(100);
   expect(requests).toEqual([]);
   await expect(world).toHaveAttribute("data-node-count", "62");
   await expect(world).toHaveAttribute("data-edge-count", "58");

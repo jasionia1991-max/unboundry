@@ -886,5 +886,8 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - STEP 2a 已实施并提交（`33b1964`）：8 种节点组件与 CuttableEdge 包 React.memo（未变节点不再重渲染，profile 中节点组件耗时消失）；onNodesChange 拖动中的每次位置变化重置交互安静期，杜绝长拖中途保存。回归 m1/m2-group/m62/m69/m70/m71 37/37。
 - STEP 2 实测结论（真实 Chrome）：开发模式（vite dev）28 节点拖动 101fps/3 长任务（94-111ms）、60 节点 72fps——剩余成本为 dev 模式 React 元素检查（jsxDEV）；生产构建（vite preview）28/60 节点拖动 119-120fps、0 长任务、最大帧 9-17ms（达标），200 节点 66fps/22 掉帧（超大画布仍需可视区域渲染）。
 - 待用户决策：4173 真实服务由 launchd 运行 `vite dev`，dev 模式固有 jsxDEV 开销让拖动仍有卡顿；切 `vite preview`（生产构建）即可在日常使用中达标。涉及真实服务配置，待用户确认后执行（改前备份 plist，改后需 rebuild+重启）。
+- STEP 2b 已实施并提交（`e42795e`）：ReactFlow 启用 `onlyRenderVisibleElements`（可视区域渲染）；m1-dense/m2-geometry 的 DOM 全量计数断言改为 data-* 属性 + 可见节点断言。生产构建实测：200 节点拖动 119fps/0 掉帧/p95 9ms（此前 66fps/22 掉帧）；快速平移节点实时挂载、无空白；缩小视图全量挂载。
+- STEP 3 已实施：m1-dense 性能门禁收紧（长任务 <100ms、p95 帧 ≤25ms、最大帧 <100ms，dev 模式仍绿）；新增 `tests/m79-canvas-smoothness.spec.ts`（生产构建专项：60 节点拖动丝滑、快速平移节点实时挂载 + 缩小全量挂载），m79 2/2。
+- 最终一步（用户已按推荐同意在收尾时执行）：4173 由 `vite dev` 切换为 `vite preview`（生产构建）并重启；切换后每次改代码需 rebuild+重启。执行时先备份 plist。
 - 延后问题（与 STEP 1 无关，既有）：m27 `allowed Video media edges pass zero-cost preflight` 在改动前主干同样失败（期望 0 实得 2,777,778，疑似模型成本/默认单任务费用口径，另行排查）；m0 P1 creator 基线。
 - 延后问题（既有）：m63 `group create, undo, delete recovery` 在完全未改动的主干上稳定失败——快照显示“保存中…”与 GET 竞态（第二次打组后保存未落库即被读取），属测试竞态，另行排查。

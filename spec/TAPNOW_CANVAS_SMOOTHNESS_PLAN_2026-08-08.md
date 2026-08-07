@@ -1,6 +1,6 @@
 # 画布丝滑度修复方案（真实 Chrome 实测驱动）
 
-状态：`USER APPROVED 2026-08-08 / STEP 1+1b+2a DONE / 待用户决策：4173 切生产预览`
+状态：`USER APPROVED 2026-08-08 / STEP 1+1b+2a+2b+3 DONE / 待执行：4173 切生产预览`
 依据：真实 Chrome（远程调试 9222）同机同手势实测 + 代码逐层审计 + 仓库内 TapNow 活体证据。
 
 ## 0. 用户确认的两项决策（2026-08-08）
@@ -49,6 +49,12 @@ STEP 1b 关键实现：ReactFlow 去掉受控 viewport prop（真正非受控）
 STEP 2a（memo）：8 种节点组件与 CuttableEdge 包 React.memo；拖动中的每次位置变化重置交互安静期（防长拖中途保存）。
 
 STEP 2 实测：开发模式拖动仍有 dev 模式 React 元素检查开销（28 节点 3 长任务/60 节点 72fps）；生产构建拖动 28/60 节点 119-120fps、0 长任务（达标），200 节点 66fps（需可视区域渲染）。结论：日常 60 节点级画布在 `vite preview`（生产构建）下已达标；200 节点压力仍需 STEP 2b 可视区域渲染。
+
+STEP 2b（可视区域渲染）：启用 ReactFlow `onlyRenderVisibleElements`；200 节点生产构建拖动 119fps/0 掉帧/p95 9ms；快速平移节点实时挂载无空白；缩小视图全量挂载。契约测试同步（DOM 计数 → data-* 属性）。
+
+STEP 3（门禁）：m1-dense 收紧为长任务 <100ms、p95 ≤25ms、最大帧 <100ms；新增生产构建专项 `m79-canvas-smoothness`（60 节点拖动丝滑、快速平移实时挂载、缩小全量挂载）。
+
+收尾动作：4173 launchd 由 `vite dev` 切换为 `vite preview`（生产构建）并重启；切换后代码变更需 rebuild+restart。
 
 ### STEP 2：渲染架构（可视区域 + 缓冲带 + 缓存）
 
