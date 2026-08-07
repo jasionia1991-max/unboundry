@@ -8,7 +8,8 @@ test("the private account contract returns only the current personal scope", asy
   expect(response.headers()["cache-control"]).toBe("no-store");
 
   const context = await response.json() as {
-    permissions: Record<string, boolean>;
+    legacyPermissions: Record<string, boolean>;
+    permissions: string[];
     user: {
       displayName: string;
       id: string;
@@ -34,7 +35,22 @@ test("the private account contract returns only the current personal scope", asy
     teamEnabled: false,
     type: "personal",
   });
-  expect(context.permissions).toMatchObject({
+  // 测试身份是管理员：数组应为全量权限，旧布尔字段保留一个版本兼容。
+  expect(context.permissions).toEqual([
+    "manage_accounts",
+    "manage_models",
+    "manage_providers",
+    "manage_storage",
+    "manage_generation_safety",
+    "manage_public_templates",
+    "manage_permissions",
+    "manage_projects",
+    "generate",
+    "group_download",
+    "manage_own_templates",
+    "manage_own_credentials",
+  ]);
+  expect(context.legacyPermissions).toMatchObject({
     manageAccounts: true,
     manageModels: true,
     manageProviders: true,

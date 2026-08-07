@@ -10,8 +10,18 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { deletePrivateAliyunOssObject } from "./aliyunOss";
+import { recordAudit } from "./audit";
 import { appDataDirectory, openAppDatabase } from "./database";
+import {
+  accountPermissionSet,
+  hasPermission,
+  setAccountPermissions,
+} from "./permissions";
 import { activeStorageProfile } from "./secureStorageProfiles";
+import {
+  ALL_PERMISSIONS,
+  type AccountPermission,
+} from "../types/accountPermissions";
 
 export type RequestIdentity = {
   bypass: boolean;
@@ -216,29 +226,6 @@ async function existingMedia() {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   return entries;
-}
-
-function recordAudit(
-  store: DatabaseSync,
-  actorUserId: string,
-  action: string,
-  targetUserId: string | null,
-  details: Record<string, unknown>,
-) {
-  store
-    .prepare(`
-      INSERT INTO admin_audit_events (
-        actor_user_id, action, target_user_id, details, created_at
-      )
-      VALUES (?, ?, ?, ?, ?)
-    `)
-    .run(
-      actorUserId,
-      action,
-      targetUserId,
-      JSON.stringify(details),
-      new Date().toISOString(),
-    );
 }
 
 function createSession(
@@ -549,17 +536,27 @@ export function accountContextApi(
     json(response, 404, { error: "账号不存在" });
     return;
   }
+  const permissionList: AccountPermission[] =
+    row.role === "admin"
+      ? [...ALL_PERMISSIONS]
+      : [...accountPermissionSet(db(), row.id)].sort(
+          (left, right) =>
+            ALL_PERMISSIONS.indexOf(left) - ALL_PERMISSIONS.indexOf(right),
+        );
+  const has = (permission: AccountPermission) =>
+    permissionList.includes(permission);
   json(response, 200, {
-    permissions: {
-      manageOwnCredentials: true,
-      manageAccounts: row.role === "admin",
-      manageModels: row.role === "admin",
-      manageProviders: row.role === "admin",
-      manageStorage: row.role === "admin",
+    legacyPermissions: {
+      manageOwnCredentials: has("manage_own_credentials"),
+      manageAccounts: has("manage_accounts"),
+      manageModels: has("manage_models"),
+      manageProviders: has("manage_providers"),
+      manageStorage: has("manage_storage"),
       readOwnData: true,
       submitOwnTasks: true,
       writeOwnData: true,
     },
+    permissions: permissionList,
     user: publicUser(row),
     workspace: {
       id: `personal:${row.id}`,
@@ -578,7 +575,7 @@ export async function adminUsersApi(
     return;
   }
   const identity = requestIdentity(request);
-  if (!identity || identity.role !== "admin") {
+  if (!identity || !hasPermission(identity, "manage_accounts")) {
     json(response, 403, { error: "只有管理员可以操作账号" });
     return;
   }
@@ -587,6 +584,65 @@ export async function adminUsersApi(
     /^\/+/,
     "",
   );
+
+  const permissionMatch = path.match(
+    /^([a-z0-9._-]{1,80})\/permissions$/i,
+  );
+  if (permissionMatch) {
+    if (!hasPermission(identity, "manage_permissions")) {
+      json(response, 403, { error: "需要权限管理权限" });
+      return;
+    }
+    const targetId = permissionMatch[1];
+    const target = store
+      .prepare("SELECT role FROM users WHERE id = ?")
+      .get(targetId) as { role: "admin" | "user" } | undefined;
+    if (!target) {
+      json(response, 404, { error: "账号不存在" });
+      return;
+    }
+    if (request.method === "GET") {
+      const permissions: AccountPermission[] =
+        target.role === "admin"
+          ? [...ALL_PERMISSIONS]
+          : [...accountPermissionSet(store, targetId)].sort(
+              (left, right) =>
+                ALL_PERMISSIONS.indexOf(left) - ALL_PERMISSIONS.indexOf(right),
+            );
+      json(response, 200, { permissions });
+      return;
+    }
+    if (request.method === "PUT") {
+      try {
+        const body = await readBody<{ permissions?: unknown }>(request);
+        if (!Array.isArray(body.permissions)) {
+          throw new Error("权限列表无效");
+        }
+        const { added, removed } = setAccountPermissions(
+          store,
+          identity.userId,
+          targetId,
+          body.permissions,
+        );
+        const permissions: AccountPermission[] = [
+          ...accountPermissionSet(store, targetId),
+        ].sort(
+          (left, right) =>
+            ALL_PERMISSIONS.indexOf(left) - ALL_PERMISSIONS.indexOf(right),
+        );
+        json(response, 200, { added, permissions, removed });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "权限保存失败";
+        json(response, message === "账号不存在" ? 404 : 400, {
+          error: message,
+        });
+      }
+      return;
+    }
+    response.setHeader("Allow", "GET, PUT");
+    json(response, 405, { error: "权限接口只支持读取与写入" });
+    return;
+  }
 
   if (request.method === "GET" && !path) {
     const users = (

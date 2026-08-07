@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
 import { requestIdentity } from "./auth";
+import { hasPermission } from "./permissions";
 import {
   appDataDirectory,
   openAppDatabase,
@@ -641,7 +642,7 @@ export async function adminGenerationSafetyApi(
   response: ServerResponse,
 ) {
   const identity = requestIdentity(request);
-  if (!identity || identity.role !== "admin") {
+  if (!identity || !hasPermission(identity, "manage_generation_safety")) {
     json(response, 403, {
       error: "只有管理员可以修改生成安全保护",
     });

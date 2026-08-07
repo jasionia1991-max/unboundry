@@ -269,6 +269,106 @@ export const openApiDocument = {
         },
       },
     },
+    "/api/admin/users/{userId}/permissions": {
+      get: {
+        operationId: "readAccountPermissions",
+        summary: "List one account's effective permissions (manage_permissions)",
+        parameters: [
+          {
+            in: "path",
+            name: "userId",
+            required: true,
+            schema: { type: "string", pattern: "^[a-zA-Z0-9._-]{1,80}$" },
+          },
+        ],
+        responses: {
+          "200": {
+            description: "Effective permission list for the account",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["permissions"],
+                  properties: {
+                    permissions: {
+                      type: "array",
+                      items: { $ref: "#/components/schemas/AccountPermission" },
+                    },
+                  },
+                  additionalProperties: false,
+                },
+              },
+            },
+          },
+          "403": { description: "Requires manage_permissions" },
+          "404": { description: "Account not found" },
+        },
+      },
+      put: {
+        operationId: "writeAccountPermissions",
+        summary: "Replace the extra-grant permission set of a non-admin account",
+        parameters: [
+          {
+            in: "path",
+            name: "userId",
+            required: true,
+            schema: { type: "string", pattern: "^[a-zA-Z0-9._-]{1,80}$" },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["permissions"],
+                properties: {
+                  permissions: {
+                    type: "array",
+                    items: { $ref: "#/components/schemas/AccountPermission" },
+                  },
+                },
+                additionalProperties: false,
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Updated effective permission list with audit diff",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["added", "removed", "permissions"],
+                  properties: {
+                    added: {
+                      type: "array",
+                      items: { $ref: "#/components/schemas/AccountPermission" },
+                    },
+                    removed: {
+                      type: "array",
+                      items: { $ref: "#/components/schemas/AccountPermission" },
+                    },
+                    permissions: {
+                      type: "array",
+                      items: { $ref: "#/components/schemas/AccountPermission" },
+                    },
+                  },
+                  additionalProperties: false,
+                },
+              },
+            },
+          },
+          "400": {
+            description:
+              "Unknown permission, self modification, admin target or admin-only grant",
+          },
+          "403": { description: "Requires manage_permissions" },
+          "404": { description: "Account not found" },
+        },
+      },
+    },
     "/api/account-credentials": {
       get: {
         operationId: "listAccountCredentials",
@@ -591,7 +691,7 @@ export const openApiDocument = {
     schemas: {
       AccountContext: {
         type: "object",
-        required: ["user", "workspace", "permissions"],
+        required: ["user", "workspace", "permissions", "legacyPermissions"],
         properties: {
           user: {
             type: "object",
@@ -616,11 +716,32 @@ export const openApiDocument = {
             additionalProperties: false,
           },
           permissions: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AccountPermission" },
+          },
+          legacyPermissions: {
             type: "object",
             additionalProperties: { type: "boolean" },
           },
         },
         additionalProperties: false,
+      },
+      AccountPermission: {
+        type: "string",
+        enum: [
+          "manage_accounts",
+          "manage_models",
+          "manage_providers",
+          "manage_storage",
+          "manage_generation_safety",
+          "manage_public_templates",
+          "manage_permissions",
+          "manage_projects",
+          "generate",
+          "group_download",
+          "manage_own_templates",
+          "manage_own_credentials",
+        ],
       },
       AgentConfiguration: {
         type: "object",

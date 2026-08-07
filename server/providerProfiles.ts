@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
+import { hasPermission } from "./permissions";
 import { generationProviderAttemptCounts } from "./generationTaskStore";
 import {
   RelayRemoteError,
@@ -1587,7 +1588,7 @@ export async function adminProviderProfilesApi(
   response: ServerResponse,
 ) {
   const identity = requestIdentity(request);
-  if (!identity || identity.role !== "admin") {
+  if (!identity || !hasPermission(identity, "manage_providers")) {
     json(response, 403, {
       error: "Only administrators can manage Provider connections",
     });

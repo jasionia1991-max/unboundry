@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
+import { hasPermission } from "./permissions";
 import {
   effectiveSingleTaskCostMicrounits,
   generationSafetyStatus,
@@ -790,7 +791,7 @@ export async function adminModelsApi(
   response: ServerResponse,
 ) {
   const identity = requestIdentity(request);
-  if (!identity || identity.role !== "admin") {
+  if (!identity || !hasPermission(identity, "manage_models")) {
     json(response, 403, { error: "Only administrators can manage models" });
     return;
   }

@@ -24,6 +24,7 @@ test("the private API documents and reads canvas, project and model configuratio
     "/api/account-credentials",
     "/api/account-credentials/{profileId}",
     "/api/account-credentials/{profileId}/verify",
+    "/api/admin/users/{userId}/permissions",
     "/api/agent-config",
     "/api/canvas/{canvasId}",
     "/api/canvas/{canvasId}/group-download",
@@ -125,8 +126,8 @@ test("the private API documents and reads canvas, project and model configuratio
   await expect(page.getByTestId("admin-api-contract-page")).toBeVisible();
   await expect(page.getByRole("heading", { name: "项目自己的数据接口" }))
     .toBeVisible();
-  await expect(page.locator(".api-contract-grid article")).toHaveCount(20);
-  await expect(page.getByText("当前共 15 条接口路径", { exact: true }))
+  await expect(page.locator(".api-contract-grid article")).toHaveCount(22);
+  await expect(page.getByText("当前共 16 条接口路径", { exact: true }))
     .toBeVisible();
 
   await request.delete(`/api/canvas/${canvasId}`);

@@ -6,6 +6,7 @@ import {
 } from "./aliyunOss";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
+import { hasPermission } from "./permissions";
 import {
   activateStorageProfile,
   deleteStorageProfile,
@@ -142,7 +143,7 @@ export async function adminStorageApi(
   response: ServerResponse,
 ) {
   const identity = requestIdentity(request);
-  if (!identity || identity.role !== "admin") {
+  if (!identity || !hasPermission(identity, "manage_storage")) {
     json(response, 403, { error: "Administrator access required" });
     return;
   }

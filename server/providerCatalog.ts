@@ -4,6 +4,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { composeExecutionProfile } from "./accountCredentials";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
+import { hasPermission } from "./permissions";
 import {
   acquireProviderConfigurationLease,
   getArkControlPlaneCredentials,
@@ -1584,7 +1585,7 @@ export async function adminProviderCatalogApi(
   response: ServerResponse,
 ) {
   const identity = requestIdentity(request);
-  if (!identity || identity.role !== "admin") {
+  if (!identity || !hasPermission(identity, "manage_providers")) {
     json(response, 403, { error: "Only administrators can manage Provider catalogs" });
     return;
   }

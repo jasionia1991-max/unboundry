@@ -1280,6 +1280,23 @@ const migrations: readonly Migration[] = [
       WHERE owner_id IS NULL;
     `,
   },
+  {
+    version: 30,
+    name: "account-permissions",
+    sql: `
+      CREATE TABLE IF NOT EXISTS account_permissions (
+        account_id TEXT NOT NULL,
+        permission TEXT NOT NULL,
+        granted_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (account_id, permission),
+        FOREIGN KEY (account_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (granted_by) REFERENCES users(id)
+      );
+      CREATE INDEX IF NOT EXISTS account_permissions_account
+        ON account_permissions (account_id, permission);
+    `,
+  },
 ];
 
 export const currentSchemaVersion = migrations.at(-1)?.version ?? 0;
