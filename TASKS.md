@@ -872,3 +872,4 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - 现象：管理员在生成安全「并发与频率」输入 500 后无法保存，截图确认 6 个字段均无法写入；服务端校验上限为 20（请求频率 120），且数据库表 CHECK 约束同为 `BETWEEN 1 AND 20`，双重拦截。
 - 处置：服务端 `cleanInteger` 上限放宽至 1000（per_user/text/image/video/audio 并发 + requests_per_minute），前端 max 同步 1000；新增 v33 迁移重建 `generation_safety_settings` 表，把 6 个字段的 CHECK 放宽到 `BETWEEN 1 AND 1000`（其余列与约束保持不变、数据原样保留）。真实库副本演练通过（v32→v33、原值 5/5/1/5/5/5 保留、20 列完整）后重启 launchd 服务，真实库 user_version=33、页面 200。
 - 验证：m14 新增「高并发/频率可保存、超 1000 拒绝」用例，m14 6/6（新配置自带 4176 webServer 供 UI 用例，其余用例自起 4198）；m44 迁移列表 +v33；tsc 通过。
+- 用户确认：2026-08-07 用户在 4173 实页把「并发与频率」各项调整为 500 并保存成功，该配置调整关闭。
