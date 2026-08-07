@@ -814,6 +814,12 @@ test("browse-all admin entry follows permissions and recent-used filters by acco
     await browser
       .getByRole("button", { name: "最近使用", exact: true })
       .click();
+    // 等待过滤请求生效：种子模板不再出现在「最近使用」里。
+    await expect(
+      browser
+        .locator(".template-browser-card")
+        .filter({ hasText: "电商详情页工作流" }),
+    ).toHaveCount(0);
     const recentTitles = await browser
       .locator(".template-browser-card p")
       .allTextContents();
@@ -850,6 +856,11 @@ test("browse-all admin entry follows permissions and recent-used filters by acco
     await browser
       .getByRole("button", { name: "最近使用", exact: true })
       .click();
+    await expect(
+      browser
+        .locator(".template-browser-card")
+        .filter({ hasText: "电商详情页工作流" }),
+    ).toHaveCount(0);
     await expect(
       browser.locator(".template-browser-card").filter({ hasText: "最近使用A" }),
     ).toHaveCount(0);
