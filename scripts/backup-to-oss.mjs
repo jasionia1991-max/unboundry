@@ -9,9 +9,6 @@ import {
 } from "node:fs/promises";
 import { basename, join, relative, resolve } from "node:path";
 import OSS from "ali-oss";
-import {
-  uploadPrivateAliyunOssObject,
-} from "../server/aliyunOss.ts";
 import { appDataDirectory } from "../server/database.ts";
 import {
   listStorageProfiles,
@@ -40,10 +37,16 @@ const dataDirectory = resolve(
   argument("--data-dir") ?? appDataDirectory(),
 );
 const profileId = argument("--profile-id");
-const prefix = (argument("--prefix") ?? "backups").replace(/^\/+|\/+$/g, "");
-const dryRun = argument("--dry-run") !== undefined;
+// 默认放进 objects/backups/：与现有 RAM 最小权限（objects/*）兼容。
+// 若后续在阿里云 RAM 策略中放行 backups/*，可改回 --prefix backups。
+const prefix = (argument("--prefix") ?? "objects/backups").replace(
+  /^\/+|\/+$/g,
+  "",
+);
+const dryRun = process.argv.includes("--dry-run");
 const stagingRoot = resolve(
-  argument("--staging-root") ??
+  argument("--backup-root") ??
+    argument("--staging-root") ??
     join(process.cwd(), "tmp", "oss-backup-staging"),
 );
 const retainDays = Number(argument("--retain-days") ?? "0");
@@ -59,6 +62,17 @@ const profile = profileId
 if (!profile) {
   throw new Error("没有可用的 OSS 备份配置（请先测试并选为正式配置）");
 }
+
+const client = new OSS({
+  accessKeyId: profile.accessKeyId,
+  accessKeySecret: profile.accessKeySecret,
+  authorizationV4: true,
+  bucket: profile.bucket,
+  endpoint: profile.endpoint,
+  region: profile.region,
+  secure: true,
+  timeout: 120_000,
+});
 
 await mkdir(stagingRoot, { recursive: true });
 const backupOutput = execFileSync(
@@ -138,63 +152,65 @@ console.log(
 if (dryRun) process.exit(0);
 
 for (const object of objects) {
-  await uploadPrivateAliyunOssObject({
-    byteSize: object.byteSize,
-    checksumSha256: object.checksumSha256,
-    contentType: object.contentType,
-    credentials: profile,
-    filePath: object.full,
-    objectKey: object.objectKey,
+  await client.put(object.objectKey, object.full, {
+    headers: {
+      "Content-Type": object.contentType,
+      "x-oss-forbid-overwrite": "true",
+      "x-oss-meta-sha256": object.checksumSha256,
+      "x-oss-object-acl": "private",
+    },
+    mime: object.contentType,
   });
 }
-await uploadPrivateAliyunOssObject({
-  byteSize: manifestBytes.length,
-  checksumSha256: createHash("sha256")
-    .update(manifestBytes)
-    .digest("hex"),
-  contentType: "application/json",
-  credentials: profile,
-  filePath: manifestPath,
-  objectKey: manifestObjectKey,
+await client.put(manifestObjectKey, manifestPath, {
+  headers: {
+    "Content-Type": "application/json",
+    "x-oss-forbid-overwrite": "true",
+    "x-oss-meta-sha256": createHash("sha256")
+      .update(manifestBytes)
+      .digest("hex"),
+    "x-oss-object-acl": "private",
+  },
+  mime: "application/json",
 });
 
 if (retainDays > 0) {
-  const client = new OSS({
-    accessKeyId: profile.accessKeyId,
-    accessKeySecret: profile.accessKeySecret,
-    authorizationV4: true,
-    bucket: profile.bucket,
-    endpoint: profile.endpoint,
-    region: profile.region,
-    secure: true,
-    timeout: 60_000,
-  });
   const cutoff = Date.now() - retainDays * 24 * 60 * 60 * 1000;
   let marker;
   const stale = [];
-  do {
-    const result = await client.list({
-      marker,
-      "max-keys": 1000,
-      prefix: `${prefix}/`,
-    });
-    for (const object of result.objects ?? []) {
-      const day = object.name
-        .slice(prefix.length + 1)
-        .split("/")[0]
-        ?.slice(0, 10);
-      const time = Date.parse(`${day}T00:00:00.000Z`);
-      if (Number.isFinite(time) && time < cutoff) stale.push(object.name);
+  try {
+    do {
+      const listParams = {
+        "max-keys": 1000,
+        prefix: `${prefix}/`,
+      };
+      if (marker) listParams.marker = marker;
+      const result = await client.list(listParams);
+      for (const object of result.objects ?? []) {
+        const day = object.name
+          .slice(prefix.length + 1)
+          .split("/")[0]
+          ?.slice(0, 10);
+        const time = Date.parse(`${day}T00:00:00.000Z`);
+        if (Number.isFinite(time) && time < cutoff) stale.push(object.name);
+      }
+      marker = result.nextMarker;
+    } while (marker);
+    for (const name of stale) {
+      await client.delete(name);
     }
-    marker = result.nextMarker;
-  } while (marker);
-  for (const name of stale) {
-    await client.delete(name);
+    console.log(
+      JSON.stringify({
+        pruned: stale.length,
+        retainDays,
+      }),
+    );
+  } catch (error) {
+    console.log(
+      JSON.stringify({
+        pruned: "skipped",
+        reason: "RAM 无 ListObjects/DeleteObject 权限，旧备份自动清理跳过",
+      }),
+    );
   }
-  console.log(
-    JSON.stringify({
-      pruned: stale.length,
-      retainDays,
-    }),
-  );
 }

@@ -496,5 +496,8 @@ export default defineConfig({
         allow: [fileURLToPath(new URL("./client", import.meta.url))],
       },
     },
+    preview: {
+      allowedHosts: ["canvas.mymy.ltd"],
+    },
     cacheDir: `${appRoot}/node_modules/.vite`,
 });

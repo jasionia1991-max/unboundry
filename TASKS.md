@@ -922,3 +922,14 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - 测试残留核对：真实库 `__test__` 账号及关联行已为 0（此前删除完成），仅剩历史审计记录 id=151（delete_user 历史，保留）；无需再清理。
 - 回归：tsc、build 通过；m81 2/2、m13 5/6（1 项真实 OSS 专项默认跳过）、m80 4/4。
 - 下一步：等用户提供服务器/域名信息后进入阶段 2（服务器准备）与阶段 3（数据迁移）。
+
+### 2026-08-08 部署上线（canvas.mymy.ltd）
+
+- 服务器与域名：腾讯云轻量上海 101.43.77.14（4C8G/120G，Ubuntu），域名 mymy.ltd 为阿里云购买、备案已迁腾讯云通过；子域名 canvas.mymy.ltd（阿里云云解析 A 记录 → 101.43.77.14）。
+- 部署：Node v22.23.2（/opt/node22）；应用 /opt/tapnow-app（npm ci + build 通过）；数据整体迁移 /var/lib/tapnow（v34、378 素材、mymy 管理员，来自备份 2026-08-07T20-03-01-864Z）；systemd tapnow-replica 开机自启。
+- 公网：nginx 新增 canvas 站点（80→301 HTTPS，443→127.0.0.1:4173，client_max_body_size 600m），Let's Encrypt 证书自动续期；live-cockpit 设为 default_server 保持原样；nginx/certbot 配置已备份。
+- 安全验证：公网 POST /api/auth/bootstrap 实测 403；未登录素材 401；TAPNOW_TRUST_PROXY/SECURE_COOKIES=1；服务环境无任何 TAPNOW_TEST_*；vite preview.allowedHosts 放行 canvas.mymy.ltd。
+- 备份：tapnow-backup.timer 每日 03:30（Persistent=true）；首次真实备份已上传 OSS `objects/backups/2026-08-07T20-18-27-167Z/`（317 文件，HEAD 抽查 OK）；恢复演练通过（verify-backup --runtime-port 4198）。
+- 脚本修复：backup-to-oss 干跑 flag、`--backup-root` 参数、改用 OSS client.put（`objects/backups/` 前缀兼容 RAM 最小权限）、list 签名修复、清理 fail-soft；mirror 跳过备份前缀、list 修复。
+- 延期/待办：① 服务器代理（OpenRouter）用户决定延期，火山方舟正常；② RAM 无 ListObjects，旧备份清理与镜像待放行权限后启用；③ 待用户实页验收 DEP-004（旧 OSS 素材）、多设备、大视频上传、Cookie Secure、火山方舟公网生成。
+- 用户确认：2026-08-08 用户已在 https://canvas.mymy.ltd 登录成功。

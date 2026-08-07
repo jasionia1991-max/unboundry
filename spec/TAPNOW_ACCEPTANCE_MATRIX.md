@@ -402,13 +402,13 @@
 
 | ID | 优先级 | 验收动作与断言 | 证据 | 实现状态 |
 |---|---|---|---|---|
-| DEP-001 | P0 | 公网 HTTPS 访问；手机/Win11 浏览器登录并操作同一份数据 | 未部署 | NOT_STARTED |
-| DEP-002 | P0 | 首管理员不可远程创建；未登录/越权访问管理接口 403 | m81 反代伪造环回 403 + 既有 m78 权限矩阵 | PARTIAL（代码完成，公网未验证） |
-| DEP-003 | P0 | 存储写操作公网仅 HTTPS；Cookie 带 Secure | m81 HTTPS 转发头断言 + `TAPNOW_SECURE_COOKIES` 文档 | PARTIAL（代码/配置项完成，公网未验证） |
-| DEP-004 | P0 | 旧本地素材 + 旧 OSS 素材 + 新素材（云路由开启后）全部可读 | STORAGE-004/m80 已覆盖存储语义；服务器数据迁移后复验 | NOT_STARTED |
-| DEP-005 | P0 | 上传 500MB 级视频成功；批量下载、播放、Range 正常 | 反代 `request_body max_size` 方案已写入部署文档 | NOT_STARTED |
-| DEP-006 | P0 | 每日备份自动执行并上传 OSS；恢复演练通过 | backup/verify/mirror 脚本已就绪（干跑通过） | NOT_STARTED |
-| DEP-007 | P0 | 生成安全（并发/频率/费用上限）公网场景生效 | 待服务器部署后复测 m14 场景 | NOT_STARTED |
-| DEP-008 | P0 | 服务器重启后服务自恢复，数据/会话/任务不丢 | systemd 方案已写入部署文档 | NOT_STARTED |
-| DEP-009 | P0 | 测试后门变量未设置；测试夹具/测试账号不存在 | 真实库 `__test__` 已核对为 0；devFixtureApi 仅 dev 生效 | PARTIAL |
-| DEP-010 | P0 | 文档收口（TASKS/矩阵/部署手册）并逐项用户确认 | 方案文档已建 | NOT_STARTED |
+| DEP-001 | P0 | 公网 HTTPS 访问；手机/Win11 浏览器登录并操作同一份数据 | https://canvas.mymy.ltd 外网 200、`/api/auth/status` 正常；2026-08-08 用户实页登录成功 | PASS |
+| DEP-002 | P0 | 首管理员不可远程创建；未登录/越权访问管理接口 403 | 公网 bootstrap 实测 403 + m81 + 既有 m78 权限矩阵 | PASS |
+| DEP-003 | P0 | 存储写操作公网仅 HTTPS；Cookie 带 Secure | nginx 80→301、`TAPNOW_TRUST_PROXY/SECURE_COOKIES=1`、m81 HTTPS 转发头断言 | PARTIAL（待浏览器 DevTools 确认 Secure） |
+| DEP-004 | P0 | 旧本地素材 + 旧 OSS 素材 + 新素材（云路由开启后）全部可读 | 服务器数据 378 素材就位；STORAGE-004/m80 存储语义已覆盖 | USER_RECHECK（请用户打开含旧 OSS 素材的画布确认） |
+| DEP-005 | P0 | 上传 500MB 级视频成功；批量下载、播放、Range 正常 | nginx `client_max_body_size 600m` + proxy 超时已配置 | NOT_STARTED |
+| DEP-006 | P0 | 每日备份自动执行并上传 OSS；恢复演练通过 | timer 每日 03:30；首次备份已传 OSS 并 HEAD 抽查；恢复演练 runtimeVerified=true | PARTIAL（自动清理旧备份待 RAM ListObjects 权限） |
+| DEP-007 | P0 | 生成安全（并发/频率/费用上限）公网场景生效 | 服务端配置沿用；火山方舟可用、OpenRouter 延期 | PARTIAL（待公网生成实测） |
+| DEP-008 | P0 | 服务器重启后服务自恢复，数据/会话/任务不丢 | systemd enable+restart 多次验证 active | PASS |
+| DEP-009 | P0 | 测试后门变量未设置；测试夹具/测试账号不存在 | 服务环境仅 DATA_DIR/SECURE_COOKIES/TRUST_PROXY；devFixture 仅 dev；`__test__` 已核对为 0 | PASS |
+| DEP-010 | P0 | 文档收口（TASKS/矩阵/部署手册）并逐项用户确认 | 部署计划/TASKS/矩阵已更新 | PARTIAL（待剩余验收项确认） |

@@ -50,16 +50,19 @@ const client = new OSS({
 const objects = [];
 let marker;
 do {
-  const result = await client.list({
-    marker,
+  const listParams = {
     "max-keys": 1000,
     prefix: `${prefix}/`,
-  });
+  };
+  if (marker) listParams.marker = marker;
+  const result = await client.list(listParams);
   objects.push(
-    ...(result.objects ?? []).map((object) => ({
-      name: object.name,
-      size: Number(object.size),
-    })),
+    ...(result.objects ?? [])
+      .filter((object) => !object.name.startsWith("objects/backups/"))
+      .map((object) => ({
+        name: object.name,
+        size: Number(object.size),
+      })),
   );
   marker = result.nextMarker;
 } while (marker);

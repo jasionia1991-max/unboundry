@@ -1,6 +1,6 @@
 # TapNow 私有复刻「部署到云服务器」详细方案
 
-状态：DRAFT（阶段 1 代码加固已完成并通过回归；阶段 2-6 等待用户服务器/域名信息后实施）
+状态：已上线（2026-08-08 完成阶段 2-4；阶段 5 备份定时已装、首次备份与恢复演练已通过；剩余事项见 §10）
 日期：2026-08-08
 目标：把当前单机应用部署到用户的云服务器，任何设备用浏览器访问域名即可登录和操作，数据只有一份。
 
@@ -227,3 +227,21 @@ app.example.com {
 - 本文件只是方案，未改任何代码；
 - 等用户确认信息与决策后，先做阶段 1 代码加固 + 回归，再做服务器与迁移，每阶段验收后再继续；
 - 所有真实服务器/域名/备案操作需用户显式授权；付费与密钥操作单独确认。
+
+## 10. 部署实施记录（2026-08-08）
+
+已完成：
+
+- 服务器：腾讯云轻量上海（101.43.77.14，4C8G/120G，Ubuntu），Node v22.23.2 装于 /opt/node22；应用位于 /opt/tapnow-app，数据位于 /var/lib/tapnow（schema v34，378 素材，mymy 管理员）；systemd `tapnow-replica.service` 开机自启（127.0.0.1:4173）；
+- 域名：`canvas.mymy.ltd` A → 101.43.77.14（阿里云云解析）；Let's Encrypt 证书已签发（2026-11-05 到期，certbot 自动续期）；nginx 新增 canvas 站点（80→301，443→应用），live-cockpit 保持 `default_server` 不受影响；nginx/certbot 配置均已备份；
+- 安全：`TAPNOW_TRUST_PROXY=1`、`TAPNOW_SECURE_COOKIES=1`；公网 bootstrap 实测 403；未登录访问素材 401；测试后门变量未设置；
+- 备份：`tapnow-backup.timer` 每日 03:30（Persistent=true 开机补跑）；首次真实备份已上传 OSS `objects/backups/2026-08-07T20-18-27-167Z/`（317 文件，HEAD 抽查通过）；`verify-backup.mjs` 恢复演练通过（临时目录恢复 + 启动读取画布）；
+- `vite.config.ts` 增加 `preview.allowedHosts: ["canvas.mymy.ltd"]`（Vite 防 DNS 重绑定需要）。
+
+待办/延期：
+
+1. 阿里云 RAM 无 `oss:ListObjects` 权限：每日备份可正常上传，但「旧备份自动清理」与「OSS→本地镜像」会跳过（脚本已 fail-soft）；需在 RAM 策略放行 `oss:ListObjects`（bucket 级）与 `backups/*` 前缀后启用 30 天清理；当前备份前缀为 `objects/backups/` 以兼容现有最小权限；
+2. 服务器代理（OpenRouter）：用户决定延期，先用火山方舟；代理方案保持 `TAPNOW_OUTBOUND_HTTPS_PROXY`（仅回环）待命；
+3. 待用户实页验收：旧 OSS 素材在服务器上可见（DEP-004）、手机/Win11 多设备访问、500MB 级视频上传、Cookie Secure（浏览器 DevTools）、火山方舟公网生成；
+4. 本地暂存备份目录（/var/lib/tapnow-backups）暂不自动清理，后续随 RAM 权限一并处理；
+5. 正式部署后 OpenAPI/文档继续按 DEP 验收清单收口。
