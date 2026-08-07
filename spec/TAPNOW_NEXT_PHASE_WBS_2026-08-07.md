@@ -135,8 +135,8 @@ P0 权限底座（10 步） ──► P1 公共模板（9 步） ──► P2 �
 
 ### P1-1 v30 数据模型与种子迁移
 
-- 文件：`server/database.ts`（迁移 v30 `public_templates`，见调研 §4.1）。
-- 种子：迁移时把 `server/templateCatalogData.json` 两条记录 `INSERT OR IGNORE`（`created_by` 可空表示内置种子）。
+- 文件：`server/database.ts`（迁移 v30 `public_templates`，见调研 §4.1；含 `preview_image` 列与 JSON 数组分类，见第二批决策）。
+- 种子：迁移时把 `server/templateCatalogData.json` 两条记录 `INSERT OR IGNORE`（`created_by` 可空表示内置种子；`preview_image` 写入 `/templates/*.png`）。
 - 验证：迁移幂等；升级后表内有且仅 2 条种子（临时库）。
 - 验收：迁移可重放；m22 种子数据不丢。
 
@@ -185,10 +185,10 @@ P0 权限底座（10 步） ──► P1 公共模板（9 步） ──► P2 �
 - 验证：m0 模板段、m70/m71 回归。
 - 验收：普通账号无管理入口；管理员入口可达。
 
-### P1-7 公共模板导入与素材兼容
+### P1-7 公共模板导入与上传位兼容
 
 - 文件：复用 `CanvasSurface.tsx` apply-template（已含 `normalizePersistedMediaNodes`）。
-- 验证：新增集成测试——管理员发布含素材（assetId）的公共模板 → 普通账号导入 → 图片/视频/音频不刷新即可见、刷新仍在。
+- 决策修订（第二批）：公共模板本期不携带私有素材；验证改为——管理员发布含“上传位节点”的公共模板 → 普通账号导入 → 节点正常显示、不报错、刷新保持；封面来自 `preview_image`。
 - 验收：导入链路与私有模板一致。
 
 ### P1-8 最近使用（可选，决策点确认后做）
@@ -248,5 +248,13 @@ npx playwright test -c tests/m71-regression.config.ts           # 模板/画布�
 6. 普通能力收回（P2）本批不纳入，另行立项。
 7. 不加权限系统环境开关；回退靠 git 回滚 + 备份恢复。
 8. 不做公共模板投稿；公共模板仅管理员新增/编辑/删除/上下架。
+
+第二批决策（2026-08-07 用户确认）：
+9. 公共模板本期不携带私有素材（上传位/占位节点；公共素材复制另行立项）。
+10. `public_templates` 增加 `preview_image` 列，保证种子与管理封面可用。
+11. 普通账号默认能力（生成/下载/项目）本期不可撤销；权限写接口只维护“额外授予集”。
+12. 禁止管理员修改自己的权限。
+13. 公共模板管理接口对无权限账号返回 403。
+14. 种子模板允许编辑，但不可物理删除（仅可归档）。
 
 详细解释见 `spec/TAPNOW_NEXT_PHASE_WBS_DETAIL_2026-08-07.md`「决策点定稿」。

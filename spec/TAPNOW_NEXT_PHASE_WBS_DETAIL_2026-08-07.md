@@ -300,8 +300,8 @@
 ### P1-1 v30 数据模型与种子迁移
 
 **具体操作**：
-1. `server/database.ts` 追加 `public_templates` 表（含 status/cover/created_by/updated_by/archived_at）。
-2. 迁移内 `INSERT OR IGNORE` 两条种子（`templateCatalogData.json`）。
+1. `server/database.ts` 追加 `public_templates` 表（含 status/cover/preview_image/created_by/updated_by/archived_at；`preview_image` 为第二批决策新增，`category` 用 JSON 数组文本并 `CHECK (json_valid(category))`）。
+2. 迁移内 `INSERT OR IGNORE` 两条种子（`templateCatalogData.json`），并写入 `preview_image: /templates/*.png`。
 3. 迁移幂等测试。
 
 **风险/应对**：
@@ -316,7 +316,7 @@
 **具体操作**：
 1. 新增 `server/adminTemplates.ts`：
    - `listPublicTemplates`（q/category/status/limit/offset/includeGraph）；
-   - `publicTemplateCard`（对齐 `userTemplateCard`：categories/cover/previewImage/graph）；
+   - `publicTemplateCard`（对齐 `userTemplateCard`：categories/cover/previewImage/graph；封面优先 `preview_image`，否则按三级规则或渐变）；
    - `savePublicTemplate/updatePublicTemplate/archivePublicTemplate/deletePublicTemplate`；
    - 审计写 `admin_audit_events`。
 2. `server/templateCatalog.ts` 需要把 `validTemplateGraph`（303 行）、`categories`（105 行）、`userTemplateCard`（436 行）导出或抽到共享模块。
@@ -375,9 +375,9 @@
 
 ### P1-7 公共模板导入与素材兼容
 
-**具体操作**：新增集成测试：管理员发布含素材公共模板 → 普通账号导入 → 不刷新可见、刷新仍在。
+**具体操作（第二批决策修订）**：公共模板本期不携带发布者的私有素材（素材读取为 owner 隔离）；公共模板节点使用上传位/占位形态（与两条种子一致），管理员封面用 `preview_image` 或渐变。新增集成测试：管理员发布含“上传位节点”的公共模板 → 普通账号导入 → 节点正常显示、不报错、刷新保持；卡片封面来自 `preview_image`。
 **风险/应对**：
-- R47 素材地址/权限：公共模板素材 assetId 必须归属发布者且仍可读；若素材被删，导入后节点显示缺失提示（沿用 normalize 规则），封面降级渐变。
+- R47 已消解：不再嵌入私有素材，规避跨账号 404；未来要“带图公共模板”需另立公共素材复制功能（H1 选项 a）。
 
 ### P1-8 最近使用（可选）
 
@@ -507,3 +507,12 @@
 - 选项 B：加 `pending_review` 状态 + 提交接口 + 管理员审核页。
 - 影响：B 是完整的“内容审核”子功能，要新增状态机、提交/撤回/审核接口、通知和审核 UI，工作量接近一个小功能；与你最初描述“公共模板只有管理员能操作新增/删除/更新等”不符。
 - ✅ 已确认：A（不做投稿；公共模板仅管理员新增/编辑/删除/上下架）。
+
+### 第二批决策（2026-08-07 用户确认，全按建议）
+
+1. ✅ 公共模板本期不携带私有素材（采用选项 b：上传位/占位节点；公共素材复制功能以后另行立项）。
+2. ✅ `public_templates` 本期增加 `preview_image TEXT` 列，保证种子封面与管理员封面可用。
+3. ✅ 普通账号默认能力（生成/下载/项目）本期不可被撤销；权限写接口只维护“额外授予集”。
+4. ✅ 禁止管理员修改自己的权限（防自锁；改他人权限不受限）。
+5. ✅ 公共模板管理接口对无权限账号返回 403（管理面无泄露风险）。
+6. ✅ 种子模板允许编辑，但不可物理删除（仅可归档）。

@@ -817,4 +817,5 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 
 - 已完成：现状调研（`spec/TAPNOW_NEXT_PHASE_INVESTIGATION_2026-08-07.md`）、多步骤 WBS（`spec/TAPNOW_NEXT_PHASE_WBS_2026-08-07.md`）、逐小点详拆（`spec/TAPNOW_NEXT_PHASE_WBS_DETAIL_2026-08-07.md`）。
 - 8 项决策点已由用户确认：权限表 v30 / 公共模板表 v31；account-context 先加权限数组并暂留布尔字段；公共模板删除用归档+恢复且种子不可物理删除；最近使用先做本地版；`manage_accounts/manage_permissions` 不授予非管理员；P2（普通能力收回）本批不纳入；不加环境开关；不做投稿。
+- 第二批 6 项决策已由用户确认（含全量影响分析结论）：公共模板本期不携带私有素材；`public_templates` 增加 `preview_image` 列；默认能力不可撤销、权限写接口只维护额外授予集；禁止管理员修改自己的权限；公共模板管理接口对无权限账号返回 403；种子模板允许编辑但不可物理删除。
 - 当前状态：`DECISIONS CONFIRMED / IMPLEMENTATION NOT STARTED`。未经用户明确说“开始”，不实施任何代码改动。
