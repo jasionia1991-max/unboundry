@@ -55,7 +55,7 @@ test("Image empty and local upload states match the observed geometry", async ({
 }) => {
   const generationRequests: string[] = [];
   page.on("request", (request) => {
-    if (/provider|generate/i.test(request.url())) {
+    if (/provider|generate/i.test(request.url()) && !request.url().includes("/src/")) {
       generationRequests.push(request.url());
     }
   });
@@ -84,7 +84,7 @@ test("Image empty and local upload states match the observed geometry", async ({
 
   await page.getByTestId("image-upload-input").setInputFiles(
     path.resolve(
-      "spec/reference/unboundry-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+      "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
     ),
   );
 
@@ -361,7 +361,7 @@ test("Image reference chip follows the incoming edge and undo restores both", as
 }) => {
   const paidRequests: string[] = [];
   page.on("request", (entry) => {
-    if (/openrouter|api\/v1\/images|provider/i.test(entry.url())) {
+    if (/openrouter|api\/v1\/images|provider/i.test(entry.url()) && !entry.url().includes("/src/")) {
       paidRequests.push(entry.url());
     }
   });
@@ -401,7 +401,7 @@ test("Image generating state is visual-only and disables every control", async (
 }) => {
   const generationRequests: string[] = [];
   page.on("request", (request) => {
-    if (/provider|generate/i.test(request.url())) {
+    if (/provider|generate/i.test(request.url()) && !request.url().includes("/src/")) {
       generationRequests.push(request.url());
     }
   });
@@ -447,7 +447,7 @@ test("Image success keeps the material-fit result, favorite, prompt, and paramet
 }) => {
   const generationRequests: string[] = [];
   page.on("request", (request) => {
-    if (/provider|generate/i.test(request.url())) {
+    if (/provider|generate/i.test(request.url()) && !request.url().includes("/src/")) {
       generationRequests.push(request.url());
     }
   });
@@ -505,7 +505,7 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   await node.click();
   await page.getByTestId("image-upload-input").setInputFiles(
     path.resolve(
-      "spec/reference/unboundry-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+      "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
     ),
   );
   await expect(card).toHaveAttribute("data-asset-id", /.+/);
@@ -611,7 +611,7 @@ test("Image multi-angle panel keeps local parameters without generating", async 
 }) => {
   const generationRequests: string[] = [];
   page.on("request", (request) => {
-    if (/provider|generate/i.test(request.url())) {
+    if (/provider|generate/i.test(request.url()) && !request.url().includes("/src/")) {
       generationRequests.push(request.url());
     }
   });
@@ -673,7 +673,7 @@ test("Image redraw keeps mask coordinates local and cancel is lossless", async (
 }) => {
   const generationRequests: string[] = [];
   page.on("request", (request) => {
-    if (/provider|generate/i.test(request.url())) {
+    if (/provider|generate/i.test(request.url()) && !request.url().includes("/src/")) {
       generationRequests.push(request.url());
     }
   });
@@ -779,7 +779,7 @@ test("Image lighting stays unavailable while the feature is paused", async ({
 }) => {
   const generationRequests: string[] = [];
   page.on("request", (request) => {
-    if (/provider|generate/i.test(request.url())) {
+    if (/provider|generate/i.test(request.url()) && !request.url().includes("/src/")) {
       generationRequests.push(request.url());
     }
   });

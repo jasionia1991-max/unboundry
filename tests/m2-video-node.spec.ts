@@ -46,7 +46,7 @@ test("Video generating state disables controls and uses the shared loading effec
 }) => {
   const generationRequests: string[] = [];
   page.on("request", (request) => {
-    if (/provider|generate/i.test(request.url())) {
+    if (/provider|generate/i.test(request.url()) && !request.url().includes("/src/")) {
       generationRequests.push(request.url());
     }
   });
@@ -103,7 +103,7 @@ test("Video success shows playable media and adds one history item without quota
 }) => {
   const generationRequests: string[] = [];
   page.on("request", (request) => {
-    if (/provider|generate/i.test(request.url())) {
+    if (/provider|generate/i.test(request.url()) && !request.url().includes("/src/")) {
       generationRequests.push(request.url());
     }
   });

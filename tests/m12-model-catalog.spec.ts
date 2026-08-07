@@ -179,7 +179,7 @@ test("only administrators manage models while users receive a safe published cat
     const weakAssetId = "seedance-constraint-guard-image";
     const weakAsset = await readFile(resolve(
       process.cwd(),
-      "spec/reference/unboundry-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+      "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
     ));
     expect((await request(`/api/assets/${weakAssetId}`, {
       body: weakAsset,

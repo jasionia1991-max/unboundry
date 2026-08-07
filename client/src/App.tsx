@@ -669,7 +669,7 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
             <small>管理员：{currentUser.displayName}</small>
           </div>
         </div>
-        <button onClick={() => { window.location.href = "/"; }} type="button">
+        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
           返回画布
         </button>
       </header>
@@ -2415,7 +2415,7 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
             <small>管理员：{currentUser.displayName}</small>
           </div>
         </div>
-        <button onClick={() => { window.location.href = "/"; }} type="button">
+        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
           返回画布
         </button>
       </header>
@@ -4660,7 +4660,7 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
             <small>管理员：{currentUser.displayName}</small>
           </div>
         </div>
-        <button onClick={() => { window.location.href = "/"; }} type="button">
+        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
           返回画布
         </button>
       </header>
@@ -5452,7 +5452,7 @@ function AdminStorage({ currentUser }: { currentUser: AuthUser }) {
             <small>管理员：{currentUser.displayName}</small>
           </div>
         </div>
-        <button onClick={() => { window.location.href = "/"; }} type="button">
+        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
           返回画布
         </button>
       </header>
@@ -5850,7 +5850,7 @@ function AdminGenerationSafety({
             <small>管理员：{currentUser.displayName}</small>
           </div>
         </div>
-        <button onClick={() => { window.location.href = "/"; }} type="button">
+        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
           返回画布
         </button>
       </header>
@@ -6305,7 +6305,7 @@ function AdminApiContract({ currentUser }: { currentUser: AuthUser }) {
             <small>管理员：{currentUser.displayName}</small>
           </div>
         </div>
-        <button onClick={() => { window.location.href = "/"; }} type="button">
+        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
           返回画布
         </button>
       </header>
@@ -6600,7 +6600,7 @@ function AdminTemplatesPage({ currentUser }: { currentUser: AuthUser }) {
             <small>管理员：{currentUser.displayName}</small>
           </div>
         </div>
-        <button onClick={() => { window.location.href = "/"; }} type="button">
+        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
           返回画布
         </button>
       </header>
@@ -6971,7 +6971,7 @@ function MyConnectionsPage({ currentUser }: { currentUser: AuthUser }) {
             <small>{currentUser.displayName}</small>
           </div>
         </div>
-        <button onClick={() => { window.location.href = "/"; }} type="button">
+        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
           返回画布
         </button>
       </header>

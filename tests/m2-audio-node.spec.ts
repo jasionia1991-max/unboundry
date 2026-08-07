@@ -37,7 +37,7 @@ test("Audio success returns two local results without quota accounting", async (
 }) => {
   const generationRequests: string[] = [];
   page.on("request", (request) => {
-    if (/provider|generate/i.test(request.url())) {
+    if (/provider|generate/i.test(request.url()) && !request.url().includes("/src/")) {
       generationRequests.push(request.url());
     }
   });

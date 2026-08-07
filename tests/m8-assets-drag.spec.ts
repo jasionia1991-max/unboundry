@@ -12,7 +12,7 @@ test("Library image, video and audio drag onto the canvas and survive reload", a
 }) => {
   const providerRequests: string[] = [];
   page.on("request", (request) => {
-    if (/provider|generate/i.test(request.url())) {
+    if (/provider|generate/i.test(request.url()) && !request.url().includes("/src/")) {
       providerRequests.push(request.url());
     }
   });

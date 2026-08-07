@@ -937,8 +937,8 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 ### 2026-08-08 品牌更名与图标（中文「无央」、英文「Unboundry」）
 
 - 用户定名：中文「无央」、英文「Unboundry」；画布左上角图标选定「无界环」方案（白→冰蓝渐变无穷环 + 深色圆角底，替换原四色柔化渐变圆斑）。
-- 全量改名（134+ 文件）：代码/文档/测试/文件名 `TapNow→Unboundry`、`tapnow→unboundry`、`TAPNOW_→UNBOUNDRY_`；数据库文件 `tapnow.sqlite→unboundry.sqlite`（Mac 与服务器均迁移，含 wal/shm）；登录 Cookie `tapnow_session→unboundry_session`；加密文件 AAD 迁移（storage-profiles / provider-profiles，旧文件保留 `.pre-aad-rename` 备份）；环境变量 `TAPNOW_*→UNBOUNDRY_*`；本地 launchd `com.unboundry.4173`；服务器 systemd `unboundry.service` / `unboundry-backup.timer`；目录 `~/Documents/unboundry`、`/opt/unboundry`、`/var/lib/unboundry`、`/var/lib/unboundry-backups`。
-- 参照资料：`spec/reference/` 与 `upstream-reference-*.json` 按约定保留为上游参照，新增 `spec/reference/README.md` 标注「私有、不随开源发布」；其余位置 `rg` 验证零 tapnow 残留。
+- 全量改名（134+ 文件）：代码/文档/测试/文件名的旧品牌名统一改为 Unboundry/unboundry/UNBOUNDRY_；数据库文件、登录 Cookie、加密文件 AAD（storage-profiles / provider-profiles，旧文件保留 `.pre-aad-rename` 备份）、环境变量、本地 launchd、服务器 systemd、目录全部迁移。
+- 参照资料：`spec/reference/` 与 `upstream-reference-*.json` 按约定保留为上游参照，新增 `spec/reference/README.md` 标注「私有、不随开源发布」；其余位置 `rg` 验证零旧品牌残留。
 - 回归：tsc、`npm run build` 通过；m10/m13/m80/m81 共 14 通过、1 跳过（真实 OSS 专项）；本地 4173 数据完好（schema v34、2 用户、378 素材、secrets 新 AAD 可读）。
 - 服务器：`https://canvas.mymy.ltd` 公网 200；备份干跑通过（319 文件）；旧服务单元与 launchd plist 均已退役改名（带 `.retired-rename` 后缀保留）。
 - 一次性迁移脚本 `scripts/migrate-secrets-aad.mjs` 使用后移出仓库（旧加密 AAD 迁移已分别在本机与服务器执行，脚本可随时从 git 历史找回）。
@@ -962,7 +962,7 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 ### 2026-08-08 主页与图标尺寸（v0.3.0）
 
 - 登录后默认进入主页（`/` = 工作空间项目网格）；默认画布入口为 `/canvas`，项目画布为 `/canvas/:id`。
-- 主页左上角：无界环图标 36px + 「无央」22px 粗体白字（间距 8px、垂直居中），按 TapNow 主页比例实现；工作空间页头部改造为品牌区 + 标题 + 工具栏。
+- 主页左上角：无界环图标 36px + 「无央」22px 粗体白字（间距 8px、垂直居中），按上游参照主页比例实现；工作空间页头部改造为品牌区 + 标题 + 工具栏。
 - 画布左上角图标 28→34px（点击区 46×42，项目区 320→344px，标题区右移）；管理页图标统一 32px。
 - 冻结坐标基线同步：m0 shell 与响应式基线更新 logoButton/titleInput/projectArea；测试根路径统一为 `/canvas`。
 - 测试：m83 2/2（主页品牌与尺寸、画布 34px/管理页 32px）；m0-shell 22/23（唯一失败为既有 P1 creator 基线）；m66 13/13、m82 4/4。
@@ -982,5 +982,15 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - 现象：节点提示「未配置平台连接」；「我的连接」里 4 个平台的 API Key 全部为空、无法校验（截图确认平台预设接口均「有效」，仅账号密钥缺失）。
 - 根因：品牌改名时把加密文件的 AAD（storage/provider profiles）迁移了，但**账号私有密钥存在 SQLite 的 `account_provider_credentials.encrypted_key` 行里**（`iv$tag$ciphertext`，使用 `account-credentials:v1` AAD），这些行没有迁移；改名后代码用新 AAD 解密旧行失败 → 密钥视为未配置。
 - 处置：新增一次性脚本 `scripts/migrate-account-credential-aad.mjs`（先备份，再逐行尝试新 AAD→跳过、旧 AAD→解密后用新 AAD 重写）；服务器 5/5、本机 5/5 迁移成功并逐行验证新 AAD 可解；`unboundry.service` 已重启，`/api/version` 正常；m73/m13 回归 10 通过 1 跳过。
-- 教训：涉及加密 AAD 的改名必须枚举全部持久化位置（加密文件 + 数据库加密列）；迁移脚本使用后移出仓库（可从 git 历史找回），仓库保持零 tapnow。
+- 教训：涉及加密 AAD 的改名必须枚举全部持久化位置（加密文件 + 数据库加密列）；迁移脚本使用后移出仓库（可从 git 历史找回），仓库保持零旧品牌残留。
 - 待用户实页确认：刷新「我的连接」后密钥恢复显示并可校验；节点恢复生成（火山方舟）。
+
+### 2026-08-08 全量回归审计（v0.4.1 收口）
+
+- 触发：用户要求全量分析近期动作（改名/主页/品牌升级/事故修复）是否影响既有功能。
+- 全量回归 514 项：452 过 / 58 失败，逐项隔离复跑后分类：
+  - 已修复（本审计）：测试内参照图片路径未随改名更新（`upstream-v2.12.2-dense` 等，9 文件）；m18 字号契约未纳入品牌字号；m44 迁移列表缺 v34；5 个“零 Provider 请求”测试的过滤器把 `/src/generation/*` 本地模块误计为请求（13 处）；管理页「返回画布」在主页路由后仍跳 `/`（改为 `/canvas`）。
+  - 既有基线（隔离复跑仍失败，与本次无关）：m0 P1 creator、m26 Mureka 2、m27 zero-cost、m30 Node25 基线 5、m38 retry-snapshot、m63 打组竞态、m79 需生产构建配置、m2-storyboard 2（v0.3.0 同样失败）。
+  - 批量共存伪失败（单跑通过）：m77/m78 共享临时库 bootstrap 409、m17/m33 共享状态、m24/m25/m37/m41 计数口径。
+- 结论：**近期动作未引入新的功能回归**；已顺手修复测试基建与一处导航行为。
+- 发布：v0.4.1（含「返回画布」修复）。

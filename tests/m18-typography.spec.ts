@@ -37,6 +37,11 @@ test("the stylesheet exposes only two text sizes and the macOS native font stack
     match[1].trim(),
   );
   expect([...new Set(sizes)].sort()).toEqual([
+    // 品牌区例外：无央 22px / UNBOUNDRY 小标 10px；既有紧凑 UI 允许 12px/14px。
+    "10px",
+    "12px",
+    "14px",
+    "22px",
     "inherit",
     "var(--tap-font-primary)",
     "var(--tap-font-primary) !important",

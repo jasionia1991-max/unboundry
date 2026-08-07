@@ -155,7 +155,7 @@ async function ensureGarmentAsset(request: APIRequestContext) {
   await request.delete(`/api/assets/${garmentAssetId}`);
   const bytes = await readFile(resolve(
     process.cwd(),
-    "spec/reference/unboundry-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+    "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
   ));
   const uploaded = await request.post(`/api/assets/${garmentAssetId}`, {
     data: bytes,

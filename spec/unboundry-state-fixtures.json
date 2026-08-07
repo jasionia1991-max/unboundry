@@ -1605,7 +1605,7 @@
         "blankDropMenuTitle": "引用所有选中的节点生成"
       },
       "evidence": {
-        "userScreenshot": "spec/reference/user-acceptance-2026-07-27/multi-source-connect-unboundry.png",
+        "userScreenshot": "spec/reference/user-acceptance-2026-07-27/multi-source-connect-upstream.png",
         "regressionScreenshot": "spec/reference/user-acceptance-2026-07-27/multi-selection-scissors-regression.png",
         "liveSelectedNodeCount": 3,
         "liveSelectionScreenRect": [192.298, 165.543, 664.633, 172.873],
@@ -2259,7 +2259,7 @@
           "targetHandlePrecisionRequired": false
         },
         "evidence": [
-          "reference/user-acceptance-2026-07-27/edge-scissors-unboundry.png",
+          "reference/user-acceptance-2026-07-27/edge-scissors-upstream.png",
           "reference/user-acceptance-2026-07-27/grid-local-before.png",
           "reference/user-acceptance-2026-07-27/grid-unboundry-reference.png"
         ]

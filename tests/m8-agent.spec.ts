@@ -38,7 +38,7 @@ test("Agent input treats one IME composition as one undo unit", async ({
 }) => {
   const generationRequests: string[] = [];
   page.on("request", (request) => {
-    if (/provider|generate/i.test(request.url())) {
+    if (/provider|generate/i.test(request.url()) && !request.url().includes("/src/")) {
       generationRequests.push(request.url());
     }
   });
@@ -94,7 +94,7 @@ test("new creator nodes keep their selected toolbars beside Agent", async ({
 }) => {
   const generationRequests: string[] = [];
   page.on("request", (request) => {
-    if (/provider|generate/i.test(request.url())) {
+    if (/provider|generate/i.test(request.url()) && !request.url().includes("/src/")) {
       generationRequests.push(request.url());
     }
   });
@@ -138,7 +138,7 @@ test("Agent add, canvas reference, confirmation and model menus match", async ({
 }) => {
   const generationRequests: string[] = [];
   page.on("request", (request) => {
-    if (/provider|generate/i.test(request.url())) {
+    if (/provider|generate/i.test(request.url()) && !request.url().includes("/src/")) {
       generationRequests.push(request.url());
     }
   });

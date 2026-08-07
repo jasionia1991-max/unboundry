@@ -4,13 +4,13 @@ import path from "node:path";
 
 const canvasId = "interaction.upload-image";
 const firstImage = path.resolve(
-  "spec/reference/unboundry-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+  "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
 );
 const secondImage = path.resolve(
-  "spec/reference/unboundry-v2.12.2-dense/01-neutral-1280x720.png",
+  "spec/reference/upstream-v2.12.2-dense/01-neutral-1280x720.png",
 );
 const replacementImage = path.resolve(
-  "spec/reference/unboundry-v2.12.2-dense/03-search-1280x720.png",
+  "spec/reference/upstream-v2.12.2-dense/03-search-1280x720.png",
 );
 
 async function setGeneratedImageFile(
