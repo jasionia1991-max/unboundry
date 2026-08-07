@@ -1829,6 +1829,7 @@ export function CanvasSurface({
   const viewportQuietTimer = useRef<number | undefined>(undefined);
   const lastZoomNotifyAt = useRef(0);
   const pendingProgrammaticViewport = useRef<Viewport | undefined>(undefined);
+  const selectedNodeCountRef = useRef(0);
   const onZoomChangeRef = useRef(onZoomChange);
   onZoomChangeRef.current = onZoomChange;
   const [primaryId, setPrimaryId] = useState<string>();
@@ -1921,17 +1922,19 @@ export function CanvasSurface({
   } | undefined>(undefined);
   nodesRef.current = nodes;
   edgesRef.current = edges;
-  viewportRef.current = viewport;
 
-  const applyViewport = useCallback((next: Viewport) => {
-    viewportRef.current = next;
-    setViewport(next);
-    if (flowInstance.current) {
-      flowInstance.current.setViewport(next);
-      pendingProgrammaticViewport.current = undefined;
-    } else {
-      pendingProgrammaticViewport.current = next;
+  const updateViewportDom = (next: Viewport) => {
+    const world = worldRef.current;
+    if (world) {
+      world.setAttribute("data-viewport-x", String(next.x));
+      world.setAttribute("data-viewport-y", String(next.y));
+      world.setAttribute("data-viewport-zoom", String(next.zoom));
     }
+  };
+
+  // 初始补一次 data-viewport-* 属性（后续由 updateViewportDom 直接维护，不再驱动 React 重渲染）。
+  useEffect(() => {
+    updateViewportDom(viewportRef.current);
   }, []);
 
   const markCanvasInteraction = useCallback(() => {
@@ -1939,10 +1942,28 @@ export function CanvasSurface({
     window.clearTimeout(viewportQuietTimer.current);
     viewportQuietTimer.current = window.setTimeout(() => {
       lastViewportInteractionAt.current = 0;
-      setPersistenceRecheckTick((tick) => tick + 1);
+      // 镜头动画期间不触发保存重查；动画最后一帧先关闸门再提交，只保存一次。
+      if (!templateViewportAnimating.current) {
+        setPersistenceRecheckTick((tick) => tick + 1);
+      }
       onZoomChangeRef.current?.(viewportRef.current.zoom);
     }, VIEWPORT_QUIET_MS);
   }, []);
+
+  const applyViewport = useCallback((next: Viewport) => {
+    viewportRef.current = next;
+    updateViewportDom(next);
+    if (selectedNodeCountRef.current > 1) setViewport(next);
+    if (flowInstance.current) {
+      flowInstance.current.setViewport(next);
+      pendingProgrammaticViewport.current = undefined;
+    } else {
+      pendingProgrammaticViewport.current = next;
+    }
+    // 程序化视口变化不一定触发 ReactFlow 的 onViewportChange，
+    // 显式调度安静期，保证持久化 watcher 重新评估并保存。
+    markCanvasInteraction();
+  }, [markCanvasInteraction]);
 
   const keepLastNonCollidingPositions = (
     changes: NodeChange<ProbeNodeType>[],
@@ -2035,8 +2056,8 @@ export function CanvasSurface({
         ? undefined
         : {
             flow: {
-              x: (x - viewport.x) / viewport.zoom,
-              y: (y - viewport.y) / viewport.zoom,
+              x: (x - viewportRef.current.x) / viewportRef.current.zoom,
+              y: (y - viewportRef.current.y) / viewportRef.current.zoom,
             },
             screen: { x, y },
           },
@@ -2246,13 +2267,17 @@ export function CanvasSurface({
         cancelTemplateFit();
       }
       viewportRef.current = next;
-      setViewport(next);
+      updateViewportDom(next);
+      if (selectedNodeCountRef.current > 1) setViewport(next);
       const now = performance.now();
       lastViewportInteractionAt.current = now;
       window.clearTimeout(viewportQuietTimer.current);
       viewportQuietTimer.current = window.setTimeout(() => {
         lastViewportInteractionAt.current = 0;
-        setPersistenceRecheckTick((tick) => tick + 1);
+        // 镜头动画期间不触发保存重查；动画最后一帧先关闸门再提交，只保存一次。
+        if (!templateViewportAnimating.current) {
+          setPersistenceRecheckTick((tick) => tick + 1);
+        }
         onZoomChangeRef.current?.(viewportRef.current.zoom);
       }, VIEWPORT_QUIET_MS);
       if (
@@ -2673,8 +2698,12 @@ export function CanvasSurface({
     const bounds = worldRef.current?.getBoundingClientRect();
     if (!bounds) return;
     const position = {
-      x: (screen.x - bounds.left - viewport.x) / viewport.zoom,
-      y: (screen.y - bounds.top - viewport.y) / viewport.zoom,
+      x:
+        (screen.x - bounds.left - viewportRef.current.x) /
+        viewportRef.current.zoom,
+      y:
+        (screen.y - bounds.top - viewportRef.current.y) /
+        viewportRef.current.zoom,
     };
     checkpoint();
     setNodes((current) => [
@@ -2716,8 +2745,14 @@ export function CanvasSurface({
     if (!bounds) return;
     const size = NODE_DEFAULT_SIZES[historyAssetRequest.asset.kind];
     addDroppedLibraryAsset(historyAssetRequest.asset, {
-      x: bounds.left + bounds.width / 2 - Number(size.width) * viewport.zoom / 2,
-      y: bounds.top + bounds.height / 2 - Number(size.height) * viewport.zoom / 2,
+      x:
+        bounds.left +
+        bounds.width / 2 -
+        (Number(size.width) * viewportRef.current.zoom) / 2,
+      y:
+        bounds.top +
+        bounds.height / 2 -
+        (Number(size.height) * viewportRef.current.zoom) / 2,
     });
   }, [historyAssetRequest?.sequence, persistenceReady]);
   const uploadImage = async (file?: File) => {
@@ -3081,7 +3116,6 @@ export function CanvasSurface({
       window.clearTimeout(persistenceSaveTimer.current);
       return;
     }
-
     const liveDocument = canvasSnapshot();
     const confirmed =
       liveDocument.fingerprint === persistedDocumentFingerprint.current;
@@ -3591,6 +3625,19 @@ export function CanvasSurface({
   );
   const activePlaylist = nodes.find((node) => node.data.playlistPicking);
   const selectedNodeCount = selectedNodes.length;
+  selectedNodeCountRef.current = selectedNodeCount;
+
+  // 进入多选时把 viewport 状态同步到实时值（非多选期间状态不随缩放/平移更新，
+  // 多选工具栏需要按实时视口定位）。
+  useEffect(() => {
+    if (selectedNodeCount <= 1) return;
+    const live = viewportRef.current;
+    setViewport((current) =>
+      current.x === live.x && current.y === live.y && current.zoom === live.zoom
+        ? current
+        : live,
+    );
+  }, [selectedNodeCount]);
   const canGroupSelection =
     selectedNodeCount > 1 && groupCandidates.length === selectedNodeCount;
   const selectionBounds =
@@ -3704,8 +3751,8 @@ export function CanvasSurface({
                 (typeof sourceMenuNode.style?.width === "number"
                   ? sourceMenuNode.style.width
                   : 0))) *
-              viewport.zoom +
-            viewport.x,
+              viewportRef.current.zoom +
+            viewportRef.current.x,
           y:
             (sourceMenuNode.position.y +
               (sourceMenuNode.measured?.height ??
@@ -3713,8 +3760,8 @@ export function CanvasSurface({
                   ? sourceMenuNode.style.height
                   : 0)) /
                 2) *
-              viewport.zoom +
-            viewport.y,
+              viewportRef.current.zoom +
+            viewportRef.current.y,
         }
       : undefined;
   const generationCanvasRevision =
@@ -3837,9 +3884,6 @@ export function CanvasSurface({
       }
       data-multi-selection={selectedNodeCount > 1 ? "true" : undefined}
       data-testid="canvas-world"
-      data-viewport-x={viewport.x}
-      data-viewport-y={viewport.y}
-      data-viewport-zoom={viewport.zoom}
       data-primary-node={primaryId}
       data-edge-count={edges.length}
       data-edge-auto-pan="true"
@@ -3904,8 +3948,8 @@ export function CanvasSurface({
         const y = event.clientY - bounds.top;
         setCreateMenu({
           flow: {
-            x: (x - viewport.x) / viewport.zoom,
-            y: (y - viewport.y) / viewport.zoom,
+            x: (x - viewportRef.current.x) / viewportRef.current.zoom,
+            y: (y - viewportRef.current.y) / viewportRef.current.zoom,
           },
           screen: {
             x: Math.max(8, Math.min(x, bounds.width - 296)),
@@ -4217,8 +4261,8 @@ export function CanvasSurface({
             canPaste: Boolean(internalClipboard.current),
             canUndo: history.current.length > 0,
             flow: {
-              x: (x - viewport.x) / viewport.zoom,
-              y: (y - viewport.y) / viewport.zoom,
+              x: (x - viewportRef.current.x) / viewportRef.current.zoom,
+              y: (y - viewportRef.current.y) / viewportRef.current.zoom,
             },
             screen: { x, y },
           });
@@ -4239,7 +4283,6 @@ export function CanvasSurface({
         selectionOnDrag={!agentReferenceMode}
         snapGrid={[20, 20]}
         snapToGrid={snapEnabled}
-        viewport={viewport}
         zoomOnDoubleClick={false}
         zoomOnPinch
         zoomOnScroll={false}
@@ -4619,9 +4662,11 @@ export function CanvasSurface({
               return {
                 id: node.id,
                 x:
-                  (absolutePosition.x + width) * viewport.zoom + viewport.x,
+                  (absolutePosition.x + width) * viewportRef.current.zoom +
+                  viewportRef.current.x,
                 y:
-                  (absolutePosition.y + height / 2) * viewport.zoom + viewport.y,
+                  (absolutePosition.y + height / 2) * viewportRef.current.zoom +
+                  viewportRef.current.y,
               };
             });
 
@@ -4787,7 +4832,7 @@ export function CanvasSurface({
               pointerId: event.pointerId,
               startX: event.clientX,
               startY: event.clientY,
-              viewport,
+              viewport: { ...viewportRef.current },
             };
           }}
           onPointerMove={(event) => {
