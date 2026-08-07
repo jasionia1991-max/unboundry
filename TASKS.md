@@ -976,3 +976,11 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - 画布顶栏几何：project-area 364×64、logo-button 72×64、标题区 76/12、项目菜单下移至 y=84；m0 冻结基线（projectArea/logoButton/titleInput/menu）同步。
 - 测试：m83 2/2（60px 图标尺寸）、m0-shell 24/25（唯一失败为既有 P1 creator 基线）、m66 13/13、m82 4/4；tsc/build 通过。
 - 发布：以 v0.4.0 走 `scripts/deploy.mjs` 全自动发布。
+
+### 2026-08-08 线上事故：账号密钥解密失败（改名时加密串迁移漏了数据库行）
+
+- 现象：节点提示「未配置平台连接」；「我的连接」里 4 个平台的 API Key 全部为空、无法校验（截图确认平台预设接口均「有效」，仅账号密钥缺失）。
+- 根因：品牌改名时把加密文件的 AAD（storage/provider profiles）迁移了，但**账号私有密钥存在 SQLite 的 `account_provider_credentials.encrypted_key` 行里**（`iv$tag$ciphertext`，使用 `account-credentials:v1` AAD），这些行没有迁移；改名后代码用新 AAD 解密旧行失败 → 密钥视为未配置。
+- 处置：新增一次性脚本 `scripts/migrate-account-credential-aad.mjs`（先备份，再逐行尝试新 AAD→跳过、旧 AAD→解密后用新 AAD 重写）；服务器 5/5、本机 5/5 迁移成功并逐行验证新 AAD 可解；`unboundry.service` 已重启，`/api/version` 正常；m73/m13 回归 10 通过 1 跳过。
+- 教训：涉及加密 AAD 的改名必须枚举全部持久化位置（加密文件 + 数据库加密列）；迁移脚本使用后移出仓库（可从 git 历史找回），仓库保持零 tapnow。
+- 待用户实页确认：刷新「我的连接」后密钥恢复显示并可校验；节点恢复生成（火山方舟）。
