@@ -879,4 +879,7 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - 背景：用户与 4 人实测反馈 TapNow 画布缩放/拖动显著更丝滑；真实 Chrome 实测确认差距（我们 28 节点缩放有 3 次 55–91ms 长任务、60 节点拖拽 94fps/6 丢帧；TapNow 0 长任务、最大帧 <28ms，且节点按视口挂载/卸载）。
 - 权威方案：`spec/TAPNOW_CANVAS_SMOOTHNESS_PLAN_2026-08-08.md`（含证据、三步计划、风险应对、测量方法）。
 - 用户已确认两项决策：①推翻“200 节点不引入虚拟化”旧决策，同意可视区域+缓冲带+缓存渲染；②按“第一步→实测→第二步→实测→第三步→实测”推进，每步先给实测再继续。
-- STEP 1（进行中）：viewport 下沉到 CanvasSurface（外壳只留低频缩放摘要+命令式滑块）；持久化 watcher 增加交互安静期（停手 ≥250ms 后重新评估，500ms 防抖保存语义不变）；新增“停手后必然保存”断言。
+- STEP 1 已实施并提交（`c87e3e6`）：viewport 下沉到 CanvasSurface（ReactFlow 非受控，外壳只留低频缩放摘要+命令式滑块/适应视图）；持久化 watcher 增加 250ms 交互安静期（拖动/缩放期间跳过指纹与保存调度，停手后照常 500ms 防抖保存，多标签/revision/pagehide 语义不变）；m71 新增“拖动中不写库、停手后必然保存”断言。
+- STEP 1 实测（真实 Chrome、28 节点临时项目，同手势）：平移 118fps/0 长任务/最大帧 25ms（达标）；拖动 116fps/0 长任务/最大帧 25ms（达标）；缩放 111fps/仍 2 次长任务（81/53ms）/最大帧 75ms（未达标）。根因：CanvasSurface 为保持多选工具栏与 data-viewport 属性实时，仍每帧 setState，ReactFlow 子树每帧重建（jsxDEV+节点组件渲染）。
+- STEP 1b（待继续）：把 ReactFlow 子树 memo 化（handlers 走 ref，visibleEdges/selectedNodeIds 用 useMemo），缩放长任务目标 0；完成后同法复测再进 STEP 2。
+- 延后问题（与 STEP 1 无关，既有）：m27 `allowed Video media edges pass zero-cost preflight` 在改动前主干同样失败（期望 0 实得 2,777,778，疑似模型成本/默认单任务费用口径，另行排查）；m0 P1 creator 基线。

@@ -1,6 +1,6 @@
 # 画布丝滑度修复方案（真实 Chrome 实测驱动）
 
-状态：`USER APPROVED 2026-08-08 / STEP 1 IN PROGRESS`
+状态：`USER APPROVED 2026-08-08 / STEP 1 DONE (ZOOM REMAINS) / STEP 1b IN PROGRESS`
 依据：真实 Chrome（远程调试 9222）同机同手势实测 + 代码逐层审计 + 仓库内 TapNow 活体证据。
 
 ## 0. 用户确认的两项决策（2026-08-08）
@@ -41,6 +41,8 @@
 验收：tsc/构建；m1-dense、m3、m27、m62、m68、m69、m70、m71、m0 相关回归全绿；真实 Chrome 28 节点缩放长任务从 3 次 → 0、最大帧 <30ms；用户实页确认。
 
 回退：单独提交可回退；不 push。
+
+STEP 1 实测（真实 Chrome，28 节点临时项目）：平移 118fps/0 长任务/max25ms；拖动 116fps/0 长任务/max25ms；缩放 111fps/仍 2 次长任务（81/53ms）/max75ms。缩放未达标根因：CanvasSurface 为多选工具栏与 data-viewport 属性仍每帧 setState，ReactFlow 子树每帧重建。STEP 1b：ReactFlow 子树 useMemo（handlers 走 ref、visibleEdges/selectedNodeIds 用 useMemo），目标缩放长任务 0、max<30ms。
 
 ### STEP 2：渲染架构（可视区域 + 缓冲带 + 缓存）
 
