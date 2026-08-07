@@ -6,7 +6,7 @@ import {
   readableMediaForOwner,
   type MediaKind,
 } from "./mediaRegistry";
-import { activeStorageProfile } from "./secureStorageProfiles";
+import { storageProfileForMedia } from "./secureStorageProfiles";
 
 /**
  * Compensates a private media save when the owning relay task is cancelled or
@@ -23,7 +23,7 @@ export async function removeUnpublishedGeneratedMedia(input: {
   let externalRemoved = false;
   if (media.storageBackend === "oss") {
     try {
-      const profile = await activeStorageProfile();
+      const profile = await storageProfileForMedia(media);
       if (!profile || !media.objectKey) throw new Error("OSS unavailable");
       await deletePrivateAliyunOssObject(media.objectKey, profile);
       externalRemoved = true;

@@ -13,6 +13,7 @@ import {
   listStorageProfiles,
   markStorageProfileVerified,
   publicStorageProfile,
+  readableStorageProfile,
   saveStorageProfile,
   setStorageMediaRouting,
 } from "./secureStorageProfiles";
@@ -110,6 +111,8 @@ async function statusBody() {
     `)
     .get() as StorageTotals;
   const document = await listStorageProfiles();
+  const readable = await readableStorageProfile();
+  const rawMediaRoutingEnabled = Boolean(document.mediaRoutingEnabled);
   const mediaRoutingEnabled = Boolean(
     document.mediaRoutingEnabled &&
       document.profiles.some(
@@ -118,10 +121,33 @@ async function statusBody() {
           profile.status === "active",
       ),
   );
+  const ossRows = db()
+    .prepare(`
+      SELECT kind, COUNT(*) AS count
+      FROM media_assets
+      WHERE storage_backend = 'oss' AND storage_status = 'ready'
+      GROUP BY kind
+    `)
+    .all() as Array<{ count: number; kind: "audio" | "image" | "video" }>;
+  const objectCounts: Record<string, number> = {
+    audio: 0,
+    image: 0,
+    video: 0,
+  };
+  for (const row of ossRows) objectCounts[row.kind] = Number(row.count);
+  const ossObjects =
+    objectCounts.audio + objectCounts.image + objectCounts.video;
+  let warning: string | undefined;
+  if (ossObjects > 0 && !readable) {
+    warning = `当前有 ${ossObjects} 个云端素材，但没有可用的读取配置，这些素材暂时无法显示`;
+  } else if (rawMediaRoutingEnabled && !mediaRoutingEnabled) {
+    warning = "云路由开关与正式配置不一致，新素材当前仍写入本机存储";
+  }
   return {
     activeBackend: mediaRoutingEnabled ? "oss" : "local",
     browserStoresSecrets: false,
     cloudRequestsEnabled: mediaRoutingEnabled,
+    warning,
     local: {
       bytes: Number(local.bytes),
       checksummed: Number(local.checksummed),
@@ -130,9 +156,13 @@ async function statusBody() {
     },
     oss: {
       activeProfileId: document.activeProfileId ?? "",
+      effectiveMediaRoutingEnabled: mediaRoutingEnabled,
       mediaRoutingEnabled,
+      objectCounts,
       profiles: document.profiles.map(publicStorageProfile),
       provider: "aliyun-oss",
+      rawMediaRoutingEnabled,
+      readableProfileAvailable: Boolean(readable),
       sdkInstalled: true,
     },
   };

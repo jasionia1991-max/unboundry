@@ -219,6 +219,7 @@ type AdminStorageStatus = {
   activeBackend: "local" | "oss";
   browserStoresSecrets: false;
   cloudRequestsEnabled: boolean;
+  warning?: string;
   local: {
     bytes: number;
     checksummed: number;
@@ -227,9 +228,13 @@ type AdminStorageStatus = {
   };
   oss: {
     activeProfileId: string;
+    effectiveMediaRoutingEnabled: boolean;
     mediaRoutingEnabled: boolean;
+    objectCounts: Record<string, number>;
     profiles: AdminStorageProfile[];
     provider: "aliyun-oss";
+    rawMediaRoutingEnabled: boolean;
+    readableProfileAvailable: boolean;
     sdkInstalled: true;
   };
 };
@@ -5473,6 +5478,15 @@ function AdminStorage({ currentUser }: { currentUser: AuthUser }) {
       </div>
       {error && <p className="auth-error storage-admin-error">{error}</p>}
       {notice && <p className="storage-admin-notice">{notice}</p>}
+      {status?.warning && (
+        <p
+          className="storage-admin-warning"
+          data-testid="storage-warning"
+          role="status"
+        >
+          {status.warning}
+        </p>
+      )}
       {!status && !error && (
         <div className="storage-admin-loading">正在读取存储状态…</div>
       )}
@@ -5664,7 +5678,11 @@ function AdminStorage({ currentUser }: { currentUser: AuthUser }) {
                       onClick={() => void testProfile(profile)}
                       type="button"
                     >
-                      {busy === `test:${profile.id}` ? "测试中…" : "测试连接"}
+                      {busy === `test:${profile.id}`
+                        ? "测试中…"
+                        : profile.status === "active"
+                          ? "重新测试（保持正式）"
+                          : "测试连接"}
                     </button>
                     <button
                       disabled={

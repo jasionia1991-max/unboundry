@@ -1431,6 +1431,20 @@ const migrations: readonly Migration[] = [
         RENAME TO generation_safety_settings;
     `,
   },
+  {
+    version: 34,
+    name: "media-asset-storage-profile",
+    prepare(database) {
+      // 记录每个 OSS 素材所属的存储配置，防止以后更换正式配置后旧素材按新桶签名而失读。
+      addColumnIfMissing(
+        database,
+        "media_assets",
+        "storage_profile_id",
+        "TEXT",
+      );
+    },
+    sql: "",
+  },
 ];
 
 export const currentSchemaVersion = migrations.at(-1)?.version ?? 0;

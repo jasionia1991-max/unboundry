@@ -896,3 +896,14 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - 用户确认：2026-08-08 用户在 4173 实页确认“拖动中隐藏功能栏/创作框、松手恢复”通过（提交 `f2f86f9`）。
 - 延后问题（与 STEP 1 无关，既有）：m27 `allowed Video media edges pass zero-cost preflight` 在改动前主干同样失败（期望 0 实得 2,777,778，疑似模型成本/默认单任务费用口径，另行排查）；m0 P1 creator 基线。
 - 延后问题（既有）：m63 `group create, undo, delete recovery` 在完全未改动的主干上稳定失败——快照显示“保存中…”与 GET 竞态（第二次打组后保存未落库即被读取），属测试竞态，另行排查。
+
+### 2026-08-08 存储读取规则修复（方案 A，用户已确认三项决策后实施）
+
+- 现象：多个图片节点显示「无法显示图片」，服务端返回 503 `Cloud asset is temporarily unavailable`；用户此前已确认不是手动删除。
+- 根因（本次逐行审计修正）：读取路径本来就不查云路由开关；真正损坏的是配置状态机——`activeProfileId` 指向 TapFK 配置但其状态是 `verified`（不是 `active`），`activeStorageProfile()` 返回空导致全部 OSS 读取/删除/下载/清理失败；触发点是「正式配置」再次点「测试连接」被 `markStorageProfileVerified` 降级；状态接口又用同一「必须 active」逻辑把原始开关 `true` 掩盖成界面上的「本机存储/云请求关闭」，导致无法从 UI 发现与修复。
+- 处置（代码）：新增 `readableStorageProfile` / `storageProfileById` / `storageProfileForMedia`，7 条读取/删除/下载/清理路径按素材所属配置解析（assetStorage、videoStorage、audioStorage、providerMedia、groupDownload、auth 删账号、generatedMediaCleanup）；`markStorageProfileVerified` 对正式配置只刷新验证时间、不再降级；v34 `media_assets.storage_profile_id` + 新 OSS 写入登记所属配置；状态接口新增 raw/effective/objectCounts/warning（旧字段兼容）；管理页警告横幅与「重新测试（保持正式）」。
+- 处置（真实库）：修复前备份 `backups/2026-08-07T19-04-25-352Z`（v33，977 行/308 本地素材）；4173 热重载后 v34 自动应用；secrets 已修复（TapFK 恢复 active、`mediaRoutingEnabled=false` 保持本地优先）；`scripts/repair-storage-state.mjs --backfill` 回填 70 个 OSS 素材的 `storage_profile_id`；`admin_audit_events` 记录 repair/backfill 共 2 条。
+- 脚本（L3）：`scripts/backup-to-oss.mjs`（本地备份后上传 OSS `backups/` 前缀，含干跑与 retain-days 清理，首次真实上传待用户授权）；`scripts/mirror-oss-to-local.mjs`（OSS `objects/*` 镜像回本地并核对 SHA-256，首次真实运行待授权）；npm scripts `data:repair-storage` / `data:backup:oss` / `data:mirror-oss`。
+- 验证：tsc、`npm run build` 通过（仅既有 chunk 体积提示）；m80 专项 4/4（重测不降级、路由关闭存量 OSS 仍 307 读取、无可用配置告警、新素材登记所属配置）；m10/m13/m31/m72 回归合计 30 通过、1 跳过（m13 真实 OSS 专项需 `TAPNOW_REAL_OSS_VERIFY=1`）。
+- 顺带修复：m10「trusted-duration migration」用例的老库 fixture 漏建 `project_metadata`（既有遗漏，与本批无关但导致该用例失败），已补齐；m31 媒体构造补 `storageProfileId`。
+- 待用户：4173 实页刷新确认旧 OSS 素材恢复显示（热重载已生效，无需等待重启）；授权首次真实 OSS 备份上传与反向镜像；STORAGE-004 由 USER_RECHECK 转 PASS 需用户实页确认。

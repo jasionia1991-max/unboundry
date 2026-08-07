@@ -22,8 +22,8 @@ import {
   unregisterMedia,
 } from "./mediaRegistry";
 import {
-  activeStorageProfile,
   storageMediaRoutingState,
+  storageProfileForMedia,
 } from "./secureStorageProfiles";
 import { openAppDatabase } from "./database";
 
@@ -55,7 +55,7 @@ export async function imageReferenceForProvider(
     throw new Error("当前只支持PNG参考图");
   }
   if (media.storageBackend === "oss") {
-    const profile = await activeStorageProfile();
+    const profile = await storageProfileForMedia(media);
     if (!profile) throw new Error("前置图片的云端存储暂不可用");
     return createPrivateAliyunOssReadUrl(media.objectKey, profile, 300);
   }
@@ -239,6 +239,7 @@ export async function saveGeneratedPng(input: {
             mediaWidth: dimensions.width,
             objectKey,
             storageBackend: "oss",
+            storageProfileId: routing.profile?.id,
             storageName: `${id}.png`,
           }),
         remove: () => deletePrivateAliyunOssObject(objectKey, routing.profile!),
@@ -321,7 +322,7 @@ export async function assetStorage(
         return;
       }
       try {
-        const profile = await activeStorageProfile();
+        const profile = await storageProfileForMedia(media);
         if (!profile) throw new Error("Active OSS profile is unavailable");
         const location = await createPrivateAliyunOssReadUrl(
           media.objectKey,
@@ -360,7 +361,7 @@ export async function assetStorage(
     const media = readableMedia(request, "image", id);
     if (media?.storageBackend === "oss") {
       try {
-        const profile = await activeStorageProfile();
+        const profile = await storageProfileForMedia(media);
         if (!profile) throw new Error("Active OSS profile is unavailable");
         await deletePrivateAliyunOssObject(media.objectKey, profile);
         unregisterMedia(request, "image", id);
@@ -417,6 +418,7 @@ export async function assetStorage(
             kind: "image",
             objectKey,
             storageBackend: "oss",
+            storageProfileId: routing.profile?.id,
             storageName: `${id}.png`,
           }),
         remove: () =>

@@ -17,7 +17,7 @@ import {
   hasPermission,
   setAccountPermissions,
 } from "./permissions";
-import { activeStorageProfile } from "./secureStorageProfiles";
+import { storageProfileForMedia } from "./secureStorageProfiles";
 import {
   ALL_PERMISSIONS,
   type AccountPermission,
@@ -760,13 +760,14 @@ export async function adminUsersApi(
 
       const mediaRows = store
         .prepare(`
-          SELECT storage_backend, storage_name, object_key
+          SELECT storage_backend, storage_name, object_key, storage_profile_id
           FROM media_assets
           WHERE owner_id = ?
         `)
         .all(targetId) as Array<{
         objectKey: string | null;
         storageBackend: string;
+        storageProfileId: string | null;
         storageName: string;
       }>;
 
@@ -858,13 +859,14 @@ async function removeAccountMediaFiles(
   rows: Array<{
     objectKey: string | null;
     storageBackend: string;
+    storageProfileId: string | null;
     storageName: string;
   }>,
 ) {
   for (const row of rows) {
     try {
       if (row.storageBackend === "oss") {
-        const profile = await activeStorageProfile();
+        const profile = await storageProfileForMedia(row);
         if (profile && row.objectKey) {
           await deletePrivateAliyunOssObject(row.objectKey, profile);
         }

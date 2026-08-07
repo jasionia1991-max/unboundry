@@ -12,7 +12,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
-import { appDataDirectory } from "./database";
+import { appDataDirectory } from "./database.ts";
 
 export type StorageProfileStatus = "active" | "draft" | "verified";
 
@@ -246,6 +246,78 @@ export async function activeStorageProfile() {
   return profile;
 }
 
+/**
+ * 读取路径使用的配置：正式配置因“重新测试连接”被降级为 verified 时，
+ * 只要它仍是 activeProfileId 指向的配置，就必须继续可读，避免旧 OSS 素材失读。
+ */
+export async function readableStorageProfile() {
+  const document = await readDocument();
+  const profile = document.profiles.find(
+    (candidate) =>
+      candidate.id === document.activeProfileId &&
+      (candidate.status === "active" || candidate.status === "verified"),
+  );
+  return profile;
+}
+
+export async function storageProfileById(
+  profileId: string | null | undefined,
+) {
+  if (!profileId) return undefined;
+  const document = await readDocument();
+  return document.profiles.find(
+    (candidate) =>
+      candidate.id === profileId &&
+      (candidate.status === "active" || candidate.status === "verified"),
+  );
+}
+
+/**
+ * 优先按素材登记时所属的配置读取；没有登记时回退到当前正式配置。
+ */
+export async function storageProfileForMedia(
+  media: { storageProfileId?: string | null } | null | undefined,
+) {
+  if (media?.storageProfileId) {
+    const profile = await storageProfileById(media.storageProfileId);
+    if (profile) return profile;
+  }
+  return readableStorageProfile();
+}
+
+/**
+ * 修复“activeProfileId 指向 verified 配置”的状态损坏：
+ * 恢复为 active，并把被掩盖的云路由开关复位为关闭（本地优先）。
+ */
+export async function repairStorageProfileState() {
+  const document = await readDocument();
+  const profile = document.profiles.find(
+    (candidate) => candidate.id === document.activeProfileId,
+  );
+  if (!profile || profile.status !== "verified") {
+    return {
+      changed: false,
+      activeProfileId: document.activeProfileId ?? "",
+      mediaRoutingEnabled: Boolean(document.mediaRoutingEnabled),
+      profile: profile
+        ? { id: profile.id, label: profile.label, status: profile.status }
+        : undefined,
+    };
+  }
+  profile.status = "active";
+  profile.updatedAt = new Date().toISOString();
+  if (document.mediaRoutingEnabled) {
+    document.mediaRoutingEnabled = false;
+  }
+  await writeDocument(document);
+  return {
+    changed: true,
+    activeProfileId: document.activeProfileId ?? "",
+    mediaRoutingEnabled: Boolean(document.mediaRoutingEnabled),
+    profile: { id: profile.id, label: profile.label, status: profile.status },
+  };
+}
+
 export async function storageMediaRoutingState() {
   const document = await readDocument();
   const profile = document.profiles.find(
@@ -319,7 +391,9 @@ export async function markStorageProfileVerified(profileId: string) {
   );
   if (!profile) throw new Error("Storage profile not found");
   profile.lastVerifiedAt = timestamp;
-  profile.status = "verified";
+  if (profile.status !== "active") {
+    profile.status = "verified";
+  }
   profile.updatedAt = timestamp;
   await writeDocument(document);
   return profile;

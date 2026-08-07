@@ -20,8 +20,8 @@ import {
 import { publishCloudObject } from "./cloudMediaStorage";
 import { openAppDatabase } from "./database";
 import {
-  activeStorageProfile,
   storageMediaRoutingState,
+  storageProfileForMedia,
 } from "./secureStorageProfiles";
 import { probeTrustedMediaMetadata } from "./mediaMetadata";
 
@@ -232,6 +232,7 @@ export async function saveGeneratedAudio(input: {
             kind: "audio",
             objectKey,
             storageBackend: "oss",
+            storageProfileId: routing.profile?.id,
             storageName: id,
           }),
         remove: () => deletePrivateAliyunOssObject(objectKey, routing.profile!),
@@ -334,7 +335,7 @@ export async function audioStorage(
         return;
       }
       try {
-        const profile = await activeStorageProfile();
+        const profile = await storageProfileForMedia(media);
         if (!profile) throw new Error("Active OSS profile is unavailable");
         const location = await createPrivateAliyunOssReadUrl(
           media.objectKey,
@@ -391,7 +392,7 @@ export async function audioStorage(
     const media = readableMedia(request, "audio", id);
     if (media?.storageBackend === "oss") {
       try {
-        const profile = await activeStorageProfile();
+        const profile = await storageProfileForMedia(media);
         if (!profile || !media.objectKey) {
           throw new Error("Active OSS profile is unavailable");
         }
@@ -445,6 +446,7 @@ export async function audioStorage(
           kind: "audio",
           objectKey,
           storageBackend: "oss",
+          storageProfileId: routing.profile?.id,
           storageName: id,
         }),
         remove: () => deletePrivateAliyunOssObject(objectKey, routing.profile!),

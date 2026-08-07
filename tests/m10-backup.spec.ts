@@ -93,6 +93,15 @@ test("trusted-duration migration preserves historical media and marks it unverif
         viewport TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
+      CREATE TABLE project_metadata (
+        owner_id TEXT,
+        id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        UNIQUE (owner_id, id)
+      );
+      INSERT INTO project_metadata (owner_id, id, title, updated_at)
+      VALUES (NULL, 'default', '默认项目', 1);
       CREATE TABLE media_assets (
         kind TEXT NOT NULL,
         id TEXT NOT NULL,

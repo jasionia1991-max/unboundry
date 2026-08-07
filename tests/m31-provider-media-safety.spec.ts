@@ -33,6 +33,7 @@ function media(input: Partial<MediaRecord> = {}): MediaRecord {
     mediaWidth: 1280,
     objectKey: "objects/2026/08/video/test.mp4",
     storageBackend: "oss",
+    storageProfileId: null,
     storageName: "test.mp4",
     storageStatus: "ready",
     ...input,

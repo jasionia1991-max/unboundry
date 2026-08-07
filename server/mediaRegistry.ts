@@ -17,6 +17,7 @@ export type MediaRecord = {
   mediaWidth: number | null;
   objectKey: string;
   storageBackend: MediaStorageBackend;
+  storageProfileId: string | null;
   storageName: string;
   storageStatus: "failed" | "pending" | "ready";
 };
@@ -72,7 +73,7 @@ export function readableMediaForOwner(
       SELECT
         byte_size, checksum_sha256, content_type, duration_seconds,
         duration_source, duration_status, media_height, media_width,
-        object_key, storage_backend,
+        object_key, storage_backend, storage_profile_id,
         storage_name, storage_status
       FROM media_assets
       WHERE kind = ? AND id = ? AND owner_id = ?
@@ -89,6 +90,7 @@ export function readableMediaForOwner(
         media_width: number | null;
         object_key: string;
         storage_backend: MediaStorageBackend;
+        storage_profile_id: string | null;
         storage_name: string;
         storage_status: "failed" | "pending" | "ready";
       }
@@ -106,6 +108,7 @@ export function readableMediaForOwner(
     mediaWidth: row.media_width,
     objectKey: row.object_key,
     storageBackend: row.storage_backend,
+    storageProfileId: row.storage_profile_id,
     storageName: row.storage_name,
     storageStatus: row.storage_status,
   };
@@ -138,6 +141,7 @@ export function registerMedia(
     mediaWidth?: number;
     objectKey?: string;
     storageBackend?: MediaStorageBackend;
+    storageProfileId?: string;
     storageName: string;
     storageStatus?: "failed" | "pending" | "ready";
   },
@@ -163,6 +167,7 @@ export function registerMediaForOwner(
     mediaWidth?: number;
     objectKey?: string;
     storageBackend?: MediaStorageBackend;
+    storageProfileId?: string;
     storageName: string;
     storageStatus?: "failed" | "pending" | "ready";
   },
@@ -172,16 +177,17 @@ export function registerMediaForOwner(
     .prepare(`
       INSERT INTO media_assets (
         kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
-        storage_backend, object_key, content_type, checksum_sha256,
-        storage_status, duration_seconds, duration_source, duration_status,
-        media_width, media_height
+        storage_backend, storage_profile_id, object_key, content_type,
+        checksum_sha256, storage_status, duration_seconds, duration_source,
+        duration_status, media_width, media_height
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(kind, id) DO UPDATE SET
         storage_name = excluded.storage_name,
         byte_size = excluded.byte_size,
         updated_at = excluded.updated_at,
         storage_backend = excluded.storage_backend,
+        storage_profile_id = excluded.storage_profile_id,
         object_key = excluded.object_key,
         content_type = excluded.content_type,
         checksum_sha256 = excluded.checksum_sha256,
@@ -202,6 +208,7 @@ export function registerMediaForOwner(
       timestamp,
       timestamp,
       input.storageBackend ?? "local",
+      input.storageProfileId ?? null,
       input.objectKey ?? input.storageName,
       input.contentType,
       input.checksumSha256,

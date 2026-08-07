@@ -13695,6 +13695,14 @@ sup {
   text-align: center;
 }
 
+.storage-admin-warning {
+  max-width: 960px;
+  margin: -8px auto 16px;
+  color: #f4c98a;
+  font-size: var(--tap-font-secondary);
+  text-align: center;
+}
+
 .storage-admin-loading,
 .storage-admin-error {
   max-width: 960px;

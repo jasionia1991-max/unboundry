@@ -20,8 +20,8 @@ import {
 import { publishCloudObject } from "./cloudMediaStorage";
 import { openAppDatabase } from "./database";
 import {
-  activeStorageProfile,
   storageMediaRoutingState,
+  storageProfileForMedia,
 } from "./secureStorageProfiles";
 import { probeTrustedMediaMetadata } from "./mediaMetadata";
 
@@ -96,6 +96,7 @@ export async function saveGeneratedMp4(input: {
             mediaWidth: metadata.width,
             objectKey,
             storageBackend: "oss",
+            storageProfileId: routing.profile?.id,
             storageName: id,
           }),
         remove: () => deletePrivateAliyunOssObject(objectKey, routing.profile!),
@@ -187,7 +188,7 @@ export async function videoStorage(
         return;
       }
       try {
-        const profile = await activeStorageProfile();
+        const profile = await storageProfileForMedia(media);
         if (!profile) throw new Error("Active OSS profile is unavailable");
         const location = await createPrivateAliyunOssReadUrl(
           media.objectKey,
@@ -244,7 +245,7 @@ export async function videoStorage(
     const media = readableMedia(request, "video", id);
     if (media?.storageBackend === "oss") {
       try {
-        const profile = await activeStorageProfile();
+        const profile = await storageProfileForMedia(media);
         if (!profile) throw new Error("Active OSS profile is unavailable");
         await deletePrivateAliyunOssObject(media.objectKey, profile);
       } catch {
@@ -315,6 +316,7 @@ export async function videoStorage(
           mediaWidth: metadata.width,
           objectKey,
           storageBackend: "oss",
+          storageProfileId: routing.profile?.id,
           storageName: id,
         }),
         remove: () => deletePrivateAliyunOssObject(objectKey, routing.profile!),

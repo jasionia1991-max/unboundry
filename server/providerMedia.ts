@@ -11,7 +11,7 @@ import {
   type MediaKind,
   type MediaRecord,
 } from "./mediaRegistry";
-import { activeStorageProfile } from "./secureStorageProfiles";
+import { storageProfileForMedia } from "./secureStorageProfiles";
 
 export class ProviderMediaError extends Error {
   constructor(
@@ -352,7 +352,7 @@ export async function providerMediaUrlForOwner(input: {
   const media = arkVideoMediaRecordForOwner(input, options.rules);
 
   if (media.storageBackend === "oss") {
-    const profile = await activeStorageProfile();
+    const profile = await storageProfileForMedia(media);
     if (!profile) {
       throw new ProviderMediaError("MEDIA_UNAVAILABLE", "参考素材的云端存储暂不可用");
     }

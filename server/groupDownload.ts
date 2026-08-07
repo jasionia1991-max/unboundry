@@ -8,7 +8,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { requestIdentity } from "./auth";
 import { createPrivateAliyunOssReadUrl } from "./aliyunOss";
 import { appDataDirectory, openAppDatabase } from "./database";
-import { activeStorageProfile } from "./secureStorageProfiles";
+import { storageProfileForMedia } from "./secureStorageProfiles";
 
 const canvasIdPattern = /^[a-z0-9._-]+$/i;
 const nodeIdPattern = /^[a-z0-9._:-]{1,200}$/i;
@@ -22,6 +22,7 @@ export type DownloadPlanInput = {
     assetId: string;
     backend: "local" | "oss";
     objectKey?: string;
+    storageProfileId?: string | null;
     storageName?: string;
   };
   nodeTitle: string;
@@ -174,7 +175,7 @@ async function spoolOssEntry(
 ): Promise<{ file: string; tempDirectory: string } | undefined> {
   const media = entry.media;
   if (!media?.objectKey) return undefined;
-  const profile = await activeStorageProfile();
+  const profile = await storageProfileForMedia(media);
   if (!profile) return undefined;
   let location: string;
   try {
@@ -373,7 +374,8 @@ export async function groupDownloadApi(
   const mediaRows = assetIds.length
     ? (store
         .prepare(`
-          SELECT id, kind, storage_name, storage_backend, object_key, byte_size
+          SELECT id, kind, storage_name, storage_backend, object_key,
+            storage_profile_id, byte_size
           FROM media_assets
           WHERE owner_id = ? AND id IN (${assetIds.map(() => "?").join(",")})
         `)
@@ -383,6 +385,7 @@ export async function groupDownloadApi(
         kind: "audio" | "image" | "video";
         object_key: string | null;
         storage_backend: "local" | "oss";
+        storage_profile_id: string | null;
         storage_name: string;
       }>)
     : [];
@@ -458,6 +461,7 @@ export async function groupDownloadApi(
           assetId: row.result_asset_id,
           backend: "oss",
           objectKey: media.object_key ?? undefined,
+          storageProfileId: media.storage_profile_id,
         },
         nodeTitle,
         storageExtension: media.storage_name.split(".").at(-1) ?? undefined,
