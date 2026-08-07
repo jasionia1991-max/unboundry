@@ -17,7 +17,7 @@
 
 - 独立仓库 `app`（`REPLICA_CONSTRAINTS.md` 绿地约束）；`package.json`：React 19.2、Vite 8.1、TypeScript 7.0、@xyflow/react 12.11、node:sqlite、ali-oss、archiver；无 Express，服务端 API 全部挂在 Vite 中间件上（`vite.config.ts`）。
 - 生产形态目前仍是 `vite preview` 承载（dev 与 preview 都注册同一批 API 中间件，见 `vite.config.ts` `configureServer/configurePreviewServer` 双注册）。
-- 数据库：SQLite 单文件 `tapnow.sqlite`（WAL），迁移在 `server/database.ts`，当前最新 `version 29`（`user-templates` 在 1223 行、`account-provider-credentials` 在 1242 行）。
+- 数据库：SQLite 单文件 `unboundry.sqlite`（WAL），迁移在 `server/database.ts`，当前最新 `version 29`（`user-templates` 在 1223 行、`account-provider-credentials` 在 1242 行）。
 - 加密密钥：`data/secrets/config-master.key`（`server/secretStore.ts`）；Provider 文档与账号凭据均为 AES-256-GCM 加密。
 
 ### 1.2 服务端 API 全量清单（路由、模块、鉴权现状）
@@ -56,11 +56,11 @@ OpenAPI 文档现有 15 条路径（`server/openApi.ts` 第 13–591 行），�
 
 ### 1.3 鉴权机制细节
 
-- `authGate`（`auth.ts:320-351`）：`TAPNOW_TEST_AUTH_BYPASS=1` 时把身份固定为 `__test__/admin`；否则校验 HttpOnly 会话 cookie，`authenticate()` 从 sessions+users 读取。
+- `authGate`（`auth.ts:320-351`）：`UNBOUNDRY_TEST_AUTH_BYPASS=1` 时把身份固定为 `__test__/admin`；否则校验 HttpOnly 会话 cookie，`authenticate()` 从 sessions+users 读取。
 - `requestIdentity(request)`（`auth.ts:310`）：后续处理器从 WeakMap 取身份；测试 bypass 与真实登录统一为 `{ userId, role, displayName, bypass }`。
 - `adminUsersApi` 与其他管理 API 鉴权方式不一致：`adminUsersApi` 自己调 `authenticate()`（581 行），其余 5 个管理 API 都只读 `requestIdentity()`（依赖 authGate 已置身份）。权限统一化时需一并收敛。
 - 非 GET 请求先过 `isMutationAllowed`（`auth.ts:286-296`）防 CSRF/来源伪造。
-- 会话 7 天、SameSite=Strict；`TAPNOW_SECURE_COOKIES=1` 或生产时加 Secure。
+- 会话 7 天、SameSite=Strict；`UNBOUNDRY_SECURE_COOKIES=1` 或生产时加 Secure。
 
 ### 1.4 数据表现状（与两事项相关）
 

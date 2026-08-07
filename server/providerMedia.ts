@@ -281,7 +281,7 @@ function localMediaPath(storageName: string) {
     throw new ProviderMediaError("MEDIA_INVALID", "参考素材的本机路径无效");
   }
   return join(
-    process.env.TAPNOW_DATA_DIR ?? join(process.cwd(), "data"),
+    process.env.UNBOUNDRY_DATA_DIR ?? join(process.cwd(), "data"),
     "media",
     storageName,
   );

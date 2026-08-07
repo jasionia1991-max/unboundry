@@ -1,6 +1,6 @@
 import base from "./playwright.config";
 
-const preview = process.env.TAPNOW_TEST_PREVIEW === "1";
+const preview = process.env.UNBOUNDRY_TEST_PREVIEW === "1";
 
 export default {
   ...base,

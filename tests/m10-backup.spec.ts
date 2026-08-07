@@ -13,9 +13,9 @@ import {
 const execute = promisify(execFile);
 
 test("legacy data is preserved while schema migrations become repeatable", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-migration-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-migration-"));
   try {
-    const legacy = new DatabaseSync(join(dataDirectory, "tapnow.sqlite"));
+    const legacy = new DatabaseSync(join(dataDirectory, "unboundry.sqlite"));
     legacy.exec(`
       CREATE TABLE canvas_documents (
         id TEXT PRIMARY KEY,
@@ -76,9 +76,9 @@ test("legacy data is preserved while schema migrations become repeatable", async
 });
 
 test("trusted-duration migration preserves historical media and marks it unverified", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-duration-migration-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-duration-migration-"));
   try {
-    const legacy = new DatabaseSync(join(dataDirectory, "tapnow.sqlite"));
+    const legacy = new DatabaseSync(join(dataDirectory, "unboundry.sqlite"));
     legacy.exec(`
       CREATE TABLE schema_migrations (
         version INTEGER PRIMARY KEY,
@@ -341,7 +341,7 @@ test("trusted-duration migration preserves historical media and marks it unverif
 });
 
 test("a database and its media restore from a checksummed backup", async () => {
-  const root = await mkdtemp(join(tmpdir(), "tapnow-backup-"));
+  const root = await mkdtemp(join(tmpdir(), "unboundry-backup-"));
   const dataDirectory = join(root, "data");
   const backupRoot = join(root, "backups");
   try {

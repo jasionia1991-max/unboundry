@@ -1,12 +1,12 @@
-# TapNow 复刻 · 多项目（项目制画布）开发方案
+# Unboundry 复刻 · 多项目（项目制画布）开发方案
 
 状态：`APPROVED BY USER 2026-08-06 / 实施时以此文档为准`
 适用范围：后端 API、数据库迁移、前端路由与工作空间页、画布项目模式、测试与验收。
-来源：用户 2026-08-06 多轮审阅确认；TapNow 真实页面勘测（2026-08-06，CUA 驱动 Chrome）与代码全量审阅。
+来源：用户 2026-08-06 多轮审阅确认；Unboundry 真实页面勘测（2026-08-06，CUA 驱动 Chrome）与代码全量审阅。
 
 ## 0. 目标与范围
 
-把当前「单项目/单画布（default）」升级为「多项目项目制画布」，对齐 TapNow 的真实行为：
+把当前「单项目/单画布（default）」升级为「多项目项目制画布」，对齐 Unboundry 的真实行为：
 
 - 项目列表（工作空间）、新建项目、打开画布、重命名、删除；
 - 项目封面（最近生成结果 → 画布内媒体素材 → 浅蓝渐变占位）；
@@ -16,7 +16,7 @@
 
 **v1 明确不做**：文件夹、团队项目 tab、移动至团队（分享面板保持禁用）、首页改版。
 
-## 1. 真实勘测结论（TapNow）
+## 1. 真实勘测结论（Unboundry）
 
 - 首页 `/home`；工作空间 `/canvas/projects`；画布 `/canvas/<uuid>`（一个项目=一个画布）。
 - 工作空间：个人/团队项目 tab；搜索框；「显示全部」下拉（显示全部/仅文件夹/仅项目 + 按最近修改/按创建日期 + 最新优先/最早优先）；Grid/List 视图切换；「新建项目」按钮。
@@ -136,7 +136,7 @@ UPDATE project_metadata SET is_project = 1, created_at = updated_at WHERE id = '
 
 - 新增 `projectId?: string`；`projectTitleId = projectId ?? fixtureId ?? "default"`；
 - fixture 专属面板条件只认 `fixtureId`；
-- 项目菜单启用：返回工作空间（`/canvas/projects`）、新建项目（POST 后跳转）、删除（ConfirmDialog + DELETE + 清理本地 `tapnow-project-title:<id>` 与 `tapnow:generation-submission:v1:<id>:*` 草稿 + 跳工作空间）、重命名（保持现有）；
+- 项目菜单启用：返回工作空间（`/canvas/projects`）、新建项目（POST 后跳转）、删除（ConfirmDialog + DELETE + 清理本地 `unboundry-project-title:<id>` 与 `unboundry:generation-submission:v1:<id>:*` 草稿 + 跳工作空间）、重命名（保持现有）；
 - 项目模式标题 GET 404：不回写本地草稿，标记项目不存在交由外层跳转。
 
 ### `client/src/canvas/CanvasSurface.tsx`
@@ -159,7 +159,7 @@ UPDATE project_metadata SET is_project = 1, created_at = updated_at WHERE id = '
 | 项目标题 | `project_metadata(owner_id,id)` | 按项目 |
 | 生成任务 | `generation_tasks.canvas_id` | 按项目 |
 | 提交意图/标题草稿（localStorage） | key 含 canvasId/projectId | 按项目 |
-| 多标签同步 | `BroadcastChannel(tapnow-canvas-sync:<canvasId>)` | 按项目 |
+| 多标签同步 | `BroadcastChannel(unboundry-canvas-sync:<canvasId>)` | 按项目 |
 | URL | `/canvas/<uuid>` | 按项目 |
 | 媒体素材 | `media_assets(owner_id)` | 账号级共享（有意） |
 | 账号历史/模型绑定/Provider | 全局 | 账号级共享（有意） |
@@ -167,7 +167,7 @@ UPDATE project_metadata SET is_project = 1, created_at = updated_at WHERE id = '
 ## 8. 兼容与安全
 
 - 默认项目行为不变（`/`、`/canvas/default`、自动保存、多标签、revision、生成任务、既有 INPUT/DATA 验收路径）；
-- fixture 机制完全不动（`/__fixture/...`、`__fixture-api`、`spec/tapnow-state-fixtures.json`）；
+- fixture 机制完全不动（`/__fixture/...`、`__fixture-api`、`spec/unboundry-state-fixtures.json`）；
 - 迁移前运行 `npm run data:backup`；
 - 全程零 Provider 请求；无删库/破坏性操作；
 - 删除为墓碑式，服务端硬拦截复活。
@@ -193,6 +193,6 @@ UPDATE project_metadata SET is_project = 1, created_at = updated_at WHERE id = '
 
 ## 11. 验收与提交约定
 
-- 所有 UI 改动遵守 `spec/TAPNOW_UI_DESIGN_SYSTEM.md`（两档字号、灰阶、紧凑控件、无蓝色默认控件）；
+- 所有 UI 改动遵守 `spec/UNBOUNDRY_UI_DESIGN_SYSTEM.md`（两档字号、灰阶、紧凑控件、无蓝色默认控件）；
 - 新组件（ConfirmDialog、WorkspacePage）完成自动检查后由用户实页验收；
 - 未经用户确认不得修改验收矩阵状态；本功能完成且验收通过后统一写入 TASKS.md 与验收矩阵。

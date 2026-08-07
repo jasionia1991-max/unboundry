@@ -32,8 +32,8 @@ async function startServer(dataDirectory: string) {
     {
       env: {
         ...process.env,
-        TAPNOW_DATA_DIR: dataDirectory,
-        TAPNOW_TEST_AUTH_BYPASS: undefined,
+        UNBOUNDRY_DATA_DIR: dataDirectory,
+        UNBOUNDRY_TEST_AUTH_BYPASS: undefined,
       },
       stdio: "ignore",
     },
@@ -75,7 +75,7 @@ function request(
 }
 
 test("storage status is administrator-only and never returns OSS secrets", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-storage-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-storage-"));
   let server: ChildProcess | undefined;
   try {
     server = await startServer(dataDirectory);
@@ -155,7 +155,7 @@ test("storage status is administrator-only and never returns OSS secrets", async
     );
     expect(encrypted).not.toContain(secretSentinel);
     expect(encrypted).not.toContain("LTAI-test-server-only-id");
-    const database = await readFile(join(dataDirectory, "tapnow.sqlite"));
+    const database = await readFile(join(dataDirectory, "unboundry.sqlite"));
     expect(database.includes(Buffer.from(secretSentinel))).toBe(false);
 
     const account = await request("/api/admin/users", {
@@ -223,9 +223,9 @@ test("storage status is administrator-only and never returns OSS secrets", async
 });
 
 test("new-media OSS routing stays off until an admin explicitly enables it", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-routing-"));
-  const previousDataDirectory = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = dataDirectory;
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-routing-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   try {
     const draft = await saveStorageProfile({
       accessKeyId: "test-routing-access-key",
@@ -252,9 +252,9 @@ test("new-media OSS routing stays off until an admin explicitly enables it", asy
     });
   } finally {
     if (previousDataDirectory === undefined) {
-      delete process.env.TAPNOW_DATA_DIR;
+      delete process.env.UNBOUNDRY_DATA_DIR;
     } else {
-      process.env.TAPNOW_DATA_DIR = previousDataDirectory;
+      process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
     }
     await rm(dataDirectory, { force: true, recursive: true });
   }
@@ -321,11 +321,11 @@ test("Aliyun OSS adapter keeps private random keys and signs offline", async () 
 
 test("activated private OSS image supports signed Range and complete download", async () => {
   test.skip(
-    process.env.TAPNOW_REAL_OSS_VERIFY !== "1",
+    process.env.UNBOUNDRY_REAL_OSS_VERIFY !== "1",
     "Only run after the administrator explicitly enables real OSS image routing",
   );
   const database = new DatabaseSync(
-    join(process.cwd(), "data", "tapnow.sqlite"),
+    join(process.cwd(), "data", "unboundry.sqlite"),
     { readOnly: true },
   );
   const media = database

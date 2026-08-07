@@ -191,7 +191,7 @@ async function spoolOssEntry(
   }
   if (!response.ok || !response.body) return undefined;
   const tempDirectory = await mkdtemp(
-    join(tmpdir(), "tapnow-group-download-"),
+    join(tmpdir(), "unboundry-group-download-"),
   );
   const file = join(tempDirectory, entry.name);
   const writer = createWriteStream(file);

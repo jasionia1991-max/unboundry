@@ -362,7 +362,7 @@ async function uploadReadyMedia(request: APIRequestContext) {
   const [image, video, audio] = await Promise.all([
     readFile(resolve(
       process.cwd(),
-      "spec/reference/tapnow-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+      "spec/reference/unboundry-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
     )),
     readFile(resolve(process.cwd(), "client/public/fixtures/video-success.mp4")),
     readFile(resolve(process.cwd(), "client/public/fixtures/audio-success.mp3")),

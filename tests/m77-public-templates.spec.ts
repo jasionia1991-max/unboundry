@@ -26,8 +26,8 @@ async function startServer(dataDirectory: string) {
     {
       env: {
         ...process.env,
-        TAPNOW_DATA_DIR: dataDirectory,
-        TAPNOW_TEST_AUTH_BYPASS: undefined,
+        UNBOUNDRY_DATA_DIR: dataDirectory,
+        UNBOUNDRY_TEST_AUTH_BYPASS: undefined,
       },
       stdio: "ignore",
     },
@@ -117,7 +117,7 @@ function uploadPlaceholderGraph() {
 }
 
 test("v31 migration creates public_templates with the two real seeds idempotently", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-public-mig-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-public-mig-"));
   try {
     const store = openAppDatabase(dataDirectory);
     expect(
@@ -193,7 +193,7 @@ test("v31 migration creates public_templates with the two real seeds idempotentl
 });
 
 test("public template storage enforces validation, status transitions and seed protection", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-public-store-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-public-store-"));
   try {
     const store = openAppDatabase(dataDirectory);
     const now = timestamp();
@@ -316,7 +316,7 @@ test("public template storage enforces validation, status transitions and seed p
 });
 
 test("admin CRUD API, ordinary 403 and the public GET keep the seed contract", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-public-api-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-public-api-"));
   let server: ChildProcess | undefined;
   try {
     server = await startServer(dataDirectory);
@@ -542,7 +542,7 @@ test("admin CRUD API, ordinary 403 and the public GET keep the seed contract", a
 test("a published upload-placeholder template imports for an ordinary account with preview cover", async ({
   page,
 }) => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-public-ui-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-public-ui-"));
   let server: ChildProcess | undefined;
   try {
     server = await startServer(dataDirectory);
@@ -630,7 +630,7 @@ test("a published upload-placeholder template imports for an ordinary account wi
 test("admin templates page creates, edits, archives and restores public templates", async ({
   page,
 }) => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-public-adminui-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-public-adminui-"));
   let server: ChildProcess | undefined;
   try {
     server = await startServer(dataDirectory);
@@ -742,7 +742,7 @@ test("admin templates page creates, edits, archives and restores public template
 test("browse-all admin entry follows permissions and recent-used filters by account with silent skips", async ({
   page,
 }) => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-public-recent-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-public-recent-"));
   let server: ChildProcess | undefined;
   try {
     server = await startServer(dataDirectory);

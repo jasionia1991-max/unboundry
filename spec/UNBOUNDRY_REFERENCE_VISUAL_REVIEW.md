@@ -1,15 +1,15 @@
-# TapNow 40图视觉复核记录
+# Unboundry 40图视觉复核记录
 
 复核日期：2026-07-27  
 状态：`REVIEWED`  
-图片目录：`reference/tapnow-v2.12.2-dense/`  
-机器清单：`tapnow-reference-manifest.json`
+图片目录：`reference/upstream-v2.12.2-dense/`  
+机器清单：`upstream-reference-manifest.json`
 
 ## 1. 复核方式
 
 - 先按文件序号生成7张联系表，确认40张图片均可正常解码、内容与manifest状态一致。
 - 再以原始尺寸单独复核图片高级编辑、Agent、连接手势和Text创作栏等高信息量状态。
-- 静态截图只证明画面中可见状态；行为结论仍需要manifest中的可逆操作记录或后续TapNow活体补测。
+- 静态截图只证明画面中可见状态；行为结论仍需要manifest中的可逆操作记录或后续Unboundry活体补测。
 - 本轮没有把图标外观猜成业务名称；名称只采用已记录tooltip或历史实时DOM结果。
 
 ## 2. 固定区域标注
@@ -27,7 +27,7 @@
 | `R-FILES` | Files抽屉 | 右侧/右上，宽`320px` |
 
 图片编辑器精确区域以
-`TAPNOW_REFERENCE_EVIDENCE_CATALOG.md`第8节和对应fixture为准。
+`UNBOUNDRY_REFERENCE_EVIDENCE_CATALOG.md`第8节和对应fixture为准。
 
 ## 3. 逐图复核
 
@@ -76,14 +76,14 @@
 
 ## 4. 视觉复核新增结论
 
-1. 40张文件均为TapNow画面，没有发现Lumino截图混入。
+1. 40张文件均为Unboundry画面，没有发现Lumino截图混入。
 2. 图片19、22–26足以冻结高级编辑的视觉壳，不足以证明提交和失败逻辑。
 3. 图片27–28证明Agent 480px与Files 320px并列关系，不证明Agent业务协议。
 4. 图片35–37必须结合manifest的动作记录；不能只凭静态图推断edge重连能力。
 5. 图片38–39显示旧复杂画布中Text工具条和creator的组合状态，与当前新建Text报告存在差异，继续保留`CF-TEXT-01`。
 6. 图片20证明历史画布存在Image Editor节点，但不能证明当前创建菜单仍应展示该入口。
 
-## 5. 仍需活体TapNow补测
+## 5. 仍需活体Unboundry补测
 
 - 本文逐图“限制”列中的所有行为。
 - `OPEN-001`至`OPEN-024`。

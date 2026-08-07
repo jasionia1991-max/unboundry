@@ -76,7 +76,7 @@ const childBootstrap = `
       process.stdout.write(JSON.stringify({ pid: process.pid, released: true }));
     } else {
       const module = await server.ssrLoadModule("/server/database.ts");
-      const database = module.openAppDatabase(process.env.TAPNOW_DATA_DIR);
+      const database = module.openAppDatabase(process.env.UNBOUNDRY_DATA_DIR);
       const version = database.prepare("PRAGMA user_version").get().user_version;
       database.close();
       process.stdout.write(JSON.stringify({ pid: process.pid, version }));
@@ -107,9 +107,9 @@ function runChild(
         cwd: process.cwd(),
         env: {
           ...process.env,
-          TAPNOW_DATA_DIR: dataDirectory,
+          UNBOUNDRY_DATA_DIR: dataDirectory,
           ...(mode === "save-paused"
-            ? { TAPNOW_TEST_PROVIDER_PROFILE_BARRIER: "1" }
+            ? { UNBOUNDRY_TEST_PROVIDER_PROFILE_BARRIER: "1" }
             : {}),
         },
         stdio: ["ignore", "pipe", "pipe"],
@@ -162,14 +162,14 @@ function within<T>(promise: Promise<T>, milliseconds = 5_000) {
 }
 
 function restoreDataDirectory(previous: string | undefined) {
-  if (previous === undefined) delete process.env.TAPNOW_DATA_DIR;
-  else process.env.TAPNOW_DATA_DIR = previous;
+  if (previous === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
+  else process.env.UNBOUNDRY_DATA_DIR = previous;
 }
 
 test("two OS processes serialize complete Provider saves and metadata", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-provider-os-save-"));
-  const previous = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = directory;
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-provider-os-save-"));
+  const previous = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
   try {
     const initial = await saveProviderProfile({
       apiKey: `ark-${randomUUID()}`,
@@ -187,7 +187,7 @@ test("two OS processes serialize complete Provider saves and metadata", async ()
     const stored = await getProviderProfile(initial.id);
     expect(stored?.configurationVersion).toBe(3);
     expect(["OS writer A", "OS writer B"]).toContain(stored?.label);
-    const database = new DatabaseSync(join(directory, "tapnow.sqlite"), {
+    const database = new DatabaseSync(join(directory, "unboundry.sqlite"), {
       readOnly: true,
     });
     try {
@@ -212,9 +212,9 @@ test("two OS processes serialize complete Provider saves and metadata", async ()
 });
 
 test("split document and metadata versions block a real task before fake fetch", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-provider-split-"));
-  const previous = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = directory;
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-provider-split-"));
+  const previous = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
   try {
     const original = await saveProviderProfile({
       apiKey: `ark-old-${randomUUID()}`,
@@ -233,7 +233,7 @@ test("split document and metadata versions block a real task before fake fetch",
 
     // This is the durable state left by a crash after the encrypted rename but
     // before the metadata transaction: new document, old green metadata.
-    const database = new DatabaseSync(join(directory, "tapnow.sqlite"));
+    const database = new DatabaseSync(join(directory, "unboundry.sqlite"));
     database.prepare(`
       UPDATE provider_profiles
       SET provider_configuration_version = ?, status = 'enabled',
@@ -300,9 +300,9 @@ test("split document and metadata versions block a real task before fake fetch",
 });
 
 test("a request lease releases after fake fetch starts instead of waiting for its response", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-provider-fetch-lease-"));
-  const previous = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = directory;
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-provider-fetch-lease-"));
+  const previous = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
   let store: ReturnType<typeof createGenerationTaskStore> | undefined;
   let execution: Promise<void> | undefined;
   let finishFetch = (_response: Response) => {};
@@ -398,9 +398,9 @@ test("a request lease releases after fake fetch starts instead of waiting for it
 });
 
 test("a request lease waits across the document-to-metadata window without using either mismatched Key", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-provider-reader-lock-"));
-  const previous = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = directory;
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-provider-reader-lock-"));
+  const previous = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
   const readyPath = join(directory, "provider-writer.ready");
   const releasePath = join(directory, "provider-writer.release");
   let writer: Promise<Record<string, unknown>> | undefined;
@@ -502,9 +502,9 @@ test("a request lease waits across the document-to-metadata window without using
 });
 
 test("version zero and metadata-ahead states fail closed without losing usable snapshots", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-provider-align-"));
-  const previous = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = directory;
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-provider-align-"));
+  const previous = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
   try {
     const profile = await saveProviderProfile({
       apiKey: `ark-${randomUUID()}`,
@@ -521,7 +521,7 @@ test("version zero and metadata-ahead states fail closed without losing usable s
     expect(documentProfile?.arkControlPlane).toBeTruthy();
     const snapshot = JSON.stringify([{ discoveryId: "kept-model" }]);
     const syncedAt = "2026-08-03T10:00:00.000Z";
-    const database = new DatabaseSync(join(directory, "tapnow.sqlite"));
+    const database = new DatabaseSync(join(directory, "unboundry.sqlite"));
     database.prepare(`
       UPDATE provider_profiles
       SET provider_configuration_version = 0,
@@ -533,7 +533,7 @@ test("version zero and metadata-ahead states fail closed without losing usable s
     database.close();
 
     await prepareArkControlPlaneCredentials(profile.id);
-    const aligned = new DatabaseSync(join(directory, "tapnow.sqlite"));
+    const aligned = new DatabaseSync(join(directory, "unboundry.sqlite"));
     try {
       expect(aligned.prepare(`
         SELECT status, key_status, catalog_key_status, catalog_models,
@@ -561,7 +561,7 @@ test("version zero and metadata-ahead states fail closed without losing usable s
       aligned.close();
     }
     await prepareArkControlPlaneCredentials(profile.id);
-    const cleared = new DatabaseSync(join(directory, "tapnow.sqlite"));
+    const cleared = new DatabaseSync(join(directory, "unboundry.sqlite"));
     try {
       expect(cleared.prepare(`
         SELECT driver, status, key_status, catalog_key_status,
@@ -594,7 +594,7 @@ test("version zero and metadata-ahead states fail closed without losing usable s
 
     await expect(prepareArkControlPlaneCredentials(profile.id)).rejects
       .toMatchObject({ code: "PROVIDER_CONFIGURATION_MISMATCH" });
-    const ahead = new DatabaseSync(join(directory, "tapnow.sqlite"), {
+    const ahead = new DatabaseSync(join(directory, "unboundry.sqlite"), {
       readOnly: true,
     });
     try {
@@ -622,9 +622,9 @@ test("version zero and metadata-ahead states fail closed without losing usable s
 });
 
 test("a late old Key check cannot write green after the metadata CAS changes", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-provider-key-cas-"));
-  const previous = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = directory;
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-provider-key-cas-"));
+  const previous = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
   try {
     const profile = await saveProviderProfile({
       apiKey: `openrouter-${randomUUID()}`,
@@ -647,7 +647,7 @@ test("a late old Key check cannot write green after the metadata CAS changes", a
       return validResponse();
     });
     await requestStarted;
-    const database = new DatabaseSync(join(directory, "tapnow.sqlite"));
+    const database = new DatabaseSync(join(directory, "unboundry.sqlite"));
     database.prepare(`
       UPDATE provider_profiles
       SET provider_configuration_version = provider_configuration_version + 1,
@@ -658,7 +658,7 @@ test("a late old Key check cannot write green after the metadata CAS changes", a
     release();
     await expect(late).rejects.toThrow("CONFIG_CHANGED");
 
-    const checked = new DatabaseSync(join(directory, "tapnow.sqlite"), {
+    const checked = new DatabaseSync(join(directory, "unboundry.sqlite"), {
       readOnly: true,
     });
     try {
@@ -680,7 +680,7 @@ test("a late old Key check cannot write green after the metadata CAS changes", a
 });
 
 test("two OS processes can migrate the same v18 database exactly once", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-provider-migrate-"));
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-provider-migrate-"));
   try {
     const legacy = openAppDatabase(directory);
     const columns = () => new Set(
@@ -711,7 +711,7 @@ test("two OS processes can migrate the same v18 database exactly once", async ()
     expect(new Set(migrated.map((item) => item.version))).toEqual(
       new Set([currentSchemaVersion]),
     );
-    const database = new DatabaseSync(join(directory, "tapnow.sqlite"), {
+    const database = new DatabaseSync(join(directory, "unboundry.sqlite"), {
       readOnly: true,
     });
     try {

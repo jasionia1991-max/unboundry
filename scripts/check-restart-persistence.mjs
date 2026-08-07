@@ -6,8 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-const dataDir = await mkdtemp(join(tmpdir(), "tapnow-restart-p1-"));
-const databasePath = join(dataDir, "tapnow.sqlite");
+const dataDir = await mkdtemp(join(tmpdir(), "unboundry-restart-p1-"));
+const databasePath = join(dataDir, "unboundry.sqlite");
 const vite = join(process.cwd(), "node_modules/vite/bin/vite.js");
 
 async function chooseIsolatedPort() {
@@ -41,8 +41,8 @@ async function start() {
     {
       env: {
         ...process.env,
-        TAPNOW_DATA_DIR: dataDir,
-        TAPNOW_TEST_AUTH_BYPASS: "1",
+        UNBOUNDRY_DATA_DIR: dataDir,
+        UNBOUNDRY_TEST_AUTH_BYPASS: "1",
       },
       stdio: "ignore",
     },

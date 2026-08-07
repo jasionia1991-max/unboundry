@@ -16,8 +16,8 @@ async function startServer(dataDirectory: string) {
     {
       env: {
         ...process.env,
-        TAPNOW_DATA_DIR: dataDirectory,
-        TAPNOW_TEST_AUTH_BYPASS: undefined,
+        UNBOUNDRY_DATA_DIR: dataDirectory,
+        UNBOUNDRY_TEST_AUTH_BYPASS: undefined,
       },
       stdio: "ignore",
     },
@@ -59,7 +59,7 @@ function request(
 }
 
 test("admin bootstrap, account control and per-user data isolation are enforced", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-auth-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-auth-"));
   let server: ChildProcess | undefined;
   try {
     server = await startServer(dataDirectory);
@@ -80,7 +80,7 @@ test("admin bootstrap, account control and per-user data isolation are enforced"
     });
     expect(bootstrap.status).toBe(201);
     const adminCookie = cookie(bootstrap);
-    expect(adminCookie).toContain("tapnow_session=");
+    expect(adminCookie).toContain("unboundry_session=");
 
     const adminCanvas = await request("/api/canvas/shared", {
       body: JSON.stringify({
@@ -180,7 +180,7 @@ test("admin bootstrap, account control and per-user data isolation are enforced"
 });
 
 test("admin can delete accounts with owned data and cannot delete the current admin", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-auth-delete-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-auth-delete-"));
   let server: ChildProcess | undefined;
   try {
     server = await startServer(dataDirectory);
@@ -347,7 +347,7 @@ test("admin can delete accounts with owned data and cannot delete the current ad
 });
 
 test("ordinary accounts can save their own default canvas while cross-account project ids stay isolated", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-auth-default-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-auth-default-"));
   let server: ChildProcess | undefined;
   try {
     server = await startServer(dataDirectory);
@@ -481,7 +481,7 @@ test("ordinary accounts can save their own default canvas while cross-account pr
 });
 
 test("admin can disable and delete accounts whose ids are not uuid-shaped", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-auth-nonuuid-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-auth-nonuuid-"));
   let server: ChildProcess | undefined;
   try {
     server = await startServer(dataDirectory);

@@ -153,7 +153,7 @@ Caddy / Nginx（443，证书自动/Let's Encrypt）
    ▼
 vite preview（127.0.0.1:4173，生产构建 + 服务端 API 中间件）
    │
-   ├─ SQLite（/var/lib/tapnow/tapnow.sqlite，WAL）
+   ├─ SQLite（/var/lib/unboundry/unboundry.sqlite，WAL）
    ├─ media/ 与 secrets/（同一数据目录）
    ├─ 私有 OSS（签名读取/上传，服务器时钟 NTP）
    └─ 定时备份（cron + scripts/backup-data.mjs）
@@ -163,8 +163,8 @@ vite preview（127.0.0.1:4173，生产构建 + 服务端 API 中间件）
 
 1. 环境预检：Node 22 上 `npm ci && npm run build`，全量回归（临时数据目录）；锁定依赖版本；确认无密钥文件入库。
 2. 生产构建：`npm run build`，产物 `dist/client`；服务端继续由 `vite preview` 承载（与现有 `playwright.config` preview 模式一致），或抽独立 Node 服务（决策点）。
-3. 目录与账号：`/opt/tapnow/app`（代码）、`/var/lib/tapnow`（数据，`TAPNOW_DATA_DIR`）、专用运行用户 `tapnow`。
-4. systemd 服务 `tapnow.service`：`vite preview --host 127.0.0.1 --port 4173 --strictPort`；环境 `TAPNOW_DATA_DIR`、`TAPNOW_SECURE_COOKIES=1`、`NODE_ENV=production`；`Restart=always`；禁止远程 bootstrap（默认 loopback-only）。
+3. 目录与账号：`/opt/unboundry/app`（代码）、`/var/lib/unboundry`（数据，`UNBOUNDRY_DATA_DIR`）、专用运行用户 `unboundry`。
+4. systemd 服务 `unboundry.service`：`vite preview --host 127.0.0.1 --port 4173 --strictPort`；环境 `UNBOUNDRY_DATA_DIR`、`UNBOUNDRY_SECURE_COOKIES=1`、`NODE_ENV=production`；`Restart=always`；禁止远程 bootstrap（默认 loopback-only）。
 5. 反向代理：Caddy `domain → 127.0.0.1:4173`（自动 TLS）或 Nginx + certbot；限制请求体大小、设置安全响应头；仅暴露 443/80。
 6. 首管理员初始化：SSH 到服务器本机访问 `http://127.0.0.1:4173` 创建管理员；随后创建部署用普通账号并授予所需权限（复用事项二）。
 7. 备份与恢复演练：cron 每日备份（SQLite+media+secrets+manifest）；执行一次 `scripts/verify-backup.mjs --runtime-port <port>` 恢复演练；保留首份备份。
@@ -197,7 +197,7 @@ vite preview（127.0.0.1:4173，生产构建 + 服务端 API 中间件）
 
 ## 6. 待用户拍板的决策点
 
-> 注：本节的 6 个决策点已于 2026-08-07 在 `spec/TAPNOW_NEXT_PHASE_WBS_DETAIL_2026-08-07.md`「决策点定稿」中全部确认（8 项，含本节 6 项与补充 2 项），实施未开始。
+> 注：本节的 6 个决策点已于 2026-08-07 在 `spec/UNBOUNDRY_NEXT_PHASE_WBS_DETAIL_2026-08-07.md`「决策点定稿」中全部确认（8 项，含本节 6 项与补充 2 项），实施未开始。
 
 1. 公共模板删除：硬删除还是归档保留？（建议：归档保留 + 管理页可见）
 2. “最近使用”分类：客户端本地记录即可，还是要服务端跨设备？（建议：先本地）

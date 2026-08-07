@@ -10,6 +10,6 @@ export const CanvasSelectionUiContext = createContext<CanvasSelectionUiState>({
 
 export function useSingleNodeChrome(selected: boolean, dragging?: boolean) {
   const { selectedNodeCount } = useContext(CanvasSelectionUiContext);
-  // 对齐 TapNow：拖动过程中隐藏功能栏/创作框，松手后恢复。
+  // 对齐 Unboundry：拖动过程中隐藏功能栏/创作框，松手后恢复。
   return selected && selectedNodeCount === 1 && !dragging;
 }

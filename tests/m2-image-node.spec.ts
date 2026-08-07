@@ -84,7 +84,7 @@ test("Image empty and local upload states match the observed geometry", async ({
 
   await page.getByTestId("image-upload-input").setInputFiles(
     path.resolve(
-      "spec/reference/tapnow-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+      "spec/reference/unboundry-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
     ),
   );
 
@@ -505,7 +505,7 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   await node.click();
   await page.getByTestId("image-upload-input").setInputFiles(
     path.resolve(
-      "spec/reference/tapnow-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+      "spec/reference/unboundry-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
     ),
   );
   await expect(card).toHaveAttribute("data-asset-id", /.+/);

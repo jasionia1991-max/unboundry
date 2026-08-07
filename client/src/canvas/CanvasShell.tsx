@@ -126,14 +126,14 @@ type AgentVoiceState =
   | "unsupported"
   | "error";
 
-const defaultProjectTitle = "Codex TapNow G0.2 Sandbox 0727";
+const defaultProjectTitle = "Codex Unboundry G0.2 Sandbox 0727";
 
 function projectTitleStorageKey(userId: string, id: string) {
-  return `tapnow-project-title:v2:${userId}:${id}`;
+  return `unboundry-project-title:v2:${userId}:${id}`;
 }
 
 function recentTemplatesKey(userId: string) {
-  return `tapnow-template-recent:v2:${userId}`;
+  return `unboundry-template-recent:v2:${userId}`;
 }
 
 type RecentTemplateEntry = { at: number; id: string };
@@ -1411,7 +1411,7 @@ export function CanvasShell({
   useEffect(() => {
     if (!projectId) return;
     try {
-      sessionStorage.setItem(`tapnow:last-project:${userId}`, projectId);
+      sessionStorage.setItem(`unboundry:last-project:${userId}`, projectId);
     } catch {
       // 隐私模式等场景忽略；工作空间的 ?from 参数仍是主路径。
     }

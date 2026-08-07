@@ -1,7 +1,7 @@
 # 下一阶段工作分解（WBS）：公共模板 × 账号权限管理
 
 状态：`DECISIONS CONFIRMED 2026-08-07 / IMPLEMENTATION NOT STARTED`
-依据：`spec/TAPNOW_NEXT_PHASE_INVESTIGATION_2026-08-07.md`（现状与行号证据）
+依据：`spec/UNBOUNDRY_NEXT_PHASE_INVESTIGATION_2026-08-07.md`（现状与行号证据）
 范围：只拆“账号权限管理”与“公共模板”两个需求；正式部署另行立项。
 执行纪律：每个小点依次完成 实现 → 逐行审计 → tsc/构建/单测/集成（临时数据目录）→ 分诊 → 相关回归 → TASKS.md 同步 → commit。
 
@@ -257,4 +257,4 @@ npx playwright test -c tests/m71-regression.config.ts           # 模板/画布�
 13. 公共模板管理接口对无权限账号返回 403。
 14. 种子模板允许编辑，但不可物理删除（仅可归档）。
 
-详细解释见 `spec/TAPNOW_NEXT_PHASE_WBS_DETAIL_2026-08-07.md`「决策点定稿」。
+详细解释见 `spec/UNBOUNDRY_NEXT_PHASE_WBS_DETAIL_2026-08-07.md`「决策点定稿」。

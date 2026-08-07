@@ -252,7 +252,7 @@ test("Mureka remote errors and nested echoes never expose or persist the API key
     message: "暂时无法连接 Mureka",
   });
 
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-mureka-safe-error-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-mureka-safe-error-"));
   try {
     const store = createGenerationTaskStore(dataDirectory);
     const created = store.create({
@@ -281,7 +281,7 @@ test("Mureka remote errors and nested echoes never expose or persist the API key
     expect(JSON.stringify(persisted)).not.toContain(profile.apiKey);
     store.close();
 
-    const database = new DatabaseSync(join(dataDirectory, "tapnow.sqlite"));
+    const database = new DatabaseSync(join(dataDirectory, "unboundry.sqlite"));
     const records = database.prepare(`
       SELECT error_code, error_message
       FROM generation_tasks
@@ -299,7 +299,7 @@ test("Mureka remote errors and nested echoes never expose or persist the API key
 });
 
 test("audio provider task id survives restart without creating a duplicate task", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-mureka-task-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-mureka-task-"));
   try {
     const first = createGenerationTaskStore(dataDirectory);
     const created = first.create({
@@ -366,9 +366,9 @@ test("audio provider task id survives restart without creating a duplicate task"
 });
 
 test("a generated MP3 is checksummed, registered and added to audio history", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-mureka-audio-"));
-  const previous = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = dataDirectory;
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-mureka-audio-"));
+  const previous = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   try {
     const setup = openAppDatabase(dataDirectory);
     const timestamp = new Date().toISOString();
@@ -407,7 +407,7 @@ test("a generated MP3 is checksummed, registered and added to audio history", as
     });
     expect(saved.assetId).toMatch(/^[a-z0-9-]+\.mp3$/i);
     expect(await readFile(join(dataDirectory, "media", saved.assetId))).toEqual(bytes);
-    const database = new DatabaseSync(join(dataDirectory, "tapnow.sqlite"));
+    const database = new DatabaseSync(join(dataDirectory, "unboundry.sqlite"));
     try {
       expect(database.prepare(`
         SELECT kind, storage_backend, storage_status, byte_size,
@@ -434,8 +434,8 @@ test("a generated MP3 is checksummed, registered and added to audio history", as
       database.close();
     }
   } finally {
-    if (previous === undefined) delete process.env.TAPNOW_DATA_DIR;
-    else process.env.TAPNOW_DATA_DIR = previous;
+    if (previous === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
+    else process.env.UNBOUNDRY_DATA_DIR = previous;
     await rm(dataDirectory, { force: true, recursive: true });
   }
 });

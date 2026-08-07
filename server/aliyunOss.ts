@@ -218,7 +218,7 @@ export async function testAliyunOssConnection(
 ) {
   const client = configuredClient(credentials);
   const objectKey = createAliyunOssObjectKey("image", "txt");
-  const content = Buffer.from(`tapnow-storage-check:${randomUUID()}`, "utf8");
+  const content = Buffer.from(`unboundry-storage-check:${randomUUID()}`, "utf8");
   const checksum = createHash("sha256").update(content).digest("hex");
   const startedAt = Date.now();
   let uploaded = false;

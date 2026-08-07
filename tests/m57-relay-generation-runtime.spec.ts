@@ -74,7 +74,7 @@ function relayTask(
 }
 
 test("Gemini relay Text materializes ordered four-kind context once and persists no transient URL", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-relay-text-"));
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-relay-text-"));
   try {
     const store = createGenerationTaskStore(directory);
     const created = store.create({
@@ -162,7 +162,7 @@ test("Gemini relay Text materializes ordered four-kind context once and persists
 });
 
 test("unsupported relay Text context fails before Provider boundary", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-relay-text-reject-"));
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-relay-text-reject-"));
   try {
     const store = createGenerationTaskStore(directory);
     const created = store.create({
@@ -305,9 +305,9 @@ test("GPT Image maps supported canvas ratios to its bounded size contract", () =
 });
 
 test("a cancelled relay publication removes its local media and history", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-relay-cleanup-"));
-  const previousDirectory = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = directory;
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-relay-cleanup-"));
+  const previousDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
   const assetId = "fixture-unpublished.png";
   const storageName = assetId;
   try {
@@ -367,8 +367,8 @@ test("a cancelled relay publication removes its local media and history", async 
     `).get(assetId) as { count: number }).count).toBe(0);
     checked.close();
   } finally {
-    if (previousDirectory === undefined) delete process.env.TAPNOW_DATA_DIR;
-    else process.env.TAPNOW_DATA_DIR = previousDirectory;
+    if (previousDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
+    else process.env.UNBOUNDRY_DATA_DIR = previousDirectory;
     await rm(directory, { force: true, recursive: true });
   }
 });
@@ -388,7 +388,7 @@ test("relay media image video and audio share local-only cancel and resumable ta
       .toBe("cancel-relay-media-local");
   }
 
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-relay-image-retry-"));
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-relay-image-retry-"));
   try {
     const store = createGenerationTaskStore(directory);
     const created = store.create({

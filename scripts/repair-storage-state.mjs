@@ -16,16 +16,16 @@ const dataDirectory = resolve(
   argument("--data-dir") ?? appDataDirectory(),
 );
 
-const previousDataDirectory = process.env.TAPNOW_DATA_DIR;
-process.env.TAPNOW_DATA_DIR = dataDirectory;
+const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
 let repair;
 try {
   repair = await repairStorageProfileState();
 } finally {
   if (previousDataDirectory === undefined) {
-    delete process.env.TAPNOW_DATA_DIR;
+    delete process.env.UNBOUNDRY_DATA_DIR;
   } else {
-    process.env.TAPNOW_DATA_DIR = previousDataDirectory;
+    process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
   }
 }
 console.log(

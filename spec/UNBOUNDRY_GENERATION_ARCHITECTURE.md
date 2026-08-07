@@ -1,11 +1,11 @@
-# TapNow 生成链路结构
+# Unboundry 生成链路结构
 
 状态：`AUTHORITATIVE / IMAGE REAL PATH ACCEPTED / VIDEO REAL PATH ACCEPTED / UPSTREAM INPUT PARTIAL / MULTI-PROTOCOL RELAY-001～012 ACCEPTED / MUREKA AUDIO REAL GENERATION DEFERRED`
 更新时间：2026-08-04
 
 ## 1. 对齐边界
 
-当前可以依据 TapNow 实页、冻结截图和人工验收确定：
+当前可以依据 Unboundry 实页、冻结截图和人工验收确定：
 
 - Text、Image、Video、Audio 的创作入口和参数区。
 - 排队/生成中的节点状态、控件禁用和呼吸动效。
@@ -13,16 +13,16 @@
 - 成功素材进入账号级历史；删除画布节点不删除历史。
 - 刷新页面后画布、媒体引用和任务不能丢失。
 - 图片节点可通过连线成为另一图片生成节点的参考素材；目标输入区用缩略片呈现该关系，删除缩略片同步删除连线，撤销同步恢复。
-- TapNow当前直接连线矩阵和三类ready素材进入目标后的引用、提示词条件、模式变化及刷新恢复，详见`TAPNOW_UPSTREAM_INPUT_SURVEY_2026-08-02.md`。
+- Unboundry当前直接连线矩阵和三类ready素材进入目标后的引用、提示词条件、模式变化及刷新恢复，详见`UNBOUNDRY_UPSTREAM_INPUT_SURVEY_2026-08-02.md`。
 
-当前无法从 TapNow 网页确定：
+当前无法从 Unboundry 网页确定：
 
-- TapNow 内部数据库表、消息队列和服务器数量。
-- TapNow 使用的 Provider 路由、密钥保存和回调协议。
+- Unboundry 内部数据库表、消息队列和服务器数量。
+- Unboundry 使用的 Provider 路由、密钥保存和回调协议。
 - 失败分类、超时时间、取消确认、自动重试次数和重启恢复策略。
 
 本项目只复刻可观察的产品行为。内部未知部分使用自有、可测试、可恢复的实现，
-不得把本项目设计反写成 TapNow 事实。
+不得把本项目设计反写成 Unboundry 事实。
 
 ## 2. 完整链路
 
@@ -67,7 +67,7 @@ source nodes + edges
   → Provider adapter映射为厂商字段
 ```
 
-TapNow实测与本项目产品决定分开：TapNow当前Text目标只接受Image/Video直连；用户已经决定本项目Text目标扩展接受Text/Image/Video/Audio四类上游。本项目最终类型矩阵为11条允许、5条禁止。
+Unboundry实测与本项目产品决定分开：Unboundry当前Text目标只接受Image/Video直连；用户已经决定本项目Text目标扩展接受Text/Image/Video/Audio四类上游。本项目最终类型矩阵为11条允许、5条禁止。
 
 ## 3. 前端职责
 
@@ -128,7 +128,7 @@ TapNow实测与本项目产品决定分开：TapNow当前Text目标只接受Imag
 - Provider：OpenRouter GPT Image 2真实图片与火山方舟Seedance 2.0 Mini真实视频均已成功；视频结果通过播放、下载、历史操作、刷新和服务重启恢复人工验收。
 - 多协议中转：显式协议模型配置、OpenAI Chat/Responses、Claude Messages、Gemini GenerateContent、GPT Image和通用媒体适配均已进入统一任务体系。真实目录、草稿、文字、图片、视频、音频、刷新/重启恢复和安全删除保护均已由用户确认，`RELAY-001～012`全部PASS。既有两张图片与Doubao TTS在画布和历史中唯一恢复，音频实际播放成功；隔离删除审计无残留，真实模型和默认保护未变化。收口复验收费Provider请求0、新生成任务0、真实数据删除0。
 - 参考图：edge、缩略片、删除/撤销同步、账号归属、模型上限和OpenRouter `input_references`安全传参已完成，`GEN-009`于2026-08-01人工通过；本轮没有增加收费请求。
-- 入参调研：TapNow两轮实页勘测已完成，8节点/9边和三类ready素材刷新恢复均有证据；本轮未点击Generate。该证据不等于本地统一入参实现完成。
+- 入参调研：Unboundry两轮实页勘测已完成，8节点/9边和三类ready素材刷新恢复均有证据；本轮未点击Generate。该证据不等于本地统一入参实现完成。
 - 入参实现状态：11允许/5禁止矩阵、共享edge解析器、四类引用卡、角色/顺序/阻塞原因、版本化任务快照、服务端重解析、Image的Text+Image合并及Text/Video/Audio任务入口均已有本地候选。尚缺完整人工矩阵、Text四类上游、Video全能参考角色/上限、Audio文字合并、模型切换及删除/撤销/刷新/重启去重收口，因此`INPUT-001～007`继续保持PARTIAL。
 - 恢复：真实图片任务`438b50dd-cd9c-42ed-8321-1fcbd49adf35`和真实视频任务`788ebeaa-b37d-499a-becc-64ae16f2a9f5`在服务完全停止并重启后均保持唯一任务、历史、媒体与画布引用，私有OSS结果仍可读。
 - 异常：真实取消、TIMEOUT、同任务重试成功及服务重启`running→recovering→failed`均有数据库事件和用户实页证据；`GEN-006/OPEN-007`于2026-08-01人工通过。
@@ -155,12 +155,12 @@ TapNow实测与本项目产品决定分开：TapNow当前Text目标只接受Imag
 1. `RELAY-001～012`已全部收口，不再重复验收现有结果或安全删除流程。
 2. 回到入参计划：先收口已完成候选的P0/P1全局持久化，不重复已验收步骤；再按P2～P6完成Text四类上游、Video多模态参考、Audio文字合并、未来模型规则和模型切换不兼容保留。
 3. Audio真实生成继续等待Mureka官网状态确认和新授权；中转站Audio也不能被当成Mureka恢复验收。
-4. 已完成的自有数据契约只按实际功能维护，不照抄TapNow私有协议；新增接口必须继续经过账号隔离和密钥暴露检查。
+4. 已完成的自有数据契约只按实际功能维护，不照抄Unboundry私有协议；新增接口必须继续经过账号隔离和密钥暴露检查。
 5. 最后完成正式服务器HTTPS、进程守护、备份恢复和回滚演练；当前不得提前部署。
 
 ## 8. 多协议中转站扩展
 
-2026-08-03用户批准`TAPNOW_RELAY_PROVIDER_INTEGRATION_PLAN.md`。该阶段在现有生成任务、安全门禁、统一入参和私有媒体发布之上增加协议适配层，不另起一套画布或任务系统。
+2026-08-03用户批准`UNBOUNDRY_RELAY_PROVIDER_INTEGRATION_PLAN.md`。该阶段在现有生成任务、安全门禁、统一入参和私有媒体发布之上增加协议适配层，不另起一套画布或任务系统。
 
 ```text
 管理员模型配置

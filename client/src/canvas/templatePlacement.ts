@@ -16,11 +16,11 @@ export type PlacementSize = {
   width: number;
 };
 
-/** 对齐 TapNow：模板与已有节点/模板之间的间距。 */
+/** 对齐 Unboundry：模板与已有节点/模板之间的间距。 */
 export const TEMPLATE_GAP = 100;
-/** 对齐 TapNow：横向最多搜索的列数。 */
+/** 对齐 Unboundry：横向最多搜索的列数。 */
 export const TEMPLATE_MAX_COLS = 8;
-/** 对齐 TapNow：纵向向上/向下各搜索的行数。 */
+/** 对齐 Unboundry：纵向向上/向下各搜索的行数。 */
 export const TEMPLATE_MAX_ROWS = 10;
 /** 模板包围盒兜底最小尺寸。 */
 export const TEMPLATE_MIN_SIZE = { height: 220, width: 320 };
@@ -146,7 +146,7 @@ export function emptyCanvasTemplateSpot(options: {
 /**
  * 网格扫描：从锚点开始，横向 0..maxCols、纵向 0,±1..±maxRows，
  * 每步间隔 模板宽/高 + gap，返回第一个不与任何障碍相交的左上角；
- * 全部重叠时回落锚点（与 TapNow 一致）。
+ * 全部重叠时回落锚点（与 Unboundry 一致）。
  */
 export function findTemplateSpot(options: {
   anchor: { x: number; y: number };

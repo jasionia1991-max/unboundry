@@ -76,7 +76,7 @@ export async function playlistThumbnails(
     let sheet = cache.get(key);
 
     if (!sheet) {
-      directory = await mkdtemp(join(tmpdir(), "tapnow-thumbnails-"));
+      directory = await mkdtemp(join(tmpdir(), "unboundry-thumbnails-"));
       const input = join(directory, "input.media");
       const output = join(directory, "sheet.jpg");
       await writeFile(input, payload);

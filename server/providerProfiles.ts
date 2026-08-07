@@ -92,9 +92,9 @@ type EncryptedDocument = {
   version: 1;
 };
 
-const associatedData = Buffer.from("tapnow:provider-profiles:v1", "utf8");
+const associatedData = Buffer.from("unboundry:provider-profiles:v1", "utf8");
 const accountCredentialAad = Buffer.from(
-  "tapnow:account-credentials:v1",
+  "unboundry:account-credentials:v1",
   "utf8",
 );
 const documentLockAcquireTimeoutMs = 5_000;
@@ -323,7 +323,7 @@ async function mutateDocument<T>(
 export function setProviderProfileAfterDocumentWriteHookForTests(
   hook: (() => Promise<void>) | undefined,
 ) {
-  if (process.env.TAPNOW_TEST_PROVIDER_PROFILE_BARRIER !== "1") {
+  if (process.env.UNBOUNDRY_TEST_PROVIDER_PROFILE_BARRIER !== "1") {
     throw new Error("Provider profile test barrier is disabled");
   }
   afterDocumentWriteForTests = hook;

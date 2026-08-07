@@ -2,7 +2,7 @@
 
 状态：IMPLEMENTED（代码与真实配置修复已完成；等待用户实页确认）
 日期：2026-08-08
-仓库：`/Users/mymy/Documents/tapnow1_1复刻/app`（HEAD `554d036`，工作树干净）
+仓库：`/Users/mymy/Documents/unboundry1_1复刻/app`（HEAD `554d036`，工作树干净）
 
 ## 1. 背景与目标
 
@@ -112,7 +112,7 @@ profile.id === document.activeProfileId && profile.status === "active"
 5. 账号删除在「profile verified 但可读」状态下不报错、清理路径走通。
 6. 状态接口在无可用读取配置时返回 `warning`。
 
-m13 旧断言全部保留；其中真实 OSS 专项（`TAPNOW_REAL_OSS_VERIFY=1`）修复后应重新可用，但默认仍跳过。
+m13 旧断言全部保留；其中真实 OSS 专项（`UNBOUNDRY_REAL_OSS_VERIFY=1`）修复后应重新可用，但默认仍跳过。
 
 ### L3：部署防丢（本地 + OSS 双保险）
 
@@ -167,7 +167,7 @@ m13 旧断言全部保留；其中真实 OSS 专项（`TAPNOW_REAL_OSS_VERIFY=1`
 - 代码：`readableStorageProfile()` / `storageProfileById()` / `storageProfileForMedia()`；7 条读取/删除/下载/清理路径按素材所属配置解析；`markStorageProfileVerified` 不再降级正式配置；v34 `media_assets.storage_profile_id`；状态接口新增 `rawMediaRoutingEnabled` / `effectiveMediaRoutingEnabled` / `readableProfileAvailable` / `objectCounts` / `warning`；管理页警告横幅与「重新测试（保持正式）」文案。
 - 真实库：备份 `backups/2026-08-07T19-04-25-352Z`（v33，977 行 / 308 本地素材）；4173 热重载后 v34 已应用；secrets 已修复（TapFK 恢复 active、routing=false）；70 个 OSS 素材已回填 `storage_profile_id`；审计 2 条（repair + backfill）。
 - 脚本：`scripts/repair-storage-state.mjs`（含 --backfill）；`scripts/backup-to-oss.mjs`（本地备份 → OSS `backups/` 前缀，含干跑与保留清理，首次真实上传待用户授权）；`scripts/mirror-oss-to-local.mjs`（OSS `objects/*` 镜像回本地，含 SHA-256 核对，首次真实运行待授权）。
-- 测试：`tests/m80-storage-read-rule.spec.ts` 4 项；m10/m13/m31/m72 回归 30 通过、1 跳过（真实 OSS 专项需 `TAPNOW_REAL_OSS_VERIFY=1`）；tsc 与生产构建通过（仅既有 chunk 体积提示）。
+- 测试：`tests/m80-storage-read-rule.spec.ts` 4 项；m10/m13/m31/m72 回归 30 通过、1 跳过（真实 OSS 专项需 `UNBOUNDRY_REAL_OSS_VERIFY=1`）；tsc 与生产构建通过（仅既有 chunk 体积提示）。
 - 顺带修复：m10「trusted-duration migration」用例的老库 fixture 漏建 `project_metadata`（既有遗漏，与本批无关但导致该用例失败），已补齐。
 
 待用户：

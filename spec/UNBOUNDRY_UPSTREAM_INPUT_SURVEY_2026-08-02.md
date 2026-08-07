@@ -1,10 +1,10 @@
-# TapNow 节点入参与连线实页勘测（2026-08-02）
+# Unboundry 节点入参与连线实页勘测（2026-08-02）
 
 状态：`SECOND_PASS_COMPLETE / NOT_ACCEPTANCE_PASS`
 
 ## 范围与安全边界
 
-- 实测页面：`https://app.tapnow.ai/canvas/1c7cea5a-1eac-4d58-a047-ed3627e84767`
+- 实测页面：`https://app.unboundry.ai/canvas/1c7cea5a-1eac-4d58-a047-ed3627e84767`
 - 在用户明确允许后，于空画布新建独立的 Text、Image、Video、Audio 来源节点和目标节点。
 - Text 来源正文：`将参考服装制作成专业电商白底商品图，保留服装款式、颜色与材质，正面平铺，干净纯白背景。`
 - 第一轮让 Image、Video、Audio 来源节点保持空素材，用于区分“连线类型是否允许”和“素材是否已经可以执行”。
@@ -103,13 +103,13 @@
 
 ### 使用的测试素材
 
-| 类型 | 本地素材 | TapNow结果 |
+| 类型 | 本地素材 | Unboundry结果 |
 |---|---|---|
 | 图片 | `data/media/7db8e67e-c2b2-4088-91a8-53967766a385.png`，1280×720，642097字节 | 上传成功 |
 | 视频 | `data/media/02222d17-f487-4246-8fc8-643083310e47.mp4`，H.264/AAC，320×180，2秒，22260字节 | 上传成功 |
-| 音频 | `client/public/fixtures/audio-success.mp3`，368613字节 | 上传成功，TapNow显示总时长03:04 |
+| 音频 | `client/public/fixtures/audio-success.mp3`，368613字节 | 上传成功，Unboundry显示总时长03:04 |
 
-补充：第一次尝试的透明小PNG和另一条极小MP4均显示`Object storage upload failed`；换用项目内标准RGB图片和带H.264/AAC轨道的MP4后成功。当前只能确认TapNow上传链路会做内容级处理，不能把第一次失败简单归因于文件扩展名。
+补充：第一次尝试的透明小PNG和另一条极小MP4均显示`Object storage upload failed`；换用项目内标准RGB图片和带H.264/AAC轨道的MP4后成功。当前只能确认Unboundry上传链路会做内容级处理，不能把第一次失败简单归因于文件扩展名。
 
 ### 来源节点上传后的变化
 

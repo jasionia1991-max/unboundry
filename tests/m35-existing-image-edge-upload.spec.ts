@@ -156,7 +156,7 @@ test("an existing Image edge becomes compatible when its source finishes uploadi
       ?.data.imageParameters?.inputMode;
 
     await source.getByTestId("image-upload-input").setInputFiles(resolve(
-      "spec/reference/tapnow-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+      "spec/reference/unboundry-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
     ));
     const staleAssetId = await firstAssetCreated;
     await expect(source.getByTestId("image-node-generating")).toBeVisible();
@@ -177,7 +177,7 @@ test("an existing Image edge becomes compatible when its source finishes uploadi
     )).status()).toBe(404);
 
     await source.getByTestId("image-upload-input").setInputFiles(resolve(
-      "spec/reference/tapnow-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+      "spec/reference/unboundry-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
     ));
     await expect.poll(targetMode).toBe("image");
     await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
@@ -273,7 +273,7 @@ test("Image upload completion uses live edges, the live target model, and the fi
   const readyAssetId = "m35-existing-ready-image";
   const readyUpload = await request.post(`/api/assets/${readyAssetId}`, {
     data: await readFile(resolve(
-      "spec/reference/tapnow-v2.12.2-dense/01-neutral-1280x720.png",
+      "spec/reference/unboundry-v2.12.2-dense/01-neutral-1280x720.png",
     )),
     headers: {
       "Content-Type": "image/png",
@@ -397,7 +397,7 @@ test("Image upload completion uses live edges, the live target model, and the fi
     await expect(world).toHaveAttribute("data-persistence-ready", "true");
     const source = page.locator('.react-flow__node[data-id="live-source"]');
     await source.getByTestId("image-upload-input").setInputFiles(resolve(
-      "spec/reference/tapnow-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+      "spec/reference/unboundry-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
     ));
     await uploadCreated;
     await expect(source.getByTestId("image-node-generating")).toBeVisible();

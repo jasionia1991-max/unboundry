@@ -23,7 +23,7 @@ type ApiResult = {
 };
 
 function databaseAt(directory: string, readOnly = false) {
-  return new DatabaseSync(join(directory, "tapnow.sqlite"), { readOnly });
+  return new DatabaseSync(join(directory, "unboundry.sqlite"), { readOnly });
 }
 
 async function startLifecycleServer() {
@@ -84,11 +84,11 @@ async function api(
 }
 
 test("model archive, restore and guarded deletion preserve identity and never call a Provider", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-model-lifecycle-"));
-  const previousDataDirectory = process.env.TAPNOW_DATA_DIR;
-  const previousBypass = process.env.TAPNOW_TEST_AUTH_BYPASS;
-  process.env.TAPNOW_DATA_DIR = directory;
-  process.env.TAPNOW_TEST_AUTH_BYPASS = "1";
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-model-lifecycle-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  const previousBypass = process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
+  process.env.UNBOUNDRY_TEST_AUTH_BYPASS = "1";
   let server: Server | undefined;
   try {
     expect(appDataDirectory()).toBe(directory);
@@ -537,10 +537,10 @@ test("model archive, restore and guarded deletion preserve identity and never ca
     }
   } finally {
     if (server) await stopServer(server);
-    if (previousDataDirectory === undefined) delete process.env.TAPNOW_DATA_DIR;
-    else process.env.TAPNOW_DATA_DIR = previousDataDirectory;
-    if (previousBypass === undefined) delete process.env.TAPNOW_TEST_AUTH_BYPASS;
-    else process.env.TAPNOW_TEST_AUTH_BYPASS = previousBypass;
+    if (previousDataDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
+    else process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
+    if (previousBypass === undefined) delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+    else process.env.UNBOUNDRY_TEST_AUTH_BYPASS = previousBypass;
     await rm(directory, { force: true, recursive: true });
   }
 });

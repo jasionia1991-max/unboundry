@@ -38,8 +38,8 @@ async function startServer(dataDirectory: string) {
     {
       env: {
         ...process.env,
-        TAPNOW_DATA_DIR: dataDirectory,
-        TAPNOW_TEST_AUTH_BYPASS: undefined,
+        UNBOUNDRY_DATA_DIR: dataDirectory,
+        UNBOUNDRY_TEST_AUTH_BYPASS: undefined,
       },
       stdio: "ignore",
     },
@@ -81,7 +81,7 @@ function request(
 }
 
 test("generation safety blocks globally, by cost, frequency, concurrency and failure cooldown", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-safety-store-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-safety-store-"));
   const safety = createGenerationSafetyStore(dataDirectory);
   const database = openAppDatabase(dataDirectory);
   try {
@@ -338,7 +338,7 @@ test("generation safety blocks globally, by cost, frequency, concurrency and fai
 });
 
 test("only administrators can read and change generation safety settings", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-safety-api-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-safety-api-"));
   let server: ChildProcess | undefined;
   try {
     server = await startServer(dataDirectory);
@@ -474,7 +474,7 @@ test("administrator safety center is visible without Provider requests", async (
 });
 
 test("global budget derives the USD line and enforces the merged total", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-safety-global-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-safety-global-"));
   const safety = createGenerationSafetyStore(dataDirectory);
   const database = openAppDatabase(dataDirectory);
   try {
@@ -562,7 +562,7 @@ test("global budget derives the USD line and enforces the merged total", async (
 });
 
 test("legacy settings updates without global fields keep current values", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-safety-legacy-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-safety-legacy-"));
   const safety = createGenerationSafetyStore(dataDirectory);
   try {
     safety.update({ ...baseSettings });
@@ -579,7 +579,7 @@ test("legacy settings updates without global fields keep current values", async 
 });
 
 test("concurrency and frequency limits accept high admin values", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-safety-high-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-safety-high-"));
   const safety = createGenerationSafetyStore(dataDirectory);
   try {
     safety.update({

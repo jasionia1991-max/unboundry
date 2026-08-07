@@ -1,17 +1,17 @@
-# TapNow 完全绿地复刻详细实施步骤与方式
+# Unboundry 完全绿地复刻详细实施步骤与方式
 
 状态：`AUTHORITATIVE EXECUTION SPEC`  
 当前进度更新：2026-08-01（见§20）  
-目标：从空仓库实现 TapNow 画布，不复用 Lumino Web。  
-上位计划：`../../TAPNOW_GREENFIELD_REPLICA_IMPLEMENTATION_PLAN_2026-07-27.md`  
-证据目录：`TAPNOW_REFERENCE_EVIDENCE_CATALOG.md`
+目标：从空仓库实现 Unboundry 画布，不复用 Lumino Web。  
+上位计划：`../../UNBOUNDRY_GREENFIELD_REPLICA_IMPLEMENTATION_PLAN_2026-07-27.md`  
+证据目录：`UNBOUNDRY_REFERENCE_EVIDENCE_CATALOG.md`
 
 ## 1. 固定实施方法
 
 每一个 UI 或功能都使用同一条流水线：
 
 ```text
-TapNow 原始证据
+Unboundry 原始证据
   → 标注 viewport / DPR / zoom / source / evidence level
   → 冻结状态 fixture
   → 写坐标与状态断言
@@ -64,8 +64,8 @@ app/
 
 1. 为每个参考状态分配稳定 ID。
 2. 记录 `sourceId/evidenceLevel/viewport/DPR/zoom`。
-3. 将 40 张 TapNow PNG 的文件名和 SHA 加入新仓库 reference manifest。
-4. 复制证据时只复制 TapNow PNG，不复制 Lumino 页面或测试结果。
+3. 将 40 张 Unboundry PNG 的文件名和 SHA 加入新仓库 reference manifest。
+4. 复制证据时只复制 Unboundry PNG，不复制 Lumino 页面或测试结果。
 5. 对 `CF-ADD-01`、`CF-SEARCH-01`、`CF-TEXT-01`、`CF-PLAY-01`、`CF-GROUP-01` 建立补测任务。
 6. 未解决冲突保留双 fixture，不选择“看起来更合理”的值。
 
@@ -288,7 +288,7 @@ app/
 
 - 双击空白创建菜单已确认；Dock Add 本轮没有打开菜单，补测前不得假定两个入口行为等价。
 - 当前菜单只有 Text、Image、Video、Audio、disabled 3D World、Playlist 和 Upload，不添加 Storyboard/Table 或独立 Image Editor 项。
-- 空白右键按当前 TapNow 显示上传、素材、节点、辅助工具、撤销、重做、粘贴。
+- 空白右键按当前 Unboundry 显示上传、素材、节点、辅助工具、撤销、重做、粘贴。
 - “图片编辑器”入口冲突解决前不写入正式创建菜单。
 
 ### 搜索
@@ -383,7 +383,7 @@ Agent 先实现 chat shell、附件、模型、确认模式和结构化命令预
 ### 性能基线
 
 - 62节点/58边/5组：日常基线。
-- 200节点：压力检查。~~不据此提前引入虚拟化~~（2026-08-08 用户决策修订：按 `TAPNOW_CANVAS_SMOOTHNESS_PLAN_2026-08-08.md` 引入“可视区域 + 缓冲带 + 缓存”渲染，并补 200 节点压力测试证明不劣化）。
+- 200节点：压力检查。~~不据此提前引入虚拟化~~（2026-08-08 用户决策修订：按 `UNBOUNDRY_CANVAS_SMOOTHNESS_PLAN_2026-08-08.md` 引入“可视区域 + 缓冲带 + 缓存”渲染，并补 200 节点压力测试证明不劣化）。
 - 拖拽期间不写数据库；pointer up 后合并为一次命令。
 
 ## 17. Step 14：私有部署
@@ -404,7 +404,7 @@ Agent 先实现 chat shell、附件、模型、确认模式和结构化命令预
 
 - fixture ID。
 - acceptance ID。
-- TapNow source ID。
+- Unboundry source ID。
 - 自动检查结果。
 - 人工检查状态。
 - 尚未解决的 `OPEN`。
@@ -437,7 +437,7 @@ Agent 先实现 chat shell、附件、模型、确认模式和结构化命令预
 
 ## 20. 当前实际进度与后续执行顺序（2026-08-01）
 
-上面的B0～B11是开工时的历史估算，不再代表当前剩余工期。当前真实状态以`TASKS.md`和`TAPNOW_ACCEPTANCE_MATRIX.md`为准。
+上面的B0～B11是开工时的历史估算，不再代表当前剩余工期。当前真实状态以`TASKS.md`和`UNBOUNDRY_ACCEPTANCE_MATRIX.md`为准。
 
 已经完成当前范围验收：
 

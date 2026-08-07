@@ -22,20 +22,20 @@ async function temporaryDataDirectory<T>(
   run: (directory: string) => Promise<T>,
 ) {
   const directory = await mkdtemp(join(tmpdir(), prefix));
-  const previous = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = directory;
+  const previous = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
   try {
     expect(appDataDirectory()).toBe(directory);
     return await run(directory);
   } finally {
-    if (previous === undefined) delete process.env.TAPNOW_DATA_DIR;
-    else process.env.TAPNOW_DATA_DIR = previous;
+    if (previous === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
+    else process.env.UNBOUNDRY_DATA_DIR = previous;
     await rm(directory, { force: true, recursive: true });
   }
 }
 
 function addAuditActor(directory: string, userId = "catalog-test-admin") {
-  const store = new DatabaseSync(join(directory, "tapnow.sqlite"));
+  const store = new DatabaseSync(join(directory, "unboundry.sqlite"));
   const timestamp = new Date().toISOString();
   try {
     store.prepare(`
@@ -59,7 +59,7 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 test("OpenRouter sync uses only the saved API key and imports bounded USD drafts", async () => {
-  await temporaryDataDirectory("tapnow-openrouter-catalog-", async (directory) => {
+  await temporaryDataDirectory("unboundry-openrouter-catalog-", async (directory) => {
     const apiKey = `or-secret-${randomUUID()}`;
     const profile = await saveProviderProfile({
       apiKey,
@@ -143,7 +143,7 @@ test("OpenRouter sync uses only the saved API key and imports bounded USD drafts
     await expect(importProviderCatalogDrafts(profile.id, [{
       discoveryId: "openrouter:openai/gpt-image-2",
     }], actor)).resolves.toEqual({ imported: 1, skipped: 0 });
-    const store = new DatabaseSync(join(directory, "tapnow.sqlite"), {
+    const store = new DatabaseSync(join(directory, "unboundry.sqlite"), {
       readOnly: true,
     });
     try {
@@ -178,7 +178,7 @@ test("OpenRouter sync uses only the saved API key and imports bounded USD drafts
 });
 
 test("OpenAI-compatible catalogs remain public/basic and infer only explicit output modalities", async () => {
-  await temporaryDataDirectory("tapnow-openai-compatible-catalog-", async (directory) => {
+  await temporaryDataDirectory("unboundry-openai-compatible-catalog-", async (directory) => {
     const profile = await saveProviderProfile({
       apiKey: `compatible-${randomUUID()}`,
       baseUrl: "https://models.example.test/v1",
@@ -228,7 +228,7 @@ test("OpenAI-compatible catalogs remain public/basic and infer only explicit out
       capability: "text",
       discoveryId: "openai-compatible:basic-model",
     }], actor)).resolves.toEqual({ imported: 1, skipped: 0 });
-    const store = new DatabaseSync(join(directory, "tapnow.sqlite"), {
+    const store = new DatabaseSync(join(directory, "unboundry.sqlite"), {
       readOnly: true,
     });
     try {
@@ -247,7 +247,7 @@ test("OpenAI-compatible catalogs remain public/basic and infer only explicit out
 });
 
 test("Mureka exposes a manual descriptor without remote sync, import, or fake requests", async () => {
-  await temporaryDataDirectory("tapnow-mureka-manual-catalog-", async (directory) => {
+  await temporaryDataDirectory("unboundry-mureka-manual-catalog-", async (directory) => {
     const profile = await saveProviderProfile({
       apiKey: `mureka-${randomUUID()}`,
       baseUrl: "https://api.mureka.ai",
@@ -280,7 +280,7 @@ test("Mureka exposes a manual descriptor without remote sync, import, or fake re
       "unused",
     )).rejects.toThrow("not supported");
 
-    const store = new DatabaseSync(join(directory, "tapnow.sqlite"), {
+    const store = new DatabaseSync(join(directory, "unboundry.sqlite"), {
       readOnly: true,
     });
     try {
@@ -298,7 +298,7 @@ test("Mureka exposes a manual descriptor without remote sync, import, or fake re
 });
 
 test("API-key catalog snapshots reject late writes after connection credentials change", async () => {
-  await temporaryDataDirectory("tapnow-provider-catalog-stale-", async (directory) => {
+  await temporaryDataDirectory("unboundry-provider-catalog-stale-", async (directory) => {
     const profile = await saveProviderProfile({
       apiKey: `first-${randomUUID()}`,
       baseUrl: "https://openrouter.ai/api/v1",
@@ -337,7 +337,7 @@ test("API-key catalog snapshots reject late writes after connection credentials 
     expect(after.syncedAt).toBe(before.syncedAt);
     expect(after.keyStatus).toBe("unchecked");
     expect(JSON.stringify(after)).not.toContain("must-not-overwrite");
-    const store = new DatabaseSync(join(directory, "tapnow.sqlite"), {
+    const store = new DatabaseSync(join(directory, "unboundry.sqlite"), {
       readOnly: true,
     });
     try {
@@ -351,7 +351,7 @@ test("API-key catalog snapshots reject late writes after connection credentials 
 });
 
 test("public Provider profiles expose capability metadata without returning secrets", async () => {
-  await temporaryDataDirectory("tapnow-provider-catalog-contract-", async () => {
+  await temporaryDataDirectory("unboundry-provider-catalog-contract-", async () => {
     const apiKey = `contract-${randomUUID()}`;
     await saveProviderProfile({
       apiKey,
@@ -359,8 +359,8 @@ test("public Provider profiles expose capability metadata without returning secr
       driver: "openrouter",
       label: "Contract OpenRouter",
     });
-    const previousBypass = process.env.TAPNOW_TEST_AUTH_BYPASS;
-    process.env.TAPNOW_TEST_AUTH_BYPASS = "1";
+    const previousBypass = process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+    process.env.UNBOUNDRY_TEST_AUTH_BYPASS = "1";
     const server = createServer((request, response) => {
       void authGate(request, response, () => {
         void adminProviderProfilesApi(request, response);
@@ -400,8 +400,8 @@ test("public Provider profiles expose capability metadata without returning secr
       });
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
-      if (previousBypass === undefined) delete process.env.TAPNOW_TEST_AUTH_BYPASS;
-      else process.env.TAPNOW_TEST_AUTH_BYPASS = previousBypass;
+      if (previousBypass === undefined) delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+      else process.env.UNBOUNDRY_TEST_AUTH_BYPASS = previousBypass;
     }
   });
 });

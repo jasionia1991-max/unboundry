@@ -189,7 +189,7 @@ CREATE TABLE IF NOT EXISTS account_provider_credentials (
 - 账号浮层新增「我的连接」。
 - 页面列出“至少有一个已发布模型”的连接（决策 1），每行：平台名称、地址、key 输入/保存/校验/删除、状态与掩码。
 - 页面顶部一句说明：密钥只属于当前账号，管理员与其他人不可见。
-- 样式遵循 `TAPNOW_UI_DESIGN_SYSTEM.md`（14px/12px 两档字号、紧凑输入、灰色菜单等）。
+- 样式遵循 `UNBOUNDRY_UI_DESIGN_SYSTEM.md`（14px/12px 两档字号、紧凑输入、灰色菜单等）。
 
 ### 4.6 删除/迁移/备份
 

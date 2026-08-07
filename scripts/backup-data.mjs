@@ -86,10 +86,10 @@ function tableCounts(database) {
 const dataDirectory = resolve(argument("--data-dir") ?? appDataDirectory());
 const backupRoot = resolve(
   argument("--backup-root") ??
-    process.env.TAPNOW_BACKUP_DIR ??
+    process.env.UNBOUNDRY_BACKUP_DIR ??
     join(process.cwd(), "backups"),
 );
-const sourceDatabasePath = join(dataDirectory, "tapnow.sqlite");
+const sourceDatabasePath = join(dataDirectory, "unboundry.sqlite");
 const sourceMediaDirectory = join(dataDirectory, "media");
 const directory = join(backupRoot, backupName());
 
@@ -99,7 +99,7 @@ await mkdir(directory);
 const sourceDatabase = openAppDatabase(dataDirectory);
 try {
   sourceDatabase.exec("PRAGMA wal_checkpoint(PASSIVE)");
-  await backup(sourceDatabase, join(directory, "tapnow.sqlite"));
+  await backup(sourceDatabase, join(directory, "unboundry.sqlite"));
 } finally {
   sourceDatabase.close();
 }
@@ -124,7 +124,7 @@ try {
   if (error?.code !== "ENOENT") throw error;
 }
 
-const backupDatabasePath = join(directory, "tapnow.sqlite");
+const backupDatabasePath = join(directory, "unboundry.sqlite");
 const backupDatabase = new DatabaseSync(backupDatabasePath, { readOnly: true });
 const quickCheck = backupDatabase.prepare("PRAGMA quick_check").get().quick_check;
 const schemaVersion = Number(
@@ -144,7 +144,7 @@ const manifest = {
   format: 1,
   createdAt: new Date().toISOString(),
   database: {
-    file: "tapnow.sqlite",
+    file: "unboundry.sqlite",
     quickCheck,
     schemaVersion,
     sha256: await sha256(backupDatabasePath),

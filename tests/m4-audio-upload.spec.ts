@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const canvasId = "interaction.upload-media-sandbox-current";
-const mediaDirectory = mkdtempSync(join(tmpdir(), "tapnow-audio-test-"));
+const mediaDirectory = mkdtempSync(join(tmpdir(), "unboundry-audio-test-"));
 const commonAudio = [
   { codec: "libmp3lame", extension: "mp3", mimeType: "audio/mpeg" },
   { codec: "aac", extension: "m4a", mimeType: "audio/mp4" },

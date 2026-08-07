@@ -245,7 +245,7 @@ test("terminal cleanup and semantic input changes issue a fresh key while failed
 });
 
 test("server idempotency lookup is owner scoped", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-idempotency-owner-"));
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-idempotency-owner-"));
   try {
     const store = createGenerationTaskStore(directory);
     const created = store.create({

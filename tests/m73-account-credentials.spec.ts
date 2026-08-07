@@ -47,7 +47,7 @@ function seedProvider(
 }
 
 test("account credentials are encrypted, versioned and owner-isolated", async () => {
-  const directory = mkdtempSync(join(tmpdir(), "tapnow-credential-unit-"));
+  const directory = mkdtempSync(join(tmpdir(), "unboundry-credential-unit-"));
   const store = openAppDatabase(directory);
   try {
     const timestamp = new Date().toISOString();
@@ -114,7 +114,7 @@ test("account credentials are encrypted, versioned and owner-isolated", async ()
 });
 
 test("account credential verification maps AUTH to invalid and success to valid", async () => {
-  const directory = mkdtempSync(join(tmpdir(), "tapnow-credential-verify-"));
+  const directory = mkdtempSync(join(tmpdir(), "unboundry-credential-verify-"));
   const store = openAppDatabase(directory);
   try {
     const timestamp = new Date().toISOString();

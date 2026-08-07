@@ -204,7 +204,7 @@ export type CanvasLibraryAsset = {
   src: string;
 };
 export const CANVAS_LIBRARY_ASSET_MIME =
-  "application/x-tapnow-library-asset";
+  "application/x-unboundry-library-asset";
 const emptyEdges: CuttableEdge[] = [];
 const PERSIST_DEBOUNCE_MS = 500;
 const nodeSize = (node: ProbeNodeType) => ({
@@ -1729,7 +1729,7 @@ function canvasSyncChannel(accountId: string, canvasId: string) {
   const scope = accountId ? `${accountId}:${canvasId}` : canvasId;
   return typeof BroadcastChannel === "undefined"
     ? null
-    : new BroadcastChannel(`tapnow-canvas-sync:${scope}`);
+    : new BroadcastChannel(`unboundry-canvas-sync:${scope}`);
 }
 
 function broadcastCanvasSaved(

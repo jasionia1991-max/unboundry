@@ -84,7 +84,7 @@ export async function playlistExport(
       throw new Error("播放列表片段数量无效");
     }
 
-    directory = await mkdtemp(join(tmpdir(), "tapnow-playlist-"));
+    directory = await mkdtemp(join(tmpdir(), "unboundry-playlist-"));
     let offset = 4 + headerLength;
     const inputs: string[] = [];
     for (const [index, clip] of clips.entries()) {

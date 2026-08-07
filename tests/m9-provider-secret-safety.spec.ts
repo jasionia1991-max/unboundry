@@ -87,7 +87,7 @@ test("Provider secrets stay out of source, browser bundles, network and errors",
     const body = await response.text();
     expectNoSecret(body, url);
     expect(body).not.toMatch(
-      /(?:\/Users\/|node_modules|TAPNOW_DATA_DIR|process\.env)/,
+      /(?:\/Users\/|node_modules|UNBOUNDRY_DATA_DIR|process\.env)/,
     );
   }
 });

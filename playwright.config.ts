@@ -1,7 +1,7 @@
 import { defineConfig } from "@playwright/test";
 import { join } from "node:path";
 
-const preview = process.env.TAPNOW_TEST_PREVIEW === "1";
+const preview = process.env.UNBOUNDRY_TEST_PREVIEW === "1";
 const testDataDirectory = join(
   process.cwd(),
   "tmp",
@@ -34,8 +34,8 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 30_000,
     env: {
-      TAPNOW_DATA_DIR: testDataDirectory,
-      TAPNOW_TEST_AUTH_BYPASS: "1",
+      UNBOUNDRY_DATA_DIR: testDataDirectory,
+      UNBOUNDRY_TEST_AUTH_BYPASS: "1",
     },
   },
 });

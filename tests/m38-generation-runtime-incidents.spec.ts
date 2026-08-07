@@ -53,8 +53,8 @@ async function startIncidentServer(dataDirectory: string) {
     {
       env: {
         ...process.env,
-        TAPNOW_DATA_DIR: dataDirectory,
-        TAPNOW_TEST_AUTH_BYPASS: "1",
+        UNBOUNDRY_DATA_DIR: dataDirectory,
+        UNBOUNDRY_TEST_AUTH_BYPASS: "1",
       },
       stdio: "ignore",
     },
@@ -140,7 +140,7 @@ test("Ark Text distinguishes authentication and permission failures without leak
 });
 
 test("Text authentication failures persist once with no result or recorded cost", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-text-auth-incident-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-text-auth-incident-"));
   try {
     const store = createGenerationTaskStore(dataDirectory);
     const cases = [
@@ -224,7 +224,7 @@ test("Text authentication failures persist once with no result or recorded cost"
 });
 
 test("an auth incident grants one atomic provider-kind recovery attempt and isolates other kinds", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-provider-recovery-slot-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-provider-recovery-slot-"));
   const store = createGenerationTaskStore(dataDirectory);
   const database = openAppDatabase(dataDirectory);
   try {
@@ -375,7 +375,7 @@ test("an auth incident grants one atomic provider-kind recovery attempt and isol
 });
 
 test("the incident cooldown ignores stale and unrelated Provider failures", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-cooldown-incident-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-cooldown-incident-"));
   const safety = createGenerationSafetyStore(dataDirectory);
   const database = openAppDatabase(dataDirectory);
   const now = new Date("2026-08-03T03:40:00.000Z");
@@ -744,9 +744,9 @@ test("preserved asynchronous Provider IDs stay resumable and cannot be discarded
 });
 
 test("only capability success or an explicit Provider/model update clears an auth incident", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-auth-reset-"));
-  const previousDataDirectory = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = dataDirectory;
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-auth-reset-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   const safety = createGenerationSafetyStore(dataDirectory);
   let server: ChildProcess | undefined;
   try {
@@ -1433,9 +1433,9 @@ test("only capability success or an explicit Provider/model update clears an aut
     safety.close();
     if (server) await stopIncidentServer(server);
     if (previousDataDirectory === undefined) {
-      delete process.env.TAPNOW_DATA_DIR;
+      delete process.env.UNBOUNDRY_DATA_DIR;
     } else {
-      process.env.TAPNOW_DATA_DIR = previousDataDirectory;
+      process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
     }
     await rm(dataDirectory, { force: true, recursive: true });
   }

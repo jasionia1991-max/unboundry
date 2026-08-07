@@ -31,8 +31,8 @@ async function startServer(dataDirectory: string) {
     {
       env: {
         ...process.env,
-        TAPNOW_DATA_DIR: dataDirectory,
-        TAPNOW_TEST_AUTH_BYPASS: undefined,
+        UNBOUNDRY_DATA_DIR: dataDirectory,
+        UNBOUNDRY_TEST_AUTH_BYPASS: undefined,
       },
       stdio: "ignore",
     },
@@ -74,9 +74,9 @@ function request(
 }
 
 test("legacy global keys migrate only to active administrators and leave the document key-free", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-key-migration-"));
-  const previous = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = directory;
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-key-migration-"));
+  const previous = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
   try {
     const store = openAppDatabase(directory);
     const timestamp = new Date().toISOString();
@@ -164,16 +164,16 @@ test("legacy global keys migrate only to active administrators and leave the doc
       migratedStore.close();
     }
   } finally {
-    delete process.env.TAPNOW_DATA_DIR;
-    if (previous !== undefined) process.env.TAPNOW_DATA_DIR = previous;
+    delete process.env.UNBOUNDRY_DATA_DIR;
+    if (previous !== undefined) process.env.UNBOUNDRY_DATA_DIR = previous;
     await rm(directory, { force: true, recursive: true });
   }
 });
 
 test("a changed account credential version fails a queued task before any provider call", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-credential-version-"));
-  const previous = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = directory;
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-credential-version-"));
+  const previous = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
   try {
     const store = openAppDatabase(directory);
     const timestamp = new Date().toISOString();
@@ -263,14 +263,14 @@ test("a changed account credential version fails a queued task before any provid
     expect(failed?.errorMessage).toBe("你的平台密钥已变更，请重新提交");
     expect(providerCalls).toBe(1);
   } finally {
-    delete process.env.TAPNOW_DATA_DIR;
-    if (previous !== undefined) process.env.TAPNOW_DATA_DIR = previous;
+    delete process.env.UNBOUNDRY_DATA_DIR;
+    if (previous !== undefined) process.env.UNBOUNDRY_DATA_DIR = previous;
     await rm(directory, { force: true, recursive: true });
   }
 });
 
 test("account key availability is owner-isolated: A bad key never affects B or the admin", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-owner-isolation-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-owner-isolation-"));
   let server: ChildProcess | undefined;
   try {
     server = await startServer(dataDirectory);

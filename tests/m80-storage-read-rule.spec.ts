@@ -37,8 +37,8 @@ async function startServer(dataDirectory: string) {
     {
       env: {
         ...process.env,
-        TAPNOW_DATA_DIR: dataDirectory,
-        TAPNOW_TEST_AUTH_BYPASS: undefined,
+        UNBOUNDRY_DATA_DIR: dataDirectory,
+        UNBOUNDRY_TEST_AUTH_BYPASS: undefined,
       },
       stdio: "ignore",
     },
@@ -88,7 +88,7 @@ function insertOssMedia(
   profileId: string | null,
 ) {
   const database = new DatabaseSync(
-    join(dataDirectory, "tapnow.sqlite"),
+    join(dataDirectory, "unboundry.sqlite"),
   );
   try {
     const timestamp = new Date().toISOString();
@@ -140,9 +140,9 @@ async function bootstrapAdmin() {
 }
 
 test("re-verifying an active profile keeps it active and readable", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-m80-state-"));
-  const previousDataDirectory = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = dataDirectory;
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-m80-state-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   try {
     const draft = await saveStorageProfile(dummyProfile());
     await markStorageProfileVerified(draft.id);
@@ -159,18 +159,18 @@ test("re-verifying an active profile keeps it active and readable", async () => 
     });
   } finally {
     if (previousDataDirectory === undefined) {
-      delete process.env.TAPNOW_DATA_DIR;
+      delete process.env.UNBOUNDRY_DATA_DIR;
     } else {
-      process.env.TAPNOW_DATA_DIR = previousDataDirectory;
+      process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
     }
     await rm(dataDirectory, { force: true, recursive: true });
   }
 });
 
 test("routing off still serves existing OSS assets through the HTTP layer", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-m80-read-"));
-  const previousDataDirectory = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = dataDirectory;
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-m80-read-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   let server: ChildProcess | undefined;
   try {
     const draft = await saveStorageProfile(dummyProfile());
@@ -181,7 +181,7 @@ test("routing off still serves existing OSS assets through the HTTP layer", asyn
     server = await startServer(dataDirectory);
     const adminCookie = await bootstrapAdmin();
     const database = new DatabaseSync(
-      join(dataDirectory, "tapnow.sqlite"),
+      join(dataDirectory, "unboundry.sqlite"),
       { readOnly: true },
     );
     const owner = database
@@ -214,18 +214,18 @@ test("routing off still serves existing OSS assets through the HTTP layer", asyn
   } finally {
     if (server) await stopServer(server);
     if (previousDataDirectory === undefined) {
-      delete process.env.TAPNOW_DATA_DIR;
+      delete process.env.UNBOUNDRY_DATA_DIR;
     } else {
-      process.env.TAPNOW_DATA_DIR = previousDataDirectory;
+      process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
     }
     await rm(dataDirectory, { force: true, recursive: true });
   }
 });
 
 test("status warns when OSS assets exist without a readable profile", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-m80-warn-"));
-  const previousDataDirectory = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = dataDirectory;
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-m80-warn-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   let server: ChildProcess | undefined;
   try {
     const draft = await saveStorageProfile(dummyProfile());
@@ -234,7 +234,7 @@ test("status warns when OSS assets exist without a readable profile", async () =
     server = await startServer(dataDirectory);
     const adminCookie = await bootstrapAdmin();
     const database = new DatabaseSync(
-      join(dataDirectory, "tapnow.sqlite"),
+      join(dataDirectory, "unboundry.sqlite"),
       { readOnly: true },
     );
     const owner = database
@@ -253,25 +253,25 @@ test("status warns when OSS assets exist without a readable profile", async () =
   } finally {
     if (server) await stopServer(server);
     if (previousDataDirectory === undefined) {
-      delete process.env.TAPNOW_DATA_DIR;
+      delete process.env.UNBOUNDRY_DATA_DIR;
     } else {
-      process.env.TAPNOW_DATA_DIR = previousDataDirectory;
+      process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
     }
     await rm(dataDirectory, { force: true, recursive: true });
   }
 });
 
 test("new OSS media rows record their owning storage profile", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-m80-track-"));
-  const previousDataDirectory = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = dataDirectory;
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-m80-track-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   try {
     const draft = await saveStorageProfile(dummyProfile());
     await markStorageProfileVerified(draft.id);
     await activateStorageProfile(draft.id);
     openAppDatabase(dataDirectory).close();
     const setupDatabase = new DatabaseSync(
-      join(dataDirectory, "tapnow.sqlite"),
+      join(dataDirectory, "unboundry.sqlite"),
     );
     const timestamp = new Date().toISOString();
     setupDatabase
@@ -304,7 +304,7 @@ test("new OSS media rows record their owning storage profile", async () => {
       storageName: "m80-profile-track.png",
     });
     const database = new DatabaseSync(
-      join(dataDirectory, "tapnow.sqlite"),
+      join(dataDirectory, "unboundry.sqlite"),
       { readOnly: true },
     );
     const row = database
@@ -314,9 +314,9 @@ test("new OSS media rows record their owning storage profile", async () => {
     expect(row.storage_profile_id).toBe(draft.id);
   } finally {
     if (previousDataDirectory === undefined) {
-      delete process.env.TAPNOW_DATA_DIR;
+      delete process.env.UNBOUNDRY_DATA_DIR;
     } else {
-      process.env.TAPNOW_DATA_DIR = previousDataDirectory;
+      process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
     }
     await rm(dataDirectory, { force: true, recursive: true });
   }

@@ -27,24 +27,24 @@ async function withTemporaryData(
   label: string,
   run: (directory: string) => Promise<void>,
 ) {
-  const directory = await mkdtemp(join(tmpdir(), `tapnow-${label}-`));
-  const previousDataDirectory = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = directory;
+  const directory = await mkdtemp(join(tmpdir(), `unboundry-${label}-`));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
   try {
     expect(appDataDirectory()).toBe(directory);
     await run(directory);
   } finally {
     if (previousDataDirectory === undefined) {
-      delete process.env.TAPNOW_DATA_DIR;
+      delete process.env.UNBOUNDRY_DATA_DIR;
     } else {
-      process.env.TAPNOW_DATA_DIR = previousDataDirectory;
+      process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
     }
     await rm(directory, { force: true, recursive: true });
   }
 }
 
 function databaseAt(directory: string, readOnly = false) {
-  return new DatabaseSync(join(directory, "tapnow.sqlite"), { readOnly });
+  return new DatabaseSync(join(directory, "unboundry.sqlite"), { readOnly });
 }
 
 function addAdmin(directory: string, id: string) {
@@ -396,8 +396,8 @@ test("profile-key catalogs discard normalized fields that reflect the saved key"
 
 test("catalog import rejects the encrypted-document to SQLite crash window", async () => {
   await withTemporaryData("catalog-import-stale-revision", async (directory) => {
-    const previousBarrier = process.env.TAPNOW_TEST_PROVIDER_PROFILE_BARRIER;
-    process.env.TAPNOW_TEST_PROVIDER_PROFILE_BARRIER = "1";
+    const previousBarrier = process.env.UNBOUNDRY_TEST_PROVIDER_PROFILE_BARRIER;
+    process.env.UNBOUNDRY_TEST_PROVIDER_PROFILE_BARRIER = "1";
     const actorUserId = `catalog-admin-${randomUUID()}`;
     const profile = await saveProviderProfile({
       apiKey: `before-${randomUUID()}`,
@@ -425,9 +425,9 @@ test("catalog import rejects the encrypted-document to SQLite crash window", asy
     } finally {
       setProviderProfileAfterDocumentWriteHookForTests(undefined);
       if (previousBarrier === undefined) {
-        delete process.env.TAPNOW_TEST_PROVIDER_PROFILE_BARRIER;
+        delete process.env.UNBOUNDRY_TEST_PROVIDER_PROFILE_BARRIER;
       } else {
-        process.env.TAPNOW_TEST_PROVIDER_PROFILE_BARRIER = previousBarrier;
+        process.env.UNBOUNDRY_TEST_PROVIDER_PROFILE_BARRIER = previousBarrier;
       }
     }
 

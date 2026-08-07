@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 
-const mediaDirectory = mkdtempSync(join(tmpdir(), "tapnow-playlist-test-"));
+const mediaDirectory = mkdtempSync(join(tmpdir(), "unboundry-playlist-test-"));
 const videos = ["red", "blue"].map((color, index) => {
   const path = join(mediaDirectory, `clip-${index}.mp4`);
   execFileSync("ffmpeg", [
@@ -33,7 +33,7 @@ const videos = ["red", "blue"].map((color, index) => {
 
 test.afterAll(() => rmSync(mediaDirectory, { force: true, recursive: true }));
 
-test("Playlist empty state matches TapNow", async ({ page, request }) => {
+test("Playlist empty state matches Unboundry", async ({ page, request }) => {
   await request.delete("/api/canvas/node.playlist.empty");
   await page.goto("/__fixture/node.playlist.empty");
 

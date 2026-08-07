@@ -164,7 +164,7 @@ test("user template API rejects invalid titles, categories and graph shapes", as
 });
 
 test("user templates are owner-isolated at the data layer", () => {
-  const directory = mkdtempSync(join(tmpdir(), "tapnow-template-isolation-"));
+  const directory = mkdtempSync(join(tmpdir(), "unboundry-template-isolation-"));
   const store = openAppDatabase(directory);
   try {
     const timestamp = new Date().toISOString();

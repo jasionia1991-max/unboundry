@@ -464,7 +464,7 @@ test("client preserves structured 409 problems for exact reference cards without
   }
 });
 
-const fixtureDirectory = mkdtempSync(join(tmpdir(), "tapnow-ark-media-"));
+const fixtureDirectory = mkdtempSync(join(tmpdir(), "unboundry-ark-media-"));
 const videoFiles = [1, 2].map((index) => {
   const file = join(fixtureDirectory, `eight-seconds-${index}.mp4`);
   execFileSync("ffmpeg", [

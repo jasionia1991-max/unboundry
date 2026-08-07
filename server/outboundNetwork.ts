@@ -146,7 +146,7 @@ function loopbackProxyHostname(hostname: string) {
 function configuredLoopbackProxy(explicit: string | null | undefined) {
   const raw = explicit === null
     ? undefined
-    : explicit ?? process.env.TAPNOW_OUTBOUND_HTTPS_PROXY ??
+    : explicit ?? process.env.UNBOUNDRY_OUTBOUND_HTTPS_PROXY ??
       process.env.HTTPS_PROXY ?? process.env.https_proxy;
   if (!raw) throw new OutboundProxyConfigurationError();
   let proxy: URL;

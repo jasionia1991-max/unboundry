@@ -45,7 +45,7 @@ type EncryptedDocument = {
   version: 1;
 };
 
-const associatedData = Buffer.from("tapnow:storage-profiles:v1", "utf8");
+const associatedData = Buffer.from("unboundry:storage-profiles:v1", "utf8");
 
 function paths() {
   const directory = join(appDataDirectory(), "secrets");

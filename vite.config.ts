@@ -42,7 +42,7 @@ type FixtureDocument = {
 
 const appRoot = fileURLToPath(new URL(".", import.meta.url));
 const fixturePath = fileURLToPath(
-  new URL("./spec/tapnow-state-fixtures.json", import.meta.url),
+  new URL("./spec/unboundry-state-fixtures.json", import.meta.url),
 );
 const implementationFixtureIds = new Set([
   "interaction.typed-input-matrix",
@@ -52,7 +52,7 @@ const implementationFixtureIds = new Set([
 
 function devFixtureApi(): Plugin {
   return {
-    name: "tapnow-dev-fixture-api",
+    name: "unboundry-dev-fixture-api",
     apply: "serve",
     configureServer(server) {
       server.middlewares.use("/__fixture-api", async (request, response) => {
@@ -101,7 +101,7 @@ function testDataDirectoryApi(): Plugin {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
     middlewares.use("/api/test-data-directory", (request, response) => {
-      if (process.env.TAPNOW_TEST_AUTH_BYPASS !== "1") {
+      if (process.env.UNBOUNDRY_TEST_AUTH_BYPASS !== "1") {
         response.statusCode = 404;
         response.end("{}");
         return;
@@ -114,7 +114,7 @@ function testDataDirectoryApi(): Plugin {
     });
   };
   return {
-    name: "tapnow-test-data-directory-api",
+    name: "unboundry-test-data-directory-api",
     configurePreviewServer(server) {
       install(server.middlewares);
     },
@@ -126,7 +126,7 @@ function testDataDirectoryApi(): Plugin {
 
 function playlistExportApi(): Plugin {
   return {
-    name: "tapnow-playlist-export-api",
+    name: "unboundry-playlist-export-api",
     configurePreviewServer(server) {
       server.middlewares.use("/api/playlist/export", (request, response) => {
         void playlistExport(request, response);
@@ -161,7 +161,7 @@ function authenticationApi(): Plugin {
     });
   };
   return {
-    name: "tapnow-authentication-api",
+    name: "unboundry-authentication-api",
     configurePreviewServer(server) {
       install(server.middlewares);
     },
@@ -183,7 +183,7 @@ function modelCatalogApi(): Plugin {
     });
   };
   return {
-    name: "tapnow-model-catalog-api",
+    name: "unboundry-model-catalog-api",
     configurePreviewServer(server) {
       install(server.middlewares);
     },
@@ -205,7 +205,7 @@ function templatesApi(): Plugin {
     });
   };
   return {
-    name: "tapnow-template-catalog-api",
+    name: "unboundry-template-catalog-api",
     configurePreviewServer(server) {
       install(server.middlewares);
     },
@@ -224,7 +224,7 @@ function agentConfigApi(): Plugin {
     });
   };
   return {
-    name: "tapnow-agent-configuration-api",
+    name: "unboundry-agent-configuration-api",
     configurePreviewServer(server) {
       install(server.middlewares);
     },
@@ -243,7 +243,7 @@ function charactersApi(): Plugin {
     });
   };
   return {
-    name: "tapnow-character-catalog-api",
+    name: "unboundry-character-catalog-api",
     configurePreviewServer(server) {
       install(server.middlewares);
     },
@@ -262,7 +262,7 @@ function libraryApi(): Plugin {
     });
   };
   return {
-    name: "tapnow-library-catalog-api",
+    name: "unboundry-library-catalog-api",
     configurePreviewServer(server) {
       install(server.middlewares);
     },
@@ -281,7 +281,7 @@ function providerProfilesApi(): Plugin {
     });
   };
   return {
-    name: "tapnow-provider-profiles-api",
+    name: "unboundry-provider-profiles-api",
     configurePreviewServer(server) {
       install(server.middlewares);
     },
@@ -300,7 +300,7 @@ function providerCatalogApi(): Plugin {
     });
   };
   return {
-    name: "tapnow-provider-catalog-api",
+    name: "unboundry-provider-catalog-api",
     configurePreviewServer(server) {
       install(server.middlewares);
     },
@@ -319,7 +319,7 @@ function storageAdminApi(): Plugin {
     });
   };
   return {
-    name: "tapnow-storage-admin-api",
+    name: "unboundry-storage-admin-api",
     configurePreviewServer(server) {
       install(server.middlewares);
     },
@@ -338,7 +338,7 @@ function generationSafetyAdminApi(): Plugin {
     });
   };
   return {
-    name: "tapnow-generation-safety-admin-api",
+    name: "unboundry-generation-safety-admin-api",
     configurePreviewServer(server) {
       install(server.middlewares);
     },
@@ -357,7 +357,7 @@ function openApiPlugin(): Plugin {
     });
   };
   return {
-    name: "tapnow-openapi",
+    name: "unboundry-openapi",
     configurePreviewServer(server) {
       install(server.middlewares);
     },
@@ -372,7 +372,7 @@ function playlistThumbnailApi(): Plugin {
     void playlistThumbnails(request, response);
   };
   return {
-    name: "tapnow-playlist-thumbnail-api",
+    name: "unboundry-playlist-thumbnail-api",
     configurePreviewServer(server) {
       server.middlewares.use("/api/playlist/thumbnails", handler);
     },
@@ -394,7 +394,7 @@ function canvasPersistenceApi(): Plugin {
     void canvasPersistence(request, response);
   };
   return {
-    name: "tapnow-canvas-persistence-api",
+    name: "unboundry-canvas-persistence-api",
     configurePreviewServer(server) {
       server.middlewares.use("/api/canvas", canvasHandler);
       server.middlewares.use("/api/history", (request, response) => {
@@ -454,7 +454,7 @@ function generationTaskApi(): Plugin {
     void generationTasks(request, response);
   };
   return {
-    name: "tapnow-generation-task-api",
+    name: "unboundry-generation-task-api",
     configurePreviewServer(server) {
       server.middlewares.use("/api/generation-tasks", handler);
     },

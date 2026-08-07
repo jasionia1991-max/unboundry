@@ -15,7 +15,7 @@
 
 ## 2. 事实依据
 
-### 2.1 TapNow 前端代码（v2.12.16 构建，2026-08-06 取证）
+### 2.1 Unboundry 前端代码（v2.12.16 构建，2026-08-06 取证）
 
 `vendor-pkg-canvas-3XsW7E77.js` 中 Group 执行逻辑：
 
@@ -79,7 +79,7 @@
 判定方式：调用节点现有生成函数前抓取 live 节点状态，结束后对比任务 id /
 成功标志 / 错误字段；不改动节点现有交互。
 
-### 3.5 执行规则（对齐 TapNow）
+### 3.5 执行规则（对齐 Unboundry）
 
 - 任一节点失败 → 停止，toast“整组执行失败”；
 - 任一节点被跳过 → 停止，toast“有节点未就绪，整组执行已停止”；
@@ -122,7 +122,7 @@
 
 - `client/src/generation/workflowExecution.ts`
 - `client/src/generation/WorkflowExecutionProvider.tsx`
-- `spec/TAPNOW_GROUP_EXECUTION_PLAN_2026-08-06.md`
+- `spec/UNBOUNDRY_GROUP_EXECUTION_PLAN_2026-08-06.md`
 
 修改：
 

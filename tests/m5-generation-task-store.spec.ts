@@ -14,7 +14,7 @@ import {
 } from "../server/generationTaskStore";
 
 test("generation task creation is idempotent and a running task recovers after reopen", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-task-store-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-task-store-"));
   const request = {
     canvasId: "canvas-generation-test",
     idempotencyKey: "request-generation-0001",
@@ -178,7 +178,7 @@ test("generation task creation is idempotent and a running task recovers after r
 });
 
 test("provider-attempt migration preserves the conservative historical count", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-provider-attempt-history-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-provider-attempt-history-"));
   try {
     const store = createGenerationTaskStore(dataDirectory);
     const task = store.create({
@@ -234,7 +234,7 @@ test("provider-attempt migration preserves the conservative historical count", a
 });
 
 test("cancellation and the Provider boundary are atomic in both race orders", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-provider-cancel-race-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-provider-cancel-race-"));
   const store = createGenerationTaskStore(dataDirectory);
   const task = (suffix: string) => store.create({
     canvasId: "provider-cancel-race",
@@ -285,7 +285,7 @@ test("cancellation and the Provider boundary are atomic in both race orders", as
 });
 
 test("asynchronous retries preserve paid Provider task IDs and only terminal failure starts over", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-provider-task-resume-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-provider-task-resume-"));
   let store = createGenerationTaskStore(dataDirectory);
   const createAsyncTask = (
     kind: "audio" | "video",

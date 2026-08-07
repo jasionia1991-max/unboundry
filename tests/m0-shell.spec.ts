@@ -189,7 +189,7 @@ const testIds: Record<string, string> = {
 
 async function loadShellFixture(): Promise<ShellFixture> {
   const source = JSON.parse(
-    await readFile("spec/tapnow-state-fixtures.json", "utf8"),
+    await readFile("spec/unboundry-state-fixtures.json", "utf8"),
   ) as { fixtures: ShellFixture[] };
   const fixture = source.fixtures.find(
     (candidate) => candidate.id === "shell.empty.primary",
@@ -212,7 +212,7 @@ async function loadResponsiveBaselines(): Promise<ResponsiveBaseline[]> {
 
 async function loadNodeSearchFixture(): Promise<NodeSearchFixture> {
   const source = JSON.parse(
-    await readFile("spec/tapnow-state-fixtures.json", "utf8"),
+    await readFile("spec/unboundry-state-fixtures.json", "utf8"),
   ) as { fixtures: NodeSearchFixture[] };
   const fixture = source.fixtures.find(
     (candidate) => candidate.id === "modal.node-search.empty",
@@ -227,7 +227,7 @@ async function loadNodeSearchFixture(): Promise<NodeSearchFixture> {
 
 async function loadAssetsFixture(): Promise<AssetsFixture> {
   const source = JSON.parse(
-    await readFile("spec/tapnow-state-fixtures.json", "utf8"),
+    await readFile("spec/unboundry-state-fixtures.json", "utf8"),
   ) as { fixtures: AssetsFixture[] };
   const fixture = source.fixtures.find(
     (candidate) => candidate.id === "panel.assets.personal-empty",
@@ -242,7 +242,7 @@ async function loadAssetsFixture(): Promise<AssetsFixture> {
 
 async function loadAiCharactersFixture(): Promise<AiCharactersFixture> {
   const source = JSON.parse(
-    await readFile("spec/tapnow-state-fixtures.json", "utf8"),
+    await readFile("spec/unboundry-state-fixtures.json", "utf8"),
   ) as { fixtures: AiCharactersFixture[] };
   const fixture = source.fixtures.find(
     (candidate) => candidate.id === "overlay.ai-characters.loaded",
@@ -257,7 +257,7 @@ async function loadAiCharactersFixture(): Promise<AiCharactersFixture> {
 
 async function loadTemplatesFixture(): Promise<TemplatesFixture> {
   const source = JSON.parse(
-    await readFile("spec/tapnow-state-fixtures.json", "utf8"),
+    await readFile("spec/unboundry-state-fixtures.json", "utf8"),
   ) as { fixtures: TemplatesFixture[] };
   const fixture = source.fixtures.find(
     (candidate) => candidate.id === "panel.templates.public",
@@ -272,7 +272,7 @@ async function loadTemplatesFixture(): Promise<TemplatesFixture> {
 
 async function loadHistoryFixture(): Promise<HistoryFixture> {
   const source = JSON.parse(
-    await readFile("spec/tapnow-state-fixtures.json", "utf8"),
+    await readFile("spec/unboundry-state-fixtures.json", "utf8"),
   ) as { fixtures: HistoryFixture[] };
   const fixture = source.fixtures.find(
     (candidate) => candidate.id === "panel.history.final",
@@ -287,7 +287,7 @@ async function loadHistoryFixture(): Promise<HistoryFixture> {
 
 async function loadProjectMenuFixture(): Promise<ProjectMenuFixture> {
   const source = JSON.parse(
-    await readFile("spec/tapnow-state-fixtures.json", "utf8"),
+    await readFile("spec/unboundry-state-fixtures.json", "utf8"),
   ) as { fixtures: ProjectMenuFixture[] };
   const fixture = source.fixtures.find(
     (candidate) => candidate.id === "menu.project",
@@ -302,7 +302,7 @@ async function loadProjectMenuFixture(): Promise<ProjectMenuFixture> {
 
 async function loadShareFixture(): Promise<ShareFixture> {
   const source = JSON.parse(
-    await readFile("spec/tapnow-state-fixtures.json", "utf8"),
+    await readFile("spec/unboundry-state-fixtures.json", "utf8"),
   ) as { fixtures: ShareFixture[] };
   const fixture = source.fixtures.find(
     (candidate) => candidate.id === "popover.share",
@@ -317,7 +317,7 @@ async function loadShareFixture(): Promise<ShareFixture> {
 
 async function loadKeyboardShortcutsFixture(): Promise<KeyboardShortcutsFixture> {
   const source = JSON.parse(
-    await readFile("spec/tapnow-state-fixtures.json", "utf8"),
+    await readFile("spec/unboundry-state-fixtures.json", "utf8"),
   ) as { fixtures: KeyboardShortcutsFixture[] };
   const fixture = source.fixtures.find(
     (candidate) => candidate.id === "modal.keyboard-shortcuts",
@@ -332,7 +332,7 @@ async function loadKeyboardShortcutsFixture(): Promise<KeyboardShortcutsFixture>
 
 async function loadBlankContextMenuFixture(): Promise<BlankContextMenuFixture> {
   const source = JSON.parse(
-    await readFile("spec/tapnow-state-fixtures.json", "utf8"),
+    await readFile("spec/unboundry-state-fixtures.json", "utf8"),
   ) as { fixtures: BlankContextMenuFixture[] };
   const fixture = source.fixtures.find(
     (candidate) => candidate.id === "menu.canvas-context.blank",
@@ -347,7 +347,7 @@ async function loadBlankContextMenuFixture(): Promise<BlankContextMenuFixture> {
 
 async function loadNodeContextMenuFixture(): Promise<NodeContextMenuFixture> {
   const source = JSON.parse(
-    await readFile("spec/tapnow-state-fixtures.json", "utf8"),
+    await readFile("spec/unboundry-state-fixtures.json", "utf8"),
   ) as { fixtures: NodeContextMenuFixture[] };
   const fixture = source.fixtures.find(
     (candidate) => candidate.id === "menu.canvas-context.node",
@@ -923,7 +923,7 @@ test("project menu keeps only the current private-project actions", async ({
   await request.delete(`/api/project-title/${fixture.id}`);
   await page.goto(`/__fixture/${fixture.id}`);
   await page.evaluate((id) => {
-    localStorage.removeItem(`tapnow-project-title:${id}`);
+    localStorage.removeItem(`unboundry-project-title:${id}`);
   }, fixture.id);
   await page.reload();
 
@@ -958,7 +958,7 @@ test("project menu keeps only the current private-project actions", async ({
       (input as HTMLInputElement).selectionStart,
       (input as HTMLInputElement).selectionEnd,
     ],
-  )).toEqual([0, "Codex TapNow G0.2 Sandbox 0727".length]);
+  )).toEqual([0, "Codex Unboundry G0.2 Sandbox 0727".length]);
 
   await page.getByTestId("logo-button").click();
   await expect(menu).toBeVisible();

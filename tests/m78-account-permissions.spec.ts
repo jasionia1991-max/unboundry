@@ -29,8 +29,8 @@ async function startServer(dataDirectory: string) {
     {
       env: {
         ...process.env,
-        TAPNOW_DATA_DIR: dataDirectory,
-        TAPNOW_TEST_AUTH_BYPASS: undefined,
+        UNBOUNDRY_DATA_DIR: dataDirectory,
+        UNBOUNDRY_TEST_AUTH_BYPASS: undefined,
       },
       stdio: "ignore",
     },
@@ -111,7 +111,7 @@ test("the permission enum is the single whitelist with the current default set",
 
 test("v30 migration is idempotent and cascades permission rows on account deletion", async () => {
   const dataDirectory = await mkdtemp(
-    join(tmpdir(), "tapnow-perm-migration-"),
+    join(tmpdir(), "unboundry-perm-migration-"),
   );
   try {
     const store = openAppDatabase(dataDirectory);
@@ -180,7 +180,7 @@ test("v30 migration is idempotent and cascades permission rows on account deleti
 });
 
 test("hasPermission and setAccountPermissions enforce the extra-grant model", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-perm-svc-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-perm-svc-"));
   try {
     const store = openAppDatabase(dataDirectory);
     const now = timestamp();
@@ -317,7 +317,7 @@ test("hasPermission and setAccountPermissions enforce the extra-grant model", as
 });
 
 test("permission API enforces guards, grants/revokes extras and audits", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-perm-api-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-perm-api-"));
   let server: ChildProcess | undefined;
   try {
     server = await startServer(dataDirectory);
@@ -507,7 +507,7 @@ test("permission API enforces guards, grants/revokes extras and audits", async (
 test("admin account page edits permissions with compact checkboxes and persistence", async ({
   page,
 }) => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-perm-ui-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-perm-ui-"));
   let server: ChildProcess | undefined;
   try {
     server = await startServer(dataDirectory);
@@ -581,7 +581,7 @@ test("admin account page edits permissions with compact checkboxes and persisten
 test("ordinary accounts see only granted entries and direct admin routes redirect without permission", async ({
   page,
 }) => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-perm-route-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-perm-route-"));
   let server: ChildProcess | undefined;
   try {
     server = await startServer(dataDirectory);
@@ -663,7 +663,7 @@ test("ordinary accounts see only granted entries and direct admin routes redirec
 });
 
 test("deleting an account removes its permission rows and keeps audit history", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-perm-delete-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-perm-delete-"));
   let server: ChildProcess | undefined;
   try {
     server = await startServer(dataDirectory);

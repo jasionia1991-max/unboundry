@@ -121,7 +121,7 @@ export type WorkflowLayerRunResult =
 /**
  * Executes executable nodes layer by layer. Nodes in the same layer run in
  * parallel; the run stops on the first failed, skipped or busy node (matching
- * TapNow) or when cancelled. Already submitted tasks in the current layer are
+ * Unboundry) or when cancelled. Already submitted tasks in the current layer are
  * allowed to finish; only later layers are cancelled.
  */
 export async function runWorkflowLayers(input: {

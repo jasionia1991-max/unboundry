@@ -1,4 +1,4 @@
-# TapNow 管理员模型中心、账号权限与 OSS 实施规划
+# Unboundry 管理员模型中心、账号权限与 OSS 实施规划
 
 状态：`AUTHORITATIVE PLAN / PHASE A-F ACCEPTED / PHASE G VIDEO + API-001～006 ACCEPTED / PHASE H INPUT PARTIAL / PHASE I RELAY-001～012 ACCEPTED / MUREKA AUDIO REAL GENERATION+DEPLOY DEFERRED`
 更新时间：2026-08-04
@@ -16,7 +16,7 @@
 - 管理员日常操作固定为“平台连接→添加模型→发布给节点”，不暴露厂商原始JSON或任务协议。
 - 第一版平台连接支持OpenRouter、火山方舟和OpenAI兼容中转站；特殊非标准接口以后按适配器单独增加。
 - 节点入参按统一平台中立schema管理；未来模型可配置输入类型、数量、角色、组合和必填条件，不要求改写四个节点。
-- 用户明确要求Text目标接受Text、Image、Video、Audio四类上游；这是本项目增强，不冒充TapNow当前实测事实。
+- 用户明确要求Text目标接受Text、Image、Video、Audio四类上游；这是本项目增强，不冒充Unboundry当前实测事实。
 
 ## 2. 权限边界
 
@@ -107,7 +107,7 @@
 
 ### 阶段 C：管理员模型中心
 
-目标：实现“管理员配置，普通用户只选择”的 TapNow 式体验。
+目标：实现“管理员配置，普通用户只选择”的 Unboundry 式体验。
 
 数据结构：
 
@@ -228,14 +228,14 @@
 - 视频结果`f8820894-6445-4276-8914-dac91889f769.mp4`已进入私有OSS，SHA-256为`2a57db544db15161f08976acd701ffbd2ecf52530ab7d0df8ab62ae641dbacc9`；播放、下载、历史预览/重新上画布、刷新和服务重启恢复均由用户确认。
 - 管理员模型参数结构已扩展为Text/Image/Video/Audio共享注册表，Seedance比例、分辨率、时长、生成音频和数量均来自管理员允许值；以后新增模型使用同一设置逻辑。
 - 中转站Doubao TTS已经验收通过；独立的Mureka Audio真实生成仍因`RATE_LIMIT`暂停，未经新授权不得重试。正式服务器HTTPS、进程守护、定时备份与回滚演练未开始。当前开发服务只绑定`127.0.0.1:4173`，不得表述为已部署。
-- 自有OpenAPI 3.1契约和管理员说明页已通过`API-001～006`，现有8条路径、10个操作覆盖画布、项目标题、安全模型配置、当前账号、模板、Agent界面配置、AI角色与素材目录；不复用TapNow私有接口。
+- 自有OpenAPI 3.1契约和管理员说明页已通过`API-001～006`，现有8条路径、10个操作覆盖画布、项目标题、安全模型配置、当前账号、模板、Agent界面配置、AI角色与素材目录；不复用Unboundry私有接口。
 - Agent菜单只读取管理员明确设为默认的已发布文字模型，当前为Doubao Seed；新增普通文字模型不会自动混入，真实Agent执行继续关闭。
 
 ### 阶段 H：节点入参和引用端到端优化
 
-依据：`TAPNOW_UPSTREAM_INPUT_SURVEY_2026-08-02.md`与`TAPNOW_UPSTREAM_INPUT_REPLICATION_PLAN.md`。
+依据：`UNBOUNDRY_UPSTREAM_INPUT_SURVEY_2026-08-02.md`与`UNBOUNDRY_UPSTREAM_INPUT_REPLICATION_PLAN.md`。
 
-当前状态：两轮TapNow证据和产品规则已确定，P0/P1已有本地候选；完整矩阵及后续人工验收尚未完成，`INPUT-001～007`保持PARTIAL。
+当前状态：两轮Unboundry证据和产品规则已确定，P0/P1已有本地候选；完整矩阵及后续人工验收尚未完成，`INPUT-001～007`保持PARTIAL。
 
 实施顺序：
 
@@ -253,7 +253,7 @@
 
 ### 阶段 I：多协议中转站
 
-依据：`TAPNOW_RELAY_PROVIDER_INTEGRATION_PLAN.md`。
+依据：`UNBOUNDRY_RELAY_PROVIDER_INTEGRATION_PLAN.md`。
 
 当前状态：P0～P7本地候选与零Provider fixture自动门禁已完成；真实连接、只读目录、129模型组合目录、分类、草稿、文字、图片、视频、音频、恢复和安全删除保护均已完成用户确认，`RELAY-001～012`全部PASS。收口复验没有新增收费Provider请求、生成任务或真实数据删除。
 

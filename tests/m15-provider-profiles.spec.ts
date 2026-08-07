@@ -21,8 +21,8 @@ async function startServer(dataDirectory: string) {
     {
       env: {
         ...process.env,
-        TAPNOW_DATA_DIR: dataDirectory,
-        TAPNOW_TEST_AUTH_BYPASS: undefined,
+        UNBOUNDRY_DATA_DIR: dataDirectory,
+        UNBOUNDRY_TEST_AUTH_BYPASS: undefined,
       },
       stdio: "ignore",
     },
@@ -64,7 +64,7 @@ function request(
 }
 
 test("only administrators save encrypted Provider profiles and no secret reaches SQLite", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-providers-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-providers-"));
   const secret = ["sk", "provider", randomUUID()].join("-");
   let server: ChildProcess | undefined;
   try {
@@ -222,7 +222,7 @@ test("only administrators save encrypted Provider profiles and no secret reaches
     expect(encrypted).not.toContain("Production OpenRouter");
     expect(encrypted).not.toContain("openrouter.ai");
 
-    const databasePath = join(dataDirectory, "tapnow.sqlite");
+    const databasePath = join(dataDirectory, "unboundry.sqlite");
     const databaseBytes = await readFile(databasePath);
     expect(databaseBytes.includes(Buffer.from(secret))).toBe(false);
     const database = new DatabaseSync(databasePath);
@@ -271,9 +271,9 @@ test("only administrators save encrypted Provider profiles and no secret reaches
 });
 
 test("read-only Provider verification checks model lists without generating", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-provider-test-"));
-  const previousDataDirectory = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = dataDirectory;
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-provider-test-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   try {
     const secret = ["sk", "readonly", randomUUID()].join("-");
     const profile = await saveProviderProfile({
@@ -319,7 +319,7 @@ test("read-only Provider verification checks model lists without generating", as
       status: "verified",
     });
 
-    const database = new DatabaseSync(join(dataDirectory, "tapnow.sqlite"));
+    const database = new DatabaseSync(join(dataDirectory, "unboundry.sqlite"));
     try {
       expect(
         database
@@ -411,18 +411,18 @@ test("read-only Provider verification checks model lists without generating", as
     });
   } finally {
     if (previousDataDirectory === undefined) {
-      delete process.env.TAPNOW_DATA_DIR;
+      delete process.env.UNBOUNDRY_DATA_DIR;
     } else {
-      process.env.TAPNOW_DATA_DIR = previousDataDirectory;
+      process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
     }
     await rm(dataDirectory, { force: true, recursive: true });
   }
 });
 
 test("Provider Key status persists invalid and uncertain rechecks without stale green", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-provider-status-"));
-  const previousDataDirectory = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = dataDirectory;
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-provider-status-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   try {
     const profile = await saveProviderProfile({
       apiKey: ["sk", "status", randomUUID()].join("-"),
@@ -435,7 +435,7 @@ test("Provider Key status persists invalid and uncertain rechecks without stale 
       status: 200,
     });
     const readStatus = () => {
-      const database = new DatabaseSync(join(dataDirectory, "tapnow.sqlite"));
+      const database = new DatabaseSync(join(dataDirectory, "unboundry.sqlite"));
       try {
         return database.prepare(`
           SELECT key_checked_at, key_status, status
@@ -544,9 +544,9 @@ test("Provider Key status persists invalid and uncertain rechecks without stale 
     });
   } finally {
     if (previousDataDirectory === undefined) {
-      delete process.env.TAPNOW_DATA_DIR;
+      delete process.env.UNBOUNDRY_DATA_DIR;
     } else {
-      process.env.TAPNOW_DATA_DIR = previousDataDirectory;
+      process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
     }
     await rm(dataDirectory, { force: true, recursive: true });
   }

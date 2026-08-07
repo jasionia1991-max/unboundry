@@ -51,11 +51,11 @@ async function api(origin: string, method: string, path: string, body?: unknown)
 }
 
 test("relay models persist an explicit compatible protocol without Provider requests", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-relay-model-protocol-"));
-  const previousDirectory = process.env.TAPNOW_DATA_DIR;
-  const previousBypass = process.env.TAPNOW_TEST_AUTH_BYPASS;
-  process.env.TAPNOW_DATA_DIR = directory;
-  process.env.TAPNOW_TEST_AUTH_BYPASS = "1";
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-relay-model-protocol-"));
+  const previousDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  const previousBypass = process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
+  process.env.UNBOUNDRY_TEST_AUTH_BYPASS = "1";
   let server: Server | undefined;
   try {
     expect(appDataDirectory()).toBe(directory);
@@ -191,7 +191,7 @@ test("relay models persist an explicit compatible protocol without Provider requ
       (field: { key: string }) => field.key,
     )).not.toEqual(expect.arrayContaining(["duration", "audioMode"]));
 
-    const store = new DatabaseSync(join(directory, "tapnow.sqlite"), { readOnly: true });
+    const store = new DatabaseSync(join(directory, "unboundry.sqlite"), { readOnly: true });
     try {
       expect(store.prepare(`
         SELECT provider_protocol FROM model_profiles WHERE id = ?
@@ -209,10 +209,10 @@ test("relay models persist an explicit compatible protocol without Provider requ
     }
   } finally {
     if (server) await stopServer(server);
-    if (previousDirectory === undefined) delete process.env.TAPNOW_DATA_DIR;
-    else process.env.TAPNOW_DATA_DIR = previousDirectory;
-    if (previousBypass === undefined) delete process.env.TAPNOW_TEST_AUTH_BYPASS;
-    else process.env.TAPNOW_TEST_AUTH_BYPASS = previousBypass;
+    if (previousDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
+    else process.env.UNBOUNDRY_DATA_DIR = previousDirectory;
+    if (previousBypass === undefined) delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+    else process.env.UNBOUNDRY_TEST_AUTH_BYPASS = previousBypass;
     await rm(directory, { force: true, recursive: true });
   }
 });

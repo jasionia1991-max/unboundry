@@ -9,11 +9,11 @@ import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-const mediaDirectory = mkdtempSync(join(tmpdir(), "tapnow-upload-transaction-"));
+const mediaDirectory = mkdtempSync(join(tmpdir(), "unboundry-upload-transaction-"));
 const videoFile = join(mediaDirectory, "transaction.mp4");
 const audioFile = join(mediaDirectory, "transaction.wav");
 const imageFile = resolve(
-  "spec/reference/tapnow-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+  "spec/reference/unboundry-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
 );
 
 execFileSync("ffmpeg", [

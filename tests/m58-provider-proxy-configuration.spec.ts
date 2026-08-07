@@ -27,14 +27,14 @@ async function withTemporaryData(
   label: string,
   run: (directory: string) => Promise<void>,
 ) {
-  const directory = await mkdtemp(join(tmpdir(), `tapnow-${label}-`));
-  const previous = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = directory;
+  const directory = await mkdtemp(join(tmpdir(), `unboundry-${label}-`));
+  const previous = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
   try {
     await run(directory);
   } finally {
-    if (previous === undefined) delete process.env.TAPNOW_DATA_DIR;
-    else process.env.TAPNOW_DATA_DIR = previous;
+    if (previous === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
+    else process.env.UNBOUNDRY_DATA_DIR = previous;
     await rm(directory, { force: true, recursive: true });
   }
 }
@@ -53,7 +53,7 @@ function successCatalog(driver: ProviderDriver) {
 }
 
 function providerAttemptCounts(directory: string) {
-  const store = new DatabaseSync(join(directory, "tapnow.sqlite"), {
+  const store = new DatabaseSync(join(directory, "unboundry.sqlite"), {
     readOnly: true,
   });
   try {
@@ -122,7 +122,7 @@ test("Provider Key与目录严格透传代理配置错误并保留目录快照",
       expect(afterFailure.errorCode).toBe("PROXY_CONFIGURATION");
       expect(observedMethods).toEqual(["GET", "GET"]);
 
-      const store = new DatabaseSync(join(directory, "tapnow.sqlite"), {
+      const store = new DatabaseSync(join(directory, "unboundry.sqlite"), {
         readOnly: true,
       });
       try {

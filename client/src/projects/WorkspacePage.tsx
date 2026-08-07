@@ -73,7 +73,7 @@ export function WorkspacePage({ userId = "" }: { userId?: string }) {
 
   const rememberLastProject = (id: string) => {
     try {
-      sessionStorage.setItem(`tapnow:last-project:${userId}`, id);
+      sessionStorage.setItem(`unboundry:last-project:${userId}`, id);
     } catch {
       // 隐私模式等场景忽略。
     }
@@ -186,7 +186,7 @@ export function WorkspacePage({ userId = "" }: { userId?: string }) {
   const backToCanvas = async () => {
     const candidates = fromProject ? [fromProject] : [];
     try {
-      const last = sessionStorage.getItem(`tapnow:last-project:${userId}`);
+      const last = sessionStorage.getItem(`unboundry:last-project:${userId}`);
       if (last && !candidates.includes(last)) candidates.push(last);
     } catch {
       // 无本标签页记录时直接回落默认画布。

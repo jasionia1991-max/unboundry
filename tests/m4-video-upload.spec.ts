@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const canvasId = "interaction.upload-media-sandbox-current";
-const mediaDirectory = mkdtempSync(join(tmpdir(), "tapnow-video-upload-"));
+const mediaDirectory = mkdtempSync(join(tmpdir(), "unboundry-video-upload-"));
 const videoFile = join(mediaDirectory, "一秒测试视频.mp4");
 execFileSync("ffmpeg", [
   "-y",

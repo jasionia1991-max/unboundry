@@ -821,7 +821,7 @@ test("future custom parameters remain safe and automatically join node controls"
 });
 
 test("generation tasks retain the submitted model configuration snapshot", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-parameter-snapshot-"));
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-parameter-snapshot-"));
   try {
     const schema = knownModelParameterSchema({
       capability: "video",

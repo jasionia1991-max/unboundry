@@ -21,8 +21,8 @@ async function startServer(dataDirectory: string) {
     {
       env: {
         ...process.env,
-        TAPNOW_DATA_DIR: dataDirectory,
-        TAPNOW_TEST_AUTH_BYPASS: undefined,
+        UNBOUNDRY_DATA_DIR: dataDirectory,
+        UNBOUNDRY_TEST_AUTH_BYPASS: undefined,
       },
       stdio: "ignore",
     },
@@ -64,7 +64,7 @@ function request(
 }
 
 test("only administrators manage models while users receive a safe published catalog", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-models-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-models-"));
   let server: ChildProcess | undefined;
   try {
     server = await startServer(dataDirectory);
@@ -179,7 +179,7 @@ test("only administrators manage models while users receive a safe published cat
     const weakAssetId = "seedance-constraint-guard-image";
     const weakAsset = await readFile(resolve(
       process.cwd(),
-      "spec/reference/tapnow-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+      "spec/reference/unboundry-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
     ));
     expect((await request(`/api/assets/${weakAssetId}`, {
       body: weakAsset,
@@ -229,7 +229,7 @@ test("only administrators manage models while users receive a safe published cat
     const weakenedStoredSchema = structuredClone(seedance.parameterSchema);
     weakenedStoredSchema.referencePolicy = undefined;
     weakenedStoredSchema.inputPolicy = undefined;
-    const directDatabase = new DatabaseSync(join(dataDirectory, "tapnow.sqlite"));
+    const directDatabase = new DatabaseSync(join(dataDirectory, "unboundry.sqlite"));
     try {
       directDatabase.prepare(`
         UPDATE model_profiles

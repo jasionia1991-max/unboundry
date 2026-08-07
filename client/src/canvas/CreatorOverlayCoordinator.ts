@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef } from "react";
 
-const creatorOverlayOpenEvent = "tapnow:creator-overlay-open";
+const creatorOverlayOpenEvent = "unboundry:creator-overlay-open";
 
 /**
  * Creator popovers share one global open surface. This keeps reference detail,

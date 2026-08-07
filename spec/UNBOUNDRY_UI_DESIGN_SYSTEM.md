@@ -1,4 +1,4 @@
-# TapNow 项目级 UI Design System
+# Unboundry 项目级 UI Design System
 
 状态：`AUTHORITATIVE FOR UI / CURRENT BASELINE / DOCUMENTATION ONLY`  
 基线日期：2026-08-03  
@@ -10,8 +10,8 @@
 
 本文件只管理视觉与界面表达，不改变功能、范围和验收状态：
 
-- 功能、范围、PASS/PARTIAL/PAUSED/BLOCK 以 `TASKS.md` 和 `TAPNOW_ACCEPTANCE_MATRIX.md` 为准。
-- TapNow 事实以 `TAPNOW_REFERENCE_EVIDENCE_CATALOG.md`、状态 fixture 和实页勘测为准。
+- 功能、范围、PASS/PARTIAL/PAUSED/BLOCK 以 `TASKS.md` 和 `UNBOUNDRY_ACCEPTANCE_MATRIX.md` 为准。
+- Unboundry 事实以 `UNBOUNDRY_REFERENCE_EVIDENCE_CATALOG.md`、状态 fixture 和实页勘测为准。
 - 节点入参的产品规则以生成架构、两轮上游勘测和复制计划为准。
 - 当前代码、CSS 和自动检查用来证明“现在实际如何显示”，不能单独把人工待验收项目改成 PASS。
 - `INPUT-001～INPUT-007`继续保持 PARTIAL；本文件不改变验收状态。下一批计数由`TASKS.md`与验收矩阵维护，2026-08-04用户明确要求提前同步后当前为6/10。

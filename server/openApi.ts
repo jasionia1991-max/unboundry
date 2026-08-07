@@ -3,10 +3,10 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 export const openApiDocument = {
   openapi: "3.1.0",
   info: {
-    title: "TapNow Private Replica API",
+    title: "Unboundry Private Replica API",
     version: "0.1.0",
     description:
-      "Private, owner-scoped contracts implemented by this project. These are not TapNow upstream private APIs.",
+      "Private, owner-scoped contracts implemented by this project. These are not Unboundry upstream private APIs.",
   },
   servers: [{ url: "/", description: "Current private service" }],
   paths: {

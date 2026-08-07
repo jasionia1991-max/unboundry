@@ -1,5 +1,5 @@
 {
-  "name": "tapnow-private-replica",
+  "name": "unboundry-private-replica",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -37,7 +37,7 @@
     "data:mirror-oss": "node scripts/mirror-oss-to-local.mjs",
     "data:verify-backup": "node scripts/verify-backup.mjs",
     "test:backup": "playwright test tests/m10-backup.spec.ts",
-    "test:fixture-prod": "TAPNOW_TEST_PREVIEW=1 playwright test tests/fixture-production.spec.ts",
+    "test:fixture-prod": "UNBOUNDRY_TEST_PREVIEW=1 playwright test tests/fixture-production.spec.ts",
     "verify": "npm run check:greenfield && npm run build && playwright test tests/m*.spec.ts && npm run test:restart && npm run test:fixture-prod"
   },
   "dependencies": {

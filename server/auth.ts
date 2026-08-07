@@ -45,7 +45,7 @@ type UserInput = {
   password?: unknown;
 };
 
-const cookieName = "tapnow_session";
+const cookieName = "unboundry_session";
 const sessionLifetimeMs = 7 * 24 * 60 * 60 * 1_000;
 const requestIdentities = new WeakMap<IncomingMessage, RequestIdentity>();
 // 用户 ID 支持 UUID 与测试/早期写入的非 UUID ID（如 __test__、cua-tester）。
@@ -78,7 +78,7 @@ function cookieValue(request: IncomingMessage, name: string) {
 
 function sessionCookie(token: string, maxAge: number) {
   const secure =
-    process.env.TAPNOW_SECURE_COOKIES === "1" ||
+    process.env.UNBOUNDRY_SECURE_COOKIES === "1" ||
     process.env.NODE_ENV === "production";
   return [
     `${cookieName}=${token}`,
@@ -176,11 +176,11 @@ function publicUser(row: UserRow) {
 
 /**
  * 真实客户端地址。应用直接暴露时用 socket 地址；
- * 部署在反代（Caddy/nginx）后面时（TAPNOW_TRUST_PROXY=1）取
+ * 部署在反代（Caddy/nginx）后面时（UNBOUNDRY_TRUST_PROXY=1）取
  * X-Forwarded-For 的第一个 IP，防止把反代当成本机而放开管理边界。
  */
 export function clientAddress(request: IncomingMessage) {
-  if (process.env.TAPNOW_TRUST_PROXY === "1") {
+  if (process.env.UNBOUNDRY_TRUST_PROXY === "1") {
     const forwarded = String(request.headers["x-forwarded-for"] ?? "")
       .split(",")[0]
       ?.trim();
@@ -319,7 +319,7 @@ export async function authGate(
   response: ServerResponse,
   next: () => void,
 ) {
-  if (process.env.TAPNOW_TEST_AUTH_BYPASS === "1") {
+  if (process.env.UNBOUNDRY_TEST_AUTH_BYPASS === "1") {
     const timestamp = new Date().toISOString();
     db()
       .prepare(`
@@ -364,7 +364,7 @@ export async function authApi(
   const store = db();
 
   if (request.method === "GET" && path === "status") {
-    if (process.env.TAPNOW_TEST_AUTH_BYPASS === "1") {
+    if (process.env.UNBOUNDRY_TEST_AUTH_BYPASS === "1") {
       json(response, 200, {
         authenticated: true,
         bootstrapRequired: false,
@@ -397,7 +397,7 @@ export async function authApi(
       json(response, 403, { error: "请求来源无效" });
       return;
     }
-    if (!isLoopback(request) && process.env.TAPNOW_BOOTSTRAP_REMOTE !== "1") {
+    if (!isLoopback(request) && process.env.UNBOUNDRY_BOOTSTRAP_REMOTE !== "1") {
       json(response, 403, { error: "首次管理员只能在服务器本机创建" });
       return;
     }

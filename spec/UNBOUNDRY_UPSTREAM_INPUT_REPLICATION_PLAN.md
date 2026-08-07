@@ -1,13 +1,13 @@
-# TapNow 节点入参/引用逻辑完整优化计划
+# Unboundry 节点入参/引用逻辑完整优化计划
 
 状态：`P0/P1 LOCAL CANDIDATE IMPLEMENTED / INPUT-001～007 PARTIAL / NOT ACCEPTANCE PASS`
 更新时间：2026-08-04
 
 依据：
 
-- `TAPNOW_UPSTREAM_INPUT_SURVEY_2026-08-02.md`的两轮TapNow实页勘测。
+- `UNBOUNDRY_UPSTREAM_INPUT_SURVEY_2026-08-02.md`的两轮Unboundry实页勘测。
 - 当前本地的Canvas、四类节点、模型参数schema、生成任务和Provider适配代码。
-- 目标是复刻已确认的TapNow入参行为，同时给未来新增模型留下可配置扩展点；不复用Lumino/Lumino Web。
+- 目标是复刻已确认的Unboundry入参行为，同时给未来新增模型留下可配置扩展点；不复用Lumino/Lumino Web。
 
 ## 一、目标行为基线
 
@@ -15,12 +15,12 @@
 |---|---|---|---|
 | Text | Text、Image、Video、Audio | Text是文字母版/上下文；Image、Video、Audio是多模态理解素材 | 默认必填；允许模型配置为上游Text可代替 |
 | Image | Text、Image | Text是生成指令；Image是参考图 | 上游Text可代替；否则必填 |
-| Video | Text、Image、Video、Audio | Text指令 + 多模态参考素材 | 当前TapNow实测仍需要目标Prompt；先按必填实现 |
+| Video | Text、Image、Video、Audio | Text指令 + 多模态参考素材 | 当前Unboundry实测仍需要目标Prompt；先按必填实现 |
 | Audio | Text | Text可直接提供生成指令 | 上游Text可代替；歌词仍为独立字段 |
 
 禁止直连：Video→Image、Audio→Image、Image/Video/Audio→Audio。非法拖线不创建edge，应打开与来源类型相匹配的“引用该节点生成”菜单。
 
-这里有一项明确的产品增强：TapNow当前实页勘测中Text目标只接受Image、Video，但本项目按用户决定扩展为Text、Image、Video、Audio四类都可作为Text目标的上游。实测文档继续保留TapNow原始事实，实施计划以本产品决定为准。
+这里有一项明确的产品增强：Unboundry当前实页勘测中Text目标只接受Image、Video，但本项目按用户决定扩展为Text、Image、Video、Audio四类都可作为Text目标的上游。实测文档继续保留Unboundry原始事实，实施计划以本产品决定为准。
 
 ## 二、当前本地差距
 

@@ -1450,7 +1450,7 @@ const migrations: readonly Migration[] = [
 export const currentSchemaVersion = migrations.at(-1)?.version ?? 0;
 
 export function appDataDirectory() {
-  return process.env.TAPNOW_DATA_DIR ?? join(process.cwd(), "data");
+  return process.env.UNBOUNDRY_DATA_DIR ?? join(process.cwd(), "data");
 }
 
 function fileSha256(path: string) {
@@ -1620,7 +1620,7 @@ function backfillTrustedMediaDurations(
 
 export function openAppDatabase(dataDirectory = appDataDirectory()) {
   mkdirSync(dataDirectory, { recursive: true });
-  const database = new DatabaseSync(join(dataDirectory, "tapnow.sqlite"), {
+  const database = new DatabaseSync(join(dataDirectory, "unboundry.sqlite"), {
     timeout: 5_000,
   });
   database.exec(`

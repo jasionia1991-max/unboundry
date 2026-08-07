@@ -29,7 +29,7 @@ const maxVideoBytes = 500 * 1024 * 1024;
 
 function videoPath(id: string) {
   const directory = join(
-    process.env.TAPNOW_DATA_DIR ?? join(process.cwd(), "data"),
+    process.env.UNBOUNDRY_DATA_DIR ?? join(process.cwd(), "data"),
     "media",
   );
   return { directory, file: join(directory, id) };

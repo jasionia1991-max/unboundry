@@ -80,7 +80,7 @@ if (dryRun) process.exit(0);
 
 await mkdir(destination, { recursive: true });
 const database = new DatabaseSync(
-  join(dataDirectory, "tapnow.sqlite"),
+  join(dataDirectory, "unboundry.sqlite"),
   { readOnly: true },
 );
 const checksumByKey = new Map(

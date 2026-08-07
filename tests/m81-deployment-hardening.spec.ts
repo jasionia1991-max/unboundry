@@ -15,9 +15,9 @@ async function startServer(dataDirectory: string) {
     {
       env: {
         ...process.env,
-        TAPNOW_DATA_DIR: dataDirectory,
-        TAPNOW_TEST_AUTH_BYPASS: undefined,
-        TAPNOW_TRUST_PROXY: "1",
+        UNBOUNDRY_DATA_DIR: dataDirectory,
+        UNBOUNDRY_TEST_AUTH_BYPASS: undefined,
+        UNBOUNDRY_TRUST_PROXY: "1",
       },
       stdio: "ignore",
     },
@@ -76,7 +76,7 @@ async function bootstrapAdmin() {
 }
 
 test("trusted proxy mode blocks remote bootstrap through forwarded IP", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-m81-bootstrap-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-m81-bootstrap-"));
   let server: ChildProcess | undefined;
   try {
     server = await startServer(dataDirectory);
@@ -111,7 +111,7 @@ test("trusted proxy mode blocks remote bootstrap through forwarded IP", async ()
 });
 
 test("trusted proxy mode requires https forwarding for storage writes", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-m81-storage-"));
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-m81-storage-"));
   let server: ChildProcess | undefined;
   try {
     server = await startServer(dataDirectory);

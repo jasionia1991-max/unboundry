@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const mediaDirectory = mkdtempSync(join(tmpdir(), "tapnow-video-node-test-"));
+const mediaDirectory = mkdtempSync(join(tmpdir(), "unboundry-video-node-test-"));
 const videoFile = join(mediaDirectory, "probe.mp4");
 execFileSync("ffmpeg", [
   "-y",

@@ -221,7 +221,7 @@ function submissionIntentSlot(
   canvasId: string,
   nodeId: string,
 ) {
-  return `tapnow:generation-submission:v2:${encodeURIComponent(accountId)}:${encodeURIComponent(canvasId)}:${kind}:${encodeURIComponent(nodeId)}`;
+  return `unboundry:generation-submission:v2:${encodeURIComponent(accountId)}:${encodeURIComponent(canvasId)}:${kind}:${encodeURIComponent(nodeId)}`;
 }
 
 function validIntent(

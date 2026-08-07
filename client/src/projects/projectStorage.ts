@@ -1,12 +1,12 @@
 export function clearProjectLocalKeys(id: string, userId = "") {
   try {
     // v1 未按账号隔离的旧键，以及 v2 按当前账号隔离的新键都清理。
-    window.localStorage.removeItem(`tapnow-project-title:${id}`);
+    window.localStorage.removeItem(`unboundry-project-title:${id}`);
     if (userId) {
-      window.localStorage.removeItem(`tapnow-project-title:v2:${userId}:${id}`);
+      window.localStorage.removeItem(`unboundry-project-title:v2:${userId}:${id}`);
     }
-    const prefixV2 = `tapnow:generation-submission:v2:${encodeURIComponent(userId)}:${encodeURIComponent(id)}:`;
-    const prefix = `tapnow:generation-submission:v1:${encodeURIComponent(id)}:`;
+    const prefixV2 = `unboundry:generation-submission:v2:${encodeURIComponent(userId)}:${encodeURIComponent(id)}:`;
+    const prefix = `unboundry:generation-submission:v1:${encodeURIComponent(id)}:`;
     const keys: string[] = [];
     for (let index = 0; index < window.localStorage.length; index += 1) {
       const key = window.localStorage.key(index);

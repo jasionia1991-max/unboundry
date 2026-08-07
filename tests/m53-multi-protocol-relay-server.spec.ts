@@ -757,15 +757,15 @@ test("Fake-IP HTTPS transport fails closed when DoH returns any non-public addre
 });
 
 async function temporaryDataDirectory<T>(run: (directory: string) => Promise<T>) {
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-relay-server-"));
-  const previous = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = directory;
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-relay-server-"));
+  const previous = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
   try {
     expect(appDataDirectory()).toBe(directory);
     return await run(directory);
   } finally {
-    if (previous === undefined) delete process.env.TAPNOW_DATA_DIR;
-    else process.env.TAPNOW_DATA_DIR = previous;
+    if (previous === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
+    else process.env.UNBOUNDRY_DATA_DIR = previous;
     await rm(directory, { force: true, recursive: true });
   }
 }
@@ -903,7 +903,7 @@ test("multi-protocol relay verifies, syncs enhanced and fallback catalogs, and e
     expect(JSON.stringify(synced)).not.toContain(secret);
 
     const actorUserId = "relay-admin-fixture";
-    const actorStore = new DatabaseSync(join(directory, "tapnow.sqlite"));
+    const actorStore = new DatabaseSync(join(directory, "unboundry.sqlite"));
     try {
       const timestamp = new Date().toISOString();
       actorStore.prepare(`
@@ -935,7 +935,7 @@ test("multi-protocol relay verifies, syncs enhanced and fallback catalogs, and e
       actorUserId,
     );
     expect(imported).toEqual({ imported: 3, skipped: 0 });
-    const importedStore = new DatabaseSync(join(directory, "tapnow.sqlite"), {
+    const importedStore = new DatabaseSync(join(directory, "unboundry.sqlite"), {
       readOnly: true,
     });
     try {
@@ -1007,7 +1007,7 @@ test("multi-protocol relay verifies, syncs enhanced and fallback catalogs, and e
       }],
       actorUserId,
     )).toEqual({ imported: 1, skipped: 0 });
-    const fallbackStore = new DatabaseSync(join(directory, "tapnow.sqlite"), {
+    const fallbackStore = new DatabaseSync(join(directory, "unboundry.sqlite"), {
       readOnly: true,
     });
     try {
@@ -1160,8 +1160,8 @@ test("multi-protocol relay verifies, syncs enhanced and fallback catalogs, and e
       },
     ]);
 
-    const previousBypass = process.env.TAPNOW_TEST_AUTH_BYPASS;
-    process.env.TAPNOW_TEST_AUTH_BYPASS = "1";
+    const previousBypass = process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+    process.env.UNBOUNDRY_TEST_AUTH_BYPASS = "1";
     const server = createServer((request, response) => {
       void authGate(request, response, () => {
         void adminProviderCatalogApi(request, response);
@@ -1187,8 +1187,8 @@ test("multi-protocol relay verifies, syncs enhanced and fallback catalogs, and e
       });
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
-      if (previousBypass === undefined) delete process.env.TAPNOW_TEST_AUTH_BYPASS;
-      else process.env.TAPNOW_TEST_AUTH_BYPASS = previousBypass;
+      if (previousBypass === undefined) delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+      else process.env.UNBOUNDRY_TEST_AUTH_BYPASS = previousBypass;
     }
 
     expect(await getProviderCatalog(profile.id)).toMatchObject({ modelCount: 2 });
@@ -1206,7 +1206,7 @@ test("multi-protocol relay verifies, syncs enhanced and fallback catalogs, and e
       }],
       actorUserId,
     )).rejects.toThrow(/synchronized again/);
-    const store = new DatabaseSync(join(directory, "tapnow.sqlite"), {
+    const store = new DatabaseSync(join(directory, "unboundry.sqlite"), {
       readOnly: true,
     });
     try {

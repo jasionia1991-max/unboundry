@@ -25,8 +25,8 @@ export default defineConfig({
   webServer: {
     command: "npm run dev -- --port 4176 --strictPort",
     env: {
-      TAPNOW_DATA_DIR: testDataDirectory,
-      TAPNOW_TEST_AUTH_BYPASS: "1",
+      UNBOUNDRY_DATA_DIR: testDataDirectory,
+      UNBOUNDRY_TEST_AUTH_BYPASS: "1",
     },
     reuseExistingServer: false,
     timeout: 30_000,

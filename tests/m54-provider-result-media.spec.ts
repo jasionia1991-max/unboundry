@@ -142,9 +142,9 @@ test("Provider result DNS rebinding to a private address is blocked before downl
 });
 
 test("generated WAV reads a complete probe and is saved without a Provider request", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-relay-wav-"));
-  const previousDataDirectory = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = directory;
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-relay-wav-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
   try {
     const ownerId = "relay-wav-owner";
     const timestamp = new Date().toISOString();
@@ -183,16 +183,16 @@ test("generated WAV reads a complete probe and is saved without a Provider reque
     expect(saved.durationSeconds).toBeGreaterThan(0);
     expect(await readFile(join(directory, "media", saved.assetId))).toEqual(fixture);
   } finally {
-    if (previousDataDirectory === undefined) delete process.env.TAPNOW_DATA_DIR;
-    else process.env.TAPNOW_DATA_DIR = previousDataDirectory;
+    if (previousDataDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
+    else process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
     await rm(directory, { force: true, recursive: true });
   }
 });
 
 test("generated OGG Opus is probed and persisted with its canonical private-media type", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-relay-ogg-"));
-  const previousDataDirectory = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = directory;
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-relay-ogg-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
   try {
     const ownerId = "relay-ogg-owner";
     const timestamp = new Date().toISOString();
@@ -257,8 +257,8 @@ test("generated OGG Opus is probed and persisted with its canonical private-medi
       storage_status: "ready",
     });
   } finally {
-    if (previousDataDirectory === undefined) delete process.env.TAPNOW_DATA_DIR;
-    else process.env.TAPNOW_DATA_DIR = previousDataDirectory;
+    if (previousDataDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
+    else process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
     await rm(directory, { force: true, recursive: true });
   }
 });

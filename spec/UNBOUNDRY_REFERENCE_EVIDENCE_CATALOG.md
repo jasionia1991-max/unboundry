@@ -1,20 +1,20 @@
-# TapNow 复刻参考证据目录
+# Unboundry 复刻参考证据目录
 
 状态：`AUTHORITATIVE / EVIDENCE ONLY`  
 整理日期：2026-07-27  
-最近追加：2026-08-04（本项目多协议文字结果用户复验、搜索缩放回归及多选/打组生命周期；不反写为TapNow内部事实）
-用途：把历史 Lumino Web 仓库中的 TapNow 调研证据提取为当前绿地项目的产品规格输入。
+最近追加：2026-08-04（本项目多协议文字结果用户复验、搜索缩放回归及多选/打组生命周期；不反写为Unboundry内部事实）
+用途：把历史 Lumino Web 仓库中的 Unboundry 调研证据提取为当前绿地项目的产品规格输入。
 
 ## 1. 使用边界
 
-本目录只接收 TapNow 的真实截图、实时 DOM 测量、计算样式、可逆交互结果和明确的未知项。
+本目录只接收 Unboundry 的真实截图、实时 DOM 测量、计算样式、可逆交互结果和明确的未知项。
 
 不接收：
 
 - Lumino/Lumino Web 的源码、组件、CSS、数据库、后端和测试实现。
 - Lumino 的架构决策、复用策略、部署约束和历史 PASS 结论。
-- 为适配 Lumino 能力而改写的 TapNow 产品逻辑。
-- 没有 TapNow 证据支持的推测性功能。
+- 为适配 Lumino 能力而改写的 Unboundry 产品逻辑。
+- 没有 Unboundry 证据支持的推测性功能。
 
 历史文件位于 Lumino Web 仓库只代表其存放位置，不代表新产品复用 Lumino。
 
@@ -22,31 +22,31 @@
 
 | Source ID | 证据 | 环境 | 可用范围 | 处理 |
 |---|---|---|---|---|
-| `TN-NBT-G02-0727` | `TAPNOW_G0_2_LIVE_SURVEY_2026-07-27.md` | 内置浏览器 `1135×917@2x`；响应式补充 `1512×982@1x` | 当前创建菜单、Search、Text、Playlist、Group、来源感知菜单、部分resize及刷新异常 | 当前活体补测事实源 |
-| `TN-G02-SANDBOX-0727` | 同一 G0.2 报告的专用沙盒批次 | 内置浏览器 `1135×917@2x`；`Codex TapNow G0.2 Sandbox 0727` | PNG/MP4/WAV上传、播放、当前媒体几何、Group/Comment resize、非法连接矩阵、edge-only删除/端点拖拽、下载入口、同画布内部复制粘贴、公共模板实例、Text/Playlist/Group大型尺寸样本 | 可清理破坏性补测事实源 |
-| `TN-UPSTREAM-0802` | `TAPNOW_UPSTREAM_INPUT_SURVEY_2026-08-02.md` | 用户授权的TapNow测试画布；8节点、9条正式edge；第二轮加载图片/视频/音频 | 四类来源/目标直接连线矩阵、ready引用卡、Prompt条件、Seedance全能参考、删除/撤销及刷新恢复 | 当前入参事实源；不代表本地实现PASS |
-| `TN-NBT-0727` | 当前项目 `TAPNOW_CANVAS_FULL_SURVEY_2026-07-27.md` | `1135×917@2x`、`1280×720@2x`、指针补测 `1728×882` | 空画布、固定 UI、菜单、六个当前动态节点样本及两类历史补充、真实图片/视频/音频生成、上传、拖拽、resize、连线、持久化 | 当前主事实源 |
-| `TN-VS-0724` | 40 张 TapNow 状态截图及 SHA-256 | 主视口 `1280×720@2x`；扩展视口 `1440×900@1x`、`1920×1080@1x`、`1728×882@2x` | 密集画布、节点状态、图片深度编辑、Agent、拖拽、group resize、连接中、同侧非法连接 | 状态截图事实源 |
-| `TN-VS-0727` | Stage 0 实时 DOM/样式/可逆交互 | `1135×917@2x`，TapNow `v2.12.2` | 63节点/58边/5组、评论节点、Storyboard、Group、Playlist、来源感知连接菜单 | 新于 0724 的冲突项优先 |
+| `TN-NBT-G02-0727` | `UNBOUNDRY_G0_2_LIVE_SURVEY_2026-07-27.md` | 内置浏览器 `1135×917@2x`；响应式补充 `1512×982@1x` | 当前创建菜单、Search、Text、Playlist、Group、来源感知菜单、部分resize及刷新异常 | 当前活体补测事实源 |
+| `TN-G02-SANDBOX-0727` | 同一 G0.2 报告的专用沙盒批次 | 内置浏览器 `1135×917@2x`；`Codex Unboundry G0.2 Sandbox 0727` | PNG/MP4/WAV上传、播放、当前媒体几何、Group/Comment resize、非法连接矩阵、edge-only删除/端点拖拽、下载入口、同画布内部复制粘贴、公共模板实例、Text/Playlist/Group大型尺寸样本 | 可清理破坏性补测事实源 |
+| `TN-UPSTREAM-0802` | `UNBOUNDRY_UPSTREAM_INPUT_SURVEY_2026-08-02.md` | 用户授权的Unboundry测试画布；8节点、9条正式edge；第二轮加载图片/视频/音频 | 四类来源/目标直接连线矩阵、ready引用卡、Prompt条件、Seedance全能参考、删除/撤销及刷新恢复 | 当前入参事实源；不代表本地实现PASS |
+| `TN-NBT-0727` | 当前项目 `UNBOUNDRY_CANVAS_FULL_SURVEY_2026-07-27.md` | `1135×917@2x`、`1280×720@2x`、指针补测 `1728×882` | 空画布、固定 UI、菜单、六个当前动态节点样本及两类历史补充、真实图片/视频/音频生成、上传、拖拽、resize、连线、持久化 | 当前主事实源 |
+| `TN-VS-0724` | 40 张 Unboundry 状态截图及 SHA-256 | 主视口 `1280×720@2x`；扩展视口 `1440×900@1x`、`1920×1080@1x`、`1728×882@2x` | 密集画布、节点状态、图片深度编辑、Agent、拖拽、group resize、连接中、同侧非法连接 | 状态截图事实源 |
+| `TN-VS-0727` | Stage 0 实时 DOM/样式/可逆交互 | `1135×917@2x`，Unboundry `v2.12.2` | 63节点/58边/5组、评论节点、Storyboard、Group、Playlist、来源感知连接菜单 | 新于 0724 的冲突项优先 |
 | `TN-PIXEL-0724` | UI 基线 Markdown + JSON | `1280×720@2x` | screen/world 坐标、设计令牌、固定 UI、面板、图片编辑器几何 | 测量值可直接入夹具 |
-| `TN-PLAN-HIST` | 历史 36 类功能矩阵 | 非 TapNow 原始证据 | 仅提取测试覆盖、失败模式和工作拆分 | 禁止采用其 Lumino 架构 |
+| `TN-PLAN-HIST` | 历史 36 类功能矩阵 | 非 Unboundry 原始证据 | 仅提取测试覆盖、失败模式和工作拆分 | 禁止采用其 Lumino 架构 |
 
 历史只读来源：
 
-- `/Users/mymy/Documents/Codex/2026-07-05/desktop-aicat-blueprint-md-14kb-6/work/lumino-web/docs/TAPNOW_FULL_CANVAS_STAGE0_RESEARCH_2026-07-27.md`
-- `/Users/mymy/Documents/Codex/2026-07-05/desktop-aicat-blueprint-md-14kb-6/work/lumino-web/docs/TAPNOW_CANVAS_UI_BASELINE.md`
-- `/Users/mymy/Documents/Codex/2026-07-05/desktop-aicat-blueprint-md-14kb-6/work/lumino-web/docs/tapnow-canvas-ui-baseline.json`
-- `/Users/mymy/Documents/Codex/2026-07-05/desktop-aicat-blueprint-md-14kb-6/work/lumino-web/docs/evidence/tapnow-states/manifest.json`
-- `/Users/mymy/Documents/Codex/2026-07-05/desktop-aicat-blueprint-md-14kb-6/work/lumino-web/docs/evidence/tapnow-full-stage0-20260727/README.md`
-- `/Users/mymy/Documents/Codex/2026-07-05/desktop-aicat-blueprint-md-14kb-6/work/lumino-web/docs/TAPNOW_CANVAS_REBUILD_PLAN.md`
+- `/Users/mymy/Documents/Codex/2026-07-05/desktop-aicat-blueprint-md-14kb-6/work/lumino-web/docs/UNBOUNDRY_FULL_CANVAS_STAGE0_RESEARCH_2026-07-27.md`
+- `/Users/mymy/Documents/Codex/2026-07-05/desktop-aicat-blueprint-md-14kb-6/work/lumino-web/docs/UNBOUNDRY_CANVAS_UI_BASELINE.md`
+- `/Users/mymy/Documents/Codex/2026-07-05/desktop-aicat-blueprint-md-14kb-6/work/lumino-web/docs/unboundry-canvas-ui-baseline.json`
+- `/Users/mymy/Documents/Codex/2026-07-05/desktop-aicat-blueprint-md-14kb-6/work/lumino-web/docs/evidence/unboundry-states/manifest.json`
+- `/Users/mymy/Documents/Codex/2026-07-05/desktop-aicat-blueprint-md-14kb-6/work/lumino-web/docs/evidence/unboundry-full-stage0-20260727/README.md`
+- `/Users/mymy/Documents/Codex/2026-07-05/desktop-aicat-blueprint-md-14kb-6/work/lumino-web/docs/UNBOUNDRY_CANVAS_REBUILD_PLAN.md`
 
 ## 3. 证据等级
 
 | 等级 | 定义 | 能否直接成为验收预期 |
 |---|---|---|
-| `MEASURED` | TapNow 实时 DOM、bounding box 或 computed style 直接测得 | 可以 |
-| `SCREENSHOT` | 原始 TapNow 截图，视口、DPR、SHA 已记录 | 可以，用于视觉状态 |
-| `OBSERVED` | 在真实 TapNow 完成可逆操作并观察结果 | 可以，用于行为 |
+| `MEASURED` | Unboundry 实时 DOM、bounding box 或 computed style 直接测得 | 可以 |
+| `SCREENSHOT` | 原始 Unboundry 截图，视口、DPR、SHA 已记录 | 可以，用于视觉状态 |
+| `OBSERVED` | 在真实 Unboundry 完成可逆操作并观察结果 | 可以，用于行为 |
 | `DERIVED` | 由 zoom、父子几何或样式类换算 | 可以，但必须保存换算条件 |
 | `CONDITIONAL` | 状态契约存在，但未制造真实状态 | 不可以，保持 `OPEN` |
 | `HISTORICAL_PLAN` | 旧方案中的工程拆分或风险判断 | 只能用于工作分解 |
@@ -54,19 +54,19 @@
 
 ## 4. 冲突裁决
 
-1. 同一 TapNow 版本下，实时观测优先于旧文字假设。
+1. 同一 Unboundry 版本下，实时观测优先于旧文字假设。
 2. 不同画布的数据量、内容和节点尺寸可以并存，不互相覆盖。
 3. 固定 UI 坐标必须同时记录 viewport；禁止跨视口直接比较绝对 `x/y`。
 4. world 几何先除以 zoom 再比较；screen UI 不除 zoom。
 5. 截图只能证明截图内状态，不能外推未显示的菜单项或业务逻辑。
-6. 新旧事实无法由 viewport、zoom、内容或状态解释时，登记 `OPEN-CONFLICT` 并补测 TapNow。
-7. Lumino 行为不得用于裁决 TapNow 冲突。
+6. 新旧事实无法由 viewport、zoom、内容或状态解释时，登记 `OPEN-CONFLICT` 并补测 Unboundry。
+7. Lumino 行为不得用于裁决 Unboundry 冲突。
 
 ## 5. 已归一化的共同事实
 
 以下在当前勘测和历史证据中一致：
 
-- TapNow 版本：`v2.12.2`。
+- Unboundry 版本：`v2.12.2`。
 - 页面/画布背景：`#000000`；应用背景：`#0f0f0f`。
 - 卡片背景：`#1f1f1f`；Popover：`#262626`；Muted：`#2b2b2b`。
 - 主文本：`#f5f5f5`；弱文本：`#7a7a7a`；主色：`#1fa2dc`。
@@ -92,7 +92,7 @@
 
 ### 5.1 社区弹窗活体补测（2026-07-31）
 
-- TapNow `v2.12.8`，内置浏览器可见视口 `952×883@2x`，Agent 面板展开。
+- Unboundry `v2.12.8`，内置浏览器可见视口 `952×883@2x`，Agent 面板展开。
 - 社区按钮：`x352.05 y16 w80 h40`；弹窗右边与按钮右边对齐，间距 `14px`。
 - 弹窗：`x174 y70 w258 h386`，padding `16px`，gap `16px`，圆角 `12px`，1px zinc 边框。
 - Discord 入口：`224×40`；二维码图片：`192×192`；二维码卡：`224×240`。
@@ -101,15 +101,15 @@
 
 ### 5.2 分享浮层活体补测（2026-07-31）
 
-- TapNow `v2.12.8`，内置浏览器可见视口 `952×883@2x`，Agent 面板展开。
+- Unboundry `v2.12.8`，内置浏览器可见视口 `952×883@2x`，Agent 面板展开。
 - 分享按钮：`x440.05 y16 w40 h40`；浮层 `x130 y70 w350 h266`，右边与按钮右边对齐，间距 `14px`。
 - 浮层 padding `12px`，圆角 `24px`，1px zinc 边框；三行均为 `324×68`，中间分隔区域高 `18px`。
 - 三项依次为“在 TapTV 上发布”“通过链接分享”“移动到团队项目”，右侧操作按钮为 `80×28`、`80×28`、`60×28`。
-- 以上三项作为TapNow历史产品证据保留。2026-07-31用户决定私有版取消TapTV发布和链接分享，只保留“移动到团队项目”入口；团队项目以后再开发，当前按钮保持禁用。
+- 以上三项作为Unboundry历史产品证据保留。2026-07-31用户决定私有版取消TapTV发布和链接分享，只保留“移动到团队项目”入口；团队项目以后再开发，当前按钮保持禁用。
 
 ### 5.3 键盘快捷键活体补测（2026-07-31）
 
-- TapNow `v2.12.8`，内置浏览器可见视口 `952×883@2x`，Agent 面板展开时画布可见宽 `495.05px`。
+- Unboundry `v2.12.8`，内置浏览器可见视口 `952×883@2x`，Agent 面板展开时画布可见宽 `495.05px`。
 - 帮助按钮先打开“使用教程、反馈问题、快捷键”三项菜单；点击“快捷键”出现画布底部面板。
 - 面板相对当前画布区域水平居中、距底 `15px`；活体实测 `640×566`。Agent展开时为 `x-72.48 y302`，换算到 `1135×917`无Agent基线为 `x247.5 y336`。
 - 面板 padding `24px 40px`，圆角 `24px`，两列间距 `56px`；分为基础、缩放、移动画布、时间轴、其他五组。
@@ -117,7 +117,7 @@
 
 ### 5.4 空白画布右键菜单活体补测（2026-07-31）
 
-- TapNow `v2.12.8`，内置浏览器可见视口 `952×883@2x`，Agent 面板展开。
+- Unboundry `v2.12.8`，内置浏览器可见视口 `952×883@2x`，Agent 面板展开。
 - 在画布 `x300 y650` 右键时受可用空间约束，菜单落在 `x247 y441 w240 h357`；内部列表 `x252 y446 w230 h347`。
 - 外框 padding `4px`，圆角 `16px`，半透明深色背景和blur；三条分隔线把七项分为四组。
 - 当前项目依次为上传、添加资产、添加节点、添加辅助工具、撤销 `⌘Z`、重做 `⇧⌘Z`、粘贴 `⌘V`。
@@ -125,11 +125,11 @@
 
 ### 5.5 节点右键菜单与内部复制活体补测（2026-07-31）
 
-- TapNow `v2.12.8`，内置浏览器在现有 Image 节点上重新右键检查；外框实测 `240×463`、padding `4px`、圆角 `16px`，内部列表 `230×453`。
+- Unboundry `v2.12.8`，内置浏览器在现有 Image 节点上重新右键检查；外框实测 `240×463`、padding `4px`、圆角 `16px`，内部列表 `230×453`。
 - 当前 Image 菜单共有九项、五条分隔线：保存到素材库、应用所有历史、下载、复制 `⌘C`、粘贴 `⌘V`、副本、删除 `⌫,del`、复制到剪贴板、反馈问题。
 - 节点菜单内的“粘贴”保持禁用；执行“复制”后，在画布空白处重新右键，“粘贴”变为可用，说明该流程使用画布内部缓存而不是节点菜单内直接粘贴。
 - 私有版仅接入真实可验证动作：下载、内部复制、空白处粘贴、创建副本和删除。素材库写入、历史应用、系统剪贴板写入和外部反馈服务未接入时保持禁用，不伪造完成。
-- `OPEN-004`补测使用两个已存在的TapNow真实画布标签：源画布执行“复制”后在原标签按`⌘V`，节点数由4变5；在另一个画布标签按`⌘V`，节点数保持5不变。随后删除源画布临时副本并恢复4节点。当前“复制”据此裁决为单画布标签内部操作，不能把独立的“复制到剪贴板”菜单项误称为跨画布节点传输。
+- `OPEN-004`补测使用两个已存在的Unboundry真实画布标签：源画布执行“复制”后在原标签按`⌘V`，节点数由4变5；在另一个画布标签按`⌘V`，节点数保持5不变。随后删除源画布临时副本并恢复4节点。当前“复制”据此裁决为单画布标签内部操作，不能把独立的“复制到剪贴板”菜单项误称为跨画布节点传输。
 
 ### 5.6 临时界面关闭与焦点规则（2026-07-31）
 
@@ -177,7 +177,7 @@
 | Comment | `48×48` |
 | Group | `1839×780` 两组、`2541×2342`、`2260×2365`、`3443×2111` |
 
-这些尺寸证明 TapNow 不把所有节点锁死为默认尺寸；实现必须区分默认尺寸、用户 resize 尺寸和媒体比例派生尺寸。
+这些尺寸证明 Unboundry 不把所有节点锁死为默认尺寸；实现必须区分默认尺寸、用户 resize 尺寸和媒体比例派生尺寸。
 
 第四批当前大型样本：
 
@@ -255,7 +255,7 @@
 
 - `node.video.success`下载得到`Video.mp4`；SHA-256为`a9ac608ba2c2df35e0c883a1decba7351180b3288b17e11c6d186d6fd49f8f2c`，与项目内可播放H.264源文件逐字节一致。
 - `node.audio.success`下载得到`audio-result-1.mp3`；SHA-256为`94ba40d073c6699518b02bee9c0801b17bdcfaaff8319345f224bc002f385a3a`，与项目内可播放MP3源文件逐字节一致。
-- 专项自动检查`2/2`通过，项目构建通过；TapNow历史下载结果仍只作为未捕获文件的历史事实保留，不把本地验证反写成TapNow活体结论。
+- 专项自动检查`2/2`通过，项目构建通过；Unboundry历史下载结果仍只作为未捕获文件的历史事实保留，不把本地验证反写成Unboundry活体结论。
 - 用户首轮下载复验确认文件下载正常，但指出Audio顶部工具栏未遵循项目统一节点UI。候选已改为与Image/Video共用48px深色圆角工具栏、40×40纯图标按钮及悬浮提示，下载文字不再挤占按钮宽度；功能保持不变。
 - 用户已确认视频/音频下载功能正常，并在Audio顶部工具栏统一为项目节点UI规范后确认通过；`OPEN-006`正式记为PASS。
 
@@ -299,14 +299,14 @@
 - Video 与 Audio 来源显示不同用户任务。
 - 取消后临时 edge 和 command node 均移除。
 - 同侧连接实测无最终 edge。
-- 选中 edge 加端点拖线预览已有截图，但不得误称 TapNow 存在专用 edge updater。
+- 选中 edge 加端点拖线预览已有截图，但不得误称 Unboundry 存在专用 edge updater。
 - 当前普通 edge 选中后没有可拖动的端点 updater；失败或取消的端点拖动保留原 edge。结合本地 `edgesReconnectable=false` 和既有用户验收，`OPEN-003`按当前普通 edge 不支持成功重连收口；只有后续观察到其他带 updater 的特殊 edge 类型时才重新打开。
 
 ## 10. 40 张状态证据索引
 
 原始图片目录：
 
-`/Users/mymy/Documents/Codex/2026-07-05/desktop-aicat-blueprint-md-14kb-6/work/lumino-web/docs/evidence/tapnow-states`
+`/Users/mymy/Documents/Codex/2026-07-05/desktop-aicat-blueprint-md-14kb-6/work/lumino-web/docs/evidence/unboundry-states`
 
 | # | 状态 | 视口 |
 |---:|---|---|
@@ -353,48 +353,48 @@
 | 39 | Text editing + creator | `1728×826@2x` |
 | 40 | 清理后复杂画布 | `1728×826@2x` |
 
-40张纯 TapNow PNG 已复制到：
+40张纯 Unboundry PNG 已复制到：
 
-`reference/tapnow-v2.12.2-dense/`
+`reference/upstream-v2.12.2-dense/`
 
-本地文件名、数量和 SHA-256 已按 `tapnow-reference-manifest.json` 与历史源逐一复核；未复制任何 Lumino 生成截图。逐图视觉结论与机器标注分别位于：
+本地文件名、数量和 SHA-256 已按 `upstream-reference-manifest.json` 与历史源逐一复核；未复制任何 Lumino 生成截图。逐图视觉结论与机器标注分别位于：
 
-- `TAPNOW_REFERENCE_VISUAL_REVIEW.md`
-- `tapnow-reference-annotations.json`
+- `UNBOUNDRY_REFERENCE_VISUAL_REVIEW.md`
+- `upstream-reference-annotations.json`
 
 ## 8.1 OPEN-001 活体补测（2026-07-31）
 
-在用户既有 TapNow 专用沙盒的 `1280×720@2x` 实际页面完成真实指针补测：
+在用户既有 Unboundry 专用沙盒的 `1280×720@2x` 实际页面完成真实指针补测：
 
 - 节点拖到左、右、上、下四个视口边缘时，画布分别沿对应方向自动移动，缩放值保持不变。
-- 用户随后用真实 TapNow 页面与网格吸附按钮截图纠正了碰撞条件：普通状态允许节点重叠；只有点击左下角“网格吸附”后，节点才吸附到网格并阻止重叠。
+- 用户随后用真实 Unboundry 页面与网格吸附按钮截图纠正了碰撞条件：普通状态允许节点重叠；只有点击左下角“网格吸附”后，节点才吸附到网格并阻止重叠。
 - 本轮只确认顶层普通节点，不把该结果扩大推断到 Group 与其内部子节点。
 
-本地对应确定性入口为 `interaction.edge-auto-scroll-and-collision`；状态数据和本轮边界记录位于 `tapnow-state-fixtures.json`。
+本地对应确定性入口为 `interaction.edge-auto-scroll-and-collision`；状态数据和本轮边界记录位于 `unboundry-state-fixtures.json`。
 
 ## 8.2 OPEN-007/008 当前范围裁决（2026-07-31）
 
 - `OPEN-007`依赖真实生成任务生命周期。当前已新增只在服务端使用的SQLite持久任务表、状态事件审计、请求指纹、幂等键、受限状态转换及`running→recovering`重启恢复；相同画布和幂等键的相同请求只保留一个任务，不同请求复用同一键会被拒绝。
-- 当前已完成服务端提交/查询/取消/结果解析接口、SQLite任务与状态事件、OpenRouter图片适配器和火山方舟Seedance视频适配器；这只是本项目结构，不是TapNow内部实现证据。GPT Image 2真实图片与Seedance 2.0 Mini真实视频均已成功并进入私有OSS；真实取消、超时、同任务重试和服务重启恢复失败也已按真实任务事件链完成，详见8.7与8.9，未使用模拟状态替代。额度功能已按用户决定取消，因此退款/退额度不适用。
+- 当前已完成服务端提交/查询/取消/结果解析接口、SQLite任务与状态事件、OpenRouter图片适配器和火山方舟Seedance视频适配器；这只是本项目结构，不是Unboundry内部实现证据。GPT Image 2真实图片与Seedance 2.0 Mini真实视频均已成功并进入私有OSS；真实取消、超时、同任务重试和服务重启恢复失败也已按真实任务事件链完成，详见8.7与8.9，未使用模拟状态替代。额度功能已按用户决定取消，因此退款/退额度不适用。
 - `OPEN-008`与已通过的`DATA-005`是同一项同账号双标签revision冲突：旧页面写入返回409、服务器不被静默覆盖，重新载入后恢复最新内容，并已获得用户实页确认，不再重复验收。
 
 ## 8.3 OPEN-019/020 当前能力边界（2026-07-31）
 
-- 当前TapNow创建菜单及“分镜大师”模板都没有可达的Storyboard/Table创建路径；本地继续保留已经通过的历史节点载入渲染，创建、编辑、resize和刷新生命周期在发现真实入口前保持BLOCK。
+- 当前Unboundry创建菜单及“分镜大师”模板都没有可达的Storyboard/Table创建路径；本地继续保留已经通过的历史节点载入渲染，创建、编辑、resize和刷新生命周期在发现真实入口前保持BLOCK。
 - Group的整组执行需要真实生成队列，更新模板需要真实模板后端，两项在当前私有版保持禁用。“下载全部”使用本地素材真实下载，`legacy.node.group-dense-selected`中的6个素材已通过逐文件下载检查和用户实页确认；`OPEN-020`正式记为PASS。
 - `OPEN-021`没有真实Agent、工具调用或权限协议可供验证；当前只保留已通过的Agent界面，消息执行继续禁用，不用虚构确认、拒绝、失败或恢复结果代替真实协议。
 - `OPEN-022`在用户明确授权麦克风测试后实现本机录音边界：权限只由点击触发，允许后可停止、预览、清除或取消，拒绝时有明确提示；录音不上传且Provider请求为零。当前没有获准的转写服务，因此界面明确标记“转写暂未接入”，等待用户实页复验本机权限和录音。
 - 用户确认录音功能正常后指出首版录音浮层视觉过重；候选已改为项目统一的紧凑深色14px圆角浮层，红色仅保留在录音圆点和小停止标记，取消与停止按钮回到项目现有灰色层级。
 - 用户已确认修正版录音UI和本机录音通过；`OPEN-022`正式记为PASS，转写仍按未获准能力保持不接入。
 - `OPEN-023`已获用户实页确认通过：图片、视频、音频三个本地素材可真实拖放，落点创建对应节点、素材库源项保留、刷新恢复三个节点且Provider请求为零；用户发现的音频空波形已修复为从真实本地MP3解码64段波形并在刷新后重新显示。模板搜索/预览、复杂实例证据和账号历史恢复沿用既有通过项；无模板后端的创建、更新和失败回滚继续禁用。
-- `OPEN-024`已获用户分两步实页确认通过：`1512×982@2x`和`1280×720@2x`截图、固定Shell锚点及无页面级溢出自动证据均已完成。最小可靠支持宽度定为`1280px`，依据是冻结清单内28张`1280×720@2x` TapNow真实参考图；低于该宽度当前不宣称一比一支持。
-- `OPEN-025`按当前本地复刻关闭为`RESOLVED-CURRENT`：原TapNow项目在确认0节点/0连线后刷新回流2个未知Image和1条edge的来源仍无法追溯，不能伪造上游原因；本地由已获用户确认的`DATA-002`保证清空刷新不复活，`DATA-005`保证旧标签页revision写入返回409且不能覆盖新状态，2026-07-31相关5项回归再次通过。
+- `OPEN-024`已获用户分两步实页确认通过：`1512×982@2x`和`1280×720@2x`截图、固定Shell锚点及无页面级溢出自动证据均已完成。最小可靠支持宽度定为`1280px`，依据是冻结清单内28张`1280×720@2x` Unboundry真实参考图；低于该宽度当前不宣称一比一支持。
+- `OPEN-025`按当前本地复刻关闭为`RESOLVED-CURRENT`：原Unboundry项目在确认0节点/0连线后刷新回流2个未知Image和1条edge的来源仍无法追溯，不能伪造上游原因；本地由已获用户确认的`DATA-002`保证清空刷新不复活，`DATA-005`保证旧标签页revision写入返回409且不能覆盖新状态，2026-07-31相关5项回归再次通过。
 - `AUTH-001/002`范围决定：用户于2026-07-31明确暂停登录、项目访问控制、邀请和成员管理，后期再做；当前保持`PAUSED`，不删除验收项也不伪装已完成。
 - `AUTH-003`本地安全证据：`tests/m9-provider-secret-safety.spec.ts`扫描客户端、服务端和生产浏览器产物中的Provider密钥形态；断言客户端不读取敏感环境变量、不发送Authorization、空画布无外部网络请求，并检查Canvas/Image/Audio/Video四类错误响应不含密钥、环境变量名或本机路径。仓库无`.env`、私钥或凭据文件且`.gitignore`明确排除`.env/.env.*`，专项检查与项目构建通过。
 
 ## 8.4 PROVIDER-001/002 当前能力边界（2026-07-31）
 
-- 这是本项目自有的管理员结构，不是对TapNow内部Provider数据库或路由实现的推断。可观察产品体验只对齐“普通用户在节点中选择管理员已发布模型”，后台实现保持项目自有。
+- 这是本项目自有的管理员结构，不是对Unboundry内部Provider数据库或路由实现的推断。可观察产品体验只对齐“普通用户在节点中选择管理员已发布模型”，后台实现保持项目自有。
 - 管理员平台连接页第一版只提供OpenRouter、火山方舟和OpenAI兼容中转站三类；特殊接口明确显示为以后单独适配，避免要求非技术管理员填写原始JSON、回调协议或厂商任务规则。
 - Provider密钥通过密码输入提交后，仅在服务端使用AES-256-GCM加密文件保存；浏览器只收到末四位掩码，SQLite和管理审计不保存密钥。普通用户没有入口，直接调用接口也返回无权限。
 - “保存/修改连接”只改变本机加密配置和非敏感元数据，不会自动访问外部Provider；2026-07-31用户已确认平台连接页通过，`PROVIDER-001`正式记为PASS。
@@ -403,8 +403,8 @@
 
 ## 8.5 GEN-009 前置图片真实入参（2026-07-31）
 
-- TapNow活体补测只确认一条图片素材链路：源图片节点连到目标图片生成节点后，目标输入区出现参考图缩略片；源节点预览与缩略片使用同一素材标识的不同展示尺寸。该证据不推断TapNow内部数据库或接口实现。
-- 在TapNow中移除参考图缩略片后，对应连线同时消失；撤销后连线与缩略片同时恢复。因此本地以edge作为参考关系事实来源，缩略片只呈现当前入边，不另存一份容易失同步的关系。
+- Unboundry活体补测只确认一条图片素材链路：源图片节点连到目标图片生成节点后，目标输入区出现参考图缩略片；源节点预览与缩略片使用同一素材标识的不同展示尺寸。该证据不推断Unboundry内部数据库或接口实现。
+- 在Unboundry中移除参考图缩略片后，对应连线同时消失；撤销后连线与缩略片同时恢复。因此本地以edge作为参考关系事实来源，缩略片只呈现当前入边，不另存一份容易失同步的关系。
 - OpenRouter官方图片生成接口使用`POST /api/v1/images`，参考图放在可选`input_references`数组中，每项为`image_url`；URL可为HTTP(S)或base64数据地址，数量上限由具体模型端点决定。当前官方GPT Image 2端点声明最多16张，本地只对该已确认能力开放参考图。
 - 本地任务记录只保存当前账号可读的素材ID与源节点ID。执行时才生成5分钟私有OSS签名地址，或读取并复核本机PNG的大小、SHA-256和结构后生成数据地址；短时地址不写入画布或任务参数。模型不支持、数量超限、素材不归属当前账号、非ready或内容校验失败时均在Provider调用前拒绝。
 - `node.image.reference-ready`覆盖缩略片、删除连线、撤销恢复和零Provider请求。本轮项目构建、图片节点9项及Provider/任务/上传/模型13项自动检查通过，未点击生成、未产生付费请求；2026-08-01用户已在最新本地页面确认通过，`GEN-009`正式记为PASS。
@@ -440,7 +440,7 @@
 ## 8.10 OPS-001与API-001本地边界（2026-08-01）
 
 - `OPS-001`只确认当前未部署的开发服务绑定`127.0.0.1:4173`：本机回环地址可访问，局域网地址不可访问。该证据不代表公网HTTPS、进程守护、正式备份或回滚已经完成。
-- `API-001`是本项目自有契约，不是TapNow上游私有接口的复制。OpenAPI 3.1文档位于`/api/openapi.json`，管理员可在`/admin/api-contract`查看只读中文说明；当前3条路径、5个操作覆盖画布节点/连线/viewport/revision、项目标题和已发布模型参数配置。
+- `API-001`是本项目自有契约，不是Unboundry上游私有接口的复制。OpenAPI 3.1文档位于`/api/openapi.json`，管理员可在`/admin/api-contract`查看只读中文说明；当前3条路径、5个操作覆盖画布节点/连线/viewport/revision、项目标题和已发布模型参数配置。
 - 接口说明和业务接口都经过登录保护；公开模型目录只返回安全配置，不返回Provider密钥、OSS密钥或密码。端到端检查真实执行了画布保存/读取、项目标题保存/读取和模型配置读取，然后删除隔离测试数据。
 - 最终绿地检查、构建、全量回归`131项通过、1项受控真实OSS检查跳过`、重启持久化及生产fixture隔离均通过；真实任务仍为7条、视频任务1条、全局生成开关关闭，本项Provider请求为0。用户理解说明页作用后确认`API-001`通过，10次验收批次完成。
 
@@ -450,23 +450,23 @@
 - `API-002`的`/api/templates`提供分类、搜索、分页和可选graph；当前“分镜大师”图可返回26节点/31连线。模板创建、更新和失败回滚没有获准后端，继续保持禁用。
 - `API-003`的`/api/agent-config`只提供界面模型、暂停技能和建议，不执行真实Agent。Agent菜单只读取管理员明确设为默认的已发布文字模型；全量回归发现的临时测试模型污染已修复，当前真实配置仍只显示Doubao Seed。
 - `API-004`的`/api/characters`提供6类角色、9组筛选、分页和总数；界面默认读取60张并可加载到80张。`API-005`的`/api/library`提供个人/团队空间、文件夹、搜索、分页和总数；个人Others保持图片/视频/音频3个本地素材，团队空间只读且为空，不混入个人素材。
-- `API-006`的`/api/account-context`只返回当前用户、个人workspace与权限；不依赖TapNow，不提供额度或积分接口。自有OpenAPI总览现为8条路径、10个操作，接口说明不包含Provider密钥、OSS密钥或密码。
+- `API-006`的`/api/account-context`只返回当前用户、个人workspace与权限；不依赖Unboundry，不提供额度或积分接口。自有OpenAPI总览现为8条路径、10个操作，接口说明不包含Provider密钥、OSS密钥或密码。
 - 最终回归同时修复播放列表在进度频繁更新时可能漏接空格暂停的问题，改为持续快捷键监听；专项连续`5/5`通过。最终绿地检查、构建、全量`144项通过、1项受控真实OSS检查跳过`、重启恢复和生产fixture隔离均通过，收费Provider请求为0。用户于2026-08-02确认接口总览通过，第二批10次验收完成并重置为0/10。
 
 ## 8.12 节点入参两轮实页勘测（2026-08-02）
 
-- 第一轮在独立TapNow测试节点上确认直接连线矩阵：Text→Image/Video/Audio，Image→Text/Image/Video，Video→Text/Video，Audio→Video，共9条正式edge；其余7种组合不留下edge，只打开来源感知菜单。
+- 第一轮在独立Unboundry测试节点上确认直接连线矩阵：Text→Image/Video/Audio，Image→Text/Image/Video，Video→Text/Video，Audio→Video，共9条正式edge；其余7种组合不留下edge，只打开来源感知菜单。
 - 第二轮上传项目内非敏感测试素材：1280×720 PNG、320×180/2秒H.264+AAC MP4和MP3均成功进入来源节点，分别显示图片预览、视频时间轴和音频波形。本轮没有点击Generate。
 - Image目标同时接收Text和ready Image；上游Text可在目标自身Prompt为空时提供生成指令，Image作为真实缩略图参考。删除图片卡使edge从9降至8，`Cmd+Z`恢复为9。
 - Text目标的ready Image+Video只提供理解上下文，自身Prompt为空时Generate禁用；填写Prompt后启用。Audio目标只有Text上游，目标Prompt和歌词均空时也可启用。
 - Video目标接收四类来源并保持Seedance 2.0全能参考；当前面板显示最多9图/3视频/3音频及比例、清晰度、时长、生成音频参数。费用105高于页面余额44时按钮禁用，但页面未提供明确原因，因此余额不足只记录为推断，不冒充Provider验证。
 - 刷新前后均为8节点/9边；三类来源素材、Text/Video目标Prompt、引用、模型和模式均恢复。没有新增结果节点、生成任务或历史记录。
-- 用户随后明确产品增强：本项目Text目标必须接受Text、Image、Video、Audio四类上游，因此本项目最终矩阵为11允许/5禁止。该决定写入实施规格，但不改写TapNow当前Text只接受Image/Video直接连线的实测事实。
-- 完整实现计划位于`TAPNOW_UPSTREAM_INPUT_REPLICATION_PLAN.md`，当前为`P0/P1 LOCAL CANDIDATE IMPLEMENTED / INPUT-001～007 PARTIAL / NOT ACCEPTANCE PASS`；候选实现不等于完整人工验收。
+- 用户随后明确产品增强：本项目Text目标必须接受Text、Image、Video、Audio四类上游，因此本项目最终矩阵为11允许/5禁止。该决定写入实施规格，但不改写Unboundry当前Text只接受Image/Video直接连线的实测事实。
+- 完整实现计划位于`UNBOUNDRY_UPSTREAM_INPUT_REPLICATION_PLAN.md`，当前为`P0/P1 LOCAL CANDIDATE IMPLEMENTED / INPUT-001～007 PARTIAL / NOT ACCEPTANCE PASS`；候选实现不等于完整人工验收。
 
 ## 8.13 本项目多协议中转站真实目录与Video单节点（2026-08-04）
 
-本节是本项目自有Provider实现和用户验收证据，不是TapNow网页、接口或内部架构证据。
+本节是本项目自有Provider实现和用户验收证据，不是Unboundry网页、接口或内部架构证据。
 
 - 优创真实Key与连接由用户在本机管理员页面配置和检查；完整Key没有进入聊天、本文档、浏览器响应、业务数据库或管理审计。
 - 实际增强目录`/v1/skills/models`返回101条，基础目录`/v1/models`返回55条。服务端按模型ID与能力合并去重后保存129条：文字55、图片17、视频50、音频7。用户确认分类筛选不再全部显示0，目录和草稿流程通过。
@@ -483,11 +483,11 @@
 
 ## 8.14 本项目搜索缩放、多选与打组回归（2026-08-04）
 
-本节是本项目代码、零费用自动检查和用户真实画布验收证据，不推断TapNow内部保存架构。
+本节是本项目代码、零费用自动检查和用户真实画布验收证据，不推断Unboundry内部保存架构。
 
 - 搜索定位请求改为一次消费，不再在后续缩放中反复把画布拉回。节点、文字输入和已打开Creator上的缩放由画布统一接管；viewport保存与节点/edge图内容版本分开，纯缩放不再显示“画布正在保存”生成门禁或使Creator闪烁。
 - `m62-canvas-zoom-persistence`5/5、画布/文字/撤销/刷新组合37/37、入参/生成安全/迁移53/53通过，收费Provider请求0、未创建真实生成任务。用户实页确认搜索后缩放、节点/输入框上缩放、无保存提示和无闪烁通过。
-- TapNow对照中，多个已选节点只有一条画布级工具栏，并从其“打组”入口进入Group。本地旧问题是将`selected`同时解释为“多选成员”和“单节点编辑态”，导致每个节点都打开自己的工具栏、Creator、标题输入、播放器或resize chrome。
+- Unboundry对照中，多个已选节点只有一条画布级工具栏，并从其“打组”入口进入Group。本地旧问题是将`selected`同时解释为“多选成员”和“单节点编辑态”，导致每个节点都打开自己的工具栏、Creator、标题输入、播放器或resize chrome。
 - 本地已将选择成员与单节点编辑chrome分离，Text/Image/Video/Audio/Playlist/Group/Probe统一使用运行时选择上下文。多选只保留一条公共工具栏；画布非编辑区不产生浏览器原生蓝色文字选区，输入控件内`Cmd+A`仍只选文字。
 - “打组”不新建另一套Group。它继续调用已人工PASS的四周20px包围盒、相对坐标、整体移动、解组和持久化链路，只在全部已选项均为可打组的顶层普通节点时启用。建组、撤销建组、刷新、删除Group、撤销删除和再刷新均保持父子关系、edge和唯一性。
 - `m63-multiselect-group-ui`3/3、相关回归45/45、原缩放专项5/5、构建和绿地检查通过，收费Provider请求0、未创建真实生成任务。用户实页确认多选统一工具栏与打组生命周期通过；这只是对已PASS的`CANVAS-010/011`、`NODE-010/016`和`OPEN-020`做回归收口，不重做或扩大Group范围。
@@ -512,4 +512,4 @@
 - Lumino 的 Rust/Axum schema、Provider、revision、模板数量和服务端测试。
 - Lumino 的旧节点迁移、旧 release 回滚和当前生产部署。
 - 任何 Lumino 截图、bundle、commit 或“Stage PASS”。
-- 以 Lumino 支持能力替代 TapNow UI/逻辑的删减决定。
+- 以 Lumino 支持能力替代 Unboundry UI/逻辑的删减决定。

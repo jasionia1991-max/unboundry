@@ -85,8 +85,8 @@ async function startRuntime(dataDirectory, port) {
     {
       env: {
         ...process.env,
-        TAPNOW_DATA_DIR: dataDirectory,
-        TAPNOW_TEST_AUTH_BYPASS: "1",
+        UNBOUNDRY_DATA_DIR: dataDirectory,
+        UNBOUNDRY_TEST_AUTH_BYPASS: "1",
       },
       stdio: "ignore",
     },
@@ -122,7 +122,7 @@ function mediaUrl(origin, file) {
 
 const backupRoot = resolve(
   argument("--backup-root") ??
-    process.env.TAPNOW_BACKUP_DIR ??
+    process.env.UNBOUNDRY_BACKUP_DIR ??
     join(process.cwd(), "backups"),
 );
 const requestedDirectory = argument("--backup-dir");
@@ -143,7 +143,7 @@ if (
 
 if (
   manifest?.format !== 1 ||
-  manifest.database?.file !== "tapnow.sqlite" ||
+  manifest.database?.file !== "unboundry.sqlite" ||
   !Array.isArray(manifest.media?.files)
 ) {
   throw new Error("Invalid backup manifest");
@@ -152,10 +152,10 @@ const expectedSecrets = Array.isArray(manifest.secrets?.files)
   ? manifest.secrets.files
   : [];
 
-const restoredDirectory = await mkdtemp(join(tmpdir(), "tapnow-restore-"));
+const restoredDirectory = await mkdtemp(join(tmpdir(), "unboundry-restore-"));
 let runtime;
 try {
-  await cp(join(backupDirectory, "tapnow.sqlite"), join(restoredDirectory, "tapnow.sqlite"), {
+  await cp(join(backupDirectory, "unboundry.sqlite"), join(restoredDirectory, "unboundry.sqlite"), {
     errorOnExist: true,
   });
   await cp(join(backupDirectory, "media"), join(restoredDirectory, "media"), {
@@ -172,7 +172,7 @@ try {
     if (error?.code !== "ENOENT") throw error;
   }
 
-  const databasePath = join(restoredDirectory, "tapnow.sqlite");
+  const databasePath = join(restoredDirectory, "unboundry.sqlite");
   if ((await sha256(databasePath)) !== manifest.database.sha256) {
     throw new Error("Restored database checksum mismatch");
   }

@@ -508,7 +508,7 @@ test("selection mode selects cards, shows bottom bar and deletes selected", asyn
 });
 
 test("cover priority and delete rows are enforced at the store level", () => {
-  const directory = mkdtempSync(join(tmpdir(), "tapnow-projects-unit-"));
+  const directory = mkdtempSync(join(tmpdir(), "unboundry-projects-unit-"));
   try {
     const db = openAppDatabase(directory);
     const ownerId = "u1";
@@ -641,7 +641,7 @@ test("cover priority and delete rows are enforced at the store level", () => {
 });
 
 test("project ids are owner-isolated for canvas and title writes", () => {
-  const directory = mkdtempSync(join(tmpdir(), "tapnow-owner-isolation-"));
+  const directory = mkdtempSync(join(tmpdir(), "unboundry-owner-isolation-"));
   try {
     const db = openAppDatabase(directory);
     const now = new Date().toISOString();

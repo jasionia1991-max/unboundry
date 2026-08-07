@@ -448,7 +448,7 @@ function AccountForm({
       <section className="auth-card">
         <span aria-hidden="true" className="auth-mark replica-mark" />
         <div className="auth-heading">
-          <h1>{bootstrap ? "创建首位管理员" : "登录 TapNow 画布"}</h1>
+          <h1>{bootstrap ? "创建首位管理员" : "登录 Unboundry 画布"}</h1>
           <p>
             {bootstrap
               ? "只会在这台电脑上创建一次。现有画布和素材会归到这个管理员账号。"
@@ -681,7 +681,7 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
             <input
               autoComplete="off"
               maxLength={60}
-              name="tapnow-new-user-display-name"
+              name="unboundry-new-user-display-name"
               onChange={(event) => setDisplayName(event.target.value)}
               placeholder="显示名称"
               required
@@ -691,7 +691,7 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
               autoComplete="off"
               maxLength={40}
               minLength={3}
-              name="tapnow-new-user-login"
+              name="unboundry-new-user-login"
               onChange={(event) => setLoginName(event.target.value)}
               pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,39}"
               placeholder="登录账号"
@@ -702,7 +702,7 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
               autoComplete="new-password"
               maxLength={200}
               minLength={12}
-              name="tapnow-new-user-password"
+              name="unboundry-new-user-password"
               onChange={(event) => setPassword(event.target.value)}
               placeholder="初始密码（至少 12 位）"
               required
@@ -6320,7 +6320,7 @@ function AdminApiContract({ currentUser }: { currentUser: AuthUser }) {
             画布、项目名称、安全模型配置及账号权限均使用本项目实现的接口，受登录状态和账号数据隔离保护。
           </p>
           <ul>
-            <li>不会连接或复用 TapNow 上游私有接口</li>
+            <li>不会连接或复用 Unboundry 上游私有接口</li>
             <li>本页只读取说明，不调用任何收费模型服务</li>
             <li>模型密钥、存储密钥和密码不会出现在说明中</li>
           </ul>

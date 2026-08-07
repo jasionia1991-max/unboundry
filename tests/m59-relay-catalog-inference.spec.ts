@@ -45,14 +45,14 @@ async function withTemporaryData(
   label: string,
   run: (directory: string) => Promise<void>,
 ) {
-  const directory = await mkdtemp(join(tmpdir(), `tapnow-${label}-`));
-  const previous = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = directory;
+  const directory = await mkdtemp(join(tmpdir(), `unboundry-${label}-`));
+  const previous = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
   try {
     await run(directory);
   } finally {
-    if (previous === undefined) delete process.env.TAPNOW_DATA_DIR;
-    else process.env.TAPNOW_DATA_DIR = previous;
+    if (previous === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
+    else process.env.UNBOUNDRY_DATA_DIR = previous;
     await rm(directory, { force: true, recursive: true });
   }
 }
@@ -73,7 +73,7 @@ function writeLegacySnapshot(
   profileId: string,
   models: ReturnType<typeof legacyModel>[],
 ) {
-  const store = new DatabaseSync(join(directory, "tapnow.sqlite"));
+  const store = new DatabaseSync(join(directory, "unboundry.sqlite"));
   try {
     const timestamp = "2026-08-04T01:00:00.000Z";
     const updated = store.prepare(`
@@ -353,7 +353,7 @@ test("增强目录解析失败保留上次全量快照和诊断", async () => {
       modelCount: 129,
       reportedModelCount: 129,
     });
-    const before = new DatabaseSync(join(directory, "tapnow.sqlite"), {
+    const before = new DatabaseSync(join(directory, "unboundry.sqlite"), {
       readOnly: true,
     });
     let previous: {
@@ -404,7 +404,7 @@ test("增强目录解析失败保留上次全量快照和诊断", async () => {
     )).rejects.toMatchObject({ code: "FORMAT" });
     expect(downgradeRequests).toHaveLength(2);
 
-    const after = new DatabaseSync(join(directory, "tapnow.sqlite"), {
+    const after = new DatabaseSync(join(directory, "unboundry.sqlite"), {
       readOnly: true,
     });
     try {
@@ -452,7 +452,7 @@ test("已有全量目录不会被55个兼容模型降级覆盖", async () => {
       reportedModelCount: 129,
     });
 
-    const before = new DatabaseSync(join(directory, "tapnow.sqlite"), {
+    const before = new DatabaseSync(join(directory, "unboundry.sqlite"), {
       readOnly: true,
     });
     let previous: {
@@ -487,7 +487,7 @@ test("已有全量目录不会被55个兼容模型降级覆盖", async () => {
     )).rejects.toMatchObject({ code: "FORMAT" });
     expect(downgradeRequestCount).toBe(2);
 
-    const after = new DatabaseSync(join(directory, "tapnow.sqlite"), {
+    const after = new DatabaseSync(join(directory, "unboundry.sqlite"), {
       readOnly: true,
     });
     try {
@@ -682,7 +682,7 @@ test("旧数据库unknown目录刷新后立即分类且非中转平台不受影�
       legacyModel("vendor-private-model"),
     ];
     writeLegacySnapshot(directory, relay.id, relayModels);
-    const before = new DatabaseSync(join(directory, "tapnow.sqlite"), {
+    const before = new DatabaseSync(join(directory, "unboundry.sqlite"), {
       readOnly: true,
     });
     let attemptsBefore: ReturnType<typeof generationProviderAttemptCounts>;
@@ -735,7 +735,7 @@ test("旧数据库unknown目录刷新后立即分类且非中转平台不受影�
       expect(catalog.models[0].metadata?.protocols, item.driver).toBeUndefined();
     }
 
-    const after = new DatabaseSync(join(directory, "tapnow.sqlite"), {
+    const after = new DatabaseSync(join(directory, "unboundry.sqlite"), {
       readOnly: true,
     });
     try {

@@ -2,7 +2,7 @@
 
 状态：`ANALYSIS COMPLETE / PENDING USER REVIEW 2026-08-07`
 基线：当前 `main` 提交 `500d24c`
-对象方案：`spec/TAPNOW_NEXT_PHASE_WBS_2026-08-07.md` 与 `spec/TAPNOW_NEXT_PHASE_WBS_DETAIL_2026-08-07.md`
+对象方案：`spec/UNBOUNDRY_NEXT_PHASE_WBS_2026-08-07.md` 与 `spec/UNBOUNDRY_NEXT_PHASE_WBS_DETAIL_2026-08-07.md`
 方法：对方案每一步与现状代码逐文件、逐函数、逐符号比对；所有结论附文件:行号；重点核查“已验收功能是否会回退”。
 
 ## 0. 总体结论（先看这里）

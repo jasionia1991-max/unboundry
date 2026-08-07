@@ -271,9 +271,9 @@ async function holdAppDatabaseWriteLock(
 }
 
 test("Ark AK/SK remains encrypted while catalog sync and draft import are durable", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-ark-catalog-"));
-  const previousDataDirectory = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = dataDirectory;
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-ark-catalog-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   expect(appDataDirectory()).toBe(dataDirectory);
   const accessKeyId = `AKLT${randomUUID().replaceAll("-", "")}`;
   const secretAccessKey = `secret-${randomUUID()}-${randomUUID()}`;
@@ -331,7 +331,7 @@ test("Ark AK/SK remains encrypted while catalog sync and draft import are durabl
     ]);
     const latestConcurrentProfile = await getProviderProfile(profile.id);
     const concurrentMetadata = new DatabaseSync(
-      join(dataDirectory, "tapnow.sqlite"),
+      join(dataDirectory, "unboundry.sqlite"),
       { readOnly: true },
     );
     try {
@@ -376,7 +376,7 @@ test("Ark AK/SK remains encrypted while catalog sync and draft import are durabl
       providerModelId: "doubao-seedream-4-0-250828",
     });
 
-    const auditStore = new DatabaseSync(join(dataDirectory, "tapnow.sqlite"));
+    const auditStore = new DatabaseSync(join(dataDirectory, "unboundry.sqlite"));
     try {
       const timestamp = new Date().toISOString();
       auditStore.prepare(`
@@ -410,7 +410,7 @@ test("Ark AK/SK remains encrypted while catalog sync and draft import are durabl
     );
     expect(encrypted).not.toContain(accessKeyId);
     expect(encrypted).not.toContain(secretAccessKey);
-    const databasePath = join(dataDirectory, "tapnow.sqlite");
+    const databasePath = join(dataDirectory, "unboundry.sqlite");
     const databaseBytes = await readFile(databasePath);
     expect(databaseBytes.includes(Buffer.from(accessKeyId))).toBe(false);
     expect(databaseBytes.includes(Buffer.from(secretAccessKey))).toBe(false);
@@ -484,18 +484,18 @@ test("Ark AK/SK remains encrypted while catalog sync and draft import are durabl
     }
   } finally {
     if (previousDataDirectory === undefined) {
-      delete process.env.TAPNOW_DATA_DIR;
+      delete process.env.UNBOUNDRY_DATA_DIR;
     } else {
-      process.env.TAPNOW_DATA_DIR = previousDataDirectory;
+      process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
     }
     await rm(dataDirectory, { force: true, recursive: true });
   }
 });
 
 test("catalog failures preserve the last snapshot and stale sync cannot overwrite new credentials", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-ark-catalog-race-"));
-  const previousDataDirectory = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = dataDirectory;
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-ark-catalog-race-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   try {
     const profile = await saveProviderProfile({
       apiKey: `ark-api-${randomUUID()}`,
@@ -512,7 +512,7 @@ test("catalog failures preserve the last snapshot and stale sync cannot overwrit
       profile.id,
       fakeArkFetcher([]) as typeof fetch,
     );
-    const store = new DatabaseSync(join(dataDirectory, "tapnow.sqlite"));
+    const store = new DatabaseSync(join(dataDirectory, "unboundry.sqlite"));
     const lastGood = store.prepare(`
       SELECT catalog_models, catalog_synced_at
       FROM provider_profiles WHERE id = ?
@@ -525,7 +525,7 @@ test("catalog failures preserve the last snapshot and stale sync cannot overwrit
         ResponseMetadata: { Error: { Code: "AccessDenied" } },
       }), { status: 403 })) as typeof fetch,
     )).rejects.toMatchObject({ code: "PERMISSION" });
-    const afterFailure = new DatabaseSync(join(dataDirectory, "tapnow.sqlite"));
+    const afterFailure = new DatabaseSync(join(dataDirectory, "unboundry.sqlite"));
     try {
       expect(afterFailure.prepare(`
         SELECT
@@ -566,7 +566,7 @@ test("catalog failures preserve the last snapshot and stale sync cannot overwrit
     await expect(staleSync).rejects.toThrow("CONFIG_CHANGED");
     const latestProfile = await getProviderProfile(profile.id);
     expect(latestProfile?.arkControlPlane?.revision).toBeTruthy();
-    const afterStale = new DatabaseSync(join(dataDirectory, "tapnow.sqlite"));
+    const afterStale = new DatabaseSync(join(dataDirectory, "unboundry.sqlite"));
     try {
       expect(afterStale.prepare(`
         SELECT catalog_key_status, catalog_models, catalog_synced_at
@@ -599,7 +599,7 @@ test("catalog failures preserve the last snapshot and stale sync cannot overwrit
       return new Response(JSON.stringify(arkResponse(action)), { status: 200 });
     }) as typeof fetch);
     await databaseRaceRequestStarted;
-    const conflictingStore = new DatabaseSync(join(dataDirectory, "tapnow.sqlite"));
+    const conflictingStore = new DatabaseSync(join(dataDirectory, "unboundry.sqlite"));
     try {
       conflictingStore.prepare(`
         UPDATE provider_profiles
@@ -611,7 +611,7 @@ test("catalog failures preserve the last snapshot and stale sync cannot overwrit
     }
     releaseDatabaseRace();
     await expect(databaseRaceSync).rejects.toThrow("CONFIG_CHANGED");
-    const afterDatabaseRace = new DatabaseSync(join(dataDirectory, "tapnow.sqlite"));
+    const afterDatabaseRace = new DatabaseSync(join(dataDirectory, "unboundry.sqlite"));
     try {
       expect(afterDatabaseRace.prepare(`
         SELECT catalog_key_status, catalog_models, catalog_synced_at
@@ -627,7 +627,7 @@ test("catalog failures preserve the last snapshot and stale sync cannot overwrit
 
     const restoredRevision = latestProfile?.arkControlPlane?.revision;
     if (!restoredRevision) throw new Error("Missing current catalog revision");
-    const revisionRepair = new DatabaseSync(join(dataDirectory, "tapnow.sqlite"));
+    const revisionRepair = new DatabaseSync(join(dataDirectory, "unboundry.sqlite"));
     try {
       revisionRepair.prepare(`
         UPDATE provider_profiles
@@ -658,7 +658,7 @@ test("catalog failures preserve the last snapshot and stale sync cannot overwrit
       })) as typeof fetch,
       { maximumDurationMs: 10 },
     )).rejects.toMatchObject({ code: "NETWORK" });
-    const afterTimeout = new DatabaseSync(join(dataDirectory, "tapnow.sqlite"));
+    const afterTimeout = new DatabaseSync(join(dataDirectory, "unboundry.sqlite"));
     try {
       expect(afterTimeout.prepare(`
         SELECT catalog_models, catalog_synced_at
@@ -672,19 +672,19 @@ test("catalog failures preserve the last snapshot and stale sync cannot overwrit
     }
   } finally {
     if (previousDataDirectory === undefined) {
-      delete process.env.TAPNOW_DATA_DIR;
+      delete process.env.UNBOUNDRY_DATA_DIR;
     } else {
-      process.env.TAPNOW_DATA_DIR = previousDataDirectory;
+      process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
     }
     await rm(dataDirectory, { force: true, recursive: true });
   }
 });
 
 test("the last sync caller claims its database token before credential preparation", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-ark-pre-claim-"));
-  const previousDataDirectory = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = dataDirectory;
-  const databasePath = join(dataDirectory, "tapnow.sqlite");
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-ark-pre-claim-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
+  const databasePath = join(dataDirectory, "unboundry.sqlite");
   try {
     const profile = await saveProviderProfile({
       apiKey: `ark-api-${randomUUID()}`,
@@ -741,19 +741,19 @@ test("the last sync caller claims its database token before credential preparati
     }
   } finally {
     if (previousDataDirectory === undefined) {
-      delete process.env.TAPNOW_DATA_DIR;
+      delete process.env.UNBOUNDRY_DATA_DIR;
     } else {
-      process.env.TAPNOW_DATA_DIR = previousDataDirectory;
+      process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
     }
     await rm(dataDirectory, { force: true, recursive: true });
   }
 });
 
 test("database sync tokens reject late success and failure from an older process", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-ark-sync-token-"));
-  const previousDataDirectory = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = dataDirectory;
-  const databasePath = join(dataDirectory, "tapnow.sqlite");
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-ark-sync-token-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
+  const databasePath = join(dataDirectory, "unboundry.sqlite");
   try {
     const profile = await saveProviderProfile({
       apiKey: `ark-api-${randomUUID()}`,
@@ -874,19 +874,19 @@ test("database sync tokens reject late success and failure from an older process
     }
   } finally {
     if (previousDataDirectory === undefined) {
-      delete process.env.TAPNOW_DATA_DIR;
+      delete process.env.UNBOUNDRY_DATA_DIR;
     } else {
-      process.env.TAPNOW_DATA_DIR = previousDataDirectory;
+      process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
     }
     await rm(dataDirectory, { force: true, recursive: true });
   }
 });
 
 test("catalog deadline starts before credential preparation and skips remote reads", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-ark-deadline-"));
-  const previousDataDirectory = process.env.TAPNOW_DATA_DIR;
-  process.env.TAPNOW_DATA_DIR = dataDirectory;
-  const databasePath = join(dataDirectory, "tapnow.sqlite");
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-ark-deadline-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
+  const databasePath = join(dataDirectory, "unboundry.sqlite");
   try {
     const profile = await saveProviderProfile({
       apiKey: `ark-api-${randomUUID()}`,
@@ -945,9 +945,9 @@ test("catalog deadline starts before credential preparation and skips remote rea
     }
   } finally {
     if (previousDataDirectory === undefined) {
-      delete process.env.TAPNOW_DATA_DIR;
+      delete process.env.UNBOUNDRY_DATA_DIR;
     } else {
-      process.env.TAPNOW_DATA_DIR = previousDataDirectory;
+      process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
     }
     await rm(dataDirectory, { force: true, recursive: true });
   }

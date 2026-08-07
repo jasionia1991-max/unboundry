@@ -371,7 +371,7 @@ test("Provider errors are safe and do not expose the key or remote response", as
 });
 
 test("service restart keeps the original Ark task id and does not create a duplicate", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-ark-recovery-"));
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-ark-recovery-"));
   try {
     const first = createGenerationTaskStore(directory);
     const created = first.create({

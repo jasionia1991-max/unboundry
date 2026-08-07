@@ -18,7 +18,7 @@ test("the private API documents and reads canvas, project and model configuratio
     paths: Record<string, unknown>;
   };
   expect(specification.openapi).toBe("3.1.0");
-  expect(specification.info.title).toBe("TapNow Private Replica API");
+  expect(specification.info.title).toBe("Unboundry Private Replica API");
   expect(Object.keys(specification.paths).sort()).toEqual([
     "/api/account-context",
     "/api/account-credentials",
@@ -40,7 +40,7 @@ test("the private API documents and reads canvas, project and model configuratio
     "/api/templates/{templateId}",
   ]);
   const specificationText = JSON.stringify(specification);
-  expect(specificationText).not.toContain("app.tapnow.ai");
+  expect(specificationText).not.toContain("app.unboundry.ai");
   expect(specificationText).not.toMatch(/accessKey|secret|password/i);
   // apiKey 只允许作为请求体字段名出现，任何响应 schema 或说明文本不得含密钥值。
   expect(specificationText).not.toMatch(

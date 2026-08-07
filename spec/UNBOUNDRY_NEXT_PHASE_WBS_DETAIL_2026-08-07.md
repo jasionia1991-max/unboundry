@@ -2,8 +2,8 @@
 
 状态：`DECISIONS CONFIRMED 2026-08-07 / IMPLEMENTATION NOT STARTED`
 依据：
-- `spec/TAPNOW_NEXT_PHASE_INVESTIGATION_2026-08-07.md`（现状与行号）
-- `spec/TAPNOW_NEXT_PHASE_WBS_2026-08-07.md`（步骤总览）
+- `spec/UNBOUNDRY_NEXT_PHASE_INVESTIGATION_2026-08-07.md`（现状与行号）
+- `spec/UNBOUNDRY_NEXT_PHASE_WBS_2026-08-07.md`（步骤总览）
 
 本文档把 WBS 的每一个小点展开为：具体操作、可能风险、应对方式、对已验收功能的保护、验证与回滚。
 
@@ -494,7 +494,7 @@
 
 ### 决策点 7：权限系统环境开关
 
-- 问题：要不要加一个环境变量开关（如 `TAPNOW_ACCOUNT_PERMISSIONS=0/1`）以便线上紧急回退？
+- 问题：要不要加一个环境变量开关（如 `UNBOUNDRY_ACCOUNT_PERMISSIONS=0/1`）以便线上紧急回退？
 - 选项 A：加开关；关=退回今天的纯 role 判断，开=权限表生效。
 - 选项 B（建议）：不加开关，靠 git 回滚 + 备份回退。
 - 影响：开关的好处是“不用改代码就能回退”；坏处是两套鉴权路径长期并存，容易产生“开关忘了开/关了”的漂移，而且安全语义必须定义清楚（关=管理员限定，不是开放）。测试矩阵也要双倍。

@@ -208,7 +208,7 @@ async function setupDownloadCanvas(
       id: "dl-task-text",
       kind: "text",
       node: "child-text",
-      text: "你好，TapNow\n第二行",
+      text: "你好，Unboundry\n第二行",
     },
   ];
   for (const row of taskRows) {
@@ -296,7 +296,7 @@ test("group download streams a zip with hashed contents and 说明-free names", 
     decodeURIComponent(disposition.split("UTF-8''")[1]),
   ).toContain("工作流结果-");
   const zipBytes = await response.body();
-  const working = mkdtempSync(join(tmpdir(), "tapnow-zip-verify-"));
+  const working = mkdtempSync(join(tmpdir(), "unboundry-zip-verify-"));
   try {
     const zipPath = join(working, "result.zip");
     writeFileSync(zipPath, zipBytes);
@@ -324,7 +324,7 @@ test("group download streams a zip with hashed contents and 说明-free names", 
       sha256(readFileSync(join(output, "音频-3.mp3"))),
     ).toBe(sha256(Buffer.from("fake-audio-bytes-789", "utf8")));
     expect(readFileSync(join(output, "文案-4.txt"), "utf8")).toBe(
-      "你好，TapNow\n第二行",
+      "你好，Unboundry\n第二行",
     );
     expect(existsSync(join(output, "下载说明.txt"))).toBeFalsy();
   } finally {
@@ -387,7 +387,7 @@ test("group download skips missing files, notes them and still completes", async
   expect(response.status()).toBe(200);
   expect(response.headers()["x-download-skipped"]).toBe("1");
   const zipBytes = await response.body();
-  const working = mkdtempSync(join(tmpdir(), "tapnow-zip-skip-"));
+  const working = mkdtempSync(join(tmpdir(), "unboundry-zip-skip-"));
   try {
     const zipPath = join(working, "result.zip");
     writeFileSync(zipPath, zipBytes);
@@ -472,7 +472,7 @@ test("group download accepts an explicit nodeIds payload", async ({
   );
   expect(response.status()).toBe(200);
   const zipBytes = await response.body();
-  const working = mkdtempSync(join(tmpdir(), "tapnow-zip-nodes-"));
+  const working = mkdtempSync(join(tmpdir(), "unboundry-zip-nodes-"));
   try {
     const zipPath = join(working, "result.zip");
     writeFileSync(zipPath, zipBytes);
@@ -482,7 +482,7 @@ test("group download accepts an explicit nodeIds payload", async ({
       stdio: "ignore",
     });
     expect(readFileSync(join(output, "文案-1.txt"), "utf8")).toBe(
-      "你好，TapNow\n第二行",
+      "你好，Unboundry\n第二行",
     );
   } finally {
     rmSync(working, { force: true, recursive: true });
@@ -564,7 +564,7 @@ test("group download packs only the latest success per node", async ({
   );
   expect(response.status()).toBe(200);
   const zipBytes = await response.body();
-  const working = mkdtempSync(join(tmpdir(), "tapnow-zip-latest-"));
+  const working = mkdtempSync(join(tmpdir(), "unboundry-zip-latest-"));
   try {
     const zipPath = join(working, "result.zip");
     writeFileSync(zipPath, zipBytes);

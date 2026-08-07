@@ -13,7 +13,7 @@ import {
 } from "./providerProfiles";
 import { secretStoreEncryptionKey } from "./secretStore";
 
-const associatedData = Buffer.from("tapnow:account-credentials:v1", "utf8");
+const associatedData = Buffer.from("unboundry:account-credentials:v1", "utf8");
 
 export type AccountCredentialKeyStatus =
   | "invalid"

@@ -72,7 +72,7 @@ function secureMutationTransport(request: IncomingMessage) {
     (request.socket as typeof request.socket & { encrypted?: boolean })
       .encrypted,
   );
-  if (process.env.TAPNOW_TRUST_PROXY === "1") {
+  if (process.env.UNBOUNDRY_TRUST_PROXY === "1") {
     if (encrypted) return true;
     if (request.headers["x-forwarded-proto"] === "https") return true;
     // 直连应用（SSH/本机 curl）不带 X-Forwarded-For，仍按本机放行；

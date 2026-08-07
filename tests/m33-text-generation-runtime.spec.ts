@@ -158,7 +158,7 @@ test("Ark text rejects unsafe context before fake fetch and maps safe Provider e
 });
 
 test("schema 14 Text tasks persist resultText, usage, events and conservative cost", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-text-task-"));
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-text-task-"));
   try {
     const store = createGenerationTaskStore(directory);
     const created = store.create({
@@ -198,7 +198,7 @@ test("schema 14 Text tasks persist resultText, usage, events and conservative co
 });
 
 test("Image to Text execution materializes four durable inputs only at fake Provider time", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-text-execution-"));
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-text-execution-"));
   try {
     const store = createGenerationTaskStore(directory);
     const created = store.create({
@@ -309,7 +309,7 @@ test("Image to Text execution materializes four durable inputs only at fake Prov
 });
 
 test("Text failure retries once with the same task and restart fails without resubmission", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "tapnow-text-retry-"));
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-text-retry-"));
   try {
     const store = createGenerationTaskStore(directory);
     const created = store.create({
