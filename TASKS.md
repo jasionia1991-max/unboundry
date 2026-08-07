@@ -943,3 +943,9 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - 服务器：`https://canvas.mymy.ltd` 公网 200；备份干跑通过（319 文件）；旧服务单元与 launchd plist 均已退役改名（带 `.retired-rename` 后缀保留）。
 - 一次性迁移脚本 `scripts/migrate-secrets-aad.mjs` 使用后移出仓库（旧加密 AAD 迁移已分别在本机与服务器执行，脚本可随时从 git 历史找回）。
 - 版本号：待 GitHub 私有仓库建立后按 v0.1.0 打标（见下一节）。
+
+### 2026-08-08 GitHub 私有仓库与 v0.1.0
+
+- GitHub 账号 jasionia1991-max 重新授权（设备码流程，浏览器确认）；私有仓库 `github.com/jasionia1991-max/unboundry` 已创建并推送 main（359 个跟踪文件，无密钥/数据库被跟踪）。
+- 版本标签 `v0.1.0` 已推送，对应当前公网部署（canvas.mymy.ltd）。
+- 后续发布规则：修 bug 加补丁位（v0.1.1）、加功能加次版本（v0.2.0）、大改动加主版本（v1.0.0）；每次发版前先本地测试，发版脚本后续随「版本更新推送」功能一并完善。
