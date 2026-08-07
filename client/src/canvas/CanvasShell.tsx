@@ -927,9 +927,7 @@ export function CanvasShell({
   };
 
   const deleteUserTemplate = async (template: TemplateCatalogCard) => {
-    if (templateTab !== "我的模板" && templateBrowseCategory !== "我的模板") {
-      return;
-    }
+    if (templateTab !== "我的模板") return;
     try {
       const response = await fetch(
         `/api/templates/${encodeURIComponent(template.id)}`,
@@ -2929,7 +2927,7 @@ export function CanvasShell({
                       }
                     }}
                   >
-                    {templateBrowseCategory === "我的模板" && (
+                    {templateTab === "我的模板" && (
                       <button
                         aria-label={`删除模板 ${card.title}`}
                         className="template-card-delete"

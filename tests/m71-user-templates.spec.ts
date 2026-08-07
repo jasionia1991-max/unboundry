@@ -675,6 +675,23 @@ test("group toolbar saves a private template and the my-templates panel lists an
   const card = panel.getByText("从画布保存的模板", { exact: true });
   await expect(card).toBeVisible();
 
+  await panel.getByRole("button", { name: "浏览全部" }).click();
+  const browser = page.getByTestId("template-browser");
+  await expect(browser).toBeVisible();
+  const browserCard = browser
+    .locator(".template-browser-card")
+    .filter({ hasText: "从画布保存的模板" });
+  const browserDelete = browserCard.getByRole("button", {
+    name: "删除模板 从画布保存的模板",
+  });
+  await expect(browserDelete).toBeAttached();
+  await expect(browserDelete).toBeEnabled();
+  await expect(browserDelete).toHaveCSS("opacity", "0");
+  await browserCard.hover();
+  await expect(browserDelete).toHaveCSS("opacity", "1");
+  await browser.getByRole("button", { name: "关闭全部模板" }).click();
+  await expect(browser).toHaveCount(0);
+
   await panel
     .locator(".template-card")
     .filter({ hasText: "从画布保存的模板" })
