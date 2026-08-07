@@ -793,6 +793,12 @@ export async function adminUsersApi(
         store
           .prepare("DELETE FROM account_provider_credentials WHERE account_id = ?")
           .run(targetId);
+        store
+          .prepare("DELETE FROM account_permissions WHERE account_id = ?")
+          .run(targetId);
+        store
+          .prepare("DELETE FROM account_permissions WHERE granted_by = ?")
+          .run(targetId);
         store.prepare("DELETE FROM canvas_documents WHERE owner_id = ?").run(targetId);
         store.prepare("DELETE FROM project_metadata WHERE owner_id = ?").run(targetId);
         store
@@ -809,6 +815,21 @@ export async function adminUsersApi(
           store.exec("ROLLBACK");
           json(response, 404, { error: "账号不存在" });
           return;
+        }
+        const leftoverPermissions = Number(
+          (
+            store
+              .prepare(`
+                SELECT COUNT(*) AS count
+                FROM account_permissions
+                WHERE account_id = ? OR granted_by = ?
+              `)
+              .get(targetId, targetId) as { count: number }
+          ).count,
+        );
+        if (leftoverPermissions !== 0) {
+          store.exec("ROLLBACK");
+          throw new Error("账号权限行清理失败");
         }
         store.exec("COMMIT");
       } catch (error) {

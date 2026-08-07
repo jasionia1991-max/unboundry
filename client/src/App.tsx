@@ -28,6 +28,13 @@ import {
   providerProtocolSupportsCapability,
   type ProviderProtocol,
 } from "../../types/relayProtocols";
+import {
+  ADMIN_ONLY_PERMISSIONS,
+  ALL_PERMISSIONS,
+  DEFAULT_USER_PERMISSIONS,
+  permissionLabel,
+  type AccountPermission,
+} from "../../types/accountPermissions";
 
 type Fixture = {
   id: string;
@@ -52,6 +59,7 @@ type AuthUser = {
 type AuthStatus = {
   authenticated: boolean;
   bootstrapRequired: boolean;
+  permissions?: AccountPermission[];
   user?: AuthUser;
 };
 
@@ -382,6 +390,16 @@ async function jsonRequest<T>(url: string, init?: RequestInit) {
   return body;
 }
 
+function hasClientPermission(
+  permissions: readonly AccountPermission[] | undefined,
+  permission: AccountPermission,
+  role?: AuthUser["role"],
+) {
+  // 管理员恒有全部权限；前端权限只做展示，安全以后端校验为准。
+  if (role === "admin") return true;
+  return permissions?.includes(permission) ?? false;
+}
+
 function AccountForm({
   bootstrap,
   onSuccess,
@@ -498,13 +516,44 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState<AuthUser>();
+  const [permissionsByUser, setPermissionsByUser] = useState<
+    Record<string, AccountPermission[]>
+  >({});
+  const [permissionDrafts, setPermissionDrafts] = useState<
+    Record<string, AccountPermission[]>
+  >({});
+  const [permissionBusy, setPermissionBusy] = useState("");
+  const [permissionError, setPermissionError] = useState("");
 
-  const load = () =>
-    jsonRequest<{ users: AuthUser[] }>("/api/admin/users")
-      .then(({ users: result }) => setUsers(result))
-      .catch((caught) =>
-        setError(caught instanceof Error ? caught.message : "账号列表读取失败"),
+  const load = async () => {
+    setPermissionError("");
+    try {
+      const { users: result } = await jsonRequest<{ users: AuthUser[] }>(
+        "/api/admin/users",
       );
+      setUsers(result);
+      const next: Record<string, AccountPermission[]> = {};
+      await Promise.all(
+        result
+          .filter((user) => user.role !== "admin")
+          .map(async (user) => {
+            try {
+              const body = await jsonRequest<{
+                permissions: AccountPermission[];
+              }>(`/api/admin/users/${encodeURIComponent(user.id)}/permissions`);
+              next[user.id] = body.permissions;
+            } catch {
+              // 单个账号权限读取失败不阻塞账号列表。
+            }
+          }),
+      );
+      setPermissionsByUser(next);
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "账号列表读取失败",
+      );
+    }
+  };
 
   useEffect(() => {
     void load();
@@ -553,6 +602,54 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
     } catch (caught) {
       setDeleting(undefined);
       setError(caught instanceof Error ? caught.message : "账号删除失败");
+    }
+  };
+
+  const togglePermission = (
+    user: AuthUser,
+    permission: AccountPermission,
+    checked: boolean,
+  ) => {
+    setPermissionDrafts((current) => {
+      const base =
+        current[user.id] ??
+        permissionsByUser[user.id] ??
+        [...DEFAULT_USER_PERMISSIONS];
+      const next = checked
+        ? [...base, permission]
+        : base.filter((candidate) => candidate !== permission);
+      return { ...current, [user.id]: next };
+    });
+  };
+
+  const savePermissions = async (user: AuthUser) => {
+    setPermissionBusy(user.id);
+    setPermissionError("");
+    try {
+      const body = await jsonRequest<{ permissions: AccountPermission[] }>(
+        `/api/admin/users/${encodeURIComponent(user.id)}/permissions`,
+        {
+          body: JSON.stringify({
+            permissions: permissionDrafts[user.id] ?? [],
+          }),
+          method: "PUT",
+        },
+      );
+      setPermissionsByUser((current) => ({
+        ...current,
+        [user.id]: body.permissions,
+      }));
+      setPermissionDrafts((current) => {
+        const next = { ...current };
+        delete next[user.id];
+        return next;
+      });
+    } catch (caught) {
+      setPermissionError(
+        caught instanceof Error ? caught.message : "权限保存失败",
+      );
+    } finally {
+      setPermissionBusy("");
     }
   };
 
@@ -612,31 +709,106 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
         </section>
         <section className="admin-card account-list">
           <h2>现有账号</h2>
+          <p className="account-permissions-hint">
+            普通账号默认拥有生成、下载、项目与自己的模板/连接能力；这里只授予额外的管理能力。
+          </p>
+          {permissionError && (
+            <p className="auth-error" role="alert">{permissionError}</p>
+          )}
           {users.map((user) => (
             <article key={user.id}>
-              <div>
-                <strong>{user.displayName}</strong>
-                <span>
-                  登录名：{user.loginName} ·{" "}
-                  {user.role === "admin" ? "管理员" : "普通用户"}
-                </span>
+              <div className="account-list-row">
+                <div>
+                  <strong>{user.displayName}</strong>
+                  <span>
+                    登录名：{user.loginName} ·{" "}
+                    {user.role === "admin" ? "管理员" : "普通用户"}
+                  </span>
+                </div>
+                <div className="account-list-actions">
+                  <button
+                    disabled={user.id === currentUser.id}
+                    onClick={() => void setStatus(user)}
+                    type="button"
+                  >
+                    {user.status === "active" ? "停用" : "启用"}
+                  </button>
+                  <button
+                    className="account-delete"
+                    disabled={user.id === currentUser.id}
+                    onClick={() => setDeleting(user)}
+                    type="button"
+                  >
+                    删除
+                  </button>
+                </div>
               </div>
-              <div className="account-list-actions">
-                <button
-                  disabled={user.id === currentUser.id}
-                  onClick={() => void setStatus(user)}
-                  type="button"
-                >
-                  {user.status === "active" ? "停用" : "启用"}
-                </button>
-                <button
-                  className="account-delete"
-                  disabled={user.id === currentUser.id}
-                  onClick={() => setDeleting(user)}
-                  type="button"
-                >
-                  删除
-                </button>
+              <div
+                className="account-permissions-section"
+                data-testid={`permissions-${user.id}`}
+              >
+                {user.role === "admin" ? (
+                  <p className="account-permissions-readonly">
+                    管理员（全部权限）
+                  </p>
+                ) : (
+                  <>
+                    <div className="account-permissions-grid">
+                      {ALL_PERMISSIONS.map((permission) => {
+                        const adminOnly = ADMIN_ONLY_PERMISSIONS.includes(
+                          permission,
+                        );
+                        const effective =
+                          permissionDrafts[user.id] ??
+                          permissionsByUser[user.id] ??
+                          [...DEFAULT_USER_PERMISSIONS];
+                        return (
+                          <label
+                            className="account-permission-option"
+                            key={permission}
+                            title={permissionLabel(permission)}
+                          >
+                            <input
+                              checked={effective.includes(permission)}
+                              className="admin-compact-checkbox"
+                              disabled={adminOnly}
+                              onChange={(event) =>
+                                togglePermission(
+                                  user,
+                                  permission,
+                                  event.target.checked,
+                                )
+                              }
+                              type="checkbox"
+                            />
+                            <span>{permissionLabel(permission)}</span>
+                            {adminOnly && (
+                              <small className="account-permission-locked">
+                                仅管理员
+                              </small>
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <div className="account-permissions-actions">
+                      <button
+                        disabled={permissionBusy === user.id}
+                        onClick={() => void savePermissions(user)}
+                        type="button"
+                      >
+                        {permissionBusy === user.id
+                          ? "保存中…"
+                          : "保存权限"}
+                      </button>
+                      {permissionDrafts[user.id] && (
+                        <span className="account-permissions-dirty">
+                          有未保存的修改
+                        </span>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </article>
           ))}
@@ -6412,7 +6584,21 @@ function AuthenticatedApplication({
   useEffect(() => {
     const controller = new AbortController();
     jsonRequest<AuthStatus>("/api/auth/status", { signal: controller.signal })
-      .then(setStatus)
+      .then(async (result) => {
+        if (!result.authenticated || !result.user) {
+          setStatus(result);
+          return;
+        }
+        try {
+          const context = await jsonRequest<{
+            permissions: AccountPermission[];
+          }>("/api/account-context", { signal: controller.signal });
+          setStatus({ ...result, permissions: context.permissions });
+        } catch {
+          // 权限读取失败不阻塞画布；管理员仍按角色兜底显示全部入口。
+          setStatus(result);
+        }
+      })
       .catch((caught) => {
         if (!controller.signal.aborted) {
           setLoadError(
@@ -6483,42 +6669,78 @@ function AuthenticatedApplication({
     );
   }
   if (window.location.pathname === "/admin/accounts") {
-    if (status.user.role !== "admin") {
+    if (
+      !hasClientPermission(
+        status.permissions,
+        "manage_accounts",
+        status.user.role,
+      )
+    ) {
       window.location.replace("/");
       return null;
     }
     return <AdminAccounts currentUser={status.user} />;
   }
   if (window.location.pathname === "/admin/models") {
-    if (status.user.role !== "admin") {
+    if (
+      !hasClientPermission(
+        status.permissions,
+        "manage_models",
+        status.user.role,
+      )
+    ) {
       window.location.replace("/");
       return null;
     }
     return <AdminModels currentUser={status.user} />;
   }
   if (window.location.pathname === "/admin/providers") {
-    if (status.user.role !== "admin") {
+    if (
+      !hasClientPermission(
+        status.permissions,
+        "manage_providers",
+        status.user.role,
+      )
+    ) {
       window.location.replace("/");
       return null;
     }
     return <AdminProviders currentUser={status.user} />;
   }
   if (window.location.pathname === "/admin/storage") {
-    if (status.user.role !== "admin") {
+    if (
+      !hasClientPermission(
+        status.permissions,
+        "manage_storage",
+        status.user.role,
+      )
+    ) {
       window.location.replace("/");
       return null;
     }
     return <AdminStorage currentUser={status.user} />;
   }
   if (window.location.pathname === "/admin/generation-safety") {
-    if (status.user.role !== "admin") {
+    if (
+      !hasClientPermission(
+        status.permissions,
+        "manage_generation_safety",
+        status.user.role,
+      )
+    ) {
       window.location.replace("/");
       return null;
     }
     return <AdminGenerationSafety currentUser={status.user} />;
   }
   if (window.location.pathname === "/admin/api-contract") {
-    if (status.user.role !== "admin") {
+    if (
+      !hasClientPermission(
+        status.permissions,
+        "manage_accounts",
+        status.user.role,
+      )
+    ) {
       window.location.replace("/");
       return null;
     }
@@ -6559,32 +6781,59 @@ function AuthenticatedApplication({
           >
             我的连接
           </button>
-          {status.user.role === "admin" && (
-            <>
+          {hasClientPermission(
+            status.permissions,
+            "manage_models",
+            status.user.role,
+          ) && (
               <button
                 onClick={() => { window.location.href = "/admin/models"; }}
                 type="button"
               >
                 模型中心
               </button>
+          )}
+          {hasClientPermission(
+            status.permissions,
+            "manage_providers",
+            status.user.role,
+          ) && (
               <button
                 onClick={() => { window.location.href = "/admin/providers"; }}
                 type="button"
               >
                 平台连接
               </button>
+          )}
+          {hasClientPermission(
+            status.permissions,
+            "manage_accounts",
+            status.user.role,
+          ) && (
               <button
                 onClick={() => { window.location.href = "/admin/accounts"; }}
                 type="button"
               >
                 账号管理
               </button>
+          )}
+          {hasClientPermission(
+            status.permissions,
+            "manage_storage",
+            status.user.role,
+          ) && (
               <button
                 onClick={() => { window.location.href = "/admin/storage"; }}
                 type="button"
               >
                 存储中心
               </button>
+          )}
+          {hasClientPermission(
+            status.permissions,
+            "manage_generation_safety",
+            status.user.role,
+          ) && (
               <button
                 onClick={() => {
                   window.location.href = "/admin/generation-safety";
@@ -6593,7 +6842,6 @@ function AuthenticatedApplication({
               >
                 生成安全
               </button>
-            </>
           )}
           <button
             onClick={() => {

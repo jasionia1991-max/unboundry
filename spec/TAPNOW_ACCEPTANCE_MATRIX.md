@@ -342,3 +342,24 @@
 | Gate | 必须通过 |
 |---|---|
 | M11 | 2026-08-07 用户逐项实页确认通过；回归按 `TASKS.md` 记录为全绿（已知基线失败单独标注） |
+
+## 16. 2026-08-07 账号权限管理新条目（待用户实页验收）
+
+以下条目为 2026-08-07 本批新增（权限管理）登记。实现与自动测试已完成，状态统一为 `USER_RECHECK`：未经用户在内置浏览器实页逐项确认，不得改为 PASS。
+
+### 16.1 账号权限管理（自动测试：m78 专项 7/7、m74 大回归 106/111 仅余既有基线）
+
+| ID | 优先级 | 验收动作与断言 | 证据 | 实现状态 |
+|---|---|---|---|---|
+| PERM-001 | P0 | 权限枚举与默认集 | account-context 返回 12 项权限数组；普通账号默认 5 项（项目/生成/下载/我的模板/我的连接） | m78 + m21 自动断言 | USER_RECHECK |
+| PERM-002 | P0 | 管理员授予/收回权限 | 账号管理页勾选保存；`PUT /api/admin/users/:id/permissions` 生效并写审计 | m78 API/UI 自动 + 实页 | USER_RECHECK |
+| PERM-003 | P0 | 六处守卫生效 | 无权限普通账号对账号/模型/Provider/目录/存储/生成安全 6 类接口 403；管理员仍 200 | m78 矩阵自动 + 实页 | USER_RECHECK |
+| PERM-004 | P0 | 前端菜单/路由显隐 | 无权限不显示入口、直链重定向到画布；授予后菜单出现且页面可达 | m78 UI 自动 + 实页 | USER_RECHECK |
+| PERM-005 | P0 | 账号管理页权限勾选 | 12 项 16px `admin-compact-checkbox` 网格；勾选保存后刷新保持 | m45/m78 自动 + 实页 | USER_RECHECK |
+| PERM-006 | P0 | 自锁保护 | 管理员不能修改自己的权限；管理员目标拒绝写入 | m78 自动 | USER_RECHECK |
+| PERM-007 | P0 | 超级权限保护 | `manage_accounts/manage_permissions` 对普通账号禁用且服务端拒绝授予 | m78 自动 + 实页 | USER_RECHECK |
+| PERM-008 | P0 | 默认能力不可撤销 | 权限写接口只维护额外授予集；普通账号默认 5 项不回退 | m78 自动 | USER_RECHECK |
+| PERM-009 | P0 | account-context 兼容 | `permissions` 数组与 `legacyPermissions` 布尔对象并存，前端只消费数组 | m21 自动 | USER_RECHECK |
+| PERM-010 | P0 | 权限变更审计 | `admin_audit_events` 记录 `account_permissions.update`（added/removed） | m78 自动 | USER_RECHECK |
+| PERM-011 | P0 | 删除账号级联 | 删除账号后权限行 0 残留；历史审计按既有语义清理并保留 delete_user 记录 | m78/m11 自动 | USER_RECHECK |
+| PERM-012 | P0 | OpenAPI 收口 | `/api/admin/users/{userId}/permissions` 与 AccountPermission schema 已登记，m20 契约同步 | m20 自动 | USER_RECHECK |

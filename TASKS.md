@@ -819,3 +819,19 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - 8 项决策点已由用户确认：权限表 v30 / 公共模板表 v31；account-context 先加权限数组并暂留布尔字段；公共模板删除用归档+恢复且种子不可物理删除；最近使用先做本地版；`manage_accounts/manage_permissions` 不授予非管理员；P2（普通能力收回）本批不纳入；不加环境开关；不做投稿。
 - 第二批 6 项决策已由用户确认（含全量影响分析结论）：公共模板本期不携带私有素材；`public_templates` 增加 `preview_image` 列；默认能力不可撤销、权限写接口只维护额外授予集；禁止管理员修改自己的权限；公共模板管理接口对无权限账号返回 403；种子模板允许编辑但不可物理删除。
 - 当前状态：`DECISIONS CONFIRMED / IMPLEMENTATION NOT STARTED`。未经用户明确说“开始”，不实施任何代码改动。
+
+### 2026-08-07 权限管理 P0 实施（第 0 批前置 + P0-1～P0-10）
+
+- 第 0 批前置：真实数据一致性备份 `backups/2026-08-07T09-17-45-833Z`（schema v29，含 secrets/media/manifest）；新增 `REAL_CATEGORIES` 真实分类白名单（电商/广告/影视/生活/工具/有趣/ACG/Seedance 2.0）并让私有模板保存校验改用；导出 `validTemplateGraph/categories/userTemplateCard`；`vite.config.ts` 把 `/api/admin/users` 注册移到 `/api` authGate 之后（与其余管理 API 统一）；`adminUsersApi` 改走 `requestIdentity`；m45 固定计数 12 → 动态断言；新增 `tests/m11-auth.config.ts`（m11 自起 4194，避开 4173 真实服务）。
+- P0-1 权限类型：`types/accountPermissions.ts` 12 项枚举 + `DEFAULT_USER_PERMISSIONS`（5 项默认）+ `ADMIN_ONLY_PERMISSIONS` + 中文文案 + 白名单校验；前后端共用单一来源。
+- P0-2 v30 迁移：`account_permissions`（account_id/permission/granted_by/created_at；复合主键；account_id ON DELETE CASCADE；索引）；迁移幂等 + 级联断言。
+- P0-3 权限服务：`server/permissions.ts` 提供 `hasPermission`（管理员恒真；普通账号=默认集∪额外授予集）、`accountPermissionSet`、`setAccountPermissions`（事务+审计；默认权限不可写不可撤销；禁止自改；管理员目标恒全量且拒绝写入；`manage_accounts/manage_permissions` 禁止授予普通账号）；审计函数统一到 `server/audit.ts`。
+- P0-4 account-context：新增 `permissions: AccountPermission[]`（管理员全量；普通账号默认∪授予集，按枚举序排序）+ 保留 `legacyPermissions` 布尔对象一个版本；m21 双断言。
+- P0-5 权限 API：`GET/PUT /api/admin/users/:id/permissions`（守卫 `manage_permissions`；未知值 400、账号不存在 404、无权限 403、自改/管理员目标/超级权限 400）；OpenAPI 登记 AccountPermission schema 与新路径。
+- P0-6 六处守卫替换：auth(`manage_accounts`)、modelCatalog(`manage_models`)、providerProfiles+providerCatalog(`manage_providers`)、storageAdmin(`manage_storage`)、generationSafety(`manage_generation_safety`)；`adminUsersApi` 收敛为 authGate + requestIdentity。
+- P0-7 前端权限消费：新增 `hasClientPermission`（管理员恒真）；六个 `/admin/*` 路由按权限守卫；账号浮层按权限显隐；`AuthenticatedApplication` 加载 account-context 权限数组（失败降级不阻塞画布）。
+- P0-8 权限编辑 UI：`AdminAccounts` 每行新增权限区（12 项 `admin-compact-checkbox` 网格；`manage_accounts/manage_permissions` 禁用并标注“仅管理员”；管理员行只读“管理员（全部权限）”；保存按钮 + 加载/错误/未保存反馈；保存后刷新保持）。
+- P0-9 级联删除：删除事务显式 `DELETE FROM account_permissions`（account_id 与 granted_by 双方向）并在删除后断言 0 行残留。
+- P0-10 回归与收口：tsc/构建通过；m78 专项 7/7（枚举/迁移/服务/API/UI/路由/级联删除）；m11 4/4；m74 大回归 106/111（失败 4 项均为既有基线：m26 Mureka 2 项、m38 重试快照 1 项、m46 4197 端口过滤 1 项且 4174 复跑通过；m44 迁移列表已随 v30 更新转绿）；m0 22/23（唯一失败为既有 P1 creator 基线）；m12/m13/m14/m15/m20/m21/m45/m46（4174）全绿。
+- 延后问题清单：①m26/m38/m46 端口类与 m0 P1 creator 为既有基线失败，未纳入本批；②m44 迁移测试固定迁移列表，后续每新增迁移需同步（已纳入文档连锁）；③`granted_by` 指向已删除管理员的极端场景由显式 DELETE 兜底（当前产品流程只能存在一个管理员，路径不可达）。
+- 状态：P0 实现完成，等待用户实页验收（验收矩阵新增权限条目）。

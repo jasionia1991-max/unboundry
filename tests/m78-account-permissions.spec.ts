@@ -503,3 +503,262 @@ test("permission API enforces guards, grants/revokes extras and audits", async (
     await rm(dataDirectory, { force: true, recursive: true });
   }
 });
+
+test("admin account page edits permissions with compact checkboxes and persistence", async ({
+  page,
+}) => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-perm-ui-"));
+  let server: ChildProcess | undefined;
+  try {
+    server = await startServer(dataDirectory);
+    const bootstrap = await page.request.post("/api/auth/bootstrap", {
+      data: {
+        displayName: "Owner",
+        loginName: "owner",
+        password: "owner-password-123",
+      },
+    });
+    expect(bootstrap.status()).toBe(201);
+    const created = await page.request.post("/api/admin/users", {
+      data: {
+        displayName: "Ordinary",
+        loginName: "ordinary",
+        password: "ordinary-pass-123",
+      },
+    });
+    expect(created.status()).toBe(201);
+    const ordinaryId = (
+      (await created.json()).user as { id: string }
+    ).id;
+
+    await page.goto("/admin/accounts");
+    const section = page.getByTestId(`permissions-${ordinaryId}`);
+    await expect(section).toBeVisible();
+    const checkboxes = section.getByRole("checkbox");
+    await expect(checkboxes).toHaveCount(12);
+    for (const checkbox of await checkboxes.all()) {
+      expect(await checkbox.getAttribute("class")).toContain(
+        "admin-compact-checkbox",
+      );
+    }
+    await expect(
+      section.getByRole("checkbox", { name: /账号管理/ }),
+    ).toBeDisabled();
+    await expect(
+      section.getByRole("checkbox", { name: /权限管理/ }),
+    ).toBeDisabled();
+
+    await section.getByRole("checkbox", { name: /模型中心/ }).check();
+    await section.getByRole("checkbox", { name: /生成安全/ }).check();
+    await expect(section.getByText("有未保存的修改")).toBeVisible();
+    await section.getByRole("button", { name: "保存权限" }).click();
+    await expect(section.getByText("有未保存的修改")).toHaveCount(0);
+
+    await page.reload();
+    const reloaded = page.getByTestId(`permissions-${ordinaryId}`);
+    await expect(
+      reloaded.getByRole("checkbox", { name: /模型中心/ }),
+    ).toBeChecked();
+    await expect(
+      reloaded.getByRole("checkbox", { name: /生成安全/ }),
+    ).toBeChecked();
+    await expect(
+      reloaded.getByRole("checkbox", { name: /发起生成/ }),
+    ).toBeChecked();
+
+    const read = await page.request.get(
+      `/api/admin/users/${ordinaryId}/permissions`,
+    );
+    expect(
+      ((await read.json()) as { permissions: string[] }).permissions,
+    ).toContain("manage_models");
+  } finally {
+    if (server) await stopServer(server);
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("ordinary accounts see only granted entries and direct admin routes redirect without permission", async ({
+  page,
+}) => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-perm-route-"));
+  let server: ChildProcess | undefined;
+  try {
+    server = await startServer(dataDirectory);
+    const bootstrap = await page.request.post("/api/auth/bootstrap", {
+      data: {
+        displayName: "Owner",
+        loginName: "owner",
+        password: "owner-password-123",
+      },
+    });
+    expect(bootstrap.status()).toBe(201);
+    const created = await page.request.post("/api/admin/users", {
+      data: {
+        displayName: "Ordinary",
+        loginName: "ordinary",
+        password: "ordinary-pass-123",
+      },
+    });
+    expect(created.status()).toBe(201);
+    const ordinaryId = (
+      (await created.json()).user as { id: string }
+    ).id;
+
+    await page.request.post("/api/auth/logout");
+    await page.request.post("/api/auth/login", {
+      data: {
+        loginName: "ordinary",
+        password: "ordinary-pass-123",
+      },
+    });
+    await page.goto("/admin/models");
+    await page.waitForURL("/");
+    await page.goto("/");
+    await page.getByTestId("user-avatar").click();
+    const popover = page.getByTestId("account-popover");
+    await expect(popover.getByRole("button", { name: "我的连接" })).toBeVisible();
+    await expect(
+      popover.getByRole("button", { name: "模型中心" }),
+    ).toHaveCount(0);
+    await expect(
+      popover.getByRole("button", { name: "账号管理" }),
+    ).toHaveCount(0);
+
+    await page.request.post("/api/auth/logout");
+    await page.request.post("/api/auth/login", {
+      data: {
+        loginName: "owner",
+        password: "owner-password-123",
+      },
+    });
+    const grant = await page.request.put(
+      `/api/admin/users/${ordinaryId}/permissions`,
+      {
+        data: { permissions: ["manage_models"] },
+      },
+    );
+    expect(grant.status()).toBe(200);
+    await page.request.post("/api/auth/logout");
+    await page.request.post("/api/auth/login", {
+      data: {
+        loginName: "ordinary",
+        password: "ordinary-pass-123",
+      },
+    });
+    await page.goto("/admin/models");
+    await expect(page.getByTestId("admin-models-page")).toBeVisible();
+    await page.goto("/");
+    await page.getByTestId("user-avatar").click();
+    await expect(
+      popover.getByRole("button", { name: "模型中心" }),
+    ).toBeVisible();
+    await expect(
+      popover.getByRole("button", { name: "账号管理" }),
+    ).toHaveCount(0);
+  } finally {
+    if (server) await stopServer(server);
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("deleting an account removes its permission rows and keeps audit history", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "tapnow-perm-delete-"));
+  let server: ChildProcess | undefined;
+  try {
+    server = await startServer(dataDirectory);
+    const bootstrap = await request("/api/auth/bootstrap", {
+      body: JSON.stringify({
+        displayName: "Owner",
+        loginName: "owner",
+        password: "owner-password-123",
+      }),
+      method: "POST",
+    });
+    expect(bootstrap.status).toBe(201);
+    const adminCookie = cookie(bootstrap);
+
+    const created = await request("/api/admin/users", {
+      body: JSON.stringify({
+        displayName: "Ordinary",
+        loginName: "ordinary",
+        password: "ordinary-pass-123",
+      }),
+      cookie: adminCookie,
+      method: "POST",
+    });
+    expect(created.status).toBe(201);
+    const ordinaryId = (
+      (await created.json()).user as { id: string }
+    ).id;
+
+    const grant = await request(
+      `/api/admin/users/${ordinaryId}/permissions`,
+      {
+        body: JSON.stringify({ permissions: ["manage_models"] }),
+        cookie: adminCookie,
+        method: "PUT",
+      },
+    );
+    expect(grant.status).toBe(200);
+
+    const beforeDelete = openAppDatabase(dataDirectory);
+    try {
+      const audits = beforeDelete
+        .prepare(`
+          SELECT action
+          FROM admin_audit_events
+          WHERE target_user_id = ?
+          ORDER BY rowid
+        `)
+        .all(ordinaryId) as Array<{ action: string }>;
+      expect(audits.map((row) => row.action)).toEqual([
+        "create_user",
+        "account_permissions.update",
+      ]);
+    } finally {
+      beforeDelete.close();
+    }
+
+    const deleted = await request(`/api/admin/users/${ordinaryId}`, {
+      cookie: adminCookie,
+      method: "DELETE",
+    });
+    expect(deleted.status).toBe(200);
+    expect(
+      (await request(`/api/admin/users/${ordinaryId}/permissions`, {
+        cookie: adminCookie,
+      })).status,
+    ).toBe(404);
+
+    const store = openAppDatabase(dataDirectory);
+    try {
+      expect(
+        Number(
+          (
+            store
+              .prepare(
+                "SELECT COUNT(*) AS count FROM account_permissions WHERE account_id = ?",
+              )
+              .get(ordinaryId) as { count: number }
+          ).count,
+        ),
+      ).toBe(0);
+      // 删除事务清空历史审计，删除动作本身在事务外再记一条 delete_user。
+      const auditAfter = store
+        .prepare(`
+          SELECT action
+          FROM admin_audit_events
+          WHERE target_user_id = ?
+          ORDER BY rowid
+        `)
+        .all(ordinaryId) as Array<{ action: string }>;
+      expect(auditAfter.map((row) => row.action)).toEqual(["delete_user"]);
+    } finally {
+      store.close();
+    }
+  } finally {
+    if (server) await stopServer(server);
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});

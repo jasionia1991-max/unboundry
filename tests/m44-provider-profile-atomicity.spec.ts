@@ -739,6 +739,7 @@ test("two OS processes can migrate the same v18 database exactly once", async ()
         { count: 1, version: 27 },
         { count: 1, version: 28 },
         { count: 1, version: 29 },
+        { count: 1, version: 30 },
       ]);
     } finally {
       database.close();
