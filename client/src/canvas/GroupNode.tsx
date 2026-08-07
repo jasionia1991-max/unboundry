@@ -5,6 +5,7 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import {
+  memo,
   useEffect,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -44,7 +45,7 @@ function nodeSize(node: ProbeNodeType) {
   };
 }
 
-export function GroupNode({
+function GroupNodeImpl({
   data,
   id,
   selected,
@@ -629,3 +630,4 @@ export function GroupNode({
     </>
   );
 }
+export const GroupNode = memo(GroupNodeImpl);

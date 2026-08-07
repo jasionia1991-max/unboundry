@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import type { NodeProps } from "@xyflow/react";
 import type { ProbeNodeType, StoryboardShot } from "./ProbeNode";
 
@@ -98,7 +98,7 @@ function CreativeView({ shots }: { shots: StoryboardShot[] }) {
   );
 }
 
-export function StoryboardTableNode({
+function StoryboardTableNodeImpl({
   data,
   id,
 }: NodeProps<ProbeNodeType>) {
@@ -171,3 +171,4 @@ export function StoryboardTableNode({
     </section>
   );
 }
+export const StoryboardTableNode = memo(StoryboardTableNodeImpl);

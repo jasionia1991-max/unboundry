@@ -5,6 +5,7 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
+import { memo } from "react";
 import { useCanvasCheckpoint } from "./CanvasHistory";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import type { ModelParameterValue } from "../../../types/modelParameters";
@@ -135,7 +136,7 @@ export type ProbeNodeType = Node<
   | "video"
 >;
 
-export function ProbeNode({
+function ProbeNodeImpl({
   data,
   id,
   selected,
@@ -179,3 +180,4 @@ export function ProbeNode({
     </>
   );
 }
+export const ProbeNode = memo(ProbeNodeImpl);

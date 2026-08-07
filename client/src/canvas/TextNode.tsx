@@ -8,7 +8,7 @@ import {
   useReactFlow,
   type NodeProps,
 } from "@xyflow/react";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useCanvasCheckpoint } from "./CanvasHistory";
 import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
@@ -261,7 +261,7 @@ function ToolIcon({ name }: { name: ToolName }) {
   );
 }
 
-export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
+function TextNodeImpl({ data, id, selected }: NodeProps<ProbeNodeType>) {
   const singleNodeChrome = useSingleNodeChrome(selected);
   const [background, setBackground] = useState("#1f1f1f");
   const [bodyEditing, setBodyEditing] = useState(false);
@@ -1539,3 +1539,4 @@ export function TextNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     </>
   );
 }
+export const TextNode = memo(TextNodeImpl);

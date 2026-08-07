@@ -9,6 +9,7 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import {
+  memo,
   useEffect,
   useRef,
   useState,
@@ -1147,7 +1148,7 @@ function ImageLightingPanel({
   );
 }
 
-export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
+function ImageNodeImpl({ data, id, selected }: NodeProps<ProbeNodeType>) {
   const singleNodeChrome = useSingleNodeChrome(selected);
   const inputRef = useRef<HTMLInputElement>(null);
   const moreRef = useRef<HTMLSpanElement>(null);
@@ -2933,3 +2934,4 @@ export function ImageNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     </>
   );
 }
+export const ImageNode = memo(ImageNodeImpl);

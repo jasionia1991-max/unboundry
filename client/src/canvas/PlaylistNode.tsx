@@ -379,7 +379,7 @@ function PlaylistPlayer({
   );
 }
 
-export function PlaylistNode({
+function PlaylistNodeImpl({
   data,
   id,
   selected,
@@ -1476,3 +1476,4 @@ export function PlaylistNode({
     </>
   );
 }
+export const PlaylistNode = memo(PlaylistNodeImpl);

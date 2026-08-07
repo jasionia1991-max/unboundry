@@ -8,7 +8,7 @@ import {
   useReactFlow,
   type NodeProps,
 } from "@xyflow/react";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useCanvasCheckpoint } from "./CanvasHistory";
 import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
@@ -194,7 +194,7 @@ function ExpandIcon() {
   );
 }
 
-export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
+function VideoNodeImpl({ data, id, selected }: NodeProps<ProbeNodeType>) {
   const singleNodeChrome = useSingleNodeChrome(selected);
   const inputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -1908,3 +1908,4 @@ export function VideoNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     </>
   );
 }
+export const VideoNode = memo(VideoNodeImpl);

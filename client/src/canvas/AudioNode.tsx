@@ -8,7 +8,7 @@ import {
   useReactFlow,
   type NodeProps,
 } from "@xyflow/react";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useCanvasCheckpoint } from "./CanvasHistory";
 import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
@@ -164,7 +164,7 @@ async function discardUnadoptedAudioAsset(assetId: string) {
   }
 }
 
-export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
+function AudioNodeImpl({ data, id, selected }: NodeProps<ProbeNodeType>) {
   const singleNodeChrome = useSingleNodeChrome(selected);
   const inputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -1797,3 +1797,4 @@ export function AudioNode({ data, id, selected }: NodeProps<ProbeNodeType>) {
     </>
   );
 }
+export const AudioNode = memo(AudioNodeImpl);

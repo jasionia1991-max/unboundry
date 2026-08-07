@@ -23,6 +23,7 @@ import {
   type Viewport,
 } from "@xyflow/react";
 import {
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -388,7 +389,7 @@ function SourceMenuIcon({ name }: { name: string }) {
   );
 }
 
-function CuttableEdge({
+const CuttableEdge = memo(function CuttableEdge({
   data,
   id,
   interactionWidth,
@@ -469,7 +470,7 @@ function CuttableEdge({
       )}
     </>
   );
-}
+});
 
 const edgeTypes = { cuttable: CuttableEdge };
 
@@ -4128,6 +4129,12 @@ export function CanvasSurface({
           onReady(() => void instance.fitView({ duration: 0, padding: 0.2 }));
         }}
         onNodesChange={(changes) => {
+          if (
+            nodeDragging.current &&
+            changes.some((change) => change.type === "position")
+          ) {
+            markCanvasInteraction();
+          }
           if (
             !nodeDragging.current &&
             changes.some((change) => change.type === "position")
