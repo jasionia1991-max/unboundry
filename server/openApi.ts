@@ -10,6 +10,28 @@ export const openApiDocument = {
   },
   servers: [{ url: "/", description: "Current private service" }],
   paths: {
+    "/api/version": {
+      get: {
+        operationId: "readVersion",
+        summary: "Read the current deployed version",
+        responses: {
+          "200": {
+            description: "Current semantic version",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["version"],
+                  properties: {
+                    version: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
     "/api/canvas/{canvasId}": {
       get: {
         operationId: "readCanvas",

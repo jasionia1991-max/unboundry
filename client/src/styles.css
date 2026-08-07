@@ -13698,6 +13698,40 @@ sup {
   text-align: center;
 }
 
+.update-notice {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: #26262a;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  color: #e8e8ea;
+  font-size: var(--tap-font-secondary);
+  z-index: 9999;
+}
+
+.update-notice button {
+  min-height: 30px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  color: #e8e8ea;
+  background: #343438;
+  font: inherit;
+  cursor: pointer;
+}
+
+.update-notice button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
 .storage-admin-loading,
 .storage-admin-error {
   max-width: 960px;

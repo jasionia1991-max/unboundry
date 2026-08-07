@@ -35,6 +35,7 @@ import { adminTemplatesApi } from "./server/adminTemplates";
 import { agentConfigurationApi } from "./server/agentConfiguration";
 import { characterCatalogApi } from "./server/characterCatalog";
 import { libraryCatalogApi } from "./server/libraryCatalog";
+import { currentVersion, versionApi } from "./server/version";
 
 type FixtureDocument = {
   fixtures: Array<{ id: string; kind: string; status: string }>;
@@ -144,6 +145,12 @@ function authenticationApi(): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
+    middlewares.use("/api/version", (request, response) => {
+      versionApi(request, response, "version");
+    });
+    middlewares.use("/api/updates", (request, response) => {
+      versionApi(request, response, "updates");
+    });
     middlewares.use("/api/auth", (request, response) => {
       void authApi(request, response);
     });
@@ -498,6 +505,9 @@ export default defineConfig({
     },
     preview: {
       allowedHosts: ["canvas.mymy.ltd"],
+    },
+    define: {
+      __UNBOUNDRY_VERSION__: JSON.stringify(currentVersion),
     },
     cacheDir: `${appRoot}/node_modules/.vite`,
 });

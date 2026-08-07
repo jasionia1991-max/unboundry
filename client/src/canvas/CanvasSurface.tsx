@@ -90,6 +90,7 @@ import {
   parameterOptionEnabled,
 } from "../../../types/modelParameters";
 import { normalizePersistedMediaNodes } from "../../../types/persistedMediaSources";
+import { UpdateNotice } from "../updates/UpdateNotice";
 
 const emptyNodes: ProbeNodeType[] = [];
 
@@ -4872,6 +4873,7 @@ export function CanvasSurface({
       </CanvasCheckpointContext.Provider>
       </CanvasGraphMutationContext.Provider>
       </WorkflowExecutionProvider>
+      <UpdateNotice />
     </GenerationCanvasContext.Provider>
   );
 }

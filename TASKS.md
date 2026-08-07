@@ -949,3 +949,12 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - GitHub 账号 jasionia1991-max 重新授权（设备码流程，浏览器确认）；私有仓库 `github.com/jasionia1991-max/unboundry` 已创建并推送 main（359 个跟踪文件，无密钥/数据库被跟踪）。
 - 版本标签 `v0.1.0` 已推送，对应当前公网部署（canvas.mymy.ltd）。
 - 后续发布规则：修 bug 加补丁位（v0.1.1）、加功能加次版本（v0.2.0）、大改动加主版本（v1.0.0）；每次发版前先本地测试，发版脚本后续随「版本更新推送」功能一并完善。
+
+### 2026-08-08 版本更新推送功能（v0.2.0）
+
+- 方案：`spec/UNBOUNDRY_VERSION_UPDATE_PLAN_2026-08-08.md`；实现 `GET /api/version`（package.json 版本号）+ `GET /api/updates`（SSE 实时通道，连接即发当前版本，25s 心跳，nginx `proxy_buffering off`）。
+- 前端：`UpdateNotice` 挂在画布生成上下文内；构建时通过 `__UNBOUNDRY_VERSION__` 嵌入版本号，SSE 版本不一致时底部弹「已更新到 vX.Y.Z + 刷新」；点刷新先 `flushCanvasSave()` 等画布落盘再 `location.reload()`（回到同画布）。
+- OpenAPI：`/api/version` 已登记，m20 断言同步（18→19 条路径、卡片 26→27）。
+- 发布脚本：`scripts/deploy.mjs --version X.Y.Z`（改版本号→本地构建→提交打标→rsync→服务器构建重启→版本校验→推 GitHub）。
+- 测试：m82 4/4（版本接口、SSE 首帧、版本变化弹提示、同版本不弹）；m20 1/1；tsc/build 通过。
+- 发布：以 v0.2.0 首次走完整发布流程（见 git 记录）。
