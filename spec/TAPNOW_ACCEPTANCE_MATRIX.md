@@ -408,7 +408,7 @@
 | DEP-004 | P0 | 旧本地素材 + 旧 OSS 素材 + 新素材（云路由开启后）全部可读 | 服务器数据 378 素材就位；STORAGE-004/m80 存储语义已覆盖 | USER_RECHECK（请用户打开含旧 OSS 素材的画布确认） |
 | DEP-005 | P0 | 上传 500MB 级视频成功；批量下载、播放、Range 正常 | nginx `client_max_body_size 600m` + proxy 超时已配置 | NOT_STARTED |
 | DEP-006 | P0 | 每日备份自动执行并上传 OSS；恢复演练通过 | timer 每日 03:30；首次备份已传 OSS 并 HEAD 抽查；恢复演练 runtimeVerified=true | PARTIAL（自动清理旧备份待 RAM ListObjects 权限） |
-| DEP-007 | P0 | 生成安全（并发/频率/费用上限）公网场景生效 | 服务端配置沿用；火山方舟可用、OpenRouter 延期 | PARTIAL（待公网生成实测） |
+| DEP-007 | P0 | 生成安全（并发/频率/费用上限）公网场景生效 | 服务端配置沿用；火山方舟可用；OpenRouter 不启用（服务器不装代理，用户决定） | PARTIAL（待公网生成实测） |
 | DEP-008 | P0 | 服务器重启后服务自恢复，数据/会话/任务不丢 | systemd enable+restart 多次验证 active | PASS |
 | DEP-009 | P0 | 测试后门变量未设置；测试夹具/测试账号不存在 | 服务环境仅 DATA_DIR/SECURE_COOKIES/TRUST_PROXY；devFixture 仅 dev；`__test__` 已核对为 0 | PASS |
 | DEP-010 | P0 | 文档收口（TASKS/矩阵/部署手册）并逐项用户确认 | 部署计划/TASKS/矩阵已更新 | PARTIAL（待剩余验收项确认） |

@@ -931,5 +931,5 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - 安全验证：公网 POST /api/auth/bootstrap 实测 403；未登录素材 401；TAPNOW_TRUST_PROXY/SECURE_COOKIES=1；服务环境无任何 TAPNOW_TEST_*；vite preview.allowedHosts 放行 canvas.mymy.ltd。
 - 备份：tapnow-backup.timer 每日 03:30（Persistent=true）；首次真实备份已上传 OSS `objects/backups/2026-08-07T20-18-27-167Z/`（317 文件，HEAD 抽查 OK）；恢复演练通过（verify-backup --runtime-port 4198）。
 - 脚本修复：backup-to-oss 干跑 flag、`--backup-root` 参数、改用 OSS client.put（`objects/backups/` 前缀兼容 RAM 最小权限）、list 签名修复、清理 fail-soft；mirror 跳过备份前缀、list 修复。
-- 延期/待办：① 服务器代理（OpenRouter）用户决定延期，火山方舟正常；② RAM 无 ListObjects，旧备份清理与镜像待放行权限后启用；③ 待用户实页验收 DEP-004（旧 OSS 素材）、多设备、大视频上传、Cookie Secure、火山方舟公网生成。
+- 延期/待办：① ~~服务器代理（OpenRouter）~~ **已取消**（用户决定：云服务器不装代理软件，避免云厂商风控与合规风险；OpenRouter 不启用，火山方舟为当前生成平台）；② RAM 无 ListObjects，旧备份清理与镜像待放行权限后启用；③ 待用户实页验收 DEP-004（旧 OSS 素材）、多设备、大视频上传、Cookie Secure、火山方舟公网生成。
 - 用户确认：2026-08-08 用户已在 https://canvas.mymy.ltd 登录成功。
