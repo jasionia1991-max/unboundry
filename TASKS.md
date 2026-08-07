@@ -811,4 +811,4 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - 产品决定：批量下载改为“每个节点只打包最近一次成功结果”。`groupDownloadApi` 在查询后按 `node_id` 去重（`updated_at ASC` 排序下 Map 覆盖即保留最新），文件数上限/序号按去重后口径计算。m72 新增“同节点两条成功只打包最新”集成断言（ZIP 仅 4 个文件，文字为最新内容），m72 8/8 通过。
 - 用户确认通过：T-03（全屏删除复测）、T-05（导入即显示复测）、D-02、D-05、D-06、K-06（方舟迁移复测）、K-08、R-01；验收矩阵已同步 PASS。
 - 真实库清理（用户授权）：删除 `account_provider_credentials WHERE account_id='__test__'` 3 条测试残留；删除前一致性备份 `backups/before-test-credential-cleanup-2026-08-07T07-26-54-491Z.sqlite`。`users` 表仍有 1 条 `__test__` 测试用户行，不影响真实登录，是否删除待用户决定。
-- 待复测：D-03/D-04（按新行为复测 ZIP 内容与文件数量）。
+- 用户复测通过：D-03/D-04（每节点最新一次成功结果、命名与去重、文件数量均符合预期）。三功能 21 条验收全部 PASS，M11 放行门达成。
