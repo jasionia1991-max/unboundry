@@ -6,6 +6,7 @@
 状态夹具：`tapnow-state-fixtures.json`
 
 2026-08-07 三功能新增 21 条（TPL-001～007 / ZIP-001～006 / KEY-001～008）已全部经用户实页验收为 `PASS`，M11 放行门达成；其余历史统计与状态仍以各节为准，`INPUT-006`保持`PARTIAL`（Mureka真实生成暂缓）。
+2026-08-07 权限管理（PERM-001～012）与公共模板（PUB-001～011）已全部经用户实页验收为 `PASS`，两功能放行门达成；生成安全「并发与频率」上限按用户要求放宽至 1000（v33）。
 
 ## 1. 判定规则
 
@@ -345,41 +346,41 @@
 
 ## 17. 2026-08-07 公共模板新条目（待用户实页验收）
 
-以下条目为 2026-08-07 本批新增（公共模板）登记。实现与自动测试已完成，状态统一为 `USER_RECHECK`：未经用户在内置浏览器实页逐项确认，不得改为 PASS。
+以下条目为 2026-08-07 本批新增（公共模板）登记。实现与自动测试已完成，并经用户实页逐项确认，全部为 `PASS`。
 
 ### 17.1 公共模板（自动测试：m77 专项 6/6、模板批 45/46 仅余既有 m0 P1 creator 基线）
 
 | ID | 优先级 | 验收动作与断言 | 证据 | 实现状态 |
 |---|---|---|---|---|
-| PUB-001 | P0 | 种子迁移与公共 GET 结构不变 | v31 迁移后 2 条种子 published；公共列表仍返回同 id/标题/封面/描述/图（12/29 与 14/12 含 group） | m77/m22/m44 自动 | USER_RECHECK |
-| PUB-002 | P0 | 管理员新增/编辑公共模板 | 管理页新建（标题/分类/封面/图 JSON）与编辑保存生效，卡片/公共列表同步 | m77 UI/API 自动 + 实页 | USER_RECHECK |
-| PUB-003 | P0 | 上下架与状态过滤 | draft 不可见、published 可见、下架回草稿；管理列表按状态过滤 | m77 自动 + 实页 | USER_RECHECK |
-| PUB-004 | P0 | 归档与恢复 | DELETE=归档，普通账号不可见；恢复后重新可见；已导入画布不受影响 | m77 自动 + 实页 | USER_RECHECK |
-| PUB-005 | P0 | 种子保护 | 种子模板可编辑但不可物理删除（仅可归档）；存储层物理删除被拒 | m77 自动 | USER_RECHECK |
-| PUB-006 | P0 | 无权限 403 | 未授予 `manage_public_templates` 的普通账号对管理接口全部 403；授予后 200 | m77 矩阵自动 | USER_RECHECK |
-| PUB-007 | P0 | 管理入口按权限显隐 | 浏览全部侧栏管理员显示「管理公共模板」；普通账号不显示；路由直链无权限重定向 | m77 UI 自动 + 实页 | USER_RECHECK |
-| PUB-008 | P0 | 上传位导入闭环 | 管理员发布含上传位节点模板 → 普通账号导入 → 节点正常显示、不报错、刷新保持 | m77 集成自动 + 实页 | USER_RECHECK |
-| PUB-009 | P0 | 封面来源 | 卡片封面优先 `preview_image`；无封面回落渐变占位 | m77 自动 + 实页 | USER_RECHECK |
-| PUB-010 | P1 | 最近使用本地版 | 导入后按账号记录（localStorage v2）；「最近使用」倒序；失效模板静默跳过 | m77 自动 + 实页 | USER_RECHECK |
-| PUB-011 | P0 | OpenAPI 收口 | `/api/admin/templates` 与 `/{templateId}` 已登记（GET/POST/PATCH/DELETE），m20 契约同步 | m20 自动 | USER_RECHECK |
+| PUB-001 | P0 | 种子迁移与公共 GET 结构不变 | v31 迁移后 2 条种子 published；公共列表仍返回同 id/标题/封面/描述/图（12/29 与 14/12 含 group） | m77/m22/m44 自动 | PASS |
+| PUB-002 | P0 | 管理员新增/编辑公共模板 | 管理页新建（标题/分类/封面/图 JSON）与编辑保存生效，卡片/公共列表同步 | m77 UI/API 自动 + 实页 | PASS |
+| PUB-003 | P0 | 上下架与状态过滤 | draft 不可见、published 可见、下架回草稿；管理列表按状态过滤 | m77 自动 + 实页 | PASS |
+| PUB-004 | P0 | 归档与恢复 | DELETE=归档，普通账号不可见；恢复后重新可见；已导入画布不受影响 | m77 自动 + 实页 | PASS |
+| PUB-005 | P0 | 种子保护 | 种子模板可编辑但不可物理删除（仅可归档）；存储层物理删除被拒 | m77 自动 | PASS |
+| PUB-006 | P0 | 无权限 403 | 未授予 `manage_public_templates` 的普通账号对管理接口全部 403；授予后 200 | m77 矩阵自动 | PASS |
+| PUB-007 | P0 | 管理入口按权限显隐 | 浏览全部侧栏管理员显示「管理公共模板」；普通账号不显示；路由直链无权限重定向 | m77 UI 自动 + 实页 | PASS |
+| PUB-008 | P0 | 上传位导入闭环 | 管理员发布含上传位节点模板 → 普通账号导入 → 节点正常显示、不报错、刷新保持 | m77 集成自动 + 实页 | PASS |
+| PUB-009 | P0 | 封面来源 | 卡片封面优先 `preview_image`；无封面回落渐变占位 | m77 自动 + 实页 | PASS |
+| PUB-010 | P1 | 最近使用本地版 | 导入后按账号记录（localStorage v2）；「最近使用」倒序；失效模板静默跳过 | m77 自动 + 实页 | PASS |
+| PUB-011 | P0 | OpenAPI 收口 | `/api/admin/templates` 与 `/{templateId}` 已登记（GET/POST/PATCH/DELETE），m20 契约同步 | m20 自动 | PASS |
 
 ## 16. 2026-08-07 账号权限管理新条目（待用户实页验收）
 
-以下条目为 2026-08-07 本批新增（权限管理）登记。实现与自动测试已完成，状态统一为 `USER_RECHECK`：未经用户在内置浏览器实页逐项确认，不得改为 PASS。
+以下条目为 2026-08-07 本批新增（权限管理）登记。实现与自动测试已完成，并经用户实页逐项确认，全部为 `PASS`。
 
 ### 16.1 账号权限管理（自动测试：m78 专项 7/7、m74 大回归 106/111 仅余既有基线）
 
 | ID | 优先级 | 验收动作与断言 | 证据 | 实现状态 |
 |---|---|---|---|---|
-| PERM-001 | P0 | 权限枚举与默认集 | account-context 返回 12 项权限数组；普通账号默认 5 项（项目/生成/下载/我的模板/我的连接） | m78 + m21 自动断言 | USER_RECHECK |
-| PERM-002 | P0 | 管理员授予/收回权限 | 账号管理页勾选保存；`PUT /api/admin/users/:id/permissions` 生效并写审计 | m78 API/UI 自动 + 实页 | USER_RECHECK |
-| PERM-003 | P0 | 六处守卫生效 | 无权限普通账号对账号/模型/Provider/目录/存储/生成安全 6 类接口 403；管理员仍 200 | m78 矩阵自动 + 实页 | USER_RECHECK |
-| PERM-004 | P0 | 前端菜单/路由显隐 | 无权限不显示入口、直链重定向到画布；授予后菜单出现且页面可达 | m78 UI 自动 + 实页 | USER_RECHECK |
-| PERM-005 | P0 | 账号管理页权限勾选 | 12 项 16px `admin-compact-checkbox` 网格；勾选保存后刷新保持 | m45/m78 自动 + 实页 | USER_RECHECK |
-| PERM-006 | P0 | 自锁保护 | 管理员不能修改自己的权限；管理员目标拒绝写入 | m78 自动 | USER_RECHECK |
-| PERM-007 | P0 | 超级权限保护 | `manage_accounts/manage_permissions` 对普通账号禁用且服务端拒绝授予 | m78 自动 + 实页 | USER_RECHECK |
-| PERM-008 | P0 | 默认能力不可撤销 | 权限写接口只维护额外授予集；普通账号默认 5 项不回退 | m78 自动 | USER_RECHECK |
-| PERM-009 | P0 | account-context 兼容 | `permissions` 数组与 `legacyPermissions` 布尔对象并存，前端只消费数组 | m21 自动 | USER_RECHECK |
-| PERM-010 | P0 | 权限变更审计 | `admin_audit_events` 记录 `account_permissions.update`（added/removed） | m78 自动 | USER_RECHECK |
-| PERM-011 | P0 | 删除账号级联 | 删除账号后权限行 0 残留；历史审计按既有语义清理并保留 delete_user 记录 | m78/m11 自动 | USER_RECHECK |
-| PERM-012 | P0 | OpenAPI 收口 | `/api/admin/users/{userId}/permissions` 与 AccountPermission schema 已登记，m20 契约同步 | m20 自动 | USER_RECHECK |
+| PERM-001 | P0 | 权限枚举与默认集 | account-context 返回 12 项权限数组；普通账号默认 5 项（项目/生成/下载/我的模板/我的连接） | m78 + m21 自动断言 | PASS |
+| PERM-002 | P0 | 管理员授予/收回权限 | 账号管理页勾选保存；`PUT /api/admin/users/:id/permissions` 生效并写审计 | m78 API/UI 自动 + 实页 | PASS |
+| PERM-003 | P0 | 六处守卫生效 | 无权限普通账号对账号/模型/Provider/目录/存储/生成安全 6 类接口 403；管理员仍 200 | m78 矩阵自动 + 实页 | PASS |
+| PERM-004 | P0 | 前端菜单/路由显隐 | 无权限不显示入口、直链重定向到画布；授予后菜单出现且页面可达 | m78 UI 自动 + 实页 | PASS |
+| PERM-005 | P0 | 账号管理页权限勾选 | 12 项 16px `admin-compact-checkbox` 网格；勾选保存后刷新保持 | m45/m78 自动 + 实页 | PASS |
+| PERM-006 | P0 | 自锁保护 | 管理员不能修改自己的权限；管理员目标拒绝写入 | m78 自动 | PASS |
+| PERM-007 | P0 | 超级权限保护 | `manage_accounts/manage_permissions` 对普通账号禁用且服务端拒绝授予 | m78 自动 + 实页 | PASS |
+| PERM-008 | P0 | 默认能力不可撤销 | 权限写接口只维护额外授予集；普通账号默认 5 项不回退 | m78 自动 | PASS |
+| PERM-009 | P0 | account-context 兼容 | `permissions` 数组与 `legacyPermissions` 布尔对象并存，前端只消费数组 | m21 自动 | PASS |
+| PERM-010 | P0 | 权限变更审计 | `admin_audit_events` 记录 `account_permissions.update`（added/removed） | m78 自动 | PASS |
+| PERM-011 | P0 | 删除账号级联 | 删除账号后权限行 0 残留；历史审计按既有语义清理并保留 delete_user 记录 | m78/m11 自动 | PASS |
+| PERM-012 | P0 | OpenAPI 收口 | `/api/admin/users/{userId}/permissions` 与 AccountPermission schema 已登记，m20 契约同步 | m20 自动 | PASS |
