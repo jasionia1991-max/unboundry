@@ -842,3 +842,62 @@ test("importing a private template renders its image asset without a manual refr
   await request.delete(`/api/canvas/${sourceProject.id}`);
   await request.delete(`/api/projects/${sourceProject.id}`);
 });
+
+test("dragging a real canvas node saves after drag stop, not during the drag", async ({
+  page,
+  request,
+}) => {
+  const writes: string[] = [];
+  page.on("request", (event) => {
+    if (event.method() === "PUT" && /\/api\/canvas\//.test(event.url())) {
+      writes.push(event.url());
+    }
+  });
+  const created = await request.post("/api/projects", { data: {} });
+  expect(created.status()).toBe(201);
+  const project = (await created.json()) as { id: string };
+  const saved = await request.put(`/api/canvas/${project.id}`, {
+    data: {
+      edges: [],
+      nodes: [
+        {
+          data: { label: "Text", textPrompt: "拖拽保存", textPromptReady: true, title: "拖拽保存" },
+          id: "drag-save-node",
+          position: { x: 120, y: 120 },
+          style: { height: 250, width: 250 },
+          type: "text",
+          zIndex: 1,
+        },
+      ],
+      revision: 0,
+      viewport: { x: 0, y: 0, zoom: 1 },
+    },
+  });
+  expect(saved.ok()).toBeTruthy();
+
+  await page.goto(`/canvas/${project.id}`);
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-persistence-ready",
+    "true",
+  );
+  writes.length = 0;
+
+  const node = page.locator(".react-flow__node").first();
+  const box = await node.boundingBox();
+  expect(box).not.toBeNull();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  for (let step = 1; step <= 20; step += 1) {
+    await page.mouse.move(startX + step * 4, startY + step * 2, { steps: 1 });
+    await page.waitForTimeout(20);
+  }
+  // 连续拖动期间不得写库（交互安静期生效）。
+  expect(writes).toEqual([]);
+  await page.mouse.up();
+
+  await expect.poll(() => writes.length).toBeGreaterThan(0);
+  await request.delete(`/api/canvas/${project.id}`);
+  await request.delete(`/api/projects/${project.id}`);
+});

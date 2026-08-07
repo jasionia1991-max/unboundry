@@ -10,6 +10,7 @@ import type { Viewport } from "@xyflow/react";
 import {
   CANVAS_LIBRARY_ASSET_MIME,
   CanvasSurface,
+  initialCanvasViewport,
   type AgentCanvasReference,
   type CanvasLibraryAsset,
   type CanvasSearchEntry,
@@ -699,21 +700,18 @@ export function CanvasShell({
   const initialProjectTitle =
     readProjectTitleDraft(userId, projectTitleId) ??
     ({ title: defaultProjectTitle, updatedAt: 0 } satisfies ProjectTitleRecord);
-  const [viewport, setViewport] = useState<Viewport>(() =>
-    fixtureId === "legacy.dense-canvas.neutral"
-      ? { x: 102.734, y: -21.543, zoom: 0.15 }
-      : fixtureId === "legacy.node-geometry.families"
-        ? { x: 70, y: 90, zoom: 0.36 }
-      : fixtureId === "legacy.node.group-dense-selected"
-        ? { x: 40, y: 50, zoom: 0.22 }
-      : fixtureId === "persistence.nodes-assets-viewport"
-        ? { x: 120, y: 110, zoom: 0.72 }
-      : fixtureId === "legacy.node.storyboard-table"
-        ? { x: 312, y: 92, zoom: 0.54 }
-      : fixtureId === "node.image.success"
-        ? { x: 93, y: 5, zoom: 0.819 }
-      : { x: 0, y: 0, zoom: 1 },
+  // 缩放/平移期间外壳不再每帧跟随 viewport：只保留低频缩放摘要驱动滑块/指示条，
+  // 滑块输入通过 zoomRequest 命令式下发给画布。
+  const [zoomSummary, setZoomSummary] = useState(() =>
+    initialCanvasViewport(fixtureId).zoom,
   );
+  const zoomRequestSequence = useRef(0);
+  const [viewportRequest, setViewportRequest] = useState<{
+    sequence: number;
+    x?: number;
+    y?: number;
+    zoom: number;
+  }>();
   const [fitWorld, setFitWorld] = useState<() => void>();
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [shellMenuCommand, setShellMenuCommand] =
@@ -913,7 +911,7 @@ export function CanvasShell({
     fixtureId === "interaction.upload-media-sandbox-current";
   const hasProbeNodes =
     hasInteractionProbeNodes(fixtureId) || textVideoStarted;
-  const zoomRatio = Math.min(1, Math.max(0, (viewport.zoom - 0.15) / 1.85));
+  const zoomRatio = Math.min(1, Math.max(0, (zoomSummary - 0.15) / 1.85));
   const normalizedSearchQuery = nodeSearchQuery.trim().toLocaleLowerCase();
   const visibleSearchEntries = nodeSearchEntries.filter(
     (entry) =>
@@ -1902,11 +1900,11 @@ export function CanvasShell({
         onSaveConflict={markSaveConflict}
         onSaveSuccess={markSaveSuccess}
         onSaveStart={markSaving}
-        onViewportChange={setViewport}
+        onZoomChange={setZoomSummary}
+        viewportRequest={viewportRequest}
         shellMenuCommand={shellMenuCommand}
         snapEnabled={snapEnabled}
         textVideoStarted={textVideoStarted}
-        viewport={viewport}
       />
 
       {agentReferenceMode && (
@@ -3445,7 +3443,12 @@ export function CanvasShell({
           onClick={() =>
             hasProbeNodes
               ? fitWorld?.()
-              : setViewport({ x: 0, y: 0, zoom: 1 })
+              : setViewportRequest({
+                  sequence: ++zoomRequestSequence.current,
+                  x: 0,
+                  y: 0,
+                  zoom: 1,
+                })
           }
         >
           <LineIcon className="control-default-icon" name="fit" />
@@ -3467,14 +3470,14 @@ export function CanvasShell({
             max="2"
             min="0.15"
             onChange={(event) =>
-              setViewport((current) => ({
-                ...current,
+              setViewportRequest({
+                sequence: ++zoomRequestSequence.current,
                 zoom: Number(event.target.value),
-              }))
+              })
             }
             step="0.01"
             type="range"
-            value={viewport.zoom}
+            value={zoomSummary}
           />
         </div>
       </nav>

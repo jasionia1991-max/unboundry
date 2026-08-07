@@ -91,6 +91,32 @@ import {
 import { normalizePersistedMediaNodes } from "../../../types/persistedMediaSources";
 
 const emptyNodes: ProbeNodeType[] = [];
+
+export function initialCanvasViewport(fixtureId?: string): Viewport {
+  if (fixtureId === "legacy.dense-canvas.neutral") {
+    return { x: 102.734, y: -21.543, zoom: 0.15 };
+  }
+  if (fixtureId === "legacy.node-geometry.families") {
+    return { x: 70, y: 90, zoom: 0.36 };
+  }
+  if (fixtureId === "legacy.node.group-dense-selected") {
+    return { x: 40, y: 50, zoom: 0.22 };
+  }
+  if (fixtureId === "persistence.nodes-assets-viewport") {
+    return { x: 120, y: 110, zoom: 0.72 };
+  }
+  if (fixtureId === "legacy.node.storyboard-table") {
+    return { x: 312, y: 92, zoom: 0.54 };
+  }
+  if (fixtureId === "node.image.success") {
+    return { x: 93, y: 5, zoom: 0.819 };
+  }
+  return { x: 0, y: 0, zoom: 1 };
+}
+
+const VIEWPORT_QUIET_MS = 250;
+const VIEWPORT_ZOOM_NOTIFY_MS = 150;
+
 type HistoryEntry =
   | {
       edges: CuttableEdge[];
@@ -1734,12 +1760,12 @@ export function CanvasSurface({
   onSaveConflict,
   onSaveSuccess,
   onSaveStart,
-  onViewportChange,
+  onZoomChange,
   projectId,
   shellMenuCommand,
   snapEnabled,
   textVideoStarted,
-  viewport,
+  viewportRequest,
 }: {
   accountId?: string;
   agentReferenceMode?: boolean;
@@ -1760,12 +1786,12 @@ export function CanvasSurface({
   onSaveConflict: (message?: string) => void;
   onSaveSuccess: () => void;
   onSaveStart: () => void;
-  onViewportChange: (viewport: Viewport) => void;
+  onZoomChange?: (zoom: number) => void;
   projectId?: string;
   shellMenuCommand?: CanvasShellMenuCommand;
   snapEnabled: boolean;
   textVideoStarted: boolean;
-  viewport: Viewport;
+  viewportRequest?: { sequence: number; x?: number; y?: number; zoom: number };
 }) {
   const workflowFixture = fixtureId === "workflow.text-to-video.created";
   const persistenceId = projectId ?? fixtureId ?? "default";
@@ -1794,6 +1820,17 @@ export function CanvasSurface({
       ? emptyEdges
       : createProbeEdges(fixtureId),
   );
+  // viewport 实时状态下沉到画布内部：缩放/平移不再让外壳每帧重渲染。
+  const [viewport, setViewport] = useState<Viewport>(() =>
+    initialCanvasViewport(fixtureId),
+  );
+  const [persistenceRecheckTick, setPersistenceRecheckTick] = useState(0);
+  const lastViewportInteractionAt = useRef(0);
+  const viewportQuietTimer = useRef<number | undefined>(undefined);
+  const lastZoomNotifyAt = useRef(0);
+  const pendingProgrammaticViewport = useRef<Viewport | undefined>(undefined);
+  const onZoomChangeRef = useRef(onZoomChange);
+  onZoomChangeRef.current = onZoomChange;
   const [primaryId, setPrimaryId] = useState<string>();
   const [batchDrag, setBatchDrag] = useState<BatchConnectionDrag>();
   const [sourceConnectMenu, setSourceConnectMenu] =
@@ -1885,6 +1922,27 @@ export function CanvasSurface({
   nodesRef.current = nodes;
   edgesRef.current = edges;
   viewportRef.current = viewport;
+
+  const applyViewport = useCallback((next: Viewport) => {
+    viewportRef.current = next;
+    setViewport(next);
+    if (flowInstance.current) {
+      flowInstance.current.setViewport(next);
+      pendingProgrammaticViewport.current = undefined;
+    } else {
+      pendingProgrammaticViewport.current = next;
+    }
+  }, []);
+
+  const markCanvasInteraction = useCallback(() => {
+    lastViewportInteractionAt.current = performance.now();
+    window.clearTimeout(viewportQuietTimer.current);
+    viewportQuietTimer.current = window.setTimeout(() => {
+      lastViewportInteractionAt.current = 0;
+      setPersistenceRecheckTick((tick) => tick + 1);
+      onZoomChangeRef.current?.(viewportRef.current.zoom);
+    }, VIEWPORT_QUIET_MS);
+  }, []);
 
   const keepLastNonCollidingPositions = (
     changes: NodeChange<ProbeNodeType>[],
@@ -2112,12 +2170,12 @@ export function CanvasSurface({
       })),
     );
     setPrimaryId(node.id);
-    onViewportChange({
+    applyViewport({
       x: bounds.width / 2 - (position.x + size.width / 2) * zoom,
       y: bounds.height / 2 - (position.y + size.height / 2) * zoom,
       zoom,
     });
-  }, [focusNodeRequest, onViewportChange, persistenceReady, setNodes]);
+  }, [applyViewport, focusNodeRequest, persistenceReady, setNodes]);
 
   const pushHistory = useCallback((entry: HistoryEntry) => {
     redoHistory.current = [];
@@ -2187,9 +2245,47 @@ export function CanvasSurface({
         }
         cancelTemplateFit();
       }
-      onViewportChange(next);
+      viewportRef.current = next;
+      setViewport(next);
+      const now = performance.now();
+      lastViewportInteractionAt.current = now;
+      window.clearTimeout(viewportQuietTimer.current);
+      viewportQuietTimer.current = window.setTimeout(() => {
+        lastViewportInteractionAt.current = 0;
+        setPersistenceRecheckTick((tick) => tick + 1);
+        onZoomChangeRef.current?.(viewportRef.current.zoom);
+      }, VIEWPORT_QUIET_MS);
+      if (
+        onZoomChangeRef.current &&
+        now - lastZoomNotifyAt.current >= VIEWPORT_ZOOM_NOTIFY_MS
+      ) {
+        lastZoomNotifyAt.current = now;
+        onZoomChangeRef.current(next.zoom);
+      }
     },
-    [cancelTemplateFit, onViewportChange],
+    [cancelTemplateFit],
+  );
+
+  // 缩放滑块等程序化缩放：命令式设置到 ReactFlow（非受控），并同步内部状态。
+  useEffect(() => {
+    if (!viewportRequest) return;
+    applyViewport({
+      ...viewportRef.current,
+      ...(viewportRequest.x !== undefined
+        ? { x: viewportRequest.x }
+        : {}),
+      ...(viewportRequest.y !== undefined
+        ? { y: viewportRequest.y }
+        : {}),
+      zoom: viewportRequest.zoom,
+    });
+  }, [applyViewport, viewportRequest]);
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(viewportQuietTimer.current);
+    },
+    [],
   );
   const checkpoint = useCallback((includeHistory = true) => {
     if (!includeHistory) return;
@@ -2384,7 +2480,7 @@ export function CanvasSurface({
               templateFitHardStop.current = undefined;
             }
           }
-          onViewportChange(next);
+          applyViewport(next);
           if (progress < 1) {
             frame = window.requestAnimationFrame(step);
           }
@@ -2405,7 +2501,7 @@ export function CanvasSurface({
   }, [
     cancelTemplateFit,
     checkpoint,
-    onViewportChange,
+    applyViewport,
     setEdges,
     setNodes,
     shellMenuCommand,
@@ -2438,10 +2534,10 @@ export function CanvasSurface({
         wheelViewportFrame.current = undefined;
         const pending = pendingWheelViewport.current;
         pendingWheelViewport.current = undefined;
-        if (pending) onViewportChange(pending);
+        if (pending) applyViewport(pending);
       });
     },
-    [onViewportChange],
+    [applyViewport],
   );
 
   useEffect(() => () => {
@@ -2932,7 +3028,7 @@ export function CanvasSurface({
         persistedGraphFingerprint.current = graphFingerprint;
         setNodes(hydratedDocument.nodes);
         setEdges(hydratedDocument.edges);
-        onViewportChange(hydratedDocument.viewport);
+        applyViewport(hydratedDocument.viewport);
         window.clearTimeout(persistenceHydrationTimer.current);
         persistenceHydrationTimer.current = window.setTimeout(
           () => setPersistenceReady(true),
@@ -2953,9 +3049,9 @@ export function CanvasSurface({
       window.clearTimeout(persistenceHydrationTimer.current);
     };
   }, [
+    applyViewport,
     canvasSnapshot,
     onProjectMissing,
-    onViewportChange,
     persistenceFixture,
     persistenceId,
     projectId,
@@ -2977,6 +3073,13 @@ export function CanvasSurface({
       if (performance.now() < templateFitDeadline.current) return;
       templateViewportAnimating.current = false;
       templateFitHardStop.current = undefined;
+    }
+
+    // 交互安静期：拖动/缩放/平移期间跳过指纹与保存调度，
+    // 停手 ≥250ms 后由 persistenceRecheckTick 重新触发本 effect。
+    if (performance.now() - lastViewportInteractionAt.current < VIEWPORT_QUIET_MS) {
+      window.clearTimeout(persistenceSaveTimer.current);
+      return;
     }
 
     const liveDocument = canvasSnapshot();
@@ -3162,6 +3265,7 @@ export function CanvasSurface({
     persistenceFixture,
     persistenceId,
     persistenceReady,
+    persistenceRecheckTick,
     viewport,
   ]);
 
@@ -3973,6 +4077,10 @@ export function CanvasSurface({
         }}
         onInit={(instance) => {
           flowInstance.current = instance;
+          if (pendingProgrammaticViewport.current) {
+            instance.setViewport(pendingProgrammaticViewport.current);
+            pendingProgrammaticViewport.current = undefined;
+          }
           onReady(() => void instance.fitView({ duration: 0, padding: 0.2 }));
         }}
         onNodesChange={(changes) => {
@@ -3987,9 +4095,11 @@ export function CanvasSurface({
         onNodeDragStart={() => {
           nodeDragging.current = true;
           checkpoint();
+          markCanvasInteraction();
         }}
         onNodeDragStop={() => {
           nodeDragging.current = false;
+          markCanvasInteraction();
         }}
         onNodeClick={(_, node) => {
           setNodeContextMenu(undefined);
@@ -4685,7 +4795,7 @@ export function CanvasSurface({
             if (!drag || drag.pointerId !== event.pointerId) {
               return;
             }
-            onViewportChange({
+            applyViewport({
               ...drag.viewport,
               x: drag.viewport.x - (event.clientX - drag.startX) * 2,
               y: drag.viewport.y - (event.clientY - drag.startY) * 2,
