@@ -505,25 +505,29 @@ export function WorkspacePage({ userId = "" }: { userId?: string }) {
                     >
                       克隆
                     </button>
-                    <button
-                      onClick={() => {
-                        setMenuFor(undefined);
-                        selectProject(project.id);
-                      }}
-                      type="button"
-                    >
-                      选择
-                    </button>
-                    <button
-                      className="workspace-card-menu-danger"
-                      onClick={() => {
-                        setMenuFor(undefined);
-                        setDeleting(project);
-                      }}
-                      type="button"
-                    >
-                      删除
-                    </button>
+                    {project.id !== "default" && (
+                      <button
+                        onClick={() => {
+                          setMenuFor(undefined);
+                          selectProject(project.id);
+                        }}
+                        type="button"
+                      >
+                        选择
+                      </button>
+                    )}
+                    {project.id !== "default" && (
+                      <button
+                        className="workspace-card-menu-danger"
+                        onClick={() => {
+                          setMenuFor(undefined);
+                          setDeleting(project);
+                        }}
+                        type="button"
+                      >
+                        删除
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

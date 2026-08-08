@@ -98,6 +98,21 @@ type SafetyInput = Omit<
   "unknownCostPolicy" | "updatedAt"
 >;
 
+export type AccountConsumptionLimits = {
+  dailyCostLimitCnyMicrounits: number;
+  dailyCostLimitUsdMicrounits: number;
+  monthlyCostLimitCnyMicrounits: number;
+  monthlyCostLimitUsdMicrounits: number;
+  updatedAt: string;
+};
+
+export type AccountConsumptionUsage = {
+  dailyCnyMicrounits: number;
+  dailyUsdMicrounits: number;
+  monthlyCnyMicrounits: number;
+  monthlyUsdMicrounits: number;
+};
+
 const activeStates = [
   "queued",
   "running",
@@ -275,6 +290,181 @@ export function createGenerationSafetyStore(
   const read = database.prepare(
     "SELECT * FROM generation_safety_settings WHERE id = 1",
   );
+  const readAccount = database.prepare(`
+    SELECT
+      daily_cost_limit_cny_microunits,
+      daily_cost_limit_usd_microunits,
+      monthly_cost_limit_cny_microunits,
+      monthly_cost_limit_usd_microunits,
+      updated_at
+    FROM account_consumption_limits
+    WHERE owner_id = ?
+  `);
+
+  function accountLimits(ownerId: string): AccountConsumptionLimits {
+    const row = readAccount.get(ownerId) as
+      | {
+          daily_cost_limit_cny_microunits: number;
+          daily_cost_limit_usd_microunits: number;
+          monthly_cost_limit_cny_microunits: number;
+          monthly_cost_limit_usd_microunits: number;
+          updated_at: string;
+        }
+      | undefined;
+    return row
+      ? {
+          dailyCostLimitCnyMicrounits: Number(
+            row.daily_cost_limit_cny_microunits,
+          ),
+          dailyCostLimitUsdMicrounits: Number(
+            row.daily_cost_limit_usd_microunits,
+          ),
+          monthlyCostLimitCnyMicrounits: Number(
+            row.monthly_cost_limit_cny_microunits,
+          ),
+          monthlyCostLimitUsdMicrounits: Number(
+            row.monthly_cost_limit_usd_microunits,
+          ),
+          updatedAt: row.updated_at,
+        }
+      : {
+          dailyCostLimitCnyMicrounits: 0,
+          dailyCostLimitUsdMicrounits: 0,
+          monthlyCostLimitCnyMicrounits: 0,
+          monthlyCostLimitUsdMicrounits: 0,
+          updatedAt: "",
+        };
+  }
+
+  function updateAccountLimits(
+    ownerId: string,
+    input: Partial<
+      Pick<
+        AccountConsumptionLimits,
+        | "dailyCostLimitCnyMicrounits"
+        | "dailyCostLimitUsdMicrounits"
+        | "monthlyCostLimitCnyMicrounits"
+        | "monthlyCostLimitUsdMicrounits"
+      >
+    >,
+  ) {
+    const current = accountLimits(ownerId);
+    const clean = {
+      dailyCostLimitCnyMicrounits: cleanInteger(
+        input.dailyCostLimitCnyMicrounits ?? current.dailyCostLimitCnyMicrounits,
+        0,
+        1_000_000_000_000,
+        "每日人民币费用",
+      ),
+      dailyCostLimitUsdMicrounits: cleanInteger(
+        input.dailyCostLimitUsdMicrounits ?? current.dailyCostLimitUsdMicrounits,
+        0,
+        1_000_000_000_000,
+        "每日美元费用",
+      ),
+      monthlyCostLimitCnyMicrounits: cleanInteger(
+        input.monthlyCostLimitCnyMicrounits ??
+          current.monthlyCostLimitCnyMicrounits,
+        0,
+        10_000_000_000_000,
+        "每月人民币费用",
+      ),
+      monthlyCostLimitUsdMicrounits: cleanInteger(
+        input.monthlyCostLimitUsdMicrounits ??
+          current.monthlyCostLimitUsdMicrounits,
+        0,
+        10_000_000_000_000,
+        "每月美元费用",
+      ),
+    };
+    const timestamp = new Date().toISOString();
+    database
+      .prepare(`
+        INSERT INTO account_consumption_limits (
+          owner_id,
+          daily_cost_limit_cny_microunits,
+          daily_cost_limit_usd_microunits,
+          monthly_cost_limit_cny_microunits,
+          monthly_cost_limit_usd_microunits,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(owner_id) DO UPDATE SET
+          daily_cost_limit_cny_microunits = excluded.daily_cost_limit_cny_microunits,
+          daily_cost_limit_usd_microunits = excluded.daily_cost_limit_usd_microunits,
+          monthly_cost_limit_cny_microunits = excluded.monthly_cost_limit_cny_microunits,
+          monthly_cost_limit_usd_microunits = excluded.monthly_cost_limit_usd_microunits,
+          updated_at = excluded.updated_at
+      `)
+      .run(
+        ownerId,
+        clean.dailyCostLimitCnyMicrounits,
+        clean.dailyCostLimitUsdMicrounits,
+        clean.monthlyCostLimitCnyMicrounits,
+        clean.monthlyCostLimitUsdMicrounits,
+        timestamp,
+      );
+    return accountLimits(ownerId);
+  }
+
+  function costUsage(
+    ownerId: string,
+    now: Date,
+  ): AccountConsumptionUsage {
+    const dayStart = new Date(now);
+    dayStart.setHours(0, 0, 0, 0);
+    const monthStart = new Date(now);
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    const costs = database
+      .prepare(`
+        SELECT
+          COALESCE(SUM(
+            CASE
+              WHEN cost_currency = 'CNY' AND created_at >= ?
+              THEN actual_cost_microunits ELSE 0
+            END
+          ), 0) AS cny_daily,
+          COALESCE(SUM(
+            CASE
+              WHEN cost_currency = 'USD' AND created_at >= ?
+              THEN actual_cost_microunits ELSE 0
+            END
+          ), 0) AS usd_daily,
+          COALESCE(SUM(
+            CASE
+              WHEN cost_currency = 'CNY' AND created_at >= ?
+              THEN actual_cost_microunits ELSE 0
+            END
+          ), 0) AS cny_monthly,
+          COALESCE(SUM(
+            CASE
+              WHEN cost_currency = 'USD' AND created_at >= ?
+              THEN actual_cost_microunits ELSE 0
+            END
+          ), 0) AS usd_monthly
+        FROM generation_tasks
+        WHERE actual_cost_microunits IS NOT NULL AND owner_id = ?
+      `)
+      .get(
+        dayStart.toISOString(),
+        dayStart.toISOString(),
+        monthStart.toISOString(),
+        monthStart.toISOString(),
+        ownerId,
+      ) as {
+        cny_daily: number;
+        cny_monthly: number;
+        usd_daily: number;
+        usd_monthly: number;
+      };
+    return {
+      dailyCnyMicrounits: Number(costs.cny_daily),
+      dailyUsdMicrounits: Number(costs.usd_daily),
+      monthlyCnyMicrounits: Number(costs.cny_monthly),
+      monthlyUsdMicrounits: Number(costs.usd_monthly),
+    };
+  }
 
   function settings() {
     return toSettings(read.get() as SafetyRow);
@@ -477,50 +667,11 @@ export function createGenerationSafetyStore(
       };
     }
 
-    const costs = database
-      .prepare(`
-        SELECT
-          COALESCE(SUM(
-            CASE
-              WHEN cost_currency = 'CNY' AND created_at >= ?
-              THEN actual_cost_microunits ELSE 0
-            END
-          ), 0) AS daily,
-          COALESCE(SUM(
-            CASE
-              WHEN cost_currency = 'USD' AND created_at >= ?
-              THEN actual_cost_microunits ELSE 0
-            END
-          ), 0) AS usd_daily,
-          COALESCE(SUM(
-            CASE
-              WHEN cost_currency = 'CNY' AND created_at >= ?
-              THEN actual_cost_microunits ELSE 0
-            END
-          ), 0) AS cny_monthly,
-          COALESCE(SUM(
-            CASE
-              WHEN cost_currency = 'USD' AND created_at >= ?
-              THEN actual_cost_microunits ELSE 0
-            END
-          ), 0) AS monthly
-        FROM generation_tasks
-        WHERE actual_cost_microunits IS NOT NULL
-      `)
-      .get(
-        dayStart.toISOString(),
-        dayStart.toISOString(),
-        monthStart.toISOString(),
-        monthStart.toISOString(),
-      ) as {
-        daily: number;
-        monthly: number;
-        usd_daily: number;
-        cny_monthly: number;
-      };
+    const costs = costUsage(input.ownerId, now);
     const estimated = input.estimatedCostMicrounits;
     const cnyDailyLimit = Number(row.daily_cost_limit_cny_microunits);
     const cnyMonthlyLimit = Number(row.monthly_cost_limit_cny_microunits);
+    const account = accountLimits(input.ownerId);
     const rate = Math.max(Number(row.usd_to_cny_rate_microunits), 1);
     const usdDailyLimit = cnyDailyLimit === 0
       ? 0
@@ -538,42 +689,69 @@ export function createGenerationSafetyStore(
       Math.round(usd * rate / 1_000_000);
     const overLimit = (spent: number, extra: number, limit: number) =>
       limit === 0 || spent + extra > limit;
-    const cnyDaily = Number(costs.daily);
-    const usdDaily = Number(costs.usd_daily);
-    const cnyMonthly = Number(costs.cny_monthly);
-    const usdMonthly = Number(costs.monthly);
+    // 账号独立限额优先于全局：账号设置了 >0 的限额时取更严格者；
+    // 账号未设置（0）时跟随全局限额。
+    const effectiveLimit = (accountValue: number, globalValue: number) =>
+      accountValue > 0
+        ? globalValue > 0
+          ? Math.min(accountValue, globalValue)
+          : accountValue
+        : globalValue;
+    const cnyDaily = Number(costs.dailyCnyMicrounits);
+    const usdDaily = Number(costs.dailyUsdMicrounits);
+    const cnyMonthly = Number(costs.monthlyCnyMicrounits);
+    const usdMonthly = Number(costs.monthlyUsdMicrounits);
+    const accountCnyDailyLimit = effectiveLimit(
+      account.dailyCostLimitCnyMicrounits,
+      cnyDailyLimit,
+    );
+    const accountCnyMonthlyLimit = effectiveLimit(
+      account.monthlyCostLimitCnyMicrounits,
+      cnyMonthlyLimit,
+    );
+    const accountUsdDailyLimit = effectiveLimit(
+      account.dailyCostLimitUsdMicrounits,
+      usdDailyLimit,
+    );
+    const accountUsdMonthlyLimit = effectiveLimit(
+      account.monthlyCostLimitUsdMicrounits,
+      usdMonthlyLimit,
+    );
     if (
-      overLimit(cnyDaily, estimatedCny, cnyDailyLimit) ||
-      overLimit(cnyMonthly, estimatedCny, cnyMonthlyLimit) ||
-      overLimit(usdDaily, estimatedUsd, usdDailyLimit) ||
-      overLimit(usdMonthly, estimatedUsd, usdMonthlyLimit) ||
+      overLimit(cnyDaily, estimatedCny, accountCnyDailyLimit) ||
+      overLimit(cnyMonthly, estimatedCny, accountCnyMonthlyLimit) ||
+      overLimit(usdDaily, estimatedUsd, accountUsdDailyLimit) ||
+      overLimit(usdMonthly, estimatedUsd, accountUsdMonthlyLimit) ||
       overLimit(
         cnyDaily + usdToCny(usdDaily),
         estimatedCny,
-        cnyDailyLimit,
+        accountCnyDailyLimit,
       ) ||
       overLimit(
         cnyMonthly + usdToCny(usdMonthly),
         estimatedCny,
-        cnyMonthlyLimit,
+        accountCnyMonthlyLimit,
       )
     ) {
       return {
         allowed: false,
         code: "COST_LIMIT",
-        message: "费用保护已阻止本次任务",
+        message: "今日或本月费用额度已用完，费用保护已阻止本次任务",
       };
     }
     return { allowed: true, code: "ALLOWED" };
   }
 
   return {
+    accountLimits,
     admission,
     close() {
       database.close();
     },
+    costUsage,
     settings,
     update,
+    updateAccountLimits,
   };
 }
 
@@ -687,6 +865,55 @@ export async function adminGenerationSafetyApi(
   }
   response.setHeader("Allow", "GET, PUT");
   json(response, 404, { error: "生成安全保护接口不存在" });
+}
+
+export async function accountSafetyApi(
+  request: IncomingMessage,
+  response: ServerResponse,
+) {
+  const identity = requestIdentity(request);
+  if (!identity) {
+    json(response, 401, { error: "Please sign in" });
+    return;
+  }
+  const ownerId = identity.bypass ? "__test__" : identity.userId;
+  const path = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+    /^\/+/,
+    "",
+  );
+  if (path) {
+    json(response, 404, { error: "账号消耗限额接口不存在" });
+    return;
+  }
+  const store = safetyStore();
+  if (request.method === "GET") {
+    json(response, 200, {
+      limits: store.accountLimits(ownerId),
+      usage: store.costUsage(ownerId, new Date()),
+    });
+    return;
+  }
+  if (request.method === "PUT") {
+    try {
+      const limits = store.updateAccountLimits(
+        ownerId,
+        await readBody<Parameters<typeof store.updateAccountLimits>[1]>(
+          request,
+        ),
+      );
+      json(response, 200, {
+        limits,
+        usage: store.costUsage(ownerId, new Date()),
+      });
+    } catch (error) {
+      json(response, 400, {
+        error: error instanceof Error ? error.message : "限额保存失败",
+      });
+    }
+    return;
+  }
+  response.setHeader("Allow", "GET, PUT");
+  json(response, 405, { error: "Method not allowed" });
 }
 
 export function generationSafetyStatus() {

@@ -1445,6 +1445,32 @@ const migrations: readonly Migration[] = [
     },
     sql: "",
   },
+  {
+    version: 35,
+    name: "account-consumption-limits",
+    sql: `
+      CREATE TABLE IF NOT EXISTS account_consumption_limits (
+        owner_id TEXT PRIMARY KEY,
+        daily_cost_limit_cny_microunits INTEGER NOT NULL DEFAULT 0
+          CHECK (daily_cost_limit_cny_microunits BETWEEN 0 AND 1000000000000),
+        monthly_cost_limit_cny_microunits INTEGER NOT NULL DEFAULT 0
+          CHECK (monthly_cost_limit_cny_microunits BETWEEN 0 AND 10000000000000),
+        daily_cost_limit_usd_microunits INTEGER NOT NULL DEFAULT 0
+          CHECK (daily_cost_limit_usd_microunits BETWEEN 0 AND 1000000000000),
+        monthly_cost_limit_usd_microunits INTEGER NOT NULL DEFAULT 0
+          CHECK (monthly_cost_limit_usd_microunits BETWEEN 0 AND 10000000000000),
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      UPDATE project_metadata
+      SET title = '默认画布'
+      WHERE
+        id = 'default'
+        AND is_project = 0
+        AND deleted_at IS NULL
+        AND title LIKE '%TapNow%';
+    `,
+  },
 ];
 
 export const currentSchemaVersion = migrations.at(-1)?.version ?? 0;

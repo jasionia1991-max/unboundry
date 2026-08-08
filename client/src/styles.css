@@ -10589,11 +10589,20 @@ sup {
 }
 
 .generation-safety-page > header,
+.account-safety-page > header,
 .generation-safety-banner,
 .generation-safety-grid,
 .generation-safety-form,
 .safety-page-message {
   max-width: 1100px;
+}
+
+.safety-limit-reached {
+  border-color: rgba(233, 93, 105, 0.42) !important;
+  color: #ffd9dc !important;
+  background: rgba(146, 45, 55, 0.52) !important;
+  cursor: default !important;
+  opacity: 1 !important;
 }
 
 .generation-safety-banner {

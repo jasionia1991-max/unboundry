@@ -227,13 +227,61 @@ export async function projectsApi(
             ORDER BY updated_at DESC
           `).all(identity.userId)
     ) as ProjectRow[];
+    const items = rows.map((row) => ({
+      cover: projectCover(store, row, ownerId),
+      createdAt: row.created_at,
+      id: row.id,
+      title: row.title,
+      updatedAt: row.updated_at,
+    }));
+    if (!items.some((item) => item.id === "default")) {
+      // 默认画布始终作为固定卡片出现在工作空间，避免账号在默认画布里的
+      // 内容“有画布却没有入口”而看起来像丢失。
+      const defaultCanvas = (
+        identity.bypass
+          ? store
+              .prepare(`
+                SELECT updated_at
+                FROM canvas_documents
+                WHERE id = 'default'
+                ORDER BY owner_id IS NULL DESC
+                LIMIT 1
+              `)
+              .get()
+          : store
+              .prepare(`
+                SELECT updated_at
+                FROM canvas_documents
+                WHERE owner_id = ? AND id = 'default'
+              `)
+              .get(identity.userId)
+      ) as { updated_at: string } | undefined;
+      items.unshift({
+        cover: projectCover(
+          store,
+          {
+            created_at: null,
+            id: "default",
+            title: "默认画布",
+            updated_at: defaultCanvas
+              ? Date.parse(defaultCanvas.updated_at)
+              : 0,
+          },
+          ownerId,
+        ),
+        createdAt: null,
+        id: "default",
+        title: "默认画布",
+        updatedAt: defaultCanvas ? Date.parse(defaultCanvas.updated_at) : 0,
+      });
+    }
     json(response, 200, {
-      projects: rows.map((row) => ({
-        cover: projectCover(store, row, ownerId),
-        createdAt: row.created_at,
-        id: row.id,
-        title: row.title,
-        updatedAt: row.updated_at,
+      projects: items.map((item) => ({
+        cover: item.cover,
+        createdAt: item.createdAt,
+        id: item.id,
+        title: item.title,
+        updatedAt: item.updatedAt,
       })),
     });
     return;

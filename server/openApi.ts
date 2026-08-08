@@ -291,6 +291,109 @@ export const openApiDocument = {
         },
       },
     },
+    "/api/account-safety": {
+      get: {
+        operationId: "readAccountSafety",
+        summary: "Read the signed-in account's own consumption limits and usage",
+        responses: {
+          "200": {
+            description: "Per-account consumption limits and actual spend",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["limits", "usage"],
+                  properties: {
+                    limits: {
+                      type: "object",
+                      required: [
+                        "dailyCostLimitCnyMicrounits",
+                        "dailyCostLimitUsdMicrounits",
+                        "monthlyCostLimitCnyMicrounits",
+                        "monthlyCostLimitUsdMicrounits",
+                        "updatedAt",
+                      ],
+                      properties: {
+                        dailyCostLimitCnyMicrounits: { type: "integer" },
+                        dailyCostLimitUsdMicrounits: { type: "integer" },
+                        monthlyCostLimitCnyMicrounits: { type: "integer" },
+                        monthlyCostLimitUsdMicrounits: { type: "integer" },
+                        updatedAt: { type: "string" },
+                      },
+                      additionalProperties: false,
+                    },
+                    usage: {
+                      type: "object",
+                      required: [
+                        "dailyCnyMicrounits",
+                        "dailyUsdMicrounits",
+                        "monthlyCnyMicrounits",
+                        "monthlyUsdMicrounits",
+                      ],
+                      properties: {
+                        dailyCnyMicrounits: { type: "integer" },
+                        dailyUsdMicrounits: { type: "integer" },
+                        monthlyCnyMicrounits: { type: "integer" },
+                        monthlyUsdMicrounits: { type: "integer" },
+                      },
+                      additionalProperties: false,
+                    },
+                  },
+                  additionalProperties: false,
+                },
+              },
+            },
+          },
+          "401": { description: "Sign-in required" },
+        },
+      },
+      put: {
+        operationId: "writeAccountSafety",
+        summary: "Set the signed-in account's own consumption limits",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  dailyCostLimitCnyMicrounits: { type: "integer", minimum: 0 },
+                  dailyCostLimitUsdMicrounits: { type: "integer", minimum: 0 },
+                  monthlyCostLimitCnyMicrounits: { type: "integer", minimum: 0 },
+                  monthlyCostLimitUsdMicrounits: { type: "integer", minimum: 0 },
+                },
+                additionalProperties: false,
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Updated limits and current usage",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["limits", "usage"],
+                  properties: {
+                    limits: {
+                      type: "object",
+                      additionalProperties: true,
+                    },
+                    usage: {
+                      type: "object",
+                      additionalProperties: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "400": { description: "Invalid limit value" },
+          "401": { description: "Sign-in required" },
+        },
+      },
+    },
     "/api/admin/users/{userId}/permissions": {
       get: {
         operationId: "readAccountPermissions",

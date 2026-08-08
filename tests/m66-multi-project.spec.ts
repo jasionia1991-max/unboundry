@@ -247,6 +247,22 @@ test.describe("multi-project routing", () => {
 });
 
 test.describe("workspace page", () => {
+  test("workspace pins the default canvas card and it cannot be deleted", async ({
+    page,
+  }) => {
+    await page.goto("/canvas/projects");
+    await expect(page.getByTestId("workspace-page")).toBeVisible();
+    const defaultCard = page.getByTestId("project-card-default");
+    await expect(defaultCard).toBeVisible();
+    await page.getByTestId("project-menu-default").click({ force: true });
+    await expect(page.getByTestId("project-menu-pop-default")).toBeVisible();
+    await expect(
+      page.getByTestId("project-menu-pop-default").getByRole("button", {
+        name: "删除",
+      }),
+    ).toHaveCount(0);
+  });
+
   test("creates, searches, renames and deletes projects", async ({
     page,
     request,
@@ -324,7 +340,8 @@ test.describe("workspace page", () => {
       .click();
     await expect(page.getByTestId("workspace-list")).toBeVisible();
     const rows = page.locator(".workspace-list-row");
-    await expect(rows).toHaveCount(2);
+    await expect(rows).toHaveCount(3);
+    await expect(page.getByTestId("workspace-list")).toContainText("默认画布");
     let order = await rows.evaluateAll((elements) =>
       elements.map((element) => element.textContent ?? ""),
     );
