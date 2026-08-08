@@ -105,9 +105,8 @@ test("minimap matches the frozen empty geometry and renders node rects", async (
     "rgba(255, 255, 255, 0.1)",
   );
   await expect(minimap).toHaveCSS("outline-width", "1px");
-  await expect(minimap).toHaveCSS("pointer-events", "none");
-  const dragLayer = page.getByRole("application", { name: "拖动小地图" });
-  await expect(dragLayer).toHaveCSS("cursor", "grab");
+  await expect(minimap).toHaveCSS("pointer-events", "auto");
+  await expect(minimap).toHaveCSS("cursor", "grab");
   await expect(page.locator("html")).toHaveCSS(
     "overscroll-behavior-x",
     "none",
@@ -134,6 +133,14 @@ test("minimap matches the frozen empty geometry and renders node rects", async (
   };
   const beforeZoom = Number(await world.getAttribute("data-viewport-zoom"));
   const minimapBox = await minimap.boundingBox();
+  const minimapViewScale = await minimap
+    .locator("svg")
+    .evaluate((element) => {
+      const viewBox = (element as SVGSVGElement).viewBox.baseVal;
+      return viewBox.width / 210;
+    });
+  const moveScale =
+    minimapViewScale * Math.max(beforeZoom, Math.log(beforeZoom));
   await page.mouse.move(
     minimapBox!.x + minimapBox!.width / 2,
     minimapBox!.y + minimapBox!.height / 2,
@@ -145,11 +152,57 @@ test("minimap matches the frozen empty geometry and renders node rects", async (
   );
   await page.mouse.up();
   await expect
-    .poll(async () => ({
-      x: Number(await world.getAttribute("data-viewport-x")),
-      y: Number(await world.getAttribute("data-viewport-y")),
-    }))
-    .toEqual({ x: beforePan.x - 48, y: beforePan.y - 32 });
+    .poll(async () => {
+      const moved = {
+        x: Number(await world.getAttribute("data-viewport-x")),
+        y: Number(await world.getAttribute("data-viewport-y")),
+      };
+      return (
+        Math.abs(moved.x - (beforePan.x - 24 * moveScale)) <= 0.01 &&
+        Math.abs(moved.y - (beforePan.y - 16 * moveScale)) <= 0.01
+      );
+    })
+    .toBe(true);
+  await expect(world).toHaveAttribute(
+    "data-viewport-zoom",
+    String(beforeZoom),
+  );
+
+  const clickPoint = {
+    x: minimapBox!.x + minimapBox!.width / 2,
+    y: minimapBox!.y + minimapBox!.height / 2,
+  };
+  const clickWorld = await minimap
+    .locator("svg")
+    .evaluate((element, point) => {
+      const svg = element as SVGSVGElement;
+      const matrix = svg.getScreenCTM();
+      if (!matrix) return { x: 0, y: 0 };
+      const mapped = new DOMPoint(point.x, point.y).matrixTransform(
+        matrix.inverse(),
+      );
+      return { x: mapped.x, y: mapped.y };
+    }, clickPoint);
+  const canvasBounds = await page.getByTestId("canvas-world").boundingBox();
+  await page.mouse.click(clickPoint.x, clickPoint.y);
+  await expect
+    .poll(async () => {
+      const jumped = {
+        x: Number(await world.getAttribute("data-viewport-x")),
+        y: Number(await world.getAttribute("data-viewport-y")),
+      };
+      return (
+        Math.abs(
+          jumped.x -
+            (canvasBounds!.width / 2 - clickWorld.x * beforeZoom),
+        ) <= 0.01 &&
+        Math.abs(
+          jumped.y -
+            (canvasBounds!.height / 2 - clickWorld.y * beforeZoom),
+        ) <= 0.01
+      );
+    })
+    .toBe(true);
   await expect(world).toHaveAttribute(
     "data-viewport-zoom",
     String(beforeZoom),
@@ -183,7 +236,9 @@ test("fit view brings five distant nodes into the visible canvas", async ({
 }) => {
   await page.goto("/__fixture/interaction.fit-five-nodes");
   const nodes = page.locator(".react-flow__node");
-  await expect(nodes).toHaveCount(5);
+  const world = page.getByTestId("canvas-world");
+  await expect(world).toHaveAttribute("data-node-count", "5");
+  await expect(nodes).toHaveCount(3);
   await expect(
     page.locator('.react-flow__node[data-id="probe-e"]'),
   ).not.toBeInViewport();

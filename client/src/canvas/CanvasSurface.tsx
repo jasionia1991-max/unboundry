@@ -29,6 +29,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import { AudioNode } from "./AudioNode";
@@ -1921,12 +1922,6 @@ export function CanvasSurface({
   const nodeDragging = useRef(false);
   const restoreSequence = useRef(0);
   const clipboardPasteSequence = useRef(0);
-  const minimapDrag = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    viewport: Viewport;
-  } | undefined>(undefined);
   nodesRef.current = nodes;
   edgesRef.current = edges;
 
@@ -1971,6 +1966,25 @@ export function CanvasSurface({
     // 显式调度安静期，保证持久化 watcher 重新评估并保存。
     markCanvasInteraction();
   }, [markCanvasInteraction]);
+
+  const handleMiniMapClick = useCallback(
+    (
+      _event: ReactMouseEvent,
+      position: { x: number; y: number },
+    ) => {
+      const bounds = worldRef.current?.getBoundingClientRect();
+      if (!bounds || !flowInstance.current) {
+        return;
+      }
+      const zoom = viewportRef.current.zoom;
+      applyViewport({
+        ...viewportRef.current,
+        x: bounds.width / 2 - position.x * zoom,
+        y: bounds.height / 2 - position.y * zoom,
+      });
+    },
+    [applyViewport],
+  );
 
   const keepLastNonCollidingPositions = (
     changes: NodeChange<ProbeNodeType>[],
@@ -4466,13 +4480,23 @@ export function CanvasSurface({
         )}
         <ConnectionEscapeGuard />
         {minimapOpen && (
-          <MiniMap
-            className="tap-minimap"
-            maskColor="rgba(0, 0, 0, 0.68)"
-            nodeColor="#7a7a7a"
-            nodeStrokeColor="#bdbdbd"
-            position="bottom-left"
-          />
+          <div
+            className="tap-minimap-host"
+            onWheel={(event) => {
+              event.stopPropagation();
+            }}
+          >
+            <MiniMap
+              ariaLabel="小地图"
+              className="tap-minimap"
+              maskColor="rgba(0, 0, 0, 0.68)"
+              nodeColor="#7a7a7a"
+              nodeStrokeColor="#bdbdbd"
+              onClick={handleMiniMapClick}
+              pannable
+              position="bottom-left"
+            />
+          </div>
         )}
       </ReactFlow>
       {nodeContextMenu && contextMenuNode && (
@@ -4960,46 +4984,6 @@ export function CanvasSurface({
         >
           {workflowToast.message}
         </div>
-      )}
-      {minimapOpen && (
-        <div
-          aria-label="拖动小地图"
-          className="tap-minimap-drag-layer"
-          onPointerDown={(event) => {
-            if (event.button !== 0) {
-              return;
-            }
-            event.currentTarget.setPointerCapture(event.pointerId);
-            minimapDrag.current = {
-              pointerId: event.pointerId,
-              startX: event.clientX,
-              startY: event.clientY,
-              viewport: { ...viewportRef.current },
-            };
-          }}
-          onPointerMove={(event) => {
-            const drag = minimapDrag.current;
-            if (!drag || drag.pointerId !== event.pointerId) {
-              return;
-            }
-            applyViewport({
-              ...drag.viewport,
-              x: drag.viewport.x - (event.clientX - drag.startX) * 2,
-              y: drag.viewport.y - (event.clientY - drag.startY) * 2,
-            });
-          }}
-          onPointerUp={(event) => {
-            if (minimapDrag.current?.pointerId === event.pointerId) {
-              minimapDrag.current = undefined;
-              event.currentTarget.releasePointerCapture(event.pointerId);
-            }
-          }}
-          onWheel={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-          }}
-          role="application"
-        />
       )}
       </div>
       </CanvasSelectionUiContext.Provider>

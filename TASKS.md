@@ -16,6 +16,17 @@
 
 画布、固定界面、Text、Image、Video、Audio、Playlist、Group、外围面板、账号、管理员模型中心、生成安全和新图片私有OSS链路已通过当前范围验收；Comment、社区、TapTV、竞技场、额度和链接分享已按用户决定取消。OpenRouter GPT Image 2已完成一次用户授权的真实生成，图片连线参考图及真实结果零费用重启恢复均已通过；当前不进入正式部署。
 
+### 2026-08-08 小地图拖动与点击跳转修复（等用户实页确认）
+
+- 用户报告两个问题：小地图拖动非常慢；小地图无法点击跳转。
+- 根因一：旧的 200×150 自定义拖动层把鼠标位移固定按 ×2 反向平移主画布，没有按小地图与画布的真实比例换算，画布越大慢得越多（示例：3000px 宽画布缩小到 200px 小地图时比例约 15 倍，正确应平移约 15px，旧代码只移 2px）。
+- 根因二：旧实现只有“按下/移动/抬起”，从未实现单击跳转；且小地图自身 `pointer-events:none`，本体收不到任何事件。
+- 修复方案（用户已批准）：删除自定义拖动层，改用 ReactFlow 官方 `MiniMap` 的 `pannable`（按真实比例拖动、取景框跟手）与 `onClick`（按现有“聚焦节点”同一居中公式跳转）；`zoomable` 保持关闭，外层薄壳吞掉滚轮，维持“小地图上滚轮不缩放画布”；小地图改为可交互光标。
+- 涉及文件：`client/src/canvas/CanvasSurface.tsx`（删除 `minimapDrag` 与拖动层、新增 `handleMiniMapClick`、MiniMap 包滚轮壳并加 `pannable/onClick`）、`client/src/styles.css`（删拖动层样式、`pointer-events` 改可交互）、`tests/m1-minimap-edge.spec.ts`（拖动断言改为真实比例、新增点击跳转断言）。
+- 顺带加固：`fit view brings five distant nodes` 原先断言 `.react-flow__node` 数量=5，依赖“首次全量渲染瞬态”，在本批次首个测试运行时序变化后偶发失败；已改为断言文档级 `data-node-count=5` + 视口内稳定 3 节点，再验证 fit view 后全部可见，语义不变且确定。
+- 验证：`npx tsc --noEmit` 与 `npm run build` 通过（仅既有 chunk 体积 warning）；`m1-minimap-edge` 7/7 连续 3 次通过；`m0-shell + m1-dense-canvas + m1-viewport` 25 通过、1 项为已知基线失败（m0 P1 creator，与本批次无关）；全程独立端口 4174 + 临时数据目录，未触碰 4173 真实服务与数据。
+- 验收矩阵：`CANVAS-013` 已更新为新行为描述并改为 `USER_RECHECK`，等待用户在实页确认“拖动跟手、点击跳转、滚轮不缩放”后再记 PASS。
+
 ### 2026-08-04 当前快照
 
 - 当前状态清单包含82个fixture、30个开放/裁决记录和176条验收记录；已通过项目不得重做或擅自推翻。
