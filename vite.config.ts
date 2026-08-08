@@ -475,6 +475,7 @@ function generationTaskApi(): Plugin {
 
 export default defineConfig({
     root: fileURLToPath(new URL("./client", import.meta.url)),
+    envDir: process.env.UNBOUNDRY_SAFE_TEST === "1" ? false : undefined,
     plugins: [
       react(),
       devFixtureApi(),
@@ -511,5 +512,5 @@ export default defineConfig({
     define: {
       __UNBOUNDRY_VERSION__: JSON.stringify(currentVersion),
     },
-    cacheDir: `${appRoot}/node_modules/.vite`,
+    cacheDir: process.env.UNBOUNDRY_VITE_CACHE_DIR ?? `${appRoot}/node_modules/.vite`,
 });

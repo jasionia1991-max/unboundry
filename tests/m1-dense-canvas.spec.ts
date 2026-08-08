@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 test("dense canvas keeps 62 nodes, 58 edges and 5 groups responsive", async ({
   page,

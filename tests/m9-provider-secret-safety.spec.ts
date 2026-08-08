@@ -1,6 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 const secretShapes = [
   /(?:^|[^a-z])sk-(?:(?:proj|ant|svcacct)-)?[a-z0-9_]{20,}/i,

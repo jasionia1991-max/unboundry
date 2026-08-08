@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 test("the private API documents and reads canvas, project and model configuration", async ({
   page,

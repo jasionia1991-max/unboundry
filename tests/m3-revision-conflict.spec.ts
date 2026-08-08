@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 test("last tab to save wins and other tabs converge to the latest content", async ({
   context,

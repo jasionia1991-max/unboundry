@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "expectedNode": "22.23.1",
+  "tsconfig": "tsconfig.check.json",
+  "infrastructureScripts": [
+    "scripts/check-offline-network-guard.mjs",
+    "scripts/check-source-coverage.mjs",
+    "scripts/offline-network-guard.mjs",
+    "scripts/run-safe-tests.mjs"
+  ],
+  "automaticNpmRoots": [
+    "build",
+    "test:safe:preflight",
+    "test:safe:list",
+    "test:safe",
+    "verify"
+  ],
+  "operationalScripts": {
+    "scripts/backup-data.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "88c0fb0fd2c92eddad40f0f1dec4191d8ef5e2802fc9ccbfe3f4a546ef6c7c10",
+      "target": "tests/m10-backup.spec.ts",
+      "marker": "a database and its media restore from a checksummed backup",
+      "targetSha256": "313e9db5ec693ada59d79485f593a0107068513319c3e604ee743788f911b439"
+    },
+    "scripts/backup-to-oss.mjs": {
+      "mode": "frozen",
+      "scriptSha256": "6f621c7ede8d5b430ee8b71a2b9f8a14cc1d67581d56029db431932ce985c2b1",
+      "reason": "May create a backup and contact or delete remote OSS objects; automatic execution is forbidden.",
+      "manualNpmScripts": [
+        "data:backup:oss"
+      ]
+    },
+    "scripts/check-greenfield.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "672fc239db81ff54f5103c9ef49897b4becbc042309b799f8db9a94ebefd2572",
+      "target": "tests/source-coverage-behavior.test.mjs",
+      "marker": "the greenfield operational script has an offline behavior check",
+      "targetSha256": "357e02fe6de3a45e9a7f9873cb958a2f2fe710c60ec8f020135624dd3458754f"
+    },
+    "scripts/check-restart-persistence.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "92dd816cba5e12a474d8671325f3c98133bdb038e3b42c9cbbc9acf3a6ccaabb",
+      "target": "scripts/run-safe-tests.mjs",
+      "marker": "scripts/check-restart-persistence.mjs",
+      "targetSha256": "c2bee0d541a204bb92f862e9fd77c07f3f37067665b5ed881f496155d5eef472"
+    },
+    "scripts/deploy.mjs": {
+      "mode": "frozen",
+      "scriptSha256": "a10787b564548b048cbd1f95018d8722e1b1e5d46a94035545cec74dc5ac6f3b",
+      "reason": "Can build, commit, tag, transfer files, restart production, and push; automatic execution is forbidden.",
+      "manualNpmScripts": []
+    },
+    "scripts/mirror-oss-to-local.mjs": {
+      "mode": "frozen",
+      "scriptSha256": "3c47f933d568092bfed1c6b48e19ea0613e0b97353ca789d23d8cadafbc2ed9b",
+      "reason": "Reads real OSS configuration and can download remote objects; automatic execution is forbidden.",
+      "manualNpmScripts": [
+        "data:mirror-oss"
+      ]
+    },
+    "scripts/repair-storage-state.mjs": {
+      "mode": "frozen",
+      "scriptSha256": "55882da3c26659470552c54429686c04d72d6c175c887704c283c17fa3e63653",
+      "reason": "Mutates storage records and audit state; automatic execution is forbidden without isolated behavior coverage.",
+      "manualNpmScripts": [
+        "data:repair-storage"
+      ]
+    },
+    "scripts/reset-account-password.mjs": {
+      "mode": "frozen",
+      "scriptSha256": "8ff65b225868477764b946c2ed55792a00159dd8f4408adef5729fee9b30e343",
+      "reason": "Interactively mutates account credentials; automatic execution is forbidden.",
+      "manualNpmScripts": []
+    },
+    "scripts/verify-backup.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "b2bfd13e11ec41131e546a25c6dd1a20382841a455924acee9a8419027cd3b01",
+      "target": "tests/m10-backup.spec.ts",
+      "marker": "a database and its media restore from a checksummed backup",
+      "targetSha256": "313e9db5ec693ada59d79485f593a0107068513319c3e604ee743788f911b439"
+    }
+  }
+}

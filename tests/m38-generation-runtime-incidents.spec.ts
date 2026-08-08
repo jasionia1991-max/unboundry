@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { saveAccountCredential } from "../server/accountCredentials";
 import { openAppDatabase } from "../server/database";
 import { createGenerationSafetyStore } from "../server/generationSafety";
@@ -35,7 +35,7 @@ const arkProfile: ProviderProfile = {
 };
 
 const textModelId = "doubao-seed-2-0-lite-260428";
-const incidentPort = 4201;
+const incidentPort = Number(process.env.UNBOUNDRY_TEST_AUX_PORT);
 const incidentOrigin = `http://127.0.0.1:${incidentPort}`;
 const vite = join(process.cwd(), "node_modules/vite/bin/vite.js");
 

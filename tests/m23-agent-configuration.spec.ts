@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { defaultParameterSchema } from "../types/modelParameters";
 
 test("Agent models, paused skills and suggestions come from the safe local configuration", async ({

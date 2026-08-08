@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { normalizePersistedMediaNodes } from "../types/persistedMediaSources";
 
 test("only the exact obsolete pre-task configuration error is removed", () => {

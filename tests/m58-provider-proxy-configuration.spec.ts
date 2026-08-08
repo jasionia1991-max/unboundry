@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { generationProviderAttemptCounts } from "../server/generationTaskStore";
 import { OutboundProxyConfigurationError } from "../server/outboundNetwork";
 import {
@@ -190,7 +190,7 @@ test("平台连接页展示可执行的Key和目录代理提示", async ({
   baseURL,
   page,
 }) => {
-  const localOrigin = new URL(baseURL ?? "http://127.0.0.1:4175").origin;
+  const localOrigin = new URL(baseURL!).origin;
   const externalRequests: string[] = [];
   const generationRequests: string[] = [];
   page.on("request", (request) => {

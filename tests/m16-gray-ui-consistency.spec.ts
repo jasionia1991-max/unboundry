@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 test("admin forms and canvas focus states stay inside the gray UI system", async ({
   page,

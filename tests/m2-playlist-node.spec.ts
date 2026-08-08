@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 const mediaDirectory = mkdtempSync(join(tmpdir(), "unboundry-playlist-test-"));
 const videos = ["red", "blue"].map((color, index) => {

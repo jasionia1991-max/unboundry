@@ -1,8 +1,8 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`5`
+断点版本：`6`
 更新时间：`2026-08-09`
-状态：`OFFLINE_GOAL_ACTIVE_REM-001_IN_PROGRESS`
+状态：`OFFLINE_GOAL_ACTIVE_REM-001_USER_REVIEW_REM-002_IN_PROGRESS`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
 ## 1. 当前结论
@@ -12,7 +12,7 @@
 - 用户已于 2026-08-09 明确启动一次性离线 Goal，Goal ID `019fe226-4d7b-7831-a254-106e40b346c2`；REM-001～010 与 REM-011 离线工程部分可按依赖顺序连续施工，中途不再逐项询问。
 - 允许本地代码/测试/脚本/配置/文档/package 修改、动态 loopback 临时环境、假 Provider/OSS/服务器、必要测试容器和本地 checkpoint/功能/candidate commit。
 - 真实数据、4173、真实 Provider/OSS、canvas.mymy.ltd、SSH、生产、push、tag、PR、正式版本号与发布仍绝对禁止。
-- 当前唯一施工项为 REM-001。
+- REM-001 安全底座工程候选已完成并进入 `USER_REVIEW`；当前唯一 `IN_PROGRESS` 施工项为 REM-002。
 
 ## 2. 项目身份
 
@@ -27,7 +27,7 @@
 | 本地真实数据目录 | `/Users/mymy/Documents/unboundry/app/data` |
 | 真实本地服务端口 | `4173`，有守护进程，不得用于测试 |
 | 数据库最高迁移版本 | `37` |
-| Node | 当前本机 `v25.9.0`；施工目标 Node 22 LTS，精确 Node/npm 版本待 REM-001 决策；历史生产记录为 `v22.23.2`，当前生产未复核 |
+| Node | 离线施工固定 `/Users/mymy/.hermes/node/bin/node v22.23.1` + npm `10.9.8`；历史生产记录为 `v22.23.2`，当前生产未复核 |
 
 ### 2.1 Goal 启动前只读预检
 
@@ -41,7 +41,7 @@
 
 - Node 固定使用 `/Users/mymy/.hermes/node/bin/node v22.23.1`，npm 固定为 `10.9.8`；先用本地缓存，缺失时只访问用户授权的官方 Node/Homebrew、npm、Playwright 或 Docker 镜像源。
 - 依赖准备完成后，所有测试进程必须拒绝非 loopback 网络；真实 Provider/OSS/代理凭据不得进入测试进程。
-- 当前专用分支：`codex/unboundry-offline-remediation-2026-08-09`；起点仍为 `262c66c4087d915b03971191ee00a9bfba74da65`。
+- 当前专用分支：`codex/unboundry-offline-remediation-2026-08-09`；文档前起点为 `262c66c4087d915b03971191ee00a9bfba74da65`，一次性 Goal 本地基线 commit 为 `34909f283e417c6772dcbdfebb6e717db85d0605`。
 
 ## 3. Git 基线与已有改动
 
@@ -57,14 +57,15 @@
 
 这些原有修改来自用户对六项验收通过的确认，不属于本轮待回退内容。REM-000 在其上追加文档，不得清理、reset 或覆盖。
 
-## 4. 当前唯一施工项
+## 4. 当前施工项
 
 | ID | 内容 | 状态 | 用户授权 |
 |---|---|---|---|
 | REM-000 | 施工总方案、防漂移断点、项目级守则、入口和验收登记 | `PASS` | 用户 2026-08-09 确认通过 |
-| REM-001 | 绝对隔离测试底座、动态端口/临时目录、零外网、真正全量发现 | `IN_PROGRESS` | 用户 2026-08-09 一次性离线 Goal 合并授权 |
+| REM-001 | 绝对隔离测试底座、动态端口/临时目录、零外网、真正全量发现 | `USER_REVIEW` | 工程候选与首轮全量证据已完成，Goal 结束时集中交用户复核 |
+| REM-002 | API、进程与可观测性基础 | `IN_PROGRESS` | 用户 2026-08-09 一次性离线 Goal 合并授权 |
 
-REM-002～011 依赖尚未满足，保持 `NOT_STARTED`；离线工程权限已预先授予，达到依赖后可连续进入下一项。
+REM-003～011 尚未进入实施；离线工程权限已预先授予，达到施工总方案依赖后可连续进入下一项。REM-003～008 在 REM-009A 完成前只允许分析和不涉及持久迁移的准备。
 
 ### 4.1 一次性授权的决策默认
 
@@ -117,12 +118,25 @@ REM-002～011 依赖尚未满足，保持 `NOT_STARTED`；离线工程权限已�
 | 生产 SSH/修改 | 0 |
 | commit/push/tag/发布 | 0 |
 
+### 6.1 REM-001 工程证据与边界
+
+- 运行时已固定为 Node `22.23.1`、npm `10.9.8`；依赖只在跟踪文件隔离快照中以 offline/ignore-scripts 方式准备。
+- 唯一安全入口：`node scripts/run-safe-tests.mjs <preflight|list|run|full>`。105 个 spec 精确分为 dev 73、hybrid 4、node 18、preview 2、self 8；当前发现 520 个唯一测试，0 skip/only/fixme。
+- 每个 spec 使用新的系统临时目录、独立 data/HOME/cache/report/audit 与动态 loopback MAIN/AUX 端口。Node/浏览器拒绝非 loopback、未登记 loopback、Unix socket、自定义 DNS/transport 和 4173；网络负控 24 类、文件负控 24 类通过。
+- 源码门：当前源文件 272；TS/TSX `258/258`，JS/MJS `14/14`；9 个运维脚本为 4 个行为验证 + 5 个哈希冻结。绿地、生产构建和两次重启持久化均在 sandbox 内通过。
+- 诚实基线首次全量为 500 pass / 18 fail / 1 串行连带未执行。逐项修复陈旧断言、等待假绿与 review 发现的 P0/P1 后，F-035 定向 `8/8`、m17+m70 五轮 `120/120`、首轮修复后全量 `520/520 PASS`；failed/skipped/retries/reportErrors/blocked 均为 0。
+- 首轮修复后全量工作树指纹：HEAD `34909f283e417c6772dcbdfebb6e717db85d0605`，非忽略工作区内容 SHA-256 `ed4630555b9a10ea753c1456cc3bd251bc4d771fddbd6b6f0ab9eb5ad8f721eb`。这是未提交候选内容指纹，不是最终 candidate SHA。
+- 每轮临时目录与受管进程组均已清理；4173 监听身份 SHA-256 前后均为 `d5670e320e7d8f9203a8a2f5d02b8c08c2e74352a4f7747c00b5ae42670f4bb7`。
+- 本轮新增并登记：F-035（服务端信任伪造媒体元数据，基础修复已完成）、F-036（图片权威尺寸仍缺，待 REM-004/005）、F-037（账号浮层触发重复 hydration，已修）、F-038（render 内重定向，已修）、F-039（模板动画保存风暴，已修）、F-040（单行 session 高水位可被其他标签覆盖，待 REM-003）。
+- `GOV-001`：只读 reviewer 曾枚举到被忽略真实目录中的文件名，但没有读取内容、stat/hash、修改或网络动作。后续只能陈述“安全 runner/测试子进程真实路径成功访问为 0”，禁止扩大为“整个 Goal 所有 agent 访问为 0”。
+- REM-001 保持 schema `37`、package `0.5.1`；真实数据读取/写入、4173 操作、真实 Provider/OSS、生产、SSH、push/tag/PR/发布均为 0。工程状态为 `USER_REVIEW`，不是 PASS。
+
 ## 7. 当前执行路径
 
-1. 固化本断点和一次性授权，建立仅本地基线 commit；
-2. REM-001 建立安全入口前不运行历史默认测试；
-3. 每个 REM 按施工总方案依赖顺序完成分析、实施、测试、review 与文档同步；
-4. 每个本地 commit 前核对范围，绝不 push/tag/PR；
+1. 保留 REM-001 安全入口和本地 checkpoint；任何后续测试只能经该入口执行；
+2. 当前实施 REM-002：安全 URL/异步边界、脱敏日志、真正只读健康/待命与优雅关闭；
+3. REM-002 工程完成后先执行 REM-009A；其完成前 REM-003～008 只能分析或做不涉及持久迁移的准备；
+4. 每个 REM 按施工总方案依赖顺序完成分析、实施、测试、独立 review 与文档同步；每个本地 commit 前核对范围，绝不 push/tag/PR；
 5. 终点是固定 candidate SHA、G0～G6 离线证据、工程 `USER_REVIEW` 与页面 `USER_RECHECK`，生产和发布留待用户另行确认。
 
 ## 8. 未决决策
@@ -142,9 +156,9 @@ REM-002～011 依赖尚未满足，保持 `NOT_STARTED`；离线工程权限已�
 线上版本：v0.5.1
 当前分支：codex/unboundry-offline-remediation-2026-08-09
 起点 HEAD：262c66c4087d915b03971191ee00a9bfba74da65；当前 HEAD 以 git 只读结果对照本文件
-最后完成：REM-000（PASS），施工总方案 v1.0 已获用户确认
-当前施工项：REM-001（IN_PROGRESS）
-下一步：固化本地基线后建立绝对隔离测试入口
+最后完成工程候选：REM-001（USER_REVIEW），安全入口首轮全量 520/520
+当前施工项：REM-002（IN_PROGRESS）
+下一步：完成 REM-002 的异常边界、只读健康/待命和优雅关闭，再进入 REM-009A
 代码授权：一次性离线 Goal 范围内已授权；Goal ID 019fe226-4d7b-7831-a254-106e40b346c2
 真实数据操作：禁止
 Provider 请求：禁止

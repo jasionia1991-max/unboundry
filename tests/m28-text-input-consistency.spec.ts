@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { composeTextControl } from "./helpers/ime";
 
 test("all six editable node-title families share logical IME undo and redo", async ({

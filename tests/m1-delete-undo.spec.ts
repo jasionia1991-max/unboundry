@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 test("Backspace cascades incident edges and Cmd+Z restores a new node id", async ({
   page,

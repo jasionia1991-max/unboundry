@@ -1,4 +1,4 @@
-import { expect, test, type Page, type APIRequestContext } from "@playwright/test";
+import { expect, test, type Page, type APIRequestContext } from "./safe-test";
 
 type StoredNode = {
   data: Record<string, unknown>;
@@ -194,6 +194,10 @@ test("left-drag marquee selects nodes without native page text selection", async
     paidProviderRequests: number;
   };
   await page.goto("/__fixture/interaction.selection-and-keyboard-move");
+  const world = page.getByTestId("canvas-world");
+  await expect(world).toHaveAttribute("data-persistence-ready", "true");
+  await expect(page.locator('.react-flow__node[data-id="probe-a"]')).toBeVisible();
+  await expect(page.locator('.react-flow__node[data-id="probe-b"]')).toBeVisible();
   await page.evaluate(() => window.getSelection()?.removeAllRanges());
   await page.mouse.move(280, 160);
   await page.mouse.down();
@@ -251,8 +255,12 @@ test("group create, undo, delete recovery and reload preserve one active surface
   await expect(page.getByTestId("multi-selection-toolbar")).toHaveCount(1);
   await page.getByRole("button", { name: "打组" }).click();
   await expect(page.locator(".react-flow__node-group")).toHaveCount(1);
-  await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
-
+  await expect.poll(async () => {
+    const snapshot = await (await request.get(`/api/canvas/${canvasId}`)).json() as {
+      nodes: StoredNode[];
+    };
+    return snapshot.nodes.some((node) => node.type === "group");
+  }).toBe(true);
   let saved = await (await request.get(`/api/canvas/${canvasId}`)).json() as {
     edges: Array<{ source: string; target: string }>;
     nodes: StoredNode[];

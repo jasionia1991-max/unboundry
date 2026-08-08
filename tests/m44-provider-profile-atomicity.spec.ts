@@ -4,7 +4,7 @@ import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { saveAccountCredential } from "../server/accountCredentials";
 import { currentSchemaVersion, openAppDatabase } from "../server/database";
 import { executeTextTaskWithDependencies } from "../server/generationTasks";
@@ -32,7 +32,7 @@ const childBootstrap = `
     appType: "custom",
     configFile: false,
     logLevel: "silent",
-    server: { middlewareMode: true },
+    server: { hmr: false, middlewareMode: true, ws: false },
   });
   try {
     await new Promise((resolve) =>

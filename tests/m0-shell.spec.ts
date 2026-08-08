@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, guardBrowserContext, test, type Locator } from "./safe-test";
 import { composeTextControl } from "./helpers/ime";
 
 type Bounds = [number, number, number, number];
@@ -545,6 +545,9 @@ test("node search matches title, Prompt and body then locates the result", async
 
   await page.goto("/__fixture/interaction.node-search.populated");
   const world = page.getByTestId("canvas-world");
+  await expect.poll(async () =>
+    Number(await world.getAttribute("data-viewport-zoom")),
+  ).toBeGreaterThan(0);
   const initialZoom = await world.getAttribute("data-viewport-zoom");
   await page.mouse.move(900, 700);
   await page.mouse.wheel(600, 400);
@@ -555,7 +558,9 @@ test("node search matches title, Prompt and body then locates the result", async
       return x < 0 && y < 0;
     })
     .toBe(true);
-  await expect(world).toHaveAttribute("data-viewport-zoom", initialZoom!);
+  await expect.poll(async () =>
+    world.getAttribute("data-viewport-zoom"),
+  ).toBe(initialZoom);
   await page.getByTestId("node-search").click();
   const dialog = page.getByRole("dialog", { name: "节点搜索" });
   const input = page.getByRole("searchbox", { name: fixture.placeholder });
@@ -1498,10 +1503,29 @@ test("P1 creators and the selected Text creator never block the user Dock", asyn
   await expect(page.getByTestId("image-creator")).toBeVisible();
   await user.click();
 
-  await page.locator('.react-flow__node[data-id="input-master-text"]').click();
+  const world = page.getByTestId("canvas-world");
+  const textNode = page.locator(
+    '.react-flow__node[data-id="input-master-text"]',
+  );
+  await textNode.click();
+  await expect(textNode).toHaveClass(/selected/);
+  await expect(page.locator(".react-flow__node.selected")).toHaveCount(1);
+  await expect(world).toHaveAttribute("data-selected-node-count", "1");
+  await expect(world).toHaveAttribute("data-primary-node", "input-master-text");
   await expect(page.getByTestId("text-creator")).toBeVisible();
   await user.click();
   await expect(page.getByTestId("account-popover")).toBeVisible();
+  await expect(textNode).toHaveClass(/selected/);
+  await expect(page.locator(".react-flow__node.selected")).toHaveCount(1);
+  await expect(world).toHaveAttribute("data-selected-node-count", "1");
+  await expect(world).toHaveAttribute("data-primary-node", "input-master-text");
+  await expect(page.getByTestId("text-creator")).toBeVisible();
+  await user.click();
+  await expect(page.getByTestId("account-popover")).toHaveCount(0);
+  await expect(textNode).toHaveClass(/selected/);
+  await expect(page.locator(".react-flow__node.selected")).toHaveCount(1);
+  await expect(world).toHaveAttribute("data-selected-node-count", "1");
+  await expect(world).toHaveAttribute("data-primary-node", "input-master-text");
   await expect(page.getByTestId("text-creator")).toBeVisible();
 });
 
@@ -1615,12 +1639,12 @@ test("responsive anchors stay within the frozen 1px contract", async ({
   browser,
 }) => {
   for (const baseline of await loadResponsiveBaselines()) {
-    const context = await browser.newContext({
+    const context = await guardBrowserContext(await browser.newContext({
       baseURL,
       colorScheme: "dark",
       deviceScaleFactor: baseline.deviceScaleFactor,
       viewport: { width: baseline.width, height: baseline.height },
-    });
+    }));
     const page = await context.newPage();
 
     await page.goto("/__fixture/shell.empty.primary");

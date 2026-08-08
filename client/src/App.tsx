@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { CanvasShell } from "./canvas/CanvasShell";
 import { ModelCatalogProvider } from "./models/ModelCatalog";
 import { WorkspacePage } from "./projects/WorkspacePage";
@@ -7143,6 +7149,30 @@ function ChangeOwnPasswordDialog({
   );
 }
 
+function EffectRedirect({ to }: { to: string }) {
+  const redirectStarted = useRef(false);
+  useEffect(() => {
+    if (redirectStarted.current || window.location.pathname === to) return;
+    redirectStarted.current = true;
+    window.location.replace(to);
+  }, [to]);
+  return (
+    <main className="system-message" data-testid="route-redirect">
+      正在返回可访问页面…
+    </main>
+  );
+}
+
+function AdminRouteGuard({
+  allowed,
+  children,
+}: {
+  allowed: boolean;
+  children: ReactNode;
+}) {
+  return allowed ? children : <EffectRedirect to="/" />;
+}
+
 function AuthenticatedApplication({
   fixtureId,
   projectId,
@@ -7247,98 +7277,99 @@ function AuthenticatedApplication({
       />
     );
   }
-  if (window.location.pathname === "/admin/accounts") {
-    if (
-      !hasClientPermission(
-        status.permissions,
-        "manage_accounts",
-        status.user.role,
-      )
-    ) {
-      window.location.replace("/");
-      return null;
-    }
-    return <AdminAccounts currentUser={status.user} />;
+  const pathname = window.location.pathname;
+  if (pathname === "/admin/accounts") {
+    return (
+      <AdminRouteGuard
+        allowed={hasClientPermission(
+          status.permissions,
+          "manage_accounts",
+          status.user.role,
+        )}
+      >
+        <AdminAccounts currentUser={status.user} />
+      </AdminRouteGuard>
+    );
   }
-  if (window.location.pathname === "/admin/models") {
-    if (
-      !hasClientPermission(
-        status.permissions,
-        "manage_models",
-        status.user.role,
-      )
-    ) {
-      window.location.replace("/");
-      return null;
-    }
-    return <AdminModels currentUser={status.user} />;
+  if (pathname === "/admin/models") {
+    return (
+      <AdminRouteGuard
+        allowed={hasClientPermission(
+          status.permissions,
+          "manage_models",
+          status.user.role,
+        )}
+      >
+        <AdminModels currentUser={status.user} />
+      </AdminRouteGuard>
+    );
   }
-  if (window.location.pathname === "/admin/providers") {
-    if (
-      !hasClientPermission(
-        status.permissions,
-        "manage_providers",
-        status.user.role,
-      )
-    ) {
-      window.location.replace("/");
-      return null;
-    }
-    return <AdminProviders currentUser={status.user} />;
+  if (pathname === "/admin/providers") {
+    return (
+      <AdminRouteGuard
+        allowed={hasClientPermission(
+          status.permissions,
+          "manage_providers",
+          status.user.role,
+        )}
+      >
+        <AdminProviders currentUser={status.user} />
+      </AdminRouteGuard>
+    );
   }
-  if (window.location.pathname === "/admin/storage") {
-    if (
-      !hasClientPermission(
-        status.permissions,
-        "manage_storage",
-        status.user.role,
-      )
-    ) {
-      window.location.replace("/");
-      return null;
-    }
-    return <AdminStorage currentUser={status.user} />;
+  if (pathname === "/admin/storage") {
+    return (
+      <AdminRouteGuard
+        allowed={hasClientPermission(
+          status.permissions,
+          "manage_storage",
+          status.user.role,
+        )}
+      >
+        <AdminStorage currentUser={status.user} />
+      </AdminRouteGuard>
+    );
   }
-  if (window.location.pathname === "/admin/generation-safety") {
-    if (
-      !hasClientPermission(
-        status.permissions,
-        "manage_generation_safety",
-        status.user.role,
-      )
-    ) {
-      window.location.replace("/");
-      return null;
-    }
-    return <AdminGenerationSafety currentUser={status.user} />;
+  if (pathname === "/admin/generation-safety") {
+    return (
+      <AdminRouteGuard
+        allowed={hasClientPermission(
+          status.permissions,
+          "manage_generation_safety",
+          status.user.role,
+        )}
+      >
+        <AdminGenerationSafety currentUser={status.user} />
+      </AdminRouteGuard>
+    );
   }
-  if (window.location.pathname === "/admin/api-contract") {
-    if (
-      !hasClientPermission(
-        status.permissions,
-        "manage_accounts",
-        status.user.role,
-      )
-    ) {
-      window.location.replace("/");
-      return null;
-    }
-    return <AdminApiContract currentUser={status.user} />;
+  if (pathname === "/admin/api-contract") {
+    return (
+      <AdminRouteGuard
+        allowed={hasClientPermission(
+          status.permissions,
+          "manage_accounts",
+          status.user.role,
+        )}
+      >
+        <AdminApiContract currentUser={status.user} />
+      </AdminRouteGuard>
+    );
   }
-  if (window.location.pathname === "/admin/templates") {
-    if (
-      !hasClientPermission(
-        status.permissions,
-        "manage_public_templates",
-        status.user.role,
-      )
-    ) {
-      window.location.replace("/");
-      return null;
-    }
-    return <AdminTemplatesPage currentUser={status.user} />;
+  if (pathname === "/admin/templates") {
+    return (
+      <AdminRouteGuard
+        allowed={hasClientPermission(
+          status.permissions,
+          "manage_public_templates",
+          status.user.role,
+        )}
+      >
+        <AdminTemplatesPage currentUser={status.user} />
+      </AdminRouteGuard>
+    );
   }
-  if (window.location.pathname === "/connections") {
+  if (pathname === "/connections") {
     return <MyConnectionsPage currentUser={status.user} />;
   }
 
@@ -7353,7 +7384,7 @@ function AuthenticatedApplication({
         role={status.user.role}
         userId={status.user.id}
         userInitial={status.user.displayName.trim().charAt(0).toLocaleUpperCase() || "M"}
-        workspace={workspace || window.location.pathname === "/"}
+        workspace={workspace || pathname === "/"}
       />
       {accountOpen && (
         <aside
@@ -7480,6 +7511,10 @@ function AuthenticatedApplication({
   );
 }
 
+function navigateToProjectWorkspace() {
+  window.location.href = "/canvas/projects";
+}
+
 function CanvasApplication({
   accountOpen,
   fixtureId,
@@ -7510,9 +7545,7 @@ function CanvasApplication({
         accountOpen={accountOpen}
         fixtureId={fixtureId}
         onAccountOpenChange={onAccountOpenChange}
-        onProjectMissing={() => {
-          window.location.href = "/canvas/projects";
-        }}
+        onProjectMissing={navigateToProjectWorkspace}
         permissions={permissions}
         projectId={projectId}
         role={role}

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -854,7 +854,7 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
     const creator = page.getByTestId("text-creator");
     await creator.getByRole("button", { name: "Generate" }).click();
     await expect(creator.getByTestId("upstream-input-problem"))
-      .toContainText("生成失败：零Provider模拟授权失败");
+      .toContainText("生成失败：当前平台连接没有该模型的使用权限");
     await expect(creator.getByRole("button", { name: "Retry generation" }))
       .toBeEnabled();
     await expect.poll(async () => {
@@ -864,7 +864,8 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
       return canvas.nodes.find((node) => node.id === nodeId)?.data;
     }).toMatchObject({
       textGenerating: false,
-      textGenerationError: "零Provider模拟授权失败",
+      textGenerationError: "当前平台连接没有该模型的使用权限",
+      textGenerationErrorCode: "AUTH",
       textGenerationTaskId: "text-ui-failure-001",
     });
     expect(taskSubmissions).toBe(1);
@@ -881,7 +882,7 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
     await page.getByTestId(`rf__node-${nodeId}`).click();
     const restoredCreator = page.getByTestId("text-creator");
     await expect(restoredCreator.getByTestId("upstream-input-problem"))
-      .toContainText("零Provider模拟授权失败");
+      .toContainText("当前平台连接没有该模型的使用权限");
     await expect(restoredCreator.getByRole("button", { name: "Retry generation" }))
       .toBeEnabled();
     expect(taskSubmissions).toBe(1);

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { composeTextControl } from "./helpers/ime";
 
 test("Text matches neutral, selected and editing states", async ({
@@ -231,7 +231,12 @@ test("Text prompt commits only the final IME composition value", async ({
   await expect(prompt).toHaveValue("你好");
   await composeTextControl(prompt, ["shi", "shi jie", "世界"]);
   await expect(prompt).toHaveValue("世界");
-  await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+  await expect.poll(async () => {
+    const canvas = await (await request.get(`/api/canvas/${canvasId}`)).json() as {
+      nodes: Array<{ data: Record<string, unknown>; id: string }>;
+    };
+    return canvas.nodes.find((node) => node.id === "text-primary")?.data.textPrompt;
+  }).toBe("世界");
 
   await page.reload();
   await expect(page.getByTestId("canvas-world")).toHaveAttribute(

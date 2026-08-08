@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { composeTextControl } from "./helpers/ime";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -636,23 +636,28 @@ test("text node shows connected multimodal inputs, removes only the selected edg
   });
   expect(saved.ok()).toBeTruthy();
 
-  await page.goto("/?v=text-upstream-inputs1");
+  await page.goto("/canvas?v=text-upstream-inputs1");
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-persistence-ready",
+    "true",
+  );
   await expect(
     page.getByTestId("text-creator").getByRole("button", { exact: true, name: "文本" }),
   ).toHaveCount(0);
   const inputs = page.getByTestId("text-upstream-inputs");
-  await expect(inputs.locator(":scope > div")).toHaveCount(4);
+  await expect(inputs.getByRole("button", { name: /^查看引用 / })).toHaveCount(4);
   for (const title of ["文字资料", "图片资料", "视频资料", "音频资料"]) {
     await expect(inputs.getByRole("button", { name: `查看引用 ${title}` }))
       .toBeVisible();
   }
   await expect(page.getByRole("button", { name: "Generate" })).toBeDisabled();
   await inputs.getByRole("button", { name: "删除引用 视频资料" }).click();
-  await expect(inputs.locator(":scope > div")).toHaveCount(3);
+  await expect(inputs.getByRole("button", { name: /^查看引用 / })).toHaveCount(3);
   await expect(page.getByTestId("canvas-world")).toHaveAttribute("data-edge-count", "3");
   await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
   await page.reload();
-  await expect(page.getByTestId("text-upstream-inputs").locator(":scope > div")).toHaveCount(3);
+  await expect(page.getByTestId("text-upstream-inputs")
+    .getByRole("button", { name: /^查看引用 / })).toHaveCount(3);
   expect(paidPosts).toEqual([]);
 });
 
@@ -938,7 +943,7 @@ test("creators omit empty parameter groups for every node kind", async ({
   }
 
   await page.request.delete("/api/canvas/default");
-  await page.goto("/?parameter-groups=empty-audio");
+  await page.goto("/canvas?parameter-groups=empty-audio");
   await expect(page.getByTestId("canvas-world")).toHaveAttribute(
     "data-persistence-ready",
     "true",
@@ -1012,14 +1017,30 @@ test("an empty admin text field keeps a real parameter trigger and IME-safe pers
   await customField.press("Meta+Shift+z");
   await expect(customField).toHaveValue("温和");
   await customField.blur();
-  await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+  await expect.poll(async () => {
+    const response = await page.request.get(`/api/canvas/${canvasId}`);
+    if (!response.ok()) return undefined;
+    const document = await response.json() as {
+      nodes?: Array<{
+        data?: { textParameters?: Record<string, unknown> };
+        id?: string;
+      }>;
+    };
+    return document.nodes?.find((node) => node.id === "text-primary")
+      ?.data?.textParameters?.custom_12345678;
+  }).toBe("温和");
 
+  const modelsReloaded = page.waitForResponse((response) =>
+    response.ok() && new URL(response.url()).pathname === "/api/models"
+  );
   await page.reload();
+  await modelsReloaded;
   await expect(page.getByTestId("canvas-world")).toHaveAttribute(
     "data-persistence-ready",
     "true",
   );
   const restoredCreator = page.getByTestId("text-creator");
+  await expect(restoredCreator).toBeVisible();
   await expect(restoredCreator).not.toContainText("暂无参数");
   await restoredCreator.getByRole("button", { exact: true, name: "温和" }).click();
   await expect(page.getByRole("dialog", { name: "模型参数" })

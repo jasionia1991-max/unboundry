@@ -3,8 +3,10 @@
   "version": "0.5.1",
   "private": true,
   "type": "module",
+  "packageManager": "npm@10.9.8",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.23.1 <23",
+    "npm": "10.9.8"
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -26,7 +28,7 @@
     "test:storyboard": "playwright test tests/m2-storyboard-node.spec.ts",
     "test:persistence": "playwright test tests/m3-persistence.spec.ts",
     "test:history": "playwright test tests/m3-history.spec.ts",
-    "test:restart": "node scripts/check-restart-persistence.mjs",
+    "test:restart": "node scripts/run-safe-tests.mjs run --spec tests/m3-persistence.spec.ts",
     "test:revision": "playwright test tests/m3-revision-conflict.spec.ts",
     "test:upload": "playwright test tests/m4-image-upload.spec.ts",
     "test:audio-upload": "playwright test tests/m4-audio-upload.spec.ts",
@@ -38,7 +40,10 @@
     "data:verify-backup": "node scripts/verify-backup.mjs",
     "test:backup": "playwright test tests/m10-backup.spec.ts",
     "test:fixture-prod": "UNBOUNDRY_TEST_PREVIEW=1 playwright test tests/fixture-production.spec.ts",
-    "verify": "npm run check:greenfield && npm run build && playwright test tests/m*.spec.ts && npm run test:restart && npm run test:fixture-prod"
+    "test:safe:preflight": "node scripts/run-safe-tests.mjs preflight",
+    "test:safe:list": "node scripts/run-safe-tests.mjs list",
+    "test:safe": "node scripts/run-safe-tests.mjs run",
+    "verify": "node scripts/run-safe-tests.mjs full"
   },
   "dependencies": {
     "@xyflow/react": "12.11.2",
@@ -49,7 +54,7 @@
   },
   "devDependencies": {
     "@playwright/test": "1.62.0",
-    "@types/node": "26.1.1",
+    "@types/node": "22.20.1",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.4",

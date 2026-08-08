@@ -1,10 +1,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import {
   createAliyunOssObjectKey,
   createPrivateAliyunOssReadUrl,
@@ -13,14 +11,13 @@ import {
 import { publishCloudObject } from "../server/cloudMediaStorage";
 import {
   activateStorageProfile,
-  activeStorageProfile,
   markStorageProfileVerified,
   saveStorageProfile,
   setStorageMediaRouting,
   storageMediaRoutingState,
 } from "../server/secureStorageProfiles";
 
-const port = 4196;
+const port = Number(process.env.UNBOUNDRY_TEST_AUX_PORT);
 const origin = `http://127.0.0.1:${port}`;
 const vite = join(process.cwd(), "node_modules/vite/bin/vite.js");
 const secretSentinel = "storage-secret-must-not-leave-server";
@@ -319,53 +316,34 @@ test("Aliyun OSS adapter keeps private random keys and signs offline", async () 
   ).not.toContain(secretSentinel);
 });
 
-test("activated private OSS image supports signed Range and complete download", async () => {
-  test.skip(
-    process.env.UNBOUNDRY_REAL_OSS_VERIFY !== "1",
-    "Only run after the administrator explicitly enables real OSS image routing",
+test("private OSS read signatures clamp lifetime and never expose the secret", async () => {
+  const credentials = {
+    accessKeyId: "test-signed-read-access-key",
+    accessKeySecret: "test-signed-read-secret-never-exposed",
+    bucket: "private-signed-read-bucket",
+    endpoint: "https://oss-cn-hangzhou.aliyuncs.com",
+    region: "oss-cn-hangzhou",
+  };
+  const lowTtl = await createPrivateAliyunOssReadUrl(
+    "objects/2026/08/image/offline-low.png",
+    credentials,
+    1,
   );
-  const database = new DatabaseSync(
-    join(process.cwd(), "data", "unboundry.sqlite"),
-    { readOnly: true },
+  const highTtl = await createPrivateAliyunOssReadUrl(
+    "objects/2026/08/image/offline-high.png",
+    credentials,
+    86_400,
   );
-  const media = database
-    .prepare(`
-      SELECT object_key, byte_size, checksum_sha256
-      FROM media_assets
-      WHERE kind = 'image'
-        AND storage_backend = 'oss'
-        AND storage_status = 'ready'
-      ORDER BY updated_at DESC
-      LIMIT 1
-    `)
-    .get() as
-    | {
-        byte_size: number;
-        checksum_sha256: string;
-        object_key: string;
-      }
-    | undefined;
-  expect(media).toBeTruthy();
-  const profile = await activeStorageProfile();
-  expect(profile).toBeTruthy();
-  const signedUrl = await createPrivateAliyunOssReadUrl(
-    media!.object_key,
-    profile!,
-    60,
-  );
-  const range = await fetch(signedUrl, {
-    headers: { Range: "bytes=0-0" },
-  });
-  expect(range.status).toBe(206);
-  expect((await range.arrayBuffer()).byteLength).toBe(1);
-
-  const complete = await fetch(signedUrl);
-  expect(complete.status).toBe(200);
-  const bytes = Buffer.from(await complete.arrayBuffer());
-  expect(bytes).toHaveLength(Number(media!.byte_size));
-  expect(createHash("sha256").update(bytes).digest("hex")).toBe(
-    media!.checksum_sha256,
-  );
+  for (const signed of [lowTtl, highTtl]) {
+    const url = new URL(signed);
+    expect(url.protocol).toBe("https:");
+    expect(url.hostname).toContain("private-signed-read-bucket");
+    expect(signed).toContain("x-oss-signature-version=OSS4-HMAC-SHA256");
+    expect(signed).not.toContain(credentials.accessKeySecret);
+  }
+  await expect(
+    createPrivateAliyunOssReadUrl("../private.png", credentials, 60),
+  ).rejects.toThrow("Invalid OSS object key");
 });
 
 test("administrator storage center encrypts profiles without cloud requests", async ({

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 function denseDocument(nodeCount: number) {
   const nodes = Array.from({ length: nodeCount }, (_, index) => ({

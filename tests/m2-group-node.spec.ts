@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { composeTextControl } from "./helpers/ime";
 
 test("Group keeps children stable through create, move, resize, delete and ungroup", async ({
@@ -135,14 +135,24 @@ test("Dense template Group keeps the frozen geometry and chrome", async ({
 
   const group = page.locator(".react-flow__node-group");
   const toolbar = page.getByTestId("group-node-toolbar");
-  const viewport = Number(
-    await page.locator(".react-flow__viewport").getAttribute("style")
-      .then((style) => style?.match(/scale\(([^)]+)\)/)?.[1]),
-  );
-
-  const groupBox = (await group.boundingBox())!;
-  expect(groupBox.height).toBeCloseTo(2111 * viewport, 1);
-  expect(groupBox.width).toBeCloseTo(3443 * viewport, 1);
+  await expect.poll(async () => page.evaluate(() => {
+    const groupElement = document.querySelector<HTMLElement>(
+      ".react-flow__node-group",
+    );
+    const viewportElement = document.querySelector<HTMLElement>(
+      ".react-flow__viewport",
+    );
+    const viewport = Number(
+      viewportElement?.style.transform.match(/scale\(([^)]+)\)/)?.[1],
+    );
+    const groupBox = groupElement?.getBoundingClientRect();
+    return Boolean(
+      groupBox &&
+      viewport > 0 &&
+      Math.abs(groupBox.height / viewport - 2111) < 0.1 &&
+      Math.abs(groupBox.width / viewport - 3443) < 0.1,
+    );
+  })).toBe(true);
   expect(await toolbar.boundingBox()).toMatchObject({ height: 48, width: 390 });
   await expect(group.locator(".react-flow__resize-control")).toHaveCount(8);
   await expect(page.getByRole("button", { name: "更新模板" })).toBeDisabled();

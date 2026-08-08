@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 function wav(seconds = 2, sampleRate = 8000) {
   const samples = seconds * sampleRate;

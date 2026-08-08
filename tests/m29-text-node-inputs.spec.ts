@@ -2,7 +2,7 @@ import {
   expect,
   test,
   type APIRequestContext,
-} from "@playwright/test";
+} from "./safe-test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {

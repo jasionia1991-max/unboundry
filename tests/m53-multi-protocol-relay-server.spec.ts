@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Duplex, Readable } from "node:stream";
 import { DatabaseSync } from "node:sqlite";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { authGate } from "../server/auth";
 import { appDataDirectory } from "../server/database";
 import {

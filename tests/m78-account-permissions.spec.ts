@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import {
   ADMIN_ONLY_PERMISSIONS,
   ALL_PERMISSIONS,
@@ -18,7 +18,7 @@ import {
 } from "../server/permissions";
 import type { RequestIdentity } from "../server/auth";
 
-const port = 4198;
+const port = Number(process.env.UNBOUNDRY_TEST_AUX_PORT);
 const origin = `http://127.0.0.1:${port}`;
 const vite = join(process.cwd(), "node_modules/vite/bin/vite.js");
 
@@ -612,8 +612,35 @@ test("ordinary accounts see only granted entries and direct admin routes redirec
         password: "ordinary-pass-123",
       },
     });
+    await page.addInitScript(() => {
+      const key = "m78-unauthorized-admin-rendered";
+      if (sessionStorage.getItem(key) === null) {
+        sessionStorage.setItem(key, "false");
+      }
+      new MutationObserver(() => {
+        if (document.querySelector('[data-testid="admin-models-page"]')) {
+          sessionStorage.setItem(key, "true");
+        }
+      }).observe(document, { childList: true, subtree: true });
+    });
     await page.goto("/admin/models");
-    await page.waitForURL("/");
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByTestId("admin-models-page")).toHaveCount(0);
+    expect(
+      await page.evaluate(() =>
+        sessionStorage.getItem("m78-unauthorized-admin-rendered")
+      ),
+    ).toBe("false");
+    const redirectedUrl = page.url();
+    expect(
+      await page.evaluate(() =>
+        new Promise<string>((resolve) => {
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => resolve(window.location.href))
+          );
+        })
+      ),
+    ).toBe(redirectedUrl);
     await page.goto("/canvas");
     await page.getByTestId("user-avatar").click();
     const popover = page.getByTestId("account-popover");
@@ -647,6 +674,7 @@ test("ordinary accounts see only granted entries and direct admin routes redirec
       },
     });
     await page.goto("/admin/models");
+    await expect(page).toHaveURL(/\/admin\/models$/);
     await expect(page.getByTestId("admin-models-page")).toBeVisible();
     await page.goto("/canvas");
     await page.getByTestId("user-avatar").click();

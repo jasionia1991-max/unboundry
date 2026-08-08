@@ -4,7 +4,7 @@ import {
   type APIRequestContext,
   type Locator,
   type Page,
-} from "@playwright/test";
+} from "./safe-test";
 import {
   defaultParameterSchema,
   type ModelParameterSchema,

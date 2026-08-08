@@ -1,4 +1,4 @@
-import { expect, test, type Download } from "@playwright/test";
+import { expect, test, type Download } from "./safe-test";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 

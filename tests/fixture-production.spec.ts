@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 test("production build does not expose fixture data", async ({ page }) => {
   await page.goto("/__fixture/shell.empty.primary");

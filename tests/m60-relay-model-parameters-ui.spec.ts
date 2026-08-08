@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./safe-test";
 import {
   knownModelParameterSchema,
   type ModelCapability,
@@ -58,7 +58,7 @@ test("relay Text node exposes bounded defaults and keeps them in zero-Provider p
   baseURL,
   page,
 }) => {
-  const localOrigin = new URL(baseURL ?? "http://127.0.0.1:4173").origin;
+  const localOrigin = new URL(baseURL!).origin;
   const externalRequests: string[] = [];
   const generationRequests: string[] = [];
   let preflightBody: Record<string, unknown> | undefined;
@@ -187,7 +187,7 @@ test("relay doubao TTS node shows only documented controls and reveals emotion s
   baseURL,
   page,
 }) => {
-  const localOrigin = new URL(baseURL ?? "http://127.0.0.1:4173").origin;
+  const localOrigin = new URL(baseURL!).origin;
   const externalRequests: string[] = [];
   const generationRequests: string[] = [];
   let preflightBody: Record<string, unknown> | undefined;
@@ -324,7 +324,7 @@ test("admin model center presents the bounded relay Text and doubao TTS schemas"
   baseURL,
   page,
 }) => {
-  const localOrigin = new URL(baseURL ?? "http://127.0.0.1:4173").origin;
+  const localOrigin = new URL(baseURL!).origin;
   const externalRequests: string[] = [];
   const generationRequests: string[] = [];
   page.on("request", (request) => {

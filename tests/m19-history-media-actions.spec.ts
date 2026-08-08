@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 test("history media opens previews and can add a real asset back to the canvas", async ({
   page,

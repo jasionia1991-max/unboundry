@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { createGenerationTaskStore } from "../server/generationTaskStore";
 
 const canvasId = "persistence.final-clean-canvas";

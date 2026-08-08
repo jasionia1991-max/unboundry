@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 test("homepage shows the brand icon and 无央 wordmark at the agreed sizes", async ({
   page,

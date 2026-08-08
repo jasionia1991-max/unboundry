@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 const checkedAt = "2026-08-03T14:30:00.000Z";
 
@@ -37,7 +37,7 @@ test("多协议中转站在Provider页面支持明确协议、批量导入和可
   baseURL,
   page,
 }) => {
-  const localOrigin = new URL(baseURL ?? "http://127.0.0.1:4173").origin;
+  const localOrigin = new URL(baseURL!).origin;
   const externalRequests: string[] = [];
   const generationRequests: string[] = [];
   let importBody: Record<string, unknown> | undefined;
@@ -287,7 +287,7 @@ test("待识别目录模型可单独查看并在手动定类后进入对应分�
   baseURL,
   page,
 }) => {
-  const localOrigin = new URL(baseURL ?? "http://127.0.0.1:4173").origin;
+  const localOrigin = new URL(baseURL!).origin;
   const externalRequests: string[] = [];
   const generationRequests: string[] = [];
   page.on("request", (request) => {
@@ -393,7 +393,7 @@ test("中转目录明确显示组合来源、类型统计、兼容回退和格�
   baseURL,
   page,
 }) => {
-  const localOrigin = new URL(baseURL ?? "http://127.0.0.1:4173").origin;
+  const localOrigin = new URL(baseURL!).origin;
   const externalRequests: string[] = [];
   const generationRequests: string[] = [];
   page.on("request", (request) => {
@@ -683,7 +683,7 @@ test("模型中心对中转模型必须明确协议，并且只有可删除模�
   baseURL,
   page,
 }) => {
-  const localOrigin = new URL(baseURL ?? "http://127.0.0.1:4173").origin;
+  const localOrigin = new URL(baseURL!).origin;
   const externalRequests: string[] = [];
   const generationRequests: string[] = [];
   let createBody: Record<string, unknown> | undefined;

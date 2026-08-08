@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 test("node model controls distinguish a catalog failure without provider traffic", async ({
   page,

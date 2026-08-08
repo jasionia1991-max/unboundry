@@ -3,7 +3,7 @@ import {
   test,
   type APIRequestContext,
   type Page,
-} from "@playwright/test";
+} from "./safe-test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
@@ -15,12 +15,35 @@ import {
   knownModelParameterSchema,
   type ModelParameterSchema,
 } from "../types/modelParameters";
+import { openAppDatabase } from "../server/database";
 
 const seedanceSchema = knownModelParameterSchema({
   capability: "video",
   providerDriver: "volcengine-ark",
   providerModelId: "doubao-seedance-2-0-mini-260615",
 });
+
+function serverFixtureSchema(): ModelParameterSchema {
+  const rules = seedanceSchema.referenceMediaRules!;
+  const audio = { ...rules.audio! };
+  const video = { ...rules.video! };
+  // The checked-in audio fixture is deliberately long. This local-only model
+  // exercises authoritative metadata hydration, not a paid Seedance limit.
+  delete audio.maxDurationSeconds;
+  delete audio.maxTotalDurationSeconds;
+  delete audio.minDurationSeconds;
+  delete video.minPixelCount;
+  return {
+    ...seedanceSchema,
+    referenceMediaRules: {
+      ...rules,
+      audio,
+      video: { ...video, minDurationSeconds: 0 },
+    },
+  };
+}
+
+const serverSchema = serverFixtureSchema();
 
 type GraphNode = {
   data: Record<string, unknown>;
@@ -46,7 +69,18 @@ function readyMediaNode(
       assetId: `${id}.${kind === "image" ? "png" : kind === "video" ? "mp4" : "mp3"}`,
       [`${kind}Src`]: `https://signed.example.test/${id}?signature=short-lived`,
       label: kind,
+      mediaByteSize: 1_024,
+      mediaContentType: kind === "image"
+        ? "image/png"
+        : kind === "video"
+          ? "video/mp4"
+          : "audio/mpeg",
+      mediaDurationSeconds: kind === "image" ? undefined : kind === "video" ? 5 : 4,
+      mediaMetadataSource: "server",
+      mediaMetadataStatus: "ready",
+      mediaStorageBackend: kind === "video" ? "oss" : "local",
       title: `${kind}-${index}`,
+      ...(kind === "video" ? { videoHeight: 720, videoWidth: 1_280 } : {}),
       ...data,
     },
     id,
@@ -339,7 +373,7 @@ async function ensureServerModel(request: APIRequestContext) {
       data: {
         isDefault: false,
         maxCostMicrounits: 0,
-        parameterSchema: seedanceSchema,
+        parameterSchema: serverSchema,
         status: "published",
       },
     });
@@ -352,7 +386,7 @@ async function ensureServerModel(request: APIRequestContext) {
       displayName: serverModelName,
       isDefault: false,
       maxCostMicrounits: 0,
-      parameterSchema: seedanceSchema,
+      parameterSchema: serverSchema,
       providerModelId: "fixture/p3-video-inputs",
       providerProfileId: "provider-unconfigured",
       sortOrder: 9_300,
@@ -478,10 +512,12 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
     const preflight = await preflightResponse.json() as {
       canEnqueue: boolean;
       canSubmit: boolean;
-      costCurrency: string;
-      estimatedCostMicrounits: number;
       finalPrompt: string;
-      inputs: Array<{ edgeId: string }>;
+      inputs: Array<{
+        compatibility: "blocked" | "compatible";
+        edgeId: string;
+        state: string;
+      }>;
       problems: Array<{ code: string }>;
       provider: { adapterSupported: boolean; configured: boolean };
       providerBalance: { checked: boolean; status: string };
@@ -491,8 +527,8 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
     };
     expect(preflight.canSubmit).toBeTruthy();
     expect(preflight.canEnqueue).toBeFalsy();
-    expect(preflight.costCurrency).toBe("USD");
-    expect(preflight.estimatedCostMicrounits).toBe(0);
+    expect(preflight).not.toHaveProperty("costCurrency");
+    expect(preflight).not.toHaveProperty("estimatedCostMicrounits");
     expect(preflight.problems).toEqual([]);
     expect(preflight.provider).toEqual({
       adapterSupported: false,
@@ -513,6 +549,9 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
       "server-edge-video",
       "server-edge-audio",
     ]);
+    expect(preflight.inputs.every((input) =>
+      input.state === "ready" && input.compatibility === "compatible"))
+      .toBeTruthy();
     expect(preflight.snapshot).toEqual([
       { kind: "text", order: 1, role: "instruction", sourceNodeId: "server-text" },
       { assetId: serverImageAssetId, kind: "image", order: 2, role: "subject", sourceNodeId: "server-image" },
@@ -532,6 +571,148 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
       paidProviderRequests: number;
     };
     expect(after.paidProviderRequests).toBe(before.paidProviderRequests);
+  });
+
+  test("server metadata hydration rejects forged ready fields for missing, foreign-owned and not-ready assets", async ({
+    request,
+  }) => {
+    const canvasId = `${serverCanvasId}-metadata-negative`;
+    const foreignOwnerId = "p3-foreign-media-owner";
+    const database = openAppDatabase();
+    const original = database.prepare(`
+      SELECT owner_id, storage_status
+      FROM media_assets
+      WHERE kind = 'image' AND id = ?
+    `).get(serverImageAssetId) as {
+      owner_id: string;
+      storage_status: "failed" | "pending" | "ready";
+    } | undefined;
+    if (!original) {
+      database.close();
+      throw new Error("P3 metadata negative test image was not registered");
+    }
+
+    const expectBlocked = async (assetId: string) => {
+      await request.delete(`/api/canvas/${canvasId}`);
+      const saved = await request.put(`/api/canvas/${canvasId}`, {
+        data: {
+          edges: [{
+            data: { inputOrder: 1, inputRole: "subject" },
+            id: "metadata-negative-edge",
+            source: "metadata-negative-image",
+            target: "metadata-negative-video",
+          }],
+          nodes: [
+            {
+              data: {
+                assetId,
+                imageSrc: `/api/assets/${assetId}`,
+                inputState: "ready",
+                mediaByteSize: 1,
+                mediaContentType: "image/png",
+                mediaMetadataSource: "server",
+                mediaMetadataStatus: "ready",
+                mediaStorageBackend: "local",
+                title: "伪造可信状态的图片",
+              },
+              id: "metadata-negative-image",
+              type: "image",
+            },
+            {
+              data: {
+                title: "元数据负控目标",
+                videoPrompt: "服务端必须重新核对素材归属和状态",
+              },
+              id: "metadata-negative-video",
+              type: "video",
+            },
+          ],
+          revision: 0,
+          viewport: { x: 0, y: 0, zoom: 1 },
+        },
+      });
+      expect(saved.ok()).toBeTruthy();
+      const revision = (await saved.json() as { revision: number }).revision;
+      const response = await request.post("/api/generation-tasks/preflight", {
+        data: {
+          canvasId,
+          canvasRevision: revision,
+          idempotencyKey: `p3-metadata-negative-${assetId}-${Date.now()}`,
+          inputSchemaVersion: 1,
+          inputs: [],
+          kind: "video",
+          model: serverModelId,
+          nodeId: "metadata-negative-video",
+          ownPrompt: "服务端必须重新核对素材归属和状态",
+          parameters: { inputMode: "multimodal" },
+          prompt: "客户端伪造提示词",
+        },
+      });
+      expect(response.ok()).toBeTruthy();
+      const preflight = await response.json() as {
+        canSubmit: boolean;
+        inputs: Array<{
+          compatibility: string;
+          reason?: string;
+          sourceNodeId: string;
+          state: string;
+        }>;
+        problems: Array<{ code: string; message: string }>;
+      };
+      expect(preflight.canSubmit).toBeFalsy();
+      expect(preflight.inputs.find(({ sourceNodeId }) =>
+        sourceNodeId === "metadata-negative-image"))
+        .toMatchObject({
+          compatibility: "blocked",
+          reason: "素材不存在、尚未保存或不属于当前账号",
+          state: "invalid",
+        });
+      expect(preflight.problems).toContainEqual(expect.objectContaining({
+        code: "INVALID",
+        message: "素材不存在、尚未保存或不属于当前账号",
+      }));
+    };
+
+    try {
+      const timestamp = new Date().toISOString();
+      database.prepare(`
+        INSERT OR IGNORE INTO users (
+          id, login_name, display_name, password_hash, role, status,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 'user', 'active', ?, ?)
+      `).run(
+        foreignOwnerId,
+        foreignOwnerId,
+        "P3 Foreign Media Owner",
+        "test-only-not-a-login",
+        timestamp,
+        timestamp,
+      );
+      await expectBlocked("p3-missing-image");
+
+      expect(database.prepare(`
+        UPDATE media_assets SET owner_id = ?
+        WHERE kind = 'image' AND id = ?
+      `).run(foreignOwnerId, serverImageAssetId).changes).toBe(1);
+      await expectBlocked(serverImageAssetId);
+
+      expect(database.prepare(`
+        UPDATE media_assets SET owner_id = ?, storage_status = 'pending'
+        WHERE kind = 'image' AND id = ?
+      `).run(original.owner_id, serverImageAssetId).changes).toBe(1);
+      await expectBlocked(serverImageAssetId);
+    } finally {
+      try {
+        database.prepare(`
+          UPDATE media_assets SET owner_id = ?, storage_status = ?
+          WHERE kind = 'image' AND id = ?
+        `).run(original.owner_id, original.storage_status, serverImageAssetId);
+        database.prepare("DELETE FROM users WHERE id = ?").run(foreignOwnerId);
+      } finally {
+        database.close();
+        await request.delete(`/api/canvas/${canvasId}`);
+      }
+    }
   });
 
   test("a newly added Video media edge upgrades mode in the same undo step while hydration and deletion keep the saved mode", async ({

@@ -2261,6 +2261,9 @@ export function CanvasSurface({
   }, [cloneEdges, cloneNodes]);
   const canvasSnapshotRef = useRef(canvasSnapshot);
   canvasSnapshotRef.current = canvasSnapshot;
+  const templateFitBlocksPersistence = useCallback(() =>
+    templateViewportAnimating.current &&
+    performance.now() < templateFitDeadline.current, []);
   const cancelTemplateFit = useCallback(() => {
     templateViewportAnimating.current = false;
     templateFitDeadline.current = 0;
@@ -3249,10 +3252,12 @@ export function CanvasSurface({
     ) {
       return;
     }
-    if (templateViewportAnimating.current) {
+    if (templateFitBlocksPersistence()) {
       // 镜头动画期间不触发保存调度，动画结束提交最终镜头时只保存一次；
       // 若 rAF 被节流/暂停导致动画迟迟不结束，超过硬性期限后放行保存，避免“保存中”卡死。
-      if (performance.now() < templateFitDeadline.current) return;
+      return;
+    }
+    if (templateViewportAnimating.current) {
       templateViewportAnimating.current = false;
       templateFitHardStop.current = undefined;
     }
@@ -3287,6 +3292,10 @@ export function CanvasSurface({
     persistenceDirty.current = true;
 
     const drainPersistenceQueue = async () => {
+      if (templateFitBlocksPersistence()) {
+        persistenceDirty.current = true;
+        return;
+      }
       if (persistenceSaving.current || persistenceConflict.current) return;
       persistenceSaving.current = true;
       let failed = false;
@@ -3294,6 +3303,10 @@ export function CanvasSurface({
       let failureNotified = false;
       try {
         while (persistenceQueued.current && !persistenceConflict.current) {
+          if (templateFitBlocksPersistence()) {
+            persistenceDirty.current = true;
+            break;
+          }
           const document = persistenceQueued.current;
           persistenceQueued.current = undefined;
           const saveSequence = ++persistenceSaveSequence.current;
@@ -3431,7 +3444,16 @@ export function CanvasSurface({
       }
     };
 
+    // 硬性截止兜底必须始终指向当前保存器；首次定时保存若被动画闸门挡住，
+    // 1600ms 后仍能把最终文档写入，而不是调用初始化时的空函数。
+    drainPersistenceQueueRef.current = drainPersistenceQueue;
     persistenceSaveTimer.current = window.setTimeout(() => {
+      // 节点/边变化会在动画真正启动前预约此 timer；执行时必须再次检查，
+      // 否则会在 800ms 镜头动画中连续保存每一个中间 viewport。
+      if (templateFitBlocksPersistence()) {
+        persistenceDirty.current = true;
+        return;
+      }
       persistenceQueued.current = canvasSnapshot();
       void drainPersistenceQueue();
     }, PERSIST_DEBOUNCE_MS);
@@ -3447,6 +3469,7 @@ export function CanvasSurface({
     persistenceId,
     persistenceReady,
     persistenceRecheckTick,
+    templateFitBlocksPersistence,
     viewport,
   ]);
 
