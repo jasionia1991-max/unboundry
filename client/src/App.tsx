@@ -7069,6 +7069,7 @@ function MyConnectionsPage({ currentUser }: { currentUser: AuthUser }) {
           </div>
         )}
       </section>
+      <AccountConsumptionSection />
     </main>
   );
 }
@@ -7088,7 +7089,7 @@ type AccountConsumptionUsage = {
   monthlyUsdMicrounits: number;
 };
 
-function AccountSafetyPage({ currentUser }: { currentUser: AuthUser }) {
+function AccountConsumptionSection() {
   const [limits, setLimits] = useState<AccountConsumptionLimits>();
   const [usage, setUsage] = useState<AccountConsumptionUsage>();
   const [draft, setDraft] = useState({
@@ -7175,177 +7176,147 @@ function AccountSafetyPage({ currentUser }: { currentUser: AuthUser }) {
     (usdMonthlyLimit > 0 && usdMonthlyUsed >= usdMonthlyLimit);
 
   return (
-    <main
-      className="admin-page account-safety-page"
-      data-testid="account-safety-page"
+    <section
+      className="admin-card consumption-limits-card"
+      data-testid="consumption-limits-section"
     >
-      <header>
+      <div className="api-contract-heading">
         <div>
-          <span aria-hidden="true" className="replica-mark" />
-          <div>
-            <strong>我的消耗上限</strong>
-            <small>{currentUser.displayName}</small>
-          </div>
+          <span>我的消耗上限</span>
+          <h2>今日 / 本月已用与独立限额</h2>
         </div>
-        <button
-          onClick={() => { window.location.href = "/canvas"; }}
-          type="button"
-        >
-          返回画布
-        </button>
-      </header>
-      <section className="admin-card connections-intro">
-        <h1>我的生成消耗上限</h1>
-        <p>
-          只限制你自己的账号。留 0 表示跟随管理员设置的全局上限；设了具体金额后，
-          达到上限会阻止新的生成并在节点上提示“费用额度已用完”。
-        </p>
-      </section>
+        {reached ? (
+          <b className="safety-limit-reached">已到上限</b>
+        ) : (
+          <b>0 = 跟随全局</b>
+        )}
+      </div>
+      <p className="consumption-limits-help">
+        只限制你自己的账号。留 0 表示跟随管理员设置的全局上限；达到上限会阻止新的生成并在节点上提示“费用额度已用完”。
+      </p>
       {notice && (
         <p className="storage-admin-notice provider-page-message">{notice}</p>
       )}
       {error && <p className="auth-error" role="alert">{error}</p>}
-      <section className="admin-card">
-        <div className="safety-section-heading">
-          <div>
-            <span>我的已用额度</span>
-            <h2>今日 / 本月</h2>
-          </div>
-          {reached ? (
-            <b className="safety-limit-reached">已到上限</b>
-          ) : (
-            <b>未超限</b>
-          )}
-        </div>
+      <div className="safety-field-grid">
+        <label>
+          <span>今日已用（¥）</span>
+          <input
+            data-testid="account-safety-usage-daily-cny"
+            disabled
+            readOnly
+            type="number"
+            value={Number((cnyDailyUsed / 1_000_000).toFixed(2))}
+          />
+        </label>
+        <label>
+          <span>本月已用（¥）</span>
+          <input
+            data-testid="account-safety-usage-monthly-cny"
+            disabled
+            readOnly
+            type="number"
+            value={Number((cnyMonthlyUsed / 1_000_000).toFixed(2))}
+          />
+        </label>
+        <label>
+          <span>今日已用（$）</span>
+          <input
+            data-testid="account-safety-usage-daily-usd"
+            disabled
+            readOnly
+            type="number"
+            value={Number((usdDailyUsed / 1_000_000).toFixed(2))}
+          />
+        </label>
+        <label>
+          <span>本月已用（$）</span>
+          <input
+            data-testid="account-safety-usage-monthly-usd"
+            disabled
+            readOnly
+            type="number"
+            value={Number((usdMonthlyUsed / 1_000_000).toFixed(2))}
+          />
+        </label>
+      </div>
+      <form className="generation-safety-form" onSubmit={submit}>
         <div className="safety-field-grid">
           <label>
-            <span>今日已用（¥）</span>
+            <span>每日上限（¥）</span>
             <input
-              data-testid="account-safety-usage-daily-cny"
-              disabled
-              readOnly
+              data-testid="account-safety-limit-daily-cny"
+              min={0}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  dailyCny: event.target.value,
+                }))
+              }
+              step="0.01"
               type="number"
-              value={Number((cnyDailyUsed / 1_000_000).toFixed(2))}
+              value={draft.dailyCny}
             />
           </label>
           <label>
-            <span>本月已用（¥）</span>
+            <span>每月上限（¥）</span>
             <input
-              data-testid="account-safety-usage-monthly-cny"
-              disabled
-              readOnly
+              data-testid="account-safety-limit-monthly-cny"
+              min={0}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  monthlyCny: event.target.value,
+                }))
+              }
+              step="0.01"
               type="number"
-              value={Number((cnyMonthlyUsed / 1_000_000).toFixed(2))}
+              value={draft.monthlyCny}
             />
           </label>
           <label>
-            <span>今日已用（$）</span>
+            <span>每日上限（$）</span>
             <input
-              data-testid="account-safety-usage-daily-usd"
-              disabled
-              readOnly
+              data-testid="account-safety-limit-daily-usd"
+              min={0}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  dailyUsd: event.target.value,
+                }))
+              }
+              step="0.01"
               type="number"
-              value={Number((usdDailyUsed / 1_000_000).toFixed(2))}
+              value={draft.dailyUsd}
             />
           </label>
           <label>
-            <span>本月已用（$）</span>
+            <span>每月上限（$）</span>
             <input
-              data-testid="account-safety-usage-monthly-usd"
-              disabled
-              readOnly
+              data-testid="account-safety-limit-monthly-usd"
+              min={0}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  monthlyUsd: event.target.value,
+                }))
+              }
+              step="0.01"
               type="number"
-              value={Number((usdMonthlyUsed / 1_000_000).toFixed(2))}
+              value={draft.monthlyUsd}
             />
           </label>
         </div>
-      </section>
-      <form className="generation-safety-form" onSubmit={submit}>
-        <section className="admin-card">
-          <div className="safety-section-heading">
-            <div>
-              <span>自己的账号独立设置</span>
-              <h2>我的消耗上限</h2>
-            </div>
-            <b>0 = 跟随全局</b>
-          </div>
-          <div className="safety-field-grid">
-            <label>
-              <span>每日上限（¥）</span>
-              <input
-                data-testid="account-safety-limit-daily-cny"
-                min={0}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    dailyCny: event.target.value,
-                  }))
-                }
-                step="0.01"
-                type="number"
-                value={draft.dailyCny}
-              />
-            </label>
-            <label>
-              <span>每月上限（¥）</span>
-              <input
-                data-testid="account-safety-limit-monthly-cny"
-                min={0}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    monthlyCny: event.target.value,
-                  }))
-                }
-                step="0.01"
-                type="number"
-                value={draft.monthlyCny}
-              />
-            </label>
-            <label>
-              <span>每日上限（$）</span>
-              <input
-                data-testid="account-safety-limit-daily-usd"
-                min={0}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    dailyUsd: event.target.value,
-                  }))
-                }
-                step="0.01"
-                type="number"
-                value={draft.dailyUsd}
-              />
-            </label>
-            <label>
-              <span>每月上限（$）</span>
-              <input
-                data-testid="account-safety-limit-monthly-usd"
-                min={0}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    monthlyUsd: event.target.value,
-                  }))
-                }
-                step="0.01"
-                type="number"
-                value={draft.monthlyUsd}
-              />
-            </label>
-          </div>
-          <button
-            className="generation-safety-save"
-            data-testid="account-safety-save"
-            disabled={saving}
-            type="submit"
-          >
-            {saving ? "保存中…" : "保存我的上限"}
-          </button>
-        </section>
+        <button
+          className="generation-safety-save"
+          data-testid="account-safety-save"
+          disabled={saving}
+          type="submit"
+        >
+          {saving ? "保存中…" : "保存我的上限"}
+        </button>
       </form>
-    </main>
+    </section>
   );
 }
 
@@ -7543,9 +7514,6 @@ function AuthenticatedApplication({
     }
     return <AdminTemplatesPage currentUser={status.user} />;
   }
-  if (window.location.pathname === "/account-safety") {
-    return <AccountSafetyPage currentUser={status.user} />;
-  }
   if (window.location.pathname === "/connections") {
     return <MyConnectionsPage currentUser={status.user} />;
   }
@@ -7576,12 +7544,6 @@ function AuthenticatedApplication({
             type="button"
           >
             工作空间
-          </button>
-          <button
-            onClick={() => { window.location.href = "/account-safety"; }}
-            type="button"
-          >
-            我的消耗上限
           </button>
           <button
             onClick={() => { window.location.href = "/connections"; }}

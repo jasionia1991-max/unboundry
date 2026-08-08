@@ -10596,24 +10596,21 @@ sup {
   max-width: 1100px;
 }
 
-.account-safety-page {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+.connections-page .consumption-limits-card {
+  max-width: 960px;
+  margin: 20px auto 0;
 }
 
-.account-safety-page > header {
-  max-width: none;
-  margin: 0;
+.consumption-limits-card .consumption-limits-help {
+  margin: 0 0 18px;
+  color: #b9b9b9;
+  font-size: var(--tap-font-secondary);
+  line-height: 20px;
 }
 
-.account-safety-page > form {
+.consumption-limits-card .generation-safety-form {
   width: 100%;
-  margin: 0;
-}
-
-.account-safety-page > .admin-card {
-  max-width: 1100px;
+  margin: 22px 0 0;
 }
 
 .safety-limit-reached {

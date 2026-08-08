@@ -288,7 +288,7 @@ test("login lands on the workspace", async ({ page, request }) => {
   await expect(page.getByTestId("project-card-default")).toBeVisible();
 });
 
-test("account safety page reads and saves the account's own limits", async ({
+test("my connections page hosts the account's own consumption limits", async ({
   page,
   request,
 }) => {
@@ -304,8 +304,8 @@ test("account safety page reads and saves the account's own limits", async ({
     },
   ]);
 
-  await page.goto(`${origin}/account-safety`);
-  await expect(page.getByTestId("account-safety-page")).toBeVisible();
+  await page.goto(`${origin}/connections`);
+  await expect(page.getByTestId("consumption-limits-section")).toBeVisible();
   await page.getByTestId("account-safety-limit-daily-cny").fill("8");
   await page.getByTestId("account-safety-save").click();
   await expect(
