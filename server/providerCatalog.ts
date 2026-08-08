@@ -4,6 +4,11 @@ import type { DatabaseSync } from "node:sqlite";
 import { composeExecutionProfile } from "./accountCredentials";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
+import {
+  decodedRequestPath,
+  HttpRequestError,
+  readJsonBody,
+} from "./httpRequest";
 import { hasPermission } from "./permissions";
 import {
   acquireProviderConfigurationLease,
@@ -135,18 +140,6 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   response.end(JSON.stringify(body));
-}
-
-async function readBody<T>(request: IncomingMessage) {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > 64 * 1_024) throw new Error("Payload too large");
-    chunks.push(bytes);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
 }
 
 function snapshotRow(store: DatabaseSync, profileId: string) {
@@ -1589,7 +1582,7 @@ export async function adminProviderCatalogApi(
     json(response, 403, { error: "Only administrators can manage Provider catalogs" });
     return;
   }
-  const path = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+  const path = decodedRequestPath(request).replace(
     /^\/+/, "",
   );
   const match = path.match(
@@ -1673,14 +1666,15 @@ export async function adminProviderCatalogApi(
     try {
       const saved = await saveArkControlPlaneCredentials(
         profileId,
-        await readBody<Record<string, unknown>>(request),
+        await readJsonBody<Record<string, unknown>>(request, 64 * 1_024),
       );
       audit(db(), identity.userId, "provider_catalog.credentials_update", profileId);
       json(response, 200, {
         credentials: saved,
         paidGenerationRequests: 0,
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       json(response, 400, { error: "只读AK/SK配置无效" });
     }
     return;
@@ -1719,7 +1713,10 @@ export async function adminProviderCatalogApi(
   }
   if (request.method === "POST" && action === "import") {
     try {
-      const body = await readBody<{ models?: unknown }>(request);
+      const body = await readJsonBody<{ models?: unknown }>(
+        request,
+        64 * 1_024,
+      );
       const result = await importProviderCatalogDrafts(
         profileId,
         body.models,
@@ -1733,7 +1730,8 @@ export async function adminProviderCatalogApi(
           : `已添加 ${result.imported} 个模型到模型中心，当前保持停用；不会自动发布或发起生成。`,
         paidGenerationRequests: 0,
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       json(response, 400, {
         error: "添加模型失败，请检查选择和节点类型",
       });

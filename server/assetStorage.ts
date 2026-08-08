@@ -13,6 +13,11 @@ import {
 import { publishCloudObject } from "./cloudMediaStorage";
 import { requestIdentity } from "./auth";
 import {
+  decodedRequestHeader,
+  decodedRequestPath,
+  HttpRequestError,
+} from "./httpRequest";
+import {
   mayReadMedia,
   mayWriteMedia,
   readableMedia,
@@ -300,7 +305,7 @@ export async function assetStorage(
   request: IncomingMessage,
   response: ServerResponse,
 ) {
-  const id = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+  const id = decodedRequestPath(request).replace(
     /^\/+/,
     "",
   );
@@ -390,6 +395,10 @@ export async function assetStorage(
   const temporary = `${path.file}.${randomUUID()}.uploading`;
   let cloudAttempted = false;
   try {
+    const fileName = decodedRequestHeader(
+      request,
+      String(request.headers["x-file-name"] ?? "Image.png"),
+    ).slice(0, 240);
     if (!mayWriteMedia(request, "image", id)) {
       throw new Error("Asset ID is unavailable");
     }
@@ -447,8 +456,6 @@ export async function assetStorage(
         storageName: `${id}.png`,
       });
     }
-    const rawName = String(request.headers["x-file-name"] ?? "Image.png");
-    const fileName = decodeURIComponent(rawName).slice(0, 240);
     json(response, 201, {
       assetId: id,
       byteSize: bytes.length,
@@ -460,6 +467,7 @@ export async function assetStorage(
       width,
     });
   } catch (error) {
+    if (error instanceof HttpRequestError) throw error;
     await rm(temporary, { force: true });
     json(response, 400, {
       error: cloudAttempted

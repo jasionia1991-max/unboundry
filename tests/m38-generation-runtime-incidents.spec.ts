@@ -16,6 +16,7 @@ import {
   executeTextTaskWithDependencies,
   generationTaskCancellationMode,
   retrySnapshotCompatibilityProblem,
+  settleDetachedGenerationExecution,
 } from "../server/generationTasks";
 import { evaluateModelRuntimeAvailability } from "../server/modelAvailability";
 import type { ProviderProfile } from "../server/providerProfiles";
@@ -85,6 +86,32 @@ async function incidentRequest(path: string, init: RequestInit = {}) {
     },
   });
 }
+
+test("detached generation execution contains execution and failure-write rejections", async () => {
+  const executionFailure = new Error("controlled execution failure");
+  let persistedFailure: unknown;
+  await settleDetachedGenerationExecution(
+    async () => {
+      throw executionFailure;
+    },
+    async (error) => {
+      persistedFailure = error;
+    },
+  );
+  expect(persistedFailure).toBe(executionFailure);
+
+  let persistenceAttempts = 0;
+  await settleDetachedGenerationExecution(
+    () => {
+      throw new Error("controlled synchronous failure");
+    },
+    async () => {
+      persistenceAttempts += 1;
+      throw new Error("controlled persistence failure");
+    },
+  );
+  expect(persistenceAttempts).toBe(1);
+});
 
 test("Ark Text distinguishes authentication and permission failures without leaking Provider details", async () => {
   const cases = [

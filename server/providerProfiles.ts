@@ -17,6 +17,11 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
+import {
+  decodedRequestPath,
+  HttpRequestError,
+  readJsonBody,
+} from "./httpRequest";
 import { hasPermission } from "./permissions";
 import { generationProviderAttemptCounts } from "./generationTaskStore";
 import {
@@ -877,18 +882,6 @@ function audit(
     );
 }
 
-async function readBody<T>(request: IncomingMessage) {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > 64 * 1_024) throw new Error("Payload too large");
-    chunks.push(bytes);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
-}
-
 function json(response: ServerResponse, status: number, body: unknown) {
   response.statusCode = status;
   response.setHeader("Cache-Control", "no-store");
@@ -1595,7 +1588,7 @@ export async function adminProviderProfilesApi(
     return;
   }
   await migrateLegacyProviderKeysIfNeeded().catch(() => undefined);
-  const path = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+  const path = decodedRequestPath(request).replace(
     /^\/+/,
     "",
   );
@@ -1623,7 +1616,7 @@ export async function adminProviderProfilesApi(
   ) {
     try {
       const profile = await saveProviderProfile(
-        await readBody<Record<string, unknown>>(request),
+        await readJsonBody<Record<string, unknown>>(request, 64 * 1_024),
         path || undefined,
       );
       audit(
@@ -1633,7 +1626,8 @@ export async function adminProviderProfilesApi(
         profile,
       );
       json(response, path ? 200 : 201, { profile: publicProfile(profile) });
-    } catch {
+    } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       json(response, 400, { error: "平台连接配置无效" });
     }
     return;

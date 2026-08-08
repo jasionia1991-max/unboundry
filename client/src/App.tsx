@@ -299,12 +299,33 @@ type ApiContractDocument = {
   paths: Record<string, Record<string, ApiContractOperation>>;
 };
 
+function decodedRouteComponent(value: string) {
+  try {
+    const decoded = decodeURIComponent(value);
+    return !decoded ||
+        decoded.length > 200 ||
+        decoded.includes("/") ||
+        decoded.includes("\\") ||
+        decoded.includes("\0")
+      ? undefined
+      : decoded;
+  } catch {
+    return undefined;
+  }
+}
+
 const fixtureMatch = window.location.pathname.match(/^\/__fixture\/([^/]+)$/);
+const fixtureRouteId = fixtureMatch
+  ? decodedRouteComponent(fixtureMatch[1])
+  : undefined;
 const responsivePreviewMatch = window.location.pathname.match(
   /^\/__responsive-preview\/(1280x720|1440x900|1512x982|1920x1080)$/,
 );
 const projectWorkspaceMatch = window.location.pathname === "/canvas/projects";
 const projectCanvasMatch = window.location.pathname.match(/^\/canvas\/([^/]+)$/);
+const projectCanvasId = projectCanvasMatch
+  ? decodedRouteComponent(projectCanvasMatch[1])
+  : undefined;
 
 function ResponsivePreview({
   height,
@@ -7559,16 +7580,18 @@ function CanvasApplication({
 export function App() {
   const [fixtureState, setFixtureState] = useState<FixtureState>(() =>
     fixtureMatch
-      ? { state: "loading", id: decodeURIComponent(fixtureMatch[1]) }
+      ? fixtureRouteId
+        ? { state: "loading", id: fixtureRouteId }
+        : { state: "error", message: "Fixture route is invalid" }
       : { state: "idle" },
   );
 
   useEffect(() => {
-    if (!fixtureMatch || !import.meta.env.DEV) {
+    if (!fixtureRouteId || !import.meta.env.DEV) {
       return;
     }
 
-    const id = decodeURIComponent(fixtureMatch[1]);
+    const id = fixtureRouteId;
     const controller = new AbortController();
 
     fetch(`/__fixture-api/${encodeURIComponent(id)}`, {
@@ -7651,9 +7674,16 @@ export function App() {
     return <AuthenticatedApplication workspace />;
   }
   if (projectCanvasMatch) {
+    if (!projectCanvasId) {
+      return (
+        <main className="system-message" role="alert">
+          Project route is invalid.
+        </main>
+      );
+    }
     return (
       <AuthenticatedApplication
-        projectId={decodeURIComponent(projectCanvasMatch[1])}
+        projectId={projectCanvasId}
       />
     );
   }

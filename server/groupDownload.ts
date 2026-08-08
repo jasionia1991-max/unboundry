@@ -8,6 +8,11 @@ import type { DatabaseSync } from "node:sqlite";
 import { requestIdentity } from "./auth";
 import { createPrivateAliyunOssReadUrl } from "./aliyunOss";
 import { appDataDirectory, openAppDatabase } from "./database";
+import {
+  decodedRequestPath,
+  HttpRequestError,
+  readJsonBody,
+} from "./httpRequest";
 import { storageProfileForMedia } from "./secureStorageProfiles";
 
 const canvasIdPattern = /^[a-z0-9._-]+$/i;
@@ -132,18 +137,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-async function readBody<T>(request: IncomingMessage) {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > 64 * 1_024) throw new Error("Payload too large");
-    chunks.push(bytes);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
-}
-
 async function localMediaPath(
   ownerId: string,
   kind: string,
@@ -238,8 +231,7 @@ export async function groupDownloadApi(
     json(response, 401, { error: "请先登录" });
     return;
   }
-  const url = new URL(request.url ?? "", "http://127.0.0.1");
-  const path = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
+  const path = decodedRequestPath(request).replace(/^\/+/, "");
   // Vite/Connect 的 mount 中间件会把 /api/canvas 前缀从 request.url 中剥掉，
   // 因此这里收到的是 “<canvasId>/group-download”。
   const match = path.match(/^([^/]+)\/group-download$/i);
@@ -272,8 +264,12 @@ export async function groupDownloadApi(
 
   let body: { groupId?: unknown; nodeIds?: unknown };
   try {
-    body = await readBody<{ groupId?: unknown; nodeIds?: unknown }>(request);
-  } catch {
+    body = await readJsonBody<{ groupId?: unknown; nodeIds?: unknown }>(
+      request,
+      64 * 1_024,
+    );
+  } catch (error) {
+    if (error instanceof HttpRequestError) throw error;
     json(response, 400, { error: "下载请求无效" });
     return;
   }

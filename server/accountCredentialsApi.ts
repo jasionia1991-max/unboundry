@@ -10,6 +10,11 @@ import {
 } from "./accountCredentials";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
+import {
+  decodedRequestPath,
+  HttpRequestError,
+  readJsonBody,
+} from "./httpRequest";
 import { listProviderProfiles } from "./providerProfiles";
 
 const profileIdPattern = /^[a-f0-9-]{36}$/i;
@@ -33,18 +38,6 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.end(JSON.stringify(body));
 }
 
-async function readBody<T>(request: IncomingMessage) {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > 64 * 1_024) throw new Error("Payload too large");
-    chunks.push(bytes);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
-}
-
 async function publishedProviderProfiles(store: DatabaseSync) {
   const rows = store
     .prepare(`
@@ -66,7 +59,7 @@ export async function accountCredentialsApi(
     return;
   }
   const store = db();
-  const path = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+  const path = decodedRequestPath(request).replace(
     /^\/+/,
     "",
   );
@@ -117,7 +110,10 @@ export async function accountCredentialsApi(
 
   if (request.method === "PUT" && !match[2]) {
     try {
-      const body = await readBody<{ apiKey?: unknown }>(request);
+      const body = await readJsonBody<{ apiKey?: unknown }>(
+        request,
+        64 * 1_024,
+      );
       const result = await saveAccountCredential(
         store,
         identity.userId,
@@ -126,6 +122,7 @@ export async function accountCredentialsApi(
       );
       json(response, 200, result);
     } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       json(response, 400, {
         error: error instanceof Error ? error.message : "平台密钥保存失败",
       });

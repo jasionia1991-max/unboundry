@@ -1539,7 +1539,365 @@ const migrations: readonly Migration[] = [
   },
 ];
 
-export const currentSchemaVersion = migrations.at(-1)?.version ?? 0;
+export const currentSchemaManifest = Object.freeze(
+  migrations.map(({ name, version }) => Object.freeze({ name, version })),
+);
+
+export const currentSchemaVersion = currentSchemaManifest.at(-1)?.version ?? 0;
+
+// This is the known-safe physical schema that a v37 process can use. Keep the
+// migration ledger as the source of version ordering, and keep the column-name
+// checks order-independent so the finite documented v21 catalog repairs and
+// v31/v32 template repair can each be admitted only by an exact sqlite_schema
+// fingerprint.
+export const currentSchemaContract = Object.freeze({
+  tables: Object.freeze({
+    account_permissions: Object.freeze([
+      "account_id", "permission", "granted_by", "created_at",
+    ]),
+    account_provider_credentials: Object.freeze([
+      "account_id", "provider_profile_id", "encrypted_key", "key_status",
+      "key_checked_at", "credential_version", "updated_at",
+    ]),
+    admin_audit_events: Object.freeze([
+      "id", "actor_user_id", "action", "target_user_id", "details",
+      "created_at",
+    ]),
+    asset_history: Object.freeze([
+      "account_id", "id", "kind", "label", "preview", "created_at",
+      "owner_id",
+    ]),
+    canvas_documents: Object.freeze([
+      "owner_id", "id", "revision", "nodes", "edges", "viewport",
+      "updated_at", "save_session_id", "save_sequence", "graph_revision",
+    ]),
+    generation_provider_attempts: Object.freeze([
+      "id", "task_id", "execution_attempt", "provider_profile_id",
+      "provider_model_id", "kind", "evidence", "created_at", "owner_id",
+    ]),
+    generation_safety_settings: Object.freeze([
+      "id", "global_enabled", "emergency_stop", "per_user_concurrency",
+      "requests_per_minute", "image_concurrency", "video_concurrency",
+      "audio_concurrency", "failure_threshold", "cooldown_minutes",
+      "running_task_policy", "updated_at", "text_concurrency",
+    ]),
+    generation_task_events: Object.freeze([
+      "id", "task_id", "state", "error_code", "error_message", "created_at",
+    ]),
+    generation_tasks: Object.freeze([
+      "id", "canvas_id", "node_id", "kind", "prompt", "model",
+      "parameters", "idempotency_key", "request_fingerprint", "state",
+      "attempt", "error_code", "error_message", "created_at", "updated_at",
+      "owner_id", "estimated_cost_microunits", "actual_cost_microunits",
+      "provider_profile_id", "provider_model_id", "result_asset_id",
+      "cost_currency", "provider_task_id", "provider_usage_tokens",
+      "model_configuration", "result_text",
+    ]),
+    media_assets: Object.freeze([
+      "kind", "id", "owner_id", "storage_name", "byte_size", "created_at",
+      "updated_at", "storage_backend", "object_key", "content_type",
+      "checksum_sha256", "storage_status", "duration_seconds",
+      "duration_source", "duration_status", "media_width", "media_height",
+      "storage_profile_id",
+    ]),
+    model_profiles: Object.freeze([
+      "id", "display_name", "provider_profile_id", "provider_model_id",
+      "capability", "status", "default_parameters", "created_at",
+      "updated_at", "max_cost_microunits", "cost_currency", "archived_at",
+      "published_at", "provider_protocol",
+    ]),
+    node_model_bindings: Object.freeze([
+      "node_type", "model_id", "enabled", "is_default", "sort_order",
+      "created_at", "updated_at",
+    ]),
+    project_metadata: Object.freeze([
+      "owner_id", "id", "title", "updated_at", "is_project", "created_at",
+      "deleted_at",
+    ]),
+    provider_profiles: Object.freeze([
+      "id", "display_name", "driver", "status", "created_at", "updated_at",
+      "key_status", "key_checked_at", "catalog_key_status",
+      "catalog_checked_at", "catalog_synced_at", "catalog_last_error_code",
+      "catalog_models", "catalog_endpoints", "catalog_model_count",
+      "catalog_endpoint_count", "catalog_control_request_count",
+      "catalog_credential_revision", "provider_configuration_version",
+      "catalog_sync_token", "catalog_diagnostics",
+    ]),
+    public_templates: Object.freeze([
+      "id", "title", "description", "category", "graph", "cover_asset_id",
+      "preview_image", "status", "created_by", "created_at", "updated_by",
+      "updated_at", "archived_at",
+    ]),
+    schema_migrations: Object.freeze(["version", "name", "applied_at"]),
+    sessions: Object.freeze([
+      "id", "token_hash", "user_id", "expires_at", "created_at",
+      "last_seen_at",
+    ]),
+    user_templates: Object.freeze([
+      "id", "owner_id", "title", "category", "graph", "cover_asset_id",
+      "created_at", "updated_at",
+    ]),
+    users: Object.freeze([
+      "id", "login_name", "display_name", "password_hash", "role", "status",
+      "created_at", "updated_at", "protected",
+    ]),
+  }),
+  indexes: Object.freeze({
+    generation_tasks_provider_task: Object.freeze({
+      columns: Object.freeze(["provider_profile_id", "provider_task_id"]),
+      partial: true,
+      sqlHash: "b4bc3802117bb5d5b661245fd30cc7ccdb4e7fa85d41ffa08df8421deb042485",
+      table: "generation_tasks",
+      unique: true,
+    }),
+    media_assets_backend_object_key: Object.freeze({
+      columns: Object.freeze(["storage_backend", "object_key"]),
+      partial: true,
+      sqlHash: "ada21d8be6bd9e005155da7cd938901f2da5991b6defa42b5e718b1986f9a789",
+      table: "media_assets",
+      unique: true,
+    }),
+    node_model_bindings_one_default: Object.freeze({
+      columns: Object.freeze(["node_type"]),
+      partial: true,
+      sqlHash: "82c0cf67eb17beea7e63586c25c836f403362c3059d4b8957a502f44370631f9",
+      table: "node_model_bindings",
+      unique: true,
+    }),
+  }),
+  explicitIndexes: Object.freeze({
+    account_permissions_account: Object.freeze({
+      sqlHash: "667457c5faa9dfb027030e9ca7a60318d696b44775a6b7b687511734c290e864",
+      table: "account_permissions",
+    }),
+    admin_audit_actor_created: Object.freeze({
+      acceptedSqlHashes: Object.freeze([
+        "96af96d20bc9bd30cd0edee0c9d6f065b4de5241893891c5b31dfe5723d60669",
+        "8804ecb45ddfbc8cf9e670190989bd3a64b7dce1a579753cb26f454e5f0fc0be",
+      ]),
+      sqlHash: "96af96d20bc9bd30cd0edee0c9d6f065b4de5241893891c5b31dfe5723d60669",
+      table: "admin_audit_events",
+    }),
+    asset_history_owner_created: Object.freeze({
+      sqlHash: "8530ea7ce975418d08fb4ad4c8ef50bae408641ca5748b84bd5df7502d56e5d2",
+      table: "asset_history",
+    }),
+    canvas_documents_owner_updated: Object.freeze({
+      sqlHash: "c49d60c37be7eb32471b6a5256226ee2010cf180bd4b547f36e60a503fc7df80",
+      table: "canvas_documents",
+    }),
+    generation_provider_attempts_owner_profile_created: Object.freeze({
+      sqlHash: "cc0a3834baee5d68a8a92b5cf00f6b0dbc6886b0355b73acfa10846ca1f9c99a",
+      table: "generation_provider_attempts",
+    }),
+    generation_provider_attempts_profile_kind_created: Object.freeze({
+      sqlHash: "16b559cf338f977ca119dddb8a97c090e67e68f5eb494cc7f1ec86176e27d65a",
+      table: "generation_provider_attempts",
+    }),
+    generation_provider_attempts_task_created: Object.freeze({
+      sqlHash: "2b48b857158465de8155dac5d69aeff3ac50daf44a3cef06dbaa0c4c799d8c7f",
+      table: "generation_provider_attempts",
+    }),
+    generation_task_events_task_created: Object.freeze({
+      sqlHash: "20ee2bfe83616ee3f69c391c65a4d1831b713084000303417695df4c09ae7529",
+      table: "generation_task_events",
+    }),
+    generation_tasks_canvas_updated: Object.freeze({
+      sqlHash: "0f449e39429ad05e27054e89b480dfec111b1ffb213baf409e5d3e2e9b35dad8",
+      table: "generation_tasks",
+    }),
+    generation_tasks_currency_created: Object.freeze({
+      sqlHash: "a5cd31190264ecac91713ef770c9fce1b850fdc7577537fd5135d732f1d8ca39",
+      table: "generation_tasks",
+    }),
+    generation_tasks_owner_canvas_updated: Object.freeze({
+      sqlHash: "1a733ae3056e8235e4ee492f83c448aefcdaf1caa92c7a9170f1afd4b6d36842",
+      table: "generation_tasks",
+    }),
+    generation_tasks_owner_state_created: Object.freeze({
+      sqlHash: "4ccaf8c1a22e10bb6f03ff9c03782f2050ac1048569b774858ed3ead42363fd0",
+      table: "generation_tasks",
+    }),
+    generation_tasks_provider_task: Object.freeze({
+      sqlHash: "b4bc3802117bb5d5b661245fd30cc7ccdb4e7fa85d41ffa08df8421deb042485",
+      table: "generation_tasks",
+    }),
+    generation_tasks_result_asset: Object.freeze({
+      sqlHash: "7ad17024f45755bc24df2eeb3bf4a9c47225e8d96f83c4ab7dd90f1555c36f45",
+      table: "generation_tasks",
+    }),
+    media_assets_backend_object_key: Object.freeze({
+      sqlHash: "ada21d8be6bd9e005155da7cd938901f2da5991b6defa42b5e718b1986f9a789",
+      table: "media_assets",
+    }),
+    media_assets_owner_created: Object.freeze({
+      sqlHash: "566cfd24a9bdf80384f08b4544a0d7d2cb86a00e73f94b5d214188776f34460f",
+      table: "media_assets",
+    }),
+    media_assets_owner_storage: Object.freeze({
+      sqlHash: "795bdfac70e907fe1ff5201fcdb84a5dc9cd75ad80b4b946b4b651312f039549",
+      table: "media_assets",
+    }),
+    model_profiles_archived_capability: Object.freeze({
+      sqlHash: "04aa10e58830c898de1f6c8e20951dd33efda140ab73b457da9c8ff3c87ac47e",
+      table: "model_profiles",
+    }),
+    model_profiles_capability_status: Object.freeze({
+      acceptedSqlHashes: Object.freeze([
+        "0c604faba324c65236374c4d557a600beabc53551f45a286b24897af19544c22",
+        "3416b5cb3fb2e1aeef9c518a96326675ce08d9387f7f48242c6f04b598209b62",
+      ]),
+      sqlHash: "0c604faba324c65236374c4d557a600beabc53551f45a286b24897af19544c22",
+      table: "model_profiles",
+    }),
+    model_profiles_provider_protocol: Object.freeze({
+      sqlHash: "0da6e04e559ca0cefc0c09d023a5eb022b025d251464af78ab2c42fd27a1ee4a",
+      table: "model_profiles",
+    }),
+    node_model_bindings_one_default: Object.freeze({
+      acceptedSqlHashes: Object.freeze([
+        "82c0cf67eb17beea7e63586c25c836f403362c3059d4b8957a502f44370631f9",
+        "21849a735c41aae7fdec38122d29146846d9030a1f170e7a699cd01f81348665",
+      ]),
+      sqlHash: "82c0cf67eb17beea7e63586c25c836f403362c3059d4b8957a502f44370631f9",
+      table: "node_model_bindings",
+    }),
+    node_model_bindings_order: Object.freeze({
+      acceptedSqlHashes: Object.freeze([
+        "c6bf5c70659e14f4d413aa98c610116751c4a80972070c78b535088432907e81",
+        "4fbb934ed2d70e76a115ae56b06457028b92b7bb44ec4855a0395940ca35ce26",
+      ]),
+      sqlHash: "c6bf5c70659e14f4d413aa98c610116751c4a80972070c78b535088432907e81",
+      table: "node_model_bindings",
+    }),
+    project_metadata_owner_updated: Object.freeze({
+      sqlHash: "1b5d9c2ac1f179e9728351fedaf1519a8b8d1509afccf71b7357dd7c148e6612",
+      table: "project_metadata",
+    }),
+    public_templates_status_updated: Object.freeze({
+      sqlHash: "95ad36824c8d49f4b53c97a66fc36fe34c1b194d2c189722a8399968ab101f5a",
+      table: "public_templates",
+    }),
+    sessions_user_expires: Object.freeze({
+      sqlHash: "e52358562e4cccce65828dbe358431c188e35ba2204cc4c0e53d9649cb68beb4",
+      table: "sessions",
+    }),
+    user_templates_owner_updated: Object.freeze({
+      sqlHash: "451f2da493e6b738635ed059b645d2899e9b873e2802e893201de3a53e66bd68",
+      table: "user_templates",
+    }),
+    users_status_role: Object.freeze({
+      sqlHash: "57a909e3331fd64620bb5264305aafa1b16b0b9f91df06889d32bafe0e65b52c",
+      table: "users",
+    }),
+  }),
+  // The documented v21 partial-backup repair creates users but did not create
+  // this non-unique lookup index. Permit that performance-only omission only
+  // when the users table itself has the exact v21-repair fingerprint; a fresh
+  // users table must still have the complete canonical index set.
+  conditionallyOptionalExplicitIndexes: Object.freeze({
+    users_status_role: Object.freeze({
+      table: "users",
+      tableSqlHash:
+        "80159c4cbfb80a7ef8071d04ed65acd127b62d6c434289a1b713a91cc81d7205",
+    }),
+  }),
+  // Hashes cover the exact sqlite_schema SQL text. This deliberately fails
+  // closed instead of maintaining a partial SQL lexer whose whitespace or
+  // quoting rules could merge semantically different declarations.
+  // public_templates permits the fresh and known v31-to-v32 repair shapes.
+  // The v21 catalog repair and its exact missing-cost-column outcomes are the
+  // only other admitted variants; unknown imported DDL remains fail-closed.
+  tableSqlHashes: Object.freeze({
+    account_permissions: Object.freeze([
+      "b56c6c726385ab6f9020a6d6133c5ca90fa69c0b04cd73d03cd6aee3c6eff155",
+    ]),
+    account_provider_credentials: Object.freeze([
+      "4542efd2209893278fd8bcb73760848fa61e252ca15d0d5f526e5672dbda32cb",
+    ]),
+    admin_audit_events: Object.freeze([
+      "82e604628c4a2ce90c37ad6cba7f5d82fb71e6a21703d361bb03bf980730c0ce",
+      "9b5cd05337e0787660d20beabbd57e55ae0384618304e74ec60410adccfe98ab",
+    ]),
+    asset_history: Object.freeze([
+      "700ecc72764b59b1bcd84eb921cab728e5f66e8c4f2affd70a41e6a51aade6c6",
+    ]),
+    canvas_documents: Object.freeze([
+      "c1513fd4d7a98acd1826e952f442877b40f8395a8052b15e85479559da0cefdf",
+    ]),
+    generation_provider_attempts: Object.freeze([
+      "2e1effabd1d125941ff89256881802c56189d640eeb3c9ebc8f86c61ba7a14e2",
+    ]),
+    generation_safety_settings: Object.freeze([
+      "f40be7744655d146b2ecd0f8897b024d98a1db94a39284e53cc27d40ba9bc38c",
+    ]),
+    generation_task_events: Object.freeze([
+      "b002bdbf4f1d0d086eb7ce0f133c6fd06088c56a2f31122162f8a60cee8d3f4f",
+    ]),
+    generation_tasks: Object.freeze([
+      "c812ecc9484218c8f64ae4043848fc2b9b4b7a39a679076624960eb5b258c5a5",
+    ]),
+    media_assets: Object.freeze([
+      "cedbe47b7f996d78b4a03b8e9ec75bf08853aa2539932ad1dad657b1c47c115c",
+    ]),
+    model_profiles: Object.freeze([
+      "b649651de07c626a927f2184dca573844256ee3208f3b660ba36887200e11a66",
+      "2ee6b6c2ee53a4106b66c19fe179292d6d55ec7feeed227eda8a1498c07ea090",
+      "aabb891e26289960f0e414649d2e6f80393ffd773693cb96e3eb44d0ad716632",
+      "c8d3c009843c0d1f41f12750eb52240a1ca268fb1e3ec4f3aeee8d78d49ca93e",
+      "d616105a3a22b6c20bf6fdd57486dbd479e111a6e5cd940b13d1282ea48729be",
+    ]),
+    node_model_bindings: Object.freeze([
+      "300aa2ced2205b3cd0ed723a00a604917f68603feb31ecbd12529fdd39784553",
+      "7c3c7e2f42885cd3ce92c2284761bbcb99715d8f9eafe8cd575002a5a894f35a",
+    ]),
+    project_metadata: Object.freeze([
+      "343804fcd2f4d99f4acab95c0e604bab64efd1f09c0a5ebb0e9df0347d14511e",
+    ]),
+    provider_profiles: Object.freeze([
+      "5a123ee9694b90e7bfb5cd43bcb4df3b00a367ac25974f48052068b178085809",
+    ]),
+    public_templates: Object.freeze([
+      "dbe59ae26271823809c64e9acc2cbac41c2873de127723d746b5c3335f0423b9",
+      "181a61ea6c1dd6ecadb314598b354bad1cab669bddd2057963d0d80e6eab1809",
+    ]),
+    schema_migrations: Object.freeze([
+      "c1b7313cc662808476c3815653e069743817c9d0a29a423d0c7810d995d94ec7",
+    ]),
+    sessions: Object.freeze([
+      "01b47e65e5743d9b335e194619fc4b12520644e7146b935502de8f273a73cbd1",
+    ]),
+    user_templates: Object.freeze([
+      "31dbd72b7c75acde5872a24a49944e587d01546b583f5c6c12d723ca69f7f91f",
+    ]),
+    users: Object.freeze([
+      "3f6ff917f5c58dcceafbc36da7286b3c5b3b4ebf17959434d39e75e226a7219d",
+      "80159c4cbfb80a7ef8071d04ed65acd127b62d6c434289a1b713a91cc81d7205",
+    ]),
+  }),
+  triggers: Object.freeze({
+    archived_models_cannot_enable_binding_insert: Object.freeze({
+      sqlHash: "df41b6cb986c87a6cec9123e2368358127f80693ba0f56c44ac31f113097245d",
+      table: "node_model_bindings",
+    }),
+    archived_models_cannot_enable_binding_update: Object.freeze({
+      sqlHash: "acadc33d6989310e541cdfab4382725536b2a43e8874279f5bfb2de50e83634b",
+      table: "node_model_bindings",
+    }),
+    generation_tasks_capture_model_display_name: Object.freeze({
+      sqlHash: "53134517eabb56121add52886258a41e864acad5ede012650e88d68440d26379",
+      table: "generation_tasks",
+    }),
+    model_profiles_capture_first_publish_insert: Object.freeze({
+      sqlHash: "387ea10071a57d572ba4fbc8842eaeadc1b9451d949c91a0f8fa25cdb11743cd",
+      table: "model_profiles",
+    }),
+    model_profiles_capture_first_publish_update: Object.freeze({
+      sqlHash: "644e840c516f0d3fc56a4a7a1c936aedc02f8ba19a7c7573afc0174089c9ead9",
+      table: "model_profiles",
+    }),
+  }),
+});
 
 export function appDataDirectory() {
   return process.env.UNBOUNDRY_DATA_DIR ?? join(process.cwd(), "data");

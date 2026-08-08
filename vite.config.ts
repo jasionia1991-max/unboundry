@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
@@ -37,7 +38,19 @@ import { adminTemplatesApi } from "./server/adminTemplates";
 import { agentConfigurationApi } from "./server/agentConfiguration";
 import { characterCatalogApi } from "./server/characterCatalog";
 import { libraryCatalogApi } from "./server/libraryCatalog";
-import { currentVersion, versionApi } from "./server/version";
+import {
+  HttpRequestError,
+  decodedRequestPath,
+} from "./server/httpRequest";
+import {
+  coordinateRuntimeShutdown,
+  createRuntimeLifecycle,
+} from "./server/runtimeLifecycle";
+import {
+  currentVersion,
+  registerVersionLifecycle,
+  versionApi,
+} from "./server/version";
 
 type FixtureDocument = {
   fixtures: Array<{ id: string; kind: string; status: string }>;
@@ -53,19 +66,193 @@ const implementationFixtureIds = new Set([
   "node.image.text-image-input.persistence-retest",
 ]);
 
+type ApiNext = (error?: unknown) => void;
+type ApiHandler = (
+  request: IncomingMessage,
+  response: ServerResponse,
+  next: ApiNext,
+) => Promise<void> | void;
+
+const runtimeLifecycle = createRuntimeLifecycle();
+type SignalListener = (...args: any[]) => void;
+let capturedViteSigtermListener: SignalListener | undefined;
+let restoreSigtermCapture: (() => void) | undefined;
+
+// Vite 8.1.5 registers its named CLI SIGTERM coordinator after resolving the
+// config and before invoking configureServer/configurePreviewServer. Capture
+// that exact function at registration time; a count/diff heuristic could erase
+// an unrelated host listener that happened to register during the same window.
+function armViteSigtermCapture() {
+  if (restoreSigtermCapture || capturedViteSigtermListener) return;
+  const originalOnce = process.once;
+  const interceptedOnce = function (
+    this: NodeJS.Process,
+    event: string | symbol,
+    listener: SignalListener,
+  ) {
+    const result = Reflect.apply(originalOnce, this, [event, listener]) as NodeJS.Process;
+    if (
+      event === "SIGTERM" &&
+      listener.name === "parentSigtermCallback"
+    ) {
+      capturedViteSigtermListener = listener;
+      restoreSigtermCapture?.();
+    }
+    return result;
+  };
+  restoreSigtermCapture = () => {
+    if (process.once === interceptedOnce) {
+      Object.defineProperty(process, "once", {
+        configurable: true,
+        value: originalOnce,
+        writable: true,
+      });
+    }
+    restoreSigtermCapture = undefined;
+  };
+  Object.defineProperty(process, "once", {
+    configurable: true,
+    value: interceptedOnce,
+    writable: true,
+  });
+}
+
+function apiFailure(
+  request: IncomingMessage,
+  response: ServerResponse,
+  error: unknown,
+) {
+  const known = error instanceof HttpRequestError;
+  const status = known ? error.statusCode : 500;
+  const code = known ? error.code : "INTERNAL_ERROR";
+  const message = known ? error.message : "Internal server error";
+  runtimeLifecycle.setResponseCode(request, code);
+  if (response.writableEnded || response.destroyed) return;
+  if (response.headersSent) {
+    response.destroy();
+    return;
+  }
+  response.statusCode = status;
+  response.setHeader("Cache-Control", "no-store");
+  response.setHeader("Content-Type", "application/json; charset=utf-8");
+  response.end(JSON.stringify({
+    error: message,
+    code,
+    requestId: runtimeLifecycle.requestId(request),
+  }));
+}
+
+function apiBoundary(routeId: string, handler: ApiHandler) {
+  return (
+    request: IncomingMessage,
+    response: ServerResponse,
+    next: ApiNext,
+  ) => {
+    runtimeLifecycle.setRouteId(request, routeId);
+    void runtimeLifecycle
+      .trackHandler(async () => {
+        try {
+          await handler(request, response, next);
+        } catch (error) {
+          apiFailure(request, response, error);
+        }
+      })
+      .catch(() => {
+        if (!response.destroyed) response.destroy();
+      });
+  };
+}
+
+type RuntimeServer = {
+  close: () => Promise<void>;
+  httpServer?: {
+    closeAllConnections?: () => void;
+    once: (event: "close", listener: () => void) => void;
+  } | null;
+  middlewares: {
+    use: (path: string, handler: (...args: any[]) => void) => void;
+  };
+};
+
+function runtimeFoundationApi(): Plugin {
+  const install = (server: RuntimeServer) => {
+    const unregisterVersionLifecycle = registerVersionLifecycle(runtimeLifecycle);
+    const exactHealth = (kind: "live" | "ready") => apiBoundary(
+      `health.${kind}`,
+      (request, response, next) => {
+        const remainder = (request.url ?? "").split("?", 1)[0] ?? "";
+        if (remainder !== "" && remainder !== "/") {
+          next();
+          return;
+        }
+        runtimeLifecycle.healthApi(request, response, kind);
+      },
+    );
+    server.middlewares.use("/api/health/live", exactHealth("live"));
+    server.middlewares.use("/api/health/ready", exactHealth("ready"));
+    server.middlewares.use("/api", runtimeLifecycle.middleware);
+
+    let signalShutdownStarted = false;
+    const closeForSignal = () => {
+      if (signalShutdownStarted) return;
+      signalShutdownStarted = true;
+      void coordinateRuntimeShutdown({
+        beginShutdown: () => runtimeLifecycle.beginShutdown(),
+        close: () => server.close(),
+        closeAllConnections: () => server.httpServer?.closeAllConnections?.(),
+        deadlineMs: runtimeLifecycle.getShutdownDeadlineMs(),
+      }).then((exitCode) => process.exit(exitCode));
+    };
+    const onSigterm = () => closeForSignal();
+    const onSigint = () => closeForSignal();
+    restoreSigtermCapture?.();
+    const viteSigtermListener = capturedViteSigtermListener;
+    capturedViteSigtermListener = undefined;
+    if (!viteSigtermListener) {
+      throw new Error(
+        "Unable to identify the Vite SIGTERM listener safely",
+      );
+    }
+    process.removeListener("SIGTERM", viteSigtermListener);
+    process.prependListener("SIGTERM", onSigterm);
+    process.prependListener("SIGINT", onSigint);
+    server.httpServer?.once("close", () => {
+      if (!signalShutdownStarted) {
+        process.removeListener("SIGTERM", onSigterm);
+        process.removeListener("SIGINT", onSigint);
+      }
+      unregisterVersionLifecycle();
+    });
+  };
+  return {
+    enforce: "pre",
+    name: "unboundry-runtime-foundation",
+    configurePreviewServer(server) {
+      install(server as RuntimeServer);
+    },
+    configureServer(server) {
+      install(server as RuntimeServer);
+    },
+  };
+}
+
 function devFixtureApi(): Plugin {
   return {
     name: "unboundry-dev-fixture-api",
     apply: "serve",
     configureServer(server) {
       server.middlewares.use("/__fixture-api", async (request, response) => {
-        const id = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
-          /^\/+/,
-          "",
-        );
-
         response.setHeader("Cache-Control", "no-store");
         response.setHeader("Content-Type", "application/json; charset=utf-8");
+
+        let id: string;
+        try {
+          id = decodedRequestPath(request).replace(/^\/+/, "");
+        } catch {
+          response.statusCode = 400;
+          response.end(JSON.stringify({ error: "Invalid fixture ID" }));
+          return;
+        }
 
         if (!/^[a-z0-9._-]+$/i.test(id)) {
           response.statusCode = 400;
@@ -103,7 +290,9 @@ function testDataDirectoryApi(): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
-    middlewares.use("/api/test-data-directory", (request, response) => {
+    middlewares.use("/api/test-data-directory", apiBoundary(
+      "test-data-directory",
+      (request, response) => {
       if (process.env.UNBOUNDRY_TEST_AUTH_BYPASS !== "1") {
         response.statusCode = 404;
         response.end("{}");
@@ -114,7 +303,8 @@ function testDataDirectoryApi(): Plugin {
       response.end(
         JSON.stringify({ dataDirectory: appDataDirectory() }),
       );
-    });
+      },
+    ));
   };
   return {
     name: "unboundry-test-data-directory-api",
@@ -131,14 +321,16 @@ function playlistExportApi(): Plugin {
   return {
     name: "unboundry-playlist-export-api",
     configurePreviewServer(server) {
-      server.middlewares.use("/api/playlist/export", (request, response) => {
-        void playlistExport(request, response);
-      });
+      server.middlewares.use(
+        "/api/playlist/export",
+        apiBoundary("playlist.export", playlistExport),
+      );
     },
     configureServer(server) {
-      server.middlewares.use("/api/playlist/export", (request, response) => {
-        void playlistExport(request, response);
-      });
+      server.middlewares.use(
+        "/api/playlist/export",
+        apiBoundary("playlist.export", playlistExport),
+      );
     },
   };
 }
@@ -147,27 +339,28 @@ function authenticationApi(): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
-    middlewares.use("/api/version", (request, response) => {
-      versionApi(request, response, "version");
-    });
-    middlewares.use("/api/updates", (request, response) => {
-      versionApi(request, response, "updates");
-    });
-    middlewares.use("/api/auth", (request, response) => {
-      void authApi(request, response);
-    });
-    middlewares.use("/api", (request, response, next) => {
-      void authGate(request, response, next);
-    });
-    middlewares.use("/api/admin/users", (request, response) => {
-      void adminUsersApi(request, response);
-    });
-    middlewares.use("/api/account-context", (request, response) => {
-      accountContextApi(request, response);
-    });
-    middlewares.use("/api/account-credentials", (request, response) => {
-      void accountCredentialsApi(request, response);
-    });
+    middlewares.use("/api/version", apiBoundary(
+      "version",
+      (request, response) => versionApi(request, response, "version"),
+    ));
+    middlewares.use("/api/updates", apiBoundary(
+      "updates",
+      (request, response) => versionApi(request, response, "updates"),
+    ));
+    middlewares.use("/api/auth", apiBoundary("auth", authApi));
+    middlewares.use("/api", apiBoundary("auth-gate", authGate));
+    middlewares.use(
+      "/api/admin/users",
+      apiBoundary("admin.users", adminUsersApi),
+    );
+    middlewares.use(
+      "/api/account-context",
+      apiBoundary("account.context", accountContextApi),
+    );
+    middlewares.use(
+      "/api/account-credentials",
+      apiBoundary("account.credentials", accountCredentialsApi),
+    );
   };
   return {
     name: "unboundry-authentication-api",
@@ -184,12 +377,11 @@ function modelCatalogApi(): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
-    middlewares.use("/api/admin/models", (request, response) => {
-      void adminModelsApi(request, response);
-    });
-    middlewares.use("/api/models", (request, response) => {
-      void publicModelsApi(request, response);
-    });
+    middlewares.use(
+      "/api/admin/models",
+      apiBoundary("admin.models", adminModelsApi),
+    );
+    middlewares.use("/api/models", apiBoundary("models", publicModelsApi));
   };
   return {
     name: "unboundry-model-catalog-api",
@@ -206,12 +398,14 @@ function templatesApi(): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
-    middlewares.use("/api/admin/templates", (request, response) => {
-      void adminTemplatesApi(request, response);
-    });
-    middlewares.use("/api/templates", (request, response) => {
-      void templateCatalogApi(request, response);
-    });
+    middlewares.use(
+      "/api/admin/templates",
+      apiBoundary("admin.templates", adminTemplatesApi),
+    );
+    middlewares.use(
+      "/api/templates",
+      apiBoundary("templates", templateCatalogApi),
+    );
   };
   return {
     name: "unboundry-template-catalog-api",
@@ -228,9 +422,10 @@ function agentConfigApi(): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
-    middlewares.use("/api/agent-config", (request, response) => {
-      agentConfigurationApi(request, response);
-    });
+    middlewares.use(
+      "/api/agent-config",
+      apiBoundary("agent-config", agentConfigurationApi),
+    );
   };
   return {
     name: "unboundry-agent-configuration-api",
@@ -247,9 +442,10 @@ function charactersApi(): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
-    middlewares.use("/api/characters", (request, response) => {
-      characterCatalogApi(request, response);
-    });
+    middlewares.use(
+      "/api/characters",
+      apiBoundary("characters", characterCatalogApi),
+    );
   };
   return {
     name: "unboundry-character-catalog-api",
@@ -266,9 +462,10 @@ function libraryApi(): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
-    middlewares.use("/api/library", (request, response) => {
-      libraryCatalogApi(request, response);
-    });
+    middlewares.use(
+      "/api/library",
+      apiBoundary("library", libraryCatalogApi),
+    );
   };
   return {
     name: "unboundry-library-catalog-api",
@@ -285,9 +482,10 @@ function providerProfilesApi(): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
-    middlewares.use("/api/admin/providers", (request, response) => {
-      void adminProviderProfilesApi(request, response);
-    });
+    middlewares.use(
+      "/api/admin/providers",
+      apiBoundary("admin.providers", adminProviderProfilesApi),
+    );
   };
   return {
     name: "unboundry-provider-profiles-api",
@@ -304,9 +502,10 @@ function providerCatalogApi(): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
-    middlewares.use("/api/admin/provider-catalog", (request, response) => {
-      void adminProviderCatalogApi(request, response);
-    });
+    middlewares.use(
+      "/api/admin/provider-catalog",
+      apiBoundary("admin.provider-catalog", adminProviderCatalogApi),
+    );
   };
   return {
     name: "unboundry-provider-catalog-api",
@@ -323,9 +522,10 @@ function storageAdminApi(): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
-    middlewares.use("/api/admin/storage", (request, response) => {
-      void adminStorageApi(request, response);
-    });
+    middlewares.use(
+      "/api/admin/storage",
+      apiBoundary("admin.storage", adminStorageApi),
+    );
   };
   return {
     name: "unboundry-storage-admin-api",
@@ -342,9 +542,10 @@ function generationSafetyAdminApi(): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
-    middlewares.use("/api/admin/generation-safety", (request, response) => {
-      void adminGenerationSafetyApi(request, response);
-    });
+    middlewares.use(
+      "/api/admin/generation-safety",
+      apiBoundary("admin.generation-safety", adminGenerationSafetyApi),
+    );
   };
   return {
     name: "unboundry-generation-safety-admin-api",
@@ -361,9 +562,10 @@ function openApiPlugin(): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
-    middlewares.use("/api/openapi.json", (request, response) => {
-      openApi(request, response);
-    });
+    middlewares.use(
+      "/api/openapi.json",
+      apiBoundary("openapi", openApi),
+    );
   };
   return {
     name: "unboundry-openapi",
@@ -377,9 +579,7 @@ function openApiPlugin(): Plugin {
 }
 
 function playlistThumbnailApi(): Plugin {
-  const handler = (request: Parameters<typeof playlistThumbnails>[0], response: Parameters<typeof playlistThumbnails>[1]) => {
-    void playlistThumbnails(request, response);
-  };
+  const handler = apiBoundary("playlist.thumbnails", playlistThumbnails);
   return {
     name: "unboundry-playlist-thumbnail-api",
     configurePreviewServer(server) {
@@ -397,71 +597,57 @@ function canvasPersistenceApi(): Plugin {
     response: Parameters<typeof canvasPersistence>[1],
   ) => {
     if (/\/group-download(?:\?|$)/i.test(request.url ?? "")) {
-      void groupDownloadApi(request, response);
-      return;
+      return groupDownloadApi(request, response);
     }
-    void canvasPersistence(request, response);
+    return canvasPersistence(request, response);
+  };
+  const protectedCanvasHandler = apiBoundary("canvas", canvasHandler);
+  const install = (middlewares: {
+    use: (path: string, handler: (...args: any[]) => void) => void;
+  }) => {
+    middlewares.use("/api/canvas", protectedCanvasHandler);
+    middlewares.use(
+      "/api/history",
+      apiBoundary("history", accountHistory),
+    );
+    middlewares.use(
+      "/api/project-title",
+      apiBoundary("project-title", projectTitle),
+    );
+    middlewares.use(
+      "/api/projects",
+      apiBoundary("projects", projectsApi),
+    );
+    middlewares.use(
+      "/api/assets",
+      apiBoundary("assets", assetStorage),
+    );
+    middlewares.use(
+      "/api/audio-assets",
+      apiBoundary("audio-assets", audioStorage),
+    );
+    middlewares.use(
+      "/api/video-assets",
+      apiBoundary("video-assets", videoStorage),
+    );
+    middlewares.use(
+      "/api/media-metadata",
+      apiBoundary("media-metadata", mediaMetadataApi),
+    );
   };
   return {
     name: "unboundry-canvas-persistence-api",
     configurePreviewServer(server) {
-      server.middlewares.use("/api/canvas", canvasHandler);
-      server.middlewares.use("/api/history", (request, response) => {
-        void accountHistory(request, response);
-      });
-      server.middlewares.use("/api/project-title", (request, response) => {
-        void projectTitle(request, response);
-      });
-      server.middlewares.use("/api/projects", (request, response) => {
-        void projectsApi(request, response);
-      });
-      server.middlewares.use("/api/assets", (request, response) => {
-        void assetStorage(request, response);
-      });
-      server.middlewares.use("/api/audio-assets", (request, response) => {
-        void audioStorage(request, response);
-      });
-      server.middlewares.use("/api/video-assets", (request, response) => {
-        void videoStorage(request, response);
-      });
-      server.middlewares.use("/api/media-metadata", (request, response) => {
-        mediaMetadataApi(request, response);
-      });
+      install(server.middlewares);
     },
     configureServer(server) {
-      server.middlewares.use("/api/canvas", canvasHandler);
-      server.middlewares.use("/api/history", (request, response) => {
-        void accountHistory(request, response);
-      });
-      server.middlewares.use("/api/project-title", (request, response) => {
-        void projectTitle(request, response);
-      });
-      server.middlewares.use("/api/projects", (request, response) => {
-        void projectsApi(request, response);
-      });
-      server.middlewares.use("/api/assets", (request, response) => {
-        void assetStorage(request, response);
-      });
-      server.middlewares.use("/api/audio-assets", (request, response) => {
-        void audioStorage(request, response);
-      });
-      server.middlewares.use("/api/video-assets", (request, response) => {
-        void videoStorage(request, response);
-      });
-      server.middlewares.use("/api/media-metadata", (request, response) => {
-        mediaMetadataApi(request, response);
-      });
+      install(server.middlewares);
     },
   };
 }
 
 function generationTaskApi(): Plugin {
-  const handler = (
-    request: Parameters<typeof generationTasks>[0],
-    response: Parameters<typeof generationTasks>[1],
-  ) => {
-    void generationTasks(request, response);
-  };
+  const handler = apiBoundary("generation-tasks", generationTasks);
   return {
     name: "unboundry-generation-task-api",
     configurePreviewServer(server) {
@@ -473,12 +659,15 @@ function generationTaskApi(): Plugin {
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => {
+  if (command === "serve") armViteSigtermCapture();
+  return {
     root: fileURLToPath(new URL("./client", import.meta.url)),
     envDir: process.env.UNBOUNDRY_SAFE_TEST === "1" ? false : undefined,
     plugins: [
       react(),
       devFixtureApi(),
+      runtimeFoundationApi(),
       testDataDirectoryApi(),
       authenticationApi(),
       openApiPlugin(),
@@ -513,4 +702,5 @@ export default defineConfig({
       __UNBOUNDRY_VERSION__: JSON.stringify(currentVersion),
     },
     cacheDir: process.env.UNBOUNDRY_VITE_CACHE_DIR ?? `${appRoot}/node_modules/.vite`,
+  };
 });

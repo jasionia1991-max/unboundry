@@ -6,6 +6,11 @@ import {
 } from "./aliyunOss";
 import { clientAddress, requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
+import {
+  decodedRequestPath,
+  HttpRequestError,
+  readJsonBody,
+} from "./httpRequest";
 import { hasPermission } from "./permissions";
 import {
   activateStorageProfile,
@@ -41,21 +46,6 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   response.end(JSON.stringify(body));
-}
-
-async function readBody(request: IncomingMessage) {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > 16 * 1_024) throw new Error("Payload too large");
-    chunks.push(bytes);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<
-    string,
-    unknown
-  >;
 }
 
 function localRequest(request: IncomingMessage) {
@@ -186,7 +176,7 @@ export async function adminStorageApi(
     json(response, 403, { error: "Administrator access required" });
     return;
   }
-  const path = decodeURIComponent((request.url ?? "").split("?")[0])
+  const path = decodedRequestPath(request)
     .replace(/^\/+/, "")
     .replace(/\/+$/, "");
 
@@ -206,10 +196,13 @@ export async function adminStorageApi(
 
   if (request.method === "POST" && path === "profiles") {
     try {
-      const profile = await saveStorageProfile(await readBody(request));
+      const profile = await saveStorageProfile(
+        await readJsonBody<Record<string, unknown>>(request, 16 * 1_024),
+      );
       audit(identity.userId, "create_storage_profile", profile.id);
       json(response, 201, { profile: publicStorageProfile(profile) });
-    } catch {
+    } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       json(response, 400, { error: "OSS configuration could not be saved" });
     }
     return;
@@ -217,7 +210,10 @@ export async function adminStorageApi(
 
   if (request.method === "POST" && path === "media-routing") {
     try {
-      const body = await readBody(request);
+      const body = await readJsonBody<Record<string, unknown>>(
+        request,
+        16 * 1_024,
+      );
       if (typeof body.enabled !== "boolean") {
         throw new Error("Invalid media routing state");
       }
@@ -233,7 +229,8 @@ export async function adminStorageApi(
         activeBackend: state.enabled ? "oss" : "local",
         mediaRoutingEnabled: state.enabled,
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       json(response, 400, {
         error: "请先选择已测试通过的正式OSS配置",
       });
@@ -245,12 +242,13 @@ export async function adminStorageApi(
   if (request.method === "PATCH" && profileMatch) {
     try {
       const profile = await saveStorageProfile(
-        await readBody(request),
+        await readJsonBody<Record<string, unknown>>(request, 16 * 1_024),
         profileMatch[1],
       );
       audit(identity.userId, "update_storage_profile", profile.id);
       json(response, 200, { profile: publicStorageProfile(profile) });
-    } catch {
+    } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       json(response, 400, { error: "OSS configuration could not be updated" });
     }
     return;

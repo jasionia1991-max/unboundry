@@ -4,6 +4,11 @@ import type { DatabaseSync } from "node:sqlite";
 import { recordAudit } from "./audit";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
+import {
+  decodedRequestPath,
+  HttpRequestError,
+  readJsonBody,
+} from "./httpRequest";
 import { hasPermission } from "./permissions";
 import {
   listPublicTemplates,
@@ -42,18 +47,6 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   response.end(JSON.stringify(body));
-}
-
-async function readBody<T>(request: IncomingMessage) {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > 512 * 1_024) throw new Error("Payload too large");
-    chunks.push(bytes);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
 }
 
 function boundedInteger(value: string | null, fallback: number, maximum: number) {
@@ -322,7 +315,7 @@ export async function adminTemplatesApi(
     return;
   }
   const store = db();
-  const path = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+  const path = decodedRequestPath(request).replace(
     /^\/+/,
     "",
   );
@@ -367,12 +360,16 @@ export async function adminTemplatesApi(
 
   if (request.method === "POST" && !path) {
     try {
-      const input = await readBody<Record<string, unknown>>(request);
+      const input = await readJsonBody<Record<string, unknown>>(
+        request,
+        512 * 1_024,
+      );
       const row = savePublicTemplate(store, identity.userId, input);
       json(response, 201, {
         template: adminTemplateItem(store, row, true),
       });
     } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       json(response, 400, {
         error: error instanceof Error ? error.message : "公共模板保存失败",
       });
@@ -389,12 +386,16 @@ export async function adminTemplatesApi(
 
   if (request.method === "PATCH") {
     try {
-      const input = await readBody<Record<string, unknown>>(request);
+      const input = await readJsonBody<Record<string, unknown>>(
+        request,
+        512 * 1_024,
+      );
       const row = updatePublicTemplate(store, identity.userId, templateId, input);
       json(response, 200, {
         template: adminTemplateItem(store, row, true),
       });
     } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       const message = error instanceof Error ? error.message : "公共模板更新失败";
       json(response, message === "公共模板不存在" ? 404 : 400, {
         error: message,

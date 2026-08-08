@@ -4,6 +4,11 @@ import { imageReferenceForProvider, saveGeneratedPng } from "./assetStorage";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
 import {
+  decodedRequestPath,
+  HttpRequestError,
+  readJsonBody,
+} from "./httpRequest";
+import {
   createGenerationSafetyStore,
   generationSafetyStatus,
 } from "./generationSafety";
@@ -264,14 +269,7 @@ function taskStore() {
       )
     ) {
       store.resume(task.id);
-      setTimeout(
-        () => void (task.kind === "image"
-          ? executeImageTask(task.id)
-          : task.kind === "video"
-            ? executeVideoTask(task.id)
-            : executeAudioTask(task.id)),
-        0,
-      );
+      launchGenerationTask(task.id, task.kind);
     } else {
       store.transition(task.id, "failed", {
         code: "SERVICE_RESTARTED",
@@ -360,18 +358,6 @@ function canvasRevisionConflict(response: ServerResponse, error: unknown) {
     revision: error.revision,
   });
   return true;
-}
-
-async function readBody<T>(request: IncomingMessage) {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > 64 * 1_024) throw new Error("请求内容过大");
-    chunks.push(bytes);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
 }
 
 function taskSummary(task: GenerationTask) {
@@ -1312,6 +1298,60 @@ function safeFailure(error: unknown, kind: "text" | "audio" | "image" | "video")
         ? "音频生成失败，请稍后再试"
         : "图片生成失败，请稍后再试",
   };
+}
+
+export async function settleDetachedGenerationExecution(
+  execute: () => void | Promise<void>,
+  persistFailure: (error: unknown) => void | Promise<void>,
+) {
+  try {
+    await execute();
+  } catch (error) {
+    try {
+      await persistFailure(error);
+    } catch {
+      // Detached work has no caller to receive a second persistence failure.
+      // The original rejection is deliberately contained as well.
+    }
+  }
+}
+
+function persistDetachedGenerationFailure(
+  taskId: string,
+  kind: GenerationTask["kind"],
+  error: unknown,
+) {
+  try {
+    const generationStore = taskStore();
+    let current = generationStore.get(taskId);
+    if (!current || ["cancelled", "failed", "success"].includes(current.state)) {
+      return;
+    }
+    if (current.state === "queued") {
+      current = generationStore.transition(taskId, "running");
+    }
+    if (current?.state !== "running" && current?.state !== "recovering") return;
+    generationStore.transition(taskId, "failed", safeFailure(error, kind));
+  } catch {
+    // Database/state races cannot be reported to a detached caller. Swallowing
+    // here prevents the failure-reporting path from becoming an unhandled
+    // rejection; later recovery still sees the last committed task state.
+  }
+}
+
+function launchGenerationTask(taskId: string, kind: GenerationTask["kind"]) {
+  setTimeout(() => {
+    void settleDetachedGenerationExecution(
+      () => kind === "text"
+        ? executeTextTask(taskId)
+        : kind === "video"
+        ? executeVideoTask(taskId)
+        : kind === "audio"
+          ? executeAudioTask(taskId)
+          : executeImageTask(taskId),
+      (error) => persistDetachedGenerationFailure(taskId, kind, error),
+    );
+  }, 0);
 }
 
 type TextTaskStore = Pick<
@@ -2938,7 +2978,7 @@ export async function generationTasks(
   request: IncomingMessage,
   response: ServerResponse,
 ) {
-  const path = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+  const path = decodedRequestPath(request).replace(
     /^\/+/,
     "",
   );
@@ -3139,16 +3179,7 @@ export async function generationTasks(
       );
       const queued = taskStore().transition(taskId, "queued");
       if (!queued) throw new Error("Generation task not found");
-      setTimeout(
-        () => void (task.kind === "text"
-          ? executeTextTask(taskId)
-          : task.kind === "video"
-          ? executeVideoTask(taskId)
-          : task.kind === "audio"
-            ? executeAudioTask(taskId)
-            : executeImageTask(taskId)),
-        0,
-      );
+      launchGenerationTask(taskId, task.kind);
       json(response, 202, taskSummary(queued));
     } catch {
       json(response, 409, { error: "Generation task cannot be retried" });
@@ -3170,7 +3201,10 @@ export async function generationTasks(
 
   if (request.method === "POST" && path === "preflight") {
     try {
-      const body = await readBody<NodeInputGenerationRequest>(request);
+      const body = await readJsonBody<NodeInputGenerationRequest>(
+        request,
+        64 * 1_024,
+      );
       if (
         body.kind !== "text" &&
         body.kind !== "image" &&
@@ -3229,6 +3263,7 @@ export async function generationTasks(
         providerRequests: 0,
       });
     } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       if (canvasRevisionConflict(response, error)) return;
       json(response, 400, {
         error: error instanceof Error ? error.message : "提交前检查失败",
@@ -3239,7 +3274,10 @@ export async function generationTasks(
 
   if (request.method === "POST" && (path === "" || path === "/")) {
     try {
-      const body = await readBody<NodeInputGenerationRequest>(request);
+      const body = await readJsonBody<NodeInputGenerationRequest>(
+        request,
+        64 * 1_024,
+      );
       if (
         body.kind !== "text" && body.kind !== "image" &&
         body.kind !== "video" && body.kind !== "audio"
@@ -3400,19 +3438,11 @@ export async function generationTasks(
         providerProfileId: model.provider_profile_id,
       });
       if (created.created) {
-        setTimeout(
-          () => void (body.kind === "text"
-            ? executeTextTask(created.task.id)
-            : body.kind === "video"
-            ? executeVideoTask(created.task.id)
-            : body.kind === "audio"
-              ? executeAudioTask(created.task.id)
-            : executeImageTask(created.task.id)),
-          0,
-        );
+        launchGenerationTask(created.task.id, body.kind);
       }
       json(response, created.created ? 202 : 200, taskSummary(created.task));
     } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       if (canvasRevisionConflict(response, error)) {
         return;
       } else if (error instanceof GenerationTaskConflictError) {

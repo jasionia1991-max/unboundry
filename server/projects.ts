@@ -3,6 +3,11 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
+import {
+  decodedRequestPath,
+  HttpRequestError,
+  readJsonBody,
+} from "./httpRequest";
 import { cancelCanvasGenerationTasks } from "./generationTasks";
 
 const projectIdPattern = /^[a-z0-9._-]+$/i;
@@ -26,18 +31,6 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   response.end(JSON.stringify(body));
-}
-
-async function readBody<T>(request: IncomingMessage) {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > 64 * 1_024) throw new Error("Payload too large");
-    chunks.push(bytes);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
 }
 
 type ProjectRow = {
@@ -190,7 +183,7 @@ export async function projectsApi(
   request: IncomingMessage,
   response: ServerResponse,
 ) {
-  const id = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+  const id = decodedRequestPath(request).replace(
     /^\/+/,
     "",
   );
@@ -289,7 +282,10 @@ export async function projectsApi(
 
   if (request.method === "POST" && !id) {
     try {
-      const input = await readBody<{ title?: unknown }>(request);
+      const input = await readJsonBody<{ title?: unknown }>(
+        request,
+        64 * 1_024,
+      );
       const title = typeof input.title === "string"
         ? input.title.trim()
         : "";
@@ -330,7 +326,8 @@ export async function projectsApi(
         title: title || defaultProjectTitle,
         updatedAt: now,
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       json(response, 400, { error: "Project could not be created" });
     }
     return;

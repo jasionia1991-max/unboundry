@@ -1,6 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
 import { appDataDirectory, openAppDatabase } from "./database";
+import {
+  decodedRequestPath,
+  HttpRequestError,
+  readJsonBody,
+} from "./httpRequest";
 import { requestIdentity } from "./auth";
 import { normalizePersistedMediaNodes } from "../types/persistedMediaSources";
 import { canvasGraphFingerprint } from "../types/canvasFingerprint";
@@ -111,18 +116,6 @@ function touchProjectUpdatedAt(
   }
 }
 
-async function readBody<T>(request: IncomingMessage) {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > 5_000_000) throw new Error("Payload too large");
-    chunks.push(bytes);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
-}
-
 function valid(document: CanvasDocument) {
   const { viewport } = document;
   return (
@@ -147,7 +140,7 @@ export async function canvasPersistence(
   request: IncomingMessage,
   response: ServerResponse,
 ) {
-  const id = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+  const id = decodedRequestPath(request).replace(
     /^\/+/,
     "",
   );
@@ -236,7 +229,7 @@ export async function canvasPersistence(
   }
 
   try {
-    const document = await readBody<CanvasDocument>(request);
+    const document = await readJsonBody<CanvasDocument>(request, 5_000_000);
     if (!valid(document)) {
       json(response, 400, { error: "Invalid canvas document" });
       return;
@@ -318,6 +311,7 @@ export async function canvasPersistence(
     );
     json(response, 200, { graphRevision, revision });
   } catch (error) {
+    if (error instanceof HttpRequestError) throw error;
     json(response, 400, {
       error: error instanceof Error ? error.message : "Invalid request",
     });
@@ -328,7 +322,7 @@ export async function accountHistory(
   request: IncomingMessage,
   response: ServerResponse,
 ) {
-  const accountId = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+  const accountId = decodedRequestPath(request).replace(
     /^\/+/,
     "",
   );
@@ -389,7 +383,7 @@ export async function accountHistory(
   }
 
   try {
-    const item = await readBody<HistoryAsset>(request);
+    const item = await readJsonBody<HistoryAsset>(request, 5_000_000);
     if (
       !/^[a-z0-9._-]+$/i.test(item.id) ||
       !["image", "video", "audio", "world3d"].includes(item.kind) ||
@@ -425,6 +419,7 @@ export async function accountHistory(
       );
     json(response, 201, { item });
   } catch (error) {
+    if (error instanceof HttpRequestError) throw error;
     json(response, 400, {
       error: error instanceof Error ? error.message : "Invalid request",
     });
@@ -435,7 +430,7 @@ export async function projectTitle(
   request: IncomingMessage,
   response: ServerResponse,
 ) {
-  const id = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+  const id = decodedRequestPath(request).replace(
     /^\/+/,
     "",
   );
@@ -506,7 +501,7 @@ export async function projectTitle(
   }
 
   try {
-    const item = await readBody<ProjectTitle>(request);
+    const item = await readJsonBody<ProjectTitle>(request, 5_000_000);
     if (
       typeof item.title !== "string" ||
       item.title.length > 120 ||
@@ -537,6 +532,7 @@ export async function projectTitle(
       .run(ownerId, id, item.title, item.updatedAt);
     json(response, 200, read());
   } catch (error) {
+    if (error instanceof HttpRequestError) throw error;
     json(response, 400, {
       error: error instanceof Error ? error.message : "Invalid request",
     });

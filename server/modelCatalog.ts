@@ -3,6 +3,11 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
+import {
+  decodedRequestPath,
+  HttpRequestError,
+  readJsonBody,
+} from "./httpRequest";
 import { hasPermission } from "./permissions";
 import {
   generationSafetyStatus,
@@ -241,18 +246,6 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   response.end(JSON.stringify(body));
-}
-
-async function readBody<T>(request: IncomingMessage) {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > 64 * 1_024) throw new Error("Payload too large");
-    chunks.push(bytes);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
 }
 
 function adminModel(
@@ -779,7 +772,7 @@ export async function adminModelsApi(
     return;
   }
   const store = db();
-  const path = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+  const path = decodedRequestPath(request).replace(
     /^\/+/,
     "",
   );
@@ -1036,7 +1029,10 @@ export async function adminModelsApi(
   if (request.method === "POST" && !path) {
     try {
       const input = cleanModelInput(
-        await readBody<Parameters<typeof cleanModelInput>[0]>(request),
+        await readJsonBody<Parameters<typeof cleanModelInput>[0]>(
+          request,
+          64 * 1_024,
+        ),
       );
       const id = randomUUID();
       const timestamp = new Date().toISOString();
@@ -1154,7 +1150,8 @@ export async function adminModelsApi(
           modelLifecycleSummary(row, modelReferenceCounts(store, row.id)),
         ),
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       json(response, 400, { error: "Model profile is invalid" });
     }
     return;
@@ -1169,7 +1166,7 @@ export async function adminModelsApi(
       return;
     }
     try {
-      const body = await readBody<{
+      const body = await readJsonBody<{
         displayName?: unknown;
         isDefault?: unknown;
         providerModelId?: unknown;
@@ -1178,7 +1175,7 @@ export async function adminModelsApi(
         parameterSchema?: unknown;
         sortOrder?: unknown;
         status?: unknown;
-      }>(request);
+      }>(request, 64 * 1_024);
       const nextStatus = (body.status ?? current.status) as ModelStatus;
       const input = cleanModelInput({
         capability: current.capability,
@@ -1334,7 +1331,8 @@ export async function adminModelsApi(
           modelLifecycleSummary(row, modelReferenceCounts(store, row.id)),
         ),
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       json(response, 400, { error: "Model update is invalid" });
     }
     return;

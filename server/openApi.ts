@@ -10,6 +10,72 @@ export const openApiDocument = {
   },
   servers: [{ url: "/", description: "Current private service" }],
   paths: {
+    "/api/health/live": {
+      get: {
+        operationId: "readProcessLiveness",
+        summary: "Check that the application process is alive",
+        responses: {
+          "200": {
+            description: "The process can serve HTTP requests",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["requestId", "status"],
+                  properties: {
+                    requestId: { type: "string", format: "uuid" },
+                    status: { type: "string", const: "live" },
+                  },
+                  additionalProperties: false,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/api/health/ready": {
+      get: {
+        operationId: "readServiceReadiness",
+        summary: "Verify the existing schema-37 database without changing it",
+        responses: {
+          "200": {
+            description: "The existing database is readable and compatible",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: [
+                    "databaseProbe",
+                    "mode",
+                    "mutationsAccepted",
+                    "requestId",
+                    "schemaVersion",
+                    "status",
+                  ],
+                  properties: {
+                    databaseProbe: { type: "string", const: "read-only" },
+                    mode: {
+                      type: "string",
+                      enum: ["active", "maintenance-api-blocked"],
+                    },
+                    mutationsAccepted: { type: "boolean" },
+                    requestId: { type: "string", format: "uuid" },
+                    schemaVersion: { type: "integer", const: 37 },
+                    status: { type: "string", const: "ready" },
+                  },
+                  additionalProperties: false,
+                },
+              },
+            },
+          },
+          "503": {
+            description:
+              "The service is shutting down or the existing database is not ready",
+          },
+        },
+      },
+    },
     "/api/version": {
       get: {
         operationId: "readVersion",

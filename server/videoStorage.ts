@@ -20,6 +20,11 @@ import {
 import { publishCloudObject } from "./cloudMediaStorage";
 import { openAppDatabase } from "./database";
 import {
+  decodedRequestHeader,
+  decodedRequestPath,
+  HttpRequestError,
+} from "./httpRequest";
+import {
   storageMediaRoutingState,
   storageProfileForMedia,
 } from "./secureStorageProfiles";
@@ -166,7 +171,7 @@ export async function videoStorage(
   request: IncomingMessage,
   response: ServerResponse,
 ) {
-  const id = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+  const id = decodedRequestPath(request).replace(
     /^\/+/,
     "",
   );
@@ -271,6 +276,10 @@ export async function videoStorage(
   let handle: Awaited<ReturnType<typeof open>> | undefined;
   const checksum = createHash("sha256");
   try {
+    const fileName = decodedRequestHeader(
+      request,
+      String(request.headers["x-file-name"] ?? "Video.mp4"),
+    ).slice(0, 240);
     if (!mayWriteMedia(request, "video", id)) {
       throw new Error("Asset ID is unavailable");
     }
@@ -344,18 +353,18 @@ export async function videoStorage(
         storageName: id,
       });
     }
-    const rawName = String(request.headers["x-file-name"] ?? "Video.mp4");
     json(response, 201, {
       assetId: id,
       byteSize: size,
       contentType: "video/mp4",
-      fileName: decodeURIComponent(rawName).slice(0, 240),
+      fileName,
       durationSeconds: metadata.durationSeconds,
       size,
       storageBackend: routing.enabled && routing.profile ? "oss" : "local",
       url: `/api/video-assets/${id}`,
     });
   } catch (error) {
+    if (error instanceof HttpRequestError) throw error;
     await handle?.close();
     await rm(temporary, { force: true });
     json(response, 400, {

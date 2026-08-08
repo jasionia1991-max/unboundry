@@ -13,6 +13,11 @@ import { deletePrivateAliyunOssObject } from "./aliyunOss";
 import { recordAudit } from "./audit";
 import { appDataDirectory, openAppDatabase } from "./database";
 import {
+  decodedRequestPath,
+  HttpRequestError,
+  readJsonBody,
+} from "./httpRequest";
+import {
   accountPermissionSet,
   hasPermission,
   setAccountPermissions,
@@ -123,18 +128,6 @@ function passwordOnlyInput(value: unknown) {
     throw new Error("密码至少 12 位");
   }
   return password;
-}
-
-async function readBody<T>(request: IncomingMessage) {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > 64 * 1_024) throw new Error("请求内容过大");
-    chunks.push(bytes);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
 }
 
 function derivePassword(password: string, salt: Buffer) {
@@ -368,7 +361,7 @@ export async function authApi(
   request: IncomingMessage,
   response: ServerResponse,
 ) {
-  const path = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+  const path = decodedRequestPath(request).replace(
     /^\/+/,
     "",
   );
@@ -414,7 +407,9 @@ export async function authApi(
       return;
     }
     try {
-      const input = passwordInput(await readBody<UserInput>(request));
+      const input = passwordInput(
+        await readJsonBody<UserInput>(request, 64 * 1_024),
+      );
       const passwordHash = await hashPassword(input.password);
       const media = await existingMedia();
       const userId = randomUUID();
@@ -489,6 +484,7 @@ export async function authApi(
         .get(userId) as UserRow;
       json(response, 201, { user: publicUser(row) });
     } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       const message =
         error instanceof Error ? error.message : "无法创建管理员";
       json(response, message === "管理员已经创建" ? 409 : 400, {
@@ -504,8 +500,12 @@ export async function authApi(
       return;
     }
     try {
-      const body = await readBody<{ loginName?: unknown; password?: unknown }>(
+      const body = await readJsonBody<{
+        loginName?: unknown;
+        password?: unknown;
+      }>(
         request,
+        64 * 1_024,
       );
       const loginName =
         typeof body.loginName === "string"
@@ -522,7 +522,8 @@ export async function authApi(
       }
       createSession(store, row.id, response);
       json(response, 200, { user: publicUser(row) });
-    } catch {
+    } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       json(response, 400, { error: "登录信息无效" });
     }
     return;
@@ -543,10 +544,10 @@ export async function authApi(
       return;
     }
     try {
-      const body = await readBody<{
+      const body = await readJsonBody<{
         currentPassword?: unknown;
         newPassword?: unknown;
-      }>(request);
+      }>(request, 64 * 1_024);
       const currentPassword =
         typeof body.currentPassword === "string" ? body.currentPassword : "";
       const newPassword = passwordOnlyInput(body.newPassword);
@@ -579,6 +580,7 @@ export async function authApi(
       ) as UserRow;
       json(response, 200, { user: publicUser(row) });
     } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       json(response, 400, {
         error: error instanceof Error ? error.message : "密码修改失败",
       });
@@ -665,7 +667,7 @@ export async function adminUsersApi(
     return;
   }
   const store = db();
-  const path = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+  const path = decodedRequestPath(request).replace(
     /^\/+/,
     "",
   );
@@ -707,7 +709,10 @@ export async function adminUsersApi(
           json(response, 403, { error: "最高权限账号受保护，不能修改权限" });
           return;
         }
-        const body = await readBody<{ permissions?: unknown }>(request);
+        const body = await readJsonBody<{ permissions?: unknown }>(
+          request,
+          64 * 1_024,
+        );
         if (!Array.isArray(body.permissions)) {
           throw new Error("权限列表无效");
         }
@@ -725,6 +730,7 @@ export async function adminUsersApi(
         );
         json(response, 200, { added, permissions, removed });
       } catch (error) {
+        if (error instanceof HttpRequestError) throw error;
         const message = error instanceof Error ? error.message : "权限保存失败";
         json(response, message === "账号不存在" ? 404 : 400, {
           error: message,
@@ -753,7 +759,10 @@ export async function adminUsersApi(
 
   if (request.method === "POST" && !path) {
     try {
-      const body = await readBody<UserInput & { role?: unknown }>(request);
+      const body = await readJsonBody<UserInput & { role?: unknown }>(
+        request,
+        64 * 1_024,
+      );
       const input = passwordInput(body);
       const role = body.role === "admin" ? "admin" : "user";
       const id = randomUUID();
@@ -782,6 +791,7 @@ export async function adminUsersApi(
       const row = store.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow;
       json(response, 201, { user: publicUser(row) });
     } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       const message = String((error as Error).message ?? "");
       json(response, /UNIQUE/i.test(message) ? 409 : 400, {
         error: /UNIQUE/i.test(message) ? "账号名已存在" : "账号信息无效",
@@ -807,7 +817,10 @@ export async function adminUsersApi(
         json(response, 403, { error: "最高权限账号受保护，不能重置密码" });
         return;
       }
-      const body = await readBody<{ newPassword?: unknown }>(request);
+      const body = await readJsonBody<{ newPassword?: unknown }>(
+        request,
+        64 * 1_024,
+      );
       const newPassword = passwordOnlyInput(body.newPassword);
       const passwordHash = await hashPassword(newPassword);
       store
@@ -825,6 +838,7 @@ export async function adminUsersApi(
       ) as UserRow;
       json(response, 200, { user: publicUser(row) });
     } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       json(response, 400, {
         error: error instanceof Error ? error.message : "密码重置失败",
       });
@@ -834,10 +848,10 @@ export async function adminUsersApi(
 
   if (request.method === "PATCH" && userIdPattern.test(path)) {
     try {
-      const body = await readBody<{
+      const body = await readJsonBody<{
         role?: unknown;
         status?: unknown;
-      }>(request);
+      }>(request, 64 * 1_024);
       if (
         body.status !== undefined &&
         body.status !== "active" &&
@@ -900,6 +914,7 @@ export async function adminUsersApi(
       const row = store.prepare("SELECT * FROM users WHERE id = ?").get(path) as UserRow;
       json(response, 200, { user: publicUser(row) });
     } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       json(response, 400, {
         error: error instanceof Error ? error.message : "账号修改无效",
       });

@@ -7,6 +7,11 @@ import {
   openAppDatabase,
 } from "./database";
 import {
+  decodedRequestPath,
+  HttpRequestError,
+  readJsonBody,
+} from "./httpRequest";
+import {
   generationProviderAttemptCounts,
   type GenerationTaskKind,
 } from "./generationTaskStore";
@@ -80,18 +85,6 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   response.end(JSON.stringify(body));
-}
-
-async function readBody<T>(request: IncomingMessage) {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > 64 * 1_024) throw new Error("请求内容过大");
-    chunks.push(bytes);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
 }
 
 function toSettings(row: SafetyRow): GenerationSafetySettings {
@@ -448,7 +441,7 @@ export async function adminGenerationSafetyApi(
     });
     return;
   }
-  const path = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+  const path = decodedRequestPath(request).replace(
     /^\/+/,
     "",
   );
@@ -463,7 +456,7 @@ export async function adminGenerationSafetyApi(
     try {
       const before = safetyStore().settings();
       const settings = safetyStore().update(
-        await readBody<Partial<SafetyInput>>(request),
+        await readJsonBody<Partial<SafetyInput>>(request, 64 * 1_024),
       );
       const database = openAppDatabase();
       try {
@@ -479,6 +472,7 @@ export async function adminGenerationSafetyApi(
         settings,
       });
     } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       json(response, 400, {
         error: error instanceof Error ? error.message : "安全设置保存失败",
       });

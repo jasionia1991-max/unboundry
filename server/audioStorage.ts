@@ -20,6 +20,11 @@ import {
 import { publishCloudObject } from "./cloudMediaStorage";
 import { openAppDatabase } from "./database";
 import {
+  decodedRequestHeader,
+  decodedRequestPath,
+  HttpRequestError,
+} from "./httpRequest";
+import {
   storageMediaRoutingState,
   storageProfileForMedia,
 } from "./secureStorageProfiles";
@@ -308,7 +313,7 @@ export async function audioStorage(
   request: IncomingMessage,
   response: ServerResponse,
 ) {
-  const id = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+  const id = decodedRequestPath(request).replace(
     /^\/+/,
     "",
   );
@@ -418,6 +423,10 @@ export async function audioStorage(
 
   const temporary = `${path.file}.uploading`;
   try {
+    const fileName = decodedRequestHeader(
+      request,
+      String(request.headers["x-file-name"] ?? "Audio.wav"),
+    ).slice(0, 240);
     if (!mayWriteMedia(request, "audio", id)) {
       throw new Error("Asset ID is unavailable");
     }
@@ -472,18 +481,18 @@ export async function audioStorage(
         storageName: id,
       });
     }
-    const rawName = String(request.headers["x-file-name"] ?? "Audio.wav");
     json(response, 201, {
       assetId: id,
       byteSize: bytes.length,
       contentType: format.contentType,
       durationSeconds: metadata.durationSeconds,
-      fileName: decodeURIComponent(rawName).slice(0, 240),
+      fileName,
       size: bytes.length,
       storageBackend: routing.enabled && routing.profile ? "oss" : "local",
       url: `/api/audio-assets/${id}`,
     });
   } catch (error) {
+    if (error instanceof HttpRequestError) throw error;
     await rm(temporary, { force: true });
     json(response, 400, {
       error: error instanceof Error ? error.message : "Upload failed",

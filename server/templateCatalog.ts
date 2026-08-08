@@ -3,6 +3,11 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
+import {
+  decodedRequestPath,
+  HttpRequestError,
+  readJsonBody,
+} from "./httpRequest";
 import { isRealCategory } from "../types/templateCategories";
 
 type RawTemplateNode = {
@@ -289,18 +294,6 @@ function boundedInteger(value: string | null, fallback: number, maximum: number)
   return Number.isSafeInteger(parsed) && parsed >= 0 && parsed <= maximum
     ? parsed
     : undefined;
-}
-
-async function readBody<T>(request: IncomingMessage) {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > 512 * 1_024) throw new Error("Payload too large");
-    chunks.push(bytes);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -747,7 +740,7 @@ export async function templateCatalogApi(
   response: ServerResponse,
 ) {
   const identity = requestIdentity(request);
-  const path = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+  const path = decodedRequestPath(request).replace(
     /^\/+/,
     "",
   );
@@ -829,12 +822,16 @@ export async function templateCatalogApi(
       return;
     }
     try {
-      const input = await readBody<Record<string, unknown>>(request);
+      const input = await readJsonBody<Record<string, unknown>>(
+        request,
+        512 * 1_024,
+      );
       const row = saveUserTemplate(store, identity.userId, input);
       json(response, 201, {
         template: userTemplateCard(store, identity.userId, row, false),
       });
     } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       const message = error instanceof Error ? error.message : "模板保存失败";
       json(response, 400, { error: message });
     }

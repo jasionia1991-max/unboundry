@@ -4,7 +4,7 @@
 
 ## 0. 2026-08-09 全量修复施工模式
 
-用户已于 2026-08-09 确认施工文档并启动一次性离线 Goal，当前为 `REM-000 = PASS / REM-001 = USER_REVIEW / REM-002 = IN_PROGRESS`。REM-001 已建立并验证唯一安全施工入口；允许连续完成 REM-001～010 与 REM-011 离线工程部分。生产、真实数据、4173、真实 Provider/OSS、push、tag、PR、正式版本号和发布仍禁止。当前必须先读：
+用户已于 2026-08-09 确认施工文档并启动一次性离线 Goal，当前为 `REM-000 = PASS / REM-001、REM-002 = USER_REVIEW / REM-009A = IN_PROGRESS`。REM-001 已建立唯一安全施工入口，REM-002 已完成 API/进程工程候选；允许连续完成 REM-001～010 与 REM-011 离线工程部分。生产、真实数据、4173、真实 Provider/OSS、push、tag、PR、正式版本号和发布仍禁止。当前必须先读：
 
 1. 仓库根 `AGENTS.md`；
 2. `README.md`；
@@ -22,8 +22,8 @@
 ## 2. 仓库与环境
 
 - 仓库根：`/Users/mymy/Documents/unboundry/app`（注意：系统工作区根目录写的是 `tapnow1_1复刻`，那个路径在本机不存在，**一律用 unboundry/app**）。
-- Git：分支 `main`，远程 `https://github.com/jasionia1991-max/unboundry.git`；最近标签 `v0.4.7`～`v0.5.1`。
-- Node：离线施工已固定 `/Users/mymy/.hermes/node/bin/node v22.23.1` 与 npm `10.9.8`；`.node-version`、packageManager/engines 和安全 runner 会共同校验。历史部署计划记录服务器曾为 `v22.23.2`，本轮未获 SSH 授权，不能声称当前生产精确版本已复核。
+- Git：当前专用分支 `codex/unboundry-offline-remediation-2026-08-09`，远程 `https://github.com/jasionia1991-max/unboundry.git`；最近标签 `v0.4.7`～`v0.5.1`，本 Goal 禁止 push/tag/PR。
+- Node：离线施工已固定 `/Users/mymy/.local/bin/node`（指向 `/Users/mymy/.hermes/node/bin/node`）`v22.23.1` 与 npm `10.9.8`；`.node-version`、packageManager/engines 和安全 runner 会共同校验。历史部署计划记录服务器曾为 `v22.23.2`，本轮未获 SSH 授权，不能声称当前生产精确版本已复核。
 - 历史依赖/检查方式曾为 `npm install`、`npx tsc --noEmit`、`npm run build`，仍不得直接作为施工入口。当前唯一安全总入口是 `node scripts/run-safe-tests.mjs <preflight|list|run|full>`；它在跟踪文件隔离快照内用 `npm ci --offline --ignore-scripts` 准备依赖，并统一执行源码、构建、重启和测试门禁。
 - 代码结构速览：
   - `client/src/canvas/`：画布（`CanvasSurface.tsx` 是核心，`CanvasShell.tsx` 是外壳）、各类节点（Image/Text/Video/Audio/Group…）；
@@ -47,10 +47,10 @@
 
 - **绝不**用真实数据/真实 4173 跑测试：所有测试用临时数据目录 + 独立端口。
 - 2026-08-09 全量审计确认：旧推荐回归组合去重后只覆盖约 80/105 个 spec、391/519 项既有测试，且多处使用固定端口、共享临时库或仓库 tmp。它们只能作为历史基线，不能作为新候选的“真正全量”绿灯。
-- REM-001 已把 105 个 spec、当前 520 项测试全部纳入安全清单。每个 spec 使用独立新临时目录与两个动态 loopback 端口；Node/浏览器禁止非 loopback 与未登记本机端口；测试子进程真实路径成功访问为 0；4173 bind/connect 负控和运行前后监听身份比对均通过。
+- REM-001 已把 105 个 spec 纳入安全清单；REM-002 后当前为 536 项测试。每个 spec 使用独立新临时目录与两个动态 loopback 端口；Node/浏览器禁止非 loopback 与未登记本机端口；测试子进程真实路径成功访问为 0；4173 bind/connect 负控和运行前后监听身份比对均通过。
 - 默认 `npm run verify` 与下面固定端口配置仍是冻结历史，不得绕过安全总入口；`package.json` 中旧测试脚本已改为 fail-closed 或转入安全入口。
 - 历史通用测试配置：`--config=playwright.4174.config.ts`（端口 4174、临时数据目录、auth bypass）。
-- **不要直接跑 `npm run verify`**：它用默认配置绑 4173，会撞正在运行的真实服务。
+- `npm run verify` 现已委托给安全总入口；仍禁止直接调用 Vite、默认 Playwright 配置或下列历史固定端口脚本绕过 runner。
 - 端口地图（每套件独立 config）：
   - 4174：通用（playwright.4174）
   - 4175：m58；4176：m14（config webServer）/m60；4177：m61；4178：m62；4179：m63；4182：m64；4183：m65；
@@ -138,7 +138,7 @@ ssh live-cockpit "curl -fsS http://127.0.0.1:4173/api/version"
 
 ## 15. 下一步候选（未做）
 
-- 当前第一顺位：REM-001 建立绝对隔离的全量测试入口；完成前不得直接运行历史默认测试命令；
+- 当前第一顺位：REM-009A 建立真正只读的合成数据备份、加密、恢复、损坏拒绝和故障注入底座；
 - 正式部署流程收尾（域名/备案/HTTPS 加固确认）；
 - Mureka 真实生成恢复验收（需用户确认官网额度）；
 - 密码找回的网页入口（当前 root 忘密码走应急脚本）；
@@ -154,4 +154,4 @@ ssh live-cockpit "curl -fsS http://127.0.0.1:4173/api/version"
 5. 向用户先报告恢复出的项目、版本、当前项和授权；
 6. 任一不一致都必须停止，不得依据内部记忆、历史 PASS 或压缩摘要猜测继续。
 
-当前执行点：`REM-000 PASS / REM-001 USER_REVIEW / REM-002 IN_PROGRESS`。REM-001 首轮修复后全量证据为 `105/105 spec、520/520 PASS`，失败/跳过/retry/report error/blocked 均为 0；该结果是工程候选证据，不是用户 PASS，也不是 REM-011 最终三轮。按施工断点继续 REM-002；只有仓库身份被外部改变，或无法继续保证真实数据隔离和零外部请求时，才安全停止整个 Goal。
+当前执行点：`REM-000 PASS / REM-001、REM-002 USER_REVIEW / REM-009A IN_PROGRESS`。REM-002 后最终安全全量证据为 `105/105 spec、536/536 PASS`，失败/跳过/retry/report error/blocked 均为 0；源码门为 TS/TSX `260/260`、JS/MJS `14/14`，专项 m81 `17/17`。readiness 已只读核验 schema37/WAL/完整物理合同，但真实生产 schema hash、真实 WAL 和生产运维仍未授权验证。该结果是工程候选证据，不是用户 PASS，也不是 REM-011 最终三轮。按施工断点继续 REM-009A；只有仓库身份被外部改变，或无法继续保证真实数据隔离和零外部请求时，才安全停止整个 Goal。

@@ -1,7 +1,7 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-09
-状态：`线上 v0.5.1 继续运行；2026-08-09 一次性离线 Goal 持续执行，REM-000 = PASS、REM-001 = USER_REVIEW、REM-002 = IN_PROGRESS；所有施工只在动态 loopback 端口和新临时目录进行，真实数据、4173、真实 Provider/OSS、生产连接、push/tag/PR/发布均禁止；正式部署流程收尾与 Mureka Audio 真实生成仍按原状态暂缓`
+状态：`线上 v0.5.1 继续运行；2026-08-09 一次性离线 Goal 持续执行，REM-000 = PASS、REM-001/002 = USER_REVIEW、REM-009A = IN_PROGRESS；所有施工只在动态 loopback 端口和新临时目录进行，真实数据、4173、真实 Provider/OSS、生产连接、push/tag/PR/发布均禁止；正式部署流程收尾与 Mureka Audio 真实生成仍按原状态暂缓`
 唯一产品目标：从空仓库完整复刻 Unboundry 画布，不复用 Lumino/Lumino Web 的代码、组件、CSS、数据、后端、测试或部署。
 
 ### 2026-08-09 状态收口与交接索引
@@ -25,14 +25,15 @@
 |---|---|---|---|
 | REM-000 | 施工文档与防漂移机制 | PASS | 2026-08-09 用户确认通过 |
 | REM-001 | 测试安全底座与真正全量发现 | USER_REVIEW | 安全入口、105/520 清单、源码覆盖和首轮全绿证据已完成；Goal 结束时集中交用户复核 |
-| REM-002 | API、进程与可观测性基础 | IN_PROGRESS | 严格区分存活、只读待命与可写就绪；先修异常边界，再做维护/关闭协议 |
-| REM-003 | 画布持久化与 DATA-005 语义保护 | NOT_STARTED | REM-001/002 与 REM-009A 均 PASS 后才可实施 |
-| REM-004 | 统一媒体生命周期 | NOT_STARTED | REM-009A PASS + 故障注入底座 |
-| REM-005 | 生成、幂等与付费边界 | NOT_STARTED | REM-009A PASS + 本地假 Provider、零外网 |
-| REM-006 | 账号删除、模板、权限与清理 | NOT_STARTED | REM-009A PASS；用户先决定保留 PERM-011 或显式替代并重验 |
+| REM-002 | API、进程与可观测性基础 | USER_REVIEW | 统一异常边界、严格维护/关闭、只读 readiness、脱敏日志与进程生命周期已完成；Goal 结束时集中交用户复核 |
+| REM-003 | 画布持久化与 DATA-005 语义保护 | NOT_STARTED | REM-009A 工程候选完成后实施；REM-001/002 在 Goal 结束时统一用户复核 |
+| REM-004 | 统一媒体生命周期 | NOT_STARTED | REM-009A 工程候选 + 故障注入底座 |
+| REM-005 | 生成、幂等与付费边界 | NOT_STARTED | REM-009A 工程候选 + 本地假 Provider、零外网 |
+| REM-006 | 账号删除、模板、权限与清理 | NOT_STARTED | REM-009A 工程候选；继续既定 PERM-011/KEY-008/AUTH-006 合同 |
 | REM-007 | 前端生成恢复与失败体验 | NOT_STARTED | 后端任务合同稳定 |
 | REM-008 | 资源、安全、性能和运维脚本 | NOT_STARTED | 核心一致性后分项实施 |
-| REM-009 | 只读备份、恢复与数据库兼容（A 前置底座 / B 最终演练） | NOT_STARTED | 009A 在任何持久迁移前；009B 在 REM-010 前 |
+| REM-009A | 只读备份、恢复与数据库兼容前置底座 | IN_PROGRESS | 当前唯一施工项；在任何持久化修复前完成 |
+| REM-009B | 最终候选备份、恢复与双向兼容演练 | NOT_STARTED | 核心修复完成后、REM-010 前执行 |
 | REM-010 | 不可变发布、切换与回滚 | NOT_STARTED | REM-009B 通过后演练 |
 | REM-011 | 候选全量验收与正式发布门 | NOT_STARTED | G0～G7 + 用户双确认 |
 
@@ -49,6 +50,17 @@
 - `GOV-001`：一名只读 reviewer 曾用仓库级文件枚举只看到被忽略的备份/密钥文件名，没有读取内容、stat/hash、修改或网络动作。故最终只能声称“安全 runner/测试子进程真实路径访问为 0”，不能声称整个 Goal 所有 agent 行为绝对为 0。
 - 本项保持 schema `37`、package `0.5.1`，未访问真实数据、4173、真实 Provider/OSS、生产、SSH，也未 push/tag/PR/发布。工程状态进入 `USER_REVIEW`；本轮合并授权允许继续 REM-002。
 
+### 2026-08-09 REM-002 API、进程与可观测性基础（工程候选已完成）
+
+- 新增统一 HTTP 请求边界：13 处 JSON body reader 收敛到相同的大小、Content-Type、UTF-8 和中止规则；20 个服务路径入口及 3 个编码文件名改为安全解码；畸形 `%`、过大请求、错误媒体类型和异步异常只返回结构化 4xx/5xx，不再形成未处理 Promise。
+- 每个请求使用 UUID request ID，并只写固定 8 字段的脱敏结构化日志；业务 4xx/5xx 不再被错误记录成 `OK`。维护和关闭期间只放行已证明无副作用的 health/version 路由，其余 API（包括会懒迁移、回填或恢复任务的 GET）统一返回 `503 + Retry-After`。
+- 就绪检查不调用 `openAppDatabase`、不初始化任务存储、不创建业务行。它只读核验 schema 37 的完整迁移账本、19 张表、27 个显式索引、5 个触发器及 SQLite 完整性；活跃 WAL 有 SHM 时读取已提交快照，无 SHM 时 fail-closed。已登记且逐项验证 v21 目录修复与 v31→v32 模板补列的有限历史物理形态，未知或语义损坏形态一律不就绪。
+- 优雅关闭同时等待响应、handler 清理、请求体和 SSE；大/慢请求体会被安全排空，SSE 收到维护事件后结束。Vite dev/preview 的 SIGTERM/SIGINT 处理改为精确捕获并恢复自己的监听器，不删除宿主监听器；超时或 close 失败有硬截止。生成任务的 3 个后台启动点统一吸收同步 throw、Promise rejection 和失败回写异常，避免未处理 rejection 杀进程。
+- 登记并关闭 F-041～F-047：维护 GET 副作用旁路、只看响应的假排空、后台生成 rejection、readiness 假阳性/WAL 语义、Vite 信号所有权、错误日志记成 OK、JSON/URL 错误边界不一致。
+- 专项 `m81` 为 `17/17 PASS`。最终安全全量在固定 Node `22.23.1` / npm `10.9.8` 下发现并执行 `105/105 spec、536/536 PASS`；`failed/skipped/retries/reportErrors/blocked = 0`；源码门为 274 个文件、TS/TSX `260/260`、JS/MJS `14/14`，构建、重启持久化、临时目录清理均通过。
+- 一次诊断全量中，安全入口检测到本轮之外的 4173 守护服务监听身份在运行期间变化并正确 fail-closed；没有连接、终止或重启该服务。外部监听稳定后重新完整执行为 `536/536 PASS`，前后监听身份 SHA-256 均为 `0bbb8e5874e169f362481f626b49123e554ae478e4c261b7691e2eb30e80c14f`。
+- 本项保持 schema `37`、package `0.5.1`；未读取/修改真实数据，未操作 4173，未请求真实 Provider/OSS，未连接生产，未 push/tag/PR/发布。工程状态进入 `USER_REVIEW`，当前施工切换到 REM-009A。
+
 ### 2026-08-06 多项目（项目制画布）功能
 
 - 用户已审阅并确认最终开发方案，权威文档：`spec/UNBOUNDRY_MULTI_PROJECT_PLAN.md`（状态 APPROVED BY USER 2026-08-06）。实施时**以此文档为准**，避免上下文漂移。
@@ -57,7 +69,7 @@
 
 ## 当前阶段
 
-阶段：`线上 v0.5.1 保持不变 / REM-001 工程候选进入 USER_REVIEW / REM-002 API、进程与可观测性施工中 / 未连接生产且未操作真实数据、4173 或真实 Provider/OSS`
+阶段：`线上 v0.5.1 保持不变 / REM-001、REM-002 工程候选进入 USER_REVIEW / REM-009A 只读备份恢复底座施工中 / 未连接生产且未操作真实数据、4173 或真实 Provider/OSS`
 
 画布、固定界面、Text、Image、Video、Audio、Playlist、Group、外围面板、账号、管理员模型中心、生成安全和新图片私有OSS链路已通过当前范围验收；Comment、社区、TapTV、竞技场、额度和链接分享已按用户决定取消。OpenRouter GPT Image 2已完成一次用户授权的真实生成，图片连线参考图及真实结果零费用重启恢复均已通过；当前仅表示“不发布本轮新的修复候选”，不否认线上已运行 v0.5.1。
 
