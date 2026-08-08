@@ -10313,7 +10313,7 @@ sup {
   border-radius: 999px;
   color: #ffd9a8;
   background: rgba(146, 96, 28, 0.35);
-  font-size: 11px;
+  font-size: var(--tap-font-secondary);
   font-weight: 700;
 }
 
