@@ -2,6 +2,17 @@ import {
   providerProtocolSupportsCapability,
   type ProviderProtocol,
 } from "../types/relayProtocols";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  createAliyunOssObjectKey,
+  createPrivateAliyunOssReadUrl,
+  deletePrivateAliyunOssObject,
+  uploadPrivateAliyunOssObject,
+} from "./aliyunOss";
+import { readableStorageProfile } from "./secureStorageProfiles";
 import type { DestinationResolver } from "./outboundNetwork";
 import {
   fetchPublicHttps,
@@ -1122,18 +1133,82 @@ export async function requestRelayGptImage(
   if (!providerProtocolSupportsCapability(request.providerProtocol, request.capability)) {
     throw new RelayProviderError("FORMAT");
   }
-  const route = cleanImageRequest(request);
-  const body = await relayJsonRequest({
-    body: route.body,
-    connection,
-    execution,
-    maximumRequestBytes: mediaRequestLimitBytes,
-    maximumResponseBytes: mediaResponseLimitBytes,
-    method: "POST",
-    path: route.path,
-    protocol: request.providerProtocol,
-  });
-  return parseGptImageResult(body);
+  // 优创等中转站的 /v1/images/edits 不接受 data: URL 作为 image 参数；
+  // 本地参考图先临时上传到私有 OSS 并换成短时签名 URL，请求结束后删除。
+  const temporaryDirectory = await mkdtemp(join(tmpdir(), "unboundry-gpt-image-"));
+  const uploadedKeys: string[] = [];
+  try {
+    const inputImages: string[] = [];
+    for (const image of request.inputImages ?? []) {
+      if (!image.startsWith("data:")) {
+        inputImages.push(image);
+        continue;
+      }
+      const profile = await readableStorageProfile();
+      if (!profile) {
+        inputImages.push(image);
+        continue;
+      }
+      const match =
+        /^data:image\/(png|jpeg|webp);base64,([a-z0-9+/=\r\n]+)$/i.exec(image);
+      if (!match) {
+        inputImages.push(image);
+        continue;
+      }
+      const mime = `image/${match[1].toLowerCase()}`;
+      const extension = match[1].toLowerCase() === "png"
+        ? "png"
+        : match[1].toLowerCase() === "jpeg"
+          ? "jpg"
+          : "webp";
+      const bytes = Buffer.from(match[2].replace(/\s+/g, ""), "base64");
+      if (!bytes.length || bytes.length > 20 * 1024 * 1024) {
+        throw new RelayProviderError("FORMAT");
+      }
+      const objectKey = createAliyunOssObjectKey("image", extension);
+      const filePath = join(
+        temporaryDirectory,
+        `${randomUUID()}.${extension}`,
+      );
+      await writeFile(filePath, bytes, { flag: "wx" });
+      try {
+        await uploadPrivateAliyunOssObject({
+          byteSize: bytes.length,
+          checksumSha256: createHash("sha256").update(bytes).digest("hex"),
+          contentType: mime,
+          credentials: profile,
+          filePath,
+          objectKey,
+        });
+      } finally {
+        await rm(filePath, { force: true });
+      }
+      uploadedKeys.push(objectKey);
+      inputImages.push(
+        await createPrivateAliyunOssReadUrl(objectKey, profile, 300),
+      );
+    }
+    const route = cleanImageRequest({ ...request, inputImages });
+    const body = await relayJsonRequest({
+      body: route.body,
+      connection,
+      execution,
+      maximumRequestBytes: mediaRequestLimitBytes,
+      maximumResponseBytes: mediaResponseLimitBytes,
+      method: "POST",
+      path: route.path,
+      protocol: request.providerProtocol,
+    });
+    return parseGptImageResult(body);
+  } finally {
+    const profile = await readableStorageProfile();
+    if (profile) {
+      for (const key of uploadedKeys) {
+        await deletePrivateAliyunOssObject(key, profile).catch(() => undefined);
+      }
+    }
+    await rm(temporaryDirectory, { force: true, recursive: true });
+  }
 }
 
 function cleanMediaParamValue(value: RelayMediaParamValue) {
