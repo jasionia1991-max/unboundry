@@ -291,6 +291,46 @@ export const openApiDocument = {
         },
       },
     },
+    "/api/auth/password": {
+      post: {
+        operationId: "changeOwnPassword",
+        summary: "Change the signed-in account's own password with the current one",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["currentPassword", "newPassword"],
+                properties: {
+                  currentPassword: { type: "string" },
+                  newPassword: { type: "string", minLength: 12 },
+                },
+                additionalProperties: false,
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Password changed; other sessions revoked",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["user"],
+                  properties: {
+                    user: { type: "object", additionalProperties: true },
+                  },
+                },
+              },
+            },
+          },
+          "400": { description: "Current password wrong or new password invalid" },
+          "401": { description: "Sign-in required" },
+        },
+      },
+    },
     "/api/admin/users/{userId}/permissions": {
       get: {
         operationId: "readAccountPermissions",
@@ -387,6 +427,54 @@ export const openApiDocument = {
               "Unknown permission, self modification, admin target or admin-only grant",
           },
           "403": { description: "Requires manage_permissions" },
+          "404": { description: "Account not found" },
+        },
+      },
+    },
+    "/api/admin/users/{userId}/password": {
+      post: {
+        operationId: "resetAccountPassword",
+        summary: "Reset another account's password (protected root excluded)",
+        parameters: [
+          {
+            in: "path",
+            name: "userId",
+            required: true,
+            schema: { type: "string", pattern: "^[a-zA-Z0-9._-]{1,80}$" },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["newPassword"],
+                properties: {
+                  newPassword: { type: "string", minLength: 12 },
+                },
+                additionalProperties: false,
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Password reset; all target sessions revoked",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["user"],
+                  properties: {
+                    user: { type: "object", additionalProperties: true },
+                  },
+                },
+              },
+            },
+          },
+          "400": { description: "Invalid password" },
+          "403": { description: "Protected root cannot be reset" },
           "404": { description: "Account not found" },
         },
       },
@@ -908,11 +996,19 @@ export const openApiDocument = {
         properties: {
           user: {
             type: "object",
-            required: ["id", "loginName", "displayName", "role", "status"],
+            required: [
+              "id",
+              "loginName",
+              "displayName",
+              "protected",
+              "role",
+              "status",
+            ],
             properties: {
               id: { type: "string" },
               loginName: { type: "string" },
               displayName: { type: "string" },
+              protected: { type: "boolean" },
               role: { type: "string", enum: ["admin", "user"] },
               status: { type: "string", enum: ["active", "disabled"] },
             },

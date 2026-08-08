@@ -53,6 +53,7 @@ type AuthUser = {
   displayName: string;
   id: string;
   loginName: string;
+  protected?: boolean;
   role: "admin" | "user";
   status: "active" | "disabled";
 };
@@ -520,6 +521,11 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
   >({});
   const [permissionBusy, setPermissionBusy] = useState("");
   const [permissionError, setPermissionError] = useState("");
+  const [newRole, setNewRole] = useState<"admin" | "user">("user");
+  const [resetTarget, setResetTarget] = useState<AuthUser>();
+  const [resetDraft, setResetDraft] = useState("");
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState("");
 
   const load = async () => {
     setPermissionError("");
@@ -560,12 +566,13 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
     setError("");
     try {
       await jsonRequest("/api/admin/users", {
-        body: JSON.stringify({ displayName, loginName, password }),
+        body: JSON.stringify({ displayName, loginName, password, role: newRole }),
         method: "POST",
       });
       setDisplayName("");
       setLoginName("");
       setPassword("");
+      setNewRole("user");
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "账号创建失败");
@@ -598,6 +605,43 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
     } catch (caught) {
       setDeleting(undefined);
       setError(caught instanceof Error ? caught.message : "账号删除失败");
+    }
+  };
+
+  const setRole = async (user: AuthUser, role: "admin" | "user") => {
+    setError("");
+    try {
+      await jsonRequest(`/api/admin/users/${encodeURIComponent(user.id)}`, {
+        body: JSON.stringify({ role }),
+        method: "PATCH",
+      });
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "角色修改失败");
+    }
+  };
+
+  const resetPassword = async () => {
+    if (!resetTarget) return;
+    setResetBusy(true);
+    setResetError("");
+    try {
+      await jsonRequest(
+        `/api/admin/users/${encodeURIComponent(resetTarget.id)}/password`,
+        {
+          body: JSON.stringify({ newPassword: resetDraft }),
+          method: "POST",
+        },
+      );
+      setResetTarget(undefined);
+      setResetDraft("");
+      await load();
+    } catch (caught) {
+      setResetError(
+        caught instanceof Error ? caught.message : "密码重置失败",
+      );
+    } finally {
+      setResetBusy(false);
     }
   };
 
@@ -665,8 +709,10 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
       </header>
       <div className="admin-layout">
         <section className="admin-card">
-          <h1>添加普通用户</h1>
-          <p>普通用户不会看到管理员设置，也不能读取其他人的画布和素材。</p>
+          <h1>添加账号</h1>
+          <p>
+            可以创建普通用户或管理员；最高权限账号（第一个管理员）不受其他管理员管理。
+          </p>
           <form autoComplete="off" onSubmit={createUser}>
             <input
               autoComplete="off"
@@ -699,7 +745,17 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
               type="password"
               value={password}
             />
-            <button type="submit">创建普通用户</button>
+            <GrayMenuSelect
+              ariaLabel="新账号角色"
+              onChange={(value) => setNewRole(value as "admin" | "user")}
+              options={[
+                { label: "普通用户", value: "user" },
+                { label: "管理员", value: "admin" },
+              ]}
+              testId="new-account-role"
+              value={newRole}
+            />
+            <button type="submit">创建账号</button>
           </form>
           {error && <p className="auth-error" role="alert">{error}</p>}
         </section>
@@ -719,11 +775,16 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
                   <span>
                     登录名：{user.loginName} ·{" "}
                     {user.role === "admin" ? "管理员" : "普通用户"}
+                    {user.protected && (
+                      <b className="account-root-badge">最高权限</b>
+                    )}
                   </span>
                 </div>
                 <div className="account-list-actions">
                   <button
-                    disabled={user.id === currentUser.id}
+                    disabled={
+                      user.protected || user.id === currentUser.id
+                    }
                     onClick={() => void setStatus(user)}
                     type="button"
                   >
@@ -731,12 +792,40 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
                   </button>
                   <button
                     className="account-delete"
-                    disabled={user.id === currentUser.id}
+                    disabled={
+                      user.protected || user.id === currentUser.id
+                    }
                     onClick={() => setDeleting(user)}
                     type="button"
                   >
                     删除
                   </button>
+                  {!user.protected && user.id !== currentUser.id && (
+                    <>
+                      <button
+                        disabled={resetBusy}
+                        onClick={() => {
+                          setResetTarget(user);
+                          setResetDraft("");
+                          setResetError("");
+                        }}
+                        type="button"
+                      >
+                        重置密码
+                      </button>
+                      <button
+                        onClick={() =>
+                          void setRole(
+                            user,
+                            user.role === "admin" ? "user" : "admin",
+                          )
+                        }
+                        type="button"
+                      >
+                        {user.role === "admin" ? "设为普通用户" : "设为管理员"}
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
               <div
@@ -818,6 +907,50 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
           onConfirm={() => void deleteUser(deleting)}
           title="确认删除账号"
         />
+      )}
+      {resetTarget && (
+        <div className="admin-template-modal-backdrop">
+          <div
+            className="admin-template-modal"
+            data-testid="reset-password-modal"
+            role="dialog"
+          >
+            <h2>重置密码</h2>
+            <p>
+              正在为「{resetTarget.displayName}」（{resetTarget.loginName}）设置新密码，成功后该账号的所有会话会被吊销。
+            </p>
+            <label>
+              <span>新密码（至少 12 位）</span>
+              <input
+                autoComplete="new-password"
+                maxLength={200}
+                minLength={12}
+                onChange={(event) => setResetDraft(event.target.value)}
+                type="password"
+                value={resetDraft}
+              />
+            </label>
+            {resetError && (
+              <p className="auth-error" role="alert">{resetError}</p>
+            )}
+            <div className="admin-template-modal-actions">
+              <button
+                disabled={resetBusy}
+                onClick={() => setResetTarget(undefined)}
+                type="button"
+              >
+                取消
+              </button>
+              <button
+                disabled={resetBusy || resetDraft.length < 12}
+                onClick={() => void resetPassword()}
+                type="button"
+              >
+                {resetBusy ? "重置中…" : "确认重置"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );
@@ -6915,6 +7048,101 @@ function MyConnectionsPage({ currentUser }: { currentUser: AuthUser }) {
   );
 }
 
+function ChangeOwnPasswordDialog({
+  onClose,
+}: {
+  onClose: () => void;
+}) {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError("");
+    if (newPassword !== confirmPassword) {
+      setError("两次输入的新密码不一致");
+      return;
+    }
+    setBusy(true);
+    try {
+      await jsonRequest("/api/auth/password", {
+        body: JSON.stringify({
+          currentPassword,
+          newPassword,
+        }),
+        method: "POST",
+      });
+      onClose();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "密码修改失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="admin-template-modal-backdrop">
+      <div
+        className="admin-template-modal"
+        data-testid="change-password-modal"
+        role="dialog"
+      >
+        <h2>修改密码</h2>
+        <p>修改后其他设备会被强制重新登录。</p>
+        <form autoComplete="off" onSubmit={submit}>
+          <label>
+            <span>当前密码</span>
+            <input
+              autoComplete="current-password"
+              maxLength={200}
+              onChange={(event) => setCurrentPassword(event.target.value)}
+              required
+              type="password"
+              value={currentPassword}
+            />
+          </label>
+          <label>
+            <span>新密码（至少 12 位）</span>
+            <input
+              autoComplete="new-password"
+              maxLength={200}
+              minLength={12}
+              onChange={(event) => setNewPassword(event.target.value)}
+              required
+              type="password"
+              value={newPassword}
+            />
+          </label>
+          <label>
+            <span>确认新密码</span>
+            <input
+              autoComplete="new-password"
+              maxLength={200}
+              minLength={12}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              required
+              type="password"
+              value={confirmPassword}
+            />
+          </label>
+          {error && <p className="auth-error" role="alert">{error}</p>}
+          <div className="admin-template-modal-actions">
+            <button disabled={busy} onClick={onClose} type="button">
+              取消
+            </button>
+            <button disabled={busy} type="submit">
+              {busy ? "保存中…" : "确认修改"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function AuthenticatedApplication({
   fixtureId,
   projectId,
@@ -6927,6 +7155,7 @@ function AuthenticatedApplication({
   const [status, setStatus] = useState<AuthStatus>();
   const [loadError, setLoadError] = useState("");
   const [accountOpen, setAccountOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const accountPopover = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -7222,6 +7451,15 @@ function AuthenticatedApplication({
           )}
           <button
             onClick={() => {
+              setAccountOpen(false);
+              setPasswordOpen(true);
+            }}
+            type="button"
+          >
+            修改密码
+          </button>
+          <button
+            onClick={() => {
               void jsonRequest("/api/auth/logout", { method: "POST" }).then(() =>
                 setStatus({
                   authenticated: false,
@@ -7234,6 +7472,9 @@ function AuthenticatedApplication({
             退出登录
           </button>
         </aside>
+      )}
+      {passwordOpen && (
+        <ChangeOwnPasswordDialog onClose={() => setPasswordOpen(false)} />
       )}
     </>
   );

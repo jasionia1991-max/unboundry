@@ -211,6 +211,238 @@ test("admin bootstrap, account control and per-user data isolation are enforced"
   }
 });
 
+test("admins can create more admins while the protected root cannot be managed by other admins", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-auth-root-"));
+  let server: ChildProcess | undefined;
+  try {
+    server = await startServer(dataDirectory);
+    const bootstrap = await request("/api/auth/bootstrap", {
+      body: JSON.stringify({
+        displayName: "Root",
+        loginName: "root",
+        password: "root-password-123",
+      }),
+      method: "POST",
+    });
+    expect(bootstrap.status).toBe(201);
+    const rootCookie = cookie(bootstrap);
+
+    const rootList = (await (await request("/api/admin/users", {
+      cookie: rootCookie,
+    })).json()) as {
+      users: Array<{ id: string; loginName: string; protected: boolean }>;
+    };
+    expect(rootList.users.find((user) => user.loginName === "root")?.protected)
+      .toBe(true);
+
+    const second = await request("/api/admin/users", {
+      body: JSON.stringify({
+        displayName: "第二管理员",
+        loginName: "secondadmin",
+        password: "second-admin-password",
+        role: "admin",
+      }),
+      cookie: rootCookie,
+      method: "POST",
+    });
+    expect(second.status).toBe(201);
+    const secondUser = (await second.json()) as { user: { id: string } };
+    const adminLogin = await request("/api/auth/login", {
+      body: JSON.stringify({
+        loginName: "secondadmin",
+        password: "second-admin-password",
+      }),
+      method: "POST",
+    });
+    const adminCookie = cookie(adminLogin);
+
+    const rootId = rootList.users.find((user) => user.loginName === "root")!.id;
+    const protectedBlockers: Array<Promise<Response>> = [
+      request(`/api/admin/users/${rootId}`, {
+        body: JSON.stringify({ status: "disabled" }),
+        cookie: adminCookie,
+        method: "PATCH",
+      }),
+      request(`/api/admin/users/${rootId}`, {
+        body: JSON.stringify({ role: "user" }),
+        cookie: adminCookie,
+        method: "PATCH",
+      }),
+      request(`/api/admin/users/${rootId}`, {
+        cookie: adminCookie,
+        method: "DELETE",
+      }),
+      request(`/api/admin/users/${rootId}/password`, {
+        body: JSON.stringify({ newPassword: "hacked-password-123" }),
+        cookie: adminCookie,
+        method: "POST",
+      }),
+      request(`/api/admin/users/${rootId}/permissions`, {
+        body: JSON.stringify({ permissions: [] }),
+        cookie: adminCookie,
+        method: "PUT",
+      }),
+    ];
+    for (const blocker of protectedBlockers) {
+      expect((await blocker).status).toBe(403);
+    }
+
+    const ordinary = await request("/api/admin/users", {
+      body: JSON.stringify({
+        displayName: "普通甲",
+        loginName: "ordinary-a",
+        password: "ordinary-password-123",
+      }),
+      cookie: adminCookie,
+      method: "POST",
+    });
+    expect(ordinary.status).toBe(201);
+    const ordinaryUser = (await ordinary.json()) as { user: { id: string } };
+    expect((await request(`/api/admin/users/${ordinaryUser.user.id}`, {
+      body: JSON.stringify({ status: "disabled" }),
+      cookie: adminCookie,
+      method: "PATCH",
+    })).status).toBe(200);
+    expect((await request(`/api/admin/users/${ordinaryUser.user.id}`, {
+      body: JSON.stringify({ role: "admin" }),
+      cookie: adminCookie,
+      method: "PATCH",
+    })).status).toBe(200);
+    expect((await request(`/api/admin/users/${ordinaryUser.user.id}/password`, {
+      body: JSON.stringify({ newPassword: "reset-password-123" }),
+      cookie: adminCookie,
+      method: "POST",
+    })).status).toBe(200);
+
+    expect((await request(`/api/admin/users/${rootId}`, {
+      body: JSON.stringify({ role: "user" }),
+      cookie: rootCookie,
+      method: "PATCH",
+    })).status).toBe(403);
+    expect((await request(`/api/admin/users/${rootId}`, {
+      cookie: rootCookie,
+      method: "DELETE",
+    })).status).toBe(400);
+
+    expect((await request(`/api/admin/users/${secondUser.user.id}`, {
+      body: JSON.stringify({ role: "user" }),
+      cookie: rootCookie,
+      method: "PATCH",
+    })).status).toBe(200);
+  } finally {
+    if (server) await stopServer(server);
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("self password change and admin password reset revoke access and respect the protected root", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-auth-pwd-"));
+  let server: ChildProcess | undefined;
+  try {
+    server = await startServer(dataDirectory);
+    const bootstrap = await request("/api/auth/bootstrap", {
+      body: JSON.stringify({
+        displayName: "Root",
+        loginName: "root",
+        password: "root-password-123",
+      }),
+      method: "POST",
+    });
+    const rootCookie = cookie(bootstrap);
+    const created = await request("/api/admin/users", {
+      body: JSON.stringify({
+        displayName: "普通乙",
+        loginName: "ordinary-b",
+        password: "ordinary-password-123",
+      }),
+      cookie: rootCookie,
+      method: "POST",
+    });
+    const ordinary = (await created.json()) as { user: { id: string } };
+    const login = await request("/api/auth/login", {
+      body: JSON.stringify({
+        loginName: "ordinary-b",
+        password: "ordinary-password-123",
+      }),
+      method: "POST",
+    });
+    const userCookie = cookie(login);
+
+    expect((await request("/api/auth/password", {
+      body: JSON.stringify({
+        currentPassword: "wrong-password",
+        newPassword: "next-password-123",
+      }),
+      cookie: userCookie,
+      method: "POST",
+    })).status).toBe(400);
+    expect((await request("/api/auth/password", {
+      body: JSON.stringify({
+        currentPassword: "ordinary-password-123",
+        newPassword: "next-password-123",
+      }),
+      cookie: userCookie,
+      method: "POST",
+    })).status).toBe(200);
+    expect((await request("/api/auth/login", {
+      body: JSON.stringify({
+        loginName: "ordinary-b",
+        password: "ordinary-password-123",
+      }),
+      method: "POST",
+    })).status).toBe(401);
+    expect((await request("/api/auth/login", {
+      body: JSON.stringify({
+        loginName: "ordinary-b",
+        password: "next-password-123",
+      }),
+      method: "POST",
+    })).status).toBe(200);
+
+    expect((await request(`/api/admin/users/${ordinary.user.id}/password`, {
+      body: JSON.stringify({ newPassword: "admin-reset-password-123" }),
+      cookie: rootCookie,
+      method: "POST",
+    })).status).toBe(200);
+    expect((await request("/api/auth/login", {
+      body: JSON.stringify({
+        loginName: "ordinary-b",
+        password: "next-password-123",
+      }),
+      method: "POST",
+    })).status).toBe(401);
+    expect((await request("/api/auth/login", {
+      body: JSON.stringify({
+        loginName: "ordinary-b",
+        password: "admin-reset-password-123",
+      }),
+      method: "POST",
+    })).status).toBe(200);
+
+    const rootId = (
+      (await (await request("/api/admin/users", {
+        cookie: rootCookie,
+      })).json()) as { users: Array<{ id: string; loginName: string }> }
+    ).users.find((user) => user.loginName === "root")!.id;
+    expect((await request(`/api/admin/users/${rootId}/password`, {
+      body: JSON.stringify({ newPassword: "attacker-password-123" }),
+      cookie: rootCookie,
+      method: "POST",
+    })).status).toBe(403);
+    expect((await request("/api/auth/password", {
+      body: JSON.stringify({
+        currentPassword: "root-password-123",
+        newPassword: "root-next-password-123",
+      }),
+      cookie: rootCookie,
+      method: "POST",
+    })).status).toBe(200);
+  } finally {
+    if (server) await stopServer(server);
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
 test("admin can delete accounts with owned data and cannot delete the current admin", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-auth-delete-"));
   let server: ChildProcess | undefined;

@@ -35,6 +35,7 @@ type UserRow = {
   id: string;
   login_name: string;
   password_hash: string;
+  protected: number;
   role: "admin" | "user";
   status: "active" | "disabled";
 };
@@ -116,6 +117,14 @@ function passwordInput(input: UserInput) {
   return { displayName, loginName, password };
 }
 
+function passwordOnlyInput(value: unknown) {
+  const password = typeof value === "string" ? value : "";
+  if (password.length < 12 || password.length > 200) {
+    throw new Error("密码至少 12 位");
+  }
+  return password;
+}
+
 async function readBody<T>(request: IncomingMessage) {
   const chunks: Buffer[] = [];
   let size = 0;
@@ -137,7 +146,7 @@ function derivePassword(password: string, salt: Buffer) {
   });
 }
 
-async function hashPassword(password: string) {
+export async function hashPassword(password: string) {
   const salt = randomBytes(16);
   const key = await derivePassword(password, salt);
   return `scrypt$16384$8$1$${salt.toString("hex")}$${key.toString("hex")}`;
@@ -169,6 +178,7 @@ function publicUser(row: UserRow) {
     displayName: row.display_name,
     id: row.id,
     loginName: row.login_name,
+    protected: Boolean(row.protected),
     role: row.role,
     status: row.status,
   };
@@ -289,6 +299,7 @@ async function authenticate(request: IncomingMessage) {
         users.login_name,
         users.display_name,
         users.password_hash,
+        users.protected,
         users.role,
         users.status
       FROM sessions
@@ -372,6 +383,7 @@ export async function authApi(
           displayName: "Test User",
           id: "__test__",
           loginName: "test-user",
+          protected: true,
           role: "admin",
           status: "active",
         },
@@ -419,9 +431,9 @@ export async function authApi(
           .prepare(`
             INSERT INTO users (
               id, login_name, display_name, password_hash, role, status,
-              created_at, updated_at
+              protected, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, 'admin', 'active', ?, ?)
+            VALUES (?, ?, ?, ?, 'admin', 'active', 1, ?, ?)
           `)
           .run(
             userId,
@@ -512,6 +524,64 @@ export async function authApi(
       json(response, 200, { user: publicUser(row) });
     } catch {
       json(response, 400, { error: "登录信息无效" });
+    }
+    return;
+  }
+
+  if (request.method === "POST" && path === "password") {
+    if (!isMutationAllowed(request)) {
+      json(response, 403, { error: "请求来源无效" });
+      return;
+    }
+    if (process.env.UNBOUNDRY_TEST_AUTH_BYPASS === "1") {
+      json(response, 400, { error: "测试模式不支持修改密码" });
+      return;
+    }
+    const session = await authenticate(request);
+    if (!session) {
+      json(response, 401, { error: "请先登录" });
+      return;
+    }
+    try {
+      const body = await readBody<{
+        currentPassword?: unknown;
+        newPassword?: unknown;
+      }>(request);
+      const currentPassword =
+        typeof body.currentPassword === "string" ? body.currentPassword : "";
+      const newPassword = passwordOnlyInput(body.newPassword);
+      const valid = await verifyPassword(currentPassword, session.row.password_hash);
+      if (!valid) {
+        json(response, 400, { error: "当前密码不正确" });
+        return;
+      }
+      const passwordHash = await hashPassword(newPassword);
+      const currentTokenHash = tokenHash(
+        cookieValue(request, cookieName) ?? "",
+      );
+      store
+        .prepare(`
+          UPDATE users
+          SET password_hash = ?, updated_at = ?
+          WHERE id = ?
+        `)
+        .run(passwordHash, new Date().toISOString(), session.identity.userId);
+      // 吊销除当前会话外的全部会话，强制其他设备重新登录。
+      store
+        .prepare(`
+          DELETE FROM sessions
+          WHERE user_id = ? AND token_hash != ?
+        `)
+        .run(session.identity.userId, currentTokenHash);
+      recordAudit(store, session.identity.userId, "password_change", session.identity.userId, {});
+      const row = store.prepare("SELECT * FROM users WHERE id = ?").get(
+        session.identity.userId,
+      ) as UserRow;
+      json(response, 200, { user: publicUser(row) });
+    } catch (error) {
+      json(response, 400, {
+        error: error instanceof Error ? error.message : "密码修改失败",
+      });
     }
     return;
   }
@@ -610,8 +680,8 @@ export async function adminUsersApi(
     }
     const targetId = permissionMatch[1];
     const target = store
-      .prepare("SELECT role FROM users WHERE id = ?")
-      .get(targetId) as { role: "admin" | "user" } | undefined;
+      .prepare("SELECT role, protected FROM users WHERE id = ?")
+      .get(targetId) as { role: "admin" | "user"; protected: number } | undefined;
     if (!target) {
       json(response, 404, { error: "账号不存在" });
       return;
@@ -629,6 +699,14 @@ export async function adminUsersApi(
     }
     if (request.method === "PUT") {
       try {
+        if (targetId === identity.userId) {
+          json(response, 400, { error: "不能修改自己的权限" });
+          return;
+        }
+        if (target.protected) {
+          json(response, 403, { error: "最高权限账号受保护，不能修改权限" });
+          return;
+        }
         const body = await readBody<{ permissions?: unknown }>(request);
         if (!Array.isArray(body.permissions)) {
           throw new Error("权限列表无效");
@@ -663,7 +741,7 @@ export async function adminUsersApi(
     const users = (
       store
         .prepare(`
-          SELECT id, login_name, display_name, role, status
+          SELECT id, login_name, display_name, role, status, protected
           FROM users
           ORDER BY created_at ASC
         `)
@@ -675,27 +753,31 @@ export async function adminUsersApi(
 
   if (request.method === "POST" && !path) {
     try {
-      const input = passwordInput(await readBody<UserInput>(request));
+      const body = await readBody<UserInput & { role?: unknown }>(request);
+      const input = passwordInput(body);
+      const role = body.role === "admin" ? "admin" : "user";
       const id = randomUUID();
       const timestamp = new Date().toISOString();
       store
         .prepare(`
           INSERT INTO users (
             id, login_name, display_name, password_hash, role, status,
-            created_at, updated_at
+            protected, created_at, updated_at
           )
-          VALUES (?, ?, ?, ?, 'user', 'active', ?, ?)
+          VALUES (?, ?, ?, ?, ?, 'active', 0, ?, ?)
         `)
         .run(
           id,
           input.loginName,
           input.displayName,
           await hashPassword(input.password),
+          role,
           timestamp,
           timestamp,
         );
       recordAudit(store, identity.userId, "create_user", id, {
         loginName: input.loginName,
+        role,
       });
       const row = store.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow;
       json(response, 201, { user: publicUser(row) });
@@ -708,35 +790,119 @@ export async function adminUsersApi(
     return;
   }
 
+  const passwordMatch = path.match(
+    /^([a-z0-9._-]{1,80})\/password$/i,
+  );
+  if (request.method === "POST" && passwordMatch) {
+    try {
+      const targetId = passwordMatch[1];
+      const target = store.prepare("SELECT * FROM users WHERE id = ?").get(
+        targetId,
+      ) as UserRow | undefined;
+      if (!target) {
+        json(response, 404, { error: "账号不存在" });
+        return;
+      }
+      if (target.protected) {
+        json(response, 403, { error: "最高权限账号受保护，不能重置密码" });
+        return;
+      }
+      const body = await readBody<{ newPassword?: unknown }>(request);
+      const newPassword = passwordOnlyInput(body.newPassword);
+      const passwordHash = await hashPassword(newPassword);
+      store
+        .prepare(`
+          UPDATE users
+          SET password_hash = ?, updated_at = ?
+          WHERE id = ?
+        `)
+        .run(passwordHash, new Date().toISOString(), targetId);
+      // 管理员重置密码后吊销目标账号全部会话。
+      store.prepare("DELETE FROM sessions WHERE user_id = ?").run(targetId);
+      recordAudit(store, identity.userId, "reset_password", targetId, {});
+      const row = store.prepare("SELECT * FROM users WHERE id = ?").get(
+        targetId,
+      ) as UserRow;
+      json(response, 200, { user: publicUser(row) });
+    } catch (error) {
+      json(response, 400, {
+        error: error instanceof Error ? error.message : "密码重置失败",
+      });
+    }
+    return;
+  }
+
   if (request.method === "PATCH" && userIdPattern.test(path)) {
     try {
-      const body = await readBody<{ status?: unknown }>(request);
-      if (body.status !== "active" && body.status !== "disabled") {
+      const body = await readBody<{
+        role?: unknown;
+        status?: unknown;
+      }>(request);
+      if (
+        body.status !== undefined &&
+        body.status !== "active" &&
+        body.status !== "disabled"
+      ) {
         throw new Error("Invalid status");
+      }
+      if (
+        body.role !== undefined &&
+        body.role !== "admin" &&
+        body.role !== "user"
+      ) {
+        throw new Error("Invalid role");
+      }
+      if (body.status === undefined && body.role === undefined) {
+        throw new Error("No change");
+      }
+      const target = store.prepare("SELECT * FROM users WHERE id = ?").get(
+        path,
+      ) as UserRow | undefined;
+      if (!target) {
+        json(response, 404, { error: "账号不存在" });
+        return;
+      }
+      if (target.protected) {
+        json(response, 403, { error: "最高权限账号受保护，不能修改" });
+        return;
       }
       if (path === identity.userId && body.status === "disabled") {
         json(response, 400, { error: "不能停用当前登录的管理员" });
         return;
       }
-      const result = store
-        .prepare(`
-          UPDATE users SET status = ?, updated_at = ? WHERE id = ?
-        `)
-        .run(body.status, new Date().toISOString(), path);
-      if (result.changes !== 1) {
-        json(response, 404, { error: "账号不存在" });
+      if (path === identity.userId && body.role !== undefined) {
+        json(response, 400, { error: "不能修改自己的角色" });
         return;
       }
-      if (body.status === "disabled") {
-        store.prepare("DELETE FROM sessions WHERE user_id = ?").run(path);
+      if (body.status !== undefined) {
+        store
+          .prepare(`
+            UPDATE users SET status = ?, updated_at = ? WHERE id = ?
+          `)
+          .run(body.status, new Date().toISOString(), path);
+        if (body.status === "disabled") {
+          store.prepare("DELETE FROM sessions WHERE user_id = ?").run(path);
+        }
+        recordAudit(store, identity.userId, "set_user_status", path, {
+          status: body.status,
+        });
       }
-      recordAudit(store, identity.userId, "set_user_status", path, {
-        status: body.status,
-      });
+      if (body.role !== undefined) {
+        store
+          .prepare(`
+            UPDATE users SET role = ?, updated_at = ? WHERE id = ?
+          `)
+          .run(body.role, new Date().toISOString(), path);
+        recordAudit(store, identity.userId, "set_user_role", path, {
+          role: body.role,
+        });
+      }
       const row = store.prepare("SELECT * FROM users WHERE id = ?").get(path) as UserRow;
       json(response, 200, { user: publicUser(row) });
-    } catch {
-      json(response, 400, { error: "账号状态无效" });
+    } catch (error) {
+      json(response, 400, {
+        error: error instanceof Error ? error.message : "账号修改无效",
+      });
     }
     return;
   }
@@ -753,6 +919,10 @@ export async function adminUsersApi(
       ) as UserRow | undefined;
       if (!target) {
         json(response, 404, { error: "账号不存在" });
+        return;
+      }
+      if (target.protected) {
+        json(response, 403, { error: "最高权限账号受保护，不能删除" });
         return;
       }
       if (target.role === "admin") {

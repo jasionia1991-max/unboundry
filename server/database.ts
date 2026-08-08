@@ -1519,6 +1519,24 @@ const migrations: readonly Migration[] = [
       DROP TABLE IF EXISTS account_consumption_limits;
     `,
   },
+  {
+    version: 37,
+    name: "protected-root-admin",
+    sql: `
+      ALTER TABLE users
+        ADD COLUMN protected INTEGER NOT NULL DEFAULT 0
+        CHECK (protected IN (0, 1));
+      UPDATE users
+      SET protected = 1
+      WHERE id = (
+        SELECT id
+        FROM users
+        WHERE role = 'admin' AND status = 'active'
+        ORDER BY created_at ASC, rowid ASC
+        LIMIT 1
+      );
+    `,
+  },
 ];
 
 export const currentSchemaVersion = migrations.at(-1)?.version ?? 0;

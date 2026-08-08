@@ -724,6 +724,15 @@ test("two OS processes can migrate the same v18 database exactly once", async ()
         );
       }
     }
+    // v37 会重新 ADD COLUMN protected；夹具的“当前库回退”需要先删掉该列。
+    const userColumns = new Set(
+      (legacy.prepare("PRAGMA table_info(users)").all() as Array<{
+        name: string;
+      }>).map((column) => column.name),
+    );
+    if (userColumns.has("protected")) {
+      legacy.exec("ALTER TABLE users DROP COLUMN protected");
+    }
     legacy.exec(`
       DELETE FROM schema_migrations WHERE version >= 19;
       PRAGMA user_version = 18;
@@ -774,6 +783,7 @@ test("two OS processes can migrate the same v18 database exactly once", async ()
         { count: 1, version: 34 },
         { count: 1, version: 35 },
         { count: 1, version: 36 },
+        { count: 1, version: 37 },
       ]);
     } finally {
       database.close();
