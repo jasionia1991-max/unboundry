@@ -686,3 +686,151 @@ test("relay audio exposes local-only cancellation while Mureka remains unchanged
   expect(cancelRequests).toBe(1);
   expect(externalRequests).toEqual([]);
 });
+
+test("image node resumes polling after a reload while the task is running and shows the result without another refresh", async ({
+  page,
+  request,
+}) => {
+  const taskId = "recovery-running-image";
+  let pollCount = 0;
+  let providerRequests = 0;
+  page.on("request", (entry) => {
+    if (/volces|openrouter|mureka/i.test(entry.url())) providerRequests += 1;
+  });
+
+  const runningTask = {
+    attempt: 1,
+    canvasId: "default",
+    costCurrency: "USD",
+    createdAt: "2026-08-03T08:00:00.000Z",
+    id: taskId,
+    kind: "image" as const,
+    model: modelInputs.image.id,
+    nodeId: nodeId("image"),
+    prompt: "image 原始提示词",
+    retryAllowed: true,
+    state: "running" as const,
+    updatedAt: "2026-08-03T08:00:01.000Z",
+  };
+  const successTask = {
+    ...runningTask,
+    resultAssetId: "recovery-result-image",
+    resultMedia: {
+      byteSize: 123,
+      contentType: "image/png",
+      durationSeconds: null,
+      durationStatus: "not-applicable" as const,
+      storageBackend: "local" as const,
+    },
+    resultUrl: "/api/assets/recovery-result-image",
+    state: "success" as const,
+    updatedAt: "2026-08-03T08:00:30.000Z",
+  };
+  let latestTask: Record<string, unknown> = runningTask;
+
+  await page.route("**/api/models", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        generationEnabled: true,
+        models: [{
+          capability: "image",
+          displayName: "Retry UI image",
+          generationAvailable: true,
+          generationUnavailableReason: "",
+          generationUnavailableReasonCode: null,
+          id: modelInputs.image.id,
+          isDefault: true,
+          parameterSchema: schemas.image,
+        }],
+      },
+      status: 200,
+    });
+  });
+  await page.route("**/api/generation-tasks**", async (route) => {
+    const url = new URL(route.request().url());
+    const method = route.request().method();
+    if (url.pathname.endsWith("/status")) {
+      await route.fulfill({
+        contentType: "application/json",
+        json: {
+          paidProviderRequests: 0,
+          persistentQueueReady: true,
+          providerConfigured: true,
+          submissionEnabled: true,
+        },
+        status: 200,
+      });
+      return;
+    }
+    if (url.pathname.endsWith("/preflight") && method === "POST") {
+      await route.fulfill({
+        contentType: "application/json",
+        json: { canEnqueue: true, canSubmit: true, problems: [] },
+        status: 200,
+      });
+      return;
+    }
+    if (url.pathname.endsWith("/by-idempotency") && method === "GET") {
+      await route.fulfill({
+        contentType: "application/json",
+        json: { error: "not found" },
+        status: 404,
+      });
+      return;
+    }
+    if (url.pathname === "/api/generation-tasks" && method === "GET") {
+      await route.fulfill({
+        contentType: "application/json",
+        json: { tasks: [latestTask] },
+        status: 200,
+      });
+      return;
+    }
+    if (url.pathname.endsWith(`/${taskId}`) && method === "GET") {
+      pollCount += 1;
+      if (pollCount >= 2) latestTask = successTask;
+      await route.fulfill({
+        contentType: "application/json",
+        json: latestTask,
+        status: 200,
+      });
+      return;
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      json: { error: "Unexpected fake task route" },
+      status: 404,
+    });
+  });
+
+  await request.delete("/api/canvas/default");
+  expect((await request.put("/api/canvas/default", {
+    data: {
+      edges: [],
+      nodes: canvasNodes("image"),
+      revision: 0,
+      viewport: { x: 0, y: 0, zoom: 0.75 },
+    },
+  })).ok()).toBeTruthy();
+
+  await page.goto("/canvas");
+  await expect(page.getByTestId("canvas-world"))
+    .toHaveAttribute("data-persistence-ready", "true");
+
+  // 恢复逻辑必须在“任务仍在运行”的挂载后自动继续轮询并应用结果，
+  // 不需要用户再刷新一次。
+  await expect.poll(async () => {
+    const canvas = await (await request.get("/api/canvas/default")).json() as {
+      nodes: Array<{ data: Record<string, unknown>; id: string }>;
+    };
+    const data = canvas.nodes.find((node) => node.id === nodeId("image"))
+      ?.data ?? {};
+    return data.imageSrc === "/api/assets/recovery-result-image" &&
+      data.imageGenerating === false
+      ? "done"
+      : "pending";
+  }).toBe("done");
+  expect(pollCount).toBeGreaterThanOrEqual(2);
+  expect(providerRequests).toBe(0);
+});

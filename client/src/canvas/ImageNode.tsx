@@ -88,6 +88,11 @@ import {
 } from "./mediaInputMetadata";
 
 type CropBox = { height: number; width: number; x: number; y: number };
+
+// 页面重载/节点重挂载时，运行中的图片任务必须由恢复逻辑继续轮询，
+// 否则服务端已成功的结果要等下一次刷新才会显示。同一任务只允许一个
+// 恢复轮询器，避免重挂载产生重复轮询。
+const recoveredImagePollingTasks = new Set<string>();
 type CropRatio = "原图" | "1:1" | "4:3" | "3:4" | "16:9" | "9:16" | "21:9" | "自定义";
 type MultiAngle = { rotation: number; scale: number; tilt: number; wide: boolean };
 type RedrawTool = "brush" | "box" | "erase";
@@ -1988,6 +1993,83 @@ function ImageNodeImpl({
                 : node,
             ),
           );
+          if (recoveredImagePollingTasks.has(latest.id)) return;
+          recoveredImagePollingTasks.add(latest.id);
+          void (async () => {
+            try {
+              const finished = await waitForGenerationTaskWithPause(
+                latest.id,
+                () => {
+                  pollingPausedTaskIdRef.current = latest.id;
+                  setPollingPausedTaskId(latest.id);
+                  setUploadError(POLLING_PAUSED_MESSAGE);
+                },
+              );
+              if (finished.state === "success") {
+                applyGeneratedImage(finished);
+              } else if (finished.state === "failed") {
+                persistImageGenerationFailure(
+                  finished.id,
+                  friendlyGenerationMessage(
+                    finished.errorMessage ?? "图片生成失败，请稍后再试",
+                    "image",
+                  ),
+                  finished.errorCode,
+                  safelyRetryableGenerationTask(finished),
+                  finished.retryBlockCode,
+                  finished.retryBlockReason,
+                );
+              } else if (finished.state === "cancelled") {
+                const message = finished.errorMessage ?? "图片生成已取消";
+                setNodes((nodes) =>
+                  nodes.map((node) =>
+                    node.id === id
+                      ? {
+                          ...node,
+                          data: {
+                            ...node.data,
+                            imageGenerationError: message,
+                            imageGenerationErrorCode: undefined,
+                            imageGenerationInputKey: undefined,
+                            imageGenerating: false,
+                            imageGenerationRetryAllowed: undefined,
+                            imageGenerationRetryBlockCode: undefined,
+                            imageGenerationRetryBlockReason: undefined,
+                            imageGenerationTaskId: undefined,
+                          },
+                        }
+                      : node,
+                  ),
+                );
+                setUploadError(message);
+                setRetryTaskId(undefined);
+                clearGenerationSubmissionIntent(
+                  "image",
+                  canvasId,
+                  id,
+                  finished.id,
+                  accountId,
+                );
+              }
+            } catch (error) {
+              if (isTransientPollingError(error)) {
+                pollingPausedTaskIdRef.current = latest.id;
+                setPollingPausedTaskId(latest.id);
+                setUploadError(POLLING_PAUSED_MESSAGE);
+              } else if (
+                !(error instanceof DOMException && error.name === "AbortError")
+              ) {
+                setUploadError(
+                  error instanceof Error
+                    ? error.message
+                    : "图片生成失败，请稍后再试",
+                );
+              }
+            } finally {
+              recoveredImagePollingTasks.delete(latest.id);
+              setActiveTaskId(undefined);
+            }
+          })();
         }
       })
       .catch((error) => {
