@@ -1516,9 +1516,24 @@ sup {
     radial-gradient(circle, rgba(255, 255, 255, 0.58) 1px, transparent 1.7px);
   background-position: center;
   background-size: calc(100% / 18) calc(100% / 18);
+  transform-origin: center;
+  animation: image-generating-grid-breathe 1.3s ease-in-out infinite;
   mask-image:
     radial-gradient(circle at center, #000 8%, transparent 72%),
     repeating-radial-gradient(circle at 42% 46%, #000 0 1px, transparent 1px 4px);
+}
+
+@keyframes image-generating-grid-breathe {
+  0%,
+  100% {
+    opacity: 0.16;
+    transform: scale(0.94);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
 }
 
 @keyframes image-generating-media {
@@ -3507,25 +3522,48 @@ sup {
 }
 
 .video-node-generating-background {
-  animation: video-generating-background-breathe 2.4s ease-in-out infinite
-    alternate;
+  animation: video-generating-background-breathe 1.8s ease-in-out infinite;
 }
 
 @keyframes video-generating-background-breathe {
-  from {
-    opacity: 0.16;
-    transform: scale(1.86);
+  0%,
+  100% {
+    opacity: 0.12;
+    transform: scale(1.7);
   }
 
-  to {
-    opacity: 0.3;
-    transform: scale(1.96);
+  50% {
+    opacity: 0.4;
+    transform: scale(2.05);
   }
 }
 
 .video-node-loading-grid {
   transform-origin: center;
-  animation: video-generating-grid-breathe 2.2s ease-in-out infinite alternate;
+  animation: video-generating-grid-breathe 1.3s ease-in-out infinite;
+}
+
+@keyframes video-generating-grid-breathe {
+  0%,
+  100% {
+    opacity: 0.16;
+    transform: scale(0.94);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+
+.text-node-generating {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  border-radius: inherit;
+  background: #171717;
+  pointer-events: none;
 }
 
 @keyframes video-generating-grid-breathe {

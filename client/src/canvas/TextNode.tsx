@@ -1534,6 +1534,25 @@ function TextNodeImpl({
             suppressContentEditableWarning
           />
         </div>
+        {(data.textGenerating || submitting) && (
+          <div
+            aria-label="文字生成中"
+            className="text-node-generating"
+            data-testid="text-node-generating"
+            role="status"
+          >
+            <span
+              className="image-node-generating-background text-node-generating-background"
+              data-testid="text-node-generating-background"
+            />
+            <span
+              className="image-node-loading-grid text-node-loading-grid"
+              data-grid-columns="12"
+              data-grid-rows="12"
+              data-testid="text-node-loading-grid"
+            />
+          </div>
+        )}
       </div>
 
       <Handle id="source" position={Position.Right} type="source">
