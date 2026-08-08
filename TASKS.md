@@ -1,15 +1,40 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-09
-状态：`画布、节点、生成链路、模板、账号与权限等主体功能已验收；金额限制功能已按用户决定整体移除（v0.5.0）；多管理员+受保护最高权限账号+密码重置已上线并通过验收（v0.5.1）；代码已发布到生产服务器 canvas.mymy.ltd；正式部署流程收尾（域名/备案等）待确认；Mureka Audio真实生成暂缓`
+状态：`线上 v0.5.1 继续运行；2026-08-09 一次性离线 Goal 已启动，REM-000 = PASS、REM-001 = IN_PROGRESS；所有施工只在动态 loopback 端口和新临时目录进行，真实数据、4173、真实 Provider/OSS、生产连接、push/tag/PR/发布均禁止；正式部署流程收尾与 Mureka Audio 真实生成仍按原状态暂缓`
 唯一产品目标：从空仓库完整复刻 Unboundry 画布，不复用 Lumino/Lumino Web 的代码、组件、CSS、数据、后端、测试或部署。
 
 ### 2026-08-09 状态收口与交接索引
 
 - 验收状态收口（用户 2026-08-09 确认）：`GEN-010 / SAFETY-004 / CANVAS-019 / AUTH-004 / AUTH-005 / AUTH-006 / AUTH-007` 已由 `USER_RECHECK` 改为 `PASS`。
+- 第二批验收状态收口（用户 2026-08-09 确认）：`STORAGE-004 / PERF-002 / PERF-003 / PERF-004 / PERF-005 / DEP-004` 已由 `USER_RECHECK` 改为 `PASS`；该时点原有产品验收矩阵无 `USER_RECHECK` 项。随后新增的施工治理项 `REM-000` 也已于同日获用户确认并改为 `PASS`。
 - 线上状态：生产服务器 `canvas.mymy.ltd` 已运行 v0.5.1（代码/数据库迁移均已上线）；本地开发 4173 使用 `app/data`，与服务器 `/var/lib/unboundry` 是两份数据。
-- 仍待用户实页确认的旧项：`STORAGE-004 / PERF-002～005 / DEP-004`（见验收矩阵）。
-- **新接手 agent 必读**：`README.md`（入口）→ `spec/UNBOUNDRY_HANDOFF_2026-08-09.md`（快速上手/命令/红线/现状）→ 本文件（工作日志）→ `spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md`（验收状态）。
+- **新接手 agent 必读**：`AGENTS.md` → `README.md` → `spec/UNBOUNDRY_REMEDIATION_PLAN_2026-08-09.md` → `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md` → `spec/UNBOUNDRY_HANDOFF_2026-08-09.md` → 本文件当前 REM 区块 → 验收矩阵当前 REM 区块。
+
+### 2026-08-09 全量修复施工治理（REM-000，用户已确认 PASS）
+
+- 用户明确要求先做施工文档，防止上下文压缩、换 Agent 或长任务后失忆和范围漂移；本批授权只包含文档，不包含业务代码、测试配置、脚本、commit、push 或发布。
+- 新建 `spec/UNBOUNDRY_REMEDIATION_PLAN_2026-08-09.md`：冻结线上 v0.5.1、schema 37、红线、既有产品合同、34 类审计风险、REM-000～011 施工顺序、G0～G7 绿灯、数据库桥梁版本和回滚规则；首选保持 v0.5.1 双向兼容、仅一次最终发布，若不兼容必须单独说明并获得桥梁/最终版两次生产授权。
+- 新建 `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md`：记录当前唯一施工项、Git 基线、已有脏文件、授权、外部动作计数、未决决策和恢复硬停止点。
+- 新建项目级 `AGENTS.md`，并更新 README、交接文档和验收矩阵入口；恢复后不得凭内部记忆继续，必须先核对仓库文档和 Git。
+- 文档建立基线：`main`、HEAD `262c66c4087d915b03971191ee00a9bfba74da65`、相对远端 ahead 1、package/线上 `v0.5.1`、数据库 v37；当前 shell Node `v25.9.0`。施工目标为 Node 22 LTS，精确 Node/npm 版本待 REM-001 决策；历史生产记录为 `v22.23.2`，本轮未获 SSH 授权复核当前生产版本。
+- 已有 `TASKS.md`、验收矩阵、交接文档三份未提交修改来自用户已确认的六项 PASS，本批保留并在其上追加，没有 reset、clean 或覆盖。
+- 用户已于 2026-08-09 明确启动一次性离线 Goal，并把 REM-001～010 与 REM-011 离线工程部分合并授权；中途按施工文档依赖顺序连续实施，不再逐项询问。生产、真实数据、正式版本号、push/tag/PR 和发布仍未授权。
+
+| ID | 施工包 | 当前状态 | 下一道门 |
+|---|---|---|---|
+| REM-000 | 施工文档与防漂移机制 | PASS | 2026-08-09 用户确认通过 |
+| REM-001 | 测试安全底座与真正全量发现 | IN_PROGRESS | 先固化 Goal 断点，再建立隔离入口与完整清单 |
+| REM-002 | API、进程与可观测性基础 | NOT_STARTED | REM-001 通过后分析 |
+| REM-003 | 画布持久化与 DATA-005 语义保护 | NOT_STARTED | REM-001/002 与 REM-009A 均 PASS 后才可实施 |
+| REM-004 | 统一媒体生命周期 | NOT_STARTED | REM-009A PASS + 故障注入底座 |
+| REM-005 | 生成、幂等与付费边界 | NOT_STARTED | REM-009A PASS + 本地假 Provider、零外网 |
+| REM-006 | 账号删除、模板、权限与清理 | NOT_STARTED | REM-009A PASS；用户先决定保留 PERM-011 或显式替代并重验 |
+| REM-007 | 前端生成恢复与失败体验 | NOT_STARTED | 后端任务合同稳定 |
+| REM-008 | 资源、安全、性能和运维脚本 | NOT_STARTED | 核心一致性后分项实施 |
+| REM-009 | 只读备份、恢复与数据库兼容（A 前置底座 / B 最终演练） | NOT_STARTED | 009A 在任何持久迁移前；009B 在 REM-010 前 |
+| REM-010 | 不可变发布、切换与回滚 | NOT_STARTED | REM-009B 通过后演练 |
+| REM-011 | 候选全量验收与正式发布门 | NOT_STARTED | G0～G7 + 用户双确认 |
 
 ### 2026-08-06 多项目（项目制画布）功能
 
@@ -19,9 +44,9 @@
 
 ## 当前阶段
 
-阶段：`M5真实生成可靠性已收口 / 阶段G Video真实链路已接通 / 多协议中转站RELAY-001～012已PASS / 画布搜索缩放与多选打组回归已PASS`
+阶段：`线上 v0.5.1 保持不变 / 一次性离线 Goal 已启动 / REM-001 测试安全底座施工中 / 未连接生产且未操作真实数据、4173 或真实 Provider/OSS`
 
-画布、固定界面、Text、Image、Video、Audio、Playlist、Group、外围面板、账号、管理员模型中心、生成安全和新图片私有OSS链路已通过当前范围验收；Comment、社区、TapTV、竞技场、额度和链接分享已按用户决定取消。OpenRouter GPT Image 2已完成一次用户授权的真实生成，图片连线参考图及真实结果零费用重启恢复均已通过；当前不进入正式部署。
+画布、固定界面、Text、Image、Video、Audio、Playlist、Group、外围面板、账号、管理员模型中心、生成安全和新图片私有OSS链路已通过当前范围验收；Comment、社区、TapTV、竞技场、额度和链接分享已按用户决定取消。OpenRouter GPT Image 2已完成一次用户授权的真实生成，图片连线参考图及真实结果零费用重启恢复均已通过；当前仅表示“不发布本轮新的修复候选”，不否认线上已运行 v0.5.1。
 
 ### 2026-08-08 小地图拖动与点击跳转修复（已验收并进入 v0.4.7 发布）
 
@@ -979,7 +1004,7 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - 脚本（L3）：`scripts/backup-to-oss.mjs`（本地备份后上传 OSS `backups/` 前缀，含干跑与 retain-days 清理，首次真实上传待用户授权）；`scripts/mirror-oss-to-local.mjs`（OSS `objects/*` 镜像回本地并核对 SHA-256，首次真实运行待授权）；npm scripts `data:repair-storage` / `data:backup:oss` / `data:mirror-oss`。
 - 验证：tsc、`npm run build` 通过（仅既有 chunk 体积提示）；m80 专项 4/4（重测不降级、路由关闭存量 OSS 仍 307 读取、无可用配置告警、新素材登记所属配置）；m10/m13/m31/m72 回归合计 30 通过、1 跳过（m13 真实 OSS 专项需 `UNBOUNDRY_REAL_OSS_VERIFY=1`）。
 - 顺带修复：m10「trusted-duration migration」用例的老库 fixture 漏建 `project_metadata`（既有遗漏，与本批无关但导致该用例失败），已补齐；m31 媒体构造补 `storageProfileId`。
-- 待用户：4173 实页刷新确认旧 OSS 素材恢复显示（热重载已生效，无需等待重启）；授权首次真实 OSS 备份上传与反向镜像；STORAGE-004 由 USER_RECHECK 转 PASS 需用户实页确认。
+- 后续确认：2026-08-09 用户实页确认旧 OSS 素材已恢复显示，`STORAGE-004` 正式转为 `PASS`。首次真实 OSS 备份上传与反向镜像仍属于独立授权事项，不随本项验收扩大。
 
 ### 2026-08-08 部署方案立项（DRAFT，未改代码）
 
@@ -1004,7 +1029,7 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - 安全验证：公网 POST /api/auth/bootstrap 实测 403；未登录素材 401；UNBOUNDRY_TRUST_PROXY/SECURE_COOKIES=1；服务环境无任何 UNBOUNDRY_TEST_*；vite preview.allowedHosts 放行 canvas.mymy.ltd。
 - 备份：unboundry-backup.timer 每日 03:30（Persistent=true）；首次真实备份已上传 OSS `objects/backups/2026-08-07T20-18-27-167Z/`（317 文件，HEAD 抽查 OK）；恢复演练通过（verify-backup --runtime-port 4198）。
 - 脚本修复：backup-to-oss 干跑 flag、`--backup-root` 参数、改用 OSS client.put（`objects/backups/` 前缀兼容 RAM 最小权限）、list 签名修复、清理 fail-soft；mirror 跳过备份前缀、list 修复。
-- 延期/待办：① ~~服务器代理（OpenRouter）~~ **已取消**（用户决定：云服务器不装代理软件，避免云厂商风控与合规风险；OpenRouter 不启用，火山方舟为当前生成平台）；② RAM 无 ListObjects，旧备份清理与镜像待放行权限后启用；③ 待用户实页验收 DEP-004（旧 OSS 素材）、多设备、大视频上传、Cookie Secure、火山方舟公网生成。
+- 延期/待办：① ~~服务器代理（OpenRouter）~~ **已取消**（用户决定：云服务器不装代理软件，避免云厂商风控与合规风险；OpenRouter 不启用，火山方舟为当前生成平台）；② RAM 无 ListObjects，旧备份清理与镜像待放行权限后启用；③ 多设备、大视频上传、Cookie Secure、火山方舟公网生成仍按验收矩阵各自状态推进。`DEP-004` 已于 2026-08-09 获用户实页确认并转为 `PASS`。
 - 用户确认：2026-08-08 用户已在 https://canvas.mymy.ltd 登录成功。
 
 ### 2026-08-08 品牌更名与图标（中文「无央」、英文「Unboundry」）

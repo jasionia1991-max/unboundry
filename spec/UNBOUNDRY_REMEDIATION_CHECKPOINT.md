@@ -1,0 +1,154 @@
+# Unboundry 全量修复施工断点
+
+断点版本：`5`
+更新时间：`2026-08-09`
+状态：`OFFLINE_GOAL_ACTIVE_REM-001_IN_PROGRESS`
+用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
+
+## 1. 当前结论
+
+- 用户已于 2026-08-09 明确回复“施工文档确认通过”，REM-000 = `PASS`。
+- 施工总方案 v1.0 已成为本轮权威施工合同。
+- 用户已于 2026-08-09 明确启动一次性离线 Goal，Goal ID `019fe226-4d7b-7831-a254-106e40b346c2`；REM-001～010 与 REM-011 离线工程部分可按依赖顺序连续施工，中途不再逐项询问。
+- 允许本地代码/测试/脚本/配置/文档/package 修改、动态 loopback 临时环境、假 Provider/OSS/服务器、必要测试容器和本地 checkpoint/功能/candidate commit。
+- 真实数据、4173、真实 Provider/OSS、canvas.mymy.ltd、SSH、生产、push、tag、PR、正式版本号与发布仍绝对禁止。
+- 当前唯一施工项为 REM-001。
+
+## 2. 项目身份
+
+| 项目 | 当前记录 |
+|---|---|
+| 仓库根 | `/Users/mymy/Documents/unboundry/app` |
+| 生产站点 | `https://canvas.mymy.ltd` |
+| 线上版本 | `v0.5.1` |
+| package 版本 | `0.5.1` |
+| 生产程序目录 | 历史交接记录 `/opt/unboundry`，旧部署计划记录 `/opt/unboundry-app`；当前未获 SSH 授权核实 |
+| 生产数据目录 | `/var/lib/unboundry` |
+| 本地真实数据目录 | `/Users/mymy/Documents/unboundry/app/data` |
+| 真实本地服务端口 | `4173`，有守护进程，不得用于测试 |
+| 数据库最高迁移版本 | `37` |
+| Node | 当前本机 `v25.9.0`；施工目标 Node 22 LTS，精确 Node/npm 版本待 REM-001 决策；历史生产记录为 `v22.23.2`，当前生产未复核 |
+
+### 2.1 Goal 启动前只读预检
+
+- 本机已有可隔离使用的 `/Users/mymy/.hermes/node/bin/node v22.23.1` + `npm 10.9.8`，`node:sqlite` 加载通过；推荐作为本地候选基线，不冒充已复核的生产版本。
+- 已安装 `@playwright/test 1.62.0` 与本地 Chromium 缓存；如最终清单需缺失的浏览器二进制，须使用用户预先授权的官方依赖准备网络。
+- 本机有 ffmpeg/ffprobe、SQLite 和 Docker CLI；Docker daemon 当前未运行，本机无 nginx。如需真实本地 `nginx -t`，Goal 授权必须包含仅用于测试的本地工具/固定镜像准备；仍不得声称已验证生产同版本模块。
+- 当前可用磁盘约 `358 GiB`，容量不是已知启动阻塞。
+- 上述只读预检未运行项目构建/测试，未操作 4173，未读真实数据，未请求 Provider/OSS/生产。
+
+### 2.2 Goal 固定本地执行环境
+
+- Node 固定使用 `/Users/mymy/.hermes/node/bin/node v22.23.1`，npm 固定为 `10.9.8`；先用本地缓存，缺失时只访问用户授权的官方 Node/Homebrew、npm、Playwright 或 Docker 镜像源。
+- 依赖准备完成后，所有测试进程必须拒绝非 loopback 网络；真实 Provider/OSS/代理凭据不得进入测试进程。
+- 当前专用分支：`codex/unboundry-offline-remediation-2026-08-09`；起点仍为 `262c66c4087d915b03971191ee00a9bfba74da65`。
+
+## 3. Git 基线与已有改动
+
+文档批次开始时：
+
+- 分支：`main`；
+- HEAD：`262c66c4087d915b03971191ee00a9bfba74da65`；
+- 相对远端：`ahead 1`；
+- 原本已修改且必须保留：
+  - `TASKS.md`；
+  - `spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md`；
+  - `spec/UNBOUNDRY_HANDOFF_2026-08-09.md`。
+
+这些原有修改来自用户对六项验收通过的确认，不属于本轮待回退内容。REM-000 在其上追加文档，不得清理、reset 或覆盖。
+
+## 4. 当前唯一施工项
+
+| ID | 内容 | 状态 | 用户授权 |
+|---|---|---|---|
+| REM-000 | 施工总方案、防漂移断点、项目级守则、入口和验收登记 | `PASS` | 用户 2026-08-09 确认通过 |
+| REM-001 | 绝对隔离测试底座、动态端口/临时目录、零外网、真正全量发现 | `IN_PROGRESS` | 用户 2026-08-09 一次性离线 Goal 合并授权 |
+
+REM-002～011 依赖尚未满足，保持 `NOT_STARTED`；离线工程权限已预先授予，达到依赖后可连续进入下一项。
+
+### 4.1 一次性授权的决策默认
+
+- 账号删除继续遵守 `PERM-011 / KEY-008 / AUTH-006`；普通账号的公共模板及必要素材转交受保护最高权限账号，其他私有数据按既有合同安全清理；受保护最高权限账号绝不可删除。
+- 优先保持 schema 37 与 v0.5.1 数据格式双向兼容；必要 P0 若无法兼容，只在线下制作并完整验证桥梁候选与最终候选，绝不发布；P1/P2 不兼容扩张延期。
+- `F-001～F-034` 全部纳入；review 新发现且不改变产品合同的 P0/P1 登记后直接修复；无关 P2、视觉改版或新功能只登记。
+- 保持 `DATA-005`、默认五项权限、500MB 视频合同和既有 PASS；不恢复金额/额度/订阅，不启用任何 PAUSED 范围。
+- 遇到真实数据、生产连接、外部 Provider 或产品语义变化时登记并继续其他不依赖工作；仅在仓库身份被外部改变，或无法保证真实数据隔离与零外部请求时安全停止整个 Goal。
+
+## 5. REM-000 变更范围
+
+本批允许触及：
+
+- `AGENTS.md`；
+- `README.md`；
+- `TASKS.md`；
+- `spec/UNBOUNDRY_HANDOFF_2026-08-09.md`；
+- `spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md`；
+- `spec/UNBOUNDRY_REMEDIATION_PLAN_2026-08-09.md`；
+- `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md`。
+
+本批禁止触及：`client/`、`server/`、`types/`、`scripts/`、测试文件、配置、package 文件、真实数据、生产主机。
+
+## 6. 本批验证边界
+
+只允许文档级只读验证：
+
+- `git diff --check`；
+- 文档路径和 REM ID 一致性搜索；
+- Git 状态与变更范围核对；
+- 不运行项目构建、Playwright、数据库、服务或网络测试。
+
+已完成的文档级验证：
+
+- `git diff --check` 通过；
+- Git 变更范围恰好是第 5 节允许的 7 份文档：4 份已跟踪文档修改 + 3 份新文档，无业务代码、测试、配置或 package 文件变更；
+- README / AGENTS / 施工总方案 / 断点 / 交接 / TASKS / 验收矩阵的读取顺序、授权和 REM 状态已交叉核对；
+- 三路独立只读复核的可执行意见已逐项纳入；最终复核确认 `USER_REVIEW / USER_RECHECK / PASS`、真实数据隔离、旧备份/发布命令冻结和桥梁两次授权已一致；
+- 未执行运行时测试，这是 REM-000 的主动安全边界，不得将文档检查误报为项目功能回归。
+
+本批外部动作计数：
+
+| 动作 | 当前值 |
+|---|---|
+| 业务代码修改 | 0 |
+| 运行时/浏览器测试 | 0 |
+| 真实数据读取或写入 | 0 |
+| 4173 操作 | 0 |
+| Provider 请求 | 0 |
+| 生产 SSH/修改 | 0 |
+| commit/push/tag/发布 | 0 |
+
+## 7. 当前执行路径
+
+1. 固化本断点和一次性授权，建立仅本地基线 commit；
+2. REM-001 建立安全入口前不运行历史默认测试；
+3. 每个 REM 按施工总方案依赖顺序完成分析、实施、测试、review 与文档同步；
+4. 每个本地 commit 前核对范围，绝不 push/tag/PR；
+5. 终点是固定 candidate SHA、G0～G6 离线证据、工程 `USER_REVIEW` 与页面 `USER_RECHECK`，生产和发布留待用户另行确认。
+
+## 8. 未决决策
+
+- `DEC-REM-001`：已确认（2026-08-09）；
+- `DEC-REM-002`：已确认，允许仅本地 checkpoint/功能/candidate commit，绝不 push/tag/PR；
+- `DEC-REM-003`：已确认，沿用 `PERM-011 / KEY-008 / AUTH-006`，公共模板及必要素材转交受保护最高权限账号；
+- `DEC-REM-004`：已确认，首选 schema 37 与 v0.5.1 双向兼容；必要 P0 桥梁只在线下制作验证，P1/P2 不兼容扩张延期；
+- `DEC-REM-005/006`：正式版本号与发布授权，远期才可询问。
+
+## 9. 恢复前检查卡
+
+任何恢复者必须回答并核实：
+
+```text
+项目路径：/Users/mymy/Documents/unboundry/app
+线上版本：v0.5.1
+当前分支：codex/unboundry-offline-remediation-2026-08-09
+起点 HEAD：262c66c4087d915b03971191ee00a9bfba74da65；当前 HEAD 以 git 只读结果对照本文件
+最后完成：REM-000（PASS），施工总方案 v1.0 已获用户确认
+当前施工项：REM-001（IN_PROGRESS）
+下一步：固化本地基线后建立绝对隔离测试入口
+代码授权：一次性离线 Goal 范围内已授权；Goal ID 019fe226-4d7b-7831-a254-106e40b346c2
+真实数据操作：禁止
+Provider 请求：禁止
+commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
+```
+
+任一项不一致时立即停止，更新证据并向用户说明，禁止根据摘要猜测。
