@@ -1504,7 +1504,7 @@ sup {
     #292929;
   filter: blur(42px);
   transform: scale(1.9);
-  animation: image-generating-media 1.8s cubic-bezier(0.16, 1, 0.3, 1)
+  animation: image-generating-media 3.6s cubic-bezier(0.16, 1, 0.3, 1)
     infinite alternate;
 }
 
@@ -1517,7 +1517,7 @@ sup {
   background-position: center;
   background-size: calc(100% / 18) calc(100% / 18);
   transform-origin: center;
-  animation: image-generating-grid-breathe 1.3s ease-in-out infinite;
+  animation: image-generating-grid-breathe 2.6s ease-in-out infinite;
   mask-image:
     radial-gradient(circle at center, #000 8%, transparent 72%),
     repeating-radial-gradient(circle at 42% 46%, #000 0 1px, transparent 1px 4px);
@@ -3522,7 +3522,7 @@ sup {
 }
 
 .video-node-generating-background {
-  animation: video-generating-background-breathe 1.8s ease-in-out infinite;
+  animation: video-generating-background-breathe 3.6s ease-in-out infinite;
 }
 
 @keyframes video-generating-background-breathe {
@@ -3540,7 +3540,7 @@ sup {
 
 .video-node-loading-grid {
   transform-origin: center;
-  animation: video-generating-grid-breathe 1.3s ease-in-out infinite;
+  animation: video-generating-grid-breathe 2.6s ease-in-out infinite;
 }
 
 @keyframes video-generating-grid-breathe {
