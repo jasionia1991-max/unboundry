@@ -5,7 +5,6 @@ import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
 import {
   createGenerationSafetyStore,
-  effectiveSingleTaskCostMicrounits,
   generationSafetyStatus,
 } from "./generationSafety";
 import {
@@ -125,6 +124,13 @@ const runningImageRequests = new Map<string, AbortController>();
 const runningVideoRequests = new Map<string, AbortController>();
 const runningAudioRequests = new Map<string, AbortController>();
 const runningTextRequests = new Map<string, AbortController>();
+
+// 金额限额功能已移除（v36）。任务仍保留成本记账：估算值只作为审计参考
+// 写入任务记录，不再参与任何预检、拦截或界面展示。
+const taskAuditEstimatedCostMicrounits: Record<"CNY" | "USD", number> = {
+  CNY: 10_000_000,
+  USD: 10_000_000,
+};
 
 type RelayProtocol = Exclude<ProviderProtocol, "native">;
 
@@ -734,16 +740,9 @@ async function generationRuntimeDecision(input: {
     storedProviderDriver: storedProfile?.driver,
   });
   const safety = createGenerationSafetyStore();
-  // 平台未配置或适配器不支持时不可能产生真实请求，预检费用必须为 0，
-  // 避免把「无法执行」的检查误算成巨额成本而误伤生成入口。
-  const effectiveCost = adapterSupported && configured
-    ? effectiveSingleTaskCostMicrounits(input.model, safetyStatus)
-    : 0;
   const safetyAdmission = (() => {
     try {
       return safety.admission({
-        estimatedCostMicrounits: effectiveCost,
-        costCurrency: input.model.cost_currency,
         kind: input.kind,
         ownerId: input.ownerId,
         providerProfileId: input.model.provider_profile_id,
@@ -765,9 +764,7 @@ async function generationRuntimeDecision(input: {
       input.canSubmit &&
       availability.generationAvailable &&
       safetyAdmission.allowed,
-    costCurrency: input.model.cost_currency,
     enqueueProblem,
-    estimatedCostMicrounits: effectiveCost,
     ...availability,
     provider: {
       adapterSupported,
@@ -790,7 +787,6 @@ async function generationRuntimeDecision(input: {
 function generationRuntimeProblems(problem: { code: string; message: string }) {
   const modelProblem = problem.code.startsWith("PROVIDER_") ||
     problem.code === "ADAPTER_UNSUPPORTED" ||
-    problem.code === "COST_LIMIT_NOT_CONFIGURED" ||
     problem.code === "MODEL_UNAVAILABLE";
   return [{
     code: modelProblem ? "MODEL_UNSUPPORTED" as const : "INVALID" as const,
@@ -816,10 +812,6 @@ function strictGenerationPreflight(input: {
   requireFreshRevision: boolean;
   targetKind: NodeInputKind;
 }): StrictGenerationPreflight {
-  const effectiveCost = effectiveSingleTaskCostMicrounits(
-    input.model,
-    generationSafetyStatus(),
-  );
   const schema = generationModelSchema(input.targetKind, input.model);
   const submittedParameters = { ...(input.body.parameters ?? {}) };
   delete submittedParameters.references;
@@ -849,7 +841,6 @@ function strictGenerationPreflight(input: {
 
   const paidArkVideo = input.targetKind === "video" &&
     input.model.provider_driver === "volcengine-ark" &&
-    effectiveCost > 0 &&
     modelGenerationAdapterSupported({
       capability: "video",
       costCurrency: input.model.cost_currency,
@@ -859,7 +850,6 @@ function strictGenerationPreflight(input: {
     });
   const paidArkText = input.targetKind === "text" &&
     input.model.provider_driver === "volcengine-ark" &&
-    effectiveCost > 0 &&
     modelGenerationAdapterSupported({
       capability: "text",
       costCurrency: input.model.cost_currency,
@@ -869,7 +859,6 @@ function strictGenerationPreflight(input: {
     });
   const paidMurekaAudio = input.targetKind === "audio" &&
     input.model.provider_driver === "mureka" &&
-    effectiveCost > 0 &&
     modelGenerationAdapterSupported({
       capability: "audio",
       costCurrency: input.model.cost_currency,
@@ -2966,14 +2955,6 @@ export async function generationTasks(
       identity.bypass ? "__test__" : identity.userId,
     );
     const { providerCurrencies, ...publicAvailability } = availability;
-    const currencyBudgetReady = (kind: NodeInputKind) =>
-      providerCurrencies[kind].some((currency) =>
-        currency === "CNY"
-          ? safety.dailyCostLimitCnyMicrounits > 0 &&
-            safety.monthlyCostLimitCnyMicrounits > 0
-          : safety.dailyCostLimitMicrounits > 0 &&
-            safety.monthlyCostLimitMicrounits > 0
-      );
     json(response, 200, {
       emergencyStop: safety.emergencyStop,
       globalGenerationEnabled: safety.globalEnabled,
@@ -2983,31 +2964,23 @@ export async function generationTasks(
       submissionEnabled:
         availability.providerConfigured &&
         safety.globalEnabled &&
-        !safety.emergencyStop &&
-        ((availability.textProviderConfigured && currencyBudgetReady("text")) ||
-          (availability.imageProviderConfigured && currencyBudgetReady("image")) ||
-          (availability.videoProviderConfigured && currencyBudgetReady("video")) ||
-          (availability.audioProviderConfigured && currencyBudgetReady("audio"))),
+        !safety.emergencyStop,
       audioSubmissionEnabled:
         availability.audioProviderConfigured &&
         safety.globalEnabled &&
-        !safety.emergencyStop &&
-        currencyBudgetReady("audio"),
+        !safety.emergencyStop,
       imageSubmissionEnabled:
         availability.imageProviderConfigured &&
         safety.globalEnabled &&
-        !safety.emergencyStop &&
-        currencyBudgetReady("image"),
+        !safety.emergencyStop,
       textSubmissionEnabled:
         availability.textProviderConfigured &&
         safety.globalEnabled &&
-        !safety.emergencyStop &&
-        currencyBudgetReady("text"),
+        !safety.emergencyStop,
       videoSubmissionEnabled:
         availability.videoProviderConfigured &&
         safety.globalEnabled &&
-        !safety.emergencyStop &&
-        currencyBudgetReady("video"),
+        !safety.emergencyStop,
     });
     return;
   }
@@ -3376,10 +3349,9 @@ export async function generationTasks(
       const created = taskStore().create({
         canvasId: String(body.canvasId ?? ""),
         expectedCanvasRevision: body.canvasRevision,
-        estimatedCostMicrounits: effectiveSingleTaskCostMicrounits(
-          model,
-          generationSafetyStatus(),
-        ),
+        estimatedCostMicrounits: taskAuditEstimatedCostMicrounits[
+          model.cost_currency
+        ],
         costCurrency: model.cost_currency,
         idempotencyKey: String(body.idempotencyKey || randomUUID()),
         kind: body.kind,

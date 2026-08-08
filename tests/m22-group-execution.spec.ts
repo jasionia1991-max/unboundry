@@ -151,21 +151,21 @@ test("workflow runner carries the real failure message to the caller", async () 
     isCancelled: () => false,
     layers: [["text"]],
     runNode: async () => ({
-      message: "今日费用额度已用完，请明天再试，或联系管理员调整上限",
+      message: "模型平台未完成本次生成，请重试",
       status: "failed",
     }),
   });
   expect(result.status).toBe("failed");
   if (result.status === "failed") {
-    expect(result.message).toContain("费用额度已用完");
+    expect(result.message).toContain("模型平台未完成本次生成");
   } else {
     throw new Error("expected failed result");
   }
 });
 
 test("friendly generation messages avoid long English and jargon", () => {
-  expect(friendlyGenerationMessage("费用保护已阻止本次任务", "text"))
-    .toContain("费用额度已用完");
+  expect(friendlyGenerationMessage("当前类型的运行任务已达到上限", "text"))
+    .toBe("同类型生成任务已达上限，请等待当前任务完成");
   expect(friendlyGenerationMessage(
     "some very long english provider error with request id abc-123 and a huge stack trace",
     "image",

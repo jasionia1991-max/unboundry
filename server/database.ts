@@ -1471,6 +1471,54 @@ const migrations: readonly Migration[] = [
         AND title LIKE '%TapNow%';
     `,
   },
+  {
+    version: 36,
+    name: "remove-generation-cost-limits",
+    sql: `
+      CREATE TABLE generation_safety_settings_next (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        global_enabled INTEGER NOT NULL DEFAULT 0
+          CHECK (global_enabled IN (0, 1)),
+        emergency_stop INTEGER NOT NULL DEFAULT 0
+          CHECK (emergency_stop IN (0, 1)),
+        per_user_concurrency INTEGER NOT NULL DEFAULT 1
+          CHECK (per_user_concurrency BETWEEN 1 AND 1000),
+        requests_per_minute INTEGER NOT NULL DEFAULT 3
+          CHECK (requests_per_minute BETWEEN 1 AND 1000),
+        image_concurrency INTEGER NOT NULL DEFAULT 1
+          CHECK (image_concurrency BETWEEN 1 AND 1000),
+        video_concurrency INTEGER NOT NULL DEFAULT 1
+          CHECK (video_concurrency BETWEEN 1 AND 1000),
+        audio_concurrency INTEGER NOT NULL DEFAULT 1
+          CHECK (audio_concurrency BETWEEN 1 AND 1000),
+        failure_threshold INTEGER NOT NULL DEFAULT 3
+          CHECK (failure_threshold BETWEEN 1 AND 20),
+        cooldown_minutes INTEGER NOT NULL DEFAULT 30
+          CHECK (cooldown_minutes BETWEEN 1 AND 1440),
+        running_task_policy TEXT NOT NULL DEFAULT 'wait'
+          CHECK (running_task_policy IN ('wait', 'cancel')),
+        updated_at TEXT NOT NULL,
+        text_concurrency INTEGER NOT NULL DEFAULT 1
+          CHECK (text_concurrency BETWEEN 1 AND 1000)
+      );
+      INSERT INTO generation_safety_settings_next (
+        id, global_enabled, emergency_stop, per_user_concurrency,
+        requests_per_minute, image_concurrency, video_concurrency,
+        audio_concurrency, failure_threshold, cooldown_minutes,
+        running_task_policy, updated_at, text_concurrency
+      )
+      SELECT
+        id, global_enabled, emergency_stop, per_user_concurrency,
+        requests_per_minute, image_concurrency, video_concurrency,
+        audio_concurrency, failure_threshold, cooldown_minutes,
+        running_task_policy, updated_at, text_concurrency
+      FROM generation_safety_settings;
+      DROP TABLE generation_safety_settings;
+      ALTER TABLE generation_safety_settings_next
+        RENAME TO generation_safety_settings;
+      DROP TABLE IF EXISTS account_consumption_limits;
+    `,
+  },
 ];
 
 export const currentSchemaVersion = migrations.at(-1)?.version ?? 0;

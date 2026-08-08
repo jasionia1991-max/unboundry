@@ -58,6 +58,38 @@ function request(
   });
 }
 
+test("login lands on the workspace instead of the previous canvas URL", async ({
+  page,
+}) => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-auth-login-"));
+  let server: ChildProcess | undefined;
+  try {
+    server = await startServer(dataDirectory);
+    const bootstrap = await request("/api/auth/bootstrap", {
+      body: JSON.stringify({
+        displayName: "Owner",
+        loginName: "owner",
+        password: "owner-password-123",
+      }),
+      method: "POST",
+    });
+    expect(bootstrap.status).toBe(201);
+
+    await page.goto(`${origin}/canvas/default`);
+    await expect(page.getByTestId("login-page")).toBeVisible();
+    await page.getByPlaceholder("3–40 位字母、数字或 . _ -").fill("owner");
+    await page.getByPlaceholder("至少 12 位").fill("owner-password-123");
+    await page.getByRole("button", { name: "登录" }).click();
+
+    await expect(page).toHaveURL(`${origin}/canvas/projects`);
+    await expect(page.getByTestId("workspace-page")).toBeVisible();
+    await expect(page.getByTestId("project-card-default")).toBeVisible();
+  } finally {
+    if (server) await stopServer(server);
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
 test("admin bootstrap, account control and per-user data isolation are enforced", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-auth-"));
   let server: ChildProcess | undefined;

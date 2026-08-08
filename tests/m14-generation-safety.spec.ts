@@ -14,20 +14,14 @@ const imageProviderId = "provider-image-test";
 const baseSettings = {
   audioConcurrency: 1,
   cooldownMinutes: 30,
-  dailyCostLimitCnyMicrounits: 10_000_000,
-  dailyCostLimitMicrounits: 10_000_000,
   emergencyStop: false,
   failureThreshold: 3,
   globalEnabled: true,
   imageConcurrency: 1,
-  monthlyCostLimitCnyMicrounits: 10_000_000,
-  monthlyCostLimitMicrounits: 10_000_000,
   perUserConcurrency: 1,
   requestsPerMinute: 10,
   runningTaskPolicy: "wait" as const,
-  singleTaskDefaultCostCnyMicrounits: 20_000_000,
   textConcurrency: 1,
-  usdToCnyRateMicrounits: 7_200_000,
   videoConcurrency: 1,
 };
 
@@ -80,23 +74,28 @@ function request(
   });
 }
 
-test("generation safety blocks globally, by cost, frequency, concurrency and failure cooldown", async () => {
+test("generation safety settings contain no cost fields and admission blocks by switch, rate, concurrency and cooldown", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-safety-store-"));
   const safety = createGenerationSafetyStore(dataDirectory);
   const database = openAppDatabase(dataDirectory);
   try {
-    expect(safety.settings()).toMatchObject({
-      dailyCostLimitMicrounits: 0,
+    const defaults = safety.settings();
+    expect(defaults).toMatchObject({
       emergencyStop: false,
       globalEnabled: false,
-      monthlyCostLimitMicrounits: 0,
-      singleTaskDefaultCostCnyMicrounits: 20_000_000,
-      unknownCostPolicy: "block",
-      usdToCnyRateMicrounits: 7_200_000,
+      perUserConcurrency: 1,
+      requestsPerMinute: 3,
+      runningTaskPolicy: "wait",
     });
+    expect(defaults).not.toHaveProperty("dailyCostLimitCnyMicrounits");
+    expect(defaults).not.toHaveProperty("dailyCostLimitMicrounits");
+    expect(defaults).not.toHaveProperty("monthlyCostLimitCnyMicrounits");
+    expect(defaults).not.toHaveProperty("monthlyCostLimitMicrounits");
+    expect(defaults).not.toHaveProperty("singleTaskDefaultCostCnyMicrounits");
+    expect(defaults).not.toHaveProperty("usdToCnyRateMicrounits");
+
     expect(
       safety.admission({
-        estimatedCostMicrounits: 1,
         kind: "image",
         ownerId: "owner-test",
         providerProfileId: imageProviderId,
@@ -104,22 +103,6 @@ test("generation safety blocks globally, by cost, frequency, concurrency and fai
     ).toMatchObject({ allowed: false, code: "GLOBAL_DISABLED" });
 
     safety.update(baseSettings);
-    expect(
-      safety.admission({
-        kind: "image",
-        ownerId: "owner-test",
-        providerProfileId: imageProviderId,
-      }),
-    ).toMatchObject({ allowed: false, code: "COST_UNKNOWN" });
-    expect(
-      safety.admission({
-        estimatedCostMicrounits: 1_000_000,
-        kind: "image",
-        ownerId: "owner-test",
-        providerProfileId: imageProviderId,
-      }),
-    ).toEqual({ allowed: true, code: "ALLOWED" });
-
     const now = new Date().toISOString();
     database
       .prepare(`
@@ -135,11 +118,10 @@ test("generation safety blocks globally, by cost, frequency, concurrency and fai
         id, canvas_id, node_id, kind, prompt, model, parameters,
         idempotency_key, request_fingerprint, state, attempt,
         error_code, error_message, created_at, updated_at, owner_id,
-        estimated_cost_microunits, actual_cost_microunits,
         provider_profile_id
       )
       VALUES (?, ?, ?, ?, 'test', NULL, '{}', ?, ?, ?, 0, NULL, NULL, ?, ?, ?,
-        NULL, ?, ?)
+        ?)
     `);
     insertTask.run(
       "task-active",
@@ -152,12 +134,10 @@ test("generation safety blocks globally, by cost, frequency, concurrency and fai
       now,
       now,
       "owner-test",
-      null,
       "provider-active-test",
     );
     expect(
       safety.admission({
-        estimatedCostMicrounits: 1_000_000,
         kind: "image",
         ownerId: "owner-test",
         providerProfileId: imageProviderId,
@@ -167,7 +147,6 @@ test("generation safety blocks globally, by cost, frequency, concurrency and fai
     safety.update({ ...baseSettings, perUserConcurrency: 5 });
     expect(
       safety.admission({
-        estimatedCostMicrounits: 1_000_000,
         kind: "image",
         ownerId: "owner-test",
         providerProfileId: imageProviderId,
@@ -177,29 +156,17 @@ test("generation safety blocks globally, by cost, frequency, concurrency and fai
     database
       .prepare(`
         UPDATE generation_tasks
-        SET state = 'success', actual_cost_microunits = 9500000
+        SET state = 'success'
         WHERE id = 'task-active'
       `)
       .run();
-    expect(
-      safety.admission({
-        estimatedCostMicrounits: 1_000_000,
-        kind: "image",
-        ownerId: "owner-test",
-        providerProfileId: imageProviderId,
-      }),
-    ).toMatchObject({ allowed: false, code: "COST_LIMIT" });
-
     safety.update({
       ...baseSettings,
-      dailyCostLimitCnyMicrounits: 100_000_000,
-      monthlyCostLimitCnyMicrounits: 100_000_000,
       perUserConcurrency: 5,
       requestsPerMinute: 1,
     });
     expect(
       safety.admission({
-        estimatedCostMicrounits: 1_000_000,
         kind: "image",
         ownerId: "owner-test",
         providerProfileId: imageProviderId,
@@ -208,8 +175,6 @@ test("generation safety blocks globally, by cost, frequency, concurrency and fai
 
     safety.update({
       ...baseSettings,
-      dailyCostLimitCnyMicrounits: 100_000_000,
-      monthlyCostLimitCnyMicrounits: 100_000_000,
       perUserConcurrency: 5,
       requestsPerMinute: 10,
     });
@@ -226,13 +191,11 @@ test("generation safety blocks globally, by cost, frequency, concurrency and fai
         timestamp,
         timestamp,
         "owner-test",
-        0,
         imageProviderId,
       );
     }
     expect(
       safety.admission({
-        estimatedCostMicrounits: 1_000_000,
         kind: "image",
         ownerId: "owner-test",
         providerProfileId: imageProviderId,
@@ -241,7 +204,6 @@ test("generation safety blocks globally, by cost, frequency, concurrency and fai
 
     expect(
       safety.admission({
-        estimatedCostMicrounits: 1_000_000,
         kind: "video",
         ownerId: "owner-test",
         providerProfileId: imageProviderId,
@@ -249,71 +211,9 @@ test("generation safety blocks globally, by cost, frequency, concurrency and fai
     ).toEqual({ allowed: true, code: "ALLOWED" });
     expect(
       safety.admission({
-        estimatedCostMicrounits: 1_000_000,
         kind: "image",
         ownerId: "owner-test",
         providerProfileId: "provider-image-other",
-      }),
-    ).toEqual({ allowed: true, code: "ALLOWED" });
-
-    for (let index = 1; index <= 3; index += 1) {
-      const timestamp = new Date(
-        Date.now() - 31 * 60_000 - index * 10,
-      ).toISOString();
-      insertTask.run(
-        `task-expired-${index}`,
-        `canvas-expired-${index}`,
-        `node-expired-${index}`,
-        "image",
-        `key-expired-${index}`,
-        `fingerprint-expired-${index}`,
-        "failed",
-        timestamp,
-        timestamp,
-        "owner-test",
-        0,
-        "provider-expired-test",
-      );
-    }
-    expect(
-      safety.admission({
-        estimatedCostMicrounits: 1_000_000,
-        kind: "image",
-        ownerId: "owner-test",
-        providerProfileId: "provider-expired-test",
-      }),
-    ).toEqual({ allowed: true, code: "ALLOWED" });
-
-    for (let index = 1; index <= 3; index += 1) {
-      const timestamp = new Date(
-        Date.now() - 31 * 60_000 - index * 10,
-      ).toISOString();
-      insertTask.run(
-        `task-audio-old-${index}`,
-        `canvas-audio-old-${index}`,
-        `node-audio-old-${index}`,
-        "audio",
-        `key-audio-old-${index}`,
-        `fingerprint-audio-old-${index}`,
-        "failed",
-        timestamp,
-        timestamp,
-        "owner-test",
-        0,
-        "provider-audio-old",
-      );
-    }
-    database.prepare(`
-      UPDATE generation_tasks
-      SET error_code = 'RATE_LIMIT', error_message = 'test only'
-      WHERE id LIKE 'task-audio-old-%'
-    `).run();
-    expect(
-      safety.admission({
-        estimatedCostMicrounits: 1_000_000,
-        kind: "image",
-        ownerId: "owner-test",
-        providerProfileId: "provider-audio-old",
       }),
     ).toEqual({ allowed: true, code: "ALLOWED" });
 
@@ -324,7 +224,6 @@ test("generation safety blocks globally, by cost, frequency, concurrency and fai
     });
     expect(
       safety.admission({
-        estimatedCostMicrounits: 1,
         kind: "image",
         ownerId: "owner-test",
         providerProfileId: imageProviderId,
@@ -337,7 +236,7 @@ test("generation safety blocks globally, by cost, frequency, concurrency and fai
   }
 });
 
-test("only administrators can read and change generation safety settings", async () => {
+test("only administrators can read and change generation safety settings and legacy cost fields are ignored", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-safety-api-"));
   let server: ChildProcess | undefined;
   try {
@@ -355,254 +254,101 @@ test("only administrators can read and change generation safety settings", async
       cookie: adminCookie,
     });
     expect(status.status).toBe(200);
-    expect(await status.json()).toMatchObject({
-      historicalEstimatedProviderAttempts: 0,
-      paidProviderRequests: 0,
-      providerConfigured: false,
-      settings: {
-        globalEnabled: false,
-        unknownCostPolicy: "block",
-      },
-    });
+    const body = await status.json() as {
+      paidProviderRequests: number;
+      providerConfigured: boolean;
+      settings: Record<string, unknown>;
+    };
+    expect(body.paidProviderRequests).toBe(0);
+    expect(body.providerConfigured).toBe(false);
+    expect(body.settings).not.toHaveProperty("dailyCostLimitCnyMicrounits");
+    expect(body.settings).not.toHaveProperty("singleTaskDefaultCostCnyMicrounits");
 
-    const account = await request("/api/admin/users", {
+    const created = await request("/api/admin/users", {
       body: JSON.stringify({
-        displayName: "Ordinary",
+        displayName: "普通用户",
         loginName: "ordinary",
-        password: "ordinary-pass-123",
+        password: "ordinary-password-123",
       }),
       cookie: adminCookie,
       method: "POST",
     });
-    expect(account.status).toBe(201);
+    expect(created.status).toBe(201);
     const login = await request("/api/auth/login", {
       body: JSON.stringify({
         loginName: "ordinary",
-        password: "ordinary-pass-123",
+        password: "ordinary-password-123",
       }),
       method: "POST",
     });
-    const userCookie = cookie(login);
+    expect(login.status).toBe(200);
+    const ordinaryCookie = cookie(login);
     expect(
-      (
-        await request("/api/admin/generation-safety", {
-          cookie: userCookie,
-        })
-      ).status,
+      (await request("/api/admin/generation-safety", {
+        cookie: ordinaryCookie,
+      })).status,
     ).toBe(403);
 
-    const saved = await request("/api/admin/generation-safety", {
+    const updated = await request("/api/admin/generation-safety", {
       body: JSON.stringify({
         ...baseSettings,
-        dailyCostLimitMicrounits: 5_000_000,
-        emergencyStop: true,
-        monthlyCostLimitMicrounits: 20_000_000,
+        // 旧客户端可能仍提交已废弃的成本字段，必须被忽略而不是报错或写库。
+        dailyCostLimitCnyMicrounits: 999_000_000,
+        singleTaskDefaultCostCnyMicrounits: 999_000_000,
+        requestsPerMinute: 99,
       }),
       cookie: adminCookie,
       method: "PUT",
     });
-    expect(saved.status).toBe(200);
-    expect(await saved.json()).toMatchObject({
-      historicalEstimatedProviderAttempts: 0,
-      paidProviderRequests: 0,
-      providerConfigured: false,
-      settings: {
-        dailyCostLimitMicrounits: 5_000_000,
-        emergencyStop: true,
-        globalEnabled: true,
-        monthlyCostLimitMicrounits: 20_000_000,
-      },
-    });
-
-    const database = openAppDatabase(dataDirectory);
-    try {
-      expect(
-        database
-          .prepare(`
-            SELECT COUNT(*) AS count
-            FROM admin_audit_events
-            WHERE action = 'generation_safety.update'
-          `)
-          .get(),
-      ).toEqual({ count: 1 });
-    } finally {
-      database.close();
-    }
+    expect(updated.status).toBe(200);
+    const after = await (await request("/api/admin/generation-safety", {
+      cookie: adminCookie,
+    })).json() as { settings: Record<string, unknown> };
+    expect(after.settings.requestsPerMinute).toBe(99);
+    expect(after.settings).not.toHaveProperty("dailyCostLimitCnyMicrounits");
   } finally {
     if (server) await stopServer(server);
     await rm(dataDirectory, { force: true, recursive: true });
   }
 });
 
-test("administrator safety center is visible without Provider requests", async ({
+test("administrator safety center is visible without Provider requests and has no budget fields", async ({
   page,
 }) => {
-  const providerRequests: string[] = [];
-  page.on("request", (requestEvent) => {
-    if (
-      /provider/i.test(requestEvent.url()) &&
-      !requestEvent.url().includes("/src/")
-    ) {
-      providerRequests.push(requestEvent.url());
-    }
-  });
-  await page.goto("/admin/generation-safety");
-  await expect(page.getByTestId("admin-generation-safety-page")).toBeVisible();
-  await expect(page.getByText("真实生成总开关关闭")).toBeVisible();
-  await expect(page.getByText("Provider未连接")).toBeVisible();
-  await expect(page.getByTestId("generation-global-toggle")).toHaveText(
-    "开启总开关",
-  );
-  await expect(page.getByLabel("每日全局预算（¥）")).toHaveValue("0");
-  await expect(page.getByLabel("每月全局预算（¥）")).toHaveValue("0");
-  await expect(page.getByTestId("running-task-policy")).toContainText(
-    "等待完成",
-  );
-
-  await page.getByTestId("generation-global-toggle").click();
-  await expect(page.getByText("后台保护已启用")).toBeVisible();
-  await expect(page.getByText("真实生成继续禁用")).toBeVisible();
-  await page.getByTestId("generation-emergency-toggle").click();
-  await expect(page.getByText("紧急停止已生效", { exact: true })).toBeVisible();
-  expect(providerRequests).toEqual([]);
-
-  page.once("dialog", (dialog) => dialog.accept());
-  await page.getByTestId("generation-emergency-toggle").click();
-  await expect(page.getByText("紧急停止已解除")).toBeVisible();
-  await page.getByTestId("generation-global-toggle").click();
-  await expect(page.getByText("真实生成总开关关闭")).toBeVisible();
-});
-
-test("global budget derives the USD line and enforces the merged total", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-safety-global-"));
-  const safety = createGenerationSafetyStore(dataDirectory);
-  const database = openAppDatabase(dataDirectory);
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-safety-ui-"));
+  let server: ChildProcess | undefined;
   try {
-    safety.update({
-      ...baseSettings,
-      dailyCostLimitCnyMicrounits: 100_000_000,
-      monthlyCostLimitCnyMicrounits: 1_000_000_000,
-      perUserConcurrency: 20,
-      requestsPerMinute: 120,
+    server = await startServer(dataDirectory);
+    const bootstrap = await request("/api/auth/bootstrap", {
+      body: JSON.stringify({
+        displayName: "Owner",
+        loginName: "owner",
+        password: "owner-password-123",
+      }),
+      method: "POST",
     });
-
-    // Derived USD daily line: ¥100 / 7.2 = $13.888…
-    expect(
-      safety.admission({
-        estimatedCostMicrounits: 10_000_000,
-        kind: "image",
-        ownerId: "global-owner",
-        providerProfileId: "global-provider",
-      }),
-    ).toEqual({ allowed: true, code: "ALLOWED" });
-    expect(
-      safety.admission({
-        estimatedCostMicrounits: 20_000_000,
-        kind: "image",
-        ownerId: "global-owner",
-        providerProfileId: "global-provider",
-      }),
-    ).toMatchObject({ allowed: false, code: "COST_LIMIT" });
-
-    // Seed CNY ¥60 + USD $5 (≈¥36) actuals; a new CNY ¥5 task pushes the
-    // merged total to ¥101, over the ¥100 global budget, even though each
-    // currency line is still within its own limit.
-    const now = new Date().toISOString();
-    const insertActual = database.prepare(`
-      INSERT INTO generation_tasks (
-        id, canvas_id, node_id, kind, prompt, model, parameters,
-        idempotency_key, request_fingerprint, state, attempt,
-        error_code, error_message, created_at, updated_at, owner_id,
-        estimated_cost_microunits, actual_cost_microunits,
-        cost_currency, provider_profile_id
-      )
-      VALUES (?, ?, ?, 'image', 'test', NULL, '{}', ?, ?, 'success', 0,
-        NULL, NULL, ?, ?, ?, NULL, ?, ?, ?)
-    `);
-    insertActual.run(
-      "global-cny",
-      "canvas-global",
-      "node-cny",
-      "key-cny",
-      "fingerprint-cny",
-      now,
-      now,
-      "global-owner",
-      60_000_000,
-      "CNY",
-      "global-provider",
-    );
-    insertActual.run(
-      "global-usd",
-      "canvas-global",
-      "node-usd",
-      "key-usd",
-      "fingerprint-usd",
-      now,
-      now,
-      "global-owner",
-      5_000_000,
-      "USD",
-      "global-provider",
-    );
-    expect(
-      safety.admission({
-        estimatedCostMicrounits: 5_000_000,
-        costCurrency: "CNY",
-        kind: "image",
-        ownerId: "global-owner",
-        providerProfileId: "global-provider",
-      }),
-    ).toMatchObject({ allowed: false, code: "COST_LIMIT" });
-  } finally {
-    database.close();
-    safety.close();
-    await rm(dataDirectory, { force: true, recursive: true });
-  }
-});
-
-test("legacy settings updates without global fields keep current values", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-safety-legacy-"));
-  const safety = createGenerationSafetyStore(dataDirectory);
-  try {
-    safety.update({ ...baseSettings });
-    safety.update({ globalEnabled: true });
-    const settings = safety.settings();
-    expect(settings.singleTaskDefaultCostCnyMicrounits).toBe(20_000_000);
-    expect(settings.usdToCnyRateMicrounits).toBe(7_200_000);
-    expect(settings.dailyCostLimitCnyMicrounits).toBe(10_000_000);
-    expect(settings.monthlyCostLimitCnyMicrounits).toBe(10_000_000);
-  } finally {
-    safety.close();
-    await rm(dataDirectory, { force: true, recursive: true });
-  }
-});
-
-test("concurrency and frequency limits accept high admin values", async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-safety-high-"));
-  const safety = createGenerationSafetyStore(dataDirectory);
-  try {
-    safety.update({
-      ...baseSettings,
-      audioConcurrency: 500,
-      imageConcurrency: 500,
-      perUserConcurrency: 500,
-      requestsPerMinute: 500,
-      textConcurrency: 500,
-      videoConcurrency: 500,
+    const session = cookie(bootstrap).split(";")[0];
+    const providerRequests: string[] = [];
+    page.on("request", (entry) => {
+      if (/volces|openrouter|mureka/i.test(entry.url())) {
+        providerRequests.push(entry.url());
+      }
     });
-    const settings = safety.settings();
-    expect(settings.perUserConcurrency).toBe(500);
-    expect(settings.requestsPerMinute).toBe(500);
-    expect(settings.textConcurrency).toBe(500);
-    expect(settings.imageConcurrency).toBe(500);
-    expect(settings.videoConcurrency).toBe(500);
-    expect(settings.audioConcurrency).toBe(500);
-    expect(() =>
-      safety.update({ ...baseSettings, perUserConcurrency: 1001 }),
-    ).toThrow("用户并发");
+    await page.context().addCookies([{
+      domain: "127.0.0.1",
+      name: "unboundry_session",
+      path: "/",
+      value: session.split("=")[1],
+    }]);
+    await page.goto(`${origin}/admin/generation-safety`);
+    await expect(page.getByTestId("admin-generation-safety-page")).toBeVisible();
+    await expect(page.getByLabel("并发与频率")).toHaveCount(0);
+    await expect(page.getByLabel("每日全局预算（¥）")).toHaveCount(0);
+    await expect(page.getByLabel("每月全局预算（¥）")).toHaveCount(0);
+    await expect(page.getByText("全局额度（人民币）")).toHaveCount(0);
+    expect(providerRequests).toEqual([]);
   } finally {
-    safety.close();
+    if (server) await stopServer(server);
     await rm(dataDirectory, { force: true, recursive: true });
   }
 });

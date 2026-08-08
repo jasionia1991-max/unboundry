@@ -1457,10 +1457,10 @@ function importCatalogDrafts(
       store.prepare(`
         INSERT INTO model_profiles (
           id, display_name, provider_profile_id, provider_model_id,
-          provider_protocol, capability, status, default_parameters, max_cost_microunits,
+          provider_protocol, capability, status, default_parameters,
           cost_currency, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, 0, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)
       `).run(
         modelId,
         model.displayName.slice(0, 80),

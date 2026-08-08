@@ -35,8 +35,8 @@ test("generation task panel lists running and failed tasks for the canvas", asyn
   });
   store.transition(failed.task.id, "running");
   store.transition(failed.task.id, "failed", {
-    code: "COST_LIMIT",
-    message: "今日费用额度已用完",
+    code: "PROVIDER_FAILED",
+    message: "模型平台未完成本次生成，请重试",
   });
 
   const apiProbe = await request.get(

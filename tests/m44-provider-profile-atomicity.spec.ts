@@ -696,6 +696,34 @@ test("two OS processes can migrate the same v18 database exactly once", async ()
         "ALTER TABLE provider_profiles DROP COLUMN provider_configuration_version",
       );
     }
+    // 当前 schema（v36）已移除成本列，但该夹具用“当前库 + 删除迁移记录”
+    // 模拟 v18 旧库；v33 迁移仍会读取成本列，这里补回 v33 期望的旧列，
+    // 让 v19→v36 的迁移链可以完整重放。
+    const safetyColumns = () => new Set(
+      (legacy.prepare("PRAGMA table_info(generation_safety_settings)").all() as Array<{
+        name: string;
+      }>).map((column) => column.name),
+    );
+    const legacySafetyColumns: Array<[string, string]> = [
+      ["daily_cost_limit_microunits", "INTEGER NOT NULL DEFAULT 0"],
+      ["monthly_cost_limit_microunits", "INTEGER NOT NULL DEFAULT 0"],
+      ["daily_cost_limit_cny_microunits", "INTEGER NOT NULL DEFAULT 0"],
+      ["monthly_cost_limit_cny_microunits", "INTEGER NOT NULL DEFAULT 0"],
+      ["unknown_cost_policy", "TEXT NOT NULL DEFAULT 'block'"],
+      ["text_concurrency", "INTEGER NOT NULL DEFAULT 1"],
+      [
+        "single_task_default_cost_cny_microunits",
+        "INTEGER NOT NULL DEFAULT 20000000",
+      ],
+      ["usd_to_cny_rate_microunits", "INTEGER NOT NULL DEFAULT 7200000"],
+    ];
+    for (const [name, definition] of legacySafetyColumns) {
+      if (!safetyColumns().has(name)) {
+        legacy.exec(
+          `ALTER TABLE generation_safety_settings ADD COLUMN ${name} ${definition}`,
+        );
+      }
+    }
     legacy.exec(`
       DELETE FROM schema_migrations WHERE version >= 19;
       PRAGMA user_version = 18;
@@ -745,6 +773,7 @@ test("two OS processes can migrate the same v18 database exactly once", async ()
         { count: 1, version: 33 },
         { count: 1, version: 34 },
         { count: 1, version: 35 },
+        { count: 1, version: 36 },
       ]);
     } finally {
       database.close();

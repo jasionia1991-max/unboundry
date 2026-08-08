@@ -12,10 +12,6 @@ const friendlySubstitutions: ReadonlyArray<{
   pattern: RegExp;
 }> = [
   {
-    message: "今日费用额度已用完，请明天再试，或联系管理员调整上限",
-    pattern: /费用保护已阻止本次任务/,
-  },
-  {
     message: "画布还在保存，请稍等保存完成后再试",
     pattern: /画布内容还在保存/,
   },
@@ -112,8 +108,6 @@ const generationErrorCodeMessages: Record<
   ACCOUNT_CREDENTIAL_MISSING: "未配置你的平台密钥，请到「我的连接」填写后再试",
   ADAPTER_UNSUPPORTED: "该模型尚未接入安全生成服务，请联系管理员",
   CANVAS_NOT_SAVED: "画布内容还在保存，请等待自动保存完成后再试",
-  COST_LIMIT: "今日或本月生成费用额度已用完，请明天再试或联系管理员调整上限",
-  COST_UNKNOWN: "本次生成费用暂时无法确认，已为你安全拦截",
   EMERGENCY_STOP: "管理员已紧急停止真实生成",
   GENERATION_DISABLED: "管理员已关闭真实生成",
   GENERATION_FAILED: "生成失败，请稍后再试",

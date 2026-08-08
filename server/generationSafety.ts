@@ -16,22 +16,15 @@ export type RunningTaskPolicy = "cancel" | "wait";
 export type GenerationSafetySettings = {
   audioConcurrency: number;
   cooldownMinutes: number;
-  dailyCostLimitCnyMicrounits: number;
-  dailyCostLimitMicrounits: number;
   emergencyStop: boolean;
   failureThreshold: number;
   globalEnabled: boolean;
   imageConcurrency: number;
-  monthlyCostLimitCnyMicrounits: number;
-  monthlyCostLimitMicrounits: number;
   perUserConcurrency: number;
   requestsPerMinute: number;
   runningTaskPolicy: RunningTaskPolicy;
-  singleTaskDefaultCostCnyMicrounits: number;
   textConcurrency: number;
-  unknownCostPolicy: "block";
   updatedAt: string;
-  usdToCnyRateMicrounits: number;
   videoConcurrency: number;
 };
 
@@ -40,8 +33,6 @@ export type GenerationAdmission =
   | {
       allowed: false;
       code:
-        | "COST_LIMIT"
-        | "COST_UNKNOWN"
         | "EMERGENCY_STOP"
         | "GLOBAL_DISABLED"
         | "KIND_CONCURRENCY"
@@ -51,67 +42,25 @@ export type GenerationAdmission =
       message: string;
     };
 
-/**
- * A model's own per-task cap wins when set; otherwise the global default
- * applies. USD defaults are converted from the CNY default with the editable
- * exchange rate. One shared helper keeps the model catalog, the submit path
- * and the paid-model safety checks on the same value.
- */
-export function effectiveSingleTaskCostMicrounits(
-  model: { cost_currency: "CNY" | "USD"; max_cost_microunits: number },
-  safety: GenerationSafetySettings,
-) {
-  if (model.max_cost_microunits > 0) return model.max_cost_microunits;
-  if (model.cost_currency === "CNY") {
-    return safety.singleTaskDefaultCostCnyMicrounits;
-  }
-  return Math.round(
-    safety.singleTaskDefaultCostCnyMicrounits * 1_000_000 /
-      Math.max(safety.usdToCnyRateMicrounits, 1),
-  );
-}
-
 type SafetyRow = {
   audio_concurrency: number;
   cooldown_minutes: number;
-  daily_cost_limit_cny_microunits: number;
-  daily_cost_limit_microunits: number;
   emergency_stop: number;
   failure_threshold: number;
   global_enabled: number;
   image_concurrency: number;
-  monthly_cost_limit_cny_microunits: number;
-  monthly_cost_limit_microunits: number;
   per_user_concurrency: number;
   requests_per_minute: number;
   running_task_policy: RunningTaskPolicy;
-  single_task_default_cost_cny_microunits: number;
   text_concurrency: number;
-  unknown_cost_policy: "block";
   updated_at: string;
-  usd_to_cny_rate_microunits: number;
   video_concurrency: number;
 };
 
 type SafetyInput = Omit<
   GenerationSafetySettings,
-  "unknownCostPolicy" | "updatedAt"
+  "updatedAt"
 >;
-
-export type AccountConsumptionLimits = {
-  dailyCostLimitCnyMicrounits: number;
-  dailyCostLimitUsdMicrounits: number;
-  monthlyCostLimitCnyMicrounits: number;
-  monthlyCostLimitUsdMicrounits: number;
-  updatedAt: string;
-};
-
-export type AccountConsumptionUsage = {
-  dailyCnyMicrounits: number;
-  dailyUsdMicrounits: number;
-  monthlyCnyMicrounits: number;
-  monthlyUsdMicrounits: number;
-};
 
 const activeStates = [
   "queued",
@@ -149,24 +98,15 @@ function toSettings(row: SafetyRow): GenerationSafetySettings {
   return {
     audioConcurrency: Number(row.audio_concurrency),
     cooldownMinutes: Number(row.cooldown_minutes),
-    dailyCostLimitCnyMicrounits: Number(row.daily_cost_limit_cny_microunits),
-    dailyCostLimitMicrounits: Number(row.daily_cost_limit_microunits),
     emergencyStop: Boolean(row.emergency_stop),
     failureThreshold: Number(row.failure_threshold),
     globalEnabled: Boolean(row.global_enabled),
     imageConcurrency: Number(row.image_concurrency),
-    monthlyCostLimitCnyMicrounits: Number(row.monthly_cost_limit_cny_microunits),
-    monthlyCostLimitMicrounits: Number(row.monthly_cost_limit_microunits),
     perUserConcurrency: Number(row.per_user_concurrency),
     requestsPerMinute: Number(row.requests_per_minute),
     runningTaskPolicy: row.running_task_policy,
-    singleTaskDefaultCostCnyMicrounits: Number(
-      row.single_task_default_cost_cny_microunits,
-    ),
     textConcurrency: Number(row.text_concurrency),
-    unknownCostPolicy: "block",
     updatedAt: row.updated_at,
-    usdToCnyRateMicrounits: Number(row.usd_to_cny_rate_microunits),
     videoConcurrency: Number(row.video_concurrency),
   };
 }
@@ -205,18 +145,6 @@ function cleanSettings(input: Partial<SafetyInput>): SafetyInput {
       1_440,
       "熔断时间",
     ),
-    dailyCostLimitMicrounits: cleanInteger(
-      input.dailyCostLimitMicrounits,
-      0,
-      1_000_000_000_000,
-      "每日费用",
-    ),
-    dailyCostLimitCnyMicrounits: cleanInteger(
-      input.dailyCostLimitCnyMicrounits ?? 0,
-      0,
-      1_000_000_000_000,
-      "每日人民币费用",
-    ),
     emergencyStop: input.emergencyStop,
     failureThreshold: cleanInteger(
       input.failureThreshold,
@@ -231,18 +159,6 @@ function cleanSettings(input: Partial<SafetyInput>): SafetyInput {
       1_000,
       "图片并发",
     ),
-    monthlyCostLimitMicrounits: cleanInteger(
-      input.monthlyCostLimitMicrounits,
-      0,
-      10_000_000_000_000,
-      "每月费用",
-    ),
-    monthlyCostLimitCnyMicrounits: cleanInteger(
-      input.monthlyCostLimitCnyMicrounits ?? 0,
-      0,
-      10_000_000_000_000,
-      "每月人民币费用",
-    ),
     perUserConcurrency: cleanInteger(
       input.perUserConcurrency,
       1,
@@ -256,23 +172,11 @@ function cleanSettings(input: Partial<SafetyInput>): SafetyInput {
       "请求频率",
     ),
     runningTaskPolicy: input.runningTaskPolicy as RunningTaskPolicy,
-    singleTaskDefaultCostCnyMicrounits: cleanInteger(
-      input.singleTaskDefaultCostCnyMicrounits ?? 0,
-      0,
-      1_000_000_000_000,
-      "单次任务默认费用",
-    ),
     textConcurrency: cleanInteger(
       input.textConcurrency,
       1,
       1_000,
       "文字并发",
-    ),
-    usdToCnyRateMicrounits: cleanInteger(
-      input.usdToCnyRateMicrounits ?? 7_200_000,
-      10_000,
-      1_000_000_000_000,
-      "美元汇率",
     ),
     videoConcurrency: cleanInteger(
       input.videoConcurrency,
@@ -290,190 +194,14 @@ export function createGenerationSafetyStore(
   const read = database.prepare(
     "SELECT * FROM generation_safety_settings WHERE id = 1",
   );
-  const readAccount = database.prepare(`
-    SELECT
-      daily_cost_limit_cny_microunits,
-      daily_cost_limit_usd_microunits,
-      monthly_cost_limit_cny_microunits,
-      monthly_cost_limit_usd_microunits,
-      updated_at
-    FROM account_consumption_limits
-    WHERE owner_id = ?
-  `);
-
-  function accountLimits(ownerId: string): AccountConsumptionLimits {
-    const row = readAccount.get(ownerId) as
-      | {
-          daily_cost_limit_cny_microunits: number;
-          daily_cost_limit_usd_microunits: number;
-          monthly_cost_limit_cny_microunits: number;
-          monthly_cost_limit_usd_microunits: number;
-          updated_at: string;
-        }
-      | undefined;
-    return row
-      ? {
-          dailyCostLimitCnyMicrounits: Number(
-            row.daily_cost_limit_cny_microunits,
-          ),
-          dailyCostLimitUsdMicrounits: Number(
-            row.daily_cost_limit_usd_microunits,
-          ),
-          monthlyCostLimitCnyMicrounits: Number(
-            row.monthly_cost_limit_cny_microunits,
-          ),
-          monthlyCostLimitUsdMicrounits: Number(
-            row.monthly_cost_limit_usd_microunits,
-          ),
-          updatedAt: row.updated_at,
-        }
-      : {
-          dailyCostLimitCnyMicrounits: 0,
-          dailyCostLimitUsdMicrounits: 0,
-          monthlyCostLimitCnyMicrounits: 0,
-          monthlyCostLimitUsdMicrounits: 0,
-          updatedAt: "",
-        };
-  }
-
-  function updateAccountLimits(
-    ownerId: string,
-    input: Partial<
-      Pick<
-        AccountConsumptionLimits,
-        | "dailyCostLimitCnyMicrounits"
-        | "dailyCostLimitUsdMicrounits"
-        | "monthlyCostLimitCnyMicrounits"
-        | "monthlyCostLimitUsdMicrounits"
-      >
-    >,
-  ) {
-    const current = accountLimits(ownerId);
-    const clean = {
-      dailyCostLimitCnyMicrounits: cleanInteger(
-        input.dailyCostLimitCnyMicrounits ?? current.dailyCostLimitCnyMicrounits,
-        0,
-        1_000_000_000_000,
-        "每日人民币费用",
-      ),
-      dailyCostLimitUsdMicrounits: cleanInteger(
-        input.dailyCostLimitUsdMicrounits ?? current.dailyCostLimitUsdMicrounits,
-        0,
-        1_000_000_000_000,
-        "每日美元费用",
-      ),
-      monthlyCostLimitCnyMicrounits: cleanInteger(
-        input.monthlyCostLimitCnyMicrounits ??
-          current.monthlyCostLimitCnyMicrounits,
-        0,
-        10_000_000_000_000,
-        "每月人民币费用",
-      ),
-      monthlyCostLimitUsdMicrounits: cleanInteger(
-        input.monthlyCostLimitUsdMicrounits ??
-          current.monthlyCostLimitUsdMicrounits,
-        0,
-        10_000_000_000_000,
-        "每月美元费用",
-      ),
-    };
-    const timestamp = new Date().toISOString();
-    database
-      .prepare(`
-        INSERT INTO account_consumption_limits (
-          owner_id,
-          daily_cost_limit_cny_microunits,
-          daily_cost_limit_usd_microunits,
-          monthly_cost_limit_cny_microunits,
-          monthly_cost_limit_usd_microunits,
-          updated_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(owner_id) DO UPDATE SET
-          daily_cost_limit_cny_microunits = excluded.daily_cost_limit_cny_microunits,
-          daily_cost_limit_usd_microunits = excluded.daily_cost_limit_usd_microunits,
-          monthly_cost_limit_cny_microunits = excluded.monthly_cost_limit_cny_microunits,
-          monthly_cost_limit_usd_microunits = excluded.monthly_cost_limit_usd_microunits,
-          updated_at = excluded.updated_at
-      `)
-      .run(
-        ownerId,
-        clean.dailyCostLimitCnyMicrounits,
-        clean.dailyCostLimitUsdMicrounits,
-        clean.monthlyCostLimitCnyMicrounits,
-        clean.monthlyCostLimitUsdMicrounits,
-        timestamp,
-      );
-    return accountLimits(ownerId);
-  }
-
-  function costUsage(
-    ownerId: string,
-    now: Date,
-  ): AccountConsumptionUsage {
-    const dayStart = new Date(now);
-    dayStart.setHours(0, 0, 0, 0);
-    const monthStart = new Date(now);
-    monthStart.setDate(1);
-    monthStart.setHours(0, 0, 0, 0);
-    const costs = database
-      .prepare(`
-        SELECT
-          COALESCE(SUM(
-            CASE
-              WHEN cost_currency = 'CNY' AND created_at >= ?
-              THEN actual_cost_microunits ELSE 0
-            END
-          ), 0) AS cny_daily,
-          COALESCE(SUM(
-            CASE
-              WHEN cost_currency = 'USD' AND created_at >= ?
-              THEN actual_cost_microunits ELSE 0
-            END
-          ), 0) AS usd_daily,
-          COALESCE(SUM(
-            CASE
-              WHEN cost_currency = 'CNY' AND created_at >= ?
-              THEN actual_cost_microunits ELSE 0
-            END
-          ), 0) AS cny_monthly,
-          COALESCE(SUM(
-            CASE
-              WHEN cost_currency = 'USD' AND created_at >= ?
-              THEN actual_cost_microunits ELSE 0
-            END
-          ), 0) AS usd_monthly
-        FROM generation_tasks
-        WHERE actual_cost_microunits IS NOT NULL AND owner_id = ?
-      `)
-      .get(
-        dayStart.toISOString(),
-        dayStart.toISOString(),
-        monthStart.toISOString(),
-        monthStart.toISOString(),
-        ownerId,
-      ) as {
-        cny_daily: number;
-        cny_monthly: number;
-        usd_daily: number;
-        usd_monthly: number;
-      };
-    return {
-      dailyCnyMicrounits: Number(costs.cny_daily),
-      dailyUsdMicrounits: Number(costs.usd_daily),
-      monthlyCnyMicrounits: Number(costs.cny_monthly),
-      monthlyUsdMicrounits: Number(costs.usd_monthly),
-    };
-  }
 
   function settings() {
     return toSettings(read.get() as SafetyRow);
   }
 
   function update(input: Partial<SafetyInput>) {
-    // Legacy clients and old tests may PUT a settings object without the
-    // global-budget fields. Missing fields keep their current stored value
-    // instead of being silently reset to defaults.
+    // 旧客户端/旧标签可能仍提交已废弃的成本字段；cleanSettings 只读取
+    // 当前仍支持的字段，多余字段会被自然忽略，不会写库。
     const clean = cleanSettings({ ...settings(), ...input });
     const timestamp = new Date().toISOString();
     database
@@ -488,15 +216,9 @@ export function createGenerationSafetyStore(
           image_concurrency = ?,
           video_concurrency = ?,
           audio_concurrency = ?,
-          daily_cost_limit_microunits = ?,
-          monthly_cost_limit_microunits = ?,
-          daily_cost_limit_cny_microunits = ?,
-          monthly_cost_limit_cny_microunits = ?,
           failure_threshold = ?,
           cooldown_minutes = ?,
           running_task_policy = ?,
-          single_task_default_cost_cny_microunits = ?,
-          usd_to_cny_rate_microunits = ?,
           updated_at = ?
         WHERE id = 1
       `)
@@ -509,30 +231,21 @@ export function createGenerationSafetyStore(
         clean.imageConcurrency,
         clean.videoConcurrency,
         clean.audioConcurrency,
-        clean.dailyCostLimitMicrounits,
-        clean.monthlyCostLimitMicrounits,
-        clean.dailyCostLimitCnyMicrounits,
-        clean.monthlyCostLimitCnyMicrounits,
         clean.failureThreshold,
         clean.cooldownMinutes,
         clean.runningTaskPolicy,
-        clean.singleTaskDefaultCostCnyMicrounits,
-        clean.usdToCnyRateMicrounits,
         timestamp,
       );
     return settings();
   }
 
   function admission(input: {
-    costCurrency?: "CNY" | "USD";
-    estimatedCostMicrounits?: number;
     kind: GenerationTaskKind;
     now?: Date;
     ownerId: string;
     providerProfileId: string;
   }): GenerationAdmission {
     const row = read.get() as SafetyRow;
-    const costCurrency = input.costCurrency ?? "USD";
     if (row.emergency_stop) {
       return {
         allowed: false,
@@ -547,28 +260,12 @@ export function createGenerationSafetyStore(
         message: "管理员已关闭真实生成",
       };
     }
-    if (
-      input.estimatedCostMicrounits === undefined ||
-      !Number.isSafeInteger(input.estimatedCostMicrounits) ||
-      input.estimatedCostMicrounits < 0
-    ) {
-      return {
-        allowed: false,
-        code: "COST_UNKNOWN",
-        message: "本次任务费用无法确认，已在调用模型前阻止",
-      };
-    }
 
     const now = input.now ?? new Date();
     const minuteStart = new Date(now.getTime() - 60_000).toISOString();
     const cooldownStart = new Date(
       now.getTime() - row.cooldown_minutes * 60_000,
     ).toISOString();
-    const dayStart = new Date(now);
-    dayStart.setHours(0, 0, 0, 0);
-    const monthStart = new Date(now);
-    monthStart.setDate(1);
-    monthStart.setHours(0, 0, 0, 0);
     const activePlaceholders = activeStates.map(() => "?").join(", ");
 
     const recentRequests = Number(
@@ -667,91 +364,16 @@ export function createGenerationSafetyStore(
       };
     }
 
-    const costs = costUsage(input.ownerId, now);
-    const estimated = input.estimatedCostMicrounits;
-    const cnyDailyLimit = Number(row.daily_cost_limit_cny_microunits);
-    const cnyMonthlyLimit = Number(row.monthly_cost_limit_cny_microunits);
-    const account = accountLimits(input.ownerId);
-    const rate = Math.max(Number(row.usd_to_cny_rate_microunits), 1);
-    const usdDailyLimit = cnyDailyLimit === 0
-      ? 0
-      : Math.round(cnyDailyLimit * 1_000_000 / rate);
-    const usdMonthlyLimit = cnyMonthlyLimit === 0
-      ? 0
-      : Math.round(cnyMonthlyLimit * 1_000_000 / rate);
-    const estimatedCny = costCurrency === "CNY"
-      ? estimated
-      : Math.round(estimated * rate / 1_000_000);
-    const estimatedUsd = costCurrency === "USD"
-      ? estimated
-      : Math.round(estimated * 1_000_000 / rate);
-    const usdToCny = (usd: number) =>
-      Math.round(usd * rate / 1_000_000);
-    const overLimit = (spent: number, extra: number, limit: number) =>
-      limit === 0 || spent + extra > limit;
-    // 账号独立限额优先于全局：账号设置了 >0 的限额时取更严格者；
-    // 账号未设置（0）时跟随全局限额。
-    const effectiveLimit = (accountValue: number, globalValue: number) =>
-      accountValue > 0
-        ? globalValue > 0
-          ? Math.min(accountValue, globalValue)
-          : accountValue
-        : globalValue;
-    const cnyDaily = Number(costs.dailyCnyMicrounits);
-    const usdDaily = Number(costs.dailyUsdMicrounits);
-    const cnyMonthly = Number(costs.monthlyCnyMicrounits);
-    const usdMonthly = Number(costs.monthlyUsdMicrounits);
-    const accountCnyDailyLimit = effectiveLimit(
-      account.dailyCostLimitCnyMicrounits,
-      cnyDailyLimit,
-    );
-    const accountCnyMonthlyLimit = effectiveLimit(
-      account.monthlyCostLimitCnyMicrounits,
-      cnyMonthlyLimit,
-    );
-    const accountUsdDailyLimit = effectiveLimit(
-      account.dailyCostLimitUsdMicrounits,
-      usdDailyLimit,
-    );
-    const accountUsdMonthlyLimit = effectiveLimit(
-      account.monthlyCostLimitUsdMicrounits,
-      usdMonthlyLimit,
-    );
-    if (
-      overLimit(cnyDaily, estimatedCny, accountCnyDailyLimit) ||
-      overLimit(cnyMonthly, estimatedCny, accountCnyMonthlyLimit) ||
-      overLimit(usdDaily, estimatedUsd, accountUsdDailyLimit) ||
-      overLimit(usdMonthly, estimatedUsd, accountUsdMonthlyLimit) ||
-      overLimit(
-        cnyDaily + usdToCny(usdDaily),
-        estimatedCny,
-        accountCnyDailyLimit,
-      ) ||
-      overLimit(
-        cnyMonthly + usdToCny(usdMonthly),
-        estimatedCny,
-        accountCnyMonthlyLimit,
-      )
-    ) {
-      return {
-        allowed: false,
-        code: "COST_LIMIT",
-        message: "今日或本月费用额度已用完，费用保护已阻止本次任务",
-      };
-    }
     return { allowed: true, code: "ALLOWED" };
   }
 
   return {
-    accountLimits,
     admission,
     close() {
       database.close();
     },
-    costUsage,
     settings,
     update,
-    updateAccountLimits,
   };
 }
 
@@ -865,55 +487,6 @@ export async function adminGenerationSafetyApi(
   }
   response.setHeader("Allow", "GET, PUT");
   json(response, 404, { error: "生成安全保护接口不存在" });
-}
-
-export async function accountSafetyApi(
-  request: IncomingMessage,
-  response: ServerResponse,
-) {
-  const identity = requestIdentity(request);
-  if (!identity) {
-    json(response, 401, { error: "Please sign in" });
-    return;
-  }
-  const ownerId = identity.bypass ? "__test__" : identity.userId;
-  const path = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
-    /^\/+/,
-    "",
-  );
-  if (path) {
-    json(response, 404, { error: "账号消耗限额接口不存在" });
-    return;
-  }
-  const store = safetyStore();
-  if (request.method === "GET") {
-    json(response, 200, {
-      limits: store.accountLimits(ownerId),
-      usage: store.costUsage(ownerId, new Date()),
-    });
-    return;
-  }
-  if (request.method === "PUT") {
-    try {
-      const limits = store.updateAccountLimits(
-        ownerId,
-        await readBody<Parameters<typeof store.updateAccountLimits>[1]>(
-          request,
-        ),
-      );
-      json(response, 200, {
-        limits,
-        usage: store.costUsage(ownerId, new Date()),
-      });
-    } catch (error) {
-      json(response, 400, {
-        error: error instanceof Error ? error.message : "限额保存失败",
-      });
-    }
-    return;
-  }
-  response.setHeader("Allow", "GET, PUT");
-  json(response, 405, { error: "Method not allowed" });
 }
 
 export function generationSafetyStatus() {

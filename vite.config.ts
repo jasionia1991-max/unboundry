@@ -18,7 +18,6 @@ import { mediaMetadataApi } from "./server/mediaMetadataApi";
 import { generationTasks } from "./server/generationTasks";
 import { groupDownloadApi } from "./server/groupDownload";
 import {
-  accountSafetyApi,
   adminGenerationSafetyApi,
 } from "./server/generationSafety";
 import {
@@ -165,9 +164,6 @@ function authenticationApi(): Plugin {
     });
     middlewares.use("/api/account-context", (request, response) => {
       accountContextApi(request, response);
-    });
-    middlewares.use("/api/account-safety", (request, response) => {
-      void accountSafetyApi(request, response);
     });
     middlewares.use("/api/account-credentials", (request, response) => {
       void accountCredentialsApi(request, response);

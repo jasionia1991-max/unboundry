@@ -838,8 +838,6 @@ test("allowed Video media edges pass zero-cost preflight without creating a task
   expect(preflight.inputs.map(({ edgeId }) => edgeId)).toEqual(["kept-image-video"]);
   expect(preflight.canSubmit).toBeTruthy();
   expect(preflight.canEnqueue).toBeFalsy();
-  expect(preflight.costCurrency).toBe("USD");
-  expect(preflight.estimatedCostMicrounits).toBe(0);
   expect(preflight.problems).toEqual([]);
   expect(preflight.provider).toEqual({
     adapterSupported: false,
@@ -1057,6 +1055,12 @@ test("Image Text+Image input cards merge, delete, undo and survive refresh with 
   await expect(cards.locator('[data-input-kind="text"]')).toHaveCount(0);
   await expect(page.getByTestId("image-final-prompt")).toHaveCount(0);
   await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+  await expect.poll(async () => {
+    const document = await (await request.get("/api/canvas/node.image.text-image-input")).json() as {
+      edges: unknown[];
+    };
+    return document.edges.length;
+  }).toBe(1);
   const ownOnlyResponse = await request.post("/api/generation-tasks/preflight", {
     data: {
       canvasId: "node.image.text-image-input",

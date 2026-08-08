@@ -69,15 +69,12 @@ type AdminModel = {
   archivedAt?: string;
   canDelete?: boolean;
   capability: ModelCapability;
-  costCurrency: "CNY" | "USD";
   deleteBlockedReason?: string;
   displayName: string;
   enabled: boolean;
-  effectiveMaxCostMicrounits?: number;
   everPublished?: boolean;
   id: string;
   isDefault: boolean;
-  maxCostMicrounits: number;
   parameterConstraints?: ModelParameterSchema;
   parameterSchema: ModelParameterSchema;
   providerConnected: boolean;
@@ -261,22 +258,15 @@ type StorageTestFeedback = {
 type GenerationSafetySettings = {
   audioConcurrency: number;
   cooldownMinutes: number;
-  dailyCostLimitCnyMicrounits: number;
-  dailyCostLimitMicrounits: number;
   emergencyStop: boolean;
   failureThreshold: number;
   globalEnabled: boolean;
   imageConcurrency: number;
-  monthlyCostLimitCnyMicrounits: number;
-  monthlyCostLimitMicrounits: number;
   perUserConcurrency: number;
   requestsPerMinute: number;
   runningTaskPolicy: "cancel" | "wait";
-  singleTaskDefaultCostCnyMicrounits: number;
   textConcurrency: number;
-  unknownCostPolicy: "block";
   updatedAt: string;
-  usdToCnyRateMicrounits: number;
   videoConcurrency: number;
 };
 
@@ -4375,7 +4365,6 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
   const [displayName, setDisplayName] = useState("");
   const [providerModelId, setProviderModelId] = useState("");
   const [publish, setPublish] = useState(false);
-  const [maxCostValue, setMaxCostValue] = useState("0");
   const [parameterSchema, setParameterSchema] = useState<ModelParameterSchema>(
     defaultParameterSchema("image"),
   );
@@ -4454,8 +4443,6 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
     (providerProtocol !== "" &&
       providerProtocol !== "native" &&
       providerProtocolSupportsCapability(providerProtocol, capability));
-  const selectedCurrency = selectedProvider?.driver === "volcengine-ark" ? "CNY" : "USD";
-  const selectedCurrencyLabel = selectedCurrency === "CNY" ? "人民币" : "美元";
   const recommendedParameterSchema = (
     nextCapability = capability,
     nextProviderModelId = providerModelId,
@@ -4487,7 +4474,6 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
           capability,
           displayName,
           isDefault: false,
-          maxCostMicrounits: Math.round(Number(maxCostValue) * 1_000_000),
           parameterSchema,
           providerModelId,
           providerProfileId,
@@ -4502,7 +4488,6 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
       setDisplayName("");
       setProviderModelId("");
       setPublish(false);
-      setMaxCostValue("0");
       setProviderProtocol(selectedProviderUsesRelay ? "" : "native");
       setParameterSchema(defaultParameterSchema(capability));
       await load();
@@ -4516,7 +4501,7 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
     update: Partial<
       Pick<
         AdminModel,
-        "isDefault" | "maxCostMicrounits" | "parameterSchema" | "providerProfileId" | "providerProtocol" | "status"
+        "isDefault" | "parameterSchema" | "providerProfileId" | "providerProtocol" | "status"
       >
     >,
   ) => {
@@ -4862,18 +4847,6 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
               onChange={setParameterSchema}
               schema={parameterSchema}
             />
-            <label className="model-cost-field">
-              <span>单次费用保护（{selectedCurrencyLabel}，留空使用全局默认）</span>
-              <input
-                max="100"
-                min="0"
-                onChange={(event) => setMaxCostValue(event.target.value)}
-                step="0.01"
-                type="number"
-                value={maxCostValue}
-              />
-              <small>留空/0 表示使用全局默认单次上限；这是单次最高预留额度，不是实际扣费。</small>
-            </label>
             <label className="model-publish-check">
               <input
                 className="admin-compact-checkbox"
@@ -4953,11 +4926,6 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
                     </>
                   )}
                   <br />
-                  单次费用保护：
-                  {model.maxCostMicrounits > 0
-                    ? `${model.costCurrency === "CNY" ? "¥" : "$"}${(model.maxCostMicrounits / 1_000_000).toFixed(2)}`
-                    : `未设置（使用全局默认 ${model.costCurrency === "CNY" ? "¥" : "$"}${((model.effectiveMaxCostMicrounits ?? 0) / 1_000_000).toFixed(2)}）`}
-                  <br />
                   可调参数：
                   {model.parameterSchema.fields.length
                     ? model.parameterSchema.fields.map((field) => field.label).join("、")
@@ -5022,29 +4990,6 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
                   </>
                 ) : (
                   <>
-                    <label className="model-cost-inline-field">
-                      <span>单次上限（{model.costCurrency === "CNY" ? "人民币" : "美元"}，留空用全局默认）</span>
-                      <input
-                        aria-label={`${model.displayName}单次费用保护（${model.costCurrency === "CNY" ? "人民币" : "美元"}）`}
-                        className="model-cost-inline"
-                        defaultValue={model.maxCostMicrounits > 0
-                          ? (model.maxCostMicrounits / 1_000_000).toFixed(2)
-                          : ""}
-                        max="100"
-                        min="0"
-                        onBlur={(event) => {
-                          const value = Number(event.currentTarget.value);
-                          if (Number.isFinite(value) && value >= 0 && value <= 100) {
-                            void updateModel(model, {
-                              maxCostMicrounits: Math.round(value * 1_000_000),
-                            });
-                          }
-                        }}
-                        step="0.01"
-                        type="number"
-                        placeholder="使用全局默认"
-                      />
-                    </label>
                     <button
                       onClick={() =>
                         void updateModel(model, {
@@ -5812,31 +5757,6 @@ function AdminGenerationSafety({
     );
   };
 
-  const setCost = (
-    key:
-      | "dailyCostLimitMicrounits"
-      | "monthlyCostLimitMicrounits"
-      | "dailyCostLimitCnyMicrounits"
-      | "monthlyCostLimitCnyMicrounits"
-      | "singleTaskDefaultCostCnyMicrounits",
-    value: string,
-  ) => {
-    const microunits = Math.round(Number(value || 0) * 1_000_000);
-    setDraft((current) =>
-      current ? { ...current, [key]: microunits } : current,
-    );
-  };
-
-  const setRate = (value: string) => {
-    const microunits = Math.max(
-      10_000,
-      Math.round(Number(value || 7.2) * 1_000_000),
-    );
-    setDraft((current) =>
-      current ? { ...current, usdToCnyRateMicrounits: microunits } : current,
-    );
-  };
-
   return (
     <main
       className="admin-page generation-safety-page"
@@ -6033,84 +5953,6 @@ function AdminGenerationSafety({
                   />
                 </label>
               </div>
-            </section>
-            <section className="admin-card">
-              <div className="safety-section-heading">
-                <div>
-                  <span>用户端不显示额度</span>
-                  <h2>全局额度（人民币）</h2>
-                </div>
-                <b>0 即阻止所有生成</b>
-              </div>
-              <div className="safety-field-grid">
-                <label>
-                  <span>每日全局预算（¥）</span>
-                  <input
-                    min={0}
-                    onChange={(event) =>
-                      setCost(
-                        "dailyCostLimitCnyMicrounits",
-                        event.target.value,
-                      )
-                    }
-                    step="0.01"
-                    type="number"
-                    value={draft.dailyCostLimitCnyMicrounits / 1_000_000}
-                  />
-                </label>
-                <label>
-                  <span>每月全局预算（¥）</span>
-                  <input
-                    min={0}
-                    onChange={(event) =>
-                      setCost(
-                        "monthlyCostLimitCnyMicrounits",
-                        event.target.value,
-                      )
-                    }
-                    step="0.01"
-                    type="number"
-                    value={draft.monthlyCostLimitCnyMicrounits / 1_000_000}
-                  />
-                </label>
-                <label>
-                  <span>单次任务默认上限（¥）</span>
-                  <input
-                    min={0}
-                    onChange={(event) =>
-                      setCost(
-                        "singleTaskDefaultCostCnyMicrounits",
-                        event.target.value,
-                      )
-                    }
-                    step="0.01"
-                    type="number"
-                    value={draft.singleTaskDefaultCostCnyMicrounits / 1_000_000}
-                  />
-                </label>
-                <label>
-                  <span>汇率：1 美元 = ? 人民币</span>
-                  <input
-                    min={0.01}
-                    onChange={(event) => setRate(event.target.value)}
-                    step="0.01"
-                    type="number"
-                    value={draft.usdToCnyRateMicrounits / 1_000_000}
-                  />
-                </label>
-              </div>
-              <p className="safety-help">
-                美元任务按汇率折算进同一预算：每日美元线 ≈ $
-                {(draft.dailyCostLimitCnyMicrounits /
-                  Math.max(draft.usdToCnyRateMicrounits, 1)).toFixed(2)}
-                ，每月美元线 ≈ $
-                {(draft.monthlyCostLimitCnyMicrounits /
-                  Math.max(draft.usdToCnyRateMicrounits, 1)).toFixed(2)}
-                。历史成本仍按原币种记录，不会重算。
-              </p>
-              <p className="safety-help">
-                模型未单独设置单次费用时，使用上面的“单次任务默认上限”；无法确定费用的任务始终在调用前阻止。
-              </p>
             </section>
             <section className="admin-card">
               <div className="safety-section-heading">
@@ -7069,254 +6911,7 @@ function MyConnectionsPage({ currentUser }: { currentUser: AuthUser }) {
           </div>
         )}
       </section>
-      <AccountConsumptionSection />
     </main>
-  );
-}
-
-type AccountConsumptionLimits = {
-  dailyCostLimitCnyMicrounits: number;
-  dailyCostLimitUsdMicrounits: number;
-  monthlyCostLimitCnyMicrounits: number;
-  monthlyCostLimitUsdMicrounits: number;
-  updatedAt: string;
-};
-
-type AccountConsumptionUsage = {
-  dailyCnyMicrounits: number;
-  dailyUsdMicrounits: number;
-  monthlyCnyMicrounits: number;
-  monthlyUsdMicrounits: number;
-};
-
-function AccountConsumptionSection() {
-  const [limits, setLimits] = useState<AccountConsumptionLimits>();
-  const [usage, setUsage] = useState<AccountConsumptionUsage>();
-  const [draft, setDraft] = useState({
-    dailyCny: "",
-    dailyUsd: "",
-    monthlyCny: "",
-    monthlyUsd: "",
-  });
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const load = () =>
-    jsonRequest<{ limits: AccountConsumptionLimits; usage: AccountConsumptionUsage }>(
-      "/api/account-safety",
-    )
-      .then((body) => {
-        setLimits(body.limits);
-        setUsage(body.usage);
-        setDraft({
-          dailyCny: String(body.limits.dailyCostLimitCnyMicrounits / 1_000_000),
-          dailyUsd: String(body.limits.dailyCostLimitUsdMicrounits / 1_000_000),
-          monthlyCny: String(
-            body.limits.monthlyCostLimitCnyMicrounits / 1_000_000,
-          ),
-          monthlyUsd: String(
-            body.limits.monthlyCostLimitUsdMicrounits / 1_000_000,
-          ),
-        });
-      })
-      .catch((caught) =>
-        setError(
-          caught instanceof Error ? caught.message : "消耗限额读取失败",
-        ),
-      );
-
-  useEffect(() => {
-    void load();
-  }, []);
-
-  const toMicrounits = (value: string) =>
-    Math.max(0, Math.round(Number(value || 0) * 1_000_000));
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setError("");
-    setNotice("");
-    setSaving(true);
-    try {
-      const result = await jsonRequest<{
-        limits: AccountConsumptionLimits;
-        usage: AccountConsumptionUsage;
-      }>("/api/account-safety", {
-        body: JSON.stringify({
-          dailyCostLimitCnyMicrounits: toMicrounits(draft.dailyCny),
-          dailyCostLimitUsdMicrounits: toMicrounits(draft.dailyUsd),
-          monthlyCostLimitCnyMicrounits: toMicrounits(draft.monthlyCny),
-          monthlyCostLimitUsdMicrounits: toMicrounits(draft.monthlyUsd),
-        }),
-        method: "PUT",
-      });
-      setLimits(result.limits);
-      setUsage(result.usage);
-      setNotice("你的消耗上限已保存，下次生成立即生效");
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "限额保存失败");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const cnyDailyLimit = limits?.dailyCostLimitCnyMicrounits ?? 0;
-  const cnyMonthlyLimit = limits?.monthlyCostLimitCnyMicrounits ?? 0;
-  const usdDailyLimit = limits?.dailyCostLimitUsdMicrounits ?? 0;
-  const usdMonthlyLimit = limits?.monthlyCostLimitUsdMicrounits ?? 0;
-  const cnyDailyUsed = usage?.dailyCnyMicrounits ?? 0;
-  const cnyMonthlyUsed = usage?.monthlyCnyMicrounits ?? 0;
-  const usdDailyUsed = usage?.dailyUsdMicrounits ?? 0;
-  const usdMonthlyUsed = usage?.monthlyUsdMicrounits ?? 0;
-  const reached =
-    (cnyDailyLimit > 0 && cnyDailyUsed >= cnyDailyLimit) ||
-    (cnyMonthlyLimit > 0 && cnyMonthlyUsed >= cnyMonthlyLimit) ||
-    (usdDailyLimit > 0 && usdDailyUsed >= usdDailyLimit) ||
-    (usdMonthlyLimit > 0 && usdMonthlyUsed >= usdMonthlyLimit);
-
-  return (
-    <section
-      className="admin-card consumption-limits-card"
-      data-testid="consumption-limits-section"
-    >
-      <div className="api-contract-heading">
-        <div>
-          <span>我的消耗上限</span>
-          <h2>今日 / 本月已用与独立限额</h2>
-        </div>
-        {reached ? (
-          <b className="safety-limit-reached">已到上限</b>
-        ) : (
-          <b>0 = 跟随全局</b>
-        )}
-      </div>
-      <p className="consumption-limits-help">
-        只限制你自己的账号。留 0 表示跟随管理员设置的全局上限；达到上限会阻止新的生成并在节点上提示“费用额度已用完”。
-      </p>
-      {notice && (
-        <p className="storage-admin-notice provider-page-message">{notice}</p>
-      )}
-      {error && <p className="auth-error" role="alert">{error}</p>}
-      <div className="safety-field-grid">
-        <label>
-          <span>今日已用（¥）</span>
-          <input
-            data-testid="account-safety-usage-daily-cny"
-            disabled
-            readOnly
-            type="number"
-            value={Number((cnyDailyUsed / 1_000_000).toFixed(2))}
-          />
-        </label>
-        <label>
-          <span>本月已用（¥）</span>
-          <input
-            data-testid="account-safety-usage-monthly-cny"
-            disabled
-            readOnly
-            type="number"
-            value={Number((cnyMonthlyUsed / 1_000_000).toFixed(2))}
-          />
-        </label>
-        <label>
-          <span>今日已用（$）</span>
-          <input
-            data-testid="account-safety-usage-daily-usd"
-            disabled
-            readOnly
-            type="number"
-            value={Number((usdDailyUsed / 1_000_000).toFixed(2))}
-          />
-        </label>
-        <label>
-          <span>本月已用（$）</span>
-          <input
-            data-testid="account-safety-usage-monthly-usd"
-            disabled
-            readOnly
-            type="number"
-            value={Number((usdMonthlyUsed / 1_000_000).toFixed(2))}
-          />
-        </label>
-      </div>
-      <form className="generation-safety-form" onSubmit={submit}>
-        <div className="safety-field-grid">
-          <label>
-            <span>每日上限（¥）</span>
-            <input
-              data-testid="account-safety-limit-daily-cny"
-              min={0}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  dailyCny: event.target.value,
-                }))
-              }
-              step="0.01"
-              type="number"
-              value={draft.dailyCny}
-            />
-          </label>
-          <label>
-            <span>每月上限（¥）</span>
-            <input
-              data-testid="account-safety-limit-monthly-cny"
-              min={0}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  monthlyCny: event.target.value,
-                }))
-              }
-              step="0.01"
-              type="number"
-              value={draft.monthlyCny}
-            />
-          </label>
-          <label>
-            <span>每日上限（$）</span>
-            <input
-              data-testid="account-safety-limit-daily-usd"
-              min={0}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  dailyUsd: event.target.value,
-                }))
-              }
-              step="0.01"
-              type="number"
-              value={draft.dailyUsd}
-            />
-          </label>
-          <label>
-            <span>每月上限（$）</span>
-            <input
-              data-testid="account-safety-limit-monthly-usd"
-              min={0}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  monthlyUsd: event.target.value,
-                }))
-              }
-              step="0.01"
-              type="number"
-              value={draft.monthlyUsd}
-            />
-          </label>
-        </div>
-        <button
-          className="generation-safety-save"
-          data-testid="account-safety-save"
-          disabled={saving}
-          type="submit"
-        >
-          {saving ? "保存中…" : "保存我的上限"}
-        </button>
-      </form>
-    </section>
   );
 }
 

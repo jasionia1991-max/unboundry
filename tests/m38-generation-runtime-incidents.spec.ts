@@ -383,14 +383,10 @@ test("the incident cooldown ignores stale and unrelated Provider failures", asyn
     safety.update({
       audioConcurrency: 5,
       cooldownMinutes: 30,
-      dailyCostLimitCnyMicrounits: 100_000_000,
-      dailyCostLimitMicrounits: 100_000_000,
       emergencyStop: false,
       failureThreshold: 3,
       globalEnabled: true,
       imageConcurrency: 5,
-      monthlyCostLimitCnyMicrounits: 100_000_000,
-      monthlyCostLimitMicrounits: 100_000_000,
       perUserConcurrency: 5,
       requestsPerMinute: 120,
       runningTaskPolicy: "wait",
@@ -460,8 +456,6 @@ test("the incident cooldown ignores stale and unrelated Provider failures", asyn
     });
 
     expect(safety.admission({
-      costCurrency: "CNY",
-      estimatedCostMicrounits: 5_000_000,
       kind: "text",
       now,
       ownerId,
@@ -476,24 +470,18 @@ test("the incident cooldown ignores stale and unrelated Provider failures", asyn
       timestamp: "2026-08-03T03:38:00.000Z",
     });
     expect(safety.admission({
-      costCurrency: "CNY",
-      estimatedCostMicrounits: 5_000_000,
       kind: "text",
       now,
       ownerId,
       providerProfileId: arkProfile.id,
     })).toMatchObject({ allowed: false, code: "PROVIDER_COOLDOWN" });
     expect(safety.admission({
-      costCurrency: "USD",
-      estimatedCostMicrounits: 5_000_000,
       kind: "image",
       now,
       ownerId,
       providerProfileId: "provider-openrouter",
     })).toEqual({ allowed: true, code: "ALLOWED" });
     expect(safety.admission({
-      costCurrency: "CNY",
-      estimatedCostMicrounits: 5_000_000,
       kind: "video",
       now,
       ownerId,
@@ -753,14 +741,10 @@ test("only capability success or an explicit Provider/model update clears an aut
     safety.update({
       audioConcurrency: 5,
       cooldownMinutes: 30,
-      dailyCostLimitCnyMicrounits: 100_000_000,
-      dailyCostLimitMicrounits: 100_000_000,
       emergencyStop: false,
       failureThreshold: 3,
       globalEnabled: true,
       imageConcurrency: 5,
-      monthlyCostLimitCnyMicrounits: 100_000_000,
-      monthlyCostLimitMicrounits: 100_000_000,
       perUserConcurrency: 5,
       requestsPerMinute: 120,
       runningTaskPolicy: "wait",

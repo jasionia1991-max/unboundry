@@ -5,7 +5,6 @@ import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
 import { hasPermission } from "./permissions";
 import {
-  effectiveSingleTaskCostMicrounits,
   generationSafetyStatus,
 } from "./generationSafety";
 import {
@@ -47,7 +46,6 @@ type ModelRow = {
   latest_capability_success_at: string | null;
   latest_auth_failure_at: string | null;
   latest_provider_attempt_at: string | null;
-  max_cost_microunits: number;
   model_configuration_updated_at: string;
   provider_display_name: string;
   provider_driver: string;
@@ -275,16 +273,8 @@ function adminModel(
     displayName: row.display_name,
     enabled: Boolean(row.enabled),
     ...availability,
-    effectiveMaxCostMicrounits: effectiveSingleTaskCostMicrounits(
-      {
-        cost_currency: row.cost_currency,
-        max_cost_microunits: row.max_cost_microunits,
-      },
-      generationSafetyStatus(),
-    ),
     id: row.id,
     isDefault: Boolean(row.is_default),
-    maxCostMicrounits: Number(row.max_cost_microunits),
     parameterConstraints: providerParameterSchema({
       capability: row.capability,
       providerDriver: row.provider_driver,
@@ -322,7 +312,6 @@ function modelRows(store: DatabaseSync, ownerId: string) {
         model_profiles.default_parameters,
         model_profiles.status,
         model_profiles.published_at,
-        model_profiles.max_cost_microunits,
         provider_profiles.display_name AS provider_display_name,
         provider_profiles.driver AS provider_driver,
         provider_profiles.provider_configuration_version,
@@ -678,7 +667,6 @@ function cleanModelInput(input: {
   capability?: unknown;
   displayName?: unknown;
   isDefault?: unknown;
-  maxCostMicrounits?: unknown;
   providerModelId?: unknown;
   providerProfileId?: unknown;
   providerProtocol?: unknown;
@@ -702,7 +690,6 @@ function cleanModelInput(input: {
   const capability = input.capability as Capability;
   const status = input.status as ModelStatus;
   const sortOrder = Number(input.sortOrder ?? 100);
-  const maxCostMicrounits = Number(input.maxCostMicrounits ?? 0);
   if (
     displayName.length < 1 ||
     displayName.length > 80 ||
@@ -715,9 +702,6 @@ function cleanModelInput(input: {
     !Number.isInteger(sortOrder) ||
     sortOrder < 0 ||
     sortOrder > 10_000 ||
-    !Number.isSafeInteger(maxCostMicrounits) ||
-    maxCostMicrounits < 0 ||
-    maxCostMicrounits > 100_000_000 ||
     typeof input.isDefault !== "boolean"
   ) {
     throw new Error("Invalid model profile");
@@ -729,7 +713,6 @@ function cleanModelInput(input: {
     capability,
     displayName,
     isDefault: input.isDefault,
-    maxCostMicrounits,
     providerModelId,
     providerProfileId,
     providerProtocol,
@@ -1102,11 +1085,10 @@ export async function adminModelsApi(
             INSERT INTO model_profiles (
               id, display_name, provider_profile_id, provider_model_id,
               provider_protocol, capability, status, default_parameters,
-              max_cost_microunits,
               cost_currency,
               created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `)
           .run(
             id,
@@ -1117,7 +1099,6 @@ export async function adminModelsApi(
             input.capability,
             input.status,
             JSON.stringify(schema),
-            input.maxCostMicrounits,
             costCurrency,
             timestamp,
             timestamp,
@@ -1191,7 +1172,6 @@ export async function adminModelsApi(
       const body = await readBody<{
         displayName?: unknown;
         isDefault?: unknown;
-        maxCostMicrounits?: unknown;
         providerModelId?: unknown;
         providerProfileId?: unknown;
         providerProtocol?: unknown;
@@ -1206,8 +1186,6 @@ export async function adminModelsApi(
         isDefault:
           body.isDefault ??
           (nextStatus === "published" ? Boolean(current.is_default) : false),
-        maxCostMicrounits:
-          body.maxCostMicrounits ?? current.max_cost_microunits,
         providerModelId: body.providerModelId ?? current.provider_model_id,
         providerProfileId: body.providerProfileId ?? current.provider_profile_id,
         providerProtocol: body.providerProtocol ?? current.provider_protocol,
@@ -1294,7 +1272,6 @@ export async function adminModelsApi(
               provider_model_id = ?,
               provider_protocol = ?,
               status = ?,
-              max_cost_microunits = ?,
               cost_currency = ?,
               default_parameters = ?,
               updated_at = ?
@@ -1306,7 +1283,6 @@ export async function adminModelsApi(
             input.providerModelId,
             input.providerProtocol,
             input.status,
-            input.maxCostMicrounits,
             costCurrency,
             JSON.stringify(validatedSchema),
             timestamp,
