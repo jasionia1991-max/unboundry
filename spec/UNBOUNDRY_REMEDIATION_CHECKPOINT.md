@@ -141,6 +141,7 @@ REM-003～011 尚未进入实施；离线工程权限已预先授予，达到施
 - Vite dev/preview 精确捕获并恢复自己的 SIGTERM/SIGINT 监听器；超时/close 失败有硬截止。生成恢复、重试和新任务 3 个 detached 启动点的同步 throw、Promise rejection 与失败回写异常均被吸收。
 - 新登记并关闭 F-041～F-047。专项 `m81 17/17 PASS`；固定 Node `22.23.1` / npm `10.9.8` 的最终安全全量为 `105/105 spec、536/536 PASS`，failed/skipped/retries/reportErrors/blocked 均为 0；源码 274，TS/TSX `260/260`，JS/MJS `14/14`。
 - 最终安全全量工作树：HEAD `4321f2da03cb496236747d8eaba21e98cd3d597a`，非忽略工作区内容 SHA-256 `608b7c665163199f79f97085e842651b6ff04c30ca1307443f019676da333a38`。这是 REM-002 提交前的内容指纹，不是最终 candidate SHA。
+- REM-002 本地功能提交：`c7b2af01b5441fe9532d7f1e2696cd4fc2ceac89`；未 push/tag/PR。其后的文档断点提交不改变该功能内容。
 - 一次诊断全量检测到 Goal 外部的 4173 守护服务监听身份在运行期间改变，runner 按设计 fail-closed；本 Goal 没有连接、终止、重启或复用 4173。外部监听稳定后重新全量通过，前后监听身份 SHA-256 均为 `0bbb8e5874e169f362481f626b49123e554ae478e4c261b7691e2eb30e80c14f`。
 - 本项保持 schema `37`、package `0.5.1`；安全 runner/测试子进程没有成功访问真实路径，真实 Provider/OSS/生产/SSH/push/tag/PR/发布均为 0。工程状态为 `USER_REVIEW`，不是 PASS。
 
@@ -168,7 +169,7 @@ REM-003～011 尚未进入实施；离线工程权限已预先授予，达到施
 项目路径：/Users/mymy/Documents/unboundry/app
 线上版本：v0.5.1
 当前分支：codex/unboundry-offline-remediation-2026-08-09
-起点 HEAD：262c66c4087d915b03971191ee00a9bfba74da65；当前 HEAD 以 git 只读结果对照本文件
+起点 HEAD：262c66c4087d915b03971191ee00a9bfba74da65；REM-002 功能提交 c7b2af01b5441fe9532d7f1e2696cd4fc2ceac89；当前 HEAD 以 git 只读结果对照本文件
 最后完成工程候选：REM-002（USER_REVIEW），安全入口全量 105/536、536/536 PASS
 当前施工项：REM-009A（IN_PROGRESS）
 下一步：完成真正只读的合成数据备份、加密、恢复、损坏拒绝和故障注入底座
