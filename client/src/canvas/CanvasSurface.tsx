@@ -1894,7 +1894,12 @@ export function CanvasSurface({
   const worldRef = useRef<HTMLDivElement>(null);
   const blankContextMenuRef = useRef<HTMLDivElement>(null);
   const nodeContextMenuRef = useRef<HTMLDivElement>(null);
-  const internalClipboard = useRef<ProbeNodeType | undefined>(undefined);
+  const internalClipboard = useRef<
+    { edges: CuttableEdge[]; nodes: ProbeNodeType[] } | undefined
+  >(undefined);
+  const lastPointerWorld = useRef<{ x: number; y: number } | undefined>(
+    undefined,
+  );
   const appliedTemplateSequence = useRef<number | undefined>(undefined);
   const templateFitCancel = useRef<(() => void) | undefined>(undefined);
   const templateViewportAnimating = useRef(false);
@@ -2575,38 +2580,164 @@ export function CanvasSurface({
   const copyNodeInternally = (nodeId: string) => {
     const node = nodesRef.current.find((candidate) => candidate.id === nodeId);
     if (!node) return false;
-    internalClipboard.current = cloneNodes([node])[0];
+    if (node.parentId) {
+      // 复制组内单个子节点：粘贴为独立节点，并把相对坐标换算成世界坐标。
+      const parent = nodesRef.current.find(
+        (candidate) => candidate.id === node.parentId,
+      );
+      const position = parent
+        ? {
+            x: parent.position.x + node.position.x,
+            y: parent.position.y + node.position.y,
+          }
+        : { ...node.position };
+      internalClipboard.current = {
+        edges: [],
+        nodes: [{ ...cloneNodes([node])[0], parentId: undefined, position }],
+      };
+    } else {
+      internalClipboard.current = collectNodeSubgraph(nodeId);
+    }
     clipboardPasteSequence.current = 0;
     return true;
   };
-  const appendNodeDuplicate = (
-    source: ProbeNodeType,
+
+  const collectNodeSubgraph = (nodeId: string) => {
+    const ids = new Set<string>([nodeId]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const node of nodesRef.current) {
+        if (node.parentId && ids.has(node.parentId) && !ids.has(node.id)) {
+          ids.add(node.id);
+          changed = true;
+        }
+      }
+    }
+    const nodes = nodesRef.current
+      .filter((node) => ids.has(node.id))
+      .map((node) => cloneNodes([node])[0]);
+    const edges = edgesRef.current
+      .filter((edge) => ids.has(edge.source) && ids.has(edge.target))
+      .map((edge) => ({
+        ...cloneEdges([stripSelectionFlowMarkers(edge)])[0],
+        selected: false,
+      }));
+    return { edges, nodes };
+  };
+
+  const duplicateGraph = (
+    source: { edges: CuttableEdge[]; nodes: ProbeNodeType[] },
+    pastePoint?: { x: number; y: number },
     offsetStep = 1,
   ) => {
-    const duplicate = cloneNodes([source])[0];
-    const id = `${source.id}-copy-${crypto.randomUUID()}`;
+    if (source.nodes.length === 0) return undefined;
+    const idMap = new Map<string, string>();
+    const nodes = source.nodes.map((node) => {
+      const id = `${node.id}-copy-${crypto.randomUUID()}`;
+      idMap.set(node.id, id);
+      return { ...cloneNodes([node])[0], id, selected: false };
+    });
+    for (const node of nodes) {
+      if (node.parentId && idMap.has(node.parentId)) {
+        node.parentId = idMap.get(node.parentId);
+      } else if (node.parentId) {
+        node.parentId = undefined;
+      }
+    }
+    const edges = source.edges
+      .filter((edge) => idMap.has(edge.source) && idMap.has(edge.target))
+      .map((edge) => ({
+        ...cloneEdges([stripSelectionFlowMarkers(edge)])[0],
+        id: `${edge.id}-copy-${crypto.randomUUID()}`,
+        selected: false,
+        source: idMap.get(edge.source)!,
+        target: idMap.get(edge.target)!,
+      }));
+    const roots = nodes.filter((node) => !node.parentId);
+    const anchor = roots.length
+      ? {
+          x: Math.min(...roots.map((node) => node.position.x)),
+          y: Math.min(...roots.map((node) => node.position.y)),
+        }
+      : { x: nodes[0].position.x, y: nodes[0].position.y };
+    const delta = pastePoint
+      ? { x: pastePoint.x - anchor.x, y: pastePoint.y - anchor.y }
+      : { x: 40 * offsetStep, y: 40 * offsetStep };
+    for (const node of roots) {
+      node.position = {
+        x: node.position.x + delta.x,
+        y: node.position.y + delta.y,
+      };
+    }
+    return { edges, nodes, rootIds: new Set(roots.map((node) => node.id)) };
+  };
+
+  const applyDuplicatedGraph = (
+    duplicated: NonNullable<ReturnType<typeof duplicateGraph>>,
+  ) => {
     checkpoint();
     setNodes((current) => [
       ...current.map((node) => ({ ...node, selected: false })),
-      {
-        ...duplicate,
-        id,
-        position: {
-          x: duplicate.position.x + 40 * offsetStep,
-          y: duplicate.position.y + 40 * offsetStep,
-        },
-        selected: true,
-      },
+      ...duplicated.nodes.map((node) => ({
+        ...node,
+        selected: duplicated.rootIds.has(node.id),
+      })),
     ]);
-    setPrimaryId(id);
-    return id;
+    setEdges((current) => [...current, ...duplicated.edges]);
+    const firstRoot = duplicated.nodes.find((node) =>
+      duplicated.rootIds.has(node.id),
+    );
+    if (firstRoot) setPrimaryId(firstRoot.id);
   };
-  const pasteInternalNode = () => {
+
+  const pasteInternalNode = (pastePoint?: { x: number; y: number }) => {
     const copied = internalClipboard.current;
-    if (!copied) return false;
+    if (!copied || copied.nodes.length === 0) return false;
     clipboardPasteSequence.current += 1;
-    appendNodeDuplicate(copied, clipboardPasteSequence.current);
+    const point = pastePoint ?? lastPointerWorld.current;
+    const duplicated = duplicateGraph(copied, point, clipboardPasteSequence.current);
+    if (!duplicated) return false;
+    applyDuplicatedGraph(duplicated);
     return true;
+  };
+
+  const duplicateContextNode = (nodeId: string) => {
+    const node = nodesRef.current.find((candidate) => candidate.id === nodeId);
+    if (!node) return false;
+    const source = node.parentId
+      ? (() => {
+          const parent = nodesRef.current.find(
+            (candidate) => candidate.id === node.parentId,
+          );
+          const position = parent
+            ? {
+                x: parent.position.x + node.position.x,
+                y: parent.position.y + node.position.y,
+              }
+            : { ...node.position };
+          return {
+            edges: [],
+            nodes: [
+              { ...cloneNodes([node])[0], parentId: undefined, position },
+            ],
+          };
+        })()
+      : collectNodeSubgraph(nodeId);
+    const duplicated = duplicateGraph(source, undefined, 1);
+    if (!duplicated) return false;
+    applyDuplicatedGraph(duplicated);
+    return true;
+  };
+
+  const trackPointerWorld = (event: React.PointerEvent<HTMLDivElement>) => {
+    const rect = worldRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const viewport = viewportRef.current;
+    lastPointerWorld.current = {
+      x: (event.clientX - rect.left - viewport.x) / viewport.zoom,
+      y: (event.clientY - rect.top - viewport.y) / viewport.zoom,
+    };
   };
   const deleteNodeFromContextMenu = (nodeId: string) => {
     const root = nodesRef.current.find((node) => node.id === nodeId);
@@ -3962,6 +4093,7 @@ export function CanvasSurface({
         setSourceConnectMenu(undefined);
         setNodeContextMenu(undefined);
       }}
+      onPointerMove={trackPointerWorld}
       ref={worldRef}
       role="application"
     >
@@ -4268,7 +4400,7 @@ export function CanvasSurface({
             Math.min(event.clientY - bounds.top, bounds.height - 365),
           );
           setBlankContextMenu({
-            canPaste: Boolean(internalClipboard.current),
+            canPaste: Boolean(internalClipboard.current?.nodes.length),
             canUndo: history.current.length > 0,
             flow: {
               x: (x - viewportRef.current.x) / viewportRef.current.zoom,
@@ -4416,7 +4548,7 @@ export function CanvasSurface({
             <button
               aria-selected="false"
               onClick={() => {
-                appendNodeDuplicate(contextMenuNode);
+                duplicateContextNode(contextMenuNode.id);
                 setNodeContextMenu(undefined);
               }}
               role="option"
@@ -4561,7 +4693,7 @@ export function CanvasSurface({
               aria-selected="false"
               disabled={!blankContextMenu.canPaste}
               onClick={() => {
-                pasteInternalNode();
+                pasteInternalNode(blankContextMenu.flow);
                 setBlankContextMenu(undefined);
               }}
               role="option"

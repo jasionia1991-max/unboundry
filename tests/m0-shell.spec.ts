@@ -1285,17 +1285,42 @@ test("node context menu keeps copy and paste inside the canvas", async ({
   await expect(pasted).toHaveCount(1);
   const sourceBox = await source.boundingBox();
   const pastedBox = await pasted.boundingBox();
-  expect(pastedBox?.x).toBe((sourceBox?.x ?? 0) + 40);
-  expect(pastedBox?.y).toBe((sourceBox?.y ?? 0) + 40);
+  // 粘贴到光标（左上角对准）：用空白右键菜单位置换算成画布世界坐标。
+  const worldElement = page.getByTestId("canvas-world");
+  const worldRect = (await worldElement.boundingBox())!;
+  const zoom = Number(
+    await worldElement.getAttribute("data-viewport-zoom"),
+  );
+  const vx = Number(await worldElement.getAttribute("data-viewport-x"));
+  const vy = Number(await worldElement.getAttribute("data-viewport-y"));
+  const menuClientX = Math.min(
+    Math.max(900, 8),
+    worldRect.width - 248,
+  );
+  const menuClientY = Math.min(
+    Math.max(700, 8),
+    worldRect.height - 365,
+  );
+  const flowX = (menuClientX - vx) / zoom;
+  const flowY = (menuClientY - vy) / zoom;
+  const expectedPasteX = worldRect.x + vx + flowX * zoom;
+  const expectedPasteY = worldRect.y + vy + flowY * zoom;
+  expect(Math.round(pastedBox?.x ?? 0)).toBe(Math.round(expectedPasteX));
+  expect(Math.round(pastedBox?.y ?? 0)).toBe(Math.round(expectedPasteY));
   await expect(source).not.toHaveClass(/selected/);
   await expect(pasted).toHaveClass(/selected/);
 
-  await pasted.click({ button: "right" });
+  // 粘贴副本已选中：直接删除，避免与后续“副本/删除”步骤互相遮挡。
+  await page.keyboard.press("Delete");
+  await expect(canvas).toHaveAttribute("data-node-count", "1");
+
+  await source.click({ position: { x: 20, y: 20 } });
+  await source.click({ button: "right", position: { x: 20, y: 20 } });
   await page
     .getByTestId("node-context-menu")
     .getByRole("option", { name: "副本" })
     .click();
-  await expect(canvas).toHaveAttribute("data-node-count", "3");
+  await expect(canvas).toHaveAttribute("data-node-count", "2");
 
   const copies = page.locator('.react-flow__node[data-id*="-copy-"]');
   await copies.last().click({ button: "right" });
@@ -1303,12 +1328,23 @@ test("node context menu keeps copy and paste inside the canvas", async ({
     .getByTestId("node-context-menu")
     .getByRole("option", { name: /^删除/ })
     .click();
-  await expect(canvas).toHaveAttribute("data-node-count", "2");
+  await expect(canvas).toHaveAttribute("data-node-count", "1");
 
   await source.click({ position: { x: 20, y: 20 } });
   await page.keyboard.press("Meta+C");
+  const farWorld = page.getByTestId("canvas-world");
+  const farRect = (await farWorld.boundingBox())!;
+  const farZoom = Number(
+    await farWorld.getAttribute("data-viewport-zoom"),
+  );
+  const farVx = Number(await farWorld.getAttribute("data-viewport-x"));
+  const farVy = Number(await farWorld.getAttribute("data-viewport-y"));
+  await page.mouse.move(
+    farRect.x + farVx + 900 * farZoom,
+    farRect.y + farVy + 700 * farZoom,
+  );
   await page.keyboard.press("Meta+V");
-  await expect(canvas).toHaveAttribute("data-node-count", "3");
+  await expect(canvas).toHaveAttribute("data-node-count", "2");
   await expect
     .poll(() => page.evaluate(() => navigator.clipboard.readText()))
     .toBe("keep-system-copy");
