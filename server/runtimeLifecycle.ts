@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   accessSync,
   constants,
+  lstatSync,
   statSync,
 } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -12,8 +13,8 @@ import {
   currentSchemaContract,
   currentSchemaManifest,
   currentSchemaVersion,
-} from "./database";
-import { discardUnreadRequestBody } from "./httpRequest";
+} from "./database.ts";
+import { discardUnreadRequestBody } from "./httpRequest.ts";
 
 const defaultRetryAfterSeconds = 5;
 const defaultShutdownDeadlineMs = 10_000;
@@ -67,6 +68,7 @@ type DatabaseProbe =
         | "DATABASE_FILE_INVALID"
         | "DATABASE_FILE_UNAVAILABLE"
         | "DATABASE_INTEGRITY_FAILED"
+        | "DATABASE_RESTORE_INCOMPLETE"
         | "DATABASE_SCHEMA_MISMATCH"
         | "DATABASE_UNAVAILABLE";
       ok: false;
@@ -165,7 +167,7 @@ function schemaObject(
   `).get(type, name) as { sql?: unknown; tbl_name?: unknown } | undefined;
 }
 
-function databaseMatchesSchemaContract(database: DatabaseSync) {
+export function databaseMatchesSchemaContract(database: DatabaseSync) {
   const expectedTables = Object.keys(currentSchemaContract.tables).sort();
   const actualTables = (database.prepare(`
     SELECT name
@@ -553,6 +555,19 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
     }
 
     const databasePath = join(directory, "unboundry.sqlite");
+    try {
+      lstatSync(join(directory, ".unboundry-restore-incomplete"));
+      return { ok: false, code: "DATABASE_RESTORE_INCOMPLETE" };
+    } catch (error) {
+      if (
+        !error ||
+        typeof error !== "object" ||
+        !("code" in error) ||
+        error.code !== "ENOENT"
+      ) {
+        return { ok: false, code: "DATABASE_DIRECTORY_UNAVAILABLE" };
+      }
+    }
     try {
       const fileStat = statSync(databasePath);
       if (!fileStat.isFile() || fileStat.size === 0) {

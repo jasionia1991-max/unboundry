@@ -8,13 +8,18 @@ export type HttpRequestErrorCode =
   | "UNSUPPORTED_MEDIA_TYPE";
 
 export class HttpRequestError extends Error {
+  readonly code: HttpRequestErrorCode;
+  readonly statusCode: 400 | 413 | 415;
+
   constructor(
-    readonly code: HttpRequestErrorCode,
-    readonly statusCode: 400 | 413 | 415,
+    code: HttpRequestErrorCode,
+    statusCode: 400 | 413 | 415,
     message: string,
   ) {
     super(message);
     this.name = "HttpRequestError";
+    this.code = code;
+    this.statusCode = statusCode;
   }
 }
 

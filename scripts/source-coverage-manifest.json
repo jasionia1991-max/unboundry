@@ -18,14 +18,14 @@
   "operationalScripts": {
     "scripts/backup-data.mjs": {
       "mode": "behavior-test",
-      "scriptSha256": "88c0fb0fd2c92eddad40f0f1dec4191d8ef5e2802fc9ccbfe3f4a546ef6c7c10",
+      "scriptSha256": "a4729738fc8ec9c1cd72a3edd67bf078dd93dc5c5087756b1f64b1dccb9f6c3e",
       "target": "tests/m10-backup.spec.ts",
-      "marker": "a database and its media restore from a checksummed backup",
-      "targetSha256": "313e9db5ec693ada59d79485f593a0107068513319c3e604ee743788f911b439"
+      "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
+      "targetSha256": "945d84ec44f8658cbce952d8c9011f90614e8b93c77dea5be06a460c3c81424d"
     },
     "scripts/backup-to-oss.mjs": {
       "mode": "frozen",
-      "scriptSha256": "6f621c7ede8d5b430ee8b71a2b9f8a14cc1d67581d56029db431932ce985c2b1",
+      "scriptSha256": "ea7d0d202f187f220231320237ddefbdc158267ee7af37804070aa1a2679f65c",
       "reason": "May create a backup and contact or delete remote OSS objects; automatic execution is forbidden.",
       "manualNpmScripts": [
         "data:backup:oss"
@@ -53,7 +53,7 @@
     },
     "scripts/mirror-oss-to-local.mjs": {
       "mode": "frozen",
-      "scriptSha256": "3c47f933d568092bfed1c6b48e19ea0613e0b97353ca789d23d8cadafbc2ed9b",
+      "scriptSha256": "31dd58886acd7c45bc955574aed9c3159efd8055f5e9968295aaee2c846bb8f3",
       "reason": "Reads real OSS configuration and can download remote objects; automatic execution is forbidden.",
       "manualNpmScripts": [
         "data:mirror-oss"
@@ -73,12 +73,19 @@
       "reason": "Interactively mutates account credentials; automatic execution is forbidden.",
       "manualNpmScripts": []
     },
+    "scripts/restore-backup.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "cf612c6a53a8d7047cd710e40ffe6e73904ca7edbef284aaa7c51de85c7dc249",
+      "target": "tests/m10-backup.spec.ts",
+      "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
+      "targetSha256": "945d84ec44f8658cbce952d8c9011f90614e8b93c77dea5be06a460c3c81424d"
+    },
     "scripts/verify-backup.mjs": {
       "mode": "behavior-test",
-      "scriptSha256": "b2bfd13e11ec41131e546a25c6dd1a20382841a455924acee9a8419027cd3b01",
+      "scriptSha256": "3c1878b7d61b0c47051b0466206e7e115241338d15fabb74500dc95b5fb29b89",
       "target": "tests/m10-backup.spec.ts",
-      "marker": "a database and its media restore from a checksummed backup",
-      "targetSha256": "313e9db5ec693ada59d79485f593a0107068513319c3e604ee743788f911b439"
+      "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
+      "targetSha256": "945d84ec44f8658cbce952d8c9011f90614e8b93c77dea5be06a460c3c81424d"
     }
   }
 }
