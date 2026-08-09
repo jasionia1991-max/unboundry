@@ -1,9 +1,9 @@
 # Unboundry 全量修复、优化与安全发布施工总方案
 
 状态：`APPROVED_BY_USER`
-计划版本：`1.0`
+计划版本：`1.3-offline`
 建立日期：`2026-08-09`
-当前授权：用户已于 2026-08-09 确认本施工文档并启动一次性离线 Goal；**已授权 REM-001～010 与 REM-011 离线工程部分连续施工、本地 checkpoint/功能/candidate commit，未授权真实数据、4173、真实 Provider/OSS、SSH、生产、push、tag、PR、正式版本号或发布**。当前状态为 `REM-000 PASS / REM-001、REM-002、REM-009A USER_REVIEW / REM-003 IN_PROGRESS`。
+当前授权：用户已于 2026-08-09 确认本施工文档并启动一次性离线 Goal；**已授权 REM-001～010 与 REM-011 离线工程部分连续施工、本地 checkpoint/功能/candidate commit，未授权真实数据、4173、真实 Provider/OSS、SSH、生产、push、tag、PR、正式版本号或发布**。当前状态为 `REM-000 PASS / REM-001、REM-002、REM-003、REM-009A USER_REVIEW / REM-004 IN_PROGRESS`。
 
 > 用户已于 2026-08-09 确认本文档为本轮权威施工合同。任何 Agent 在上下文压缩、换人或恢复任务后，都必须重新读取本文件和 `UNBOUNDRY_REMEDIATION_CHECKPOINT.md`，不得凭内部记忆或压缩摘要继续施工。
 
@@ -41,7 +41,7 @@
 | 数据库结构 | 当前迁移最高版本 `37` |
 | 本轮检测到的本机 Node | `v25.9.0` |
 | 施工目标 Node | Node 22 LTS；精确 Node/npm 版本在 REM-001 决策并固定。历史生产记录为 `v22.23.2`，本轮未复核当前生产精确版本 |
-| 当前代码授权 | 一次性离线 Goal 已激活；REM-000 PASS、REM-001/002/009A USER_REVIEW、REM-003 IN_PROGRESS；仅限施工合同内的本地隔离工程，生产与外部真实服务永久排除 |
+| 当前代码授权 | 一次性离线 Goal 已激活；REM-000 PASS、REM-001/002/003/009A USER_REVIEW、REM-004 IN_PROGRESS；仅限施工合同内的本地隔离工程，生产与外部真实服务永久排除 |
 
 基线发生变化时，先更新断点文件并说明原因；未经用户确认不得静默换仓库、换分支、换线上版本或换目标。
 
@@ -116,9 +116,9 @@
 
 | 编号 | 已确认风险 | 优先级 | 归属施工项 |
 |---|---|---|---|
-| F-001 | 画布初始加载失败后仍进入可保存状态，可能以空快照覆盖已有画布 | P0 | REM-003 |
-| F-002 | 同一标签保存顺序检查在读取请求体前取旧行，检查与 UPSERT 非原子 | P0 | REM-003 |
-| F-003 | `document.revision` 只校验格式，未阻止未成功加载的 revision 0 修改已有画布 | P0 | REM-003 |
+| F-001 | 画布初始加载失败后仍进入可保存状态，可能以空快照覆盖已有画布 | P0 | REM-003，已修 |
+| F-002 | 同一标签保存顺序检查在读取请求体前取旧行，检查与 UPSERT 非原子 | P0 | REM-003，已修 |
+| F-003 | `document.revision` 只校验格式，未阻止未成功加载的 revision 0 修改已有画布 | P0 | REM-003，已修 |
 | F-004 | 客户端 ID 在所有权确认前写共享媒体路径，跨账号并发可先覆盖文件 | P0 | REM-004 |
 | F-005 | 生成结果、媒体行、历史和任务成功分多阶段，失败时可产生孤儿或悬空引用 | P0 | REM-004 / REM-005 |
 | F-006 | 账号删除按 snake_case 查询却按 camelCase 读取，物理媒体不清理 | P0 | REM-006 |
@@ -156,7 +156,7 @@
 | F-037 | App 传入不稳定的项目缺失回调，打开账号浮层会重新触发画布 hydration 并覆盖当前 Text 选择态 | P1 | REM-003 / REM-007；REM-001 review 已修 |
 | F-038 | 管理页面鉴权在 React render 中直接 `location.replace`，StrictMode 可重复导航并产生 `ERR_ABORTED` | P1 | REM-002 / REM-007；REM-001 review 已修 |
 | F-039 | 模板节点写入后先预约保存、后开启镜头动画闸门，旧 timer 会在动画中连续保存中间 viewport | P1 | REM-003；REM-001 review 已修 |
-| F-040 | `canvas_documents` 只保存最后一个标签的 session/sequence；`A3 → B1 → A2` 会丢掉 A 的高水位，让 A2 旧快照再次合法覆盖 | P0 | REM-003 |
+| F-040 | `canvas_documents` 只保存最后一个标签的 session/sequence；`A3 → B1 → A2` 会丢掉 A 的高水位，让 A2 旧快照再次合法覆盖 | P0 | REM-003，已修 |
 | F-041 | 维护/关闭只按 HTTP method 阻止 mutation，带迁移、回填或任务恢复副作用的 GET 可绕过冻结 | P0 | REM-002，已修 |
 | F-042 | 关闭只等待 response finish，未等待 handler 清理和未读请求体，可能假排空或泄漏临时文件 | P0 | REM-002，已修 |
 | F-043 | 生成恢复、重试和新任务的 detached Promise 可能形成未处理 rejection 并杀死进程 | P0 | REM-002，已修 |
@@ -164,8 +164,8 @@
 | F-045 | Vite 信号处理可能误删宿主监听器，close 失败或超时后进程不能可靠结束 | P0 | REM-002，已修 |
 | F-046 | 结构化日志在业务 4xx/5xx 时仍可能记录 `code=OK`，误导告警和排障 | P1 | REM-002，已修 |
 | F-047 | JSON body、Content-Type、fatal UTF-8、请求中止和 URL 解码在各 API 实现不一致 | P0 | REM-002，已修 |
-| F-048 | 客户端把未知 409 当 revision 冲突盲目重试，并可能清空仍未保存的更新草稿 | P0 | REM-003 |
-| F-049 | OpenAPI 画布文档遗漏实际 graph/session/sequence 字段与 DATA-005 冲突语义，契约和实现漂移 | P1 | REM-003 |
+| F-048 | 客户端把未知 409 当 revision 冲突盲目重试，并可能清空仍未保存的更新草稿 | P0 | REM-003，已修 |
+| F-049 | OpenAPI 画布文档遗漏实际 graph/session/sequence 字段与 DATA-005 冲突语义，契约和实现漂移 | P1 | REM-003，已修 |
 | F-050 | 备份/恢复先检查后 rename、锁文件按路径清理及中途发布可覆盖或误删并发出现的目录项 | P1 | REM-009A，已修 |
 | F-051 | 私钥/可信签名公钥、工作根与父链缺少完整 owner/mode/inode 隔离，签名私钥还可能被当 OSS 镜像打包 | P1 | REM-009A，已修 |
 | F-052 | 备份/验签/恢复清理故障可覆盖原错误、遗留明文临时目录，rollback/close 异常可阻止主密钥或 DEK 清零 | P1 | REM-009A，已修 |
@@ -232,6 +232,8 @@ REM-001 的完成含义仅是“全部测试都能在安全隔离中被发现和
 - 不同标签仍严格遵守 DATA-005“最后保存者胜”；
 - 删除项目后旧页面不能复活；
 - 50～100 组确定性交错测试不丢数据。
+
+2026-08-09 离线执行证据：服务端以 owner/canvas/revision/epoch 绑定的 load token、session/sequence/attempt 高水位与单事务 canvas/project/tombstone 写入关闭 F-001/F-002/F-003/F-040/F-048/F-049；项目/账号删除容量回收、故障回滚、candidate/legacy/restart 合同均 fail-closed。客户端以账号+画布 scope、strict durable journal CAS 与 input/task owner 覆盖 hydration、普通保存、pagehide、丢响应、超时、跨标签广播、外部基线、BFCache 状态机及生成门禁；未知提交只重试原 attempt/payload，旧任务与迟到响应不能覆盖新输入。冻结测试源码指纹 `2ae382d4b0bed4cfa1e570d1e0172c2b84365dba4abf38ea095eb68e7c59875a`：专项 `205/205`、m28 十轮 `30/30`、核心三轮 `450/450`、安全全量 `107/107 spec、687/687 PASS`，failed/skipped/retries/reportErrors/blocked 均为 0；源码 TS/TSX `264/264`、JS/MJS `15/15`，构建与两次重启通过，4173 监听身份不变。独立终审剩余 P0/P1 为 0；schema `37` 与 package `0.5.1` 不变。相同功能内容提交为 `2a0b7f9819d3075d5fd339e20c5badd389cd51ae`；测试运行于提交前相同文件内容的源码指纹。本项进入 `USER_REVIEW`，当前切换到 REM-004。
 
 ### REM-004：统一媒体生命周期
 
@@ -309,7 +311,7 @@ REM-009A 在核心持久化修改前完成：建立只读备份、合成库恢�
 
 ### G2 完整自动测试
 
-- 原始基线 105/105 spec、519/519 既有测试已全部纳入；REM-001 后为 520，REM-002 后为 536，REM-009A 后当前为 542，新增测试必须自动纳入且执行数必须等于发现数；
+- 原始基线 105/105 spec、519/519 既有测试已全部纳入；REM-001 后为 520，REM-002 后为 536，REM-009A 后为 542，REM-003 后当前为 107/107 spec、687/687 tests，新增测试必须自动纳入且执行数必须等于发现数；
 - 失败 0、skip 总数 0、fixme 0、only 0、依赖 retry 才通过 0；真实 OSS/Provider 外部验真移出离线清单，以本地假服务替代逻辑覆盖；
 - 逐文件隔离全量与关键组合回归均通过；
 - 真实 OSS/Provider 验真不伪装成离线门禁，使用假 OSS/Provider 覆盖逻辑。
@@ -474,3 +476,4 @@ REM-009A 在核心持久化修改前完成：建立只读备份、合成库恢�
 | 2026-08-09 | 1.0 | 用户明确回复“施工文档确认通过”，REM-000 正式收口 | 用户已确认文档；不自动授权后续施工 |
 | 2026-08-09 | 1.1-offline | REM-001/002 离线工程候选收口；登记 F-035～F-047、105/536 全量证据与 REM-009A 当前断点 | 用户已授权一次性离线 Goal；仅本地工程，不含生产/发布 |
 | 2026-08-09 | 1.2-offline | REM-009A 加密只读备份、验签、恢复和损坏拒绝底座收口；登记 F-048～F-053、105/542 全量证据并切换 REM-003 | 用户已授权一次性离线 Goal；仅本地工程，不含真实数据/生产/发布 |
+| 2026-08-09 | 1.3-offline | REM-003 加载/保存基线、每标签高水位、DATA-005、持久草稿与生成门禁收口；107/687 全量证据并切换 REM-004 | 用户已授权一次性离线 Goal；仅本地工程，不含真实数据/生产/发布 |

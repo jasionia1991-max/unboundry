@@ -1,7 +1,7 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-09
-状态：`线上 v0.5.1 继续运行；2026-08-09 一次性离线 Goal 持续执行，REM-000 = PASS、REM-001/002/009A = USER_REVIEW、REM-003 = IN_PROGRESS；所有施工只在动态 loopback 端口和新临时目录进行，真实数据、4173、真实 Provider/OSS、生产连接、push/tag/PR/发布均禁止；正式部署流程收尾与 Mureka Audio 真实生成仍按原状态暂缓`
+状态：`线上 v0.5.1 继续运行；2026-08-09 一次性离线 Goal 持续执行，REM-000 = PASS、REM-001/002/003/009A = USER_REVIEW、REM-004 = IN_PROGRESS；所有施工只在动态 loopback 端口和新临时目录进行，真实数据、4173、真实 Provider/OSS、生产连接、push/tag/PR/发布均禁止；正式部署流程收尾与 Mureka Audio 真实生成仍按原状态暂缓`
 唯一产品目标：从空仓库完整复刻 Unboundry 画布，不复用 Lumino/Lumino Web 的代码、组件、CSS、数据、后端、测试或部署。
 
 ### 2026-08-09 状态收口与交接索引
@@ -26,8 +26,8 @@
 | REM-000 | 施工文档与防漂移机制 | PASS | 2026-08-09 用户确认通过 |
 | REM-001 | 测试安全底座与真正全量发现 | USER_REVIEW | 安全入口、105/520 清单、源码覆盖和首轮全绿证据已完成；Goal 结束时集中交用户复核 |
 | REM-002 | API、进程与可观测性基础 | USER_REVIEW | 统一异常边界、严格维护/关闭、只读 readiness、脱敏日志与进程生命周期已完成；Goal 结束时集中交用户复核 |
-| REM-003 | 画布持久化与 DATA-005 语义保护 | IN_PROGRESS | 当前唯一施工项；修复加载 fail-open、保存原子性、每标签高水位与草稿保护 |
-| REM-004 | 统一媒体生命周期 | NOT_STARTED | REM-009A 工程候选 + 故障注入底座 |
+| REM-003 | 画布持久化与 DATA-005 语义保护 | USER_REVIEW | 加载/保存基线、每标签高水位、跨标签收敛、原子墓碑、持久草稿及生成门禁已完成；Goal 结束时集中交用户复核 |
+| REM-004 | 统一媒体生命周期 | IN_PROGRESS | 当前唯一施工项；先证明 schema 37 可承载原子 owner 预留、pending/ready/failed 与可重启发布围栏 |
 | REM-005 | 生成、幂等与付费边界 | NOT_STARTED | REM-009A 工程候选 + 本地假 Provider、零外网 |
 | REM-006 | 账号删除、模板、权限与清理 | NOT_STARTED | REM-009A 工程候选；继续既定 PERM-011/KEY-008/AUTH-006 合同 |
 | REM-007 | 前端生成恢复与失败体验 | NOT_STARTED | 后端任务合同稳定 |
@@ -74,6 +74,16 @@
 - 两路独立终审均确认剩余 P0/P1 为 0。保持 schema `37`、package `0.5.1`；未读取/修改真实数据，未请求真实 Provider/OSS，未连接生产/SSH，未 push/tag/PR/发布。
 - REM-009A 本地功能提交固定为 `ee998db80414cabb211fdc590712a0c257a25e50`；仅存在于专用本地分支。工程状态进入 `USER_REVIEW`，当前唯一施工项切换到 REM-003。
 
+### 2026-08-09 REM-003 画布持久化与 DATA-005 语义保护（工程候选已完成）
+
+- 服务端把 canvas、项目更新时间、删除墓碑复核与每账号/画布/会话高水位放入同一 `BEGIN IMMEDIATE` 事务；同标签旧 sequence、同 sequence 异 attempt、进程重启后的旧 load token 和 legacy 高风险交接均 fail-closed，不同标签继续保留 DATA-005 最后保存者胜。
+- GET/PUT 使用进程 epoch、owner/canvas/revision 绑定的加载凭据；candidate 保存、revision 0、404/create、项目删除、账号物理删除、容量上限和 SQLite 故障均有稳定结构化合同。OpenAPI 同步 GET/PUT/DELETE、401/403/409/503 精确响应。
+- 客户端只有当前账号+画布成功 hydration 后才开放编辑、保存和生成；保存 journal 以 session/sequence/attempt/epoch 严格 CAS 持久化，覆盖普通保存、pagehide、丢响应、超时、重载、BFCache 状态机、跨标签广播与外部基线重放。未知提交结果重试同一 payload，确定性冲突保留草稿且停止付费入口。
+- 节点生成轮询、重试、任务面板和媒体结果均绑定当前 scope、输入 key 与 task owner；旧 scope、旧请求、取消迟到响应或旧任务成功不能覆盖新输入。ReactFlow 在 loading 期只接受纯被动 dimensions 测量，避免首个标题提交把已水化节点隐藏/失焦，同时不产生额外保存。
+- 固定 Node `22.23.1` / npm `10.9.8`，测试源码指纹 `2ae382d4b0bed4cfa1e570d1e0172c2b84365dba4abf38ea095eb68e7c59875a`：13-spec 专项 `205/205`，m28 十轮 `30/30`，m41/m85/m86 三轮 `450/450`，安全全量发现并执行 `107/107 spec、687/687 PASS`；failed/skipped/retries/reportErrors/blocked 均为 0。源码 279，TS/TSX `264/264`、JS/MJS `15/15`；构建、两次重启持久化、临时目录清理均通过，4173 监听身份前后均为 `d57f27dc87024c26184ab9233355cabd31cd48d39c03bbe1d301fef586e4470c`。
+- 独立终审未发现剩余 P0/P1。schema `37`、package `0.5.1` 不变；测试只用临时合成数据、假 Provider/OSS 和动态 loopback，未读取/修改真实数据，未操作 4173、生产或外部服务。
+- REM-003 功能内容提交为 `2a0b7f9819d3075d5fd339e20c5badd389cd51ae`；测试运行于提交前相同文件内容的上述源码指纹，不冒充运行时已经位于该 commit。仅存在于专用本地分支，未 push/tag/PR。工程状态进入 `USER_REVIEW`，当前唯一施工项切换到 REM-004。
+
 ### 2026-08-06 多项目（项目制画布）功能
 
 - 用户已审阅并确认最终开发方案，权威文档：`spec/UNBOUNDRY_MULTI_PROJECT_PLAN.md`（状态 APPROVED BY USER 2026-08-06）。实施时**以此文档为准**，避免上下文漂移。
@@ -82,7 +92,7 @@
 
 ## 当前阶段
 
-阶段：`线上 v0.5.1 保持不变 / REM-001、REM-002、REM-009A 工程候选进入 USER_REVIEW / REM-003 画布持久化施工中 / 未连接生产且未操作真实数据、4173 或真实 Provider/OSS`
+阶段：`线上 v0.5.1 保持不变 / REM-001、REM-002、REM-003、REM-009A 工程候选进入 USER_REVIEW / REM-004 统一媒体生命周期施工中 / 未连接生产且未操作真实数据、4173 或真实 Provider/OSS`
 
 画布、固定界面、Text、Image、Video、Audio、Playlist、Group、外围面板、账号、管理员模型中心、生成安全和新图片私有OSS链路已通过当前范围验收；Comment、社区、TapTV、竞技场、额度和链接分享已按用户决定取消。OpenRouter GPT Image 2已完成一次用户授权的真实生成，图片连线参考图及真实结果零费用重启恢复均已通过；当前仅表示“不发布本轮新的修复候选”，不否认线上已运行 v0.5.1。
 

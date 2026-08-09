@@ -8,7 +8,7 @@
 2026-08-07 三功能新增 21 条（TPL-001～007 / ZIP-001～006 / KEY-001～008）已全部经用户实页验收为 `PASS`，M11 放行门达成；其余历史统计与状态仍以各节为准，`INPUT-006`保持`PARTIAL`（Mureka真实生成暂缓）。
 2026-08-07 权限管理（PERM-001～012）与公共模板（PUB-001～011）已全部经用户实页验收为 `PASS`，两功能放行门达成；生成安全「并发与频率」上限按用户要求放宽至 1000（v33）。
 2026-08-09 用户实页确认 `STORAGE-004 / PERF-002～005 / DEP-004` 全部通过；六项均由 `USER_RECHECK` 改为 `PASS`，该验收收口时点矩阵无 `USER_RECHECK` 项。
-2026-08-09 用户确认全量修复施工文档并启动一次性离线 Goal；原有产品 PASS 不变。REM-001 安全底座、REM-002 API/进程基础与 REM-009A 只读备份恢复底座均已完成工程候选并进入 `USER_REVIEW`；当前唯一施工项为 REM-003，状态 `IN_PROGRESS`，其余施工项依赖未满足前保持 `NOT_STARTED`。
+2026-08-09 用户确认全量修复施工文档并启动一次性离线 Goal；原有产品 PASS 不变。REM-001 安全底座、REM-002 API/进程基础、REM-003 画布持久化与 REM-009A 只读备份恢复底座均已完成工程候选并进入 `USER_REVIEW`；当前唯一施工项为 REM-004，状态 `IN_PROGRESS`，其余施工项依赖未满足前保持 `NOT_STARTED`。
 
 ## 1. 判定规则
 
@@ -435,8 +435,8 @@
 | REM-000 | P0 | 总方案、施工断点、项目级守则、README/交接/TASKS/矩阵入口一致；上下文恢复有硬停止点；本批零代码/测试/外部动作 | 文档级验证与三路独立复核完成；2026-08-09 用户明确确认通过 | PASS |
 | REM-001 | P0 | 固定 Node 22；动态端口和逐 spec 新临时目录；拒绝 4173/真实路径；Node+浏览器非 loopback 断网；发现与执行清单覆盖全部测试；所有 Git 跟踪 TS/TSX 均有主检查或明确的独立检查 | Node 22.23.1/npm 10.9.8；105/520 精确发现与执行；TS/TSX 258/258、JS/MJS 14/14；文件/网络各 24 类负控；修复后首轮全量 520/520，0 fail/skip/retry/reportError/blocked；临时目录清理且4173监听身份不变。仅证明 runner/测试子进程真实路径访问为0，GOV-001 已记录 | USER_REVIEW |
 | REM-002 | P0 | 畸形 URL 与异步异常不杀进程；日志脱敏；存活/就绪/维护/优雅关闭可验证 | 统一 JSON/URL/异步边界、UUID+8字段脱敏日志、API严格维护 allowlist、响应+handler+body+SSE 排空、精确信号所有权、后台生成 rejection 吸收均完成；readiness 不调用 openAppDatabase，核验 schema37 完整迁移账本、19表/27索引/5触发器及有限已知历史形态。m81 17/17；最终安全全量 105/536、536/536，0 fail/skip/retry/reportError/blocked；TS/TSX 260/260、JS/MJS 14/14；schema37/package0.5.1 不变 | USER_REVIEW |
-| REM-003 | P0 | 加载失败不保存/不生成；同标签旧保存不能覆盖新快照；跨标签继续按 DATA-005 最后保存者胜；项目删除不复活 | DATA-005 产品合同已 PASS；F-001/F-002/F-003/F-040/F-048/F-049 已完成只读归因，当前按 100 组确定性交错与兼容矩阵实施 | IN_PROGRESS |
-| REM-004 | P0 | 跨账号并发素材 ID 不互相覆盖；pending/ready/failed 和补偿闭环；每个故障点无不可见孤儿/悬空引用 | 已定位写文件早于所有权确认和多阶段发布不一致 | NOT_STARTED |
+| REM-003 | P0 | 加载失败不保存/不生成；同标签旧保存不能覆盖新快照；跨标签继续按 DATA-005 最后保存者胜；项目删除不复活 | F-001/F-002/F-003/F-040/F-048/F-049 已关闭；load token+epoch、session/sequence/attempt 高水位、strict journal CAS、原子墓碑与生成门禁已落地。指纹 `2ae382d4…`：专项205/205、m28十轮30/30、核心三轮450/450、安全全量107/687且687/687，全部异常计数0；源码264 TS+15 JS全覆盖；独立终审P0/P1=0；schema37/package0.5.1不变；功能提交`2a0b7f9819d3075d5fd339e20c5badd389cd51ae` | USER_REVIEW |
+| REM-004 | P0 | 跨账号并发素材 ID 不互相覆盖；pending/ready/failed 和补偿闭环；每个故障点无不可见孤儿/悬空引用 | 当前唯一施工项；先证明 schema37 下可用原子 owner 预留与持久发布围栏，关闭 F-004/F-005/F-036；只用合成数据和假 OSS | IN_PROGRESS |
 | REM-005 | P0 | 幂等、限额检查、任务插入原子；Provider 前重查停止；未知结果不重复付费；并发限额和零外网证据 | 全部只能使用本地假 Provider；真实 Provider 请求必须为 0 | NOT_STARTED |
 | REM-006 | P0 | 账号含任务/媒体/模板/权限/凭据/审计时删除全成或一致失败；清理可重试；权限无修改保存不清空额外授权；KEY-008/AUTH-006 不回退 | 默认继续遵守已 PASS 的 PERM-011；若用户选择 tombstone/保留审计等新合同，必须显式替代并重新验收受影响 PASS | NOT_STARTED |
 | REM-007 | P0 | 四类生成在首次/重生成/刷新/丢响应/重启/取消/失败/成功/旧结果场景恢复；更新失败不强刷；草稿不丢 | 只用本地假 Provider；`INPUT-006 / AUDIO-REAL-001` 真实 Mureka 仍保持原 PARTIAL/暂停 | NOT_STARTED |
