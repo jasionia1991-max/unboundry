@@ -4,7 +4,7 @@
 
 ## 0. 2026-08-09 全量修复施工模式
 
-用户已于 2026-08-09 确认施工文档并启动一次性离线 Goal，当前为 `REM-000 = PASS / REM-001、REM-002 = USER_REVIEW / REM-009A = IN_PROGRESS`。REM-001 已建立唯一安全施工入口，REM-002 已完成 API/进程工程候选；允许连续完成 REM-001～010 与 REM-011 离线工程部分。生产、真实数据、4173、真实 Provider/OSS、push、tag、PR、正式版本号和发布仍禁止。当前必须先读：
+用户已于 2026-08-09 确认施工文档并启动一次性离线 Goal，当前为 `REM-000 = PASS / REM-001、REM-002、REM-009A = USER_REVIEW / REM-003 = IN_PROGRESS`。REM-001 已建立唯一安全施工入口，REM-002 已完成 API/进程工程候选，REM-009A 已完成加密只读备份、验签、恢复与损坏拒绝底座；允许连续完成 REM-001～010 与 REM-011 离线工程部分。生产、真实数据、4173、真实 Provider/OSS、push、tag、PR、正式版本号和发布仍禁止。当前必须先读：
 
 1. 仓库根 `AGENTS.md`；
 2. `README.md`；
@@ -39,7 +39,7 @@
 
 - `npm run dev`：会使用真实本地 4173 和 `app/data`；施工测试禁止；
 - `npm run build` / `npm run check:greenfield`：只在对应 REM 获授权并进入隔离工作区后执行；
-- `npm run data:backup`：现入口可能先迁移/回填源库，REM-009A 前冻结；
+- `npm run data:backup`：REM-009A 已改为显式 `--source-frozen`、绝对路径和包外密钥的加密入口；本离线 Goal 仍禁止把它指向 `app/data`、生产或任何真实数据，真实备份必须等用户另行授权；
 - `node scripts/deploy.mjs --version X.Y.Z`：现流程存在原地构建、健康检查和回滚缺口，REM-010 前冻结；
 - `node scripts/reset-account-password.mjs <loginName>`：仅限用户明确授权的真实应急操作；目录选择和密码回显问题在 REM-008 修复前不得用于施工。
 
@@ -47,7 +47,7 @@
 
 - **绝不**用真实数据/真实 4173 跑测试：所有测试用临时数据目录 + 独立端口。
 - 2026-08-09 全量审计确认：旧推荐回归组合去重后只覆盖约 80/105 个 spec、391/519 项既有测试，且多处使用固定端口、共享临时库或仓库 tmp。它们只能作为历史基线，不能作为新候选的“真正全量”绿灯。
-- REM-001 已把 105 个 spec 纳入安全清单；REM-002 后当前为 536 项测试。每个 spec 使用独立新临时目录与两个动态 loopback 端口；Node/浏览器禁止非 loopback 与未登记本机端口；测试子进程真实路径成功访问为 0；4173 bind/connect 负控和运行前后监听身份比对均通过。
+- REM-001 已把 105 个 spec 纳入安全清单；REM-009A 后当前为 542 项测试。每个 spec 使用独立新临时目录与两个动态 loopback 端口；Node/浏览器禁止非 loopback 与未登记本机端口；测试子进程真实路径成功访问为 0；4173 bind/connect 负控和运行前后监听身份比对均通过。
 - 默认 `npm run verify` 与下面固定端口配置仍是冻结历史，不得绕过安全总入口；`package.json` 中旧测试脚本已改为 fail-closed 或转入安全入口。
 - 历史通用测试配置：`--config=playwright.4174.config.ts`（端口 4174、临时数据目录、auth bypass）。
 - `npm run verify` 现已委托给安全总入口；仍禁止直接调用 Vite、默认 Playwright 配置或下列历史固定端口脚本绕过 runner。
@@ -138,7 +138,7 @@ ssh live-cockpit "curl -fsS http://127.0.0.1:4173/api/version"
 
 ## 15. 下一步候选（未做）
 
-- 当前第一顺位：REM-009A 建立真正只读的合成数据备份、加密、恢复、损坏拒绝和故障注入底座；
+- 当前第一顺位：REM-003 完成画布加载 fail-closed、同标签高水位、跨标签 DATA-005、保存/项目墓碑原子事务与草稿保护；
 - 正式部署流程收尾（域名/备案/HTTPS 加固确认）；
 - Mureka 真实生成恢复验收（需用户确认官网额度）；
 - 密码找回的网页入口（当前 root 忘密码走应急脚本）；
@@ -154,4 +154,4 @@ ssh live-cockpit "curl -fsS http://127.0.0.1:4173/api/version"
 5. 向用户先报告恢复出的项目、版本、当前项和授权；
 6. 任一不一致都必须停止，不得依据内部记忆、历史 PASS 或压缩摘要猜测继续。
 
-当前执行点：`REM-000 PASS / REM-001、REM-002 USER_REVIEW / REM-009A IN_PROGRESS`。REM-002 后最终安全全量证据为 `105/105 spec、536/536 PASS`，失败/跳过/retry/report error/blocked 均为 0；源码门为 TS/TSX `260/260`、JS/MJS `14/14`，专项 m81 `17/17`。readiness 已只读核验 schema37/WAL/完整物理合同，但真实生产 schema hash、真实 WAL 和生产运维仍未授权验证。该结果是工程候选证据，不是用户 PASS，也不是 REM-011 最终三轮。按施工断点继续 REM-009A；只有仓库身份被外部改变，或无法继续保证真实数据隔离和零外部请求时，才安全停止整个 Goal。
+当前执行点：`REM-000 PASS / REM-001、REM-002、REM-009A USER_REVIEW / REM-003 IN_PROGRESS`。REM-009A 最终安全全量证据为 `105/105 spec、542/542 PASS`，失败/跳过/retry/report error/blocked 均为 0；源码门为 TS/TSX `262/262`、JS/MJS `15/15`，专项 m10 `9/9`、最终三轮 `27/27`。只读备份、加密包、验签、恢复与损坏拒绝均只用合成数据和假 OSS；真实数据权限/硬链接/非 ready OSS 状态、生产 schema hash、真实 WAL 与生产运维仍未授权核验。该结果是工程候选证据，不是用户 PASS，也不是 REM-011 最终三轮。按施工断点继续 REM-003；只有仓库身份被外部改变，或无法继续保证真实数据隔离和零外部请求时，才安全停止整个 Goal。

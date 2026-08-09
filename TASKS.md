@@ -1,7 +1,7 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-09
-状态：`线上 v0.5.1 继续运行；2026-08-09 一次性离线 Goal 持续执行，REM-000 = PASS、REM-001/002 = USER_REVIEW、REM-009A = IN_PROGRESS；所有施工只在动态 loopback 端口和新临时目录进行，真实数据、4173、真实 Provider/OSS、生产连接、push/tag/PR/发布均禁止；正式部署流程收尾与 Mureka Audio 真实生成仍按原状态暂缓`
+状态：`线上 v0.5.1 继续运行；2026-08-09 一次性离线 Goal 持续执行，REM-000 = PASS、REM-001/002/009A = USER_REVIEW、REM-003 = IN_PROGRESS；所有施工只在动态 loopback 端口和新临时目录进行，真实数据、4173、真实 Provider/OSS、生产连接、push/tag/PR/发布均禁止；正式部署流程收尾与 Mureka Audio 真实生成仍按原状态暂缓`
 唯一产品目标：从空仓库完整复刻 Unboundry 画布，不复用 Lumino/Lumino Web 的代码、组件、CSS、数据、后端、测试或部署。
 
 ### 2026-08-09 状态收口与交接索引
@@ -26,13 +26,13 @@
 | REM-000 | 施工文档与防漂移机制 | PASS | 2026-08-09 用户确认通过 |
 | REM-001 | 测试安全底座与真正全量发现 | USER_REVIEW | 安全入口、105/520 清单、源码覆盖和首轮全绿证据已完成；Goal 结束时集中交用户复核 |
 | REM-002 | API、进程与可观测性基础 | USER_REVIEW | 统一异常边界、严格维护/关闭、只读 readiness、脱敏日志与进程生命周期已完成；Goal 结束时集中交用户复核 |
-| REM-003 | 画布持久化与 DATA-005 语义保护 | NOT_STARTED | REM-009A 工程候选完成后实施；REM-001/002 在 Goal 结束时统一用户复核 |
+| REM-003 | 画布持久化与 DATA-005 语义保护 | IN_PROGRESS | 当前唯一施工项；修复加载 fail-open、保存原子性、每标签高水位与草稿保护 |
 | REM-004 | 统一媒体生命周期 | NOT_STARTED | REM-009A 工程候选 + 故障注入底座 |
 | REM-005 | 生成、幂等与付费边界 | NOT_STARTED | REM-009A 工程候选 + 本地假 Provider、零外网 |
 | REM-006 | 账号删除、模板、权限与清理 | NOT_STARTED | REM-009A 工程候选；继续既定 PERM-011/KEY-008/AUTH-006 合同 |
 | REM-007 | 前端生成恢复与失败体验 | NOT_STARTED | 后端任务合同稳定 |
 | REM-008 | 资源、安全、性能和运维脚本 | NOT_STARTED | 核心一致性后分项实施 |
-| REM-009A | 只读备份、恢复与数据库兼容前置底座 | IN_PROGRESS | 当前唯一施工项；在任何持久化修复前完成 |
+| REM-009A | 只读备份、恢复与数据库兼容前置底座 | USER_REVIEW | 加密签名包、合成库恢复、损坏拒绝、权限/路径/OSS 完整性与三轮/全量证据已完成；Goal 结束时集中交用户复核 |
 | REM-009B | 最终候选备份、恢复与双向兼容演练 | NOT_STARTED | 核心修复完成后、REM-010 前执行 |
 | REM-010 | 不可变发布、切换与回滚 | NOT_STARTED | REM-009B 通过后演练 |
 | REM-011 | 候选全量验收与正式发布门 | NOT_STARTED | G0～G7 + 用户双确认 |
@@ -62,6 +62,18 @@
 - 本项保持 schema `37`、package `0.5.1`；未读取/修改真实数据，未操作 4173，未请求真实 Provider/OSS，未连接生产，未 push/tag/PR/发布。工程状态进入 `USER_REVIEW`，当前施工切换到 REM-009A。
 - REM-002 本地功能提交固定为 `c7b2af01b5441fe9532d7f1e2696cd4fc2ceac89`；仅存在于专用本地分支，未 push/tag/PR。
 
+### 2026-08-09 REM-009A 只读备份、验签与恢复底座（工程候选已完成）
+
+- 新增格式 2 加密备份包：数据库、媒体、密钥和假 OSS 镜像逐文件 AES-256-GCM 加密，恢复密钥使用 RSA-3072 OAEP-SHA256 包裹，整个包由 Ed25519 独立签名；恢复私钥与可信签名公钥始终在包外。
+- 源库不再调用 `openAppDatabase`、不做 checkpoint 或迁移；只把 SQLite main/WAL/journal 原样复制到本轮私有临时目录，再在副本上生成一致快照。检查覆盖 schema 37 完整迁移账本、19 张业务表、`sqlite_sequence`、完整 schema、行级逻辑指纹、integrity/FK、三类密钥文档真实解密能力。
+- 媒体同时覆盖已登记本地文件、孤儿本地文件和 ready OSS 对象内容镜像；每个 OSS 镜像强制绑定 `object_key + versionId + byte_size + checksum`。任何带 `object_key` 的 pending/failed OSS 行直接拒绝备份，不能静默遗漏。
+- 所有数据、包、工作目录、密钥和镜像路径均核验完整可信父链；输入文件读取前、打开后、读取后复核 owner、权限、inode、大小、时间与硬链接数。私钥必须 0600 等价最小权限，签名私钥不能被伪装成 OSS 镜像打包。
+- 创建和恢复使用独占目录预留、不可覆盖的逐项发布与 incomplete marker；运行时 readiness 会拒绝任何残留恢复 marker（含悬空符号链接）。损坏签名、manifest、任一密文对象、外来文件、竞态替换或中途故障都不会覆盖既有目标。
+- 旧的真实 OSS 上传/镜像脚本继续 fail-closed 冻结；新增显式绝对路径、显式 `--source-frozen` 的 backup/verify/restore 薄入口，不存在默认 `app/data` 或仓库 backups 路径。
+- 新登记并关闭 F-050～F-053；REM-003 只读复核另登记 F-048/F-049。专项 `m10 9/9`；最终快照三轮 `27/27`；最终安全全量 `105/105 spec、542/542 PASS`，failed/skipped/retries/reportErrors/blocked 均为 0；源码 277，TS/TSX `262/262`，JS/MJS `15/15`，4173 监听身份不变。
+- 两路独立终审均确认剩余 P0/P1 为 0。保持 schema `37`、package `0.5.1`；未读取/修改真实数据，未请求真实 Provider/OSS，未连接生产/SSH，未 push/tag/PR/发布。
+- REM-009A 本地功能提交固定为 `ee998db80414cabb211fdc590712a0c257a25e50`；仅存在于专用本地分支。工程状态进入 `USER_REVIEW`，当前唯一施工项切换到 REM-003。
+
 ### 2026-08-06 多项目（项目制画布）功能
 
 - 用户已审阅并确认最终开发方案，权威文档：`spec/UNBOUNDRY_MULTI_PROJECT_PLAN.md`（状态 APPROVED BY USER 2026-08-06）。实施时**以此文档为准**，避免上下文漂移。
@@ -70,7 +82,7 @@
 
 ## 当前阶段
 
-阶段：`线上 v0.5.1 保持不变 / REM-001、REM-002 工程候选进入 USER_REVIEW / REM-009A 只读备份恢复底座施工中 / 未连接生产且未操作真实数据、4173 或真实 Provider/OSS`
+阶段：`线上 v0.5.1 保持不变 / REM-001、REM-002、REM-009A 工程候选进入 USER_REVIEW / REM-003 画布持久化施工中 / 未连接生产且未操作真实数据、4173 或真实 Provider/OSS`
 
 画布、固定界面、Text、Image、Video、Audio、Playlist、Group、外围面板、账号、管理员模型中心、生成安全和新图片私有OSS链路已通过当前范围验收；Comment、社区、TapTV、竞技场、额度和链接分享已按用户决定取消。OpenRouter GPT Image 2已完成一次用户授权的真实生成，图片连线参考图及真实结果零费用重启恢复均已通过；当前仅表示“不发布本轮新的修复候选”，不否认线上已运行 v0.5.1。
 
