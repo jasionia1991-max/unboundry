@@ -198,6 +198,59 @@ sup {
   touch-action: none;
 }
 
+.canvas-world:not([data-persistence-state="ready"]) .react-flow {
+  pointer-events: none;
+}
+
+.canvas-load-gate {
+  position: absolute;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  padding: 24px;
+  place-items: center;
+  cursor: default;
+  background: rgba(0, 0, 0, 0.72);
+  pointer-events: auto;
+}
+
+.canvas-load-gate > div {
+  display: grid;
+  width: min(420px, calc(100vw - 48px));
+  padding: 22px 24px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  gap: 8px;
+  color: #f5f5f5;
+  background: #1c1c1c;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.48);
+  text-align: center;
+}
+
+.canvas-load-gate strong {
+  font-size: var(--tap-font-primary);
+  line-height: 24px;
+}
+
+.canvas-load-gate span {
+  color: #aaa;
+  font-size: var(--tap-font-primary);
+  line-height: 20px;
+}
+
+.canvas-load-gate button {
+  min-width: 112px;
+  height: 34px;
+  margin: 8px auto 0;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 10px;
+  color: #151515;
+  background: #f2f2f2;
+  font: inherit;
+  cursor: pointer;
+}
+
 .canvas-grid {
   position: absolute;
   inset: 0;
@@ -5754,6 +5807,12 @@ sup {
 
 .shell-button:hover {
   background: rgba(255, 255, 255, 0.08);
+}
+
+.shell-button:disabled {
+  opacity: 0.45;
+  background: transparent;
+  cursor: not-allowed;
 }
 
 .shell-button:focus-visible {

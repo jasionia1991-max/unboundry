@@ -21,17 +21,36 @@ async function routeFixtureCanvas(
   canvasId: string,
   document?: Record<string, unknown>,
 ) {
+  const loadToken = "m60-fixture-load-token";
+  const saveEpoch = "v1.m60-fixture-save-epoch";
   await page.route(`**/api/canvas/${canvasId}`, async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill(document
-        ? { contentType: "application/json", json: document, status: 200 }
+        ? {
+            contentType: "application/json",
+            json: {
+              ...document,
+              currentWriterSequence: 0,
+              currentWriterSessionId: null,
+              loadToken,
+              saveEpoch,
+              sessionHighWaterAttemptId: null,
+              sessionHighWaterSequence: 0,
+            },
+            status: 200,
+          }
         : { status: 404 });
       return;
     }
     const input = route.request().postDataJSON() as { revision?: number };
+    const revision = Number(input.revision ?? 0) + 1;
     await route.fulfill({
       contentType: "application/json",
-      json: { revision: Number(input.revision ?? 0) + 1 },
+      json: {
+        graphRevision: revision,
+        loadToken: `m60-fixture-load-token-${revision}`,
+        revision,
+      },
       status: 200,
     });
   });

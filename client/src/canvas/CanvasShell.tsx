@@ -13,6 +13,7 @@ import {
   initialCanvasViewport,
   type AgentCanvasReference,
   type CanvasLibraryAsset,
+  type CanvasLoadState,
   type CanvasSearchEntry,
   type CanvasShellMenuCommand,
 } from "./CanvasSurface";
@@ -29,6 +30,7 @@ type ShellButtonProps = {
   className?: string;
   onClick?: () => void;
   active?: boolean;
+  disabled?: boolean;
   children: ReactNode;
 };
 
@@ -292,6 +294,7 @@ function ShellButton({
   className = "",
   onClick,
   active,
+  disabled,
   children,
 }: ShellButtonProps) {
   return (
@@ -300,6 +303,7 @@ function ShellButton({
       className={`shell-button ${className}`}
       data-active={active || undefined}
       data-testid={testId}
+      disabled={disabled}
       onClick={onClick}
       title={label}
       type="button"
@@ -697,6 +701,14 @@ export function CanvasShell({
     role === "admin" ||
     permissions?.includes("manage_public_templates") === true;
   const projectTitleId = projectId ?? fixtureId ?? "default";
+  const durableFixture =
+    !fixtureId ||
+    fixtureId.startsWith("persistence.") ||
+    fixtureId?.startsWith("node.") ||
+    fixtureId === "panel.history.final" ||
+    fixtureId === "panel.assets.drag-ready" ||
+    fixtureId === "interaction.upload-image" ||
+    fixtureId === "interaction.upload-media-sandbox-current";
   const initialProjectTitle =
     readProjectTitleDraft(userId, projectTitleId) ??
     ({ title: defaultProjectTitle, updatedAt: 0 } satisfies ProjectTitleRecord);
@@ -865,7 +877,29 @@ export function CanvasShell({
   const [graphHasContent, setGraphHasContent] = useState(() =>
     hasInteractionProbeNodes(fixtureId),
   );
-  const [saveStatus, setSaveStatus] = useState("已保存到云端");
+  const [saveStatus, setSaveStatus] = useState(
+    durableFixture ? "正在加载画布..." : "已保存到云端",
+  );
+  const [canvasLoadState, setCanvasLoadState] = useState<CanvasLoadState>(
+    durableFixture ? "loading" : "ready",
+  );
+  const canvasScopeId = JSON.stringify([userId, projectTitleId]);
+  const [generationRetryGate, setGenerationRetryGate] = useState<{
+    run: () => Promise<number>;
+    scopeId: string;
+  }>();
+  const [canvasLoadScopeId, setCanvasLoadScopeId] = useState(canvasScopeId);
+  const effectiveCanvasLoadState: CanvasLoadState =
+    canvasLoadScopeId === canvasScopeId
+      ? canvasLoadState
+      : durableFixture
+        ? "loading"
+        : "ready";
+  const registerGenerationRetryGate = useCallback((
+    gate: (() => Promise<number>) | undefined,
+  ) => {
+    setGenerationRetryGate(gate ? { run: gate, scopeId: canvasScopeId } : undefined);
+  }, [canvasScopeId]);
   const agentPromptControl = useCompositionSafeText({
     onCommit: setAgentPrompt,
     value: agentPrompt,
@@ -901,14 +935,19 @@ export function CanvasShell({
   const agentVoiceTimer = useRef<number | undefined>(undefined);
   const agentVoiceCancelled = useRef(false);
   const projectTitleUpdatedAt = useRef(initialProjectTitle.updatedAt);
-  const durableFixture =
-    !fixtureId ||
-    fixtureId.startsWith("persistence.") ||
-    fixtureId?.startsWith("node.") ||
-    fixtureId === "panel.history.final" ||
-    fixtureId === "panel.assets.drag-ready" ||
-    fixtureId === "interaction.upload-image" ||
-    fixtureId === "interaction.upload-media-sandbox-current";
+  useEffect(() => {
+    setTextVideoStarted(false);
+    setFocusNodeRequest(undefined);
+    setHistoryAssetRequest(undefined);
+    setShellMenuCommand(undefined);
+    setViewportRequest(undefined);
+    const state: CanvasLoadState = durableFixture ? "loading" : "ready";
+    setCanvasLoadScopeId(canvasScopeId);
+    setCanvasLoadState(state);
+    setSaveStatus(
+      state === "loading" ? "正在加载画布..." : "已保存到云端",
+    );
+  }, [canvasScopeId, durableFixture]);
   const hasProbeNodes =
     hasInteractionProbeNodes(fixtureId) || textVideoStarted;
   const zoomRatio = Math.min(1, Math.max(0, (zoomSummary - 0.15) / 1.85));
@@ -957,6 +996,7 @@ export function CanvasShell({
   };
 
   const requestCanvasMenu = (action: CanvasShellMenuCommand["action"]) => {
+    if (action !== "dismiss" && effectiveCanvasLoadState !== "ready") return;
     setShellMenuCommand((current) => ({
       action,
       sequence: (current?.sequence ?? 0) + 1,
@@ -964,7 +1004,7 @@ export function CanvasShell({
   };
 
   const applyTemplate = (template: TemplateCatalogCard) => {
-    if (!template.graph) return;
+    if (effectiveCanvasLoadState !== "ready" || !template.graph) return;
     recordRecentTemplate(userId, template.id);
     setTemplateNoticeOpen(false);
     setTemplatesOpen(false);
@@ -1262,6 +1302,7 @@ export function CanvasShell({
   };
   const addHistoryPreviewToCanvas = () => {
     if (
+      effectiveCanvasLoadState !== "ready" ||
       !historyPreviewItem ||
       !historyPreviewUrl ||
       historyPreviewItem.kind === "world3d"
@@ -1863,10 +1904,24 @@ export function CanvasShell({
   const markSaveSuccess = useCallback(() => {
     setSaveStatus("已保存到云端");
   }, []);
+  const markCanvasLoadState = useCallback((state: CanvasLoadState) => {
+    setCanvasLoadScopeId(canvasScopeId);
+    setCanvasLoadState(state);
+    setSaveStatus(
+      state === "ready"
+        ? "已保存到云端"
+        : state === "loading"
+          ? "正在加载画布..."
+          : state === "missing"
+            ? "项目不存在"
+            : "画布加载失败",
+    );
+  }, [canvasScopeId]);
 
   return (
     <main
       className="canvas-shell"
+      data-canvas-load-state={effectiveCanvasLoadState}
       data-agent-open={agentOpen || undefined}
       data-dock-placement={assetsOpen ? "after-assets" : "default"}
       data-fixture-id={fixtureId}
@@ -1874,6 +1929,7 @@ export function CanvasShell({
       data-testid="canvas-shell"
     >
       <CanvasSurface
+        key={canvasScopeId}
         accountId={userId}
         agentReferenceMode={agentReferenceMode}
         fixtureId={fixtureId}
@@ -1892,6 +1948,8 @@ export function CanvasShell({
         }
         onReady={(fitView) => setFitWorld(() => fitView)}
         onGraphContentChange={setGraphHasContent}
+        onGenerationRetryGateChange={registerGenerationRetryGate}
+        onLoadStateChange={markCanvasLoadState}
         onOpenAssets={() => {
           closePrimarySurfaces();
           setAssetsOpen(true);
@@ -1974,6 +2032,7 @@ export function CanvasShell({
             aria-label="项目名称"
             data-composition-active={projectTitleControl.composing || undefined}
             data-testid="title-input"
+            disabled={effectiveCanvasLoadState !== "ready"}
             maxLength={120}
             onBlur={() => projectTitleControl.blur()}
             onChange={(event) =>
@@ -2142,6 +2201,7 @@ export function CanvasShell({
                   ? () => togglePrimarySurface("tasks", tasksOpen)
                 : undefined
             }
+            disabled={testId === "add-node" && effectiveCanvasLoadState !== "ready"}
             testId={testId}
           >
             <LineIcon name={icon} />
@@ -2812,13 +2872,21 @@ export function CanvasShell({
               >
                 {visibleTemplateCards.slice(0, 10).map((card) => (
                   <article
+                    aria-disabled={effectiveCanvasLoadState !== "ready"}
                     className="template-card"
                     key={card.id}
-                    onClick={() => applyTemplate(card)}
+                    onClick={
+                      effectiveCanvasLoadState === "ready"
+                        ? () => applyTemplate(card)
+                        : undefined
+                    }
                     role="button"
-                    tabIndex={0}
+                    tabIndex={effectiveCanvasLoadState === "ready" ? 0 : -1}
                     onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
+                      if (
+                        effectiveCanvasLoadState === "ready" &&
+                        (event.key === "Enter" || event.key === " ")
+                      ) {
                         event.preventDefault();
                         applyTemplate(card);
                       }
@@ -2994,17 +3062,25 @@ export function CanvasShell({
                 >
                   {visibleTemplateCards.map((card) => (
                     <article
+                      aria-disabled={effectiveCanvasLoadState !== "ready"}
                       className="template-browser-card"
                       key={card.id}
-                      onClick={() => applyTemplate(card)}
+                      onClick={
+                        effectiveCanvasLoadState === "ready"
+                          ? () => applyTemplate(card)
+                          : undefined
+                      }
                       role="button"
-                      tabIndex={0}
+                      tabIndex={effectiveCanvasLoadState === "ready" ? 0 : -1}
                       onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
+                        if (
+                          effectiveCanvasLoadState === "ready" &&
+                          (event.key === "Enter" || event.key === " ")
+                        ) {
                           event.preventDefault();
                           applyTemplate(card);
-                      }
-                    }}
+                        }
+                      }}
                   >
                     {templateTab === "我的模板" && (
                       <button
@@ -3056,7 +3132,17 @@ export function CanvasShell({
       {tasksOpen && (
         <GenerationTasksPanel
           canvasId={projectId ?? fixtureId ?? "default"}
+          canvasScopeId={canvasScopeId}
+          key={canvasScopeId}
           open={tasksOpen}
+          panelRef={tasksPanel}
+          retryEnabled={
+            !fixtureId &&
+            effectiveCanvasLoadState === "ready" &&
+            !saveConflict &&
+            generationRetryGate?.scopeId === canvasScopeId
+          }
+          waitForCanvasRevision={generationRetryGate?.run}
         />
       )}
 
@@ -3354,7 +3440,11 @@ export function CanvasShell({
                 </div>
                 <footer>
                   <button
-                    disabled={!historyPreviewUrl || historyPreviewItem.kind === "world3d"}
+                    disabled={
+                      effectiveCanvasLoadState !== "ready" ||
+                      !historyPreviewUrl ||
+                      historyPreviewItem.kind === "world3d"
+                    }
                     onClick={addHistoryPreviewToCanvas}
                     type="button"
                   >
@@ -3374,7 +3464,7 @@ export function CanvasShell({
         </>
       )}
 
-      {!graphHasContent && !textVideoStarted && (
+      {effectiveCanvasLoadState === "ready" && !graphHasContent && !textVideoStarted && (
         <section
           aria-label="快捷创作"
           className="empty-quick-actions"
@@ -3421,6 +3511,7 @@ export function CanvasShell({
           testId="minimap-toggle"
           className="control minimap"
           active={minimapOpen}
+          disabled={effectiveCanvasLoadState !== "ready"}
           onClick={() => setMinimapOpen((open) => !open)}
         >
           <LineIcon className="control-default-icon" name="minimap" />
@@ -3431,6 +3522,7 @@ export function CanvasShell({
           testId="snap-toggle"
           className="control snap"
           active={snapEnabled}
+          disabled={effectiveCanvasLoadState !== "ready"}
           onClick={() => setSnapEnabled((active) => !active)}
         >
           <LineIcon className="control-default-icon" name="snap" />
@@ -3440,6 +3532,7 @@ export function CanvasShell({
           label="适应视图"
           testId="fit-view"
           className="control fit"
+          disabled={effectiveCanvasLoadState !== "ready"}
           onClick={() =>
             hasProbeNodes
               ? fitWorld?.()
@@ -3467,6 +3560,7 @@ export function CanvasShell({
           <input
             aria-label="画布缩放"
             data-testid="zoom-slider"
+            disabled={effectiveCanvasLoadState !== "ready"}
             max="2"
             min="0.15"
             onChange={(event) =>

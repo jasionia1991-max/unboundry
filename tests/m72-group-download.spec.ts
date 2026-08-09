@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext } from "./safe-test";
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -93,6 +93,12 @@ async function setupDownloadCanvas(
   const created = await request.post("/api/projects", { data: {} });
   expect(created.status()).toBe(201);
   const project = (await created.json()) as { id: string };
+  const baselineResponse = await request.get(`/api/canvas/${project.id}`);
+  expect(baselineResponse.ok()).toBeTruthy();
+  const baseline = (await baselineResponse.json()) as {
+    loadToken: string;
+    revision: number;
+  };
   const store = openAppDatabase(dataDirectory);
   const timestamp = new Date().toISOString();
   store.exec(`
@@ -267,7 +273,12 @@ async function setupDownloadCanvas(
     data: {
       edges: [],
       nodes,
-      revision: 1,
+      observedLoadToken: baseline.loadToken,
+      observedRevision: baseline.revision,
+      revision: baseline.revision,
+      saveAttemptId: randomUUID(),
+      saveSequence: 1,
+      saveSessionId: randomUUID(),
       viewport: { x: 0, y: 0, zoom: 1 },
     },
   });

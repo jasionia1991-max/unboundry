@@ -205,6 +205,10 @@ test("Playlist supports pick, reorder, cut, undo and real mp4 export", async ({
   test.setTimeout(60_000);
   await request.delete("/api/canvas/node.playlist.workflow");
   await page.goto("/__fixture/node.playlist.workflow");
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-persistence-ready",
+    "true",
+  );
 
   const emptyVideoNode = page.locator(".react-flow__node-video").first();
   const emptyVideoCard = emptyVideoNode.locator(".video-node-card");

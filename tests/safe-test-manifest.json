@@ -72,6 +72,7 @@
     "tests/m8-assets-drag.spec.ts",
     "tests/m83-homepage.spec.ts",
     "tests/m84-copy-paste.spec.ts",
+    "tests/m86-canvas-load-safety.spec.ts",
     "tests/m9-provider-secret-safety.spec.ts"
   ],
   "hybrid": [
@@ -98,7 +99,8 @@
     "tests/m54-provider-result-media.spec.ts",
     "tests/m55-relay-model-protocol.spec.ts",
     "tests/m57-relay-generation-runtime.spec.ts",
-    "tests/m59-relay-catalog-inference.spec.ts"
+    "tests/m59-relay-catalog-inference.spec.ts",
+    "tests/m85-canvas-persistence-server.spec.ts"
   ],
   "preview": [
     "tests/fixture-production.spec.ts",

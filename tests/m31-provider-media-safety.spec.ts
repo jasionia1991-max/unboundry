@@ -604,6 +604,10 @@ test("connected cards share uploading while a failed replacement preserves the a
   };
 
   await page.goto(`/__fixture/${canvasId}`);
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-persistence-ready",
+    "true",
+  );
   await expect(page.getByTestId("video-creator")).toBeVisible();
   const card = page.getByTestId("upstream-input-audio-source");
   const input = page.getByTestId("audio-upload-input");

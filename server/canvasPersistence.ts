@@ -1,3 +1,8 @@
+import {
+  createHmac,
+  randomBytes,
+  timingSafeEqual,
+} from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
 import { appDataDirectory, openAppDatabase } from "./database";
@@ -13,11 +18,46 @@ import { canvasGraphFingerprint } from "../types/canvasFingerprint";
 type CanvasDocument = {
   edges: unknown[];
   nodes: unknown[];
+  observedLoadToken?: string;
+  observedRevision?: number;
   revision: number;
+  saveAttemptId?: string;
   saveSequence?: number;
   saveSessionId?: string;
   viewport: { x: number; y: number; zoom: number };
 };
+
+type CanvasRow = {
+  edges: string;
+  graph_revision: number;
+  nodes: string;
+  owner_id: string | null;
+  revision: number;
+  save_sequence: number;
+  save_session_id: string | null;
+  viewport: string;
+};
+
+type CanvasPersistenceBarrierInput = {
+  canvasId: string;
+  ownerId: string;
+  saveAttemptId?: string;
+  saveSequence?: number;
+  saveSessionId?: string;
+};
+
+type CanvasPersistenceBarrier = (
+  input: CanvasPersistenceBarrierInput,
+) => Promise<void> | void;
+type CanvasPersistenceFault = (input: CanvasPersistenceBarrierInput) => void;
+
+const canvasSaveSessionGlobalHighWaterLimit = 50_000;
+const canvasSaveSessionOwnerHighWaterLimit = 5_000;
+const canvasSaveSessionPattern = /^[a-z0-9-]{8,80}$/i;
+let canvasSaveSessionGlobalHighWaterLimitForTests: number | undefined;
+let canvasSaveSessionOwnerHighWaterLimitForTests: number | undefined;
+let beforeCanvasSaveTransactionForTests: CanvasPersistenceBarrier | undefined;
+let afterCanvasSaveUpsertForTests: CanvasPersistenceFault | undefined;
 
 type HistoryAsset = {
   createdAt?: string;
@@ -34,6 +74,8 @@ type ProjectTitle = {
 
 let database: DatabaseSync | undefined;
 let databaseDirectory = "";
+let canvasLoadTokenKey = randomBytes(32);
+let canvasSaveEpoch = `v1.${randomBytes(16).toString("base64url")}`;
 
 function db() {
   const directory = appDataDirectory();
@@ -49,6 +91,375 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   response.end(JSON.stringify(body));
+}
+
+function updateLengthPrefixed(
+  hmac: ReturnType<typeof createHmac>,
+  value: string,
+) {
+  const bytes = Buffer.from(value, "utf8");
+  const length = Buffer.allocUnsafe(4);
+  length.writeUInt32BE(bytes.length);
+  hmac.update(length);
+  hmac.update(bytes);
+}
+
+function canvasLoadTokenFor(
+  ownerId: string,
+  canvasId: string,
+  observedRevision: number,
+) {
+  const hmac = createHmac("sha256", canvasLoadTokenKey);
+  updateLengthPrefixed(hmac, "unboundry.canvas-load-token.v1");
+  updateLengthPrefixed(hmac, ownerId);
+  updateLengthPrefixed(hmac, canvasId);
+  updateLengthPrefixed(hmac, String(observedRevision));
+  return `v1.${hmac.digest("base64url")}`;
+}
+
+function validCanvasLoadToken(
+  token: string,
+  ownerId: string,
+  canvasId: string,
+  observedRevision: number,
+) {
+  const expected = Buffer.from(
+    canvasLoadTokenFor(ownerId, canvasId, observedRevision),
+    "utf8",
+  );
+  const received = Buffer.from(token, "utf8");
+  return (
+    received.length === expected.length &&
+    timingSafeEqual(received, expected)
+  );
+}
+
+function rotateCanvasLoadTokenKey() {
+  const previous = canvasLoadTokenKey;
+  const nextKey = randomBytes(32);
+  const nextEpoch = `v1.${randomBytes(16).toString("base64url")}`;
+  canvasLoadTokenKey = nextKey;
+  canvasSaveEpoch = nextEpoch;
+  previous.fill(0);
+}
+
+/** Test-only deterministic barriers for save/delete and rollback interleavings. */
+export function setCanvasPersistenceBarriersForTests(input?: {
+  afterUpsert?: CanvasPersistenceFault;
+  beforeTransaction?: CanvasPersistenceBarrier;
+  globalHighWaterLimit?: number;
+  ownerHighWaterLimit?: number;
+}) {
+  if (process.env.UNBOUNDRY_TEST_CANVAS_PERSISTENCE_BARRIER !== "1") {
+    throw new Error("Canvas persistence test barrier is disabled");
+  }
+  if (
+    input?.globalHighWaterLimit !== undefined &&
+    (!Number.isSafeInteger(input.globalHighWaterLimit) ||
+      input.globalHighWaterLimit < 1 ||
+      input.globalHighWaterLimit > canvasSaveSessionGlobalHighWaterLimit)
+  ) {
+    throw new Error("Invalid canvas persistence test global high-water limit");
+  }
+  if (
+    input?.ownerHighWaterLimit !== undefined &&
+    (!Number.isSafeInteger(input.ownerHighWaterLimit) ||
+      input.ownerHighWaterLimit < 1 ||
+      input.ownerHighWaterLimit > canvasSaveSessionOwnerHighWaterLimit)
+  ) {
+    throw new Error("Invalid canvas persistence test owner high-water limit");
+  }
+  afterCanvasSaveUpsertForTests = input?.afterUpsert;
+  beforeCanvasSaveTransactionForTests = input?.beforeTransaction;
+  canvasSaveSessionGlobalHighWaterLimitForTests = input?.globalHighWaterLimit;
+  canvasSaveSessionOwnerHighWaterLimitForTests = input?.ownerHighWaterLimit;
+}
+
+/** Read one connection-local high-water in tests without creating/evicting it. */
+export function canvasSaveSessionHighWaterForTests(input: {
+  canvasId: string;
+  ownerId: string;
+  saveSessionId: string;
+}) {
+  if (process.env.UNBOUNDRY_TEST_CANVAS_PERSISTENCE_BARRIER !== "1") {
+    throw new Error("Canvas persistence test inspection is disabled");
+  }
+  const store = db();
+  const table = store.prepare(`
+    SELECT 1
+    FROM sqlite_temp_master
+    WHERE type = 'table' AND name = 'canvas_save_session_high_water'
+  `).get();
+  if (!table) return undefined;
+  const row = store.prepare(`
+    SELECT save_sequence
+    FROM canvas_save_session_high_water
+    WHERE owner_id = ? AND canvas_id = ? AND save_session_id = ?
+  `).get(input.ownerId, input.canvasId, input.saveSessionId) as
+    | { save_sequence: number }
+    | undefined;
+  return row?.save_sequence;
+}
+
+/** Prove that a read path did not initialize connection-local save state. */
+export function canvasSaveHighWaterTableExistsForTests() {
+  if (process.env.UNBOUNDRY_TEST_CANVAS_PERSISTENCE_BARRIER !== "1") {
+    throw new Error("Canvas persistence test inspection is disabled");
+  }
+  return Boolean(db().prepare(`
+    SELECT 1
+    FROM sqlite_temp_master
+    WHERE type = 'table' AND name = 'canvas_save_session_high_water'
+  `).get());
+}
+
+/** Simulate one process restart: discard connection-local state and credentials. */
+export function resetCanvasPersistenceConnectionForTests() {
+  if (process.env.UNBOUNDRY_TEST_CANVAS_PERSISTENCE_BARRIER !== "1") {
+    throw new Error("Canvas persistence test reset is disabled");
+  }
+  if (database?.isTransaction) {
+    throw new Error("Cannot reset canvas persistence during a transaction");
+  }
+  try {
+    database?.close();
+  } finally {
+    database = undefined;
+    databaseDirectory = "";
+    rotateCanvasLoadTokenKey();
+  }
+}
+
+/** Reserve a synthetic owner/session key through the production cap logic. */
+export function reserveCanvasSaveSessionHighWaterForTests(input: {
+  canvasId: string;
+  ownerId: string;
+  saveSequence: number;
+  saveSessionId: string;
+}) {
+  if (process.env.UNBOUNDRY_TEST_CANVAS_PERSISTENCE_BARRIER !== "1") {
+    throw new Error("Canvas persistence test reservation is disabled");
+  }
+  if (
+    !Number.isSafeInteger(input.saveSequence) ||
+    input.saveSequence < 1 ||
+    !input.ownerId ||
+    !input.canvasId ||
+    !input.saveSessionId
+  ) {
+    throw new Error("Invalid canvas persistence test reservation");
+  }
+  const store = db();
+  store.exec("BEGIN IMMEDIATE");
+  try {
+    ensureCanvasSaveHighWaterTable(store);
+    const existing = canvasSaveHighWater(
+      store,
+      input.ownerId,
+      input.canvasId,
+      input.saveSessionId,
+    );
+    if (!existing && !hasCanvasSaveHighWaterCapacity(store, input.ownerId)) {
+      store.exec("ROLLBACK");
+      return false;
+    }
+    upsertCanvasSaveHighWater(
+      store,
+      input.ownerId,
+      input.canvasId,
+      input.saveSessionId,
+      input.saveSequence,
+    );
+    store.exec("COMMIT");
+    return true;
+  } catch (error) {
+    rollbackCanvasSave(store, error);
+  }
+}
+
+function canvasRow(
+  store: DatabaseSync,
+  bypass: boolean,
+  ownerId: string,
+  id: string,
+) {
+  return (
+    bypass
+      ? store
+          .prepare(`
+            SELECT owner_id, revision, graph_revision, nodes, edges, viewport,
+                   save_session_id, save_sequence
+            FROM canvas_documents
+            WHERE id = ?
+            ORDER BY owner_id IS NULL DESC
+            LIMIT 1
+          `)
+          .get(id)
+      : store
+          .prepare(`
+            SELECT owner_id, revision, graph_revision, nodes, edges, viewport,
+                   save_session_id, save_sequence
+            FROM canvas_documents
+            WHERE owner_id = ? AND id = ?
+          `)
+          .get(ownerId, id)
+  ) as CanvasRow | undefined;
+}
+
+function ensureCanvasSaveHighWaterTable(store: DatabaseSync) {
+  store.exec(`
+    CREATE TEMP TABLE IF NOT EXISTS canvas_save_session_high_water (
+      owner_id TEXT NOT NULL,
+      canvas_id TEXT NOT NULL,
+      save_session_id TEXT NOT NULL,
+      save_sequence INTEGER NOT NULL CHECK (save_sequence > 0),
+      save_attempt_id TEXT,
+      PRIMARY KEY (owner_id, canvas_id, save_session_id)
+    ) WITHOUT ROWID
+  `);
+}
+
+function canvasSaveHighWater(
+  store: DatabaseSync,
+  ownerId: string,
+  canvasId: string,
+  saveSessionId: string,
+) {
+  return store.prepare(`
+    SELECT save_sequence, save_attempt_id
+    FROM canvas_save_session_high_water
+    WHERE owner_id = ? AND canvas_id = ? AND save_session_id = ?
+  `).get(ownerId, canvasId, saveSessionId) as
+    | { save_attempt_id: string | null; save_sequence: number }
+    | undefined;
+}
+
+function existingCanvasSaveHighWater(
+  store: DatabaseSync,
+  ownerId: string,
+  canvasId: string,
+  saveSessionId: string,
+) {
+  const table = store.prepare(`
+    SELECT 1
+    FROM sqlite_temp_master
+    WHERE type = 'table' AND name = 'canvas_save_session_high_water'
+  `).get();
+  return table
+    ? canvasSaveHighWater(store, ownerId, canvasId, saveSessionId)
+    : undefined;
+}
+
+function canvasReadFenceMetadata(
+  store: DatabaseSync,
+  ownerId: string,
+  canvasId: string,
+  row: CanvasRow | undefined,
+  saveSessionId: string | undefined,
+) {
+  const highWater = saveSessionId
+    ? existingCanvasSaveHighWater(store, ownerId, canvasId, saveSessionId)
+    : undefined;
+  const persistedSameSessionSequence =
+    row && saveSessionId && row.save_session_id === saveSessionId
+      ? row.save_sequence
+      : 0;
+  const sessionHighWaterSequence = Math.max(
+    highWater?.save_sequence ?? 0,
+    persistedSameSessionSequence,
+  );
+  return {
+    currentWriterSequence: row?.save_sequence ?? 0,
+    currentWriterSessionId: row?.save_session_id ?? null,
+    saveEpoch: canvasSaveEpoch,
+    sessionHighWaterAttemptId:
+      highWater?.save_sequence === sessionHighWaterSequence
+        ? highWater.save_attempt_id
+        : null,
+    sessionHighWaterSequence,
+  };
+}
+
+function canvasSaveHighWaterLimits() {
+  return {
+    global: canvasSaveSessionGlobalHighWaterLimitForTests ??
+      canvasSaveSessionGlobalHighWaterLimit,
+    owner: canvasSaveSessionOwnerHighWaterLimitForTests ??
+      canvasSaveSessionOwnerHighWaterLimit,
+  };
+}
+
+function hasCanvasSaveHighWaterCapacity(
+  store: DatabaseSync,
+  ownerId: string,
+) {
+  // Project deletion is committed through a different SQLite connection, so
+  // its connection cannot directly remove rows from this connection-local
+  // TEMP table. Reclaim only exact owner/canvas keys whose durable project row
+  // is already tombstoned, plus keys whose durable owner has been physically
+  // deleted, before either bounded-capacity count is evaluated. Active owners,
+  // active projects and canvases without a project tombstone are untouched.
+  store.prepare(`
+    DELETE FROM canvas_save_session_high_water
+    WHERE
+      EXISTS (
+        SELECT 1
+        FROM project_metadata
+        WHERE
+          project_metadata.owner_id = canvas_save_session_high_water.owner_id
+          AND project_metadata.id = canvas_save_session_high_water.canvas_id
+          AND project_metadata.deleted_at IS NOT NULL
+      )
+      OR NOT EXISTS (
+        SELECT 1
+        FROM users
+        WHERE users.id = canvas_save_session_high_water.owner_id
+      )
+  `).run();
+  const limits = canvasSaveHighWaterLimits();
+  const global = store.prepare(`
+    SELECT COUNT(*) AS count FROM canvas_save_session_high_water
+  `).get() as { count: number };
+  if (global.count >= limits.global) return false;
+  const owner = store.prepare(`
+    SELECT COUNT(*) AS count
+    FROM canvas_save_session_high_water
+    WHERE owner_id = ?
+  `).get(ownerId) as { count: number };
+  return owner.count < limits.owner;
+}
+
+function upsertCanvasSaveHighWater(
+  store: DatabaseSync,
+  ownerId: string,
+  canvasId: string,
+  saveSessionId: string,
+  saveSequence: number,
+  saveAttemptId: string | null = null,
+) {
+  return store.prepare(`
+    INSERT INTO canvas_save_session_high_water (
+      owner_id, canvas_id, save_session_id, save_sequence, save_attempt_id
+    )
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(owner_id, canvas_id, save_session_id) DO UPDATE SET
+      save_sequence = excluded.save_sequence,
+      save_attempt_id = excluded.save_attempt_id
+    WHERE excluded.save_sequence >
+      canvas_save_session_high_water.save_sequence
+  `).run(ownerId, canvasId, saveSessionId, saveSequence, saveAttemptId);
+}
+
+function rollbackCanvasSave(store: DatabaseSync, original: unknown): never {
+  try {
+    if (store.isTransaction) store.exec("ROLLBACK");
+  } catch (rollbackError) {
+    throw new AggregateError(
+      [original, rollbackError],
+      "Canvas save and rollback both failed",
+    );
+  }
+  throw original;
 }
 
 function projectTombstone(
@@ -116,11 +527,20 @@ function touchProjectUpdatedAt(
   }
 }
 
-function valid(document: CanvasDocument) {
+function valid(value: unknown): value is CanvasDocument {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const document = value as CanvasDocument;
   const { viewport } = document;
   return (
     Number.isInteger(document.revision) &&
     document.revision >= 0 &&
+    ((document.observedLoadToken === undefined &&
+      document.observedRevision === undefined) ||
+      (typeof document.observedLoadToken === "string" &&
+        document.observedLoadToken.trim().length > 0 &&
+        document.observedLoadToken.length <= 256 &&
+        Number.isSafeInteger(document.observedRevision) &&
+        Number(document.observedRevision) >= 0)) &&
     Array.isArray(document.nodes) &&
     document.nodes.length <= 5_000 &&
     Array.isArray(document.edges) &&
@@ -128,9 +548,14 @@ function valid(document: CanvasDocument) {
     viewport &&
     [viewport.x, viewport.y, viewport.zoom].every(Number.isFinite) &&
     viewport.zoom > 0 &&
+    (document.saveAttemptId === undefined ||
+      (typeof document.saveAttemptId === "string" &&
+        canvasSaveSessionPattern.test(document.saveAttemptId) &&
+        document.saveSessionId !== undefined &&
+        document.saveSequence !== undefined)) &&
     ((document.saveSessionId === undefined && document.saveSequence === undefined) ||
       (typeof document.saveSessionId === "string" &&
-        /^[a-z0-9-]{8,80}$/i.test(document.saveSessionId) &&
+        canvasSaveSessionPattern.test(document.saveSessionId) &&
         Number.isSafeInteger(document.saveSequence) &&
         Number(document.saveSequence) > 0))
   );
@@ -145,134 +570,302 @@ export async function canvasPersistence(
     "",
   );
   if (!/^[a-z0-9._-]+$/i.test(id)) {
-    json(response, 400, { error: "Invalid canvas ID" });
+    json(response, 400, {
+      code: "CANVAS_ID_INVALID",
+      error: "Invalid canvas ID",
+    });
     return;
   }
 
-  const store = db();
   const identity = requestIdentity(request);
   if (!identity) {
-    json(response, 401, { error: "Please sign in" });
+    json(response, 401, { code: "AUTH_REQUIRED", error: "Please sign in" });
     return;
   }
+  const ownerId = identity.bypass ? "__test__" : identity.userId;
   if (request.method === "DELETE") {
-    if (identity.bypass) {
-      store.prepare("DELETE FROM canvas_documents WHERE id = ?").run(id);
-    } else {
-      store
-        .prepare("DELETE FROM canvas_documents WHERE owner_id = ? AND id = ?")
-        .run(identity.userId, id);
+    const store = db();
+    store.exec("BEGIN IMMEDIATE");
+    try {
+      if (identity.bypass) {
+        store.prepare("DELETE FROM canvas_documents WHERE id = ?").run(id);
+      } else {
+        store
+          .prepare("DELETE FROM canvas_documents WHERE owner_id = ? AND id = ?")
+          .run(identity.userId, id);
+      }
+      ensureCanvasSaveHighWaterTable(store);
+      store.prepare(`
+        DELETE FROM canvas_save_session_high_water
+        WHERE owner_id = ? AND canvas_id = ?
+      `).run(ownerId, id);
+      store.exec("COMMIT");
+    } catch (error) {
+      rollbackCanvasSave(store, error);
     }
     json(response, 204, {});
     return;
   }
 
-  const row = (
-    identity.bypass
-      ? store
-          .prepare(`
-            SELECT revision, graph_revision, nodes, edges, viewport,
-                   save_session_id, save_sequence
-            FROM canvas_documents
-            WHERE id = ?
-            ORDER BY owner_id IS NULL DESC
-            LIMIT 1
-          `)
-          .get(id)
-      : store
-          .prepare(`
-            SELECT revision, graph_revision, nodes, edges, viewport,
-                   save_session_id, save_sequence
-            FROM canvas_documents
-            WHERE owner_id = ? AND id = ?
-          `)
-          .get(identity.userId, id)
-  ) as
-    | {
-        edges: string;
-        graph_revision: number;
-        nodes: string;
-        revision: number;
-        save_sequence: number;
-        save_session_id: string | null;
-        viewport: string;
-      }
-    | undefined;
-
   if (request.method === "GET") {
+    const rawSaveSessionId =
+      request.headers["x-unboundry-canvas-save-session"];
+    if (
+      Array.isArray(rawSaveSessionId) ||
+      (rawSaveSessionId !== undefined &&
+        !canvasSaveSessionPattern.test(rawSaveSessionId))
+    ) {
+      json(response, 400, {
+        code: "CANVAS_SAVE_SESSION_INVALID",
+        error: "Invalid canvas save session header",
+      });
+      return;
+    }
+    const saveSessionId = rawSaveSessionId;
+    const store = db();
     if (projectTombstone(store, Boolean(identity.bypass), identity.userId, id)) {
-      json(response, 404, { error: "Canvas not found" });
+      json(response, 404, {
+        code: "CANVAS_NOT_FOUND",
+        error: "Canvas not found",
+        ...canvasReadFenceMetadata(store, ownerId, id, undefined, saveSessionId),
+      });
       return;
     }
     if (hasOtherOwnerProject(store, Boolean(identity.bypass), identity.userId, id)) {
-      json(response, 404, { error: "Canvas not found" });
+      json(response, 404, {
+        code: "CANVAS_NOT_FOUND",
+        error: "Canvas not found",
+        ...canvasReadFenceMetadata(store, ownerId, id, undefined, saveSessionId),
+      });
       return;
     }
+    const row = canvasRow(
+      store,
+      Boolean(identity.bypass),
+      identity.userId,
+      id,
+    );
     if (!row) {
-      json(response, 404, { error: "Canvas not found" });
+      json(response, 404, {
+        code: "CANVAS_NOT_FOUND",
+        error: "Canvas not found",
+        ...canvasReadFenceMetadata(store, ownerId, id, undefined, saveSessionId),
+      });
       return;
     }
     json(response, 200, {
       edges: JSON.parse(row.edges),
       graphRevision: row.graph_revision,
+      loadToken: canvasLoadTokenFor(ownerId, id, row.revision),
       nodes: JSON.parse(row.nodes),
       revision: row.revision,
       viewport: JSON.parse(row.viewport),
+      ...canvasReadFenceMetadata(store, ownerId, id, row, saveSessionId),
     });
     return;
   }
 
   if (request.method !== "PUT") {
     response.setHeader("Allow", "GET, PUT, DELETE");
-    json(response, 405, { error: "Method not allowed" });
+    json(response, 405, {
+      code: "METHOD_NOT_ALLOWED",
+      error: "Method not allowed",
+    });
     return;
   }
 
+  // The request stream and all request-derived transformations must complete
+  // before the write lock is acquired. A slow or malformed body therefore
+  // cannot hold BEGIN IMMEDIATE open.
+  const document = await readJsonBody<CanvasDocument>(request, 5_000_000);
+  if (!valid(document)) {
+    json(response, 400, {
+      code: "CANVAS_DOCUMENT_INVALID",
+      error: "Invalid canvas document",
+    });
+    return;
+  }
+  const nodes = normalizePersistedMediaNodes(document.nodes);
+  const edges = document.edges;
+  const serializedNodes = JSON.stringify(nodes);
+  const serializedEdges = JSON.stringify(edges);
+  const serializedViewport = JSON.stringify(document.viewport);
+  const incomingGraphFingerprint = canvasGraphFingerprint({ edges, nodes });
+  const barrierInput = {
+    canvasId: id,
+    ownerId,
+    saveAttemptId: document.saveAttemptId,
+    saveSequence: document.saveSequence,
+    saveSessionId: document.saveSessionId,
+  };
+  await beforeCanvasSaveTransactionForTests?.(barrierInput);
+
+  const store = db();
+  store.exec("BEGIN IMMEDIATE");
   try {
-    const document = await readJsonBody<CanvasDocument>(request, 5_000_000);
-    if (!valid(document)) {
-      json(response, 400, { error: "Invalid canvas document" });
-      return;
-    }
-    const currentRevision = row?.revision ?? 0;
-    const sameSessionOlderSave = Boolean(
-      row &&
-      document.saveSessionId &&
-      row.save_session_id === document.saveSessionId &&
-      Number(document.saveSequence) <= row.save_sequence,
+    // Every decision that can make a save legal is reread under this one
+    // writer lock. Project deletion uses the same SQLite writer lock, so an
+    // old page can never pass the tombstone check and resurrect the project.
+    const row = canvasRow(
+      store,
+      Boolean(identity.bypass),
+      identity.userId,
+      id,
     );
-    if (sameSessionOlderSave) {
+    if (projectTombstone(store, Boolean(identity.bypass), identity.userId, id)) {
+      ensureCanvasSaveHighWaterTable(store);
+      store.prepare(`
+        DELETE FROM canvas_save_session_high_water
+        WHERE owner_id = ? AND canvas_id = ?
+      `).run(ownerId, id);
+      store.exec("COMMIT");
       json(response, 409, {
-        error: "Superseded same-session save",
-        graphRevision: row?.graph_revision ?? 0,
-        revision: currentRevision,
-        saveSequence: row?.save_sequence ?? 0,
-        saveSessionId: row?.save_session_id ?? null,
+        code: "CANVAS_PROJECT_DELETED",
+        error: "项目已删除，请返回工作空间",
       });
       return;
     }
-    if (projectTombstone(store, Boolean(identity.bypass), identity.userId, id)) {
-      json(response, 409, { error: "项目已删除，请返回工作空间" });
-      return;
-    }
     if (hasOtherOwnerProject(store, Boolean(identity.bypass), identity.userId, id)) {
-      json(response, 409, { error: "项目不存在或不属于当前账号" });
+      store.exec("ROLLBACK");
+      json(response, 409, {
+        code: "CANVAS_PROJECT_NOT_OWNED",
+        error: "项目不存在或不属于当前账号",
+      });
       return;
     }
-    const revision = currentRevision + 1;
-    const nodes = normalizePersistedMediaNodes(document.nodes);
-    const edges = document.edges;
-    const graphChanged = !row || canvasGraphFingerprint({
-      edges,
-      nodes,
-    }) !== canvasGraphFingerprint({
-      edges: JSON.parse(row.edges) as unknown[],
-      nodes: JSON.parse(row.nodes) as unknown[],
-    });
+
+    // A candidate save proves that this account loaded the claimed revision of
+    // this exact canvas in this process epoch. The claimed revision may be
+    // older than the current row so cross-session DATA-005 last-writer-wins is
+    // preserved. Restarting rotates the wire-only HMAC key, so a response
+    // delayed across a restart cannot overwrite a newer writer after TEMP
+    // high-water state has been discarded. Every write to an existing row,
+    // including a v0.5.1-shaped request, therefore requires the observed pair;
+    // only creation of a row that is still missing under this transaction may
+    // omit it. This intentionally fails old pages closed after an upgrade or
+    // restart instead of allowing a discarded per-session high-water to revive
+    // an older snapshot.
+    // Deliberately omit revision fields from this 409 so an old client cannot
+    // misclassify it as a retryable revision conflict.
+    const validObservedBaseline =
+      document.observedRevision !== undefined &&
+      document.observedLoadToken !== undefined &&
+      validCanvasLoadToken(
+        document.observedLoadToken,
+        ownerId,
+        id,
+        document.observedRevision,
+      );
+    if (
+      (document.observedRevision !== undefined && !validObservedBaseline) ||
+      (row && !validObservedBaseline)
+    ) {
+      store.exec("ROLLBACK");
+      json(response, 409, {
+        code: "CANVAS_LOAD_REQUIRED",
+        error: "Canvas must be loaded successfully before saving",
+      });
+      return;
+    }
+
+    ensureCanvasSaveHighWaterTable(store);
+
+    // A process restart discards the TEMP table, while schema 37 retains only
+    // the current writer on the canvas row. Before a different session (or a
+    // legacy no-session request) overwrites that row, atomically hand its
+    // durable session/sequence into TEMP. If the bounded table cannot retain
+    // it, fail closed and leave the durable row untouched.
+    if (
+      row?.save_session_id &&
+      row.save_sequence > 0 &&
+      row.save_session_id !== document.saveSessionId
+    ) {
+      const retainedCurrentWriter = canvasSaveHighWater(
+        store,
+        ownerId,
+        id,
+        row.save_session_id,
+      );
+      if (
+        !retainedCurrentWriter &&
+        !hasCanvasSaveHighWaterCapacity(store, ownerId)
+      ) {
+        store.exec("ROLLBACK");
+        json(response, 503, {
+          code: "CANVAS_SAVE_SESSION_CAPACITY",
+          error: "Canvas save session capacity reached",
+        });
+        return;
+      }
+      upsertCanvasSaveHighWater(
+        store,
+        ownerId,
+        id,
+        row.save_session_id,
+        row.save_sequence,
+        null,
+      );
+    }
+
+    const highWater = document.saveSessionId
+      ? canvasSaveHighWater(store, ownerId, id, document.saveSessionId)
+      : undefined;
+    const persistedSameSessionSequence =
+      row &&
+        document.saveSessionId &&
+        row.save_session_id === document.saveSessionId
+        ? row.save_sequence
+        : 0;
+    const sessionHighWater = Math.max(
+      highWater?.save_sequence ?? 0,
+      persistedSameSessionSequence,
+    );
+    const sessionHighWaterAttemptId =
+      highWater?.save_sequence === sessionHighWater
+        ? highWater.save_attempt_id
+        : null;
+
+    if (
+      document.saveSessionId &&
+      Number(document.saveSequence) <= sessionHighWater
+    ) {
+      store.exec("ROLLBACK");
+      json(response, 409, {
+        code: "CANVAS_SAVE_SUPERSEDED",
+        currentGraphRevision: row?.graph_revision ?? 0,
+        currentRevision: row?.revision ?? 0,
+        currentWriterSequence: row?.save_sequence ?? 0,
+        currentWriterSessionId: row?.save_session_id ?? null,
+        error: "Superseded same-session save",
+        rejectedAttemptId: document.saveAttemptId ?? null,
+        rejectedSequence: Number(document.saveSequence),
+        rejectedSessionId: document.saveSessionId,
+        sessionHighWaterAttemptId,
+        sessionHighWaterSequence: sessionHighWater,
+      });
+      return;
+    }
+
+    if (document.saveSessionId && !highWater) {
+      if (!hasCanvasSaveHighWaterCapacity(store, ownerId)) {
+        store.exec("ROLLBACK");
+        json(response, 503, {
+          code: "CANVAS_SAVE_SESSION_CAPACITY",
+          error: "Canvas save session capacity reached",
+        });
+        return;
+      }
+    }
+
+    const revision = (row?.revision ?? 0) + 1;
+    const graphChanged = !row || incomingGraphFingerprint !==
+      canvasGraphFingerprint({
+        edges: JSON.parse(row.edges) as unknown[],
+        nodes: JSON.parse(row.nodes) as unknown[],
+      });
     const graphRevision = row
       ? row.graph_revision + (graphChanged ? 1 : 0)
       : 1;
-    const ownerId = identity.bypass ? "__test__" : identity.userId;
     store
       .prepare(`
         INSERT INTO canvas_documents (
@@ -295,9 +888,9 @@ export async function canvasPersistence(
         id,
         revision,
         graphRevision,
-        JSON.stringify(nodes),
-        JSON.stringify(edges),
-        JSON.stringify(document.viewport),
+        serializedNodes,
+        serializedEdges,
+        serializedViewport,
         new Date().toISOString(),
         document.saveSessionId ?? null,
         document.saveSequence ?? 0,
@@ -309,12 +902,30 @@ export async function canvasPersistence(
       id,
       Date.now(),
     );
-    json(response, 200, { graphRevision, revision });
-  } catch (error) {
-    if (error instanceof HttpRequestError) throw error;
-    json(response, 400, {
-      error: error instanceof Error ? error.message : "Invalid request",
+    if (document.saveSessionId) {
+      const updated = upsertCanvasSaveHighWater(
+        store,
+        ownerId,
+        id,
+        document.saveSessionId,
+        Number(document.saveSequence),
+        document.saveAttemptId ?? null,
+      );
+      if (updated.changes !== 1) {
+        throw new Error("Canvas save high-water update failed");
+      }
+    }
+    if (afterCanvasSaveUpsertForTests) {
+      afterCanvasSaveUpsertForTests(barrierInput);
+    }
+    store.exec("COMMIT");
+    json(response, 200, {
+      graphRevision,
+      loadToken: canvasLoadTokenFor(ownerId, id, revision),
+      revision,
     });
+  } catch (error) {
+    rollbackCanvasSave(store, error);
   }
 }
 

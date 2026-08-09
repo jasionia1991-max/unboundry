@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext } from "./safe-test";
+import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -57,6 +58,26 @@ function makeNode(
     style: { height: 250, width: 250 },
     type,
     zIndex: 1,
+  };
+}
+
+async function existingCanvasSaveMetadata(
+  request: APIRequestContext,
+  canvasId: string,
+) {
+  const baselineResponse = await request.get(`/api/canvas/${canvasId}`);
+  expect(baselineResponse.ok()).toBeTruthy();
+  const baseline = (await baselineResponse.json()) as {
+    loadToken: string;
+    revision: number;
+  };
+  return {
+    observedLoadToken: baseline.loadToken,
+    observedRevision: baseline.revision,
+    revision: baseline.revision,
+    saveAttemptId: randomUUID(),
+    saveSequence: 1,
+    saveSessionId: randomUUID(),
   };
 }
 
@@ -597,6 +618,7 @@ test("group toolbar saves a private template and the my-templates panel lists an
   const created = await request.post("/api/projects", { data: {} });
   expect(created.status()).toBe(201);
   const project = (await created.json()) as { id: string };
+  const saveMetadata = await existingCanvasSaveMetadata(request, project.id);
   const saved = await request.put(`/api/canvas/${project.id}`, {
     data: {
       edges: [
@@ -647,7 +669,7 @@ test("group toolbar saves a private template and the my-templates panel lists an
           zIndex: 1,
         },
       ],
-      revision: 1,
+      ...saveMetadata,
       viewport: { x: 0, y: 0, zoom: 1 },
     },
   });
@@ -721,6 +743,7 @@ test("group toolbar keeps template saving disabled for empty groups", async ({
   const created = await request.post("/api/projects", { data: {} });
   expect(created.status()).toBe(201);
   const project = (await created.json()) as { id: string };
+  const saveMetadata = await existingCanvasSaveMetadata(request, project.id);
   const saved = await request.put(`/api/canvas/${project.id}`, {
     data: {
       edges: [],
@@ -734,7 +757,7 @@ test("group toolbar keeps template saving disabled for empty groups", async ({
           zIndex: 0,
         },
       ],
-      revision: 1,
+      ...saveMetadata,
       viewport: { x: 0, y: 0, zoom: 1 },
     },
   });
@@ -856,6 +879,7 @@ test("dragging a real canvas node saves after drag stop, not during the drag", a
   const created = await request.post("/api/projects", { data: {} });
   expect(created.status()).toBe(201);
   const project = (await created.json()) as { id: string };
+  const saveMetadata = await existingCanvasSaveMetadata(request, project.id);
   const saved = await request.put(`/api/canvas/${project.id}`, {
     data: {
       edges: [],
@@ -869,7 +893,7 @@ test("dragging a real canvas node saves after drag stop, not during the drag", a
           zIndex: 1,
         },
       ],
-      revision: 0,
+      ...saveMetadata,
       viewport: { x: 0, y: 0, zoom: 1 },
     },
   });

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { expect, test } from "./safe-test";
 
 async function createProjectCanvas(
@@ -9,6 +10,13 @@ async function createProjectCanvas(
   expect(projectResponse.status()).toBe(201);
   const project = (await projectResponse.json()) as { id: string };
   const canvasId = project.id;
+  const baselineResponse = await request.get(`/api/canvas/${canvasId}`);
+  expect(baselineResponse.ok()).toBeTruthy();
+  const baseline = (await baselineResponse.json()) as {
+    loadToken: string;
+    revision: number;
+  };
+  const saveSessionId = randomUUID();
   const response = await request.put(`/api/canvas/${canvasId}`, {
     data: {
       edges: [
@@ -55,7 +63,12 @@ async function createProjectCanvas(
           type: "image",
         },
       ],
-      revision: 0,
+      observedLoadToken: baseline.loadToken,
+      observedRevision: baseline.revision,
+      revision: baseline.revision,
+      saveAttemptId: randomUUID(),
+      saveSequence: 1,
+      saveSessionId,
       viewport: { x: 0, y: 0, zoom: 1 },
     },
   });

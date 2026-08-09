@@ -10,6 +10,10 @@ export type GenerationCanvasState = {
   notify: (message: string, kind?: "error" | "info" | "success") => void;
   /** Present only when the exact graph currently on screen is durably saved. */
   canvasRevision?: number;
+  /** The current account/canvas scope has finished safe persistence hydration. */
+  persistenceReady: boolean;
+  /** Retry may enter the save gate; unlike canvasRevision, dirty state does not disable it. */
+  retryGenerationEnabled: boolean;
   /** Wait until the current on-screen graph is durably saved before submitting. */
   flushCanvasSave: () => Promise<void>;
   /**
@@ -25,6 +29,8 @@ export const GenerationCanvasContext = createContext<GenerationCanvasState>({
   canvasId: "",
   isFixture: false,
   notify: () => undefined,
+  persistenceReady: true,
+  retryGenerationEnabled: false,
   flushCanvasSave: async () => {},
   waitForCanvasRevision: async () => -1,
 });

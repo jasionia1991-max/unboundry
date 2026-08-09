@@ -204,6 +204,10 @@ test("Text prompt commits only the final IME composition value", async ({
   const canvasId = "node.text.creator-open";
   await request.delete(`/api/canvas/${canvasId}`);
   await page.goto(`/__fixture/${canvasId}`);
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-persistence-ready",
+    "true",
+  );
   const prompt = page.getByTestId("text-creator-prompt");
   await composeTextControl(prompt, ["n", "ni", "ni h", "ni hao", "你好"]);
   await expect(prompt).toHaveValue("你好");
@@ -236,7 +240,7 @@ test("Text prompt commits only the final IME composition value", async ({
       nodes: Array<{ data: Record<string, unknown>; id: string }>;
     };
     return canvas.nodes.find((node) => node.id === "text-primary")?.data.textPrompt;
-  }).toBe("世界");
+  }, { timeout: 10_000 }).toBe("世界");
 
   await page.reload();
   await expect(page.getByTestId("canvas-world")).toHaveAttribute(
@@ -250,6 +254,10 @@ test("Text toolbar and creator hide while dragging and return after release", as
   page,
 }) => {
   await page.goto("/__fixture/node.text.creator-open");
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-persistence-ready",
+    "true",
+  );
   const creator = page.getByTestId("text-creator");
   const toolbar = page.getByTestId("text-node-toolbar");
   await expect(creator).toBeVisible();
@@ -262,6 +270,7 @@ test("Text toolbar and creator hide while dragging and return after release", as
   await page.mouse.move(startX, startY);
   await page.mouse.down();
   await page.mouse.move(startX + 60, startY + 40, { steps: 3 });
+  await expect(node).toHaveClass(/dragging/);
   await expect(creator).toHaveCount(0);
   await expect(toolbar).toHaveCount(0);
   await page.mouse.up();

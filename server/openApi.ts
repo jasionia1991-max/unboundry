@@ -109,23 +109,99 @@ export const openApiDocument = {
             required: true,
             schema: { type: "string", pattern: "^[a-zA-Z0-9._-]+$" },
           },
+          {
+            in: "header",
+            name: "X-Unboundry-Canvas-Save-Session",
+            required: false,
+            description:
+              "Optional candidate-client save session used only to read owner-scoped pagehide reconciliation metadata. The read never creates a high-water entry.",
+            schema: {
+              type: "string",
+              pattern: "^[a-zA-Z0-9-]{8,80}$",
+            },
+          },
         ],
         responses: {
           "200": {
             description: "Canvas nodes, edges, viewport and revision",
             content: {
               "application/json": {
-                schema: { $ref: "#/components/schemas/CanvasDocument" },
+                schema: { $ref: "#/components/schemas/CanvasReadDocument" },
               },
             },
           },
-          "401": { description: "Sign-in required" },
-          "404": { description: "Canvas not found" },
+          "400": {
+            description: "Invalid canvas save-session header",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CanvasSaveSessionHeaderError" },
+              },
+            },
+          },
+          "401": {
+            description: "Sign-in required",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CanvasAccessError" },
+              },
+            },
+          },
+          "404": {
+            description: "Canvas not found with process-epoch fence metadata",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CanvasReadNotFound" },
+              },
+            },
+          },
+        },
+      },
+      delete: {
+        operationId: "deleteCanvas",
+        summary: "Delete one owner-scoped canvas and its save fences",
+        parameters: [
+          {
+            in: "path",
+            name: "canvasId",
+            required: true,
+            schema: { type: "string", pattern: "^[a-zA-Z0-9._-]+$" },
+          },
+        ],
+        responses: {
+          "204": {
+            description: "Canvas and owner-scoped save fences deleted",
+          },
+          "400": {
+            description: "Invalid canvas ID",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CanvasIdError" },
+              },
+            },
+          },
+          "401": {
+            description: "Sign-in required",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CanvasAccessError" },
+              },
+            },
+          },
+          "403": {
+            description: "Mutation origin is not allowed",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CanvasAccessError" },
+              },
+            },
+          },
         },
       },
       put: {
         operationId: "saveCanvas",
-        summary: "Save one owner-scoped canvas with revision checking",
+        summary: "Save one owner-scoped canvas with same-session ordering",
+        description:
+          "Older saves from the same browser session are rejected; different sessions keep the DATA-005 last-successful-save-wins contract.",
         parameters: [
           {
             in: "path",
@@ -138,14 +214,52 @@ export const openApiDocument = {
           required: true,
           content: {
             "application/json": {
-              schema: { $ref: "#/components/schemas/CanvasDocument" },
+              schema: { $ref: "#/components/schemas/CanvasSaveRequest" },
             },
           },
         },
         responses: {
-          "200": { description: "Saved revision" },
+          "200": {
+            description: "Saved document and graph revisions",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CanvasSaveResult" },
+              },
+            },
+          },
           "400": { description: "Invalid canvas document" },
-          "409": { description: "Revision conflict" },
+          "401": {
+            description: "Sign-in required",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CanvasAccessError" },
+              },
+            },
+          },
+          "403": {
+            description: "Mutation origin is not allowed",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CanvasAccessError" },
+              },
+            },
+          },
+          "409": {
+            description: "Superseded save, missing load baseline, or unavailable project",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CanvasSaveConflict" },
+              },
+            },
+          },
+          "503": {
+            description: "Per-session ordering capacity is unavailable",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CanvasSaveUnavailable" },
+              },
+            },
+          },
         },
       },
     },
@@ -1274,11 +1388,42 @@ export const openApiDocument = {
         },
         additionalProperties: false,
       },
-      CanvasDocument: {
+      CanvasReadDocument: {
         type: "object",
-        required: ["revision", "nodes", "edges", "viewport"],
+        required: [
+          "revision",
+          "graphRevision",
+          "loadToken",
+          "saveEpoch",
+          "sessionHighWaterSequence",
+          "sessionHighWaterAttemptId",
+          "currentWriterSessionId",
+          "currentWriterSequence",
+          "nodes",
+          "edges",
+          "viewport",
+        ],
         properties: {
           revision: { type: "integer", minimum: 0 },
+          graphRevision: { type: "integer", minimum: 0 },
+          loadToken: {
+            type: "string",
+            minLength: 1,
+            maxLength: 256,
+            description:
+              "Opaque HMAC credential bound to this account, canvas, revision and server-process epoch.",
+          },
+          saveEpoch: {
+            type: "string",
+            minLength: 1,
+            maxLength: 128,
+            description:
+              "Opaque public identifier for the current process-local save-fence epoch; rotates together with the load-token key.",
+          },
+          sessionHighWaterSequence: { type: "integer", minimum: 0 },
+          sessionHighWaterAttemptId: { type: ["string", "null"] },
+          currentWriterSessionId: { type: ["string", "null"] },
+          currentWriterSequence: { type: "integer", minimum: 0 },
           nodes: {
             type: "array",
             maxItems: 5_000,
@@ -1290,6 +1435,181 @@ export const openApiDocument = {
             items: { type: "object", additionalProperties: true },
           },
           viewport: { $ref: "#/components/schemas/Viewport" },
+        },
+        additionalProperties: false,
+      },
+      CanvasReadNotFound: {
+        type: "object",
+        required: [
+          "code",
+          "error",
+          "saveEpoch",
+          "sessionHighWaterSequence",
+          "sessionHighWaterAttemptId",
+          "currentWriterSessionId",
+          "currentWriterSequence",
+        ],
+        properties: {
+          code: { type: "string", const: "CANVAS_NOT_FOUND" },
+          error: { type: "string" },
+          saveEpoch: { type: "string", minLength: 1, maxLength: 128 },
+          sessionHighWaterSequence: { type: "integer", minimum: 0 },
+          sessionHighWaterAttemptId: { type: ["string", "null"] },
+          currentWriterSessionId: { type: ["string", "null"] },
+          currentWriterSequence: { type: "integer", minimum: 0 },
+        },
+        additionalProperties: false,
+      },
+      CanvasSaveSessionHeaderError: {
+        type: "object",
+        required: ["code", "error"],
+        properties: {
+          code: { type: "string", const: "CANVAS_SAVE_SESSION_INVALID" },
+          error: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+      CanvasIdError: {
+        type: "object",
+        required: ["code", "error"],
+        properties: {
+          code: { type: "string", const: "CANVAS_ID_INVALID" },
+          error: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+      CanvasAccessError: {
+        type: "object",
+        required: ["error"],
+        properties: {
+          error: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+      CanvasSaveRequest: {
+        type: "object",
+        description:
+          "saveSessionId/saveSequence/saveAttemptId remain optional on the wire. observedRevision and observedLoadToken are an inseparable pair proving that exact account/canvas/revision baseline was issued by the current server process, and every save to an existing canvas requires the pair, including v0.5.1-shaped requests. A request may omit the pair only while creating a canvas that is still missing when the save transaction begins.",
+        required: ["revision", "nodes", "edges", "viewport"],
+        dependentRequired: {
+          observedLoadToken: ["observedRevision"],
+          observedRevision: ["observedLoadToken"],
+          saveAttemptId: ["saveSessionId", "saveSequence"],
+          saveSequence: ["saveSessionId"],
+          saveSessionId: ["saveSequence"],
+        },
+        properties: {
+          revision: { type: "integer", minimum: 0 },
+          observedLoadToken: {
+            type: "string",
+            minLength: 1,
+            maxLength: 256,
+            description:
+              "Wire-only HMAC returned by a successful GET or preceding successful PUT; bound to account, canvas, observedRevision and process epoch, and never persisted.",
+          },
+          observedRevision: {
+            type: "integer",
+            minimum: 0,
+            description:
+              "Wire-only revision covered by observedLoadToken; it may be older than the current row so DATA-005 last-successful-save-wins remains intact.",
+          },
+          saveSessionId: {
+            type: "string",
+            pattern: "^[a-zA-Z0-9-]{8,80}$",
+          },
+          saveAttemptId: {
+            type: "string",
+            pattern: "^[a-zA-Z0-9-]{8,80}$",
+            description:
+              "Candidate-client logical attempt identity. Exact retries reuse it; legacy session saves may omit it.",
+          },
+          saveSequence: { type: "integer", minimum: 1 },
+          nodes: {
+            type: "array",
+            maxItems: 5_000,
+            items: { type: "object", additionalProperties: true },
+          },
+          edges: {
+            type: "array",
+            maxItems: 10_000,
+            items: { type: "object", additionalProperties: true },
+          },
+          viewport: { $ref: "#/components/schemas/Viewport" },
+        },
+        additionalProperties: false,
+      },
+      CanvasSaveResult: {
+        type: "object",
+        required: ["revision", "graphRevision", "loadToken"],
+        properties: {
+          revision: { type: "integer", minimum: 1 },
+          graphRevision: { type: "integer", minimum: 0 },
+          loadToken: {
+            type: "string",
+            minLength: 1,
+            maxLength: 256,
+          },
+        },
+        additionalProperties: false,
+      },
+      CanvasSaveConflict: {
+        oneOf: [
+          { $ref: "#/components/schemas/CanvasSaveSupersededConflict" },
+          { $ref: "#/components/schemas/CanvasSaveTerminalConflict" },
+        ],
+      },
+      CanvasSaveSupersededConflict: {
+        type: "object",
+        required: [
+          "code",
+          "error",
+          "rejectedSessionId",
+          "rejectedAttemptId",
+          "rejectedSequence",
+          "sessionHighWaterSequence",
+          "sessionHighWaterAttemptId",
+          "currentWriterSessionId",
+          "currentWriterSequence",
+          "currentRevision",
+          "currentGraphRevision",
+        ],
+        properties: {
+          code: { type: "string", const: "CANVAS_SAVE_SUPERSEDED" },
+          error: { type: "string" },
+          rejectedSessionId: { type: "string" },
+          rejectedAttemptId: { type: ["string", "null"] },
+          rejectedSequence: { type: "integer", minimum: 1 },
+          sessionHighWaterSequence: { type: "integer", minimum: 1 },
+          sessionHighWaterAttemptId: { type: ["string", "null"] },
+          currentWriterSessionId: { type: ["string", "null"] },
+          currentWriterSequence: { type: "integer", minimum: 0 },
+          currentRevision: { type: "integer", minimum: 0 },
+          currentGraphRevision: { type: "integer", minimum: 0 },
+        },
+        additionalProperties: false,
+      },
+      CanvasSaveTerminalConflict: {
+        type: "object",
+        required: ["code", "error"],
+        properties: {
+          code: {
+            type: "string",
+            enum: [
+              "CANVAS_LOAD_REQUIRED",
+              "CANVAS_PROJECT_DELETED",
+              "CANVAS_PROJECT_NOT_OWNED",
+            ],
+          },
+          error: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+      CanvasSaveUnavailable: {
+        type: "object",
+        required: ["code", "error"],
+        properties: {
+          code: { type: "string", enum: ["CANVAS_SAVE_SESSION_CAPACITY"] },
+          error: { type: "string" },
         },
         additionalProperties: false,
       },

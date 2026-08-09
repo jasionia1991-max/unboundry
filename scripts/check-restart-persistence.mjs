@@ -561,6 +561,8 @@ try {
   const undoDeleted = await jsonRequest(`/api/canvas/${undoCanvasId}`, {
     body: JSON.stringify({
       ...canvas,
+      observedLoadToken: undoInitial.loadToken,
+      observedRevision: undoInitial.revision,
       revision: 1,
       saveSequence: 2,
       nodes: canvas.nodes.filter((node) => node.id !== "p1-restart-source-text"),
@@ -574,7 +576,11 @@ try {
   assert.equal(afterDelete.nodes.length, 2);
   assert.equal(afterDelete.edges.length, 1);
   const undoRestored = await jsonRequest(`/api/canvas/${undoCanvasId}`, {
-    body: JSON.stringify(undoRestoredCanvas),
+    body: JSON.stringify({
+      ...undoRestoredCanvas,
+      observedLoadToken: undoDeleted.loadToken,
+      observedRevision: undoDeleted.revision,
+    }),
     headers: { "Content-Type": "application/json" },
     method: "PUT",
   });

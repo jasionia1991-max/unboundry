@@ -92,6 +92,12 @@ const tools = [
 
 type ToolName = (typeof tools)[number][1];
 
+type TextTaskOwner = {
+  generationInputKey: string;
+  taskId: string;
+  token: symbol;
+};
+
 function clearFailedTextGeneration(data: ProbeNodeType["data"]) {
   if (
     !data.textGenerationError &&
@@ -142,7 +148,7 @@ const droppedRichTextTags = new Set([
   "VIDEO",
 ]);
 
-function plainTextHtml(text: string) {
+export function plainTextHtml(text: string) {
   const paragraph = document.createElement("p");
   paragraph.textContent = text;
   return paragraph.outerHTML;
@@ -295,8 +301,11 @@ function TextNodeImpl({
   const editorRef = useRef<HTMLDivElement>(null);
   const bodyLocalValue = useRef(bodyValue);
   const activeTaskRef = useRef<string | null>(null);
+  const textTaskOwnerRef = useRef<TextTaskOwner | undefined>(undefined);
+  const textManualEditVersionRef = useRef(0);
   const recoveryTaskRef = useRef<{
     controller: AbortController;
+    owner: TextTaskOwner;
     taskId: string;
   } | null>(null);
   const { setEdges, setNodes } = useCanvasGraphMutation();
@@ -311,8 +320,57 @@ function TextNodeImpl({
     canvasRevision,
     flushCanvasSave,
     isFixture,
+    persistenceReady,
+    retryGenerationEnabled,
     waitForCanvasRevision,
   } = useGenerationCanvas();
+  const claimTextTask = (
+    taskId: string,
+    generationInputKey: string,
+  ): TextTaskOwner => {
+    const owner = { generationInputKey, taskId, token: Symbol(taskId) };
+    textTaskOwnerRef.current = owner;
+    activeTaskRef.current = taskId;
+    return owner;
+  };
+  const ownsTextTask = (owner: TextTaskOwner) =>
+    textTaskOwnerRef.current === owner &&
+    liveGenerationInputKeyRef.current === owner.generationInputKey;
+  const releaseTextTask = (owner: TextTaskOwner) => {
+    if (textTaskOwnerRef.current !== owner) return;
+    textTaskOwnerRef.current = undefined;
+    if (activeTaskRef.current === owner.taskId) activeTaskRef.current = null;
+  };
+  const revokeTextTaskForManualBodyEdit = () => {
+    textManualEditVersionRef.current += 1;
+    recoveryTaskRef.current?.controller.abort("text-body-edited");
+    recoveryTaskRef.current = null;
+    textTaskOwnerRef.current = undefined;
+    activeTaskRef.current = null;
+    pollingPausedTaskIdRef.current = undefined;
+    setPollingPausedTaskId(undefined);
+    setRecoveringTask(false);
+    setGenerationError("");
+    setServerInputProblems([]);
+    // A manual body commit owns the node from this point on. Clear the whole
+    // v2 slot (not only a possibly stale task id) so a late recovery cannot
+    // reclaim the node after refresh.
+    clearGenerationSubmissionIntent("text", canvasId, id, undefined, accountId);
+  };
+  const revokeTextTaskForGenerationInputChange = () => {
+    recoveryTaskRef.current?.controller.abort("text-generation-input-changed");
+    recoveryTaskRef.current = null;
+    textTaskOwnerRef.current = undefined;
+    activeTaskRef.current = null;
+    pollingPausedTaskIdRef.current = undefined;
+    setPollingPausedTaskId(undefined);
+    setRecoveringTask(false);
+    setGenerationError("");
+    setServerInputProblems([]);
+    // Input changes revoke the complete v2 slot, including an intent that has
+    // been recorded while ensureGenerationTask is still awaiting preflight.
+    clearGenerationSubmissionIntent("text", canvasId, id, undefined, accountId);
+  };
   const titleControl = useCompositionSafeText({
     onCommit: (nextTitle) => {
       setNodes((nodes) =>
@@ -328,6 +386,7 @@ function TextNodeImpl({
   });
   const promptControl = useCompositionSafeText({
     onCommit: (nextPrompt) => {
+      revokeTextTaskForGenerationInputChange();
       setNodes((nodes) =>
         nodes.map((node) =>
           node.id === id
@@ -347,6 +406,7 @@ function TextNodeImpl({
   });
   const bodyControl = useCompositionSafeRichText({
     onCommit: (nextValue) => {
+      revokeTextTaskForManualBodyEdit();
       setBodyValue(nextValue);
       setNodes((nodes) =>
         nodes.map((node) =>
@@ -381,6 +441,7 @@ function TextNodeImpl({
   );
   const textModels = textModelSelection.models;
   const selectedTextModel = textModelSelection.model;
+  const selectedTextModelId = textModelSelection.selectedId;
   const textModelUnavailableReason = textModelSelection.unavailableReason;
   const textParameterSchema = selectedTextModel?.parameterSchema ??
     defaultParameterSchema("text");
@@ -417,7 +478,7 @@ function TextNodeImpl({
     canvasRevision,
     inputSchemaVersion: 1 as const,
     inputs: inputPreflight.snapshot,
-    model: selectedTextModel?.id,
+    model: selectedTextModelId,
     nodeId: id,
     ownPrompt: promptControl.committedValue,
     parameters: textSubmissionParameters,
@@ -425,11 +486,16 @@ function TextNodeImpl({
   };
   const generationInputKey = createGenerationInputKey({
     inputs: inputPreflight.inputs,
-    modelId: selectedTextModel?.id,
+    modelId: selectedTextModelId,
     ownPrompt: promptControl.committedValue,
     parameters: textSubmissionParameters,
     prompt: inputPreflight.finalPrompt,
   });
+  const recoverableGenerationInputKey = selectedTextModel
+    ? generationInputKey
+    : data.textGenerationInputKey;
+  const liveGenerationInputKeyRef = useRef(generationInputKey);
+  liveGenerationInputKeyRef.current = generationInputKey;
   const stableGenerationInputKey = useRef<string | undefined>(undefined);
   const incomingInputs = inputPreflight.inputs;
   const retryBlockReason = data.textGenerationTaskId && data.textGenerationError
@@ -494,7 +560,11 @@ function TextNodeImpl({
   useEffect(() => {
     // Hydration and an in-flight save do not count as user input changes. Once
     // a durable revision exists, compare only the generation-relevant input.
-    if (canvasRevision === undefined) return;
+    if (
+      canvasRevision === undefined ||
+      textModelSelection.status !== "ready" ||
+      !selectedTextModel
+    ) return;
     if (stableGenerationInputKey.current === undefined) {
       stableGenerationInputKey.current = generationInputKey;
     }
@@ -505,6 +575,13 @@ function TextNodeImpl({
     if (!persistedMismatch &&
         stableGenerationInputKey.current === generationInputKey) return;
     stableGenerationInputKey.current = generationInputKey;
+    recoveryTaskRef.current?.controller.abort("text-generation-input-changed");
+    recoveryTaskRef.current = null;
+    textTaskOwnerRef.current = undefined;
+    activeTaskRef.current = null;
+    pollingPausedTaskIdRef.current = undefined;
+    setPollingPausedTaskId(undefined);
+    setRecoveringTask(false);
     clearGenerationSubmissionIntent(
       "text",
       canvasId,
@@ -524,7 +601,9 @@ function TextNodeImpl({
     data.textGenerationTaskId,
     generationInputKey,
     id,
+    selectedTextModel?.id,
     setNodes,
+    textModelSelection.status,
   ]);
 
   useEffect(() => {
@@ -595,7 +674,11 @@ function TextNodeImpl({
     }
   };
 
-  const applyGeneratedText = (task: GenerationTaskSummary) => {
+  const applyGeneratedText = (
+    task: GenerationTaskSummary,
+    owner: TextTaskOwner,
+  ) => {
+    if (!ownsTextTask(owner) || task.id !== owner.taskId) return false;
     const resultText = task.resultText?.trim() ?? "";
     if (!resultText) throw new Error("文字结果不完整");
     const nextValue = storedRichTextValue(resultText, plainTextHtml(resultText));
@@ -623,16 +706,19 @@ function TextNodeImpl({
       : node));
     setGenerationError("");
     clearGenerationSubmissionIntent("text", canvasId, id, task.id, accountId);
+    return true;
   };
 
   const persistTextGenerationFailure = (
     taskId: string,
+    owner: TextTaskOwner,
     message: string,
     errorCode?: string,
     retryAllowed = false,
     retryBlockCode?: string,
     retryBlockReason?: string,
   ) => {
+    if (!ownsTextTask(owner) || taskId !== owner.taskId) return;
     const visibleMessage = generationFailureMessage(
       message,
       retryAllowed ? undefined : retryBlockReason,
@@ -647,7 +733,7 @@ function TextNodeImpl({
             ...node.data,
             textGenerationError: visibleMessage,
             textGenerationErrorCode: errorCode,
-            textGenerationInputKey: generationInputKey,
+            textGenerationInputKey: recoverableGenerationInputKey,
             textGenerationRetryAllowed: retryAllowed,
             textGenerationRetryBlockCode: retryBlockCode,
             textGenerationRetryBlockReason: retryBlockReason,
@@ -658,7 +744,12 @@ function TextNodeImpl({
       : node));
   };
 
-  const persistTextGenerationCancellation = (taskId: string, message: string) => {
+  const persistTextGenerationCancellation = (
+    taskId: string,
+    owner: TextTaskOwner,
+    message: string,
+  ) => {
+    if (!ownsTextTask(owner) || taskId !== owner.taskId) return;
     setGenerationError(message);
     setNodes((nodes) => nodes.map((node) => node.id === id
       ? {
@@ -679,20 +770,28 @@ function TextNodeImpl({
     clearGenerationSubmissionIntent("text", canvasId, id, taskId, accountId);
   };
 
-  const finishTextTask = async (taskId: string, signal?: AbortSignal) => {
+  const finishTextTask = async (
+    taskId: string,
+    owner: TextTaskOwner,
+    signal?: AbortSignal,
+  ) => {
+    if (!ownsTextTask(owner) || taskId !== owner.taskId) return;
     let task: Awaited<ReturnType<typeof waitForGenerationTask>>;
     try {
       task = await waitForGenerationTaskWithPause(taskId, () => {
+        if (!ownsTextTask(owner)) return;
         pollingPausedTaskIdRef.current = taskId;
         setPollingPausedTaskId(taskId);
         setGenerationError(POLLING_PAUSED_MESSAGE);
       }, signal);
     } catch (error) {
+      if (!ownsTextTask(owner)) return;
       if (pollingPausedTaskIdRef.current === taskId) return;
       throw error;
     }
+    if (!ownsTextTask(owner)) return;
     if (task.state === "success") {
-      applyGeneratedText(task);
+      applyGeneratedText(task, owner);
       pollingPausedTaskIdRef.current = undefined;
       setPollingPausedTaskId(undefined);
       return;
@@ -700,12 +799,14 @@ function TextNodeImpl({
     if (task.state === "cancelled") {
       persistTextGenerationCancellation(
         taskId,
+        owner,
         task.errorMessage ?? "文字生成已取消",
       );
       return;
     }
     persistTextGenerationFailure(
       taskId,
+      owner,
       task.errorMessage ?? "文字生成失败，请稍后再试",
       task.errorCode,
       task.retryAllowed === true,
@@ -716,30 +817,79 @@ function TextNodeImpl({
 
   useEffect(() => {
     const taskId = data.textGenerationTaskId;
+    const persistedGenerationInputKey = data.textGenerationInputKey;
     if (
+      !persistenceReady ||
+      isFixture ||
       !taskId ||
-      !selectedTextModel ||
+      textModelSelection.status !== "ready"
+    ) return;
+    // A settled success deliberately retains its task id as provenance, and a
+    // settled failure retains it for the existing retry contract. Neither is
+    // an active recovery candidate, so the absence/change of its input key
+    // must not make the recovery guard erase that terminal record.
+    if (
+      !data.textGenerating &&
+      Boolean(data.content || data.textGenerationError)
+    ) return;
+    if (
+      !persistedGenerationInputKey ||
+      persistedGenerationInputKey !== generationInputKey
+    ) {
+      // A hydrated task can only reclaim the node with the exact generation
+      // input identity that was persisted with it. Revoke before any network
+      // read so a stale task cannot be rebound under the newly rendered key.
+      recoveryTaskRef.current?.controller.abort(
+        "text-persisted-generation-input-mismatch",
+      );
+      recoveryTaskRef.current = null;
+      textTaskOwnerRef.current = undefined;
+      activeTaskRef.current = null;
+      pollingPausedTaskIdRef.current = undefined;
+      setPollingPausedTaskId(undefined);
+      setRecoveringTask(false);
+      setGenerationError("");
+      setServerInputProblems([]);
+      clearGenerationSubmissionIntent(
+        "text",
+        canvasId,
+        id,
+        taskId,
+        accountId,
+      );
+      setNodes((nodes) => nodes.map((node) =>
+        node.id === id &&
+          node.data.textGenerationTaskId === taskId &&
+          node.data.textGenerationInputKey === persistedGenerationInputKey
+          ? { ...node, data: clearFailedTextGeneration(node.data) }
+          : node
+      ));
+      return;
+    }
+    if (
       activeTaskRef.current === taskId ||
-      recoveryTaskRef.current?.taskId === taskId ||
-      (!data.textGenerating && data.content)
+      recoveryTaskRef.current?.taskId === taskId
     ) return;
     const controller = new AbortController();
-    const recovery = { controller, taskId };
+    const owner = claimTextTask(taskId, persistedGenerationInputKey);
+    const recovery = { controller, owner, taskId };
     recoveryTaskRef.current = recovery;
     setRecoveringTask(true);
     void getGenerationTask(taskId, controller.signal)
       .then(async (task) => {
+        if (controller.signal.aborted || !ownsTextTask(owner)) return;
         if (task.state === "success") {
-          applyGeneratedText(task);
+          applyGeneratedText(task, owner);
           return;
         }
         if (["queued", "running", "retrying", "recovering"].includes(task.state)) {
-          await finishTextTask(taskId, controller.signal);
+          await finishTextTask(taskId, owner, controller.signal);
           return;
         }
         if (task.state === "cancelled") {
           persistTextGenerationCancellation(
             taskId,
+            owner,
             task.errorMessage ?? "文字生成已取消",
           );
           return;
@@ -748,6 +898,7 @@ function TextNodeImpl({
           data.textGenerationRetryAllowed === false;
         persistTextGenerationFailure(
           taskId,
+          owner,
           retainPersistedBlock && data.textGenerationError
             ? data.textGenerationError
             : task.errorMessage ?? "文字生成失败，可重试",
@@ -763,9 +914,12 @@ function TextNodeImpl({
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
-        setGenerationError(error instanceof Error ? error.message : "文字任务恢复失败");
+        if (ownsTextTask(owner)) {
+          setGenerationError(error instanceof Error ? error.message : "文字任务恢复失败");
+        }
       })
       .finally(() => {
+        releaseTextTask(owner);
         if (recoveryTaskRef.current === recovery) {
           recoveryTaskRef.current = null;
           setRecoveringTask(false);
@@ -780,41 +934,57 @@ function TextNodeImpl({
         recoveryTaskRef.current = null;
         setRecoveringTask(false);
       }
+      releaseTextTask(owner);
     };
   // A persisted in-flight task must still replace the previous Text content
   // after refresh. Manual edits clear both textGenerating and the task id, so
   // an already-finished task cannot overwrite later user work.
   }, [
+    accountId,
+    canvasId,
     data.content,
     data.textGenerating,
     data.textGenerationError,
     data.textGenerationErrorCode,
+    data.textGenerationInputKey,
     data.textGenerationRetryAllowed,
     data.textGenerationRetryBlockCode,
     data.textGenerationRetryBlockReason,
     data.textGenerationTaskId,
     generationInputKey,
-    selectedTextModel?.id,
+    id,
+    isFixture,
+    persistenceReady,
+    setNodes,
+    textModelSelection.status,
   ]);
 
   useEffect(() => {
     if (
+      !persistenceReady ||
       data.textGenerationTaskId ||
-      !selectedTextModel ||
-      isFixture ||
-      (!data.textGenerating && data.content)
+      textModelSelection.status !== "ready" ||
+      isFixture
     ) return;
     const controller = new AbortController();
+    const manualEditVersion = textManualEditVersionRef.current;
+    let owner: TextTaskOwner | undefined;
     void recoverPendingGenerationTask(
       "text",
       canvasId,
       id,
       controller.signal,
-      textGenerationRequestInput,
+      selectedTextModel ? textGenerationRequestInput : undefined,
       accountId,
     )
       .then(async (task) => {
-        if (!task) return;
+        if (
+          controller.signal.aborted ||
+          textManualEditVersionRef.current !== manualEditVersion ||
+          !task
+        ) return;
+        owner = claimTextTask(task.id, generationInputKey);
+        if (!ownsTextTask(owner)) return;
         setNodes((nodes) => nodes.map((node) => node.id === id
           ? {
               ...node,
@@ -822,7 +992,7 @@ function TextNodeImpl({
                 ...node.data,
                 textGenerationError: undefined,
                 textGenerationErrorCode: undefined,
-                textGenerationInputKey: generationInputKey,
+                textGenerationInputKey: recoverableGenerationInputKey,
                 textGenerationRetryAllowed: undefined,
                 textGenerationRetryBlockCode: undefined,
                 textGenerationRetryBlockReason: undefined,
@@ -832,17 +1002,19 @@ function TextNodeImpl({
             }
           : node));
         if (task.state === "success") {
-          applyGeneratedText(task);
+          applyGeneratedText(task, owner);
         } else if (["queued", "running", "retrying", "recovering"].includes(task.state)) {
-          await finishTextTask(task.id, controller.signal);
+          await finishTextTask(task.id, owner, controller.signal);
         } else if (task.state === "cancelled") {
           persistTextGenerationCancellation(
             task.id,
+            owner,
             task.errorMessage ?? "文字生成已取消",
           );
         } else {
           persistTextGenerationFailure(
             task.id,
+            owner,
             task.errorMessage ?? "文字生成失败，可重试",
             task.errorCode,
             task.retryAllowed === true,
@@ -853,9 +1025,20 @@ function TextNodeImpl({
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
-        setGenerationError(error instanceof Error ? error.message : "文字任务恢复失败");
+        if (
+          textManualEditVersionRef.current === manualEditVersion &&
+          (!owner || ownsTextTask(owner))
+        ) {
+          setGenerationError(error instanceof Error ? error.message : "文字任务恢复失败");
+        }
+      })
+      .finally(() => {
+        if (owner) releaseTextTask(owner);
       });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (owner) releaseTextTask(owner);
+    };
   }, [
     canvasId,
     data.content,
@@ -863,7 +1046,9 @@ function TextNodeImpl({
     data.textGenerationTaskId,
     generationInputKey,
     id,
+    persistenceReady,
     selectedTextModel?.id,
+    textModelSelection.status,
   ]);
 
   const generateText = async (): Promise<NodeGenerationOutcome> => {
@@ -880,15 +1065,51 @@ function TextNodeImpl({
     setGenerationError("");
     setServerInputProblems([]);
     let taskId: string | undefined;
+    let owner: TextTaskOwner | undefined;
+    const manualEditVersion = textManualEditVersionRef.current;
+    const requestedGenerationInputKey = generationInputKey;
     try {
       await flushCanvasSave();
+      if (
+        textManualEditVersionRef.current !== manualEditVersion ||
+        liveGenerationInputKeyRef.current !== requestedGenerationInputKey
+      ) {
+        return {
+          message: "生成输入已修改，已停止本次生成",
+          status: "failed",
+        };
+      }
       const { task: submitted } = await ensureGenerationTask(
         "text",
         textGenerationRequestInput,
         accountId,
+        () => {
+          if (
+            textManualEditVersionRef.current !== manualEditVersion ||
+            liveGenerationInputKeyRef.current !== requestedGenerationInputKey
+          ) {
+            throw new Error("生成输入已修改，已停止本次生成");
+          }
+        },
       );
       taskId = submitted.id;
-      activeTaskRef.current = taskId;
+      if (
+        textManualEditVersionRef.current !== manualEditVersion ||
+        liveGenerationInputKeyRef.current !== requestedGenerationInputKey
+      ) {
+        clearGenerationSubmissionIntent(
+          "text",
+          canvasId,
+          id,
+          submitted.id,
+          accountId,
+        );
+        return {
+          message: "生成输入已修改，旧任务结果不会覆盖当前内容",
+          status: "failed",
+        };
+      }
+      owner = claimTextTask(taskId, requestedGenerationInputKey);
       checkpoint();
       setNodes((nodes) => nodes.map((node) => node.id === id
         ? {
@@ -906,7 +1127,7 @@ function TextNodeImpl({
             },
           }
         : node));
-      await finishTextTask(submitted.id);
+      await finishTextTask(submitted.id, owner);
       if (pollingPausedTaskIdRef.current === submitted.id) {
         return { message: POLLING_PAUSED_MESSAGE, status: "failed" };
       }
@@ -932,9 +1153,10 @@ function TextNodeImpl({
         ? error.message
         : generationMessageFallback("text");
       const friendly = friendlyGenerationMessage(message, "text");
-      if (taskId) {
+      if (taskId && owner && ownsTextTask(owner)) {
         persistTextGenerationFailure(
           taskId,
+          owner,
           friendly,
           error instanceof GenerationRequestError
             ? error.code
@@ -947,12 +1169,12 @@ function TextNodeImpl({
             ? error.message
             : "任务状态暂时无法确认，不能一键重试，请稍后刷新查看",
         );
-      } else {
+      } else if (textManualEditVersionRef.current === manualEditVersion) {
         setGenerationError(friendly);
       }
       return { message: friendly, status: "failed" };
     } finally {
-      if (taskId && activeTaskRef.current === taskId) activeTaskRef.current = null;
+      if (owner) releaseTextTask(owner);
       setSubmitting(false);
     }
   };
@@ -1003,16 +1225,34 @@ function TextNodeImpl({
     if (
       !taskId ||
       !retryableTask ||
+      isFixture ||
+      !retryGenerationEnabled ||
       submitting ||
       data.textGenerating ||
       !selectedTextModel ||
       selectedTextModel.generationAvailable === false
     ) return;
+    const requestedGenerationInputKey = generationInputKey;
+    const owner = claimTextTask(taskId, requestedGenerationInputKey);
     setSubmitting(true);
-    setGenerationError("");
-    activeTaskRef.current = taskId;
+    let retryAccepted = false;
     try {
-      await retryGenerationTask(taskId);
+      await retryGenerationTask(taskId, async () => {
+        const revision = await waitForCanvasRevision();
+        if (!ownsTextTask(owner)) {
+          throw new Error("正文已手工修改，已停止本次重试");
+        }
+        if (liveGenerationInputKeyRef.current !== requestedGenerationInputKey) {
+          throw new Error("生成输入已修改，已停止本次重试");
+        }
+        return revision;
+      });
+      if (
+        !ownsTextTask(owner) ||
+        liveGenerationInputKeyRef.current !== requestedGenerationInputKey
+      ) return;
+      retryAccepted = true;
+      setGenerationError("");
       setNodes((nodes) => nodes.map((node) => node.id === id
         ? {
             ...node,
@@ -1028,24 +1268,34 @@ function TextNodeImpl({
             },
           }
         : node));
-      await finishTextTask(taskId);
+      await finishTextTask(taskId, owner);
     } catch (error) {
-      persistTextGenerationFailure(
-        taskId,
-        error instanceof Error ? error.message : "文字生成重试失败",
-        error instanceof GenerationRequestError
-          ? error.code
-          : "TASK_STATUS_UNKNOWN",
-        false,
-        error instanceof GenerationRequestError
-          ? error.code
-          : "TASK_STATUS_UNKNOWN",
-        error instanceof GenerationRequestError
-          ? error.message
-          : "任务状态暂时无法确认，不能一键重试，请稍后刷新查看",
-      );
+      if (!ownsTextTask(owner)) return;
+      if (!retryAccepted && !(error instanceof GenerationRequestError)) {
+        setGenerationError(
+          error instanceof Error ? error.message : "画布尚未安全保存，不能重试生成",
+        );
+        return;
+      }
+      if (ownsTextTask(owner)) {
+        persistTextGenerationFailure(
+          taskId,
+          owner,
+          error instanceof Error ? error.message : "文字生成重试失败",
+          error instanceof GenerationRequestError
+            ? error.code
+            : "TASK_STATUS_UNKNOWN",
+          false,
+          error instanceof GenerationRequestError
+            ? error.code
+            : "TASK_STATUS_UNKNOWN",
+          error instanceof GenerationRequestError
+            ? error.message
+            : "任务状态暂时无法确认，不能一键重试，请稍后刷新查看",
+        );
+      }
     } finally {
-      if (activeTaskRef.current === taskId) activeTaskRef.current = null;
+      releaseTextTask(owner);
       setSubmitting(false);
     }
   };
@@ -1056,13 +1306,15 @@ function TextNodeImpl({
     pollingPausedTaskIdRef.current = undefined;
     setPollingPausedTaskId(undefined);
     setGenerationError("");
+    const owner = claimTextTask(taskId, generationInputKey);
     try {
-      await finishTextTask(taskId);
+      await finishTextTask(taskId, owner);
       const finished = getNodes().find((node) => node.id === id);
       if (finished?.data.textGenerationError) {
         setGenerationError(finished.data.textGenerationError);
       }
     } catch (error) {
+      if (!ownsTextTask(owner)) return;
       if (isTransientPollingError(error)) {
         pollingPausedTaskIdRef.current = taskId;
         setPollingPausedTaskId(taskId);
@@ -1072,6 +1324,8 @@ function TextNodeImpl({
       setGenerationError(
         error instanceof Error ? error.message : "文字生成失败，请稍后再试",
       );
+    } finally {
+      releaseTextTask(owner);
     }
   };
 
@@ -1120,6 +1374,8 @@ function TextNodeImpl({
           <NodeParameterControl
             keys={textInputParameterKeys}
             onChange={(key, value) => {
+              if (Object.is(textParameters[key], value)) return;
+              revokeTextTaskForGenerationInputChange();
               setNodes((nodes) => nodes.map((node) => node.id === id
                 ? {
                     ...node,
@@ -1149,6 +1405,7 @@ function TextNodeImpl({
           disabled={Boolean(data.textGenerating || submitting)}
           inputs={inputPreflight.inputs}
           onMove={(edgeId, direction) => {
+            revokeTextTaskForGenerationInputChange();
             checkpoint();
             setNodes((nodes) => nodes.map((node) => node.id === id
               ? { ...node, data: clearFailedTextGeneration(node.data) }
@@ -1156,6 +1413,7 @@ function TextNodeImpl({
             setEdges((edges) => moveNodeInputEdge(edges, id, edgeId, direction));
           }}
           onRemove={(edgeId) => {
+            revokeTextTaskForGenerationInputChange();
             checkpoint();
             setNodes((nodes) => nodes.map((node) => node.id === id
               ? { ...node, data: clearFailedTextGeneration(node.data) }
@@ -1163,6 +1421,7 @@ function TextNodeImpl({
             setEdges((edges) => edges.filter((edge) => edge.id !== edgeId));
           }}
           onRoleChange={(edgeId, role) => {
+            revokeTextTaskForGenerationInputChange();
             checkpoint();
             setNodes((nodes) => nodes.map((node) => node.id === id
               ? { ...node, data: clearFailedTextGeneration(node.data) }
@@ -1243,6 +1502,7 @@ function TextNodeImpl({
                 setModelSwitchProblem(`模型未切换：${blocked.message}`);
                 return;
               }
+              revokeTextTaskForGenerationInputChange();
               setModelSwitchProblem("");
               checkpoint();
               setNodes((nodes) =>
@@ -1268,6 +1528,8 @@ function TextNodeImpl({
             <NodeParameterControl
               keys={textMainParameterKeys}
               onChange={(key, value) => {
+                if (Object.is(textParameters[key], value)) return;
+                revokeTextTaskForGenerationInputChange();
                 setNodes((nodes) => nodes.map((node) => node.id === id
                   ? {
                       ...node,
@@ -1294,6 +1556,8 @@ function TextNodeImpl({
             <NodeParameterControl
               keys={textCountParameterKeys}
               onChange={(key, value) => {
+                if (Object.is(textParameters[key], value)) return;
+                revokeTextTaskForGenerationInputChange();
                 setNodes((nodes) => nodes.map((node) => node.id === id
                   ? {
                       ...node,
@@ -1330,7 +1594,9 @@ function TextNodeImpl({
               recoveringTask ||
               data.textGenerating ||
               isFixture ||
-              canvasRevision === undefined ||
+              (retryableTask
+                ? !retryGenerationEnabled
+                : canvasRevision === undefined) ||
               !selectedTextModel ||
               selectedTextModel.generationAvailable === false ||
               blockedFailedTask ||
@@ -1500,6 +1766,7 @@ function TextNodeImpl({
               event.currentTarget.dataset.committedRichHtml = nextValue.html;
             }}
             onCompositionStart={() => {
+              revokeTextTaskForManualBodyEdit();
               bodyControl.compositionStart();
             }}
             onInput={(event) => {

@@ -40,10 +40,10 @@
     },
     "scripts/check-restart-persistence.mjs": {
       "mode": "behavior-test",
-      "scriptSha256": "92dd816cba5e12a474d8671325f3c98133bdb038e3b42c9cbbc9acf3a6ccaabb",
+      "scriptSha256": "2df90da6eede2cda679137d8f14c3fd6b337b23f260404b259a8154940251fc1",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-restart-persistence.mjs",
-      "targetSha256": "c2bee0d541a204bb92f862e9fd77c07f3f37067665b5ed881f496155d5eef472"
+      "targetSha256": "1806545f065f34fb29e5fbd40524e9b8c926f3b878abed5599d2904f2eb0cd04"
     },
     "scripts/deploy.mjs": {
       "mode": "frozen",

@@ -71,6 +71,8 @@ export class GenerationRequestError extends Error {
   }
 }
 
+const GENERATION_TASK_STATUS_READ_TIMEOUT_MS = 10_000;
+
 function safeProblems(value: unknown): NodeInputProblem[] {
   if (!Array.isArray(value)) return [];
   return value.filter((problem): problem is NodeInputProblem =>
@@ -101,6 +103,55 @@ async function readJson<T>(response: Response): Promise<T> {
   return body;
 }
 
+async function readTaskStatusJson<T>(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  signal?: AbortSignal,
+  allowNotFound = false,
+): Promise<T | undefined> {
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+  const controller = new AbortController();
+  let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+  const callerAbort = new Promise<never>((_resolve, reject) => {
+    if (!signal) return;
+    onAbort = () => {
+      controller.abort(signal.reason);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timeout = globalThis.setTimeout(() => {
+      reject(new GenerationRequestError(
+        "任务状态查询超时",
+        0,
+        "TASK_STATUS_TIMEOUT",
+      ));
+      controller.abort("generation-task-status-timeout");
+    }, GENERATION_TASK_STATUS_READ_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([
+      (async () => {
+        const response = await fetch(input, {
+          ...init,
+          signal: controller.signal,
+        });
+        if (allowNotFound && response.status === 404) return undefined;
+        return readJson<T>(response);
+      })(),
+      callerAbort,
+      deadline,
+    ]);
+  } finally {
+    if (timeout !== undefined) globalThis.clearTimeout(timeout);
+    if (signal && onAbort) signal.removeEventListener("abort", onAbort);
+  }
+}
+
 export async function getGenerationCapabilityStatus(
   signal?: AbortSignal,
 ): Promise<GenerationCapabilityStatus> {
@@ -116,12 +167,11 @@ export async function getGenerationTask(
   taskId: string,
   signal?: AbortSignal,
 ): Promise<GenerationTaskSummary> {
-  return readJson(
-    await fetch(`/api/generation-tasks/${encodeURIComponent(taskId)}`, {
-      cache: "no-store",
-      signal,
-    }),
-  );
+  return await readTaskStatusJson<GenerationTaskSummary>(
+    `/api/generation-tasks/${encodeURIComponent(taskId)}`,
+    { cache: "no-store" },
+    signal,
+  ) as GenerationTaskSummary;
 }
 
 export async function cancelGenerationTask(
@@ -136,10 +186,14 @@ export async function cancelGenerationTask(
   );
 }
 
+export type GenerationRetryGate = () => Promise<number>;
+
 export async function retryGenerationTask(
   taskId: string,
+  waitForCanvasRevision: GenerationRetryGate,
   signal?: AbortSignal,
 ): Promise<GenerationTaskSummary> {
+  await waitForCanvasRevision();
   return readJson(
     await fetch(
       `/api/generation-tasks/${encodeURIComponent(taskId)}/retry`,
@@ -152,16 +206,12 @@ export async function listGenerationTasks(
   canvasId: string,
   signal?: AbortSignal,
 ): Promise<GenerationTaskSummary[]> {
-  const body = await readJson<{ tasks: GenerationTaskSummary[] }>(
-    await fetch(
-      `/api/generation-tasks?canvasId=${encodeURIComponent(canvasId)}`,
-      {
-        cache: "no-store",
-        signal,
-      },
-    ),
+  const body = await readTaskStatusJson<{ tasks: GenerationTaskSummary[] }>(
+    `/api/generation-tasks?canvasId=${encodeURIComponent(canvasId)}`,
+    { cache: "no-store" },
+    signal,
   );
-  return body.tasks;
+  return body?.tasks ?? [];
 }
 
 type GenerationSubmissionIntent = {
@@ -340,13 +390,13 @@ export async function getGenerationTaskByIdempotency(
   idempotencyKey: string,
   signal?: AbortSignal,
 ): Promise<GenerationTaskSummary | undefined> {
-  const response = await fetch(
+  return readTaskStatusJson<GenerationTaskSummary>(
     `/api/generation-tasks/by-idempotency?canvasId=${encodeURIComponent(canvasId)}` +
       `&idempotencyKey=${encodeURIComponent(idempotencyKey)}`,
-    { cache: "no-store", signal },
+    { cache: "no-store" },
+    signal,
+    true,
   );
-  if (response.status === 404) return undefined;
-  return readJson(response);
 }
 
 export async function recoverPendingGenerationTask(
@@ -403,6 +453,7 @@ export async function ensureGenerationTask(
   kind: GenerationTaskKind,
   input: RecoverableGenerationInput,
   accountId = "",
+  assertCurrentInput?: () => void,
 ): Promise<EnsuredGenerationTask> {
   const intent = prepareGenerationSubmission(accountId, kind, input);
   const prepared = { ...input, idempotencyKey: intent.idempotencyKey };
@@ -452,6 +503,9 @@ export async function ensureGenerationTask(
     );
   }
 
+  // No await is allowed between this last caller-owned semantic fence and the
+  // paid POST invocation. postGeneration starts fetch synchronously.
+  assertCurrentInput?.();
   try {
     const task = await postGeneration(kind, prepared);
     rememberGenerationTask(accountId, intent, task);

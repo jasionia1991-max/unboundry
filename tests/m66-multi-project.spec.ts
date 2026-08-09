@@ -11,6 +11,11 @@ const onePixelPng = Buffer.from(
   "base64",
 );
 
+type CanvasBaseline = {
+  loadToken: string;
+  revision: number;
+};
+
 async function clearProjects(request: APIRequestContext) {
   const response = await request.get("/api/projects");
   if (!response.ok()) return;
@@ -71,11 +76,16 @@ test.describe("multi-project API", () => {
     const beforeSave = renamedProject.updatedAt;
 
     await new Promise((resolve) => setTimeout(resolve, 5));
+    const baselineResponse = await request.get(`/api/canvas/${project.id}`);
+    expect(baselineResponse.ok()).toBeTruthy();
+    const baseline = await baselineResponse.json() as CanvasBaseline;
     const saved = await request.put(`/api/canvas/${project.id}`, {
       data: {
         edges: [],
         nodes: [],
-        revision: 1,
+        observedLoadToken: baseline.loadToken,
+        observedRevision: baseline.revision,
+        revision: baseline.revision,
         viewport: { x: 0, y: 0, zoom: 1 },
       },
     });
@@ -138,6 +148,9 @@ test.describe("multi-project API", () => {
     expect(created.status()).toBe(201);
     const project = (await created.json()) as { id: string };
 
+    const baselineResponse = await request.get(`/api/canvas/${project.id}`);
+    expect(baselineResponse.ok()).toBeTruthy();
+    const baseline = await baselineResponse.json() as CanvasBaseline;
     const saved = await request.put(`/api/canvas/${project.id}`, {
       data: {
         edges: [],
@@ -149,7 +162,9 @@ test.describe("multi-project API", () => {
             type: "image",
           },
         ],
-        revision: 1,
+        observedLoadToken: baseline.loadToken,
+        observedRevision: baseline.revision,
+        revision: baseline.revision,
         viewport: { x: 0, y: 0, zoom: 1 },
       },
     });
@@ -182,6 +197,9 @@ test.describe("multi-project API", () => {
     const source = (await created.json()) as { id: string; title: string };
     expect(source.title).toBe("源项目");
 
+    const baselineResponse = await request.get(`/api/canvas/${source.id}`);
+    expect(baselineResponse.ok()).toBeTruthy();
+    const baseline = await baselineResponse.json() as CanvasBaseline;
     const saved = await request.put(`/api/canvas/${source.id}`, {
       data: {
         edges: [],
@@ -193,7 +211,9 @@ test.describe("multi-project API", () => {
             type: "text",
           },
         ],
-        revision: 1,
+        observedLoadToken: baseline.loadToken,
+        observedRevision: baseline.revision,
+        revision: baseline.revision,
         viewport: { x: 0, y: 0, zoom: 1 },
       },
     });

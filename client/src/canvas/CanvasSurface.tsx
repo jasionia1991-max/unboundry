@@ -1,5 +1,7 @@
 import {
   addEdge,
+  applyEdgeChanges,
+  applyNodeChanges,
   Background,
   BackgroundVariant,
   BaseEdge,
@@ -16,6 +18,7 @@ import {
   useStoreApi,
   type Connection,
   type Edge,
+  type EdgeChange,
   type EdgeProps,
   type NodeChange,
   type NodePositionChange,
@@ -26,10 +29,13 @@ import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type Dispatch,
   type MouseEvent as ReactMouseEvent,
+  type SetStateAction,
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import { AudioNode } from "./AudioNode";
@@ -48,7 +54,7 @@ import { PlaylistNode } from "./PlaylistNode";
 import { ProbeNode, type ProbeNodeType } from "./ProbeNode";
 import { hasInteractionProbeNodes } from "./probeFixtures";
 import { StoryboardTableNode } from "./StoryboardTableNode";
-import { TextNode } from "./TextNode";
+import { plainTextHtml, TextNode } from "./TextNode";
 import { VideoNode } from "./VideoNode";
 import type { CuttableEdge } from "./canvasTypes";
 import { fitVisualMediaSize, NODE_DEFAULT_SIZES } from "./mediaGeometry";
@@ -209,6 +215,465 @@ export const CANVAS_LIBRARY_ASSET_MIME =
   "application/x-unboundry-library-asset";
 const emptyEdges: CuttableEdge[] = [];
 const PERSIST_DEBOUNCE_MS = 500;
+const PERSIST_LOAD_TIMEOUT_MS = 3_000;
+const PERSIST_RETRY_MAX_MS = 30_000;
+const PERSIST_SAVE_TIMEOUT_MS = 6_000;
+const PERSIST_LOAD_TOKEN_MAX_LENGTH = 256;
+const PERSIST_PAGEHIDE_MAX_BYTES = 60 * 1024;
+const PERSIST_SAVE_JOURNAL_MAX_BYTES = 5_000_000;
+const PERSIST_SAVE_SESSION_STORAGE_PREFIX =
+  "unboundry:canvas-save-session:v2:";
+const PERSIST_SAVE_SESSION_SCOPE_INDEX_KEY =
+  "unboundry:canvas-save-session:v2:scopes";
+export type CanvasLoadState = "failed" | "loading" | "missing" | "ready";
+type LoadedCanvasDocument = {
+  currentWriterSequence: number;
+  currentWriterSessionId: string | null;
+  edges: CuttableEdge[];
+  graphRevision?: number;
+  loadToken: string;
+  nodes: ProbeNodeType[];
+  revision: number;
+  saveEpoch: string;
+  sessionHighWaterAttemptId: string | null;
+  sessionHighWaterSequence: number;
+  viewport: Viewport;
+};
+type CanvasSaveFence = Pick<
+  LoadedCanvasDocument,
+  | "currentWriterSequence"
+  | "currentWriterSessionId"
+  | "saveEpoch"
+  | "sessionHighWaterAttemptId"
+  | "sessionHighWaterSequence"
+>;
+type CanvasPersistenceSnapshot = {
+  edges: CuttableEdge[];
+  fingerprint: string;
+  graphFingerprint: string;
+  nodes: ProbeNodeType[];
+  viewport: Viewport;
+};
+type CanvasPendingSaveAttempt = {
+  attemptId: string;
+  document: CanvasPersistenceSnapshot;
+  payload: string;
+  rejectedByServer?: boolean;
+  saveSequence: number;
+};
+type CanvasPendingPagehide = {
+  attemptId: string;
+  payload: string;
+  saveSequence: number;
+  serverEpoch: string;
+};
+type CanvasSaveSession = {
+  confirmedSequence: number;
+  pendingPagehide?: CanvasPendingPagehide;
+  saveSequence: number;
+  saveSessionId: string;
+  serverEpoch?: string;
+  storageRevision: number;
+};
+
+class CanvasSaveSessionStorageError extends Error {
+  constructor(cause: unknown) {
+    super("Canvas save session storage is unavailable", { cause });
+    this.name = "CanvasSaveSessionStorageError";
+  }
+}
+
+function isCanvasSaveAttemptId(value: unknown): value is string {
+  return typeof value === "string" && /^[a-z0-9-]{8,80}$/i.test(value);
+}
+
+function isCanvasSaveEpoch(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= 128 &&
+    value.trim() === value
+  );
+}
+
+function isCanvasSaveSession(value: unknown): value is CanvasSaveSession {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const session = value as Partial<CanvasSaveSession>;
+  const baseValid = (
+    typeof session.saveSessionId === "string" &&
+    /^[a-z0-9-]{8,80}$/i.test(session.saveSessionId) &&
+    Number.isSafeInteger(session.confirmedSequence) &&
+    Number(session.confirmedSequence) >= 0 &&
+    Number.isSafeInteger(session.saveSequence) &&
+    Number(session.saveSequence) >= Number(session.confirmedSequence) &&
+    Number.isSafeInteger(session.storageRevision) &&
+    Number(session.storageRevision) >= 0 &&
+    (session.serverEpoch === undefined || isCanvasSaveEpoch(session.serverEpoch)) &&
+    (session.pendingPagehide === undefined || (
+      Boolean(session.pendingPagehide) &&
+      typeof session.pendingPagehide === "object" &&
+      isCanvasSaveAttemptId(session.pendingPagehide.attemptId) &&
+      typeof session.pendingPagehide.payload === "string" &&
+      new Blob([session.pendingPagehide.payload]).size <=
+        PERSIST_SAVE_JOURNAL_MAX_BYTES &&
+      Number.isSafeInteger(session.pendingPagehide.saveSequence) &&
+      session.pendingPagehide.saveSequence > Number(session.confirmedSequence) &&
+      session.pendingPagehide.saveSequence <= Number(session.saveSequence) &&
+      isCanvasSaveEpoch(session.pendingPagehide.serverEpoch)
+    ))
+  );
+  if (!baseValid) return false;
+  return session.pendingPagehide
+    ? session.pendingPagehide.saveSequence === session.saveSequence &&
+        Number(session.pendingPagehide.saveSequence) >
+          Number(session.confirmedSequence) &&
+        session.pendingPagehide.serverEpoch === session.serverEpoch
+    : session.saveSequence === session.confirmedSequence;
+}
+
+function canvasSaveSessionStorageKey(scopeId: string) {
+  return `${PERSIST_SAVE_SESSION_STORAGE_PREFIX}${scopeId}`;
+}
+
+function loadCanvasSaveSession(scopeId: string): CanvasSaveSession {
+  let stored: string | null;
+  let storedScopeIndex: string | null;
+  try {
+    stored = window.sessionStorage.getItem(
+      canvasSaveSessionStorageKey(scopeId),
+    );
+    storedScopeIndex = window.sessionStorage.getItem(
+      PERSIST_SAVE_SESSION_SCOPE_INDEX_KEY,
+    );
+  } catch (error) {
+    throw new CanvasSaveSessionStorageError(error);
+  }
+  let knownScopes: unknown = [];
+  if (storedScopeIndex !== null) {
+    try {
+      knownScopes = JSON.parse(storedScopeIndex);
+    } catch (error) {
+      throw new CanvasSaveSessionStorageError(error);
+    }
+    if (
+      !Array.isArray(knownScopes) ||
+      !knownScopes.every((scope) => typeof scope === "string")
+    ) {
+      throw new CanvasSaveSessionStorageError(
+        new Error("Canvas save session scope index is invalid"),
+      );
+    }
+  }
+  if (stored !== null) {
+    try {
+      const parsed: unknown = JSON.parse(stored);
+      if (isCanvasSaveSession(parsed)) return parsed;
+    } catch (error) {
+      throw new CanvasSaveSessionStorageError(error);
+    }
+    throw new CanvasSaveSessionStorageError(
+      new Error("Canvas save session is invalid"),
+    );
+  }
+  if ((knownScopes as string[]).includes(scopeId)) {
+    throw new CanvasSaveSessionStorageError(
+      new Error("Canvas save session is missing for a known scope"),
+    );
+  }
+  return {
+    confirmedSequence: 0,
+    saveSequence: 0,
+    saveSessionId: crypto.randomUUID(),
+    storageRevision: 0,
+  };
+}
+
+function storeCanvasSaveSession(
+  scopeId: string,
+  session: CanvasSaveSession,
+  resolvedPendingAttemptId?: string,
+): CanvasSaveSession {
+  try {
+    const storageKey = canvasSaveSessionStorageKey(scopeId);
+    const rawExisting = window.sessionStorage.getItem(storageKey);
+    let existing: CanvasSaveSession | undefined;
+    if (rawExisting !== null) {
+      const parsed: unknown = JSON.parse(rawExisting);
+      if (!isCanvasSaveSession(parsed)) {
+        throw new Error("Canvas save session is invalid");
+      }
+      existing = parsed;
+      if (existing.saveSessionId !== session.saveSessionId) {
+        throw new Error("Canvas save session identity changed");
+      }
+      if (existing.storageRevision !== session.storageRevision) {
+        throw new Error("Canvas save session changed outside this page");
+      }
+    }
+    const rawScopes = window.sessionStorage.getItem(
+      PERSIST_SAVE_SESSION_SCOPE_INDEX_KEY,
+    );
+    const scopes: unknown = rawScopes !== null ? JSON.parse(rawScopes) : [];
+    if (
+      !Array.isArray(scopes) ||
+      !scopes.every((scope) => typeof scope === "string")
+    ) {
+      throw new Error("Canvas save session scope index is invalid");
+    }
+    if (!existing) {
+      if (session.storageRevision !== 0 || scopes.includes(scopeId)) {
+        throw new Error("Canvas save session is missing for a known scope");
+      }
+    }
+    let pendingPagehide = session.pendingPagehide;
+    if (
+      existing?.pendingPagehide &&
+      resolvedPendingAttemptId === existing.pendingPagehide.attemptId
+    ) {
+      if (session.confirmedSequence < existing.pendingPagehide.saveSequence) {
+        throw new Error("Canvas pending save is not confirmed");
+      }
+      pendingPagehide = undefined;
+    }
+    if (
+      existing?.pendingPagehide &&
+      pendingPagehide === undefined &&
+      resolvedPendingAttemptId !== existing.pendingPagehide.attemptId
+    ) {
+      throw new Error("Canvas pending save journal changed outside this page");
+    }
+    const merged: CanvasSaveSession = {
+      confirmedSequence: session.confirmedSequence,
+      ...(pendingPagehide ? { pendingPagehide } : {}),
+      saveSequence: session.saveSequence,
+      saveSessionId: session.saveSessionId,
+      ...(session.serverEpoch ? { serverEpoch: session.serverEpoch } : {}),
+      storageRevision: session.storageRevision + 1,
+    };
+    if (!isCanvasSaveSession(merged)) {
+      throw new Error("Canvas save session merge is invalid");
+    }
+    window.sessionStorage.setItem(storageKey, JSON.stringify(merged));
+    if (!scopes.includes(scopeId)) {
+      window.sessionStorage.setItem(
+        PERSIST_SAVE_SESSION_SCOPE_INDEX_KEY,
+        JSON.stringify([...scopes, scopeId]),
+      );
+    }
+    return merged;
+  } catch (error) {
+    throw new CanvasSaveSessionStorageError(error);
+  }
+}
+
+function settleStoredCanvasSaveSession(
+  scopeId: string,
+  saveSessionId: string,
+  saveSequence: number,
+  attemptId: string,
+  payload: string,
+  serverEpoch: string,
+) {
+  try {
+    const storageKey = canvasSaveSessionStorageKey(scopeId);
+    const rawExisting = window.sessionStorage.getItem(storageKey);
+    if (rawExisting === null) return undefined;
+    const parsed: unknown = JSON.parse(rawExisting);
+    if (!isCanvasSaveSession(parsed)) {
+      throw new Error("Canvas save session is invalid");
+    }
+    const existing = parsed;
+    if (existing.saveSessionId !== saveSessionId) return undefined;
+    if (
+      existing.pendingPagehide?.attemptId !== attemptId ||
+      existing.pendingPagehide.saveSequence !== saveSequence ||
+      existing.saveSequence !== saveSequence ||
+      existing.pendingPagehide.payload !== payload ||
+      existing.pendingPagehide.serverEpoch !== serverEpoch
+    ) {
+      return undefined;
+    }
+    const settled: CanvasSaveSession = {
+      confirmedSequence: Math.max(existing.confirmedSequence, saveSequence),
+      saveSequence: Math.max(existing.saveSequence, saveSequence),
+      saveSessionId: existing.saveSessionId,
+      ...(existing.serverEpoch ? { serverEpoch: existing.serverEpoch } : {}),
+      storageRevision: existing.storageRevision + 1,
+    };
+    if (!isCanvasSaveSession(settled)) {
+      throw new Error("Canvas save session settlement is invalid");
+    }
+    window.sessionStorage.setItem(storageKey, JSON.stringify(settled));
+    return { previousStorageRevision: existing.storageRevision, settled };
+  } catch (error) {
+    throw new CanvasSaveSessionStorageError(error);
+  }
+}
+
+function isCanvasLoadToken(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= PERSIST_LOAD_TOKEN_MAX_LENGTH &&
+    value.trim() === value
+  );
+}
+
+type CanvasSaveSuccess = {
+  graphRevision: number;
+  loadToken: string;
+  revision: number;
+};
+
+type CanvasSaveRequestFence = {
+  observedLoadToken?: string;
+  revision: number;
+};
+
+function canvasSaveRequestFence(payload: string): CanvasSaveRequestFence | undefined {
+  try {
+    const value: unknown = JSON.parse(payload);
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return undefined;
+    }
+    const request = value as {
+      observedLoadToken?: unknown;
+      observedRevision?: unknown;
+      revision?: unknown;
+    };
+    if (!Number.isSafeInteger(request.revision) || Number(request.revision) < 0) {
+      return undefined;
+    }
+    if (request.observedLoadToken === undefined) {
+      return { revision: Number(request.revision) };
+    }
+    if (
+      !isCanvasLoadToken(request.observedLoadToken) ||
+      request.observedRevision !== request.revision
+    ) {
+      return undefined;
+    }
+    return {
+      observedLoadToken: request.observedLoadToken,
+      revision: Number(request.revision),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function isCanvasSaveSuccess(
+  value: unknown,
+  requestFence: CanvasSaveRequestFence | undefined,
+): value is CanvasSaveSuccess {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const result = value as Partial<CanvasSaveSuccess>;
+  return (
+    Boolean(requestFence) &&
+    Number.isSafeInteger(result.revision) &&
+    Number(result.revision) > Number(requestFence?.revision) &&
+    Number.isSafeInteger(result.graphRevision) &&
+    Number(result.graphRevision) >= 0 &&
+    Number(result.graphRevision) <= Number(result.revision) &&
+    isCanvasLoadToken(result.loadToken) &&
+    (
+      requestFence?.observedLoadToken === undefined ||
+      result.loadToken !== requestFence.observedLoadToken
+    )
+  );
+}
+
+function isCanvasSaveFence(value: unknown): value is CanvasSaveFence {
+  if (!value || typeof value !== "object") return false;
+  const document = value as Partial<CanvasSaveFence>;
+  return (
+    isCanvasSaveEpoch(document.saveEpoch) &&
+    Number.isSafeInteger(document.sessionHighWaterSequence) &&
+    Number(document.sessionHighWaterSequence) >= 0 &&
+    (document.sessionHighWaterAttemptId === null ||
+      isCanvasSaveAttemptId(document.sessionHighWaterAttemptId)) &&
+    Number.isSafeInteger(document.currentWriterSequence) &&
+    Number(document.currentWriterSequence) >= 0 &&
+    (document.currentWriterSessionId === null ||
+      isCanvasSaveAttemptId(document.currentWriterSessionId))
+  );
+}
+
+function isLoadedCanvasDocument(value: unknown): value is LoadedCanvasDocument {
+  if (!value || typeof value !== "object") return false;
+  const document = value as Partial<LoadedCanvasDocument>;
+  if (!isCanvasSaveFence(value)) return false;
+  return (
+    Array.isArray(document.edges) &&
+    Array.isArray(document.nodes) &&
+    isCanvasLoadToken(document.loadToken) &&
+    Number.isSafeInteger(document.revision) &&
+    Number(document.revision) >= 0 &&
+    (document.graphRevision === undefined ||
+      (Number.isSafeInteger(document.graphRevision) &&
+        Number(document.graphRevision) >= 0 &&
+        Number(document.graphRevision) <= Number(document.revision))) &&
+    Boolean(document.viewport) &&
+    [
+      document.viewport?.x,
+      document.viewport?.y,
+      document.viewport?.zoom,
+    ].every(
+      (coordinate) =>
+        typeof coordinate === "number" && Number.isFinite(coordinate),
+    ) &&
+    Number(document.viewport?.zoom) > 0
+  );
+}
+
+function pendingPagehideSnapshot(
+  pending: CanvasPendingPagehide,
+  saveSessionId: string,
+): CanvasPersistenceSnapshot | undefined {
+  try {
+    const parsed: unknown = JSON.parse(pending.payload);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return undefined;
+    }
+    const document = parsed as {
+      edges?: unknown;
+      nodes?: unknown;
+      saveAttemptId?: unknown;
+      saveSequence?: unknown;
+      saveSessionId?: unknown;
+      viewport?: { x?: unknown; y?: unknown; zoom?: unknown };
+    };
+    if (
+      !Array.isArray(document.edges) ||
+      !Array.isArray(document.nodes) ||
+      document.saveAttemptId !== pending.attemptId ||
+      document.saveSequence !== pending.saveSequence ||
+      document.saveSessionId !== saveSessionId ||
+      !document.viewport ||
+      ![document.viewport.x, document.viewport.y, document.viewport.zoom]
+        .every((coordinate) =>
+          typeof coordinate === "number" && Number.isFinite(coordinate)
+        ) ||
+      Number(document.viewport.zoom) <= 0
+    ) {
+      return undefined;
+    }
+    const snapshot = {
+      edges: document.edges as CuttableEdge[],
+      nodes: normalizePersistedMediaNodes(document.nodes) as ProbeNodeType[],
+      viewport: document.viewport as Viewport,
+    };
+    return {
+      ...snapshot,
+      fingerprint: canvasDocumentFingerprint(snapshot),
+      graphFingerprint: canvasGraphFingerprint(snapshot),
+    };
+  } catch {
+    return undefined;
+  }
+}
 const nodeSize = (node: ProbeNodeType) => ({
   height:
     node.measured?.height ??
@@ -1738,11 +2203,11 @@ function broadcastCanvasSaved(
   accountId: string,
   canvasId: string,
   revision: number,
-  sessionId: string,
+  instanceId: string,
 ) {
   const channel = canvasSyncChannel(accountId, canvasId);
   if (!channel) return;
-  channel.postMessage({ canvasId, revision, sessionId, type: "saved" });
+  channel.postMessage({ canvasId, instanceId, revision, type: "saved" });
   channel.close();
 }
 
@@ -1756,6 +2221,8 @@ export function CanvasSurface({
   onAgentReferencePick,
   onAddMenuOpenChange,
   onGraphContentChange,
+  onGenerationRetryGateChange,
+  onLoadStateChange,
   onOpenAssets,
   onProjectMissing,
   onReady,
@@ -1782,6 +2249,10 @@ export function CanvasSurface({
   onAgentReferencePick?: (reference: AgentCanvasReference) => void;
   onAddMenuOpenChange?: (open: boolean) => void;
   onGraphContentChange: (hasContent: boolean) => void;
+  onGenerationRetryGateChange?: (
+    gate: (() => Promise<number>) | undefined,
+  ) => void;
+  onLoadStateChange?: (state: CanvasLoadState) => void;
   onOpenAssets?: () => void;
   onProjectMissing?: () => void;
   onReady: (fitView: () => void) => void;
@@ -1798,6 +2269,7 @@ export function CanvasSurface({
 }) {
   const workflowFixture = fixtureId === "workflow.text-to-video.created";
   const persistenceId = projectId ?? fixtureId ?? "default";
+  const persistenceScopeId = JSON.stringify([accountId ?? "", persistenceId]);
   const imageModels = usePublishedModels("image");
   const videoModels = usePublishedModels("video");
   const imageModelsRef = useRef(imageModels);
@@ -1813,12 +2285,12 @@ export function CanvasSurface({
     fixtureId === "interaction.upload-media-sandbox-current";
   const interactive =
     hasInteractionProbeNodes(fixtureId) || workflowFixture || textVideoStarted;
-  const [nodes, setNodes, onNodesChange] = useNodesState<ProbeNodeType>(
+  const [nodes, setNodesState] = useNodesState<ProbeNodeType>(
     interactive && !workflowFixture && !persistenceFixture
       ? createProbeNodes(fixtureId)
       : emptyNodes,
   );
-  const [edges, setEdges, onEdgesChange] = useEdgesState<CuttableEdge>(
+  const [edges, setEdgesState] = useEdgesState<CuttableEdge>(
     workflowFixture || persistenceFixture
       ? emptyEdges
       : createProbeEdges(fixtureId),
@@ -1863,36 +2335,275 @@ export function CanvasSurface({
     },
     [],
   );
-  const [persistenceReady, setPersistenceReady] = useState(!persistenceFixture);
+  const persistenceLoadIdentity = useRef({ epoch: 0, scopeId: "" });
+  const [persistenceLoadState, setPersistenceLoadState] =
+    useState<CanvasLoadState>(persistenceFixture ? "loading" : "ready");
+  const [persistenceLoadAttempt, setPersistenceLoadAttempt] = useState(0);
+  const persistenceReady =
+    !persistenceFixture ||
+    (persistenceLoadState === "ready" &&
+      persistenceLoadIdentity.current.scopeId === persistenceScopeId);
+  const effectivePersistenceLoadState: CanvasLoadState = persistenceReady
+    ? "ready"
+    : persistenceLoadState === "ready"
+      ? "loading"
+      : persistenceLoadState;
+  const persistenceReadyRef = useRef(persistenceReady);
+  persistenceReadyRef.current = persistenceReady;
   const [confirmedPersistenceRevision, setConfirmedPersistenceRevision] =
     useState<number>();
   const [confirmedGraphRevision, setConfirmedGraphRevision] =
     useState<number>();
   const persistenceRevision = useRef(0);
   const persistenceGraphRevision = useRef(0);
+  const persistenceObservedRevision = useRef<number | undefined>(undefined);
+  const persistenceObservedLoadToken = useRef<string | undefined>(undefined);
   const persistenceConflict = useRef(false);
   const persistenceDirty = useRef(false);
+  const persistenceRetryDelay = useRef(1_000);
   const drainPersistenceQueueRef = useRef<() => void>(() => {});
-  const persistenceSessionId = useRef(crypto.randomUUID());
+  const persistenceSessionId = useRef<string>(crypto.randomUUID());
+  const persistenceBroadcastInstanceId = useRef<string>(crypto.randomUUID());
   const persistenceSaveSequence = useRef(0);
-  const persistenceSentFingerprints = useRef(
-    new Map<number, { document: string; graph: string }>(),
+  const persistenceSequenceFloor = useRef(0);
+  const persistenceConfirmedSaveSequence = useRef(0);
+  const persistenceServerEpoch = useRef<string | undefined>(undefined);
+  const persistenceStorageRevision = useRef(0);
+  const persistencePendingPagehide = useRef<CanvasPendingPagehide | undefined>(
+    undefined,
   );
+  const persistenceBfCacheReloadSafe = useRef(false);
+  const applyCanvasSaveSession = useCallback((session: CanvasSaveSession) => {
+    persistenceConfirmedSaveSequence.current = session.confirmedSequence;
+    persistencePendingPagehide.current = session.pendingPagehide;
+    persistenceSaveSequence.current = session.saveSequence;
+    persistenceSequenceFloor.current = Math.max(
+      persistenceSequenceFloor.current,
+      session.saveSequence,
+    );
+    persistenceServerEpoch.current = session.serverEpoch;
+    persistenceSessionId.current = session.saveSessionId;
+    persistenceStorageRevision.current = session.storageRevision;
+  }, []);
+  const currentCanvasSaveSession = useCallback(() => ({
+    confirmedSequence: persistenceConfirmedSaveSequence.current,
+    pendingPagehide: persistencePendingPagehide.current,
+    saveSequence: persistenceSaveSequence.current,
+    saveSessionId: persistenceSessionId.current,
+    serverEpoch: persistenceServerEpoch.current,
+    storageRevision: persistenceStorageRevision.current,
+  }), []);
+  const assertCanvasSaveSessionCurrent = useCallback(() => {
+    const stored = loadCanvasSaveSession(persistenceScopeId);
+    if (
+      stored.saveSessionId !== persistenceSessionId.current ||
+      stored.storageRevision !== persistenceStorageRevision.current
+    ) {
+      throw new CanvasSaveSessionStorageError(
+        new Error("Canvas save session changed outside this page"),
+      );
+    }
+  }, [persistenceScopeId]);
+  const persistCanvasSaveSession = useCallback(
+    (resolvedPendingAttemptId?: string) => {
+      const stored = storeCanvasSaveSession(
+        persistenceScopeId,
+        currentCanvasSaveSession(),
+        resolvedPendingAttemptId,
+      );
+      applyCanvasSaveSession(stored);
+    },
+    [applyCanvasSaveSession, currentCanvasSaveSession, persistenceScopeId],
+  );
+  const reserveCanvasSaveAttempt = useCallback((
+    attemptId: string,
+    createPayload: (saveSequence: number) => string,
+    requestedSequence?: number,
+  ) => {
+    assertCanvasSaveSessionCurrent();
+    if (!isCanvasSaveEpoch(persistenceServerEpoch.current)) {
+      throw new CanvasSaveSessionStorageError(
+        new Error("Canvas save epoch is unavailable"),
+      );
+    }
+    const sequenceFloor = Math.max(
+      persistenceSaveSequence.current,
+      persistenceSequenceFloor.current,
+    );
+    const saveSequence = requestedSequence ?? sequenceFloor + 1;
+    if (
+      !Number.isSafeInteger(saveSequence) ||
+      saveSequence <= sequenceFloor
+    ) {
+      throw new CanvasSaveSessionStorageError(
+        new Error("Canvas save sequence is not strictly increasing"),
+      );
+    }
+    const payload = createPayload(saveSequence);
+    if (new Blob([payload]).size > PERSIST_SAVE_JOURNAL_MAX_BYTES) {
+      throw new CanvasSaveSessionStorageError(
+        new Error("Canvas save journal exceeds its safe limit"),
+      );
+    }
+    const pendingPagehide: CanvasPendingPagehide = {
+      attemptId,
+      payload,
+      saveSequence,
+      serverEpoch: persistenceServerEpoch.current,
+    };
+    const stored = storeCanvasSaveSession(persistenceScopeId, {
+      confirmedSequence: persistenceConfirmedSaveSequence.current,
+      pendingPagehide,
+      saveSequence,
+      saveSessionId: persistenceSessionId.current,
+      serverEpoch: persistenceServerEpoch.current,
+      storageRevision: persistenceStorageRevision.current,
+    });
+    applyCanvasSaveSession(stored);
+    if (
+      stored.saveSequence !== saveSequence ||
+      stored.pendingPagehide?.attemptId !== attemptId
+    ) {
+      throw new CanvasSaveSessionStorageError(
+        new Error("Canvas save journal was not reserved"),
+      );
+    }
+    return { payload, saveSequence };
+  }, [
+    applyCanvasSaveSession,
+    assertCanvasSaveSessionCurrent,
+    persistenceScopeId,
+  ]);
+  const raiseCanvasSaveSequenceFloor = useCallback((candidate: number) => {
+    if (Number.isSafeInteger(candidate) && candidate >= 0) {
+      persistenceSequenceFloor.current = Math.max(
+        persistenceSequenceFloor.current,
+        candidate,
+      );
+    }
+  }, []);
+  const settleCanvasSaveSequence = useCallback((
+    candidate: number,
+    resolvedAttemptId?: string,
+  ) => {
+    assertCanvasSaveSessionCurrent();
+    const settled = Math.max(
+      persistenceConfirmedSaveSequence.current,
+      candidate,
+    );
+    const stored = storeCanvasSaveSession(
+      persistenceScopeId,
+      {
+        confirmedSequence: settled,
+        pendingPagehide: persistencePendingPagehide.current,
+        saveSequence: Math.max(persistenceSaveSequence.current, settled),
+        saveSessionId: persistenceSessionId.current,
+        serverEpoch: persistenceServerEpoch.current,
+        storageRevision: persistenceStorageRevision.current,
+      },
+      resolvedAttemptId,
+    );
+    applyCanvasSaveSession(stored);
+  }, [applyCanvasSaveSession, assertCanvasSaveSessionCurrent, persistenceScopeId]);
+  const persistenceSentFingerprints = useRef(
+    new Map<number, {
+      attemptId: string;
+      document: string;
+      graph: string;
+      liveEditors: boolean;
+    }>(),
+  );
+  const persistenceActiveFingerprintSequences = useRef(new Set<number>());
+  const persistenceConfirmedFingerprintSequence = useRef<number | undefined>(
+    undefined,
+  );
+  const persistenceExternalRevision = useRef<number | undefined>(undefined);
   const persistedDocumentFingerprint = useRef("");
   const persistedGraphFingerprint = useRef("");
   const persistenceInFlightFingerprint = useRef<string | undefined>(undefined);
   const persistenceHydrationTimer = useRef<number | undefined>(undefined);
   const persistenceSaveTimer = useRef<number | undefined>(undefined);
+  const persistenceSaveController = useRef<AbortController | undefined>(
+    undefined,
+  );
+  const persistenceSaveRun = useRef(0);
   const persistenceSaving = useRef(false);
-  const persistenceQueued = useRef<{
-    edges: CuttableEdge[];
-    fingerprint: string;
-    graphFingerprint: string;
-    nodes: ProbeNodeType[];
-    viewport: Viewport;
-  } | undefined>(undefined);
+  const persistenceQueued = useRef<CanvasPersistenceSnapshot | undefined>(
+    undefined,
+  );
+  const persistencePendingAttempt = useRef<
+    CanvasPendingSaveAttempt | undefined
+  >(undefined);
+  const stopForCanvasSaveSessionStorage = useCallback(() => {
+    persistenceBfCacheReloadSafe.current = false;
+    persistenceConflict.current = true;
+    persistenceObservedRevision.current = undefined;
+    persistenceObservedLoadToken.current = undefined;
+    persistencePendingAttempt.current = undefined;
+    setConfirmedPersistenceRevision(undefined);
+    setConfirmedGraphRevision(undefined);
+    onSaveConflict(
+      "浏览器会话存储不可用，已停止画布保存以保护数据，请恢复后重试",
+    );
+  }, [onSaveConflict]);
+  useEffect(() => {
+    onLoadStateChange?.(effectivePersistenceLoadState);
+  }, [effectivePersistenceLoadState, onLoadStateChange]);
   const uploadInput = useRef<HTMLInputElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
+  const syncSentFingerprintCount = useCallback(() => {
+    worldRef.current?.setAttribute(
+      "data-save-fingerprint-count",
+      String(persistenceSentFingerprints.current.size),
+    );
+  }, []);
+  const pruneSentFingerprints = useCallback(() => {
+    const durablePendingSequence =
+      persistencePendingPagehide.current?.saveSequence;
+    const normalPendingSequence =
+      persistencePendingAttempt.current?.saveSequence;
+    for (const sequence of persistenceSentFingerprints.current.keys()) {
+      if (
+        persistenceActiveFingerprintSequences.current.has(sequence) ||
+        persistenceConfirmedFingerprintSequence.current === sequence ||
+        durablePendingSequence === sequence ||
+        normalPendingSequence === sequence
+      ) {
+        continue;
+      }
+      persistenceSentFingerprints.current.delete(sequence);
+    }
+    syncSentFingerprintCount();
+  }, [syncSentFingerprintCount]);
+  const rememberSentFingerprint = useCallback((
+    sequence: number,
+    fingerprint: {
+      attemptId: string;
+      document: string;
+      graph: string;
+      liveEditors: boolean;
+    },
+  ) => {
+    persistenceSentFingerprints.current.set(sequence, fingerprint);
+    persistenceActiveFingerprintSequences.current.add(sequence);
+    pruneSentFingerprints();
+  }, [pruneSentFingerprints]);
+  const settleSentFingerprint = useCallback((
+    sequence: number,
+    confirmed: boolean,
+  ) => {
+    persistenceActiveFingerprintSequences.current.delete(sequence);
+    if (
+      confirmed &&
+      (
+        persistenceConfirmedFingerprintSequence.current === undefined ||
+        sequence >= persistenceConfirmedFingerprintSequence.current
+      )
+    ) {
+      persistenceConfirmedFingerprintSequence.current = sequence;
+    }
+    pruneSentFingerprints();
+  }, [pruneSentFingerprints]);
   const blankContextMenuRef = useRef<HTMLDivElement>(null);
   const nodeContextMenuRef = useRef<HTMLDivElement>(null);
   const internalClipboard = useRef<
@@ -1902,6 +2613,7 @@ export function CanvasSurface({
     undefined,
   );
   const appliedTemplateSequence = useRef<number | undefined>(undefined);
+  const consumedHistoryAssetSequence = useRef<number | undefined>(undefined);
   const templateFitCancel = useRef<(() => void) | undefined>(undefined);
   const templateViewportAnimating = useRef(false);
   const lastAnimatedViewport = useRef<Viewport | undefined>(undefined);
@@ -1915,6 +2627,8 @@ export function CanvasSurface({
   const redoHistory = useRef<Extract<HistoryEntry, { kind: "snapshot" }>[]>([]);
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
+  const pendingGuardedNodes = useRef<ProbeNodeType[] | undefined>(undefined);
+  const pendingGuardedEdges = useRef<CuttableEdge[] | undefined>(undefined);
   const viewportRef = useRef(viewport);
   const pendingWheelViewport = useRef<Viewport | undefined>(undefined);
   const wheelViewportFrame = useRef<number | undefined>(undefined);
@@ -1922,8 +2636,52 @@ export function CanvasSurface({
   const nodeDragging = useRef(false);
   const restoreSequence = useRef(0);
   const clipboardPasteSequence = useRef(0);
-  nodesRef.current = nodes;
-  edgesRef.current = edges;
+  const setNodes = useCallback<Dispatch<SetStateAction<ProbeNodeType[]>>>(
+    (update) => {
+      const hadPending = pendingGuardedNodes.current !== undefined;
+      const base = pendingGuardedNodes.current ?? nodesRef.current;
+      const next = typeof update === "function" ? update(base) : update;
+      if (!hadPending && next === base) return;
+      pendingGuardedNodes.current = next;
+      setNodesState(next);
+    },
+    [setNodesState],
+  );
+  const setEdges = useCallback<Dispatch<SetStateAction<CuttableEdge[]>>>(
+    (update) => {
+      const hadPending = pendingGuardedEdges.current !== undefined;
+      const base = pendingGuardedEdges.current ?? edgesRef.current;
+      const next = typeof update === "function" ? update(base) : update;
+      if (!hadPending && next === base) return;
+      pendingGuardedEdges.current = next;
+      setEdgesState(next);
+    },
+    [setEdgesState],
+  );
+  const onNodesChange = useCallback(
+    (changes: NodeChange<ProbeNodeType>[]) => {
+      setNodes((current) => applyNodeChanges(changes, current));
+    },
+    [setNodes],
+  );
+  const onEdgesChange = useCallback(
+    (changes: EdgeChange<CuttableEdge>[]) => {
+      setEdges((current) => applyEdgeChanges(changes, current));
+    },
+    [setEdges],
+  );
+  useLayoutEffect(() => {
+    nodesRef.current = nodes;
+    if (pendingGuardedNodes.current === nodes) {
+      pendingGuardedNodes.current = undefined;
+    }
+  }, [nodes]);
+  useLayoutEffect(() => {
+    edgesRef.current = edges;
+    if (pendingGuardedEdges.current === edges) {
+      pendingGuardedEdges.current = undefined;
+    }
+  }, [edges]);
 
   const updateViewportDom = (next: Viewport) => {
     const world = worldRef.current;
@@ -2057,6 +2815,7 @@ export function CanvasSurface({
       setUploadError("");
       return;
     }
+    if (!persistenceReady) return;
     // 其他命令（例如 apply-template）只清理浮层，绝不切换“添加节点”菜单。
     const clearTransientMenus = () => {
       setUploadError("");
@@ -2084,7 +2843,7 @@ export function CanvasSurface({
           },
     );
     clearTransientMenus();
-  }, [shellMenuCommand]);
+  }, [persistenceReady, shellMenuCommand]);
 
   useEffect(() => {
     onAddMenuOpenChange?.(Boolean(createMenu));
@@ -2131,11 +2890,14 @@ export function CanvasSurface({
   }, [nodeContextMenu]);
 
   useEffect(() => {
-    if (persistenceReady) onGraphContentChange(nodes.length > 0);
+    onGraphContentChange(persistenceReady && nodes.length > 0);
   }, [nodes.length, onGraphContentChange, persistenceReady]);
 
   useEffect(() => {
-    if (!persistenceReady) return;
+    if (!persistenceReady) {
+      onSearchIndexChange?.([]);
+      return;
+    }
     const categoryByType: Partial<
       Record<ProbeNodeType["type"], CanvasSearchEntry["category"]>
     > = {
@@ -2187,6 +2949,7 @@ export function CanvasSurface({
 
   useEffect(() => {
     if (
+      !persistenceReady ||
       !focusNodeRequest ||
       focusNodeRequest.sequence <= consumedFocusNodeSequence.current ||
       !flowInstance.current ||
@@ -2244,8 +3007,8 @@ export function CanvasSurface({
       style: edge.style ? { ...edge.style } : undefined,
     })), []);
   const canvasSnapshot = useCallback((
-    currentNodes = nodesRef.current,
-    currentEdges = edgesRef.current,
+    currentNodes = pendingGuardedNodes.current ?? nodesRef.current,
+    currentEdges = pendingGuardedEdges.current ?? edgesRef.current,
     currentViewport = viewportRef.current,
   ) => {
     const document = {
@@ -2259,6 +3022,67 @@ export function CanvasSurface({
       graphFingerprint: canvasGraphFingerprint(document),
     };
   }, [cloneEdges, cloneNodes]);
+  const canvasSnapshotWithLiveEditors = useCallback(() => {
+    const titleValues = new Map(
+      [...document.querySelectorAll<HTMLInputElement>(
+        '.react-flow__node input[aria-label$="标题"]',
+      )].flatMap((input) => {
+        if (input.dataset.compositionActive === "true") return [];
+        const id = input.closest<HTMLElement>(".react-flow__node")?.dataset.id;
+        return id ? [[id, input.value] as const] : [];
+      }),
+    );
+    const textContentValues = new Map(
+      [...document.querySelectorAll<HTMLElement>(
+        '.react-flow__node [data-testid="text-node-editor"]',
+      )].flatMap((editor) => {
+        if (editor.dataset.compositionActive === "true") return [];
+        const id = editor.closest<HTMLElement>(".react-flow__node")?.dataset.id;
+        return id
+          ? [[id, {
+              content: editor.innerText,
+              contentHtml: editor.dataset.committedRichHtml,
+            }] as const]
+          : [];
+      }),
+    );
+    const currentNodes = (pendingGuardedNodes.current ?? nodesRef.current).map((node) => {
+      const title = titleValues.get(node.id);
+      const textContent = textContentValues.get(node.id);
+      const storedText = node.data.content ?? "";
+      const bodyChanged = textContent !== undefined && !(
+        textContent.content === storedText &&
+        (textContent.contentHtml === undefined ||
+          textContent.contentHtml === node.data.contentHtml ||
+          (node.data.contentHtml === undefined &&
+            textContent.contentHtml === plainTextHtml(storedText)))
+      );
+      if (
+        (title === undefined || title === node.data.title) &&
+        !bodyChanged
+      ) {
+        return node;
+      }
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          ...(bodyChanged
+            ? {
+                content: textContent.content,
+                contentHtml: textContent.contentHtml,
+              }
+            : {}),
+          title: title ?? node.data.title,
+        },
+      };
+    });
+    return canvasSnapshot(
+      currentNodes,
+      pendingGuardedEdges.current ?? edgesRef.current,
+      viewportRef.current,
+    );
+  }, [canvasSnapshot]);
   const canvasSnapshotRef = useRef(canvasSnapshot);
   canvasSnapshotRef.current = canvasSnapshot;
   const templateFitBlocksPersistence = useCallback(() =>
@@ -2317,7 +3141,7 @@ export function CanvasSurface({
 
   // 缩放滑块等程序化缩放：命令式设置到 ReactFlow（非受控），并同步内部状态。
   useEffect(() => {
-    if (!viewportRequest) return;
+    if (!persistenceReadyRef.current || !viewportRequest) return;
     applyViewport({
       ...viewportRef.current,
       ...(viewportRequest.x !== undefined
@@ -2348,11 +3172,12 @@ export function CanvasSurface({
   useEffect(() => {
     if (shellMenuCommand?.action !== "apply-template") return;
     if (shellMenuCommand.sequence === appliedTemplateSequence.current) return;
-    appliedTemplateSequence.current = shellMenuCommand.sequence;
+    if (!persistenceReady) return;
     const graph = shellMenuCommand.graph;
     if (!graph || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) {
       return;
     }
+    appliedTemplateSequence.current = shellMenuCommand.sequence;
     const idMap = new Map<string, string>();
     const appliedNodes: ProbeNodeType[] = graph.nodes.map((source) => {
       const id = `${source.type}-${crypto.randomUUID()}`;
@@ -2553,6 +3378,7 @@ export function CanvasSurface({
     applyViewport,
     setEdges,
     setNodes,
+    persistenceReady,
     shellMenuCommand,
   ]);
   const handleCanvasWheelCapture = useCallback(
@@ -2808,7 +3634,7 @@ export function CanvasSurface({
   const addEmptyNode = (
     type: "audio" | "image" | "playlist" | "text" | "video",
   ) => {
-    if (!createMenu) return;
+    if (!persistenceReadyRef.current || !createMenu) return;
     const labels = {
       audio: "Audio",
       image: "Image",
@@ -2845,6 +3671,7 @@ export function CanvasSurface({
     asset: CanvasLibraryAsset,
     screen: { x: number; y: number },
   ) => {
+    if (!persistenceReadyRef.current) return;
     const bounds = worldRef.current?.getBoundingClientRect();
     if (!bounds) return;
     const position = {
@@ -2890,9 +3717,16 @@ export function CanvasSurface({
     ]);
   };
   useEffect(() => {
-    if (!historyAssetRequest || !persistenceReady) return;
+    if (
+      !historyAssetRequest ||
+      !persistenceReady ||
+      historyAssetRequest.sequence === consumedHistoryAssetSequence.current
+    ) {
+      return;
+    }
     const bounds = worldRef.current?.getBoundingClientRect();
     if (!bounds) return;
+    consumedHistoryAssetSequence.current = historyAssetRequest.sequence;
     const size = NODE_DEFAULT_SIZES[historyAssetRequest.asset.kind];
     addDroppedLibraryAsset(historyAssetRequest.asset, {
       x:
@@ -2906,11 +3740,14 @@ export function CanvasSurface({
     });
   }, [historyAssetRequest?.sequence, persistenceReady]);
   const uploadImage = async (file?: File) => {
-    if (!file || !createMenu || uploading) return;
+    if (!persistenceReadyRef.current || !file || !createMenu || uploading) {
+      return;
+    }
     setUploadError("");
     setUploading(true);
     try {
       const asset = await uploadImageAsset(file);
+      if (!persistenceReadyRef.current) return;
       checkpoint();
       setNodes((current) => [
         ...current.map((node) => ({ ...node, selected: false })),
@@ -3037,6 +3874,7 @@ export function CanvasSurface({
       : node));
   };
   const addConnection = (connection: Connection) => {
+    if (!persistenceReadyRef.current) return false;
     if (!isConnectionAllowed(connection, edgesRef.current)) {
       return false;
     }
@@ -3067,6 +3905,7 @@ export function CanvasSurface({
     return true;
   };
   const addBatchConnections = (sourceIds: string[], targetId: string) => {
+    if (!persistenceReadyRef.current) return;
     const plannedEdges = [...edgesRef.current];
     const addedSourceIds: string[] = [];
     for (const sourceId of sourceIds) {
@@ -3131,64 +3970,393 @@ export function CanvasSurface({
     );
 
   useEffect(() => {
-    if (textVideoStarted) {
+    if (textVideoStarted && persistenceReady) {
       setNodes(createProbeNodes("workflow.text-to-video.created"));
       setEdges(createProbeEdges("workflow.text-to-video.created"));
     }
-  }, [setEdges, setNodes, textVideoStarted]);
+  }, [persistenceReady, setEdges, setNodes, textVideoStarted]);
 
   useEffect(() => {
-    if (!persistenceFixture) return;
+    const epoch = persistenceLoadIdentity.current.epoch + 1;
+    persistenceLoadIdentity.current = { epoch, scopeId: persistenceScopeId };
+    persistencePendingAttempt.current = undefined;
+    if (persistenceFixture) {
+      try {
+        const saveSession = loadCanvasSaveSession(persistenceScopeId);
+        persistenceSessionId.current = saveSession.saveSessionId;
+        persistenceSaveSequence.current = saveSession.saveSequence;
+        persistenceSequenceFloor.current = saveSession.saveSequence;
+        persistenceConfirmedSaveSequence.current =
+          saveSession.confirmedSequence;
+        persistenceServerEpoch.current = saveSession.serverEpoch;
+        persistenceStorageRevision.current = saveSession.storageRevision;
+        persistencePendingPagehide.current = saveSession.pendingPagehide;
+        persistCanvasSaveSession();
+      } catch (error) {
+        if (!(error instanceof CanvasSaveSessionStorageError)) throw error;
+        persistenceReadyRef.current = false;
+        persistenceConflict.current = true;
+        persistenceObservedRevision.current = undefined;
+        persistenceObservedLoadToken.current = undefined;
+        setConfirmedPersistenceRevision(undefined);
+        setConfirmedGraphRevision(undefined);
+        setPersistenceLoadState("failed");
+        onSaveConflict(
+          "浏览器会话存储不可用，已停止画布保存以保护数据，请恢复后重试",
+        );
+        return;
+      }
+    } else {
+      persistenceSessionId.current = crypto.randomUUID();
+      persistenceSaveSequence.current = 0;
+      persistenceSequenceFloor.current = 0;
+      persistenceConfirmedSaveSequence.current = 0;
+      persistenceServerEpoch.current = undefined;
+      persistenceStorageRevision.current = 0;
+      persistencePendingPagehide.current = undefined;
+    }
+    persistenceSaveRun.current += 1;
+    persistenceSaveController.current?.abort("canvas-scope-changed");
+    persistenceSaveController.current = undefined;
+    persistenceSaving.current = false;
+    persistenceInFlightFingerprint.current = undefined;
+    persistenceObservedRevision.current = undefined;
+    persistenceObservedLoadToken.current = undefined;
+    const isCurrentLoad = () =>
+      persistenceLoadIdentity.current.scopeId === persistenceScopeId &&
+      persistenceLoadIdentity.current.epoch === epoch;
+
+    if (!persistenceFixture) {
+      persistenceReadyRef.current = true;
+      setPersistenceLoadState("ready");
+      return;
+    }
+
+    persistenceReadyRef.current = false;
+    setPersistenceLoadState("loading");
     setConfirmedPersistenceRevision(undefined);
     setConfirmedGraphRevision(undefined);
+    persistenceConflict.current = false;
+    persistenceDirty.current = false;
+    persistenceQueued.current = undefined;
+    pendingGuardedNodes.current = undefined;
+    pendingGuardedEdges.current = undefined;
+    persistenceRetryDelay.current = 1_000;
+    persistenceSentFingerprints.current.clear();
+    persistenceActiveFingerprintSequences.current.clear();
+    persistenceConfirmedFingerprintSequence.current = undefined;
+    syncSentFingerprintCount();
+    persistenceExternalRevision.current = undefined;
+    window.clearTimeout(persistenceHydrationTimer.current);
+    window.clearTimeout(persistenceSaveTimer.current);
+    cancelTemplateFit();
+
     const controller = new AbortController();
+    let disposed = false;
+    const markLoadFailed = () => {
+      if (disposed || !isCurrentLoad()) return;
+      persistenceLoadIdentity.current = {
+        epoch: epoch + 1,
+        scopeId: persistenceScopeId,
+      };
+      persistenceReadyRef.current = false;
+      persistenceObservedRevision.current = undefined;
+      persistenceObservedLoadToken.current = undefined;
+      setConfirmedPersistenceRevision(undefined);
+      setConfirmedGraphRevision(undefined);
+      setPersistenceLoadState("failed");
+    };
+    let timeout: number | undefined;
+    const loadDeadline = new Promise<never>((_resolve, reject) => {
+      timeout = window.setTimeout(() => {
+        controller.abort("canvas-load-timeout");
+        reject(new Error("Canvas load response timed out"));
+      }, PERSIST_LOAD_TIMEOUT_MS);
+    });
     const url = `/api/canvas/${persistenceId}`;
-    void fetch(url, { headers: { Accept: "application/json" }, signal: controller.signal })
-      .then(async (response) => {
-        if (response.status === 404) {
-          if (projectId) {
-            onProjectMissing?.();
-            return undefined;
+    const putHydrationDocument = async (
+      body: string,
+      timeoutReason: string,
+    ) => {
+      let mutationTimeout: number | undefined;
+      try {
+        return await Promise.race([
+          (async () => {
+            const response = await fetch(url, {
+              body,
+              headers: { "Content-Type": "application/json" },
+              method: "PUT",
+              signal: controller.signal,
+            });
+            const responseBody: unknown = await response.json();
+            return { response, responseBody };
+          })(),
+          new Promise<never>((_resolve, reject) => {
+            mutationTimeout = window.setTimeout(() => {
+              reject(new Error(timeoutReason));
+              controller.abort(timeoutReason);
+            }, PERSIST_SAVE_TIMEOUT_MS);
+          }),
+        ]);
+      } finally {
+        window.clearTimeout(mutationTimeout);
+      }
+    };
+
+    const load = async () => {
+      try {
+        const { response, responseBody } = await Promise.race([
+          (async () => {
+            const fetched = await fetch(url, {
+              headers: {
+                Accept: "application/json",
+                "X-Unboundry-Canvas-Save-Session":
+                  persistenceSessionId.current,
+              },
+              signal: controller.signal,
+            });
+            const body: unknown = await fetched.json();
+            return { response: fetched, responseBody: body };
+          })(),
+          loadDeadline,
+        ]);
+        window.clearTimeout(timeout);
+        timeout = undefined;
+        if (!isCurrentLoad() || disposed) return;
+        const missing = response.status === 404;
+        if (!missing && !response.ok) {
+          throw new Error(`Canvas load failed: ${response.status}`);
+        }
+        if (
+          (missing && !isCanvasSaveFence(responseBody)) ||
+          (!missing && !isLoadedCanvasDocument(responseBody))
+        ) {
+          throw new Error("Canvas load returned an invalid save fence");
+        }
+        const fence = responseBody as CanvasSaveFence;
+        let document = missing
+          ? undefined
+          : responseBody as LoadedCanvasDocument;
+        const pending = persistencePendingPagehide.current;
+        const pendingSnapshot = pending
+          ? pendingPagehideSnapshot(pending, persistenceSessionId.current)
+          : undefined;
+        if (pending && !pendingSnapshot) {
+          throw new Error("Canvas pending pagehide journal is invalid");
+        }
+        const normalizedLoadedDocument = document
+          ? {
+              ...document,
+              nodes: normalizePersistedMediaNodes(document.nodes),
+              edges: document.edges.map((edge) =>
+                stripSelectionFlowMarkers(
+                  edge.style && typeof edge.style === "object"
+                    ? { ...edge, style: undefined }
+                    : edge,
+                ),
+              ),
+            }
+          : undefined;
+        const highWaterProvesPending = Boolean(
+          pending &&
+          fence.sessionHighWaterSequence >= pending.saveSequence &&
+          fence.sessionHighWaterAttemptId === pending.attemptId,
+        );
+        const currentWriterProvesPending = Boolean(
+          pending &&
+          pendingSnapshot &&
+          normalizedLoadedDocument &&
+          fence.currentWriterSessionId === persistenceSessionId.current &&
+          fence.currentWriterSequence >= pending.saveSequence &&
+          canvasDocumentFingerprint(normalizedLoadedDocument) ===
+            pendingSnapshot.fingerprint,
+        );
+        persistenceServerEpoch.current = fence.saveEpoch;
+        persistenceSequenceFloor.current = Math.max(
+          persistenceSequenceFloor.current,
+          fence.sessionHighWaterSequence,
+        );
+
+        if (pending && (highWaterProvesPending || currentWriterProvesPending)) {
+          if (persistenceSaveSequence.current !== pending.saveSequence) {
+            throw new Error("Canvas has an unconfirmed save after its journal");
           }
-          const saveSequence = ++persistenceSaveSequence.current;
+          persistenceConfirmedSaveSequence.current = Math.max(
+            persistenceConfirmedSaveSequence.current,
+            pending.saveSequence,
+          );
+          persistencePendingPagehide.current = undefined;
+          persistCanvasSaveSession(pending.attemptId);
+        } else if (pending) {
+          if (pending.serverEpoch !== fence.saveEpoch || !pendingSnapshot) {
+            throw new Error("Canvas pending save belongs to an old server epoch");
+          }
+          const replaySequence = Math.max(
+            persistenceSaveSequence.current,
+            fence.sessionHighWaterSequence,
+            pending.saveSequence,
+          ) + 1;
+          const replayAttemptId = crypto.randomUUID();
+          const { payload: replayPayload } = reserveCanvasSaveAttempt(
+            replayAttemptId,
+            (candidateSequence) => JSON.stringify({
+              edges: pendingSnapshot.edges,
+              nodes: pendingSnapshot.nodes,
+              ...(document
+                ? {
+                    observedLoadToken: document.loadToken,
+                    observedRevision: document.revision,
+                  }
+                : {}),
+              revision: document?.revision ?? 0,
+              saveAttemptId: replayAttemptId,
+              saveSequence: candidateSequence,
+              saveSessionId: persistenceSessionId.current,
+              viewport: pendingSnapshot.viewport,
+            }),
+            replaySequence,
+          );
+          rememberSentFingerprint(replaySequence, {
+            attemptId: replayAttemptId,
+            document: pendingSnapshot.fingerprint,
+            graph: pendingSnapshot.graphFingerprint,
+            liveEditors: true,
+          });
+          const {
+            response: replayed,
+            responseBody: replayResult,
+          } = await putHydrationDocument(
+            replayPayload,
+            "Canvas pending replay response timed out",
+          );
+          if (!isCurrentLoad() || disposed) return;
+          if (!replayed.ok) {
+            throw new Error(`Canvas pending replay failed: ${replayed.status}`);
+          }
+          if (!isCanvasSaveSuccess(
+            replayResult,
+            canvasSaveRequestFence(replayPayload),
+          )) {
+            throw new Error("Canvas pending replay returned invalid data");
+          }
+          const result = replayResult;
+          const replayedDocument: LoadedCanvasDocument = {
+            currentWriterSequence: replaySequence,
+            currentWriterSessionId: persistenceSessionId.current,
+            edges: pendingSnapshot.edges,
+            graphRevision: result.graphRevision,
+            loadToken: result.loadToken,
+            nodes: pendingSnapshot.nodes,
+            revision: result.revision,
+            saveEpoch: fence.saveEpoch,
+            sessionHighWaterAttemptId: replayAttemptId,
+            sessionHighWaterSequence: replaySequence,
+            viewport: pendingSnapshot.viewport,
+          };
+          if (!isLoadedCanvasDocument(replayedDocument)) {
+            throw new Error("Canvas pending replay returned invalid data");
+          }
+          persistenceConfirmedSaveSequence.current = replaySequence;
+          persistencePendingPagehide.current = undefined;
+          persistCanvasSaveSession(replayAttemptId);
+          settleSentFingerprint(replaySequence, true);
+          document = replayedDocument;
+        } else if (
+          persistenceSaveSequence.current >
+            persistenceConfirmedSaveSequence.current
+        ) {
+          throw new Error("Canvas has an unconfirmed save without a journal");
+        } else {
+          // Bind a clean session to this process epoch before exposing the
+          // canvas. Pagehide journaling must not use an unpersisted fence.
+          persistCanvasSaveSession();
+        }
+
+        if (!document) {
+          if (projectId) {
+            persistenceReadyRef.current = false;
+            setPersistenceLoadState("missing");
+            onProjectMissing?.();
+            return;
+          }
+          const attemptId = crypto.randomUUID();
+          const initialEdges = createProbeEdges(persistenceId);
+          const initialNodes = createProbeNodes(persistenceId);
+          const { payload: initialPayload, saveSequence } =
+            reserveCanvasSaveAttempt(
+              attemptId,
+              (candidateSequence) => JSON.stringify({
+                edges: initialEdges,
+                nodes: initialNodes,
+                revision: 0,
+                saveAttemptId: attemptId,
+                saveSequence: candidateSequence,
+                saveSessionId: persistenceSessionId.current,
+                viewport,
+              }),
+            );
           const initial = {
-            edges: createProbeEdges(persistenceId),
-            nodes: createProbeNodes(persistenceId),
+            currentWriterSequence: saveSequence,
+            currentWriterSessionId: persistenceSessionId.current,
+            edges: initialEdges,
+            graphRevision: 0,
+            loadToken: "",
+            nodes: initialNodes,
             revision: 0,
+            saveAttemptId: attemptId,
+            saveEpoch: fence.saveEpoch,
             saveSequence,
             saveSessionId: persistenceSessionId.current,
+            sessionHighWaterAttemptId: attemptId,
+            sessionHighWaterSequence: saveSequence,
             viewport,
           };
-          persistenceSentFingerprints.current.set(saveSequence, {
+          rememberSentFingerprint(saveSequence, {
+            attemptId,
             document: canvasDocumentFingerprint(initial),
             graph: canvasGraphFingerprint(initial),
+            liveEditors: false,
           });
-          const created = await fetch(url, {
-            body: JSON.stringify(initial),
-            headers: { "Content-Type": "application/json" },
-            method: "PUT",
-            signal: controller.signal,
-          });
-          if (!created.ok) throw new Error(`Canvas create failed: ${created.status}`);
-          return {
+          const {
+            response: created,
+            responseBody: createdRevision,
+          } = await putHydrationDocument(
+            initialPayload,
+            "Canvas create response timed out",
+          );
+          if (!isCurrentLoad() || disposed) return;
+          if (!created.ok) {
+            throw new Error(`Canvas create failed: ${created.status}`);
+          }
+          if (!isCanvasSaveSuccess(
+            createdRevision,
+            canvasSaveRequestFence(initialPayload),
+          )) {
+            throw new Error("Canvas create returned invalid data");
+          }
+          const createdDocument = {
             ...initial,
-            ...(await created.json() as {
-              graphRevision: number;
-              revision: number;
-            }),
+            ...createdRevision,
           };
+          if (!isLoadedCanvasDocument(createdDocument)) {
+            throw new Error("Canvas create returned invalid data");
+          }
+          document = createdDocument;
+          persistenceConfirmedSaveSequence.current = saveSequence;
+          persistCanvasSaveSession(attemptId);
+          settleSentFingerprint(saveSequence, true);
         }
-        if (!response.ok) throw new Error(`Canvas load failed: ${response.status}`);
-        return await response.json() as {
-          edges: CuttableEdge[];
-          graphRevision?: number;
-          nodes: ProbeNodeType[];
-          revision: number;
-          viewport: Viewport;
-        };
-      })
-      .then((document) => {
-        if (!document) return;
+
+        if (!isCurrentLoad() || disposed) return;
+        if (!isLoadedCanvasDocument(document)) {
+          throw new Error("Canvas load returned an invalid document");
+        }
+        if (
+          persistenceExternalRevision.current !== undefined &&
+          document.revision < persistenceExternalRevision.current
+        ) {
+          throw new Error("Canvas load returned a stale document");
+        }
         const hydratedDocument = {
           ...document,
           nodes: normalizePersistedMediaNodes(document.nodes),
@@ -3205,6 +4373,14 @@ export function CanvasSurface({
         const graphRevision = document.graphRevision ?? document.revision;
         persistenceRevision.current = document.revision;
         persistenceGraphRevision.current = graphRevision;
+        persistenceObservedRevision.current = document.revision;
+        persistenceObservedLoadToken.current = document.loadToken;
+        if (
+          persistenceExternalRevision.current !== undefined &&
+          persistenceExternalRevision.current <= document.revision
+        ) {
+          persistenceExternalRevision.current = undefined;
+        }
         setConfirmedPersistenceRevision(document.revision);
         setConfirmedGraphRevision(graphRevision);
         persistenceConflict.current = false;
@@ -3216,40 +4392,70 @@ export function CanvasSurface({
         applyViewport(hydratedDocument.viewport);
         window.clearTimeout(persistenceHydrationTimer.current);
         persistenceHydrationTimer.current = window.setTimeout(
-          () => setPersistenceReady(true),
+          () => {
+            if (!isCurrentLoad() || disposed) return;
+            persistenceReadyRef.current = true;
+            setPersistenceLoadState("ready");
+          },
           150,
         );
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setConfirmedPersistenceRevision(undefined);
-          setConfirmedGraphRevision(undefined);
-          persistedDocumentFingerprint.current = canvasSnapshot().fingerprint;
-          persistedGraphFingerprint.current = canvasSnapshot().graphFingerprint;
-          setPersistenceReady(true);
-        }
-      });
+      } catch {
+        markLoadFailed();
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    };
+
+    void load();
     return () => {
+      disposed = true;
       controller.abort();
+      persistenceSaveRun.current += 1;
+      persistenceSaveController.current?.abort("canvas-scope-disposed");
+      persistenceSaveController.current = undefined;
+      persistenceSaving.current = false;
+      window.clearTimeout(timeout);
       window.clearTimeout(persistenceHydrationTimer.current);
+      if (isCurrentLoad()) {
+        persistenceLoadIdentity.current = {
+          epoch: epoch + 1,
+          scopeId: persistenceScopeId,
+        };
+      }
     };
   }, [
     applyViewport,
-    canvasSnapshot,
+    cancelTemplateFit,
+    onSaveConflict,
     onProjectMissing,
+    persistenceLoadAttempt,
     persistenceFixture,
     persistenceId,
+    persistenceScopeId,
+    persistCanvasSaveSession,
+    rememberSentFingerprint,
+    reserveCanvasSaveAttempt,
+    settleSentFingerprint,
+    syncSentFingerprintCount,
     projectId,
     setEdges,
     setNodes,
   ]);
 
   useEffect(() => {
-    if (
-      !persistenceFixture ||
-      !persistenceReady ||
-      persistenceConflict.current
-    ) {
+    if (!persistenceFixture || !persistenceReady) {
+      return;
+    }
+    const saveEpoch = persistenceLoadIdentity.current.epoch;
+    const isCurrentCanvas = () =>
+      persistenceLoadIdentity.current.scopeId === persistenceScopeId &&
+      persistenceLoadIdentity.current.epoch === saveEpoch;
+    if (persistenceConflict.current) {
+      const latest = canvasSnapshot();
+      if (latest.fingerprint !== persistedDocumentFingerprint.current) {
+        persistenceQueued.current = latest;
+        persistenceDirty.current = true;
+      }
       return;
     }
     if (templateFitBlocksPersistence()) {
@@ -3297,88 +4503,592 @@ export function CanvasSurface({
         return;
       }
       if (persistenceSaving.current || persistenceConflict.current) return;
+      if (
+        persistenceObservedRevision.current === undefined ||
+        !isCanvasLoadToken(persistenceObservedLoadToken.current)
+      ) {
+        persistenceQueued.current = canvasSnapshot();
+        persistenceDirty.current = true;
+        persistenceConflict.current = true;
+        setConfirmedPersistenceRevision(undefined);
+        setConfirmedGraphRevision(undefined);
+        onSaveConflict("画布加载基线无效，已保留当前草稿，请刷新后重试");
+        return;
+      }
+      const saveRun = ++persistenceSaveRun.current;
       persistenceSaving.current = true;
       let failed = false;
-      let conflictRetried = false;
       let failureNotified = false;
+      let externalReloadRequired = false;
+      const reserveExternalDraft = (
+        document: CanvasPersistenceSnapshot,
+        liveEditors: boolean,
+        readyToSend: boolean,
+      ) => {
+        const observedRevision = persistenceObservedRevision.current;
+        const observedLoadToken = persistenceObservedLoadToken.current;
+        if (
+          observedRevision === undefined ||
+          observedRevision !== persistenceRevision.current ||
+          !isCanvasLoadToken(observedLoadToken)
+        ) {
+          throw new CanvasSaveSessionStorageError(
+            new Error("Canvas external draft has no valid load fence"),
+          );
+        }
+        const previousAttempt = persistencePendingAttempt.current;
+        const attemptId = crypto.randomUUID();
+        const { payload, saveSequence } = reserveCanvasSaveAttempt(
+          attemptId,
+          (candidateSequence) => JSON.stringify({
+            edges: document.edges,
+            nodes: document.nodes,
+            observedLoadToken,
+            observedRevision,
+            revision: observedRevision,
+            saveAttemptId: attemptId,
+            saveSequence: candidateSequence,
+            saveSessionId: persistenceSessionId.current,
+            viewport: document.viewport,
+          }),
+        );
+        const attempt = { attemptId, document, payload, saveSequence };
+        persistencePendingAttempt.current = attempt;
+        persistenceQueued.current = undefined;
+        persistenceDirty.current = true;
+        if (readyToSend) {
+          rememberSentFingerprint(saveSequence, {
+            attemptId,
+            document: document.fingerprint,
+            graph: document.graphFingerprint,
+            liveEditors,
+          });
+        }
+        if (
+          previousAttempt &&
+          previousAttempt.saveSequence !== saveSequence
+        ) {
+          settleSentFingerprint(previousAttempt.saveSequence, false);
+        }
+        return attempt;
+      };
+      const loadExternalBaseline = async (
+        draft?: CanvasPersistenceSnapshot,
+        draftUsesLiveEditors = false,
+      ) => {
+        if (draft) {
+          try {
+            // The old fence is still authoritative at this point. Reserve the
+            // complete local draft before making it temporarily inaccessible
+            // during the external GET. A failed GET can then be recovered by
+            // the normal hydration journal replay after retry/refresh.
+            reserveExternalDraft(draft, draftUsesLiveEditors, false);
+          } catch (error) {
+            if (!(error instanceof CanvasSaveSessionStorageError)) throw error;
+            failed = true;
+            persistenceReadyRef.current = false;
+            setPersistenceLoadState("failed");
+            stopForCanvasSaveSessionStorage();
+            return false;
+          }
+        }
+        persistenceReadyRef.current = false;
+        setConfirmedPersistenceRevision(undefined);
+        setConfirmedGraphRevision(undefined);
+        setPersistenceLoadState("loading");
+        const baselineController = new AbortController();
+        persistenceSaveController.current = baselineController;
+        let baselineTimeout: number | undefined;
+        const baselineDeadline = new Promise<never>((_resolve, reject) => {
+          baselineTimeout = window.setTimeout(() => {
+            baselineController.abort("canvas-external-baseline-timeout");
+            reject(new Error("Canvas external baseline response timed out"));
+          }, PERSIST_LOAD_TIMEOUT_MS);
+        });
+        try {
+          const { baseline, response } = await Promise.race([
+            (async () => {
+              const fetched = await fetch(`/api/canvas/${persistenceId}`, {
+                headers: {
+                  Accept: "application/json",
+                  "X-Unboundry-Canvas-Save-Session":
+                    persistenceSessionId.current,
+                },
+                signal: baselineController.signal,
+              });
+              const body: unknown = await fetched.json();
+              return { baseline: body, response: fetched };
+            })(),
+            baselineDeadline,
+          ]);
+          if (
+            !isCurrentCanvas() ||
+            persistenceSaveRun.current !== saveRun
+          ) return false;
+          if (!response.ok) {
+            throw new Error(`Canvas external baseline failed: ${response.status}`);
+          }
+          if (!isLoadedCanvasDocument(baseline)) {
+            throw new Error("Canvas external baseline is invalid");
+          }
+          if (
+            persistenceExternalRevision.current !== undefined &&
+            baseline.revision < persistenceExternalRevision.current
+          ) {
+            throw new Error("Canvas external baseline is stale");
+          }
+          const hydratedBaseline = {
+            ...baseline,
+            nodes: normalizePersistedMediaNodes(baseline.nodes),
+            edges: baseline.edges.map((edge) =>
+              stripSelectionFlowMarkers(
+                edge.style && typeof edge.style === "object"
+                  ? { ...edge, style: undefined }
+                  : edge,
+              ),
+            ),
+          };
+          const graphRevision = baseline.graphRevision ?? baseline.revision;
+          persistenceRevision.current = baseline.revision;
+          persistenceGraphRevision.current = graphRevision;
+          persistenceObservedRevision.current = baseline.revision;
+          persistenceObservedLoadToken.current = baseline.loadToken;
+          persistenceServerEpoch.current = baseline.saveEpoch;
+          raiseCanvasSaveSequenceFloor(baseline.sessionHighWaterSequence);
+          if (draft) {
+            // Replace the pre-GET journal in one strict-CAS write. The new
+            // attempt carries the freshly observed revision/token, so the
+            // queued local draft can never be sent against the stale fence.
+            reserveExternalDraft(draft, draftUsesLiveEditors, true);
+          } else {
+            persistCanvasSaveSession();
+          }
+          persistedDocumentFingerprint.current =
+            canvasDocumentFingerprint(hydratedBaseline);
+          persistedGraphFingerprint.current =
+            canvasGraphFingerprint(hydratedBaseline);
+          setConfirmedPersistenceRevision(baseline.revision);
+          setConfirmedGraphRevision(graphRevision);
+          if (
+            persistenceExternalRevision.current !== undefined &&
+            persistenceExternalRevision.current <= baseline.revision
+          ) {
+            persistenceExternalRevision.current = undefined;
+          }
+          persistenceReadyRef.current = true;
+          setPersistenceLoadState("ready");
+          return true;
+        } catch (error) {
+          if (
+            !isCurrentCanvas() ||
+            persistenceSaveRun.current !== saveRun
+          ) return false;
+          failed = true;
+          persistenceConflict.current = true;
+          persistenceObservedRevision.current = undefined;
+          persistenceObservedLoadToken.current = undefined;
+          setConfirmedPersistenceRevision(undefined);
+          setConfirmedGraphRevision(undefined);
+          persistenceReadyRef.current = false;
+          setPersistenceLoadState("failed");
+          if (error instanceof CanvasSaveSessionStorageError) {
+            stopForCanvasSaveSessionStorage();
+          } else {
+            onSaveConflict(
+              "检测到其他页面的新版本，但无法安全读取；已保留当前草稿，请刷新后重试",
+            );
+          }
+          return false;
+        } finally {
+          window.clearTimeout(baselineTimeout);
+          if (persistenceSaveController.current === baselineController) {
+            persistenceSaveController.current = undefined;
+          }
+        }
+      };
+      const reconcileExternalBaseline = async () => {
+        const externalRevision = persistenceExternalRevision.current;
+        if (
+          externalRevision === undefined ||
+          externalRevision <= (persistenceObservedRevision.current ?? -1)
+        ) {
+          return true;
+        }
+
+        const latestDraft = canvasSnapshot();
+        const pendingAttempt = persistencePendingAttempt.current;
+        const comparisonFingerprint = pendingAttempt
+          ? pendingAttempt.document.fingerprint
+          : persistedDocumentFingerprint.current;
+        if (latestDraft.fingerprint === comparisonFingerprint) {
+          if (pendingAttempt && !pendingAttempt.rejectedByServer) {
+            failed = true;
+            persistenceConflict.current = true;
+            persistenceQueued.current = latestDraft;
+            persistenceDirty.current = true;
+            onSaveConflict(
+              "保存结果尚未确认，已保留当前草稿，请刷新后重试",
+            );
+            return false;
+          }
+          if (pendingAttempt) {
+            try {
+              settleCanvasSaveSequence(
+                pendingAttempt.saveSequence,
+                pendingAttempt.attemptId,
+              );
+            } catch (error) {
+              if (!(error instanceof CanvasSaveSessionStorageError)) {
+                throw error;
+              }
+              failed = true;
+              stopForCanvasSaveSessionStorage();
+              return false;
+            }
+          }
+          persistencePendingAttempt.current = undefined;
+          persistenceQueued.current = undefined;
+          persistenceDirty.current = false;
+          externalReloadRequired = true;
+          return false;
+        }
+
+        persistencePendingAttempt.current = undefined;
+        persistenceQueued.current = latestDraft;
+        persistenceDirty.current = true;
+        return loadExternalBaseline(latestDraft);
+      };
       try {
-        while (persistenceQueued.current && !persistenceConflict.current) {
+        while (
+          (persistencePendingAttempt.current || persistenceQueued.current) &&
+          !persistenceConflict.current
+        ) {
+          if (!isCurrentCanvas()) break;
+          if (
+            persistenceExternalRevision.current !== undefined &&
+            persistenceExternalRevision.current >
+              (persistenceObservedRevision.current ?? -1) &&
+            !(await reconcileExternalBaseline())
+          ) {
+            break;
+          }
           if (templateFitBlocksPersistence()) {
             persistenceDirty.current = true;
             break;
           }
-          const document = persistenceQueued.current;
-          persistenceQueued.current = undefined;
-          const saveSequence = ++persistenceSaveSequence.current;
+          let attempt = persistencePendingAttempt.current;
+          if (!attempt) {
+            const document = persistenceQueued.current;
+            if (!document) break;
+            persistenceQueued.current = undefined;
+            const attemptId = crypto.randomUUID();
+            let reserved: { payload: string; saveSequence: number };
+            try {
+              reserved = reserveCanvasSaveAttempt(
+                attemptId,
+                (saveSequence) => JSON.stringify({
+                  edges: document.edges,
+                  nodes: document.nodes,
+                  observedRevision: persistenceObservedRevision.current,
+                  observedLoadToken: persistenceObservedLoadToken.current,
+                  revision: persistenceRevision.current,
+                  saveAttemptId: attemptId,
+                  saveSequence,
+                  saveSessionId: persistenceSessionId.current,
+                  viewport: document.viewport,
+                }),
+              );
+            } catch (error) {
+              if (!(error instanceof CanvasSaveSessionStorageError)) throw error;
+              failed = true;
+              stopForCanvasSaveSessionStorage();
+              break;
+            }
+            const { payload, saveSequence } = reserved;
+            attempt = { attemptId, document, payload, saveSequence };
+            persistencePendingAttempt.current = attempt;
+            rememberSentFingerprint(saveSequence, {
+              attemptId,
+              document: document.fingerprint,
+              graph: document.graphFingerprint,
+              liveEditors: false,
+            });
+          }
+          const { attemptId, document, payload, saveSequence } = attempt;
           persistenceInFlightFingerprint.current = document.fingerprint;
-          persistenceSentFingerprints.current.set(saveSequence, {
-            document: document.fingerprint,
-            graph: document.graphFingerprint,
-          });
-          const payload = JSON.stringify({
-            edges: document.edges,
-            nodes: document.nodes,
-            revision: persistenceRevision.current,
-            saveSequence,
-            saveSessionId: persistenceSessionId.current,
-            viewport: document.viewport,
-          });
-          const response = await fetch(`/api/canvas/${persistenceId}`, {
-            body: payload,
-            headers: { "Content-Type": "application/json" },
-            method: "PUT",
-          });
+          const saveController = new AbortController();
+          persistenceSaveController.current = saveController;
+          let saveTimeout: number | undefined;
+          let response: Response;
+          let responseBody: unknown = {};
+          try {
+            const result = await Promise.race([
+              (async () => {
+                const fetched = await fetch(`/api/canvas/${persistenceId}`, {
+                  body: payload,
+                  headers: { "Content-Type": "application/json" },
+                  method: "PUT",
+                  signal: saveController.signal,
+                });
+                const serializedResponse = await fetched.text();
+                let parsed: unknown = {};
+                if (serializedResponse) {
+                  try {
+                    parsed = JSON.parse(serializedResponse) as unknown;
+                  } catch {
+                    parsed = {};
+                  }
+                }
+                return { body: parsed, response: fetched };
+              })(),
+              new Promise<never>((_resolve, reject) => {
+                saveTimeout = window.setTimeout(() => {
+                  saveController.abort("canvas-save-timeout");
+                  reject(new Error("Canvas save response timed out"));
+                }, PERSIST_SAVE_TIMEOUT_MS);
+              }),
+            ]);
+            response = result.response;
+            responseBody = result.body;
+          } finally {
+            window.clearTimeout(saveTimeout);
+            if (persistenceSaveController.current === saveController) {
+              persistenceSaveController.current = undefined;
+            }
+          }
+          if (!isCurrentCanvas()) return;
+          if (!response.ok) attempt.rejectedByServer = true;
           if (response.status === 409) {
-            const conflict = await response.json() as {
+            persistencePendingAttempt.current = undefined;
+            const parsedConflict = responseBody;
+            const conflict: {
+              code?: string;
+              currentGraphRevision?: number;
+              currentRevision?: number;
+              currentWriterSequence?: number;
+              currentWriterSessionId?: string | null;
               error?: string;
-              graphRevision?: number;
-              revision?: number;
-              saveSequence?: number;
-              saveSessionId?: string | null;
-            };
-            const supersededBySameSession =
-              conflict.saveSessionId === persistenceSessionId.current &&
-              Number.isSafeInteger(conflict.saveSequence) &&
-              Number(conflict.saveSequence) >= saveSequence;
-            if (supersededBySameSession) {
-              persistenceRevision.current = Number(conflict.revision);
-              persistenceGraphRevision.current = Number(
-                conflict.graphRevision ?? conflict.revision,
+              rejectedAttemptId?: string | null;
+              rejectedSequence?: number;
+              rejectedSessionId?: string;
+              sessionHighWaterAttemptId?: string | null;
+              sessionHighWaterSequence?: number;
+            } = parsedConflict && typeof parsedConflict === "object"
+              ? parsedConflict as {
+                  code?: string;
+                  currentGraphRevision?: number;
+                  currentRevision?: number;
+                  currentWriterSequence?: number;
+                  currentWriterSessionId?: string | null;
+                  error?: string;
+                  rejectedAttemptId?: string | null;
+                  rejectedSequence?: number;
+                  rejectedSessionId?: string;
+                  sessionHighWaterAttemptId?: string | null;
+                  sessionHighWaterSequence?: number;
+                }
+              : {};
+            const validSupersededEnvelope =
+              conflict.code === "CANVAS_SAVE_SUPERSEDED" &&
+              conflict.rejectedSessionId === persistenceSessionId.current &&
+              conflict.rejectedSequence === saveSequence &&
+              conflict.rejectedAttemptId === attemptId &&
+              Number.isSafeInteger(conflict.sessionHighWaterSequence) &&
+              Number(conflict.sessionHighWaterSequence) >= saveSequence &&
+              (conflict.sessionHighWaterAttemptId === null ||
+                isCanvasSaveAttemptId(conflict.sessionHighWaterAttemptId)) &&
+              (conflict.currentWriterSessionId === null ||
+                typeof conflict.currentWriterSessionId === "string") &&
+              Number.isSafeInteger(conflict.currentWriterSequence) &&
+              Number(conflict.currentWriterSequence) >= 0 &&
+              Number.isSafeInteger(conflict.currentRevision) &&
+              Number(conflict.currentRevision) >= 0 &&
+              Number.isSafeInteger(conflict.currentGraphRevision) &&
+              Number(conflict.currentGraphRevision) >= 0 &&
+              Number(conflict.currentGraphRevision) <=
+                Number(conflict.currentRevision);
+            const highWaterSequence = Number(
+              conflict.sessionHighWaterSequence,
+            );
+            const mappedHighWaterFingerprint = validSupersededEnvelope
+              ? persistenceSentFingerprints.current.get(highWaterSequence)
+              : undefined;
+            const highWaterFingerprint =
+              mappedHighWaterFingerprint?.attemptId ===
+                  conflict.sessionHighWaterAttemptId
+                ? mappedHighWaterFingerprint
+                : undefined;
+            const currentWriterIsThisTab =
+              validSupersededEnvelope &&
+              conflict.currentWriterSessionId === persistenceSessionId.current;
+            const canBindThisTabWriter =
+              currentWriterIsThisTab &&
+              conflict.currentWriterSequence === highWaterSequence &&
+              Boolean(highWaterFingerprint);
+
+            if (validSupersededEnvelope && highWaterFingerprint) {
+              try {
+                const durableAttemptId =
+                  persistencePendingPagehide.current?.attemptId;
+                const resolvedAttemptId =
+                  durableAttemptId === conflict.sessionHighWaterAttemptId
+                    ? conflict.sessionHighWaterAttemptId ?? undefined
+                    : durableAttemptId === attemptId
+                      ? attemptId
+                      : undefined;
+                settleCanvasSaveSequence(
+                  highWaterSequence,
+                  resolvedAttemptId,
+                );
+              } catch (error) {
+                if (!(error instanceof CanvasSaveSessionStorageError)) {
+                  throw error;
+                }
+                failed = true;
+                stopForCanvasSaveSessionStorage();
+                break;
+              }
+              settleSentFingerprint(highWaterSequence, true);
+              if (saveSequence !== highWaterSequence) {
+                settleSentFingerprint(saveSequence, false);
+              }
+            } else {
+              settleSentFingerprint(saveSequence, false);
+            }
+
+            if (canBindThisTabWriter && highWaterFingerprint) {
+              const latest = highWaterFingerprint.liveEditors
+                ? canvasSnapshotWithLiveEditors()
+                : canvasSnapshot();
+              persistenceExternalRevision.current = Math.max(
+                persistenceExternalRevision.current ?? 0,
+                Number(conflict.currentRevision),
               );
-              setConfirmedPersistenceRevision(Number(conflict.revision));
-              setConfirmedGraphRevision(persistenceGraphRevision.current);
-              const confirmedFingerprint = persistenceSentFingerprints.current.get(
-                Number(conflict.saveSequence),
-              );
-              if (confirmedFingerprint) {
-                persistedDocumentFingerprint.current =
-                  confirmedFingerprint.document;
-                persistedGraphFingerprint.current = confirmedFingerprint.graph;
+              const localDraft =
+                latest.fingerprint === highWaterFingerprint.document
+                  ? undefined
+                  : latest;
+              if (!(await loadExternalBaseline(
+                localDraft,
+                highWaterFingerprint.liveEditors,
+              ))) break;
+              const serverMatchesHighWater =
+                persistedDocumentFingerprint.current ===
+                  highWaterFingerprint.document &&
+                persistedGraphFingerprint.current === highWaterFingerprint.graph;
+              if (
+                serverMatchesHighWater &&
+                latest.fingerprint === highWaterFingerprint.document
+              ) {
+                persistenceQueued.current = undefined;
+                persistenceDirty.current = false;
+              } else {
+                persistenceQueued.current = latest;
+                persistenceDirty.current = true;
               }
             } else if (
-              !conflictRetried &&
-              Number.isInteger(conflict.revision)
+              validSupersededEnvelope &&
+              !currentWriterIsThisTab &&
+              highWaterFingerprint
             ) {
-              // 最后修改者胜：采用服务端最新 revision，用本页最新内容重试一次。
-              conflictRetried = true;
-              persistenceRevision.current = Number(conflict.revision);
-              persistenceGraphRevision.current = Number(
-                conflict.graphRevision ?? conflict.revision,
+              const latest = highWaterFingerprint.liveEditors
+                ? canvasSnapshotWithLiveEditors()
+                : canvasSnapshot();
+              persistenceExternalRevision.current = Math.max(
+                persistenceExternalRevision.current ?? 0,
+                Number(conflict.currentRevision),
               );
-              setConfirmedPersistenceRevision(Number(conflict.revision));
-              setConfirmedGraphRevision(persistenceGraphRevision.current);
+              if (latest.fingerprint === highWaterFingerprint.document) {
+                persistenceRevision.current = Number(conflict.currentRevision);
+                persistenceGraphRevision.current = Number(
+                  conflict.currentGraphRevision,
+                );
+                persistenceObservedRevision.current = undefined;
+                persistenceObservedLoadToken.current = undefined;
+                setConfirmedPersistenceRevision(undefined);
+                setConfirmedGraphRevision(undefined);
+                persistenceQueued.current = undefined;
+                persistenceDirty.current = false;
+                externalReloadRequired = true;
+              } else {
+                // Keep the still-valid old fence long enough to durably reserve
+                // the newer local draft. loadExternalBaseline atomically rebases
+                // that journal onto the foreign writer's authoritative GET.
+                if (!(await loadExternalBaseline(
+                  latest,
+                  highWaterFingerprint.liveEditors,
+                ))) break;
+                persistenceQueued.current = latest;
+                persistenceDirty.current = true;
+              }
+            } else if (
+              validSupersededEnvelope &&
+              isCanvasSaveAttemptId(conflict.sessionHighWaterAttemptId)
+            ) {
+              try {
+                raiseCanvasSaveSequenceFloor(highWaterSequence);
+              } catch (error) {
+                if (!(error instanceof CanvasSaveSessionStorageError)) {
+                  throw error;
+                }
+                failed = true;
+                stopForCanvasSaveSessionStorage();
+                break;
+              }
+              const latest = canvasSnapshot();
+              persistenceExternalRevision.current = Math.max(
+                persistenceExternalRevision.current ?? 0,
+                Number(conflict.currentRevision),
+              );
+              if (!(await loadExternalBaseline(latest))) break;
+              persistenceQueued.current = latest;
+              persistenceDirty.current = true;
             } else {
               failed = true;
               persistenceConflict.current = true;
               setConfirmedPersistenceRevision(undefined);
               setConfirmedGraphRevision(undefined);
-              persistenceQueued.current = undefined;
+              persistenceQueued.current = canvasSnapshot();
+              persistenceDirty.current = true;
+              const projectUnavailable =
+                conflict.code === "CANVAS_PROJECT_DELETED" ||
+                conflict.code === "CANVAS_PROJECT_NOT_OWNED";
+              if (projectUnavailable) {
+                persistenceReadyRef.current = false;
+                persistenceObservedRevision.current = undefined;
+                persistenceObservedLoadToken.current = undefined;
+                setPersistenceLoadState("missing");
+                onProjectMissing?.();
+              }
+              const fallback = conflict.code === "CANVAS_LOAD_REQUIRED"
+                ? "画布加载基线已失效，已保留当前草稿，请刷新后重试"
+                : projectUnavailable
+                  ? "项目已不存在或不属于当前账号，当前草稿未被覆盖"
+                  : "保存响应无法安全确认，已保留当前草稿，请刷新后重试";
+              onSaveConflict(conflict.error?.trim() || fallback);
+              break;
+            }
+          } else if (response.status === 503) {
+            const parsedUnavailable = responseBody;
+            const unavailable: { code?: string; error?: string } =
+              parsedUnavailable && typeof parsedUnavailable === "object"
+              ? parsedUnavailable as { code?: string; error?: string }
+              : {};
+            if (unavailable.code === "CANVAS_SAVE_SESSION_CAPACITY") {
+              persistencePendingAttempt.current = undefined;
+              settleSentFingerprint(saveSequence, false);
+              failed = true;
+              persistenceConflict.current = true;
+              setConfirmedPersistenceRevision(undefined);
+              setConfirmedGraphRevision(undefined);
+              persistenceQueued.current = canvasSnapshot();
+              persistenceDirty.current = true;
               onSaveConflict(
-                conflict.error || "内容已在其他页面更新，已采用最新版",
+                unavailable.error?.trim() ||
+                  "当前画布保存会话过多，已保留草稿，请刷新后重试",
               );
               break;
             }
-          } else if (!response.ok) {
             failed = true;
             if (!failureNotified) {
               failureNotified = true;
@@ -3386,41 +5096,166 @@ export function CanvasSurface({
             }
             persistenceQueued.current = canvasSnapshot();
             break;
-          } else {
-            const { graphRevision, revision } = await response.json() as {
-              graphRevision: number;
-              revision: number;
-            };
-            persistenceRevision.current = revision;
-            persistenceGraphRevision.current = graphRevision;
-            setConfirmedPersistenceRevision(revision);
-            setConfirmedGraphRevision(graphRevision);
-            broadcastCanvasSaved(
-              accountId ?? "",
-              persistenceId,
-              revision,
-              persistenceSessionId.current,
+          } else if (
+            response.status === 408 ||
+            response.status === 425 ||
+            response.status === 429 ||
+            response.status >= 500
+          ) {
+            failed = true;
+            if (!failureNotified) {
+              failureNotified = true;
+              onSaveConflict("保存失败，请检查网络，正在自动重试");
+            }
+            persistenceQueued.current = canvasSnapshot();
+            break;
+          } else if (!response.ok) {
+            const parsedRejection = responseBody;
+            const rejected: { error?: string } =
+              parsedRejection && typeof parsedRejection === "object"
+              ? parsedRejection as { error?: string }
+              : {};
+            persistencePendingAttempt.current = undefined;
+            settleSentFingerprint(saveSequence, false);
+            failed = true;
+            persistenceConflict.current = true;
+            setConfirmedPersistenceRevision(undefined);
+            setConfirmedGraphRevision(undefined);
+            persistenceQueued.current = canvasSnapshot();
+            persistenceDirty.current = true;
+            onSaveConflict(
+              rejected.error?.trim() ||
+                `保存请求被拒绝（${response.status}），已保留当前草稿，请刷新后重试`,
             );
-            persistedDocumentFingerprint.current = document.fingerprint;
-            persistedGraphFingerprint.current = document.graphFingerprint;
+            break;
+          } else {
+            const requestFence = canvasSaveRequestFence(payload);
+            const saveResult = responseBody;
+            if (
+              !isCanvasSaveSuccess(saveResult, requestFence)
+            ) {
+              throw new Error("Canvas save returned an invalid revision");
+            }
+            const { graphRevision, loadToken, revision } = saveResult;
+            if (
+              saveSequence <= persistenceConfirmedSaveSequence.current
+            ) {
+              settleSentFingerprint(saveSequence, false);
+              if (
+                revision > persistenceRevision.current ||
+                (revision === persistenceRevision.current &&
+                  (graphRevision !== persistenceGraphRevision.current ||
+                    loadToken !== persistenceObservedLoadToken.current))
+              ) {
+                failed = true;
+                persistenceConflict.current = true;
+                persistenceQueued.current = canvasSnapshot();
+                persistenceDirty.current = true;
+                setConfirmedPersistenceRevision(undefined);
+                setConfirmedGraphRevision(undefined);
+                onSaveConflict(
+                  "保存响应顺序异常，已保留当前草稿，请刷新后重试",
+                );
+                break;
+              }
+              persistencePendingAttempt.current = undefined;
+            } else {
+              persistencePendingAttempt.current = undefined;
+              persistenceRevision.current = revision;
+              persistenceGraphRevision.current = graphRevision;
+              persistenceObservedRevision.current = revision;
+              persistenceObservedLoadToken.current = loadToken;
+              persistenceConfirmedSaveSequence.current = Math.max(
+                persistenceConfirmedSaveSequence.current,
+                saveSequence,
+              );
+              if (
+                persistencePendingPagehide.current?.attemptId === attemptId &&
+                persistencePendingPagehide.current.saveSequence <= saveSequence
+              ) {
+                persistencePendingPagehide.current = undefined;
+              }
+              persistCanvasSaveSession(attemptId);
+              settleSentFingerprint(saveSequence, true);
+              if (
+                persistenceExternalRevision.current !== undefined &&
+                persistenceExternalRevision.current <= revision
+              ) {
+                persistenceExternalRevision.current = undefined;
+              }
+              persistenceRetryDelay.current = 1_000;
+              setConfirmedPersistenceRevision(revision);
+              setConfirmedGraphRevision(graphRevision);
+              broadcastCanvasSaved(
+                accountId ?? "",
+                persistenceId,
+                revision,
+                persistenceBroadcastInstanceId.current,
+              );
+              persistedDocumentFingerprint.current = document.fingerprint;
+              persistedGraphFingerprint.current = document.graphFingerprint;
+            }
           }
 
+          if (externalReloadRequired) break;
           const latest = canvasSnapshot();
+          if (
+            persistenceExternalRevision.current !== undefined &&
+            persistenceExternalRevision.current > persistenceRevision.current &&
+            latest.fingerprint === persistedDocumentFingerprint.current
+          ) {
+            persistenceQueued.current = undefined;
+            persistenceDirty.current = false;
+            externalReloadRequired = true;
+            break;
+          }
           if (latest.fingerprint !== persistedDocumentFingerprint.current) {
             persistenceQueued.current = latest;
             persistenceDirty.current = true;
           } else {
+            persistenceQueued.current = undefined;
             persistenceDirty.current = false;
           }
         }
-      } catch {
+      } catch (error) {
+        if (!isCurrentCanvas()) return;
+        if (error instanceof CanvasSaveSessionStorageError) {
+          failed = true;
+          stopForCanvasSaveSessionStorage();
+          return;
+        }
         failed = true;
         persistenceQueued.current = canvasSnapshot();
+        if (!failureNotified) {
+          failureNotified = true;
+          onSaveConflict("保存失败，请检查网络，正在自动重试");
+        }
       } finally {
+        if (persistenceSaveRun.current !== saveRun) return;
         persistenceInFlightFingerprint.current = undefined;
         persistenceSaving.current = false;
+        if (!isCurrentCanvas()) {
+          if (
+            persistenceReadyRef.current &&
+            !persistenceConflict.current &&
+            persistenceQueued.current
+          ) {
+            queueMicrotask(() => drainPersistenceQueueRef.current());
+          }
+          return;
+        }
         drainPersistenceQueueRef.current = drainPersistenceQueue;
         if (
+          !failed &&
+          !persistenceConflict.current &&
+          externalReloadRequired &&
+          !persistenceQueued.current
+        ) {
+          persistenceDirty.current = false;
+          persistenceReadyRef.current = false;
+          setPersistenceLoadState("loading");
+          window.location.reload();
+        } else if (
           !failed &&
           !persistenceConflict.current &&
           persistenceQueued.current
@@ -3436,10 +5271,23 @@ export function CanvasSurface({
         } else if (failed && !persistenceConflict.current) {
           persistenceDirty.current = true;
           window.clearTimeout(persistenceSaveTimer.current);
-          persistenceSaveTimer.current = window.setTimeout(
-            () => void drainPersistenceQueue(),
-            1_000,
-          );
+          if (
+            persistenceExternalRevision.current !== undefined &&
+            persistenceExternalRevision.current >
+              (persistenceObservedRevision.current ?? -1)
+          ) {
+            queueMicrotask(() => void drainPersistenceQueue());
+          } else {
+            const retryDelay = persistenceRetryDelay.current;
+            persistenceRetryDelay.current = Math.min(
+              persistenceRetryDelay.current * 2,
+              PERSIST_RETRY_MAX_MS,
+            );
+            persistenceSaveTimer.current = window.setTimeout(
+              () => void drainPersistenceQueue(),
+              retryDelay,
+            );
+          }
         }
       }
     };
@@ -3460,8 +5308,10 @@ export function CanvasSurface({
     return () => window.clearTimeout(persistenceSaveTimer.current);
   }, [
     canvasSnapshot,
+    canvasSnapshotWithLiveEditors,
     edges,
     nodes,
+    onProjectMissing,
     onSaveConflict,
     onSaveSuccess,
     onSaveStart,
@@ -3469,6 +5319,14 @@ export function CanvasSurface({
     persistenceId,
     persistenceReady,
     persistenceRecheckTick,
+    persistenceScopeId,
+    persistCanvasSaveSession,
+    reserveCanvasSaveAttempt,
+    raiseCanvasSaveSequenceFloor,
+    rememberSentFingerprint,
+    settleCanvasSaveSequence,
+    settleSentFingerprint,
+    stopForCanvasSaveSessionStorage,
     templateFitBlocksPersistence,
     viewport,
   ]);
@@ -3477,6 +5335,9 @@ export function CanvasSurface({
     const hasPendingChanges = () =>
       persistenceDirty.current ||
       persistenceSaving.current ||
+      pendingGuardedNodes.current !== undefined ||
+      pendingGuardedEdges.current !== undefined ||
+      Boolean(persistencePendingAttempt.current) ||
       Boolean(persistenceQueued.current);
     const warnBeforeUnload = (event: BeforeUnloadEvent) => {
       if (!hasPendingChanges()) return;
@@ -3488,15 +5349,15 @@ export function CanvasSurface({
   }, []);
 
   useEffect(() => {
-    if (!persistenceFixture || !persistenceReady) return;
+    if (!persistenceFixture) return;
     const channel = canvasSyncChannel(accountId ?? "", persistenceId);
     if (!channel) return;
     const onExternalSave = (event: MessageEvent) => {
       const data = event.data as
         | {
             canvasId?: string;
+            instanceId?: string;
             revision?: number;
-            sessionId?: string;
             type?: string;
           }
         | undefined;
@@ -3504,11 +5365,36 @@ export function CanvasSurface({
         !data ||
         data.type !== "saved" ||
         data.canvasId !== persistenceId ||
-        data.sessionId === persistenceSessionId.current
+        data.instanceId === persistenceBroadcastInstanceId.current ||
+        !Number.isSafeInteger(data.revision) ||
+        Number(data.revision) < 0
       ) {
         return;
       }
-      if (persistenceDirty.current || persistenceSaving.current) return;
+      persistenceExternalRevision.current = Math.max(
+        persistenceExternalRevision.current ?? 0,
+        Number(data.revision),
+      );
+      if (!persistenceReadyRef.current) return;
+      const latest = canvasSnapshotRef.current();
+      if (
+        persistenceDirty.current ||
+        persistenceSaving.current ||
+        persistenceQueued.current ||
+        latest.fingerprint !== persistedDocumentFingerprint.current
+      ) {
+        if (latest.fingerprint !== persistedDocumentFingerprint.current) {
+          persistenceQueued.current = latest;
+          persistenceDirty.current = true;
+        }
+        if (!persistenceSaving.current && !persistenceConflict.current) {
+          window.clearTimeout(persistenceSaveTimer.current);
+          queueMicrotask(() => drainPersistenceQueueRef.current());
+        }
+        return;
+      }
+      persistenceReadyRef.current = false;
+      setPersistenceLoadState("loading");
       window.location.reload();
     };
     channel.addEventListener("message", onExternalSave);
@@ -3516,106 +5402,218 @@ export function CanvasSurface({
       channel.removeEventListener("message", onExternalSave);
       channel.close();
     };
-  }, [accountId, persistenceFixture, persistenceId, persistenceReady]);
+  }, [accountId, persistenceFixture, persistenceId]);
 
   useEffect(() => {
     if (!persistenceFixture || !persistenceReady) return;
     const flushBeforeReload = () => {
-      const titleValues = new Map(
-        [...document.querySelectorAll<HTMLInputElement>(
-          '.react-flow__node input[aria-label$="标题"]',
-        )].flatMap((input) => {
-          if (input.dataset.compositionActive === "true") return [];
-          const id = input.closest<HTMLElement>(".react-flow__node")?.dataset.id;
-          return id ? [[id, input.value] as const] : [];
-        }),
-      );
-      const textContentValues = new Map(
-        [...document.querySelectorAll<HTMLElement>(
-          '.react-flow__node [data-testid="text-node-editor"]',
-        )].flatMap((editor) => {
-          if (editor.dataset.compositionActive === "true") return [];
-          const id = editor.closest<HTMLElement>(".react-flow__node")?.dataset.id;
-          return id
-            ? [[id, {
-                content: editor.innerText,
-                contentHtml: editor.dataset.committedRichHtml,
-              }] as const]
-            : [];
-        }),
-      );
-      const nodes = cloneNodes(nodesRef.current).map((node) => {
-        const title = titleValues.get(node.id);
-        const textContent = textContentValues.get(node.id);
-        if (
-          (title === undefined || title === node.data.title) &&
-          (textContent === undefined ||
-            (textContent.content === node.data.content &&
-              (textContent.contentHtml === undefined ||
-                textContent.contentHtml === node.data.contentHtml)))
-        ) {
-          return node;
-        }
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            content: textContent?.content ?? node.data.content,
-            contentHtml:
-              textContent?.contentHtml ?? node.data.contentHtml,
-            title: title ?? node.data.title,
-          },
-        };
-      });
-      const latest = canvasSnapshot(
-        nodes,
-        edgesRef.current,
-        viewportRef.current,
-      );
+      persistenceBfCacheReloadSafe.current = false;
       if (
-        persistenceConflict.current ||
-        (latest.fingerprint === persistedDocumentFingerprint.current &&
-          !persistenceSaving.current)
+        !persistenceReadyRef.current ||
+        persistenceObservedRevision.current === undefined ||
+        !isCanvasLoadToken(persistenceObservedLoadToken.current) ||
+        (persistenceExternalRevision.current !== undefined &&
+          persistenceExternalRevision.current >
+            persistenceObservedRevision.current)
       ) {
         return;
       }
+      const latest = canvasSnapshotWithLiveEditors();
+      const inFlightAttempt = persistencePendingAttempt.current;
+      const unresolvedInFlightSave =
+        persistenceSaving.current &&
+        (!inFlightAttempt ||
+          inFlightAttempt.saveSequence >
+            persistenceConfirmedSaveSequence.current);
+      if (
+        persistenceConflict.current ||
+        (latest.fingerprint === persistedDocumentFingerprint.current &&
+          !unresolvedInFlightSave)
+      ) {
+        if (!persistenceConflict.current) {
+          persistenceBfCacheReloadSafe.current = true;
+        }
+        return;
+      }
       window.clearTimeout(persistenceSaveTimer.current);
-      const saveSequence = ++persistenceSaveSequence.current;
-      persistenceSentFingerprints.current.set(saveSequence, {
-        document: latest.fingerprint,
-        graph: latest.graphFingerprint,
-      });
       // keepalive 有约 64KB 的浏览器硬上限，超限会直接失败；
       // 页面卸载时的兜底保存只在小负载下尽力而为，大负载依赖常规防抖保存。
-      const payload = JSON.stringify({
-        edges: latest.edges,
-        nodes: latest.nodes,
-        revision: persistenceRevision.current,
-        saveSequence,
-        saveSessionId: persistenceSessionId.current,
-        viewport: latest.viewport,
-      });
-      if (new Blob([payload]).size <= 60 * 1024) {
+      const pendingAttempt = persistencePendingAttempt.current;
+      let attemptId: string;
+      let payload: string;
+      let saveSequence: number;
+      if (
+        pendingAttempt &&
+        latest.fingerprint === pendingAttempt.document.fingerprint
+      ) {
+        attemptId = pendingAttempt.attemptId;
+        payload = pendingAttempt.payload;
+        saveSequence = pendingAttempt.saveSequence;
+      } else {
+        attemptId = crypto.randomUUID();
+        let reserved: { payload: string; saveSequence: number };
+        try {
+          reserved = reserveCanvasSaveAttempt(
+            attemptId,
+            (candidateSequence) => JSON.stringify({
+              edges: latest.edges,
+              nodes: latest.nodes,
+              observedRevision: persistenceObservedRevision.current,
+              observedLoadToken: persistenceObservedLoadToken.current,
+              revision: persistenceRevision.current,
+              saveAttemptId: attemptId,
+              saveSequence: candidateSequence,
+              saveSessionId: persistenceSessionId.current,
+              viewport: latest.viewport,
+            }),
+          );
+        } catch (error) {
+          if (error instanceof CanvasSaveSessionStorageError) {
+            stopForCanvasSaveSessionStorage();
+            return;
+          }
+          throw error;
+        }
+        ({ payload, saveSequence } = reserved);
+        rememberSentFingerprint(saveSequence, {
+          attemptId,
+          document: latest.fingerprint,
+          graph: latest.graphFingerprint,
+          liveEditors: true,
+        });
+      }
+      const journal = persistencePendingPagehide.current;
+      if (
+        journal?.attemptId !== attemptId ||
+        journal.payload !== payload ||
+        journal.saveSequence !== saveSequence
+      ) {
+        stopForCanvasSaveSessionStorage();
+        return;
+      }
+      persistenceBfCacheReloadSafe.current = true;
+      if (new Blob([payload]).size <= PERSIST_PAGEHIDE_MAX_BYTES) {
+        const saveSessionId = persistenceSessionId.current;
+        const expectedStorageRevision = persistenceStorageRevision.current;
+        const savedSnapshot = pendingPagehideSnapshot(journal, saveSessionId);
+        if (!savedSnapshot) {
+          persistenceBfCacheReloadSafe.current = false;
+          stopForCanvasSaveSessionStorage();
+          return;
+        }
         void fetch(`/api/canvas/${persistenceId}`, {
           body: payload,
           headers: { "Content-Type": "application/json" },
           keepalive: true,
           method: "PUT",
-        }).catch(() => {});
+        }).then(async (response) => {
+          if (!response.ok) {
+            settleSentFingerprint(saveSequence, false);
+            return;
+          }
+          const result: unknown = await response.json();
+          const requestFence = canvasSaveRequestFence(payload);
+          if (
+            !isCanvasSaveSuccess(result, requestFence)
+          ) {
+            settleSentFingerprint(saveSequence, false);
+            return;
+          }
+          settleSentFingerprint(saveSequence, true);
+          try {
+            const settlement = settleStoredCanvasSaveSession(
+              persistenceScopeId,
+              saveSessionId,
+              saveSequence,
+              attemptId,
+              payload,
+              journal.serverEpoch,
+            );
+            if (
+              settlement &&
+              persistenceLoadIdentity.current.scopeId === persistenceScopeId &&
+              persistenceSessionId.current === saveSessionId &&
+              persistenceStorageRevision.current === expectedStorageRevision &&
+              settlement.previousStorageRevision === expectedStorageRevision
+            ) {
+              applyCanvasSaveSession(settlement.settled);
+              persistenceRevision.current = result.revision;
+              persistenceGraphRevision.current = result.graphRevision;
+              persistenceObservedRevision.current = result.revision;
+              persistenceObservedLoadToken.current = result.loadToken;
+              persistenceRetryDelay.current = 1_000;
+              persistedDocumentFingerprint.current = savedSnapshot.fingerprint;
+              persistedGraphFingerprint.current = savedSnapshot.graphFingerprint;
+              setConfirmedPersistenceRevision(result.revision);
+              setConfirmedGraphRevision(result.graphRevision);
+              if (
+                persistenceExternalRevision.current !== undefined &&
+                persistenceExternalRevision.current <= result.revision
+              ) {
+                persistenceExternalRevision.current = undefined;
+              }
+              broadcastCanvasSaved(
+                accountId ?? "",
+                persistenceId,
+                result.revision,
+                persistenceBroadcastInstanceId.current,
+              );
+              const currentSnapshot = canvasSnapshotWithLiveEditors();
+              if (currentSnapshot.fingerprint === savedSnapshot.fingerprint) {
+                persistenceQueued.current = undefined;
+                persistenceDirty.current = false;
+                onSaveSuccess();
+              } else {
+                persistenceBfCacheReloadSafe.current = false;
+                persistenceQueued.current = currentSnapshot;
+                persistenceDirty.current = true;
+              }
+            }
+          } catch {
+            // A later page will fail closed on the still-persisted pending
+            // journal and reconcile it against the server fence.
+          }
+        }).catch(() => {
+          pruneSentFingerprints();
+        });
       }
     };
     window.addEventListener("pagehide", flushBeforeReload);
     return () => window.removeEventListener("pagehide", flushBeforeReload);
   }, [
-    canvasSnapshot,
-    cloneNodes,
+    accountId,
+    applyCanvasSaveSession,
+    canvasSnapshotWithLiveEditors,
+    onSaveSuccess,
     persistenceFixture,
     persistenceId,
     persistenceReady,
+    persistenceScopeId,
+    rememberSentFingerprint,
+    reserveCanvasSaveAttempt,
+    pruneSentFingerprints,
+    settleSentFingerprint,
+    stopForCanvasSaveSessionStorage,
   ]);
 
   useEffect(() => {
+    const reloadRestoredPage = (event: PageTransitionEvent) => {
+      if (
+        event.persisted &&
+        persistenceBfCacheReloadSafe.current &&
+        persistenceReadyRef.current &&
+        !persistenceConflict.current
+      ) {
+        window.location.reload();
+      }
+    };
+    window.addEventListener("pageshow", reloadRestoredPage);
+    return () => window.removeEventListener("pageshow", reloadRestoredPage);
+  }, []);
+
+  useEffect(() => {
     const cancelBatchConnection = (event: KeyboardEvent) => {
+      if (!persistenceReadyRef.current) return;
       if (event.key === "Escape") {
         setBatchDrag(undefined);
         setNodes((current) =>
@@ -3746,7 +5744,7 @@ export function CanvasSurface({
       window.clearTimeout(cutTimer.current);
       window.removeEventListener("keydown", cancelBatchConnection, true);
     };
-  }, [primaryId, setEdges, setNodes]);
+  }, [persistenceReady, primaryId, setEdges, setNodes]);
 
   const selectedNodes = nodes.filter((node) => node.selected);
   const selectedNodeIds = new Set(selectedNodes.map((node) => node.id));
@@ -3938,42 +5936,85 @@ export function CanvasSurface({
     persistenceFixture &&
     persistenceReady &&
     !persistenceConflict.current &&
+    isCanvasLoadToken(persistenceObservedLoadToken.current) &&
     confirmedPersistenceRevision !== undefined &&
     confirmedPersistenceRevision === persistenceRevision.current &&
     confirmedGraphRevision !== undefined &&
     confirmedGraphRevision === persistenceGraphRevision.current &&
-    canvasGraphFingerprint({ edges, nodes }) ===
+    canvasGraphFingerprint({
+      edges: pendingGuardedEdges.current ?? edges,
+      nodes: pendingGuardedNodes.current ?? nodes,
+    }) ===
       persistedGraphFingerprint.current
       ? confirmedGraphRevision
       : undefined;
+  const retryGenerationEnabled =
+    persistenceReady &&
+    !persistenceConflict.current &&
+    (!persistenceFixture ||
+      (persistenceObservedRevision.current !== undefined &&
+        isCanvasLoadToken(persistenceObservedLoadToken.current)));
   const generationCanvasRevisionRef = useRef<number | undefined>(undefined);
   generationCanvasRevisionRef.current = generationCanvasRevision;
   const flushCanvasSave = useCallback(async () => {
-    if (persistenceConflict.current) {
-      throw new Error("画布保存状态异常，请刷新后重试");
+    const assertSafePersistence = () => {
+      if (
+        persistenceFixture &&
+        (!persistenceReadyRef.current ||
+          persistenceObservedRevision.current === undefined ||
+          !isCanvasLoadToken(persistenceObservedLoadToken.current))
+      ) {
+        throw new Error("画布尚未安全加载，请先重试加载");
+      }
+      if (persistenceConflict.current) {
+        throw new Error("画布保存状态异常，请刷新后重试");
+      }
+    };
+    assertSafePersistence();
+    const latest = canvasSnapshotRef.current();
+    if (latest.fingerprint !== persistedDocumentFingerprint.current) {
+      persistenceQueued.current = latest;
+      persistenceDirty.current = true;
     }
     if (persistenceDirty.current && !persistenceSaving.current) {
-      persistenceQueued.current = canvasSnapshotRef.current();
       drainPersistenceQueueRef.current();
     }
     const deadline = Date.now() + 8_000;
     while (persistenceDirty.current || persistenceSaving.current) {
+      assertSafePersistence();
       if (Date.now() > deadline) {
         throw new Error("画布保存超时，请稍后重试");
       }
       await new Promise((resolve) => setTimeout(resolve, 60));
     }
-  }, []);
+    assertSafePersistence();
+  }, [persistenceFixture]);
   const waitForCanvasRevision = useCallback(async (timeoutMs = 8_000) => {
-    if (persistenceConflict.current) {
-      throw new Error("画布保存状态异常，请刷新后重试");
+    const assertSafePersistence = () => {
+      if (
+        persistenceFixture &&
+        (!persistenceReadyRef.current ||
+          persistenceObservedRevision.current === undefined ||
+          !isCanvasLoadToken(persistenceObservedLoadToken.current))
+      ) {
+        throw new Error("画布尚未安全加载，请先重试加载");
+      }
+      if (persistenceConflict.current) {
+        throw new Error("画布保存状态异常，请刷新后重试");
+      }
+    };
+    assertSafePersistence();
+    const latest = canvasSnapshotRef.current();
+    if (latest.fingerprint !== persistedDocumentFingerprint.current) {
+      persistenceQueued.current = latest;
+      persistenceDirty.current = true;
     }
     if (persistenceDirty.current && !persistenceSaving.current) {
-      persistenceQueued.current = canvasSnapshotRef.current();
       drainPersistenceQueueRef.current();
     }
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
+      assertSafePersistence();
       if (!persistenceDirty.current && !persistenceSaving.current) {
         const revision = generationCanvasRevisionRef.current;
         if (revision !== undefined) {
@@ -3987,6 +6028,7 @@ export function CanvasSurface({
               resolve(null);
             });
           });
+          assertSafePersistence();
           const latest = generationCanvasRevisionRef.current;
           if (latest !== undefined) return latest;
         }
@@ -3994,7 +6036,23 @@ export function CanvasSurface({
       await new Promise((resolve) => setTimeout(resolve, 60));
     }
     throw new Error("画布保存超时，请稍后再试");
-  }, []);
+  }, [persistenceFixture]);
+  useEffect(() => {
+    if (!onGenerationRetryGateChange) return;
+    const scopeId = persistenceScopeId;
+    const gate = async () => {
+      if (persistenceLoadIdentity.current.scopeId !== scopeId) {
+        throw new Error("画布范围已经切换，不能重试生成");
+      }
+      const revision = await waitForCanvasRevision();
+      if (persistenceLoadIdentity.current.scopeId !== scopeId) {
+        throw new Error("画布范围已经切换，不能重试生成");
+      }
+      return revision;
+    };
+    onGenerationRetryGateChange(gate);
+    return () => onGenerationRetryGateChange(undefined);
+  }, [onGenerationRetryGateChange, persistenceScopeId, waitForCanvasRevision]);
   const generationCanvasContextValue = useMemo(
     () => ({
       accountId: accountId ?? "",
@@ -4003,6 +6061,8 @@ export function CanvasSurface({
       flushCanvasSave,
       isFixture: Boolean(fixtureId),
       notify: showWorkflowToast,
+      persistenceReady,
+      retryGenerationEnabled,
       waitForCanvasRevision,
     }),
     [
@@ -4010,7 +6070,9 @@ export function CanvasSurface({
       fixtureId,
       flushCanvasSave,
       generationCanvasRevision,
+      persistenceReady,
       persistenceId,
+      retryGenerationEnabled,
       showWorkflowToast,
       waitForCanvasRevision,
     ],
@@ -4019,6 +6081,18 @@ export function CanvasSurface({
     () => ({ selectedNodeCount }),
     [selectedNodeCount],
   );
+  const guardedSetEdges = useCallback<
+    Dispatch<SetStateAction<CuttableEdge[]>>
+  >((update) => {
+    if (!persistenceReadyRef.current) return;
+    setEdges(update);
+  }, [setEdges]);
+  const guardedSetNodes = useCallback<
+    Dispatch<SetStateAction<ProbeNodeType[]>>
+  >((update) => {
+    if (!persistenceReadyRef.current) return;
+    setNodes(update);
+  }, [setNodes]);
 
   useEffect(() => {
     if (selectedNodeCount <= 1) return;
@@ -4038,15 +6112,18 @@ export function CanvasSurface({
       value={generationCanvasContextValue}
     >
       <WorkflowExecutionProvider
-        getEdges={() => edgesRef.current}
-        getNodes={() => nodesRef.current}
+        getEdges={() => pendingGuardedEdges.current ?? edgesRef.current}
+        getNodes={() => pendingGuardedNodes.current ?? nodesRef.current}
         notify={showWorkflowToast}
       >
-      <CanvasGraphMutationContext.Provider value={{ setEdges, setNodes }}>
+      <CanvasGraphMutationContext.Provider
+        value={{ setEdges: guardedSetEdges, setNodes: guardedSetNodes }}
+      >
       <CanvasCheckpointContext.Provider value={checkpoint}>
       <CanvasSelectionUiContext.Provider value={canvasSelectionUiContextValue}>
       <div
       aria-label="画布"
+      aria-busy={effectivePersistenceLoadState === "loading"}
       className="canvas-world"
       data-agent-reference-mode={agentReferenceMode ? "true" : undefined}
       data-create-menu={
@@ -4065,10 +6142,15 @@ export function CanvasSurface({
       }
       data-node-count={nodes.length}
       data-persistence-ready={persistenceReady ? "true" : "false"}
+      data-persistence-state={effectivePersistenceLoadState}
+      data-save-fingerprint-count={persistenceSentFingerprints.current.size}
       data-selected-node-count={selectedNodeCount}
       data-selected-edge-count={edges.filter((edge) => edge.selected).length}
-      onWheelCapture={handleCanvasWheelCapture}
+      onWheelCapture={(event) => {
+        if (persistenceReady) handleCanvasWheelCapture(event);
+      }}
       onDragOver={(event) => {
+        if (!persistenceReady) return;
         if (
           Array.from(event.dataTransfer.types).includes(
             CANVAS_LIBRARY_ASSET_MIME,
@@ -4079,6 +6161,7 @@ export function CanvasSurface({
         }
       }}
       onDrop={(event) => {
+        if (!persistenceReady) return;
         const raw = event.dataTransfer.getData(CANVAS_LIBRARY_ASSET_MIME);
         if (!raw) return;
         event.preventDefault();
@@ -4103,6 +6186,7 @@ export function CanvasSurface({
       }}
       onDoubleClick={(event) => {
         if (
+          !persistenceReady ||
           !worldRef.current ||
           !(event.target instanceof Element) ||
           event.target.closest(
@@ -4140,11 +6224,11 @@ export function CanvasSurface({
         connectionLineStyle={{ stroke: "#ffffff60", strokeWidth: 1 }}
         defaultViewport={viewport}
         defaultEdgeOptions={{ interactionWidth: 20 }}
-        deleteKeyCode={["Backspace", "Delete"]}
+        deleteKeyCode={persistenceReady ? ["Backspace", "Delete"] : null}
         edges={visibleEdges}
         edgeTypes={edgeTypes}
         edgesReconnectable={false}
-        elementsSelectable={!agentReferenceMode}
+        elementsSelectable={persistenceReady && !agentReferenceMode}
         elevateEdgesOnSelect={false}
         elevateNodesOnSelect
         isValidConnection={isValidConnection}
@@ -4152,12 +6236,13 @@ export function CanvasSurface({
         multiSelectionKeyCode="Shift"
         minZoom={0.15}
         nodes={nodes}
-        nodesDraggable={!activePlaylist && !agentReferenceMode}
-        nodesConnectable
+        nodesDraggable={persistenceReady && !activePlaylist && !agentReferenceMode}
+        nodesConnectable={persistenceReady}
         nodeTypes={nodeTypes}
         onlyRenderVisibleElements
         onConnect={addConnection}
         onConnectEnd={(event, state) => {
+          if (!persistenceReady) return;
           if (
             state.isValid ||
             !state.fromNode ||
@@ -4200,6 +6285,7 @@ export function CanvasSurface({
           }
         }}
         onEdgeMouseEnter={(_, edge) => {
+          if (!persistenceReady) return;
           window.clearTimeout(cutTimer.current);
           cutTimer.current = window.setTimeout(() => {
             setEdges((current) =>
@@ -4216,6 +6302,7 @@ export function CanvasSurface({
           }, 700);
         }}
         onEdgeMouseLeave={(event, edge) => {
+          if (!persistenceReady) return;
           window.clearTimeout(cutTimer.current);
           const related =
             event.relatedTarget instanceof Element
@@ -4242,6 +6329,7 @@ export function CanvasSurface({
           );
         }}
         onEdgeClick={(_, edge) => {
+          if (!persistenceReady) return;
           window.clearTimeout(cutTimer.current);
           setEdges((current) =>
             current.map((candidate) => ({
@@ -4254,8 +6342,11 @@ export function CanvasSurface({
             })),
           );
         }}
-        onEdgesChange={onEdgesChange}
+        onEdgesChange={(changes) => {
+          if (persistenceReady) onEdgesChange(changes);
+        }}
         onDelete={({ edges: deletedEdges, nodes: deletedNodes }) => {
+          if (!persistenceReady) return;
           pushHistory({
             edges: deletedEdges.map(stripSelectionFlowMarkers),
             kind: "delete",
@@ -4263,6 +6354,7 @@ export function CanvasSurface({
           });
         }}
         onBeforeDelete={async ({ edges: deletingEdges, nodes: deletingNodes }) => {
+          if (!persistenceReady) return false;
           const groupIds = new Set(
             deletingNodes
               .filter((node) => node.type === "group")
@@ -4301,30 +6393,49 @@ export function CanvasSurface({
           onReady(() => void instance.fitView({ duration: 0, padding: 0.2 }));
         }}
         onNodesChange={(changes) => {
+          // Keep ReactFlow's passive measurements in the controlled nodes so
+          // the first hydrated data edit cannot temporarily hide the node.
+          const acceptedChanges = persistenceReady
+            ? changes
+            : changes.filter(
+                (change) =>
+                  change.type === "dimensions" &&
+                  change.dimensions !== undefined &&
+                  change.resizing === undefined &&
+                  change.setAttributes === undefined,
+              );
+          if (acceptedChanges.length === 0) return;
+          if (!persistenceReady) {
+            onNodesChange(acceptedChanges);
+            return;
+          }
           if (
             nodeDragging.current &&
-            changes.some((change) => change.type === "position")
+            acceptedChanges.some((change) => change.type === "position")
           ) {
             markCanvasInteraction();
           }
           if (
             !nodeDragging.current &&
-            changes.some((change) => change.type === "position")
+            acceptedChanges.some((change) => change.type === "position")
           ) {
             checkpoint();
           }
-          onNodesChange(keepLastNonCollidingPositions(changes));
+          onNodesChange(keepLastNonCollidingPositions(acceptedChanges));
         }}
         onNodeDragStart={() => {
+          if (!persistenceReady) return;
           nodeDragging.current = true;
           checkpoint();
           markCanvasInteraction();
         }}
         onNodeDragStop={() => {
+          if (!persistenceReady) return;
           nodeDragging.current = false;
           markCanvasInteraction();
         }}
         onNodeClick={(_, node) => {
+          if (!persistenceReady) return;
           setNodeContextMenu(undefined);
           if (agentReferenceMode) {
             setNodes((current) =>
@@ -4392,7 +6503,7 @@ export function CanvasSurface({
         }}
         onNodeContextMenu={(event, node) => {
           event.preventDefault();
-          if (!worldRef.current || agentReferenceMode) return;
+          if (!persistenceReady || !worldRef.current || agentReferenceMode) return;
           const bounds = worldRef.current.getBoundingClientRect();
           const x = Math.max(
             8,
@@ -4416,6 +6527,7 @@ export function CanvasSurface({
           setUploadError("");
         }}
         onPaneClick={() => {
+          if (!persistenceReady) return;
           setPrimaryId(undefined);
           setBlankContextMenu(undefined);
           setNodeContextMenu(undefined);
@@ -4426,7 +6538,7 @@ export function CanvasSurface({
         }}
         onPaneContextMenu={(event) => {
           event.preventDefault();
-          if (!worldRef.current) return;
+          if (!persistenceReady || !worldRef.current) return;
           const bounds = worldRef.current.getBoundingClientRect();
           const x = Math.max(
             8,
@@ -4450,20 +6562,22 @@ export function CanvasSurface({
           setSourceConnectMenu(undefined);
           setUploadError("");
         }}
-        onSelectionChange={({ nodes: selectedNodes }) =>
-          setPrimaryId(selectedNodes.at(-1)?.id)
-        }
-        onViewportChange={handleViewportChange}
-        panOnDrag={agentReferenceMode ? true : [1, 2]}
-        panOnScroll
+        onSelectionChange={({ nodes: selectedNodes }) => {
+          if (persistenceReady) setPrimaryId(selectedNodes.at(-1)?.id);
+        }}
+        onViewportChange={(next) => {
+          if (persistenceReady) handleViewportChange(next);
+        }}
+        panOnDrag={persistenceReady && (agentReferenceMode ? true : [1, 2])}
+        panOnScroll={persistenceReady}
         panOnScrollSpeed={1.2}
         proOptions={{ hideAttribution: true }}
         selectionMode={SelectionMode.Partial}
-        selectionOnDrag={!agentReferenceMode}
+        selectionOnDrag={persistenceReady && !agentReferenceMode}
         snapGrid={[20, 20]}
         snapToGrid={snapEnabled}
         zoomOnDoubleClick={false}
-        zoomOnPinch
+        zoomOnPinch={persistenceReady}
         zoomOnScroll={false}
       >
         <Background
@@ -4522,6 +6636,42 @@ export function CanvasSurface({
           </div>
         )}
       </ReactFlow>
+      {effectivePersistenceLoadState !== "ready" && (
+        <section
+          aria-live={effectivePersistenceLoadState === "loading" ? "polite" : "assertive"}
+          className="canvas-load-gate"
+          data-state={effectivePersistenceLoadState}
+          data-testid="canvas-load-state"
+        >
+          <div>
+            <strong>
+              {effectivePersistenceLoadState === "loading"
+                ? "正在加载画布"
+                : effectivePersistenceLoadState === "missing"
+                  ? "项目不存在"
+                  : "画布加载失败"}
+            </strong>
+            <span>
+              {effectivePersistenceLoadState === "loading"
+                ? "确认原内容前不会保存或生成。"
+                : effectivePersistenceLoadState === "missing"
+                  ? "该项目可能已被删除或不属于当前账号，没有创建空白画布。"
+                  : "没有打开空白画布，也没有保存或生成。请检查连接后重试。"}
+            </span>
+            {effectivePersistenceLoadState === "failed" && (
+              <button
+                data-testid="canvas-load-retry"
+                onClick={() =>
+                  setPersistenceLoadAttempt((attempt) => attempt + 1)
+                }
+                type="button"
+              >
+                重试加载
+              </button>
+            )}
+          </div>
+        </section>
+      )}
       {nodeContextMenu && contextMenuNode && (
         <div
           className="node-context-menu nodrag nopan"

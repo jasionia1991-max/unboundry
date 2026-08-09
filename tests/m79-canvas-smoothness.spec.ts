@@ -1,4 +1,5 @@
-import { expect, test } from "./safe-test";
+import { randomUUID } from "node:crypto";
+import { expect, test, type APIRequestContext } from "./safe-test";
 
 function denseDocument(nodeCount: number) {
   const nodes = Array.from({ length: nodeCount }, (_, index) => ({
@@ -27,6 +28,31 @@ function denseDocument(nodeCount: number) {
     type: "cuttable",
   }));
   return { edges, nodes, revision: 0, viewport: { x: 0, y: 0, zoom: 1 } };
+}
+
+async function saveDenseProjectCanvas(
+  request: APIRequestContext,
+  canvasId: string,
+  nodeCount: number,
+) {
+  const baselineResponse = await request.get(`/api/canvas/${canvasId}`);
+  expect(baselineResponse.ok()).toBeTruthy();
+  const baseline = (await baselineResponse.json()) as {
+    loadToken: string;
+    revision: number;
+  };
+  const saved = await request.put(`/api/canvas/${canvasId}`, {
+    data: {
+      ...denseDocument(nodeCount),
+      observedLoadToken: baseline.loadToken,
+      observedRevision: baseline.revision,
+      revision: baseline.revision,
+      saveAttemptId: randomUUID(),
+      saveSequence: 1,
+      saveSessionId: randomUUID(),
+    },
+  });
+  expect(saved.ok()).toBeTruthy();
 }
 
 function startMeters(page: import("@playwright/test").Page) {
@@ -89,12 +115,10 @@ test("60-node canvas drag stays smooth in production preview", async ({
   page,
   request,
 }) => {
-  const project = await (
-    await request.post("/api/projects", { data: {} })
-  ).json() as { id: string };
-  await request.put(`/api/canvas/${project.id}`, {
-    data: denseDocument(60),
-  });
+  const created = await request.post("/api/projects", { data: {} });
+  expect(created.status()).toBe(201);
+  const project = (await created.json()) as { id: string };
+  await saveDenseProjectCanvas(request, project.id, 60);
   await page.goto(`/canvas/${project.id}`);
   await expect(page.getByTestId("canvas-world")).toHaveAttribute(
     "data-persistence-ready",
@@ -129,12 +153,10 @@ test("fast pan keeps visible nodes mounted and zoom-out mounts all", async ({
   page,
   request,
 }) => {
-  const project = await (
-    await request.post("/api/projects", { data: {} })
-  ).json() as { id: string };
-  await request.put(`/api/canvas/${project.id}`, {
-    data: denseDocument(200),
-  });
+  const created = await request.post("/api/projects", { data: {} });
+  expect(created.status()).toBe(201);
+  const project = (await created.json()) as { id: string };
+  await saveDenseProjectCanvas(request, project.id, 200);
   await page.goto(`/canvas/${project.id}`);
   await expect(page.getByTestId("canvas-world")).toHaveAttribute(
     "data-persistence-ready",
