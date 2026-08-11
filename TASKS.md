@@ -1,7 +1,7 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-11
-状态：`线上 v0.5.1/schema 37 继续运行；2026-08-09 启动的一次性离线 Goal 持续执行，REM-000 = PASS、REM-001/002/003/004/005/009A = USER_REVIEW、REM-006 = IN_PROGRESS；schema 39 只存在于离线候选，生产发布保持 HOLD；所有施工只在动态 loopback 端口和新临时目录进行，真实数据、4173、真实 Provider/OSS、生产连接、push/tag/PR/发布均禁止；正式部署流程收尾与 Mureka Audio 真实生成仍按原状态暂缓`
+状态：`线上 v0.5.1/schema 37 继续运行；2026-08-09 启动的一次性离线 Goal 持续执行，REM-000 = PASS、REM-001/002/003/004/005/006/009A = USER_REVIEW、REM-007 = IN_PROGRESS；schema 39 只存在于离线候选，生产发布保持 HOLD；所有施工只在动态 loopback 端口和新临时目录进行，真实数据、4173、真实 Provider/OSS、生产连接、push/tag/PR/发布均禁止；正式部署流程收尾与 Mureka Audio 真实生成仍按原状态暂缓`
 唯一产品目标：从空仓库完整复刻 Unboundry 画布，不复用 Lumino/Lumino Web 的代码、组件、CSS、数据、后端、测试或部署。
 
 ### 2026-08-09 状态收口与交接索引
@@ -29,8 +29,8 @@
 | REM-003 | 画布持久化与 DATA-005 语义保护 | USER_REVIEW | 加载/保存基线、每标签高水位、跨标签收敛、原子墓碑、持久草稿及生成门禁已完成；Goal 结束时集中交用户复核 |
 | REM-004 | 统一媒体生命周期 | USER_REVIEW | 原子发布/补偿、ready-only、权威尺寸、adoption ACK 与完整性报告完成；F-004/F-036 和 F-005 媒体发布子范围关闭 |
 | REM-005 | 生成、幂等与付费边界 | USER_REVIEW | 原子 admission、最终付费闸、凭据 epoch、未知结果保护、deadline 与持久队列完成；单 active process 前提 |
-| REM-006 | 账号删除、模板、权限与清理 | IN_PROGRESS | 当前唯一施工项；按既定 PERM-011/KEY-008/AUTH-006 收口账号删除全事务合同 |
-| REM-007 | 前端生成恢复与失败体验 | NOT_STARTED | 后端任务合同稳定 |
+| REM-006 | 账号删除、模板、权限与清理 | USER_REVIEW | PERM-011/KEY-008/AUTH-006 下的可重试删除 saga、转交、权限/凭据和 actor fence 已完成；等待用户复核 |
+| REM-007 | 前端生成恢复与失败体验 | IN_PROGRESS | 当前唯一施工项；后端任务合同已稳定 |
 | REM-008 | 资源、安全、性能和运维脚本 | NOT_STARTED | 核心一致性后分项实施 |
 | REM-009A | 只读备份、恢复与数据库兼容前置底座 | USER_REVIEW | 加密签名包、合成库恢复、损坏拒绝、权限/路径/OSS 完整性与三轮/全量证据已完成；Goal 结束时集中交用户复核 |
 | REM-009B | 最终候选备份、恢复与双向兼容演练 | NOT_STARTED | 核心修复完成后、REM-010 前执行 |
@@ -103,6 +103,15 @@
 - 固定 Node `22.23.1` / npm `10.9.8`，冻结功能树指纹 `6a1363df8a6977e996db4b9e45aa823a89e28d6fe3955d85d6ea0ca9b315fcf9`：m81 `23/23`、6-spec 受影响组三轮 `207/207`、安全全量 `109/109 spec、790/790 PASS`；failed/skipped/retries/reportErrors/blocked 均为 0，`deniedViteWildcardProbes=474`。源码 285，TS/TSX `269/269`、JS/MJS `16/16`；11 个运维脚本为 6 个行为验证 + 5 个哈希冻结。4173 listener 前后均为 `6fb8de970741a8dee0ab4c8790e237f3fe5a4c0a3cd4c1cd6a89af12fd6e16c7`。
 - 三路独立终审未发现剩余即时产品 P0/P1。测试运行于功能提交前、HEAD `2beaec585d2d33a11341b98349b31b89b41d3a62` 的上述冻结脏工作树；REM-005 功能提交 `b3ceba04b5ddcf781dd58ce355be0e0f7665450e` 包含相同功能文件内容，未在该 commit 后或文档后树重跑。本项进入 `USER_REVIEW`，当前唯一施工项切换到 REM-006；这不是用户 PASS、真实数据迁移、真实 Provider/OSS、生产发布或 REM-011 最终三轮。
 
+### 2026-08-11 REM-006 账号删除、模板、权限与清理（工程候选已完成）
+
+- 账号删除以持久 intent 和可重试 saga 收口：先禁用账号并撤销 session，活动或结果未知生成任务阻止删除，公共模板及必要媒体转交受保护最高权限账号，本地/假 OSS 物理媒体逐项清理失败可重试，最终数据库收口再验证 actor、intent、任务、媒体和模板状态。
+- 继续严格遵守 `PERM-011 / KEY-008 / AUTH-006`：被删账号的权限、凭据和相关旧审计按原合同清理，仅保留由操作管理员写入的唯一 `delete_user` 记录；受保护最高权限账号不可删除。F-006/F-007/F-017A/F-033 已在离线候选修复，F-032 仅是对上述旧 PERM-011 语义的确认，未改成保留旧审计。
+- 权限页仅保存服务端返回的有效额外授予集，GET 失败不开放破坏性保存，同账号保存在途时复选框与保存按钮禁用。账号凭据、Provider profile/catalog 与存储文档真实 HTTP 变更都在最终线性化点重查 actor 删除 fence，SQLite 业务元数据与审计同一事务成败；加密文档在锁内写入，并在确定性审计失败时按快照恢复；远程 probe 在锁外完成后再持锁重查。
+- 测试运行于功能提交前、HEAD `731b984d7e32a0b9ee648c0e7fa1bd49e59deb14` 下 403-file 冻结脏工作树，SHA-256 为 `9873952efd5a7b1f0d84d65698be79069a89aae47ab25ff277dabf6b4ef2016d`：14-spec 定向 `112/112`，核心 7-spec `repeat=3` 共 `222/222`，安全全量 `109/109 spec、804/804 PASS`；failed/skipped/retries/reportErrors/blocked 均为 0，`deniedViteWildcardProbes=477`。源码 286，TS/TSX `270/270`、JS/MJS `16/16`；11 个运维脚本为 6 个行为验证 + 5 个哈希冻结。4173 listener 前后均为 `38911ab014a12dd3353ee0897359ebfb26f075144de1ce0b35e760f2df6dea3d`。
+- 独立终审未发现剩余即时产品 P0/P1。功能提交 `67cc39302d756bc00bff7ac31e31de7a7f574574` 包含相同的 23 个功能/测试/runner 文件，未在该 commit 后或文档后树重跑。本项进入 `USER_REVIEW`，当前唯一施工项切换到 REM-007；这不是用户 PASS、真实数据、真实 Provider/OSS、生产迁移、发布许可或 REM-011 最终三轮。
+- 上述结论仅在单一 active process 前提下成立，进程内 lease/文档锁不关闭 F-023，仍归 REM-010。账号删除不是跨物理媒体的单事务；加密文档与 SQLite 只证明确定性审计失败时不留文档变更，不声称跨文件系统/SQLite 的进程崩溃原子性。线上 v0.5.1/schema 37 保持不变，schema 39 仅离线候选，production HOLD；未读取/修改真实数据，未操作 4173，未请求真实 Provider/OSS，未连接生产。
+
 ### 2026-08-06 多项目（项目制画布）功能
 
 - 用户已审阅并确认最终开发方案，权威文档：`spec/UNBOUNDRY_MULTI_PROJECT_PLAN.md`（状态 APPROVED BY USER 2026-08-06）。实施时**以此文档为准**，避免上下文漂移。
@@ -111,7 +120,7 @@
 
 ## 当前阶段
 
-阶段：`线上 v0.5.1/schema 37 保持不变 / REM-001、REM-002、REM-003、REM-004、REM-005、REM-009A 工程候选进入 USER_REVIEW / REM-006 账号删除、模板、权限与清理施工中 / schema 39 仅离线且 production HOLD / 未连接生产且未操作真实数据、4173 或真实 Provider/OSS`
+阶段：`线上 v0.5.1/schema 37 保持不变 / REM-001、REM-002、REM-003、REM-004、REM-005、REM-006、REM-009A 工程候选进入 USER_REVIEW / REM-007 前端生成恢复与失败体验施工中 / schema 39 仅离线且 production HOLD / 未连接生产且未操作真实数据、4173 或真实 Provider/OSS`
 
 画布、固定界面、Text、Image、Video、Audio、Playlist、Group、外围面板、账号、管理员模型中心、生成安全和新图片私有OSS链路已通过当前范围验收；Comment、社区、TapTV、竞技场、额度和链接分享已按用户决定取消。OpenRouter GPT Image 2已完成一次用户授权的真实生成，图片连线参考图及真实结果零费用重启恢复均已通过；当前仅表示“不发布本轮新的修复候选”，不否认线上已运行 v0.5.1。
 

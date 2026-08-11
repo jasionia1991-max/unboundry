@@ -8,7 +8,7 @@
 2026-08-07 三功能新增 21 条（TPL-001～007 / ZIP-001～006 / KEY-001～008）已全部经用户实页验收为 `PASS`，M11 放行门达成；其余历史统计与状态仍以各节为准，`INPUT-006`保持`PARTIAL`（Mureka真实生成暂缓）。
 2026-08-07 权限管理（PERM-001～012）与公共模板（PUB-001～011）已全部经用户实页验收为 `PASS`，两功能放行门达成；生成安全「并发与频率」上限按用户要求放宽至 1000（v33）。
 2026-08-09 用户实页确认 `STORAGE-004 / PERF-002～005 / DEP-004` 全部通过；六项均由 `USER_RECHECK` 改为 `PASS`，该验收收口时点矩阵无 `USER_RECHECK` 项。
-2026-08-09 用户确认全量修复施工文档并启动一次性离线 Goal；原有产品 PASS 不变。REM-001 安全底座、REM-002 API/进程基础、REM-003 画布持久化、REM-004 统一媒体生命周期、REM-005 生成付费边界与 REM-009A 只读备份恢复底座均已完成工程候选并进入 `USER_REVIEW`；当前唯一施工项为 REM-006，状态 `IN_PROGRESS`，其余施工项依赖未满足前保持 `NOT_STARTED`。schema 39 只存在于离线候选，线上 v0.5.1/schema37 不变，production HOLD。
+2026-08-09 用户确认全量修复施工文档并启动一次性离线 Goal；原有产品 PASS 不变。REM-001 安全底座、REM-002 API/进程基础、REM-003 画布持久化、REM-004 统一媒体生命周期、REM-005 生成付费边界、REM-006 账号删除/模板/权限/清理与 REM-009A 只读备份恢复底座均已完成工程候选并进入 `USER_REVIEW`；当前唯一施工项为 REM-007，状态 `IN_PROGRESS`，其余施工项依赖未满足前保持 `NOT_STARTED`。schema 39 只存在于离线候选，线上 v0.5.1/schema37 不变，production HOLD。
 
 ## 1. 判定规则
 
@@ -438,12 +438,12 @@
 | REM-003 | P0 | 加载失败不保存/不生成；同标签旧保存不能覆盖新快照；跨标签继续按 DATA-005 最后保存者胜；项目删除不复活 | F-001/F-002/F-003/F-040/F-048/F-049 已关闭；load token+epoch、session/sequence/attempt 高水位、strict journal CAS、原子墓碑与生成门禁已落地。指纹 `2ae382d4…`：专项205/205、m28十轮30/30、核心三轮450/450、安全全量107/687且687/687，全部异常计数0；源码264 TS+15 JS全覆盖；独立终审P0/P1=0；schema37/package0.5.1不变；功能提交`2a0b7f9819d3075d5fd339e20c5badd389cd51ae` | USER_REVIEW |
 | REM-004 | P0 | 跨账号并发素材 ID 不互相覆盖；pending/ready/failed 和补偿闭环；每个故障点无不可见孤儿/悬空引用 | F-004、F-036 与 F-005 媒体发布子范围关闭；schema38 publication/delete/account intent、ready-only、权威尺寸、同步 adoption ACK 与只读完整性报告已落地。指纹 `f6974d…`：专项158/158、三轮474/474、全量109/762且762/762，异常计数0；源码268 TS+16 JS全覆盖；功能提交`9f1019e5686ccce4f646b54a2be6ccd5ab4864d0`。Provider付费/幂等仍归REM-005，账号删除完整合同仍归REM-006 | USER_REVIEW |
 | REM-005 | P0 | 幂等、限额检查、任务插入原子；Provider 前重查停止；未知结果不重复付费；并发限额和零外网证据 | schema39 owner-scoped 幂等、原子 admission、最终付费闸、credential epoch、paid outcome、deadline、持久队列与显式 abandon 已落地；关闭 F-008/F-009/F-010，与 REM-004 一起关闭 F-005，F-014 仅 deadline 子范围。测试运行于功能提交前、HEAD `2beaec585d2d33a11341b98349b31b89b41d3a62` 的脏工作树指纹 `6a1363df8a6977e996db4b9e45aa823a89e28d6fe3955d85d6ea0ca9b315fcf9`：m81 23/23、核心6-spec三轮207/207、全量109/790且790/790，异常计数0；源码269 TS+16 JS全覆盖。功能提交`b3ceba04b5ddcf781dd58ce355be0e0f7665450e`含相同功能文件，未在commit后/文档后树重跑；单 active process 前提，F-023仍归REM-010 | USER_REVIEW |
-| REM-006 | P0 | 账号含任务/媒体/模板/权限/凭据/审计时删除全成或一致失败；清理可重试；权限无修改保存不清空额外授权；KEY-008/AUTH-006 不回退 | 当前唯一施工项；继续遵守已 PASS 的 PERM-011，公共模板及必要素材转交受保护最高权限账号；REM-004 的媒体删除 intent 不等于完整账号删除合同 | IN_PROGRESS |
-| REM-007 | P0 | 四类生成在首次/重生成/刷新/丢响应/重启/取消/失败/成功/旧结果场景恢复；更新失败不强刷；草稿不丢 | 只用本地假 Provider；`INPUT-006 / AUDIO-REAL-001` 真实 Mureka 仍保持原 PARTIAL/暂停 | NOT_STARTED |
+| REM-006 | P0 | 账号含任务/媒体/模板/权限/凭据/审计时删除全成或一致失败；清理可重试；权限无修改保存不清空额外授权；KEY-008/AUTH-006 不回退 | 持久 intent + 可重试 saga、公共模板/必要媒体转交、活动/未知任务阻断、权限/凭据与 Provider/catalog/存储 actor fence 已完成；F-006/F-007/F-017A/F-033 离线候选已修，F-032 继续 PERM-011：清理旧相关审计，仅保留唯一 `delete_user`。提交前 HEAD `731b984…` 下 403-file 指纹 `9873952e…`：定向 112/112、核心三轮 222/222、全量 109/804 且 804/804 PASS，异常计数0；源码 270 TS + 16 JS；功能提交 `67cc39302d756bc00bff7ac31e31de7a7f574574` 含相同功能文件，未在 commit/docs 后重跑。仅单 active process，F-023 留 REM-010；不声称跨物理媒体或文件系统/SQLite 崩溃原子 | USER_REVIEW |
+| REM-007 | P0 | 四类生成在首次/重生成/刷新/丢响应/重启/取消/失败/成功/旧结果场景恢复；更新失败不强刷；草稿不丢 | 当前唯一施工项；只用本地假 Provider；`INPUT-006 / AUDIO-REAL-001` 真实 Mureka 仍保持原 PARTIAL/暂停 | IN_PROGRESS |
 | REM-008 | P1 | 登录/SSE/大文件/ffmpeg/Provider/OSS 资源和网络边界受控；安全头、依赖、脚本、内存和必要包拆分通过压力验证 | 不做框架大升级、视觉重做或暂停功能；不得用降低 500MB 视频合同规避资源治理 | NOT_STARTED |
 | REM-009A | P0 | 建立真正只读的数据库/媒体/密钥备份、合成库恢复、损坏拒绝、加密与故障注入底座；备份连接绝不调用 openAppDatabase | 格式2逐文件加密+独立签名；源库只复制到私有临时目录后处理；schema37/19表+sqlite_sequence/密钥真解密/本地媒体/孤儿/假OSS版本与校验全覆盖；不可覆盖发布、marker fail-closed、路径/密钥/权限/硬链接与损坏矩阵完成。m10 9/9、最终三轮27/27、最终安全全量105/542且542/542，0 fail/skip/retry/reportError/blocked；TS/TSX262/262、JS/MJS15/15；两路独立终审无P0/P1；schema37/package0.5.1不变 | USER_REVIEW |
 | REM-009B | P0 | 用最终候选执行备份恢复、v0.5.1 双向数据格式兼容、必要桥梁与迁移失败恢复演练 | 核心修复完成后、REM-010 前执行；必须补富数据/媒体/密钥/假OSS的冻结v37格式2备份→恢复→one-shot exact-v37→schema39迁移→启动、写锁内来源复核及schema38/39与回填故障恢复。migration39 admission不做历史推断回填，迁移前须冻结新生成、排空活动任务并自最后一次可能Provider admission起至少60秒；真实生产副本仍需另行授权 | NOT_STARTED |
 | REM-010 | P0 | 固定 SHA 不可变 release；三层健康检查；活动任务归零；单任务处理器；请求排空；跨版本数据格式矩阵、离线切换和回滚全过 | schema39仅离线候选；F-023未关闭，必须证明唯一active worker、旧进程排空、v37/v39 runtime bridge与v0.5.1数据格式矩阵。不兼容时桥梁先成为可用回滚目标，并使用两个版本号、两次独立生产授权；production HOLD | NOT_STARTED |
 | REM-011 | P0 | G0～G7 全绿；所有发现测试零失败/意外跳过/retry；三轮全新环境；用户验收；版本号与发布分别确认 | 未获用户双确认前不得连接生产或发布 | NOT_STARTED |
 
-REM-005 的 `USER_REVIEW` 只代表文档修改前冻结功能树的离线工程证据完成，不是用户 PASS、真实数据迁移、真实 Provider/OSS、生产迁移、发布许可或 REM-011 最终三轮；当前离线候选为 schema39，线上 v0.5.1/schema37 保持不变并 production HOLD。
+REM-006 的 `USER_REVIEW` 只代表功能提交前冻结功能树的离线工程证据完成，不是用户 PASS、真实数据迁移、真实 Provider/OSS、生产迁移、发布许可或 REM-011 最终三轮；当前离线候选为 schema39，线上 v0.5.1/schema37 保持不变并 production HOLD。

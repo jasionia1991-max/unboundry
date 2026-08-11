@@ -4,7 +4,7 @@
 
 ## 0. 2026-08-09 全量修复施工模式
 
-用户已于 2026-08-09 确认施工文档并启动一次性离线 Goal，当前为 `REM-000 = PASS / REM-001、REM-002、REM-003、REM-004、REM-005、REM-009A = USER_REVIEW / REM-006 = IN_PROGRESS`。REM-005 已完成 schema39 owner-scoped 幂等、原子 admission/任务插入、Provider 最终付费闸、凭据 epoch、未知结果保护、统一 deadline、持久队列恢复和显式 abandon；关闭 F-008/F-009/F-010，并与 REM-004 一起关闭 F-005。结论只在单一 active process 前提成立，F-023 仍归 REM-010；账号删除完整合同当前归 REM-006。生产、真实数据、4173、真实 Provider/OSS、push、tag、PR、正式版本号和发布仍禁止。当前必须先读：
+用户已于 2026-08-09 确认施工文档并启动一次性离线 Goal，当前为 `REM-000 = PASS / REM-001、REM-002、REM-003、REM-004、REM-005、REM-006、REM-009A = USER_REVIEW / REM-007 = IN_PROGRESS`。REM-006 已按 `PERM-011 / KEY-008 / AUTH-006` 完成账号删除可重试 saga、公共模板/必要媒体转交、权限额外授予集、账号凭据以及 Provider/catalog/存储文档变更的 actor fence 与审计线性化；F-006/F-007/F-017A/F-033 已在离线候选修复，F-032 继续旧 PERM-011，删除旧相关审计并仅保留唯一 `delete_user` 记录。结论只在单一 active process 前提成立，F-023 仍归 REM-010；账号删除是持久 intent + 可重试 saga，文档/SQLite 也不声称跨文件系统崩溃原子性。生产、真实数据、4173、真实 Provider/OSS、push、tag、PR、正式版本号和发布仍禁止。当前必须先读：
 
 1. 仓库根 `AGENTS.md`；
 2. `README.md`；
@@ -47,7 +47,7 @@
 
 - **绝不**用真实数据/真实 4173 跑测试：所有测试用临时数据目录 + 独立端口。
 - 2026-08-09 全量审计确认：旧推荐回归组合去重后只覆盖约 80/105 个 spec、391/519 项既有测试，且多处使用固定端口、共享临时库或仓库 tmp。它们只能作为历史基线，不能作为新候选的“真正全量”绿灯。
-- 安全清单当前精确覆盖 109 个 spec、790 项测试，分区为 dev 74、hybrid 4、node 21、preview 2、self 8。每个 spec 使用独立新临时目录与两个动态 loopback 端口；Node/浏览器禁止非 loopback 与未登记本机端口；测试子进程真实路径成功访问为 0；4173 bind/connect 负控和运行前后监听身份比对均通过。测试运行于功能提交前、HEAD `2beaec585d2d33a11341b98349b31b89b41d3a62` 的冻结脏工作树 `6a1363df8a6977e996db4b9e45aa823a89e28d6fe3955d85d6ea0ca9b315fcf9`：m81 `23/23`、核心 6-spec 三轮 `207/207`、安全全量 `109/109 spec、790/790 PASS`，failed/skipped/retries/reportErrors/blocked 全为 0，`deniedViteWildcardProbes=474`；源码 285，TS/TSX `269/269`、JS/MJS `16/16`，11 个运维脚本为 6 个行为验证 + 5 个哈希冻结。listener `6fb8de970741a8dee0ab4c8790e237f3fe5a4c0a3cd4c1cd6a89af12fd6e16c7` 前后不变。功能提交 `b3ceba04b5ddcf781dd58ce355be0e0f7665450e` 包含相同功能文件内容；未在该 commit 后或文档后树重跑。
+- 安全清单当前精确覆盖 109 个 spec、804 项测试，分区为 dev 74、hybrid 4、node 21、preview 2、self 8。每个 spec 使用独立新临时目录与两个动态 loopback 端口；Node/浏览器禁止非 loopback 与未登记本机端口；测试子进程真实路径成功访问为 0；4173 bind/connect 负控和运行前后监听身份比对均通过。REM-006 测试运行于功能提交前、HEAD `731b984d7e32a0b9ee648c0e7fa1bd49e59deb14` 下 403-file 冻结脏工作树 `9873952efd5a7b1f0d84d65698be79069a89aae47ab25ff277dabf6b4ef2016d`：14-spec 定向 `112/112`、核心 7-spec `repeat=3` 共 `222/222`、安全全量 `109/109 spec、804/804 PASS`，failed/skipped/retries/reportErrors/blocked 全为 0，`deniedViteWildcardProbes=477`；源码 286，TS/TSX `270/270`、JS/MJS `16/16`，11 个运维脚本为 6 个行为验证 + 5 个哈希冻结。listener `38911ab014a12dd3353ee0897359ebfb26f075144de1ce0b35e760f2df6dea3d` 前后不变。功能提交 `67cc39302d756bc00bff7ac31e31de7a7f574574` 包含相同功能文件内容；未在该 commit 后或文档后树重跑。
 - 默认 `npm run verify` 与下面固定端口配置仍是冻结历史，不得绕过安全总入口；`package.json` 中旧测试脚本已改为 fail-closed 或转入安全入口。
 - 历史通用测试配置：`--config=playwright.4174.config.ts`（端口 4174、临时数据目录、auth bypass）。
 - `npm run verify` 现已委托给安全总入口；仍禁止直接调用 Vite、默认 Playwright 配置或下列历史固定端口脚本绕过 runner。
@@ -92,14 +92,14 @@
 ## 9. 验收状态速览
 
 - 已 PASS（2026-08-09 用户确认）：GEN-010、SAFETY-004、CANVAS-019、AUTH-004/005/006/007、STORAGE-004、PERF-002～005、DEP-004，以及更早的画布/节点/生成/模板/账号/权限等大批项目（见验收矩阵）。
-- 原有产品验收项已无 `USER_RECHECK`；2026-08-09 新增施工治理项 `REM-000` 已获用户确认并为 `PASS`。当前 REM-001/002/003/004/005/009A 为 `USER_REVIEW`，REM-006 为 `IN_PROGRESS`；`PARTIAL / BLOCK / PAUSED` 仍按各自证据边界保留，不得混同为已完成。
+- 原有产品验收项已无 `USER_RECHECK`；2026-08-09 新增施工治理项 `REM-000` 已获用户确认并为 `PASS`。当前 REM-001/002/003/004/005/006/009A 为 `USER_REVIEW`，REM-007 为 `IN_PROGRESS`；`PARTIAL / BLOCK / PAUSED` 仍按各自证据边界保留，不得混同为已完成。
 - 暂停/延后：Mureka 真实生成（AUDIO-REAL-001，需用户在 Mureka 官网确认额度）、IMGEDIT-007 打光、AUTH-002/OPEN-009 团队多人、OPEN-019/021、正式部署流程收尾（域名/备案等）。
 
 ## 10. 历史测试失败/偶发记录（当前冻结全量已全绿）
 
 - 已知基线：m0 `P1 creators...Dock`、m17×2、m24、m25、m30×5（Node 25 环境）、m33:690、m46:540、m62:92、m63:219、m7-agent-voice；m14 在 m75 全量（bypass 服务器）里失败属环境组合，单独跑 `m14-generation-safety.config.ts` 是 3/3。
 - 机器偶发（单独复跑通过或基线复现）：m2-audio:70、m4-audio:98（headless 音频播放不推进，基线复现）、m2-group:131（基线复现）、m70:176（保存闸门时序，基线复现）、m0:1661、m27:1146、m33:445、m4-image:328、m66:319、m37:215、m41:395、m69:126、m79:128。
-- 上述仅是旧运行记录，不是当前允许忽略的失败清单。REM-005 冻结功能树已由安全入口完成 109 spec / 790 tests 全量且零失败、跳过、重试、report error 或 blocked；任何后续新失败都必须重新归因，不能沿用旧豁免。
+- 上述仅是旧运行记录，不是当前允许忽略的失败清单。REM-006 冻结功能树已由安全入口完成 109 spec / 804 tests 全量且零失败、跳过、重试、report error 或 blocked；任何后续新失败都必须重新归因，不能沿用旧豁免。
 
 ## 11. 数据库迁移
 
@@ -139,7 +139,7 @@ ssh live-cockpit "curl -fsS http://127.0.0.1:4173/api/version"
 
 ## 15. 下一步候选（未做）
 
-- 当前第一顺位：REM-006 按既定 PERM-011/KEY-008/AUTH-006 收口账号删除、模板转交、权限、凭据、审计与可重试清理全事务合同；
+- 当前第一顺位：REM-007 收口文字/图片/视频/音频生成恢复、旧结果/新任务分离、更新失败不强刷与草稿保留；仍只用本地假 Provider，真实 Mureka 范围保持暂缓；
 - 正式部署流程收尾（域名/备案/HTTPS 加固确认）；
 - Mureka 真实生成恢复验收（需用户确认官网额度）；
 - 密码找回的网页入口（当前 root 忘密码走应急脚本）；
@@ -155,4 +155,4 @@ ssh live-cockpit "curl -fsS http://127.0.0.1:4173/api/version"
 5. 向用户先报告恢复出的项目、版本、当前项和授权；
 6. 任一不一致都必须停止，不得依据内部记忆、历史 PASS 或压缩摘要猜测继续。
 
-当前执行点：`REM-000 PASS / REM-001、REM-002、REM-003、REM-004、REM-005、REM-009A USER_REVIEW / REM-006 IN_PROGRESS`。REM-005 测试运行于功能提交前、HEAD `2beaec585d2d33a11341b98349b31b89b41d3a62` 的冻结脏工作树 `6a1363df8a6977e996db4b9e45aa823a89e28d6fe3955d85d6ea0ca9b315fcf9`：m81 `23/23`、核心 6-spec 三轮 `207/207`、安全全量 `109/109 spec、790/790 PASS`，失败/跳过/retry/report error/blocked 均为 0；源码门 TS/TSX `269/269`、JS/MJS `16/16`，4173 listener `6fb8de970741a8dee0ab4c8790e237f3fe5a4c0a3cd4c1cd6a89af12fd6e16c7` 前后不变。功能提交 `b3ceba04b5ddcf781dd58ce355be0e0f7665450e` 包含相同功能文件内容；未在该 commit 后或文档后树重跑。schema39 只是离线候选，线上 v0.5.1/schema37 不变，production HOLD；F-023、one-shot 迁移、v37/v39 bridge、60 秒 admission 排空和回滚矩阵仍归 REM-009B/010。该结果不是用户 PASS、真实 Provider/OSS、生产迁移、发布许可或 REM-011 最终三轮。按施工断点继续 REM-006；只有仓库身份被外部改变，或无法继续保证真实数据隔离和零外部请求时，才安全停止整个 Goal。
+当前执行点：`REM-000 PASS / REM-001、REM-002、REM-003、REM-004、REM-005、REM-006、REM-009A USER_REVIEW / REM-007 IN_PROGRESS`。REM-006 测试运行于功能提交前、HEAD `731b984d7e32a0b9ee648c0e7fa1bd49e59deb14` 下 403-file 冻结脏工作树 `9873952efd5a7b1f0d84d65698be79069a89aae47ab25ff277dabf6b4ef2016d`：14-spec 定向 `112/112`、核心 7-spec `repeat=3` 共 `222/222`、安全全量 `109/109 spec、804/804 PASS`，failed/skipped/retries/reportErrors/blocked 均为 0，`deniedViteWildcardProbes=477`；源码 286，TS/TSX `270/270`、JS/MJS `16/16`，11 个运维脚本为 6 个行为验证 + 5 个哈希冻结，4173 listener `38911ab014a12dd3353ee0897359ebfb26f075144de1ce0b35e760f2df6dea3d` 前后不变。功能提交 `67cc39302d756bc00bff7ac31e31de7a7f574574` 包含相同功能文件内容，未在该 commit 后或文档后树重跑。本项仅为 `USER_REVIEW`，不是用户 PASS、真实数据/真实 Provider/OSS、生产迁移、发布许可或 REM-011 最终三轮。schema39 只是离线候选，线上 v0.5.1/schema37 不变，production HOLD；单进程 lease 不关闭 F-023，one-shot 迁移、v37/v39 bridge、60 秒 admission 排空和回滚矩阵仍归 REM-009B/010。按施工断点继续 REM-007；只有仓库身份被外部改变，或无法继续保证真实数据隔离和零外部请求时，才安全停止整个 Goal。

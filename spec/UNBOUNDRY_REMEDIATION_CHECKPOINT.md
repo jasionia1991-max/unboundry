@@ -1,18 +1,18 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`11`
+断点版本：`12`
 更新时间：`2026-08-11`
-状态：`OFFLINE_GOAL_ACTIVE_REM-001_REM-002_REM-003_REM-004_REM-005_REM-009A_USER_REVIEW_REM-006_IN_PROGRESS`
+状态：`OFFLINE_GOAL_ACTIVE_REM-001_REM-002_REM-003_REM-004_REM-005_REM-006_REM-009A_USER_REVIEW_REM-007_IN_PROGRESS`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
 ## 1. 当前结论
 
 - 用户已于 2026-08-09 明确回复“施工文档确认通过”，REM-000 = `PASS`。
-- 施工总方案以 v1.0 建立权威合同，当前离线施工版本已更新为 v1.5-offline。
+- 施工总方案以 v1.0 建立权威合同，当前离线施工版本已更新为 v1.6-offline。
 - 用户已于 2026-08-09 明确启动一次性离线 Goal，Goal ID `019fe226-4d7b-7831-a254-106e40b346c2`；REM-001～010 与 REM-011 离线工程部分可按依赖顺序连续施工，中途不再逐项询问。
 - 允许本地代码/测试/脚本/配置/文档/package 修改、动态 loopback 临时环境、假 Provider/OSS/服务器、必要测试容器和本地 checkpoint/功能/candidate commit。
 - 真实数据、4173、真实 Provider/OSS、canvas.mymy.ltd、SSH、生产、push、tag、PR、正式版本号与发布仍绝对禁止。
-- REM-001 安全底座、REM-002 API/进程基础、REM-003 画布持久化、REM-004 统一媒体生命周期、REM-005 生成付费边界与 REM-009A 只读备份恢复底座工程候选均已完成并进入 `USER_REVIEW`；当前唯一 `IN_PROGRESS` 施工项为 REM-006。
+- REM-001 安全底座、REM-002 API/进程基础、REM-003 画布持久化、REM-004 统一媒体生命周期、REM-005 生成付费边界、REM-006 账号删除/模板/权限/清理与 REM-009A 只读备份恢复底座工程候选均已完成并进入 `USER_REVIEW`；当前唯一 `IN_PROGRESS` 施工项为 REM-007。
 
 ## 2. 项目身份
 
@@ -69,9 +69,10 @@
 | REM-003 | 画布持久化与 DATA-005 语义保护 | `USER_REVIEW` | 加载/保存凭据、每标签高水位、原子墓碑、持久草稿与生成门禁均已完成，Goal 结束时集中交用户复核 |
 | REM-004 | 统一媒体生命周期 | `USER_REVIEW` | 原子媒体发布/补偿、ready-only、权威尺寸、adoption ACK 与完整性报告已完成 |
 | REM-005 | 生成、幂等与付费边界 | `USER_REVIEW` | 原子 admission、最终付费闸、凭据 epoch、未知结果保护、deadline 与持久队列已完成 |
-| REM-006 | 账号删除、模板、权限与清理 | `IN_PROGRESS` | 用户 2026-08-09 一次性离线 Goal 合并授权；当前唯一施工项，沿用 PERM-011/KEY-008/AUTH-006 |
+| REM-006 | 账号删除、模板、权限与清理 | `USER_REVIEW` | PERM-011/KEY-008/AUTH-006 合同、专项/核心/安全全量与独立终审已完成 |
+| REM-007 | 前端生成恢复与失败体验 | `IN_PROGRESS` | 用户 2026-08-09 一次性离线 Goal 合并授权；当前唯一施工项 |
 
-REM-007～008、REM-009B～011 尚未进入实施；离线工程权限已预先授予，达到施工总方案依赖后可连续进入下一项。REM-009A 已解除核心持久化施工的前置阻断。
+REM-008、REM-009B～011 尚未进入实施；离线工程权限已预先授予，达到施工总方案依赖后可连续进入下一项。REM-009A 已解除核心持久化施工的前置阻断。
 
 ### 4.1 一次性授权的决策默认
 
@@ -191,10 +192,19 @@ REM-007～008、REM-009B～011 尚未进入实施；离线工程权限已预先�
 - 测试运行于功能提交前、HEAD `2beaec585d2d33a11341b98349b31b89b41d3a62` 的上述冻结脏工作树；功能提交 `b3ceba04b5ddcf781dd58ce355be0e0f7665450e` 包含相同功能文件内容，未在该 commit 后或文档后树重跑。工程状态 `USER_REVIEW`，不是用户 PASS、真实数据迁移、真实 Provider/OSS、生产发布或 REM-011 最终三轮。
 - migration 39 admission 表不从历史任务推断回填。REM-009B/010 必须先冻结新生成、排空活动任务并自最后一次可能 Provider admission 起等待至少 60 秒，再执行 one-shot exact-v37→schema39 迁移和唯一 active worker 启动；production HOLD。
 
+### 6.7 REM-006 工程证据与边界
+
+- 账号删除使用持久 account/media intent 和可重试 saga：先禁用账号并撤销 session，以 SQLite writer fence 和进程内 mutation/actor lease 建立提交顺序；活动或结果未知生成任务、媒体发布或关联未收口时拒绝物理删除。响应 close 只释放通用 request lease，删除 actor lease 保留到整个异步 saga 结束。
+- 公共模板、封面/预览/图引用媒体及必要创建者字段转交受保护最高权限账号，私有模板、画布、项目、任务、历史、权限与凭据按合同清理。F-006/F-007/F-017A/F-033 已在离线候选关闭；F-032 继续旧 `PERM-011`，被删账号相关旧 `admin_audit_events` 清理，最终只由操作 actor 保留唯一 `delete_user` 审计。`KEY-008 / AUTH-006` 不回退。
+- 权限编辑仅基于服务端有效额外授予集，GET 失败不会变成空草稿保存，同账号保存在途时禁用 checkbox/保存。账号凭据、Provider profile/catalog 与存储文档的 HTTP 变更都在最终线性化点持锁重查 actor，文档/业务元数据与审计一起成败；远程 probe 只在锁外执行，返回后必须重查。
+- 冻结证据运行于功能提交前、HEAD `731b984d7e32a0b9ee648c0e7fa1bd49e59deb14` 下的 403-file 脏工作树，SHA-256 `9873952efd5a7b1f0d84d65698be79069a89aae47ab25ff277dabf6b4ef2016d`。14-spec 定向 `112/112`；核心 7-spec `repeat=3` 共 `222/222`；安全全量 `109/109 spec、804/804 PASS`，failed/skipped/retries/reportErrors/blocked 均为 0，`deniedViteWildcardProbes=477`。源码 286，TS/TSX `270/270`、JS/MJS `16/16`；11 个运维脚本为 6 个行为验证 + 5 个哈希冻结；4173 listener 前后均为 `38911ab014a12dd3353ee0897359ebfb26f075144de1ce0b35e760f2df6dea3d`。
+- 独立终审无剩余即时产品 P0/P1。功能提交 `67cc39302d756bc00bff7ac31e31de7a7f574574` 包含与冻结脏工作树相同的功能文件内容，但未在该 commit 后或文档后树重跑。REM-006 工程状态为 `USER_REVIEW`，不是用户 PASS、真实数据/真实 Provider/OSS、生产迁移、发布许可或 REM-011 最终三轮。
+- 上述 lease 和部分文档锁仅在单一 active process 内成立，不关闭 F-023，仍归 REM-010。账号删除是跨物理媒体的持久 saga，不是单 SQLite 事务；加密文档与 SQLite 只证明确定性审计失败时不留文档变更，不声称跨文件系统/SQLite 的进程崩溃原子性。线上 v0.5.1/schema37 不变，schema39 仅离线候选，production HOLD。
+
 ## 7. 当前执行路径
 
-1. REM-005 已完成并冻结证据；继续保留 REM-001 安全入口与 REM-002 运行时边界，任何后续测试只能经安全入口执行；
-2. 当前实施 REM-006：按既定 PERM-011/KEY-008/AUTH-006 收口账号删除、模板、权限、凭据、审计与可重试清理合同；
+1. REM-006 已完成并冻结证据；继续保留 REM-001 安全入口与 REM-002 运行时边界，任何后续测试只能经安全入口执行；
+2. 当前实施 REM-007：收口四类生成恢复、旧结果/新任务分离、更新失败不强刷与草稿保留；真实 Mureka 边界仍暂缓；
 3. schema 39 只在线下；REM-009B/010 桥梁、one-shot 迁移、60 秒 admission 排空、F-023 单任务处理器与双版本矩阵硬门通过前 production HOLD；REM-003 TEMP 高水位和 REM-005 worker 都只在单一可写进程内可靠；
 4. 每个 REM 按施工总方案依赖顺序完成分析、实施、测试、独立 review 与文档同步；每个本地 commit 前核对范围，绝不 push/tag/PR；
 5. 终点是固定 candidate SHA、G0～G6 离线证据、工程 `USER_REVIEW` 与页面 `USER_RECHECK`，生产和发布留待用户另行确认。
@@ -215,11 +225,11 @@ REM-007～008、REM-009B～011 尚未进入实施；离线工程权限已预先�
 项目路径：/Users/mymy/Documents/unboundry/app
 线上版本：v0.5.1
 当前分支：codex/unboundry-offline-remediation-2026-08-09
-起点 HEAD：262c66c4087d915b03971191ee00a9bfba74da65；REM-005 功能提交 b3ceba04b5ddcf781dd58ce355be0e0f7665450e；当前 HEAD 以 git 只读结果对照本文件
-最后完成工程候选：REM-005（USER_REVIEW），安全入口全量 109/790、790/790 PASS，核心 6-spec 三轮 207/207
-冻结功能树指纹：6a1363df8a6977e996db4b9e45aa823a89e28d6fe3955d85d6ea0ca9b315fcf9（测试时 HEAD 2beaec585d2d33a11341b98349b31b89b41d3a62；未在功能 commit 后或文档后树重跑）
-当前施工项：REM-006（IN_PROGRESS）
-下一步：按 PERM-011/KEY-008/AUTH-006 收口账号删除全事务、模板转交、权限/凭据/审计和可重试清理
+起点 HEAD：262c66c4087d915b03971191ee00a9bfba74da65；REM-006 功能提交 67cc39302d756bc00bff7ac31e31de7a7f574574；当前 HEAD 以 git 只读结果对照本文件
+最后完成工程候选：REM-006（USER_REVIEW），14-spec 定向 112/112，核心 7-spec repeat=3 共 222/222，安全入口全量 109/804、804/804 PASS
+冻结功能树指纹：9873952efd5a7b1f0d84d65698be79069a89aae47ab25ff277dabf6b4ef2016d（测试时 HEAD 731b984d7e32a0b9ee648c0e7fa1bd49e59deb14，403 files；未在功能 commit 后或文档后树重跑）
+当前施工项：REM-007（IN_PROGRESS）
+下一步：收口四类生成恢复、旧结果/新任务分离、更新失败不强刷与草稿保留；真实 Mureka 范围仍暂缓
 代码授权：一次性离线 Goal 范围内已授权；Goal ID 019fe226-4d7b-7831-a254-106e40b346c2
 真实数据操作：禁止
 Provider 请求：禁止
