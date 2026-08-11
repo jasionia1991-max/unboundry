@@ -255,6 +255,13 @@ function historyMediaUrl(item: HistoryAsset) {
   return patterns[item.kind]?.test(item.preview) ? item.preview : undefined;
 }
 
+function persistedHistoryPreview(item: HistoryAsset) {
+  if (item.kind === "video") return `/api/video-assets/${item.id}`;
+  if (item.kind === "audio") return `/api/audio-assets/${item.id}`;
+  if (item.kind === "image") return `/api/assets/${item.id}`;
+  return item.preview;
+}
+
 function HistoryCardMedia({ item }: { item: HistoryAsset }) {
   const mediaUrl = historyMediaUrl(item);
   if (item.kind === "image" && mediaUrl) {
@@ -1866,7 +1873,10 @@ export function CanvasShell({
         const created = await Promise.all(
           seed.map((item) =>
             fetch(url, {
-              body: JSON.stringify(item),
+              body: JSON.stringify({
+                ...item,
+                preview: persistedHistoryPreview(item),
+              }),
               headers: { "Content-Type": "application/json" },
               method: "POST",
               signal: controller.signal,

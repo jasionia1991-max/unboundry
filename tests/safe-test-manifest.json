@@ -100,7 +100,9 @@
     "tests/m55-relay-model-protocol.spec.ts",
     "tests/m57-relay-generation-runtime.spec.ts",
     "tests/m59-relay-catalog-inference.spec.ts",
-    "tests/m85-canvas-persistence-server.spec.ts"
+    "tests/m85-canvas-persistence-server.spec.ts",
+    "tests/m87-media-integrity.spec.ts",
+    "tests/m88-media-publication.spec.ts"
   ],
   "preview": [
     "tests/fixture-production.spec.ts",

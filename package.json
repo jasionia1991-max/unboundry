@@ -13,6 +13,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "data:repair-storage": "node scripts/repair-storage-state.mjs",
+    "data:report-media": "node scripts/report-media-integrity.mjs",
     "check:greenfield": "node scripts/check-greenfield.mjs",
     "test:shell": "playwright test tests/m0-shell.spec.ts",
     "test:viewport": "playwright test tests/m1-viewport.spec.ts",

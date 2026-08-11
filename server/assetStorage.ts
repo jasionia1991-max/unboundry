@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, join } from "node:path";
 import { crc32, inflateSync } from "node:zlib";
@@ -10,7 +10,6 @@ import {
   deletePrivateAliyunOssObject,
   uploadPrivateAliyunOssObject,
 } from "./aliyunOss";
-import { publishCloudObject } from "./cloudMediaStorage";
 import { requestIdentity } from "./auth";
 import {
   decodedRequestHeader,
@@ -18,19 +17,32 @@ import {
   HttpRequestError,
 } from "./httpRequest";
 import {
-  mayReadMedia,
-  mayWriteMedia,
+  beginMediaDeletion,
+  finishMediaDeletion,
+  markMediaDeletionFailed,
   readableMedia,
   readableMediaForOwner,
-  registerMedia,
-  registerMediaForOwner,
-  unregisterMedia,
 } from "./mediaRegistry";
 import {
-  storageMediaRoutingState,
+  cleanupPublicationStaging,
+  compensateMediaPublication,
+  finalizeMediaPublication,
+  markExternalMediaPublicationReady,
+  mediaPublicationFinalPath,
+  mediaPublicationStagingPath,
+  MediaPublicationConflictError,
+  publishLocalMediaPublication,
+  reserveMediaPublication,
+  stageMediaPublication,
+  type GeneratedPublicationTask,
+  type MediaPublicationExecution,
+} from "./mediaLifecycle";
+import {
   storageProfileForMedia,
+  storageProfileForDestructiveMedia,
+  withStorageMediaRoutingReservation,
+  type AliyunStorageProfile,
 } from "./secureStorageProfiles";
-import { openAppDatabase } from "./database";
 
 const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const maxImageBytes = 20 * 1024 * 1024;
@@ -220,90 +232,82 @@ export async function saveGeneratedPng(input: {
   bytes: Buffer;
   label: string;
   ownerId: string;
+  task?: GeneratedPublicationTask;
 }) {
   const dimensions = validatePng(input.bytes);
   const id = randomUUID();
-  const path = assetPath(id);
-  const temporary = `${path.file}.${randomUUID()}.generating`;
   const checksumSha256 = createHash("sha256").update(input.bytes).digest("hex");
-  const routing = await storageMediaRoutingState();
-  await mkdir(path.directory, { recursive: true });
-  await writeFile(temporary, input.bytes, { flag: "wx" });
+  const publication = await withStorageMediaRoutingReservation((routing) => {
+    const objectKey = routing.enabled && routing.profile
+      ? createAliyunOssObjectKey("image", "png")
+      : `${id}.png`;
+    return {
+      objectKey,
+      reservation: reserveMediaPublication({
+        contentType: "image/png",
+        finalStorageName: `${id}.png`,
+        historyLabel: input.label.slice(0, 120) || "生成图片",
+        id,
+        kind: "image",
+        objectKey,
+        ownerId: input.ownerId,
+        storageBackend: routing.enabled && routing.profile ? "oss" : "local",
+        storageProfileId: routing.profile?.id,
+        task: input.task,
+      }),
+      routing,
+    };
+  });
+  const { objectKey, reservation, routing } = publication;
   try {
+    await mkdir(assetPath(id).directory, { recursive: true });
+    await writeFile(mediaPublicationStagingPath(reservation), input.bytes, {
+      flag: "wx",
+    });
+    stageMediaPublication(reservation, {
+      byteSize: input.bytes.length,
+      checksumSha256,
+      contentType: "image/png",
+      mediaHeight: dimensions.height,
+      mediaWidth: dimensions.width,
+    });
     if (routing.enabled && routing.profile) {
-      const objectKey = createAliyunOssObjectKey("image", "png");
-      await publishCloudObject({
-        commit: () =>
-          registerMediaForOwner(input.ownerId, {
-            byteSize: input.bytes.length,
-            checksumSha256,
-            contentType: "image/png",
-            id,
-            kind: "image",
-            mediaHeight: dimensions.height,
-            mediaWidth: dimensions.width,
-            objectKey,
-            storageBackend: "oss",
-            storageProfileId: routing.profile?.id,
-            storageName: `${id}.png`,
-          }),
-        remove: () => deletePrivateAliyunOssObject(objectKey, routing.profile!),
-        upload: () =>
-          uploadPrivateAliyunOssObject({
-            byteSize: input.bytes.length,
-            checksumSha256,
-            contentType: "image/png",
-            credentials: routing.profile!,
-            filePath: temporary,
-            objectKey,
-          }).then(() => undefined),
-      });
-      await rm(temporary, { force: true });
-    } else {
-      await rename(temporary, path.file);
-      registerMediaForOwner(input.ownerId, {
+      await uploadPrivateAliyunOssObject({
         byteSize: input.bytes.length,
         checksumSha256,
         contentType: "image/png",
-        id,
-        kind: "image",
-        mediaHeight: dimensions.height,
-        mediaWidth: dimensions.width,
-        storageName: `${id}.png`,
+        credentials: routing.profile,
+        filePath: mediaPublicationStagingPath(reservation),
+        objectKey,
       });
+      markExternalMediaPublicationReady(reservation);
+    } else {
+      await publishLocalMediaPublication(reservation);
     }
-    const store = openAppDatabase();
-    try {
-      store.prepare(`
-        INSERT INTO asset_history (
-          account_id, id, kind, label, preview, created_at, owner_id
-        ) VALUES (?, ?, 'image', ?, ?, ?, ?)
-        ON CONFLICT(account_id, id) DO UPDATE SET
-          label = excluded.label,
-          preview = excluded.preview,
-          owner_id = excluded.owner_id
-      `).run(
-        input.ownerId,
-        id,
-        input.label.slice(0, 120) || "生成图片",
-        `/api/assets/${id}`,
-        new Date().toISOString(),
-        input.ownerId,
-      );
-    } finally {
-      store.close();
-    }
+    finalizeMediaPublication(reservation);
+    await cleanupPublicationStaging(reservation).catch(() => undefined);
     return { assetId: id, ...dimensions, url: `/api/assets/${id}` };
   } catch (error) {
-    await rm(temporary, { force: true });
-    await rm(path.file, { force: true });
+    await compensateMediaPublication(reservation, {
+      profile: routing.profile,
+    });
     throw error;
   }
 }
 
+export function assetStorage(
+  request: IncomingMessage,
+  response: ServerResponse,
+): Promise<void>;
+export function assetStorage(
+  request: IncomingMessage,
+  response: ServerResponse,
+  execution: MediaPublicationExecution,
+): Promise<void>;
 export async function assetStorage(
   request: IncomingMessage,
   response: ServerResponse,
+  execution: MediaPublicationExecution = {},
 ) {
   const id = decodedRequestPath(request).replace(
     /^\/+/,
@@ -316,11 +320,11 @@ export async function assetStorage(
 
   const path = assetPath(id);
   if (request.method === "GET") {
-    if (!mayReadMedia(request, "image", id)) {
+    const media = readableMedia(request, "image", id);
+    if (!media) {
       json(response, 404, { error: "Asset not found" });
       return;
     }
-    const media = readableMedia(request, "image", id);
     if (media?.storageBackend === "oss") {
       if (media.storageStatus !== "ready" || !media.objectKey) {
         json(response, 404, { error: "Asset not found" });
@@ -346,12 +350,17 @@ export async function assetStorage(
       return;
     }
     try {
-      const info = await stat(path.file);
+      if (basename(media.storageName) !== media.storageName) {
+        throw new Error("Invalid media path");
+      }
+      const file = join(path.directory, media.storageName);
+      const info = await stat(file);
+      if (info.size !== media.byteSize) throw new Error("Asset is incomplete");
       response.statusCode = 200;
       response.setHeader("Cache-Control", "private, max-age=31536000, immutable");
       response.setHeader("Content-Length", String(info.size));
       response.setHeader("Content-Type", "image/png");
-      createReadStream(path.file).pipe(response);
+      createReadStream(file).pipe(response);
     } catch {
       json(response, 404, { error: "Asset not found" });
     }
@@ -359,28 +368,77 @@ export async function assetStorage(
   }
 
   if (request.method === "DELETE") {
-    if (!mayReadMedia(request, "image", id)) {
+    let deletion;
+    try {
+      deletion = beginMediaDeletion(request, "image", id);
+    } catch (error) {
+      json(response, 409, {
+        code: "MEDIA_DELETE_CONFLICT",
+        error: error instanceof Error ? error.message : "Asset cannot be deleted",
+      });
+      return;
+    }
+    if (!deletion) {
       json(response, 404, { error: "Asset not found" });
       return;
     }
-    const media = readableMedia(request, "image", id);
-    if (media?.storageBackend === "oss") {
+    if (deletion.action === "deferred") {
+      response.statusCode = 204;
+      response.end();
+      return;
+    }
+    const media = deletion.media;
+    try {
+      await execution.beforePhysicalDelete?.({ id, kind: "image", media });
+    } catch {
       try {
-        const profile = await storageProfileForMedia(media);
-        if (!profile) throw new Error("Active OSS profile is unavailable");
-        await deletePrivateAliyunOssObject(media.objectKey, profile);
-        unregisterMedia(request, "image", id);
+        markMediaDeletionFailed(request, "image", id);
+      } catch {
+        // Preserve the injected physical-boundary failure.
+      }
+      json(response, 503, { error: "Asset could not be deleted" });
+      return;
+    }
+    if (media.storageBackend === "oss") {
+      try {
+        const profile = await storageProfileForDestructiveMedia(media);
+        if (!profile || !media.objectKey) {
+          throw new Error("Active OSS profile is unavailable");
+        }
+        await (execution.deleteExternalObject ?? deletePrivateAliyunOssObject)(
+          media.objectKey,
+          profile,
+        );
+        finishMediaDeletion(request, "image", id, media);
         response.statusCode = 204;
         response.end();
       } catch {
+        try {
+          markMediaDeletionFailed(request, "image", id);
+        } catch {
+          // The original physical-delete failure remains the response cause.
+        }
         json(response, 503, {
           error: "Cloud asset could not be deleted",
         });
       }
       return;
     }
-    await rm(path.file, { force: true });
-    unregisterMedia(request, "image", id);
+    try {
+      if (basename(media.storageName) !== media.storageName) {
+        throw new Error("Invalid media path");
+      }
+      await rm(join(path.directory, media.storageName), { force: true });
+      finishMediaDeletion(request, "image", id, media);
+    } catch {
+      try {
+        markMediaDeletionFailed(request, "image", id);
+      } catch {
+        // The original physical-delete failure remains the response cause.
+      }
+      json(response, 503, { error: "Asset could not be deleted" });
+      return;
+    }
     response.statusCode = 204;
     response.end();
     return;
@@ -392,89 +450,104 @@ export async function assetStorage(
     return;
   }
 
-  const temporary = `${path.file}.${randomUUID()}.uploading`;
-  let cloudAttempted = false;
+  let reservation: ReturnType<typeof reserveMediaPublication> | undefined;
+  let profile: AliyunStorageProfile | undefined;
   try {
     const fileName = decodedRequestHeader(
       request,
       String(request.headers["x-file-name"] ?? "Image.png"),
     ).slice(0, 240);
-    if (!mayWriteMedia(request, "image", id)) {
-      throw new Error("Asset ID is unavailable");
-    }
     if (request.headers["content-type"] !== "image/png") {
       throw new Error("Only PNG images are supported");
     }
+    const identity = requestIdentity(request)!;
+    const reserve = (routing: {
+      enabled: boolean;
+      profile?: AliyunStorageProfile;
+    }) => {
+      const objectKey = routing.enabled && routing.profile
+        ? createAliyunOssObjectKey("image", "png")
+        : `${id}.png`;
+      return {
+        objectKey,
+        reservation: reserveMediaPublication({
+          contentType: "image/png",
+          finalStorageName: `${id}.png`,
+          id,
+          kind: "image",
+          objectKey,
+          ownerId: identity.bypass ? "__test__" : identity.userId,
+          storageBackend: routing.enabled && routing.profile ? "oss" : "local",
+          storageProfileId: routing.profile?.id,
+        }),
+        routing,
+      };
+    };
+    const publication = identity.bypass
+      ? await (async () => {
+          if (execution.beforeReservation) {
+            await execution.beforeReservation();
+          }
+          return reserve({ enabled: false });
+        })()
+      : await withStorageMediaRoutingReservation(reserve, {
+          afterRead: execution.beforeReservation,
+        });
+    const { objectKey, routing } = publication;
+    reservation = publication.reservation;
+    profile = routing.profile;
     const bytes = await readImage(request);
     const { height, width } = validatePng(bytes);
     const checksumSha256 = createHash("sha256").update(bytes).digest("hex");
-    const routing = requestIdentity(request)?.bypass
-      ? { enabled: false, profile: undefined }
-      : await storageMediaRoutingState();
 
     await mkdir(path.directory, { recursive: true });
-    await writeFile(temporary, bytes, { flag: "wx" });
+    await writeFile(mediaPublicationStagingPath(reservation), bytes, { flag: "wx" });
+    stageMediaPublication(reservation, {
+      byteSize: bytes.length,
+      checksumSha256,
+      contentType: "image/png",
+      mediaHeight: height,
+      mediaWidth: width,
+    });
+    await execution.afterTransition?.("staged", reservation);
     if (routing.enabled && routing.profile) {
-      cloudAttempted = true;
-      const objectKey = createAliyunOssObjectKey("image", "png");
-      await publishCloudObject({
-        commit: () =>
-          registerMedia(request, {
-            byteSize: bytes.length,
-            checksumSha256,
-            contentType: "image/png",
-            id,
-            kind: "image",
-            objectKey,
-            storageBackend: "oss",
-            storageProfileId: routing.profile?.id,
-            storageName: `${id}.png`,
-          }),
-        remove: () =>
-          deletePrivateAliyunOssObject(objectKey, routing.profile!),
-        upload: async () => {
-          await uploadPrivateAliyunOssObject({
-            byteSize: bytes.length,
-            checksumSha256,
-            contentType: "image/png",
-            credentials: routing.profile!,
-            filePath: temporary,
-            objectKey,
-          });
-        },
-      });
-      await rm(temporary, { force: true });
-      await rm(path.file, { force: true });
-    } else {
-      await rename(temporary, path.file);
-      registerMedia(request, {
+      await uploadPrivateAliyunOssObject({
         byteSize: bytes.length,
         checksumSha256,
         contentType: "image/png",
-        id,
-        kind: "image",
-        storageName: `${id}.png`,
+        credentials: routing.profile,
+        filePath: mediaPublicationStagingPath(reservation),
+        objectKey,
       });
+      markExternalMediaPublicationReady(reservation);
+    } else {
+      await publishLocalMediaPublication(reservation);
     }
+    await execution.afterTransition?.("external-ready", reservation);
+    finalizeMediaPublication(reservation);
+    await cleanupPublicationStaging(reservation).catch(() => undefined);
     json(response, 201, {
       assetId: id,
       byteSize: bytes.length,
       contentType: "image/png",
       fileName,
       height,
+      mediaHeight: height,
+      mediaWidth: width,
       storageBackend: routing.enabled && routing.profile ? "oss" : "local",
       url: `/api/assets/${id}`,
       width,
     });
   } catch (error) {
+    if (reservation) {
+      await compensateMediaPublication(reservation, { profile });
+    }
     if (error instanceof HttpRequestError) throw error;
-    await rm(temporary, { force: true });
-    json(response, 400, {
-      error: cloudAttempted
-        ? "云端素材保存失败，未创建节点"
-        : error instanceof Error
-          ? error.message
-          : "Upload failed",
+    json(response, error instanceof MediaPublicationConflictError ? 409 : 400, {
+      code: error instanceof MediaPublicationConflictError
+        ? "MEDIA_ID_UNAVAILABLE"
+        : undefined,
+      error: error instanceof Error ? error.message : "Upload failed",
     });
   }
 }

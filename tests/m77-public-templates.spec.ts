@@ -13,6 +13,7 @@ import {
 } from "../server/adminTemplates";
 import {
   listPublicTemplates,
+  publicTemplateCard,
 } from "../server/templateCatalog";
 
 const port = Number(process.env.UNBOUNDRY_TEST_AUX_PORT);
@@ -237,6 +238,68 @@ test("public template storage enforces validation, status transitions and seed p
     expect(created.status).toBe("draft");
     expect(created.created_by).toBe("pub-admin");
     expect(created.preview_image).toBe("/templates/custom.png");
+
+    store
+      .prepare(`
+        INSERT INTO users (
+          id, login_name, display_name, password_hash, role, status,
+          created_at, updated_at
+        )
+        VALUES ('pub-other', 'pubother', 'Pub Other', 'test-only', 'user',
+          'active', ?, ?)
+      `)
+      .run(now, now);
+    const insertCoverMedia = store.prepare(`
+      INSERT INTO media_assets (
+        kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+        storage_status
+      )
+      VALUES (?, 'public-cover', ?, ?, 1, ?, ?, 'ready')
+    `);
+    insertCoverMedia.run(
+      "audio",
+      "pub-admin",
+      "public-cover.mp3",
+      now,
+      now,
+    );
+    const coverRow = {
+      ...created,
+      cover_asset_id: "public-cover",
+      preview_image: null,
+    };
+    expect(publicTemplateCard(store, coverRow, false).cover).toBeNull();
+    insertCoverMedia.run(
+      "image",
+      "pub-other",
+      "public-cover.png",
+      now,
+      now,
+    );
+    expect(publicTemplateCard(store, coverRow, false).cover).toBeNull();
+    store.prepare(`
+      UPDATE media_assets
+      SET owner_id = 'pub-admin', storage_status = 'pending'
+      WHERE kind = 'image' AND id = 'public-cover'
+    `).run();
+    expect(publicTemplateCard(store, coverRow, false).cover).toBeNull();
+    store.prepare(`
+      UPDATE media_assets
+      SET storage_status = 'ready'
+      WHERE kind = 'image' AND id = 'public-cover'
+    `).run();
+    expect(publicTemplateCard(store, coverRow, false).cover).toEqual({
+      assetId: "public-cover",
+      kind: "image",
+    });
+    insertCoverMedia.run(
+      "video",
+      "pub-admin",
+      "public-cover.mp4",
+      now,
+      now,
+    );
+    expect(publicTemplateCard(store, coverRow, false).cover).toBeNull();
 
     const drafts = listPublicTemplates(store, {
       category: "全部",

@@ -46,10 +46,19 @@ import { backup, DatabaseSync } from "node:sqlite";
 import {
   BackupInspectionError,
   inspectBackupDatabase,
-  validateBackupSecrets,
+  validateBackupStorageProfileIds,
+  validateBackupSecretsWithContext,
   type BackupDatabaseInspection,
   type BackupSecretValidation,
 } from "./backupInspection.ts";
+import {
+  inspectMediaIntegrity,
+  summarizeMediaIntegrity,
+  type MediaIntegrityFileEvidence,
+  type MediaIntegrityOssEvidence,
+  type MediaIntegrityReport,
+  type MediaIntegritySummary,
+} from "./mediaIntegrity.ts";
 
 export const backupPackageFormatVersion = 2 as const;
 const backupPackageFormat = "unboundry-encrypted-backup" as const;
@@ -58,6 +67,7 @@ const envelopeMaximumBytes = 128 * 1024;
 const ioChunkBytes = 256 * 1024;
 const backupIncompleteMarker = ".unboundry-backup-incomplete";
 const restoreIncompleteMarker = ".unboundry-restore-incomplete";
+const supportedBackupSchemaVersions = new Set([37, 38]);
 const restorableSecretFiles = new Set([
   "config-master.key",
   "provider-profiles.enc.json",
@@ -116,10 +126,19 @@ export type VerifyEncryptedBackupOptions = Readonly<{
 export type RestoreEncryptedBackupOptions = VerifyEncryptedBackupOptions &
   Readonly<{ targetDirectory: string }>;
 
+export type InspectFrozenMediaIntegrityOptions = Readonly<{
+  onCheckpoint?: BackupCheckpoint;
+  ossMirrors?: readonly BackupOssMirror[];
+  scratchRoot?: string;
+  sourceDirectory: string;
+  sourceFrozen: true;
+}>;
+
 export type BackupPackageSummary = Readonly<{
   backupId: string;
   databaseLogicalSha256: string;
   mediaFiles: number;
+  mediaIntegrity: MediaIntegritySummary;
   ossMirrors: number;
   packageDirectory: string;
   schemaVersion: number;
@@ -1169,6 +1188,63 @@ async function mirrorEvidence(input: BackupOssMirror): Promise<MirrorEvidence> {
   });
 }
 
+function mediaIntegrityFiles(
+  snapshot: TreeSnapshot,
+): readonly MediaIntegrityFileEvidence[] {
+  return Object.freeze(snapshot.entries.flatMap((entry) =>
+    entry.kind === "file" && entry.sha256 !== undefined &&
+      entry.size !== undefined
+      ? [Object.freeze({
+          logicalPath: entry.path,
+          sha256: entry.sha256,
+          size: entry.size,
+        })]
+      : []));
+}
+
+function mediaIntegrityOssEvidence(
+  mirrors: readonly MirrorEvidence[],
+): readonly MediaIntegrityOssEvidence[] {
+  return Object.freeze(mirrors.map((mirror) => {
+    if (
+      mirror.evidence.sha256 === undefined ||
+      mirror.evidence.size === undefined
+    ) fail("BACKUP_OSS_MIRROR_INVALID", "OSS mirror evidence is incomplete");
+    return Object.freeze({
+      byteSize: mirror.evidence.size,
+      checksumSha256: mirror.evidence.sha256,
+      objectKey: mirror.objectKey,
+      versionId: mirror.versionId,
+    });
+  }));
+}
+
+function inspectBackupMediaIntegrity(
+  databasePath: string,
+  databaseInspection: BackupDatabaseInspection,
+  mediaSnapshot: TreeSnapshot,
+  mirrors: readonly MirrorEvidence[],
+  storageProfileIds: readonly string[],
+) {
+  return inspectMediaIntegrity({
+    databaseLogicalSha256: databaseInspection.logicalSha256,
+    databasePath,
+    files: mediaIntegrityFiles(mediaSnapshot),
+    ossEvidence: mediaIntegrityOssEvidence(mirrors),
+    storageProfileIds,
+  });
+}
+
+function requireCompleteMediaIntegrity(report: MediaIntegrityReport) {
+  if (!report.backupComplete) {
+    fail(
+      "BACKUP_MEDIA_INTEGRITY_INCOMPLETE",
+      "Media integrity has backup-blocking issues",
+    );
+  }
+  return report;
+}
+
 async function validateMedia(
   databasePath: string,
   mediaDirectory: string,
@@ -1319,16 +1395,162 @@ async function rawDatabaseSnapshot(
   return { evidence, inspection, snapshotPath };
 }
 
-function summaryFromManifest(manifest: BackupManifest, packageDirectory: string): BackupPackageSummary {
+function summaryFromManifest(
+  manifest: BackupManifest,
+  packageDirectory: string,
+  mediaIntegrity: MediaIntegrityReport,
+): BackupPackageSummary {
   return Object.freeze({
     backupId: manifest.backupId,
     databaseLogicalSha256: manifest.database.inspection.logicalSha256,
     mediaFiles: manifest.entries.filter((entry) => entry.kind === "media").length,
+    mediaIntegrity: summarizeMediaIntegrity(mediaIntegrity),
     ossMirrors: manifest.entries.filter((entry) => entry.kind === "oss").length,
     packageDirectory,
     schemaVersion: manifest.database.inspection.userVersion,
     secretFiles: manifest.entries.filter((entry) => entry.kind === "secret").length,
   });
+}
+
+/**
+ * Builds a media-integrity report from a stable private SQLite snapshot and a
+ * frozen media-tree fingerprint. Source data is only read; all writable work
+ * stays in the private scratch directory and is removed before return.
+ */
+export async function inspectFrozenMediaIntegrity(
+  options: InspectFrozenMediaIntegrityOptions,
+): Promise<MediaIntegrityReport> {
+  if (options.sourceFrozen !== true) {
+    fail("BACKUP_SOURCE_NOT_FROZEN", "Media inspection source must be explicitly frozen");
+  }
+  const sourceDirectory = normalizedAbsolute(
+    options.sourceDirectory,
+    "Source directory",
+  );
+  const scratchRoot = normalizedAbsolute(
+    options.scratchRoot ?? resolve(tmpdir()),
+    "Scratch root",
+  );
+  if (containsPath(sourceDirectory, scratchRoot)) {
+    fail("BACKUP_PATH_OVERLAP", "Inspection scratch root may not be inside source data");
+  }
+  const mirrorOptions = (options.ossMirrors ?? []).map((input) => Object.freeze({
+    ...input,
+    filePath: normalizedAbsolute(input.filePath, "OSS mirror path"),
+  }));
+  for (const mirror of mirrorOptions) {
+    assertDisjointPaths(sourceDirectory, mirror.filePath);
+  }
+  const [canonicalSource, canonicalScratchRoot, ...canonicalMirrors] =
+    await Promise.all([
+      canonicalPotentialPath(sourceDirectory),
+      canonicalPotentialPath(scratchRoot),
+      ...mirrorOptions.map((mirror) => canonicalPotentialPath(mirror.filePath)),
+    ]);
+  if (containsPath(canonicalSource, canonicalScratchRoot)) {
+    fail("BACKUP_PATH_OVERLAP", "Inspection scratch root aliases source data");
+  }
+  for (const mirror of canonicalMirrors) {
+    assertDisjointPaths(canonicalSource, mirror);
+  }
+  await ensureTrustedDataRoot(sourceDirectory);
+  await ensureTrustedWorkRoot(scratchRoot, true);
+  const sourceIdentity = await directoryIdentity(
+    sourceDirectory,
+    "BACKUP_SOURCE_CHANGED",
+  );
+  try {
+    await lstat(join(sourceDirectory, restoreIncompleteMarker));
+    fail("BACKUP_SOURCE_INCOMPLETE", "An incomplete restore cannot be inspected");
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
+      throw error;
+    }
+  }
+
+  let scratch: string | undefined;
+  try {
+    scratch = await mkdtemp(join(scratchRoot, "unboundry-media-report-"));
+    await chmod(scratch, 0o700);
+    const canonicalScratch = await canonicalPotentialPath(scratch);
+    assertDisjointPaths(canonicalSource, canonicalScratch);
+    for (const mirror of canonicalMirrors) {
+      assertDisjointPaths(canonicalScratch, mirror);
+    }
+    const databaseBefore = await databaseFilesSnapshot(sourceDirectory);
+    const mediaDirectory = join(sourceDirectory, "media");
+    const secretsDirectory = join(sourceDirectory, "secrets");
+    const mediaBefore = await fingerprintTree(mediaDirectory, false);
+    const observedSecretsBefore = await fingerprintTree(secretsDirectory, false);
+    const secretsBefore = restorableSecretsSnapshot(observedSecretsBefore);
+    const databaseSnapshot = await rawDatabaseSnapshot(
+      sourceDirectory,
+      databaseBefore,
+      scratch,
+    );
+    if (!supportedBackupSchemaVersions.has(
+      databaseSnapshot.inspection.userVersion,
+    )) {
+      fail(
+        "BACKUP_SCHEMA_UNSUPPORTED",
+        "Media inspection requires a supported backup schema",
+      );
+    }
+    await checkpoint(options.onCheckpoint, "after-database-snapshot");
+    const copiedSecrets = join(scratch, "secrets");
+    await copyTree(secretsDirectory, copiedSecrets, secretsBefore);
+    const storageProfileIds = await validateBackupStorageProfileIds(
+      copiedSecrets,
+      scratch,
+    );
+    const mirrors = await Promise.all(mirrorOptions.map(mirrorEvidence));
+    const report = inspectBackupMediaIntegrity(
+      databaseSnapshot.snapshotPath,
+      databaseSnapshot.inspection,
+      mediaBefore,
+      mirrors,
+      storageProfileIds,
+    );
+    for (const mirror of mirrors) {
+      const after = await inspectRegularFile(
+        mirror.filePath,
+        mirror.evidence.path,
+      );
+      if (stableJson(after) !== stableJson(mirror.evidence)) {
+        fail("BACKUP_SOURCE_CHANGED", "OSS mirror changed during media inspection");
+      }
+    }
+    const databaseAfter = await databaseFilesSnapshot(sourceDirectory);
+    const mediaAfter = await fingerprintTree(mediaDirectory, false);
+    const observedSecretsAfter = await fingerprintTree(secretsDirectory, false);
+    const secretsAfter = restorableSecretsSnapshot(observedSecretsAfter);
+    const finalSourceIdentity = await directoryIdentity(
+      sourceDirectory,
+      "BACKUP_SOURCE_CHANGED",
+    );
+    if (
+      !sameIdentity(sourceIdentity, finalSourceIdentity) ||
+      !sameSnapshot(databaseBefore, databaseAfter) ||
+      !sameSnapshot(mediaBefore, mediaAfter) ||
+      !sameSnapshot(observedSecretsBefore, observedSecretsAfter) ||
+      !sameSnapshot(secretsBefore, secretsAfter)
+    ) fail("BACKUP_SOURCE_CHANGED", "Media inspection source changed during snapshot");
+    return report;
+  } catch (error) {
+    return rethrowPackageFailure(
+      error,
+      "MEDIA_REPORT_FAILED",
+      "Media integrity inspection failed",
+    );
+  } finally {
+    if (scratch) {
+      try {
+        await rm(scratch, { force: true, recursive: true });
+      } catch {
+        fail("BACKUP_CLEANUP_FAILED", "Media inspection cleanup failed");
+      }
+    }
+  }
 }
 
 export async function createEncryptedBackup(
@@ -1415,18 +1637,24 @@ export async function createEncryptedBackup(
       databaseBefore,
       scratch,
     );
-    if (databaseSnapshot.inspection.userVersion !== 37) {
-      fail("BACKUP_SCHEMA_UNSUPPORTED", "Encrypted package creation requires schema 37");
+    if (!supportedBackupSchemaVersions.has(
+      databaseSnapshot.inspection.userVersion,
+    )) {
+      fail(
+        "BACKUP_SCHEMA_UNSUPPORTED",
+        "Encrypted package creation requires a supported backup schema",
+      );
     }
     await checkpoint(options.onCheckpoint, "after-database-snapshot");
 
     const copiedSecrets = join(scratch, "secrets");
     await copyTree(secretsDirectory, copiedSecrets, secretsBefore);
-    const secretValidation = await validateBackupSecrets(
+    const secretContext = await validateBackupSecretsWithContext(
       databaseSnapshot.snapshotPath,
       copiedSecrets,
       scratch,
     );
+    const secretValidation = secretContext.validation;
     const mirrorInputs = await Promise.all(mirrorOptions.map(mirrorEvidence));
     const provisionalMedia = await validateMedia(
       databaseSnapshot.snapshotPath,
@@ -1434,6 +1662,13 @@ export async function createEncryptedBackup(
       mediaBefore,
       mirrorInputs,
     );
+    const mediaIntegrity = requireCompleteMediaIntegrity(inspectBackupMediaIntegrity(
+      databaseSnapshot.snapshotPath,
+      databaseSnapshot.inspection,
+      mediaBefore,
+      mirrorInputs,
+      secretContext.storageProfileIds,
+    ));
 
     const entries: EncryptedEntry[] = [];
     const databaseEntry = await encryptFile(
@@ -1635,7 +1870,7 @@ export async function createEncryptedBackup(
     published = true;
     await syncDirectory(finalDirectory);
     await syncDirectory(backupRoot);
-    return summaryFromManifest(manifest, finalDirectory);
+    return summaryFromManifest(manifest, finalDirectory, mediaIntegrity);
   } catch (error) {
     return rethrowPackageFailure(
       error,
@@ -1928,7 +2163,9 @@ function validateManifest(
   ) fail("BACKUP_MANIFEST_INVALID", "Backup database entry is invalid");
   const inspection = jsonObject(database.inspection, "BACKUP_MANIFEST_INVALID");
   if (
-    inspection.userVersion !== 37 || !validSha(inspection.logicalSha256) ||
+    typeof inspection.userVersion !== "number" ||
+    !supportedBackupSchemaVersions.has(inspection.userVersion) ||
+    !validSha(inspection.logicalSha256) ||
     !Array.isArray(inspection.tables) || !Array.isArray(inspection.migrationLedger)
   ) fail("BACKUP_MANIFEST_INVALID", "Backup database inspection is invalid");
   const source = jsonObject(manifest.source, "BACKUP_MANIFEST_INVALID");
@@ -2460,6 +2697,26 @@ async function createRecordedDirectories(
   }
 }
 
+/**
+ * Applies the exact database gate used immediately after package decryption.
+ * Kept as one boundary so supported historic packages and current packages
+ * cannot diverge between direct inspection and verify/restore materialization.
+ */
+export function validateMaterializedBackupDatabase(
+  databasePath: string,
+  destinationRoot: string,
+  expectedInspection: BackupDatabaseInspection,
+) {
+  const actualInspection = inspectBackupDatabase(databasePath, destinationRoot);
+  if (stableJson(actualInspection) !== stableJson(expectedInspection)) {
+    fail(
+      "BACKUP_DATABASE_FINGERPRINT_MISMATCH",
+      "Restored database fingerprint does not match",
+    );
+  }
+  return actualInspection;
+}
+
 async function materializeAndValidate(
   opened: Awaited<ReturnType<typeof openEncryptedPackage>>,
   destinationRoot: string,
@@ -2474,10 +2731,11 @@ async function materializeAndValidate(
     if (!databaseEntry) fail("BACKUP_MANIFEST_INVALID", "Backup database entry is missing");
     await decryptEntry(databaseEntry, packageDirectory, destinationRoot, dek, manifest.backupId);
     const databasePath = join(destinationRoot, "unboundry.sqlite");
-    const databaseInspection = inspectBackupDatabase(databasePath, destinationRoot);
-    if (stableJson(databaseInspection) !== stableJson(manifest.database.inspection)) {
-      fail("BACKUP_DATABASE_FINGERPRINT_MISMATCH", "Restored database fingerprint does not match");
-    }
+    const databaseInspection = validateMaterializedBackupDatabase(
+      databasePath,
+      destinationRoot,
+      manifest.database.inspection,
+    );
     await checkpoint(callback, "after-restore-database");
 
     for (const entry of manifest.entries.filter((candidate) =>
@@ -2522,19 +2780,27 @@ async function materializeAndValidate(
       stableJson(contentInventory(restoredSecrets)) !==
       stableJson(contentInventory(manifest.source.secretsBefore))
     ) fail("BACKUP_SECRET_INVENTORY_MISMATCH", "Restored secret inventory does not match");
-    const secretValidation = await validateBackupSecrets(
+    const secretContext = await validateBackupSecretsWithContext(
       databasePath,
       join(destinationRoot, "secrets"),
       destinationRoot,
     );
+    const secretValidation = secretContext.validation;
     if (
       stableJson(secretValidation) !== stableJson(manifest.secrets.validation) ||
       manifest.secrets.fileCount !==
         manifest.entries.filter((entry) => entry.kind === "secret").length
     ) fail("BACKUP_SECRET_VALIDATION_MISMATCH", "Restored secret validation does not match");
+    const mediaIntegrity = requireCompleteMediaIntegrity(inspectBackupMediaIntegrity(
+      databasePath,
+      databaseInspection,
+      restoredMedia,
+      mirrorInputs,
+      secretContext.storageProfileIds,
+    ));
     await checkpoint(callback, "after-restore-secrets");
     await syncDirectory(destinationRoot);
-    return summaryFromManifest(manifest, packageDirectory);
+    return summaryFromManifest(manifest, packageDirectory, mediaIntegrity);
   } finally {
     dek.fill(0);
   }

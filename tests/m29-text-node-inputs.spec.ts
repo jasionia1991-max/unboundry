@@ -354,11 +354,6 @@ async function createTextModel(
 }
 
 async function uploadReadyMedia(request: APIRequestContext) {
-  await Promise.all([
-    request.delete(`/api/assets/${imageAssetId}`),
-    request.delete(`/api/video-assets/${videoAssetId}`),
-    request.delete(`/api/audio-assets/${audioAssetId}`),
-  ]);
   const [image, video, audio] = await Promise.all([
     readFile(resolve(
       process.cwd(),

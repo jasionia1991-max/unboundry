@@ -185,7 +185,7 @@ function AudioNodeImpl({
   const waveformSourceAttempted = useRef<string | undefined>(undefined);
   const { getNode, getNodes } = useReactFlow<ProbeNodeType>();
   const { register: registerWorkflowNode } = useWorkflowExecution();
-  const { setEdges, setNodes } = useCanvasGraphMutation();
+  const { setEdges, setNodes, tryAdoptNodes } = useCanvasGraphMutation();
   const canvasEdges = useEdges();
   const canvasNodes = useNodes<ProbeNodeType>();
   const checkpoint = useCanvasCheckpoint();
@@ -199,6 +199,10 @@ function AudioNodeImpl({
     retryGenerationEnabled,
     waitForCanvasRevision,
   } = useGenerationCanvas();
+  const mediaAdoptionScopeRef = useRef(`${accountId}\u0000${canvasId}`);
+  mediaAdoptionScopeRef.current = `${accountId}\u0000${canvasId}`;
+  const persistenceReadyLive = useRef(persistenceReady);
+  persistenceReadyLive.current = persistenceReady;
   const audioModelSelection = usePublishedModelSelection(
     "audio",
     data.audioModelId,
@@ -570,6 +574,15 @@ function AudioNodeImpl({
     uploadInFlight.current = false;
     uploadBaseline.current = undefined;
   }, [data.inputState]);
+
+  useEffect(() => {
+    if (persistenceReady || !uploadInFlight.current) return;
+    uploadOperation.current += 1;
+    uploadController.current?.abort();
+    uploadController.current = undefined;
+    uploadInFlight.current = false;
+    uploadBaseline.current = undefined;
+  }, [persistenceReady]);
 
   useEffect(() => () => {
     uploadOperation.current += 1;
@@ -1384,6 +1397,7 @@ function AudioNodeImpl({
     const baseline = uploadBaseline.current ?? getNode(id);
     if (baseline && !uploadBaseline.current) uploadBaseline.current = baseline;
     const operation = uploadOperation.current + 1;
+    const scope = mediaAdoptionScopeRef.current;
     uploadOperation.current = operation;
     uploadController.current?.abort();
     const controller = new AbortController();
@@ -1405,6 +1419,7 @@ function AudioNodeImpl({
     const localUrl = URL.createObjectURL(file);
     let adopted = false;
     let requestedAssetId: string | undefined;
+    let shouldCompensate = true;
     try {
       const context = new AudioContext();
       let decoded: AudioBuffer;
@@ -1416,6 +1431,8 @@ function AudioNodeImpl({
 
       if (
         operation !== uploadOperation.current ||
+        scope !== mediaAdoptionScopeRef.current ||
+        !persistenceReadyLive.current ||
         controller.signal.aborted ||
         getNode(id)?.data.inputState !== "uploading"
       ) return;
@@ -1444,6 +1461,7 @@ function AudioNodeImpl({
         method: "POST",
         signal: controller.signal,
       });
+      if (response.status === 409) shouldCompensate = false;
       const asset = await response.json() as {
         assetId: string;
         byteSize?: number;
@@ -1453,7 +1471,12 @@ function AudioNodeImpl({
         storageBackend?: "local" | "oss";
         url: string;
       };
-      if (!response.ok) throw new Error(asset.error ?? "音频上传失败");
+      if (!response.ok) {
+        throw new Error(asset.error ?? "音频上传失败");
+      }
+      if (asset.assetId !== requestedAssetId) {
+        throw new Error("服务端返回的音频素材标识不一致");
+      }
       const metadata =
         Number.isFinite(asset.byteSize) &&
         asset.byteSize! > 0 &&
@@ -1472,6 +1495,8 @@ function AudioNodeImpl({
           : await fetchTrustedMediaMetadata("audio", asset.assetId, controller.signal);
       if (
         operation !== uploadOperation.current ||
+        scope !== mediaAdoptionScopeRef.current ||
+        !persistenceReadyLive.current ||
         controller.signal.aborted ||
         getNode(id)?.data.inputState !== "uploading"
       ) {
@@ -1482,7 +1507,7 @@ function AudioNodeImpl({
 
       setCurrentTime(0);
       setPlaying(false);
-      setNodes((nodes) =>
+      adopted = tryAdoptNodes(id, (nodes) =>
         nodes.map((node) =>
           node.id === id
             ? {
@@ -1509,10 +1534,14 @@ function AudioNodeImpl({
             : node,
         ),
       );
-      adopted = true;
+      if (!adopted) {
+        await discardUnadoptedAudioAsset(requestedAssetId);
+        requestedAssetId = undefined;
+        return;
+      }
       setTransientUploadError("");
     } catch (error) {
-      if (!adopted && requestedAssetId) {
+      if (!adopted && requestedAssetId && shouldCompensate) {
         await discardUnadoptedAudioAsset(requestedAssetId);
         requestedAssetId = undefined;
       }

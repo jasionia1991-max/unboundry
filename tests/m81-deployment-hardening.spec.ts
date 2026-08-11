@@ -271,6 +271,112 @@ async function directoryFingerprint(root: string) {
   return entries.sort();
 }
 
+type OldLocalUploadCandidate = Readonly<{
+  assetId: string;
+  attemptId: string;
+  bytes: Buffer;
+  ownerId: string;
+  stagingName: string;
+  storageName: string;
+}>;
+
+function insertOldLocalUploadCandidate(
+  database: DatabaseSync,
+  fixtureId: string,
+): OldLocalUploadCandidate {
+  const ownerId = `${fixtureId}-owner`;
+  const assetId = `${fixtureId}-asset`;
+  const attemptId = `${fixtureId}-attempt`;
+  const storageName = `${assetId}.png`;
+  const stagingName = `.publication-${fixtureId}.generating`;
+  const bytes = Buffer.from(`M81 old local upload ${fixtureId}`);
+  const digest = createHash("sha256").update(bytes).digest("hex");
+  const timestamp = new Date().toISOString();
+  const oldTimestamp = "2000-01-01T00:00:00.000Z";
+  database.prepare(`
+    INSERT INTO users (
+      id, login_name, display_name, password_hash, role, status,
+      created_at, updated_at
+    ) VALUES (?, ?, ?, 'fixture-only', 'user', 'active', ?, ?)
+  `).run(ownerId, ownerId, `M81 ${fixtureId}`, timestamp, timestamp);
+  database.prepare(`
+    INSERT INTO media_assets (
+      kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+      storage_backend, storage_profile_id, object_key, content_type,
+      checksum_sha256, storage_status, duration_seconds, duration_source,
+      duration_status, media_width, media_height
+    ) VALUES (
+      'image', ?, ?, ?, ?, ?, ?, 'local', NULL, ?, 'image/png', ?,
+      'ready', NULL, NULL, 'not-applicable', 2, 3
+    )
+  `).run(
+    assetId,
+    ownerId,
+    storageName,
+    bytes.length,
+    oldTimestamp,
+    oldTimestamp,
+    storageName,
+    digest,
+  );
+  database.prepare(`
+    INSERT INTO media_publication_attempts (
+      attempt_id, owner_id, kind, asset_id, source, state,
+      storage_backend, final_storage_name, object_key, storage_profile_id,
+      staging_name, task_id, task_execution_attempt, history_label,
+      byte_size, checksum_sha256, content_type, media_width, media_height,
+      created_at, updated_at
+    ) VALUES (
+      ?, ?, 'image', ?, 'upload', 'published',
+      'local', ?, ?, NULL, ?, NULL, NULL, NULL,
+      ?, ?, 'image/png', 2, 3, ?, ?
+    )
+  `).run(
+    attemptId,
+    ownerId,
+    assetId,
+    storageName,
+    storageName,
+    stagingName,
+    bytes.length,
+    digest,
+    oldTimestamp,
+    oldTimestamp,
+  );
+  return { assetId, attemptId, bytes, ownerId, stagingName, storageName };
+}
+
+async function writeOldLocalUploadCandidate(
+  dataDirectory: string,
+  candidate: OldLocalUploadCandidate,
+) {
+  const mediaDirectory = join(dataDirectory, "media");
+  await mkdir(mediaDirectory, { recursive: true });
+  await writeFile(join(mediaDirectory, candidate.storageName), candidate.bytes, {
+    flag: "wx",
+  });
+}
+
+function rollbackMigration38(database: DatabaseSync) {
+  database.exec(`
+    DROP TRIGGER account_delete_guard_generation_task_activation;
+    DROP TRIGGER account_delete_guard_generation_task_insert;
+    DROP TRIGGER account_delete_guard_public_template_actor_update;
+    DROP TRIGGER account_delete_guard_public_template_insert;
+    DROP TRIGGER account_delete_guard_session_insert;
+    DROP TRIGGER account_delete_guard_user_template_insert;
+    DROP TRIGGER account_delete_guard_user_template_owner_update;
+    DROP TRIGGER account_delete_guard_user_reactivation;
+    DROP TRIGGER media_publication_guard_owner_delete;
+    DROP TRIGGER media_publication_guard_task_delete;
+    DROP TABLE media_publication_attempts;
+    DROP TABLE media_delete_intents;
+    DROP TABLE account_delete_intents;
+    DELETE FROM schema_migrations WHERE version = 38;
+    PRAGMA user_version = 37;
+  `);
+}
+
 function recreateV5ModelProfiles(
   database: DatabaseSync,
   existingCostColumns: "cost" | "max" | "none",
@@ -459,7 +565,7 @@ test("trusted proxy mode requires https forwarding for storage writes", async ()
   }
 });
 
-test("liveness stays process-only while readiness verifies schema 37 without creating data", async () => {
+test("liveness stays process-only while readiness verifies the current schema without creating data", async () => {
   const testRoot = await mkdtemp(join(tmpdir(), "unboundry-m81-health-"));
   const missingDataDirectory = join(testRoot, "missing-data");
   let server: ChildProcess | undefined;
@@ -478,6 +584,403 @@ test("liveness stays process-only while readiness verifies schema 37 without cre
   } finally {
     if (server) await stopServer(server);
     await rm(testRoot, { force: true, recursive: true });
+  }
+});
+
+test("schema-37 startup is write-free by default and migrates only in the explicit role", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "unboundry-m81-schema37-role-"));
+  const dataDirectory = join(testRoot, "data");
+  const databasePath = join(dataDirectory, "unboundry.sqlite");
+  const hotWalSource = join(testRoot, "hot-wal-source");
+  const hotWalTarget = join(testRoot, "hot-wal-target");
+  let server: ChildProcess | undefined;
+  let writer: DatabaseSync | undefined;
+  try {
+    await mkdir(dataDirectory);
+    const database = openAppDatabase(dataDirectory);
+    database.prepare(`
+      INSERT INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      ) VALUES (
+        'm81-schema37-owner', 'm81-schema37-owner', 'M81 schema 37 owner',
+        'fixture-only', 'user', 'active',
+        '2026-08-09T00:00:00.000Z', '2026-08-09T00:00:00.000Z'
+      )
+    `).run();
+    database.prepare(`
+      INSERT INTO project_metadata (
+        owner_id, id, title, updated_at, is_project, created_at
+      ) VALUES (
+        'm81-schema37-owner', 'm81-schema37-project',
+        'Preserved schema 37 project', 37, 1, 37
+      )
+    `).run();
+    rollbackMigration38(database);
+    database.exec(`
+      PRAGMA wal_checkpoint(TRUNCATE);
+      PRAGMA journal_mode = DELETE;
+    `);
+    database.close();
+
+    const beforeDefaultStartup = await directoryFingerprint(dataDirectory);
+    server = await startServer(dataDirectory, {
+      environment: { UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION: undefined },
+    });
+    expect((await fetch(`${origin}/api/health/live`)).status).toBe(200);
+    const defaultReady = await fetch(`${origin}/api/health/ready`);
+    expect(defaultReady.status).toBe(503);
+    expect(await defaultReady.json()).toMatchObject({
+      code: "DATABASE_SCHEMA_MISMATCH",
+    });
+    expect(await directoryFingerprint(dataDirectory)).toEqual(
+      beforeDefaultStartup,
+    );
+    await stopServer(server);
+    server = undefined;
+
+    server = await startServer(dataDirectory, {
+      environment: { UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION: "1" },
+    });
+    const migratedReady = await fetch(`${origin}/api/health/ready`);
+    expect(migratedReady.status).toBe(200);
+    expect(await migratedReady.json()).toMatchObject({
+      databaseProbe: "read-only",
+      schemaVersion: currentSchemaVersion,
+      status: "ready",
+    });
+    await stopServer(server);
+    server = undefined;
+
+    const migrated = new DatabaseSync(databasePath, { readOnly: true });
+    try {
+      expect(migrated.prepare("PRAGMA user_version").get()).toEqual({
+        user_version: currentSchemaVersion,
+      });
+      expect(migrated.prepare(`
+        SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1
+      `).get()).toEqual(currentSchemaManifest.at(-1));
+      expect(migrated.prepare(`
+        SELECT title, updated_at FROM project_metadata
+        WHERE owner_id = 'm81-schema37-owner'
+          AND id = 'm81-schema37-project'
+      `).get()).toEqual({
+        title: "Preserved schema 37 project",
+        updated_at: 37,
+      });
+      expect(migrated.prepare(`
+        SELECT COUNT(*) AS count FROM generation_provider_attempts
+      `).get()).toEqual({ count: 0 });
+    } finally {
+      migrated.close();
+    }
+
+    await Promise.all([mkdir(hotWalSource), mkdir(hotWalTarget)]);
+    writer = openAppDatabase(hotWalSource);
+    rollbackMigration38(writer);
+    writer.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    writer.prepare(`
+      INSERT INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      ) VALUES (
+        'm81-hot-wal-owner', 'm81-hot-wal-owner', 'M81 hot WAL owner',
+        'fixture-only', 'user', 'active',
+        '2026-08-09T00:00:00.000Z', '2026-08-09T00:00:00.000Z'
+      )
+    `).run();
+    const hotWalSourcePath = join(hotWalSource, "unboundry.sqlite");
+    const hotWalTargetPath = join(hotWalTarget, "unboundry.sqlite");
+    expect((await stat(`${hotWalSourcePath}-wal`)).size).toBeGreaterThan(0);
+    await copyFile(hotWalSourcePath, hotWalTargetPath);
+    await copyFile(`${hotWalSourcePath}-wal`, `${hotWalTargetPath}-wal`);
+    await expectMissing(`${hotWalTargetPath}-shm`);
+    const beforeUnsafeMigration = await directoryFingerprint(hotWalTarget);
+
+    server = await startServer(hotWalTarget, {
+      environment: { UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION: "1" },
+    });
+    const unsafeReady = await fetch(`${origin}/api/health/ready`);
+    expect(unsafeReady.status).toBe(503);
+    expect(await unsafeReady.json()).toMatchObject({
+      code: "DATABASE_FILE_UNAVAILABLE",
+    });
+    expect(await directoryFingerprint(hotWalTarget)).toEqual(
+      beforeUnsafeMigration,
+    );
+  } finally {
+    if (server) await stopServer(server);
+    writer?.close();
+    await rm(testRoot, { force: true, recursive: true });
+  }
+});
+
+test("server configure waits for media-only startup recovery before liveness is reachable", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-m81-media-recovery-"));
+  let server: ChildProcess | undefined;
+  const ownerId = "m81-startup-recovery-owner";
+  const assetId = "m81-startup-unadopted-upload";
+  const storageName = `${assetId}.png`;
+  const bytes = Buffer.from("m81 startup recovery exact local object");
+  const digest = createHash("sha256").update(bytes).digest("hex");
+  try {
+    const database = openAppDatabase(dataDirectory);
+    try {
+      const timestamp = new Date().toISOString();
+      const oldTimestamp = "2000-01-01T00:00:00.000Z";
+      database.prepare(`
+        INSERT INTO users (
+          id, login_name, display_name, password_hash, role, status,
+          created_at, updated_at
+        ) VALUES (?, ?, 'M81 startup owner', 'fixture-only', 'user', 'active', ?, ?)
+      `).run(ownerId, ownerId, timestamp, timestamp);
+      database.prepare(`
+        INSERT INTO media_assets (
+          kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+          storage_backend, storage_profile_id, object_key, content_type,
+          checksum_sha256, storage_status, duration_seconds, duration_source,
+          duration_status, media_width, media_height
+        ) VALUES (
+          'image', ?, ?, ?, ?, ?, ?, 'local', NULL, ?, 'image/png', ?,
+          'ready', NULL, NULL, 'not-applicable', 2, 3
+        )
+      `).run(
+        assetId,
+        ownerId,
+        storageName,
+        bytes.length,
+        oldTimestamp,
+        oldTimestamp,
+        storageName,
+        digest,
+      );
+      database.prepare(`
+        INSERT INTO media_publication_attempts (
+          attempt_id, owner_id, kind, asset_id, source, state,
+          storage_backend, final_storage_name, object_key, storage_profile_id,
+          staging_name, task_id, task_execution_attempt, history_label,
+          byte_size, checksum_sha256, content_type, media_width, media_height,
+          created_at, updated_at
+        ) VALUES (
+          'm81-startup-attempt', ?, 'image', ?, 'upload', 'published',
+          'local', ?, ?, NULL, '.publication-m81-startup.generating',
+          NULL, NULL, NULL, ?, ?, 'image/png', 2, 3, ?, ?
+        )
+      `).run(
+        ownerId,
+        assetId,
+        storageName,
+        storageName,
+        bytes.length,
+        digest,
+        oldTimestamp,
+        oldTimestamp,
+      );
+    } finally {
+      database.close();
+    }
+    await mkdir(join(dataDirectory, "media"), { recursive: true });
+    await writeFile(join(dataDirectory, "media", storageName), bytes, {
+      flag: "wx",
+    });
+
+    server = await startServer(dataDirectory);
+    expect((await fetch(`${origin}/api/health/live`)).status).toBe(200);
+    await expectMissing(join(dataDirectory, "media", storageName));
+    const recovered = openAppDatabase(dataDirectory);
+    try {
+      expect(recovered.prepare(`
+        SELECT state, error_code, adopted_at
+        FROM media_publication_attempts WHERE attempt_id = 'm81-startup-attempt'
+      `).get()).toEqual({
+        adopted_at: null,
+        error_code: "MEDIA_RECOVERY_UNADOPTED_UPLOAD",
+        state: "failed",
+      });
+      expect(recovered.prepare(`
+        SELECT COUNT(*) AS count FROM media_assets
+        WHERE owner_id = ? AND kind = 'image' AND id = ?
+      `).get(ownerId, assetId)).toEqual({ count: 0 });
+      expect(recovered.prepare(`
+        SELECT state FROM media_delete_intents
+        WHERE owner_id = ? AND kind = 'image' AND asset_id = ?
+      `).get(ownerId, assetId)).toEqual({ state: "tombstone" });
+      expect(recovered.prepare(`
+        SELECT COUNT(*) AS count FROM generation_provider_attempts
+      `).get()).toEqual({ count: 0 });
+    } finally {
+      recovered.close();
+    }
+  } finally {
+    if (server) await stopServer(server);
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("restore-incomplete blocks old media recovery without changing durable evidence", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-m81-restore-incomplete-"));
+  const databasePath = join(dataDirectory, "unboundry.sqlite");
+  const markerPath = join(dataDirectory, ".unboundry-restore-incomplete");
+  let server: ChildProcess | undefined;
+  try {
+    const database = openAppDatabase(dataDirectory);
+    const candidate = insertOldLocalUploadCandidate(
+      database,
+      "m81-restore-incomplete",
+    );
+    database.close();
+    await writeOldLocalUploadCandidate(dataDirectory, candidate);
+    await writeFile(markerPath, "restore publication is incomplete", { flag: "wx" });
+    const beforeDirectory = await directoryFingerprint(dataDirectory);
+
+    server = await startServer(dataDirectory);
+    expect((await fetch(`${origin}/api/health/live`)).status).toBe(200);
+    const ready = await fetch(`${origin}/api/health/ready`);
+    expect(ready.status).toBe(503);
+    expect(await ready.json()).toMatchObject({
+      code: "DATABASE_RESTORE_INCOMPLETE",
+    });
+    expect(await directoryFingerprint(dataDirectory)).toEqual(beforeDirectory);
+
+    const preserved = new DatabaseSync(databasePath, { readOnly: true });
+    try {
+      expect(preserved.prepare(`
+        SELECT publication.state, publication.error_code,
+               media.storage_status
+        FROM media_publication_attempts AS publication
+        JOIN media_assets AS media
+          ON media.owner_id = publication.owner_id
+          AND media.kind = publication.kind
+          AND media.id = publication.asset_id
+        WHERE publication.attempt_id = ?
+      `).get(candidate.attemptId)).toEqual({
+        error_code: null,
+        state: "published",
+        storage_status: "ready",
+      });
+    } finally {
+      preserved.close();
+    }
+    expect(
+      await readFile(join(dataDirectory, "media", candidate.storageName)),
+    ).toEqual(candidate.bytes);
+
+    await rm(markerPath);
+    const beforeDeferredProbe = await directoryFingerprint(dataDirectory);
+    const sameProcess = await fetch(`${origin}/api/health/ready`);
+    expect(sameProcess.status).toBe(503);
+    expect(await sameProcess.json()).toMatchObject({
+      code: "DATABASE_UNAVAILABLE",
+    });
+    expect(await directoryFingerprint(dataDirectory)).toEqual(
+      beforeDeferredProbe,
+    );
+    expect(
+      await readFile(join(dataDirectory, "media", candidate.storageName)),
+    ).toEqual(candidate.bytes);
+
+    await stopServer(server);
+    server = undefined;
+    server = await startServer(dataDirectory);
+    const recovered = await fetch(`${origin}/api/health/ready`);
+    expect(recovered.status).toBe(200);
+    expect(await recovered.json()).toMatchObject({ status: "ready" });
+    await expectMissing(join(dataDirectory, "media", candidate.storageName));
+    const cleaned = new DatabaseSync(databasePath, { readOnly: true });
+    try {
+      expect(cleaned.prepare(`
+        SELECT state, error_code FROM media_publication_attempts
+        WHERE attempt_id = ?
+      `).get(candidate.attemptId)).toEqual({
+        error_code: "MEDIA_RECOVERY_UNADOPTED_UPLOAD",
+        state: "failed",
+      });
+    } finally {
+      cleaned.close();
+    }
+  } finally {
+    if (server) await stopServer(server);
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("failed startup media cleanup stays not-ready until a restart retries it", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-m81-media-blocked-"));
+  const databasePath = join(dataDirectory, "unboundry.sqlite");
+  const mediaDirectory = join(dataDirectory, "media");
+  let server: ChildProcess | undefined;
+  try {
+    const database = openAppDatabase(dataDirectory);
+    const candidate = insertOldLocalUploadCandidate(database, "m81-media-blocked");
+    database.close();
+    await writeOldLocalUploadCandidate(dataDirectory, candidate);
+    const stagingDirectory = join(mediaDirectory, candidate.stagingName);
+    const stagingBlocker = join(stagingDirectory, "non-empty");
+    await mkdir(stagingDirectory);
+    await writeFile(stagingBlocker, "force staging cleanup to fail", {
+      flag: "wx",
+    });
+
+    server = await startServer(dataDirectory);
+    expect((await fetch(`${origin}/api/health/live`)).status).toBe(200);
+    const blocked = await fetch(`${origin}/api/health/ready`);
+    expect(blocked.status).toBe(503);
+    expect(await blocked.json()).toMatchObject({
+      code: "DATABASE_UNAVAILABLE",
+    });
+
+    const durable = new DatabaseSync(databasePath, { readOnly: true });
+    try {
+      expect(durable.prepare(`
+        SELECT publication.state, publication.error_code,
+               media.storage_status
+        FROM media_publication_attempts AS publication
+        JOIN media_assets AS media
+          ON media.owner_id = publication.owner_id
+          AND media.kind = publication.kind
+          AND media.id = publication.asset_id
+        WHERE publication.attempt_id = ?
+      `).get(candidate.attemptId)).toEqual({
+        error_code: "MEDIA_RECOVERY_UNADOPTED_UPLOAD",
+        state: "compensating",
+        storage_status: "failed",
+      });
+    } finally {
+      durable.close();
+    }
+    await expectMissing(join(mediaDirectory, candidate.storageName));
+    expect(await readFile(stagingBlocker, "utf8")).toBe(
+      "force staging cleanup to fail",
+    );
+
+    await stopServer(server);
+    server = undefined;
+    await rm(stagingDirectory, { force: true, recursive: true });
+    server = await startServer(dataDirectory);
+    const recovered = await fetch(`${origin}/api/health/ready`);
+    expect(recovered.status).toBe(200);
+    expect(await recovered.json()).toMatchObject({ status: "ready" });
+    await expectMissing(join(mediaDirectory, candidate.storageName));
+
+    const cleaned = new DatabaseSync(databasePath, { readOnly: true });
+    try {
+      expect(cleaned.prepare(`
+        SELECT state, error_code FROM media_publication_attempts
+        WHERE attempt_id = ?
+      `).get(candidate.attemptId)).toEqual({
+        error_code: "MEDIA_RECOVERY_UNADOPTED_UPLOAD",
+        state: "failed",
+      });
+      expect(cleaned.prepare(`
+        SELECT COUNT(*) AS count FROM media_assets
+        WHERE owner_id = ? AND kind = 'image' AND id = ?
+      `).get(candidate.ownerId, candidate.assetId)).toEqual({ count: 0 });
+    } finally {
+      cleaned.close();
+    }
+  } finally {
+    if (server) await stopServer(server);
+    await rm(dataDirectory, { force: true, recursive: true });
   }
 });
 
@@ -504,7 +1007,7 @@ test("readiness leaves a running generation task and the database bytes unchange
     expect(ready.status).toBe(200);
     expect(await ready.json()).toMatchObject({
       databaseProbe: "read-only",
-      schemaVersion: 37,
+      schemaVersion: currentSchemaVersion,
       status: "ready",
     });
     expect(await directoryFingerprint(dataDirectory)).toEqual(beforeDirectory);
@@ -553,9 +1056,9 @@ test("readiness reads an active committed WAL without changing database or WAL b
     writer = openAppDatabase(dataDirectory);
     writer.exec(`
       PRAGMA wal_autocheckpoint = 0;
-      PRAGMA user_version = 36;
+      PRAGMA user_version = ${currentSchemaVersion - 1};
       PRAGMA wal_checkpoint(TRUNCATE);
-      PRAGMA user_version = 37;
+      PRAGMA user_version = ${currentSchemaVersion};
     `);
     const immutableMain = new DatabaseSync(
       `${pathToFileURL(databasePath).href}?immutable=1`,
@@ -563,7 +1066,7 @@ test("readiness reads an active committed WAL without changing database or WAL b
     );
     try {
       expect(immutableMain.prepare("PRAGMA user_version").get()).toEqual({
-        user_version: 36,
+        user_version: currentSchemaVersion - 1,
       });
     } finally {
       immutableMain.close();
@@ -585,7 +1088,7 @@ test("readiness reads an active committed WAL without changing database or WAL b
     expect(ready.status).toBe(200);
     expect(await ready.json()).toMatchObject({
       databaseProbe: "read-only",
-      schemaVersion: 37,
+      schemaVersion: currentSchemaVersion,
       status: "ready",
     });
     expect(await sha256(databasePath)).toBe(beforeDatabase);
@@ -619,9 +1122,9 @@ test("readiness fails closed for a hot WAL without SHM until an owned connection
     writer = openAppDatabase(sourceDirectory);
     writer.exec(`
       PRAGMA wal_autocheckpoint = 0;
-      PRAGMA user_version = 36;
+      PRAGMA user_version = ${currentSchemaVersion - 1};
       PRAGMA wal_checkpoint(TRUNCATE);
-      PRAGMA user_version = 37;
+      PRAGMA user_version = ${currentSchemaVersion};
     `);
     expect((await stat(`${sourcePath}-wal`)).size).toBeGreaterThan(0);
     await copyFile(sourcePath, targetPath);
@@ -648,7 +1151,7 @@ test("readiness fails closed for a hot WAL without SHM until an owned connection
 
     recovery = new DatabaseSync(targetPath);
     expect(recovery.prepare("PRAGMA user_version").get()).toEqual({
-      user_version: 37,
+      user_version: currentSchemaVersion,
     });
     expect((await stat(`${targetPath}-shm`)).isFile()).toBe(true);
     const recovered = await fetch(`${origin}/api/health/ready`);
@@ -662,7 +1165,103 @@ test("readiness fails closed for a hot WAL without SHM until an owned connection
   }
 });
 
-test("readiness rejects a counterfeit schema-37 ledger without changing it", async () => {
+test("a hot-WAL pending upload remains not-ready until a new process recovers it", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "unboundry-m81-wal-pending-"));
+  const sourceDirectory = join(testRoot, "source");
+  const targetDirectory = join(testRoot, "target");
+  const sourcePath = join(sourceDirectory, "unboundry.sqlite");
+  const targetPath = join(targetDirectory, "unboundry.sqlite");
+  let recovery: DatabaseSync | undefined;
+  let server: ChildProcess | undefined;
+  let writer: DatabaseSync | undefined;
+  try {
+    await mkdir(sourceDirectory);
+    await mkdir(targetDirectory);
+    writer = openAppDatabase(sourceDirectory);
+    writer.exec(`
+      PRAGMA wal_autocheckpoint = 0;
+      PRAGMA user_version = ${currentSchemaVersion - 1};
+      PRAGMA wal_checkpoint(TRUNCATE);
+    `);
+    const candidate = insertOldLocalUploadCandidate(writer, "m81-wal-pending");
+    writer.exec(`PRAGMA user_version = ${currentSchemaVersion}`);
+    expect((await stat(`${sourcePath}-wal`)).size).toBeGreaterThan(0);
+    await copyFile(sourcePath, targetPath);
+    await copyFile(`${sourcePath}-wal`, `${targetPath}-wal`);
+    await writeOldLocalUploadCandidate(targetDirectory, candidate);
+    await expectMissing(`${targetPath}-shm`);
+    const beforeDatabase = await sha256(targetPath);
+    const beforeWal = await sha256(`${targetPath}-wal`);
+
+    server = await startServer(targetDirectory);
+    const hotWal = await fetch(`${origin}/api/health/ready`);
+    expect(hotWal.status).toBe(503);
+    expect(await hotWal.json()).toMatchObject({
+      code: "DATABASE_FILE_UNAVAILABLE",
+    });
+    expect(await sha256(targetPath)).toBe(beforeDatabase);
+    expect(await sha256(`${targetPath}-wal`)).toBe(beforeWal);
+    expect(
+      await readFile(join(targetDirectory, "media", candidate.storageName)),
+    ).toEqual(candidate.bytes);
+
+    recovery = new DatabaseSync(targetPath);
+    expect(recovery.prepare("PRAGMA user_version").get()).toEqual({
+      user_version: currentSchemaVersion,
+    });
+    expect(recovery.prepare(`
+      SELECT state, error_code FROM media_publication_attempts
+      WHERE attempt_id = ?
+    `).get(candidate.attemptId)).toEqual({
+      error_code: null,
+      state: "published",
+    });
+    expect((await stat(`${targetPath}-shm`)).isFile()).toBe(true);
+
+    const sameProcess = await fetch(`${origin}/api/health/ready`);
+    expect(sameProcess.status).toBe(503);
+    expect(await sameProcess.json()).toMatchObject({
+      code: "DATABASE_UNAVAILABLE",
+    });
+    expect(
+      await readFile(join(targetDirectory, "media", candidate.storageName)),
+    ).toEqual(candidate.bytes);
+
+    await stopServer(server);
+    server = undefined;
+    server = await startServer(targetDirectory);
+    const restarted = await fetch(`${origin}/api/health/ready`);
+    expect(restarted.status).toBe(200);
+    expect(await restarted.json()).toMatchObject({ status: "ready" });
+    await expectMissing(join(targetDirectory, "media", candidate.storageName));
+    recovery.close();
+    recovery = undefined;
+
+    const cleaned = new DatabaseSync(targetPath, { readOnly: true });
+    try {
+      expect(cleaned.prepare(`
+        SELECT state, error_code FROM media_publication_attempts
+        WHERE attempt_id = ?
+      `).get(candidate.attemptId)).toEqual({
+        error_code: "MEDIA_RECOVERY_UNADOPTED_UPLOAD",
+        state: "failed",
+      });
+      expect(cleaned.prepare(`
+        SELECT COUNT(*) AS count FROM media_assets
+        WHERE owner_id = ? AND kind = 'image' AND id = ?
+      `).get(candidate.ownerId, candidate.assetId)).toEqual({ count: 0 });
+    } finally {
+      cleaned.close();
+    }
+  } finally {
+    if (server) await stopServer(server);
+    recovery?.close();
+    writer?.close();
+    await rm(testRoot, { force: true, recursive: true });
+  }
+});
+
+test("readiness rejects a counterfeit current-schema ledger without changing it", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-m81-counterfeit-"));
   const databasePath = join(dataDirectory, "unboundry.sqlite");
   let server: ChildProcess | undefined;
@@ -704,6 +1303,7 @@ test("readiness accepts the historical v31-to-v32 public template column order",
   let server: ChildProcess | undefined;
   try {
     let database = openAppDatabase(dataDirectory);
+    rollbackMigration38(database);
     database.exec("DROP TABLE public_templates");
     // Keep this SQL text aligned with the known hot-reload v31 migration.
     // Exact sqlite_schema fingerprints are intentional: a whitespace-erasing
@@ -775,6 +1375,7 @@ test("readiness accepts exact known migration repair shapes", async () => {
     for (const fixture of fixtures) {
       await mkdir(fixture.directory);
       let database = openAppDatabase(fixture.directory);
+      rollbackMigration38(database);
       fixture.prepare(database);
       database.close();
       database = openAppDatabase(fixture.directory);
@@ -802,7 +1403,7 @@ test("readiness accepts exact known migration repair shapes", async () => {
   }
 });
 
-test("readiness rejects missing or semantically damaged schema-37 objects", async () => {
+test("readiness rejects missing or semantically damaged current-schema objects", async () => {
   const testRoot = await mkdtemp(join(tmpdir(), "unboundry-m81-schema-contract-"));
   let server: ChildProcess | undefined;
   try {
@@ -884,6 +1485,13 @@ test("readiness rejects missing or semantically damaged schema-37 objects", asyn
         damage: `
           CREATE UNIQUE INDEX unexpected_users_display_name
           ON users (display_name);
+        `,
+      },
+      {
+        directory: join(testRoot, "extra-view"),
+        damage: `
+          CREATE VIEW unexpected_active_users AS
+          SELECT id FROM users WHERE status = 'active';
         `,
       },
     ];

@@ -369,6 +369,32 @@ test("group download skips missing files, notes them and still completes", async
       )
     `)
     .run(project.id, new Date().toISOString(), new Date().toISOString());
+  store
+    .prepare(`
+      INSERT INTO media_assets (
+        kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+        storage_backend, object_key, content_type, storage_status
+      )
+      VALUES (
+        'image', 'dl-pending-oss', '__test__', 'dl-pending-oss.png', 10, ?, ?,
+        'oss', 'pending/dl-pending-oss.png', 'image/png', 'pending'
+      )
+    `)
+    .run(new Date().toISOString(), new Date().toISOString());
+  store
+    .prepare(`
+      INSERT INTO generation_tasks (
+        id, canvas_id, node_id, kind, prompt, model, parameters,
+        idempotency_key, request_fingerprint, state, attempt, owner_id,
+        result_asset_id, created_at, updated_at
+      )
+      VALUES (
+        'dl-task-pending-oss', ?, 'child-pending-oss', 'image', '', 'model-1',
+        '{}', 'dl-key-pending-oss', 'dl-fingerprint-pending-oss', 'success', 1,
+        '__test__', 'dl-pending-oss', ?, ?
+      )
+    `)
+    .run(project.id, new Date().toISOString(), new Date().toISOString());
   const storeCanvas = openAppDatabase(dataDirectory);
   const canvas = (
     storeCanvas
@@ -385,6 +411,15 @@ test("group download skips missing files, notes them and still completes", async
     type: "image",
     zIndex: 1,
   });
+  nodes.push({
+    data: { label: "Image", title: "尚未发布图" },
+    id: "child-pending-oss",
+    parentId: "dl-group",
+    position: { x: 300, y: 900 },
+    style: { height: 250, width: 250 },
+    type: "image",
+    zIndex: 1,
+  });
   storeCanvas
     .prepare("UPDATE canvas_documents SET nodes = ?, revision = revision + 1 WHERE id = ?")
     .run(JSON.stringify(nodes), project.id);
@@ -396,7 +431,7 @@ test("group download skips missing files, notes them and still completes", async
     { data: { groupId: "dl-group" } },
   );
   expect(response.status()).toBe(200);
-  expect(response.headers()["x-download-skipped"]).toBe("1");
+  expect(response.headers()["x-download-skipped"]).toBe("2");
   const zipBytes = await response.body();
   const working = mkdtempSync(join(tmpdir(), "unboundry-zip-skip-"));
   try {
@@ -413,6 +448,12 @@ test("group download skips missing files, notes them and still completes", async
     expect(
       readFileSync(join(output, "下载说明.txt"), "utf8"),
     ).toContain("结果素材文件缺失");
+    expect(
+      readFileSync(join(output, "下载说明.txt"), "utf8"),
+    ).toContain("尚未发布图");
+    expect(
+      readFileSync(join(output, "下载说明.txt"), "utf8"),
+    ).toContain("结果素材已不存在");
     expect(
       ["缺失图-5.png", "缺失图-1.png"].some((name) => {
         try {

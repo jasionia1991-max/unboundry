@@ -1,4 +1,5 @@
 import { expect, test } from "./safe-test";
+import { openAppDatabase } from "../server/database";
 
 function wav(seconds = 2, sampleRate = 8000) {
   const samples = seconds * sampleRate;
@@ -43,6 +44,28 @@ test("Audio success returns two local results without quota accounting", async (
   });
   await request.delete("/api/canvas/node.audio.success");
   await request.delete("/api/history/fixture-audio-success");
+  const dataDirectoryResponse = await request.get("/api/test-data-directory");
+  expect(dataDirectoryResponse.ok()).toBeTruthy();
+  const { dataDirectory } = await dataDirectoryResponse.json() as {
+    dataDirectory: string;
+  };
+  const store = openAppDatabase(dataDirectory);
+  const timestamp = new Date().toISOString();
+  const insertMedia = store.prepare(`
+    INSERT INTO media_assets (
+      kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+      storage_status
+    )
+    VALUES ('audio', ?, '__test__', ?, 1, ?, ?, 'ready')
+    ON CONFLICT(kind, id) DO UPDATE SET
+      owner_id = excluded.owner_id,
+      storage_status = 'ready',
+      updated_at = excluded.updated_at
+  `);
+  for (const id of ["history-audio-1", "history-audio-2"]) {
+    insertMedia.run(id, `${id}.fixture`, timestamp, timestamp);
+  }
+  store.close();
   await page.goto("/__fixture/node.audio.success");
 
   const world = page.getByTestId("canvas-world");

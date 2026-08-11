@@ -75,6 +75,7 @@ import { UpstreamInputCards } from "./UpstreamInputCards";
 import { GenerationAvailabilityNotice } from "./GenerationAvailabilityNotice";
 import {
   fetchTrustedMediaMetadata,
+  hasTrustedMediaDimensions,
   mediaUploadState,
   trustedMediaPatch,
 } from "./mediaInputMetadata";
@@ -216,7 +217,7 @@ function VideoNodeImpl({
   } | undefined>(undefined);
   const { getNode, getNodes } = useReactFlow<ProbeNodeType>();
   const { register: registerWorkflowNode } = useWorkflowExecution();
-  const { setEdges, setNodes } = useCanvasGraphMutation();
+  const { setEdges, setNodes, tryAdoptNodes } = useCanvasGraphMutation();
   const canvasEdges = useEdges();
   const canvasNodes = useNodes<ProbeNodeType>();
   const checkpoint = useCanvasCheckpoint();
@@ -230,6 +231,10 @@ function VideoNodeImpl({
     retryGenerationEnabled,
     waitForCanvasRevision,
   } = useGenerationCanvas();
+  const mediaAdoptionScopeRef = useRef(`${accountId}\u0000${canvasId}`);
+  mediaAdoptionScopeRef.current = `${accountId}\u0000${canvasId}`;
+  const persistenceReadyLive = useRef(persistenceReady);
+  persistenceReadyLive.current = persistenceReady;
   const videoModelSelection = usePublishedModelSelection(
     "video",
     data.videoModelId,
@@ -578,6 +583,15 @@ function VideoNodeImpl({
     uploadInFlight.current = false;
     uploadBaseline.current = undefined;
   }, [data.inputState]);
+
+  useEffect(() => {
+    if (persistenceReady || !uploadInFlight.current) return;
+    uploadOperation.current += 1;
+    uploadController.current?.abort();
+    uploadController.current = undefined;
+    uploadInFlight.current = false;
+    uploadBaseline.current = undefined;
+  }, [persistenceReady]);
 
   useEffect(() => () => {
     uploadOperation.current += 1;
@@ -1295,6 +1309,7 @@ function VideoNodeImpl({
     const baseline = uploadBaseline.current ?? getNode(id);
     if (baseline && !uploadBaseline.current) uploadBaseline.current = baseline;
     const operation = uploadOperation.current + 1;
+    const scope = mediaAdoptionScopeRef.current;
     uploadOperation.current = operation;
     uploadController.current?.abort();
     const controller = new AbortController();
@@ -1315,6 +1330,7 @@ function VideoNodeImpl({
     const localUrl = URL.createObjectURL(file);
     let adopted = false;
     let requestedAssetId: string | undefined;
+    let shouldCompensate = true;
     try {
       if (file.type !== "video/mp4") {
         throw new Error("仅支持MP4视频上传");
@@ -1338,6 +1354,8 @@ function VideoNodeImpl({
 
       if (
         operation !== uploadOperation.current ||
+        scope !== mediaAdoptionScopeRef.current ||
+        !persistenceReadyLive.current ||
         controller.signal.aborted ||
         getNode(id)?.data.inputState !== "uploading"
       ) return;
@@ -1352,16 +1370,24 @@ function VideoNodeImpl({
         method: "POST",
         signal: controller.signal,
       });
+      if (response.status === 409) shouldCompensate = false;
       const asset = await response.json() as {
         assetId: string;
         byteSize: number;
         contentType: string;
         durationSeconds: number;
         error?: string;
+        mediaHeight?: number;
+        mediaWidth?: number;
         storageBackend: "local" | "oss";
         url: string;
       };
-      if (!response.ok) throw new Error(asset.error ?? "视频上传失败");
+      if (!response.ok) {
+        throw new Error(asset.error ?? "视频上传失败");
+      }
+      if (asset.assetId !== requestedAssetId) {
+        throw new Error("服务端返回的视频素材标识不一致");
+      }
       if (
         !Number.isSafeInteger(asset.byteSize) ||
         asset.byteSize < 1 ||
@@ -1369,8 +1395,30 @@ function VideoNodeImpl({
         !Number.isFinite(asset.durationSeconds) ||
         (asset.storageBackend !== "local" && asset.storageBackend !== "oss")
       ) throw new Error("服务端返回的视频素材信息不完整");
+      const trustedMetadata = hasTrustedMediaDimensions(asset)
+        ? {
+            assetId: asset.assetId,
+            byteSize: asset.byteSize,
+            contentType: asset.contentType,
+            durationSeconds: asset.durationSeconds,
+            durationStatus: "ready" as const,
+            kind: "video" as const,
+            mediaHeight: asset.mediaHeight,
+            mediaWidth: asset.mediaWidth,
+            storageBackend: asset.storageBackend,
+          }
+        : await fetchTrustedMediaMetadata(
+            "video",
+            asset.assetId,
+            controller.signal,
+          );
+      if (!hasTrustedMediaDimensions(trustedMetadata)) {
+        throw new Error("服务端返回的视频尺寸未经可信校验");
+      }
       if (
         operation !== uploadOperation.current ||
+        scope !== mediaAdoptionScopeRef.current ||
+        !persistenceReadyLive.current ||
         controller.signal.aborted ||
         getNode(id)?.data.inputState !== "uploading"
       ) {
@@ -1381,7 +1429,7 @@ function VideoNodeImpl({
 
       setCurrentTime(0);
       setPlaying(false);
-      setNodes((nodes) =>
+      adopted = tryAdoptNodes(id, (nodes) =>
         nodes.map((node) =>
           node.id === id
             ? {
@@ -1390,20 +1438,15 @@ function VideoNodeImpl({
                 measured: undefined,
                 style: {
                   ...node.style,
-                  ...fitVisualMediaSize(metadata.width, metadata.height),
+                  ...fitVisualMediaSize(
+                    trustedMetadata.mediaWidth,
+                    trustedMetadata.mediaHeight,
+                  ),
                 },
                 width: undefined,
                 data: {
                   ...node.data,
-                  ...trustedMediaPatch({
-                    assetId: asset.assetId,
-                    byteSize: asset.byteSize,
-                    contentType: asset.contentType,
-                    durationSeconds: asset.durationSeconds,
-                    durationStatus: "ready",
-                    kind: "video",
-                    storageBackend: asset.storageBackend,
-                  }),
+                  ...trustedMediaPatch(trustedMetadata),
                   assetId: asset.assetId,
                   videoAudioEnabled: true,
                   videoCreatedAt: new Intl.DateTimeFormat("zh-CN").format(
@@ -1412,20 +1455,24 @@ function VideoNodeImpl({
                   videoDuration: asset.durationSeconds,
                   videoFileSize: asset.byteSize,
                   videoGenerationError: undefined,
-                  videoHeight: metadata.height,
+                  videoHeight: trustedMetadata.mediaHeight,
                   videoModel: "本地上传",
                   videoPrompt: "",
                   videoSrc: asset.url,
-                  videoWidth: metadata.width,
+                  videoWidth: trustedMetadata.mediaWidth,
                 },
               }
             : node,
         ),
       );
-      adopted = true;
+      if (!adopted) {
+        await discardUnadoptedVideoAsset(requestedAssetId);
+        requestedAssetId = undefined;
+        return;
+      }
       setTransientUploadError("");
     } catch (error) {
-      if (!adopted && requestedAssetId) {
+      if (!adopted && requestedAssetId && shouldCompensate) {
         await discardUnadoptedVideoAsset(requestedAssetId);
         requestedAssetId = undefined;
       }

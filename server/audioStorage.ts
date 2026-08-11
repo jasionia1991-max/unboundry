@@ -1,15 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, open, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, open, rm, stat, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import {
-  mayReadMedia,
-  mayWriteMedia,
+  beginMediaDeletion,
+  finishMediaDeletion,
+  markMediaDeletionFailed,
   readableMedia,
-  registerMedia,
-  registerMediaForOwner,
-  unregisterMedia,
 } from "./mediaRegistry";
 import {
   createAliyunOssObjectKey,
@@ -17,18 +15,32 @@ import {
   deletePrivateAliyunOssObject,
   uploadPrivateAliyunOssObject,
 } from "./aliyunOss";
-import { publishCloudObject } from "./cloudMediaStorage";
-import { openAppDatabase } from "./database";
+import { requestIdentity } from "./auth";
 import {
   decodedRequestHeader,
   decodedRequestPath,
   HttpRequestError,
 } from "./httpRequest";
 import {
-  storageMediaRoutingState,
   storageProfileForMedia,
+  storageProfileForDestructiveMedia,
+  withStorageMediaRoutingReservation,
+  type AliyunStorageProfile,
 } from "./secureStorageProfiles";
 import { probeTrustedMediaMetadata } from "./mediaMetadata";
+import {
+  cleanupPublicationStaging,
+  compensateMediaPublication,
+  finalizeMediaPublication,
+  markExternalMediaPublicationReady,
+  mediaPublicationStagingPath,
+  MediaPublicationConflictError,
+  publishLocalMediaPublication,
+  reserveMediaPublication,
+  stageMediaPublication,
+  type GeneratedPublicationTask,
+  type MediaPublicationExecution,
+} from "./mediaLifecycle";
 
 const maxAudioBytes = 50 * 1024 * 1024;
 const generatedAudioProbeBytes = 64 * 1024;
@@ -176,6 +188,7 @@ export async function saveGeneratedAudio(input: {
     | "audio/wav";
   label: string;
   ownerId: string;
+  task?: GeneratedPublicationTask;
 }) {
   const extension = input.contentType === "audio/wav"
     ? "wav"
@@ -189,14 +202,35 @@ export async function saveGeneratedAudio(input: {
   const id = `${randomUUID()}.${extension}`;
   const format = audioFormat(id)!;
   const path = audioPath(id);
-  const temporary = `${path.file}.${randomUUID()}.generating`;
   const checksum = createHash("sha256");
+  const publication = await withStorageMediaRoutingReservation((routing) => {
+    const objectKey = routing.enabled && routing.profile
+      ? createAliyunOssObjectKey("audio", extension)
+      : id;
+    return {
+      objectKey,
+      reservation: reserveMediaPublication({
+        contentType: format.contentType,
+        finalStorageName: id,
+        historyLabel: input.label.slice(0, 120) || "生成音频",
+        id,
+        kind: "audio",
+        objectKey,
+        ownerId: input.ownerId,
+        storageBackend: routing.enabled && routing.profile ? "oss" : "local",
+        storageProfileId: routing.profile?.id,
+        task: input.task,
+      }),
+      routing,
+    };
+  });
+  const { objectKey, reservation, routing } = publication;
   let handle: Awaited<ReturnType<typeof open>> | undefined;
   let size = 0;
   let header = Buffer.alloc(0);
   await mkdir(path.directory, { recursive: true });
   try {
-    handle = await open(temporary, "wx");
+    handle = await open(mediaPublicationStagingPath(reservation), "wx");
     const reader = input.body.getReader();
     while (true) {
       const { done, value } = await reader.read();
@@ -221,70 +255,31 @@ export async function saveGeneratedAudio(input: {
     } else {
       format.validate(header);
     }
-    const metadata = await probeTrustedMediaMetadata(temporary);
+    const metadata = await probeTrustedMediaMetadata(
+      mediaPublicationStagingPath(reservation),
+    );
     const checksumSha256 = checksum.digest("hex");
-    const routing = await storageMediaRoutingState();
+    stageMediaPublication(reservation, {
+      byteSize: size,
+      checksumSha256,
+      contentType: format.contentType,
+      durationSeconds: metadata.durationSeconds,
+    });
     if (routing.enabled && routing.profile) {
-      const objectKey = createAliyunOssObjectKey("audio", extension);
-      await publishCloudObject({
-        commit: () =>
-          registerMediaForOwner(input.ownerId, {
-            byteSize: size,
-            checksumSha256,
-            contentType: format.contentType,
-            durationSeconds: metadata.durationSeconds,
-            id,
-            kind: "audio",
-            objectKey,
-            storageBackend: "oss",
-            storageProfileId: routing.profile?.id,
-            storageName: id,
-          }),
-        remove: () => deletePrivateAliyunOssObject(objectKey, routing.profile!),
-        upload: () =>
-          uploadPrivateAliyunOssObject({
-            byteSize: size,
-            checksumSha256,
-            contentType: format.contentType,
-            credentials: routing.profile!,
-            filePath: temporary,
-            objectKey,
-          }).then(() => undefined),
-      });
-      await rm(temporary, { force: true });
-    } else {
-      await rename(temporary, path.file);
-      registerMediaForOwner(input.ownerId, {
+      await uploadPrivateAliyunOssObject({
         byteSize: size,
         checksumSha256,
         contentType: format.contentType,
-        durationSeconds: metadata.durationSeconds,
-        id,
-        kind: "audio",
-        storageName: id,
+        credentials: routing.profile,
+        filePath: mediaPublicationStagingPath(reservation),
+        objectKey,
       });
+      markExternalMediaPublicationReady(reservation);
+    } else {
+      await publishLocalMediaPublication(reservation);
     }
-    const store = openAppDatabase();
-    try {
-      store.prepare(`
-        INSERT INTO asset_history (
-          account_id, id, kind, label, preview, created_at, owner_id
-        ) VALUES (?, ?, 'audio', ?, ?, ?, ?)
-        ON CONFLICT(account_id, id) DO UPDATE SET
-          label = excluded.label,
-          preview = excluded.preview,
-          owner_id = excluded.owner_id
-      `).run(
-        input.ownerId,
-        id,
-        input.label.slice(0, 120) || "生成音频",
-        `/api/audio-assets/${id}`,
-        new Date().toISOString(),
-        input.ownerId,
-      );
-    } finally {
-      store.close();
-    }
+    finalizeMediaPublication(reservation);
+    await cleanupPublicationStaging(reservation).catch(() => undefined);
     return {
       assetId: id,
       byteSize: size,
@@ -295,8 +290,7 @@ export async function saveGeneratedAudio(input: {
     };
   } catch (error) {
     await handle?.close();
-    await rm(temporary, { force: true });
-    await rm(path.file, { force: true });
+    await compensateMediaPublication(reservation, { profile: routing.profile });
     throw error;
   }
 }
@@ -305,13 +299,24 @@ export function saveGeneratedMp3(input: {
   body: ReadableStream<Uint8Array>;
   label: string;
   ownerId: string;
+  task?: GeneratedPublicationTask;
 }) {
   return saveGeneratedAudio({ ...input, contentType: "audio/mpeg" });
 }
 
+export function audioStorage(
+  request: IncomingMessage,
+  response: ServerResponse,
+): Promise<void>;
+export function audioStorage(
+  request: IncomingMessage,
+  response: ServerResponse,
+  execution: MediaPublicationExecution,
+): Promise<void>;
 export async function audioStorage(
   request: IncomingMessage,
   response: ServerResponse,
+  execution: MediaPublicationExecution = {},
 ) {
   const id = decodedRequestPath(request).replace(
     /^\/+/,
@@ -329,11 +334,11 @@ export async function audioStorage(
     return;
   }
   if (request.method === "GET") {
-    if (!mayReadMedia(request, "audio", id)) {
+    const media = readableMedia(request, "audio", id);
+    if (!media) {
       json(response, 404, { error: "Asset not found" });
       return;
     }
-    const media = readableMedia(request, "audio", id);
     if (media?.storageBackend === "oss") {
       if (media.storageStatus !== "ready" || !media.objectKey) {
         json(response, 404, { error: "Asset not found" });
@@ -357,7 +362,12 @@ export async function audioStorage(
       return;
     }
     try {
-      const info = await stat(path.file);
+      if (media.storageName !== id || media.storageName.includes("/")) {
+        throw new Error("Invalid media path");
+      }
+      const file = join(path.directory, media.storageName);
+      const info = await stat(file);
+      if (info.size !== media.byteSize) throw new Error("Asset is incomplete");
       const match = /^bytes=(\d+)-(\d*)$/.exec(
         String(request.headers.range ?? ""),
       );
@@ -382,7 +392,7 @@ export async function audioStorage(
           `bytes ${start}-${end}/${info.size}`,
         );
       }
-      createReadStream(path.file, { end, start }).pipe(response);
+      createReadStream(file, { end, start }).pipe(response);
     } catch {
       json(response, 404, { error: "Asset not found" });
     }
@@ -390,26 +400,74 @@ export async function audioStorage(
   }
 
   if (request.method === "DELETE") {
-    if (!mayReadMedia(request, "audio", id)) {
+    let deletion;
+    try {
+      deletion = beginMediaDeletion(request, "audio", id);
+    } catch (error) {
+      json(response, 409, {
+        code: "MEDIA_DELETE_CONFLICT",
+        error: error instanceof Error ? error.message : "Asset cannot be deleted",
+      });
+      return;
+    }
+    if (!deletion) {
       json(response, 404, { error: "Asset not found" });
       return;
     }
-    const media = readableMedia(request, "audio", id);
-    if (media?.storageBackend === "oss") {
+    if (deletion.action === "deferred") {
+      response.statusCode = 204;
+      response.end();
+      return;
+    }
+    const media = deletion.media;
+    try {
+      await execution.beforePhysicalDelete?.({ id, kind: "audio", media });
+    } catch {
       try {
-        const profile = await storageProfileForMedia(media);
+        markMediaDeletionFailed(request, "audio", id);
+      } catch {
+        // Preserve the injected physical-boundary failure.
+      }
+      json(response, 503, { error: "Audio could not be deleted" });
+      return;
+    }
+    if (media.storageBackend === "oss") {
+      try {
+        const profile = await storageProfileForDestructiveMedia(media);
         if (!profile || !media.objectKey) {
           throw new Error("Active OSS profile is unavailable");
         }
-        await deletePrivateAliyunOssObject(media.objectKey, profile);
+        await (execution.deleteExternalObject ?? deletePrivateAliyunOssObject)(
+          media.objectKey,
+          profile,
+        );
+        finishMediaDeletion(request, "audio", id, media);
       } catch {
+        try {
+          markMediaDeletionFailed(request, "audio", id);
+        } catch {
+          // The original physical-delete failure remains the response cause.
+        }
         json(response, 503, { error: "Cloud audio could not be deleted" });
         return;
       }
     } else {
-      await rm(path.file, { force: true });
+      try {
+        if (media.storageName !== id || media.storageName.includes("/")) {
+          throw new Error("Invalid media path");
+        }
+        await rm(join(path.directory, media.storageName), { force: true });
+        finishMediaDeletion(request, "audio", id, media);
+      } catch {
+        try {
+          markMediaDeletionFailed(request, "audio", id);
+        } catch {
+          // The original physical-delete failure remains the response cause.
+        }
+        json(response, 503, { error: "Audio could not be deleted" });
+        return;
+      }
     }
-    unregisterMedia(request, "audio", id);
     response.statusCode = 204;
     response.end();
     return;
@@ -421,66 +479,86 @@ export async function audioStorage(
     return;
   }
 
-  const temporary = `${path.file}.uploading`;
+  let reservation: ReturnType<typeof reserveMediaPublication> | undefined;
+  let profile: AliyunStorageProfile | undefined;
   try {
     const fileName = decodedRequestHeader(
       request,
       String(request.headers["x-file-name"] ?? "Audio.wav"),
     ).slice(0, 240);
-    if (!mayWriteMedia(request, "audio", id)) {
-      throw new Error("Asset ID is unavailable");
-    }
     if (
       !format.requestTypes.includes(request.headers["content-type"] ?? "")
     ) {
       throw new Error("Audio type does not match its format");
     }
-    const bytes = await readAudio(request);
-    format.validate(bytes);
-    await mkdir(path.directory, { recursive: true });
-    await writeFile(temporary, bytes, { flag: "wx" });
-    const metadata = await probeTrustedMediaMetadata(temporary);
-    const checksumSha256 = createHash("sha256").update(bytes).digest("hex");
-    const routing = await storageMediaRoutingState();
-    if (routing.enabled && routing.profile) {
-      const extension = id.split(".").at(-1)?.toLowerCase() ?? "bin";
-      const objectKey = createAliyunOssObjectKey("audio", extension);
-      await publishCloudObject({
-        commit: () => registerMedia(request, {
-          byteSize: bytes.length,
-          checksumSha256,
+    const extension = id.split(".").at(-1)?.toLowerCase() ?? "bin";
+    const identity = requestIdentity(request)!;
+    const reserve = (routing: {
+      enabled: boolean;
+      profile?: AliyunStorageProfile;
+    }) => {
+      const objectKey = routing.enabled && routing.profile
+        ? createAliyunOssObjectKey("audio", extension)
+        : id;
+      return {
+        objectKey,
+        reservation: reserveMediaPublication({
           contentType: format.contentType,
-          durationSeconds: metadata.durationSeconds,
+          finalStorageName: id,
           id,
           kind: "audio",
           objectKey,
-          storageBackend: "oss",
+          ownerId: identity.bypass ? "__test__" : identity.userId,
+          storageBackend: routing.enabled && routing.profile ? "oss" : "local",
           storageProfileId: routing.profile?.id,
-          storageName: id,
         }),
-        remove: () => deletePrivateAliyunOssObject(objectKey, routing.profile!),
-        upload: () => uploadPrivateAliyunOssObject({
-          byteSize: bytes.length,
-          checksumSha256,
-          contentType: format.contentType,
-          credentials: routing.profile!,
-          filePath: temporary,
-          objectKey,
-        }).then(() => undefined),
-      });
-      await rm(temporary, { force: true });
-    } else {
-      await rename(temporary, path.file);
-      registerMedia(request, {
+        routing,
+      };
+    };
+    const publication = identity.bypass
+      ? await (async () => {
+          if (execution.beforeReservation) {
+            await execution.beforeReservation();
+          }
+          return reserve({ enabled: false });
+        })()
+      : await withStorageMediaRoutingReservation(reserve, {
+          afterRead: execution.beforeReservation,
+        });
+    const { objectKey, routing } = publication;
+    reservation = publication.reservation;
+    profile = routing.profile;
+    const bytes = await readAudio(request);
+    format.validate(bytes);
+    await mkdir(path.directory, { recursive: true });
+    await writeFile(mediaPublicationStagingPath(reservation), bytes, { flag: "wx" });
+    const metadata = await probeTrustedMediaMetadata(
+      mediaPublicationStagingPath(reservation),
+    );
+    const checksumSha256 = createHash("sha256").update(bytes).digest("hex");
+    stageMediaPublication(reservation, {
+      byteSize: bytes.length,
+      checksumSha256,
+      contentType: format.contentType,
+      durationSeconds: metadata.durationSeconds,
+    });
+    await execution.afterTransition?.("staged", reservation);
+    if (routing.enabled && routing.profile) {
+      await uploadPrivateAliyunOssObject({
         byteSize: bytes.length,
         checksumSha256,
         contentType: format.contentType,
-        durationSeconds: metadata.durationSeconds,
-        id,
-        kind: "audio",
-        storageName: id,
+        credentials: routing.profile,
+        filePath: mediaPublicationStagingPath(reservation),
+        objectKey,
       });
+      markExternalMediaPublicationReady(reservation);
+    } else {
+      await publishLocalMediaPublication(reservation);
     }
+    await execution.afterTransition?.("external-ready", reservation);
+    finalizeMediaPublication(reservation);
+    await cleanupPublicationStaging(reservation).catch(() => undefined);
     json(response, 201, {
       assetId: id,
       byteSize: bytes.length,
@@ -492,9 +570,12 @@ export async function audioStorage(
       url: `/api/audio-assets/${id}`,
     });
   } catch (error) {
+    if (reservation) await compensateMediaPublication(reservation, { profile });
     if (error instanceof HttpRequestError) throw error;
-    await rm(temporary, { force: true });
-    json(response, 400, {
+    json(response, error instanceof MediaPublicationConflictError ? 409 : 400, {
+      code: error instanceof MediaPublicationConflictError
+        ? "MEDIA_ID_UNAVAILABLE"
+        : undefined,
       error: error instanceof Error ? error.message : "Upload failed",
     });
   }

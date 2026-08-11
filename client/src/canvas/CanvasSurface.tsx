@@ -39,7 +39,10 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import { AudioNode } from "./AudioNode";
-import { CanvasGraphMutationContext } from "./CanvasGraphMutationContext";
+import {
+  CanvasGraphMutationContext,
+  tryCommitCanvasNodeAdoption,
+} from "./CanvasGraphMutationContext";
 import {
   CanvasCheckpointContext,
   closestEditableControl,
@@ -48,7 +51,7 @@ import {
 import { CanvasSelectionUiContext } from "./CanvasSelectionContext";
 import { GroupNode } from "./GroupNode";
 import { ImageNode } from "./ImageNode";
-import { uploadImageAsset } from "./imageAsset";
+import { discardImageAsset, uploadImageAsset } from "./imageAsset";
 import { withImageReferenceInputMode } from "./imageReferenceMode";
 import { PlaylistNode } from "./PlaylistNode";
 import { ProbeNode, type ProbeNodeType } from "./ProbeNode";
@@ -3745,11 +3748,23 @@ export function CanvasSurface({
     }
     setUploadError("");
     setUploading(true);
+    const loadIdentity = { ...persistenceLoadIdentity.current };
+    let createdAssetId: string | undefined;
+    let adopted = false;
     try {
       const asset = await uploadImageAsset(file);
-      if (!persistenceReadyRef.current) return;
+      createdAssetId = asset.assetId;
+      if (
+        !persistenceReadyRef.current ||
+        persistenceLoadIdentity.current.epoch !== loadIdentity.epoch ||
+        persistenceLoadIdentity.current.scopeId !== loadIdentity.scopeId
+      ) {
+        await discardImageAsset(asset.assetId);
+        createdAssetId = undefined;
+        return;
+      }
       checkpoint();
-      setNodes((current) => [
+      adopted = trySetNodes((current) => [
         ...current.map((node) => ({ ...node, selected: false })),
         {
           id: `image-${crypto.randomUUID()}`,
@@ -3764,6 +3779,8 @@ export function CanvasSurface({
               durationSeconds: null,
               durationStatus: "not-applicable",
               kind: "image",
+              mediaHeight: asset.mediaHeight ?? asset.height,
+              mediaWidth: asset.mediaWidth ?? asset.width,
               storageBackend: asset.storageBackend,
             }),
             assetId: asset.assetId,
@@ -3779,8 +3796,16 @@ export function CanvasSurface({
           },
         },
       ]);
+      if (!adopted) {
+        await discardImageAsset(asset.assetId);
+        createdAssetId = undefined;
+        return;
+      }
       setCreateMenu(undefined);
     } catch (error) {
+      if (!adopted && createdAssetId) {
+        await discardImageAsset(createdAssetId);
+      }
       setUploadError(
         error instanceof Error ? error.message : "图片上传失败",
       );
@@ -6093,6 +6118,21 @@ export function CanvasSurface({
     if (!persistenceReadyRef.current) return;
     setNodes(update);
   }, [setNodes]);
+  const trySetNodes = useCallback((update: SetStateAction<ProbeNodeType[]>) => {
+    if (!persistenceReadyRef.current) return false;
+    setNodes(update);
+    return true;
+  }, [setNodes]);
+  const tryAdoptNodes = useCallback((
+    targetNodeId: string,
+    update: SetStateAction<ProbeNodeType[]>,
+  ) => tryCommitCanvasNodeAdoption({
+    commit: setNodes,
+    currentNodes: () => pendingGuardedNodes.current ?? nodesRef.current,
+    persistenceReady: () => persistenceReadyRef.current,
+    targetNodeId,
+    update,
+  }), [setNodes]);
 
   useEffect(() => {
     if (selectedNodeCount <= 1) return;
@@ -6117,7 +6157,12 @@ export function CanvasSurface({
         notify={showWorkflowToast}
       >
       <CanvasGraphMutationContext.Provider
-        value={{ setEdges: guardedSetEdges, setNodes: guardedSetNodes }}
+        value={{
+          setEdges: guardedSetEdges,
+          setNodes: guardedSetNodes,
+          tryAdoptNodes,
+          trySetNodes,
+        }}
       >
       <CanvasCheckpointContext.Provider value={checkpoint}>
       <CanvasSelectionUiContext.Provider value={canvasSelectionUiContextValue}>

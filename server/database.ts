@@ -1537,6 +1537,193 @@ const migrations: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 38,
+    name: "durable-media-publications",
+    sql: `
+      CREATE TABLE media_delete_intents (
+        owner_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('image', 'video', 'audio')),
+        asset_id TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'tombstone' CHECK (
+          state IN ('tombstone', 'delete-requested', 'delete-failed')
+        ),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (owner_id, kind, asset_id),
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE TABLE account_delete_intents (
+        owner_id TEXT PRIMARY KEY,
+        state TEXT NOT NULL CHECK (state IN ('running', 'failed')),
+        error_code TEXT,
+        retry_count INTEGER NOT NULL DEFAULT 0 CHECK (retry_count >= 0),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE TABLE media_publication_attempts (
+        attempt_id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('image', 'video', 'audio')),
+        asset_id TEXT NOT NULL,
+        source TEXT NOT NULL CHECK (source IN ('upload', 'generation')),
+        state TEXT NOT NULL CHECK (
+          state IN (
+            'reserved', 'staged', 'external-ready',
+            'compensating', 'published', 'failed'
+          )
+        ),
+        storage_backend TEXT NOT NULL CHECK (storage_backend IN ('local', 'oss')),
+        final_storage_name TEXT NOT NULL,
+        object_key TEXT NOT NULL,
+        storage_profile_id TEXT,
+        staging_name TEXT NOT NULL UNIQUE,
+        task_id TEXT,
+        task_execution_attempt INTEGER CHECK (
+          task_execution_attempt IS NULL OR task_execution_attempt >= 1
+        ),
+        history_label TEXT,
+        byte_size INTEGER NOT NULL DEFAULT 0 CHECK (byte_size >= 0),
+        checksum_sha256 TEXT,
+        content_type TEXT NOT NULL,
+        duration_seconds REAL,
+        duration_source TEXT CHECK (
+          duration_source IS NULL
+          OR duration_source IN ('server-probe', 'provider-task')
+        ),
+        media_width INTEGER CHECK (media_width IS NULL OR media_width > 0),
+        media_height INTEGER CHECK (media_height IS NULL OR media_height > 0),
+        actual_cost_microunits INTEGER CHECK (
+          actual_cost_microunits IS NULL OR actual_cost_microunits >= 0
+        ),
+        provider_usage_tokens INTEGER CHECK (
+          provider_usage_tokens IS NULL OR provider_usage_tokens >= 0
+        ),
+        error_code TEXT,
+        retry_count INTEGER NOT NULL DEFAULT 0 CHECK (retry_count >= 0),
+        adopted_at TEXT,
+        adopted_canvas_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (task_id) REFERENCES generation_tasks(id) ON DELETE CASCADE,
+        CHECK (
+          (source = 'upload' AND task_id IS NULL AND task_execution_attempt IS NULL)
+          OR
+          (source = 'generation' AND task_id IS NOT NULL AND task_execution_attempt IS NOT NULL)
+        ),
+        CHECK (
+          (adopted_at IS NULL AND adopted_canvas_id IS NULL)
+          OR
+          (source = 'upload' AND adopted_at IS NOT NULL AND adopted_canvas_id IS NOT NULL)
+        )
+      );
+      CREATE UNIQUE INDEX media_publication_attempts_active_asset
+        ON media_publication_attempts (kind, asset_id)
+        WHERE state IN ('reserved', 'staged', 'external-ready', 'compensating');
+      CREATE UNIQUE INDEX media_publication_attempts_active_task
+        ON media_publication_attempts (task_id, task_execution_attempt)
+        WHERE task_id IS NOT NULL
+          AND state IN ('reserved', 'staged', 'external-ready', 'compensating');
+      CREATE INDEX media_publication_attempts_owner_state_updated
+        ON media_publication_attempts (owner_id, state, updated_at DESC);
+      CREATE TRIGGER media_publication_guard_task_delete
+        BEFORE DELETE ON generation_tasks
+        WHEN EXISTS (
+          SELECT 1 FROM media_publication_attempts
+          WHERE task_id = OLD.id
+            AND state IN ('reserved', 'staged', 'external-ready', 'compensating')
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'active media publication blocks task deletion');
+      END;
+      CREATE TRIGGER media_publication_guard_owner_delete
+        BEFORE DELETE ON users
+        WHEN EXISTS (
+          SELECT 1 FROM media_publication_attempts
+          WHERE owner_id = OLD.id
+            AND state IN ('reserved', 'staged', 'external-ready', 'compensating')
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'active media publication blocks owner deletion');
+      END;
+      CREATE TRIGGER account_delete_guard_user_template_insert
+        BEFORE INSERT ON user_templates
+        WHEN EXISTS (
+          SELECT 1 FROM account_delete_intents
+          WHERE owner_id = NEW.owner_id
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'account deletion blocks template mutation');
+      END;
+      CREATE TRIGGER account_delete_guard_user_template_owner_update
+        BEFORE UPDATE OF owner_id ON user_templates
+        WHEN EXISTS (
+          SELECT 1 FROM account_delete_intents
+          WHERE owner_id = NEW.owner_id
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'account deletion blocks template mutation');
+      END;
+      CREATE TRIGGER account_delete_guard_public_template_insert
+        BEFORE INSERT ON public_templates
+        WHEN EXISTS (
+          SELECT 1 FROM account_delete_intents
+          WHERE owner_id = NEW.created_by OR owner_id = NEW.updated_by
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'account deletion blocks template mutation');
+      END;
+      CREATE TRIGGER account_delete_guard_public_template_actor_update
+        BEFORE UPDATE OF created_by, updated_by ON public_templates
+        WHEN EXISTS (
+          SELECT 1 FROM account_delete_intents
+          WHERE owner_id = NEW.created_by OR owner_id = NEW.updated_by
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'account deletion blocks template mutation');
+      END;
+      CREATE TRIGGER account_delete_guard_generation_task_insert
+        BEFORE INSERT ON generation_tasks
+        WHEN NEW.owner_id IS NOT NULL AND EXISTS (
+          SELECT 1 FROM account_delete_intents
+          WHERE owner_id = NEW.owner_id
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'account deletion blocks generation task mutation');
+      END;
+      CREATE TRIGGER account_delete_guard_generation_task_activation
+        BEFORE UPDATE OF owner_id, state ON generation_tasks
+        WHEN NEW.owner_id IS NOT NULL
+          AND NEW.state IN ('queued', 'running', 'retrying', 'recovering')
+          AND EXISTS (
+            SELECT 1 FROM account_delete_intents
+            WHERE owner_id = NEW.owner_id
+          )
+      BEGIN
+        SELECT RAISE(ABORT, 'account deletion blocks generation task mutation');
+      END;
+      CREATE TRIGGER account_delete_guard_session_insert
+        BEFORE INSERT ON sessions
+        WHEN EXISTS (
+          SELECT 1 FROM account_delete_intents
+          WHERE owner_id = NEW.user_id
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'account deletion blocks session creation');
+      END;
+      CREATE TRIGGER account_delete_guard_user_reactivation
+        BEFORE UPDATE OF status ON users
+        WHEN NEW.status = 'active' AND EXISTS (
+          SELECT 1 FROM account_delete_intents
+          WHERE owner_id = NEW.id
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'account deletion blocks user reactivation');
+      END;
+    `,
+  },
 ];
 
 export const currentSchemaManifest = Object.freeze(
@@ -1545,13 +1732,17 @@ export const currentSchemaManifest = Object.freeze(
 
 export const currentSchemaVersion = currentSchemaManifest.at(-1)?.version ?? 0;
 
-// This is the known-safe physical schema that a v37 process can use. Keep the
+// This is the known-safe physical schema that a v38 process can use. Keep the
 // migration ledger as the source of version ordering, and keep the column-name
 // checks order-independent so the finite documented v21 catalog repairs and
 // v31/v32 template repair can each be admitted only by an exact sqlite_schema
 // fingerprint.
 export const currentSchemaContract = Object.freeze({
   tables: Object.freeze({
+    account_delete_intents: Object.freeze([
+      "owner_id", "state", "error_code", "retry_count", "created_at",
+      "updated_at",
+    ]),
     account_permissions: Object.freeze([
       "account_id", "permission", "granted_by", "created_at",
     ]),
@@ -1599,6 +1790,20 @@ export const currentSchemaContract = Object.freeze({
       "checksum_sha256", "storage_status", "duration_seconds",
       "duration_source", "duration_status", "media_width", "media_height",
       "storage_profile_id",
+    ]),
+    media_delete_intents: Object.freeze([
+      "owner_id", "kind", "asset_id", "state", "created_at", "updated_at",
+    ]),
+    media_publication_attempts: Object.freeze([
+      "attempt_id", "owner_id", "kind", "asset_id", "source", "state",
+      "storage_backend", "final_storage_name", "object_key",
+      "storage_profile_id", "staging_name", "task_id",
+      "task_execution_attempt", "history_label", "byte_size",
+      "checksum_sha256", "content_type", "duration_seconds",
+      "duration_source", "media_width", "media_height",
+      "actual_cost_microunits", "provider_usage_tokens", "error_code",
+      "retry_count", "adopted_at", "adopted_canvas_id", "created_at",
+      "updated_at",
     ]),
     model_profiles: Object.freeze([
       "id", "display_name", "provider_profile_id", "provider_model_id",
@@ -1655,6 +1860,20 @@ export const currentSchemaContract = Object.freeze({
       partial: true,
       sqlHash: "ada21d8be6bd9e005155da7cd938901f2da5991b6defa42b5e718b1986f9a789",
       table: "media_assets",
+      unique: true,
+    }),
+    media_publication_attempts_active_asset: Object.freeze({
+      columns: Object.freeze(["kind", "asset_id"]),
+      partial: true,
+      sqlHash: "9a973fcbbcee9321f4b993114de33ea6b1eb7a642056bfa38bee8ba62a462448",
+      table: "media_publication_attempts",
+      unique: true,
+    }),
+    media_publication_attempts_active_task: Object.freeze({
+      columns: Object.freeze(["task_id", "task_execution_attempt"]),
+      partial: true,
+      sqlHash: "a93727e31eda4fe8aae75d20f877bd45a745cfba606936870fa7b06bc9f693fe",
+      table: "media_publication_attempts",
       unique: true,
     }),
     node_model_bindings_one_default: Object.freeze({
@@ -1738,6 +1957,18 @@ export const currentSchemaContract = Object.freeze({
       sqlHash: "795bdfac70e907fe1ff5201fcdb84a5dc9cd75ad80b4b946b4b651312f039549",
       table: "media_assets",
     }),
+    media_publication_attempts_active_asset: Object.freeze({
+      sqlHash: "9a973fcbbcee9321f4b993114de33ea6b1eb7a642056bfa38bee8ba62a462448",
+      table: "media_publication_attempts",
+    }),
+    media_publication_attempts_active_task: Object.freeze({
+      sqlHash: "a93727e31eda4fe8aae75d20f877bd45a745cfba606936870fa7b06bc9f693fe",
+      table: "media_publication_attempts",
+    }),
+    media_publication_attempts_owner_state_updated: Object.freeze({
+      sqlHash: "46179b75c9f60cc6a26c99490586904ef5b3b2b168b1d89c0712adca868afeb9",
+      table: "media_publication_attempts",
+    }),
     model_profiles_archived_capability: Object.freeze({
       sqlHash: "04aa10e58830c898de1f6c8e20951dd33efda140ab73b457da9c8ff3c87ac47e",
       table: "model_profiles",
@@ -1809,6 +2040,9 @@ export const currentSchemaContract = Object.freeze({
   // The v21 catalog repair and its exact missing-cost-column outcomes are the
   // only other admitted variants; unknown imported DDL remains fail-closed.
   tableSqlHashes: Object.freeze({
+    account_delete_intents: Object.freeze([
+      "b24c9a531de8f5b8e19cf0042844cdde333fc3bbcb6be9fd5834569495603506",
+    ]),
     account_permissions: Object.freeze([
       "b56c6c726385ab6f9020a6d6133c5ca90fa69c0b04cd73d03cd6aee3c6eff155",
     ]),
@@ -1839,6 +2073,12 @@ export const currentSchemaContract = Object.freeze({
     ]),
     media_assets: Object.freeze([
       "cedbe47b7f996d78b4a03b8e9ec75bf08853aa2539932ad1dad657b1c47c115c",
+    ]),
+    media_delete_intents: Object.freeze([
+      "11ec2869f50bb802e8ee1cfe0cc728a4650b197195c3345a48c638f838ad1cea",
+    ]),
+    media_publication_attempts: Object.freeze([
+      "b6ec4ac1cb1db8bce63ff1cf839103d070ea77119698f4df67907a850ab09ca3",
     ]),
     model_profiles: Object.freeze([
       "b649651de07c626a927f2184dca573844256ee3208f3b660ba36887200e11a66",
@@ -1876,6 +2116,38 @@ export const currentSchemaContract = Object.freeze({
     ]),
   }),
   triggers: Object.freeze({
+    account_delete_guard_generation_task_activation: Object.freeze({
+      sqlHash: "10f141d8a48d7ed9dd6a16e49f3c6e956a2e70d0ab4787ee3a6181e2d0d753d3",
+      table: "generation_tasks",
+    }),
+    account_delete_guard_generation_task_insert: Object.freeze({
+      sqlHash: "d00738c36501ba252313207a4b0643a9c5d7e25944798b1e627dee96f7654d12",
+      table: "generation_tasks",
+    }),
+    account_delete_guard_public_template_actor_update: Object.freeze({
+      sqlHash: "fa2f8a2d1359e413eafc5422eac6f54c6d8cc98e217bceea3a1d99a087155dc7",
+      table: "public_templates",
+    }),
+    account_delete_guard_public_template_insert: Object.freeze({
+      sqlHash: "80e3c565d213ff336163b47d3e74c78bac15751c7c8948edfa8a7bebf2c3bc9e",
+      table: "public_templates",
+    }),
+    account_delete_guard_session_insert: Object.freeze({
+      sqlHash: "37822025467ab8097811df9d19bad9f595975f82d4790c93ee8d9d9b85d380d6",
+      table: "sessions",
+    }),
+    account_delete_guard_user_template_insert: Object.freeze({
+      sqlHash: "eb9bee1e651e043eee8f345f85f3fa422125e7bfef46e89c35fa0e28efe25d0f",
+      table: "user_templates",
+    }),
+    account_delete_guard_user_template_owner_update: Object.freeze({
+      sqlHash: "9f6c16c058d889462ea76f1d8816b55e7d4e02f004d12a92b5d0305df07f6e19",
+      table: "user_templates",
+    }),
+    account_delete_guard_user_reactivation: Object.freeze({
+      sqlHash: "f67ad13e59c5050e802319f9c3c9a36869715a96bb8540f03287debf948e3522",
+      table: "users",
+    }),
     archived_models_cannot_enable_binding_insert: Object.freeze({
       sqlHash: "df41b6cb986c87a6cec9123e2368358127f80693ba0f56c44ac31f113097245d",
       table: "node_model_bindings",
@@ -1886,6 +2158,14 @@ export const currentSchemaContract = Object.freeze({
     }),
     generation_tasks_capture_model_display_name: Object.freeze({
       sqlHash: "53134517eabb56121add52886258a41e864acad5ede012650e88d68440d26379",
+      table: "generation_tasks",
+    }),
+    media_publication_guard_owner_delete: Object.freeze({
+      sqlHash: "fe8f8819e746f2a7c91c5759cbe7999eb9cc4cf29cd9d57d9cf2b62d62d9781e",
+      table: "users",
+    }),
+    media_publication_guard_task_delete: Object.freeze({
+      sqlHash: "5e5a3d715ecfd7de6dae4f3b8a40ea0756f8d0db12da4d7916ae8867a26f15e4",
       table: "generation_tasks",
     }),
     model_profiles_capture_first_publish_insert: Object.freeze({

@@ -50,32 +50,25 @@ export function projectCover(
   row: ProjectRow,
   ownerId: string,
 ) {
-  const generated = (
-    ownerId === "__test__"
-      ? store.prepare(`
-          SELECT result_asset_id, kind
-          FROM generation_tasks
-          WHERE
-            canvas_id = ?
-            AND state = 'success'
-            AND kind IN ('image', 'video')
-            AND result_asset_id IS NOT NULL
-          ORDER BY updated_at DESC, rowid DESC
-          LIMIT 1
-        `).get(row.id)
-      : store.prepare(`
-          SELECT result_asset_id, kind
-          FROM generation_tasks
-          WHERE
-            canvas_id = ?
-            AND owner_id = ?
-            AND state = 'success'
-            AND kind IN ('image', 'video')
-            AND result_asset_id IS NOT NULL
-          ORDER BY updated_at DESC, rowid DESC
-          LIMIT 1
-        `).get(row.id, ownerId)
-  ) as { kind: "image" | "video"; result_asset_id: string } | undefined;
+  const generated = store.prepare(`
+    SELECT tasks.result_asset_id, tasks.kind
+    FROM generation_tasks AS tasks
+    JOIN media_assets AS media
+      ON media.id = tasks.result_asset_id
+      AND media.kind = tasks.kind
+      AND media.owner_id = tasks.owner_id
+      AND media.storage_status = 'ready'
+    WHERE
+      tasks.canvas_id = ?
+      AND tasks.owner_id = ?
+      AND tasks.state = 'success'
+      AND tasks.kind IN ('image', 'video')
+      AND tasks.result_asset_id IS NOT NULL
+    ORDER BY tasks.updated_at DESC, tasks.rowid DESC
+    LIMIT 1
+  `).get(row.id, ownerId) as
+    | { kind: "image" | "video"; result_asset_id: string }
+    | undefined;
   if (generated?.result_asset_id) {
     return {
       assetId: generated.result_asset_id,
@@ -112,7 +105,16 @@ export function projectCover(
             : undefined;
         const assetId = node.data?.assetId;
         if (kind && typeof assetId === "string" && assetId) {
-          return { assetId, kind } satisfies ProjectCover;
+          const media = store.prepare(`
+            SELECT 1
+            FROM media_assets
+            WHERE
+              owner_id = ?
+              AND kind = ?
+              AND id = ?
+              AND storage_status = 'ready'
+          `).get(ownerId, kind, assetId);
+          if (media) return { assetId, kind } satisfies ProjectCover;
         }
       }
     } catch {
@@ -168,15 +170,70 @@ export function deleteProjectRows(
       "DELETE FROM canvas_documents WHERE owner_id = ? AND id = ?",
     ).run(ownerId, id);
   }
-  store.prepare(`
-    DELETE FROM generation_provider_attempts
-    WHERE task_id IN (SELECT id FROM generation_tasks WHERE canvas_id = ?)
-  `).run(id);
-  store.prepare(`
-    DELETE FROM generation_task_events
-    WHERE task_id IN (SELECT id FROM generation_tasks WHERE canvas_id = ?)
-  `).run(id);
-  store.prepare("DELETE FROM generation_tasks WHERE canvas_id = ?").run(id);
+  if (bypass) {
+    store.prepare(`
+      DELETE FROM generation_provider_attempts
+      WHERE task_id IN (SELECT id FROM generation_tasks WHERE canvas_id = ?)
+    `).run(id);
+    store.prepare(`
+      DELETE FROM generation_task_events
+      WHERE task_id IN (SELECT id FROM generation_tasks WHERE canvas_id = ?)
+    `).run(id);
+    store.prepare("DELETE FROM generation_tasks WHERE canvas_id = ?").run(id);
+  } else {
+    store.prepare(`
+      DELETE FROM generation_provider_attempts
+      WHERE task_id IN (
+        SELECT id FROM generation_tasks WHERE owner_id = ? AND canvas_id = ?
+      )
+    `).run(ownerId, id);
+    store.prepare(`
+      DELETE FROM generation_task_events
+      WHERE task_id IN (
+        SELECT id FROM generation_tasks WHERE owner_id = ? AND canvas_id = ?
+      )
+    `).run(ownerId, id);
+    store.prepare(`
+      DELETE FROM generation_tasks WHERE owner_id = ? AND canvas_id = ?
+    `).run(ownerId, id);
+  }
+}
+
+export function hasActiveProjectMediaPublications(
+  store: DatabaseSync,
+  ownerId: string,
+  canvasId: string,
+  bypass: boolean,
+) {
+  return Boolean(
+    bypass
+      ? store.prepare(`
+          SELECT 1
+          FROM media_publication_attempts AS publication
+          JOIN generation_tasks AS task ON task.id = publication.task_id
+          WHERE task.canvas_id = ?
+            AND publication.state IN (
+              'reserved', 'staged', 'external-ready', 'compensating'
+            )
+          LIMIT 1
+        `).get(canvasId)
+      : store.prepare(`
+          SELECT 1
+          FROM media_publication_attempts AS publication
+          JOIN generation_tasks AS task ON task.id = publication.task_id
+          WHERE task.owner_id = ? AND task.canvas_id = ?
+            AND publication.owner_id = ?
+            AND publication.state IN (
+              'reserved', 'staged', 'external-ready', 'compensating'
+            )
+          LIMIT 1
+        `).get(ownerId, canvasId, ownerId),
+  );
+}
+
+function activePublicationDeleteError(error: unknown) {
+  return error instanceof Error &&
+    error.message.includes("active media publication blocks task deletion");
 }
 
 export async function projectsApi(
@@ -407,11 +464,25 @@ export async function projectsApi(
       json(response, 404, { error: "Project not found" });
       return;
     }
+    if (hasActiveProjectMediaPublications(store, ownerId, id, identity.bypass)) {
+      json(response, 409, {
+        code: "MEDIA_PUBLICATION_ACTIVE",
+        error: "项目仍有媒体结果正在收口，请稍后再删除",
+      });
+      return;
+    }
     try {
       await cancelCanvasGenerationTasks(id, identity.bypass ? undefined : identity.userId);
     } catch {
       json(response, 409, {
         error: "项目还有运行中的生成任务，请先取消任务或等待完成后再删除",
+      });
+      return;
+    }
+    if (hasActiveProjectMediaPublications(store, ownerId, id, identity.bypass)) {
+      json(response, 409, {
+        code: "MEDIA_PUBLICATION_ACTIVE",
+        error: "项目仍有媒体结果正在收口，请稍后再删除",
       });
       return;
     }
@@ -422,6 +493,13 @@ export async function projectsApi(
       store.exec("COMMIT");
     } catch (error) {
       store.exec("ROLLBACK");
+      if (activePublicationDeleteError(error)) {
+        json(response, 409, {
+          code: "MEDIA_PUBLICATION_ACTIVE",
+          error: "项目仍有媒体结果正在收口，请稍后再删除",
+        });
+        return;
+      }
       throw error;
     }
     json(response, 204, {});

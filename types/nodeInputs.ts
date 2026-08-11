@@ -138,47 +138,55 @@ function referenceFileRuleProblem(
   }
   const width = item.mediaWidth;
   const height = item.mediaHeight;
-  if (width !== undefined && height !== undefined) {
-    const dimensionFields = [
-      rule.maxAspectRatio,
-      rule.maxHeight,
-      rule.maxPixelCount,
-      rule.maxWidth,
-      rule.minAspectRatio,
-      rule.minHeight,
-      rule.minPixelCount,
-      rule.minWidth,
-    ];
-    if (dimensionFields.some((value) => value !== undefined)) {
-      const label = item.kind === "video" ? "参考视频" : "参考图片";
-      if (rule.minWidth !== undefined && width < rule.minWidth) {
-        return `${label}宽度需至少${rule.minWidth}px`;
-      }
-      if (rule.maxWidth !== undefined && width > rule.maxWidth) {
-        return `${label}宽度需不超过${rule.maxWidth}px`;
-      }
-      if (rule.minHeight !== undefined && height < rule.minHeight) {
-        return `${label}高度需至少${rule.minHeight}px`;
-      }
-      if (rule.maxHeight !== undefined && height > rule.maxHeight) {
-        return `${label}高度需不超过${rule.maxHeight}px`;
-      }
-      const pixels = width * height;
-      if (rule.minPixelCount !== undefined && pixels < rule.minPixelCount) {
-        return item.kind === "video"
-          ? `分辨率过低，总像素需至少${rule.minPixelCount}（例如640×640或1280×720）`
-          : `${label}总像素需至少${rule.minPixelCount}`;
-      }
-      if (rule.maxPixelCount !== undefined && pixels > rule.maxPixelCount) {
-        return `${label}总像素需不超过${rule.maxPixelCount}`;
-      }
-      const aspectRatio = width / height;
-      if (rule.minAspectRatio !== undefined && aspectRatio < rule.minAspectRatio) {
-        return `${label}宽高比需至少${rule.minAspectRatio}`;
-      }
-      if (rule.maxAspectRatio !== undefined && aspectRatio > rule.maxAspectRatio) {
-        return `${label}宽高比需不超过${rule.maxAspectRatio}`;
-      }
+  const dimensionFields = [
+    rule.maxAspectRatio,
+    rule.maxHeight,
+    rule.maxPixelCount,
+    rule.maxWidth,
+    rule.minAspectRatio,
+    rule.minHeight,
+    rule.minPixelCount,
+    rule.minWidth,
+  ];
+  if (dimensionFields.some((value) => value !== undefined)) {
+    const label = item.kind === "video" ? "参考视频" : "参考图片";
+    if (
+      !Number.isSafeInteger(width) ||
+      !Number.isSafeInteger(height) ||
+      width! < 1 ||
+      height! < 1
+    ) {
+      return `${label}分辨率尚未经过服务端校验，请重新上传`;
+    }
+    const trustedWidth = width!;
+    const trustedHeight = height!;
+    if (rule.minWidth !== undefined && trustedWidth < rule.minWidth) {
+      return `${label}宽度需至少${rule.minWidth}px`;
+    }
+    if (rule.maxWidth !== undefined && trustedWidth > rule.maxWidth) {
+      return `${label}宽度需不超过${rule.maxWidth}px`;
+    }
+    if (rule.minHeight !== undefined && trustedHeight < rule.minHeight) {
+      return `${label}高度需至少${rule.minHeight}px`;
+    }
+    if (rule.maxHeight !== undefined && trustedHeight > rule.maxHeight) {
+      return `${label}高度需不超过${rule.maxHeight}px`;
+    }
+    const pixels = trustedWidth * trustedHeight;
+    if (rule.minPixelCount !== undefined && pixels < rule.minPixelCount) {
+      return item.kind === "video"
+        ? `分辨率过低，总像素需至少${rule.minPixelCount}（例如640×640或1280×720）`
+        : `${label}总像素需至少${rule.minPixelCount}`;
+    }
+    if (rule.maxPixelCount !== undefined && pixels > rule.maxPixelCount) {
+      return `${label}总像素需不超过${rule.maxPixelCount}`;
+    }
+    const aspectRatio = trustedWidth / trustedHeight;
+    if (rule.minAspectRatio !== undefined && aspectRatio < rule.minAspectRatio) {
+      return `${label}宽高比需至少${rule.minAspectRatio}`;
+    }
+    if (rule.maxAspectRatio !== undefined && aspectRatio > rule.maxAspectRatio) {
+      return `${label}宽高比需不超过${rule.maxAspectRatio}`;
     }
   }
   if (item.kind === "video" || item.kind === "audio") {
@@ -524,15 +532,17 @@ export function resolveNodeInputs(input: {
           ? Boolean(text(sourceData.textPrompt))
           : undefined,
         kind,
-        mediaHeight: kind === "video" &&
-            Number.isFinite(Number(sourceData.videoHeight)) &&
-            Number(sourceData.videoHeight) > 0
-          ? Number(sourceData.videoHeight)
+        mediaHeight: trustedMetadata &&
+            (kind === "image" || kind === "video") &&
+            Number.isSafeInteger(sourceData.mediaHeight) &&
+            Number(sourceData.mediaHeight) > 0
+          ? Number(sourceData.mediaHeight)
           : undefined,
-        mediaWidth: kind === "video" &&
-            Number.isFinite(Number(sourceData.videoWidth)) &&
-            Number(sourceData.videoWidth) > 0
-          ? Number(sourceData.videoWidth)
+        mediaWidth: trustedMetadata &&
+            (kind === "image" || kind === "video") &&
+            Number.isSafeInteger(sourceData.mediaWidth) &&
+            Number(sourceData.mediaWidth) > 0
+          ? Number(sourceData.mediaWidth)
           : undefined,
         metadataStatus: trustedMetadata &&
             (sourceData.mediaMetadataStatus === "ready" ||

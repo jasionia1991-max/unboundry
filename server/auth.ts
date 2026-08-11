@@ -22,7 +22,7 @@ import {
   hasPermission,
   setAccountPermissions,
 } from "./permissions";
-import { storageProfileForMedia } from "./secureStorageProfiles";
+import { storageProfileForDestructiveMedia } from "./secureStorageProfiles";
 import {
   ALL_PERMISSIONS,
   type AccountPermission,
@@ -53,6 +53,27 @@ type UserInput = {
 
 const cookieName = "unboundry_session";
 const sessionLifetimeMs = 7 * 24 * 60 * 60 * 1_000;
+const processStartupAccountDeleteCutoff = new Date().toISOString();
+
+type AccountMediaRow = {
+  id: string;
+  kind: "audio" | "image" | "video";
+  object_key: string | null;
+  storage_backend: string;
+  storage_name: string;
+  storage_profile_id: string | null;
+};
+
+class AccountDeletionActiveError extends Error {}
+class AccountDeletionGenerationActiveError extends Error {}
+class AccountDeletionReferencedError extends Error {}
+class AccountMediaCleanupError extends Error {}
+
+export type AdminUsersExecution = Readonly<{
+  beforePhysicalMediaDelete?: (row: Readonly<AccountMediaRow>) =>
+    Promise<void> | void;
+  deleteExternalObject?: typeof deletePrivateAliyunOssObject;
+}>;
 const requestIdentities = new WeakMap<IncomingMessage, RequestIdentity>();
 // 用户 ID 支持 UUID 与测试/早期写入的非 UUID ID（如 __test__、cua-tester）。
 const userIdPattern = /^[a-z0-9._-]{1,80}$/i;
@@ -653,9 +674,185 @@ export function accountContextApi(
   });
 }
 
+export function hasActiveOwnerMediaPublications(
+  store: DatabaseSync,
+  ownerId: string,
+) {
+  return Boolean(store.prepare(`
+    SELECT 1
+    FROM media_publication_attempts
+    WHERE owner_id = ?
+      AND state IN ('reserved', 'staged', 'external-ready', 'compensating')
+    LIMIT 1
+  `).get(ownerId));
+}
+
+function activePublicationDeleteError(error: unknown) {
+  return error instanceof Error &&
+    error.message.includes("active media publication blocks");
+}
+
+function accountDeleteIntent(store: DatabaseSync, ownerId: string) {
+  return store.prepare(`
+    SELECT state, updated_at
+    FROM account_delete_intents
+    WHERE owner_id = ?
+  `).get(ownerId) as { state: "failed" | "running"; updated_at: string } | undefined;
+}
+
+function beginAccountDeletion(store: DatabaseSync, ownerId: string) {
+  store.exec("BEGIN IMMEDIATE");
+  try {
+    const intent = accountDeleteIntent(store, ownerId);
+    if (
+      intent?.state === "running" &&
+      intent.updated_at >= processStartupAccountDeleteCutoff
+    ) {
+      throw new AccountDeletionActiveError("Account deletion is already active");
+    }
+    if (hasActiveOwnerMediaPublications(store, ownerId)) {
+      throw new Error("active media publication blocks account deletion");
+    }
+    const activeGenerationTask = store.prepare(`
+      SELECT 1 FROM generation_tasks
+      WHERE owner_id = ?
+        AND state IN ('queued', 'running', 'retrying', 'recovering')
+      LIMIT 1
+    `).get(ownerId);
+    if (activeGenerationTask) {
+      throw new AccountDeletionGenerationActiveError(
+        "Active generation task blocks account deletion",
+      );
+    }
+    const retainedTemplateReference = store.prepare(`
+      SELECT 1 FROM user_templates WHERE owner_id = ?
+      UNION ALL
+      SELECT 1 FROM public_templates
+      WHERE created_by = ? OR updated_by = ?
+      LIMIT 1
+    `).get(ownerId, ownerId, ownerId);
+    if (retainedTemplateReference) {
+      throw new AccountDeletionReferencedError(
+        "Account is retained by template ownership",
+      );
+    }
+    const timestamp = new Date().toISOString();
+    if (!intent) {
+      store.prepare(`
+        INSERT INTO account_delete_intents (
+          owner_id, state, error_code, retry_count, created_at, updated_at
+        ) VALUES (?, 'running', NULL, 0, ?, ?)
+      `).run(ownerId, timestamp, timestamp);
+    } else {
+      const claimed = store.prepare(`
+        UPDATE account_delete_intents
+        SET state = 'running', error_code = NULL,
+            retry_count = retry_count + 1, updated_at = ?
+        WHERE owner_id = ? AND state = ? AND updated_at = ?
+      `).run(timestamp, ownerId, intent.state, intent.updated_at);
+      if (claimed.changes !== 1) {
+        throw new AccountDeletionActiveError("Account deletion changed concurrently");
+      }
+    }
+    const disabled = store.prepare(`
+      UPDATE users SET status = 'disabled', updated_at = ?
+      WHERE id = ?
+    `).run(timestamp, ownerId);
+    if (disabled.changes !== 1) throw new Error("账号不存在");
+    store.prepare("DELETE FROM sessions WHERE user_id = ?").run(ownerId);
+    store.prepare(`
+      UPDATE media_assets
+      SET storage_status = 'failed', duration_status = CASE
+            WHEN kind = 'image' THEN 'not-applicable' ELSE 'failed' END,
+          updated_at = ?
+      WHERE owner_id = ?
+    `).run(timestamp, ownerId);
+    store.prepare(`
+      DELETE FROM asset_history WHERE owner_id = ? OR account_id = ?
+    `).run(ownerId, ownerId);
+    store.exec("COMMIT");
+  } catch (error) {
+    if (store.isTransaction) store.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function markAccountDeletionFailed(store: DatabaseSync, ownerId: string) {
+  store.prepare(`
+    UPDATE account_delete_intents
+    SET state = 'failed', error_code = 'ACCOUNT_MEDIA_CLEANUP_FAILED',
+        updated_at = ?
+    WHERE owner_id = ? AND state = 'running'
+  `).run(new Date().toISOString(), ownerId);
+}
+
+function finishAccountDeletion(store: DatabaseSync, ownerId: string) {
+  store.exec("BEGIN IMMEDIATE");
+  try {
+    const intent = store.prepare(`
+      SELECT 1 FROM account_delete_intents
+      WHERE owner_id = ? AND state = 'running'
+    `).get(ownerId);
+    if (!intent) throw new AccountDeletionActiveError("Account deletion claim was lost");
+    if (hasActiveOwnerMediaPublications(store, ownerId)) {
+      throw new Error("active media publication blocks account deletion");
+    }
+    store.prepare(`
+      DELETE FROM generation_provider_attempts
+      WHERE task_id IN (
+        SELECT id FROM generation_tasks WHERE owner_id = ?
+      )
+    `).run(ownerId);
+    store.prepare(`
+      DELETE FROM generation_task_events
+      WHERE task_id IN (
+        SELECT id FROM generation_tasks WHERE owner_id = ?
+      )
+    `).run(ownerId);
+    store.prepare("DELETE FROM generation_tasks WHERE owner_id = ?").run(ownerId);
+    store.prepare(
+      "DELETE FROM account_provider_credentials WHERE account_id = ?",
+    ).run(ownerId);
+    store.prepare("DELETE FROM account_permissions WHERE account_id = ?").run(ownerId);
+    store.prepare("DELETE FROM account_permissions WHERE granted_by = ?").run(ownerId);
+    store.prepare("DELETE FROM canvas_documents WHERE owner_id = ?").run(ownerId);
+    store.prepare("DELETE FROM project_metadata WHERE owner_id = ?").run(ownerId);
+    store.prepare(`
+      DELETE FROM asset_history WHERE owner_id = ? OR account_id = ?
+    `).run(ownerId, ownerId);
+    store.prepare("DELETE FROM media_assets WHERE owner_id = ?").run(ownerId);
+    store.prepare(`
+      DELETE FROM admin_audit_events
+      WHERE actor_user_id = ? OR target_user_id = ?
+    `).run(ownerId, ownerId);
+    const removed = store.prepare("DELETE FROM users WHERE id = ?").run(ownerId);
+    if (removed.changes !== 1) throw new Error("账号不存在");
+    const leftoverPermissions = Number((store.prepare(`
+      SELECT COUNT(*) AS count
+      FROM account_permissions
+      WHERE account_id = ? OR granted_by = ?
+    `).get(ownerId, ownerId) as { count: number }).count);
+    if (leftoverPermissions !== 0) throw new Error("账号权限行清理失败");
+    store.exec("COMMIT");
+  } catch (error) {
+    if (store.isTransaction) store.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function adminUsersApi(
+  request: IncomingMessage,
+  response: ServerResponse,
+): Promise<void>;
+export function adminUsersApi(
+  request: IncomingMessage,
+  response: ServerResponse,
+  execution: AdminUsersExecution,
+): Promise<void>;
 export async function adminUsersApi(
   request: IncomingMessage,
   response: ServerResponse,
+  execution: AdminUsersExecution = {},
 ) {
   if (!isMutationAllowed(request)) {
     json(response, 403, { error: "请求来源无效" });
@@ -915,6 +1112,16 @@ export async function adminUsersApi(
       json(response, 200, { user: publicUser(row) });
     } catch (error) {
       if (error instanceof HttpRequestError) throw error;
+      if (
+        error instanceof Error &&
+        error.message.includes("account deletion blocks user reactivation")
+      ) {
+        json(response, 409, {
+          code: "ACCOUNT_DELETE_ACTIVE",
+          error: "账号删除正在进行，不能重新启用",
+        });
+        return;
+      }
       json(response, 400, {
         error: error instanceof Error ? error.message : "账号修改无效",
       });
@@ -940,7 +1147,8 @@ export async function adminUsersApi(
         json(response, 403, { error: "最高权限账号受保护，不能删除" });
         return;
       }
-      if (target.role === "admin") {
+      const existingDeleteIntent = accountDeleteIntent(store, targetId);
+      if (target.role === "admin" && !existingDeleteIntent) {
         const activeAdmins = Number(
           (
             store
@@ -958,83 +1166,27 @@ export async function adminUsersApi(
         }
       }
 
-      const mediaRows = store
-        .prepare(`
-          SELECT storage_backend, storage_name, object_key, storage_profile_id
-          FROM media_assets
-          WHERE owner_id = ?
-        `)
-        .all(targetId) as Array<{
-        objectKey: string | null;
-        storageBackend: string;
-        storageProfileId: string | null;
-        storageName: string;
-      }>;
-
-      store.exec("BEGIN IMMEDIATE");
+      beginAccountDeletion(store, targetId);
+      const mediaRows = store.prepare(`
+        SELECT
+          id, kind, storage_backend, storage_name, object_key,
+          storage_profile_id
+        FROM media_assets
+        WHERE owner_id = ?
+        ORDER BY kind, id
+      `).all(targetId) as AccountMediaRow[];
       try {
-        store.prepare("DELETE FROM sessions WHERE user_id = ?").run(targetId);
-        store
-          .prepare(`
-            DELETE FROM generation_provider_attempts
-            WHERE task_id IN (
-              SELECT id FROM generation_tasks WHERE owner_id = ?
-            )
-          `)
-          .run(targetId);
-        store
-          .prepare(`
-            DELETE FROM generation_task_events
-            WHERE task_id IN (
-              SELECT id FROM generation_tasks WHERE owner_id = ?
-            )
-          `)
-          .run(targetId);
-        store.prepare("DELETE FROM generation_tasks WHERE owner_id = ?").run(targetId);
-        store
-          .prepare("DELETE FROM account_provider_credentials WHERE account_id = ?")
-          .run(targetId);
-        store
-          .prepare("DELETE FROM account_permissions WHERE account_id = ?")
-          .run(targetId);
-        store
-          .prepare("DELETE FROM account_permissions WHERE granted_by = ?")
-          .run(targetId);
-        store.prepare("DELETE FROM canvas_documents WHERE owner_id = ?").run(targetId);
-        store.prepare("DELETE FROM project_metadata WHERE owner_id = ?").run(targetId);
-        store
-          .prepare("DELETE FROM asset_history WHERE owner_id = ? OR account_id = ?")
-          .run(targetId, targetId);
-        store.prepare("DELETE FROM media_assets WHERE owner_id = ?").run(targetId);
-        store
-          .prepare(
-            "DELETE FROM admin_audit_events WHERE actor_user_id = ? OR target_user_id = ?",
-          )
-          .run(targetId, targetId);
-        const removed = store.prepare("DELETE FROM users WHERE id = ?").run(targetId);
-        if (removed.changes !== 1) {
-          store.exec("ROLLBACK");
-          json(response, 404, { error: "账号不存在" });
-          return;
-        }
-        const leftoverPermissions = Number(
-          (
-            store
-              .prepare(`
-                SELECT COUNT(*) AS count
-                FROM account_permissions
-                WHERE account_id = ? OR granted_by = ?
-              `)
-              .get(targetId, targetId) as { count: number }
-          ).count,
-        );
-        if (leftoverPermissions !== 0) {
-          store.exec("ROLLBACK");
-          throw new Error("账号权限行清理失败");
-        }
-        store.exec("COMMIT");
+        await removeAccountMediaFiles(mediaRows, execution);
       } catch (error) {
-        store.exec("ROLLBACK");
+        markAccountDeletionFailed(store, targetId);
+        throw new AccountMediaCleanupError(
+          error instanceof Error ? error.message : "账号媒体清理失败",
+        );
+      }
+      try {
+        finishAccountDeletion(store, targetId);
+      } catch (error) {
+        markAccountDeletionFailed(store, targetId);
         throw error;
       }
 
@@ -1042,11 +1194,37 @@ export async function adminUsersApi(
         loginName: target.login_name,
         role: target.role,
       });
-      await removeAccountMediaFiles(mediaRows);
       json(response, 200, { deleted: true, userId: targetId });
     } catch (error) {
       const message = error instanceof Error ? error.message : "账号删除失败";
-      json(response, 400, { error: message });
+      if (activePublicationDeleteError(error)) {
+        json(response, 409, {
+          code: "MEDIA_PUBLICATION_ACTIVE",
+          error: "账号仍有媒体正在收口，请稍后再删除",
+        });
+      } else if (error instanceof AccountDeletionActiveError) {
+        json(response, 409, {
+          code: "ACCOUNT_DELETE_ACTIVE",
+          error: "账号删除正在进行，请稍后重试",
+        });
+      } else if (error instanceof AccountDeletionGenerationActiveError) {
+        json(response, 409, {
+          code: "ACCOUNT_DELETE_TASK_ACTIVE",
+          error: "账号仍有生成任务正在执行，请先等待或取消任务",
+        });
+      } else if (error instanceof AccountDeletionReferencedError) {
+        json(response, 409, {
+          code: "ACCOUNT_DELETE_REFERENCED",
+          error: "账号仍被模板引用，暂不能删除",
+        });
+      } else if (error instanceof AccountMediaCleanupError) {
+        json(response, 503, {
+          code: "ACCOUNT_MEDIA_CLEANUP_FAILED",
+          error: "账号媒体未能安全清理，可重试删除",
+        });
+      } else {
+        json(response, 400, { error: message });
+      }
     }
     return;
   }
@@ -1056,30 +1234,55 @@ export async function adminUsersApi(
 }
 
 async function removeAccountMediaFiles(
-  rows: Array<{
-    objectKey: string | null;
-    storageBackend: string;
-    storageProfileId: string | null;
-    storageName: string;
-  }>,
+  rows: readonly AccountMediaRow[],
+  execution: AdminUsersExecution,
 ) {
+  const profiles = new Map<
+    string,
+    NonNullable<Awaited<ReturnType<typeof storageProfileForDestructiveMedia>>>
+  >();
   for (const row of rows) {
-    try {
-      if (row.storageBackend === "oss") {
-        const profile = await storageProfileForMedia(row);
-        if (profile && row.objectKey) {
-          await deletePrivateAliyunOssObject(row.objectKey, profile);
-        }
-      } else if (
-        row.storageName &&
-        basename(row.storageName) === row.storageName
+    if (row.storage_backend === "local") {
+      if (
+        !row.storage_name ||
+        basename(row.storage_name) !== row.storage_name
       ) {
-        await rm(join(appDataDirectory(), "media", row.storageName), {
-          force: true,
-        });
+        throw new Error("Local media path is invalid");
       }
-    } catch {
-      // 账号删除不因媒体文件清理失败而中断；记录行已删除，残留文件由存储清理兜底。
+      continue;
+    }
+    if (row.storage_backend !== "oss") {
+      throw new Error("Media storage backend is invalid");
+    }
+    if (!row.object_key) throw new Error("OSS media object key is missing");
+    if (!row.storage_profile_id) {
+      throw new Error("OSS media profile evidence is missing");
+    }
+    const key = row.storage_profile_id;
+    if (profiles.has(key)) continue;
+    const profile = await storageProfileForDestructiveMedia({
+      storageProfileId: row.storage_profile_id,
+    });
+    if (!profile) throw new Error("OSS media profile is unavailable");
+    profiles.set(key, profile);
+  }
+  for (const row of rows) {
+    await execution.beforePhysicalMediaDelete?.(row);
+    if (row.storage_backend === "oss") {
+      const profile = profiles.get(
+        row.storage_profile_id ?? "",
+      );
+      if (!profile || !row.object_key) {
+        throw new Error("OSS media cleanup evidence was lost");
+      }
+      await (execution.deleteExternalObject ?? deletePrivateAliyunOssObject)(
+        row.object_key,
+        profile,
+      );
+    } else {
+      await rm(join(appDataDirectory(), "media", row.storage_name), {
+        force: true,
+      });
     }
   }
 }

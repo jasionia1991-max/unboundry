@@ -55,6 +55,8 @@ export function mediaMetadataApi(
     durationSeconds: media.durationSeconds,
     durationStatus: media.durationStatus,
     kind,
+    mediaHeight: media.mediaHeight,
+    mediaWidth: media.mediaWidth,
     storageBackend: media.storageBackend,
   });
 }

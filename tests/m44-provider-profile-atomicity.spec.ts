@@ -696,9 +696,9 @@ test("two OS processes can migrate the same v18 database exactly once", async ()
         "ALTER TABLE provider_profiles DROP COLUMN provider_configuration_version",
       );
     }
-    // 当前 schema（v36）已移除成本列，但该夹具用“当前库 + 删除迁移记录”
+    // 当前 schema（v38）已由 v36 移除成本列，但该夹具用“当前库 + 删除迁移记录”
     // 模拟 v18 旧库；v33 迁移仍会读取成本列，这里补回 v33 期望的旧列，
-    // 让 v19→v36 的迁移链可以完整重放。
+    // 让 v19→v38 的迁移链可以完整重放。
     const safetyColumns = () => new Set(
       (legacy.prepare("PRAGMA table_info(generation_safety_settings)").all() as Array<{
         name: string;
@@ -733,7 +733,22 @@ test("two OS processes can migrate the same v18 database exactly once", async ()
     if (userColumns.has("protected")) {
       legacy.exec("ALTER TABLE users DROP COLUMN protected");
     }
+    // v38 的表和跨表触发器也必须精确回退；只删除迁移记录会制造
+    // “ledger 是 v18、物理 schema 仍是 v38”的不可能生产状态。
     legacy.exec(`
+      DROP TRIGGER account_delete_guard_generation_task_activation;
+      DROP TRIGGER account_delete_guard_generation_task_insert;
+      DROP TRIGGER account_delete_guard_public_template_actor_update;
+      DROP TRIGGER account_delete_guard_public_template_insert;
+      DROP TRIGGER account_delete_guard_session_insert;
+      DROP TRIGGER account_delete_guard_user_template_insert;
+      DROP TRIGGER account_delete_guard_user_template_owner_update;
+      DROP TRIGGER account_delete_guard_user_reactivation;
+      DROP TRIGGER media_publication_guard_owner_delete;
+      DROP TRIGGER media_publication_guard_task_delete;
+      DROP TABLE media_publication_attempts;
+      DROP TABLE media_delete_intents;
+      DROP TABLE account_delete_intents;
       DELETE FROM schema_migrations WHERE version >= 19;
       PRAGMA user_version = 18;
     `);
@@ -784,6 +799,7 @@ test("two OS processes can migrate the same v18 database exactly once", async ()
         { count: 1, version: 35 },
         { count: 1, version: 36 },
         { count: 1, version: 37 },
+        { count: 1, version: 38 },
       ]);
     } finally {
       database.close();

@@ -3,16 +3,26 @@ import {
   type ProviderProtocol,
 } from "../types/relayProtocols";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import {
   createAliyunOssObjectKey,
   createPrivateAliyunOssReadUrl,
   deletePrivateAliyunOssObject,
   uploadPrivateAliyunOssObject,
 } from "./aliyunOss";
-import { readableStorageProfile } from "./secureStorageProfiles";
+import {
+  compensateMediaPublication,
+  markExternalMediaPublicationReady,
+  mediaPublicationStagingPath,
+  reserveMediaPublication,
+  stageMediaPublication,
+  type MediaPublicationReservation,
+} from "./mediaLifecycle";
+import {
+  type AliyunStorageProfile,
+  withReadableStorageProfileReservation,
+} from "./secureStorageProfiles";
 import type { DestinationResolver } from "./outboundNetwork";
 import {
   fetchPublicHttps,
@@ -208,11 +218,25 @@ export class RelayProviderError extends Error {
 export type RelayProviderExecution = Readonly<{
   beforeProviderRequest?: () => void;
   fetcher?: typeof fetch;
+  mediaLifecycle?: Readonly<{ ownerId: string }>;
   resolver?: DestinationResolver;
   signal?: AbortSignal;
+  temporaryImageObjectStore?: RelayTemporaryImageObjectStore;
   timeoutMs?: number;
   usePinnedTransport?: boolean;
 }>;
+
+export type RelayTemporaryImageObjectStore = Readonly<{
+  createReadUrl: typeof createPrivateAliyunOssReadUrl;
+  deleteObject: typeof deletePrivateAliyunOssObject;
+  uploadObject: typeof uploadPrivateAliyunOssObject;
+}>;
+
+const defaultTemporaryImageObjectStore: RelayTemporaryImageObjectStore = {
+  createReadUrl: createPrivateAliyunOssReadUrl,
+  deleteObject: deletePrivateAliyunOssObject,
+  uploadObject: uploadPrivateAliyunOssObject,
+};
 
 export const relayMediaCancellationBoundary = Object.freeze({
   localAbortBehavior: "stop-local-request-and-polling-only" as const,
@@ -1133,28 +1157,22 @@ export async function requestRelayGptImage(
   if (!providerProtocolSupportsCapability(request.providerProtocol, request.capability)) {
     throw new RelayProviderError("FORMAT");
   }
-  // 优创等中转站的 /v1/images/edits 不接受 data: URL 作为 image 参数；
-  // 本地参考图先临时上传到私有 OSS 并换成短时签名 URL，请求结束后删除。
-  const temporaryDirectory = await mkdtemp(join(tmpdir(), "unboundry-gpt-image-"));
-  const uploadedKeys: string[] = [];
+  const objectStore = execution.temporaryImageObjectStore ??
+    defaultTemporaryImageObjectStore;
+  const temporaryPublications: Array<{
+    bytes: Buffer;
+    contentType: string;
+    inputIndex: number;
+    reservation: MediaPublicationReservation;
+  }> = [];
+  let fixedProfile: AliyunStorageProfile | undefined;
   try {
-    const inputImages: string[] = [];
-    for (const image of request.inputImages ?? []) {
-      if (!image.startsWith("data:")) {
-        inputImages.push(image);
-        continue;
-      }
-      const profile = await readableStorageProfile();
-      if (!profile) {
-        inputImages.push(image);
-        continue;
-      }
+    const inputImages = [...(request.inputImages ?? [])];
+    const dataImages = inputImages.flatMap((image, inputIndex) => {
+      if (!image.startsWith("data:")) return [];
       const match =
         /^data:image\/(png|jpeg|webp);base64,([a-z0-9+/=\r\n]+)$/i.exec(image);
-      if (!match) {
-        inputImages.push(image);
-        continue;
-      }
+      if (!match) throw new RelayProviderError("FORMAT");
       const mime = `image/${match[1].toLowerCase()}`;
       const extension = match[1].toLowerCase() === "png"
         ? "png"
@@ -1165,28 +1183,65 @@ export async function requestRelayGptImage(
       if (!bytes.length || bytes.length > 20 * 1024 * 1024) {
         throw new RelayProviderError("FORMAT");
       }
-      const objectKey = createAliyunOssObjectKey("image", extension);
-      const filePath = join(
-        temporaryDirectory,
-        `${randomUUID()}.${extension}`,
-      );
-      await writeFile(filePath, bytes, { flag: "wx" });
-      try {
-        await uploadPrivateAliyunOssObject({
-          byteSize: bytes.length,
-          checksumSha256: createHash("sha256").update(bytes).digest("hex"),
-          contentType: mime,
-          credentials: profile,
-          filePath,
-          objectKey,
-        });
-      } finally {
-        await rm(filePath, { force: true });
+      return [{ bytes, contentType: mime, extension, inputIndex }];
+    });
+
+    if (dataImages.length > 0) {
+      const retained = await withReadableStorageProfileReservation((profile) => {
+        if (!execution.mediaLifecycle?.ownerId) {
+          throw new RelayProviderError("FORMAT");
+        }
+        fixedProfile = profile;
+        for (const dataImage of dataImages) {
+          const id = randomUUID();
+          const reservation = reserveMediaPublication({
+            contentType: dataImage.contentType,
+            finalStorageName: `${id}.${dataImage.extension}`,
+            id,
+            kind: "image",
+            objectKey: createAliyunOssObjectKey("image", dataImage.extension),
+            ownerId: execution.mediaLifecycle!.ownerId,
+            storageBackend: "oss",
+            storageProfileId: profile.id,
+          });
+          temporaryPublications.push({
+            bytes: dataImage.bytes,
+            contentType: dataImage.contentType,
+            inputIndex: dataImage.inputIndex,
+            reservation,
+          });
+        }
+        return true;
+      });
+      if (retained && fixedProfile) {
+        for (const temporary of temporaryPublications) {
+          const stagingPath = mediaPublicationStagingPath(temporary.reservation);
+          await mkdir(dirname(stagingPath), { recursive: true });
+          await writeFile(stagingPath, temporary.bytes, { flag: "wx" });
+          const checksumSha256 = createHash("sha256")
+            .update(temporary.bytes)
+            .digest("hex");
+          stageMediaPublication(temporary.reservation, {
+            byteSize: temporary.bytes.length,
+            checksumSha256,
+            contentType: temporary.contentType,
+          });
+          await objectStore.uploadObject({
+            byteSize: temporary.bytes.length,
+            checksumSha256,
+            contentType: temporary.contentType,
+            credentials: fixedProfile,
+            filePath: stagingPath,
+            objectKey: temporary.reservation.objectKey,
+          });
+          markExternalMediaPublicationReady(temporary.reservation);
+          inputImages[temporary.inputIndex] = await objectStore.createReadUrl(
+            temporary.reservation.objectKey,
+            fixedProfile,
+            300,
+          );
+        }
       }
-      uploadedKeys.push(objectKey);
-      inputImages.push(
-        await createPrivateAliyunOssReadUrl(objectKey, profile, 300),
-      );
     }
     const route = cleanImageRequest({ ...request, inputImages });
     const body = await relayJsonRequest({
@@ -1201,13 +1256,15 @@ export async function requestRelayGptImage(
     });
     return parseGptImageResult(body);
   } finally {
-    const profile = await readableStorageProfile();
-    if (profile) {
-      for (const key of uploadedKeys) {
-        await deletePrivateAliyunOssObject(key, profile).catch(() => undefined);
+    if (fixedProfile) {
+      for (const temporary of temporaryPublications.reverse()) {
+        await compensateMediaPublication(temporary.reservation, {
+          code: "RELAY_TEMP_REFERENCE_CLEANUP",
+          deleteExternalObject: objectStore.deleteObject,
+          profile: fixedProfile,
+        }).catch(() => false);
       }
     }
-    await rm(temporaryDirectory, { force: true, recursive: true });
   }
 }
 

@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { currentSchemaVersion } from "./database";
 
 export const openApiDocument = {
   openapi: "3.1.0",
@@ -37,7 +38,7 @@ export const openApiDocument = {
     "/api/health/ready": {
       get: {
         operationId: "readServiceReadiness",
-        summary: "Verify the existing schema-37 database without changing it",
+        summary: `Verify the existing schema-${currentSchemaVersion} database without changing it`,
         responses: {
           "200": {
             description: "The existing database is readable and compatible",
@@ -61,7 +62,10 @@ export const openApiDocument = {
                     },
                     mutationsAccepted: { type: "boolean" },
                     requestId: { type: "string", format: "uuid" },
-                    schemaVersion: { type: "integer", const: 37 },
+                    schemaVersion: {
+                      type: "integer",
+                      const: currentSchemaVersion,
+                    },
                     status: { type: "string", const: "ready" },
                   },
                   additionalProperties: false,

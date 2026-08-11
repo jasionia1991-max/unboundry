@@ -373,7 +373,10 @@ export async function groupDownloadApi(
           SELECT id, kind, storage_name, storage_backend, object_key,
             storage_profile_id, byte_size
           FROM media_assets
-          WHERE owner_id = ? AND id IN (${assetIds.map(() => "?").join(",")})
+          WHERE
+            owner_id = ?
+            AND storage_status = 'ready'
+            AND id IN (${assetIds.map(() => "?").join(",")})
         `)
         .all(ownerId, ...assetIds) as Array<{
         byte_size: number;

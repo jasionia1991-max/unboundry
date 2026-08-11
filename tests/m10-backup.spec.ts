@@ -38,7 +38,9 @@ import {
 import {
   BackupPackageError,
   createEncryptedBackup,
+  inspectFrozenMediaIntegrity,
   restoreEncryptedBackup,
+  validateMaterializedBackupDatabase,
   verifyEncryptedBackup,
   type BackupCheckpointName,
 } from "../server/backupPackage";
@@ -557,6 +559,19 @@ test("trusted-duration migration preserves historical media and marks it unverif
       );
       INSERT INTO project_metadata (owner_id, id, title, updated_at)
       VALUES (NULL, 'default', '默认项目', 1);
+      -- This reduced fixture records migration 4 as applied, so it must still
+      -- materialize the canonical table later account-deletion guards target.
+      CREATE TABLE sessions (
+        id TEXT PRIMARY KEY,
+        token_hash TEXT NOT NULL UNIQUE,
+        user_id TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE INDEX sessions_user_expires
+        ON sessions (user_id, expires_at);
       CREATE TABLE media_assets (
         kind TEXT NOT NULL,
         id TEXT NOT NULL,
@@ -830,6 +845,13 @@ test("an encrypted frozen snapshot verifies and restores without plaintext or so
     const backup = JSON.parse(backupResult.stdout.trim()) as {
       databaseLogicalSha256: string;
       mediaFiles: number;
+      mediaIntegrity: {
+        backupBlockingIssues: number;
+        clean: boolean;
+        evidenceSha256: string;
+        issues: number;
+        sha256: string;
+      };
       ossMirrors: number;
       packageDirectory: string;
       schemaVersion: number;
@@ -837,11 +859,17 @@ test("an encrypted frozen snapshot verifies and restores without plaintext or so
     };
     expect(backup).toMatchObject({
       mediaFiles: 2,
+      mediaIntegrity: {
+        backupBlockingIssues: 0,
+        clean: false,
+        issues: 1,
+      },
       ossMirrors: 1,
       schemaVersion: currentSchemaVersion,
       secretFiles: 3,
     });
     expect(backup.databaseLogicalSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(backup.mediaIntegrity.evidenceSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(await treeFingerprint(fixture.dataDirectory)).toBe(sourceBefore);
     expect(await packageContains(backup.packageDirectory, fixtureSentinel)).toBe(false);
 
@@ -913,9 +941,11 @@ test("an encrypted frozen snapshot verifies and restores without plaintext or so
       ],
       { cwd: process.cwd() },
     );
-    expect(JSON.parse(verifyResult.stdout.trim())).toMatchObject({
+    const verified = JSON.parse(verifyResult.stdout.trim()) as typeof backup;
+    expect(verified).toMatchObject({
       databaseLogicalSha256: backup.databaseLogicalSha256,
       mediaFiles: 2,
+      mediaIntegrity: backup.mediaIntegrity,
       ossMirrors: 1,
       schemaVersion: currentSchemaVersion,
       secretFiles: 3,
@@ -967,9 +997,11 @@ test("an encrypted frozen snapshot verifies and restores without plaintext or so
       ],
       { cwd: process.cwd() },
     );
-    expect(JSON.parse(restoreResult.stdout.trim())).toMatchObject({
+    const restored = JSON.parse(restoreResult.stdout.trim()) as typeof backup;
+    expect(restored).toMatchObject({
       databaseLogicalSha256: backup.databaseLogicalSha256,
       mediaFiles: 2,
+      mediaIntegrity: backup.mediaIntegrity,
       ossMirrors: 1,
       schemaVersion: currentSchemaVersion,
       secretFiles: 3,
@@ -1048,6 +1080,42 @@ test("an encrypted frozen snapshot verifies and restores without plaintext or so
       ok: true,
       schemaVersion: currentSchemaVersion,
     });
+    expect(await emptyOrMissing(fixture.scratchRoot)).toBe(true);
+  } finally {
+    fixture?.database.close();
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("backup creation fails closed when the integrity report has a backup-blocking issue", async () => {
+  const root = await mkdtemp(join(tmpdir(), "unboundry-backup-integrity-block-"));
+  let fixture: Fixture | undefined;
+  try {
+    fixture = await createBackupFixture(root);
+    fixture.database.prepare(`
+      UPDATE media_assets
+      SET storage_profile_id = 'missing-storage-profile'
+      WHERE kind = 'image' AND id = 'preserved-oss-image'
+    `).run();
+    const report = await inspectFrozenMediaIntegrity({
+      ossMirrors: backupOptions(fixture).ossMirrors,
+      scratchRoot: fixture.scratchRoot,
+      sourceDirectory: fixture.dataDirectory,
+      sourceFrozen: true,
+    });
+    expect(report.issues).toContainEqual(expect.objectContaining({
+      assetId: "preserved-oss-image",
+      backupBlocking: true,
+      code: "MEDIA_INTEGRITY_OSS_PROFILE_MISSING",
+      storageBackend: "oss",
+    }));
+    expect(JSON.stringify(report)).not.toContain("missing-storage-profile");
+    expect(report.backupComplete).toBe(false);
+    await expectPackageError(
+      createEncryptedBackup(backupOptions(fixture)),
+      "BACKUP_MEDIA_INTEGRITY_INCOMPLETE",
+    );
+    expect(await readdir(fixture.backupRoot)).toEqual([]);
     expect(await emptyOrMissing(fixture.scratchRoot)).toBe(true);
   } finally {
     fixture?.database.close();
@@ -1204,6 +1272,16 @@ test("backup refuses inconsistent media, links, broken secrets, and false OSS mi
       name: "writable-database",
     },
     {
+      code: "BACKUP_DATABASE_SCHEMA_UNSUPPORTED",
+      mutate: async (fixture) => {
+        fixture.database.exec(`
+          CREATE VIEW unexpected_backup_users AS
+          SELECT id FROM users WHERE status = 'active';
+        `);
+      },
+      name: "unexpected-database-view",
+    },
+    {
       code: "BACKUP_SOURCE_PERMISSIONS_INVALID",
       mutate: async (fixture) => {
         const writableDirectory = join(fixture.dataDirectory, "media", "unsafe-nested");
@@ -1255,6 +1333,37 @@ test("backup refuses inconsistent media, links, broken secrets, and false OSS mi
         await writeFile(fixture.mirrorPath, "wrong-mirror");
       },
       name: "oss-mirror",
+    },
+    {
+      code: "BACKUP_MEDIA_INTEGRITY_INCOMPLETE",
+      mutate: async (fixture) => {
+        fixture.database.prepare(`
+          UPDATE media_assets SET storage_profile_id = 'missing-storage-profile'
+          WHERE id = 'preserved-oss-image'
+        `).run();
+      },
+      name: "missing-storage-profile",
+    },
+    {
+      code: "BACKUP_MEDIA_INTEGRITY_INCOMPLETE",
+      mutate: async (fixture) => {
+        fixture.database.prepare(`
+          INSERT INTO media_publication_attempts (
+            attempt_id, owner_id, kind, asset_id, source, state,
+            storage_backend, final_storage_name, object_key,
+            storage_profile_id, staging_name, content_type,
+            created_at, updated_at
+          ) VALUES (
+            'missing-profile-journal', 'backup-user', 'image',
+            'missing-profile-journal', 'upload', 'failed', 'oss',
+            'missing-profile-journal.png', 'objects/missing-profile-journal',
+            'missing-storage-profile',
+            '.publication-missing-profile-journal.generating', 'image/png',
+            '2026-08-09T00:00:00.000Z', '2026-08-09T00:00:00.000Z'
+          )
+        `).run();
+      },
+      name: "missing-storage-profile-journal",
     },
     {
       code: "BACKUP_OSS_STATE_UNRECOVERABLE",
@@ -1606,6 +1715,127 @@ test("restore failures stay fail-closed, clean staging, and preserve foreign tar
   }
 });
 
+test("schema-37 backup stays exact through inspection, format-2 verify, and restore", async () => {
+  const root = await mkdtemp(join(tmpdir(), "unboundry-backup-schema37-"));
+  const dataDirectory = join(root, "data");
+  const backupRoot = join(root, "backups");
+  const scratchRoot = join(root, "scratch");
+  await Promise.all([
+    mkdir(join(dataDirectory, "media"), { mode: 0o700, recursive: true }),
+    mkdir(join(dataDirectory, "secrets"), { mode: 0o700, recursive: true }),
+    mkdir(backupRoot, { mode: 0o700 }),
+    mkdir(scratchRoot, { mode: 0o700 }),
+  ]);
+  await chmod(dataDirectory, 0o700);
+  let database: ReturnType<typeof openAppDatabase> | undefined;
+  try {
+    database = openAppDatabase(dataDirectory);
+    database.exec(`
+      DROP TRIGGER account_delete_guard_generation_task_activation;
+      DROP TRIGGER account_delete_guard_generation_task_insert;
+      DROP TRIGGER account_delete_guard_public_template_actor_update;
+      DROP TRIGGER account_delete_guard_public_template_insert;
+      DROP TRIGGER account_delete_guard_session_insert;
+      DROP TRIGGER account_delete_guard_user_template_insert;
+      DROP TRIGGER account_delete_guard_user_template_owner_update;
+      DROP TRIGGER account_delete_guard_user_reactivation;
+      DROP TRIGGER media_publication_guard_task_delete;
+      DROP TRIGGER media_publication_guard_owner_delete;
+      DROP TABLE media_publication_attempts;
+      DROP TABLE media_delete_intents;
+      DROP TABLE account_delete_intents;
+      DELETE FROM schema_migrations WHERE version = 38;
+      PRAGMA user_version = 37;
+      PRAGMA wal_checkpoint(TRUNCATE);
+      PRAGMA journal_mode = DELETE;
+    `);
+    database.close();
+    database = undefined;
+
+    const databasePath = join(dataDirectory, "unboundry.sqlite");
+    const direct = inspectBackupDatabase(databasePath, dataDirectory);
+    expect(direct).toMatchObject({
+      userVersion: 37,
+      schema: { objectCounts: { trigger: 5, view: 0 } },
+    });
+    expect(direct.migrationLedger).toHaveLength(37);
+    expect(direct.migrationLedger.at(-1)).toEqual({
+      name: "protected-root-admin",
+      version: 37,
+    });
+    expect(direct.tables).toHaveLength(20);
+    expect(direct.tables.map(({ name }) => name)).not.toContain(
+      "media_publication_attempts",
+    );
+    expect(direct.tables.map(({ name }) => name)).not.toContain(
+      "media_delete_intents",
+    );
+    expect(direct.tables.map(({ name }) => name)).not.toContain(
+      "account_delete_intents",
+    );
+    expect(validateMaterializedBackupDatabase(
+      databasePath,
+      dataDirectory,
+      direct,
+    )).toEqual(direct);
+
+    await expect(inspectFrozenMediaIntegrity({
+      scratchRoot,
+      sourceDirectory: dataDirectory,
+      sourceFrozen: true,
+    })).resolves.toMatchObject({
+      backupComplete: true,
+      counts: { publicationAttempts: 0 },
+      schemaVersion: 37,
+    });
+
+    const sourceBefore = await treeFingerprint(dataDirectory);
+    const keys = createKeys();
+    const backup = await createEncryptedBackup({
+      backupRoot,
+      recoveryPublicKey: keys.recovery.publicKey,
+      scratchRoot,
+      signingPrivateKey: keys.signing.privateKey,
+      sourceDirectory: dataDirectory,
+      sourceFrozen: true,
+    });
+    expect(backup).toMatchObject({ schemaVersion: 37 });
+    const packageOptions = {
+      packageDirectory: backup.packageDirectory,
+      recoveryPrivateKey: keys.recovery.privateKey,
+      scratchRoot,
+      trustedSigningPublicKey: keys.signing.publicKey,
+    };
+    await expect(verifyEncryptedBackup(packageOptions)).resolves.toMatchObject({
+      schemaVersion: 37,
+    });
+    const targetDirectory = join(root, "schema37-restore");
+    await expect(restoreEncryptedBackup({
+      ...packageOptions,
+      targetDirectory,
+    })).resolves.toMatchObject({ schemaVersion: 37 });
+    const restored = inspectBackupDatabase(
+      join(targetDirectory, "unboundry.sqlite"),
+      targetDirectory,
+    );
+    expect(restored.userVersion).toBe(37);
+    expect(restored.migrationLedger).toEqual(direct.migrationLedger);
+    expect(await treeFingerprint(dataDirectory)).toBe(sourceBefore);
+    expect(await emptyOrMissing(scratchRoot)).toBe(true);
+
+    const unsupported = new DatabaseSync(databasePath);
+    unsupported.exec("CREATE TABLE schema37_extra (id TEXT PRIMARY KEY)");
+    unsupported.close();
+    expectInspectionError(
+      () => inspectBackupDatabase(databasePath, dataDirectory),
+      "BACKUP_DATABASE_SCHEMA_UNSUPPORTED",
+    );
+  } finally {
+    database?.close();
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("logical fingerprints cover every table and sqlite_sequence independent of page layout", async () => {
   const root = await mkdtemp(join(tmpdir(), "unboundry-backup-fingerprint-"));
   let fixture: Fixture | undefined;
@@ -1642,8 +1872,9 @@ test("logical fingerprints cover every table and sqlite_sequence independent of 
     const before = inspectBackupDatabase(original, inspectionRoot);
     const afterVacuum = inspectBackupDatabase(reorganized, inspectionRoot);
     expect(afterVacuum.logicalSha256).toBe(before.logicalSha256);
-    expect(before.tables).toHaveLength(20);
+    expect(before.tables).toHaveLength(23);
     expect(before.tables.map(({ name }) => name)).toEqual([
+      "account_delete_intents",
       "account_permissions",
       "account_provider_credentials",
       "admin_audit_events",
@@ -1654,6 +1885,8 @@ test("logical fingerprints cover every table and sqlite_sequence independent of 
       "generation_task_events",
       "generation_tasks",
       "media_assets",
+      "media_delete_intents",
+      "media_publication_attempts",
       "model_profiles",
       "node_model_bindings",
       "project_metadata",
@@ -1665,18 +1898,31 @@ test("logical fingerprints cover every table and sqlite_sequence independent of 
       "user_templates",
       "users",
     ]);
-    expect(before.schema.objectCounts.trigger).toBe(5);
+    expect(before.schema.objectCounts.trigger).toBe(15);
 
     const damaged = join(inspectionRoot, "damaged.sqlite");
     await copyFile(original, damaged);
     const damagedDatabase = new DatabaseSync(damaged);
     damagedDatabase.exec(`
       PRAGMA journal_mode = DELETE;
-      DROP TRIGGER model_profiles_capture_first_publish_insert;
+      DROP TRIGGER account_delete_guard_generation_task_insert;
     `);
     damagedDatabase.close();
     expectInspectionError(
       () => inspectBackupDatabase(damaged, inspectionRoot),
+      "BACKUP_DATABASE_SCHEMA_UNSUPPORTED",
+    );
+
+    const withView = join(inspectionRoot, "unexpected-view.sqlite");
+    await copyFile(original, withView);
+    const viewDatabase = new DatabaseSync(withView);
+    viewDatabase.exec(`
+      CREATE VIEW unexpected_backup_users AS
+      SELECT id FROM users WHERE status = 'active';
+    `);
+    viewDatabase.close();
+    expectInspectionError(
+      () => inspectBackupDatabase(withView, inspectionRoot),
       "BACKUP_DATABASE_SCHEMA_UNSUPPORTED",
     );
 

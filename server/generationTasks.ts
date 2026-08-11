@@ -19,6 +19,7 @@ import {
   GenerationProviderAttemptBlockedError,
   GenerationTaskCanvasRevisionConflictError,
   GenerationTaskConflictError,
+  GenerationTaskOwnerDeletingError,
   GenerationTaskProviderBoundaryError,
   type GenerationTask,
   type GenerationTaskInput,
@@ -27,7 +28,7 @@ import {
   generateOpenRouterImage,
   OpenRouterImageError,
 } from "./openRouterImageProvider";
-import { readableMediaForOwner } from "./mediaRegistry";
+import { readableMediaForOwner, readyMediaForOwner } from "./mediaRegistry";
 import {
   arkVideoBase64BudgetBytes,
   arkVideoBase64Bytes,
@@ -95,7 +96,15 @@ import {
   downloadProviderResultMedia,
   ProviderResultMediaError,
 } from "./providerResultMedia";
-import { removeUnpublishedGeneratedMedia } from "./generatedMediaCleanup";
+import {
+  hasPendingGeneratedMediaPublications,
+  hasPendingMediaDeletions,
+  hasPendingUploadMediaPublications,
+  pendingGeneratedPublicationTaskIds,
+  recoverPendingGeneratedMediaPublications,
+  recoverPendingMediaDeletions,
+  recoverPendingUploadMediaPublications,
+} from "./mediaLifecycle";
 import {
   cleanParameterSchema,
   knownModelParameterSchema,
@@ -257,8 +266,10 @@ function requireTaskProviderSnapshot(
 function taskStore() {
   if (store) return store;
   store = createGenerationTaskStore(appDataDirectory());
-  failRecoveredGenerationTasks(store);
+  const pendingPublicationTasks = pendingGeneratedPublicationTaskIds();
+  failRecoveredGenerationTasks(store, pendingPublicationTasks);
   for (const task of store.listRecovering()) {
+    if (pendingPublicationTasks.has(task.id)) continue;
     const protocol = taskProviderProtocol(task);
     if (
       task.providerTaskId &&
@@ -276,6 +287,20 @@ function taskStore() {
         message: "服务重启后无法安全继续本次生成，系统未重新提交",
       });
     }
+  }
+  const recoverGenerated =
+    pendingPublicationTasks.size > 0 || hasPendingGeneratedMediaPublications();
+  const recoverUploads = hasPendingUploadMediaPublications();
+  const recoverDeletions = hasPendingMediaDeletions();
+  if (recoverGenerated || recoverUploads || recoverDeletions) {
+    void settleDetachedGenerationExecution(
+      async () => {
+        if (recoverDeletions) await recoverPendingMediaDeletions();
+        if (recoverUploads) await recoverPendingUploadMediaPublications();
+        if (recoverGenerated) await recoverPendingGeneratedMediaPublications();
+      },
+      () => undefined,
+    );
   }
   return store;
 }
@@ -361,8 +386,11 @@ function canvasRevisionConflict(response: ServerResponse, error: unknown) {
 }
 
 function taskSummary(task: GenerationTask) {
-  const resultMedia = task.kind !== "text" && task.resultAssetId && task.ownerId
-    ? readableMediaForOwner(task.ownerId, task.kind, task.resultAssetId)
+  const publishedResultAssetId = task.state === "success"
+    ? task.resultAssetId
+    : undefined;
+  const resultMedia = task.kind !== "text" && publishedResultAssetId && task.ownerId
+    ? readyMediaForOwner(task.ownerId, task.kind, publishedResultAssetId)
     : undefined;
   const retryDecision = retrySafetyDecision(task);
   const resumeSnapshotProblem =
@@ -393,7 +421,7 @@ function taskSummary(task: GenerationTask) {
     retryAllowed: retry.allowed,
     retryBlockCode: retry.allowed ? undefined : retry.code,
     retryBlockReason: retry.allowed ? undefined : retry.reason,
-    resultAssetId: task.resultAssetId,
+    resultAssetId: resultMedia ? publishedResultAssetId : undefined,
     resultText: task.resultText,
     resultMedia: resultMedia
       ? {
@@ -401,15 +429,17 @@ function taskSummary(task: GenerationTask) {
           contentType: resultMedia.contentType,
           durationSeconds: resultMedia.durationSeconds,
           durationStatus: resultMedia.durationStatus,
+          mediaHeight: resultMedia.mediaHeight,
+          mediaWidth: resultMedia.mediaWidth,
           storageBackend: resultMedia.storageBackend,
         }
       : undefined,
-    resultUrl: task.resultAssetId
+    resultUrl: resultMedia && publishedResultAssetId
       ? task.kind === "video"
-        ? `/api/video-assets/${task.resultAssetId}`
+        ? `/api/video-assets/${publishedResultAssetId}`
         : task.kind === "audio"
-          ? `/api/audio-assets/${task.resultAssetId}`
-          : `/api/assets/${task.resultAssetId}`
+          ? `/api/audio-assets/${publishedResultAssetId}`
+          : `/api/assets/${publishedResultAssetId}`
       : undefined,
     state: task.state,
     updatedAt: task.updatedAt,
@@ -1421,7 +1451,7 @@ function relayContextMimeType(input: {
   kind: "audio" | "image" | "video";
   ownerId: string;
 }) {
-  const stored = input.contentType ?? readableMediaForOwner(
+  const stored = input.contentType ?? readyMediaForOwner(
     input.ownerId,
     input.kind,
     input.assetId,
@@ -1812,12 +1842,14 @@ async function readGeneratedPngBody(body: ReadableStream<Uint8Array>) {
 }
 
 async function saveRelayMediaOutput(input: {
+  actualCostMicrounits: number;
   expectedAudioContentType?: string;
   output: RelayTransientMediaOutput;
   ownerId: string;
   profile: ProviderProfile;
   prompt: string;
   signal: AbortSignal;
+  taskId: string;
 }) {
   if (input.output.transport === "bytes") {
     if (input.output.kind !== "image" || input.output.mimeType !== "image/png") {
@@ -1827,6 +1859,10 @@ async function saveRelayMediaOutput(input: {
       bytes: Buffer.from(input.output.bytes),
       label: input.prompt.slice(0, 120),
       ownerId: input.ownerId,
+      task: {
+        actualCostMicrounits: input.actualCostMicrounits,
+        taskId: input.taskId,
+      },
     });
     return saved.assetId;
   }
@@ -1843,6 +1879,10 @@ async function saveRelayMediaOutput(input: {
       bytes: await readGeneratedPngBody(downloaded.body),
       label: input.prompt.slice(0, 120),
       ownerId: input.ownerId,
+      task: {
+        actualCostMicrounits: input.actualCostMicrounits,
+        taskId: input.taskId,
+      },
     });
     return saved.assetId;
   }
@@ -1851,6 +1891,10 @@ async function saveRelayMediaOutput(input: {
       body: downloaded.body,
       label: input.prompt.slice(0, 120),
       ownerId: input.ownerId,
+      task: {
+        actualCostMicrounits: input.actualCostMicrounits,
+        taskId: input.taskId,
+      },
     });
     return saved.assetId;
   }
@@ -1864,6 +1908,10 @@ async function saveRelayMediaOutput(input: {
       | "audio/wav",
     label: input.prompt.slice(0, 120),
     ownerId: input.ownerId,
+    task: {
+      actualCostMicrounits: input.actualCostMicrounits,
+      taskId: input.taskId,
+    },
   });
   return saved.assetId;
 }
@@ -1874,35 +1922,6 @@ function relayAudioResultContentType(format: unknown) {
   if (format === "m4a") return "audio/mp4";
   if (format === "aac") return "audio/aac";
   return format === "mp3" ? "audio/mpeg" : undefined;
-}
-
-async function completeRelayMediaTask(input: {
-  actualCostMicrounits: number;
-  kind: "audio" | "image" | "video";
-  ownerId: string;
-  resultAssetId: string;
-  taskId: string;
-}) {
-  const discard = () => removeUnpublishedGeneratedMedia({
-    assetId: input.resultAssetId,
-    kind: input.kind,
-    ownerId: input.ownerId,
-  });
-  if (taskStore().get(input.taskId)?.state !== "running") {
-    await discard();
-    return false;
-  }
-  try {
-    taskStore().complete(input.taskId, {
-      actualCostMicrounits: input.actualCostMicrounits,
-      resultAssetId: input.resultAssetId,
-    });
-    return true;
-  } catch (error) {
-    await discard();
-    if (taskStore().get(input.taskId)?.state === "cancelled") return false;
-    throw error;
-  }
 }
 
 function waitForRelayMedia(milliseconds: number, signal: AbortSignal) {
@@ -2013,7 +2032,8 @@ async function executeRelayMediaTask(
     }
     if (status.state === "success") {
       if (status.outputs.length !== 1) throw new RelayProviderError("FORMAT");
-      const resultAssetId = await saveRelayMediaOutput({
+      await saveRelayMediaOutput({
+        actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
         expectedAudioContentType: kind === "audio"
           ? relayAudioResultContentType(running.parameters.format)
           : undefined,
@@ -2022,12 +2042,6 @@ async function executeRelayMediaTask(
         profile,
         prompt: running.prompt,
         signal: controller.signal,
-      });
-      await completeRelayMediaTask({
-        actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
-        kind,
-        ownerId,
-        resultAssetId,
         taskId,
       });
       return;
@@ -2040,6 +2054,7 @@ async function executeRelayMediaTask(
 async function executeImageTask(taskId: string) {
   const current = taskStore().get(taskId);
   if (!current || !["queued", "running"].includes(current.state) || !current.ownerId) return;
+  const ownerId = current.ownerId;
   const controller = new AbortController();
   runningImageRequests.set(taskId, controller);
   try {
@@ -2097,11 +2112,12 @@ async function executeImageTask(taskId: string) {
         bytes: result.bytes,
         label: running.prompt.slice(0, 120),
         ownerId: current.ownerId,
+        task: {
+          actualCostMicrounits: result.actualCostMicrounits,
+          taskId,
+        },
       });
-      taskStore().complete(taskId, {
-        actualCostMicrounits: result.actualCostMicrounits,
-        resultAssetId: saved.assetId,
-      });
+      void saved;
       return;
     }
     if (protocol !== "gpt-image") throw new RelayProviderError("FORMAT");
@@ -2141,24 +2157,20 @@ async function executeImageTask(taskId: string) {
           {
             beforeProviderRequest: () => taskStore().recordProviderAttempt(taskId),
             fetcher: leasedFetch,
+            mediaLifecycle: { ownerId },
             signal: controller.signal,
             usePinnedTransport: true,
           },
         ),
     });
     if (relayResult.outputs.length !== 1) throw new RelayProviderError("FORMAT");
-    const resultAssetId = await saveRelayMediaOutput({
+    await saveRelayMediaOutput({
+      actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
       output: relayResult.outputs[0],
       ownerId: current.ownerId,
       profile,
       prompt: running.prompt,
       signal: controller.signal,
-    });
-    await completeRelayMediaTask({
-      actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
-      kind: "image",
-      ownerId: current.ownerId,
-      resultAssetId,
       taskId,
     });
   } catch (error) {
@@ -2431,20 +2443,20 @@ async function executeVideoTask(taskId: string) {
         ) {
           throw new VolcengineArkVideoError("REMOTE", "方舟视频结果暂时无法下载");
         }
-        const saved = await saveGeneratedMp4({
-          body: videoResponse.body,
-          label: running.prompt.slice(0, 120),
-          ownerId: running.ownerId!,
-        });
         const actualCostMicrounits = Math.ceil(
           status.providerUsageTokens *
           seedanceMiniAudioPriceMicrounitsPerThousandTokens /
           1_000,
         );
-        taskStore().complete(taskId, {
-          actualCostMicrounits,
-          providerUsageTokens: status.providerUsageTokens,
-          resultAssetId: saved.assetId,
+        await saveGeneratedMp4({
+          body: videoResponse.body,
+          label: running.prompt.slice(0, 120),
+          ownerId: running.ownerId!,
+          task: {
+            actualCostMicrounits,
+            providerUsageTokens: status.providerUsageTokens,
+            taskId,
+          },
         });
         return;
       }
@@ -2602,16 +2614,16 @@ async function executeAudioTask(taskId: string) {
           fetch,
           controller.signal,
         );
-        const saved = await saveGeneratedMp3({
+        await saveGeneratedMp3({
           body: audioBody,
           label: running.prompt.slice(0, 120),
           ownerId: running.ownerId!,
-        });
-        taskStore().complete(taskId, {
-          // Mureka does not return a per-task bill. Record the configured
-          // protected maximum so budget accounting remains conservative.
-          actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
-          resultAssetId: saved.assetId,
+          task: {
+            // Mureka does not return a per-task bill. Record the configured
+            // protected maximum so budget accounting remains conservative.
+            actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+            taskId,
+          },
         });
         return;
       }
@@ -2636,6 +2648,8 @@ async function executeAudioTask(taskId: string) {
 export function retrySnapshotCompatibilityProblem(
   task: GenerationTask,
   model: GenerationModelRow,
+  mode: "new-provider-attempt" | "resume-provider-task" =
+    "new-provider-attempt",
 ) {
   if (task.parameters.inputSchemaVersion !== 1) {
     return "原任务没有可核对的节点输入快照，请回到节点重新提交";
@@ -2648,14 +2662,16 @@ export function retrySnapshotCompatibilityProblem(
   delete parameterValues.inputSchemaVersion;
   delete parameterValues.inputs;
   delete parameterValues.references;
-  let parameters: Record<string, ModelParameterValue>;
-  try {
-    parameters = validateParameterValues(
-      generationModelSchema(task.kind, model),
-      parameterValues,
-    );
-  } catch {
-    return "当前模型参数规则已更新，原任务参数不再兼容，请回到节点重新提交";
+  const modelSchema = mode === "new-provider-attempt"
+    ? generationModelSchema(task.kind, model)
+    : undefined;
+  let parameters: Record<string, ModelParameterValue> = {};
+  if (modelSchema) {
+    try {
+      parameters = validateParameterValues(modelSchema, parameterValues);
+    } catch {
+      return "当前模型参数规则已更新，原任务参数不再兼容，请回到节点重新提交";
+    }
   }
 
   const nodes: Array<{
@@ -2670,6 +2686,8 @@ export function retrySnapshotCompatibilityProblem(
     target: string;
   }> = [];
   const snapshotImageReferences: ImageReference[] = [];
+  const snapshotOrders = new Set<number>();
+  const snapshotSources = new Set<string>();
   for (const [index, raw] of rawInputs.entries()) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
       return "原任务保存的节点输入快照无效，请回到节点重新提交";
@@ -2685,10 +2703,15 @@ export function retrySnapshotCompatibilityProblem(
       !/^[a-z0-9._-]{1,160}$/i.test(sourceNodeId) ||
       !/^[a-z][a-z-]{0,39}$/.test(role) ||
       !Number.isSafeInteger(order) ||
-      order < 1
+      order < 1 ||
+      sourceNodeId === task.nodeId ||
+      snapshotOrders.has(order) ||
+      snapshotSources.has(sourceNodeId)
     ) {
       return "原任务保存的节点输入顺序、类型或角色无效，请回到节点重新提交";
     }
+    snapshotOrders.add(order);
+    snapshotSources.add(sourceNodeId);
     const assetId = typeof item.assetId === "string" ? item.assetId : "";
     if (
       item.kind !== "text" &&
@@ -2704,24 +2727,28 @@ export function retrySnapshotCompatibilityProblem(
     } else {
       data.assetId = assetId;
       data[`${item.kind}Src`] = `snapshot:${assetId}`;
-      // 重试快照只核对结构兼容性：素材在任务保存时已就绪，
-      // 用可信元数据标记让预检把快照素材视为 ready，而不是要求重新联网确认。
-      data.mediaMetadataSource = "server";
-      data.mediaMetadataStatus = "ready";
-      data.mediaByteSize = 1;
-      data.mediaStorageBackend = item.kind === "video" ? "oss" : "local";
-      data.mediaContentType =
-        item.kind === "image"
-          ? "image/png"
-          : item.kind === "video"
-            ? "video/mp4"
-            : "audio/mpeg";
-      if (item.kind === "video") {
-        data.mediaDurationSeconds = 5;
-        data.videoWidth = 1280;
-        data.videoHeight = 720;
-      } else if (item.kind === "audio") {
-        data.mediaDurationSeconds = 10;
+      if (mode === "new-provider-attempt") {
+        const media = task.ownerId
+          ? readyMediaForOwner(task.ownerId, item.kind, assetId)
+          : undefined;
+        if (!media) {
+          return "原任务保存的素材不存在、未就绪或不属于当前账号，请回到节点重新提交";
+        }
+        // A new paid attempt must be checked against the current model using
+        // the exact durable metadata. Never manufacture values from the old
+        // snapshot merely to make a tightened rule pass.
+        data.mediaMetadataSource = "server";
+        data.mediaMetadataStatus = item.kind === "image"
+          ? "ready"
+          : media.durationStatus === "not-applicable"
+            ? "failed"
+            : media.durationStatus;
+        data.mediaByteSize = media.byteSize;
+        data.mediaStorageBackend = media.storageBackend;
+        data.mediaContentType = media.contentType;
+        data.mediaDurationSeconds = media.durationSeconds ?? undefined;
+        data.mediaWidth = media.mediaWidth ?? undefined;
+        data.mediaHeight = media.mediaHeight ?? undefined;
       }
       if (item.kind === "image") {
         snapshotImageReferences.push({
@@ -2756,6 +2783,11 @@ export function retrySnapshotCompatibilityProblem(
     }
   }
 
+  // An existing Provider task has already consumed its inputs. Resuming its
+  // status/result retrieval must survive later media deletion or model-rule
+  // tightening, while still rejecting a malformed or rewritten snapshot.
+  if (mode === "resume-provider-task") return undefined;
+
   const hasUpstreamText = rawInputs.some((raw) =>
     raw && typeof raw === "object" && !Array.isArray(raw) &&
     (raw as Record<string, unknown>).kind === "text"
@@ -2766,7 +2798,7 @@ export function retrySnapshotCompatibilityProblem(
       : "";
   const preflight = resolveNodeInputs({
     edges,
-    modelSchema: generationModelSchema(task.kind, model),
+    modelSchema,
     nodes,
     ownPrompt: compatibilityOwnPrompt,
     parameters,
@@ -2883,7 +2915,7 @@ function resumeProviderTaskSnapshotProblem(task: GenerationTask) {
   ) {
     return "原任务的模型、平台连接或协议配置已变化";
   }
-  return retrySnapshotCompatibilityProblem(task, model);
+  return retrySnapshotCompatibilityProblem(task, model, "resume-provider-task");
 }
 
 export function generationTaskCancellationMode(task: GenerationTask) {
@@ -3449,6 +3481,11 @@ export async function generationTasks(
         json(response, 409, {
           code: "IDEMPOTENCY_CONFLICT",
           error: error.message,
+        });
+      } else if (error instanceof GenerationTaskOwnerDeletingError) {
+        json(response, 409, {
+          code: error.code,
+          error: "账号删除正在进行，不能再创建或重试生成任务",
         });
       } else {
         json(response, 400, { error: "生成请求无效" });

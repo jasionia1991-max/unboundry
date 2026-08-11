@@ -45,6 +45,7 @@ type StreamCloser = (event: RuntimeControlEvent) => void;
 export type RuntimeLifecycleOptions = Readonly<{
   dataDirectory?: string | (() => string);
   logger?: RuntimeLogger;
+  readinessDatabaseGuard?: (database: DatabaseSync) => boolean;
   retryAfterSeconds?: number;
   shutdownDeadlineMs?: number;
 }>;
@@ -294,7 +295,13 @@ export function databaseMatchesSchemaContract(database: DatabaseSync) {
       schemaSqlHash(trigger?.sql) !== expected.sqlHash
     ) return false;
   }
-  return true;
+  const actualViewNames = (database.prepare(`
+    SELECT name
+    FROM sqlite_schema
+    WHERE type = 'view'
+    ORDER BY name
+  `).all() as Array<{ name?: unknown }>).map((row) => String(row.name));
+  return actualViewNames.length === 0;
 }
 
 export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
@@ -667,6 +674,12 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
       }
       if (!databaseMatchesSchemaContract(database)) {
         return { ok: false, code: "DATABASE_SCHEMA_MISMATCH" };
+      }
+      if (
+        options.readinessDatabaseGuard &&
+        !options.readinessDatabaseGuard(database)
+      ) {
+        return { ok: false, code: "DATABASE_UNAVAILABLE" };
       }
       return { ok: true, schemaVersion };
     } catch {

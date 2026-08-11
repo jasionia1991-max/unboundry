@@ -12,8 +12,15 @@ import {
   readJsonBody,
 } from "./httpRequest";
 import { requestIdentity } from "./auth";
-import { normalizePersistedMediaNodes } from "../types/persistedMediaSources";
+import {
+  normalizePersistedMediaNodes,
+  persistedMediaReferences,
+} from "../types/persistedMediaSources";
 import { canvasGraphFingerprint } from "../types/canvasFingerprint";
+import {
+  adoptUploadedMediaReferences,
+  MediaPublicationConflictError,
+} from "./mediaLifecycle";
 
 type CanvasDocument = {
   edges: unknown[];
@@ -686,6 +693,7 @@ export async function canvasPersistence(
     return;
   }
   const nodes = normalizePersistedMediaNodes(document.nodes);
+  const mediaReferences = persistedMediaReferences(nodes);
   const edges = document.edges;
   const serializedNodes = JSON.stringify(nodes);
   const serializedEdges = JSON.stringify(edges);
@@ -866,6 +874,21 @@ export async function canvasPersistence(
     const graphRevision = row
       ? row.graph_revision + (graphChanged ? 1 : 0)
       : 1;
+    try {
+      adoptUploadedMediaReferences(store, {
+        canvasId: id,
+        ownerId,
+        references: mediaReferences,
+      });
+    } catch (error) {
+      if (!(error instanceof MediaPublicationConflictError)) throw error;
+      store.exec("ROLLBACK");
+      json(response, 409, {
+        code: "CANVAS_MEDIA_UNAVAILABLE",
+        error: "Canvas media is no longer available",
+      });
+      return;
+    }
     store
       .prepare(`
         INSERT INTO canvas_documents (
@@ -954,18 +977,54 @@ export async function accountHistory(
       identity.bypass
         ? store
             .prepare(`
-              SELECT id, kind, label, preview, created_at AS createdAt
-              FROM asset_history
-              WHERE account_id = ?
-              ORDER BY created_at DESC, rowid DESC
+              SELECT
+                history.id,
+                history.kind,
+                history.label,
+                history.preview,
+                history.created_at AS createdAt
+              FROM asset_history AS history
+              LEFT JOIN media_assets AS media
+                ON media.id = history.id
+                AND media.kind = history.kind
+                AND media.owner_id = history.owner_id
+                AND media.storage_status = 'ready'
+              WHERE
+                history.account_id = ?
+                AND (
+                  history.kind = 'world3d'
+                  OR (
+                    history.kind IN ('image', 'video', 'audio')
+                    AND media.id IS NOT NULL
+                  )
+                )
+              ORDER BY history.created_at DESC, history.rowid DESC
             `)
             .all(effectiveAccountId)
         : store
             .prepare(`
-              SELECT id, kind, label, preview, created_at AS createdAt
-              FROM asset_history
-              WHERE owner_id = ?
-              ORDER BY created_at DESC, rowid DESC
+              SELECT
+                history.id,
+                history.kind,
+                history.label,
+                history.preview,
+                history.created_at AS createdAt
+              FROM asset_history AS history
+              LEFT JOIN media_assets AS media
+                ON media.id = history.id
+                AND media.kind = history.kind
+                AND media.owner_id = history.owner_id
+                AND media.storage_status = 'ready'
+              WHERE
+                history.owner_id = ?
+                AND (
+                  history.kind = 'world3d'
+                  OR (
+                    history.kind IN ('image', 'video', 'audio')
+                    AND media.id IS NOT NULL
+                  )
+                )
+              ORDER BY history.created_at DESC, history.rowid DESC
             `)
             .all(identity.userId)
     ) as HistoryAsset[];
@@ -1006,6 +1065,26 @@ export async function accountHistory(
     ) {
       json(response, 400, { error: "Invalid history asset" });
       return;
+    }
+    if (item.kind !== "world3d") {
+      const mediaOwnerId = identity.bypass ? "__test__" : identity.userId;
+      const media = store.prepare(`
+        SELECT 1 FROM media_assets
+        WHERE owner_id = ? AND kind = ? AND id = ?
+          AND storage_status = 'ready'
+      `).get(mediaOwnerId, item.kind, item.id);
+      const expectedPreview = item.kind === "video"
+        ? `/api/video-assets/${item.id}`
+        : item.kind === "audio"
+          ? `/api/audio-assets/${item.id}`
+          : `/api/assets/${item.id}`;
+      if (!media || item.preview !== expectedPreview) {
+        json(response, 409, {
+          code: "MEDIA_NOT_READY",
+          error: "History media must be an owned ready asset",
+        });
+        return;
+      }
     }
     store
       .prepare(`

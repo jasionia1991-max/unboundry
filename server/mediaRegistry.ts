@@ -22,8 +22,13 @@ export type MediaRecord = {
   storageStatus: "failed" | "pending" | "ready";
 };
 
+export type MediaDeletionResult =
+  | { action: "deferred"; media?: MediaRecord }
+  | { action: "physical"; media: MediaRecord };
+
 let database: DatabaseSync | undefined;
 let databaseDirectory = "";
+const processStartupMediaDeleteCutoff = new Date().toISOString();
 
 function db() {
   const directory = appDataDirectory();
@@ -41,15 +46,16 @@ export function mayReadMedia(
 ) {
   const identity = requestIdentity(request);
   if (!identity) return false;
-  if (identity.bypass) return true;
+  const ownerId = identity.bypass ? "__test__" : identity.userId;
   return Boolean(
     db()
       .prepare(`
         SELECT 1
         FROM media_assets
         WHERE kind = ? AND id = ? AND owner_id = ?
+          AND storage_status = 'ready'
       `)
-      .get(kind, id, identity.userId),
+      .get(kind, id, ownerId),
   );
 }
 
@@ -59,8 +65,26 @@ export function readableMedia(
   id: string,
 ): MediaRecord | undefined {
   const identity = requestIdentity(request);
-  if (!identity || identity.bypass) return undefined;
-  return readableMediaForOwner(identity.userId, kind, id);
+  if (!identity) return undefined;
+  return readyMediaForOwner(
+    identity.bypass ? "__test__" : identity.userId,
+    kind,
+    id,
+  );
+}
+
+export function ownedMedia(
+  request: IncomingMessage,
+  kind: MediaKind,
+  id: string,
+) {
+  const identity = requestIdentity(request);
+  if (!identity) return undefined;
+  return readableMediaForOwner(
+    identity.bypass ? "__test__" : identity.userId,
+    kind,
+    id,
+  );
 }
 
 export function readableMediaForOwner(
@@ -112,6 +136,15 @@ export function readableMediaForOwner(
     storageName: row.storage_name,
     storageStatus: row.storage_status,
   };
+}
+
+export function readyMediaForOwner(
+  ownerId: string,
+  kind: MediaKind,
+  id: string,
+) {
+  const media = readableMediaForOwner(ownerId, kind, id);
+  return media?.storageStatus === "ready" ? media : undefined;
 }
 
 export function mayWriteMedia(
@@ -237,4 +270,262 @@ export function unregisterMedia(
       WHERE kind = ? AND id = ? AND owner_id = ?
     `)
     .run(kind, id, identity.bypass ? "__test__" : identity.userId);
+}
+
+export function beginMediaDeletion(
+  request: IncomingMessage,
+  kind: MediaKind,
+  id: string,
+): MediaDeletionResult | undefined {
+  const identity = requestIdentity(request);
+  if (!identity) return undefined;
+  const ownerId = identity.bypass ? "__test__" : identity.userId;
+  const database = db();
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    const media = readableMediaForOwner(ownerId, kind, id);
+    if (!media) {
+      const timestamp = new Date().toISOString();
+      database.prepare(`
+        INSERT INTO media_delete_intents (
+          owner_id, kind, asset_id, state, created_at, updated_at
+        ) VALUES (?, ?, ?, 'tombstone', ?, ?)
+        ON CONFLICT(owner_id, kind, asset_id) DO NOTHING
+      `).run(ownerId, kind, id, timestamp, timestamp);
+      database.exec("COMMIT");
+      return { action: "deferred" };
+    }
+    const publishedTask = database.prepare(`
+      SELECT 1
+      FROM generation_tasks
+      WHERE owner_id = ? AND kind = ? AND result_asset_id = ?
+        AND state = 'success'
+      LIMIT 1
+    `).get(ownerId, kind, id);
+    if (publishedTask) {
+      throw new Error("Published generation results cannot be deleted");
+    }
+    const publication = database.prepare(`
+      SELECT attempt_id, source, state, error_code
+      FROM media_publication_attempts
+      WHERE owner_id = ? AND kind = ? AND asset_id = ?
+      ORDER BY created_at DESC, attempt_id DESC
+      LIMIT 1
+    `).get(ownerId, kind, id) as
+      | {
+          attempt_id: string;
+          error_code: string | null;
+          source: string;
+          state: string;
+        }
+      | undefined;
+    const deferredPublicationCleanup = Boolean(
+      publication?.source === "upload" &&
+      (
+        ["reserved", "staged", "external-ready"].includes(
+          publication.state,
+        ) ||
+        publication.state === "compensating" &&
+          publication.error_code === "MEDIA_DELETE_DEFERRED"
+      ),
+    );
+    if (
+      publication &&
+      ["reserved", "staged", "external-ready", "compensating"].includes(
+        publication.state,
+      ) &&
+      !deferredPublicationCleanup &&
+      !(
+        publication.source === "upload" &&
+        publication.state === "compensating" &&
+        ["MEDIA_DELETE_REQUESTED", "MEDIA_DELETE_FAILED"].includes(
+          publication.error_code ?? "",
+        )
+      )
+    ) {
+      throw new Error("Media publication is still active");
+    }
+    const timestamp = new Date().toISOString();
+    const intent = database.prepare(`
+      SELECT state, updated_at
+      FROM media_delete_intents
+      WHERE owner_id = ? AND kind = ? AND asset_id = ?
+    `).get(ownerId, kind, id) as
+      | { state: string; updated_at: string }
+      | undefined;
+    if (deferredPublicationCleanup) {
+      if (intent && intent.state !== "tombstone") {
+        throw new Error("Media deletion is already active");
+      }
+      database.prepare(`
+        INSERT INTO media_delete_intents (
+          owner_id, kind, asset_id, state, created_at, updated_at
+        ) VALUES (?, ?, ?, 'tombstone', ?, ?)
+        ON CONFLICT(owner_id, kind, asset_id) DO UPDATE SET
+          updated_at = excluded.updated_at
+        WHERE media_delete_intents.state = 'tombstone'
+      `).run(ownerId, kind, id, timestamp, timestamp);
+    } else if (!intent) {
+      database.prepare(`
+        INSERT INTO media_delete_intents (
+          owner_id, kind, asset_id, state, created_at, updated_at
+        ) VALUES (?, ?, ?, 'delete-requested', ?, ?)
+      `).run(ownerId, kind, id, timestamp, timestamp);
+    } else if (intent.state === "delete-requested") {
+      if (intent.updated_at >= processStartupMediaDeleteCutoff) {
+        throw new Error("Media deletion is already active");
+      }
+      const reclaimed = database.prepare(`
+        UPDATE media_delete_intents
+        SET updated_at = ?
+        WHERE owner_id = ? AND kind = ? AND asset_id = ?
+          AND state = 'delete-requested' AND updated_at = ?
+      `).run(timestamp, ownerId, kind, id, intent.updated_at);
+      if (reclaimed.changes !== 1) throw new Error("Media changed concurrently");
+    } else {
+      const claimed = database.prepare(`
+        UPDATE media_delete_intents
+        SET state = 'delete-requested', updated_at = ?
+        WHERE owner_id = ? AND kind = ? AND asset_id = ?
+          AND state IN ('tombstone', 'delete-failed')
+      `).run(timestamp, ownerId, kind, id);
+      if (claimed.changes !== 1) throw new Error("Media deletion is already active");
+    }
+    const hidden = database.prepare(`
+      UPDATE media_assets
+      SET storage_status = 'failed', updated_at = ?
+      WHERE owner_id = ? AND kind = ? AND id = ?
+        AND storage_status IN ('pending', 'ready', 'failed')
+    `).run(timestamp, ownerId, kind, id);
+    if (hidden.changes !== 1) throw new Error("Media changed concurrently");
+    database.prepare(`
+      DELETE FROM asset_history
+      WHERE account_id = ? AND owner_id = ? AND id = ? AND kind = ?
+    `).run(ownerId, ownerId, id, kind);
+    const journal = deferredPublicationCleanup
+      ? database.prepare(`
+          UPDATE media_publication_attempts
+          SET state = 'compensating', error_code = 'MEDIA_DELETE_DEFERRED',
+              retry_count = retry_count + 1, updated_at = ?
+          WHERE attempt_id = ? AND source = 'upload'
+            AND (
+              state IN ('reserved', 'staged', 'external-ready')
+              OR (state = 'compensating' AND error_code = 'MEDIA_DELETE_DEFERRED')
+            )
+        `).run(timestamp, publication!.attempt_id)
+      : database.prepare(`
+          UPDATE media_publication_attempts
+          SET state = 'compensating', error_code = 'MEDIA_DELETE_REQUESTED',
+              retry_count = retry_count + 1, updated_at = ?
+          WHERE owner_id = ? AND kind = ? AND asset_id = ?
+            AND (
+              state = 'published'
+              OR (
+                state = 'compensating'
+                AND error_code IN ('MEDIA_DELETE_REQUESTED', 'MEDIA_DELETE_FAILED')
+              )
+            )
+        `).run(timestamp, ownerId, kind, id);
+    if (
+      publication &&
+      (deferredPublicationCleanup || publication.state === "published" ||
+        publication.state === "compensating") &&
+      journal.changes !== 1
+    ) {
+      throw new Error("Media changed concurrently");
+    }
+    database.exec("COMMIT");
+    return deferredPublicationCleanup
+      ? { action: "deferred", media }
+      : { action: "physical", media };
+  } catch (error) {
+    if (database.isTransaction) database.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function finishMediaDeletion(
+  request: IncomingMessage,
+  kind: MediaKind,
+  id: string,
+  media: MediaRecord,
+) {
+  const identity = requestIdentity(request);
+  if (!identity) return false;
+  const ownerId = identity.bypass ? "__test__" : identity.userId;
+  const database = db();
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    const removed = database.prepare(`
+      DELETE FROM media_assets
+      WHERE owner_id = ? AND kind = ? AND id = ? AND storage_status = 'failed'
+        AND storage_name = ? AND storage_backend = ?
+        AND storage_profile_id IS ? AND object_key = ?
+    `).run(
+      ownerId,
+      kind,
+      id,
+      media.storageName,
+      media.storageBackend,
+      media.storageProfileId,
+      media.objectKey,
+    );
+    if (removed.changes !== 1) throw new Error("Media changed concurrently");
+    database.prepare(`
+      UPDATE media_publication_attempts
+      SET state = 'failed', error_code = 'MEDIA_DELETED', updated_at = ?
+      WHERE owner_id = ? AND kind = ? AND asset_id = ?
+        AND state = 'compensating'
+        AND error_code = 'MEDIA_DELETE_REQUESTED'
+    `).run(new Date().toISOString(), ownerId, kind, id);
+    const completed = database.prepare(`
+      UPDATE media_delete_intents
+      SET state = 'tombstone', updated_at = ?
+      WHERE owner_id = ? AND kind = ? AND asset_id = ?
+        AND state = 'delete-requested'
+    `).run(new Date().toISOString(), ownerId, kind, id);
+    if (completed.changes !== 1) throw new Error("Media changed concurrently");
+    database.exec("COMMIT");
+    return true;
+  } catch (error) {
+    if (database.isTransaction) database.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function markMediaDeletionFailed(
+  request: IncomingMessage,
+  kind: MediaKind,
+  id: string,
+) {
+  const identity = requestIdentity(request);
+  if (!identity) return false;
+  const ownerId = identity.bypass ? "__test__" : identity.userId;
+  const database = db();
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    const timestamp = new Date().toISOString();
+    const failed = database.prepare(`
+      UPDATE media_delete_intents
+      SET state = 'delete-failed', updated_at = ?
+      WHERE owner_id = ? AND kind = ? AND asset_id = ?
+        AND state = 'delete-requested'
+    `).run(timestamp, ownerId, kind, id);
+    if (failed.changes !== 1) {
+      database.exec("ROLLBACK");
+      return false;
+    }
+    database.prepare(`
+      UPDATE media_publication_attempts
+      SET error_code = 'MEDIA_DELETE_FAILED', updated_at = ?
+      WHERE owner_id = ? AND kind = ? AND asset_id = ?
+        AND state = 'compensating'
+        AND error_code = 'MEDIA_DELETE_REQUESTED'
+    `).run(timestamp, ownerId, kind, id);
+    database.exec("COMMIT");
+    return true;
+  } catch (error) {
+    if (database.isTransaction) database.exec("ROLLBACK");
+    throw error;
+  }
 }

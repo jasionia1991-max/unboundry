@@ -143,6 +143,15 @@ export class GenerationTaskCanvasRevisionConflictError extends Error {
   }
 }
 
+export class GenerationTaskOwnerDeletingError extends Error {
+  readonly code = "ACCOUNT_DELETE_ACTIVE";
+
+  constructor() {
+    super("Account deletion blocks generation task mutation");
+    this.name = "GenerationTaskOwnerDeletingError";
+  }
+}
+
 export class GenerationTaskTransitionError extends Error {
   constructor(from: GenerationTaskState, to: GenerationTaskState) {
     super(`Generation task cannot move from ${from} to ${to}`);
@@ -421,6 +430,13 @@ export function createGenerationTaskStore(dataDirectory: string) {
       let row: GenerationTaskRow | undefined;
       database.exec("BEGIN IMMEDIATE");
       try {
+        if (database.prepare(`
+          SELECT 1 FROM account_delete_intents
+          WHERE owner_id = ?
+          LIMIT 1
+        `).get(normalized.ownerId ?? "__test__")) {
+          throw new GenerationTaskOwnerDeletingError();
+        }
         if (normalized.expectedCanvasRevision !== undefined) {
           const canvas = database.prepare(`
             SELECT graph_revision
@@ -831,6 +847,17 @@ export function createGenerationTaskStore(dataDirectory: string) {
           throw new GenerationTaskTransitionError(current.state, nextState);
         }
         if (
+          ["queued", "running", "retrying", "recovering"].includes(nextState) &&
+          current.owner_id &&
+          database.prepare(`
+            SELECT 1 FROM account_delete_intents
+            WHERE owner_id = ?
+            LIMIT 1
+          `).get(current.owner_id)
+        ) {
+          throw new GenerationTaskOwnerDeletingError();
+        }
+        if (
           preserveProviderTaskId &&
           (
             nextState !== "retrying" ||
@@ -1065,8 +1092,11 @@ export function createGenerationTaskStore(dataDirectory: string) {
 
 export function failRecoveredGenerationTasks(
   store: ReturnType<typeof createGenerationTaskStore>,
+  preservedTaskIds: ReadonlySet<string> = new Set(),
 ) {
-  return store.listRecovering().filter((task) => !task.providerTaskId).map((task) =>
+  return store.listRecovering().filter(
+    (task) => !task.providerTaskId && !preservedTaskIds.has(task.id),
+  ).map((task) =>
     store.transition(task.id, "failed", {
       code: "SERVICE_RESTARTED",
       message: "服务重启中断了本次生成，结果无法确认，为避免重复扣费不能直接重试",

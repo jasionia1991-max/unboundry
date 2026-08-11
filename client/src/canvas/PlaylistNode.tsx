@@ -15,10 +15,16 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
 import { useCanvasCheckpoint } from "./CanvasHistory";
 import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
+import {
+  fetchTrustedMediaMetadata,
+  hasTrustedMediaDimensions,
+  trustedMediaPatch,
+} from "./mediaInputMetadata";
 import { mergePlaylist } from "./playlistExport";
 import type { PlaylistClip, ProbeNodeType } from "./ProbeNode";
 import {
@@ -54,6 +60,16 @@ function downloadBlob(blob: Blob, name: string) {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
+async function discardPlaylistVideoAsset(assetId: string) {
+  try {
+    await fetch(`/api/video-assets/${encodeURIComponent(assetId)}`, {
+      method: "DELETE",
+    });
+  } catch {
+    // A fresh export that was never adopted must remain detached.
+  }
 }
 
 const ClipFrame = memo(function ClipFrame({
@@ -410,7 +426,13 @@ function PlaylistNodeImpl({
   const zoomValue = useRef(1);
   const { getNode, getViewport, screenToFlowPosition } =
     useReactFlow<ProbeNodeType>();
-  const { setNodes } = useCanvasGraphMutation();
+  const { setNodes, tryAdoptNodes } = useCanvasGraphMutation();
+  const { accountId, canvasId, persistenceReady } = useGenerationCanvas();
+  const mediaAdoptionScopeRef = useRef(`${accountId}\u0000${canvasId}`);
+  mediaAdoptionScopeRef.current = `${accountId}\u0000${canvasId}`;
+  const persistenceReadyLive = useRef(persistenceReady);
+  persistenceReadyLive.current = persistenceReady;
+  const mountedRef = useRef(true);
   const [activeClipId, setActiveClipId] = useState<string>();
   const [currentTime, setCurrentTime] = useState(0);
   const [dragVisual, setDragVisual] = useState<{
@@ -437,6 +459,12 @@ function PlaylistNodeImpl({
     start: 0,
   });
   const checkpoint = useCanvasCheckpoint();
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   const titleControl = useCompositionSafeText({
     onCommit: (nextTitle) => {
       setTitle(nextTitle);
@@ -1024,9 +1052,16 @@ function PlaylistNodeImpl({
                 </button>
                 <button
                   onClick={() => {
+                    if (!persistenceReadyLive.current) return;
+                    const scope = mediaAdoptionScopeRef.current;
                     void mergedBlob()
                       .then(async (blob) => {
+                        let createdAssetId: string | undefined;
+                        let adopted = false;
+                        let shouldCompensate = true;
+                        try {
                         const assetId = `${crypto.randomUUID()}.mp4`;
+                        createdAssetId = assetId;
                         const response = await fetch(
                           `/api/video-assets/${assetId}`,
                           {
@@ -1040,13 +1075,59 @@ function PlaylistNodeImpl({
                             method: "POST",
                           },
                         );
+                        if (response.status === 409) shouldCompensate = false;
                         const asset = await response.json() as {
                           assetId: string;
+                          byteSize?: number;
+                          contentType?: string;
+                          durationSeconds?: number;
                           error?: string;
+                          mediaHeight?: number;
+                          mediaWidth?: number;
+                          storageBackend?: "local" | "oss";
                           url: string;
                         };
                         if (!response.ok) {
                           throw new Error(asset.error ?? "视频保存失败");
+                        }
+                        if (asset.assetId !== assetId) {
+                          throw new Error("服务端返回的视频素材标识不一致");
+                        }
+                        const trustedMetadata =
+                          Number.isSafeInteger(asset.byteSize) &&
+                            Number(asset.byteSize) > 0 &&
+                            asset.contentType === "video/mp4" &&
+                            Number.isFinite(asset.durationSeconds) &&
+                            (asset.storageBackend === "local" ||
+                              asset.storageBackend === "oss") &&
+                            hasTrustedMediaDimensions(asset)
+                            ? {
+                                assetId: asset.assetId,
+                                byteSize: Number(asset.byteSize),
+                                contentType: asset.contentType,
+                                durationSeconds: Number(asset.durationSeconds),
+                                durationStatus: "ready" as const,
+                                kind: "video" as const,
+                                mediaHeight: asset.mediaHeight,
+                                mediaWidth: asset.mediaWidth,
+                                storageBackend: asset.storageBackend,
+                              }
+                            : await fetchTrustedMediaMetadata(
+                                "video",
+                                asset.assetId,
+                              );
+                        if (!hasTrustedMediaDimensions(trustedMetadata)) {
+                          throw new Error("服务端返回的视频尺寸未经可信校验");
+                        }
+                        if (
+                          !mountedRef.current ||
+                          !persistenceReadyLive.current ||
+                          mediaAdoptionScopeRef.current !== scope ||
+                          !getNode(id)
+                        ) {
+                          await discardPlaylistVideoAsset(asset.assetId);
+                          createdAssetId = undefined;
+                          return;
                         }
                         const nodeId = `video-from-${id}-${Date.now()}`;
                         const position = screenToFlowPosition({
@@ -1054,7 +1135,7 @@ function PlaylistNodeImpl({
                           y: window.innerHeight / 2 - 125,
                         });
                         checkpoint();
-                        setNodes((nodes) => {
+                        adopted = tryAdoptNodes(id, (nodes) => {
                           return [
                             ...nodes,
                             {
@@ -1063,6 +1144,7 @@ function PlaylistNodeImpl({
                               position,
                               data: {
                                 assetId: asset.assetId,
+                                ...trustedMediaPatch(trustedMetadata),
                                 label: "Video",
                                 sourceKind: "video",
                                 title: title || "Playlist",
@@ -1070,17 +1152,31 @@ function PlaylistNodeImpl({
                                 videoCreatedAt: new Intl.DateTimeFormat(
                                   "zh-CN",
                                 ).format(new Date()),
-                                videoDuration: total,
-                                videoFileSize: blob.size,
+                                videoDuration:
+                                  trustedMetadata.durationSeconds ?? total,
+                                videoFileSize: trustedMetadata.byteSize,
+                                videoHeight: trustedMetadata.mediaHeight,
                                 videoModel: "播放列表导出",
                                 videoPrompt: "",
                                 videoSrc: asset.url,
+                                videoWidth: trustedMetadata.mediaWidth,
                               },
                               style: { height: 250, width: 444 },
                             },
                           ];
                         });
+                        if (!adopted) {
+                          await discardPlaylistVideoAsset(asset.assetId);
+                          createdAssetId = undefined;
+                          return;
+                        }
                         setExportState("已导出到画布中央");
+                        } catch (error) {
+                          if (!adopted && createdAssetId && shouldCompensate) {
+                            await discardPlaylistVideoAsset(createdAssetId);
+                          }
+                          throw error;
+                        }
                       })
                       .catch((error) =>
                         setExportState(

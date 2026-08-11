@@ -15,6 +15,7 @@ import {
 import {
   executeTextTaskWithDependencies,
   generationTaskCancellationMode,
+  retrySafetyDecision,
   retrySnapshotCompatibilityProblem,
   settleDetachedGenerationExecution,
 } from "../server/generationTasks";
@@ -554,9 +555,45 @@ test("a generic Provider check cannot clear a newer capability authentication fa
   });
 });
 
-test("retry snapshot compatibility stays structural for Text Image Video and Audio", () => {
+test("retry snapshot compatibility uses durable media while preserving structural checks", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-retry-media-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
+  const database = openAppDatabase(dataDirectory);
+  try {
+    const timestamp = "2026-08-03T04:00:00.000Z";
+    database.prepare(`
+      INSERT OR IGNORE INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      ) VALUES ('__test__', '__test__', 'Test User', 'test-only', 'admin', 'active', ?, ?)
+    `).run(timestamp, timestamp);
+    const insertReadyImage = database.prepare(`
+      INSERT INTO media_assets (
+        kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+        storage_backend, object_key, content_type, checksum_sha256,
+        storage_status, duration_seconds, duration_source, duration_status,
+        media_width, media_height
+      ) VALUES (
+        'image', ?, '__test__', ?, 1024, ?, ?, 'local', ?, 'image/png', ?,
+        'ready', NULL, NULL, 'not-applicable', 1280, 720
+      )
+    `);
+    for (const assetId of [
+      "text-context-image",
+      "image-reference",
+      "video-reference-image",
+    ]) {
+      insertReadyImage.run(
+        assetId,
+        `${assetId}.png`,
+        timestamp,
+        timestamp,
+        `${assetId}.png`,
+        "a".repeat(64),
+      );
+    }
   type RetryModel = Parameters<typeof retrySnapshotCompatibilityProblem>[1];
-  const timestamp = "2026-08-03T04:00:00.000Z";
   const model = (
     kind: "audio" | "image" | "text" | "video",
   ): RetryModel => {
@@ -715,6 +752,223 @@ test("retry snapshot compatibility stays structural for Text Image Video and Aud
     inputs[0].role = "wrong-role";
     expect(retrySnapshotCompatibilityProblem(incompatible, currentModel))
       .toContain("当前模型不支持");
+  }
+  } finally {
+    database.close();
+    if (previousDataDirectory === undefined) {
+      delete process.env.UNBOUNDRY_DATA_DIR;
+    } else {
+      process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
+    }
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("a new retry attempt fail-closes on exact ready media metadata without entering Provider", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-retry-rules-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
+  const database = openAppDatabase(dataDirectory);
+  try {
+    const timestamp = "2026-08-03T04:05:00.000Z";
+    const ownerId = "retry-media-owner";
+    const profileId = "retry-media-provider";
+    const modelId = "retry-media-video-model";
+    database.prepare(`
+      INSERT INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      ) VALUES (?, ?, 'Retry Media Owner', 'test-only', 'user', 'active', ?, ?)
+    `).run(ownerId, ownerId, timestamp, timestamp);
+    database.prepare(`
+      INSERT INTO provider_profiles (
+        id, display_name, driver, status, created_at, updated_at
+      ) VALUES (?, 'Retry Media Provider', 'volcengine-ark', 'enabled', ?, ?)
+    `).run(profileId, timestamp, timestamp);
+
+    const tightenedSchema = knownModelParameterSchema({
+      capability: "video",
+      providerDriver: "volcengine-ark",
+      providerModelId: "doubao-seedance-2-0-mini-260615",
+    });
+    const tightenedImageRules = tightenedSchema.referenceMediaRules?.image;
+    if (!tightenedImageRules) throw new Error("Seedance image rules missing");
+    tightenedImageRules.maxBytes = 1024;
+    tightenedImageRules.minWidth = 1000;
+    database.prepare(`
+      INSERT INTO model_profiles (
+        id, display_name, provider_profile_id, provider_model_id,
+        capability, status, default_parameters, created_at, updated_at,
+        max_cost_microunits, cost_currency
+      ) VALUES (
+        ?, 'Retry Media Video', ?, 'doubao-seedance-2-0-mini-260615',
+        'video', 'published', ?, ?, ?, 5000000, 'CNY'
+      )
+    `).run(
+      modelId,
+      profileId,
+      JSON.stringify(tightenedSchema),
+      timestamp,
+      timestamp,
+    );
+    database.prepare(`
+      INSERT INTO node_model_bindings (
+        node_type, model_id, enabled, is_default, sort_order,
+        created_at, updated_at
+      ) VALUES ('video', ?, 1, 0, 50, ?, ?)
+    `).run(modelId, timestamp, timestamp);
+
+    const insertImage = database.prepare(`
+      INSERT INTO media_assets (
+        kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+        storage_backend, object_key, content_type, checksum_sha256,
+        storage_status, duration_seconds, duration_source, duration_status,
+        media_width, media_height
+      ) VALUES (
+        'image', ?, ?, ?, ?, ?, ?, 'local', ?, 'image/png', ?, ?,
+        NULL, NULL, 'not-applicable', ?, ?
+      )
+    `);
+    const mediaFixtures = [
+      {
+        assetId: "retry-small-real-image",
+        byteSize: 512,
+        height: 720,
+        status: "ready",
+        width: 640,
+      },
+      {
+        assetId: "retry-overlimit-real-image",
+        byteSize: 2048,
+        height: 720,
+        status: "ready",
+        width: 1280,
+      },
+      {
+        assetId: "retry-missing-dimensions-image",
+        byteSize: 512,
+        height: null,
+        status: "ready",
+        width: null,
+      },
+      {
+        assetId: "retry-not-ready-image",
+        byteSize: 512,
+        height: 720,
+        status: "pending",
+        width: 1280,
+      },
+      {
+        assetId: "retry-compliant-real-image",
+        byteSize: 512,
+        height: 720,
+        status: "ready",
+        width: 1280,
+      },
+    ] as const;
+    for (const fixture of mediaFixtures) {
+      const storageName = `${fixture.assetId}.png`;
+      insertImage.run(
+        fixture.assetId,
+        ownerId,
+        storageName,
+        fixture.byteSize,
+        timestamp,
+        timestamp,
+        storageName,
+        "b".repeat(64),
+        fixture.status,
+        fixture.width,
+        fixture.height,
+      );
+    }
+
+    const retryTask = (assetId: string): GenerationTask => ({
+      attempt: 1,
+      canvasId: "retry-media-canvas",
+      costCurrency: "CNY",
+      createdAt: timestamp,
+      errorCode: "RATE_LIMIT",
+      errorMessage: "safe retry fixture",
+      id: `task-${assetId}`,
+      idempotencyKey: `key-${assetId}`,
+      kind: "video",
+      model: modelId,
+      modelConfiguration: {},
+      nodeId: `target-${assetId}`,
+      ownerId,
+      parameters: {
+        aspectRatio: "16:9",
+        duration: 5,
+        generateAudio: true,
+        inputMode: "multimodal",
+        inputSchemaVersion: 1,
+        inputs: [{
+          assetId,
+          kind: "image",
+          order: 1,
+          role: "reference-image",
+          sourceNodeId: `source-${assetId}`,
+        }],
+        outputCount: 1,
+        resolution: "480p",
+      },
+      prompt: "retry with exact durable media",
+      providerModelId: "doubao-seedance-2-0-mini-260615",
+      providerProfileId: profileId,
+      state: "failed",
+      updatedAt: timestamp,
+    });
+
+    const attemptsBefore = generationProviderAttemptCounts(database);
+    for (const assetId of [
+      "retry-small-real-image",
+      "retry-overlimit-real-image",
+      "retry-missing-dimensions-image",
+      "retry-not-ready-image",
+      "retry-missing-media",
+    ]) {
+      expect(retrySafetyDecision(retryTask(assetId))).toMatchObject({
+        allowed: false,
+        code: "RETRY_SNAPSHOT_INCOMPATIBLE",
+      });
+    }
+    expect(retrySafetyDecision(retryTask("retry-compliant-real-image")))
+      .toMatchObject({
+        allowed: true,
+        mode: "new-provider-attempt",
+      });
+    expect(generationProviderAttemptCounts(database)).toEqual(attemptsBefore);
+
+    const paidTaskWithDeletedMedia = retryTask("already-deleted-image");
+    paidTaskWithDeletedMedia.providerTaskId = "already-paid-provider-task";
+    expect(retrySnapshotCompatibilityProblem(
+      paidTaskWithDeletedMedia,
+      {
+        cost_currency: "CNY",
+        default_parameters: JSON.stringify(tightenedSchema),
+        id: modelId,
+        latest_auth_failure_at: null,
+        latest_capability_success_at: null,
+        latest_provider_attempt_at: null,
+        max_cost_microunits: 5_000_000,
+        model_configuration_updated_at: timestamp,
+        provider_configuration_updated_at: timestamp,
+        provider_driver: "volcengine-ark",
+        provider_model_id: "doubao-seedance-2-0-mini-260615",
+        provider_profile_id: profileId,
+        provider_status: "enabled",
+      },
+      "resume-provider-task",
+    )).toBeUndefined();
+  } finally {
+    database.close();
+    if (previousDataDirectory === undefined) {
+      delete process.env.UNBOUNDRY_DATA_DIR;
+    } else {
+      process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
+    }
+    await rm(dataDirectory, { force: true, recursive: true });
   }
 });
 
@@ -1268,6 +1522,31 @@ test("only capability success or an explicit Provider/model update clears an aut
         providerProfileId: "missing-audio-provider",
         providerTaskId: "audio-provider-task-resume",
       });
+      addRetryFixture({
+        code: "NETWORK",
+        id: "retry-video-existing-job-deleted-media",
+        kind: "video",
+        modelId: videoModelProfileId,
+        parameters: {
+          aspectRatio: "16:9",
+          duration: 5,
+          generateAudio: true,
+          inputMode: "multimodal",
+          inputSchemaVersion: 1,
+          inputs: [{
+            assetId: "deleted-after-provider-submit",
+            kind: "image",
+            order: 1,
+            role: "reference-image",
+            sourceNodeId: "deleted-after-provider-submit-source",
+          }],
+          outputCount: 1,
+          resolution: "480p",
+        },
+        providerModelId: "doubao-seedance-2-0-mini-260615",
+        providerProfileId: arkProfileId,
+        providerTaskId: "already-paid-video-provider-task",
+      });
 
       const recordedBeforeRetries = generationProviderAttemptCounts(database);
       for (const id of [
@@ -1315,6 +1594,13 @@ test("only capability success or an explicit Provider/model update clears an aut
       );
       expect(safelyRetryable.status).toBe(200);
       expect(await safelyRetryable.json()).toMatchObject({
+        retryAllowed: true,
+      });
+      const paidJobWithDeletedMedia = await incidentRequest(
+        "/api/generation-tasks/retry-video-existing-job-deleted-media",
+      );
+      expect(paidJobWithDeletedMedia.status).toBe(200);
+      expect(await paidJobWithDeletedMedia.json()).toMatchObject({
         retryAllowed: true,
       });
       for (const id of [

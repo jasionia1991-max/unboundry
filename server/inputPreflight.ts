@@ -23,9 +23,11 @@ const persistedTrustedMediaKeys = [
   "mediaByteSize",
   "mediaContentType",
   "mediaDurationSeconds",
+  "mediaHeight",
   "mediaMetadataSource",
   "mediaMetadataStatus",
   "mediaStorageBackend",
+  "mediaWidth",
 ] as const;
 
 function authoritativeMediaNodes(
@@ -65,6 +67,7 @@ function authoritativeMediaNodes(
     data.mediaByteSize = media.byteSize;
     data.mediaContentType = media.contentType;
     data.mediaDurationSeconds = media.durationSeconds ?? undefined;
+    data.mediaHeight = media.mediaHeight ?? undefined;
     data.mediaMetadataSource = "server";
     data.mediaMetadataStatus = kind === "image"
       ? "ready"
@@ -72,6 +75,7 @@ function authoritativeMediaNodes(
         ? "failed"
         : media.durationStatus;
     data.mediaStorageBackend = media.storageBackend;
+    data.mediaWidth = media.mediaWidth ?? undefined;
     if (kind === "video") {
       data.videoHeight = media.mediaHeight ?? undefined;
       data.videoWidth = media.mediaWidth ?? undefined;

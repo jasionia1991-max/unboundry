@@ -11,6 +11,7 @@ import {
 } from "./httpRequest";
 import { hasPermission } from "./permissions";
 import {
+  accountDeletionBlocksTemplateMutation,
   listPublicTemplates,
   parsePublicCategory,
   publicTemplateCard,
@@ -47,6 +48,18 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   response.end(JSON.stringify(body));
+}
+
+function respondAccountDeleteConflict(
+  response: ServerResponse,
+  error: unknown,
+) {
+  if (!accountDeletionBlocksTemplateMutation(error)) return false;
+  json(response, 409, {
+    code: "ACCOUNT_DELETE_ACTIVE",
+    error: "账号删除正在进行，不能再修改公共模板",
+  });
+  return true;
 }
 
 function boundedInteger(value: string | null, fallback: number, maximum: number) {
@@ -370,6 +383,7 @@ export async function adminTemplatesApi(
       });
     } catch (error) {
       if (error instanceof HttpRequestError) throw error;
+      if (respondAccountDeleteConflict(response, error)) return;
       json(response, 400, {
         error: error instanceof Error ? error.message : "公共模板保存失败",
       });
@@ -396,6 +410,7 @@ export async function adminTemplatesApi(
       });
     } catch (error) {
       if (error instanceof HttpRequestError) throw error;
+      if (respondAccountDeleteConflict(response, error)) return;
       const message = error instanceof Error ? error.message : "公共模板更新失败";
       json(response, message === "公共模板不存在" ? 404 : 400, {
         error: message,
@@ -414,6 +429,7 @@ export async function adminTemplatesApi(
         status: row.status,
       });
     } catch (error) {
+      if (respondAccountDeleteConflict(response, error)) return;
       const message = error instanceof Error ? error.message : "公共模板归档失败";
       json(response, message === "公共模板不存在" ? 404 : 400, {
         error: message,

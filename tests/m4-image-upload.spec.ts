@@ -73,8 +73,6 @@ test.afterEach(async ({ request }) => {
     }
     await request.delete(`/api/canvas/${id}`);
   }
-  await request.delete("/api/assets/reject-malformed");
-  await request.delete("/api/assets/reject-oversized");
 });
 
 test("canvas upload creates a durable Image node without generation history or menu collisions", async ({
@@ -119,17 +117,21 @@ test("canvas upload creates a durable Image node without generation history or m
       inputState: string;
       mediaByteSize: number;
       mediaContentType: string;
+      mediaHeight: number;
       mediaMetadataSource: string;
       mediaMetadataStatus: string;
       mediaStorageBackend: string;
+      mediaWidth: number;
     } }>;
   };
   expect(document.nodes[0].data).toMatchObject({
     inputState: "ready",
     mediaContentType: "image/png",
+    mediaHeight: 720,
     mediaMetadataSource: "server",
     mediaMetadataStatus: "ready",
     mediaStorageBackend: "local",
+    mediaWidth: 1280,
   });
   expect(document.nodes[0].data.mediaByteSize).toBeGreaterThan(0);
   const asset = await request.get(
@@ -145,6 +147,8 @@ test("canvas upload creates a durable Image node without generation history or m
     byteSize: document.nodes[0].data.mediaByteSize,
     contentType: "image/png",
     durationStatus: "not-applicable",
+    mediaHeight: 720,
+    mediaWidth: 1280,
     storageBackend: "local",
   });
   const history = await (

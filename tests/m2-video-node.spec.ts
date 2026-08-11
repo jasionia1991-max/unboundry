@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { openAppDatabase } from "../server/database";
 
 const mediaDirectory = mkdtempSync(join(tmpdir(), "unboundry-video-node-test-"));
 const videoFile = join(mediaDirectory, "probe.mp4");
@@ -109,6 +110,28 @@ test("Video success shows playable media and adds one history item without quota
   });
   await request.delete("/api/canvas/node.video.success");
   await request.delete("/api/history/fixture-video-success");
+  const dataDirectoryResponse = await request.get("/api/test-data-directory");
+  expect(dataDirectoryResponse.ok()).toBeTruthy();
+  const { dataDirectory } = await dataDirectoryResponse.json() as {
+    dataDirectory: string;
+  };
+  const store = openAppDatabase(dataDirectory);
+  const timestamp = new Date().toISOString();
+  store.prepare(`
+    INSERT INTO media_assets (
+      kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+      storage_status
+    )
+    VALUES (
+      'video', 'history-video-1', '__test__', 'history-video-1.fixture',
+      1, ?, ?, 'ready'
+    )
+    ON CONFLICT(kind, id) DO UPDATE SET
+      owner_id = excluded.owner_id,
+      storage_status = 'ready',
+      updated_at = excluded.updated_at
+  `).run(timestamp, timestamp);
+  store.close();
   await page.goto("/__fixture/node.video.success");
 
   const world = page.getByTestId("canvas-world");

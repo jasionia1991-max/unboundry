@@ -445,15 +445,15 @@ function preflight() {
     new Set(manifested).size !== manifested.length ||
     manifested.join("\n") !== specs.join("\n")
   ) {
-    fail("safe test manifest must be a duplicate-free exact 107-spec partition");
+    fail("safe test manifest must be a duplicate-free exact 109-spec partition");
   }
-  const expectedModeCounts = { dev: 74, hybrid: 4, node: 19, preview: 2, self: 8 };
+  const expectedModeCounts = { dev: 74, hybrid: 4, node: 21, preview: 2, self: 8 };
   for (const mode of expectedModes) {
     if (manifest[mode].length !== expectedModeCounts[mode]) {
       fail(`unexpected ${mode} spec count ${manifest[mode].length}`);
     }
   }
-  if (specs.length !== 107) fail(`expected 107 isolated specs, found ${specs.length}`);
+  if (specs.length !== 109) fail(`expected 109 isolated specs, found ${specs.length}`);
 
   const packageJson = JSON.parse(
     readFileSync(join(repositoryRoot, "package.json"), "utf8"),
@@ -1082,8 +1082,8 @@ async function discover(specs, suiteRoot, sourceRoot, browserRoot) {
         })}`,
       );
     }
-    if (discovery.tests < 519) {
-      fail(`the historical 519-test baseline shrank to ${discovery.tests}`);
+    if (discovery.tests !== 762) {
+      fail(`the frozen 762-test inventory changed to ${discovery.tests}`);
     }
     const idsByFile = {};
     const { entries } = collectReportEntries(reportFile, sourceRoot);

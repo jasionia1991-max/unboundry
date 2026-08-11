@@ -35,6 +35,8 @@ export type GenerationTaskSummary = {
     contentType: string;
     durationSeconds: number | null;
     durationStatus: "failed" | "not-applicable" | "pending" | "ready";
+    mediaHeight: number | null;
+    mediaWidth: number | null;
     storageBackend: "local" | "oss";
   };
   resultText?: string;

@@ -20,6 +20,7 @@ import {
   GenerationRequestError,
   submitVideoGeneration,
 } from "../client/src/generation/generationTasks";
+import { trustedMediaPatch } from "../client/src/canvas/mediaInputMetadata";
 
 function media(input: Partial<MediaRecord> = {}): MediaRecord {
   return {
@@ -133,6 +134,97 @@ test("reference media rules are model-driven: generic tasks are not bound by the
   })).toContain("2至30秒之间");
 });
 
+test("generic trusted dimensions cover Image and Video and fail closed when constrained dimensions are missing", () => {
+  const schema = knownModelParameterSchema({
+    capability: "video",
+    providerDriver: "volcengine-ark",
+    providerModelId: "doubao-seedance-2-0-mini-260615",
+  });
+  const resolve = (
+    kind: "image" | "video",
+    dimensions: Record<string, unknown>,
+  ) => resolveNodeInputs({
+    edges: [{
+      data: { inputOrder: 1 },
+      id: `edge-${kind}`,
+      source: `source-${kind}`,
+      target: "target-video",
+    }],
+    modelSchema: schema,
+    nodes: [
+      {
+        data: {
+          assetId: `trusted-${kind}.${kind === "image" ? "png" : "mp4"}`,
+          [`${kind}Src`]: `/api/${kind}/trusted-${kind}`,
+          mediaByteSize: 1_024,
+          mediaContentType: kind === "image" ? "image/png" : "video/mp4",
+          mediaDurationSeconds: kind === "video" ? 5 : undefined,
+          mediaMetadataSource: "server",
+          mediaMetadataStatus: "ready",
+          mediaStorageBackend: "oss",
+          title: `可信${kind}`,
+          ...dimensions,
+        },
+        id: `source-${kind}`,
+        type: kind,
+      },
+      {
+        data: { title: "目标视频", videoPrompt: "验证通用可信尺寸" },
+        id: "target-video",
+        type: "video",
+      },
+    ],
+    ownPrompt: "验证通用可信尺寸",
+    parameters: { inputMode: "multimodal" },
+    targetId: "target-video",
+    targetKind: "video",
+  });
+
+  const image = resolve("image", { mediaHeight: 100, mediaWidth: 100 });
+  expect(image.inputs[0]).toMatchObject({ mediaHeight: 100, mediaWidth: 100 });
+  expect(image.problems).toContainEqual(expect.objectContaining({
+    edgeId: "edge-image",
+    message: expect.stringContaining("宽度需至少300px"),
+  }));
+
+  const video = resolve("video", { mediaHeight: 360, mediaWidth: 640 });
+  expect(video.inputs[0]).toMatchObject({ mediaHeight: 360, mediaWidth: 640 });
+  expect(video.problems).toContainEqual(expect.objectContaining({
+    edgeId: "edge-video",
+    message: expect.stringContaining("分辨率过低"),
+  }));
+
+  const missing = resolve("image", {
+    imageHeight: 720,
+    imageWidth: 1_280,
+  });
+  expect(missing.inputs[0]).toMatchObject({
+    compatibility: "blocked",
+    mediaHeight: undefined,
+    mediaWidth: undefined,
+  });
+  expect(missing.problems).toContainEqual(expect.objectContaining({
+    edgeId: "edge-image",
+    message: expect.stringContaining("分辨率尚未经过服务端校验"),
+  }));
+
+  expect(trustedMediaPatch({
+    assetId: "trusted-image.png",
+    byteSize: 1_024,
+    contentType: "image/png",
+    durationSeconds: null,
+    durationStatus: "not-applicable",
+    kind: "image",
+    mediaHeight: 720,
+    mediaWidth: 1_280,
+    storageBackend: "local",
+  })).toMatchObject({
+    mediaHeight: 720,
+    mediaMetadataSource: "server",
+    mediaWidth: 1_280,
+  });
+});
+
 test("Ark paid-video media policy enforces separate 15-second totals and forbids audio-only input", () => {
   const image = media({
     contentType: "image/png",
@@ -216,6 +308,9 @@ test("Video UI policy uses server metadata and assigns totals and Base64 failure
       mediaMetadataSource: "server",
       mediaMetadataStatus: "ready",
       title: id,
+      ...(kind === "image" || kind === "video"
+        ? { mediaHeight: 720, mediaWidth: 1_280 }
+        : {}),
       ...data,
     },
     id,
@@ -699,7 +794,6 @@ test.describe.serial("trusted duration blocks an invalid paid Video request befo
     integrationModelId = (await modelResponse.json() as { model: { id: string } }).model.id;
 
     for (let index = 0; index < integrationAssetIds.length; index += 1) {
-      await request.delete(`/api/video-assets/${integrationAssetIds[index]}`);
       const response = await request.post(
         `/api/video-assets/${integrationAssetIds[index]}`,
         {

@@ -264,6 +264,18 @@ test("template cover follows generation result then graph asset then gradient", 
       .run(timestamp, timestamp);
     store
       .prepare(`
+        INSERT INTO media_assets (
+          kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+          storage_status
+        )
+        VALUES (
+          'image', 'graph-asset', '__test__', 'graph-asset.png', 1, ?, ?,
+          'pending'
+        )
+      `)
+      .run(timestamp, timestamp);
+    store
+      .prepare(`
         INSERT INTO generation_tasks (
           id, canvas_id, node_id, kind, prompt, model, parameters,
           idempotency_key, request_fingerprint, state, attempt, owner_id,
@@ -296,22 +308,49 @@ test("template cover follows generation result then graph asset then gradient", 
     kind: "image",
   });
 
+  const graphCover = {
+    edges: [],
+    nodes: [
+      {
+        data: { assetId: "graph-asset", label: "Image", title: "素材图" },
+        id: "asset-node",
+        position: { x: 0, y: 0 },
+        style: { height: 250, width: 250 },
+        type: "image",
+        zIndex: 1,
+      },
+    ],
+    version: 1,
+  };
+  const pendingGraph = await request.post("/api/templates", {
+    data: {
+      graph: graphCover,
+      title: "未发布素材不做封面",
+    },
+  });
+  expect(pendingGraph.status()).toBe(201);
+  const pendingGraphCard = (await pendingGraph.json()) as {
+    template: UserTemplateCard;
+  };
+  expect(pendingGraphCard.template.cover).toBeNull();
+  expect(pendingGraphCard.template.previewImage).toBeUndefined();
+
+  const readyStore = openAppDatabase(dataDirectory);
+  try {
+    readyStore
+      .prepare(`
+        UPDATE media_assets
+        SET storage_status = 'ready', updated_at = ?
+        WHERE kind = 'image' AND id = 'graph-asset' AND owner_id = '__test__'
+      `)
+      .run(new Date().toISOString());
+  } finally {
+    readyStore.close();
+  }
+
   const fromGraph = await request.post("/api/templates", {
     data: {
-      graph: {
-        edges: [],
-        nodes: [
-          {
-            data: { assetId: "graph-asset", label: "Image", title: "素材图" },
-            id: "asset-node",
-            position: { x: 0, y: 0 },
-            style: { height: 250, width: 250 },
-            type: "image",
-            zIndex: 1,
-          },
-        ],
-        version: 1,
-      },
+      graph: graphCover,
       title: "封面来自素材",
     },
   });

@@ -39,6 +39,36 @@ function mediaNodeKind(value: unknown): value is MediaNodeKind {
   return value === "audio" || value === "image" || value === "video";
 }
 
+export type PersistedMediaReference = Readonly<{
+  assetId: string;
+  kind: MediaNodeKind;
+}>;
+
+/** Only top-level durable media nodes can adopt an upload publication. */
+export function persistedMediaReferences(
+  nodes: readonly unknown[],
+): PersistedMediaReference[] {
+  const references = new Map<string, PersistedMediaReference>();
+  for (const raw of nodes) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const node = raw as Record<string, unknown>;
+    if (!mediaNodeKind(node.type)) continue;
+    if (!node.data || typeof node.data !== "object" || Array.isArray(node.data)) {
+      continue;
+    }
+    const value = (node.data as Record<string, unknown>).assetId;
+    const assetId = typeof value === "string" ? value.trim() : "";
+    if (!assetId || assetId.length > 120 || !/^[a-z0-9._-]+$/i.test(assetId)) {
+      continue;
+    }
+    references.set(`${node.type}\0${assetId}`, {
+      assetId,
+      kind: node.type,
+    });
+  }
+  return [...references.values()];
+}
+
 function isTemporaryOrRemoteSource(value: unknown): value is string {
   return (
     typeof value === "string" &&

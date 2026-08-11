@@ -557,6 +557,13 @@ test("cover priority and delete rows are enforced at the store level", () => {
       )
       VALUES (?, 'u1', 'U1', 'x', 'user', 'active', ?, ?)
     `).run(ownerId, new Date().toISOString(), new Date().toISOString());
+    db.prepare(`
+      INSERT INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      )
+      VALUES ('u2', 'u2', 'U2', 'x', 'user', 'active', ?, ?)
+    `).run(new Date().toISOString(), new Date().toISOString());
     const now = Date.now();
     db.prepare(`
       INSERT INTO project_metadata (
@@ -607,6 +614,31 @@ test("cover priority and delete rows are enforced at the store level", () => {
       ownerId,
       projectId,
     );
+    db.prepare(`
+      INSERT INTO media_assets (
+        kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+        storage_status
+      )
+      VALUES ('image', 'node-asset', 'u2', 'node-asset.png', 1, ?, ?, 'ready')
+    `).run(new Date(now).toISOString(), new Date(now).toISOString());
+    expect(projectCover(db, row, ownerId)).toEqual({
+      assetId: null,
+      kind: null,
+    });
+    db.prepare(`
+      UPDATE media_assets
+      SET owner_id = ?, storage_status = 'pending'
+      WHERE kind = 'image' AND id = 'node-asset'
+    `).run(ownerId);
+    expect(projectCover(db, row, ownerId)).toEqual({
+      assetId: null,
+      kind: null,
+    });
+    db.prepare(`
+      UPDATE media_assets
+      SET storage_status = 'ready'
+      WHERE kind = 'image' AND id = 'node-asset'
+    `).run();
     expect(projectCover(db, row, ownerId)).toEqual({
       assetId: "node-asset",
       kind: "image",
@@ -626,6 +658,31 @@ test("cover priority and delete rows are enforced at the store level", () => {
       new Date(now + 10_000).toISOString(),
       ownerId,
     );
+    db.prepare(`
+      INSERT INTO media_assets (
+        kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+        storage_status
+      )
+      VALUES ('video', 'result-video', 'u2', 'result-video.mp4', 1, ?, ?, 'ready')
+    `).run(new Date(now).toISOString(), new Date(now).toISOString());
+    expect(projectCover(db, row, ownerId)).toEqual({
+      assetId: "node-asset",
+      kind: "image",
+    });
+    db.prepare(`
+      UPDATE media_assets
+      SET owner_id = ?, storage_status = 'pending'
+      WHERE kind = 'video' AND id = 'result-video'
+    `).run(ownerId);
+    expect(projectCover(db, row, ownerId)).toEqual({
+      assetId: "node-asset",
+      kind: "image",
+    });
+    db.prepare(`
+      UPDATE media_assets
+      SET storage_status = 'ready'
+      WHERE kind = 'video' AND id = 'result-video'
+    `).run();
     expect(projectCover(db, row, ownerId)).toEqual({
       assetId: "result-video",
       kind: "video",
@@ -642,6 +699,31 @@ test("cover priority and delete rows are enforced at the store level", () => {
       )
       VALUES ('task-1', 1, 'profile', 'model', 'video', 'provider-boundary', ?)
     `).run(new Date(now + 10_000).toISOString());
+
+    db.prepare(`
+      INSERT INTO generation_tasks (
+        id, canvas_id, node_id, kind, prompt, parameters, idempotency_key,
+        request_fingerprint, state, attempt, created_at, updated_at, owner_id
+      )
+      VALUES ('task-u2', ?, 'u2-node', 'image', 'u2', '{}', 'u2-key',
+        'u2-fingerprint', 'failed', 1, ?, ?, 'u2')
+    `).run(
+      projectId,
+      new Date(now).toISOString(),
+      new Date(now + 11_000).toISOString(),
+    );
+    db.prepare(`
+      INSERT INTO generation_task_events (
+        task_id, state, error_code, error_message, created_at
+      ) VALUES ('task-u2', 'failed', 'FIXTURE', 'u2 survives', ?)
+    `).run(new Date(now + 11_000).toISOString());
+    db.prepare(`
+      INSERT INTO generation_provider_attempts (
+        task_id, execution_attempt, provider_profile_id, provider_model_id,
+        kind, evidence, created_at
+      ) VALUES ('task-u2', 1, 'profile', 'model', 'image',
+        'provider-boundary', ?)
+    `).run(new Date(now + 11_000).toISOString());
 
     deleteProjectRows(db, ownerId, projectId, now + 20_000, false);
     const tombstone = db.prepare(`
@@ -671,6 +753,20 @@ test("cover priority and delete rows are enforced at the store level", () => {
         "SELECT 1 FROM generation_provider_attempts WHERE task_id = 'task-1'",
       ).get(),
     ).toBeUndefined();
+    expect(
+      db.prepare("SELECT owner_id FROM generation_tasks WHERE id = 'task-u2'")
+        .get(),
+    ).toEqual({ owner_id: "u2" });
+    expect(
+      db.prepare("SELECT state FROM generation_task_events WHERE task_id = 'task-u2'")
+        .get(),
+    ).toEqual({ state: "failed" });
+    expect(
+      db.prepare(`
+        SELECT evidence FROM generation_provider_attempts
+        WHERE task_id = 'task-u2'
+      `).get(),
+    ).toEqual({ evidence: "provider-boundary" });
     db.close();
   } finally {
     rmSync(directory, { force: true, recursive: true });

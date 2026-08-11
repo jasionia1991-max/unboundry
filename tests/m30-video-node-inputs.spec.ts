@@ -16,6 +16,7 @@ import {
   type ModelParameterSchema,
 } from "../types/modelParameters";
 import { openAppDatabase } from "../server/database";
+import { resolvePersistedNodeInputs } from "../server/inputPreflight";
 
 const seedanceSchema = knownModelParameterSchema({
   capability: "video",
@@ -80,7 +81,9 @@ function readyMediaNode(
       mediaMetadataStatus: "ready",
       mediaStorageBackend: kind === "video" ? "oss" : "local",
       title: `${kind}-${index}`,
-      ...(kind === "video" ? { videoHeight: 720, videoWidth: 1_280 } : {}),
+      ...(kind === "image" || kind === "video"
+        ? { mediaHeight: 720, mediaWidth: 1_280 }
+        : {}),
       ...data,
     },
     id,
@@ -398,11 +401,6 @@ async function ensureServerModel(request: APIRequestContext) {
 }
 
 async function uploadServerMedia(request: APIRequestContext) {
-  await Promise.all([
-    request.delete(`/api/assets/${serverImageAssetId}`),
-    request.delete(`/api/video-assets/${serverVideoAssetId}`),
-    request.delete(`/api/audio-assets/${serverAudioAssetId}`),
-  ]);
   const [image, video, audio] = await Promise.all([
     readFile(resolve(
       process.cwd(),
@@ -436,6 +434,7 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
 
   test.afterAll(async ({ request }) => {
     await request.delete(`/api/canvas/${serverCanvasId}`);
+    await request.delete(`/api/canvas/${serverCanvasId}-image-dimensions`);
     await request.delete("/api/canvas/node.video.empty");
     await Promise.all([
       request.delete(`/api/assets/${serverImageAssetId}`),
@@ -567,6 +566,140 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
       `/api/generation-tasks?canvasId=${encodeURIComponent(serverCanvasId)}`,
     )).json() as { tasks: unknown[] };
     expect(tasks.tasks).toEqual([]);
+    const after = await (await request.get("/api/generation-tasks/status")).json() as {
+      paidProviderRequests: number;
+    };
+    expect(after.paidProviderRequests).toBe(before.paidProviderRequests);
+  });
+
+  test("server preflight replaces forged Image dimensions with ready owner metadata and fails closed when dimensions are missing", async ({
+    request,
+  }) => {
+    const canvasId = `${serverCanvasId}-image-dimensions`;
+    await request.delete(`/api/canvas/${canvasId}`);
+    const saved = await request.put(`/api/canvas/${canvasId}`, {
+      data: {
+        edges: [{
+          data: { inputOrder: 1, inputRole: "subject" },
+          id: "authoritative-image-edge",
+          source: "authoritative-image",
+          target: "authoritative-video",
+        }],
+        nodes: [
+          {
+            data: {
+              assetId: serverImageAssetId,
+              imageSrc: `/api/assets/${serverImageAssetId}`,
+              inputState: "ready",
+              mediaByteSize: 1,
+              mediaContentType: "image/png",
+              mediaHeight: 720,
+              mediaMetadataSource: "server",
+              mediaMetadataStatus: "ready",
+              mediaStorageBackend: "local",
+              mediaWidth: 800,
+              title: "客户端伪造尺寸的图片",
+            },
+            id: "authoritative-image",
+            type: "image",
+          },
+          {
+            data: {
+              title: "权威尺寸目标",
+              videoPrompt: "必须使用数据库中的图片尺寸",
+            },
+            id: "authoritative-video",
+            type: "video",
+          },
+        ],
+        revision: 0,
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+    expect(saved.ok()).toBeTruthy();
+    const revision = (await saved.json() as { revision: number }).revision;
+    const before = await (await request.get("/api/generation-tasks/status")).json() as {
+      paidProviderRequests: number;
+    };
+    const metadataResponse = await request.get(
+      `/api/media-metadata/image/${serverImageAssetId}`,
+    );
+    expect(metadataResponse.ok()).toBeTruthy();
+    expect(await metadataResponse.json()).toMatchObject({
+      mediaHeight: 720,
+      mediaWidth: 1_280,
+    });
+
+    const dimensionSchema: ModelParameterSchema = {
+      ...serverSchema,
+      referenceMediaRules: {
+        ...serverSchema.referenceMediaRules!,
+        image: {
+          ...serverSchema.referenceMediaRules!.image!,
+          maxWidth: 1_000,
+        },
+      },
+    };
+    const resolve = () => resolvePersistedNodeInputs({
+      bypass: true,
+      canvasId,
+      expectedRevision: revision,
+      modelSchema: dimensionSchema,
+      ownerId: "__test__",
+      parameters: { inputMode: "multimodal" },
+      targetId: "authoritative-video",
+      targetKind: "video",
+    });
+    const database = openAppDatabase();
+    const original = database.prepare(`
+      SELECT media_height, media_width
+      FROM media_assets
+      WHERE owner_id = '__test__' AND kind = 'image' AND id = ?
+    `).get(serverImageAssetId) as {
+      media_height: number | null;
+      media_width: number | null;
+    } | undefined;
+    try {
+      expect(original).toEqual({ media_height: 720, media_width: 1_280 });
+      const authoritative = resolve();
+      expect(authoritative.canSubmit).toBeFalsy();
+      expect(authoritative.inputs[0]).toMatchObject({
+        compatibility: "blocked",
+        mediaHeight: 720,
+        mediaWidth: 1_280,
+      });
+      expect(authoritative.problems).toContainEqual(expect.objectContaining({
+        edgeId: "authoritative-image-edge",
+        message: expect.stringContaining("宽度需不超过1000px"),
+      }));
+
+      expect(database.prepare(`
+        UPDATE media_assets
+        SET media_height = NULL, media_width = NULL
+        WHERE owner_id = '__test__' AND kind = 'image' AND id = ?
+      `).run(serverImageAssetId).changes).toBe(1);
+      const missing = resolve();
+      expect(missing.canSubmit).toBeFalsy();
+      expect(missing.inputs[0]).toMatchObject({
+        compatibility: "blocked",
+        mediaHeight: undefined,
+        mediaWidth: undefined,
+      });
+      expect(missing.problems).toContainEqual(expect.objectContaining({
+        edgeId: "authoritative-image-edge",
+        message: expect.stringContaining("分辨率尚未经过服务端校验"),
+      }));
+    } finally {
+      if (original) {
+        database.prepare(`
+          UPDATE media_assets
+          SET media_height = ?, media_width = ?
+          WHERE owner_id = '__test__' AND kind = 'image' AND id = ?
+        `).run(original.media_height, original.media_width, serverImageAssetId);
+      }
+      database.close();
+      await request.delete(`/api/canvas/${canvasId}`);
+    }
     const after = await (await request.get("/api/generation-tasks/status")).json() as {
       paidProviderRequests: number;
     };

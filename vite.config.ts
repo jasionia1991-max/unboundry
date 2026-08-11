@@ -17,6 +17,10 @@ import { audioStorage } from "./server/audioStorage";
 import { videoStorage } from "./server/videoStorage";
 import { mediaMetadataApi } from "./server/mediaMetadataApi";
 import { generationTasks } from "./server/generationTasks";
+import {
+  mediaLifecycleStartupRecoveryAllowsReadiness,
+  recoverMediaLifecycleAtProcessStartup,
+} from "./server/mediaLifecycle";
 import { groupDownloadApi } from "./server/groupDownload";
 import {
   adminGenerationSafetyApi,
@@ -73,7 +77,9 @@ type ApiHandler = (
   next: ApiNext,
 ) => Promise<void> | void;
 
-const runtimeLifecycle = createRuntimeLifecycle();
+const runtimeLifecycle = createRuntimeLifecycle({
+  readinessDatabaseGuard: mediaLifecycleStartupRecoveryAllowsReadiness,
+});
 type SignalListener = (...args: any[]) => void;
 let capturedViteSigtermListener: SignalListener | undefined;
 let restoreSigtermCapture: (() => void) | undefined;
@@ -659,6 +665,20 @@ function generationTaskApi(): Plugin {
   };
 }
 
+function mediaLifecycleStartupRecovery(): Plugin {
+  const recover = async () => {
+    // Vite awaits async configure hooks before accepting requests. Unexpected
+    // database failures therefore fail startup visibly; per-object physical
+    // failures remain durable failed/compensating rows and do not become ready.
+    await recoverMediaLifecycleAtProcessStartup();
+  };
+  return {
+    name: "unboundry-media-lifecycle-startup-recovery",
+    configurePreviewServer: recover,
+    configureServer: recover,
+  };
+}
+
 export default defineConfig(({ command }) => {
   if (command === "serve") armViteSigtermCapture();
   return {
@@ -666,6 +686,7 @@ export default defineConfig(({ command }) => {
     envDir: process.env.UNBOUNDRY_SAFE_TEST === "1" ? false : undefined,
     plugins: [
       react(),
+      mediaLifecycleStartupRecovery(),
       devFixtureApi(),
       runtimeFoundationApi(),
       testDataDirectoryApi(),

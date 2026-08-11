@@ -152,7 +152,7 @@ const zeroModelIds = new Set<string>();
 const garmentAssetId = "fixture-garment-image";
 
 async function ensureGarmentAsset(request: APIRequestContext) {
-  await request.delete(`/api/assets/${garmentAssetId}`);
+  if ((await request.get(`/api/assets/${garmentAssetId}`)).ok()) return;
   const bytes = await readFile(resolve(
     process.cwd(),
     "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",

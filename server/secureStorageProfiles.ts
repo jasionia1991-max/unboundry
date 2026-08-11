@@ -12,7 +12,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
-import { appDataDirectory } from "./database.ts";
+import { appDataDirectory, openAppDatabase } from "./database.ts";
 
 export type StorageProfileStatus = "active" | "draft" | "verified";
 
@@ -31,6 +31,11 @@ export type AliyunStorageProfile = {
   updatedAt: string;
 };
 
+export type StorageMediaRouting = Readonly<{
+  enabled: boolean;
+  profile?: AliyunStorageProfile;
+}>;
+
 type StorageProfileDocument = {
   activeProfileId?: string;
   mediaRoutingEnabled?: boolean;
@@ -46,6 +51,22 @@ type EncryptedDocument = {
 };
 
 const associatedData = Buffer.from("unboundry:storage-profiles:v1", "utf8");
+
+let documentMutationTail: Promise<void> = Promise.resolve();
+
+async function withDocumentMutationLock<T>(operation: () => Promise<T>) {
+  const previous = documentMutationTail;
+  let release!: () => void;
+  documentMutationTail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+  }
+}
 
 function paths() {
   const directory = join(appDataDirectory(), "secrets");
@@ -159,6 +180,28 @@ async function writeDocument(document: StorageProfileDocument) {
   await chmod(target.profiles, 0o600);
 }
 
+function storageProfileHasDurableReferences(profileId: string) {
+  const database = openAppDatabase();
+  try {
+    return Boolean(database.prepare(`
+      SELECT 1 FROM media_assets
+      WHERE storage_backend = 'oss' AND storage_profile_id = ?
+      UNION ALL
+      SELECT 1 FROM media_publication_attempts
+      WHERE storage_backend = 'oss' AND storage_profile_id = ?
+      LIMIT 1
+    `).get(profileId, profileId));
+  } finally {
+    database.close();
+  }
+}
+
+function assertStorageProfileNotRetained(profileId: string) {
+  if (storageProfileHasDurableReferences(profileId)) {
+    throw new Error("Storage profile is retained by registered media");
+  }
+}
+
 function text(value: unknown, maximum: number) {
   return typeof value === "string" ? value.trim().slice(0, maximum) : "";
 }
@@ -260,6 +303,26 @@ export async function readableStorageProfile() {
   return profile;
 }
 
+/**
+ * Resolve the currently readable profile and create its durable publication
+ * references while profile-document mutations are serialized. Once the
+ * callback returns, an active journal row protects the fixed credentials from
+ * deletion or in-place replacement until compensation finishes.
+ */
+export async function withReadableStorageProfileReservation<T>(
+  operation: (profile: AliyunStorageProfile) => Promise<T> | T,
+) {
+  return withDocumentMutationLock(async () => {
+    const document = await readDocument();
+    const profile = document.profiles.find(
+      (candidate) =>
+        candidate.id === document.activeProfileId &&
+        (candidate.status === "active" || candidate.status === "verified"),
+    );
+    return profile ? operation(profile) : undefined;
+  });
+}
+
 export async function storageProfileById(
   profileId: string | null | undefined,
 ) {
@@ -278,11 +341,22 @@ export async function storageProfileById(
 export async function storageProfileForMedia(
   media: { storageProfileId?: string | null } | null | undefined,
 ) {
-  if (media?.storageProfileId) {
-    const profile = await storageProfileById(media.storageProfileId);
-    if (profile) return profile;
+  if (
+    media &&
+    media.storageProfileId !== null &&
+    media.storageProfileId !== undefined
+  ) {
+    return storageProfileById(media.storageProfileId);
   }
   return readableStorageProfile();
+}
+
+/** Destructive operations must never guess a legacy object's bucket. */
+export async function storageProfileForDestructiveMedia(
+  media: { storageProfileId?: string | null } | null | undefined,
+) {
+  if (!media?.storageProfileId) return undefined;
+  return storageProfileById(media.storageProfileId);
 }
 
 /**
@@ -290,32 +364,34 @@ export async function storageProfileForMedia(
  * 恢复为 active，并把被掩盖的云路由开关复位为关闭（本地优先）。
  */
 export async function repairStorageProfileState() {
-  const document = await readDocument();
-  const profile = document.profiles.find(
-    (candidate) => candidate.id === document.activeProfileId,
-  );
-  if (!profile || profile.status !== "verified") {
+  return withDocumentMutationLock(async () => {
+    const document = await readDocument();
+    const profile = document.profiles.find(
+      (candidate) => candidate.id === document.activeProfileId,
+    );
+    if (!profile || profile.status !== "verified") {
+      return {
+        changed: false,
+        activeProfileId: document.activeProfileId ?? "",
+        mediaRoutingEnabled: Boolean(document.mediaRoutingEnabled),
+        profile: profile
+          ? { id: profile.id, label: profile.label, status: profile.status }
+          : undefined,
+      };
+    }
+    profile.status = "active";
+    profile.updatedAt = new Date().toISOString();
+    if (document.mediaRoutingEnabled) {
+      document.mediaRoutingEnabled = false;
+    }
+    await writeDocument(document);
     return {
-      changed: false,
+      changed: true,
       activeProfileId: document.activeProfileId ?? "",
       mediaRoutingEnabled: Boolean(document.mediaRoutingEnabled),
-      profile: profile
-        ? { id: profile.id, label: profile.label, status: profile.status }
-        : undefined,
+      profile: { id: profile.id, label: profile.label, status: profile.status },
     };
-  }
-  profile.status = "active";
-  profile.updatedAt = new Date().toISOString();
-  if (document.mediaRoutingEnabled) {
-    document.mediaRoutingEnabled = false;
-  }
-  await writeDocument(document);
-  return {
-    changed: true,
-    activeProfileId: document.activeProfileId ?? "",
-    mediaRoutingEnabled: Boolean(document.mediaRoutingEnabled),
-    profile: { id: profile.id, label: profile.label, status: profile.status },
-  };
+  });
 }
 
 export async function storageMediaRoutingState() {
@@ -331,107 +407,147 @@ export async function storageMediaRoutingState() {
   };
 }
 
+/**
+ * Hold the profile-document mutation lock from routing resolution through the
+ * synchronous journal reservation callback. A selected profile therefore
+ * gains its durable database reference before it can be switched away and
+ * edited or deleted under the same ID.
+ */
+export async function withStorageMediaRoutingReservation<T>(
+  reserve: (routing: StorageMediaRouting) => T,
+  execution?: {
+    afterRead?: (routing: StorageMediaRouting) => Promise<void> | void;
+  },
+) {
+  return withDocumentMutationLock(async () => {
+    const document = await readDocument();
+    const profile = document.profiles.find(
+      (candidate) =>
+        candidate.id === document.activeProfileId &&
+        candidate.status === "active",
+    );
+    const routing: StorageMediaRouting = {
+      enabled: Boolean(document.mediaRoutingEnabled && profile),
+      profile,
+    };
+    await execution?.afterRead?.(routing);
+    return reserve(routing);
+  });
+}
+
 export async function setStorageMediaRouting(enabled: boolean) {
-  const document = await readDocument();
-  const profile = document.profiles.find(
-    (candidate) =>
-      candidate.id === document.activeProfileId &&
-      candidate.status === "active",
-  );
-  if (enabled && !profile) {
-    throw new Error("Select a verified storage profile first");
-  }
-  document.mediaRoutingEnabled = enabled;
-  await writeDocument(document);
-  return {
-    enabled,
-    profile,
-  };
+  return withDocumentMutationLock(async () => {
+    const document = await readDocument();
+    const profile = document.profiles.find(
+      (candidate) =>
+        candidate.id === document.activeProfileId &&
+        candidate.status === "active",
+    );
+    if (enabled && !profile) {
+      throw new Error("Select a verified storage profile first");
+    }
+    document.mediaRoutingEnabled = enabled;
+    await writeDocument(document);
+    return {
+      enabled,
+      profile,
+    };
+  });
 }
 
 export async function saveStorageProfile(
   input: Record<string, unknown>,
   profileId?: string,
 ) {
-  const document = await readDocument();
-  const current = profileId
-    ? document.profiles.find((profile) => profile.id === profileId)
-    : undefined;
-  if (profileId && !current) throw new Error("Storage profile not found");
-  if (current?.status === "active") {
-    throw new Error("Create and verify a replacement for the active profile");
-  }
-  const cleaned = cleanProfileInput(input, current);
-  const timestamp = new Date().toISOString();
-  const profile: AliyunStorageProfile = {
-    ...cleaned,
-    createdAt: current?.createdAt ?? timestamp,
-    id: current?.id ?? randomUUID(),
-    provider: "aliyun-oss",
-    status: "draft",
-    updatedAt: timestamp,
-  };
-  document.profiles = current
-    ? document.profiles.map((candidate) =>
-        candidate.id === current.id ? profile : candidate,
-      )
-    : [...document.profiles, profile];
-  if (document.activeProfileId === profile.id) {
-    document.activeProfileId = undefined;
-  }
-  await writeDocument(document);
-  return profile;
+  return withDocumentMutationLock(async () => {
+    const document = await readDocument();
+    const current = profileId
+      ? document.profiles.find((profile) => profile.id === profileId)
+      : undefined;
+    if (profileId && !current) throw new Error("Storage profile not found");
+    if (current?.status === "active") {
+      throw new Error("Create and verify a replacement for the active profile");
+    }
+    if (current) assertStorageProfileNotRetained(current.id);
+    const cleaned = cleanProfileInput(input, current);
+    const timestamp = new Date().toISOString();
+    const profile: AliyunStorageProfile = {
+      ...cleaned,
+      createdAt: current?.createdAt ?? timestamp,
+      id: current?.id ?? randomUUID(),
+      provider: "aliyun-oss",
+      status: "draft",
+      updatedAt: timestamp,
+    };
+    document.profiles = current
+      ? document.profiles.map((candidate) =>
+          candidate.id === current.id ? profile : candidate,
+        )
+      : [...document.profiles, profile];
+    if (document.activeProfileId === profile.id) {
+      document.activeProfileId = undefined;
+    }
+    await writeDocument(document);
+    return profile;
+  });
 }
 
 export async function markStorageProfileVerified(profileId: string) {
-  const document = await readDocument();
-  const timestamp = new Date().toISOString();
-  const profile = document.profiles.find(
-    (candidate) => candidate.id === profileId,
-  );
-  if (!profile) throw new Error("Storage profile not found");
-  profile.lastVerifiedAt = timestamp;
-  if (profile.status !== "active") {
-    profile.status = "verified";
-  }
-  profile.updatedAt = timestamp;
-  await writeDocument(document);
-  return profile;
+  return withDocumentMutationLock(async () => {
+    const document = await readDocument();
+    const timestamp = new Date().toISOString();
+    const profile = document.profiles.find(
+      (candidate) => candidate.id === profileId,
+    );
+    if (!profile) throw new Error("Storage profile not found");
+    profile.lastVerifiedAt = timestamp;
+    if (profile.status !== "active") {
+      profile.status = "verified";
+    }
+    profile.updatedAt = timestamp;
+    await writeDocument(document);
+    return profile;
+  });
 }
 
 export async function activateStorageProfile(profileId: string) {
-  const document = await readDocument();
-  const profile = document.profiles.find(
-    (candidate) => candidate.id === profileId,
-  );
-  if (!profile || profile.status !== "verified") {
-    throw new Error("Only a verified storage profile can be activated");
-  }
-  const timestamp = new Date().toISOString();
-  for (const candidate of document.profiles) {
-    if (candidate.status === "active") candidate.status = "verified";
-  }
-  profile.status = "active";
-  profile.updatedAt = timestamp;
-  document.activeProfileId = profile.id;
-  document.mediaRoutingEnabled = false;
-  await writeDocument(document);
-  return profile;
+  return withDocumentMutationLock(async () => {
+    const document = await readDocument();
+    const profile = document.profiles.find(
+      (candidate) => candidate.id === profileId,
+    );
+    if (!profile || profile.status !== "verified") {
+      throw new Error("Only a verified storage profile can be activated");
+    }
+    const timestamp = new Date().toISOString();
+    for (const candidate of document.profiles) {
+      if (candidate.status === "active") candidate.status = "verified";
+    }
+    profile.status = "active";
+    profile.updatedAt = timestamp;
+    document.activeProfileId = profile.id;
+    document.mediaRoutingEnabled = false;
+    await writeDocument(document);
+    return profile;
+  });
 }
 
 export async function deleteStorageProfile(profileId: string) {
-  const document = await readDocument();
-  if (document.activeProfileId === profileId) {
-    throw new Error("Active storage profile cannot be deleted");
-  }
-  const next = document.profiles.filter(
-    (candidate) => candidate.id !== profileId,
-  );
-  if (next.length === document.profiles.length) {
-    throw new Error("Storage profile not found");
-  }
-  document.profiles = next;
-  await writeDocument(document);
+  return withDocumentMutationLock(async () => {
+    const document = await readDocument();
+    if (document.activeProfileId === profileId) {
+      throw new Error("Active storage profile cannot be deleted");
+    }
+    const next = document.profiles.filter(
+      (candidate) => candidate.id !== profileId,
+    );
+    if (next.length === document.profiles.length) {
+      throw new Error("Storage profile not found");
+    }
+    assertStorageProfileNotRetained(profileId);
+    document.profiles = next;
+    await writeDocument(document);
+  });
 }
 
 export async function encryptedStorageProfilePath() {

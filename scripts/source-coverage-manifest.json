@@ -21,7 +21,7 @@
       "scriptSha256": "a4729738fc8ec9c1cd72a3edd67bf078dd93dc5c5087756b1f64b1dccb9f6c3e",
       "target": "tests/m10-backup.spec.ts",
       "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
-      "targetSha256": "945d84ec44f8658cbce952d8c9011f90614e8b93c77dea5be06a460c3c81424d"
+      "targetSha256": "401c5b43db9abc4cb75cf9c6d314e631c249d6b343afa269d9ce5fb17339f7f7"
     },
     "scripts/backup-to-oss.mjs": {
       "mode": "frozen",
@@ -43,7 +43,7 @@
       "scriptSha256": "2df90da6eede2cda679137d8f14c3fd6b337b23f260404b259a8154940251fc1",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-restart-persistence.mjs",
-      "targetSha256": "1806545f065f34fb29e5fbd40524e9b8c926f3b878abed5599d2904f2eb0cd04"
+      "targetSha256": "1e9365510fdc22e204003e074d6fd26bf5611e330b2bafd0399daeb668cc4357"
     },
     "scripts/deploy.mjs": {
       "mode": "frozen",
@@ -67,6 +67,13 @@
         "data:repair-storage"
       ]
     },
+    "scripts/report-media-integrity.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "cf90f9706a03d27b4b2e71813da6bbccdc3ae3d8711b37df346720a93fb4397e",
+      "target": "tests/m87-media-integrity.spec.ts",
+      "marker": "the read-only media report CLI requires a frozen absolute source and leaves it unchanged",
+      "targetSha256": "bd09347fe11690454f7441ef624aa469e3deccdaff43bbac3e8004083ccb852a"
+    },
     "scripts/reset-account-password.mjs": {
       "mode": "frozen",
       "scriptSha256": "8ff65b225868477764b946c2ed55792a00159dd8f4408adef5729fee9b30e343",
@@ -78,14 +85,14 @@
       "scriptSha256": "cf612c6a53a8d7047cd710e40ffe6e73904ca7edbef284aaa7c51de85c7dc249",
       "target": "tests/m10-backup.spec.ts",
       "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
-      "targetSha256": "945d84ec44f8658cbce952d8c9011f90614e8b93c77dea5be06a460c3c81424d"
+      "targetSha256": "401c5b43db9abc4cb75cf9c6d314e631c249d6b343afa269d9ce5fb17339f7f7"
     },
     "scripts/verify-backup.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "3c1878b7d61b0c47051b0466206e7e115241338d15fabb74500dc95b5fb29b89",
       "target": "tests/m10-backup.spec.ts",
       "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
-      "targetSha256": "945d84ec44f8658cbce952d8c9011f90614e8b93c77dea5be06a460c3c81424d"
+      "targetSha256": "401c5b43db9abc4cb75cf9c6d314e631c249d6b343afa269d9ce5fb17339f7f7"
     }
   }
 }

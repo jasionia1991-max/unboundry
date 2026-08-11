@@ -1,4 +1,5 @@
 import { expect, test } from "./safe-test";
+import { currentSchemaVersion } from "../server/database";
 
 test("the private API documents and reads canvas, project and model configuration", async ({
   page,
@@ -21,6 +22,25 @@ test("the private API documents and reads canvas, project and model configuratio
   };
   expect(specification.openapi).toBe("3.1.0");
   expect(specification.info.title).toBe("Unboundry Private Replica API");
+  expect((specification.paths["/api/health/ready"] as {
+    get: {
+      responses: {
+        "200": {
+          content: {
+            "application/json": {
+              schema: {
+                properties: { schemaVersion: unknown };
+              };
+            };
+          };
+        };
+      };
+    };
+  }).get.responses["200"].content["application/json"].schema.properties
+    .schemaVersion).toEqual({
+      const: currentSchemaVersion,
+      type: "integer",
+    });
   expect(Object.keys(specification.paths).sort()).toEqual([
     "/api/account-context",
     "/api/account-credentials",

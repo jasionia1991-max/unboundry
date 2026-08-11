@@ -21,7 +21,11 @@ import { useCanvasCheckpoint } from "./CanvasHistory";
 import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
-import { uploadImageAsset, uploadPngAsset } from "./imageAsset";
+import {
+  discardImageAsset,
+  uploadImageAsset,
+  uploadPngAsset,
+} from "./imageAsset";
 import { withImageReferenceInputMode } from "./imageReferenceMode";
 import { fitVisualMediaSize, NODE_DEFAULT_SIZES } from "./mediaGeometry";
 import { NodeModelControl } from "./NodeModelControl";
@@ -84,6 +88,7 @@ import { UpstreamInputCards } from "./UpstreamInputCards";
 import { GenerationAvailabilityNotice } from "./GenerationAvailabilityNotice";
 import {
   fetchTrustedMediaMetadata,
+  hasTrustedMediaDimensions,
   mediaUploadState,
   trustedMediaPatch,
 } from "./mediaInputMetadata";
@@ -172,17 +177,6 @@ function restoreImageUploadBaseline(
       mediaStorageBackend: baseline.data.mediaStorageBackend,
     },
   };
-}
-
-async function discardUnadoptedImageAsset(assetId: string) {
-  try {
-    await fetch(`/api/assets/${encodeURIComponent(assetId)}`, {
-      method: "DELETE",
-    });
-  } catch {
-    // The upload operation owns this fresh id. Cleanup is best-effort and must
-    // never revive a stale result in the node.
-  }
 }
 
 function supportedImageValue(values: string[], preferred?: string) {
@@ -1176,7 +1170,7 @@ function ImageNodeImpl({
   } | undefined>(undefined);
   const { getEdges, getNode, getNodes } = useReactFlow<ProbeNodeType>();
   const { register: registerWorkflowNode } = useWorkflowExecution();
-  const { setEdges, setNodes } = useCanvasGraphMutation();
+  const { setEdges, setNodes, tryAdoptNodes } = useCanvasGraphMutation();
   const canvasEdges = useEdges();
   const canvasNodes = useNodes<ProbeNodeType>();
   const checkpoint = useCanvasCheckpoint();
@@ -1245,6 +1239,10 @@ function ImageNodeImpl({
     retryGenerationEnabled,
     waitForCanvasRevision,
   } = useGenerationCanvas();
+  const mediaAdoptionScopeRef = useRef(`${accountId}\u0000${canvasId}`);
+  mediaAdoptionScopeRef.current = `${accountId}\u0000${canvasId}`;
+  const persistenceReadyLive = useRef(persistenceReady);
+  persistenceReadyLive.current = persistenceReady;
   const imageModelSelection = usePublishedModelSelection(
     "image",
     data.imageModelId,
@@ -1492,6 +1490,13 @@ function ImageNodeImpl({
     uploadInFlight.current = false;
     uploadBaseline.current = undefined;
   }, [data.inputState]);
+
+  useEffect(() => {
+    if (persistenceReady || !uploadInFlight.current) return;
+    uploadOperation.current += 1;
+    uploadInFlight.current = false;
+    uploadBaseline.current = undefined;
+  }, [persistenceReady]);
 
   useEffect(() => () => {
     uploadOperation.current += 1;
@@ -2411,6 +2416,7 @@ function ImageNodeImpl({
     const baseline = uploadBaseline.current ?? getNode(id);
     if (baseline && !uploadBaseline.current) uploadBaseline.current = baseline;
     const operation = uploadOperation.current + 1;
+    const scope = mediaAdoptionScopeRef.current;
     uploadOperation.current = operation;
     uploadInFlight.current = true;
     setUploadError("");
@@ -2433,9 +2439,11 @@ function ImageNodeImpl({
       createdAssetId = asset.assetId;
       if (
         operation !== uploadOperation.current ||
+        scope !== mediaAdoptionScopeRef.current ||
+        !persistenceReadyLive.current ||
         getNode(id)?.data.inputState !== "uploading"
       ) {
-        await discardUnadoptedImageAsset(asset.assetId);
+        await discardImageAsset(asset.assetId);
         return;
       }
       const upload = asset as typeof asset & {
@@ -2447,6 +2455,7 @@ function ImageNodeImpl({
         Number.isFinite(upload.byteSize) &&
         upload.byteSize! > 0 &&
         upload.contentType === "image/png" &&
+        hasTrustedMediaDimensions(upload) &&
         (upload.storageBackend === "local" || upload.storageBackend === "oss")
           ? {
               assetId: upload.assetId,
@@ -2455,18 +2464,22 @@ function ImageNodeImpl({
               durationSeconds: null,
               durationStatus: "not-applicable" as const,
               kind: "image" as const,
+              mediaHeight: upload.mediaHeight,
+              mediaWidth: upload.mediaWidth,
               storageBackend: upload.storageBackend,
             }
           : await fetchTrustedMediaMetadata("image", upload.assetId);
       if (
         operation !== uploadOperation.current ||
+        scope !== mediaAdoptionScopeRef.current ||
+        !persistenceReadyLive.current ||
         getNode(id)?.data.inputState !== "uploading"
       ) {
-        await discardUnadoptedImageAsset(asset.assetId);
+        await discardImageAsset(asset.assetId);
         return;
       }
       const wasReadyReplacement = hasReadyImageMedia(baseline);
-      setNodes((nodes) =>
+      const adopted = tryAdoptNodes(id, (nodes) =>
         {
           const liveEdges = getEdges();
           const nodesById = new Map(nodes.map((node) => [node.id, node]));
@@ -2513,10 +2526,15 @@ function ImageNodeImpl({
           });
         },
       );
+      if (!adopted) {
+        await discardImageAsset(asset.assetId);
+        createdAssetId = undefined;
+        return;
+      }
+      createdAssetId = undefined;
       setTransientUploadError("");
     } catch (error) {
-      if (operation !== uploadOperation.current) return;
-      if (createdAssetId) await discardUnadoptedImageAsset(createdAssetId);
+      if (createdAssetId) await discardImageAsset(createdAssetId);
       if (operation !== uploadOperation.current) return;
       const message = error instanceof Error ? error.message : "图片上传失败";
       if (baseline && hasReadyImageMedia(baseline)) {
@@ -2554,16 +2572,31 @@ function ImageNodeImpl({
 
   const applyCrop = async (file: File) => {
     const source = getNode(id);
-    if (!source) throw new Error("原图片节点不存在");
+    if (!source || !persistenceReadyLive.current) {
+      throw new Error("画布尚未完成安全加载");
+    }
+    const operation = uploadOperation.current;
+    const scope = mediaAdoptionScopeRef.current;
     const asset = await uploadPngAsset(file);
-    const metadata = await fetchTrustedMediaMetadata("image", asset.assetId);
+    let adopted = false;
+    try {
+      const metadata = await fetchTrustedMediaMetadata("image", asset.assetId);
+      if (
+        operation !== uploadOperation.current ||
+        scope !== mediaAdoptionScopeRef.current ||
+        !persistenceReadyLive.current ||
+        !getNode(id)
+      ) {
+        await discardImageAsset(asset.assetId);
+        return;
+      }
     const derivedId = `image-crop-${crypto.randomUUID()}`;
     const derivedSize = fitVisualMediaSize(asset.width, asset.height);
     const sourceWidth = typeof source.style?.width === "number"
       ? source.style.width
       : 250;
     checkpoint();
-    setNodes((nodes) => [
+    adopted = tryAdoptNodes(id, (nodes) => [
       ...nodes.map((node) => ({ ...node, selected: false })),
       {
         id: derivedId,
@@ -2584,6 +2617,10 @@ function ImageNodeImpl({
         style: { ...derivedSize },
       },
     ]);
+    if (!adopted) {
+      await discardImageAsset(asset.assetId);
+      return;
+    }
     setEdges((edges) => [
       ...edges,
       {
@@ -2597,6 +2634,10 @@ function ImageNodeImpl({
       },
     ]);
     setCropOpen(false);
+    } catch (error) {
+      if (!adopted) await discardImageAsset(asset.assetId);
+      throw error;
+    }
   };
 
   const applyPreviewAutoFit = useCallback((
