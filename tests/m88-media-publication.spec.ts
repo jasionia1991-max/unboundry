@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { EventEmitter } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   access,
@@ -274,7 +275,7 @@ function providerAttemptSnapshot(directory: string, taskId: string) {
 function syntheticResponse() {
   let body = "";
   const headers = new Map<string, string>();
-  const response = {
+  const response = Object.assign(new EventEmitter(), {
     statusCode: 200,
     setHeader(name: string, value: number | string | readonly string[]) {
       headers.set(name.toLowerCase(), String(value));
@@ -283,9 +284,10 @@ function syntheticResponse() {
     end(value?: unknown) {
       if (typeof value === "string") body += value;
       else if (Buffer.isBuffer(value)) body += value.toString("utf8");
+      response.emit("finish");
       return response;
     },
-  } as unknown as ServerResponse;
+  }) as unknown as ServerResponse;
   return {
     response,
     snapshot: () => ({ body, headers, statusCode: response.statusCode }),
@@ -2300,7 +2302,7 @@ test("account deletion preserves retry evidence and fixed OSS credentials until 
     });
     await markStorageProfileVerified(replacement.id);
 
-    const ossId = "a-m88-account-oss";
+    const ossId = "z-m88-account-oss";
     const ossKey = `objects/2026/08/image/${ossId}.png`;
     const oss = reserveMediaPublication({
       contentType: "image/png",
@@ -2313,7 +2315,7 @@ test("account deletion preserves retry evidence and fixed OSS credentials until 
       storageProfileId: original.id,
     });
     await publishUploadFixture(directory, oss, "image/png");
-    const localId = "z-m88-account-local";
+    const localId = "a-m88-account-local";
     const local = reserveMediaPublication({
       contentType: "image/png",
       finalStorageName: `${localId}.png`,
@@ -2326,10 +2328,14 @@ test("account deletion preserves retry evidence and fixed OSS credentials until 
     await publishUploadFixture(directory, local, "image/png");
     expect(await pathExists(mediaPublicationFinalPath(local))).toBe(true);
 
+    const physicalDeletes: string[] = [];
     const remoteDeletes: Array<{ bucket: string; key: string }> = [];
     const firstRequest = await authorizedRequest(`/${ownerId}`, "DELETE");
     const firstOutput = syntheticResponse();
     await adminUsersApi(firstRequest, firstOutput.response, {
+      beforePhysicalMediaDelete: ({ id }) => {
+        physicalDeletes.push(id);
+      },
       deleteExternalObject: async (key, credentials) => {
         remoteDeletes.push({ bucket: credentials.bucket, key });
         throw new Error("m88 deterministic account cleanup failure");
@@ -2343,7 +2349,8 @@ test("account deletion preserves retry evidence and fixed OSS credentials until 
       bucket: "m88-account-original-bucket",
       key: ossKey,
     }]);
-    expect(await pathExists(mediaPublicationFinalPath(local))).toBe(true);
+    expect(physicalDeletes).toEqual([localId, ossId]);
+    expect(await pathExists(mediaPublicationFinalPath(local))).toBe(false);
     const failed = openAppDatabase(directory);
     try {
       expect(failed.prepare(`
@@ -2362,7 +2369,13 @@ test("account deletion preserves retry evidence and fixed OSS credentials until 
         WHERE owner_id = ? ORDER BY id
       `).all(ownerId)).toEqual([
         { id: ossId, storage_status: "failed" },
-        { id: localId, storage_status: "failed" },
+      ]);
+      expect(failed.prepare(`
+        SELECT asset_id, state FROM media_delete_intents
+        WHERE owner_id = ? ORDER BY asset_id
+      `).all(ownerId)).toEqual([
+        { asset_id: localId, state: "tombstone" },
+        { asset_id: ossId, state: "delete-failed" },
       ]);
     } finally {
       failed.close();
@@ -2372,6 +2385,9 @@ test("account deletion preserves retry evidence and fixed OSS credentials until 
     const retryRequest = await authorizedRequest(`/${ownerId}`, "DELETE");
     const retryOutput = syntheticResponse();
     await adminUsersApi(retryRequest, retryOutput.response, {
+      beforePhysicalMediaDelete: ({ id }) => {
+        physicalDeletes.push(id);
+      },
       deleteExternalObject: async (key, credentials) => {
         remoteDeletes.push({ bucket: credentials.bucket, key });
       },
@@ -2381,6 +2397,7 @@ test("account deletion preserves retry evidence and fixed OSS credentials until 
       { bucket: "m88-account-original-bucket", key: ossKey },
       { bucket: "m88-account-original-bucket", key: ossKey },
     ]);
+    expect(physicalDeletes).toEqual([localId, ossId, ossId]);
     expect(await pathExists(mediaPublicationFinalPath(local))).toBe(false);
     const removed = openAppDatabase(directory);
     try {
@@ -2452,7 +2469,313 @@ test("account deletion preserves retry evidence and fixed OSS credentials until 
   });
 });
 
-test("account deletion writer-lock guards block in-flight templates and generation plus existing FK or task roots", async () => {
+test("account deletion waits for authenticated mutation responses and authGate rejects intent-first mutations", async () => {
+  await withDataDirectory("account-delete-mutation-lease", async (directory) => {
+    await authorizedRequest("/bootstrap");
+    const createRequest = await authorizedJsonRequest("/", "POST", {
+      displayName: "M88 mutation lease owner",
+      loginName: "m88-mutation-lease-owner",
+      password: "m88-mutation-lease-password",
+      role: "user",
+    });
+    const createOutput = syntheticResponse();
+    await adminUsersApi(createRequest, createOutput.response);
+    expect(createOutput.snapshot().statusCode).toBe(201);
+    const ownerId = (JSON.parse(createOutput.snapshot().body) as {
+      user: { id: string };
+    }).user.id;
+    const media = reserveMediaPublication({
+      contentType: "image/png",
+      finalStorageName: "m88-mutation-lease-media.png",
+      id: "m88-mutation-lease-media",
+      kind: "image",
+      objectKey: "m88-mutation-lease-media.png",
+      ownerId,
+      storageBackend: "local",
+    });
+    await publishUploadFixture(directory, media, "image/png");
+
+    const previousBypass = process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+    delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+    let cookie = "";
+    let intentFirstRequest: IncomingMessage;
+    const heldRequest = jsonRequest("/held-mutation", "POST", {});
+    const heldAuthorization = syntheticResponse();
+    let heldAuthorized = false;
+    try {
+      const loginRequest = jsonRequest("/login", "POST", {
+        loginName: "m88-mutation-lease-owner",
+        password: "m88-mutation-lease-password",
+      });
+      const loginOutput = syntheticResponse();
+      await authApi(loginRequest, loginOutput.response);
+      expect(loginOutput.snapshot().statusCode).toBe(200);
+      cookie = (loginOutput.snapshot().headers.get("set-cookie") ?? "")
+        .split(";")[0];
+      expect(cookie).toContain("unboundry_session=");
+      Object.assign(heldRequest.headers, { cookie });
+      intentFirstRequest = jsonRequest(
+        "/intent-first-mutation",
+        "POST",
+        {},
+        { cookie },
+      );
+      authGate(heldRequest, heldAuthorization.response, () => {
+        heldAuthorized = true;
+      });
+    } finally {
+      if (previousBypass === undefined) {
+        delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+      } else {
+        process.env.UNBOUNDRY_TEST_AUTH_BYPASS = previousBypass;
+      }
+    }
+    expect(heldAuthorized).toBe(true);
+
+    let blockedPhysicalCalls = 0;
+    const blockedRequest = await authorizedRequest(`/${ownerId}`, "DELETE");
+    const blockedOutput = syntheticResponse();
+    await adminUsersApi(blockedRequest, blockedOutput.response, {
+      beforePhysicalMediaDelete: () => {
+        blockedPhysicalCalls += 1;
+      },
+    });
+    expect(blockedOutput.snapshot().statusCode).toBe(409);
+    expect(JSON.parse(blockedOutput.snapshot().body)).toMatchObject({
+      code: "ACCOUNT_DELETE_ACTIVE",
+    });
+    expect(blockedPhysicalCalls).toBe(0);
+    const blockedState = openAppDatabase(directory);
+    try {
+      expect(blockedState.prepare(`
+        SELECT status FROM users WHERE id = ?
+      `).get(ownerId)).toEqual({ status: "active" });
+      expect(blockedState.prepare(`
+        SELECT COUNT(*) AS count FROM account_delete_intents
+        WHERE owner_id = ?
+      `).get(ownerId)).toEqual({ count: 0 });
+    } finally {
+      blockedState.close();
+    }
+
+    heldAuthorization.response.end();
+    heldAuthorization.response.emit("close");
+
+    let reachedPhysicalBoundary!: () => void;
+    const physicalBoundaryReached = new Promise<void>((resolve) => {
+      reachedPhysicalBoundary = resolve;
+    });
+    let releasePhysicalBoundary!: () => void;
+    const physicalBoundaryReleased = new Promise<void>((resolve) => {
+      releasePhysicalBoundary = resolve;
+    });
+    let deletePhysicalCalls = 0;
+    const deleteRequest = await authorizedRequest(`/${ownerId}`, "DELETE");
+    const deleteOutput = syntheticResponse();
+    const deleting = adminUsersApi(deleteRequest, deleteOutput.response, {
+      beforePhysicalMediaDelete: async () => {
+        deletePhysicalCalls += 1;
+        reachedPhysicalBoundary();
+        await physicalBoundaryReleased;
+      },
+    });
+    await physicalBoundaryReached;
+
+    const intentFirstOutput = syntheticResponse();
+    let intentFirstAuthorized = false;
+    const intentFirstBypass = process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+    delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+    try {
+      authGate(intentFirstRequest!, intentFirstOutput.response, () => {
+        intentFirstAuthorized = true;
+      });
+    } finally {
+      if (intentFirstBypass === undefined) {
+        delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+      } else {
+        process.env.UNBOUNDRY_TEST_AUTH_BYPASS = intentFirstBypass;
+      }
+    }
+    expect(intentFirstAuthorized).toBe(false);
+    expect(intentFirstOutput.snapshot().statusCode).toBe(401);
+
+    releasePhysicalBoundary();
+    await deleting;
+    expect(deleteOutput.snapshot().statusCode).toBe(200);
+    expect(deletePhysicalCalls).toBe(1);
+    expect(await pathExists(mediaPublicationFinalPath(media))).toBe(false);
+  });
+});
+
+test("account deletion retains its actor lease after response close until the saga settles", async () => {
+  await withDataDirectory("account-delete-actor-lease", async (directory) => {
+    await authorizedRequest("/bootstrap");
+    const createAccount = async (
+      loginName: string,
+      role: "admin" | "user",
+    ) => {
+      const request = await authorizedJsonRequest("/", "POST", {
+        displayName: loginName,
+        loginName,
+        password: `${loginName}-password`,
+        role,
+      });
+      const output = syntheticResponse();
+      await adminUsersApi(request, output.response);
+      expect(output.snapshot().statusCode).toBe(201);
+      return (JSON.parse(output.snapshot().body) as {
+        user: { id: string };
+      }).user.id;
+    };
+    const actorLogin = "m88-deletion-actor";
+    const actorId = await createAccount(actorLogin, "admin");
+    const targetId = await createAccount("m88-deletion-actor-target", "user");
+    const readyMedia = async (ownerId: string, id: string) => {
+      const media = reserveMediaPublication({
+        contentType: "image/png",
+        finalStorageName: `${id}.png`,
+        id,
+        kind: "image",
+        objectKey: `${id}.png`,
+        ownerId,
+        storageBackend: "local",
+      });
+      await publishUploadFixture(directory, media, "image/png");
+      return media;
+    };
+    const actorMedia = await readyMedia(actorId, "m88-deletion-actor-media");
+    const targetMedia = await readyMedia(targetId, "m88-deletion-target-media");
+
+    const previousBypass = process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+    delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+    let actorDeleteRequest: IncomingMessage;
+    let actorDeleteOutput: ReturnType<typeof syntheticResponse>;
+    let deletingTarget!: Promise<void>;
+    let reachedPhysicalBoundary!: () => void;
+    const physicalBoundaryReached = new Promise<void>((resolve) => {
+      reachedPhysicalBoundary = resolve;
+    });
+    let releasePhysicalBoundary!: () => void;
+    const physicalBoundaryReleased = new Promise<void>((resolve) => {
+      releasePhysicalBoundary = resolve;
+    });
+    let dispatched = false;
+    try {
+      const loginRequest = jsonRequest("/login", "POST", {
+        loginName: actorLogin,
+        password: `${actorLogin}-password`,
+      });
+      const loginOutput = syntheticResponse();
+      await authApi(loginRequest, loginOutput.response);
+      expect(loginOutput.snapshot().statusCode).toBe(200);
+      const cookie = (loginOutput.snapshot().headers.get("set-cookie") ?? "")
+        .split(";")[0];
+      expect(cookie).toContain("unboundry_session=");
+      actorDeleteRequest = {
+        headers: { cookie },
+        method: "DELETE",
+        socket: { remoteAddress: "127.0.0.1" },
+        url: `/${targetId}`,
+      } as unknown as IncomingMessage;
+      actorDeleteOutput = syntheticResponse();
+      authGate(actorDeleteRequest, actorDeleteOutput.response, () => {
+        dispatched = true;
+        deletingTarget = adminUsersApi(
+          actorDeleteRequest,
+          actorDeleteOutput.response,
+          {
+            beforePhysicalMediaDelete: async () => {
+              reachedPhysicalBoundary();
+              await physicalBoundaryReleased;
+            },
+          },
+        );
+      });
+    } finally {
+      if (previousBypass === undefined) {
+        delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+      } else {
+        process.env.UNBOUNDRY_TEST_AUTH_BYPASS = previousBypass;
+      }
+    }
+    expect(dispatched).toBe(true);
+    await physicalBoundaryReached;
+
+    // A client disconnect releases the generic response lease, but the
+    // deletion actor stays retained until its asynchronous saga settles.
+    actorDeleteOutput!.response.emit("close");
+    let blockedPhysicalCalls = 0;
+    const blockedRequest = await authorizedRequest(`/${actorId}`, "DELETE");
+    const blockedOutput = syntheticResponse();
+    await adminUsersApi(blockedRequest, blockedOutput.response, {
+      beforePhysicalMediaDelete: () => {
+        blockedPhysicalCalls += 1;
+      },
+    });
+    expect(blockedOutput.snapshot().statusCode).toBe(409);
+    expect(JSON.parse(blockedOutput.snapshot().body)).toMatchObject({
+      code: "ACCOUNT_DELETE_ACTIVE",
+    });
+    expect(blockedPhysicalCalls).toBe(0);
+    const blockedDisableRequest = await authorizedJsonRequest(
+      `/${actorId}`,
+      "PATCH",
+      { status: "disabled" },
+    );
+    const blockedDisableOutput = syntheticResponse();
+    await adminUsersApi(
+      blockedDisableRequest,
+      blockedDisableOutput.response,
+    );
+    expect(blockedDisableOutput.snapshot().statusCode).toBe(409);
+    expect(JSON.parse(blockedDisableOutput.snapshot().body)).toMatchObject({
+      code: "ACCOUNT_DELETE_ACTIVE",
+    });
+    const blockedState = openAppDatabase(directory);
+    try {
+      expect(blockedState.prepare(`
+        SELECT status FROM users WHERE id = ?
+      `).get(actorId)).toEqual({ status: "active" });
+      expect(blockedState.prepare(`
+        SELECT COUNT(*) AS count FROM account_delete_intents
+        WHERE owner_id = ?
+      `).get(actorId)).toEqual({ count: 0 });
+    } finally {
+      blockedState.close();
+    }
+
+    releasePhysicalBoundary();
+    await deletingTarget;
+    expect(actorDeleteOutput!.snapshot().statusCode).toBe(200);
+    expect(await pathExists(mediaPublicationFinalPath(targetMedia))).toBe(false);
+
+    const disableRequest = await authorizedJsonRequest(
+      `/${actorId}`,
+      "PATCH",
+      { status: "disabled" },
+    );
+    const disableOutput = syntheticResponse();
+    await adminUsersApi(disableRequest, disableOutput.response);
+    expect(disableOutput.snapshot().statusCode).toBe(200);
+    expect(JSON.parse(disableOutput.snapshot().body)).toMatchObject({
+      user: { id: actorId, status: "disabled" },
+    });
+
+    let actorPhysicalCalls = 0;
+    const actorRequest = await authorizedRequest(`/${actorId}`, "DELETE");
+    const actorOutput = syntheticResponse();
+    await adminUsersApi(actorRequest, actorOutput.response, {
+      beforePhysicalMediaDelete: () => {
+        actorPhysicalCalls += 1;
+      },
+    });
+    expect(actorOutput.snapshot().statusCode).toBe(200);
+    expect(actorPhysicalCalls).toBe(1);
+    expect(await pathExists(mediaPublicationFinalPath(actorMedia))).toBe(false);
+  });
+});
+
+test("account deletion writer-lock guards concurrent writers and transfers retained template roots", async () => {
   await withDataDirectory("account-delete-writer-guards", async (directory) => {
     await authorizedRequest("/bootstrap");
     const graph = {
@@ -2513,6 +2836,9 @@ test("account deletion writer-lock guards block in-flight templates and generati
     delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
     let userTemplateRequest: IncomingMessage;
     let publicTemplateRequest: IncomingMessage;
+    let createFirstRequest: IncomingMessage;
+    let deletionFirstCreateRequest: IncomingMessage;
+    let passwordChangeRequest: IncomingMessage;
     try {
       const loginRequest = jsonRequest("/login", "POST", {
         loginName: "m88-deleting-admin",
@@ -2535,13 +2861,35 @@ test("account deletion writer-lock guards block in-flight templates and generati
         status: "draft",
         title: "删除竞态公共模板",
       }, { cookie });
-      for (const request of [userTemplateRequest, publicTemplateRequest]) {
+      createFirstRequest = jsonRequest("/", "POST", {
+        displayName: "M88 create first",
+        loginName: "m88-create-first",
+        password: "m88-create-first-password",
+        role: "user",
+      }, { cookie });
+      deletionFirstCreateRequest = jsonRequest("/", "POST", {
+        displayName: "M88 deletion first ghost",
+        loginName: "m88-deletion-first-ghost",
+        password: "m88-deletion-first-password",
+        role: "user",
+      }, { cookie });
+      passwordChangeRequest = jsonRequest("/password", "POST", {
+        currentPassword: "m88-deleting-admin-password",
+        newPassword: "m88-deleting-admin-new-password",
+      }, { cookie });
+      for (const request of [
+        userTemplateRequest,
+        publicTemplateRequest,
+        createFirstRequest,
+        deletionFirstCreateRequest,
+      ]) {
         const authorization = syntheticResponse();
         let authorized = false;
         await authGate(request, authorization.response, () => {
           authorized = true;
         });
         expect(authorized).toBe(true);
+        authorization.response.end();
       }
     } finally {
       if (previousBypass === undefined) {
@@ -2550,6 +2898,45 @@ test("account deletion writer-lock guards block in-flight templates and generati
         process.env.UNBOUNDRY_TEST_AUTH_BYPASS = previousBypass;
       }
     }
+
+    const createFirstOutput = syntheticResponse();
+    await adminUsersApi(createFirstRequest!, createFirstOutput.response);
+    expect(createFirstOutput.snapshot().statusCode).toBe(201);
+    const createFirstId = (JSON.parse(createFirstOutput.snapshot().body) as {
+      user: { id: string };
+    }).user.id;
+
+    let reachedPasswordCommit!: () => void;
+    const passwordCommitReached = new Promise<void>((resolve) => {
+      reachedPasswordCommit = resolve;
+    });
+    let releasePasswordCommit!: () => void;
+    const passwordCommitReleased = new Promise<void>((resolve) => {
+      releasePasswordCommit = resolve;
+    });
+    const passwordOutput = syntheticResponse();
+    const passwordBypass = process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+    delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+    let changingPassword!: Promise<void>;
+    try {
+      changingPassword = authApi(
+        passwordChangeRequest!,
+        passwordOutput.response,
+        {
+          beforePasswordCommit: async () => {
+            reachedPasswordCommit();
+            await passwordCommitReleased;
+          },
+        },
+      );
+    } finally {
+      if (passwordBypass === undefined) {
+        delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+      } else {
+        process.env.UNBOUNDRY_TEST_AUTH_BYPASS = passwordBypass;
+      }
+    }
+    await passwordCommitReached;
 
     const generationStore = createGenerationTaskStore(directory);
     let reachedPhysicalBoundary!: () => void;
@@ -2569,6 +2956,37 @@ test("account deletion writer-lock guards block in-flight templates and generati
       },
     });
     await physicalBoundaryReached;
+
+    let secondDeletePhysicalCalls = 0;
+    const secondDeleteRequest = await authorizedRequest(`/${targetId}`, "DELETE");
+    const secondDeleteOutput = syntheticResponse();
+    await adminUsersApi(secondDeleteRequest, secondDeleteOutput.response, {
+      beforePhysicalMediaDelete: () => {
+        secondDeletePhysicalCalls += 1;
+      },
+    });
+    expect(secondDeleteOutput.snapshot().statusCode).toBe(409);
+    expect(JSON.parse(secondDeleteOutput.snapshot().body)).toMatchObject({
+      code: "ACCOUNT_DELETE_ACTIVE",
+    });
+    expect(secondDeletePhysicalCalls).toBe(0);
+
+    const deletionFirstCreateOutput = syntheticResponse();
+    await adminUsersApi(
+      deletionFirstCreateRequest!,
+      deletionFirstCreateOutput.response,
+    );
+    expect(deletionFirstCreateOutput.snapshot().statusCode).toBe(409);
+    expect(JSON.parse(deletionFirstCreateOutput.snapshot().body)).toMatchObject({
+      code: "ACCOUNT_DELETE_ACTIVE",
+    });
+
+    releasePasswordCommit();
+    await changingPassword;
+    expect(passwordOutput.snapshot().statusCode).toBe(409);
+    expect(JSON.parse(passwordOutput.snapshot().body)).toMatchObject({
+      code: "ACCOUNT_DELETE_ACTIVE",
+    });
 
     const userTemplateOutput = syntheticResponse();
     await templateCatalogApi(userTemplateRequest!, userTemplateOutput.response);
@@ -2628,6 +3046,20 @@ test("account deletion writer-lock guards block in-flight templates and generati
       expect(duringDelete.prepare(`
         SELECT COUNT(*) AS count FROM generation_tasks WHERE owner_id = ?
       `).get(targetId)).toEqual({ count: 0 });
+      expect(duringDelete.prepare(`
+        SELECT login_name, status FROM users WHERE id = ?
+      `).get(createFirstId)).toEqual({
+        login_name: "m88-create-first",
+        status: "active",
+      });
+      expect(duringDelete.prepare(`
+        SELECT COUNT(*) AS count FROM users
+        WHERE login_name = 'm88-deletion-first-ghost'
+      `).get()).toEqual({ count: 0 });
+      expect(duringDelete.prepare(`
+        SELECT COUNT(*) AS count FROM admin_audit_events
+        WHERE actor_user_id = ? AND action = 'password_change'
+      `).get(targetId)).toEqual({ count: 0 });
       expect(generationProviderAttemptCounts(duringDelete)).toEqual({
         historicalEstimatedProviderAttempts: 0,
         paidProviderRequests: 0,
@@ -2639,6 +3071,21 @@ test("account deletion writer-lock guards block in-flight templates and generati
     await deleting;
     expect(deleteOutput.snapshot().statusCode).toBe(200);
     expect(await pathExists(mediaPublicationFinalPath(media))).toBe(false);
+    const afterDelete = openAppDatabase(directory);
+    try {
+      expect(afterDelete.prepare(`
+        SELECT login_name, status FROM users WHERE id = ?
+      `).get(createFirstId)).toEqual({
+        login_name: "m88-create-first",
+        status: "active",
+      });
+      expect(afterDelete.prepare(`
+        SELECT COUNT(*) AS count FROM users
+        WHERE login_name = 'm88-deletion-first-ghost'
+      `).get()).toEqual({ count: 0 });
+    } finally {
+      afterDelete.close();
+    }
     generationStore.close();
 
     const activeTaskOwner = "m88-account-active-task-owner";
@@ -2705,20 +3152,105 @@ test("account deletion writer-lock guards block in-flight templates and generati
 
     const referencedOwner = "m88-account-template-referenced";
     addOwner(directory, referencedOwner);
-    const referencedMediaId = "m88-account-template-media";
-    const referencedMedia = reserveMediaPublication({
-      contentType: "image/png",
-      finalStorageName: `${referencedMediaId}.png`,
-      id: referencedMediaId,
-      kind: "image",
-      objectKey: `${referencedMediaId}.png`,
-      ownerId: referencedOwner,
-      storageBackend: "local",
-    });
-    await publishUploadFixture(directory, referencedMedia, "image/png");
+    const thirdAdminId = "m88-account-template-third-admin";
+    addOwner(directory, thirdAdminId);
+    const readyTemplateMedia = async (
+      kind: "audio" | "image" | "video",
+      id: string,
+      contentType: string,
+    ) => {
+      const reservation = reserveMediaPublication({
+        contentType,
+        finalStorageName: `${id}.${kind === "image" ? "png" : kind === "video" ? "mp4" : "wav"}`,
+        id,
+        kind,
+        objectKey: `${id}.${kind === "image" ? "png" : kind === "video" ? "mp4" : "wav"}`,
+        ownerId: referencedOwner,
+        storageBackend: "local",
+      });
+      await publishUploadFixture(directory, reservation, contentType);
+      return reservation;
+    };
+    const coverMedia = await readyTemplateMedia(
+      "image",
+      "m88-account-template-cover",
+      "image/png",
+    );
+    const audioMedia = await readyTemplateMedia(
+      "audio",
+      "m88-account-template-audio",
+      "audio/wav",
+    );
+    const playlistMedia = await readyTemplateMedia(
+      "video",
+      "m88-account-template-playlist",
+      "video/mp4",
+    );
+    const updatedOnlyMedia = await readyTemplateMedia(
+      "image",
+      "m88-account-template-updated-only",
+      "image/png",
+    );
+    const previewMedia = await readyTemplateMedia(
+      "audio",
+      "m88-account-template-preview",
+      "audio/wav",
+    );
+    const privateMedia = await readyTemplateMedia(
+      "image",
+      "m88-account-private-media",
+      "image/png",
+    );
+    const transferGraph = {
+      ...graph,
+      nodes: [
+        ...graph.nodes,
+        {
+          data: {
+            assetId: audioMedia.id,
+            label: "Audio",
+            title: "公开音频",
+          },
+          id: "node-public-audio",
+          position: { x: 20, y: 340 },
+          style: { height: 250, width: 250 },
+          type: "audio",
+          zIndex: 1,
+        },
+        {
+          data: {
+            label: "Playlist",
+            playlistClips: [{
+              id: "clip-public-video",
+              src: `/api/video-assets/${playlistMedia.id}`,
+            }],
+            title: "公开视频列表",
+          },
+          id: "node-public-playlist",
+          position: { x: 320, y: 340 },
+          style: { height: 250, width: 250 },
+          type: "playlist",
+          zIndex: 1,
+        },
+      ],
+    };
+    const updatedOnlyGraph = {
+      ...graph,
+      nodes: graph.nodes.map((node) =>
+        node.id === "node-2"
+          ? {
+              ...node,
+              data: { ...node.data, assetId: updatedOnlyMedia.id },
+            }
+          : node
+      ),
+    };
     const references = openAppDatabase(directory);
     const timestamp = new Date().toISOString();
     try {
+      references.prepare(`
+        UPDATE users SET role = 'admin', updated_at = ? WHERE id = ?
+      `).run(timestamp, thirdAdminId);
       references.prepare(`
         INSERT INTO user_templates (
           id, owner_id, title, category, graph, cover_asset_id,
@@ -2730,18 +3262,374 @@ test("account deletion writer-lock guards block in-flight templates and generati
       `).run(referencedOwner, JSON.stringify(graph), timestamp, timestamp);
       references.prepare(`
         INSERT INTO public_templates (
+          id, title, graph, cover_asset_id, status,
+          created_by, created_at, updated_by, updated_at
+        ) VALUES (
+          'm88-public-template-reference', 'M88 public reference', ?, ?,
+          'draft', ?, ?, ?, ?
+        )
+      `).run(
+        JSON.stringify(transferGraph),
+        coverMedia.id,
+        referencedOwner,
+        timestamp,
+        referencedOwner,
+        timestamp,
+      );
+      references.prepare(`
+        INSERT INTO public_templates (
           id, title, graph, status, created_by, created_at, updated_by, updated_at
         ) VALUES (
-          'm88-public-template-reference', 'M88 public reference', ?,
-          'draft', NULL, ?, ?, ?
+          'm88-public-template-updated-only', 'M88 updated-only reference', ?,
+          'draft', '__test__', ?, ?, ?
         )
-      `).run(JSON.stringify(graph), timestamp, referencedOwner, timestamp);
+      `).run(
+        JSON.stringify(updatedOnlyGraph),
+        timestamp,
+        referencedOwner,
+        timestamp,
+      );
+      references.prepare(`
+        INSERT INTO public_templates (
+          id, title, graph, preview_image, status,
+          created_by, created_at, updated_by, updated_at
+        ) VALUES (
+          'm88-public-template-third-actor', 'M88 third actor references', ?, ?,
+          'draft', ?, ?, ?, ?
+        )
+      `).run(
+        JSON.stringify(updatedOnlyGraph),
+        `/api/audio-assets/${previewMedia.id}`,
+        thirdAdminId,
+        timestamp,
+        thirdAdminId,
+        timestamp,
+      );
+      references.prepare(`
+        INSERT INTO generation_tasks (
+          id, canvas_id, node_id, kind, prompt, model, parameters,
+          idempotency_key, request_fingerprint, state, attempt,
+          created_at, updated_at, owner_id, cost_currency,
+          model_configuration, credential_revision
+        ) VALUES (
+          'm88-template-private-task', 'm88-template-private-canvas',
+          'm88-template-private-node', 'text', 'private prompt', NULL, '{}',
+          'm88-template-private-key', 'm88-template-private-fingerprint',
+          'failed', 0, ?, ?, ?, 'USD', '{}', 0
+        )
+      `).run(timestamp, timestamp, referencedOwner);
     } finally {
       references.close();
     }
-    const assertReferencedDeleteBlocked = async () => {
+    const physicalCalls: string[] = [];
+    const deleteReferencedRequest = await authorizedRequest(
+      `/${referencedOwner}`,
+      "DELETE",
+    );
+    const deleteReferencedOutput = syntheticResponse();
+    await adminUsersApi(
+      deleteReferencedRequest,
+      deleteReferencedOutput.response,
+      {
+        beforePhysicalMediaDelete: ({ id }) => {
+          physicalCalls.push(id);
+        },
+      },
+    );
+    expect(deleteReferencedOutput.snapshot().statusCode).toBe(200);
+    expect(physicalCalls).toEqual([privateMedia.id]);
+    expect(await pathExists(mediaPublicationFinalPath(coverMedia))).toBe(true);
+    expect(await pathExists(mediaPublicationFinalPath(audioMedia))).toBe(true);
+    expect(await pathExists(mediaPublicationFinalPath(playlistMedia))).toBe(true);
+    expect(await pathExists(mediaPublicationFinalPath(updatedOnlyMedia))).toBe(true);
+    expect(await pathExists(mediaPublicationFinalPath(previewMedia))).toBe(true);
+    expect(await pathExists(mediaPublicationFinalPath(privateMedia))).toBe(false);
+    const referencedState = openAppDatabase(directory);
+    try {
+      expect(referencedState.prepare(`
+        SELECT COUNT(*) AS count FROM users WHERE id = ?
+      `).get(referencedOwner)).toEqual({ count: 0 });
+      expect(referencedState.prepare(`
+        SELECT id, kind, owner_id, storage_status FROM media_assets
+        WHERE id IN (?, ?, ?, ?, ?)
+        ORDER BY id
+      `).all(
+        coverMedia.id,
+        audioMedia.id,
+        playlistMedia.id,
+        updatedOnlyMedia.id,
+        previewMedia.id,
+      )).toEqual([
+        {
+          id: audioMedia.id,
+          kind: "audio",
+          owner_id: "__test__",
+          storage_status: "ready",
+        },
+        {
+          id: coverMedia.id,
+          kind: "image",
+          owner_id: "__test__",
+          storage_status: "ready",
+        },
+        {
+          id: playlistMedia.id,
+          kind: "video",
+          owner_id: "__test__",
+          storage_status: "ready",
+        },
+        {
+          id: previewMedia.id,
+          kind: "audio",
+          owner_id: "__test__",
+          storage_status: "ready",
+        },
+        {
+          id: updatedOnlyMedia.id,
+          kind: "image",
+          owner_id: "__test__",
+          storage_status: "ready",
+        },
+      ]);
+      expect(referencedState.prepare(`
+        SELECT id, created_by, updated_by
+        FROM public_templates
+        WHERE id IN (
+          'm88-public-template-reference',
+          'm88-public-template-third-actor',
+          'm88-public-template-updated-only'
+        )
+        ORDER BY id
+      `).all()).toEqual([
+        {
+          created_by: "__test__",
+          id: "m88-public-template-reference",
+          updated_by: "__test__",
+        },
+        {
+          created_by: thirdAdminId,
+          id: "m88-public-template-third-actor",
+          updated_by: thirdAdminId,
+        },
+        {
+          created_by: "__test__",
+          id: "m88-public-template-updated-only",
+          updated_by: "__test__",
+        },
+      ]);
+      expect(referencedState.prepare(`
+        SELECT COUNT(*) AS count FROM user_templates WHERE owner_id = ?
+      `).get(referencedOwner)).toEqual({ count: 0 });
+      expect(referencedState.prepare(`
+        SELECT COUNT(*) AS count FROM generation_tasks WHERE owner_id = ?
+      `).get(referencedOwner)).toEqual({ count: 0 });
+      expect(referencedState.prepare(`
+        SELECT COUNT(*) AS count FROM media_assets WHERE id = ?
+      `).get(privateMedia.id)).toEqual({ count: 0 });
+      expect(referencedState.prepare(`
+        SELECT COUNT(*) AS count FROM admin_audit_events
+        WHERE action = 'delete_user' AND target_user_id = ?
+      `).get(referencedOwner)).toEqual({ count: 1 });
+    } finally {
+      referencedState.close();
+    }
+  });
+});
+
+test("account deletion blocks every unresolved paid outcome before physical media cleanup", async () => {
+  await withDataDirectory("account-delete-paid-gate", async (directory) => {
+    await authorizedRequest("/bootstrap");
+    const outcomes = [
+      "boundary-claimed",
+      "accepted",
+      "response-received",
+      "outcome-unknown",
+    ] as const;
+    const store = createGenerationTaskStore(directory);
+    for (const [index, outcome] of outcomes.entries()) {
+      const ownerId = `m88-account-paid-${index}`;
+      addOwner(directory, ownerId);
+      const mediaId = `m88-account-paid-media-${index}`;
+      const media = reserveMediaPublication({
+        contentType: "image/png",
+        finalStorageName: `${mediaId}.png`,
+        id: mediaId,
+        kind: "image",
+        objectKey: `${mediaId}.png`,
+        ownerId,
+        storageBackend: "local",
+      });
+      await publishUploadFixture(directory, media, "image/png");
+      const task = store.create({
+        canvasId: `m88-paid-canvas-${index}`,
+        idempotencyKey: `m88-paid-key-${index}`,
+        kind: "image",
+        model: "m88-paid-model",
+        nodeId: `m88-paid-node-${index}`,
+        ownerId,
+        parameters: {},
+        prompt: "never cross a paid uncertainty boundary",
+        providerModelId: "m88-paid-provider-model",
+        providerProfileId: "m88-paid-provider",
+      }).task;
+      store.transition(task.id, "running");
+      recordProviderAttemptFixture(directory, task.id, outcome);
+      const terminal = openAppDatabase(directory);
+      try {
+        terminal.prepare(`
+          UPDATE generation_tasks
+          SET state = 'failed', error_code = 'NETWORK',
+              error_message = 'fixture terminal state', updated_at = ?
+          WHERE id = ?
+        `).run(new Date().toISOString(), task.id);
+      } finally {
+        terminal.close();
+      }
+
       let physicalCalls = 0;
-      const request = await authorizedRequest(`/${referencedOwner}`, "DELETE");
+      const request = await authorizedRequest(`/${ownerId}`, "DELETE");
+      const output = syntheticResponse();
+      await adminUsersApi(request, output.response, {
+        beforePhysicalMediaDelete: () => {
+          physicalCalls += 1;
+        },
+      });
+      expect(output.snapshot().statusCode).toBe(409);
+      expect(JSON.parse(output.snapshot().body)).toMatchObject({
+        code: "ACCOUNT_DELETE_TASK_ACTIVE",
+      });
+      expect(physicalCalls).toBe(0);
+      expect(await pathExists(mediaPublicationFinalPath(media))).toBe(true);
+      const preserved = openAppDatabase(directory);
+      try {
+        expect(preserved.prepare(`
+          SELECT status FROM users WHERE id = ?
+        `).get(ownerId)).toEqual({ status: "active" });
+        expect(preserved.prepare(`
+          SELECT COUNT(*) AS count FROM account_delete_intents
+          WHERE owner_id = ?
+        `).get(ownerId)).toEqual({ count: 0 });
+        expect(preserved.prepare(`
+          SELECT outcome FROM generation_provider_attempts WHERE task_id = ?
+        `).get(task.id)).toEqual({ outcome });
+      } finally {
+        preserved.close();
+      }
+    }
+    for (const [index, outcome] of ([
+      "accepted",
+      "response-received",
+    ] as const).entries()) {
+      const ownerId = `m88-account-abandoned-${index}`;
+      addOwner(directory, ownerId);
+      const mediaId = `m88-account-abandoned-media-${index}`;
+      const media = reserveMediaPublication({
+        contentType: "image/png",
+        finalStorageName: `${mediaId}.png`,
+        id: mediaId,
+        kind: "image",
+        objectKey: `${mediaId}.png`,
+        ownerId,
+        storageBackend: "local",
+      });
+      await publishUploadFixture(directory, media, "image/png");
+      const task = store.create({
+        canvasId: `m88-abandoned-canvas-${index}`,
+        idempotencyKey: `m88-abandoned-key-${index}`,
+        kind: "image",
+        model: "m88-abandoned-model",
+        nodeId: `m88-abandoned-node-${index}`,
+        ownerId,
+        parameters: {},
+        prompt: "explicitly abandon the exact paid result",
+        providerModelId: "m88-abandoned-provider-model",
+        providerProfileId: "m88-abandoned-provider",
+      }).task;
+      store.transition(task.id, "running");
+      recordProviderAttemptFixture(directory, task.id, outcome);
+      if (outcome === "accepted") {
+        store.attachProviderTaskId({
+          executionAttempt: 1,
+          providerTaskId: `m88-abandoned-provider-task-${index}`,
+          taskId: task.id,
+        });
+      }
+      const failed = store.transition(task.id, "failed", {
+        code: outcome === "accepted" ? "AUTH" : "MEDIA_PUBLICATION_FAILED",
+        message: "fixture exact result can be explicitly abandoned",
+      })!;
+      expect(store.abandonAcceptedProviderTask({
+        expectedAttempt: failed.attempt,
+        expectedUpdatedAt: failed.updatedAt,
+        taskId: task.id,
+      })).toMatchObject({
+        errorCode: "USER_ABANDONED",
+        state: "cancelled",
+      });
+
+      let physicalCalls = 0;
+      const request = await authorizedRequest(`/${ownerId}`, "DELETE");
+      const output = syntheticResponse();
+      await adminUsersApi(request, output.response, {
+        beforePhysicalMediaDelete: () => {
+          physicalCalls += 1;
+        },
+      });
+      expect(output.snapshot().statusCode).toBe(200);
+      expect(physicalCalls).toBe(1);
+      expect(await pathExists(mediaPublicationFinalPath(media))).toBe(false);
+    }
+    store.close();
+  });
+});
+
+test("account deletion fails closed unless exactly one active protected administrator exists", async () => {
+  await withDataDirectory("account-delete-root-cardinality", async (directory) => {
+    await authorizedRequest("/bootstrap");
+    const ownerId = "m88-account-root-cardinality-owner";
+    addOwner(directory, ownerId);
+    const media = reserveMediaPublication({
+      contentType: "image/png",
+      finalStorageName: "m88-account-root-cardinality.png",
+      id: "m88-account-root-cardinality",
+      kind: "image",
+      objectKey: "m88-account-root-cardinality.png",
+      ownerId,
+      storageBackend: "local",
+    });
+    await publishUploadFixture(directory, media, "image/png");
+
+    const setRootState = (
+      testRootProtected: 0 | 1,
+      secondRootProtected: 0 | 1,
+    ) => {
+      const database = openAppDatabase(directory);
+      try {
+        const timestamp = new Date().toISOString();
+        database.prepare(`
+          UPDATE users SET protected = ? WHERE id = '__test__'
+        `).run(testRootProtected);
+        database.prepare(`
+          INSERT OR IGNORE INTO users (
+            id, login_name, display_name, password_hash, role, status,
+            protected, created_at, updated_at
+          ) VALUES (
+            'm88-second-root', 'm88-second-root', 'M88 second root',
+            'fixture-only', 'admin', 'active', ?, ?, ?
+          )
+        `).run(secondRootProtected, timestamp, timestamp);
+        database.prepare(`
+          UPDATE users
+          SET role = 'admin', status = 'active', protected = ?
+          WHERE id = 'm88-second-root'
+        `).run(secondRootProtected);
+      } finally {
+        database.close();
+      }
+    };
+    const expectBlocked = async () => {
+      let physicalCalls = 0;
+      const request = await authorizedRequest(`/${ownerId}`, "DELETE");
       const output = syntheticResponse();
       await adminUsersApi(request, output.response, {
         beforePhysicalMediaDelete: () => {
@@ -2753,45 +3641,113 @@ test("account deletion writer-lock guards block in-flight templates and generati
         code: "ACCOUNT_DELETE_REFERENCED",
       });
       expect(physicalCalls).toBe(0);
-      expect(await pathExists(mediaPublicationFinalPath(referencedMedia))).toBe(true);
+      const preserved = openAppDatabase(directory);
+      try {
+        expect(preserved.prepare(`
+          SELECT status FROM users WHERE id = ?
+        `).get(ownerId)).toEqual({ status: "active" });
+        expect(preserved.prepare(`
+          SELECT COUNT(*) AS count FROM account_delete_intents
+          WHERE owner_id = ?
+        `).get(ownerId)).toEqual({ count: 0 });
+      } finally {
+        preserved.close();
+      }
     };
-    await assertReferencedDeleteBlocked();
-    const publicUpdatedOnly = openAppDatabase(directory);
+
+    setRootState(0, 0);
+    await expectBlocked();
+    setRootState(1, 1);
+    await expectBlocked();
+    setRootState(1, 0);
+    const finalRequest = await authorizedRequest(`/${ownerId}`, "DELETE");
+    const finalOutput = syntheticResponse();
+    await adminUsersApi(finalRequest, finalOutput.response);
+    expect(finalOutput.snapshot().statusCode).toBe(200);
+    expect(await pathExists(mediaPublicationFinalPath(media))).toBe(false);
+  });
+});
+
+test("delete_user audit failure rolls back the final transaction and remains retryable", async () => {
+  await withDataDirectory("account-delete-audit-rollback", async (directory) => {
+    await authorizedRequest("/bootstrap");
+    const ownerId = "m88-account-audit-rollback";
+    addOwner(directory, ownerId);
+    const setup = openAppDatabase(directory);
     try {
-      publicUpdatedOnly.prepare(`
-        DELETE FROM user_templates WHERE owner_id = ?
-      `).run(referencedOwner);
+      const timestamp = new Date().toISOString();
+      setup.prepare(`
+        INSERT INTO admin_audit_events (
+          actor_user_id, action, target_user_id, details, created_at
+        ) VALUES (?, 'fixture_old_audit', ?, '{}', ?)
+      `).run(ownerId, ownerId, timestamp);
+      setup.exec(`
+        CREATE TRIGGER m88_fail_delete_user_audit
+        BEFORE INSERT ON admin_audit_events
+        WHEN NEW.action = 'delete_user'
+        BEGIN
+          SELECT RAISE(ABORT, 'm88 deterministic audit failure');
+        END;
+      `);
     } finally {
-      publicUpdatedOnly.close();
+      setup.close();
     }
-    await assertReferencedDeleteBlocked();
-    const publicCreatedOnly = openAppDatabase(directory);
+
+    let physicalCalls = 0;
+    const firstRequest = await authorizedRequest(`/${ownerId}`, "DELETE");
+    const firstOutput = syntheticResponse();
+    await adminUsersApi(firstRequest, firstOutput.response, {
+      beforePhysicalMediaDelete: () => {
+        physicalCalls += 1;
+      },
+    });
+    expect(firstOutput.snapshot().statusCode).toBe(503);
+    expect(JSON.parse(firstOutput.snapshot().body)).toMatchObject({
+      code: "ACCOUNT_DELETE_FINALIZE_FAILED",
+    });
+    expect(physicalCalls).toBe(0);
+    const rolledBack = openAppDatabase(directory);
     try {
-      publicCreatedOnly.prepare(`
-        UPDATE public_templates
-        SET created_by = ?, updated_by = NULL
-        WHERE id = 'm88-public-template-reference'
-      `).run(referencedOwner);
-    } finally {
-      publicCreatedOnly.close();
-    }
-    await assertReferencedDeleteBlocked();
-    const referencedState = openAppDatabase(directory);
-    try {
-      expect(referencedState.prepare(`
+      expect(rolledBack.prepare(`
         SELECT status FROM users WHERE id = ?
-      `).get(referencedOwner)).toEqual({ status: "active" });
-      expect(referencedState.prepare(`
-        SELECT storage_status FROM media_assets
-        WHERE owner_id = ? AND id = ?
-      `).get(referencedOwner, referencedMediaId)).toEqual({
-        storage_status: "ready",
+      `).get(ownerId)).toEqual({ status: "disabled" });
+      expect(rolledBack.prepare(`
+        SELECT state, error_code FROM account_delete_intents WHERE owner_id = ?
+      `).get(ownerId)).toEqual({
+        error_code: "ACCOUNT_FINALIZE_FAILED",
+        state: "failed",
       });
-      expect(referencedState.prepare(`
-        SELECT COUNT(*) AS count FROM account_delete_intents WHERE owner_id = ?
-      `).get(referencedOwner)).toEqual({ count: 0 });
+      expect(rolledBack.prepare(`
+        SELECT action FROM admin_audit_events WHERE actor_user_id = ?
+      `).all(ownerId)).toEqual([{ action: "fixture_old_audit" }]);
+      expect(rolledBack.prepare(`
+        SELECT COUNT(*) AS count FROM admin_audit_events
+        WHERE action = 'delete_user' AND target_user_id = ?
+      `).get(ownerId)).toEqual({ count: 0 });
+      rolledBack.exec("DROP TRIGGER m88_fail_delete_user_audit");
     } finally {
-      referencedState.close();
+      rolledBack.close();
+    }
+
+    const retryRequest = await authorizedRequest(`/${ownerId}`, "DELETE");
+    const retryOutput = syntheticResponse();
+    await adminUsersApi(retryRequest, retryOutput.response);
+    expect(retryOutput.snapshot().statusCode).toBe(200);
+    const completed = openAppDatabase(directory);
+    try {
+      expect(completed.prepare(`
+        SELECT COUNT(*) AS count FROM users WHERE id = ?
+      `).get(ownerId)).toEqual({ count: 0 });
+      expect(completed.prepare(`
+        SELECT COUNT(*) AS count FROM admin_audit_events
+        WHERE action = 'delete_user' AND target_user_id = ?
+      `).get(ownerId)).toEqual({ count: 1 });
+      expect(completed.prepare(`
+        SELECT COUNT(*) AS count FROM admin_audit_events
+        WHERE actor_user_id = ?
+      `).get(ownerId)).toEqual({ count: 0 });
+    } finally {
+      completed.close();
     }
   });
 });

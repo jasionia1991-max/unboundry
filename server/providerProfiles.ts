@@ -16,6 +16,10 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { requestIdentity } from "./auth";
+import {
+  AccountMutationBlockedError,
+  assertAccountMutationAllowed,
+} from "./accountMutationFence";
 import { appDataDirectory, openAppDatabase } from "./database";
 import {
   decodedRequestPath,
@@ -89,6 +93,11 @@ type ProviderProfileDocument = {
   profiles: ProviderProfile[];
   version: 1;
 };
+
+type ProviderProfileCommit = (
+  store: DatabaseSync,
+  profile: ProviderProfile,
+) => void;
 
 type EncryptedDocument = {
   ciphertext: string;
@@ -300,19 +309,47 @@ function updateMetadataAtomically<T>(
 async function mutateDocument<T>(
   mutate: (document: ProviderProfileDocument) => Promise<T> | T,
   updateMetadata?: (store: DatabaseSync, result: T) => void,
+  actorUserId?: string,
+  onActorCommit?: (store: DatabaseSync, result: T) => void,
 ) {
   let result!: T;
   const operation = documentMutation.then(async () => {
     const lock = await acquireDocumentLock();
+    let actorStore: DatabaseSync | undefined;
+    let actorTransactionOpen = false;
     let commit = false;
     try {
       const document = await readDocument();
       result = await mutate(document);
+      if (actorUserId) {
+        actorStore = openAppDatabase(appDataDirectory());
+        actorStore.exec("BEGIN IMMEDIATE");
+        actorTransactionOpen = true;
+        assertAccountMutationAllowed(actorStore, actorUserId);
+        onActorCommit?.(actorStore, result);
+      } else if (onActorCommit) {
+        throw new Error("Provider commit callback requires an account actor");
+      }
       await writeDocument(document);
       await afterDocumentWriteForTests?.();
-      if (updateMetadata) updateMetadataAtomically(updateMetadata, result);
+      if (updateMetadata) {
+        if (actorStore) updateMetadata(actorStore, result);
+        else updateMetadataAtomically(updateMetadata, result);
+      }
+      if (actorStore) {
+        actorStore.exec("COMMIT");
+        actorTransactionOpen = false;
+      }
       commit = true;
     } finally {
+      if (actorTransactionOpen) {
+        try {
+          actorStore?.exec("ROLLBACK");
+        } catch {
+          // Closing the dedicated connection still releases the account lock.
+        }
+      }
+      actorStore?.close();
       await lock.finish(commit);
     }
   });
@@ -439,7 +476,7 @@ let legacyKeyMigrationScheduled = false;
  * document and write them as the active administrators' own account
  * credentials. Non-admin accounts never inherit these keys.
  */
-export async function migrateLegacyProviderKeysIfNeeded() {
+export async function migrateLegacyProviderKeysIfNeeded(actorUserId?: string) {
   if (legacyKeyMigrationScheduled) return;
   legacyKeyMigrationScheduled = true;
   try {
@@ -466,21 +503,6 @@ export async function migrateLegacyProviderKeysIfNeeded() {
       })),
     );
     const timestamp = new Date().toISOString();
-    const insert = db().prepare(`
-      INSERT OR IGNORE INTO account_provider_credentials (
-        account_id, provider_profile_id, encrypted_key, key_status,
-        key_checked_at, credential_version, updated_at
-      )
-      VALUES (?, ?, ?, 'unchecked', NULL, 1, ?)
-    `);
-    const insertEpoch = db().prepare(`
-      INSERT OR IGNORE INTO account_provider_credential_epochs (
-        account_id, provider_profile_id, credential_revision, updated_at
-      )
-      SELECT account_id, provider_profile_id, credential_version, updated_at
-      FROM account_provider_credentials
-      WHERE account_id = ? AND provider_profile_id = ?
-    `);
     await mutateDocument((current) => {
       for (const payload of payloads) {
         const profile = current.profiles.find(
@@ -489,17 +511,40 @@ export async function migrateLegacyProviderKeysIfNeeded() {
         if (profile?.apiKey) {
           delete profile.apiKey;
         }
+      }
+    }, (store) => {
+      const insert = store.prepare(`
+        INSERT OR IGNORE INTO account_provider_credentials (
+          account_id, provider_profile_id, encrypted_key, key_status,
+          key_checked_at, credential_version, updated_at
+        )
+        SELECT id, ?, ?, 'unchecked', NULL, 1, ?
+        FROM users
+        WHERE id = ? AND role = 'admin' AND status = 'active'
+          AND NOT EXISTS (
+            SELECT 1 FROM account_delete_intents WHERE owner_id = users.id
+          )
+      `);
+      const insertEpoch = store.prepare(`
+        INSERT OR IGNORE INTO account_provider_credential_epochs (
+          account_id, provider_profile_id, credential_revision, updated_at
+        )
+        SELECT account_id, provider_profile_id, credential_version, updated_at
+        FROM account_provider_credentials
+        WHERE account_id = ? AND provider_profile_id = ?
+      `);
+      for (const payload of payloads) {
         for (const admin of admins) {
           insert.run(
-            admin.id,
             payload.profileId,
             payload.encrypted,
             timestamp,
+            admin.id,
           );
           insertEpoch.run(admin.id, payload.profileId);
         }
       }
-    });
+    }, actorUserId);
   } catch (error) {
     legacyKeyMigrationScheduled = false;
     throw error;
@@ -1243,6 +1288,8 @@ export async function acquireProviderGenerationRequestLease(
 export async function saveProviderProfile(
   input: Record<string, unknown>,
   profileId?: string,
+  actorUserId?: string,
+  onCommit?: ProviderProfileCommit,
 ) {
   let previousDriver: ProviderDriver | undefined;
   let profileKeyCatalogChanged = false;
@@ -1291,7 +1338,7 @@ export async function saveProviderProfile(
       Boolean(previousDriver && previousDriver !== next.driver),
       profileKeyCatalogChanged,
     );
-  });
+  }, actorUserId, onCommit);
   return profile;
 }
 
@@ -1359,6 +1406,8 @@ export async function prepareArkControlPlaneCredentials(profileId: string) {
 export async function saveArkControlPlaneCredentials(
   profileId: string,
   input: Record<string, unknown>,
+  actorUserId?: string,
+  onCommit?: ProviderProfileCommit,
 ) {
   let changed = false;
   const profile = await mutateDocument((document) => {
@@ -1406,7 +1455,7 @@ export async function saveArkControlPlaneCredentials(
         throw new Error("Provider configuration changed while credentials were saved");
       }
     }
-  });
+  }, actorUserId, onCommit);
   return {
     accessKeyIdMask: `••••${profile.arkControlPlane!.accessKeyId.slice(-4)}`,
     hasCredentials: true as const,
@@ -1451,8 +1500,12 @@ function sameProviderRevision(
 async function recordCurrentKeyCheck(
   profile: ProviderProfile,
   keyStatus: Exclude<ProviderKeyStatus, "unchecked">,
+  actorUserId?: string,
+  onCommit?: ProviderProfileCommit,
 ) {
   const lock = await acquireDocumentLock();
+  let actorStore: DatabaseSync | undefined;
+  let actorTransactionOpen = false;
   try {
     const latest = await readDocument();
     const current = latest.profiles.find(
@@ -1461,11 +1514,32 @@ async function recordCurrentKeyCheck(
     if (!sameProviderRevision(current, profile)) {
       throw new ProviderVerificationError("CONFIG_CHANGED");
     }
-    assertProviderProfileMutationHasNoPaidWork(db(), profile.id);
-    if (!recordKeyCheck(db(), profile, keyStatus)) {
+    const store = actorUserId
+      ? (actorStore = openAppDatabase(appDataDirectory()))
+      : db();
+    if (actorUserId) {
+      store.exec("BEGIN IMMEDIATE");
+      actorTransactionOpen = true;
+      assertAccountMutationAllowed(store, actorUserId);
+    }
+    assertProviderProfileMutationHasNoPaidWork(store, profile.id);
+    if (!recordKeyCheck(store, profile, keyStatus)) {
       throw new ProviderVerificationError("CONFIG_CHANGED");
     }
+    onCommit?.(store, profile);
+    if (actorStore) {
+      actorStore.exec("COMMIT");
+      actorTransactionOpen = false;
+    }
   } finally {
+    if (actorTransactionOpen) {
+      try {
+        actorStore?.exec("ROLLBACK");
+      } catch {
+        // Closing the dedicated connection still releases the account lock.
+      }
+    }
+    actorStore?.close();
     lock.finish(false);
   }
 }
@@ -1615,11 +1689,17 @@ export async function verifyProviderProfile(
   profileId: string,
   ownerIdOrFetcher?: string | typeof fetch,
   fetcher?: typeof fetch,
+  actorUserId?: string,
+  onCommit?: ProviderProfileCommit,
 ): Promise<ProviderVerification> {
   const ownerId =
     typeof ownerIdOrFetcher === "function" ? undefined : ownerIdOrFetcher;
   const effectiveFetcher =
     typeof ownerIdOrFetcher === "function" ? ownerIdOrFetcher : fetcher;
+  // Product HTTP callers pass an authenticated actor explicitly. Keep the
+  // legacy owner/fetcher overload actor-free for internal fixtures, while the
+  // final metadata write repeats this check transactionally.
+  if (actorUserId) assertAccountMutationAllowed(db(), actorUserId);
   const document = await readDocument();
   const profile = document.profiles.find(
     (candidate) => candidate.id === profileId,
@@ -1637,26 +1717,33 @@ export async function verifyProviderProfile(
     }
     probeProfile = { ...profile, apiKey };
   }
+  let result: ProviderVerification;
   try {
-    const result = await probeProviderKey(probeProfile, effectiveFetcher);
-    await recordCurrentKeyCheck(profile, "valid");
-    return result;
+    result = await probeProviderKey(probeProfile, effectiveFetcher);
   } catch (error) {
+    if (error instanceof AccountMutationBlockedError) throw error;
     if (error instanceof ProviderProfileInUseError) throw error;
     if (error instanceof ProviderVerificationError) {
       if (error.code === "CONFIG_CHANGED") throw error;
       await recordCurrentKeyCheck(
         profile,
         error.code === "AUTH" ? "invalid" : "unknown",
+        actorUserId,
       );
       throw error;
     }
-    await recordCurrentKeyCheck(profile, "unknown");
+    await recordCurrentKeyCheck(profile, "unknown", actorUserId);
     throw new ProviderVerificationError("NETWORK");
   }
+  // Keep persistence/audit failures distinct from remote probe failures. A
+  // successful probe must not be rewritten to "unknown" when its atomic
+  // metadata + audit commit rolls back.
+  await recordCurrentKeyCheck(profile, "valid", actorUserId, onCommit);
+  return result;
 }
 
 export function providerVerificationErrorMessage(error: unknown) {
+  if (error instanceof AccountMutationBlockedError) return error.message;
   if (error instanceof ProviderProfileInUseError) return error.message;
   if (!(error instanceof ProviderVerificationError)) return "暂时无法确认API Key是否有效";
   if (error.code === "AUTH") return "API Key已失效";
@@ -1695,7 +1782,7 @@ export async function adminProviderProfilesApi(
     });
     return;
   }
-  await migrateLegacyProviderKeysIfNeeded().catch(() => undefined);
+  await migrateLegacyProviderKeysIfNeeded(identity.userId).catch(() => undefined);
   const path = decodedRequestPath(request).replace(
     /^\/+/,
     "",
@@ -1726,16 +1813,21 @@ export async function adminProviderProfilesApi(
       const profile = await saveProviderProfile(
         await readJsonBody<Record<string, unknown>>(request, 64 * 1_024),
         path || undefined,
-      );
-      audit(
-        db(),
         identity.userId,
-        path ? "provider_profile.update" : "provider_profile.create",
-        profile,
+        (store, committedProfile) => audit(
+          store,
+          identity.userId,
+          path ? "provider_profile.update" : "provider_profile.create",
+          committedProfile,
+        ),
       );
       json(response, path ? 200 : 201, { profile: publicProfile(profile) });
     } catch (error) {
       if (error instanceof HttpRequestError) throw error;
+      if (error instanceof AccountMutationBlockedError) {
+        json(response, 409, { code: error.code, error: error.message });
+        return;
+      }
       json(response, 400, { error: "平台连接配置无效" });
     }
     return;
@@ -1749,19 +1841,28 @@ export async function adminProviderProfilesApi(
       const result = await verifyProviderProfile(
         profileId,
         identity.userId,
+        undefined,
+        identity.userId,
+        (store, committedProfile) => audit(
+          store,
+          identity.userId,
+          "provider_profile.verify",
+          committedProfile,
+        ),
       );
-      const document = await readDocument();
-      const profile = document.profiles.find(
-        (candidate) => candidate.id === profileId,
-      );
-      if (profile) {
-        audit(db(), identity.userId, "provider_profile.verify", profile);
-      }
       json(response, 200, {
         paidGenerationRequests: 0,
         verification: result,
       });
     } catch (error) {
+      if (error instanceof AccountMutationBlockedError) {
+        json(response, 409, {
+          code: error.code,
+          error: error.message,
+          paidGenerationRequests: 0,
+        });
+        return;
+      }
       json(response, 400, {
         error: providerVerificationErrorMessage(error),
         paidGenerationRequests: 0,

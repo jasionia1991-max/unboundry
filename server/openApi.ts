@@ -518,7 +518,7 @@ export const openApiDocument = {
     "/api/admin/users/{userId}/permissions": {
       get: {
         operationId: "readAccountPermissions",
-        summary: "List one account's effective permissions (manage_permissions)",
+        summary: "List one account's default, extra and effective permissions",
         parameters: [
           {
             in: "path",
@@ -529,13 +529,30 @@ export const openApiDocument = {
         ],
         responses: {
           "200": {
-            description: "Effective permission list for the account",
+            description: "Explicit permission sets for the account",
             content: {
               "application/json": {
                 schema: {
                   type: "object",
-                  required: ["permissions"],
+                  required: [
+                    "defaultPermissions",
+                    "effectivePermissions",
+                    "extraPermissions",
+                    "permissions",
+                  ],
                   properties: {
+                    defaultPermissions: {
+                      type: "array",
+                      items: { $ref: "#/components/schemas/AccountPermission" },
+                    },
+                    effectivePermissions: {
+                      type: "array",
+                      items: { $ref: "#/components/schemas/AccountPermission" },
+                    },
+                    extraPermissions: {
+                      type: "array",
+                      items: { $ref: "#/components/schemas/AccountPermission" },
+                    },
                     permissions: {
                       type: "array",
                       items: { $ref: "#/components/schemas/AccountPermission" },
@@ -567,13 +584,24 @@ export const openApiDocument = {
             "application/json": {
               schema: {
                 type: "object",
-                required: ["permissions"],
                 properties: {
+                  extraPermissions: {
+                    description: "Authoritative extra-grant set",
+                    type: "array",
+                    items: { $ref: "#/components/schemas/AccountPermission" },
+                  },
                   permissions: {
+                    deprecated: true,
+                    description:
+                      "Legacy effective set; default permissions are converted out",
                     type: "array",
                     items: { $ref: "#/components/schemas/AccountPermission" },
                   },
                 },
+                oneOf: [
+                  { required: ["extraPermissions"] },
+                  { required: ["permissions"] },
+                ],
                 additionalProperties: false,
               },
             },
@@ -586,13 +614,32 @@ export const openApiDocument = {
               "application/json": {
                 schema: {
                   type: "object",
-                  required: ["added", "removed", "permissions"],
+                  required: [
+                    "added",
+                    "defaultPermissions",
+                    "effectivePermissions",
+                    "extraPermissions",
+                    "permissions",
+                    "removed",
+                  ],
                   properties: {
                     added: {
                       type: "array",
                       items: { $ref: "#/components/schemas/AccountPermission" },
                     },
                     removed: {
+                      type: "array",
+                      items: { $ref: "#/components/schemas/AccountPermission" },
+                    },
+                    defaultPermissions: {
+                      type: "array",
+                      items: { $ref: "#/components/schemas/AccountPermission" },
+                    },
+                    effectivePermissions: {
+                      type: "array",
+                      items: { $ref: "#/components/schemas/AccountPermission" },
+                    },
+                    extraPermissions: {
                       type: "array",
                       items: { $ref: "#/components/schemas/AccountPermission" },
                     },
@@ -612,6 +659,10 @@ export const openApiDocument = {
           },
           "403": { description: "Requires manage_permissions" },
           "404": { description: "Account not found" },
+          "409": {
+            description:
+              "Actor account inactive, or actor/target account deletion active",
+          },
         },
       },
     },
@@ -761,6 +812,7 @@ export const openApiDocument = {
           },
           "400": { description: "Invalid title, category, status or graph" },
           "403": { description: "Requires manage_public_templates" },
+          "409": { description: "Actor account deletion is active or the account is disabled" },
         },
       },
     },
@@ -819,6 +871,7 @@ export const openApiDocument = {
           "400": { description: "Invalid fields" },
           "403": { description: "Requires manage_public_templates" },
           "404": { description: "Template not found" },
+          "409": { description: "Actor account deletion is active or the account is disabled" },
         },
       },
       delete: {
@@ -851,6 +904,7 @@ export const openApiDocument = {
           },
           "403": { description: "Requires manage_public_templates" },
           "404": { description: "Template not found" },
+          "409": { description: "Actor account deletion is active or the account is disabled" },
         },
       },
     },
@@ -934,6 +988,7 @@ export const openApiDocument = {
           "200": { description: "Saved key mask and version" },
           "400": { description: "Invalid key or connection" },
           "401": { description: "Sign-in required" },
+          "409": { description: "Account deletion active or account inactive" },
         },
       },
       delete: {
@@ -949,8 +1004,10 @@ export const openApiDocument = {
         ],
         responses: {
           "200": { description: "Deleted" },
+          "400": { description: "Credential cannot be deleted safely" },
           "401": { description: "Sign-in required" },
           "404": { description: "Credential not found" },
+          "409": { description: "Account deletion active or account inactive" },
         },
       },
     },
@@ -995,6 +1052,7 @@ export const openApiDocument = {
           },
           "400": { description: "Missing or invalid key" },
           "401": { description: "Sign-in required" },
+          "409": { description: "Account deletion active or account inactive" },
         },
       },
     },

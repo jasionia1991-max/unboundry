@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
+import {
+  AccountMutationBlockedError,
+  assertAccountMutationAllowed,
+} from "./accountMutationFence";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
 import {
@@ -246,6 +250,18 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   response.end(JSON.stringify(body));
+}
+
+function respondAccountMutationConflict(
+  response: ServerResponse,
+  error: unknown,
+) {
+  if (!(error instanceof AccountMutationBlockedError)) return false;
+  json(response, 409, {
+    code: error.code,
+    error: error.message,
+  });
+  return true;
 }
 
 function adminModel(
@@ -829,6 +845,7 @@ export async function adminModelsApi(
     let next: ModelRow | undefined;
     store.exec("BEGIN IMMEDIATE");
     try {
+      assertAccountMutationAllowed(store, identity.userId);
       const current = modelRows(store, identity.userId).find(
         (row) => row.id === modelId,
       );
@@ -922,15 +939,9 @@ export async function adminModelsApi(
         (row) => row.id === modelId,
       );
       store.exec("COMMIT");
-    } catch {
+    } catch (error) {
       if (store.isTransaction) store.exec("ROLLBACK");
-      try {
-        audit(store, identity.userId, `model.${action}_rejected`, modelId, {
-          reason: "TRANSACTION_FAILED",
-        });
-      } catch {
-        // The lifecycle response must not expose storage internals.
-      }
+      if (respondAccountMutationConflict(response, error)) return;
       json(response, 409, {
         code: "LIFECYCLE_UPDATE_FAILED",
         error: action === "archive" ? "模型归档失败" : "模型恢复失败",
@@ -962,6 +973,7 @@ export async function adminModelsApi(
   if (request.method === "DELETE" && /^[a-z0-9-]{3,80}$/i.test(path)) {
     store.exec("BEGIN IMMEDIATE");
     try {
+      assertAccountMutationAllowed(store, identity.userId);
       const current = modelRows(store, identity.userId).find(
         (row) => row.id === path,
       );
@@ -1009,15 +1021,9 @@ export async function adminModelsApi(
         id: path,
         paidProviderRequests: 0,
       });
-    } catch {
+    } catch (error) {
       if (store.isTransaction) store.exec("ROLLBACK");
-      try {
-        audit(store, identity.userId, "model.delete_rejected", path, {
-          reason: "TRANSACTION_FAILED",
-        });
-      } catch {
-        // The deletion response must not expose storage internals.
-      }
+      if (respondAccountMutationConflict(response, error)) return;
       json(response, 409, {
         code: "MODEL_DELETE_FAILED",
         error: "模型删除失败",
@@ -1076,6 +1082,7 @@ export async function adminModelsApi(
       });
       store.exec("BEGIN IMMEDIATE");
       try {
+        assertAccountMutationAllowed(store, identity.userId);
         store
           .prepare(`
             INSERT INTO model_profiles (
@@ -1152,6 +1159,7 @@ export async function adminModelsApi(
       });
     } catch (error) {
       if (error instanceof HttpRequestError) throw error;
+      if (respondAccountMutationConflict(response, error)) return;
       json(response, 400, { error: "Model profile is invalid" });
     }
     return;
@@ -1190,16 +1198,6 @@ export async function adminModelsApi(
         status: nextStatus,
         parameterSchema: body.parameterSchema ?? parameterSchema(current),
       });
-      if (current.archived_at && input.isDefault) {
-        audit(store, identity.userId, "model.update_rejected", path, {
-          reason: "ARCHIVED_MODEL_CANNOT_BE_DEFAULT",
-        });
-        json(response, 409, {
-          code: "ARCHIVED_MODEL_CANNOT_BE_DEFAULT",
-          error: "已归档模型不能设为默认，请先恢复模型",
-        });
-        return;
-      }
       const provider = store
         .prepare(`
           SELECT id, driver
@@ -1251,6 +1249,18 @@ export async function adminModelsApi(
       });
       store.exec("BEGIN IMMEDIATE");
       try {
+        assertAccountMutationAllowed(store, identity.userId);
+        if (current.archived_at && input.isDefault) {
+          audit(store, identity.userId, "model.update_rejected", path, {
+            reason: "ARCHIVED_MODEL_CANNOT_BE_DEFAULT",
+          });
+          store.exec("COMMIT");
+          json(response, 409, {
+            code: "ARCHIVED_MODEL_CANNOT_BE_DEFAULT",
+            error: "已归档模型不能设为默认，请先恢复模型",
+          });
+          return;
+        }
         if (input.isDefault) {
           store
             .prepare(`
@@ -1333,6 +1343,7 @@ export async function adminModelsApi(
       });
     } catch (error) {
       if (error instanceof HttpRequestError) throw error;
+      if (respondAccountMutationConflict(response, error)) return;
       json(response, 400, { error: "Model update is invalid" });
     }
     return;

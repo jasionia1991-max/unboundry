@@ -12,6 +12,8 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
+import type { DatabaseSync } from "node:sqlite";
+import { assertAccountMutationAllowed } from "./accountMutationFence.ts";
 import { appDataDirectory, openAppDatabase } from "./database.ts";
 
 export type StorageProfileStatus = "active" | "draft" | "verified";
@@ -180,8 +182,67 @@ async function writeDocument(document: StorageProfileDocument) {
   await chmod(target.profiles, 0o600);
 }
 
-function storageProfileHasDurableReferences(profileId: string) {
-  const database = openAppDatabase();
+type StorageDocumentCommit<T> = (
+  store: DatabaseSync,
+  result: T,
+) => void;
+
+/**
+ * Serialize one authenticated document mutation with its SQLite audit. The
+ * document lock is always acquired before the database writer lock, matching
+ * the publication reservation paths. Audit failures happen before rename, so
+ * they cannot leave an unaudited credential or routing change behind.
+ */
+async function mutateStorageDocument<T>(
+  mutation: (
+    document: StorageProfileDocument,
+    transactionStore?: DatabaseSync,
+  ) => T,
+  actorUserId?: string,
+  onCommit?: StorageDocumentCommit<T>,
+) {
+  if (onCommit && !actorUserId) {
+    throw new Error("Authenticated storage audit requires an actor");
+  }
+  return withDocumentMutationLock(async () => {
+    const document = await readDocument();
+    if (!actorUserId) {
+      const result = mutation(document);
+      await writeDocument(document);
+      return result;
+    }
+    const transactionStore = openAppDatabase();
+    let transactionOpen = false;
+    try {
+      transactionStore.exec("BEGIN IMMEDIATE");
+      transactionOpen = true;
+      assertAccountMutationAllowed(transactionStore, actorUserId);
+      const result = mutation(document, transactionStore);
+      onCommit?.(transactionStore, result);
+      await writeDocument(document);
+      transactionStore.exec("COMMIT");
+      transactionOpen = false;
+      return result;
+    } catch (error) {
+      if (transactionOpen) {
+        try {
+          transactionStore.exec("ROLLBACK");
+        } catch {
+          // Closing the dedicated connection still releases the writer lock.
+        }
+      }
+      throw error;
+    } finally {
+      transactionStore.close();
+    }
+  });
+}
+
+function storageProfileHasDurableReferences(
+  profileId: string,
+  transactionStore?: DatabaseSync,
+) {
+  const database = transactionStore ?? openAppDatabase();
   try {
     return Boolean(database.prepare(`
       SELECT 1 FROM media_assets
@@ -192,12 +253,15 @@ function storageProfileHasDurableReferences(profileId: string) {
       LIMIT 1
     `).get(profileId, profileId));
   } finally {
-    database.close();
+    if (!transactionStore) database.close();
   }
 }
 
-function assertStorageProfileNotRetained(profileId: string) {
-  if (storageProfileHasDurableReferences(profileId)) {
+function assertStorageProfileNotRetained(
+  profileId: string,
+  transactionStore?: DatabaseSync,
+) {
+  if (storageProfileHasDurableReferences(profileId, transactionStore)) {
     throw new Error("Storage profile is retained by registered media");
   }
 }
@@ -435,9 +499,12 @@ export async function withStorageMediaRoutingReservation<T>(
   });
 }
 
-export async function setStorageMediaRouting(enabled: boolean) {
-  return withDocumentMutationLock(async () => {
-    const document = await readDocument();
+export async function setStorageMediaRouting(
+  enabled: boolean,
+  actorUserId?: string,
+  onCommit?: StorageDocumentCommit<StorageMediaRouting>,
+) {
+  return mutateStorageDocument((document) => {
     const profile = document.profiles.find(
       (candidate) =>
         candidate.id === document.activeProfileId &&
@@ -447,20 +514,20 @@ export async function setStorageMediaRouting(enabled: boolean) {
       throw new Error("Select a verified storage profile first");
     }
     document.mediaRoutingEnabled = enabled;
-    await writeDocument(document);
     return {
       enabled,
       profile,
-    };
-  });
+    } satisfies StorageMediaRouting;
+  }, actorUserId, onCommit);
 }
 
 export async function saveStorageProfile(
   input: Record<string, unknown>,
   profileId?: string,
+  actorUserId?: string,
+  onCommit?: StorageDocumentCommit<AliyunStorageProfile>,
 ) {
-  return withDocumentMutationLock(async () => {
-    const document = await readDocument();
+  return mutateStorageDocument((document, transactionStore) => {
     const current = profileId
       ? document.profiles.find((profile) => profile.id === profileId)
       : undefined;
@@ -468,7 +535,7 @@ export async function saveStorageProfile(
     if (current?.status === "active") {
       throw new Error("Create and verify a replacement for the active profile");
     }
-    if (current) assertStorageProfileNotRetained(current.id);
+    if (current) assertStorageProfileNotRetained(current.id, transactionStore);
     const cleaned = cleanProfileInput(input, current);
     const timestamp = new Date().toISOString();
     const profile: AliyunStorageProfile = {
@@ -487,32 +554,60 @@ export async function saveStorageProfile(
     if (document.activeProfileId === profile.id) {
       document.activeProfileId = undefined;
     }
-    await writeDocument(document);
     return profile;
-  });
+  }, actorUserId, onCommit);
 }
 
-export async function markStorageProfileVerified(profileId: string) {
-  return withDocumentMutationLock(async () => {
-    const document = await readDocument();
+function sameStorageProfileRevision(
+  current: AliyunStorageProfile,
+  expected: AliyunStorageProfile,
+) {
+  return (
+    current.id === expected.id &&
+    current.accessKeyId === expected.accessKeyId &&
+    current.accessKeySecret === expected.accessKeySecret &&
+    current.bucket === expected.bucket &&
+    current.createdAt === expected.createdAt &&
+    current.endpoint === expected.endpoint &&
+    current.label === expected.label &&
+    current.lastVerifiedAt === expected.lastVerifiedAt &&
+    current.provider === expected.provider &&
+    current.region === expected.region &&
+    current.status === expected.status &&
+    current.updatedAt === expected.updatedAt
+  );
+}
+
+export async function markStorageProfileVerified(
+  profileId: string,
+  actorUserId?: string,
+  onCommit?: StorageDocumentCommit<AliyunStorageProfile>,
+  expectedProfile?: AliyunStorageProfile,
+) {
+  return mutateStorageDocument((document) => {
     const timestamp = new Date().toISOString();
     const profile = document.profiles.find(
       (candidate) => candidate.id === profileId,
     );
     if (!profile) throw new Error("Storage profile not found");
+    if (expectedProfile && !sameStorageProfileRevision(profile, expectedProfile)) {
+      throw new Error("Storage profile changed during verification");
+    }
     profile.lastVerifiedAt = timestamp;
     if (profile.status !== "active") {
       profile.status = "verified";
     }
     profile.updatedAt = timestamp;
-    await writeDocument(document);
     return profile;
-  });
+  }, actorUserId, onCommit);
 }
 
-export async function activateStorageProfile(profileId: string) {
-  return withDocumentMutationLock(async () => {
-    const document = await readDocument();
+export async function activateStorageProfile(
+  profileId: string,
+  actorUserId?: string,
+  onCommit?: StorageDocumentCommit<AliyunStorageProfile>,
+) {
+  return mutateStorageDocument((document) => {
     const profile = document.profiles.find(
       (candidate) => candidate.id === profileId,
     );
@@ -527,14 +622,16 @@ export async function activateStorageProfile(profileId: string) {
     profile.updatedAt = timestamp;
     document.activeProfileId = profile.id;
     document.mediaRoutingEnabled = false;
-    await writeDocument(document);
     return profile;
-  });
+  }, actorUserId, onCommit);
 }
 
-export async function deleteStorageProfile(profileId: string) {
-  return withDocumentMutationLock(async () => {
-    const document = await readDocument();
+export async function deleteStorageProfile(
+  profileId: string,
+  actorUserId?: string,
+  onCommit?: StorageDocumentCommit<void>,
+) {
+  return mutateStorageDocument((document, transactionStore) => {
     if (document.activeProfileId === profileId) {
       throw new Error("Active storage profile cannot be deleted");
     }
@@ -544,10 +641,9 @@ export async function deleteStorageProfile(profileId: string) {
     if (next.length === document.profiles.length) {
       throw new Error("Storage profile not found");
     }
-    assertStorageProfileNotRetained(profileId);
+    assertStorageProfileNotRetained(profileId, transactionStore);
     document.profiles = next;
-    await writeDocument(document);
-  });
+  }, actorUserId, onCommit);
 }
 
 export async function encryptedStorageProfilePath() {

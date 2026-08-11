@@ -71,6 +71,51 @@ type AuthStatus = {
   user?: AuthUser;
 };
 
+type AccountPermissionDetails = {
+  defaultPermissions: AccountPermission[];
+  effectivePermissions: AccountPermission[];
+  extraPermissions: AccountPermission[];
+  permissions: AccountPermission[];
+};
+
+function orderedPermissions(permissions: readonly AccountPermission[]) {
+  return [...new Set(permissions)].sort(
+    (left, right) =>
+      ALL_PERMISSIONS.indexOf(left) - ALL_PERMISSIONS.indexOf(right),
+  );
+}
+
+function samePermissions(
+  left: readonly AccountPermission[],
+  right: readonly AccountPermission[],
+) {
+  const orderedLeft = orderedPermissions(left);
+  const orderedRight = orderedPermissions(right);
+  return orderedLeft.length === orderedRight.length &&
+    orderedLeft.every((permission, index) => permission === orderedRight[index]);
+}
+
+function permissionDetailsFromResponse(body: {
+  defaultPermissions?: AccountPermission[];
+  effectivePermissions?: AccountPermission[];
+  extraPermissions?: AccountPermission[];
+  permissions: AccountPermission[];
+}): AccountPermissionDetails {
+  const defaultPermissions = body.defaultPermissions ??
+    [...DEFAULT_USER_PERMISSIONS];
+  const effectivePermissions = body.effectivePermissions ?? body.permissions;
+  const extraPermissions = body.extraPermissions ??
+    effectivePermissions.filter(
+      (permission) => !defaultPermissions.includes(permission),
+    );
+  return {
+    defaultPermissions: orderedPermissions(defaultPermissions),
+    effectivePermissions: orderedPermissions(effectivePermissions),
+    extraPermissions: orderedPermissions(extraPermissions),
+    permissions: orderedPermissions(body.permissions),
+  };
+}
+
 type AdminModel = {
   archived?: boolean;
   archivedAt?: string;
@@ -541,7 +586,10 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState<AuthUser>();
   const [permissionsByUser, setPermissionsByUser] = useState<
-    Record<string, AccountPermission[]>
+    Record<string, AccountPermissionDetails>
+  >({});
+  const [permissionLoadErrors, setPermissionLoadErrors] = useState<
+    Record<string, string>
   >({});
   const [permissionDrafts, setPermissionDrafts] = useState<
     Record<string, AccountPermission[]>
@@ -561,22 +609,29 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
         "/api/admin/users",
       );
       setUsers(result);
-      const next: Record<string, AccountPermission[]> = {};
+      const next: Record<string, AccountPermissionDetails> = {};
+      const nextErrors: Record<string, string> = {};
       await Promise.all(
         result
           .filter((user) => user.role !== "admin")
           .map(async (user) => {
             try {
               const body = await jsonRequest<{
+                defaultPermissions?: AccountPermission[];
+                effectivePermissions?: AccountPermission[];
+                extraPermissions?: AccountPermission[];
                 permissions: AccountPermission[];
               }>(`/api/admin/users/${encodeURIComponent(user.id)}/permissions`);
-              next[user.id] = body.permissions;
-            } catch {
-              // 单个账号权限读取失败不阻塞账号列表。
+              next[user.id] = permissionDetailsFromResponse(body);
+            } catch (caught) {
+              nextErrors[user.id] = caught instanceof Error
+                ? caught.message
+                : "权限读取失败";
             }
           }),
       );
       setPermissionsByUser(next);
+      setPermissionLoadErrors(nextErrors);
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "账号列表读取失败",
@@ -678,33 +733,46 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
     checked: boolean,
   ) => {
     setPermissionDrafts((current) => {
-      const base =
-        current[user.id] ??
-        permissionsByUser[user.id] ??
-        [...DEFAULT_USER_PERMISSIONS];
-      const next = checked
+      const details = permissionsByUser[user.id];
+      if (!details || details.defaultPermissions.includes(permission)) {
+        return current;
+      }
+      const base = current[user.id] ?? details.extraPermissions;
+      const next = orderedPermissions(checked
         ? [...base, permission]
-        : base.filter((candidate) => candidate !== permission);
+        : base.filter((candidate) => candidate !== permission));
+      if (samePermissions(next, details.extraPermissions)) {
+        const withoutUnchangedDraft = { ...current };
+        delete withoutUnchangedDraft[user.id];
+        return withoutUnchangedDraft;
+      }
       return { ...current, [user.id]: next };
     });
   };
 
   const savePermissions = async (user: AuthUser) => {
+    const draft = permissionDrafts[user.id];
+    if (!permissionsByUser[user.id] || !draft) return;
     setPermissionBusy(user.id);
     setPermissionError("");
     try {
-      const body = await jsonRequest<{ permissions: AccountPermission[] }>(
+      const body = await jsonRequest<{
+        defaultPermissions?: AccountPermission[];
+        effectivePermissions?: AccountPermission[];
+        extraPermissions?: AccountPermission[];
+        permissions: AccountPermission[];
+      }>(
         `/api/admin/users/${encodeURIComponent(user.id)}/permissions`,
         {
           body: JSON.stringify({
-            permissions: permissionDrafts[user.id] ?? [],
+            extraPermissions: draft,
           }),
           method: "PUT",
         },
       );
       setPermissionsByUser((current) => ({
         ...current,
-        [user.id]: body.permissions,
+        [user.id]: permissionDetailsFromResponse(body),
       }));
       setPermissionDrafts((current) => {
         const next = { ...current };
@@ -794,8 +862,18 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
           {permissionError && (
             <p className="auth-error" role="alert">{permissionError}</p>
           )}
-          {users.map((user) => (
-            <article key={user.id}>
+          {users.map((user) => {
+            const permissionDetails = permissionsByUser[user.id];
+            const permissionDraft = permissionDrafts[user.id];
+            const effectivePermissions = permissionDetails
+              ? orderedPermissions([
+                  ...permissionDetails.defaultPermissions,
+                  ...(permissionDraft ?? permissionDetails.extraPermissions),
+                ])
+              : [];
+            const permissionLoadError = permissionLoadErrors[user.id];
+            return (
+              <article key={user.id}>
               <div className="account-list-row">
                 <div>
                   <strong>{user.displayName}</strong>
@@ -865,47 +943,66 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
                   </p>
                 ) : (
                   <>
-                    <div className="account-permissions-grid">
-                      {ALL_PERMISSIONS.map((permission) => {
-                        const adminOnly = ADMIN_ONLY_PERMISSIONS.includes(
-                          permission,
-                        );
-                        const effective =
-                          permissionDrafts[user.id] ??
-                          permissionsByUser[user.id] ??
-                          [...DEFAULT_USER_PERMISSIONS];
-                        return (
-                          <label
-                            className="account-permission-option"
-                            key={permission}
-                            title={permissionLabel(permission)}
-                          >
-                            <input
-                              checked={effective.includes(permission)}
-                              className="admin-compact-checkbox"
-                              disabled={adminOnly}
-                              onChange={(event) =>
-                                togglePermission(
-                                  user,
-                                  permission,
-                                  event.target.checked,
-                                )
-                              }
-                              type="checkbox"
-                            />
-                            <span>{permissionLabel(permission)}</span>
-                            {adminOnly && (
-                              <small className="account-permission-locked">
-                                仅管理员
-                              </small>
-                            )}
-                          </label>
-                        );
-                      })}
-                    </div>
+                    {permissionDetails ? (
+                      <div className="account-permissions-grid">
+                        {ALL_PERMISSIONS.map((permission) => {
+                          const adminOnly = ADMIN_ONLY_PERMISSIONS.includes(
+                            permission,
+                          );
+                          const defaultPermission =
+                            permissionDetails.defaultPermissions.includes(
+                              permission,
+                            );
+                          return (
+                            <label
+                              className="account-permission-option"
+                              key={permission}
+                              title={permissionLabel(permission)}
+                            >
+                              <input
+                                checked={effectivePermissions.includes(permission)}
+                                className="admin-compact-checkbox"
+                                disabled={
+                                  permissionBusy === user.id ||
+                                  adminOnly ||
+                                  defaultPermission
+                                }
+                                onChange={(event) =>
+                                  togglePermission(
+                                    user,
+                                    permission,
+                                    event.target.checked,
+                                  )
+                                }
+                                type="checkbox"
+                              />
+                              <span>{permissionLabel(permission)}</span>
+                              {(adminOnly || defaultPermission) && (
+                                <small className="account-permission-locked">
+                                  {defaultPermission ? "默认" : "仅管理员"}
+                                </small>
+                              )}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p
+                        className="account-permissions-readonly"
+                        data-testid={`permissions-load-${user.id}`}
+                      >
+                        {permissionLoadError
+                          ? `权限读取失败：${permissionLoadError}`
+                          : "正在读取权限…"}
+                      </p>
+                    )}
                     <div className="account-permissions-actions">
                       <button
-                        disabled={permissionBusy === user.id}
+                        disabled={
+                          Boolean(permissionBusy) ||
+                          !permissionDetails ||
+                          !permissionDraft
+                        }
                         onClick={() => void savePermissions(user)}
                         type="button"
                       >
@@ -913,7 +1010,12 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
                           ? "保存中…"
                           : "保存权限"}
                       </button>
-                      {permissionDrafts[user.id] && (
+                      {permissionLoadError && (
+                        <button onClick={() => void load()} type="button">
+                          重试读取
+                        </button>
+                      )}
+                      {permissionDraft && (
                         <span className="account-permissions-dirty">
                           有未保存的修改
                         </span>
@@ -922,8 +1024,9 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
                   </>
                 )}
               </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </section>
       </div>
       {deleting && (

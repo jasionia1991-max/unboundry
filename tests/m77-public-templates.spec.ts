@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "./safe-test";
+import { AccountMutationBlockedError } from "../server/accountMutationFence";
 import { currentSchemaVersion, openAppDatabase } from "../server/database";
 import {
   archivePublicTemplate,
@@ -378,6 +379,115 @@ test("public template storage enforces validation, status transitions and seed p
   }
 });
 
+test("public template writes fence account deletion and keep audit atomic", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-public-fence-"));
+  try {
+    const store = openAppDatabase(dataDirectory);
+    try {
+      const now = timestamp();
+      store.prepare(`
+        INSERT INTO users (
+          id, login_name, display_name, password_hash, role, status,
+          created_at, updated_at
+        )
+        VALUES ('template-admin', 'template-admin', 'Template Admin',
+          'test-only', 'admin', 'active', ?, ?)
+      `).run(now, now);
+      const committed = savePublicTemplate(store, "template-admin", {
+        graph: uploadPlaceholderGraph(),
+        title: "Commit First Template",
+      });
+      const restorable = savePublicTemplate(store, "template-admin", {
+        graph: uploadPlaceholderGraph(),
+        title: "Restorable Template",
+      });
+      archivePublicTemplate(store, "template-admin", restorable.id);
+      const beforeAuditCount = Number((store.prepare(`
+        SELECT COUNT(*) AS count
+        FROM admin_audit_events
+        WHERE actor_user_id = 'template-admin'
+      `).get() as { count: number }).count);
+
+      // Commit-first rows and audits remain durable when deletion commits next.
+      store.prepare(`
+        INSERT INTO account_delete_intents (
+          owner_id, state, error_code, retry_count, created_at, updated_at
+        ) VALUES ('template-admin', 'running', NULL, 0, ?, ?)
+      `).run(now, now);
+      expect(store.prepare(`
+        SELECT title FROM public_templates WHERE id = ?
+      `).get(committed.id)).toEqual({ title: "Commit First Template" });
+
+      const blockedMutations = [
+        () => savePublicTemplate(store, "template-admin", {
+          graph: uploadPlaceholderGraph(),
+          title: "Blocked Create",
+        }),
+        () => updatePublicTemplate(
+          store,
+          "template-admin",
+          committed.id,
+          { title: "Blocked Update" },
+        ),
+        () => archivePublicTemplate(store, "template-admin", committed.id),
+        () => restorePublicTemplate(store, "template-admin", restorable.id),
+        () => deletePublicTemplate(store, "template-admin", committed.id),
+      ];
+      for (const mutation of blockedMutations) {
+        expect(mutation).toThrow(AccountMutationBlockedError);
+      }
+      expect(store.prepare(`
+        SELECT title, status FROM public_templates WHERE id = ?
+      `).get(committed.id)).toEqual({
+        status: "draft",
+        title: "Commit First Template",
+      });
+      expect(store.prepare(`
+        SELECT status FROM public_templates WHERE id = ?
+      `).get(restorable.id)).toEqual({ status: "archived" });
+      expect(store.prepare(`
+        SELECT COUNT(*) AS count FROM public_templates
+        WHERE title = 'Blocked Create'
+      `).get()).toEqual({ count: 0 });
+      expect(Number((store.prepare(`
+        SELECT COUNT(*) AS count
+        FROM admin_audit_events
+        WHERE actor_user_id = 'template-admin'
+      `).get() as { count: number }).count)).toBe(beforeAuditCount);
+
+      store.prepare(`
+        DELETE FROM account_delete_intents WHERE owner_id = 'template-admin'
+      `).run();
+      store.exec(`
+        CREATE TRIGGER test_public_template_audit_fault
+        BEFORE INSERT ON admin_audit_events
+        WHEN NEW.action = 'public_template.update'
+        BEGIN
+          SELECT RAISE(ABORT, 'test public template audit fault');
+        END;
+      `);
+      expect(() => updatePublicTemplate(
+        store,
+        "template-admin",
+        committed.id,
+        { title: "Must Roll Back" },
+      )).toThrow("test public template audit fault");
+      expect(store.prepare(`
+        SELECT title FROM public_templates WHERE id = ?
+      `).get(committed.id)).toEqual({ title: "Commit First Template" });
+      expect(Number((store.prepare(`
+        SELECT COUNT(*) AS count
+        FROM admin_audit_events
+        WHERE actor_user_id = 'template-admin'
+      `).get() as { count: number }).count)).toBe(beforeAuditCount);
+    } finally {
+      store.close();
+    }
+  } finally {
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
 test("admin CRUD API, ordinary 403 and the public GET keep the seed contract", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-public-api-"));
   let server: ChildProcess | undefined;
@@ -393,6 +503,40 @@ test("admin CRUD API, ordinary 403 and the public GET keep the seed contract", a
     });
     expect(bootstrap.status).toBe(201);
     const adminCookie = cookie(bootstrap);
+
+    const fenceStore = openAppDatabase(dataDirectory);
+    try {
+      const admin = fenceStore.prepare(`
+        SELECT id FROM users WHERE login_name = 'owner'
+      `).get() as { id: string };
+      const now = timestamp();
+      fenceStore.prepare(`
+        INSERT INTO account_delete_intents (
+          owner_id, state, error_code, retry_count, created_at, updated_at
+        ) VALUES (?, 'running', NULL, 0, ?, ?)
+      `).run(admin.id, now, now);
+      const blocked = await request("/api/admin/templates", {
+        body: JSON.stringify({
+          graph: uploadPlaceholderGraph(),
+          title: "Blocked API Template",
+        }),
+        cookie: adminCookie,
+        method: "POST",
+      });
+      expect(blocked.status).toBe(409);
+      await expect(blocked.json()).resolves.toMatchObject({
+        code: "ACCOUNT_DELETE_ACTIVE",
+      });
+      expect(fenceStore.prepare(`
+        SELECT COUNT(*) AS count FROM public_templates
+        WHERE title = 'Blocked API Template'
+      `).get()).toEqual({ count: 0 });
+      fenceStore.prepare(`
+        DELETE FROM account_delete_intents WHERE owner_id = ?
+      `).run(admin.id);
+    } finally {
+      fenceStore.close();
+    }
 
     const createdUser = await request("/api/admin/users", {
       body: JSON.stringify({

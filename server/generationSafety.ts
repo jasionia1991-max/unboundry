@@ -1,5 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
+import {
+  AccountMutationBlockedError,
+  assertAccountMutationAllowed,
+} from "./accountMutationFence";
 import { requestIdentity } from "./auth";
 import { hasPermission } from "./permissions";
 import {
@@ -348,6 +352,42 @@ function cleanSettings(input: Partial<SafetyInput>): SafetyInput {
   };
 }
 
+function validateSettingsPatch(input: Partial<SafetyInput>) {
+  if (
+    input.globalEnabled !== undefined &&
+    typeof input.globalEnabled !== "boolean"
+  ) {
+    throw new Error("安全开关设置无效");
+  }
+  if (
+    input.emergencyStop !== undefined &&
+    typeof input.emergencyStop !== "boolean"
+  ) {
+    throw new Error("安全开关设置无效");
+  }
+  if (
+    input.runningTaskPolicy !== undefined &&
+    !["cancel", "wait"].includes(String(input.runningTaskPolicy))
+  ) {
+    throw new Error("安全开关设置无效");
+  }
+  const integerFields = [
+    ["audioConcurrency", 1, 1_000, "音频并发"],
+    ["cooldownMinutes", 1, 1_440, "熔断时间"],
+    ["failureThreshold", 1, 20, "失败阈值"],
+    ["imageConcurrency", 1, 1_000, "图片并发"],
+    ["perUserConcurrency", 1, 1_000, "用户并发"],
+    ["requestsPerMinute", 1, 1_000, "请求频率"],
+    ["textConcurrency", 1, 1_000, "文字并发"],
+    ["videoConcurrency", 1, 1_000, "视频并发"],
+  ] as const;
+  for (const [key, minimum, maximum, label] of integerFields) {
+    if (input[key] !== undefined) {
+      cleanInteger(input[key], minimum, maximum, label);
+    }
+  }
+}
+
 export function createGenerationSafetyStore(
   dataDirectory = appDataDirectory(),
 ) {
@@ -360,10 +400,7 @@ export function createGenerationSafetyStore(
     return toSettings(read.get() as SafetyRow);
   }
 
-  function update(input: Partial<SafetyInput>) {
-    // 旧客户端/旧标签可能仍提交已废弃的成本字段；cleanSettings 只读取
-    // 当前仍支持的字段，多余字段会被自然忽略，不会写库。
-    const clean = cleanSettings({ ...settings(), ...input });
+  function writeSettings(clean: SafetyInput) {
     const timestamp = new Date().toISOString();
     database
       .prepare(`
@@ -397,7 +434,56 @@ export function createGenerationSafetyStore(
         clean.runningTaskPolicy,
         timestamp,
       );
+  }
+
+  function update(input: Partial<SafetyInput>) {
+    // 旧客户端/旧标签可能仍提交已废弃的成本字段；cleanSettings 只读取
+    // 当前仍支持的字段，多余字段会被自然忽略，不会写库。
+    validateSettingsPatch(input);
+    const clean = cleanSettings({ ...settings(), ...input });
+    writeSettings(clean);
     return settings();
+  }
+
+  function updateForAdmin(
+    actorUserId: string,
+    input: Partial<SafetyInput>,
+  ) {
+    // JSON parsing and field validation must finish before taking the write
+    // lock. The authoritative merge and account fence stay inside it.
+    validateSettingsPatch(input);
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      assertAccountMutationAllowed(database, actorUserId);
+      const before = settings();
+      const clean = cleanSettings({ ...before, ...input });
+      writeSettings(clean);
+      const after = settings();
+      const applyRunningTaskPolicyAfterCommit =
+        after.emergencyStop &&
+        after.runningTaskPolicy === "cancel" &&
+        (!before.emergencyStop || before.runningTaskPolicy !== "cancel");
+      audit(database, actorUserId, {
+        after,
+        before,
+        ...(applyRunningTaskPolicyAfterCommit
+          ? {
+              runningTaskPolicyEffect: {
+                phase: "after-commit",
+                policy: "cancel",
+              },
+            }
+          : {}),
+      });
+      database.exec("COMMIT");
+      return {
+        applyRunningTaskPolicyAfterCommit,
+        settings: after,
+      };
+    } catch (error) {
+      if (database.isTransaction) database.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   function admission(input: {
@@ -416,6 +502,7 @@ export function createGenerationSafetyStore(
     },
     settings,
     update,
+    updateForAdmin,
   };
 }
 
@@ -503,10 +590,14 @@ export async function adminGenerationSafetyApi(
   }
   if (request.method === "PUT" && !path) {
     try {
-      const before = safetyStore().settings();
-      const settings = safetyStore().update(
-        await readJsonBody<Partial<SafetyInput>>(request, 64 * 1_024),
+      const input = await readJsonBody<Partial<SafetyInput>>(
+        request,
+        64 * 1_024,
       );
+      const {
+        applyRunningTaskPolicyAfterCommit,
+        settings,
+      } = safetyStore().updateForAdmin(identity.userId, input);
       let runningTaskPolicySummary:
         | {
             cancelled: number;
@@ -515,11 +606,9 @@ export async function adminGenerationSafetyApi(
             waiting: number;
           }
         | undefined;
-      if (
-        settings.emergencyStop &&
-        settings.runningTaskPolicy === "cancel" &&
-        (!before.emergencyStop || before.runningTaskPolicy !== "cancel")
-      ) {
+      // Running-task cancellation may await Provider-aware task transitions,
+      // so it intentionally starts only after settings + audit have committed.
+      if (applyRunningTaskPolicyAfterCommit) {
         try {
           const { applyEmergencyStopRunningTaskPolicy } = await import(
             "./generationTasks"
@@ -537,18 +626,6 @@ export async function adminGenerationSafetyApi(
           };
         }
       }
-      const database = openAppDatabase();
-      try {
-        audit(database, identity.userId, {
-          after: settings,
-          before,
-          ...(runningTaskPolicySummary
-            ? { runningTaskPolicySummary }
-            : {}),
-        });
-      } finally {
-        database.close();
-      }
       json(response, 200, {
         ...providerStatus(),
         ...(runningTaskPolicySummary ? { runningTaskPolicySummary } : {}),
@@ -556,6 +633,13 @@ export async function adminGenerationSafetyApi(
       });
     } catch (error) {
       if (error instanceof HttpRequestError) throw error;
+      if (error instanceof AccountMutationBlockedError) {
+        json(response, 409, {
+          code: error.code,
+          error: error.message,
+        });
+        return;
+      }
       json(response, 400, {
         error: error instanceof Error ? error.message : "安全设置保存失败",
       });

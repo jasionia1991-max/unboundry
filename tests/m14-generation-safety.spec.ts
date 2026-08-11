@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "./safe-test";
+import { AccountMutationBlockedError } from "../server/accountMutationFence";
 import { openAppDatabase } from "../server/database";
 import { createGenerationSafetyStore } from "../server/generationSafety";
 import { createGenerationTaskStore } from "../server/generationTaskStore";
@@ -254,6 +255,61 @@ test("generation safety settings contain no cost fields and admission blocks by 
   }
 });
 
+test("admin safety mutations have a deterministic account-delete order and atomic audit", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-safety-fence-"));
+  const safety = createGenerationSafetyStore(dataDirectory);
+  const database = openAppDatabase(dataDirectory);
+  try {
+    const now = new Date().toISOString();
+    database.prepare(`
+      INSERT INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      )
+      VALUES ('safety-admin', 'safety-admin', 'Safety Admin', 'test-only',
+        'admin', 'active', ?, ?)
+    `).run(now, now);
+
+    const committed = safety.updateForAdmin("safety-admin", {
+      ...baseSettings,
+      requestsPerMinute: 31,
+    });
+    expect(committed.settings.requestsPerMinute).toBe(31);
+    expect(database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM admin_audit_events
+      WHERE actor_user_id = 'safety-admin'
+        AND action = 'generation_safety.update'
+    `).get()).toEqual({ count: 1 });
+
+    // Commit-first: the completed settings + audit remain authoritative even
+    // if account deletion wins the following write transaction.
+    database.prepare(`
+      INSERT INTO account_delete_intents (
+        owner_id, state, error_code, retry_count, created_at, updated_at
+      ) VALUES ('safety-admin', 'running', NULL, 0, ?, ?)
+    `).run(now, now);
+    expect(safety.settings().requestsPerMinute).toBe(31);
+
+    // Delete-first: the next mutation sees the committed intent under its own
+    // BEGIN IMMEDIATE and changes neither settings nor audit.
+    expect(() => safety.updateForAdmin("safety-admin", {
+      requestsPerMinute: 32,
+    })).toThrow(AccountMutationBlockedError);
+    expect(safety.settings().requestsPerMinute).toBe(31);
+    expect(database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM admin_audit_events
+      WHERE actor_user_id = 'safety-admin'
+        AND action = 'generation_safety.update'
+    `).get()).toEqual({ count: 1 });
+  } finally {
+    database.close();
+    safety.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
 test("only administrators can read and change generation safety settings and legacy cost fields are ignored", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-safety-api-"));
   let server: ChildProcess | undefined;
@@ -325,6 +381,37 @@ test("only administrators can read and change generation safety settings and leg
     expect(after.settings.requestsPerMinute).toBe(99);
     expect(after.settings).not.toHaveProperty("dailyCostLimitCnyMicrounits");
 
+    const fenceStore = openAppDatabase(dataDirectory);
+    try {
+      const admin = fenceStore.prepare(`
+        SELECT id FROM users WHERE login_name = 'owner'
+      `).get() as { id: string };
+      const now = new Date().toISOString();
+      fenceStore.prepare(`
+        INSERT INTO account_delete_intents (
+          owner_id, state, error_code, retry_count, created_at, updated_at
+        ) VALUES (?, 'running', NULL, 0, ?, ?)
+      `).run(admin.id, now, now);
+      const blocked = await request("/api/admin/generation-safety", {
+        body: JSON.stringify({ requestsPerMinute: 77 }),
+        cookie: adminCookie,
+        method: "PUT",
+      });
+      expect(blocked.status).toBe(409);
+      await expect(blocked.json()).resolves.toMatchObject({
+        code: "ACCOUNT_DELETE_ACTIVE",
+      });
+      expect(fenceStore.prepare(`
+        SELECT requests_per_minute
+        FROM generation_safety_settings WHERE id = 1
+      `).get()).toEqual({ requests_per_minute: 99 });
+      fenceStore.prepare(`
+        DELETE FROM account_delete_intents WHERE owner_id = ?
+      `).run(admin.id);
+    } finally {
+      fenceStore.close();
+    }
+
     const waitingStop = await request("/api/admin/generation-safety", {
       body: JSON.stringify({
         ...baseSettings,
@@ -348,6 +435,48 @@ test("only administrators can read and change generation safety settings and leg
       prompt: "cancel this committed local task",
     }).task;
     taskStore.close();
+
+    const auditFaultStore = openAppDatabase(dataDirectory);
+    try {
+      auditFaultStore.exec(`
+        CREATE TRIGGER test_generation_safety_audit_fault
+        BEFORE INSERT ON admin_audit_events
+        WHEN NEW.action = 'generation_safety.update'
+        BEGIN
+          SELECT RAISE(ABORT, 'test generation safety audit fault');
+        END;
+      `);
+    } finally {
+      auditFaultStore.close();
+    }
+    const failedStop = await request("/api/admin/generation-safety", {
+      body: JSON.stringify({
+        ...baseSettings,
+        emergencyStop: true,
+        runningTaskPolicy: "cancel",
+      }),
+      cookie: adminCookie,
+      method: "PUT",
+    });
+    expect(failedStop.status).toBe(400);
+    const afterAuditFault = await (await request(
+      "/api/admin/generation-safety",
+      { cookie: adminCookie },
+    )).json() as { settings: typeof baseSettings };
+    expect(afterAuditFault.settings).toMatchObject({
+      emergencyStop: true,
+      runningTaskPolicy: "wait",
+    });
+    const notCancelledStore = createGenerationTaskStore(dataDirectory);
+    expect(notCancelledStore.get(queued.id)).toMatchObject({ state: "queued" });
+    notCancelledStore.close();
+    const dropAuditFaultStore = openAppDatabase(dataDirectory);
+    try {
+      dropAuditFaultStore.exec("DROP TRIGGER test_generation_safety_audit_fault");
+    } finally {
+      dropAuditFaultStore.close();
+    }
+
     const stopped = await request("/api/admin/generation-safety", {
       body: JSON.stringify({
         ...baseSettings,
@@ -379,8 +508,14 @@ test("only administrators can read and change generation safety settings and leg
         LIMIT 1
       `).get() as { details: string };
       expect(JSON.parse(latest.details)).toMatchObject({
-        runningTaskPolicySummary: { cancelled: 1, failed: 0, waiting: 0 },
+        runningTaskPolicyEffect: {
+          phase: "after-commit",
+          policy: "cancel",
+        },
       });
+      expect(JSON.parse(latest.details)).not.toHaveProperty(
+        "runningTaskPolicySummary",
+      );
     } finally {
       auditStore.close();
     }

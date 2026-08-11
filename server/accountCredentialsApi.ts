@@ -9,6 +9,7 @@ import {
   saveAccountCredential,
   verifyAccountCredential,
 } from "./accountCredentials";
+import { AccountMutationBlockedError } from "./accountMutationFence";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
 import {
@@ -37,6 +38,15 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   response.end(JSON.stringify(body));
+}
+
+function respondAccountMutationConflict(
+  response: ServerResponse,
+  error: unknown,
+) {
+  if (!(error instanceof AccountMutationBlockedError)) return false;
+  json(response, 409, { code: error.code, error: error.message });
+  return true;
 }
 
 async function publishedProviderProfiles(store: DatabaseSync) {
@@ -126,6 +136,7 @@ export async function accountCredentialsApi(
       json(response, 200, result);
     } catch (error) {
       if (error instanceof HttpRequestError) throw error;
+      if (respondAccountMutationConflict(response, error)) return;
       json(response, 400, {
         error: error instanceof Error ? error.message : "平台密钥保存失败",
       });
@@ -150,6 +161,7 @@ export async function accountCredentialsApi(
         },
       });
     } catch (error) {
+      if (respondAccountMutationConflict(response, error)) return;
       json(response, 400, {
         error: error instanceof Error ? error.message : "平台密钥校验失败",
         keyStatus: "invalid",
@@ -159,11 +171,18 @@ export async function accountCredentialsApi(
   }
 
   if (request.method === "DELETE" && !match[2]) {
-    if (!(await deleteAccountCredential(store, identity.userId, profileId))) {
-      json(response, 404, { error: "平台密钥不存在" });
-      return;
+    try {
+      if (!(await deleteAccountCredential(store, identity.userId, profileId))) {
+        json(response, 404, { error: "平台密钥不存在" });
+        return;
+      }
+      json(response, 200, { deleted: true, profileId });
+    } catch (error) {
+      if (respondAccountMutationConflict(response, error)) return;
+      json(response, 400, {
+        error: error instanceof Error ? error.message : "平台密钥删除失败",
+      });
     }
-    json(response, 200, { deleted: true, profileId });
     return;
   }
 

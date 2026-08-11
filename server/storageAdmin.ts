@@ -4,6 +4,10 @@ import {
   safeAliyunOssConnectionError,
   testAliyunOssConnection,
 } from "./aliyunOss";
+import {
+  AccountMutationBlockedError,
+  assertAccountMutationAllowed,
+} from "./accountMutationFence";
 import { clientAddress, requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
 import {
@@ -76,12 +80,13 @@ function secureMutationTransport(request: IncomingMessage) {
 }
 
 function audit(
+  store: DatabaseSync,
   actorUserId: string,
   action: string,
   profileId: string,
   details: Record<string, unknown> = {},
 ) {
-  db()
+  store
     .prepare(`
       INSERT INTO admin_audit_events (
         actor_user_id, action, target_user_id, details, created_at
@@ -94,6 +99,37 @@ function audit(
       JSON.stringify({ profileId, ...details }),
       new Date().toISOString(),
     );
+}
+
+function recordStorageAudit(
+  actorUserId: string,
+  action: string,
+  profileId: string,
+  details: Record<string, unknown> = {},
+) {
+  const store = openAppDatabase();
+  try {
+    store.exec("BEGIN IMMEDIATE");
+    try {
+      assertAccountMutationAllowed(store, actorUserId);
+      audit(store, actorUserId, action, profileId, details);
+      store.exec("COMMIT");
+    } catch (error) {
+      if (store.isTransaction) store.exec("ROLLBACK");
+      throw error;
+    }
+  } finally {
+    store.close();
+  }
+}
+
+function respondAccountMutationConflict(
+  response: ServerResponse,
+  error: unknown,
+) {
+  if (!(error instanceof AccountMutationBlockedError)) return false;
+  json(response, 409, { code: error.code, error: error.message });
+  return true;
 }
 
 async function statusBody() {
@@ -194,15 +230,37 @@ export async function adminStorageApi(
     return;
   }
 
+  if (!["GET", "HEAD", "OPTIONS"].includes(request.method ?? "")) {
+    try {
+      // Fast rejection prevents a known deletion intent from starting a
+      // remote OSS verification. Each final document commit repeats this
+      // check under BEGIN IMMEDIATE.
+      assertAccountMutationAllowed(db(), identity.userId);
+    } catch (error) {
+      if (respondAccountMutationConflict(response, error)) return;
+      throw error;
+    }
+  }
+
   if (request.method === "POST" && path === "profiles") {
     try {
       const profile = await saveStorageProfile(
         await readJsonBody<Record<string, unknown>>(request, 16 * 1_024),
+        undefined,
+        identity.userId,
+        (store, committed) => {
+          audit(
+            store,
+            identity.userId,
+            "create_storage_profile",
+            committed.id,
+          );
+        },
       );
-      audit(identity.userId, "create_storage_profile", profile.id);
       json(response, 201, { profile: publicStorageProfile(profile) });
     } catch (error) {
       if (error instanceof HttpRequestError) throw error;
+      if (respondAccountMutationConflict(response, error)) return;
       json(response, 400, { error: "OSS configuration could not be saved" });
     }
     return;
@@ -217,13 +275,19 @@ export async function adminStorageApi(
       if (typeof body.enabled !== "boolean") {
         throw new Error("Invalid media routing state");
       }
-      const state = await setStorageMediaRouting(body.enabled);
-      audit(
+      const state = await setStorageMediaRouting(
+        body.enabled,
         identity.userId,
-        state.enabled
-          ? "enable_storage_media_routing"
-          : "disable_storage_media_routing",
-        state.profile?.id ?? "",
+        (store, committed) => {
+          audit(
+            store,
+            identity.userId,
+            committed.enabled
+              ? "enable_storage_media_routing"
+              : "disable_storage_media_routing",
+            committed.profile?.id ?? "",
+          );
+        },
       );
       json(response, 200, {
         activeBackend: state.enabled ? "oss" : "local",
@@ -231,6 +295,7 @@ export async function adminStorageApi(
       });
     } catch (error) {
       if (error instanceof HttpRequestError) throw error;
+      if (respondAccountMutationConflict(response, error)) return;
       json(response, 400, {
         error: "请先选择已测试通过的正式OSS配置",
       });
@@ -244,11 +309,20 @@ export async function adminStorageApi(
       const profile = await saveStorageProfile(
         await readJsonBody<Record<string, unknown>>(request, 16 * 1_024),
         profileMatch[1],
+        identity.userId,
+        (store, committed) => {
+          audit(
+            store,
+            identity.userId,
+            "update_storage_profile",
+            committed.id,
+          );
+        },
       );
-      audit(identity.userId, "update_storage_profile", profile.id);
       json(response, 200, { profile: publicStorageProfile(profile) });
     } catch (error) {
       if (error instanceof HttpRequestError) throw error;
+      if (respondAccountMutationConflict(response, error)) return;
       json(response, 400, { error: "OSS configuration could not be updated" });
     }
     return;
@@ -256,10 +330,21 @@ export async function adminStorageApi(
 
   if (request.method === "DELETE" && profileMatch) {
     try {
-      await deleteStorageProfile(profileMatch[1]);
-      audit(identity.userId, "delete_storage_profile", profileMatch[1]);
+      await deleteStorageProfile(
+        profileMatch[1],
+        identity.userId,
+        (store) => {
+          audit(
+            store,
+            identity.userId,
+            "delete_storage_profile",
+            profileMatch[1],
+          );
+        },
+      );
       json(response, 200, { deleted: true });
-    } catch {
+    } catch (error) {
+      if (respondAccountMutationConflict(response, error)) return;
       json(response, 400, { error: "OSS configuration could not be deleted" });
     }
     return;
@@ -267,6 +352,12 @@ export async function adminStorageApi(
 
   const testMatch = /^profiles\/([a-f0-9-]{36})\/test$/.exec(path);
   if (request.method === "POST" && testMatch) {
+    let checked:
+      | {
+          profile: Awaited<ReturnType<typeof listStorageProfiles>>["profiles"][number];
+          result: Awaited<ReturnType<typeof testAliyunOssConnection>>;
+        }
+      | undefined;
     try {
       const document = await listStorageProfiles();
       const profile = document.profiles.find(
@@ -274,27 +365,51 @@ export async function adminStorageApi(
       );
       if (!profile) throw new Error("Storage profile not found");
       const result = await testAliyunOssConnection(profile);
-      const verified = await markStorageProfileVerified(profile.id);
-      audit(identity.userId, "verify_storage_profile", profile.id, {
-        cleanupVerified: result.cleanupVerified,
-        signedReadVerified: result.signedReadVerified,
-      });
-      json(response, 200, {
-        profile: publicStorageProfile(verified),
-        test: {
-          cleanupVerified: result.cleanupVerified,
-          elapsedMs: result.elapsedMs,
-          signedReadVerified: result.signedReadVerified,
-        },
-      });
+      checked = { profile, result };
     } catch (error) {
       const safeError = safeAliyunOssConnectionError(error);
-      audit(identity.userId, "verify_storage_profile_failed", testMatch[1], {
-        errorCode: safeError.code,
-      });
+      try {
+        recordStorageAudit(
+          identity.userId,
+          "verify_storage_profile_failed",
+          testMatch[1],
+          { errorCode: safeError.code },
+        );
+      } catch (auditError) {
+        if (respondAccountMutationConflict(response, auditError)) return;
+        throw auditError;
+      }
       json(response, 400, {
         code: safeError.code,
         error: safeError.message,
+      });
+      return;
+    }
+    const { profile: testedProfile, result: testResult } = checked;
+    try {
+      const verified = await markStorageProfileVerified(
+        testedProfile.id,
+        identity.userId,
+        (store, committed) => {
+          audit(store, identity.userId, "verify_storage_profile", committed.id, {
+            cleanupVerified: testResult.cleanupVerified,
+            signedReadVerified: testResult.signedReadVerified,
+          });
+        },
+        testedProfile,
+      );
+      json(response, 200, {
+        profile: publicStorageProfile(verified),
+        test: {
+          cleanupVerified: testResult.cleanupVerified,
+          elapsedMs: testResult.elapsedMs,
+          signedReadVerified: testResult.signedReadVerified,
+        },
+      });
+    } catch (error) {
+      if (respondAccountMutationConflict(response, error)) return;
+      json(response, 400, {
+        error: "OSS verification result could not be saved",
       });
     }
     return;
@@ -303,13 +418,24 @@ export async function adminStorageApi(
   const activateMatch = /^profiles\/([a-f0-9-]{36})\/activate$/.exec(path);
   if (request.method === "POST" && activateMatch) {
     try {
-      const profile = await activateStorageProfile(activateMatch[1]);
-      audit(identity.userId, "activate_storage_profile", profile.id);
+      const profile = await activateStorageProfile(
+        activateMatch[1],
+        identity.userId,
+        (store, committed) => {
+          audit(
+            store,
+            identity.userId,
+            "activate_storage_profile",
+            committed.id,
+          );
+        },
+      );
       json(response, 200, {
         mediaRoutingEnabled: false,
         profile: publicStorageProfile(profile),
       });
-    } catch {
+    } catch (error) {
+      if (respondAccountMutationConflict(response, error)) return;
       json(response, 400, {
         error: "Only a successfully tested configuration can be selected",
       });

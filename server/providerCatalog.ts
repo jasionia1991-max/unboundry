@@ -2,6 +2,10 @@ import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
 import { composeExecutionProfile } from "./accountCredentials";
+import {
+  AccountMutationBlockedError,
+  assertAccountMutationAllowed,
+} from "./accountMutationFence";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
 import {
@@ -79,6 +83,11 @@ type ImportSelection = {
   capability?: unknown;
   discoveryId?: unknown;
   providerProtocol?: unknown;
+};
+
+type ProviderCatalogSyncOptions = {
+  actorUserId?: string;
+  maximumDurationMs?: number;
 };
 
 export type ProviderCatalogModelMetadata = {
@@ -409,6 +418,12 @@ class CatalogRemoteError extends Error {
   }
 }
 
+class CatalogSyncPersistenceError extends Error {
+  constructor(readonly original: unknown) {
+    super("Provider catalog persistence failed");
+  }
+}
+
 function catalogStatusForError(error: unknown): ProviderCatalogKeyStatus {
   if (
     !(error instanceof ArkControlPlaneError) &&
@@ -530,8 +545,11 @@ function incrementControlRequests(
 export async function syncArkProviderCatalog(
   profileId: string,
   fetcher: typeof fetch = fetch,
-  options: { maximumDurationMs?: number } = {},
+  options: ProviderCatalogSyncOptions = {},
 ) {
+  if (options.actorUserId) {
+    assertAccountMutationAllowed(db(), options.actorUserId);
+  }
   const maximumDurationMs = options.maximumDurationMs ??
     catalogSyncMaximumDurationMs;
   if (
@@ -592,6 +610,9 @@ export async function syncArkProviderCatalog(
     store.exec("BEGIN IMMEDIATE");
     try {
       remainingCatalogSyncDurationMs(deadline, controller.signal);
+      if (options.actorUserId) {
+        assertAccountMutationAllowed(store, options.actorUserId);
+      }
       const updated = store.prepare(`
         UPDATE provider_profiles
         SET
@@ -631,17 +652,33 @@ export async function syncArkProviderCatalog(
           syncToken,
         ) ?? new CatalogSyncError("STALE");
       }
+      if (options.actorUserId) {
+        audit(store, options.actorUserId, "provider_catalog.sync", profileId, {
+          controlPlaneRequests: requestCount,
+          endpointCount: discovered.endpoints.length,
+          modelCount: discovered.models.length,
+        });
+      }
       store.exec("COMMIT");
       controlRequestsRecorded = true;
     } catch (error) {
       store.exec("ROLLBACK");
-      throw error;
+      if (
+        error instanceof AccountMutationBlockedError ||
+        error instanceof CatalogRemoteError ||
+        error instanceof CatalogSyncError
+      ) {
+        throw error;
+      }
+      throw new CatalogSyncPersistenceError(error);
     }
     return {
       catalog: publicCatalog(store, profileId),
       controlPlaneRequests: requestCount,
     };
   } catch (caught) {
+    if (caught instanceof AccountMutationBlockedError) throw caught;
+    if (caught instanceof CatalogSyncPersistenceError) throw caught.original;
     let error = caught;
     try {
       remainingCatalogSyncDurationMs(deadline, controller.signal);
@@ -650,34 +687,44 @@ export async function syncArkProviderCatalog(
     }
     if (!credentials || !syncClaimed) throw error;
     const store = db();
-    if (!controlRequestsRecorded && !(error instanceof CatalogSyncError)) {
-      const updated = store.prepare(`
-        UPDATE provider_profiles
-        SET
-          catalog_key_status = ?,
-          catalog_checked_at = ?,
-          catalog_last_error_code = ?,
-          catalog_control_request_count = catalog_control_request_count + ?,
-          catalog_sync_token = NULL
-        WHERE
-          id = ?
-          AND driver = 'volcengine-ark'
-          AND catalog_credential_revision = ?
-          AND catalog_sync_token = ?
-      `).run(
-        catalogStatusForError(error),
-        new Date().toISOString(),
-        catalogErrorCode(error),
-        requestCount,
-        profileId,
-        credentials.revision,
-        syncToken,
-      );
-      controlRequestsRecorded = updated.changes === 1;
-    }
-    if (!controlRequestsRecorded) {
-      incrementControlRequests(store, profileId, requestCount);
-      controlRequestsRecorded = true;
+    store.exec("BEGIN IMMEDIATE");
+    try {
+      if (options.actorUserId) {
+        assertAccountMutationAllowed(store, options.actorUserId);
+      }
+      if (!controlRequestsRecorded && !(error instanceof CatalogSyncError)) {
+        const updated = store.prepare(`
+          UPDATE provider_profiles
+          SET
+            catalog_key_status = ?,
+            catalog_checked_at = ?,
+            catalog_last_error_code = ?,
+            catalog_control_request_count = catalog_control_request_count + ?,
+            catalog_sync_token = NULL
+          WHERE
+            id = ?
+            AND driver = 'volcengine-ark'
+            AND catalog_credential_revision = ?
+            AND catalog_sync_token = ?
+        `).run(
+          catalogStatusForError(error),
+          new Date().toISOString(),
+          catalogErrorCode(error),
+          requestCount,
+          profileId,
+          credentials.revision,
+          syncToken,
+        );
+        controlRequestsRecorded = updated.changes === 1;
+      }
+      if (!controlRequestsRecorded) {
+        incrementControlRequests(store, profileId, requestCount);
+        controlRequestsRecorded = true;
+      }
+      store.exec("COMMIT");
+    } catch (persistenceError) {
+      if (store.isTransaction) store.exec("ROLLBACK");
+      throw persistenceError;
     }
     throw error;
   } finally {
@@ -971,8 +1018,11 @@ function remoteCatalogErrorForStatus(status: number) {
 async function syncProfileKeyProviderCatalog(
   profile: ProviderProfile,
   fetcher: typeof fetch | undefined,
-  options: { maximumDurationMs?: number },
+  options: ProviderCatalogSyncOptions,
 ) {
+  if (options.actorUserId) {
+    assertAccountMutationAllowed(db(), options.actorUserId);
+  }
   if (!profile.apiKey) throw new CatalogSyncError("AUTH");
   if (
     profile.driver !== "openrouter" &&
@@ -1092,6 +1142,9 @@ async function syncProfileKeyProviderCatalog(
     store.exec("BEGIN IMMEDIATE");
     try {
       remainingProfileCatalogSyncDurationMs(deadline, controller.signal);
+      if (options.actorUserId) {
+        assertAccountMutationAllowed(store, options.actorUserId);
+      }
       const updated = store.prepare(`
         UPDATE provider_profiles
         SET
@@ -1127,17 +1180,39 @@ async function syncProfileKeyProviderCatalog(
         throw profileCatalogSyncStateError(store, profile, syncToken) ??
           new CatalogSyncError("STALE");
       }
+      if (options.actorUserId) {
+        audit(
+          store,
+          options.actorUserId,
+          "provider_catalog.sync",
+          profile.id,
+          {
+            controlPlaneRequests: requestCount,
+            endpointCount: 0,
+            modelCount: models.length,
+          },
+        );
+      }
       store.exec("COMMIT");
       requestsRecorded = true;
     } catch (error) {
       store.exec("ROLLBACK");
-      throw error;
+      if (
+        error instanceof AccountMutationBlockedError ||
+        error instanceof CatalogRemoteError ||
+        error instanceof CatalogSyncError
+      ) {
+        throw error;
+      }
+      throw new CatalogSyncPersistenceError(error);
     }
     return {
       catalog: publicCatalog(store, profile.id),
       controlPlaneRequests: requestCount,
     };
   } catch (caught) {
+    if (caught instanceof AccountMutationBlockedError) throw caught;
+    if (caught instanceof CatalogSyncPersistenceError) throw caught.original;
     let error: unknown = caught instanceof OutboundProxyConfigurationError
       ? new CatalogRemoteError(caught.code)
       : caught instanceof OutboundDestinationError
@@ -1153,35 +1228,45 @@ async function syncProfileKeyProviderCatalog(
     }
     if (!syncClaimed) throw error;
     const store = db();
-    if (!requestsRecorded && !(error instanceof CatalogSyncError)) {
-      const updated = store.prepare(`
-        UPDATE provider_profiles
-        SET
-          catalog_key_status = ?,
-          catalog_checked_at = ?,
-          catalog_last_error_code = ?,
-          catalog_control_request_count = catalog_control_request_count + ?,
-          catalog_sync_token = NULL
-        WHERE
-          id = ?
-          AND driver = ?
-          AND provider_configuration_version = ?
-          AND catalog_sync_token = ?
-      `).run(
-        catalogStatusForError(error),
-        new Date().toISOString(),
-        catalogErrorCode(error),
-        requestCount,
-        profile.id,
-        profile.driver,
-        providerConfigurationVersion(profile),
-        syncToken,
-      );
-      requestsRecorded = updated.changes === 1;
-    }
-    if (!requestsRecorded) {
-      incrementControlRequests(store, profile.id, requestCount);
-      requestsRecorded = true;
+    store.exec("BEGIN IMMEDIATE");
+    try {
+      if (options.actorUserId) {
+        assertAccountMutationAllowed(store, options.actorUserId);
+      }
+      if (!requestsRecorded && !(error instanceof CatalogSyncError)) {
+        const updated = store.prepare(`
+          UPDATE provider_profiles
+          SET
+            catalog_key_status = ?,
+            catalog_checked_at = ?,
+            catalog_last_error_code = ?,
+            catalog_control_request_count = catalog_control_request_count + ?,
+            catalog_sync_token = NULL
+          WHERE
+            id = ?
+            AND driver = ?
+            AND provider_configuration_version = ?
+            AND catalog_sync_token = ?
+        `).run(
+          catalogStatusForError(error),
+          new Date().toISOString(),
+          catalogErrorCode(error),
+          requestCount,
+          profile.id,
+          profile.driver,
+          providerConfigurationVersion(profile),
+          syncToken,
+        );
+        requestsRecorded = updated.changes === 1;
+      }
+      if (!requestsRecorded) {
+        incrementControlRequests(store, profile.id, requestCount);
+        requestsRecorded = true;
+      }
+      store.exec("COMMIT");
+    } catch (persistenceError) {
+      if (store.isTransaction) store.exec("ROLLBACK");
+      throw persistenceError;
     }
     throw error;
   } finally {
@@ -1192,11 +1277,12 @@ async function syncProfileKeyProviderCatalog(
 export async function syncProviderCatalog(
   profileId: string,
   ownerIdOrFetcher?: string | typeof fetch,
-  fetcherOrOptions?: typeof fetch | { maximumDurationMs?: number },
-  options: { maximumDurationMs?: number } = {},
+  fetcherOrOptions?: typeof fetch | ProviderCatalogSyncOptions,
+  options: ProviderCatalogSyncOptions = {},
 ) {
   const ownerId =
     typeof ownerIdOrFetcher === "function" ? undefined : ownerIdOrFetcher;
+  if (ownerId) assertAccountMutationAllowed(db(), ownerId);
   const fetcher =
     typeof ownerIdOrFetcher === "function"
       ? ownerIdOrFetcher
@@ -1207,6 +1293,9 @@ export async function syncProviderCatalog(
     typeof fetcherOrOptions === "function"
       ? options
       : (fetcherOrOptions ?? options);
+  const syncOptions: ProviderCatalogSyncOptions = ownerId
+    ? { ...mergedOptions, actorUserId: ownerId }
+    : mergedOptions;
   const profile = await getProviderProfile(profileId);
   if (!profile) throw new CatalogSyncError("CONFIG_CHANGED");
   const capabilities = providerCatalogCapabilities(profile.driver);
@@ -1217,13 +1306,13 @@ export async function syncProviderCatalog(
     return syncArkProviderCatalog(
       profileId,
       fetcher ?? fetch,
-      mergedOptions,
+      syncOptions,
     );
   }
   const composed = ownerId
     ? await composeExecutionProfile(db(), ownerId, profile)
     : profile;
-  return syncProfileKeyProviderCatalog(composed, fetcher, mergedOptions);
+  return syncProfileKeyProviderCatalog(composed, fetcher, syncOptions);
 }
 
 export function providerCatalogSyncErrorMessage(
@@ -1355,6 +1444,7 @@ function importCatalogDrafts(
   const timestamp = new Date().toISOString();
   store.exec("BEGIN IMMEDIATE");
   try {
+    assertAccountMutationAllowed(store, actorUserId);
     const profile = store.prepare(`
       SELECT id, driver, provider_configuration_version
       FROM provider_profiles
@@ -1667,14 +1757,24 @@ export async function adminProviderCatalogApi(
       const saved = await saveArkControlPlaneCredentials(
         profileId,
         await readJsonBody<Record<string, unknown>>(request, 64 * 1_024),
+        identity.userId,
+        (store) => audit(
+          store,
+          identity.userId,
+          "provider_catalog.credentials_update",
+          profileId,
+        ),
       );
-      audit(db(), identity.userId, "provider_catalog.credentials_update", profileId);
       json(response, 200, {
         credentials: saved,
         paidGenerationRequests: 0,
       });
     } catch (error) {
       if (error instanceof HttpRequestError) throw error;
+      if (error instanceof AccountMutationBlockedError) {
+        json(response, 409, { code: error.code, error: error.message });
+        return;
+      }
       json(response, 400, { error: "只读AK/SK配置无效" });
     }
     return;
@@ -1690,11 +1790,6 @@ export async function adminProviderCatalogApi(
         identity.userId,
       );
       const catalogCapabilities = providerCatalogCapabilities(profile.driver);
-      audit(db(), identity.userId, "provider_catalog.sync", profileId, {
-        controlPlaneRequests: result.controlPlaneRequests,
-        endpointCount: result.catalog.endpointCount,
-        modelCount: result.catalog.modelCount,
-      });
       const endpointSummary = catalogCapabilities.supportsEndpoints
         ? `，${result.catalog.endpointCount} 个${catalogCapabilities.endpointLabel ?? "Endpoint"}`
         : "";
@@ -1704,6 +1799,10 @@ export async function adminProviderCatalogApi(
         paidGenerationRequests: 0,
       });
     } catch (error) {
+      if (error instanceof AccountMutationBlockedError) {
+        json(response, 409, { code: error.code, error: error.message });
+        return;
+      }
       json(response, 400, {
         error: providerCatalogSyncErrorMessage(error, driver),
         paidGenerationRequests: 0,
@@ -1732,6 +1831,10 @@ export async function adminProviderCatalogApi(
       });
     } catch (error) {
       if (error instanceof HttpRequestError) throw error;
+      if (error instanceof AccountMutationBlockedError) {
+        json(response, 409, { code: error.code, error: error.message });
+        return;
+      }
       json(response, 400, {
         error: "添加模型失败，请检查选择和节点类型",
       });

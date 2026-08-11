@@ -5,6 +5,10 @@ import {
 } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import {
+  AccountMutationBlockedError,
+  assertAccountMutationAllowed,
+} from "./accountMutationFence";
+import {
   acquireProviderCredentialMutationLease,
   getProviderProfile,
   probeProviderKey,
@@ -247,6 +251,7 @@ export async function saveAccountCredential(
     const timestamp = new Date().toISOString();
     database.exec("BEGIN IMMEDIATE");
     try {
+      assertAccountMutationAllowed(database, accountId);
       const current = accountCredentialRow(
         database,
         accountId,
@@ -324,6 +329,7 @@ export async function deleteAccountCredential(
     const timestamp = new Date().toISOString();
     database.exec("BEGIN IMMEDIATE");
     try {
+      assertAccountMutationAllowed(database, accountId);
       const current = accountCredentialRow(
         database,
         accountId,
@@ -387,6 +393,9 @@ export async function verifyAccountCredential(
   providerProfileId: string,
   fetcher?: typeof fetch,
 ): Promise<ProviderVerification & { keyStatus: AccountCredentialKeyStatus }> {
+  // Avoid a needless remote probe when deletion already owns the account. The
+  // authoritative check is repeated in the final write transaction below.
+  assertAccountMutationAllowed(database, accountId);
   let profile = await getProviderProfile(providerProfileId);
   const hadDocumentProfile = Boolean(profile);
   if (!profile) {
@@ -453,6 +462,7 @@ export async function verifyAccountCredential(
       const timestamp = new Date().toISOString();
       database.exec("BEGIN IMMEDIATE");
       try {
+        assertAccountMutationAllowed(database, accountId);
         const current = accountCredentialRow(
           database,
           accountId,
@@ -515,6 +525,7 @@ export async function verifyAccountCredential(
   } catch (error) {
     const code = (error as { code?: string }).code;
     if (
+      error instanceof AccountMutationBlockedError ||
       code === "ACCOUNT_CREDENTIAL_CHANGED" ||
       code === "ACCOUNT_CREDENTIAL_IN_USE"
     ) {
