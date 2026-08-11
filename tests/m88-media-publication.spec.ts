@@ -226,6 +226,51 @@ function reserveGeneratedImage(
   return { reservation, task };
 }
 
+function recordProviderAttemptFixture(
+  directory: string,
+  taskId: string,
+  outcome:
+    | "accepted"
+    | "boundary-claimed"
+    | "outcome-unknown"
+    | "response-received" = "boundary-claimed",
+) {
+  const database = openAppDatabase(directory);
+  try {
+    const inserted = database.prepare(`
+      INSERT INTO generation_provider_attempts (
+        task_id, execution_attempt, provider_profile_id, provider_model_id,
+        kind, evidence, created_at, owner_id, credential_revision, outcome,
+        provider_task_id, failure_code, finished_at
+      )
+      SELECT
+        id, attempt, provider_profile_id, provider_model_id,
+        kind, 'provider-boundary', ?, owner_id, credential_revision, ?,
+        NULL, NULL, NULL
+      FROM generation_tasks
+      WHERE id = ? AND state = 'running' AND attempt >= 1
+    `).run(new Date().toISOString(), outcome, taskId);
+    expect(inserted.changes).toBe(1);
+  } finally {
+    database.close();
+  }
+}
+
+function providerAttemptSnapshot(directory: string, taskId: string) {
+  const database = openAppDatabase(directory);
+  try {
+    return database.prepare(`
+      SELECT execution_attempt, outcome, provider_task_id, failure_code,
+             finished_at
+      FROM generation_provider_attempts
+      WHERE task_id = ?
+      ORDER BY execution_attempt
+    `).all(taskId);
+  } finally {
+    database.close();
+  }
+}
+
 function syntheticResponse() {
   let body = "";
   const headers = new Map<string, string>();
@@ -382,17 +427,17 @@ function publicationSnapshot(
   }
 }
 
-test("schema 38 grants exactly one reservation before either same-ID contender may write bytes", async () => {
+test("schema 39 grants exactly one reservation before either same-ID contender may write bytes", async () => {
   await withDataDirectory("reservation-races", async (directory) => {
     addOwner(directory, "m88-owner-a");
     addOwner(directory, "m88-owner-b");
-    expect(currentSchemaVersion).toBe(38);
+    expect(currentSchemaVersion).toBe(39);
     const schema = openAppDatabase(directory);
     try {
       expect(
         (schema.prepare("PRAGMA user_version").get() as { user_version: number })
           .user_version,
-      ).toBe(38);
+      ).toBe(39);
     } finally {
       schema.close();
     }
@@ -846,7 +891,7 @@ test("image GET returns 404 for both pending and failed publication rows", async
   });
 });
 
-test("generated finalize rolls task, media, history, event and journal back or commits them together", async () => {
+test("generated finalize atomically settles Provider evidence with task, media, history, event and journal", async () => {
   await withDataDirectory("finalize-transaction", async (directory) => {
     const ownerId = "m88-finalize-owner";
     addOwner(directory, ownerId);
@@ -858,6 +903,7 @@ test("generated finalize rolls task, media, history, event and journal back or c
         "atomic-finalize",
       );
       await publishFixture(directory, reservation);
+      recordProviderAttemptFixture(directory, task.id, "response-received");
       const triggerStore = openAppDatabase(directory);
       try {
         triggerStore.exec(`
@@ -892,6 +938,13 @@ test("generated finalize rolls task, media, history, event and journal back or c
           state: "running",
         },
       });
+      expect(providerAttemptSnapshot(directory, task.id)).toEqual([{
+        execution_attempt: 1,
+        failure_code: null,
+        finished_at: null,
+        outcome: "response-received",
+        provider_task_id: null,
+      }]);
 
       const retryStore = openAppDatabase(directory);
       try {
@@ -916,6 +969,69 @@ test("generated finalize rolls task, media, history, event and journal back or c
           state: "success",
         },
       });
+      expect(providerAttemptSnapshot(directory, task.id)).toEqual([{
+        execution_attempt: 1,
+        failure_code: null,
+        finished_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+        outcome: "completed",
+        provider_task_id: null,
+      }]);
+
+      const blocked = reserveGeneratedImage(
+        store,
+        ownerId,
+        "terminal-provider-outcome",
+      );
+      await publishFixture(directory, blocked.reservation);
+      recordProviderAttemptFixture(directory, blocked.task.id, "outcome-unknown");
+      expect(() => finalizeMediaPublication(blocked.reservation)).toThrow(
+        "Generation Provider attempt cannot complete publication",
+      );
+      expect(publicationSnapshot(directory, {
+        assetId: blocked.reservation.id,
+        attemptId: blocked.reservation.attemptId,
+        taskId: blocked.task.id,
+      })).toMatchObject({
+        attempt: { state: "external-ready" },
+        historyCount: 0,
+        mediaStatus: "pending",
+        successEventCount: 0,
+        task: { state: "running" },
+      });
+      expect(providerAttemptSnapshot(directory, blocked.task.id)).toEqual([{
+        execution_attempt: 1,
+        failure_code: null,
+        finished_at: null,
+        outcome: "outcome-unknown",
+        provider_task_id: null,
+      }]);
+
+      const noLedger = reserveGeneratedImage(
+        store,
+        ownerId,
+        "real-owner-without-provider-ledger",
+      );
+      await publishFixture(directory, noLedger.reservation);
+      expect(() => finalizeMediaPublication(noLedger.reservation)).toThrow(
+        "Generation task has no matching paid attempt",
+      );
+      expect(publicationSnapshot(directory, {
+        assetId: noLedger.reservation.id,
+        attemptId: noLedger.reservation.attemptId,
+        taskId: noLedger.task.id,
+      })).toEqual({
+        attempt: { error_code: null, state: "external-ready" },
+        historyCount: 0,
+        mediaStatus: "pending",
+        successEventCount: 0,
+        task: {
+          actual_cost_microunits: 123,
+          provider_usage_tokens: 7,
+          result_asset_id: noLedger.reservation.id,
+          state: "running",
+        },
+      });
+      expect(providerAttemptSnapshot(directory, noLedger.task.id)).toEqual([]);
     } finally {
       store.close();
     }
@@ -975,6 +1091,7 @@ test("cancel and generated finalize preserve the winner in both transaction orde
         ownerId,
         "finalize-first",
       );
+      recordProviderAttemptFixture(directory, finalizeFirst.task.id);
       await publishFixture(directory, finalizeFirst.reservation);
       finalizeMediaPublication(finalizeFirst.reservation);
       expect(() => store.cancelBeforeProviderAttempt(finalizeFirst.task.id, {
@@ -995,6 +1112,13 @@ test("cancel and generated finalize preserve the winner in both transaction orde
           state: "success",
         },
       });
+      expect(providerAttemptSnapshot(directory, finalizeFirst.task.id)).toEqual([{
+        execution_attempt: 1,
+        failure_code: null,
+        finished_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+        outcome: "completed",
+        provider_task_id: null,
+      }]);
     } finally {
       store.close();
     }
@@ -1011,7 +1135,7 @@ test("restart finalizes staged local generation evidence without a second Provid
       ownerId,
       "restart-local",
     );
-    initialStore.recordProviderAttempt(task.id);
+    recordProviderAttemptFixture(directory, task.id);
     const bytes = await stageFixture(directory, reservation);
     const before = openAppDatabase(directory);
     try {
@@ -1054,6 +1178,13 @@ test("restart finalizes staged local generation evidence without a second Provid
         expect(after.prepare(`
           SELECT state FROM media_publication_attempts WHERE attempt_id = ?
         `).get(reservation.attemptId)).toEqual({ state: "published" });
+        expect(providerAttemptSnapshot(directory, task.id)).toEqual([{
+          execution_attempt: 1,
+          failure_code: null,
+          finished_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+          outcome: "completed",
+          provider_task_id: null,
+        }]);
       } finally {
         after.close();
       }
@@ -1944,7 +2075,7 @@ test("DELETE wins staged and external-ready uploads without losing late OSS clea
   });
 });
 
-test("restart finalizes verified OSS generation evidence without Provider or OSS access", async () => {
+test("restart finalizes resumed OSS evidence against the original paid Provider attempt", async () => {
   await withDataDirectory("generated-oss-recovery", async (directory) => {
     const ownerId = "m88-oss-recovery-owner";
     addOwner(directory, ownerId);
@@ -1963,7 +2094,29 @@ test("restart finalizes verified OSS generation evidence without Provider or OSS
       providerProfileId: "m88-provider-profile",
     }).task;
     initialStore.transition(task.id, "running");
-    initialStore.recordProviderAttempt(task.id);
+    recordProviderAttemptFixture(directory, task.id);
+    initialStore.attachProviderTaskId({
+      executionAttempt: 1,
+      providerTaskId: "m88-oss-provider-task",
+      taskId: task.id,
+    });
+    initialStore.transition(task.id, "failed", {
+      code: "TIMEOUT",
+      message: "m88 resume the accepted remote task",
+    });
+    expect(initialStore.admitRetry({
+      mode: "resume-provider-task",
+      taskId: task.id,
+    })).toMatchObject({
+      attempt: 1,
+      providerTaskId: "m88-oss-provider-task",
+      state: "queued",
+    });
+    expect(initialStore.transition(task.id, "running")).toMatchObject({
+      attempt: 2,
+      providerTaskId: "m88-oss-provider-task",
+      state: "running",
+    });
     const assetId = "m88-oss-recovery-asset";
     const reservation = reserveMediaPublication({
       contentType: "image/png",
@@ -2015,6 +2168,13 @@ test("restart finalizes verified OSS generation evidence without Provider or OSS
         expect(evidence.prepare(`
           SELECT state FROM media_publication_attempts WHERE attempt_id = ?
         `).get(reservation.attemptId)).toEqual({ state: "published" });
+        expect(providerAttemptSnapshot(directory, task.id)).toEqual([{
+          execution_attempt: 1,
+          failure_code: null,
+          finished_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+          outcome: "completed",
+          provider_task_id: "m88-oss-provider-task",
+        }]);
       } finally {
         evidence.close();
       }

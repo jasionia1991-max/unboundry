@@ -3,6 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import {
   accountCredentialKey,
   accountCredentialMaskFromKey,
+  accountCredentialRevision,
   accountCredentialRow,
   deleteAccountCredential,
   saveAccountCredential,
@@ -80,7 +81,9 @@ export async function accountCredentialsApi(
         items.push({
           apiKeyMask: key ? accountCredentialMaskFromKey(key) : undefined,
           baseUrl: profile.baseUrl,
-          credentialVersion: row ? Number(row.credential_version) : 0,
+          credentialVersion: row
+            ? Number(row.credential_version)
+            : accountCredentialRevision(store, identity.userId, profile.id),
           driver: profile.driver,
           keyCheckedAt: row?.key_checked_at ?? undefined,
           keyStatus: row?.key_status ?? "unchecked",
@@ -156,7 +159,7 @@ export async function accountCredentialsApi(
   }
 
   if (request.method === "DELETE" && !match[2]) {
-    if (!deleteAccountCredential(store, identity.userId, profileId)) {
+    if (!(await deleteAccountCredential(store, identity.userId, profileId))) {
       json(response, 404, { error: "平台密钥不存在" });
       return;
     }

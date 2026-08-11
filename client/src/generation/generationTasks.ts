@@ -15,6 +15,7 @@ export type GenerationTaskState =
   | "recovering";
 
 export type GenerationTaskSummary = {
+  abandonAllowed?: boolean;
   costCurrency: "CNY" | "USD";
   attempt: number;
   canvasId: string;
@@ -185,6 +186,27 @@ export async function cancelGenerationTask(
       method: "DELETE",
       signal,
     }),
+  );
+}
+
+export async function abandonGenerationTask(
+  task: Pick<GenerationTaskSummary, "attempt" | "id" | "updatedAt">,
+  signal?: AbortSignal,
+): Promise<GenerationTaskSummary> {
+  return readJson(
+    await fetch(
+      `/api/generation-tasks/${encodeURIComponent(task.id)}/abandon`,
+      {
+        body: JSON.stringify({
+          acknowledgeRemoteResultMayBeLost: true,
+          expectedAttempt: task.attempt,
+          expectedUpdatedAt: task.updatedAt,
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+        signal,
+      },
+    ),
   );
 }
 

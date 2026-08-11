@@ -24,7 +24,10 @@ import {
   type AliyunStorageProfile,
 } from "./secureStorageProfiles";
 import { databaseMatchesSchemaContract } from "./runtimeLifecycle";
-import { databaseMatchesFrozenSchema37Contract } from "./backupInspection";
+import {
+  databaseMatchesFrozenSchema37Contract,
+  databaseMatchesFrozenSchema38Contract,
+} from "./backupInspection";
 
 const identifierPattern = /^[a-z0-9._-]+$/i;
 const checksumPattern = /^[a-f0-9]{64}$/;
@@ -513,15 +516,17 @@ export function finalizeMediaPublication(
       !checksumPattern.test(attempt.checksum_sha256)
     ) throw new MediaPublicationStateError("Media publication is not verified");
     const timestamp = new Date().toISOString();
+    let providerAttemptExecution: number | undefined;
     if (attempt.task_id) {
       const task = database.prepare(`
-        SELECT owner_id, kind, state, attempt, result_asset_id
+        SELECT owner_id, kind, state, attempt, result_asset_id, provider_task_id
         FROM generation_tasks WHERE id = ?
       `).get(attempt.task_id) as
         | {
             attempt: number;
             kind: string;
             owner_id: string | null;
+            provider_task_id: string | null;
             result_asset_id: string | null;
             state: string;
           }
@@ -533,6 +538,52 @@ export function finalizeMediaPublication(
         task.attempt !== attempt.task_execution_attempt ||
         task.result_asset_id !== reservation.id
       ) throw new MediaPublicationStateError("Generation task lost publication ownership");
+
+      // A resumed asynchronous task advances its local execution counter while
+      // retaining the paid Provider task from an earlier execution. That remote
+      // identity must resolve its original paid attempt; only synchronous work
+      // without a remote ID uses the current execution. Historical rows and
+      // narrow fixtures may have neither identity nor a Provider-attempt ledger,
+      // and publication must never invent paid-boundary evidence.
+      const providerAttemptByRemoteId = task.provider_task_id !== null;
+      const providerAttempt = database.prepare(`
+        SELECT execution_attempt, outcome
+        FROM generation_provider_attempts
+        WHERE
+          task_id = ?
+          AND ${providerAttemptByRemoteId
+            ? "provider_task_id = ?"
+            : "execution_attempt = ?"}
+        ORDER BY execution_attempt DESC
+        LIMIT 1
+      `).get(
+        attempt.task_id,
+        providerAttemptByRemoteId ? task.provider_task_id : task.attempt,
+      ) as
+        | { execution_attempt: number; outcome: string }
+        | undefined;
+      const realOwner = Boolean(
+        task.owner_id && task.owner_id !== "__test__",
+      );
+      if ((providerAttemptByRemoteId || realOwner) && !providerAttempt) {
+        throw new MediaPublicationStateError(
+          "Generation task has no matching paid attempt",
+        );
+      }
+      if (
+        providerAttempt &&
+        ![
+          "boundary-claimed",
+          "accepted",
+          "response-received",
+          "completed",
+        ].includes(providerAttempt.outcome)
+      ) {
+        throw new MediaPublicationStateError(
+          "Generation Provider attempt cannot complete publication",
+        );
+      }
+      providerAttemptExecution = providerAttempt?.execution_attempt;
     }
     const ready = database.prepare(`
       UPDATE media_assets SET storage_status = 'ready', updated_at = ?
@@ -561,6 +612,23 @@ export function finalizeMediaPublication(
       );
     }
     if (attempt.task_id) {
+      if (providerAttemptExecution !== undefined) {
+        const providerCompleted = database.prepare(`
+          UPDATE generation_provider_attempts
+          SET outcome = 'completed', failure_code = NULL, finished_at = ?
+          WHERE
+            task_id = ?
+            AND execution_attempt = ?
+            AND outcome IN (
+              'boundary-claimed', 'accepted', 'response-received', 'completed'
+            )
+        `).run(timestamp, attempt.task_id, providerAttemptExecution);
+        if (providerCompleted.changes !== 1) {
+          throw new MediaPublicationStateError(
+            "Generation Provider attempt changed concurrently",
+          );
+        }
+      }
       const completed = database.prepare(`
         UPDATE generation_tasks
         SET state = 'success', error_code = NULL, error_message = NULL,
@@ -1384,7 +1452,7 @@ type StartupMediaRecoveryProbe =
   | "migrate-required"
   | "required";
 
-const explicitMigrationSourceVersion = 37;
+const explicitMigrationSourceVersions: readonly number[] = [37, 38];
 
 function databaseMatchesMigrationLedger(
   database: DatabaseSync,
@@ -1453,12 +1521,15 @@ async function probeStartupMediaRecovery(
       | { user_version?: unknown }
       | undefined;
     const userVersion = Number(version?.user_version);
-    if (userVersion === explicitMigrationSourceVersion) {
-      const schema37Manifest = currentSchemaManifest.filter(
-        (migration) => migration.version <= explicitMigrationSourceVersion,
+    if (explicitMigrationSourceVersions.includes(userVersion)) {
+      const sourceManifest = currentSchemaManifest.filter(
+        (migration) => migration.version <= userVersion,
       );
-      return databaseMatchesMigrationLedger(database, schema37Manifest) &&
-          databaseMatchesFrozenSchema37Contract(database)
+      const matchesFrozenSource = userVersion === 37
+        ? databaseMatchesFrozenSchema37Contract(database)
+        : databaseMatchesFrozenSchema38Contract(database);
+      return databaseMatchesMigrationLedger(database, sourceManifest) &&
+          matchesFrozenSource
         ? "migrate-required"
         : "deferred";
     }
@@ -1560,7 +1631,7 @@ export async function recoverMediaLifecycleAtProcessStartup() {
       return empty;
     }
     // This opt-in process role is the sole startup writer bridge from the
-    // frozen v37 contract. The read-only probe above rejects unknown,
+    // frozen v37/v38 contracts. The read-only probe above rejects unknown,
     // damaged, restore-incomplete and unsafe hot-WAL sources before this path.
     startupMediaRecoveryGate = "blocked";
     let database: DatabaseSync | undefined;

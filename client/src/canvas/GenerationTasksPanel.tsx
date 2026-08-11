@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type Ref } from "react";
 import {
+  abandonGenerationTask,
   cancelGenerationTask,
   listGenerationTasks,
   retryGenerationTask,
@@ -64,6 +65,7 @@ function TaskRow({
 }) {
   const [busy, setBusy] = useState(false);
   const active = activeStates.has(task.state);
+  const abandonable = task.state === "failed" && task.abandonAllowed === true;
   const retryable = task.state === "failed" && task.retryAllowed === true;
   const rowIsCurrent =
     task.canvasId === canvasId && isCurrentScope(canvasScopeId, canvasId);
@@ -140,6 +142,34 @@ function TaskRow({
             type="button"
           >
             重试
+          </button>
+        )}
+        {abandonable && (
+          <button
+            data-testid={`tasks-abandon-${task.id}`}
+            disabled={busy || !rowIsCurrent}
+            onClick={() => {
+              if (
+                task.canvasId !== canvasId ||
+                !isCurrentScope(canvasScopeId, canvasId)
+              ) return;
+              if (!window.confirm(
+                "放弃后将不再尝试恢复该平台结果。本操作不会重新付费，也不会向平台发送新的生成请求。确认放弃平台结果？",
+              )) return;
+              const signal = getActionSignal(canvasScopeId, canvasId);
+              if (!signal) return;
+              setBusy(true);
+              void abandonGenerationTask(task, signal)
+                .catch(() => undefined)
+                .finally(() => {
+                  if (!isCurrentScope(canvasScopeId, canvasId)) return;
+                  setBusy(false);
+                  onChanged();
+                });
+            }}
+            type="button"
+          >
+            放弃平台结果
           </button>
         )}
       </span>

@@ -4,6 +4,11 @@ import {
   OutboundDestinationError,
   type DestinationResolver,
 } from "./outboundNetwork";
+import {
+  createProviderRequestDeadline,
+  ProviderRequestDeadlineError,
+  type ProviderRequestDeadlineOverrides,
+} from "./providerRequestDeadline";
 
 export type ProviderResultMediaKind = "audio" | "image" | "video";
 
@@ -14,7 +19,8 @@ export class ProviderResultMediaError extends Error {
       | "FORMAT"
       | "NETWORK"
       | "PROXY_CONFIGURATION"
-      | "REMOTE",
+      | "REMOTE"
+      | "TIMEOUT",
     message: string,
   ) {
     super(message);
@@ -119,6 +125,7 @@ function normalizedContentType(value: string | null) {
 export async function downloadProviderResultMedia(input: {
   apiKey: string;
   expectedContentType?: string;
+  deadlineOptions?: ProviderRequestDeadlineOverrides;
   fetcher?: typeof fetch;
   kind: ProviderResultMediaKind;
   resolver?: DestinationResolver;
@@ -129,9 +136,13 @@ export async function downloadProviderResultMedia(input: {
   if (input.signal?.aborted) {
     throw new ProviderResultMediaError("CANCELLED", "已停止等待模型结果");
   }
-  let response: Response;
+  const deadline = createProviderRequestDeadline({
+    ...input.deadlineOptions,
+    operation: "result-download",
+    signal: input.signal,
+  });
   try {
-    response = await fetchPublicHttps(url, {
+    const response = await deadline.race(fetchPublicHttps(url, {
       headers: {
         Accept: input.kind === "image"
           ? "image/png"
@@ -141,12 +152,42 @@ export async function downloadProviderResultMedia(input: {
       },
       method: "GET",
       redirect: "error",
-      signal: input.signal,
+      signal: deadline.signal,
     }, {
       fetcher: input.fetcher,
       resolver: input.resolver,
-    });
+    }));
+    if (!response.ok || !response.body) {
+      if (response.body) void response.body.cancel().catch(() => undefined);
+      throw new ProviderResultMediaError("REMOTE", "模型结果暂时无法下载");
+    }
+    const declared = normalizedContentType(input.expectedContentType ?? "");
+    const received = normalizedContentType(response.headers.get("content-type"));
+    const contentType = received === "application/octet-stream" ? declared : received;
+    if (!acceptedTypes(input.kind).has(contentType)) {
+      void response.body.cancel().catch(() => undefined);
+      throw new ProviderResultMediaError("FORMAT", "模型结果格式不受支持");
+    }
+    return {
+      body: deadline.wrapStream(response.body, (error) =>
+        error instanceof ProviderRequestDeadlineError
+          ? new ProviderResultMediaError(
+              error.code,
+              error.code === "TIMEOUT" ? "模型结果下载超时" : "已停止等待模型结果",
+            )
+          : error
+      ),
+      contentType,
+    };
   } catch (error) {
+    deadline.complete();
+    if (error instanceof ProviderResultMediaError) throw error;
+    if (error instanceof ProviderRequestDeadlineError) {
+      throw new ProviderResultMediaError(
+        error.code,
+        error.code === "TIMEOUT" ? "模型结果下载超时" : "已停止等待模型结果",
+      );
+    }
     if (input.signal?.aborted) {
       throw new ProviderResultMediaError("CANCELLED", "已停止等待模型结果");
     }
@@ -162,19 +203,4 @@ export async function downloadProviderResultMedia(input: {
     }
     throw new ProviderResultMediaError("NETWORK", "模型结果暂时无法下载");
   }
-  if (!response.ok || !response.body) {
-    throw new ProviderResultMediaError("REMOTE", "模型结果暂时无法下载");
-  }
-  const declared = normalizedContentType(input.expectedContentType ?? "");
-  const received = normalizedContentType(response.headers.get("content-type"));
-  const contentType = received === "application/octet-stream" ? declared : received;
-  if (!acceptedTypes(input.kind).has(contentType)) {
-    try {
-      await response.body.cancel();
-    } catch {
-      // The result is rejected regardless of whether the remote stream closes.
-    }
-    throw new ProviderResultMediaError("FORMAT", "模型结果格式不受支持");
-  }
-  return { body: response.body, contentType };
 }

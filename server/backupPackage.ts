@@ -67,7 +67,7 @@ const envelopeMaximumBytes = 128 * 1024;
 const ioChunkBytes = 256 * 1024;
 const backupIncompleteMarker = ".unboundry-backup-incomplete";
 const restoreIncompleteMarker = ".unboundry-restore-incomplete";
-const supportedBackupSchemaVersions = new Set([37, 38]);
+const supportedBackupSchemaVersions = new Set([37, 38, 39]);
 const restorableSecretFiles = new Set([
   "config-master.key",
   "provider-profiles.enc.json",

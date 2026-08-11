@@ -36,7 +36,7 @@ const maximumEncryptedCredentialBytes = 256 * 1024;
 const knownMigrationNames = Object.freeze(
   currentSchemaManifest.map(({ name }) => name),
 );
-const supportedBackupSchemaVersions = new Set([37, 38]);
+const supportedBackupSchemaVersions = new Set([37, 38, 39]);
 
 // Frozen from the schema-37 contract at REM-003 commit 73c65db. These hashes
 // cover exact sqlite_schema SQL text, including the narrowly admitted historic
@@ -234,9 +234,151 @@ const schema37Contract = Object.freeze({
     "80159c4cbfb80a7ef8071d04ed65acd127b62d6c434289a1b713a91cc81d7205",
 });
 
+// Frozen from the exact schema-38 currentSchemaContract at commit 2beaec5.
+// Migration 38 was additive, so the unchanged schema-37 objects retain their
+// independently frozen fingerprints while the three durable-media tables,
+// indexes and guards below close the schema-38 object set exactly. Never point
+// this at currentSchemaContract: schema-38 backup packages must remain
+// inspectable after the running candidate advances to schema 39.
+const schema38Contract = Object.freeze({
+  columns: Object.freeze({
+    ...schema37Contract.columns,
+    account_delete_intents: Object.freeze([
+      "owner_id", "state", "error_code", "retry_count", "created_at",
+      "updated_at",
+    ]),
+    media_delete_intents: Object.freeze([
+      "owner_id", "kind", "asset_id", "state", "created_at", "updated_at",
+    ]),
+    media_publication_attempts: Object.freeze([
+      "attempt_id", "owner_id", "kind", "asset_id", "source", "state",
+      "storage_backend", "final_storage_name", "object_key",
+      "storage_profile_id", "staging_name", "task_id",
+      "task_execution_attempt", "history_label", "byte_size",
+      "checksum_sha256", "content_type", "duration_seconds",
+      "duration_source", "media_width", "media_height",
+      "actual_cost_microunits", "provider_usage_tokens", "error_code",
+      "retry_count", "adopted_at", "adopted_canvas_id", "created_at",
+      "updated_at",
+    ]),
+  }),
+  tables: Object.freeze({
+    ...schema37Contract.tables,
+    account_delete_intents: Object.freeze([
+      "b24c9a531de8f5b8e19cf0042844cdde333fc3bbcb6be9fd5834569495603506",
+    ]),
+    media_delete_intents: Object.freeze([
+      "11ec2869f50bb802e8ee1cfe0cc728a4650b197195c3345a48c638f838ad1cea",
+    ]),
+    media_publication_attempts: Object.freeze([
+      "b6ec4ac1cb1db8bce63ff1cf839103d070ea77119698f4df67907a850ab09ca3",
+    ]),
+  }),
+  explicitIndexes: Object.freeze({
+    ...schema37Contract.explicitIndexes,
+    media_publication_attempts_active_asset: Object.freeze({
+      table: "media_publication_attempts",
+      hashes: Object.freeze([
+        "9a973fcbbcee9321f4b993114de33ea6b1eb7a642056bfa38bee8ba62a462448",
+      ]),
+    }),
+    media_publication_attempts_active_task: Object.freeze({
+      table: "media_publication_attempts",
+      hashes: Object.freeze([
+        "a93727e31eda4fe8aae75d20f877bd45a745cfba606936870fa7b06bc9f693fe",
+      ]),
+    }),
+    media_publication_attempts_owner_state_updated: Object.freeze({
+      table: "media_publication_attempts",
+      hashes: Object.freeze([
+        "46179b75c9f60cc6a26c99490586904ef5b3b2b168b1d89c0712adca868afeb9",
+      ]),
+    }),
+  }),
+  requiredIndexSemantics: Object.freeze({
+    ...schema37Contract.requiredIndexSemantics,
+    media_publication_attempts_active_asset: Object.freeze({
+      columns: Object.freeze(["kind", "asset_id"]),
+      partial: true,
+      table: "media_publication_attempts",
+      unique: true,
+    }),
+    media_publication_attempts_active_task: Object.freeze({
+      columns: Object.freeze(["task_id", "task_execution_attempt"]),
+      partial: true,
+      table: "media_publication_attempts",
+      unique: true,
+    }),
+  }),
+  triggers: Object.freeze({
+    ...schema37Contract.triggers,
+    account_delete_guard_generation_task_activation: Object.freeze({
+      table: "generation_tasks",
+      hash: "10f141d8a48d7ed9dd6a16e49f3c6e956a2e70d0ab4787ee3a6181e2d0d753d3",
+    }),
+    account_delete_guard_generation_task_insert: Object.freeze({
+      table: "generation_tasks",
+      hash: "d00738c36501ba252313207a4b0643a9c5d7e25944798b1e627dee96f7654d12",
+    }),
+    account_delete_guard_public_template_actor_update: Object.freeze({
+      table: "public_templates",
+      hash: "fa2f8a2d1359e413eafc5422eac6f54c6d8cc98e217bceea3a1d99a087155dc7",
+    }),
+    account_delete_guard_public_template_insert: Object.freeze({
+      table: "public_templates",
+      hash: "80e3c565d213ff336163b47d3e74c78bac15751c7c8948edfa8a7bebf2c3bc9e",
+    }),
+    account_delete_guard_session_insert: Object.freeze({
+      table: "sessions",
+      hash: "37822025467ab8097811df9d19bad9f595975f82d4790c93ee8d9d9b85d380d6",
+    }),
+    account_delete_guard_user_template_insert: Object.freeze({
+      table: "user_templates",
+      hash: "eb9bee1e651e043eee8f345f85f3fa422125e7bfef46e89c35fa0e28efe25d0f",
+    }),
+    account_delete_guard_user_template_owner_update: Object.freeze({
+      table: "user_templates",
+      hash: "9f6c16c058d889462ea76f1d8816b55e7d4e02f004d12a92b5d0305df07f6e19",
+    }),
+    account_delete_guard_user_reactivation: Object.freeze({
+      table: "users",
+      hash: "f67ad13e59c5050e802319f9c3c9a36869715a96bb8540f03287debf948e3522",
+    }),
+    media_publication_guard_owner_delete: Object.freeze({
+      table: "users",
+      hash: "fe8f8819e746f2a7c91c5759cbe7999eb9cc4cf29cd9d57d9cf2b62d62d9781e",
+    }),
+    media_publication_guard_task_delete: Object.freeze({
+      table: "generation_tasks",
+      hash: "5e5a3d715ecfd7de6dae4f3b8a40ea0756f8d0db12da4d7916ae8867a26f15e4",
+    }),
+  }),
+  optionalUsersIndexTableHash: schema37Contract.optionalUsersIndexTableHash,
+});
+
 type SqliteValue = bigint | Buffer | null | number | string | Uint8Array;
 
 type SchemaObjectType = "index" | "table" | "trigger" | "view";
+
+type FrozenSchemaContract = Readonly<{
+  columns: Readonly<Record<string, readonly string[]>>;
+  explicitIndexes: Readonly<Record<string, Readonly<{
+    hashes: readonly string[];
+    table: string;
+  }>>>;
+  optionalUsersIndexTableHash: string;
+  requiredIndexSemantics: Readonly<Record<string, Readonly<{
+    columns: readonly string[];
+    partial: boolean;
+    table: string;
+    unique: boolean;
+  }>>>;
+  tables: Readonly<Record<string, readonly string[]>>;
+  triggers: Readonly<Record<string, Readonly<{
+    hash: string;
+    table: string;
+  }>>>;
+}>;
 
 export type BackupMigrationLedgerEntry = Readonly<{
   name: string;
@@ -577,20 +719,19 @@ function schemaObject(
   };
 }
 
-export function databaseMatchesFrozenSchema37Contract(database: DatabaseSync) {
-  const expectedTableNames = Object.keys(schema37Contract.tables).sort();
+function databaseMatchesFrozenSchemaContract(
+  database: DatabaseSync,
+  contract: FrozenSchemaContract,
+) {
+  const expectedTableNames = Object.keys(contract.tables).sort();
   if (!sameSortedNames(
     schemaObjectNames(database, "table"),
     expectedTableNames,
   )) return false;
   for (const name of expectedTableNames) {
     const object = schemaObject(database, "table", name);
-    const acceptedHashes = schema37Contract.tables[
-      name as keyof typeof schema37Contract.tables
-    ] as readonly string[];
-    const expectedColumns = [...schema37Contract.columns[
-      name as keyof typeof schema37Contract.columns
-    ]].sort();
+    const acceptedHashes = contract.tables[name] ?? [];
+    const expectedColumns = [...(contract.columns[name] ?? [])].sort();
     const actualColumns = (database.prepare(
       `PRAGMA table_xinfo(${quoteIdentifier(name)})`,
     ).all() as Array<{ name?: unknown }>).map((column) =>
@@ -605,8 +746,8 @@ export function databaseMatchesFrozenSchema37Contract(database: DatabaseSync) {
 
   const users = schemaObject(database, "table", "users");
   const omitHistoricUsersIndex = schemaSqlSha256(users?.sql) ===
-    schema37Contract.optionalUsersIndexTableHash;
-  const expectedIndexNames = Object.keys(schema37Contract.explicitIndexes)
+    contract.optionalUsersIndexTableHash;
+  const expectedIndexNames = Object.keys(contract.explicitIndexes)
     .sort();
   const requiredIndexNames = expectedIndexNames
     .filter((name) => name !== "users_status_role" || !omitHistoricUsersIndex)
@@ -618,22 +759,21 @@ export function databaseMatchesFrozenSchema37Contract(database: DatabaseSync) {
   ) return false;
   for (const name of actualIndexNames) {
     const object = schemaObject(database, "index", name);
-    const contract = schema37Contract.explicitIndexes[
-      name as keyof typeof schema37Contract.explicitIndexes
-    ];
+    const indexContract = contract.explicitIndexes[name];
     if (
-      object?.table !== contract.table ||
-      !(contract.hashes as readonly string[]).includes(
+      !indexContract ||
+      object?.table !== indexContract.table ||
+      !indexContract.hashes.includes(
         schemaSqlSha256(object.sql),
       )
     ) return false;
   }
 
-  for (const [name, contract] of Object.entries(
-    schema37Contract.requiredIndexSemantics,
+  for (const [name, indexContract] of Object.entries(
+    contract.requiredIndexSemantics,
   )) {
     const index = (database.prepare(
-      `PRAGMA index_list(${quoteIdentifier(contract.table)})`,
+      `PRAGMA index_list(${quoteIdentifier(indexContract.table)})`,
     ).all() as Array<{
       name?: unknown;
       partial?: unknown;
@@ -641,34 +781,41 @@ export function databaseMatchesFrozenSchema37Contract(database: DatabaseSync) {
     }>).find((candidate) => String(candidate.name) === name);
     if (
       !index ||
-      Boolean(Number(index.unique)) !== contract.unique ||
-      Boolean(Number(index.partial)) !== contract.partial
+      Boolean(Number(index.unique)) !== indexContract.unique ||
+      Boolean(Number(index.partial)) !== indexContract.partial
     ) return false;
     const columns = (database.prepare(
       `PRAGMA index_xinfo(${quoteIdentifier(name)})`,
     ).all() as Array<{ key?: unknown; name?: unknown }>).filter(
       (column) => Number(column.key) === 1,
     ).map((column) => String(column.name));
-    if (!sameSortedNames(columns, contract.columns)) return false;
+    if (!sameSortedNames(columns, indexContract.columns)) return false;
   }
 
-  const expectedTriggerNames = Object.keys(schema37Contract.triggers).sort();
+  const expectedTriggerNames = Object.keys(contract.triggers).sort();
   if (!sameSortedNames(
     schemaObjectNames(database, "trigger"),
     expectedTriggerNames,
   )) return false;
   for (const name of expectedTriggerNames) {
     const object = schemaObject(database, "trigger", name);
-    const contract = schema37Contract.triggers[
-      name as keyof typeof schema37Contract.triggers
-    ];
+    const triggerContract = contract.triggers[name];
     if (
-      object?.table !== contract.table ||
-      schemaSqlSha256(object.sql) !== contract.hash
+      !triggerContract ||
+      object?.table !== triggerContract.table ||
+      schemaSqlSha256(object.sql) !== triggerContract.hash
     ) return false;
   }
 
   return schemaObjectNames(database, "view").length === 0;
+}
+
+export function databaseMatchesFrozenSchema37Contract(database: DatabaseSync) {
+  return databaseMatchesFrozenSchemaContract(database, schema37Contract);
+}
+
+export function databaseMatchesFrozenSchema38Contract(database: DatabaseSync) {
+  return databaseMatchesFrozenSchemaContract(database, schema38Contract);
 }
 
 function inspectMigrationLedger(
@@ -925,6 +1072,8 @@ export function inspectBackupDatabase(
     const migrationLedger = inspectMigrationLedger(database, userVersion);
     const schemaMatches = userVersion === 37
       ? databaseMatchesFrozenSchema37Contract(database)
+      : userVersion === 38
+      ? databaseMatchesFrozenSchema38Contract(database)
       : databaseMatchesSchemaContract(database);
     if (!schemaMatches) {
       fail(

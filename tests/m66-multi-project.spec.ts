@@ -695,9 +695,12 @@ test("cover priority and delete rows are enforced at the store level", () => {
     db.prepare(`
       INSERT INTO generation_provider_attempts (
         task_id, execution_attempt, provider_profile_id, provider_model_id,
-        kind, evidence, created_at
+        kind, evidence, outcome, created_at
       )
-      VALUES ('task-1', 1, 'profile', 'model', 'video', 'provider-boundary', ?)
+      VALUES (
+        'task-1', 1, 'profile', 'model', 'video', 'provider-boundary',
+        'completed', ?
+      )
     `).run(new Date(now + 10_000).toISOString());
 
     db.prepare(`
@@ -720,9 +723,9 @@ test("cover priority and delete rows are enforced at the store level", () => {
     db.prepare(`
       INSERT INTO generation_provider_attempts (
         task_id, execution_attempt, provider_profile_id, provider_model_id,
-        kind, evidence, created_at
+        kind, evidence, outcome, created_at
       ) VALUES ('task-u2', 1, 'profile', 'model', 'image',
-        'provider-boundary', ?)
+        'provider-boundary', 'outcome-unknown', ?)
     `).run(new Date(now + 11_000).toISOString());
 
     deleteProjectRows(db, ownerId, projectId, now + 20_000, false);

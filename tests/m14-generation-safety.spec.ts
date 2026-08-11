@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { expect, test } from "./safe-test";
 import { openAppDatabase } from "../server/database";
 import { createGenerationSafetyStore } from "../server/generationSafety";
+import { createGenerationTaskStore } from "../server/generationTaskStore";
 
 const port = Number(process.env.UNBOUNDRY_TEST_AUX_PORT);
 const origin = `http://127.0.0.1:${port}`;
@@ -136,6 +137,13 @@ test("generation safety settings contain no cost fields and admission blocks by 
       "owner-test",
       "provider-active-test",
     );
+    database.prepare(`
+      INSERT INTO generation_admission_events (
+        task_id, execution_attempt, owner_id, kind, admission_type, created_at
+      ) VALUES (
+        'task-active', 1, 'owner-test', 'image', 'initial', ?
+      )
+    `).run(now);
     expect(
       safety.admission({
         kind: "image",
@@ -193,6 +201,16 @@ test("generation safety settings contain no cost fields and admission blocks by 
         "owner-test",
         imageProviderId,
       );
+      database.prepare(`
+        INSERT INTO generation_provider_attempts (
+          task_id, execution_attempt, owner_id, provider_profile_id,
+          provider_model_id, kind, evidence, credential_revision, outcome,
+          failure_code, finished_at, created_at
+        ) VALUES (
+          ?, 1, 'owner-test', ?, 'test-image-model', 'image',
+          'provider-boundary', 1, 'provider-failed', 'PROVIDER_FAILED', ?, ?
+        )
+      `).run(`task-failed-${index}`, imageProviderId, timestamp, timestamp);
     }
     expect(
       safety.admission({
@@ -306,6 +324,66 @@ test("only administrators can read and change generation safety settings and leg
     })).json() as { settings: Record<string, unknown> };
     expect(after.settings.requestsPerMinute).toBe(99);
     expect(after.settings).not.toHaveProperty("dailyCostLimitCnyMicrounits");
+
+    const waitingStop = await request("/api/admin/generation-safety", {
+      body: JSON.stringify({
+        ...baseSettings,
+        emergencyStop: true,
+        runningTaskPolicy: "wait",
+      }),
+      cookie: adminCookie,
+      method: "PUT",
+    });
+    expect(waitingStop.status).toBe(200);
+    expect(await waitingStop.json()).not.toHaveProperty(
+      "runningTaskPolicySummary",
+    );
+    const taskStore = createGenerationTaskStore(dataDirectory);
+    const queued = taskStore.create({
+      canvasId: "emergency-stop-policy",
+      idempotencyKey: "emergency-stop-policy-0001",
+      kind: "image",
+      nodeId: "emergency-stop-policy-node",
+      ownerId: "__test__",
+      prompt: "cancel this committed local task",
+    }).task;
+    taskStore.close();
+    const stopped = await request("/api/admin/generation-safety", {
+      body: JSON.stringify({
+        ...baseSettings,
+        emergencyStop: true,
+        runningTaskPolicy: "cancel",
+      }),
+      cookie: adminCookie,
+      method: "PUT",
+    });
+    expect(stopped.status).toBe(200);
+    await expect(stopped.json()).resolves.toMatchObject({
+      runningTaskPolicySummary: {
+        cancelled: 1,
+        failed: 0,
+        waiting: 0,
+      },
+      settings: { emergencyStop: true, runningTaskPolicy: "cancel" },
+    });
+    const cancelledStore = createGenerationTaskStore(dataDirectory);
+    expect(cancelledStore.get(queued.id)).toMatchObject({ state: "cancelled" });
+    cancelledStore.close();
+    const auditStore = openAppDatabase(dataDirectory);
+    try {
+      const latest = auditStore.prepare(`
+        SELECT details
+        FROM admin_audit_events
+        WHERE action = 'generation_safety.update'
+        ORDER BY id DESC
+        LIMIT 1
+      `).get() as { details: string };
+      expect(JSON.parse(latest.details)).toMatchObject({
+        runningTaskPolicySummary: { cancelled: 1, failed: 0, waiting: 0 },
+      });
+    } finally {
+      auditStore.close();
+    }
   } finally {
     if (server) await stopServer(server);
     await rm(dataDirectory, { force: true, recursive: true });

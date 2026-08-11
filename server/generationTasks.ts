@@ -1,5 +1,9 @@
-import { randomUUID } from "node:crypto";
+import { statSync } from "node:fs";
+import { appendFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { pathToFileURL } from "node:url";
 import { imageReferenceForProvider, saveGeneratedPng } from "./assetStorage";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
@@ -17,13 +21,18 @@ import {
   failRecoveredGenerationTasks,
   generationProviderAttemptCounts,
   GenerationProviderAttemptBlockedError,
+  GenerationTaskAdmissionError,
+  GenerationTaskAbandonError,
   GenerationTaskCanvasRevisionConflictError,
   GenerationTaskConflictError,
   GenerationTaskOwnerDeletingError,
   GenerationTaskProviderBoundaryError,
+  type GenerationPaidRetrySnapshot,
+  type GenerationProviderAttemptEvidence,
   type GenerationTask,
   type GenerationTaskInput,
 } from "./generationTaskStore";
+import { waitForProviderDelay } from "./providerRequestDeadline";
 import {
   generateOpenRouterImage,
   OpenRouterImageError,
@@ -45,9 +54,7 @@ import {
 } from "./providerMedia";
 import {
   acquireProviderGenerationRequestLease,
-  accountCredentialVersion,
   getProviderGenerationProfileState,
-  getProviderProfileForGeneration,
   providerConfigurationVersion,
   ProviderGenerationConfigurationError,
   type ProviderGenerationRequestLease,
@@ -134,6 +141,10 @@ import {
 } from "../types/relayProtocols";
 
 let store: ReturnType<typeof createGenerationTaskStore> | undefined;
+let persistentGenerationWorkerStartup:
+  | Promise<PersistentGenerationWorkerStartupResult>
+  | undefined;
+const launchedGenerationTasks = new Set<string>();
 const runningImageRequests = new Map<string, AbortController>();
 const runningVideoRequests = new Map<string, AbortController>();
 const runningAudioRequests = new Map<string, AbortController>();
@@ -231,13 +242,19 @@ function assertRelayProfile(
 }
 
 function requireTaskProviderSnapshot(
-  task: Pick<GenerationTask, "modelConfiguration">,
+  task: Pick<
+    GenerationTask,
+    "credentialRevision" | "modelConfiguration" | "providerProfileId"
+  >,
   profile: ProviderProfile,
-  ownerId: string,
+  observedCredentialRevision?: number,
 ) {
   const expectedDriver = task.modelConfiguration.providerDriver;
   const expectedVersion = task.modelConfiguration.providerConfigurationVersion;
+  const expectedProfileId = task.providerProfileId ??
+    task.modelConfiguration.providerProfileId;
   if (
+    (typeof expectedProfileId === "string" && expectedProfileId !== profile.id) ||
     (typeof expectedDriver === "string" && expectedDriver !== profile.driver) ||
     (
       typeof expectedVersion === "number" &&
@@ -249,11 +266,12 @@ function requireTaskProviderSnapshot(
       "平台连接配置已变化，已阻止旧任务继续请求",
     );
   }
-  const expectedCredentialVersion = task.modelConfiguration.credentialVersion;
+  const expectedCredentialVersion = task.credentialRevision ??
+    task.modelConfiguration.credentialVersion;
   if (
     typeof expectedCredentialVersion === "number" &&
     expectedCredentialVersion > 0 &&
-    accountCredentialVersion(ownerId, profile.id) !== expectedCredentialVersion
+    observedCredentialRevision !== expectedCredentialVersion
   ) {
     throw new ProviderGenerationConfigurationError(
       "ACCOUNT_CREDENTIAL_CHANGED",
@@ -263,7 +281,12 @@ function requireTaskProviderSnapshot(
   return profile;
 }
 
-function taskStore() {
+type GenerationLaunchOptions = {
+  providerFetcher?: typeof fetch;
+  settledExecutions?: Promise<void>[];
+};
+
+function taskStore(launchOptions?: GenerationLaunchOptions) {
   if (store) return store;
   store = createGenerationTaskStore(appDataDirectory());
   const pendingPublicationTasks = pendingGeneratedPublicationTaskIds();
@@ -280,13 +303,16 @@ function taskStore() {
       )
     ) {
       store.resume(task.id);
-      launchGenerationTask(task.id, task.kind);
+      launchGenerationTask(task.id, task.kind, launchOptions);
     } else {
       store.transition(task.id, "failed", {
         code: "SERVICE_RESTARTED",
         message: "服务重启后无法安全继续本次生成，系统未重新提交",
       });
     }
+  }
+  for (const task of store.listQueued()) {
+    launchGenerationTask(task.id, task.kind, launchOptions);
   }
   const recoverGenerated =
     pendingPublicationTasks.size > 0 || hasPendingGeneratedMediaPublications();
@@ -345,6 +371,10 @@ async function withProviderRequestLease<T>(input: {
   ownerId: string;
   profileId: string;
   request: (profile: ProviderProfile, fetcher: typeof fetch) => Promise<T>;
+  task?: Pick<
+    GenerationTask,
+    "credentialRevision" | "modelConfiguration" | "providerProfileId"
+  >;
 }) {
   const lease = await acquireProviderGenerationRequestLease(
     input.profileId,
@@ -354,6 +384,13 @@ async function withProviderRequestLease<T>(input: {
     const profile = input.expected
       ? requireSameProviderConfiguration(input.expected, lease.profile)
       : lease.profile;
+    if (input.task) {
+      requireTaskProviderSnapshot(
+        input.task,
+        profile,
+        lease.credentialRevision,
+      );
+    }
     return await input.request(
       profile,
       fetchWithProviderLease(lease, input.fetcher),
@@ -361,6 +398,34 @@ async function withProviderRequestLease<T>(input: {
   } finally {
     // Local validation, a rejected Provider-attempt boundary, or a synchronous
     // fetch error can all exit before the wrapper above releases the lease.
+    lease.release();
+  }
+}
+
+async function taskProviderSnapshotProfile(
+  task: Pick<
+    GenerationTask,
+    "credentialRevision" | "modelConfiguration" | "providerProfileId"
+  >,
+  ownerId: string,
+) {
+  if (!task.providerProfileId) {
+    throw new ProviderGenerationConfigurationError(
+      "PROVIDER_CONFIGURATION_MISMATCH",
+      "平台连接配置与任务快照不一致，已阻止旧任务继续请求",
+    );
+  }
+  const lease = await acquireProviderGenerationRequestLease(
+    task.providerProfileId,
+    ownerId,
+  );
+  try {
+    return requireTaskProviderSnapshot(
+      task,
+      lease.profile,
+      lease.credentialRevision,
+    );
+  } finally {
     lease.release();
   }
 }
@@ -385,6 +450,20 @@ function canvasRevisionConflict(response: ServerResponse, error: unknown) {
   return true;
 }
 
+function taskAbandonAllowed(
+  task: GenerationTask,
+  providerAttempt: GenerationProviderAttemptEvidence | undefined,
+) {
+  if (task.state !== "failed" || !providerAttempt) return false;
+  if (task.providerTaskId) {
+    return providerAttempt.providerTaskId === task.providerTaskId &&
+      ["accepted", "response-received"].includes(providerAttempt.outcome);
+  }
+  return !providerAttempt.providerTaskId &&
+    providerAttempt.executionAttempt === task.attempt &&
+    providerAttempt.outcome === "response-received";
+}
+
 function taskSummary(task: GenerationTask) {
   const publishedResultAssetId = task.state === "success"
     ? task.resultAssetId
@@ -392,7 +471,14 @@ function taskSummary(task: GenerationTask) {
   const resultMedia = task.kind !== "text" && publishedResultAssetId && task.ownerId
     ? readyMediaForOwner(task.ownerId, task.kind, publishedResultAssetId)
     : undefined;
-  const retryDecision = retrySafetyDecision(task);
+  const providerAttempt = taskStore().getProviderAttemptForTask(task.id);
+  const unsafeProviderAttempt = taskStore()
+    .hasUnsafeProviderAttemptForNewPaidRetry(task.id);
+  const retryDecision = retrySafetyDecision(
+    task,
+    providerAttempt,
+    unsafeProviderAttempt,
+  );
   const resumeSnapshotProblem =
     retryDecision.allowed && retryDecision.mode === "resume-provider-task"
       ? resumeProviderTaskSnapshotProblem(task)
@@ -405,6 +491,7 @@ function taskSummary(task: GenerationTask) {
       }
     : retryDecision;
   return {
+    abandonAllowed: taskAbandonAllowed(task, providerAttempt),
     actualCostMicrounits: task.actualCostMicrounits,
     attempt: task.attempt,
     canvasId: task.canvasId,
@@ -476,6 +563,23 @@ type NodeInputGenerationRequest = Omit<Partial<GenerationTaskInput>, "kind"> & {
   kind?: NodeInputKind;
   ownPrompt?: string;
 };
+
+function generationRequestIntent(
+  body: NodeInputGenerationRequest,
+  kind: NodeInputKind,
+) {
+  return {
+    canvasId: String(body.canvasId ?? ""),
+    inputSchemaVersion: body.inputSchemaVersion,
+    inputs: body.inputs,
+    kind,
+    model: body.model ?? null,
+    nodeId: String(body.nodeId ?? ""),
+    ownPrompt: body.ownPrompt,
+    parameters: body.parameters ?? {},
+    prompt: String(body.prompt ?? ""),
+  };
+}
 
 function generationModelSchema(
   kind: NodeInputKind,
@@ -712,6 +816,7 @@ async function generationRuntimeDecision(input: {
     input.ownerId,
   ).catch(() => ({
     configurationAligned: false as const,
+    credentialRevision: undefined,
     profile: undefined,
     reason: "configuration-mismatch" as const,
   }));
@@ -786,10 +891,7 @@ async function generationRuntimeDecision(input: {
       adapterSupported,
       configured,
     },
-    credentialVersion: accountCredentialVersion(
-      input.ownerId,
-      input.model.provider_profile_id,
-    ),
+    credentialVersion: providerState.credentialRevision,
     providerBalance: {
       checked: false,
       reason: "零Provider预检不读取Provider账户余额",
@@ -808,6 +910,44 @@ function generationRuntimeProblems(problem: { code: string; message: string }) {
     code: modelProblem ? "MODEL_UNSUPPORTED" as const : "INVALID" as const,
     message: problem.message,
   }];
+}
+
+const atomicAdmissionProblemCodes = new Set([
+  "EMERGENCY_STOP",
+  "GLOBAL_DISABLED",
+  "GLOBAL_GENERATION_DISABLED",
+  "KIND_CONCURRENCY",
+  "PROVIDER_COOLDOWN",
+  "RATE_LIMIT",
+  "USER_CONCURRENCY",
+]);
+
+const missingProviderSnapshotPriorityCodes = new Set([
+  "EMERGENCY_STOP",
+  "GLOBAL_DISABLED",
+  "GLOBAL_GENERATION_DISABLED",
+]);
+
+function staticRuntimeProblem(
+  runtime: Awaited<ReturnType<typeof generationRuntimeDecision>>,
+) {
+  const problem = runtime.enqueueProblem;
+  return problem && !atomicAdmissionProblemCodes.has(problem.code)
+    ? problem
+    : undefined;
+}
+
+function preAdmissionRuntimeProblem(
+  runtime: Awaited<ReturnType<typeof generationRuntimeDecision>>,
+) {
+  if (
+    !runtime.providerProfile &&
+    runtime.enqueueProblem &&
+    missingProviderSnapshotPriorityCodes.has(runtime.enqueueProblem.code)
+  ) {
+    return runtime.enqueueProblem;
+  }
+  return staticRuntimeProblem(runtime);
 }
 
 function missingModelMessage(kind: NodeInputKind) {
@@ -1369,24 +1509,213 @@ function persistDetachedGenerationFailure(
   }
 }
 
-function launchGenerationTask(taskId: string, kind: GenerationTask["kind"]) {
+function launchGenerationTask(
+  taskId: string,
+  kind: GenerationTask["kind"],
+  options?: GenerationLaunchOptions,
+) {
+  if (launchedGenerationTasks.has(taskId)) return;
+  launchedGenerationTasks.add(taskId);
+  const execute = () => settleDetachedGenerationExecution(
+    () => kind === "text"
+      ? executeTextTask(taskId, options?.providerFetcher)
+      : kind === "video"
+      ? executeVideoTask(taskId, options?.providerFetcher)
+      : kind === "audio"
+        ? executeAudioTask(taskId)
+        : executeImageTask(taskId),
+    (error) => persistDetachedGenerationFailure(taskId, kind, error),
+  ).finally(() => {
+    launchedGenerationTasks.delete(taskId);
+  });
+  if (options?.settledExecutions) {
+    options.settledExecutions.push(execute());
+    return;
+  }
   setTimeout(() => {
-    void settleDetachedGenerationExecution(
-      () => kind === "text"
-        ? executeTextTask(taskId)
-        : kind === "video"
-        ? executeVideoTask(taskId)
-        : kind === "audio"
-          ? executeAudioTask(taskId)
-          : executeImageTask(taskId),
-      (error) => persistDetachedGenerationFailure(taskId, kind, error),
-    );
+    void execute();
   }, 0);
+}
+
+export type PersistentGenerationWorkerStartupResult = {
+  activeTaskCount: number;
+  writerOpened: boolean;
+};
+
+function optionalFileStat(path: string) {
+  try {
+    return statSync(path);
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) return undefined;
+    throw error;
+  }
+}
+
+function committedActiveGenerationTaskCount() {
+  const databasePath = join(appDataDirectory(), "unboundry.sqlite");
+  const walBytes = optionalFileStat(`${databasePath}-wal`)?.size ?? 0;
+  const sharedMemoryPresent = Boolean(
+    optionalFileStat(`${databasePath}-shm`)?.isFile(),
+  );
+  if (walBytes > 0 && !sharedMemoryPresent) {
+    throw new Error("Generation startup cannot inspect an uncoordinated WAL");
+  }
+  const databaseLocation = walBytes > 0
+    ? databasePath
+    : `${pathToFileURL(databasePath).href}?immutable=1`;
+  const database = new DatabaseSync(databaseLocation, {
+    readOnly: true,
+    timeout: 1_000,
+  });
+  try {
+    const row = database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM generation_tasks
+      WHERE state IN ('queued', 'running', 'recovering', 'retrying')
+    `).get() as { count?: unknown } | undefined;
+    return Number(row?.count ?? 0);
+  } finally {
+    database.close();
+  }
+}
+
+function failInterruptedRetryingGenerationTasks() {
+  const database = openAppDatabase(appDataDirectory());
+  const timestamp = new Date().toISOString();
+  try {
+    database.exec("BEGIN IMMEDIATE");
+    const rows = database.prepare(`
+      SELECT id
+      FROM generation_tasks
+      WHERE state = 'retrying'
+      ORDER BY created_at ASC, rowid ASC
+    `).all() as Array<{ id: string }>;
+    const fail = database.prepare(`
+      UPDATE generation_tasks
+      SET
+        state = 'failed',
+        error_code = 'RETRY_INTERRUPTED',
+        error_message = '服务重启中断了重试准备，未创建新的模型平台请求',
+        updated_at = ?
+      WHERE id = ? AND state = 'retrying'
+    `);
+    const record = database.prepare(`
+      INSERT INTO generation_task_events (
+        task_id, state, error_code, error_message, created_at
+      ) VALUES (
+        ?, 'failed', 'RETRY_INTERRUPTED',
+        '服务重启中断了重试准备，未创建新的模型平台请求', ?
+      )
+    `);
+    for (const row of rows) {
+      if (fail.run(timestamp, row.id).changes === 1) {
+        record.run(row.id, timestamp);
+      }
+    }
+    database.exec("COMMIT");
+  } catch (error) {
+    try {
+      database.exec("ROLLBACK");
+    } catch {}
+    throw error;
+  } finally {
+    database.close();
+  }
+}
+
+function startupWorkerTestProviderFetcher(): typeof fetch | undefined {
+  if (
+    process.env.UNBOUNDRY_SAFE_TEST !== "1" ||
+    process.env.UNBOUNDRY_TEST_GENERATION_STARTUP_FAKE_PROVIDER !== "1"
+  ) return undefined;
+  const evidencePath = join(
+    appDataDirectory(),
+    ".unboundry-startup-provider-fixture.log",
+  );
+  return async (input, init) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    await appendFile(
+      evidencePath,
+      `${JSON.stringify({ method, url })}\n`,
+      { encoding: "utf8", flag: "a" },
+    );
+    if (method === "GET" && url.includes("/contents/generations/tasks/")) {
+      return new Response(JSON.stringify({
+        error: { code: "M81_FAKE_PROVIDER_FAILED" },
+        status: "failed",
+      }), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+    return new Response(JSON.stringify({
+      output: [{
+        content: [{
+          text: "M81 startup worker fake Provider result",
+          type: "output_text",
+        }],
+        status: "completed",
+        type: "message",
+      }],
+      status: "completed",
+      usage: { total_tokens: 1 },
+    }), {
+      headers: { "Content-Type": "application/json" },
+      status: 200,
+    });
+  };
+}
+
+/**
+ * Starts or recovers durable active work once per process. The first pass is
+ * read-only so an idle database never opens the writer or creates SQLite sidecars.
+ */
+export function initializePersistentGenerationTaskWorker() {
+  if (persistentGenerationWorkerStartup) {
+    return persistentGenerationWorkerStartup;
+  }
+  persistentGenerationWorkerStartup = (async () => {
+    const activeTaskCount = committedActiveGenerationTaskCount();
+    if (activeTaskCount === 0) {
+      return { activeTaskCount, writerOpened: false };
+    }
+    if (
+      process.env.UNBOUNDRY_SAFE_TEST === "1" &&
+      process.env.UNBOUNDRY_TEST_GENERATION_STARTUP_FAILURE === "1"
+    ) {
+      throw new Error("M81 controlled generation startup failure");
+    }
+    failInterruptedRetryingGenerationTasks();
+    const providerFetcher = startupWorkerTestProviderFetcher();
+    const settledExecutions = providerFetcher
+      ? [] as Promise<void>[]
+      : undefined;
+    const launchOptions = { providerFetcher, settledExecutions };
+    const generationStore = taskStore(launchOptions);
+    // If another in-process caller initialized the store first, cover any
+    // still-queued task here. launchGenerationTask is itself idempotent.
+    for (const task of generationStore.listQueued()) {
+      launchGenerationTask(task.id, task.kind, launchOptions);
+    }
+    if (settledExecutions) await Promise.all(settledExecutions);
+    return { activeTaskCount, writerOpened: true };
+  })();
+  return persistentGenerationWorkerStartup;
 }
 
 type TextTaskStore = Pick<
   ReturnType<typeof createGenerationTaskStore>,
-  "complete" | "get" | "recordProviderAttempt" | "transition"
+  | "complete"
+  | "get"
+  | "markProviderResponseReceived"
+  | "recordProviderAttempt"
+  | "transition"
 >;
 
 type PersistedTextTaskInput = NodeInputSnapshot & { text?: string };
@@ -1551,7 +1880,11 @@ export async function executeTextTaskWithDependencies(
     );
     let result: { providerUsageTokens?: number; text: string };
     try {
-      requireTaskProviderSnapshot(running, lease.profile, running.ownerId!);
+      requireTaskProviderSnapshot(
+        running,
+        lease.profile,
+        lease.credentialRevision,
+      );
       const leasedFetch = fetchWithProviderLease(lease, dependencies.fetcher);
       if (protocol === "native") {
         if (lease.profile.driver !== "volcengine-ark") {
@@ -1607,6 +1940,10 @@ export async function executeTextTaskWithDependencies(
       lease.release();
     }
     if (dependencies.store.get(taskId)?.state !== "running") return;
+    dependencies.store.markProviderResponseReceived({
+      executionAttempt: running.attempt,
+      taskId,
+    });
     dependencies.store.complete(taskId, {
       // Ark does not return a reliable per-response bill. Keep budget
       // accounting conservative by recording the administrator-protected cap.
@@ -1625,13 +1962,13 @@ export async function executeTextTaskWithDependencies(
   }
 }
 
-async function executeTextTask(taskId: string) {
+async function executeTextTask(taskId: string, fetcher: typeof fetch = fetch) {
   const controller = new AbortController();
   runningTextRequests.set(taskId, controller);
   try {
     await executeTextTaskWithDependencies(taskId, {
       acquireProfile: acquireProviderGenerationRequestLease,
-      fetcher: fetch,
+      fetcher,
       mediaUrlForOwner: providerMediaUrlForOwner,
       signal: controller.signal,
       store: taskStore(),
@@ -1924,14 +2261,12 @@ function relayAudioResultContentType(format: unknown) {
   return format === "mp3" ? "audio/mpeg" : undefined;
 }
 
-function waitForRelayMedia(milliseconds: number, signal: AbortSignal) {
-  return new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(resolve, milliseconds);
-    signal.addEventListener("abort", () => {
-      clearTimeout(timer);
-      reject(new RelayProviderError("CANCELLED", true));
-    }, { once: true });
-  });
+async function waitForRelayMedia(milliseconds: number, signal: AbortSignal) {
+  try {
+    await waitForProviderDelay(milliseconds, signal);
+  } catch {
+    throw new RelayProviderError("CANCELLED", true);
+  }
 }
 
 async function executeRelayMediaTask(
@@ -1959,15 +2294,8 @@ async function executeRelayMediaTask(
   const ownerId = running.ownerId!;
   const protocol = taskProviderProtocol(running);
   if (protocol !== "media-generate") throw new RelayProviderError("FORMAT");
-  const profile = requireTaskProviderSnapshot(
-    running,
-    await getProviderProfileForGeneration(
-      running.providerProfileId,
-      running.ownerId!,
-    ),
-    running.ownerId!,
-  );
-  const connection = assertRelayProfile(profile, protocol);
+  const profile = await taskProviderSnapshotProfile(running, running.ownerId!);
+  assertRelayProfile(profile, protocol);
   let providerTaskId = running.providerTaskId;
   if (!providerTaskId) {
     const params = await relayMediaParametersForTask(
@@ -1979,8 +2307,9 @@ async function executeRelayMediaTask(
       fetcher: fetch,
       ownerId: ownerId,
       profileId: running.providerProfileId,
-      request: (currentProfile, leasedFetch) =>
-        submitRelayMedia(
+      task: running,
+      request: async (currentProfile, leasedFetch) => {
+        const created = await submitRelayMedia(
           assertRelayProfile(currentProfile, protocol),
           {
             capability: kind,
@@ -1996,10 +2325,12 @@ async function executeRelayMediaTask(
             signal: controller.signal,
             usePinnedTransport: true,
           },
-        ),
+        );
+        taskStore().setProviderTaskId(taskId, created.externalTaskId);
+        return created;
+      },
     });
     providerTaskId = submission.externalTaskId;
-    taskStore().setProviderTaskId(taskId, providerTaskId);
   }
   for (let poll = 0; poll < 450; poll += 1) {
     if (taskStore().get(taskId)?.state !== "running") return;
@@ -2008,6 +2339,7 @@ async function executeRelayMediaTask(
       fetcher: fetch,
       ownerId: ownerId,
       profileId: running.providerProfileId,
+      task: running,
       request: (currentProfile, leasedFetch) =>
         pollRelayMediaTask(
           assertRelayProfile(currentProfile, protocol),
@@ -2031,6 +2363,7 @@ async function executeRelayMediaTask(
       return;
     }
     if (status.state === "success") {
+      taskStore().markProviderResponseReceivedForTask(taskId);
       if (status.outputs.length !== 1) throw new RelayProviderError("FORMAT");
       await saveRelayMediaOutput({
         actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
@@ -2084,9 +2417,10 @@ async function executeImageTask(taskId: string) {
         fetcher: fetch,
         ownerId: current.ownerId,
         profileId: running.providerProfileId,
+        task: running,
         request: (profile, leasedFetch) =>
           generateOpenRouterImage(
-            requireTaskProviderSnapshot(running, profile, current.ownerId!),
+            profile,
             {
               aspectRatio:
                 typeof running.parameters.aspectRatio === "string"
@@ -2108,6 +2442,10 @@ async function executeImageTask(taskId: string) {
             () => taskStore().recordProviderAttempt(taskId),
           ),
       });
+      taskStore().markProviderResponseReceived({
+        executionAttempt: running.attempt,
+        taskId,
+      });
       const saved = await saveGeneratedPng({
         bytes: result.bytes,
         label: running.prompt.slice(0, 120),
@@ -2121,20 +2459,14 @@ async function executeImageTask(taskId: string) {
       return;
     }
     if (protocol !== "gpt-image") throw new RelayProviderError("FORMAT");
-    const profile = requireTaskProviderSnapshot(
-      running,
-      await getProviderProfileForGeneration(
-        running.providerProfileId,
-        current.ownerId,
-      ),
-      current.ownerId,
-    );
+    const profile = await taskProviderSnapshotProfile(running, current.ownerId);
     assertRelayProfile(profile, protocol);
     const relayResult = await withProviderRequestLease({
       expected: profile,
       fetcher: fetch,
       ownerId: current.ownerId,
       profileId: running.providerProfileId,
+      task: running,
       request: (currentProfile, leasedFetch) =>
         requestRelayGptImage(
           assertRelayProfile(currentProfile, protocol),
@@ -2163,6 +2495,10 @@ async function executeImageTask(taskId: string) {
           },
         ),
     });
+    taskStore().markProviderResponseReceived({
+      executionAttempt: running.attempt,
+      taskId,
+    });
     if (relayResult.outputs.length !== 1) throw new RelayProviderError("FORMAT");
     await saveRelayMediaOutput({
       actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
@@ -2188,14 +2524,12 @@ async function executeImageTask(taskId: string) {
   }
 }
 
-function wait(milliseconds: number, signal: AbortSignal) {
-  return new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(resolve, milliseconds);
-    signal.addEventListener("abort", () => {
-      clearTimeout(timer);
-      reject(new VolcengineArkVideoError("CANCELLED", "视频任务已取消"));
-    }, { once: true });
-  });
+async function wait(milliseconds: number, signal: AbortSignal) {
+  try {
+    await waitForProviderDelay(milliseconds, signal);
+  } catch {
+    throw new VolcengineArkVideoError("CANCELLED", "视频任务已取消");
+  }
 }
 
 const arkVideoMediaRoles = new Set<ArkVideoMediaInput["role"]>([
@@ -2308,7 +2642,10 @@ async function arkVideoMediaInputs(task: GenerationTask): Promise<ArkVideoMediaI
   return inputs;
 }
 
-async function executeVideoTask(taskId: string) {
+async function executeVideoTask(
+  taskId: string,
+  fetcher: typeof fetch = fetch,
+) {
   const current = taskStore().get(taskId);
   if (!current || !["queued", "running"].includes(current.state) || !current.ownerId) return;
   if (taskProviderProtocol(current) === "media-generate") {
@@ -2348,14 +2685,7 @@ async function executeVideoTask(taskId: string) {
   const controller = new AbortController();
   runningVideoRequests.set(taskId, controller);
   try {
-    const profile = requireTaskProviderSnapshot(
-      running,
-      await getProviderProfileForGeneration(
-        running.providerProfileId,
-        running.ownerId!,
-      ),
-      running.ownerId!,
-    );
+    const profile = await taskProviderSnapshotProfile(running, running.ownerId!);
     if (profile.driver !== "volcengine-ark") {
       throw new VolcengineArkVideoError("FORMAT", "视频模型配置已失效");
     }
@@ -2364,11 +2694,12 @@ async function executeVideoTask(taskId: string) {
       const inputs = await arkVideoMediaInputs(running);
       const created = await withProviderRequestLease({
         expected: profile,
-        fetcher: fetch,
+        fetcher,
         ownerId: running.ownerId!,
         profileId: running.providerProfileId,
-        request: (currentProfile, leasedFetch) =>
-          createVolcengineArkVideoTask(
+        task: running,
+        request: async (currentProfile, leasedFetch) => {
+          const created = await createVolcengineArkVideoTask(
             currentProfile,
             {
               duration: typeof running.parameters.duration === "number"
@@ -2389,19 +2720,22 @@ async function executeVideoTask(taskId: string) {
             leasedFetch,
             controller.signal,
             () => taskStore().recordProviderAttempt(taskId),
-          ),
+          );
+          taskStore().setProviderTaskId(taskId, created.id);
+          return created;
+        },
       });
       providerTaskId = created.id;
-      taskStore().setProviderTaskId(taskId, providerTaskId);
     }
 
     for (let poll = 0; poll < 450; poll += 1) {
       if (taskStore().get(taskId)?.state !== "running") return;
       const status = await withProviderRequestLease({
         expected: profile,
-        fetcher: fetch,
+        fetcher,
         ownerId: running.ownerId!,
         profileId: running.providerProfileId,
+        task: running,
         request: (currentProfile, leasedFetch) =>
           getVolcengineArkVideoTask(
             currentProfile,
@@ -2428,28 +2762,23 @@ async function executeVideoTask(taskId: string) {
         return;
       }
       if (status.state === "succeeded") {
+        taskStore().markProviderResponseReceivedForTask(taskId);
         if (!status.videoUrl || status.providerUsageTokens === undefined) {
           throw new VolcengineArkVideoError("FORMAT", "方舟未返回完整的视频结果");
         }
-        const videoResponse = await fetch(status.videoUrl, {
-          headers: { Accept: "video/mp4" },
-          redirect: "error",
+        const downloaded = await downloadProviderResultMedia({
+          apiKey: profile.apiKey ?? "",
+          kind: "video",
           signal: controller.signal,
+          url: status.videoUrl,
         });
-        if (
-          !videoResponse.ok ||
-          !videoResponse.body ||
-          !String(videoResponse.headers.get("content-type") ?? "").toLowerCase().includes("video")
-        ) {
-          throw new VolcengineArkVideoError("REMOTE", "方舟视频结果暂时无法下载");
-        }
         const actualCostMicrounits = Math.ceil(
           status.providerUsageTokens *
           seedanceMiniAudioPriceMicrounitsPerThousandTokens /
           1_000,
         );
         await saveGeneratedMp4({
-          body: videoResponse.body,
+          body: downloaded.body,
           label: running.prompt.slice(0, 120),
           ownerId: running.ownerId!,
           task: {
@@ -2478,14 +2807,12 @@ async function executeVideoTask(taskId: string) {
   }
 }
 
-function waitForAudio(milliseconds: number, signal: AbortSignal) {
-  return new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(resolve, milliseconds);
-    signal.addEventListener("abort", () => {
-      clearTimeout(timer);
-      reject(new MurekaAudioError("CANCELLED"));
-    }, { once: true });
-  });
+async function waitForAudio(milliseconds: number, signal: AbortSignal) {
+  try {
+    await waitForProviderDelay(milliseconds, signal);
+  } catch {
+    throw new MurekaAudioError("CANCELLED");
+  }
 }
 
 function audioQueryKind(parameters: Record<string, unknown>): MurekaAudioQueryKind {
@@ -2534,14 +2861,7 @@ async function executeAudioTask(taskId: string) {
   const controller = new AbortController();
   runningAudioRequests.set(taskId, controller);
   try {
-    const profile = requireTaskProviderSnapshot(
-      running,
-      await getProviderProfileForGeneration(
-        running.providerProfileId,
-        running.ownerId!,
-      ),
-      running.ownerId!,
-    );
+    const profile = await taskProviderSnapshotProfile(running, running.ownerId!);
     if (profile.driver !== "mureka") {
       throw new MurekaAudioError("FORMAT");
     }
@@ -2553,8 +2873,9 @@ async function executeAudioTask(taskId: string) {
         fetcher: fetch,
         ownerId: running.ownerId!,
         profileId: running.providerProfileId,
-        request: (currentProfile, leasedFetch) =>
-          createMurekaAudioTask(
+        task: running,
+        request: async (currentProfile, leasedFetch) => {
+          const created = await createMurekaAudioTask(
             currentProfile,
             {
               lyrics: running.parameters.lyrics,
@@ -2568,10 +2889,12 @@ async function executeAudioTask(taskId: string) {
             leasedFetch,
             controller.signal,
             () => taskStore().recordProviderAttempt(taskId),
-          ),
+          );
+          taskStore().setProviderTaskId(taskId, created.id);
+          return created;
+        },
       });
       providerTaskId = created.id;
-      taskStore().setProviderTaskId(taskId, providerTaskId);
     }
 
     for (let poll = 0; poll < 450; poll += 1) {
@@ -2581,6 +2904,7 @@ async function executeAudioTask(taskId: string) {
         fetcher: fetch,
         ownerId: running.ownerId!,
         profileId: running.providerProfileId,
+        task: running,
         request: (currentProfile, leasedFetch) =>
           getMurekaAudioTask(
             currentProfile,
@@ -2605,6 +2929,7 @@ async function executeAudioTask(taskId: string) {
         return;
       }
       if (status.state === "succeeded") {
+        taskStore().markProviderResponseReceivedForTask(taskId);
         if (!status.audioUrl) {
           throw new MurekaAudioError("FORMAT");
         }
@@ -2647,7 +2972,7 @@ async function executeAudioTask(taskId: string) {
 
 export function retrySnapshotCompatibilityProblem(
   task: GenerationTask,
-  model: GenerationModelRow,
+  model: GenerationModelRow | undefined,
   mode: "new-provider-attempt" | "resume-provider-task" =
     "new-provider-attempt",
 ) {
@@ -2663,8 +2988,13 @@ export function retrySnapshotCompatibilityProblem(
   delete parameterValues.inputs;
   delete parameterValues.references;
   const modelSchema = mode === "new-provider-attempt"
-    ? generationModelSchema(task.kind, model)
+    ? model
+      ? generationModelSchema(task.kind, model)
+      : undefined
     : undefined;
+  if (mode === "new-provider-attempt" && !modelSchema) {
+    return "原模型已停用、归档或不可用";
+  }
   let parameters: Record<string, ModelParameterValue> = {};
   if (modelSchema) {
     try {
@@ -2808,29 +3138,6 @@ export function retrySnapshotCompatibilityProblem(
   return preflight.problems[0]?.message;
 }
 
-const unknownProviderRetryOutcomes = new Set([
-  "FORMAT",
-  "GENERATION_FAILED",
-  "NETWORK",
-  "REMOTE",
-  "SERVICE_RESTARTED",
-  "TIMEOUT",
-]);
-
-function taskEnteredProviderOnLatestExecution(task: GenerationTask) {
-  const database = openAppDatabase();
-  try {
-    return Boolean(database.prepare(`
-      SELECT 1
-      FROM generation_provider_attempts
-      WHERE task_id = ? AND execution_attempt = ?
-      LIMIT 1
-    `).get(task.id, task.attempt));
-  } finally {
-    database.close();
-  }
-}
-
 type RetrySafetyDecision =
   | {
       allowed: true;
@@ -2840,7 +3147,35 @@ type RetrySafetyDecision =
   | { allowed: true; mode: "resume-provider-task" }
   | { allowed: false; code: string; reason: string };
 
-export function retrySafetyDecision(task: GenerationTask): RetrySafetyDecision {
+export function retrySafetyDecision(
+  task: GenerationTask,
+  providerAttempt = taskStore().getProviderAttemptForTask(task.id),
+  unsafeProviderAttempt = taskStore()
+    .hasUnsafeProviderAttemptForNewPaidRetry(task.id),
+): RetrySafetyDecision {
+  const exactAbandonedEvidence = Boolean(
+    providerAttempt &&
+    (
+      task.providerTaskId
+        ? providerAttempt.providerTaskId === task.providerTaskId &&
+          ["accepted", "response-received"].includes(providerAttempt.outcome)
+        : !providerAttempt.providerTaskId &&
+          providerAttempt.executionAttempt === task.attempt &&
+          providerAttempt.outcome === "response-received"
+    )
+  );
+  if (
+    task.state === "cancelled" &&
+    task.errorCode === "USER_ABANDONED" &&
+    exactAbandonedEvidence
+  ) {
+    return {
+      allowed: false,
+      code: "RETRY_OUTCOME_UNKNOWN",
+      reason:
+        "该平台结果已显式放弃本地继续恢复；已保留付费证据，不能自动重试或再次付费提交",
+    };
+  }
   if (task.state !== "failed") {
     return {
       allowed: false,
@@ -2851,7 +3186,8 @@ export function retrySafetyDecision(task: GenerationTask): RetrySafetyDecision {
   const protocol = taskProviderProtocol(task);
   if (
     task.providerTaskId &&
-    task.errorCode !== "PROVIDER_FAILED" &&
+    providerAttempt &&
+    ["accepted", "response-received"].includes(providerAttempt.outcome) &&
     (
       (protocol === "media-generate" && task.kind !== "text") ||
       (protocol === "native" && (task.kind === "video" || task.kind === "audio"))
@@ -2860,12 +3196,8 @@ export function retrySafetyDecision(task: GenerationTask): RetrySafetyDecision {
     return { allowed: true, mode: "resume-provider-task" };
   }
   if (
-    task.errorCode &&
-    unknownProviderRetryOutcomes.has(task.errorCode) &&
-    (
-      task.errorCode === "SERVICE_RESTARTED" ||
-      taskEnteredProviderOnLatestExecution(task)
-    )
+    (task.providerTaskId && !providerAttempt) ||
+    unsafeProviderAttempt
   ) {
     return {
       allowed: false,
@@ -2906,16 +3238,11 @@ export function retrySafetyDecision(task: GenerationTask): RetrySafetyDecision {
 }
 
 function resumeProviderTaskSnapshotProblem(task: GenerationTask) {
-  const model = resolveModel(task.kind, task.model, task.ownerId ?? "");
-  if (!model) return "原模型已停用、归档或不可用";
-  if (
-    model.provider_profile_id !== task.providerProfileId ||
-    model.provider_model_id !== task.providerModelId ||
-    (model.provider_protocol ?? "native") !== taskProviderProtocol(task)
-  ) {
-    return "原任务的模型、平台连接或协议配置已变化";
-  }
-  return retrySnapshotCompatibilityProblem(task, model, "resume-provider-task");
+  return retrySnapshotCompatibilityProblem(
+    task,
+    undefined,
+    "resume-provider-task",
+  );
 }
 
 export function generationTaskCancellationMode(task: GenerationTask) {
@@ -2955,6 +3282,7 @@ async function cancelGenerationTask(task: GenerationTask) {
       fetcher: fetch,
       ownerId: task.ownerId ?? "",
       profileId: task.providerProfileId,
+      task,
       request: (profile, leasedFetch) =>
         cancelVolcengineArkVideoTask(
           profile,
@@ -2985,6 +3313,40 @@ async function cancelGenerationTask(task: GenerationTask) {
   runningVideoRequests.get(task.id)?.abort();
   runningAudioRequests.get(task.id)?.abort();
   runningTextRequests.get(task.id)?.abort();
+}
+
+/**
+ * Applies the administrator's emergency-stop cancellation policy without
+ * claiming that an unsupported or already-unknown Provider request stopped.
+ */
+export async function applyEmergencyStopRunningTaskPolicy() {
+  const generationStore = taskStore();
+  const summary = { cancelled: 0, failed: 0, waiting: 0 };
+  for (const task of generationStore.listActive()) {
+    const mode = generationTaskCancellationMode(task);
+    if (
+      mode === "provider-cancel-unavailable" ||
+      mode === "cancel-relay-media-local"
+    ) {
+      summary.waiting += 1;
+      continue;
+    }
+    try {
+      await cancelGenerationTask(task);
+      summary.cancelled += 1;
+    } catch (error) {
+      if (
+        error instanceof GenerationTaskProviderBoundaryError ||
+        (error instanceof Error &&
+          (error as { code?: string }).code === "PROVIDER_CANCEL_UNAVAILABLE")
+      ) {
+        summary.waiting += 1;
+      } else {
+        summary.failed += 1;
+      }
+    }
+  }
+  return summary;
 }
 
 /**
@@ -3140,6 +3502,57 @@ export async function generationTasks(
     return;
   }
 
+  const abandonMatch = path.match(/^([a-z0-9._-]+)\/abandon$/i);
+  if (request.method === "POST" && abandonMatch) {
+    const taskId = abandonMatch[1];
+    const task = identity.bypass
+      ? taskStore().get(taskId)
+      : taskStore().getForOwner(taskId, identity.userId);
+    if (!task) {
+      json(response, 404, { error: "Generation task not found" });
+      return;
+    }
+    try {
+      const body = await readJsonBody<{
+        acknowledgeRemoteResultMayBeLost?: unknown;
+        expectedAttempt?: unknown;
+        expectedUpdatedAt?: unknown;
+      }>(request, 2 * 1_024);
+      if (
+        body.acknowledgeRemoteResultMayBeLost !== true ||
+        !Number.isSafeInteger(body.expectedAttempt) ||
+        Number(body.expectedAttempt) < 1 ||
+        typeof body.expectedUpdatedAt !== "string"
+      ) {
+        json(response, 400, {
+          code: "ABANDON_ACK_REQUIRED",
+          error: "必须确认将不再尝试恢复该平台结果",
+        });
+        return;
+      }
+      const abandoned = taskStore().abandonAcceptedProviderTask({
+        expectedAttempt: Number(body.expectedAttempt),
+        expectedUpdatedAt: body.expectedUpdatedAt,
+        taskId,
+      });
+      if (!abandoned) throw new Error("Generation task not found");
+      json(response, 200, taskSummary(abandoned));
+    } catch (error) {
+      if (error instanceof GenerationTaskAbandonError) {
+        json(response, 409, {
+          code: error.code,
+          error: error.message,
+        });
+        return;
+      }
+      json(response, 409, {
+        code: "PROVIDER_RESULT_NOT_ABANDONABLE",
+        error: "Generation task cannot be abandoned",
+      });
+    }
+    return;
+  }
+
   const retryMatch = path.match(/^([a-z0-9._-]+)\/retry$/i);
   if (request.method === "POST" && retryMatch) {
     const taskId = retryMatch[1];
@@ -3169,14 +3582,19 @@ export async function generationTasks(
       }
       try {
         if (!task.providerProfileId) throw new Error("Provider profile missing");
-        requireTaskProviderSnapshot(
-          task,
-          await getProviderProfileForGeneration(
-            task.providerProfileId,
-            task.ownerId ?? "",
-          ),
+        const lease = await acquireProviderGenerationRequestLease(
+          task.providerProfileId,
           task.ownerId ?? "",
         );
+        try {
+          requireTaskProviderSnapshot(
+            task,
+            lease.profile,
+            lease.credentialRevision,
+          );
+        } finally {
+          lease.release();
+        }
       } catch {
         json(response, 409, {
           code: "PROVIDER_CONFIGURATION_MISMATCH",
@@ -3185,6 +3603,7 @@ export async function generationTasks(
         return;
       }
     }
+    let paidRetrySnapshot: GenerationPaidRetrySnapshot | undefined;
     if (retry.mode === "new-provider-attempt") {
       const runtime = await generationRuntimeDecision({
         canSubmit: true,
@@ -3192,29 +3611,67 @@ export async function generationTasks(
         model: retry.model,
         ownerId: identity.bypass ? "__test__" : identity.userId,
       });
-      if (!runtime.canEnqueue) {
+      const runtimeProblem = preAdmissionRuntimeProblem(runtime);
+      if (runtimeProblem) {
         json(response, 409, {
-          code: runtime.enqueueProblem?.code ?? "MODEL_UNAVAILABLE",
-          error: runtime.enqueueProblem?.message ?? "当前模型暂不可生成",
+          code: runtimeProblem.code,
+          error: runtimeProblem.message,
         });
         return;
       }
+      if (
+        !runtime.providerProfile ||
+        !Number.isSafeInteger(runtime.credentialVersion) ||
+        Number(runtime.credentialVersion) < 1
+      ) {
+        json(response, 409, {
+          code: "ACCOUNT_CREDENTIAL_CHANGED",
+          error: "平台密钥版本已变化，请按当前配置重试",
+        });
+        return;
+      }
+      paidRetrySnapshot = {
+        credentialRevision: Number(runtime.credentialVersion),
+        modelConfiguration: {
+          credentialVersion: Number(runtime.credentialVersion),
+          modelId: retry.model.id,
+          parameterSchema: generationModelSchema(task.kind, retry.model),
+          providerConfigurationVersion: providerConfigurationVersion(
+            runtime.providerProfile,
+          ),
+          providerDriver: retry.model.provider_driver,
+          providerModelId: retry.model.provider_model_id,
+          providerProtocol: retry.model.provider_protocol ?? "native",
+          providerProfileId: retry.model.provider_profile_id,
+        },
+        providerModelId: retry.model.provider_model_id,
+        providerProfileId: retry.model.provider_profile_id,
+      };
     }
     try {
-      taskStore().transition(
-        taskId,
-        "retrying",
-        undefined,
-        retry.mode === "resume-provider-task"
-          ? { preserveProviderTaskId: true }
-          : undefined,
-      );
-      const queued = taskStore().transition(taskId, "queued");
+      const queued = retry.mode === "resume-provider-task"
+        ? taskStore().admitRetry({
+            mode: "resume-provider-task",
+            taskId,
+          })
+        : taskStore().admitRetry({
+            mode: "new-paid-attempt",
+            snapshot: paidRetrySnapshot!,
+            taskId,
+          });
       if (!queued) throw new Error("Generation task not found");
       launchGenerationTask(taskId, task.kind);
       json(response, 202, taskSummary(queued));
-    } catch {
-      json(response, 409, { error: "Generation task cannot be retried" });
+    } catch (error) {
+      if (error instanceof GenerationTaskAdmissionError) {
+        json(response, 409, { code: error.code, error: error.message });
+      } else if (error instanceof GenerationProviderAttemptBlockedError) {
+        json(response, 409, { code: error.code, error: error.message });
+      } else if (error instanceof GenerationTaskOwnerDeletingError) {
+        json(response, 409, { code: error.code, error: error.message });
+      } else {
+        json(response, 409, { error: "Generation task cannot be retried" });
+      }
     }
     return;
   }
@@ -3320,10 +3777,23 @@ export async function generationTasks(
         });
         return;
       }
+      const ownerId = identity.bypass ? "__test__" : identity.userId;
+      const idempotencyKey = String(body.idempotencyKey ?? "");
+      const requestIntent = generationRequestIntent(body, body.kind);
+      const existing = taskStore().getIdempotentIntent({
+        canvasId: String(body.canvasId ?? ""),
+        idempotencyKey,
+        ownerId,
+        requestIntent,
+      });
+      if (existing) {
+        json(response, 200, taskSummary(existing));
+        return;
+      }
       const model = resolveModel(
         body.kind,
         body.model,
-        identity.bypass ? "__test__" : identity.userId,
+        ownerId,
       );
       if (!model) {
         const message = missingModelMessage(body.kind);
@@ -3337,7 +3807,6 @@ export async function generationTasks(
         });
         return;
       }
-      const ownerId = identity.bypass ? "__test__" : identity.userId;
       if (
         body.inputSchemaVersion !== undefined &&
         body.inputSchemaVersion !== 1
@@ -3380,8 +3849,9 @@ export async function generationTasks(
         model,
         ownerId,
       });
-      if (!runtime.canEnqueue || !runtime.providerProfile) {
-        const problem = runtime.enqueueProblem ?? {
+      const runtimeProblem = preAdmissionRuntimeProblem(runtime);
+      if (runtimeProblem || !runtime.providerProfile) {
+        const problem = runtimeProblem ?? {
           code: "MODEL_UNAVAILABLE",
           message: "当前模型暂不可生成",
         };
@@ -3416,14 +3886,15 @@ export async function generationTasks(
           ownerId,
         });
       }
-      const created = taskStore().create({
+      const created = taskStore().admitOrGet({
         canvasId: String(body.canvasId ?? ""),
+        credentialRevision: runtime.credentialVersion,
         expectedCanvasRevision: body.canvasRevision,
         estimatedCostMicrounits: taskAuditEstimatedCostMicrounits[
           model.cost_currency
         ],
         costCurrency: model.cost_currency,
-        idempotencyKey: String(body.idempotencyKey || randomUUID()),
+        idempotencyKey,
         kind: body.kind,
         model: model.id,
         modelConfiguration: {
@@ -3468,6 +3939,7 @@ export async function generationTasks(
         prompt: strictInput.finalPrompt,
         providerModelId: model.provider_model_id,
         providerProfileId: model.provider_profile_id,
+        requestIntent,
       });
       if (created.created) {
         launchGenerationTask(created.task.id, body.kind);
@@ -3486,6 +3958,16 @@ export async function generationTasks(
         json(response, 409, {
           code: error.code,
           error: "账号删除正在进行，不能再创建或重试生成任务",
+        });
+      } else if (error instanceof GenerationTaskAdmissionError) {
+        json(response, 409, {
+          code: error.code,
+          error: error.message,
+        });
+      } else if (error instanceof GenerationProviderAttemptBlockedError) {
+        json(response, 409, {
+          code: error.code,
+          error: error.message,
         });
       } else {
         json(response, 400, { error: "生成请求无效" });

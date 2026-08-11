@@ -366,6 +366,45 @@ export class ProviderGenerationConfigurationError extends Error {
   }
 }
 
+export class ProviderProfileInUseError extends Error {
+  readonly code = "PROVIDER_PROFILE_IN_USE" as const;
+
+  constructor() {
+    super(
+      "仍有已提交到模型平台的任务依赖当前连接，请等待结果保存后再修改",
+    );
+    this.name = "ProviderProfileInUseError";
+  }
+}
+
+function assertProviderProfileMutationHasNoPaidWork(
+  store: DatabaseSync,
+  profileId: string,
+) {
+  const paidWork = store.prepare(`
+    SELECT tasks.id
+    FROM generation_tasks AS tasks
+    JOIN generation_provider_attempts AS attempts
+      ON attempts.task_id = tasks.id
+    WHERE
+      tasks.provider_profile_id = ?
+      AND (
+        (
+          attempts.outcome = 'boundary-claimed'
+          AND tasks.state IN ('queued', 'running', 'retrying', 'recovering')
+        )
+        OR (
+          attempts.outcome IN ('accepted', 'response-received')
+          AND tasks.state IN (
+            'queued', 'running', 'retrying', 'recovering', 'failed'
+          )
+        )
+      )
+    LIMIT 1
+  `).get(profileId);
+  if (paidWork) throw new ProviderProfileInUseError();
+}
+
 /** Current credential version for one account + connection (0 = 未配置). */
 export function accountCredentialVersion(ownerId: string, profileId: string) {
   const row = db()
@@ -434,6 +473,14 @@ export async function migrateLegacyProviderKeysIfNeeded() {
       )
       VALUES (?, ?, ?, 'unchecked', NULL, 1, ?)
     `);
+    const insertEpoch = db().prepare(`
+      INSERT OR IGNORE INTO account_provider_credential_epochs (
+        account_id, provider_profile_id, credential_revision, updated_at
+      )
+      SELECT account_id, provider_profile_id, credential_version, updated_at
+      FROM account_provider_credentials
+      WHERE account_id = ? AND provider_profile_id = ?
+    `);
     await mutateDocument((current) => {
       for (const payload of payloads) {
         const profile = current.profiles.find(
@@ -449,6 +496,7 @@ export async function migrateLegacyProviderKeysIfNeeded() {
             payload.encrypted,
             timestamp,
           );
+          insertEpoch.run(admin.id, payload.profileId);
         }
       }
     });
@@ -460,6 +508,7 @@ export async function migrateLegacyProviderKeysIfNeeded() {
 
 export type ProviderGenerationProfileState = {
   configurationAligned: boolean;
+  credentialRevision?: number;
   documentConfigurationVersion?: number;
   metadataConfigurationVersion?: number;
   profile?: ProviderProfile;
@@ -473,6 +522,7 @@ export type ProviderGenerationProfileState = {
 };
 
 export type ProviderGenerationRequestLease = {
+  credentialRevision?: number;
   profile: ProviderProfile;
   release: () => void;
 };
@@ -926,6 +976,33 @@ export async function acquireProviderConfigurationLease(profileId: string) {
   }
 }
 
+/**
+ * Serializes account credential replacement/deletion with the Provider request
+ * lease. A request therefore observes either the complete old credential or the
+ * complete new revision, never a document/key split-brain window.
+ */
+export async function acquireProviderCredentialMutationLease(profileId: string) {
+  const lock = await acquireDocumentLock();
+  try {
+    const document = await readDocument();
+    const profile = document.profiles.find(
+      (candidate) => candidate.id === profileId,
+    );
+    let released = false;
+    return {
+      profile,
+      release() {
+        if (released) return;
+        released = true;
+        lock.finish(false);
+      },
+    };
+  } catch (error) {
+    lock.finish(false);
+    throw error;
+  }
+}
+
 function generationProfileState(
   profileId: string,
   profile: ProviderProfile | undefined,
@@ -985,11 +1062,13 @@ function generationProfileState(
 async function accountKeyForOwner(ownerId: string, profileId: string) {
   const row = db()
     .prepare(`
-      SELECT encrypted_key
+      SELECT encrypted_key, credential_version
       FROM account_provider_credentials
       WHERE account_id = ? AND provider_profile_id = ?
     `)
-    .get(ownerId, profileId) as { encrypted_key: string } | undefined;
+    .get(ownerId, profileId) as
+      | { credential_version: number; encrypted_key: string }
+      | undefined;
   if (!row) return undefined;
   try {
     const parts = row.encrypted_key.split("$");
@@ -1005,10 +1084,13 @@ async function accountKeyForOwner(ownerId: string, profileId: string) {
     );
     decipher.setAAD(accountCredentialAad);
     decipher.setAuthTag(tag);
-    return Buffer.concat([
-      decipher.update(ciphertext),
-      decipher.final(),
-    ]).toString("utf8");
+    return {
+      apiKey: Buffer.concat([
+        decipher.update(ciphertext),
+        decipher.final(),
+      ]).toString("utf8"),
+      credentialRevision: Number(row.credential_version),
+    };
   } catch {
     return undefined;
   }
@@ -1055,12 +1137,15 @@ export async function getProviderGenerationProfileState(
   if (state.reason !== "ready" || !state.profile) return state;
   const credential = db()
     .prepare(`
-      SELECT key_status
+      SELECT key_status, credential_version
       FROM account_provider_credentials
       WHERE account_id = ? AND provider_profile_id = ?
     `)
     .get(ownerId, profileId) as
-    | { key_status: "invalid" | "unchecked" | "unknown" | "valid" }
+    | {
+        credential_version: number;
+        key_status: "invalid" | "unchecked" | "unknown" | "valid";
+      }
     | undefined;
   if (!credential) {
     return {
@@ -1075,7 +1160,10 @@ export async function getProviderGenerationProfileState(
     };
   }
   const key = await accountKeyForOwner(ownerId, profileId);
-  if (!key) {
+  if (
+    !key ||
+    key.credentialRevision !== Number(credential.credential_version)
+  ) {
     return {
       ...state,
       reason: "account-credential-missing",
@@ -1083,7 +1171,8 @@ export async function getProviderGenerationProfileState(
   }
   return {
     ...state,
-    profile: { ...state.profile, apiKey: key },
+    credentialRevision: key.credentialRevision,
+    profile: { ...state.profile, apiKey: key.apiKey },
   };
 }
 
@@ -1125,14 +1214,19 @@ export async function acquireProviderGenerationRequestLease(
       (candidate) => candidate.id === profileId,
     );
     const state = generationProfileState(profileId, profile, db());
-    const ready =
-      state.reason === "ready"
-        ? profileForGenerationState(
-            await getProviderGenerationProfileState(profileId, ownerId),
-          )
-        : profileForGenerationState(state);
+    const generationState = state.reason === "ready"
+      ? await getProviderGenerationProfileState(profileId, ownerId)
+      : state;
+    const ready = profileForGenerationState(generationState);
+    if (!generationState.credentialRevision) {
+      throw new ProviderGenerationConfigurationError(
+        "ACCOUNT_CREDENTIAL_MISSING",
+        "未配置你的平台密钥",
+      );
+    }
     let released = false;
     return {
+      credentialRevision: generationState.credentialRevision,
       profile: ready,
       release() {
         if (released) return;
@@ -1157,6 +1251,9 @@ export async function saveProviderProfile(
       ? document.profiles.find((candidate) => candidate.id === profileId)
       : undefined;
     if (profileId && !current) throw new Error("Provider profile not found");
+    if (current) {
+      assertProviderProfileMutationHasNoPaidWork(db(), current.id);
+    }
     previousDriver = current?.driver;
     const cleaned = cleanProfileInput(input, current);
     profileKeyCatalogChanged = Boolean(
@@ -1274,6 +1371,9 @@ export async function saveArkControlPlaneCredentials(
     }
     const control = cleanArkControlCredentials(input, current.arkControlPlane);
     changed = control.revision !== current.arkControlPlane?.revision;
+    if (changed) {
+      assertProviderProfileMutationHasNoPaidWork(db(), current.id);
+    }
     const next: ProviderProfile = {
       ...current,
       arkControlPlane: control,
@@ -1352,15 +1452,21 @@ async function recordCurrentKeyCheck(
   profile: ProviderProfile,
   keyStatus: Exclude<ProviderKeyStatus, "unchecked">,
 ) {
-  const latest = await readDocument();
-  const current = latest.profiles.find(
-    (candidate) => candidate.id === profile.id,
-  );
-  if (!sameProviderRevision(current, profile)) {
-    throw new ProviderVerificationError("CONFIG_CHANGED");
-  }
-  if (!recordKeyCheck(db(), profile, keyStatus)) {
-    throw new ProviderVerificationError("CONFIG_CHANGED");
+  const lock = await acquireDocumentLock();
+  try {
+    const latest = await readDocument();
+    const current = latest.profiles.find(
+      (candidate) => candidate.id === profile.id,
+    );
+    if (!sameProviderRevision(current, profile)) {
+      throw new ProviderVerificationError("CONFIG_CHANGED");
+    }
+    assertProviderProfileMutationHasNoPaidWork(db(), profile.id);
+    if (!recordKeyCheck(db(), profile, keyStatus)) {
+      throw new ProviderVerificationError("CONFIG_CHANGED");
+    }
+  } finally {
+    lock.finish(false);
   }
 }
 
@@ -1525,7 +1631,7 @@ export async function verifyProviderProfile(
   let probeProfile = profile;
   if (ownerId) {
     const apiKey =
-      (await accountKeyForOwner(ownerId, profileId)) ?? profile.apiKey;
+      (await accountKeyForOwner(ownerId, profileId))?.apiKey ?? profile.apiKey;
     if (!apiKey) {
       throw new ProviderVerificationError("NOT_CONFIGURED");
     }
@@ -1536,6 +1642,7 @@ export async function verifyProviderProfile(
     await recordCurrentKeyCheck(profile, "valid");
     return result;
   } catch (error) {
+    if (error instanceof ProviderProfileInUseError) throw error;
     if (error instanceof ProviderVerificationError) {
       if (error.code === "CONFIG_CHANGED") throw error;
       await recordCurrentKeyCheck(
@@ -1550,6 +1657,7 @@ export async function verifyProviderProfile(
 }
 
 export function providerVerificationErrorMessage(error: unknown) {
+  if (error instanceof ProviderProfileInUseError) return error.message;
   if (!(error instanceof ProviderVerificationError)) return "暂时无法确认API Key是否有效";
   if (error.code === "AUTH") return "API Key已失效";
   if (error.code === "CONFIG_CHANGED") return "连接资料已修改，请重新检查Key";

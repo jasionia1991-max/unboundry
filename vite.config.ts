@@ -16,7 +16,10 @@ import { assetStorage } from "./server/assetStorage";
 import { audioStorage } from "./server/audioStorage";
 import { videoStorage } from "./server/videoStorage";
 import { mediaMetadataApi } from "./server/mediaMetadataApi";
-import { generationTasks } from "./server/generationTasks";
+import {
+  generationTasks,
+  initializePersistentGenerationTaskWorker,
+} from "./server/generationTasks";
 import {
   mediaLifecycleStartupRecoveryAllowsReadiness,
   recoverMediaLifecycleAtProcessStartup,
@@ -77,8 +80,29 @@ type ApiHandler = (
   next: ApiNext,
 ) => Promise<void> | void;
 
+let generationStartupWorkerGate:
+  | "deferred"
+  | "failed"
+  | "pending"
+  | "ready" = "pending";
 const runtimeLifecycle = createRuntimeLifecycle({
-  readinessDatabaseGuard: mediaLifecycleStartupRecoveryAllowsReadiness,
+  readinessDatabaseGuard: (database) => {
+    if (!mediaLifecycleStartupRecoveryAllowsReadiness(database)) return false;
+    if (generationStartupWorkerGate === "ready") return true;
+    if (generationStartupWorkerGate !== "deferred") return false;
+    const active = database.prepare(`
+      SELECT 1
+      FROM generation_tasks
+      WHERE state IN ('queued', 'running', 'recovering', 'retrying')
+      LIMIT 1
+    `).get();
+    if (active) return false;
+    // A startup-time marker/old snapshot may be repaired externally. A later
+    // read-only readiness probe may clear the gate only when no durable work
+    // was skipped; readiness never initializes the writer itself.
+    generationStartupWorkerGate = "ready";
+    return true;
+  },
 });
 type SignalListener = (...args: any[]) => void;
 let capturedViteSigtermListener: SignalListener | undefined;
@@ -173,7 +197,8 @@ type RuntimeServer = {
   close: () => Promise<void>;
   httpServer?: {
     closeAllConnections?: () => void;
-    once: (event: "close", listener: () => void) => void;
+    listening?: boolean;
+    once: (event: "close" | "listening", listener: () => void) => void;
   } | null;
   middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
@@ -665,6 +690,53 @@ function generationTaskApi(): Plugin {
   };
 }
 
+function persistentGenerationTaskStartup(): Plugin {
+  const install = (server: RuntimeServer) => {
+    const start = () => {
+      if (
+        process.env.UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION === "1" ||
+        runtimeLifecycle.getMode() !== "active"
+      ) {
+        generationStartupWorkerGate = "ready";
+        return;
+      }
+      const startupProbe = createRuntimeLifecycle({
+        readinessDatabaseGuard: mediaLifecycleStartupRecoveryAllowsReadiness,
+      }).probeDatabase();
+      if (!startupProbe.ok) {
+        // The ordinary readiness probe retains the exact failure code. This
+        // worker must not open a writer on old schema, restore markers, or a
+        // failed media readiness gate.
+        generationStartupWorkerGate = "deferred";
+        return;
+      }
+      void initializePersistentGenerationTaskWorker().then(
+        () => {
+          generationStartupWorkerGate = "ready";
+        },
+        () => {
+          generationStartupWorkerGate = "failed";
+        },
+      );
+    };
+    if (!server.httpServer) {
+      generationStartupWorkerGate = "failed";
+      return;
+    }
+    if (server.httpServer.listening) start();
+    else server.httpServer.once("listening", start);
+  };
+  return {
+    name: "unboundry-persistent-generation-task-startup",
+    configurePreviewServer(server) {
+      install(server as RuntimeServer);
+    },
+    configureServer(server) {
+      install(server as RuntimeServer);
+    },
+  };
+}
+
 function mediaLifecycleStartupRecovery(): Plugin {
   const recover = async () => {
     // Vite awaits async configure hooks before accepting requests. Unexpected
@@ -687,6 +759,7 @@ export default defineConfig(({ command }) => {
     plugins: [
       react(),
       mediaLifecycleStartupRecovery(),
+      persistentGenerationTaskStartup(),
       devFixtureApi(),
       runtimeFoundationApi(),
       testDataDirectoryApi(),

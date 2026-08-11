@@ -244,35 +244,43 @@ test("terminal cleanup and semantic input changes issue a fresh key while failed
   }
 });
 
-test("server idempotency lookup is owner scoped", async () => {
+test("server idempotency keys are owner scoped and payload conflicts stay local", async () => {
   const directory = await mkdtemp(join(tmpdir(), "unboundry-idempotency-owner-"));
   try {
     const store = createGenerationTaskStore(directory);
-    const created = store.create({
+    const request = {
       canvasId: "canvas-owner-scope",
       idempotencyKey: "owner-scope-key-001",
-      kind: "text",
+      kind: "text" as const,
       nodeId: "text-owner-scope",
       ownerId: "owner-alpha",
       prompt: "owner scoped",
+    };
+    const alpha = store.create(request);
+    const alphaDuplicate = store.create(request);
+    const beta = store.create({
+      ...request,
+      ownerId: "owner-beta",
     });
+
+    expect(alpha.created).toBe(true);
+    expect(alphaDuplicate.created).toBe(false);
+    expect(alphaDuplicate.task.id).toBe(alpha.task.id);
+    expect(beta.created).toBe(true);
+    expect(beta.task.id).not.toBe(alpha.task.id);
     expect(store.getByIdempotencyForOwner(
       "canvas-owner-scope",
       "owner-scope-key-001",
       "owner-alpha",
-    )?.id).toBe(created.task.id);
+    )?.id).toBe(alpha.task.id);
     expect(store.getByIdempotencyForOwner(
       "canvas-owner-scope",
       "owner-scope-key-001",
       "owner-beta",
-    )).toBeUndefined();
+    )?.id).toBe(beta.task.id);
     expect(() => store.create({
-      canvasId: "canvas-owner-scope",
-      idempotencyKey: "owner-scope-key-001",
-      kind: "text",
-      nodeId: "text-owner-scope",
-      ownerId: "owner-beta",
-      prompt: "owner scoped",
+      ...request,
+      prompt: "same owner cannot change the payload behind one key",
     })).toThrow(GenerationTaskConflictError);
     store.close();
   } finally {

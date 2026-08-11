@@ -17,17 +17,24 @@ import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { databaseMatchesFrozenSchema38Contract } from "../server/backupInspection";
+import { saveAccountCredential } from "../server/accountCredentials";
 import {
   currentSchemaManifest,
   currentSchemaVersion,
   openAppDatabase,
 } from "../server/database";
-import { createGenerationTaskStore } from "../server/generationTaskStore";
+import {
+  createGenerationTaskStore,
+  GenerationProviderAttemptBlockedError,
+} from "../server/generationTaskStore";
+import { saveProviderProfile } from "../server/providerProfiles";
 import {
   coordinateRuntimeShutdown,
   createRuntimeLifecycle,
   type ShutdownResult,
 } from "../server/runtimeLifecycle";
+import { knownModelParameterSchema } from "../types/modelParameters";
 import { expect, test } from "./safe-test";
 
 const port = Number(process.env.UNBOUNDRY_TEST_AUX_PORT);
@@ -271,6 +278,246 @@ async function directoryFingerprint(root: string) {
   return entries.sort();
 }
 
+const startupProviderFixtureLogName =
+  ".unboundry-startup-provider-fixture.log";
+
+async function seedQueuedStartupGenerationFixture(
+  dataDirectory: string,
+  fixtureId: string,
+) {
+  await mkdir(dataDirectory, { recursive: true });
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
+  try {
+    const profile = await saveProviderProfile({
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      driver: "volcengine-ark",
+      label: `M81 startup ${fixtureId}`,
+    });
+    const database = openAppDatabase(dataDirectory);
+    const ownerId = `${fixtureId}-owner`;
+    const textModelId = `${fixtureId}-text-model`;
+    const textProviderModelId = "doubao-seed-2-0-lite-260428";
+    const videoModelId = `${fixtureId}-video-model`;
+    const videoProviderModelId = "doubao-seedance-2-0-mini-260615";
+    const timestamp = "2026-08-11T08:00:00.000Z";
+    const textParameterSchema = knownModelParameterSchema({
+      capability: "text",
+      providerDriver: "volcengine-ark",
+      providerModelId: textProviderModelId,
+    });
+    const videoParameterSchema = knownModelParameterSchema({
+      capability: "video",
+      providerDriver: "volcengine-ark",
+      providerModelId: videoProviderModelId,
+    });
+    try {
+      database.prepare(`
+        INSERT INTO users (
+          id, login_name, display_name, password_hash, role, status,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, 'fixture-only', 'user', 'active', ?, ?)
+      `).run(ownerId, ownerId, `M81 ${fixtureId}`, timestamp, timestamp);
+      database.prepare(`
+        UPDATE provider_profiles
+        SET status = 'enabled', key_status = 'valid', key_checked_at = ?
+        WHERE id = ?
+      `).run(timestamp, profile.id);
+      const insertModel = database.prepare(`
+        INSERT INTO model_profiles (
+          id, display_name, provider_profile_id, provider_model_id,
+          capability, status, default_parameters, created_at, updated_at,
+          max_cost_microunits, cost_currency, provider_protocol
+        ) VALUES (
+          ?, ?, ?, ?, ?, 'published', ?, ?, ?,
+          100000, 'CNY', 'native'
+        )
+      `);
+      insertModel.run(
+        textModelId,
+        `M81 ${fixtureId} text`,
+        profile.id,
+        textProviderModelId,
+        "text",
+        JSON.stringify(textParameterSchema),
+        timestamp,
+        timestamp,
+      );
+      insertModel.run(
+        videoModelId,
+        `M81 ${fixtureId} video`,
+        profile.id,
+        videoProviderModelId,
+        "video",
+        JSON.stringify(videoParameterSchema),
+        timestamp,
+        timestamp,
+      );
+      const insertBinding = database.prepare(`
+        INSERT INTO node_model_bindings (
+          node_type, model_id, enabled, is_default, sort_order,
+          created_at, updated_at
+        ) VALUES (?, ?, 1, 1, 1, ?, ?)
+      `);
+      insertBinding.run("text", textModelId, timestamp, timestamp);
+      insertBinding.run("video", videoModelId, timestamp, timestamp);
+      database.prepare(`
+        UPDATE generation_safety_settings
+        SET
+          global_enabled = 1,
+          emergency_stop = 0,
+          per_user_concurrency = 5,
+          requests_per_minute = 120,
+          text_concurrency = 3,
+          video_concurrency = 3,
+          updated_at = ?
+        WHERE id = 1
+      `).run(timestamp);
+      const credential = await saveAccountCredential(
+        database,
+        ownerId,
+        profile.id,
+        "m81-startup-fake-provider-key",
+      );
+      const tasks = createGenerationTaskStore(dataDirectory);
+      try {
+        const admitted = tasks.admitOrGet({
+          canvasId: `${fixtureId}-canvas`,
+          costCurrency: "CNY",
+          credentialRevision: credential.credentialVersion,
+          estimatedCostMicrounits: 100_000,
+          idempotencyKey: `${fixtureId}-startup-key`,
+          kind: "text",
+          model: textModelId,
+          modelConfiguration: {
+            credentialVersion: credential.credentialVersion,
+            modelId: textModelId,
+            parameterSchema: textParameterSchema,
+            providerConfigurationVersion: 1,
+            providerDriver: "volcengine-ark",
+            providerModelId: textProviderModelId,
+            providerProfileId: profile.id,
+            providerProtocol: "native",
+          },
+          nodeId: `${fixtureId}-node`,
+          ownerId,
+          parameters: {
+            inputs: [],
+            responseFormat: "text",
+            thinkingLevel: "minimal",
+          },
+          prompt: "start this committed task without a generation HTTP request",
+          providerModelId: textProviderModelId,
+          providerProfileId: profile.id,
+        });
+        expect(admitted.created).toBe(true);
+        const admitVideo = (suffix: string) => tasks.admitOrGet({
+          canvasId: `${fixtureId}-canvas`,
+          costCurrency: "CNY",
+          credentialRevision: credential.credentialVersion,
+          estimatedCostMicrounits: 100_000,
+          idempotencyKey: `${fixtureId}-${suffix}-key`,
+          kind: "video",
+          model: videoModelId,
+          modelConfiguration: {
+            credentialVersion: credential.credentialVersion,
+            modelId: videoModelId,
+            parameterSchema: videoParameterSchema,
+            providerConfigurationVersion: 1,
+            providerDriver: "volcengine-ark",
+            providerModelId: videoProviderModelId,
+            providerProfileId: profile.id,
+            providerProtocol: "native",
+          },
+          nodeId: `${fixtureId}-${suffix}-node`,
+          ownerId,
+          parameters: {},
+          prompt: "recover committed video work without submitting again",
+          providerModelId: videoProviderModelId,
+          providerProfileId: profile.id,
+        }).task;
+        const accepted = tasks.transition(
+          admitVideo("accepted").id,
+          "running",
+        )!;
+        tasks.recordProviderAttempt(accepted.id);
+        const providerTaskId = `${fixtureId}-provider-task`;
+        tasks.setProviderTaskId(accepted.id, providerTaskId);
+        const preBoundary = tasks.transition(
+          admitVideo("pre-boundary").id,
+          "running",
+        )!;
+        const retrying = admitVideo("retrying");
+        database.exec("BEGIN IMMEDIATE");
+        try {
+          database.prepare(`
+            UPDATE generation_tasks
+            SET state = 'retrying', updated_at = ?
+            WHERE id = ? AND state = 'queued'
+          `).run(timestamp, retrying.id);
+          database.prepare(`
+            INSERT INTO generation_task_events (
+              task_id, state, created_at
+            ) VALUES (?, 'retrying', ?)
+          `).run(retrying.id, timestamp);
+          database.exec("COMMIT");
+        } catch (error) {
+          database.exec("ROLLBACK");
+          throw error;
+        }
+        return {
+          acceptedTaskId: accepted.id,
+          ownerId,
+          preBoundaryTaskId: preBoundary.id,
+          providerTaskId,
+          retryingTaskId: retrying.id,
+          taskId: admitted.task.id,
+        };
+      } finally {
+        tasks.close();
+      }
+    } finally {
+      database.close();
+    }
+  } finally {
+    if (previousDataDirectory === undefined) {
+      delete process.env.UNBOUNDRY_DATA_DIR;
+    } else {
+      process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
+    }
+  }
+}
+
+async function moveProviderFixtureCache(
+  dataDirectory: string,
+) {
+  await mkdir(dataDirectory, { recursive: true });
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
+  try {
+    await saveProviderProfile({
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      driver: "volcengine-ark",
+      label: "M81 provider cache sink",
+    });
+  } finally {
+    if (previousDataDirectory === undefined) {
+      delete process.env.UNBOUNDRY_DATA_DIR;
+    } else {
+      process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
+    }
+  }
+}
+
+function makeStandaloneDatabase(dataDirectory: string) {
+  const database = openAppDatabase(dataDirectory);
+  database.exec(`
+    PRAGMA wal_checkpoint(TRUNCATE);
+    PRAGMA journal_mode = DELETE;
+  `);
+  database.close();
+}
+
 type OldLocalUploadCandidate = Readonly<{
   assetId: string;
   attemptId: string;
@@ -357,24 +604,404 @@ async function writeOldLocalUploadCandidate(
   });
 }
 
-function rollbackMigration38(database: DatabaseSync) {
-  database.exec(`
-    DROP TRIGGER account_delete_guard_generation_task_activation;
-    DROP TRIGGER account_delete_guard_generation_task_insert;
-    DROP TRIGGER account_delete_guard_public_template_actor_update;
-    DROP TRIGGER account_delete_guard_public_template_insert;
-    DROP TRIGGER account_delete_guard_session_insert;
-    DROP TRIGGER account_delete_guard_user_template_insert;
-    DROP TRIGGER account_delete_guard_user_template_owner_update;
-    DROP TRIGGER account_delete_guard_user_reactivation;
-    DROP TRIGGER media_publication_guard_owner_delete;
-    DROP TRIGGER media_publication_guard_task_delete;
-    DROP TABLE media_publication_attempts;
-    DROP TABLE media_delete_intents;
-    DROP TABLE account_delete_intents;
-    DELETE FROM schema_migrations WHERE version = 38;
-    PRAGMA user_version = 37;
-  `);
+function rollbackMigration39To38(database: DatabaseSync) {
+  try {
+    database.exec(`
+      BEGIN IMMEDIATE;
+      CREATE TEMP TABLE generation_ledger_sequences_schema39 (
+        name TEXT PRIMARY KEY,
+        seq INTEGER NOT NULL
+      );
+      INSERT INTO generation_ledger_sequences_schema39 (name, seq)
+      SELECT name, seq
+      FROM sqlite_sequence
+      WHERE name IN ('generation_task_events', 'generation_provider_attempts');
+
+      DROP TRIGGER generation_tasks_capture_model_display_name;
+      DROP TRIGGER media_publication_guard_task_delete;
+      DROP TRIGGER media_publication_guard_owner_delete;
+      DROP TRIGGER account_delete_guard_generation_task_insert;
+      DROP TRIGGER account_delete_guard_generation_task_activation;
+      DROP TABLE generation_admission_events;
+      DROP TABLE account_provider_credential_epochs;
+
+      ALTER TABLE generation_task_events
+        RENAME TO generation_task_events_schema39;
+      ALTER TABLE generation_provider_attempts
+        RENAME TO generation_provider_attempts_schema39;
+      ALTER TABLE media_publication_attempts
+        RENAME TO media_publication_attempts_schema39;
+      ALTER TABLE generation_tasks
+        RENAME TO generation_tasks_schema39;
+
+      CREATE TABLE generation_tasks (
+        id TEXT PRIMARY KEY,
+        canvas_id TEXT NOT NULL,
+        node_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (
+          kind IN ('text', 'image', 'video', 'audio')
+        ),
+        prompt TEXT NOT NULL,
+        model TEXT,
+        parameters TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL,
+        request_fingerprint TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (
+          state IN (
+            'queued',
+            'running',
+            'success',
+            'failed',
+            'cancelled',
+            'retrying',
+            'recovering'
+          )
+        ),
+        attempt INTEGER NOT NULL DEFAULT 0,
+        error_code TEXT,
+        error_message TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        owner_id TEXT,
+        estimated_cost_microunits INTEGER CHECK (
+          estimated_cost_microunits IS NULL
+          OR estimated_cost_microunits >= 0
+        ),
+        actual_cost_microunits INTEGER CHECK (
+          actual_cost_microunits IS NULL
+          OR actual_cost_microunits >= 0
+        ),
+        provider_profile_id TEXT,
+        provider_model_id TEXT,
+        result_asset_id TEXT,
+        cost_currency TEXT NOT NULL DEFAULT 'USD' CHECK (
+          cost_currency IN ('USD', 'CNY')
+        ),
+        provider_task_id TEXT,
+        provider_usage_tokens INTEGER CHECK (
+          provider_usage_tokens IS NULL OR provider_usage_tokens >= 0
+        ),
+        model_configuration TEXT NOT NULL DEFAULT '{}',
+        result_text TEXT CHECK (
+          result_text IS NULL OR length(result_text) BETWEEN 1 AND 200000
+        ),
+        UNIQUE (canvas_id, idempotency_key)
+      );
+      INSERT INTO generation_tasks (
+        id, canvas_id, node_id, kind, prompt, model, parameters,
+        idempotency_key, request_fingerprint, state, attempt, error_code,
+        error_message, created_at, updated_at, owner_id,
+        estimated_cost_microunits, actual_cost_microunits,
+        provider_profile_id, provider_model_id, result_asset_id,
+        cost_currency, provider_task_id, provider_usage_tokens,
+        model_configuration, result_text
+      )
+      SELECT
+        id, canvas_id, node_id, kind, prompt, model, parameters,
+        idempotency_key, request_fingerprint, state, attempt, error_code,
+        error_message, created_at, updated_at, owner_id,
+        estimated_cost_microunits, actual_cost_microunits,
+        provider_profile_id, provider_model_id, result_asset_id,
+        cost_currency, provider_task_id, provider_usage_tokens,
+        model_configuration, result_text
+      FROM generation_tasks_schema39;
+
+      CREATE TABLE generation_task_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (
+          state IN (
+            'queued',
+            'running',
+            'success',
+            'failed',
+            'cancelled',
+            'retrying',
+            'recovering'
+          )
+        ),
+        error_code TEXT,
+        error_message TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES generation_tasks(id) ON DELETE CASCADE
+      );
+      INSERT INTO generation_task_events (
+        id, task_id, state, error_code, error_message, created_at
+      )
+      SELECT id, task_id, state, error_code, error_message, created_at
+      FROM generation_task_events_schema39;
+
+      CREATE TABLE generation_provider_attempts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id TEXT NOT NULL,
+        execution_attempt INTEGER NOT NULL CHECK (execution_attempt >= 1),
+        provider_profile_id TEXT NOT NULL,
+        provider_model_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (
+          kind IN ('text', 'image', 'video', 'audio')
+        ),
+        evidence TEXT NOT NULL CHECK (
+          evidence IN ('historical-execution-attempt', 'provider-boundary')
+        ),
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES generation_tasks(id) ON DELETE CASCADE,
+        UNIQUE (task_id, execution_attempt)
+      );
+      INSERT INTO generation_provider_attempts (
+        id, task_id, execution_attempt, provider_profile_id,
+        provider_model_id, kind, evidence, created_at
+      )
+      SELECT
+        id, task_id, execution_attempt, provider_profile_id,
+        provider_model_id, kind, evidence, created_at
+      FROM generation_provider_attempts_schema39;
+      ALTER TABLE "generation_provider_attempts" ADD COLUMN "owner_id" TEXT;
+      UPDATE generation_provider_attempts
+      SET owner_id = (
+        SELECT generation_provider_attempts_schema39.owner_id
+        FROM generation_provider_attempts_schema39
+        WHERE generation_provider_attempts_schema39.id =
+          generation_provider_attempts.id
+      );
+
+      CREATE TABLE media_publication_attempts (
+        attempt_id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('image', 'video', 'audio')),
+        asset_id TEXT NOT NULL,
+        source TEXT NOT NULL CHECK (source IN ('upload', 'generation')),
+        state TEXT NOT NULL CHECK (
+          state IN (
+            'reserved', 'staged', 'external-ready',
+            'compensating', 'published', 'failed'
+          )
+        ),
+        storage_backend TEXT NOT NULL CHECK (storage_backend IN ('local', 'oss')),
+        final_storage_name TEXT NOT NULL,
+        object_key TEXT NOT NULL,
+        storage_profile_id TEXT,
+        staging_name TEXT NOT NULL UNIQUE,
+        task_id TEXT,
+        task_execution_attempt INTEGER CHECK (
+          task_execution_attempt IS NULL OR task_execution_attempt >= 1
+        ),
+        history_label TEXT,
+        byte_size INTEGER NOT NULL DEFAULT 0 CHECK (byte_size >= 0),
+        checksum_sha256 TEXT,
+        content_type TEXT NOT NULL,
+        duration_seconds REAL,
+        duration_source TEXT CHECK (
+          duration_source IS NULL
+          OR duration_source IN ('server-probe', 'provider-task')
+        ),
+        media_width INTEGER CHECK (media_width IS NULL OR media_width > 0),
+        media_height INTEGER CHECK (media_height IS NULL OR media_height > 0),
+        actual_cost_microunits INTEGER CHECK (
+          actual_cost_microunits IS NULL OR actual_cost_microunits >= 0
+        ),
+        provider_usage_tokens INTEGER CHECK (
+          provider_usage_tokens IS NULL OR provider_usage_tokens >= 0
+        ),
+        error_code TEXT,
+        retry_count INTEGER NOT NULL DEFAULT 0 CHECK (retry_count >= 0),
+        adopted_at TEXT,
+        adopted_canvas_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (task_id) REFERENCES generation_tasks(id) ON DELETE CASCADE,
+        CHECK (
+          (source = 'upload' AND task_id IS NULL AND task_execution_attempt IS NULL)
+          OR
+          (source = 'generation' AND task_id IS NOT NULL AND task_execution_attempt IS NOT NULL)
+        ),
+        CHECK (
+          (adopted_at IS NULL AND adopted_canvas_id IS NULL)
+          OR
+          (source = 'upload' AND adopted_at IS NOT NULL AND adopted_canvas_id IS NOT NULL)
+        )
+      );
+      INSERT INTO media_publication_attempts (
+        attempt_id, owner_id, kind, asset_id, source, state,
+        storage_backend, final_storage_name, object_key, storage_profile_id,
+        staging_name, task_id, task_execution_attempt, history_label,
+        byte_size, checksum_sha256, content_type, duration_seconds,
+        duration_source, media_width, media_height, actual_cost_microunits,
+        provider_usage_tokens, error_code, retry_count, adopted_at,
+        adopted_canvas_id, created_at, updated_at
+      )
+      SELECT
+        attempt_id, owner_id, kind, asset_id, source, state,
+        storage_backend, final_storage_name, object_key, storage_profile_id,
+        staging_name, task_id, task_execution_attempt, history_label,
+        byte_size, checksum_sha256, content_type, duration_seconds,
+        duration_source, media_width, media_height, actual_cost_microunits,
+        provider_usage_tokens, error_code, retry_count, adopted_at,
+        adopted_canvas_id, created_at, updated_at
+      FROM media_publication_attempts_schema39;
+
+      DROP TABLE generation_task_events_schema39;
+      DROP TABLE generation_provider_attempts_schema39;
+      DROP TABLE media_publication_attempts_schema39;
+      DROP TABLE generation_tasks_schema39;
+
+      UPDATE sqlite_sequence
+      SET seq = MAX(
+        seq,
+        COALESCE((
+          SELECT saved.seq
+          FROM generation_ledger_sequences_schema39 AS saved
+          WHERE saved.name = sqlite_sequence.name
+        ), 0)
+      )
+      WHERE name IN ('generation_task_events', 'generation_provider_attempts');
+      INSERT INTO sqlite_sequence (name, seq)
+      SELECT saved.name, saved.seq
+      FROM generation_ledger_sequences_schema39 AS saved
+      WHERE NOT EXISTS (
+        SELECT 1 FROM sqlite_sequence AS current
+        WHERE current.name = saved.name
+      );
+      DROP TABLE generation_ledger_sequences_schema39;
+
+      CREATE INDEX generation_tasks_canvas_updated
+        ON generation_tasks (canvas_id, updated_at DESC);
+      CREATE INDEX generation_tasks_owner_canvas_updated
+        ON generation_tasks (owner_id, canvas_id, updated_at DESC);
+      CREATE INDEX generation_tasks_owner_state_created
+        ON generation_tasks (owner_id, state, created_at DESC);
+      CREATE INDEX generation_tasks_result_asset
+        ON generation_tasks (result_asset_id)
+        WHERE result_asset_id IS NOT NULL;
+      CREATE INDEX generation_tasks_currency_created
+        ON generation_tasks (cost_currency, created_at DESC);
+      CREATE UNIQUE INDEX generation_tasks_provider_task
+        ON generation_tasks (provider_profile_id, provider_task_id)
+        WHERE provider_task_id IS NOT NULL;
+      CREATE INDEX generation_task_events_task_created
+        ON generation_task_events (task_id, created_at ASC, id ASC);
+      CREATE INDEX generation_provider_attempts_profile_kind_created
+        ON generation_provider_attempts (
+          provider_profile_id, kind, created_at DESC, id DESC
+        );
+      CREATE INDEX generation_provider_attempts_task_created
+        ON generation_provider_attempts (task_id, created_at ASC, id ASC);
+      CREATE INDEX IF NOT EXISTS generation_provider_attempts_owner_profile_created
+        ON generation_provider_attempts (
+          owner_id,
+          provider_profile_id,
+          created_at DESC
+        );
+      CREATE UNIQUE INDEX media_publication_attempts_active_asset
+        ON media_publication_attempts (kind, asset_id)
+        WHERE state IN ('reserved', 'staged', 'external-ready', 'compensating');
+      CREATE UNIQUE INDEX media_publication_attempts_active_task
+        ON media_publication_attempts (task_id, task_execution_attempt)
+        WHERE task_id IS NOT NULL
+          AND state IN ('reserved', 'staged', 'external-ready', 'compensating');
+      CREATE INDEX media_publication_attempts_owner_state_updated
+        ON media_publication_attempts (owner_id, state, updated_at DESC);
+
+      CREATE TRIGGER IF NOT EXISTS generation_tasks_capture_model_display_name
+      AFTER INSERT ON generation_tasks
+      WHEN
+        NEW.model IS NOT NULL
+        AND json_valid(NEW.model_configuration)
+        AND EXISTS (
+          SELECT 1 FROM model_profiles WHERE id = NEW.model
+        )
+        AND (
+          json_type(NEW.model_configuration, '$.displayName') IS NULL
+          OR (
+            json_type(NEW.model_configuration, '$.displayName') = 'text'
+            AND trim(json_extract(NEW.model_configuration, '$.displayName')) = ''
+          )
+        )
+      BEGIN
+        UPDATE generation_tasks
+        SET model_configuration = json_set(
+          model_configuration,
+          '$.displayName',
+          (SELECT display_name FROM model_profiles WHERE id = NEW.model)
+        )
+        WHERE id = NEW.id;
+      END;
+      CREATE TRIGGER media_publication_guard_task_delete
+        BEFORE DELETE ON generation_tasks
+        WHEN EXISTS (
+          SELECT 1 FROM media_publication_attempts
+          WHERE task_id = OLD.id
+            AND state IN ('reserved', 'staged', 'external-ready', 'compensating')
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'active media publication blocks task deletion');
+      END;
+      CREATE TRIGGER media_publication_guard_owner_delete
+        BEFORE DELETE ON users
+        WHEN EXISTS (
+          SELECT 1 FROM media_publication_attempts
+          WHERE owner_id = OLD.id
+            AND state IN ('reserved', 'staged', 'external-ready', 'compensating')
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'active media publication blocks owner deletion');
+      END;
+      CREATE TRIGGER account_delete_guard_generation_task_insert
+        BEFORE INSERT ON generation_tasks
+        WHEN NEW.owner_id IS NOT NULL AND EXISTS (
+          SELECT 1 FROM account_delete_intents
+          WHERE owner_id = NEW.owner_id
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'account deletion blocks generation task mutation');
+      END;
+      CREATE TRIGGER account_delete_guard_generation_task_activation
+        BEFORE UPDATE OF owner_id, state ON generation_tasks
+        WHEN NEW.owner_id IS NOT NULL
+          AND NEW.state IN ('queued', 'running', 'retrying', 'recovering')
+          AND EXISTS (
+            SELECT 1 FROM account_delete_intents
+            WHERE owner_id = NEW.owner_id
+          )
+      BEGIN
+        SELECT RAISE(ABORT, 'account deletion blocks generation task mutation');
+      END;
+
+      DELETE FROM schema_migrations WHERE version = 39;
+      PRAGMA user_version = 38;
+      COMMIT;
+    `);
+  } catch (error) {
+    if (database.isTransaction) database.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function rollbackMigration38To37(database: DatabaseSync) {
+  try {
+    database.exec(`
+      BEGIN IMMEDIATE;
+      DROP TRIGGER account_delete_guard_generation_task_activation;
+      DROP TRIGGER account_delete_guard_generation_task_insert;
+      DROP TRIGGER account_delete_guard_public_template_actor_update;
+      DROP TRIGGER account_delete_guard_public_template_insert;
+      DROP TRIGGER account_delete_guard_session_insert;
+      DROP TRIGGER account_delete_guard_user_template_insert;
+      DROP TRIGGER account_delete_guard_user_template_owner_update;
+      DROP TRIGGER account_delete_guard_user_reactivation;
+      DROP TRIGGER media_publication_guard_task_delete;
+      DROP TRIGGER media_publication_guard_owner_delete;
+      DROP TABLE media_publication_attempts;
+      DROP TABLE media_delete_intents;
+      DROP TABLE account_delete_intents;
+      DELETE FROM schema_migrations WHERE version = 38;
+      PRAGMA user_version = 37;
+      COMMIT;
+    `);
+  } catch (error) {
+    if (database.isTransaction) database.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 function recreateV5ModelProfiles(
@@ -587,10 +1214,12 @@ test("liveness stays process-only while readiness verifies the current schema wi
   }
 });
 
-test("schema-37 startup is write-free by default and migrates only in the explicit role", async () => {
+test("schema-37 and exact schema-38 startup stay write-free until the explicit migration role", async () => {
   const testRoot = await mkdtemp(join(tmpdir(), "unboundry-m81-schema37-role-"));
   const dataDirectory = join(testRoot, "data");
   const databasePath = join(dataDirectory, "unboundry.sqlite");
+  const schema38Directory = join(testRoot, "schema38-data");
+  const schema38Path = join(schema38Directory, "unboundry.sqlite");
   const hotWalSource = join(testRoot, "hot-wal-source");
   const hotWalTarget = join(testRoot, "hot-wal-target");
   let server: ChildProcess | undefined;
@@ -616,7 +1245,8 @@ test("schema-37 startup is write-free by default and migrates only in the explic
         'Preserved schema 37 project', 37, 1, 37
       )
     `).run();
-    rollbackMigration38(database);
+    rollbackMigration39To38(database);
+    rollbackMigration38To37(database);
     database.exec(`
       PRAGMA wal_checkpoint(TRUNCATE);
       PRAGMA journal_mode = DELETE;
@@ -675,9 +1305,415 @@ test("schema-37 startup is write-free by default and migrates only in the explic
       migrated.close();
     }
 
+    await mkdir(schema38Directory);
+    const exact38 = openAppDatabase(schema38Directory);
+    exact38.exec(`
+      INSERT INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      ) VALUES
+        (
+          'm81-schema38-owner', 'm81-schema38-owner', 'M81 schema 38 owner',
+          'fixture-only', 'user', 'active',
+          '2026-08-11T00:00:00.000Z', '2026-08-11T00:00:00.000Z'
+        ),
+        (
+          'm81-schema38-deleted-key-owner',
+          'm81-schema38-deleted-key-owner',
+          'M81 schema 38 deleted key owner', 'fixture-only', 'user', 'active',
+          '2026-08-11T00:00:00.000Z', '2026-08-11T00:00:00.000Z'
+        );
+      INSERT INTO provider_profiles (
+        id, display_name, driver, status, created_at, updated_at
+      ) VALUES (
+        'm81-schema38-provider', 'M81 schema 38 provider', 'openrouter',
+        'enabled', '2026-08-11T00:00:00.000Z',
+        '2026-08-11T00:00:00.000Z'
+      );
+      INSERT INTO account_provider_credentials (
+        account_id, provider_profile_id, encrypted_key, key_status,
+        credential_version, updated_at
+      ) VALUES (
+        'm81-schema38-owner', 'm81-schema38-provider', 'fixture-only',
+        'unchecked', 7, '2026-08-11T00:00:00.000Z'
+      );
+      INSERT INTO generation_tasks (
+        id, canvas_id, node_id, kind, prompt, parameters, idempotency_key,
+        request_fingerprint, state, attempt, created_at, updated_at, owner_id,
+        provider_profile_id, provider_model_id, provider_task_id,
+        model_configuration, credential_revision
+      ) VALUES (
+        'm81-schema38-task', 'm81-schema38-canvas', 'm81-schema38-node',
+        'image', 'preserve exact schema 38 migration evidence', '{}',
+        'm81-schema38-key', 'm81-schema38-fingerprint', 'success', 3,
+        '2026-08-11T00:00:00.000Z', '2026-08-11T00:03:00.000Z',
+        'm81-schema38-owner', 'm81-schema38-provider',
+        'm81-schema38-model', 'm81-schema38-provider-task',
+        '{"credentialVersion":7}', 7
+      ), (
+        'm81-schema38-gap-task', 'm81-schema38-gap-canvas',
+        'm81-schema38-gap-node', 'image',
+        'block an unresolved older schema 38 paid attempt', '{}',
+        'm81-schema38-gap-key', 'm81-schema38-gap-fingerprint', 'failed', 2,
+        '2026-08-11T00:04:00.000Z', '2026-08-11T00:06:00.000Z',
+        'm81-schema38-owner', 'm81-schema38-provider',
+        'm81-schema38-model', NULL, '{"credentialVersion":7}', 7
+      ), (
+        'm81-schema38-high-water-task', 'm81-schema38-high-water-canvas',
+        'm81-schema38-high-water-node', 'image',
+        'preserve a revision newer than the current schema 38 credential', '{}',
+        'm81-schema38-high-water-key', 'm81-schema38-high-water-fingerprint',
+        'failed', 1, '2026-08-11T00:07:00.000Z',
+        '2026-08-11T00:08:00.000Z', 'm81-schema38-owner',
+        'm81-schema38-provider', 'm81-schema38-model', NULL,
+        '{"credentialVersion":11}', 11
+      ), (
+        'm81-schema38-deleted-key-task',
+        'm81-schema38-deleted-key-canvas', 'm81-schema38-deleted-key-node',
+        'image', 'preserve the high water after a credential was deleted',
+        '{}', 'm81-schema38-deleted-key',
+        'm81-schema38-deleted-key-fingerprint', 'failed', 1,
+        '2026-08-11T00:09:00.000Z', '2026-08-11T00:10:00.000Z',
+        'm81-schema38-deleted-key-owner', 'm81-schema38-provider',
+        'm81-schema38-model', NULL, '{"credentialVersion":13}', 13
+      ), (
+        'm81-schema38-invalid-key-task',
+        'm81-schema38-invalid-key-canvas', 'm81-schema38-invalid-key-node',
+        'image', 'malformed historical JSON must not lower the safe high water',
+        '{}', 'm81-schema38-invalid-key',
+        'm81-schema38-invalid-key-fingerprint', 'failed', 1,
+        '2026-08-11T00:11:00.000Z', '2026-08-11T00:12:00.000Z',
+        'm81-schema38-owner', 'm81-schema38-provider',
+        'm81-schema38-model', NULL, '{}', 0
+      );
+      INSERT INTO generation_task_events (
+        id, task_id, state, error_code, created_at
+      ) VALUES (
+        41, 'm81-schema38-task', 'success', NULL,
+        '2026-08-11T00:03:00.000Z'
+      ), (
+        42, 'm81-schema38-gap-task', 'failed', NULL,
+        '2026-08-11T00:06:00.000Z'
+      ), (
+        43, 'm81-schema38-high-water-task', 'failed', 'AUTH',
+        '2026-08-11T00:08:00.000Z'
+      ), (
+        44, 'm81-schema38-deleted-key-task', 'failed', 'AUTH',
+        '2026-08-11T00:10:00.000Z'
+      );
+      UPDATE generation_tasks
+      SET error_code = 'AUTH', error_message = 'historical credential rejected'
+      WHERE id IN (
+        'm81-schema38-high-water-task',
+        'm81-schema38-deleted-key-task'
+      );
+      INSERT INTO generation_provider_attempts (
+        id, task_id, execution_attempt, provider_profile_id,
+        provider_model_id, kind, evidence, created_at, owner_id,
+        credential_revision, outcome, provider_task_id, finished_at
+      ) VALUES
+        (
+          51, 'm81-schema38-task', 1, 'm81-schema38-provider',
+          'm81-schema38-model', 'image', 'provider-boundary',
+          '2026-08-11T00:01:00.000Z', 'm81-schema38-owner', 7,
+          'outcome-unknown', NULL, NULL
+        ),
+        (
+          52, 'm81-schema38-task', 2, 'm81-schema38-provider',
+          'm81-schema38-model', 'image', 'provider-boundary',
+          '2026-08-11T00:02:00.000Z', 'm81-schema38-owner', 7,
+          'completed', 'm81-schema38-provider-task',
+          '2026-08-11T00:03:00.000Z'
+        ),
+        (
+          53, 'm81-schema38-gap-task', 1, 'm81-schema38-provider',
+          'm81-schema38-model', 'image', 'provider-boundary',
+          '2026-08-11T00:05:00.000Z', 'm81-schema38-owner', 7,
+          'outcome-unknown', NULL, NULL
+        ),
+        (
+          54, 'm81-schema38-high-water-task', 1,
+          'm81-schema38-provider', 'm81-schema38-model', 'image',
+          'provider-boundary', '2026-08-11T00:07:00.000Z',
+          'm81-schema38-owner', 11, 'definitive-rejected', NULL,
+          '2026-08-11T00:08:00.000Z'
+        ),
+        (
+          55, 'm81-schema38-deleted-key-task', 1,
+          'm81-schema38-provider', 'm81-schema38-model', 'image',
+          'provider-boundary', '2026-08-11T00:09:00.000Z',
+          'm81-schema38-deleted-key-owner', 13, 'definitive-rejected', NULL,
+          '2026-08-11T00:10:00.000Z'
+        );
+      UPDATE sqlite_sequence SET seq = 91
+      WHERE name = 'generation_task_events';
+      UPDATE sqlite_sequence SET seq = 92
+      WHERE name = 'generation_provider_attempts';
+    `);
+    rollbackMigration39To38(exact38);
+    exact38.prepare(`
+      UPDATE generation_tasks
+      SET model_configuration = '{not-json'
+      WHERE id = 'm81-schema38-invalid-key-task'
+    `).run();
+    expect(databaseMatchesFrozenSchema38Contract(exact38)).toBe(true);
+    expect(exact38.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    expect(exact38.prepare("PRAGMA user_version").get()).toEqual({
+      user_version: 38,
+    });
+    expect(exact38.prepare(`
+      SELECT name, seq FROM sqlite_sequence
+      WHERE name IN ('generation_task_events', 'generation_provider_attempts')
+      ORDER BY name
+    `).all()).toEqual([
+      { name: "generation_provider_attempts", seq: 92 },
+      { name: "generation_task_events", seq: 91 },
+    ]);
+    exact38.exec(`
+      PRAGMA wal_checkpoint(TRUNCATE);
+      PRAGMA journal_mode = DELETE;
+    `);
+    exact38.close();
+
+    const beforeSchema38Default = await directoryFingerprint(schema38Directory);
+    server = await startServer(schema38Directory, {
+      environment: { UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION: undefined },
+    });
+    expect((await fetch(`${origin}/api/health/live`)).status).toBe(200);
+    const schema38DefaultReady = await fetch(`${origin}/api/health/ready`);
+    expect(schema38DefaultReady.status).toBe(503);
+    expect(await schema38DefaultReady.json()).toMatchObject({
+      code: "DATABASE_SCHEMA_MISMATCH",
+    });
+    expect(await directoryFingerprint(schema38Directory)).toEqual(
+      beforeSchema38Default,
+    );
+    await stopServer(server);
+    server = undefined;
+
+    server = await startServer(schema38Directory, {
+      environment: { UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION: "1" },
+    });
+    const schema38MigratedReady = await fetch(`${origin}/api/health/ready`);
+    expect(schema38MigratedReady.status).toBe(200);
+    expect(await schema38MigratedReady.json()).toMatchObject({
+      databaseProbe: "read-only",
+      schemaVersion: 39,
+      status: "ready",
+    });
+    await stopServer(server);
+    server = undefined;
+
+    const migrated38 = new DatabaseSync(schema38Path, { readOnly: true });
+    try {
+      expect(migrated38.prepare("PRAGMA user_version").get()).toEqual({
+        user_version: 39,
+      });
+      expect(migrated38.prepare(`
+        SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1
+      `).get()).toEqual({
+        name: "atomic-generation-admission-and-credential-scope",
+        version: 39,
+      });
+      expect(migrated38.prepare(`
+        SELECT credential_revision FROM account_provider_credential_epochs
+        WHERE account_id = 'm81-schema38-owner'
+          AND provider_profile_id = 'm81-schema38-provider'
+      `).get()).toEqual({ credential_revision: 11 });
+      expect(migrated38.prepare(`
+        SELECT credential_revision FROM account_provider_credential_epochs
+        WHERE account_id = 'm81-schema38-deleted-key-owner'
+          AND provider_profile_id = 'm81-schema38-provider'
+      `).get()).toEqual({ credential_revision: 13 });
+      expect(migrated38.prepare(`
+        SELECT credential_revision FROM generation_tasks
+        WHERE id = 'm81-schema38-invalid-key-task'
+      `).get()).toEqual({ credential_revision: 0 });
+      expect(migrated38.prepare(`
+        SELECT attempt, credential_revision, provider_task_id, state
+        FROM generation_tasks WHERE id = 'm81-schema38-task'
+      `).get()).toEqual({
+        attempt: 3,
+        credential_revision: 7,
+        provider_task_id: "m81-schema38-provider-task",
+        state: "success",
+      });
+      expect(migrated38.prepare(`
+        SELECT
+          execution_attempt, credential_revision, outcome, provider_task_id,
+          failure_code, finished_at
+        FROM generation_provider_attempts
+        WHERE task_id = 'm81-schema38-task'
+        ORDER BY execution_attempt
+      `).all()).toEqual([
+        {
+          credential_revision: 7,
+          execution_attempt: 1,
+          failure_code: null,
+          finished_at: null,
+          outcome: "outcome-unknown",
+          provider_task_id: null,
+        },
+        {
+          credential_revision: 7,
+          execution_attempt: 2,
+          failure_code: null,
+          finished_at: "2026-08-11T00:03:00.000Z",
+          outcome: "completed",
+          provider_task_id: "m81-schema38-provider-task",
+        },
+      ]);
+      expect(migrated38.prepare(`
+        SELECT COUNT(*) AS count FROM generation_admission_events
+      `).get()).toEqual({ count: 0 });
+      expect(migrated38.prepare(`
+        SELECT attempt, credential_revision, provider_task_id, state
+        FROM generation_tasks WHERE id = 'm81-schema38-gap-task'
+      `).get()).toEqual({
+        attempt: 2,
+        credential_revision: 7,
+        provider_task_id: null,
+        state: "failed",
+      });
+      expect(migrated38.prepare(`
+        SELECT execution_attempt, outcome, provider_task_id
+        FROM generation_provider_attempts
+        WHERE task_id = 'm81-schema38-gap-task'
+      `).get()).toEqual({
+        execution_attempt: 1,
+        outcome: "outcome-unknown",
+        provider_task_id: null,
+      });
+      expect(migrated38.prepare(`
+        SELECT name, seq FROM sqlite_sequence
+        WHERE name IN ('generation_task_events', 'generation_provider_attempts')
+        ORDER BY name
+      `).all()).toEqual([
+        { name: "generation_provider_attempts", seq: 92 },
+        { name: "generation_task_events", seq: 91 },
+      ]);
+      const providerAttemptsAfterMigration = migrated38.prepare(`
+        SELECT COUNT(*) AS count FROM generation_provider_attempts
+      `).get() as { count: number };
+      // Every paid Provider boundary is journaled first. The explicit schema
+      // role preserving all five rows is deterministic Provider=0 proof.
+      expect(providerAttemptsAfterMigration).toEqual({ count: 5 });
+      expect(migrated38.prepare(`
+        SELECT owner_id, credential_revision, outcome
+        FROM generation_provider_attempts
+        WHERE task_id IN (
+          'm81-schema38-high-water-task',
+          'm81-schema38-deleted-key-task'
+        )
+        ORDER BY credential_revision
+      `).all()).toEqual([
+        {
+          credential_revision: 11,
+          outcome: "definitive-rejected",
+          owner_id: "m81-schema38-owner",
+        },
+        {
+          credential_revision: 13,
+          outcome: "definitive-rejected",
+          owner_id: "m81-schema38-deleted-key-owner",
+        },
+      ]);
+      expect(migrated38.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    } finally {
+      migrated38.close();
+    }
+
+    const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+    process.env.UNBOUNDRY_DATA_DIR = schema38Directory;
+    const migratedCredentials = new DatabaseSync(schema38Path);
+    migratedCredentials.exec("PRAGMA foreign_keys = ON");
+    try {
+      await expect(saveAccountCredential(
+        migratedCredentials,
+        "m81-schema38-owner",
+        "m81-schema38-provider",
+        "m81-schema38-rotated-key-12",
+      )).resolves.toMatchObject({ credentialVersion: 12 });
+      await expect(saveAccountCredential(
+        migratedCredentials,
+        "m81-schema38-deleted-key-owner",
+        "m81-schema38-provider",
+        "m81-schema38-readded-key-14",
+      )).resolves.toMatchObject({ credentialVersion: 14 });
+      expect(migratedCredentials.prepare(`
+        SELECT account_id, credential_revision
+        FROM account_provider_credential_epochs
+        WHERE provider_profile_id = 'm81-schema38-provider'
+        ORDER BY account_id
+      `).all()).toEqual([
+        {
+          account_id: "m81-schema38-deleted-key-owner",
+          credential_revision: 14,
+        },
+        { account_id: "m81-schema38-owner", credential_revision: 12 },
+      ]);
+      expect(migratedCredentials.prepare(`
+        SELECT owner_id, credential_revision, outcome
+        FROM generation_provider_attempts
+        WHERE task_id IN (
+          'm81-schema38-high-water-task',
+          'm81-schema38-deleted-key-task'
+        )
+        ORDER BY credential_revision
+      `).all()).toEqual([
+        {
+          credential_revision: 11,
+          outcome: "definitive-rejected",
+          owner_id: "m81-schema38-owner",
+        },
+        {
+          credential_revision: 13,
+          outcome: "definitive-rejected",
+          owner_id: "m81-schema38-deleted-key-owner",
+        },
+      ]);
+    } finally {
+      migratedCredentials.close();
+      if (previousDataDirectory === undefined) {
+        delete process.env.UNBOUNDRY_DATA_DIR;
+      } else {
+        process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
+      }
+    }
+
+    const migratedStore = createGenerationTaskStore(schema38Directory);
+    try {
+      expect(
+        migratedStore.hasUnsafeProviderAttemptForNewPaidRetry(
+          "m81-schema38-gap-task",
+        ),
+      ).toBe(true);
+      expect(() => migratedStore.admitRetry({
+        mode: "new-paid-attempt",
+        snapshot: {
+          credentialRevision: 7,
+          modelConfiguration: {},
+          providerModelId: "m81-schema38-model",
+          providerProfileId: "m81-schema38-provider",
+        },
+        taskId: "m81-schema38-gap-task",
+      })).toThrow(GenerationProviderAttemptBlockedError);
+    } finally {
+      migratedStore.close();
+    }
+    const afterBlockedRetry = new DatabaseSync(schema38Path, { readOnly: true });
+    try {
+      expect(afterBlockedRetry.prepare(`
+        SELECT COUNT(*) AS count FROM generation_provider_attempts
+      `).get()).toEqual({ count: 5 });
+    } finally {
+      afterBlockedRetry.close();
+    }
+
     await Promise.all([mkdir(hotWalSource), mkdir(hotWalTarget)]);
     writer = openAppDatabase(hotWalSource);
-    rollbackMigration38(writer);
+    rollbackMigration39To38(writer);
+    rollbackMigration38To37(writer);
     writer.exec("PRAGMA wal_checkpoint(TRUNCATE)");
     writer.prepare(`
       INSERT INTO users (
@@ -984,7 +2020,216 @@ test("failed startup media cleanup stays not-ready until a restart retries it", 
   }
 });
 
-test("readiness leaves a running generation task and the database bytes unchanged", async () => {
+test("listening starts one committed queued task while startup gates keep blocked modes Provider-free", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "unboundry-m81-generation-startup-"));
+  const activeDirectory = join(testRoot, "active");
+  const oldSchemaDirectory = join(testRoot, "old-schema");
+  const restoreDirectory = join(testRoot, "restore-marker");
+  const cacheSinkDirectory = join(testRoot, "provider-cache-sink");
+  let server: ChildProcess | undefined;
+  try {
+    const active = await seedQueuedStartupGenerationFixture(
+      activeDirectory,
+      "m81-startup-active",
+    );
+    await seedQueuedStartupGenerationFixture(
+      oldSchemaDirectory,
+      "m81-startup-old",
+    );
+    await seedQueuedStartupGenerationFixture(
+      restoreDirectory,
+      "m81-startup-restore",
+    );
+    await moveProviderFixtureCache(cacheSinkDirectory);
+    makeStandaloneDatabase(activeDirectory);
+    makeStandaloneDatabase(restoreDirectory);
+    const oldSchema = openAppDatabase(oldSchemaDirectory);
+    rollbackMigration39To38(oldSchema);
+    oldSchema.exec(`
+      PRAGMA wal_checkpoint(TRUNCATE);
+      PRAGMA journal_mode = DELETE;
+    `);
+    oldSchema.close();
+    await writeFile(
+      join(restoreDirectory, ".unboundry-restore-incomplete"),
+      "M81 controlled incomplete restore",
+      { flag: "wx" },
+    );
+
+    const fakeProviderEnvironment = {
+      UNBOUNDRY_SAFE_TEST: "1",
+      UNBOUNDRY_TEST_GENERATION_STARTUP_FAKE_PROVIDER: "1",
+    };
+    const activeLog = join(activeDirectory, startupProviderFixtureLogName);
+    const activeBeforeMaintenance = await directoryFingerprint(activeDirectory);
+    server = await startServer(activeDirectory, {
+      environment: {
+        ...fakeProviderEnvironment,
+        UNBOUNDRY_MAINTENANCE_MODE: "1",
+      },
+      waitPath: "/api/health/ready",
+    });
+    const maintenanceReady = await fetch(`${origin}/api/health/ready`);
+    expect(maintenanceReady.status).toBe(200);
+    expect(await maintenanceReady.json()).toMatchObject({
+      mode: "maintenance-api-blocked",
+      mutationsAccepted: false,
+      status: "ready",
+    });
+    expect(await directoryFingerprint(activeDirectory)).toEqual(
+      activeBeforeMaintenance,
+    );
+    await expectMissing(activeLog);
+    await stopServer(server);
+    server = undefined;
+
+    const activeBeforeFailure = await directoryFingerprint(activeDirectory);
+    server = await startServer(activeDirectory, {
+      environment: {
+        ...fakeProviderEnvironment,
+        UNBOUNDRY_TEST_GENERATION_STARTUP_FAILURE: "1",
+      },
+    });
+    const failedStartupReady = await fetch(`${origin}/api/health/ready`);
+    expect(failedStartupReady.status).toBe(503);
+    expect(await failedStartupReady.json()).toMatchObject({
+      code: "DATABASE_UNAVAILABLE",
+    });
+    expect(await directoryFingerprint(activeDirectory)).toEqual(
+      activeBeforeFailure,
+    );
+    await expectMissing(activeLog);
+    await stopServer(server);
+    server = undefined;
+
+    server = await startServer(activeDirectory, {
+      environment: fakeProviderEnvironment,
+      waitPath: "/api/health/ready",
+    });
+    const activeReady = await fetch(`${origin}/api/health/ready`);
+    expect(activeReady.status).toBe(200);
+    expect(await activeReady.json()).toMatchObject({
+      databaseProbe: "read-only",
+      mode: "active",
+      status: "ready",
+    });
+    const providerRequests = (await readFile(activeLog, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { method: string; url: string });
+    expect(providerRequests).toHaveLength(2);
+    expect(providerRequests.filter((request) =>
+      request.method === "POST" && request.url.endsWith("/responses")
+    )).toEqual([{
+      method: "POST",
+      url: "https://ark.cn-beijing.volces.com/api/v3/responses",
+    }]);
+    expect(providerRequests.filter((request) =>
+      request.method === "POST" &&
+      request.url.includes("/contents/generations/tasks")
+    )).toEqual([]);
+    expect(providerRequests.filter((request) =>
+      request.method === "GET" &&
+      request.url.endsWith(`/contents/generations/tasks/${active.providerTaskId}`)
+    )).toHaveLength(1);
+    const completed = new DatabaseSync(
+      join(activeDirectory, "unboundry.sqlite"),
+      { readOnly: true },
+    );
+    try {
+      expect(completed.prepare(`
+        SELECT attempt, result_text, state
+        FROM generation_tasks WHERE id = ?
+      `).get(active.taskId)).toEqual({
+        attempt: 1,
+        result_text: "M81 startup worker fake Provider result",
+        state: "success",
+      });
+      expect(completed.prepare(`
+        SELECT execution_attempt, outcome
+        FROM generation_provider_attempts WHERE task_id = ?
+      `).all(active.taskId)).toEqual([{
+        execution_attempt: 1,
+        outcome: "completed",
+      }]);
+      expect(completed.prepare(`
+        SELECT error_code, state FROM generation_tasks WHERE id = ?
+      `).get(active.acceptedTaskId)).toEqual({
+        error_code: "PROVIDER_FAILED",
+        state: "failed",
+      });
+      expect(completed.prepare(`
+        SELECT execution_attempt, outcome
+        FROM generation_provider_attempts WHERE task_id = ?
+      `).all(active.acceptedTaskId)).toEqual([{
+        execution_attempt: 1,
+        outcome: "provider-failed",
+      }]);
+      expect(completed.prepare(`
+        SELECT error_code, state FROM generation_tasks WHERE id = ?
+      `).get(active.preBoundaryTaskId)).toEqual({
+        error_code: "SERVICE_RESTARTED",
+        state: "failed",
+      });
+      expect(completed.prepare(`
+        SELECT COUNT(*) AS count
+        FROM generation_provider_attempts WHERE task_id = ?
+      `).get(active.preBoundaryTaskId)).toEqual({ count: 0 });
+      expect(completed.prepare(`
+        SELECT error_code, state FROM generation_tasks WHERE id = ?
+      `).get(active.retryingTaskId)).toEqual({
+        error_code: "RETRY_INTERRUPTED",
+        state: "failed",
+      });
+      expect(completed.prepare(`
+        SELECT COUNT(*) AS count
+        FROM generation_provider_attempts WHERE task_id = ?
+      `).get(active.retryingTaskId)).toEqual({ count: 0 });
+    } finally {
+      completed.close();
+    }
+    await stopServer(server);
+    server = undefined;
+
+    for (const blocked of [
+      {
+        code: "DATABASE_SCHEMA_MISMATCH",
+        directory: oldSchemaDirectory,
+      },
+      {
+        code: "DATABASE_RESTORE_INCOMPLETE",
+        directory: restoreDirectory,
+      },
+    ]) {
+      const log = join(blocked.directory, startupProviderFixtureLogName);
+      const before = await directoryFingerprint(blocked.directory);
+      server = await startServer(blocked.directory, {
+        environment: fakeProviderEnvironment,
+      });
+      const ready = await fetch(`${origin}/api/health/ready`);
+      expect(ready.status).toBe(503);
+      expect(await ready.json()).toMatchObject({ code: blocked.code });
+      expect(await directoryFingerprint(blocked.directory)).toEqual(before);
+      await expectMissing(log);
+      if (blocked.directory === restoreDirectory) {
+        await rm(join(restoreDirectory, ".unboundry-restore-incomplete"));
+        const sameProcess = await fetch(`${origin}/api/health/ready`);
+        expect(sameProcess.status).toBe(503);
+        expect(await sameProcess.json()).toMatchObject({
+          code: "DATABASE_UNAVAILABLE",
+        });
+        await expectMissing(log);
+      }
+      await stopServer(server);
+      server = undefined;
+    }
+  } finally {
+    if (server) await stopServer(server);
+    await rm(testRoot, { force: true, recursive: true });
+  }
+});
+
+test("readiness leaves inactive generation evidence and the database bytes unchanged", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-m81-ready-"));
   const databasePath = join(dataDirectory, "unboundry.sqlite");
   let server: ChildProcess | undefined;
@@ -995,9 +2240,13 @@ test("readiness leaves a running generation task and the database bytes unchange
       idempotencyKey: "m81-readiness-request",
       kind: "image",
       nodeId: "m81-readiness-node",
-      prompt: "readiness must never resume this synthetic task",
+      prompt: "readiness must never mutate this inactive synthetic task",
     }).task;
     store.transition(task.id, "running");
+    store.transition(task.id, "failed", {
+      code: "M81_INACTIVE_FIXTURE",
+      message: "synthetic terminal evidence",
+    });
     store.close();
     expect(await optionalFileSize(`${databasePath}-wal`)).toBe(0);
     const beforeDirectory = await directoryFingerprint(dataDirectory);
@@ -1020,12 +2269,12 @@ test("readiness leaves a running generation task and the database bytes unchange
       expect(
         database.prepare("SELECT state FROM generation_tasks WHERE id = ?")
           .get(task.id),
-      ).toEqual({ state: "running" });
+      ).toEqual({ state: "failed" });
       expect(
         database.prepare(
           "SELECT COUNT(*) AS count FROM generation_task_events WHERE task_id = ?",
         ).get(task.id),
-      ).toEqual({ count: 2 });
+      ).toEqual({ count: 3 });
     } finally {
       database.close();
     }
@@ -1036,7 +2285,7 @@ test("readiness leaves a running generation task and the database bytes unchange
   }
 });
 
-test("readiness reads an active committed WAL without changing database or WAL bytes", async () => {
+test("readiness reads a committed WAL without changing database or WAL bytes", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-m81-live-wal-"));
   const databasePath = join(dataDirectory, "unboundry.sqlite");
   let server: ChildProcess | undefined;
@@ -1048,9 +2297,13 @@ test("readiness reads an active committed WAL without changing database or WAL b
       idempotencyKey: "m81-live-wal-request",
       kind: "image",
       nodeId: "m81-live-wal-node",
-      prompt: "active WAL readiness must remain observational",
+      prompt: "WAL readiness must remain observational for inactive evidence",
     }).task;
     store.transition(task.id, "running");
+    store.transition(task.id, "failed", {
+      code: "M81_INACTIVE_FIXTURE",
+      message: "synthetic terminal evidence",
+    });
     store.close();
 
     writer = openAppDatabase(dataDirectory);
@@ -1303,7 +2556,8 @@ test("readiness accepts the historical v31-to-v32 public template column order",
   let server: ChildProcess | undefined;
   try {
     let database = openAppDatabase(dataDirectory);
-    rollbackMigration38(database);
+    rollbackMigration39To38(database);
+    rollbackMigration38To37(database);
     database.exec("DROP TABLE public_templates");
     // Keep this SQL text aligned with the known hot-reload v31 migration.
     // Exact sqlite_schema fingerprints are intentional: a whitespace-erasing
@@ -1375,7 +2629,8 @@ test("readiness accepts exact known migration repair shapes", async () => {
     for (const fixture of fixtures) {
       await mkdir(fixture.directory);
       let database = openAppDatabase(fixture.directory);
-      rollbackMigration38(database);
+      rollbackMigration39To38(database);
+      rollbackMigration38To37(database);
       fixture.prepare(database);
       database.close();
       database = openAppDatabase(fixture.directory);
@@ -1408,6 +2663,22 @@ test("readiness rejects missing or semantically damaged current-schema objects",
   let server: ChildProcess | undefined;
   try {
     const cases = [
+      {
+        directory: join(testRoot, "missing-schema39-credential-epochs"),
+        damage: "DROP TABLE account_provider_credential_epochs",
+      },
+      {
+        directory: join(testRoot, "missing-schema39-admission-ledger"),
+        damage: "DROP TABLE generation_admission_events",
+      },
+      {
+        directory: join(testRoot, "missing-schema39-owner-idempotency"),
+        damage: "DROP INDEX generation_tasks_owner_idempotency",
+      },
+      {
+        directory: join(testRoot, "missing-schema39-attempt-circuit"),
+        damage: "DROP INDEX generation_provider_attempts_circuit",
+      },
       {
         directory: join(testRoot, "missing-table"),
         damage: "DROP TABLE user_templates",

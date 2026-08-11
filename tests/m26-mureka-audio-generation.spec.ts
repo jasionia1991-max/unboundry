@@ -2,6 +2,10 @@ import { expect, test } from "./safe-test";
 import { execFileSync } from "node:child_process";
 import type { ProviderProfile } from "../server/providerProfiles";
 import {
+  type ProviderRequestDeadlineOverrides,
+  type ProviderRequestDeadlineScheduler,
+} from "../server/providerRequestDeadline";
+import {
   createMurekaAudioTask,
   downloadMurekaAudioResult,
   getMurekaAudioTask,
@@ -24,6 +28,54 @@ const profile: ProviderProfile & { apiKey: string } = {
   label: "Mureka Test",
   updatedAt: "2026-08-02T00:00:00.000Z",
 };
+
+function manualDeadline() {
+  let callback: (() => void) | undefined;
+  const scheduler: ProviderRequestDeadlineScheduler = {
+    clearTimeout() {
+      callback = undefined;
+    },
+    setTimeout(value) {
+      callback = value;
+      return "manual-deadline";
+    },
+  };
+  return {
+    expire() {
+      const current = callback;
+      if (!current) throw new Error("deadline is not armed");
+      current();
+    },
+    options: { scheduler, timeoutMs: 10_000 },
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+async function expectRequestTimeout(
+  operation: (
+    fetcher: typeof fetch,
+    deadlineOptions: ProviderRequestDeadlineOverrides,
+  ) => Promise<unknown>,
+) {
+  const timer = manualDeadline();
+  const requestStarted = deferred<AbortSignal | null>();
+  const fetcher: typeof fetch = async (_input, init) => {
+    requestStarted.resolve(init?.signal ?? null);
+    return await new Promise<Response>(() => undefined);
+  };
+  const pending = operation(fetcher, timer.options);
+  const requestSignal = await requestStarted.promise;
+  timer.expire();
+  await expect(pending).rejects.toMatchObject({ code: "TIMEOUT" });
+  expect(requestSignal?.aborted).toBe(true);
+}
 
 test("Mureka task creation and polling use the official endpoints without real network", async () => {
   const calls: Array<{ body?: string; method?: string; url: string }> = [];
@@ -120,6 +172,86 @@ test("Mureka polling normalizes pending, failure and safe errors", async () => {
       status: "succeeded",
     }), { status: 200 }),
   )).rejects.toBeInstanceOf(MurekaAudioError);
+});
+
+test("Mureka submit and poll each enforce an injectable hard deadline", async () => {
+  await expectRequestTimeout((fetcher, deadlineOptions) =>
+    createMurekaAudioTask(
+      profile,
+      {
+        model: "mureka-9",
+        musicGenerationMode: "instrumental",
+        outputCount: 1,
+        prompt: "submit deadline",
+        streamPlayback: false,
+      },
+      fetcher,
+      undefined,
+      undefined,
+      deadlineOptions,
+    )
+  );
+  await expectRequestTimeout((fetcher, deadlineOptions) =>
+    getMurekaAudioTask(
+      profile,
+      "mureka-task-poll-deadline",
+      "song",
+      fetcher,
+      undefined,
+      deadlineOptions,
+    )
+  );
+});
+
+test("Mureka poll deadline covers a response body that hangs after headers", async () => {
+  const timer = manualDeadline();
+  const bodyStarted = deferred<void>();
+  const body = {
+    getReader() {
+      bodyStarted.resolve(undefined);
+      return {
+        cancel: async () => undefined,
+        read: () => new Promise<ReadableStreamReadResult<Uint8Array>>(() => undefined),
+      };
+    },
+  } as unknown as ReadableStream<Uint8Array>;
+  const pending = getMurekaAudioTask(
+    profile,
+    "mureka-task-body-deadline",
+    "song",
+    async () => ({
+      body,
+      ok: true,
+      status: 200,
+    }) as Response,
+    undefined,
+    timer.options,
+  );
+
+  await bodyStarted.promise;
+  timer.expire();
+  await expect(pending).rejects.toMatchObject({ code: "TIMEOUT" });
+});
+
+test("Mureka result download deadline remains active through stream consumption", async () => {
+  const timer = manualDeadline();
+  const result = await downloadMurekaAudioResult(
+    profile,
+    "https://cdn.example.test/result.mp3",
+    async () => new Response(new ReadableStream<Uint8Array>({
+      start() {
+        // Headers arrive, but the fake Provider never finishes the body.
+      },
+    }), {
+      headers: { "Content-Type": "audio/mpeg" },
+      status: 200,
+    }),
+    undefined,
+    timer.options,
+  );
+  const read = result.getReader().read();
+  timer.expire();
+  await expect(read).rejects.toMatchObject({ code: "TIMEOUT" });
 });
 
 test("Mureka remote errors and nested echoes never expose or persist the API key", async () => {
@@ -320,6 +452,7 @@ test("audio provider task id survives restart without creating a duplicate task"
       providerProfileId: "provider-mureka-test",
     });
     first.transition(created.task.id, "running");
+    first.recordProviderAttempt(created.task.id);
     first.setProviderTaskId(created.task.id, "mureka-provider-task-001");
     first.close();
 

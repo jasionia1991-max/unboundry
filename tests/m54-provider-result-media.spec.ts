@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { saveGeneratedAudio } from "../server/audioStorage";
 import { openAppDatabase } from "../server/database";
+import type { ProviderRequestDeadlineScheduler } from "../server/providerRequestDeadline";
 import {
   downloadProviderResultMedia,
   safeProviderResultUrl,
@@ -34,6 +35,27 @@ const publicResolver = (async () => [{
   address: "8.8.8.8",
   family: 4 as const,
 }]) as any;
+
+function manualDeadline() {
+  let callback: (() => void) | undefined;
+  const scheduler: ProviderRequestDeadlineScheduler = {
+    clearTimeout() {
+      callback = undefined;
+    },
+    setTimeout(value) {
+      callback = value;
+      return "manual-deadline";
+    },
+  };
+  return {
+    expire() {
+      const current = callback;
+      if (!current) throw new Error("deadline is not armed");
+      current();
+    },
+    options: { scheduler, timeoutMs: 10_000 },
+  };
+}
 
 test("Provider result URLs reject credentials, local networks and leaked keys", async () => {
   const key = "relay-secret-test-key";
@@ -78,6 +100,7 @@ test("Provider media download is unauthenticated, redirect-free and type checked
     method: "GET",
     redirect: "error",
   }]);
+  await result.body.cancel();
 
   await expect(downloadProviderResultMedia({
     apiKey: "safe-key",
@@ -100,6 +123,7 @@ test("Provider media download is unauthenticated, redirect-free and type checked
     url: "https://cdn.example.test/result.m4a",
   });
   expect(audio.contentType).toBe("audio/mp4");
+  await audio.body.cancel();
 
   for (const remoteType of ["audio/ogg; codecs=opus", "application/ogg"]) {
     const ogg = await downloadProviderResultMedia({
@@ -112,6 +136,7 @@ test("Provider media download is unauthenticated, redirect-free and type checked
       url: "https://cdn.example.test/result.ogg",
     });
     expect(ogg.contentType).toBe("audio/ogg");
+    await ogg.body.cancel();
   }
   const opaqueOgg = await downloadProviderResultMedia({
     apiKey: "safe-key",
@@ -124,6 +149,76 @@ test("Provider media download is unauthenticated, redirect-free and type checked
     url: "https://cdn.example.test/result-opaque.ogg",
   });
   expect(opaqueOgg.contentType).toBe("audio/ogg");
+  await opaqueOgg.body.cancel();
+});
+
+test("Provider result hard deadline covers request and complete body consumption", async () => {
+  const requestTimer = manualDeadline();
+  let requestSignal: AbortSignal | null | undefined;
+  let requestStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    requestStarted = resolve;
+  });
+  const pending = downloadProviderResultMedia({
+    apiKey: "safe-key",
+    deadlineOptions: requestTimer.options,
+    fetcher: (async (_url, init) => {
+      requestSignal = init?.signal;
+      requestStarted();
+      return await new Promise<Response>(() => undefined);
+    }) as typeof fetch,
+    kind: "image",
+    resolver: publicResolver,
+    url: "https://cdn.example.test/request-timeout.png",
+  });
+  await started;
+  requestTimer.expire();
+  await expect(pending).rejects.toMatchObject({ code: "TIMEOUT" });
+  expect(requestSignal?.aborted).toBe(true);
+
+  const bodyTimer = manualDeadline();
+  const downloaded = await downloadProviderResultMedia({
+    apiKey: "safe-key",
+    deadlineOptions: bodyTimer.options,
+    fetcher: (async () => new Response(new ReadableStream<Uint8Array>({
+      start() {
+        // Headers arrive, but the fake CDN never finishes the body.
+      },
+    }), {
+      headers: { "Content-Type": "video/mp4" },
+      status: 200,
+    })) as typeof fetch,
+    kind: "video",
+    resolver: publicResolver,
+    url: "https://cdn.example.test/body-timeout.mp4",
+  });
+  const read = downloaded.body.getReader().read();
+  bodyTimer.expire();
+  await expect(read).rejects.toMatchObject({ code: "TIMEOUT" });
+});
+
+test("Provider result stream maps caller abort to CANCELLED", async () => {
+  const timer = manualDeadline();
+  const controller = new AbortController();
+  const downloaded = await downloadProviderResultMedia({
+    apiKey: "safe-key",
+    deadlineOptions: timer.options,
+    fetcher: (async () => new Response(new ReadableStream<Uint8Array>({
+      start() {
+        // The body remains pending until the caller aborts.
+      },
+    }), {
+      headers: { "Content-Type": "audio/mpeg" },
+      status: 200,
+    })) as typeof fetch,
+    kind: "audio",
+    resolver: publicResolver,
+    signal: controller.signal,
+    url: "https://cdn.example.test/cancelled.mp3",
+  });
+  const read = downloaded.body.getReader().read();
+  controller.abort();
+  await expect(read).rejects.toMatchObject({ code: "CANCELLED" });
 });
 
 test("Provider result DNS rebinding to a private address is blocked before download", async () => {

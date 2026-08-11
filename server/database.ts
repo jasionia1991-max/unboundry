@@ -1724,6 +1724,540 @@ const migrations: readonly Migration[] = [
       END;
     `,
   },
+  {
+    version: 39,
+    name: "atomic-generation-admission-and-credential-scope",
+    sql: `
+      CREATE TABLE account_provider_credential_epochs (
+        account_id TEXT NOT NULL,
+        provider_profile_id TEXT NOT NULL,
+        credential_revision INTEGER NOT NULL CHECK (credential_revision >= 1),
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (account_id, provider_profile_id),
+        FOREIGN KEY (account_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (provider_profile_id) REFERENCES provider_profiles(id)
+          ON DELETE CASCADE
+      );
+      INSERT INTO account_provider_credential_epochs (
+        account_id, provider_profile_id, credential_revision, updated_at
+      )
+      WITH task_credential_revision_candidates AS (
+        SELECT
+          tasks.owner_id AS account_id,
+          tasks.provider_profile_id,
+          CASE
+            WHEN json_valid(tasks.model_configuration) THEN
+              CASE
+                WHEN
+                  json_type(
+                    tasks.model_configuration,
+                    '$.credentialVersion'
+                  ) = 'integer'
+                  AND json_extract(
+                    tasks.model_configuration,
+                    '$.credentialVersion'
+                  ) BETWEEN 1 AND 9007199254740991
+                THEN CAST(
+                  json_extract(
+                    tasks.model_configuration,
+                    '$.credentialVersion'
+                  ) AS INTEGER
+                )
+                ELSE NULL
+              END
+            ELSE NULL
+          END AS credential_revision
+        FROM generation_tasks AS tasks
+        JOIN users AS owners ON owners.id = tasks.owner_id
+        JOIN provider_profiles AS profiles
+          ON profiles.id = tasks.provider_profile_id
+        WHERE
+          tasks.owner_id IS NOT NULL
+          AND tasks.provider_profile_id IS NOT NULL
+      ),
+      credential_revision_candidates AS (
+        SELECT
+          account_id,
+          provider_profile_id,
+          credential_version AS credential_revision
+        FROM account_provider_credentials
+        UNION ALL
+        SELECT
+          account_id,
+          provider_profile_id,
+          credential_revision
+        FROM task_credential_revision_candidates
+        WHERE credential_revision IS NOT NULL
+      )
+      SELECT
+        account_id,
+        provider_profile_id,
+        MAX(credential_revision),
+        '1970-01-01T00:00:00.000Z'
+      FROM credential_revision_candidates
+      GROUP BY account_id, provider_profile_id;
+
+      CREATE TEMP TABLE generation_ledger_sequences_schema38 (
+        name TEXT PRIMARY KEY,
+        seq INTEGER NOT NULL
+      );
+      INSERT INTO generation_ledger_sequences_schema38 (name, seq)
+      SELECT name, seq
+      FROM sqlite_sequence
+      WHERE name IN ('generation_task_events', 'generation_provider_attempts');
+
+      DROP TRIGGER generation_tasks_capture_model_display_name;
+      DROP TRIGGER media_publication_guard_task_delete;
+      DROP TRIGGER media_publication_guard_owner_delete;
+      DROP TRIGGER account_delete_guard_generation_task_insert;
+      DROP TRIGGER account_delete_guard_generation_task_activation;
+
+      ALTER TABLE generation_task_events
+        RENAME TO generation_task_events_schema38;
+      ALTER TABLE generation_provider_attempts
+        RENAME TO generation_provider_attempts_schema38;
+      ALTER TABLE media_publication_attempts
+        RENAME TO media_publication_attempts_schema38;
+      ALTER TABLE generation_tasks
+        RENAME TO generation_tasks_schema38;
+
+      CREATE TABLE generation_tasks (
+        id TEXT PRIMARY KEY,
+        canvas_id TEXT NOT NULL,
+        node_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (
+          kind IN ('text', 'image', 'video', 'audio')
+        ),
+        prompt TEXT NOT NULL,
+        model TEXT,
+        parameters TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL,
+        request_fingerprint TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (
+          state IN (
+            'queued', 'running', 'success', 'failed', 'cancelled',
+            'retrying', 'recovering'
+          )
+        ),
+        attempt INTEGER NOT NULL DEFAULT 0,
+        error_code TEXT,
+        error_message TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        owner_id TEXT,
+        estimated_cost_microunits INTEGER CHECK (
+          estimated_cost_microunits IS NULL
+          OR estimated_cost_microunits >= 0
+        ),
+        actual_cost_microunits INTEGER CHECK (
+          actual_cost_microunits IS NULL
+          OR actual_cost_microunits >= 0
+        ),
+        provider_profile_id TEXT,
+        provider_model_id TEXT,
+        result_asset_id TEXT,
+        cost_currency TEXT NOT NULL DEFAULT 'USD' CHECK (
+          cost_currency IN ('USD', 'CNY')
+        ),
+        provider_task_id TEXT,
+        provider_usage_tokens INTEGER CHECK (
+          provider_usage_tokens IS NULL OR provider_usage_tokens >= 0
+        ),
+        model_configuration TEXT NOT NULL DEFAULT '{}',
+        result_text TEXT CHECK (
+          result_text IS NULL OR length(result_text) BETWEEN 1 AND 200000
+        ),
+        credential_revision INTEGER NOT NULL DEFAULT 0 CHECK (
+          credential_revision >= 0
+        )
+      );
+      INSERT INTO generation_tasks (
+        id, canvas_id, node_id, kind, prompt, model, parameters,
+        idempotency_key, request_fingerprint, state, attempt, error_code,
+        error_message, created_at, updated_at, owner_id,
+        estimated_cost_microunits, actual_cost_microunits,
+        provider_profile_id, provider_model_id, result_asset_id,
+        cost_currency, provider_task_id, provider_usage_tokens,
+        model_configuration, result_text, credential_revision
+      )
+      SELECT
+        id, canvas_id, node_id, kind, prompt, model, parameters,
+        idempotency_key, request_fingerprint, state, attempt, error_code,
+        error_message, created_at, updated_at, owner_id,
+        estimated_cost_microunits, actual_cost_microunits,
+        provider_profile_id, provider_model_id, result_asset_id,
+        cost_currency, provider_task_id, provider_usage_tokens,
+        model_configuration, result_text,
+        CASE
+          WHEN json_valid(model_configuration) THEN
+            CASE
+              WHEN
+                json_type(model_configuration, '$.credentialVersion') = 'integer'
+                AND json_extract(
+                  model_configuration,
+                  '$.credentialVersion'
+                ) BETWEEN 1 AND 9007199254740991
+              THEN json_extract(model_configuration, '$.credentialVersion')
+              ELSE 0
+            END
+          ELSE 0
+        END
+      FROM generation_tasks_schema38;
+
+      CREATE TABLE generation_task_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (
+          state IN (
+            'queued', 'running', 'success', 'failed', 'cancelled',
+            'retrying', 'recovering'
+          )
+        ),
+        error_code TEXT,
+        error_message TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES generation_tasks(id) ON DELETE CASCADE
+      );
+      INSERT INTO generation_task_events (
+        id, task_id, state, error_code, error_message, created_at
+      )
+      SELECT id, task_id, state, error_code, error_message, created_at
+      FROM generation_task_events_schema38;
+
+      CREATE TABLE generation_provider_attempts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id TEXT NOT NULL,
+        execution_attempt INTEGER NOT NULL CHECK (execution_attempt >= 1),
+        provider_profile_id TEXT NOT NULL,
+        provider_model_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (
+          kind IN ('text', 'image', 'video', 'audio')
+        ),
+        evidence TEXT NOT NULL CHECK (
+          evidence IN ('historical-execution-attempt', 'provider-boundary')
+        ),
+        created_at TEXT NOT NULL,
+        owner_id TEXT,
+        credential_revision INTEGER NOT NULL DEFAULT 0 CHECK (
+          credential_revision >= 0
+        ),
+        outcome TEXT NOT NULL CHECK (
+          outcome IN (
+            'boundary-claimed', 'definitive-rejected', 'accepted',
+            'response-received', 'provider-failed', 'completed',
+            'outcome-unknown'
+          )
+        ),
+        provider_task_id TEXT,
+        failure_code TEXT,
+        finished_at TEXT,
+        FOREIGN KEY (task_id) REFERENCES generation_tasks(id) ON DELETE CASCADE,
+        UNIQUE (task_id, execution_attempt)
+      );
+      INSERT INTO generation_provider_attempts (
+        id, task_id, execution_attempt, provider_profile_id,
+        provider_model_id, kind, evidence, created_at, owner_id,
+        credential_revision, outcome, provider_task_id, failure_code,
+        finished_at
+      )
+      WITH associated_attempts AS (
+        SELECT
+          tasks.id AS task_id,
+          COALESCE(
+            CASE WHEN tasks.provider_task_id IS NOT NULL THEN (
+              SELECT paid.id
+              FROM generation_provider_attempts_schema38 AS paid
+              WHERE paid.task_id = tasks.id
+              ORDER BY paid.execution_attempt DESC, paid.id DESC
+              LIMIT 1
+            ) END,
+            (
+              SELECT current_attempt.id
+              FROM generation_provider_attempts_schema38 AS current_attempt
+              WHERE
+                current_attempt.task_id = tasks.id
+                AND current_attempt.execution_attempt = tasks.attempt
+              ORDER BY current_attempt.id DESC
+              LIMIT 1
+            )
+          ) AS attempt_id
+        FROM generation_tasks AS tasks
+      )
+      SELECT
+        attempts.id, attempts.task_id, attempts.execution_attempt,
+        attempts.provider_profile_id, attempts.provider_model_id,
+        attempts.kind, attempts.evidence, attempts.created_at,
+        attempts.owner_id, tasks.credential_revision,
+        CASE
+          WHEN associated.attempt_id = attempts.id
+            AND tasks.state = 'success' THEN 'completed'
+          WHEN associated.attempt_id = attempts.id
+            AND tasks.error_code = 'PROVIDER_FAILED' THEN 'provider-failed'
+          WHEN associated.attempt_id = attempts.id
+            AND tasks.provider_task_id IS NOT NULL THEN 'accepted'
+          WHEN associated.attempt_id = attempts.id
+            AND tasks.error_code IN ('AUTH', 'PERMISSION', 'RATE_LIMIT')
+            THEN 'definitive-rejected'
+          ELSE 'outcome-unknown'
+        END,
+        CASE
+          WHEN associated.attempt_id = attempts.id
+          THEN tasks.provider_task_id
+          ELSE NULL
+        END,
+        CASE
+          WHEN associated.attempt_id = attempts.id
+            AND tasks.error_code IS NOT NULL THEN tasks.error_code
+          ELSE NULL
+        END,
+        CASE
+          WHEN associated.attempt_id = attempts.id
+            AND tasks.state IN ('success', 'failed', 'cancelled')
+          THEN tasks.updated_at
+          ELSE NULL
+        END
+      FROM generation_provider_attempts_schema38 AS attempts
+      JOIN generation_tasks AS tasks ON tasks.id = attempts.task_id
+      JOIN associated_attempts AS associated
+        ON associated.task_id = attempts.task_id;
+
+      CREATE TABLE media_publication_attempts (
+        attempt_id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('image', 'video', 'audio')),
+        asset_id TEXT NOT NULL,
+        source TEXT NOT NULL CHECK (source IN ('upload', 'generation')),
+        state TEXT NOT NULL CHECK (
+          state IN (
+            'reserved', 'staged', 'external-ready',
+            'compensating', 'published', 'failed'
+          )
+        ),
+        storage_backend TEXT NOT NULL CHECK (storage_backend IN ('local', 'oss')),
+        final_storage_name TEXT NOT NULL,
+        object_key TEXT NOT NULL,
+        storage_profile_id TEXT,
+        staging_name TEXT NOT NULL UNIQUE,
+        task_id TEXT,
+        task_execution_attempt INTEGER CHECK (
+          task_execution_attempt IS NULL OR task_execution_attempt >= 1
+        ),
+        history_label TEXT,
+        byte_size INTEGER NOT NULL DEFAULT 0 CHECK (byte_size >= 0),
+        checksum_sha256 TEXT,
+        content_type TEXT NOT NULL,
+        duration_seconds REAL,
+        duration_source TEXT CHECK (
+          duration_source IS NULL
+          OR duration_source IN ('server-probe', 'provider-task')
+        ),
+        media_width INTEGER CHECK (media_width IS NULL OR media_width > 0),
+        media_height INTEGER CHECK (media_height IS NULL OR media_height > 0),
+        actual_cost_microunits INTEGER CHECK (
+          actual_cost_microunits IS NULL OR actual_cost_microunits >= 0
+        ),
+        provider_usage_tokens INTEGER CHECK (
+          provider_usage_tokens IS NULL OR provider_usage_tokens >= 0
+        ),
+        error_code TEXT,
+        retry_count INTEGER NOT NULL DEFAULT 0 CHECK (retry_count >= 0),
+        adopted_at TEXT,
+        adopted_canvas_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (task_id) REFERENCES generation_tasks(id) ON DELETE CASCADE,
+        CHECK (
+          (source = 'upload' AND task_id IS NULL AND task_execution_attempt IS NULL)
+          OR
+          (source = 'generation' AND task_id IS NOT NULL AND task_execution_attempt IS NOT NULL)
+        ),
+        CHECK (
+          (adopted_at IS NULL AND adopted_canvas_id IS NULL)
+          OR
+          (source = 'upload' AND adopted_at IS NOT NULL AND adopted_canvas_id IS NOT NULL)
+        )
+      );
+      INSERT INTO media_publication_attempts (
+        attempt_id, owner_id, kind, asset_id, source, state,
+        storage_backend, final_storage_name, object_key, storage_profile_id,
+        staging_name, task_id, task_execution_attempt, history_label,
+        byte_size, checksum_sha256, content_type, duration_seconds,
+        duration_source, media_width, media_height, actual_cost_microunits,
+        provider_usage_tokens, error_code, retry_count, adopted_at,
+        adopted_canvas_id, created_at, updated_at
+      )
+      SELECT
+        attempt_id, owner_id, kind, asset_id, source, state,
+        storage_backend, final_storage_name, object_key, storage_profile_id,
+        staging_name, task_id, task_execution_attempt, history_label,
+        byte_size, checksum_sha256, content_type, duration_seconds,
+        duration_source, media_width, media_height, actual_cost_microunits,
+        provider_usage_tokens, error_code, retry_count, adopted_at,
+        adopted_canvas_id, created_at, updated_at
+      FROM media_publication_attempts_schema38;
+
+      DROP TABLE generation_task_events_schema38;
+      DROP TABLE generation_provider_attempts_schema38;
+      DROP TABLE media_publication_attempts_schema38;
+      DROP TABLE generation_tasks_schema38;
+
+      UPDATE sqlite_sequence
+      SET seq = MAX(
+        seq,
+        COALESCE((
+          SELECT saved.seq
+          FROM generation_ledger_sequences_schema38 AS saved
+          WHERE saved.name = sqlite_sequence.name
+        ), 0)
+      )
+      WHERE name IN ('generation_task_events', 'generation_provider_attempts');
+      INSERT INTO sqlite_sequence (name, seq)
+      SELECT saved.name, saved.seq
+      FROM generation_ledger_sequences_schema38 AS saved
+      WHERE NOT EXISTS (
+        SELECT 1 FROM sqlite_sequence AS current
+        WHERE current.name = saved.name
+      );
+      DROP TABLE generation_ledger_sequences_schema38;
+
+      CREATE UNIQUE INDEX generation_tasks_owner_idempotency
+        ON generation_tasks (owner_id, canvas_id, idempotency_key)
+        WHERE owner_id IS NOT NULL;
+      CREATE UNIQUE INDEX generation_tasks_legacy_idempotency
+        ON generation_tasks (canvas_id, idempotency_key)
+        WHERE owner_id IS NULL;
+      CREATE UNIQUE INDEX generation_tasks_provider_task_owner_credential
+        ON generation_tasks (
+          owner_id, provider_profile_id, credential_revision, provider_task_id
+        )
+        WHERE owner_id IS NOT NULL AND provider_task_id IS NOT NULL;
+      CREATE INDEX generation_tasks_canvas_updated
+        ON generation_tasks (canvas_id, updated_at DESC);
+      CREATE INDEX generation_tasks_owner_canvas_updated
+        ON generation_tasks (owner_id, canvas_id, updated_at DESC);
+      CREATE INDEX generation_tasks_owner_state_created
+        ON generation_tasks (owner_id, state, created_at DESC);
+      CREATE INDEX generation_tasks_result_asset
+        ON generation_tasks (result_asset_id)
+        WHERE result_asset_id IS NOT NULL;
+      CREATE INDEX generation_tasks_currency_created
+        ON generation_tasks (cost_currency, created_at DESC);
+
+      CREATE INDEX generation_task_events_task_created
+        ON generation_task_events (task_id, created_at ASC, id ASC);
+      CREATE INDEX generation_provider_attempts_profile_kind_created
+        ON generation_provider_attempts (
+          provider_profile_id, kind, created_at DESC, id DESC
+        );
+      CREATE INDEX generation_provider_attempts_task_created
+        ON generation_provider_attempts (task_id, created_at ASC, id ASC);
+      CREATE INDEX generation_provider_attempts_owner_profile_created
+        ON generation_provider_attempts (
+          owner_id, provider_profile_id, created_at DESC
+        );
+      CREATE INDEX generation_provider_attempts_circuit
+        ON generation_provider_attempts (
+          provider_profile_id, kind, finished_at DESC, id DESC
+        )
+        WHERE outcome IN ('provider-failed', 'completed');
+
+      CREATE UNIQUE INDEX media_publication_attempts_active_asset
+        ON media_publication_attempts (kind, asset_id)
+        WHERE state IN ('reserved', 'staged', 'external-ready', 'compensating');
+      CREATE UNIQUE INDEX media_publication_attempts_active_task
+        ON media_publication_attempts (task_id, task_execution_attempt)
+        WHERE task_id IS NOT NULL
+          AND state IN ('reserved', 'staged', 'external-ready', 'compensating');
+      CREATE INDEX media_publication_attempts_owner_state_updated
+        ON media_publication_attempts (owner_id, state, updated_at DESC);
+
+      CREATE TABLE generation_admission_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id TEXT NOT NULL,
+        execution_attempt INTEGER NOT NULL CHECK (execution_attempt >= 1),
+        owner_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('text', 'image', 'video', 'audio')),
+        admission_type TEXT NOT NULL CHECK (
+          admission_type IN (
+            'initial', 'new-paid-retry'
+          )
+        ),
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES generation_tasks(id) ON DELETE CASCADE,
+        UNIQUE (task_id, execution_attempt)
+      );
+      CREATE INDEX generation_admission_events_owner_created
+        ON generation_admission_events (owner_id, created_at DESC, id DESC);
+      CREATE INDEX generation_admission_events_kind_created
+        ON generation_admission_events (kind, created_at DESC, id DESC);
+
+      CREATE TRIGGER generation_tasks_capture_model_display_name
+      AFTER INSERT ON generation_tasks
+      WHEN
+        NEW.model IS NOT NULL
+        AND json_valid(NEW.model_configuration)
+        AND EXISTS (
+          SELECT 1 FROM model_profiles WHERE id = NEW.model
+        )
+        AND (
+          json_type(NEW.model_configuration, '$.displayName') IS NULL
+          OR (
+            json_type(NEW.model_configuration, '$.displayName') = 'text'
+            AND trim(json_extract(NEW.model_configuration, '$.displayName')) = ''
+          )
+        )
+      BEGIN
+        UPDATE generation_tasks
+        SET model_configuration = json_set(
+          model_configuration,
+          '$.displayName',
+          (SELECT display_name FROM model_profiles WHERE id = NEW.model)
+        )
+        WHERE id = NEW.id;
+      END;
+      CREATE TRIGGER media_publication_guard_task_delete
+        BEFORE DELETE ON generation_tasks
+        WHEN EXISTS (
+          SELECT 1 FROM media_publication_attempts
+          WHERE task_id = OLD.id
+            AND state IN ('reserved', 'staged', 'external-ready', 'compensating')
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'active media publication blocks task deletion');
+      END;
+      CREATE TRIGGER media_publication_guard_owner_delete
+        BEFORE DELETE ON users
+        WHEN EXISTS (
+          SELECT 1 FROM media_publication_attempts
+          WHERE owner_id = OLD.id
+            AND state IN ('reserved', 'staged', 'external-ready', 'compensating')
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'active media publication blocks owner deletion');
+      END;
+      CREATE TRIGGER account_delete_guard_generation_task_insert
+        BEFORE INSERT ON generation_tasks
+        WHEN NEW.owner_id IS NOT NULL AND EXISTS (
+          SELECT 1 FROM account_delete_intents
+          WHERE owner_id = NEW.owner_id
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'account deletion blocks generation task mutation');
+      END;
+      CREATE TRIGGER account_delete_guard_generation_task_activation
+        BEFORE UPDATE OF owner_id, state ON generation_tasks
+        WHEN NEW.owner_id IS NOT NULL
+          AND NEW.state IN ('queued', 'running', 'retrying', 'recovering')
+          AND EXISTS (
+            SELECT 1 FROM account_delete_intents
+            WHERE owner_id = NEW.owner_id
+          )
+      BEGIN
+        SELECT RAISE(ABORT, 'account deletion blocks generation task mutation');
+      END;
+    `,
+  },
 ];
 
 export const currentSchemaManifest = Object.freeze(
@@ -1732,7 +2266,7 @@ export const currentSchemaManifest = Object.freeze(
 
 export const currentSchemaVersion = currentSchemaManifest.at(-1)?.version ?? 0;
 
-// This is the known-safe physical schema that a v38 process can use. Keep the
+// This is the known-safe physical schema that a v39 process can use. Keep the
 // migration ledger as the source of version ordering, and keep the column-name
 // checks order-independent so the finite documented v21 catalog repairs and
 // v31/v32 template repair can each be admitted only by an exact sqlite_schema
@@ -1750,6 +2284,9 @@ export const currentSchemaContract = Object.freeze({
       "account_id", "provider_profile_id", "encrypted_key", "key_status",
       "key_checked_at", "credential_version", "updated_at",
     ]),
+    account_provider_credential_epochs: Object.freeze([
+      "account_id", "provider_profile_id", "credential_revision", "updated_at",
+    ]),
     admin_audit_events: Object.freeze([
       "id", "actor_user_id", "action", "target_user_id", "details",
       "created_at",
@@ -1762,9 +2299,15 @@ export const currentSchemaContract = Object.freeze({
       "owner_id", "id", "revision", "nodes", "edges", "viewport",
       "updated_at", "save_session_id", "save_sequence", "graph_revision",
     ]),
+    generation_admission_events: Object.freeze([
+      "id", "task_id", "execution_attempt", "owner_id", "kind",
+      "admission_type", "created_at",
+    ]),
     generation_provider_attempts: Object.freeze([
       "id", "task_id", "execution_attempt", "provider_profile_id",
       "provider_model_id", "kind", "evidence", "created_at", "owner_id",
+      "credential_revision", "outcome", "provider_task_id", "failure_code",
+      "finished_at",
     ]),
     generation_safety_settings: Object.freeze([
       "id", "global_enabled", "emergency_stop", "per_user_concurrency",
@@ -1782,7 +2325,7 @@ export const currentSchemaContract = Object.freeze({
       "owner_id", "estimated_cost_microunits", "actual_cost_microunits",
       "provider_profile_id", "provider_model_id", "result_asset_id",
       "cost_currency", "provider_task_id", "provider_usage_tokens",
-      "model_configuration", "result_text",
+      "model_configuration", "result_text", "credential_revision",
     ]),
     media_assets: Object.freeze([
       "kind", "id", "owner_id", "storage_name", "byte_size", "created_at",
@@ -1848,10 +2391,27 @@ export const currentSchemaContract = Object.freeze({
     ]),
   }),
   indexes: Object.freeze({
-    generation_tasks_provider_task: Object.freeze({
-      columns: Object.freeze(["provider_profile_id", "provider_task_id"]),
+    generation_tasks_legacy_idempotency: Object.freeze({
+      columns: Object.freeze(["canvas_id", "idempotency_key"]),
       partial: true,
-      sqlHash: "b4bc3802117bb5d5b661245fd30cc7ccdb4e7fa85d41ffa08df8421deb042485",
+      sqlHash: "b6e62cc0af2bea5ca38f4ef7d498d45ddc8c29c2ff6b5f2ebeb8966a9e02269b",
+      table: "generation_tasks",
+      unique: true,
+    }),
+    generation_tasks_owner_idempotency: Object.freeze({
+      columns: Object.freeze(["owner_id", "canvas_id", "idempotency_key"]),
+      partial: true,
+      sqlHash: "59c513a4caa00328f6e795acb2b6083daf4c8ebd61cc74a755faffb53eb0d573",
+      table: "generation_tasks",
+      unique: true,
+    }),
+    generation_tasks_provider_task_owner_credential: Object.freeze({
+      columns: Object.freeze([
+        "owner_id", "provider_profile_id", "credential_revision",
+        "provider_task_id",
+      ]),
+      partial: true,
+      sqlHash: "8492fb34e9d939311a870fba18caa77151a6ab9b6b193d8b8e97c3e00c6ddfb2",
       table: "generation_tasks",
       unique: true,
     }),
@@ -1905,8 +2465,20 @@ export const currentSchemaContract = Object.freeze({
       sqlHash: "c49d60c37be7eb32471b6a5256226ee2010cf180bd4b547f36e60a503fc7df80",
       table: "canvas_documents",
     }),
+    generation_admission_events_kind_created: Object.freeze({
+      sqlHash: "519d8bdf6e603abc65cb2b476d47313d0282206db8a63ed3e9f2c0b5a367db7b",
+      table: "generation_admission_events",
+    }),
+    generation_admission_events_owner_created: Object.freeze({
+      sqlHash: "0e72c7320ba2fdff1e09b88392ef2de1c2389357b98534cce4f60d54ff662e38",
+      table: "generation_admission_events",
+    }),
+    generation_provider_attempts_circuit: Object.freeze({
+      sqlHash: "288d95b6e8e6beb8f46cfeb385725d5c45084886bba1f3afba8ae190139cec0e",
+      table: "generation_provider_attempts",
+    }),
     generation_provider_attempts_owner_profile_created: Object.freeze({
-      sqlHash: "cc0a3834baee5d68a8a92b5cf00f6b0dbc6886b0355b73acfa10846ca1f9c99a",
+      sqlHash: "081e929882ef4fc6682e9d1432d3e691c96e60e212dbe12473128595ab93a762",
       table: "generation_provider_attempts",
     }),
     generation_provider_attempts_profile_kind_created: Object.freeze({
@@ -1937,8 +2509,16 @@ export const currentSchemaContract = Object.freeze({
       sqlHash: "4ccaf8c1a22e10bb6f03ff9c03782f2050ac1048569b774858ed3ead42363fd0",
       table: "generation_tasks",
     }),
-    generation_tasks_provider_task: Object.freeze({
-      sqlHash: "b4bc3802117bb5d5b661245fd30cc7ccdb4e7fa85d41ffa08df8421deb042485",
+    generation_tasks_legacy_idempotency: Object.freeze({
+      sqlHash: "b6e62cc0af2bea5ca38f4ef7d498d45ddc8c29c2ff6b5f2ebeb8966a9e02269b",
+      table: "generation_tasks",
+    }),
+    generation_tasks_owner_idempotency: Object.freeze({
+      sqlHash: "59c513a4caa00328f6e795acb2b6083daf4c8ebd61cc74a755faffb53eb0d573",
+      table: "generation_tasks",
+    }),
+    generation_tasks_provider_task_owner_credential: Object.freeze({
+      sqlHash: "8492fb34e9d939311a870fba18caa77151a6ab9b6b193d8b8e97c3e00c6ddfb2",
       table: "generation_tasks",
     }),
     generation_tasks_result_asset: Object.freeze({
@@ -2049,6 +2629,9 @@ export const currentSchemaContract = Object.freeze({
     account_provider_credentials: Object.freeze([
       "4542efd2209893278fd8bcb73760848fa61e252ca15d0d5f526e5672dbda32cb",
     ]),
+    account_provider_credential_epochs: Object.freeze([
+      "c12d09e4ec04cc600751be13908d39db96da082d101aea4e0162c956781a17f9",
+    ]),
     admin_audit_events: Object.freeze([
       "82e604628c4a2ce90c37ad6cba7f5d82fb71e6a21703d361bb03bf980730c0ce",
       "9b5cd05337e0787660d20beabbd57e55ae0384618304e74ec60410adccfe98ab",
@@ -2059,17 +2642,20 @@ export const currentSchemaContract = Object.freeze({
     canvas_documents: Object.freeze([
       "c1513fd4d7a98acd1826e952f442877b40f8395a8052b15e85479559da0cefdf",
     ]),
+    generation_admission_events: Object.freeze([
+      "8362b1eb7fc4f3c513b74e51f3d29423382efaaac1eca8f3da8053de3553d86f",
+    ]),
     generation_provider_attempts: Object.freeze([
-      "2e1effabd1d125941ff89256881802c56189d640eeb3c9ebc8f86c61ba7a14e2",
+      "ffd55e9a53fa99988acd831f01c34455af42ef4b9a4132597412718ff581af25",
     ]),
     generation_safety_settings: Object.freeze([
       "f40be7744655d146b2ecd0f8897b024d98a1db94a39284e53cc27d40ba9bc38c",
     ]),
     generation_task_events: Object.freeze([
-      "b002bdbf4f1d0d086eb7ce0f133c6fd06088c56a2f31122162f8a60cee8d3f4f",
+      "7453ccc55754e39777e76119214bb9c98c6d9587ce2b73d55a11823cf20de2c9",
     ]),
     generation_tasks: Object.freeze([
-      "c812ecc9484218c8f64ae4043848fc2b9b4b7a39a679076624960eb5b258c5a5",
+      "34a5d6e841bb07800c51a7f53c3016d98c3128580aa85f1d18006748cb13ee1d",
     ]),
     media_assets: Object.freeze([
       "cedbe47b7f996d78b4a03b8e9ec75bf08853aa2539932ad1dad657b1c47c115c",

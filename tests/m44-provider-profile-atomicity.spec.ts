@@ -19,9 +19,11 @@ import {
   getProviderProfileForGeneration,
   prepareArkControlPlaneCredentials,
   providerConfigurationVersion,
+  ProviderProfileInUseError,
   saveArkControlPlaneCredentials,
   saveProviderProfile,
   verifyProviderProfile,
+  type ProviderProfile,
 } from "../server/providerProfiles";
 
 const childBootstrap = `
@@ -166,6 +168,351 @@ function restoreDataDirectory(previous: string | undefined) {
   else process.env.UNBOUNDRY_DATA_DIR = previous;
 }
 
+function rollbackMigration39To38(database: DatabaseSync) {
+  try {
+    database.exec(`
+      BEGIN IMMEDIATE;
+      DROP TRIGGER generation_tasks_capture_model_display_name;
+      DROP TRIGGER media_publication_guard_task_delete;
+      DROP TRIGGER media_publication_guard_owner_delete;
+      DROP TRIGGER account_delete_guard_generation_task_insert;
+      DROP TRIGGER account_delete_guard_generation_task_activation;
+      DROP TABLE generation_admission_events;
+      DROP TABLE account_provider_credential_epochs;
+
+      ALTER TABLE generation_task_events
+        RENAME TO generation_task_events_schema39;
+      ALTER TABLE generation_provider_attempts
+        RENAME TO generation_provider_attempts_schema39;
+      ALTER TABLE media_publication_attempts
+        RENAME TO media_publication_attempts_schema39;
+      ALTER TABLE generation_tasks
+        RENAME TO generation_tasks_schema39;
+
+      CREATE TABLE generation_tasks (
+        id TEXT PRIMARY KEY,
+        canvas_id TEXT NOT NULL,
+        node_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (
+          kind IN ('text', 'image', 'video', 'audio')
+        ),
+        prompt TEXT NOT NULL,
+        model TEXT,
+        parameters TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL,
+        request_fingerprint TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (
+          state IN (
+            'queued',
+            'running',
+            'success',
+            'failed',
+            'cancelled',
+            'retrying',
+            'recovering'
+          )
+        ),
+        attempt INTEGER NOT NULL DEFAULT 0,
+        error_code TEXT,
+        error_message TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        owner_id TEXT,
+        estimated_cost_microunits INTEGER CHECK (
+          estimated_cost_microunits IS NULL
+          OR estimated_cost_microunits >= 0
+        ),
+        actual_cost_microunits INTEGER CHECK (
+          actual_cost_microunits IS NULL
+          OR actual_cost_microunits >= 0
+        ),
+        provider_profile_id TEXT,
+        provider_model_id TEXT,
+        result_asset_id TEXT,
+        cost_currency TEXT NOT NULL DEFAULT 'USD' CHECK (
+          cost_currency IN ('USD', 'CNY')
+        ),
+        provider_task_id TEXT,
+        provider_usage_tokens INTEGER CHECK (
+          provider_usage_tokens IS NULL OR provider_usage_tokens >= 0
+        ),
+        model_configuration TEXT NOT NULL DEFAULT '{}',
+        result_text TEXT CHECK (
+          result_text IS NULL OR length(result_text) BETWEEN 1 AND 200000
+        ),
+        UNIQUE (canvas_id, idempotency_key)
+      );
+      INSERT INTO generation_tasks (
+        id, canvas_id, node_id, kind, prompt, model, parameters,
+        idempotency_key, request_fingerprint, state, attempt, error_code,
+        error_message, created_at, updated_at, owner_id,
+        estimated_cost_microunits, actual_cost_microunits,
+        provider_profile_id, provider_model_id, result_asset_id,
+        cost_currency, provider_task_id, provider_usage_tokens,
+        model_configuration, result_text
+      )
+      SELECT
+        id, canvas_id, node_id, kind, prompt, model, parameters,
+        idempotency_key, request_fingerprint, state, attempt, error_code,
+        error_message, created_at, updated_at, owner_id,
+        estimated_cost_microunits, actual_cost_microunits,
+        provider_profile_id, provider_model_id, result_asset_id,
+        cost_currency, provider_task_id, provider_usage_tokens,
+        model_configuration, result_text
+      FROM generation_tasks_schema39;
+
+      CREATE TABLE generation_task_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (
+          state IN (
+            'queued',
+            'running',
+            'success',
+            'failed',
+            'cancelled',
+            'retrying',
+            'recovering'
+          )
+        ),
+        error_code TEXT,
+        error_message TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES generation_tasks(id) ON DELETE CASCADE
+      );
+      INSERT INTO generation_task_events (
+        id, task_id, state, error_code, error_message, created_at
+      )
+      SELECT id, task_id, state, error_code, error_message, created_at
+      FROM generation_task_events_schema39;
+
+      CREATE TABLE generation_provider_attempts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id TEXT NOT NULL,
+        execution_attempt INTEGER NOT NULL CHECK (execution_attempt >= 1),
+        provider_profile_id TEXT NOT NULL,
+        provider_model_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (
+          kind IN ('text', 'image', 'video', 'audio')
+        ),
+        evidence TEXT NOT NULL CHECK (
+          evidence IN ('historical-execution-attempt', 'provider-boundary')
+        ),
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES generation_tasks(id) ON DELETE CASCADE,
+        UNIQUE (task_id, execution_attempt)
+      );
+      INSERT INTO generation_provider_attempts (
+        id, task_id, execution_attempt, provider_profile_id,
+        provider_model_id, kind, evidence, created_at
+      )
+      SELECT
+        id, task_id, execution_attempt, provider_profile_id,
+        provider_model_id, kind, evidence, created_at
+      FROM generation_provider_attempts_schema39;
+      ALTER TABLE "generation_provider_attempts" ADD COLUMN "owner_id" TEXT;
+      UPDATE generation_provider_attempts
+      SET owner_id = (
+        SELECT generation_provider_attempts_schema39.owner_id
+        FROM generation_provider_attempts_schema39
+        WHERE generation_provider_attempts_schema39.id =
+          generation_provider_attempts.id
+      );
+
+      CREATE TABLE media_publication_attempts (
+        attempt_id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('image', 'video', 'audio')),
+        asset_id TEXT NOT NULL,
+        source TEXT NOT NULL CHECK (source IN ('upload', 'generation')),
+        state TEXT NOT NULL CHECK (
+          state IN (
+            'reserved', 'staged', 'external-ready',
+            'compensating', 'published', 'failed'
+          )
+        ),
+        storage_backend TEXT NOT NULL CHECK (storage_backend IN ('local', 'oss')),
+        final_storage_name TEXT NOT NULL,
+        object_key TEXT NOT NULL,
+        storage_profile_id TEXT,
+        staging_name TEXT NOT NULL UNIQUE,
+        task_id TEXT,
+        task_execution_attempt INTEGER CHECK (
+          task_execution_attempt IS NULL OR task_execution_attempt >= 1
+        ),
+        history_label TEXT,
+        byte_size INTEGER NOT NULL DEFAULT 0 CHECK (byte_size >= 0),
+        checksum_sha256 TEXT,
+        content_type TEXT NOT NULL,
+        duration_seconds REAL,
+        duration_source TEXT CHECK (
+          duration_source IS NULL
+          OR duration_source IN ('server-probe', 'provider-task')
+        ),
+        media_width INTEGER CHECK (media_width IS NULL OR media_width > 0),
+        media_height INTEGER CHECK (media_height IS NULL OR media_height > 0),
+        actual_cost_microunits INTEGER CHECK (
+          actual_cost_microunits IS NULL OR actual_cost_microunits >= 0
+        ),
+        provider_usage_tokens INTEGER CHECK (
+          provider_usage_tokens IS NULL OR provider_usage_tokens >= 0
+        ),
+        error_code TEXT,
+        retry_count INTEGER NOT NULL DEFAULT 0 CHECK (retry_count >= 0),
+        adopted_at TEXT,
+        adopted_canvas_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (task_id) REFERENCES generation_tasks(id) ON DELETE CASCADE,
+        CHECK (
+          (source = 'upload' AND task_id IS NULL AND task_execution_attempt IS NULL)
+          OR
+          (source = 'generation' AND task_id IS NOT NULL AND task_execution_attempt IS NOT NULL)
+        ),
+        CHECK (
+          (adopted_at IS NULL AND adopted_canvas_id IS NULL)
+          OR
+          (source = 'upload' AND adopted_at IS NOT NULL AND adopted_canvas_id IS NOT NULL)
+        )
+      );
+      INSERT INTO media_publication_attempts (
+        attempt_id, owner_id, kind, asset_id, source, state,
+        storage_backend, final_storage_name, object_key, storage_profile_id,
+        staging_name, task_id, task_execution_attempt, history_label,
+        byte_size, checksum_sha256, content_type, duration_seconds,
+        duration_source, media_width, media_height, actual_cost_microunits,
+        provider_usage_tokens, error_code, retry_count, adopted_at,
+        adopted_canvas_id, created_at, updated_at
+      )
+      SELECT
+        attempt_id, owner_id, kind, asset_id, source, state,
+        storage_backend, final_storage_name, object_key, storage_profile_id,
+        staging_name, task_id, task_execution_attempt, history_label,
+        byte_size, checksum_sha256, content_type, duration_seconds,
+        duration_source, media_width, media_height, actual_cost_microunits,
+        provider_usage_tokens, error_code, retry_count, adopted_at,
+        adopted_canvas_id, created_at, updated_at
+      FROM media_publication_attempts_schema39;
+
+      DROP TABLE generation_task_events_schema39;
+      DROP TABLE generation_provider_attempts_schema39;
+      DROP TABLE media_publication_attempts_schema39;
+      DROP TABLE generation_tasks_schema39;
+
+      CREATE INDEX generation_tasks_canvas_updated
+        ON generation_tasks (canvas_id, updated_at DESC);
+      CREATE INDEX generation_tasks_owner_canvas_updated
+        ON generation_tasks (owner_id, canvas_id, updated_at DESC);
+      CREATE INDEX generation_tasks_owner_state_created
+        ON generation_tasks (owner_id, state, created_at DESC);
+      CREATE INDEX generation_tasks_result_asset
+        ON generation_tasks (result_asset_id)
+        WHERE result_asset_id IS NOT NULL;
+      CREATE INDEX generation_tasks_currency_created
+        ON generation_tasks (cost_currency, created_at DESC);
+      CREATE UNIQUE INDEX generation_tasks_provider_task
+        ON generation_tasks (provider_profile_id, provider_task_id)
+        WHERE provider_task_id IS NOT NULL;
+      CREATE INDEX generation_task_events_task_created
+        ON generation_task_events (task_id, created_at ASC, id ASC);
+      CREATE INDEX generation_provider_attempts_profile_kind_created
+        ON generation_provider_attempts (
+          provider_profile_id, kind, created_at DESC, id DESC
+        );
+      CREATE INDEX generation_provider_attempts_task_created
+        ON generation_provider_attempts (task_id, created_at ASC, id ASC);
+      CREATE INDEX IF NOT EXISTS generation_provider_attempts_owner_profile_created
+        ON generation_provider_attempts (
+          owner_id,
+          provider_profile_id,
+          created_at DESC
+        );
+      CREATE UNIQUE INDEX media_publication_attempts_active_asset
+        ON media_publication_attempts (kind, asset_id)
+        WHERE state IN ('reserved', 'staged', 'external-ready', 'compensating');
+      CREATE UNIQUE INDEX media_publication_attempts_active_task
+        ON media_publication_attempts (task_id, task_execution_attempt)
+        WHERE task_id IS NOT NULL
+          AND state IN ('reserved', 'staged', 'external-ready', 'compensating');
+      CREATE INDEX media_publication_attempts_owner_state_updated
+        ON media_publication_attempts (owner_id, state, updated_at DESC);
+
+      CREATE TRIGGER IF NOT EXISTS generation_tasks_capture_model_display_name
+      AFTER INSERT ON generation_tasks
+      WHEN
+        NEW.model IS NOT NULL
+        AND json_valid(NEW.model_configuration)
+        AND EXISTS (
+          SELECT 1 FROM model_profiles WHERE id = NEW.model
+        )
+        AND (
+          json_type(NEW.model_configuration, '$.displayName') IS NULL
+          OR (
+            json_type(NEW.model_configuration, '$.displayName') = 'text'
+            AND trim(json_extract(NEW.model_configuration, '$.displayName')) = ''
+          )
+        )
+      BEGIN
+        UPDATE generation_tasks
+        SET model_configuration = json_set(
+          model_configuration,
+          '$.displayName',
+          (SELECT display_name FROM model_profiles WHERE id = NEW.model)
+        )
+        WHERE id = NEW.id;
+      END;
+      CREATE TRIGGER media_publication_guard_task_delete
+        BEFORE DELETE ON generation_tasks
+        WHEN EXISTS (
+          SELECT 1 FROM media_publication_attempts
+          WHERE task_id = OLD.id
+            AND state IN ('reserved', 'staged', 'external-ready', 'compensating')
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'active media publication blocks task deletion');
+      END;
+      CREATE TRIGGER media_publication_guard_owner_delete
+        BEFORE DELETE ON users
+        WHEN EXISTS (
+          SELECT 1 FROM media_publication_attempts
+          WHERE owner_id = OLD.id
+            AND state IN ('reserved', 'staged', 'external-ready', 'compensating')
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'active media publication blocks owner deletion');
+      END;
+      CREATE TRIGGER account_delete_guard_generation_task_insert
+        BEFORE INSERT ON generation_tasks
+        WHEN NEW.owner_id IS NOT NULL AND EXISTS (
+          SELECT 1 FROM account_delete_intents
+          WHERE owner_id = NEW.owner_id
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'account deletion blocks generation task mutation');
+      END;
+      CREATE TRIGGER account_delete_guard_generation_task_activation
+        BEFORE UPDATE OF owner_id, state ON generation_tasks
+        WHEN NEW.owner_id IS NOT NULL
+          AND NEW.state IN ('queued', 'running', 'retrying', 'recovering')
+          AND EXISTS (
+            SELECT 1 FROM account_delete_intents
+            WHERE owner_id = NEW.owner_id
+          )
+      BEGIN
+        SELECT RAISE(ABORT, 'account deletion blocks generation task mutation');
+      END;
+
+      DELETE FROM schema_migrations WHERE version = 39;
+      PRAGMA user_version = 38;
+      COMMIT;
+    `);
+  } catch (error) {
+    if (database.isTransaction) database.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 test("two OS processes serialize complete Provider saves and metadata", async () => {
   const directory = await mkdtemp(join(tmpdir(), "unboundry-provider-os-save-"));
   const previous = process.env.UNBOUNDRY_DATA_DIR;
@@ -299,7 +646,101 @@ test("split document and metadata versions block a real task before fake fetch",
   }
 });
 
-test("a request lease releases after fake fetch starts instead of waiting for its response", async () => {
+test("frozen Provider and credential revisions reject a newer lease before fake fetch", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-provider-frozen-lease-"));
+  const frozenProviderVersion = 7;
+  const frozenCredentialRevision = 11;
+  const profile = {
+    apiKey: "fixture-frozen-lease-secret",
+    baseUrl: "https://relay.example.test/v1",
+    configurationVersion: frozenProviderVersion,
+    createdAt: "2026-08-11T00:00:00.000Z",
+    driver: "multi-protocol-relay",
+    id: "frozen-lease-profile",
+    label: "Frozen lease profile",
+    updatedAt: "2026-08-11T00:00:00.000Z",
+  } satisfies ProviderProfile;
+  const store = createGenerationTaskStore(directory);
+  try {
+    const cases = [
+      {
+        expectedCode: "PROVIDER_CONFIGURATION_MISMATCH",
+        expectedMessage: "平台连接配置已变化，已阻止旧任务继续请求",
+        id: "provider-version",
+        lease: {
+          credentialRevision: frozenCredentialRevision,
+          profile: {
+            ...profile,
+            configurationVersion: frozenProviderVersion + 1,
+          },
+        },
+      },
+      {
+        expectedCode: "ACCOUNT_CREDENTIAL_CHANGED",
+        expectedMessage: "你的平台密钥已变更，请重新提交",
+        id: "credential-revision",
+        lease: {
+          credentialRevision: frozenCredentialRevision + 1,
+          profile,
+        },
+      },
+    ] as const;
+    let fakeFetches = 0;
+    for (const fixture of cases) {
+      const created = store.create({
+        canvasId: "frozen-lease-canvas",
+        credentialRevision: frozenCredentialRevision,
+        idempotencyKey: `frozen-lease-${fixture.id}-0001`,
+        kind: "text",
+        modelConfiguration: {
+          credentialVersion: frozenCredentialRevision,
+          providerConfigurationVersion: frozenProviderVersion,
+          providerDriver: "multi-protocol-relay",
+          providerProtocol: "openai-chat",
+        },
+        nodeId: `frozen-lease-${fixture.id}-node`,
+        ownerId: "__test__",
+        parameters: { inputSchemaVersion: 1, inputs: [] },
+        prompt: "must fail before fake fetch",
+        providerModelId: "relay-text-model",
+        providerProfileId: profile.id,
+      });
+      await executeTextTaskWithDependencies(created.task.id, {
+        acquireProfile: async () => ({
+          ...fixture.lease,
+          release() {},
+        }),
+        fetcher: async () => {
+          fakeFetches += 1;
+          return Response.json({});
+        },
+        mediaUrlForOwner: async () => "unused",
+        store,
+      });
+      expect(store.get(created.task.id)).toMatchObject({
+        errorCode: fixture.expectedCode,
+        errorMessage: fixture.expectedMessage,
+        state: "failed",
+      });
+      expect(store.getProviderAttemptForTask(created.task.id)).toBeUndefined();
+    }
+    expect(fakeFetches).toBe(0);
+    const database = openAppDatabase(directory);
+    try {
+      expect(generationProviderAttemptCounts(database)).toEqual({
+        historicalEstimatedProviderAttempts: 0,
+        paidProviderRequests: 0,
+      });
+    } finally {
+      database.close();
+    }
+  } finally {
+    store.close();
+    await rm(directory, { force: true, recursive: true });
+  }
+});
+
+test("an active paid request blocks Provider mutation until its response is settled", async () => {
   const directory = await mkdtemp(join(tmpdir(), "unboundry-provider-fetch-lease-"));
   const previous = process.env.UNBOUNDRY_DATA_DIR;
   process.env.UNBOUNDRY_DATA_DIR = directory;
@@ -344,7 +785,7 @@ test("a request lease releases after fake fetch starts instead of waiting for it
       nodeId: "text-fetch-lease-target",
       ownerId: "__test__",
       parameters: { inputs: [], outputCount: 1, responseFormat: "text" },
-      prompt: "请求已发出后允许管理员保存",
+      prompt: "请求已发出后阻止管理员改写连接",
       providerModelId: "doubao-seed-2-0-lite-260428",
       providerProfileId: profile.id,
     });
@@ -364,15 +805,16 @@ test("a request lease releases after fake fetch starts instead of waiting for it
     });
     await within(started);
 
-    const saved = await within(saveProviderProfile({
-      apiKey: `ark-new-${randomUUID()}`,
+    const rotatedApiKey = `ark-new-${randomUUID()}`;
+    await expect(within(saveProviderProfile({
+      apiKey: rotatedApiKey,
       baseUrl: profile.baseUrl,
       driver: profile.driver,
       label: profile.label,
-    }, profile.id));
-    expect(providerConfigurationVersion(saved)).toBe(
-      providerConfigurationVersion(profile) + 1,
-    );
+    }, profile.id))).rejects.toThrow(ProviderProfileInUseError);
+    expect(providerConfigurationVersion(
+      (await getProviderProfile(profile.id))!,
+    )).toBe(providerConfigurationVersion(profile));
 
     finishFetch(new Response(JSON.stringify({
       output: [{
@@ -388,6 +830,15 @@ test("a request lease releases after fake fetch starts instead of waiting for it
       resultText: "已完成",
       state: "success",
     });
+    const saved = await within(saveProviderProfile({
+      apiKey: rotatedApiKey,
+      baseUrl: profile.baseUrl,
+      driver: profile.driver,
+      label: profile.label,
+    }, profile.id));
+    expect(providerConfigurationVersion(saved)).toBe(
+      providerConfigurationVersion(profile) + 1,
+    );
   } finally {
     finishFetch(new Response("{}", { status: 500 }));
     await execution?.catch(() => undefined);
@@ -683,6 +1134,7 @@ test("two OS processes can migrate the same v18 database exactly once", async ()
   const directory = await mkdtemp(join(tmpdir(), "unboundry-provider-migrate-"));
   try {
     const legacy = openAppDatabase(directory);
+    rollbackMigration39To38(legacy);
     const columns = () => new Set(
       (legacy.prepare("PRAGMA table_info(provider_profiles)").all() as Array<{
         name: string;
@@ -696,9 +1148,9 @@ test("two OS processes can migrate the same v18 database exactly once", async ()
         "ALTER TABLE provider_profiles DROP COLUMN provider_configuration_version",
       );
     }
-    // 当前 schema（v38）已由 v36 移除成本列，但该夹具用“当前库 + 删除迁移记录”
-    // 模拟 v18 旧库；v33 迁移仍会读取成本列，这里补回 v33 期望的旧列，
-    // 让 v19→v38 的迁移链可以完整重放。
+    // 精确撤销 v39 后，v38 已由 v36 移除成本列；该夹具再用
+    // “v38 库 + 删除迁移记录”模拟 v18 旧库；v33 迁移仍会读取成本列，
+    // 这里补回 v33 期望的旧列，让 v19→v39 的迁移链可以完整重放。
     const safetyColumns = () => new Set(
       (legacy.prepare("PRAGMA table_info(generation_safety_settings)").all() as Array<{
         name: string;
@@ -800,6 +1252,7 @@ test("two OS processes can migrate the same v18 database exactly once", async ()
         { count: 1, version: 36 },
         { count: 1, version: 37 },
         { count: 1, version: 38 },
+        { count: 1, version: 39 },
       ]);
     } finally {
       database.close();
