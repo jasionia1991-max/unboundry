@@ -1539,6 +1539,12 @@ test("only capability success or an explicit Provider/model update clears an aut
           5000000, ?, ?, ?, ?, '{}'
         )
       `);
+      const retryFixtureKinds = new Map<
+        string,
+        "audio" | "image" | "text" | "video"
+      >();
+      const retryGenerationInputKey = (id: string) =>
+        `generation-input-${id}`;
       const addRetryFixture = (input: {
         code: string;
         id: string;
@@ -1548,22 +1554,38 @@ test("only capability success or an explicit Provider/model update clears an aut
         providerModelId: string;
         providerProfileId: string;
         providerTaskId?: string;
-      }) => insertRetryFixture.run(
-        input.id,
-        `node-${input.id}`,
-        input.kind,
-        input.modelId,
-        JSON.stringify(input.parameters),
-        `key-${input.id}`,
-        `fingerprint-${input.id}`,
-        input.code,
-        retryTimestamp,
-        retryTimestamp,
-        input.providerProfileId,
-        input.providerModelId,
-        input.providerTaskId ?? null,
-        input.kind === "text" || input.kind === "video" ? "CNY" : "USD",
-      );
+      }) => {
+        retryFixtureKinds.set(input.id, input.kind);
+        return insertRetryFixture.run(
+          input.id,
+          `node-${input.id}`,
+          input.kind,
+          input.modelId,
+          JSON.stringify(input.parameters),
+          `key-${input.id}`,
+          `fingerprint-${input.id}`,
+          input.code,
+          retryTimestamp,
+          retryTimestamp,
+          input.providerProfileId,
+          input.providerModelId,
+          input.providerTaskId ?? null,
+          input.kind === "text" || input.kind === "video" ? "CNY" : "USD",
+        );
+      };
+      const retryFence = (id: string) => {
+        const kind = retryFixtureKinds.get(id);
+        if (!kind) throw new Error(`Retry fixture not found: ${id}`);
+        return {
+          canvasId: "default",
+          expectedAttempt: 1,
+          expectedCanvasRevision: 1,
+          expectedGenerationInputKey: retryGenerationInputKey(id),
+          expectedUpdatedAt: retryTimestamp,
+          kind,
+          nodeId: `node-${id}`,
+        };
+      };
 
       addRetryFixture({
         code: "SERVICE_RESTARTED",
@@ -1789,6 +1811,31 @@ test("only capability success or an explicit Provider/model update clears an aut
         providerProfileId: arkProfileId,
         providerTaskId: "already-paid-video-provider-task",
       });
+      database.prepare(`
+        INSERT INTO canvas_documents (
+          owner_id, id, revision, graph_revision, nodes, edges, viewport,
+          updated_at, save_session_id, save_sequence
+        ) VALUES ('__test__', 'default', 1, 1, ?, '[]', '{}', ?, NULL, 0)
+        ON CONFLICT(owner_id, id) DO UPDATE SET
+          revision = excluded.revision,
+          graph_revision = excluded.graph_revision,
+          nodes = excluded.nodes,
+          edges = excluded.edges,
+          viewport = excluded.viewport,
+          updated_at = excluded.updated_at,
+          save_session_id = NULL,
+          save_sequence = 0
+      `).run(
+        JSON.stringify(Array.from(retryFixtureKinds, ([id, kind]) => ({
+          data: {
+            [`${kind}GenerationInputKey`]: retryGenerationInputKey(id),
+            [`${kind}GenerationTaskId`]: id,
+          },
+          id: `node-${id}`,
+          type: kind,
+        }))),
+        retryTimestamp,
+      );
       const insertAcceptedProviderTask = database.prepare(`
         INSERT INTO generation_provider_attempts (
           task_id, execution_attempt, provider_profile_id, provider_model_id,
@@ -1838,7 +1885,10 @@ test("only capability success or an explicit Provider/model update clears an aut
         });
         const response = await incidentRequest(
           `/api/generation-tasks/${id}/retry`,
-          { method: "POST" },
+          {
+            body: JSON.stringify(retryFence(id)),
+            method: "POST",
+          },
         );
         expect(response.status).toBe(409);
         expect(await response.json()).toMatchObject({
@@ -1855,7 +1905,10 @@ test("only capability success or an explicit Provider/model update clears an aut
       });
       const preBoundaryAudioRetry = await incidentRequest(
         "/api/generation-tasks/retry-audio-restart-no-id/retry",
-        { method: "POST" },
+        {
+          body: JSON.stringify(retryFence("retry-audio-restart-no-id")),
+          method: "POST",
+        },
       );
       expect(preBoundaryAudioRetry.status).toBe(409);
       expect(await preBoundaryAudioRetry.json()).toMatchObject({
@@ -1873,7 +1926,10 @@ test("only capability success or an explicit Provider/model update clears an aut
         });
         const response = await incidentRequest(
           `/api/generation-tasks/${id}/retry`,
-          { method: "POST" },
+          {
+            body: JSON.stringify(retryFence(id)),
+            method: "POST",
+          },
         );
         expect(response.status).toBe(409);
         expect(await response.json()).toMatchObject({
@@ -1905,7 +1961,10 @@ test("only capability success or an explicit Provider/model update clears an aut
         });
         const response = await incidentRequest(
           `/api/generation-tasks/${id}/retry`,
-          { method: "POST" },
+          {
+            body: JSON.stringify(retryFence(id)),
+            method: "POST",
+          },
         );
         expect(response.status).toBe(409);
         expect(await response.json()).toMatchObject({

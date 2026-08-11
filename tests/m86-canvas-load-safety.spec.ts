@@ -224,16 +224,19 @@ function generationPostCount(page: Page) {
 }
 
 const PANEL_RETRY_TASK_ID = "m86-panel-retry-task";
+const PANEL_RETRY_INPUT_KEY = "m86-panel-retry-input-key";
 
 function panelRetryTask(canvasId: string) {
   return {
     attempt: 1,
+    canvasRevision: 1,
     canvasId,
     costCurrency: "CNY",
     createdAt: "2026-08-09T00:00:00.000Z",
     errorCode: "TEST_FAILURE",
     errorMessage: "离线门禁测试失败",
     id: PANEL_RETRY_TASK_ID,
+    generationInputKey: PANEL_RETRY_INPUT_KEY,
     kind: "text",
     nodeId: "m86-panel-retry-node",
     prompt: "Panel retry gate",
@@ -245,6 +248,7 @@ function panelRetryTask(canvasId: string) {
 
 async function installPanelRetryRoutes(page: Page) {
   let retryPosts = 0;
+  let listedCanvasId = "default";
   await page.route("**/api/generation-tasks**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -253,9 +257,21 @@ async function installPanelRetryRoutes(page: Page) {
       url.pathname === "/api/generation-tasks"
     ) {
       const canvasId = url.searchParams.get("canvasId") ?? "default";
+      listedCanvasId = canvasId;
       await route.fulfill({
         contentType: "application/json",
         json: { tasks: [panelRetryTask(canvasId)] },
+        status: 200,
+      });
+      return;
+    }
+    if (
+      request.method() === "GET" &&
+      url.pathname === `/api/generation-tasks/${PANEL_RETRY_TASK_ID}`
+    ) {
+      await route.fulfill({
+        contentType: "application/json",
+        json: panelRetryTask(listedCanvasId),
         status: 200,
       });
       return;
@@ -269,9 +285,10 @@ async function installPanelRetryRoutes(page: Page) {
       await route.fulfill({
         contentType: "application/json",
         json: {
-          ...panelRetryTask("default"),
+          ...panelRetryTask(listedCanvasId),
           retryAllowed: false,
           state: "retrying",
+          updatedAt: "2026-08-09T00:00:02.000Z",
         },
         status: 202,
       });
@@ -746,6 +763,100 @@ test("real /canvas GenerationTasksPanel clean retry sends exactly one POST after
   await flushBrowserTasks(page);
   expect(retryPosts()).toBe(1);
   expect(generationPosts()).toBe(1);
+});
+
+test("GenerationTasksPanel surfaces a detached retry and emits no accepted wakeup", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const target = window as typeof window & { __m86RetryWakeups?: unknown[] };
+    target.__m86RetryWakeups = [];
+    window.addEventListener(
+      "unboundry:generation-task-retry-accepted",
+      (event) => target.__m86RetryWakeups?.push(
+        (event as CustomEvent<unknown>).detail,
+      ),
+    );
+  });
+  await page.route("**/api/canvas/default", async (route) => {
+    await route.fulfill({
+      body: JSON.stringify(textDocument("A1", 1)),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+  let retryPosts = 0;
+  let retryBody: Record<string, unknown> | undefined;
+  let providerRequests = 0;
+  page.on("request", (request) => {
+    if (/openrouter|volcengine|mureka/i.test(request.url())) providerRequests += 1;
+  });
+  await page.route("**/api/generation-tasks**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (
+      request.method() === "GET" &&
+      url.pathname === "/api/generation-tasks"
+    ) {
+      await route.fulfill({
+        json: { tasks: [panelRetryTask("default")] },
+        status: 200,
+      });
+      return;
+    }
+    if (
+      request.method() === "GET" &&
+      url.pathname === `/api/generation-tasks/${PANEL_RETRY_TASK_ID}`
+    ) {
+      await route.fulfill({ json: panelRetryTask("default"), status: 200 });
+      return;
+    }
+    if (
+      request.method() === "POST" &&
+      url.pathname === `/api/generation-tasks/${PANEL_RETRY_TASK_ID}/retry`
+    ) {
+      retryPosts += 1;
+      retryBody = request.postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        json: {
+          code: "RETRY_BINDING_STALE",
+          error: "任务已不再绑定当前节点输入，请从节点重新提交",
+        },
+        status: 409,
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/canvas");
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-persistence-state",
+    "ready",
+  );
+  await page.getByTestId("tasks").click();
+  const retry = page.getByTestId(`tasks-retry-${PANEL_RETRY_TASK_ID}`);
+  await expect(retry).toBeEnabled();
+  await retry.click();
+  await expect.poll(() => retryPosts).toBe(1);
+  await expect(page.getByTestId("tasks-panel").getByRole("alert")).toContainText(
+    "任务已不再绑定当前节点输入",
+  );
+  await expect(retry).toBeEnabled();
+  expect(retryBody).toEqual({
+    canvasId: "default",
+    expectedAttempt: 1,
+    expectedCanvasRevision: 1,
+    expectedGenerationInputKey: PANEL_RETRY_INPUT_KEY,
+    expectedUpdatedAt: "2026-08-09T00:00:01.000Z",
+    kind: "text",
+    nodeId: "m86-panel-retry-node",
+  });
+  expect(await page.evaluate(() =>
+    (window as typeof window & { __m86RetryWakeups?: unknown[] })
+      .__m86RetryWakeups
+  )).toEqual([]);
+  expect(providerRequests).toBe(0);
 });
 
 test("real /canvas scope navigation while GenerationTasksPanel waits sends zero retry POST", async ({

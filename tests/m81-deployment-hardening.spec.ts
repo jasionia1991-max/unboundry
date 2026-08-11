@@ -1683,13 +1683,47 @@ test("schema-37 and exact schema-38 startup stay write-free until the explicit m
 
     const migratedStore = createGenerationTaskStore(schema38Directory);
     try {
+      const retryTask = migratedStore.get("m81-schema38-gap-task")!;
+      const retryInputKey = "m81-schema38-gap-input-key";
+      const retryCanvasRevision = 1;
+      const retryCanvas = openAppDatabase(schema38Directory);
+      try {
+        retryCanvas.prepare(`
+          INSERT INTO canvas_documents (
+            owner_id, id, revision, graph_revision, nodes, edges, viewport,
+            updated_at, save_session_id, save_sequence
+          ) VALUES (?, ?, 1, ?, ?, '[]', '{}', ?, NULL, 0)
+        `).run(
+          retryTask.ownerId!,
+          retryTask.canvasId,
+          retryCanvasRevision,
+          JSON.stringify([{
+            data: {
+              imageGenerationInputKey: retryInputKey,
+              imageGenerationTaskId: retryTask.id,
+            },
+            id: retryTask.nodeId,
+            type: retryTask.kind,
+          }]),
+          retryTask.updatedAt,
+        );
+      } finally {
+        retryCanvas.close();
+      }
       expect(
         migratedStore.hasUnsafeProviderAttemptForNewPaidRetry(
           "m81-schema38-gap-task",
         ),
       ).toBe(true);
       expect(() => migratedStore.admitRetry({
+        canvasId: retryTask.canvasId,
+        expectedAttempt: retryTask.attempt,
+        expectedCanvasRevision: retryCanvasRevision,
+        expectedGenerationInputKey: retryInputKey,
+        expectedUpdatedAt: retryTask.updatedAt,
+        kind: retryTask.kind,
         mode: "new-paid-attempt",
+        nodeId: retryTask.nodeId,
         snapshot: {
           credentialRevision: 7,
           modelConfiguration: {},

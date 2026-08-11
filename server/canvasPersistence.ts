@@ -1217,10 +1217,26 @@ export async function projectTitle(
         ON CONFLICT(owner_id, id) DO UPDATE SET
           title = excluded.title,
           updated_at = excluded.updated_at
-        WHERE excluded.updated_at >= project_metadata.updated_at
+        WHERE excluded.updated_at > project_metadata.updated_at
+          OR (
+            excluded.updated_at = project_metadata.updated_at
+            AND excluded.title = project_metadata.title
+          )
       `)
       .run(ownerId, id, item.title, item.updatedAt);
-    json(response, 200, read());
+    const saved = read();
+    if (
+      !saved ||
+      saved.title !== item.title ||
+      saved.updatedAt !== item.updatedAt
+    ) {
+      json(response, 409, {
+        current: saved ?? null,
+        error: "项目名称已在其他页面更新，请确认后重试",
+      });
+      return;
+    }
+    json(response, 200, saved);
   } catch (error) {
     if (error instanceof HttpRequestError) throw error;
     json(response, 400, {

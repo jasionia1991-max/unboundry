@@ -11,6 +11,32 @@ import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import type { ModelParameterValue } from "../../../types/modelParameters";
 import type { NodeInputState } from "../../../types/nodeInputs";
 
+function stableOwnershipValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableOwnershipValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, item]) => item !== undefined)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, item]) => [key, stableOwnershipValue(item)]),
+    );
+  }
+  return value;
+}
+
+/** Compact, catalog-independent ownership evidence for an in-flight task. */
+export function generationOwnershipKey(value: unknown) {
+  const source = JSON.stringify(stableOwnershipValue(value));
+  let left = 0x811c9dc5;
+  let right = 0x9e3779b9;
+  for (let index = 0; index < source.length; index += 1) {
+    const code = source.charCodeAt(index);
+    left = Math.imul(left ^ code, 0x01000193) >>> 0;
+    right = Math.imul(right ^ code, 0x85ebca6b) >>> 0;
+  }
+  return `${source.length.toString(36)}-${left.toString(36)}-${right.toString(36)}`;
+}
+
 export type PlaylistClip = {
   end: number;
   id: string;
@@ -44,6 +70,7 @@ export type ProbeNodeType = Node<
     audioGenerationErrorCode?: string;
     audioGenerationError?: string;
     audioGenerationInputKey?: string;
+    audioGenerationOwnershipKey?: string;
     audioGenerationRetryAllowed?: boolean;
     audioGenerationRetryBlockCode?: string;
     audioGenerationRetryBlockReason?: string;
@@ -62,6 +89,7 @@ export type ProbeNodeType = Node<
     imageGenerationErrorCode?: string;
     imageGenerationError?: string;
     imageGenerationInputKey?: string;
+    imageGenerationOwnershipKey?: string;
     imageGenerationRetryAllowed?: boolean;
     imageGenerationRetryBlockCode?: string;
     imageGenerationRetryBlockReason?: string;
@@ -93,6 +121,7 @@ export type ProbeNodeType = Node<
     textGenerationError?: string;
     textGenerationErrorCode?: string;
     textGenerationInputKey?: string;
+    textGenerationOwnershipKey?: string;
     textGenerationRetryAllowed?: boolean;
     textGenerationRetryBlockCode?: string;
     textGenerationRetryBlockReason?: string;
@@ -112,6 +141,7 @@ export type ProbeNodeType = Node<
     videoGenerationError?: string;
     videoGenerationErrorCode?: string;
     videoGenerationInputKey?: string;
+    videoGenerationOwnershipKey?: string;
     videoGenerationRetryAllowed?: boolean;
     videoGenerationRetryBlockCode?: string;
     videoGenerationRetryBlockReason?: string;

@@ -4,6 +4,7 @@ import {
   knownModelParameterSchema,
   submissionParameterValues,
   type ModelCapability,
+  type ModelParameterValue,
 } from "../types/modelParameters";
 import { generationInputKey } from
   "../client/src/generation/generationRetry";
@@ -105,6 +106,33 @@ function recoveryRequestSignature(kind: Kind) {
   return `${source.length.toString(36)}-${left.toString(36)}-${right.toString(36)}`;
 }
 
+function compactGenerationOwnershipKey(value: unknown) {
+  const source = JSON.stringify(stableSubmissionValue(value));
+  let left = 0x811c9dc5;
+  let right = 0x9e3779b9;
+  for (let index = 0; index < source.length; index += 1) {
+    const code = source.charCodeAt(index);
+    left = Math.imul(left ^ code, 0x01000193) >>> 0;
+    right = Math.imul(right ^ code, 0x85ebca6b) >>> 0;
+  }
+  return `${source.length.toString(36)}-${left.toString(36)}-${right.toString(36)}`;
+}
+
+function recoveryOwnershipKey(
+  kind: Kind,
+  prompt = `${kind} 原始提示词`,
+) {
+  return compactGenerationOwnershipKey({
+    ...(kind === "image"
+      ? { aspectRatio: undefined, quality: undefined }
+      : {}),
+    modelId: modelInputs[kind].id,
+    parameters: defaultParameterValues(schemas[kind]),
+    prompt,
+    upstream: [],
+  });
+}
+
 function submissionIntentSlot(kind: Kind) {
   return `unboundry:generation-submission:v2:__test__:default:${kind}:` +
     encodeURIComponent(nodeId(kind));
@@ -166,12 +194,37 @@ function canvasNodes(onlyKind?: Kind) {
 async function installRoutes(page: Page, retryAllowed: boolean) {
   let providerRequests = 0;
   let taskSubmissions = 0;
+  const bindingAcks = new Set<Kind>();
+  const statusBeforeBindingAck = new Map<Kind, number>();
   const taskRetries = new Map<Kind, number>();
   const tasks = new Map<string, Record<string, unknown>>();
   const idsByKey = new Map<string, string>();
 
   page.on("request", (request) => {
     if (/volces|openrouter|mureka/i.test(request.url())) providerRequests += 1;
+  });
+  page.on("response", (response) => {
+    const request = response.request();
+    if (
+      request.method() !== "PUT" ||
+      new URL(request.url()).pathname !== "/api/canvas/default" ||
+      !response.ok()
+    ) return;
+    try {
+      const body = request.postDataJSON() as {
+        nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+      };
+      for (const kind of kinds) {
+        const node = body.nodes?.find((candidate) => candidate.id === nodeId(kind));
+        if (
+          typeof node?.data?.[`${kind}GenerationTaskId`] === "string" &&
+          typeof node.data[`${kind}GenerationInputKey`] === "string" &&
+          typeof node.data[`${kind}GenerationOwnershipKey`] === "string"
+        ) bindingAcks.add(kind);
+      }
+    } catch {
+      // Non-canvas payloads are irrelevant to the binding ACK observation.
+    }
   });
   await page.route("**/api/models", async (route) => {
     await route.fulfill({
@@ -232,13 +285,28 @@ async function installRoutes(page: Page, retryAllowed: boolean) {
         kind: Kind;
         model?: string;
         nodeId: string;
+        ownPrompt?: string;
+        parameters?: Record<string, ModelParameterValue> & {
+          references?: unknown;
+        };
         prompt: string;
+        canvasRevision?: number;
       };
       taskSubmissions += 1;
       const id = `retry-ui-task-${body.kind}`;
       idsByKey.set(body.idempotencyKey, id);
+      const keyParameters = { ...(body.parameters ?? {}) };
+      delete keyParameters.references;
+      const submittedInputKey = generationInputKey({
+        inputs: [],
+        modelId: body.model,
+        ownPrompt: body.ownPrompt,
+        parameters: keyParameters,
+        prompt: body.prompt,
+      });
       const failed = {
         attempt: 1,
+        canvasRevision: body.canvasRevision,
         canvasId: "default",
         costCurrency: "CNY",
         createdAt: "2026-08-03T08:00:00.000Z",
@@ -247,6 +315,7 @@ async function installRoutes(page: Page, retryAllowed: boolean) {
           ? `${body.kind} 零Provider模拟失败`
           : `${body.kind} 上次生成结果无法确认`,
         id,
+        generationInputKey: submittedInputKey,
         kind: body.kind,
         model: body.model,
         nodeId: body.nodeId,
@@ -307,6 +376,15 @@ async function installRoutes(page: Page, retryAllowed: boolean) {
     }
     const id = url.pathname.split("/").at(-1) ?? "";
     if (method === "GET" && tasks.has(id)) {
+      const kind = tasks.get(id)?.kind;
+      if (typeof kind === "string" && kinds.includes(kind as Kind) &&
+        !bindingAcks.has(kind as Kind)) {
+        const typedKind = kind as Kind;
+        statusBeforeBindingAck.set(
+          typedKind,
+          (statusBeforeBindingAck.get(typedKind) ?? 0) + 1,
+        );
+      }
       await route.fulfill({
         contentType: "application/json",
         json: tasks.get(id),
@@ -322,9 +400,12 @@ async function installRoutes(page: Page, retryAllowed: boolean) {
   });
 
   return {
+    bindingAcked: (kind: Kind) => bindingAcks.has(kind),
     providerRequests: () => providerRequests,
     taskRetries: (kind: Kind) => taskRetries.get(kind) ?? 0,
     taskSubmissions: () => taskSubmissions,
+    statusBeforeBindingAck: (kind: Kind) =>
+      statusBeforeBindingAck.get(kind) ?? 0,
   };
 }
 
@@ -659,14 +740,24 @@ test("four retry handlers save first and fail closed on LOAD_REQUIRED", async ({
     await expect(page.getByTestId("canvas-world"))
       .toHaveAttribute("data-persistence-ready", "true");
     await generateAndWaitForFailure(page, kind);
+    await expect.poll(() => routes.bindingAcked(kind)).toBe(true);
+    expect(routes.statusBeforeBindingAck(kind)).toBe(0);
     await expect(retryButton(page, kind)).toBeEnabled();
     await expect.poll(async () => {
       const canvas = await (await request.get("/api/canvas/default")).json() as {
         nodes: Array<{ data: Record<string, unknown>; id: string }>;
       };
-      return canvas.nodes.find((node) => node.id === nodeId(kind))
-        ?.data[`${kind}GenerationTaskId`];
-    }).toBe(`retry-ui-task-${kind}`);
+      const node = canvas.nodes.find((candidate) => candidate.id === nodeId(kind));
+      return {
+        inputKey: typeof node?.data[`${kind}GenerationInputKey`],
+        ownershipKey: typeof node?.data[`${kind}GenerationOwnershipKey`],
+        taskId: node?.data[`${kind}GenerationTaskId`],
+      };
+    }).toEqual({
+      inputKey: "string",
+      ownershipKey: "string",
+      taskId: `retry-ui-task-${kind}`,
+    });
     await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
 
     const savedTitle = `${kind} retry after saved title`;
@@ -854,6 +945,319 @@ for (const kind of ["image", "video"] as const) {
   });
 }
 
+test("four nodes pin the effective default before a lost paid response and recover the same task after catalog drift", async ({
+  page,
+  request,
+}) => {
+  type CanvasAck = {
+    data: Record<string, unknown>;
+    graphRevision?: number;
+  };
+  type PostEvidence = {
+    ackedSnapshot: boolean;
+    canvasRevision?: number;
+    model?: string;
+  };
+
+  let currentKind: Kind = "text";
+  let defaultVersion: "A" | "B" = "A";
+  let providerRequests = 0;
+  const builtTasks = new Set<Kind>();
+  const lostLookups = new Set<Kind>();
+  const canvasAcks = new Map<Kind, CanvasAck>();
+  const createPosts = new Map<Kind, number>();
+  const postEvidence = new Map<Kind, PostEvidence>();
+
+  const providerRequestListener = (inbound: { url(): string }) => {
+    if (/volces|openrouter|mureka/i.test(inbound.url())) providerRequests += 1;
+  };
+  const canvasResponseListener = (response: {
+    json(): Promise<unknown>;
+    ok(): boolean;
+    request(): {
+      method(): string;
+      postDataJSON(): unknown;
+      url(): string;
+    };
+  }) => {
+    const inbound = response.request();
+    if (
+      !response.ok() ||
+      inbound.method() !== "PUT" ||
+      new URL(inbound.url()).pathname !== "/api/canvas/default"
+    ) return;
+    const body = inbound.postDataJSON() as {
+      nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+    };
+    for (const kind of kinds) {
+      const data = body.nodes?.find((node) => node.id === nodeId(kind))?.data;
+      if (!data) continue;
+      const ack: CanvasAck = { data };
+      canvasAcks.set(kind, ack);
+      void response.json().then((value) => {
+        const graphRevision = (value as { graphRevision?: unknown })
+          ?.graphRevision;
+        if (Number.isSafeInteger(graphRevision)) {
+          ack.graphRevision = Number(graphRevision);
+        }
+      }).catch(() => undefined);
+    }
+  };
+  page.on("request", providerRequestListener);
+  page.on("response", canvasResponseListener);
+
+  await page.route("**/api/models", async (route) => {
+    const kind = currentKind;
+    const published = (["A", "B"] as const).map((version) => ({
+      capability: kind,
+      displayName: `Default ${version} ${kind}`,
+      generationAvailable: true,
+      generationUnavailableReason: "",
+      generationUnavailableReasonCode: null,
+      id: version === "A"
+        ? modelInputs[kind].id
+        : `${modelInputs[kind].id}-v2`,
+      isDefault: version === defaultVersion,
+      parameterSchema: schemas[kind],
+    }));
+    await route.fulfill({
+      json: { generationEnabled: true, models: published },
+      status: 200,
+    });
+  });
+
+  await page.route("**/api/generation-tasks**", async (route) => {
+    const inbound = route.request();
+    const url = new URL(inbound.url());
+    const kind = currentKind;
+    const taskId = `default-drift-lost-task-${kind}`;
+    const prompt = `${kind} 原始提示词`;
+    const inputKey = generationInputKey({
+      inputs: [],
+      modelId: modelInputs[kind].id,
+      ownPrompt: prompt,
+      parameters: submissionParameterValues(
+        schemas[kind],
+        defaultParameterValues(schemas[kind]),
+      ),
+      prompt,
+    });
+    const failedTask = {
+      attempt: 1,
+      canvasId: "default",
+      costCurrency: "CNY",
+      createdAt: "2026-08-12T08:00:00.000Z",
+      errorCode: "DEFAULT_DRIFT_FIXTURE",
+      errorMessage: `${kind} default drift fixture failure`,
+      generationInputKey: inputKey,
+      id: taskId,
+      kind,
+      nodeId: nodeId(kind),
+      prompt,
+      retryAllowed: false,
+      retryBlockCode: "DEFAULT_DRIFT_FIXTURE",
+      retryBlockReason: "fixture blocks retry",
+      state: "failed",
+      updatedAt: "2026-08-12T08:00:01.000Z",
+    };
+
+    if (url.pathname.endsWith("/status")) {
+      await route.fulfill({
+        json: {
+          paidProviderRequests: 0,
+          persistentQueueReady: true,
+          providerConfigured: true,
+          submissionEnabled: true,
+        },
+        status: 200,
+      });
+      return;
+    }
+    if (url.pathname.endsWith("/preflight") && inbound.method() === "POST") {
+      await route.fulfill({
+        json: { canEnqueue: true, canSubmit: true, problems: [] },
+        status: 200,
+      });
+      return;
+    }
+    if (url.pathname.endsWith("/by-idempotency")) {
+      if (!builtTasks.has(kind)) {
+        await route.fulfill({ json: { error: "not found" }, status: 404 });
+        return;
+      }
+      if (!lostLookups.has(kind)) {
+        lostLookups.add(kind);
+        await route.abort("failed");
+        return;
+      }
+      await route.fulfill({ json: failedTask, status: 200 });
+      return;
+    }
+    if (
+      url.pathname === `/api/generation-tasks/${taskId}` &&
+      inbound.method() === "GET"
+    ) {
+      await route.fulfill({ json: failedTask, status: 200 });
+      return;
+    }
+    if (url.pathname === "/api/generation-tasks" && inbound.method() === "GET") {
+      await route.fulfill({ json: { tasks: builtTasks.has(kind) ? [failedTask] : [] }, status: 200 });
+      return;
+    }
+    if (url.pathname === "/api/generation-tasks" && inbound.method() === "POST") {
+      const body = inbound.postDataJSON() as {
+        canvasRevision?: number;
+        model?: string;
+      };
+      createPosts.set(kind, (createPosts.get(kind) ?? 0) + 1);
+      const ack = canvasAcks.get(kind);
+      const modelNameKey = kind === "video" ? "videoModel" : `${kind}ModelName`;
+      const expectedParameters = defaultParameterValues(schemas[kind]);
+      const ackedParameters = ack?.data[`${kind}Parameters`];
+      postEvidence.set(kind, {
+        ackedSnapshot: Boolean(
+          ack &&
+          ack.data[`${kind}ModelId`] === modelInputs[kind].id &&
+          ack.data[modelNameKey] === `Default A ${kind}` &&
+          JSON.stringify(ackedParameters) ===
+            JSON.stringify(expectedParameters) &&
+          (kind !== "image" || (
+            ack.data.imageAspectRatio === expectedParameters.aspectRatio &&
+            ack.data.imageQuality === expectedParameters.quality
+          ))
+        ),
+        canvasRevision: body.canvasRevision,
+        model: body.model,
+      });
+      builtTasks.add(kind);
+      // The server-side task exists, but neither the POST response nor the
+      // immediate idempotency reconciliation reaches this page.
+      await route.abort("failed");
+      return;
+    }
+    await route.fulfill({ json: { error: "unexpected" }, status: 404 });
+  });
+
+  try {
+    for (const kind of kinds) {
+      currentKind = kind;
+      defaultVersion = "A";
+      builtTasks.delete(kind);
+      lostLookups.delete(kind);
+      canvasAcks.delete(kind);
+      createPosts.delete(kind);
+      postEvidence.delete(kind);
+      if (page.url().startsWith("http")) {
+        await page.evaluate(() => {
+          window.localStorage.clear();
+          window.sessionStorage.clear();
+        });
+      }
+
+      await request.delete("/api/canvas/default");
+      const [baseNode] = canvasNodes(kind);
+      const data = { ...baseNode.data } as Record<string, unknown>;
+      delete data[`${kind}ModelId`];
+      delete data[`${kind}Parameters`];
+      delete data[kind === "video" ? "videoModel" : `${kind}ModelName`];
+      if (kind === "image") {
+        delete data.imageAspectRatio;
+        delete data.imageQuality;
+      }
+      expect((await request.put("/api/canvas/default", {
+        data: {
+          edges: [],
+          nodes: [{ ...baseNode, data }],
+          revision: 0,
+          viewport: { x: 0, y: 0, zoom: 0.75 },
+        },
+      })).ok()).toBeTruthy();
+
+      await page.goto("/canvas");
+      await expect(page.getByTestId("canvas-world"))
+        .toHaveAttribute("data-persistence-ready", "true");
+      await selectNode(page, kind);
+      const generate = page.getByTestId(`${kind}-creator`)
+        .getByRole("button", { name: "Generate" });
+      await expect(generate).toBeEnabled();
+      await generate.click();
+      await expect.poll(() => createPosts.get(kind) ?? 0).toBe(1);
+      await expect.poll(() => lostLookups.has(kind)).toBe(true);
+      await expect(generate).toBeEnabled();
+
+      const evidence = postEvidence.get(kind);
+      expect(evidence).toMatchObject({
+        ackedSnapshot: true,
+        model: modelInputs[kind].id,
+      });
+      await expect.poll(() => canvasAcks.get(kind)?.graphRevision)
+        .toBe(evidence?.canvasRevision);
+
+      const expectedParameters = defaultParameterValues(schemas[kind]);
+      const beforeReload = await (
+        await request.get("/api/canvas/default")
+      ).json() as {
+        nodes: Array<{ data: Record<string, unknown>; id: string }>;
+      };
+      const pinnedBeforeReload = beforeReload.nodes.find(
+        (node) => node.id === nodeId(kind),
+      )?.data;
+      expect(pinnedBeforeReload?.[`${kind}ModelId`])
+        .toBe(modelInputs[kind].id);
+      expect(pinnedBeforeReload?.[`${kind}Parameters`])
+        .toEqual(expectedParameters);
+      expect(pinnedBeforeReload?.[`${kind}GenerationTaskId`]).toBeUndefined();
+      if (kind === "image") {
+        expect(pinnedBeforeReload?.imageAspectRatio)
+          .toBe(expectedParameters.aspectRatio);
+        expect(pinnedBeforeReload?.imageQuality)
+          .toBe(expectedParameters.quality);
+      }
+      await expect.poll(() => page.evaluate((slot) =>
+        window.localStorage.getItem(slot), submissionIntentSlot(kind)))
+        .not.toBeNull();
+
+      defaultVersion = "B";
+      await page.reload();
+      await expect(page.getByTestId("canvas-world"))
+        .toHaveAttribute("data-persistence-ready", "true");
+      await expect.poll(async () => {
+        const canvas = await (
+          await request.get("/api/canvas/default")
+        ).json() as {
+          nodes: Array<{ data: Record<string, unknown>; id: string }>;
+        };
+        return canvas.nodes.find((node) => node.id === nodeId(kind))
+          ?.data[`${kind}GenerationTaskId`];
+      }).toBe(`default-drift-lost-task-${kind}`);
+
+      const recovered = await (
+        await request.get("/api/canvas/default")
+      ).json() as {
+        nodes: Array<{ data: Record<string, unknown>; id: string }>;
+      };
+      const recoveredData = recovered.nodes.find(
+        (node) => node.id === nodeId(kind),
+      )?.data;
+      expect(recoveredData?.[`${kind}ModelId`]).toBe(modelInputs[kind].id);
+      expect(recoveredData?.[`${kind}Parameters`]).toEqual(expectedParameters);
+      if (kind === "image") {
+        expect(recoveredData?.imageAspectRatio)
+          .toBe(expectedParameters.aspectRatio);
+        expect(recoveredData?.imageQuality).toBe(expectedParameters.quality);
+      }
+      expect(createPosts.get(kind)).toBe(1);
+      expect(providerRequests).toBe(0);
+    }
+  } finally {
+    page.off("request", providerRequestListener);
+    page.off("response", canvasResponseListener);
+    await page.unroute("**/api/models");
+    await page.unroute("**/api/generation-tasks**");
+    await request.delete("/api/canvas/default");
+  }
+});
+
 for (const lateCancelCase of (["video", "audio"] as const).flatMap(
   (kind) => (["success", "error"] as const).map((outcome) => ({ kind, outcome })),
 )) {
@@ -905,6 +1309,7 @@ for (const lateCancelCase of (["video", "audio"] as const).flatMap(
     let cancelRequests = 0;
     let createPosts = 0;
     let listOldTask = true;
+    let oldTaskReads = 0;
     let markCancelStarted!: () => void;
     const cancelStarted = new Promise<void>((resolve) => {
       markCancelStarted = resolve;
@@ -934,6 +1339,11 @@ for (const lateCancelCase of (["video", "audio"] as const).flatMap(
     page.on("request", (entry) => {
       if (/volces|openrouter|mureka/i.test(entry.url())) providerRequests += 1;
     });
+    if (kind === "audio") {
+      await page.route("**/api/audio-assets/**", async (route) => {
+        await route.fulfill({ body: "", status: 404 });
+      });
+    }
     await page.route("**/api/models", async (route) => {
       await route.fulfill({
         json: {
@@ -995,6 +1405,11 @@ for (const lateCancelCase of (["video", "audio"] as const).flatMap(
         url.pathname === `/api/generation-tasks/${oldTaskId}` &&
         inbound.method() === "GET"
       ) {
+        oldTaskReads += 1;
+        if (oldTaskReads === 1) {
+          await route.fulfill({ json: oldRunning, status: 200 });
+          return;
+        }
         markOldPollStarted();
         await oldPollGate;
         await route.fulfill({ json: oldRunning, status: 200 }).catch(() => undefined);
@@ -1274,7 +1689,7 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
     state: "success",
     updatedAt: "2026-08-09T12:00:02.000Z",
   };
-  await page.addInitScript(({ oldSuccess, oldTaskId }) => {
+  await page.addInitScript(({ oldRunning, oldSuccess, oldTaskId }) => {
     const state: {
       oldGets: number;
       releaseOld?: () => void;
@@ -1295,6 +1710,12 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
         url.pathname === `/api/generation-tasks/${oldTaskId}`
       ) {
         state.oldGets += 1;
+        if (state.oldGets === 1) {
+          return Promise.resolve(new Response(JSON.stringify(oldRunning), {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          }));
+        }
         return new Promise<Response>((resolve) => {
           // Intentionally ignore the recovery effect's abort. Ownership, not
           // transport cooperation, must reject this late success.
@@ -1309,7 +1730,7 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
       }
       return originalFetch(input, init);
     }) as typeof window.fetch;
-  }, { oldSuccess, oldTaskId });
+  }, { oldRunning, oldSuccess, oldTaskId });
 
   let newGets = 0;
   let oldCancelled = false;
@@ -1425,6 +1846,7 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
     ),
     prompt: "image 原始提示词",
   });
+  const oldOwnershipKey = recoveryOwnershipKey("image");
   const [baseNode] = canvasNodes("image");
   expect((await request.put("/api/canvas/default", {
     data: {
@@ -1437,6 +1859,7 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
           imageGeneratedSuccess: true,
           imageGenerating: true,
           imageGenerationInputKey: oldInputKey,
+          imageGenerationOwnershipKey: oldOwnershipKey,
           imageGenerationTaskId: oldTaskId,
           imageSrc: "/api/assets/m41-image-old-preview",
         },
@@ -1453,7 +1876,7 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
     await expect.poll(() => page.evaluate(() =>
       (window as typeof window & {
         __m41ImageOldOwner?: { oldGets: number };
-      }).__m41ImageOldOwner?.oldGets ?? 0)).toBeGreaterThanOrEqual(1);
+      }).__m41ImageOldOwner?.oldGets ?? 0)).toBeGreaterThanOrEqual(2);
     await selectNode(page, "image");
     const creator = page.getByTestId("image-creator");
     const cancel = creator.getByRole("button", { name: "取消生成" });
@@ -1563,6 +1986,18 @@ for (const retryPollingCase of [
   }) => {
     const taskId = `m41-${kind}-retry-poll-${failure.replaceAll(" ", "-")}`;
     const resultAssetId = `m41-${kind}-retry-poll-result-${failure.replaceAll(" ", "-")}`;
+    const submittedParameters = submissionParameterValues(
+      schemas[kind],
+      defaultParameterValues(schemas[kind]),
+    );
+    const inputKey = generationInputKey({
+      inputs: [],
+      modelId: modelInputs[kind].id,
+      ownPrompt: `${kind} 原始提示词`,
+      parameters: submittedParameters,
+      prompt: `${kind} 原始提示词`,
+    });
+    const ownershipKey = recoveryOwnershipKey(kind);
     const failedTask = {
       attempt: 1,
       canvasId: "default",
@@ -1570,6 +2005,8 @@ for (const retryPollingCase of [
       createdAt: "2026-08-09T12:30:00.000Z",
       errorCode: "AUTH",
       errorMessage: `${kind} retry fixture failure`,
+      generationInputKey: inputKey,
+      generationOwnershipKey: ownershipKey,
       id: taskId,
       kind,
       model: modelInputs[kind].id,
@@ -1609,7 +2046,7 @@ for (const retryPollingCase of [
     if (failure !== "GET 500") {
       await page.clock.install();
       await page.addInitScript(({ failure, taskId }) => {
-        const state = { detailStarts: 0 };
+        const state = { hungStarts: 0, retryAccepted: false };
         (window as typeof window & {
           __m41RetryHungDetail?: typeof state;
         }).__m41RetryHungDetail = state;
@@ -1624,9 +2061,10 @@ for (const retryPollingCase of [
           if (
             method === "GET" &&
             url.pathname === `/api/generation-tasks/${taskId}` &&
-            state.detailStarts === 0
+            state.retryAccepted &&
+            state.hungStarts === 0
           ) {
-            state.detailStarts += 1;
+            state.hungStarts += 1;
             if (failure === "fetch hung") {
               return new Promise<Response>(() => {
                 // The status deadline must not depend on fetch honoring abort.
@@ -1650,7 +2088,7 @@ for (const retryPollingCase of [
     }
 
     let createPosts = 0;
-    let detailReads = 0;
+    let postAcceptanceDetailReads = 0;
     let providerRequests = 0;
     let retryAccepted = false;
     let retryPosts = 0;
@@ -1715,6 +2153,16 @@ for (const retryPollingCase of [
       ) {
         retryPosts += 1;
         retryAccepted = true;
+        if (failure !== "GET 500") {
+          await page.evaluate(() => {
+            const state = (window as typeof window & {
+              __m41RetryHungDetail?: {
+                retryAccepted: boolean;
+              };
+            }).__m41RetryHungDetail;
+            if (state) state.retryAccepted = true;
+          });
+        }
         await route.fulfill({ json: queuedTask, status: 202 });
         return;
       }
@@ -1722,8 +2170,12 @@ for (const retryPollingCase of [
         url.pathname === `/api/generation-tasks/${taskId}` &&
         inbound.method() === "GET"
       ) {
-        detailReads += 1;
-        if (failure === "GET 500" && detailReads === 1) {
+        if (!retryAccepted) {
+          await route.fulfill({ json: failedTask, status: 200 });
+          return;
+        }
+        postAcceptanceDetailReads += 1;
+        if (failure === "GET 500" && postAcceptanceDetailReads === 1) {
           await route.fulfill({
             json: { code: "TEMPORARY", error: "temporary status outage" },
             status: 500,
@@ -1743,17 +2195,6 @@ for (const retryPollingCase of [
     });
 
     await request.delete("/api/canvas/default");
-    const submittedParameters = submissionParameterValues(
-      schemas[kind],
-      defaultParameterValues(schemas[kind]),
-    );
-    const inputKey = generationInputKey({
-      inputs: [],
-      modelId: modelInputs[kind].id,
-      ownPrompt: `${kind} 原始提示词`,
-      parameters: submittedParameters,
-      prompt: `${kind} 原始提示词`,
-    });
     const [baseNode] = canvasNodes(kind);
     expect((await request.put("/api/canvas/default", {
       data: {
@@ -1765,6 +2206,7 @@ for (const retryPollingCase of [
             [`${kind}GenerationError`]: `${kind} retry fixture failure`,
             [`${kind}GenerationErrorCode`]: "AUTH",
             [`${kind}GenerationInputKey`]: inputKey,
+            [`${kind}GenerationOwnershipKey`]: ownershipKey,
             [`${kind}Generating`]: false,
             [`${kind}GenerationRetryAllowed`]: true,
             [`${kind}GenerationTaskId`]: taskId,
@@ -1799,8 +2241,8 @@ for (const retryPollingCase of [
       if (failure !== "GET 500") {
         await expect.poll(() => page.evaluate(() =>
           (window as typeof window & {
-            __m41RetryHungDetail?: { detailStarts: number };
-          }).__m41RetryHungDetail?.detailStarts ?? 0)).toBe(1);
+            __m41RetryHungDetail?: { hungStarts: number };
+          }).__m41RetryHungDetail?.hungStarts ?? 0)).toBe(1);
         await page.clock.fastForward(10_100);
       }
 
@@ -1870,11 +2312,25 @@ for (const saveGateCase of (["image", "video", "audio"] as const).flatMap(
     const resultAssetId = `m41-${kind}-retry-save-gate-result`;
     const originalPrompt = `${kind} 原始提示词`;
     const changedPrompt = `${kind} save gate changed prompt`;
+    const submittedParameters = submissionParameterValues(
+      schemas[kind],
+      defaultParameterValues(schemas[kind]),
+    );
+    const inputKey = generationInputKey({
+      inputs: [],
+      modelId: modelInputs[kind].id,
+      ownPrompt: originalPrompt,
+      parameters: submittedParameters,
+      prompt: originalPrompt,
+    });
+    const ownershipKey = recoveryOwnershipKey(kind, originalPrompt);
     const baseTask = {
       attempt: 1,
       canvasId: "default",
       costCurrency: "CNY",
       createdAt: "2026-08-09T13:00:00.000Z",
+      generationInputKey: inputKey,
+      generationOwnershipKey: ownershipKey,
       id: taskId,
       kind,
       model: modelInputs[kind].id,
@@ -2008,24 +2464,16 @@ for (const saveGateCase of (["image", "video", "audio"] as const).flatMap(
         url.pathname === `/api/generation-tasks/${taskId}` &&
         inbound.method() === "GET"
       ) {
-        await route.fulfill({ json: successTask, status: 200 });
+        await route.fulfill({
+          json: generationAccepted ? successTask : failedTask,
+          status: 200,
+        });
         return;
       }
       await route.fulfill({ json: { error: "unexpected" }, status: 404 });
     });
 
     await request.delete("/api/canvas/default");
-    const submittedParameters = submissionParameterValues(
-      schemas[kind],
-      defaultParameterValues(schemas[kind]),
-    );
-    const inputKey = generationInputKey({
-      inputs: [],
-      modelId: modelInputs[kind].id,
-      ownPrompt: originalPrompt,
-      parameters: submittedParameters,
-      prompt: originalPrompt,
-    });
     const [baseNode] = canvasNodes(kind);
     expect((await request.put("/api/canvas/default", {
       data: {
@@ -2037,6 +2485,7 @@ for (const saveGateCase of (["image", "video", "audio"] as const).flatMap(
             [`${kind}GenerationError`]: `${kind} retryable fixture failure`,
             [`${kind}GenerationErrorCode`]: "AUTH",
             [`${kind}GenerationInputKey`]: inputKey,
+            [`${kind}GenerationOwnershipKey`]: ownershipKey,
             [`${kind}Generating`]: false,
             [`${kind}GenerationRetryAllowed`]: true,
             [`${kind}GenerationTaskId`]: taskId,
@@ -2282,18 +2731,33 @@ for (const ensureFenceCase of [
   });
 }
 
-for (const kind of ["video", "audio"] as const) {
+for (const kind of kinds) {
   test(`${kind} recovered polling pauses on a transient 500 and resumes to success without POST`, async ({
     page,
     request,
   }) => {
     const taskId = `m41-recovered-polling-pause-${kind}`;
     const resultAssetId = `m41-recovered-polling-result-${kind}`;
+    const resultText = "m41 recovered Text result";
+    const submittedParameters = submissionParameterValues(
+      schemas[kind],
+      defaultParameterValues(schemas[kind]),
+    );
+    const activeInputKey = generationInputKey({
+      inputs: [],
+      modelId: modelInputs[kind].id,
+      ownPrompt: `${kind} 原始提示词`,
+      parameters: submittedParameters,
+      prompt: `${kind} 原始提示词`,
+    });
+    const ownershipKey = recoveryOwnershipKey(kind);
     const runningTask = {
       attempt: 1,
       canvasId: "default",
       costCurrency: "CNY",
       createdAt: "2026-08-09T11:30:00.000Z",
+      generationInputKey: activeInputKey,
+      generationOwnershipKey: ownershipKey,
       id: taskId,
       kind,
       model: modelInputs[kind].id,
@@ -2304,15 +2768,23 @@ for (const kind of ["video", "audio"] as const) {
     };
     const successTask = {
       ...runningTask,
-      resultAssetId,
-      resultMedia: {
-        byteSize: 768,
-        contentType: kind === "video" ? "video/mp4" : "audio/mpeg",
-        durationSeconds: 5,
-        durationStatus: "ready",
-        storageBackend: "local",
-      },
-      resultUrl: mediaAssetUrl(kind, resultAssetId),
+      ...(kind === "text"
+        ? { resultText }
+        : {
+            resultAssetId,
+            resultMedia: {
+              byteSize: 768,
+              contentType: kind === "image"
+                ? "image/png"
+                : kind === "video"
+                  ? "video/mp4"
+                  : "audio/mpeg",
+              durationSeconds: kind === "image" ? null : 5,
+              durationStatus: kind === "image" ? "not-applicable" : "ready",
+              storageBackend: "local",
+            },
+            resultUrl: mediaAssetUrl(kind, resultAssetId),
+          }),
       state: "success",
       updatedAt: "2026-08-09T11:30:01.000Z",
     };
@@ -2324,6 +2796,11 @@ for (const kind of ["video", "audio"] as const) {
     page.on("request", (entry) => {
       if (/volces|openrouter|mureka/i.test(entry.url())) providerRequests += 1;
     });
+    if (kind === "audio") {
+      await page.route("**/api/audio-assets/**", async (route) => {
+        await route.fulfill({ body: "", status: 404 });
+      });
+    }
     await page.route("**/api/models", async (route) => {
       await route.fulfill({
         json: {
@@ -2388,17 +2865,6 @@ for (const kind of ["video", "audio"] as const) {
     });
 
     await request.delete("/api/canvas/default");
-    const submittedParameters = submissionParameterValues(
-      schemas[kind],
-      defaultParameterValues(schemas[kind]),
-    );
-    const activeInputKey = generationInputKey({
-      inputs: [],
-      modelId: modelInputs[kind].id,
-      ownPrompt: `${kind} 原始提示词`,
-      parameters: submittedParameters,
-      prompt: `${kind} 原始提示词`,
-    });
     const [baseNode] = canvasNodes(kind);
     expect((await request.put("/api/canvas/default", {
       data: {
@@ -2409,8 +2875,19 @@ for (const kind of ["video", "audio"] as const) {
             ...baseNode.data,
             [`${kind}Generating`]: true,
             [`${kind}GenerationInputKey`]: activeInputKey,
+            [`${kind}GenerationOwnershipKey`]: ownershipKey,
             [`${kind}GenerationTaskId`]: taskId,
-            [`${kind}Src`]: mediaAssetUrl(kind, `m41-recovered-polling-old-${kind}`),
+            ...(kind === "text"
+              ? {
+                  content: "m41 recovered Text old result",
+                  contentHtml: "<p>m41 recovered Text old result</p>",
+                }
+              : {
+                  [`${kind}Src`]: mediaAssetUrl(
+                    kind,
+                    `m41-recovered-polling-old-${kind}`,
+                  ),
+                }),
           },
         }],
         revision: 0,
@@ -2419,14 +2896,29 @@ for (const kind of ["video", "audio"] as const) {
     })).ok()).toBeTruthy();
 
     try {
-      await page.goto("/canvas");
+      if (kind === "audio") {
+        await page.goto("/canvas", { waitUntil: "domcontentloaded" });
+      } else {
+        await page.goto("/canvas");
+      }
       await expect(page.getByTestId("canvas-world"))
         .toHaveAttribute("data-persistence-ready", "true");
-      await expect.poll(() => listReads).toBeGreaterThanOrEqual(1);
       await expect.poll(() => taskReads).toBeGreaterThanOrEqual(1);
+      expect(listReads).toBe(0);
       const node = page.getByTestId(`${kind}-node-${nodeId(kind)}`);
-      await expect(node.getByRole("alert")).toContainText("点击重试重新检查");
-      const resume = node.getByRole("button", { name: "重新检查任务状态" });
+      const controls = kind === "text"
+        ? page.getByTestId("text-creator")
+        : node;
+      if (kind === "text") {
+        await selectNode(page, kind);
+        const status = controls.getByTestId("upstream-input-problem");
+        await expect(status).toHaveAttribute("role", "status");
+        await expect(status).toContainText("点击重试重新检查");
+      } else {
+        await expect(node.getByRole("alert"))
+          .toContainText("点击重试重新检查");
+      }
+      const resume = controls.getByRole("button", { name: "重新检查任务状态" });
       await expect(resume).toBeVisible();
       await resume.click();
 
@@ -2440,13 +2932,17 @@ for (const kind of ["video", "audio"] as const) {
         const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
         return {
           generating: data?.[`${kind}Generating`],
-          src: data?.[`${kind}Src`],
+          result: kind === "text"
+            ? data?.content
+            : data?.[`${kind}Src`],
           taskId: data?.[`${kind}GenerationTaskId`] ?? null,
         };
       }).toEqual({
         generating: false,
-        src: mediaAssetUrl(kind, resultAssetId),
-        taskId: null,
+        result: kind === "text"
+          ? resultText
+          : mediaAssetUrl(kind, resultAssetId),
+        taskId: kind === "text" ? taskId : null,
       });
       expect(taskSubmissions).toBe(0);
       expect(providerRequests).toBe(0);
@@ -2764,6 +3260,24 @@ test("persisted active media tasks replace an old image, video, or audio result"
   const mediaKinds = ["image", "video", "audio"] as const;
   const resultUrl = (kind: (typeof mediaKinds)[number]) =>
     mediaAssetUrl(kind, `new-result-${kind}`);
+  const bindings = new Map(mediaKinds.map((kind) => {
+    const parameters = submissionParameterValues(
+      schemas[kind],
+      defaultParameterValues(schemas[kind]),
+    );
+    return [kind, {
+      inputKey: generationInputKey({
+        inputs: [],
+        modelId: modelInputs[kind].id,
+        ownPrompt: `${kind} 原始提示词`,
+        parameters,
+        prompt: `${kind} 原始提示词`,
+      }),
+      ownershipKey: recoveryOwnershipKey(kind),
+    }] as const;
+  }));
+  const exactReads = new Set<string>();
+  let listReads = 0;
   let providerRequests = 0;
   let taskSubmissions = 0;
   const tasks = mediaKinds.map((kind, index) => ({
@@ -2771,6 +3285,8 @@ test("persisted active media tasks replace an old image, video, or audio result"
     canvasId: "default",
     costCurrency: "CNY",
     createdAt: "2026-08-09T08:00:00.000Z",
+    generationInputKey: bindings.get(kind)!.inputKey,
+    generationOwnershipKey: bindings.get(kind)!.ownershipKey,
     id: `old-result-recovery-${kind}`,
     kind,
     model: modelInputs[kind].id,
@@ -2835,8 +3351,19 @@ test("persisted active media tasks replace an old image, video, or audio result"
       return;
     }
     if (url.pathname === "/api/generation-tasks" && inbound.method() === "GET") {
+      listReads += 1;
       await route.fulfill({ json: { tasks }, status: 200 });
       return;
+    }
+    if (inbound.method() === "GET") {
+      const task = tasks.find((candidate) =>
+        url.pathname === `/api/generation-tasks/${candidate.id}`
+      );
+      if (task) {
+        exactReads.add(task.id);
+        await route.fulfill({ json: task, status: 200 });
+        return;
+      }
     }
     if (url.pathname === "/api/generation-tasks" && inbound.method() === "POST") {
       taskSubmissions += 1;
@@ -2850,7 +3377,8 @@ test("persisted active media tasks replace an old image, video, or audio result"
       label: kind[0].toUpperCase() + kind.slice(1),
       title: `Old ${kind}`,
       [`${kind}Generating`]: true,
-      [`${kind}GenerationInputKey`]: undefined,
+      [`${kind}GenerationInputKey`]: bindings.get(kind)!.inputKey,
+      [`${kind}GenerationOwnershipKey`]: bindings.get(kind)!.ownershipKey,
       [`${kind}GenerationTaskId`]: `old-result-recovery-${kind}`,
       [`${kind}ModelId`]: modelInputs[kind].id,
       [`${kind}Parameters`]: defaultParameterValues(schemas[kind]),
@@ -2890,6 +3418,8 @@ test("persisted active media tasks replace an old image, video, or audio result"
         return [data?.[`${kind}Src`], data?.[`${kind}Generating`]];
       });
     }).toEqual(mediaKinds.map((kind) => [resultUrl(kind), false]));
+    expect(exactReads).toEqual(new Set(tasks.map((task) => task.id)));
+    expect(listReads).toBe(0);
     expect(taskSubmissions).toBe(0);
     expect(providerRequests).toBe(0);
   } finally {
@@ -3000,11 +3530,24 @@ test("image recovery hands an active poll to the new ready run before the old ru
   request,
 }) => {
   const taskId = "image-recovery-owner-task";
+  const activeInputKey = generationInputKey({
+    inputs: [],
+    modelId: modelInputs.image.id,
+    ownPrompt: "image 原始提示词",
+    parameters: submissionParameterValues(
+      schemas.image,
+      defaultParameterValues(schemas.image),
+    ),
+    prompt: "image 原始提示词",
+  });
+  const ownershipKey = recoveryOwnershipKey("image");
   const runningTask = {
     attempt: 1,
     canvasId: "default",
     costCurrency: "CNY",
     createdAt: "2026-08-09T09:00:00.000Z",
+    generationInputKey: activeInputKey,
+    generationOwnershipKey: ownershipKey,
     id: taskId,
     kind: "image",
     model: modelInputs.image.id,
@@ -3108,19 +3651,13 @@ test("image recovery hands an active poll to the new ready run before the old ru
   });
 
   await request.delete("/api/canvas/default");
-  const activeInputKey = generationInputKey({
-    inputs: [],
-    modelId: modelInputs.image.id,
-    ownPrompt: "image 原始提示词",
-    parameters: defaultParameterValues(schemas.image),
-    prompt: "image 原始提示词",
-  });
   const activeNodes = canvasNodes("image").map((node) => ({
     ...node,
     data: {
       ...node.data,
       imageGenerating: true,
       imageGenerationInputKey: activeInputKey,
+      imageGenerationOwnershipKey: ownershipKey,
       imageGenerationTaskId: taskId,
     },
   }));
@@ -3218,8 +3755,8 @@ test("image recovery hands an active poll to the new ready run before the old ru
     await expect(world).toHaveAttribute("data-persistence-ready", "false");
     releaseBaseline();
     await expect(world).toHaveAttribute("data-persistence-ready", "true");
-    await expect.poll(() => taskLists).toBeGreaterThanOrEqual(2);
     await expect.poll(raceState).toBeGreaterThanOrEqual(3);
+    expect(taskLists).toBe(0);
     await expect(page.getByTestId("image-node-preview")).toHaveAttribute(
       "src",
       "/api/assets/image-recovery-owner-result",
@@ -3237,7 +3774,7 @@ test("image recovery hands an active poll to the new ready run before the old ru
 });
 
 for (const kind of kinds) {
-  test(`${kind} recovers an intent-only success over an old result without resubmitting`, async ({
+  test(`${kind} upgrades and exactly recovers a legacy intent after the model catalog is ready`, async ({
     page,
     request,
   }) => {
@@ -3397,27 +3934,7 @@ for (const kind of kinds) {
       await expect(page.getByTestId("canvas-world"))
         .toHaveAttribute("data-persistence-ready", "true");
       await expect.poll(() => modelReads).toBeGreaterThanOrEqual(1);
-      await flushBrowserTasks(page);
       expect(byIdempotencyReads).toBe(0);
-      expect(taskLists).toBe(0);
-      await expect(page.evaluate((slot) =>
-        window.localStorage.getItem(slot), intentSlot)).resolves.not.toBeNull();
-      const beforeModels = await (
-        await request.get("/api/canvas/default")
-      ).json() as {
-        nodes: Array<{ data: Record<string, unknown>; id: string }>;
-      };
-      const beforeData = beforeModels.nodes.find(
-        (node) => node.id === nodeId(kind),
-      )?.data;
-      expect(kind === "text"
-        ? beforeData?.content
-        : beforeData?.[`${kind}Src`]).toBe(
-          kind === "text"
-            ? "intent-only 旧文字结果"
-            : mediaAssetUrl(kind, `intent-only-old-${kind}`),
-        );
-
       releaseModels();
       await expect.poll(() => byIdempotencyReads).toBeGreaterThanOrEqual(1);
       await expect.poll(async () => {
@@ -3444,13 +3961,154 @@ for (const kind of kinds) {
   });
 }
 
-test("four active old-result tasks wait for the delayed model catalog without clearing their state", async ({
+test("Text legacy intent mismatch clears without reading or applying the old result", async ({
+  page,
+  request,
+}) => {
+  const kind = "text" as const;
+  const taskId = "m41-text-legacy-mismatch-task";
+  const intentSlot = submissionIntentSlot(kind);
+  const protectedBody = "legacy mismatch 必须保留的正文";
+  const currentPrompt = "text 当前已变化的提示词";
+  let byIdempotencyReads = 0;
+  let generationPosts = 0;
+  let providerRequests = 0;
+
+  page.on("request", (entry) => {
+    if (/volces|openrouter|mureka/i.test(entry.url())) providerRequests += 1;
+  });
+  await page.addInitScript(({ intent, slot }) => {
+    window.localStorage.setItem(slot, JSON.stringify(intent));
+  }, {
+    intent: {
+      canvasId: "default",
+      idempotencyKey: "m41-text-legacy-mismatch-key",
+      kind,
+      nodeId: nodeId(kind),
+      requestSignature: recoveryRequestSignature(kind),
+      taskId,
+      updatedAt: "2026-08-09T10:15:00.000Z",
+      version: 1,
+    },
+    slot: intentSlot,
+  });
+  await page.route("**/api/models", async (route) => {
+    await route.fulfill({
+      json: {
+        generationEnabled: true,
+        models: [{
+          capability: kind,
+          displayName: "Legacy mismatch Text",
+          generationAvailable: true,
+          generationUnavailableReason: "",
+          generationUnavailableReasonCode: null,
+          id: modelInputs.text.id,
+          isDefault: true,
+          parameterSchema: schemas.text,
+        }],
+      },
+      status: 200,
+    });
+  });
+  await page.route("**/api/generation-tasks**", async (route) => {
+    const inbound = route.request();
+    const url = new URL(inbound.url());
+    if (url.pathname.endsWith("/status")) {
+      await route.fulfill({
+        json: {
+          paidProviderRequests: 0,
+          persistentQueueReady: true,
+          providerConfigured: true,
+          submissionEnabled: true,
+        },
+        status: 200,
+      });
+      return;
+    }
+    if (url.pathname.endsWith("/by-idempotency")) {
+      byIdempotencyReads += 1;
+      await route.fulfill({
+        json: {
+          attempt: 1,
+          canvasId: "default",
+          costCurrency: "CNY",
+          createdAt: "2026-08-09T10:14:00.000Z",
+          id: taskId,
+          kind,
+          nodeId: nodeId(kind),
+          prompt: "text 原始提示词",
+          resultText: "不应应用的旧结果",
+          state: "success",
+          updatedAt: "2026-08-09T10:14:01.000Z",
+        },
+        status: 200,
+      });
+      return;
+    }
+    if (inbound.method() === "POST") generationPosts += 1;
+    await route.fulfill({ json: { error: "unexpected" }, status: 404 });
+  });
+
+  await request.delete("/api/canvas/default");
+  const [baseNode] = canvasNodes(kind);
+  expect((await request.put("/api/canvas/default", {
+    data: {
+      edges: [],
+      nodes: [{
+        ...baseNode,
+        data: {
+          ...baseNode.data,
+          content: protectedBody,
+          contentHtml: `<p>${protectedBody}</p>`,
+          textPrompt: currentPrompt,
+        },
+      }],
+      revision: 0,
+      viewport: { x: 0, y: 0, zoom: 0.75 },
+    },
+  })).ok()).toBeTruthy();
+
+  try {
+    await page.goto("/canvas");
+    await expect(page.getByTestId("canvas-world"))
+      .toHaveAttribute("data-persistence-ready", "true");
+    await expect.poll(() => page.evaluate((slot) =>
+      window.localStorage.getItem(slot), intentSlot)).toBeNull();
+    await expect(page.getByTestId("text-node-editor")).toHaveText(protectedBody);
+    const canvas = await (
+      await request.get("/api/canvas/default")
+    ).json() as {
+      nodes: Array<{ data: Record<string, unknown>; id: string }>;
+    };
+    expect(canvas.nodes.find((node) => node.id === nodeId(kind))?.data.content)
+      .toBe(protectedBody);
+    expect(byIdempotencyReads).toBe(0);
+    expect(generationPosts).toBe(0);
+    expect(providerRequests).toBe(0);
+  } finally {
+    await page.evaluate((slot) => {
+      window.localStorage.removeItem(slot);
+    }, intentSlot).catch(() => undefined);
+    await request.delete("/api/canvas/default");
+  }
+});
+
+test("four active old-result tasks recover before a delayed model catalog and retain overlays", async ({
   page,
   request,
 }) => {
   const intents = kinds.map((kind) => ({
     idempotencyKey: `m41-delayed-model-active-${kind}`,
     kind,
+    ownershipKey: compactGenerationOwnershipKey({
+      ...(kind === "image"
+        ? { aspectRatio: undefined, quality: undefined }
+        : {}),
+      modelId: modelInputs[kind].id,
+      parameters: defaultParameterValues(schemas[kind]),
+      prompt: `${kind} 原始提示词`,
+      upstream: [],
+    }),
     slot: submissionIntentSlot(kind),
     taskId: `m41-delayed-model-active-task-${kind}`,
   }));
@@ -3496,6 +4154,11 @@ test("four active old-result tasks wait for the delayed model catalog without cl
   const modelsGate = new Promise<void>((resolve) => {
     releaseModels = resolve;
   });
+  let releaseTasks!: () => void;
+  const tasksGate = new Promise<void>((resolve) => {
+    releaseTasks = resolve;
+  });
+  const initialTaskReads = new Set<string>();
 
   page.on("request", (entry) => {
     if (/volces|openrouter|mureka/i.test(entry.url())) providerRequests += 1;
@@ -3504,9 +4167,10 @@ test("four active old-result tasks wait for the delayed model catalog without cl
     for (const entry of seededIntents) {
       window.localStorage.setItem(entry.slot, JSON.stringify(entry.intent));
     }
-  }, intents.map(({ idempotencyKey, kind, slot, taskId }) => ({
+  }, intents.map(({ idempotencyKey, kind, ownershipKey, slot, taskId }) => ({
     intent: {
       canvasId: "default",
+      generationOwnershipKey: ownershipKey,
       idempotencyKey,
       kind,
       nodeId: nodeId(kind),
@@ -3573,7 +4237,23 @@ test("four active old-result tasks wait for the delayed model catalog without cl
       const task = [...tasks.values()].find((candidate) => candidate.id === taskId);
       if (task) {
         taskReads += 1;
-        await route.fulfill({ json: task, status: 200 });
+        if (!initialTaskReads.has(task.id)) {
+          initialTaskReads.add(task.id);
+          await route.fulfill({
+            json: {
+              ...task,
+              resultAssetId: undefined,
+              resultMedia: undefined,
+              resultText: undefined,
+              resultUrl: undefined,
+              state: "running",
+            },
+            status: 200,
+          });
+        } else {
+          await tasksGate;
+          await route.fulfill({ json: task, status: 200 });
+        }
         return;
       }
     }
@@ -3587,6 +4267,8 @@ test("four active old-result tasks wait for the delayed model catalog without cl
   const activeNodes = canvasNodes().map((node) => {
     const kind = node.type as Kind;
     const taskId = intents.find((candidate) => candidate.kind === kind)!.taskId;
+    const ownershipKey = intents.find((candidate) => candidate.kind === kind)!
+      .ownershipKey;
     const submittedParameters = submissionParameterValues(
       schemas[kind],
       defaultParameterValues(schemas[kind]),
@@ -3604,6 +4286,7 @@ test("four active old-result tasks wait for the delayed model catalog without cl
         ...node.data,
         [`${kind}Generating`]: true,
         [`${kind}GenerationInputKey`]: inputKey,
+        [`${kind}GenerationOwnershipKey`]: ownershipKey,
         [`${kind}GenerationTaskId`]: taskId,
         ...(kind === "text"
           ? {
@@ -3630,8 +4313,8 @@ test("four active old-result tasks wait for the delayed model catalog without cl
     await expect(page.getByTestId("canvas-world"))
       .toHaveAttribute("data-persistence-ready", "true");
     await expect.poll(() => modelReads).toBeGreaterThanOrEqual(1);
-    await flushBrowserTasks(page);
-    expect(taskReads).toBe(0);
+    await expect.poll(() => initialTaskReads.size).toBe(4);
+    expect(taskReads).toBeGreaterThanOrEqual(4);
     expect(taskLists).toBe(0);
     for (const { slot } of intents) {
       expect(await page.evaluate((key) =>
@@ -3641,9 +4324,37 @@ test("four active old-result tasks wait for the delayed model catalog without cl
     await expect(page.getByTestId("image-node-generating")).toBeVisible();
     await expect(page.getByTestId("video-node-generating")).toBeVisible();
     await expect(page.getByTestId("audio-node-generating")).toBeVisible();
+    await expect(page.getByTestId("text-node-editor"))
+      .toContainText("delayed-model active 旧文字结果");
+    await expect(page.getByTestId("image-node-preview")).toHaveAttribute(
+      "src",
+      mediaAssetUrl("image", "delayed-model-active-old-image"),
+    );
+    await expect(page.getByTestId("video-node-preview")).toHaveAttribute(
+      "src",
+      mediaAssetUrl("video", "delayed-model-active-old-video"),
+    );
+    await expect(page.getByTestId("audio-node-media")).toHaveAttribute(
+      "src",
+      mediaAssetUrl("audio", "delayed-model-active-old-audio"),
+    );
+    const activeCanvas = await (
+      await request.get("/api/canvas/default")
+    ).json() as {
+      nodes: Array<{ data: Record<string, unknown>; id: string }>;
+    };
+    for (const kind of kinds) {
+      const data = activeCanvas.nodes.find(
+        (node) => node.id === nodeId(kind),
+      )?.data;
+      expect(kind === "text" ? data?.content : data?.[`${kind}Src`]).toBe(
+        kind === "text"
+          ? "delayed-model active 旧文字结果"
+          : mediaAssetUrl(kind, `delayed-model-active-old-${kind}`),
+      );
+    }
 
-    releaseModels();
-    await expect.poll(() => taskReads).toBeGreaterThanOrEqual(4);
+    releaseTasks();
     await expect.poll(async () => {
       const canvas = await (
         await request.get("/api/canvas/default")
@@ -3664,10 +4375,546 @@ test("four active old-result tasks wait for the delayed model catalog without cl
     expect(taskSubmissions).toBe(0);
     expect(providerRequests).toBe(0);
   } finally {
+    releaseTasks();
     releaseModels();
     await page.evaluate((slots) => {
       slots.forEach((slot) => window.localStorage.removeItem(slot));
     }, intents.map((entry) => entry.slot)).catch(() => undefined);
+    await request.delete("/api/canvas/default");
+  }
+});
+
+test("scoped retry-accepted events wake exact GET only for their four bound nodes", async ({
+  page,
+  request,
+}) => {
+  const inputKeys = Object.fromEntries(kinds.map((kind) => [
+    kind,
+    generationInputKey({
+      inputs: [],
+      modelId: modelInputs[kind].id,
+      ownPrompt: `${kind} 原始提示词`,
+      parameters: submissionParameterValues(
+        schemas[kind],
+        defaultParameterValues(schemas[kind]),
+      ),
+      prompt: `${kind} 原始提示词`,
+    }),
+  ])) as Record<Kind, string>;
+  const accepted = new Set<Kind>();
+  const exactReads = new Map<Kind, number>();
+  const ownershipKeys = Object.fromEntries(kinds.map((kind) => [
+    kind,
+    recoveryOwnershipKey(kind),
+  ])) as Record<Kind, string>;
+  let listReads = 0;
+  let mutationPosts = 0;
+  let providerRequests = 0;
+  const taskIdFor = (kind: Kind) => `m41-event-wakeup-${kind}`;
+  const resultFor = (kind: Kind) => kind === "text"
+    ? "event wakeup 新文字结果"
+    : mediaAssetUrl(kind, `event-wakeup-result-${kind}`);
+  const taskFor = (kind: Kind) => ({
+    attempt: accepted.has(kind) ? 2 : 1,
+    canvasId: "default",
+    costCurrency: "CNY",
+    createdAt: "2026-08-10T07:00:00.000Z",
+    generationInputKey: inputKeys[kind],
+    generationOwnershipKey: ownershipKeys[kind],
+    id: taskIdFor(kind),
+    kind,
+    model: modelInputs[kind].id,
+    nodeId: nodeId(kind),
+    prompt: `${kind} 原始提示词`,
+    ...(accepted.has(kind)
+      ? kind === "text"
+        ? { resultText: resultFor(kind) }
+        : {
+            resultAssetId: `event-wakeup-result-${kind}`,
+            resultMedia: {
+              byteSize: 720,
+              contentType: kind === "image"
+                ? "image/png"
+                : kind === "video"
+                  ? "video/mp4"
+                  : "audio/mpeg",
+              durationSeconds: kind === "image" ? null : 5,
+              durationStatus: kind === "image" ? "not-applicable" : "ready",
+              storageBackend: "local",
+            },
+            resultUrl: resultFor(kind),
+          }
+      : {
+          errorCode: "AUTH",
+          errorMessage: `${kind} retryable failure`,
+          retryAllowed: true,
+        }),
+    state: accepted.has(kind) ? "success" : "failed",
+    updatedAt: accepted.has(kind)
+      ? "2026-08-10T07:00:02.000Z"
+      : "2026-08-10T07:00:01.000Z",
+  });
+
+  page.on("request", (entry) => {
+    if (/volces|openrouter|mureka/i.test(entry.url())) providerRequests += 1;
+  });
+  await page.route("**/api/models", async (route) => {
+    await route.fulfill({
+      json: {
+        generationEnabled: true,
+        models: kinds.map((kind) => ({
+          capability: kind,
+          displayName: `Event wakeup ${kind}`,
+          generationAvailable: true,
+          generationUnavailableReason: "",
+          generationUnavailableReasonCode: null,
+          id: modelInputs[kind].id,
+          isDefault: true,
+          parameterSchema: schemas[kind],
+        })),
+      },
+      status: 200,
+    });
+  });
+  await page.route("**/api/generation-tasks**", async (route) => {
+    const inbound = route.request();
+    const url = new URL(inbound.url());
+    if (url.pathname.endsWith("/status")) {
+      await route.fulfill({
+        json: {
+          paidProviderRequests: 0,
+          persistentQueueReady: true,
+          providerConfigured: true,
+          submissionEnabled: true,
+        },
+        status: 200,
+      });
+      return;
+    }
+    if (inbound.method() === "GET" && url.pathname === "/api/generation-tasks") {
+      listReads += 1;
+      await route.fulfill({ json: { tasks: [] }, status: 200 });
+      return;
+    }
+    if (inbound.method() === "GET") {
+      const kind = kinds.find((candidate) =>
+        url.pathname === `/api/generation-tasks/${taskIdFor(candidate)}`);
+      if (kind) {
+        exactReads.set(kind, (exactReads.get(kind) ?? 0) + 1);
+        await route.fulfill({ json: taskFor(kind), status: 200 });
+        return;
+      }
+    }
+    if (inbound.method() === "POST") mutationPosts += 1;
+    await route.fulfill({ json: { error: "unexpected" }, status: 404 });
+  });
+
+  await request.delete("/api/canvas/default");
+  const seededNodes = canvasNodes().map((node) => {
+    const kind = node.type as Kind;
+    return {
+      ...node,
+      data: {
+        ...node.data,
+        [`${kind}GenerationError`]: `${kind} seeded failure`,
+        [`${kind}GenerationErrorCode`]: "AUTH",
+        [`${kind}GenerationInputKey`]: inputKeys[kind],
+        [`${kind}GenerationOwnershipKey`]: ownershipKeys[kind],
+        [`${kind}Generating`]: false,
+        [`${kind}GenerationRetryAllowed`]: true,
+        [`${kind}GenerationTaskId`]: taskIdFor(kind),
+        ...(kind === "text"
+          ? {
+              content: "event wakeup 旧文字结果",
+              contentHtml: "<p>event wakeup 旧文字结果</p>",
+            }
+          : {
+              [`${kind}Src`]: mediaAssetUrl(kind, `event-wakeup-old-${kind}`),
+              ...(kind === "image" ? { imageGeneratedSuccess: true } : {}),
+              ...(kind === "audio" ? { audioGeneratedResult: true } : {}),
+            }),
+      },
+    };
+  });
+  expect((await request.put("/api/canvas/default", {
+    data: {
+      edges: [],
+      nodes: seededNodes,
+      revision: 0,
+      viewport: { x: 0, y: 0, zoom: 0.75 },
+    },
+  })).ok()).toBeTruthy();
+
+  try {
+    await page.goto("/canvas");
+    await expect(page.getByTestId("canvas-world"))
+      .toHaveAttribute("data-persistence-ready", "true");
+    await expect.poll(() => kinds.every((kind) =>
+      (exactReads.get(kind) ?? 0) >= 1)).toBe(true);
+    await expect.poll(async () => {
+      const canvas = await (
+        await request.get("/api/canvas/default")
+      ).json() as {
+        nodes: Array<{ data: Record<string, unknown>; id: string }>;
+      };
+      return kinds.every((kind) => {
+        const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
+        return data?.[`${kind}Generating`] === false &&
+          data?.[`${kind}GenerationTaskId`] === taskIdFor(kind) &&
+          data?.[`${kind}GenerationError`] !== `${kind} seeded failure`;
+      });
+    }).toBe(true);
+    await flushBrowserTasks(page);
+
+    for (const kind of kinds) {
+      const beforeWrongScope = exactReads.get(kind) ?? 0;
+      await page.evaluate(({ eventName, kind, taskId }) => {
+        const base = {
+          attempt: 2,
+          canvasId: "default",
+          kind,
+          nodeId: `retry-ui-${kind}`,
+          taskId,
+          updatedAt: "2026-08-10T07:00:02.000Z",
+        };
+        const wrongKind = kind === "text" ? "image" : "text";
+        for (const detail of [
+          { ...base, canvasId: "other-canvas" },
+          { ...base, nodeId: "other-node" },
+          { ...base, kind: wrongKind },
+          { ...base, taskId: `${taskId}-other` },
+        ]) {
+          window.dispatchEvent(new CustomEvent(eventName, { detail }));
+        }
+      }, {
+        eventName: "unboundry:generation-task-retry-accepted",
+        kind,
+        taskId: taskIdFor(kind),
+      });
+      await flushBrowserTasks(page);
+      expect(exactReads.get(kind) ?? 0).toBe(beforeWrongScope);
+
+      accepted.add(kind);
+      await page.evaluate(({ eventName, kind, taskId }) => {
+        window.dispatchEvent(new CustomEvent(eventName, {
+          detail: {
+            attempt: 2,
+            canvasId: "default",
+            kind,
+            nodeId: `retry-ui-${kind}`,
+            taskId,
+            updatedAt: "2026-08-10T07:00:02.000Z",
+          },
+        }));
+      }, {
+        eventName: "unboundry:generation-task-retry-accepted",
+        kind,
+        taskId: taskIdFor(kind),
+      });
+      await expect.poll(() => exactReads.get(kind) ?? 0)
+        .toBeGreaterThan(beforeWrongScope);
+      await expect.poll(async () => {
+        const canvas = await (
+          await request.get("/api/canvas/default")
+        ).json() as {
+          nodes: Array<{ data: Record<string, unknown>; id: string }>;
+        };
+        const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
+        return kind === "text" ? data?.content : data?.[`${kind}Src`];
+      }).toBe(resultFor(kind));
+    }
+    expect(listReads).toBe(0);
+    expect(mutationPosts).toBe(0);
+    expect(providerRequests).toBe(0);
+  } finally {
+    await request.delete("/api/canvas/default");
+  }
+});
+
+test("Text rejects an exact task id whose server scope belongs to another node", async ({
+  page,
+  request,
+}) => {
+  const kind = "text" as const;
+  const taskId = "m41-text-wrong-scope";
+  const inputKey = generationInputKey({
+    inputs: [],
+    modelId: modelInputs.text.id,
+    ownPrompt: "text 原始提示词",
+    parameters: submissionParameterValues(
+      schemas.text,
+      defaultParameterValues(schemas.text),
+    ),
+    prompt: "text 原始提示词",
+  });
+  let exactReads = 0;
+  let listReads = 0;
+  let mutationPosts = 0;
+  await page.route("**/api/models", async (route) => {
+    await route.fulfill({
+      json: {
+        generationEnabled: true,
+        models: [{
+          capability: kind,
+          displayName: "Wrong scope text",
+          generationAvailable: true,
+          generationUnavailableReason: "",
+          generationUnavailableReasonCode: null,
+          id: modelInputs.text.id,
+          isDefault: true,
+          parameterSchema: schemas.text,
+        }],
+      },
+      status: 200,
+    });
+  });
+  await page.route("**/api/generation-tasks**", async (route) => {
+    const inbound = route.request();
+    const url = new URL(inbound.url());
+    if (url.pathname.endsWith("/status")) {
+      await route.fulfill({
+        json: {
+          paidProviderRequests: 0,
+          persistentQueueReady: true,
+          providerConfigured: true,
+          submissionEnabled: true,
+        },
+        status: 200,
+      });
+      return;
+    }
+    if (inbound.method() === "GET" &&
+      url.pathname === `/api/generation-tasks/${taskId}`) {
+      exactReads += 1;
+      await route.fulfill({
+        json: {
+          attempt: 1,
+          canvasId: "default",
+          costCurrency: "CNY",
+          createdAt: "2026-08-10T08:00:00.000Z",
+          generationInputKey: inputKey,
+          id: taskId,
+          kind,
+          nodeId: "another-text-node",
+          prompt: "text 原始提示词",
+          resultText: "wrong-scope result must not apply",
+          state: "success",
+          updatedAt: "2026-08-10T08:00:01.000Z",
+        },
+        status: 200,
+      });
+      return;
+    }
+    if (inbound.method() === "GET" && url.pathname === "/api/generation-tasks") {
+      listReads += 1;
+      await route.fulfill({ json: { tasks: [] }, status: 200 });
+      return;
+    }
+    if (inbound.method() === "POST") mutationPosts += 1;
+    await route.fulfill({ json: { error: "unexpected" }, status: 404 });
+  });
+
+  await request.delete("/api/canvas/default");
+  const [baseNode] = canvasNodes(kind);
+  expect((await request.put("/api/canvas/default", {
+    data: {
+      edges: [],
+      nodes: [{
+        ...baseNode,
+        data: {
+          ...baseNode.data,
+          content: "Text keeps this old body",
+          contentHtml: "<p>Text keeps this old body</p>",
+          textGenerationInputKey: inputKey,
+          textGenerating: true,
+          textGenerationTaskId: taskId,
+        },
+      }],
+      revision: 0,
+      viewport: { x: 0, y: 0, zoom: 0.75 },
+    },
+  })).ok()).toBeTruthy();
+
+  try {
+    await page.goto("/canvas");
+    await expect(page.getByTestId("canvas-world"))
+      .toHaveAttribute("data-persistence-ready", "true");
+    await expect.poll(() => exactReads).toBeGreaterThanOrEqual(1);
+    await expect.poll(async () => {
+      const canvas = await (
+        await request.get("/api/canvas/default")
+      ).json() as {
+        nodes: Array<{ data: Record<string, unknown>; id: string }>;
+      };
+      const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
+      return {
+        body: data?.content,
+        generating: data?.textGenerating,
+        taskId: data?.textGenerationTaskId ?? null,
+      };
+    }).toEqual({
+      body: "Text keeps this old body",
+      generating: false,
+      taskId: null,
+    });
+    expect(listReads).toBe(0);
+    expect(mutationPosts).toBe(0);
+  } finally {
+    await request.delete("/api/canvas/default");
+  }
+});
+
+test("Video keeps unchanged-input Generate disabled but submits once after a real prompt change", async ({
+  page,
+  request,
+}) => {
+  const kind = "video" as const;
+  const taskId = "m41-video-changed-input-task";
+  const originalPrompt = "video 原始提示词";
+  const changedPrompt = "video changed input prompt";
+  const parameters = submissionParameterValues(
+    schemas.video,
+    defaultParameterValues(schemas.video),
+  );
+  const originalInputKey = generationInputKey({
+    inputs: [],
+    modelId: modelInputs.video.id,
+    ownPrompt: originalPrompt,
+    parameters,
+    prompt: originalPrompt,
+  });
+  let taskSubmissions = 0;
+  let taskReads = 0;
+  let releaseTask!: () => void;
+  const taskGate = new Promise<void>((resolve) => {
+    releaseTask = resolve;
+  });
+  const queuedTask = {
+    attempt: 1,
+    canvasId: "default",
+    costCurrency: "CNY",
+    createdAt: "2026-08-10T09:00:00.000Z",
+    id: taskId,
+    kind,
+    model: modelInputs.video.id,
+    nodeId: nodeId(kind),
+    prompt: changedPrompt,
+    state: "queued",
+    updatedAt: "2026-08-10T09:00:01.000Z",
+  };
+  await page.route("**/api/models", async (route) => {
+    await route.fulfill({
+      json: {
+        generationEnabled: true,
+        models: [{
+          capability: kind,
+          displayName: "Changed input video",
+          generationAvailable: true,
+          generationUnavailableReason: "",
+          generationUnavailableReasonCode: null,
+          id: modelInputs.video.id,
+          isDefault: true,
+          parameterSchema: schemas.video,
+        }],
+      },
+      status: 200,
+    });
+  });
+  await page.route("**/api/generation-tasks**", async (route) => {
+    const inbound = route.request();
+    const url = new URL(inbound.url());
+    if (url.pathname.endsWith("/status")) {
+      await route.fulfill({
+        json: {
+          paidProviderRequests: 0,
+          persistentQueueReady: true,
+          providerConfigured: true,
+          submissionEnabled: true,
+        },
+        status: 200,
+      });
+      return;
+    }
+    if (url.pathname.endsWith("/by-idempotency")) {
+      await route.fulfill({ json: { error: "not found" }, status: 404 });
+      return;
+    }
+    if (url.pathname.endsWith("/preflight") && inbound.method() === "POST") {
+      await route.fulfill({
+        json: { canEnqueue: true, canSubmit: true, problems: [] },
+        status: 200,
+      });
+      return;
+    }
+    if (url.pathname === "/api/generation-tasks" && inbound.method() === "POST") {
+      taskSubmissions += 1;
+      await route.fulfill({ json: queuedTask, status: 202 });
+      return;
+    }
+    if (url.pathname === `/api/generation-tasks/${taskId}` &&
+      inbound.method() === "GET") {
+      taskReads += 1;
+      await taskGate;
+      await route.fulfill({
+        json: {
+          ...queuedTask,
+          resultAssetId: "m41-video-changed-input-result",
+          resultMedia: {
+            byteSize: 800,
+            contentType: "video/mp4",
+            durationSeconds: 5,
+            durationStatus: "ready",
+            storageBackend: "local",
+          },
+          resultUrl: mediaAssetUrl("video", "m41-video-changed-input-result"),
+          state: "success",
+        },
+        status: 200,
+      });
+      return;
+    }
+    await route.fulfill({ json: { error: "unexpected" }, status: 404 });
+  });
+
+  await request.delete("/api/canvas/default");
+  const [baseNode] = canvasNodes(kind);
+  expect((await request.put("/api/canvas/default", {
+    data: {
+      edges: [],
+      nodes: [{
+        ...baseNode,
+        data: {
+          ...baseNode.data,
+          assetId: "m41-video-old-result",
+          videoGenerationInputKey: originalInputKey,
+          videoPrompt: originalPrompt,
+          videoPromptReady: true,
+          videoSrc: mediaAssetUrl("video", "m41-video-old-result"),
+        },
+      }],
+      revision: 0,
+      viewport: { x: 0, y: 0, zoom: 0.75 },
+    },
+  })).ok()).toBeTruthy();
+
+  try {
+    await page.goto("/canvas");
+    await expect(page.getByTestId("canvas-world"))
+      .toHaveAttribute("data-persistence-ready", "true");
+    await selectNode(page, kind);
+    const generate = page.getByTestId("video-creator")
+      .getByRole("button", { name: "Generate" });
+    await expect(generate).toBeDisabled();
+    await page.getByTestId("video-creator-prompt").fill(changedPrompt);
+    await page.getByTestId("video-creator-prompt").blur();
+    await expect(generate).toBeEnabled();
+    await generate.click();
+    await expect.poll(() => taskSubmissions).toBe(1);
+    await expect.poll(() => taskReads).toBeGreaterThanOrEqual(1);
+    expect(taskSubmissions).toBe(1);
+    await expect(page.getByRole("button", { name: "取消生成" })).toBeVisible();
+  } finally {
+    releaseTask();
     await request.delete("/api/canvas/default");
   }
 });
@@ -4176,7 +5423,7 @@ test("a Text prompt change revokes a held active poll before its late success", 
   }
 });
 
-test("an upstream Text body change revokes a persisted active poll before save confirmation", async ({
+test("an upstream Text body change revokes a persisted active poll while the model catalog is delayed", async ({
   page,
   request,
 }) => {
@@ -4239,12 +5486,28 @@ test("an upstream Text body change revokes a persisted active poll before save c
     parameters: submittedParameters,
     prompt: initialPreflight.finalPrompt,
   });
+  const activeOwnershipKey = compactGenerationOwnershipKey({
+    modelId: modelInputs.text.id,
+    parameters: defaultParameterValues(schemas.text),
+    prompt: originalPrompt,
+    upstream: [{
+      edgeId: upstreamEdge.id,
+      order: 1,
+      ready: true,
+      role: "context-text",
+      source: sourceId,
+      sourceKind: "text",
+      status: "ready",
+      text: originalUpstream,
+    }],
+  });
   const runningTask = {
     attempt: 1,
     canvasId: "default",
     costCurrency: "CNY",
     createdAt: "2026-08-09T10:55:00.000Z",
     id: taskId,
+    generationInputKey: activeInputKey,
     kind,
     model: modelInputs.text.id,
     nodeId: targetId,
@@ -4259,7 +5522,12 @@ test("an upstream Text body change revokes a persisted active poll before save c
     updatedAt: "2026-08-09T10:55:01.000Z",
   };
   let generationPosts = 0;
+  let modelReads = 0;
   let providerRequests = 0;
+  let releaseModels!: () => void;
+  const modelsGate = new Promise<void>((resolve) => {
+    releaseModels = resolve;
+  });
 
   page.on("request", (entry) => {
     if (/volces|openrouter|mureka/i.test(entry.url())) providerRequests += 1;
@@ -4312,6 +5580,7 @@ test("an upstream Text body change revokes a persisted active poll before save c
   }, {
     intent: {
       canvasId: "default",
+      generationOwnershipKey: activeOwnershipKey,
       idempotencyKey: "m41-text-upstream-owner-key",
       kind,
       nodeId: targetId,
@@ -4326,6 +5595,8 @@ test("an upstream Text body change revokes a persisted active poll before save c
     taskId,
   });
   await page.route("**/api/models", async (route) => {
+    modelReads += 1;
+    await modelsGate;
     await route.fulfill({
       json: {
         generationEnabled: true,
@@ -4384,6 +5655,7 @@ test("an upstream Text body change revokes a persisted active poll before save c
             contentHtml: `<p>${protectedBody}</p>`,
             textGenerating: true,
             textGenerationInputKey: activeInputKey,
+            textGenerationOwnershipKey: activeOwnershipKey,
             textGenerationTaskId: taskId,
           },
           position: { x: 620, y: 80 },
@@ -4421,6 +5693,7 @@ test("an upstream Text body change revokes a persisted active poll before save c
     await page.goto("/canvas");
     const world = page.getByTestId("canvas-world");
     await expect(world).toHaveAttribute("data-persistence-ready", "true");
+    await expect.poll(() => modelReads).toBeGreaterThanOrEqual(1);
     await expect.poll(() => page.evaluate(() =>
       (window as typeof window & {
         __m41TextUpstreamOwner?: { taskGets: number };
@@ -4447,6 +5720,7 @@ test("an upstream Text body change revokes a persisted active poll before save c
     expect(heldTargetData?.content).toBe(protectedBody);
     expect(heldTargetData?.textGenerating).not.toBe(true);
     expect(heldTargetData?.textGenerationInputKey).toBeUndefined();
+    expect(heldTargetData?.textGenerationOwnershipKey).toBeUndefined();
     expect(heldTargetData?.textGenerationTaskId).toBeUndefined();
     await expect.poll(() => page.evaluate((slot) =>
       window.localStorage.getItem(slot), intentSlot)).toBeNull();
@@ -4456,7 +5730,6 @@ test("an upstream Text body change revokes a persisted active poll before save c
     const generate = page.getByTestId("text-creator")
       .getByRole("button", { name: "Generate" });
     await expect(generate).toBeDisabled();
-    await expect(generate).toHaveAttribute("title", "画布正在保存");
     await expect(target.getByTestId("text-node-editor")).toHaveText(
       protectedBody,
     );
@@ -4547,11 +5820,255 @@ test("an upstream Text body change revokes a persisted active poll before save c
     expect(generationPosts).toBe(0);
     expect(providerRequests).toBe(0);
   } finally {
+    releaseModels();
     releaseSave();
     await page.evaluate((slot) => {
       (window as typeof window & {
         __m41TextUpstreamOwner?: { releaseSuccess?: () => void };
       }).__m41TextUpstreamOwner?.releaseSuccess?.();
+      window.localStorage.removeItem(slot);
+    }, intentSlot).catch(() => undefined);
+    await request.delete("/api/canvas/default");
+  }
+});
+
+test("a hung then failed terminal Text canvas patch replays the same-tab canvas session journal", async ({
+  page,
+  request,
+}) => {
+  const kind = "text" as const;
+  const taskId = "m41-text-terminal-save-lost";
+  const originalPrompt = "text 原始提示词";
+  const oldBody = "terminal save 前保留的旧正文";
+  const resultText = "reload exact GET 恢复的正文";
+  const parameters = submissionParameterValues(
+    schemas.text,
+    defaultParameterValues(schemas.text),
+  );
+  const inputKey = generationInputKey({
+    inputs: [],
+    modelId: modelInputs.text.id,
+    ownPrompt: originalPrompt,
+    parameters,
+    prompt: originalPrompt,
+  });
+  const ownershipKey = compactGenerationOwnershipKey({
+    modelId: modelInputs.text.id,
+    parameters: defaultParameterValues(schemas.text),
+    prompt: originalPrompt,
+    upstream: [],
+  });
+  const successTask = {
+    attempt: 1,
+    canvasId: "default",
+    costCurrency: "CNY",
+    createdAt: "2026-08-10T11:00:00.000Z",
+    generationInputKey: inputKey,
+    generationOwnershipKey: ownershipKey,
+    id: taskId,
+    kind,
+    model: modelInputs.text.id,
+    nodeId: nodeId(kind),
+    prompt: originalPrompt,
+    resultText,
+    state: "success",
+    updatedAt: "2026-08-10T11:00:01.000Z",
+  };
+  const intentSlot = submissionIntentSlot(kind);
+  let exactReads = 0;
+  let allowJournalReplay = false;
+  let generationPosts = 0;
+  let providerRequests = 0;
+  let terminalWrites = 0;
+  let releaseTerminalWrite!: () => void;
+  const terminalWriteGate = new Promise<void>((resolve) => {
+    releaseTerminalWrite = resolve;
+  });
+  let markTerminalWriteStarted!: () => void;
+  const terminalWriteStarted = new Promise<void>((resolve) => {
+    markTerminalWriteStarted = resolve;
+  });
+  let markTerminalWriteFailed!: () => void;
+  const terminalWriteFailed = new Promise<void>((resolve) => {
+    markTerminalWriteFailed = resolve;
+  });
+
+  page.on("request", (entry) => {
+    if (/volces|openrouter|mureka/i.test(entry.url())) providerRequests += 1;
+  });
+  await page.addInitScript(({ intent, marker, slot }) => {
+    if (window.sessionStorage.getItem(marker) === "1") return;
+    window.sessionStorage.setItem(marker, "1");
+    window.localStorage.setItem(slot, JSON.stringify(intent));
+  }, {
+    intent: {
+      canvasId: "default",
+      generationOwnershipKey: ownershipKey,
+      idempotencyKey: "m41-text-terminal-save-lost-key",
+      kind,
+      nodeId: nodeId(kind),
+      requestSignature: recoveryRequestSignature(kind),
+      taskId,
+      updatedAt: "2026-08-10T11:00:00.500Z",
+      version: 1,
+    },
+    marker: "__m41:text-terminal-save-lost",
+    slot: intentSlot,
+  });
+  await page.route("**/api/models", async (route) => {
+    await route.fulfill({
+      json: {
+        generationEnabled: true,
+        models: [{
+          capability: kind,
+          displayName: "Terminal save Text",
+          generationAvailable: true,
+          generationUnavailableReason: "",
+          generationUnavailableReasonCode: null,
+          id: modelInputs.text.id,
+          isDefault: true,
+          parameterSchema: schemas.text,
+        }],
+      },
+      status: 200,
+    });
+  });
+  await page.route("**/api/generation-tasks**", async (route) => {
+    const inbound = route.request();
+    const url = new URL(inbound.url());
+    if (url.pathname.endsWith("/status")) {
+      await route.fulfill({
+        json: {
+          paidProviderRequests: 0,
+          persistentQueueReady: true,
+          providerConfigured: true,
+          submissionEnabled: true,
+        },
+        status: 200,
+      });
+      return;
+    }
+    if (
+      inbound.method() === "GET" &&
+      url.pathname === `/api/generation-tasks/${taskId}`
+    ) {
+      exactReads += 1;
+      await route.fulfill({ json: successTask, status: 200 });
+      return;
+    }
+    if (inbound.method() === "POST") generationPosts += 1;
+    await route.fulfill({ json: { error: "unexpected" }, status: 404 });
+  });
+  await page.route("**/api/canvas/default", async (route) => {
+    const inbound = route.request();
+    if (inbound.method() !== "PUT") {
+      await route.continue();
+      return;
+    }
+    const body = inbound.postDataJSON() as {
+      nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+    };
+    const target = body.nodes?.find((node) => node.id === nodeId(kind));
+    if (target?.data?.content !== resultText) {
+      await route.continue();
+      return;
+    }
+    if (allowJournalReplay) {
+      await route.continue();
+      return;
+    }
+    terminalWrites += 1;
+    if (terminalWrites === 1) {
+      markTerminalWriteStarted();
+      await terminalWriteGate;
+    }
+    await route.fulfill({
+      json: { error: "terminal canvas ACK lost" },
+      status: 503,
+    });
+    if (terminalWrites === 1) markTerminalWriteFailed();
+  });
+
+  await request.delete("/api/canvas/default");
+  const [baseNode] = canvasNodes(kind);
+  expect((await request.put("/api/canvas/default", {
+    data: {
+      edges: [],
+      nodes: [{
+        ...baseNode,
+        data: {
+          ...baseNode.data,
+          content: oldBody,
+          contentHtml: `<p>${oldBody}</p>`,
+          textGenerating: true,
+          textGenerationInputKey: inputKey,
+          textGenerationOwnershipKey: ownershipKey,
+          textGenerationTaskId: taskId,
+        },
+      }],
+      revision: 0,
+      viewport: { x: 0, y: 0, zoom: 0.75 },
+    },
+  })).ok()).toBeTruthy();
+
+  try {
+    await page.goto("/canvas");
+    await expect(page.getByTestId("canvas-world"))
+      .toHaveAttribute("data-persistence-ready", "true");
+    await terminalWriteStarted;
+    expect(terminalWrites).toBe(1);
+    expect(await page.evaluate((slot) =>
+      window.localStorage.getItem(slot), intentSlot)).not.toBeNull();
+
+    releaseTerminalWrite();
+    await terminalWriteFailed;
+    await flushBrowserTasks(page);
+    expect(await page.evaluate((slot) =>
+      window.localStorage.getItem(slot), intentSlot)).not.toBeNull();
+    const beforeReload = await (
+      await request.get("/api/canvas/default")
+    ).json() as {
+      nodes: Array<{ data: Record<string, unknown>; id: string }>;
+    };
+    expect(beforeReload.nodes.find((node) => node.id === nodeId(kind))?.data)
+      .toEqual(expect.objectContaining({
+        content: oldBody,
+        textGenerationTaskId: taskId,
+      }));
+
+    allowJournalReplay = true;
+    await page.reload();
+    await expect(page.getByTestId("canvas-world"))
+      .toHaveAttribute("data-persistence-ready", "true");
+    expect(exactReads).toBe(1);
+    await expect.poll(async () => {
+      const canvas = await (
+        await request.get("/api/canvas/default")
+      ).json() as {
+        nodes: Array<{ data: Record<string, unknown>; id: string }>;
+      };
+      const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
+      return {
+        content: data?.content,
+        generating: data?.textGenerating ?? false,
+        inputKey: data?.textGenerationInputKey ?? null,
+        ownershipKey: data?.textGenerationOwnershipKey ?? null,
+        taskId: data?.textGenerationTaskId,
+      };
+    }).toEqual({
+      content: resultText,
+      generating: false,
+      inputKey: null,
+      ownershipKey: null,
+      taskId,
+    });
+    expect(await page.evaluate((slot) =>
+      window.localStorage.getItem(slot), intentSlot)).toBeNull();
+    expect(generationPosts).toBe(0);
+    expect(providerRequests).toBe(0);
+  } finally {
+    releaseTerminalWrite();
+    await page.evaluate((slot) => {
       window.localStorage.removeItem(slot);
     }, intentSlot).catch(() => undefined);
     await request.delete("/api/canvas/default");

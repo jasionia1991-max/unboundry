@@ -43,7 +43,7 @@
       "scriptSha256": "2df90da6eede2cda679137d8f14c3fd6b337b23f260404b259a8154940251fc1",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-restart-persistence.mjs",
-      "targetSha256": "609471d6caf7be4e193f2a86ea2f340124ef3bb5d2d265fefa53cf549ae7146c"
+      "targetSha256": "74f7317ec9d89f3f980b87fe740cb73c803c8f289da0a1e23ff92ac9ec649fca"
     },
     "scripts/deploy.mjs": {
       "mode": "frozen",

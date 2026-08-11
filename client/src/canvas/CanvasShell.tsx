@@ -48,6 +48,8 @@ type ProjectTitleRecord = {
   updatedAt: number;
 };
 
+type ProjectAction = "clone" | "create" | "delete";
+
 type TemplateCatalogCard = {
   categories: string[];
   cover?: { assetId: string; kind: "image" | "video" } | null;
@@ -184,18 +186,47 @@ function readProjectTitleDraft(
   try {
     const value = window.localStorage.getItem(projectTitleStorageKey(userId, id));
     if (!value) return undefined;
-    const record = JSON.parse(value) as ProjectTitleRecord;
-    if (
-      typeof record.title !== "string" ||
-      record.title.length > 120 ||
-      !Number.isSafeInteger(record.updatedAt)
-    ) {
-      return undefined;
-    }
-    return record;
+    return parseProjectTitleRecord(JSON.parse(value));
   } catch {
     return undefined;
   }
+}
+
+function parseProjectTitleRecord(
+  value: unknown,
+): ProjectTitleRecord | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Partial<ProjectTitleRecord>;
+  if (
+    typeof record.title !== "string" ||
+    record.title.length > 120 ||
+    !Number.isSafeInteger(record.updatedAt) ||
+    (record.updatedAt ?? -1) < 0
+  ) {
+    return undefined;
+  }
+  return record as ProjectTitleRecord;
+}
+
+function projectMutationResponse(value: unknown) {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as {
+    id?: unknown;
+    title?: unknown;
+    updatedAt?: unknown;
+  };
+  if (
+    typeof candidate.id !== "string" ||
+    !/^[a-z0-9._-]+$/i.test(candidate.id) ||
+    typeof candidate.title !== "string" ||
+    candidate.title.length > 120 ||
+    typeof candidate.updatedAt !== "number" ||
+    !Number.isSafeInteger(candidate.updatedAt) ||
+    candidate.updatedAt < 1
+  ) {
+    return undefined;
+  }
+  return candidate as { id: string; title: string; updatedAt: number };
 }
 
 function writeProjectTitleDraft(
@@ -847,6 +878,8 @@ export function CanvasShell({
   }, []);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [projectActionBusy, setProjectActionBusy] = useState<ProjectAction>();
+  const [projectActionError, setProjectActionError] = useState("");
   const [shareOpen, setShareOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const [keyboardShortcutsOpen, setKeyboardShortcutsOpen] = useState(false);
@@ -942,6 +975,8 @@ export function CanvasShell({
   const agentVoiceTimer = useRef<number | undefined>(undefined);
   const agentVoiceCancelled = useRef(false);
   const projectTitleUpdatedAt = useRef(initialProjectTitle.updatedAt);
+  const projectTitleSaveAttempt = useRef(0);
+  const projectActionInFlight = useRef<ProjectAction | undefined>(undefined);
   useEffect(() => {
     setTextVideoStarted(false);
     setFocusNodeRequest(undefined);
@@ -1337,6 +1372,8 @@ export function CanvasShell({
         projectTitleUpdatedAt.current + 1,
       );
       const record = { title, updatedAt };
+      const attempt = projectTitleSaveAttempt.current + 1;
+      projectTitleSaveAttempt.current = attempt;
       projectTitleUpdatedAt.current = updatedAt;
       writeProjectTitleDraft(userId, projectTitleId, record);
       setSaveStatus("保存中...");
@@ -1346,11 +1383,25 @@ export function CanvasShell({
         keepalive: true,
         method: "PUT",
       })
-        .then((response) => {
+        .then(async (response) => {
           if (!response.ok) throw new Error("Project title save failed");
-          setSaveStatus("已保存到云端");
+          const saved = parseProjectTitleRecord(await response.json());
+          if (
+            !saved ||
+            saved.title !== record.title ||
+            saved.updatedAt !== record.updatedAt
+          ) {
+            throw new Error("Project title response is stale");
+          }
+          if (projectTitleSaveAttempt.current === attempt) {
+            setSaveStatus("已保存到云端");
+          }
         })
-        .catch(() => setSaveStatus("项目名称保存失败"));
+        .catch(() => {
+          if (projectTitleSaveAttempt.current === attempt) {
+            setSaveStatus("项目名称保存失败，请重试");
+          }
+        });
     },
     [projectTitleId, userId],
   );
@@ -1362,37 +1413,82 @@ export function CanvasShell({
     value: projectTitleValue,
   });
 
+  const beginProjectAction = (action: ProjectAction) => {
+    if (projectActionInFlight.current) return false;
+    projectActionInFlight.current = action;
+    setProjectActionBusy(action);
+    setProjectActionError("");
+    return true;
+  };
+
+  const finishProjectAction = (action: ProjectAction) => {
+    if (projectActionInFlight.current !== action) return;
+    projectActionInFlight.current = undefined;
+    setProjectActionBusy(undefined);
+  };
+
   const createProjectFromMenu = async () => {
-    const response = await fetch("/api/projects", {
-      body: "{}",
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    });
-    if (!response.ok) return;
-    const created = (await response.json()) as { id: string };
-    window.location.href = `/canvas/${created.id}`;
+    if (!beginProjectAction("create")) return;
+    try {
+      const response = await fetch("/api/projects", {
+        body: "{}",
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      if (!response.ok) throw new Error(`服务器返回 ${response.status}`);
+      const created = projectMutationResponse(await response.json());
+      if (!created) throw new Error("服务器返回了无效项目");
+      window.location.href = `/canvas/${encodeURIComponent(created.id)}`;
+    } catch (caught) {
+      const detail = caught instanceof Error ? caught.message.trim() : "";
+      setProjectActionError(
+        detail ? `新建项目失败：${detail}` : "新建项目失败，请重试",
+      );
+    } finally {
+      finishProjectAction("create");
+    }
   };
 
   const cloneCurrentProject = async () => {
-    if (!projectId) return;
-    const response = await fetch(
-      `/api/projects/${encodeURIComponent(projectId)}/clone`,
-      { method: "POST" },
-    );
-    if (!response.ok) return;
-    const cloned = (await response.json()) as { id: string };
-    window.location.href = `/canvas/${cloned.id}`;
+    if (!projectId || !beginProjectAction("clone")) return;
+    try {
+      const response = await fetch(
+        `/api/projects/${encodeURIComponent(projectId)}/clone`,
+        { method: "POST" },
+      );
+      if (!response.ok) throw new Error(`服务器返回 ${response.status}`);
+      const cloned = projectMutationResponse(await response.json());
+      if (!cloned) throw new Error("服务器返回了无效项目");
+      window.location.href = `/canvas/${encodeURIComponent(cloned.id)}`;
+    } catch (caught) {
+      const detail = caught instanceof Error ? caught.message.trim() : "";
+      setProjectActionError(
+        detail ? `克隆项目失败：${detail}` : "克隆项目失败，请重试",
+      );
+    } finally {
+      finishProjectAction("clone");
+    }
   };
 
   const deleteCurrentProject = async () => {
-    if (!projectId) return;
-    const response = await fetch(
-      `/api/projects/${encodeURIComponent(projectId)}`,
-      { method: "DELETE" },
-    );
-    if (!response.ok) return;
-    clearProjectLocalKeys(projectId, userId);
-    window.location.href = "/canvas/projects";
+    if (!projectId || !beginProjectAction("delete")) return;
+    try {
+      const response = await fetch(
+        `/api/projects/${encodeURIComponent(projectId)}`,
+        { method: "DELETE" },
+      );
+      if (!response.ok) throw new Error(`服务器返回 ${response.status}`);
+      setDeleteConfirmOpen(false);
+      clearProjectLocalKeys(projectId, userId);
+      window.location.href = "/canvas/projects";
+    } catch (caught) {
+      const detail = caught instanceof Error ? caught.message.trim() : "";
+      setProjectActionError(
+        detail ? `删除项目失败：${detail}` : "删除项目失败，请重试",
+      );
+    } finally {
+      finishProjectAction("delete");
+    }
   };
 
   useEffect(() => {
@@ -1405,7 +1501,11 @@ export function CanvasShell({
       .then(async (response) => {
         if (response.status === 404) return undefined;
         if (!response.ok) throw new Error("Project title load failed");
-        return (await response.json()) as ProjectTitleRecord;
+        const record = parseProjectTitleRecord(await response.json());
+        if (!record || record.updatedAt < 1) {
+          throw new Error("Project title response is invalid");
+        }
+        return record;
       })
       .then((serverRecord) => {
         if (controller.signal.aborted) return;
@@ -2024,6 +2124,17 @@ export function CanvasShell({
         </section>
       )}
 
+      {projectActionError && (
+        <section
+          aria-live="assertive"
+          className="save-conflict-toast"
+          data-testid="project-action-error"
+          role="alert"
+        >
+          {projectActionError}
+        </section>
+      )}
+
       <section className="project-area" data-testid="project-area">
         <ShellButton
           active={projectMenuOpen}
@@ -2099,20 +2210,28 @@ export function CanvasShell({
           >
             重命名
           </button>
-          <button onClick={() => void createProjectFromMenu()} type="button">
-            新建项目
+          <button
+            disabled={projectActionBusy !== undefined}
+            onClick={() => void createProjectFromMenu()}
+            type="button"
+          >
+            {projectActionBusy === "create" ? "正在新建…" : "新建项目"}
           </button>
           <button
-            disabled={!projectId}
+            disabled={!projectId || projectActionBusy !== undefined}
             onClick={() => void cloneCurrentProject()}
             type="button"
           >
-            克隆项目
+            {projectActionBusy === "clone" ? "正在克隆…" : "克隆项目"}
           </button>
           <div className="project-menu-divider" />
           <button
             className="project-menu-delete"
-            disabled={!projectId || projectId === "default"}
+            disabled={
+              !projectId ||
+              projectId === "default" ||
+              projectActionBusy !== undefined
+            }
             onClick={() => setDeleteConfirmOpen(true)}
             title={
               projectId === "default"
@@ -2132,7 +2251,9 @@ export function CanvasShell({
         <ConfirmDialog
           danger
           message={`确定要删除项目「${projectTitleValue}」？画布和生成任务记录将删除，素材库中的媒体会保留。`}
-          onCancel={() => setDeleteConfirmOpen(false)}
+          onCancel={() => {
+            if (projectActionBusy !== "delete") setDeleteConfirmOpen(false);
+          }}
           onConfirm={() => void deleteCurrentProject()}
           title="确认删除"
         />

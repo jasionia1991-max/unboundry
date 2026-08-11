@@ -3003,6 +3003,52 @@ export function CanvasSurface({
       position: { ...node.position },
       style: node.style ? { ...node.style } : undefined,
     })), []);
+
+  const scrubDuplicatedGenerationState = useCallback(
+    (node: ProbeNodeType): ProbeNodeType => ({
+      ...node,
+      data: {
+        ...node.data,
+        audioGenerationError: undefined,
+        audioGenerationErrorCode: undefined,
+        audioGenerationInputKey: undefined,
+        audioGenerationOwnershipKey: undefined,
+        audioGenerationRetryAllowed: undefined,
+        audioGenerationRetryBlockCode: undefined,
+        audioGenerationRetryBlockReason: undefined,
+        audioGenerationTaskId: undefined,
+        audioGenerating: false,
+        imageGenerationError: undefined,
+        imageGenerationErrorCode: undefined,
+        imageGenerationInputKey: undefined,
+        imageGenerationOwnershipKey: undefined,
+        imageGenerationRetryAllowed: undefined,
+        imageGenerationRetryBlockCode: undefined,
+        imageGenerationRetryBlockReason: undefined,
+        imageGenerationTaskId: undefined,
+        imageGenerating: false,
+        textGenerationError: undefined,
+        textGenerationErrorCode: undefined,
+        textGenerationInputKey: undefined,
+        textGenerationOwnershipKey: undefined,
+        textGenerationRetryAllowed: undefined,
+        textGenerationRetryBlockCode: undefined,
+        textGenerationRetryBlockReason: undefined,
+        textGenerationTaskId: undefined,
+        textGenerating: false,
+        videoGenerationError: undefined,
+        videoGenerationErrorCode: undefined,
+        videoGenerationInputKey: undefined,
+        videoGenerationOwnershipKey: undefined,
+        videoGenerationRetryAllowed: undefined,
+        videoGenerationRetryBlockCode: undefined,
+        videoGenerationRetryBlockReason: undefined,
+        videoGenerationTaskId: undefined,
+        videoGenerating: false,
+      },
+    }),
+    [],
+  );
   const cloneEdges = useCallback((current: CuttableEdge[]) =>
     current.map((edge) => ({
       ...edge,
@@ -3482,7 +3528,11 @@ export function CanvasSurface({
     const nodes = source.nodes.map((node) => {
       const id = `${node.id}-copy-${crypto.randomUUID()}`;
       idMap.set(node.id, id);
-      return { ...cloneNodes([node])[0], id, selected: false };
+      return {
+        ...scrubDuplicatedGenerationState(cloneNodes([node])[0]),
+        id,
+        selected: false,
+      };
     });
     for (const node of nodes) {
       if (node.parentId && idMap.has(node.parentId)) {

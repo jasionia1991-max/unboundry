@@ -27,9 +27,12 @@ import {
   GenerationTaskConflictError,
   GenerationTaskOwnerDeletingError,
   GenerationTaskProviderBoundaryError,
+  GenerationTaskRetryFenceError,
+  GenerationTaskTransitionError,
   type GenerationPaidRetrySnapshot,
   type GenerationProviderAttemptEvidence,
   type GenerationTask,
+  type GenerationTaskCanvasRetryBinding,
   type GenerationTaskInput,
 } from "./generationTaskStore";
 import { waitForProviderDelay } from "./providerRequestDeadline";
@@ -437,6 +440,16 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.end(JSON.stringify(body));
 }
 
+function injectInitialGenerationPostCommitFailure(request: IncomingMessage) {
+  if (
+    process.env.UNBOUNDRY_SAFE_TEST === "1" &&
+    request.headers["x-unboundry-test-generation-post-commit-failure"] ===
+      "before-launch"
+  ) {
+    throw new Error("Controlled initial generation post-commit failure");
+  }
+}
+
 function canvasRevisionConflict(response: ServerResponse, error: unknown) {
   if (
     !(error instanceof CanvasRevisionConflictError) &&
@@ -464,7 +477,10 @@ function taskAbandonAllowed(
     providerAttempt.outcome === "response-received";
 }
 
-function taskSummary(task: GenerationTask) {
+function taskSummary(
+  task: GenerationTask,
+  retryBinding?: GenerationTaskCanvasRetryBinding,
+) {
   const publishedResultAssetId = task.state === "success"
     ? task.resultAssetId
     : undefined;
@@ -483,17 +499,32 @@ function taskSummary(task: GenerationTask) {
     retryDecision.allowed && retryDecision.mode === "resume-provider-task"
       ? resumeProviderTaskSnapshotProblem(task)
       : undefined;
-  const retry = resumeSnapshotProblem
+  const snapshotRetry = resumeSnapshotProblem
     ? {
         allowed: false as const,
         code: "RETRY_SNAPSHOT_CHANGED",
         reason: resumeSnapshotProblem,
       }
     : retryDecision;
+  const bindingMatches = Boolean(
+    task.state === "failed" &&
+    retryBinding &&
+    retryBinding.taskId === task.id &&
+    retryBinding.kind === task.kind &&
+    retryBinding.nodeId === task.nodeId,
+  );
+  const retry = snapshotRetry.allowed && !bindingMatches
+    ? {
+        allowed: false as const,
+        code: "RETRY_BINDING_STALE",
+        reason: "任务已不再绑定当前节点输入，请从节点重新提交",
+      }
+    : snapshotRetry;
   return {
     abandonAllowed: taskAbandonAllowed(task, providerAttempt),
     actualCostMicrounits: task.actualCostMicrounits,
     attempt: task.attempt,
+    canvasRevision: bindingMatches ? retryBinding?.canvasRevision : undefined,
     canvasId: task.canvasId,
     createdAt: task.createdAt,
     errorCode: task.errorCode,
@@ -501,6 +532,9 @@ function taskSummary(task: GenerationTask) {
     estimatedCostMicrounits: task.estimatedCostMicrounits,
     costCurrency: task.costCurrency,
     id: task.id,
+    generationInputKey: bindingMatches
+      ? retryBinding?.generationInputKey
+      : undefined,
     kind: task.kind,
     model: task.model,
     nodeId: task.nodeId,
@@ -531,6 +565,14 @@ function taskSummary(task: GenerationTask) {
     state: task.state,
     updatedAt: task.updatedAt,
   };
+}
+
+function taskSummaryForOwner(task: GenerationTask, ownerId?: string) {
+  if (task.state !== "failed") return taskSummary(task);
+  const binding = taskStore()
+    .retryBindingsForCanvas(task.canvasId, ownerId)
+    .get(task.id);
+  return taskSummary(task, binding);
 }
 
 type GenerationModelRow = {
@@ -3357,13 +3399,8 @@ export async function cancelCanvasGenerationTasks(
   canvasId: string,
   ownerId?: string,
 ) {
-  const tasks = ownerId === undefined
-    ? taskStore().list(canvasId)
-    : taskStore().listForOwner(canvasId, ownerId);
+  const tasks = taskStore().listActiveForCanvas(canvasId, ownerId);
   for (const task of tasks) {
-    if (!["queued", "running", "recovering", "retrying"].includes(task.state)) {
-      continue;
-    }
     await cancelGenerationTask(task);
   }
 }
@@ -3423,12 +3460,16 @@ export async function generationTasks(
     const requestUrl = new URL(request.url ?? "", "http://127.0.0.1");
     const canvasId = requestUrl.searchParams.get("canvasId") ?? "";
     try {
+      const generationStore = taskStore();
+      const ownerId = identity.bypass ? undefined : identity.userId;
+      const tasks = identity.bypass
+        ? generationStore.list(canvasId)
+        : generationStore.listForOwner(canvasId, identity.userId);
+      const bindings = tasks.some(({ state }) => state === "failed")
+        ? generationStore.retryBindingsForCanvas(canvasId, ownerId)
+        : new Map<string, GenerationTaskCanvasRetryBinding>();
       json(response, 200, {
-        tasks: (
-          identity.bypass
-            ? taskStore().list(canvasId)
-            : taskStore().listForOwner(canvasId, identity.userId)
-        ).map(taskSummary),
+        tasks: tasks.map((task) => taskSummary(task, bindings.get(task.id))),
       });
     } catch {
       json(response, 400, { error: "Invalid canvas ID" });
@@ -3455,7 +3496,10 @@ export async function generationTasks(
         });
         return;
       }
-      json(response, 200, taskSummary(task));
+      json(response, 200, taskSummaryForOwner(
+        task,
+        identity.bypass ? undefined : identity.userId,
+      ));
     } catch {
       json(response, 400, { error: "Invalid idempotency lookup" });
     }
@@ -3478,7 +3522,10 @@ export async function generationTasks(
       await cancelGenerationTask(task);
       const cancelled = taskStore().get(path);
       if (!cancelled) throw new Error("Generation task not found");
-      json(response, 200, taskSummary(cancelled));
+      json(response, 200, taskSummaryForOwner(
+        cancelled,
+        identity.bypass ? undefined : identity.userId,
+      ));
     } catch (error) {
       if (
         error instanceof Error &&
@@ -3536,7 +3583,10 @@ export async function generationTasks(
         taskId,
       });
       if (!abandoned) throw new Error("Generation task not found");
-      json(response, 200, taskSummary(abandoned));
+      json(response, 200, taskSummaryForOwner(
+        abandoned,
+        identity.bypass ? undefined : identity.userId,
+      ));
     } catch (error) {
       if (error instanceof GenerationTaskAbandonError) {
         json(response, 409, {
@@ -3556,11 +3606,67 @@ export async function generationTasks(
   const retryMatch = path.match(/^([a-z0-9._-]+)\/retry$/i);
   if (request.method === "POST" && retryMatch) {
     const taskId = retryMatch[1];
+    const body = await readJsonBody<{
+      canvasId?: unknown;
+      expectedAttempt?: unknown;
+      expectedCanvasRevision?: unknown;
+      expectedGenerationInputKey?: unknown;
+      expectedUpdatedAt?: unknown;
+      kind?: unknown;
+      nodeId?: unknown;
+    }>(request, 256 * 1_024);
+    if (
+      typeof body.canvasId !== "string" ||
+      !/^[a-z0-9._-]{1,120}$/i.test(body.canvasId) ||
+      !Number.isSafeInteger(body.expectedAttempt) ||
+      Number(body.expectedAttempt) < 0 ||
+      !Number.isSafeInteger(body.expectedCanvasRevision) ||
+      Number(body.expectedCanvasRevision) < 0 ||
+      typeof body.expectedGenerationInputKey !== "string" ||
+      body.expectedGenerationInputKey.length < 1 ||
+      body.expectedGenerationInputKey.length > 100_000 ||
+      typeof body.expectedUpdatedAt !== "string" ||
+      body.expectedUpdatedAt.length < 1 ||
+      body.expectedUpdatedAt.length > 80 ||
+      (body.kind !== "text" &&
+        body.kind !== "image" &&
+        body.kind !== "video" &&
+        body.kind !== "audio") ||
+      typeof body.nodeId !== "string" ||
+      !/^[a-z0-9._-]{1,160}$/i.test(body.nodeId)
+    ) {
+      json(response, 400, {
+        code: "RETRY_FENCE_REQUIRED",
+        error: "重试请求缺少当前画布与任务绑定证据",
+      });
+      return;
+    }
     const task = identity.bypass
       ? taskStore().get(taskId)
       : taskStore().getForOwner(taskId, identity.userId);
     if (!task) {
       json(response, 404, { error: "Generation task not found" });
+      return;
+    }
+    if (
+      task.canvasId !== body.canvasId ||
+      task.nodeId !== body.nodeId ||
+      task.kind !== body.kind
+    ) {
+      json(response, 409, {
+        code: "RETRY_BINDING_STALE",
+        error: "任务已不再绑定当前画布节点",
+      });
+      return;
+    }
+    if (
+      task.attempt !== Number(body.expectedAttempt) ||
+      task.updatedAt !== body.expectedUpdatedAt
+    ) {
+      json(response, 409, {
+        code: "RETRY_TASK_CHANGED",
+        error: "任务状态已变化，请刷新后再试",
+      });
       return;
     }
     const retry = retrySafetyDecision(task);
@@ -3648,31 +3754,80 @@ export async function generationTasks(
         providerProfileId: retry.model.provider_profile_id,
       };
     }
+    let queued: GenerationTask | undefined;
     try {
-      const queued = retry.mode === "resume-provider-task"
+      queued = retry.mode === "resume-provider-task"
         ? taskStore().admitRetry({
+            canvasId: body.canvasId,
+            expectedAttempt: Number(body.expectedAttempt),
+            expectedCanvasRevision: Number(body.expectedCanvasRevision),
+            expectedGenerationInputKey: body.expectedGenerationInputKey,
+            expectedUpdatedAt: body.expectedUpdatedAt,
+            kind: body.kind,
             mode: "resume-provider-task",
+            nodeId: body.nodeId,
             taskId,
           })
         : taskStore().admitRetry({
+            canvasId: body.canvasId,
+            expectedAttempt: Number(body.expectedAttempt),
+            expectedCanvasRevision: Number(body.expectedCanvasRevision),
+            expectedGenerationInputKey: body.expectedGenerationInputKey,
+            expectedUpdatedAt: body.expectedUpdatedAt,
+            kind: body.kind,
             mode: "new-paid-attempt",
+            nodeId: body.nodeId,
             snapshot: paidRetrySnapshot!,
             taskId,
           });
-      if (!queued) throw new Error("Generation task not found");
-      launchGenerationTask(taskId, task.kind);
-      json(response, 202, taskSummary(queued));
+      if (!queued) {
+        json(response, 409, {
+          code: "RETRY_TASK_CHANGED",
+          error: "任务状态已变化，请刷新后再试",
+        });
+        return;
+      }
     } catch (error) {
-      if (error instanceof GenerationTaskAdmissionError) {
+      if (canvasRevisionConflict(response, error)) {
+        // The final BEGIN IMMEDIATE fence observed a newer durable graph.
+      } else if (error instanceof GenerationTaskRetryFenceError) {
+        json(response, 409, { code: error.code, error: error.message });
+      } else if (error instanceof GenerationTaskAdmissionError) {
         json(response, 409, { code: error.code, error: error.message });
       } else if (error instanceof GenerationProviderAttemptBlockedError) {
         json(response, 409, { code: error.code, error: error.message });
       } else if (error instanceof GenerationTaskOwnerDeletingError) {
         json(response, 409, { code: error.code, error: error.message });
+      } else if (error instanceof GenerationTaskTransitionError) {
+        json(response, 409, {
+          code: "RETRY_TASK_CHANGED",
+          error: "任务状态已变化，请刷新后再试",
+        });
       } else {
-        json(response, 409, { error: "Generation task cannot be retried" });
+        json(response, 500, {
+          code: "GENERATION_RETRY_FAILED",
+          error: "生成任务重试暂时无法处理，请核对任务状态后再试",
+        });
       }
+      return;
     }
+    let summary: ReturnType<typeof taskSummaryForOwner>;
+    try {
+      launchGenerationTask(taskId, task.kind);
+      summary = taskSummaryForOwner(
+        queued,
+        identity.bypass ? undefined : identity.userId,
+      );
+    } catch {
+      // admitRetry already committed. A 5xx lets the client reconcile the exact
+      // task without issuing a second retry mutation.
+      json(response, 500, {
+        code: "GENERATION_RETRY_ACCEPTED_RESPONSE_FAILED",
+        error: "重试已提交，任务响应暂不可用，请等待状态核对",
+      });
+      return;
+    }
+    json(response, 202, summary);
     return;
   }
 
@@ -3684,7 +3839,10 @@ export async function generationTasks(
       json(response, 404, { error: "Generation task not found" });
       return;
     }
-    json(response, 200, taskSummary(task));
+    json(response, 200, taskSummaryForOwner(
+      task,
+      identity.bypass ? undefined : identity.userId,
+    ));
     return;
   }
 
@@ -3787,7 +3945,10 @@ export async function generationTasks(
         requestIntent,
       });
       if (existing) {
-        json(response, 200, taskSummary(existing));
+        json(response, 200, taskSummaryForOwner(
+          existing,
+          identity.bypass ? undefined : identity.userId,
+        ));
         return;
       }
       const model = resolveModel(
@@ -3941,10 +4102,31 @@ export async function generationTasks(
         providerProfileId: model.provider_profile_id,
         requestIntent,
       });
-      if (created.created) {
-        launchGenerationTask(created.task.id, body.kind);
+      try {
+        injectInitialGenerationPostCommitFailure(request);
+        if (created.created) {
+          launchGenerationTask(created.task.id, body.kind);
+        }
+        json(
+          response,
+          created.created ? 202 : 200,
+          taskSummaryForOwner(
+            created.task,
+            identity.bypass ? undefined : identity.userId,
+          ),
+        );
+      } catch {
+        // admitOrGet already committed. A 5xx makes the browser reconcile this
+        // exact owner-scoped idempotency key instead of minting a second paid
+        // task. If the socket itself is gone, the network failure has the same
+        // reconcilable meaning and must not escape into the outer 4xx mapper.
+        try {
+          json(response, 500, {
+            code: "GENERATION_TASK_ACCEPTED_RESPONSE_FAILED",
+            error: "生成任务已提交，响应暂不可用，请等待状态核对",
+          });
+        } catch {}
       }
-      json(response, created.created ? 202 : 200, taskSummary(created.task));
     } catch (error) {
       if (error instanceof HttpRequestError) throw error;
       if (canvasRevisionConflict(response, error)) {

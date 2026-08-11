@@ -3838,7 +3838,7 @@ sup {
 
 .audio-node-upload-error {
   position: absolute;
-  z-index: 2;
+  z-index: 3;
   padding: 8px 10px;
   border-radius: 8px;
   color: #f1b0b0;

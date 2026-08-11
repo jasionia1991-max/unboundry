@@ -99,6 +99,114 @@ test("canvas shows the update notice only when versions differ", async ({
   await expect(page.getByTestId("update-notice")).toBeVisible();
 });
 
+test("failed canvas flush keeps the page and exposes a retryable error", async ({
+  page,
+  request,
+}) => {
+  const created = await request.post("/api/projects", { data: {} });
+  expect(created.status()).toBe(201);
+  const project = (await created.json()) as { id: string };
+  await page.route("**/api/updates", (route) =>
+    route.fulfill({
+      body: `data: ${JSON.stringify({ version: "99.0.1" })}\n\n`,
+      contentType: "text/event-stream",
+      status: 200,
+    }),
+  );
+  await page.route(`**/api/canvas/${project.id}`, (route) =>
+    route.fulfill({ json: { error: "load unavailable" }, status: 503 }),
+  );
+  let documentRequests = 0;
+  page.on("request", (request) => {
+    if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+      documentRequests += 1;
+    }
+  });
+
+  await page.goto(`/canvas/${project.id}`);
+  const initialDocumentRequests = documentRequests;
+  const reload = page.getByTestId("update-reload");
+  await expect(reload).toBeVisible();
+  await reload.click();
+  await expect(page.getByTestId("update-reload-error")).toContainText(
+    "保存失败，未刷新页面",
+  );
+  await expect(reload).toBeEnabled();
+  expect(documentRequests).toBe(initialDocumentRequests);
+  await expect(page).toHaveURL(new RegExp(`/canvas/${project.id}$`));
+
+  await reload.click();
+  await expect(page.getByTestId("update-reload-error")).toBeVisible();
+  await expect(reload).toBeEnabled();
+  expect(documentRequests).toBe(initialDocumentRequests);
+  await request.delete(`/api/projects/${project.id}`);
+});
+
+test("held update reload is single-flight and reloads once after save", async ({
+  page,
+  request,
+}) => {
+  const created = await request.post("/api/projects", { data: {} });
+  expect(created.status()).toBe(201);
+  const project = (await created.json()) as { id: string };
+  await page.route("**/api/updates", (route) =>
+    route.fulfill({
+      body: `data: ${JSON.stringify({ version: "99.0.2" })}\n\n`,
+      contentType: "text/event-stream",
+      status: 200,
+    }),
+  );
+  let canvasSaveCalls = 0;
+  let releaseSave!: () => void;
+  const heldSave = new Promise<void>((resolve) => {
+    releaseSave = resolve;
+  });
+  await page.route(`**/api/canvas/${project.id}`, async (route) => {
+    if (route.request().method() !== "PUT") {
+      await route.continue();
+      return;
+    }
+    canvasSaveCalls += 1;
+    await heldSave;
+    await route.continue();
+  });
+  let documentRequests = 0;
+  page.on("request", (request) => {
+    if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+      documentRequests += 1;
+    }
+  });
+
+  await page.goto(`/canvas/${project.id}`);
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-persistence-ready",
+    "true",
+  );
+  const initialDocumentRequests = documentRequests;
+  await page.getByTestId("add-node").click();
+  await page
+    .getByTestId("add-node-menu")
+    .getByRole("menuitem", { name: "文本", exact: true })
+    .click();
+  await expect.poll(() => canvasSaveCalls).toBe(1);
+
+  const reload = page.getByTestId("update-reload");
+  await reload.evaluate((button) => {
+    button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await expect(reload).toBeDisabled();
+  expect(canvasSaveCalls).toBe(1);
+  releaseSave();
+
+  await expect.poll(() => documentRequests).toBe(initialDocumentRequests + 1);
+  await page.waitForLoadState("load");
+  await expect(page.getByTestId("update-notice")).toBeVisible();
+  expect(documentRequests).toBe(initialDocumentRequests + 1);
+  expect(canvasSaveCalls).toBe(1);
+  await request.delete(`/api/projects/${project.id}`);
+});
+
 test("canvas stays quiet when the bundled version matches the server", async ({
   page,
 }) => {

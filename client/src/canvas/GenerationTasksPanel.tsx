@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type Ref } from "react";
 import {
   abandonGenerationTask,
   cancelGenerationTask,
+  GENERATION_TASK_RETRY_ACCEPTED_EVENT,
   listGenerationTasks,
   retryGenerationTask,
   type GenerationTaskSummary,
@@ -46,6 +47,7 @@ function TaskRow({
   canvasScopeId,
   getActionSignal,
   isCurrentScope,
+  onActionError,
   onChanged,
   retryEnabled,
   task,
@@ -58,6 +60,7 @@ function TaskRow({
     canvasId: string,
   ) => AbortSignal | undefined;
   isCurrentScope: (scopeId: string, canvasId: string) => boolean;
+  onActionError: (message: string) => void;
   onChanged: () => void;
   retryEnabled: boolean;
   task: GenerationTaskSummary;
@@ -119,24 +122,56 @@ function TaskRow({
               busy ||
               !rowIsCurrent ||
               !retryEnabled ||
-              !waitForCanvasRevision
+              !waitForCanvasRevision ||
+              !task.generationInputKey
             }
             onClick={() => {
               if (
                 task.canvasId !== canvasId ||
                 !isCurrentScope(canvasScopeId, canvasId) ||
                 !retryEnabled ||
-                !waitForCanvasRevision
+                !waitForCanvasRevision ||
+                !task.generationInputKey
               ) return;
               const signal = getActionSignal(canvasScopeId, canvasId);
               if (!signal) return;
               setBusy(true);
-              void retryGenerationTask(task.id, waitForCanvasRevision, signal)
-                .catch(() => undefined)
+              void retryGenerationTask({
+                canvasId: task.canvasId,
+                generationInputKey: task.generationInputKey,
+                kind: task.kind,
+                nodeId: task.nodeId,
+                taskId: task.id,
+              }, waitForCanvasRevision, signal)
+                .then((accepted) => {
+                  if (!isCurrentScope(canvasScopeId, canvasId)) return;
+                  onActionError("");
+                  window.dispatchEvent(new CustomEvent(
+                    GENERATION_TASK_RETRY_ACCEPTED_EVENT,
+                    {
+                      detail: {
+                        attempt: accepted.attempt,
+                        canvasId: accepted.canvasId,
+                        kind: accepted.kind,
+                        nodeId: accepted.nodeId,
+                        taskId: accepted.id,
+                        updatedAt: accepted.updatedAt,
+                      },
+                    },
+                  ));
+                  onChanged();
+                })
+                .catch((error: unknown) => {
+                  if (!isCurrentScope(canvasScopeId, canvasId)) return;
+                  onActionError(
+                    error instanceof Error
+                      ? error.message
+                      : "生成任务重试失败，请稍后再试",
+                  );
+                })
                 .finally(() => {
                   if (!isCurrentScope(canvasScopeId, canvasId)) return;
                   setBusy(false);
-                  onChanged();
                 });
             }}
             type="button"
@@ -194,7 +229,8 @@ export function GenerationTasksPanel({
 }) {
   const [tasks, setTasks] = useState<GenerationTaskSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [readError, setReadError] = useState("");
   const mounted = useRef(false);
   const scope = useRef({ canvasId, canvasScopeId });
   const refreshController = useRef<AbortController | null>(null);
@@ -244,7 +280,7 @@ export function GenerationTasksPanel({
           !isCurrentScope(requestedScopeId, requestedCanvasId)
         ) return;
         setTasks(next.filter((task) => task.canvasId === requestedCanvasId));
-        setError("");
+        setReadError("");
       })
       .catch(() => {
         if (
@@ -252,7 +288,7 @@ export function GenerationTasksPanel({
           refreshEpoch.current !== epoch ||
           !isCurrentScope(requestedScopeId, requestedCanvasId)
         ) return;
-        setError("生成任务读取失败，请稍后再试");
+        setReadError("生成任务读取失败，请稍后再试");
       })
       .finally(() => {
         if (
@@ -271,7 +307,8 @@ export function GenerationTasksPanel({
     const currentActionController = new AbortController();
     actionController.current = currentActionController;
     setTasks([]);
-    setError("");
+    setActionError("");
+    setReadError("");
     setLoading(true);
     if (!open || !canvasId) {
       return () => currentActionController.abort("generation-task-scope-closed");
@@ -304,6 +341,7 @@ export function GenerationTasksPanel({
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
     .slice(0, 8);
   const changed = () => refresh(canvasScopeId, canvasId);
+  const visibleError = actionError || readError;
 
   return (
     <section
@@ -317,7 +355,9 @@ export function GenerationTasksPanel({
         <span>最近任务</span>
       </header>
       <div className="tasks-divider" />
-      {error && <p className="tasks-error" role="alert">{error}</p>}
+      {visibleError && (
+        <p className="tasks-error" role="alert">{visibleError}</p>
+      )}
       {loading && tasks.length === 0 ? (
         <p className="tasks-empty">正在读取生成任务…</p>
       ) : tasks.length === 0 ? (
@@ -340,6 +380,7 @@ export function GenerationTasksPanel({
                     getActionSignal={getActionSignal}
                     isCurrentScope={isCurrentScope}
                     key={task.id}
+                    onActionError={setActionError}
                     onChanged={changed}
                     retryEnabled={retryEnabled}
                     task={task}
@@ -363,6 +404,7 @@ export function GenerationTasksPanel({
                     getActionSignal={getActionSignal}
                     isCurrentScope={isCurrentScope}
                     key={task.id}
+                    onActionError={setActionError}
                     onChanged={changed}
                     retryEnabled={retryEnabled}
                     task={task}
@@ -383,6 +425,7 @@ export function GenerationTasksPanel({
                     getActionSignal={getActionSignal}
                     isCurrentScope={isCurrentScope}
                     key={task.id}
+                    onActionError={setActionError}
                     onChanged={changed}
                     retryEnabled={retryEnabled}
                     task={task}

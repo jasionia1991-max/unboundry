@@ -18,7 +18,7 @@ import { fitVisualMediaSize } from "./mediaGeometry";
 import { NodeModelControl } from "./NodeModelControl";
 import { NodeParameterControl } from "./NodeParameterControl";
 import { EmptyMediaUploadToolbar } from "./EmptyMediaUploadToolbar";
-import type { ProbeNodeType } from "./ProbeNode";
+import { generationOwnershipKey, type ProbeNodeType } from "./ProbeNode";
 import {
   usePublishedModelSelection,
 } from "../models/ModelCatalog";
@@ -50,11 +50,14 @@ import {
   cancelGenerationTask,
   clearGenerationSubmissionIntent,
   ensureGenerationTask,
+  GENERATION_TASK_RETRY_ACCEPTED_EVENT,
   GenerationRequestError,
+  getGenerationTask,
   listGenerationTasks,
   recoverPendingGenerationTask,
   retryGenerationTask,
   waitForGenerationTask,
+  type GenerationTaskRetryAcceptedDetail,
   type GenerationTaskSummary,
 } from "../generation/generationTasks";
 import {
@@ -67,6 +70,7 @@ import {
 import {
   availableNodeInputRoles,
   blockedModelSwitchProblem,
+  defaultNodeInputRole,
   moveNodeInputEdge,
   resolveNodeInputs,
   type NodeInputProblem,
@@ -82,9 +86,22 @@ import {
 
 type VideoPollingRun = {
   inputKey?: string;
+  ownershipKey?: string;
   taskId: string;
   token: symbol;
 };
+
+function videoTaskMatchesNode(
+  task: GenerationTaskSummary,
+  canvasId: string,
+  nodeId: string,
+  taskId = task.id,
+) {
+  return task.id === taskId &&
+    task.canvasId === canvasId &&
+    task.kind === "video" &&
+    task.nodeId === nodeId;
+}
 
 function clock(seconds = 0) {
   const safe = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
@@ -279,9 +296,14 @@ function VideoNodeImpl({
   const [retryTaskId, setRetryTaskId] = useState<string>();
   const [pollingPausedTaskId, setPollingPausedTaskId] = useState<string>();
   const pollingPausedTaskIdRef = useRef<string | undefined>(undefined);
+  const [unverifiedRecoveryTaskId, setUnverifiedRecoveryTaskId] =
+    useState<string>();
+  const [recoveryEpoch, setRecoveryEpoch] = useState(0);
   const generationPollingRunRef = useRef<VideoPollingRun | undefined>(undefined);
   const liveGenerationInputKeyRef = useRef<string | undefined>(undefined);
+  const liveGenerationOwnershipKeyRef = useRef<string | undefined>(undefined);
   const [serverInputProblems, setServerInputProblems] = useState<NodeInputProblem[]>([]);
+  const [retryWakeEpoch, setRetryWakeEpoch] = useState(0);
   const uploadBaseline = useRef<ProbeNodeType | undefined>(undefined);
   const uploadController = useRef<AbortController | undefined>(undefined);
   const uploadInFlight = useRef(false);
@@ -291,16 +313,17 @@ function VideoNodeImpl({
   const beginGenerationPollingRun = (
     taskId: string,
     inputKey?: string,
+    ownershipKey?: string,
   ): VideoPollingRun => {
-    const run = { inputKey, taskId, token: Symbol(taskId) };
+    const run = { inputKey, ownershipKey, taskId, token: Symbol(taskId) };
     generationPollingRunRef.current = run;
     setActiveTaskId(taskId);
     return run;
   };
   const ownsGenerationPollingRun = (run: VideoPollingRun) =>
     generationPollingRunRef.current === run &&
-    (run.inputKey === undefined ||
-      liveGenerationInputKeyRef.current === run.inputKey);
+    (run.ownershipKey === undefined ||
+      liveGenerationOwnershipKeyRef.current === run.ownershipKey);
   const endGenerationPollingRun = (run: VideoPollingRun) => {
     if (generationPollingRunRef.current !== run) return;
     generationPollingRunRef.current = undefined;
@@ -340,6 +363,7 @@ function VideoNodeImpl({
                   videoGenerationError: undefined,
                   videoGenerationErrorCode: undefined,
                   videoGenerationInputKey: undefined,
+                  videoGenerationOwnershipKey: undefined,
                   videoGenerating: false,
                   videoGenerationRetryAllowed: undefined,
                   videoGenerationRetryBlockCode: undefined,
@@ -398,10 +422,51 @@ function VideoNodeImpl({
     parameters: videoSubmissionParameters,
     prompt: inputPreflight.finalPrompt,
   });
+  const generationOwnershipUpstream = inputPreflight.inputs.map((input) => {
+      const edge = canvasEdges.find((candidate) =>
+        candidate.id === input.edgeId
+      );
+      return {
+        assetId: input.kind === "text" ? undefined : input.assetId,
+        edgeId: input.edgeId,
+        metadataStatus: input.metadataStatus,
+        order: input.order,
+        ready: input.state === "ready",
+        role: typeof edge?.data?.inputRole === "string"
+          ? edge.data.inputRole
+          : defaultNodeInputRole(input.kind, "video"),
+        source: input.sourceNodeId,
+        sourceKind: input.kind,
+        src: input.kind === "text" ? undefined : input.preview,
+        status: input.state,
+        text: input.kind === "text" ? input.text : undefined,
+      };
+    });
+  const effectiveGenerationInputFingerprint = generationOwnershipKey({
+    modelId: selectedVideoModelId,
+    parameters: selectedVideoModel ? videoParameters : data.videoParameters,
+    prompt: promptControl.committedValue,
+    upstream: generationOwnershipUpstream,
+  });
+  const rawGenerationInputFingerprint = generationOwnershipKey({
+    // Once a task is ownership-bound, catalog changes must not reinterpret its
+    // saved model snapshot. Before admission, use the effective values that are
+    // materialized and ACKed on the canvas below.
+    modelId: data.videoGenerationOwnershipKey
+      ? data.videoModelId
+      : selectedVideoModelId,
+    parameters: data.videoGenerationOwnershipKey
+      ? data.videoParameters
+      : selectedVideoModel
+        ? videoParameters
+        : data.videoParameters,
+    prompt: promptControl.committedValue,
+    // Only durable source/edge semantics belong here. Compatibility, resolver
+    // reasons, and resolved roles can drift with the model catalog.
+    upstream: generationOwnershipUpstream,
+  });
   liveGenerationInputKeyRef.current = videoGenerationInputKey;
-  const recoverableVideoGenerationInputKey = selectedVideoModel
-    ? videoGenerationInputKey
-    : data.videoGenerationInputKey;
+  liveGenerationOwnershipKeyRef.current = rawGenerationInputFingerprint;
   // 只有“当前输入”对应的结果才视为已完成；修改提示词/参数/参考后允许重新生成。
   const generatedForCurrentInput = Boolean(
     generatedSuccess &&
@@ -418,14 +483,38 @@ function VideoNodeImpl({
     parameters: videoSubmissionParameters,
     prompt: inputPreflight.finalPrompt,
   };
-  const stableGenerationInputKey = useRef<string | undefined>(undefined);
+  const stableRawGenerationInputFingerprint = useRef<string | undefined>(
+    undefined,
+  );
+  const legacyRecoveryCatalogKey = data.videoGenerationOwnershipKey
+    ? "ownership-bound"
+    : `${videoModelSelection.status}:${selectedVideoModelId ?? ""}:${videoGenerationInputKey}`;
   const retryAvailable = Boolean(
     retryTaskId &&
     data.videoGenerationInputKey === videoGenerationInputKey &&
+    (!data.videoGenerationOwnershipKey ||
+      data.videoGenerationOwnershipKey === rawGenerationInputFingerprint) &&
     data.videoGenerationRetryAllowed === true &&
     selectedVideoModel &&
     selectedVideoModel.generationAvailable !== false,
   );
+
+  const clearVideoIntentAfterDurableTerminalPatch = (taskId: string) => {
+    void (async () => {
+      try {
+        await flushCanvasSave();
+        clearGenerationSubmissionIntent(
+          "video",
+          canvasId,
+          id,
+          taskId,
+          accountId,
+        );
+      } catch {
+        // Keep the intent for exact-GET recovery when the canvas ACK is lost.
+      }
+    })();
+  };
 
   useEffect(() => {
     setModelSwitchProblem("");
@@ -436,62 +525,87 @@ function VideoNodeImpl({
   }, [inputFeedbackFingerprint]);
 
   useEffect(() => {
-    if (
-      canvasRevision === undefined ||
-      videoModelSelection.status !== "ready" ||
-      !selectedVideoModel
-    ) return;
-    const previous = stableGenerationInputKey.current;
-    stableGenerationInputKey.current = videoGenerationInputKey;
-    const persistedMismatch = Boolean(
-      data.videoGenerationInputKey &&
-      data.videoGenerationInputKey !== videoGenerationInputKey,
+    const wakeAcceptedRetry = (event: Event) => {
+      const detail = (event as CustomEvent<GenerationTaskRetryAcceptedDetail>)
+        .detail;
+      if (
+        detail?.canvasId === canvasId &&
+        detail.nodeId === id &&
+        detail.kind === "video" &&
+        detail.taskId === data.videoGenerationTaskId
+      ) {
+        setRetryWakeEpoch((current) => current + 1);
+      }
+    };
+    window.addEventListener(
+      GENERATION_TASK_RETRY_ACCEPTED_EVENT,
+      wakeAcceptedRetry,
     );
-    if (!persistedMismatch && (
-      previous === undefined || previous === videoGenerationInputKey
-    )) return;
+    return () => window.removeEventListener(
+      GENERATION_TASK_RETRY_ACCEPTED_EVENT,
+      wakeAcceptedRetry,
+    );
+  }, [canvasId, data.videoGenerationTaskId, id]);
+
+  useEffect(() => {
+    if (!persistenceReady) {
+      stableRawGenerationInputFingerprint.current = undefined;
+      return;
+    }
+    const previous = stableRawGenerationInputFingerprint.current;
+    stableRawGenerationInputFingerprint.current = rawGenerationInputFingerprint;
+    const persistedMismatch = Boolean(
+      data.videoGenerationOwnershipKey &&
+      data.videoGenerationOwnershipKey !== rawGenerationInputFingerprint,
+    );
+    if (
+      !persistedMismatch &&
+      (previous === undefined || previous === rawGenerationInputFingerprint)
+    ) {
+      return;
+    }
+    if (
+      !data.videoGenerating &&
+      !data.videoGenerationTaskId &&
+      !data.videoGenerationInputKey &&
+      !data.videoGenerationOwnershipKey
+    ) return;
     generationPollingRunRef.current = undefined;
-    setRetryTaskId(undefined);
     setActiveTaskId(undefined);
     pollingPausedTaskIdRef.current = undefined;
     setPollingPausedTaskId(undefined);
+    setRetryTaskId(undefined);
     setServerInputProblems([]);
-    if (data.videoGenerationTaskId || data.videoGenerationInputKey) {
-      clearGenerationSubmissionIntent(
-        "video",
-        canvasId,
-        id,
-        data.videoGenerationTaskId,
-        accountId,
-      );
-      setUploadError("");
-      setNodes((nodes) => nodes.map((node) => node.id === id
-        ? {
-            ...node,
-            data: {
-              ...node.data,
-              videoGenerationError: undefined,
-              videoGenerationErrorCode: undefined,
-              videoGenerationInputKey: undefined,
-              videoGenerationRetryAllowed: undefined,
-              videoGenerationRetryBlockCode: undefined,
-              videoGenerationRetryBlockReason: undefined,
-              videoGenerating: false,
-              videoGenerationTaskId: undefined,
-            },
-          }
-        : node));
-    }
+    setUploadError("");
+    clearGenerationSubmissionIntent("video", canvasId, id, undefined, accountId);
+    setNodes((nodes) => nodes.map((node) => node.id === id
+      ? {
+          ...node,
+          data: {
+            ...node.data,
+            videoGenerationError: undefined,
+            videoGenerationErrorCode: undefined,
+            videoGenerationInputKey: undefined,
+            videoGenerationOwnershipKey: undefined,
+            videoGenerating: false,
+            videoGenerationRetryAllowed: undefined,
+            videoGenerationRetryBlockCode: undefined,
+            videoGenerationRetryBlockReason: undefined,
+            videoGenerationTaskId: undefined,
+          },
+        }
+      : node));
   }, [
-    canvasRevision,
+    accountId,
     canvasId,
+    data.videoGenerating,
     data.videoGenerationInputKey,
+    data.videoGenerationOwnershipKey,
     data.videoGenerationTaskId,
     id,
-    selectedVideoModel?.id,
+    persistenceReady,
+    rawGenerationInputFingerprint,
     setNodes,
-    videoGenerationInputKey,
-    videoModelSelection.status,
   ]);
 
   const persistVideoGenerationFailure = (
@@ -501,6 +615,8 @@ function VideoNodeImpl({
     retryAllowed: boolean,
     retryBlockCode?: string,
     retryBlockReason?: string,
+    generationInputKey?: string,
+    generationOwnershipKey?: string,
   ) => {
     const visibleMessage = generationFailureMessage(
       message,
@@ -515,7 +631,10 @@ function VideoNodeImpl({
             ...node.data,
             videoGenerationError: visibleMessage,
             videoGenerationErrorCode: errorCode,
-            videoGenerationInputKey: recoverableVideoGenerationInputKey,
+            videoGenerationInputKey:
+              generationInputKey ?? node.data.videoGenerationInputKey,
+            videoGenerationOwnershipKey:
+              generationOwnershipKey ?? node.data.videoGenerationOwnershipKey,
             videoGenerating: false,
             videoGenerationRetryAllowed: retryAllowed,
             videoGenerationRetryBlockCode: retryBlockCode,
@@ -526,6 +645,7 @@ function VideoNodeImpl({
       : node));
     setUploadError(visibleMessage);
     setRetryTaskId(retryAllowed ? taskId : undefined);
+    clearVideoIntentAfterDurableTerminalPatch(taskId);
   };
 
   const persistVideoGenerationCancellation = (
@@ -542,6 +662,7 @@ function VideoNodeImpl({
             videoGenerationError: message,
             videoGenerationErrorCode: undefined,
             videoGenerationInputKey: undefined,
+            videoGenerationOwnershipKey: undefined,
             videoGenerating: false,
             videoGenerationRetryAllowed: undefined,
             videoGenerationRetryBlockCode: undefined,
@@ -552,7 +673,7 @@ function VideoNodeImpl({
       : node));
     setUploadError(message);
     setRetryTaskId(undefined);
-    clearGenerationSubmissionIntent("video", canvasId, id, taskId, accountId);
+    clearVideoIntentAfterDurableTerminalPatch(taskId);
   };
 
   useEffect(() => {
@@ -637,8 +758,16 @@ function VideoNodeImpl({
     setNodes,
   ]);
 
-  const applyGeneratedVideo = (task: GenerationTaskSummary, cleanPrompt: string) => {
-    if (!task.resultAssetId || !task.resultUrl) {
+  const applyGeneratedVideo = async (
+    task: GenerationTaskSummary,
+    cleanPrompt: string,
+    run: VideoPollingRun,
+  ) => {
+    if (
+      !ownsGenerationPollingRun(run) ||
+      !videoTaskMatchesNode(task, canvasId, id, run.taskId)
+    ) return false;
+    if (task.state !== "success" || !task.resultAssetId || !task.resultUrl) {
       throw new Error("视频结果不完整");
     }
     const metadataPatch = task.resultMedia
@@ -690,7 +819,9 @@ function VideoNodeImpl({
           : node,
       ),
     );
+    await flushCanvasSave();
     clearGenerationSubmissionIntent("video", canvasId, id, task.id, accountId);
+    return true;
   };
 
   const generateVideo = async (): Promise<NodeGenerationOutcome> => {
@@ -700,7 +831,6 @@ function VideoNodeImpl({
       generating ||
       uploading ||
       submitting ||
-      generatedSuccess ||
       isFixture ||
       canvasRevision === undefined ||
       !inputPreflight.canSubmit ||
@@ -713,32 +843,57 @@ function VideoNodeImpl({
     setSubmitting(true);
     let submittedTaskId: string | undefined;
     let pollingRun: VideoPollingRun | undefined;
+    let bindingPersisted = false;
     const requestedGenerationInputKey = videoGenerationInputKey;
+    const requestedGenerationOwnershipKey =
+      effectiveGenerationInputFingerprint;
+    const requestedModelId = selectedVideoModelId;
+    const requestedModelName = videoModelSelection.displayName;
+    const requestedParameters = { ...videoParameters };
     try {
-      await flushCanvasSave();
+      setNodes((nodes) => nodes.map((node) => node.id === id
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              videoModel: requestedModelName,
+              videoModelId: requestedModelId,
+              videoParameters: requestedParameters,
+            },
+          }
+        : node));
+      const freshCanvasRevision = await waitForCanvasRevision();
       if (
-        liveGenerationInputKeyRef.current !== requestedGenerationInputKey
+        liveGenerationOwnershipKeyRef.current !== requestedGenerationOwnershipKey
       ) {
         return {
           message: "生成输入已修改，已停止本次生成",
           status: "failed",
         };
       }
-      const { task: submitted } = await ensureGenerationTask(
+      const {
+        generationOwnershipKey: persistedGenerationOwnershipKey,
+        task: submitted,
+      } = await ensureGenerationTask(
         "video",
-        videoGenerationRequestInput,
+        {
+          ...videoGenerationRequestInput,
+          canvasRevision: freshCanvasRevision,
+        },
         accountId,
         () => {
           if (
-            liveGenerationInputKeyRef.current !== requestedGenerationInputKey
+            liveGenerationOwnershipKeyRef.current !==
+              requestedGenerationOwnershipKey
           ) {
             throw new Error("生成输入已修改，已停止本次生成");
           }
         },
+        { generationOwnershipKey: requestedGenerationOwnershipKey },
       );
       submittedTaskId = submitted.id;
       if (
-        liveGenerationInputKeyRef.current !== requestedGenerationInputKey
+        liveGenerationOwnershipKeyRef.current !== requestedGenerationOwnershipKey
       ) {
         clearGenerationSubmissionIntent(
           "video",
@@ -755,6 +910,7 @@ function VideoNodeImpl({
       pollingRun = beginGenerationPollingRun(
         submitted.id,
         requestedGenerationInputKey,
+        requestedGenerationOwnershipKey,
       );
       checkpoint();
       setNodes((nodes) => nodes.map((node) => node.id === id
@@ -765,14 +921,33 @@ function VideoNodeImpl({
               videoGenerationError: undefined,
               videoGenerationErrorCode: undefined,
               videoGenerationInputKey,
+              videoGenerationOwnershipKey:
+                persistedGenerationOwnershipKey ??
+                requestedGenerationOwnershipKey,
               videoGenerating: true,
               videoGenerationRetryAllowed: undefined,
               videoGenerationRetryBlockCode: undefined,
               videoGenerationRetryBlockReason: undefined,
               videoGenerationTaskId: submitted.id,
+              videoModel: requestedModelName,
+              videoModelId: requestedModelId,
+              videoParameters: requestedParameters,
             },
           }
         : node));
+      await flushCanvasSave();
+      bindingPersisted = true;
+      if (
+        !pollingRun ||
+        !ownsGenerationPollingRun(pollingRun) ||
+        liveGenerationOwnershipKeyRef.current !==
+          requestedGenerationOwnershipKey
+      ) {
+        return {
+          message: "生成输入已修改，旧任务结果不会覆盖当前内容",
+          status: "failed",
+        };
+      }
       // Submission is complete once the durable task id has been persisted.
       // Keep polling under videoGenerating so the same button can safely
       // cancel that task instead of remaining disabled for the whole run.
@@ -819,7 +994,11 @@ function VideoNodeImpl({
           status: "failed",
         };
       }
-      applyGeneratedVideo(task, promptControl.committedValue.trim());
+      await applyGeneratedVideo(
+        task,
+        promptControl.committedValue.trim(),
+        pollingRun,
+      );
       pollingPausedTaskIdRef.current = undefined;
       setPollingPausedTaskId(undefined);
       setRetryTaskId(undefined);
@@ -837,6 +1016,15 @@ function VideoNodeImpl({
         pollingRun &&
         ownsGenerationPollingRun(pollingRun)
       ) {
+        if (!bindingPersisted) {
+          pollingPausedTaskIdRef.current = submittedTaskId;
+          setPollingPausedTaskId(submittedTaskId);
+          setUploadError("画布尚未安全保存，任务状态未查询；请重新检查");
+          return {
+            message: "画布尚未安全保存，任务状态未查询；请重新检查",
+            status: "failed",
+          };
+        }
         const errorCode = error instanceof GenerationRequestError
           ? error.code
           : "TASK_STATUS_UNKNOWN";
@@ -912,11 +1100,18 @@ function VideoNodeImpl({
     ) return;
     const taskId = retryTaskId;
     const requestedGenerationInputKey = videoGenerationInputKey;
+    const requestedGenerationOwnershipKey = rawGenerationInputFingerprint;
     setSubmitting(true);
     let retryAccepted = false;
     let pollingRun: VideoPollingRun | undefined;
     try {
-      await retryGenerationTask(taskId, async () => {
+      await retryGenerationTask({
+        canvasId,
+        generationInputKey: requestedGenerationInputKey,
+        kind: "video",
+        nodeId: id,
+        taskId,
+      }, async () => {
         const revision = await waitForCanvasRevision();
         if (
           liveGenerationInputKeyRef.current !== requestedGenerationInputKey
@@ -933,6 +1128,7 @@ function VideoNodeImpl({
       pollingRun = beginGenerationPollingRun(
         taskId,
         requestedGenerationInputKey,
+        requestedGenerationOwnershipKey,
       );
       setNodes((nodes) => nodes.map((node) => node.id === id
         ? {
@@ -942,6 +1138,7 @@ function VideoNodeImpl({
               videoGenerationError: undefined,
               videoGenerationErrorCode: undefined,
               videoGenerationInputKey,
+              videoGenerationOwnershipKey: requestedGenerationOwnershipKey,
               videoGenerating: true,
               videoGenerationRetryAllowed: undefined,
               videoGenerationRetryBlockCode: undefined,
@@ -975,7 +1172,11 @@ function VideoNodeImpl({
         );
         return;
       }
-      applyGeneratedVideo(task, promptControl.committedValue.trim());
+      await applyGeneratedVideo(
+        task,
+        promptControl.committedValue.trim(),
+        pollingRun,
+      );
       setRetryTaskId(undefined);
     } catch (error) {
       if (
@@ -1021,9 +1222,11 @@ function VideoNodeImpl({
     setUploadError("");
     const pollingRun = beginGenerationPollingRun(
       taskId,
-      videoGenerationInputKey,
+      data.videoGenerationInputKey,
+      data.videoGenerationOwnershipKey ?? rawGenerationInputFingerprint,
     );
     try {
+      await flushCanvasSave();
       const task = await waitForGenerationTaskWithPause(taskId, () => {
         if (!ownsGenerationPollingRun(pollingRun)) return;
         pollingPausedTaskIdRef.current = taskId;
@@ -1049,7 +1252,11 @@ function VideoNodeImpl({
         );
         return;
       }
-      applyGeneratedVideo(task, promptControl.committedValue.trim());
+      await applyGeneratedVideo(
+        task,
+        promptControl.committedValue.trim(),
+        pollingRun,
+      );
       setRetryTaskId(undefined);
     } catch (error) {
       if (!ownsGenerationPollingRun(pollingRun)) return;
@@ -1066,6 +1273,17 @@ function VideoNodeImpl({
     } finally {
       endGenerationPollingRun(pollingRun);
     }
+  };
+
+  const recheckVideoTaskStatus = () => {
+    if (
+      unverifiedRecoveryTaskId &&
+      unverifiedRecoveryTaskId === data.videoGenerationTaskId
+    ) {
+      setRecoveryEpoch((current) => current + 1);
+      return;
+    }
+    void resumeVideoPolling();
   };
 
   const cancelVideoGeneration = async () => {
@@ -1107,164 +1325,311 @@ function VideoNodeImpl({
   }, [data.videoPrompt]);
 
   useEffect(() => {
-    if (
-      !persistenceReady ||
-      isFixture ||
-      videoModelSelection.status !== "ready" ||
-      generationPollingRunRef.current
-    ) return;
-    const cleanOldResult = Boolean(
-      data.videoSrc &&
-      !data.videoGenerating &&
-      !data.videoGenerationTaskId,
-    );
+    if (!persistenceReady || isFixture || generationPollingRunRef.current) return;
+    const persistedTaskId = data.videoGenerationTaskId;
+    const persistedInputKey = data.videoGenerationInputKey;
+    const persistedOwnershipKey = data.videoGenerationOwnershipKey;
+    const catalogReady = videoModelSelection.status === "ready" &&
+      Boolean(selectedVideoModel);
     const controller = new AbortController();
     let pollingRun: VideoPollingRun | undefined;
-    void recoverPendingGenerationTask(
-      "video",
-      canvasId,
-      id,
-      controller.signal,
-      selectedVideoModel ? videoGenerationRequestInput : undefined,
-      accountId,
-    )
-      .then(async (pending) => {
-        if (controller.signal.aborted) {
-          return { recoveredIntent: false, tasks: [] };
-        }
-        return {
-          recoveredIntent: Boolean(pending),
-          tasks: pending
-            ? [pending]
-            : cleanOldResult
-              ? []
-              : await listGenerationTasks(canvasId, controller.signal),
-        };
-      })
-      .then(async ({ recoveredIntent, tasks }) => {
-        if (controller.signal.aborted || generationPollingRunRef.current) return;
-        const latest = tasks.filter((task) => task.kind === "video" && task.nodeId === id).at(-1);
-        if (!latest) return;
-        if (!recoveredIntent && data.videoGenerationTaskId !== latest.id) return;
-        if (latest.state === "success") {
-          applyGeneratedVideo(latest, promptControl.committedValue.trim());
-          return;
-        }
-        if (latest.state === "failed") {
-          const matchesPersistedInput = recoveredIntent || (
-            data.videoGenerationTaskId === latest.id &&
-            data.videoGenerationInputKey === videoGenerationInputKey
-          );
-          if (matchesPersistedInput) {
-            const retainPersistedBlock =
-              data.videoGenerationRetryAllowed === false;
-            persistVideoGenerationFailure(
-              latest.id,
-              retainPersistedBlock && data.videoGenerationError
-                ? data.videoGenerationError
-                : latest.errorMessage ?? "视频生成失败，请稍后再试",
-              retainPersistedBlock
-                ? data.videoGenerationErrorCode
-                : latest.errorCode,
-              retainPersistedBlock
-                ? false
-                : safelyRetryableGenerationTask(latest),
-              retainPersistedBlock
-                ? data.videoGenerationRetryBlockCode
-                : latest.retryBlockCode,
-              retainPersistedBlock
-                ? data.videoGenerationRetryBlockReason
-                : latest.retryBlockReason,
-            );
-          }
-          return;
-        }
-        if (latest.state === "cancelled") {
-          persistVideoGenerationCancellation(
-            latest.id,
-            latest.errorMessage ?? "视频生成已取消",
-          );
-          return;
-        }
-        pollingRun = beginGenerationPollingRun(
-          latest.id,
-          selectedVideoModel ? videoGenerationInputKey : undefined,
-        );
-        if (!ownsGenerationPollingRun(pollingRun)) {
-          endGenerationPollingRun(pollingRun);
-          return;
-        }
-        setNodes((nodes) => nodes.map((node) => node.id === id
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                videoGenerationError: undefined,
-                videoGenerationErrorCode: undefined,
-                videoGenerationInputKey: recoverableVideoGenerationInputKey,
-                videoGenerating: true,
-                videoGenerationRetryAllowed: undefined,
-                videoGenerationRetryBlockCode: undefined,
-                videoGenerationRetryBlockReason: undefined,
-                videoGenerationTaskId: latest.id,
-              },
-            }
-          : node));
-        let finished: Awaited<ReturnType<typeof waitForGenerationTask>>;
-        try {
-          finished = await waitForGenerationTaskWithPause(
-            latest.id,
-            () => {
-              if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) return;
-              pollingPausedTaskIdRef.current = latest.id;
-              setPollingPausedTaskId(latest.id);
-              setUploadError(POLLING_PAUSED_MESSAGE);
-            },
-            controller.signal,
-          );
-        } catch (error) {
-          if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) return;
-          if (pollingPausedTaskIdRef.current === latest.id) return;
-          if (error instanceof DOMException && error.name === "AbortError") return;
-          if (isTransientPollingError(error)) {
-            pollingPausedTaskIdRef.current = latest.id;
-            setPollingPausedTaskId(latest.id);
-            setUploadError(POLLING_PAUSED_MESSAGE);
-          } else {
-            setUploadError(
-              error instanceof Error
-                ? error.message
-                : "视频生成失败，请稍后再试",
-            );
-          }
-          return;
-        }
-        if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) return;
-        if (finished.state === "success") {
-          applyGeneratedVideo(finished, promptControl.committedValue.trim());
-        } else {
-          if (finished.state === "failed") {
-            persistVideoGenerationFailure(
-              finished.id,
-              finished.errorMessage ?? "视频生成失败，请稍后再试",
-              finished.errorCode,
-              safelyRetryableGenerationTask(finished),
-              finished.retryBlockCode,
-              finished.retryBlockReason,
-            );
-          } else if (finished.state === "cancelled") {
-            persistVideoGenerationCancellation(
-              finished.id,
-              finished.errorMessage ?? "视频生成已取消",
-            );
-          }
-        }
-      })
-      .catch((error) => {
+    let persistedTaskReadPending = false;
+    void (async () => {
+      let task: GenerationTaskSummary | undefined;
+      let recoveredIntent = false;
+      if (persistedTaskId) {
         if (
-          !(error instanceof DOMException && error.name === "AbortError") &&
-          (!pollingRun || ownsGenerationPollingRun(pollingRun))
+          persistedOwnershipKey &&
+          persistedOwnershipKey !== rawGenerationInputFingerprint
         ) {
+          setUnverifiedRecoveryTaskId((current) =>
+            current === persistedTaskId ? undefined : current
+          );
+          clearGenerationSubmissionIntent(
+            "video",
+            canvasId,
+            id,
+            persistedTaskId,
+            accountId,
+          );
+          setNodes((nodes) => nodes.map((node) =>
+            node.id === id && node.data.videoGenerationTaskId === persistedTaskId
+              ? {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    videoGenerationError: undefined,
+                    videoGenerationErrorCode: undefined,
+                    videoGenerationInputKey: undefined,
+                    videoGenerationOwnershipKey: undefined,
+                    videoGenerating: false,
+                    videoGenerationRetryAllowed: undefined,
+                    videoGenerationRetryBlockCode: undefined,
+                    videoGenerationRetryBlockReason: undefined,
+                    videoGenerationTaskId: undefined,
+                  },
+                }
+              : node
+          ));
+          return;
+        }
+        if (!persistedOwnershipKey) {
+          if (!catalogReady) return;
+          if (!persistedInputKey || persistedInputKey !== videoGenerationInputKey) {
+            setUnverifiedRecoveryTaskId((current) =>
+              current === persistedTaskId ? undefined : current
+            );
+            clearGenerationSubmissionIntent(
+              "video",
+              canvasId,
+              id,
+              persistedTaskId,
+              accountId,
+            );
+            setNodes((nodes) => nodes.map((node) =>
+              node.id === id && node.data.videoGenerationTaskId === persistedTaskId
+                ? {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      videoGenerationError: undefined,
+                      videoGenerationErrorCode: undefined,
+                      videoGenerationInputKey: undefined,
+                      videoGenerationOwnershipKey: undefined,
+                      videoGenerating: false,
+                      videoGenerationRetryAllowed: undefined,
+                      videoGenerationRetryBlockCode: undefined,
+                      videoGenerationRetryBlockReason: undefined,
+                      videoGenerationTaskId: undefined,
+                    },
+                  }
+                : node
+            ));
+            return;
+          }
+        }
+        persistedTaskReadPending = true;
+        task = await getGenerationTask(persistedTaskId, controller.signal);
+        persistedTaskReadPending = false;
+      } else {
+        task = await recoverPendingGenerationTask(
+          "video",
+          canvasId,
+          id,
+          controller.signal,
+          selectedVideoModel ? videoGenerationRequestInput : undefined,
+          accountId,
+          { generationOwnershipKey: rawGenerationInputFingerprint },
+        );
+        recoveredIntent = Boolean(task);
+        if (!task && data.videoGenerating) {
+          if (!data.videoGenerationOwnershipKey && !catalogReady) return;
+          const matches = (await listGenerationTasks(canvasId, controller.signal))
+            .filter((candidate) =>
+              candidate.kind === "video" && candidate.nodeId === id
+            );
+          if (matches.length === 1) task = matches[0];
+        }
+      }
+      if (controller.signal.aborted || !task) return;
+      const recoveredOwnershipKey = persistedOwnershipKey ??
+        task.generationOwnershipKey;
+      if (
+        recoveredOwnershipKey &&
+        recoveredOwnershipKey !== rawGenerationInputFingerprint
+      ) {
+        if (persistedTaskId) {
+          setUnverifiedRecoveryTaskId((current) =>
+            current === persistedTaskId ? undefined : current
+          );
+        }
+        clearGenerationSubmissionIntent(
+          "video",
+          canvasId,
+          id,
+          persistedTaskId ?? task.id,
+          accountId,
+        );
+        return;
+      }
+      if (!recoveredOwnershipKey) {
+        if (!catalogReady) return;
+        const legacyInputKey = persistedInputKey ?? task.generationInputKey;
+        if (!legacyInputKey || legacyInputKey !== videoGenerationInputKey) {
+          if (persistedTaskId) {
+            setUnverifiedRecoveryTaskId((current) =>
+              current === persistedTaskId ? undefined : current
+            );
+          }
+          clearGenerationSubmissionIntent(
+            "video",
+            canvasId,
+            id,
+            persistedTaskId ?? task.id,
+            accountId,
+          );
+          return;
+        }
+      }
+      if (!videoTaskMatchesNode(task, canvasId, id, persistedTaskId ?? task.id)) {
+        if (persistedTaskId) {
+          setUnverifiedRecoveryTaskId((current) =>
+            current === persistedTaskId ? undefined : current
+          );
+          clearGenerationSubmissionIntent(
+            "video",
+            canvasId,
+            id,
+            persistedTaskId,
+            accountId,
+          );
+          setNodes((nodes) => nodes.map((node) =>
+            node.id === id && node.data.videoGenerationTaskId === persistedTaskId
+              ? {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    videoGenerationError: undefined,
+                    videoGenerationErrorCode: undefined,
+                    videoGenerationInputKey: undefined,
+                    videoGenerationOwnershipKey: undefined,
+                    videoGenerating: false,
+                    videoGenerationRetryAllowed: undefined,
+                    videoGenerationRetryBlockCode: undefined,
+                    videoGenerationRetryBlockReason: undefined,
+                    videoGenerationTaskId: undefined,
+                  },
+                }
+              : node
+          ));
+        }
+        return;
+      }
+      if (persistedTaskId) {
+        setUnverifiedRecoveryTaskId((current) =>
+          current === persistedTaskId ? undefined : current
+        );
+        setUploadError("");
+      }
+      pollingRun = beginGenerationPollingRun(
+        task.id,
+        persistedInputKey ?? task.generationInputKey,
+        recoveredOwnershipKey ?? rawGenerationInputFingerprint,
+      );
+      if (!ownsGenerationPollingRun(pollingRun)) return;
+      if (task.state === "success") {
+        await applyGeneratedVideo(
+          task,
+          promptControl.committedValue.trim(),
+          pollingRun,
+        );
+        return;
+      }
+      if (task.state === "failed") {
+        const retainPersistedBlock =
+          !recoveredIntent && data.videoGenerationRetryAllowed === false;
+        persistVideoGenerationFailure(
+          task.id,
+          retainPersistedBlock && data.videoGenerationError
+            ? data.videoGenerationError
+            : task.errorMessage ?? "视频生成失败，请稍后再试",
+          retainPersistedBlock ? data.videoGenerationErrorCode : task.errorCode,
+          retainPersistedBlock ? false : safelyRetryableGenerationTask(task),
+          retainPersistedBlock
+            ? data.videoGenerationRetryBlockCode
+            : task.retryBlockCode,
+          retainPersistedBlock
+            ? data.videoGenerationRetryBlockReason
+            : task.retryBlockReason,
+          persistedInputKey ?? task.generationInputKey,
+          recoveredOwnershipKey,
+        );
+        return;
+      }
+      if (task.state === "cancelled") {
+        persistVideoGenerationCancellation(
+          task.id,
+          task.errorMessage ?? "视频生成已取消",
+        );
+        return;
+      }
+      setNodes((nodes) => nodes.map((node) => node.id === id
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              videoGenerationError: undefined,
+              videoGenerationErrorCode: undefined,
+              videoGenerationInputKey:
+                persistedInputKey ?? task.generationInputKey,
+              videoGenerationOwnershipKey: recoveredOwnershipKey,
+              videoGenerating: true,
+              videoGenerationRetryAllowed: undefined,
+              videoGenerationRetryBlockCode: undefined,
+              videoGenerationRetryBlockReason: undefined,
+              videoGenerationTaskId: task.id,
+            },
+          }
+        : node));
+      const finished = await waitForGenerationTaskWithPause(
+        task.id,
+        () => {
+          if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) return;
+          pollingPausedTaskIdRef.current = task.id;
+          setPollingPausedTaskId(task.id);
+          setUploadError(POLLING_PAUSED_MESSAGE);
+        },
+        controller.signal,
+      );
+      if (
+        !pollingRun ||
+        !ownsGenerationPollingRun(pollingRun) ||
+        !videoTaskMatchesNode(finished, canvasId, id, task.id)
+      ) return;
+      if (finished.state === "success") {
+        await applyGeneratedVideo(
+          finished,
+          promptControl.committedValue.trim(),
+          pollingRun,
+        );
+      } else if (finished.state === "failed") {
+        persistVideoGenerationFailure(
+          finished.id,
+          finished.errorMessage ?? "视频生成失败，请稍后再试",
+          finished.errorCode,
+          safelyRetryableGenerationTask(finished),
+          finished.retryBlockCode,
+          finished.retryBlockReason,
+        );
+      } else if (finished.state === "cancelled") {
+        persistVideoGenerationCancellation(
+          finished.id,
+          finished.errorMessage ?? "视频生成已取消",
+        );
+      }
+    })()
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        if (
+          persistedTaskId &&
+          persistedTaskReadPending &&
+          isTransientPollingError(error)
+        ) {
+          setUnverifiedRecoveryTaskId(persistedTaskId);
+          setUploadError(POLLING_PAUSED_MESSAGE);
+          return;
+        }
+        if (persistedTaskId && persistedTaskReadPending) {
+          setUnverifiedRecoveryTaskId((current) =>
+            current === persistedTaskId ? undefined : current
+          );
+        }
+        if (pollingRun && ownsGenerationPollingRun(pollingRun) &&
+          isTransientPollingError(error)) {
+          pollingPausedTaskIdRef.current = pollingRun.taskId;
+          setPollingPausedTaskId(pollingRun.taskId);
+          setUploadError(POLLING_PAUSED_MESSAGE);
+        } else if (!pollingRun || ownsGenerationPollingRun(pollingRun)) {
           setUploadError("生成任务状态暂时无法读取");
         }
       })
@@ -1283,14 +1648,15 @@ function VideoNodeImpl({
     data.videoGenerationRetryBlockCode,
     data.videoGenerationRetryBlockReason,
     data.videoGenerationInputKey,
+    data.videoGenerationOwnershipKey,
     data.videoGenerating,
     data.videoGenerationTaskId,
-    data.videoSrc,
     id,
     persistenceReady,
-    selectedVideoModel?.id,
-    videoGenerationInputKey,
-    videoModelSelection.status,
+    recoveryEpoch,
+    retryWakeEpoch,
+    rawGenerationInputFingerprint,
+    legacyRecoveryCatalogKey,
   ]);
 
   useEffect(() => {
@@ -1970,10 +2336,12 @@ function VideoNodeImpl({
                 重试
               </button>
             )}
-            {pollingPausedTaskId && (
+            {(pollingPausedTaskId ||
+              (unverifiedRecoveryTaskId &&
+                unverifiedRecoveryTaskId === data.videoGenerationTaskId)) && (
               <button
                 aria-label="重新检查任务状态"
-                onClick={() => void resumeVideoPolling()}
+                onClick={recheckVideoTaskStatus}
                 type="button"
               >
                 重新检查
@@ -1981,25 +2349,7 @@ function VideoNodeImpl({
             )}
           </div>
         )}
-        {generating || uploading ? (
-          <div
-            aria-label={uploading ? "视频上传中" : "视频生成中"}
-            className="video-node-generating"
-            data-testid="video-node-generating"
-            role="status"
-          >
-            <span
-              className="image-node-generating-background video-node-generating-background"
-              data-testid="video-node-generating-background"
-            />
-            <span
-              className="image-node-loading-grid video-node-loading-grid"
-              data-grid-columns="18"
-              data-grid-rows="18"
-              data-testid="video-node-loading-grid"
-            />
-          </div>
-        ) : data.videoSrc ? (
+        {data.videoSrc ? (
           <>
             <video
               className="video-node-preview"
@@ -2064,12 +2414,31 @@ function VideoNodeImpl({
               替换
             </button>
           </>
-        ) : (
+        ) : !generating && !uploading ? (
           <div aria-hidden="true" className="video-node-empty-action">
             <svg aria-hidden="true" viewBox="0 0 48 48">
               <rect height="34" rx="6" width="38" x="5" y="7" />
               <path d="m19 16 13 8-13 8Z" />
             </svg>
+          </div>
+        ) : null}
+        {(generating || uploading) && (
+          <div
+            aria-label={uploading ? "视频上传中" : "视频生成中"}
+            className="video-node-generating"
+            data-testid="video-node-generating"
+            role="status"
+          >
+            <span
+              className="image-node-generating-background video-node-generating-background"
+              data-testid="video-node-generating-background"
+            />
+            <span
+              className="image-node-loading-grid video-node-loading-grid"
+              data-grid-columns="18"
+              data-grid-rows="18"
+              data-testid="video-node-loading-grid"
+            />
           </div>
         )}
         <input

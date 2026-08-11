@@ -68,6 +68,24 @@ export type GenerationPaidRetrySnapshot = {
   providerProfileId: string;
 };
 
+export type GenerationTaskRetryFence = {
+  canvasId: string;
+  expectedAttempt: number;
+  expectedCanvasRevision: number;
+  expectedGenerationInputKey: string;
+  expectedUpdatedAt: string;
+  kind: GenerationTaskKind;
+  nodeId: string;
+};
+
+export type GenerationTaskCanvasRetryBinding = {
+  canvasRevision: number;
+  generationInputKey: string;
+  kind: GenerationTaskKind;
+  nodeId: string;
+  taskId: string;
+};
+
 export type GenerationTaskAbandonInput = {
   expectedAttempt: number;
   expectedUpdatedAt: string;
@@ -219,6 +237,16 @@ export class GenerationTaskTransitionError extends Error {
   }
 }
 
+export class GenerationTaskRetryFenceError extends Error {
+  constructor(
+    readonly code: "RETRY_BINDING_STALE" | "RETRY_TASK_CHANGED",
+    message: string,
+  ) {
+    super(message);
+    this.name = "GenerationTaskRetryFenceError";
+  }
+}
+
 export class GenerationTaskAdmissionError extends Error {
   constructor(
     readonly code: Exclude<GenerationAdmission, { allowed: true }>["code"],
@@ -319,6 +347,62 @@ function stableValue(value: unknown): unknown {
     );
   }
   return value;
+}
+
+function canvasRetryBindings(
+  nodesJson: string,
+  canvasRevision: number,
+): Map<string, GenerationTaskCanvasRetryBinding> {
+  let nodes: unknown;
+  try {
+    nodes = JSON.parse(nodesJson);
+  } catch {
+    return new Map();
+  }
+  if (!Array.isArray(nodes)) return new Map();
+  const bindings = new Map<string, GenerationTaskCanvasRetryBinding>();
+  const ambiguous = new Set<string>();
+  for (const rawNode of nodes) {
+    if (!rawNode || typeof rawNode !== "object" || Array.isArray(rawNode)) continue;
+    const node = rawNode as {
+      data?: unknown;
+      id?: unknown;
+      type?: unknown;
+    };
+    if (
+      typeof node.id !== "string" ||
+      typeof node.type !== "string" ||
+      !generationTaskKinds.includes(node.type as GenerationTaskKind) ||
+      !node.data ||
+      typeof node.data !== "object" ||
+      Array.isArray(node.data)
+    ) continue;
+    const kind = node.type as GenerationTaskKind;
+    const data = node.data as Record<string, unknown>;
+    const taskId = data[`${kind}GenerationTaskId`];
+    const generationInputKey = data[`${kind}GenerationInputKey`];
+    if (
+      typeof taskId !== "string" ||
+      !identifierPattern.test(taskId) ||
+      taskId.length > 120 ||
+      typeof generationInputKey !== "string" ||
+      generationInputKey.length < 1 ||
+      generationInputKey.length > 100_000
+    ) continue;
+    if (bindings.has(taskId) || ambiguous.has(taskId)) {
+      bindings.delete(taskId);
+      ambiguous.add(taskId);
+      continue;
+    }
+    bindings.set(taskId, {
+      canvasRevision,
+      generationInputKey,
+      kind,
+      nodeId: node.id,
+      taskId,
+    });
+  }
+  return bindings;
 }
 
 const requestIntentKeys = [
@@ -1078,8 +1162,12 @@ export function createGenerationTaskStore(dataDirectory: string) {
           if (!matchingRequestFingerprint(row, fingerprint)) {
             throw new GenerationTaskConflictError();
           }
+          // Convert the durable row while the transaction can still roll back.
+          // Once COMMIT returns, the HTTP layer must treat every later failure
+          // as an unknown accepted outcome rather than a deterministic 4xx.
+          const task = toTask(row);
           database.exec("COMMIT");
-          return { created, task: toTask(row) };
+          return { created, task };
         }
 
         if (database.prepare(`
@@ -1236,13 +1324,17 @@ export function createGenerationTaskStore(dataDirectory: string) {
           timestamp,
         );
         row = readById.get(id) as GenerationTaskRow;
+        // Keep row decoding on the pre-COMMIT side of the paid admission
+        // boundary. The caller can then reliably classify all failures after
+        // admitOrGet returns as a committed outcome.
+        const task = toTask(row);
         created = true;
         database.exec("COMMIT");
+        return { created, task };
       } catch (error) {
         database.exec("ROLLBACK");
         throw error;
       }
-      return { created, task: toTask(row!) };
     },
 
     create(input: GenerationTaskInput) {
@@ -1440,17 +1532,33 @@ export function createGenerationTaskStore(dataDirectory: string) {
       if (!identifierPattern.test(canvasId) || canvasId.length > 120) {
         throw new Error("Invalid canvas ID");
       }
-      return (
-        database
-          .prepare(`
-            SELECT *
-            FROM generation_tasks
-            WHERE canvas_id = ?
-            ORDER BY created_at ASC, rowid ASC
-            LIMIT 500
-          `)
-          .all(canvasId) as GenerationTaskRow[]
-      ).map(toTask);
+      return (database.prepare(`
+        WITH latest_terminal AS (
+          SELECT rowid
+          FROM generation_tasks
+          WHERE
+            canvas_id = ?
+            AND state NOT IN ('queued', 'running', 'retrying', 'recovering')
+          ORDER BY updated_at DESC, rowid DESC
+          LIMIT 500
+        )
+        SELECT tasks.*
+        FROM generation_tasks AS tasks
+        WHERE
+          tasks.canvas_id = ?
+          AND (
+            tasks.state IN ('queued', 'running', 'retrying', 'recovering')
+            OR tasks.rowid IN (SELECT rowid FROM latest_terminal)
+          )
+        ORDER BY
+          CASE WHEN tasks.state IN ('queued', 'running', 'retrying', 'recovering')
+            THEN 0 ELSE 1 END ASC,
+          CASE WHEN tasks.state IN ('queued', 'running', 'retrying', 'recovering')
+            THEN tasks.created_at END ASC,
+          CASE WHEN tasks.state NOT IN ('queued', 'running', 'retrying', 'recovering')
+            THEN tasks.updated_at END DESC,
+          tasks.rowid DESC
+      `).all(canvasId, canvasId) as GenerationTaskRow[]).map(toTask);
     },
 
     listForOwner(canvasId: string, ownerId: string) {
@@ -1462,17 +1570,99 @@ export function createGenerationTaskStore(dataDirectory: string) {
       ) {
         throw new Error("Invalid canvas or owner ID");
       }
-      return (
-        database
-          .prepare(`
+      return (database.prepare(`
+        WITH latest_terminal AS (
+          SELECT rowid
+          FROM generation_tasks
+          WHERE
+            canvas_id = ?
+            AND owner_id = ?
+            AND state NOT IN ('queued', 'running', 'retrying', 'recovering')
+          ORDER BY updated_at DESC, rowid DESC
+          LIMIT 500
+        )
+        SELECT tasks.*
+        FROM generation_tasks AS tasks
+        WHERE
+          tasks.canvas_id = ?
+          AND tasks.owner_id = ?
+          AND (
+            tasks.state IN ('queued', 'running', 'retrying', 'recovering')
+            OR tasks.rowid IN (SELECT rowid FROM latest_terminal)
+          )
+        ORDER BY
+          CASE WHEN tasks.state IN ('queued', 'running', 'retrying', 'recovering')
+            THEN 0 ELSE 1 END ASC,
+          CASE WHEN tasks.state IN ('queued', 'running', 'retrying', 'recovering')
+            THEN tasks.created_at END ASC,
+          CASE WHEN tasks.state NOT IN ('queued', 'running', 'retrying', 'recovering')
+            THEN tasks.updated_at END DESC,
+          tasks.rowid DESC
+      `).all(
+        canvasId,
+        ownerId,
+        canvasId,
+        ownerId,
+      ) as GenerationTaskRow[]).map(toTask);
+    },
+
+    listActiveForCanvas(canvasId: string, ownerId?: string) {
+      if (
+        !identifierPattern.test(canvasId) ||
+        canvasId.length > 120 ||
+        (ownerId !== undefined &&
+          (!identifierPattern.test(ownerId) || ownerId.length > 120))
+      ) {
+        throw new Error("Invalid canvas or owner ID");
+      }
+      const rows = ownerId === undefined
+        ? database.prepare(`
             SELECT *
             FROM generation_tasks
-            WHERE canvas_id = ? AND owner_id = ?
+            WHERE
+              canvas_id = ?
+              AND state IN ('queued', 'running', 'retrying', 'recovering')
             ORDER BY created_at ASC, rowid ASC
-            LIMIT 500
-          `)
-          .all(canvasId, ownerId) as GenerationTaskRow[]
-      ).map(toTask);
+          `).all(canvasId)
+        : database.prepare(`
+            SELECT *
+            FROM generation_tasks
+            WHERE
+              canvas_id = ?
+              AND owner_id = ?
+              AND state IN ('queued', 'running', 'retrying', 'recovering')
+            ORDER BY created_at ASC, rowid ASC
+          `).all(canvasId, ownerId);
+      return (rows as GenerationTaskRow[]).map(toTask);
+    },
+
+    retryBindingsForCanvas(canvasId: string, ownerId?: string) {
+      if (
+        !identifierPattern.test(canvasId) ||
+        canvasId.length > 120 ||
+        (ownerId !== undefined &&
+          (!identifierPattern.test(ownerId) || ownerId.length > 120))
+      ) {
+        throw new Error("Invalid canvas or owner ID");
+      }
+      const row = (ownerId === undefined
+        ? database.prepare(`
+            SELECT graph_revision, nodes
+            FROM canvas_documents
+            WHERE id = ?
+            ORDER BY owner_id = '__test__' DESC, owner_id IS NULL DESC
+            LIMIT 1
+          `).get(canvasId)
+        : database.prepare(`
+            SELECT graph_revision, nodes
+            FROM canvas_documents
+            WHERE owner_id = ? AND id = ?
+          `).get(ownerId, canvasId)) as
+        | { graph_revision: number; nodes: string }
+        | undefined;
+      return row
+        ? canvasRetryBindings(row.nodes, Number(row.graph_revision))
+        : new Map<string, GenerationTaskCanvasRetryBinding>();
     },
 
     listRecovering() {
@@ -1483,7 +1673,6 @@ export function createGenerationTaskStore(dataDirectory: string) {
             FROM generation_tasks
             WHERE state = 'recovering'
             ORDER BY created_at ASC, rowid ASC
-            LIMIT 500
           `)
           .all() as GenerationTaskRow[]
       ).map(toTask);
@@ -1532,7 +1721,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
       ).map(toEvent);
     },
 
-    admitRetry(input:
+    admitRetry(input: GenerationTaskRetryFence & (
       | {
           mode: "new-paid-attempt";
           now?: Date;
@@ -1544,9 +1733,27 @@ export function createGenerationTaskStore(dataDirectory: string) {
           now?: Date;
           taskId: string;
         }
-    ) {
-      if (!identifierPattern.test(input.taskId) || input.taskId.length > 120) {
-        throw new Error("Invalid generation task ID");
+    )) {
+      if (
+        !identifierPattern.test(input.taskId) ||
+        input.taskId.length > 120 ||
+        !identifierPattern.test(input.canvasId) ||
+        input.canvasId.length > 120 ||
+        !identifierPattern.test(input.nodeId) ||
+        input.nodeId.length > 160 ||
+        !generationTaskKinds.includes(input.kind) ||
+        !Number.isSafeInteger(input.expectedAttempt) ||
+        input.expectedAttempt < 0 ||
+        !Number.isSafeInteger(input.expectedCanvasRevision) ||
+        input.expectedCanvasRevision < 0 ||
+        typeof input.expectedUpdatedAt !== "string" ||
+        input.expectedUpdatedAt.length < 1 ||
+        input.expectedUpdatedAt.length > 80 ||
+        typeof input.expectedGenerationInputKey !== "string" ||
+        input.expectedGenerationInputKey.length < 1 ||
+        input.expectedGenerationInputKey.length > 100_000
+      ) {
+        throw new Error("Invalid generation retry fence");
       }
       const timestamp = (input.now ?? new Date()).toISOString();
       database.exec("BEGIN IMMEDIATE");
@@ -1559,6 +1766,25 @@ export function createGenerationTaskStore(dataDirectory: string) {
         if (current.state !== "failed") {
           throw new GenerationTaskTransitionError(current.state, "retrying");
         }
+        if (
+          current.canvas_id !== input.canvasId ||
+          current.node_id !== input.nodeId ||
+          current.kind !== input.kind
+        ) {
+          throw new GenerationTaskRetryFenceError(
+            "RETRY_BINDING_STALE",
+            "任务已不再绑定当前画布节点",
+          );
+        }
+        if (
+          current.attempt !== input.expectedAttempt ||
+          current.updated_at !== input.expectedUpdatedAt
+        ) {
+          throw new GenerationTaskRetryFenceError(
+            "RETRY_TASK_CHANGED",
+            "任务状态已变化，请刷新后再试",
+          );
+        }
         const ownerId = current.owner_id ?? "__test__";
         if (database.prepare(`
           SELECT 1 FROM account_delete_intents
@@ -1566,6 +1792,40 @@ export function createGenerationTaskStore(dataDirectory: string) {
           LIMIT 1
         `).get(ownerId)) {
           throw new GenerationTaskOwnerDeletingError();
+        }
+
+        const canvas = database.prepare(`
+          SELECT graph_revision, nodes
+          FROM canvas_documents
+          WHERE owner_id IS ? AND id = ?
+        `).get(current.owner_id, current.canvas_id) as
+          | { graph_revision: number; nodes: string }
+          | undefined;
+        if (!canvas) {
+          throw new GenerationTaskRetryFenceError(
+            "RETRY_BINDING_STALE",
+            "画布或任务节点已不存在，不能重试旧任务",
+          );
+        }
+        if (Number(canvas.graph_revision) !== input.expectedCanvasRevision) {
+          throw new GenerationTaskCanvasRevisionConflictError(
+            Number(canvas.graph_revision),
+          );
+        }
+        const binding = canvasRetryBindings(
+          canvas.nodes,
+          Number(canvas.graph_revision),
+        ).get(current.id);
+        if (
+          !binding ||
+          binding.kind !== current.kind ||
+          binding.nodeId !== current.node_id ||
+          binding.generationInputKey !== input.expectedGenerationInputKey
+        ) {
+          throw new GenerationTaskRetryFenceError(
+            "RETRY_BINDING_STALE",
+            "任务已不再绑定当前节点输入，请从节点重新提交",
+          );
         }
 
         const executionAttempt = Math.max(1, current.attempt + 1);
@@ -1721,7 +1981,11 @@ export function createGenerationTaskStore(dataDirectory: string) {
             error_code = NULL,
             error_message = NULL,
             updated_at = ?
-          WHERE id = ? AND state = 'failed'
+          WHERE
+            id = ?
+            AND state = 'failed'
+            AND attempt = ?
+            AND updated_at = ?
         `).run(
           input.mode,
           input.mode,
@@ -1734,6 +1998,8 @@ export function createGenerationTaskStore(dataDirectory: string) {
           providerModelId,
           timestamp,
           current.id,
+          input.expectedAttempt,
+          input.expectedUpdatedAt,
         );
         if (updated.changes !== 1) {
           throw new Error("Generation task changed concurrently");

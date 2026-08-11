@@ -2106,8 +2106,42 @@ test("restart finalizes resumed OSS evidence against the original paid Provider 
       code: "TIMEOUT",
       message: "m88 resume the accepted remote task",
     });
+    const failedTask = initialStore.get(task.id)!;
+    const retryInputKey = "m88-oss-recovery-input-key";
+    const retryCanvasRevision = 1;
+    const retryCanvas = openAppDatabase(directory);
+    try {
+      retryCanvas.prepare(`
+        INSERT INTO canvas_documents (
+          owner_id, id, revision, graph_revision, nodes, edges, viewport,
+          updated_at, save_session_id, save_sequence
+        ) VALUES (?, ?, 1, ?, ?, '[]', '{}', ?, NULL, 0)
+      `).run(
+        ownerId,
+        failedTask.canvasId,
+        retryCanvasRevision,
+        JSON.stringify([{
+          data: {
+            imageGenerationInputKey: retryInputKey,
+            imageGenerationTaskId: failedTask.id,
+          },
+          id: failedTask.nodeId,
+          type: failedTask.kind,
+        }]),
+        failedTask.updatedAt,
+      );
+    } finally {
+      retryCanvas.close();
+    }
     expect(initialStore.admitRetry({
+      canvasId: failedTask.canvasId,
+      expectedAttempt: failedTask.attempt,
+      expectedCanvasRevision: retryCanvasRevision,
+      expectedGenerationInputKey: retryInputKey,
+      expectedUpdatedAt: failedTask.updatedAt,
+      kind: failedTask.kind,
       mode: "resume-provider-task",
+      nodeId: failedTask.nodeId,
       taskId: task.id,
     })).toMatchObject({
       attempt: 1,

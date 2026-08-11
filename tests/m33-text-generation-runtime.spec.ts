@@ -16,7 +16,9 @@ import {
 import {
   defaultParameterValues,
   knownModelParameterSchema,
+  submissionParameterValues,
 } from "../types/modelParameters";
+import { generationInputKey } from "../client/src/generation/generationRetry";
 
 const profile: ProviderProfile = {
   apiKey: "test-secret-never-returned",
@@ -707,6 +709,14 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
     providerModelId: "doubao-seed-2-0-lite-260428",
   });
   expect(parameterSchema).toBeTruthy();
+  const defaultParameters = defaultParameterValues(parameterSchema!);
+  const taskInputKey = generationInputKey({
+    inputs: [],
+    modelId,
+    ownPrompt: "请生成商品描述",
+    parameters: submissionParameterValues(parameterSchema!, defaultParameters),
+    prompt: "请生成商品描述",
+  });
   let currentTaskId = "text-ui-failure-001";
   let providerRequests = 0;
   let taskRetries = 0;
@@ -745,6 +755,7 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
         ? { errorCode: "AUTH", errorMessage: "零Provider模拟授权失败" }
         : {}),
       id,
+      generationInputKey: taskInputKey,
       kind: "text",
       model: modelId,
       nodeId,
@@ -831,7 +842,7 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
             content: "",
             label: "Text",
             textModelId: modelId,
-            textParameters: defaultParameterValues(parameterSchema!),
+            textParameters: defaultParameters,
             textPrompt: "请生成商品描述",
             title: "失败恢复目标",
           },

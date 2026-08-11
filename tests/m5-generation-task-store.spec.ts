@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "./safe-test";
+import { saveAccountCredential } from "../server/accountCredentials";
 import { openAppDatabase } from "../server/database";
 import {
   createGenerationTaskStore,
@@ -12,8 +13,11 @@ import {
   GenerationTaskAdmissionError,
   GenerationTaskConflictError,
   GenerationTaskProviderBoundaryError,
+  GenerationTaskRetryFenceError,
   GenerationTaskTransitionError,
+  type GenerationTask,
 } from "../server/generationTaskStore";
+import { saveProviderProfile } from "../server/providerProfiles";
 import { knownModelParameterSchema } from "../types/modelParameters";
 
 type AdmissionChildOutcome = {
@@ -292,6 +296,61 @@ function atomicImageRequest(input: {
       parameters: { count: 1, size: "1k" },
       prompt: "atomic admission image",
     },
+  };
+}
+
+function seedGenerationRetryBinding(
+  dataDirectory: string,
+  task: Pick<
+    GenerationTask,
+    "attempt" | "canvasId" | "id" | "kind" | "nodeId" | "ownerId" | "updatedAt"
+  >,
+  generationInputKey: string,
+  expectedCanvasRevision = 1,
+) {
+  const database = openAppDatabase(dataDirectory);
+  try {
+    const ownerId = task.ownerId ?? "__test__";
+    database.prepare(`
+      INSERT OR IGNORE INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, 'test-only', 'user', 'active', ?, ?)
+    `).run(ownerId, ownerId, ownerId, task.updatedAt, task.updatedAt);
+    database.prepare(`
+      INSERT INTO canvas_documents (
+        owner_id, id, revision, graph_revision, nodes, edges, viewport,
+        updated_at, save_session_id, save_sequence
+      ) VALUES (?, ?, 1, ?, ?, '[]', '{}', ?, NULL, 0)
+      ON CONFLICT(owner_id, id) DO UPDATE SET
+        graph_revision = excluded.graph_revision,
+        nodes = excluded.nodes,
+        updated_at = excluded.updated_at
+    `).run(
+      ownerId,
+      task.canvasId,
+      expectedCanvasRevision,
+      JSON.stringify([{
+        data: {
+          [`${task.kind}GenerationInputKey`]: generationInputKey,
+          [`${task.kind}GenerationTaskId`]: task.id,
+        },
+        id: task.nodeId,
+        type: task.kind,
+      }]),
+      task.updatedAt,
+    );
+  } finally {
+    database.close();
+  }
+  return {
+    canvasId: task.canvasId,
+    expectedAttempt: task.attempt,
+    expectedCanvasRevision,
+    expectedGenerationInputKey: generationInputKey,
+    expectedUpdatedAt: task.updatedAt,
+    kind: task.kind,
+    nodeId: task.nodeId,
   };
 }
 
@@ -710,6 +769,11 @@ test("explicit abandon preserves accepted paid evidence and cannot create a retr
       code: "AUTH",
       message: "poll authorization failed after the remote task was accepted",
     })!;
+    const retryFence = seedGenerationRetryBinding(
+      dataDirectory,
+      failed,
+      "provider-result-abandon-input-key",
+    );
     expect(store.getProviderAttemptForTask(task.id)).toMatchObject({
       failureCode: "AUTH",
       outcome: "accepted",
@@ -758,7 +822,8 @@ test("explicit abandon preserves accepted paid evidence and cannot create a retr
       },
     );
     expect(abandoned.status()).toBe(200);
-    await expect(abandoned.json()).resolves.toMatchObject({
+    const abandonedTask = await abandoned.json() as GenerationTask;
+    expect(abandonedTask).toMatchObject({
       errorCode: "USER_ABANDONED",
       abandonAllowed: false,
       retryAllowed: false,
@@ -768,6 +833,13 @@ test("explicit abandon preserves accepted paid evidence and cannot create a retr
 
     const retry = await request.post(
       `/api/generation-tasks/${task.id}/retry`,
+      {
+        data: {
+          ...retryFence,
+          expectedAttempt: abandonedTask.attempt,
+          expectedUpdatedAt: abandonedTask.updatedAt,
+        },
+      },
     );
     expect(retry.status()).toBe(409);
     await expect(retry.json()).resolves.toMatchObject({
@@ -947,6 +1019,11 @@ test("new paid retry blocks an unresolved older ledger when the current executio
       code: "MODEL_UNAVAILABLE",
       message: "the next local execution failed before its Provider boundary",
     })!;
+    const retryFence = seedGenerationRetryBinding(
+      dataDirectory,
+      failed,
+      "older-unknown-paid-ledger-input-key",
+    );
     expect(failed.attempt).toBe(2);
     expect(store.getProviderAttemptForTask(task.id)).toBeUndefined();
     expect(store.hasUnsafeProviderAttemptForNewPaidRetry(task.id)).toBe(true);
@@ -966,7 +1043,9 @@ test("new paid retry blocks an unresolved older ledger when the current executio
       retryAllowed: false,
       retryBlockCode: "RETRY_OUTCOME_UNKNOWN",
     });
-    const retry = await request.post(`/api/generation-tasks/${task.id}/retry`);
+    const retry = await request.post(`/api/generation-tasks/${task.id}/retry`, {
+      data: retryFence,
+    });
     expect(retry.status()).toBe(409);
     await expect(retry.json()).resolves.toMatchObject({
       code: "RETRY_OUTCOME_UNKNOWN",
@@ -1428,7 +1507,14 @@ test("resume settles the original paid execution and complete rolls back with it
       code: "NETWORK",
       message: "poll interrupted after the Provider accepted the task",
     });
+    const failedResume = store.get(resumed.id)!;
+    const retryFence = seedGenerationRetryBinding(
+      dataDirectory,
+      failedResume,
+      "resume-ledger-input-key",
+    );
     expect(() => store.admitRetry({
+      ...retryFence,
       mode: "new-paid-attempt",
       snapshot: {
         credentialRevision: 1,
@@ -1438,7 +1524,11 @@ test("resume settles the original paid execution and complete rolls back with it
       },
       taskId: resumed.id,
     })).toThrow(GenerationProviderAttemptBlockedError);
-    store.admitRetry({ mode: "resume-provider-task", taskId: resumed.id });
+    store.admitRetry({
+      ...retryFence,
+      mode: "resume-provider-task",
+      taskId: resumed.id,
+    });
     expect(store.transition(resumed.id, "running")).toMatchObject({
       attempt: 2,
       providerTaskId: "resume-original-provider-task",
@@ -1546,6 +1636,11 @@ test("a new paid retry and a new task consume one concurrency slot atomically", 
     code: "PROVIDER_FAILED",
     message: "Provider reported a terminal failure",
   });
+  const retryFence = seedGenerationRetryBinding(
+    dataDirectory,
+    setup.get(failed.id)!,
+    "retry-race-input-key",
+  );
   setup.close();
 
   const retryStore = createGenerationTaskStore(dataDirectory);
@@ -1560,6 +1655,7 @@ test("a new paid retry and a new task consume one concurrency slot atomically", 
           return {
             error: undefined,
             value: retryStore.admitRetry({
+              ...retryFence,
               mode: "new-paid-attempt",
               snapshot: {
                 credentialRevision: 1,
@@ -1609,6 +1705,112 @@ test("a new paid retry and a new task consume one concurrency slot atomically", 
   } finally {
     newTaskStore.close();
     retryStore.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("retry admission rejects a task detached from its durable canvas binding", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-retry-binding-"));
+  const store = createGenerationTaskStore(dataDirectory);
+  try {
+    const task = store.create({
+      canvasId: "retry-binding-canvas",
+      idempotencyKey: "retry-binding-task-0001",
+      kind: "image",
+      model: "fixture-image-model",
+      nodeId: "retry-binding-node",
+      ownerId: "__test__",
+      prompt: "retry only while this node owns the task",
+      providerModelId: "fixture-provider-model",
+      providerProfileId: "fixture-provider",
+    }).task;
+    store.transition(task.id, "running");
+    const paid = store.recordProviderAttempt(task.id);
+    store.attachProviderTaskId({
+      executionAttempt: paid.executionAttempt,
+      providerTaskId: "retry-binding-provider-task",
+      taskId: task.id,
+    });
+    store.transition(task.id, "failed", {
+      code: "NETWORK",
+      message: "polling stopped after Provider acceptance",
+    });
+    const failed = store.get(task.id)!;
+    const fence = seedGenerationRetryBinding(
+      dataDirectory,
+      failed,
+      "retry-binding-input-key",
+      4,
+    );
+    const database = openAppDatabase(dataDirectory);
+    try {
+      database.prepare(`
+        UPDATE canvas_documents
+        SET nodes = '[]'
+        WHERE owner_id = '__test__' AND id = 'retry-binding-canvas'
+      `).run();
+    } finally {
+      database.close();
+    }
+
+    expect(() => store.admitRetry({
+      ...fence,
+      mode: "resume-provider-task",
+      taskId: task.id,
+    })).toThrow(GenerationTaskRetryFenceError);
+    expect(store.get(task.id)).toMatchObject({
+      attempt: failed.attempt,
+      state: "failed",
+      updatedAt: failed.updatedAt,
+    });
+    expect(store.listEvents(task.id).map(({ state }) => state)).not.toContain(
+      "retrying",
+    );
+  } finally {
+    store.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("canvas lists keep every active task and only the latest 500 terminal tasks", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-task-window-"));
+  const store = createGenerationTaskStore(dataDirectory);
+  try {
+    const terminalIds: string[] = [];
+    for (let index = 0; index < 501; index += 1) {
+      const created = store.create({
+        canvasId: "task-window-canvas",
+        idempotencyKey: `task-window-terminal-${String(index).padStart(4, "0")}`,
+        kind: "text",
+        nodeId: `task-window-node-${String(index).padStart(4, "0")}`,
+        ownerId: "__test__",
+        prompt: `terminal ${index}`,
+      }).task;
+      store.transition(created.id, "running");
+      store.transition(created.id, "failed", {
+        code: "OFFLINE_FIXTURE",
+        message: "terminal fixture without a Provider request",
+      });
+      terminalIds.push(created.id);
+    }
+    const active = store.create({
+      canvasId: "task-window-canvas",
+      idempotencyKey: "task-window-active-0502",
+      kind: "audio",
+      nodeId: "task-window-active-node",
+      ownerId: "__test__",
+      prompt: "newest active task",
+    }).task;
+
+    const listedIds = store.list("task-window-canvas").map(({ id }) => id);
+    expect(listedIds).toHaveLength(501);
+    expect(listedIds).toContain(active.id);
+    expect(listedIds).toContain(terminalIds.at(-1));
+    expect(listedIds).not.toContain(terminalIds[0]);
+    expect(store.listActiveForCanvas("task-window-canvas", "__test__"))
+      .toEqual([expect.objectContaining({ id: active.id, state: "queued" })]);
+  } finally {
+    store.close();
     await rm(dataDirectory, { force: true, recursive: true });
   }
 });
@@ -1687,4 +1889,180 @@ test("generation submission stays disabled until a real Provider is configured",
   await expect(afterStatus.json()).resolves.toMatchObject({
     paidProviderRequests: initialStatus.paidProviderRequests,
   });
+});
+
+test("an initial admission committed before response failure returns 5xx and remains one recoverable task", async ({
+  request,
+}) => {
+  const dataDirectoryResponse = await request.get("/api/test-data-directory");
+  expect(dataDirectoryResponse.ok()).toBeTruthy();
+  const { dataDirectory } = await dataDirectoryResponse.json() as {
+    dataDirectory: string;
+  };
+  const profile = await saveProviderProfile({
+    apiKey: "sk-post-commit-fixture-provider",
+    baseUrl: "https://openrouter.ai/api/v1",
+    driver: "openrouter",
+    label: "Post-commit response fixture",
+  });
+  const database = openAppDatabase(dataDirectory);
+  const timestamp = new Date().toISOString();
+  const modelId = `post-commit-model-${crypto.randomUUID()}`;
+  const canvasId = `post-commit-canvas-${crypto.randomUUID()}`;
+  const nodeId = `post-commit-node-${crypto.randomUUID()}`;
+  const idempotencyKey = `post-commit-key-${crypto.randomUUID()}`;
+  try {
+    database.prepare(`
+      INSERT OR IGNORE INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        protected, created_at, updated_at
+      ) VALUES (
+        '__test__', '__test__', 'Test User', 'test-only', 'admin', 'active',
+        1, ?, ?
+      )
+    `).run(timestamp, timestamp);
+    database.prepare(`
+      INSERT INTO model_profiles (
+        id, display_name, provider_profile_id, provider_model_id,
+        capability, status, default_parameters, created_at, updated_at,
+        max_cost_microunits, cost_currency, provider_protocol
+      ) VALUES (
+        ?, 'Post-commit image', ?, 'openai/gpt-image-2',
+        'image', 'published', '{}', ?, ?, 1000000, 'USD', 'native'
+      )
+    `).run(modelId, profile.id, timestamp, timestamp);
+    database.prepare(`
+      INSERT INTO node_model_bindings (
+        node_type, model_id, enabled, is_default, sort_order,
+        created_at, updated_at
+      ) VALUES ('image', ?, 1, 1, 1, ?, ?)
+    `).run(modelId, timestamp, timestamp);
+    database.prepare(`
+      UPDATE provider_profiles
+      SET status = 'enabled', key_status = 'valid', key_checked_at = ?
+      WHERE id = ?
+    `).run(timestamp, profile.id);
+    database.prepare(`
+      UPDATE generation_safety_settings
+      SET
+        global_enabled = 1,
+        emergency_stop = 0,
+        per_user_concurrency = 5,
+        requests_per_minute = 120,
+        image_concurrency = 5,
+        updated_at = ?
+      WHERE id = 1
+    `).run(timestamp);
+    await saveAccountCredential(
+      database,
+      "__test__",
+      profile.id,
+      "sk-post-commit-fixture-account",
+    );
+    database.prepare(`
+      UPDATE account_provider_credentials
+      SET key_status = 'valid', key_checked_at = ?
+      WHERE account_id = '__test__' AND provider_profile_id = ?
+    `).run(timestamp, profile.id);
+
+    const saved = await request.put(`/api/canvas/${canvasId}`, {
+      data: {
+        edges: [],
+        nodes: [{
+          data: {
+            imageAspectRatio: "auto",
+            imageModelId: modelId,
+            imageParameters: {
+              aspectRatio: "auto",
+              inputMode: "text",
+              outputCount: 1,
+              quality: "auto",
+            },
+            imagePrompt: "post-commit response must reconcile",
+            imageQuality: "auto",
+            label: "Image",
+            title: "Post-commit image",
+          },
+          id: nodeId,
+          position: { x: 0, y: 0 },
+          type: "image",
+        }],
+        revision: 0,
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+    expect(saved.ok()).toBeTruthy();
+    const savedCanvas = await saved.json() as {
+      graphRevision?: number;
+      revision: number;
+    };
+    const canvasRevision = savedCanvas.graphRevision ?? savedCanvas.revision;
+    const submissionBody = {
+      canvasId,
+      canvasRevision,
+      idempotencyKey,
+      inputSchemaVersion: 1,
+      inputs: [],
+      kind: "image",
+      model: modelId,
+      nodeId,
+      ownPrompt: "post-commit response must reconcile",
+      parameters: {
+        aspectRatio: "auto",
+        inputMode: "text",
+        outputCount: 1,
+        quality: "auto",
+      },
+      prompt: "post-commit response must reconcile",
+    };
+
+    const submission = await request.post("/api/generation-tasks", {
+      data: submissionBody,
+      headers: {
+        "x-unboundry-test-generation-post-commit-failure": "before-launch",
+      },
+    });
+    expect(submission.status()).toBe(500);
+    await expect(submission.json()).resolves.toEqual({
+      code: "GENERATION_TASK_ACCEPTED_RESPONSE_FAILED",
+      error: "生成任务已提交，响应暂不可用，请等待状态核对",
+    });
+
+    const recovered = await request.get(
+      "/api/generation-tasks/by-idempotency" +
+        `?canvasId=${encodeURIComponent(canvasId)}` +
+        `&idempotencyKey=${encodeURIComponent(idempotencyKey)}`,
+    );
+    expect(recovered.status()).toBe(200);
+    await expect(recovered.json()).resolves.toMatchObject({
+      canvasId,
+      kind: "image",
+      nodeId,
+      state: "queued",
+    });
+
+    expect(database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM generation_tasks
+      WHERE owner_id = '__test__' AND canvas_id = ? AND idempotency_key = ?
+    `).get(canvasId, idempotencyKey)).toEqual({ count: 1 });
+    expect(database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM generation_admission_events AS admissions
+      JOIN generation_tasks AS tasks ON tasks.id = admissions.task_id
+      WHERE
+        tasks.owner_id = '__test__' AND tasks.canvas_id = ?
+        AND tasks.idempotency_key = ? AND admissions.admission_type = 'initial'
+    `).get(canvasId, idempotencyKey)).toEqual({ count: 1 });
+    expect(database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM generation_provider_attempts AS attempts
+      JOIN generation_tasks AS tasks ON tasks.id = attempts.task_id
+      WHERE
+        tasks.owner_id = '__test__' AND tasks.canvas_id = ?
+        AND tasks.idempotency_key = ?
+    `).get(canvasId, idempotencyKey)).toEqual({ count: 0 });
+  } finally {
+    database.close();
+  }
 });
