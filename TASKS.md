@@ -1,7 +1,7 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-11
-状态：`线上 v0.5.1/schema 37 继续运行；2026-08-09 启动的一次性离线 Goal 持续执行，REM-000 = PASS、REM-001/002/003/004/009A = USER_REVIEW、REM-005 = IN_PROGRESS；schema 38 只存在于离线候选，生产发布保持 HOLD；所有施工只在动态 loopback 端口和新临时目录进行，真实数据、4173、真实 Provider/OSS、生产连接、push/tag/PR/发布均禁止；正式部署流程收尾与 Mureka Audio 真实生成仍按原状态暂缓`
+状态：`线上 v0.5.1/schema 37 继续运行；2026-08-09 启动的一次性离线 Goal 持续执行，REM-000 = PASS、REM-001/002/003/004/005/009A = USER_REVIEW、REM-006 = IN_PROGRESS；schema 39 只存在于离线候选，生产发布保持 HOLD；所有施工只在动态 loopback 端口和新临时目录进行，真实数据、4173、真实 Provider/OSS、生产连接、push/tag/PR/发布均禁止；正式部署流程收尾与 Mureka Audio 真实生成仍按原状态暂缓`
 唯一产品目标：从空仓库完整复刻 Unboundry 画布，不复用 Lumino/Lumino Web 的代码、组件、CSS、数据、后端、测试或部署。
 
 ### 2026-08-09 状态收口与交接索引
@@ -28,8 +28,8 @@
 | REM-002 | API、进程与可观测性基础 | USER_REVIEW | 统一异常边界、严格维护/关闭、只读 readiness、脱敏日志与进程生命周期已完成；Goal 结束时集中交用户复核 |
 | REM-003 | 画布持久化与 DATA-005 语义保护 | USER_REVIEW | 加载/保存基线、每标签高水位、跨标签收敛、原子墓碑、持久草稿及生成门禁已完成；Goal 结束时集中交用户复核 |
 | REM-004 | 统一媒体生命周期 | USER_REVIEW | 原子发布/补偿、ready-only、权威尺寸、adoption ACK 与完整性报告完成；F-004/F-036 和 F-005 媒体发布子范围关闭 |
-| REM-005 | 生成、幂等与付费边界 | IN_PROGRESS | 当前唯一施工项；本地假 Provider、零外网，重查付费/幂等/限额/停止与未知结果边界 |
-| REM-006 | 账号删除、模板、权限与清理 | NOT_STARTED | REM-009A 工程候选；继续既定 PERM-011/KEY-008/AUTH-006 合同 |
+| REM-005 | 生成、幂等与付费边界 | USER_REVIEW | 原子 admission、最终付费闸、凭据 epoch、未知结果保护、deadline 与持久队列完成；单 active process 前提 |
+| REM-006 | 账号删除、模板、权限与清理 | IN_PROGRESS | 当前唯一施工项；按既定 PERM-011/KEY-008/AUTH-006 收口账号删除全事务合同 |
 | REM-007 | 前端生成恢复与失败体验 | NOT_STARTED | 后端任务合同稳定 |
 | REM-008 | 资源、安全、性能和运维脚本 | NOT_STARTED | 核心一致性后分项实施 |
 | REM-009A | 只读备份、恢复与数据库兼容前置底座 | USER_REVIEW | 加密签名包、合成库恢复、损坏拒绝、权限/路径/OSS 完整性与三轮/全量证据已完成；Goal 结束时集中交用户复核 |
@@ -93,6 +93,16 @@
 - 两路独立终审未发现剩余即时产品 P0/P1。REM-004 功能提交为 `9f1019e5686ccce4f646b54a2be6ccd5ab4864d0`；测试绑定提交前相同功能内容的冻结工作区指纹，文档修改后的新指纹不得冒充已运行证据。工程状态进入 `USER_REVIEW`，当前唯一施工项切换到 REM-005。
 - schema 38 只是必要 P0 的离线候选，线上 v0.5.1/schema 37 未读取或改动，生产发布保持 HOLD。REM-009B/010 必须补富数据/媒体/密钥/假 OSS 的冻结 v37 备份→恢复→迁移→启动、一次性 maintenance migration、写锁内 exact-v37 复核、迁移后 checksum/duration 回填故障恢复、v37/v38 runtime bridge、v0.5.1 数据格式矩阵及两版本/两次独立生产授权；当前 exact-v37 格式 2 round-trip 与显式迁移角色只算离线结构证明。
 
+### 2026-08-11 REM-005 生成、幂等与付费边界（工程候选已完成）
+
+- schema 39 在 schema 38 媒体底座上新增 owner-scoped idempotency、generation admission 账本、credential epoch 高水位及带 outcome/revision/scope 的 Provider attempt 账本；schema 37/38 加密备份继续由各自冻结合同精确检查。
+- `BEGIN IMMEDIATE` 内原子完成稳定意图幂等命中、安全开关、RPM/并发/熔断 admission 与任务插入；最终付费边界再次核验停止状态、owner/model/profile/credential revision 与权威参数，排队后急停不能越过 Provider 边界。
+- Provider 已 accepted、response-received 或 outcome-unknown 时不得自动创建新付费 attempt；只有全部既有 paid evidence 均为 definitive-rejected/provider-failed 时才允许新付费重试。失败且结果可能已存在的任务可由用户显式 abandon，账本与 remote ID 保留且 Provider 请求为 0。
+- 关闭 `F-008`、`F-009`、`F-010`，并与 REM-004 一起关闭 `F-005`；`F-014` 只关闭 Provider deadline 子范围，结果 URL 出站保护仍归 REM-008。上述结论以单一 active process 为前提，`F-023` 仍归 REM-010。
+- migration 39 的 admission 表不从历史任务推断回填。REM-009B/010 必须演练：冻结新生成、排空活动任务、自最后一次可能 Provider admission 起至少 60 秒无新 admission，再执行 one-shot exact-v37→schema39 迁移并只启动唯一 active worker。
+- 固定 Node `22.23.1` / npm `10.9.8`，冻结功能树指纹 `6a1363df8a6977e996db4b9e45aa823a89e28d6fe3955d85d6ea0ca9b315fcf9`：m81 `23/23`、6-spec 受影响组三轮 `207/207`、安全全量 `109/109 spec、790/790 PASS`；failed/skipped/retries/reportErrors/blocked 均为 0，`deniedViteWildcardProbes=474`。源码 285，TS/TSX `269/269`、JS/MJS `16/16`；11 个运维脚本为 6 个行为验证 + 5 个哈希冻结。4173 listener 前后均为 `6fb8de970741a8dee0ab4c8790e237f3fe5a4c0a3cd4c1cd6a89af12fd6e16c7`。
+- 三路独立终审未发现剩余即时产品 P0/P1。测试运行于功能提交前、HEAD `2beaec585d2d33a11341b98349b31b89b41d3a62` 的上述冻结脏工作树；REM-005 功能提交 `b3ceba04b5ddcf781dd58ce355be0e0f7665450e` 包含相同功能文件内容，未在该 commit 后或文档后树重跑。本项进入 `USER_REVIEW`，当前唯一施工项切换到 REM-006；这不是用户 PASS、真实数据迁移、真实 Provider/OSS、生产发布或 REM-011 最终三轮。
+
 ### 2026-08-06 多项目（项目制画布）功能
 
 - 用户已审阅并确认最终开发方案，权威文档：`spec/UNBOUNDRY_MULTI_PROJECT_PLAN.md`（状态 APPROVED BY USER 2026-08-06）。实施时**以此文档为准**，避免上下文漂移。
@@ -101,7 +111,7 @@
 
 ## 当前阶段
 
-阶段：`线上 v0.5.1/schema 37 保持不变 / REM-001、REM-002、REM-003、REM-004、REM-009A 工程候选进入 USER_REVIEW / REM-005 生成、幂等与付费边界施工中 / schema 38 仅离线且 production HOLD / 未连接生产且未操作真实数据、4173 或真实 Provider/OSS`
+阶段：`线上 v0.5.1/schema 37 保持不变 / REM-001、REM-002、REM-003、REM-004、REM-005、REM-009A 工程候选进入 USER_REVIEW / REM-006 账号删除、模板、权限与清理施工中 / schema 39 仅离线且 production HOLD / 未连接生产且未操作真实数据、4173 或真实 Provider/OSS`
 
 画布、固定界面、Text、Image、Video、Audio、Playlist、Group、外围面板、账号、管理员模型中心、生成安全和新图片私有OSS链路已通过当前范围验收；Comment、社区、TapTV、竞技场、额度和链接分享已按用户决定取消。OpenRouter GPT Image 2已完成一次用户授权的真实生成，图片连线参考图及真实结果零费用重启恢复均已通过；当前仅表示“不发布本轮新的修复候选”，不否认线上已运行 v0.5.1。
 

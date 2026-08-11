@@ -2,7 +2,7 @@
 
 TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mymy.ltd`，当前线上 v0.5.1）。
 
-当前施工状态：`REM-000 = PASS / REM-001、REM-002、REM-003、REM-004、REM-009A = USER_REVIEW / REM-005 = IN_PROGRESS`。REM-004 已完成原子媒体所有权预留、本地/假 OSS 分阶段发布、pending/ready/failed 与持久补偿恢复、ready-only 消费、权威媒体尺寸、删除 intent、只读完整性报告和客户端同步 adoption ACK；只关闭 F-004、F-036 与 F-005 的媒体发布子范围，Provider 付费/幂等继续归 REM-005，账号删除完整合同继续归 REM-006。冻结源码指纹 `f6974d…` 的专项 `158/158`、核心三轮 `474/474`、安全全量 `109/109 spec、762/762 PASS` 均通过，异常计数为 0；功能内容提交为 `9f1019e5686ccce4f646b54a2be6ccd5ab4864d0`。schema 38 仅为离线候选；线上 v0.5.1/schema 37 未变，生产发布保持 HOLD，REM-009B/010 的迁移、桥梁和回滚硬门尚未通过。本 Goal 永久排除真实数据、4173、真实 Provider/OSS、生产连接、push、tag、PR 与发布。
+当前施工状态：`REM-000 = PASS / REM-001、REM-002、REM-003、REM-004、REM-005、REM-009A = USER_REVIEW / REM-006 = IN_PROGRESS`。REM-005 已以 schema 39 离线候选完成 owner-scoped 幂等、原子 admission/任务插入、Provider 最终付费闸、凭据 epoch、未知结果保护、请求 deadline、持久队列恢复和显式 abandon；关闭 F-008/F-009/F-010，并与 REM-004 一起关闭 F-005，F-014 只关闭 deadline 子范围。测试运行于功能提交前、HEAD `2beaec585d2d33a11341b98349b31b89b41d3a62` 的冻结脏工作树 `6a1363df8a6977e996db4b9e45aa823a89e28d6fe3955d85d6ea0ca9b315fcf9`：m81 `23/23`、核心 6-spec 三轮 `207/207`、安全全量 `109/109 spec、790/790 PASS`，异常计数为 0；源码 285（TS/TSX `269/269`、JS/MJS `16/16`）。功能提交 `b3ceba04b5ddcf781dd58ce355be0e0f7665450e` 包含相同功能文件内容；未在该 commit 后或文档后树重跑。线上 v0.5.1/schema 37 未变，生产发布保持 HOLD；REM-009B/010 仍须完成 one-shot 迁移、v37/v39 bridge、回滚矩阵、唯一 active worker 与 F-023，并在迁移前冻结新生成、排空活动任务且自最后一次可能 Provider admission 起至少 60 秒。本 Goal 永久排除真实数据、4173、真实 Provider/OSS、生产连接、push、tag、PR 与发布。
 
 **新接手的人（含 AI agent）必须按顺序阅读：**
 
