@@ -1,7 +1,7 @@
 # Unboundry 绿地复刻当前任务
 
-更新时间：2026-08-11
-状态：`线上 v0.5.1/schema 37 继续运行；2026-08-09 启动的一次性离线 Goal 持续执行，REM-000 = PASS、REM-001/002/003/004/005/006/009A = USER_REVIEW、REM-007 = IN_PROGRESS；schema 39 只存在于离线候选，生产发布保持 HOLD；所有施工只在动态 loopback 端口和新临时目录进行，真实数据、4173、真实 Provider/OSS、生产连接、push/tag/PR/发布均禁止；正式部署流程收尾与 Mureka Audio 真实生成仍按原状态暂缓`
+更新时间：2026-08-12
+状态：`线上 v0.5.1/schema 37 继续运行；2026-08-09 启动的一次性离线 Goal 持续执行，REM-000 = PASS、REM-001/002/003/004/005/006/007/009A = USER_REVIEW、REM-008 = IN_PROGRESS；schema 39 只存在于离线候选，生产发布保持 HOLD；所有施工只在动态 loopback 端口和新临时目录进行，真实数据、4173、真实 Provider/OSS、生产连接、push/tag/PR/发布均禁止；正式部署流程收尾与 Mureka Audio 真实生成仍按原状态暂缓`
 唯一产品目标：从空仓库完整复刻 Unboundry 画布，不复用 Lumino/Lumino Web 的代码、组件、CSS、数据、后端、测试或部署。
 
 ### 2026-08-09 状态收口与交接索引
@@ -30,8 +30,8 @@
 | REM-004 | 统一媒体生命周期 | USER_REVIEW | 原子发布/补偿、ready-only、权威尺寸、adoption ACK 与完整性报告完成；F-004/F-036 和 F-005 媒体发布子范围关闭 |
 | REM-005 | 生成、幂等与付费边界 | USER_REVIEW | 原子 admission、最终付费闸、凭据 epoch、未知结果保护、deadline 与持久队列完成；单 active process 前提 |
 | REM-006 | 账号删除、模板、权限与清理 | USER_REVIEW | PERM-011/KEY-008/AUTH-006 下的可重试删除 saga、转交、权限/凭据和 actor fence 已完成；等待用户复核 |
-| REM-007 | 前端生成恢复与失败体验 | IN_PROGRESS | 当前唯一施工项；后端任务合同已稳定 |
-| REM-008 | 资源、安全、性能和运维脚本 | NOT_STARTED | 核心一致性后分项实施 |
+| REM-007 | 前端生成恢复与失败体验 | USER_REVIEW | 四类 ownership/exact GET/终态 ACK、transport/retry fail-closed 与 mutation 失败体验已完成；等待用户复核 |
+| REM-008 | 资源、安全、性能和运维脚本 | IN_PROGRESS | 当前唯一施工项；按资源、出站、安全和脚本合同分项实施 |
 | REM-009A | 只读备份、恢复与数据库兼容前置底座 | USER_REVIEW | 加密签名包、合成库恢复、损坏拒绝、权限/路径/OSS 完整性与三轮/全量证据已完成；Goal 结束时集中交用户复核 |
 | REM-009B | 最终候选备份、恢复与双向兼容演练 | NOT_STARTED | 核心修复完成后、REM-010 前执行 |
 | REM-010 | 不可变发布、切换与回滚 | NOT_STARTED | REM-009B 通过后演练 |
@@ -112,6 +112,14 @@
 - 独立终审未发现剩余即时产品 P0/P1。功能提交 `67cc39302d756bc00bff7ac31e31de7a7f574574` 包含相同的 23 个功能/测试/runner 文件，未在该 commit 后或文档后树重跑。本项进入 `USER_REVIEW`，当前唯一施工项切换到 REM-007；这不是用户 PASS、真实数据、真实 Provider/OSS、生产迁移、发布许可或 REM-011 最终三轮。
 - 上述结论仅在单一 active process 前提下成立，进程内 lease/文档锁不关闭 F-023，仍归 REM-010。账号删除不是跨物理媒体的单事务；加密文档与 SQLite 只证明确定性审计失败时不留文档变更，不声称跨文件系统/SQLite 的进程崩溃原子性。线上 v0.5.1/schema 37 保持不变，schema 39 仅离线候选，production HOLD；未读取/修改真实数据，未操作 4173，未请求真实 Provider/OSS，未连接生产。
 
+### 2026-08-12 REM-007 前端生成恢复与失败体验（工程候选已完成）
+
+- F-016/F-017B/F-018 已在离线候选修复。文字/图片/视频/音频节点以持久 `*GenerationOwnershipKey`、exact task/idempotency GET 和完整 model/name/normalized parameters 快照绑定 active task；付费 POST 前先把 effective 快照持久到 canvas 并取得 fresh revision，新任务期间保留旧预览。对仍匹配当前 ownership 的 active task，success/failed/cancelled 节点状态先持久并获得 canvas ACK，再按 taskId 清 submission intent；preflight 拒绝保留 intent；恢复调用缺失或不同于已有 raw ownership proof 时不认领并保留。显式输入或新 ownership 会撤销/替换旧 intent；legacy signature 无法升级、恢复路径确认持久绑定已失效、提交前 exact GET 命中 cancelled，以及正式付费任务 POST 的确定性 4xx 等不可复用分支，按对应 guard 清理 intent；复制节点会清 generation binding。
+- 正式付费任务 POST 及其响应体共用 deadline；该 POST 出现网络/status 0/5xx 未知结果时只按原 idempotency key exact GET reconcile，绝不重发付费任务 POST。retry 先保存取得 revision，再由服务端最终 `BEGIN IMMEDIATE` 核验 live canvas/node/kind/taskId/inputKey/attempt/updatedAt；响应丢失只对同 task exact GET reconcile。localStorage ownership/intent 写失败在付费前 fail-closed。
+- Workspace create/rename/delete、CanvasShell create/clone/delete 与 UpdateNotice reload-after-save 各自具 in-flight fence 和显式失败处理；Workspace DELETE 与删除后核验所用列表 GET 具 deadline（列表覆盖 response body）。Workspace 删除向 ConfirmDialog 传入 busy，ConfirmDialog 负责 focus/Escape/a11y；CanvasShell 删除依靠外层 fence。真实 Mureka `INPUT-006 / AUDIO-REAL-001` 未恢复，继续 PARTIAL/暂停。
+- 测试运行于功能提交前、HEAD `26ff9396194499365c79e5bc85238631ed44ef7a` 下 403-file 冻结脏工作树 `ce7b4856b00b3ab12ee4853ece0b07b01dec86619bbca7865daa4edb659cc957`：adjacency 12-spec `142/142`、target 10-spec `255/255`、核心 8-spec `repeat=3` 共 `606/606`、安全全量 `109/109 spec、841/841 PASS`；failed/skipped/retries/reportErrors/blocked 均为 0，full `deniedViteWildcardProbes=477`。固定 Node `22.23.1` / npm `10.9.8`；源码 286，TS/TSX `270/270`、JS/MJS `16/16`；11 个运维脚本为 6 个行为验证 + 5 个哈希冻结；4173 listener 前后均为 `91689b3fefccfb3fe32ffc44e2b10a3146976b76d497183f56f7457924a7e219`。
+- 功能提交 `138f7ff0f9481e73355fbd9a9fd2c548ee9cee1a` 包含相同功能文件，未在该 commit 后或文档后树重跑。本项进入 `USER_REVIEW`，当前唯一施工项切换到 REM-008；不是用户 PASS、真实数据/真实 Provider/OSS、生产迁移、发布许可或 REM-011 最终三轮。REM-007 无 schema 迁移；新增 ownership 是可选 canvas JSON/localStorage 字段，旧数据兼容与最终格式矩阵归 REM-009B。结论只在单一 active process 前提下成立，F-023 留 REM-010；不宣称跨标签分布式互斥。package `0.5.1`、线上 schema 37 不变，schema 39 仅离线候选，production HOLD。
+
 ### 2026-08-06 多项目（项目制画布）功能
 
 - 用户已审阅并确认最终开发方案，权威文档：`spec/UNBOUNDRY_MULTI_PROJECT_PLAN.md`（状态 APPROVED BY USER 2026-08-06）。实施时**以此文档为准**，避免上下文漂移。
@@ -120,7 +128,7 @@
 
 ## 当前阶段
 
-阶段：`线上 v0.5.1/schema 37 保持不变 / REM-001、REM-002、REM-003、REM-004、REM-005、REM-006、REM-009A 工程候选进入 USER_REVIEW / REM-007 前端生成恢复与失败体验施工中 / schema 39 仅离线且 production HOLD / 未连接生产且未操作真实数据、4173 或真实 Provider/OSS`
+阶段：`线上 v0.5.1/schema 37 保持不变 / REM-001、REM-002、REM-003、REM-004、REM-005、REM-006、REM-007、REM-009A 工程候选进入 USER_REVIEW / REM-008 资源、安全、性能和运维脚本施工中 / schema 39 仅离线且 production HOLD / 未连接生产且未操作真实数据、4173 或真实 Provider/OSS`
 
 画布、固定界面、Text、Image、Video、Audio、Playlist、Group、外围面板、账号、管理员模型中心、生成安全和新图片私有OSS链路已通过当前范围验收；Comment、社区、TapTV、竞技场、额度和链接分享已按用户决定取消。OpenRouter GPT Image 2已完成一次用户授权的真实生成，图片连线参考图及真实结果零费用重启恢复均已通过；当前仅表示“不发布本轮新的修复候选”，不否认线上已运行 v0.5.1。
 

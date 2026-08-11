@@ -1,9 +1,9 @@
 # Unboundry 全量修复、优化与安全发布施工总方案
 
 状态：`APPROVED_BY_USER`
-计划版本：`1.6-offline`
+计划版本：`1.7-offline`
 建立日期：`2026-08-09`
-当前授权：用户已于 2026-08-09 确认本施工文档并启动一次性离线 Goal；**已授权 REM-001～010 与 REM-011 离线工程部分连续施工、本地 checkpoint/功能/candidate commit，未授权真实数据、4173、真实 Provider/OSS、SSH、生产、push、tag、PR、正式版本号或发布**。当前状态为 `REM-000 PASS / REM-001、REM-002、REM-003、REM-004、REM-005、REM-006、REM-009A USER_REVIEW / REM-007 IN_PROGRESS`。
+当前授权：用户已于 2026-08-09 确认本施工文档并启动一次性离线 Goal；**已授权 REM-001～010 与 REM-011 离线工程部分连续施工、本地 checkpoint/功能/candidate commit，未授权真实数据、4173、真实 Provider/OSS、SSH、生产、push、tag、PR、正式版本号或发布**。当前状态为 `REM-000 PASS / REM-001、REM-002、REM-003、REM-004、REM-005、REM-006、REM-007、REM-009A USER_REVIEW / REM-008 IN_PROGRESS`。
 
 > 用户已于 2026-08-09 确认本文档为本轮权威施工合同。任何 Agent 在上下文压缩、换人或恢复任务后，都必须重新读取本文件和 `UNBOUNDRY_REMEDIATION_CHECKPOINT.md`，不得凭内部记忆或压缩摘要继续施工。
 
@@ -41,7 +41,7 @@
 | 数据库结构 | 当前迁移最高版本 `37` |
 | 本轮检测到的本机 Node | `v25.9.0` |
 | 施工目标 Node | Node 22 LTS；精确 Node/npm 版本在 REM-001 决策并固定。历史生产记录为 `v22.23.2`，本轮未复核当前生产精确版本 |
-| 当前代码授权 | 一次性离线 Goal 已激活；REM-000 PASS、REM-001/002/003/004/005/006/009A USER_REVIEW、REM-007 IN_PROGRESS；仅限施工合同内的本地隔离工程，生产与外部真实服务永久排除 |
+| 当前代码授权 | 一次性离线 Goal 已激活；REM-000 PASS、REM-001/002/003/004/005/006/007/009A USER_REVIEW、REM-008 IN_PROGRESS；仅限施工合同内的本地隔离工程，生产与外部真实服务永久排除 |
 
 基线发生变化时，先更新断点文件并说明原因；未经用户确认不得静默换仓库、换分支、换线上版本或换目标。
 
@@ -131,10 +131,10 @@
 | F-013 | 播放列表导出、缩略图等允许超大整体缓冲；ffmpeg/ffprobe 无统一超时和并发限制 | P1 | REM-008 |
 | F-014 | Provider 请求缺少统一 deadline；结果 URL 下载缺少完整的私网/重定向/DNS 防护 | P1 | REM-005 deadline 子范围已修；结果 URL 出站防护归 REM-008 |
 | F-015 | OSS endpoint 只校验 HTTPS，未完整阻止私网、保留地址和 DNS 重绑定 | P1 | REM-008 |
-| F-016 | 图片/音频带旧结果刷新后可能只显示生成中却不恢复新任务；视频重生成可被旧成功状态跳过 | P1 | REM-007 |
+| F-016 | 图片/音频带旧结果刷新后可能只显示生成中却不恢复新任务；视频重生成可被旧成功状态跳过 | P1 | REM-007，离线候选已修 |
 | F-017A | 权限不改直接保存可能清空额外权限 | P1 | REM-006，离线候选已修 |
-| F-017B | 更新提示可在保存失败时仍刷新 | P1 | REM-007 |
-| F-018 | 创建、重命名等失败路径可能丢失草稿或没有明确错误反馈 | P1 | REM-007 |
+| F-017B | 更新提示可在保存失败时仍刷新 | P1 | REM-007，离线候选已修 |
+| F-018 | 创建、重命名等失败路径可能丢失草稿或没有明确错误反馈 | P1 | REM-007，离线候选已修 |
 | F-019 | 备份脚本会用可迁移/回填的数据库入口打开源库，可能先改库再备份 | P0 | REM-009 |
 | F-020 | 数据库、媒体、密钥分阶段复制且无写锁；manifest 覆盖不完整、权限未强制 | P0 | REM-009 |
 | F-021 | 发布脚本允许脏文件/.env 风险、原地构建、无 `npm ci`、无可靠备份/回滚 | P0 | REM-010 |
@@ -269,13 +269,19 @@ REM-001 的完成含义仅是“全部测试都能在安全隔离中被发现和
 
 完成标准：文字/图片/视频/音频均覆盖首次、重生成、刷新、丢 POST 响应、服务重启、取消、失败、成功、旧结果仍在；每次操作恰好对应一个任务。
 
-当前状态为 `IN_PROGRESS`；仅使用安全入口、临时数据和假 Provider，不恢复 `INPUT-006 / AUDIO-REAL-001` 真实 Mureka 范围。
+2026-08-12 离线执行证据：F-016/F-017B/F-018 已在离线候选修复。四类节点把持久 `*GenerationOwnershipKey`、exact task/idempotency GET、model/name 和完整 normalized parameters 快照与 active task 同步绑定；付费 POST 前先 materialize effective 快照并取得 fresh canvas revision，新任务期间保留旧预览。对仍匹配当前 ownership 的 active task，success/failed/cancelled 节点状态先持久并获得 canvas ACK，再按 taskId 清 submission intent；preflight 拒绝保留 intent；恢复调用缺失或不同于已有 raw ownership proof 时不认领并保留。显式输入或新 ownership 会撤销/替换旧 intent；legacy signature 无法升级、恢复路径确认持久绑定已失效、提交前 exact GET 命中 cancelled，以及正式付费任务 POST 的确定性 4xx 等不可复用分支，按对应 guard 清理 intent。正式付费任务 POST 及其响应体共用 deadline；该 POST 出现网络/status 0/5xx 未知结果时只按原 key exact GET reconcile，绝不重发付费任务 POST。retry 先保存取得 fresh revision，再由服务端最终 `BEGIN IMMEDIATE` 核验 live canvas/node/kind/taskId/inputKey/attempt/updatedAt；localStorage 写失败在付费前 fail-closed。Workspace create/rename/delete、CanvasShell create/clone/delete 与 UpdateNotice reload-after-save 各自具 in-flight fence 和显式失败处理；Workspace DELETE 与删除后核验所用列表 GET 具 deadline（列表覆盖 response body）。Workspace 删除向 ConfirmDialog 传入 busy，ConfirmDialog 负责 focus/Escape/a11y；CanvasShell 删除依靠外层 fence。
+
+测试运行于功能提交前、HEAD `26ff9396194499365c79e5bc85238631ed44ef7a` 下 403-file 冻结脏工作树 `ce7b4856b00b3ab12ee4853ece0b07b01dec86619bbca7865daa4edb659cc957`：adjacency 12-spec `142/142`、target 10-spec `255/255`、核心 8-spec `repeat=3` 共 `606/606`、安全全量 `109/109 spec、841/841 PASS`，failed/skipped/retries/reportErrors/blocked 均为 0，full `deniedViteWildcardProbes=477`；Node `22.23.1` / npm `10.9.8`；源码 286，TS/TSX `270/270`、JS/MJS `16/16`；11 个运维脚本为 6 个行为验证 + 5 个哈希冻结；4173 listener 前后均为 `91689b3fefccfb3fe32ffc44e2b10a3146976b76d497183f56f7457924a7e219`。功能提交 `138f7ff0f9481e73355fbd9a9fd2c548ee9cee1a` 包含相同功能文件，未在该 commit 后或文档后树重跑。独立终审无剩余即时产品 P0/P1；本项进入 `USER_REVIEW`，当前切换 REM-008。
+
+上述证据不是用户 PASS、真实 Mureka/真实数据/真实 Provider/OSS、生产迁移、发布许可或 REM-011 最终三轮；`INPUT-006 / AUDIO-REAL-001` 继续 PARTIAL/暂停。REM-007 无 schema 迁移；新增 ownership 是可选 canvas JSON/localStorage 字段，旧数据兼容与最终数据格式矩阵仍归 REM-009B。结论只在单一 active process 前提下成立，F-023 留 REM-010；不宣称跨标签分布式互斥。package `0.5.1`、线上 v0.5.1/schema37 不变，schema39 仅离线候选，production HOLD。
 
 ### REM-008：资源、安全、性能和运维脚本
 
 范围：登录限速、SSE 连接/背压、流式导出、上传/磁盘预算、ffmpeg/ffprobe 超时和并发、Provider/OSS 出站保护、安全响应头、依赖安全更新、镜像/密码脚本、媒体缓存和必要的包拆分。资源保护不得通过把视频上限降到 500MB 以下来规避 `DEP-005`；优先使用流式落盘、磁盘配额和并发限制，若要改变 500MB 合同必须先获用户确认。
 
 完成标准：超大请求受控拒绝且内存不随输入线性增长；挂死子进程按时终止；私网/IPv6/DNS 重绑定/重定向全部阻止；压力后内存、子进程、临时文件回落；不进行框架大版本升级或视觉重做。
+
+当前状态为 `IN_PROGRESS`；继续只使用安全入口、临时数据、假 Provider/OSS 与动态 loopback，不扩大到真实数据、4173、外部服务或生产。
 
 ### REM-009A / REM-009B：真正只读的备份、恢复与数据库兼容
 
@@ -321,7 +327,7 @@ REM-009A 在核心持久化修改前完成：建立只读备份、合成库恢�
 
 ### G2 完整自动测试
 
-- 原始基线 105/105 spec、519/519 既有测试已全部纳入；REM-001 后为 520，REM-002 后为 536，REM-009A 后为 542，REM-003 后为 107/687，REM-004 后为 109/762，REM-005 后当前为 `109/109 spec、790/790 tests`，新增测试必须自动纳入且执行数必须等于发现数；
+- 原始基线 105/105 spec、519/519 既有测试已全部纳入；REM-001 后为 520，REM-002 后为 536，REM-009A 后为 542，REM-003 后为 107/687，REM-004 后为 109/762，REM-005 后为 109/790，REM-006 后为 109/804，REM-007 后当前为 `109/109 spec、841/841 tests`；新增测试必须自动纳入且执行数必须等于发现数；
 - 失败 0、skip 总数 0、fixme 0、only 0、依赖 retry 才通过 0；真实 OSS/Provider 外部验真移出离线清单，以本地假服务替代逻辑覆盖；
 - 逐文件隔离全量与关键组合回归均通过；
 - 真实 OSS/Provider 验真不伪装成离线门禁，使用假 OSS/Provider 覆盖逻辑。
@@ -494,3 +500,4 @@ REM-009B/010 的新增硬门为：用富含业务数据、媒体、secret 和假
 | 2026-08-11 | 1.4-offline | REM-004 原子媒体发布、补偿恢复、ready-only、权威尺寸、adoption ACK 与完整性报告收口；109/762 全量证据并切换 REM-005；schema 38 仅离线候选 | 用户已授权一次性离线 Goal；production HOLD，不含真实数据/生产/发布 |
 | 2026-08-11 | 1.5-offline | REM-005 原子 admission、owner-scoped 幂等、最终付费闸、credential epoch、未知结果保护、deadline、持久队列与 abandon 收口；109/790 全量证据并切换 REM-006；当前 schema 39 仅离线候选 | 用户已授权一次性离线 Goal；production HOLD，不含真实数据、真实 Provider/OSS、生产或发布 |
 | 2026-08-11 | 1.6-offline | REM-006 账号删除可重试 saga、模板/媒体转交、权限/凭据、Provider/catalog/存储变更的 actor fence 与审计线性化收口；109/804 全量证据并切换 REM-007；schema 39 仅离线候选 | 用户已授权一次性离线 Goal；production HOLD，不含真实数据、真实 Provider/OSS、生产或发布 |
+| 2026-08-12 | 1.7-offline | REM-007 四类持久 ownership/exact GET/旧预览/terminal ACK、transport/retry/localStorage fail-closed 与 Workspace/Update/ConfirmDialog 失败体验收口；109/841 全量证据并切换 REM-008；无 schema 迁移 | 用户已授权一次性离线 Goal；production HOLD，不含真实 Mureka、真实数据、真实 Provider/OSS、生产或发布 |
