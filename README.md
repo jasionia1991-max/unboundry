@@ -2,7 +2,7 @@
 
 TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mymy.ltd`，当前线上 v0.5.1）。
 
-当前施工状态：`REM-000 = PASS / REM-001、REM-002、REM-003、REM-009A = USER_REVIEW / REM-004 = IN_PROGRESS`。REM-003 已完成加载 fail-closed、保存基线/每标签高水位、跨标签 DATA-005、原子墓碑、持久草稿与生成前保存门禁；冻结源码指纹 `2ae382d4…` 的专项 `205/205`、核心三轮 `450/450` 和安全全量 `107` 个测试文件、`687/687` 均通过，功能内容已提交为 `2a0b7f9819d3075d5fd339e20c5badd389cd51ae`。当前按依赖进入统一媒体生命周期；用户已于 2026-08-09 启动一次性离线 Goal，授权按施工总方案连续完成 REM-001～010 与 REM-011 离线工程部分；本 Goal 永久排除真实数据、4173、真实 Provider/OSS、生产连接、push、tag、PR 与发布。
+当前施工状态：`REM-000 = PASS / REM-001、REM-002、REM-003、REM-004、REM-009A = USER_REVIEW / REM-005 = IN_PROGRESS`。REM-004 已完成原子媒体所有权预留、本地/假 OSS 分阶段发布、pending/ready/failed 与持久补偿恢复、ready-only 消费、权威媒体尺寸、删除 intent、只读完整性报告和客户端同步 adoption ACK；只关闭 F-004、F-036 与 F-005 的媒体发布子范围，Provider 付费/幂等继续归 REM-005，账号删除完整合同继续归 REM-006。冻结源码指纹 `f6974d…` 的专项 `158/158`、核心三轮 `474/474`、安全全量 `109/109 spec、762/762 PASS` 均通过，异常计数为 0；功能内容提交为 `9f1019e5686ccce4f646b54a2be6ccd5ab4864d0`。schema 38 仅为离线候选；线上 v0.5.1/schema 37 未变，生产发布保持 HOLD，REM-009B/010 的迁移、桥梁和回滚硬门尚未通过。本 Goal 永久排除真实数据、4173、真实 Provider/OSS、生产连接、push、tag、PR 与发布。
 
 **新接手的人（含 AI agent）必须按顺序阅读：**
 
