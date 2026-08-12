@@ -1,5 +1,16 @@
 import { createHash, randomUUID } from "node:crypto";
+import { isIP } from "node:net";
 import OSS from "ali-oss";
+import * as urllib from "urllib";
+import type { HttpClientResponse, RequestOptions } from "urllib";
+import {
+  fetchPublicHttps,
+  preparePublicHttpsDestination,
+  safeCanonicalAliyunOssEndpoint,
+  safePublicHttpsUrl,
+  type DestinationResolver,
+  type PublicHttpsFetchDependencies,
+} from "./outboundNetwork";
 
 type MediaKind = "audio" | "image" | "video";
 
@@ -9,6 +20,19 @@ export type AliyunOssCredentials = {
   bucket: string;
   endpoint: string;
   region: string;
+};
+
+export type AliyunOssUrllib = {
+  request: (
+    url: string,
+    options?: RequestOptions,
+  ) => Promise<HttpClientResponse<unknown>>;
+};
+
+export type AliyunOssNetworkDependencies = {
+  requester?: PublicHttpsFetchDependencies["requester"];
+  resolver?: DestinationResolver;
+  urllib?: AliyunOssUrllib;
 };
 
 export type SafeAliyunOssConnectionError = {
@@ -107,8 +131,90 @@ export function safeAliyunOssConnectionError(
   };
 }
 
-function configuredClient(credentials: AliyunOssCredentials) {
-  return new OSS({
+function safeAliyunOssHosts(credentials: AliyunOssCredentials) {
+  const endpoint = safeCanonicalAliyunOssEndpoint(
+    credentials.endpoint,
+    credentials.region,
+  );
+  if (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(credentials.bucket)) {
+    throw new Error("Unsafe Aliyun OSS destination");
+  }
+  return new Set([
+    endpoint.hostname.toLowerCase(),
+    `${credentials.bucket}.${endpoint.hostname}`.toLowerCase(),
+  ]);
+}
+
+function safeAliyunOssRequestUrl(
+  value: string,
+  credentials: AliyunOssCredentials,
+) {
+  const url = safePublicHttpsUrl(value);
+  if (!safeAliyunOssHosts(credentials).has(url.hostname.toLowerCase())) {
+    throw new Error("Unsafe Aliyun OSS destination");
+  }
+  return url;
+}
+
+function normalizedFamily(value: number | string) {
+  if (value === 4 || value === "4" || value === "IPv4") return 4;
+  if (value === 6 || value === "6" || value === "IPv6") return 6;
+  return 0;
+}
+
+function guardedAliyunOssUrllib(
+  credentials: AliyunOssCredentials,
+  dependencies: AliyunOssNetworkDependencies,
+): AliyunOssUrllib {
+  const transport = dependencies.urllib ?? {
+    request: (url: string, options?: RequestOptions) =>
+      urllib.request(url, options),
+  };
+  return {
+    async request(value, options = {}) {
+      if (process.env.URLLIB_ENABLE_PROXY) {
+        throw new Error("Unsafe Aliyun OSS proxy configuration");
+      }
+      const url = safeAliyunOssRequestUrl(value, credentials);
+      const destination = await preparePublicHttpsDestination(
+        url,
+        dependencies.resolver,
+        AbortSignal.timeout(60_000),
+      );
+      return transport.request(url.toString(), {
+        ...options,
+        agent: false as unknown as RequestOptions["agent"],
+        checkAddress: (address, family, hostname) => {
+          if (hostname.toLowerCase() !== destination.hostname) return false;
+          if (Array.isArray(address)) {
+            const selected = address[0] as
+              | { address?: unknown; family?: unknown }
+              | undefined;
+            return address.length === 1 &&
+              selected?.address === destination.address &&
+              normalizedFamily(String(selected.family)) === destination.family &&
+              isIP(selected.address) === destination.family;
+          }
+          return address === destination.address &&
+            normalizedFamily(family) === destination.family &&
+            isIP(address) === destination.family;
+        },
+        enableProxy: false,
+        followRedirect: false,
+        httpsAgent: false as unknown as RequestOptions["httpsAgent"],
+        lookup: destination.lookup,
+        proxy: undefined,
+      });
+    },
+  };
+}
+
+function configuredClient(
+  credentials: AliyunOssCredentials,
+  dependencies: AliyunOssNetworkDependencies = {},
+) {
+  safeAliyunOssHosts(credentials);
+  const options = {
     accessKeyId: credentials.accessKeyId,
     accessKeySecret: credentials.accessKeySecret,
     authorizationV4: true,
@@ -117,7 +223,11 @@ function configuredClient(credentials: AliyunOssCredentials) {
     region: credentials.region,
     secure: true,
     timeout: 60_000,
-  });
+    urllib: guardedAliyunOssUrllib(credentials, dependencies),
+  } as ConstructorParameters<typeof OSS>[0] & {
+    urllib: AliyunOssUrllib;
+  };
+  return new OSS(options);
 }
 
 function safeExtension(extension: string) {
@@ -145,6 +255,7 @@ export async function uploadPrivateAliyunOssObject(input: {
   credentials: AliyunOssCredentials;
   filePath: string;
   objectKey: string;
+  network?: AliyunOssNetworkDependencies;
 }) {
   if (!/^[a-f0-9]{64}$/.test(input.checksumSha256)) {
     throw new Error("Invalid SHA-256 checksum");
@@ -155,7 +266,7 @@ export async function uploadPrivateAliyunOssObject(input: {
   ) {
     throw new Error("Invalid OSS object key");
   }
-  const client = configuredClient(input.credentials);
+  const client = configuredClient(input.credentials, input.network);
   try {
     const result = await client.put(input.objectKey, input.filePath, {
       headers: {
@@ -189,34 +300,38 @@ export async function uploadPrivateAliyunOssObject(input: {
 export async function deletePrivateAliyunOssObject(
   objectKey: string,
   credentials: AliyunOssCredentials,
+  network?: AliyunOssNetworkDependencies,
 ) {
   if (!objectKey.startsWith("objects/") || objectKey.includes("..")) {
     throw new Error("Invalid OSS object key");
   }
-  await configuredClient(credentials).delete(objectKey);
+  await configuredClient(credentials, network).delete(objectKey);
 }
 
 export async function createPrivateAliyunOssReadUrl(
   objectKey: string,
   credentials: AliyunOssCredentials,
   ttlSeconds = 300,
+  network?: AliyunOssNetworkDependencies,
 ) {
   if (!objectKey.startsWith("objects/") || objectKey.includes("..")) {
     throw new Error("Invalid OSS object key");
   }
   const ttl = Math.max(60, Math.min(600, Math.floor(ttlSeconds)));
-  return configuredClient(credentials).signatureUrlV4(
+  const signedUrl = await configuredClient(credentials, network).signatureUrlV4(
     "GET",
     ttl,
     { headers: {} },
     objectKey,
   );
+  return safeAliyunOssRequestUrl(signedUrl, credentials).toString();
 }
 
 export async function testAliyunOssConnection(
   credentials: AliyunOssCredentials,
+  network: AliyunOssNetworkDependencies = {},
 ) {
-  const client = configuredClient(credentials);
+  const client = configuredClient(credentials, network);
   const objectKey = createAliyunOssObjectKey("image", "txt");
   const content = Buffer.from(`unboundry-storage-check:${randomUUID()}`, "utf8");
   const checksum = createHash("sha256").update(content).digest("hex");
@@ -242,13 +357,20 @@ export async function testAliyunOssConnection(
       { headers: {} },
       objectKey,
     );
-    const read = await fetch(signedUrl, {
+    const safeSignedUrl = safeAliyunOssRequestUrl(signedUrl, credentials);
+    const read = await fetchPublicHttps(safeSignedUrl, {
       headers: { Range: "bytes=0-0" },
       redirect: "error",
+    }, {
+      requester: network.requester,
+      resolver: network.resolver,
+      timeoutMs: 60_000,
     });
     if (![200, 206].includes(read.status)) {
+      if (read.body) await read.body.cancel().catch(() => undefined);
       throw new Error("Signed OSS read failed");
     }
+    if (read.body) await read.body.cancel();
   } catch (error) {
     if (uploaded) {
       try {

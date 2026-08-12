@@ -1,6 +1,10 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { request as openHttpRequest } from "node:http";
+import {
+  IncomingMessage,
+  request as openHttpRequest,
+  ServerResponse,
+} from "node:http";
 import {
   access,
   copyFile,
@@ -12,7 +16,7 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { createConnection } from "node:net";
+import { createConnection, Socket } from "node:net";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -34,6 +38,7 @@ import {
   createRuntimeLifecycle,
   type ShutdownResult,
 } from "../server/runtimeLifecycle";
+import { applySecurityHeaders } from "../server/securityHeaders";
 import { knownModelParameterSchema } from "../types/modelParameters";
 import { expect, test } from "./safe-test";
 
@@ -162,6 +167,53 @@ async function stopServer(child: ChildProcess) {
 
 function outputOf(child: ChildProcess) {
   return capturedOutput.get(child)?.join("") ?? "";
+}
+
+function assertSecurityHeaders(
+  response: Response,
+  development: boolean,
+  framePolicy: {
+    allowSameOriginChildFrames?: boolean;
+    allowSameOriginEmbedding?: boolean;
+  } = {},
+) {
+  const policy = response.headers.get("content-security-policy") ?? "";
+  expect(policy).toContain("default-src 'self'");
+  expect(policy).toContain("base-uri 'self'");
+  expect(policy).toContain("object-src 'none'");
+  expect(policy).toContain(
+    `frame-ancestors ${
+      framePolicy.allowSameOriginEmbedding ? "'self'" : "'none'"
+    }`,
+  );
+  expect(policy).toContain(
+    `frame-src ${
+      framePolicy.allowSameOriginChildFrames ? "'self'" : "'none'"
+    }`,
+  );
+  expect(policy).toContain("img-src 'self' blob: data:");
+  expect(policy).toContain("media-src 'self' blob: data:");
+  expect(policy).toContain(
+    development
+      ? "connect-src 'self' ws: wss:"
+      : "connect-src 'self'",
+  );
+  if (development) {
+    expect(policy).toContain("script-src 'self' 'unsafe-inline'");
+  } else {
+    expect(policy).toContain("script-src 'self'");
+    expect(policy).not.toContain("script-src 'self' 'unsafe-inline'");
+    expect(policy).not.toContain(" ws:");
+  }
+  expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  expect(response.headers.get("x-frame-options")).toBe(
+    framePolicy.allowSameOriginEmbedding ? "SAMEORIGIN" : "DENY",
+  );
+  expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+  expect(response.headers.get("cross-origin-opener-policy")).toBe("same-origin");
+  expect(response.headers.get("cross-origin-resource-policy")).toBe("same-origin");
+  expect(response.headers.get("permissions-policy")).toContain("microphone=(self)");
+  expect(response.headers.get("cross-origin-embedder-policy")).toBeNull();
 }
 
 function rawHttp(requestText: string) {
@@ -3248,6 +3300,93 @@ test("dev and preview own shutdown signals without erasing host listeners", asyn
   }
 });
 
+test("dev and preview apply security headers while HSTS requires trusted effective HTTPS", async () => {
+  const tlsSocket = new Socket();
+  Object.defineProperty(tlsSocket, "encrypted", { value: true });
+  const tlsRequest = new IncomingMessage(tlsSocket);
+  const tlsResponse = new ServerResponse(tlsRequest);
+  try {
+    applySecurityHeaders(tlsRequest, tlsResponse, {
+      allowDevelopmentHmr: false,
+    });
+    expect(tlsResponse.getHeader("strict-transport-security")).toBe(
+      "max-age=31536000; includeSubDomains",
+    );
+  } finally {
+    tlsResponse.destroy();
+    tlsRequest.destroy();
+    tlsSocket.destroy();
+  }
+
+  for (const fixture of [
+    { development: true, preview: false, trustProxy: "1" },
+    { development: false, preview: true, trustProxy: "0" },
+  ]) {
+    const dataDirectory = await mkdtemp(
+      join(tmpdir(), `unboundry-m81-security-${fixture.preview ? "preview" : "dev"}-`),
+    );
+    let server: ChildProcess | undefined;
+    try {
+      server = await startServer(dataDirectory, {
+        environment: { UNBOUNDRY_TRUST_PROXY: fixture.trustProxy },
+        preview: fixture.preview,
+      });
+      for (const route of [
+        { path: "/", status: 200 },
+        { path: "/api/health/live", status: 200 },
+        { path: "/not-a-security-exception", status: 200 },
+        {
+          path: "/__responsive-preview/1280x720",
+          status: 200,
+          allowSameOriginChildFrames: fixture.development,
+        },
+        {
+          path: "/__fixture/shell.empty.primary?embedded=1280x720",
+          status: 200,
+          allowSameOriginEmbedding: fixture.development,
+        },
+        { path: "/__responsive-preview/1280x721", status: 200 },
+        {
+          path: "/__fixture/shell.empty.primary?embedded=1280x721",
+          status: 200,
+        },
+      ] as const) {
+        const response = await fetch(`${origin}${route.path}`);
+        expect(response.status).toBe(route.status);
+        assertSecurityHeaders(response, fixture.development, {
+          allowSameOriginChildFrames:
+            "allowSameOriginChildFrames" in route &&
+            route.allowSameOriginChildFrames,
+          allowSameOriginEmbedding:
+            "allowSameOriginEmbedding" in route &&
+            route.allowSameOriginEmbedding,
+        });
+        expect(response.headers.get("strict-transport-security")).toBeNull();
+      }
+
+      const forwardedHttps = await fetch(`${origin}/api/health/live`, {
+        headers: { "X-Forwarded-Proto": "https" },
+      });
+      assertSecurityHeaders(forwardedHttps, fixture.development);
+      if (fixture.trustProxy === "1") {
+        expect(forwardedHttps.headers.get("strict-transport-security")).toBe(
+          "max-age=31536000; includeSubDomains",
+        );
+      } else {
+        expect(forwardedHttps.headers.get("strict-transport-security")).toBeNull();
+      }
+
+      const ambiguousForwarding = await fetch(`${origin}/api/health/live`, {
+        headers: { "X-Forwarded-Proto": "https, http" },
+      });
+      expect(ambiguousForwarding.headers.get("strict-transport-security")).toBeNull();
+    } finally {
+      if (server) await stopServer(server);
+      await rm(dataDirectory, { force: true, recursive: true });
+    }
+  }
+});
+
 test("unexpected database failures stay internal and the server remains alive", async () => {
   const secretCanary = "cookie-password-apikey-prompt-canary";
   const dataDirectory = await mkdtemp(
@@ -3262,6 +3401,7 @@ test("unexpected database failures stay internal and the server remains alive", 
     });
     const failed = await fetch(`${origin}/api/media-metadata/image/missing`);
     expect(failed.status).toBe(500);
+    assertSecurityHeaders(failed, true);
     const body = await failed.text();
     expect(body).toContain('"code":"INTERNAL_ERROR"');
     expect(body).not.toContain(secretCanary);

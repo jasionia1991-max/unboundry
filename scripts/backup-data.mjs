@@ -1,10 +1,12 @@
 import { constants as fileConstants } from "node:fs";
 import { lstat, open, realpath } from "node:fs/promises";
 import { dirname, relative, resolve, sep } from "node:path";
-import {
+import "./node-typescript-runtime.mjs";
+
+const {
   BackupPackageError,
   createEncryptedBackup,
-} from "../server/backupPackage.ts";
+} = await import("../server/backupPackage.ts");
 
 const maximumKeyBytes = 64 * 1024;
 

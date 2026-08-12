@@ -1,12 +1,17 @@
 import type { ProviderProfile } from "./providerProfiles";
 import {
-  createProviderRequestDeadline,
   ProviderRequestDeadlineError,
   type ProviderRequestDeadline,
   type ProviderRequestDeadlineOverrides,
   type ProviderRequestOperation,
   withProviderRequestDeadline,
 } from "./providerRequestDeadline";
+import {
+  downloadProviderResultMedia,
+  ProviderResultMediaError,
+  safeProviderResultUrl,
+} from "./providerResultMedia";
+import type { PublicHttpsFetchDependencies } from "./outboundNetwork";
 
 export type MurekaMusicMode =
   | "instrumental"
@@ -38,6 +43,12 @@ export type MurekaAudioErrorCode =
   | "RATE_LIMIT"
   | "REMOTE"
   | "TIMEOUT";
+
+export type MurekaAudioResultDownloadOptions = {
+  deadlineOptions?: ProviderRequestDeadlineOverrides;
+  network?: Omit<PublicHttpsFetchDependencies, "fetcher">;
+  signal?: AbortSignal;
+};
 
 const murekaAudioErrorMessages: Record<MurekaAudioErrorCode, string> = {
   AUTH: "Mureka 授权已失效，请管理员检查连接",
@@ -359,99 +370,54 @@ export async function getMurekaAudioTask(
   }
   const choices = Array.isArray(body.choices) ? body.choices : [];
   const first = choices[0] as Record<string, unknown> | undefined;
-  const audioUrl = typeof first?.url === "string" ? first.url.trim() : "";
-  let parsed: URL;
+  const audioUrl = typeof first?.url === "string" ? first.url : "";
   try {
-    parsed = new URL(audioUrl);
+    const parsed = safeProviderResultUrl(audioUrl, profile.apiKey ?? "");
+    const duration = Number(first?.duration);
+    return {
+      audioUrl: parsed.toString(),
+      durationMs: Number.isFinite(duration) && duration >= 0 ? duration : undefined,
+      state: "succeeded",
+    };
   } catch {
     throw new MurekaAudioError("FORMAT");
   }
-  if (
-    parsed.protocol !== "https:" ||
-    parsed.username ||
-    parsed.password ||
-    containsProviderKey(parsed.toString(), profile.apiKey ?? "")
-  ) {
-    throw new MurekaAudioError("FORMAT");
-  }
-  const duration = Number(first?.duration);
-  return {
-    audioUrl: parsed.toString(),
-    durationMs: Number.isFinite(duration) && duration >= 0 ? duration : undefined,
-    state: "succeeded",
-  };
 }
 
 export async function downloadMurekaAudioResult(
   profile: ProviderProfile,
   audioUrl: string,
-  fetcher: typeof fetch = fetch,
-  signal?: AbortSignal,
-  deadlineOptions?: ProviderRequestDeadlineOverrides,
+  options: MurekaAudioResultDownloadOptions = {},
 ) {
-  let parsed: URL;
-  try {
-    parsed = new URL(audioUrl);
-  } catch {
-    throw new MurekaAudioError("FORMAT");
-  }
   if (
     profile.driver !== "mureka" ||
-    profile.baseUrl !== "https://api.mureka.ai" ||
-    parsed.protocol !== "https:" ||
-    parsed.username ||
-    parsed.password ||
-    containsProviderKey(parsed.toString(), profile.apiKey ?? "")
+    profile.baseUrl !== "https://api.mureka.ai"
   ) {
     throw new MurekaAudioError("FORMAT");
   }
-  if (signal?.aborted) throw new MurekaAudioError("CANCELLED");
-
-  const deadline = createProviderRequestDeadline({
-    ...deadlineOptions,
-    operation: "result-download",
-    signal,
-  });
   try {
-    const response = await deadline.race(fetcher(parsed.toString(), {
-      headers: { Accept: "audio/mpeg" },
-      redirect: "error",
-      signal: deadline.signal,
-    }));
-
-    let body: ReadableStream<Uint8Array> | null;
-    let contentType: string;
-    let ok: boolean;
-    try {
-      contentType = String(
-        response.headers.get("content-type") ?? "",
-      ).toLowerCase();
-      body = response.body;
-      ok = response.ok;
-    } catch {
-      throw new MurekaAudioError("REMOTE");
-    }
-    if (
-      !ok ||
-      !body ||
-      (!contentType.includes("audio") &&
-        !contentType.includes("application/octet-stream"))
-    ) {
-      if (body) void body.cancel().catch(() => undefined);
-      throw new MurekaAudioError("REMOTE");
-    }
-    return deadline.wrapStream(body, (error) =>
-      error instanceof ProviderRequestDeadlineError
-        ? new MurekaAudioError(error.code)
-        : error
-    );
+    const downloaded = await downloadProviderResultMedia({
+      apiKey: profile.apiKey ?? "",
+      deadlineOptions: options.deadlineOptions,
+      expectedContentType: "audio/mpeg",
+      kind: "audio",
+      network: options.network,
+      signal: options.signal,
+      url: audioUrl,
+    });
+    return downloaded.body;
   } catch (error) {
-    deadline.complete();
     if (error instanceof MurekaAudioError) throw error;
-    if (error instanceof ProviderRequestDeadlineError) {
-      throw new MurekaAudioError(error.code);
+    if (error instanceof ProviderResultMediaError) {
+      const code: MurekaAudioErrorCode = error.code === "FORMAT" ||
+          error.code === "CANCELLED" ||
+          error.code === "REMOTE" ||
+          error.code === "TIMEOUT"
+        ? error.code
+        : "NETWORK";
+      throw new MurekaAudioError(code);
     }
-    if (signal?.aborted) throw new MurekaAudioError("CANCELLED");
+    if (options.signal?.aborted) throw new MurekaAudioError("CANCELLED");
     throw new MurekaAudioError("NETWORK");
   }
 }

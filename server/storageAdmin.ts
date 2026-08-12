@@ -25,6 +25,7 @@ import {
   readableStorageProfile,
   saveStorageProfile,
   setStorageMediaRouting,
+  storageMediaRoutingState,
 } from "./secureStorageProfiles";
 
 type StorageTotals = {
@@ -148,14 +149,8 @@ async function statusBody() {
   const document = await listStorageProfiles();
   const readable = await readableStorageProfile();
   const rawMediaRoutingEnabled = Boolean(document.mediaRoutingEnabled);
-  const mediaRoutingEnabled = Boolean(
-    document.mediaRoutingEnabled &&
-      document.profiles.some(
-        (profile) =>
-          profile.id === document.activeProfileId &&
-          profile.status === "active",
-      ),
-  );
+  const routing = await storageMediaRoutingState();
+  const mediaRoutingEnabled = routing.enabled;
   const ossRows = db()
     .prepare(`
       SELECT kind, COUNT(*) AS count

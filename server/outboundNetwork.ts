@@ -52,6 +52,13 @@ export type PublicHttpsFetchDependencies = {
   timeoutMs?: number;
 };
 
+export type PinnedPublicHttpsDestination = {
+  address: string;
+  family: 4 | 6;
+  hostname: string;
+  lookup: LookupFunction;
+};
+
 type PublicDestination = {
   address: string;
   family: 4 | 6;
@@ -179,6 +186,7 @@ export function safePublicHttpsUrl(value: string) {
   const hostname = normalizedHostname(url.hostname);
   if (
     url.protocol !== "https:" ||
+    url.port ||
     url.username ||
     url.password ||
     url.hash ||
@@ -190,6 +198,20 @@ export function safePublicHttpsUrl(value: string) {
     throw new OutboundDestinationError("FORMAT");
   }
   return url;
+}
+
+export function safeCanonicalAliyunOssEndpoint(
+  endpoint: string,
+  region: string,
+) {
+  if (!/^oss-[a-z0-9-]{3,70}$/.test(region)) {
+    throw new OutboundDestinationError("FORMAT");
+  }
+  const canonical = `https://${region}.aliyuncs.com`;
+  if (endpoint !== canonical) {
+    throw new OutboundDestinationError("FORMAT");
+  }
+  return safePublicHttpsUrl(canonical);
 }
 
 function abortError(signal: AbortSignal) {
@@ -438,6 +460,37 @@ function pinnedLookup(
     }
     callback(null, destination.address, destination.family);
   };
+}
+
+/**
+ * Resolve and validate every address for one HTTPS origin, then return a
+ * lookup function that can only yield the selected validated address. This is
+ * used by clients whose HTTP implementation accepts a Node lookup hook rather
+ * than our fetch transport.
+ */
+export async function preparePublicHttpsDestination(
+  value: string | URL,
+  resolver: DestinationResolver = (hostname, options) => lookup(hostname, options),
+  signal: AbortSignal = new AbortController().signal,
+): Promise<PinnedPublicHttpsDestination> {
+  const url = safePublicHttpsUrl(String(value));
+  const hostname = normalizedHostname(url.hostname);
+  try {
+    const destination = await resolvePublicHttpsDestination(
+      url,
+      resolver,
+      signal,
+    );
+    return {
+      ...destination,
+      hostname,
+      lookup: pinnedLookup(hostname, destination),
+    };
+  } catch (error) {
+    if (signal.aborted) throw abortError(signal);
+    if (error instanceof OutboundDestinationError) throw error;
+    throw new OutboundDestinationError("NETWORK");
+  }
 }
 
 function requestBody(value: BodyInit | null | undefined) {

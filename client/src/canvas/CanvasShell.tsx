@@ -43,6 +43,102 @@ type HistoryAsset = {
   preview: string;
 };
 
+type HistoryCounts = Record<HistoryKind, number>;
+
+type HistoryPage = {
+  counts: HistoryCounts;
+  items: HistoryAsset[];
+  nextCursor?: string;
+};
+
+const historyPageSize = 60;
+
+function emptyHistoryCounts(): HistoryCounts {
+  return { audio: 0, image: 0, video: 0, world3d: 0 };
+}
+
+function historyAccountIdForFixture(fixtureId?: string) {
+  if (fixtureId === "panel.history.final") return "fixture-account";
+  if (fixtureId === "node.video.success") return "fixture-video-success";
+  if (fixtureId === "node.audio.success") return "fixture-audio-success";
+  return "local-user";
+}
+
+function historySeedForFixture(fixtureId?: string) {
+  if (fixtureId === "panel.history.final") return historySeed;
+  if (fixtureId === "node.video.success") {
+    return [historySeed.find((item) => item.kind === "video")!];
+  }
+  if (fixtureId === "node.audio.success") {
+    return historySeed.filter((item) => item.kind === "audio").slice(0, 2);
+  }
+  return [];
+}
+
+function validHistoryPage(value: unknown): value is HistoryPage {
+  if (!value || typeof value !== "object") return false;
+  const page = value as Partial<HistoryPage>;
+  if (!page.counts || typeof page.counts !== "object" || !Array.isArray(page.items)) {
+    return false;
+  }
+  const kinds: HistoryKind[] = ["image", "video", "audio", "world3d"];
+  if (
+    kinds.some(
+      (kind) =>
+        !Number.isSafeInteger(page.counts?.[kind]) ||
+        Number(page.counts?.[kind]) < 0,
+    )
+  ) {
+    return false;
+  }
+  if (
+    page.nextCursor !== undefined &&
+    (typeof page.nextCursor !== "string" || page.nextCursor.length > 512)
+  ) {
+    return false;
+  }
+  return page.items.every(
+    (item) =>
+      Boolean(item) &&
+      typeof item === "object" &&
+      /^[a-z0-9._-]+$/i.test(item.id) &&
+      kinds.includes(item.kind) &&
+      typeof item.label === "string" &&
+      item.label.length >= 1 &&
+      item.label.length <= 120 &&
+      typeof item.preview === "string" &&
+      item.preview.length <= 1_000 &&
+      (item.createdAt === undefined ||
+        (typeof item.createdAt === "string" && item.createdAt.length <= 80)),
+  );
+}
+
+async function fetchHistoryPage(input: {
+  accountId: string;
+  cursor?: string;
+  kind: HistoryKind;
+  newestFirst: boolean;
+  signal?: AbortSignal;
+}) {
+  const parameters = new URLSearchParams({
+    kind: input.kind,
+    limit: String(historyPageSize),
+    order: input.newestFirst ? "newest" : "oldest",
+  });
+  if (input.cursor) parameters.set("cursor", input.cursor);
+  const response = await fetch(
+    `/api/history/${encodeURIComponent(input.accountId)}?${parameters.toString()}`,
+    {
+      headers: { Accept: "application/json" },
+      signal: input.signal,
+    },
+  );
+  if (!response.ok) throw new Error(`历史素材读取失败 (${response.status})`);
+  const page: unknown = await response.json();
+  if (!validHistoryPage(page)) throw new Error("历史素材响应格式无效");
+  return page;
+}
+
 type ProjectTitleRecord = {
   title: string;
   updatedAt: number;
@@ -300,30 +396,67 @@ function HistoryCardMedia({ item }: { item: HistoryAsset }) {
       <img
         alt=""
         className="history-card-image"
+        decoding="async"
         draggable={false}
+        loading="lazy"
         src={mediaUrl}
       />
     );
   }
   if (item.kind === "video" && mediaUrl) {
+    return <LazyHistoryVideo mediaUrl={mediaUrl} />;
+  }
+  return null;
+}
+
+function LazyHistoryVideo({ mediaUrl }: { mediaUrl: string }) {
+  const placeholder = useRef<HTMLSpanElement>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (visible) return;
+    const element = placeholder.current;
+    if (!element || typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        setVisible(true);
+        observer.disconnect();
+      },
+      { rootMargin: "160px" },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [visible]);
+
+  if (!visible) {
     return (
-      <video
+      <span
         aria-hidden="true"
-        className="history-card-video"
-        muted
-        onLoadedMetadata={(event) => {
-          event.currentTarget.currentTime = Math.min(
-            0.08,
-            event.currentTarget.duration || 0,
-          );
-        }}
-        playsInline
-        preload="metadata"
-        src={mediaUrl}
+        className="history-card-video-placeholder"
+        ref={placeholder}
       />
     );
   }
-  return null;
+  return (
+    <video
+      aria-hidden="true"
+      className="history-card-video"
+      muted
+      onLoadedMetadata={(event) => {
+        event.currentTarget.currentTime = Math.min(
+          0.08,
+          event.currentTarget.duration || 0,
+        );
+      }}
+      playsInline
+      preload="metadata"
+      src={mediaUrl}
+    />
+  );
 }
 
 function ShellButton({
@@ -851,6 +984,16 @@ export function CanvasShell({
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [historyTab, setHistoryTab] = useState<HistoryKind>("image");
   const [historyItems, setHistoryItems] = useState<HistoryAsset[]>([]);
+  const [historyCounts, setHistoryCounts] = useState<HistoryCounts>(
+    emptyHistoryCounts,
+  );
+  const [historyNextCursor, setHistoryNextCursor] = useState<string>();
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [historyRefreshEpoch, setHistoryRefreshEpoch] = useState(0);
+  const historyLoadSequence = useRef(0);
+  const historyLoadMoreAbort = useRef<AbortController | undefined>(undefined);
+  const historyLoadMoreInFlight = useRef(false);
   const [historyZoom, setHistoryZoom] = useState(120);
   const [historyNewestFirst, setHistoryNewestFirst] = useState(true);
   const [historyPreviewItem, setHistoryPreviewItem] = useState<HistoryAsset>();
@@ -1363,6 +1506,57 @@ export function CanvasShell({
     setHistoryPreviewItem(undefined);
     setHistoryExpanded(false);
     setHistoryOpen(false);
+  };
+
+  const loadMoreHistory = async () => {
+    if (
+      !historyNextCursor ||
+      historyLoading ||
+      historyLoadMoreInFlight.current
+    ) {
+      return;
+    }
+    const requestSequence = historyLoadSequence.current + 1;
+    historyLoadSequence.current = requestSequence;
+    const cursor = historyNextCursor;
+    const controller = new AbortController();
+    historyLoadMoreAbort.current = controller;
+    historyLoadMoreInFlight.current = true;
+    setHistoryError("");
+    setHistoryLoading(true);
+    try {
+      const page = await fetchHistoryPage({
+        accountId: historyAccountIdForFixture(fixtureId),
+        cursor,
+        kind: historyTab,
+        newestFirst: historyNewestFirst,
+        signal: controller.signal,
+      });
+      if (requestSequence !== historyLoadSequence.current) return;
+      setHistoryCounts(page.counts);
+      setHistoryItems((current) => {
+        const known = new Set(current.map((item) => `${item.kind}\0${item.id}`));
+        return [
+          ...current,
+          ...page.items.filter((item) => !known.has(`${item.kind}\0${item.id}`)),
+        ];
+      });
+      setHistoryNextCursor(page.nextCursor);
+    } catch (error) {
+      if (requestSequence === historyLoadSequence.current) {
+        setHistoryError(
+          error instanceof Error ? error.message : "历史素材读取失败",
+        );
+      }
+    } finally {
+      if (historyLoadMoreAbort.current === controller) {
+        historyLoadMoreAbort.current = undefined;
+        historyLoadMoreInFlight.current = false;
+      }
+      if (requestSequence === historyLoadSequence.current) {
+        setHistoryLoading(false);
+      }
+    }
   };
 
   const persistProjectTitle = useCallback(
@@ -1944,32 +2138,32 @@ export function CanvasShell({
 
   useEffect(() => {
     if (!historyOpen) return;
+    historyLoadMoreAbort.current?.abort();
+    historyLoadMoreAbort.current = undefined;
+    historyLoadMoreInFlight.current = false;
     const controller = new AbortController();
-    const accountId =
-      fixtureId === "panel.history.final"
-        ? "fixture-account"
-        : fixtureId === "node.video.success"
-          ? "fixture-video-success"
-          : fixtureId === "node.audio.success"
-            ? "fixture-audio-success"
-          : "local-user";
-    const url = `/api/history/${accountId}`;
+    const requestSequence = historyLoadSequence.current + 1;
+    historyLoadSequence.current = requestSequence;
+    const accountId = historyAccountIdForFixture(fixtureId);
+    const seed = historySeedForFixture(fixtureId);
+    setHistoryItems([]);
+    setHistoryNextCursor(undefined);
+    setHistoryError("");
+    setHistoryLoading(true);
 
-    void fetch(url, {
-      headers: { Accept: "application/json" },
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`History load failed: ${response.status}`);
-        const { items } = await response.json() as { items: HistoryAsset[] };
-        const seed = fixtureId === "panel.history.final"
-          ? historySeed
-          : fixtureId === "node.video.success"
-            ? [historySeed.find((item) => item.kind === "video")!]
-            : fixtureId === "node.audio.success"
-              ? historySeed.filter((item) => item.kind === "audio").slice(0, 2)
-            : [];
-        if (items.length || !seed.length) return items;
+    void (async () => {
+      let page = await fetchHistoryPage({
+        accountId,
+        kind: historyTab,
+        newestFirst: historyNewestFirst,
+        signal: controller.signal,
+      });
+      const total = Object.values(page.counts).reduce(
+        (sum, count) => sum + count,
+        0,
+      );
+      if (total === 0 && seed.length > 0) {
+        const url = `/api/history/${encodeURIComponent(accountId)}`;
         const created = await Promise.all(
           seed.map((item) =>
             fetch(url, {
@@ -1984,16 +2178,59 @@ export function CanvasShell({
           ),
         );
         if (created.some((response) => !response.ok)) {
-          throw new Error("History seed failed");
+          throw new Error("历史素材初始化失败");
         }
-        return seed;
+        page = await fetchHistoryPage({
+          accountId,
+          kind: historyTab,
+          newestFirst: historyNewestFirst,
+          signal: controller.signal,
+        });
+      }
+      if (
+        controller.signal.aborted ||
+        requestSequence !== historyLoadSequence.current
+      ) {
+        return;
+      }
+      setHistoryCounts(page.counts);
+      setHistoryItems(page.items);
+      setHistoryNextCursor(page.nextCursor);
+    })()
+      .catch((error) => {
+        if (
+          !controller.signal.aborted &&
+          requestSequence === historyLoadSequence.current
+        ) {
+          setHistoryError(
+            error instanceof Error ? error.message : "历史素材读取失败",
+          );
+        }
       })
-      .then(setHistoryItems)
-      .catch(() => {
-        if (!controller.signal.aborted) setHistoryItems([]);
+      .finally(() => {
+        if (
+          !controller.signal.aborted &&
+          requestSequence === historyLoadSequence.current
+        ) {
+          setHistoryLoading(false);
+        }
       });
-    return () => controller.abort();
-  }, [fixtureId, historyOpen]);
+    return () => {
+      controller.abort();
+      historyLoadMoreAbort.current?.abort();
+      historyLoadMoreAbort.current = undefined;
+      historyLoadMoreInFlight.current = false;
+      if (requestSequence === historyLoadSequence.current) {
+        historyLoadSequence.current += 1;
+      }
+    };
+  }, [
+    fixtureId,
+    historyNewestFirst,
+    historyOpen,
+    historyRefreshEpoch,
+    historyTab,
+  ]);
 
   const markSaving = useCallback(() => {
     setSaveStatus("保存中...");
@@ -3299,7 +3536,7 @@ export function CanvasShell({
                   {label}
                   <span aria-hidden="true">(</span>
                   <span data-testid={`history-count-${kind}`}>
-                    {historyItems.filter((item) => item.kind === kind).length}
+                    {historyCounts[kind]}
                   </span>
                   <span aria-hidden="true">)</span>
                 </button>
@@ -3339,7 +3576,35 @@ export function CanvasShell({
                 </section>
               ))}
               {filteredHistoryItems.length === 0 && (
-                <p className="history-empty">暂无历史素材</p>
+                !historyLoading && !historyError && (
+                  <p className="history-empty">暂无历史素材</p>
+                )
+              )}
+              {!historyExpanded && historyLoading && historyItems.length === 0 && (
+                <p className="history-empty" role="status">正在读取历史素材…</p>
+              )}
+              {!historyExpanded && historyError && (
+                <div className="history-pagination">
+                  <p role="alert">{historyError}</p>
+                  <button
+                    onClick={() => setHistoryRefreshEpoch((epoch) => epoch + 1)}
+                    type="button"
+                  >
+                    重新读取
+                  </button>
+                </div>
+              )}
+              {!historyExpanded && historyNextCursor && !historyError && (
+                <div className="history-pagination">
+                  <button
+                    data-testid="history-load-more"
+                    disabled={historyLoading}
+                    onClick={() => void loadMoreHistory()}
+                    type="button"
+                  >
+                    {historyLoading ? "正在加载…" : "加载更多历史素材"}
+                  </button>
+                </div>
               )}
             </div>
           </section>
@@ -3379,7 +3644,7 @@ export function CanvasShell({
                         <LineIcon name={icon} />
                         <span>{label}</span>
                         <small>
-                          {historyItems.filter((item) => item.kind === kind).length}
+                          {historyCounts[kind]}
                         </small>
                       </button>
                     ))}
@@ -3495,7 +3760,38 @@ export function CanvasShell({
                       </section>
                     ))}
                     {filteredHistoryItems.length === 0 && (
-                      <p className="history-empty">暂无历史素材</p>
+                      !historyLoading && !historyError && (
+                        <p className="history-empty">暂无历史素材</p>
+                      )
+                    )}
+                    {historyLoading && historyItems.length === 0 && (
+                      <p className="history-empty" role="status">
+                        正在读取历史素材…
+                      </p>
+                    )}
+                    {historyError && (
+                      <div className="history-pagination">
+                        <p role="alert">{historyError}</p>
+                        <button
+                          onClick={() =>
+                            setHistoryRefreshEpoch((epoch) => epoch + 1)}
+                          type="button"
+                        >
+                          重新读取
+                        </button>
+                      </div>
+                    )}
+                    {historyNextCursor && !historyError && (
+                      <div className="history-pagination">
+                        <button
+                          data-testid="history-browser-load-more"
+                          disabled={historyLoading}
+                          onClick={() => void loadMoreHistory()}
+                          type="button"
+                        >
+                          {historyLoading ? "正在加载…" : "加载更多历史素材"}
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>

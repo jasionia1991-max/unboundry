@@ -83,6 +83,12 @@ const clientUploadBranches = [
 
 type ClientUploadBranch = (typeof clientUploadBranches)[number];
 
+function branchPostPattern(branch: ClientUploadBranch) {
+  return branch.id === "playlist"
+    ? "**/api/playlist/export"
+    : `**${uploadConfig[branch.kind].endpoint}*`;
+}
+
 function emptyNode(kind: MediaKind, index: number) {
   return {
     data: {
@@ -272,9 +278,10 @@ function committedResponseFailure(
 function mediaIdCollision(
   page: Page,
   request: APIRequestContext,
-  kind: MediaKind,
+  branch: ClientUploadBranch,
   bodyFailure?: "empty" | "malformed",
 ) {
+  const kind = branch.kind;
   let resolveOriginal!: (asset: CreatedAsset) => void;
   const original = new Promise<CreatedAsset>((resolve) => {
     resolveOriginal = resolve;
@@ -284,15 +291,17 @@ function mediaIdCollision(
     resolveDelivered = resolve;
   });
   let intercepted = false;
-  void page.route(`**${uploadConfig[kind].endpoint}*`, async (route) => {
+  void page.route(branchPostPattern(branch), async (route) => {
     if (route.request().method() !== "POST" || intercepted) {
       await route.continue();
       return;
     }
     intercepted = true;
-    const assetId = decodeURIComponent(
-      new URL(route.request().url()).pathname.split("/").at(-1)!,
-    );
+    const assetId = branch.id === "playlist"
+      ? String((route.request().postDataJSON() as { assetId?: unknown }).assetId ?? "")
+      : decodeURIComponent(
+          new URL(route.request().url()).pathname.split("/").at(-1)!,
+        );
     resolveOriginal(await seedAsset(request, kind, assetId));
     const response = await route.fetch();
     expect(response.status()).toBe(409);
@@ -315,7 +324,7 @@ function mediaIdCollision(
 
 function mismatchedCommittedResponse(
   page: Page,
-  kind: MediaKind,
+  branch: ClientUploadBranch,
   replacement: CreatedAsset,
 ) {
   let resolveRequested!: (asset: CreatedAsset) => void;
@@ -323,7 +332,7 @@ function mismatchedCommittedResponse(
     resolveRequested = resolve;
   });
   let intercepted = false;
-  void page.route(`**${uploadConfig[kind].endpoint}*`, async (route) => {
+  void page.route(branchPostPattern(branch), async (route) => {
     if (route.request().method() !== "POST" || intercepted) {
       await route.continue();
       return;
@@ -938,7 +947,7 @@ test("Playlist export deletes its completed video when persistence closes before
   await page.goto(`/__fixture/${canvasId}`);
   const world = page.getByTestId("canvas-world");
   await expect(world).toHaveAttribute("data-persistence-ready", "true");
-  const uploadGate = responseGate(page, "**/api/video-assets/*", 1);
+  const uploadGate = responseGate(page, "**/api/playlist/export", 1);
   const persistenceGate = persistenceLossGate(page, canvasId);
 
   try {
@@ -993,7 +1002,7 @@ for (const branch of clientUploadBranches) {
       );
       const created = committedResponseFailure(
         page,
-        `**${uploadConfig[branch.kind].endpoint}*`,
+        branchPostPattern(branch),
         browserOutcome,
       );
       const deletedPaths = monitorAssetDeletes(page);
@@ -1037,7 +1046,7 @@ for (const branch of clientUploadBranches) {
     const deletedPaths = monitorAssetDeletes(page);
     const before = await paidProviderRequests(request);
     const taskPosts = monitorProviderRequests(page);
-    const collision = mediaIdCollision(page, request, branch.kind);
+    const collision = mediaIdCollision(page, request, branch);
     let originalAsset: CreatedAsset | undefined;
 
     try {
@@ -1088,7 +1097,7 @@ for (const branch of clientUploadBranches) {
       const collision = mediaIdCollision(
         page,
         request,
-        branch.kind,
+        branch,
         bodyFailure,
       );
       let originalAsset: CreatedAsset | undefined;
@@ -1144,7 +1153,7 @@ for (const branch of clientUploadBranches) {
     );
     const requested = mismatchedCommittedResponse(
       page,
-      branch.kind,
+      branch,
       replacement,
     );
     const deletedPaths = monitorAssetDeletes(page);

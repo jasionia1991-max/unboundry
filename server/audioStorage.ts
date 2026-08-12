@@ -4,6 +4,13 @@ import { mkdir, open, rm, stat, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import {
+  assertDeclaredBodyWithin,
+  BoundedBodyError,
+  consumeBoundedReadableStream,
+  readBoundedBody,
+  rejectUnreadRequestBody,
+} from "./boundedBody";
+import {
   beginMediaDeletion,
   finishMediaDeletion,
   markMediaDeletionFailed,
@@ -41,6 +48,10 @@ import {
   type GeneratedPublicationTask,
   type MediaPublicationExecution,
 } from "./mediaLifecycle";
+import {
+  reserveMediaResources,
+  ResourceBudgetError,
+} from "./resourceBudget";
 
 const maxAudioBytes = 50 * 1024 * 1024;
 const generatedAudioProbeBytes = 64 * 1024;
@@ -130,15 +141,11 @@ function json(response: ServerResponse, status: number, body: unknown) {
 }
 
 async function readAudio(request: IncomingMessage) {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > maxAudioBytes) throw new Error("Audio is too large");
-    chunks.push(bytes);
-  }
-  return Buffer.concat(chunks);
+  return readBoundedBody(request, {
+    idleTimeoutMs: 15_000,
+    maximumBytes: maxAudioBytes,
+    totalTimeoutMs: 180_000,
+  });
 }
 
 function validateWav(bytes: Buffer, totalSize = bytes.length) {
@@ -203,51 +210,66 @@ export async function saveGeneratedAudio(input: {
   const format = audioFormat(id)!;
   const path = audioPath(id);
   const checksum = createHash("sha256");
-  const publication = await withStorageMediaRoutingReservation((routing) => {
-    const objectKey = routing.enabled && routing.profile
-      ? createAliyunOssObjectKey("audio", extension)
-      : id;
-    return {
-      objectKey,
-      reservation: reserveMediaPublication({
-        contentType: format.contentType,
-        finalStorageName: id,
-        historyLabel: input.label.slice(0, 120) || "生成音频",
-        id,
-        kind: "audio",
+  let releaseResources: (() => void) | undefined;
+  let publication: {
+    objectKey: string;
+    reservation: ReturnType<typeof reserveMediaPublication>;
+    routing: { enabled: boolean; profile?: AliyunStorageProfile };
+  };
+  try {
+    releaseResources = await reserveMediaResources({
+      bytes: maxAudioBytes,
+      directory: path.directory,
+      ownerId: input.ownerId,
+    });
+    publication = await withStorageMediaRoutingReservation((routing) => {
+      const objectKey = routing.enabled && routing.profile
+        ? createAliyunOssObjectKey("audio", extension)
+        : id;
+      return {
         objectKey,
-        ownerId: input.ownerId,
-        storageBackend: routing.enabled && routing.profile ? "oss" : "local",
-        storageProfileId: routing.profile?.id,
-        task: input.task,
-      }),
-      routing,
-    };
-  });
+        reservation: reserveMediaPublication({
+          contentType: format.contentType,
+          finalStorageName: id,
+          historyLabel: input.label.slice(0, 120) || "生成音频",
+          id,
+          kind: "audio",
+          objectKey,
+          ownerId: input.ownerId,
+          storageBackend: routing.enabled && routing.profile ? "oss" : "local",
+          storageProfileId: routing.profile?.id,
+          task: input.task,
+        }),
+        routing,
+      };
+    });
+  } catch (error) {
+    await input.body.cancel().catch(() => undefined);
+    releaseResources?.();
+    throw error;
+  }
   const { objectKey, reservation, routing } = publication;
   let handle: Awaited<ReturnType<typeof open>> | undefined;
   let size = 0;
   let header = Buffer.alloc(0);
-  await mkdir(path.directory, { recursive: true });
+  let bodyConsumptionStarted = false;
   try {
+    await mkdir(path.directory, { recursive: true });
     handle = await open(mediaPublicationStagingPath(reservation), "wx");
-    const reader = input.body.getReader();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const bytes = Buffer.from(value);
-      size += bytes.length;
-      if (size > maxAudioBytes) {
-        await reader.cancel();
-        throw new Error("Generated audio is too large");
-      }
+    const output = handle;
+    bodyConsumptionStarted = true;
+    size = await consumeBoundedReadableStream(
+      input.body,
+      maxAudioBytes,
+      async (bytes) => {
       if (header.length < generatedAudioProbeBytes) {
         const remainingProbeBytes = generatedAudioProbeBytes - header.length;
         header = Buffer.concat([header, bytes.subarray(0, remainingProbeBytes)]);
       }
       checksum.update(bytes);
-      await handle.write(bytes);
-    }
+      await output.writeFile(bytes);
+      },
+    );
     await handle.close();
     handle = undefined;
     if (input.contentType === "audio/wav") {
@@ -289,9 +311,14 @@ export async function saveGeneratedAudio(input: {
       url: `/api/audio-assets/${id}`,
     };
   } catch (error) {
-    await handle?.close();
+    if (!bodyConsumptionStarted) {
+      await input.body.cancel().catch(() => undefined);
+    }
+    await handle?.close().catch(() => undefined);
     await compensateMediaPublication(reservation, { profile: routing.profile });
     throw error;
+  } finally {
+    releaseResources?.();
   }
 }
 
@@ -323,6 +350,7 @@ export async function audioStorage(
     "",
   );
   if (!/^[a-z0-9._-]+$/i.test(id)) {
+    if (request.method === "POST") rejectUnreadRequestBody(request, response);
     json(response, 400, { error: "Invalid asset ID" });
     return;
   }
@@ -330,6 +358,7 @@ export async function audioStorage(
   const path = audioPath(id);
   const format = audioFormat(id);
   if (!format) {
+    if (request.method === "POST") rejectUnreadRequestBody(request, response);
     json(response, 400, { error: "Unsupported audio format" });
     return;
   }
@@ -481,6 +510,7 @@ export async function audioStorage(
 
   let reservation: ReturnType<typeof reserveMediaPublication> | undefined;
   let profile: AliyunStorageProfile | undefined;
+  let releaseResources: (() => void) | undefined;
   try {
     const fileName = decodedRequestHeader(
       request,
@@ -491,8 +521,15 @@ export async function audioStorage(
     ) {
       throw new Error("Audio type does not match its format");
     }
+    assertDeclaredBodyWithin(request, maxAudioBytes);
     const extension = id.split(".").at(-1)?.toLowerCase() ?? "bin";
     const identity = requestIdentity(request)!;
+    const ownerId = identity.bypass ? "__test__" : identity.userId;
+    releaseResources = await reserveMediaResources({
+      bytes: maxAudioBytes,
+      directory: path.directory,
+      ownerId,
+    });
     const reserve = (routing: {
       enabled: boolean;
       profile?: AliyunStorageProfile;
@@ -508,7 +545,7 @@ export async function audioStorage(
           id,
           kind: "audio",
           objectKey,
-          ownerId: identity.bypass ? "__test__" : identity.userId,
+          ownerId,
           storageBackend: routing.enabled && routing.profile ? "oss" : "local",
           storageProfileId: routing.profile?.id,
         }),
@@ -570,7 +607,24 @@ export async function audioStorage(
       url: `/api/audio-assets/${id}`,
     });
   } catch (error) {
+    if (request.method === "POST") rejectUnreadRequestBody(request, response);
     if (reservation) await compensateMediaPublication(reservation, { profile });
+    if (error instanceof BoundedBodyError) {
+      response.setHeader("Connection", "close");
+      json(response, error.statusCode, {
+        code: error.code,
+        error: error.message,
+      });
+      return;
+    }
+    if (error instanceof ResourceBudgetError) {
+      response.setHeader("Retry-After", "5");
+      json(response, error.statusCode, {
+        code: error.code,
+        error: error.message,
+      });
+      return;
+    }
     if (error instanceof HttpRequestError) throw error;
     json(response, error instanceof MediaPublicationConflictError ? 409 : 400, {
       code: error instanceof MediaPublicationConflictError
@@ -578,5 +632,7 @@ export async function audioStorage(
         : undefined,
       error: error instanceof Error ? error.message : "Upload failed",
     });
+  } finally {
+    releaseResources?.();
   }
 }

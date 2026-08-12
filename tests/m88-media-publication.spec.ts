@@ -295,12 +295,12 @@ function syntheticResponse() {
 }
 
 async function authorizedRequest(url: string, method = "GET") {
-  const request = {
+  const request = Object.assign(Readable.from([]), {
     headers: {},
     method,
     socket: { remoteAddress: "127.0.0.1" },
     url,
-  } as unknown as IncomingMessage;
+  }) as unknown as IncomingMessage;
   const output = syntheticResponse();
   let authorized = false;
   await authGate(request, output.response, () => {
@@ -571,6 +571,8 @@ test("DELETE tombstones pre-reservation image, audio and video POST routes", asy
       releaseReservation();
       await post;
       expect(postOutput.snapshot()).toMatchObject({ statusCode: 409 });
+      expect(postOutput.snapshot().headers.get("connection")).toBe("close");
+      expect(postRequest.destroyed).toBe(true);
       expect(JSON.parse(postOutput.snapshot().body)).toMatchObject({
         code: "MEDIA_ID_UNAVAILABLE",
       });
@@ -663,7 +665,7 @@ test("DELETE wins reserved image, audio and video handlers and their catch paths
       postRequest.headers["content-type"] = fixture.contentType;
       postRequest.headers["x-file-name"] = fixture.fileName;
       Object.assign(postRequest, {
-        async *[Symbol.asyncIterator]() {
+        async *iterator() {
           enteredBody();
           await bodyReleased;
           yield fixture.body;
@@ -777,7 +779,7 @@ test("DELETE wins staged and external-ready image, audio and video handler barri
         postRequest.headers["content-type"] = fixture.contentType;
         postRequest.headers["x-file-name"] = fixture.fileName;
         Object.assign(postRequest, {
-          async *[Symbol.asyncIterator]() {
+          async *iterator() {
             yield fixture.body;
           },
         });

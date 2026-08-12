@@ -1,19 +1,25 @@
 import { isUtf8 } from "node:buffer";
 import type { IncomingMessage } from "node:http";
+import {
+  BoundedBodyError,
+  forfeitRequestKeepAlive,
+  readBoundedBody,
+} from "./boundedBody";
 
 export type HttpRequestErrorCode =
   | "INVALID_JSON"
   | "MALFORMED_URL"
   | "PAYLOAD_TOO_LARGE"
+  | "REQUEST_TIMEOUT"
   | "UNSUPPORTED_MEDIA_TYPE";
 
 export class HttpRequestError extends Error {
   readonly code: HttpRequestErrorCode;
-  readonly statusCode: 400 | 413 | 415;
+  readonly statusCode: 400 | 408 | 413 | 415;
 
   constructor(
     code: HttpRequestErrorCode,
-    statusCode: 400 | 413 | 415,
+    statusCode: 400 | 408 | 413 | 415,
     message: string,
   ) {
     super(message);
@@ -25,7 +31,7 @@ export class HttpRequestError extends Error {
 
 function requestError(
   code: HttpRequestErrorCode,
-  statusCode: 400 | 413 | 415,
+  statusCode: 400 | 408 | 413 | 415,
   message: string,
 ) {
   return new HttpRequestError(code, statusCode, message);
@@ -44,18 +50,9 @@ function jsonMediaType(value: string) {
   );
 }
 
-function declaredBodyBytes(request: IncomingMessage) {
-  const header = request.headers["content-length"];
-  if (typeof header !== "string" || !/^\d+$/.test(header)) return undefined;
-  try {
-    return BigInt(header);
-  } catch {
-    return undefined;
-  }
-}
-
 export function discardUnreadRequestBody(request: IncomingMessage) {
   if (request.readableEnded || request.destroyed) return;
+  forfeitRequestKeepAlive(request);
   request.once("error", () => undefined);
   request.resume();
 }
@@ -147,37 +144,30 @@ export async function readJsonBody<T>(
     );
   }
 
-  const declared = declaredBodyBytes(request);
-  if (declared !== undefined && declared > BigInt(maximumBytes)) {
-    discardUnreadRequestBody(request);
-    throw requestError(
-      "PAYLOAD_TOO_LARGE",
-      413,
-      "Request payload is too large",
-    );
-  }
-
-  const chunks: Buffer[] = [];
-  let size = 0;
+  let body: Buffer;
   try {
-    for await (
-      const chunk of request.iterator({ destroyOnReturn: false })
-    ) {
-      const bytes = Buffer.from(chunk);
-      size += bytes.length;
-      if (size > maximumBytes) {
+    body = await readBoundedBody(request, {
+      idleTimeoutMs: 15_000,
+      maximumBytes,
+      totalTimeoutMs: 120_000,
+    });
+  } catch (error) {
+    if (error instanceof BoundedBodyError) {
+      discardUnreadRequestBody(request);
+      if (error.code === "PAYLOAD_TOO_LARGE") {
         throw requestError(
           "PAYLOAD_TOO_LARGE",
           413,
           "Request payload is too large",
         );
       }
-      chunks.push(bytes);
-    }
-  } catch (error) {
-    if (error instanceof HttpRequestError) {
-      discardUnreadRequestBody(request);
-      throw error;
+      if (error.code === "BODY_TIMEOUT") {
+        throw requestError(
+          "REQUEST_TIMEOUT",
+          408,
+          "Request body timed out",
+        );
+      }
     }
     throw requestError(
       "INVALID_JSON",
@@ -193,7 +183,6 @@ export async function readJsonBody<T>(
     );
   }
 
-  const body = Buffer.concat(chunks);
   try {
     if (!isUtf8(body)) throw new Error("Invalid UTF-8");
     return JSON.parse(body.toString("utf8")) as T;

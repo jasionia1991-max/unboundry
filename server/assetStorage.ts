@@ -5,6 +5,12 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, join } from "node:path";
 import { crc32, inflateSync } from "node:zlib";
 import {
+  assertDeclaredBodyWithin,
+  BoundedBodyError,
+  readBoundedBody,
+  rejectUnreadRequestBody,
+} from "./boundedBody";
+import {
   createAliyunOssObjectKey,
   createPrivateAliyunOssReadUrl,
   deletePrivateAliyunOssObject,
@@ -43,6 +49,10 @@ import {
   withStorageMediaRoutingReservation,
   type AliyunStorageProfile,
 } from "./secureStorageProfiles";
+import {
+  reserveMediaResources,
+  ResourceBudgetError,
+} from "./resourceBudget";
 
 const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const maxImageBytes = 20 * 1024 * 1024;
@@ -106,15 +116,11 @@ function json(response: ServerResponse, status: number, body: unknown) {
 }
 
 async function readImage(request: IncomingMessage) {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > maxImageBytes) throw new Error("Image is too large");
-    chunks.push(bytes);
-  }
-  return Buffer.concat(chunks);
+  return readBoundedBody(request, {
+    idleTimeoutMs: 15_000,
+    maximumBytes: maxImageBytes,
+    totalTimeoutMs: 120_000,
+  });
 }
 
 function decodedLength(
@@ -234,33 +240,48 @@ export async function saveGeneratedPng(input: {
   ownerId: string;
   task?: GeneratedPublicationTask;
 }) {
-  const dimensions = validatePng(input.bytes);
+  if (input.bytes.length < 1 || input.bytes.length > maxImageBytes) {
+    throw new Error("Generated PNG image size is invalid");
+  }
   const id = randomUUID();
+  const path = assetPath(id);
   const checksumSha256 = createHash("sha256").update(input.bytes).digest("hex");
-  const publication = await withStorageMediaRoutingReservation((routing) => {
-    const objectKey = routing.enabled && routing.profile
-      ? createAliyunOssObjectKey("image", "png")
-      : `${id}.png`;
-    return {
-      objectKey,
-      reservation: reserveMediaPublication({
-        contentType: "image/png",
-        finalStorageName: `${id}.png`,
-        historyLabel: input.label.slice(0, 120) || "生成图片",
-        id,
-        kind: "image",
-        objectKey,
-        ownerId: input.ownerId,
-        storageBackend: routing.enabled && routing.profile ? "oss" : "local",
-        storageProfileId: routing.profile?.id,
-        task: input.task,
-      }),
-      routing,
-    };
-  });
-  const { objectKey, reservation, routing } = publication;
+  let releaseResources: (() => void) | undefined;
+  let publication: {
+    objectKey: string;
+    reservation: ReturnType<typeof reserveMediaPublication>;
+    routing: { enabled: boolean; profile?: AliyunStorageProfile };
+  } | undefined;
   try {
-    await mkdir(assetPath(id).directory, { recursive: true });
+    releaseResources = await reserveMediaResources({
+      bytes: maxImageBytes,
+      directory: path.directory,
+      ownerId: input.ownerId,
+    });
+    const dimensions = validatePng(input.bytes);
+    publication = await withStorageMediaRoutingReservation((routing) => {
+      const objectKey = routing.enabled && routing.profile
+        ? createAliyunOssObjectKey("image", "png")
+        : `${id}.png`;
+      return {
+        objectKey,
+        reservation: reserveMediaPublication({
+          contentType: "image/png",
+          finalStorageName: `${id}.png`,
+          historyLabel: input.label.slice(0, 120) || "生成图片",
+          id,
+          kind: "image",
+          objectKey,
+          ownerId: input.ownerId,
+          storageBackend: routing.enabled && routing.profile ? "oss" : "local",
+          storageProfileId: routing.profile?.id,
+          task: input.task,
+        }),
+        routing,
+      };
+    });
+    const { objectKey, reservation, routing } = publication;
+    await mkdir(path.directory, { recursive: true });
     await writeFile(mediaPublicationStagingPath(reservation), input.bytes, {
       flag: "wx",
     });
@@ -288,10 +309,14 @@ export async function saveGeneratedPng(input: {
     await cleanupPublicationStaging(reservation).catch(() => undefined);
     return { assetId: id, ...dimensions, url: `/api/assets/${id}` };
   } catch (error) {
-    await compensateMediaPublication(reservation, {
-      profile: routing.profile,
-    });
+    if (publication) {
+      await compensateMediaPublication(publication.reservation, {
+        profile: publication.routing.profile,
+      });
+    }
     throw error;
+  } finally {
+    releaseResources?.();
   }
 }
 
@@ -314,6 +339,7 @@ export async function assetStorage(
     "",
   );
   if (!/^[a-z0-9._-]+$/i.test(id)) {
+    if (request.method === "POST") rejectUnreadRequestBody(request, response);
     json(response, 400, { error: "Invalid asset ID" });
     return;
   }
@@ -452,6 +478,7 @@ export async function assetStorage(
 
   let reservation: ReturnType<typeof reserveMediaPublication> | undefined;
   let profile: AliyunStorageProfile | undefined;
+  let releaseResources: (() => void) | undefined;
   try {
     const fileName = decodedRequestHeader(
       request,
@@ -460,7 +487,14 @@ export async function assetStorage(
     if (request.headers["content-type"] !== "image/png") {
       throw new Error("Only PNG images are supported");
     }
+    assertDeclaredBodyWithin(request, maxImageBytes);
     const identity = requestIdentity(request)!;
+    const ownerId = identity.bypass ? "__test__" : identity.userId;
+    releaseResources = await reserveMediaResources({
+      bytes: maxImageBytes,
+      directory: path.directory,
+      ownerId,
+    });
     const reserve = (routing: {
       enabled: boolean;
       profile?: AliyunStorageProfile;
@@ -476,7 +510,7 @@ export async function assetStorage(
           id,
           kind: "image",
           objectKey,
-          ownerId: identity.bypass ? "__test__" : identity.userId,
+          ownerId,
           storageBackend: routing.enabled && routing.profile ? "oss" : "local",
           storageProfileId: routing.profile?.id,
         }),
@@ -539,8 +573,25 @@ export async function assetStorage(
       width,
     });
   } catch (error) {
+    if (request.method === "POST") rejectUnreadRequestBody(request, response);
     if (reservation) {
       await compensateMediaPublication(reservation, { profile });
+    }
+    if (error instanceof BoundedBodyError) {
+      response.setHeader("Connection", "close");
+      json(response, error.statusCode, {
+        code: error.code,
+        error: error.message,
+      });
+      return;
+    }
+    if (error instanceof ResourceBudgetError) {
+      response.setHeader("Retry-After", "5");
+      json(response, error.statusCode, {
+        code: error.code,
+        error: error.message,
+      });
+      return;
     }
     if (error instanceof HttpRequestError) throw error;
     json(response, error instanceof MediaPublicationConflictError ? 409 : 400, {
@@ -549,5 +600,7 @@ export async function assetStorage(
         : undefined,
       error: error instanceof Error ? error.message : "Upload failed",
     });
+  } finally {
+    releaseResources?.();
   }
 }

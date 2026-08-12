@@ -1,18 +1,26 @@
 import { ZipArchive } from "archiver";
-import { createWriteStream } from "node:fs";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, open, rm, stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
+import { finished } from "node:stream/promises";
 import { requestIdentity } from "./auth";
 import { createPrivateAliyunOssReadUrl } from "./aliyunOss";
 import { appDataDirectory, openAppDatabase } from "./database";
+import {
+  fetchPublicHttps,
+  type PublicHttpsFetchDependencies,
+} from "./outboundNetwork";
 import {
   decodedRequestPath,
   HttpRequestError,
   readJsonBody,
 } from "./httpRequest";
+import {
+  reserveMediaResources,
+  ResourceBudgetError,
+} from "./resourceBudget";
 import { storageProfileForMedia } from "./secureStorageProfiles";
 
 const canvasIdPattern = /^[a-z0-9._-]+$/i;
@@ -137,6 +145,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+export function fetchPrivateOssDownload(
+  location: string,
+  dependencies: Omit<PublicHttpsFetchDependencies, "fetcher"> = {},
+  signal?: AbortSignal,
+) {
+  return fetchPublicHttps(
+    location,
+    { method: "GET", redirect: "error", signal },
+    { ...dependencies, timeoutMs: dependencies.timeoutMs ?? 60_000 },
+  );
+}
+
 async function localMediaPath(
   ownerId: string,
   kind: string,
@@ -163,62 +183,132 @@ async function localMediaPath(
   };
 }
 
-async function spoolOssEntry(
+export type GroupDownloadOssExecution = {
+  bodyTimeoutMs?: number;
+  createReadUrl?: typeof createPrivateAliyunOssReadUrl;
+  fetchDownload?: typeof fetchPrivateOssDownload;
+  makeTempDirectory?: (prefix: string) => Promise<string>;
+  profileForMedia?: typeof storageProfileForMedia;
+};
+
+async function readBodyChunk(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  signal: AbortSignal,
+) {
+  if (signal.aborted) throw signal.reason;
+  return await new Promise<ReadableStreamReadResult<Uint8Array>>(
+    (resolve, reject) => {
+      let settled = false;
+      const finish = (
+        callback: () => void,
+      ) => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener("abort", aborted);
+        callback();
+      };
+      const aborted = () => finish(() => reject(signal.reason));
+      signal.addEventListener("abort", aborted, { once: true });
+      reader.read().then(
+        (result) => finish(() => resolve(result)),
+        (error) => finish(() => reject(error)),
+      );
+    },
+  );
+}
+
+export async function spoolOssEntry(
   entry: DownloadPlanEntry,
+  operationSignal: AbortSignal,
+  execution: GroupDownloadOssExecution = {},
 ): Promise<{ file: string; tempDirectory: string } | undefined> {
   const media = entry.media;
   if (!media?.objectKey) return undefined;
-  const profile = await storageProfileForMedia(media);
+  const profile = await (execution.profileForMedia ?? storageProfileForMedia)(media);
   if (!profile) return undefined;
   let location: string;
   try {
-    location = await createPrivateAliyunOssReadUrl(media.objectKey, profile, 600);
+    location = await (execution.createReadUrl ?? createPrivateAliyunOssReadUrl)(
+      media.objectKey,
+      profile,
+      600,
+    );
   } catch {
     return undefined;
   }
   let response: Response;
+  const bodyTimeoutMs = execution.bodyTimeoutMs ?? 5 * 60_000;
+  if (
+    !Number.isSafeInteger(bodyTimeoutMs) ||
+    bodyTimeoutMs < 1 ||
+    bodyTimeoutMs > 5 * 60_000
+  ) return undefined;
+  const bodyDeadline = AbortSignal.timeout(bodyTimeoutMs);
+  const signal = AbortSignal.any([operationSignal, bodyDeadline]);
   try {
-    response = await fetch(location, { redirect: "error" });
+    response = await (execution.fetchDownload ?? fetchPrivateOssDownload)(
+      location,
+      {},
+      signal,
+    );
   } catch {
     return undefined;
   }
-  if (!response.ok || !response.body) return undefined;
-  const tempDirectory = await mkdtemp(
-    join(tmpdir(), "unboundry-group-download-"),
-  );
-  const file = join(tempDirectory, entry.name);
-  const writer = createWriteStream(file);
+  if (!response.ok || !response.body) {
+    if (response.body) await response.body.cancel().catch(() => undefined);
+    return undefined;
+  }
+  const declaredLength = response.headers.get("content-length");
+  if (
+    declaredLength !== null &&
+    (!/^\d+$/.test(declaredLength) || Number(declaredLength) !== entry.byteSize)
+  ) {
+    await response.body.cancel().catch(() => undefined);
+    return undefined;
+  }
   const reader = response.body.getReader();
+  let tempDirectory: string | undefined;
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
+  let complete = false;
   let size = 0;
   try {
+    tempDirectory = await (execution.makeTempDirectory ?? mkdtemp)(
+      join(tmpdir(), "unboundry-group-download-"),
+    );
+    const file = join(tempDirectory, entry.name);
+    handle = await open(file, "wx");
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readBodyChunk(reader, signal);
       if (done) break;
       size += value.byteLength;
       if (size > entry.byteSize) {
-        writer.destroy();
-        await rm(tempDirectory, { force: true, recursive: true });
-        return undefined;
+        throw new Error("OSS object exceeds its registered size");
       }
-      if (!writer.write(Buffer.from(value))) {
-        await new Promise<void>((resolve) => writer.once("drain", resolve));
-      }
+      await handle.write(Buffer.from(value));
     }
-    writer.end();
-    await new Promise<void>((resolve, reject) => {
-      writer.once("finish", resolve);
-      writer.once("error", reject);
-    });
+    await handle.close();
+    handle = undefined;
     const info = await stat(file);
     if (info.size !== entry.byteSize) {
-      await rm(tempDirectory, { force: true, recursive: true });
-      return undefined;
+      throw new Error("OSS object size does not match its registry row");
     }
+    complete = true;
     return { file, tempDirectory };
   } catch {
-    writer.destroy();
-    await rm(tempDirectory, { force: true, recursive: true }).catch(() => undefined);
     return undefined;
+  } finally {
+    await handle?.close().catch(() => undefined);
+    if (!complete) {
+      await reader.cancel().catch(() => undefined);
+      if (tempDirectory) {
+        await rm(tempDirectory, { force: true, recursive: true }).catch(
+          () => undefined,
+        );
+      }
+    }
+    try {
+      reader.releaseLock();
+    } catch {}
   }
 }
 
@@ -484,70 +574,116 @@ export async function groupDownloadApi(
   }
 
   const tempDirectories: string[] = [];
-  const failedOssTaskIds = new Set<string>();
-  for (const entry of plan.entries) {
-    if (entry.kind !== "media" || entry.media?.backend !== "oss") continue;
-    const spooled = await spoolOssEntry(entry);
-    if (!spooled) {
-      skipped.push({
-        nodeTitle: entry.name,
-        reason: "云端结果读取失败，已跳过",
-        taskId: entry.taskId,
-      });
-      failedOssTaskIds.add(entry.taskId);
-      continue;
-    }
-    entry.media = { ...entry.media, storageName: spooled.file };
-    tempDirectories.push(spooled.tempDirectory);
-  }
-  const remaining = plan.entries.filter(
-    (entry) => !failedOssTaskIds.has(entry.taskId),
-  );
-  if (remaining.length === 0) {
-    json(response, 400, { error: "该组还没有可下载的生成结果" });
-    return;
-  }
-
-  const timestamp = new Date()
-    .toISOString()
-    .replace(/[:.]/g, "-")
-    .slice(0, 19);
-  const archive = new ZipArchive({ zlib: { level: 6 } });
-  response.statusCode = 200;
-  response.setHeader("Cache-Control", "no-store");
-  response.setHeader("Content-Type", "application/zip");
-  response.setHeader(
-    "Content-Disposition",
-    `attachment; filename="workflow-results-${timestamp}.zip"; filename*=UTF-8''${encodeURIComponent(`工作流结果-${timestamp}.zip`)}`,
-  );
-  if (skipped.length > 0) {
-    response.setHeader("X-Download-Skipped", String(skipped.length));
-  }
-  archive.on("error", () => response.destroy());
-  archive.pipe(response);
-  if (skipped.length > 0) {
-    const lines = skipped.map(
-      (item) => `- ${item.nodeTitle}（任务 ${item.taskId}）：${item.reason}`,
-    );
-    archive.append(
-      `以下 ${skipped.length} 项结果未能打包：\n${lines.join("\n")}\n`,
-      { name: "下载说明.txt" },
-    );
-  }
-  for (const entry of remaining) {
-    if (entry.kind === "text") {
-      archive.append(entry.resultText ?? "", { name: entry.name });
-      continue;
-    }
-    if (entry.media?.backend === "local" && entry.media.storageName) {
-      archive.file(entry.media.storageName, { name: entry.name });
-    } else if (entry.media?.storageName) {
-      archive.file(entry.media.storageName, { name: entry.name });
-    }
-  }
+  const operationController = new AbortController();
+  const totalDeadline = AbortSignal.timeout(10 * 60_000);
+  const operationSignal = AbortSignal.any([
+    operationController.signal,
+    totalDeadline,
+  ]);
+  let archive: ZipArchive | undefined;
+  let releaseResources: (() => void) | undefined;
+  const abortOperation = () => {
+    if (!operationController.signal.aborted) operationController.abort();
+    try {
+      (archive as (ZipArchive & { abort(): void }) | undefined)?.abort();
+    } catch {}
+    if (response.headersSent && !response.writableFinished) response.destroy();
+  };
+  const responseClosed = () => {
+    if (!response.writableFinished) abortOperation();
+  };
+  request.once("aborted", abortOperation);
+  response.once("close", responseClosed);
+  totalDeadline.addEventListener("abort", abortOperation, { once: true });
   try {
+    releaseResources = await reserveMediaResources({
+      bytes: Math.max(1, plan.totalBytes),
+      directory: tmpdir(),
+      ownerId,
+    });
+    const failedOssTaskIds = new Set<string>();
+    for (const entry of plan.entries) {
+      if (operationSignal.aborted) throw operationSignal.reason;
+      if (entry.kind !== "media" || entry.media?.backend !== "oss") continue;
+      const spooled = await spoolOssEntry(entry, operationSignal);
+      if (!spooled) {
+        if (operationSignal.aborted) throw operationSignal.reason;
+        skipped.push({
+          nodeTitle: entry.name,
+          reason: "云端结果读取失败，已跳过",
+          taskId: entry.taskId,
+        });
+        failedOssTaskIds.add(entry.taskId);
+        continue;
+      }
+      entry.media = { ...entry.media, storageName: spooled.file };
+      tempDirectories.push(spooled.tempDirectory);
+    }
+    if (operationSignal.aborted) throw operationSignal.reason;
+    const remaining = plan.entries.filter(
+      (entry) => !failedOssTaskIds.has(entry.taskId),
+    );
+    if (remaining.length === 0) {
+      json(response, 400, { error: "该组还没有可下载的生成结果" });
+      return;
+    }
+
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")
+      .slice(0, 19);
+    archive = new ZipArchive({ zlib: { level: 6 } });
+    response.statusCode = 200;
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("Content-Type", "application/zip");
+    response.setHeader(
+      "Content-Disposition",
+      `attachment; filename="workflow-results-${timestamp}.zip"; filename*=UTF-8''${encodeURIComponent(`工作流结果-${timestamp}.zip`)}`,
+    );
+    if (skipped.length > 0) {
+      response.setHeader("X-Download-Skipped", String(skipped.length));
+    }
+    archive.on("error", () => response.destroy());
+    archive.pipe(response);
+    if (skipped.length > 0) {
+      const lines = skipped.map(
+        (item) => `- ${item.nodeTitle}（任务 ${item.taskId}）：${item.reason}`,
+      );
+      archive.append(
+        `以下 ${skipped.length} 项结果未能打包：\n${lines.join("\n")}\n`,
+        { name: "下载说明.txt" },
+      );
+    }
+    for (const entry of remaining) {
+      if (entry.kind === "text") {
+        archive.append(entry.resultText ?? "", { name: entry.name });
+        continue;
+      }
+      if (entry.media?.backend === "local" && entry.media.storageName) {
+        archive.file(entry.media.storageName, { name: entry.name });
+      } else if (entry.media?.storageName) {
+        archive.file(entry.media.storageName, { name: entry.name });
+      }
+    }
     await archive.finalize();
+    await finished(response, { cleanup: true });
+  } catch (error) {
+    if (response.destroyed) return;
+    if (error instanceof ResourceBudgetError) {
+      response.setHeader("Retry-After", "5");
+      json(response, error.statusCode, { code: error.code, error: error.message });
+      return;
+    }
+    if (!response.headersSent) {
+      json(response, 503, { error: "下载处理超时或已取消" });
+    } else {
+      response.destroy();
+    }
   } finally {
+    request.off("aborted", abortOperation);
+    response.off("close", responseClosed);
+    totalDeadline.removeEventListener("abort", abortOperation);
+    releaseResources?.();
     for (const directory of tempDirectories) {
       await rm(directory, { force: true, recursive: true }).catch(
         () => undefined,

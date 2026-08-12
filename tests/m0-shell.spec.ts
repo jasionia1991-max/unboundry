@@ -1782,7 +1782,13 @@ test("visible responsive previews keep an exact target CSS viewport", async ({
     { route: "1512x982", width: 1512, height: 982 },
     { route: "1920x1080", width: 1920, height: 1080 },
   ]) {
-    await page.goto(`/__responsive-preview/${target.route}`);
+    const previewResponse = await page.goto(
+      `/__responsive-preview/${target.route}`,
+    );
+    expect(previewResponse?.headers()["content-security-policy"]).toContain(
+      "frame-src 'self'",
+    );
+    expect(previewResponse?.headers()["x-frame-options"]).toBe("DENY");
 
     const preview = page.getByTestId("responsive-preview");
     await expect(preview).toHaveAttribute(
@@ -1824,5 +1830,13 @@ test("visible responsive previews keep an exact target CSS viewport", async ({
       height: target.height,
       width: target.width,
     });
+
+    const embeddedResponse = await page.request.get(
+      `/__fixture/shell.empty.primary?embedded=${target.route}`,
+    );
+    expect(embeddedResponse.headers()["content-security-policy"]).toContain(
+      "frame-ancestors 'self'",
+    );
+    expect(embeddedResponse.headers()["x-frame-options"]).toBe("SAMEORIGIN");
   }
 });

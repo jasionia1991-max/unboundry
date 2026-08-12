@@ -4,6 +4,11 @@ import type {
   RuntimeControlEvent,
   RuntimeLifecycle,
 } from "./runtimeLifecycle";
+import {
+  admitVersionStream,
+  RequestAdmissionError,
+} from "./requestAdmission";
+import { rejectUnreadRequestBody } from "./boundedBody";
 
 const packageJson = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
@@ -11,7 +16,19 @@ const packageJson = JSON.parse(
 
 export const currentVersion = packageJson.version;
 
-const sseClients = new Set<ServerResponse>();
+type SseClient = {
+  backpressured: boolean;
+  cleanup: () => void;
+  onDrain: () => void;
+  release: () => void;
+  request: IncomingMessage;
+  response: ServerResponse;
+  slowTimer?: NodeJS.Timeout;
+};
+
+const sseClients = new Map<ServerResponse, SseClient>();
+const maximumSseBufferedBytes = 64 * 1_024;
+const slowClientTimeoutMs = 10_000;
 let heartbeat: NodeJS.Timeout | undefined;
 type VersionLifecycle = Pick<
   RuntimeLifecycle,
@@ -31,21 +48,54 @@ function stopHeartbeatIfIdle() {
 }
 
 function removeSseClient(response: ServerResponse) {
+  const client = sseClients.get(response);
+  if (!client) return;
   sseClients.delete(response);
+  if (client.slowTimer) clearTimeout(client.slowTimer);
+  response.off("drain", client.onDrain);
+  response.off("close", client.cleanup);
+  response.off("error", client.cleanup);
+  response.off("finish", client.cleanup);
+  client.request.off("aborted", client.cleanup);
+  client.release();
   stopHeartbeatIfIdle();
 }
 
-function writeSse(response: ServerResponse, payload: string) {
+function destroySseClient(client: SseClient) {
+  removeSseClient(client.response);
+  if (!client.response.destroyed) client.response.destroy();
+}
+
+function writeSse(client: SseClient, payload: string) {
+  const { response } = client;
   if (response.destroyed || response.writableEnded) {
     removeSseClient(response);
-    return false;
+    return "closed" as const;
+  }
+  if (client.backpressured) {
+    if (response.writableLength > maximumSseBufferedBytes) {
+      destroySseClient(client);
+      return "closed" as const;
+    }
+    return "blocked" as const;
   }
   try {
-    response.write(payload);
-    return true;
+    if (response.write(payload)) return "written" as const;
+    client.backpressured = true;
+    response.once("drain", client.onDrain);
+    client.slowTimer = setTimeout(
+      () => destroySseClient(client),
+      slowClientTimeoutMs,
+    );
+    client.slowTimer.unref?.();
+    if (response.writableLength > maximumSseBufferedBytes) {
+      destroySseClient(client);
+      return "closed" as const;
+    }
+    return "blocked" as const;
   } catch {
-    removeSseClient(response);
-    return false;
+    destroySseClient(client);
+    return "closed" as const;
   }
 }
 
@@ -61,15 +111,17 @@ export function closeVersionStreams(event: RuntimeControlEvent) {
     "",
     "",
   ].join("\n");
-  for (const client of [...sseClients]) {
-    if (writeSse(client, payload)) {
+  for (const client of [...sseClients.values()]) {
+    if (!client.backpressured && writeSse(client, payload) === "written") {
       try {
-        client.end();
+        client.response.end();
       } catch {
         // The stream has already been removed below; no request data is logged.
       }
+    } else if (!client.response.destroyed) {
+      client.response.destroy();
     }
-    removeSseClient(client);
+    removeSseClient(client.response);
   }
   stopHeartbeatIfIdle();
 }
@@ -101,6 +153,7 @@ export function versionApi(
   kind: "updates" | "version",
 ) {
   if (request.method !== "GET") {
+    rejectUnreadRequestBody(request, response);
     response.setHeader("Allow", "GET");
     json(response, 405, {
       error: "Method not allowed",
@@ -130,24 +183,58 @@ export function versionApi(
       });
       return;
     }
+    let release: () => void;
+    try {
+      release = admitVersionStream(request);
+    } catch (error) {
+      if (!(error instanceof RequestAdmissionError)) throw error;
+      response.setHeader("Retry-After", String(error.retryAfterSeconds));
+      json(response, error.statusCode, {
+        error: "Update stream capacity is busy",
+        code: error.code,
+        requestId: lifecycle?.requestId(request),
+      });
+      return;
+    }
+    let client: SseClient;
+    const cleanup = () => removeSseClient(response);
+    const onDrain = () => {
+      if (!client || !sseClients.has(response)) return;
+      client.backpressured = false;
+      if (client.slowTimer) clearTimeout(client.slowTimer);
+      client.slowTimer = undefined;
+    };
+    client = {
+      backpressured: false,
+      cleanup,
+      onDrain,
+      release,
+      request,
+      response,
+    };
+    sseClients.set(response, client);
+    request.once("aborted", cleanup);
+    response.once("close", cleanup);
+    response.once("error", cleanup);
+    response.once("finish", cleanup);
     response.writeHead(200, {
       "Cache-Control": "no-store",
       Connection: "keep-alive",
       "Content-Type": "text/event-stream; charset=utf-8",
       "X-Accel-Buffering": "no",
     });
-    response.write(
+    if (writeSse(
+      client,
       `data: ${JSON.stringify({ version: currentVersion })}\n\n`,
-    );
-    sseClients.add(response);
+    ) === "closed") return;
     if (!heartbeat) {
       heartbeat = setInterval(() => {
-        for (const client of sseClients) writeSse(client, ": ping\n\n");
+        for (const client of sseClients.values()) {
+          writeSse(client, ": ping\n\n");
+        }
       }, 25_000);
       heartbeat.unref?.();
     }
-    response.once("close", () => removeSseClient(response));
-    response.once("error", () => removeSseClient(response));
     return;
   }
 

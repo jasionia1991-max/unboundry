@@ -18,7 +18,7 @@
   "operationalScripts": {
     "scripts/backup-data.mjs": {
       "mode": "behavior-test",
-      "scriptSha256": "a4729738fc8ec9c1cd72a3edd67bf078dd93dc5c5087756b1f64b1dccb9f6c3e",
+      "scriptSha256": "069e58c82a3340ab5fc9d38688490d7573bd5844e8fbe2f15c95643687b80f37",
       "target": "tests/m10-backup.spec.ts",
       "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
       "targetSha256": "27978db7f814d83e18471bafa84eb36ac861afc8c6beefbfead8df880dd3b5da"
@@ -43,7 +43,7 @@
       "scriptSha256": "2df90da6eede2cda679137d8f14c3fd6b337b23f260404b259a8154940251fc1",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-restart-persistence.mjs",
-      "targetSha256": "74f7317ec9d89f3f980b87fe740cb73c803c8f289da0a1e23ff92ac9ec649fca"
+      "targetSha256": "c595f7b94733d47d0a4565129f08ef5b9d5c4afb12cd81db6f2874bcd6682b54"
     },
     "scripts/deploy.mjs": {
       "mode": "frozen",
@@ -59,37 +59,44 @@
         "data:mirror-oss"
       ]
     },
+    "scripts/node-typescript-runtime.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "bcced30c64c59c604932067440d8c3dec663d7e8a2faca1a6b442658931453ce",
+      "target": "tests/m89-operations-safety.spec.ts",
+      "marker": "password reset apply consumes only a private file and commits actor audit atomically",
+      "targetSha256": "d7ecd23d5286418774d7a2b4002be5e1360b9b36abb3ccfa2894056dc58108c6"
+    },
     "scripts/repair-storage-state.mjs": {
-      "mode": "frozen",
-      "scriptSha256": "55882da3c26659470552c54429686c04d72d6c175c887704c283c17fa3e63653",
-      "reason": "Mutates storage records and audit state; automatic execution is forbidden without isolated behavior coverage.",
-      "manualNpmScripts": [
-        "data:repair-storage"
-      ]
+      "mode": "behavior-test",
+      "scriptSha256": "4e5bd0a295223786396d1d1fccd9807ac0b909cb8d539cf800ce785093976c4a",
+      "target": "tests/m89-operations-safety.spec.ts",
+      "marker": "storage repair apply binds backfill and audit to the selected administrator",
+      "targetSha256": "d7ecd23d5286418774d7a2b4002be5e1360b9b36abb3ccfa2894056dc58108c6"
     },
     "scripts/report-media-integrity.mjs": {
       "mode": "behavior-test",
-      "scriptSha256": "cf90f9706a03d27b4b2e71813da6bbccdc3ae3d8711b37df346720a93fb4397e",
+      "scriptSha256": "f058e45cab4015f94f3a3105249dd52faefabdf47fd36a52208f4785bf6fd242",
       "target": "tests/m87-media-integrity.spec.ts",
       "marker": "the read-only media report CLI requires a frozen absolute source and leaves it unchanged",
       "targetSha256": "a6c883aedb28a748beadb7dea09378f7d21f58667328678539b0706e6ad23885"
     },
     "scripts/reset-account-password.mjs": {
-      "mode": "frozen",
-      "scriptSha256": "8ff65b225868477764b946c2ed55792a00159dd8f4408adef5729fee9b30e343",
-      "reason": "Interactively mutates account credentials; automatic execution is forbidden.",
-      "manualNpmScripts": []
+      "mode": "behavior-test",
+      "scriptSha256": "aa10e42f8e09457fde6e7aca3acc949eab2658e66ec0d306f4b5c387f745cad3",
+      "target": "tests/m89-operations-safety.spec.ts",
+      "marker": "password reset apply consumes only a private file and commits actor audit atomically",
+      "targetSha256": "d7ecd23d5286418774d7a2b4002be5e1360b9b36abb3ccfa2894056dc58108c6"
     },
     "scripts/restore-backup.mjs": {
       "mode": "behavior-test",
-      "scriptSha256": "cf612c6a53a8d7047cd710e40ffe6e73904ca7edbef284aaa7c51de85c7dc249",
+      "scriptSha256": "dbc1b06fc7ca761b66cde24bf0e1e293951b87de10db2ab959abbf6ac9a20b76",
       "target": "tests/m10-backup.spec.ts",
       "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
       "targetSha256": "27978db7f814d83e18471bafa84eb36ac861afc8c6beefbfead8df880dd3b5da"
     },
     "scripts/verify-backup.mjs": {
       "mode": "behavior-test",
-      "scriptSha256": "3c1878b7d61b0c47051b0466206e7e115241338d15fabb74500dc95b5fb29b89",
+      "scriptSha256": "891d9c3db99cf458f88248e503c221e1f450f78f16b9f4d15af8d2f36f5c0efd",
       "target": "tests/m10-backup.spec.ts",
       "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
       "targetSha256": "27978db7f814d83e18471bafa84eb36ac861afc8c6beefbfead8df880dd3b5da"

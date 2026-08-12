@@ -31,6 +31,22 @@ const videos = ["red", "blue"].map((color, index) => {
   return path;
 });
 
+function playlistExportPayload(body: string) {
+  try {
+    return JSON.parse(body) as {
+      clips?: Array<{ assetId?: string }>;
+      mode?: string;
+    };
+  } catch {
+    const payload = new URLSearchParams(body).get("payload");
+    if (!payload) throw new Error("playlist export payload is missing");
+    return JSON.parse(payload) as {
+      clips?: Array<{ assetId?: string }>;
+      mode?: string;
+    };
+  }
+}
+
 test.afterAll(() => rmSync(mediaDirectory, { force: true, recursive: true }));
 
 test("Playlist empty state matches Unboundry", async ({ page, request }) => {
@@ -203,6 +219,18 @@ test("Playlist supports pick, reorder, cut, undo and real mp4 export", async ({
   request,
 }) => {
   test.setTimeout(60_000);
+  const playlistPosts: string[] = [];
+  // The merged download is submitted by a native form into a short-lived
+  // target page, so observe the whole browser context rather than only the
+  // editor page that initiated it.
+  page.context().on("request", (request) => {
+    if (
+      request.method() === "POST" &&
+      new URL(request.url()).pathname === "/api/playlist/export"
+    ) {
+      playlistPosts.push(request.postData() ?? "");
+    }
+  });
   await request.delete("/api/canvas/node.playlist.workflow");
   await page.goto("/__fixture/node.playlist.workflow");
   await expect(page.getByTestId("canvas-world")).toHaveAttribute(
@@ -480,15 +508,43 @@ test("Playlist supports pick, reorder, cut, undo and real mp4 export", async ({
     .toString()
     .trim();
   expect(Number(probe)).toBeGreaterThan(7.5);
+  const downloadPayload = playlistExportPayload(playlistPosts.find((body) =>
+    playlistExportPayload(body).mode === "download"
+  )!) as { clips: Array<{ assetId: string }>; mode: string };
+  expect(downloadPayload.mode).toBe("download");
+  expect(downloadPayload.clips).toHaveLength(2);
+  expect(downloadPayload.clips.every((clip) => clip.assetId.endsWith(".mp4")))
+    .toBe(true);
+  expect(JSON.stringify(downloadPayload).length).toBeLessThan(32 * 1024);
 
   const originalDownloads: string[] = [];
   page.on("download", (item) => originalDownloads.push(item.suggestedFilename()));
+  await page.evaluate(() => {
+    const state = window as typeof window & { __m2MediaFetches?: number };
+    state.__m2MediaFetches = 0;
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      const value = typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+      const path = new URL(value, window.location.origin).pathname;
+      if (/^\/(?:api\/video-assets|fixtures)\//.test(path)) {
+        state.__m2MediaFetches = (state.__m2MediaFetches ?? 0) + 1;
+      }
+      return originalFetch(input, init);
+    }) as typeof window.fetch;
+  });
   await page.getByRole("button", { name: "导出播放列表" }).click();
   await page
     .getByTestId("playlist-export-menu")
     .getByRole("menuitem", { name: /下载原始片段/ })
     .click();
   await expect.poll(() => originalDownloads.length).toBe(2);
+  expect(await page.evaluate(() =>
+    (window as typeof window & { __m2MediaFetches?: number }).__m2MediaFetches
+  )).toBe(0);
 
   await page.getByRole("button", { name: "导出播放列表" }).click();
   await page
@@ -498,6 +554,9 @@ test("Playlist supports pick, reorder, cut, undo and real mp4 export", async ({
   await expect(page.locator(".react-flow__node-video")).toHaveCount(3, {
     timeout: 20_000,
   });
+  expect(playlistPosts.some((body) =>
+    playlistExportPayload(body).mode === "asset"
+  )).toBe(true);
   const exported = page.locator(".react-flow__node-video").last();
   await expect(exported.locator(".video-node-card")).toHaveAttribute(
     "data-asset-id",

@@ -102,7 +102,9 @@
     "tests/m59-relay-catalog-inference.spec.ts",
     "tests/m85-canvas-persistence-server.spec.ts",
     "tests/m87-media-integrity.spec.ts",
-    "tests/m88-media-publication.spec.ts"
+    "tests/m88-media-publication.spec.ts",
+    "tests/m89-operations-safety.spec.ts",
+    "tests/m90-resource-governance.spec.ts"
   ],
   "preview": [
     "tests/fixture-production.spec.ts",

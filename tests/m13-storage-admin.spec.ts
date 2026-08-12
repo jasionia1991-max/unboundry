@@ -1,14 +1,22 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { EventEmitter } from "node:events";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import type { ClientRequest, IncomingMessage } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Readable } from "node:stream";
 import { expect, test } from "./safe-test";
 import {
   createAliyunOssObjectKey,
   createPrivateAliyunOssReadUrl,
+  deletePrivateAliyunOssObject,
   safeAliyunOssConnectionError,
+  testAliyunOssConnection,
+  type AliyunOssUrllib,
+  uploadPrivateAliyunOssObject,
 } from "../server/aliyunOss";
 import { publishCloudObject } from "../server/cloudMediaStorage";
+import type { PublicHttpsFetchDependencies } from "../server/outboundNetwork";
 import {
   activateStorageProfile,
   markStorageProfileVerified,
@@ -254,6 +262,278 @@ test("new-media OSS routing stays off until an admin explicitly enables it", asy
       process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
     }
     await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("storage profiles only save the exact canonical endpoint for their region", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-oss-endpoint-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
+  const base = {
+    accessKeyId: "canonical-endpoint-access-key",
+    accessKeySecret: "canonical-endpoint-secret-key",
+    bucket: "canonical-private-bucket",
+    label: "Canonical endpoint",
+    region: "oss-cn-hangzhou",
+  };
+  try {
+    for (const endpoint of [
+      "https://custom-storage.example.test",
+      "https://oss-cn-shanghai.aliyuncs.com",
+      "https://oss-cn-hangzhou.aliyuncs.com:443",
+      "https://oss-cn-hangzhou.aliyuncs.com:8443",
+      "https://user@oss-cn-hangzhou.aliyuncs.com",
+      "https://oss-cn-hangzhou.aliyuncs.com/path",
+    ]) {
+      await expect(saveStorageProfile({ ...base, endpoint }))
+        .rejects.toThrow("OSS configuration is invalid");
+    }
+    const saved = await saveStorageProfile({
+      ...base,
+      endpoint: "https://oss-cn-hangzhou.aliyuncs.com",
+    });
+    expect(saved).toMatchObject({
+      endpoint: "https://oss-cn-hangzhou.aliyuncs.com",
+      region: "oss-cn-hangzhou",
+      status: "draft",
+    });
+  } finally {
+    if (previousDataDirectory === undefined) {
+      delete process.env.UNBOUNDRY_DATA_DIR;
+    } else {
+      process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
+    }
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("Aliyun OSS SDK operations pin public DNS and the signed read never follows redirects", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-oss-guard-"));
+  const fixture = join(directory, "fixture.bin");
+  await writeFile(fixture, Buffer.from("data"));
+  const credentials = {
+    accessKeyId: "guarded-oss-access-key",
+    accessKeySecret: "guarded-oss-secret-key",
+    bucket: "guarded-private-bucket",
+    endpoint: "https://oss-cn-hangzhou.aliyuncs.com",
+    region: "oss-cn-hangzhou",
+  };
+  const events: string[] = [];
+  let storedSize = 0;
+  let failNextHead = false;
+  const transport: AliyunOssUrllib = {
+    async request(value, options = {}) {
+      const url = new URL(value);
+      expect(url.protocol).toBe("https:");
+      expect(url.port).toBe("");
+      expect(url.hostname).toBe(
+        "guarded-private-bucket.oss-cn-hangzhou.aliyuncs.com",
+      );
+      expect(options.followRedirect).toBe(false);
+      expect(options.enableProxy).toBe(false);
+      expect(options.agent).toBe(false);
+      expect(options.httpsAgent).toBe(false);
+      const resolved = await new Promise<{ address: string; family: number }>(
+        (resolve, reject) => {
+          (options.lookup as any)(
+            url.hostname,
+            { all: false, family: 0 },
+            (error: Error | null, address: string, family: number) =>
+              error ? reject(error) : resolve({ address, family }),
+          );
+        },
+      );
+      expect(resolved).toEqual({ address: "93.184.216.34", family: 4 });
+      expect(options.checkAddress?.(
+        resolved.address,
+        resolved.family,
+        url.hostname,
+      )).toBe(true);
+      const resolvedAll = await new Promise<
+        Array<{ address: string; family: number }>
+      >((resolve, reject) => {
+        (options.lookup as any)(
+          url.hostname,
+          { all: true, family: 0 },
+          (error: Error | null, addresses: Array<{
+            address: string;
+            family: number;
+          }>) => error ? reject(error) : resolve(addresses),
+        );
+      });
+      expect(resolvedAll).toEqual([
+        { address: "93.184.216.34", family: 4 },
+      ]);
+      expect(options.checkAddress?.(
+        resolvedAll as unknown as string,
+        "",
+        url.hostname,
+      )).toBe(true);
+      expect(options.checkAddress?.("10.0.0.8", 4, url.hostname)).toBe(false);
+
+      const method = String(options.method ?? "GET").toUpperCase();
+      events.push(method);
+      if (method === "PUT") {
+        if (Buffer.isBuffer(options.content)) {
+          storedSize = options.content.byteLength;
+        } else if (options.stream) {
+          storedSize = 0;
+          for await (const chunk of options.stream) {
+            storedSize += Buffer.byteLength(chunk);
+          }
+        }
+      }
+      if (method === "HEAD" && failNextHead) {
+        failNextHead = false;
+        const error = new Error("injected head failure");
+        error.name = "ResponseError";
+        throw error;
+      }
+      const headers: Record<string, string> = method === "HEAD"
+        ? { "content-length": String(storedSize) }
+        : {
+            etag: "fixture-etag",
+            "x-oss-request-id": "fixture-request-id",
+          };
+      return {
+        data: Buffer.alloc(0),
+        headers,
+        res: { headers } as any,
+        status: method === "DELETE" ? 204 : 200,
+      };
+    },
+  };
+  const resolver = (async () => [{
+    address: "93.184.216.34",
+    family: 4 as const,
+  }]) as any;
+  const network = { resolver, urllib: transport };
+  const uploadInput = {
+    byteSize: 4,
+    checksumSha256: "a".repeat(64),
+    contentType: "application/octet-stream",
+    credentials,
+    filePath: fixture,
+    network,
+    objectKey: "objects/2026/08/image/guarded.bin",
+  };
+  try {
+    const uploaded = await uploadPrivateAliyunOssObject(uploadInput);
+    expect(uploaded).toMatchObject({
+      etag: "fixture-etag",
+      requestId: "fixture-request-id",
+    });
+    expect(events.splice(0)).toEqual(["PUT", "HEAD"]);
+
+    await deletePrivateAliyunOssObject(
+      uploadInput.objectKey,
+      credentials,
+      network,
+    );
+    expect(events.splice(0)).toEqual(["DELETE"]);
+
+    failNextHead = true;
+    await expect(uploadPrivateAliyunOssObject(uploadInput)).rejects.toThrow();
+    expect(events.splice(0)).toEqual(["PUT", "HEAD", "DELETE"]);
+
+    const signedReadRequests: Array<{
+      address: string;
+      family: number;
+      range: string | null;
+      url: string;
+    }> = [];
+    let signedReadStatus = 206;
+    const requester = ((
+      url: URL,
+      options: Record<string, unknown>,
+      respond: (response: IncomingMessage) => void,
+    ) => {
+      const request = new EventEmitter() as ClientRequest;
+      request.end = (() => {
+        const lookup = options.lookup as (
+          hostname: string,
+          lookupOptions: { family?: number },
+          callback: (
+            error: Error | null,
+            address: string,
+            family: number,
+          ) => void,
+        ) => void;
+        lookup(url.hostname, { family: 0 }, (error, address, family) => {
+          if (error) {
+            request.emit("error", error);
+            return;
+          }
+          const headers = new Headers(options.headers as HeadersInit | undefined);
+          signedReadRequests.push({
+            address,
+            family,
+            range: headers.get("range"),
+            url: url.toString(),
+          });
+          const incoming = Readable.from([Buffer.from("x")]) as IncomingMessage;
+          Object.assign(incoming, {
+            rawHeaders: signedReadStatus === 302
+              ? ["location", "https://127.0.0.1/private"]
+              : ["content-type", "application/octet-stream"],
+            statusCode: signedReadStatus,
+            statusMessage: signedReadStatus === 302
+              ? "Found"
+              : "Partial Content",
+          });
+          respond(incoming);
+        });
+        return request;
+      }) as ClientRequest["end"];
+      return request;
+    }) as NonNullable<PublicHttpsFetchDependencies["requester"]>;
+    const tested = await testAliyunOssConnection(credentials, {
+      ...network,
+      requester,
+    });
+    expect(tested).toMatchObject({
+      cleanupVerified: true,
+      signedReadVerified: true,
+    });
+    expect(signedReadRequests).toHaveLength(1);
+    expect(signedReadRequests[0]).toMatchObject({
+      address: "93.184.216.34",
+      family: 4,
+      range: "bytes=0-0",
+    });
+    expect(new URL(signedReadRequests[0].url).hostname).toBe(
+      "guarded-private-bucket.oss-cn-hangzhou.aliyuncs.com",
+    );
+    expect(events.splice(0)).toEqual(["PUT", "HEAD", "DELETE"]);
+
+    signedReadStatus = 302;
+    await expect(testAliyunOssConnection(credentials, {
+      ...network,
+      requester,
+    })).rejects.toThrow("Signed OSS read failed");
+    expect(signedReadRequests).toHaveLength(2);
+    expect(events.splice(0)).toEqual(["PUT", "HEAD", "DELETE"]);
+
+    let blockedTransportCalls = 0;
+    await expect(deletePrivateAliyunOssObject(
+      uploadInput.objectKey,
+      credentials,
+      {
+        resolver: (async () => [
+          { address: "93.184.216.34", family: 4 },
+          { address: "10.0.0.8", family: 4 },
+        ]) as any,
+        urllib: {
+          async request() {
+            blockedTransportCalls += 1;
+            throw new Error("must not reach transport");
+          },
+        },
+      },
+    )).rejects.toThrow();
+    expect(blockedTransportCalls).toBe(0);
+  } finally {
+    await rm(directory, { force: true, recursive: true });
   }
 });
 

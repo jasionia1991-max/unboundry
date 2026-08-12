@@ -1,7 +1,4 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const execute = promisify(execFile);
+import { runMediaProcess } from "./mediaProcess";
 
 /**
  * Read duration (and video dimensions when a video stream exists) from the
@@ -11,7 +8,7 @@ const execute = promisify(execFile);
 export async function probeTrustedMediaMetadata(filePath: string) {
   let stdout = "";
   try {
-    const result = await execute(
+    const result = await runMediaProcess(
       "ffprobe",
       [
         "-v",
@@ -27,9 +24,10 @@ export async function probeTrustedMediaMetadata(filePath: string) {
         filePath,
       ],
       {
-        maxBuffer: 64 * 1_024,
-        timeout: 20_000,
-        windowsHide: true,
+        kind: "probe",
+        stderrLimitBytes: 64 * 1_024,
+        stdoutLimitBytes: 64 * 1_024,
+        timeoutMs: 20_000,
       },
     );
     stdout = result.stdout;

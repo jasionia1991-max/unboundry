@@ -11,12 +11,18 @@ import { basename, join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { deletePrivateAliyunOssObject } from "./aliyunOss";
 import { recordAudit } from "./audit";
+import { rejectUnreadRequestBody } from "./boundedBody";
 import { appDataDirectory, openAppDatabase } from "./database";
 import {
   decodedRequestPath,
   HttpRequestError,
   readJsonBody,
 } from "./httpRequest";
+import {
+  admitLoginAttempt,
+  RequestAdmissionError,
+  trustedClientAddress,
+} from "./requestAdmission";
 import {
   AccountPermissionMutationBlockedError,
   accountPermissionSet,
@@ -124,6 +130,18 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   response.end(JSON.stringify(body));
+}
+
+function rejectMutation(
+  request: IncomingMessage,
+  response: ServerResponse,
+  status: number,
+  body: unknown,
+) {
+  if (!nonMutatingMethods.has((request.method ?? "GET").toUpperCase())) {
+    rejectUnreadRequestBody(request, response);
+  }
+  json(response, status, body);
 }
 
 function cookieValue(request: IncomingMessage, name: string) {
@@ -234,13 +252,7 @@ function publicUser(row: UserRow) {
  * X-Forwarded-For 的第一个 IP，防止把反代当成本机而放开管理边界。
  */
 export function clientAddress(request: IncomingMessage) {
-  if (process.env.UNBOUNDRY_TRUST_PROXY === "1") {
-    const forwarded = String(request.headers["x-forwarded-for"] ?? "")
-      .split(",")[0]
-      ?.trim();
-    if (forwarded) return forwarded;
-  }
-  return request.socket.remoteAddress ?? "";
+  return trustedClientAddress(request);
 }
 
 function isLoopback(request: IncomingMessage) {
@@ -421,12 +433,12 @@ export function authGate(
     return;
   }
   if (!isMutationAllowed(request)) {
-    json(response, 403, { error: "请求来源无效" });
+    rejectMutation(request, response, 403, { error: "请求来源无效" });
     return;
   }
   const session = authenticate(request);
   if (!session) {
-    json(response, 401, { error: "请先登录" });
+    rejectMutation(request, response, 401, { error: "请先登录" });
     return;
   }
   const method = (request.method ?? "GET").toUpperCase();
@@ -435,7 +447,7 @@ export function authGate(
     return;
   }
   if (accountDeleteIntent(db(), session.identity.userId)) {
-    json(response, 409, {
+    rejectMutation(request, response, 409, {
       code: "ACCOUNT_DELETE_ACTIVE",
       error: "账号删除正在进行，不能开始新的修改",
     });
@@ -508,11 +520,13 @@ export async function authApi(
 
   if (request.method === "POST" && path === "bootstrap") {
     if (!isMutationAllowed(request)) {
-      json(response, 403, { error: "请求来源无效" });
+      rejectMutation(request, response, 403, { error: "请求来源无效" });
       return;
     }
     if (!isLoopback(request) && process.env.UNBOUNDRY_BOOTSTRAP_REMOTE !== "1") {
-      json(response, 403, { error: "首次管理员只能在服务器本机创建" });
+      rejectMutation(request, response, 403, {
+        error: "首次管理员只能在服务器本机创建",
+      });
       return;
     }
     try {
@@ -605,7 +619,7 @@ export async function authApi(
 
   if (request.method === "POST" && path === "login") {
     if (!isMutationAllowed(request)) {
-      json(response, 403, { error: "请求来源无效" });
+      rejectMutation(request, response, 403, { error: "请求来源无效" });
       return;
     }
     try {
@@ -621,10 +635,19 @@ export async function authApi(
           ? body.loginName.trim().toLocaleLowerCase()
           : "";
       const password = typeof body.password === "string" ? body.password : "";
-      const row = store
-        .prepare("SELECT * FROM users WHERE login_name = ? COLLATE NOCASE")
-        .get(loginName) as UserRow | undefined;
-      const valid = await verifyPassword(password, row?.password_hash);
+      const releasePasswordCheck = admitLoginAttempt(request, loginName);
+      let row: UserRow | undefined;
+      let valid = false;
+      try {
+        if (/^[a-z0-9][a-z0-9._-]{2,39}$/i.test(loginName)) {
+          row = store
+            .prepare("SELECT * FROM users WHERE login_name = ? COLLATE NOCASE")
+            .get(loginName) as UserRow | undefined;
+        }
+        valid = await verifyPassword(password, row?.password_hash);
+      } finally {
+        releasePasswordCheck();
+      }
       if (!valid || !row || row.status !== "active") {
         json(response, 401, { error: "账号或密码不正确，或账号已停用" });
         return;
@@ -632,6 +655,14 @@ export async function authApi(
       createSession(store, row.id, response);
       json(response, 200, { user: publicUser(row) });
     } catch (error) {
+      if (error instanceof RequestAdmissionError) {
+        response.setHeader("Retry-After", String(error.retryAfterSeconds));
+        json(response, error.statusCode, {
+          code: error.code,
+          error: "登录请求过多，请稍后再试",
+        });
+        return;
+      }
       if (error instanceof HttpRequestError) throw error;
       json(response, 400, { error: "登录信息无效" });
     }
@@ -640,16 +671,18 @@ export async function authApi(
 
   if (request.method === "POST" && path === "password") {
     if (!isMutationAllowed(request)) {
-      json(response, 403, { error: "请求来源无效" });
+      rejectMutation(request, response, 403, { error: "请求来源无效" });
       return;
     }
     if (process.env.UNBOUNDRY_TEST_AUTH_BYPASS === "1") {
-      json(response, 400, { error: "测试模式不支持修改密码" });
+      rejectMutation(request, response, 400, {
+        error: "测试模式不支持修改密码",
+      });
       return;
     }
     const session = authenticate(request);
     if (!session) {
-      json(response, 401, { error: "请先登录" });
+      rejectMutation(request, response, 401, { error: "请先登录" });
       return;
     }
     try {
@@ -726,16 +759,16 @@ export async function authApi(
 
   if (request.method === "POST" && path === "logout") {
     if (!isMutationAllowed(request)) {
-      json(response, 403, { error: "请求来源无效" });
+      rejectMutation(request, response, 403, { error: "请求来源无效" });
       return;
     }
     clearSession(request, response);
-    json(response, 200, { loggedOut: true });
+    rejectMutation(request, response, 200, { loggedOut: true });
     return;
   }
 
   response.setHeader("Allow", "GET, POST");
-  json(response, 404, { error: "登录接口不存在" });
+  rejectMutation(request, response, 404, { error: "登录接口不存在" });
 }
 
 export function accountContextApi(

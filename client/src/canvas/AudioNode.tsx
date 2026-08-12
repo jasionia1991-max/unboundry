@@ -1756,6 +1756,43 @@ function AudioNodeImpl({
   const loadFile = async (file?: File) => {
     if (!file) return;
 
+    const extension =
+      file.type === "audio/wav" || file.type === "audio/x-wav"
+        ? "wav"
+        : file.type === "audio/mpeg" || file.type === "audio/mp3"
+          ? "mp3"
+          : file.type === "audio/mp4" || file.type === "audio/x-m4a"
+            ? "m4a"
+            : file.type === "audio/aac" || file.type === "audio/x-aac"
+              ? "aac"
+              : file.type === "audio/ogg" ||
+                  file.type === "application/ogg"
+                ? "ogg"
+                : undefined;
+    const preflightError = file.size > 50 * 1_024 * 1_024
+      ? "音频不能超过 50MiB"
+      : !extension
+        ? "当前音频格式不受支持"
+        : "";
+    if (preflightError) {
+      const current = getNode(id);
+      if (current && hasReadyAudioMedia(current)) {
+        setTransientUploadError(preflightError);
+      } else {
+        setUploadError(preflightError);
+        setNodes((nodes) => nodes.map((node) => node.id === id
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                ...mediaUploadState("invalid", preflightError),
+              },
+            }
+          : node));
+      }
+      return;
+    }
+
     const supersedingUpload = uploadInFlight.current;
     const baseline = uploadBaseline.current ?? getNode(id);
     if (baseline && !uploadBaseline.current) uploadBaseline.current = baseline;
@@ -1800,20 +1837,6 @@ function AudioNodeImpl({
         getNode(id)?.data.inputState !== "uploading"
       ) return;
 
-      const extension =
-        file.type === "audio/wav" || file.type === "audio/x-wav"
-          ? "wav"
-          : file.type === "audio/mpeg" || file.type === "audio/mp3"
-            ? "mp3"
-            : file.type === "audio/mp4" || file.type === "audio/x-m4a"
-              ? "m4a"
-              : file.type === "audio/aac" || file.type === "audio/x-aac"
-                ? "aac"
-                : file.type === "audio/ogg" ||
-                    file.type === "application/ogg"
-                  ? "ogg"
-                  : undefined;
-      if (!extension) throw new Error("当前音频格式不受支持");
       requestedAssetId = `${crypto.randomUUID()}.${extension}`;
       const response = await fetch(`/api/audio-assets/${requestedAssetId}`, {
         body: file,

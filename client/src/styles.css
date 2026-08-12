@@ -8199,6 +8199,35 @@ sup {
   scrollbar-width: thin;
 }
 
+.history-pagination {
+  display: grid;
+  padding: 12px 8px 4px;
+  place-items: center;
+  gap: 8px;
+  color: #aaa;
+  font-size: var(--tap-font-secondary);
+  text-align: center;
+}
+
+.history-pagination p {
+  margin: 0;
+}
+
+.history-pagination button {
+  min-height: 30px;
+  padding: 5px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 7px;
+  color: #ddd;
+  background: rgba(255, 255, 255, 0.07);
+  cursor: pointer;
+}
+
+.history-pagination button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
 .history-date-group {
   margin: 0 0 11px;
 }
@@ -8247,7 +8276,8 @@ sup {
 }
 
 .history-card-image,
-.history-card-video {
+.history-card-video,
+.history-card-video-placeholder {
   position: absolute;
   z-index: 1;
   inset: 0;

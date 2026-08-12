@@ -79,6 +79,30 @@ test("updates stream sends the current version immediately", async () => {
   }
 });
 
+test("updates stream enforces its per-client connection budget", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-m82-limit-"));
+  let server: ChildProcess | undefined;
+  const streams: Response[] = [];
+  try {
+    server = await startServer(dataDirectory);
+    for (let index = 0; index < 8; index += 1) {
+      const stream = await fetch(`${origin}/api/updates`);
+      expect(stream.status).toBe(200);
+      streams.push(stream);
+    }
+    const limited = await fetch(`${origin}/api/updates`);
+    expect(limited.status).toBe(429);
+    expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);
+    expect(await limited.json()).toMatchObject({
+      code: "STREAM_LIMIT_REACHED",
+    });
+  } finally {
+    await Promise.all(streams.map((stream) => stream.body?.cancel()));
+    if (server) await stopServer(server);
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
 test("canvas shows the update notice only when versions differ", async ({
   page,
 }) => {

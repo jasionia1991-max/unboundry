@@ -1,13 +1,13 @@
 import {
+  lazy,
+  Suspense,
   useEffect,
   useRef,
   useState,
   type FormEvent,
   type ReactNode,
 } from "react";
-import { CanvasShell } from "./canvas/CanvasShell";
 import { ModelCatalogProvider } from "./models/ModelCatalog";
-import { WorkspacePage } from "./projects/WorkspacePage";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { GrayMenuSelect } from "./ui/GrayMenuSelect";
 import {
@@ -42,6 +42,13 @@ import {
   type AccountPermission,
 } from "../../types/accountPermissions";
 import { REAL_CATEGORIES } from "../../types/templateCategories";
+
+const CanvasShell = lazy(async () => ({
+  default: (await import("./canvas/CanvasShell")).CanvasShell,
+}));
+const WorkspacePage = lazy(async () => ({
+  default: (await import("./projects/WorkspacePage")).WorkspacePage,
+}));
 
 type Fixture = {
   id: string;
@@ -7660,23 +7667,32 @@ function CanvasApplication({
   userInitial: string;
   workspace?: boolean;
 }) {
-  if (workspace) {
-    return <WorkspacePage userId={userId} />;
-  }
   return (
-    <ModelCatalogProvider>
-      <CanvasShell
-        accountOpen={accountOpen}
-        fixtureId={fixtureId}
-        onAccountOpenChange={onAccountOpenChange}
-        onProjectMissing={navigateToProjectWorkspace}
-        permissions={permissions}
-        projectId={projectId}
-        role={role}
-        userId={userId}
-        userInitial={userInitial}
-      />
-    </ModelCatalogProvider>
+    <Suspense
+      fallback={(
+        <main className="system-message" role="status">
+          正在加载工作区…
+        </main>
+      )}
+    >
+      {workspace ? (
+        <WorkspacePage userId={userId} />
+      ) : (
+        <ModelCatalogProvider>
+          <CanvasShell
+            accountOpen={accountOpen}
+            fixtureId={fixtureId}
+            onAccountOpenChange={onAccountOpenChange}
+            onProjectMissing={navigateToProjectWorkspace}
+            permissions={permissions}
+            projectId={projectId}
+            role={role}
+            userId={userId}
+            userInitial={userInitial}
+          />
+        </ModelCatalogProvider>
+      )}
+    </Suspense>
   );
 }
 

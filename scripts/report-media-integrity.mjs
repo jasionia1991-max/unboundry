@@ -1,9 +1,11 @@
 import { realpath } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
-import {
+import "./node-typescript-runtime.mjs";
+
+const {
   BackupPackageError,
   inspectFrozenMediaIntegrity,
-} from "../server/backupPackage.ts";
+} = await import("../server/backupPackage.ts");
 
 class CliError extends Error {
   constructor(code, message) {

@@ -813,3 +813,47 @@ test("admin can disable and delete accounts whose ids are not uuid-shaped", asyn
     await rm(dataDirectory, { force: true, recursive: true });
   }
 });
+
+test("login is rate limited before an unbounded password verification queue forms", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-auth-rate-"));
+  let server: ChildProcess | undefined;
+  try {
+    server = await startServer(dataDirectory);
+    const bootstrap = await request("/api/auth/bootstrap", {
+      body: JSON.stringify({
+        displayName: "Owner",
+        loginName: "owner",
+        password: "owner-password-123",
+      }),
+      method: "POST",
+    });
+    expect(bootstrap.status).toBe(201);
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const rejected = await request("/api/auth/login", {
+        body: JSON.stringify({
+          loginName: "owner",
+          password: "wrong-password-123",
+        }),
+        method: "POST",
+      });
+      expect(rejected.status).toBe(401);
+    }
+    const limited = await request("/api/auth/login", {
+      body: JSON.stringify({
+        loginName: "owner",
+        password: "wrong-password-123",
+      }),
+      method: "POST",
+    });
+    expect(limited.status).toBe(429);
+    expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);
+    expect(await limited.json()).toMatchObject({
+      code: "LOGIN_RATE_LIMITED",
+      error: "登录请求过多，请稍后再试",
+    });
+  } finally {
+    if (server) await stopServer(server);
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});

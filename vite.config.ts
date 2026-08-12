@@ -58,6 +58,7 @@ import {
   registerVersionLifecycle,
   versionApi,
 } from "./server/version";
+import { applySecurityHeaders } from "./server/securityHeaders";
 
 type FixtureDocument = {
   fixtures: Array<{ id: string; kind: string; status: string }>;
@@ -204,6 +205,40 @@ type RuntimeServer = {
     use: (path: string, handler: (...args: any[]) => void) => void;
   };
 };
+
+function securityHeadersApi(): Plugin {
+  const install = (server: RuntimeServer, allowDevelopmentHmr: boolean) => {
+    server.middlewares.use("/", (request, response, next) => {
+      const requestUrl = request.url ?? "";
+      const [pathname, query = ""] = requestUrl.split("?", 2);
+      const responsiveTarget =
+        /^(?:1280x720|1440x900|1512x982|1920x1080)$/;
+      const allowSameOriginChildFrames = allowDevelopmentHmr &&
+        /^\/__responsive-preview\/(?:1280x720|1440x900|1512x982|1920x1080)$/.test(
+          pathname ?? "",
+        );
+      const allowSameOriginEmbedding = allowDevelopmentHmr &&
+        pathname === "/__fixture/shell.empty.primary" &&
+        responsiveTarget.test(new URLSearchParams(query).get("embedded") ?? "");
+      applySecurityHeaders(request, response, {
+        allowDevelopmentHmr,
+        allowSameOriginChildFrames,
+        allowSameOriginEmbedding,
+      });
+      next();
+    });
+  };
+  return {
+    enforce: "pre",
+    name: "unboundry-security-headers",
+    configurePreviewServer(server) {
+      install(server as RuntimeServer, false);
+    },
+    configureServer(server) {
+      install(server as RuntimeServer, true);
+    },
+  };
+}
 
 function runtimeFoundationApi(): Plugin {
   const install = (server: RuntimeServer) => {
@@ -757,6 +792,7 @@ export default defineConfig(({ command }) => {
     root: fileURLToPath(new URL("./client", import.meta.url)),
     envDir: process.env.UNBOUNDRY_SAFE_TEST === "1" ? false : undefined,
     plugins: [
+      securityHeadersApi(),
       react(),
       mediaLifecycleStartupRecovery(),
       persistentGenerationTaskStartup(),

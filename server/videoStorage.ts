@@ -4,6 +4,13 @@ import { mkdir, open, rm, stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import {
+  assertDeclaredBodyWithin,
+  BoundedBodyError,
+  consumeBoundedBody,
+  consumeBoundedReadableStream,
+  rejectUnreadRequestBody,
+} from "./boundedBody";
+import {
   beginMediaDeletion,
   finishMediaDeletion,
   markMediaDeletionFailed,
@@ -41,6 +48,10 @@ import {
   type GeneratedPublicationTask,
   type MediaPublicationExecution,
 } from "./mediaLifecycle";
+import {
+  reserveMediaResources,
+  ResourceBudgetError,
+} from "./resourceBudget";
 
 const maxVideoBytes = 500 * 1024 * 1024;
 
@@ -68,7 +79,19 @@ export async function saveGeneratedMp4(input: {
   const id = `${randomUUID()}.mp4`;
   const path = videoPath(id);
   const checksum = createHash("sha256");
-  const publication = await withStorageMediaRoutingReservation((routing) => {
+  let releaseResources: (() => void) | undefined;
+  let publication: {
+    objectKey: string;
+    reservation: ReturnType<typeof reserveMediaPublication>;
+    routing: { enabled: boolean; profile?: AliyunStorageProfile };
+  };
+  try {
+    releaseResources = await reserveMediaResources({
+      bytes: maxVideoBytes,
+      directory: path.directory,
+      ownerId: input.ownerId,
+    });
+    publication = await withStorageMediaRoutingReservation((routing) => {
     const objectKey = routing.enabled && routing.profile
       ? createAliyunOssObjectKey("video", "mp4")
       : id;
@@ -88,30 +111,33 @@ export async function saveGeneratedMp4(input: {
       }),
       routing,
     };
-  });
+    });
+  } catch (error) {
+    await input.body.cancel().catch(() => undefined);
+    releaseResources?.();
+    throw error;
+  }
   const { objectKey, reservation, routing } = publication;
   let handle: Awaited<ReturnType<typeof open>> | undefined;
   let size = 0;
   let header = Buffer.alloc(0);
-  await mkdir(path.directory, { recursive: true });
+  let bodyConsumptionStarted = false;
   try {
+    await mkdir(path.directory, { recursive: true });
     handle = await open(mediaPublicationStagingPath(reservation), "wx");
-    const reader = input.body.getReader();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const bytes = Buffer.from(value);
-      size += bytes.length;
-      if (size > maxVideoBytes) {
-        await reader.cancel();
-        throw new Error("Generated video is too large");
-      }
+    const output = handle;
+    bodyConsumptionStarted = true;
+    size = await consumeBoundedReadableStream(
+      input.body,
+      maxVideoBytes,
+      async (bytes) => {
       if (header.length < 32) {
         header = Buffer.concat([header, bytes]).subarray(0, 32);
       }
       checksum.update(bytes);
-      await handle.write(bytes);
-    }
+      await output.writeFile(bytes);
+      },
+    );
     await handle.close();
     handle = undefined;
     if (size < 12 || header.toString("ascii", 4, 8) !== "ftyp") {
@@ -153,9 +179,14 @@ export async function saveGeneratedMp4(input: {
       url: `/api/video-assets/${id}`,
     };
   } catch (error) {
-    await handle?.close();
+    if (!bodyConsumptionStarted) {
+      await input.body.cancel().catch(() => undefined);
+    }
+    await handle?.close().catch(() => undefined);
     await compensateMediaPublication(reservation, { profile: routing.profile });
     throw error;
+  } finally {
+    releaseResources?.();
   }
 }
 
@@ -178,6 +209,7 @@ export async function videoStorage(
     "",
   );
   if (!/^[a-z0-9_-]+\.mp4$/i.test(id)) {
+    if (request.method === "POST") rejectUnreadRequestBody(request, response);
     json(response, 400, { error: "Invalid MP4 asset ID" });
     return;
   }
@@ -332,6 +364,7 @@ export async function videoStorage(
   let reservation: ReturnType<typeof reserveMediaPublication> | undefined;
   let profile: AliyunStorageProfile | undefined;
   let handle: Awaited<ReturnType<typeof open>> | undefined;
+  let releaseResources: (() => void) | undefined;
   const checksum = createHash("sha256");
   try {
     const fileName = decodedRequestHeader(
@@ -341,7 +374,14 @@ export async function videoStorage(
     if (request.headers["content-type"] !== "video/mp4") {
       throw new Error("Only MP4 video is supported");
     }
+    assertDeclaredBodyWithin(request, maxVideoBytes);
     const identity = requestIdentity(request)!;
+    const ownerId = identity.bypass ? "__test__" : identity.userId;
+    releaseResources = await reserveMediaResources({
+      bytes: maxVideoBytes,
+      directory: path.directory,
+      ownerId,
+    });
     const reserve = (routing: {
       enabled: boolean;
       profile?: AliyunStorageProfile;
@@ -357,7 +397,7 @@ export async function videoStorage(
           id,
           kind: "video",
           objectKey,
-          ownerId: identity.bypass ? "__test__" : identity.userId,
+          ownerId,
           storageBackend: routing.enabled && routing.profile ? "oss" : "local",
           storageProfileId: routing.profile?.id,
         }),
@@ -379,18 +419,19 @@ export async function videoStorage(
     profile = routing.profile;
     await mkdir(path.directory, { recursive: true });
     handle = await open(mediaPublicationStagingPath(reservation), "wx");
-    let size = 0;
+    const uploadHandle = handle;
     let header = Buffer.alloc(0);
-    for await (const chunk of request) {
-      const bytes = Buffer.from(chunk);
-      size += bytes.length;
-      if (size > maxVideoBytes) throw new Error("Video is too large");
+    const size = await consumeBoundedBody(request, {
+      idleTimeoutMs: 20_000,
+      maximumBytes: maxVideoBytes,
+      totalTimeoutMs: 30 * 60_000,
+    }, async (bytes) => {
       if (header.length < 32) {
         header = Buffer.concat([header, bytes]).subarray(0, 32);
       }
       checksum.update(bytes);
-      await handle.write(bytes);
-    }
+      await uploadHandle.writeFile(bytes);
+    });
     await handle.close();
     handle = undefined;
     if (
@@ -441,8 +482,25 @@ export async function videoStorage(
       url: `/api/video-assets/${id}`,
     });
   } catch (error) {
-    await handle?.close();
+    if (request.method === "POST") rejectUnreadRequestBody(request, response);
+    await handle?.close().catch(() => undefined);
     if (reservation) await compensateMediaPublication(reservation, { profile });
+    if (error instanceof BoundedBodyError) {
+      response.setHeader("Connection", "close");
+      json(response, error.statusCode, {
+        code: error.code,
+        error: error.message,
+      });
+      return;
+    }
+    if (error instanceof ResourceBudgetError) {
+      response.setHeader("Retry-After", "5");
+      json(response, error.statusCode, {
+        code: error.code,
+        error: error.message,
+      });
+      return;
+    }
     if (error instanceof HttpRequestError) throw error;
     json(response, error instanceof MediaPublicationConflictError ? 409 : 400, {
       code: error instanceof MediaPublicationConflictError
@@ -450,5 +508,7 @@ export async function videoStorage(
         : undefined,
       error: error instanceof Error ? error.message : "Upload failed",
     });
+  } finally {
+    releaseResources?.();
   }
 }

@@ -1,8 +1,11 @@
-import { isIP } from "node:net";
+import { realpathSync } from "node:fs";
+import { relative, sep } from "node:path";
 import {
   fetchPublicHttps,
   OutboundDestinationError,
+  safePublicHttpsUrl,
   type DestinationResolver,
+  type PublicHttpsFetchDependencies,
 } from "./outboundNetwork";
 import {
   createProviderRequestDeadline,
@@ -40,65 +43,48 @@ function containsSecret(value: string, secret: string) {
   }
 }
 
-function privateIpv4(address: string) {
-  const parts = address.split(".").map(Number);
-  if (
-    parts.length !== 4 ||
-    parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)
-  ) return true;
-  const [a, b] = parts;
-  return a === 0 ||
-    a === 10 ||
-    a === 127 ||
-    (a === 100 && b >= 64 && b <= 127) ||
-    (a === 169 && b === 254) ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 0) ||
-    (a === 192 && b === 168) ||
-    (a === 198 && (b === 18 || b === 19)) ||
-    a >= 224;
-}
-
-function privateIp(address: string) {
-  const family = isIP(address);
-  if (family === 4) return privateIpv4(address);
-  if (family !== 6) return true;
-  const normalized = address.toLowerCase();
-  if (
-    normalized === "::" ||
-    normalized === "::1" ||
-    normalized.startsWith("fc") ||
-    normalized.startsWith("fd") ||
-    /^fe[89ab]/.test(normalized)
-  ) return true;
-  const mapped = normalized.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/)?.[1];
-  return mapped ? privateIpv4(mapped) : false;
+function injectedTestFetcherAllowed() {
+  if (process.env.UNBOUNDRY_SAFE_TEST !== "1") return false;
+  const dataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  const testRoot = process.env.UNBOUNDRY_TEST_ROOT;
+  const temporaryRoot = process.env.UNBOUNDRY_SYSTEM_TEMPORARY_ROOT;
+  if (!dataDirectory || !testRoot || !temporaryRoot) return false;
+  try {
+    const realDataDirectory = realpathSync(dataDirectory);
+    const realTestRoot = realpathSync(testRoot);
+    const realTemporaryRoot = realpathSync(temporaryRoot);
+    const isInside = (parent: string, child: string) => {
+      const path = relative(parent, child);
+      return path !== "" && path !== ".." && !path.startsWith(`..${sep}`);
+    };
+    return isInside(realTemporaryRoot, realTestRoot) &&
+      isInside(realTestRoot, realDataDirectory);
+  } catch {
+    return false;
+  }
 }
 
 export function safeProviderResultUrl(value: string, apiKey: string) {
-  if (!value || value.length > 8_192 || containsSecret(value, apiKey)) {
-    throw new ProviderResultMediaError("FORMAT", "模型结果地址无效");
-  }
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new ProviderResultMediaError("FORMAT", "模型结果地址无效");
-  }
-  const hostname = url.hostname.toLowerCase();
   if (
-    url.protocol !== "https:" ||
-    url.username ||
-    url.password ||
-    url.hash ||
-    hostname === "localhost" ||
-    hostname.endsWith(".localhost") ||
-    hostname.endsWith(".local") ||
-    (isIP(hostname) > 0 && privateIp(hostname))
+    !value ||
+    value.length > 8_192 ||
+    /[\u0000-\u001f\u007f]/.test(value) ||
+    /%25/i.test(value) ||
+    containsSecret(value, apiKey)
   ) {
     throw new ProviderResultMediaError("FORMAT", "模型结果地址无效");
   }
-  return url;
+  try {
+    const url = safePublicHttpsUrl(value);
+    if ([url.href, url.host, url.hostname, url.pathname, url.search].some(
+      (part) => containsSecret(part, apiKey),
+    )) {
+      throw new ProviderResultMediaError("FORMAT", "模型结果地址无效");
+    }
+    return url;
+  } catch {
+    throw new ProviderResultMediaError("FORMAT", "模型结果地址无效");
+  }
 }
 
 function acceptedTypes(kind: ProviderResultMediaKind) {
@@ -126,13 +112,18 @@ export async function downloadProviderResultMedia(input: {
   apiKey: string;
   expectedContentType?: string;
   deadlineOptions?: ProviderRequestDeadlineOverrides;
-  fetcher?: typeof fetch;
   kind: ProviderResultMediaKind;
+  network?: Omit<PublicHttpsFetchDependencies, "fetcher">;
   resolver?: DestinationResolver;
   signal?: AbortSignal;
+  /** Offline fixture seam. Runtime use requires the safe-test and temp-data gates. */
+  testFetcher?: typeof fetch;
   url: string;
 }) {
   const url = safeProviderResultUrl(input.url, input.apiKey);
+  if (input.testFetcher && !injectedTestFetcherAllowed()) {
+    throw new ProviderResultMediaError("FORMAT", "模型结果地址无效");
+  }
   if (input.signal?.aborted) {
     throw new ProviderResultMediaError("CANCELLED", "已停止等待模型结果");
   }
@@ -154,8 +145,9 @@ export async function downloadProviderResultMedia(input: {
       redirect: "error",
       signal: deadline.signal,
     }, {
-      fetcher: input.fetcher,
-      resolver: input.resolver,
+      ...input.network,
+      fetcher: input.testFetcher,
+      resolver: input.resolver ?? input.network?.resolver,
     }));
     if (!response.ok || !response.body) {
       if (response.body) void response.body.cancel().catch(() => undefined);

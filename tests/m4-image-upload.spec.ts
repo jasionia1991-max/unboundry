@@ -1,6 +1,8 @@
 import { expect, test, type Page } from "./safe-test";
 import { createHash } from "node:crypto";
+import { request as createHttpRequest } from "node:http";
 import path from "node:path";
+import { safeTestEnvironment } from "./test-environment";
 
 const canvasId = "interaction.upload-image";
 const firstImage = path.resolve(
@@ -12,6 +14,57 @@ const secondImage = path.resolve(
 const replacementImage = path.resolve(
   "spec/reference/upstream-v2.12.2-dense/03-search-1280x720.png",
 );
+
+function postDeclaredOversizedImage(pathname: string) {
+  const { port } = safeTestEnvironment();
+  return new Promise<{
+    body: string;
+    closed: boolean;
+    connection: string | undefined;
+    status: number;
+  }>((resolve, reject) => {
+    let body = "";
+    let responseEnded = false;
+    let requestClosed = false;
+    let status = 0;
+    let connection: string | undefined;
+    const complete = () => {
+      if (!responseEnded || !requestClosed) return;
+      resolve({ body, closed: requestClosed, connection, status });
+    };
+    const client = createHttpRequest({
+      agent: false,
+      headers: {
+        "Content-Length": String(20 * 1024 * 1024 + 1),
+        "Content-Type": "image/png",
+      },
+      host: "127.0.0.1",
+      method: "POST",
+      path: pathname,
+      port,
+    }, (response) => {
+      status = response.statusCode ?? 0;
+      connection = response.headers.connection;
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => { body += chunk; });
+      response.on("end", () => {
+        responseEnded = true;
+        complete();
+      });
+    });
+    client.on("close", () => {
+      requestClosed = true;
+      complete();
+    });
+    client.on("error", (error) => {
+      if (!responseEnded) reject(error);
+    });
+    client.setTimeout(5_000, () => {
+      client.destroy(new Error("declared oversized image request timed out"));
+    });
+    client.flushHeaders();
+  });
+}
 
 async function setGeneratedImageFile(
   page: Page,
@@ -321,11 +374,17 @@ test("malformed and oversized PNG payloads are rejected without residue", async 
   expect(malformed.status()).toBe(400);
   expect((await request.get("/api/assets/reject-malformed")).status()).toBe(404);
 
-  const oversized = await request.post("/api/assets/reject-oversized", {
-    data: Buffer.alloc(20 * 1024 * 1024 + 1),
-    headers: { "Content-Type": "image/png" },
+  const oversized = await postDeclaredOversizedImage(
+    "/api/assets/reject-oversized",
+  );
+  expect(oversized).toMatchObject({
+    closed: true,
+    connection: "close",
+    status: 413,
   });
-  expect(oversized.status()).toBe(400);
+  expect(JSON.parse(oversized.body)).toMatchObject({
+    code: "PAYLOAD_TOO_LARGE",
+  });
   expect((await request.get("/api/assets/reject-oversized")).status()).toBe(404);
 });
 

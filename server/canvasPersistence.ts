@@ -74,6 +74,65 @@ type HistoryAsset = {
   preview: string;
 };
 
+type HistoryCursor = {
+  createdAt: string;
+  kind: HistoryAsset["kind"] | null;
+  order: "newest" | "oldest";
+  rowid: number;
+};
+
+type HistoryPageRow = Omit<HistoryAsset, "createdAt"> & {
+  createdAt: string;
+  historyRowid: number;
+};
+
+const historyKinds = ["image", "video", "audio", "world3d"] as const;
+const historyPageDefault = 60;
+const historyPageMaximum = 100;
+
+function boundedHistoryPageSize(value: string | null) {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 1
+    ? Math.min(parsed, historyPageMaximum)
+    : historyPageDefault;
+}
+
+function historyCursor(
+  value: string | null,
+  kind: HistoryAsset["kind"] | undefined,
+  order: HistoryCursor["order"],
+): HistoryCursor | undefined {
+  if (!value || value.length > 512) return undefined;
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(value, "base64url").toString("utf8"),
+    ) as Partial<HistoryCursor>;
+    if (
+      typeof parsed.createdAt !== "string" ||
+      parsed.createdAt.length < 1 ||
+      parsed.createdAt.length > 80 ||
+      parsed.kind !== (kind ?? null) ||
+      parsed.order !== order ||
+      !Number.isSafeInteger(parsed.rowid) ||
+      Number(parsed.rowid) < 1
+    ) {
+      return undefined;
+    }
+    return {
+      createdAt: parsed.createdAt,
+      kind: kind ?? null,
+      order,
+      rowid: Number(parsed.rowid),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function encodeHistoryCursor(value: HistoryCursor) {
+  return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+}
+
 type ProjectTitle = {
   title: string;
   updatedAt: number;
@@ -973,62 +1032,122 @@ export async function accountHistory(
   }
   const effectiveAccountId = identity.bypass ? accountId : identity.userId;
   if (request.method === "GET") {
-    const items = (
-      identity.bypass
-        ? store
-            .prepare(`
-              SELECT
-                history.id,
-                history.kind,
-                history.label,
-                history.preview,
-                history.created_at AS createdAt
-              FROM asset_history AS history
-              LEFT JOIN media_assets AS media
-                ON media.id = history.id
-                AND media.kind = history.kind
-                AND media.owner_id = history.owner_id
-                AND media.storage_status = 'ready'
-              WHERE
-                history.account_id = ?
-                AND (
-                  history.kind = 'world3d'
-                  OR (
-                    history.kind IN ('image', 'video', 'audio')
-                    AND media.id IS NOT NULL
-                  )
-                )
-              ORDER BY history.created_at DESC, history.rowid DESC
-            `)
-            .all(effectiveAccountId)
-        : store
-            .prepare(`
-              SELECT
-                history.id,
-                history.kind,
-                history.label,
-                history.preview,
-                history.created_at AS createdAt
-              FROM asset_history AS history
-              LEFT JOIN media_assets AS media
-                ON media.id = history.id
-                AND media.kind = history.kind
-                AND media.owner_id = history.owner_id
-                AND media.storage_status = 'ready'
-              WHERE
-                history.owner_id = ?
-                AND (
-                  history.kind = 'world3d'
-                  OR (
-                    history.kind IN ('image', 'video', 'audio')
-                    AND media.id IS NOT NULL
-                  )
-                )
-              ORDER BY history.created_at DESC, history.rowid DESC
-            `)
-            .all(identity.userId)
-    ) as HistoryAsset[];
-    json(response, 200, { items });
+    const requestUrl = new URL(request.url ?? "", "http://127.0.0.1");
+    const kindValue = requestUrl.searchParams.get("kind");
+    const kind = kindValue === null
+      ? undefined
+      : historyKinds.find((candidate) => candidate === kindValue);
+    if (kindValue !== null && !kind) {
+      json(response, 400, { error: "Invalid history kind" });
+      return;
+    }
+    const order: HistoryCursor["order"] =
+      requestUrl.searchParams.get("order") === "oldest" ? "oldest" : "newest";
+    const orderValue = requestUrl.searchParams.get("order");
+    if (orderValue !== null && orderValue !== "newest" && orderValue !== "oldest") {
+      json(response, 400, { error: "Invalid history order" });
+      return;
+    }
+    const limit = boundedHistoryPageSize(requestUrl.searchParams.get("limit"));
+    const cursorValue = requestUrl.searchParams.get("cursor");
+    const cursor = historyCursor(cursorValue, kind, order);
+    if (cursorValue !== null && !cursor) {
+      json(response, 400, { error: "Invalid history cursor" });
+      return;
+    }
+
+    const scopeColumn = identity.bypass
+      ? "history.account_id"
+      : "history.owner_id";
+    const scopeId = identity.bypass ? effectiveAccountId : identity.userId;
+    const pageComparison = order === "newest" ? "<" : ">";
+    const pageOrder = order === "newest" ? "DESC" : "ASC";
+    const pageWhere = [
+      `${scopeColumn} = ?`,
+      kind ? "history.kind = ?" : undefined,
+      `(
+        history.kind = 'world3d'
+        OR (
+          history.kind IN ('image', 'video', 'audio')
+          AND media.id IS NOT NULL
+        )
+      )`,
+      cursor
+        ? `(
+          history.created_at ${pageComparison} ?
+          OR (
+            history.created_at = ?
+            AND history.rowid ${pageComparison} ?
+          )
+        )`
+        : undefined,
+    ].filter((condition): condition is string => Boolean(condition));
+    const pageParameters: Array<string | number> = [scopeId];
+    if (kind) pageParameters.push(kind);
+    if (cursor) {
+      pageParameters.push(cursor.createdAt, cursor.createdAt, cursor.rowid);
+    }
+    pageParameters.push(limit + 1);
+    const rows = store.prepare(`
+      SELECT
+        history.id,
+        history.kind,
+        history.label,
+        history.preview,
+        history.created_at AS createdAt,
+        history.rowid AS historyRowid
+      FROM asset_history AS history
+      LEFT JOIN media_assets AS media
+        ON media.id = history.id
+        AND media.kind = history.kind
+        AND media.owner_id = history.owner_id
+        AND media.storage_status = 'ready'
+      WHERE ${pageWhere.join(" AND ")}
+      ORDER BY history.created_at ${pageOrder}, history.rowid ${pageOrder}
+      LIMIT ?
+    `).all(...pageParameters) as HistoryPageRow[];
+    const pageRows = rows.slice(0, limit);
+    const items = pageRows.map(({ historyRowid: _historyRowid, ...item }) => item);
+
+    const counts: Record<HistoryAsset["kind"], number> = {
+      image: 0,
+      video: 0,
+      audio: 0,
+      world3d: 0,
+    };
+    const countRows = store.prepare(`
+      SELECT history.kind, COUNT(*) AS count
+      FROM asset_history AS history
+      LEFT JOIN media_assets AS media
+        ON media.id = history.id
+        AND media.kind = history.kind
+        AND media.owner_id = history.owner_id
+        AND media.storage_status = 'ready'
+      WHERE
+        ${scopeColumn} = ?
+        AND (
+          history.kind = 'world3d'
+          OR (
+            history.kind IN ('image', 'video', 'audio')
+            AND media.id IS NOT NULL
+          )
+        )
+      GROUP BY history.kind
+    `).all(scopeId) as Array<{ count: number; kind: HistoryAsset["kind"] }>;
+    for (const row of countRows) {
+      if (historyKinds.includes(row.kind)) counts[row.kind] = Number(row.count);
+    }
+
+    const lastRow = pageRows.at(-1);
+    const nextCursor = rows.length > limit && lastRow
+      ? encodeHistoryCursor({
+          createdAt: lastRow.createdAt,
+          kind: kind ?? null,
+          order,
+          rowid: lastRow.historyRowid,
+        })
+      : undefined;
+    json(response, 200, { counts, items, nextCursor });
     return;
   }
 

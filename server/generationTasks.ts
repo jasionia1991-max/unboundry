@@ -2978,8 +2978,7 @@ async function executeAudioTask(taskId: string) {
         const audioBody = await downloadMurekaAudioResult(
           profile,
           status.audioUrl,
-          fetch,
-          controller.signal,
+          { signal: controller.signal },
         );
         await saveGeneratedMp3({
           body: audioBody,

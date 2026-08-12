@@ -362,20 +362,20 @@ async function uploadReadyMedia(request: APIRequestContext) {
     readFile(resolve(process.cwd(), "client/public/fixtures/video-success.mp4")),
     readFile(resolve(process.cwd(), "client/public/fixtures/audio-success.mp3")),
   ]);
-  const responses = await Promise.all([
-    request.post(`/api/assets/${imageAssetId}`, {
+  const responses = [
+    await request.post(`/api/assets/${imageAssetId}`, {
       data: image,
       headers: { "Content-Type": "image/png", "X-File-Name": "p2-ready.png" },
     }),
-    request.post(`/api/video-assets/${videoAssetId}`, {
+    await request.post(`/api/video-assets/${videoAssetId}`, {
       data: video,
       headers: { "Content-Type": "video/mp4", "X-File-Name": "p2-ready.mp4" },
     }),
-    request.post(`/api/audio-assets/${audioAssetId}`, {
+    await request.post(`/api/audio-assets/${audioAssetId}`, {
       data: audio,
       headers: { "Content-Type": "audio/mpeg", "X-File-Name": "p2-ready.mp3" },
     }),
-  ]);
+  ];
   expect(responses.map((response) => response.status())).toEqual([201, 201, 201]);
 }
 
