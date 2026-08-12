@@ -2956,7 +2956,10 @@ export type GreenfieldDatabaseInitializationCheckpoint =
 
 export type CurrentDatabaseOpenCheckpoint =
   | "inspection-schema-validated"
-  | "before-writer-sidecar-validation";
+  | "before-writer-sidecar-validation"
+  | "reservation-created-before-document"
+  | "competing-reservation-pinned"
+  | "competing-reservation-active";
 
 let duringGreenfieldDatabaseInitializationForTests:
   | ((checkpoint: GreenfieldDatabaseInitializationCheckpoint) => void)
@@ -4010,25 +4013,143 @@ function isFileMissingError(error: unknown) {
   );
 }
 
-function assertActiveCompetingCurrentDatabaseOpenReservation(
+type CompetingCurrentDatabaseOpenReservationState =
+  | "active"
+  | "initializing"
+  | "released";
+
+function samePinnedFileContentMetadata(
+  actual: BigIntStats,
+  expected: BigIntStats,
+) {
+  return actual.size === expected.size &&
+    actual.mtimeNs === expected.mtimeNs &&
+    actual.ctimeNs === expected.ctimeNs;
+}
+
+function inspectReleasedCompetingCurrentDatabaseOpenReservation(
   dataDirectory: string,
   directoryPin: GreenfieldDirectoryPin,
-) {
+  descriptor: number,
+  reservationPath: string,
+  core: BigIntStats,
+  firstReleased: BigIntStats,
+): CompetingCurrentDatabaseOpenReservationState {
+  assertPrivateOwnedRegularFile(firstReleased);
+  if (
+    !samePinnedFileCore(firstReleased, core) || firstReleased.nlink !== 0n
+  ) throw new Error("Greenfield initialization entry changed");
+  const secondReleased = fstatSync(descriptor, { bigint: true });
+  assertPrivateOwnedRegularFile(secondReleased);
+  if (
+    !samePinnedFileCore(secondReleased, core) || secondReleased.nlink !== 0n ||
+    secondReleased.size !== firstReleased.size ||
+    secondReleased.mtimeNs !== firstReleased.mtimeNs
+  ) throw new Error("Greenfield initialization entry changed");
+  try {
+    const pathDetails = lstatSync(reservationPath, { bigint: true });
+    if (
+      pathDetails.dev === core.dev && pathDetails.ino === core.ino
+    ) throw new Error("Greenfield initialization entry changed");
+  } catch (error) {
+    if (!isFileMissingError(error)) throw error;
+  }
+  assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+  const finalReleased = fstatSync(descriptor, { bigint: true });
+  assertPrivateOwnedRegularFile(finalReleased);
+  if (
+    !samePinnedFileCore(finalReleased, core) || finalReleased.nlink !== 0n ||
+    finalReleased.size !== secondReleased.size ||
+    finalReleased.mtimeNs !== secondReleased.mtimeNs
+  ) throw new Error("Greenfield initialization entry changed");
+  return "released";
+}
+
+function inspectCompetingCurrentDatabaseOpenReservation(
+  dataDirectory: string,
+  directoryPin: GreenfieldDirectoryPin,
+): CompetingCurrentDatabaseOpenReservationState {
   const reservationPath = join(dataDirectory, currentDatabaseOpenReservation);
   const descriptor = openSync(
     reservationPath,
     fileConstants.O_RDONLY | (fileConstants.O_NOFOLLOW ?? 0),
   );
   try {
-    const details = fstatSync(descriptor, { bigint: true });
-    const pin = Object.freeze({ details, path: reservationPath });
+    const initial = fstatSync(descriptor, { bigint: true });
+    assertPrivateOwnedRegularFile(initial);
+    if (initial.nlink === 0n) {
+      return inspectReleasedCompetingCurrentDatabaseOpenReservation(
+        dataDirectory,
+        directoryPin,
+        descriptor,
+        reservationPath,
+        initial,
+        initial,
+      );
+    }
+    if (initial.nlink !== 1n) {
+      throw new Error("Greenfield initialization entry changed");
+    }
+    duringCurrentDatabaseOpenForTests?.(
+      "competing-reservation-pinned",
+      reservationPath,
+    );
     assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
-    assertPinnedDescriptor(descriptor, pin, 1n, { exactContentMetadata: true });
-    assertPinnedFilePath(pin, 1n, { exactContentMetadata: true });
-    if (details.size < 1n || details.size > 512n) {
+    const beforeRead = fstatSync(descriptor, { bigint: true });
+    assertPrivateOwnedRegularFile(beforeRead);
+    if (beforeRead.nlink === 0n) {
+      return inspectReleasedCompetingCurrentDatabaseOpenReservation(
+        dataDirectory,
+        directoryPin,
+        descriptor,
+        reservationPath,
+        initial,
+        beforeRead,
+      );
+    }
+    if (
+      beforeRead.nlink !== 1n || !samePinnedFileCore(beforeRead, initial)
+    ) throw new Error("Greenfield initialization entry changed");
+    let pathBeforeRead: BigIntStats;
+    try {
+      pathBeforeRead = lstatSync(reservationPath, { bigint: true });
+    } catch (error) {
+      if (!isFileMissingError(error)) throw error;
+      const afterMissingPath = fstatSync(descriptor, { bigint: true });
+      if (afterMissingPath.nlink === 0n) {
+        return inspectReleasedCompetingCurrentDatabaseOpenReservation(
+          dataDirectory,
+          directoryPin,
+          descriptor,
+          reservationPath,
+          initial,
+          afterMissingPath,
+        );
+      }
+      throw new Error("Greenfield initialization entry changed");
+    }
+    assertPrivateOwnedRegularFile(pathBeforeRead);
+    if (
+      pathBeforeRead.nlink !== 1n ||
+      !samePinnedFileCore(pathBeforeRead, initial)
+    ) {
+      const afterPathMismatch = fstatSync(descriptor, { bigint: true });
+      if (afterPathMismatch.nlink === 0n) {
+        return inspectReleasedCompetingCurrentDatabaseOpenReservation(
+          dataDirectory,
+          directoryPin,
+          descriptor,
+          reservationPath,
+          initial,
+          afterPathMismatch,
+        );
+      }
+      throw new Error("Greenfield initialization entry changed");
+    }
+    if (beforeRead.size > 512n) {
       throw new Error("Application data maintenance is incomplete");
     }
-    const bytes = Buffer.alloc(Number(details.size));
+    const bytes = Buffer.alloc(Number(beforeRead.size));
     let offset = 0;
     while (offset < bytes.length) {
       const count = readSync(
@@ -4038,19 +4159,71 @@ function assertActiveCompetingCurrentDatabaseOpenReservation(
         bytes.length - offset,
         offset,
       );
-      if (count === 0) {
-        throw new Error("Application data maintenance is incomplete");
-      }
+      if (count === 0) break;
       offset += count;
     }
-    assertPinnedDescriptor(descriptor, pin, 1n, { exactContentMetadata: true });
-    assertPinnedFilePath(pin, 1n, { exactContentMetadata: true });
+    const afterRead = fstatSync(descriptor, { bigint: true });
+    assertPrivateOwnedRegularFile(afterRead);
+    if (afterRead.nlink === 0n) {
+      return inspectReleasedCompetingCurrentDatabaseOpenReservation(
+        dataDirectory,
+        directoryPin,
+        descriptor,
+        reservationPath,
+        initial,
+        afterRead,
+      );
+    }
+    if (
+      afterRead.nlink !== 1n || !samePinnedFileCore(afterRead, initial)
+    ) throw new Error("Greenfield initialization entry changed");
+    let pathAfterRead: BigIntStats;
+    try {
+      pathAfterRead = lstatSync(reservationPath, { bigint: true });
+    } catch (error) {
+      if (!isFileMissingError(error)) throw error;
+      const afterMissingPath = fstatSync(descriptor, { bigint: true });
+      if (afterMissingPath.nlink === 0n) {
+        return inspectReleasedCompetingCurrentDatabaseOpenReservation(
+          dataDirectory,
+          directoryPin,
+          descriptor,
+          reservationPath,
+          initial,
+          afterMissingPath,
+        );
+      }
+      throw new Error("Greenfield initialization entry changed");
+    }
+    assertPrivateOwnedRegularFile(pathAfterRead);
+    if (
+      pathAfterRead.nlink !== 1n ||
+      !samePinnedFileCore(pathAfterRead, initial)
+    ) {
+      const afterPathMismatch = fstatSync(descriptor, { bigint: true });
+      if (afterPathMismatch.nlink === 0n) {
+        return inspectReleasedCompetingCurrentDatabaseOpenReservation(
+          dataDirectory,
+          directoryPin,
+          descriptor,
+          reservationPath,
+          initial,
+          afterPathMismatch,
+        );
+      }
+      throw new Error("Greenfield initialization entry changed");
+    }
+    const stableRead = offset === bytes.length &&
+      samePinnedFileContentMetadata(beforeRead, afterRead) &&
+      samePinnedFileContentMetadata(pathBeforeRead, beforeRead) &&
+      samePinnedFileContentMetadata(pathAfterRead, afterRead);
     let parsed: unknown;
     try {
       parsed = JSON.parse(bytes.toString("utf8"));
     } catch {
-      throw new Error("Application data maintenance is incomplete");
+      return "initializing";
     }
+    if (!stableRead) return "initializing";
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       throw new Error("Application data maintenance is incomplete");
     }
@@ -4069,12 +4242,78 @@ function assertActiveCompetingCurrentDatabaseOpenReservation(
     try {
       process.kill(Number(record.pid), 0);
     } catch {
-      // A stale or foreign reservation is never removed or waited through.
+      const afterOwnerExit = fstatSync(descriptor, { bigint: true });
+      if (afterOwnerExit.nlink === 0n) {
+        return inspectReleasedCompetingCurrentDatabaseOpenReservation(
+          dataDirectory,
+          directoryPin,
+          descriptor,
+          reservationPath,
+          initial,
+          afterOwnerExit,
+        );
+      }
+      // A stale or foreign linked reservation is never removed or waited through.
       throw new Error("Application data maintenance is incomplete");
     }
     assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
-    assertPinnedDescriptor(descriptor, pin, 1n, { exactContentMetadata: true });
-    assertPinnedFilePath(pin, 1n, { exactContentMetadata: true });
+    const final = fstatSync(descriptor, { bigint: true });
+    if (final.nlink === 0n) {
+      return inspectReleasedCompetingCurrentDatabaseOpenReservation(
+        dataDirectory,
+        directoryPin,
+        descriptor,
+        reservationPath,
+        initial,
+        final,
+      );
+    }
+    assertPrivateOwnedRegularFile(final);
+    if (
+      final.nlink !== 1n || !samePinnedFileCore(final, initial) ||
+      !samePinnedFileContentMetadata(final, beforeRead)
+    ) throw new Error("Greenfield initialization entry changed");
+    let finalPath: BigIntStats;
+    try {
+      finalPath = lstatSync(reservationPath, { bigint: true });
+    } catch (error) {
+      if (!isFileMissingError(error)) throw error;
+      const afterMissingPath = fstatSync(descriptor, { bigint: true });
+      if (afterMissingPath.nlink === 0n) {
+        return inspectReleasedCompetingCurrentDatabaseOpenReservation(
+          dataDirectory,
+          directoryPin,
+          descriptor,
+          reservationPath,
+          initial,
+          afterMissingPath,
+        );
+      }
+      throw new Error("Greenfield initialization entry changed");
+    }
+    assertPrivateOwnedRegularFile(finalPath);
+    if (
+      finalPath.nlink !== 1n || !samePinnedFileCore(finalPath, initial) ||
+      !samePinnedFileContentMetadata(finalPath, beforeRead)
+    ) {
+      const afterPathMismatch = fstatSync(descriptor, { bigint: true });
+      if (afterPathMismatch.nlink === 0n) {
+        return inspectReleasedCompetingCurrentDatabaseOpenReservation(
+          dataDirectory,
+          directoryPin,
+          descriptor,
+          reservationPath,
+          initial,
+          afterPathMismatch,
+        );
+      }
+      throw new Error("Greenfield initialization entry changed");
+    }
+    duringCurrentDatabaseOpenForTests?.(
+      "competing-reservation-active",
+      reservationPath,
+    );
+    return "active";
   } finally {
     closeSync(descriptor);
   }
@@ -4091,6 +4330,10 @@ function acquireCurrentDatabaseOpenReservationOnce(
     assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
     const created = createPinnedGreenfieldFile(reservationPath);
     descriptor = created.descriptor;
+    duringCurrentDatabaseOpenForTests?.(
+      "reservation-created-before-document",
+      reservationPath,
+    );
     writeFileSync(descriptor, `${JSON.stringify({
       contract: "unboundry-current-database-open-reservation-v1",
       nonce: randomUUID(),
@@ -4148,24 +4391,23 @@ function acquireCurrentDatabaseOpenReservation(
     }
 
     const directoryPin = pinApplicationDataDirectory(dataDirectory);
-    let disappeared = false;
+    let competingState: CompetingCurrentDatabaseOpenReservationState = "active";
     try {
-      assertActiveCompetingCurrentDatabaseOpenReservation(
+      competingState = inspectCompetingCurrentDatabaseOpenReservation(
         dataDirectory,
         directoryPin,
       );
     } catch (error) {
-      if (isFileMissingError(error)) disappeared = true;
+      if (isFileMissingError(error)) competingState = "released";
       else throw error;
     } finally {
       closeSync(directoryPin.descriptor);
     }
-    if (disappeared) continue;
-
     const remainingNanoseconds = deadline - process.hrtime.bigint();
     if (remainingNanoseconds <= 0n) {
       throw new Error("Application data maintenance is incomplete");
     }
+    if (competingState === "released") continue;
     const remainingMilliseconds = Number(
       (remainingNanoseconds + nanosecondsPerMillisecond - 1n) /
         nanosecondsPerMillisecond,

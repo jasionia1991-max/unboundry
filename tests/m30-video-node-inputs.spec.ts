@@ -171,7 +171,7 @@ function videoPreflight(input: {
   });
 }
 
-test("Video multimodal accepts Text plus 9 images, 3 videos and 3 audios with a URL-free snapshot", () => {
+test("Video accepts merged or upstream-only Text plus ready media with a URL-free snapshot", () => {
   const graph = multimodalGraph({ audio: 3, image: 9, video: 3 });
   const result = videoPreflight({ ...graph, mode: "multimodal" });
 
@@ -204,6 +204,58 @@ test("Video multimodal accepts Text plus 9 images, 3 videos and 3 audios with a 
   expect(JSON.stringify(result.snapshot)).not.toMatch(
     /https?:|signed|signature|imageSrc|videoSrc|audioSrc/i,
   );
+
+  const upstreamOnlyGraph = multimodalGraph({ audio: 0, image: 1, video: 0 });
+  const upstreamOnly = videoPreflight({
+    ...upstreamOnlyGraph,
+    mode: "multimodal",
+    ownPrompt: "",
+  });
+  expect(upstreamOnly.inputs.find(({ kind }) => kind === "text")).toMatchObject({
+    compatibility: "compatible",
+    kind: "text",
+    role: "instruction",
+    state: "ready",
+  });
+  expect(upstreamOnly.finalPrompt).toBe(
+    "上游文字指令：保持商品颜色，并使用舒缓的镜头节奏。",
+  );
+  expect(upstreamOnly.problems).toEqual([]);
+  expect(upstreamOnly.canSubmit).toBeTruthy();
+  expect(upstreamOnly.snapshot).toEqual([
+    {
+      kind: "text",
+      order: 1,
+      role: "instruction",
+      sourceNodeId: "p3-text-1",
+    },
+    {
+      assetId: "p3-image-1.png",
+      kind: "image",
+      order: 2,
+      role: "subject",
+      sourceNodeId: "p3-image-1",
+    },
+  ]);
+  expect(JSON.stringify(upstreamOnly.snapshot)).not.toMatch(
+    /https?:|signed|signature|imageSrc|videoSrc|audioSrc/i,
+  );
+
+  const withoutPrompt = videoPreflight({
+    edges: [],
+    mode: "text",
+    nodes: [{
+      data: { label: "Video", title: "无文字目标视频" },
+      id: "p3-target-video",
+      type: "video",
+    }],
+    ownPrompt: "",
+  });
+  expect(withoutPrompt.finalPrompt).toBe("");
+  expect(withoutPrompt.canSubmit).toBeFalsy();
+  expect(withoutPrompt.problems).toContainEqual(expect.objectContaining({
+    code: "PROMPT_MISSING",
+  }));
 });
 
 test("Video keeps all 10/4/4 edges and blocks only the references beyond 9/3/3", () => {
@@ -469,7 +521,7 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
           {
             data: {
               title: "服务端Video目标",
-              videoPrompt: "服务端持久化画布对应的本节点Prompt",
+              videoPrompt: "",
             },
             id: "server-video",
             type: "video",
@@ -499,7 +551,7 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
       kind: "video",
       model: serverModelId,
       nodeId: "server-video",
-      ownPrompt: "服务端持久化画布对应的本节点Prompt",
+      ownPrompt: "",
       parameters: { inputMode: "multimodal" },
       prompt: "前端伪造的最终Prompt不能成为事实来源",
     };
@@ -539,9 +591,7 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
     });
     expect(typeof preflight.safetyAdmission.allowed).toBe("boolean");
     expect(preflight.providerRequests).toBe(0);
-    expect(preflight.finalPrompt).toBe(
-      "服务端持久化的上游文字\n\n服务端持久化画布对应的本节点Prompt",
-    );
+    expect(preflight.finalPrompt).toBe("服务端持久化的上游文字");
     expect(preflight.inputs.map(({ edgeId }) => edgeId)).toEqual([
       "server-edge-text",
       "server-edge-image",
@@ -848,7 +898,7 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
     }
   });
 
-  test("a newly added Video media edge upgrades mode in the same undo step while hydration and deletion keep the saved mode", async ({
+  test("a ready Text supplies an empty Video Prompt while a new media edge upgrades mode in the same undo step", async ({
     page,
     request,
   }) => {
@@ -860,7 +910,15 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
     const saved = await request.put(`/api/canvas/${canvasId}`, {
       data: {
         edges: [{
-          data: { inputOrder: 1, inputRole: "reference-image" },
+          data: { inputOrder: 1, inputRole: "instruction" },
+          id: "p3-ui-text-edge",
+          source: "p3-ui-text",
+          sourceHandle: "source",
+          target: "p3-ui-video",
+          targetHandle: "target",
+          type: "cuttable",
+        }, {
+          data: { inputOrder: 2, inputRole: "reference-image" },
           id: "p3-ui-existing-edge",
           source: "p3-ui-image-1",
           sourceHandle: "source",
@@ -869,6 +927,16 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
           type: "cuttable",
         }],
         nodes: [
+          {
+            data: {
+              content: "上游文字直接作为视频生成指令",
+              title: "视频生成文字",
+            },
+            id: "p3-ui-text",
+            position: { x: 80, y: -230 },
+            style: { height: 250, width: 250 },
+            type: "text",
+          },
           {
             data: {
               assetId: serverImageAssetId,
@@ -896,7 +964,7 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
               title: "Video目标",
               videoModelId: serverModelId,
               videoParameters: { inputMode: "text" },
-              videoPrompt: "用参考素材生成商品视频",
+              videoPrompt: "",
               videoPromptReady: true,
             },
             id: "p3-ui-video",
@@ -913,8 +981,8 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
 
     await page.goto(`/__fixture/${canvasId}`);
     const world = page.getByTestId("canvas-world");
-    await expect(world).toHaveAttribute("data-node-count", "3");
-    await expect(world).toHaveAttribute("data-edge-count", "1");
+    await expect(world).toHaveAttribute("data-node-count", "4");
+    await expect(world).toHaveAttribute("data-edge-count", "2");
     await page.locator('.react-flow__node[data-id="p3-ui-video"]').click();
     const creator = page.getByTestId("video-creator");
     await expect(creator).toBeVisible();
@@ -924,23 +992,26 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
       .toBeVisible();
 
     await connectNodes(page, "p3-ui-image-2", "p3-ui-video");
-    await expect(world).toHaveAttribute("data-edge-count", "2");
+    await expect(world).toHaveAttribute("data-edge-count", "3");
     await expect(creator.getByRole("button", { exact: true, name: "全能参考" }))
       .toBeVisible();
+    await expect(creator.getByTestId("video-creator-prompt")).toHaveValue("");
+    await expect(creator.getByTestId("upstream-input-p3-ui-text")).toBeVisible();
+    await expect(creator.getByTestId("upstream-input-problem")).toHaveCount(0);
 
     await page.keyboard.press("Meta+z");
-    await expect(world).toHaveAttribute("data-edge-count", "1");
+    await expect(world).toHaveAttribute("data-edge-count", "2");
     await expect(creator.getByRole("button", { exact: true, name: "文本" }))
       .toBeVisible();
 
     await connectNodes(page, "p3-ui-image-2", "p3-ui-video");
-    await expect(world).toHaveAttribute("data-edge-count", "2");
+    await expect(world).toHaveAttribute("data-edge-count", "3");
     await expect(creator.getByRole("button", { exact: true, name: "全能参考" }))
       .toBeVisible();
     await page.getByTestId("upstream-input-p3-ui-image-2")
       .getByRole("button", { name: /删除引用/ })
       .click();
-    await expect(world).toHaveAttribute("data-edge-count", "1");
+    await expect(world).toHaveAttribute("data-edge-count", "2");
     await expect(creator.getByRole("button", { exact: true, name: "全能参考" }))
       .toBeVisible();
     await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
@@ -949,16 +1020,19 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
       edges: unknown[];
       nodes: Array<{ data: { videoParameters?: { inputMode?: string } }; id: string }>;
     };
-    expect(persisted.edges).toHaveLength(1);
+    expect(persisted.edges).toHaveLength(2);
     expect(persisted.nodes.find(({ id }) => id === "p3-ui-video")?.data.videoParameters)
       .toMatchObject({ inputMode: "multimodal" });
 
     await page.reload();
-    await expect(world).toHaveAttribute("data-edge-count", "1");
+    await expect(world).toHaveAttribute("data-edge-count", "2");
     await page.locator('.react-flow__node[data-id="p3-ui-video"]').click();
-    await expect(page.getByTestId("video-creator")
+    const restoredCreator = page.getByTestId("video-creator");
+    await expect(restoredCreator
       .getByRole("button", { exact: true, name: "全能参考" }))
       .toBeVisible();
+    await expect(restoredCreator.getByTestId("video-creator-prompt")).toHaveValue("");
+    await expect(restoredCreator.getByTestId("upstream-input-problem")).toHaveCount(0);
     const after = await (await request.get("/api/generation-tasks/status")).json() as {
       paidProviderRequests: number;
     };

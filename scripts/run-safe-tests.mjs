@@ -28,6 +28,7 @@ const EXPECTED_NPM = "10.9.8";
 const FORBIDDEN_PORT = 4173;
 const USER_HOME = "/Users/mymy";
 const EXACT_V051_SPEC = "tests/m92-version-compatibility.spec.ts";
+const IMMUTABLE_RELEASE_SPEC = "tests/m94-immutable-release.spec.ts";
 const EXACT_V051 = Object.freeze({
   annotatedTagObject: "2e556760b693d1cee1b8b37db3e6747a916bcaf2",
   archiveSha256:
@@ -627,15 +628,15 @@ function preflight() {
     new Set(manifested).size !== manifested.length ||
     manifested.join("\n") !== specs.join("\n")
   ) {
-    fail("safe test manifest must be a duplicate-free exact 114-spec partition");
+    fail("safe test manifest must be a duplicate-free exact 117-spec partition");
   }
-  const expectedModeCounts = { dev: 74, hybrid: 4, node: 25, preview: 2, self: 9 };
+  const expectedModeCounts = { dev: 74, hybrid: 4, node: 28, preview: 2, self: 9 };
   for (const mode of expectedModes) {
     if (manifest[mode].length !== expectedModeCounts[mode]) {
       fail(`unexpected ${mode} spec count ${manifest[mode].length}`);
     }
   }
-  if (specs.length !== 114) fail(`expected 114 isolated specs, found ${specs.length}`);
+  if (specs.length !== 117) fail(`expected 117 isolated specs, found ${specs.length}`);
 
   const packageJson = JSON.parse(
     readFileSync(join(repositoryRoot, "package.json"), "utf8"),
@@ -978,6 +979,33 @@ async function sandboxedNode(sourceRoot, testRoot, env, args, options = {}) {
   return await runManaged(
     "/usr/bin/sandbox-exec",
     ["-f", profile, privateNodePath, ...args],
+    {
+      allowFailure: options.allowFailure,
+      capture: options.capture,
+      cwd: options.cwd ?? sourceRoot,
+      env,
+      timeout: options.timeout,
+    },
+  );
+}
+
+async function sandboxedCommand(
+  sourceRoot,
+  testRoot,
+  env,
+  command,
+  args,
+  options = {},
+) {
+  const profile = join(testRoot, "sandbox.sb");
+  writeFileSync(
+    profile,
+    sandboxProfile(testRoot, sourceRoot, env.PLAYWRIGHT_BROWSERS_PATH),
+    "utf8",
+  );
+  return await runManaged(
+    "/usr/bin/sandbox-exec",
+    ["-f", profile, command, ...args],
     {
       allowFailure: options.allowFailure,
       capture: options.capture,
@@ -1936,8 +1964,8 @@ async function discover(specs, suiteRoot, sourceRoot, browserRoot) {
         })}`,
       );
     }
-    if (discovery.tests !== 912) {
-      fail(`the frozen 912-test inventory changed to ${discovery.tests}`);
+    if (discovery.tests !== 931) {
+      fail(`the frozen 931-test inventory changed to ${discovery.tests}`);
     }
     const idsByFile = {};
     const { entries } = collectReportEntries(reportFile, sourceRoot);
@@ -1959,6 +1987,671 @@ async function discover(specs, suiteRoot, sourceRoot, browserRoot) {
   } finally {
     assertTrackedSnapshotUnchanged();
     rmSync(testRoot, { force: true, recursive: true });
+  }
+}
+
+function immutableReleaseLibc() {
+  if (process.platform !== "linux") return "none";
+  return process.report?.getReport()?.header?.glibcVersionRuntime ? "glibc" : "musl";
+}
+
+function immutableReleaseControllerEnvironment(fixtureRoot) {
+  const home = join(fixtureRoot, "controller-home");
+  const temporary = join(fixtureRoot, "controller-temp");
+  mkdirSync(home, { recursive: true, mode: 0o700 });
+  mkdirSync(temporary, { recursive: true, mode: 0o700 });
+  return {
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_CONFIG_NOSYSTEM: "1",
+    HOME: home,
+    LANG: "C",
+    LC_ALL: "C",
+    LOGNAME: "unboundry-release-test",
+    NODE_NO_WARNINGS: "1",
+    PATH: `${dirname(privateNodePath)}:/usr/bin:/bin`,
+    TEMP: temporary,
+    TMP: temporary,
+    TMPDIR: temporary,
+    TZ: "UTC",
+    USER: "unboundry-release-test",
+    npm_config_audit: "false",
+    npm_config_fund: "false",
+    npm_config_offline: "true",
+    npm_config_update_notifier: "false",
+  };
+}
+
+function writeImmutableReleaseFixtureFile(path, contents, mode = 0o600) {
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  writeFileSync(path, contents, { flag: "wx", mode });
+}
+
+function makeImmutableReleaseFixtureRemovable(root) {
+  if (!existsSync(root) || !isInside(activeSuiteRoot, root)) return;
+  const visit = (directory) => {
+    chmodSync(directory, 0o700);
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory() && !entry.isSymbolicLink()) visit(path);
+      else if (!entry.isSymbolicLink()) chmodSync(path, 0o600);
+    }
+  };
+  visit(root);
+}
+
+async function createImmutableReleaseFixture(
+  suiteRoot,
+  sourceRoot,
+  browserRoot,
+  iteration,
+  variant,
+) {
+  const root = mkdtempSync(join(
+    suiteRoot,
+    `immutable-release-${String(iteration).padStart(2, "0")}-${variant}-`,
+  ));
+  chmodSync(root, 0o700);
+  const repository = join(root, "repo");
+  const releases = join(root, "releases");
+  const scratch = join(root, "scratch");
+  const npmCache = join(root, "npm-cache");
+  const setupCache = join(root, "setup-cache");
+  const toolsRoot = join(root, "tools");
+  const dataDirectory = join(root, "setup-data");
+  const auditFile = join(root, "setup-network-audit.jsonl");
+  const reportFile = join(root, "unused-report.json");
+  const hostAliasCanary = join(
+    "/System/Volumes/Data",
+    root,
+    "host-alias-canary",
+  );
+  for (const directory of [
+    repository,
+    releases,
+    scratch,
+    npmCache,
+    setupCache,
+    toolsRoot,
+    dataDirectory,
+  ]) mkdirSync(directory, { recursive: true, mode: 0o700 });
+  writeFileSync(auditFile, "", { encoding: "utf8", flag: "wx", mode: 0o600 });
+  writeFileSync(join(root, "host-alias-canary"), "host-alias-secret\n", {
+    encoding: "utf8",
+    flag: "wx",
+    mode: 0o600,
+  });
+  const port = await freePort();
+  const auxiliaryPort = await freePort(new Set([port]));
+  const setupEnvironment = sanitizedEnvironment({
+    auxiliaryPort,
+    auditFile,
+    browserRoot,
+    dataDirectory,
+    port,
+    reportFile,
+    sourceRoot,
+    spec: join(sourceRoot, IMMUTABLE_RELEASE_SPEC),
+    testRoot: root,
+  });
+  setupEnvironment.GIT_CONFIG_GLOBAL = "/dev/null";
+  setupEnvironment.GIT_CONFIG_NOSYSTEM = "1";
+  setupEnvironment.npm_config_cache = setupCache;
+  setupEnvironment.npm_config_globalconfig = join(root, "empty-global-npmrc");
+  setupEnvironment.npm_config_userconfig = join(root, "empty-npmrc");
+  writeImmutableReleaseFixtureFile(setupEnvironment.npm_config_globalconfig, "");
+  writeImmutableReleaseFixtureFile(setupEnvironment.npm_config_userconfig, "");
+
+  const ffmpegExecutable = join(toolsRoot, "ffmpeg");
+  const ffprobeExecutable = join(toolsRoot, "ffprobe");
+  writeImmutableReleaseFixtureFile(
+    ffmpegExecutable,
+    "#!/bin/sh\nprintf 'ffmpeg version m94-synthetic\\n'\n",
+    0o500,
+  );
+  writeImmutableReleaseFixtureFile(
+    ffprobeExecutable,
+    "#!/bin/sh\nprintf 'ffprobe version m94-synthetic\\n'\n",
+    0o500,
+  );
+  writeImmutableReleaseFixtureFile(
+    join(repository, "scripts/build-release.mjs"),
+    readFileSync(join(sourceRoot, "scripts/build-release.mjs")),
+  );
+  writeImmutableReleaseFixtureFile(
+    join(repository, "scripts/offline-network-guard.mjs"),
+    readFileSync(join(sourceRoot, "scripts/offline-network-guard.mjs")),
+  );
+  writeImmutableReleaseFixtureFile(join(repository, ".env.example"), "DOCUMENTED_ONLY=1\n");
+  writeImmutableReleaseFixtureFile(
+    join(repository, "package.json"),
+    `${JSON.stringify({
+      dependencies: {
+        "@vitejs/plugin-react": "file:vendor/vitejs-plugin-react-1.0.0.tgz",
+        vite: "file:vendor/vite-1.0.0.tgz",
+      },
+      devDependencies: {
+        "@playwright/test": "file:vendor/playwright-test-1.0.0.tgz",
+        typescript: "file:vendor/typescript-1.0.0.tgz",
+      },
+      engines: { node: ">=22.23.1 <23", npm: EXPECTED_NPM },
+      name: "m94-immutable-fixture",
+      packageManager: `npm@${EXPECTED_NPM}`,
+      private: true,
+      scripts: { build: "tsc --noEmit && vite build" },
+      type: "module",
+      version: "0.0.0-m94",
+    }, null, 2)}\n`,
+  );
+  writeImmutableReleaseFixtureFile(
+    join(repository, "vendor/playwright-test/package.json"),
+    `${JSON.stringify({
+      name: "@playwright/test",
+      type: "module",
+      version: "1.0.0",
+    })}\n`,
+  );
+  writeImmutableReleaseFixtureFile(
+    join(repository, "vendor/typescript/package.json"),
+    `${JSON.stringify({
+      bin: { tsc: "bin/tsc" },
+      name: "typescript",
+      type: "module",
+      version: "1.0.0",
+    })}\n`,
+  );
+  writeImmutableReleaseFixtureFile(
+    join(repository, "vendor/typescript/bin/tsc"),
+    'import { access } from "node:fs/promises";\nawait access("tsconfig.json");\n',
+    0o500,
+  );
+  writeImmutableReleaseFixtureFile(
+    join(repository, "vendor/vite/package.json"),
+    `${JSON.stringify({
+      bin: { vite: "bin/vite.js" },
+      name: "vite",
+      type: "module",
+      version: "1.0.0",
+    })}\n`,
+  );
+  writeImmutableReleaseFixtureFile(
+    join(repository, "vendor/vite/bin/vite.js"),
+    variant === "malicious"
+      ? 'import { readFile, writeFile } from "node:fs/promises";\n' +
+        `await readFile(${JSON.stringify(hostAliasCanary)});\n` +
+        'await writeFile("server/runtime.ts", "export const compromised = true;\\n");\n'
+      : 'import { mkdir, writeFile } from "node:fs/promises";\n' +
+        'await mkdir("dist/client", { recursive: true });\n' +
+        'await writeFile("dist/client/index.html", "immutable fixture\\n");\n',
+    0o500,
+  );
+  writeImmutableReleaseFixtureFile(
+    join(repository, "vendor/plugin-react/package.json"),
+    `${JSON.stringify({
+      exports: "./dist/index.js",
+      name: "@vitejs/plugin-react",
+      type: "module",
+      version: "1.0.0",
+    })}\n`,
+  );
+  writeImmutableReleaseFixtureFile(
+    join(repository, "vendor/plugin-react/dist/index.js"),
+    "export default function react() { return {}; }\n",
+  );
+  writeImmutableReleaseFixtureFile(
+    join(repository, "tsconfig.json"),
+    `${JSON.stringify({
+      compilerOptions: {
+        module: "ESNext",
+        moduleResolution: "Bundler",
+        noEmit: true,
+        strict: true,
+        target: "ES2022",
+      },
+      include: ["server", "types", "vite.config.ts"],
+    }, null, 2)}\n`,
+  );
+  writeImmutableReleaseFixtureFile(
+    join(repository, "vite.config.ts"),
+    'import { defineConfig } from "vite";\n' +
+      'export default defineConfig({ root: "client", build: { outDir: "../dist/client" } });\n',
+  );
+  writeImmutableReleaseFixtureFile(
+    join(repository, "client/index.html"),
+    "<!doctype html><title>immutable fixture</title>\n",
+  );
+  writeImmutableReleaseFixtureFile(
+    join(repository, "server/runtime.ts"),
+    "export const fixture = true;\n",
+  );
+  writeImmutableReleaseFixtureFile(
+    join(repository, "types/runtime.ts"),
+    "export type Fixture = true;\n",
+  );
+  writeImmutableReleaseFixtureFile(
+    join(repository, "spec/unboundry-state-fixtures.json"),
+    '{"fixtures":[]}\n',
+  );
+
+  await sandboxedCommand(
+    sourceRoot,
+    root,
+    setupEnvironment,
+    "/usr/bin/git",
+    ["-c", "init.templateDir=", "init", "--quiet"],
+    { cwd: repository },
+  );
+  for (const packagePath of [
+    "./vendor/playwright-test",
+    "./vendor/typescript",
+    "./vendor/vite",
+    "./vendor/plugin-react",
+  ]) {
+    await sandboxedNode(sourceRoot, root, setupEnvironment, [
+      privateNpmCliPath,
+      "pack",
+      packagePath,
+      "--pack-destination",
+      "vendor",
+      "--ignore-scripts",
+      "--offline",
+    ], { cwd: repository });
+  }
+  await sandboxedNode(sourceRoot, root, setupEnvironment, [
+    privateNpmCliPath,
+    "install",
+    "--package-lock-only",
+    "--ignore-scripts",
+    "--offline",
+    "--no-audit",
+    "--no-fund",
+  ], { cwd: repository });
+  const packageDocument = JSON.parse(readFileSync(join(repository, "package.json"), "utf8"));
+  const packageLock = JSON.parse(readFileSync(join(repository, "package-lock.json"), "utf8"));
+  const registryRecords = [
+    {
+      dependencySection: "devDependencies",
+      name: "@playwright/test",
+      nodeModulesPath: "node_modules/@playwright/test",
+      tarball: join(repository, "vendor/playwright-test-1.0.0.tgz"),
+      url: "https://registry.npmjs.org/@playwright/test/-/test-1.0.0.tgz",
+    },
+    {
+      dependencySection: "devDependencies",
+      name: "typescript",
+      nodeModulesPath: "node_modules/typescript",
+      tarball: join(repository, "vendor/typescript-1.0.0.tgz"),
+      url: "https://registry.npmjs.org/typescript/-/typescript-1.0.0.tgz",
+    },
+    {
+      dependencySection: "dependencies",
+      name: "vite",
+      nodeModulesPath: "node_modules/vite",
+      tarball: join(repository, "vendor/vite-1.0.0.tgz"),
+      url: "https://registry.npmjs.org/vite/-/vite-1.0.0.tgz",
+    },
+    {
+      dependencySection: "dependencies",
+      name: "@vitejs/plugin-react",
+      nodeModulesPath: "node_modules/@vitejs/plugin-react",
+      tarball: join(repository, "vendor/vitejs-plugin-react-1.0.0.tgz"),
+      url: "https://registry.npmjs.org/@vitejs/plugin-react/-/plugin-react-1.0.0.tgz",
+    },
+  ];
+  for (const record of registryRecords) {
+    const lockEntry = packageLock.packages?.[record.nodeModulesPath];
+    if (!lockEntry || typeof lockEntry.integrity !== "string") {
+      fail(`immutable release fixture lock omitted ${record.nodeModulesPath}`);
+    }
+    packageDocument[record.dependencySection][record.name] = "1.0.0";
+    packageLock.packages[""][record.dependencySection][record.name] = "1.0.0";
+    lockEntry.resolved = record.url;
+    record.integrity = lockEntry.integrity;
+  }
+  writeFileSync(
+    join(repository, "package.json"),
+    `${JSON.stringify(packageDocument, null, 2)}\n`,
+    { encoding: "utf8", mode: 0o600 },
+  );
+  writeFileSync(
+    join(repository, "package-lock.json"),
+    `${JSON.stringify(packageLock, null, 2)}\n`,
+    { encoding: "utf8", mode: 0o600 },
+  );
+  const cacheProgram = String.raw`
+    import { readFile } from "node:fs/promises";
+    import { createRequire } from "node:module";
+    const [cacachePath, cachePath, recordsJson] = process.argv.slice(1);
+    const cacache = createRequire(import.meta.url)(cacachePath);
+    for (const record of JSON.parse(recordsJson)) {
+      await cacache.put(cachePath, record.url, await readFile(record.tarball), {
+        integrity: record.integrity,
+      });
+    }
+  `;
+  await sandboxedNode(sourceRoot, root, setupEnvironment, [
+    "--input-type=module",
+    "-e",
+    cacheProgram,
+    join(privateNodeRuntimeRoot, "lib/node_modules/npm/node_modules/cacache/lib/index.js"),
+    join(npmCache, "_cacache"),
+    JSON.stringify(registryRecords),
+  ], { cwd: repository });
+  await sandboxedCommand(
+    sourceRoot,
+    root,
+    setupEnvironment,
+    "/usr/bin/git",
+    ["add", "--all"],
+    { cwd: repository },
+  );
+  await sandboxedCommand(
+    sourceRoot,
+    root,
+    setupEnvironment,
+    "/usr/bin/git",
+    [
+      "-c",
+      "user.name=M94",
+      "-c",
+      "user.email=m94@example.invalid",
+      "commit",
+      "--quiet",
+      "-m",
+      "fixture",
+    ],
+    { cwd: repository },
+  );
+  const commit = (
+    await sandboxedCommand(
+      sourceRoot,
+      root,
+      setupEnvironment,
+      "/usr/bin/git",
+      ["rev-parse", "HEAD"],
+      { capture: true, cwd: repository },
+    )
+  ).stdout.trim();
+  mkdirSync(join(repository, ".git/info"), { recursive: true, mode: 0o700 });
+  writeFileSync(join(repository, ".git/info/exclude"), "working-copy-only.txt\n", {
+    encoding: "utf8",
+    flag: "a",
+  });
+  const setupAudit = assertAudit(auditFile, new Set([port, auxiliaryPort]));
+  return Object.freeze({
+    commit,
+    ffmpegExecutable,
+    ffprobeExecutable,
+    npmCache,
+    releases,
+    repository,
+    root,
+    scratch,
+    setupAudit,
+    setupEnvironment,
+  });
+}
+
+function immutableReleaseBuilderArguments(fixture) {
+  return [
+    join(fixture.repository, "scripts/build-release.mjs"),
+    "--artifact-class",
+    "synthetic-test",
+    "--commit",
+    fixture.commit,
+    "--ffmpeg-executable",
+    fixture.ffmpegExecutable,
+    "--ffprobe-executable",
+    fixture.ffprobeExecutable,
+    "--release-root",
+    fixture.releases,
+    "--scratch-root",
+    fixture.scratch,
+    "--npm-cache",
+    fixture.npmCache,
+    "--target-platform",
+    process.platform,
+    "--target-arch",
+    process.arch,
+    "--target-libc",
+    immutableReleaseLibc(),
+  ];
+}
+
+async function runImmutableReleaseBuilder(fixture) {
+  return await runManaged(
+    privateNodePath,
+    immutableReleaseBuilderArguments(fixture),
+    {
+      allowFailure: true,
+      capture: true,
+      cwd: fixture.repository,
+      env: immutableReleaseControllerEnvironment(fixture.root),
+      timeout: 2 * 60_000,
+    },
+  );
+}
+
+function parseImmutableReleaseFailure(result, expectedCode) {
+  if (result.status === 0) fail(`immutable release builder unexpectedly passed ${expectedCode}`);
+  let record;
+  try {
+    record = JSON.parse(result.stderr.trim());
+  } catch {
+    fail(`immutable release builder did not emit JSON for ${expectedCode}`);
+  }
+  if (record?.code !== expectedCode) {
+    fail(`immutable release builder returned ${record?.code ?? "no code"}, expected ${expectedCode}`);
+  }
+  return record;
+}
+
+function immutableReleaseEntries(path) {
+  return readdirSync(path).sort();
+}
+
+async function runImmutableReleaseOperationalCheck(
+  suiteRoot,
+  sourceRoot,
+  browserRoot,
+  iteration,
+) {
+  // synthetic local-tarball operational fixture exercises Darwin builder mechanics without publishing npm bin links
+  let clean;
+  let malicious;
+  try {
+    clean = await createImmutableReleaseFixture(
+      suiteRoot,
+      sourceRoot,
+      browserRoot,
+      iteration,
+      "clean",
+    );
+    const result = await runImmutableReleaseBuilder(clean);
+    if (result.status !== 0) {
+      fail(`clean immutable release build failed: ${result.stderr.trim()}`);
+    }
+    const summary = JSON.parse(result.stdout.trim());
+    const releaseDirectory = join(clean.releases, clean.commit);
+    if (
+      summary.commit !== clean.commit || summary.releaseDirectory !== releaseDirectory ||
+      summary.artifactClass !== "synthetic-test" ||
+      summary.buildPlatform !== process.platform || summary.buildArch !== process.arch ||
+      summary.buildLibc !== immutableReleaseLibc() ||
+      summary.admission?.rule !== "marker-absent-directory-0500-manifest-verified"
+    ) fail("clean immutable release summary did not match its pinned fixture");
+    const releaseDetails = lstatSync(releaseDirectory);
+    if (!releaseDetails.isDirectory() || releaseDetails.isSymbolicLink() ||
+      (releaseDetails.mode & 0o777) !== 0o500) {
+      fail("immutable release directory was not published read-only");
+    }
+    const rootEntries = immutableReleaseEntries(releaseDirectory);
+    for (const required of [
+      "client",
+      "dist",
+      "node_modules",
+      "package-lock.json",
+      "package.json",
+      "release-manifest.json",
+      "server",
+      "spec",
+      "types",
+      "vite.config.ts",
+    ]) {
+      if (!rootEntries.includes(required)) fail(`immutable release omitted ${required}`);
+    }
+    if (rootEntries.includes(".env.example") || rootEntries.includes(".incomplete")) {
+      fail("immutable release published a forbidden root entry");
+    }
+    if (immutableReleaseEntries(join(releaseDirectory, "node_modules")).includes(".bin")) {
+      fail("immutable release published npm bin links");
+    }
+    const publishedPlaywrightScope = join(releaseDirectory, "node_modules/@playwright");
+    const publishedPlaywrightScopeDetails = lstatSync(publishedPlaywrightScope);
+    if (
+      !publishedPlaywrightScopeDetails.isDirectory() ||
+      publishedPlaywrightScopeDetails.isSymbolicLink() ||
+      immutableReleaseEntries(publishedPlaywrightScope).length !== 0
+    ) {
+      fail("immutable release retained a Playwright development package");
+    }
+    const manifestBytes = readFileSync(summary.manifestPath);
+    if (sha256Bytes(manifestBytes) !== summary.manifestSha256) {
+      fail("immutable release manifest digest did not match the summary");
+    }
+    const manifest = JSON.parse(manifestBytes.toString("utf8"));
+    if (
+      manifest.format !== "unboundry-immutable-release" ||
+      manifest.artifactClass !== "synthetic-test" ||
+      manifest.commit !== clean.commit ||
+      manifest.build?.networkSandboxVerified !== true ||
+      manifest.build?.networkAudit?.blockedAttempts !== 0 ||
+      manifest.build?.networkAudit?.guardLoads < 2 ||
+      !/^[0-9a-f]{40}$/.test(String(manifest.sourceTree ?? "")) ||
+      manifest.runtime?.command !== privateNodePath || manifest.runtime?.cwd !== "." ||
+      manifest.runtime?.health?.version !== "0.0.0-m94"
+    ) fail("immutable release manifest did not satisfy the synthetic contract");
+    const prerequisiteByName = new Map(
+      (manifest.hostPrerequisites?.executables ?? []).map((entry) => [entry.name, entry]),
+    );
+    if (prerequisiteByName.size !== 3) {
+      fail("immutable release manifest contained an unexpected host prerequisite");
+    }
+    const nodePrerequisite = prerequisiteByName.get("node");
+    if (
+      nodePrerequisite?.path !== privateNodePath || nodePrerequisite.required !== true ||
+      JSON.stringify(nodePrerequisite.arguments) !== JSON.stringify(["--version"]) ||
+      nodePrerequisite.sha256 !== sha256Bytes(readFileSync(privateNodePath)) ||
+      nodePrerequisite.versionOutputSha256 !== sha256Bytes(`v${EXPECTED_NODE}`) ||
+      nodePrerequisite.versionPattern !== `^v${EXPECTED_NODE.replaceAll(".", "\\.")}$`
+    ) fail("immutable release manifest did not pin the Node prerequisite");
+    for (const [name, path] of [
+      ["ffmpeg", clean.ffmpegExecutable],
+      ["ffprobe", clean.ffprobeExecutable],
+    ]) {
+      const prerequisite = prerequisiteByName.get(name);
+      const version = `${name} version m94-synthetic`;
+      if (
+        prerequisite?.path !== path || prerequisite.required !== true ||
+        JSON.stringify(prerequisite.arguments) !== JSON.stringify(["-version"]) ||
+        prerequisite.sha256 !== sha256Bytes(readFileSync(path)) ||
+        prerequisite.versionOutputSha256 !== sha256Bytes(version) ||
+        prerequisite.versionPattern !==
+          `^${name} version [^\\r\\n]+(?:\\r?\\n[\\s\\S]*)?$`
+      ) fail(`immutable release manifest did not pin the ${name} prerequisite`);
+    }
+    const expectedRuntimeArguments = [
+      "node_modules/vite/bin/vite.js",
+      "preview",
+      "--configLoader",
+      "runner",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "${UNBOUNDRY_PORT}",
+      "--strictPort",
+    ];
+    if (JSON.stringify(manifest.runtime?.arguments) !== JSON.stringify(expectedRuntimeArguments)) {
+      fail("immutable release runtime command is not pinned");
+    }
+    const manifestPaths = new Set((manifest.files ?? []).map((entry) => entry.path));
+    if (!manifestPaths.has("node_modules/@playwright")) {
+      fail("immutable release manifest omitted the empty Playwright scope regression fixture");
+    }
+    if ([...manifestPaths].some((path) => path.startsWith("node_modules/@playwright/"))) {
+      fail("immutable release manifest retained a Playwright development package");
+    }
+    for (const required of [
+      "dist/client/index.html",
+      "node_modules/@vitejs/plugin-react/dist/index.js",
+      "node_modules/vite/bin/vite.js",
+      "server/runtime.ts",
+      "spec/unboundry-state-fixtures.json",
+      "types/runtime.ts",
+      "vite.config.ts",
+    ]) {
+      if (!manifestPaths.has(required)) fail(`immutable release manifest omitted ${required}`);
+    }
+    if ([...manifestPaths].some((path) =>
+      path === "node_modules/typescript" || path.startsWith("node_modules/typescript/")
+    )) fail("immutable release published the TypeScript development dependency");
+    if ((manifest.files ?? []).some((entry) =>
+      String(entry.path).startsWith("node_modules/.bin") ||
+      (entry.type !== "directory" && (
+        entry.type !== "file" || !Number.isInteger(entry.size) ||
+        !/^[0-9a-f]{64}$/.test(String(entry.sha256 ?? ""))
+      ))
+    )) fail("immutable release manifest contains an invalid inventory entry");
+    const repeated = await runImmutableReleaseBuilder(clean);
+    parseImmutableReleaseFailure(repeated, "RELEASE_TARGET_EXISTS");
+    if (!readFileSync(summary.manifestPath).equals(manifestBytes)) {
+      fail("repeat immutable release attempt changed the admitted manifest");
+    }
+
+    malicious = await createImmutableReleaseFixture(
+      suiteRoot,
+      sourceRoot,
+      browserRoot,
+      iteration,
+      "malicious",
+    );
+    const maliciousResult = await runImmutableReleaseBuilder(malicious);
+    const maliciousFailure = parseImmutableReleaseFailure(
+      maliciousResult,
+      "RELEASE_COMMAND_FAILED",
+    );
+    if (
+      !String(maliciousFailure.message).includes(
+        "fail-closed incomplete release reservation retained",
+      ) || String(maliciousFailure.message).includes(malicious.root)
+    ) fail("malicious immutable release failure disclosure was unsafe");
+    if (
+      JSON.stringify(immutableReleaseEntries(malicious.releases)) !==
+        JSON.stringify([malicious.commit]) ||
+      JSON.stringify(immutableReleaseEntries(join(malicious.releases, malicious.commit))) !==
+        JSON.stringify([".incomplete"]) ||
+      immutableReleaseEntries(malicious.scratch).length !== 0
+    ) fail("malicious immutable release did not retain exactly one incomplete reservation");
+
+    const evidence = Object.freeze({
+      builderInvocations: 3,
+      cleanBuilds: 1,
+      iteration,
+      maliciousRejections: 1,
+      manifestSha256: summary.manifestSha256,
+      npmBinLinksPublished: 0,
+      repeatRejections: 1,
+      setupGuardLoads: clean.setupAudit.guardLoads + malicious.setupAudit.guardLoads,
+      status: "pass",
+    });
+    console.log(JSON.stringify({ operationalCheck: "immutable-release-builder", ...evidence }));
+    return evidence;
+  } finally {
+    for (const fixture of [clean, malicious]) {
+      if (!fixture) continue;
+      makeImmutableReleaseFixtureRemovable(fixture.root);
+      rmSync(fixture.root, { force: true, recursive: true });
+    }
+    assertTrackedSnapshotUnchanged();
   }
 }
 
@@ -2027,6 +2720,38 @@ async function main() {
     return;
   }
 
+  const immutableReleaseSelected =
+    options.command === "full" || specs.includes(IMMUTABLE_RELEASE_SPEC);
+  const immutableReleaseOperationalEvidence = [];
+  if (immutableReleaseSelected) {
+    for (let iteration = 1; iteration <= options.repeat; iteration += 1) {
+      try {
+        immutableReleaseOperationalEvidence.push(
+          await runImmutableReleaseOperationalCheck(
+            suiteRoot,
+            sourceRoot,
+            browserRoot,
+            iteration,
+          ),
+        );
+      } catch (error) {
+        const message = String(error instanceof Error ? error.message : error)
+          .replaceAll(suiteRoot, "<suite-root>")
+          .slice(0, 2_000);
+        const evidence = Object.freeze({ iteration, message, status: "failed" });
+        immutableReleaseOperationalEvidence.push(evidence);
+        console.error(JSON.stringify({
+          operationalCheck: "immutable-release-builder",
+          ...evidence,
+        }));
+      }
+    }
+  }
+  if (
+    immutableReleaseOperationalEvidence.length !==
+      (immutableReleaseSelected ? options.repeat : 0)
+  ) fail("immutable release operational checker execution count is inexact");
+
   const summaries = [];
   for (let iteration = 1; iteration <= options.repeat; iteration += 1) {
     for (const spec of specs) {
@@ -2082,6 +2807,30 @@ async function main() {
     expectedExecutedTests,
     node: process.versions.node,
     npm: EXPECTED_NPM,
+    operational: Object.freeze({
+      immutableReleaseBuilder: Object.freeze({
+        attempts: immutableReleaseOperationalEvidence.length,
+        builderInvocations: immutableReleaseOperationalEvidence.reduce(
+          (count, evidence) => count + (evidence.builderInvocations ?? 0),
+          0,
+        ),
+        expectedAttempts: immutableReleaseSelected ? options.repeat : 0,
+        expectedBuilderInvocations: immutableReleaseSelected ? options.repeat * 3 : 0,
+        failed: immutableReleaseOperationalEvidence.filter(
+          (evidence) => evidence.status !== "pass",
+        ).length,
+        failures: immutableReleaseOperationalEvidence
+          .filter((evidence) => evidence.status !== "pass")
+          .map((evidence) => ({
+            iteration: evidence.iteration,
+            message: evidence.message,
+          })),
+        passed: immutableReleaseOperationalEvidence.filter(
+          (evidence) => evidence.status === "pass",
+        ).length,
+        selected: immutableReleaseSelected,
+      }),
+    }),
     repeat: options.repeat,
     source: Object.freeze({
       files: workspaceBaseline.files.length,
@@ -2102,7 +2851,10 @@ async function main() {
     finalSummary.reportErrors !== 0 ||
     finalSummary.skipped !== 0 ||
     finalSummary.retries !== 0 ||
-    finalSummary.blocked !== 0
+    finalSummary.blocked !== 0 ||
+    finalSummary.operational.immutableReleaseBuilder.failed !== 0 ||
+    finalSummary.operational.immutableReleaseBuilder.builderInvocations !==
+      finalSummary.operational.immutableReleaseBuilder.expectedBuilderInvocations
   ) {
     fail("one or more product tests failed; see the complete summary above");
   }

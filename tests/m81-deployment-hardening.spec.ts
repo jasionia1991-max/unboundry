@@ -49,6 +49,7 @@ import {
   createRuntimeLifecycle,
   type ShutdownResult,
 } from "../server/runtimeLifecycle";
+import { createRuntimeRoleCoordinator } from "../server/runtimeRole";
 import { applySecurityHeaders } from "../server/securityHeaders";
 import { knownModelParameterSchema } from "../types/modelParameters";
 import { expect, test } from "./safe-test";
@@ -3548,6 +3549,88 @@ test("maintenance allows only health and version APIs without initializing data"
   }
 });
 
+test("standby and read-only runtime roles expose only health/version with zero writes", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "unboundry-m81-non-active-role-"));
+  let server: ChildProcess | undefined;
+  try {
+    for (const role of ["standby", "read-only"] as const) {
+      const dataDirectory = join(testRoot, `missing-data-${role}`);
+      server = await startServer(dataDirectory, {
+        environment: {
+          UNBOUNDRY_RUNTIME_ROLE: role,
+          UNBOUNDRY_TEST_AUTH_BYPASS: "1",
+        },
+      });
+      const live = await fetch(`${origin}/api/health/live`);
+      expect(live.status).toBe(200);
+      const ready = await fetch(`${origin}/api/health/ready`);
+      expect(ready.status).toBe(503);
+      expect(await ready.json()).toMatchObject({
+        code: "DATABASE_DIRECTORY_INVALID",
+      });
+      const version = await fetch(`${origin}/api/version`);
+      expect(version.status).toBe(200);
+      expect(await version.json()).toHaveProperty("version");
+      for (const request of [
+        { method: "GET", path: "/api/auth/status" },
+        { method: "GET", path: "/api/generation-tasks/status" },
+        { method: "GET", path: "/api/updates" },
+        { method: "POST", path: "/api/auth/bootstrap" },
+      ]) {
+        const blocked = await fetch(`${origin}${request.path}`, {
+          ...(request.method === "POST"
+            ? {
+                body: JSON.stringify({
+                  displayName: "Must not be created",
+                  loginName: "blocked-owner",
+                  password: "blocked-password-123",
+                }),
+                headers: { "Content-Type": "application/json" },
+              }
+            : {}),
+          method: request.method,
+        });
+        expect(blocked.status).toBe(503);
+        expect(await blocked.json()).toMatchObject({
+          code: "SERVICE_RUNTIME_ROLE_NOT_ACTIVE",
+        });
+      }
+      await expectMissing(dataDirectory);
+      await stopServer(server);
+      server = undefined;
+
+      const validDataDirectory = join(testRoot, `valid-data-${role}`);
+      await mkdir(validDataDirectory, { mode: 0o700 });
+      initializePrivateSyntheticGreenfield(validDataDirectory);
+      const before = await directoryFingerprint(validDataDirectory);
+      server = await startServer(validDataDirectory, {
+        environment: {
+          UNBOUNDRY_RUNTIME_ROLE: role,
+          UNBOUNDRY_TEST_AUTH_BYPASS: "1",
+        },
+      });
+      const validReady = await fetch(`${origin}/api/health/ready`);
+      expect(validReady.status).toBe(503);
+      expect(await validReady.json()).toMatchObject({
+        activeLeaseHeld: false,
+        code: "SERVICE_RUNTIME_ROLE_NOT_ACTIVE",
+        databaseProbe: "read-only",
+        mode: `${role}-api-blocked`,
+        mutationsAccepted: false,
+        runtimeRole: role,
+        status: "not-ready",
+      });
+      expect(await directoryFingerprint(validDataDirectory)).toEqual(before);
+      await stopServer(server);
+      server = undefined;
+      expect(await directoryFingerprint(validDataDirectory)).toEqual(before);
+    }
+  } finally {
+    if (server) await stopServer(server);
+    await rm(testRoot, { force: true, recursive: true });
+  }
+});
+
 test("shutdown waits for handler cleanup and has a hard close-failure exit", async () => {
   const lifecycle = createRuntimeLifecycle({
     dataDirectory: join(tmpdir(), "unboundry-m81-unused-lifecycle-data"),
@@ -3600,6 +3683,406 @@ test("shutdown waits for handler cleanup and has a hard close-failure exit", asy
     hardExitGraceMs: 20,
   })).toBe(1);
   expect(hungCloseConnectionsClosed).toBe(1);
+});
+
+test("programmatic Vite close drains durable generation and permits a fresh active runtime", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "unboundry-m81-programmatic-close-"));
+  const dataDirectory = join(testRoot, "data");
+  const runtimeDirectory = join(testRoot, "runtime");
+  let child: ChildProcess | undefined;
+  try {
+    const fixture = await seedQueuedStartupGenerationFixture(
+      dataDirectory,
+      "m81-programmatic-close",
+    );
+    makeStandaloneDatabase(dataDirectory);
+    const bootstrap = String.raw`
+      import { readFile } from "node:fs/promises";
+      import { join, resolve } from "node:path";
+      import { createServer, loadConfigFromFile } from "vite";
+
+      const [dataDirectory, runtimeDirectory, rawPort] = process.argv.slice(1);
+      const port = Number(rawPort);
+      const providerLog = join(
+        dataDirectory,
+        ".unboundry-startup-provider-fixture.log",
+      );
+      const startupWorkerLog = join(
+        dataDirectory,
+        ".unboundry-startup-worker-observer.log",
+      );
+      const start = async () => {
+        const server = await createServer({
+          configFile: resolve("vite.config.ts"),
+          logLevel: "silent",
+          server: {
+            hmr: false,
+            host: "127.0.0.1",
+            port,
+            strictPort: true,
+            ws: false,
+          },
+        });
+        await server.listen();
+        return server;
+      };
+
+      const first = await start();
+      await import("./scripts/node-typescript-runtime.mjs");
+      const runtimeRole = await import("./server/runtimeRole.ts");
+      const buildConfiguration = await loadConfigFromFile(
+        { command: "build", mode: "production" },
+        resolve("vite.config.ts"),
+      );
+      if (!buildConfiguration?.config) {
+        throw new Error("Build config isolation probe failed");
+      }
+      let readyAfterBuildLoad;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const response = await fetch(
+          "http://127.0.0.1:" + port + "/api/health/ready",
+        );
+        const body = await response.json();
+        if (response.status === 200) {
+          readyAfterBuildLoad = body;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      if (!readyAfterBuildLoad) {
+        throw new Error("Build config load altered active runtime readiness");
+      }
+      const secondDataDirectory = dataDirectory + "-overlap";
+      const secondRuntimeDirectory = runtimeDirectory + "-overlap";
+      process.env.UNBOUNDRY_DATA_DIR = secondDataDirectory;
+      process.env.UNBOUNDRY_RUNTIME_DIR = secondRuntimeDirectory;
+      await import("node:fs/promises").then(({ cp, mkdir }) =>
+        mkdir(secondDataDirectory, { recursive: true }).then(() =>
+          cp(dataDirectory + "/unboundry.sqlite", secondDataDirectory + "/unboundry.sqlite")
+        )
+      );
+      let overlappingConfigurationRejected = false;
+      let overlap;
+      try {
+        overlap = await createServer({
+          configFile: resolve("vite.config.ts"),
+          logLevel: "silent",
+          server: { hmr: false, middlewareMode: true, ws: false },
+        });
+      } catch (error) {
+        overlappingConfigurationRejected = /(?:active runtime|restart required)/i
+          .test(error instanceof Error ? error.message : String(error));
+      } finally {
+        await overlap?.close();
+      }
+      if (!overlappingConfigurationRejected) {
+        throw new Error("Overlapping runtime configuration was not rejected");
+      }
+      process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
+      process.env.UNBOUNDRY_RUNTIME_DIR = runtimeDirectory;
+      const readyAfterOverlap = await fetch(
+        "http://127.0.0.1:" + port + "/api/health/ready",
+      );
+      if (readyAfterOverlap.status !== 200) {
+        throw new Error("Rejected overlap altered first runtime context");
+      }
+      let providerStarted = false;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        try {
+          providerStarted = (await readFile(providerLog, "utf8")).length > 0;
+        } catch {}
+        if (providerStarted) break;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      if (!providerStarted) throw new Error("Provider execution did not start");
+      await first.close();
+
+      const handoff = runtimeRole.createRuntimeRoleCoordinator({
+        dataDirectory,
+        role: "active",
+        runtimeDirectory,
+      });
+      const handoffSnapshot = handoff.snapshot();
+      handoff.close();
+
+      const second = await start();
+      let secondReady;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const response = await fetch(
+          "http://127.0.0.1:" + port + "/api/health/ready",
+        );
+        const body = await response.json();
+        if (response.status === 200) {
+          secondReady = body;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      if (!secondReady) throw new Error("Second runtime never became ready");
+      await second.close();
+      // Vite 8's three denied wildcard availability probes set the inherited
+      // offline guard exit code; the safe runner audits their exact shape.
+      process.exitCode = 0;
+      process.stdout.write(JSON.stringify({
+        handoffSnapshot,
+        overlappingConfigurationRejected,
+        providerLog: await readFile(providerLog, "utf8"),
+        readyAfterBuildLoad,
+        readyAfterOverlap: await readyAfterOverlap.json(),
+        secondReady,
+        startupWorkerLog: await readFile(startupWorkerLog, "utf8"),
+        restarted: true,
+      }));
+    `;
+    child = spawn(process.execPath, [
+      "--input-type=module",
+      "-e",
+      bootstrap,
+      dataDirectory,
+      runtimeDirectory,
+      String(port),
+    ], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        UNBOUNDRY_DATA_DIR: dataDirectory,
+        UNBOUNDRY_RUNTIME_DIR: runtimeDirectory,
+        UNBOUNDRY_TEST_GENERATION_STARTUP_FAKE_PROVIDER: "1",
+        UNBOUNDRY_TEST_GENERATION_STARTUP_HANG: "1",
+        UNBOUNDRY_TEST_GENERATION_STARTUP_OBSERVE: "1",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", (chunk) => { stdout += String(chunk); });
+    child.stderr?.on("data", (chunk) => { stderr += String(chunk); });
+    await waitForChildExit(
+      child,
+      20_000,
+      `programmatic Vite close did not settle: ${stderr}`,
+    );
+    if (child.exitCode !== 0) {
+      throw new Error(
+        `Programmatic Vite child exited ${child.exitCode}: ${stderr || stdout}`,
+      );
+    }
+    const evidence = JSON.parse(stdout.trim().split("\n").at(-1) ?? "") as {
+      handoffSnapshot: { activeLeaseHeld: boolean; role: string };
+      overlappingConfigurationRejected: boolean;
+      providerLog: string;
+      readyAfterBuildLoad: {
+        activeLeaseHeld: boolean;
+        mode: string;
+        mutationsAccepted: boolean;
+      };
+      readyAfterOverlap: {
+        activeLeaseHeld: boolean;
+        mode: string;
+        mutationsAccepted: boolean;
+      };
+      secondReady: {
+        activeLeaseHeld: boolean;
+        mode: string;
+        mutationsAccepted: boolean;
+      };
+      startupWorkerLog: string;
+      restarted: boolean;
+    };
+    expect(evidence).toMatchObject({
+      handoffSnapshot: { activeLeaseHeld: true, role: "active" },
+      overlappingConfigurationRejected: true,
+      readyAfterBuildLoad: {
+        activeLeaseHeld: true,
+        mode: "active",
+        mutationsAccepted: true,
+      },
+      readyAfterOverlap: {
+        activeLeaseHeld: true,
+        mode: "active",
+        mutationsAccepted: true,
+      },
+      secondReady: {
+        activeLeaseHeld: true,
+        mode: "active",
+        mutationsAccepted: true,
+      },
+      restarted: true,
+    });
+    expect(evidence.providerLog.trim().split("\n")).not.toHaveLength(0);
+    expect(evidence.startupWorkerLog.trim().split("\n")).toHaveLength(2);
+    const database = new DatabaseSync(join(dataDirectory, "unboundry.sqlite"), {
+      readOnly: true,
+    });
+    try {
+      expect(database.prepare(`
+        SELECT state FROM generation_tasks WHERE id = ?
+      `).get(fixture.taskId)).toEqual({ state: "failed" });
+    } finally {
+      database.close();
+    }
+  } finally {
+    if (child && !childExited(child)) {
+      child.kill("SIGKILL");
+      await waitForChildExit(child, 5_000, "programmatic close child stuck")
+        .catch(() => undefined);
+    }
+    await rm(testRoot, { force: true, recursive: true });
+  }
+});
+
+test("startup media recovery remains inside the active drain until it settles", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "unboundry-m81-media-drain-"));
+  const dataDirectory = join(testRoot, "data");
+  const runtimeDirectory = join(testRoot, "runtime");
+  const recoveryGate = join(testRoot, "release-media-recovery");
+  const enteredMarker = `${recoveryGate}.entered`;
+  let child: ChildProcess | undefined;
+  try {
+    makeStandaloneDatabase(dataDirectory);
+    const bootstrap = String.raw`
+      import { resolve } from "node:path";
+      import { createServer } from "vite";
+
+      await createServer({
+        configFile: resolve("vite.config.ts"),
+        logLevel: "silent",
+        server: { hmr: false, middlewareMode: true, ws: false },
+      });
+      await new Promise(() => undefined);
+    `;
+    child = spawn(process.execPath, ["--input-type=module", "-e", bootstrap], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        UNBOUNDRY_DATA_DIR: dataDirectory,
+        UNBOUNDRY_RUNTIME_DIR: runtimeDirectory,
+        UNBOUNDRY_TEST_MEDIA_STARTUP_RECOVERY_GATE: recoveryGate,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      try {
+        await stat(enteredMarker);
+        break;
+      } catch {}
+      if (childExited(child)) {
+        throw new Error("Media startup child exited before entering its drain");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    await stat(enteredMarker);
+    child.kill("SIGTERM");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(childExited(child)).toBe(false);
+    expect(() => createRuntimeRoleCoordinator({
+      dataDirectory,
+      role: "active",
+      runtimeDirectory,
+    })).toThrow();
+
+    await writeFile(recoveryGate, "release\n", { flag: "wx" });
+    await waitForChildExit(
+      child,
+      10_000,
+      "Media startup drain did not settle after its gate was released",
+    );
+    expect(child.exitCode).toBe(0);
+    const handoff = createRuntimeRoleCoordinator({
+      dataDirectory,
+      role: "active",
+      runtimeDirectory,
+    });
+    expect(handoff.snapshot()).toMatchObject({
+      activeLeaseHeld: true,
+      role: "active",
+    });
+    handoff.close();
+  } finally {
+    if (child && !childExited(child)) {
+      child.kill("SIGKILL");
+      await waitForChildExit(child, 5_000, "media startup drain child stuck")
+        .catch(() => undefined);
+    }
+    await rm(testRoot, { force: true, recursive: true });
+  }
+});
+
+test("controlled Vite configure failure releases its active lease for a retry", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "unboundry-m81-configure-failure-"));
+  const dataDirectory = join(testRoot, "data");
+  const runtimeDirectory = join(testRoot, "runtime");
+  let child: ChildProcess | undefined;
+  try {
+    makeStandaloneDatabase(dataDirectory);
+    const bootstrap = String.raw`
+      import { resolve } from "node:path";
+      import { createServer } from "vite";
+
+      const [dataDirectory, runtimeDirectory] = process.argv.slice(1);
+      const originalProcessOnce = process.once;
+      const create = () => createServer({
+        configFile: resolve("vite.config.ts"),
+        logLevel: "silent",
+        server: { hmr: false, middlewareMode: true, ws: false },
+      });
+
+      process.env.UNBOUNDRY_TEST_RUNTIME_CONFIGURE_FAILURE = "1";
+      let controlledFailure = false;
+      try {
+        await create();
+      } catch (error) {
+        controlledFailure = /controlled runtime configure failure/i.test(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+      if (!controlledFailure) throw new Error("Controlled failure was not observed");
+      if (process.once !== originalProcessOnce) {
+        throw new Error("Config resolution leaked a process.once override");
+      }
+      delete process.env.UNBOUNDRY_TEST_RUNTIME_CONFIGURE_FAILURE;
+      const retry = await create();
+      await retry.close();
+      process.stdout.write(JSON.stringify({ controlledFailure, retried: true }));
+    `;
+    child = spawn(process.execPath, [
+      "--input-type=module",
+      "-e",
+      bootstrap,
+      dataDirectory,
+      runtimeDirectory,
+    ], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        UNBOUNDRY_DATA_DIR: dataDirectory,
+        UNBOUNDRY_RUNTIME_DIR: runtimeDirectory,
+        UNBOUNDRY_TEST_RUNTIME_CONFIGURE_FAILURE: "1",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", (chunk) => { stdout += String(chunk); });
+    child.stderr?.on("data", (chunk) => { stderr += String(chunk); });
+    await waitForChildExit(
+      child,
+      15_000,
+      `controlled configure failure child stuck: ${stderr}`,
+    );
+    expect(child.exitCode).toBe(0);
+    expect(JSON.parse(stdout.trim().split("\n").at(-1) ?? "")).toEqual({
+      controlledFailure: true,
+      retried: true,
+    });
+  } finally {
+    if (child && !childExited(child)) {
+      child.kill("SIGKILL");
+      await waitForChildExit(child, 5_000, "configure failure child stuck")
+        .catch(() => undefined);
+    }
+    await rm(testRoot, { force: true, recursive: true });
+  }
 });
 
 test("business schema admission retries a transient readiness guard", async () => {

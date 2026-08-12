@@ -16,13 +16,19 @@ import {
   migrationIncompleteMarker,
 } from "./database.ts";
 import { discardUnreadRequestBody } from "./httpRequest.ts";
+import type { RuntimeRoleCoordinator } from "./runtimeRole.ts";
 
 const defaultRetryAfterSeconds = 5;
 const defaultShutdownDeadlineMs = 10_000;
 
 type Next = (error?: unknown) => void;
 
-export type RuntimeMode = "active" | "maintenance" | "shutting-down";
+export type RuntimeMode =
+  | "active"
+  | "maintenance"
+  | "read-only"
+  | "shutting-down"
+  | "standby";
 
 export type RuntimeControlEvent = Readonly<{
   retryAfterSeconds: number;
@@ -44,11 +50,13 @@ type RuntimeLogger = (record: RuntimeLogRecord) => void;
 type StreamCloser = (event: RuntimeControlEvent) => void;
 
 export type RuntimeLifecycleOptions = Readonly<{
+  beforeActiveLeaseRelease?: () => Promise<void> | void;
   dataDirectory?: string | (() => string);
   legacyStandbyDatabaseGuard?: (database: DatabaseSync) => boolean;
   logger?: RuntimeLogger;
   readinessDatabaseGuard?: (database: DatabaseSync) => boolean;
   retryAfterSeconds?: number;
+  roleCoordinator?: RuntimeRoleCoordinator;
   shutdownDeadlineMs?: number;
 }>;
 
@@ -323,6 +331,8 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
 
   function mode(): RuntimeMode {
     if (shuttingDown) return "shutting-down";
+    const configuredRole = options.roleCoordinator?.role();
+    if (configuredRole && configuredRole !== "active") return configuredRole;
     if (maintenance) return "maintenance";
     return "active";
   }
@@ -421,8 +431,10 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
     response: ServerResponse,
     code:
       | "SERVICE_DATABASE_UNAVAILABLE"
+      | "SERVICE_ACTIVE_LEASE_UNAVAILABLE"
       | "SERVICE_MAINTENANCE"
       | "SERVICE_RESTART_REQUIRED"
+      | "SERVICE_RUNTIME_ROLE_NOT_ACTIVE"
       | "SERVICE_SCHEMA_STANDBY"
       | "SERVICE_SHUTTING_DOWN",
   ) {
@@ -437,6 +449,10 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
     json(response, 503, {
       error: code === "SERVICE_MAINTENANCE"
         ? "Service is temporarily unavailable"
+        : code === "SERVICE_RUNTIME_ROLE_NOT_ACTIVE"
+        ? "Service runtime is not active"
+        : code === "SERVICE_ACTIVE_LEASE_UNAVAILABLE"
+        ? "Service active lease is unavailable"
         : code === "SERVICE_SHUTTING_DOWN"
         ? "Service is shutting down"
         : code === "SERVICE_SCHEMA_STANDBY"
@@ -462,6 +478,27 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
       }
       if (maintenance) {
         rejectUnavailable(request, response, "SERVICE_MAINTENANCE");
+        return;
+      }
+      const configuredRole = options.roleCoordinator?.role();
+      if (configuredRole && configuredRole !== "active") {
+        rejectUnavailable(
+          request,
+          response,
+          configuredRole === "maintenance"
+            ? "SERVICE_MAINTENANCE"
+            : "SERVICE_RUNTIME_ROLE_NOT_ACTIVE",
+        );
+        return;
+      }
+      try {
+        options.roleCoordinator?.assertActive("writer");
+      } catch {
+        rejectUnavailable(
+          request,
+          response,
+          "SERVICE_ACTIVE_LEASE_UNAVAILABLE",
+        );
         return;
       }
       let directory: string;
@@ -838,6 +875,26 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
       return;
     }
 
+    const roleSnapshot = options.roleCoordinator?.snapshot();
+    if (
+      roleSnapshot?.role === "active" &&
+      (!roleSnapshot.activeLeaseHeld || roleSnapshot.draining) &&
+      roleSnapshot.leaseState !== "unavailable"
+    ) {
+      context.code = "SERVICE_ACTIVE_LEASE_UNAVAILABLE";
+      response.setHeader("Retry-After", String(retryAfterSeconds));
+      json(response, 503, {
+        status: "not-ready",
+        code: "SERVICE_ACTIVE_LEASE_UNAVAILABLE",
+        mode: "active-lease-unavailable",
+        mutationsAccepted: false,
+        activeLeaseHeld: false,
+        databaseProbe: "not-run",
+        requestId: context.requestId,
+      });
+      return;
+    }
+
     let directory: string | undefined;
     try {
       directory = dataDirectory();
@@ -893,6 +950,45 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
       });
       return;
     }
+    if (
+      roleSnapshot?.role === "active" &&
+      (!roleSnapshot.activeLeaseHeld || roleSnapshot.draining)
+    ) {
+      context.code = "SERVICE_ACTIVE_LEASE_UNAVAILABLE";
+      response.setHeader("Retry-After", String(retryAfterSeconds));
+      json(response, 503, {
+        status: "not-ready",
+        code: "SERVICE_ACTIVE_LEASE_UNAVAILABLE",
+        mode: "active-lease-unavailable",
+        mutationsAccepted: false,
+        activeLeaseHeld: false,
+        databaseProbe: "read-only",
+        schemaVersion: probe.schemaVersion,
+        requestId: context.requestId,
+      });
+      return;
+    }
+    if (
+      roleSnapshot?.role === "standby" ||
+      roleSnapshot?.role === "read-only"
+    ) {
+      context.code = "SERVICE_RUNTIME_ROLE_NOT_ACTIVE";
+      response.setHeader("Retry-After", String(retryAfterSeconds));
+      json(response, 503, {
+        status: "not-ready",
+        code: "SERVICE_RUNTIME_ROLE_NOT_ACTIVE",
+        mode: roleSnapshot.role === "standby"
+          ? "standby-api-blocked"
+          : "read-only-api-blocked",
+        mutationsAccepted: false,
+        activeLeaseHeld: false,
+        runtimeRole: roleSnapshot.role,
+        databaseProbe: "read-only",
+        schemaVersion: probe.schemaVersion,
+        requestId: context.requestId,
+      });
+      return;
+    }
     if (!probe.standby && !establishActiveDatabaseIdentity(finalIdentity)) {
       context.code = "SERVICE_RESTART_REQUIRED";
       response.setHeader("Retry-After", String(retryAfterSeconds));
@@ -932,10 +1028,21 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
       status: "ready",
       mode: probe.standby
         ? "schema37-health-only-standby"
-        : maintenance
+        : maintenance || roleSnapshot?.role === "maintenance"
         ? "maintenance-api-blocked"
         : "active",
-      mutationsAccepted: !maintenance && !probe.standby,
+      mutationsAccepted:
+        !maintenance && !probe.standby &&
+        (!roleSnapshot || (
+          roleSnapshot.role === "active" && roleSnapshot.activeLeaseHeld &&
+          !roleSnapshot.draining
+        )),
+      ...(roleSnapshot
+        ? {
+            activeLeaseHeld: roleSnapshot.activeLeaseHeld,
+            runtimeRole: roleSnapshot.role,
+          }
+        : {}),
       databaseProbe: "read-only",
       schemaVersion: probe.schemaVersion,
       requestId: context.requestId,
@@ -969,15 +1076,32 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
   function beginShutdown(deadlineMs = shutdownDeadlineMs) {
     if (shutdownPromise) return shutdownPromise;
     shuttingDown = true;
+    const boundedDeadline = boundedInteger(
+      deadlineMs,
+      shutdownDeadlineMs,
+      120_000,
+    );
+    // Freeze both HTTP and detached writer/Provider admission before asking
+    // streams or current handlers to settle. The active lease is deliberately
+    // released only after both drain domains report zero.
+    const detachedDrain = options.roleCoordinator?.beginDrain(boundedDeadline);
     writeLog("lifecycle", { code: "SHUTDOWN_STARTED" });
     notifyStreams({ type: "shutdown", retryAfterSeconds });
-    shutdownPromise = waitForDrain(
-      boundedInteger(deadlineMs, shutdownDeadlineMs, 120_000),
-    ).then((result) => {
+    shutdownPromise = Promise.all([
+      waitForDrain(boundedDeadline),
+      detachedDrain ?? Promise.resolve({ activeExecutions: 0, drained: true }),
+    ]).then(async ([result, detached]) => {
+      const combined = detached.drained
+        ? result
+        : { ...result, drained: false };
+      if (combined.drained) {
+        await options.beforeActiveLeaseRelease?.();
+        options.roleCoordinator?.releaseAfterDrain();
+      }
       writeLog("lifecycle", {
-        code: result.drained ? "SHUTDOWN_DRAINED" : "SHUTDOWN_DEADLINE",
+        code: combined.drained ? "SHUTDOWN_DRAINED" : "SHUTDOWN_DEADLINE",
       });
-      return result;
+      return combined;
     });
     return shutdownPromise;
   }
@@ -1015,7 +1139,10 @@ export async function coordinateRuntimeShutdown(
     30_000,
   );
   let timeout: NodeJS.Timeout | undefined;
+  let forceClosed = false;
   const forceClose = () => {
+    if (forceClosed) return;
+    forceClosed = true;
     try {
       options.closeAllConnections?.();
     } catch {
@@ -1027,7 +1154,10 @@ export async function coordinateRuntimeShutdown(
     await Promise.race([
       Promise.resolve(shutdown)
         .then(async (result) => {
-          if (!result.drained) forceClose();
+          if (!result.drained) {
+            forceClose();
+            throw new Error("Runtime shutdown did not drain");
+          }
           await Promise.resolve().then(options.close);
         }),
       new Promise<never>((_, reject) => {

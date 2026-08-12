@@ -1,0 +1,81 @@
+[Unit]
+Description=Unboundry immutable release runtime
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=unboundry
+Group=unboundry
+UMask=0077
+WorkingDirectory=/opt/unboundry/current
+ExecStart=/opt/node22/bin/node /opt/unboundry/current/node_modules/vite/bin/vite.js preview --configLoader runner --host 127.0.0.1 --port 4173 --strictPort
+
+Environment="NODE_ENV=production"
+Environment="PATH=/opt/node22/bin:/usr/bin:/bin"
+Environment="HOME=/run/unboundry"
+Environment="TEMP=/run/unboundry"
+Environment="TMP=/run/unboundry"
+Environment="TMPDIR=/run/unboundry"
+Environment="UNBOUNDRY_DATA_DIR=/var/lib/unboundry"
+Environment="UNBOUNDRY_RUNTIME_DIR=/run/unboundry"
+Environment="UNBOUNDRY_RUNTIME_HOME=/run/unboundry"
+Environment="UNBOUNDRY_RUNTIME_ROLE=active"
+Environment="UNBOUNDRY_RUNTIME_TEMP=/run/unboundry"
+Environment="UNBOUNDRY_SECURE_COOKIES=1"
+Environment="UNBOUNDRY_TRUST_PROXY=1"
+Environment="UNBOUNDRY_VITE_CACHE_DIR=/var/cache/unboundry"
+UnsetEnvironment=LD_LIBRARY_PATH LD_PRELOAD NODE_OPTIONS NODE_PATH UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION UNBOUNDRY_MAINTENANCE_MODE UNBOUNDRY_SAFE_TEST
+
+StateDirectory=unboundry
+StateDirectoryMode=0700
+RuntimeDirectory=unboundry
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=restart
+CacheDirectory=unboundry
+CacheDirectoryMode=0700
+
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=120s
+TimeoutStopSec=150s
+KillSignal=SIGTERM
+KillMode=mixed
+SendSIGKILL=yes
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadOnlyPaths=/opt/unboundry/releases /opt/unboundry/current /opt/unboundry/shared/maintenance
+ReadWritePaths=/var/lib/unboundry /run/unboundry /var/cache/unboundry
+InaccessiblePaths=/home /root /media /mnt
+
+LimitNOFILE=65536
+TasksMax=512
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=unboundry
+
+[Install]
+WantedBy=multi-user.target

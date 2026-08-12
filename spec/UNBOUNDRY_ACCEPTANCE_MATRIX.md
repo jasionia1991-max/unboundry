@@ -1,14 +1,18 @@
 # Unboundry 绿地复刻验收矩阵
 
 基线日期：2026-07-27  
-当前状态更新：2026-08-12
+当前状态更新：2026-08-13
 状态：`AUTHORITATIVE`  
 状态夹具：`unboundry-state-fixtures.json`
 
 2026-08-07 三功能新增 21 条（TPL-001～007 / ZIP-001～006 / KEY-001～008）已全部经用户实页验收为 `PASS`，M11 放行门达成；其余历史统计与状态仍以各节为准，`INPUT-006`保持`PARTIAL`（Mureka真实生成暂缓）。
 2026-08-07 权限管理（PERM-001～012）与公共模板（PUB-001～011）已全部经用户实页验收为 `PASS`，两功能放行门达成；生成安全「并发与频率」上限按用户要求放宽至 1000（v33）。
 2026-08-09 用户实页确认 `STORAGE-004 / PERF-002～005 / DEP-004` 全部通过；六项均由 `USER_RECHECK` 改为 `PASS`，该验收收口时点矩阵无 `USER_RECHECK` 项。
-2026-08-09 用户确认全量修复施工文档并启动一次性离线 Goal；原有产品 PASS 不变。REM-001～REM-009B 已完成离线工程候选并进入 `USER_REVIEW`；REM-010 为 `IN_PROGRESS`，仅 runtime role/lease/drain leaf、m93 隔离合同与 legacy deploy fail-close 已落地，尚未接入应用生命周期、未完成/未验收；REM-011 为 `NOT_STARTED`。schema39 仅离线，线上 v0.5.1/schema37 不变，production HOLD。
+
+2026-08-13 用户在隔离实页发现 default 项目卡片错误路由与 Video 重复 Prompt 两个历史覆盖缺口；`CANVAS-019 / INPUT-005` 已在候选中修复并由安全定向17/17通过。用户随后在端口58352的同一隔离实页明确确认两项修改均通过，二者恢复为 `PASS`。页面修复后的首轮 full `930/931` 暴露 m44 协作 current-open reservation 竞态；产品协议修复后 m44+m91 targeted `15/15`，fresh full `117/117 specs、931/931 PASS`，异常计数全0，证据绑定文档同步前 429-file snapshot `db91d80b…`，4173 listener不变、suite cleaned、exit0。
+2026-08-09 用户确认全量修复施工文档并启动一次性离线 Goal；原有产品 PASS 不变。REM-001～REM-009B 已完成离线工程候选并进入 `USER_REVIEW`；REM-010 为 `IN_PROGRESS`：runtime role、跨进程 active lease、请求/SSE/generation drain 已接入，当前发现清单为 `117 specs / 931 tests`，源码 `309 = 286 TS/TSX + 23 JS/MJS`，运维 `18 = 15 行为 + 3 冻结`。第一轮 full `930/931 PASS` 唯一暴露 m92 fixture 空 maintenance mode 被严格合同以 `RUNTIME_ROLE_INVALID` 拒绝；未放宽产品 parser，仅修 fixture 为 runtime role `active`、maintenance `0` 并在 m93 补空串拒绝。m92+m93 targeted `9/9 PASS` 后，fresh full 在 Node `22.23.1` / npm `10.9.8` 下为 `117/117 specs、931/931 PASS`，failed/skipped/retries/reportErrors/blocked 全 0，`deniedViteWildcardProbes=534`；builder operational `attempts=1 / builderInvocations=3 / passed=1 / failed=0`。HEAD `9a76edc3deadad7fe1552977bb3f92baad019542` 下 429-file tested source snapshot `1e96e26feb6334611e9c2205e22d25c6eacbac54b224f44bd3b26bdcfd6f030b` 前后不变，4173 listener `dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae` 前后不变，suite cleaned、exit 0。Docker/第二验证机 builder/ops 子门继续有效。这仍不是正式 fixed candidate、REM-011 三轮、G0～G6、原生产同版本/模块、运行/迁移/切换、用户 PASS 或发布授权，不能改为 `USER_REVIEW`/PASS。REM-011 为 `NOT_STARTED`，production HOLD。
+
+`1e96e26f…` 是 m92 fixture 窄修复后、上一轮六文档同步前脏功能树的历史 tested source 指纹；不绑定 commit，也不冒充最新或正式候选 full。
 
 ## 1. 判定规则
 
@@ -164,7 +168,7 @@
 | INPUT-002 | P0 | 统一输入解析与UI状态 | 从edge解析来源及`empty/uploading/ready/invalid/missing`；统一引用卡、角色、顺序、阻塞原因、删除/撤销和刷新恢复 | 四节点已共用edge解析器、引用卡和阻塞状态；2026-08-05用户实页确认就绪/上传中断/来源缺失/校验失败状态卡与原因、edge保留、删卡/撤销/刷新持久化（隔离4188），结合INPUT-007刷新与服务重启证据收口 | PASS |
 | INPUT-003 | P0 | Image的Text+Image闭环 | 上游Text作为提示词母版，上游Image作为参考图；自身Prompt为空可用母版，两者都有时显示最终合并Prompt；服务端保存不可变输入快照 | Text+Image、最终Prompt预览、assetId输入快照及前后端预检已有候选；2026-08-05用户实页确认空Prompt使用母版、补充后显示合并最终Prompt、删卡/撤销/刷新保持（隔离4189 fixture、零付费） | PASS |
 | INPUT-004 | P0 | Text四类上游 | Text、Image、Video、Audio均可作为理解输入；自身指令默认必填，模型可配置上游Text替代；不支持媒体时保留edge并显示模型不兼容 | Text已接共享解析、四类引用卡、任务快照和真实任务入口；2026-08-05用户实页确认紧凑四类引用卡、详情浮层唯一、+N溢出及不可生成提示收起（零费用）；真实任务`09ec3592-69d7-4dab-8f41-cf7d7c97f784`用Gemini 3.5 Flash Lite连Image/Video/Audio三上游成功生成并返回结果，任务快照三入参完整；用户宣布验收通过 | PASS |
-| INPUT-005 | P0 | Video全能参考 | Text、Image、Video、Audio卡片及首帧/尾帧/主体/普通参考角色；Seedance当前规则最多9图/3视频/3音频；提交前完成参数、费用和Provider能力预检 | Video已接四类解析、角色、数量、阻塞原因和任务快照；2026-08-05用户实页确认四类卡片、主体/参考图片/参考视频/参考音频/指令角色、首尾帧模式切换、仅文字模型切换保留不兼容edge及刷新持久化（隔离4185、零费用）；9图/3视频/3音频真实提交已打通：4173 真实画布 Seedance 2.0 Mini 全能参考 9图/3视频/3音频（视频1280×720、合计14.5秒，音频合计14秒）点击 Generate，方舟任务`cgt-20260805223417-9jrxf`成功，结果进入私有OSS（4.096秒，¥2.54，usage 181,210 tokens）；提交前预检与 Provider 能力预检证据齐备，另补参考视频总像素≥409600 的服务端校验与存量回填；用户在4173实页确认结果并宣布验收通过 | PASS |
+| INPUT-005 | P0 | Video全能参考 | Text、Image、Video、Audio卡片及首帧/尾帧/主体/普通参考角色；已就绪上游Text或Video本节点Prompt任一即可提供最终Prompt，两者都有按顺序合并、两者都无仍阻止；Seedance当前规则最多9图/3视频/3音频；提交前完成参数、费用和Provider能力预检 | 2026-08-05 四类卡片、角色、持久化及9图/3视频/3音频真实生成 PASS 证据继续保留。2026-08-13 用户发现旧规则虽已解析 `Text → Video`，仍误强制重复填写本节点Prompt；共享前后端解析器已修正，m30 同一既有测试覆盖 `Text + Image → Video` 空本节点Prompt通过、无任何文字仍阻止及服务端零任务/零付费请求，定向17/17通过；用户随后在当前隔离实页确认提示消失与连线语义正确 | PASS |
 | INPUT-006 | P1 | Audio文字合并 | 只接受Text上游；区分上游母版、自身Prompt和歌词，展示最终合并结果；重试不得重复任务 | Audio已接上游Text解析和合并候选；2026-08-05用户实页确认母版/自身Prompt/歌词区分显示、合并正确、角色切换与刷新持久化（隔离4186、零费用）；Mureka真实生成仍由`AUDIO-REAL-001`暂缓 | PARTIAL |
 | INPUT-007 | P0 | 新模型、预检和持久化 | 管理员配置输入类型、数量、角色、组合、必填条件和Provider适配；不兼容切换不静默删引用；刷新/重启/复制/删除/重试不重复 | 管理页、共享角色/组合/Prompt策略、服务端重解析和输入快照已有候选；2026-08-05用户实页确认模型切换保留不兼容edge、首尾帧角色策略、9图/3视频/3音频超限提示、删除/撤销、刷新与服务重启持久化（隔离4187），复制目标唯一且不复制引用、上传中断/来源缺失/校验失败状态保留edge并显示原因、刷新持久化（隔离4188）；全程零费用、任务0、媒体1、副本唯一；重试/历史去重/余额保护由既有`OPEN-007/DATA-004/SAFETY-001`覆盖 | PASS |
 
@@ -190,7 +194,7 @@
 | SAFETY-002 | P0 | 服务端 admission | 费用统计按账号隔离并支持账号独立限额 | 2026-08-08 用户决定取消全部金额限制；v36 删除账号限额表与相关逻辑 | 已移除 |
 | SAFETY-003 | P1 | 「我的连接」页内区块 | 账号独立消耗上限设置与已用展示 | 2026-08-08 随金额限制功能整体移除；m81 专项删除，登录用例迁至 m11 | 已移除 |
 | SAFETY-004 | P0 | 全项目 | 不再存在任何生成金额限制/上限：无全局/账号/模型级预算、无费用未知拦截、无“额度已用完”文案；任务成本仍记录（仅审计参考）；付费模型安全校验（Base64/时长/参考素材）不因移除成本而失效 | m14 3/3（含无成本字段断言）、m11 5/5、m20 19 路径、m27 20/20、m22/m38/m44/m49/m52/m55/m56/m60/m65/m10 全过、m74 仅剩已知基线失败、v36 真实库副本迁移演练通过；2026-08-09 用户实页确认通过 | PASS |
-| CANVAS-019 | P1 | `/canvas/projects` | 工作空间固定显示“默认画布”卡片（不可删除、不可选择），默认画布里的节点与素材始终有入口，不再出现“画布有内容但工作空间找不到” | 服务端 `/api/projects` 恒返回 default 卡片、m66 14/14（含默认卡片用例）；2026-08-09 用户实页确认通过 | PASS |
+| CANVAS-019 | P1 | `/canvas/projects` | 工作空间固定显示“默认画布”卡片（不可删除、不可选择），点击后进入规范 `/canvas`，默认画布里的节点与素材始终有入口，不得经 `/canvas/default` 回跳工作空间 | 2026-08-09 默认卡片可见性实页 PASS 证据继续保留；2026-08-13 用户发现点击虚拟 default 卡片会经不存在的项目路由回跳。当前候选统一 default 卡片/返回入口到 `/canvas`，m11 新增绿地正向点击并等待持久化就绪，m11+m30 定向17/17通过；用户随后在当前隔离实页确认默认画布可正常进入且不再回跳 | PASS |
 | AUTH-004 | P0 | 登录页 | 登录（含首次创建管理员）成功后直接进入工作空间，不再停在登录前的画布 URL | m81 登录落地用例、登录后 `window.location` 强制 `/canvas/projects`；2026-08-09 用户实页确认通过 | PASS |
 | AUTH-005 | P0 | 账号管理 | 管理员可创建第二个及更多管理员账号（角色可选），创建写审计；普通管理员之间可互相停用/删除/改角色/重置密码 | m11 7/7（多管理员创建与互管）、m78 7/7、OpenAPI 同步；2026-08-09 用户实页确认通过 | PASS |
 | AUTH-006 | P0 | 账号管理 | 第一个创建的管理员自动成为受保护最高权限账号（mymy/麦哥）；其他管理员永远不能停用/删除/降级/重置密码/改权限它；root 自己也不能在网页上改自己角色/删除自己；账号管理页显示“最高权限”徽标并禁用操作 | v37 迁移（最早管理员置 protected）、m11 受保护矩阵、真实库副本演练确认麦哥被标记；2026-08-09 用户实页确认通过 | PASS |
@@ -443,7 +447,7 @@
 | REM-008 | P1 | 登录/SSE/大文件/ffmpeg/Provider/OSS 资源和网络边界受控；安全头、依赖、脚本、内存和必要包拆分通过压力验证 | F-012～F-015 离线候选范围已收口；保留500MiB合同，登录/SSE有界准入、受控流式媒体、进程/账号/磁盘reservation、ffmpeg/ffprobe有界队列与进程组终止、Provider/OSS DNS pinning/私网/IPv6/重定向拒绝、安全头、nanoid3.3.18、密码重置/存储修复及按需包/历史分页/懒加载/缓存URL回收已完成。测试运行于功能提交前 HEAD `d63af1224bbadfab00cdd65256c16afaf4195fa1` 下指纹 `79625ac9768e99351f00190389a76e19945355405a3235608f219afd4d2d81be`：核心15-spec三轮588/588、全量111/891且891/891 PASS，异常计数0、full deniedViteWildcardProbes492；Node22.23.1/npm10.9.8；源码277 TS+17 JS，op12=9+3；4173 hash `09d55bc82aab1e1f04aae60397395befd6d17c41b5b2622bcde7c4c7b1b8ec2` 不变。功能提交`ff9a2adbb9ba93c9646935b2b22b318fb5503f21`含相同功能文件，未在commit/docs后重跑。F-025只关闭密码/修复脚本子范围，`mirror-oss` / `backup-to-oss` 继续哈希冻结；F-030只收口当前可验证P2子范围；仅单active process，非跨进程/多机/OS全局配额 | USER_REVIEW |
 | REM-009A | P0 | 建立真正只读的数据库/媒体/密钥备份、合成库恢复、损坏拒绝、加密与故障注入底座；备份连接绝不调用 openAppDatabase | 格式2逐文件加密+独立签名；源库只复制到私有临时目录后处理；schema37/19表+sqlite_sequence/密钥真解密/本地媒体/孤儿/假OSS版本与校验全覆盖；不可覆盖发布、marker fail-closed、路径/密钥/权限/硬链接与损坏矩阵完成。m10 9/9、最终三轮27/27、最终安全全量105/542且542/542，0 fail/skip/retry/reportError/blocked；TS/TSX262/262、JS/MJS15/15；两路独立终审无P0/P1；schema37/package0.5.1不变 | USER_REVIEW |
 | REM-009B | P0 | 用最终候选执行备份恢复、v0.5.1 双向数据格式兼容、必要桥梁与迁移失败恢复演练 | 合成富数据/媒体/密钥/假OSS已完成格式2恢复、one-shot migration、故障恢复、假OSS重建和冻结v0.5.1→当前bridge→schema39数据格式与安全拒绝边界矩阵；exact v0.5.1对schema39安全拒绝，迁移后回滚目标不是v0.5.1。父HEAD`bbcd5e0…`同内容树SHA`7cf46804…`：核心三轮399/399、全量114/912且912/912 PASS，异常0；源码283 TS+20 JS，op15=12+3；listener`1be6a5…`不变。功能提交`9a158a92563814791fefb8d4e6c5531eca610d78`含相同内容，commit/docs后未重跑。同UID非协作reservation替换为残余边界；无真实数据/Provider/OSS/生产证明 | USER_REVIEW |
-| REM-010 | P0 | 固定 SHA 不可变 release；三层健康检查；活动任务归零；单任务处理器；请求排空；跨版本数据格式矩阵、离线切换和回滚全过 | 仅runtime role/lease/drain leaf、m93隔离合同和legacy deploy立即fail-close；尚未接入应用启动/请求/worker/SSE，也无不可变release、切换或回滚完成证据，未完成/未验收 | IN_PROGRESS |
+| REM-010 | P0 | 固定 SHA 不可变 release；三层健康检查；活动任务归零；单任务处理器；请求/SSE/generation 排空；跨版本数据格式矩阵、离线切换和回滚全过 | runtime/跨进程lease/drain已接线；当前117 specs/931 tests，源码309=286 TS+23 JS，op18=15+3。m92 fixture窄修复后的上一轮 full 931/931 历史证据继续保留；最新页面修复后首轮full 930/931暴露m44协作reservation竞态，产品协议修复后m44+m91 targeted15/15、fresh full 117/117 specs且931/931 PASS，异常计数0、denied534，builder1/3/1/0；文档前脏树429-file SHA`db91d80b…`与listener`dfd25f…`不变，suite cleaned/exit0。Docker fail-close及第二Ubuntu ephemeral builder/ops PASS仍有效。仍缺原生产同版本环境、固定clean candidate G0～G6、REM-011三轮及正式版本/发布授权，production HOLD | IN_PROGRESS |
 | REM-011 | P0 | G0～G7 全绿；所有发现测试零失败/意外跳过/retry；三轮全新环境；用户验收；版本号与发布分别确认 | NOT_STARTED；G7未绿，无固定正式candidate release及干净隔离G0～G6证据，用户未确认正式版本号或授权发布 | NOT_STARTED |
 
-REM-009B 的 `USER_REVIEW` 只代表离线自动实现与同源自动证据完成，不是用户 PASS、USER_RECHECK、真实数据/Provider/OSS、生产迁移、正式 candidate release 或发布许可。一次独立审计曾越权对 `app/data` 执行 immutable 只读聚合查询，结果未纳入证据，写入和外部请求为0，之后未再访问；safe runner/tests真实路径成功访问仍为0。package0.5.1/schema39仅离线，线上v0.5.1/schema37不变，production HOLD；当前施工切换REM-010，REM-011/G7未开始。
+REM-009B 的 `USER_REVIEW` 与历史 `114/912`、源码 `303`、运维 `15` 只代表该批离线自动实现与同源自动证据，不是当前 REM-010 动态结果、用户 PASS、USER_RECHECK、真实数据/Provider/OSS、生产迁移、正式 candidate release 或发布许可。一次独立审计曾越权对 `app/data` 执行 immutable 只读聚合查询，结果未纳入证据，写入和外部请求为0，之后未再访问；safe runner/tests真实路径成功访问仍为0。package0.5.1/schema39仅离线，线上v0.5.1/schema37不变，production HOLD；REM-010 保持 IN_PROGRESS，REM-011/G7未开始。

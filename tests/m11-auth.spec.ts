@@ -83,7 +83,14 @@ test("login lands on the workspace instead of the previous canvas URL", async ({
 
     await expect(page).toHaveURL(`${origin}/canvas/projects`);
     await expect(page.getByTestId("workspace-page")).toBeVisible();
-    await expect(page.getByTestId("project-card-default")).toBeVisible();
+    const defaultCard = page.getByTestId("project-card-default");
+    await expect(defaultCard).toBeVisible();
+    await defaultCard.click();
+    await expect(page).toHaveURL(`${origin}/canvas`);
+    await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+      "data-persistence-ready",
+      "true",
+    );
   } finally {
     if (server) await stopServer(server);
     await rm(dataDirectory, { force: true, recursive: true });

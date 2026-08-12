@@ -1,5 +1,14 @@
-import { readFile } from "node:fs/promises";
+import {
+  closeSync,
+  constants as fileConstants,
+  lstatSync,
+  openSync,
+  readSync,
+  realpathSync,
+} from "node:fs";
+import { readFile, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
@@ -23,6 +32,9 @@ import { mediaMetadataApi } from "./server/mediaMetadataApi";
 import {
   generationTasks,
   initializePersistentGenerationTaskWorker,
+  prepareGenerationRuntimeRoleTeardown,
+  registerGenerationRuntimeRoleCoordinator,
+  unregisterGenerationRuntimeRoleCoordinatorBeforeStartup,
 } from "./server/generationTasks";
 import {
   mediaLifecycleStartupRecoveryAllowsReadiness,
@@ -56,7 +68,13 @@ import {
 import {
   coordinateRuntimeShutdown,
   createRuntimeLifecycle,
+  type RuntimeLifecycle,
 } from "./server/runtimeLifecycle";
+import {
+  createRuntimeRoleCoordinator,
+  runtimeRoleFromEnvironment,
+  type RuntimeRoleCoordinator,
+} from "./server/runtimeRole";
 
 import {
   currentVersion,
@@ -95,84 +113,174 @@ type ApiHandler = (
   next: ApiNext,
 ) => Promise<void> | void;
 
-let generationStartupWorkerGate:
+type RuntimeInstance = {
+  generationStartupWorkerGate: GenerationStartupWorkerGate;
+  lifecycle?: RuntimeLifecycle;
+  roleCoordinator?: RuntimeRoleCoordinator;
+  unregisterGeneration?: () => void;
+};
+
+type GenerationStartupWorkerGateState =
   | "deferred"
   | "failed"
   | "pending"
-  | "ready" = "pending";
-const runtimeLifecycle = createRuntimeLifecycle({
-  legacyStandbyDatabaseGuard: databaseMatchesFrozenSchema37Contract,
-  readinessDatabaseGuard: (database) => {
-    if (!mediaLifecycleStartupRecoveryAllowsReadiness(database)) return false;
-    if (generationStartupWorkerGate === "ready") return true;
-    if (generationStartupWorkerGate !== "deferred") return false;
-    const active = database.prepare(`
-      SELECT 1
-      FROM generation_tasks
-      WHERE state IN ('queued', 'running', 'recovering', 'retrying')
-      LIMIT 1
-    `).get();
-    if (active) return false;
-    // A startup-time marker/old snapshot may be repaired externally. A later
-    // read-only readiness probe may clear the gate only when no durable work
-    // was skipped; readiness never initializes the writer itself.
-    generationStartupWorkerGate = "ready";
-    return true;
-  },
-});
-type SignalListener = (...args: any[]) => void;
-let capturedViteSigtermListener: SignalListener | undefined;
-let restoreSigtermCapture: (() => void) | undefined;
+  | "ready";
 
-// Vite 8.1.5 registers its named CLI SIGTERM coordinator after resolving the
-// config and before invoking configureServer/configurePreviewServer. Capture
-// that exact function at registration time; a count/diff heuristic could erase
-// an unrelated host listener that happened to register during the same window.
-function armViteSigtermCapture() {
-  if (restoreSigtermCapture || capturedViteSigtermListener) return;
-  const originalOnce = process.once;
-  const interceptedOnce = function (
-    this: NodeJS.Process,
-    event: string | symbol,
-    listener: SignalListener,
-  ) {
-    const result = Reflect.apply(originalOnce, this, [event, listener]) as NodeJS.Process;
-    if (
-      event === "SIGTERM" &&
-      listener.name === "parentSigtermCallback"
-    ) {
-      capturedViteSigtermListener = listener;
-      restoreSigtermCapture?.();
-    }
-    return result;
-  };
-  restoreSigtermCapture = () => {
-    if (process.once === interceptedOnce) {
-      Object.defineProperty(process, "once", {
-        configurable: true,
-        value: originalOnce,
-        writable: true,
-      });
-    }
-    restoreSigtermCapture = undefined;
-  };
-  Object.defineProperty(process, "once", {
-    configurable: true,
-    value: interceptedOnce,
-    writable: true,
+type GenerationStartupWorkerGate = {
+  state: GenerationStartupWorkerGateState;
+};
+
+function createMainRuntimeLifecycle(
+  generationStartupWorkerGate: GenerationStartupWorkerGate,
+  roleCoordinator?: RuntimeRoleCoordinator,
+) {
+  const registeredActiveCoordinator = Boolean(
+    roleCoordinator?.role() === "active" &&
+      roleCoordinator.snapshot().activeLeaseHeld,
+  );
+  return createRuntimeLifecycle({
+    ...(registeredActiveCoordinator
+      ? {
+          beforeActiveLeaseRelease: () =>
+            prepareGenerationRuntimeRoleTeardown(roleCoordinator!),
+        }
+      : {}),
+    legacyStandbyDatabaseGuard: databaseMatchesFrozenSchema37Contract,
+    readinessDatabaseGuard: (database) => {
+      if (!mediaLifecycleStartupRecoveryAllowsReadiness(database)) return false;
+      if (generationStartupWorkerGate.state === "ready") return true;
+      if (generationStartupWorkerGate.state !== "deferred") return false;
+      const active = database.prepare(`
+        SELECT 1
+        FROM generation_tasks
+        WHERE state IN ('queued', 'running', 'recovering', 'retrying')
+        LIMIT 1
+      `).get();
+      if (active) return false;
+      // A startup-time marker/old snapshot may be repaired externally. A later
+      // read-only readiness probe may clear the gate only when no durable work
+      // was skipped; readiness never initializes the writer itself.
+      generationStartupWorkerGate.state = "ready";
+      return true;
+    },
+    ...(roleCoordinator ? { roleCoordinator } : {}),
   });
+}
+const runtimeOwnerSymbol = Symbol.for("unboundry.runtime.serve-owner.v1");
+type ProcessRuntimeOwner = {
+  runtime: RuntimeInstance;
+  token: symbol;
+};
+
+function claimProcessRuntimeOwner(owner: ProcessRuntimeOwner) {
+  const scope = globalThis as typeof globalThis & {
+    [runtimeOwnerSymbol]?: ProcessRuntimeOwner;
+  };
+  if (scope[runtimeOwnerSymbol]) return false;
+  scope[runtimeOwnerSymbol] = owner;
+  return true;
+}
+
+function releaseProcessRuntimeOwner(owner: ProcessRuntimeOwner) {
+  const scope = globalThis as typeof globalThis & {
+    [runtimeOwnerSymbol]?: ProcessRuntimeOwner;
+  };
+  if (scope[runtimeOwnerSymbol] === owner) {
+    delete scope[runtimeOwnerSymbol];
+  }
+}
+
+function containsPath(parent: string, child: string) {
+  const path = relative(parent, child);
+  return path !== "" && path !== ".." &&
+    !path.startsWith(`..${sep}`) && !path.startsWith(sep);
+}
+
+function safeMediaStartupRecoveryGate(rawGate: string) {
+  if (process.env.UNBOUNDRY_SAFE_TEST !== "1") return undefined;
+  let sentinelDescriptor: number | undefined;
+  try {
+    if (!/^(?:[a-z0-9._-]+)$/i.test(rawGate.slice(rawGate.lastIndexOf(sep) + 1))) {
+      return undefined;
+    }
+    const systemTemporaryRoot = realpathSync(String(
+      process.env.UNBOUNDRY_SYSTEM_TEMPORARY_ROOT ?? "",
+    ));
+    const testRoot = realpathSync(String(process.env.UNBOUNDRY_TEST_ROOT ?? ""));
+    const repositoryRoot = realpathSync(String(
+      process.env.UNBOUNDRY_TEST_REPOSITORY_ROOT ?? "",
+    ));
+    const originalRepositoryRoot = resolve(String(
+      process.env.UNBOUNDRY_ORIGINAL_REPOSITORY_ROOT ?? "",
+    ));
+    const sentinelPath = realpathSync(String(
+      process.env.UNBOUNDRY_SAFE_RUN_SENTINEL ?? "",
+    ));
+    const gateParent = realpathSync(resolve(rawGate, ".."));
+    const gate = join(gateParent, rawGate.slice(rawGate.lastIndexOf(sep) + 1));
+    const sentinel = lstatSync(sentinelPath);
+    const gateParentDetails = lstatSync(gateParent, { bigint: true });
+    const nonce = String(process.env.UNBOUNDRY_SAFE_RUN_NONCE ?? "");
+    const expectedNodeOptions = `--import=${join(
+      repositoryRoot,
+      "scripts/offline-network-guard.mjs",
+    )}`;
+    sentinelDescriptor = openSync(
+      sentinelPath,
+      fileConstants.O_RDONLY | (fileConstants.O_NOFOLLOW ?? 0),
+    );
+    const buffer = Buffer.alloc(256);
+    const bytesRead = readSync(
+      sentinelDescriptor,
+      buffer,
+      0,
+      buffer.length,
+      0,
+    );
+    if (bytesRead === buffer.length) return undefined;
+    const sentinelSource = buffer.toString("utf8", 0, bytesRead).trim();
+    buffer.fill(0);
+    if (
+      nonce.length < 16 || sentinelSource !== nonce ||
+      !sentinel.isFile() || sentinel.isSymbolicLink() || sentinel.nlink !== 1 ||
+      typeof process.getuid !== "function" || sentinel.uid !== process.getuid() ||
+      (sentinel.mode & 0o077) !== 0 ||
+      !gateParentDetails.isDirectory() || gateParentDetails.isSymbolicLink() ||
+      gateParentDetails.uid !== BigInt(process.getuid()) ||
+      (gateParentDetails.mode & 0o022n) !== 0n ||
+      !containsPath(systemTemporaryRoot, testRoot) ||
+      !containsPath(testRoot, gateParent) ||
+      !containsPath(systemTemporaryRoot, repositoryRoot) ||
+      repositoryRoot === originalRepositoryRoot ||
+      !containsPath(testRoot, sentinelPath) ||
+      process.env.NODE_OPTIONS !== expectedNodeOptions
+    ) return undefined;
+    const pinnedGateParent = lstatSync(gateParent, { bigint: true });
+    if (
+      pinnedGateParent.dev !== gateParentDetails.dev ||
+      pinnedGateParent.ino !== gateParentDetails.ino ||
+      pinnedGateParent.uid !== gateParentDetails.uid ||
+      pinnedGateParent.mode !== gateParentDetails.mode
+    ) return undefined;
+    return gate;
+  } catch {
+    return undefined;
+  } finally {
+    if (sentinelDescriptor !== undefined) closeSync(sentinelDescriptor);
+  }
 }
 
 function apiFailure(
   request: IncomingMessage,
   response: ServerResponse,
   error: unknown,
+  lifecycle: RuntimeLifecycle,
 ) {
   const known = error instanceof HttpRequestError;
   const status = known ? error.statusCode : 500;
   const code = known ? error.code : "INTERNAL_ERROR";
   const message = known ? error.message : "Internal server error";
-  runtimeLifecycle.setResponseCode(request, code);
+  lifecycle.setResponseCode(request, code);
   if (response.writableEnded || response.destroyed) return;
   if (response.headersSent) {
     response.destroy();
@@ -184,23 +292,39 @@ function apiFailure(
   response.end(JSON.stringify({
     error: message,
     code,
-    requestId: runtimeLifecycle.requestId(request),
+    requestId: lifecycle.requestId(request),
   }));
 }
 
-function apiBoundary(routeId: string, handler: ApiHandler) {
+function apiBoundary(
+  routeId: string,
+  handler: ApiHandler,
+  runtime: RuntimeInstance,
+) {
+  const installedRuntime = runtime;
   return (
     request: IncomingMessage,
     response: ServerResponse,
     next: ApiNext,
   ) => {
-    runtimeLifecycle.setRouteId(request, routeId);
-    void runtimeLifecycle
+    const lifecycle = installedRuntime.lifecycle;
+    if (!lifecycle) {
+      response.statusCode = 503;
+      response.setHeader("Cache-Control", "no-store");
+      response.setHeader("Content-Type", "application/json; charset=utf-8");
+      response.end(JSON.stringify({
+        code: "SERVICE_RUNTIME_UNAVAILABLE",
+        error: "Runtime is unavailable",
+      }));
+      return;
+    }
+    lifecycle.setRouteId(request, routeId);
+    void lifecycle
       .trackHandler(async () => {
         try {
           await handler(request, response, next);
         } catch (error) {
-          apiFailure(request, response, error);
+          apiFailure(request, response, error, lifecycle);
         }
       })
       .catch(() => {
@@ -221,43 +345,106 @@ type RuntimeServer = {
   };
 };
 
-function securityHeadersApi(): Plugin {
-  const install = (server: RuntimeServer, allowDevelopmentHmr: boolean) => {
-    server.middlewares.use("/", (request, response, next) => {
-      const requestUrl = request.url ?? "";
-      const [pathname, query = ""] = requestUrl.split("?", 2);
-      const responsiveTarget =
-        /^(?:1280x720|1440x900|1512x982|1920x1080)$/;
-      const allowSameOriginChildFrames = allowDevelopmentHmr &&
-        /^\/__responsive-preview\/(?:1280x720|1440x900|1512x982|1920x1080)$/.test(
-          pathname ?? "",
-        );
-      const allowSameOriginEmbedding = allowDevelopmentHmr &&
-        pathname === "/__fixture/shell.empty.primary" &&
-        responsiveTarget.test(new URLSearchParams(query).get("embedded") ?? "");
-      applySecurityHeaders(request, response, {
-        allowDevelopmentHmr,
-        allowSameOriginChildFrames,
-        allowSameOriginEmbedding,
-      });
-      next();
+function installSecurityHeaders(
+  server: RuntimeServer,
+  allowDevelopmentHmr: boolean,
+) {
+  server.middlewares.use("/", (request, response, next) => {
+    const requestUrl = request.url ?? "";
+    const [pathname, query = ""] = requestUrl.split("?", 2);
+    const responsiveTarget =
+      /^(?:1280x720|1440x900|1512x982|1920x1080)$/;
+    const allowSameOriginChildFrames = allowDevelopmentHmr &&
+      /^\/__responsive-preview\/(?:1280x720|1440x900|1512x982|1920x1080)$/.test(
+        pathname ?? "",
+      );
+    const allowSameOriginEmbedding = allowDevelopmentHmr &&
+      pathname === "/__fixture/shell.empty.primary" &&
+      responsiveTarget.test(new URLSearchParams(query).get("embedded") ?? "");
+    applySecurityHeaders(request, response, {
+      allowDevelopmentHmr,
+      allowSameOriginChildFrames,
+      allowSameOriginEmbedding,
     });
-  };
-  return {
-    enforce: "pre",
-    name: "unboundry-security-headers",
-    configurePreviewServer(server) {
-      install(server as RuntimeServer, false);
-    },
-    configureServer(server) {
-      install(server as RuntimeServer, true);
-    },
-  };
+    next();
+  });
 }
 
-function runtimeFoundationApi(): Plugin {
-  const install = (server: RuntimeServer) => {
-    const unregisterVersionLifecycle = registerVersionLifecycle(runtimeLifecycle);
+function runtimeFoundationApi(
+  runtime: RuntimeInstance,
+  allowDevelopmentHmr: boolean,
+): Plugin {
+  const install = async (server: RuntimeServer) => {
+    const processOwner: ProcessRuntimeOwner = {
+      runtime,
+      token: Symbol("unboundry.runtime.owner"),
+    };
+    if (!claimProcessRuntimeOwner(processOwner)) {
+      // This Vite instance already owns watcher/ws resources, even though it
+      // must not create a second application runtime. Close only this raw
+      // server; the installed runtime and its exact signal listener stay put.
+      await server.close();
+      throw new Error(
+        "RUNTIME_RESTART_REQUIRED: close the current active runtime before starting another",
+      );
+    }
+    if (runtime.lifecycle || runtime.roleCoordinator) {
+      releaseProcessRuntimeOwner(processOwner);
+      await server.close();
+      throw new Error(
+        "RUNTIME_RESTART_REQUIRED: runtime instance is already installed",
+      );
+    }
+    let installedRoleCoordinator: RuntimeRoleCoordinator | undefined;
+    let installedLifecycle: RuntimeLifecycle | undefined;
+    let installedGenerationUnregister: (() => void) | undefined;
+    try {
+      installedRoleCoordinator = createRuntimeRoleCoordinator({
+        dataDirectory: appDataDirectory(),
+        role: runtimeRoleFromEnvironment(),
+        ...(process.env.UNBOUNDRY_RUNTIME_DIR
+          ? { runtimeDirectory: process.env.UNBOUNDRY_RUNTIME_DIR }
+          : {}),
+      });
+      runtime.roleCoordinator = installedRoleCoordinator;
+      if (
+        installedRoleCoordinator.role() === "active" &&
+        installedRoleCoordinator.snapshot().activeLeaseHeld
+      ) {
+        installedGenerationUnregister =
+          registerGenerationRuntimeRoleCoordinator(installedRoleCoordinator);
+        runtime.unregisterGeneration = installedGenerationUnregister;
+      }
+      installedLifecycle = createMainRuntimeLifecycle(
+        runtime.generationStartupWorkerGate,
+        installedRoleCoordinator,
+      );
+      runtime.lifecycle = installedLifecycle;
+    } catch (error) {
+      if (installedGenerationUnregister && installedRoleCoordinator) {
+        try {
+          unregisterGenerationRuntimeRoleCoordinatorBeforeStartup(
+            installedRoleCoordinator,
+          );
+          installedGenerationUnregister();
+        } catch {}
+      }
+      let coordinatorClosed = !installedRoleCoordinator;
+      try {
+        installedRoleCoordinator?.close();
+        coordinatorClosed = true;
+      } catch {}
+      if (coordinatorClosed) {
+        runtime.unregisterGeneration = undefined;
+        runtime.roleCoordinator = undefined;
+        runtime.lifecycle = undefined;
+        releaseProcessRuntimeOwner(processOwner);
+      }
+      throw error;
+    }
+    const exactRoleCoordinator = installedRoleCoordinator;
+    const exactLifecycle = installedLifecycle;
+    let unregisterVersionLifecycle: () => void = () => undefined;
     const exactHealth = (kind: "live" | "ready") => apiBoundary(
       `health.${kind}`,
       (request, response, next) => {
@@ -266,53 +453,115 @@ function runtimeFoundationApi(): Plugin {
           next();
           return;
         }
-        runtimeLifecycle.healthApi(request, response, kind);
+        exactLifecycle.healthApi(request, response, kind);
       },
+      runtime,
     );
-    server.middlewares.use("/api/health/live", exactHealth("live"));
-    server.middlewares.use("/api/health/ready", exactHealth("ready"));
-    server.middlewares.use("/api", runtimeLifecycle.middleware);
-
     let signalShutdownStarted = false;
+    let closePromise: Promise<void> | undefined;
+    const originalClose = server.close.bind(server);
+    const removeRuntimeListeners = () => {
+      process.removeListener("SIGTERM", onSigterm);
+      process.removeListener("SIGINT", onSigint);
+      unregisterVersionLifecycle();
+    };
+    const finalizeRuntimeTeardown = () => {
+      installedGenerationUnregister?.();
+      runtime.unregisterGeneration = undefined;
+      runtime.roleCoordinator = undefined;
+      runtime.lifecycle = undefined;
+      releaseProcessRuntimeOwner(processOwner);
+      removeRuntimeListeners();
+    };
+    const closeRuntime = () => {
+      if (closePromise) return closePromise;
+      closePromise = (async () => {
+        const drained = await exactLifecycle.beginShutdown();
+        if (!drained.drained) {
+          throw new Error("Runtime shutdown did not drain");
+        }
+        // beginShutdown closes generation writers and releases the active
+        // lease before Vite closes its listener. Admission is already frozen,
+        // so a new owner cannot overlap old business work. Only after Vite
+        // confirms close do we clear the coordinator identity for reload.
+        await originalClose();
+        finalizeRuntimeTeardown();
+      })();
+      return closePromise;
+    };
+    server.close = closeRuntime;
     const closeForSignal = () => {
       if (signalShutdownStarted) return;
       signalShutdownStarted = true;
       void coordinateRuntimeShutdown({
-        beginShutdown: () => runtimeLifecycle.beginShutdown(),
+        beginShutdown: () => exactLifecycle.beginShutdown(),
         close: () => server.close(),
         closeAllConnections: () => server.httpServer?.closeAllConnections?.(),
-        deadlineMs: runtimeLifecycle.getShutdownDeadlineMs(),
+        deadlineMs: exactLifecycle.getShutdownDeadlineMs(),
       }).then((exitCode) => process.exit(exitCode));
     };
     const onSigterm = () => closeForSignal();
     const onSigint = () => closeForSignal();
-    restoreSigtermCapture?.();
-    const viteSigtermListener = capturedViteSigtermListener;
-    capturedViteSigtermListener = undefined;
-    if (!viteSigtermListener) {
-      throw new Error(
-        "Unable to identify the Vite SIGTERM listener safely",
-      );
-    }
-    process.removeListener("SIGTERM", viteSigtermListener);
-    process.prependListener("SIGTERM", onSigterm);
-    process.prependListener("SIGINT", onSigint);
-    server.httpServer?.once("close", () => {
-      if (!signalShutdownStarted) {
-        process.removeListener("SIGTERM", onSigterm);
-        process.removeListener("SIGINT", onSigint);
+    try {
+      // Security headers must precede health and lifecycle handlers because
+      // those fail-closed handlers can end an API response without calling next.
+      installSecurityHeaders(server, allowDevelopmentHmr);
+      unregisterVersionLifecycle = registerVersionLifecycle(exactLifecycle);
+      server.middlewares.use("/api/health/live", exactHealth("live"));
+      server.middlewares.use("/api/health/ready", exactHealth("ready"));
+      server.middlewares.use("/api", exactLifecycle.middleware);
+      const viteSigtermListeners = server.httpServer
+        ? process.listeners("SIGTERM").filter((listener) =>
+            listener.name === "parentSigtermCallback"
+          )
+        : [];
+      if (server.httpServer && viteSigtermListeners.length !== 1) {
+        throw new Error("Unable to identify the Vite SIGTERM listener safely");
       }
-      unregisterVersionLifecycle();
-    });
+      const [viteSigtermListener] = viteSigtermListeners;
+      if (viteSigtermListener) {
+        process.removeListener("SIGTERM", viteSigtermListener);
+      }
+      process.prependListener("SIGTERM", onSigterm);
+      process.prependListener("SIGINT", onSigint);
+      server.httpServer?.once("close", () => {
+        removeRuntimeListeners();
+      });
+      if (
+        process.env.UNBOUNDRY_SAFE_TEST === "1" &&
+        process.env.UNBOUNDRY_TEST_RUNTIME_CONFIGURE_FAILURE === "1"
+      ) {
+        throw new Error("M81 controlled runtime configure failure");
+      }
+      greenfieldDatabaseStartup(exactLifecycle, exactRoleCoordinator);
+      await mediaLifecycleStartupRecovery(
+        exactLifecycle,
+        exactRoleCoordinator,
+      );
+      persistentGenerationTaskStartup(
+        server,
+        exactLifecycle,
+        exactRoleCoordinator,
+        runtime.generationStartupWorkerGate,
+      );
+    } catch (error) {
+      try {
+        await closeRuntime();
+      } catch {
+        // Cleanup failure can mean an indeterminate lease. Preserve the
+        // original startup error and keep that coordinator fail-closed.
+      }
+      throw error;
+    }
   };
   return {
     enforce: "pre",
     name: "unboundry-runtime-foundation",
     configurePreviewServer(server) {
-      install(server as RuntimeServer);
+      return install(server as RuntimeServer);
     },
     configureServer(server) {
-      install(server as RuntimeServer);
+      return install(server as RuntimeServer);
     },
   };
 }
@@ -367,7 +616,7 @@ function devFixtureApi(): Plugin {
   };
 }
 
-function testDataDirectoryApi(): Plugin {
+function testDataDirectoryApi(runtime: RuntimeInstance): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
@@ -385,6 +634,7 @@ function testDataDirectoryApi(): Plugin {
         JSON.stringify({ dataDirectory: appDataDirectory() }),
       );
       },
+      runtime,
     ));
   };
   return {
@@ -398,49 +648,51 @@ function testDataDirectoryApi(): Plugin {
   };
 }
 
-function playlistExportApi(): Plugin {
+function playlistExportApi(runtime: RuntimeInstance): Plugin {
   return {
     name: "unboundry-playlist-export-api",
     configurePreviewServer(server) {
       server.middlewares.use(
         "/api/playlist/export",
-        apiBoundary("playlist.export", playlistExport),
+        apiBoundary("playlist.export", playlistExport, runtime),
       );
     },
     configureServer(server) {
       server.middlewares.use(
         "/api/playlist/export",
-        apiBoundary("playlist.export", playlistExport),
+        apiBoundary("playlist.export", playlistExport, runtime),
       );
     },
   };
 }
 
-function authenticationApi(): Plugin {
+function authenticationApi(runtime: RuntimeInstance): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
     middlewares.use("/api/version", apiBoundary(
       "version",
       (request, response) => versionApi(request, response, "version"),
+      runtime,
     ));
     middlewares.use("/api/updates", apiBoundary(
       "updates",
       (request, response) => versionApi(request, response, "updates"),
+      runtime,
     ));
-    middlewares.use("/api/auth", apiBoundary("auth", authApi));
-    middlewares.use("/api", apiBoundary("auth-gate", authGate));
+    middlewares.use("/api/auth", apiBoundary("auth", authApi, runtime));
+    middlewares.use("/api", apiBoundary("auth-gate", authGate, runtime));
     middlewares.use(
       "/api/admin/users",
-      apiBoundary("admin.users", adminUsersApi),
+      apiBoundary("admin.users", adminUsersApi, runtime),
     );
     middlewares.use(
       "/api/account-context",
-      apiBoundary("account.context", accountContextApi),
+      apiBoundary("account.context", accountContextApi, runtime),
     );
     middlewares.use(
       "/api/account-credentials",
-      apiBoundary("account.credentials", accountCredentialsApi),
+      apiBoundary("account.credentials", accountCredentialsApi, runtime),
     );
   };
   return {
@@ -454,15 +706,15 @@ function authenticationApi(): Plugin {
   };
 }
 
-function modelCatalogApi(): Plugin {
+function modelCatalogApi(runtime: RuntimeInstance): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
     middlewares.use(
       "/api/admin/models",
-      apiBoundary("admin.models", adminModelsApi),
+      apiBoundary("admin.models", adminModelsApi, runtime),
     );
-    middlewares.use("/api/models", apiBoundary("models", publicModelsApi));
+    middlewares.use("/api/models", apiBoundary("models", publicModelsApi, runtime));
   };
   return {
     name: "unboundry-model-catalog-api",
@@ -475,17 +727,17 @@ function modelCatalogApi(): Plugin {
   };
 }
 
-function templatesApi(): Plugin {
+function templatesApi(runtime: RuntimeInstance): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
     middlewares.use(
       "/api/admin/templates",
-      apiBoundary("admin.templates", adminTemplatesApi),
+      apiBoundary("admin.templates", adminTemplatesApi, runtime),
     );
     middlewares.use(
       "/api/templates",
-      apiBoundary("templates", templateCatalogApi),
+      apiBoundary("templates", templateCatalogApi, runtime),
     );
   };
   return {
@@ -499,13 +751,13 @@ function templatesApi(): Plugin {
   };
 }
 
-function agentConfigApi(): Plugin {
+function agentConfigApi(runtime: RuntimeInstance): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
     middlewares.use(
       "/api/agent-config",
-      apiBoundary("agent-config", agentConfigurationApi),
+      apiBoundary("agent-config", agentConfigurationApi, runtime),
     );
   };
   return {
@@ -519,13 +771,13 @@ function agentConfigApi(): Plugin {
   };
 }
 
-function charactersApi(): Plugin {
+function charactersApi(runtime: RuntimeInstance): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
     middlewares.use(
       "/api/characters",
-      apiBoundary("characters", characterCatalogApi),
+      apiBoundary("characters", characterCatalogApi, runtime),
     );
   };
   return {
@@ -539,13 +791,13 @@ function charactersApi(): Plugin {
   };
 }
 
-function libraryApi(): Plugin {
+function libraryApi(runtime: RuntimeInstance): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
     middlewares.use(
       "/api/library",
-      apiBoundary("library", libraryCatalogApi),
+      apiBoundary("library", libraryCatalogApi, runtime),
     );
   };
   return {
@@ -559,13 +811,13 @@ function libraryApi(): Plugin {
   };
 }
 
-function providerProfilesApi(): Plugin {
+function providerProfilesApi(runtime: RuntimeInstance): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
     middlewares.use(
       "/api/admin/providers",
-      apiBoundary("admin.providers", adminProviderProfilesApi),
+      apiBoundary("admin.providers", adminProviderProfilesApi, runtime),
     );
   };
   return {
@@ -579,13 +831,13 @@ function providerProfilesApi(): Plugin {
   };
 }
 
-function providerCatalogApi(): Plugin {
+function providerCatalogApi(runtime: RuntimeInstance): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
     middlewares.use(
       "/api/admin/provider-catalog",
-      apiBoundary("admin.provider-catalog", adminProviderCatalogApi),
+      apiBoundary("admin.provider-catalog", adminProviderCatalogApi, runtime),
     );
   };
   return {
@@ -599,13 +851,13 @@ function providerCatalogApi(): Plugin {
   };
 }
 
-function storageAdminApi(): Plugin {
+function storageAdminApi(runtime: RuntimeInstance): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
     middlewares.use(
       "/api/admin/storage",
-      apiBoundary("admin.storage", adminStorageApi),
+      apiBoundary("admin.storage", adminStorageApi, runtime),
     );
   };
   return {
@@ -619,13 +871,13 @@ function storageAdminApi(): Plugin {
   };
 }
 
-function generationSafetyAdminApi(): Plugin {
+function generationSafetyAdminApi(runtime: RuntimeInstance): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
     middlewares.use(
       "/api/admin/generation-safety",
-      apiBoundary("admin.generation-safety", adminGenerationSafetyApi),
+      apiBoundary("admin.generation-safety", adminGenerationSafetyApi, runtime),
     );
   };
   return {
@@ -639,13 +891,13 @@ function generationSafetyAdminApi(): Plugin {
   };
 }
 
-function openApiPlugin(): Plugin {
+function openApiPlugin(runtime: RuntimeInstance): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
     middlewares.use(
       "/api/openapi.json",
-      apiBoundary("openapi", openApi),
+      apiBoundary("openapi", openApi, runtime),
     );
   };
   return {
@@ -659,8 +911,8 @@ function openApiPlugin(): Plugin {
   };
 }
 
-function playlistThumbnailApi(): Plugin {
-  const handler = apiBoundary("playlist.thumbnails", playlistThumbnails);
+function playlistThumbnailApi(runtime: RuntimeInstance): Plugin {
+  const handler = apiBoundary("playlist.thumbnails", playlistThumbnails, runtime);
   return {
     name: "unboundry-playlist-thumbnail-api",
     configurePreviewServer(server) {
@@ -672,7 +924,7 @@ function playlistThumbnailApi(): Plugin {
   };
 }
 
-function canvasPersistenceApi(): Plugin {
+function canvasPersistenceApi(runtime: RuntimeInstance): Plugin {
   const canvasHandler = (
     request: Parameters<typeof canvasPersistence>[0],
     response: Parameters<typeof canvasPersistence>[1],
@@ -682,38 +934,38 @@ function canvasPersistenceApi(): Plugin {
     }
     return canvasPersistence(request, response);
   };
-  const protectedCanvasHandler = apiBoundary("canvas", canvasHandler);
+  const protectedCanvasHandler = apiBoundary("canvas", canvasHandler, runtime);
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
     middlewares.use("/api/canvas", protectedCanvasHandler);
     middlewares.use(
       "/api/history",
-      apiBoundary("history", accountHistory),
+      apiBoundary("history", accountHistory, runtime),
     );
     middlewares.use(
       "/api/project-title",
-      apiBoundary("project-title", projectTitle),
+      apiBoundary("project-title", projectTitle, runtime),
     );
     middlewares.use(
       "/api/projects",
-      apiBoundary("projects", projectsApi),
+      apiBoundary("projects", projectsApi, runtime),
     );
     middlewares.use(
       "/api/assets",
-      apiBoundary("assets", assetStorage),
+      apiBoundary("assets", assetStorage, runtime),
     );
     middlewares.use(
       "/api/audio-assets",
-      apiBoundary("audio-assets", audioStorage),
+      apiBoundary("audio-assets", audioStorage, runtime),
     );
     middlewares.use(
       "/api/video-assets",
-      apiBoundary("video-assets", videoStorage),
+      apiBoundary("video-assets", videoStorage, runtime),
     );
     middlewares.use(
       "/api/media-metadata",
-      apiBoundary("media-metadata", mediaMetadataApi),
+      apiBoundary("media-metadata", mediaMetadataApi, runtime),
     );
   };
   return {
@@ -727,8 +979,8 @@ function canvasPersistenceApi(): Plugin {
   };
 }
 
-function generationTaskApi(): Plugin {
-  const handler = apiBoundary("generation-tasks", generationTasks);
+function generationTaskApi(runtime: RuntimeInstance): Plugin {
+  const handler = apiBoundary("generation-tasks", generationTasks, runtime);
   return {
     name: "unboundry-generation-task-api",
     configurePreviewServer(server) {
@@ -740,13 +992,19 @@ function generationTaskApi(): Plugin {
   };
 }
 
-function persistentGenerationTaskStartup(): Plugin {
-  const install = (server: RuntimeServer) => {
+function persistentGenerationTaskStartup(
+  server: RuntimeServer,
+  installedLifecycle: RuntimeLifecycle,
+  installedRoleCoordinator: RuntimeRoleCoordinator,
+  generationStartupWorkerGate: GenerationStartupWorkerGate,
+): void {
     const start = () => {
       if (
-        runtimeLifecycle.getMode() !== "active"
+        installedLifecycle.getMode() !== "active" ||
+        installedRoleCoordinator.role() !== "active" ||
+        !installedRoleCoordinator.snapshot().activeLeaseHeld
       ) {
-        generationStartupWorkerGate = "ready";
+        generationStartupWorkerGate.state = "ready";
         return;
       }
       const startupProbe = createRuntimeLifecycle({
@@ -758,75 +1016,99 @@ function persistentGenerationTaskStartup(): Plugin {
       // process-lifetime restart latch: an external one-shot migration cannot
       // turn this already-running process into a schema-39 writer.
       const startupProcessCanBecomeActive =
-        runtimeLifecycle.observeStartupDatabaseProbe(startupProbe);
+        installedLifecycle.observeStartupDatabaseProbe(startupProbe);
       if (
         !startupProcessCanBecomeActive || !startupProbe.ok || startupProbe.standby
       ) {
         // The ordinary readiness probe retains the exact failure code. This
         // worker must not open a writer on old schema, restore markers, or a
         // failed media readiness gate.
-        generationStartupWorkerGate = "deferred";
+        generationStartupWorkerGate.state = "deferred";
         return;
       }
+      installedRoleCoordinator.assertActive("generation-worker");
       void initializePersistentGenerationTaskWorker().then(
         () => {
-          generationStartupWorkerGate = "ready";
+          generationStartupWorkerGate.state = "ready";
         },
         () => {
-          generationStartupWorkerGate = "failed";
+          generationStartupWorkerGate.state = "failed";
         },
       );
     };
     if (!server.httpServer) {
-      generationStartupWorkerGate = "failed";
+      generationStartupWorkerGate.state = "failed";
       return;
     }
     if (server.httpServer.listening) start();
     else server.httpServer.once("listening", start);
-  };
-  return {
-    name: "unboundry-persistent-generation-task-startup",
-    configurePreviewServer(server) {
-      install(server as RuntimeServer);
-    },
-    configureServer(server) {
-      install(server as RuntimeServer);
-    },
-  };
 }
 
-function greenfieldDatabaseStartup(): Plugin {
-  const initialize = () => {
+function greenfieldDatabaseStartup(
+  installedLifecycle: RuntimeLifecycle,
+  installedRoleCoordinator: RuntimeRoleCoordinator,
+): void {
     // Maintenance is observation-only. Existing databases of every shape are
     // also left to standby/readiness classification by the database helper.
-    if (runtimeLifecycle.getMode() !== "active") return;
+    if (
+      installedLifecycle.getMode() !== "active" ||
+      installedRoleCoordinator?.role() !== "active" ||
+      !installedRoleCoordinator.snapshot().activeLeaseHeld
+    ) return;
+    installedRoleCoordinator.assertActive("database-initialize");
     initializeGreenfieldAppDatabaseAtProcessStartup();
-  };
-  return {
-    name: "unboundry-greenfield-database-startup",
-    configurePreviewServer: initialize,
-    configureServer: initialize,
-  };
 }
 
-function mediaLifecycleStartupRecovery(): Plugin {
-  const recover = async () => {
+async function mediaLifecycleStartupRecovery(
+  installedLifecycle: RuntimeLifecycle,
+  installedRoleCoordinator: RuntimeRoleCoordinator,
+): Promise<void> {
     // Vite awaits async configure hooks before accepting requests. Unexpected
     // database failures therefore fail startup visibly; per-object physical
     // failures remain durable failed/compensating rows and do not become ready.
-    const recovery = await recoverMediaLifecycleAtProcessStartup();
+    if (
+      installedRoleCoordinator?.role() !== "active" ||
+      !installedRoleCoordinator.snapshot().activeLeaseHeld
+    ) return;
+    const recovery = await installedRoleCoordinator.runDetached(
+      "writer",
+      async () => {
+        const controlledGate =
+          process.env.UNBOUNDRY_TEST_MEDIA_STARTUP_RECOVERY_GATE;
+        if (controlledGate) {
+          const pinnedGate = safeMediaStartupRecoveryGate(controlledGate);
+          if (!pinnedGate) {
+            throw new Error("M81 media startup gate attestation failed");
+          }
+          await writeFile(`${pinnedGate}.entered`, "entered\n", {
+            encoding: "utf8",
+            flag: "wx",
+          });
+          for (;;) {
+            try {
+              await readFile(pinnedGate);
+              break;
+            } catch (error) {
+              if (
+                !(error instanceof Error && "code" in error &&
+                  error.code === "ENOENT")
+              ) throw error;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          }
+        }
+        return recoverMediaLifecycleAtProcessStartup();
+      },
+    );
     if (recovery.schemaMigrationRestartRequired) {
-      runtimeLifecycle.requireRestartAfterStartupSchemaMigration();
+      installedLifecycle.requireRestartAfterStartupSchemaMigration();
     }
-  };
-  return {
-    name: "unboundry-media-lifecycle-startup-recovery",
-    configurePreviewServer: recover,
-    configureServer: recover,
-  };
 }
 
 export default defineConfig(({ command, isPreview }) => {
+  const runtime: RuntimeInstance = {
+    generationStartupWorkerGate: { state: "pending" },
+  };
   if (isPreview || process.env.NODE_ENV === "production") {
     const testOnlyEnvironmentVisible = Object.keys(process.env).some((name) =>
       name === "UNBOUNDRY_SAFE_TEST" || name.startsWith("UNBOUNDRY_TEST_"));
@@ -834,34 +1116,38 @@ export default defineConfig(({ command, isPreview }) => {
       throw new Error(productionTestEnvironmentError);
     }
   }
-  if (command === "serve") armViteSigtermCapture();
+  // Config resolution is side-effect free: no data path, SQLite lease, writer,
+  // or process-global lifecycle is opened here. Each plugin factory captures
+  // this immutable per-config holder; build config loads therefore cannot alter
+  // an already-running serve instance.
   return {
     root: fileURLToPath(new URL("./client", import.meta.url)),
     envDir: process.env.UNBOUNDRY_SAFE_TEST === "1" ? false : undefined,
     plugins: [
-      securityHeadersApi(),
+      // Install the lifecycle/close wrapper before any startup hook that can
+      // reject. Programmatic createServer callers may catch such a rejection
+      // without exiting the process, so the coordinator must remain closable.
+      ...(command === "serve"
+        ? [runtimeFoundationApi(runtime, !isPreview)]
+        : []),
       react(),
-      greenfieldDatabaseStartup(),
-      mediaLifecycleStartupRecovery(),
-      persistentGenerationTaskStartup(),
       devFixtureApi(),
-      runtimeFoundationApi(),
-      testDataDirectoryApi(),
-      authenticationApi(),
-      openApiPlugin(),
-      modelCatalogApi(),
-      templatesApi(),
-      agentConfigApi(),
-      charactersApi(),
-      libraryApi(),
-      providerProfilesApi(),
-      providerCatalogApi(),
-      storageAdminApi(),
-      generationSafetyAdminApi(),
-      canvasPersistenceApi(),
-      generationTaskApi(),
-      playlistExportApi(),
-      playlistThumbnailApi(),
+      testDataDirectoryApi(runtime),
+      authenticationApi(runtime),
+      openApiPlugin(runtime),
+      modelCatalogApi(runtime),
+      templatesApi(runtime),
+      agentConfigApi(runtime),
+      charactersApi(runtime),
+      libraryApi(runtime),
+      providerProfilesApi(runtime),
+      providerCatalogApi(runtime),
+      storageAdminApi(runtime),
+      generationSafetyAdminApi(runtime),
+      canvasPersistenceApi(runtime),
+      generationTaskApi(runtime),
+      playlistExportApi(runtime),
+      playlistThumbnailApi(runtime),
     ],
     build: {
       outDir: fileURLToPath(new URL("./dist/client", import.meta.url)),

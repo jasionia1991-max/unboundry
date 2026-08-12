@@ -42,6 +42,7 @@ import {
   databaseMatchesSchemaContract,
   migrationIncompleteMarker,
   openAppDatabase,
+  type CurrentDatabaseOpenCheckpoint,
   setAfterGreenfieldDatabasePublishForTests,
   setDuringCurrentDatabaseOpenForTests,
   setDuringGreenfieldDatabaseInitializationForTests,
@@ -61,7 +62,8 @@ const migrationScript = join(
 const currentOpenChildBootstrap = `
   import { createServer } from "vite";
   import { existsSync, writeFileSync } from "node:fs";
-  const [dataDirectory, startedPath, readyPath, releasePath] = process.argv.slice(1);
+  const [dataDirectory, startedPath, checkpointPlanJson] = process.argv.slice(1);
+  const checkpointPlans = JSON.parse(checkpointPlanJson);
   const server = await createServer({
     appType: "custom",
     configFile: false,
@@ -70,11 +72,14 @@ const currentOpenChildBootstrap = `
   });
   try {
     const module = await server.ssrLoadModule("/server/database.ts");
-    if (readyPath && releasePath) {
+    if (checkpointPlans.length > 0) {
+      const completed = new Set();
       module.setDuringCurrentDatabaseOpenForTests((checkpoint) => {
-        if (checkpoint !== "inspection-schema-validated") return;
-        writeFileSync(readyPath, "ready", { flag: "wx", mode: 0o600 });
-        while (!existsSync(releasePath)) {
+        const plan = checkpointPlans.find((item) => item.checkpoint === checkpoint);
+        if (!plan || completed.has(checkpoint)) return;
+        completed.add(checkpoint);
+        writeFileSync(plan.readyPath, "ready", { flag: "wx", mode: 0o600 });
+        while (plan.releasePath && !existsSync(plan.releasePath)) {
           Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
         }
       });
@@ -89,11 +94,16 @@ const currentOpenChildBootstrap = `
   }
 `;
 
+type CurrentOpenCheckpointPlan = Readonly<{
+  checkpoint: CurrentDatabaseOpenCheckpoint;
+  readyPath: string;
+  releasePath: string;
+}>;
+
 function runCurrentOpenChild(
   dataDirectory: string,
   startedPath: string,
-  readyPath = "",
-  releasePath = "",
+  checkpointPlans: readonly CurrentOpenCheckpointPlan[] = [],
 ) {
   return new Promise<{ pid: number; version: number }>((resolve, reject) => {
     const child = spawn(process.execPath, [
@@ -102,8 +112,7 @@ function runCurrentOpenChild(
       currentOpenChildBootstrap,
       dataDirectory,
       startedPath,
-      readyPath,
-      releasePath,
+      JSON.stringify(checkpointPlans),
     ], {
       cwd: process.cwd(),
       env: process.env,
@@ -279,7 +288,8 @@ test("ordinary open is current-only while greenfield publication remains atomic"
   const greenfieldFinalFailure = join(root, "greenfield-final-failure");
   const currentSnapshotRace = join(root, "current-snapshot-race");
   const injectedSidecarRace = join(root, "injected-sidecar-race");
-  const currentConcurrent = join(root, "current-concurrent");
+  const currentInitializing = join(root, "current-initializing");
+  const currentReleased = join(root, "current-released");
   const currentForeignReservation = join(root, "current-foreign-reservation");
   const orphanSidecars = join(root, "orphan-sidecars");
   const legacy = join(root, "legacy");
@@ -302,31 +312,167 @@ test("ordinary open is current-only while greenfield publication remains atomic"
       ".unboundry-current-database-open-reservation",
     );
 
-    openAppDatabase(currentConcurrent).close();
-    const firstStarted = join(root, "current-first-started");
-    const firstReady = join(root, "current-first-ready");
-    const firstRelease = join(root, "current-first-release");
-    const secondStarted = join(root, "current-second-started");
-    const firstOpen = runCurrentOpenChild(
-      currentConcurrent,
-      firstStarted,
-      firstReady,
-      firstRelease,
+    const reservationName = ".unboundry-current-database-open-reservation";
+
+    openAppDatabase(currentInitializing).close();
+    const initializingDatabasePath = join(
+      currentInitializing,
+      "unboundry.sqlite",
     );
-    await waitForFile(firstReady);
-    const secondOpen = runCurrentOpenChild(currentConcurrent, secondStarted);
-    await waitForFile(secondStarted);
-    expect(await readdir(currentConcurrent)).toContain(
-      ".unboundry-current-database-open-reservation",
+    const initializingLogicalSha = expectedLogicalSha(
+      initializingDatabasePath,
+      root,
     );
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    await writeFile(firstRelease, "release", { flag: "wx", mode: 0o600 });
-    const concurrentOpens = await Promise.all([firstOpen, secondOpen]);
-    expect(new Set(concurrentOpens.map((item) => item.pid)).size).toBe(2);
-    expect(new Set(concurrentOpens.map((item) => item.version))).toEqual(
+    const initializingOwnerCreated = join(root, "initializing-owner-created");
+    const initializingOwnerCreateRelease = join(
+      root,
+      "initializing-owner-create-release",
+    );
+    const initializingOwnerInspected = join(
+      root,
+      "initializing-owner-inspected",
+    );
+    const initializingOwnerInspectionRelease = join(
+      root,
+      "initializing-owner-inspection-release",
+    );
+    const initializingContenderPinned = join(
+      root,
+      "initializing-contender-pinned",
+    );
+    const initializingContenderPinRelease = join(
+      root,
+      "initializing-contender-pin-release",
+    );
+    const initializingContenderActive = join(
+      root,
+      "initializing-contender-active",
+    );
+    const initializingContenderActiveRelease = join(
+      root,
+      "initializing-contender-active-release",
+    );
+    const initializingOwner = runCurrentOpenChild(
+      currentInitializing,
+      join(root, "initializing-owner-started"),
+      [
+        {
+          checkpoint: "reservation-created-before-document",
+          readyPath: initializingOwnerCreated,
+          releasePath: initializingOwnerCreateRelease,
+        },
+        {
+          checkpoint: "inspection-schema-validated",
+          readyPath: initializingOwnerInspected,
+          releasePath: initializingOwnerInspectionRelease,
+        },
+      ],
+    );
+    await waitForFile(initializingOwnerCreated);
+    expect(await readFile(join(currentInitializing, reservationName))).toHaveLength(0);
+    const initializingContender = runCurrentOpenChild(
+      currentInitializing,
+      join(root, "initializing-contender-started"),
+      [
+        {
+          checkpoint: "competing-reservation-pinned",
+          readyPath: initializingContenderPinned,
+          releasePath: initializingContenderPinRelease,
+        },
+        {
+          checkpoint: "competing-reservation-active",
+          readyPath: initializingContenderActive,
+          releasePath: initializingContenderActiveRelease,
+        },
+      ],
+    );
+    await waitForFile(initializingContenderPinned);
+    await writeFile(initializingOwnerCreateRelease, "release", {
+      flag: "wx",
+      mode: 0o600,
+    });
+    await waitForFile(initializingOwnerInspected);
+    expect((await readFile(join(currentInitializing, reservationName))).length)
+      .toBeGreaterThan(0);
+    await writeFile(initializingContenderPinRelease, "release", {
+      flag: "wx",
+      mode: 0o600,
+    });
+    await waitForFile(initializingContenderActive);
+    await writeFile(initializingContenderActiveRelease, "release", {
+      flag: "wx",
+      mode: 0o600,
+    });
+    await writeFile(initializingOwnerInspectionRelease, "release", {
+      flag: "wx",
+      mode: 0o600,
+    });
+    const initializingOpens = await Promise.all([
+      initializingOwner,
+      initializingContender,
+    ]);
+    expect(new Set(initializingOpens.map((item) => item.pid)).size).toBe(2);
+    expect(new Set(initializingOpens.map((item) => item.version))).toEqual(
       new Set([currentSchemaVersion]),
     );
-    expect(await readdir(currentConcurrent)).toEqual(["unboundry.sqlite"]);
+    expect(expectedLogicalSha(initializingDatabasePath, root)).toBe(
+      initializingLogicalSha,
+    );
+    expect(await readdir(currentInitializing)).toEqual(["unboundry.sqlite"]);
+
+    openAppDatabase(currentReleased).close();
+    const releasedDatabasePath = join(currentReleased, "unboundry.sqlite");
+    const releasedLogicalSha = expectedLogicalSha(releasedDatabasePath, root);
+    const releasedOwnerInspected = join(root, "released-owner-inspected");
+    const releasedOwnerInspectionRelease = join(
+      root,
+      "released-owner-inspection-release",
+    );
+    const releasedContenderPinned = join(root, "released-contender-pinned");
+    const releasedContenderPinRelease = join(
+      root,
+      "released-contender-pin-release",
+    );
+    const releasedOwner = runCurrentOpenChild(
+      currentReleased,
+      join(root, "released-owner-started"),
+      [{
+        checkpoint: "inspection-schema-validated",
+        readyPath: releasedOwnerInspected,
+        releasePath: releasedOwnerInspectionRelease,
+      }],
+    );
+    await waitForFile(releasedOwnerInspected);
+    const releasedContender = runCurrentOpenChild(
+      currentReleased,
+      join(root, "released-contender-started"),
+      [{
+        checkpoint: "competing-reservation-pinned",
+        readyPath: releasedContenderPinned,
+        releasePath: releasedContenderPinRelease,
+      }],
+    );
+    await waitForFile(releasedContenderPinned);
+    await writeFile(releasedOwnerInspectionRelease, "release", {
+      flag: "wx",
+      mode: 0o600,
+    });
+    const releasedOwnerResult = await releasedOwner;
+    expect(await readdir(currentReleased)).not.toContain(reservationName);
+    await writeFile(releasedContenderPinRelease, "release", {
+      flag: "wx",
+      mode: 0o600,
+    });
+    const releasedContenderResult = await releasedContender;
+    const releasedOpens = [releasedOwnerResult, releasedContenderResult];
+    expect(new Set(releasedOpens.map((item) => item.pid)).size).toBe(2);
+    expect(new Set(releasedOpens.map((item) => item.version))).toEqual(
+      new Set([currentSchemaVersion]),
+    );
+    expect(expectedLogicalSha(releasedDatabasePath, root)).toBe(
+      releasedLogicalSha,
+    );
+    expect(await readdir(currentReleased)).toEqual(["unboundry.sqlite"]);
 
     openAppDatabase(currentForeignReservation).close();
     const foreignReservationPath = join(

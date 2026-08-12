@@ -803,7 +803,8 @@ async function startBridge(dataDirectory: string) {
       env: {
         ...process.env,
         UNBOUNDRY_DATA_DIR: dataDirectory,
-        UNBOUNDRY_MAINTENANCE_MODE: "",
+        UNBOUNDRY_MAINTENANCE_MODE: "0",
+        UNBOUNDRY_RUNTIME_ROLE: "active",
         UNBOUNDRY_TEST_AUTH_BYPASS: "",
       },
       stdio: ["ignore", "pipe", "pipe"],

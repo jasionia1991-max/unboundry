@@ -938,17 +938,23 @@ export function resolveNodeInputs(input: {
     .join("\n\n");
   const ownPrompt = text(input.ownPrompt);
   const upstreamTextMayReplaceOwn =
-    input.targetKind === "text" &&
-    input.modelSchema?.inputPolicy?.promptPolicy === "own-or-upstream-text";
+    input.targetKind === "video" || (
+      input.targetKind === "text" &&
+      input.modelSchema?.inputPolicy?.promptPolicy === "own-or-upstream-text"
+    );
   // For Text targets, upstream Text is a separate context input. It must not be
   // silently folded into the user's instruction unless the model explicitly
   // allows that context to replace an empty target Prompt.
   const finalPrompt = input.targetKind === "text"
     ? ownPrompt || (upstreamTextMayReplaceOwn ? upstreamText : "")
     : [upstreamText, ownPrompt].filter(Boolean).join("\n\n");
-  const ownPromptRequired = input.targetKind === "video" || (
-    input.targetKind === "text" && !upstreamTextMayReplaceOwn
-  );
+  // A video Provider only receives the resolved final Prompt; it cannot tell
+  // whether that text came from the Video textarea or a ready Text input edge.
+  // Requiring both would make the Text edge redundant. Text targets retain
+  // their model-specific policy because their upstream Text is context rather
+  // than necessarily the instruction being executed.
+  const ownPromptRequired =
+    input.targetKind === "text" && !upstreamTextMayReplaceOwn;
   if ((ownPromptRequired && !ownPrompt) || (!ownPromptRequired && !finalPrompt)) {
     problems.push({
       code: "PROMPT_MISSING",

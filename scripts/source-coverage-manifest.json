@@ -38,6 +38,13 @@
         "data:backup:oss"
       ]
     },
+    "scripts/build-release.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "486afefc4fcf6b964d6c3a368407b2e20054aeeb8474803b033f338b504df0bf",
+      "target": "scripts/run-safe-tests.mjs",
+      "marker": "synthetic local-tarball operational fixture exercises Darwin builder mechanics without publishing npm bin links",
+      "targetSha256": "660d856504852db890f00500d74cd4224bd8b4e3226ee2e884d8650419fcf5e7"
+    },
     "scripts/check-greenfield.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "672fc239db81ff54f5103c9ef49897b4becbc042309b799f8db9a94ebefd2572",
@@ -50,14 +57,14 @@
       "scriptSha256": "1645896f383a3894332ff030d17e2bc0356914c9068fd2ddef8372e99ac892f9",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-restart-persistence.mjs",
-      "targetSha256": "793fe8493b8d9eb7dd3d6f578fff3a0f82d831fefb869ebda5c35d75d9f09c52"
+      "targetSha256": "660d856504852db890f00500d74cd4224bd8b4e3226ee2e884d8650419fcf5e7"
     },
     "scripts/check-v051-exact-runtime.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "a1dc5bfd3e5afbc67f824f6aba36ff7408f561133021a1062b6b4e92dcdcd6db",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-v051-exact-runtime.mjs",
-      "targetSha256": "793fe8493b8d9eb7dd3d6f578fff3a0f82d831fefb869ebda5c35d75d9f09c52"
+      "targetSha256": "660d856504852db890f00500d74cd4224bd8b4e3226ee2e884d8650419fcf5e7"
     },
     "scripts/deploy.mjs": {
       "mode": "frozen",
@@ -78,7 +85,7 @@
       "scriptSha256": "8e5fb3ad992477cbb4ad148e7a73968f28b886d75e578efc90a20a5762289148",
       "target": "tests/m91-schema-migration.spec.ts",
       "marker": "dry-run and CLI validate exact v37 plus logical SHA without source writes",
-      "targetSha256": "75e09532fc974ded72f75debd0b27db9afb4903410008258524f3761b91cd887"
+      "targetSha256": "a672ee41c81a09825a35675162085c774ba783babc622a7fa158df7d76c7e983"
     },
     "scripts/node-typescript-runtime.mjs": {
       "mode": "behavior-test",
@@ -93,6 +100,20 @@
       "target": "tests/m89-operations-safety.spec.ts",
       "marker": "storage repair apply binds backfill and audit to the selected administrator",
       "targetSha256": "d7ecd23d5286418774d7a2b4002be5e1360b9b36abb3ccfa2894056dc58108c6"
+    },
+    "scripts/rehearse-release.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "1084892854f6c89e0df04e8bf19da268e4c960170f308f46d9eb7331a9d35526",
+      "target": "tests/m95-release-switch.spec.ts",
+      "marker": "schema 37 bridge rehearsal migrates without HTTP, atomically switches, drains and retains N-1",
+      "targetSha256": "e104db25d16dd56d8e2ed6981dcfdbac60556de28045ed0be676e4c2f21a22b0"
+    },
+    "scripts/validate-release-ops.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "a7d6e70800be2149762ff718c2e8fcdb538982ca2659d538241f1ea1ef2df1c6",
+      "target": "tests/m96-release-ops.spec.ts",
+      "marker": "static ops contract validates the loopback nginx and hardened current-release unit",
+      "targetSha256": "a07a13696994f007c04b5fdcb5f3236e3d1a1d485cd0f4eb0ce5d3b8557acdad"
     },
     "scripts/report-media-integrity.mjs": {
       "mode": "behavior-test",

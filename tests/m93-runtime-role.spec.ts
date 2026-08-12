@@ -12,12 +12,18 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "./safe-test";
+import { createRuntimeLifecycle } from "../server/runtimeLifecycle";
 import {
   createRuntimeDrainRegistry,
   createRuntimeRoleCoordinator,
   RuntimeRoleError,
   runtimeRoleFromEnvironment,
 } from "../server/runtimeRole";
+import {
+  prepareGenerationRuntimeRoleTeardown,
+  registerGenerationRuntimeRoleCoordinator,
+  runGenerationExecutionForRuntimeTest,
+} from "../server/generationTasks";
 
 test.describe.configure({ mode: "serial" });
 
@@ -34,6 +40,9 @@ const activeRoleChildBootstrap = String.raw`
   });
   try {
     const module = await server.ssrLoadModule("/server/runtimeRole.ts");
+    const lifecycleModule = await server.ssrLoadModule(
+      "/server/runtimeLifecycle.ts"
+    );
     const coordinator = module.createRuntimeRoleCoordinator({
       dataDirectory,
       role: "active",
@@ -92,6 +101,36 @@ const activeRoleChildBootstrap = String.raw`
           type: "action",
         });
       }
+      if (message?.action === "lifecycle-timeout") {
+        const execution = coordinator.runDetached(
+          "provider-request",
+          () => new Promise(() => {}),
+        );
+        globalThis.__runtimeRoleExecution = execution;
+        const lifecycle = lifecycleModule.createRuntimeLifecycle({
+          dataDirectory,
+          logger: () => undefined,
+          roleCoordinator: coordinator,
+          shutdownDeadlineMs: 0,
+        });
+        let closeCalls = 0;
+        let forceCloseCalls = 0;
+        const exitCode = await lifecycleModule.coordinateRuntimeShutdown({
+          beginShutdown: () => lifecycle.beginShutdown(),
+          close: () => { closeCalls += 1; },
+          closeAllConnections: () => { forceCloseCalls += 1; },
+          deadlineMs: 0,
+          hardExitGraceMs: 20,
+        });
+        process.send?.({
+          action: message.action,
+          closeCalls,
+          exitCode,
+          forceCloseCalls,
+          snapshot: coordinator.snapshot(),
+          type: "action",
+        });
+      }
     });
     setInterval(() => {}, 1_000);
   } catch (error) {
@@ -110,8 +149,15 @@ const activeRoleChildBootstrap = String.raw`
 type ChildRoleMessage =
   | { snapshot: { activeLeaseHeld: boolean; role: string }; type: "acquired" }
   | {
-      action: "close-failure" | "drain-timeout" | "snapshot";
+      action:
+        | "close-failure"
+        | "drain-timeout"
+        | "lifecycle-timeout"
+        | "snapshot";
+      closeCalls?: number;
       code?: string;
+      exitCode?: number;
+      forceCloseCalls?: number;
       snapshot: {
         activeLeaseHeld: boolean;
         draining: boolean;
@@ -172,7 +218,11 @@ function waitForExit(child: ChildProcess) {
 
 function childAction(
   child: ChildProcess,
-  action: "close-failure" | "drain-timeout" | "snapshot",
+  action:
+    | "close-failure"
+    | "drain-timeout"
+    | "lifecycle-timeout"
+    | "snapshot",
 ) {
   return new Promise<Extract<ChildRoleMessage, { type: "action" }>>(
     (resolve, reject) => {
@@ -225,6 +275,9 @@ test("runtime roles are explicit and every non-active role denies writer capabil
     })).toThrow(RuntimeRoleError);
     expect(() => runtimeRoleFromEnvironment({
       UNBOUNDRY_MAINTENANCE_MODE: "true",
+    })).toThrow(expect.objectContaining({ code: "RUNTIME_ROLE_INVALID" }));
+    expect(() => runtimeRoleFromEnvironment({
+      UNBOUNDRY_MAINTENANCE_MODE: "",
     })).toThrow(expect.objectContaining({ code: "RUNTIME_ROLE_INVALID" }));
 
     for (const role of ["standby", "maintenance", "read-only"] as const) {
@@ -517,6 +570,177 @@ test("detached work drain closes admission, aborts once and waits for persistenc
       draining: true,
       leaseState: "released",
     });
+  } finally {
+    await rm(paths.root, { force: true, recursive: true });
+  }
+});
+
+test("lifecycle freezes HTTP and generation admission before releasing the active lease", async () => {
+  const paths = await privateDirectories();
+  const originalDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  try {
+    process.env.UNBOUNDRY_DATA_DIR = paths.dataDirectory;
+    const coordinator = createRuntimeRoleCoordinator({
+      dataDirectory: paths.dataDirectory,
+      role: "active",
+      runtimeDirectory: paths.runtimeDirectory,
+    });
+    const unregister = registerGenerationRuntimeRoleCoordinator(coordinator);
+    try {
+      let persist!: () => void;
+      let generationAborts = 0;
+      const generation = runGenerationExecutionForRuntimeTest(
+        () => new Promise<void>((resolve) => {
+          persist = resolve;
+        }),
+        () => {
+          generationAborts += 1;
+          // Abort only stops the Provider transport. Durable failure
+          // persistence remains part of the tracked execution and settles
+          // independently below.
+        },
+      );
+      let releaseHandler!: () => void;
+      const lifecycle = createRuntimeLifecycle({
+        beforeActiveLeaseRelease: () =>
+          prepareGenerationRuntimeRoleTeardown(coordinator),
+        dataDirectory: paths.dataDirectory,
+        logger: () => undefined,
+        roleCoordinator: coordinator,
+        shutdownDeadlineMs: 1_000,
+      });
+      const handler = lifecycle.trackHandler(() => new Promise<void>((resolve) => {
+        releaseHandler = resolve;
+      }));
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(typeof releaseHandler).toBe("function");
+      const shutdown = lifecycle.beginShutdown();
+      expect(lifecycle.getMode()).toBe("shutting-down");
+      expect(coordinator.snapshot()).toMatchObject({
+        activeLeaseHeld: true,
+        draining: true,
+        leaseState: "held",
+      });
+      expect(generationAborts).toBe(1);
+      expect(() => coordinator.assertActive("writer")).toThrow(
+        expect.objectContaining({ code: "RUNTIME_ROLE_DRAINING" }),
+      );
+      expect(() => runGenerationExecutionForRuntimeTest(() => Promise.resolve()))
+        .toThrow(expect.objectContaining({ code: "RUNTIME_ROLE_DRAINING" }));
+
+      releaseHandler();
+      await handler;
+      let settled = false;
+      void shutdown.then(() => { settled = true; });
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(settled).toBe(false);
+      expect(coordinator.snapshot().activeLeaseHeld).toBe(true);
+
+      persist();
+      await generation;
+      await expect(shutdown).resolves.toEqual({
+        activeHandlers: 0,
+        drained: true,
+        inFlightRequests: 0,
+      });
+      expect(coordinator.snapshot()).toMatchObject({
+        activeLeaseHeld: false,
+        draining: true,
+        leaseState: "released",
+      });
+      unregister();
+      const nextCoordinator = createRuntimeRoleCoordinator({
+        dataDirectory: paths.dataDirectory,
+        role: "active",
+        runtimeDirectory: paths.runtimeDirectory,
+      });
+      const unregisterNext = registerGenerationRuntimeRoleCoordinator(
+        nextCoordinator,
+      );
+      await expect(runGenerationExecutionForRuntimeTest(() => undefined))
+        .resolves.toBeUndefined();
+      await nextCoordinator.beginDrain(1_000);
+      prepareGenerationRuntimeRoleTeardown(nextCoordinator);
+      nextCoordinator.releaseAfterDrain();
+      unregisterNext();
+    } finally {
+      try {
+        unregister();
+      } catch {
+        // The successful teardown path above already unregistered it.
+      }
+    }
+  } finally {
+    if (originalDataDirectory === undefined) {
+      delete process.env.UNBOUNDRY_DATA_DIR;
+    } else {
+      process.env.UNBOUNDRY_DATA_DIR = originalDataDirectory;
+    }
+    await rm(paths.root, { force: true, recursive: true });
+  }
+});
+
+test("lifecycle timeout fails the shutdown coordinator and never hands off active", async () => {
+  const paths = await privateDirectories();
+  let child: ChildProcess | undefined;
+  try {
+    const owner = startActiveRoleChild(
+      paths.dataDirectory,
+      paths.runtimeDirectory,
+    );
+    child = owner.child;
+    await expect(owner.ready).resolves.toMatchObject({
+      snapshot: { activeLeaseHeld: true, role: "active" },
+      type: "acquired",
+    });
+    await expect(childAction(child, "lifecycle-timeout")).resolves.toMatchObject({
+      action: "lifecycle-timeout",
+      closeCalls: 0,
+      exitCode: 1,
+      forceCloseCalls: 1,
+      snapshot: {
+        activeLeaseHeld: true,
+        draining: true,
+        leaseState: "held",
+      },
+      type: "action",
+    });
+    expect(() => createRuntimeRoleCoordinator({
+      dataDirectory: paths.dataDirectory,
+      role: "active",
+      runtimeDirectory: paths.runtimeDirectory,
+    })).toThrow(expect.objectContaining({
+      code: "RUNTIME_ACTIVE_LEASE_UNAVAILABLE",
+    }));
+  } finally {
+    child?.kill("SIGKILL");
+    if (child) await waitForExit(child).catch(() => undefined);
+    await rm(paths.root, { force: true, recursive: true });
+  }
+});
+
+test("non-active lifecycle exposes its role while denying active capabilities", async () => {
+  const paths = await privateDirectories();
+  try {
+    for (const role of ["standby", "read-only", "maintenance"] as const) {
+      const coordinator = createRuntimeRoleCoordinator({
+        dataDirectory: paths.dataDirectory,
+        role,
+      });
+      const lifecycle = createRuntimeLifecycle({
+        dataDirectory: paths.dataDirectory,
+        logger: () => undefined,
+        roleCoordinator: coordinator,
+      });
+      expect(lifecycle.getMode()).toBe(role);
+      expect(coordinator.snapshot()).toMatchObject({
+        activeLeaseHeld: false,
+        role,
+      });
+      expect(() => coordinator.assertActive("writer")).toThrow(
+        expect.objectContaining({ code: "RUNTIME_ROLE_NOT_ACTIVE" }),
+      );
+    }
   } finally {
     await rm(paths.root, { force: true, recursive: true });
   }

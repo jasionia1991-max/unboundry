@@ -106,7 +106,10 @@
     "tests/m89-operations-safety.spec.ts",
     "tests/m90-resource-governance.spec.ts",
     "tests/m91-schema-migration.spec.ts",
-    "tests/m93-runtime-role.spec.ts"
+    "tests/m93-runtime-role.spec.ts",
+    "tests/m94-immutable-release.spec.ts",
+    "tests/m95-release-switch.spec.ts",
+    "tests/m96-release-ops.spec.ts"
   ],
   "preview": [
     "tests/fixture-production.spec.ts",

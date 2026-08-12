@@ -67,7 +67,12 @@ export type RuntimeRoleCoordinatorOptions = Readonly<{
 export type RuntimeRoleSnapshot = Readonly<{
   activeLeaseHeld: boolean;
   draining: boolean;
-  leaseState: "held" | "lost" | "released" | "release-unknown";
+  leaseState:
+    | "held"
+    | "lost"
+    | "released"
+    | "release-unknown"
+    | "unavailable";
   role: RuntimeRole;
   runtimeDirectory?: string;
 }>;
@@ -372,18 +377,38 @@ export function createRuntimeRoleCoordinator(
     fail("RUNTIME_ROLE_INVALID", "Runtime role is invalid");
   }
   const dataDirectory = exactAbsolutePath(options.dataDirectory, "Data directory");
-  const dataIdentity = assertDirectory(dataDirectory);
+  // Non-active roles must be able to expose liveness/version and an honest
+  // read-only readiness failure without provisioning or otherwise touching a
+  // missing persistent directory. Active is the only role that pins it.
+  let activeDataDirectoryMissing = false;
+  if (role === "active") {
+    try {
+      lstatSync(dataDirectory);
+    } catch (error) {
+      if (
+        error && typeof error === "object" && "code" in error &&
+        error.code === "ENOENT"
+      ) activeDataDirectoryMissing = true;
+      else fail("RUNTIME_ROLE_PATH_UNSAFE", "Data directory is unavailable");
+    }
+  }
+  const dataIdentity = role === "active" && !activeDataDirectoryMissing
+    ? assertDirectory(dataDirectory)
+    : undefined;
   const drainRegistry = createRuntimeDrainRegistry();
   let drainTimedOut = false;
+  let drainCompleted = false;
   let leaseDatabase: DatabaseSync | undefined;
   let leaseIdentity: OwnedFileIdentity | undefined;
   let leaseState: RuntimeRoleSnapshot["leaseState"] = role === "active"
-    ? "held"
+    ? dataIdentity
+      ? "held"
+      : "unavailable"
     : "released";
   let runtimeDirectory: string | undefined;
   let runtimeIdentity: OwnedDirectoryIdentity | undefined;
 
-  if (role === "active") {
+  if (role === "active" && dataIdentity) {
     runtimeDirectory = exactAbsolutePath(
       options.runtimeDirectory ?? defaultRuntimeDirectory(dataDirectory),
       "Runtime directory",
@@ -422,7 +447,10 @@ export function createRuntimeRoleCoordinator(
       fail("RUNTIME_ACTIVE_LEASE_LOST", "Runtime active lease is not held");
     }
     try {
-      if (!sameDirectoryIdentity(dataIdentity, assertDirectory(dataDirectory))) {
+      if (
+        !dataIdentity ||
+        !sameDirectoryIdentity(dataIdentity, assertDirectory(dataDirectory))
+      ) {
         throw new Error("Persistent data directory changed");
       }
       if (!runtimeDirectory || !runtimeIdentity || !leaseIdentity || !leaseDatabase) {
@@ -448,7 +476,22 @@ export function createRuntimeRoleCoordinator(
   }
 
   function assertActive(capability: RuntimeRoleCapability) {
-    if (role !== "active" || leaseState !== "held") {
+    if (role !== "active") {
+      fail(
+        "RUNTIME_ROLE_NOT_ACTIVE",
+        `${capability} requires the exclusive active runtime role`,
+      );
+    }
+    if (leaseState === "unavailable") {
+      fail(
+        "RUNTIME_ACTIVE_LEASE_UNAVAILABLE",
+        `${capability} requires an available active runtime lease`,
+      );
+    }
+    if (leaseState === "lost") {
+      fail("RUNTIME_ACTIVE_LEASE_LOST", "Runtime active lease identity changed");
+    }
+    if (leaseState !== "held") {
       fail(
         "RUNTIME_ROLE_NOT_ACTIVE",
         `${capability} requires the exclusive active runtime role`,
@@ -460,12 +503,17 @@ export function createRuntimeRoleCoordinator(
     assertPathIdentities();
   }
 
-  function beginDrain() {
+  async function beginDrain(deadlineMs: number) {
     if (role === "active" && leaseState === "held") {
       assertPathIdentities();
     }
-    drainRegistry.freezeAdmission();
-    return snapshot();
+    const result = await drainRegistry.beginDrain(deadlineMs);
+    if (!result.drained || result.activeExecutions !== 0) {
+      drainTimedOut = true;
+    } else {
+      drainCompleted = true;
+    }
+    return result;
   }
 
   function snapshot(): RuntimeRoleSnapshot {
@@ -488,6 +536,7 @@ export function createRuntimeRoleCoordinator(
 
   function releaseLease() {
     if (leaseState === "released") return;
+    if (leaseState === "unavailable") return;
     if (leaseState === "lost") {
       fail(
         "RUNTIME_ACTIVE_LEASE_LOST",
@@ -515,7 +564,7 @@ export function createRuntimeRoleCoordinator(
   }
 
   function close() {
-    if (leaseState === "released") return;
+    if (leaseState === "released" || leaseState === "unavailable") return;
     drainRegistry.freezeAdmission();
     if (drainTimedOut) {
       fail(
@@ -532,17 +581,32 @@ export function createRuntimeRoleCoordinator(
     releaseLease();
   }
 
+  function releaseAfterDrain() {
+    if (leaseState === "released" || leaseState === "unavailable") return;
+    if (drainTimedOut) {
+      fail(
+        "RUNTIME_DRAIN_TIMEOUT",
+        "A timed-out runtime must exit without releasing active to another process",
+      );
+    }
+    if (!drainCompleted || !drainRegistry.isDraining() || drainRegistry.size() !== 0) {
+      fail(
+        "RUNTIME_ROLE_DRAINING",
+        "Runtime active lease cannot be released before every execution drains",
+      );
+    }
+    releaseLease();
+  }
+
   async function shutdown(deadlineMs: number) {
-    if (role === "active" && leaseState === "held") assertPathIdentities();
-    const drained = await drainRegistry.beginDrain(deadlineMs);
+    const drained = await beginDrain(deadlineMs);
     if (!drained.drained || drained.activeExecutions !== 0) {
-      drainTimedOut = true;
       fail(
         "RUNTIME_DRAIN_TIMEOUT",
         "Runtime drain timed out; the process must exit without handing off active",
       );
     }
-    releaseLease();
+    releaseAfterDrain();
     return Object.freeze({ ...drained, leaseReleased: true });
   }
 
@@ -562,6 +626,8 @@ export function createRuntimeRoleCoordinator(
     assertActive,
     beginDrain,
     close,
+    dataDirectory: () => dataDirectory,
+    releaseAfterDrain,
     role: () => role,
     runDetached,
     shutdown,

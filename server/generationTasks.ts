@@ -142,16 +142,133 @@ import {
   isProviderProtocol,
   type ProviderProtocol,
 } from "../types/relayProtocols";
+import type { RuntimeRoleCoordinator } from "./runtimeRole";
 
 let store: ReturnType<typeof createGenerationTaskStore> | undefined;
+let storeDataDirectory: string | undefined;
 let persistentGenerationWorkerStartup:
   | Promise<PersistentGenerationWorkerStartupResult>
   | undefined;
+let persistentGenerationWorkerCoordinator: RuntimeRoleCoordinator | undefined;
+let persistentGenerationWorkerDataDirectory: string | undefined;
 const launchedGenerationTasks = new Set<string>();
 const runningImageRequests = new Map<string, AbortController>();
 const runningVideoRequests = new Map<string, AbortController>();
 const runningAudioRequests = new Map<string, AbortController>();
 const runningTextRequests = new Map<string, AbortController>();
+let runtimeRoleCoordinator: RuntimeRoleCoordinator | undefined;
+let preparedRuntimeRoleCoordinator: RuntimeRoleCoordinator | undefined;
+let runtimeRoleRegistrationRequired = false;
+
+export function registerGenerationRuntimeRoleCoordinator(
+  coordinator: RuntimeRoleCoordinator,
+) {
+  if (runtimeRoleCoordinator && runtimeRoleCoordinator !== coordinator) {
+    throw new Error("Generation runtime role coordinator is already registered");
+  }
+  if (coordinator.dataDirectory() !== appDataDirectory()) {
+    throw new Error("Generation runtime role coordinator data directory changed");
+  }
+  runtimeRoleRegistrationRequired = true;
+  runtimeRoleCoordinator = coordinator;
+  preparedRuntimeRoleCoordinator = undefined;
+  return () => {
+    if (runtimeRoleCoordinator !== coordinator) return;
+    if (preparedRuntimeRoleCoordinator !== coordinator) {
+      throw new Error(
+        "Generation runtime role coordinator cannot unregister before teardown",
+      );
+    }
+    runtimeRoleCoordinator = undefined;
+    preparedRuntimeRoleCoordinator = undefined;
+  };
+}
+
+export function prepareGenerationRuntimeRoleTeardown(
+  coordinator: RuntimeRoleCoordinator,
+) {
+  if (runtimeRoleCoordinator !== coordinator) {
+    throw new Error("Generation runtime role coordinator identity changed");
+  }
+  const snapshot = coordinator.snapshot();
+  if (
+    snapshot.role !== "active" || !snapshot.activeLeaseHeld ||
+    !snapshot.draining
+  ) {
+    throw new Error("Generation runtime teardown requires a draining active lease");
+  }
+  if (
+    launchedGenerationTasks.size !== 0 || runningImageRequests.size !== 0 ||
+    runningVideoRequests.size !== 0 || runningAudioRequests.size !== 0 ||
+    runningTextRequests.size !== 0
+  ) {
+    throw new Error("Generation runtime teardown still has active executions");
+  }
+  // The shared runtime drain has already waited through Provider transport and
+  // durable failure/result persistence. Close the cached writer while the
+  // exclusive active lease is still held, then make a later runtime initialize
+  // a fresh store/worker promise bound to its own coordinator and data path.
+  store?.close();
+  store = undefined;
+  storeDataDirectory = undefined;
+  persistentGenerationWorkerStartup = undefined;
+  persistentGenerationWorkerCoordinator = undefined;
+  persistentGenerationWorkerDataDirectory = undefined;
+  launchedGenerationTasks.clear();
+  runningImageRequests.clear();
+  runningVideoRequests.clear();
+  runningAudioRequests.clear();
+  runningTextRequests.clear();
+  preparedRuntimeRoleCoordinator = coordinator;
+}
+
+export function unregisterGenerationRuntimeRoleCoordinatorBeforeStartup(
+  coordinator: RuntimeRoleCoordinator,
+) {
+  if (runtimeRoleCoordinator !== coordinator) {
+    throw new Error("Generation runtime role coordinator identity changed");
+  }
+  if (
+    store || persistentGenerationWorkerStartup ||
+    launchedGenerationTasks.size !== 0 || runningImageRequests.size !== 0 ||
+    runningVideoRequests.size !== 0 || runningAudioRequests.size !== 0 ||
+    runningTextRequests.size !== 0
+  ) {
+    throw new Error(
+      "Generation runtime role coordinator already started durable work",
+    );
+  }
+  preparedRuntimeRoleCoordinator = coordinator;
+  runtimeRoleCoordinator = undefined;
+  preparedRuntimeRoleCoordinator = undefined;
+}
+
+function runRegisteredGenerationExecution<T>(
+  execute: () => Promise<T> | T,
+  abort?: () => void,
+) {
+  if (runtimeRoleCoordinator) {
+    return runtimeRoleCoordinator.runDetached(
+      "generation-worker",
+      execute,
+      abort,
+    );
+  }
+  if (runtimeRoleRegistrationRequired) {
+    throw new Error("Generation runtime role coordinator is unavailable");
+  }
+  return Promise.resolve().then(execute);
+}
+
+export function runGenerationExecutionForRuntimeTest<T>(
+  execute: () => Promise<T> | T,
+  abort?: () => void,
+) {
+  if (process.env.UNBOUNDRY_SAFE_TEST !== "1") {
+    throw new Error("Generation runtime test seam is unavailable");
+  }
+  return runRegisteredGenerationExecution(execute, abort);
+}
 
 // 金额限额功能已移除（v36）。任务仍保留成本记账：估算值只作为审计参考
 // 写入任务记录，不再参与任何预检、拦截或界面展示。
@@ -290,8 +407,17 @@ type GenerationLaunchOptions = {
 };
 
 function taskStore(launchOptions?: GenerationLaunchOptions) {
+  if (!runtimeRoleCoordinator && runtimeRoleRegistrationRequired) {
+    throw new Error("Generation runtime role coordinator is unavailable");
+  }
+  runtimeRoleCoordinator?.assertActive("writer");
+  const dataDirectory = appDataDirectory();
+  if (store && storeDataDirectory !== dataDirectory) {
+    throw new Error("Generation task store data directory changed");
+  }
   if (store) return store;
-  store = createGenerationTaskStore(appDataDirectory());
+  store = createGenerationTaskStore(dataDirectory);
+  storeDataDirectory = dataDirectory;
   const pendingPublicationTasks = pendingGeneratedPublicationTaskIds();
   failRecoveredGenerationTasks(store, pendingPublicationTasks);
   for (const task of store.listRecovering()) {
@@ -322,14 +448,16 @@ function taskStore(launchOptions?: GenerationLaunchOptions) {
   const recoverUploads = hasPendingUploadMediaPublications();
   const recoverDeletions = hasPendingMediaDeletions();
   if (recoverGenerated || recoverUploads || recoverDeletions) {
-    void settleDetachedGenerationExecution(
-      async () => {
-        if (recoverDeletions) await recoverPendingMediaDeletions();
-        if (recoverUploads) await recoverPendingUploadMediaPublications();
-        if (recoverGenerated) await recoverPendingGeneratedMediaPublications();
-      },
-      () => undefined,
-    );
+    void runRegisteredGenerationExecution(() =>
+      settleDetachedGenerationExecution(
+        async () => {
+          if (recoverDeletions) await recoverPendingMediaDeletions();
+          if (recoverUploads) await recoverPendingUploadMediaPublications();
+          if (recoverGenerated) await recoverPendingGeneratedMediaPublications();
+        },
+        () => undefined,
+      )
+    ).catch(() => undefined);
   }
   return store;
 }
@@ -1570,13 +1698,54 @@ function launchGenerationTask(
   ).finally(() => {
     launchedGenerationTasks.delete(taskId);
   });
+  const abort = () => {
+    runningImageRequests.get(taskId)?.abort();
+    runningVideoRequests.get(taskId)?.abort();
+    runningAudioRequests.get(taskId)?.abort();
+    runningTextRequests.get(taskId)?.abort();
+  };
   if (options?.settledExecutions) {
-    options.settledExecutions.push(execute());
+    try {
+      options.settledExecutions.push(
+        runRegisteredGenerationExecution(execute, abort),
+      );
+    } catch {
+      launchedGenerationTasks.delete(taskId);
+    }
     return;
   }
-  setTimeout(() => {
-    void execute();
-  }, 0);
+  if (!runtimeRoleCoordinator) {
+    setTimeout(() => {
+      void execute();
+    }, 0);
+    return;
+  }
+  let cancelledBeforeStart = false;
+  try {
+    void runRegisteredGenerationExecution(
+      () => new Promise<void>((resolve) => {
+        setTimeout(() => {
+          if (cancelledBeforeStart) {
+            launchedGenerationTasks.delete(taskId);
+            resolve();
+            return;
+          }
+          void execute().then(resolve);
+        }, 0);
+      }),
+      () => {
+        cancelledBeforeStart = true;
+        abort();
+      },
+    ).catch(() => {
+      launchedGenerationTasks.delete(taskId);
+    });
+  } catch {
+    // Shutdown can freeze detached admission after the durable task commit but
+    // before scheduling. Leave the task queued for the next active owner; no
+    // Provider request has started in this branch.
+    launchedGenerationTasks.delete(taskId);
+  }
 }
 
 export type PersistentGenerationWorkerStartupResult = {
@@ -1687,6 +1856,21 @@ function startupWorkerTestProviderFetcher(): typeof fetch | undefined {
       `${JSON.stringify({ method, url })}\n`,
       { encoding: "utf8", flag: "a" },
     );
+    if (
+      process.env.UNBOUNDRY_TEST_GENERATION_STARTUP_HANG === "1"
+    ) {
+      return await new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        const rejectAbort = () => reject(
+          new DOMException("M81 controlled Provider abort", "AbortError"),
+        );
+        if (signal?.aborted) {
+          rejectAbort();
+          return;
+        }
+        signal?.addEventListener("abort", rejectAbort, { once: true });
+      });
+    }
     if (method === "GET" && url.includes("/contents/generations/tasks/")) {
       return new Response(JSON.stringify({
         error: { code: "M81_FAKE_PROVIDER_FAILED" },
@@ -1719,10 +1903,31 @@ function startupWorkerTestProviderFetcher(): typeof fetch | undefined {
  * read-only so an idle database never opens the writer or creates SQLite sidecars.
  */
 export function initializePersistentGenerationTaskWorker() {
+  if (!runtimeRoleCoordinator && runtimeRoleRegistrationRequired) {
+    throw new Error("Generation runtime role coordinator is unavailable");
+  }
+  runtimeRoleCoordinator?.assertActive("generation-worker");
+  const dataDirectory = appDataDirectory();
   if (persistentGenerationWorkerStartup) {
+    if (
+      persistentGenerationWorkerCoordinator !== runtimeRoleCoordinator ||
+      persistentGenerationWorkerDataDirectory !== dataDirectory
+    ) {
+      throw new Error("Generation startup worker runtime identity changed");
+    }
     return persistentGenerationWorkerStartup;
   }
-  persistentGenerationWorkerStartup = (async () => {
+  const initialize = async () => {
+    if (
+      process.env.UNBOUNDRY_SAFE_TEST === "1" &&
+      process.env.UNBOUNDRY_TEST_GENERATION_STARTUP_OBSERVE === "1"
+    ) {
+      await appendFile(
+        join(dataDirectory, ".unboundry-startup-worker-observer.log"),
+        `${JSON.stringify({ event: "persistent-worker-start" })}\n`,
+        { encoding: "utf8", flag: "a" },
+      );
+    }
     const activeTaskCount = committedActiveGenerationTaskCount();
     if (activeTaskCount === 0) {
       return { activeTaskCount, writerOpened: false };
@@ -1735,9 +1940,11 @@ export function initializePersistentGenerationTaskWorker() {
     }
     failInterruptedRetryingGenerationTasks();
     const providerFetcher = startupWorkerTestProviderFetcher();
-    const settledExecutions = providerFetcher
-      ? [] as Promise<void>[]
-      : undefined;
+    const settledExecutions =
+      providerFetcher &&
+        process.env.UNBOUNDRY_TEST_GENERATION_STARTUP_HANG !== "1"
+        ? [] as Promise<void>[]
+        : undefined;
     const launchOptions = { providerFetcher, settledExecutions };
     const generationStore = taskStore(launchOptions);
     // If another in-process caller initialized the store first, cover any
@@ -1747,7 +1954,12 @@ export function initializePersistentGenerationTaskWorker() {
     }
     if (settledExecutions) await Promise.all(settledExecutions);
     return { activeTaskCount, writerOpened: true };
-  })();
+  };
+  persistentGenerationWorkerCoordinator = runtimeRoleCoordinator;
+  persistentGenerationWorkerDataDirectory = dataDirectory;
+  persistentGenerationWorkerStartup = runtimeRoleCoordinator
+    ? runtimeRoleCoordinator.runDetached("generation-worker", initialize)
+    : initialize();
   return persistentGenerationWorkerStartup;
 }
 

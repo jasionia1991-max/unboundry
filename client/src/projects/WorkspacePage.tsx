@@ -57,6 +57,12 @@ function dateTime(timestamp: number | null) {
   )} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+function canvasPath(id: string) {
+  return id === "default"
+    ? "/canvas"
+    : `/canvas/${encodeURIComponent(id)}`;
+}
+
 function projectTitleRecord(value: unknown): ProjectTitleRecord | undefined {
   if (!value || typeof value !== "object") return undefined;
   const candidate = value as Partial<ProjectTitleRecord>;
@@ -421,7 +427,7 @@ export function WorkspacePage({ userId = "" }: { userId?: string }) {
 
   const openProject = (id: string) => {
     rememberLastProject(id);
-    window.location.href = `/canvas/${id}`;
+    window.location.href = canvasPath(id);
   };
 
   const backToCanvas = async () => {
@@ -444,7 +450,7 @@ export function WorkspacePage({ userId = "" }: { userId?: string }) {
           const alive = new Set(body.projects.map((project) => project.id));
           for (const id of candidates) {
             if (alive.has(id)) {
-              window.location.href = `/canvas/${encodeURIComponent(id)}`;
+              window.location.href = canvasPath(id);
               return;
             }
           }
@@ -452,7 +458,7 @@ export function WorkspacePage({ userId = "" }: { userId?: string }) {
       } catch {
         // 列表读取失败时直接尝试第一个候选，项目缺失由画布页处理。
         if (candidates[0]) {
-          window.location.href = `/canvas/${encodeURIComponent(candidates[0])}`;
+          window.location.href = canvasPath(candidates[0]);
           return;
         }
       }
