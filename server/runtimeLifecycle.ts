@@ -1,18 +1,19 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import {
   accessSync,
   constants,
   lstatSync,
-  statSync,
 } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import {
-  currentSchemaContract,
   currentSchemaManifest,
   currentSchemaVersion,
+  databaseHasCompleteLegacyMediaMetadata,
+  databaseMatchesSchemaContract,
+  migrationIncompleteMarker,
 } from "./database.ts";
 import { discardUnreadRequestBody } from "./httpRequest.ts";
 
@@ -44,6 +45,7 @@ type StreamCloser = (event: RuntimeControlEvent) => void;
 
 export type RuntimeLifecycleOptions = Readonly<{
   dataDirectory?: string | (() => string);
+  legacyStandbyDatabaseGuard?: (database: DatabaseSync) => boolean;
   logger?: RuntimeLogger;
   readinessDatabaseGuard?: (database: DatabaseSync) => boolean;
   retryAfterSeconds?: number;
@@ -61,7 +63,7 @@ type RequestContext = {
 };
 
 type DatabaseProbe =
-  | { ok: true; schemaVersion: number }
+  | { ok: true; schemaVersion: number; standby: boolean }
   | {
       code:
         | "DATABASE_DIRECTORY_INVALID"
@@ -69,11 +71,30 @@ type DatabaseProbe =
         | "DATABASE_FILE_INVALID"
         | "DATABASE_FILE_UNAVAILABLE"
         | "DATABASE_INTEGRITY_FAILED"
+        | "DATABASE_MIGRATION_INCOMPLETE"
         | "DATABASE_RESTORE_INCOMPLETE"
         | "DATABASE_SCHEMA_MISMATCH"
         | "DATABASE_UNAVAILABLE";
       ok: false;
     };
+
+type DatabaseAdmissionIdentity = Readonly<{
+  dataDirectory: string;
+  dataDirectoryDev: bigint;
+  dataDirectoryIno: bigint;
+  dataDirectoryMode: bigint;
+  dataDirectoryUid: bigint;
+  dev: bigint;
+  ino: bigint;
+  mode: bigint;
+  nlink: bigint;
+  uid: bigint;
+}>;
+
+type CachedBusinessSchemaAdmission = Readonly<{
+  identity: DatabaseAdmissionIdentity;
+  probe: Extract<DatabaseProbe, { ok: true }>;
+}>;
 
 export type ShutdownResult = Readonly<{
   activeHandlers: number;
@@ -129,6 +150,15 @@ function isAvailableDuringMaintenance(request: IncomingMessage) {
   return path === "/version";
 }
 
+function existsWithoutThrow(path: string) {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function json(
   response: ServerResponse,
   status: number,
@@ -140,169 +170,7 @@ function json(
   response.end(JSON.stringify(body));
 }
 
-function sameStrings(left: readonly string[], right: readonly string[]) {
-  return left.length === right.length &&
-    left.every((value, index) => value === right[index]);
-}
-
-function schemaSqlHash(sql: unknown) {
-  return createHash("sha256").update(String(sql ?? "")).digest("hex");
-}
-
-function acceptedSchemaSqlHashes(contract: {
-  acceptedSqlHashes?: readonly string[];
-  sqlHash: string;
-}) {
-  return contract.acceptedSqlHashes ?? [contract.sqlHash];
-}
-
-function schemaObject(
-  database: DatabaseSync,
-  type: "index" | "table" | "trigger",
-  name: string,
-) {
-  return database.prepare(`
-    SELECT sql, tbl_name
-    FROM sqlite_schema
-    WHERE type = ? AND name = ?
-  `).get(type, name) as { sql?: unknown; tbl_name?: unknown } | undefined;
-}
-
-export function databaseMatchesSchemaContract(database: DatabaseSync) {
-  const expectedTables = Object.keys(currentSchemaContract.tables).sort();
-  const actualTables = (database.prepare(`
-    SELECT name
-    FROM sqlite_schema
-    WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-    ORDER BY name
-  `).all() as Array<{ name?: unknown }>).map((row) => String(row.name));
-  if (!sameStrings(actualTables, expectedTables)) return false;
-
-  for (const tableName of expectedTables) {
-    if (!/^[a-z][a-z0-9_]*$/.test(tableName)) return false;
-    const expectedColumns = [
-      ...currentSchemaContract.tables[
-        tableName as keyof typeof currentSchemaContract.tables
-      ],
-    ].sort();
-    const actualColumns = (database
-      .prepare(`PRAGMA table_xinfo("${tableName}")`)
-      .all() as Array<{ name?: unknown }>).map((column) => String(column.name))
-      .sort();
-    if (!sameStrings(actualColumns, expectedColumns)) return false;
-    const table = schemaObject(database, "table", tableName);
-    const acceptedSqlHashes = currentSchemaContract.tableSqlHashes[
-      tableName as keyof typeof currentSchemaContract.tableSqlHashes
-    ];
-    if (!table || !acceptedSqlHashes.includes(schemaSqlHash(table.sql))) {
-      return false;
-    }
-  }
-
-  const expectedExplicitIndexNames = Object.keys(
-    currentSchemaContract.explicitIndexes,
-  ).sort();
-  const optionalExplicitIndexNames = new Set<string>();
-  for (const [indexName, condition] of Object.entries(
-    currentSchemaContract.conditionallyOptionalExplicitIndexes,
-  )) {
-    const table = schemaObject(database, "table", condition.table);
-    if (schemaSqlHash(table?.sql) === condition.tableSqlHash) {
-      optionalExplicitIndexNames.add(indexName);
-    }
-  }
-  const requiredExplicitIndexNames = expectedExplicitIndexNames.filter(
-    (name) => !optionalExplicitIndexNames.has(name),
-  );
-  const actualExplicitIndexNames = (database.prepare(`
-    SELECT name
-    FROM sqlite_schema
-    WHERE type = 'index' AND sql IS NOT NULL
-    ORDER BY name
-  `).all() as Array<{ name?: unknown }>).map((row) => String(row.name));
-  if (
-    actualExplicitIndexNames.some(
-      (name) => !expectedExplicitIndexNames.includes(name),
-    ) ||
-    requiredExplicitIndexNames.some(
-      (name) => !actualExplicitIndexNames.includes(name),
-    )
-  ) {
-    return false;
-  }
-  for (const indexName of actualExplicitIndexNames) {
-    const expected = currentSchemaContract.explicitIndexes[
-      indexName as keyof typeof currentSchemaContract.explicitIndexes
-    ];
-    const index = schemaObject(database, "index", indexName);
-    if (
-      String(index?.tbl_name ?? "") !== expected.table ||
-      !acceptedSchemaSqlHashes(expected).includes(schemaSqlHash(index?.sql))
-    ) return false;
-  }
-
-  for (const [indexName, expected] of Object.entries(
-    currentSchemaContract.indexes,
-  )) {
-    if (
-      !/^[a-z][a-z0-9_]*$/.test(indexName) ||
-      !/^[a-z][a-z0-9_]*$/.test(expected.table)
-    ) return false;
-    const index = (database
-      .prepare(`PRAGMA index_list("${expected.table}")`)
-      .all() as Array<{
-        name?: unknown;
-        partial?: unknown;
-        unique?: unknown;
-      }>).find((candidate) => String(candidate.name) === indexName);
-    if (
-      !index ||
-      Boolean(Number(index.unique)) !== expected.unique ||
-      Boolean(Number(index.partial)) !== expected.partial
-    ) return false;
-    const columns = (database
-      .prepare(`PRAGMA index_xinfo("${indexName}")`)
-      .all() as Array<{ key?: unknown; name?: unknown }>).filter(
-        (column) => Number(column.key) === 1,
-      ).map((column) => String(column.name));
-    if (!sameStrings(columns, expected.columns)) return false;
-    const schemaIndex = schemaObject(database, "index", indexName);
-    const explicitIndex = currentSchemaContract.explicitIndexes[
-      indexName as keyof typeof currentSchemaContract.explicitIndexes
-    ];
-    if (
-      String(schemaIndex?.tbl_name ?? "") !== expected.table ||
-      !acceptedSchemaSqlHashes(explicitIndex).includes(
-        schemaSqlHash(schemaIndex?.sql),
-      )
-    ) return false;
-  }
-
-  const expectedTriggerNames = Object.keys(currentSchemaContract.triggers).sort();
-  const actualTriggerNames = (database.prepare(`
-    SELECT name
-    FROM sqlite_schema
-    WHERE type = 'trigger'
-    ORDER BY name
-  `).all() as Array<{ name?: unknown }>).map((row) => String(row.name));
-  if (!sameStrings(actualTriggerNames, expectedTriggerNames)) return false;
-  for (const [triggerName, expected] of Object.entries(
-    currentSchemaContract.triggers,
-  )) {
-    const trigger = schemaObject(database, "trigger", triggerName);
-    if (
-      String(trigger?.tbl_name ?? "") !== expected.table ||
-      schemaSqlHash(trigger?.sql) !== expected.sqlHash
-    ) return false;
-  }
-  const actualViewNames = (database.prepare(`
-    SELECT name
-    FROM sqlite_schema
-    WHERE type = 'view'
-    ORDER BY name
-  `).all() as Array<{ name?: unknown }>).map((row) => String(row.name));
-  return actualViewNames.length === 0;
-}
+export { databaseMatchesSchemaContract };
 
 export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
   const logger = options.logger ?? defaultLogger;
@@ -325,6 +193,10 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
   let maintenance = process.env.UNBOUNDRY_MAINTENANCE_MODE === "1";
   let shuttingDown = false;
   let shutdownPromise: Promise<ShutdownResult> | undefined;
+  let businessSchemaAdmission: CachedBusinessSchemaAdmission | undefined;
+  let activeDatabaseIdentity: DatabaseAdmissionIdentity | undefined;
+  let databaseIdentityRestartRequired = false;
+  let schema37RestartRequired = false;
 
   function dataDirectory() {
     if (typeof options.dataDirectory === "function") {
@@ -333,6 +205,120 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
     return options.dataDirectory ??
       process.env.UNBOUNDRY_DATA_DIR ??
       join(process.cwd(), "data");
+  }
+
+  function databaseAdmissionIdentity(
+    directory: string,
+  ): DatabaseAdmissionIdentity | undefined {
+    try {
+      const canonicalDirectory = lstatSync(directory, { bigint: true });
+      if (
+        !canonicalDirectory.isDirectory() || canonicalDirectory.isSymbolicLink() ||
+        typeof process.getuid !== "function" ||
+        canonicalDirectory.uid !== BigInt(process.getuid()) ||
+        (canonicalDirectory.mode & 0o022n) !== 0n
+      ) return undefined;
+      const database = lstatSync(join(directory, "unboundry.sqlite"), {
+        bigint: true,
+      });
+      if (
+        !database.isFile() || database.isSymbolicLink() ||
+        database.nlink !== 1n || typeof process.getuid !== "function" ||
+        database.uid !== BigInt(process.getuid()) ||
+        (database.mode & 0o022n) !== 0n
+      ) return undefined;
+      return Object.freeze({
+        dataDirectory: directory,
+        dataDirectoryDev: canonicalDirectory.dev,
+        dataDirectoryIno: canonicalDirectory.ino,
+        dataDirectoryMode: canonicalDirectory.mode,
+        dataDirectoryUid: canonicalDirectory.uid,
+        dev: database.dev,
+        ino: database.ino,
+        mode: database.mode,
+        nlink: database.nlink,
+        uid: database.uid,
+      });
+    } catch {
+      return undefined;
+    }
+  }
+
+  function sameDatabaseAdmissionIdentity(
+    left: DatabaseAdmissionIdentity | undefined,
+    right: DatabaseAdmissionIdentity | undefined,
+  ) {
+    return Boolean(
+      left && right && left.dataDirectory === right.dataDirectory &&
+        left.dataDirectoryDev === right.dataDirectoryDev &&
+        left.dataDirectoryIno === right.dataDirectoryIno &&
+        left.dataDirectoryUid === right.dataDirectoryUid &&
+        left.dataDirectoryMode === right.dataDirectoryMode &&
+        left.dev === right.dev && left.ino === right.ino &&
+        left.uid === right.uid && left.mode === right.mode &&
+        left.nlink === right.nlink,
+    );
+  }
+
+  function observeDatabaseAdmissionIdentity(directory: string) {
+    const current = databaseAdmissionIdentity(directory);
+    if (
+      activeDatabaseIdentity &&
+      !sameDatabaseAdmissionIdentity(activeDatabaseIdentity, current)
+    ) {
+      databaseIdentityRestartRequired = true;
+      businessSchemaAdmission = undefined;
+    }
+    return current;
+  }
+
+  function establishActiveDatabaseIdentity(
+    identity: DatabaseAdmissionIdentity | undefined,
+  ) {
+    if (!identity) return false;
+    if (
+      activeDatabaseIdentity &&
+      !sameDatabaseAdmissionIdentity(activeDatabaseIdentity, identity)
+    ) {
+      databaseIdentityRestartRequired = true;
+      businessSchemaAdmission = undefined;
+      return false;
+    }
+    activeDatabaseIdentity ??= identity;
+    return true;
+  }
+
+  function latchSchema37Standby() {
+    schema37RestartRequired = true;
+    businessSchemaAdmission = undefined;
+  }
+
+  function requireRestartAfterStartupSchemaMigration() {
+    latchSchema37Standby();
+  }
+
+  function observeStartupDatabaseProbe(probe: DatabaseProbe) {
+    if (!probe.ok) {
+      if (probe.code === "DATABASE_MIGRATION_INCOMPLETE") {
+        latchSchema37Standby();
+      }
+      return !schema37RestartRequired;
+    }
+    if (probe.standby) {
+      latchSchema37Standby();
+      return false;
+    }
+    if (schema37RestartRequired) return false;
+    let directory: string;
+    try {
+      directory = dataDirectory();
+    } catch {
+      return true;
+    }
+    establishActiveDatabaseIdentity(
+      observeDatabaseAdmissionIdentity(directory),
+    );
+    return !schema37RestartRequired && !databaseIdentityRestartRequired;
   }
 
   function mode(): RuntimeMode {
@@ -433,7 +419,12 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
   function rejectUnavailable(
     request: IncomingMessage,
     response: ServerResponse,
-    code: "SERVICE_MAINTENANCE" | "SERVICE_SHUTTING_DOWN",
+    code:
+      | "SERVICE_DATABASE_UNAVAILABLE"
+      | "SERVICE_MAINTENANCE"
+      | "SERVICE_RESTART_REQUIRED"
+      | "SERVICE_SCHEMA_STANDBY"
+      | "SERVICE_SHUTTING_DOWN",
   ) {
     const context = ensureRequest(request, response);
     context.code = code;
@@ -444,10 +435,15 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
       if (!request.readableEnded && !request.destroyed) request.destroy();
     });
     json(response, 503, {
-      error:
-        code === "SERVICE_MAINTENANCE"
-          ? "Service is temporarily unavailable"
-          : "Service is shutting down",
+      error: code === "SERVICE_MAINTENANCE"
+        ? "Service is temporarily unavailable"
+        : code === "SERVICE_SHUTTING_DOWN"
+        ? "Service is shutting down"
+        : code === "SERVICE_SCHEMA_STANDBY"
+        ? "Service is in schema migration standby"
+        : code === "SERVICE_RESTART_REQUIRED"
+        ? "Service restart is required"
+        : "Service database is unavailable",
       code,
       requestId: context.requestId,
     });
@@ -466,6 +462,71 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
       }
       if (maintenance) {
         rejectUnavailable(request, response, "SERVICE_MAINTENANCE");
+        return;
+      }
+      let directory: string;
+      try {
+        directory = dataDirectory();
+      } catch {
+        rejectUnavailable(request, response, "SERVICE_DATABASE_UNAVAILABLE");
+        return;
+      }
+      const databasePath = join(directory, "unboundry.sqlite");
+      const maintenanceEvidence =
+        existsWithoutThrow(join(directory, migrationIncompleteMarker)) ||
+        existsWithoutThrow(join(directory, ".unboundry-restore-incomplete"));
+      const currentIdentity = observeDatabaseAdmissionIdentity(directory);
+      if (databaseIdentityRestartRequired) {
+        rejectUnavailable(request, response, "SERVICE_RESTART_REQUIRED");
+        return;
+      }
+      if (
+        maintenanceEvidence || !sameDatabaseAdmissionIdentity(
+          businessSchemaAdmission?.identity,
+          currentIdentity,
+        )
+      ) businessSchemaAdmission = undefined;
+      const admission = businessSchemaAdmission?.probe ?? probeDatabase();
+      const finalIdentity = observeDatabaseAdmissionIdentity(directory);
+      if (databaseIdentityRestartRequired) {
+        rejectUnavailable(request, response, "SERVICE_RESTART_REQUIRED");
+        return;
+      }
+      if (!sameDatabaseAdmissionIdentity(currentIdentity, finalIdentity)) {
+        businessSchemaAdmission = undefined;
+        rejectUnavailable(request, response, "SERVICE_DATABASE_UNAVAILABLE");
+        return;
+      }
+      if (admission.ok && admission.standby) {
+        latchSchema37Standby();
+        rejectUnavailable(request, response, "SERVICE_SCHEMA_STANDBY");
+        return;
+      }
+      if (schema37RestartRequired) {
+        rejectUnavailable(request, response, "SERVICE_RESTART_REQUIRED");
+        return;
+      }
+      // A dynamic startup/readiness guard can move from unavailable to ready.
+      // Cache only an exact admitted schema bound to the current path identity.
+      if (
+        admission.ok && !admission.standby && finalIdentity &&
+        establishActiveDatabaseIdentity(finalIdentity)
+      ) {
+        businessSchemaAdmission = Object.freeze({
+          identity: finalIdentity,
+          probe: admission,
+        });
+      }
+      if (databaseIdentityRestartRequired) {
+        rejectUnavailable(request, response, "SERVICE_RESTART_REQUIRED");
+        return;
+      }
+      if (!admission.ok) {
+        rejectUnavailable(request, response, "SERVICE_DATABASE_UNAVAILABLE");
+        return;
+      }
+      if (!finalIdentity) {
+        rejectUnavailable(request, response, "SERVICE_DATABASE_UNAVAILABLE");
         return;
       }
     }
@@ -543,8 +604,13 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
     }
 
     try {
-      const directoryStat = statSync(directory);
-      if (!directoryStat.isDirectory()) {
+      const directoryStat = lstatSync(directory);
+      if (
+        !directoryStat.isDirectory() || directoryStat.isSymbolicLink() ||
+        typeof process.getuid !== "function" ||
+        directoryStat.uid !== process.getuid() ||
+        (directoryStat.mode & 0o022) !== 0
+      ) {
         return { ok: false, code: "DATABASE_DIRECTORY_INVALID" };
       }
       accessSync(directory, constants.R_OK);
@@ -576,8 +642,22 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
       }
     }
     try {
-      const fileStat = statSync(databasePath);
-      if (!fileStat.isFile() || fileStat.size === 0) {
+      lstatSync(join(directory, migrationIncompleteMarker));
+      return { ok: false, code: "DATABASE_MIGRATION_INCOMPLETE" };
+    } catch (error) {
+      if (
+        !error || typeof error !== "object" || !("code" in error) ||
+        error.code !== "ENOENT"
+      ) return { ok: false, code: "DATABASE_DIRECTORY_UNAVAILABLE" };
+    }
+    try {
+      const fileStat = lstatSync(databasePath);
+      if (
+        !fileStat.isFile() || fileStat.isSymbolicLink() ||
+        fileStat.size === 0 || fileStat.nlink !== 1 ||
+        typeof process.getuid !== "function" ||
+        fileStat.uid !== process.getuid() || (fileStat.mode & 0o022) !== 0
+      ) {
         return { ok: false, code: "DATABASE_FILE_INVALID" };
       }
       accessSync(databasePath, constants.R_OK);
@@ -599,7 +679,13 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
       let walBytes = 0;
       let sharedMemoryPresent = false;
       try {
-        walBytes = statSync(`${databasePath}-wal`).size;
+        const wal = lstatSync(`${databasePath}-wal`);
+        if (
+          !wal.isFile() || wal.isSymbolicLink() || wal.nlink !== 1 ||
+          typeof process.getuid !== "function" || wal.uid !== process.getuid() ||
+          (wal.mode & 0o022) !== 0
+        ) return { ok: false, code: "DATABASE_FILE_UNAVAILABLE" };
+        walBytes = wal.size;
       } catch (error) {
         if (
           !error ||
@@ -611,7 +697,13 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
         }
       }
       try {
-        sharedMemoryPresent = statSync(`${databasePath}-shm`).isFile();
+        const shared = lstatSync(`${databasePath}-shm`);
+        if (
+          !shared.isFile() || shared.isSymbolicLink() || shared.nlink !== 1 ||
+          typeof process.getuid !== "function" || shared.uid !== process.getuid() ||
+          (shared.mode & 0o022) !== 0
+        ) return { ok: false, code: "DATABASE_FILE_UNAVAILABLE" };
+        sharedMemoryPresent = true;
       } catch (error) {
         if (
           !error ||
@@ -646,6 +738,9 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
       ) {
         return { ok: false, code: "DATABASE_INTEGRITY_FAILED" };
       }
+      if (database.prepare("PRAGMA foreign_key_check").all().length !== 0) {
+        return { ok: false, code: "DATABASE_INTEGRITY_FAILED" };
+      }
       const versionRow = database
         .prepare("PRAGMA user_version")
         .get() as { user_version?: unknown } | undefined;
@@ -662,17 +757,31 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
       const ledgerRows = database
         .prepare("SELECT version, name FROM schema_migrations ORDER BY version")
         .all() as Array<{ name?: unknown; version?: unknown }>;
+      const userVersion = Number(versionRow?.user_version);
+      const expectedManifest = userVersion === 37
+        ? currentSchemaManifest.slice(0, 37)
+        : currentSchemaManifest;
       if (
-        Number(versionRow?.user_version) !== schemaVersion ||
-        ledgerRows.length !== currentSchemaManifest.length ||
+        ![37, schemaVersion].includes(userVersion) ||
+        ledgerRows.length !== expectedManifest.length ||
         ledgerRows.some((row, index) => (
-          Number(row.version) !== currentSchemaManifest[index]?.version ||
-          String(row.name) !== currentSchemaManifest[index]?.name
+          Number(row.version) !== expectedManifest[index]?.version ||
+          String(row.name) !== expectedManifest[index]?.name
         ))
       ) {
         return { ok: false, code: "DATABASE_SCHEMA_MISMATCH" };
       }
+      if (userVersion === 37) {
+        if (
+          !options.legacyStandbyDatabaseGuard ||
+          !options.legacyStandbyDatabaseGuard(database)
+        ) return { ok: false, code: "DATABASE_SCHEMA_MISMATCH" };
+        return { ok: true, schemaVersion: 37, standby: true };
+      }
       if (!databaseMatchesSchemaContract(database)) {
+        return { ok: false, code: "DATABASE_SCHEMA_MISMATCH" };
+      }
+      if (!databaseHasCompleteLegacyMediaMetadata(database)) {
         return { ok: false, code: "DATABASE_SCHEMA_MISMATCH" };
       }
       if (
@@ -681,7 +790,7 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
       ) {
         return { ok: false, code: "DATABASE_UNAVAILABLE" };
       }
-      return { ok: true, schemaVersion };
+      return { ok: true, schemaVersion, standby: false };
     } catch {
       return { ok: false, code: "DATABASE_UNAVAILABLE" };
     } finally {
@@ -729,12 +838,91 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
       return;
     }
 
+    let directory: string | undefined;
+    try {
+      directory = dataDirectory();
+    } catch {
+      // The ordinary probe below retains the exact directory failure code.
+    }
+    const initialIdentity = directory
+      ? observeDatabaseAdmissionIdentity(directory)
+      : undefined;
     const probe = probeDatabase();
-    if (!probe.ok) {
-      context.code = probe.code;
+    const finalIdentity = directory
+      ? observeDatabaseAdmissionIdentity(directory)
+      : undefined;
+    const identityChangedDuringProbe = !sameDatabaseAdmissionIdentity(
+      initialIdentity,
+      finalIdentity,
+    );
+    if (databaseIdentityRestartRequired) {
+      context.code = "SERVICE_RESTART_REQUIRED";
+      response.setHeader("Retry-After", String(retryAfterSeconds));
+      json(response, 503, {
+        status: "not-ready",
+        code: "SERVICE_RESTART_REQUIRED",
+        mode: "database-restart-required",
+        mutationsAccepted: false,
+        databaseProbe: "read-only",
+        requestId: context.requestId,
+      });
+      return;
+    }
+    if (probe.ok && probe.standby) latchSchema37Standby();
+    if (schema37RestartRequired && (!probe.ok || !probe.standby)) {
+      context.code = "SERVICE_RESTART_REQUIRED";
+      response.setHeader("Retry-After", String(retryAfterSeconds));
+      json(response, 503, {
+        status: "not-ready",
+        code: "SERVICE_RESTART_REQUIRED",
+        mode: "schema39-restart-required",
+        mutationsAccepted: false,
+        databaseProbe: "read-only",
+        ...(probe.ok ? { schemaVersion: probe.schemaVersion } : {}),
+        requestId: context.requestId,
+      });
+      return;
+    }
+    if (!probe.ok || identityChangedDuringProbe || !finalIdentity) {
+      const code = !probe.ok ? probe.code : "DATABASE_FILE_UNAVAILABLE";
+      context.code = code;
       json(response, 503, {
         error: "Service is not ready",
-        code: probe.code,
+        code,
+        requestId: context.requestId,
+      });
+      return;
+    }
+    if (!probe.standby && !establishActiveDatabaseIdentity(finalIdentity)) {
+      context.code = "SERVICE_RESTART_REQUIRED";
+      response.setHeader("Retry-After", String(retryAfterSeconds));
+      json(response, 503, {
+        status: "not-ready",
+        code: "SERVICE_RESTART_REQUIRED",
+        mode: "database-restart-required",
+        mutationsAccepted: false,
+        databaseProbe: "read-only",
+        schemaVersion: probe.schemaVersion,
+        requestId: context.requestId,
+      });
+      return;
+    }
+    // The schema probe and logical guards above precede the active latch. Close
+    // the last path-replacement window before advertising readiness.
+    if (
+      directory && !sameDatabaseAdmissionIdentity(
+        finalIdentity,
+        observeDatabaseAdmissionIdentity(directory),
+      )
+    ) {
+      context.code = "SERVICE_RESTART_REQUIRED";
+      response.setHeader("Retry-After", String(retryAfterSeconds));
+      json(response, 503, {
+        status: "not-ready",
+        code: "SERVICE_RESTART_REQUIRED",
+        mode: "database-restart-required",
+        mutationsAccepted: false,
+        databaseProbe: "read-only",
         requestId: context.requestId,
       });
       return;
@@ -742,8 +930,12 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
 
     json(response, 200, {
       status: "ready",
-      mode: maintenance ? "maintenance-api-blocked" : "active",
-      mutationsAccepted: !maintenance,
+      mode: probe.standby
+        ? "schema37-health-only-standby"
+        : maintenance
+        ? "maintenance-api-blocked"
+        : "active",
+      mutationsAccepted: !maintenance && !probe.standby,
       databaseProbe: "read-only",
       schemaVersion: probe.schemaVersion,
       requestId: context.requestId,
@@ -798,9 +990,11 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
     getRetryAfterSeconds: () => retryAfterSeconds,
     getShutdownDeadlineMs: () => shutdownDeadlineMs,
     healthApi,
+    observeStartupDatabaseProbe,
     middleware,
     probeDatabase,
     registerStreamCloser,
+    requireRestartAfterStartupSchemaMigration,
     requestId,
     setMaintenance,
     setResponseCode,

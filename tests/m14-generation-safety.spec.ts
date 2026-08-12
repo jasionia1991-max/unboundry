@@ -446,19 +446,21 @@ test("only administrators can read and change generation safety settings and leg
           SELECT RAISE(ABORT, 'test generation safety audit fault');
         END;
       `);
+      const failedStop = await request("/api/admin/generation-safety", {
+        body: JSON.stringify({
+          ...baseSettings,
+          emergencyStop: true,
+          runningTaskPolicy: "cancel",
+        }),
+        cookie: adminCookie,
+        method: "PUT",
+      });
+      expect(failedStop.status).toBe(400);
+      auditFaultStore.exec("DROP TRIGGER test_generation_safety_audit_fault");
     } finally {
+      auditFaultStore.exec("DROP TRIGGER IF EXISTS test_generation_safety_audit_fault");
       auditFaultStore.close();
     }
-    const failedStop = await request("/api/admin/generation-safety", {
-      body: JSON.stringify({
-        ...baseSettings,
-        emergencyStop: true,
-        runningTaskPolicy: "cancel",
-      }),
-      cookie: adminCookie,
-      method: "PUT",
-    });
-    expect(failedStop.status).toBe(400);
     const afterAuditFault = await (await request(
       "/api/admin/generation-safety",
       { cookie: adminCookie },
@@ -470,12 +472,6 @@ test("only administrators can read and change generation safety settings and leg
     const notCancelledStore = createGenerationTaskStore(dataDirectory);
     expect(notCancelledStore.get(queued.id)).toMatchObject({ state: "queued" });
     notCancelledStore.close();
-    const dropAuditFaultStore = openAppDatabase(dataDirectory);
-    try {
-      dropAuditFaultStore.exec("DROP TRIGGER test_generation_safety_audit_fault");
-    } finally {
-      dropAuditFaultStore.close();
-    }
 
     const stopped = await request("/api/admin/generation-safety", {
       body: JSON.stringify({

@@ -565,7 +565,7 @@ function canvasSaveRequestFence(payload: string): CanvasSaveRequestFence | undef
   }
 }
 
-function isCanvasSaveSuccess(
+export function isCanvasSaveSuccess(
   value: unknown,
   requestFence: CanvasSaveRequestFence | undefined,
 ): value is CanvasSaveSuccess {
@@ -604,7 +604,9 @@ function isCanvasSaveFence(value: unknown): value is CanvasSaveFence {
   );
 }
 
-function isLoadedCanvasDocument(value: unknown): value is LoadedCanvasDocument {
+export function isLoadedCanvasDocument(
+  value: unknown,
+): value is LoadedCanvasDocument {
   if (!value || typeof value !== "object") return false;
   const document = value as Partial<LoadedCanvasDocument>;
   if (!isCanvasSaveFence(value)) return false;

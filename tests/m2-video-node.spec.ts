@@ -1,9 +1,82 @@
 import { expect, test } from "./safe-test";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openAppDatabase } from "../server/database";
+
+const historyVideoIds = ["history-video-1"] as const;
+
+function prepareHistoryVideoMedia(dataDirectory: string) {
+  const store = openAppDatabase(dataDirectory);
+  try {
+    store.exec("BEGIN IMMEDIATE");
+    store.prepare(`
+      DELETE FROM asset_history WHERE account_id = 'fixture-video-success'
+    `).run();
+    const removeMedia = store.prepare(`
+      DELETE FROM media_assets
+      WHERE owner_id = '__test__' AND kind = 'video' AND id = ?
+    `);
+    const insertMedia = store.prepare(`
+      INSERT INTO media_assets (
+        kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+        storage_status, checksum_sha256, content_type, duration_seconds,
+        duration_source, duration_status
+      ) VALUES (
+        'video', ?, '__test__', ?, 1, ?, ?, 'ready', ?, 'video/mp4', 5.088,
+        'server-probe', 'ready'
+      )
+    `);
+    const timestamp = new Date().toISOString();
+    for (const id of historyVideoIds) {
+      removeMedia.run(id);
+      insertMedia.run(
+        id,
+        `${id}.fixture`,
+        timestamp,
+        timestamp,
+        createHash("sha256").update(`history-video:${id}`).digest("hex"),
+      );
+    }
+    store.exec("COMMIT");
+  } catch (error) {
+    try {
+      store.exec("ROLLBACK");
+    } catch {
+      // Preserve the setup failure.
+    }
+    throw error;
+  } finally {
+    store.close();
+  }
+}
+
+function cleanupHistoryVideoMedia(dataDirectory: string) {
+  const store = openAppDatabase(dataDirectory);
+  try {
+    store.exec("BEGIN IMMEDIATE");
+    store.prepare(`
+      DELETE FROM asset_history WHERE account_id = 'fixture-video-success'
+    `).run();
+    const removeMedia = store.prepare(`
+      DELETE FROM media_assets
+      WHERE owner_id = '__test__' AND kind = 'video' AND id = ?
+    `);
+    for (const id of historyVideoIds) removeMedia.run(id);
+    store.exec("COMMIT");
+  } catch (error) {
+    try {
+      store.exec("ROLLBACK");
+    } catch {
+      // Preserve the cleanup failure.
+    }
+    throw error;
+  } finally {
+    store.close();
+  }
+}
 
 const mediaDirectory = mkdtempSync(join(tmpdir(), "unboundry-video-node-test-"));
 const videoFile = join(mediaDirectory, "probe.mp4");
@@ -115,60 +188,48 @@ test("Video success shows playable media and adds one history item without quota
   const { dataDirectory } = await dataDirectoryResponse.json() as {
     dataDirectory: string;
   };
-  const store = openAppDatabase(dataDirectory);
-  const timestamp = new Date().toISOString();
-  store.prepare(`
-    INSERT INTO media_assets (
-      kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
-      storage_status
-    )
-    VALUES (
-      'video', 'history-video-1', '__test__', 'history-video-1.fixture',
-      1, ?, ?, 'ready'
-    )
-    ON CONFLICT(kind, id) DO UPDATE SET
-      owner_id = excluded.owner_id,
-      storage_status = 'ready',
-      updated_at = excluded.updated_at
-  `).run(timestamp, timestamp);
-  store.close();
-  await page.goto("/__fixture/node.video.success");
+  prepareHistoryVideoMedia(dataDirectory);
+  try {
+    await page.goto("/__fixture/node.video.success");
 
-  const world = page.getByTestId("canvas-world");
-  await expect(world).toHaveAttribute("data-persistence-ready", "true");
-  const preview = page.getByTestId("video-node-preview");
-  await expect(preview).toBeVisible();
-  await expect(preview).toHaveJSProperty("muted", true);
-  await expect(preview).not.toHaveAttribute("controls");
-  await expect
-    .poll(() =>
-      preview.evaluate((video: HTMLVideoElement) => ({
-        duration: video.duration,
-        height: video.videoHeight,
-        width: video.videoWidth,
-      })),
-    )
-    .toEqual({ duration: 5.08, height: 480, width: 836 });
-  await expect(page.getByTestId("credits")).toHaveCount(0);
+    const world = page.getByTestId("canvas-world");
+    await expect(world).toHaveAttribute("data-persistence-ready", "true");
+    const preview = page.getByTestId("video-node-preview");
+    await expect(preview).toBeVisible();
+    await expect(preview).toHaveJSProperty("muted", true);
+    await expect(preview).not.toHaveAttribute("controls");
+    await expect
+      .poll(() =>
+        preview.evaluate((video: HTMLVideoElement) => ({
+          duration: video.duration,
+          height: video.videoHeight,
+          width: video.videoWidth,
+        })),
+      )
+      .toEqual({ duration: 5.08, height: 480, width: 836 });
+    await expect(page.getByTestId("credits")).toHaveCount(0);
 
-  const creator = page.getByTestId("video-creator");
-  await expect(creator).toBeVisible();
-  await expect(creator).not.toContainText("◉");
-  await expect(creator.getByRole("textbox")).toHaveValue(
-    "A red square slowly moves from left to right on a plain white background. Minimal UI test.",
-  );
-  await expect(
-    creator.getByRole("button", { name: "Generate" }),
-  ).toBeDisabled();
+    const creator = page.getByTestId("video-creator");
+    await expect(creator).toBeVisible();
+    await expect(creator).not.toContainText("◉");
+    await expect(creator.getByRole("textbox")).toHaveValue(
+      "A red square slowly moves from left to right on a plain white background. Minimal UI test.",
+    );
+    await expect(
+      creator.getByRole("button", { name: "Generate" }),
+    ).toBeDisabled();
 
-  await page.getByTestId("history").click();
-  await expect(page.getByTestId("history-panel")).toBeVisible();
-  await expect(page.getByTestId("history-count-video")).toHaveText("1");
-  await page.getByTestId("history-tab-video").click();
-  await expect(page.getByRole("button", { name: "视频 1" })).toBeVisible();
-  const history = await request.get("/api/history/fixture-video-success");
-  expect((await history.json() as { items: unknown[] }).items).toHaveLength(1);
-  expect(generationRequests).toEqual([]);
+    await page.getByTestId("history").click();
+    await expect(page.getByTestId("history-panel")).toBeVisible();
+    await expect(page.getByTestId("history-count-video")).toHaveText("1");
+    await page.getByTestId("history-tab-video").click();
+    await expect(page.getByRole("button", { name: "视频 1" })).toBeVisible();
+    const history = await request.get("/api/history/fixture-video-success");
+    expect((await history.json() as { items: unknown[] }).items).toHaveLength(1);
+    expect(generationRequests).toEqual([]);
+  } finally {
+    cleanupHistoryVideoMedia(dataDirectory);
+  }
 });
 
 test("Video empty, upload and editing states match the frozen basic state", async ({

@@ -186,6 +186,7 @@ test("legacy non-canonical OSS profiles fail closed on every operational read wi
   process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   let server: ChildProcess | undefined;
   try {
+    openAppDatabase(dataDirectory).close();
     const draft = await saveStorageProfile(dummyProfile());
     await markStorageProfileVerified(draft.id);
     await activateStorageProfile(draft.id);
@@ -418,6 +419,7 @@ test("routing off still serves existing OSS assets through the HTTP layer", asyn
   process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   let server: ChildProcess | undefined;
   try {
+    openAppDatabase(dataDirectory).close();
     const draft = await saveStorageProfile(dummyProfile());
     await markStorageProfileVerified(draft.id);
     await activateStorageProfile(draft.id);
@@ -473,6 +475,7 @@ test("status warns when OSS assets exist without a readable profile", async () =
   process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   let server: ChildProcess | undefined;
   try {
+    openAppDatabase(dataDirectory).close();
     const draft = await saveStorageProfile(dummyProfile());
     await markStorageProfileVerified(draft.id);
 
@@ -511,10 +514,10 @@ test("new OSS media rows record their owning storage profile", async () => {
   const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
   process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   try {
+    openAppDatabase(dataDirectory).close();
     const draft = await saveStorageProfile(dummyProfile());
     await markStorageProfileVerified(draft.id);
     await activateStorageProfile(draft.id);
-    openAppDatabase(dataDirectory).close();
     const setupDatabase = new DatabaseSync(
       join(dataDirectory, "unboundry.sqlite"),
     );

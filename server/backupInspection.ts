@@ -12,7 +12,7 @@ import {
   open,
   readdir,
 } from "node:fs/promises";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import {
   currentSchemaManifest,
@@ -33,6 +33,13 @@ const accountCredentialAad = Buffer.from(
 );
 const maximumEncryptedDocumentBytes = 16 * 1024 * 1024;
 const maximumEncryptedCredentialBytes = 256 * 1024;
+const providerDrivers = new Set([
+  "mureka",
+  "multi-protocol-relay",
+  "openai-compatible",
+  "openrouter",
+  "volcengine-ark",
+]);
 const knownMigrationNames = Object.freeze(
   currentSchemaManifest.map(({ name }) => name),
 );
@@ -413,6 +420,19 @@ export type BackupSecretValidation = Readonly<{
 }>;
 
 export type BackupSecretValidationContext = Readonly<{
+  providerProfiles: readonly Readonly<{
+    configurationVersion: number;
+    driver: string;
+    id: string;
+  }>[];
+  storageDocument: Readonly<{
+    activeProfileId: string | null;
+    mediaRoutingEnabled: boolean;
+    profiles: readonly Readonly<{
+      id: string;
+      status: "active" | "draft" | "verified";
+    }>[];
+  }>;
   storageProfileIds: readonly string[];
   validation: BackupSecretValidation;
 }>;
@@ -440,7 +460,8 @@ function assertAbsolutePath(path: string, label: string) {
 function containsPath(parent: string, child: string) {
   const difference = relative(parent, child);
   return difference === "" ||
-    (difference !== ".." && !difference.startsWith(`..${sep}`));
+    (!isAbsolute(difference) &&
+      difference !== ".." && !difference.startsWith(`..${sep}`));
 }
 
 function assertPrivateInspectionRoot(inspectionRoot: string) {
@@ -1006,24 +1027,13 @@ function logicalSha256(input: {
   return hash.digest("hex");
 }
 
-/**
- * Inspect a private SQLite copy without migrating, checkpointing or repairing it.
- * The caller must never pass the live application database: REM-009A first makes
- * a stable raw copy of main + WAL/journal in a private scratch directory.
- */
-export function inspectBackupDatabase(
-  databasePath: string,
+/** Inspect an open database without migrating, checkpointing, or repairing it. */
+function inspectOpenBackupDatabase(
+  database: DatabaseSync,
   inspectionRoot: string,
 ): BackupDatabaseInspection {
-  assertRegularDatabasePath(databasePath, inspectionRoot);
-  let database: DatabaseSync;
+  assertPrivateInspectionRoot(inspectionRoot);
   try {
-    database = new DatabaseSync(databasePath, { readOnly: true, timeout: 5_000 });
-  } catch {
-    fail("BACKUP_DATABASE_UNAVAILABLE", "Backup database could not be opened");
-  }
-  try {
-    database.exec("BEGIN");
     const integrityRows = statementRows(database, "PRAGMA integrity_check");
     if (
       integrityRows.length !== 1 ||
@@ -1101,11 +1111,48 @@ export function inspectBackupDatabase(
   } catch (error) {
     if (error instanceof BackupInspectionError) throw error;
     fail("BACKUP_DATABASE_INSPECTION_FAILED", "Backup database inspection failed");
+  }
+  fail("BACKUP_DATABASE_INSPECTION_FAILED", "Backup database inspection failed");
+}
+
+/**
+ * Inspect an already-open database while its caller owns the source write lock.
+ * The caller owns the transaction and connection lifetime. This is deliberately
+ * separate from inspectBackupDatabase so a final-candidate backup can prove the
+ * exact source contract after BEGIN IMMEDIATE, without opening a second live
+ * source connection or releasing the lock before the private snapshot exists.
+ */
+export function inspectLockedBackupDatabase(
+  database: DatabaseSync,
+  inspectionRoot: string,
+): BackupDatabaseInspection {
+  if (!database.isTransaction) {
+    fail(
+      "BACKUP_DATABASE_WRITE_LOCK_REQUIRED",
+      "Locked backup inspection requires an active SQLite transaction",
+    );
+  }
+  return inspectOpenBackupDatabase(database, inspectionRoot);
+}
+
+export function inspectBackupDatabase(
+  databasePath: string,
+  inspectionRoot: string,
+): BackupDatabaseInspection {
+  assertRegularDatabasePath(databasePath, inspectionRoot);
+  let database: DatabaseSync;
+  try {
+    database = new DatabaseSync(databasePath, { readOnly: true, timeout: 5_000 });
+  } catch {
+    fail("BACKUP_DATABASE_UNAVAILABLE", "Backup database could not be opened");
+  }
+  try {
+    database.exec("BEGIN");
+    return inspectOpenBackupDatabase(database, inspectionRoot);
   } finally {
     if (database.isTransaction) database.exec("ROLLBACK");
     database.close();
   }
-  fail("BACKUP_DATABASE_INSPECTION_FAILED", "Backup database inspection failed");
 }
 
 async function assertRegularTree(directory: string) {
@@ -1186,6 +1233,8 @@ async function readOptionalRegularFile(path: string, maximumBytes: number) {
     ? fileConstants.O_NOFOLLOW
     : 0;
   const handle = await open(path, fileConstants.O_RDONLY | noFollow);
+  let value: Buffer | undefined;
+  let overflowProbe: Buffer | undefined;
   try {
     const opened = await handle.stat({ bigint: true });
     if (
@@ -1196,7 +1245,27 @@ async function readOptionalRegularFile(path: string, maximumBytes: number) {
     ) {
       fail("BACKUP_SECRET_FILE_CHANGED", "Secret file changed while opening");
     }
-    const value = await handle.readFile();
+    if (opened.size > BigInt(maximumBytes)) {
+      fail("BACKUP_SECRET_FILE_TOO_LARGE", "Secret file exceeds its safe limit");
+    }
+    value = Buffer.alloc(Number(opened.size));
+    let position = 0;
+    while (position < value.length) {
+      const { bytesRead } = await handle.read(
+        value,
+        position,
+        value.length - position,
+        position,
+      );
+      if (!bytesRead) {
+        fail("BACKUP_SECRET_FILE_CHANGED", "Secret file ended while reading");
+      }
+      position += bytesRead;
+    }
+    overflowProbe = Buffer.allocUnsafe(1);
+    if ((await handle.read(overflowProbe, 0, 1, value.length)).bytesRead !== 0) {
+      fail("BACKUP_SECRET_FILE_TOO_LARGE", "Secret file expanded past its limit");
+    }
     const after = await handle.stat({ bigint: true });
     if (
       BigInt(value.length) !== opened.size ||
@@ -1206,11 +1275,14 @@ async function readOptionalRegularFile(path: string, maximumBytes: number) {
       after.dev !== opened.dev ||
       after.ino !== opened.ino
     ) {
-      value.fill(0);
       fail("BACKUP_SECRET_FILE_CHANGED", "Secret file changed while reading");
     }
     return value;
+  } catch (error) {
+    value?.fill(0);
+    throw error;
   } finally {
+    overflowProbe?.fill(0);
     await handle.close();
   }
 }
@@ -1270,6 +1342,7 @@ async function validateEncryptedDocument(
   path: string,
   key: Buffer | undefined,
   aad: Buffer,
+  kind: "provider" | "storage",
 ) {
   const encoded = await readOptionalRegularFile(
     path,
@@ -1277,8 +1350,20 @@ async function validateEncryptedDocument(
   );
   if (!encoded) {
     return Object.freeze({
+      activeProfileId: null,
+      documentPresent: false,
+      mediaRoutingEnabled: false,
       profileIds: Object.freeze([] as string[]),
+      providerProfiles: Object.freeze([] as Array<{
+        configurationVersion: number;
+        driver: string;
+        id: string;
+      }>),
       profiles: 0,
+      storageProfiles: Object.freeze([] as Array<{
+        id: string;
+        status: "active" | "draft" | "verified";
+      }>),
     });
   }
   let iv: Buffer | undefined;
@@ -1348,9 +1433,77 @@ async function validateEncryptedDocument(
         "Decrypted secret document is invalid",
       );
     }
+    const providerProfiles = kind === "provider"
+      ? content.profiles.map((profile) => {
+          const value = profile as Record<string, unknown>;
+          const configurationVersion = value.configurationVersion === undefined
+            ? 1
+            : value.configurationVersion;
+          if (
+            typeof value.driver !== "string" ||
+            !providerDrivers.has(value.driver) ||
+            !Number.isSafeInteger(configurationVersion) ||
+            Number(configurationVersion) < 1
+          ) {
+            fail(
+              "BACKUP_SECRET_PLAINTEXT_INVALID",
+              "Provider secret metadata is invalid",
+            );
+          }
+          return Object.freeze({
+            configurationVersion: Number(configurationVersion),
+            driver: value.driver,
+            id: value.id as string,
+          });
+        }).sort((left, right) => left.id.localeCompare(right.id))
+      : [];
+    const storageProfiles = kind === "storage"
+      ? content.profiles.map((profile) => {
+          const value = profile as Record<string, unknown>;
+          if (!new Set(["active", "draft", "verified"]).has(String(value.status))) {
+            fail(
+              "BACKUP_SECRET_PLAINTEXT_INVALID",
+              "Storage secret metadata is invalid",
+            );
+          }
+          return Object.freeze({
+            id: value.id as string,
+            status: value.status as "active" | "draft" | "verified",
+          });
+        }).sort((left, right) => left.id.localeCompare(right.id))
+      : [];
+    const activeProfileId = kind === "storage" &&
+        content.activeProfileId !== undefined
+      ? content.activeProfileId
+      : null;
+    if (
+      activeProfileId !== null &&
+      (typeof activeProfileId !== "string" || !profileIds.includes(activeProfileId))
+    ) {
+      fail(
+        "BACKUP_SECRET_PLAINTEXT_INVALID",
+        "Active storage profile metadata is invalid",
+      );
+    }
+    if (
+      kind === "storage" &&
+      content.mediaRoutingEnabled !== undefined &&
+      typeof content.mediaRoutingEnabled !== "boolean"
+    ) {
+      fail(
+        "BACKUP_SECRET_PLAINTEXT_INVALID",
+        "Storage routing metadata is invalid",
+      );
+    }
     return Object.freeze({
+      activeProfileId: activeProfileId as string | null,
+      documentPresent: true,
+      mediaRoutingEnabled: kind === "storage" &&
+        content.mediaRoutingEnabled === true,
       profileIds: Object.freeze(profileIds),
+      providerProfiles: Object.freeze(providerProfiles),
       profiles: content.profiles.length,
+      storageProfiles: Object.freeze(storageProfiles),
     });
   } finally {
     encoded.fill(0);
@@ -1358,6 +1511,115 @@ async function validateEncryptedDocument(
     tag?.fill(0);
     ciphertext?.fill(0);
     plaintext?.fill(0);
+  }
+}
+
+function validateSecretDatabaseAlignment(
+  database: DatabaseSync,
+  providerDocument: Awaited<ReturnType<typeof validateEncryptedDocument>>,
+  storageDocument: Awaited<ReturnType<typeof validateEncryptedDocument>>,
+  masterKeyPresent: boolean,
+) {
+  if (
+    !masterKeyPresent ||
+    !providerDocument.documentPresent ||
+    !storageDocument.documentPresent
+  ) {
+    fail(
+      "BACKUP_SECRET_ALIGNMENT_INCOMPLETE",
+      "Final-candidate source requires the existing master key and both secret documents",
+    );
+  }
+  const providerRows = statementRows(database, `
+    SELECT id, driver, provider_configuration_version, status
+    FROM provider_profiles
+    ORDER BY id
+  `);
+  if (providerRows.length !== providerDocument.providerProfiles.length) {
+    fail(
+      "BACKUP_PROVIDER_DOCUMENT_MISMATCH",
+      "Provider secret profiles do not exactly match SQLite metadata",
+    );
+  }
+  providerRows.forEach((row, index) => {
+    const profile = providerDocument.providerProfiles[index];
+    if (
+      !profile ||
+      row[0] !== profile.id ||
+      row[1] !== profile.driver ||
+      row[2] !== BigInt(profile.configurationVersion) ||
+      (row[3] !== "disabled" && row[3] !== "enabled")
+    ) {
+      fail(
+        "BACKUP_PROVIDER_DOCUMENT_MISMATCH",
+        "Provider secret profiles do not exactly match SQLite metadata",
+      );
+    }
+  });
+
+  const storageById = new Map(
+    storageDocument.storageProfiles.map((profile) => [profile.id, profile]),
+  );
+  const activeProfiles = storageDocument.storageProfiles.filter(
+    (profile) => profile.status === "active",
+  );
+  const selected = storageDocument.activeProfileId === null
+    ? undefined
+    : storageById.get(storageDocument.activeProfileId);
+  if (
+    activeProfiles.length > 1 ||
+    (selected && selected.status !== "active" && selected.status !== "verified") ||
+    (!selected && storageDocument.activeProfileId !== null) ||
+    (activeProfiles.length === 1 &&
+      activeProfiles[0]?.id !== storageDocument.activeProfileId) ||
+    (storageDocument.mediaRoutingEnabled && selected?.status !== "active")
+  ) {
+    fail(
+      "BACKUP_STORAGE_DOCUMENT_MISMATCH",
+      "Storage secret routing metadata is not in a durable terminal state",
+    );
+  }
+  const referencedStorageIds = new Set<string>();
+  for (const row of statementRows(database, `
+    SELECT DISTINCT storage_profile_id
+    FROM media_assets
+    WHERE storage_profile_id IS NOT NULL
+    ORDER BY storage_profile_id
+  `)) {
+    if (typeof row[0] !== "string" || !row[0]) {
+      fail(
+        "BACKUP_STORAGE_DOCUMENT_MISMATCH",
+        "SQLite contains an invalid storage profile reference",
+      );
+    }
+    referencedStorageIds.add(row[0]);
+  }
+  const publicationTable = statementRows(database, `
+    SELECT COUNT(*)
+    FROM sqlite_schema
+    WHERE type = 'table' AND name = 'media_publication_attempts'
+  `);
+  if (publicationTable[0]?.[0] === 1n) {
+    for (const row of statementRows(database, `
+      SELECT DISTINCT storage_profile_id
+      FROM media_publication_attempts
+      WHERE storage_profile_id IS NOT NULL
+      ORDER BY storage_profile_id
+    `)) {
+      if (typeof row[0] !== "string" || !row[0]) {
+        fail(
+          "BACKUP_STORAGE_DOCUMENT_MISMATCH",
+          "SQLite contains an invalid publication storage profile reference",
+        );
+      }
+      referencedStorageIds.add(row[0]);
+    }
+  }
+  if ([...referencedStorageIds].some((id) => !storageById.has(id))) {
+    fail(
+      "BACKUP_STORAGE_DOCUMENT_MISMATCH",
+      "SQLite storage references are missing from the encrypted document",
+    );
   }
 }
 
@@ -1423,6 +1685,7 @@ export async function validateBackupSecretsWithContext(
   databasePath: string,
   secretsDirectory: string,
   inspectionRoot: string,
+  options: Readonly<{ requireDatabaseAlignment?: boolean }> = {},
 ): Promise<BackupSecretValidationContext> {
   assertRegularDatabasePath(databasePath, inspectionRoot);
   assertAbsolutePath(secretsDirectory, "Secrets directory");
@@ -1469,20 +1732,46 @@ export async function validateBackupSecretsWithContext(
           join(secretsDirectory, "provider-profiles.enc.json"),
           key,
           providerDocumentAad,
+          "provider",
         )
       : Object.freeze({
+          activeProfileId: null,
+          documentPresent: false,
+          mediaRoutingEnabled: false,
           profileIds: Object.freeze([] as string[]),
+          providerProfiles: Object.freeze([] as Array<{
+            configurationVersion: number;
+            driver: string;
+            id: string;
+          }>),
           profiles: 0,
+          storageProfiles: Object.freeze([] as Array<{
+            id: string;
+            status: "active" | "draft" | "verified";
+          }>),
         });
     const storageDocument = secretsPresent
       ? await validateEncryptedDocument(
           join(secretsDirectory, "storage-profiles.enc.json"),
           key,
           storageDocumentAad,
+          "storage",
         )
       : Object.freeze({
+          activeProfileId: null,
+          documentPresent: false,
+          mediaRoutingEnabled: false,
           profileIds: Object.freeze([] as string[]),
+          providerProfiles: Object.freeze([] as Array<{
+            configurationVersion: number;
+            driver: string;
+            id: string;
+          }>),
           profiles: 0,
+          storageProfiles: Object.freeze([] as Array<{
+            id: string;
+            status: "active" | "draft" | "verified";
+          }>),
         });
 
     database = new DatabaseSync(databasePath, { readOnly: true, timeout: 5_000 });
@@ -1509,7 +1798,21 @@ export async function validateBackupSecretsWithContext(
         accountCredentials += 1;
       }
     }
+    if (options.requireDatabaseAlignment) {
+      validateSecretDatabaseAlignment(
+        database,
+        providerDocument,
+        storageDocument,
+        Boolean(key),
+      );
+    }
     return Object.freeze({
+      providerProfiles: providerDocument.providerProfiles,
+      storageDocument: Object.freeze({
+        activeProfileId: storageDocument.activeProfileId,
+        mediaRoutingEnabled: storageDocument.mediaRoutingEnabled,
+        profiles: storageDocument.storageProfiles,
+      }),
       storageProfileIds: storageDocument.profileIds,
       validation: Object.freeze({
         accountCredentials,
@@ -1606,6 +1909,7 @@ export async function validateBackupStorageProfileIds(
       join(secretsDirectory, "storage-profiles.enc.json"),
       key,
       storageDocumentAad,
+      "storage",
     );
     return storageDocument.profileIds;
   } finally {

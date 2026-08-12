@@ -28,7 +28,12 @@ const preview = mode === "preview";
 const usesMainServer = mode === "dev" || mode === "hybrid" || mode === "preview";
 const usesSelfServer = mode === "self";
 const vite = join(environment.repositoryRoot, "node_modules/vite/bin/vite.js");
-const baseURL = `http://127.0.0.1:${
+// Chromium treats plain-http localhost as a trustworthy origin for Secure
+// cookies, but intentionally does not send them to a numeric loopback host.
+// Production preview sets Secure on sessions, so exercise it through localhost
+// while the owned server remains bound to 127.0.0.1.
+const browserHost = preview ? "localhost" : "127.0.0.1";
+const baseURL = `http://${browserHost}:${
   usesSelfServer ? environment.auxiliaryPort : environment.port
 }`;
 const testMatch =
@@ -74,10 +79,15 @@ export default defineConfig({
           preview ? String(environment.port) : "--strictPort",
           ...(preview ? ["--strictPort"] : []),
         ].join(" "),
-        env: {
-          UNBOUNDRY_DATA_DIR: environment.dataDirectory,
-          UNBOUNDRY_TEST_AUTH_BYPASS: "1",
-        },
+        env: preview
+          ? {
+              UNBOUNDRY_DATA_DIR: environment.dataDirectory,
+              UNBOUNDRY_OFFLINE_GUARD_SCRUB_TEST_ENV: "1",
+            }
+          : {
+              UNBOUNDRY_DATA_DIR: environment.dataDirectory,
+              UNBOUNDRY_TEST_AUTH_BYPASS: "1",
+            },
         reuseExistingServer: false,
         timeout: 30_000,
         url: `http://127.0.0.1:${environment.port}`,

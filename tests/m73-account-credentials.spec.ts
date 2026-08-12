@@ -308,6 +308,7 @@ test("authenticated Provider commits serialize with actor account deletion", asy
   process.env.UNBOUNDRY_DATA_DIR = directory;
   let store: ReturnType<typeof openAppDatabase> | undefined;
   try {
+    openAppDatabase(directory).close();
     const profile = await saveProviderProfile({
       apiKey: "sk-provider-delete-fence-1111",
       baseUrl: "https://openrouter.ai/api/v1",
@@ -498,6 +499,7 @@ test("Provider catalog sync and import serialize with actor account deletion", a
       status: 200,
     })) as typeof fetch;
   try {
+    openAppDatabase(directory).close();
     const committedProfile = await saveProviderProfile({
       baseUrl: "https://openrouter.ai/api/v1",
       driver: "openrouter",
@@ -985,6 +987,7 @@ test("credential verification and the paid boundary serialize fail-closed", asyn
   let store: ReturnType<typeof openAppDatabase> | undefined;
   let taskStore: ReturnType<typeof createGenerationTaskStore> | undefined;
   try {
+    openAppDatabase(directory).close();
     const profile = await saveProviderProfile({
       apiKey: "sk-profile-verification-1111",
       baseUrl: "https://openrouter.ai/api/v1",
@@ -1253,6 +1256,7 @@ test("Provider profile mutation and verification cannot strand paid continuation
   process.env.UNBOUNDRY_DATA_DIR = directory;
   let store: ReturnType<typeof openAppDatabase> | undefined;
   try {
+    openAppDatabase(directory).close();
     const profile = await saveProviderProfile({
       apiKey: "sk-provider-paid-work-1111",
       baseUrl: "https://openrouter.ai/api/v1",

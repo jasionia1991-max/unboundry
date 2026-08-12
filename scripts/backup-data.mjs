@@ -1,6 +1,6 @@
 import { constants as fileConstants } from "node:fs";
 import { lstat, open, realpath } from "node:fs/promises";
-import { dirname, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import "./node-typescript-runtime.mjs";
 
 const {
@@ -31,7 +31,8 @@ function normalizedAbsolutePath(value) {
 function containsPath(parent, child) {
   const difference = relative(parent, child);
   return difference === "" ||
-    (!difference.startsWith(`..${sep}`) && difference !== "..");
+    (!isAbsolute(difference) &&
+      !difference.startsWith(`..${sep}`) && difference !== "..");
 }
 
 async function assertKeysOutside(paths, roots) {
@@ -48,12 +49,21 @@ async function assertKeysOutside(paths, roots) {
 function parseArguments(argv) {
   const values = new Map();
   const mirrors = [];
+  const mediaWarnings = [];
   let sourceFrozen = false;
+  let externalFreezeNonFinal = false;
+  let requireCleanMedia = false;
   const valueOptions = new Set([
+    "--allow-media-warning",
     "--backup-root",
     "--data-dir",
+    "--expected-database-logical-sha256",
+    "--expected-schema-version",
+    "--generation-frozen-at",
+    "--last-provider-admission-at",
     "--oss-mirror",
     "--recovery-public-key",
+    "--retry-backup-id",
     "--scratch-root",
     "--signing-private-key",
   ]);
@@ -62,6 +72,20 @@ function parseArguments(argv) {
     if (option === "--source-frozen") {
       if (sourceFrozen) fail("BACKUP_ARGUMENT_INVALID", "Duplicate source freeze confirmation");
       sourceFrozen = true;
+      continue;
+    }
+    if (option === "--external-freeze-non-final") {
+      if (externalFreezeNonFinal) {
+        fail("BACKUP_ARGUMENT_INVALID", "External freeze mode is duplicated");
+      }
+      externalFreezeNonFinal = true;
+      continue;
+    }
+    if (option === "--require-clean-media") {
+      if (requireCleanMedia || mediaWarnings.length) {
+        fail("BACKUP_ARGUMENT_INVALID", "Media warning policy is duplicated or conflicting");
+      }
+      requireCleanMedia = true;
       continue;
     }
     if (!valueOptions.has(option)) {
@@ -74,6 +98,17 @@ function parseArguments(argv) {
     index += 1;
     if (option === "--oss-mirror") {
       mirrors.push(value);
+      continue;
+    }
+    if (option === "--allow-media-warning") {
+      if (
+        requireCleanMedia ||
+        !/^MEDIA_INTEGRITY_[A-Z0-9_]+$/.test(value) ||
+        mediaWarnings.includes(value)
+      ) {
+        fail("BACKUP_ARGUMENT_INVALID", "Media warning allowlist is invalid");
+      }
+      mediaWarnings.push(value);
       continue;
     }
     if (values.has(option)) {
@@ -93,7 +128,56 @@ function parseArguments(argv) {
       "Backup requires explicit source freeze, source, destination, and key arguments",
     );
   }
-  return { mirrors, sourceFrozen, values };
+  return {
+    externalFreezeNonFinal,
+    mediaWarnings,
+    mirrors,
+    requireCleanMedia,
+    sourceFrozen,
+    values,
+  };
+}
+
+function parseFrozenSourceContract(values) {
+  const names = [
+    "--expected-database-logical-sha256",
+    "--expected-schema-version",
+    "--generation-frozen-at",
+    "--last-provider-admission-at",
+  ];
+  const present = names.filter((name) => values.has(name));
+  if (!present.length) return undefined;
+  if (present.length !== names.length) {
+    fail(
+      "BACKUP_ARGUMENT_INVALID",
+      "Frozen source contract requires schema, logical SHA, freeze, and admission evidence",
+    );
+  }
+  const expectedDatabaseLogicalSha256 = values.get(
+    "--expected-database-logical-sha256",
+  );
+  const schemaText = values.get("--expected-schema-version");
+  const expectedSchemaVersion = Number(schemaText);
+  const generationFrozenAt = values.get("--generation-frozen-at");
+  const admissionText = values.get("--last-provider-admission-at");
+  if (
+    !/^[a-f0-9]{64}$/.test(expectedDatabaseLogicalSha256) ||
+    ![37, 38, 39].includes(expectedSchemaVersion) ||
+    String(expectedSchemaVersion) !== schemaText ||
+    !generationFrozenAt ||
+    !admissionText
+  ) {
+    fail("BACKUP_ARGUMENT_INVALID", "Frozen source contract is invalid");
+  }
+  return {
+    expectedDatabaseLogicalSha256,
+    expectedSchemaVersion,
+    freezeEvidence: {
+      generationFrozenAt,
+      lastProviderAdmissionAt: admissionText === "none" ? null : admissionText,
+      sourceDatabaseLogicalSha256: expectedDatabaseLogicalSha256,
+    },
+  };
 }
 
 function parseMirror(value) {
@@ -172,6 +256,8 @@ async function readKey(path, role = "anchor") {
     fail("BACKUP_KEY_INVALID", "A key file is unavailable or invalid");
   }
   let handle;
+  let material;
+  let overflowProbe;
   try {
     handle = await open(
       path,
@@ -189,7 +275,33 @@ async function readKey(path, role = "anchor") {
     ) {
       fail("BACKUP_KEY_INVALID", "A key file changed while it was being read");
     }
-    const material = await handle.readFile();
+    if (opened.size > BigInt(maximumKeyBytes)) {
+      fail("BACKUP_KEY_INVALID", "A key file exceeds its size limit");
+    }
+    material = Buffer.alloc(Number(opened.size));
+    let position = 0;
+    while (position < material.length) {
+      const { bytesRead } = await handle.read(
+        material,
+        position,
+        material.length - position,
+        position,
+      );
+      if (!bytesRead) {
+        material.fill(0);
+        fail("BACKUP_KEY_INVALID", "A key file ended while it was being read");
+      }
+      position += bytesRead;
+    }
+    overflowProbe = Buffer.allocUnsafe(1);
+    if ((await handle.read(
+      overflowProbe,
+      0,
+      1,
+      material.length,
+    )).bytesRead !== 0) {
+      fail("BACKUP_KEY_INVALID", "A key file expanded past its size limit");
+    }
     const after = await handle.stat({ bigint: true });
     if (
       after.size !== opened.size ||
@@ -204,9 +316,11 @@ async function readKey(path, role = "anchor") {
     }
     return material;
   } catch (error) {
+    material?.fill(0);
     if (error instanceof CliError) throw error;
     fail("BACKUP_KEY_INVALID", "A key file is unavailable or invalid");
   } finally {
+    overflowProbe?.fill(0);
     await handle?.close().catch(() => undefined);
   }
 }
@@ -228,6 +342,22 @@ try {
   const backupRoot = value("--backup-root");
   const recoveryPublicKeyPath = value("--recovery-public-key");
   const signingPrivateKeyPath = value("--signing-private-key");
+  const frozenSourceContract = parseFrozenSourceContract(parsed.values);
+  if (Boolean(frozenSourceContract) === parsed.externalFreezeNonFinal) {
+    fail(
+      "BACKUP_ARGUMENT_INVALID",
+      "Choose either a complete locked source contract or explicit external non-final freeze mode",
+    );
+  }
+  const retryBackupId = parsed.values.get("--retry-backup-id");
+  if (
+    retryBackupId !== undefined &&
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+      retryBackupId,
+    )
+  ) {
+    fail("BACKUP_ARGUMENT_INVALID", "Backup retry id is invalid");
+  }
   const scratchValue = parsed.values.get("--scratch-root");
   const scratchRoot = scratchValue
     ? normalizedAbsolutePath(scratchValue)
@@ -256,8 +386,14 @@ try {
   keyMaterials.push(signingPrivateKey);
   const result = await createEncryptedBackup({
     backupRoot,
+    frozenSourceContract,
+    mediaWarningAllowlist:
+      parsed.requireCleanMedia || parsed.mediaWarnings.length
+        ? parsed.mediaWarnings
+        : undefined,
     ossMirrors: ossMirrors.length ? ossMirrors : undefined,
     recoveryPublicKey,
+    retryBackupId,
     scratchRoot,
     signingPrivateKey,
     sourceDirectory,

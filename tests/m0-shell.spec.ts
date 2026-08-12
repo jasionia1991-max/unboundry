@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { expect, guardBrowserContext, test, type Locator } from "./safe-test";
 import { composeTextControl } from "./helpers/ime";
@@ -130,11 +131,13 @@ function prepareHistoryFixtureMedia(dataDirectory: string) {
     const insertMedia = store.prepare(`
       INSERT INTO media_assets (
         kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
-        storage_status
-      ) VALUES (?, ?, '__test__', ?, 1, ?, ?, 'ready')
+        storage_status, checksum_sha256, duration_seconds, duration_source,
+        duration_status
+      ) VALUES (?, ?, '__test__', ?, 1, ?, ?, 'ready', ?, ?, ?, ?)
     `);
     const timestamp = new Date().toISOString();
     for (const [kind, id] of historyFixtureMedia) {
+      const timedMedia = kind === "video" || kind === "audio";
       removeMedia.run(kind, id);
       insertMedia.run(
         kind,
@@ -142,6 +145,12 @@ function prepareHistoryFixtureMedia(dataDirectory: string) {
         `history-shell-${kind}-${id}`,
         timestamp,
         timestamp,
+        createHash("sha256")
+          .update(`history-shell:${kind}:${id}`)
+          .digest("hex"),
+        timedMedia ? 1 : null,
+        timedMedia ? "server-probe" : null,
+        timedMedia ? "ready" : "not-applicable",
       );
     }
     store.exec("COMMIT");

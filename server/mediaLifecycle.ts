@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, realpathSync } from "node:fs";
 import { link, lstat, mkdir, open, rm, stat } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, join, relative, sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { deletePrivateAliyunOssObject } from "./aliyunOss";
@@ -9,6 +9,7 @@ import {
   appDataDirectory,
   currentSchemaManifest,
   currentSchemaVersion,
+  migrationIncompleteMarker,
   openAppDatabase,
 } from "./database";
 import type {
@@ -38,6 +39,7 @@ const activeStates = [
   "compensating",
 ] as const;
 const processStartupUploadRecoveryCutoff = new Date().toISOString();
+let afterGeneratedSuccessEventForTests: (() => void) | undefined;
 
 type ActivePublicationState = (typeof activeStates)[number];
 
@@ -53,6 +55,36 @@ export class MediaPublicationStateError extends Error {
     super(message);
     this.name = "MediaPublicationStateError";
   }
+}
+
+function mediaPublicationTestFaultAllowed() {
+  if (process.env.UNBOUNDRY_SAFE_TEST !== "1") return false;
+  try {
+    const systemTemporaryRoot = realpathSync(String(
+      process.env.UNBOUNDRY_SYSTEM_TEMPORARY_ROOT ?? "",
+    ));
+    const testRoot = realpathSync(String(process.env.UNBOUNDRY_TEST_ROOT ?? ""));
+    const dataDirectory = realpathSync(appDataDirectory());
+    const inside = (parent: string, child: string) => {
+      const path = relative(parent, child);
+      return path !== "" && path !== ".." &&
+        !path.startsWith(`..${sep}`) && !path.startsWith(sep);
+    };
+    return inside(systemTemporaryRoot, testRoot) &&
+      inside(testRoot, dataDirectory);
+  } catch {
+    return false;
+  }
+}
+
+/** Safe-runner-only fault after durable generation mutations but before COMMIT. */
+export function setMediaPublicationFinalizeFaultForTests(
+  fault?: () => void,
+) {
+  if (!mediaPublicationTestFaultAllowed()) {
+    throw new Error("Media publication finalize test fault is disabled");
+  }
+  afterGeneratedSuccessEventForTests = fault;
 }
 
 export type GeneratedPublicationTask = {
@@ -646,6 +678,7 @@ export function finalizeMediaPublication(
           task_id, state, error_code, error_message, created_at
         ) VALUES (?, 'success', NULL, NULL, ?)
       `).run(attempt.task_id, timestamp);
+      afterGeneratedSuccessEventForTests?.();
     }
     const published = database.prepare(`
       UPDATE media_publication_attempts
@@ -1467,33 +1500,28 @@ function databaseMatchesMigrationLedger(
   );
 }
 
-function databaseMatchesCurrentStartupContract(database: DatabaseSync) {
-  const quickCheck = database.prepare("PRAGMA quick_check").all() as
-    Array<{ quick_check?: unknown }>;
-  const version = database.prepare("PRAGMA user_version").get() as
-    | { user_version?: unknown }
-    | undefined;
-  return quickCheck.length === 1 &&
-    String(quickCheck[0]?.quick_check) === "ok" &&
-    Number(version?.user_version) === currentSchemaVersion &&
-    databaseMatchesMigrationLedger(database, currentSchemaManifest) &&
-    databaseMatchesSchemaContract(database);
-}
-
 async function probeStartupMediaRecovery(
   databasePath: string,
 ): Promise<StartupMediaRecoveryProbe> {
   let walBytes = 0;
   let sharedMemoryPresent = false;
   try {
-    walBytes = (await stat(`${databasePath}-wal`)).size;
+    const wal = await lstat(`${databasePath}-wal`);
+    if (wal.isSymbolicLink() || !wal.isFile() || wal.nlink !== 1) {
+      return "deferred";
+    }
+    walBytes = wal.size;
   } catch (error) {
     if (
       !(error instanceof Error && "code" in error && error.code === "ENOENT")
     ) return "deferred";
   }
   try {
-    sharedMemoryPresent = (await stat(`${databasePath}-shm`)).isFile();
+    const shared = await lstat(`${databasePath}-shm`);
+    if (
+      shared.isSymbolicLink() || !shared.isFile() || shared.nlink !== 1
+    ) return "deferred";
+    sharedMemoryPresent = true;
   } catch (error) {
     if (
       !(error instanceof Error && "code" in error && error.code === "ENOENT")
@@ -1517,6 +1545,9 @@ async function probeStartupMediaRecovery(
       quickCheck.length !== 1 ||
       String(quickCheck[0]?.quick_check) !== "ok"
     ) return "deferred";
+    if (database.prepare("PRAGMA foreign_key_check").all().length !== 0) {
+      return "deferred";
+    }
     const version = database.prepare("PRAGMA user_version").get() as
       | { user_version?: unknown }
       | undefined;
@@ -1584,7 +1615,15 @@ export function mediaLifecycleStartupRecoveryAllowsReadiness(
  * atomically with a first canvas adoption.
  */
 export async function recoverMediaLifecycleAtProcessStartup() {
-  const empty = { deletions: [], uploads: [] };
+  const empty = {
+    deletions: [],
+    schemaMigrationRestartRequired: false,
+    uploads: [],
+  };
+  const migrationRestartRequired = {
+    ...empty,
+    schemaMigrationRestartRequired: true,
+  };
   if (startupMediaRecoveryGate === "blocked") return empty;
   if (process.env.UNBOUNDRY_MAINTENANCE_MODE === "1") {
     startupMediaRecoveryGate = "deferred";
@@ -1596,6 +1635,18 @@ export async function recoverMediaLifecycleAtProcessStartup() {
   } catch {
     startupMediaRecoveryGate = "deferred";
     return empty;
+  }
+  try {
+    await lstat(join(dataDirectory, migrationIncompleteMarker));
+    startupMediaRecoveryGate = "deferred";
+    return migrationRestartRequired;
+  } catch (error) {
+    if (
+      !(error instanceof Error && "code" in error && error.code === "ENOENT")
+    ) {
+      startupMediaRecoveryGate = "deferred";
+      return empty;
+    }
   }
   try {
     await lstat(join(dataDirectory, ".unboundry-restore-incomplete"));
@@ -1611,8 +1662,11 @@ export async function recoverMediaLifecycleAtProcessStartup() {
   }
   const databasePath = join(dataDirectory, "unboundry.sqlite");
   try {
-    const databaseFile = await stat(databasePath);
-    if (!databaseFile.isFile()) {
+    const databaseFile = await lstat(databasePath);
+    if (
+      databaseFile.isSymbolicLink() || !databaseFile.isFile() ||
+      databaseFile.nlink !== 1
+    ) {
       startupMediaRecoveryGate = "deferred";
       return empty;
     }
@@ -1626,39 +1680,10 @@ export async function recoverMediaLifecycleAtProcessStartup() {
     return empty;
   }
   if (probe === "migrate-required") {
-    if (process.env.UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION !== "1") {
-      startupMediaRecoveryGate = "deferred";
-      return empty;
-    }
-    // This opt-in process role is the sole startup writer bridge from the
-    // frozen v37/v38 contracts. The read-only probe above rejects unknown,
-    // damaged, restore-incomplete and unsafe hot-WAL sources before this path.
-    startupMediaRecoveryGate = "blocked";
-    let database: DatabaseSync | undefined;
-    try {
-      database = openAppDatabase(dataDirectory);
-      if (!databaseMatchesCurrentStartupContract(database)) {
-        startupMediaRecoveryGate = "deferred";
-        return empty;
-      }
-    } catch {
-      // openAppDatabase owns the migration transaction and rolls it back on
-      // failure. Keep readiness closed without attempting media recovery.
-      startupMediaRecoveryGate = "deferred";
-      return empty;
-    } finally {
-      try {
-        database?.close();
-      } catch {
-        startupMediaRecoveryGate = "deferred";
-      }
-    }
-    if (startupMediaRecoveryGate === "deferred") return empty;
-    probe = await probeStartupMediaRecovery(databasePath);
-    if (probe === "deferred" || probe === "migrate-required") {
-      startupMediaRecoveryGate = "deferred";
-      return empty;
-    }
+    // Historic schemas are never upgraded by server startup. The exact-v37
+    // one-shot role owns migration, its quiet gate, marker and crash recovery.
+    startupMediaRecoveryGate = "deferred";
+    return migrationRestartRequired;
   }
   if (probe === "clear") {
     startupMediaRecoveryGate = "clear";
@@ -1674,7 +1699,7 @@ export async function recoverMediaLifecycleAtProcessStartup() {
     deletions.some((outcome) => outcome.action === "blocked") ||
     uploads.some((outcome) => outcome.action === "blocked");
   if (!blocked) startupMediaRecoveryGate = "clear";
-  return { deletions, uploads };
+  return { deletions, schemaMigrationRestartRequired: false, uploads };
 }
 
 export function publicationReservationForAttempt(attemptId: string) {

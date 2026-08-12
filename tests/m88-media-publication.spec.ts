@@ -16,7 +16,10 @@ import { assetStorage } from "../server/assetStorage";
 import { adminTemplatesApi } from "../server/adminTemplates";
 import { audioStorage } from "../server/audioStorage";
 import { adminUsersApi, authApi, authGate } from "../server/auth";
-import { canvasPersistence } from "../server/canvasPersistence";
+import {
+  canvasPersistence,
+  setCanvasPersistenceBarriersForTests,
+} from "../server/canvasPersistence";
 import {
   currentSchemaVersion,
   openAppDatabase,
@@ -44,6 +47,7 @@ import {
   recoverPendingGeneratedMediaPublications,
   recoverPendingUploadMediaPublications,
   reserveMediaPublication,
+  setMediaPublicationFinalizeFaultForTests,
   stageMediaPublication,
   type MediaPublicationReservation,
 } from "../server/mediaLifecycle";
@@ -908,23 +912,17 @@ test("generated finalize atomically settles Provider evidence with task, media, 
       );
       await publishFixture(directory, reservation);
       recordProviderAttemptFixture(directory, task.id, "response-received");
-      const triggerStore = openAppDatabase(directory);
+      setMediaPublicationFinalizeFaultForTests(() => {
+        throw new Error("m88 injected success-event failure");
+      });
       try {
-        triggerStore.exec(`
-          CREATE TRIGGER m88_abort_success_event
-          BEFORE INSERT ON generation_task_events
-          WHEN NEW.state = 'success'
-          BEGIN
-            SELECT RAISE(ABORT, 'm88 injected success-event failure');
-          END;
-        `);
+        expect(() => finalizeMediaPublication(reservation)).toThrow(
+          /m88 injected success-event failure/,
+        );
       } finally {
-        triggerStore.close();
+        setMediaPublicationFinalizeFaultForTests();
       }
 
-      expect(() => finalizeMediaPublication(reservation)).toThrow(
-        /m88 injected success-event failure/,
-      );
       const rolledBack = publicationSnapshot(directory, {
         assetId: reservation.id,
         attemptId: reservation.attemptId,
@@ -950,12 +948,6 @@ test("generated finalize atomically settles Provider evidence with task, media, 
         provider_task_id: null,
       }]);
 
-      const retryStore = openAppDatabase(directory);
-      try {
-        retryStore.exec("DROP TRIGGER m88_abort_success_event");
-      } finally {
-        retryStore.close();
-      }
       finalizeMediaPublication(reservation);
       expect(publicationSnapshot(directory, {
         assetId: reservation.id,
@@ -1366,29 +1358,34 @@ test("canvas PUT durably adopts uploads while recovery and delete tombstones rej
     )).toBe(true);
 
     const rolledBack = await publish("m88-adoption-rollback-upload");
-    const injectCanvasFailure = openAppDatabase(directory);
+    const previousCanvasBarrier =
+      process.env.UNBOUNDRY_TEST_CANVAS_PERSISTENCE_BARRIER;
+    process.env.UNBOUNDRY_TEST_CANVAS_PERSISTENCE_BARRIER = "1";
+    setCanvasPersistenceBarriersForTests({
+      afterUpsert: () => {
+        throw new Error("m88 canvas write failure");
+      },
+    });
     try {
-      injectCanvasFailure.exec(`
-        CREATE TRIGGER m88_canvas_adoption_rollback
-        BEFORE INSERT ON canvas_documents
-        WHEN NEW.id = 'm88-adoption-rollback-canvas'
-        BEGIN
-          SELECT RAISE(ABORT, 'm88 canvas write failure');
-        END;
-      `);
+      const rollbackRequest = await authorizedJsonRequest(
+        "/m88-adoption-rollback-canvas",
+        "PUT",
+        canvasBody(rolledBack.id),
+      );
+      const rollbackOutput = syntheticResponse();
+      await expect(canvasPersistence(
+        rollbackRequest,
+        rollbackOutput.response,
+      )).rejects.toThrow("m88 canvas write failure");
     } finally {
-      injectCanvasFailure.close();
+      setCanvasPersistenceBarriersForTests();
+      if (previousCanvasBarrier === undefined) {
+        delete process.env.UNBOUNDRY_TEST_CANVAS_PERSISTENCE_BARRIER;
+      } else {
+        process.env.UNBOUNDRY_TEST_CANVAS_PERSISTENCE_BARRIER =
+          previousCanvasBarrier;
+      }
     }
-    const rollbackRequest = await authorizedJsonRequest(
-      "/m88-adoption-rollback-canvas",
-      "PUT",
-      canvasBody(rolledBack.id),
-    );
-    const rollbackOutput = syntheticResponse();
-    await expect(canvasPersistence(
-      rollbackRequest,
-      rollbackOutput.response,
-    )).rejects.toThrow("m88 canvas write failure");
     const rollbackState = openAppDatabase(directory);
     try {
       expect(rollbackState.prepare(`
@@ -1403,7 +1400,6 @@ test("canvas PUT durably adopts uploads while recovery and delete tombstones rej
         SELECT COUNT(*) AS count FROM canvas_documents
         WHERE owner_id = '__test__' AND id = 'm88-adoption-rollback-canvas'
       `).get()).toEqual({ count: 0 });
-      rollbackState.exec("DROP TRIGGER m88_canvas_adoption_rollback");
     } finally {
       rollbackState.close();
     }
@@ -3717,14 +3713,6 @@ test("delete_user audit failure rolls back the final transaction and remains ret
           actor_user_id, action, target_user_id, details, created_at
         ) VALUES (?, 'fixture_old_audit', ?, '{}', ?)
       `).run(ownerId, ownerId, timestamp);
-      setup.exec(`
-        CREATE TRIGGER m88_fail_delete_user_audit
-        BEFORE INSERT ON admin_audit_events
-        WHEN NEW.action = 'delete_user'
-        BEGIN
-          SELECT RAISE(ABORT, 'm88 deterministic audit failure');
-        END;
-      `);
     } finally {
       setup.close();
     }
@@ -3733,6 +3721,9 @@ test("delete_user audit failure rolls back the final transaction and remains ret
     const firstRequest = await authorizedRequest(`/${ownerId}`, "DELETE");
     const firstOutput = syntheticResponse();
     await adminUsersApi(firstRequest, firstOutput.response, {
+      beforeFinalAudit: () => {
+        throw new Error("m88 deterministic audit failure");
+      },
       beforePhysicalMediaDelete: () => {
         physicalCalls += 1;
       },
@@ -3760,7 +3751,6 @@ test("delete_user audit failure rolls back the final transaction and remains ret
         SELECT COUNT(*) AS count FROM admin_audit_events
         WHERE action = 'delete_user' AND target_user_id = ?
       `).get(ownerId)).toEqual({ count: 0 });
-      rolledBack.exec("DROP TRIGGER m88_fail_delete_user_audit");
     } finally {
       rolledBack.close();
     }

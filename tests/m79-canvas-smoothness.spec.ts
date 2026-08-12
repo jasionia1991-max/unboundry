@@ -1,6 +1,33 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type APIRequestContext } from "./safe-test";
 
+const previewAccount = Object.freeze({
+  displayName: "Preview Performance Owner",
+  loginName: "preview-performance-owner",
+  password: "preview-performance-password-2026",
+});
+
+test.beforeEach(async ({ context }) => {
+  // Use the browser-owned request context so the real production session is
+  // shared with both API setup calls and the page under measurement.
+  const request = context.request;
+  const bootstrap = await request.post("/api/auth/bootstrap", {
+    data: previewAccount,
+  });
+  expect([201, 409]).toContain(bootstrap.status());
+  const login = await request.post("/api/auth/login", {
+    data: {
+      loginName: previewAccount.loginName,
+      password: previewAccount.password,
+    },
+  });
+  expect(login.status()).toBe(200);
+  await expect.poll(async () => {
+    const status = await request.get("/api/auth/status");
+    return (await status.json()) as { authenticated?: boolean };
+  }).toMatchObject({ authenticated: true });
+});
+
 function denseDocument(nodeCount: number) {
   const nodes = Array.from({ length: nodeCount }, (_, index) => ({
     data: {
@@ -112,9 +139,10 @@ function summarize(meters: { frames: number[]; longTasks: number[] }) {
 }
 
 test("60-node canvas drag stays smooth in production preview", async ({
+  context,
   page,
-  request,
 }) => {
+  const request = context.request;
   const created = await request.post("/api/projects", { data: {} });
   expect(created.status()).toBe(201);
   const project = (await created.json()) as { id: string };
@@ -150,9 +178,10 @@ test("60-node canvas drag stays smooth in production preview", async ({
 });
 
 test("fast pan keeps visible nodes mounted and zoom-out mounts all", async ({
+  context,
   page,
-  request,
 }) => {
+  const request = context.request;
   const created = await request.post("/api/projects", { data: {} });
   expect(created.status()).toBe(201);
   const project = (await created.json()) as { id: string };

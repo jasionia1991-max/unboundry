@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "./safe-test";
+import { openAppDatabase } from "../server/database";
 import { generationProviderAttemptCounts } from "../server/generationTaskStore";
 import { OutboundProxyConfigurationError } from "../server/outboundNetwork";
 import {
@@ -31,6 +32,7 @@ async function withTemporaryData(
   const previous = process.env.UNBOUNDRY_DATA_DIR;
   process.env.UNBOUNDRY_DATA_DIR = directory;
   try {
+    openAppDatabase(directory).close();
     await run(directory);
   } finally {
     if (previous === undefined) delete process.env.UNBOUNDRY_DATA_DIR;

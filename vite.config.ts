@@ -5,7 +5,11 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 import { playlistExport } from "./server/playlistExport";
 import { playlistThumbnails } from "./server/playlistThumbnails";
-import { appDataDirectory } from "./server/database";
+import {
+  appDataDirectory,
+  initializeGreenfieldAppDatabaseAtProcessStartup,
+} from "./server/database";
+import { databaseMatchesFrozenSchema37Contract } from "./server/backupInspection";
 import {
   accountHistory,
   canvasPersistence,
@@ -53,12 +57,22 @@ import {
   coordinateRuntimeShutdown,
   createRuntimeLifecycle,
 } from "./server/runtimeLifecycle";
+
 import {
   currentVersion,
   registerVersionLifecycle,
   versionApi,
 } from "./server/version";
 import { applySecurityHeaders } from "./server/securityHeaders";
+
+if (process.env.UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION !== undefined) {
+  throw new Error(
+    "UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION is retired; use the one-shot schema migration CLI",
+  );
+}
+
+const productionTestEnvironmentError =
+  "UNBOUNDRY_PRODUCTION_TEST_ENV_FORBIDDEN: preview and production runtime reject UNBOUNDRY_SAFE_TEST and UNBOUNDRY_TEST_*";
 
 type FixtureDocument = {
   fixtures: Array<{ id: string; kind: string; status: string }>;
@@ -87,6 +101,7 @@ let generationStartupWorkerGate:
   | "pending"
   | "ready" = "pending";
 const runtimeLifecycle = createRuntimeLifecycle({
+  legacyStandbyDatabaseGuard: databaseMatchesFrozenSchema37Contract,
   readinessDatabaseGuard: (database) => {
     if (!mediaLifecycleStartupRecoveryAllowsReadiness(database)) return false;
     if (generationStartupWorkerGate === "ready") return true;
@@ -729,16 +744,24 @@ function persistentGenerationTaskStartup(): Plugin {
   const install = (server: RuntimeServer) => {
     const start = () => {
       if (
-        process.env.UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION === "1" ||
         runtimeLifecycle.getMode() !== "active"
       ) {
         generationStartupWorkerGate = "ready";
         return;
       }
       const startupProbe = createRuntimeLifecycle({
+        legacyStandbyDatabaseGuard: databaseMatchesFrozenSchema37Contract,
         readinessDatabaseGuard: mediaLifecycleStartupRecoveryAllowsReadiness,
       }).probeDatabase();
-      if (!startupProbe.ok) {
+      // Bind the main lifecycle to what startup observed before any background
+      // writer can be initialized. In particular, observing schema 37 is a
+      // process-lifetime restart latch: an external one-shot migration cannot
+      // turn this already-running process into a schema-39 writer.
+      const startupProcessCanBecomeActive =
+        runtimeLifecycle.observeStartupDatabaseProbe(startupProbe);
+      if (
+        !startupProcessCanBecomeActive || !startupProbe.ok || startupProbe.standby
+      ) {
         // The ordinary readiness probe retains the exact failure code. This
         // worker must not open a writer on old schema, restore markers, or a
         // failed media readiness gate.
@@ -772,12 +795,29 @@ function persistentGenerationTaskStartup(): Plugin {
   };
 }
 
+function greenfieldDatabaseStartup(): Plugin {
+  const initialize = () => {
+    // Maintenance is observation-only. Existing databases of every shape are
+    // also left to standby/readiness classification by the database helper.
+    if (runtimeLifecycle.getMode() !== "active") return;
+    initializeGreenfieldAppDatabaseAtProcessStartup();
+  };
+  return {
+    name: "unboundry-greenfield-database-startup",
+    configurePreviewServer: initialize,
+    configureServer: initialize,
+  };
+}
+
 function mediaLifecycleStartupRecovery(): Plugin {
   const recover = async () => {
     // Vite awaits async configure hooks before accepting requests. Unexpected
     // database failures therefore fail startup visibly; per-object physical
     // failures remain durable failed/compensating rows and do not become ready.
-    await recoverMediaLifecycleAtProcessStartup();
+    const recovery = await recoverMediaLifecycleAtProcessStartup();
+    if (recovery.schemaMigrationRestartRequired) {
+      runtimeLifecycle.requireRestartAfterStartupSchemaMigration();
+    }
   };
   return {
     name: "unboundry-media-lifecycle-startup-recovery",
@@ -786,7 +826,14 @@ function mediaLifecycleStartupRecovery(): Plugin {
   };
 }
 
-export default defineConfig(({ command }) => {
+export default defineConfig(({ command, isPreview }) => {
+  if (isPreview || process.env.NODE_ENV === "production") {
+    const testOnlyEnvironmentVisible = Object.keys(process.env).some((name) =>
+      name === "UNBOUNDRY_SAFE_TEST" || name.startsWith("UNBOUNDRY_TEST_"));
+    if (testOnlyEnvironmentVisible) {
+      throw new Error(productionTestEnvironmentError);
+    }
+  }
   if (command === "serve") armViteSigtermCapture();
   return {
     root: fileURLToPath(new URL("./client", import.meta.url)),
@@ -794,6 +841,7 @@ export default defineConfig(({ command }) => {
     plugins: [
       securityHeadersApi(),
       react(),
+      greenfieldDatabaseStartup(),
       mediaLifecycleStartupRecovery(),
       persistentGenerationTaskStartup(),
       devFixtureApi(),

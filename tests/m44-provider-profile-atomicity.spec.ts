@@ -518,6 +518,7 @@ test("two OS processes serialize complete Provider saves and metadata", async ()
   const previous = process.env.UNBOUNDRY_DATA_DIR;
   process.env.UNBOUNDRY_DATA_DIR = directory;
   try {
+    openAppDatabase(directory).close();
     const initial = await saveProviderProfile({
       apiKey: `ark-${randomUUID()}`,
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
@@ -563,6 +564,7 @@ test("split document and metadata versions block a real task before fake fetch",
   const previous = process.env.UNBOUNDRY_DATA_DIR;
   process.env.UNBOUNDRY_DATA_DIR = directory;
   try {
+    openAppDatabase(directory).close();
     const original = await saveProviderProfile({
       apiKey: `ark-old-${randomUUID()}`,
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
@@ -748,6 +750,7 @@ test("an active paid request blocks Provider mutation until its response is sett
   let execution: Promise<void> | undefined;
   let finishFetch = (_response: Response) => {};
   try {
+    openAppDatabase(directory).close();
     const profile = await saveProviderProfile({
       apiKey: `ark-old-${randomUUID()}`,
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
@@ -857,6 +860,7 @@ test("a request lease waits across the document-to-metadata window without using
   let writer: Promise<Record<string, unknown>> | undefined;
   let store: ReturnType<typeof createGenerationTaskStore> | undefined;
   try {
+    openAppDatabase(directory).close();
     const profile = await saveProviderProfile({
       apiKey: `ark-old-${randomUUID()}`,
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
@@ -957,6 +961,7 @@ test("version zero and metadata-ahead states fail closed without losing usable s
   const previous = process.env.UNBOUNDRY_DATA_DIR;
   process.env.UNBOUNDRY_DATA_DIR = directory;
   try {
+    openAppDatabase(directory).close();
     const profile = await saveProviderProfile({
       apiKey: `ark-${randomUUID()}`,
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
@@ -1077,6 +1082,7 @@ test("a late old Key check cannot write green after the metadata CAS changes", a
   const previous = process.env.UNBOUNDRY_DATA_DIR;
   process.env.UNBOUNDRY_DATA_DIR = directory;
   try {
+    openAppDatabase(directory).close();
     const profile = await saveProviderProfile({
       apiKey: `openrouter-${randomUUID()}`,
       baseUrl: "https://openrouter.ai/api/v1",
@@ -1130,133 +1136,42 @@ test("a late old Key check cannot write green after the metadata CAS changes", a
   }
 });
 
-test("two OS processes can migrate the same v18 database exactly once", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "unboundry-provider-migrate-"));
+test("two OS processes cooperatively open the exact current database", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-provider-open-"));
   try {
-    const legacy = openAppDatabase(directory);
-    rollbackMigration39To38(legacy);
-    const columns = () => new Set(
-      (legacy.prepare("PRAGMA table_info(provider_profiles)").all() as Array<{
-        name: string;
-      }>).map((column) => column.name),
-    );
-    if (columns().has("catalog_sync_token")) {
-      legacy.exec("ALTER TABLE provider_profiles DROP COLUMN catalog_sync_token");
-    }
-    if (columns().has("provider_configuration_version")) {
-      legacy.exec(
-        "ALTER TABLE provider_profiles DROP COLUMN provider_configuration_version",
-      );
-    }
-    // 精确撤销 v39 后，v38 已由 v36 移除成本列；该夹具再用
-    // “v38 库 + 删除迁移记录”模拟 v18 旧库；v33 迁移仍会读取成本列，
-    // 这里补回 v33 期望的旧列，让 v19→v39 的迁移链可以完整重放。
-    const safetyColumns = () => new Set(
-      (legacy.prepare("PRAGMA table_info(generation_safety_settings)").all() as Array<{
-        name: string;
-      }>).map((column) => column.name),
-    );
-    const legacySafetyColumns: Array<[string, string]> = [
-      ["daily_cost_limit_microunits", "INTEGER NOT NULL DEFAULT 0"],
-      ["monthly_cost_limit_microunits", "INTEGER NOT NULL DEFAULT 0"],
-      ["daily_cost_limit_cny_microunits", "INTEGER NOT NULL DEFAULT 0"],
-      ["monthly_cost_limit_cny_microunits", "INTEGER NOT NULL DEFAULT 0"],
-      ["unknown_cost_policy", "TEXT NOT NULL DEFAULT 'block'"],
-      ["text_concurrency", "INTEGER NOT NULL DEFAULT 1"],
-      [
-        "single_task_default_cost_cny_microunits",
-        "INTEGER NOT NULL DEFAULT 20000000",
-      ],
-      ["usd_to_cny_rate_microunits", "INTEGER NOT NULL DEFAULT 7200000"],
-    ];
-    for (const [name, definition] of legacySafetyColumns) {
-      if (!safetyColumns().has(name)) {
-        legacy.exec(
-          `ALTER TABLE generation_safety_settings ADD COLUMN ${name} ${definition}`,
-        );
+    openAppDatabase(directory).close();
+    const snapshot = () => {
+      const database = new DatabaseSync(join(directory, "unboundry.sqlite"), {
+        readOnly: true,
+      });
+      try {
+        return {
+          ledger: database.prepare(`
+            SELECT version, name, applied_at
+            FROM schema_migrations ORDER BY version
+          `).all(),
+          schema: database.prepare(`
+            SELECT type, name, tbl_name, sql
+            FROM sqlite_schema ORDER BY type, name
+          `).all(),
+          userVersion: database.prepare("PRAGMA user_version").get(),
+        };
+      } finally {
+        database.close();
       }
-    }
-    // v37 会重新 ADD COLUMN protected；夹具的“当前库回退”需要先删掉该列。
-    const userColumns = new Set(
-      (legacy.prepare("PRAGMA table_info(users)").all() as Array<{
-        name: string;
-      }>).map((column) => column.name),
-    );
-    if (userColumns.has("protected")) {
-      legacy.exec("ALTER TABLE users DROP COLUMN protected");
-    }
-    // v38 的表和跨表触发器也必须精确回退；只删除迁移记录会制造
-    // “ledger 是 v18、物理 schema 仍是 v38”的不可能生产状态。
-    legacy.exec(`
-      DROP TRIGGER account_delete_guard_generation_task_activation;
-      DROP TRIGGER account_delete_guard_generation_task_insert;
-      DROP TRIGGER account_delete_guard_public_template_actor_update;
-      DROP TRIGGER account_delete_guard_public_template_insert;
-      DROP TRIGGER account_delete_guard_session_insert;
-      DROP TRIGGER account_delete_guard_user_template_insert;
-      DROP TRIGGER account_delete_guard_user_template_owner_update;
-      DROP TRIGGER account_delete_guard_user_reactivation;
-      DROP TRIGGER media_publication_guard_owner_delete;
-      DROP TRIGGER media_publication_guard_task_delete;
-      DROP TABLE media_publication_attempts;
-      DROP TABLE media_delete_intents;
-      DROP TABLE account_delete_intents;
-      DELETE FROM schema_migrations WHERE version >= 19;
-      PRAGMA user_version = 18;
-    `);
-    legacy.close();
+    };
+    const before = snapshot();
 
     const startAt = Date.now() + 500;
-    const migrated = await Promise.all([
+    const opened = await Promise.all([
       runChild(directory, startAt, "migrate"),
       runChild(directory, startAt, "migrate"),
     ]);
-    expect(new Set(migrated.map((item) => item.pid)).size).toBe(2);
-    expect(new Set(migrated.map((item) => item.version))).toEqual(
+    expect(new Set(opened.map((item) => item.pid)).size).toBe(2);
+    expect(new Set(opened.map((item) => item.version))).toEqual(
       new Set([currentSchemaVersion]),
     );
-    const database = new DatabaseSync(join(directory, "unboundry.sqlite"), {
-      readOnly: true,
-    });
-    try {
-      const names = new Set(
-        (database.prepare("PRAGMA table_info(provider_profiles)").all() as Array<{
-          name: string;
-        }>).map((column) => column.name),
-      );
-      expect(names.has("provider_configuration_version")).toBe(true);
-      expect(names.has("catalog_sync_token")).toBe(true);
-      expect(names.has("catalog_diagnostics")).toBe(true);
-      expect(database.prepare(`
-        SELECT version, COUNT(*) AS count
-        FROM schema_migrations WHERE version >= 19
-        GROUP BY version ORDER BY version
-      `).all()).toEqual([
-        { count: 1, version: 19 },
-        { count: 1, version: 20 },
-        { count: 1, version: 21 },
-        { count: 1, version: 22 },
-        { count: 1, version: 23 },
-        { count: 1, version: 24 },
-        { count: 1, version: 25 },
-        { count: 1, version: 26 },
-        { count: 1, version: 27 },
-        { count: 1, version: 28 },
-        { count: 1, version: 29 },
-        { count: 1, version: 30 },
-        { count: 1, version: 31 },
-        { count: 1, version: 32 },
-        { count: 1, version: 33 },
-        { count: 1, version: 34 },
-        { count: 1, version: 35 },
-        { count: 1, version: 36 },
-        { count: 1, version: 37 },
-        { count: 1, version: 38 },
-        { count: 1, version: 39 },
-      ]);
-    } finally {
-      database.close();
-    }
+    expect(snapshot()).toEqual(before);
   } finally {
     await rm(directory, { force: true, recursive: true });
   }

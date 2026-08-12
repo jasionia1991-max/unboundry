@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "./safe-test";
+import { openAppDatabase } from "../server/database";
 import {
   saveProviderProfile,
   verifyProviderProfile,
@@ -275,6 +276,9 @@ test("read-only Provider verification checks model lists without generating", as
   const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
   process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   try {
+    // Greenfield publication owns an exactly empty directory. Establish the
+    // current database before Provider persistence creates secrets/lock files.
+    openAppDatabase(dataDirectory).close();
     const secret = ["sk", "readonly", randomUUID()].join("-");
     const profile = await saveProviderProfile({
       apiKey: secret,
@@ -424,6 +428,9 @@ test("Provider Key status persists invalid and uncertain rechecks without stale 
   const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
   process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   try {
+    // Greenfield publication owns an exactly empty directory. Establish the
+    // current database before Provider persistence creates secrets/lock files.
+    openAppDatabase(dataDirectory).close();
     const profile = await saveProviderProfile({
       apiKey: ["sk", "status", randomUUID()].join("-"),
       baseUrl: "https://openrouter.ai/api/v1",

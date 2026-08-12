@@ -2368,29 +2368,36 @@ test("a SQLite write fault is a structured 500, not a validation 400, and remain
       saveSequence: 1,
       saveSessionId: session,
     });
-    const fault = databaseAt(dataDirectory);
-    try {
-      fault.exec(`
-        CREATE TRIGGER m85_canvas_write_fault
-        BEFORE UPDATE ON canvas_documents
-        WHEN OLD.id = '${canvasId}'
-        BEGIN
-          SELECT RAISE(ABORT, 'synthetic canvas database fault');
-        END
-      `);
-    } finally {
-      fault.close();
-    }
-
-    const failed = await saveWithCurrentBaseline(
-      api,
-      canvasId,
-      saveBody("db-fault", 1, session, 2),
-    );
-    expect(failed).toEqual({
-      body: { code: "INTERNAL_ERROR", error: "Internal server error" },
-      status: 500,
+    let faultCount = 0;
+    setCanvasPersistenceBarriersForTests({
+      afterUpsert: () => {
+        faultCount += 1;
+        const synthetic = new DatabaseSync(":memory:");
+        try {
+          synthetic.exec(`
+            CREATE TABLE forced_sqlite_fault (value TEXT UNIQUE);
+            INSERT INTO forced_sqlite_fault VALUES ('duplicate');
+            INSERT INTO forced_sqlite_fault VALUES ('duplicate');
+          `);
+        } finally {
+          synthetic.close();
+        }
+      },
     });
+    try {
+      const failed = await saveWithCurrentBaseline(
+        api,
+        canvasId,
+        saveBody("db-fault", 1, session, 2),
+      );
+      expect(failed).toEqual({
+        body: { code: "INTERNAL_ERROR", error: "Internal server error" },
+        status: 500,
+      });
+    } finally {
+      setCanvasPersistenceBarriersForTests();
+    }
+    expect(faultCount).toBe(1);
     const unchanged = databaseAt(dataDirectory);
     try {
       expect(unchanged.prepare(`
@@ -2402,7 +2409,6 @@ test("a SQLite write fault is a structured 500, not a validation 400, and remain
         revision: 1,
         save_sequence: 1,
       });
-      unchanged.exec("DROP TRIGGER m85_canvas_write_fault");
     } finally {
       unchanged.close();
     }

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "./safe-test";
-import { appDataDirectory } from "../server/database";
+import { appDataDirectory, openAppDatabase } from "../server/database";
 import { generationProviderAttemptCounts } from "../server/generationTaskStore";
 import {
   getProviderCatalog,
@@ -32,6 +32,7 @@ async function withTemporaryData(
   process.env.UNBOUNDRY_DATA_DIR = directory;
   try {
     expect(appDataDirectory()).toBe(directory);
+    openAppDatabase(directory).close();
     await run(directory);
   } finally {
     if (previousDataDirectory === undefined) {

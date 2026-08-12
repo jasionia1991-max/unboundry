@@ -2,9 +2,13 @@ import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "./safe-test";
 import { saveAccountCredential } from "../server/accountCredentials";
-import { openAppDatabase } from "../server/database";
+import {
+  applyPendingSchemaMigrationsInTransaction,
+  openAppDatabase,
+} from "../server/database";
 import {
   createGenerationTaskStore,
   failRecoveredGenerationTasks,
@@ -521,39 +525,55 @@ test("generation task creation is idempotent and a running task recovers after r
 test("provider-attempt migration preserves the conservative historical count", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-provider-attempt-history-"));
   try {
-    const store = createGenerationTaskStore(dataDirectory);
-    const task = store.create({
-      canvasId: "historical-provider-count",
-      idempotencyKey: "historical-provider-attempts-001",
-      kind: "image",
-      model: "historical-image-model",
-      nodeId: "historical-image-node",
-      ownerId: "__test__",
-      parameters: {},
-      prompt: "preserve old provider attempt observations",
-      providerModelId: "openai/gpt-image-2",
-      providerProfileId: "historical-provider",
-    }).task;
-    store.close();
-
-    const schema14 = openAppDatabase(dataDirectory);
-    schema14.prepare(`UPDATE generation_tasks SET attempt = 3 WHERE id = ?`)
-      .run(task.id);
-    schema14.exec(`
-      DROP TABLE generation_provider_attempts;
-      DELETE FROM schema_migrations WHERE version = 15;
-      PRAGMA user_version = 14;
-    `);
-    schema14.close();
-
-    const migrated = openAppDatabase(dataDirectory);
+    const taskId = "historical-provider-attempts-task";
+    const migrated = new DatabaseSync(join(dataDirectory, "unboundry.sqlite"));
     try {
+      migrated.exec(`
+        PRAGMA foreign_keys = ON;
+        CREATE TABLE schema_migrations (
+          version INTEGER PRIMARY KEY,
+          name TEXT NOT NULL,
+          applied_at TEXT NOT NULL
+        );
+        BEGIN IMMEDIATE;
+      `);
+      applyPendingSchemaMigrationsInTransaction(migrated, {
+        sourceVersion: 0,
+        targetVersion: 14,
+      });
+      migrated.exec("COMMIT");
+      const timestamp = new Date().toISOString();
+      migrated.prepare(`
+        INSERT INTO generation_tasks (
+          id, canvas_id, node_id, kind, prompt, model, parameters,
+          idempotency_key, request_fingerprint, state, attempt,
+          created_at, updated_at, owner_id, provider_profile_id,
+          provider_model_id, model_configuration
+        ) VALUES (?, ?, ?, 'image', ?, ?, '{}', ?, ?, 'failed', 3,
+          ?, ?, '__test__', ?, ?, '{}')
+      `).run(
+        taskId,
+        "historical-provider-count",
+        "historical-image-node",
+        "preserve old provider attempt observations",
+        "historical-image-model",
+        "historical-provider-attempts-001",
+        "f".repeat(64),
+        timestamp,
+        timestamp,
+        "historical-provider",
+        "openai/gpt-image-2",
+      );
+      migrated.exec("BEGIN IMMEDIATE");
+      applyPendingSchemaMigrationsInTransaction(migrated, { sourceVersion: 14 });
+      migrated.exec("COMMIT");
+
       const attempts = migrated.prepare(`
         SELECT execution_attempt, evidence
         FROM generation_provider_attempts
         WHERE task_id = ?
         ORDER BY execution_attempt
-      `).all(task.id) as Array<{
+      `).all(taskId) as Array<{
         evidence: string;
         execution_attempt: number;
       }>;
@@ -567,6 +587,7 @@ test("provider-attempt migration preserves the conservative historical count", a
         paidProviderRequests: 0,
       });
     } finally {
+      if (migrated.isTransaction) migrated.exec("ROLLBACK");
       migrated.close();
     }
   } finally {
@@ -1099,8 +1120,13 @@ test("atomic admission serializes 20 contenders and replays stable owner-scoped 
     const replayRequest = atomicImageRequest({
       idempotencyKey: "atomic-same-intent-0001",
     });
-    children = Array.from({ length: 20 }, (_, index) =>
-      runAtomicAdmissionChild(
+    // Current-schema opens deliberately fail closed while another cooperative
+    // process holds the short open reservation. Start each child/store
+    // serially, then release all 20 already-open stores together so this case
+    // continues to test the intended cross-process admission race rather than
+    // an unsupported concurrent startup race.
+    for (let index = 0; index < 20; index += 1) {
+      const child = runAtomicAdmissionChild(
         dataDirectory,
         firstReleasePath,
         secondReleasePath,
@@ -1109,9 +1135,10 @@ test("atomic admission serializes 20 contenders and replays stable owner-scoped 
           nodeId: `atomic-node-${index}`,
         }),
         replayRequest,
-      )
-    );
-    await Promise.all(children.map(({ ready }) => ready));
+      );
+      children.push(child);
+      await child.ready;
+    }
     await writeFile(firstReleasePath, "release", { flag: "wx" });
     const distinct = await Promise.all(children.map(({ first }) => first));
     expect(distinct.filter(({ taskId }) => taskId)).toHaveLength(1);

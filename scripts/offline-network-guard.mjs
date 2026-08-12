@@ -11,17 +11,72 @@ import tls from "node:tls";
 
 const FORBIDDEN_PORT = 4173;
 const BLOCKED_EXIT_CODE = 86;
-const auditFile = process.env.UNBOUNDRY_TEST_NETWORK_AUDIT;
+const guardMode = process.env.UNBOUNDRY_OFFLINE_GUARD_MODE?.trim();
+const finalAuditFile = process.env.UNBOUNDRY_OFFLINE_GUARD_AUDIT?.trim();
+const finalAllowedPorts = process.env.UNBOUNDRY_OFFLINE_GUARD_ALLOWED_PORTS?.trim();
+const scrubTestEnvironment =
+  process.env.UNBOUNDRY_OFFLINE_GUARD_SCRUB_TEST_ENV === "1";
+const safeTestEnabled = process.env.UNBOUNDRY_SAFE_TEST === "1";
+const safeAuditFile = process.env.UNBOUNDRY_TEST_NETWORK_AUDIT?.trim();
+const safeInitialPorts = [
+  ["UNBOUNDRY_TEST_PORT", process.env.UNBOUNDRY_TEST_PORT?.trim()],
+  ["UNBOUNDRY_TEST_AUX_PORT", process.env.UNBOUNDRY_TEST_AUX_PORT?.trim()],
+];
+for (const name of [
+  "UNBOUNDRY_OFFLINE_GUARD_MODE",
+  "UNBOUNDRY_OFFLINE_GUARD_AUDIT",
+  "UNBOUNDRY_OFFLINE_GUARD_ALLOWED_PORTS",
+  "UNBOUNDRY_OFFLINE_GUARD_SCRUB_TEST_ENV",
+]) delete process.env[name];
+
+let auditFile;
+let initialPortInputs;
+if (guardMode !== undefined) {
+  if (
+    guardMode !== "final-candidate" || safeTestEnabled || safeAuditFile ||
+    !finalAuditFile || !finalAllowedPorts || scrubTestEnvironment
+  ) {
+    throw new Error("offline-network-guard.mjs final-candidate configuration is invalid");
+  }
+  let parsedPorts;
+  try {
+    parsedPorts = JSON.parse(finalAllowedPorts);
+  } catch {
+    parsedPorts = undefined;
+  }
+  if (
+    !Array.isArray(parsedPorts) || parsedPorts.length === 0 ||
+    parsedPorts.some((value) => typeof value !== "number")
+  ) {
+    throw new Error("offline-network-guard.mjs final-candidate ports are invalid");
+  }
+  auditFile = finalAuditFile;
+  initialPortInputs = parsedPorts.map((value) => [
+    "UNBOUNDRY_OFFLINE_GUARD_ALLOWED_PORTS",
+    String(value),
+  ]);
+} else {
+  if (!safeTestEnabled || !safeAuditFile || finalAuditFile || finalAllowedPorts) {
+    throw new Error(
+      "offline-network-guard.mjs may only run through scripts/run-safe-tests.mjs or the final-candidate guard mode",
+    );
+  }
+  auditFile = safeAuditFile;
+  initialPortInputs = safeInitialPorts;
+}
+if (scrubTestEnvironment) {
+  if (!safeTestEnabled || guardMode !== undefined) {
+    throw new Error("offline-network-guard.mjs test-environment scrub is invalid");
+  }
+  delete process.env.UNBOUNDRY_SAFE_TEST;
+  for (const name of Object.keys(process.env)) {
+    if (name.startsWith("UNBOUNDRY_TEST_")) delete process.env[name];
+  }
+}
 const initialAllowedPorts = new Set();
 const registeredPortCounts = new Map();
 const registeredOwnerPorts = new WeakMap();
 const pendingPortRegistrations = new WeakSet();
-
-if (process.env.UNBOUNDRY_SAFE_TEST !== "1" || !auditFile) {
-  throw new Error(
-    "offline-network-guard.mjs may only run through scripts/run-safe-tests.mjs",
-  );
-}
 
 function audit(event, details = {}) {
   appendFileSync(
@@ -86,8 +141,7 @@ function blocked(kind, host, port, reason = "non_loopback") {
 }
 
 function loadInitialAllowedPorts() {
-  for (const name of ["UNBOUNDRY_TEST_PORT", "UNBOUNDRY_TEST_AUX_PORT"]) {
-    const raw = process.env[name]?.trim();
+  for (const [name, raw] of initialPortInputs) {
     if (!raw) continue;
     const port = safePort(raw, undefined, `guard.${name}`, "localhost");
     if (port === 0) {

@@ -9,6 +9,7 @@ import { authGate } from "../server/auth";
 import {
   appDataDirectory,
   currentSchemaVersion,
+  openAppDatabase,
 } from "../server/database";
 import {
   adminModelsApi,
@@ -92,6 +93,7 @@ test("model archive, restore and guarded deletion preserve identity and never ca
   let server: Server | undefined;
   try {
     expect(appDataDirectory()).toBe(directory);
+    openAppDatabase(directory).close();
     const profile = await saveProviderProfile({
       apiKey: `lifecycle-${randomUUID()}`,
       baseUrl: "https://openrouter.ai/api/v1",
@@ -553,6 +555,7 @@ test("model admin writes fence account deletion and roll back when audit inserti
   process.env.UNBOUNDRY_TEST_AUTH_BYPASS = "1";
   let server: Server | undefined;
   try {
+    openAppDatabase(directory).close();
     const profile = await saveProviderProfile({
       apiKey: `model-fence-${randomUUID()}`,
       baseUrl: "https://openrouter.ai/api/v1",

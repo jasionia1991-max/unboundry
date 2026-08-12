@@ -3990,12 +3990,14 @@ export function CanvasShell({
             disabled={effectiveCanvasLoadState !== "ready"}
             max="2"
             min="0.15"
-            onChange={(event) =>
+            onChange={(event) => {
+              const nextZoom = Number(event.target.value);
+              setZoomSummary(nextZoom);
               setViewportRequest({
                 sequence: ++zoomRequestSequence.current,
-                zoom: Number(event.target.value),
-              })
-            }
+                zoom: nextZoom,
+              });
+            }}
             step="0.01"
             type="range"
             value={zoomSummary}

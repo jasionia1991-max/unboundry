@@ -1,12 +1,18 @@
 import { spawn, spawnSync } from "node:child_process";
+import { constants as bufferConstants } from "node:buffer";
 import {
-  copyFileSync,
   chmodSync,
+  closeSync,
+  constants as fileConstants,
   existsSync,
+  fstatSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
+  readdirSync,
+  readSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -20,10 +26,38 @@ import net from "node:net";
 const EXPECTED_NODE = "22.23.1";
 const EXPECTED_NPM = "10.9.8";
 const FORBIDDEN_PORT = 4173;
+const USER_HOME = "/Users/mymy";
+const EXACT_V051_SPEC = "tests/m92-version-compatibility.spec.ts";
+const EXACT_V051 = Object.freeze({
+  annotatedTagObject: "2e556760b693d1cee1b8b37db3e6747a916bcaf2",
+  archiveSha256:
+    "e7a619c4d9dbaca14d1032ef18f83f81dcfb36c9402976debc4f8f546c8bb5d0",
+  commitTree: "0990690bd9828757b82f59861f950ce6ff9ed4f8",
+  files: Object.freeze({
+    "package.json": "142da3969ae57ca686507377777b67783e9375474282467bc54dd9c77c60fa91",
+    "server/canvasPersistence.ts":
+      "ec1b2612fc8b974347744eee97bc2428ae1c29ab0c89177f5e50f2ef05923a7b",
+    "server/database.ts":
+      "3d907b9ea518b5e6ec3c1a03d0c68877cd8a28c49d3d20add173efc777103ed4",
+    "vite.config.ts":
+      "759d61ec22585cb447e80edd675efd0af1228a61448fd0e6829998ad46065786",
+  }),
+  peeledCommit: "7f7d6177a564056a6f41ff83dfb7ba913b21603b",
+  tag: "v0.5.1",
+  trackedEntries: 371,
+});
+const EXACT_V051_ATTESTATION_CONTRACT =
+  "unboundry-v051-safe-runner-attestation-v2";
 const scriptPath = fileURLToPath(import.meta.url);
 const repositoryRoot = realpathSync(resolve(dirname(scriptPath), ".."));
 let activeSuiteRoot;
+let exactV051Attestation;
 let listener4173Baseline;
+let privateNodePath;
+let privateNodeRuntimeRoot;
+let privateNpmCliPath;
+let snapshotBaseline;
+let snapshotSourceRoot;
 let workspaceBaseline;
 
 function fail(message) {
@@ -177,18 +211,151 @@ function assertListener4173Unchanged() {
 }
 
 function workspaceFingerprint() {
-  const hash = createHash("sha256");
   const head = run("git", ["rev-parse", "HEAD"], { capture: true }).stdout.trim();
+  const files = workingSourceFiles();
+  const records = sourceFileRecords(repositoryRoot, files, "workspace source");
+  return Object.freeze({
+    files: Object.freeze([...files]),
+    head,
+    sha256: sourceRecordsFingerprint(head, records),
+  });
+}
+
+function readRegularFileOnce(path, label) {
+  const beforeOpen = lstatSync(path, { bigint: true });
+  if (
+    !beforeOpen.isFile() || beforeOpen.isSymbolicLink() || beforeOpen.nlink !== 1n
+  ) fail(`${label} only accepts regular single-linked files`);
+  const descriptor = openSync(
+    path,
+    fileConstants.O_RDONLY | (fileConstants.O_NOFOLLOW ?? 0),
+  );
+  try {
+    const opened = fstatSync(descriptor, { bigint: true });
+    const afterOpen = lstatSync(path, { bigint: true });
+    if (
+      !opened.isFile() || opened.nlink !== 1n ||
+      !afterOpen.isFile() || afterOpen.isSymbolicLink() || afterOpen.nlink !== 1n
+    ) {
+      fail(`${label} only accepts regular single-linked files`);
+    }
+    for (const current of [opened, afterOpen]) {
+      if (
+        current.dev !== beforeOpen.dev || current.ino !== beforeOpen.ino ||
+        current.mode !== beforeOpen.mode || current.size !== beforeOpen.size ||
+        current.mtimeNs !== beforeOpen.mtimeNs || current.ctimeNs !== beforeOpen.ctimeNs
+      ) fail(`${label} changed while it was opened`);
+    }
+    if (opened.size > BigInt(bufferConstants.MAX_LENGTH)) {
+      fail(`${label} exceeds the safe file-size limit`);
+    }
+    const bytes = Buffer.alloc(Number(opened.size));
+    let offset = 0;
+    while (offset < bytes.length) {
+      const read = readSync(descriptor, bytes, offset, bytes.length - offset, offset);
+      if (read === 0) fail(`${label} changed while it was read`);
+      offset += read;
+    }
+    const afterReadDescriptor = fstatSync(descriptor, { bigint: true });
+    const afterReadPath = lstatSync(path, { bigint: true });
+    for (const current of [afterReadDescriptor, afterReadPath]) {
+      if (
+        !current.isFile() || current.dev !== opened.dev ||
+        current.ino !== opened.ino || current.mode !== opened.mode ||
+        current.nlink !== opened.nlink || current.size !== opened.size ||
+        current.mtimeNs !== opened.mtimeNs || current.ctimeNs !== opened.ctimeNs
+      ) fail(`${label} changed while it was read`);
+    }
+    if (afterReadPath.isSymbolicLink()) fail(`${label} changed while it was read`);
+    return Object.freeze({
+      bytes,
+      mode: Number(opened.mode),
+      size: Number(opened.size),
+    });
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function sourceFileRecords(root, files, label) {
+  return files.map((file) => {
+    const lexicalPath = join(root, file);
+    let parent;
+    try {
+      parent = realpathSync(dirname(lexicalPath));
+    } catch {
+      fail(`${label} parent is missing: ${file}`);
+    }
+    if (!isInside(root, parent)) fail(`${label} parent escaped: ${file}`);
+    const path = join(parent, basename(file));
+    if (path !== lexicalPath) fail(`${label} path changed: ${file}`);
+    const record = readRegularFileOnce(path, `${label} ${file}`);
+    return Object.freeze({ file, ...record });
+  });
+}
+
+function sourceRecordsFingerprint(head, records) {
+  const hash = createHash("sha256");
   hash.update(`${head}\0`);
-  for (const file of workingSourceFiles()) {
-    const path = join(repositoryRoot, file);
-    const stat = lstatSync(path);
-    if (!stat.isFile()) fail(`workspace fingerprint only accepts files: ${file}`);
-    hash.update(`${file}\0${stat.mode}\0${stat.size}\0`);
-    hash.update(readFileSync(path));
+  for (const { bytes, file, mode, size } of records) {
+    hash.update(`${file}\0${mode}\0${size}\0`);
+    hash.update(bytes);
     hash.update("\0");
   }
-  return { head, sha256: hash.digest("hex") };
+  return hash.digest("hex");
+}
+
+function snapshotFingerprint(sourceRoot, files, head) {
+  const records = sourceFileRecords(sourceRoot, files, "tracked snapshot");
+  return Object.freeze({
+    files: Object.freeze([...files]),
+    head,
+    sha256: sourceRecordsFingerprint(head, records),
+  });
+}
+
+function snapshotUnexpectedFiles(sourceRoot, expectedFiles) {
+  const expected = new Set(expectedFiles);
+  const unexpected = [];
+  const walk = (directory, prefix = "") => {
+    for (const name of readdirSync(directory).sort()) {
+      const path = prefix ? `${prefix}/${name}` : name;
+      if (
+        prefix === "" &&
+        (name === ".git" || name === "dist" || name === "node_modules")
+      ) continue;
+      const absolutePath = join(directory, name);
+      const details = lstatSync(absolutePath);
+      if (details.isDirectory() && !details.isSymbolicLink()) {
+        walk(absolutePath, path);
+      } else if (!expected.has(path)) {
+        unexpected.push(path);
+      }
+    }
+  };
+  try {
+    walk(sourceRoot);
+  } catch {
+    return ["<unreadable-snapshot-tree>"];
+  }
+  return unexpected;
+}
+
+function assertTrackedSnapshotUnchanged() {
+  if (!snapshotBaseline || !snapshotSourceRoot) return;
+  const current = snapshotFingerprint(
+    snapshotSourceRoot,
+    snapshotBaseline.files,
+    snapshotBaseline.head,
+  );
+  if (
+    current.files.join("\n") !== snapshotBaseline.files.join("\n") ||
+    current.sha256 !== snapshotBaseline.sha256 ||
+    snapshotUnexpectedFiles(snapshotSourceRoot, snapshotBaseline.files).length > 0
+  ) {
+    fail("the isolated tracked source snapshot changed during the safe run");
+  }
+  return current.sha256;
 }
 
 function ensureNode22() {
@@ -267,15 +434,20 @@ function workingSourceFiles() {
 function createTrackedSnapshot(suiteRoot) {
   const sourceRoot = join(suiteRoot, "source");
   mkdirSync(sourceRoot, { recursive: true });
-  const files = workingSourceFiles();
-  for (const file of files) {
-    const source = join(repositoryRoot, file);
+  const head = run("git", ["rev-parse", "HEAD"], { capture: true }).stdout.trim();
+  const files = [...workspaceBaseline.files];
+  const records = sourceFileRecords(repositoryRoot, files, "workspace source");
+  const capturedWorkspace = Object.freeze({
+    head,
+    sha256: sourceRecordsFingerprint(head, records),
+  });
+  if (capturedWorkspace.sha256 !== workspaceBaseline.sha256) {
+    fail("the original workspace changed while its isolated snapshot was captured");
+  }
+  for (const { bytes, file, mode } of records) {
     const destination = join(sourceRoot, file);
-    if (!isInside(repositoryRoot, resolve(source))) fail(`source path escaped: ${file}`);
-    const stat = lstatSync(source);
-    if (!stat.isFile()) fail(`tracked snapshot only accepts regular files: ${file}`);
     mkdirSync(dirname(destination), { recursive: true });
-    copyFileSync(source, destination);
+    writeFileSync(destination, bytes, { flag: "wx", mode: mode & 0o777 });
   }
   run("/usr/bin/git", ["-c", "init.templateDir=", "init", "--quiet"], {
     cwd: sourceRoot,
@@ -291,7 +463,17 @@ function createTrackedSnapshot(suiteRoot) {
     if (!existsSync(source)) fail(`missing prepared Playwright browser ${directory}`);
     run("/bin/cp", ["-cR", source, join(browserRoot, directory)]);
   }
-  return { browserRoot, files, sourceRoot };
+  const installedNodeRuntimeRoot = realpathSync(
+    resolve(dirname(process.execPath), ".."),
+  );
+  privateNodeRuntimeRoot = join(suiteRoot, "node-runtime");
+  run("/bin/cp", ["-cR", installedNodeRuntimeRoot, privateNodeRuntimeRoot]);
+  privateNodeRuntimeRoot = realpathSync(privateNodeRuntimeRoot);
+  privateNodePath = realpathSync(join(privateNodeRuntimeRoot, "bin/node"));
+  privateNpmCliPath = realpathSync(
+    join(privateNodeRuntimeRoot, "lib/node_modules/npm/bin/npm-cli.js"),
+  );
+  return { browserRoot, capturedWorkspace, files, sourceRoot };
 }
 
 async function prepareDependencies(sourceRoot, browserRoot, suiteRoot, offlineInstall) {
@@ -332,7 +514,7 @@ async function prepareDependencies(sourceRoot, browserRoot, suiteRoot, offlineIn
     env.npm_config_cache = cacheRoot;
     env.npm_config_globalconfig = join(testRoot, "empty-global-npmrc");
     env.npm_config_userconfig = join(testRoot, "empty-npmrc");
-    const npmCli = "/Users/mymy/.hermes/node/lib/node_modules/npm/bin/npm-cli.js";
+    const npmCli = privateNpmCliPath;
     const dependencyInputs = ["package.json", "package-lock.json"];
     const before = Object.fromEntries(
       dependencyInputs.map((file) => [
@@ -445,15 +627,15 @@ function preflight() {
     new Set(manifested).size !== manifested.length ||
     manifested.join("\n") !== specs.join("\n")
   ) {
-    fail("safe test manifest must be a duplicate-free exact 111-spec partition");
+    fail("safe test manifest must be a duplicate-free exact 114-spec partition");
   }
-  const expectedModeCounts = { dev: 74, hybrid: 4, node: 23, preview: 2, self: 8 };
+  const expectedModeCounts = { dev: 74, hybrid: 4, node: 25, preview: 2, self: 9 };
   for (const mode of expectedModes) {
     if (manifest[mode].length !== expectedModeCounts[mode]) {
       fail(`unexpected ${mode} spec count ${manifest[mode].length}`);
     }
   }
-  if (specs.length !== 111) fail(`expected 111 isolated specs, found ${specs.length}`);
+  if (specs.length !== 114) fail(`expected 114 isolated specs, found ${specs.length}`);
 
   const packageJson = JSON.parse(
     readFileSync(join(repositoryRoot, "package.json"), "utf8"),
@@ -516,10 +698,30 @@ async function assertPortBindable(port) {
   });
 }
 
-function sandboxProfile(testRoot, sourceRoot) {
+function sandboxProfile(testRoot, sourceRoot, configuredBrowserRoot) {
   const quote = (value) => value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
-  const userHome = "/Users/mymy";
-  return [
+  if (!privateNodeRuntimeRoot || !privateNodePath || !privateNpmCliPath) {
+    fail("the isolated Node runtime is not prepared");
+  }
+  const browserRoot = realpathSync(configuredBrowserRoot);
+  if (
+    [testRoot, sourceRoot, browserRoot, privateNodeRuntimeRoot].some((path) =>
+      isInside(USER_HOME, path)
+    )
+  ) fail("isolated safe-runner roots must remain outside the real user home");
+  const denyExcept = (operation, root, exceptions) => {
+    const outsideExceptions = exceptions.length === 1
+      ? `(require-not (subpath "${quote(exceptions[0])}"))`
+      : `(require-not (require-any ${
+        exceptions.map((path) => `(subpath "${quote(path)}")`).join(" ")
+      }))`;
+    return `(deny ${operation} (require-all (subpath "${quote(root)}") ${outsideExceptions}))`;
+  };
+  const sourceWritableRoots = [
+    join(sourceRoot, "dist"),
+    join(sourceRoot, "node_modules"),
+  ];
+  const rules = [
     "(version 1)",
     "(allow default)",
     "(deny network*)",
@@ -529,21 +731,30 @@ function sandboxProfile(testRoot, sourceRoot) {
     `(deny network-bind (local ip "localhost:${FORBIDDEN_PORT}"))`,
     `(deny network-inbound (local ip "localhost:${FORBIDDEN_PORT}"))`,
     `(deny network-outbound (remote ip "localhost:${FORBIDDEN_PORT}"))`,
+    `(deny file-read* file-write* (subpath "${quote(USER_HOME)}"))`,
     `(deny file-read* file-write* (subpath "${quote(repositoryRoot)}"))`,
-    '(deny file-read* file-write* (subpath "/Users/mymy/Documents"))',
-    '(deny file-read* file-write* (subpath "/Users/mymy/Desktop"))',
-    '(deny file-read* file-write* (subpath "/Users/mymy/Downloads"))',
     '(deny file-read* file-write* (subpath "/var/lib/unboundry"))',
     '(deny file-read* file-write* (subpath "/Volumes"))',
-    `(deny file-read* file-write* (subpath "${quote(join(userHome, ".ssh"))}"))`,
-    `(deny file-read* file-write* (subpath "${quote(join(userHome, ".aws"))}"))`,
-    `(deny file-read* file-write* (subpath "${quote(join(userHome, ".docker"))}"))`,
-    `(deny file-read* file-write* (subpath "${quote(join(userHome, ".config"))}"))`,
-    `(deny file-read* file-write* (literal "${quote(join(userHome, ".npmrc"))}"))`,
-    `(deny file-read* file-write* (subpath "${quote(join(userHome, "Library/Keychains"))}"))`,
+    `(allow file-read* (subpath "${quote(privateNodeRuntimeRoot)}"))`,
+    `(deny file-write* (subpath "${quote(privateNodeRuntimeRoot)}"))`,
     `(allow file-read* file-write* (subpath "${quote(testRoot)}"))`,
-    `(allow file-read* file-write* (subpath "${quote(sourceRoot)}"))`,
-  ].join("\n");
+    `(allow file-read* (subpath "${quote(browserRoot)}"))`,
+    `(deny file-write* (subpath "${quote(browserRoot)}"))`,
+    `(allow file-read* (subpath "${quote(sourceRoot)}"))`,
+    denyExcept("file-write*", sourceRoot, sourceWritableRoots),
+    ...sourceWritableRoots.map((path) =>
+      `(allow file-write* (subpath "${quote(path)}"))`
+    ),
+  ];
+  if (exactV051Attestation) {
+    rules.push(
+      `(allow file-read* (subpath "${quote(exactV051Attestation.root)}"))`,
+      `(deny file-write* (subpath "${quote(exactV051Attestation.root)}"))`,
+      `(allow file-read* (subpath "${quote(exactV051Attestation.runtimeRoot)}"))`,
+      `(deny file-write* (subpath "${quote(exactV051Attestation.runtimeRoot)}"))`,
+    );
+  }
+  return rules.join("\n");
 }
 
 function sanitizedEnvironment({
@@ -557,7 +768,8 @@ function sanitizedEnvironment({
   spec,
   testRoot,
 }) {
-  const nodeDirectory = dirname(process.execPath);
+  if (!privateNodePath) fail("the isolated Node runtime is not prepared");
+  const nodeDirectory = dirname(privateNodePath);
   const temporaryHome = join(testRoot, "home");
   mkdirSync(temporaryHome, { recursive: true });
   const guard = join(sourceRoot, "scripts/offline-network-guard.mjs");
@@ -565,7 +777,7 @@ function sanitizedEnvironment({
   const sentinelNonce = randomUUID();
   writeFileSync(sentinel, `${sentinelNonce}\n`, { encoding: "utf8", mode: 0o600 });
   chmodSync(sentinel, 0o600);
-  return {
+  const environment = {
     HOME: temporaryHome,
     LANG: "en_US.UTF-8",
     LC_ALL: "en_US.UTF-8",
@@ -600,6 +812,15 @@ function sanitizedEnvironment({
     npm_config_offline: "true",
     npm_config_update_notifier: "false",
   };
+  for (const name of [
+    "UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION",
+    "UNBOUNDRY_MAINTENANCE_MODE",
+    "UNBOUNDRY_SCHEMA_MIGRATION_TEST_CLOCK",
+    "UNBOUNDRY_TEST_AUTH_BYPASS",
+  ]) {
+    delete environment[name];
+  }
+  return environment;
 }
 
 function collectReportEntries(reportFile, sourceRoot) {
@@ -693,6 +914,11 @@ function parseDiscoveryReport(reportFile, sourceRoot) {
 }
 
 function assertAudit(auditFile, allowedProbePorts = new Set()) {
+  const auditDetails = lstatSync(auditFile);
+  if (
+    !auditDetails.isFile() || auditDetails.isSymbolicLink() ||
+    auditDetails.nlink !== 1
+  ) fail("network audit is not a regular single-linked file");
   const lines = readFileSync(auditFile, "utf8").split("\n").filter(Boolean);
   const events = lines.map((line) => JSON.parse(line));
   const allBlocked = events.filter((event) => String(event.event).includes("blocked"));
@@ -720,14 +946,18 @@ function assertAudit(auditFile, allowedProbePorts = new Set()) {
 
 async function sandboxedPlaywright(sourceRoot, testRoot, env, extraArgs = []) {
   const profile = join(testRoot, "sandbox.sb");
-  writeFileSync(profile, sandboxProfile(testRoot, sourceRoot), "utf8");
+  writeFileSync(
+    profile,
+    sandboxProfile(testRoot, sourceRoot, env.PLAYWRIGHT_BROWSERS_PATH),
+    "utf8",
+  );
   const cli = join(sourceRoot, "node_modules/@playwright/test/cli.js");
   return await runManaged(
     "/usr/bin/sandbox-exec",
     [
       "-f",
       profile,
-      process.execPath,
+      privateNodePath,
       cli,
       "test",
       "--config",
@@ -740,30 +970,619 @@ async function sandboxedPlaywright(sourceRoot, testRoot, env, extraArgs = []) {
 
 async function sandboxedNode(sourceRoot, testRoot, env, args, options = {}) {
   const profile = join(testRoot, "sandbox.sb");
-  writeFileSync(profile, sandboxProfile(testRoot, sourceRoot), "utf8");
+  writeFileSync(
+    profile,
+    sandboxProfile(testRoot, sourceRoot, env.PLAYWRIGHT_BROWSERS_PATH),
+    "utf8",
+  );
   return await runManaged(
     "/usr/bin/sandbox-exec",
-    ["-f", profile, process.execPath, ...args],
+    ["-f", profile, privateNodePath, ...args],
     {
       allowFailure: options.allowFailure,
       capture: options.capture,
-      cwd: sourceRoot,
+      cwd: options.cwd ?? sourceRoot,
       env,
       timeout: options.timeout,
     },
   );
 }
 
+function sha256Bytes(value) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function gitBlobObjectId(value) {
+  return createHash("sha1")
+    .update(`blob ${value.length}\0`)
+    .update(value)
+    .digest("hex");
+}
+
+function exactV051GitBytes(path) {
+  const result = spawnSync(
+    "/usr/bin/git",
+    [
+      "--no-replace-objects",
+      "-C",
+      repositoryRoot,
+      "show",
+      `${EXACT_V051.peeledCommit}:${path}`,
+    ],
+    {
+      encoding: null,
+      maxBuffer: 32 * 1024 * 1024,
+      timeout: 30_000,
+    },
+  );
+  if (result.error) throw result.error;
+  if (result.status !== 0 || !Buffer.isBuffer(result.stdout)) {
+    fail(`could not read exact ${EXACT_V051.peeledCommit}:${path}`);
+  }
+  return result.stdout;
+}
+
+function exactV051TreeEntries() {
+  const result = spawnSync(
+    "/usr/bin/git",
+    [
+      "--no-replace-objects",
+      "-C",
+      repositoryRoot,
+      "ls-tree",
+      "-r",
+      "-z",
+      "--full-tree",
+      EXACT_V051.peeledCommit,
+    ],
+    {
+      encoding: null,
+      maxBuffer: 16 * 1024 * 1024,
+      timeout: 30_000,
+    },
+  );
+  if (result.error) throw result.error;
+  if (result.status !== 0 || !Buffer.isBuffer(result.stdout)) {
+    fail("could not list the immutable exact v0.5.1 commit tree");
+  }
+  const entries = result.stdout.toString("utf8")
+    .split("\0")
+    .filter(Boolean)
+    .map((record) => {
+      const match = /^([0-7]{6}) (\S+) ([a-f0-9]{40})\t(.+)$/.exec(record);
+      if (!match) fail("exact v0.5.1 commit tree contains an invalid entry");
+      const [, mode, type, objectId, path] = match;
+      if (
+        mode !== "100644" || type !== "blob" || path.startsWith("/") ||
+        path.split("/").some((part) => part === "" || part === "." || part === "..")
+      ) fail(`exact v0.5.1 commit tree contains an unsupported entry: ${path}`);
+      return Object.freeze({ objectId, path });
+    });
+  if (
+    entries.length !== EXACT_V051.trackedEntries ||
+    new Set(entries.map(({ path }) => path)).size !== entries.length ||
+    entries.some(({ path }) => path === "dist" || path.startsWith("dist/") ||
+      path === "node_modules" || path.startsWith("node_modules/"))
+  ) fail("exact v0.5.1 complete-tree inventory does not match the frozen contract");
+  return entries;
+}
+
+function validateExactV051GitObject() {
+  const tagObject = run(
+    "/usr/bin/git",
+    ["--no-replace-objects", "rev-parse", EXACT_V051.tag],
+    { capture: true },
+  ).stdout.trim();
+  const peeledCommit = run(
+    "/usr/bin/git",
+    ["--no-replace-objects", "rev-parse", `${EXACT_V051.tag}^{}`],
+    { capture: true },
+  ).stdout.trim();
+  const objectType = run(
+    "/usr/bin/git",
+    ["--no-replace-objects", "cat-file", "-t", EXACT_V051.annotatedTagObject],
+    { capture: true },
+  ).stdout.trim();
+  const pinnedPeeledCommit = run(
+    "/usr/bin/git",
+    [
+      "--no-replace-objects",
+      "rev-parse",
+      `${EXACT_V051.annotatedTagObject}^{}`,
+    ],
+    { capture: true },
+  ).stdout.trim();
+  const commitType = run(
+    "/usr/bin/git",
+    ["--no-replace-objects", "cat-file", "-t", EXACT_V051.peeledCommit],
+    { capture: true },
+  ).stdout.trim();
+  const commitTree = run(
+    "/usr/bin/git",
+    ["--no-replace-objects", "rev-parse", `${EXACT_V051.peeledCommit}^{tree}`],
+    { capture: true },
+  ).stdout.trim();
+  const treeType = run(
+    "/usr/bin/git",
+    ["--no-replace-objects", "cat-file", "-t", EXACT_V051.commitTree],
+    { capture: true },
+  ).stdout.trim();
+  if (
+    tagObject !== EXACT_V051.annotatedTagObject ||
+    peeledCommit !== EXACT_V051.peeledCommit ||
+    pinnedPeeledCommit !== EXACT_V051.peeledCommit ||
+    commitTree !== EXACT_V051.commitTree || objectType !== "tag" ||
+    commitType !== "commit" || treeType !== "tree"
+  ) {
+    fail(
+      "exact v0.5.1 tag, commit, or complete tree identity does not match the frozen contract",
+    );
+  }
+  for (const [path, expectedSha256] of Object.entries(EXACT_V051.files)) {
+    if (sha256Bytes(exactV051GitBytes(path)) !== expectedSha256) {
+      fail(`exact v0.5.1 blob hash changed: ${path}`);
+    }
+  }
+}
+
+function validateExtractedExactV051Files(
+  runtimeRoot,
+  { allowBuildOutputs = false } = {},
+) {
+  const entries = exactV051TreeEntries();
+  const expectedPaths = entries.map(({ path }) => path).sort();
+  const actualPaths = [];
+  const walk = (directory, prefix = "") => {
+    for (const name of readdirSync(directory).sort()) {
+      const path = prefix ? `${prefix}/${name}` : name;
+      const absolutePath = join(directory, name);
+      const details = lstatSync(absolutePath);
+      if (
+        allowBuildOutputs && prefix === "" &&
+        (name === "dist" || name === "node_modules")
+      ) {
+        if (!details.isDirectory() || details.isSymbolicLink()) {
+          fail(`exact v0.5.1 build output root is unsafe: ${path}`);
+        }
+        continue;
+      }
+      if (details.isDirectory() && !details.isSymbolicLink()) {
+        walk(absolutePath, path);
+      } else {
+        actualPaths.push(path);
+      }
+    }
+  };
+  walk(runtimeRoot);
+  actualPaths.sort();
+  if (JSON.stringify(actualPaths) !== JSON.stringify(expectedPaths)) {
+    fail("extracted exact v0.5.1 complete-tree inventory changed");
+  }
+  for (const { objectId, path } of entries) {
+    const extractedPath = join(runtimeRoot, path);
+    const details = lstatSync(extractedPath);
+    const bytes = readFileSync(extractedPath);
+    if (
+      !details.isFile() || details.isSymbolicLink() || details.nlink !== 1 ||
+      (details.mode & 0o777) !== 0o644 || gitBlobObjectId(bytes) !== objectId
+    ) fail(`extracted exact-tag tree entry does not match: ${path}`);
+  }
+  for (const [path, expectedSha256] of Object.entries(EXACT_V051.files)) {
+    const extractedPath = join(runtimeRoot, path);
+    const details = lstatSync(extractedPath);
+    if (
+      !details.isFile() || details.isSymbolicLink() ||
+      sha256Bytes(readFileSync(extractedPath)) !== expectedSha256
+    ) fail(`extracted exact-tag blob does not match: ${path}`);
+  }
+  const packageJson = JSON.parse(readFileSync(join(runtimeRoot, "package.json"), "utf8"));
+  if (packageJson.version !== "0.5.1") {
+    fail("extracted exact-tag package version is not 0.5.1");
+  }
+}
+
+function extractExactV051Runtime(runtimeRoot) {
+  const archive = spawnSync(
+    "/usr/bin/git",
+    [
+      "--no-replace-objects",
+      "-c",
+      "tar.umask=0002",
+      "-C",
+      repositoryRoot,
+      "archive",
+      "--format=tar",
+      EXACT_V051.peeledCommit,
+    ],
+    {
+      encoding: null,
+      maxBuffer: 256 * 1024 * 1024,
+      timeout: 60_000,
+    },
+  );
+  if (archive.error) throw archive.error;
+  if (archive.status !== 0 || !Buffer.isBuffer(archive.stdout)) {
+    fail("could not archive the immutable exact v0.5.1 commit");
+  }
+  const archiveSha256 = sha256Bytes(archive.stdout);
+  if (archiveSha256 !== EXACT_V051.archiveSha256) {
+    fail("exact v0.5.1 complete-tree archive does not match the frozen contract");
+  }
+  const extracted = spawnSync(
+    "/usr/bin/tar",
+    ["-x", "-C", runtimeRoot],
+    {
+      encoding: "utf8",
+      input: archive.stdout,
+      maxBuffer: 16 * 1024 * 1024,
+      timeout: 60_000,
+    },
+  );
+  if (extracted.error) throw extracted.error;
+  if (extracted.status !== 0) {
+    process.stderr.write(extracted.stderr ?? "");
+    fail("could not extract the exact v0.5.1 tag archive");
+  }
+  validateExtractedExactV051Files(runtimeRoot);
+  return archiveSha256;
+}
+
+function validateExactV051RawEvidence(raw, nonce) {
+  const shaPattern = /^[a-f0-9]{64}$/;
+  if (
+    !raw || typeof raw !== "object" ||
+    raw.contract !== "unboundry-v051-exact-runtime-rehearsal-v3" ||
+    raw.nonce !== nonce ||
+    !raw.schema37Wire || !raw.schema39Rejection
+  ) fail("exact v0.5.1 rehearsal did not produce the required evidence contract");
+  const schema37 = raw.schema37Wire;
+  if (
+    schema37.acceptsCurrentFenceFields !== true ||
+    schema37.hiddenCommitGraphRevision !== 8 ||
+    schema37.hiddenCommitRevision !== 8 ||
+    schema37.loadIncludesLoadToken !== false || schema37.loginStatus !== 200 ||
+    schema37.oldSuccessIncludesLoadToken !== false ||
+    schema37.preservesUnknownNodeData !== true || schema37.reloadRevision !== 8 ||
+    schema37.version !== "0.5.1" || schema37.versionStatus !== 200 ||
+    !shaPattern.test(String(schema37.initialSchema37LogicalSha256 ?? "")) ||
+    !shaPattern.test(String(schema37.hiddenCommitLogicalSha256 ?? "")) ||
+    schema37.hiddenCommitLogicalSha256 ===
+      schema37.initialSchema37LogicalSha256
+  ) fail("exact v0.5.1 schema-37 wire rehearsal is incomplete");
+  const schema39 = raw.schema39Rejection;
+  if (
+    !shaPattern.test(String(schema39.beforeLogicalSha256 ?? "")) ||
+    schema39.afterLogicalSha256 !== schema39.beforeLogicalSha256 ||
+    schema39.databaseBytesChanged !== true ||
+    schema39.firstDatabaseRequestFailed !== true ||
+    schema39.integrityCheck !== "ok" || schema39.journalModeBefore !== "delete" ||
+    schema39.journalModeAfter !== "wal" || schema39.logicalRowsUnchanged !== true ||
+    schema39.migrationJournalModeBeforeNormalization !== "wal" ||
+    !Number.isInteger(schema39.processExitCode) || schema39.processExitCode === 0 ||
+    schema39.rejectionMessage !==
+      "Unknown database migration 38:durable-media-publications" ||
+    schema39.requestTransportFailed !== true ||
+    !Array.isArray(schema39.sidecarsAfterExit) ||
+    schema39.sidecarsAfterExit.length > 2 ||
+    new Set(schema39.sidecarsAfterExit).size !==
+      schema39.sidecarsAfterExit.length ||
+    schema39.sidecarsAfterExit.some((entry) =>
+      entry !== "unboundry.sqlite-shm" && entry !== "unboundry.sqlite-wal"
+    ) ||
+    JSON.stringify(schema39.sidecarsAfterExit) !==
+      JSON.stringify([...schema39.sidecarsAfterExit].sort()) ||
+    schema39.rollbackBaselineNormalizedByCurrent !== true ||
+    JSON.stringify(schema39.rollbackCheckpoint) !==
+      JSON.stringify({ busy: 0, checkpointed: 0, log: 0 }) ||
+    schema39.userVersion !== 39 ||
+    schema39.versionEndpointBeforeDatabaseOpen !== true ||
+    schema39.latestMigration?.version !== 39 ||
+    schema39.latestMigration?.name !==
+      "atomic-generation-admission-and-credential-scope"
+  ) fail("exact v0.5.1 schema-39 rejection rehearsal is incomplete");
+}
+
+function exactV051AttestationEnvironment() {
+  if (!exactV051Attestation) {
+    fail("exact v0.5.1 runner attestation was not prepared");
+  }
+  return {
+    UNBOUNDRY_V051_ATTESTATION_NONCE: exactV051Attestation.nonce,
+    UNBOUNDRY_V051_ATTESTATION_PATH: exactV051Attestation.path,
+    UNBOUNDRY_V051_ATTESTATION_SHA256: exactV051Attestation.sha256,
+    UNBOUNDRY_V051_RUNTIME_ROOT: exactV051Attestation.runtimeRoot,
+  };
+}
+
+function assertExactV051AttestationUnchanged() {
+  if (!exactV051Attestation) return;
+  let currentDetails;
+  let root;
+  let evidence;
+  let bytes;
+  try {
+    root = lstatSync(exactV051Attestation.root);
+    evidence = lstatSync(exactV051Attestation.path);
+    bytes = readFileSync(exactV051Attestation.path);
+    currentDetails = JSON.parse(bytes.toString("utf8"));
+  } catch {
+    fail("exact v0.5.1 runner attestation is unreadable or invalid");
+  }
+  if (
+    realpathSync(exactV051Attestation.root) !== exactV051Attestation.root ||
+    realpathSync(exactV051Attestation.path) !== exactV051Attestation.path ||
+    !root.isDirectory() || root.isSymbolicLink() ||
+    (root.mode & 0o777) !== 0o500 ||
+    !evidence.isFile() || evidence.isSymbolicLink() || evidence.nlink !== 1 ||
+    (evidence.mode & 0o777) !== 0o400 ||
+    sha256Bytes(bytes) !== exactV051Attestation.sha256 ||
+    JSON.stringify(currentDetails) !== JSON.stringify(exactV051Attestation.details)
+  ) fail("exact v0.5.1 runner attestation changed after preparation");
+}
+
+async function prepareExactV051Attestation(sourceRoot, browserRoot, suiteRoot) {
+  validateExactV051GitObject();
+  const rehearsalRoot = mkdtempSync(join(suiteRoot, "exact-v051-rehearsal-"));
+  chmodSync(rehearsalRoot, 0o700);
+  const runtimeRoot = join(rehearsalRoot, "runtime");
+  const workRoot = join(rehearsalRoot, "work");
+  const runnerDataDirectory = join(rehearsalRoot, "runner-data");
+  const cacheRoot = join(rehearsalRoot, "npm-cache");
+  const attestationRoot = join(rehearsalRoot, "attestation");
+  for (const directory of [
+    runtimeRoot,
+    workRoot,
+    runnerDataDirectory,
+    cacheRoot,
+    attestationRoot,
+  ]) {
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    chmodSync(directory, 0o700);
+  }
+  const archiveSha256 = extractExactV051Runtime(runtimeRoot);
+  const auditFile = join(rehearsalRoot, "network-audit.jsonl");
+  const reportFile = join(rehearsalRoot, "unused-report.json");
+  const rawEvidencePath = join(workRoot, "raw-evidence.json");
+  const attestationPath = join(attestationRoot, "attestation.json");
+  writeFileSync(auditFile, "", { encoding: "utf8", mode: 0o600 });
+  chmodSync(auditFile, 0o600);
+  writeFileSync(join(rehearsalRoot, "empty-npmrc"), "", "utf8");
+  writeFileSync(join(rehearsalRoot, "empty-global-npmrc"), "", "utf8");
+  const port = await freePort();
+  const auxiliaryPort = await freePort(new Set([port]));
+  const env = sanitizedEnvironment({
+    auxiliaryPort,
+    auditFile,
+    browserRoot,
+    dataDirectory: runnerDataDirectory,
+    port,
+    reportFile,
+    sourceRoot,
+    spec: join(sourceRoot, EXACT_V051_SPEC),
+    testRoot: rehearsalRoot,
+  });
+  const cacheSource = "/Users/mymy/.npm/_cacache";
+  if (!existsSync(cacheSource)) {
+    fail("the prepared npm cache required for exact v0.5.1 is missing");
+  }
+  run("/bin/cp", ["-cR", cacheSource, join(cacheRoot, "_cacache")]);
+  env.npm_config_cache = cacheRoot;
+  env.npm_config_globalconfig = join(rehearsalRoot, "empty-global-npmrc");
+  env.npm_config_userconfig = join(rehearsalRoot, "empty-npmrc");
+  const npmCli = privateNpmCliPath;
+  if (!lstatSync(npmCli).isFile()) {
+    fail("the pinned npm CLI required for exact v0.5.1 is missing");
+  }
+  const dependencyInputs = ["package.json", "package-lock.json"];
+  const dependencyHashes = () => Object.fromEntries(
+    dependencyInputs.map((file) => [
+      file,
+      sha256Bytes(readFileSync(join(runtimeRoot, file))),
+    ]),
+  );
+  const dependencyHashesBefore = dependencyHashes();
+  await sandboxedNode(sourceRoot, rehearsalRoot, env, [
+    npmCli,
+    "ci",
+    "--offline",
+    "--ignore-scripts",
+    "--audit=false",
+    "--fund=false",
+  ], { cwd: runtimeRoot, timeout: 10 * 60_000 });
+  if (JSON.stringify(dependencyHashes()) !== JSON.stringify(dependencyHashesBefore)) {
+    fail("exact v0.5.1 npm ci changed package.json or package-lock.json");
+  }
+  await sandboxedNode(sourceRoot, rehearsalRoot, env, [npmCli, "ls", "--all"], {
+    capture: true,
+    cwd: runtimeRoot,
+    timeout: 5 * 60_000,
+  });
+  await sandboxedNode(sourceRoot, rehearsalRoot, env, [
+    join(runtimeRoot, "node_modules/typescript/bin/tsc"),
+    "--noEmit",
+  ], { cwd: runtimeRoot, timeout: 5 * 60_000 });
+  await sandboxedNode(sourceRoot, rehearsalRoot, env, [
+    join(runtimeRoot, "node_modules/vite/bin/vite.js"),
+    "build",
+  ], { cwd: runtimeRoot, timeout: 5 * 60_000 });
+  const builtIndex = join(runtimeRoot, "dist/client/index.html");
+  const builtIndexDetails = lstatSync(builtIndex);
+  if (!builtIndexDetails.isFile() || builtIndexDetails.isSymbolicLink()) {
+    fail("exact v0.5.1 build did not publish dist/client/index.html");
+  }
+  const nonce = randomUUID();
+  const checker = join(sourceRoot, "scripts/check-v051-exact-runtime.mjs");
+  await sandboxedNode(
+    sourceRoot,
+    rehearsalRoot,
+    env,
+    [checker, JSON.stringify({
+      nonce,
+      outputPath: rawEvidencePath,
+      port: auxiliaryPort,
+      runtimeRoot,
+      workRoot,
+    })],
+    { capture: true, timeout: 5 * 60_000 },
+  );
+  validateExtractedExactV051Files(runtimeRoot, { allowBuildOutputs: true });
+  const rawEvidenceDetails = lstatSync(rawEvidencePath);
+  if (
+    !rawEvidenceDetails.isFile() || rawEvidenceDetails.isSymbolicLink() ||
+    rawEvidenceDetails.nlink !== 1 || (rawEvidenceDetails.mode & 0o777) !== 0o400
+  ) fail("exact v0.5.1 raw evidence is not a private immutable file");
+  const rawEvidence = JSON.parse(readFileSync(rawEvidencePath, "utf8"));
+  validateExactV051RawEvidence(rawEvidence, nonce);
+  const audit = assertAudit(auditFile, new Set([port, auxiliaryPort]));
+  const attestation = Object.freeze({
+    build: Object.freeze({
+      npmCiOffline: true,
+      npmIgnoreScripts: true,
+      typescriptNoEmit: true,
+      viteBuild: true,
+    }),
+    contract: EXACT_V051_ATTESTATION_CONTRACT,
+    exactTag: Object.freeze({
+      annotatedTagObject: EXACT_V051.annotatedTagObject,
+      archiveSha256,
+      commitTree: EXACT_V051.commitTree,
+      completeTreeVerified: true,
+      files: EXACT_V051.files,
+      peeledCommit: EXACT_V051.peeledCommit,
+      tag: EXACT_V051.tag,
+      trackedEntries: EXACT_V051.trackedEntries,
+    }),
+    network: Object.freeze({
+      blocked: audit.blocked,
+      forbiddenPort: FORBIDDEN_PORT,
+      loopbackPort: auxiliaryPort,
+    }),
+    nonce,
+    rehearsal: rawEvidence,
+    runtimeRoot,
+    source: Object.freeze({
+      head: workspaceBaseline.head,
+      sha256: workspaceBaseline.sha256,
+    }),
+  });
+  writeFileSync(attestationPath, `${JSON.stringify(attestation, null, 2)}\n`, {
+    encoding: "utf8",
+    flag: "wx",
+    mode: 0o400,
+  });
+  chmodSync(attestationPath, 0o400);
+  chmodSync(attestationRoot, 0o500);
+  exactV051Attestation = Object.freeze({
+    details: attestation,
+    nonce,
+    path: attestationPath,
+    root: attestationRoot,
+    runtimeRoot,
+    sha256: sha256Bytes(readFileSync(attestationPath)),
+  });
+  assertExactV051AttestationUnchanged();
+  console.log(JSON.stringify({
+    exactV051: "attested",
+    evidenceSha256: exactV051Attestation.sha256,
+    externalNetworkAttempts: audit.blocked,
+    forbiddenPort: FORBIDDEN_PORT,
+  }));
+}
+
 async function validateFileAndCredentialIsolation(sourceRoot, testRoot, env) {
   const targets = [
-    { path: join(repositoryRoot, "package.json") },
-    { path: join(repositoryRoot, "data", "unboundry.sqlite") },
     {
+      label: "live package manifest",
+      operations: [
+        "direct-open", "direct-stat", "direct-read", "direct-write",
+        "symlink-stat", "symlink-read",
+      ],
+      path: join(repositoryRoot, "package.json"),
+    },
+    {
+      label: "live application database",
+      operations: [
+        "direct-open", "direct-stat", "direct-read", "direct-write",
+        "symlink-stat", "symlink-read",
+      ],
+      path: join(repositoryRoot, "data", "unboundry.sqlite"),
+    },
+    {
+      label: "live backup directory",
+      operations: [
+        "direct-open", "direct-stat", "direct-read", "direct-write",
+        "symlink-stat", "symlink-read",
+      ],
       path: join(repositoryRoot, "backups"),
       writePath: join(repositoryRoot, "backups", ".unboundry-forbidden-write"),
     },
-    { path: join(repositoryRoot, ".git", "config") },
+    {
+      label: "live Git configuration",
+      operations: [
+        "direct-open", "direct-stat", "direct-read", "direct-write",
+        "symlink-stat", "symlink-read",
+      ],
+      path: join(repositoryRoot, ".git", "config"),
+    },
+    {
+      label: "isolated tracked source",
+      operations: ["direct-write", "symlink-write"],
+      path: join(sourceRoot, "package.json"),
+    },
+    {
+      label: "isolated tracked source new entry",
+      operations: ["direct-write"],
+      path: join(sourceRoot, "package.json"),
+      writePath: join(sourceRoot, ".unboundry-forbidden-create"),
+    },
+    {
+      label: "isolated browser runtime",
+      operations: ["direct-write", "symlink-write"],
+      path: join(
+        realpathSync(env.PLAYWRIGHT_BROWSERS_PATH),
+        "chromium-1234",
+        "INSTALLATION_COMPLETE",
+      ),
+    },
+    {
+      label: "isolated browser runtime new entry",
+      operations: ["direct-write"],
+      path: join(
+        realpathSync(env.PLAYWRIGHT_BROWSERS_PATH),
+        "chromium-1234",
+        "INSTALLATION_COMPLETE",
+      ),
+      writePath: join(
+        realpathSync(env.PLAYWRIGHT_BROWSERS_PATH),
+        ".unboundry-forbidden-create",
+      ),
+    },
+    {
+      label: "isolated Node runtime",
+      operations: ["direct-write", "symlink-write"],
+      path: privateNodePath,
+    },
+    {
+      label: "isolated Node runtime new entry",
+      operations: ["direct-write"],
+      path: privateNodePath,
+      writePath: join(privateNodeRuntimeRoot, ".unboundry-forbidden-create"),
+    },
   ];
+  const credentialPath = join(USER_HOME, ".codex", "auth.json");
+  const credentialFilePresent = existsSync(credentialPath);
+  if (credentialFilePresent) {
+    targets.push({
+      credential: true,
+      label: "real user credential",
+      operations: ["direct-read", "symlink-read"],
+      path: credentialPath,
+    });
+  }
+  const expectedDeniedOperations = targets.reduce(
+    (count, target) => count + target.operations.length,
+    0,
+  );
   const program = String.raw`
     import { closeSync, openSync, readFileSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
     const targets = JSON.parse(process.argv[1]);
@@ -772,33 +1591,48 @@ async function validateFileAndCredentialIsolation(sourceRoot, testRoot, env) {
     );
     if (sensitive.length > 0) throw new Error("sensitive environment leaked: " + sensitive.join(","));
     let denied = 0;
+    let credentialReadControls = 0;
     for (const [index, record] of targets.entries()) {
       const target = record.path;
       const link = process.env.UNBOUNDRY_TEST_ROOT + "/deny-link-" + index;
       symlinkSync(target, link);
-      const operations = [
-        () => { const descriptor = openSync(target, "r"); closeSync(descriptor); },
-        () => statSync(target),
-        () => readFileSync(target),
-        () => writeFileSync(record.writePath ?? target, "forbidden"),
-        () => statSync(link),
-        () => readFileSync(link),
-      ];
-      for (const operation of operations) {
+      const operations = {
+        "direct-open": () => { const descriptor = openSync(target, "r"); closeSync(descriptor); },
+        "direct-stat": () => statSync(target),
+        "direct-read": () => { readFileSync(target); },
+        "direct-write": () => writeFileSync(record.writePath ?? target, "forbidden"),
+        "symlink-stat": () => statSync(link),
+        "symlink-read": () => { readFileSync(link); },
+        "symlink-write": () => writeFileSync(link, "forbidden"),
+      };
+      for (const operationName of record.operations) {
+        const operation = operations[operationName];
+        if (!operation) throw new Error("unknown file-isolation operation");
         try {
           operation();
-          throw new Error("sandbox unexpectedly allowed real path: " + target);
+          throw new Error(
+            "sandbox unexpectedly allowed " + record.label + " operation " + operationName
+          );
         } catch (error) {
           if (String(error?.message ?? error).startsWith("sandbox unexpectedly")) throw error;
           if (!["EACCES", "EPERM"].includes(error?.code)) {
-            throw new Error("real path was not denied by the kernel: " + target + " (" + error?.code + ")");
+            throw new Error(
+              record.label + " was not denied by the kernel for " + operationName +
+              " (" + error?.code + ")"
+            );
           }
           denied += 1;
+          if (record.credential) credentialReadControls += 1;
         }
       }
       unlinkSync(link);
     }
-    console.log(JSON.stringify({ credentialKeys: 0, deniedOperations: denied, successfulRealPathOperations: 0 }));
+    console.log(JSON.stringify({
+      credentialKeys: 0,
+      credentialReadControls,
+      deniedOperations: denied,
+      successfulRealPathOperations: 0,
+    }));
   `;
   const result = await sandboxedNode(
     sourceRoot,
@@ -808,10 +1642,18 @@ async function validateFileAndCredentialIsolation(sourceRoot, testRoot, env) {
     { capture: true },
   );
   const evidence = JSON.parse(result.stdout.trim().split("\n").at(-1));
-  if (evidence.deniedOperations !== targets.length * 6) {
+  if (evidence.deniedOperations !== expectedDeniedOperations) {
     fail("file-isolation negative control did not deny every operation");
   }
-  console.log(JSON.stringify({ fileIsolation: "pass", ...evidence }));
+  const expectedCredentialReadControls = credentialFilePresent ? 2 : 0;
+  if (evidence.credentialReadControls !== expectedCredentialReadControls) {
+    fail("credential-isolation negative control was incomplete");
+  }
+  console.log(JSON.stringify({
+    credentialFilePresent,
+    fileIsolation: "pass",
+    ...evidence,
+  }));
 }
 
 async function validateManagedTimeoutCleanup(sourceRoot, testRoot, env) {
@@ -947,7 +1789,7 @@ async function validateSource(sourceRoot, browserRoot, suiteRoot) {
       .map((file) => relative(sourceRoot, file))
       .filter((file) => /\.tsx?$/.test(file))
       .sort();
-    const trackedTypescript = workingSourceFiles()
+    const trackedTypescript = snapshotBaseline.files
       .filter((file) => /\.tsx?$/.test(file))
       .sort();
     const listedSet = new Set(listed);
@@ -962,11 +1804,17 @@ async function validateSource(sourceRoot, browserRoot, suiteRoot) {
       );
     }
 
-    const scripts = workingSourceFiles().filter((file) => /\.(?:c?js|mjs)$/.test(file));
+    const scripts = snapshotBaseline.files
+      .filter((file) => /\.(?:c?js|mjs)$/.test(file));
     for (const script of scripts) {
       await sandboxedNode(sourceRoot, testRoot, env, ["--check", join(sourceRoot, script)]);
     }
-    await sandboxedNode(sourceRoot, testRoot, env, [vite, "build"]);
+    await sandboxedNode(
+      sourceRoot,
+      testRoot,
+      { ...env, UNBOUNDRY_OFFLINE_GUARD_SCRUB_TEST_ENV: "1" },
+      [vite, "build"],
+    );
     await sandboxedNode(sourceRoot, testRoot, env, [
       join(sourceRoot, "scripts/check-restart-persistence.mjs"),
     ]);
@@ -981,6 +1829,7 @@ async function validateSource(sourceRoot, browserRoot, suiteRoot) {
       }),
     );
   } finally {
+    assertTrackedSnapshotUnchanged();
     rmSync(testRoot, { force: true, recursive: true });
   }
 }
@@ -1013,6 +1862,9 @@ async function executeSpec(
     spec: join(sourceRoot, spec),
     testRoot,
   });
+  if (spec === EXACT_V051_SPEC) {
+    Object.assign(env, exactV051AttestationEnvironment());
+  }
   try {
     console.log(`[safe-runner] ${spec} (iteration ${iteration}, ports ${port}/${auxiliaryPort})`);
     const result = await sandboxedPlaywright(sourceRoot, testRoot, env);
@@ -1042,6 +1894,8 @@ async function executeSpec(
     }
     return summary;
   } finally {
+    if (spec === EXACT_V051_SPEC) assertExactV051AttestationUnchanged();
+    assertTrackedSnapshotUnchanged();
     rmSync(testRoot, { force: true, recursive: true });
   }
 }
@@ -1082,8 +1936,8 @@ async function discover(specs, suiteRoot, sourceRoot, browserRoot) {
         })}`,
       );
     }
-    if (discovery.tests !== 891) {
-      fail(`the frozen 891-test inventory changed to ${discovery.tests}`);
+    if (discovery.tests !== 912) {
+      fail(`the frozen 912-test inventory changed to ${discovery.tests}`);
     }
     const idsByFile = {};
     const { entries } = collectReportEntries(reportFile, sourceRoot);
@@ -1103,6 +1957,7 @@ async function discover(specs, suiteRoot, sourceRoot, browserRoot) {
     );
     return { ...discovery, idsByFile };
   } finally {
+    assertTrackedSnapshotUnchanged();
     rmSync(testRoot, { force: true, recursive: true });
   }
 }
@@ -1133,24 +1988,41 @@ async function main() {
 
   const systemTemporaryRoot = realpathSync(tmpdir());
   const suiteRoot = mkdtempSync(join(systemTemporaryRoot, "unboundry-safe-suite-"));
+  chmodSync(suiteRoot, 0o700);
   activeSuiteRoot = suiteRoot;
   if (!isInside(systemTemporaryRoot, suiteRoot)) fail("suite root escaped system temp");
-  const { browserRoot, sourceRoot } = createTrackedSnapshot(suiteRoot);
+  const { browserRoot, capturedWorkspace, files, sourceRoot } =
+    createTrackedSnapshot(suiteRoot);
+  if (
+    capturedWorkspace.head !== workspaceBaseline.head ||
+    capturedWorkspace.sha256 !== workspaceBaseline.sha256
+  ) fail("the isolated source snapshot is not bound to the workspace baseline");
   await prepareDependencies(
     sourceRoot,
     browserRoot,
     suiteRoot,
     options.command === "run" || options.command === "full",
   );
+  snapshotSourceRoot = sourceRoot;
+  snapshotBaseline = snapshotFingerprint(sourceRoot, files, capturedWorkspace.head);
+  assertTrackedSnapshotUnchanged();
+  if (
+    options.command === "full" ||
+    (options.command === "run" && specs.includes(EXACT_V051_SPEC))
+  ) {
+    await prepareExactV051Attestation(sourceRoot, browserRoot, suiteRoot);
+  }
   if (options.command === "run" || options.command === "full") {
     await validateSource(sourceRoot, browserRoot, suiteRoot);
   }
+  assertTrackedSnapshotUnchanged();
   const discovery = await discover(
     allSpecs,
     suiteRoot,
     sourceRoot,
     browserRoot,
   );
+  assertTrackedSnapshotUnchanged();
   if (options.command === "list") {
     return;
   }
@@ -1211,13 +2083,19 @@ async function main() {
     node: process.versions.node,
     npm: EXPECTED_NPM,
     repeat: options.repeat,
-    source: workspaceBaseline,
+    source: Object.freeze({
+      files: workspaceBaseline.files.length,
+      head: workspaceBaseline.head,
+      sha256: workspaceBaseline.sha256,
+      snapshotSha256: snapshotBaseline.sha256,
+    }),
   };
   writeFileSync(
     join(suiteRoot, "summary.json"),
     `${JSON.stringify(finalSummary, null, 2)}\n`,
     "utf8",
   );
+  assertTrackedSnapshotUnchanged();
   console.log(JSON.stringify(finalSummary));
   if (
     finalSummary.failed !== 0 ||
@@ -1238,6 +2116,31 @@ main()
   .finally(() => {
     const cleanupErrors = [];
     if (activeSuiteRoot) {
+      if (exactV051Attestation) {
+        try {
+          assertExactV051AttestationUnchanged();
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+        try {
+          if (existsSync(exactV051Attestation.path)) {
+            chmodSync(exactV051Attestation.path, 0o600);
+          }
+          if (existsSync(exactV051Attestation.root)) {
+            chmodSync(exactV051Attestation.root, 0o700);
+          }
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+      }
+      try {
+        if (snapshotBaseline && snapshotSourceRoot) {
+          const snapshotHash = assertTrackedSnapshotUnchanged();
+          console.log(JSON.stringify({ snapshot: "unchanged", snapshotHash }));
+        }
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
       try {
         rmSync(activeSuiteRoot, { force: true, recursive: true });
         if (existsSync(activeSuiteRoot)) fail(`suite root still exists: ${activeSuiteRoot}`);

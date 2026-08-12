@@ -18,6 +18,7 @@ export type MediaIntegrityIssueCode =
   | "MEDIA_INTEGRITY_CHECKSUM_MISMATCH"
   | "MEDIA_INTEGRITY_CHECKSUM_MISSING"
   | "MEDIA_INTEGRITY_DURATION_METADATA_INVALID"
+  | "MEDIA_INTEGRITY_LEGACY_DURATION_PENDING"
   | "MEDIA_INTEGRITY_DELETE_ACTIVE"
   | "MEDIA_INTEGRITY_DELETE_FAILED"
   | "MEDIA_INTEGRITY_HISTORY_MEDIA_KIND_MISMATCH"
@@ -583,11 +584,16 @@ export function inspectMediaIntegrity(input: Readonly<{
           (row.duration_source !== "server-probe" &&
             row.duration_source !== "provider-task"))
       ) {
+        const admittedLegacyBackfill = schemaVersion === 37 &&
+          row.duration_status === "pending" &&
+          row.duration_seconds === null && row.duration_source === null;
         add({
           ...context,
           backupBlocking: false,
-          code: "MEDIA_INTEGRITY_DURATION_METADATA_INVALID",
-          severity: "error",
+          code: admittedLegacyBackfill
+            ? "MEDIA_INTEGRITY_LEGACY_DURATION_PENDING"
+            : "MEDIA_INTEGRITY_DURATION_METADATA_INVALID",
+          severity: admittedLegacyBackfill ? "warning" : "error",
         });
       }
       if (

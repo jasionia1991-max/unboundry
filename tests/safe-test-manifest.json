@@ -104,7 +104,9 @@
     "tests/m87-media-integrity.spec.ts",
     "tests/m88-media-publication.spec.ts",
     "tests/m89-operations-safety.spec.ts",
-    "tests/m90-resource-governance.spec.ts"
+    "tests/m90-resource-governance.spec.ts",
+    "tests/m91-schema-migration.spec.ts",
+    "tests/m93-runtime-role.spec.ts"
   ],
   "preview": [
     "tests/fixture-production.spec.ts",
@@ -118,6 +120,7 @@
     "tests/m77-public-templates.spec.ts",
     "tests/m78-account-permissions.spec.ts",
     "tests/m80-storage-read-rule.spec.ts",
-    "tests/m81-deployment-hardening.spec.ts"
+    "tests/m81-deployment-hardening.spec.ts",
+    "tests/m92-version-compatibility.spec.ts"
   ]
 }

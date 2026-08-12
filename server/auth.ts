@@ -103,6 +103,7 @@ type AccountDeletionClaim = Readonly<{
 }>;
 
 export type AdminUsersExecution = Readonly<{
+  beforeFinalAudit?: () => void;
   beforePhysicalMediaDelete?: (row: Readonly<AccountMediaRow>) =>
     Promise<void> | void;
   deleteExternalObject?: typeof deletePrivateAliyunOssObject;
@@ -1221,6 +1222,7 @@ function finishAccountDeletion(
   actorId: string,
   ownerId: string,
   claim: AccountDeletionClaim,
+  beforeFinalAudit?: () => void,
 ) {
   store.exec("BEGIN IMMEDIATE");
   try {
@@ -1327,6 +1329,7 @@ function finishAccountDeletion(
       ) AS count
     `).get(ownerId, ownerId, ownerId, ownerId, ownerId) as { count: number }).count);
     if (leftoverPrivateRoots !== 0) throw new Error("账号私有数据行清理失败");
+    beforeFinalAudit?.();
     recordAudit(store, actorId, "delete_user", ownerId, {
       loginName: claim.target.login_name,
       privateMediaCount: claim.privateMediaCount,
@@ -1746,7 +1749,13 @@ export async function adminUsersApi(
         );
       }
       try {
-        finishAccountDeletion(store, identity.userId, targetId, claim);
+        finishAccountDeletion(
+          store,
+          identity.userId,
+          targetId,
+          claim,
+          execution.beforeFinalAudit,
+        );
       } catch (error) {
         markAccountDeletionFailed(store, targetId, "ACCOUNT_FINALIZE_FAILED");
         if (

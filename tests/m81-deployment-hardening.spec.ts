@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
+import { EventEmitter } from "node:events";
 import {
   IncomingMessage,
   request as openHttpRequest,
@@ -7,25 +8,35 @@ import {
 } from "node:http";
 import {
   access,
+  chmod,
   copyFile,
   mkdir,
   mkdtemp,
   readFile,
   readdir,
+  rename,
   rm,
   stat,
   writeFile,
 } from "node:fs/promises";
-import { createConnection, Socket } from "node:net";
+import { renameSync } from "node:fs";
+import { createConnection, createServer, Socket } from "node:net";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { databaseMatchesFrozenSchema38Contract } from "../server/backupInspection";
+import {
+  databaseMatchesFrozenSchema37Contract,
+  databaseMatchesFrozenSchema38Contract,
+} from "../server/backupInspection";
 import { saveAccountCredential } from "../server/accountCredentials";
 import {
+  applyPendingSchemaMigrationsInTransaction,
   currentSchemaManifest,
   currentSchemaVersion,
+  databaseHasCompleteLegacyMediaMetadata,
+  databaseMatchesSchemaContract,
+  migrationIncompleteMarker,
   openAppDatabase,
 } from "../server/database";
 import {
@@ -113,6 +124,12 @@ async function startServer(
         UNBOUNDRY_DATA_DIR: dataDirectory,
         UNBOUNDRY_TEST_AUTH_BYPASS: undefined,
         UNBOUNDRY_TRUST_PROXY: "1",
+        // Production preview must not see the safe-runner environment, while
+        // dev fixtures deliberately exercise guarded test-only hooks. The
+        // preload captures the allowed loopback ports before scrubbing them.
+        UNBOUNDRY_OFFLINE_GUARD_SCRUB_TEST_ENV: options.preview
+          ? "1"
+          : undefined,
         ...options.environment,
       },
       stdio: options.captureOutput ? ["ignore", "pipe", "pipe"] : "ignore",
@@ -167,6 +184,17 @@ async function stopServer(child: ChildProcess) {
 
 function outputOf(child: ChildProcess) {
   return capturedOutput.get(child)?.join("") ?? "";
+}
+
+async function expectPortAvailable() {
+  const probe = createServer();
+  await new Promise<void>((resolve, reject) => {
+    probe.once("error", reject);
+    probe.listen({ exclusive: true, host: "127.0.0.1", port }, () => resolve());
+  });
+  await new Promise<void>((resolve, reject) => {
+    probe.close((error) => error ? reject(error) : resolve());
+  });
 }
 
 function assertSecurityHeaders(
@@ -341,29 +369,31 @@ async function seedQueuedStartupGenerationFixture(
   const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
   process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   try {
-    const profile = await saveProviderProfile({
-      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
-      driver: "volcengine-ark",
-      label: `M81 startup ${fixtureId}`,
-    });
+    // Greenfield publication owns an exactly empty directory. Create the
+    // current database before Provider persistence creates secrets/lock files.
     const database = openAppDatabase(dataDirectory);
-    const ownerId = `${fixtureId}-owner`;
-    const textModelId = `${fixtureId}-text-model`;
-    const textProviderModelId = "doubao-seed-2-0-lite-260428";
-    const videoModelId = `${fixtureId}-video-model`;
-    const videoProviderModelId = "doubao-seedance-2-0-mini-260615";
-    const timestamp = "2026-08-11T08:00:00.000Z";
-    const textParameterSchema = knownModelParameterSchema({
-      capability: "text",
-      providerDriver: "volcengine-ark",
-      providerModelId: textProviderModelId,
-    });
-    const videoParameterSchema = knownModelParameterSchema({
-      capability: "video",
-      providerDriver: "volcengine-ark",
-      providerModelId: videoProviderModelId,
-    });
     try {
+      const profile = await saveProviderProfile({
+        baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+        driver: "volcengine-ark",
+        label: `M81 startup ${fixtureId}`,
+      });
+      const ownerId = `${fixtureId}-owner`;
+      const textModelId = `${fixtureId}-text-model`;
+      const textProviderModelId = "doubao-seed-2-0-lite-260428";
+      const videoModelId = `${fixtureId}-video-model`;
+      const videoProviderModelId = "doubao-seedance-2-0-mini-260615";
+      const timestamp = "2026-08-11T08:00:00.000Z";
+      const textParameterSchema = knownModelParameterSchema({
+        capability: "text",
+        providerDriver: "volcengine-ark",
+        providerModelId: textProviderModelId,
+      });
+      const videoParameterSchema = knownModelParameterSchema({
+        capability: "video",
+        providerDriver: "volcengine-ark",
+        providerModelId: videoProviderModelId,
+      });
       database.prepare(`
         INSERT INTO users (
           id, login_name, display_name, password_hash, role, status,
@@ -547,6 +577,9 @@ async function moveProviderFixtureCache(
   const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
   process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   try {
+    // Keep the greenfield bootstrap ahead of secret-store residue here too.
+    const database = openAppDatabase(dataDirectory);
+    database.close();
     await saveProviderProfile({
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
       driver: "volcengine-ark",
@@ -1099,7 +1132,6 @@ function recreateV5ModelProfiles(
         CHECK (cost_currency IN ('USD', 'CNY'));
     `);
   }
-  database.exec("DELETE FROM schema_migrations WHERE version IN (21, 22)");
 }
 
 function recreateV21MissingCatalogTables(database: DatabaseSync) {
@@ -1109,15 +1141,42 @@ function recreateV21MissingCatalogTables(database: DatabaseSync) {
     DROP TABLE model_profiles;
     DROP TABLE admin_audit_events;
     DROP TABLE users;
-    DELETE FROM schema_migrations WHERE version IN (21, 22, 37);
   `);
 }
 
-function replayKnownIdempotentPrepareMigrations(database: DatabaseSync) {
-  database.exec(`
-    DELETE FROM schema_migrations
-    WHERE version IN (21, 22, 23, 24, 25, 26, 29, 31, 32, 34);
-  `);
+function initializePrivateSyntheticSchema(
+  dataDirectory: string,
+  targetVersion: number,
+) {
+  const database = new DatabaseSync(join(dataDirectory, "unboundry.sqlite"));
+  let transactionOpen = false;
+  try {
+    // Match the greenfield sqlite_schema text exactly. The physical-schema
+    // contract intentionally includes declaration whitespace, so this fixture
+    // must not use source indentation that production never persists.
+    database.exec(
+      "PRAGMA foreign_keys = ON;" +
+        "CREATE TABLE schema_migrations (\n" +
+        "      version INTEGER PRIMARY KEY,\n" +
+        "      name TEXT NOT NULL,\n" +
+        "      applied_at TEXT NOT NULL\n" +
+        "    );" +
+        "BEGIN IMMEDIATE;",
+    );
+    transactionOpen = true;
+    applyPendingSchemaMigrationsInTransaction(database, {
+      appliedAt: () => "2026-08-12T00:00:00.000Z",
+      sourceVersion: 0,
+      targetVersion,
+    });
+    database.exec("COMMIT");
+    transactionOpen = false;
+    return database;
+  } catch (error) {
+    if (transactionOpen && database.isTransaction) database.exec("ROLLBACK");
+    database.close();
+    throw error;
+  }
 }
 
 function cookie(response: Response) {
@@ -1156,11 +1215,28 @@ async function bootstrapAdmin() {
   return cookie(bootstrap);
 }
 
+function initializePrivateSyntheticGreenfield(dataDirectory: string) {
+  const database = openAppDatabase(dataDirectory);
+  try {
+    expect(database.prepare("PRAGMA user_version").get()).toEqual({
+      user_version: currentSchemaVersion,
+    });
+    expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    expect(database.prepare("SELECT COUNT(*) AS count FROM users").get())
+      .toEqual({ count: 0 });
+  } finally {
+    database.close();
+  }
+}
+
 test("trusted proxy mode blocks remote bootstrap through forwarded IP", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-m81-bootstrap-"));
   let server: ChildProcess | undefined;
   try {
-    server = await startServer(dataDirectory);
+    initializePrivateSyntheticGreenfield(dataDirectory);
+    server = await startServer(dataDirectory, {
+      waitPath: "/api/health/ready",
+    });
 
     const remote = await request("/api/auth/bootstrap", {
       body: JSON.stringify({
@@ -1195,7 +1271,10 @@ test("trusted proxy mode requires https forwarding for storage writes", async ()
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-m81-storage-"));
   let server: ChildProcess | undefined;
   try {
-    server = await startServer(dataDirectory);
+    initializePrivateSyntheticGreenfield(dataDirectory);
+    server = await startServer(dataDirectory, {
+      waitPath: "/api/health/ready",
+    });
     const adminCookie = await bootstrapAdmin();
     const profile = {
       accessKeyId: "m81-test-access-key-id",
@@ -1244,6 +1323,134 @@ test("trusted proxy mode requires https forwarding for storage writes", async ()
   }
 });
 
+test("active startup atomically bootstraps only an empty private data directory", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "unboundry-m81-greenfield-startup-"));
+  const freshDataDirectory = join(testRoot, "fresh-data");
+  const preexistingDataDirectory = join(testRoot, "preexisting-data");
+  const preexistingDatabasePath = join(
+    preexistingDataDirectory,
+    "unboundry.sqlite",
+  );
+  let server: ChildProcess | undefined;
+  try {
+    await mkdir(freshDataDirectory, { mode: 0o700 });
+    server = await startServer(freshDataDirectory, {
+      waitPath: "/api/health/ready",
+    });
+    const ready = await fetch(`${origin}/api/health/ready`);
+    expect(ready.status).toBe(200);
+    expect(await ready.json()).toMatchObject({
+      databaseProbe: "read-only",
+      mode: "active",
+      schemaVersion: currentSchemaVersion,
+      status: "ready",
+    });
+    await stopServer(server);
+    server = undefined;
+
+    const initialized = new DatabaseSync(
+      join(freshDataDirectory, "unboundry.sqlite"),
+      { readOnly: true },
+    );
+    try {
+      expect(initialized.prepare("PRAGMA user_version").get()).toEqual({
+        user_version: currentSchemaVersion,
+      });
+      expect(databaseMatchesSchemaContract(initialized)).toBe(true);
+      expect(databaseHasCompleteLegacyMediaMetadata(initialized)).toBe(true);
+      expect(initialized.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    } finally {
+      initialized.close();
+    }
+    expect(
+      (await readdir(freshDataDirectory)).filter((name) =>
+        name.startsWith(".unboundry-greenfield-")
+      ),
+    ).toEqual([]);
+
+    await mkdir(preexistingDataDirectory, { mode: 0o700 });
+    await writeFile(preexistingDatabasePath, new Uint8Array(), {
+      flag: "wx",
+      mode: 0o600,
+    });
+    const beforePreexistingStartup = await directoryFingerprint(
+      preexistingDataDirectory,
+    );
+    server = await startServer(preexistingDataDirectory);
+    const blocked = await fetch(`${origin}/api/health/ready`);
+    expect(blocked.status).toBe(503);
+    expect(await blocked.json()).toMatchObject({
+      code: "DATABASE_FILE_INVALID",
+    });
+    expect(await directoryFingerprint(preexistingDataDirectory)).toEqual(
+      beforePreexistingStartup,
+    );
+    await stopServer(server);
+    server = undefined;
+
+    for (const residue of [
+      {
+        name: "media",
+        prepare: async (directory: string) => {
+          const media = join(directory, "media");
+          await mkdir(media, { mode: 0o700 });
+          await writeFile(join(media, "orphan-image.bin"), "synthetic-media", {
+            flag: "wx",
+            mode: 0o600,
+          });
+        },
+      },
+      {
+        name: "secrets",
+        prepare: async (directory: string) => {
+          const secrets = join(directory, "secrets");
+          await mkdir(secrets, { mode: 0o700 });
+          await writeFile(
+            join(secrets, "config-master.key"),
+            new Uint8Array(32).fill(0x81),
+            { flag: "wx", mode: 0o600 },
+          );
+        },
+      },
+      {
+        name: "unknown",
+        prepare: (directory: string) =>
+          writeFile(join(directory, "unexpected-residue"), "synthetic-residue", {
+            flag: "wx",
+            mode: 0o600,
+          }),
+      },
+    ]) {
+      const residualDataDirectory = join(
+        testRoot,
+        `preexisting-${residue.name}`,
+      );
+      await mkdir(residualDataDirectory, { mode: 0o700 });
+      await residue.prepare(residualDataDirectory);
+      const beforeResidualStartup = await directoryFingerprint(
+        residualDataDirectory,
+      );
+      server = await startServer(residualDataDirectory);
+      const residualBlocked = await fetch(`${origin}/api/health/ready`);
+      expect(residualBlocked.status).toBe(503);
+      expect(await residualBlocked.json()).toMatchObject({
+        code: "DATABASE_FILE_INVALID",
+      });
+      expect(await directoryFingerprint(residualDataDirectory)).toEqual(
+        beforeResidualStartup,
+      );
+      expect(await readdir(residualDataDirectory)).not.toContain(
+        "unboundry.sqlite",
+      );
+      await stopServer(server);
+      server = undefined;
+    }
+  } finally {
+    if (server) await stopServer(server);
+    await rm(testRoot, { force: true, recursive: true });
+  }
+});
+
 test("liveness stays process-only while readiness verifies the current schema without creating data", async () => {
   const testRoot = await mkdtemp(join(tmpdir(), "unboundry-m81-health-"));
   const missingDataDirectory = join(testRoot, "missing-data");
@@ -1266,12 +1473,18 @@ test("liveness stays process-only while readiness verifies the current schema wi
   }
 });
 
-test("schema-37 and exact schema-38 startup stay write-free until the explicit migration role", async () => {
+test("schema-37 standby and exact schema-38 startup never run migration work", async () => {
   const testRoot = await mkdtemp(join(tmpdir(), "unboundry-m81-schema37-role-"));
   const dataDirectory = join(testRoot, "data");
   const databasePath = join(dataDirectory, "unboundry.sqlite");
   const schema38Directory = join(testRoot, "schema38-data");
   const schema38Path = join(schema38Directory, "unboundry.sqlite");
+  const schema38LatchDirectory = join(testRoot, "schema38-latch-data");
+  const schema38LatchPath = join(schema38LatchDirectory, "unboundry.sqlite");
+  const migrationMarkerDirectory = join(testRoot, "migration-marker-data");
+  const migrationMarkerPath = join(migrationMarkerDirectory, "unboundry.sqlite");
+  const startupLatchDirectory = join(testRoot, "startup-latch-data");
+  const startupLatchPath = join(startupLatchDirectory, "unboundry.sqlite");
   const hotWalSource = join(testRoot, "hot-wal-source");
   const hotWalTarget = join(testRoot, "hot-wal-target");
   let server: ChildProcess | undefined;
@@ -1299,6 +1512,7 @@ test("schema-37 and exact schema-38 startup stay write-free until the explicit m
     `).run();
     rollbackMigration39To38(database);
     rollbackMigration38To37(database);
+    expect(databaseMatchesFrozenSchema37Contract(database)).toBe(true);
     database.exec(`
       PRAGMA wal_checkpoint(TRUNCATE);
       PRAGMA journal_mode = DELETE;
@@ -1311,9 +1525,25 @@ test("schema-37 and exact schema-38 startup stay write-free until the explicit m
     });
     expect((await fetch(`${origin}/api/health/live`)).status).toBe(200);
     const defaultReady = await fetch(`${origin}/api/health/ready`);
-    expect(defaultReady.status).toBe(503);
+    expect(defaultReady.status).toBe(200);
     expect(await defaultReady.json()).toMatchObject({
-      code: "DATABASE_SCHEMA_MISMATCH",
+      mode: "schema37-health-only-standby",
+      mutationsAccepted: false,
+      schemaVersion: 37,
+    });
+    const blockedBusiness = await fetch(`${origin}/api/auth/bootstrap`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(blockedBusiness.status).toBe(503);
+    expect(await blockedBusiness.json()).toMatchObject({
+      code: "SERVICE_SCHEMA_STANDBY",
+    });
+    const blockedRead = await fetch(`${origin}/api/models`);
+    expect(blockedRead.status).toBe(503);
+    expect(await blockedRead.json()).toMatchObject({
+      code: "SERVICE_SCHEMA_STANDBY",
     });
     expect(await directoryFingerprint(dataDirectory)).toEqual(
       beforeDefaultStartup,
@@ -1321,18 +1551,133 @@ test("schema-37 and exact schema-38 startup stay write-free until the explicit m
     await stopServer(server);
     server = undefined;
 
-    server = await startServer(dataDirectory, {
+    await expect(startServer(dataDirectory, {
+      captureOutput: true,
       environment: { UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION: "1" },
+    })).rejects.toThrow(
+      "UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION is retired; use the one-shot schema migration CLI",
+    );
+    expect(await directoryFingerprint(dataDirectory)).toEqual(
+      beforeDefaultStartup,
+    );
+
+    // Only liveness is polled by startServer. The independent startup probe,
+    // not a readiness/business request, must permanently record that this
+    // process began on schema 37.
+    const startupLatchDatabase = openAppDatabase(startupLatchDirectory);
+    rollbackMigration39To38(startupLatchDatabase);
+    rollbackMigration38To37(startupLatchDatabase);
+    expect(databaseMatchesFrozenSchema37Contract(startupLatchDatabase)).toBe(
+      true,
+    );
+    startupLatchDatabase.exec(
+      "PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE;",
+    );
+    startupLatchDatabase.close();
+    server = await startServer(startupLatchDirectory, {
+      waitPath: "/api/health/live",
     });
-    const migratedReady = await fetch(`${origin}/api/health/ready`);
-    expect(migratedReady.status).toBe(200);
-    expect(await migratedReady.json()).toMatchObject({
-      databaseProbe: "read-only",
-      schemaVersion: currentSchemaVersion,
-      status: "ready",
+    const externallyMigrated = new DatabaseSync(startupLatchPath);
+    externallyMigrated.exec("BEGIN IMMEDIATE");
+    applyPendingSchemaMigrationsInTransaction(externallyMigrated, {
+      sourceVersion: 37,
+    });
+    externallyMigrated.exec("COMMIT");
+    externallyMigrated.close();
+    const firstSchemaAwareRequest = await fetch(`${origin}/api/health/ready`);
+    expect(firstSchemaAwareRequest.status).toBe(503);
+    expect(await firstSchemaAwareRequest.json()).toMatchObject({
+      code: "SERVICE_RESTART_REQUIRED",
+      mode: "schema39-restart-required",
+      mutationsAccepted: false,
+    });
+    const startupLatchedBusiness = await fetch(`${origin}/api/models`);
+    expect(startupLatchedBusiness.status).toBe(503);
+    expect(await startupLatchedBusiness.json()).toMatchObject({
+      code: "SERVICE_RESTART_REQUIRED",
     });
     await stopServer(server);
     server = undefined;
+
+    // A process that observes the one-shot migration marker before the exact
+    // source becomes current must not skip its generation-worker startup and
+    // then hot-admit schema 39 after the external migrator clears the marker.
+    await mkdir(migrationMarkerDirectory);
+    await copyFile(databasePath, migrationMarkerPath);
+    await writeFile(
+      join(migrationMarkerDirectory, migrationIncompleteMarker),
+      "m81 in-flight one-shot migration",
+      { flag: "wx", mode: 0o600 },
+    );
+    server = await startServer(migrationMarkerDirectory, {
+      waitPath: "/api/health/live",
+    });
+    await rm(join(migrationMarkerDirectory, migrationIncompleteMarker));
+    const markerWindowMigration = new DatabaseSync(migrationMarkerPath);
+    markerWindowMigration.exec("BEGIN IMMEDIATE");
+    applyPendingSchemaMigrationsInTransaction(markerWindowMigration, {
+      sourceVersion: 37,
+    });
+    markerWindowMigration.exec("COMMIT");
+    markerWindowMigration.close();
+    const markerWindowReady = await fetch(`${origin}/api/health/ready`);
+    expect(markerWindowReady.status).toBe(503);
+    expect(await markerWindowReady.json()).toMatchObject({
+      code: "SERVICE_RESTART_REQUIRED",
+      mode: "schema39-restart-required",
+      mutationsAccepted: false,
+    });
+    const markerWindowBusiness = await fetch(`${origin}/api/models`);
+    expect(markerWindowBusiness.status).toBe(503);
+    expect(await markerWindowBusiness.json()).toMatchObject({
+      code: "SERVICE_RESTART_REQUIRED",
+    });
+    await stopServer(server);
+    server = undefined;
+
+    const damagedForeignKey = new DatabaseSync(databasePath, {
+      enableForeignKeyConstraints: false,
+    });
+    damagedForeignKey.prepare(`
+      INSERT INTO sessions (
+        id, token_hash, user_id, expires_at, created_at, last_seen_at
+      ) VALUES (
+        'm81-schema37-orphan-session', 'm81-schema37-orphan-token',
+        'm81-schema37-missing-user', '2099-01-01T00:00:00.000Z',
+        '2026-08-12T00:00:00.000Z', '2026-08-12T00:00:00.000Z'
+      )
+    `).run();
+    expect(damagedForeignKey.prepare("PRAGMA foreign_key_check").all())
+      .toMatchObject([{
+        parent: "users",
+        table: "sessions",
+      }]);
+    damagedForeignKey.close();
+    const beforeForeignKeyProbe = await directoryFingerprint(dataDirectory);
+    server = await startServer(dataDirectory);
+    const foreignKeyReady = await fetch(`${origin}/api/health/ready`);
+    expect(foreignKeyReady.status).toBe(503);
+    expect(await foreignKeyReady.json()).toMatchObject({
+      code: "DATABASE_INTEGRITY_FAILED",
+    });
+    expect(await directoryFingerprint(dataDirectory)).toEqual(
+      beforeForeignKeyProbe,
+    );
+    await stopServer(server);
+    server = undefined;
+    const repairForeignKey = new DatabaseSync(databasePath);
+    repairForeignKey.exec(`
+      DELETE FROM sessions WHERE id = 'm81-schema37-orphan-session'
+    `);
+    repairForeignKey.close();
+
+    const fixtureMigration = new DatabaseSync(databasePath);
+    fixtureMigration.exec("BEGIN IMMEDIATE");
+    applyPendingSchemaMigrationsInTransaction(fixtureMigration, {
+      sourceVersion: 37,
+    });
+    fixtureMigration.exec("COMMIT");
+    fixtureMigration.close();
 
     const migrated = new DatabaseSync(databasePath, { readOnly: true });
     try {
@@ -1527,6 +1872,35 @@ test("schema-37 and exact schema-38 startup stay write-free until the explicit m
     `);
     exact38.close();
 
+    await mkdir(schema38LatchDirectory);
+    await copyFile(schema38Path, schema38LatchPath);
+    server = await startServer(schema38LatchDirectory, {
+      waitPath: "/api/health/live",
+    });
+    const schema38LatchInitial = await fetch(`${origin}/api/health/ready`);
+    expect(schema38LatchInitial.status).toBe(503);
+    expect(await schema38LatchInitial.json()).toMatchObject({
+      code: "SERVICE_RESTART_REQUIRED",
+      mode: "schema39-restart-required",
+      mutationsAccepted: false,
+    });
+    const schema38LatchMigration = new DatabaseSync(schema38LatchPath);
+    schema38LatchMigration.exec("BEGIN IMMEDIATE");
+    applyPendingSchemaMigrationsInTransaction(schema38LatchMigration, {
+      sourceVersion: 38,
+    });
+    schema38LatchMigration.exec("COMMIT");
+    schema38LatchMigration.close();
+    const schema38LatchReady = await fetch(`${origin}/api/health/ready`);
+    expect(schema38LatchReady.status).toBe(503);
+    expect(await schema38LatchReady.json()).toMatchObject({
+      code: "SERVICE_RESTART_REQUIRED",
+      mode: "schema39-restart-required",
+      mutationsAccepted: false,
+    });
+    await stopServer(server);
+    server = undefined;
+
     const beforeSchema38Default = await directoryFingerprint(schema38Directory);
     server = await startServer(schema38Directory, {
       environment: { UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION: undefined },
@@ -1535,7 +1909,9 @@ test("schema-37 and exact schema-38 startup stay write-free until the explicit m
     const schema38DefaultReady = await fetch(`${origin}/api/health/ready`);
     expect(schema38DefaultReady.status).toBe(503);
     expect(await schema38DefaultReady.json()).toMatchObject({
-      code: "DATABASE_SCHEMA_MISMATCH",
+      code: "SERVICE_RESTART_REQUIRED",
+      mode: "schema39-restart-required",
+      mutationsAccepted: false,
     });
     expect(await directoryFingerprint(schema38Directory)).toEqual(
       beforeSchema38Default,
@@ -1543,18 +1919,23 @@ test("schema-37 and exact schema-38 startup stay write-free until the explicit m
     await stopServer(server);
     server = undefined;
 
-    server = await startServer(schema38Directory, {
+    await expect(startServer(schema38Directory, {
+      captureOutput: true,
       environment: { UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION: "1" },
+    })).rejects.toThrow(
+      "UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION is retired; use the one-shot schema migration CLI",
+    );
+    expect(await directoryFingerprint(schema38Directory)).toEqual(
+      beforeSchema38Default,
+    );
+
+    const schema38FixtureMigration = new DatabaseSync(schema38Path);
+    schema38FixtureMigration.exec("BEGIN IMMEDIATE");
+    applyPendingSchemaMigrationsInTransaction(schema38FixtureMigration, {
+      sourceVersion: 38,
     });
-    const schema38MigratedReady = await fetch(`${origin}/api/health/ready`);
-    expect(schema38MigratedReady.status).toBe(200);
-    expect(await schema38MigratedReady.json()).toMatchObject({
-      databaseProbe: "read-only",
-      schemaVersion: 39,
-      status: "ready",
-    });
-    await stopServer(server);
-    server = undefined;
+    schema38FixtureMigration.exec("COMMIT");
+    schema38FixtureMigration.close();
 
     const migrated38 = new DatabaseSync(schema38Path, { readOnly: true });
     try {
@@ -1820,7 +2201,7 @@ test("schema-37 and exact schema-38 startup stay write-free until the explicit m
     const beforeUnsafeMigration = await directoryFingerprint(hotWalTarget);
 
     server = await startServer(hotWalTarget, {
-      environment: { UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION: "1" },
+      environment: { UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION: undefined },
     });
     const unsafeReady = await fetch(`${origin}/api/health/ready`);
     expect(unsafeReady.status).toBe(503);
@@ -2279,7 +2660,7 @@ test("listening starts one committed queued task while startup gates keep blocke
 
     for (const blocked of [
       {
-        code: "DATABASE_SCHEMA_MISMATCH",
+        code: "SERVICE_RESTART_REQUIRED",
         directory: oldSchemaDirectory,
       },
       {
@@ -2641,9 +3022,7 @@ test("readiness accepts the historical v31-to-v32 public template column order",
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-m81-v31-v32-"));
   let server: ChildProcess | undefined;
   try {
-    let database = openAppDatabase(dataDirectory);
-    rollbackMigration39To38(database);
-    rollbackMigration38To37(database);
+    const database = initializePrivateSyntheticSchema(dataDirectory, 31);
     database.exec("DROP TABLE public_templates");
     // Keep this SQL text aligned with the known hot-reload v31 migration.
     // Exact sqlite_schema fingerprints are intentional: a whitespace-erasing
@@ -2669,15 +3048,21 @@ test("readiness accepts the historical v31-to-v32 public template column order",
         CREATE INDEX IF NOT EXISTS public_templates_status_updated
           ON public_templates (status, updated_at DESC);
       `);
-    database.exec("DELETE FROM schema_migrations WHERE version = 32");
-    database.close();
-    // Reopen through the real immutable v32 prepare hook so this positive case
-    // proves the quoted addColumnIfMissing repair rather than hand-writing it.
-    database = openAppDatabase(dataDirectory);
+    // Ordinary current-runtime opens are intentionally migration-free. Replay
+    // the real immutable v32 prepare hook through the explicit fixture-only
+    // migration primitive, from an exact synthetic v31 ledger.
+    database.exec("BEGIN IMMEDIATE");
+    applyPendingSchemaMigrationsInTransaction(database, { sourceVersion: 31 });
+    database.exec("COMMIT");
+    expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    expect(databaseMatchesSchemaContract(database)).toBe(true);
+    expect(databaseHasCompleteLegacyMediaMetadata(database)).toBe(true);
     database.close();
     const beforeDirectory = await directoryFingerprint(dataDirectory);
 
-    server = await startServer(dataDirectory);
+    server = await startServer(dataDirectory, {
+      waitPath: "/api/health/ready",
+    });
     const ready = await fetch(`${origin}/api/health/ready`);
     expect(ready.status).toBe(200);
     expect(await ready.json()).toMatchObject({
@@ -2701,10 +3086,6 @@ test("readiness accepts exact known migration repair shapes", async () => {
         directory: join(testRoot, "missing-catalog-tables"),
         prepare: recreateV21MissingCatalogTables,
       },
-      {
-        directory: join(testRoot, "idempotent-prepare-replay"),
-        prepare: replayKnownIdempotentPrepareMigrations,
-      },
       ...(["none", "max", "cost"] as const).map((existingCostColumns) => ({
         directory: join(testRoot, `model-${existingCostColumns}`),
         prepare: (database: DatabaseSync) =>
@@ -2714,17 +3095,23 @@ test("readiness accepts exact known migration repair shapes", async () => {
 
     for (const fixture of fixtures) {
       await mkdir(fixture.directory);
-      let database = openAppDatabase(fixture.directory);
-      rollbackMigration39To38(database);
-      rollbackMigration38To37(database);
+      const database = initializePrivateSyntheticSchema(fixture.directory, 20);
       fixture.prepare(database);
-      database.close();
-      database = openAppDatabase(fixture.directory);
+      // These are exact synthetic v20 sources with deliberately pre-existing
+      // or absent prepare-hook shapes. Only the fixture explicitly migrates;
+      // the runtime under test remains current-schema-only and read-only.
+      database.exec("PRAGMA foreign_keys = ON; BEGIN IMMEDIATE");
+      applyPendingSchemaMigrationsInTransaction(database, { sourceVersion: 20 });
+      database.exec("COMMIT");
       expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+      expect(databaseMatchesSchemaContract(database)).toBe(true);
+      expect(databaseHasCompleteLegacyMediaMetadata(database)).toBe(true);
       database.close();
       const beforeDirectory = await directoryFingerprint(fixture.directory);
 
-      server = await startServer(fixture.directory);
+      server = await startServer(fixture.directory, {
+        waitPath: "/api/health/ready",
+      });
       const ready = await fetch(`${origin}/api/health/ready`);
       expect(ready.status).toBe(200);
       expect(await ready.json()).toMatchObject({
@@ -2881,8 +3268,10 @@ test("malformed mounted paths return controlled 400 responses without killing th
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-m81-url-"));
   let server: ChildProcess | undefined;
   try {
+    initializePrivateSyntheticGreenfield(dataDirectory);
     server = await startServer(dataDirectory, {
       environment: { UNBOUNDRY_TEST_AUTH_BYPASS: "1" },
+      waitPath: "/api/health/ready",
     });
     const originalPid = server.pid;
     const paths = [
@@ -2913,7 +3302,11 @@ test("JSON body failures and request IDs have stable safe classifications", asyn
   const sensitiveCanary = "m81-cookie-password-api-key-prompt-secret";
   let server: ChildProcess | undefined;
   try {
-    server = await startServer(dataDirectory, { captureOutput: true });
+    initializePrivateSyntheticGreenfield(dataDirectory);
+    server = await startServer(dataDirectory, {
+      captureOutput: true,
+      waitPath: "/api/health/ready",
+    });
     const spoofedId = "attacker-controlled-request-id";
     const live = await fetch(`${origin}/api/health/live`, {
       headers: { "X-Request-ID": spoofedId },
@@ -3063,8 +3456,10 @@ test("malformed encoded upload names fail before any media path is created", asy
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-m81-filename-"));
   let server: ChildProcess | undefined;
   try {
+    initializePrivateSyntheticGreenfield(dataDirectory);
     server = await startServer(dataDirectory, {
       environment: { UNBOUNDRY_TEST_AUTH_BYPASS: "1" },
+      waitPath: "/api/health/ready",
     });
     const uploads = [
       { contentType: "image/png", path: "/api/assets/m81-bad-name" },
@@ -3207,11 +3602,350 @@ test("shutdown waits for handler cleanup and has a hard close-failure exit", asy
   expect(hungCloseConnectionsClosed).toBe(1);
 });
 
+test("business schema admission retries a transient readiness guard", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-m81-admission-retry-"));
+  const sockets: Socket[] = [];
+  let primedHandlerDatabase: DatabaseSync | undefined;
+  try {
+    const database = openAppDatabase(dataDirectory);
+    database.close();
+    let admitted = false;
+    let replaceDuringNextSuccessfulProbe = false;
+    const lifecycle = createRuntimeLifecycle({
+      dataDirectory,
+      logger: () => undefined,
+      readinessDatabaseGuard: () => {
+        if (replaceDuringNextSuccessfulProbe) {
+          replaceDuringNextSuccessfulProbe = false;
+          const databasePath = join(dataDirectory, "unboundry.sqlite");
+          const displaced = join(dataDirectory, "unboundry-probe-race.sqlite");
+          const replacementDirectory = join(dataDirectory, "probe-race-replacement");
+          const replacement = openAppDatabase(replacementDirectory);
+          replacement.exec(
+            "PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE;",
+          );
+          replacement.close();
+          renameSync(databasePath, displaced);
+          renameSync(
+            join(replacementDirectory, "unboundry.sqlite"),
+            databasePath,
+          );
+        }
+        return admitted;
+      },
+    });
+    async function dispatch(
+      target = lifecycle,
+      onPassed?: () => void,
+    ) {
+      const socket = new Socket();
+      sockets.push(socket);
+      const incoming = new IncomingMessage(socket);
+      incoming.method = "GET";
+      incoming.url = "/models";
+      const headers = new Map<string, string>();
+      const responseEvents = new EventEmitter();
+      const response = Object.assign(responseEvents, {
+        destroyed: false,
+        headersSent: false,
+        setHeader(name: string, value: string) {
+          headers.set(name.toLowerCase(), String(value));
+        },
+        statusCode: 200,
+        writableEnded: false,
+        end() {
+          this.writableEnded = true;
+          responseEvents.emit("finish");
+        },
+      }) as unknown as ServerResponse;
+      let passed = false;
+      const finished = new Promise<void>((resolveDone) => {
+        response.once("finish", resolveDone);
+      });
+      target.middleware(incoming, response, () => {
+        passed = true;
+        onPassed?.();
+        response.statusCode = 204;
+        response.end();
+      });
+      await finished;
+      return { passed, status: response.statusCode };
+    }
+    async function readiness(target = lifecycle) {
+      const socket = new Socket();
+      sockets.push(socket);
+      const incoming = new IncomingMessage(socket);
+      incoming.method = "GET";
+      incoming.url = "/";
+      const responseEvents = new EventEmitter();
+      let body = "";
+      const response = Object.assign(responseEvents, {
+        destroyed: false,
+        headersSent: false,
+        setHeader() {},
+        statusCode: 200,
+        writableEnded: false,
+        end(value?: string) {
+          body = value ?? "";
+          this.writableEnded = true;
+          responseEvents.emit("finish");
+        },
+      }) as unknown as ServerResponse;
+      const finished = new Promise<void>((resolveDone) => {
+        response.once("finish", resolveDone);
+      });
+      target.healthApi(incoming, response, "ready");
+      await finished;
+      return {
+        body: body ? JSON.parse(body) as Record<string, unknown> : {},
+        status: response.statusCode,
+      };
+    }
+    expect(await dispatch()).toEqual({ passed: false, status: 503 });
+    admitted = true;
+    replaceDuringNextSuccessfulProbe = true;
+    // No database identity has been admitted yet. A replacement during this
+    // first successful probe rejects that request, then a fresh exact probe may
+    // safely admit the replacement; the active-identity restart latch is
+    // exercised independently below.
+    expect(await dispatch()).toEqual({ passed: false, status: 503 });
+    expect(await readiness()).toMatchObject({
+      body: {
+        databaseProbe: "read-only",
+        schemaVersion: currentSchemaVersion,
+        status: "ready",
+      },
+      status: 200,
+    });
+    expect(await dispatch()).toEqual({ passed: true, status: 204 });
+
+    const databasePath = join(dataDirectory, "unboundry.sqlite");
+    const freshLifecycle = createRuntimeLifecycle({
+      dataDirectory,
+      logger: () => undefined,
+      readinessDatabaseGuard: () => true,
+    });
+    expect(await dispatch(freshLifecycle, () => {
+      primedHandlerDatabase = openAppDatabase(dataDirectory);
+      primedHandlerDatabase.prepare("SELECT 1").get();
+    })).toEqual({ passed: true, status: 204 });
+    primedHandlerDatabase!.exec(
+      "PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE;",
+    );
+
+    const currentDisplaced = join(dataDirectory, "unboundry-current.sqlite");
+    const exact39Directory = join(dataDirectory, "exact39-fixture");
+    const exact39Path = join(exact39Directory, "unboundry.sqlite");
+    const exact39 = openAppDatabase(exact39Directory);
+    exact39.exec("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE;");
+    exact39.close();
+    await rename(databasePath, currentDisplaced);
+    await rename(exact39Path, databasePath);
+    expect(await dispatch(freshLifecycle)).toEqual({ passed: false, status: 503 });
+    expect(await readiness(freshLifecycle)).toMatchObject({
+      body: {
+        code: "SERVICE_RESTART_REQUIRED",
+        mode: "database-restart-required",
+        mutationsAccepted: false,
+      },
+      status: 503,
+    });
+    await rename(databasePath, exact39Path);
+    await rename(currentDisplaced, databasePath);
+    primedHandlerDatabase!.close();
+    primedHandlerDatabase = undefined;
+
+    const schema37Directory = join(dataDirectory, "schema37-fixture");
+    await mkdir(schema37Directory);
+    const schema37Path = join(schema37Directory, "unboundry.sqlite");
+    await copyFile(databasePath, schema37Path);
+    const schema37 = new DatabaseSync(schema37Path);
+    rollbackMigration39To38(schema37);
+    rollbackMigration38To37(schema37);
+    schema37.close();
+    const currentBytes = await readFile(databasePath);
+    const schema37Bytes = await readFile(schema37Path);
+    const schemaTransitionLifecycle = createRuntimeLifecycle({
+      dataDirectory,
+      logger: () => undefined,
+      readinessDatabaseGuard: () => true,
+    });
+    expect(await dispatch(schemaTransitionLifecycle)).toEqual({
+      passed: true,
+      status: 204,
+    });
+    await rename(databasePath, currentDisplaced);
+    await rename(schema37Path, databasePath);
+    expect(await dispatch(schemaTransitionLifecycle)).toEqual({
+      passed: false,
+      status: 503,
+    });
+    expect(await readFile(databasePath)).toEqual(schema37Bytes);
+    expect(await readFile(currentDisplaced)).toEqual(currentBytes);
+
+    await rename(databasePath, schema37Path);
+    await rename(currentDisplaced, databasePath);
+    // This lifecycle had already admitted the original inode. Replacing it
+    // with schema 37 permanently trips the stronger active-identity restart
+    // latch; restoring schema 39 cannot hot-admit a different path identity.
+    expect(await dispatch(schemaTransitionLifecycle)).toEqual({
+      passed: false,
+      status: 503,
+    });
+    expect(await readiness(schemaTransitionLifecycle)).toMatchObject({
+      body: {
+        code: "SERVICE_RESTART_REQUIRED",
+        mode: "database-restart-required",
+      },
+      status: 503,
+    });
+    const restartedLifecycle = createRuntimeLifecycle({
+      dataDirectory,
+      logger: () => undefined,
+      readinessDatabaseGuard: () => true,
+    });
+    expect(await dispatch(restartedLifecycle)).toEqual({
+      passed: true,
+      status: 204,
+    });
+    await chmod(dataDirectory, 0o777);
+    expect(await dispatch(restartedLifecycle)).toEqual({
+      passed: false,
+      status: 503,
+    });
+    expect(await readiness(restartedLifecycle)).toMatchObject({
+      body: {
+        code: "SERVICE_RESTART_REQUIRED",
+        mode: "database-restart-required",
+      },
+      status: 503,
+    });
+    await chmod(dataDirectory, 0o700);
+
+    const deletionLifecycle = createRuntimeLifecycle({
+      dataDirectory,
+      logger: () => undefined,
+      readinessDatabaseGuard: () => true,
+    });
+    expect(await dispatch(deletionLifecycle)).toEqual({
+      passed: true,
+      status: 204,
+    });
+    const currentBeforeDelete = await readFile(databasePath);
+    await rename(databasePath, currentDisplaced);
+    expect(await dispatch(deletionLifecycle)).toEqual({
+      passed: false,
+      status: 503,
+    });
+    expect(await readiness(deletionLifecycle)).toMatchObject({
+      body: { code: "SERVICE_RESTART_REQUIRED" },
+      status: 503,
+    });
+    expect(await readFile(currentDisplaced)).toEqual(currentBeforeDelete);
+
+    const directoryIdentityDirectory = join(
+      dataDirectory,
+      "directory-identity-fixture",
+    );
+    const directoryIdentityDisplaced = join(
+      dataDirectory,
+      "directory-identity-displaced",
+    );
+    const directoryIdentityPath = join(
+      directoryIdentityDirectory,
+      "unboundry.sqlite",
+    );
+    const directoryIdentityDatabase = openAppDatabase(
+      directoryIdentityDirectory,
+    );
+    directoryIdentityDatabase.exec(
+      "PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE;",
+    );
+    directoryIdentityDatabase.close();
+    const directoryIdentityLifecycle = createRuntimeLifecycle({
+      dataDirectory: directoryIdentityDirectory,
+      logger: () => undefined,
+      readinessDatabaseGuard: () => true,
+    });
+    expect(await dispatch(directoryIdentityLifecycle)).toEqual({
+      passed: true,
+      status: 204,
+    });
+    await rename(directoryIdentityDirectory, directoryIdentityDisplaced);
+    await mkdir(directoryIdentityDirectory, { mode: 0o700 });
+    await rename(
+      join(directoryIdentityDisplaced, "unboundry.sqlite"),
+      directoryIdentityPath,
+    );
+    expect(await dispatch(directoryIdentityLifecycle)).toEqual({
+      passed: false,
+      status: 503,
+    });
+    expect(await readiness(directoryIdentityLifecycle)).toMatchObject({
+      body: {
+        code: "SERVICE_RESTART_REQUIRED",
+        mode: "database-restart-required",
+      },
+      status: 503,
+    });
+  } finally {
+    primedHandlerDatabase?.close();
+    sockets.forEach((socket) => socket.destroy());
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
 test("dev and preview own shutdown signals without erasing host listeners", async () => {
   const testRoot = await mkdtemp(join(tmpdir(), "unboundry-m81-shutdown-"));
   let server: ChildProcess | undefined;
   let updates: Awaited<ReturnType<typeof openServerEventStream>> | undefined;
   try {
+    const productionTestEnvironmentError =
+      "UNBOUNDRY_PRODUCTION_TEST_ENV_FORBIDDEN: preview and production runtime reject UNBOUNDRY_SAFE_TEST and UNBOUNDRY_TEST_*";
+    for (const rejected of [
+      { label: "preview-test-env", preview: true, production: false },
+      { label: "production-test-env", preview: false, production: true },
+    ]) {
+      const rejectedDataDirectory = join(testRoot, rejected.label);
+      const rejectedChild = spawn(
+        process.execPath,
+        [
+          vite,
+          ...(rejected.preview ? ["preview"] : []),
+          "--host",
+          "127.0.0.1",
+          "--port",
+          String(port),
+          "--strictPort",
+        ],
+        {
+          env: {
+            ...process.env,
+            NODE_ENV: rejected.production ? "production" : undefined,
+            UNBOUNDRY_DATA_DIR: rejectedDataDirectory,
+            UNBOUNDRY_TEST_AUTH_BYPASS: "1",
+          },
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
+      const output: string[] = [];
+      capturedOutput.set(rejectedChild, output);
+      rejectedChild.stdout?.on("data", (chunk) => output.push(String(chunk)));
+      rejectedChild.stderr?.on("data", (chunk) => output.push(String(chunk)));
+      await waitForChildExit(
+        rejectedChild,
+        5_000,
+        `${rejected.label} did not fail before startup`,
+      );
+      expect(rejectedChild.exitCode).not.toBe(0);
+      expect(rejectedChild.signalCode).toBeNull();
+      expect(outputOf(rejectedChild)).toContain(productionTestEnvironmentError);
+      await expect(access(rejectedDataDirectory)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      await expectPortAvailable();
+    }
+
     const cases: Array<{
       label: string;
       preview: boolean;
@@ -3226,6 +3960,8 @@ test("dev and preview own shutdown signals without erasing host listeners", asyn
       const sentinelModule = join(dataDirectory, "signal-sentinel.mjs");
       const sentinelOutput = join(dataDirectory, "signal-sentinel.log");
       await mkdir(dataDirectory);
+      // Greenfield bootstrap rejects any pre-existing residue by contract.
+      initializePrivateSyntheticGreenfield(dataDirectory);
       await writeFile(sentinelModule, `
         import { appendFileSync } from "node:fs";
         const output = ${JSON.stringify(sentinelOutput)};
@@ -3257,6 +3993,7 @@ test("dev and preview own shutdown signals without erasing host listeners", asyn
           }`.trim(),
         },
         preview: fixture.preview,
+        waitPath: "/api/health/ready",
       });
       updates = await openServerEventStream();
       expect(updates.status).toBe(200);
@@ -3387,7 +4124,7 @@ test("dev and preview apply security headers while HSTS requires trusted effecti
   }
 });
 
-test("unexpected database failures stay internal and the server remains alive", async () => {
+test("an invalid database identity fails closed before handlers and liveness remains available", async () => {
   const secretCanary = "cookie-password-apikey-prompt-canary";
   const dataDirectory = await mkdtemp(
     join(tmpdir(), `unboundry-m81-${secretCanary}-`),
@@ -3400,13 +4137,13 @@ test("unexpected database failures stay internal and the server remains alive", 
       environment: { UNBOUNDRY_TEST_AUTH_BYPASS: "1" },
     });
     const failed = await fetch(`${origin}/api/media-metadata/image/missing`);
-    expect(failed.status).toBe(500);
+    expect(failed.status).toBe(503);
     assertSecurityHeaders(failed, true);
     const body = await failed.text();
-    expect(body).toContain('"code":"INTERNAL_ERROR"');
+    expect(body).toContain('"code":"SERVICE_DATABASE_UNAVAILABLE"');
     expect(body).not.toContain(secretCanary);
     await expect.poll(
-      () => outputOf(server!).includes('"code":"INTERNAL_ERROR"'),
+      () => outputOf(server!).includes('"code":"SERVICE_DATABASE_UNAVAILABLE"'),
     ).toBe(true);
     expect(outputOf(server)).not.toContain(secretCanary);
     expect((await fetch(`${origin}/api/health/live`)).status).toBe(200);

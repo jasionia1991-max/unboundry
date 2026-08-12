@@ -4,6 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import "./node-typescript-runtime.mjs";
 
 const dataDir = await mkdtemp(join(tmpdir(), "unboundry-restart-p1-"));
 const databasePath = join(dataDir, "unboundry.sqlite");
@@ -18,6 +19,15 @@ const port = Number(process.env.UNBOUNDRY_TEST_AUX_PORT);
 assert.ok(Number.isInteger(port) && port > 0 && port <= 65_535);
 assert.notEqual(port, 4173, "Restart check must never use the user's development port");
 const origin = `http://127.0.0.1:${port}`;
+
+// The runtime readiness probe is deliberately read-only and will not create a
+// greenfield database. This operational check owns a private synthetic data
+// directory, so initialize it explicitly before starting the first process.
+{
+  const runtime = await import("../server/database.ts");
+  const database = runtime.openAppDatabase(dataDir);
+  database.close();
+}
 
 async function start() {
   const child = spawn(
@@ -37,8 +47,11 @@ async function start() {
       throw new Error(`Test server exited before becoming ready (${child.exitCode})`);
     }
     try {
-      const response = await fetch(origin);
-      if (response.ok) return child;
+      const response = await fetch(`${origin}/api/health/ready`);
+      if (response.ok) {
+        const body = await response.json();
+        if (body?.status === "ready" && body?.mode === "active") return child;
+      }
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 100));
   }

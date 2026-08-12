@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "./safe-test";
 import { authGate } from "../server/auth";
-import { appDataDirectory } from "../server/database";
+import { appDataDirectory, openAppDatabase } from "../server/database";
 import { adminModelsApi } from "../server/modelCatalog";
 import { saveProviderProfile } from "../server/providerProfiles";
 
@@ -59,6 +59,7 @@ test("relay models persist an explicit compatible protocol without Provider requ
   let server: Server | undefined;
   try {
     expect(appDataDirectory()).toBe(directory);
+    openAppDatabase(directory).close();
     const profile = await saveProviderProfile({
       apiKey: "relay-model-fixture-key",
       baseUrl: "https://api.example.test/v1",

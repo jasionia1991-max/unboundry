@@ -1,13 +1,25 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
+  constants as fileConstants,
+  fchmodSync,
+  fsyncSync,
+  fstatSync,
+  linkSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readSync,
+  readdirSync,
+  realpathSync,
+  unlinkSync,
+  writeFileSync,
+  type BigIntStats,
 } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { basename, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { pathToFileURL } from "node:url";
 import publicTemplateSeeds from "./publicTemplateSeeds.json" with { type: "json" };
 
 type Migration = {
@@ -2765,82 +2777,376 @@ export const currentSchemaContract = Object.freeze({
   }),
 });
 
+function sameSchemaStrings(left: readonly string[], right: readonly string[]) {
+  return left.length === right.length &&
+    left.every((value, index) => value === right[index]);
+}
+
+function schemaSqlHash(sql: unknown) {
+  return createHash("sha256").update(String(sql ?? "")).digest("hex");
+}
+
+function acceptedSchemaSqlHashes(contract: {
+  acceptedSqlHashes?: readonly string[];
+  sqlHash: string;
+}) {
+  return contract.acceptedSqlHashes ?? [contract.sqlHash];
+}
+
+function schemaObject(
+  database: DatabaseSync,
+  type: "index" | "table" | "trigger",
+  name: string,
+) {
+  return database.prepare(`
+    SELECT sql, tbl_name
+    FROM sqlite_schema
+    WHERE type = ? AND name = ?
+  `).get(type, name) as { sql?: unknown; tbl_name?: unknown } | undefined;
+}
+
+/** Exact physical-schema guard shared by runtime readiness and writer opens. */
+export function databaseMatchesSchemaContract(database: DatabaseSync) {
+  const expectedTables = Object.keys(currentSchemaContract.tables).sort();
+  const actualTables = (database.prepare(`
+    SELECT name
+    FROM sqlite_schema
+    WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+    ORDER BY name
+  `).all() as Array<{ name?: unknown }>).map((row) => String(row.name));
+  if (!sameSchemaStrings(actualTables, expectedTables)) return false;
+
+  for (const tableName of expectedTables) {
+    if (!/^[a-z][a-z0-9_]*$/.test(tableName)) return false;
+    const expectedColumns = [
+      ...currentSchemaContract.tables[
+        tableName as keyof typeof currentSchemaContract.tables
+      ],
+    ].sort();
+    const actualColumns = (database
+      .prepare(`PRAGMA table_xinfo("${tableName}")`)
+      .all() as Array<{ name?: unknown }>).map((column) => String(column.name))
+      .sort();
+    if (!sameSchemaStrings(actualColumns, expectedColumns)) return false;
+    const table = schemaObject(database, "table", tableName);
+    const acceptedSqlHashes = currentSchemaContract.tableSqlHashes[
+      tableName as keyof typeof currentSchemaContract.tableSqlHashes
+    ];
+    if (!table || !acceptedSqlHashes.includes(schemaSqlHash(table.sql))) {
+      return false;
+    }
+  }
+
+  const expectedExplicitIndexNames = Object.keys(
+    currentSchemaContract.explicitIndexes,
+  ).sort();
+  const optionalExplicitIndexNames = new Set<string>();
+  for (const [indexName, condition] of Object.entries(
+    currentSchemaContract.conditionallyOptionalExplicitIndexes,
+  )) {
+    const table = schemaObject(database, "table", condition.table);
+    if (schemaSqlHash(table?.sql) === condition.tableSqlHash) {
+      optionalExplicitIndexNames.add(indexName);
+    }
+  }
+  const requiredExplicitIndexNames = expectedExplicitIndexNames.filter(
+    (name) => !optionalExplicitIndexNames.has(name),
+  );
+  const actualExplicitIndexNames = (database.prepare(`
+    SELECT name
+    FROM sqlite_schema
+    WHERE type = 'index' AND sql IS NOT NULL
+    ORDER BY name
+  `).all() as Array<{ name?: unknown }>).map((row) => String(row.name));
+  if (
+    actualExplicitIndexNames.some(
+      (name) => !expectedExplicitIndexNames.includes(name),
+    ) ||
+    requiredExplicitIndexNames.some(
+      (name) => !actualExplicitIndexNames.includes(name),
+    )
+  ) return false;
+  for (const indexName of actualExplicitIndexNames) {
+    const expected = currentSchemaContract.explicitIndexes[
+      indexName as keyof typeof currentSchemaContract.explicitIndexes
+    ];
+    const index = schemaObject(database, "index", indexName);
+    if (
+      String(index?.tbl_name ?? "") !== expected.table ||
+      !acceptedSchemaSqlHashes(expected).includes(schemaSqlHash(index?.sql))
+    ) return false;
+  }
+
+  for (const [indexName, expected] of Object.entries(
+    currentSchemaContract.indexes,
+  )) {
+    if (
+      !/^[a-z][a-z0-9_]*$/.test(indexName) ||
+      !/^[a-z][a-z0-9_]*$/.test(expected.table)
+    ) return false;
+    const index = (database
+      .prepare(`PRAGMA index_list("${expected.table}")`)
+      .all() as Array<{
+        name?: unknown;
+        partial?: unknown;
+        unique?: unknown;
+      }>).find((candidate) => String(candidate.name) === indexName);
+    if (
+      !index ||
+      Boolean(Number(index.unique)) !== expected.unique ||
+      Boolean(Number(index.partial)) !== expected.partial
+    ) return false;
+    const columns = (database
+      .prepare(`PRAGMA index_xinfo("${indexName}")`)
+      .all() as Array<{ key?: unknown; name?: unknown }>).filter(
+        (column) => Number(column.key) === 1,
+      ).map((column) => String(column.name));
+    if (!sameSchemaStrings(columns, expected.columns)) return false;
+    const schemaIndex = schemaObject(database, "index", indexName);
+    const explicitIndex = currentSchemaContract.explicitIndexes[
+      indexName as keyof typeof currentSchemaContract.explicitIndexes
+    ];
+    if (
+      String(schemaIndex?.tbl_name ?? "") !== expected.table ||
+      !acceptedSchemaSqlHashes(explicitIndex).includes(
+        schemaSqlHash(schemaIndex?.sql),
+      )
+    ) return false;
+  }
+
+  const expectedTriggerNames = Object.keys(currentSchemaContract.triggers).sort();
+  const actualTriggerNames = (database.prepare(`
+    SELECT name
+    FROM sqlite_schema
+    WHERE type = 'trigger'
+    ORDER BY name
+  `).all() as Array<{ name?: unknown }>).map((row) => String(row.name));
+  if (!sameSchemaStrings(actualTriggerNames, expectedTriggerNames)) return false;
+  for (const [triggerName, expected] of Object.entries(
+    currentSchemaContract.triggers,
+  )) {
+    const trigger = schemaObject(database, "trigger", triggerName);
+    if (
+      String(trigger?.tbl_name ?? "") !== expected.table ||
+      schemaSqlHash(trigger?.sql) !== expected.sqlHash
+    ) return false;
+  }
+  const actualViewNames = (database.prepare(`
+    SELECT name
+    FROM sqlite_schema
+    WHERE type = 'view'
+    ORDER BY name
+  `).all() as Array<{ name?: unknown }>).map((row) => String(row.name));
+  return actualViewNames.length === 0;
+}
+
 export function appDataDirectory() {
   return process.env.UNBOUNDRY_DATA_DIR ?? join(process.cwd(), "data");
 }
 
+let afterGreenfieldDatabasePublishForTests:
+  | ((databasePath: string) => void)
+  | undefined;
+
+export type GreenfieldDatabaseInitializationCheckpoint =
+  | "marker-published"
+  | "reservation-closed"
+  | "database-closed"
+  | "final-validation-complete";
+
+export type CurrentDatabaseOpenCheckpoint =
+  | "inspection-schema-validated"
+  | "before-writer-sidecar-validation";
+
+let duringGreenfieldDatabaseInitializationForTests:
+  | ((checkpoint: GreenfieldDatabaseInitializationCheckpoint) => void)
+  | undefined;
+
+let duringCurrentDatabaseOpenForTests:
+  | ((checkpoint: CurrentDatabaseOpenCheckpoint, databasePath: string) => void)
+  | undefined;
+
+export function setAfterGreenfieldDatabasePublishForTests(
+  hook: ((databasePath: string) => void) | undefined,
+) {
+  afterGreenfieldDatabasePublishForTests = hook;
+}
+
+export function setDuringGreenfieldDatabaseInitializationForTests(
+  hook:
+    | ((checkpoint: GreenfieldDatabaseInitializationCheckpoint) => void)
+    | undefined,
+) {
+  duringGreenfieldDatabaseInitializationForTests = hook;
+}
+
+export function setDuringCurrentDatabaseOpenForTests(
+  hook:
+    | ((checkpoint: CurrentDatabaseOpenCheckpoint, databasePath: string) => void)
+    | undefined,
+) {
+  duringCurrentDatabaseOpenForTests = hook;
+}
+
+const maximumLegacyMediaBytes = 20 * 1_024 * 1_024 * 1_024;
+
+function safeLegacyMediaDescriptor(path: string) {
+  const descriptor = openSync(
+    path,
+    fileConstants.O_RDONLY | (fileConstants.O_NOFOLLOW ?? 0),
+  );
+  const details = fstatSync(descriptor, { bigint: true });
+  if (
+    !details.isFile() || details.nlink !== 1n || details.size < 0n ||
+    details.size > BigInt(maximumLegacyMediaBytes) ||
+    (details.mode & 0o022n) !== 0n ||
+    typeof process.getuid !== "function" ||
+    details.uid !== BigInt(process.getuid())
+  ) {
+    closeSync(descriptor);
+    throw new Error("Unsafe legacy media file");
+  }
+  return { descriptor, details };
+}
+
+function sameFileIdentity(
+  left: BigIntStats,
+  right: BigIntStats,
+) {
+  return left.dev === right.dev && left.ino === right.ino &&
+    left.size === right.size && left.mtimeNs === right.mtimeNs &&
+    left.ctimeNs === right.ctimeNs && right.nlink === 1n && right.isFile();
+}
+
+export type LegacyMediaPathIdentity = Readonly<{
+  ctimeNs: bigint;
+  dev: bigint;
+  ino: bigint;
+  mode: bigint;
+  mtimeNs: bigint;
+  nlink: bigint;
+  size: bigint;
+  uid: bigint;
+}>;
+
+export type LegacyMediaBackfillEvidence = Readonly<{
+  checksumSha256?: string;
+  durationSeconds?: number;
+  durationSource?: "provider-task" | "server-probe";
+  id: string;
+  identity: LegacyMediaPathIdentity;
+  kind: string;
+  path: string;
+  purpose: "checksum" | "duration";
+  storageName: string;
+}>;
+
+export const legacyMediaDurationProbeArguments = Object.freeze([
+  "-v",
+  "error",
+  "-protocol_whitelist",
+  "file,pipe",
+  "-show_entries",
+  "format=duration",
+  "-of",
+  "default=noprint_wrappers=1:nokey=1",
+  "/dev/fd/3",
+] as const);
+
+export type LegacyMediaDurationProbe = Readonly<{
+  executable?: string;
+  onEvent?: (event: Readonly<{
+    arguments: typeof legacyMediaDurationProbeArguments;
+    phase: "complete" | "start";
+  }>) => void;
+}>;
+
+function legacyMediaPathIdentity(details: BigIntStats): LegacyMediaPathIdentity {
+  return Object.freeze({
+    ctimeNs: details.ctimeNs,
+    dev: details.dev,
+    ino: details.ino,
+    mode: details.mode,
+    mtimeNs: details.mtimeNs,
+    nlink: details.nlink,
+    size: details.size,
+    uid: details.uid,
+  });
+}
+
+function sameLegacyMediaPathIdentity(
+  expected: LegacyMediaPathIdentity,
+  actual: BigIntStats,
+) {
+  return actual.isFile() && !actual.isSymbolicLink() &&
+    actual.dev === expected.dev && actual.ino === expected.ino &&
+    actual.uid === expected.uid && actual.mode === expected.mode &&
+    actual.nlink === expected.nlink && actual.nlink === 1n &&
+    actual.size === expected.size && actual.mtimeNs === expected.mtimeNs &&
+    actual.ctimeNs === expected.ctimeNs;
+}
+
 function fileSha256(path: string) {
   const hash = createHash("sha256");
-  const handle = openSync(path, "r");
+  const { descriptor, details } = safeLegacyMediaDescriptor(path);
   const buffer = Buffer.allocUnsafe(64 * 1_024);
   try {
     let bytesRead = 0;
+    let total = 0;
     do {
-      bytesRead = readSync(handle, buffer, 0, buffer.length, null);
+      bytesRead = readSync(descriptor, buffer, 0, buffer.length, null);
+      total += bytesRead;
+      if (total > maximumLegacyMediaBytes) {
+        throw new Error("Legacy media file exceeds the migration limit");
+      }
       if (bytesRead) hash.update(buffer.subarray(0, bytesRead));
     } while (bytesRead);
-  } finally {
-    closeSync(handle);
-  }
-  return hash.digest("hex");
-}
-
-function backfillLocalMediaChecksums(
-  database: DatabaseSync,
-  dataDirectory: string,
-) {
-  const rows = database
-    .prepare(`
-      SELECT kind, id, storage_name
-      FROM media_assets
-      WHERE
-        storage_backend = 'local'
-        AND storage_status = 'ready'
-        AND checksum_sha256 IS NULL
-    `)
-    .all() as Array<{ id: string; kind: string; storage_name: string }>;
-  if (!rows.length) return;
-  const update = database.prepare(`
-    UPDATE media_assets
-    SET checksum_sha256 = ?, updated_at = ?
-    WHERE kind = ? AND id = ? AND checksum_sha256 IS NULL
-  `);
-  const timestamp = new Date().toISOString();
-  for (const row of rows) {
-    if (basename(row.storage_name) !== row.storage_name) continue;
-    try {
-      update.run(
-        fileSha256(join(dataDirectory, "media", row.storage_name)),
-        timestamp,
-        row.kind,
-        row.id,
-      );
-    } catch {
-      // Missing legacy files remain visible as unverified instead of blocking boot.
+    const after = fstatSync(descriptor, { bigint: true });
+    if (!sameFileIdentity(details, after) || BigInt(total) !== details.size) {
+      throw new Error("Legacy media changed while hashing");
     }
+  } finally {
+    closeSync(descriptor);
   }
+  return Object.freeze({
+    identity: legacyMediaPathIdentity(details),
+    path,
+    sha256: hash.digest("hex"),
+  });
 }
 
-function trustedDurationFromFile(path: string) {
-  const output = execFileSync(
-    "ffprobe",
-    [
-      "-v",
-      "error",
-      "-show_entries",
-      "format=duration",
-      "-of",
-      "default=noprint_wrappers=1:nokey=1",
-      path,
-    ],
-    {
-      encoding: "utf8",
-      maxBuffer: 64 * 1_024,
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 20_000,
-      windowsHide: true,
-    },
-  );
+function trustedDurationFromFile(
+  path: string,
+  probe: LegacyMediaDurationProbe = {},
+) {
+  const { descriptor, details } = safeLegacyMediaDescriptor(path);
+  let output: string;
+  try {
+    probe.onEvent?.(Object.freeze({
+      arguments: legacyMediaDurationProbeArguments,
+      phase: "start" as const,
+    }));
+    output = execFileSync(
+      probe.executable ?? "ffprobe",
+      [...legacyMediaDurationProbeArguments],
+      {
+        encoding: "utf8",
+        maxBuffer: 64 * 1_024,
+        stdio: ["ignore", "pipe", "ignore", descriptor],
+        timeout: 20_000,
+        windowsHide: true,
+      },
+    );
+    probe.onEvent?.(Object.freeze({
+      arguments: legacyMediaDurationProbeArguments,
+      phase: "complete" as const,
+    }));
+    if (!sameFileIdentity(details, fstatSync(descriptor, { bigint: true }))) {
+      throw new Error("Legacy media changed while probing");
+    }
+  } finally {
+    closeSync(descriptor);
+  }
   const durationSeconds = Number(output.trim());
   if (
     !Number.isFinite(durationSeconds) ||
@@ -2849,157 +3155,1799 @@ function trustedDurationFromFile(path: string) {
   ) {
     throw new Error("Invalid media duration");
   }
-  return Math.round(durationSeconds * 1_000) / 1_000;
+  return Object.freeze({
+    durationSeconds: Math.round(durationSeconds * 1_000) / 1_000,
+    identity: legacyMediaPathIdentity(details),
+    path,
+  });
 }
 
-function backfillTrustedMediaDurations(
+export type SchemaMigrationCheckpoint = Readonly<{
+  name: string;
+  version: number;
+}>;
+
+export function databaseMatchesMigrationManifest(
+  database: DatabaseSync,
+  version = currentSchemaVersion,
+) {
+  if (!Number.isInteger(version) || version < 0 || version > currentSchemaVersion) {
+    return false;
+  }
+  const userVersion = database.prepare("PRAGMA user_version").get() as
+    | { user_version?: unknown }
+    | undefined;
+  if (Number(userVersion?.user_version) !== version) return false;
+  const rows = database.prepare(
+    "SELECT version, name FROM schema_migrations ORDER BY version",
+  ).all() as Array<{ name?: unknown; version?: unknown }>;
+  const expected = currentSchemaManifest.slice(0, version);
+  return rows.length === expected.length && rows.every((row, index) =>
+    Number(row.version) === expected[index]?.version &&
+    String(row.name) === expected[index]?.name
+  );
+}
+
+export function applyPendingSchemaMigrationsInTransaction(
+  database: DatabaseSync,
+  options: Readonly<{
+    appliedAt?: () => string;
+    onMigrationApplied?: (checkpoint: SchemaMigrationCheckpoint) => void;
+    sourceVersion: number;
+    targetVersion?: number;
+  }>,
+) {
+  const targetVersion = options.targetVersion ?? currentSchemaVersion;
+  if (!database.isTransaction) {
+    throw new Error("Schema migrations require an existing write transaction");
+  }
+  if (
+    !Number.isInteger(options.sourceVersion) ||
+    options.sourceVersion < 0 ||
+    options.sourceVersion > currentSchemaVersion ||
+    !Number.isInteger(targetVersion) ||
+    targetVersion < options.sourceVersion ||
+    targetVersion > currentSchemaVersion ||
+    !databaseMatchesMigrationManifest(database, options.sourceVersion)
+  ) {
+    throw new Error("Database migration source manifest is not exact");
+  }
+  const appliedAt = options.appliedAt ?? (() => new Date().toISOString());
+  for (const migration of migrations) {
+    if (
+      migration.version <= options.sourceVersion ||
+      migration.version > targetVersion
+    ) continue;
+    migration.prepare?.(database);
+    database.exec(migration.sql);
+    database.prepare(`
+      INSERT INTO schema_migrations (version, name, applied_at)
+      VALUES (?, ?, ?)
+    `).run(migration.version, migration.name, appliedAt());
+    options.onMigrationApplied?.(Object.freeze({
+      name: migration.name,
+      version: migration.version,
+    }));
+  }
+  database.exec(`PRAGMA user_version = ${targetVersion}`);
+}
+
+export type LegacyMediaBackfillSummary = Readonly<{
+  checksums: number;
+  durations: number;
+  evidence: readonly LegacyMediaBackfillEvidence[];
+}>;
+
+export function revalidateLegacyMediaBackfillEvidence(
+  database: DatabaseSync,
+  evidence: readonly LegacyMediaBackfillEvidence[],
+) {
+  const metadata = database.prepare(`
+    SELECT
+      byte_size, checksum_sha256, duration_seconds, duration_source,
+      duration_status, storage_backend, storage_name, storage_status
+    FROM media_assets
+    WHERE kind = ? AND id = ?
+  `);
+  for (const item of evidence) {
+    let pathDetails: BigIntStats;
+    try {
+      pathDetails = lstatSync(item.path, { bigint: true });
+    } catch {
+      throw new Error(`Legacy media path changed for ${item.kind}:${item.id}`);
+    }
+    if (!sameLegacyMediaPathIdentity(item.identity, pathDetails)) {
+      throw new Error(`Legacy media path changed for ${item.kind}:${item.id}`);
+    }
+    const row = metadata.get(item.kind, item.id) as
+      | {
+          byte_size?: unknown;
+          checksum_sha256?: unknown;
+          duration_seconds?: unknown;
+          duration_source?: unknown;
+          duration_status?: unknown;
+          storage_backend?: unknown;
+          storage_name?: unknown;
+          storage_status?: unknown;
+        }
+      | undefined;
+    if (
+      !row || String(row.storage_name) !== item.storageName ||
+      String(row.storage_backend) !== "local" ||
+      String(row.storage_status) !== "ready" ||
+      Number(row.byte_size) !== Number(item.identity.size) ||
+      (item.purpose === "checksum" &&
+        String(row.checksum_sha256) !== item.checksumSha256) ||
+      (item.purpose === "duration" && (
+        Number(row.duration_seconds) !== item.durationSeconds ||
+        String(row.duration_source) !== item.durationSource ||
+        String(row.duration_status) !== "ready"
+      ))
+    ) {
+      throw new Error(`Legacy media metadata changed for ${item.kind}:${item.id}`);
+    }
+  }
+}
+
+/**
+ * A committed migration marker can outlive the transaction that populated
+ * legacy media metadata. Rebuild physical evidence from every ready local
+ * object before that marker is cleared: an empty incremental backfill is not
+ * proof that the files still match the committed rows.
+ */
+export function verifyCommittedMigrationMediaStrict(
   database: DatabaseSync,
   dataDirectory: string,
+  options: Readonly<{
+    durationProbe?: LegacyMediaDurationProbe;
+  }> = {},
 ) {
-  const update = database.prepare(`
-    UPDATE media_assets
-    SET duration_seconds = ?, duration_source = ?, duration_status = 'ready'
-    WHERE kind = ? AND id = ? AND duration_status = 'pending'
-  `);
-
-  const generatedVideos = database.prepare(`
-    SELECT media_assets.id, generation_tasks.parameters
+  if (
+    !database.isTransaction ||
+    !databaseMatchesMigrationManifest(database) ||
+    !databaseMatchesSchemaContract(database) ||
+    !databaseHasCompleteLegacyMediaMetadata(database)
+  ) throw new Error("Committed migration media verification requires an exact current transaction");
+  const rows = database.prepare(`
+    SELECT
+      byte_size, checksum_sha256, duration_seconds, duration_source,
+      id, kind, storage_name
     FROM media_assets
-    JOIN generation_tasks
-      ON generation_tasks.result_asset_id = media_assets.id
-      AND generation_tasks.kind = 'video'
-      AND generation_tasks.state = 'success'
-    WHERE
-      media_assets.kind = 'video'
-      AND media_assets.duration_status = 'pending'
-    ORDER BY generation_tasks.updated_at DESC
-  `).all() as Array<{ id: string; parameters: string }>;
-  const updatedGenerated = new Set<string>();
-  for (const row of generatedVideos) {
-    if (updatedGenerated.has(row.id)) continue;
-    try {
-      const parameters = JSON.parse(row.parameters) as Record<string, unknown>;
+    WHERE storage_backend = 'local' AND storage_status = 'ready'
+    ORDER BY kind, id
+  `).all() as Array<{
+    byte_size: number;
+    checksum_sha256: string;
+    duration_seconds: number | null;
+    duration_source: string | null;
+    id: string;
+    kind: string;
+    storage_name: string;
+  }>;
+  if (rows.length === 0) return Object.freeze([]) as readonly LegacyMediaBackfillEvidence[];
+
+  const canonicalDataDirectory = realpathSync(dataDirectory);
+  const mediaDirectory = join(canonicalDataDirectory, "media");
+  const mediaDetails = lstatSync(mediaDirectory);
+  if (
+    mediaDetails.isSymbolicLink() || !mediaDetails.isDirectory() ||
+    realpathSync(mediaDirectory) !== mediaDirectory ||
+    typeof process.getuid !== "function" ||
+    mediaDetails.uid !== process.getuid() || (mediaDetails.mode & 0o022) !== 0
+  ) throw new Error("Unsafe committed migration media directory");
+
+  const evidence: LegacyMediaBackfillEvidence[] = [];
+  for (const row of rows) {
+    if (basename(row.storage_name) !== row.storage_name) {
+      throw new Error(`Unsafe committed migration media name for ${row.kind}:${row.id}`);
+    }
+    const mediaPath = join(mediaDirectory, row.storage_name);
+    const checksum = fileSha256(mediaPath);
+    if (
+      checksum.sha256 !== row.checksum_sha256 ||
+      Number(checksum.identity.size) !== Number(row.byte_size)
+    ) {
+      throw new Error(`Committed migration media checksum changed for ${row.kind}:${row.id}`);
+    }
+    evidence.push(Object.freeze({
+      checksumSha256: checksum.sha256,
+      id: row.id,
+      identity: checksum.identity,
+      kind: row.kind,
+      path: checksum.path,
+      purpose: "checksum" as const,
+      storageName: row.storage_name,
+    }));
+
+    if (
+      (row.kind === "video" || row.kind === "audio") &&
+      row.duration_source === "server-probe"
+    ) {
+      const duration = trustedDurationFromFile(
+        mediaPath,
+        options.durationProbe,
+      );
+      if (duration.durationSeconds !== Number(row.duration_seconds)) {
+        throw new Error(`Committed migration media duration changed for ${row.kind}:${row.id}`);
+      }
+      evidence.push(Object.freeze({
+        durationSeconds: duration.durationSeconds,
+        durationSource: "server-probe" as const,
+        id: row.id,
+        identity: duration.identity,
+        kind: row.kind,
+        path: duration.path,
+        purpose: "duration" as const,
+        storageName: row.storage_name,
+      }));
+    }
+  }
+  revalidateLegacyMediaBackfillEvidence(database, evidence);
+  return Object.freeze(evidence);
+}
+
+/** Strict, retryable legacy metadata completion owned by the one-shot role. */
+export function backfillLegacyMediaStrict(
+  database: DatabaseSync,
+  dataDirectory: string,
+  options: Readonly<{
+    callerOwnsTransaction?: boolean;
+    durationProbe?: LegacyMediaDurationProbe;
+    now?: () => string;
+    onRow?: (kind: "checksum" | "duration", id: string) => void;
+  }> = {},
+): LegacyMediaBackfillSummary {
+  if (
+    !databaseMatchesMigrationManifest(database) ||
+    !databaseMatchesSchemaContract(database)
+  ) throw new Error("Legacy media backfill requires the exact current schema");
+  const now = options.now ?? (() => new Date().toISOString());
+  const canonicalDataDirectory = realpathSync(dataDirectory);
+  const mediaDirectory = join(canonicalDataDirectory, "media");
+  const needsPhysicalMedia = database.prepare(`
+    SELECT 1
+    FROM media_assets
+    WHERE storage_backend = 'local' AND storage_status = 'ready' AND (
+      checksum_sha256 IS NULL OR length(checksum_sha256) <> 64
+      OR checksum_sha256 GLOB '*[^0-9a-f]*'
+      OR (kind IN ('video', 'audio') AND (
+        duration_status <> 'ready'
+        OR duration_seconds IS NULL OR duration_seconds <= 0
+        OR duration_source IS NULL
+        OR duration_source NOT IN ('server-probe', 'provider-task')
+      ))
+    )
+    LIMIT 1
+  `).get();
+  if (needsPhysicalMedia) {
+    const mediaDetails = lstatSync(mediaDirectory);
+    if (
+      mediaDetails.isSymbolicLink() || !mediaDetails.isDirectory() ||
+      realpathSync(mediaDirectory) !== mediaDirectory ||
+      typeof process.getuid !== "function" ||
+      mediaDetails.uid !== process.getuid() || (mediaDetails.mode & 0o022) !== 0
+    ) throw new Error("Unsafe legacy media directory");
+  }
+  let checksums = 0;
+  let durations = 0;
+  const evidence: LegacyMediaBackfillEvidence[] = [];
+  if (options.callerOwnsTransaction) {
+    if (!database.isTransaction) {
+      throw new Error("Legacy media backfill requires the caller write lock");
+    }
+  } else {
+    database.exec("BEGIN IMMEDIATE");
+  }
+  try {
+    const checksumRows = database.prepare(`
+      SELECT kind, id, storage_name
+      FROM media_assets
+      WHERE storage_backend = 'local'
+        AND storage_status = 'ready'
+        AND (
+          checksum_sha256 IS NULL OR length(checksum_sha256) <> 64
+          OR checksum_sha256 GLOB '*[^0-9a-f]*'
+        )
+      ORDER BY kind, id
+    `).all() as Array<{ id: string; kind: string; storage_name: string }>;
+    const updateChecksum = database.prepare(`
+      UPDATE media_assets
+      SET checksum_sha256 = ?, updated_at = ?
+      WHERE kind = ? AND id = ? AND (
+        checksum_sha256 IS NULL OR length(checksum_sha256) <> 64
+        OR checksum_sha256 GLOB '*[^0-9a-f]*'
+      )
+    `);
+    for (const row of checksumRows) {
+      if (basename(row.storage_name) !== row.storage_name) {
+        throw new Error(`Unsafe legacy media name for ${row.kind}:${row.id}`);
+      }
+      const mediaPath = join(mediaDirectory, row.storage_name);
+      const verified = fileSha256(mediaPath);
+      if (updateChecksum.run(
+        verified.sha256,
+        now(),
+        row.kind,
+        row.id,
+      ).changes !== 1) throw new Error("Legacy checksum row changed concurrently");
+      const item = Object.freeze({
+        checksumSha256: verified.sha256,
+        id: row.id,
+        identity: verified.identity,
+        kind: row.kind,
+        path: verified.path,
+        purpose: "checksum" as const,
+        storageName: row.storage_name,
+      });
+      revalidateLegacyMediaBackfillEvidence(database, [item]);
+      evidence.push(item);
+      checksums += 1;
+      options.onRow?.("checksum", row.id);
+    }
+
+    const updateDuration = database.prepare(`
+      UPDATE media_assets
+      SET duration_seconds = ?, duration_source = ?, duration_status = 'ready'
+      WHERE kind = ? AND id = ? AND (
+        duration_status <> 'ready'
+        OR duration_seconds IS NULL OR duration_seconds <= 0
+        OR duration_source IS NULL
+        OR duration_source NOT IN ('server-probe', 'provider-task')
+      )
+    `);
+    const generatedVideos = database.prepare(`
+      SELECT media_assets.id, generation_tasks.parameters
+      FROM media_assets
+      JOIN generation_tasks
+        ON generation_tasks.result_asset_id = media_assets.id
+        AND generation_tasks.kind = 'video'
+        AND generation_tasks.state = 'success'
+      WHERE media_assets.kind = 'video'
+        AND media_assets.storage_status = 'ready'
+        AND (
+          media_assets.duration_status <> 'ready'
+          OR media_assets.duration_seconds IS NULL
+          OR media_assets.duration_seconds <= 0
+          OR media_assets.duration_source IS NULL
+          OR media_assets.duration_source NOT IN (
+            'server-probe', 'provider-task'
+          )
+        )
+      ORDER BY generation_tasks.updated_at DESC
+    `).all() as Array<{ id: string; parameters: string }>;
+    const updatedGenerated = new Set<string>();
+    for (const row of generatedVideos) {
+      if (updatedGenerated.has(row.id)) continue;
+      let parameters: Record<string, unknown>;
+      try {
+        parameters = JSON.parse(row.parameters) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
       const durationSeconds = Number(parameters.duration);
       if (
         !Number.isInteger(durationSeconds) ||
-        durationSeconds < 2 ||
-        durationSeconds > 15
+        durationSeconds < 2 || durationSeconds > 15
       ) continue;
-      if (update.run(durationSeconds, "provider-task", "video", row.id).changes) {
+      if (updateDuration.run(
+        durationSeconds,
+        "provider-task",
+        "video",
+        row.id,
+      ).changes) {
         updatedGenerated.add(row.id);
+        durations += 1;
+        options.onRow?.("duration", row.id);
       }
-    } catch {
-      // Historical tasks without a validated duration remain pending below.
     }
-  }
 
-  const localRows = database.prepare(`
-    SELECT kind, id, storage_name
-    FROM media_assets
-    WHERE
-      kind IN ('video', 'audio')
-      AND storage_backend = 'local'
-      AND storage_status = 'ready'
-      AND duration_status = 'pending'
-  `).all() as Array<{ id: string; kind: "audio" | "video"; storage_name: string }>;
-  const failed = database.prepare(`
-    UPDATE media_assets
-    SET duration_seconds = NULL, duration_source = NULL, duration_status = 'failed'
-    WHERE kind = ? AND id = ? AND duration_status = 'pending'
-  `);
-  for (const row of localRows) {
-    if (basename(row.storage_name) !== row.storage_name) {
-      failed.run(row.kind, row.id);
-      continue;
-    }
-    try {
-      update.run(
-        trustedDurationFromFile(join(dataDirectory, "media", row.storage_name)),
+    const localRows = database.prepare(`
+      SELECT kind, id, storage_name
+      FROM media_assets
+      WHERE kind IN ('video', 'audio')
+        AND storage_backend = 'local'
+        AND storage_status = 'ready'
+        AND (
+          duration_status <> 'ready'
+          OR duration_seconds IS NULL OR duration_seconds <= 0
+          OR duration_source IS NULL
+          OR duration_source NOT IN ('server-probe', 'provider-task')
+        )
+      ORDER BY kind, id
+    `).all() as Array<{
+      id: string;
+      kind: "audio" | "video";
+      storage_name: string;
+    }>;
+    for (const row of localRows) {
+      if (basename(row.storage_name) !== row.storage_name) {
+        throw new Error(`Unsafe legacy duration file for ${row.kind}:${row.id}`);
+      }
+      const verified = trustedDurationFromFile(
+        join(mediaDirectory, row.storage_name),
+        options.durationProbe,
+      );
+      if (updateDuration.run(
+        verified.durationSeconds,
         "server-probe",
         row.kind,
         row.id,
-      );
-    } catch (error) {
-      if (
-        error &&
-        typeof error === "object" &&
-        "code" in error &&
-        error.code === "ENOENT"
-      ) {
-        // Do not permanently mark metadata failed when ffprobe is unavailable.
-        return;
-      }
-      failed.run(row.kind, row.id);
+      ).changes !== 1) throw new Error("Legacy duration row changed concurrently");
+      const item = Object.freeze({
+        durationSeconds: verified.durationSeconds,
+        durationSource: "server-probe" as const,
+        id: row.id,
+        identity: verified.identity,
+        kind: row.kind,
+        path: verified.path,
+        purpose: "duration" as const,
+        storageName: row.storage_name,
+      });
+      revalidateLegacyMediaBackfillEvidence(database, [item]);
+      evidence.push(item);
+      durations += 1;
+      options.onRow?.("duration", row.id);
     }
+    const unresolved = database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM media_assets
+      WHERE storage_status = 'ready' AND (
+        checksum_sha256 IS NULL OR length(checksum_sha256) <> 64
+        OR checksum_sha256 GLOB '*[^0-9a-f]*'
+        OR (kind IN ('video', 'audio') AND (
+          duration_status <> 'ready'
+          OR duration_seconds IS NULL OR duration_seconds <= 0
+          OR duration_source IS NULL
+          OR duration_source NOT IN ('server-probe', 'provider-task')
+        ))
+      )
+    `).get() as { count?: unknown } | undefined;
+    if (Number(unresolved?.count) !== 0) {
+      throw new Error("Legacy media metadata remains incomplete");
+    }
+    revalidateLegacyMediaBackfillEvidence(database, evidence);
+    if (!options.callerOwnsTransaction) database.exec("COMMIT");
+  } catch (error) {
+    if (!options.callerOwnsTransaction && database.isTransaction) {
+      database.exec("ROLLBACK");
+    }
+    throw error;
+  }
+  return Object.freeze({
+    checksums,
+    durations,
+    evidence: Object.freeze(evidence),
+  });
+}
+
+type CurrentDatabaseSidecarSnapshot = Readonly<{
+  journal?: BigIntStats;
+  shm?: BigIntStats;
+  wal?: BigIntStats;
+}>;
+
+function currentDatabaseSidecarDetails(path: string) {
+  try {
+    const details = lstatSync(path, { bigint: true });
+    if (
+      !details.isFile() || details.isSymbolicLink() || details.nlink !== 1n ||
+      typeof process.getuid !== "function" ||
+      details.uid !== BigInt(process.getuid()) ||
+      (details.mode & 0o022n) !== 0n
+    ) throw new Error("Current database sidecar is unsafe");
+    return details;
+  } catch (error) {
+    if (
+      error && typeof error === "object" && "code" in error &&
+      error.code === "ENOENT"
+    ) return undefined;
+    throw error;
   }
 }
 
-export function openAppDatabase(dataDirectory = appDataDirectory()) {
-  mkdirSync(dataDirectory, { recursive: true });
-  const database = new DatabaseSync(join(dataDirectory, "unboundry.sqlite"), {
-    timeout: 5_000,
-  });
-  database.exec(`
-    PRAGMA journal_mode = WAL;
-    PRAGMA foreign_keys = ON;
-    PRAGMA busy_timeout = 5000;
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-      version INTEGER PRIMARY KEY,
-      name TEXT NOT NULL,
-      applied_at TEXT NOT NULL
-    );
-  `);
+function collectCurrentDatabaseSidecars(
+  databasePath: string,
+): CurrentDatabaseSidecarSnapshot {
+  const wal = currentDatabaseSidecarDetails(`${databasePath}-wal`);
+  const shm = currentDatabaseSidecarDetails(`${databasePath}-shm`);
+  const journal = currentDatabaseSidecarDetails(`${databasePath}-journal`);
+  return Object.freeze({ journal, shm, wal });
+}
 
-  let migrationTransactionOpen = false;
+function captureCurrentDatabaseSidecars(
+  databasePath: string,
+): CurrentDatabaseSidecarSnapshot {
+  const sidecars = collectCurrentDatabaseSidecars(databasePath);
+  const { journal, shm, wal } = sidecars;
+  // An idle live WAL-mode connection legitimately keeps a private SHM file
+  // together with a zero-byte WAL. Treat that pair as a complete topology,
+  // not as an orphan: subsequent checks pin both identities across inspection
+  // and writer acquisition. A lone WAL/SHM or any rollback journal remains a
+  // fail-closed shape.
+  if (journal || Boolean(wal) !== Boolean(shm)) {
+    throw new Error("Current database WAL sidecars are incomplete");
+  }
+  return sidecars;
+}
+
+function exactCurrentInspectionLocation(
+  databasePath: string,
+  sidecars = captureCurrentDatabaseSidecars(databasePath),
+) {
+  return sidecars.wal && sidecars.wal.size > 0n
+    ? databasePath
+    : `${pathToFileURL(databasePath).href}?immutable=1`;
+}
+
+function sameSidecarIdentity(actual: BigIntStats, expected: BigIntStats) {
+  return actual.isFile() && !actual.isSymbolicLink() && actual.nlink === 1n &&
+    actual.dev === expected.dev && actual.ino === expected.ino &&
+    actual.uid === expected.uid && actual.mode === expected.mode;
+}
+
+function assertCurrentDatabaseSidecarsBeforeWriterOpen(
+  databasePath: string,
+  expected: CurrentDatabaseSidecarSnapshot,
+) {
+  const actual = captureCurrentDatabaseSidecars(databasePath);
+  if (expected.wal) {
+    if (
+      !actual.wal || !actual.shm ||
+      !sameSidecarIdentity(actual.wal, expected.wal) ||
+      !sameSidecarIdentity(actual.shm, expected.shm!)
+    ) throw new Error("Application database sidecars changed before writer open");
+    return;
+  }
+  if (actual.wal || actual.shm || actual.journal) {
+    throw new Error("Application database sidecars changed before writer open");
+  }
+}
+
+function assertCurrentDatabaseSidecarsAfterWriterLock(
+  databasePath: string,
+  expected: CurrentDatabaseSidecarSnapshot,
+) {
+  // Once BEGIN IMMEDIATE owns the writer lock, SQLite may legitimately have
+  // created a new WAL/SHM pair without having written the first WAL frame yet.
+  // Collect safety properties without applying the pre-writer hot-WAL topology
+  // rule so a zero-byte WAL plus its private SHM is accepted here.
+  const actual = collectCurrentDatabaseSidecars(databasePath);
+  if (expected.wal) {
+    if (
+      !actual.wal || !actual.shm ||
+      !sameSidecarIdentity(actual.wal, expected.wal) ||
+      !sameSidecarIdentity(actual.shm, expected.shm!)
+    ) throw new Error("Application database sidecars changed while opening");
+    return;
+  }
+  // A normal WAL-mode writer may create its own new WAL/SHM pair. It is
+  // admissible only if both names were absent, the pair is now
+  // private/single-link, and no rollback journal appeared. A pair captured
+  // before inspection, including an idle zero-byte WAL, took the pinned branch
+  // above instead.
+  if (actual.journal || Boolean(actual.wal) !== Boolean(actual.shm)) {
+    throw new Error("Application database sidecars changed while opening");
+  }
+}
+
+export function databaseHasCompleteLegacyMediaMetadata(database: DatabaseSync) {
+  const unresolved = database.prepare(`
+    SELECT 1
+    FROM media_assets
+    WHERE storage_status = 'ready' AND (
+      checksum_sha256 IS NULL OR length(checksum_sha256) <> 64
+      OR checksum_sha256 GLOB '*[^0-9a-f]*'
+      OR (kind IN ('video', 'audio') AND (
+        duration_status <> 'ready'
+        OR duration_seconds IS NULL OR duration_seconds <= 0
+        OR duration_source IS NULL
+        OR duration_source NOT IN ('server-probe', 'provider-task')
+      ))
+    )
+    LIMIT 1
+  `).get();
+  return !unresolved;
+}
+
+function assertExactCurrentDatabase(database: DatabaseSync) {
+  const quickCheck = database.prepare("PRAGMA quick_check").all() as
+    Array<{ quick_check?: unknown }>;
+  if (
+    quickCheck.length !== 1 ||
+    String(quickCheck[0]?.quick_check) !== "ok" ||
+    !databaseMatchesMigrationManifest(database) ||
+    !databaseMatchesSchemaContract(database) ||
+    !databaseHasCompleteLegacyMediaMetadata(database) ||
+    database.prepare("PRAGMA foreign_key_check").all().length !== 0
+  ) throw new Error("Application database is not the exact current schema");
+}
+
+function inspectExistingCurrentDatabase(databasePath: string) {
+  const details = lstatSync(databasePath);
+  const owned = typeof process.getuid === "function" &&
+    details.uid === process.getuid();
+  if (
+    !details.isFile() || details.isSymbolicLink() || details.nlink !== 1 ||
+    !owned || (details.mode & 0o022) !== 0
+  ) {
+    throw new Error("Application database must be an owned regular file");
+  }
+  const sidecars = captureCurrentDatabaseSidecars(databasePath);
+  const inspection = new DatabaseSync(
+    exactCurrentInspectionLocation(databasePath, sidecars),
+    { readOnly: true, timeout: 5_000 },
+  );
+  let transactionOpen = false;
   try {
-    // Lock the whole migration plan before reading its ledger. A second OS
-    // process waits here, then observes the first process's committed plan;
-    // it can never act on a pre-lock schema snapshot or see a partial version
-    // sequence.
-    database.exec("BEGIN IMMEDIATE");
-    migrationTransactionOpen = true;
-
-    const appliedRows = database
-      .prepare("SELECT version, name FROM schema_migrations ORDER BY version")
-      .all() as Array<{ name: string; version: number }>;
-    const knownVersions = new Map(
-      migrations.map(({ name, version }) => [version, name]),
+    inspection.exec("BEGIN");
+    transactionOpen = true;
+    assertExactCurrentDatabase(inspection);
+    duringCurrentDatabaseOpenForTests?.(
+      "inspection-schema-validated",
+      databasePath,
     );
-    for (const row of appliedRows) {
-      if (knownVersions.get(row.version) !== row.name) {
-        throw new Error(`Unknown database migration ${row.version}:${row.name}`);
+    const result = Object.freeze({
+      contentDigest: exactCurrentContentDigest(inspection),
+      details,
+      sidecars,
+    });
+    inspection.exec("ROLLBACK");
+    transactionOpen = false;
+    return result;
+  } finally {
+    if (transactionOpen && inspection.isTransaction) {
+      try {
+        inspection.exec("ROLLBACK");
+      } catch {
+        // Preserve the exact-current inspection failure.
       }
     }
+    inspection.close();
+  }
+}
 
-    const appliedVersions = new Set(appliedRows.map(({ version }) => version));
-    for (const migration of migrations) {
-      if (appliedVersions.has(migration.version)) continue;
-      migration.prepare?.(database);
-      database.exec(migration.sql);
-      database
-        .prepare(`
-          INSERT INTO schema_migrations (version, name, applied_at)
-          VALUES (?, ?, ?)
-        `)
-        .run(migration.version, migration.name, new Date().toISOString());
-    }
-    database.exec(`PRAGMA user_version = ${currentSchemaVersion}`);
-    database.exec("COMMIT");
-    migrationTransactionOpen = false;
+function assertSameCurrentDatabaseIdentity(
+  databasePath: string,
+  expected: NonNullable<ReturnType<typeof lstatSync>>,
+) {
+  const actual = lstatSync(databasePath);
+  if (
+    !actual.isFile() || actual.isSymbolicLink() || actual.nlink !== 1 ||
+    actual.dev !== expected.dev || actual.ino !== expected.ino ||
+    actual.uid !== expected.uid || actual.mode !== expected.mode ||
+    actual.nlink !== expected.nlink || typeof process.getuid !== "function" ||
+    actual.uid !== process.getuid() || (actual.mode & 0o022) !== 0
+  ) throw new Error("Application database changed while opening");
+}
+
+export const migrationIncompleteMarker = ".unboundry-migration-incomplete";
+
+const greenfieldMarkerContract = "unboundry-greenfield-initialization-v1";
+const currentDatabaseOpenReservation =
+  ".unboundry-current-database-open-reservation";
+
+type GreenfieldDirectoryPin = Readonly<{
+  descriptor: number;
+  details: BigIntStats;
+}>;
+
+type GreenfieldFilePin = Readonly<{
+  details: BigIntStats;
+  path: string;
+}>;
+
+function directoryEntryExists(path: string) {
+  try {
+    lstatSync(path);
+    return true;
   } catch (error) {
-    if (migrationTransactionOpen) {
+    if (
+      error && typeof error === "object" && "code" in error &&
+      error.code === "ENOENT"
+    ) return false;
+    throw error;
+  }
+}
+
+function assertApplicationDataDirectory(dataDirectory: string) {
+  const details = lstatSync(dataDirectory);
+  if (
+    details.isSymbolicLink() || !details.isDirectory() ||
+    typeof process.getuid !== "function" || details.uid !== process.getuid() ||
+    (details.mode & 0o022) !== 0
+  ) throw new Error("Application data directory is unsafe");
+}
+
+function pinApplicationDataDirectory(
+  dataDirectory: string,
+): GreenfieldDirectoryPin {
+  const descriptor = openSync(
+    dataDirectory,
+    fileConstants.O_RDONLY |
+      (fileConstants.O_DIRECTORY ?? 0) |
+      (fileConstants.O_NOFOLLOW ?? 0),
+  );
+  try {
+    const details = fstatSync(descriptor, { bigint: true });
+    if (
+      !details.isDirectory() || typeof process.getuid !== "function" ||
+      details.uid !== BigInt(process.getuid()) ||
+      (details.mode & 0o022n) !== 0n
+    ) throw new Error("Application data directory is unsafe");
+    const pathDetails = lstatSync(dataDirectory, { bigint: true });
+    if (
+      pathDetails.isSymbolicLink() || !pathDetails.isDirectory() ||
+      pathDetails.dev !== details.dev || pathDetails.ino !== details.ino ||
+      pathDetails.uid !== details.uid || pathDetails.mode !== details.mode
+    ) throw new Error("Application data directory changed");
+    return Object.freeze({ descriptor, details });
+  } catch (error) {
+    closeSync(descriptor);
+    throw error;
+  }
+}
+
+function assertPinnedApplicationDataDirectory(
+  dataDirectory: string,
+  pin: GreenfieldDirectoryPin,
+) {
+  const descriptorDetails = fstatSync(pin.descriptor, { bigint: true });
+  const pathDetails = lstatSync(dataDirectory, { bigint: true });
+  for (const actual of [descriptorDetails, pathDetails]) {
+    if (
+      !actual.isDirectory() || actual.isSymbolicLink() ||
+      actual.dev !== pin.details.dev || actual.ino !== pin.details.ino ||
+      actual.uid !== pin.details.uid || actual.mode !== pin.details.mode
+    ) throw new Error("Application data directory changed");
+  }
+}
+
+function exactDirectoryEntries(dataDirectory: string, expected: string[]) {
+  const actual = readdirSync(dataDirectory).sort();
+  const sortedExpected = [...expected].sort();
+  if (
+    actual.length !== sortedExpected.length ||
+    actual.some((name, index) => name !== sortedExpected[index])
+  ) throw new Error("Application data directory entries changed");
+}
+
+function assertPrivateOwnedRegularFile(details: BigIntStats) {
+  if (
+    !details.isFile() || details.isSymbolicLink() ||
+    typeof process.getuid !== "function" ||
+    details.uid !== BigInt(process.getuid()) ||
+    (details.mode & 0o777n) !== 0o600n
+  ) throw new Error("Greenfield initialization file is unsafe");
+}
+
+function samePinnedFileCore(actual: BigIntStats, expected: BigIntStats) {
+  return actual.dev === expected.dev && actual.ino === expected.ino &&
+    actual.uid === expected.uid && actual.mode === expected.mode;
+}
+
+function assertPinnedFilePath(
+  pin: GreenfieldFilePin,
+  expectedLinks: bigint,
+  options: { exactContentMetadata?: boolean } = {},
+) {
+  const actual = lstatSync(pin.path, { bigint: true });
+  assertPrivateOwnedRegularFile(actual);
+  if (
+    !samePinnedFileCore(actual, pin.details) || actual.nlink !== expectedLinks ||
+    (options.exactContentMetadata && (
+      actual.size !== pin.details.size ||
+      actual.mtimeNs !== pin.details.mtimeNs ||
+      actual.ctimeNs !== pin.details.ctimeNs
+    ))
+  ) throw new Error("Greenfield initialization entry changed");
+  return actual;
+}
+
+function assertPinnedDescriptor(
+  descriptor: number,
+  pin: GreenfieldFilePin,
+  expectedLinks: bigint,
+  options: { exactContentMetadata?: boolean } = {},
+) {
+  const actual = fstatSync(descriptor, { bigint: true });
+  assertPrivateOwnedRegularFile(actual);
+  if (
+    !samePinnedFileCore(actual, pin.details) || actual.nlink !== expectedLinks ||
+    (options.exactContentMetadata && (
+      actual.size !== pin.details.size ||
+      actual.mtimeNs !== pin.details.mtimeNs ||
+      actual.ctimeNs !== pin.details.ctimeNs
+    ))
+  ) throw new Error("Greenfield initialization entry changed");
+}
+
+function createPinnedGreenfieldFile(path: string) {
+  const descriptor = openSync(
+    path,
+    fileConstants.O_CREAT | fileConstants.O_EXCL | fileConstants.O_RDWR |
+      (fileConstants.O_NOFOLLOW ?? 0),
+    0o600,
+  );
+  try {
+    fchmodSync(descriptor, 0o600);
+    const details = fstatSync(descriptor, { bigint: true });
+    assertPrivateOwnedRegularFile(details);
+    if (details.nlink !== 1n) {
+      throw new Error("Greenfield initialization file link count is unsafe");
+    }
+    return Object.freeze({ descriptor, details });
+  } catch (error) {
+    closeSync(descriptor);
+    throw error;
+  }
+}
+
+type CurrentDatabaseOpenReservation = Readonly<{
+  dataDirectory: string;
+  descriptor: number;
+  directoryPin: GreenfieldDirectoryPin;
+  pin: GreenfieldFilePin;
+}>;
+
+const currentDatabaseOpenReservationWaitMilliseconds = 25;
+const currentDatabaseOpenReservationTimeoutMilliseconds = 5_000;
+const nanosecondsPerMillisecond = 1_000_000n;
+const currentDatabaseOpenReservationWaitCell = new Int32Array(
+  new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT),
+);
+
+function isFileAlreadyExistsError(error: unknown) {
+  return Boolean(
+    error && typeof error === "object" && "code" in error &&
+      error.code === "EEXIST",
+  );
+}
+
+function isFileMissingError(error: unknown) {
+  return Boolean(
+    error && typeof error === "object" && "code" in error &&
+      error.code === "ENOENT",
+  );
+}
+
+function assertActiveCompetingCurrentDatabaseOpenReservation(
+  dataDirectory: string,
+  directoryPin: GreenfieldDirectoryPin,
+) {
+  const reservationPath = join(dataDirectory, currentDatabaseOpenReservation);
+  const descriptor = openSync(
+    reservationPath,
+    fileConstants.O_RDONLY | (fileConstants.O_NOFOLLOW ?? 0),
+  );
+  try {
+    const details = fstatSync(descriptor, { bigint: true });
+    const pin = Object.freeze({ details, path: reservationPath });
+    assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+    assertPinnedDescriptor(descriptor, pin, 1n, { exactContentMetadata: true });
+    assertPinnedFilePath(pin, 1n, { exactContentMetadata: true });
+    if (details.size < 1n || details.size > 512n) {
+      throw new Error("Application data maintenance is incomplete");
+    }
+    const bytes = Buffer.alloc(Number(details.size));
+    let offset = 0;
+    while (offset < bytes.length) {
+      const count = readSync(
+        descriptor,
+        bytes,
+        offset,
+        bytes.length - offset,
+        offset,
+      );
+      if (count === 0) {
+        throw new Error("Application data maintenance is incomplete");
+      }
+      offset += count;
+    }
+    assertPinnedDescriptor(descriptor, pin, 1n, { exactContentMetadata: true });
+    assertPinnedFilePath(pin, 1n, { exactContentMetadata: true });
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(bytes.toString("utf8"));
+    } catch {
+      throw new Error("Application data maintenance is incomplete");
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Application data maintenance is incomplete");
+    }
+    const record = parsed as Record<string, unknown>;
+    const keys = Object.keys(record).sort();
+    if (
+      keys.length !== 3 || keys[0] !== "contract" || keys[1] !== "nonce" ||
+      keys[2] !== "pid" ||
+      record.contract !== "unboundry-current-database-open-reservation-v1" ||
+      typeof record.nonce !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+        .test(record.nonce) ||
+      !Number.isSafeInteger(record.pid) || Number(record.pid) <= 0 ||
+      record.pid === process.pid
+    ) throw new Error("Application data maintenance is incomplete");
+    try {
+      process.kill(Number(record.pid), 0);
+    } catch {
+      // A stale or foreign reservation is never removed or waited through.
+      throw new Error("Application data maintenance is incomplete");
+    }
+    assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+    assertPinnedDescriptor(descriptor, pin, 1n, { exactContentMetadata: true });
+    assertPinnedFilePath(pin, 1n, { exactContentMetadata: true });
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function acquireCurrentDatabaseOpenReservationOnce(
+  dataDirectory: string,
+): CurrentDatabaseOpenReservation {
+  const directoryPin = pinApplicationDataDirectory(dataDirectory);
+  const reservationPath = join(dataDirectory, currentDatabaseOpenReservation);
+  let descriptor: number | undefined;
+  let pin: GreenfieldFilePin | undefined;
+  try {
+    assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+    const created = createPinnedGreenfieldFile(reservationPath);
+    descriptor = created.descriptor;
+    writeFileSync(descriptor, `${JSON.stringify({
+      contract: "unboundry-current-database-open-reservation-v1",
+      nonce: randomUUID(),
+      pid: process.pid,
+    })}\n`, { encoding: "utf8" });
+    fsyncSync(descriptor);
+    pin = Object.freeze({
+      details: fstatSync(descriptor, { bigint: true }),
+      path: reservationPath,
+    });
+    assertPinnedDescriptor(descriptor, pin, 1n, {
+      exactContentMetadata: true,
+    });
+    assertPinnedFilePath(pin, 1n, { exactContentMetadata: true });
+    fsyncSync(directoryPin.descriptor);
+    assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+    return Object.freeze({ dataDirectory, descriptor, directoryPin, pin });
+  } catch (error) {
+    if (descriptor !== undefined && pin) {
+      try {
+        removeCapturedPathIfPresent(dataDirectory, directoryPin, pin);
+        fsyncSync(directoryPin.descriptor);
+      } catch {
+        // Never remove a replacement reservation while preserving acquisition
+        // failure. A retained reservation keeps later opens fail-closed.
+      }
+    }
+    if (descriptor !== undefined) {
+      try {
+        closeSync(descriptor);
+      } catch {
+        // Preserve the acquisition failure.
+      }
+    }
+    try {
+      closeSync(directoryPin.descriptor);
+    } catch {
+      // Preserve the acquisition failure.
+    }
+    throw error;
+  }
+}
+
+function acquireCurrentDatabaseOpenReservation(
+  dataDirectory: string,
+): CurrentDatabaseOpenReservation {
+  const deadline = process.hrtime.bigint() +
+    BigInt(currentDatabaseOpenReservationTimeoutMilliseconds) *
+      nanosecondsPerMillisecond;
+  while (true) {
+    try {
+      return acquireCurrentDatabaseOpenReservationOnce(dataDirectory);
+    } catch (error) {
+      if (!isFileAlreadyExistsError(error)) throw error;
+    }
+
+    const directoryPin = pinApplicationDataDirectory(dataDirectory);
+    let disappeared = false;
+    try {
+      assertActiveCompetingCurrentDatabaseOpenReservation(
+        dataDirectory,
+        directoryPin,
+      );
+    } catch (error) {
+      if (isFileMissingError(error)) disappeared = true;
+      else throw error;
+    } finally {
+      closeSync(directoryPin.descriptor);
+    }
+    if (disappeared) continue;
+
+    const remainingNanoseconds = deadline - process.hrtime.bigint();
+    if (remainingNanoseconds <= 0n) {
+      throw new Error("Application data maintenance is incomplete");
+    }
+    const remainingMilliseconds = Number(
+      (remainingNanoseconds + nanosecondsPerMillisecond - 1n) /
+        nanosecondsPerMillisecond,
+    );
+    Atomics.wait(
+      currentDatabaseOpenReservationWaitCell,
+      0,
+      0,
+      Math.min(
+        currentDatabaseOpenReservationWaitMilliseconds,
+        remainingMilliseconds,
+      ),
+    );
+  }
+}
+
+function releaseCurrentDatabaseOpenReservation(
+  reservation: CurrentDatabaseOpenReservation,
+) {
+  let releaseError: unknown;
+  try {
+    assertPinnedApplicationDataDirectory(
+      reservation.dataDirectory,
+      reservation.directoryPin,
+    );
+    assertPinnedDescriptor(reservation.descriptor, reservation.pin, 1n, {
+      exactContentMetadata: true,
+    });
+    assertPinnedFilePath(reservation.pin, 1n, { exactContentMetadata: true });
+    unlinkSync(reservation.pin.path);
+    fsyncSync(reservation.directoryPin.descriptor);
+    // unlink() necessarily changes ctime together with nlink. Preserve every
+    // other pinned property without treating that kernel-owned ctime update as
+    // a replacement or content mutation.
+    assertPinnedDescriptor(reservation.descriptor, reservation.pin, 0n);
+    const released = fstatSync(reservation.descriptor, { bigint: true });
+    if (
+      released.size !== reservation.pin.details.size ||
+      released.mtimeNs !== reservation.pin.details.mtimeNs
+    ) throw new Error("Greenfield initialization entry changed");
+    assertPinnedApplicationDataDirectory(
+      reservation.dataDirectory,
+      reservation.directoryPin,
+    );
+  } catch (error) {
+    releaseError = error;
+  }
+  for (const descriptor of [
+    reservation.descriptor,
+    reservation.directoryPin.descriptor,
+  ]) {
+    try {
+      closeSync(descriptor);
+    } catch (error) {
+      releaseError ??= error;
+    }
+  }
+  if (releaseError) throw releaseError;
+}
+
+function assertCurrentDatabaseOpenReservation(
+  reservation: CurrentDatabaseOpenReservation,
+) {
+  assertPinnedApplicationDataDirectory(
+    reservation.dataDirectory,
+    reservation.directoryPin,
+  );
+  assertPinnedDescriptor(reservation.descriptor, reservation.pin, 1n, {
+    exactContentMetadata: true,
+  });
+  assertPinnedFilePath(reservation.pin, 1n, { exactContentMetadata: true });
+}
+
+function bestEffortEnsureGreenfieldFailureMarker(
+  dataDirectory: string,
+  opId: string,
+) {
+  let descriptor: number | undefined;
+  try {
+    if (!directoryEntryExists(dataDirectory)) {
+      mkdirSync(dataDirectory, { mode: 0o700 });
+    }
+    assertApplicationDataDirectory(dataDirectory);
+    const markerPath = join(dataDirectory, migrationIncompleteMarker);
+    if (directoryEntryExists(markerPath)) return;
+    descriptor = openSync(
+      markerPath,
+      fileConstants.O_CREAT | fileConstants.O_EXCL | fileConstants.O_WRONLY |
+        (fileConstants.O_NOFOLLOW ?? 0),
+      0o600,
+    );
+    fchmodSync(descriptor, 0o600);
+    writeFileSync(descriptor, `${JSON.stringify({
+      contract: greenfieldMarkerContract,
+      failed: true,
+      opId,
+    })}\n`, { encoding: "utf8" });
+    fsyncSync(descriptor);
+    const directory = openSync(
+      dataDirectory,
+      fileConstants.O_RDONLY |
+        (fileConstants.O_DIRECTORY ?? 0) |
+        (fileConstants.O_NOFOLLOW ?? 0),
+    );
+    try {
+      fsyncSync(directory);
+    } finally {
+      closeSync(directory);
+    }
+  } catch {
+    // A foreign directory or marker is preserved. Startup remains fail-closed
+    // whenever the best-effort marker could be installed.
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
+function removeCapturedPathIfPresent(
+  dataDirectory: string,
+  directoryPin: GreenfieldDirectoryPin,
+  pin: GreenfieldFilePin,
+) {
+  assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+  try {
+    const actual = lstatSync(pin.path, { bigint: true });
+    if (!samePinnedFileCore(actual, pin.details)) return false;
+    unlinkSync(pin.path);
+    return true;
+  } catch (error) {
+    if (
+      error && typeof error === "object" && "code" in error &&
+      error.code === "ENOENT"
+    ) return true;
+    throw error;
+  }
+}
+
+function openPinnedGreenfieldDatabase(
+  dataDirectory: string,
+  directoryPin: GreenfieldDirectoryPin,
+  markerPin: GreenfieldFilePin,
+  markerDescriptor: number,
+  databasePin: GreenfieldFilePin,
+) {
+  const databasePath = databasePin.path;
+  assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+  exactDirectoryEntries(dataDirectory, [
+    migrationIncompleteMarker,
+    "unboundry.sqlite",
+  ]);
+  assertPinnedFilePath(markerPin, 1n, { exactContentMetadata: true });
+  assertPinnedDescriptor(markerDescriptor, markerPin, 1n, {
+    exactContentMetadata: true,
+  });
+  assertPinnedFilePath(databasePin, 1n, { exactContentMetadata: true });
+  const database = new DatabaseSync(
+    exactCurrentInspectionLocation(databasePath),
+    { readOnly: true, timeout: 5_000 },
+  );
+  try {
+    assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+    assertPinnedFilePath(databasePin, 1n, { exactContentMetadata: true });
+    assertExactCurrentDatabase(database);
+    assertPinnedFilePath(databasePin, 1n, { exactContentMetadata: true });
+    assertPinnedFilePath(markerPin, 1n, { exactContentMetadata: true });
+    assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+    exactDirectoryEntries(dataDirectory, [
+      migrationIncompleteMarker,
+      "unboundry.sqlite",
+    ]);
+    assertPinnedFilePath(databasePin, 1n, { exactContentMetadata: true });
+    assertPinnedFilePath(markerPin, 1n, { exactContentMetadata: true });
+  } finally {
+    database.close();
+  }
+}
+
+function exactCurrentContentDigest(database: DatabaseSync) {
+  const hash = createHash("sha256");
+  const objects = database.prepare(`
+    SELECT type, name, tbl_name, sql
+    FROM sqlite_schema
+    ORDER BY type, name
+  `);
+  objects.setReturnArrays(true);
+  for (const row of objects.iterate() as Iterable<unknown[]>) {
+    hash.update(JSON.stringify(row));
+  }
+  const tableNames = (database.prepare(`
+    SELECT name
+    FROM sqlite_schema
+    WHERE type = 'table'
+    ORDER BY name
+  `).all() as Array<{ name?: unknown }>).map((row) => String(row.name));
+  for (const tableName of tableNames) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(tableName)) {
+      throw new Error("Application database table name is unsafe");
+    }
+    hash.update(`table:${tableName}\n`);
+    const rows = database.prepare(
+      `SELECT * FROM "${tableName}" ORDER BY rowid`,
+    );
+    rows.setReturnArrays(true);
+    for (const row of rows.iterate() as Iterable<unknown[]>) {
+      hash.update(JSON.stringify(row, (_key, value) =>
+        typeof value === "bigint" ? { $bigint: value.toString() }
+        : Buffer.isBuffer(value) || value instanceof Uint8Array
+        ? { $bytes: Buffer.from(value).toString("base64") }
+        : value));
+    }
+  }
+  return hash.digest("hex");
+}
+
+function openFinalPinnedGreenfieldWriter(
+  dataDirectory: string,
+  directoryPin: GreenfieldDirectoryPin,
+  markerPin: GreenfieldFilePin,
+  markerDescriptor: number,
+  databasePin: GreenfieldFilePin,
+  expectedDigest: string,
+) {
+  assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+  exactDirectoryEntries(dataDirectory, [
+    migrationIncompleteMarker,
+    "unboundry.sqlite",
+  ]);
+  assertPinnedFilePath(markerPin, 1n, { exactContentMetadata: true });
+  assertPinnedDescriptor(markerDescriptor, markerPin, 1n, {
+    exactContentMetadata: true,
+  });
+  assertPinnedFilePath(databasePin, 1n, { exactContentMetadata: true });
+  const database = new DatabaseSync(databasePin.path, { timeout: 5_000 });
+  let transactionOpen = false;
+  try {
+    database.exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
+    database.exec("BEGIN IMMEDIATE");
+    transactionOpen = true;
+    assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+    assertPinnedFilePath(databasePin, 1n, { exactContentMetadata: true });
+    assertPinnedFilePath(markerPin, 1n, { exactContentMetadata: true });
+    assertExactCurrentDatabase(database);
+    if (exactCurrentContentDigest(database) !== expectedDigest) {
+      throw new Error("Greenfield database content changed before final open");
+    }
+    assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+    assertPinnedFilePath(databasePin, 1n, { exactContentMetadata: true });
+    assertPinnedFilePath(markerPin, 1n, { exactContentMetadata: true });
+    // Return with the write transaction held. The caller removes the marker,
+    // revalidates content/identity, and only then commits this same connection.
+    return database;
+  } catch (error) {
+    if (transactionOpen && database.isTransaction) {
       try {
         database.exec("ROLLBACK");
       } catch {
-        // Preserve the migration failure; close() below releases any lock even
-        // when SQLite has already rolled the transaction back internally.
+        // Preserve the pinned final-open failure.
       }
     }
     database.close();
     throw error;
   }
+}
 
-  backfillLocalMediaChecksums(database, dataDirectory);
-  backfillTrustedMediaDurations(database, dataDirectory);
-  return database;
+function assertFinalGreenfieldOpenEntries(
+  dataDirectory: string,
+  directoryPin: GreenfieldDirectoryPin,
+  databasePin: GreenfieldFilePin,
+  allowMarker = false,
+) {
+  assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+  const names = readdirSync(dataDirectory).sort();
+  const allowed = new Set([
+    "unboundry.sqlite",
+    "unboundry.sqlite-shm",
+    "unboundry.sqlite-wal",
+  ]);
+  if (allowMarker) allowed.add(migrationIncompleteMarker);
+  if (
+    !names.includes("unboundry.sqlite") ||
+    (allowMarker && !names.includes(migrationIncompleteMarker)) ||
+    names.some((name) => !allowed.has(name))
+  ) throw new Error("Application data directory entries changed");
+  assertPinnedFilePath(databasePin, 1n, { exactContentMetadata: true });
+  for (const name of names) {
+    if (name === "unboundry.sqlite" || name === migrationIncompleteMarker) {
+      continue;
+    }
+    const details = lstatSync(join(dataDirectory, name), { bigint: true });
+    if (
+      !details.isFile() || details.isSymbolicLink() || details.nlink !== 1n ||
+      typeof process.getuid !== "function" ||
+      details.uid !== BigInt(process.getuid()) ||
+      (details.mode & 0o022n) !== 0n
+    ) throw new Error("Current database sidecar is unsafe");
+  }
+  assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+  assertPinnedFilePath(databasePin, 1n, { exactContentMetadata: true });
+}
+
+/**
+ * Bootstrap a first-install database only from an already-provisioned private
+ * data directory. Startup must not reinterpret a pre-existing empty, legacy,
+ * linked or maintenance-blocked database as a greenfield installation; those
+ * shapes remain owned by the read-only lifecycle probe and explicit recovery
+ * roles. `openAppDatabase` performs the private build and atomic no-replace
+ * publication after this eligibility check.
+ */
+export function initializeGreenfieldAppDatabaseAtProcessStartup(
+  dataDirectory = appDataDirectory(),
+) {
+  try {
+    if (!directoryEntryExists(dataDirectory)) return false;
+    assertApplicationDataDirectory(dataDirectory);
+    // Vite invokes this hook before media recovery or any business store. No
+    // startup control entry is required at this point, so a genuine first
+    // install is an entry-free directory. In particular, existing media,
+    // secrets, backup residue, or an unknown name must not be paired with a
+    // newly-created empty database after the original database is lost.
+    if (readdirSync(dataDirectory).length !== 0) return false;
+    if (
+      directoryEntryExists(join(dataDirectory, "unboundry.sqlite")) ||
+      directoryEntryExists(join(dataDirectory, ".unboundry-restore-incomplete")) ||
+      directoryEntryExists(join(dataDirectory, migrationIncompleteMarker))
+    ) return false;
+  } catch {
+    // Startup bootstrap is deliberately narrower than ordinary database open.
+    // Inaccessible or unsafe state remains untouched and is classified by the
+    // process-only liveness/read-only readiness path.
+    return false;
+  }
+
+  const database = openAppDatabase(dataDirectory);
+  try {
+    assertExactCurrentDatabase(database);
+  } finally {
+    database.close();
+  }
+  return true;
+}
+
+export function openAppDatabase(
+  dataDirectory = appDataDirectory(),
+): DatabaseSync {
+  const databasePath = join(dataDirectory, "unboundry.sqlite");
+  if (directoryEntryExists(dataDirectory)) {
+    assertApplicationDataDirectory(dataDirectory);
+  }
+  for (const marker of [
+    ".unboundry-restore-incomplete",
+    migrationIncompleteMarker,
+  ]) {
+    if (directoryEntryExists(join(dataDirectory, marker))) {
+      throw new Error("Application data maintenance is incomplete");
+    }
+  }
+
+  if (directoryEntryExists(databasePath)) {
+    // This read-only guard runs before any writer connection, journal pragma,
+    // backfill or schema statement. Historic and counterfeit schemas therefore
+    // fail without being upgraded by an ordinary API request.
+    // The private O_EXCL reservation serializes every cooperative app/CLI open
+    // from initial inspection through acquisition of SQLite's writer lock. The
+    // directory is owner-only and the reservation is inode-pinned and durable;
+    // an uncooperative process running as the same OS user remains outside this
+    // cooperative boundary and is not claimed to be made impossible here.
+    const reservation = acquireCurrentDatabaseOpenReservation(dataDirectory);
+    let openedDatabase: DatabaseSync | undefined;
+    let openFailure: unknown;
+    try {
+      const inspected = inspectExistingCurrentDatabase(databasePath);
+      duringCurrentDatabaseOpenForTests?.(
+        "before-writer-sidecar-validation",
+        databasePath,
+      );
+      assertCurrentDatabaseOpenReservation(reservation);
+      assertSameCurrentDatabaseIdentity(databasePath, inspected.details);
+      assertCurrentDatabaseSidecarsBeforeWriterOpen(
+        databasePath,
+        inspected.sidecars,
+      );
+      const database = new DatabaseSync(databasePath, { timeout: 5_000 });
+      let transactionOpen = false;
+      try {
+        database.exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
+        database.exec("BEGIN IMMEDIATE");
+        transactionOpen = true;
+        assertCurrentDatabaseOpenReservation(reservation);
+        assertSameCurrentDatabaseIdentity(databasePath, inspected.details);
+        assertCurrentDatabaseSidecarsAfterWriterLock(
+          databasePath,
+          inspected.sidecars,
+        );
+        // Close the read-only-check/writer-open TOCTOU under the write lock.
+        assertExactCurrentDatabase(database);
+        if (exactCurrentContentDigest(database) !== inspected.contentDigest) {
+          throw new Error("Application database changed while opening");
+        }
+        assertSameCurrentDatabaseIdentity(databasePath, inspected.details);
+        assertCurrentDatabaseSidecarsAfterWriterLock(
+          databasePath,
+          inspected.sidecars,
+        );
+        assertCurrentDatabaseOpenReservation(reservation);
+        database.exec("COMMIT");
+        transactionOpen = false;
+        assertSameCurrentDatabaseIdentity(databasePath, inspected.details);
+        openedDatabase = database;
+      } catch (error) {
+        if (transactionOpen && database.isTransaction) {
+          try {
+            database.exec("ROLLBACK");
+          } catch {
+            // Preserve the current-schema failure.
+          }
+        }
+        database.close();
+        throw error;
+      }
+    } catch (error) {
+      openFailure = error;
+    }
+    try {
+      releaseCurrentDatabaseOpenReservation(reservation);
+    } catch (error) {
+      openFailure ??= error;
+    }
+    if (openFailure) {
+      if (openedDatabase) {
+        try {
+          openedDatabase.close();
+        } catch {
+          // Preserve the open/reservation failure.
+        }
+      }
+      throw openFailure;
+    }
+    return openedDatabase!;
+  }
+
+  // Greenfield publication is a maintenance operation, not a fallback for a
+  // missing database in an occupied directory. Pin the initially empty private
+  // directory, publish an exclusive durable marker before building anything,
+  // and keep that marker until the exact-current inode is fully validated.
+  if (!directoryEntryExists(dataDirectory)) {
+    mkdirSync(dataDirectory, { mode: 0o700 });
+  }
+  assertApplicationDataDirectory(dataDirectory);
+  if (
+    directoryEntryExists(join(dataDirectory, currentDatabaseOpenReservation))
+  ) throw new Error("Application data maintenance is incomplete");
+  const directoryPin = pinApplicationDataDirectory(dataDirectory);
+  const opId = randomUUID();
+  const markerPath = join(dataDirectory, migrationIncompleteMarker);
+  const temporaryPath = join(
+    dataDirectory,
+    `.unboundry-greenfield-${opId}.sqlite`,
+  );
+  let markerDescriptor: number | undefined;
+  let markerPin: GreenfieldFilePin | undefined;
+  let temporaryDescriptor: number | undefined;
+  let temporaryPin: GreenfieldFilePin | undefined;
+  let database: DatabaseSync | undefined;
+  let returnedDatabase: DatabaseSync | undefined;
+  let expectedContentDigest: string | undefined;
+  let transactionOpen = false;
+  let rollbackProvedSafe = false;
+  let destructiveRollbackAllowed = true;
+  let terminalPublicationComplete = false;
+  try {
+    assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+    exactDirectoryEntries(dataDirectory, []);
+
+    const createdMarker = createPinnedGreenfieldFile(markerPath);
+    markerDescriptor = createdMarker.descriptor;
+    const markerDocument = `${JSON.stringify({
+      contract: greenfieldMarkerContract,
+      dataDirectory: {
+        dev: directoryPin.details.dev.toString(),
+        ino: directoryPin.details.ino.toString(),
+        mode: directoryPin.details.mode.toString(8),
+        uid: directoryPin.details.uid.toString(),
+      },
+      opId,
+    })}\n`;
+    writeFileSync(markerDescriptor, markerDocument, { encoding: "utf8" });
+    fsyncSync(markerDescriptor);
+    markerPin = Object.freeze({
+      details: fstatSync(markerDescriptor, { bigint: true }),
+      path: markerPath,
+    });
+    assertPrivateOwnedRegularFile(markerPin.details);
+    assertPinnedFilePath(markerPin, 1n, { exactContentMetadata: true });
+    fsyncSync(directoryPin.descriptor);
+    duringGreenfieldDatabaseInitializationForTests?.("marker-published");
+    assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+    exactDirectoryEntries(dataDirectory, [migrationIncompleteMarker]);
+    assertPinnedFilePath(markerPin, 1n, { exactContentMetadata: true });
+
+    const reservation = createPinnedGreenfieldFile(temporaryPath);
+    temporaryDescriptor = reservation.descriptor;
+    temporaryPin = Object.freeze({
+      details: reservation.details,
+      path: temporaryPath,
+    });
+    closeSync(temporaryDescriptor);
+    temporaryDescriptor = undefined;
+    duringGreenfieldDatabaseInitializationForTests?.("reservation-closed");
+    assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+    exactDirectoryEntries(dataDirectory, [
+      migrationIncompleteMarker,
+      basename(temporaryPath),
+    ]);
+    assertPinnedFilePath(markerPin, 1n, { exactContentMetadata: true });
+    assertPinnedFilePath(temporaryPin, 1n, { exactContentMetadata: true });
+
+    database = new DatabaseSync(temporaryPath, { timeout: 5_000 });
+    database.exec(
+      "PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;" +
+        "PRAGMA busy_timeout = 5000;" +
+        "CREATE TABLE IF NOT EXISTS schema_migrations (\n" +
+        "      version INTEGER PRIMARY KEY,\n" +
+        "      name TEXT NOT NULL,\n" +
+        "      applied_at TEXT NOT NULL\n" +
+        "    );",
+    );
+    database.exec("BEGIN IMMEDIATE");
+    transactionOpen = true;
+    applyPendingSchemaMigrationsInTransaction(database, { sourceVersion: 0 });
+    backfillLegacyMediaStrict(database, dataDirectory, {
+      callerOwnsTransaction: true,
+    });
+    assertExactCurrentDatabase(database);
+    expectedContentDigest = exactCurrentContentDigest(database);
+    database.exec("COMMIT");
+    transactionOpen = false;
+    database.close();
+    database = undefined;
+
+    temporaryDescriptor = openSync(
+      temporaryPath,
+      fileConstants.O_RDONLY | (fileConstants.O_NOFOLLOW ?? 0),
+    );
+    const completedTemporary = fstatSync(temporaryDescriptor, { bigint: true });
+    assertPrivateOwnedRegularFile(completedTemporary);
+    if (!samePinnedFileCore(completedTemporary, temporaryPin.details)) {
+      throw new Error("Greenfield initialization entry changed");
+    }
+    temporaryPin = Object.freeze({
+      details: completedTemporary,
+      path: temporaryPath,
+    });
+    fsyncSync(temporaryDescriptor);
+    duringGreenfieldDatabaseInitializationForTests?.("database-closed");
+    assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+    exactDirectoryEntries(dataDirectory, [
+      migrationIncompleteMarker,
+      basename(temporaryPath),
+    ]);
+    assertPinnedDescriptor(temporaryDescriptor, temporaryPin, 1n, {
+      exactContentMetadata: true,
+    });
+    assertPinnedFilePath(temporaryPin, 1n, { exactContentMetadata: true });
+    assertPinnedFilePath(markerPin, 1n, { exactContentMetadata: true });
+
+    // link(2) is an atomic no-replace publication on this pinned filesystem.
+    linkSync(temporaryPath, databasePath);
+    fsyncSync(directoryPin.descriptor);
+    afterGreenfieldDatabasePublishForTests?.(databasePath);
+    assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+    exactDirectoryEntries(dataDirectory, [
+      migrationIncompleteMarker,
+      basename(temporaryPath),
+      "unboundry.sqlite",
+    ]);
+    const linkedDetails = fstatSync(temporaryDescriptor, { bigint: true });
+    assertPrivateOwnedRegularFile(linkedDetails);
+    if (
+      !samePinnedFileCore(linkedDetails, temporaryPin.details) ||
+      linkedDetails.nlink !== 2n ||
+      linkedDetails.size !== temporaryPin.details.size ||
+      linkedDetails.mtimeNs !== temporaryPin.details.mtimeNs
+    ) throw new Error("Greenfield publication identity mismatch");
+    const linkedPin = Object.freeze({
+      details: linkedDetails,
+      path: temporaryPath,
+    });
+    assertPinnedDescriptor(temporaryDescriptor, linkedPin, 2n, {
+      exactContentMetadata: true,
+    });
+    const privateLink = assertPinnedFilePath(linkedPin, 2n, {
+      exactContentMetadata: true,
+    });
+    const publishedPin = Object.freeze({
+      details: linkedPin.details,
+      path: databasePath,
+    });
+    const publicLink = assertPinnedFilePath(publishedPin, 2n, {
+      exactContentMetadata: true,
+    });
+    if (
+      privateLink.dev !== publicLink.dev || privateLink.ino !== publicLink.ino
+    ) throw new Error("Greenfield publication identity mismatch");
+    assertPinnedFilePath(markerPin, 1n, { exactContentMetadata: true });
+
+    removeCapturedPathIfPresent(dataDirectory, directoryPin, linkedPin);
+    fsyncSync(directoryPin.descriptor);
+    const publishedDetails = fstatSync(temporaryDescriptor, { bigint: true });
+    assertPrivateOwnedRegularFile(publishedDetails);
+    if (
+      !samePinnedFileCore(publishedDetails, linkedPin.details) ||
+      publishedDetails.nlink !== 1n ||
+      publishedDetails.size !== linkedPin.details.size ||
+      publishedDetails.mtimeNs !== linkedPin.details.mtimeNs
+    ) throw new Error("Greenfield publication identity mismatch");
+    const singlyLinkedPublishedPin = Object.freeze({
+      details: publishedDetails,
+      path: databasePath,
+    });
+    assertPinnedDescriptor(temporaryDescriptor, singlyLinkedPublishedPin, 1n, {
+      exactContentMetadata: true,
+    });
+    assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+    exactDirectoryEntries(dataDirectory, [
+      migrationIncompleteMarker,
+      "unboundry.sqlite",
+    ]);
+    assertPinnedFilePath(singlyLinkedPublishedPin, 1n, {
+      exactContentMetadata: true,
+    });
+    assertPinnedFilePath(markerPin, 1n, { exactContentMetadata: true });
+
+    openPinnedGreenfieldDatabase(
+      dataDirectory,
+      directoryPin,
+      markerPin,
+      markerDescriptor,
+      singlyLinkedPublishedPin,
+    );
+    if (!expectedContentDigest) {
+      throw new Error("Greenfield database content digest is unavailable");
+    }
+    returnedDatabase = openFinalPinnedGreenfieldWriter(
+      dataDirectory,
+      directoryPin,
+      markerPin,
+      markerDescriptor,
+      singlyLinkedPublishedPin,
+      expectedContentDigest,
+    );
+    assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+    assertFinalGreenfieldOpenEntries(
+      dataDirectory,
+      directoryPin,
+      singlyLinkedPublishedPin,
+      true,
+    );
+    assertPinnedFilePath(markerPin, 1n, { exactContentMetadata: true });
+    assertExactCurrentDatabase(returnedDatabase);
+    if (exactCurrentContentDigest(returnedDatabase) !== expectedContentDigest) {
+      throw new Error("Greenfield database content changed before final commit");
+    }
+    assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+    assertPinnedFilePath(singlyLinkedPublishedPin, 1n, {
+      exactContentMetadata: true,
+    });
+    // A COMMIT attempt can be durably successful even if surfacing its result
+    // fails. From this point onward the published inode is never removed; every
+    // failure retains or recreates the maintenance marker fail-closed.
+    destructiveRollbackAllowed = false;
+    returnedDatabase.exec("COMMIT");
+    assertExactCurrentDatabase(returnedDatabase);
+    if (exactCurrentContentDigest(returnedDatabase) !== expectedContentDigest) {
+      throw new Error("Greenfield database content changed after final commit");
+    }
+    assertFinalGreenfieldOpenEntries(
+      dataDirectory,
+      directoryPin,
+      singlyLinkedPublishedPin,
+      true,
+    );
+    assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+    assertPinnedFilePath(singlyLinkedPublishedPin, 1n, {
+      exactContentMetadata: true,
+    });
+    assertPinnedDescriptor(markerDescriptor, markerPin, 1n, {
+      exactContentMetadata: true,
+    });
+    assertPinnedFilePath(markerPin, 1n, { exactContentMetadata: true });
+    duringGreenfieldDatabaseInitializationForTests?.(
+      "final-validation-complete",
+    );
+
+    // This is the publication point. No fallible product validation follows:
+    // remove only the still-pinned marker, durably publish that removal, and
+    // return the already-validated writer connection immediately.
+    assertPinnedDescriptor(markerDescriptor, markerPin, 1n, {
+      exactContentMetadata: true,
+    });
+    assertPinnedFilePath(markerPin, 1n, { exactContentMetadata: true });
+    unlinkSync(markerPath);
+    fsyncSync(directoryPin.descriptor);
+    terminalPublicationComplete = true;
+    return returnedDatabase!;
+  } catch (error) {
+    if (transactionOpen && database?.isTransaction) {
+      try {
+        database.exec("ROLLBACK");
+      } catch {
+        // Preserve the initialization failure.
+      }
+    }
+    try {
+      database?.close();
+    } catch {
+      // Preserve the initialization failure.
+    }
+    database = undefined;
+    try {
+      if (returnedDatabase?.isTransaction) returnedDatabase.exec("ROLLBACK");
+      returnedDatabase?.close();
+    } catch {
+      // Preserve the initialization failure.
+    }
+    returnedDatabase = undefined;
+
+    if (!destructiveRollbackAllowed) {
+      bestEffortEnsureGreenfieldFailureMarker(dataDirectory, opId);
+    } else if (markerPin && temporaryPin) {
+      try {
+        assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+        const publishedPin = Object.freeze({
+          details: temporaryPin.details,
+          path: databasePath,
+        });
+        removeCapturedPathIfPresent(dataDirectory, directoryPin, publishedPin);
+        removeCapturedPathIfPresent(dataDirectory, directoryPin, temporaryPin);
+        fsyncSync(directoryPin.descriptor);
+        assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+        exactDirectoryEntries(dataDirectory, [migrationIncompleteMarker]);
+        if (markerDescriptor === undefined) {
+          throw new Error("Greenfield marker descriptor is unavailable");
+        }
+        assertPinnedDescriptor(markerDescriptor, markerPin, 1n, {
+          exactContentMetadata: true,
+        });
+        assertPinnedFilePath(markerPin, 1n, { exactContentMetadata: true });
+        if (directoryEntryExists(databasePath)) {
+          throw new Error("Greenfield rollback left a public database");
+        }
+        unlinkSync(markerPath);
+        fsyncSync(directoryPin.descriptor);
+        assertPinnedDescriptor(markerDescriptor, markerPin, 0n);
+        assertPinnedApplicationDataDirectory(dataDirectory, directoryPin);
+        exactDirectoryEntries(dataDirectory, []);
+        rollbackProvedSafe = true;
+      } catch {
+        // Foreign entries, replacement directories, markers and sidecars are
+        // retained. The marker below keeps current-path startup fail-closed.
+      }
+    }
+    if (destructiveRollbackAllowed && !rollbackProvedSafe) {
+      bestEffortEnsureGreenfieldFailureMarker(dataDirectory, opId);
+    }
+    throw error;
+  } finally {
+    for (const descriptor of [
+      temporaryDescriptor,
+      markerDescriptor,
+      directoryPin.descriptor,
+    ]) {
+      if (descriptor === undefined) continue;
+      try {
+        closeSync(descriptor);
+      } catch {
+        // All descriptors are fsynced before the terminal marker unlink. Once
+        // publication is complete, a close error must not turn success into an
+        // unmarked failure; before then, the primary error/marker is preserved.
+        if (!terminalPublicationComplete) {
+          bestEffortEnsureGreenfieldFailureMarker(dataDirectory, opId);
+        }
+      }
+    }
+  }
 }

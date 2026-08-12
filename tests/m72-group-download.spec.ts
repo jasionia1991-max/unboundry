@@ -117,15 +117,19 @@ async function setupDownloadCanvas(
     "dl-video.mp4": Buffer.from("fake-video-bytes-456", "utf8"),
     "dl-audio.mp3": Buffer.from("fake-audio-bytes-789", "utf8"),
   };
+  const missingImageBytes = Buffer.from("missing-image-bytes", "utf8");
   for (const [name, bytes] of Object.entries(files)) {
     writeFileSync(join(mediaDirectory, name), bytes);
   }
   const registerMedia = store.prepare(`
     INSERT INTO media_assets (
       kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
-      storage_backend, object_key, content_type, storage_status
+      storage_backend, object_key, content_type, checksum_sha256,
+      storage_status, duration_seconds, duration_source, duration_status
     )
-    VALUES (?, ?, '__test__', ?, ?, ?, ?, 'local', ?, ?, 'ready')
+    VALUES (
+      ?, ?, '__test__', ?, ?, ?, ?, 'local', ?, ?, ?, 'ready', ?, ?, ?
+    )
   `);
   registerMedia.run(
     "image",
@@ -136,6 +140,10 @@ async function setupDownloadCanvas(
     timestamp,
     "dl-image.png",
     "image/png",
+    sha256(files["dl-image.png"]),
+    null,
+    null,
+    "not-applicable",
   );
   registerMedia.run(
     "video",
@@ -146,6 +154,10 @@ async function setupDownloadCanvas(
     timestamp,
     "dl-video.mp4",
     "video/mp4",
+    sha256(files["dl-video.mp4"]),
+    1,
+    "server-probe",
+    "ready",
   );
   registerMedia.run(
     "audio",
@@ -156,16 +168,24 @@ async function setupDownloadCanvas(
     timestamp,
     "dl-audio.mp3",
     "audio/mpeg",
+    sha256(files["dl-audio.mp3"]),
+    1,
+    "server-probe",
+    "ready",
   );
   registerMedia.run(
     "image",
     "dl-missing",
     "dl-missing.png",
-    10,
+    missingImageBytes.length,
     timestamp,
     timestamp,
     "dl-missing.png",
     "image/png",
+    sha256(missingImageBytes),
+    null,
+    null,
+    "not-applicable",
   );
 
   const registerTask = store.prepare(`

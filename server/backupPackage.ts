@@ -27,6 +27,7 @@ import {
   open,
   readdir,
   realpath,
+  rename,
   rm,
   rmdir,
   unlink,
@@ -46,7 +47,7 @@ import { backup, DatabaseSync } from "node:sqlite";
 import {
   BackupInspectionError,
   inspectBackupDatabase,
-  validateBackupStorageProfileIds,
+  inspectLockedBackupDatabase,
   validateBackupSecretsWithContext,
   type BackupDatabaseInspection,
   type BackupSecretValidation,
@@ -57,17 +58,25 @@ import {
   type MediaIntegrityFileEvidence,
   type MediaIntegrityOssEvidence,
   type MediaIntegrityReport,
+  type MediaIntegrityIssueCode,
   type MediaIntegritySummary,
 } from "./mediaIntegrity.ts";
+import {
+  createFakeOssRecoveryIndex,
+  ossRecoveryIndexFileName,
+} from "./fakeOssRecovery.ts";
 
 export const backupPackageFormatVersion = 2 as const;
 const backupPackageFormat = "unboundry-encrypted-backup" as const;
 const manifestMaximumBytes = 64 * 1024 * 1024;
 const envelopeMaximumBytes = 128 * 1024;
 const ioChunkBytes = 256 * 1024;
+const reservationMarkerMaximumBytes = 64 * 1024;
+const secretDocumentLockMaximumBytes = 1024 * 1024;
 const backupIncompleteMarker = ".unboundry-backup-incomplete";
 const restoreIncompleteMarker = ".unboundry-restore-incomplete";
 const supportedBackupSchemaVersions = new Set([37, 38, 39]);
+const minimumProviderQuietMilliseconds = 60_000;
 const restorableSecretFiles = new Set([
   "config-master.key",
   "provider-profiles.enc.json",
@@ -104,15 +113,30 @@ export type BackupOssMirror = Readonly<{
   versionId: string;
 }>;
 
+export type BackupFreezeEvidence = Readonly<{
+  generationFrozenAt: string;
+  lastProviderAdmissionAt: string | null;
+  sourceDatabaseLogicalSha256: string;
+}>;
+
+export type BackupFrozenSourceContract = Readonly<{
+  expectedDatabaseLogicalSha256: string;
+  expectedSchemaVersion: 37 | 38 | 39;
+  freezeEvidence: BackupFreezeEvidence;
+}>;
+
 export type CreateEncryptedBackupOptions = Readonly<{
   backupRoot: string;
   onCheckpoint?: BackupCheckpoint;
   ossMirrors?: readonly BackupOssMirror[];
   recoveryPublicKey: BackupKeyInput;
+  retryBackupId?: string;
   scratchRoot?: string;
   signingPrivateKey: BackupKeyInput;
   sourceDirectory: string;
   sourceFrozen: true;
+  frozenSourceContract?: BackupFrozenSourceContract;
+  mediaWarningAllowlist?: readonly MediaIntegrityIssueCode[];
 }>;
 
 export type VerifyEncryptedBackupOptions = Readonly<{
@@ -132,17 +156,47 @@ export type InspectFrozenMediaIntegrityOptions = Readonly<{
   scratchRoot?: string;
   sourceDirectory: string;
   sourceFrozen: true;
+  frozenSourceContract?: BackupFrozenSourceContract;
+  mediaWarningAllowlist?: readonly MediaIntegrityIssueCode[];
 }>;
 
 export type BackupPackageSummary = Readonly<{
   backupId: string;
+  captureMode: "external-unverified" | "locked-exact";
   databaseLogicalSha256: string;
+  finalCandidate: boolean;
   mediaFiles: number;
   mediaIntegrity: MediaIntegritySummary;
   ossMirrors: number;
   packageDirectory: string;
   schemaVersion: number;
   secretFiles: number;
+}>;
+
+type ReservationMarkerKind = "backup" | "restore";
+
+type ReservationMarker = Readonly<{
+  backupId: string;
+  databaseLogicalSha256: string;
+  format: "unboundry-incomplete-reservation";
+  kind: ReservationMarkerKind;
+  stagingDev: string;
+  stagingIno: string;
+  stagingName: string;
+  targetName: string;
+  version: 1;
+}>;
+
+export type QuarantineIncompleteReservationOptions = Readonly<{
+  expectedBackupId: string;
+  expectedDatabaseLogicalSha256: string;
+  kind: ReservationMarkerKind;
+  targetDirectory: string;
+}>;
+
+export type QuarantinedReservation = Readonly<{
+  backupId: string;
+  quarantineDirectory: string;
 }>;
 
 export class BackupPackageError extends Error {
@@ -231,6 +285,7 @@ type MediaValidation = Readonly<{
 
 type BackupManifest = Readonly<{
   backupId: string;
+  captureMode: BackupPackageSummary["captureMode"];
   createdAt: string;
   database: Readonly<{
     entryId: string;
@@ -313,7 +368,9 @@ function normalizedAbsolute(path: string, label: string) {
 
 function containsPath(parent: string, child: string) {
   const difference = relative(parent, child);
-  return difference === "" || (!difference.startsWith(`..${sep}`) && difference !== "..");
+  return difference === "" ||
+    (!isAbsolute(difference) &&
+      !difference.startsWith(`..${sep}`) && difference !== "..");
 }
 
 function assertDisjointPaths(left: string, right: string) {
@@ -377,6 +434,587 @@ function stableJson(value: unknown): string {
 
 function sha256(value: Buffer | string) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function exactUtcTimestamp(value: string, label: string) {
+  const milliseconds = Date.parse(value);
+  if (
+    !Number.isFinite(milliseconds) ||
+    new Date(milliseconds).toISOString() !== value
+  ) {
+    fail("BACKUP_FREEZE_EVIDENCE_INVALID", `${label} must be an exact UTC timestamp`);
+  }
+  return milliseconds;
+}
+
+function validateFrozenSourceContract(
+  contract: BackupFrozenSourceContract,
+  capturedNow: number,
+) {
+  if (
+    !contract ||
+    typeof contract !== "object" ||
+    !supportedBackupSchemaVersions.has(contract.expectedSchemaVersion) ||
+    !/^[a-f0-9]{64}$/.test(contract.expectedDatabaseLogicalSha256) ||
+    !contract.freezeEvidence ||
+    typeof contract.freezeEvidence !== "object" ||
+    !/^[a-f0-9]{64}$/.test(
+      contract.freezeEvidence.sourceDatabaseLogicalSha256,
+    ) ||
+    contract.freezeEvidence.sourceDatabaseLogicalSha256 !==
+      contract.expectedDatabaseLogicalSha256
+  ) {
+    fail(
+      "BACKUP_FROZEN_SOURCE_CONTRACT_INVALID",
+      "Frozen source contract is incomplete or invalid",
+    );
+  }
+  const generationFrozenAt = exactUtcTimestamp(
+    contract.freezeEvidence.generationFrozenAt,
+    "Generation freeze time",
+  );
+  const lastProviderAdmissionAt = contract.freezeEvidence.lastProviderAdmissionAt === null
+    ? undefined
+    : exactUtcTimestamp(
+        contract.freezeEvidence.lastProviderAdmissionAt,
+        "Last Provider admission time",
+      );
+  if (
+    lastProviderAdmissionAt !== undefined &&
+    lastProviderAdmissionAt > generationFrozenAt
+  ) {
+    fail(
+      "BACKUP_FREEZE_EVIDENCE_INVALID",
+      "Provider admission evidence is later than the generation freeze",
+    );
+  }
+  const quietSince = Math.max(
+    generationFrozenAt,
+    lastProviderAdmissionAt ?? Number.NEGATIVE_INFINITY,
+  );
+  if (
+    quietSince > capturedNow ||
+    capturedNow - quietSince < minimumProviderQuietMilliseconds
+  ) {
+    fail(
+      "BACKUP_FREEZE_QUIET_PERIOD_INCOMPLETE",
+      "Generation must stay frozen for at least 60 seconds after the last possible Provider admission",
+    );
+  }
+  return Object.freeze({ generationFrozenAt, lastProviderAdmissionAt });
+}
+
+function validateLockedSourceContract(
+  database: DatabaseSync,
+  inspection: BackupDatabaseInspection,
+  contract: BackupFrozenSourceContract,
+  capturedNow: number,
+) {
+  const times = validateFrozenSourceContract(contract, capturedNow);
+  if (inspection.userVersion !== contract.expectedSchemaVersion) {
+    fail(
+      "BACKUP_SOURCE_SCHEMA_MISMATCH",
+      "Locked backup source does not have the expected schema version",
+    );
+  }
+  if (inspection.logicalSha256 !== contract.expectedDatabaseLogicalSha256) {
+    fail(
+      "BACKUP_SOURCE_LOGICAL_SHA_MISMATCH",
+      "Locked backup source does not have the expected logical fingerprint",
+    );
+  }
+  const active = database.prepare(`
+    SELECT COUNT(*) AS count
+    FROM generation_tasks
+    WHERE state IN ('queued', 'running', 'retrying', 'recovering')
+  `);
+  active.setReadBigInts(true);
+  const activeRow = active.get() as { count?: bigint } | undefined;
+  if (activeRow?.count !== 0n) {
+    fail(
+      "BACKUP_ACTIVE_GENERATION_TASKS",
+      "Locked backup source still contains active generation tasks",
+    );
+  }
+  // Schema 37/38 have no durable Provider outcome column. Reconstruct the
+  // attempt associated with the task exactly as the one-shot 37->39 bridge
+  // does, and reject every Provider-boundary row that cannot be proven settled
+  // from the terminal task state. Keep this check for schema 39 as a second,
+  // conservative ledger guard: an explicit outcome must never make a legacy
+  // source shape less safe to capture.
+  const unsettledProviderBoundary = database.prepare(`
+    WITH associated_attempts AS (
+      SELECT
+        task.id AS task_id,
+        COALESCE(
+          CASE WHEN task.provider_task_id IS NOT NULL THEN (
+            SELECT paid.id
+            FROM generation_provider_attempts AS paid
+            WHERE paid.task_id = task.id
+            ORDER BY paid.execution_attempt DESC, paid.id DESC
+            LIMIT 1
+          ) END,
+          (
+            SELECT current_attempt.id
+            FROM generation_provider_attempts AS current_attempt
+            WHERE current_attempt.task_id = task.id
+              AND current_attempt.execution_attempt = task.attempt
+            ORDER BY current_attempt.id DESC
+            LIMIT 1
+          )
+        ) AS attempt_id
+      FROM generation_tasks AS task
+    )
+    SELECT COUNT(*) AS count
+    FROM generation_provider_attempts AS attempt
+    JOIN generation_tasks AS task ON task.id = attempt.task_id
+    JOIN associated_attempts AS associated ON associated.task_id = task.id
+    WHERE attempt.evidence = 'provider-boundary'
+      AND NOT (
+        associated.attempt_id = attempt.id
+        AND (
+          task.state = 'success'
+          OR task.error_code IN (
+            'AUTH', 'PERMISSION', 'RATE_LIMIT', 'PROVIDER_FAILED'
+          )
+        )
+      )
+  `);
+  unsettledProviderBoundary.setReadBigInts(true);
+  const unsettledProviderBoundaryRow = unsettledProviderBoundary.get() as
+    | { count?: bigint }
+    | undefined;
+  if (unsettledProviderBoundaryRow?.count !== 0n) {
+    fail(
+      "BACKUP_UNSETTLED_PROVIDER_ATTEMPTS",
+      "Provider-boundary attempts are not definitively settled",
+    );
+  }
+  if (inspection.userVersion >= 39) {
+    const nonDefinitiveOutcome = database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM generation_provider_attempts
+      WHERE evidence = 'provider-boundary'
+        AND outcome IN (
+          'boundary-claimed', 'accepted', 'response-received',
+          'outcome-unknown'
+        )
+    `);
+    nonDefinitiveOutcome.setReadBigInts(true);
+    const nonDefinitiveOutcomeRow = nonDefinitiveOutcome.get() as
+      | { count?: bigint }
+      | undefined;
+    if (nonDefinitiveOutcomeRow?.count !== 0n) {
+      fail(
+        "BACKUP_UNSETTLED_PROVIDER_ATTEMPTS",
+        "Provider-boundary attempts have a non-definitive outcome",
+      );
+    }
+  }
+  const safety = database.prepare(`
+    SELECT id, global_enabled, emergency_stop, updated_at
+    FROM generation_safety_settings
+    ORDER BY id
+  `);
+  safety.setReadBigInts(true);
+  const safetyRows = safety.all() as Array<{
+    emergency_stop?: bigint;
+    global_enabled?: bigint;
+    id?: bigint;
+    updated_at?: unknown;
+  }>;
+  if (
+    safetyRows.length !== 1 ||
+    safetyRows[0]?.id !== 1n ||
+    (safetyRows[0]?.global_enabled !== 0n &&
+      safetyRows[0]?.emergency_stop !== 1n)
+  ) {
+    fail(
+      "BACKUP_GENERATION_NOT_FROZEN",
+      "Locked backup source does not prove that generation is globally frozen",
+    );
+  }
+  const safetyUpdatedAt = safetyRows[0]?.updated_at;
+  if (
+    typeof safetyUpdatedAt !== "string" ||
+    exactUtcTimestamp(safetyUpdatedAt, "Generation safety update time") !==
+      times.generationFrozenAt
+  ) {
+    fail(
+      "BACKUP_FREEZE_EVIDENCE_STALE",
+      "Generation freeze evidence does not match the locked safety setting",
+    );
+  }
+  const safetyAudit = database.prepare(`
+    SELECT details
+    FROM admin_audit_events
+    WHERE action = 'generation_safety.update'
+    ORDER BY id DESC
+    LIMIT 1
+  `).get() as { details?: unknown } | undefined;
+  let auditedAfter: Record<string, unknown> | undefined;
+  try {
+    if (typeof safetyAudit?.details === "string") {
+      const details = JSON.parse(safetyAudit.details) as unknown;
+      if (details && typeof details === "object" && !Array.isArray(details)) {
+        const after = (details as Record<string, unknown>).after;
+        if (after && typeof after === "object" && !Array.isArray(after)) {
+          auditedAfter = after as Record<string, unknown>;
+        }
+      }
+    }
+  } catch {
+    // The deterministic failure below does not expose audit contents.
+  }
+  if (
+    !auditedAfter ||
+    auditedAfter.updatedAt !== safetyUpdatedAt ||
+    auditedAfter.globalEnabled !== (safetyRows[0]?.global_enabled === 1n) ||
+    auditedAfter.emergencyStop !== (safetyRows[0]?.emergency_stop === 1n)
+  ) {
+    fail(
+      "BACKUP_FREEZE_AUDIT_MISSING",
+      "Locked generation freeze has no matching administrator audit",
+    );
+  }
+  if (inspection.userVersion >= 38) {
+    const publications = database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM media_publication_attempts
+      WHERE state IN ('reserved', 'staged', 'external-ready', 'compensating')
+    `);
+    publications.setReadBigInts(true);
+    const publicationRow = publications.get() as { count?: bigint } | undefined;
+    if (publicationRow?.count !== 0n) {
+      fail(
+        "BACKUP_ACTIVE_MEDIA_PUBLICATIONS",
+        "Locked backup source still contains active media publications",
+      );
+    }
+  }
+  const lastAttempt = database.prepare(`
+    SELECT created_at
+    FROM generation_provider_attempts
+    ORDER BY created_at DESC, id DESC
+    LIMIT 1
+  `).get() as { created_at?: unknown } | undefined;
+  if (lastAttempt) {
+    if (typeof lastAttempt.created_at !== "string") {
+      fail(
+        "BACKUP_FREEZE_EVIDENCE_INVALID",
+        "Provider attempt time is invalid",
+      );
+    }
+    const lastRecordedAttemptAt = exactUtcTimestamp(
+      lastAttempt.created_at,
+      "Last Provider attempt time",
+    );
+    if (
+      !Number.isFinite(lastRecordedAttemptAt) ||
+      times.lastProviderAdmissionAt === undefined ||
+      times.lastProviderAdmissionAt < lastRecordedAttemptAt
+    ) {
+      fail(
+        "BACKUP_FREEZE_EVIDENCE_STALE",
+        "Freeze evidence does not cover the last recorded Provider attempt",
+      );
+    }
+  }
+}
+
+async function withOptionalFrozenSourceWriteLock<T>(
+  sourceDirectory: string,
+  inspectionRoot: string,
+  contract: BackupFrozenSourceContract | undefined,
+  callback: (inspection: BackupDatabaseInspection | undefined) => Promise<T>,
+) {
+  if (!contract) return callback(undefined);
+  const databasePath = join(sourceDirectory, "unboundry.sqlite");
+  await inspectRegularFile(databasePath, "unboundry.sqlite");
+  let secretLease: FrozenSecretDocumentLease | undefined;
+  let database: DatabaseSync | undefined;
+  let transactionOpen = false;
+  let primaryError: unknown;
+  try {
+    // All Provider and storage document writers take this lease before the app
+    // database writer lock. Preserve that order to avoid ABBA deadlocks and to
+    // cover every secret rename through the complete final-source capture.
+    secretLease = await acquireFrozenSecretDocumentLease(sourceDirectory);
+    database = new DatabaseSync(databasePath, { timeout: 1_000 });
+    database.exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 1000");
+    try {
+      database.exec("BEGIN IMMEDIATE");
+      transactionOpen = true;
+    } catch {
+      fail(
+        "BACKUP_SOURCE_WRITE_LOCK_UNAVAILABLE",
+        "Frozen source write lock could not be acquired",
+      );
+    }
+    const capturedNow = Date.now();
+    const inspection = inspectLockedBackupDatabase(database, inspectionRoot);
+    validateLockedSourceContract(database, inspection, contract, capturedNow);
+    return await callback(inspection);
+  } catch (error) {
+    primaryError = error;
+    if (error instanceof BackupPackageError || error instanceof BackupInspectionError) {
+      throw error;
+    }
+    fail(
+      "BACKUP_SOURCE_WRITE_LOCK_FAILED",
+      "Frozen source write lock validation failed",
+    );
+  } finally {
+    let releaseFailed = false;
+    if (transactionOpen && database?.isTransaction) {
+      try {
+        database.exec("ROLLBACK");
+      } catch {
+        releaseFailed = true;
+      }
+    }
+    try {
+      database?.close();
+    } catch {
+      releaseFailed = true;
+    }
+    if (secretLease) {
+      try {
+        await releaseFrozenSecretDocumentLease(secretLease);
+      } catch {
+        releaseFailed = true;
+      }
+    }
+    if (primaryError === undefined && releaseFailed) {
+      fail(
+        "BACKUP_SOURCE_LOCK_RELEASE_FAILED",
+        "Final source locks could not be safely released; this process must exit",
+      );
+    }
+  }
+  fail("BACKUP_SOURCE_WRITE_LOCK_FAILED", "Frozen source write lock validation failed");
+}
+
+function requireMediaIntegrityPolicy(
+  report: MediaIntegrityReport,
+  warningAllowlist: readonly MediaIntegrityIssueCode[] | undefined,
+) {
+  requireCompleteMediaIntegrity(report);
+  if (warningAllowlist === undefined) return report;
+  const allowed = new Set<MediaIntegrityIssueCode>();
+  for (const code of warningAllowlist) {
+    if (typeof code !== "string" || allowed.has(code)) {
+      fail(
+        "BACKUP_MEDIA_WARNING_POLICY_INVALID",
+        "Media warning allowlist is invalid or duplicated",
+      );
+    }
+    allowed.add(code);
+  }
+  if (report.issues.some((issue) =>
+    issue.severity !== "warning" || !allowed.has(issue.code))) {
+    fail(
+      "BACKUP_MEDIA_WARNING_NOT_ALLOWED",
+      "Media integrity contains an error or a warning not explicitly allowed",
+    );
+  }
+  return report;
+}
+
+type FrozenSecretDocumentLease = Readonly<{
+  database: DatabaseSync;
+  dev: bigint;
+  ino: bigint;
+  path: string;
+}>;
+
+function strictPrivateSourceIdentity(
+  details: BigIntStats,
+  kind: "directory" | "file",
+) {
+  const uid = typeof process.getuid === "function"
+    ? BigInt(process.getuid())
+    : undefined;
+  return uid !== undefined && details.uid === uid &&
+    !details.isSymbolicLink() &&
+    (kind === "directory" ? details.isDirectory() : details.isFile()) &&
+    (details.mode & 0o777n) === (kind === "directory" ? 0o700n : 0o600n) &&
+    (kind === "directory" || details.nlink === 1n);
+}
+
+async function assertSecretLockHasNoSidecars(lockPath: string) {
+  for (const suffix of ["-journal", "-shm", "-wal"]) {
+    try {
+      await lstat(`${lockPath}${suffix}`);
+      fail(
+        "BACKUP_SECRET_DOCUMENT_LOCK_INVALID",
+        "Secret document lock has an unexpected SQLite sidecar",
+      );
+    } catch (error) {
+      if (
+        error instanceof BackupPackageError ||
+        !(error instanceof Error && "code" in error && error.code === "ENOENT")
+      ) throw error;
+    }
+  }
+}
+
+async function acquireFrozenSecretDocumentLease(
+  sourceDirectory: string,
+): Promise<FrozenSecretDocumentLease> {
+  const secretsDirectory = join(sourceDirectory, "secrets");
+  const lockPath = join(secretsDirectory, "provider-profile-write-lock.sqlite");
+  let directoryDetails: BigIntStats;
+  let lockDetails: BigIntStats;
+  try {
+    [directoryDetails, lockDetails] = await Promise.all([
+      lstat(secretsDirectory, { bigint: true }),
+      lstat(lockPath, { bigint: true }),
+    ]);
+  } catch {
+    fail(
+      "BACKUP_SECRET_DOCUMENT_LOCK_MISSING",
+      "Final-candidate backup requires an existing secret document lock",
+    );
+  }
+  if (
+    !strictPrivateSourceIdentity(directoryDetails, "directory") ||
+    !strictPrivateSourceIdentity(lockDetails, "file") ||
+    lockDetails.size <= 0n ||
+    lockDetails.size > BigInt(secretDocumentLockMaximumBytes)
+  ) {
+    fail(
+      "BACKUP_SECRET_DOCUMENT_LOCK_INVALID",
+      "Secret document lock is not a private trusted SQLite file",
+    );
+  }
+
+  let database: DatabaseSync | undefined;
+  let transactionOpen = false;
+  try {
+    database = new DatabaseSync(lockPath, { timeout: 1_000 });
+    database.exec("PRAGMA busy_timeout = 1000");
+    try {
+      database.exec("BEGIN IMMEDIATE");
+      transactionOpen = true;
+    } catch {
+      fail(
+        "BACKUP_SECRET_DOCUMENT_LOCK_UNAVAILABLE",
+        "Secret document write lease could not be acquired",
+      );
+    }
+    const current = await lstat(lockPath, { bigint: true });
+    if (
+      !strictPrivateSourceIdentity(current, "file") ||
+      current.dev !== lockDetails.dev ||
+      current.ino !== lockDetails.ino ||
+      current.size > BigInt(secretDocumentLockMaximumBytes)
+    ) {
+      fail(
+        "BACKUP_SECRET_DOCUMENT_LOCK_CHANGED",
+        "Secret document lock changed while it was acquired",
+      );
+    }
+    const integrity = database.prepare("PRAGMA integrity_check").get() as
+      | { integrity_check?: unknown }
+      | undefined;
+    const journal = database.prepare("PRAGMA journal_mode").get() as
+      | { journal_mode?: unknown }
+      | undefined;
+    const schema = database.prepare(`
+      SELECT type, name
+      FROM sqlite_schema
+      WHERE name NOT LIKE 'sqlite_%'
+      ORDER BY type, name
+    `).all() as Array<{ name?: unknown; type?: unknown }>;
+    const columns = database.prepare(`
+      PRAGMA table_info(provider_profile_write_lock)
+    `).all() as Array<{
+      name?: unknown;
+      notnull?: unknown;
+      pk?: unknown;
+      type?: unknown;
+    }>;
+    const rows = database.prepare(`
+      SELECT id, marker
+      FROM provider_profile_write_lock
+      ORDER BY id
+    `);
+    rows.setReadBigInts(true);
+    const values = rows.all() as Array<{ id?: bigint; marker?: bigint }>;
+    if (
+      integrity?.integrity_check !== "ok" ||
+      journal?.journal_mode !== "delete" ||
+      schema.length !== 1 ||
+      schema[0]?.type !== "table" ||
+      schema[0]?.name !== "provider_profile_write_lock" ||
+      columns.length !== 2 ||
+      columns[0]?.name !== "id" ||
+      String(columns[0]?.type).toUpperCase() !== "INTEGER" ||
+      Number(columns[0]?.pk) !== 1 ||
+      columns[1]?.name !== "marker" ||
+      String(columns[1]?.type).toUpperCase() !== "INTEGER" ||
+      Number(columns[1]?.notnull) !== 1 ||
+      values.length !== 1 ||
+      values[0]?.id !== 1n ||
+      typeof values[0]?.marker !== "bigint" ||
+      values[0].marker < 0n
+    ) {
+      fail(
+        "BACKUP_SECRET_DOCUMENT_LOCK_INVALID",
+        "Secret document lock schema or state is invalid",
+      );
+    }
+    await assertSecretLockHasNoSidecars(lockPath);
+    return Object.freeze({
+      database,
+      dev: current.dev,
+      ino: current.ino,
+      path: lockPath,
+    });
+  } catch (error) {
+    if (transactionOpen && database?.isTransaction) {
+      try {
+        database.exec("ROLLBACK");
+      } catch {
+        // Closing below releases a failed acquisition.
+      }
+    }
+    try {
+      database?.close();
+    } catch {
+      // Preserve the deterministic primary failure.
+    }
+    if (error instanceof BackupPackageError) throw error;
+    fail(
+      "BACKUP_SECRET_DOCUMENT_LOCK_INVALID",
+      "Secret document lock could not be validated",
+    );
+  }
+}
+
+async function releaseFrozenSecretDocumentLease(
+  lease: FrozenSecretDocumentLease,
+) {
+  let changed = false;
+  try {
+    const current = await lstat(lease.path, { bigint: true });
+    changed = !strictPrivateSourceIdentity(current, "file") ||
+      current.dev !== lease.dev || current.ino !== lease.ino;
+  } catch {
+    changed = true;
+  }
+  try {
+    if (lease.database.isTransaction) lease.database.exec("ROLLBACK");
+  } finally {
+    lease.database.close();
+  }
+  if (changed) {
+    fail(
+      "BACKUP_SECRET_DOCUMENT_LOCK_CHANGED",
+      "Secret document lock changed while final source data was captured",
+    );
+  }
 }
 
 function canonicalBase64(value: unknown, label: string) {
@@ -833,6 +1471,25 @@ async function directoryIdentity(
   return Object.freeze({ dev: details.dev, ino: details.ino });
 }
 
+async function optionalDirectoryIdentity(
+  path: string,
+  code: string,
+): Promise<OwnedPathIdentity | undefined> {
+  let details: BigIntStats;
+  try {
+    details = await lstat(path, { bigint: true });
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return undefined;
+    }
+    fail(code, "Published directory identity changed");
+  }
+  if (details.isSymbolicLink() || !details.isDirectory()) {
+    fail(code, "Published directory identity changed");
+  }
+  return Object.freeze({ dev: details.dev, ino: details.ino });
+}
+
 async function regularFileIdentity(
   path: string,
   code = "BACKUP_RESTORE_TARGET_CHANGED",
@@ -911,6 +1568,242 @@ async function writePrivateFile(path: string, value: Buffer | string) {
   } finally {
     await handle.close();
   }
+}
+
+function reservationMarker(
+  kind: ReservationMarkerKind,
+  backupId: string,
+  databaseLogicalSha256: string,
+  targetDirectory: string,
+  stagingDirectory: string,
+  stagingIdentity: OwnedPathIdentity,
+): ReservationMarker {
+  return Object.freeze({
+    backupId,
+    databaseLogicalSha256,
+    format: "unboundry-incomplete-reservation" as const,
+    kind,
+    stagingDev: stagingIdentity.dev.toString(),
+    stagingIno: stagingIdentity.ino.toString(),
+    stagingName: basename(stagingDirectory),
+    targetName: basename(targetDirectory),
+    version: 1 as const,
+  });
+}
+
+async function writeReservationMarker(
+  markerPath: string,
+  marker: ReservationMarker,
+) {
+  await writePrivateFile(markerPath, `${stableJson(marker)}\n`);
+}
+
+async function readReservationMarker(
+  targetDirectory: string,
+  kind: ReservationMarkerKind,
+) {
+  const markerName = kind === "backup"
+    ? backupIncompleteMarker
+    : restoreIncompleteMarker;
+  const { value } = await readBoundedRegularFile(
+    join(targetDirectory, markerName),
+    markerName,
+    reservationMarkerMaximumBytes,
+  );
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(value));
+  } catch {
+    fail(
+      "BACKUP_RESERVATION_MARKER_INVALID",
+      "Incomplete reservation marker is invalid",
+    );
+  } finally {
+    value.fill(0);
+  }
+  const marker = jsonObject(parsed, "BACKUP_RESERVATION_MARKER_INVALID");
+  exactKeys(marker, [
+    "backupId",
+    "databaseLogicalSha256",
+    "format",
+    "kind",
+    "stagingDev",
+    "stagingIno",
+    "stagingName",
+    "targetName",
+    "version",
+  ]);
+  if (
+    marker.format !== "unboundry-incomplete-reservation" ||
+    marker.version !== 1 ||
+    marker.kind !== kind ||
+    !validUuid(marker.backupId) ||
+    !validSha(marker.databaseLogicalSha256) ||
+    typeof marker.stagingDev !== "string" ||
+    !/^[1-9][0-9]*$/.test(marker.stagingDev) ||
+    typeof marker.stagingIno !== "string" ||
+    !/^[1-9][0-9]*$/.test(marker.stagingIno) ||
+    typeof marker.stagingName !== "string" ||
+    basename(marker.stagingName) !== marker.stagingName ||
+    !marker.stagingName.startsWith(
+      kind === "backup" ? `.partial-${marker.backupId}-` : `.${marker.targetName}.restore-`,
+    ) ||
+    marker.targetName !== basename(targetDirectory)
+  ) {
+    fail(
+      "BACKUP_RESERVATION_MARKER_INVALID",
+      "Incomplete reservation marker provenance does not match its target",
+    );
+  }
+  return Object.freeze({
+    backupId: marker.backupId,
+    databaseLogicalSha256: marker.databaseLogicalSha256,
+    format: marker.format,
+    kind: marker.kind,
+    stagingDev: marker.stagingDev,
+    stagingIno: marker.stagingIno,
+    stagingName: marker.stagingName,
+    targetName: marker.targetName,
+    version: marker.version,
+  }) as ReservationMarker;
+}
+
+/**
+ * Atomically moves a trusted incomplete reservation aside so the exact target
+ * can be retried. The whole directory is preserved verbatim: unexpected files
+ * are quarantined with it and are never recursively deleted by this operation.
+ */
+export async function quarantineIncompleteReservation(
+  options: QuarantineIncompleteReservationOptions,
+): Promise<QuarantinedReservation> {
+  const targetDirectory = normalizedAbsolute(
+    options.targetDirectory,
+    "Incomplete reservation target",
+  );
+  if (
+    !validUuid(options.expectedBackupId) ||
+    !validSha(options.expectedDatabaseLogicalSha256) ||
+    (options.kind !== "backup" && options.kind !== "restore")
+  ) {
+    fail(
+      "BACKUP_QUARANTINE_ARGUMENT_INVALID",
+      "Incomplete reservation identity is invalid",
+    );
+  }
+  await ensureTrustedDataRoot(targetDirectory);
+  const parent = dirname(targetDirectory);
+  await ensureTrustedWorkRoot(parent);
+  const markerName = options.kind === "backup"
+    ? backupIncompleteMarker
+    : restoreIncompleteMarker;
+  const [targetIdentity, markerIdentity, marker] = await Promise.all([
+    directoryIdentity(targetDirectory, "BACKUP_QUARANTINE_TARGET_CHANGED"),
+    regularFileIdentity(
+      join(targetDirectory, markerName),
+      "BACKUP_QUARANTINE_TARGET_CHANGED",
+    ),
+    readReservationMarker(targetDirectory, options.kind),
+  ]);
+  if (
+    marker.backupId !== options.expectedBackupId ||
+    marker.databaseLogicalSha256 !== options.expectedDatabaseLogicalSha256
+  ) {
+    fail(
+      "BACKUP_QUARANTINE_PROVENANCE_MISMATCH",
+      "Incomplete reservation does not match the expected backup",
+    );
+  }
+  await assertPublishReservation(
+    targetDirectory,
+    markerName,
+    targetIdentity,
+    markerIdentity,
+    "BACKUP_QUARANTINE_TARGET_CHANGED",
+  );
+  const stagingDirectory = join(parent, marker.stagingName);
+  const stagingIdentity = await optionalDirectoryIdentity(
+    stagingDirectory,
+    "BACKUP_QUARANTINE_STAGING_CHANGED",
+  );
+  if (
+    stagingIdentity &&
+    (stagingIdentity.dev.toString() !== marker.stagingDev ||
+      stagingIdentity.ino.toString() !== marker.stagingIno)
+  ) {
+    fail(
+      "BACKUP_QUARANTINE_STAGING_CHANGED",
+      "Incomplete reservation staging directory changed",
+    );
+  }
+  const quarantineDirectory = join(
+    parent,
+    `.${basename(targetDirectory)}.quarantine-${randomUUID()}`,
+  );
+  try {
+    await lstat(quarantineDirectory);
+    fail(
+      "BACKUP_QUARANTINE_TARGET_EXISTS",
+      "Incomplete reservation quarantine target already exists",
+    );
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
+      throw error;
+    }
+  }
+  await rename(targetDirectory, quarantineDirectory);
+  const [quarantinedTarget, quarantinedMarker] = await Promise.all([
+    directoryIdentity(
+      quarantineDirectory,
+      "BACKUP_QUARANTINE_TARGET_CHANGED",
+    ),
+    regularFileIdentity(
+      join(quarantineDirectory, markerName),
+      "BACKUP_QUARANTINE_TARGET_CHANGED",
+    ),
+  ]);
+  if (
+    !sameIdentity(targetIdentity, quarantinedTarget) ||
+    !sameIdentity(markerIdentity, quarantinedMarker)
+  ) {
+    fail(
+      "BACKUP_QUARANTINE_TARGET_CHANGED",
+      "Incomplete reservation changed during quarantine",
+    );
+  }
+  if (stagingIdentity) {
+    const quarantinedStage = join(
+      quarantineDirectory,
+      ".unboundry-staging-residue",
+    );
+    try {
+      await lstat(quarantinedStage);
+      fail(
+        "BACKUP_QUARANTINE_STAGING_CHANGED",
+        "Quarantine already contains a staging residue",
+      );
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
+        throw error;
+      }
+    }
+    await rename(stagingDirectory, quarantinedStage);
+    const movedStage = await directoryIdentity(
+      quarantinedStage,
+      "BACKUP_QUARANTINE_STAGING_CHANGED",
+    );
+    if (!sameIdentity(stagingIdentity, movedStage)) {
+      fail(
+        "BACKUP_QUARANTINE_STAGING_CHANGED",
+        "Incomplete reservation staging changed during quarantine",
+      );
+    }
+    await syncDirectory(quarantineDirectory);
+  }
+  await syncDirectory(parent);
+  return Object.freeze({
+    backupId: marker.backupId,
+    quarantineDirectory,
+  });
 }
 
 async function writeAll(
@@ -1402,7 +2295,9 @@ function summaryFromManifest(
 ): BackupPackageSummary {
   return Object.freeze({
     backupId: manifest.backupId,
+    captureMode: manifest.captureMode,
     databaseLogicalSha256: manifest.database.inspection.logicalSha256,
+    finalCandidate: manifest.captureMode === "locked-exact",
     mediaFiles: manifest.entries.filter((entry) => entry.kind === "media").length,
     mediaIntegrity: summarizeMediaIntegrity(mediaIntegrity),
     ossMirrors: manifest.entries.filter((entry) => entry.kind === "oss").length,
@@ -1477,65 +2372,86 @@ export async function inspectFrozenMediaIntegrity(
     for (const mirror of canonicalMirrors) {
       assertDisjointPaths(canonicalScratch, mirror);
     }
-    const databaseBefore = await databaseFilesSnapshot(sourceDirectory);
-    const mediaDirectory = join(sourceDirectory, "media");
-    const secretsDirectory = join(sourceDirectory, "secrets");
-    const mediaBefore = await fingerprintTree(mediaDirectory, false);
-    const observedSecretsBefore = await fingerprintTree(secretsDirectory, false);
-    const secretsBefore = restorableSecretsSnapshot(observedSecretsBefore);
-    const databaseSnapshot = await rawDatabaseSnapshot(
+    return await withOptionalFrozenSourceWriteLock(
       sourceDirectory,
-      databaseBefore,
       scratch,
+      options.frozenSourceContract,
+      async (lockedInspection) => {
+        const databaseBefore = await databaseFilesSnapshot(sourceDirectory);
+        const mediaDirectory = join(sourceDirectory, "media");
+        const secretsDirectory = join(sourceDirectory, "secrets");
+        const mediaBefore = await fingerprintTree(mediaDirectory, false);
+        const observedSecretsBefore = await fingerprintTree(secretsDirectory, false);
+        const secretsBefore = restorableSecretsSnapshot(observedSecretsBefore);
+        const databaseSnapshot = await rawDatabaseSnapshot(
+          sourceDirectory,
+          databaseBefore,
+          scratch!,
+        );
+        if (!supportedBackupSchemaVersions.has(
+          databaseSnapshot.inspection.userVersion,
+        )) {
+          fail(
+            "BACKUP_SCHEMA_UNSUPPORTED",
+            "Media inspection requires a supported backup schema",
+          );
+        }
+        if (
+          lockedInspection &&
+          stableJson(lockedInspection) !== stableJson(databaseSnapshot.inspection)
+        ) {
+          fail(
+            "BACKUP_SOURCE_LOGICAL_SHA_MISMATCH",
+            "Private database snapshot differs from the locked source contract",
+          );
+        }
+        await checkpoint(options.onCheckpoint, "after-database-snapshot");
+        const copiedSecrets = join(scratch!, "secrets");
+        await copyTree(secretsDirectory, copiedSecrets, secretsBefore);
+        const secretContext = await validateBackupSecretsWithContext(
+          databaseSnapshot.snapshotPath,
+          copiedSecrets,
+          scratch!,
+          { requireDatabaseAlignment: Boolean(lockedInspection) },
+        );
+        const mirrors = await Promise.all(mirrorOptions.map(mirrorEvidence));
+        const report = inspectBackupMediaIntegrity(
+          databaseSnapshot.snapshotPath,
+          databaseSnapshot.inspection,
+          mediaBefore,
+          mirrors,
+          secretContext.storageProfileIds,
+        );
+        if (options.mediaWarningAllowlist !== undefined) {
+          requireMediaIntegrityPolicy(report, options.mediaWarningAllowlist);
+        }
+        for (const mirror of mirrors) {
+          const after = await inspectRegularFile(
+            mirror.filePath,
+            mirror.evidence.path,
+          );
+          if (stableJson(after) !== stableJson(mirror.evidence)) {
+            fail("BACKUP_SOURCE_CHANGED", "OSS mirror changed during media inspection");
+          }
+        }
+        const databaseAfter = await databaseFilesSnapshot(sourceDirectory);
+        const mediaAfter = await fingerprintTree(mediaDirectory, false);
+        const observedSecretsAfter = await fingerprintTree(secretsDirectory, false);
+        const secretsAfter = restorableSecretsSnapshot(observedSecretsAfter);
+        const finalSourceIdentity = await directoryIdentity(
+          sourceDirectory,
+          "BACKUP_SOURCE_CHANGED",
+        );
+        if (
+          !sameIdentity(sourceIdentity, finalSourceIdentity) ||
+          !sameSnapshot(databaseBefore, databaseAfter) ||
+          !sameSnapshot(mediaBefore, mediaAfter) ||
+          !sameSnapshot(observedSecretsBefore, observedSecretsAfter) ||
+          !sameSnapshot(secretsBefore, secretsAfter)
+        ) fail("BACKUP_SOURCE_CHANGED", "Media inspection source changed during snapshot");
+        return report;
+      },
     );
-    if (!supportedBackupSchemaVersions.has(
-      databaseSnapshot.inspection.userVersion,
-    )) {
-      fail(
-        "BACKUP_SCHEMA_UNSUPPORTED",
-        "Media inspection requires a supported backup schema",
-      );
-    }
-    await checkpoint(options.onCheckpoint, "after-database-snapshot");
-    const copiedSecrets = join(scratch, "secrets");
-    await copyTree(secretsDirectory, copiedSecrets, secretsBefore);
-    const storageProfileIds = await validateBackupStorageProfileIds(
-      copiedSecrets,
-      scratch,
-    );
-    const mirrors = await Promise.all(mirrorOptions.map(mirrorEvidence));
-    const report = inspectBackupMediaIntegrity(
-      databaseSnapshot.snapshotPath,
-      databaseSnapshot.inspection,
-      mediaBefore,
-      mirrors,
-      storageProfileIds,
-    );
-    for (const mirror of mirrors) {
-      const after = await inspectRegularFile(
-        mirror.filePath,
-        mirror.evidence.path,
-      );
-      if (stableJson(after) !== stableJson(mirror.evidence)) {
-        fail("BACKUP_SOURCE_CHANGED", "OSS mirror changed during media inspection");
-      }
-    }
-    const databaseAfter = await databaseFilesSnapshot(sourceDirectory);
-    const mediaAfter = await fingerprintTree(mediaDirectory, false);
-    const observedSecretsAfter = await fingerprintTree(secretsDirectory, false);
-    const secretsAfter = restorableSecretsSnapshot(observedSecretsAfter);
-    const finalSourceIdentity = await directoryIdentity(
-      sourceDirectory,
-      "BACKUP_SOURCE_CHANGED",
-    );
-    if (
-      !sameIdentity(sourceIdentity, finalSourceIdentity) ||
-      !sameSnapshot(databaseBefore, databaseAfter) ||
-      !sameSnapshot(mediaBefore, mediaAfter) ||
-      !sameSnapshot(observedSecretsBefore, observedSecretsAfter) ||
-      !sameSnapshot(secretsBefore, secretsAfter)
-    ) fail("BACKUP_SOURCE_CHANGED", "Media inspection source changed during snapshot");
-    return report;
   } catch (error) {
     return rethrowPackageFailure(
       error,
@@ -1608,7 +2524,14 @@ export async function createEncryptedBackup(
 
   const recipient = recoveryPublicKey(options.recoveryPublicKey);
   const signer = signingPrivateKey(options.signingPrivateKey);
-  const backupId = randomUUID();
+  if (
+    options.retryBackupId !== undefined &&
+    (!validUuid(options.retryBackupId) ||
+      options.retryBackupId !== options.retryBackupId.toLowerCase())
+  ) {
+    fail("BACKUP_RETRY_ID_INVALID", "Backup retry id is invalid");
+  }
+  const backupId = options.retryBackupId ?? randomUUID();
   const finalDirectory = join(backupRoot, `${backupId}.ubbackup`);
   const stage = await mkdtemp(join(backupRoot, `.partial-${backupId}-`));
   let scratch: string | undefined;
@@ -1625,136 +2548,187 @@ export async function createEncryptedBackup(
     dek = randomBytes(32);
     const objectsDirectory = join(stage, "objects");
     await mkdir(objectsDirectory, { mode: 0o700 });
-    const databaseBefore = await databaseFilesSnapshot(sourceDirectory);
-    const mediaDirectory = join(sourceDirectory, "media");
-    const secretsDirectory = join(sourceDirectory, "secrets");
-    const mediaBefore = await fingerprintTree(mediaDirectory, false);
-    const observedSecretsBefore = await fingerprintTree(secretsDirectory, false);
-    const secretsBefore = restorableSecretsSnapshot(observedSecretsBefore);
-
-    const databaseSnapshot = await rawDatabaseSnapshot(
+    const captured = await withOptionalFrozenSourceWriteLock(
       sourceDirectory,
+      scratch,
+      options.frozenSourceContract,
+      async (lockedInspection) => {
+        const databaseBefore = await databaseFilesSnapshot(sourceDirectory);
+        const mediaDirectory = join(sourceDirectory, "media");
+        const secretsDirectory = join(sourceDirectory, "secrets");
+        const mediaBefore = await fingerprintTree(mediaDirectory, false);
+        const observedSecretsBefore = await fingerprintTree(secretsDirectory, false);
+        const secretsBefore = restorableSecretsSnapshot(observedSecretsBefore);
+
+        const databaseSnapshot = await rawDatabaseSnapshot(
+          sourceDirectory,
+          databaseBefore,
+          scratch!,
+        );
+        if (!supportedBackupSchemaVersions.has(
+          databaseSnapshot.inspection.userVersion,
+        )) {
+          fail(
+            "BACKUP_SCHEMA_UNSUPPORTED",
+            "Encrypted package creation requires a supported backup schema",
+          );
+        }
+        if (
+          lockedInspection &&
+          stableJson(lockedInspection) !== stableJson(databaseSnapshot.inspection)
+        ) {
+          fail(
+            "BACKUP_SOURCE_LOGICAL_SHA_MISMATCH",
+            "Private database snapshot differs from the locked source contract",
+          );
+        }
+        await checkpoint(options.onCheckpoint, "after-database-snapshot");
+
+        const copiedSecrets = join(scratch!, "secrets");
+        await copyTree(secretsDirectory, copiedSecrets, secretsBefore);
+        const secretContext = await validateBackupSecretsWithContext(
+          databaseSnapshot.snapshotPath,
+          copiedSecrets,
+          scratch!,
+          { requireDatabaseAlignment: Boolean(lockedInspection) },
+        );
+        const secretValidation = secretContext.validation;
+        const mirrorInputs = await Promise.all(mirrorOptions.map(mirrorEvidence));
+        const provisionalMedia = await validateMedia(
+          databaseSnapshot.snapshotPath,
+          mediaDirectory,
+          mediaBefore,
+          mirrorInputs,
+        );
+        const mediaIntegrity = requireMediaIntegrityPolicy(
+          inspectBackupMediaIntegrity(
+            databaseSnapshot.snapshotPath,
+            databaseSnapshot.inspection,
+            mediaBefore,
+            mirrorInputs,
+            secretContext.storageProfileIds,
+          ),
+          options.mediaWarningAllowlist,
+        );
+
+        const entries: EncryptedEntry[] = [];
+        const databaseEntry = await encryptFile(
+          databaseSnapshot.snapshotPath,
+          databaseSnapshot.evidence,
+          "database",
+          "unboundry.sqlite",
+          objectsDirectory,
+          dek!,
+          backupId,
+        );
+        entries.push(databaseEntry);
+        for (const file of mediaBefore.entries.filter((entry) => entry.kind === "file")) {
+          entries.push(await encryptFile(
+            join(mediaDirectory, ...file.path.split("/")),
+            file,
+            "media",
+            `media/${file.path}`,
+            objectsDirectory,
+            dek!,
+            backupId,
+          ));
+        }
+        const mirrorLogicalPaths = new Map<string, string>();
+        for (const mirror of mirrorInputs) {
+          const logicalPath = `oss-mirrors/${randomUUID()}`;
+          const encrypted = await encryptFile(
+            mirror.filePath,
+            mirror.evidence,
+            "oss",
+            logicalPath,
+            objectsDirectory,
+            dek!,
+            backupId,
+          );
+          entries.push(encrypted);
+          mirrorLogicalPaths.set(mirror.objectKey, logicalPath);
+          const after = await inspectRegularFile(mirror.filePath, mirror.evidence.path);
+          if (stableJson(after) !== stableJson(mirror.evidence)) {
+            fail("BACKUP_SOURCE_CHANGED", "OSS mirror changed during backup");
+          }
+        }
+        const media = Object.freeze({
+          localReady: provisionalMedia.localReady,
+          ossReady: Object.freeze(provisionalMedia.ossReady.map((binding) => Object.freeze({
+            ...binding,
+            logicalPath: mirrorLogicalPaths.get(binding.objectKey) ?? "",
+          }))),
+        });
+        await checkpoint(options.onCheckpoint, "after-media-encryption");
+        for (const file of secretsBefore.entries.filter((entry) => entry.kind === "file")) {
+          entries.push(await encryptFile(
+            join(secretsDirectory, ...file.path.split("/")),
+            file,
+            "secret",
+            `secrets/${file.path}`,
+            objectsDirectory,
+            dek!,
+            backupId,
+          ));
+        }
+        await checkpoint(options.onCheckpoint, "after-secrets-encryption");
+
+        const databaseAfter = await databaseFilesSnapshot(sourceDirectory);
+        const mediaAfter = await fingerprintTree(mediaDirectory, false);
+        const observedSecretsAfter = await fingerprintTree(secretsDirectory, false);
+        const secretsAfter = restorableSecretsSnapshot(observedSecretsAfter);
+        const finalSourceIdentity = await directoryIdentity(
+          sourceDirectory,
+          "BACKUP_SOURCE_CHANGED",
+        );
+        if (
+          !sameIdentity(sourceIdentity, finalSourceIdentity) ||
+          !sameSnapshot(databaseBefore, databaseAfter) ||
+          !sameSnapshot(mediaBefore, mediaAfter) ||
+          !sameSnapshot(observedSecretsBefore, observedSecretsAfter) ||
+          !sameSnapshot(secretsBefore, secretsAfter)
+        ) fail("BACKUP_SOURCE_CHANGED", "Backup source changed during frozen snapshot");
+        return Object.freeze({
+          databaseAfter,
+          databaseBefore,
+          databaseEntry,
+          databaseInspection: databaseSnapshot.inspection,
+          entries,
+          media,
+          mediaAfter,
+          mediaBefore,
+          mediaIntegrity,
+          secretValidation,
+          secretsAfter,
+          secretsBefore,
+        });
+      },
+    );
+    const {
+      databaseAfter,
       databaseBefore,
-      scratch,
-    );
-    if (!supportedBackupSchemaVersions.has(
-      databaseSnapshot.inspection.userVersion,
-    )) {
-      fail(
-        "BACKUP_SCHEMA_UNSUPPORTED",
-        "Encrypted package creation requires a supported backup schema",
-      );
-    }
-    await checkpoint(options.onCheckpoint, "after-database-snapshot");
-
-    const copiedSecrets = join(scratch, "secrets");
-    await copyTree(secretsDirectory, copiedSecrets, secretsBefore);
-    const secretContext = await validateBackupSecretsWithContext(
-      databaseSnapshot.snapshotPath,
-      copiedSecrets,
-      scratch,
-    );
-    const secretValidation = secretContext.validation;
-    const mirrorInputs = await Promise.all(mirrorOptions.map(mirrorEvidence));
-    const provisionalMedia = await validateMedia(
-      databaseSnapshot.snapshotPath,
-      mediaDirectory,
+      databaseEntry,
+      databaseInspection,
+      entries,
+      media,
+      mediaAfter,
       mediaBefore,
-      mirrorInputs,
-    );
-    const mediaIntegrity = requireCompleteMediaIntegrity(inspectBackupMediaIntegrity(
-      databaseSnapshot.snapshotPath,
-      databaseSnapshot.inspection,
-      mediaBefore,
-      mirrorInputs,
-      secretContext.storageProfileIds,
-    ));
-
-    const entries: EncryptedEntry[] = [];
-    const databaseEntry = await encryptFile(
-      databaseSnapshot.snapshotPath,
-      databaseSnapshot.evidence,
-      "database",
-      "unboundry.sqlite",
-      objectsDirectory,
-      dek,
-      backupId,
-    );
-    entries.push(databaseEntry);
-    for (const file of mediaBefore.entries.filter((entry) => entry.kind === "file")) {
-      entries.push(await encryptFile(
-        join(mediaDirectory, ...file.path.split("/")),
-        file,
-        "media",
-        `media/${file.path}`,
-        objectsDirectory,
-        dek,
-        backupId,
-      ));
-    }
-    const mirrorLogicalPaths = new Map<string, string>();
-    for (const mirror of mirrorInputs) {
-      const logicalPath = `oss-mirrors/${randomUUID()}`;
-      const encrypted = await encryptFile(
-        mirror.filePath,
-        mirror.evidence,
-        "oss",
-        logicalPath,
-        objectsDirectory,
-        dek,
-        backupId,
-      );
-      entries.push(encrypted);
-      mirrorLogicalPaths.set(mirror.objectKey, logicalPath);
-      const after = await inspectRegularFile(mirror.filePath, mirror.evidence.path);
-      if (stableJson(after) !== stableJson(mirror.evidence)) {
-        fail("BACKUP_SOURCE_CHANGED", "OSS mirror changed during backup");
-      }
-    }
-    const media = Object.freeze({
-      localReady: provisionalMedia.localReady,
-      ossReady: Object.freeze(provisionalMedia.ossReady.map((binding) => Object.freeze({
-        ...binding,
-        logicalPath: mirrorLogicalPaths.get(binding.objectKey) ?? "",
-      }))),
-    });
-    await checkpoint(options.onCheckpoint, "after-media-encryption");
-    for (const file of secretsBefore.entries.filter((entry) => entry.kind === "file")) {
-      entries.push(await encryptFile(
-        join(secretsDirectory, ...file.path.split("/")),
-        file,
-        "secret",
-        `secrets/${file.path}`,
-        objectsDirectory,
-        dek,
-        backupId,
-      ));
-    }
-    await checkpoint(options.onCheckpoint, "after-secrets-encryption");
-
-    const databaseAfter = await databaseFilesSnapshot(sourceDirectory);
-    const mediaAfter = await fingerprintTree(mediaDirectory, false);
-    const observedSecretsAfter = await fingerprintTree(secretsDirectory, false);
-    const secretsAfter = restorableSecretsSnapshot(observedSecretsAfter);
-    const finalSourceIdentity = await directoryIdentity(
-      sourceDirectory,
-      "BACKUP_SOURCE_CHANGED",
-    );
-    if (
-      !sameIdentity(sourceIdentity, finalSourceIdentity) ||
-      !sameSnapshot(databaseBefore, databaseAfter) ||
-      !sameSnapshot(mediaBefore, mediaAfter) ||
-      !sameSnapshot(observedSecretsBefore, observedSecretsAfter) ||
-      !sameSnapshot(secretsBefore, secretsAfter)
-    ) fail("BACKUP_SOURCE_CHANGED", "Backup source changed during frozen snapshot");
+      mediaIntegrity,
+      secretValidation,
+      secretsAfter,
+      secretsBefore,
+    } = captured;
 
     entries.sort((left, right) => left.logicalPath.localeCompare(right.logicalPath));
     const manifest: BackupManifest = Object.freeze({
       backupId,
+      captureMode: options.frozenSourceContract
+        ? "locked-exact"
+        : "external-unverified",
       createdAt: new Date().toISOString(),
       database: Object.freeze({
         entryId: databaseEntry.entryId,
-        inspection: databaseSnapshot.inspection,
+        inspection: databaseInspection,
       }),
       entries: Object.freeze(entries),
       format: backupPackageFormat,
@@ -1831,7 +2805,21 @@ export async function createEncryptedBackup(
       "BACKUP_TARGET_CHANGED",
     );
     const markerPath = join(finalDirectory, backupIncompleteMarker);
-    await writePrivateFile(markerPath, "backup-incomplete\n");
+    const stageIdentity = await directoryIdentity(
+      stage,
+      "BACKUP_TARGET_CHANGED",
+    );
+    await writeReservationMarker(
+      markerPath,
+      reservationMarker(
+        "backup",
+        backupId,
+        databaseInspection.logicalSha256,
+        finalDirectory,
+        stage,
+        stageIdentity,
+      ),
+    );
     const markerIdentity = await regularFileIdentity(
       markerPath,
       "BACKUP_TARGET_CHANGED",
@@ -1908,6 +2896,8 @@ async function readBoundedRegularFile(
   const evidence = await inspectRegularFile(path, logicalPath, maximumBytes);
   const noFollow = "O_NOFOLLOW" in fileConstants ? fileConstants.O_NOFOLLOW : 0;
   const handle = await open(path, fileConstants.O_RDONLY | noFollow);
+  let value: Buffer | undefined;
+  let overflowProbe: Buffer | undefined;
   try {
     const opened = await handle.stat({ bigint: true });
     if (
@@ -1916,18 +2906,41 @@ async function readBoundedRegularFile(
       opened.mtimeNs.toString() !== evidence.mtimeNs ||
       opened.ctimeNs.toString() !== evidence.ctimeNs
     ) fail("BACKUP_PACKAGE_CHANGED", "Backup package changed before metadata read");
-    const value = await handle.readFile();
+    if (opened.size > BigInt(maximumBytes)) {
+      fail("BACKUP_FILE_TOO_LARGE", "Backup metadata exceeds its size limit");
+    }
+    value = Buffer.alloc(Number(opened.size));
+    let position = 0;
+    while (position < value.length) {
+      const { bytesRead } = await handle.read(
+        value,
+        position,
+        value.length - position,
+        position,
+      );
+      if (!bytesRead) {
+        fail("BACKUP_PACKAGE_CHANGED", "Backup package ended while reading");
+      }
+      position += bytesRead;
+    }
+    overflowProbe = Buffer.allocUnsafe(1);
+    if ((await handle.read(overflowProbe, 0, 1, value.length)).bytesRead !== 0) {
+      fail("BACKUP_FILE_TOO_LARGE", "Backup metadata expanded past its size limit");
+    }
     const after = await handle.stat({ bigint: true });
     if (
       after.dev !== opened.dev || after.ino !== opened.ino || after.size !== opened.size ||
       after.mtimeNs !== opened.mtimeNs || after.ctimeNs !== opened.ctimeNs ||
       value.length !== evidence.size || sha256(value) !== evidence.sha256
     ) {
-      value.fill(0);
       fail("BACKUP_PACKAGE_CHANGED", "Backup package changed while reading");
     }
     return { evidence, value };
+  } catch (error) {
+    value?.fill(0);
+    throw error;
   } finally {
+    overflowProbe?.fill(0);
     await handle.close();
   }
 }
@@ -2093,6 +3106,12 @@ function validateManifest(
     !Number.isFinite(Date.parse(manifest.createdAt)) ||
     !Array.isArray(manifest.entries)
   ) fail("BACKUP_MANIFEST_INVALID", "Encrypted backup manifest is invalid");
+  const captureMode = manifest.captureMode === "locked-exact"
+    ? "locked-exact"
+    : manifest.captureMode === "external-unverified" ||
+        manifest.captureMode === undefined
+      ? "external-unverified"
+      : fail("BACKUP_MANIFEST_INVALID", "Backup capture mode is invalid");
   if (manifest.entries.length > 1_000_000) {
     fail("BACKUP_MANIFEST_INVALID", "Encrypted backup has too many entries");
   }
@@ -2331,6 +3350,7 @@ function validateManifest(
   ]) safeJsonInteger(secretValidation[name], "Secret validation count");
   return Object.freeze({
     backupId: manifest.backupId as string,
+    captureMode,
     createdAt: manifest.createdAt,
     database: Object.freeze({
       entryId: database.entryId,
@@ -2798,6 +3818,41 @@ async function materializeAndValidate(
       mirrorInputs,
       secretContext.storageProfileIds,
     ));
+    const recoveryEntries = new Map<string, {
+      byteSize: number;
+      checksumSha256: string;
+      logicalPath: string;
+      objectKey: string;
+      storageProfileId: string | null;
+      versionId: string;
+    }>();
+    for (const binding of manifest.media.ossReady) {
+      const recoveryEntry = Object.freeze({
+        byteSize: binding.byteSize,
+        checksumSha256: binding.checksumSha256,
+        logicalPath: binding.logicalPath,
+        objectKey: binding.objectKey,
+        storageProfileId: binding.storageProfileId,
+        versionId: binding.versionId,
+      });
+      const prior = recoveryEntries.get(binding.logicalPath);
+      if (prior && stableJson(prior) !== stableJson(recoveryEntry)) {
+        fail(
+          "BACKUP_OSS_RECOVERY_INDEX_CONFLICT",
+          "OSS recovery index contains conflicting bindings",
+        );
+      }
+      recoveryEntries.set(binding.logicalPath, recoveryEntry);
+    }
+    const recoveryIndex = createFakeOssRecoveryIndex({
+      backupId: manifest.backupId,
+      databaseLogicalSha256: databaseInspection.logicalSha256,
+      entries: [...recoveryEntries.values()],
+    });
+    await writePrivateFile(
+      join(destinationRoot, ossRecoveryIndexFileName),
+      `${stableJson(recoveryIndex)}\n`,
+    );
     await checkpoint(callback, "after-restore-secrets");
     await syncDirectory(destinationRoot);
     return summaryFromManifest(manifest, packageDirectory, mediaIntegrity);
@@ -2876,15 +3931,25 @@ export async function restoreEncryptedBackup(
     }
     targetIdentity = await directoryIdentity(targetDirectory);
     const markerPath = join(targetDirectory, restoreIncompleteMarker);
-    const marker = await open(markerPath, "wx", 0o600);
-    try {
-      await marker.writeFile("restore-incomplete\n", { encoding: "utf8" });
-      await marker.sync();
-      const details = await marker.stat({ bigint: true });
-      markerIdentity = Object.freeze({ dev: details.dev, ino: details.ino });
-    } finally {
-      await marker.close();
-    }
+    const stageIdentity = await directoryIdentity(
+      stage,
+      "BACKUP_RESTORE_TARGET_CHANGED",
+    );
+    await writeReservationMarker(
+      markerPath,
+      reservationMarker(
+        "restore",
+        result.backupId,
+        result.databaseLogicalSha256,
+        targetDirectory,
+        stage,
+        stageIdentity,
+      ),
+    );
+    markerIdentity = await regularFileIdentity(
+      markerPath,
+      "BACKUP_RESTORE_TARGET_CHANGED",
+    );
     await syncDirectory(targetDirectory);
     await checkpoint(options.onCheckpoint, "after-restore-reservation");
     await assertPublishReservation(

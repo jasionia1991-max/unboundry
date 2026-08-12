@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext } from "./safe-test";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -251,116 +251,163 @@ test("template cover follows generation result then graph asset then gradient", 
   const { dataDirectory } = (await dataDirectoryResponse.json()) as {
     dataDirectory: string;
   };
-  const store = openAppDatabase(dataDirectory);
-  const timestamp = new Date().toISOString();
   try {
-    store
-      .prepare(`
-        INSERT INTO media_assets (
-          kind, id, owner_id, storage_name, byte_size, created_at, updated_at
-        )
-        VALUES ('image', 'cover-task-image', '__test__', 'cover-task-image.png', 100, ?, ?)
-      `)
-      .run(timestamp, timestamp);
-    store
-      .prepare(`
-        INSERT INTO media_assets (
-          kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
-          storage_status
-        )
-        VALUES (
-          'image', 'graph-asset', '__test__', 'graph-asset.png', 1, ?, ?,
-          'pending'
-        )
-      `)
-      .run(timestamp, timestamp);
-    store
-      .prepare(`
-        INSERT INTO generation_tasks (
-          id, canvas_id, node_id, kind, prompt, model, parameters,
-          idempotency_key, request_fingerprint, state, attempt, owner_id,
-          result_asset_id, created_at, updated_at
-        )
-        VALUES (
-          'cover-task', 'cover-canvas', 'node-2', 'image', 'prompt', 'model-1',
-          '{}', 'cover-key', 'cover-fingerprint', 'success', 1, '__test__',
-          'cover-task-image', ?, ?
-        )
-      `)
-      .run(timestamp, timestamp);
-  } finally {
-    store.close();
-  }
+    const store = openAppDatabase(dataDirectory);
+    const timestamp = new Date().toISOString();
+    try {
+      store
+        .prepare(`
+          INSERT INTO media_assets (
+            kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+            storage_status, checksum_sha256, duration_status
+          )
+          VALUES (
+            'image', 'cover-task-image', '__test__', 'cover-task-image.png',
+            100, ?, ?, 'ready', ?, 'not-applicable'
+          )
+        `)
+        .run(
+          timestamp,
+          timestamp,
+          createHash("sha256").update("m71:cover-task-image").digest("hex"),
+        );
+      store
+        .prepare(`
+          INSERT INTO media_assets (
+            kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+            storage_status, checksum_sha256, duration_status
+          )
+          VALUES (
+            'image', 'graph-asset', '__test__', 'graph-asset.png', 1, ?, ?,
+            'pending', ?, 'not-applicable'
+          )
+        `)
+        .run(
+          timestamp,
+          timestamp,
+          createHash("sha256").update("m71:graph-asset").digest("hex"),
+        );
+      store
+        .prepare(`
+          INSERT INTO generation_tasks (
+            id, canvas_id, node_id, kind, prompt, model, parameters,
+            idempotency_key, request_fingerprint, state, attempt, owner_id,
+            result_asset_id, created_at, updated_at
+          )
+          VALUES (
+            'cover-task', 'cover-canvas', 'node-2', 'image', 'prompt', 'model-1',
+            '{}', 'cover-key', 'cover-fingerprint', 'success', 1, '__test__',
+            'cover-task-image', ?, ?
+          )
+        `)
+        .run(timestamp, timestamp);
+    } finally {
+      store.close();
+    }
 
-  const fromTask = await request.post("/api/templates", {
-    data: {
-      graph: templateGraph(),
-      nodeIds: ["node-1", "node-2"],
-      sourceCanvasId: "cover-canvas",
-      title: "封面来自生成结果",
-    },
-  });
-  expect(fromTask.status()).toBe(201);
-  const fromTaskCard = (await fromTask.json()) as { template: UserTemplateCard };
-  expect(fromTaskCard.template.previewImage).toBe("/api/assets/cover-task-image");
-  expect(fromTaskCard.template.cover).toEqual({
-    assetId: "cover-task-image",
-    kind: "image",
-  });
-
-  const graphCover = {
-    edges: [],
-    nodes: [
-      {
-        data: { assetId: "graph-asset", label: "Image", title: "素材图" },
-        id: "asset-node",
-        position: { x: 0, y: 0 },
-        style: { height: 250, width: 250 },
-        type: "image",
-        zIndex: 1,
+    const fromTask = await request.post("/api/templates", {
+      data: {
+        graph: templateGraph(),
+        nodeIds: ["node-1", "node-2"],
+        sourceCanvasId: "cover-canvas",
+        title: "封面来自生成结果",
       },
-    ],
-    version: 1,
-  };
-  const pendingGraph = await request.post("/api/templates", {
-    data: {
-      graph: graphCover,
-      title: "未发布素材不做封面",
-    },
-  });
-  expect(pendingGraph.status()).toBe(201);
-  const pendingGraphCard = (await pendingGraph.json()) as {
-    template: UserTemplateCard;
-  };
-  expect(pendingGraphCard.template.cover).toBeNull();
-  expect(pendingGraphCard.template.previewImage).toBeUndefined();
+    });
+    expect(fromTask.status()).toBe(201);
+    const fromTaskCard = (await fromTask.json()) as { template: UserTemplateCard };
+    expect(fromTaskCard.template.previewImage).toBe("/api/assets/cover-task-image");
+    expect(fromTaskCard.template.cover).toEqual({
+      assetId: "cover-task-image",
+      kind: "image",
+    });
 
-  const readyStore = openAppDatabase(dataDirectory);
-  try {
-    readyStore
-      .prepare(`
-        UPDATE media_assets
-        SET storage_status = 'ready', updated_at = ?
-        WHERE kind = 'image' AND id = 'graph-asset' AND owner_id = '__test__'
-      `)
-      .run(new Date().toISOString());
+    const graphCover = {
+      edges: [],
+      nodes: [
+        {
+          data: { assetId: "graph-asset", label: "Image", title: "素材图" },
+          id: "asset-node",
+          position: { x: 0, y: 0 },
+          style: { height: 250, width: 250 },
+          type: "image",
+          zIndex: 1,
+        },
+      ],
+      version: 1,
+    };
+    const pendingGraph = await request.post("/api/templates", {
+      data: {
+        graph: graphCover,
+        title: "未发布素材不做封面",
+      },
+    });
+    expect(pendingGraph.status()).toBe(201);
+    const pendingGraphCard = (await pendingGraph.json()) as {
+      template: UserTemplateCard;
+    };
+    expect(pendingGraphCard.template.cover).toBeNull();
+    expect(pendingGraphCard.template.previewImage).toBeUndefined();
+
+    const readyStore = openAppDatabase(dataDirectory);
+    try {
+      readyStore
+        .prepare(`
+          UPDATE media_assets
+          SET storage_status = 'ready', updated_at = ?
+          WHERE kind = 'image' AND id = 'graph-asset' AND owner_id = '__test__'
+        `)
+        .run(new Date().toISOString());
+    } finally {
+      readyStore.close();
+    }
+
+    const fromGraph = await request.post("/api/templates", {
+      data: {
+        graph: graphCover,
+        title: "封面来自素材",
+      },
+    });
+    expect(fromGraph.status()).toBe(201);
+    const fromGraphCard = (await fromGraph.json()) as { template: UserTemplateCard };
+    expect(fromGraphCard.template.previewImage).toBe("/api/assets/graph-asset");
+
+    const gradient = await saveTemplate(request, "封面占位渐变");
+    expect(gradient.previewImage).toBeUndefined();
+    expect(gradient.cover).toBeNull();
   } finally {
-    readyStore.close();
+    const cleanup = openAppDatabase(dataDirectory);
+    try {
+      cleanup.exec("BEGIN IMMEDIATE");
+      cleanup.prepare(`
+        DELETE FROM user_templates
+        WHERE owner_id = '__test__'
+          AND title IN (
+            '封面来自生成结果', '未发布素材不做封面',
+            '封面来自素材', '封面占位渐变'
+          )
+      `).run();
+      cleanup.prepare(`
+        DELETE FROM generation_tasks
+        WHERE id = 'cover-task' AND owner_id = '__test__'
+      `).run();
+      cleanup.prepare(`
+        DELETE FROM media_assets
+        WHERE owner_id = '__test__'
+          AND kind = 'image'
+          AND id IN ('cover-task-image', 'graph-asset')
+      `).run();
+      cleanup.exec("COMMIT");
+    } catch (error) {
+      try {
+        cleanup.exec("ROLLBACK");
+      } catch {
+        // Preserve the cleanup failure.
+      }
+      throw error;
+    } finally {
+      cleanup.close();
+    }
   }
-
-  const fromGraph = await request.post("/api/templates", {
-    data: {
-      graph: graphCover,
-      title: "封面来自素材",
-    },
-  });
-  expect(fromGraph.status()).toBe(201);
-  const fromGraphCard = (await fromGraph.json()) as { template: UserTemplateCard };
-  expect(fromGraphCard.template.previewImage).toBe("/api/assets/graph-asset");
-
-  const gradient = await saveTemplate(request, "封面占位渐变");
-  expect(gradient.previewImage).toBeUndefined();
-  expect(gradient.cover).toBeNull();
 });
 
 test("group template serializer keeps prompts, parameters, roles and durable media identities", () => {

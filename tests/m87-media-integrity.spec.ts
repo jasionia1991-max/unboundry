@@ -403,6 +403,10 @@ async function fixtureRoot(prefix: string) {
   await chmod(root, 0o700);
   const dataDirectory = join(root, "data");
   const mediaDirectory = join(dataDirectory, "media");
+  // Greenfield publication requires an entry-free private data directory.
+  // Establish the exact current database before adding fixture media residue.
+  const database = openAppDatabase(dataDirectory);
+  database.close();
   await mkdir(mediaDirectory, { recursive: true, mode: 0o700 });
   await chmod(dataDirectory, 0o700);
   await chmod(mediaDirectory, 0o700);
@@ -1118,9 +1122,12 @@ test("the read-only media report CLI requires a frozen absolute source and leave
       "--scratch-root",
       scratchRoot,
       "--source-frozen",
+      "--external-freeze-non-final",
     ], { cwd: process.cwd() });
     expect(JSON.parse(result.stdout)).toMatchObject({
+      captureMode: "external-unverified",
       clean: true,
+      finalCandidate: false,
       schemaVersion: currentSchemaVersion,
       version: 1,
     });
