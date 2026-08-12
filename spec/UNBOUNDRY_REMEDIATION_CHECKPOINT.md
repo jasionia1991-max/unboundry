@@ -1,18 +1,18 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`14`
+断点版本：`15`
 更新时间：`2026-08-12`
-状态：`OFFLINE_GOAL_ACTIVE_REM-001_REM-002_REM-003_REM-004_REM-005_REM-006_REM-007_REM-008_REM-009A_USER_REVIEW_REM-009B_IN_PROGRESS`
+状态：`OFFLINE_GOAL_ACTIVE_REM-001_THROUGH_REM-009B_USER_REVIEW_REM-010_IN_PROGRESS_REM-011_NOT_STARTED`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
 ## 1. 当前结论
 
 - 用户已于 2026-08-09 明确回复“施工文档确认通过”，REM-000 = `PASS`。
-- 施工总方案以 v1.0 建立权威合同，当前离线施工版本已更新为 v1.8-offline。
+- 施工总方案以 v1.0 建立权威合同，当前离线施工版本已更新为 v1.9-offline。
 - 用户已于 2026-08-09 明确启动一次性离线 Goal，Goal ID `019fe226-4d7b-7831-a254-106e40b346c2`；REM-001～010 与 REM-011 离线工程部分可按依赖顺序连续施工，中途不再逐项询问。
 - 允许本地代码/测试/脚本/配置/文档/package 修改、动态 loopback 临时环境、假 Provider/OSS/服务器、必要测试容器和本地 checkpoint/功能/candidate commit。
 - 真实数据、4173、真实 Provider/OSS、canvas.mymy.ltd、SSH、生产、push、tag、PR、正式版本号与发布仍绝对禁止。
-- REM-001 安全底座、REM-002 API/进程基础、REM-003 画布持久化、REM-004 统一媒体生命周期、REM-005 生成付费边界、REM-006 账号删除/模板/权限/清理、REM-007 前端生成恢复与失败体验、REM-008 资源/安全/性能/运维脚本及 REM-009A 只读备份恢复底座工程候选均已完成并进入 `USER_REVIEW`；当前唯一 `IN_PROGRESS` 施工项为 REM-009B。
+- REM-001～REM-009B 的离线工程候选与对应自动证据均已完成并进入 `USER_REVIEW`；当前唯一 `IN_PROGRESS` 项为 REM-010，但只落地了未接入服务路径的 runtimeRole leaf/专项合同与 legacy deploy fail-close，尚未完成/验收。REM-011 为 `NOT_STARTED`。
 
 ## 2. 项目身份
 
@@ -26,7 +26,7 @@
 | 生产数据目录 | `/var/lib/unboundry` |
 | 本地真实数据目录 | `/Users/mymy/Documents/unboundry/app/data` |
 | 真实本地服务端口 | `4173`，有守护进程，不得用于测试 |
-| 生产/历史数据库基线 | 线上 v0.5.1、schema `37`；本 Goal 未读取或改动真实数据 |
+| 生产/历史数据库基线 | 线上 v0.5.1、schema `37`；一次独立审计曾越权用 immutable 只读聚合访问本地 `app/data`，结果未纳入证据，写入/外部请求为 0，之后未再访问 |
 | 当前离线候选 | package `0.5.1`、schema `39`；production HOLD，v0.5.1 不可直接回滚该库 |
 | Node | 离线施工固定 `/Users/mymy/.local/bin/node`（指向 `/Users/mymy/.hermes/node/bin/node`）`v22.23.1` + npm `10.9.8`；历史生产记录为 `v22.23.2`，当前生产未复核 |
 
@@ -72,14 +72,16 @@
 | REM-006 | 账号删除、模板、权限与清理 | `USER_REVIEW` | PERM-011/KEY-008/AUTH-006 合同、专项/核心/安全全量与独立终审已完成 |
 | REM-007 | 前端生成恢复与失败体验 | `USER_REVIEW` | 四类 ownership/exact GET/终态 ACK、transport/retry fail-closed、mutation 失败体验及完整安全证据已完成 |
 | REM-008 | 资源、安全、性能和运维脚本 | `USER_REVIEW` | 登录/SSE、媒体资源、出站、安全头、依赖、脚本及必要性能治理已完成 |
-| REM-009B | 最终候选备份、恢复与双向兼容演练 | `IN_PROGRESS` | 用户 2026-08-09 一次性离线 Goal 合并授权；当前唯一施工项 |
+| REM-009B | 最终候选备份、恢复与双向兼容演练 | `USER_REVIEW` | 自动实现及同源自动证据完成；不是用户 PASS |
+| REM-010 | 不可变发布、切换与回滚 | `IN_PROGRESS` | 仅 runtimeRole leaf/专项合同与 legacy deploy fail-close 已落地，尚未接线、未完成验收 |
+| REM-011 | 候选全量验收与正式发布门 | `NOT_STARTED` | 尚未开始 |
 
-REM-010～011 尚未进入实施；离线工程权限已预先授予，达到施工总方案依赖后可连续进入下一项。REM-009A 与 REM-008 已解除 REM-009B 的前置阻断。
+REM-009B 的自动实现与自动证据已完成；REM-010 已进入施工但未实现验收，REM-011 尚未开始。
 
 ### 4.1 一次性授权的决策默认
 
 - 账号删除继续遵守 `PERM-011 / KEY-008 / AUTH-006`；普通账号的公共模板及必要素材转交受保护最高权限账号，其他私有数据按既有合同安全清理；受保护最高权限账号绝不可删除。
-- 优先保持 schema 37 与 v0.5.1 数据格式双向兼容；REM-004 形成 schema 38、REM-005 追加 schema 39，当前仅为 schema 39 离线候选，生产和迁移授权没有扩大。REM-009B/010 桥梁、迁移、60 秒 admission 排空和回滚硬门通过前绝不发布；P1/P2 不兼容扩张延期。
+- 原决策优先争取 schema 37 与 v0.5.1 数据格式双向兼容；REM-004 形成 schema 38、REM-005 追加 schema 39。REM-009B 已证明 exact v0.5.1 对 schema39 安全拒绝，迁移后不能回滚到 v0.5.1，并完成 exact-v0.5.1→current bridge→schema39 数据格式与拒绝边界矩阵；生产和迁移授权没有扩大。REM-010 bridge 接线、60 秒 admission 排空、切换和回滚硬门通过前绝不发布。
 - `F-001～F-034` 全部纳入；review 新发现且不改变产品合同的 P0/P1 登记后直接修复；无关 P2、视觉改版或新功能只登记。
 - 保持 `DATA-005`、默认五项权限、500MB 视频合同和既有 PASS；不恢复金额/额度/订阅，不启用任何 PAUSED 范围。
 - 遇到真实数据、生产连接、外部 Provider 或产品语义变化时登记并继续其他不依赖工作；仅在仓库身份被外部改变，或无法保证真实数据隔离与零外部请求时安全停止整个 Goal。
@@ -115,7 +117,7 @@ REM-010～011 尚未进入实施；离线工程权限已预先授予，达到施
 - 三路独立只读复核的可执行意见已逐项纳入；最终复核确认 `USER_REVIEW / USER_RECHECK / PASS`、真实数据隔离、旧备份/发布命令冻结和桥梁两次授权已一致；
 - 未执行运行时测试，这是 REM-000 的主动安全边界，不得将文档检查误报为项目功能回归。
 
-本批外部动作计数：
+REM-000 文档批次外部动作计数（历史时点）：
 
 | 动作 | 当前值 |
 |---|---|
@@ -125,8 +127,10 @@ REM-010～011 尚未进入实施；离线工程权限已预先授予，达到施
 | 4173 操作 | 0 |
 | Provider 请求 | 0 |
 | 生产 SSH/修改 | 0 |
-| 本地 commit | 已按授权创建 checkpoint/功能提交；REM-009A 与 REM-003 功能 SHA 见下文 |
+| 本地 commit | 0 |
 | push/tag/发布 | 0 |
+
+当前 Goal 治理披露：safe runner/tests 对真实路径的成功访问为 0；一次独立审计曾越权对 `app/data` 执行 immutable 只读聚合查询，结果未纳入证据，写入/外部请求为 0，之后未再访问。
 
 ### 6.1 REM-001 工程证据与边界
 
@@ -182,7 +186,7 @@ REM-010～011 尚未进入实施；离线工程权限已预先授予，达到施
 - 冻结源码指纹 `f6974d0456eb09b864e7302b85d47172d93d57182610ec42b95c42be4427454c`；8-spec 专项 `158/158`、同组三轮 `474/474`、安全全量 `109/109 spec、762/762 PASS`；failed/skipped/retries/reportErrors/blocked 均为 0。清单模式 dev 74 / hybrid 4 / node 21 / preview 2 / self 8；源码 284，TS/TSX `268/268`、JS/MJS `16/16`；11 个运维脚本为 6 个行为验证 + 5 个哈希冻结。
 - REM-004 最终证据绑定监听身份 `c9663ffd4e9e26c675482e713e301f681f172b976a50df952d903fac9f00da0e`，各最终运行前后不变且本 Goal 未连接、终止或重启该监听。它与较早 REM 的历史 listener hash 不同，不能覆盖或改写旧批次证据。
 - 两路独立终审无剩余即时产品 P0/P1。功能提交 `9f1019e5686ccce4f646b54a2be6ccd5ab4864d0`；测试绑定提交前相同功能内容的冻结工作区指纹，文档变更后的工作区 SHA 不冒充已运行证据。工程状态 `USER_REVIEW`，不是 PASS。
-- schema 38 仅为必要 P0 的离线候选，线上 v0.5.1/schema37 未触碰，production HOLD。REM-009B/010 必须完成富数据 v37 格式 2 备份→恢复→迁移→启动、one-shot maintenance migrator、写锁内 exact-v37 复核、迁移后回填故障恢复、v37/v38 bridge、v0.5.1 数据格式矩阵及两版本/两次生产授权；当前 exact-v37 round-trip 与显式迁移角色只算离线结构证明。
+- schema 38 仅为必要 P0 的离线候选，线上 v0.5.1/schema37 未触碰，production HOLD。本段在 REM-004 时登记的富数据恢复、one-shot migrator、写锁内复核和回填故障恢复现已由 REM-009B 用合成数据完成；exact v0.5.1 对 schema39 安全拒绝且迁移后不能回滚，生产 bridge 接线及必要的两版本/两次授权仍归 REM-010。
 
 ### 6.6 REM-005 工程证据与边界
 
@@ -210,7 +214,7 @@ REM-010～011 尚未进入实施；离线工程权限已预先授予，达到施
 - Workspace create/rename/delete、CanvasShell create/clone/delete 与 UpdateNotice reload-after-save 各自具 in-flight fence 和显式失败处理；Workspace DELETE 与删除后核验所用列表 GET 具 deadline（列表覆盖 response body）。Workspace 删除向 ConfirmDialog 传入 busy，ConfirmDialog 负责 focus/Escape/a11y；CanvasShell 删除依靠外层 fence。
 - 测试运行于功能提交前、HEAD `26ff9396194499365c79e5bc85238631ed44ef7a` 下的 403-file 冻结脏工作树，SHA-256 `ce7b4856b00b3ab12ee4853ece0b07b01dec86619bbca7865daa4edb659cc957`。adjacency 12-spec `142/142`；target 10-spec `255/255`；核心 8-spec `repeat=3` 共 `606/606`；安全全量 `109/109 spec、841/841 PASS`，failed/skipped/retries/reportErrors/blocked 均为 0，full `deniedViteWildcardProbes=477`。Node `22.23.1` / npm `10.9.8`；源码 286，TS/TSX `270/270`、JS/MJS `16/16`；11 个运维脚本为 6 个行为验证 + 5 个哈希冻结；4173 listener 前后均为 `91689b3fefccfb3fe32ffc44e2b10a3146976b76d497183f56f7457924a7e219`。
 - 独立终审无剩余即时产品 P0/P1。功能提交 `138f7ff0f9481e73355fbd9a9fd2c548ee9cee1a` 包含相同功能文件，但未在该 commit 后或文档后树重跑。REM-007 工程状态为 `USER_REVIEW`，不是用户 PASS、真实 Mureka/真实数据/真实 Provider/OSS、生产迁移、发布许可或 REM-011 最终三轮；真实 Mureka `INPUT-006 / AUDIO-REAL-001` 继续 PARTIAL/暂停。
-- REM-007 无 schema 迁移；新增 ownership 是可选 canvas JSON/localStorage 字段，旧数据兼容与最终数据格式矩阵仍归 REM-009B。上述恢复合同只在单一 active process 内成立，不关闭 F-023，仍归 REM-010；不宣称跨标签分布式互斥。package `0.5.1`、线上 v0.5.1/schema37 不变，schema39 仅离线候选，production HOLD。
+- REM-007 无 schema 迁移；新增 ownership 是可选 canvas JSON/localStorage 字段，其旧数据格式与安全拒绝边界后来已由 REM-009B 矩阵覆盖。上述恢复合同只在单一 active process 内成立，不关闭 F-023，仍归 REM-010；不宣称跨标签分布式互斥。package `0.5.1`、线上 v0.5.1/schema37 不变，schema39 仅离线候选，production HOLD。
 
 ### 6.9 REM-008 工程证据与边界
 
@@ -221,11 +225,18 @@ REM-010～011 尚未进入实施；离线工程权限已预先授予，达到施
 - 功能提交 `ff9a2adbb9ba93c9646935b2b22b318fb5503f21` 包含相同功能文件，未在该 commit 后或文档后树重跑。REM-008 工程状态为 `USER_REVIEW`，不是用户 PASS、真实 500MiB 上传、真实数据/Provider/OSS、浏览器 TLS/生产安全头、生产迁移、发布许可或 REM-011 最终三轮。
 - 资源/SSE/进程/出站合同只在单一 active process 内成立，不是跨进程或多机配额；磁盘 reservation 不是 OS 全局配额，脚本不声称文件系统/SQLite 跨介质崩溃原子。F-020/F-024 归 REM-009B，F-022/F-023 归 REM-010。package `0.5.1`、线上 v0.5.1/schema37 不变，schema39 仅离线候选，production HOLD。
 
+### 6.10 REM-009B 工程证据与边界
+
+- 合成富数据/媒体/密钥/假 OSS 已完成格式 2 create→verify→restore、one-shot exact-v37→schema39 migration、写锁内来源复核、schema38/39 与回填故障恢复、假 OSS 重建、候选正常启动和冻结 exact-v0.5.1→current bridge→schema39 数据格式与安全拒绝边界矩阵；exact v0.5.1 对 schema39 安全拒绝，迁移后不能回滚到 v0.5.1。
+- 测试在父 HEAD `bbcd5e0f6ca2096ed433d5ac45019c19aab50c53` 的同内容脏树运行，冻结 source SHA-256 `7cf46804f952e580e9574a08a93f42ad53c051d4fcd5f2705691f82c8330326b`：核心 8-spec `repeat=3` 为 `399/399`，`deniedViteWildcardProbes=567`；安全全量 `114/114 spec、912/912 PASS`，failed/skipped/retries/reportErrors/blocked 均为 0，full `deniedViteWildcardProbes=516`。Node `22.23.1` / npm `10.9.8`；源码 303，TS/TSX `283/283`、JS/MJS `20/20`；15 个运维脚本为 12 个行为验证 + 3 个哈希冻结；snapshot 未变，4173 listener 前后均为 `1be6a5d9061f3be72e5d45a0acf7cb70f5fe86ac645fceff60138b4b718d35dd`。
+- 功能提交 `9a158a92563814791fefb8d4e6c5531eca610d78` 包含相同功能文件，但未在 commit 后或文档后树重跑。REM-009B 为 `USER_REVIEW`，不是用户 PASS、USER_RECHECK、真实数据/Provider/OSS、生产迁移、正式 candidate release 或发布证明。
+- current-database-open reservation 可序列化协作打开；同 UID 非协作进程仍可替换该极窄路径，作为残余边界保留。REM-010 的 runtime role/lease/drain 目前只是 leaf 与 m93 隔离合同，尚未接入应用启动、请求、worker 或 SSE 生命周期。
+
 ## 7. 当前执行路径
 
-1. REM-008 已完成并冻结证据；继续保留 REM-001 安全入口与 REM-002 运行时边界，任何后续测试只能经安全入口执行；
-2. 当前实施 REM-009B：只用合成富数据、媒体、密钥和假 OSS 完成最终候选备份→恢复→迁移→启动、桥梁与双向兼容矩阵；真实数据/Provider/OSS、4173 与生产仍禁止；
-3. schema 39 只在线下；REM-009B/010 桥梁、one-shot 迁移、60 秒 admission 排空、F-023 单任务处理器与双版本矩阵硬门通过前 production HOLD；REM-003 TEMP 高水位和 REM-005 worker 都只在单一可写进程内可靠；
+1. REM-009B 已完成同源自动证据并进入 `USER_REVIEW`；继续保留 REM-001 安全入口与 REM-002 运行时边界，任何后续测试只能经安全入口执行；
+2. 当前实施 REM-010：把 runtime role/lease/drain 接入应用启动、请求、worker 与 SSE 生命周期，并补不可变 release、三层健康、排空、切换和回滚；真实数据/Provider/OSS、4173 与生产仍禁止；
+3. schema 39 只在线下；REM-010 的唯一 active worker、切换、正式候选 release 和回滚硬门通过前 production HOLD；
 4. 每个 REM 按施工总方案依赖顺序完成分析、实施、测试、独立 review 与文档同步；每个本地 commit 前核对范围，绝不 push/tag/PR；
 5. 终点是固定 candidate SHA、G0～G6 离线证据、工程 `USER_REVIEW` 与页面 `USER_RECHECK`，生产和发布留待用户另行确认。
 
@@ -245,11 +256,12 @@ REM-010～011 尚未进入实施；离线工程权限已预先授予，达到施
 项目路径：/Users/mymy/Documents/unboundry/app
 线上版本：v0.5.1
 当前分支：codex/unboundry-offline-remediation-2026-08-09
-起点 HEAD：262c66c4087d915b03971191ee00a9bfba74da65；REM-008 功能提交 ff9a2adbb9ba93c9646935b2b22b318fb5503f21；当前 HEAD 以 git 只读结果对照本文件
-最后完成工程候选：REM-008（USER_REVIEW），核心 15-spec repeat=3 共 588/588，安全入口全量 111/891、891/891 PASS
-冻结功能树指纹：79625ac9768e99351f00190389a76e19945355405a3235608f219afd4d2d81be（测试时 HEAD d63af1224bbadfab00cdd65256c16afaf4195fa1；未在功能 commit 后或文档后树重跑）
-当前施工项：REM-009B（IN_PROGRESS）
-下一步：只用合成富数据与假 OSS 完成最终候选备份、恢复、迁移、启动和双向兼容演练；真实 Provider/OSS、4173 与生产继续禁止
+起点 HEAD：262c66c4087d915b03971191ee00a9bfba74da65；REM-009B 功能提交 9a158a92563814791fefb8d4e6c5531eca610d78；当前 HEAD 以 git 只读结果对照本文件
+最后完成工程候选：REM-009B（USER_REVIEW），核心 8-spec repeat=3 共 399/399，安全入口全量 114/912、912/912 PASS
+冻结功能树指纹：7cf46804f952e580e9574a08a93f42ad53c051d4fcd5f2705691f82c8330326b（测试时父 HEAD bbcd5e0f6ca2096ed433d5ac45019c19aab50c53；未在功能 commit 后或文档后树重跑）
+4173 listener：1be6a5d9061f3be72e5d45a0acf7cb70f5fe86ac645fceff60138b4b718d35dd（前后不变）
+当前施工项：REM-010（IN_PROGRESS，尚未完成/验收）；REM-011 NOT_STARTED
+下一步：接入 runtime role/lease/drain 并实现不可变 release、排空、切换与回滚；真实 Provider/OSS、4173 与生产继续禁止
 代码授权：一次性离线 Goal 范围内已授权；Goal ID 019fe226-4d7b-7831-a254-106e40b346c2
 真实数据操作：禁止
 Provider 请求：禁止

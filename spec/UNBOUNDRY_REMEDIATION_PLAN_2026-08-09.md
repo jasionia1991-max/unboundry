@@ -1,9 +1,9 @@
 # Unboundry 全量修复、优化与安全发布施工总方案
 
 状态：`APPROVED_BY_USER`
-计划版本：`1.8-offline`
+计划版本：`1.9-offline`
 建立日期：`2026-08-09`
-当前授权：用户已于 2026-08-09 确认本施工文档并启动一次性离线 Goal；**已授权 REM-001～010 与 REM-011 离线工程部分连续施工、本地 checkpoint/功能/candidate commit，未授权真实数据、4173、真实 Provider/OSS、SSH、生产、push、tag、PR、正式版本号或发布**。当前状态为 `REM-000 PASS / REM-001、REM-002、REM-003、REM-004、REM-005、REM-006、REM-007、REM-008、REM-009A USER_REVIEW / REM-009B IN_PROGRESS`。
+当前授权：用户已于 2026-08-09 确认本施工文档并启动一次性离线 Goal；**已授权 REM-001～010 与 REM-011 离线工程部分连续施工、本地 checkpoint/功能/candidate commit，未授权真实数据、4173、真实 Provider/OSS、SSH、生产、push、tag、PR、正式版本号或发布**。当前状态为 `REM-000 PASS / REM-001～REM-009B USER_REVIEW / REM-010 IN_PROGRESS / REM-011 NOT_STARTED`；REM-010 当前仅有未接线 leaf，尚未完成/验收。
 
 > 用户已于 2026-08-09 确认本文档为本轮权威施工合同。任何 Agent 在上下文压缩、换人或恢复任务后，都必须重新读取本文件和 `UNBOUNDRY_REMEDIATION_CHECKPOINT.md`，不得凭内部记忆或压缩摘要继续施工。
 
@@ -41,7 +41,7 @@
 | 数据库结构 | 当前迁移最高版本 `37` |
 | 本轮检测到的本机 Node | `v25.9.0` |
 | 施工目标 Node | Node 22 LTS；精确 Node/npm 版本在 REM-001 决策并固定。历史生产记录为 `v22.23.2`，本轮未复核当前生产精确版本 |
-| 当前代码授权 | 一次性离线 Goal 已激活；REM-000 PASS、REM-001/002/003/004/005/006/007/008/009A USER_REVIEW、REM-009B IN_PROGRESS；仅限施工合同内的本地隔离工程，生产与外部真实服务永久排除 |
+| 当前代码授权 | 一次性离线 Goal 已激活；REM-000 PASS、REM-001～009B USER_REVIEW、REM-010 IN_PROGRESS（仅 leaf 基础，尚未接线/验收）、REM-011 NOT_STARTED；仅限施工合同内的本地隔离工程，生产与外部真实服务永久排除 |
 
 基线发生变化时，先更新断点文件并说明原因；未经用户确认不得静默换仓库、换分支、换线上版本或换目标。
 
@@ -74,10 +74,12 @@
 6. 所有测试子进程必须移除真实 Provider、OSS、代理和云账号环境变量；浏览器与 Node 均禁止访问非 loopback 网络。
 7. 不发起任何真实或付费 Provider 请求；不把 fixture attempt 说成真实请求。
 8. 不 `git reset --hard`、不 `git clean`、不覆盖用户或其他 Agent 的现有改动。
-9. 未经用户明确授权，不 commit；任何情况下不擅自 push、tag、SSH 修改、发布或变更云权限。
+9. 本次 Goal 已明确授权本地 checkpoint/功能/candidate commit，功能提交 `9a158a92563814791fefb8d4e6c5531eca610d78` 已存在；任何情况下不擅自 push、tag、SSH 修改、发布或变更云权限。
 10. 发布前必须由用户明确确认版本号；“确认版本号”和“确认发布”是两个独立授权。
 11. 数据库迁移前必须先有真正只读的一致备份，并在临时目录完成恢复与迁移演练。
 12. 每完成一个 REM 项，同步 `TASKS.md`、验收矩阵和施工断点；文档/工程证据进入 `USER_REVIEW`，需要实页验证的产品行为进入 `USER_RECHECK`，两者都只有用户确认后才能 `PASS`。
+
+当前 Goal 治理披露：safe runner/tests 对真实路径的成功访问为 0；一次独立审计曾越权对 `app/data` 执行 immutable 只读聚合查询，结果未纳入证据，写入/外部请求为 0，之后未再访问。
 
 ## 5. 不得漂移的既有产品合同
 
@@ -125,7 +127,7 @@
 | F-007 | 账号删除遗漏个人/公共模板依赖，可能被外键阻止或形成半删除 | P0 | REM-006，离线候选已修 |
 | F-008 | 生成安全检查与任务插入不在同一事务，并发请求可绕过频率/并发上限 | P0 | REM-005，离线候选已修（单 active process 前提） |
 | F-009 | 排队后到 Provider 边界前未重新检查全局/紧急停止 | P0 | REM-005，离线候选已修 |
-| F-010 | Provider task ID 和幂等唯一键缺少必要的账号/凭据作用域 | P1 | REM-005，离线候选已修；生产兼容仍归 REM-009B/010 |
+| F-010 | Provider task ID 和幂等唯一键缺少必要的账号/凭据作用域 | P1 | REM-005 离线候选已修；REM-009B 已完成格式与安全拒绝边界验证，离线收口 |
 | F-011 | 畸形 `%` 路径可在 decode 阶段抛错，异步 API 又缺少统一兜底，可杀死进程 | P0 | REM-002 |
 | F-012 | 登录无速率限制；公开 SSE 无连接、背压和慢客户端上限 | P1 | REM-008 离线候选已修；只证明单 active process 的有界准入 |
 | F-013 | 播放列表导出、缩略图等允许超大整体缓冲；ffmpeg/ffprobe 无统一超时和并发限制 | P1 | REM-008 离线候选已修；保留 500MiB 合同 |
@@ -135,19 +137,19 @@
 | F-017A | 权限不改直接保存可能清空额外权限 | P1 | REM-006，离线候选已修 |
 | F-017B | 更新提示可在保存失败时仍刷新 | P1 | REM-007，离线候选已修 |
 | F-018 | 创建、重命名等失败路径可能丢失草稿或没有明确错误反馈 | P1 | REM-007，离线候选已修 |
-| F-019 | 备份脚本会用可迁移/回填的数据库入口打开源库，可能先改库再备份 | P0 | REM-009 |
-| F-020 | 数据库、媒体、密钥分阶段复制且无写锁；manifest 覆盖不完整、权限未强制 | P0 | REM-009A 完成只读格式 2 底座；最终候选跨域冻结/恢复仍归 REM-009B |
+| F-019 | 备份脚本会用可迁移/回填的数据库入口打开源库，可能先改库再备份 | P0 | REM-009A 已以真正只读源快照和格式 2 备份离线收口 |
+| F-020 | 数据库、媒体、密钥分阶段复制且无写锁；manifest 覆盖不完整、权限未强制 | P0 | REM-009A 建立格式 2 底座，REM-009B 完成最终候选跨域冻结/恢复，离线收口 |
 | F-021 | 发布脚本允许脏文件/.env 风险、原地构建、无 `npm ci`、无可靠备份/回滚 | P0 | REM-010 |
 | F-022 | 发布健康检查只查版本号，不打开数据库；发布后才 push，步骤不可安全拆分 | P0 | 保持开放，归 REM-010 |
 | F-023 | 新旧服务同时连接真实库会争抢运行中生成任务；SSE 和长请求不会自动排空 | P0 | 未关闭，归 REM-010；REM-005 不证明多进程 worker claim |
-| F-024 | 数据库迁移到未知版本后，`v0.5.1` 会拒绝启动，普通蓝绿回滚是假回滚 | P0 | 保持开放，归 REM-009B / REM-010 |
+| F-024 | 数据库迁移到未知版本后，`v0.5.1` 会拒绝启动，普通蓝绿回滚是假回滚 | P0 | REM-009B 已证明 exact v0.5.1 对 schema39 安全拒绝且不能作为迁移后回滚目标；生产 bridge 接线、切换与回滚仍归 REM-010 |
 | F-025 | OSS 镜像、密码重置和修复脚本存在 dry-run、目录选择、回显、路径和失败退出问题 | P1 | REM-008 已修密码重置/存储修复子范围；真实 OSS mirror/backup-to-OSS 继续冻结，最终恢复材料归 REM-009B/010 |
 | F-026 | 当前推荐回归只覆盖约 80/105 spec、391/519 既有测试；并非真正全量 | P0 | REM-001 |
 | F-027 | 固定端口、共享临时库、仓库 tmp 残留和继承真实环境使测试隔离不可靠 | P0 | REM-001 |
 | F-028 | 本机 Node 25 与生产 Node 22 不一致，部分结果已受版本影响 | P1 | REM-001 已修；离线施工固定 Node 22.23.1 |
 | F-029 | `npm audit` 报 1 个 high 级传递依赖告警；目前未确认项目存在可达的 size=0 调用路径。另缺少完整安全响应头和结构化脱敏日志 | P1 | REM-002 日志 + REM-008 `nanoid 3.3.18`、离线 audit 0 与安全头已收口；只代表当前 lock snapshot/离线候选 |
 | F-030 | 大型前端包、缓存/URL 生命周期、长列表和大图内存仍有实际优化空间 | P2 | REM-008 已收口本轮可验证子范围；不排除后续 P2 优化 |
-| F-031 | 即使 schema 仍为 37，新版写入的画布 JSON、任务快照、媒体状态/命名和加密 AAD 也可能不被 v0.5.1 安全理解；只比较 schema 会形成假回滚 | P0 | REM-009 / REM-010 |
+| F-031 | 即使 schema 仍为 37，新版写入的画布 JSON、任务快照、媒体状态/命名和加密 AAD 也可能不被 v0.5.1 安全理解；只比较 schema 会形成假回滚 | P0 | REM-009B 已完成 exact-v0.5.1→current bridge→schema39 数据格式与安全拒绝边界矩阵；生产切换编排仍归 REM-010 |
 | F-032 | 当前账号删除会清理相关 `admin_audit_events`；若改为保留审计将改变已 PASS 的 PERM-011 合同 | P0/产品决策 | REM-006 已确认继续 PERM-011：清理旧相关审计，仅保留唯一 `delete_user` 记录 |
 | F-033 | 账号删除前未可靠排空/阻止该账号的活动生成任务，删除后任务仍可能写媒体结果 | P0 | REM-006，离线候选已修 |
 | F-034 | 主 tsconfig 未覆盖 `server/generationProvider.ts` 与 `playwright.4174.config.ts`，仅说“TypeScript 通过”仍可能漏检跟踪源码 | P1 | REM-001 已修并持续由动态源码门禁覆盖 |
@@ -273,7 +275,7 @@ REM-001 的完成含义仅是“全部测试都能在安全隔离中被发现和
 
 测试运行于功能提交前、HEAD `26ff9396194499365c79e5bc85238631ed44ef7a` 下 403-file 冻结脏工作树 `ce7b4856b00b3ab12ee4853ece0b07b01dec86619bbca7865daa4edb659cc957`：adjacency 12-spec `142/142`、target 10-spec `255/255`、核心 8-spec `repeat=3` 共 `606/606`、安全全量 `109/109 spec、841/841 PASS`，failed/skipped/retries/reportErrors/blocked 均为 0，full `deniedViteWildcardProbes=477`；Node `22.23.1` / npm `10.9.8`；源码 286，TS/TSX `270/270`、JS/MJS `16/16`；11 个运维脚本为 6 个行为验证 + 5 个哈希冻结；4173 listener 前后均为 `91689b3fefccfb3fe32ffc44e2b10a3146976b76d497183f56f7457924a7e219`。功能提交 `138f7ff0f9481e73355fbd9a9fd2c548ee9cee1a` 包含相同功能文件，未在该 commit 后或文档后树重跑。独立终审无剩余即时产品 P0/P1；本项进入 `USER_REVIEW`，当前切换 REM-008。
 
-上述证据不是用户 PASS、真实 Mureka/真实数据/真实 Provider/OSS、生产迁移、发布许可或 REM-011 最终三轮；`INPUT-006 / AUDIO-REAL-001` 继续 PARTIAL/暂停。REM-007 无 schema 迁移；新增 ownership 是可选 canvas JSON/localStorage 字段，旧数据兼容与最终数据格式矩阵仍归 REM-009B。结论只在单一 active process 前提下成立，F-023 留 REM-010；不宣称跨标签分布式互斥。package `0.5.1`、线上 v0.5.1/schema37 不变，schema39 仅离线候选，production HOLD。
+上述证据不是用户 PASS、真实 Mureka/真实数据/真实 Provider/OSS、生产迁移、发布许可或 REM-011 最终三轮；`INPUT-006 / AUDIO-REAL-001` 继续 PARTIAL/暂停。REM-007 无 schema 迁移；新增 ownership 是可选 canvas JSON/localStorage 字段，其旧数据格式与安全拒绝边界后来已由 REM-009B 矩阵覆盖。结论只在单一 active process 前提下成立，F-023 留 REM-010；不宣称跨标签分布式互斥。package `0.5.1`、线上 v0.5.1/schema37 不变，schema39 仅离线候选，production HOLD。
 
 ### REM-008：资源、安全、性能和运维脚本
 
@@ -287,7 +289,7 @@ REM-001 的完成含义仅是“全部测试都能在安全隔离中被发现和
 
 ### REM-009A / REM-009B：真正只读的备份、恢复与数据库兼容
 
-REM-009A 在核心持久化修改前完成：建立只读备份、合成库恢复、损坏拒绝、密钥保护和迁移失败恢复底座。REM-009B 当前 `IN_PROGRESS`：用最终候选 schema/数据格式执行双向兼容、桥梁和完整恢复演练。
+REM-009A 在核心持久化修改前完成：建立只读备份、合成库恢复、损坏拒绝、密钥保护和迁移失败恢复底座。REM-009B 已完成离线自动实现和同源自动证据，当前 `USER_REVIEW`。
 
 共同范围：由应用/运维层先冻结写入；备份连接以真正只读方式打开 SQLite，绝不调用 `openAppDatabase`，使用 SQLite 在线备份能力或经验证的 WAL 安全快照；一致复制数据库、媒体、密钥和 OSS 恢复材料，动态表计数与逻辑内容指纹，备份加密、最小权限、独立故障域保存、保留/销毁规则，损坏拒绝恢复，旧/当前/候选 schema 与数据格式演练。
 
@@ -297,7 +299,11 @@ REM-009A 在核心持久化修改前完成：建立只读备份、合成库恢�
 
 2026-08-09 REM-009A 离线执行证据：已完成格式 2 的逐文件 AES-256-GCM 加密、RSA-3072 OAEP-SHA256 密钥包裹与 Ed25519 独立签名；源 SQLite main/WAL/journal 仅复制到私有临时目录后生成快照，绝不调用 `openAppDatabase` 或对源库 checkpoint。检查覆盖 schema37 完整迁移账本、19 张业务表与 `sqlite_sequence`、schema/行级逻辑指纹、integrity/FK、三类密钥文档真实解密、本地已登记/孤儿媒体及带 versionId/checksum 的假 OSS 内容镜像。所有输入、密钥、包与工作目录具备可信父链、owner/mode/inode/nlink 约束；创建/恢复使用独占 reservation、不可覆盖发布和 incomplete marker，readiness 对任何残留 marker fail-closed。带 object_key 的非 ready OSS 行、损坏签名/manifest/任一密文、外来目录项和中途故障均拒绝发布。专项 m10 `9/9`、最终快照三轮 `27/27`、安全全量 `105/105 spec、542/542 PASS`，失败、跳过、retry、report error、blocked 均为 0；TS/TSX `262/262`、JS/MJS `15/15`；两路独立终审无 P0/P1。schema `37` 与 package `0.5.1` 不变，本地功能提交 `ee998db80414cabb211fdc590712a0c257a25e50`。本项进入 `USER_REVIEW`，当前切换到 REM-003。
 
+2026-08-12 REM-009B 离线执行证据：合成富数据/媒体/密钥/假 OSS 已完成格式 2 create→verify→restore、one-shot exact-v37→schema39 migration、写锁内来源复核、中间 schema38/39 与回填故障恢复、假 OSS 重建、候选正常启动和冻结 exact-v0.5.1→current bridge→schema39 数据格式与安全拒绝边界矩阵；exact v0.5.1 对 schema39 安全拒绝，迁移后不能回滚到 v0.5.1。测试在父 HEAD `bbcd5e0f6ca2096ed433d5ac45019c19aab50c53` 的同内容脏树运行，source SHA-256 `7cf46804f952e580e9574a08a93f42ad53c051d4fcd5f2705691f82c8330326b`：核心 8-spec 三轮 `399/399`（denied `567`），安全全量 `114/114 spec、912/912 PASS`，异常计数均为 0（full denied `516`）；Node `22.23.1` / npm `10.9.8`；源码 303，TS/TSX `283/283`、JS/MJS `20/20`，运维脚本 15=12 行为+3 冻结；snapshot 不变，4173 listener `1be6a5d9061f3be72e5d45a0acf7cb70f5fe86ac645fceff60138b4b718d35dd` 前后不变。功能提交 `9a158a92563814791fefb8d4e6c5531eca610d78` 含相同功能文件，commit/docs 后未重跑。本项为 `USER_REVIEW`，不是用户 PASS、真实数据/Provider/OSS、生产迁移或发布证明。同 UID 非协作进程仍可替换极窄 current-database-open reservation 路径，作为残余边界保留。
+
 ### REM-010：不可变发布、切换与回滚系统
+
+状态：`IN_PROGRESS`。当前只有 runtime role/active lease/drain leaf、m93 隔离合同及 legacy `deploy.mjs` 立即 fail-close；尚未接入真实应用启动、请求、worker 或 SSE 生命周期，尚未完成/验收，也尚无不可变 release、三层健康、切换与回滚完成证据。
 
 范围：干净且固定 SHA 的 release 包、锁文件安装、版本化目录、构建产物哈希、待命/只读模式、单任务处理器、请求排空、三层健康检查、跨版本数据格式兼容矩阵、nginx 原子切换、旧 release 保留、push/tag/部署步骤分离。
 
@@ -329,7 +335,7 @@ REM-009A 在核心持久化修改前完成：建立只读备份、合成库恢�
 
 ### G2 完整自动测试
 
-- 原始基线 105/105 spec、519/519 既有测试已全部纳入；REM-001 后为 520，REM-002 后为 536，REM-009A 后为 542，REM-003 后为 107/687，REM-004 后为 109/762，REM-005 后为 109/790，REM-006 后为 109/804，REM-007 后为 109/841，REM-008 后当前为 `111/111 spec、891/891 tests`；新增测试必须自动纳入且执行数必须等于发现数；
+- 原始基线 105/105 spec、519/519 既有测试已全部纳入；REM-001 后为 520，REM-002 后为 536，REM-009A 后为 542，REM-003 后为 107/687，REM-004 后为 109/762，REM-005 后为 109/790，REM-006 后为 109/804，REM-007 后为 109/841，REM-008 历史批次为 `111/111 spec、891/891 tests`；REM-009B 后当前为 `114/114 spec、912/912 tests`，新增测试必须自动纳入且执行数必须等于发现数；
 - 失败 0、skip 总数 0、fixme 0、only 0、依赖 retry 才通过 0；真实 OSS/Provider 外部验真移出离线清单，以本地假服务替代逻辑覆盖；
 - 逐文件隔离全量与关键组合回归均通过；
 - 真实 OSS/Provider 验真不伪装成离线门禁，使用假 OSS/Provider 覆盖逻辑。
@@ -366,11 +372,11 @@ REM-009A 在核心持久化修改前完成：建立只读备份、合成库恢�
 
 ### G7 发布授权
 
-- 普通未提交批次先绑定“HEAD + 完整 diff 哈希”；进入 REM-011 前必须单独申请本地候选 commit 授权，获准后固定 SHA，并从干净隔离 checkout 重跑 G0～G6；未获 commit 授权不得宣称 G1/G7 通过；
+- 本次 Goal 的本地 commit 已获授权，REM-009B 功能提交 `9a158a92563814791fefb8d4e6c5531eca610d78` 已存在；但它不是最终固定 candidate release，也尚无该最终 candidate SHA 在干净隔离 checkout 重跑 G0～G6 的证据，因此 G7 未通过；
 - 备份与回滚方案完整；
 - 用户明确确认正式版本号；
 - 用户随后明确确认允许发布；
-- 此前不 commit/push/tag/SSH 修改/发布，除非用户对相应动作有独立明确授权。
+- 本地 commit 权限不扩张为 push/tag/SSH 修改/发布；正式版本号与允许发布仍须用户分别明确授权。
 
 依赖准备与测试断网分开：REM-001 必须记录准确 npm 版本并优先准备锁定缓存，门禁使用 `npm ci --offline`；若缓存缺失，需要访问公共 npm registry，先向用户单独说明并获授权。Provider/OSS/生产域名在任何阶段都不因依赖准备而放行。
 
@@ -394,7 +400,7 @@ REM-004 评估后确认持久媒体发布/删除 journal 属必要 P0，形成 s
 
 旧版 `v0.5.1` 遇到未知迁移会拒绝启动，因此数据库升级后不得声称可以直接切回 `v0.5.1`。
 
-REM-009B/010 的新增硬门为：用富含业务数据、媒体、secret 和假 OSS 的冻结 v37 格式 2 包完成 create → verify → restore → migrate → start；提供迁移后退出、不会成为 active 服务的一次性 exact-v37→schema39 maintenance migration；获取写锁后在同一锁内重新验证来源合同，关闭 TOCTOU；覆盖中间 schema 38/39、checksum/duration 回填和 credential/admission 高水位的故障恢复；证明 v37/v39 runtime bridge 和 v0.5.1/候选双向数据格式矩阵。migration 39 的 admission 表故意不从历史任务推断回填，因此发布前必须冻结新生成、排空活动任务，并从最后一次可能 Provider admission 起持续至少 60 秒，再迁移并只启动唯一 active worker。若不兼容，严格执行两个版本号和两次独立生产授权。当前 exact-v37/v38 格式 2 round-trip 与显式迁移角色只是离线结构证明，不是生产迁移或回滚证明。
+REM-009B 已在合成数据上完成富含业务数据、媒体、secret 和假 OSS 的冻结 v37 格式 2 create → verify → restore → migrate → start、一次性 exact-v37→schema39 maintenance migration、写锁内来源复核、中间故障恢复及 exact-v0.5.1→current bridge→schema39 数据格式与安全拒绝边界矩阵；exact v0.5.1 对 schema39 安全拒绝，迁移后不能回滚到 v0.5.1。这仍不是生产迁移或生产回滚证明。migration 39 的 admission 表故意不从历史任务推断回填，因此生产发布前仍必须冻结新生成、排空活动任务，并从最后一次可能 Provider admission 起持续至少 60 秒，再迁移并只启动唯一 active worker。REM-010 必须完成运行时接线、不可变 release、切换与回滚；若不兼容，严格执行两个版本号和两次独立生产授权。
 
 发布策略首选是：候选版对 `v0.5.1` 的 schema 和数据格式保持完整双向兼容，只做一次最终发布。如果做不到，桥梁版本运营上就是一次额外正式发布：需要自己的版本号、完整演练和单独生产授权；最终候选版又需第二个版本号和第二次生产授权。未向用户讲明并获得这“两个版本、两次发布授权”前，不得偷偷发布桥梁，只能延后不兼容改动。
 
@@ -504,3 +510,4 @@ REM-009B/010 的新增硬门为：用富含业务数据、媒体、secret 和假
 | 2026-08-11 | 1.6-offline | REM-006 账号删除可重试 saga、模板/媒体转交、权限/凭据、Provider/catalog/存储变更的 actor fence 与审计线性化收口；109/804 全量证据并切换 REM-007；schema 39 仅离线候选 | 用户已授权一次性离线 Goal；production HOLD，不含真实数据、真实 Provider/OSS、生产或发布 |
 | 2026-08-12 | 1.7-offline | REM-007 四类持久 ownership/exact GET/旧预览/terminal ACK、transport/retry/localStorage fail-closed 与 Workspace/Update/ConfirmDialog 失败体验收口；109/841 全量证据并切换 REM-008；无 schema 迁移 | 用户已授权一次性离线 Goal；production HOLD，不含真实 Mureka、真实数据、真实 Provider/OSS、生产或发布 |
 | 2026-08-12 | 1.8-offline | REM-008 登录/SSE、媒体资源、进程池、Provider/OSS 出站、安全头、依赖、运维脚本和必要性能治理收口；111/891 全量证据并切换 REM-009B | 用户已授权一次性离线 Goal；production HOLD，不含真实 500MiB 上传、真实数据、真实 Provider/OSS、生产或发布 |
+| 2026-08-12 | 1.9-offline | REM-009B 最终候选备份恢复、one-shot migration、故障恢复、假 OSS 重建和 exact-v0.5.1→current bridge→schema39 数据格式与安全拒绝边界矩阵收口；114/912 同源全量证据并切换 REM-010 | 用户已授权一次性离线 Goal；production HOLD，不含真实数据、真实 Provider/OSS、生产、正式版本号或发布 |
