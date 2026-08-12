@@ -85,7 +85,7 @@
       "scriptSha256": "8e5fb3ad992477cbb4ad148e7a73968f28b886d75e578efc90a20a5762289148",
       "target": "tests/m91-schema-migration.spec.ts",
       "marker": "dry-run and CLI validate exact v37 plus logical SHA without source writes",
-      "targetSha256": "a672ee41c81a09825a35675162085c774ba783babc622a7fa158df7d76c7e983"
+      "targetSha256": "53ade75b55fcf024c27595f32fa36a3228ba28b804a68078e9204657b66c3897"
     },
     "scripts/node-typescript-runtime.mjs": {
       "mode": "behavior-test",

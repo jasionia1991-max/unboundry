@@ -3677,7 +3677,7 @@ function exactCurrentInspectionLocation(
   databasePath: string,
   sidecars = captureCurrentDatabaseSidecars(databasePath),
 ) {
-  return sidecars.wal && sidecars.wal.size > 0n
+  return sidecars.wal
     ? databasePath
     : `${pathToFileURL(databasePath).href}?immutable=1`;
 }
@@ -3781,6 +3781,26 @@ function inspectExistingCurrentDatabase(databasePath: string) {
     { readOnly: true, timeout: 5_000 },
   );
   let transactionOpen = false;
+  let releaseAttempted = false;
+  const release = () => {
+    if (releaseAttempted) return;
+    releaseAttempted = true;
+    let releaseFailure: unknown;
+    if (transactionOpen && inspection.isTransaction) {
+      try {
+        inspection.exec("ROLLBACK");
+        transactionOpen = false;
+      } catch (error) {
+        releaseFailure = error;
+      }
+    }
+    try {
+      inspection.close();
+    } catch (error) {
+      releaseFailure ??= error;
+    }
+    if (releaseFailure) throw releaseFailure;
+  };
   try {
     inspection.exec("BEGIN");
     transactionOpen = true;
@@ -3789,23 +3809,19 @@ function inspectExistingCurrentDatabase(databasePath: string) {
       "inspection-schema-validated",
       databasePath,
     );
-    const result = Object.freeze({
+    return Object.freeze({
       contentDigest: exactCurrentContentDigest(inspection),
       details,
+      release,
       sidecars,
     });
-    inspection.exec("ROLLBACK");
-    transactionOpen = false;
-    return result;
-  } finally {
-    if (transactionOpen && inspection.isTransaction) {
-      try {
-        inspection.exec("ROLLBACK");
-      } catch {
-        // Preserve the exact-current inspection failure.
-      }
+  } catch (error) {
+    try {
+      release();
+    } catch {
+      // Preserve the exact-current inspection failure.
     }
-    inspection.close();
+    throw error;
   }
 }
 
@@ -4776,9 +4792,10 @@ export function openAppDatabase(
     // cooperative boundary and is not claimed to be made impossible here.
     const reservation = acquireCurrentDatabaseOpenReservation(dataDirectory);
     let openedDatabase: DatabaseSync | undefined;
+    let inspected: ReturnType<typeof inspectExistingCurrentDatabase> | undefined;
     let openFailure: unknown;
     try {
-      const inspected = inspectExistingCurrentDatabase(databasePath);
+      inspected = inspectExistingCurrentDatabase(databasePath);
       duringCurrentDatabaseOpenForTests?.(
         "before-writer-sidecar-validation",
         databasePath,
@@ -4812,6 +4829,21 @@ export function openAppDatabase(
           inspected.sidecars,
         );
         assertCurrentDatabaseOpenReservation(reservation);
+        // The inspection reader remains a live WAL participant until the new
+        // writer owns BEGIN IMMEDIATE and has revalidated the pinned database,
+        // sidecars, schema and digest. Closing the former last writer can no
+        // longer remove a legitimate WAL/SHM pair in the inspection-to-writer
+        // gap; the new writer keeps the pair alive after this release.
+        inspected.release();
+        if (!database.isTransaction) {
+          throw new Error("Application database transaction changed while opening");
+        }
+        assertSameCurrentDatabaseIdentity(databasePath, inspected.details);
+        assertCurrentDatabaseSidecarsAfterWriterLock(
+          databasePath,
+          inspected.sidecars,
+        );
+        assertCurrentDatabaseOpenReservation(reservation);
         database.exec("COMMIT");
         transactionOpen = false;
         assertSameCurrentDatabaseIdentity(databasePath, inspected.details);
@@ -4824,11 +4856,23 @@ export function openAppDatabase(
             // Preserve the current-schema failure.
           }
         }
-        database.close();
+        try {
+          database.close();
+        } catch {
+          // Preserve the current-schema, identity or transaction failure.
+        }
         throw error;
       }
     } catch (error) {
       openFailure = error;
+    }
+    if (inspected) {
+      try {
+        inspected.release();
+      } catch (error) {
+        openFailure ??= error;
+      }
+      inspected = undefined;
     }
     try {
       releaseCurrentDatabaseOpenReservation(reservation);

@@ -474,6 +474,115 @@ test("ordinary open is current-only while greenfield publication remains atomic"
     );
     expect(await readdir(currentReleased)).toEqual(["unboundry.sqlite"]);
 
+    for (const variant of ["hot-wal", "zero-wal"] as const) {
+      const dataDirectory = join(root, `current-sidecar-close-${variant}`);
+      openAppDatabase(dataDirectory).close();
+      const databasePath = join(dataDirectory, "unboundry.sqlite");
+      const rowId = `m91-sidecar-close-${variant}`;
+      let keeper: DatabaseSync | undefined = new DatabaseSync(databasePath, {
+        timeout: 5_000,
+      });
+      const checkpointReady = join(root, `${variant}-before-writer-ready`);
+      const checkpointRelease = join(root, `${variant}-before-writer-release`);
+      let child: ReturnType<typeof runCurrentOpenChild> | undefined;
+      let checkpointReleased = false;
+      try {
+        expect(keeper.prepare("PRAGMA journal_mode").get()).toEqual({
+          journal_mode: "wal",
+        });
+        keeper.prepare(`
+          INSERT INTO project_metadata (
+            owner_id, id, title, updated_at, is_project, created_at, deleted_at
+          ) VALUES (NULL, ?, ?, 1, 1, 1, NULL)
+        `).run(rowId, variant);
+        const logicalSha = expectedLogicalSha(databasePath, root);
+        if (variant === "zero-wal") {
+          keeper.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+        }
+        const walBefore = lstatSync(`${databasePath}-wal`, { bigint: true });
+        const shmBefore = lstatSync(`${databasePath}-shm`, { bigint: true });
+        expect(walBefore.isFile()).toBe(true);
+        expect(shmBefore.isFile()).toBe(true);
+        if (variant === "hot-wal") {
+          expect(walBefore.size).toBeGreaterThan(0n);
+        } else {
+          expect(walBefore.size).toBe(0n);
+        }
+        child = runCurrentOpenChild(
+          dataDirectory,
+          join(root, `${variant}-child-started`),
+          [{
+            checkpoint: "before-writer-sidecar-validation",
+            readyPath: checkpointReady,
+            releasePath: checkpointRelease,
+          }],
+        );
+        await waitForFile(checkpointReady);
+
+        // The child has captured and validated the pair and still owns its
+        // inspection transaction. Closing the former last writer must not let
+        // SQLite remove or replace those pinned sidecars before the child
+        // acquires its own writer lock.
+        keeper.close();
+        keeper = undefined;
+        for (const [path, before] of [
+          [`${databasePath}-wal`, walBefore],
+          [`${databasePath}-shm`, shmBefore],
+        ] as const) {
+          const after = lstatSync(path, { bigint: true });
+          expect({
+            dev: after.dev,
+            ino: after.ino,
+            mode: after.mode,
+            nlink: after.nlink,
+            uid: after.uid,
+          }).toEqual({
+            dev: before.dev,
+            ino: before.ino,
+            mode: before.mode,
+            nlink: 1n,
+            uid: before.uid,
+          });
+        }
+        await writeFile(checkpointRelease, "release", {
+          flag: "wx",
+          mode: 0o600,
+        });
+        checkpointReleased = true;
+        const opened = await child;
+        expect(opened.version).toBe(currentSchemaVersion);
+        expect(expectedLogicalSha(databasePath, root)).toBe(logicalSha);
+        const verification = openAppDatabase(dataDirectory);
+        try {
+          expect(verification.prepare(`
+            SELECT title FROM project_metadata WHERE id = ?
+          `).get(rowId)).toEqual({ title: variant });
+        } finally {
+          verification.close();
+        }
+        expect(await readdir(dataDirectory)).toEqual(["unboundry.sqlite"]);
+      } finally {
+        if (keeper) {
+          try {
+            keeper.close();
+          } catch {
+            // Preserve the test failure while releasing the WAL keeper.
+          }
+        }
+        if (child && !checkpointReleased) {
+          try {
+            await writeFile(checkpointRelease, "release", {
+              flag: "wx",
+              mode: 0o600,
+            });
+          } catch {
+            // The child may have failed before reaching the checkpoint.
+          }
+          await child.catch(() => undefined);
+        }
+      }
+    }
+
     openAppDatabase(currentForeignReservation).close();
     const foreignReservationPath = join(
       currentForeignReservation,
