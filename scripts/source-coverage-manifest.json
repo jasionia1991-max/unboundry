@@ -138,7 +138,7 @@
     },
     "scripts/run-linux-production-validation.mjs": {
       "mode": "frozen",
-      "scriptSha256": "5e6e0ec1087bb86067408bd83dac5da5d44844101615051c84bf2274d2bddd25",
+      "scriptSha256": "f074683369f0277d331f9863b2301811a807dc0eda5aaef5a4ea3de12b38b5ad",
       "reason": "Runs immutable production artifacts in a Linux namespace and creates encrypted validation evidence; automatic execution is forbidden.",
       "manualNpmScripts": []
     },

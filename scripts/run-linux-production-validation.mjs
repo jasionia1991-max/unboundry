@@ -72,6 +72,13 @@ const allowedControllerEnvironment = Object.freeze([
   "PATH",
   "TZ",
 ]);
+const optionalReadOnlyRuntimeBindings = Object.freeze([
+  "/lib64",
+  "/etc/ld.so.cache",
+  "/etc/localtime",
+  "/etc/ssl/certs",
+]);
+const optionalAlternativeDirectory = "/etc/alternatives";
 const providerDocumentAad = Buffer.from(
   "unboundry:provider-profiles:v1",
   "utf8",
@@ -605,6 +612,65 @@ function readOnlyBindSources(bindings) {
       ? Object.freeze({ destination: binding, source: binding })
       : binding
   );
+}
+
+async function optionalReadOnlyRuntimeBindSources() {
+  const bindings = [];
+  for (const path of optionalReadOnlyRuntimeBindings) {
+    if (await lstat(path).then(() => true, () => false)) {
+      bindings.push(Object.freeze({ destination: path, source: path }));
+    }
+  }
+  const path = optionalAlternativeDirectory;
+  const canonical = await realpath(path).catch(() => undefined);
+  const details = await lstat(path, { bigint: true }).catch(() => undefined);
+  let alternativeDirectory = null;
+  if (details) {
+    if (
+      canonical !== path || !details.isDirectory() || details.isSymbolicLink() ||
+      details.uid !== 0n || (details.mode & 0o022n) !== 0n
+    ) {
+      fail(
+        "LINUX_VALIDATION_PREREQUISITE_UNSAFE",
+        "Host runtime read-only binding is unsafe",
+      );
+    }
+    bindings.push(Object.freeze({ destination: path, source: path }));
+    alternativeDirectory = Object.freeze({
+      identity: fixedFileIdentity(details),
+      path,
+    });
+  }
+  return Object.freeze({
+    alternativeDirectory,
+    bindings: Object.freeze(bindings),
+  });
+}
+
+async function assertOptionalRuntimeBindingUnchanged(evidence) {
+  const path = optionalAlternativeDirectory;
+  const canonical = await realpath(path).catch(() => undefined);
+  const details = await lstat(path, { bigint: true }).catch(() => undefined);
+  if (!evidence) {
+    if (canonical !== undefined || details !== undefined) {
+      fail(
+        "LINUX_VALIDATION_PREREQUISITE_CHANGED",
+        "Host runtime read-only binding appeared during validation",
+      );
+    }
+    return;
+  }
+  if (
+    evidence.path !== path || canonical !== path || !details?.isDirectory() ||
+    details.isSymbolicLink() || details.uid !== 0n ||
+    (details.mode & 0o022n) !== 0n ||
+    !sameJson(fixedFileIdentity(details), evidence.identity)
+  ) {
+    fail(
+      "LINUX_VALIDATION_PREREQUISITE_CHANGED",
+      "Host runtime read-only binding changed during validation",
+    );
+  }
 }
 
 function fixedFileIdentity(details) {
@@ -2676,11 +2742,8 @@ async function hostMain(options) {
       source: pair.final.directory,
     }),
   ]);
-  for (const optional of ["/lib64", "/etc/ld.so.cache", "/etc/localtime", "/etc/ssl/certs"]) {
-    if (await lstat(optional).then(() => true, () => false)) {
-      readOnlyBinds.push(Object.freeze({ destination: optional, source: optional }));
-    }
-  }
+  const runtimeBindings = await optionalReadOnlyRuntimeBindSources();
+  readOnlyBinds.push(...runtimeBindings.bindings);
   const destinations = [...new Set([
     ...readOnlyBinds.map(({ destination }) => destination),
     caseRoot.canonical,
@@ -2813,6 +2876,9 @@ async function hostMain(options) {
       "Host namespace evidence changed while the sandbox was running",
     );
   }
+  await assertOptionalRuntimeBindingUnchanged(
+    runtimeBindings.alternativeDirectory,
+  );
   if (executionError) {
     throw executionError;
   }
