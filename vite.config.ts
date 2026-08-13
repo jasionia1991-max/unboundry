@@ -630,6 +630,9 @@ function runtimeFoundationApi(
         close: () => server.close(),
         closeAllConnections: () => server.httpServer?.closeAllConnections?.(),
         deadlineMs: exactLifecycle.getShutdownDeadlineMs(),
+        reportFailure: (diagnostic) => {
+          process.stderr.write(`${JSON.stringify(diagnostic)}\n`);
+        },
       }).then((exitCode) => process.exit(exitCode));
     };
     const onSigterm = () => closeForSignal();

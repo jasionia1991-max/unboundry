@@ -446,6 +446,16 @@ test("legacy post-warmup probes admit only stable WAL timestamp noise", async ()
     expect(legacyRuntimeObservationDifferenceForTest(
       dataDirectory,
       before,
+      "ACTIVE_SHUTDOWN",
+      undefined,
+      {
+        admitStableWalTimestamp: true,
+        stableWalDeadlineAt: Date.now() + 5_000,
+      },
+    )).toBeUndefined();
+    expect(legacyRuntimeObservationDifferenceForTest(
+      dataDirectory,
+      before,
       "MEDIA_STANDALONE",
     )).toEqual({ changeClass: "CONTENT_METADATA", component: "WAL" });
 
@@ -460,6 +470,13 @@ test("legacy post-warmup probes admit only stable WAL timestamp noise", async ()
         phase,
       )).toEqual({ changeClass: "CONTENT_METADATA", component: "WAL" });
     }
+    expect(legacyRuntimeObservationDifferenceForTest(
+      dataDirectory,
+      before,
+      "ACTIVE_SHUTDOWN",
+      undefined,
+      { admitStableWalTimestamp: true },
+    )).toEqual({ changeClass: "CONTENT_METADATA", component: "WAL" });
     await writeFile(walPath, "stable-wal-content-extended", { mode: 0o600 });
     for (const phase of [
       "ACTIVE_POST_WARMUP",
@@ -471,6 +488,13 @@ test("legacy post-warmup probes admit only stable WAL timestamp noise", async ()
         phase,
       )).toEqual({ changeClass: "CONTENT_METADATA", component: "WAL" });
     }
+    expect(legacyRuntimeObservationDifferenceForTest(
+      dataDirectory,
+      before,
+      "ACTIVE_SHUTDOWN",
+      undefined,
+      { admitStableWalTimestamp: true },
+    )).toEqual({ changeClass: "CONTENT_METADATA", component: "WAL" });
 
     for (const [index, phase] of ([
       "ACTIVE_POST_WARMUP",
@@ -496,6 +520,27 @@ test("legacy post-warmup probes admit only stable WAL timestamp noise", async ()
         () => writeFileSync(databasePath, "database-byteX"),
       )).toEqual({ changeClass: "CONTENT_METADATA", component: "DATABASE" });
     }
+    await writeFile(databasePath, "database-bytes", { mode: 0o600 });
+    await writeFile(walPath, "stable-wal-content", { mode: 0o600 });
+    const beforeShutdownHashWindow = {
+      database: fileFingerprint(databasePath),
+      directory: fileFingerprint(dataDirectory),
+      shm: fileFingerprint(shmPath),
+      wal: fileFingerprint(walPath),
+      walContentSha256: await sha256(walPath),
+    };
+    await utimes(
+      walPath,
+      new Date("2033-01-01T00:00:00.000Z"),
+      new Date("2033-01-01T00:00:00.000Z"),
+    );
+    expect(legacyRuntimeObservationDifferenceForTest(
+      dataDirectory,
+      beforeShutdownHashWindow,
+      "ACTIVE_SHUTDOWN",
+      () => writeFileSync(databasePath, "database-byteX"),
+      { admitStableWalTimestamp: true },
+    )).toEqual({ changeClass: "CONTENT_METADATA", component: "DATABASE" });
   } finally {
     await rm(testRoot, { force: true, recursive: true });
   }
@@ -1100,8 +1145,14 @@ test("legacy supervisor proxies streams once, blocks costly mutation, fails clos
       configurable: true,
       get: () => drainExitCode,
     });
+    const shutdownInspections: Array<unknown> = [];
     const drainSupervisor = createLegacyRuntimeSupervisor({
-      activeGenerationTasks: () => activeTasks,
+      activeGenerationTasks: (phase, inspection) => {
+        if (phase === "ACTIVE_SHUTDOWN") {
+          shutdownInspections.push(inspection);
+        }
+        return activeTasks;
+      },
       dataDirectory: "/unused-under-injected-task-probe",
       launcher: {
         launch: async () => ({
@@ -1131,6 +1182,75 @@ test("legacy supervisor proxies streams once, blocks costly mutation, fails clos
     activeTasks = 0;
     await stopping;
     expect(drainSupervisor.state()).toBe("stopped");
+    expect(shutdownInspections).toHaveLength(2);
+    expect(shutdownInspections[0]).toMatchObject({
+      settleStableWalTimestamp: true,
+    });
+    expect(Number(
+      (shutdownInspections[0] as { stableWalDeadlineAt?: number })
+        .stableWalDeadlineAt,
+    )).toBeGreaterThan(Date.now() - 2_000);
+    expect(shutdownInspections[1]).toBeUndefined();
+
+    const strictChild = new EventEmitter() as ChildProcess;
+    let strictShutdownMessages = 0;
+    Object.assign(strictChild, {
+      signalCode: null,
+      send: () => {
+        strictShutdownMessages += 1;
+        return true;
+      },
+    });
+    Object.defineProperty(strictChild, "exitCode", {
+      configurable: true,
+      get: () => null,
+    });
+    const strictInspections: Array<unknown> = [];
+    let strictShutdownCalls = 0;
+    const strictSupervisor = createLegacyRuntimeSupervisor({
+      activeGenerationTasks: (phase, inspection) => {
+        if (phase !== "ACTIVE_SHUTDOWN") return 0;
+        strictInspections.push(inspection);
+        strictShutdownCalls += 1;
+        if (strictShutdownCalls === 1) return 1;
+        throw new LegacyRuntimeDatabaseChangedError("ACTIVE_SHUTDOWN", {
+          changeClass: "CONTENT_METADATA",
+          component: "WAL",
+        });
+      },
+      dataDirectory: "/unused-under-injected-task-probe",
+      launcher: {
+        launch: async () => ({
+          child: strictChild,
+          nonce: "00000000-0000-4000-8000-000000000183",
+          target: {
+            host: "127.0.0.1",
+            port: address.port,
+            proxyNonce: "83".repeat(32),
+          },
+          warmup: {
+            expectedDatabaseMutation: "legacy-media-checksum-backfill",
+            providerRequests: 0,
+          },
+        }),
+      },
+      legacyRoot: "/unused-under-injected-launcher",
+      legacyMediaMetadataComplete: () => true,
+      runtimeDirectory: "/unused-under-injected-runtime",
+      shutdownDeadlineMs: 2_000,
+    });
+    await strictSupervisor.start();
+    await expect(strictSupervisor.shutdown()).rejects.toThrow(
+      /^LEGACY_RUNTIME_DATABASE_CHANGED:ACTIVE_SHUTDOWN:WAL:CONTENT_METADATA$/,
+    );
+    expect(strictSupervisor.state()).toBe("failed");
+    expect(strictShutdownMessages).toBe(0);
+    expect(strictInspections).toHaveLength(2);
+    expect(strictInspections[0]).toMatchObject({
+      settleStableWalTimestamp: true,
+    });
+    expect(strictInspections[1]).toBeUndefined();
+    strictChild.emit("exit", 1, null);
   } finally {
     if (previousSafeTest === undefined) delete process.env.UNBOUNDRY_SAFE_TEST;
     else process.env.UNBOUNDRY_SAFE_TEST = previousSafeTest;
@@ -2694,6 +2814,14 @@ test("bridge schema-37 routing and exact schema-38 startup never run implicit mi
       expect(inspectLegacyActiveGenerationTasks(
         dataDirectory,
         "ACTIVE_POST_WARMUP",
+      )).toBe(0);
+      expect(inspectLegacyActiveGenerationTasks(
+        dataDirectory,
+        "ACTIVE_SHUTDOWN",
+        {
+          settleStableWalTimestamp: true,
+          stableWalDeadlineAt: Date.now() + 5_000,
+        },
       )).toBe(0);
       expect(inspectLegacyMediaMetadataComplete(
         dataDirectory,
@@ -4792,24 +4920,60 @@ test("shutdown waits for handler cleanup and has a hard close-failure exit", asy
     inFlightRequests: 0,
   };
   let synchronousFailureConnectionsClosed = 0;
+  const synchronousFailureDiagnostics: unknown[] = [];
   expect(await coordinateRuntimeShutdown({
     beginShutdown: async () => drainedResult,
     close: () => { throw new Error("synthetic synchronous close failure"); },
     closeAllConnections: () => { synchronousFailureConnectionsClosed += 1; },
     deadlineMs: 20,
     hardExitGraceMs: 20,
+    reportFailure: (diagnostic) => {
+      synchronousFailureDiagnostics.push(diagnostic);
+    },
   })).toBe(1);
   expect(synchronousFailureConnectionsClosed).toBe(1);
+  expect(synchronousFailureDiagnostics).toEqual([{
+    causeCode: "RUNTIME_SHUTDOWN_UNCLASSIFIED",
+    code: "RUNTIME_SHUTDOWN_FAILED",
+  }]);
 
   let hungCloseConnectionsClosed = 0;
+  const hungCloseDiagnostics: unknown[] = [];
   expect(await coordinateRuntimeShutdown({
     beginShutdown: async () => drainedResult,
     close: () => new Promise<void>(() => undefined),
     closeAllConnections: () => { hungCloseConnectionsClosed += 1; },
     deadlineMs: 0,
     hardExitGraceMs: 20,
+    reportFailure: (diagnostic) => {
+      hungCloseDiagnostics.push(diagnostic);
+    },
   })).toBe(1);
   expect(hungCloseConnectionsClosed).toBe(1);
+  expect(hungCloseDiagnostics).toEqual([{
+    causeCode: "RUNTIME_SHUTDOWN_DEADLINE_EXCEEDED",
+    code: "RUNTIME_SHUTDOWN_FAILED",
+  }]);
+
+  const databaseFailureDiagnostics: unknown[] = [];
+  expect(await coordinateRuntimeShutdown({
+    beginShutdown: async () => {
+      throw new LegacyRuntimeDatabaseChangedError("ACTIVE_SHUTDOWN", {
+        changeClass: "CONTENT_METADATA",
+        component: "WAL",
+      });
+    },
+    close: () => undefined,
+    deadlineMs: 20,
+    reportFailure: (diagnostic) => {
+      databaseFailureDiagnostics.push(diagnostic);
+    },
+  })).toBe(1);
+  expect(databaseFailureDiagnostics).toEqual([{
+    causeCode:
+      "LEGACY_RUNTIME_DATABASE_CHANGED:ACTIVE_SHUTDOWN:WAL:CONTENT_METADATA",
+    code: "RUNTIME_SHUTDOWN_FAILED",
+  }]);
 });
 
 test("programmatic Vite close drains durable generation and permits a fresh active runtime", async () => {

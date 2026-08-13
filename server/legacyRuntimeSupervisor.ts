@@ -49,13 +49,21 @@ type LegacyDatabaseObservationPhase =
   | LegacyMediaObservationPhase;
 
 export type LegacyRuntimeSupervisorOptions = Readonly<{
-  activeGenerationTasks?: (phase: LegacyActiveTaskObservationPhase) => number;
+  activeGenerationTasks?: (
+    phase: LegacyActiveTaskObservationPhase,
+    inspection?: LegacyActiveTaskInspectionOptions,
+  ) => number;
   dataDirectory: string;
   legacyMediaMetadataComplete?: (phase: LegacyMediaObservationPhase) => boolean;
   launcher?: LegacyRuntimeLauncher;
   legacyRoot: string;
   runtimeDirectory: string;
   shutdownDeadlineMs?: number;
+}>;
+
+export type LegacyActiveTaskInspectionOptions = Readonly<{
+  settleStableWalTimestamp?: boolean;
+  stableWalDeadlineAt?: number;
 }>;
 
 function boundedDeadline(value: number | undefined, allowZero = false) {
@@ -100,10 +108,12 @@ type LegacyDatabaseFingerprint = Readonly<{
 }>;
 
 type LegacyObservationCleanup = Readonly<{
+  admitStableWalTimestamp?: boolean;
   close: () => void;
   dataDirectory: string;
   fingerprint: LegacyDatabaseFingerprint;
   phase: LegacyDatabaseObservationPhase;
+  stableWalDeadlineAt?: number;
 }>;
 
 export type LegacyFingerprintComponent =
@@ -248,8 +258,22 @@ function sameExactFingerprint(
   ));
 }
 
-function stableWalSha256(path: string, expected: LegacyFileFingerprint) {
+function stableWalSha256(
+  path: string,
+  expected: LegacyFileFingerprint,
+  requestedDeadlineAt?: number,
+) {
   if (expected.size <= 0n || expected.size > BigInt(maximumStableWalBytes)) {
+    throw new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
+  }
+  const startedAt = Date.now();
+  const deadlineAt = Number.isFinite(requestedDeadlineAt)
+    ? Math.min(
+        startedAt + stableWalHashDeadlineMs,
+        Math.trunc(requestedDeadlineAt!),
+      )
+    : startedAt + stableWalHashDeadlineMs;
+  if (deadlineAt <= startedAt) {
     throw new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
   }
   let descriptor: number | undefined;
@@ -277,11 +301,10 @@ function stableWalSha256(path: string, expected: LegacyFileFingerprint) {
     ) throw new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
     const hash = createHash("sha256");
     const buffer = Buffer.allocUnsafe(stableWalHashBufferBytes);
-    const deadlineAt = Date.now() + stableWalHashDeadlineMs;
     let position = 0;
     const expectedBytes = Number(expected.size);
     while (position < expectedBytes) {
-      if (Date.now() > deadlineAt) {
+      if (Date.now() >= deadlineAt) {
         throw new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
       }
       const bytesRead = readSync(
@@ -294,6 +317,9 @@ function stableWalSha256(path: string, expected: LegacyFileFingerprint) {
       if (bytesRead <= 0) throw new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
       hash.update(buffer.subarray(0, bytesRead));
       position += bytesRead;
+    }
+    if (Date.now() >= deadlineAt) {
+      throw new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
     }
     const descriptorAfter = fstatSync(descriptor, { bigint: true });
     const pathAfter = fixedFingerprint(path, "file");
@@ -331,6 +357,7 @@ function databaseFingerprint(
   dataDirectory: string,
   requireSidecarPair = true,
   captureStableWalContent = false,
+  stableWalDeadlineAt?: number,
 ): LegacyDatabaseFingerprint {
   let canonicalDirectory: string;
   try {
@@ -371,7 +398,11 @@ function databaseFingerprint(
     ...(wal ? { wal } : {}),
   });
   if (!captureStableWalContent || !wal || wal.size === 0n) return fingerprint;
-  const walContentSha256 = stableWalSha256(`${databasePath}-wal`, wal);
+  const walContentSha256 = stableWalSha256(
+    `${databasePath}-wal`,
+    wal,
+    stableWalDeadlineAt,
+  );
   const revalidated = databaseFingerprint(dataDirectory, requireSidecarPair);
   if (
     !sameExactFingerprint(fingerprint.database, revalidated.database) ||
@@ -472,6 +503,9 @@ function observationFingerprintDifference(
   before: LegacyDatabaseFingerprint,
   phase?: LegacyDatabaseObservationPhase,
   afterStableWalHashForTest?: () => void,
+  admitStableWalTimestamp =
+    phase === "ACTIVE_POST_WARMUP" || phase === "MEDIA_POST_WARMUP",
+  stableWalDeadlineAt?: number,
 ): LegacyFingerprintDifference | undefined {
   const databasePath = join(dataDirectory, "unboundry.sqlite");
   const observations = [
@@ -524,8 +558,7 @@ function observationFingerprintDifference(
   }
   const difference = differences[0];
   const stableWalTimestampCandidate =
-    (phase === "ACTIVE_POST_WARMUP" || phase === "MEDIA_POST_WARMUP") &&
-    differences.length === 1 &&
+    admitStableWalTimestamp && differences.length === 1 &&
     difference?.component === "WAL" &&
     difference.changeClass === "CONTENT_METADATA" && before.wal &&
     before.wal.size > 0n && before.walContentSha256 &&
@@ -534,7 +567,11 @@ function observationFingerprintDifference(
   if (stableWalTimestampCandidate && observations[2].after.state === "PRESENT") {
     try {
       if (
-        stableWalSha256(`${databasePath}-wal`, observations[2].after.fingerprint) ===
+        stableWalSha256(
+          `${databasePath}-wal`,
+          observations[2].after.fingerprint,
+          stableWalDeadlineAt,
+        ) ===
           before.walContentSha256
       ) {
         afterStableWalHashForTest?.();
@@ -602,6 +639,10 @@ export function legacyRuntimeObservationDifferenceForTest(
   before: LegacyDatabaseFingerprint,
   phase?: LegacyDatabaseObservationPhase,
   afterStableWalHashForTest?: () => void,
+  options: Readonly<{
+    admitStableWalTimestamp?: boolean;
+    stableWalDeadlineAt?: number;
+  }> = {},
 ) {
   if (process.env.UNBOUNDRY_SAFE_TEST !== "1") {
     throw new Error("LEGACY_RUNTIME_TEST_HOOK_FORBIDDEN");
@@ -611,6 +652,9 @@ export function legacyRuntimeObservationDifferenceForTest(
     before,
     phase,
     afterStableWalHashForTest,
+    options.admitStableWalTimestamp ??
+      (phase === "ACTIVE_POST_WARMUP" || phase === "MEDIA_POST_WARMUP"),
+    options.stableWalDeadlineAt,
   );
 }
 
@@ -619,8 +663,20 @@ function legacyObservationFailure(
   dataDirectory: string,
   before: LegacyDatabaseFingerprint,
   primaryError?: unknown,
+  options: Readonly<{
+    admitStableWalTimestamp?: boolean;
+    stableWalDeadlineAt?: number;
+  }> = {},
 ) {
-  const difference = observationFingerprintDifference(dataDirectory, before, phase);
+  const difference = observationFingerprintDifference(
+    dataDirectory,
+    before,
+    phase,
+    undefined,
+    options.admitStableWalTimestamp ??
+      (phase === "ACTIVE_POST_WARMUP" || phase === "MEDIA_POST_WARMUP"),
+    options.stableWalDeadlineAt,
+  );
   return difference
     ? new LegacyRuntimeDatabaseChangedError(phase, difference)
     : primaryError;
@@ -643,6 +699,10 @@ function finalizeLegacyObservation(
     cleanup.dataDirectory,
     cleanup.fingerprint,
     closeError ?? primaryError,
+    {
+      admitStableWalTimestamp: cleanup.admitStableWalTimestamp,
+      stableWalDeadlineAt: cleanup.stableWalDeadlineAt,
+    },
   );
   if (failure) throw failure;
 }
@@ -672,12 +732,17 @@ export function legacyRuntimeObservationFailureForTest(
 export function inspectLegacyActiveGenerationTasks(
   dataDirectory: string,
   phase: LegacyActiveTaskObservationPhase = "ACTIVE_STANDALONE",
+  options: LegacyActiveTaskInspectionOptions = {},
 ) {
   const databasePath = join(dataDirectory, "unboundry.sqlite");
+  const settleStableWalTimestamp = phase === "ACTIVE_POST_WARMUP" ||
+    (phase === "ACTIVE_SHUTDOWN" &&
+      options.settleStableWalTimestamp === true);
   const before = databaseFingerprint(
     dataDirectory,
     true,
-    phase === "ACTIVE_POST_WARMUP",
+    settleStableWalTimestamp,
+    options.stableWalDeadlineAt,
   );
   const location = before.wal && before.wal.size > 0n
     ? databasePath
@@ -711,6 +776,12 @@ export function inspectLegacyActiveGenerationTasks(
       dataDirectory,
       fingerprint: before,
       phase,
+      ...(settleStableWalTimestamp
+        ? {
+            admitStableWalTimestamp: true,
+            stableWalDeadlineAt: options.stableWalDeadlineAt,
+          }
+        : {}),
     }, primaryError);
   }
   return result!;
@@ -772,8 +843,13 @@ export function createLegacyRuntimeSupervisor(
   options: LegacyRuntimeSupervisorOptions,
 ) {
   const launcher = options.launcher ?? createLegacyRuntimeLauncher();
-  const inspectActiveGenerationTasks = options.activeGenerationTasks ?? ((phase) =>
-    inspectLegacyActiveGenerationTasks(options.dataDirectory, phase));
+  const inspectActiveGenerationTasks = options.activeGenerationTasks ?? (
+    (phase, inspection) => inspectLegacyActiveGenerationTasks(
+      options.dataDirectory,
+      phase,
+      inspection,
+    )
+  );
   const inspectMediaMetadataComplete = options.legacyMediaMetadataComplete ??
     ((phase) => inspectLegacyMediaMetadataComplete(options.dataDirectory, phase));
   const shutdownDeadlineMs = boundedDeadline(options.shutdownDeadlineMs);
@@ -959,14 +1035,32 @@ export function createLegacyRuntimeSupervisor(
         state = "stopped";
         return;
       }
+      // Pin the first shutdown observation before its query. A non-empty WAL
+      // costs one bounded hash, plus at most one comparison hash if SQLite
+      // changes only its timestamps during that exact window. If work remains,
+      // every later 100ms poll is strict and hash-free; no later change can be
+      // admitted against a baseline captured after the fact.
+      let firstShutdownObservation = true;
       while (Date.now() < deadlineAt) {
         if (childHasExited(launched)) break;
+        const inspection = firstShutdownObservation
+          ? Object.freeze({
+              settleStableWalTimestamp: true,
+              stableWalDeadlineAt: deadlineAt,
+            })
+          : undefined;
+        firstShutdownObservation = false;
+        let activeTasks: number;
         try {
-          if (inspectActiveGenerationTasks("ACTIVE_SHUTDOWN") === 0) break;
+          activeTasks = inspectActiveGenerationTasks(
+            "ACTIVE_SHUTDOWN",
+            inspection,
+          );
         } catch (error) {
           state = "failed";
           throw error;
         }
+        if (activeTasks === 0) break;
         await wait(Math.min(generationDrainPollMs, deadlineAt - Date.now()));
       }
       if (childHasExited(launched)) {

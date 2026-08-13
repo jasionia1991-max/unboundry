@@ -114,12 +114,25 @@ export type ShutdownResult = Readonly<{
   inFlightRequests: number;
 }>;
 
+export type RuntimeShutdownFailureDiagnostic = Readonly<{
+  causeCode:
+    | `LEGACY_RUNTIME_DATABASE_CHANGED:${string}`
+    | "LEGACY_RUNTIME_DRAIN_TIMEOUT"
+    | "LEGACY_RUNTIME_STOP_FAILED"
+    | "LEGACY_RUNTIME_TERMINATION_UNKNOWN"
+    | "RUNTIME_SHUTDOWN_DEADLINE_EXCEEDED"
+    | "RUNTIME_SHUTDOWN_DID_NOT_DRAIN"
+    | "RUNTIME_SHUTDOWN_UNCLASSIFIED";
+  code: "RUNTIME_SHUTDOWN_FAILED";
+}>;
+
 export type RuntimeShutdownCoordinatorOptions = Readonly<{
   beginShutdown: () => Promise<ShutdownResult>;
   close: () => Promise<void> | void;
   closeAllConnections?: () => void;
   deadlineMs: number;
   hardExitGraceMs?: number;
+  reportFailure?: (diagnostic: RuntimeShutdownFailureDiagnostic) => void;
 }>;
 
 function defaultLogger(record: RuntimeLogRecord) {
@@ -133,6 +146,32 @@ function defaultLogger(record: RuntimeLogRecord) {
 function boundedInteger(value: number | undefined, fallback: number, max: number) {
   if (!Number.isFinite(value)) return fallback;
   return Math.min(max, Math.max(0, Math.trunc(value ?? fallback)));
+}
+
+function boundedShutdownFailureDiagnostic(
+  error: unknown,
+): RuntimeShutdownFailureDiagnostic {
+  const message = error instanceof Error ? error.message : "";
+  const databaseChange = message.match(
+    /^LEGACY_RUNTIME_DATABASE_CHANGED:(ACTIVE_POST_WARMUP|ACTIVE_PRELAUNCH|ACTIVE_SHUTDOWN|ACTIVE_STANDALONE|MEDIA_POST_WARMUP|MEDIA_STANDALONE):(DATABASE|DIRECTORY|JOURNAL|SHM|WAL):(CONTENT_METADATA|IDENTITY|PRESENCE)$/,
+  );
+  let causeCode: RuntimeShutdownFailureDiagnostic["causeCode"] =
+    "RUNTIME_SHUTDOWN_UNCLASSIFIED";
+  if (databaseChange) {
+    causeCode = databaseChange[0] as
+      `LEGACY_RUNTIME_DATABASE_CHANGED:${string}`;
+  } else if (/^LEGACY_RUNTIME_DRAIN_TIMEOUT(?::|$)/.test(message)) {
+    causeCode = "LEGACY_RUNTIME_DRAIN_TIMEOUT";
+  } else if (/^LEGACY_RUNTIME_STOP_FAILED(?::|$)/.test(message)) {
+    causeCode = "LEGACY_RUNTIME_STOP_FAILED";
+  } else if (/^LEGACY_RUNTIME_TERMINATION_UNKNOWN(?::|$)/.test(message)) {
+    causeCode = "LEGACY_RUNTIME_TERMINATION_UNKNOWN";
+  } else if (message === "Runtime shutdown deadline exceeded") {
+    causeCode = "RUNTIME_SHUTDOWN_DEADLINE_EXCEEDED";
+  } else if (message === "Runtime shutdown did not drain") {
+    causeCode = "RUNTIME_SHUTDOWN_DID_NOT_DRAIN";
+  }
+  return Object.freeze({ causeCode, code: "RUNTIME_SHUTDOWN_FAILED" });
 }
 
 function safeMethod(method: string | undefined) {
@@ -1261,8 +1300,13 @@ export async function coordinateRuntimeShutdown(
       }),
     ]);
     return 0;
-  } catch {
+  } catch (error) {
     forceClose();
+    try {
+      options.reportFailure?.(boundedShutdownFailureDiagnostic(error));
+    } catch {
+      // A diagnostic sink cannot weaken the authoritative hard-stop result.
+    }
     return 1;
   } finally {
     if (timeout) clearTimeout(timeout);
