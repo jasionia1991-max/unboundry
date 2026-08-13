@@ -357,6 +357,8 @@ test("release builder makes its private umask independent of the caller", async 
   test.setTimeout(120_000);
   const fixture = await createSyntheticRepository();
   try {
+    const arguments_ = builderArguments(fixture);
+    arguments_[0] = join(fixture.repository, "scripts/build-release.mjs");
     const result = await command(
       "/bin/sh",
       [
@@ -364,7 +366,7 @@ test("release builder makes its private umask independent of the caller", async 
         'umask 0002; exec "$@"',
         "unboundry-m94-umask",
         process.execPath,
-        ...builderArguments(fixture),
+        ...arguments_,
       ],
       fixture.repository,
     );
