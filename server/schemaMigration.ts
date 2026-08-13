@@ -86,6 +86,22 @@ type PinnedMigrationMarker = Readonly<{
   identity: MigrationMarkerIdentity;
 }>;
 
+type UnexpectedMigrationStage =
+  | "commit"
+  | "complete"
+  | "drain"
+  | "marker-clear"
+  | "media-backfill"
+  | "media-backfill-probe"
+  | "media-full-verify"
+  | "media-full-verify-probe"
+  | "post-commit-verify"
+  | "preflight"
+  | "schema-38-apply"
+  | "schema-39-apply"
+  | "target-logical-inspection"
+  | "target-validation";
+
 export type SchemaMigrationCheckpoint =
   | "source-locked"
   | "drain-complete"
@@ -141,6 +157,72 @@ export class SchemaMigrationError extends Error {
 
 function fail(code: string, message: string): never {
   throw new SchemaMigrationError(code, message);
+}
+
+function failUnexpectedMigration(stage: UnexpectedMigrationStage): never {
+  switch (stage) {
+    case "commit":
+      fail("SCHEMA_MIGRATION_FAILED_COMMIT", "Schema migration commit failed");
+    case "complete":
+      fail("SCHEMA_MIGRATION_FAILED_RESULT", "Schema migration result failed");
+    case "drain":
+      fail("SCHEMA_MIGRATION_FAILED_DRAIN", "Schema migration drain failed");
+    case "marker-clear":
+      fail(
+        "SCHEMA_MIGRATION_FAILED_MARKER_CLEAR",
+        "Schema migration marker clear failed",
+      );
+    case "media-backfill":
+      fail(
+        "SCHEMA_MIGRATION_FAILED_MEDIA_BACKFILL",
+        "Schema migration media backfill failed",
+      );
+    case "media-backfill-probe":
+      fail(
+        "SCHEMA_MIGRATION_FAILED_MEDIA_BACKFILL_PROBE",
+        "Schema migration media backfill probe failed",
+      );
+    case "media-full-verify":
+      fail(
+        "SCHEMA_MIGRATION_FAILED_MEDIA_FULL_VERIFY",
+        "Schema migration full media verification failed",
+      );
+    case "media-full-verify-probe":
+      fail(
+        "SCHEMA_MIGRATION_FAILED_MEDIA_FULL_VERIFY_PROBE",
+        "Schema migration full media verification probe failed",
+      );
+    case "post-commit-verify":
+      fail(
+        "SCHEMA_MIGRATION_FAILED_POST_COMMIT_VERIFY",
+        "Schema migration post-commit verification failed",
+      );
+    case "preflight":
+      fail(
+        "SCHEMA_MIGRATION_FAILED_PREFLIGHT",
+        "Schema migration preflight failed",
+      );
+    case "schema-38-apply":
+      fail(
+        "SCHEMA_MIGRATION_FAILED_SCHEMA38_APPLY",
+        "Schema 38 migration application failed",
+      );
+    case "schema-39-apply":
+      fail(
+        "SCHEMA_MIGRATION_FAILED_SCHEMA39_APPLY",
+        "Schema 39 migration application failed",
+      );
+    case "target-logical-inspection":
+      fail(
+        "SCHEMA_MIGRATION_FAILED_TARGET_LOGICAL_INSPECTION",
+        "Schema migration target logical inspection failed",
+      );
+    case "target-validation":
+      fail(
+        "SCHEMA_MIGRATION_FAILED_TARGET_VALIDATION",
+        "Schema migration target validation failed",
+      );
+  }
 }
 
 function migrationRuntimeLeaseFailure(error: unknown): never {
@@ -1015,28 +1097,68 @@ export async function migrateSchema37To39(
     assertMigrationRuntimeLease(migrationRuntime);
     assertMigrationGuardian(migrationGuardian);
   } catch (error) {
-    let guardianReleaseFailed = false;
+    let guardianReleaseError: unknown;
     try {
       migrationGuardian?.release();
-    } catch {
-      guardianReleaseFailed = true;
+    } catch (releaseError) {
+      guardianReleaseError = releaseError;
       if (migrationGuardian) indeterminateMigrationOwners.add(migrationGuardian);
       if (migrationRuntime) indeterminateMigrationOwners.add(migrationRuntime);
     }
-    if (!guardianReleaseFailed) {
+    let runtimeReleaseError: unknown;
+    if (!guardianReleaseError) {
       try {
         migrationRuntime?.close();
-      } catch {
+      } catch (releaseError) {
+        runtimeReleaseError = releaseError;
         if (migrationRuntime) indeterminateMigrationOwners.add(migrationRuntime);
       }
     }
-    rmSync(inspectionRoot, { force: true, recursive: true });
+    let scratchCleanupError: unknown;
+    try {
+      rmSync(inspectionRoot, { force: true, recursive: true });
+    } catch (cleanupError) {
+      scratchCleanupError = cleanupError;
+    }
+    if (guardianReleaseError) {
+      if (guardianReleaseError instanceof SchemaMigrationError) {
+        throw guardianReleaseError;
+      }
+      if (guardianReleaseError instanceof LegacyChildGuardianError) {
+        migrationGuardianFailure(guardianReleaseError);
+      }
+      fail(
+        "SCHEMA_MIGRATION_FAILED_OWNER_RELEASE",
+        "Schema migration owner release failed",
+      );
+    }
+    if (runtimeReleaseError) {
+      if (runtimeReleaseError instanceof SchemaMigrationError) {
+        throw runtimeReleaseError;
+      }
+      if (runtimeReleaseError instanceof RuntimeRoleError) {
+        migrationRuntimeLeaseFailure(runtimeReleaseError);
+      }
+      fail(
+        "SCHEMA_MIGRATION_FAILED_OWNER_RELEASE",
+        "Schema migration owner release failed",
+      );
+    }
+    if (scratchCleanupError) {
+      fail(
+        "SCHEMA_MIGRATION_FAILED_SCRATCH_CLEANUP",
+        "Schema migration scratch cleanup failed",
+      );
+    }
     if (error instanceof SchemaMigrationError) throw error;
     if (error instanceof LegacyChildGuardianError) {
       migrationGuardianFailure(error);
     }
     if (error instanceof RuntimeRoleError) migrationRuntimeLeaseFailure(error);
-    throw error;
+    fail(
+      "SCHEMA_MIGRATION_FAILED_OWNER_ACQUIRE",
+      "Schema migration owner acquisition failed",
+    );
   }
   const assertPinnedPaths = () => {
     assertSameOwnedDataDirectory(dataDirectory, ownedDataDirectory.details);
@@ -1063,6 +1185,27 @@ export async function migrateSchema37To39(
   let database: DatabaseSync | undefined;
   let transactionOpen = false;
   let schemaCommitted = false;
+  let unexpectedStage: UnexpectedMigrationStage = "preflight";
+  const stagedDurationProbe = (
+    parentStage: "media-backfill" | "media-full-verify",
+    stage: "media-backfill-probe" | "media-full-verify-probe",
+  ): LegacyMediaDurationProbe => {
+    if (!durationProbe) {
+      fail(
+        "SCHEMA_MIGRATION_NATIVE_DURATION_PROBE_INCOMPLETE",
+        "Native duration probe is unavailable",
+      );
+    }
+    const probe = durationProbe.probe;
+    return Object.freeze({
+      ...probe,
+      onEvent: (event) => {
+        unexpectedStage = stage;
+        probe.onEvent?.(event);
+        if (event.phase === "complete") unexpectedStage = parentStage;
+      },
+    });
+  };
   try {
     assertPinnedPaths();
     try {
@@ -1140,17 +1283,25 @@ export async function migrateSchema37To39(
             : "Application database is already current",
         );
       }
+      unexpectedStage = "target-validation";
       assertExactCurrent(database);
       // The preceding process may have committed schema/media metadata and then
       // detected a physical replacement before clearing the marker. Rebuild
       // evidence from every ready local object; an empty incremental backfill
       // must never make that post-COMMIT failure self-heal.
+      unexpectedStage = "media-full-verify";
       recoveryEvidence = verifyCommittedMigrationMediaStrict(
         database,
         dataDirectory,
-        { durationProbe: durationProbe.probe },
+        {
+          durationProbe: stagedDurationProbe(
+            "media-full-verify",
+            "media-full-verify-probe",
+          ),
+        },
       );
     } else {
+      unexpectedStage = "preflight";
       sourceInspection(
         database,
         inspectionRoot,
@@ -1195,6 +1346,7 @@ export async function migrateSchema37To39(
           activeMarker,
         );
       }
+      unexpectedStage = "drain";
       assertPinnedPaths();
       assertPinnedMarker();
       await clock.sleep(clock.drainMilliseconds);
@@ -1209,37 +1361,54 @@ export async function migrateSchema37To39(
       emitCheckpoint("drain-complete");
       assertPinnedPaths();
       assertPinnedMarker();
+      unexpectedStage = "schema-38-apply";
       applyPendingSchemaMigrationsInTransaction(database, {
         sourceVersion: sourceSchemaVersion,
         onMigrationApplied: ({ version: migratedVersion }) => {
-          if (migratedVersion === 38) emitCheckpoint("schema-38-applied");
+          if (migratedVersion === 38) {
+            emitCheckpoint("schema-38-applied");
+            unexpectedStage = "schema-39-apply";
+          }
           if (migratedVersion === 39) emitCheckpoint("schema-39-applied");
           assertPinnedPaths();
           assertPinnedMarker();
         },
       });
+      unexpectedStage = "target-validation";
       assertExactCurrent(database);
     }
 
+    unexpectedStage = "media-backfill";
     backfill = backfillLegacyMediaStrict(database, dataDirectory, {
       callerOwnsTransaction: true,
-      durationProbe: durationProbe.probe,
+      durationProbe: stagedDurationProbe(
+        "media-backfill",
+        "media-backfill-probe",
+      ),
       onRow: () => {
+        unexpectedStage = "media-backfill";
         emitCheckpoint("backfill-row");
         assertPinnedPaths();
         assertPinnedMarker();
       },
     });
+    unexpectedStage = "media-full-verify";
     const fullMediaEvidence = verifyCommittedMigrationMediaStrict(
       database,
       dataDirectory,
-      { durationProbe: durationProbe.probe },
+      {
+        durationProbe: stagedDurationProbe(
+          "media-full-verify",
+          "media-full-verify-probe",
+        ),
+      },
     );
     const mediaEvidence = Object.freeze([
       ...recoveryEvidence,
       ...backfill.evidence,
       ...fullMediaEvidence,
     ]);
+    unexpectedStage = "target-validation";
     if (
       !databaseMatchesMigrationManifest(database) ||
       !databaseMatchesSchemaContract(database) ||
@@ -1260,9 +1429,11 @@ export async function migrateSchema37To39(
     revalidateLegacyMediaBackfillEvidence(database, mediaEvidence);
     assertPinnedPaths();
     assertPinnedMarker();
+    unexpectedStage = "commit";
     database.exec("COMMIT");
     transactionOpen = false;
     schemaCommitted = true;
+    unexpectedStage = "post-commit-verify";
     emitCheckpoint("schema-committed");
     assertPinnedPaths();
     assertPinnedMarker();
@@ -1271,6 +1442,7 @@ export async function migrateSchema37To39(
     // same still-identified connection and compute the exact logical target
     // hash before removing the recovery marker. Final orchestration can then
     // bind startup inspection to the bytes this migration actually published.
+    unexpectedStage = "target-logical-inspection";
     database.exec("BEGIN");
     transactionOpen = true;
     assertPinnedPaths();
@@ -1287,6 +1459,7 @@ export async function migrateSchema37To39(
     assertPinnedPaths();
     assertPinnedMarker();
     revalidateLegacyMediaBackfillEvidence(database, mediaEvidence);
+    unexpectedStage = "marker-clear";
     unlinkSync(markerPath);
     syncDirectory(dataDirectory);
     try {
@@ -1305,6 +1478,7 @@ export async function migrateSchema37To39(
       }
       throw error;
     }
+    unexpectedStage = "complete";
     emitCheckpoint("complete");
     return Object.freeze({
       backfilledChecksums: backfill.checksums,
@@ -1337,11 +1511,8 @@ export async function migrateSchema37To39(
         // non-current at any newly published path.
       }
     }
-    if (
-      error instanceof SchemaMigrationError ||
-      error instanceof BackupInspectionError
-    ) throw error;
-    fail("SCHEMA_MIGRATION_FAILED", "Schema migration failed");
+    if (error instanceof SchemaMigrationError) throw error;
+    failUnexpectedMigration(unexpectedStage);
   } finally {
     let databaseCloseError: unknown;
     try {
@@ -1373,7 +1544,12 @@ export async function migrateSchema37To39(
         runtimeReleaseError = error;
       }
     }
-    rmSync(inspectionRoot, { force: true, recursive: true });
+    let scratchCleanupError: unknown;
+    try {
+      rmSync(inspectionRoot, { force: true, recursive: true });
+    } catch (error) {
+      scratchCleanupError = error;
+    }
     if (databaseCloseError) {
       indeterminateMigrationOwners.add(migrationGuardian);
       indeterminateMigrationOwners.add(migrationRuntime);
@@ -1391,7 +1567,10 @@ export async function migrateSchema37To39(
       if (guardianReleaseError instanceof LegacyChildGuardianError) {
         migrationGuardianFailure(guardianReleaseError);
       }
-      throw guardianReleaseError;
+      fail(
+        "SCHEMA_MIGRATION_FAILED_OWNER_RELEASE",
+        "Schema migration owner release failed",
+      );
     }
     if (runtimeReleaseError) {
       indeterminateMigrationOwners.add(migrationRuntime);
@@ -1401,7 +1580,16 @@ export async function migrateSchema37To39(
       if (runtimeReleaseError instanceof RuntimeRoleError) {
         migrationRuntimeLeaseFailure(runtimeReleaseError);
       }
-      throw runtimeReleaseError;
+      fail(
+        "SCHEMA_MIGRATION_FAILED_OWNER_RELEASE",
+        "Schema migration owner release failed",
+      );
+    }
+    if (scratchCleanupError) {
+      fail(
+        "SCHEMA_MIGRATION_FAILED_SCRATCH_CLEANUP",
+        "Schema migration scratch cleanup failed",
+      );
     }
   }
   fail("SCHEMA_MIGRATION_FAILED", "Schema migration failed");

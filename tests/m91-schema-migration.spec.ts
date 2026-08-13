@@ -1060,7 +1060,9 @@ test("schema-38 checkpoint failures roll back atomically and retain recovery mar
         },
         scratchRoot: root,
         testClock: { drainMilliseconds: 0, sleep: async () => undefined },
-      })).rejects.toMatchObject({ code: "SCHEMA_MIGRATION_FAILED" });
+      })).rejects.toMatchObject({
+        code: "SCHEMA_MIGRATION_FAILED_SCHEMA38_APPLY",
+      });
     });
     const rolledBack = new DatabaseSync(databasePath, { readOnly: true });
     expect(rolledBack.prepare("PRAGMA user_version").get()).toEqual({
@@ -1873,7 +1875,9 @@ test("apply enforces the quiet gate, strict backfill, marker recovery, and exact
         mode: "apply",
         scratchRoot: root,
         testClock: { drainMilliseconds: 0, sleep: async () => undefined },
-      })).rejects.toMatchObject({ code: "SCHEMA_MIGRATION_FAILED" });
+      })).rejects.toMatchObject({
+        code: "SCHEMA_MIGRATION_FAILED_MEDIA_FULL_VERIFY",
+      });
     });
     expect(await readdir(staleChecksumDirectory)).toContain(
       migrationIncompleteMarker,
@@ -1938,7 +1942,9 @@ test("apply enforces the quiet gate, strict backfill, marker recovery, and exact
         mode: "apply",
         scratchRoot: root,
         testClock: { drainMilliseconds: 0, sleep: async () => undefined },
-      })).rejects.toMatchObject({ code: "SCHEMA_MIGRATION_FAILED" });
+      })).rejects.toMatchObject({
+        code: "SCHEMA_MIGRATION_FAILED_MEDIA_BACKFILL",
+      });
     });
     expect(await readdir(ossChecksumDirectory)).toContain(
       migrationIncompleteMarker,
@@ -2074,7 +2080,9 @@ test("apply enforces the quiet gate, strict backfill, marker recovery, and exact
         scratchRoot: root,
         testClock: { drainMilliseconds: 0, sleep: async () => undefined },
         testDurationProbe: durationProbe,
-      })).rejects.toMatchObject({ code: "SCHEMA_MIGRATION_FAILED" });
+      })).rejects.toMatchObject({
+        code: "SCHEMA_MIGRATION_FAILED_MEDIA_BACKFILL",
+      });
     });
     expect(await readdir(durationDirectory)).toContain(migrationIncompleteMarker);
     const durationRolledBack = new DatabaseSync(durationPath, { readOnly: true });
@@ -2109,6 +2117,23 @@ test("apply enforces the quiet gate, strict backfill, marker recovery, and exact
     durationRolledBack.close();
     renameSync(durationMediaPath, durationReplacementPath);
     renameSync(durationDisplacedPath, durationMediaPath);
+    writeFileSync(durationProbe.executable, "#!/bin/sh\nexit 1\n", {
+      mode: 0o700,
+    });
+    chmodSync(durationProbe.executable, 0o700);
+    await withSafeMigrationClock(async () => {
+      await expect(migrateSchema37To39({
+        dataDirectory: durationDirectory,
+        expectedSourceLogicalSha256: durationExpectedSha,
+        mode: "apply",
+        scratchRoot: root,
+        testClock: { drainMilliseconds: 0, sleep: async () => undefined },
+        testDurationProbe: durationProbe,
+      })).rejects.toMatchObject({
+        code: "SCHEMA_MIGRATION_FAILED_MEDIA_BACKFILL_PROBE",
+      });
+    });
+    createSafeDurationProbe(root);
     const durationRecovered = await withSafeMigrationClock(() =>
       migrateSchema37To39({
         dataDirectory: durationDirectory,
@@ -2423,7 +2448,9 @@ test("apply enforces the quiet gate, strict backfill, marker recovery, and exact
           drainMilliseconds: 0,
           sleep: async () => undefined,
         },
-      })).rejects.toMatchObject({ code: "SCHEMA_MIGRATION_FAILED" });
+      })).rejects.toMatchObject({
+        code: "SCHEMA_MIGRATION_FAILED_POST_COMMIT_VERIFY",
+      });
     });
     expect(await readdir(dataDirectory)).toContain(migrationIncompleteMarker);
     const committed = new DatabaseSync(databasePath, { readOnly: true });
@@ -2445,7 +2472,9 @@ test("apply enforces the quiet gate, strict backfill, marker recovery, and exact
           drainMilliseconds: 0,
           sleep: async () => undefined,
         },
-      })).rejects.toMatchObject({ code: "SCHEMA_MIGRATION_FAILED" });
+      })).rejects.toMatchObject({
+        code: "SCHEMA_MIGRATION_FAILED_MEDIA_FULL_VERIFY",
+      });
     });
     expect(await readdir(dataDirectory)).toContain(migrationIncompleteMarker);
     renameSync(mediaPath, replacementMediaPath);
