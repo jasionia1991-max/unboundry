@@ -37,6 +37,10 @@ import {
   readReleaseAttestation,
   ReleaseAttestationError,
 } from "./lib/release-attestation.mjs";
+import {
+  authenticateInheritedLinuxValidationSandbox,
+  LinuxValidationSandboxError,
+} from "./lib/linux-validation-sandbox.mjs";
 
 const {
   FakeOssRecoveryError,
@@ -47,6 +51,7 @@ const {
   BackupInspectionError,
   inspectBackupDatabase,
   inspectLockedBackupDatabase,
+  validateBackupSecrets,
 } = await import("../server/backupInspection.ts");
 const { openAppDatabase } = await import("../server/database.ts");
 
@@ -69,6 +74,86 @@ const startupShutdownDiagnosticMarkers = Object.freeze([
   "Runtime shutdown deadline exceeded",
   "Runtime shutdown did not drain",
 ]);
+const startupShutdownDiagnosticCategories = Object.freeze([
+  Object.freeze({
+    category: "LEGACY_POST_START_DATABASE_IDENTITY_CHANGED",
+    marker: "schema or database identity changed during child startup",
+  }),
+  Object.freeze({
+    category: "LEGACY_ACTIVE_TASK_OBSERVATION_CHANGED",
+    marker: "inspectLegacyActiveGenerationTasks",
+  }),
+  Object.freeze({
+    category: "LEGACY_ACTIVE_TASK_PRELAUNCH_OBSERVATION_CHANGED",
+    marker: "legacyRuntimeSupervisor.ts:260:",
+  }),
+  Object.freeze({
+    category: "LEGACY_ACTIVE_TASK_POST_WARMUP_OBSERVATION_CHANGED",
+    marker: "legacyRuntimeSupervisor.ts:292:",
+  }),
+  Object.freeze({
+    category: "LEGACY_MEDIA_OBSERVATION_CHANGED",
+    marker: "inspectLegacyMediaMetadataComplete",
+  }),
+]);
+const startupLegacyDatabaseChangePhases = Object.freeze([
+  "ACTIVE_POST_WARMUP",
+  "ACTIVE_PRELAUNCH",
+  "ACTIVE_SHUTDOWN",
+  "ACTIVE_STANDALONE",
+  "MEDIA_POST_WARMUP",
+  "MEDIA_STANDALONE",
+]);
+const startupLegacyDatabaseChangeComponents = Object.freeze([
+  "DATABASE",
+  "DIRECTORY",
+  "JOURNAL",
+  "SHM",
+  "WAL",
+]);
+const startupLegacyDatabaseChangeClasses = Object.freeze([
+  "CONTENT_METADATA",
+  "IDENTITY",
+  "PRESENCE",
+]);
+const startupLegacySupervisorStackLineAllowlist = new Set([
+  188,
+  226,
+  236,
+  238,
+  260,
+  292,
+  297,
+]);
+
+function allowlistedLegacyDatabaseChanges(value) {
+  const changes = new Map();
+  for (const match of value.matchAll(
+    /\bLEGACY_RUNTIME_DATABASE_CHANGED:([A-Z_]+):([A-Z_]+):([A-Z_]+)\b/g,
+  )) {
+    const [, phase, component, changeClass] = match;
+    if (
+      !startupLegacyDatabaseChangePhases.includes(phase) ||
+      !startupLegacyDatabaseChangeComponents.includes(component) ||
+      !startupLegacyDatabaseChangeClasses.includes(changeClass)
+    ) continue;
+    const key = `${phase}:${component}:${changeClass}`;
+    changes.set(key, Object.freeze({ changeClass, component, phase }));
+  }
+  return [...changes.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([, change]) => change);
+}
+
+function allowlistedLegacySupervisorStackLines(value) {
+  return [...new Set(
+    [...value.matchAll(
+      /legacyRuntimeSupervisor\.ts[^\s)]*?:(\d+):\d+/g,
+    )]
+      .map((match) => Number(match[1]))
+      .filter((line) => startupLegacySupervisorStackLineAllowlist.has(line)),
+  )].sort((left, right) => left - right);
+}
 
 class CliError extends Error {
   constructor(code, message) {
@@ -79,6 +164,18 @@ class CliError extends Error {
 
 function fail(code, message) {
   throw new CliError(code, message);
+}
+
+async function inheritedLinuxValidationSandbox(errorCode) {
+  try {
+    return await authenticateInheritedLinuxValidationSandbox();
+  } catch (error) {
+    if (!(error instanceof LinuxValidationSandboxError)) throw error;
+    fail(
+      errorCode,
+      "Authenticated inherited Linux validation sandbox is unavailable",
+    );
+  }
 }
 
 function normalizedAbsolutePath(value) {
@@ -454,6 +551,32 @@ printf '7.125\\n'
   return Object.freeze({ auditPath, directory, executable });
 }
 
+function isLinuxMigrationSandboxEvidence(nativeSandboxEvidence) {
+  return nativeSandboxEvidence?.enforcementMode ===
+      "linux-bwrap-inherited-v1" &&
+    nativeSandboxEvidence?.denyNetwork === true &&
+    nativeSandboxEvidence?.inheritedSelfTestDenied === true &&
+    nativeSandboxEvidence?.explicitSelfTestDenied === null &&
+    nativeSandboxEvidence?.deniedSocketScope ===
+      "isolated-network-namespace-no-usable-external-route" &&
+    nativeSandboxEvidence?.profileApplied === false &&
+    nativeSandboxEvidence?.profileSha256 === null &&
+    nativeSandboxEvidence?.safeRunnerIdentityBound === false &&
+    nativeSandboxEvidence?.linuxSandboxIdentityBound === true &&
+    nativeSandboxEvidence?.selfTestDenied === true &&
+    nativeSandboxEvidence?.selfTestSocketAttempts === 1 &&
+    nativeSandboxEvidence?.processTreeEnforced === true &&
+    nativeSandboxEvidence?.migrationChildren === 2 &&
+    nativeSandboxEvidence?.linuxSandbox?.contract ===
+      "unboundry-linux-validation-sandbox-v1" &&
+    nativeSandboxEvidence?.linuxSandbox?.processTreeEnforced === true &&
+    nativeSandboxEvidence?.linuxSandbox?.external?.denied === true &&
+    nativeSandboxEvidence?.linuxSandbox?.loopback?.connected === true &&
+    nativeSandboxEvidence?.linuxSandbox?.interfaces?.onlyLoopback === true &&
+    nativeSandboxEvidence?.linuxSandbox?.routes?.externalRouteRecords === 0 &&
+    nativeSandboxEvidence?.linuxSandbox?.routes?.usableDefaultRoutes === 0;
+}
+
 async function verifySafeDurationProbeAudit(
   auditPath,
   migration,
@@ -516,12 +639,16 @@ async function verifySafeDurationProbeAudit(
     nativeSandboxEvidence?.safeRunnerIdentityBound === false &&
     nativeSandboxEvidence?.selfTestSocketAttempts === 1 &&
     /^[a-f0-9]{64}$/.test(String(nativeSandboxEvidence?.profileSha256 ?? ""));
+  const linuxSandboxEvidence = isLinuxMigrationSandboxEvidence(
+    nativeSandboxEvidence,
+  );
   if (
     nativeSandboxEvidence?.denyNetwork !== true ||
     nativeSandboxEvidence?.selfTestDenied !== true ||
     nativeSandboxEvidence?.processTreeEnforced !== true ||
     nativeSandboxEvidence?.migrationChildren !== 2 ||
-    (!inheritedSandboxEvidence && !explicitSandboxEvidence)
+    (!inheritedSandboxEvidence && !explicitSandboxEvidence &&
+      !linuxSandboxEvidence)
   ) {
     fail(
       "FINAL_BACKUP_MIGRATION_NETWORK_AUDIT_MISMATCH",
@@ -530,59 +657,188 @@ async function verifySafeDurationProbeAudit(
   }
   return Object.freeze({
     argumentContractSha256: [...argumentHashes][0],
-    externalNetworkAttempts: 0,
+    externalNetworkAttempts: linuxSandboxEvidence ? null : 0,
+    ...(linuxSandboxEvidence
+      ? {
+          externalNetworkSuccesses: 0,
+          networkAttemptCounting: "not-instrumented",
+        }
+      : {}),
     nativeSandbox: nativeSandboxEvidence,
     nativeDurationProbes: starts.length,
     sha256,
   });
 }
 
-async function runJsonScript(scriptName, arguments_, options = {}) {
-  return await new Promise((resolvePromise, rejectPromise) => {
-    const executable = options.wrapper?.executable ?? process.execPath;
-    const childArguments = options.wrapper
-      ? [...options.wrapper.arguments, process.execPath,
-          resolve(appRoot, "scripts", scriptName), ...arguments_]
-      : [resolve(appRoot, "scripts", scriptName), ...arguments_];
-    const child = spawn(
-      executable,
-      childArguments,
-      {
-        cwd: appRoot,
-        env: options.env ?? process.env,
-        stdio: ["ignore", "pipe", "pipe"],
-      },
+function productionMigrationEnvironment(release, runtimeDirectory) {
+  const ffprobe = release.manifest.hostPrerequisites?.executables?.find(
+    (entry) => entry?.name === "ffprobe",
+  );
+  const path = release.manifest.runtime?.environment?.PATH?.value;
+  if (
+    ffprobe?.path !== "/usr/bin/ffprobe" ||
+    !/^[a-f0-9]{64}$/.test(String(ffprobe?.sha256 ?? "")) ||
+    path !== `${dirname(release.runtimeCommand)}:/usr/bin:/bin`
+  ) {
+    fail(
+      "FINAL_BACKUP_MIGRATION_NATIVE_PROBE_INVALID",
+      "Production migration ffprobe prerequisite is not release-bound",
     );
+  }
+  return Object.freeze({
+    HOME: runtimeDirectory,
+    LANG: "C",
+    LC_ALL: "C",
+    NODE_ENV: "production",
+    // The release runtime is invoked by its absolute Node path. Keep ffprobe
+    // resolution independent of any executable that may appear beside Node.
+    PATH: "/usr/bin:/bin",
+    TEMP: runtimeDirectory,
+    TMP: runtimeDirectory,
+    TMPDIR: runtimeDirectory,
+  });
+}
+
+function verifyProductionDurationProbeEvidence(
+  migration,
+  nativeSandboxEvidence,
+  release,
+) {
+  const ffprobe = release.manifest.hostPrerequisites.executables.find(
+    (entry) => entry.name === "ffprobe",
+  );
+  if (
+    !isLinuxMigrationSandboxEvidence(nativeSandboxEvidence) ||
+    migration?.drainMilliseconds !== 60_000 ||
+    !Number.isInteger(migration?.nativeDurationProbes) ||
+    migration.nativeDurationProbes < 1 ||
+    !/^[a-f0-9]{64}$/.test(
+      String(migration?.nativeDurationProbeAuditSha256 ?? ""),
+    ) ||
+    ffprobe?.path !== "/usr/bin/ffprobe" ||
+    !/^[a-f0-9]{64}$/.test(String(ffprobe?.sha256 ?? ""))
+  ) {
+    fail(
+      "FINAL_BACKUP_MIGRATION_NATIVE_AUDIT_MISMATCH",
+      "Production migration duration probe evidence is incomplete",
+    );
+  }
+  return Object.freeze({
+    argumentContractSha256: null,
+    durationProbeExecutable: ffprobe.path,
+    durationProbeExecutableSha256: ffprobe.sha256,
+    durationProbeMode: "release-bound-production-path",
+    externalNetworkAttempts: null,
+    externalNetworkSuccesses: 0,
+    nativeDurationProbes: migration.nativeDurationProbes,
+    nativeSandbox: nativeSandboxEvidence,
+    networkAttemptCounting: "not-instrumented",
+    realDrainClock: true,
+    sha256: migration.nativeDurationProbeAuditSha256,
+    testClockUsed: false,
+    testDurationProbeUsed: false,
+  });
+}
+
+function childProcessGroupExists(processGroupId) {
+  try {
+    process.kill(-processGroupId, 0);
+    return true;
+  } catch (error) {
+    if (error?.code === "ESRCH") return false;
+    if (error?.code === "EPERM") return true;
+    throw error;
+  }
+}
+
+async function waitForChildProcessGroupExit(processGroupId, timeout) {
+  const deadline = Date.now() + timeout;
+  while (childProcessGroupExists(processGroupId)) {
+    if (Date.now() >= deadline) return false;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 50));
+  }
+  return true;
+}
+
+async function terminateChildProcessGroup(processGroupId) {
+  if (!childProcessGroupExists(processGroupId)) return false;
+  try {
+    process.kill(-processGroupId, "SIGTERM");
+  } catch (error) {
+    if (error?.code !== "ESRCH") throw error;
+  }
+  if (await waitForChildProcessGroupExit(processGroupId, 2_000)) return false;
+  try {
+    process.kill(-processGroupId, "SIGKILL");
+  } catch (error) {
+    if (error?.code !== "ESRCH") throw error;
+  }
+  if (!await waitForChildProcessGroupExit(processGroupId, 2_000)) {
+    fail(
+      "FINAL_BACKUP_CHILD_CLEANUP_UNKNOWN",
+      "Final-candidate child process group could not be confirmed stopped",
+    );
+  }
+  return true;
+}
+
+async function runJsonChild({ arguments_, cwd, env, executable, label }) {
+  return await new Promise((resolvePromise, rejectPromise) => {
+    let settled = false;
+    let timer;
+    const child = spawn(executable, arguments_, {
+      cwd,
+      detached: true,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const processGroupId = child.pid;
     const stdout = [];
     const stderr = [];
     let outputBytes = 0;
-    const collect = (target) => (chunk) => {
-      outputBytes += chunk.length;
-      if (outputBytes > maximumChildOutputBytes) {
-        child.kill("SIGKILL");
+    const finish = async ({ code = null, error, reason, signal = null }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      let forced = false;
+      try {
+        if (processGroupId && childProcessGroupExists(processGroupId)) {
+          forced = await terminateChildProcessGroup(processGroupId);
+          if (reason === "close" && code === 0 && signal === null) {
+            throw new CliError(
+              "FINAL_BACKUP_CHILD_CLEANUP_UNKNOWN",
+              `${label} exited while its process group remained active`,
+            );
+          }
+        }
+      } catch (cleanupError) {
+        rejectPromise(cleanupError);
         return;
       }
-      target.push(chunk);
-    };
-    child.stdout.on("data", collect(stdout));
-    child.stderr.on("data", collect(stderr));
-    child.once("error", () => {
-      rejectPromise(new CliError(
-        "FINAL_BACKUP_CHILD_FAILED",
-        "Final-candidate child process could not start",
-      ));
-    });
-    child.once("close", (code, signal) => {
-      if (outputBytes > maximumChildOutputBytes) {
+      if (error) {
+        rejectPromise(new CliError(
+          "FINAL_BACKUP_CHILD_FAILED",
+          `${label} could not start`,
+        ));
+        return;
+      }
+      if (reason === "timeout") {
+        rejectPromise(new CliError(
+          "FINAL_BACKUP_CHILD_TIMEOUT",
+          `${label} exceeded its bounded runtime`,
+        ));
+        return;
+      }
+      if (reason === "output-limit") {
         rejectPromise(new CliError(
           "FINAL_BACKUP_CHILD_OUTPUT_TOO_LARGE",
-          "Final-candidate child output exceeded its limit",
+          `${label} output exceeded its limit`,
         ));
         return;
       }
       const output = Buffer.concat(stdout).toString("utf8").trim();
       const errorOutput = Buffer.concat(stderr).toString("utf8").trim();
-      if (code !== 0 || signal) {
+      if (reason !== "close" || code !== 0 || signal || forced) {
         let childError;
         try {
           childError = JSON.parse(errorOutput);
@@ -597,7 +853,7 @@ async function runJsonScript(scriptName, arguments_, options = {}) {
             ? childError.message
             : typeof childError?.error === "string"
               ? childError.error
-              : "Final-candidate child process failed",
+              : `${label} failed`,
         ));
         return;
       }
@@ -606,76 +862,52 @@ async function runJsonScript(scriptName, arguments_, options = {}) {
       } catch {
         rejectPromise(new CliError(
           "FINAL_BACKUP_CHILD_OUTPUT_INVALID",
-          "Final-candidate child output is invalid",
+          `${label} output is invalid`,
         ));
       }
-    });
+    };
+    const collect = (target) => (chunk) => {
+      if (settled) return;
+      outputBytes += chunk.length;
+      if (outputBytes > maximumChildOutputBytes) {
+        void finish({ reason: "output-limit" });
+      } else target.push(chunk);
+    };
+    child.stdout.on("data", collect(stdout));
+    child.stderr.on("data", collect(stderr));
+    child.once("error", (error) => void finish({ error, reason: "error" }));
+    child.once("close", (code, signal) =>
+      void finish({ code, reason: "close", signal }));
+    timer = setTimeout(() => void finish({ reason: "timeout" }), 20 * 60_000);
+  });
+}
+
+async function runJsonScript(scriptName, arguments_, options = {}) {
+  const executable = options.wrapper?.executable ?? process.execPath;
+  const childArguments = options.wrapper
+    ? [...options.wrapper.arguments, process.execPath,
+        resolve(appRoot, "scripts", scriptName), ...arguments_]
+    : [resolve(appRoot, "scripts", scriptName), ...arguments_];
+  return runJsonChild({
+    arguments_: childArguments,
+    cwd: appRoot,
+    env: options.env ?? process.env,
+    executable,
+    label: "Final-candidate child process",
   });
 }
 
 async function runReleaseJsonScript(release, arguments_, options = {}) {
-  return await new Promise((resolvePromise, rejectPromise) => {
-    const executable = options.wrapper?.executable ?? release.runtimeCommand;
-    const childArguments = options.wrapper
-      ? [...options.wrapper.arguments, release.runtimeCommand, ...arguments_]
-      : arguments_;
-    const child = spawn(executable, childArguments, {
-      cwd: release.directory,
-      env: options.env ?? process.env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    const stdout = [];
-    const stderr = [];
-    let outputBytes = 0;
-    const collect = (target) => (chunk) => {
-      outputBytes += chunk.length;
-      if (outputBytes > maximumChildOutputBytes) child.kill("SIGKILL");
-      else target.push(chunk);
-    };
-    child.stdout.on("data", collect(stdout));
-    child.stderr.on("data", collect(stderr));
-    child.once("error", () => rejectPromise(new CliError(
-      "FINAL_BACKUP_CHILD_FAILED",
-      "Release-bound child process could not start",
-    )));
-    child.once("close", (code, signal) => {
-      if (outputBytes > maximumChildOutputBytes) {
-        rejectPromise(new CliError(
-          "FINAL_BACKUP_CHILD_OUTPUT_TOO_LARGE",
-          "Release-bound child output exceeded its limit",
-        ));
-        return;
-      }
-      const output = Buffer.concat(stdout).toString("utf8").trim();
-      const errorOutput = Buffer.concat(stderr).toString("utf8").trim();
-      if (code !== 0 || signal) {
-        let childError;
-        try {
-          childError = JSON.parse(errorOutput);
-        } catch {
-          childError = undefined;
-        }
-        rejectPromise(new CliError(
-          typeof childError?.code === "string"
-            ? childError.code
-            : "FINAL_BACKUP_CHILD_FAILED",
-          typeof childError?.message === "string"
-            ? childError.message
-            : typeof childError?.error === "string"
-              ? childError.error
-              : "Release-bound child process failed",
-        ));
-        return;
-      }
-      try {
-        resolvePromise(JSON.parse(output));
-      } catch {
-        rejectPromise(new CliError(
-          "FINAL_BACKUP_CHILD_OUTPUT_INVALID",
-          "Release-bound child output is invalid",
-        ));
-      }
-    });
+  const executable = options.wrapper?.executable ?? release.runtimeCommand;
+  const childArguments = options.wrapper
+    ? [...options.wrapper.arguments, release.runtimeCommand, ...arguments_]
+    : arguments_;
+  return runJsonChild({
+    arguments_: childArguments,
+    cwd: release.directory,
+    env: options.env ?? process.env,
+    executable,
+    label: "Release-bound child process",
   });
 }
 
@@ -755,15 +987,26 @@ function migrationNativeSandboxEvidence(
   enforcementMode,
   profileSha256,
   safeRunnerIdentityBound = false,
+  linuxSandbox,
 ) {
+  const linuxInherited = enforcementMode === "linux-bwrap-inherited-v1";
   return Object.freeze({
     denyNetwork: true,
     deniedSocketScope: enforcementMode === "explicit"
       ? "all-network"
-      : "safe-runner-deny-network",
+      : linuxInherited
+        ? "isolated-network-namespace-no-usable-external-route"
+        : "safe-runner-deny-network",
     enforcementMode,
     explicitSelfTestDenied: enforcementMode === "explicit" ? true : null,
-    inheritedSelfTestDenied: enforcementMode === "inherited",
+    inheritedSelfTestDenied:
+      enforcementMode === "inherited" || linuxInherited,
+    ...(linuxInherited
+      ? {
+          linuxSandbox,
+          linuxSandboxIdentityBound: true,
+        }
+      : {}),
     migrationChildren: 2,
     processTreeEnforced: true,
     profileApplied: enforcementMode === "explicit",
@@ -845,6 +1088,20 @@ async function safeRunnerInheritedSandboxAllowed() {
 }
 
 async function createMigrationNativeSandbox(root) {
+  const linuxSandbox = await inheritedLinuxValidationSandbox(
+    "FINAL_BACKUP_MIGRATION_NATIVE_SANDBOX_UNAVAILABLE",
+  );
+  if (linuxSandbox) {
+    return Object.freeze({
+      evidence: migrationNativeSandboxEvidence(
+        "linux-bwrap-inherited-v1",
+        null,
+        false,
+        linuxSandbox,
+      ),
+      wrapper: undefined,
+    });
+  }
   // NODE_OPTIONS is deliberately empty in the direct safe-runner child: an
   // EACCES/EPERM result therefore proves inherited kernel policy rather than
   // the JavaScript guard. Never make this direct non-loopback probe unless the
@@ -913,7 +1170,19 @@ async function createMigrationNativeSandbox(root) {
 }
 
 async function createRuntimeNativeSandbox(startupRoot, instrumented) {
-  if (instrumented) return undefined;
+  const linuxSandbox = await inheritedLinuxValidationSandbox(
+    "FINAL_BACKUP_STARTUP_NATIVE_SANDBOX_UNAVAILABLE",
+  );
+  if (linuxSandbox) return undefined;
+  if (instrumented) {
+    if (process.platform === "linux") {
+      fail(
+        "FINAL_BACKUP_STARTUP_NATIVE_SANDBOX_UNAVAILABLE",
+        "Linux runtime validation requires the authenticated inherited sandbox",
+      );
+    }
+    return undefined;
+  }
   // The safe runner already applies a kernel-enforced Seatbelt profile to the
   // entire process tree. A second sandbox-exec invocation is rejected by that
   // outer profile, so consume the inherited policy only after authenticating
@@ -1374,11 +1643,56 @@ async function validateRestoredApplicationData(targetDirectory) {
       FROM generation_tasks
       WHERE state IN ('queued', 'running', 'recovering', 'retrying')
     `).get();
+    const generationTasks = database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM generation_tasks
+    `).get();
+    const providerAttempts = database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM generation_provider_attempts
+    `).get();
+    const credentialEpochs = database.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM account_provider_credentials) AS credentials,
+        (SELECT COUNT(*) FROM account_provider_credential_epochs) AS epochs,
+        (SELECT COUNT(*)
+          FROM account_provider_credentials AS credentials
+          JOIN account_provider_credential_epochs AS epochs
+            ON epochs.account_id = credentials.account_id
+            AND epochs.provider_profile_id = credentials.provider_profile_id
+            AND epochs.credential_revision = credentials.credential_version
+        ) AS aligned
+    `).get();
     const activeGenerationTasks = Number(activeTasks?.count);
-    if (activeGenerationTasks !== 0) {
+    const generationTasksTotal = Number(generationTasks?.count);
+    const generationProviderAttemptsTotal = Number(providerAttempts?.count);
+    const accountProviderCredentialsTotal = Number(credentialEpochs?.credentials);
+    const accountProviderCredentialEpochsTotal = Number(credentialEpochs?.epochs);
+    const accountProviderCredentialEpochsAligned = Number(credentialEpochs?.aligned);
+    const linuxValidationSandbox =
+      await inheritedLinuxValidationSandbox(
+        "FINAL_BACKUP_STARTUP_NATIVE_SANDBOX_UNAVAILABLE",
+      );
+    if (
+      activeGenerationTasks !== 0 ||
+      !Number.isSafeInteger(generationTasksTotal) || generationTasksTotal < 0 ||
+      !Number.isSafeInteger(generationProviderAttemptsTotal) ||
+      generationProviderAttemptsTotal < 0 ||
+      !Number.isSafeInteger(accountProviderCredentialsTotal) ||
+      !Number.isSafeInteger(accountProviderCredentialEpochsTotal) ||
+      !Number.isSafeInteger(accountProviderCredentialEpochsAligned) ||
+      linuxValidationSandbox &&
+        (accountProviderCredentialsTotal !== 1 ||
+          accountProviderCredentialEpochsTotal !== 1 ||
+          accountProviderCredentialEpochsAligned !== 1) ||
+      linuxValidationSandbox &&
+        (generationTasksTotal !== 0 || generationProviderAttemptsTotal !== 0)
+    ) {
       fail(
         "FINAL_BACKUP_STARTUP_NOT_QUIET",
-        "Final-candidate restore has active generation work at startup",
+        linuxValidationSandbox
+          ? "Production Linux validation observed generation or paid-attempt ledger entries"
+          : "Final-candidate restore has active generation work at startup",
       );
     }
 
@@ -1439,8 +1753,13 @@ async function validateRestoredApplicationData(targetDirectory) {
       );
     }
     summary = {
+      accountProviderCredentialEpochsAligned,
+      accountProviderCredentialEpochsTotal,
+      accountProviderCredentialsTotal,
       activeGenerationTasks,
       canvasDocumentsRead,
+      generationProviderAttemptsTotal,
+      generationTasksTotal,
       ordinaryDatabaseOpen: true,
       readyLegacyDurationAssets: migratedDurations.length,
       sessionRowsRead,
@@ -1487,6 +1806,22 @@ async function inspectStartupNetworkAudit(
   { auxiliaryPort, instrumented },
 ) {
   if (!instrumented) {
+    const linuxSandbox = await inheritedLinuxValidationSandbox(
+      "FINAL_BACKUP_STARTUP_NATIVE_SANDBOX_UNAVAILABLE",
+    );
+    if (linuxSandbox) {
+      return Object.freeze({
+        deniedWildcardBindProbes: null,
+        externalNetworkAttempts: null,
+        externalNetworkSuccesses: 0,
+        guardLoads: 0,
+        instrumentation: "linux-bwrap-network-namespace",
+        linuxSandbox,
+        networkAttemptCounting: "not-instrumented",
+        ossRequests: null,
+        providerRequests: null,
+      });
+    }
     return Object.freeze({
       deniedWildcardBindProbes: null,
       externalNetworkAttempts: 0,
@@ -3309,6 +3644,15 @@ async function validateReleaseStartup({
           ? ["NATIVE_OPERATION_NOT_PERMITTED"]
           : []),
       ].sort();
+      const diagnosticCategories = startupShutdownDiagnosticCategories
+        .filter(({ marker }) => outputState.diagnosticTail.includes(marker))
+        .map(({ category }) => category);
+      const legacySupervisorStackLines = allowlistedLegacySupervisorStackLines(
+        outputState.diagnosticTail,
+      );
+      const legacyDatabaseChanges = allowlistedLegacyDatabaseChanges(
+        outputState.diagnosticTail,
+      );
       fail(
         "FINAL_BACKUP_STARTUP_SHUTDOWN_FAILED",
         `Final-candidate runtime did not shut down cleanly within its deadline (${JSON.stringify({
@@ -3316,6 +3660,9 @@ async function validateReleaseStartup({
           exitCode: shutdown.exitCode,
           forced: shutdown.forced,
           markers,
+          diagnosticCategories,
+          legacyDatabaseChanges,
+          legacySupervisorStackLines,
           primaryErrorCode: primaryError instanceof CliError
             ? primaryError.code
             : primaryError
@@ -3362,6 +3709,7 @@ async function validateReleaseStartup({
       ...buildArtifactBefore.summary,
       ...restoredStateBefore.summary,
       listenerReleased: true,
+      listenerPort: port,
       ...(expected.schemaVersion === 37
         ? {
             legacyMetadataBackfill: Object.freeze({
@@ -3607,6 +3955,11 @@ try {
       "Restored package summary differs from the verified exact-v37 backup",
     );
   }
+  const restoredSecretValidation = await validateBackupSecrets(
+    resolve(targetDirectory, "unboundry.sqlite"),
+    resolve(targetDirectory, "secrets"),
+    targetDirectory,
+  );
   const fakeOssRecovery = await rehydrateFakeOssFromIndexFile({
     indexPath: resolve(targetDirectory, ossRecoveryIndexFileName),
     sourceDirectory: targetDirectory,
@@ -3660,7 +4013,12 @@ try {
     );
   }
   await revalidateRelease(releases.bridge, "bridge", runnerReleaseAttestation);
-  const durationProbeFixture = await createSafeDurationProbeFixture(scratchRoot);
+  const linuxValidationSandbox = await inheritedLinuxValidationSandbox(
+    "FINAL_BACKUP_MIGRATION_NATIVE_SANDBOX_UNAVAILABLE",
+  );
+  const durationProbeFixture = linuxValidationSandbox
+    ? undefined
+    : await createSafeDurationProbeFixture(scratchRoot);
   let migrationRuntimeDirectory;
   let migrationNativeAudit;
   let migrationDryRun;
@@ -3672,9 +4030,17 @@ try {
     ));
     await chmod(migrationRuntimeDirectory, 0o700);
     const migrationNativeSandbox = await createMigrationNativeSandbox(
-      durationProbeFixture.directory,
+      durationProbeFixture?.directory ?? migrationRuntimeDirectory,
     );
-    const migrationChildOptions = { wrapper: migrationNativeSandbox.wrapper };
+    const migrationChildOptions = linuxValidationSandbox
+      ? {
+          env: productionMigrationEnvironment(
+            releases.bridge,
+            migrationRuntimeDirectory,
+          ),
+          wrapper: migrationNativeSandbox.wrapper,
+        }
+      : { wrapper: migrationNativeSandbox.wrapper };
     const migrationCommon = [
       "--data-dir",
       targetDirectory,
@@ -3683,10 +4049,14 @@ try {
       "--runtime-dir",
       migrationRuntimeDirectory,
       ...scratch,
-      "--test-duration-probe-audit",
-      durationProbeFixture.auditPath,
-      "--test-duration-probe-executable",
-      durationProbeFixture.executable,
+      ...(durationProbeFixture
+        ? [
+            "--test-duration-probe-audit",
+            durationProbeFixture.auditPath,
+            "--test-duration-probe-executable",
+            durationProbeFixture.executable,
+          ]
+        : []),
     ];
     migrationDryRun = await runReleaseJsonScript(
       releases.bridge,
@@ -3700,7 +4070,8 @@ try {
       migrationDryRun?.sourceVersion !== 37 ||
       migrationDryRun?.targetVersion !== 39 ||
       migrationDryRun?.expectedSourceLogicalSha256 !== postBridge37LogicalSha256 ||
-      migrationDryRun?.nativeDurationProbes !== 0
+      migrationDryRun?.nativeDurationProbes !== 0 ||
+      linuxValidationSandbox && migrationDryRun?.drainMilliseconds !== 60_000
     ) {
       fail(
         "FINAL_BACKUP_MIGRATION_DRY_RUN_MISMATCH",
@@ -3712,14 +4083,22 @@ try {
       ["scripts/migrate-schema37-to39.mjs", "--apply", ...migrationCommon],
       migrationChildOptions,
     );
-    migrationNativeAudit = await verifySafeDurationProbeAudit(
-      durationProbeFixture.auditPath,
-      migrationApplied,
-      migrationNativeSandbox.evidence,
-    );
+    migrationNativeAudit = linuxValidationSandbox
+      ? verifyProductionDurationProbeEvidence(
+          migrationApplied,
+          migrationNativeSandbox.evidence,
+          releases.bridge,
+        )
+      : await verifySafeDurationProbeAudit(
+          durationProbeFixture.auditPath,
+          migrationApplied,
+          migrationNativeSandbox.evidence,
+        );
   } finally {
     await Promise.all([
-      rm(durationProbeFixture.directory, { force: true, recursive: true }),
+      ...(durationProbeFixture
+        ? [rm(durationProbeFixture.directory, { force: true, recursive: true })]
+        : []),
       ...(migrationRuntimeDirectory
         ? [rm(migrationRuntimeDirectory, { force: true, recursive: true })]
         : []),
@@ -3733,11 +4112,18 @@ try {
     migrationApplied?.targetVersion !== 39 ||
     migrationApplied?.expectedSourceLogicalSha256 !== postBridge37LogicalSha256 ||
     migrationApplied?.backfilledDurations !== 1 ||
+    linuxValidationSandbox && migrationApplied?.drainMilliseconds !== 60_000 ||
     migrationApplied?.nativeDurationProbes !==
       migrationApplied.backfilledDurations + bridgeDurationAfter.total ||
     migrationNativeAudit?.nativeDurationProbes !==
       migrationApplied.nativeDurationProbes ||
-    migrationNativeAudit?.externalNetworkAttempts !== 0
+    (linuxValidationSandbox
+      ? migrationNativeAudit?.externalNetworkAttempts !== null ||
+        migrationNativeAudit?.externalNetworkSuccesses !== 0 ||
+        migrationNativeAudit?.realDrainClock !== true ||
+        migrationNativeAudit?.testClockUsed !== false ||
+        migrationNativeAudit?.testDurationProbeUsed !== false
+      : migrationNativeAudit?.externalNetworkAttempts !== 0)
   ) {
     fail(
       "FINAL_BACKUP_MIGRATION_APPLY_MISMATCH",
@@ -3797,18 +4183,110 @@ try {
       "Normal startup changed the migrated restore logical target",
     );
   }
+  await revalidateRelease(releases.bridge, "bridge", runnerReleaseAttestation);
+  const bridgeRollback = await validateReleaseStartup({
+    expected: Object.freeze({
+      mode: "active",
+      mutationsAccepted: true,
+      schemaVersion: 39,
+    }),
+    release: releases.bridge,
+    scratchRoot,
+    targetDirectory,
+  });
+  await revalidateRelease(releases.bridge, "bridge", runnerReleaseAttestation);
+  const postBridgeRollbackInspection = inspectExitedRuntimeDatabase(
+    resolve(targetDirectory, "unboundry.sqlite"),
+    targetDirectory,
+    { admitCommittedWal: true },
+  );
+  if (
+    postBridgeRollbackInspection.userVersion !== currentStartupSchemaVersion ||
+    postBridgeRollbackInspection.logicalSha256 !==
+      migrationInspection.logicalSha256
+  ) {
+    fail(
+      "FINAL_BACKUP_STARTUP_TARGET_CHANGED",
+      "Bridge rollback runtime changed the migrated schema-39 target",
+    );
+  }
+  await revalidateRelease(releases.final, "final", runnerReleaseAttestation);
+  const finalReswitch = await validateReleaseStartup({
+    expected: Object.freeze({
+      mode: "active",
+      mutationsAccepted: true,
+      schemaVersion: 39,
+    }),
+    release: releases.final,
+    scratchRoot,
+    targetDirectory,
+  });
+  await revalidateRelease(releases.final, "final", runnerReleaseAttestation);
+  const postFinalReswitchInspection = inspectExitedRuntimeDatabase(
+    resolve(targetDirectory, "unboundry.sqlite"),
+    targetDirectory,
+    { admitCommittedWal: true },
+  );
+  if (
+    postFinalReswitchInspection.userVersion !== currentStartupSchemaVersion ||
+    postFinalReswitchInspection.logicalSha256 !==
+      migrationInspection.logicalSha256
+  ) {
+    fail(
+      "FINAL_BACKUP_STARTUP_TARGET_CHANGED",
+      "Final reswitch runtime changed the migrated schema-39 target",
+    );
+  }
   const startupValidation = Object.freeze({
     ...startupRuntime,
+    bridgeRollback,
     bridgeSchema37,
     bridgeSchema39,
+    finalReswitch,
+    finalSchema39: startupRuntime,
     postBridge37LogicalSha256,
-    targetLogicalSha256: postStartupInspection.logicalSha256,
+    runtimeSequence: Object.freeze([
+      Object.freeze({ releaseRole: "bridge", schemaVersion: 37 }),
+      Object.freeze({ releaseRole: "bridge", schemaVersion: 39 }),
+      Object.freeze({ releaseRole: "final", schemaVersion: 39 }),
+      Object.freeze({
+        operation: "rollback",
+        releaseRole: "bridge",
+        schemaVersion: 39,
+      }),
+      Object.freeze({
+        operation: "reswitch",
+        releaseRole: "final",
+        schemaVersion: 39,
+      }),
+    ]),
+    targetLogicalSha256: postFinalReswitchInspection.logicalSha256,
   });
   process.stdout.write(`${JSON.stringify({
     backup,
     expectedDatabaseLogicalSha256: expectedSha,
     expectedSchemaVersion: 37,
     format: "unboundry-final-candidate-backup",
+    ...(linuxValidationSandbox
+      ? {
+          productionLinuxExecution: Object.freeze({
+            allHostPrerequisitesActuallyExecuted: false,
+            bridgeRollbackRuntimeActuallyExecuted: true,
+            finalReswitchRuntimeActuallyExecuted: true,
+            hostPrerequisitesActuallyExecuted: Object.freeze({
+              bwrap: true,
+              ffmpeg: false,
+              ffprobe: true,
+              node: true,
+            }),
+            migrationActuallyExecuted: true,
+            networkNamespaceActuallyExecuted: true,
+            productRuntimeActuallyExecuted: true,
+            systemdActuallyExecuted: false,
+            nginxActuallyExecuted: false,
+          }),
+        }
+      : {}),
     fakeOssRecovery,
     migrationApplied,
     migrationDryRun,
@@ -3818,6 +4296,7 @@ try {
     releaseRelationship: admittedReleaseRelationship,
     report,
     restored,
+    restoredSecretValidation,
     startupValidation,
     targetDirectory,
     verified,

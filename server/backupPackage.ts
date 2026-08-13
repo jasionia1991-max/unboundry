@@ -722,6 +722,21 @@ function validateLockedSourceContract(
   }
 }
 
+function sameLogicalDatabaseInspection(
+  locked: BackupDatabaseInspection,
+  snapshot: BackupDatabaseInspection,
+) {
+  return locked.userVersion === snapshot.userVersion &&
+    locked.logicalSha256 === snapshot.logicalSha256 &&
+    locked.integrityCheck === snapshot.integrityCheck &&
+    locked.foreignKeyViolations === snapshot.foreignKeyViolations &&
+    stableJson(locked.migrationLedger) === stableJson(snapshot.migrationLedger) &&
+    stableJson(locked.schema) === stableJson(snapshot.schema) &&
+    stableJson(locked.tables) === stableJson(snapshot.tables) &&
+    new Set(["delete", "wal"]).has(locked.journalMode) &&
+    snapshot.journalMode === "delete";
+}
+
 async function withOptionalFrozenSourceWriteLock<T>(
   sourceDirectory: string,
   inspectionRoot: string,
@@ -2398,7 +2413,10 @@ export async function inspectFrozenMediaIntegrity(
         }
         if (
           lockedInspection &&
-          stableJson(lockedInspection) !== stableJson(databaseSnapshot.inspection)
+          !sameLogicalDatabaseInspection(
+            lockedInspection,
+            databaseSnapshot.inspection,
+          )
         ) {
           fail(
             "BACKUP_SOURCE_LOGICAL_SHA_MISMATCH",
@@ -2575,7 +2593,10 @@ export async function createEncryptedBackup(
         }
         if (
           lockedInspection &&
-          stableJson(lockedInspection) !== stableJson(databaseSnapshot.inspection)
+          !sameLogicalDatabaseInspection(
+            lockedInspection,
+            databaseSnapshot.inspection,
+          )
         ) {
           fail(
             "BACKUP_SOURCE_LOGICAL_SHA_MISMATCH",

@@ -17,6 +17,7 @@ import { DatabaseSync } from "node:sqlite";
 import {
   currentSchemaManifest,
 } from "./database.ts";
+import { safeCanonicalAliyunOssEndpoint } from "./outboundNetwork.ts";
 import { databaseMatchesSchemaContract } from "./runtimeLifecycle.ts";
 
 const providerDocumentAad = Buffer.from(
@@ -44,6 +45,11 @@ const knownMigrationNames = Object.freeze(
   currentSchemaManifest.map(({ name }) => name),
 );
 const supportedBackupSchemaVersions = new Set([37, 38, 39]);
+const builtInProviderBaseUrls = Object.freeze({
+  mureka: "https://api.mureka.ai",
+  openrouter: "https://openrouter.ai/api/v1",
+  "volcengine-ark": "https://ark.cn-beijing.volces.com/api/v3",
+} as const);
 
 // Frozen from the schema-37 contract at REM-003 commit 73c65db. These hashes
 // cover exact sqlite_schema SQL text, including the narrowly admitted historic
@@ -424,6 +430,7 @@ export type BackupSecretValidationContext = Readonly<{
     configurationVersion: number;
     driver: string;
     id: string;
+    label: string;
   }>[];
   storageDocument: Readonly<{
     activeProfileId: string | null;
@@ -1338,6 +1345,64 @@ function decryptGcm(
   }
 }
 
+function canonicalIsoTimestamp(value: unknown) {
+  return typeof value === "string" && value.length <= 40 &&
+    Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
+}
+
+function validProviderBaseUrl(driver: string, value: unknown) {
+  if (typeof value !== "string" || value.length < 1 || value.length > 300) {
+    return false;
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  const canonical = value.replace(/\/+$/, "");
+  if (
+    value !== value.trim() || value !== canonical || url.protocol !== "https:" ||
+    Boolean(url.username) || Boolean(url.password) || Boolean(url.search) ||
+    Boolean(url.hash) || !/^[a-z0-9.-]+$/i.test(url.hostname)
+  ) return false;
+  const builtIn = builtInProviderBaseUrls[
+    driver as keyof typeof builtInProviderBaseUrls
+  ];
+  return builtIn === undefined || canonical === builtIn;
+}
+
+function validProviderSecretProfile(value: Record<string, unknown>) {
+  return typeof value.label === "string" && value.label === value.label.trim() &&
+    value.label.length >= 1 && value.label.length <= 40 &&
+    validProviderBaseUrl(String(value.driver), value.baseUrl) &&
+    canonicalIsoTimestamp(value.createdAt) &&
+    canonicalIsoTimestamp(value.updatedAt);
+}
+
+function validStorageSecretProfile(value: Record<string, unknown>) {
+  if (
+    value.provider !== "aliyun-oss" || typeof value.label !== "string" ||
+    value.label !== value.label.trim() || value.label.length < 1 ||
+    value.label.length > 40 || typeof value.endpoint !== "string" ||
+    typeof value.region !== "string" || typeof value.bucket !== "string" ||
+    !/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(value.bucket) ||
+    typeof value.accessKeyId !== "string" || value.accessKeyId.length < 8 ||
+    /\s/.test(value.accessKeyId) || typeof value.accessKeySecret !== "string" ||
+    value.accessKeySecret.length < 8 || /\s/.test(value.accessKeySecret) ||
+    !canonicalIsoTimestamp(value.createdAt) ||
+    !canonicalIsoTimestamp(value.updatedAt) ||
+    value.lastVerifiedAt !== undefined &&
+      !canonicalIsoTimestamp(value.lastVerifiedAt)
+  ) return false;
+  try {
+    safeCanonicalAliyunOssEndpoint(value.endpoint, value.region);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function validateEncryptedDocument(
   path: string,
   key: Buffer | undefined,
@@ -1358,6 +1423,7 @@ async function validateEncryptedDocument(
         configurationVersion: number;
         driver: string;
         id: string;
+        label: string;
       }>),
       profiles: 0,
       storageProfiles: Object.freeze([] as Array<{
@@ -1443,7 +1509,8 @@ async function validateEncryptedDocument(
             typeof value.driver !== "string" ||
             !providerDrivers.has(value.driver) ||
             !Number.isSafeInteger(configurationVersion) ||
-            Number(configurationVersion) < 1
+            Number(configurationVersion) < 1 ||
+            !validProviderSecretProfile(value)
           ) {
             fail(
               "BACKUP_SECRET_PLAINTEXT_INVALID",
@@ -1454,13 +1521,17 @@ async function validateEncryptedDocument(
             configurationVersion: Number(configurationVersion),
             driver: value.driver,
             id: value.id as string,
+            label: value.label as string,
           });
         }).sort((left, right) => left.id.localeCompare(right.id))
       : [];
     const storageProfiles = kind === "storage"
       ? content.profiles.map((profile) => {
           const value = profile as Record<string, unknown>;
-          if (!new Set(["active", "draft", "verified"]).has(String(value.status))) {
+          if (
+            !new Set(["active", "draft", "verified"]).has(String(value.status)) ||
+            !validStorageSecretProfile(value)
+          ) {
             fail(
               "BACKUP_SECRET_PLAINTEXT_INVALID",
               "Storage secret metadata is invalid",
@@ -1531,24 +1602,45 @@ function validateSecretDatabaseAlignment(
     );
   }
   const providerRows = statementRows(database, `
-    SELECT id, driver, provider_configuration_version, status
+    SELECT id, display_name, driver, provider_configuration_version, status
     FROM provider_profiles
     ORDER BY id
   `);
-  if (providerRows.length !== providerDocument.providerProfiles.length) {
+  const schemaSentinelRows = providerRows.filter((row) =>
+    row[0] === "provider-unconfigured"
+  );
+  if (
+    schemaSentinelRows.length !== 1 ||
+    schemaSentinelRows[0]?.[1] !== "尚未接入 Provider" ||
+    schemaSentinelRows[0]?.[2] !== "unconfigured" ||
+    schemaSentinelRows[0]?.[3] !== 0n ||
+    schemaSentinelRows[0]?.[4] !== "disabled"
+  ) {
+    fail(
+      "BACKUP_PROVIDER_DOCUMENT_MISMATCH",
+      "Schema-owned unconfigured Provider metadata is missing or changed",
+    );
+  }
+  const configuredProviderRows = providerRows.filter((row) =>
+    row[0] !== "provider-unconfigured"
+  );
+  if (
+    configuredProviderRows.length !== providerDocument.providerProfiles.length
+  ) {
     fail(
       "BACKUP_PROVIDER_DOCUMENT_MISMATCH",
       "Provider secret profiles do not exactly match SQLite metadata",
     );
   }
-  providerRows.forEach((row, index) => {
+  configuredProviderRows.forEach((row, index) => {
     const profile = providerDocument.providerProfiles[index];
     if (
       !profile ||
       row[0] !== profile.id ||
-      row[1] !== profile.driver ||
-      row[2] !== BigInt(profile.configurationVersion) ||
-      (row[3] !== "disabled" && row[3] !== "enabled")
+      row[1] !== profile.label ||
+      row[2] !== profile.driver ||
+      row[3] !== BigInt(profile.configurationVersion) ||
+      (row[4] !== "disabled" && row[4] !== "enabled")
     ) {
       fail(
         "BACKUP_PROVIDER_DOCUMENT_MISMATCH",
@@ -1615,10 +1707,13 @@ function validateSecretDatabaseAlignment(
       referencedStorageIds.add(row[0]);
     }
   }
-  if ([...referencedStorageIds].some((id) => !storageById.has(id))) {
+  if ([...referencedStorageIds].some((id) => {
+    const profile = storageById.get(id);
+    return !profile || (profile.status !== "active" && profile.status !== "verified");
+  })) {
     fail(
       "BACKUP_STORAGE_DOCUMENT_MISMATCH",
-      "SQLite storage references are missing from the encrypted document",
+      "SQLite storage references are not backed by a usable terminal profile",
     );
   }
 }
@@ -1743,6 +1838,7 @@ export async function validateBackupSecretsWithContext(
             configurationVersion: number;
             driver: string;
             id: string;
+            label: string;
           }>),
           profiles: 0,
           storageProfiles: Object.freeze([] as Array<{
@@ -1766,6 +1862,7 @@ export async function validateBackupSecretsWithContext(
             configurationVersion: number;
             driver: string;
             id: string;
+            label: string;
           }>),
           profiles: 0,
           storageProfiles: Object.freeze([] as Array<{
@@ -1787,14 +1884,37 @@ export async function validateBackupSecretsWithContext(
     let accountCredentials = 0;
     if (credentialTable[0]?.[0] === 1n) {
       const statement = database.prepare(`
-        SELECT encrypted_key
+        SELECT
+          account_id, provider_profile_id, encrypted_key, key_status,
+          key_checked_at, credential_version, updated_at
         FROM account_provider_credentials
         ORDER BY account_id, provider_profile_id
       `);
       statement.setReadBigInts(true);
       statement.setReturnArrays(true);
+      const configuredProviderIds = new Set(
+        providerDocument.providerProfiles.map((profile) => profile.id),
+      );
       for (const row of statement.iterate() as Iterable<unknown[]>) {
-        validateAccountCredential(row[0], key);
+        if (
+          typeof row[0] !== "string" || !row[0] ||
+          typeof row[1] !== "string" ||
+          !configuredProviderIds.has(row[1]) || row[1] === "provider-unconfigured" ||
+          !new Set(["invalid", "unchecked", "unknown", "valid"]).has(
+            String(row[3]),
+          ) ||
+          (row[3] === "unchecked"
+            ? row[4] !== null
+            : !canonicalIsoTimestamp(row[4])) ||
+          typeof row[5] !== "bigint" || row[5] < 1n ||
+          !canonicalIsoTimestamp(row[6])
+        ) {
+          fail(
+            "BACKUP_ACCOUNT_CREDENTIAL_INVALID",
+            "Account credential metadata is not bound to a configured Provider profile",
+          );
+        }
+        validateAccountCredential(row[2], key);
         accountCredentials += 1;
       }
     }

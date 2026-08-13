@@ -1,4 +1,8 @@
-import { lstatSync, realpathSync } from "node:fs";
+import {
+  lstatSync,
+  realpathSync,
+  type BigIntStats,
+} from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
@@ -21,10 +25,24 @@ export type LegacyRuntimeSupervisorState =
   | "stopped"
   | "stopping";
 
+export type LegacyActiveTaskObservationPhase =
+  | "ACTIVE_POST_WARMUP"
+  | "ACTIVE_PRELAUNCH"
+  | "ACTIVE_SHUTDOWN"
+  | "ACTIVE_STANDALONE";
+
+export type LegacyMediaObservationPhase =
+  | "MEDIA_POST_WARMUP"
+  | "MEDIA_STANDALONE";
+
+type LegacyDatabaseObservationPhase =
+  | LegacyActiveTaskObservationPhase
+  | LegacyMediaObservationPhase;
+
 export type LegacyRuntimeSupervisorOptions = Readonly<{
-  activeGenerationTasks?: () => number;
+  activeGenerationTasks?: (phase: LegacyActiveTaskObservationPhase) => number;
   dataDirectory: string;
-  legacyMediaMetadataComplete?: () => boolean;
+  legacyMediaMetadataComplete?: (phase: LegacyMediaObservationPhase) => boolean;
   launcher?: LegacyRuntimeLauncher;
   legacyRoot: string;
   runtimeDirectory: string;
@@ -71,8 +89,75 @@ type LegacyDatabaseFingerprint = Readonly<{
   wal?: LegacyFileFingerprint;
 }>;
 
+type LegacyObservationCleanup = Readonly<{
+  close: () => void;
+  dataDirectory: string;
+  fingerprint: LegacyDatabaseFingerprint;
+  phase: LegacyDatabaseObservationPhase;
+}>;
+
+export type LegacyFingerprintComponent =
+  | "DATABASE"
+  | "DIRECTORY"
+  | "JOURNAL"
+  | "SHM"
+  | "WAL";
+
+export type LegacyFingerprintChangeClass =
+  | "CONTENT_METADATA"
+  | "IDENTITY"
+  | "PRESENCE";
+
+type LegacyFingerprintDifference = Readonly<{
+  changeClass: LegacyFingerprintChangeClass;
+  component: LegacyFingerprintComponent;
+}>;
+
+export class LegacyRuntimeDatabaseChangedError extends Error {
+  readonly changeClass: LegacyFingerprintChangeClass;
+  readonly component: LegacyFingerprintComponent;
+  readonly phase: LegacyDatabaseObservationPhase;
+
+  constructor(
+    phase: LegacyDatabaseObservationPhase,
+    difference: LegacyFingerprintDifference,
+  ) {
+    super(
+      `LEGACY_RUNTIME_DATABASE_CHANGED:${phase}:${difference.component}:${difference.changeClass}`,
+    );
+    this.name = "LegacyRuntimeDatabaseChangedError";
+    this.phase = phase;
+    this.component = difference.component;
+    this.changeClass = difference.changeClass;
+  }
+}
+
+class LegacyFingerprintMissingError extends Error {
+  constructor() {
+    super("LEGACY_RUNTIME_FINGERPRINT_MISSING");
+    this.name = "LegacyFingerprintMissingError";
+  }
+}
+
+type LegacyTaggedFingerprint = Readonly<
+  | { state: "MISSING" }
+  | { fingerprint: LegacyFileFingerprint; state: "PRESENT" }
+  | { state: "UNSAFE" }
+>;
+
 function fixedFingerprint(path: string, kind: "directory" | "file") {
-  const details = lstatSync(path, { bigint: true });
+  let details: BigIntStats;
+  try {
+    details = lstatSync(path, { bigint: true });
+  } catch (error) {
+    if (
+      error && typeof error === "object" && "code" in error &&
+      error.code === "ENOENT"
+    ) throw new LegacyFingerprintMissingError();
+    // Native filesystem errors include the inspected path. The supervisor's
+    // public failure is deliberately bounded and path-free.
+    throw new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
+  }
   if (
     details.isSymbolicLink() ||
     (kind === "directory" ? !details.isDirectory() : !details.isFile()) ||
@@ -96,74 +181,312 @@ function optionalFingerprint(path: string) {
   try {
     return fixedFingerprint(path, "file");
   } catch (error) {
-    if (
-      error && typeof error === "object" && "code" in error &&
-      error.code === "ENOENT"
-    ) return undefined;
-    throw error;
+    if (error instanceof LegacyFingerprintMissingError) return undefined;
+    if (error instanceof Error && error.message === "LEGACY_RUNTIME_DATABASE_UNSAFE") {
+      throw error;
+    }
+    throw new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
   }
 }
 
-function sameFingerprint(
+function taggedFingerprint(
+  path: string,
+  kind: "directory" | "file" = "file",
+): LegacyTaggedFingerprint {
+  try {
+    const fingerprint = kind === "directory"
+      ? fixedFingerprint(path, "directory")
+      : optionalFingerprint(path);
+    return fingerprint
+      ? Object.freeze({ fingerprint, state: "PRESENT" } as const)
+      : Object.freeze({ state: "MISSING" } as const);
+  } catch {
+    return Object.freeze({ state: "UNSAFE" } as const);
+  }
+}
+
+function fingerprintChangeClass(
   left: LegacyFileFingerprint | undefined,
   right: LegacyFileFingerprint | undefined,
   contentMetadata = true,
-) {
-  return Boolean(
-    left && right && left.dev === right.dev && left.ino === right.ino &&
-      left.uid === right.uid && left.mode === right.mode &&
-      left.nlink === right.nlink && (!contentMetadata || (
-        left.size === right.size && left.mtimeNs === right.mtimeNs &&
-        left.ctimeNs === right.ctimeNs
-      )),
-  ) || (!left && !right);
+): LegacyFingerprintChangeClass | undefined {
+  if (Boolean(left) !== Boolean(right)) return "PRESENCE";
+  if (!left || !right) return undefined;
+  if (
+    left.dev !== right.dev || left.ino !== right.ino ||
+    left.uid !== right.uid || left.mode !== right.mode ||
+    left.nlink !== right.nlink
+  ) return "IDENTITY";
+  if (
+    contentMetadata && (
+      left.size !== right.size || left.mtimeNs !== right.mtimeNs ||
+      left.ctimeNs !== right.ctimeNs
+    )
+  ) return "CONTENT_METADATA";
+  return undefined;
 }
 
-function databaseFingerprint(dataDirectory: string): LegacyDatabaseFingerprint {
-  if (realpathSync(dataDirectory) !== dataDirectory) {
+function databaseFingerprint(
+  dataDirectory: string,
+  requireSidecarPair = true,
+): LegacyDatabaseFingerprint {
+  let canonicalDirectory: string;
+  try {
+    canonicalDirectory = realpathSync(dataDirectory);
+  } catch {
+    throw new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
+  }
+  if (canonicalDirectory !== dataDirectory) {
     throw new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
   }
   const databasePath = join(dataDirectory, "unboundry.sqlite");
-  if (optionalFingerprint(`${databasePath}-journal`)) {
+  if (requireSidecarPair && optionalFingerprint(`${databasePath}-journal`)) {
     throw new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
   }
   const wal = optionalFingerprint(`${databasePath}-wal`);
   const shm = optionalFingerprint(`${databasePath}-shm`);
-  if (Boolean(wal) !== Boolean(shm)) {
+  if (requireSidecarPair && Boolean(wal) !== Boolean(shm)) {
     throw new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
   }
   return Object.freeze({
-    database: fixedFingerprint(databasePath, "file"),
-    directory: fixedFingerprint(dataDirectory, "directory"),
+    database: (() => {
+      try {
+        return fixedFingerprint(databasePath, "file");
+      } catch {
+        // A mandatory initial database is either safely admitted or rejected by
+        // one path-free public error. The missing sentinel never escapes here.
+        throw new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
+      }
+    })(),
+    directory: (() => {
+      try {
+        return fixedFingerprint(dataDirectory, "directory");
+      } catch {
+        throw new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
+      }
+    })(),
     ...(shm ? { shm } : {}),
     ...(wal ? { wal } : {}),
   });
 }
 
-function sameDatabaseFingerprint(
+function databaseFingerprintDifference(
   before: LegacyDatabaseFingerprint,
   after: LegacyDatabaseFingerprint,
-) {
+): LegacyFingerprintDifference | undefined {
   // SQLite may update lock/WAL-index bytes in an existing SHM file during a
   // coordinated read. Its physical identity remains pinned; DB and WAL content
   // metadata must remain unchanged for the active-task observation itself.
-  return sameFingerprint(before.directory, after.directory) &&
-    sameFingerprint(before.database, after.database) &&
-    sameFingerprint(before.wal, after.wal) &&
-    sameFingerprint(
-      before.shm,
-      after.shm,
-      !before.wal || before.wal.size === 0n,
-    );
+  const comparisons = [
+    {
+      after: after.database,
+      before: before.database,
+      component: "DATABASE",
+      contentMetadata: true,
+    },
+    {
+      after: after.wal,
+      before: before.wal,
+      component: "WAL",
+      contentMetadata: true,
+    },
+    {
+      after: after.shm,
+      before: before.shm,
+      component: "SHM",
+      contentMetadata: !before.wal || before.wal.size === 0n,
+    },
+    {
+      after: after.directory,
+      before: before.directory,
+      component: "DIRECTORY",
+      contentMetadata: true,
+    },
+  ] as const;
+  // Report one fixed-priority enum tuple. Presence and identity changes are
+  // more specific than parent-directory timestamp fallout, and the bound never
+  // grows with attacker-controlled filesystem state.
+  for (const expectedClass of [
+    "PRESENCE",
+    "IDENTITY",
+    "CONTENT_METADATA",
+  ] as const) {
+    for (const comparison of comparisons) {
+      const changeClass = fingerprintChangeClass(
+        comparison.before,
+        comparison.after,
+        comparison.contentMetadata,
+      );
+      if (changeClass === expectedClass) {
+        return Object.freeze({
+          changeClass,
+          component: comparison.component,
+        });
+      }
+    }
+  }
+  return undefined;
 }
 
-export function inspectLegacyActiveGenerationTasks(dataDirectory: string) {
+export function legacyRuntimeFingerprintDifferenceForTest(
+  before: LegacyDatabaseFingerprint,
+  after: LegacyDatabaseFingerprint,
+) {
+  if (process.env.UNBOUNDRY_SAFE_TEST !== "1") {
+    throw new Error("LEGACY_RUNTIME_TEST_HOOK_FORBIDDEN");
+  }
+  return databaseFingerprintDifference(before, after);
+}
+
+function taggedFingerprintDifference(
+  component: LegacyFingerprintComponent,
+  before: LegacyFileFingerprint | undefined,
+  after: LegacyTaggedFingerprint,
+  contentMetadata = true,
+): LegacyFingerprintDifference | undefined {
+  if (after.state === "UNSAFE") {
+    return Object.freeze({ changeClass: "IDENTITY", component });
+  }
+  const changeClass = fingerprintChangeClass(
+    before,
+    after.state === "PRESENT" ? after.fingerprint : undefined,
+    contentMetadata,
+  );
+  return changeClass ? Object.freeze({ changeClass, component }) : undefined;
+}
+
+function observationFingerprintDifference(
+  dataDirectory: string,
+  before: LegacyDatabaseFingerprint,
+): LegacyFingerprintDifference | undefined {
+  const databasePath = join(dataDirectory, "unboundry.sqlite");
+  const observations = [
+    {
+      after: taggedFingerprint(databasePath),
+      before: before.database,
+      component: "DATABASE",
+      contentMetadata: true,
+    },
+    {
+      after: taggedFingerprint(`${databasePath}-journal`),
+      before: undefined,
+      component: "JOURNAL",
+      contentMetadata: true,
+    },
+    {
+      after: taggedFingerprint(`${databasePath}-wal`),
+      before: before.wal,
+      component: "WAL",
+      contentMetadata: true,
+    },
+    {
+      after: taggedFingerprint(`${databasePath}-shm`),
+      before: before.shm,
+      component: "SHM",
+      contentMetadata: !before.wal || before.wal.size === 0n,
+    },
+    {
+      after: taggedFingerprint(dataDirectory, "directory"),
+      before: before.directory,
+      component: "DIRECTORY",
+      contentMetadata: true,
+    },
+  ] as const;
+  for (const expectedClass of [
+    "PRESENCE",
+    "IDENTITY",
+    "CONTENT_METADATA",
+  ] as const) {
+    for (const observation of observations) {
+      const difference = taggedFingerprintDifference(
+        observation.component,
+        observation.before,
+        observation.after,
+        observation.contentMetadata,
+      );
+      if (difference?.changeClass === expectedClass) return difference;
+    }
+  }
+  return undefined;
+}
+
+export function legacyRuntimeObservationDifferenceForTest(
+  dataDirectory: string,
+  before: LegacyDatabaseFingerprint,
+) {
+  if (process.env.UNBOUNDRY_SAFE_TEST !== "1") {
+    throw new Error("LEGACY_RUNTIME_TEST_HOOK_FORBIDDEN");
+  }
+  return observationFingerprintDifference(dataDirectory, before);
+}
+
+function legacyObservationFailure(
+  phase: LegacyDatabaseObservationPhase,
+  dataDirectory: string,
+  before: LegacyDatabaseFingerprint,
+  primaryError?: unknown,
+) {
+  const difference = observationFingerprintDifference(dataDirectory, before);
+  return difference
+    ? new LegacyRuntimeDatabaseChangedError(phase, difference)
+    : primaryError;
+}
+
+function finalizeLegacyObservation(
+  cleanup: LegacyObservationCleanup,
+  primaryError?: unknown,
+) {
+  let closeError: unknown;
+  try {
+    cleanup.close();
+  } catch (error) {
+    closeError = error;
+  }
+  // Closing is attempted first, but it can never suppress the independent
+  // post-observation. The final priority is fingerprint > close > query.
+  const failure = legacyObservationFailure(
+    cleanup.phase,
+    cleanup.dataDirectory,
+    cleanup.fingerprint,
+    closeError ?? primaryError,
+  );
+  if (failure) throw failure;
+}
+
+export function legacyRuntimeFinalizeObservationForTest(
+  cleanup: LegacyObservationCleanup,
+  primaryError?: unknown,
+) {
+  if (process.env.UNBOUNDRY_SAFE_TEST !== "1") {
+    throw new Error("LEGACY_RUNTIME_TEST_HOOK_FORBIDDEN");
+  }
+  return finalizeLegacyObservation(cleanup, primaryError);
+}
+
+export function legacyRuntimeObservationFailureForTest(
+  phase: LegacyDatabaseObservationPhase,
+  dataDirectory: string,
+  before: LegacyDatabaseFingerprint,
+  primaryError?: unknown,
+) {
+  if (process.env.UNBOUNDRY_SAFE_TEST !== "1") {
+    throw new Error("LEGACY_RUNTIME_TEST_HOOK_FORBIDDEN");
+  }
+  return legacyObservationFailure(phase, dataDirectory, before, primaryError);
+}
+
+export function inspectLegacyActiveGenerationTasks(
+  dataDirectory: string,
+  phase: LegacyActiveTaskObservationPhase = "ACTIVE_STANDALONE",
+) {
   const databasePath = join(dataDirectory, "unboundry.sqlite");
   const before = databaseFingerprint(dataDirectory);
   const location = before.wal && before.wal.size > 0n
     ? databasePath
     : `${pathToFileURL(databasePath).href}?immutable=1`;
   const database = new DatabaseSync(location, { readOnly: true, timeout: 1_000 });
+  let primaryError: unknown;
+  let result: number | undefined;
   try {
     database.exec("PRAGMA query_only = ON; PRAGMA busy_timeout = 1000;");
     const version = database.prepare("PRAGMA user_version").get() as
@@ -181,22 +504,32 @@ export function inspectLegacyActiveGenerationTasks(dataDirectory: string) {
     if (!Number.isSafeInteger(active) || active < 0) {
       throw new Error("LEGACY_RUNTIME_TASK_STATE_INVALID");
     }
-    return active;
+    result = active;
+  } catch (error) {
+    primaryError = error;
   } finally {
-    database.close();
-    if (!sameDatabaseFingerprint(before, databaseFingerprint(dataDirectory))) {
-      throw new Error("LEGACY_RUNTIME_DATABASE_CHANGED");
-    }
+    finalizeLegacyObservation({
+      close: () => database.close(),
+      dataDirectory,
+      fingerprint: before,
+      phase,
+    }, primaryError);
   }
+  return result!;
 }
 
-export function inspectLegacyMediaMetadataComplete(dataDirectory: string) {
+export function inspectLegacyMediaMetadataComplete(
+  dataDirectory: string,
+  phase: LegacyMediaObservationPhase = "MEDIA_STANDALONE",
+) {
   const databasePath = join(dataDirectory, "unboundry.sqlite");
   const before = databaseFingerprint(dataDirectory);
   const location = before.wal && before.wal.size > 0n
     ? databasePath
     : `${pathToFileURL(databasePath).href}?immutable=1`;
   const database = new DatabaseSync(location, { readOnly: true, timeout: 1_000 });
+  let primaryError: unknown;
+  let result: boolean | undefined;
   try {
     database.exec("PRAGMA query_only = ON; PRAGMA busy_timeout = 1000;");
     const version = database.prepare("PRAGMA user_version").get() as
@@ -219,23 +552,28 @@ export function inspectLegacyMediaMetadataComplete(dataDirectory: string) {
     if (!Number.isSafeInteger(incomplete) || incomplete < 0) {
       throw new Error("LEGACY_RUNTIME_MEDIA_METADATA_INVALID");
     }
-    return incomplete === 0;
+    result = incomplete === 0;
+  } catch (error) {
+    primaryError = error;
   } finally {
-    database.close();
-    if (!sameDatabaseFingerprint(before, databaseFingerprint(dataDirectory))) {
-      throw new Error("LEGACY_RUNTIME_DATABASE_CHANGED");
-    }
+    finalizeLegacyObservation({
+      close: () => database.close(),
+      dataDirectory,
+      fingerprint: before,
+      phase,
+    }, primaryError);
   }
+  return result!;
 }
 
 export function createLegacyRuntimeSupervisor(
   options: LegacyRuntimeSupervisorOptions,
 ) {
   const launcher = options.launcher ?? createLegacyRuntimeLauncher();
-  const inspectActiveGenerationTasks = options.activeGenerationTasks ?? (() =>
-    inspectLegacyActiveGenerationTasks(options.dataDirectory));
+  const inspectActiveGenerationTasks = options.activeGenerationTasks ?? ((phase) =>
+    inspectLegacyActiveGenerationTasks(options.dataDirectory, phase));
   const inspectMediaMetadataComplete = options.legacyMediaMetadataComplete ??
-    (() => inspectLegacyMediaMetadataComplete(options.dataDirectory));
+    ((phase) => inspectLegacyMediaMetadataComplete(options.dataDirectory, phase));
   const shutdownDeadlineMs = boundedDeadline(options.shutdownDeadlineMs);
   let runtime: LegacyRuntimeProcess | undefined;
   let state: LegacyRuntimeSupervisorState = "idle";
@@ -257,7 +595,7 @@ export function createLegacyRuntimeSupervisor(
     }
     state = "starting";
     try {
-      if (inspectActiveGenerationTasks() !== 0) {
+      if (inspectActiveGenerationTasks("ACTIVE_PRELAUNCH") !== 0) {
         state = "failed";
         return Promise.reject(new Error(
           "LEGACY_RUNTIME_ACTIVE_TASKS_PRESENT: drain generation tasks on the exact old runtime before switching to the bridge",
@@ -289,12 +627,12 @@ export function createLegacyRuntimeSupervisor(
         );
       }
       try {
-        if (inspectActiveGenerationTasks() !== 0) {
+        if (inspectActiveGenerationTasks("ACTIVE_POST_WARMUP") !== 0) {
           throw new Error(
             "LEGACY_RUNTIME_ACTIVE_TASKS_PRESENT: legacy startup changed the durable active-task boundary",
           );
         }
-        if (!inspectMediaMetadataComplete()) {
+        if (!inspectMediaMetadataComplete("MEDIA_POST_WARMUP")) {
           throw new Error(
             "LEGACY_RUNTIME_MEDIA_METADATA_INCOMPLETE: deterministic legacy checksum backfill did not complete",
           );
@@ -422,7 +760,7 @@ export function createLegacyRuntimeSupervisor(
       while (Date.now() < deadlineAt) {
         if (childHasExited(launched)) break;
         try {
-          if (inspectActiveGenerationTasks() === 0) break;
+          if (inspectActiveGenerationTasks("ACTIVE_SHUTDOWN") === 0) break;
         } catch (error) {
           state = "failed";
           throw error;

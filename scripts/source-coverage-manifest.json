@@ -21,14 +21,14 @@
       "scriptSha256": "399b3f1b04bbef6014a0400493999718182eb2522d70723ad671a8aab6eb66e9",
       "target": "tests/m10-backup.spec.ts",
       "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
-      "targetSha256": "8f86149954bb21944cb7f3e6df69596abad257d2c25954ce973aa04b964dbb66"
+      "targetSha256": "2730b7282ad3b2980e1020b8779fceb7522a68a8eff0e55a51902063011c57a0"
     },
     "scripts/backup-final-candidate.mjs": {
       "mode": "behavior-test",
-      "scriptSha256": "26e05362fbfc778ccf2c2f2f48db24769b992012ba8142da3bc4b7742a4483a0",
+      "scriptSha256": "bce4264852c684d8039d14d468cb44f146b4ca68984ebf7482f3b50a131f6424",
       "target": "tests/m10-backup.spec.ts",
       "marker": "final-candidate exact-v37 chain rehydrates fake OSS offline and validates normal runtime startup",
-      "targetSha256": "8f86149954bb21944cb7f3e6df69596abad257d2c25954ce973aa04b964dbb66"
+      "targetSha256": "2730b7282ad3b2980e1020b8779fceb7522a68a8eff0e55a51902063011c57a0"
     },
     "scripts/backup-to-oss.mjs": {
       "mode": "frozen",
@@ -134,14 +134,20 @@
       "scriptSha256": "dbc1b06fc7ca761b66cde24bf0e1e293951b87de10db2ab959abbf6ac9a20b76",
       "target": "tests/m10-backup.spec.ts",
       "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
-      "targetSha256": "8f86149954bb21944cb7f3e6df69596abad257d2c25954ce973aa04b964dbb66"
+      "targetSha256": "2730b7282ad3b2980e1020b8779fceb7522a68a8eff0e55a51902063011c57a0"
+    },
+    "scripts/run-linux-production-validation.mjs": {
+      "mode": "frozen",
+      "scriptSha256": "5e6e0ec1087bb86067408bd83dac5da5d44844101615051c84bf2274d2bddd25",
+      "reason": "Runs immutable production artifacts in a Linux namespace and creates encrypted validation evidence; automatic execution is forbidden.",
+      "manualNpmScripts": []
     },
     "scripts/verify-backup.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "891d9c3db99cf458f88248e503c221e1f450f78f16b9f4d15af8d2f36f5c0efd",
       "target": "tests/m10-backup.spec.ts",
       "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
-      "targetSha256": "8f86149954bb21944cb7f3e6df69596abad257d2c25954ce973aa04b964dbb66"
+      "targetSha256": "2730b7282ad3b2980e1020b8779fceb7522a68a8eff0e55a51902063011c57a0"
     }
   }
 }

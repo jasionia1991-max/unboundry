@@ -618,7 +618,7 @@ async function createBackupFixture(root: string) {
       id INTEGER PRIMARY KEY CHECK (id = 1),
       marker INTEGER NOT NULL
     );
-    INSERT INTO provider_profile_write_lock (id, marker) VALUES (1, 0);
+    INSERT INTO provider_profile_write_lock (id, marker) VALUES (1, 1);
   `);
   secretLock.close();
   await chmod(secretLockPath, 0o600);
@@ -634,7 +634,7 @@ async function createBackupFixture(root: string) {
     encryptedDocument(masterKey, providerDocumentAad, {
       profiles: [{
         apiKey: `provider-${fixtureSentinel}`,
-        baseUrl: "https://provider.invalid/v1",
+        baseUrl: "https://openrouter.ai/api/v1",
         configurationVersion: 1,
         createdAt: "2026-08-09T00:00:00.000Z",
         driver: "openrouter",
@@ -656,11 +656,11 @@ async function createBackupFixture(root: string) {
         accessKeySecret: `storage-${fixtureSentinel}`,
         bucket: "synthetic-private-bucket",
         createdAt: "2026-08-09T00:00:00.000Z",
-        endpoint: "https://oss.invalid",
+        endpoint: "https://oss-cn-hangzhou.aliyuncs.com",
         id: "storage-one",
         label: "Synthetic storage",
         provider: "aliyun-oss",
-        region: "synthetic-region",
+        region: "oss-cn-hangzhou",
         status: "active",
         updatedAt: "2026-08-09T00:00:00.000Z",
       }],
@@ -712,7 +712,7 @@ async function createBackupFixture(root: string) {
     INSERT INTO account_provider_credentials (
       account_id, provider_profile_id, encrypted_key, key_status,
       credential_version, updated_at
-    ) VALUES (?, ?, ?, 'valid', 1, ?)
+    ) VALUES (?, ?, ?, 'unchecked', 1, ?)
   `).run(
     userId,
     "provider-one",
@@ -848,9 +848,6 @@ async function createFinalSchema37Fixture(root: string) {
     legacyAudioName,
     sha256(legacyAudioBytes),
   );
-  database.prepare(`
-    DELETE FROM provider_profiles WHERE id = 'provider-unconfigured'
-  `).run();
   const graph = JSON.stringify({
     edges: [],
     nodes: [{
@@ -4038,15 +4035,41 @@ test("final source capture acquires the shared secret lease before the app datab
       heldAppDatabase.exec("ROLLBACK");
       heldAppDatabase.close();
     }
+    fixture.database.exec(`
+      PRAGMA journal_mode = WAL;
+      PRAGMA wal_autocheckpoint = 0;
+      BEGIN IMMEDIATE;
+      UPDATE project_metadata
+      SET title = 'Backup Project captured from committed WAL'
+      WHERE id = 'backup-project';
+      COMMIT;
+      BEGIN IMMEDIATE;
+    `);
+    const walInspection = inspectLockedBackupDatabase(
+      fixture.database,
+      fixture.dataDirectory,
+    );
+    fixture.database.exec("ROLLBACK");
+    expect((await lstat(`${join(fixture.dataDirectory, "unboundry.sqlite")}-wal`)).size)
+      .toBeGreaterThan(32);
+    expect((await lstat(`${join(fixture.dataDirectory, "unboundry.sqlite")}-shm`)).size)
+      .toBeGreaterThanOrEqual(32_768);
     await expect(createEncryptedBackup({
       ...backupOptions(fixture),
-      frozenSourceContract: finalFrozenContract(fixture),
+      frozenSourceContract: {
+        ...finalFrozenContract(fixture),
+        expectedDatabaseLogicalSha256: walInspection.logicalSha256,
+        freezeEvidence: {
+          ...finalFrozenContract(fixture).freezeEvidence,
+          sourceDatabaseLogicalSha256: walInspection.logicalSha256,
+        },
+      },
       mediaWarningAllowlist: [
         "MEDIA_INTEGRITY_LEGACY_DURATION_PENDING",
         "MEDIA_INTEGRITY_LOCAL_FILE_ORPHAN",
       ],
     })).resolves.toMatchObject({
-      databaseLogicalSha256: fixture.expectedDatabaseLogicalSha256,
+      databaseLogicalSha256: walInspection.logicalSha256,
       schemaVersion: 37,
     });
   } finally {
@@ -4073,7 +4096,7 @@ test("final source capture rejects provider document and SQLite revision split",
         encryptedDocument(key, providerDocumentAad, {
           profiles: [{
             apiKey: `provider-${fixtureSentinel}`,
-            baseUrl: "https://provider.invalid/v1",
+            baseUrl: "https://openrouter.ai/api/v1",
             configurationVersion: 2,
             createdAt: "2026-08-09T00:00:00.000Z",
             driver: "openrouter",

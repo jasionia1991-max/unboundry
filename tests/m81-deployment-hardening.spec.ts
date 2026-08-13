@@ -20,7 +20,7 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { renameSync } from "node:fs";
+import { lstatSync, renameSync } from "node:fs";
 import { createConnection, createServer, Socket } from "node:net";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
@@ -63,6 +63,14 @@ import {
 import {
   createLegacyRuntimeSupervisor,
   inspectLegacyActiveGenerationTasks,
+  inspectLegacyMediaMetadataComplete,
+  legacyRuntimeFingerprintDifferenceForTest,
+  legacyRuntimeFinalizeObservationForTest,
+  legacyRuntimeObservationDifferenceForTest,
+  legacyRuntimeObservationFailureForTest,
+  LegacyRuntimeDatabaseChangedError,
+  type LegacyActiveTaskObservationPhase,
+  type LegacyMediaObservationPhase,
 } from "../server/legacyRuntimeSupervisor";
 import {
   createLegacyReverseProxy,
@@ -125,6 +133,265 @@ test("release role and bridge-mode selection are exact and fail closed", () => {
       runtimeRole: "active" as const,
     },
   ]) expect(bridgeRuntimeMode(fixture)).toBe("current");
+});
+
+test("legacy supervisor labels its bounded startup observation phases", async () => {
+  const child = new EventEmitter() as ChildProcess;
+  let childExitCode: number | null = null;
+  Object.assign(child, {
+    connected: true,
+    signalCode: null,
+    send: (_message: unknown, callback?: (error: Error | null) => void) => {
+      callback?.(null);
+      queueMicrotask(() => {
+        childExitCode = 0;
+        child.emit("exit", 0, null);
+      });
+      return true;
+    },
+  });
+  Object.defineProperty(child, "exitCode", {
+    configurable: true,
+    get: () => childExitCode,
+  });
+  const activePhases: LegacyActiveTaskObservationPhase[] = [];
+  const mediaPhases: LegacyMediaObservationPhase[] = [];
+  const launcher: LegacyRuntimeLauncher = {
+    launch: async () => ({
+      child,
+      nonce: "00000000-0000-4000-8000-000000000037",
+      target: {
+        host: "127.0.0.1",
+        port: 37,
+        proxyNonce: "37".repeat(32),
+      },
+      warmup: {
+        expectedDatabaseMutation: "legacy-media-checksum-backfill",
+        providerRequests: 0,
+      },
+    }),
+  };
+  const supervisor = createLegacyRuntimeSupervisor({
+    activeGenerationTasks: (phase) => {
+      activePhases.push(phase);
+      return 0;
+    },
+    dataDirectory: "/unused-under-injected-task-probe",
+    launcher,
+    legacyMediaMetadataComplete: (phase) => {
+      mediaPhases.push(phase);
+      return true;
+    },
+    legacyRoot: "/unused-under-injected-launcher",
+    runtimeDirectory: "/unused-under-injected-runtime",
+  });
+  await supervisor.start();
+  expect(activePhases).toEqual([
+    "ACTIVE_PRELAUNCH",
+    "ACTIVE_POST_WARMUP",
+  ]);
+  expect(mediaPhases).toEqual(["MEDIA_POST_WARMUP"]);
+  await supervisor.shutdown();
+  expect(activePhases).toEqual([
+    "ACTIVE_PRELAUNCH",
+    "ACTIVE_POST_WARMUP",
+    "ACTIVE_SHUTDOWN",
+  ]);
+});
+
+test("legacy fingerprint diagnostics use a fixed component and class priority", () => {
+  const fingerprint = (overrides: Record<string, bigint> = {}) => ({
+    ctimeNs: 1n,
+    dev: 1n,
+    ino: 1n,
+    mode: 0o100600n,
+    mtimeNs: 1n,
+    nlink: 1n,
+    size: 1n,
+    uid: BigInt(process.getuid?.() ?? 0),
+    ...overrides,
+  });
+  const before = {
+    database: fingerprint(),
+    directory: fingerprint({ mode: 0o40700n }),
+    shm: fingerprint(),
+    wal: fingerprint({ size: 32n }),
+  };
+  expect(legacyRuntimeFingerprintDifferenceForTest(before, {
+    ...before,
+    database: fingerprint({ mtimeNs: 2n }),
+    wal: undefined,
+  })).toEqual({ changeClass: "PRESENCE", component: "WAL" });
+  expect(legacyRuntimeFingerprintDifferenceForTest(before, {
+    ...before,
+    database: fingerprint({ ino: 2n }),
+    wal: fingerprint({ mtimeNs: 2n, size: 32n }),
+  })).toEqual({ changeClass: "IDENTITY", component: "DATABASE" });
+  expect(legacyRuntimeFingerprintDifferenceForTest(before, {
+    ...before,
+    database: fingerprint({ mtimeNs: 2n }),
+    shm: fingerprint({ mtimeNs: 2n }),
+  })).toEqual({ changeClass: "CONTENT_METADATA", component: "DATABASE" });
+  expect(legacyRuntimeFingerprintDifferenceForTest(before, {
+    ...before,
+    shm: fingerprint({ ctimeNs: 2n, mtimeNs: 2n, size: 2n }),
+  })).toBeUndefined();
+  const zeroWalBefore = {
+    ...before,
+    wal: fingerprint({ size: 0n }),
+  };
+  expect(legacyRuntimeFingerprintDifferenceForTest(zeroWalBefore, {
+    ...zeroWalBefore,
+    shm: fingerprint({ mtimeNs: 2n }),
+  })).toEqual({ changeClass: "CONTENT_METADATA", component: "SHM" });
+});
+
+test("legacy observation diagnostics tag unsafe and missing filesystem components", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "unboundry-m81-fingerprint-map-"));
+  const dataDirectory = join(testRoot, "data");
+  const missingDirectory = join(testRoot, "missing-data");
+  const databasePath = join(dataDirectory, "unboundry.sqlite");
+  const databaseMovedPath = join(dataDirectory, "unboundry.sqlite.moved");
+  const walPath = `${databasePath}-wal`;
+  const shmPath = `${databasePath}-shm`;
+  const journalPath = `${databasePath}-journal`;
+  let writer: DatabaseSync | undefined;
+  const fileFingerprint = (path: string) => {
+    const details = lstatSync(path, { bigint: true });
+    return {
+      ctimeNs: details.ctimeNs,
+      dev: details.dev,
+      ino: details.ino,
+      mode: details.mode,
+      mtimeNs: details.mtimeNs,
+      nlink: details.nlink,
+      size: details.size,
+      uid: details.uid,
+    };
+  };
+  try {
+    expect(() => inspectLegacyActiveGenerationTasks(missingDirectory)).toThrow(
+      /^LEGACY_RUNTIME_DATABASE_UNSAFE$/,
+    );
+    await mkdir(dataDirectory, { mode: 0o700 });
+    writer = openAppDatabase(dataDirectory);
+    rollbackMigration39To38(writer);
+    rollbackMigration38To37(writer);
+    writer.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    writer.prepare(`
+      INSERT INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      ) VALUES (
+        'm81-map-owner', 'm81-map-owner', 'M81 map owner', 'fixture-only',
+        'user', 'active', '2026-08-09T00:00:00.000Z',
+        '2026-08-09T00:00:00.000Z'
+      )
+    `).run();
+    expect((await stat(walPath)).size).toBeGreaterThan(0);
+    const before = {
+      database: fileFingerprint(databasePath),
+      directory: fileFingerprint(dataDirectory),
+      shm: fileFingerprint(shmPath),
+      wal: fileFingerprint(walPath),
+    };
+
+    await rename(databasePath, databaseMovedPath);
+    expect(legacyRuntimeObservationDifferenceForTest(dataDirectory, before))
+      .toEqual({ changeClass: "PRESENCE", component: "DATABASE" });
+    const primaryError = new Error("LEGACY_RUNTIME_SCHEMA_CHANGED");
+    const selectedFailure = legacyRuntimeObservationFailureForTest(
+      "ACTIVE_POST_WARMUP",
+      dataDirectory,
+      before,
+      primaryError,
+    );
+    expect(selectedFailure).toBeInstanceOf(LegacyRuntimeDatabaseChangedError);
+    expect(String((selectedFailure as Error).message)).toBe(
+      "LEGACY_RUNTIME_DATABASE_CHANGED:ACTIVE_POST_WARMUP:DATABASE:PRESENCE",
+    );
+    expect(() => inspectLegacyActiveGenerationTasks(dataDirectory)).toThrow(
+      /^LEGACY_RUNTIME_DATABASE_UNSAFE$/,
+    );
+    await rename(databaseMovedPath, databasePath);
+
+    expect(legacyRuntimeObservationFailureForTest(
+      "ACTIVE_POST_WARMUP",
+      dataDirectory,
+      {
+        ...before,
+        database: fileFingerprint(databasePath),
+        directory: fileFingerprint(dataDirectory),
+        shm: fileFingerprint(shmPath),
+        wal: fileFingerprint(walPath),
+      },
+      primaryError,
+    )).toBe(primaryError);
+
+    const closeError = new Error("LEGACY_RUNTIME_CLOSE_FAILED");
+    let closeAttempts = 0;
+    expect(() => legacyRuntimeFinalizeObservationForTest({
+      close: () => {
+        closeAttempts += 1;
+        throw closeError;
+      },
+      dataDirectory,
+      fingerprint: {
+        ...before,
+        database: fileFingerprint(databasePath),
+        directory: fileFingerprint(dataDirectory),
+        shm: fileFingerprint(shmPath),
+        wal: fileFingerprint(walPath),
+      },
+      phase: "ACTIVE_POST_WARMUP",
+    }, primaryError)).toThrow(closeError);
+    expect(closeAttempts).toBe(1);
+
+    await rename(databasePath, databaseMovedPath);
+    expect(() => legacyRuntimeFinalizeObservationForTest({
+      close: () => {
+        closeAttempts += 1;
+        throw closeError;
+      },
+      dataDirectory,
+      fingerprint: before,
+      phase: "ACTIVE_POST_WARMUP",
+    }, primaryError)).toThrow(
+      /^LEGACY_RUNTIME_DATABASE_CHANGED:ACTIVE_POST_WARMUP:DATABASE:PRESENCE$/,
+    );
+    expect(closeAttempts).toBe(2);
+    await rename(databaseMovedPath, databasePath);
+
+    await writeFile(journalPath, "journal", { mode: 0o600 });
+    expect(legacyRuntimeObservationDifferenceForTest(dataDirectory, before))
+      .toEqual({ changeClass: "PRESENCE", component: "JOURNAL" });
+    await rm(journalPath);
+
+    await chmod(walPath, 0o666);
+    expect(legacyRuntimeObservationDifferenceForTest(dataDirectory, before))
+      .toEqual({ changeClass: "IDENTITY", component: "WAL" });
+    await chmod(walPath, 0o600);
+
+    await chmod(shmPath, 0o666);
+    expect(legacyRuntimeObservationDifferenceForTest(dataDirectory, before))
+      .toEqual({ changeClass: "IDENTITY", component: "SHM" });
+    await chmod(shmPath, 0o600);
+
+    await rename(databasePath, databaseMovedPath);
+    await writeFile(journalPath, "journal", { mode: 0o600 });
+    await chmod(walPath, 0o666);
+    expect(legacyRuntimeObservationDifferenceForTest(dataDirectory, before))
+      .toEqual({ changeClass: "PRESENCE", component: "DATABASE" });
+  } finally {
+    try {
+      await chmod(walPath, 0o600);
+    } catch {}
+    try {
+      await rename(databaseMovedPath, databasePath);
+    } catch {}
+    writer?.close();
+    await rm(testRoot, { force: true, recursive: true });
+  }
 });
 
 test("legacy child guardian excludes overlap and rejects a forged contract", async () => {
@@ -2277,15 +2544,69 @@ test("bridge schema-37 routing and exact schema-38 startup never run implicit mi
     `);
     database.close();
 
+    await expectMissing(`${databasePath}-journal`);
+    await expectMissing(`${databasePath}-wal`);
+    await expectMissing(`${databasePath}-shm`);
+    const beforeDeleteProbe = await directoryFingerprint(dataDirectory);
+    expect(inspectLegacyActiveGenerationTasks(
+      dataDirectory,
+      "ACTIVE_PRELAUNCH",
+    )).toBe(0);
+    expect(inspectLegacyMediaMetadataComplete(
+      dataDirectory,
+      "MEDIA_STANDALONE",
+    )).toBe(true);
+    expect(await directoryFingerprint(dataDirectory)).toEqual(beforeDeleteProbe);
+
     await writeFile(`${databasePath}-wal`, new Uint8Array(), { mode: 0o600 });
     await writeFile(`${databasePath}-shm`, new Uint8Array(), { mode: 0o600 });
     const beforeImmutableZeroWalProbe = await directoryFingerprint(dataDirectory);
-    expect(inspectLegacyActiveGenerationTasks(dataDirectory)).toBe(0);
+    expect(inspectLegacyActiveGenerationTasks(
+      dataDirectory,
+      "ACTIVE_PRELAUNCH",
+    )).toBe(0);
     expect(await directoryFingerprint(dataDirectory)).toEqual(
       beforeImmutableZeroWalProbe,
     );
     await rm(`${databasePath}-wal`);
     await rm(`${databasePath}-shm`);
+
+    const liveWriter = new DatabaseSync(databasePath, { timeout: 5_000 });
+    try {
+      liveWriter.exec(`
+        PRAGMA journal_mode = WAL;
+        PRAGMA wal_autocheckpoint = 0;
+      `);
+      liveWriter.prepare(`
+        UPDATE project_metadata SET title = ? WHERE id = ?
+      `).run("Preserved schema 37 project in WAL", "m81-schema37-project");
+      expect((await stat(`${databasePath}-wal`)).size).toBeGreaterThan(0);
+      const beforeLiveWalDatabase = await sha256(databasePath);
+      const beforeLiveWal = await sha256(`${databasePath}-wal`);
+      const beforeLiveWalEntries = (await readdir(dataDirectory)).sort();
+      expect(inspectLegacyActiveGenerationTasks(
+        dataDirectory,
+        "ACTIVE_POST_WARMUP",
+      )).toBe(0);
+      expect(inspectLegacyMediaMetadataComplete(
+        dataDirectory,
+        "MEDIA_POST_WARMUP",
+      )).toBe(true);
+      expect(await sha256(databasePath)).toBe(beforeLiveWalDatabase);
+      expect(await sha256(`${databasePath}-wal`)).toBe(beforeLiveWal);
+      expect((await readdir(dataDirectory)).sort()).toEqual(beforeLiveWalEntries);
+    } finally {
+      liveWriter.close();
+    }
+    const deleteMode = new DatabaseSync(databasePath);
+    try {
+      deleteMode.exec(`
+        PRAGMA wal_checkpoint(TRUNCATE);
+        PRAGMA journal_mode = DELETE;
+      `);
+    } finally {
+      deleteMode.close();
+    }
 
     const beforeSchema37Classification = await directoryFingerprint(
       dataDirectory,
