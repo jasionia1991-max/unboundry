@@ -2038,8 +2038,8 @@ async function discover(specs, suiteRoot, sourceRoot, browserRoot) {
         })}`,
       );
     }
-    if (discovery.tests !== 943) {
-      fail(`the frozen 943-test inventory changed to ${discovery.tests}`);
+    if (discovery.tests !== 942) {
+      fail(`the frozen 942-test inventory changed to ${discovery.tests}`);
     }
     const idsByFile = {};
     const { entries } = collectReportEntries(reportFile, sourceRoot);
@@ -2894,8 +2894,14 @@ function immutableReleaseBuilderArguments(fixture) {
 
 async function runImmutableReleaseBuilder(fixture) {
   return await runManaged(
-    privateNodePath,
-    immutableReleaseBuilderArguments(fixture),
+    "/bin/sh",
+    [
+      "-c",
+      'umask 0002; exec "$@"',
+      "unboundry-immutable-release-builder",
+      privateNodePath,
+      ...immutableReleaseBuilderArguments(fixture),
+    ],
     {
       allowFailure: true,
       capture: true,

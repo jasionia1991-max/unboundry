@@ -1,7 +1,6 @@
 import { execFile } from "node:child_process";
 import {
   chmod,
-  cp,
   lstat,
   mkdir,
   mkdtemp,
@@ -250,9 +249,6 @@ async function createSyntheticRepository(options: {
     "--no-fund",
   ], repository, setupEnvironment);
   if (locked.exitCode !== 0) throw new Error("Unable to prepare the offline fixture lock");
-  await cp(join(setupCache, "_cacache"), join(npmCache, "_cacache"), {
-    recursive: true,
-  });
   await command("git", ["add", "--all"], repository);
   await command("git", [
     "-c", "user.name=M94",
@@ -333,6 +329,7 @@ test("safe runner owns the clean, repeat, and malicious synthetic release execut
     expect(await entries(fixture.releases)).toEqual([]);
     const runner = await readFile(join(process.cwd(), "scripts/run-safe-tests.mjs"), "utf8");
     expect(runner).toContain("immutable-release-builder");
+    expect(runner).toContain('umask 0002; exec "$@"');
     expect(runner).toContain("Full snapshot bridge/final fixtures prove the release closure");
     expect(runner).toContain("specs.includes(IMMUTABLE_RELEASE_SPEC)");
     expect(runner).toContain("createSnapshotImmutableReleasePairFixture");
@@ -352,37 +349,6 @@ test("safe runner owns the clean, repeat, and malicious synthetic release execut
     expect(runner).toContain("await invokeBuilder(bridge)");
     expect(runner).toContain("await invokeBuilder(malicious)");
     expect(runner).toContain("[bridge, final, malicious].filter(Boolean)");
-  } finally {
-    await rm(fixture.root, { force: true, recursive: true });
-  }
-});
-
-test("release builder makes its private umask independent of the caller", async () => {
-  test.setTimeout(120_000);
-  const fixture = await createSyntheticRepository();
-  try {
-    const arguments_ = builderArguments(fixture);
-    arguments_[0] = join(fixture.repository, "scripts/build-release.mjs");
-    const result = await command(
-      "/bin/sh",
-      [
-        "-c",
-        'umask 0002; exec "$@"',
-        "unboundry-m94-umask",
-        process.execPath,
-        ...arguments_,
-      ],
-      fixture.repository,
-    );
-    expect(result.exitCode, result.stderr.slice(-2_000)).toBe(0);
-    const summary = JSON.parse(result.stdout.trim()) as {
-      admission?: { incompleteMarkerAbsent?: boolean };
-      releaseDirectory?: string;
-    };
-    expect(summary.admission?.incompleteMarkerAbsent).toBe(true);
-    expect(summary.releaseDirectory).toBe(join(fixture.releases, "v0.6.0"));
-    expect((await lstat(summary.releaseDirectory!)).mode & 0o777).toBe(0o500);
-    expect(await entries(fixture.scratch)).toEqual([]);
   } finally {
     await rm(fixture.root, { force: true, recursive: true });
   }
