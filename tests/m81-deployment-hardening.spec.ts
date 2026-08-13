@@ -2596,7 +2596,13 @@ test("bridge schema-37 routing and exact schema-38 startup never run implicit mi
       expect(await sha256(`${databasePath}-wal`)).toBe(beforeLiveWal);
       expect((await readdir(dataDirectory)).sort()).toEqual(beforeLiveWalEntries);
     } finally {
-      liveWriter.close();
+      try {
+        liveWriter.prepare(`
+          UPDATE project_metadata SET title = ? WHERE id = ?
+        `).run("Preserved schema 37 project", "m81-schema37-project");
+      } finally {
+        liveWriter.close();
+      }
     }
     const deleteMode = new DatabaseSync(databasePath);
     try {
