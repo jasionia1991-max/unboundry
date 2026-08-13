@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import {
   chmod,
+  cp,
   lstat,
   mkdir,
   mkdtemp,
@@ -249,6 +250,9 @@ async function createSyntheticRepository(options: {
     "--no-fund",
   ], repository, setupEnvironment);
   if (locked.exitCode !== 0) throw new Error("Unable to prepare the offline fixture lock");
+  await cp(join(setupCache, "_cacache"), join(npmCache, "_cacache"), {
+    recursive: true,
+  });
   await command("git", ["add", "--all"], repository);
   await command("git", [
     "-c", "user.name=M94",
@@ -370,7 +374,7 @@ test("release builder makes its private umask independent of the caller", async 
       ],
       fixture.repository,
     );
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode, result.stderr.slice(-2_000)).toBe(0);
     const summary = JSON.parse(result.stdout.trim()) as {
       admission?: { incompleteMarkerAbsent?: boolean };
       releaseDirectory?: string;
