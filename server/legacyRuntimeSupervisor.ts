@@ -524,7 +524,8 @@ function observationFingerprintDifference(
   }
   const difference = differences[0];
   const stableWalTimestampCandidate =
-    phase === "ACTIVE_POST_WARMUP" && differences.length === 1 &&
+    (phase === "ACTIVE_POST_WARMUP" || phase === "MEDIA_POST_WARMUP") &&
+    differences.length === 1 &&
     difference?.component === "WAL" &&
     difference.changeClass === "CONTENT_METADATA" && before.wal &&
     before.wal.size > 0n && before.walContentSha256 &&
@@ -720,7 +721,11 @@ export function inspectLegacyMediaMetadataComplete(
   phase: LegacyMediaObservationPhase = "MEDIA_STANDALONE",
 ) {
   const databasePath = join(dataDirectory, "unboundry.sqlite");
-  const before = databaseFingerprint(dataDirectory);
+  const before = databaseFingerprint(
+    dataDirectory,
+    true,
+    phase === "MEDIA_POST_WARMUP",
+  );
   const location = before.wal && before.wal.size > 0n
     ? databasePath
     : `${pathToFileURL(databasePath).href}?immutable=1`;

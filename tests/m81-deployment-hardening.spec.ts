@@ -395,7 +395,7 @@ test("legacy observation diagnostics tag unsafe and missing filesystem component
   }
 });
 
-test("legacy post-warmup observation admits only stable WAL timestamp noise", async () => {
+test("legacy post-warmup probes admit only stable WAL timestamp noise", async () => {
   const testRoot = await mkdtemp(join(tmpdir(), "unboundry-m81-stable-wal-"));
   const dataDirectory = join(testRoot, "data");
   const databasePath = join(dataDirectory, "unboundry.sqlite");
@@ -436,28 +436,66 @@ test("legacy post-warmup observation admits only stable WAL timestamp noise", as
     expect(legacyRuntimeObservationDifferenceForTest(
       dataDirectory,
       before,
+      "MEDIA_POST_WARMUP",
+    )).toBeUndefined();
+    expect(legacyRuntimeObservationDifferenceForTest(
+      dataDirectory,
+      before,
       "ACTIVE_SHUTDOWN",
+    )).toEqual({ changeClass: "CONTENT_METADATA", component: "WAL" });
+    expect(legacyRuntimeObservationDifferenceForTest(
+      dataDirectory,
+      before,
+      "MEDIA_STANDALONE",
     )).toEqual({ changeClass: "CONTENT_METADATA", component: "WAL" });
 
     await writeFile(walPath, "stable-wal-contenX", { mode: 0o600 });
-    expect(legacyRuntimeObservationDifferenceForTest(
-      dataDirectory,
-      before,
+    for (const phase of [
       "ACTIVE_POST_WARMUP",
-    )).toEqual({ changeClass: "CONTENT_METADATA", component: "WAL" });
+      "MEDIA_POST_WARMUP",
+    ] as const) {
+      expect(legacyRuntimeObservationDifferenceForTest(
+        dataDirectory,
+        before,
+        phase,
+      )).toEqual({ changeClass: "CONTENT_METADATA", component: "WAL" });
+    }
     await writeFile(walPath, "stable-wal-content-extended", { mode: 0o600 });
-    expect(legacyRuntimeObservationDifferenceForTest(
-      dataDirectory,
-      before,
+    for (const phase of [
       "ACTIVE_POST_WARMUP",
-    )).toEqual({ changeClass: "CONTENT_METADATA", component: "WAL" });
-    await writeFile(walPath, "stable-wal-content", { mode: 0o600 });
-    expect(legacyRuntimeObservationDifferenceForTest(
-      dataDirectory,
-      before,
+      "MEDIA_POST_WARMUP",
+    ] as const) {
+      expect(legacyRuntimeObservationDifferenceForTest(
+        dataDirectory,
+        before,
+        phase,
+      )).toEqual({ changeClass: "CONTENT_METADATA", component: "WAL" });
+    }
+
+    for (const [index, phase] of ([
       "ACTIVE_POST_WARMUP",
-      () => writeFileSync(databasePath, "database-byteX"),
-    )).toEqual({ changeClass: "CONTENT_METADATA", component: "DATABASE" });
+      "MEDIA_POST_WARMUP",
+    ] as const).entries()) {
+      await writeFile(databasePath, "database-bytes", { mode: 0o600 });
+      await writeFile(walPath, "stable-wal-content", { mode: 0o600 });
+      const beforeHashWindow = {
+        database: fileFingerprint(databasePath),
+        directory: fileFingerprint(dataDirectory),
+        shm: fileFingerprint(shmPath),
+        wal: fileFingerprint(walPath),
+        walContentSha256: await sha256(walPath),
+      };
+      const hashWindowTime = new Date(
+        `${2031 + index}-01-01T00:00:00.000Z`,
+      );
+      await utimes(walPath, hashWindowTime, hashWindowTime);
+      expect(legacyRuntimeObservationDifferenceForTest(
+        dataDirectory,
+        beforeHashWindow,
+        phase,
+        () => writeFileSync(databasePath, "database-byteX"),
+      )).toEqual({ changeClass: "CONTENT_METADATA", component: "DATABASE" });
+    }
   } finally {
     await rm(testRoot, { force: true, recursive: true });
   }
