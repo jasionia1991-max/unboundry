@@ -353,6 +353,35 @@ test("safe runner owns the clean, repeat, and malicious synthetic release execut
   }
 });
 
+test("release builder makes its private umask independent of the caller", async () => {
+  test.setTimeout(120_000);
+  const fixture = await createSyntheticRepository();
+  try {
+    const result = await command(
+      "/bin/sh",
+      [
+        "-c",
+        'umask 0002; exec "$@"',
+        "unboundry-m94-umask",
+        process.execPath,
+        ...builderArguments(fixture),
+      ],
+      fixture.repository,
+    );
+    expect(result.exitCode).toBe(0);
+    const summary = JSON.parse(result.stdout.trim()) as {
+      admission?: { incompleteMarkerAbsent?: boolean };
+      releaseDirectory?: string;
+    };
+    expect(summary.admission?.incompleteMarkerAbsent).toBe(true);
+    expect(summary.releaseDirectory).toBe(join(fixture.releases, "v0.6.0"));
+    expect((await lstat(summary.releaseDirectory!)).mode & 0o777).toBe(0o500);
+    expect(await entries(fixture.scratch)).toEqual([]);
+  } finally {
+    await rm(fixture.root, { force: true, recursive: true });
+  }
+});
+
 test("release source-pair proof binds a synthetic direct child to exactly three version fields", async () => {
   const root = await mkdtemp(join(tmpdir(), "unboundry-m94-source-pair-"));
   await chmod(root, 0o700);
@@ -504,6 +533,8 @@ test("tracked source snapshot pins registry inputs without claiming a Git HEAD o
   expect(packageLock.packages["node_modules/vite"]?.resolved)
     .toMatch(/^https:\/\/registry\.npmjs\.org\//);
   const builder = await readFile(releaseBuilder, "utf8");
+  expect(builder).toContain("const PRIVATE_BUILD_UMASK = 0o077;");
+  expect(builder).toContain("async function main() {\n  process.umask(PRIVATE_BUILD_UMASK);");
   expect(builder).toContain('const runtimeSourceRoots = Object.freeze(["client", "server", "types"]);');
   expect(builder).toContain('new Set(["production", "synthetic-test"])');
   expect(builder).toContain('"--ffmpeg-executable"');

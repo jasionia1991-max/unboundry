@@ -1,5 +1,11 @@
+import { createHash } from "node:crypto";
 import {
+  closeSync,
+  constants as fsConstants,
+  fstatSync,
   lstatSync,
+  openSync,
+  readSync,
   realpathSync,
   type BigIntStats,
 } from "node:fs";
@@ -16,6 +22,9 @@ import {
 
 const defaultShutdownDeadlineMs = 10_000;
 const generationDrainPollMs = 100;
+const maximumStableWalBytes = 256 * 1_024 * 1_024;
+const stableWalHashDeadlineMs = 5_000;
+const stableWalHashBufferBytes = 1 * 1_024 * 1_024;
 
 export type LegacyRuntimeSupervisorState =
   | "failed"
@@ -87,6 +96,7 @@ type LegacyDatabaseFingerprint = Readonly<{
   directory: LegacyFileFingerprint;
   shm?: LegacyFileFingerprint;
   wal?: LegacyFileFingerprint;
+  walContentSha256?: string;
 }>;
 
 type LegacyObservationCleanup = Readonly<{
@@ -226,9 +236,101 @@ function fingerprintChangeClass(
   return undefined;
 }
 
+function sameExactFingerprint(
+  left: LegacyFileFingerprint | undefined,
+  right: LegacyFileFingerprint | undefined,
+) {
+  return Boolean(left) === Boolean(right) && (!left || !right || (
+    left.ctimeNs === right.ctimeNs && left.dev === right.dev &&
+    left.ino === right.ino && left.mode === right.mode &&
+    left.mtimeNs === right.mtimeNs && left.nlink === right.nlink &&
+    left.size === right.size && left.uid === right.uid
+  ));
+}
+
+function stableWalSha256(path: string, expected: LegacyFileFingerprint) {
+  if (expected.size <= 0n || expected.size > BigInt(maximumStableWalBytes)) {
+    throw new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
+  }
+  let descriptor: number | undefined;
+  let result: string | undefined;
+  let failure: unknown;
+  try {
+    descriptor = openSync(
+      path,
+      fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK,
+    );
+    const opened = fstatSync(descriptor, { bigint: true });
+    const openedFingerprint = Object.freeze({
+      ctimeNs: opened.ctimeNs,
+      dev: opened.dev,
+      ino: opened.ino,
+      mode: opened.mode,
+      mtimeNs: opened.mtimeNs,
+      nlink: opened.nlink,
+      size: opened.size,
+      uid: opened.uid,
+    });
+    if (
+      !opened.isFile() || opened.isSymbolicLink() ||
+      !sameExactFingerprint(openedFingerprint, expected)
+    ) throw new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
+    const hash = createHash("sha256");
+    const buffer = Buffer.allocUnsafe(stableWalHashBufferBytes);
+    const deadlineAt = Date.now() + stableWalHashDeadlineMs;
+    let position = 0;
+    const expectedBytes = Number(expected.size);
+    while (position < expectedBytes) {
+      if (Date.now() > deadlineAt) {
+        throw new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
+      }
+      const bytesRead = readSync(
+        descriptor,
+        buffer,
+        0,
+        Math.min(buffer.length, expectedBytes - position),
+        position,
+      );
+      if (bytesRead <= 0) throw new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
+      hash.update(buffer.subarray(0, bytesRead));
+      position += bytesRead;
+    }
+    const descriptorAfter = fstatSync(descriptor, { bigint: true });
+    const pathAfter = fixedFingerprint(path, "file");
+    const descriptorAfterFingerprint = Object.freeze({
+      ctimeNs: descriptorAfter.ctimeNs,
+      dev: descriptorAfter.dev,
+      ino: descriptorAfter.ino,
+      mode: descriptorAfter.mode,
+      mtimeNs: descriptorAfter.mtimeNs,
+      nlink: descriptorAfter.nlink,
+      size: descriptorAfter.size,
+      uid: descriptorAfter.uid,
+    });
+    if (
+      !sameExactFingerprint(descriptorAfterFingerprint, expected) ||
+      !sameExactFingerprint(pathAfter, expected)
+    ) throw new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
+    result = hash.digest("hex");
+  } catch {
+    failure = new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
+  } finally {
+    if (descriptor !== undefined) {
+      try {
+        closeSync(descriptor);
+      } catch {
+        failure ??= new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
+      }
+    }
+  }
+  if (failure || !result) throw failure ?? new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
+  return result;
+}
+
 function databaseFingerprint(
   dataDirectory: string,
   requireSidecarPair = true,
+  captureStableWalContent = false,
 ): LegacyDatabaseFingerprint {
   let canonicalDirectory: string;
   try {
@@ -248,7 +350,7 @@ function databaseFingerprint(
   if (requireSidecarPair && Boolean(wal) !== Boolean(shm)) {
     throw new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
   }
-  return Object.freeze({
+  const fingerprint = Object.freeze({
     database: (() => {
       try {
         return fixedFingerprint(databasePath, "file");
@@ -268,6 +370,16 @@ function databaseFingerprint(
     ...(shm ? { shm } : {}),
     ...(wal ? { wal } : {}),
   });
+  if (!captureStableWalContent || !wal || wal.size === 0n) return fingerprint;
+  const walContentSha256 = stableWalSha256(`${databasePath}-wal`, wal);
+  const revalidated = databaseFingerprint(dataDirectory, requireSidecarPair);
+  if (
+    !sameExactFingerprint(fingerprint.database, revalidated.database) ||
+    !sameExactFingerprint(fingerprint.directory, revalidated.directory) ||
+    !sameExactFingerprint(fingerprint.shm, revalidated.shm) ||
+    !sameExactFingerprint(fingerprint.wal, revalidated.wal)
+  ) throw new Error("LEGACY_RUNTIME_DATABASE_UNSAFE");
+  return Object.freeze({ ...fingerprint, walContentSha256 });
 }
 
 function databaseFingerprintDifference(
@@ -358,6 +470,8 @@ function taggedFingerprintDifference(
 function observationFingerprintDifference(
   dataDirectory: string,
   before: LegacyDatabaseFingerprint,
+  phase?: LegacyDatabaseObservationPhase,
+  afterStableWalHashForTest?: () => void,
 ): LegacyFingerprintDifference | undefined {
   const databasePath = join(dataDirectory, "unboundry.sqlite");
   const observations = [
@@ -392,6 +506,7 @@ function observationFingerprintDifference(
       contentMetadata: true,
     },
   ] as const;
+  const differences: LegacyFingerprintDifference[] = [];
   for (const expectedClass of [
     "PRESENCE",
     "IDENTITY",
@@ -404,20 +519,98 @@ function observationFingerprintDifference(
         observation.after,
         observation.contentMetadata,
       );
-      if (difference?.changeClass === expectedClass) return difference;
+      if (difference?.changeClass === expectedClass) differences.push(difference);
     }
   }
-  return undefined;
+  const difference = differences[0];
+  const stableWalTimestampCandidate =
+    phase === "ACTIVE_POST_WARMUP" && differences.length === 1 &&
+    difference?.component === "WAL" &&
+    difference.changeClass === "CONTENT_METADATA" && before.wal &&
+    before.wal.size > 0n && before.walContentSha256 &&
+    observations[2].after.state === "PRESENT" &&
+    observations[2].after.fingerprint.size === before.wal.size;
+  if (stableWalTimestampCandidate && observations[2].after.state === "PRESENT") {
+    try {
+      if (
+        stableWalSha256(`${databasePath}-wal`, observations[2].after.fingerprint) ===
+          before.walContentSha256
+      ) {
+        afterStableWalHashForTest?.();
+        const revalidation = [
+          {
+            after: taggedFingerprint(databasePath),
+            before: before.database,
+            component: "DATABASE",
+            contentMetadata: true,
+          },
+          {
+            after: taggedFingerprint(`${databasePath}-journal`),
+            before: undefined,
+            component: "JOURNAL",
+            contentMetadata: true,
+          },
+          {
+            after: taggedFingerprint(`${databasePath}-wal`),
+            before: observations[2].after.fingerprint,
+            component: "WAL",
+            contentMetadata: true,
+          },
+          {
+            after: taggedFingerprint(`${databasePath}-shm`),
+            before: before.shm,
+            component: "SHM",
+            contentMetadata: false,
+          },
+          {
+            after: taggedFingerprint(dataDirectory, "directory"),
+            before: before.directory,
+            component: "DIRECTORY",
+            contentMetadata: true,
+          },
+        ] as const;
+        for (const expectedClass of [
+          "PRESENCE",
+          "IDENTITY",
+          "CONTENT_METADATA",
+        ] as const) {
+          for (const observation of revalidation) {
+            const postHashDifference = taggedFingerprintDifference(
+              observation.component,
+              observation.before,
+              observation.after,
+              observation.contentMetadata,
+            );
+            if (postHashDifference?.changeClass === expectedClass) {
+              return postHashDifference;
+            }
+          }
+        }
+        return undefined;
+      }
+    } catch {
+      // A changing, oversized, unreadable or otherwise unstable WAL retains the
+      // original bounded CONTENT_METADATA failure instead of widening admission.
+    }
+  }
+  return difference;
 }
 
 export function legacyRuntimeObservationDifferenceForTest(
   dataDirectory: string,
   before: LegacyDatabaseFingerprint,
+  phase?: LegacyDatabaseObservationPhase,
+  afterStableWalHashForTest?: () => void,
 ) {
   if (process.env.UNBOUNDRY_SAFE_TEST !== "1") {
     throw new Error("LEGACY_RUNTIME_TEST_HOOK_FORBIDDEN");
   }
-  return observationFingerprintDifference(dataDirectory, before);
+  return observationFingerprintDifference(
+    dataDirectory,
+    before,
+    phase,
+    afterStableWalHashForTest,
+  );
 }
 
 function legacyObservationFailure(
@@ -426,7 +619,7 @@ function legacyObservationFailure(
   before: LegacyDatabaseFingerprint,
   primaryError?: unknown,
 ) {
-  const difference = observationFingerprintDifference(dataDirectory, before);
+  const difference = observationFingerprintDifference(dataDirectory, before, phase);
   return difference
     ? new LegacyRuntimeDatabaseChangedError(phase, difference)
     : primaryError;
@@ -480,7 +673,11 @@ export function inspectLegacyActiveGenerationTasks(
   phase: LegacyActiveTaskObservationPhase = "ACTIVE_STANDALONE",
 ) {
   const databasePath = join(dataDirectory, "unboundry.sqlite");
-  const before = databaseFingerprint(dataDirectory);
+  const before = databaseFingerprint(
+    dataDirectory,
+    true,
+    phase === "ACTIVE_POST_WARMUP",
+  );
   const location = before.wal && before.wal.size > 0n
     ? databasePath
     : `${pathToFileURL(databasePath).href}?immutable=1`;

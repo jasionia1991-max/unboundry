@@ -33,6 +33,7 @@ import { fileURLToPath } from "node:url";
 
 const REQUIRED_NODE_VERSION = "22.23.1";
 const REQUIRED_NPM_VERSION = "10.9.8";
+const PRIVATE_BUILD_UMASK = 0o077;
 const BUBBLEWRAP_EXECUTABLE = "/usr/bin/bwrap";
 const bubblewrapIsolationArguments = Object.freeze([
   "--die-with-parent",
@@ -1697,6 +1698,7 @@ async function cleanupPrivateBuildScratch(path, scratchRoot) {
 }
 
 async function main() {
+  process.umask(PRIVATE_BUILD_UMASK);
   if (process.versions.node !== REQUIRED_NODE_VERSION) {
     fail("RELEASE_RUNTIME_INVALID", `Node ${REQUIRED_NODE_VERSION} is required`);
   }

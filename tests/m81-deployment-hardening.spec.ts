@@ -18,9 +18,10 @@ import {
   rename,
   rm,
   stat,
+  utimes,
   writeFile,
 } from "node:fs/promises";
-import { lstatSync, renameSync } from "node:fs";
+import { lstatSync, renameSync, writeFileSync } from "node:fs";
 import { createConnection, createServer, Socket } from "node:net";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
@@ -390,6 +391,74 @@ test("legacy observation diagnostics tag unsafe and missing filesystem component
       await rename(databaseMovedPath, databasePath);
     } catch {}
     writer?.close();
+    await rm(testRoot, { force: true, recursive: true });
+  }
+});
+
+test("legacy post-warmup observation admits only stable WAL timestamp noise", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "unboundry-m81-stable-wal-"));
+  const dataDirectory = join(testRoot, "data");
+  const databasePath = join(dataDirectory, "unboundry.sqlite");
+  const walPath = `${databasePath}-wal`;
+  const shmPath = `${databasePath}-shm`;
+  const fileFingerprint = (path: string) => {
+    const details = lstatSync(path, { bigint: true });
+    return {
+      ctimeNs: details.ctimeNs,
+      dev: details.dev,
+      ino: details.ino,
+      mode: details.mode,
+      mtimeNs: details.mtimeNs,
+      nlink: details.nlink,
+      size: details.size,
+      uid: details.uid,
+    };
+  };
+  try {
+    await mkdir(dataDirectory, { mode: 0o700 });
+    await writeFile(databasePath, "database-bytes", { mode: 0o600 });
+    await writeFile(walPath, "stable-wal-content", { mode: 0o600 });
+    await writeFile(shmPath, "stable-shm-content", { mode: 0o600 });
+    const before = {
+      database: fileFingerprint(databasePath),
+      directory: fileFingerprint(dataDirectory),
+      shm: fileFingerprint(shmPath),
+      wal: fileFingerprint(walPath),
+      walContentSha256: await sha256(walPath),
+    };
+    const changedTime = new Date("2030-01-01T00:00:00.000Z");
+    await utimes(walPath, changedTime, changedTime);
+    expect(legacyRuntimeObservationDifferenceForTest(
+      dataDirectory,
+      before,
+      "ACTIVE_POST_WARMUP",
+    )).toBeUndefined();
+    expect(legacyRuntimeObservationDifferenceForTest(
+      dataDirectory,
+      before,
+      "ACTIVE_SHUTDOWN",
+    )).toEqual({ changeClass: "CONTENT_METADATA", component: "WAL" });
+
+    await writeFile(walPath, "stable-wal-contenX", { mode: 0o600 });
+    expect(legacyRuntimeObservationDifferenceForTest(
+      dataDirectory,
+      before,
+      "ACTIVE_POST_WARMUP",
+    )).toEqual({ changeClass: "CONTENT_METADATA", component: "WAL" });
+    await writeFile(walPath, "stable-wal-content-extended", { mode: 0o600 });
+    expect(legacyRuntimeObservationDifferenceForTest(
+      dataDirectory,
+      before,
+      "ACTIVE_POST_WARMUP",
+    )).toEqual({ changeClass: "CONTENT_METADATA", component: "WAL" });
+    await writeFile(walPath, "stable-wal-content", { mode: 0o600 });
+    expect(legacyRuntimeObservationDifferenceForTest(
+      dataDirectory,
+      before,
+      "ACTIVE_POST_WARMUP",
+      () => writeFileSync(databasePath, "database-byteX"),
+    )).toEqual({ changeClass: "CONTENT_METADATA", component: "DATABASE" });
+  } finally {
     await rm(testRoot, { force: true, recursive: true });
   }
 });
