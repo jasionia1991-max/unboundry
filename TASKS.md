@@ -1,7 +1,7 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-13
-状态：`线上 v0.5.1/schema 37 继续运行；REM-000 = PASS、REM-001～REM-009B = USER_REVIEW、REM-010 = IN_PROGRESS、REM-011 = NOT_STARTED；schema 39 只存在于离线候选，生产发布保持 HOLD；4173、真实 Provider/OSS、生产连接、push/tag/PR/正式版本号/发布均禁止；正式部署流程收尾与 Mureka Audio 真实生成仍按原状态暂缓`
+状态：`线上 v0.5.1/schema 37 继续运行；REM-000 = PASS、REM-001～REM-011 = USER_REVIEW（REM-011 仅离线工程部分）；G0～G6 offline green，G7 pending；schema 39 只存在于离线候选，生产发布保持 HOLD；4173、真实 Provider/OSS、生产连接、push/tag/PR/正式版本号/发布均禁止；正式部署流程收尾与 Mureka Audio 真实生成仍按原状态暂缓`
 唯一产品目标：从空仓库完整复刻 Unboundry 画布，不复用 Lumino/Lumino Web 的代码、组件、CSS、数据、后端、测试或部署。
 
 ### 2026-08-09 状态收口与交接索引
@@ -34,8 +34,8 @@
 | REM-008 | 资源、安全、性能和运维脚本 | USER_REVIEW | 登录/SSE、媒体资源、出站、安全头、依赖、脚本及必要性能治理已完成；等待用户复核 |
 | REM-009A | 只读备份、恢复与数据库兼容前置底座 | USER_REVIEW | 加密签名包、合成库恢复、损坏拒绝、权限/路径/OSS 完整性与三轮/全量证据已完成；Goal 结束时集中交用户复核 |
 | REM-009B | 最终候选备份、恢复与双向兼容演练 | USER_REVIEW | 自动实现及同源自动证据完成；等待用户复核，不是 USER PASS |
-| REM-010 | 不可变发布、切换与回滚 | IN_PROGRESS | runtime/lease/drain、Linux builder 子门、最新页面修复与 current-open reservation 并发修复均已完成；m44+m91 定向15/15、当前脏功能树单轮 full 931/931；固定 clean candidate、原生产环境、REM-011 与正式发布门仍待完成 |
-| REM-011 | 候选全量验收与正式发布门 | NOT_STARTED | G0～G7 + 用户双确认 |
+| REM-010 | 不可变发布、切换与回滚 | USER_REVIEW | fixed clean offline candidate `8b639ffe…` 已完成三轮 full、两轮关键竞态压力与 G0～G6 离线门；等待用户审阅，不是 PASS/生产证明 |
+| REM-011 | 候选全量验收与正式发布门 | USER_REVIEW | 已授权的离线工程部分完成；G0～G6 offline green，G7 等待用户先确认版本号、后独立授权发布 |
 
 ### 2026-08-12 REM-009B 最终候选恢复与兼容演练（自动证据完成）
 
@@ -43,9 +43,9 @@
 - 提交前同内容功能树 SHA-256 `7cf46804f952e580e9574a08a93f42ad53c051d4fcd5f2705691f82c8330326b`：核心 8-spec 三轮 `399/399`（deniedViteWildcardProbes `567`），安全全量 `114/114 spec、912/912 PASS`，failed/skipped/retries/reportErrors/blocked 均为 0（full deniedViteWildcardProbes `516`）；Node `22.23.1` / npm `10.9.8`；源码 303，TS/TSX `283/283`、JS/MJS `20/20`，运维脚本 15；snapshot 不变，4173 listener 前后均为 `1be6a5d9061f3be72e5d45a0acf7cb70f5fe86ac645fceff60138b4b718d35dd`。
 - 功能提交 `9a158a92563814791fefb8d4e6c5531eca610d78` 包含相同功能内容；未在该 commit 后或文档后树重跑。REM-009B 进入 `USER_REVIEW`，不是用户 PASS，也不是对真实数据、真实 Provider/OSS、生产迁移、发布或 REM-011 最终门的证明。
 - 残余边界：current-database-open reservation 可序列化协作打开，但同 UID 非协作进程仍可能替换这个极窄路径；不宣称该风险已消除。一次独立只读审计曾越权对 `app/data` 执行 immutable 聚合查询；结果未纳入证据，写入/外部请求为 0，之后未再访问。
-- REM-010 已进入完整离线候选施工；历史 REM-009B 数字不代表当前 REM-010 结果。当前实现、清单与待验证边界见下一节，状态仍为 `IN_PROGRESS`，REM-011 仍 `NOT_STARTED`。
+- 在 REM-009B 收口的历史时点，REM-010 刚进入完整离线候选施工，当时为 `IN_PROGRESS`、REM-011 为 `NOT_STARTED`；这些历史 REM-009B 数字不代表本文顶部的最新状态。
 
-### 2026-08-13 REM-010 不可变发布、切换与回滚（实现进行中）
+### 2026-08-13 REM-010/011 固定离线候选证据完成（待用户复核）
 
 - runtime role、跨进程 active lease、请求/SSE/generation drain 已接入应用启动、请求、worker 与关闭生命周期；m81/m93 覆盖这些合同。legacy `deploy.mjs` 继续立即 fail-close，不可作为替代发布入口。
 - Darwin 合成环境的不可变 builder/rehearsal 已实现；nginx/systemd 静态运维合同与严格校验器已加入，但不冒充真实生产主机或同版本工具验证。
@@ -58,10 +58,15 @@
 - 修复后当前树在 Node `22.23.1` / npm `10.9.8` 下重跑 m81/m93/m94/m95/m96：`49/49 PASS`，所有异常计数为 0，`deniedViteWildcardProbes=198`；snapshot SHA-256 `7bf6b035e3b909098ae64fd255d14ddef7258b6bf3860c75970f344434b58038` 前后不变，4173 listener 身份前后不变。
 - 随后的第一轮 full 为 `117/117 specs、930/931 PASS`；唯一失败是 m92 bridge fixture 显式传入空 `UNBOUNDRY_MAINTENANCE_MODE`，严格 runtime role 合同按设计报 `RUNTIME_ROLE_INVALID`。产品 parser 未放宽；仅把 fixture 改为 `UNBOUNDRY_RUNTIME_ROLE=active`、maintenance `0`，并在 m93 增补空串拒绝断言。m92+m93 targeted 随后 `9/9 PASS`。
 - fresh full 在 Node `22.23.1` / npm `10.9.8` 下为 `117/117 specs、931/931 PASS`，failed/skipped/retries/reportErrors/blocked 全 0，`deniedViteWildcardProbes=534`；builder operational `attempts=1 / builderInvocations=3 / passed=1 / failed=0`。证据绑定 HEAD `9a76edc3deadad7fe1552977bb3f92baad019542` 下 429-file tested source snapshot `1e96e26feb6334611e9c2205e22d25c6eacbac54b224f44bd3b26bdcfd6f030b`，前后不变；4173 listener `dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae` 前后不变，suite cleaned、exit 0。
-- `1e96e26f…` 属于 m92 fixture 窄修复后、上一轮六文档同步前脏功能树的历史 full，不绑定 commit，也不是 fixed clean/formal candidate、REM-011 三轮、G0～G6、原生产主机运行/迁移/切换、用户 PASS 或发布授权。REM-010 继续 `IN_PROGRESS`、REM-011 `NOT_STARTED`、production HOLD；仅第二验证机 SSH 获本次授权，未连接/修改原生产。真实数据只读越界披露仍以紧邻的 REM-009B 残余边界记录为准。
+- `1e96e26f…` 属于 m92 fixture 窄修复后、上一轮六文档同步前脏功能树的历史 full，不绑定 commit，也不是 fixed clean/formal candidate、REM-011 三轮、G0～G6、原生产主机运行/迁移/切换、用户 PASS 或发布授权。该历史时点 REM-010 仍为 `IN_PROGRESS`、REM-011 为 `NOT_STARTED`；现行状态以顶部状态和本节后续 fixed candidate 证据为准。production HOLD 从未放开；仅第二验证机 SSH 获本次授权，未连接/修改原生产。真实数据只读越界披露仍以紧邻的 REM-009B 残余边界记录为准。
 - 用户随后在端口 58352 的隔离手工验收页发现两个既有 PASS 未覆盖的真实路径：虚拟 `default` 项目卡片进入 `/canvas/default` 后被缺失项目保护弹回工作空间；`Text → Video` 连线和文字均已持久化，但旧规则仍强制 Video 重复填写本节点 Prompt。当前候选把 default 的工作空间/返回画布入口统一到规范 `/canvas`；Video 改为“已就绪上游 Text 或本节点 Prompt 任一即可，两者都有则合并，两者都无仍阻止”，客户端与服务端共享同一解析器。
 - m11 绿地默认卡片正向跳转与 m30 `Text + Image → Video` 上游文字、无文字负边界、服务端持久图重解析和零任务/零付费请求均已覆盖；唯一安全入口定向 `17/17 PASS`，Node `22.23.1` / npm `10.9.8`，failed/skipped/retries/reportErrors/blocked 为 0，snapshot `f714feb259dae032d61ad751feb5e67bb0bde07ea6cb0e6d026ecf07b903f9be` 与 4173 listener 均前后不变，suite cleaned。用户随后在端口 58352 的同一隔离实页明确确认默认画布不再回跳、空本节点 Prompt 的 Video 正确接收已就绪上游 Text，两项均通过，`CANVAS-019 / INPUT-005` 恢复为 `PASS`。
 - 页面修复后的首轮 full 为 `117/117 specs、930/931 PASS`，唯一失败是 m44 两个协作进程并发打开 exact-current DB 时暴露 reservation 创建/释放竞态，snapshot `84ddf2b9d74b551fecad7fb1e325055be3f8c42103bcf5018e06e2730030eb76`。产品并发协议修复后，m44+m91 targeted `15/15 PASS`；fresh full 为 `117/117 specs、931/931 PASS`，failed/skipped/retries/reportErrors/blocked 全 0，`deniedViteWildcardProbes=534`，builder operational `attempts=1 / builderInvocations=3 / passed=1 / failed=0`。证据绑定 HEAD `9a76edc3deadad7fe1552977bb3f92baad019542` 下 429-file tested source snapshot `db91d80b2605d638f5cb2df296a81292b52dcf4b98fa874e934e83737495532f`，前后不变；4173 listener `dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae` 前后不变，suite cleaned、exit 0。
+- 上述脏树证据首先冻结为 clean candidate `b9b4691`，但两个 OS 进程 Provider save 压力运行暴露 `Application database sidecars changed before writer open`，确认为 SQLite 最后旧 writer 关闭时的真实 WAL/SHM 交接竞态；`b9b4691` 因此失效，不得再当作候选。
+- 替代候选 HEAD `8b639ffe6c5f091c51e1914f2e2c18edf9333d90`、tree `219c4df072426cfe92f33dc4045f021064972e9c` 使用 held-reader 窄修复：完整 WAL/SHM 对（包括零字节 WAL）走普通只读检查，inspection 读事务保持到新 writer 取得 `BEGIN IMMEDIATE`并完成 identity/sidecar/schema/digest 复核后才释放；symlink/hardlink/unsafe/orphan/journal 继续 fail-close。m91 确定性覆盖 hot-WAL 与 zero-WAL 的旧最后连接关闭。
+- 最终 fixed clean offline candidate 含 429 files，source/snapshot SHA-256 `652b946441ee46e43bcbfbfc635dfc5aaacf5e640529ebec5bc7bd34c798dbb0`。三个独立 fresh full 每轮均为 `117/117 specs、931/931 PASS`，合计 `2793/2793`；各轮异常计数全 0、`deniedViteWildcardProbes=534`、builder `1/3/1/0`，合计 builder `3/9/3/0`；日志 SHA-256 前缀依次 `c5a8da15…`、`06aed03d…`、`edbb4550…`。
+- 关键包压力两轮各为 `5 specs × repeat 10 = 570/570`，合计 `1140/1140`，每轮异常计数全 0、`deniedViteWildcardProbes=1980`，各关键场景累计 20 次；日志 SHA-256 前缀 `881023af…`、`edefe9ea…`。五轮均为 Node `22.23.1` / npm `10.9.8`，snapshot unchanged，4173 listener `dfd25fc2…` unchanged，suite cleaned、exit 0。
+- 候选绑定的 G0～G6 离线门全绿；REM-010 与 REM-011 的离线工程部分进入 `USER_REVIEW`。这不是用户 PASS、原生产环境验证或发布授权；G7 仍待用户审阅证据、确认正式版本号，并在之后独立确认允许发布。package 仍为 `0.5.1`，原生产连接、push/tag/PR/发布均为 0，production HOLD。
 
 ### 2026-08-09 REM-001 离线安全底座（工程候选已完成）
 
@@ -164,7 +169,7 @@
 
 ## 当前阶段
 
-阶段：`线上 v0.5.1/schema 37 保持不变 / REM-001～REM-009B 工程候选进入 USER_REVIEW / REM-010 runtime 接线、Linux builder 子门、default/Video Prompt 修复及 current-open reservation 并发修复均已完成；m44+m91定向15/15、当前脏功能树单轮full 117/117 specs且931/931 PASS；固定 clean candidate、原生产同版本环境、REM-011 三轮和发布授权仍待完成，保持 IN_PROGRESS / CANVAS-019与INPUT-005 PASS / REM-011 NOT_STARTED / schema 39 仅离线且 production HOLD / 未连接原生产、未操作 4173 或真实 Provider/OSS；真实数据只读越界披露见上方 REM-009B 残余边界记录`
+阶段：`线上 v0.5.1/schema 37 保持不变 / REM-001～REM-011 工程候选进入 USER_REVIEW（REM-011仅离线工程部分） / fixed clean offline candidate 8b639ffe… 的三轮full 2793/2793、两轮关键压力1140/1140及G0～G6已全绿 / CANVAS-019与INPUT-005 PASS / G7 pending / schema 39 仅离线且 production HOLD / 正式版本号、随后独立发布授权、原生产同版本环境核验仍缺 / 未连接原生产、未操作 4173 或真实 Provider/OSS；真实数据只读越界披露见上方 REM-009B 残余边界记录`
 
 画布、固定界面、Text、Image、Video、Audio、Playlist、Group、外围面板、账号、管理员模型中心、生成安全和新图片私有OSS链路已通过当前范围验收；Comment、社区、TapTV、竞技场、额度和链接分享已按用户决定取消。OpenRouter GPT Image 2已完成一次用户授权的真实生成，图片连线参考图及真实结果零费用重启恢复均已通过；当前仅表示“不发布本轮新的修复候选”，不否认线上已运行 v0.5.1。
 

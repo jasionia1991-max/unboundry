@@ -1,18 +1,18 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`22`
+断点版本：`23`
 更新时间：`2026-08-13`
-状态：`OFFLINE_GOAL_ACTIVE_REM-001_THROUGH_REM-009B_USER_REVIEW_REM-010_IN_PROGRESS_REM-011_NOT_STARTED`
+状态：`OFFLINE_GOAL_ACTIVE_REM-001_THROUGH_REM-011_USER_REVIEW_G7_PENDING_PRODUCTION_HOLD`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
 ## 1. 当前结论
 
 - 用户已于 2026-08-09 明确回复“施工文档确认通过”，REM-000 = `PASS`。
-- 施工总方案以 v1.0 建立权威合同，当前离线施工版本已更新为 v1.16-offline。
+- 施工总方案以 v1.0 建立权威合同，当前离线施工版本已更新为 v1.17-offline。
 - 用户已于 2026-08-09 明确启动一次性离线 Goal，Goal ID `019fe226-4d7b-7831-a254-106e40b346c2`；REM-001～010 与 REM-011 离线工程部分可按依赖顺序连续施工，中途不再逐项询问。
 - 允许本地代码/测试/脚本/配置/文档/package 修改、动态 loopback 临时环境、假 Provider/OSS/服务器、必要测试容器和本地 checkpoint/功能/candidate commit。
 - 真实数据、4173、真实 Provider/OSS、canvas.mymy.ltd/原生产 SSH、生产、push、tag、PR、正式版本号与发布仍绝对禁止；2026-08-13 用户另行明确授权且仅完成了第二台非生产验证机的隔离 SSH 测试。
-- REM-001～REM-009B 的离线工程候选与对应自动证据均已完成并进入 `USER_REVIEW`；当前唯一 `IN_PROGRESS` 项为 REM-010。runtime/lease/drain、隔离 Linux builder 子门、default/Video Prompt 修复与用户实页 PASS、current-open reservation 并发修复及当前脏功能树单轮 fresh full `117/117 specs、931/931 PASS` 已完成，legacy deploy 保持 fail-close。固定 clean candidate、原生产同版本环境、REM-011 三轮与发布授权证据尚待完成，REM-010 未完成/未验收。REM-011 为 `NOT_STARTED`。
+- REM-001～REM-011 的离线工程候选与对应自动证据均已完成并进入 `USER_REVIEW`；REM-010/011 的 `USER_REVIEW` 只代表离线工程，不是用户 PASS、原生产核验或发布许可。最终 fixed clean offline candidate 为 commit `8b639ffe6c5f091c51e1914f2e2c18edf9333d90` / tree `219c4df072426cfe92f33dc4045f021064972e9c`，候选绑定的离线 G0～G6 已全绿；G7 仍待用户审阅、正式版本号确认及之后独立发布授权，production HOLD。
 
 ## 2. 项目身份
 
@@ -27,7 +27,7 @@
 | 本地真实数据目录 | `/Users/mymy/Documents/unboundry/app/data` |
 | 真实本地服务端口 | `4173`，有守护进程，不得用于测试 |
 | 生产/历史数据库基线 | 线上 v0.5.1、schema `37`；原生产未获 SSH 授权复核 |
-| 当前离线候选 | package `0.5.1`、schema `39`；117 specs/931 tests，源码 309=286 TS/TSX+23 JS/MJS，运维 18=15 行为+3 冻结；Ubuntu Docker fail-close、第二验证机 production builder、最新页面与 reservation 并发修复、m44+m91定向15/15及当前脏功能树单轮full 931/931均已完成；固定 clean candidate/原生产/REM-011 门待完成；production HOLD，v0.5.1 不可直接回滚该库 |
+| 当前离线候选 | package `0.5.1`、schema `39`；fixed clean commit `8b639ffe6c5f091c51e1914f2e2c18edf9333d90` / tree `219c4df072426cfe92f33dc4045f021064972e9c`，429-file source/snapshot SHA-256 `652b946441ee46e43bcbfbfc635dfc5aaacf5e640529ebec5bc7bd34c798dbb0`；117 specs/931 tests，源码 309=286 TS/TSX+23 JS/MJS，运维 18=15 行为+3 冻结；三轮 full 合计2793/2793、两包竞态压力合计1140/1140，离线G0～G6全绿；G7 pending、production HOLD，v0.5.1 不可直接回滚该库 |
 | Node | 离线施工固定 `/Users/mymy/.local/bin/node`（指向 `/Users/mymy/.hermes/node/bin/node`）`v22.23.1` + npm `10.9.8`；历史生产记录为 `v22.23.2`，当前生产未复核 |
 
 ### 2.1 Goal 启动前只读预检
@@ -73,15 +73,15 @@
 | REM-007 | 前端生成恢复与失败体验 | `USER_REVIEW` | 四类 ownership/exact GET/终态 ACK、transport/retry fail-closed、mutation 失败体验及完整安全证据已完成 |
 | REM-008 | 资源、安全、性能和运维脚本 | `USER_REVIEW` | 登录/SSE、媒体资源、出站、安全头、依赖、脚本及必要性能治理已完成 |
 | REM-009B | 最终候选备份、恢复与双向兼容演练 | `USER_REVIEW` | 自动实现及同源自动证据完成；不是用户 PASS |
-| REM-010 | 不可变发布、切换与回滚 | `IN_PROGRESS` | runtime/lease/drain、Linux builder 子门、最新页面与 reservation 并发修复、m44+m91定向15/15及当前脏功能树单轮full 931/931已完成；固定 clean candidate、原生产、REM-011 待完成 |
-| REM-011 | 候选全量验收与正式发布门 | `NOT_STARTED` | 尚未开始 |
+| REM-010 | 不可变发布、切换与回滚 | `USER_REVIEW` | fixed clean offline candidate `8b639ffe6c5f091c51e1914f2e2c18edf9333d90` 已完成，离线G0～G6全绿；只待用户工程审阅，不是生产或发布许可 |
+| REM-011 | 候选全量验收与正式发布门 | `USER_REVIEW` | 三个独立全新环境full均931/931，两包竞态压力均570/570；仅离线工程进入USER_REVIEW，G7/正式版本号/发布授权仍待完成 |
 
-REM-009B 的自动实现与自动证据已完成；REM-010 已实现当前离线候选，通过 Docker fail-close、第二验证机 production builder 子门及当前脏树单轮 fresh full `931/931`；固定 clean candidate、原生产环境和 REM-011 门未收口，仍未验收，REM-011 尚未开始。
+REM-009B 的历史自动实现与自动证据保持不变；REM-010/011 的最终 fixed clean offline candidate 及候选绑定自动证据已收口并进入 `USER_REVIEW`。这不等于用户 PASS、真实数据/Provider/OSS、原生产迁移或发布许可；G7 pending，production HOLD。
 
 ### 4.1 一次性授权的决策默认
 
 - 账号删除继续遵守 `PERM-011 / KEY-008 / AUTH-006`；普通账号的公共模板及必要素材转交受保护最高权限账号，其他私有数据按既有合同安全清理；受保护最高权限账号绝不可删除。
-- 原决策优先争取 schema 37 与 v0.5.1 数据格式双向兼容；REM-004 形成 schema 38、REM-005 追加 schema 39。REM-009B 已证明 exact v0.5.1 对 schema39 安全拒绝，迁移后不能回滚到 v0.5.1，并完成 exact-v0.5.1→current bridge→schema39 数据格式与拒绝边界矩阵；REM-010 已实现 runtime/60 秒 admission drain、合成切换/回滚编排、隔离 Linux builder 子门、最新页面与 reservation 并发修复及当前脏功能树单轮 full 931/931。生产和迁移授权没有扩大；原生产同版本环境、固定 clean candidate G0～G6、REM-011 通过前绝不发布。
+- 原决策优先争取 schema 37 与 v0.5.1 数据格式双向兼容；REM-004 形成 schema 38、REM-005 追加 schema 39。REM-009B 已证明 exact v0.5.1 对 schema39 安全拒绝，迁移后不能回滚到 v0.5.1，并完成 exact-v0.5.1→current bridge→schema39 数据格式与拒绝边界矩阵；REM-010 已实现 runtime/60 秒 admission drain、合成切换/回滚编排及隔离 Linux builder 子门。最终 fixed clean offline candidate 的G0～G6与REM-011三轮已全绿；生产和迁移授权没有扩大，G7、正式版本号与独立发布授权通过前绝不发布。
 - `F-001～F-034` 全部纳入；review 新发现且不改变产品合同的 P0/P1 登记后直接修复；无关 P2、视觉改版或新功能只登记。
 - 保持 `DATA-005`、默认五项权限、500MB 视频合同和既有 PASS；不恢复金额/额度/订阅，不启用任何 PAUSED 范围。
 - 遇到真实数据、生产连接、外部 Provider 或产品语义变化时登记并继续其他不依赖工作；仅在仓库身份被外部改变，或无法保证真实数据隔离与零外部请求时安全停止整个 Goal。
@@ -232,7 +232,7 @@ REM-000 文档批次外部动作计数（历史时点）：
 - 功能提交 `9a158a92563814791fefb8d4e6c5531eca610d78` 包含相同功能文件，但未在 commit 后或文档后树重跑。REM-009B 为 `USER_REVIEW`，不是用户 PASS、USER_RECHECK、真实数据/Provider/OSS、生产迁移、正式 candidate release 或发布证明。
 - current-database-open reservation 可序列化协作打开；同 UID 非协作进程仍可替换该极窄路径，作为残余边界保留。REM-010 已另行接入 runtime role、跨进程 active lease 与 request/SSE/generation drain；这不消除该 REM-009B 极窄非协作路径边界。
 
-### 6.11 REM-010 当前实现与未完成门
+### 6.11 REM-010/011 固定候选证据与剩余 G7 门
 
 - runtime role、跨进程 active lease、请求/SSE/generation drain 已接入应用启动、请求、worker 与关闭生命周期，并由 m81/m93 覆盖；legacy `deploy.mjs` 保持立即 fail-close。
 - Darwin 合成环境的不可变 builder/rehearsal、三层健康、排空、切换/回滚编排及静态 nginx/systemd 运维合同已实现。当前冻结发现清单 `117 specs / 931 tests`；源码 `309 = 286 TS/TSX + 23 JS/MJS`；运维脚本 `18 = 15 行为验证 + 3 哈希冻结`。此前 targeted m81/m93/m94/m95/m96 `49/49 PASS` 的历史证据保留。
@@ -241,29 +241,32 @@ REM-000 文档批次外部动作计数（历史时点）：
 - `1e96e26f…` 是 m92 fixture 窄修复后、上一轮六文档同步前脏功能树的历史 full 指纹；不绑定 commit，也不是 fixed clean/formal candidate、REM-011 三轮、G0～G6、原生产、用户 PASS 或发布证明。
 - 该 full 之后用户在隔离手工验收页发现 default 项目卡片错误路由与 Video 重复 Prompt 两个覆盖缺口。当前候选已统一 default 到 `/canvas`，并允许已就绪上游 Text 独立提供 Video 最终 Prompt；无任何有效文字仍阻止。m11+m30 经安全入口定向 `17/17 PASS`，源码快照 `f714feb259dae032d61ad751feb5e67bb0bde07ea6cb0e6d026ecf07b903f9be` 与 4173 listener 前后不变、零任务/零付费 Provider、suite cleaned。用户随后在端口 58352 的隔离实页明确确认两项修改均通过，`CANVAS-019 / INPUT-005` 恢复为 `PASS`。
 - 页面修复后的首轮 full 为 `117/117 specs、930/931 PASS`，唯一失败是 m44 两个协作进程并发打开 exact-current DB 时暴露 reservation 创建/释放竞态，snapshot `84ddf2b9d74b551fecad7fb1e325055be3f8c42103bcf5018e06e2730030eb76`。产品并发协议把合法状态严格区分为 initializing/active/released，并继续对 stale、self-PID、malformed、unsafe 与替换路径 fail-close；m91 加入创建前和释放窗口的确定性双进程回归，m44+m91 targeted `15/15 PASS`。随后 fresh full 为 `117/117 specs、931/931 PASS`，failed/skipped/retries/reportErrors/blocked 全 0，`deniedViteWildcardProbes=534`；builder operational `attempts=1 / builderInvocations=3 / passed=1 / failed=0`。证据绑定 HEAD `9a76edc3deadad7fe1552977bb3f92baad019542` 下 429-file tested source snapshot `db91d80b2605d638f5cb2df296a81292b52dcf4b98fa874e934e83737495532f`，前后不变；4173 listener `dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae` 前后不变，suite cleaned、exit0。
+- 上述脏树先冻结为 clean candidate `b9b4691a1d06d8321578b7552ea5e14b23fb85e2`，但两个 OS 进程 Provider save 压力运行在 m44 暴露 `Application database sidecars changed before writer open`：最后一个旧 SQLite writer 关闭时可合法重建/清理 WAL/SHM。该真实交接竞态击穿了候选，`b9b4691…` 已失效，不得再作为正式候选或绿灯证据。
+- 最小修复只收窄完整 WAL/SHM 对的合法交接窗口：普通只读 inspection 连接及读事务保持到新 writer 取得 `BEGIN IMMEDIATE`，完成 identity/sidecar/schema/digest 复核后再释放；hot WAL 与 zero-byte WAL 都走该 held-reader 路径，symlink、hardlink、unsafe mode、orphan sidecar、journal 与其他替换仍立即 fail-close。m91 对 hot-WAL 和 zero-WAL 的旧最后连接关闭均有确定性回归。
+- 最终 fixed clean offline candidate 为 commit `8b639ffe6c5f091c51e1914f2e2c18edf9333d90` / tree `219c4df072426cfe92f33dc4045f021064972e9c`，429-file source/snapshot SHA-256 `652b946441ee46e43bcbfbfc635dfc5aaacf5e640529ebec5bc7bd34c798dbb0`。三个独立全新环境 full 各 `117/117 specs、931/931 PASS`，合计 `2793/2793`；每轮 failed/skipped/retries/reportErrors/blocked 全0、`deniedViteWildcardProbes=534`、builder `1/3/1/0`，合计 builder `3/9/3/0`。两包竞态压力各 `570/570 PASS`，合计 `1140/1140`，覆盖5个spec各20次，异常计数全0；source/snapshot各轮不变，4173 listener `dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae` 前后不变，suite cleaned、exit0。
 - 用户授权的 `isolated-docker-ubuntu-amd64-ephemeral-candidate` 子门使用 Ubuntu 24.04.4 amd64/glibc 2.39。受控联网镜像/lock 依赖准备仅持有 package/lock 和私有 cache，不含项目源码、凭据或真实数据；随后正式容器为 `--network none`、无端口、无 host bind、非 privileged。429-file tar SHA-256 `08917263ed588d77c03d4a9123017119c86121a01b72d65b3e2a0fe11e8ecd01`，一次性 clean commit `6e1e9eef95e3c1f45cb0c5d11faa7c6cd16650fb` / tree `52f3a49fdec6a1a6fe036498d3c4cc0ed9628404`，`formalReleaseCommit=false`。
 - 同一无网容器中隔离 cache 的 `npm ci --offline` 安装 185 packages 并 PASS；nginx `1.24.0` 对 active/maintenance 两份配置均 `nginx -t` PASS；systemd `255` 对 unit 的 `systemd-analyze verify` PASS。静态 validator `valid=true`，其 `production-host-not-inspected` 等 limitation 仍保留；未启动 nginx/systemd/Vite，未监听或连接 4173。
 - production builder 以 `unboundry` 用户、0 effective capabilities 运行正式 Linux 分支；Docker Desktop 不提供 bwrap 所需 rootless user namespace，故返回 `RELEASE_COMMAND_FAILED`，保留 0700 release reservation 与 0600 `.incomplete`，没有完整 release。这是环境 BLOCK 与 fail-close 证据，不是 builder PASS。
 - 2026-08-13 用户另行明确授权仅在第二台、非原项目生产的 Ubuntu 24.04 x86_64 服务器执行隔离 SSH 验证。`isolated-server-ubuntu-amd64-ephemeral-candidate` 使用 429-file tar SHA-256 `a322ec21affe7c2e73c510fceb74d5c953bee213b25084954b735f18d7be494b`，一次性 clean commit `ef206cd3dcc94ea6657a12ab7963580fe4e9bb5c` / tree `ab68ce7d3725869e674a7b7a7c3fdb0b74e5d29e`，`formalReleaseCommit=false`。
 - 首次 production builder 将 `npm ci --omit=dev` 留下的空 `node_modules/@playwright` scope 目录误判为开发依赖，按设计 fail-close 并保留 `.incomplete`。窄修复仅允许该空目录，继续拒绝非目录或任一 `@playwright/*` 子项；r2 以普通 `unboundry` 用户、0 effective capabilities 在 Linux x64/glibc + bwrap 断网路径真实 PASS。release `host-validation-20260813-r2` 的 manifest SHA-256 `79e5d45dfbb9e51ec7fc60e1f5527a11f30f1d3d9638b682741c4306a25db02a`，5270 条 inventory 独立复核一致，目录为 0500、无 `.incomplete`，`networkSandboxVerified=true`，网络 namespace 拒绝探针通过，构建步骤未观察到外网尝试。
 - 同一验证机的 active/maintenance 两份隔离配置真实 `nginx -t` PASS，`systemd-analyze verify` 命令 exit 0；未启动 nginx/systemd/Vite，现有 nginx/Docker 配置和服务未修改、未 reload/restart，4173 listener 为 0。
-- `F-021/F-022/F-023` 的隔离 Linux 子门进一步收窄，`F-024/F-031` 继续受 REM-009B 矩阵约束。当前脏树单轮 `117/931` full 已通过；仍缺原生产主机同版本/模块、最终固定 candidate clean SHA 的 G0～G6、REM-011 三轮、正式版本号与发布授权。
-- REM-010 保持 `IN_PROGRESS`，production HOLD；仅第二验证机 SSH 获本次授权，真实数据、4173、真实 Provider/OSS、原生产 SSH/连接、push/tag/PR/发布均未授权。
+- `F-021/F-022/F-023` 的隔离 Linux 子门进一步收窄，`F-024/F-031` 继续受 REM-009B 矩阵约束。最终 fixed clean offline candidate 的离线 G0～G6 与 REM-011 三轮均已全绿；这不包含原生产核验，不扩大真实数据、Provider/OSS、迁移或生产边界。
+- REM-010/011 均进入离线工程 `USER_REVIEW`，G7 pending、production HOLD；package 仍为 `0.5.1`，仅第二验证机 SSH 获本次授权，真实数据、4173、真实 Provider/OSS、原生产 SSH/连接、push/tag/PR/release/production 均未授权且未执行。
 
 ## 7. 当前执行路径
 
 1. REM-009B 已完成同源自动证据并进入 `USER_REVIEW`；继续保留 REM-001 安全入口与 REM-002 运行时边界，任何后续测试只能经安全入口执行；
-2. 当前实施 REM-010：隔离 Linux production builder 子门、`CANVAS-019 / INPUT-005` 实页复验、reservation 并发修复及当前脏功能树单轮 full 931/931 已完成；下一步固定正式 clean candidate并执行候选绑定的 G0～G6、REM-011 三轮与原生产同版本环境核验。不得把 current-tree 单轮 full 或一次性 ephemeral server release 写成固定候选、REM-011 三轮或生产全绿；真实数据/Provider/OSS、4173 与原生产仍禁止；
-3. schema 39 只在线下；生产同版本 ops 校验、最终固定 clean candidate G0～G6、REM-011、正式版本号与发布授权通过前 production HOLD；
+2. REM-010/011 离线工程已完成：最终 fixed clean candidate `8b639ffe6c5f091c51e1914f2e2c18edf9333d90` 的G0～G6、三轮独立full与两包竞态压力均全绿，REM-010/011进入 `USER_REVIEW`；
+3. schema 39 只在线下；G7、用户工程审阅、正式版本号和之后独立发布授权通过前 production HOLD，原生产、真实数据/Provider/OSS与4173仍禁止；
 4. 每个 REM 按施工总方案依赖顺序完成分析、实施、测试、独立 review 与文档同步；每个本地 commit 前核对范围，绝不 push/tag/PR；
-5. 终点是固定 candidate SHA、G0～G6 离线证据、工程 `USER_REVIEW` 与页面 `USER_RECHECK`，生产和发布留待用户另行确认。
+5. 当前下一步仅为G7用户审阅与后续两次独立决策（正式版本号、发布授权）；`CANVAS-019 / INPUT-005` 既有用户 `PASS` 保持，生产和发布留待用户另行确认。
 
 ## 8. 未决决策
 
 - `DEC-REM-001`：已确认（2026-08-09）；
 - `DEC-REM-002`：已确认，允许仅本地 checkpoint/功能/candidate commit，绝不 push/tag/PR；
 - `DEC-REM-003`：已确认，沿用 `PERM-011 / KEY-008 / AUTH-006`，公共模板及必要素材转交受保护最高权限账号；
-- `DEC-REM-004`：已确认，REM-004 形成 schema 38、REM-005 追加 schema 39，当前为 schema 39 离线候选；REM-009B 矩阵和 REM-010 runtime/合成编排、隔离 Linux builder 子门、最新页面与 reservation 并发修复及当前脏功能树单轮 full 931/931 已完成；原生产同版本环境、固定 clean candidate G0～G6、REM-011 与两次必要授权未通过前 production HOLD；
+- `DEC-REM-004`：已确认，REM-004 形成 schema 38、REM-005 追加 schema 39，当前为 schema 39 离线候选；REM-009B 矩阵及 REM-010/011 离线工程已完成，fixed clean candidate `8b639ffe…` 的G0～G6、三轮full与竞态压力均全绿；G7与两次必要授权未通过前 production HOLD；
 - `DEC-REM-005/006`：正式版本号与发布授权，远期才可询问。
 
 ## 9. 恢复前检查卡
@@ -275,15 +278,17 @@ REM-000 文档批次外部动作计数（历史时点）：
 线上版本：v0.5.1
 当前分支：codex/unboundry-offline-remediation-2026-08-09
 起点 HEAD：262c66c4087d915b03971191ee00a9bfba74da65；REM-009B 功能提交 9a158a92563814791fefb8d4e6c5531eca610d78；当前 HEAD 以 git 只读结果对照本文件
-最后完成工程候选：REM-009B（USER_REVIEW），核心 8-spec repeat=3 共 399/399，安全入口全量 114/912、912/912 PASS
+历史 REM-009B 工程候选：USER_REVIEW，核心 8-spec repeat=3 共 399/399，安全入口全量 114/912、912/912 PASS
 冻结功能树指纹：7cf46804f952e580e9574a08a93f42ad53c051d4fcd5f2705691f82c8330326b（测试时父 HEAD bbcd5e0f6ca2096ed433d5ac45019c19aab50c53；未在功能 commit 后或文档后树重跑）
 REM-009B 历史 4173 listener：1be6a5d9061f3be72e5d45a0acf7cb70f5fe86ac645fceff60138b4b718d35dd（该历史批次前后不变）
-当前施工项：REM-010（IN_PROGRESS）：runtime/lease/drain、Docker fail-close、第二验证机 production builder、最新default/Video Prompt与reservation并发修复、m44+m91定向15/15及当前脏功能树单轮full 117/117 specs、931/931 PASS已完成；源码309、运维18；CANVAS-019/INPUT-005 PASS；REM-011 NOT_STARTED
+当前施工项：REM-010/011 离线工程均为 USER_REVIEW；CANVAS-019/INPUT-005 既有用户PASS保持；G7 pending，production HOLD
 历史 m92 修复后 full 指纹：HEAD 9a76edc3deadad7fe1552977bb3f92baad019542；429-file tested source SHA-256 1e96e26feb6334611e9c2205e22d25c6eacbac54b224f44bd3b26bdcfd6f030b；4173 listener dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae 前后不变
 页面修复定向指纹：m11+m30 17/17；源码快照f714feb259dae032d61ad751feb5e67bb0bde07ea6cb0e6d026ecf07b903f9be；4173 listener同上且前后不变
-最新 full 指纹：HEAD 9a76edc3deadad7fe1552977bb3f92baad019542；429-file tested source SHA-256 db91d80b2605d638f5cb2df296a81292b52dcf4b98fa874e934e83737495532f；117/117 specs、931/931 PASS；4173 listener dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae 前后不变；这是文档同步前脏功能树，不是commit/fixed clean/formal candidate
-reservation 修复定向指纹：m44+m91 15/15；两个竞态窗口确定性覆盖；suite cleaned、异常计数0
-下一步：固定正式clean candidate，执行候选绑定的G0～G6、REM-011三轮，再补原生产同版本环境核验；真实Provider/OSS、4173与原生产继续禁止
+历史页面/reservation修复后脏树 full：HEAD 9a76edc3deadad7fe1552977bb3f92baad019542；429-file tested source SHA-256 db91d80b2605d638f5cb2df296a81292b52dcf4b98fa874e934e83737495532f；117/117 specs、931/931 PASS；4173 listener dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae 前后不变
+失效候选：b9b4691a1d06d8321578b7552ea5e14b23fb85e2，被最后旧SQLite writer关闭时的WAL/SHM交接竞态击穿，不得作为绿灯
+最终 fixed clean offline candidate：commit 8b639ffe6c5f091c51e1914f2e2c18edf9333d90；tree 219c4df072426cfe92f33dc4045f021064972e9c；429-file source/snapshot SHA-256 652b946441ee46e43bcbfbfc635dfc5aaacf5e640529ebec5bc7bd34c798dbb0
+最终证据：三个独立fresh full各931/931、合计2793/2793；两包race各570/570、合计1140/1140，5 specs各20次；异常计数0；listener dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae不变；G0～G6离线全绿
+下一步：G7用户审阅、正式版本号确认及之后独立发布授权；真实Provider/OSS、4173、原生产、push/tag/PR/release/production继续禁止
 代码授权：一次性离线 Goal 范围内已授权；Goal ID 019fe226-4d7b-7831-a254-106e40b346c2
 真实数据操作：禁止
 Provider 请求：禁止
