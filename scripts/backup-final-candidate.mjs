@@ -33,6 +33,10 @@ import {
   validateAdmittedRelease,
 } from "./lib/admitted-release.mjs";
 import {
+  parseChildErrorEnvelope,
+  schemaMigrationChildErrorCodes,
+} from "./lib/child-error-envelope.mjs";
+import {
   assertAttestedReleaseArtifacts,
   readReleaseAttestation,
   ReleaseAttestationError,
@@ -156,9 +160,10 @@ function allowlistedLegacySupervisorStackLines(value) {
 }
 
 class CliError extends Error {
-  constructor(code, message) {
+  constructor(code, message, childStage) {
     super(message);
     this.code = code;
+    this.childStage = childStage;
   }
 }
 
@@ -689,6 +694,7 @@ function productionMigrationEnvironment(release, runtimeDirectory) {
     HOME: runtimeDirectory,
     LANG: "C",
     LC_ALL: "C",
+    NODE_NO_WARNINGS: "1",
     NODE_ENV: "production",
     // The release runtime is invoked by its absolute Node path. Keep ffprobe
     // resolution independent of any executable that may appear beside Node.
@@ -782,7 +788,15 @@ async function terminateChildProcessGroup(processGroupId) {
   return true;
 }
 
-async function runJsonChild({ arguments_, cwd, env, executable, label }) {
+async function runJsonChild({
+  arguments_,
+  childStage,
+  cwd,
+  env,
+  errorProtocol,
+  executable,
+  label,
+}) {
   return await new Promise((resolvePromise, rejectPromise) => {
     let settled = false;
     let timer;
@@ -808,17 +822,25 @@ async function runJsonChild({ arguments_, cwd, env, executable, label }) {
             throw new CliError(
               "FINAL_BACKUP_CHILD_CLEANUP_UNKNOWN",
               `${label} exited while its process group remained active`,
+              childStage,
             );
           }
         }
       } catch (cleanupError) {
-        rejectPromise(cleanupError);
+        rejectPromise(new CliError(
+          cleanupError instanceof CliError
+            ? cleanupError.code
+            : "FINAL_BACKUP_CHILD_CLEANUP_UNKNOWN",
+          `${label} cleanup could not be confirmed`,
+          childStage,
+        ));
         return;
       }
       if (error) {
         rejectPromise(new CliError(
           "FINAL_BACKUP_CHILD_FAILED",
           `${label} could not start`,
+          childStage,
         ));
         return;
       }
@@ -826,6 +848,7 @@ async function runJsonChild({ arguments_, cwd, env, executable, label }) {
         rejectPromise(new CliError(
           "FINAL_BACKUP_CHILD_TIMEOUT",
           `${label} exceeded its bounded runtime`,
+          childStage,
         ));
         return;
       }
@@ -833,27 +856,22 @@ async function runJsonChild({ arguments_, cwd, env, executable, label }) {
         rejectPromise(new CliError(
           "FINAL_BACKUP_CHILD_OUTPUT_TOO_LARGE",
           `${label} output exceeded its limit`,
+          childStage,
         ));
         return;
       }
       const output = Buffer.concat(stdout).toString("utf8").trim();
-      const errorOutput = Buffer.concat(stderr).toString("utf8").trim();
+      const errorOutput = Buffer.concat(stderr);
       if (reason !== "close" || code !== 0 || signal || forced) {
-        let childError;
-        try {
-          childError = JSON.parse(errorOutput);
-        } catch {
-          childError = undefined;
-        }
+        const childError = signal === null && forced === false
+          ? parseChildErrorEnvelope(errorOutput, errorProtocol)
+          : undefined;
         rejectPromise(new CliError(
-          typeof childError?.code === "string"
-            ? childError.code
-            : "FINAL_BACKUP_CHILD_FAILED",
-          typeof childError?.message === "string"
-            ? childError.message
-            : typeof childError?.error === "string"
-              ? childError.error
-              : `${label} failed`,
+          childError?.code ?? "FINAL_BACKUP_CHILD_FAILED",
+          childError
+            ? `${label} reported a bounded failure`
+            : `${label} failed`,
+          childStage,
         ));
         return;
       }
@@ -863,6 +881,7 @@ async function runJsonChild({ arguments_, cwd, env, executable, label }) {
         rejectPromise(new CliError(
           "FINAL_BACKUP_CHILD_OUTPUT_INVALID",
           `${label} output is invalid`,
+          childStage,
         ));
       }
     };
@@ -883,6 +902,38 @@ async function runJsonChild({ arguments_, cwd, env, executable, label }) {
 }
 
 async function runJsonScript(scriptName, arguments_, options = {}) {
+  const protocol = Object.freeze({
+    "backup-data.mjs": Object.freeze({
+      childStage: "backup-create",
+      codePrefix: "BACKUP_",
+      envelope: "code-message",
+      label: "Final-candidate backup-create child process",
+    }),
+    "report-media-integrity.mjs": Object.freeze({
+      childStage: "media-report",
+      codePrefixes: Object.freeze(["BACKUP_", "MEDIA_REPORT_"]),
+      envelope: "code-message",
+      label: "Final-candidate media-report child process",
+    }),
+    "restore-backup.mjs": Object.freeze({
+      childStage: "backup-restore",
+      codePrefix: "BACKUP_",
+      envelope: "code-message",
+      label: "Final-candidate backup-restore child process",
+    }),
+    "verify-backup.mjs": Object.freeze({
+      childStage: "backup-verify",
+      codePrefix: "BACKUP_",
+      envelope: "code-message",
+      label: "Final-candidate backup-verify child process",
+    }),
+  })[scriptName];
+  if (!protocol) {
+    fail(
+      "FINAL_BACKUP_CHILD_PROTOCOL_INVALID",
+      "Final-candidate child protocol is not fixed",
+    );
+  }
   const executable = options.wrapper?.executable ?? process.execPath;
   const childArguments = options.wrapper
     ? [...options.wrapper.arguments, process.execPath,
@@ -890,24 +941,43 @@ async function runJsonScript(scriptName, arguments_, options = {}) {
     : [resolve(appRoot, "scripts", scriptName), ...arguments_];
   return runJsonChild({
     arguments_: childArguments,
+    childStage: protocol.childStage,
     cwd: appRoot,
     env: options.env ?? process.env,
+    errorProtocol: protocol,
     executable,
-    label: "Final-candidate child process",
+    label: protocol.label,
   });
 }
 
-async function runReleaseJsonScript(release, arguments_, options = {}) {
+async function runReleaseMigrationScript(release, mode, arguments_, options = {}) {
+  if (!new Set(["apply", "dry-run"]).has(mode)) {
+    fail(
+      "FINAL_BACKUP_CHILD_PROTOCOL_INVALID",
+      "Release-bound migration mode is not fixed",
+    );
+  }
   const executable = options.wrapper?.executable ?? release.runtimeCommand;
+  const releaseArguments = [
+    "scripts/migrate-schema37-to39.mjs",
+    `--${mode}`,
+    ...arguments_,
+  ];
   const childArguments = options.wrapper
-    ? [...options.wrapper.arguments, release.runtimeCommand, ...arguments_]
-    : arguments_;
+    ? [...options.wrapper.arguments, release.runtimeCommand, ...releaseArguments]
+    : releaseArguments;
   return runJsonChild({
     arguments_: childArguments,
+    childStage: `migration-${mode}`,
     cwd: release.directory,
     env: options.env ?? process.env,
+    errorProtocol: Object.freeze({
+      allowedCodes: schemaMigrationChildErrorCodes,
+      codePrefix: "SCHEMA_MIGRATION_",
+      envelope: "ok-code-error",
+    }),
     executable,
-    label: "Release-bound child process",
+    label: `Release-bound migration ${mode} child process`,
   });
 }
 
@@ -4058,9 +4128,10 @@ try {
           ]
         : []),
     ];
-    migrationDryRun = await runReleaseJsonScript(
+    migrationDryRun = await runReleaseMigrationScript(
       releases.bridge,
-      ["scripts/migrate-schema37-to39.mjs", "--dry-run", ...migrationCommon],
+      "dry-run",
+      migrationCommon,
       migrationChildOptions,
     );
     if (
@@ -4078,9 +4149,10 @@ try {
         "Restored exact-v37 migration dry-run did not match its source contract",
       );
     }
-    migrationApplied = await runReleaseJsonScript(
+    migrationApplied = await runReleaseMigrationScript(
       releases.bridge,
-      ["scripts/migrate-schema37-to39.mjs", "--apply", ...migrationCommon],
+      "apply",
+      migrationCommon,
       migrationChildOptions,
     );
     migrationNativeAudit = linuxValidationSandbox
@@ -4311,6 +4383,9 @@ try {
     message = message.replaceAll(path, "[path]");
   }
   process.stderr.write(`${JSON.stringify({
+    ...(error instanceof CliError && error.childStage
+      ? { childStage: error.childStage }
+      : {}),
     code: known ? error.code : "FINAL_BACKUP_FAILED",
     message,
   })}\n`);

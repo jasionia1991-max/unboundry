@@ -44,6 +44,8 @@ import {
 } from "../server/backupInspection";
 // @ts-expect-error The safe runner is the sole issuer of this MJS attestation.
 import { readReleaseAttestation } from "../scripts/lib/release-attestation.mjs";
+// @ts-expect-error Operational MJS helpers are loaded directly by the safe test.
+import { parseChildErrorEnvelope, schemaMigrationChildErrorCodes } from "../scripts/lib/child-error-envelope.mjs";
 import {
   BackupPackageError,
   createEncryptedBackup,
@@ -3106,6 +3108,99 @@ test("final-candidate exact-v37 chain rehydrates fake OSS offline and validates 
   expect(finalCandidateSource).not.toContain(
     "UNBOUNDRY_TEST_FINAL_INVENTORY_SWAP_RELEASE",
   );
+  const [migrationCliSource, migrationSource] = await Promise.all([
+    readFile(
+      join(process.cwd(), "scripts", "migrate-schema37-to39.mjs"),
+      "utf8",
+    ),
+    readFile(join(process.cwd(), "server", "schemaMigration.ts"), "utf8"),
+  ]);
+  const migrationCodes = [...new Set(
+    [...`${migrationCliSource}\n${migrationSource}`.matchAll(
+      /["'](SCHEMA_MIGRATION_[A-Z0-9_]+)["']/g,
+    )].map((match) => match[1]),
+  )].sort();
+  expect([...schemaMigrationChildErrorCodes].sort()).toEqual(migrationCodes);
+  const migrationProtocol = {
+    allowedCodes: schemaMigrationChildErrorCodes,
+    codePrefix: "SCHEMA_MIGRATION_",
+    envelope: "ok-code-error",
+  };
+  const migrationEnvelope = JSON.stringify({
+    code: "SCHEMA_MIGRATION_TARGET_INVALID",
+    error: "Bounded migration failure",
+    ok: false,
+  });
+  const nodeWarnings = [
+    "(node:123) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time",
+    "(Use `node --trace-warnings ...` to show where the warning was created)",
+    "(node:123) ExperimentalWarning: SQLite is an experimental feature and might change at any time",
+  ].join("\n");
+  for (const accepted of [
+    `${migrationEnvelope}\n`,
+    `${migrationEnvelope}\n${nodeWarnings}\n`,
+    `${nodeWarnings}\n${migrationEnvelope}\n`,
+    `${nodeWarnings.replaceAll("\n", "\r\n")}\r\n${migrationEnvelope}\r\n`,
+  ]) {
+    expect(parseChildErrorEnvelope(
+      Buffer.from(accepted),
+      migrationProtocol,
+    )).toEqual({ code: "SCHEMA_MIGRATION_TARGET_INVALID" });
+  }
+  for (const rejected of [
+    `unknown warning\n${migrationEnvelope}\n`,
+    `${migrationEnvelope}\n${migrationEnvelope}\n`,
+    `${JSON.stringify({
+      code: "SCHEMA_MIGRATION_TARGET_INVALID",
+      error: "Bounded migration failure",
+      extra: true,
+      ok: false,
+    })}\n`,
+    `${JSON.stringify({
+      code: "SCHEMA_MIGRATION_UNKNOWN_CODE",
+      error: "Bounded migration failure",
+      ok: false,
+    })}\n`,
+    `${JSON.stringify({
+      code: "SCHEMA_MIGRATION_TARGET_INVALID",
+      error: "Bounded migration failure",
+      ok: true,
+    })}\n`,
+    `${JSON.stringify({
+      code: "SCHEMA_MIGRATION_TARGET_INVALID",
+      error: "line one\nline two",
+      ok: false,
+    })}\n`,
+    `${JSON.stringify({
+      code: "SCHEMA_MIGRATION_TARGET_INVALID",
+      error: "x".repeat(2_049),
+      ok: false,
+    })}\n`,
+  ]) {
+    expect(parseChildErrorEnvelope(
+      Buffer.from(rejected),
+      migrationProtocol,
+    )).toBeUndefined();
+  }
+  expect(parseChildErrorEnvelope(
+    Buffer.from([0xff, 0xfe, 0xfd]),
+    migrationProtocol,
+  )).toBeUndefined();
+  expect(parseChildErrorEnvelope(
+    Buffer.from(`${JSON.stringify({
+      code: "BACKUP_SOURCE_CHANGED",
+      message: "Bounded report failure",
+    })}\n`),
+    {
+      codePrefixes: ["BACKUP_", "MEDIA_REPORT_"],
+      envelope: "code-message",
+    },
+  )).toEqual({ code: "BACKUP_SOURCE_CHANGED" });
+  expect(finalCandidateSource).toContain("NODE_NO_WARNINGS: \"1\"");
+  expect(finalCandidateSource).toContain(
+    "Release-bound migration ${mode} child process",
+  );
+  expect(finalCandidateSource).toContain("childStage: `migration-${mode}`");
   const checkoutBuildArtifactBefore = await productionBuildArtifactSummary(
     checkoutBuildRoot,
   );
