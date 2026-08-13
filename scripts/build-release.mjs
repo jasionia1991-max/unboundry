@@ -1333,6 +1333,36 @@ async function assertGeneratedNpmBinDirectory(path, nodeModulesRoot) {
   }
 }
 
+async function assertEmptyPlaywrightScopeDirectory(path) {
+  const directoryBefore = await lstat(path).catch(() => undefined);
+  if (
+    !directoryBefore?.isDirectory() || directoryBefore.isSymbolicLink() ||
+    !trustedOwner(directoryBefore) || (directoryBefore.mode & 0o022) !== 0
+  ) {
+    fail(
+      "RELEASE_OUTPUT_UNSAFE",
+      "node_modules/@playwright is not a trusted empty npm scope directory",
+    );
+  }
+  const entries = await readdir(path, { withFileTypes: true });
+  if (entries.length !== 0) {
+    fail(
+      "RELEASE_RUNTIME_INVALID",
+      "Runtime dependency closure retained a Playwright development package",
+    );
+  }
+  const directoryAfter = await lstat(path).catch(() => undefined);
+  if (
+    !directoryAfter?.isDirectory() || directoryAfter.isSymbolicLink() ||
+    !sameFixedFile(directoryBefore, directoryAfter)
+  ) {
+    fail(
+      "RELEASE_OUTPUT_UNSAFE",
+      "node_modules/@playwright changed while it was validated",
+    );
+  }
+}
+
 async function inspectTree(
   root,
   {
@@ -1453,6 +1483,15 @@ async function copyRuntimeTree(source, destination, relativePath, options = {}) 
       await assertGeneratedNpmBinDirectory(
         join(source, "node_modules/.bin"),
         join(source, "node_modules"),
+      );
+      continue;
+    }
+    if (
+      options.skipBin && relativePath === "node_modules" &&
+      entry.name === "@playwright"
+    ) {
+      await assertEmptyPlaywrightScopeDirectory(
+        join(source, "node_modules/@playwright"),
       );
       continue;
     }

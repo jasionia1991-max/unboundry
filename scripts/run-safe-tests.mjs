@@ -3332,13 +3332,8 @@ async function runImmutableReleaseOperationalCheck(
       fail("immutable release published npm bin links");
     }
     const publishedPlaywrightScope = join(releaseDirectory, "node_modules/@playwright");
-    const publishedPlaywrightScopeDetails = lstatSync(publishedPlaywrightScope);
-    if (
-      !publishedPlaywrightScopeDetails.isDirectory() ||
-      publishedPlaywrightScopeDetails.isSymbolicLink() ||
-      immutableReleaseEntries(publishedPlaywrightScope).length !== 0
-    ) {
-      fail("immutable release retained a Playwright development package");
+    if (existsSync(publishedPlaywrightScope)) {
+      fail("immutable release retained the Playwright development scope");
     }
     const manifestBytes = readFileSync(summary.manifestPath);
     if (sha256Bytes(manifestBytes) !== summary.manifestSha256) {
@@ -3421,11 +3416,10 @@ async function runImmutableReleaseOperationalCheck(
       fail("immutable release runtime command is not pinned");
     }
     const manifestPaths = new Set((manifest.files ?? []).map((entry) => entry.path));
-    if (!manifestPaths.has("node_modules/@playwright")) {
-      fail("immutable release manifest omitted the empty Playwright scope regression fixture");
-    }
-    if ([...manifestPaths].some((path) => path.startsWith("node_modules/@playwright/"))) {
-      fail("immutable release manifest retained a Playwright development package");
+    if ([...manifestPaths].some((path) =>
+      path === "node_modules/@playwright" || path.startsWith("node_modules/@playwright/")
+    )) {
+      fail("immutable release manifest retained the Playwright development scope");
     }
     if ([...manifestPaths].some((path) =>
       path === "legacy-runtime" || path.startsWith("legacy-runtime/") ||
@@ -3506,6 +3500,12 @@ async function runImmutableReleaseOperationalCheck(
     const bridgeManifestPaths = new Set(
       (bridgeManifest.files ?? []).map((entry) => entry.path),
     );
+    if (
+      existsSync(join(bridgeDirectory, "node_modules/@playwright")) ||
+      [...bridgeManifestPaths].some((path) =>
+        path === "node_modules/@playwright" || path.startsWith("node_modules/@playwright/")
+      )
+    ) fail("bridge immutable release retained the Playwright development scope");
     for (const required of [
       "dist/client/index.html",
       "legacy-runtime/dist/client/index.html",

@@ -516,6 +516,8 @@ test("tracked source snapshot pins registry inputs without claiming a Git HEAD o
   expect(builder).toContain('entry.name === ".bin"');
   expect(builder).toContain('entry.path.startsWith("@playwright/")');
   expect(builder).toContain('entry.path === "@playwright" && entry.type !== "directory"');
+  expect(builder).toContain("assertEmptyPlaywrightScopeDirectory");
+  expect(builder).toContain('entry.name === "@playwright"');
   expect(builder).toContain("npm cache must be an isolated external directory");
   const bubblewrapIsolation = builder.match(
     /const bubblewrapIsolationArguments = Object\.freeze\(\[([\s\S]*?)\]\);/,
