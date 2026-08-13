@@ -6,6 +6,7 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  realpath,
   rm,
   symlink,
   writeFile,
@@ -14,6 +15,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { expect, test } from "./safe-test";
+import {
+  attestReleaseSourcePair,
+  RELEASE_SOURCE_PAIR_MODES,
+// @ts-expect-error Release source-pair logic is intentionally shared with Node scripts.
+} from "../scripts/lib/release-source-pair.mjs";
 
 test.describe.configure({ mode: "serial" });
 
@@ -32,6 +38,27 @@ type CommandResult = Readonly<{
   stderr: string;
   stdout: string;
 }>;
+
+async function commit(repository: string, message: string) {
+  const result = await command(
+    "git",
+    [
+      "-c",
+      "user.name=M94",
+      "-c",
+      "user.email=m94@example.invalid",
+      "commit",
+      "--quiet",
+      "-am",
+      message,
+    ],
+    repository,
+  );
+  expect(result.exitCode).toBe(0);
+  const identity = await command("git", ["rev-parse", "HEAD"], repository);
+  expect(identity.exitCode).toBe(0);
+  return identity.stdout.trim();
+}
 
 async function command(
   command: string,
@@ -118,8 +145,16 @@ async function createSyntheticRepository(options: {
     private: true,
     scripts: { build: "tsc --noEmit && vite build" },
     type: "module",
-    version: "0.0.0-m94",
+    version: "0.6.0",
   }, null, 2)}\n`);
+  await write(
+    join(repository, "scripts/migrate-schema37-to39.mjs"),
+    "throw new Error('synthetic migration is never executed');\n",
+  );
+  await write(
+    join(repository, "scripts/node-typescript-runtime.mjs"),
+    "export {};\n",
+  );
   await write(join(repository, "vendor/typescript/package.json"), `${JSON.stringify({
     bin: { tsc: "bin/tsc" },
     name: "typescript",
@@ -241,11 +276,15 @@ function builderArguments(fixture: Awaited<ReturnType<typeof createSyntheticRepo
     releaseBuilder,
     "--artifact-class", "synthetic-test",
     "--commit", fixture.commit,
+    "--expected-version", "0.6.0",
+    "--formal-release-commit", "false",
     "--ffmpeg-executable", fixture.ffmpegExecutable,
     "--ffprobe-executable", fixture.ffprobeExecutable,
     "--release-root", fixture.releases,
     "--scratch-root", fixture.scratch,
     "--npm-cache", fixture.npmCache,
+    "--release-id", "v0.6.0",
+    "--release-role", "final",
     "--target-platform", process.platform,
     "--target-arch", process.arch,
     "--target-libc", runtimeLibc,
@@ -290,10 +329,90 @@ test("safe runner owns the clean, repeat, and malicious synthetic release execut
     expect(await entries(fixture.releases)).toEqual([]);
     const runner = await readFile(join(process.cwd(), "scripts/run-safe-tests.mjs"), "utf8");
     expect(runner).toContain("immutable-release-builder");
-    expect(runner).toContain("synthetic local-tarball operational fixture exercises Darwin builder mechanics without publishing npm bin links");
+    expect(runner).toContain("Full snapshot bridge/final fixtures prove the release closure");
     expect(runner).toContain("specs.includes(IMMUTABLE_RELEASE_SPEC)");
+    expect(runner).toContain("createSnapshotImmutableReleasePairFixture");
+    const snapshotFixture = runner.slice(
+      runner.indexOf("async function createSnapshotImmutableReleaseFixture"),
+      runner.indexOf("function immutableReleaseBuilderArguments"),
+    );
+    expect(snapshotFixture).toContain("await sandboxedNode(");
+    expect(snapshotFixture).toContain("RELEASE_SOURCE_PAIR_MODES.formal");
+    expect(snapshotFixture).toContain("repository: repositoryRoot");
+    expect(snapshotFixture).toContain("sourceRecordsFingerprint(finalCommit");
+    expect(runner).toContain("bridgeSourceVersion");
+    expect(runner).toContain("expectedBuilderInvocations: immutableReleaseSelected ? options.repeat * 5 : 0");
+    expect(runner).toContain("immutableReleaseBuilderInvocations");
+    expect(runner).toContain("builderInvocations += 1");
+    expect(runner).toContain("await invokeBuilder(final)");
+    expect(runner).toContain("await invokeBuilder(bridge)");
+    expect(runner).toContain("await invokeBuilder(malicious)");
+    expect(runner).toContain("[bridge, final, malicious].filter(Boolean)");
   } finally {
     await rm(fixture.root, { force: true, recursive: true });
+  }
+});
+
+test("release source-pair proof binds a synthetic direct child to exactly three version fields", async () => {
+  const root = await mkdtemp(join(tmpdir(), "unboundry-m94-source-pair-"));
+  await chmod(root, 0o700);
+  const lexicalRepository = join(root, "repo");
+  await mkdir(lexicalRepository, { mode: 0o700 });
+  const repository = await realpath(lexicalRepository);
+  try {
+    expect((await command("git", ["init", "--quiet"], repository)).exitCode).toBe(0);
+    const packageDocument = {
+      name: "m94-release-source-pair",
+      private: true,
+      version: "0.5.2",
+    };
+    const lockDocument = {
+      lockfileVersion: 3,
+      name: "m94-release-source-pair",
+      packages: { "": { name: "m94-release-source-pair", version: "0.5.2" } },
+      requires: true,
+      version: "0.5.2",
+    };
+    await write(
+      join(repository, "package.json"),
+      `${JSON.stringify(packageDocument, null, 2)}\n`,
+    );
+    await write(
+      join(repository, "package-lock.json"),
+      `${JSON.stringify(lockDocument, null, 2)}\n`,
+    );
+    expect((await command("git", ["add", "--all"], repository)).exitCode).toBe(0);
+    const bridgeCommit = await commit(repository, "bridge 0.5.2");
+    packageDocument.version = "0.6.0";
+    lockDocument.version = "0.6.0";
+    lockDocument.packages[""].version = "0.6.0";
+    await write(
+      join(repository, "package.json"),
+      `${JSON.stringify(packageDocument, null, 2)}\n`,
+    );
+    await write(
+      join(repository, "package-lock.json"),
+      `${JSON.stringify(lockDocument, null, 2)}\n`,
+    );
+    const finalCommit = await commit(repository, "final 0.6.0");
+    const relationship = await attestReleaseSourcePair({
+      finalCommit,
+      mode: RELEASE_SOURCE_PAIR_MODES.synthetic,
+      repository,
+    });
+    expect(relationship).toMatchObject({
+      bridgeCommit,
+      bridgeSourceVersion: "0.5.2",
+      changedPaths: ["package-lock.json", "package.json"],
+      crossCommitProof: false,
+      finalCommit,
+      finalParentIsBridgeCommit: true,
+      finalSourceVersion: "0.6.0",
+      mode: RELEASE_SOURCE_PAIR_MODES.synthetic,
+      proofSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+  } finally {
+    await rm(root, { force: true, recursive: true });
   }
 });
 
@@ -371,7 +490,7 @@ test("tracked source snapshot pins registry inputs without claiming a Git HEAD o
     .filter(([path]) => path.startsWith("node_modules/"));
   expect(packageDocument).toMatchObject({
     name: "unboundry-private-replica",
-    version: "0.5.1",
+    version: expect.stringMatching(/^0\.(?:5\.2|6\.0)$/),
   });
   expect(registryPackages.length).toBeGreaterThan(0);
   expect(registryPackages.every(([, entry]) =>
@@ -422,8 +541,30 @@ test("tracked source snapshot pins registry inputs without claiming a Git HEAD o
   expect(builder).toContain('result.push("--proc", "/proc", "--dev", "/dev")');
   expect(builder).toContain('{ ...options, env: sourceControlEnvironment() }');
   expect(builder).toContain("const readOnly = [source, npmCache]");
+  expect(builder).toContain("const readOnlySandboxPaths = [...new Set([source, npmCache])]");
   expect(builder).toContain("const writable = [...new Set([home, auditFile, ...writablePaths])]");
   expect(builder).toContain("options.timeout ?? 20 * 60_000");
   expect(builder).toContain("await assertProcessGroupStopped(processGroupId)");
   expect(builder).toContain("Production releases require the clean Linux x64 glibc builder");
+  expect(builder).toContain("Production artifacts require a formal release commit");
+  expect(builder).toContain('path: "legacy-runtime/dist/client/index.html"');
+  expect(builder).toContain("parentDependencyConfigLoadSmoke");
+  expect(builder).toContain("legacy parent dependency config-load smoke");
+  expect(builder).toContain("exact-v0.5.1-version-overlay");
+  expect(builder).toContain("originalLockSha256");
+  expect(builder).toContain(
+    "cd98d90aaae56de756164fa0434dfb6bb144598183536c6d91067308e8d24517",
+  );
+  expect(builder).toContain("productionDependencies");
+  expect(builder).toContain("RELEASE_SCRATCH_CLEANUP_FAILED");
+  expect(builder).toContain("removePrivateBuildScratch");
+  const prePublicationCleanup = builder.indexOf(
+    "await cleanupPrivateBuildScratch(workRoot, roots.scratch);",
+  );
+  const terminalPublication = builder.indexOf("await rm(incompleteMarker);");
+  expect(prePublicationCleanup).toBeGreaterThan(-1);
+  expect(terminalPublication).toBeGreaterThan(prePublicationCleanup);
+  expect(
+    builder.slice(prePublicationCleanup, terminalPublication),
+  ).toContain("workRoot = undefined;");
 });

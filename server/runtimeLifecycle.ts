@@ -50,8 +50,12 @@ type RuntimeLogger = (record: RuntimeLogRecord) => void;
 type StreamCloser = (event: RuntimeControlEvent) => void;
 
 export type RuntimeLifecycleOptions = Readonly<{
-  beforeActiveLeaseRelease?: () => Promise<void> | void;
+  allowLegacySchema37Business?: boolean;
+  beforeActiveLeaseRelease?: (
+    remainingDeadlineMs: number,
+  ) => Promise<void> | void;
   dataDirectory?: string | (() => string);
+  legacyRuntimeReadinessGuard?: () => boolean;
   legacyStandbyDatabaseGuard?: (database: DatabaseSync) => boolean;
   logger?: RuntimeLogger;
   readinessDatabaseGuard?: (database: DatabaseSync) => boolean;
@@ -204,6 +208,7 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
   let businessSchemaAdmission: CachedBusinessSchemaAdmission | undefined;
   let activeDatabaseIdentity: DatabaseAdmissionIdentity | undefined;
   let databaseIdentityRestartRequired = false;
+  let legacySchema37BusinessActive = false;
   let schema37RestartRequired = false;
 
   function dataDirectory() {
@@ -307,12 +312,31 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
 
   function observeStartupDatabaseProbe(probe: DatabaseProbe) {
     if (!probe.ok) {
-      if (probe.code === "DATABASE_MIGRATION_INCOMPLETE") {
+      if (
+        legacySchema37BusinessActive ||
+        probe.code === "DATABASE_MIGRATION_INCOMPLETE"
+      ) {
         latchSchema37Standby();
       }
       return !schema37RestartRequired;
     }
     if (probe.standby) {
+      if (!options.allowLegacySchema37Business) {
+        latchSchema37Standby();
+        return false;
+      }
+      legacySchema37BusinessActive = true;
+      let directory: string;
+      try {
+        directory = dataDirectory();
+      } catch {
+        return false;
+      }
+      return establishActiveDatabaseIdentity(
+        observeDatabaseAdmissionIdentity(directory),
+      );
+    }
+    if (legacySchema37BusinessActive) {
       latchSchema37Standby();
       return false;
     }
@@ -432,6 +456,7 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
     code:
       | "SERVICE_DATABASE_UNAVAILABLE"
       | "SERVICE_ACTIVE_LEASE_UNAVAILABLE"
+      | "SERVICE_LEGACY_RUNTIME_UNAVAILABLE"
       | "SERVICE_MAINTENANCE"
       | "SERVICE_RESTART_REQUIRED"
       | "SERVICE_RUNTIME_ROLE_NOT_ACTIVE"
@@ -453,6 +478,8 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
         ? "Service runtime is not active"
         : code === "SERVICE_ACTIVE_LEASE_UNAVAILABLE"
         ? "Service active lease is unavailable"
+        : code === "SERVICE_LEGACY_RUNTIME_UNAVAILABLE"
+        ? "Legacy bridge runtime is unavailable"
         : code === "SERVICE_SHUTTING_DOWN"
         ? "Service is shutting down"
         : code === "SERVICE_SCHEMA_STANDBY"
@@ -535,8 +562,26 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
         return;
       }
       if (admission.ok && admission.standby) {
+        if (!options.allowLegacySchema37Business) {
+          latchSchema37Standby();
+          rejectUnavailable(request, response, "SERVICE_SCHEMA_STANDBY");
+          return;
+        }
+        if (!options.legacyRuntimeReadinessGuard?.()) {
+          rejectUnavailable(
+            request,
+            response,
+            "SERVICE_LEGACY_RUNTIME_UNAVAILABLE",
+          );
+          return;
+        }
+        legacySchema37BusinessActive = true;
+      } else if (legacySchema37BusinessActive) {
+        // The legacy process is pinned to schema 37 for its entire lifetime.
+        // An in-place one-shot migration must never turn it into a schema-39
+        // writer; stop and restart through the current engine instead.
         latchSchema37Standby();
-        rejectUnavailable(request, response, "SERVICE_SCHEMA_STANDBY");
+        rejectUnavailable(request, response, "SERVICE_RESTART_REQUIRED");
         return;
       }
       if (schema37RestartRequired) {
@@ -553,6 +598,17 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
           identity: finalIdentity,
           probe: admission,
         });
+      } else if (
+        admission.ok && admission.standby &&
+        options.allowLegacySchema37Business && finalIdentity
+      ) {
+        // Do not cache schema-37 admission: every bridge request reprobes so an
+        // externally attempted migration fails closed before reaching v0.5.1.
+        businessSchemaAdmission = undefined;
+        if (!establishActiveDatabaseIdentity(finalIdentity)) {
+          rejectUnavailable(request, response, "SERVICE_RESTART_REQUIRED");
+          return;
+        }
       }
       if (databaseIdentityRestartRequired) {
         rejectUnavailable(request, response, "SERVICE_RESTART_REQUIRED");
@@ -925,7 +981,12 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
       });
       return;
     }
-    if (probe.ok && probe.standby) latchSchema37Standby();
+    if (
+      probe.ok && probe.standby && !options.allowLegacySchema37Business
+    ) latchSchema37Standby();
+    if (
+      legacySchema37BusinessActive && (!probe.ok || !probe.standby)
+    ) latchSchema37Standby();
     if (schema37RestartRequired && (!probe.ok || !probe.standby)) {
       context.code = "SERVICE_RESTART_REQUIRED";
       response.setHeader("Retry-After", String(retryAfterSeconds));
@@ -989,7 +1050,28 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
       });
       return;
     }
-    if (!probe.standby && !establishActiveDatabaseIdentity(finalIdentity)) {
+    if (
+      probe.standby && options.allowLegacySchema37Business &&
+      !options.legacyRuntimeReadinessGuard?.()
+    ) {
+      context.code = "SERVICE_LEGACY_RUNTIME_UNAVAILABLE";
+      response.setHeader("Retry-After", String(retryAfterSeconds));
+      json(response, 503, {
+        status: "not-ready",
+        code: "SERVICE_LEGACY_RUNTIME_UNAVAILABLE",
+        mode: "schema37-bridge-unavailable",
+        mutationsAccepted: false,
+        activeLeaseHeld: roleSnapshot?.activeLeaseHeld ?? false,
+        databaseProbe: "read-only",
+        schemaVersion: probe.schemaVersion,
+        requestId: context.requestId,
+      });
+      return;
+    }
+    if (
+      (!probe.standby || options.allowLegacySchema37Business) &&
+      !establishActiveDatabaseIdentity(finalIdentity)
+    ) {
       context.code = "SERVICE_RESTART_REQUIRED";
       response.setHeader("Retry-After", String(retryAfterSeconds));
       json(response, 503, {
@@ -1002,6 +1084,9 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
         requestId: context.requestId,
       });
       return;
+    }
+    if (probe.standby && options.allowLegacySchema37Business) {
+      legacySchema37BusinessActive = true;
     }
     // The schema probe and logical guards above precede the active latch. Close
     // the last path-replacement window before advertising readiness.
@@ -1027,12 +1112,15 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
     json(response, 200, {
       status: "ready",
       mode: probe.standby
-        ? "schema37-health-only-standby"
+        ? options.allowLegacySchema37Business
+          ? "schema37-bridge-active"
+          : "schema37-health-only-standby"
         : maintenance || roleSnapshot?.role === "maintenance"
         ? "maintenance-api-blocked"
         : "active",
       mutationsAccepted:
-        !maintenance && !probe.standby &&
+        !maintenance && (!probe.standby ||
+          Boolean(options.allowLegacySchema37Business)) &&
         (!roleSnapshot || (
           roleSnapshot.role === "active" && roleSnapshot.activeLeaseHeld &&
           !roleSnapshot.draining
@@ -1081,6 +1169,7 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
       shutdownDeadlineMs,
       120_000,
     );
+    const shutdownStartedAt = Date.now();
     // Freeze both HTTP and detached writer/Provider admission before asking
     // streams or current handlers to settle. The active lease is deliberately
     // released only after both drain domains report zero.
@@ -1095,7 +1184,11 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
         ? result
         : { ...result, drained: false };
       if (combined.drained) {
-        await options.beforeActiveLeaseRelease?.();
+        const remainingDeadlineMs = Math.max(
+          0,
+          boundedDeadline - (Date.now() - shutdownStartedAt),
+        );
+        await options.beforeActiveLeaseRelease?.(remainingDeadlineMs);
         options.roleCoordinator?.releaseAfterDrain();
       }
       writeLog("lifecycle", {

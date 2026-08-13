@@ -52,6 +52,25 @@ const MAXIMUM_TREE_ENTRIES = 500_000;
 const commitPattern = /^[0-9a-f]{40}$/;
 const releaseIdPattern = /^[a-z0-9][a-z0-9._-]{0,127}$/;
 const sha256Pattern = /^[0-9a-f]{64}$/;
+const releaseVersionByRole = Object.freeze({
+  bridge: "0.5.2",
+  final: "0.6.0",
+});
+const exactLegacyRuntimeContract = Object.freeze({
+  archiveSha256: "e7a619c4d9dbaca14d1032ef18f83f81dcfb36c9402976debc4f8f546c8bb5d0",
+  commitTree: "0990690bd9828757b82f59861f950ce6ff9ed4f8",
+  files: Object.freeze({
+    "package.json": "142da3969ae57ca686507377777b67783e9375474282467bc54dd9c77c60fa91",
+    "server/canvasPersistence.ts": "ec1b2612fc8b974347744eee97bc2428ae1c29ab0c89177f5e50f2ef05923a7b",
+    "server/database.ts": "3d907b9ea518b5e6ec3c1a03d0c68877cd8a28c49d3d20add173efc777103ed4",
+    "vite.config.ts": "759d61ec22585cb447e80edd675efd0af1228a61448fd0e6829998ad46065786",
+  }),
+  originalInventorySha256:
+    "cd98d90aaae56de756164fa0434dfb6bb144598183536c6d91067308e8d24517",
+  peeledCommit: "7f7d6177a564056a6f41ff83dfb7ba913b21603b",
+  tag: "v0.5.1",
+  trackedFiles: 371,
+});
 const forbiddenSegments = new Set([
   "backups",
   "data",
@@ -64,6 +83,10 @@ const runtimeSourceRoots = Object.freeze(["client", "server", "types"]);
 const runtimeSourceFiles = Object.freeze([
   "vite.config.ts",
   "spec/unboundry-state-fixtures.json",
+]);
+const bridgeMigrationSourceFiles = Object.freeze([
+  "scripts/migrate-schema37-to39.mjs",
+  "scripts/node-typescript-runtime.mjs",
 ]);
 const repositoryRoot = await realpath(resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -121,7 +144,11 @@ function parseArguments(argv) {
     "--commit",
     "--ffmpeg-executable",
     "--ffprobe-executable",
+    "--expected-version",
+    "--formal-release-commit",
+    "--legacy-source-archive",
     "--npm-cache",
+    "--release-role",
     "--release-id",
     "--release-root",
     "--scratch-root",
@@ -145,7 +172,11 @@ function parseArguments(argv) {
     "--commit",
     "--ffmpeg-executable",
     "--ffprobe-executable",
+    "--expected-version",
+    "--formal-release-commit",
     "--npm-cache",
+    "--release-role",
+    "--release-id",
     "--release-root",
     "--scratch-root",
     "--target-arch",
@@ -203,6 +234,43 @@ function parseArguments(argv) {
       "Production releases require the fixed Node and Ubuntu media executable paths",
     );
   }
+  const releaseRole = values.get("--release-role");
+  const expectedVersion = values.get("--expected-version");
+  const formalReleaseCommitRaw = values.get("--formal-release-commit");
+  if (!new Set(["true", "false"]).has(formalReleaseCommitRaw)) {
+    fail("RELEASE_ARGUMENT_INVALID", "Formal release commit must be true or false");
+  }
+  const formalReleaseCommit = formalReleaseCommitRaw === "true";
+  if (artifactClass === "synthetic-test" && formalReleaseCommit) {
+    fail("RELEASE_ARGUMENT_INVALID", "Synthetic artifacts cannot claim a formal release commit");
+  }
+  if (artifactClass === "production" && !formalReleaseCommit) {
+    fail("RELEASE_ARGUMENT_INVALID", "Production artifacts require a formal release commit");
+  }
+  if (!Object.hasOwn(releaseVersionByRole, releaseRole)) {
+    fail("RELEASE_ARGUMENT_INVALID", "Release role must be bridge or final");
+  }
+  if (expectedVersion !== releaseVersionByRole[releaseRole]) {
+    fail(
+      "RELEASE_VERSION_INVALID",
+      `Release role ${releaseRole} requires version ${releaseVersionByRole[releaseRole]}`,
+    );
+  }
+  if (releaseId !== `v${expectedVersion}`) {
+    fail("RELEASE_VERSION_INVALID", "Release id must exactly match the expected package version");
+  }
+  const legacySourceArchive = values.has("--legacy-source-archive")
+    ? exactAbsolutePath(values.get("--legacy-source-archive"), "Legacy source archive")
+    : undefined;
+  if (
+    (releaseRole === "bridge" && !legacySourceArchive) ||
+    (releaseRole === "final" && legacySourceArchive)
+  ) {
+    fail(
+      "RELEASE_ARGUMENT_INVALID",
+      "Only bridge releases require one exact legacy source archive",
+    );
+  }
   return Object.freeze({
     artifactClass,
     buildArch: process.arch,
@@ -217,8 +285,12 @@ function parseArguments(argv) {
       values.get("--ffprobe-executable"),
       "ffprobe executable",
     ),
+    expectedVersion,
+    formalReleaseCommit,
+    legacySourceArchive,
     npmCache: exactAbsolutePath(values.get("--npm-cache"), "npm cache"),
     releaseId,
+    releaseRole,
     releaseRoot: exactAbsolutePath(values.get("--release-root"), "release root"),
     scratchRoot: exactAbsolutePath(values.get("--scratch-root"), "scratch root"),
   });
@@ -427,9 +499,10 @@ async function createDarwinBuildSandbox(
   { auditFile, home, npmCache, source, writablePaths },
 ) {
   const nodeRoot = dirname(dirname(process.execPath));
-  const privateWorkRoot = dirname(source);
+  const readOnlySandboxPaths = [...new Set([source, npmCache])]
+    .filter((entry) => !writablePaths.some((writable) => containsPath(writable, entry)));
   const metadataAncestors = new Set(["/private", "/tmp", "/var"]);
-  for (const entry of [nodeRoot, privateWorkRoot, npmCache]) {
+  for (const entry of [nodeRoot, ...readOnlySandboxPaths, ...writablePaths]) {
     let ancestor = dirname(entry);
     while (ancestor !== "/") {
       metadataAncestors.add(ancestor);
@@ -457,8 +530,8 @@ async function createDarwinBuildSandbox(
       `(subpath ${sandboxLiteral("/Library/Apple")}) ` +
       `(subpath ${sandboxLiteral("/private/var/db/timezone")}) ` +
       `(subpath ${sandboxLiteral(nodeRoot)}) ` +
-      `(subpath ${sandboxLiteral(privateWorkRoot)}) ` +
-      `(subpath ${sandboxLiteral(npmCache)}) ` +
+      `${readOnlySandboxPaths.map((entry) => `(subpath ${sandboxLiteral(entry)})`).join(" ")} ` +
+      `${writablePaths.map((entry) => `(subpath ${sandboxLiteral(entry)})`).join(" ")} ` +
       `(literal ${sandboxLiteral("/dev/null")}) ` +
       `(literal ${sandboxLiteral("/dev/urandom")}))`,
     `(allow file-read-data (literal ${sandboxLiteral("/")}))`,
@@ -471,8 +544,8 @@ async function createDarwinBuildSandbox(
       `(subpath ${sandboxLiteral("/Library/Apple")}) ` +
       `(subpath ${sandboxLiteral("/private/var/db/timezone")}) ` +
       `(subpath ${sandboxLiteral(nodeRoot)}) ` +
-      `(subpath ${sandboxLiteral(privateWorkRoot)}) ` +
-      `(subpath ${sandboxLiteral(npmCache)}) ` +
+      `${readOnlySandboxPaths.map((entry) => `(subpath ${sandboxLiteral(entry)})`).join(" ")} ` +
+      `${writablePaths.map((entry) => `(subpath ${sandboxLiteral(entry)})`).join(" ")} ` +
       `(literal ${sandboxLiteral("/dev/null")}) ` +
       `(literal ${sandboxLiteral("/dev/urandom")}))`,
     `(allow file-write* (subpath ${sandboxLiteral(home)}) ` +
@@ -877,6 +950,133 @@ async function extractCommit(commit, sourceDirectory) {
   }
 }
 
+async function normalizeExactLegacySourceModes(root) {
+  let entriesSeen = 0;
+  async function visit(directory, depth = 0) {
+    if (depth > MAXIMUM_TREE_DEPTH) {
+      fail("RELEASE_LEGACY_RUNTIME_INVALID", "Legacy source tree is too deep");
+    }
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      entriesSeen += 1;
+      if (entriesSeen > MAXIMUM_TREE_ENTRIES) {
+        fail("RELEASE_LEGACY_RUNTIME_INVALID", "Legacy source tree has too many entries");
+      }
+      const path = join(directory, entry.name);
+      const details = await lstat(path);
+      if (!trustedOwner(details) || details.isSymbolicLink()) {
+        fail("RELEASE_LEGACY_RUNTIME_INVALID", "Legacy archive contains an unsafe entry");
+      }
+      if (details.isDirectory()) {
+        await chmod(path, 0o755);
+        await visit(path, depth + 1);
+      } else if (details.isFile() && details.nlink === 1) {
+        await chmod(path, details.mode & 0o111 ? 0o755 : 0o644);
+      } else {
+        fail("RELEASE_LEGACY_RUNTIME_INVALID", "Legacy archive contains a special entry");
+      }
+    }
+  }
+  await visit(root);
+}
+
+async function prepareExactLegacyRuntimeSource(
+  archivePath,
+  legacySource,
+  workRoot,
+  expectedVersion,
+) {
+  const fixedArchive = await readFixedRegularFile(
+    archivePath,
+    "Exact v0.5.1 legacy source archive",
+  );
+  const archiveSha256 = createHash("sha256").update(fixedArchive.bytes).digest("hex");
+  if (archiveSha256 !== exactLegacyRuntimeContract.archiveSha256) {
+    fail("RELEASE_LEGACY_RUNTIME_INVALID", "Legacy source archive is not exact v0.5.1");
+  }
+  const pinnedArchive = join(workRoot, "exact-v0.5.1.tar");
+  await writeFile(pinnedArchive, fixedArchive.bytes, { flag: "wx", mode: 0o400 });
+  await run("tar", ["-x", "-f", pinnedArchive, "-C", legacySource], {
+    env: sourceControlEnvironment(),
+  });
+  await normalizeExactLegacySourceModes(legacySource);
+  const original = await inspectTree(legacySource, { allowEnvironmentExample: true });
+  const originalFiles = original.filter((entry) => entry.type === "file");
+  const originalInventorySha256 = createHash("sha256")
+    .update(JSON.stringify(original))
+    .digest("hex");
+  if (originalFiles.length !== exactLegacyRuntimeContract.trackedFiles) {
+    fail("RELEASE_LEGACY_RUNTIME_INVALID", "Legacy source inventory is incomplete");
+  }
+  if (originalInventorySha256 !== exactLegacyRuntimeContract.originalInventorySha256) {
+    fail("RELEASE_LEGACY_RUNTIME_INVALID", "Legacy source inventory is not exact v0.5.1");
+  }
+  for (const [path, expectedSha256] of Object.entries(exactLegacyRuntimeContract.files)) {
+    const entry = originalFiles.find((candidate) => candidate.path === path);
+    if (entry?.sha256 !== expectedSha256) {
+      fail("RELEASE_LEGACY_RUNTIME_INVALID", `Legacy source blob changed: ${path}`);
+    }
+  }
+  const packagePath = join(legacySource, "package.json");
+  const lockPath = join(legacySource, "package-lock.json");
+  const packageDocument = JSON.parse(await readFile(packagePath, "utf8"));
+  const lockDocument = JSON.parse(await readFile(lockPath, "utf8"));
+  if (
+    packageDocument.version !== "0.5.1" || lockDocument.version !== "0.5.1" ||
+    lockDocument.packages?.[""]?.version !== "0.5.1"
+  ) {
+    fail("RELEASE_LEGACY_RUNTIME_INVALID", "Legacy version overlay source is invalid");
+  }
+  const originalLock = originalFiles.find((entry) => entry.path === "package-lock.json");
+  const productionDependencies = Object.fromEntries(
+    Object.keys(packageDocument.dependencies ?? {}).sort(bytewiseCompare).map((name) => {
+      const version = lockDocument.packages?.[`node_modules/${name}`]?.version;
+      if (typeof version !== "string" || !version) {
+        fail(
+          "RELEASE_LEGACY_RUNTIME_INVALID",
+          `Legacy production dependency is not lock-bound: ${name}`,
+        );
+      }
+      return [name, Object.freeze({
+        requested: packageDocument.dependencies[name],
+        version,
+      })];
+    }),
+  );
+  if (!originalLock?.sha256 || Object.keys(productionDependencies).length === 0) {
+    fail("RELEASE_LEGACY_RUNTIME_INVALID", "Legacy build inputs are incomplete");
+  }
+  packageDocument.version = expectedVersion;
+  lockDocument.version = expectedVersion;
+  lockDocument.packages[""].version = expectedVersion;
+  await writeFile(packagePath, `${JSON.stringify(packageDocument, null, 2)}\n`, { mode: 0o600 });
+  await writeFile(lockPath, `${JSON.stringify(lockDocument, null, 2)}\n`, { mode: 0o600 });
+  const overlaid = await inspectTree(legacySource, { allowEnvironmentExample: true });
+  const changedPaths = overlaid.filter((entry) => {
+    const before = original.find((candidate) => candidate.path === entry.path);
+    return JSON.stringify(before) !== JSON.stringify(entry);
+  }).map((entry) => entry.path);
+  if (JSON.stringify(changedPaths) !== JSON.stringify(["package-lock.json", "package.json"])) {
+    fail("RELEASE_LEGACY_RUNTIME_INVALID", "Legacy source overlay changed an unapproved path");
+  }
+  return Object.freeze({
+    evidence: Object.freeze({
+      archiveSha256,
+      commitTree: exactLegacyRuntimeContract.commitTree,
+      originalLockSha256: originalLock.sha256,
+      originalInventorySha256,
+      overlay: Object.freeze({
+        "package-lock.json": await sha256File(lockPath),
+        "package.json": await sha256File(packagePath),
+      }),
+      peeledCommit: exactLegacyRuntimeContract.peeledCommit,
+      productionDependencies: Object.freeze(productionDependencies),
+      tag: exactLegacyRuntimeContract.tag,
+      trackedFiles: exactLegacyRuntimeContract.trackedFiles,
+    }),
+    overlaidInventory: overlaid,
+  });
+}
+
 function normalizedRelativePath(path, label) {
   const parts = path.split("/");
   if (
@@ -1167,8 +1367,11 @@ async function inspectTree(
     for (const entry of entries) {
       const path = join(directory, entry.name);
       const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
-      if (excludeNodeModulesBin && relativePath === ".bin") {
-        await assertGeneratedNpmBinDirectory(path, root);
+      if (
+        excludeNodeModulesBin && entry.name === ".bin" &&
+        basename(directory) === "node_modules"
+      ) {
+        await assertGeneratedNpmBinDirectory(path, directory);
         continue;
       }
       if (excludeIncomplete && relativePath === ".incomplete") continue;
@@ -1207,7 +1410,10 @@ async function inspectTree(
           type: "file",
         });
       } else {
-        fail("RELEASE_OUTPUT_UNSAFE", "Release output contains a link or special file");
+        fail(
+          "RELEASE_OUTPUT_UNSAFE",
+          `Release output contains a link or special file: ${relativePath}`,
+        );
       }
     }
     const directoryAfter = await lstat(directory).catch(() => undefined);
@@ -1387,6 +1593,70 @@ async function verifyNetworkAudit(path) {
   return Object.freeze({ blockedAttempts: 0, guardLoads: guardLoads.length });
 }
 
+async function removePrivateBuildScratch(path, scratchRoot) {
+  const canonical = await realpath(path).catch(() => undefined);
+  if (canonical !== path || !containsPath(scratchRoot, path) || path === scratchRoot) {
+    fail("RELEASE_SCRATCH_CLEANUP_FAILED", "Build scratch path is no longer private");
+  }
+  async function makeDirectoriesWritable(directory, depth = 0) {
+    if (depth > MAXIMUM_TREE_DEPTH) {
+      fail("RELEASE_SCRATCH_CLEANUP_FAILED", "Build scratch tree is too deep");
+    }
+    const before = await lstat(directory).catch(() => undefined);
+    if (
+      !before?.isDirectory() || before.isSymbolicLink() ||
+      !trustedOwner(before) || (before.mode & 0o022) !== 0
+    ) {
+      fail("RELEASE_SCRATCH_CLEANUP_FAILED", "Build scratch directory is unsafe");
+    }
+    await chmod(directory, 0o700);
+    const opened = await lstat(directory).catch(() => undefined);
+    if (
+      !opened?.isDirectory() || opened.isSymbolicLink() ||
+      opened.dev !== before.dev || opened.ino !== before.ino ||
+      opened.uid !== before.uid || (opened.mode & 0o777) !== 0o700
+    ) {
+      fail("RELEASE_SCRATCH_CLEANUP_FAILED", "Build scratch directory changed");
+    }
+    const entries = await readdir(directory, { withFileTypes: true });
+    if (entries.length > MAXIMUM_TREE_ENTRIES) {
+      fail("RELEASE_SCRATCH_CLEANUP_FAILED", "Build scratch tree has too many entries");
+    }
+    for (const entry of entries) {
+      const entryPath = join(directory, entry.name);
+      const details = await lstat(entryPath).catch(() => undefined);
+      if (!details || !trustedOwner(details)) {
+        fail("RELEASE_SCRATCH_CLEANUP_FAILED", "Build scratch entry is unsafe");
+      }
+      if (details.isDirectory() && !details.isSymbolicLink()) {
+        await makeDirectoriesWritable(entryPath, depth + 1);
+      } else if (
+        !details.isFile() && !details.isSymbolicLink()
+      ) {
+        fail("RELEASE_SCRATCH_CLEANUP_FAILED", "Build scratch contains a special entry");
+      }
+    }
+  }
+  await makeDirectoriesWritable(path);
+  await rm(path, { recursive: true });
+  if (await lstat(path).then(() => true, () => false)) {
+    fail("RELEASE_SCRATCH_CLEANUP_FAILED", "Build scratch residue remains");
+  }
+}
+
+async function cleanupPrivateBuildScratch(path, scratchRoot) {
+  try {
+    await assertPinnedDirectory(scratchRoot, "Scratch root");
+    await removePrivateBuildScratch(path, scratchRoot.path);
+    await assertPinnedDirectory(scratchRoot, "Scratch root");
+  } catch {
+    throw new ReleaseBuildError(
+      "RELEASE_SCRATCH_CLEANUP_FAILED",
+      "Private release build scratch could not be removed completely",
+    );
+  }
+}
+
 async function main() {
   if (process.versions.node !== REQUIRED_NODE_VERSION) {
     fail("RELEASE_RUNTIME_INVALID", `Node ${REQUIRED_NODE_VERSION} is required`);
@@ -1436,6 +1706,12 @@ async function main() {
     const source = join(workRoot, "source");
     const runtimeSource = join(workRoot, "runtime-source");
     const viteCache = join(workRoot, "vite-cache");
+    const legacySource = options.releaseRole === "bridge"
+      ? join(source, ".unboundry-legacy-build")
+      : undefined;
+    const legacyViteCache = options.releaseRole === "bridge"
+      ? join(workRoot, "legacy-vite-cache")
+      : undefined;
     const home = join(workRoot, "home");
     const networkAudit = join(workRoot, "network-audit.jsonl");
     const installSandboxProfile = join(workRoot, "install.sb");
@@ -1445,8 +1721,10 @@ async function main() {
       mkdir(source, { mode: 0o700 }),
       mkdir(runtimeSource, { mode: 0o700 }),
       mkdir(viteCache, { mode: 0o700 }),
+      ...(legacyViteCache ? [mkdir(legacyViteCache, { mode: 0o700 })] : []),
       mkdir(home, { mode: 0o700 }),
     ]);
+    if (legacySource) await mkdir(legacySource, { mode: 0o700 });
     await writeFile(networkAudit, "", { flag: "wx", mode: 0o600 });
     await extractCommit(options.commit, source);
     const installSandboxDocument = await createBuildSandbox(installSandboxProfile, {
@@ -1454,7 +1732,13 @@ async function main() {
       home,
       npmCache,
       source,
-      writablePaths: [source, runtimeSource, viteCache],
+      writablePaths: [
+        source,
+        runtimeSource,
+        viteCache,
+        ...(legacySource ? [legacySource] : []),
+        ...(legacyViteCache ? [legacyViteCache] : []),
+      ],
     });
     const extractedPaths = await inspectTree(source, { allowEnvironmentExample: true });
     const extractedFiles = extractedPaths.filter((entry) => entry.type === "file");
@@ -1468,6 +1752,9 @@ async function main() {
     }
     const trackedBefore = await trackedFileSnapshot(source, committedPaths);
     const packageDocument = JSON.parse(await readFile(join(source, "package.json"), "utf8"));
+    const packageLockDocument = JSON.parse(
+      await readFile(join(source, "package-lock.json"), "utf8"),
+    );
     if (
       packageDocument.packageManager !== `npm@${REQUIRED_NPM_VERSION}` ||
       packageDocument.engines?.npm !== REQUIRED_NPM_VERSION ||
@@ -1476,8 +1763,42 @@ async function main() {
     ) {
       fail("RELEASE_RUNTIME_INVALID", "Commit does not pin the required Node/npm release runtime");
     }
+    if (
+      packageDocument.version !== options.expectedVersion ||
+      packageLockDocument.version !== options.expectedVersion ||
+      packageLockDocument.packages?.[""]?.version !== options.expectedVersion
+    ) {
+      fail(
+        "RELEASE_VERSION_INVALID",
+        "package.json and both package-lock root versions must match the expected version",
+      );
+    }
     if (packageDocument.scripts?.build !== "tsc --noEmit && vite build") {
       fail("RELEASE_RUNTIME_INVALID", "Release build entry is not an approved deterministic build");
+    }
+    const legacyPreparation = legacySource
+      ? await prepareExactLegacyRuntimeSource(
+          options.legacySourceArchive,
+          legacySource,
+          workRoot,
+          options.expectedVersion,
+        )
+      : undefined;
+    if (legacyPreparation) {
+      for (const [name, dependency] of Object.entries(
+        legacyPreparation.evidence.productionDependencies,
+      )) {
+        const currentVersion = packageLockDocument.packages?.[`node_modules/${name}`]?.version;
+        if (
+          packageDocument.dependencies?.[name] !== dependency.requested ||
+          currentVersion !== dependency.version
+        ) {
+          fail(
+            "RELEASE_LEGACY_RUNTIME_INVALID",
+            `Parent release dependency is incompatible with the legacy runtime: ${name}`,
+          );
+        }
+      }
     }
     const npmCli = join(dirname(dirname(process.execPath)), "lib/node_modules/npm/bin/npm-cli.js");
     if (await run(process.execPath, [npmCli, "--version"], {
@@ -1520,6 +1841,21 @@ async function main() {
       env: unguardedEnvironment,
       stage: "build dependency install",
     });
+    if (legacySource) {
+      await runSandboxed(installSandboxDocument, process.execPath, [
+        npmCli,
+        "ci",
+        "--offline",
+        "--ignore-scripts",
+        "--include=dev",
+        "--no-audit",
+        "--no-fund",
+      ], {
+        cwd: legacySource,
+        env: unguardedEnvironment,
+        stage: "exact v0.5.1 legacy dependency install",
+      });
+    }
     await mkdir(join(source, "node_modules"), { mode: 0o700 }).catch((error) => {
       if (error?.code !== "EEXIST") throw error;
     });
@@ -1527,14 +1863,27 @@ async function main() {
       allowNodeModules: true,
       excludeNodeModulesBin: true,
     });
+    const legacyDependenciesBeforeBuild = legacySource
+      ? await inspectTree(join(legacySource, "node_modules"), {
+          allowNodeModules: true,
+          excludeNodeModulesBin: true,
+        })
+      : undefined;
     const distDirectory = join(source, "dist");
     await mkdir(distDirectory, { mode: 0o700 });
+    const legacyDistDirectory = legacySource ? join(legacySource, "dist") : undefined;
+    if (legacyDistDirectory) await mkdir(legacyDistDirectory, { mode: 0o700 });
     const buildSandboxDocument = await createBuildSandbox(buildSandboxProfile, {
       auditFile: networkAudit,
       home,
       npmCache,
       source,
-      writablePaths: [distDirectory, viteCache],
+      writablePaths: [
+        distDirectory,
+        viteCache,
+        ...(legacyDistDirectory ? [legacyDistDirectory] : []),
+        ...(legacyViteCache ? [legacyViteCache] : []),
+      ],
     });
     await proveSandboxNetworkDenied(buildSandboxDocument, unguardedEnvironment, source);
     const lockAfterInstall = createHash("sha256").update(await readFile(join(source, "package-lock.json"))).digest("hex");
@@ -1549,12 +1898,59 @@ async function main() {
       "--configLoader",
       "runner",
     ], { cwd: source, env: environment, stage: "production build" });
+    if (legacySource && legacyViteCache) {
+      const legacyEnvironment = {
+        ...environment,
+        UNBOUNDRY_VITE_CACHE_DIR: legacyViteCache,
+      };
+      await runSandboxed(buildSandboxDocument, process.execPath, [
+        join(legacySource, "node_modules/typescript/bin/tsc"),
+        "--noEmit",
+      ], {
+        cwd: legacySource,
+        env: legacyEnvironment,
+        stage: "exact v0.5.1 legacy TypeScript validation",
+      });
+      await runSandboxed(buildSandboxDocument, process.execPath, [
+        join(legacySource, "node_modules/vite/bin/vite.js"),
+        "build",
+        "--configLoader",
+        "runner",
+      ], {
+        cwd: legacySource,
+        env: legacyEnvironment,
+        stage: "exact v0.5.1 legacy production build",
+      });
+    }
     const dependenciesAfterBuild = await inspectTree(join(source, "node_modules"), {
       allowNodeModules: true,
       excludeNodeModulesBin: true,
     });
     if (JSON.stringify(dependenciesAfterBuild) !== JSON.stringify(dependenciesBeforeBuild)) {
       fail("RELEASE_INPUT_CHANGED", "Production build changed installed dependencies");
+    }
+    if (legacySource) {
+      const legacyDependenciesAfterBuild = await inspectTree(
+        join(legacySource, "node_modules"),
+        { allowNodeModules: true, excludeNodeModulesBin: true },
+      );
+      if (
+        JSON.stringify(legacyDependenciesAfterBuild) !==
+          JSON.stringify(legacyDependenciesBeforeBuild)
+      ) {
+        fail("RELEASE_INPUT_CHANGED", "Legacy build changed installed dependencies");
+      }
+      const legacyAfterBuild = (await inspectTree(legacySource, {
+        allowEnvironmentExample: true,
+        allowNodeModules: true,
+        excludeNodeModulesBin: true,
+      })).filter((entry) =>
+        entry.path !== "dist" && !entry.path.startsWith("dist/") &&
+        entry.path !== "node_modules" && !entry.path.startsWith("node_modules/")
+      );
+      if (JSON.stringify(legacyAfterBuild) !== JSON.stringify(legacyPreparation.overlaidInventory)) {
+        fail("RELEASE_INPUT_CHANGED", "Legacy build changed the approved source overlay");
+      }
     }
     const lockAfterBuild = createHash("sha256").update(await readFile(join(source, "package-lock.json"))).digest("hex");
     if (lockAfterBuild !== lockBefore) fail("RELEASE_INPUT_CHANGED", "Production build changed package-lock.json");
@@ -1564,6 +1960,56 @@ async function main() {
     }
     if (await assertImmutableCommit(options.commit) !== sourceTree) {
       fail("RELEASE_INPUT_CHANGED", "Requested Git commit changed during release creation");
+    }
+    let legacyPublication;
+    let legacyRuntimeEvidence;
+    if (legacySource && legacyPreparation) {
+      await rm(join(legacySource, "node_modules"), { recursive: true });
+      legacyPublication = join(runtimeSource, "legacy-runtime");
+      await mkdir(legacyPublication, { mode: 0o700 });
+      for (const path of [
+        "dist",
+        "client",
+        "server",
+        "types",
+        "vite.config.ts",
+        "package.json",
+        "package-lock.json",
+        "spec/unboundry-state-fixtures.json",
+      ]) {
+        const input = join(legacySource, path);
+        const details = await lstat(input);
+        if (details.isDirectory() && !details.isSymbolicLink()) {
+          await copyRuntimeTree(legacySource, legacyPublication, path);
+        } else if (details.isFile() && !details.isSymbolicLink()) {
+          await mkdir(dirname(join(legacyPublication, path)), {
+            recursive: true,
+            mode: 0o700,
+          });
+          const fixed = await readFixedRegularFile(input, "Legacy runtime output file");
+          await writeFile(join(legacyPublication, path), fixed.bytes, {
+            flag: "wx",
+            mode: fixed.mode & 0o111 ? 0o500 : 0o400,
+          });
+        } else {
+          fail("RELEASE_OUTPUT_UNSAFE", "Legacy runtime output is unsafe");
+        }
+      }
+      await hardenRuntimeDirectories(legacyPublication);
+      const inventory = await inspectTree(legacyPublication);
+      const legacyIndex = inventory.find((entry) =>
+        entry.type === "file" && entry.path === "dist/client/index.html"
+      );
+      if (!legacyIndex?.sha256 || !legacyIndex.size) {
+        fail("RELEASE_LEGACY_RUNTIME_INVALID", "Legacy client build is incomplete");
+      }
+      legacyRuntimeEvidence = Object.freeze({
+        ...legacyPreparation.evidence,
+        clientIndexSha256: legacyIndex.sha256,
+        inventorySha256: createHash("sha256").update(JSON.stringify(inventory)).digest("hex"),
+        runtimeDependencyResolution: "parent-release-node_modules",
+        version: options.expectedVersion,
+      });
     }
     for (const path of ["package.json", "package-lock.json"]) {
       await writeFile(join(runtimeSource, path), await readFile(join(source, path)), {
@@ -1601,11 +2047,104 @@ async function main() {
     ) {
       fail("RELEASE_RUNTIME_INVALID", "Runtime dependency closure is incomplete or includes development tools");
     }
+    let legacyParentDependencyConfigLoadSmoke = false;
+    if (legacyPublication && legacyPreparation) {
+      const legacyInventoryBeforeSmoke = await inspectTree(legacyPublication);
+      const legacyDependencySmoke = String.raw`
+        import { readFile } from "node:fs/promises";
+        import { createRequire } from "node:module";
+        import { join, sep } from "node:path";
+        import { pathToFileURL } from "node:url";
+        const [parentRoot, legacyRoot, dependenciesJson] = process.argv.slice(1);
+        const requireFromLegacy = createRequire(join(legacyRoot, "package.json"));
+        const parentNodeModules = join(parentRoot, "node_modules") + sep;
+        const dependencies = JSON.parse(dependenciesJson);
+        for (const name of dependencies) {
+          const resolved = requireFromLegacy.resolve(name);
+          if (!resolved.startsWith(parentNodeModules)) {
+            throw new Error(
+              "legacy dependency did not resolve from parent release node_modules: " + name,
+            );
+          }
+        }
+        const vitePath = requireFromLegacy.resolve("vite");
+        const vite = await import(pathToFileURL(vitePath).href);
+        process.chdir(legacyRoot);
+        const loaded = await vite.loadConfigFromFile(
+          { command: "serve", isPreview: true, isSsrBuild: false, mode: "production" },
+          join(legacyRoot, "vite.config.ts"),
+          legacyRoot,
+          "silent",
+          undefined,
+          "runner",
+        );
+        if (!loaded?.config) throw new Error("legacy Vite config did not load");
+        JSON.parse(await readFile(join(legacyRoot, "package.json"), "utf8"));
+      `;
+      await runSandboxed(installSandboxDocument, process.execPath, [
+        "--input-type=module",
+        "-e",
+        legacyDependencySmoke,
+        runtimeSource,
+        legacyPublication,
+        JSON.stringify([
+          ...Object.keys(legacyPreparation.evidence.productionDependencies),
+          "@vitejs/plugin-react",
+          "vite",
+        ].sort(bytewiseCompare)),
+      ], {
+        cwd: runtimeSource,
+        env: environment,
+        stage: "legacy parent dependency config-load smoke",
+      });
+      const legacyInventoryAfterSmoke = await inspectTree(legacyPublication);
+      if (JSON.stringify(legacyInventoryAfterSmoke) !== JSON.stringify(legacyInventoryBeforeSmoke)) {
+        fail("RELEASE_INPUT_CHANGED", "Legacy config-load smoke changed the runtime publication");
+      }
+      legacyParentDependencyConfigLoadSmoke = true;
+    }
     await runSandboxed(installSandboxDocument, process.execPath, [
       join(runtimeSource, "node_modules/vite/bin/vite.js"),
       "--version",
     ], { cwd: runtimeSource, env: environment, stage: "runtime Vite smoke" });
     const networkAuditEvidence = await verifyNetworkAudit(networkAudit);
+    const sandboxProfileSha256 = createHash("sha256")
+      .update(installSandboxDocument.evidenceDocument)
+      .update("\0")
+      .update(buildSandboxDocument.evidenceDocument)
+      .digest("hex");
+    const legacyRuntimeManifestEvidence = legacyRuntimeEvidence
+      ? Object.freeze({
+          ...legacyRuntimeEvidence,
+          build: Object.freeze({
+            dependencyInventorySha256: createHash("sha256")
+              .update(JSON.stringify(legacyDependenciesBeforeBuild))
+              .digest("hex"),
+            executedSteps: Object.freeze([
+              Object.freeze({
+                arguments: ["node_modules/typescript/bin/tsc", "--noEmit"],
+                command: "node",
+              }),
+              Object.freeze({
+                arguments: [
+                  "node_modules/vite/bin/vite.js",
+                  "build",
+                  "--configLoader",
+                  "runner",
+                ],
+                command: "node",
+              }),
+            ]),
+            lockSha256: legacyRuntimeEvidence.overlay["package-lock.json"],
+            networkAudit: networkAuditEvidence,
+            networkSandboxVerified: true,
+            parentDependencyConfigLoadSmoke: legacyParentDependencyConfigLoadSmoke,
+            sandboxProfileSha256,
+            sourceLockSha256: legacyRuntimeEvidence.originalLockSha256,
+            workingDirectory: "exact-v0.5.1-version-overlay",
+          }),
+        })
+      : undefined;
     await assertPinnedDirectory(roots.cache, "npm cache");
     const releaseDirectory = target;
     const publishedRuntimeRoots = [];
@@ -1614,6 +2153,7 @@ async function main() {
       "node_modules",
       ...runtimeSourceRoots,
       ...runtimeSourceFiles,
+      ...(options.releaseRole === "bridge" ? bridgeMigrationSourceFiles : []),
       "package.json",
       "package-lock.json",
     ]) {
@@ -1636,6 +2176,10 @@ async function main() {
         publishedRuntimeRoots.push(path);
       } else fail("RELEASE_OUTPUT_UNSAFE", "Required runtime input is unsafe");
     }
+    if (legacyRuntimeEvidence) {
+      await copyRuntimeTree(runtimeSource, releaseDirectory, "legacy-runtime");
+      publishedRuntimeRoots.push("legacy-runtime");
+    }
     await hardenRuntimeDirectories(releaseDirectory);
     const files = await inspectTree(releaseDirectory, {
       allowNodeModules: true,
@@ -1648,12 +2192,40 @@ async function main() {
     if (!indexArtifact?.sha256 || !Number.isSafeInteger(indexArtifact.size) || indexArtifact.size <= 0) {
       fail("RELEASE_RUNTIME_INVALID", "Production build is missing its fixed client index");
     }
+    const legacyIndexArtifact = options.releaseRole === "bridge"
+      ? files.find((entry) =>
+          entry.type === "file" &&
+          entry.path === "legacy-runtime/dist/client/index.html"
+        )
+      : undefined;
+    if (
+      options.releaseRole === "bridge" &&
+      (!legacyIndexArtifact?.sha256 ||
+        !Number.isSafeInteger(legacyIndexArtifact.size) ||
+        legacyIndexArtifact.size <= 0)
+    ) {
+      fail(
+        "RELEASE_LEGACY_RUNTIME_INVALID",
+        "Bridge build is missing its schema-37 client index",
+      );
+    }
     const admission = Object.freeze({
       directoryMode: "0500",
       incompleteMarkerAbsent: true,
       manifestInventoryVerified: true,
       rule: "marker-absent-directory-0500-manifest-verified",
     });
+    const databaseCompatibility = options.releaseRole === "bridge"
+      ? Object.freeze({
+          activeSchemaVersions: Object.freeze([37, 39]),
+          migrationMode: "external-one-shot-only",
+          rollbackTargetForSchemaVersion: 39,
+        })
+      : Object.freeze({
+          activeSchemaVersions: Object.freeze([39]),
+          migrationMode: "forbidden-from-final-runtime",
+          standbySchemaVersions: Object.freeze([37]),
+        });
     const manifest = Object.freeze({
       admission,
       artifactClass: options.artifactClass,
@@ -1681,21 +2253,23 @@ async function main() {
         lockSha256: lockBefore,
         networkSandboxVerified: true,
         networkAudit: networkAuditEvidence,
-        sandboxProfileSha256: createHash("sha256")
-          .update(installSandboxDocument.evidenceDocument)
-          .update("\0")
-          .update(buildSandboxDocument.evidenceDocument)
-          .digest("hex"),
+        sandboxProfileSha256,
       }),
       commit: options.commit,
+      databaseCompatibility,
+      expectedVersion: options.expectedVersion,
+      formalReleaseCommit: options.formalReleaseCommit,
       files,
       format: "unboundry-immutable-release",
       nodeVersion: REQUIRED_NODE_VERSION,
       npmVersion: REQUIRED_NPM_VERSION,
       packageVersion: packageDocument.version,
       hostPrerequisites,
+      legacyRuntime: legacyRuntimeManifestEvidence,
       runtimeRoots: Object.freeze([...publishedRuntimeRoots].sort()),
       releaseId: options.releaseId,
+      releaseRole: options.releaseRole,
+      releaseStage: options.releaseRole,
       runtime: Object.freeze({
         arguments: [
           "node_modules/vite/bin/vite.js",
@@ -1774,11 +2348,23 @@ async function main() {
           "NODE_OPTIONS",
           "NODE_PATH",
           "UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION",
+          "UNBOUNDRY_LEGACY_RUNTIME_ROOT",
           "UNBOUNDRY_MAINTENANCE_MODE",
+          "UNBOUNDRY_RELEASE_ROLE",
           "UNBOUNDRY_SAFE_TEST",
         ]),
         forbiddenEnvironmentPrefixes: Object.freeze(["UNBOUNDRY_TEST_"]),
         health: Object.freeze({
+          ...(legacyIndexArtifact
+            ? {
+                legacySchema37StaticAsset: Object.freeze({
+                  path: "legacy-runtime/dist/client/index.html",
+                  sha256: legacyIndexArtifact.sha256,
+                  size: legacyIndexArtifact.size,
+                  url: "/",
+                }),
+              }
+            : {}),
           staticAsset: Object.freeze({
             path: "dist/client/index.html",
             sha256: indexArtifact.sha256,
@@ -1800,7 +2386,36 @@ async function main() {
           UNBOUNDRY_VITE_CACHE_DIR: "absolute-private-cache-directory",
         }),
       }),
-      schemaVersion: 2,
+      ...(options.releaseRole === "bridge"
+        ? {
+            migration: Object.freeze({
+              arguments: Object.freeze([
+                "scripts/migrate-schema37-to39.mjs",
+                "--apply",
+                "--data-dir",
+                "${UNBOUNDRY_DATA_DIR}",
+                "--runtime-dir",
+                "${UNBOUNDRY_RUNTIME_DIR}",
+                "--expected-logical-sha256",
+                "${UNBOUNDRY_EXPECTED_SCHEMA37_LOGICAL_SHA256}",
+                "--scratch-root",
+                "${UNBOUNDRY_MIGRATION_SCRATCH_ROOT}",
+              ]),
+              command: process.execPath,
+              httpListener: false,
+              permittedReleaseRole: "bridge",
+              placeholders: Object.freeze({
+                UNBOUNDRY_DATA_DIR: "absolute-private-data-directory",
+                UNBOUNDRY_EXPECTED_SCHEMA37_LOGICAL_SHA256: "lowercase-sha256",
+                UNBOUNDRY_MIGRATION_SCRATCH_ROOT:
+                  "absolute-private-migration-scratch-directory",
+                UNBOUNDRY_RUNTIME_DIR:
+                  "absolute-private-runtime-directory-shared-with-service",
+              }),
+            }),
+          }
+        : {}),
+      schemaVersion: 3,
       sourceTree,
     });
     const manifestBytes = `${JSON.stringify(manifest, null, 2)}\n`;
@@ -1838,12 +2453,20 @@ async function main() {
       buildLibc: options.buildLibc,
       buildPlatform: options.buildPlatform,
       commit: options.commit,
+      expectedVersion: options.expectedVersion,
+      formalReleaseCommit: options.formalReleaseCommit,
       manifestPath: join(target, "release-manifest.json"),
       manifestSha256,
       releaseDirectory: target,
       releaseId: options.releaseId,
+      releaseRole: options.releaseRole,
       sourceTree,
     });
+    // Scratch cleanup is part of pre-publication admission. A cleanup failure
+    // must leave the .incomplete marker in place, never report a failed command
+    // after an otherwise admitted release has become available.
+    await cleanupPrivateBuildScratch(workRoot, roots.scratch);
+    workRoot = undefined;
     await assertPinnedDirectory(roots.cache, "npm cache");
     await assertPinnedDirectory(roots.release, "Release root");
     await assertPinnedDirectory(roots.scratch, "Scratch root");
@@ -1871,7 +2494,7 @@ async function main() {
       await syncDirectory(roots.release.path).catch(() => {});
       throw error;
     }
-    process.stdout.write(`${JSON.stringify(summary)}\n`);
+    return summary;
   } catch (error) {
     if (reservationIdentity) {
       const retained = await lstat(join(target, ".incomplete")).then(
@@ -1885,17 +2508,14 @@ async function main() {
     throw error;
   } finally {
     if (workRoot) {
-      const scratchPinned = await assertPinnedDirectory(roots.scratch, "Scratch root").then(
-        () => true,
-        () => false,
-      );
-      if (scratchPinned) await rm(workRoot, { force: true, recursive: true }).catch(() => {});
+      await cleanupPrivateBuildScratch(workRoot, roots.scratch);
     }
   }
 }
 
 try {
-  await main();
+  const summary = await main();
+  process.stdout.write(`${JSON.stringify(summary)}\n`);
 } catch (error) {
   const code = error instanceof ReleaseBuildError ? error.code : "RELEASE_BUILD_FAILED";
   const message = error instanceof ReleaseBuildError

@@ -19,6 +19,33 @@ const execute = promisify(execFile);
 const validator = join(process.cwd(), "scripts/validate-release-ops.mjs");
 const nginxTemplate = join(process.cwd(), "deploy/nginx.template.conf");
 const systemdTemplate = join(process.cwd(), "deploy/unboundry.service.template");
+const migrationSystemdTemplate = join(
+  process.cwd(),
+  "deploy/unboundry-migrate-schema37-to39.service.template",
+);
+
+function releaseManifests() {
+  const bridge = process.env.UNBOUNDRY_BRIDGE_RELEASE_MANIFEST;
+  const final = process.env.UNBOUNDRY_FINAL_RELEASE_MANIFEST;
+  const bridgeSha256 = process.env.UNBOUNDRY_BRIDGE_RELEASE_MANIFEST_SHA256;
+  const finalSha256 = process.env.UNBOUNDRY_FINAL_RELEASE_MANIFEST_SHA256;
+  if (!bridge || !final || !bridgeSha256 || !finalSha256) {
+    throw new Error("m96 release attestation environment is incomplete");
+  }
+  return Object.freeze({ bridge, bridgeSha256, final, finalSha256 });
+}
+
+async function attestedReleaseRelationship() {
+  const path = process.env.UNBOUNDRY_RELEASE_ATTESTATION_PATH;
+  if (!path) throw new Error("m96 release attestation path is missing");
+  const document = JSON.parse(await readFile(path, "utf8")) as {
+    relationship?: Record<string, unknown>;
+  };
+  if (!document.relationship) {
+    throw new Error("m96 release relationship is missing");
+  }
+  return document.relationship;
+}
 
 type CommandResult = Readonly<{
   exitCode: number;
@@ -32,12 +59,37 @@ function sha256(bytes: Buffer) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-async function command(arguments_: string[]): Promise<CommandResult> {
+async function command(
+  arguments_: string[],
+  environmentOverrides: NodeJS.ProcessEnv = {},
+): Promise<CommandResult> {
+  const inherited = Object.fromEntries([
+    "UNBOUNDRY_BRIDGE_RELEASE_MANIFEST",
+    "UNBOUNDRY_BRIDGE_RELEASE_MANIFEST_SHA256",
+    "UNBOUNDRY_FINAL_RELEASE_MANIFEST",
+    "UNBOUNDRY_FINAL_RELEASE_MANIFEST_SHA256",
+    "UNBOUNDRY_RELEASE_ATTESTATION_PATH",
+    "UNBOUNDRY_RELEASE_ATTESTATION_ROOT",
+    "UNBOUNDRY_RELEASE_ATTESTATION_SHA256",
+    "UNBOUNDRY_RELEASE_SOURCE_SHA256",
+    "UNBOUNDRY_SAFE_RUN_NONCE",
+    "UNBOUNDRY_SAFE_TEST",
+    "UNBOUNDRY_TEST_ROOT",
+  ].map((name) => {
+    const value = process.env[name];
+    if (!value) throw new Error(`m96 is missing ${name}`);
+    return [name, value];
+  }));
   try {
     const result = await execute(process.execPath, [validator, ...arguments_], {
-      env: { LANG: "C", PATH: "/usr/bin:/bin" },
+      env: {
+        LANG: "C",
+        PATH: "/usr/bin:/bin",
+        ...inherited,
+        ...environmentOverrides,
+      },
       maxBuffer: 1024 * 1024,
-      timeout: 10_000,
+      timeout: 120_000,
     });
     return { exitCode: 0, stderr: result.stderr, stdout: result.stdout };
   } catch (error) {
@@ -51,11 +103,18 @@ async function command(arguments_: string[]): Promise<CommandResult> {
 }
 
 function argumentsFor(fixture: Fixture) {
+  const releases = releaseManifests();
   return [
+    "--bridge-release-manifest",
+    releases.bridge,
+    "--final-release-manifest",
+    releases.final,
     "--nginx-template",
     fixture.nginx,
     "--systemd-template",
     fixture.systemd,
+    "--migration-systemd-template",
+    fixture.migrationSystemd,
   ];
 }
 
@@ -64,11 +123,25 @@ async function createFixture() {
   await chmod(root, 0o700);
   const nginx = join(root, "nginx.template.conf");
   const systemd = join(root, "unboundry.service.template");
+  const migrationSystemd = join(
+    root,
+    "unboundry-migrate-schema37-to39.service.template",
+  );
   const nginxBytes = await readFile(nginxTemplate);
   const systemdBytes = await readFile(systemdTemplate);
+  const migrationSystemdBytes = await readFile(migrationSystemdTemplate);
   await writeFile(nginx, nginxBytes, { mode: 0o600 });
   await writeFile(systemd, systemdBytes, { mode: 0o600 });
-  return { nginx, nginxBytes, root, systemd, systemdBytes };
+  await writeFile(migrationSystemd, migrationSystemdBytes, { mode: 0o600 });
+  return {
+    migrationSystemd,
+    migrationSystemdBytes,
+    nginx,
+    nginxBytes,
+    root,
+    systemd,
+    systemdBytes,
+  };
 }
 
 async function failureDocument(result: CommandResult) {
@@ -76,8 +149,8 @@ async function failureDocument(result: CommandResult) {
   expect(result.stdout).toBe("");
   const document = JSON.parse(result.stderr) as Record<string, unknown>;
   expect(document).toMatchObject({
-    evidenceClass: "static-contract",
-    format: "unboundry-release-ops-validation-v1",
+    evidenceClass: "artifact-bound-static-contract",
+    format: "unboundry-release-ops-validation-v2",
     valid: false,
   });
   return document;
@@ -86,6 +159,7 @@ async function failureDocument(result: CommandResult) {
 test("static ops contract validates the loopback nginx and hardened current-release unit", async () => {
   const fixture = await createFixture();
   try {
+    const relationship = await attestedReleaseRelationship();
     const result = await command(argumentsFor(fixture));
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
@@ -93,28 +167,56 @@ test("static ops contract validates the loopback nginx and hardened current-rele
       crossContract: Record<string, unknown>;
       evidenceClass: string;
       limitations: string[];
+      migrationSystemd: Record<string, unknown>;
       nginx: Record<string, unknown>;
+      releases: Record<string, unknown>;
       systemd: Record<string, unknown>;
       valid: boolean;
     };
     expect(document).toMatchObject({
       crossContract: {
+        bridgeManifestSha256: releaseManifests().bridgeSha256,
         currentLink: "/opt/unboundry/current",
         dataDirectory: "/var/lib/unboundry",
         loopbackAddress: "127.0.0.1",
         port: 4173,
         runtimeDirectory: "/run/unboundry",
+        migrationBridgeReleaseDirectory: "/opt/unboundry/releases/v0.5.2",
+        migrationExpectedSourceLogicalSha256Placeholder:
+          "UNBOUNDRY_EXPECTED_SCHEMA37_LOGICAL_SHA256",
+        finalManifestSha256: releaseManifests().finalSha256,
+        releaseRelationship: relationship,
       },
-      evidenceClass: "static-contract",
+      evidenceClass: "artifact-bound-static-contract",
       limitations: [
+        ...(relationship.crossCommitProof === true
+          ? []
+          : ["cross-commit-proof-not-established"]),
         "nginx-t-not-executed",
         "systemd-analyze-not-executed",
         "production-host-not-inspected",
       ],
       valid: true,
     });
+    expect(document).toMatchObject({
+      releases: {
+        bridge: {
+          manifestSha256: releaseManifests().bridgeSha256,
+          releaseId: "v0.5.2",
+          version: "0.5.2",
+        },
+        final: {
+          manifestSha256: releaseManifests().finalSha256,
+          releaseId: "v0.6.0",
+          version: "0.6.0",
+        },
+      },
+    });
     expect(document.nginx).toMatchObject({ sha256: sha256(fixture.nginxBytes) });
     expect(document.systemd).toMatchObject({ sha256: sha256(fixture.systemdBytes) });
+    expect(document.migrationSystemd).toMatchObject({
+      sha256: sha256(fixture.migrationSystemdBytes),
+    });
   } finally {
     await rm(fixture.root, { force: true, recursive: true });
   }
@@ -127,6 +229,18 @@ test("tampered and incomplete templates fail closed", async () => {
     await writeFile(
       fixture.nginx,
       nginxText.replace("127.0.0.1:4173", "127.0.0.1:4174"),
+      { mode: 0o600 },
+    );
+    expect(await failureDocument(await command(argumentsFor(fixture)))).toMatchObject({
+      code: "OPS_TEMPLATE_INVALID",
+    });
+
+    await writeFile(
+      fixture.nginx,
+      nginxText.replaceAll(
+        "X-Forwarded-For $remote_addr",
+        "X-Forwarded-For $proxy_add_x_forwarded_for",
+      ),
       { mode: 0o600 },
     );
     expect(await failureDocument(await command(argumentsFor(fixture)))).toMatchObject({
@@ -167,6 +281,49 @@ test("tampered and incomplete templates fail closed", async () => {
     await writeFile(
       fixture.systemd,
       fixture.systemdBytes.toString("utf8").replace("TimeoutStopSec=150s\n", ""),
+      { mode: 0o600 },
+    );
+    expect(await failureDocument(await command(argumentsFor(fixture)))).toMatchObject({
+      code: "OPS_TEMPLATE_INVALID",
+    });
+
+    await writeFile(
+      fixture.systemd,
+      fixture.systemdBytes.toString("utf8").replace(
+        "RuntimeDirectoryPreserve=yes",
+        "RuntimeDirectoryPreserve=restart",
+      ),
+      { mode: 0o600 },
+    );
+    expect(await failureDocument(await command(argumentsFor(fixture)))).toMatchObject({
+      code: "OPS_TEMPLATE_INVALID",
+    });
+
+    for (const variable of [
+      "UNBOUNDRY_LEGACY_RUNTIME_ROOT",
+      "UNBOUNDRY_RELEASE_ROLE",
+    ]) {
+      await writeFile(
+        fixture.systemd,
+        fixture.systemdBytes.toString("utf8").replace(` ${variable}`, ""),
+        { mode: 0o600 },
+      );
+      expect(
+        await failureDocument(await command(argumentsFor(fixture))),
+      ).toMatchObject({ code: "OPS_TEMPLATE_INVALID" });
+    }
+
+    await writeFile(
+      fixture.systemd,
+      fixture.systemdBytes,
+      { mode: 0o600 },
+    );
+    await writeFile(
+      fixture.migrationSystemd,
+      fixture.migrationSystemdBytes.toString("utf8").replace(
+        "/opt/unboundry/releases/v0.5.2/scripts/migrate-schema37-to39.mjs",
+        "/opt/unboundry/current/scripts/migrate-schema37-to39.mjs",
+      ),
       { mode: 0o600 },
     );
     expect(await failureDocument(await command(argumentsFor(fixture)))).toMatchObject({
@@ -228,34 +385,97 @@ test("relative, aliased, duplicate, and unknown template paths are rejected", as
     await symlink(fixture.nginx, alias);
     const failures = [
       await command([
+        "--bridge-release-manifest",
+        releaseManifests().bridge,
+        "--final-release-manifest",
+        releaseManifests().final,
         "--nginx-template",
         "deploy/nginx.template.conf",
         "--systemd-template",
         fixture.systemd,
+        "--migration-systemd-template",
+        fixture.migrationSystemd,
       ]),
       await command([
+        "--bridge-release-manifest",
+        releaseManifests().bridge,
+        "--final-release-manifest",
+        releaseManifests().final,
         "--nginx-template",
         alias,
         "--systemd-template",
         fixture.systemd,
+        "--migration-systemd-template",
+        fixture.migrationSystemd,
       ]),
       await command([
+        "--bridge-release-manifest",
+        releaseManifests().bridge,
+        "--final-release-manifest",
+        releaseManifests().final,
         "--nginx-template",
         fixture.nginx,
         "--systemd-template",
         fixture.nginx,
+        "--migration-systemd-template",
+        fixture.migrationSystemd,
       ]),
       await command([
+        "--bridge-release-manifest",
+        releaseManifests().bridge,
+        "--final-release-manifest",
+        releaseManifests().final,
         "--nginx-template",
         fixture.nginx,
         "--unexpected",
         fixture.systemd,
+        "--migration-systemd-template",
+        fixture.migrationSystemd,
       ]),
     ];
     for (const result of failures) {
       const document = await failureDocument(result);
       expect(["OPS_ARGUMENT_INVALID", "OPS_PATH_UNSAFE"]).toContain(document.code);
     }
+
+    const swapped = await command([
+      "--bridge-release-manifest",
+      releaseManifests().final,
+      "--final-release-manifest",
+      releaseManifests().bridge,
+      "--nginx-template",
+      fixture.nginx,
+      "--systemd-template",
+      fixture.systemd,
+      "--migration-systemd-template",
+      fixture.migrationSystemd,
+    ]);
+    expect(await failureDocument(swapped)).toMatchObject({
+      code: "OPS_RELEASE_INVALID",
+    });
+
+    expect(await failureDocument(await command(
+      argumentsFor(fixture),
+      { UNBOUNDRY_SAFE_TEST: undefined },
+    ))).toMatchObject({ code: "OPS_RELEASE_INVALID" });
+
+    const noAttestationEnvironment = Object.fromEntries([
+      "UNBOUNDRY_BRIDGE_RELEASE_MANIFEST",
+      "UNBOUNDRY_BRIDGE_RELEASE_MANIFEST_SHA256",
+      "UNBOUNDRY_FINAL_RELEASE_MANIFEST",
+      "UNBOUNDRY_FINAL_RELEASE_MANIFEST_SHA256",
+      "UNBOUNDRY_RELEASE_ATTESTATION_PATH",
+      "UNBOUNDRY_RELEASE_ATTESTATION_ROOT",
+      "UNBOUNDRY_RELEASE_ATTESTATION_SHA256",
+      "UNBOUNDRY_RELEASE_SOURCE_SHA256",
+      "UNBOUNDRY_SAFE_RUN_NONCE",
+      "UNBOUNDRY_SAFE_TEST",
+      "UNBOUNDRY_TEST_ROOT",
+    ].map((name) => [name, undefined]));
+    expect(await failureDocument(await command(
+      argumentsFor(fixture),
+      noAttestationEnvironment,
+    ))).toMatchObject({ code: "OPS_RELEASE_RELATIONSHIP_UNPROVEN" });
   } finally {
     await rm(fixture.root, { force: true, recursive: true });
   }

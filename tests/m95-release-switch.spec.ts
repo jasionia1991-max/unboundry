@@ -31,6 +31,17 @@ const exactForbiddenEnvironment = [
   "UNBOUNDRY_MAINTENANCE_MODE",
   "UNBOUNDRY_SAFE_TEST",
 ];
+const formalForbiddenEnvironment = [
+  "LD_LIBRARY_PATH",
+  "LD_PRELOAD",
+  "NODE_OPTIONS",
+  "NODE_PATH",
+  "UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION",
+  "UNBOUNDRY_LEGACY_RUNTIME_ROOT",
+  "UNBOUNDRY_MAINTENANCE_MODE",
+  "UNBOUNDRY_RELEASE_ROLE",
+  "UNBOUNDRY_SAFE_TEST",
+];
 const exactPlaceholders = {
   UNBOUNDRY_DATA_DIR: "absolute-private-data-directory",
   UNBOUNDRY_PORT: "loopback-port",
@@ -40,6 +51,50 @@ const exactPlaceholders = {
   UNBOUNDRY_RUNTIME_TEMP: "absolute-private-runtime-temporary-directory",
   UNBOUNDRY_VITE_CACHE_DIR: "absolute-private-cache-directory",
 };
+const releaseVersionByRole = {
+  bridge: "0.5.2",
+  final: "0.6.0",
+} as const;
+const exactLegacyRuntimeContract = {
+  archiveSha256: "e7a619c4d9dbaca14d1032ef18f83f81dcfb36c9402976debc4f8f546c8bb5d0",
+  commitTree: "0990690bd9828757b82f59861f950ce6ff9ed4f8",
+  originalInventorySha256:
+    "cd98d90aaae56de756164fa0434dfb6bb144598183536c6d91067308e8d24517",
+  peeledCommit: "7f7d6177a564056a6f41ff83dfb7ba913b21603b",
+  trackedFiles: 371,
+} as const;
+const exactLegacyProductionDependencies = {
+  "@xyflow/react": { requested: "12.11.2", version: "12.11.2" },
+  "ali-oss": { requested: "^6.23.0", version: "6.23.0" },
+  archiver: { requested: "^8.0.0", version: "8.0.0" },
+  react: { requested: "19.2.8", version: "19.2.8" },
+  "react-dom": { requested: "19.2.8", version: "19.2.8" },
+};
+const exactLegacySourceLockSha256 =
+  "79612b35753b970b10223f50adc396c0a064c41bfa8779bb9698b40f9ce0296e";
+const exactMigrationArguments = [
+  "scripts/migrate-schema37-to39.mjs",
+  "--apply",
+  "--data-dir",
+  "${UNBOUNDRY_DATA_DIR}",
+  "--runtime-dir",
+  "${UNBOUNDRY_RUNTIME_DIR}",
+  "--expected-logical-sha256",
+  "${UNBOUNDRY_EXPECTED_SCHEMA37_LOGICAL_SHA256}",
+  "--scratch-root",
+  "${UNBOUNDRY_MIGRATION_SCRATCH_ROOT}",
+];
+const exactMigrationPlaceholders = {
+  UNBOUNDRY_DATA_DIR: "absolute-private-data-directory",
+  UNBOUNDRY_EXPECTED_SCHEMA37_LOGICAL_SHA256: "lowercase-sha256",
+  UNBOUNDRY_MIGRATION_SCRATCH_ROOT: "absolute-private-migration-scratch-directory",
+  UNBOUNDRY_RUNTIME_DIR: "absolute-private-runtime-directory-shared-with-service",
+};
+
+type ReleaseRole = "legacy" | keyof typeof releaseVersionByRole;
+type ReleaseInventoryEntry =
+  | { mode: number; path: string; type: "directory" }
+  | { mode: number; path: string; sha256: string; size: number; type: "file" };
 
 type RehearsalResult = Readonly<{
   exitCode: number;
@@ -60,7 +115,7 @@ async function write(path: string, contents: string, mode = 0o600) {
 }
 
 async function releaseInventory(releaseDirectory: string) {
-  const result: Array<Record<string, unknown>> = [];
+  const result: ReleaseInventoryEntry[] = [];
   async function visit(directory: string, prefix = "") {
     const entries = await readdir(directory, { withFileTypes: true });
     entries.sort((left, right) => Buffer.compare(Buffer.from(left.name), Buffer.from(right.name)));
@@ -100,7 +155,11 @@ async function freezeDirectories(directory: string) {
 async function createRelease(
   releaseRoot: string,
   id: string,
+  releaseRole: ReleaseRole,
 ) {
+  const formal = releaseRole !== "legacy";
+  const bridge = releaseRole === "bridge";
+  const version = releaseRole === "legacy" ? "0.5.1" : releaseVersionByRole[releaseRole];
   const directory = join(releaseRoot, id);
   await mkdir(join(directory, "dist/client"), { mode: 0o700, recursive: true });
   await write(join(directory, "dist/client/index.html"), `${id} immutable release\n`);
@@ -114,12 +173,55 @@ async function createRelease(
   await write(join(directory, "types/runtime.d.ts"), "export type Runtime = true;\n");
   await write(join(directory, "vite.config.ts"), "export default {};\n");
   await write(join(directory, "spec/unboundry-state-fixtures.json"), "{\"fixtures\":[]}\n");
+  if (bridge) {
+    await write(
+      join(directory, "scripts/migrate-schema37-to39.mjs"),
+      "export const artifactBoundSyntheticMigration = true;\n",
+    );
+    await write(join(directory, "scripts/node-typescript-runtime.mjs"), "export {};\n");
+  }
+  if (bridge) {
+    await write(
+      join(directory, "legacy-runtime/dist/client/index.html"),
+      "v0.5.2 exact-v0.5.1-compatible synthetic runtime\n",
+    );
+    await write(
+      join(directory, "legacy-runtime/package.json"),
+      `${JSON.stringify({ name: "m95-legacy-runtime", version })}\n`,
+    );
+    await write(
+      join(directory, "legacy-runtime/package-lock.json"),
+      `${JSON.stringify({ lockfileVersion: 3, version })}\n`,
+    );
+  }
   await write(join(directory, "package.json"), `${JSON.stringify({
     name: "m95-fake-release",
-    version: id,
+    version,
   })}\n`);
-  await write(join(directory, "package-lock.json"), "{\"lockfileVersion\":3}\n");
+  await write(join(directory, "package-lock.json"), `${JSON.stringify({
+    lockfileVersion: 3,
+    packages: { "": { version } },
+    version,
+  })}\n`);
   const files = await releaseInventory(directory);
+  const legacyEntries = bridge
+    ? files.filter((entry) => String(entry.path).startsWith("legacy-runtime/"))
+      .map((entry) => ({
+        ...entry,
+        path: String(entry.path).slice("legacy-runtime/".length),
+      }))
+    : [];
+  const legacyIndex = legacyEntries.find((entry) =>
+    entry.type === "file" && entry.path === "dist/client/index.html"
+  );
+  const legacyPackage = legacyEntries.find((entry) =>
+    entry.type === "file" && entry.path === "package.json"
+  );
+  const legacyLock = legacyEntries.find((entry) =>
+    entry.type === "file" && entry.path === "package-lock.json"
+  );
+  const legacyIndexSha256 = legacyIndex?.type === "file" ? legacyIndex.sha256 : undefined;
+  const legacyIndexSize = legacyIndex?.type === "file" ? legacyIndex.size : undefined;
   const staticBytes = await readFile(join(directory, "dist/client/index.html"));
   const placeholders = (name: string) => ({
     placeholder: name,
@@ -141,6 +243,30 @@ async function createRelease(
       : `^${name} version [^\\r\\n]+(?:\\r?\\n[\\s\\S]*)?$`,
     });
   };
+  const runtimePlaceholders = formal
+    ? {
+        UNBOUNDRY_DATA_DIR: "absolute-private-data-directory",
+        UNBOUNDRY_PORT: "loopback-port",
+        UNBOUNDRY_RUNTIME_HOME: "absolute-private-runtime-home-directory",
+        UNBOUNDRY_RUNTIME_DIR: "absolute-private-runtime-directory",
+        UNBOUNDRY_RUNTIME_ROLE: "active-or-non-active-runtime-role",
+        UNBOUNDRY_RUNTIME_TEMP: "absolute-private-runtime-temporary-directory",
+        UNBOUNDRY_VITE_CACHE_DIR: "absolute-private-cache-directory",
+      }
+    : exactPlaceholders;
+  const databaseCompatibility = releaseRole === "bridge"
+    ? {
+        activeSchemaVersions: [37, 39],
+        migrationMode: "external-one-shot-only",
+        rollbackTargetForSchemaVersion: 39,
+      }
+    : releaseRole === "final"
+      ? {
+          activeSchemaVersions: [39],
+          migrationMode: "forbidden-from-final-runtime",
+          standbySchemaVersions: [37],
+        }
+      : undefined;
   const manifest = {
     admission: {
       directoryMode: "0500",
@@ -166,13 +292,18 @@ async function createRelease(
         },
       ],
       lockSha256: sha256(`lock:${id}`),
-      networkAudit: { blockedAttempts: 0, guardLoads: 2 },
+      networkAudit: { blockedAttempts: 0, guardLoads: bridge ? 6 : 2 },
       networkSandboxVerified: true,
       sandboxProfileSha256: sha256(`sandbox:${id}`),
     },
     commit: sha256(`commit:${id}`).slice(0, 40),
+    ...(formal ? {
+      databaseCompatibility,
+      expectedVersion: version,
+    } : {}),
     files,
     format: "unboundry-immutable-release",
+    ...(formal ? { formalReleaseCommit: true } : {}),
     hostPrerequisites: {
       executables: [
         prerequisite("node"),
@@ -191,8 +322,54 @@ async function createRelease(
     },
     nodeVersion: process.versions.node,
     npmVersion: "10.9.8",
-    packageVersion: id,
+    packageVersion: version,
     releaseId: id,
+    ...(formal ? {
+      releaseRole,
+      releaseStage: releaseRole,
+    } : {}),
+    ...(bridge ? {
+      legacyRuntime: {
+        archiveSha256: exactLegacyRuntimeContract.archiveSha256,
+        build: {
+          dependencyInventorySha256: sha256("m95 synthetic legacy dependency inventory"),
+          executedSteps: [
+            { arguments: ["node_modules/typescript/bin/tsc", "--noEmit"], command: "node" },
+            {
+              arguments: [
+                "node_modules/vite/bin/vite.js",
+                "build",
+                "--configLoader",
+                "runner",
+              ],
+              command: "node",
+            },
+          ],
+          lockSha256: legacyLock?.type === "file" ? legacyLock.sha256 : undefined,
+          networkAudit: { blockedAttempts: 0, guardLoads: 6 },
+          networkSandboxVerified: true,
+          parentDependencyConfigLoadSmoke: true,
+          sandboxProfileSha256: sha256(`sandbox:${id}`),
+          sourceLockSha256: exactLegacySourceLockSha256,
+          workingDirectory: "exact-v0.5.1-version-overlay",
+        },
+        clientIndexSha256: legacyIndexSha256,
+        commitTree: exactLegacyRuntimeContract.commitTree,
+        inventorySha256: sha256(Buffer.from(JSON.stringify(legacyEntries))),
+        originalLockSha256: exactLegacySourceLockSha256,
+        originalInventorySha256: exactLegacyRuntimeContract.originalInventorySha256,
+        overlay: {
+          "package-lock.json": legacyLock?.type === "file" ? legacyLock.sha256 : undefined,
+          "package.json": legacyPackage?.type === "file" ? legacyPackage.sha256 : undefined,
+        },
+        peeledCommit: exactLegacyRuntimeContract.peeledCommit,
+        productionDependencies: exactLegacyProductionDependencies,
+        runtimeDependencyResolution: "parent-release-node_modules",
+        tag: "v0.5.1",
+        trackedFiles: exactLegacyRuntimeContract.trackedFiles,
+        version,
+      },
+    } : {}),
     runtime: {
       arguments: [
         "node_modules/vite/bin/vite.js",
@@ -225,9 +402,17 @@ async function createRelease(
         UNBOUNDRY_TRUST_PROXY: { required: true, source: "literal", value: "1" },
         UNBOUNDRY_VITE_CACHE_DIR: placeholders("UNBOUNDRY_VITE_CACHE_DIR"),
       },
-      forbiddenEnvironment: exactForbiddenEnvironment,
+      forbiddenEnvironment: formal ? formalForbiddenEnvironment : exactForbiddenEnvironment,
       forbiddenEnvironmentPrefixes: ["UNBOUNDRY_TEST_"],
       health: {
+        ...(bridge ? {
+          legacySchema37StaticAsset: {
+            path: "legacy-runtime/dist/client/index.html",
+            sha256: legacyIndexSha256,
+            size: legacyIndexSize,
+            url: "/",
+          },
+        } : {}),
         livePath: "/api/health/live",
         readyPath: "/api/health/ready",
         staticAsset: {
@@ -236,23 +421,51 @@ async function createRelease(
           size: staticBytes.length,
           url: "/",
         },
-        version: id,
+        version,
         versionPath: "/api/version",
       },
-      placeholders: exactPlaceholders,
+      placeholders: runtimePlaceholders,
     },
-    runtimeRoots: [
-      "dist",
-      "node_modules",
-      "client",
-      "server",
-      "types",
-      "vite.config.ts",
-      "spec/unboundry-state-fixtures.json",
-      "package.json",
-      "package-lock.json",
-    ],
-    schemaVersion: 2,
+    runtimeRoots: formal
+      ? [
+          "client",
+          "dist",
+          ...(bridge ? ["legacy-runtime"] : []),
+          "node_modules",
+          "package-lock.json",
+          "package.json",
+          ...(bridge
+            ? [
+                "scripts/migrate-schema37-to39.mjs",
+                "scripts/node-typescript-runtime.mjs",
+              ]
+            : []),
+          "server",
+          "spec/unboundry-state-fixtures.json",
+          "types",
+          "vite.config.ts",
+        ].sort()
+      : [
+          "dist",
+          "node_modules",
+          "client",
+          "server",
+          "types",
+          "vite.config.ts",
+          "spec/unboundry-state-fixtures.json",
+          "package.json",
+          "package-lock.json",
+        ],
+    ...(bridge ? {
+      migration: {
+        arguments: exactMigrationArguments,
+        command: "/opt/node22/bin/node",
+        httpListener: false,
+        permittedReleaseRole: "bridge",
+        placeholders: exactMigrationPlaceholders,
+      },
+    } : {}),
+    schemaVersion: formal ? 3 : 2,
     sourceTree: sha256(`tree:${id}`).slice(0, 40),
   };
   await write(
@@ -265,8 +478,9 @@ async function createRelease(
 
 function stateDocument(schemaVersion: 37 | 39) {
   return {
-    bridgeReleaseId: "bridge",
-    exactOldReleaseId: "exact-v0.5.1",
+    bridgeReleaseId: "v0.5.2",
+    exactOldReleaseId: "v0.5.1",
+    finalReleaseId: "v0.6.0",
     format: "unboundry-release-data-state-v1",
     logicalRowsSha256: sha256("m95 synthetic logical rows"),
     schemaVersion,
@@ -282,10 +496,14 @@ async function createFixture(options: {
   await chmod(root, 0o700);
   const releaseRoot = join(root, "releases");
   await mkdir(releaseRoot, { mode: 0o700 });
-  for (const id of ["exact-v0.5.1", "bridge", "candidate"]) {
-    await createRelease(releaseRoot, id);
+  for (const [id, role] of [
+    ["v0.5.1", "legacy"],
+    ["v0.5.2", "bridge"],
+    ["v0.6.0", "final"],
+  ] as const) {
+    await createRelease(releaseRoot, id, role);
   }
-  const currentId = options.currentId ?? "bridge";
+  const currentId = options.currentId ?? "v0.5.2";
   const currentLink = join(releaseRoot, "current");
   await symlink(currentId, currentLink);
   const databaseState = join(root, "database-state.json");
@@ -325,7 +543,7 @@ function argumentsFor(
     rehearsalScript,
     "--backup-receipt", fixture.backupReceipt,
     "--sequencing-receipt", options.sequencingReceipt ?? join(fixture.root, "missing-sequencing.json"),
-    "--candidate-id", options.candidateId ?? "candidate",
+    "--candidate-id", options.candidateId ?? "v0.6.0",
     "--current-link", fixture.currentLink,
     "--database-state", fixture.databaseState,
     "--failure", options.failure ?? "none",
@@ -358,7 +576,7 @@ async function prepareSequencingReceipt(
 ) {
   if (options.sequencingReceipt) return options.sequencingReceipt;
   const operation = options.operation ?? "migrate-switch";
-  const candidateId = options.candidateId ?? "candidate";
+  const candidateId = options.candidateId ?? "v0.6.0";
   const currentId = await readlink(fixture.currentLink);
   const [currentManifestBytes, candidateManifestBytes, backupBytes, stateBytes] = await Promise.all([
     readFile(join(fixture.releaseRoot, currentId, "release-manifest.json")),
@@ -483,11 +701,11 @@ async function removeFixture(fixture: Fixture) {
 
 test("schema 37 bridge rehearsal migrates without HTTP, atomically switches, drains and retains N-1", async () => {
   test.setTimeout(60_000);
-  const fixture = await createFixture({ currentId: "exact-v0.5.1" });
+  const fixture = await createFixture({ currentId: "v0.5.1" });
   try {
     const schema37Before = await readFile(fixture.databaseState);
     const bridgePhase = await runRehearsal(fixture, {
-      candidateId: "bridge",
+      candidateId: "v0.5.2",
       operation: "bridge-switch",
       receiptName: "bridge-phase.json",
     });
@@ -496,12 +714,40 @@ test("schema 37 bridge rehearsal migrates without HTTP, atomically switches, dra
     expect(bridgeSummary).toMatchObject({
       evidenceClass: "synthetic",
       syntheticOperation: "bridge-switch",
-      syntheticPointerAfter: "bridge",
-      syntheticPointerBefore: "exact-v0.5.1",
+      syntheticPointerAfter: "v0.5.2",
+      syntheticPointerBefore: "v0.5.1",
       syntheticStatus: "passed",
     });
-    expect(await readlink(fixture.currentLink)).toBe("bridge");
+    expect(await readlink(fixture.currentLink)).toBe("v0.5.2");
     expect((await readFile(fixture.databaseState)).equals(schema37Before)).toBe(true);
+
+    const bridgeManifestBytes = await readFile(
+      join(fixture.releaseRoot, "v0.5.2", "release-manifest.json"),
+    );
+    const bridgeManifest = JSON.parse(bridgeManifestBytes.toString("utf8"));
+    const currentStaticBytes = await readFile(
+      join(fixture.releaseRoot, "v0.5.2", bridgeManifest.runtime.health.staticAsset.path),
+    );
+    const schema37StaticBytes = await readFile(
+      join(
+        fixture.releaseRoot,
+        "v0.5.2",
+        bridgeManifest.runtime.health.legacySchema37StaticAsset.path,
+      ),
+    );
+    expect(sha256(currentStaticBytes)).toBe(
+      bridgeManifest.runtime.health.staticAsset.sha256,
+    );
+    expect(sha256(schema37StaticBytes)).toBe(
+      bridgeManifest.runtime.health.legacySchema37StaticAsset.sha256,
+    );
+    expect(schema37StaticBytes.equals(currentStaticBytes)).toBe(false);
+    expect(bridgeSummary.syntheticSteps).toEqual(expect.arrayContaining([
+      "candidate-standby-static-live-version-and-role-blocked-ready-health",
+    ]));
+    const bridgeMigrationBytes = await readFile(
+      join(fixture.releaseRoot, "v0.5.2", "scripts/migrate-schema37-to39.mjs"),
+    );
 
     const result = await runRehearsal(fixture, { receiptName: "migration-phase.json" });
     expect(result.exitCode, result.stderr).toBe(0);
@@ -524,28 +770,35 @@ test("schema 37 bridge rehearsal migrates without HTTP, atomically switches, dra
         syntheticFakeRuntimeActuallyExecuted: true,
       },
       syntheticMigration: {
+        artifactSha256: sha256(bridgeMigrationBytes),
         bridgeStoppedBeforeMigration: true,
         committed: true,
         httpListenerStarted: false,
+        manifestSha256: sha256(bridgeManifestBytes),
         quietMillisecondsRequired: 60_000,
         quietReceiptVerifiedBeforeBridgeStop: true,
+        releaseId: "v0.5.2",
         restartAfterCommit: true,
       },
       syntheticOperation: "migrate-switch",
-      syntheticPointerAfter: "candidate",
-      syntheticPointerBefore: "bridge",
+      syntheticPointerAfter: "v0.6.0",
+      syntheticPointerBefore: "v0.5.2",
+      syntheticReleaseRoles: { candidate: "final", current: "bridge" },
       syntheticStatus: "passed",
     });
     expect(summary.syntheticSequenceId).not.toBe(bridgeSummary.syntheticSequenceId);
     expect(summary.syntheticSequenceReceiptSha256).not.toBe(
       bridgeSummary.syntheticSequenceReceiptSha256,
     );
-    expect(await readlink(fixture.currentLink)).toBe("candidate");
+    expect(await readlink(fixture.currentLink)).toBe("v0.6.0");
     expect(JSON.parse(await readFile(fixture.databaseState, "utf8"))).toMatchObject({
+      migrationArtifactSha256: sha256(bridgeMigrationBytes),
       migrationHttpListenerStarted: false,
+      migrationManifestSha256: sha256(bridgeManifestBytes),
+      migrationReleaseId: "v0.5.2",
       schemaVersion: 39,
     });
-    expect((await lstat(join(fixture.releaseRoot, "bridge"))).isDirectory()).toBe(true);
+    expect((await lstat(join(fixture.releaseRoot, "v0.5.2"))).isDirectory()).toBe(true);
     const frozenReceipt = await lstat(join(fixture.root, "migration-phase.json"));
     expect(frozenReceipt.mode & 0o777).toBe(0o400);
   } finally {
@@ -598,12 +851,12 @@ test("every pre-publication fault leaves current on a healthy bridge and writes 
       const receiptName = `receipt-${failure}.json`;
       const result = await runRehearsal(fixture, { failure, receiptName });
       expect(result.exitCode, failure).not.toBe(0);
-      expect(await readlink(fixture.currentLink), failure).toBe("bridge");
+      expect(await readlink(fixture.currentLink), failure).toBe("v0.5.2");
       const receipt = JSON.parse(await readFile(join(fixture.root, receiptName), "utf8"));
       expect(receipt).toMatchObject({
         evidenceClass: "synthetic",
-        syntheticPointerAfter: "bridge",
-        syntheticPointerBefore: "bridge",
+        syntheticPointerAfter: "v0.5.2",
+        syntheticPointerBefore: "v0.5.2",
         syntheticPointerUnchanged: true,
         syntheticStatus: "failed",
       });
@@ -633,11 +886,11 @@ test("every pre-publication fault leaves current on a healthy bridge and writes 
       });
       expect(result.exitCode, result.stderr).not.toBe(0);
       expect(JSON.parse(result.stderr)).toMatchObject({ code: expectedCode });
-      expect(await readlink(fixture.currentLink)).toBe("bridge");
+      expect(await readlink(fixture.currentLink)).toBe("v0.5.2");
       const receipt = JSON.parse(await readFile(join(fixture.root, receiptName), "utf8"));
       expect(receipt).toMatchObject({
         syntheticOldRecovery: { healthy: true },
-        syntheticPointerAfter: "bridge",
+        syntheticPointerAfter: "v0.5.2",
         syntheticPointerRecoveryState: "old",
         syntheticPointerUnchanged: true,
         syntheticStatus: "failed",
@@ -659,10 +912,10 @@ test("every pre-publication fault leaves current on a healthy bridge and writes 
 
 test("schema 39 rejects exact v0.5.1 and permits only the frozen bridge rollback", async () => {
   test.setTimeout(120_000);
-  const fixture = await createFixture({ currentId: "candidate", schemaVersion: 39 });
+  const fixture = await createFixture({ currentId: "v0.6.0", schemaVersion: 39 });
   try {
     const exact = await runRehearsal(fixture, {
-      candidateId: "exact-v0.5.1",
+      candidateId: "v0.5.1",
       operation: "rollback",
       receiptName: "exact-old-rejected.json",
     });
@@ -670,10 +923,10 @@ test("schema 39 rejects exact v0.5.1 and permits only the frozen bridge rollback
     expect(JSON.parse(exact.stderr)).toMatchObject({
       code: "EXACT_OLD_ROLLBACK_FORBIDDEN",
     });
-    expect(await readlink(fixture.currentLink)).toBe("candidate");
+    expect(await readlink(fixture.currentLink)).toBe("v0.6.0");
 
     const bridge = await runRehearsal(fixture, {
-      candidateId: "bridge",
+      candidateId: "v0.5.2",
       operation: "rollback",
       receiptName: "bridge-rollback.json",
     });
@@ -686,13 +939,13 @@ test("schema 39 rejects exact v0.5.1 and permits only the frozen bridge rollback
       },
       syntheticMigration: { committed: false },
       syntheticOperation: "rollback",
-      syntheticPointerAfter: "bridge",
-      syntheticPointerBefore: "candidate",
+      syntheticPointerAfter: "v0.5.2",
+      syntheticPointerBefore: "v0.6.0",
       syntheticStatus: "passed",
     });
-    expect(await readlink(fixture.currentLink)).toBe("bridge");
+    expect(await readlink(fixture.currentLink)).toBe("v0.5.2");
     expect(JSON.parse(await readFile(fixture.databaseState, "utf8")).schemaVersion).toBe(39);
-    expect((await lstat(join(fixture.releaseRoot, "candidate"))).isDirectory()).toBe(true);
+    expect((await lstat(join(fixture.releaseRoot, "v0.6.0"))).isDirectory()).toBe(true);
   } finally {
     await removeFixture(fixture);
   }
@@ -717,7 +970,7 @@ test("schema 39 rejects exact v0.5.1 and permits only the frozen bridge rollback
     }, sequencingReceipt);
     expect(second.exitCode).not.toBe(0);
     expect(JSON.parse(second.stderr)).toMatchObject({ code: "OPERATION_RESERVED" });
-    expect(await readlink(concurrentFixture.currentLink)).toBe("bridge");
+    expect(await readlink(concurrentFixture.currentLink)).toBe("v0.5.2");
     expect((await readFile(concurrentFixture.databaseState)).equals(stateBeforeCompetition)).toBe(true);
     await write(
       join(concurrentFixture.root, ".unboundry-m95-safe-checkpoint-resume"),
@@ -727,10 +980,10 @@ test("schema 39 rejects exact v0.5.1 and permits only the frozen bridge rollback
     const winner = await first.completion;
     expect(winner.exitCode, winner.stderr).toBe(0);
     expect(JSON.parse(winner.stdout)).toMatchObject({
-      syntheticPointerAfter: "candidate",
+      syntheticPointerAfter: "v0.6.0",
       syntheticStatus: "passed",
     });
-    expect(await readlink(concurrentFixture.currentLink)).toBe("candidate");
+    expect(await readlink(concurrentFixture.currentLink)).toBe("v0.6.0");
     expect(JSON.parse(await readFile(concurrentFixture.databaseState, "utf8")).schemaVersion)
       .toBe(39);
     expect(
@@ -746,7 +999,7 @@ test("manifest inventory tampering fails before migration and never changes curr
   test.setTimeout(60_000);
   const fixture = await createFixture();
   try {
-    const candidate = join(fixture.releaseRoot, "candidate");
+    const candidate = join(fixture.releaseRoot, "v0.6.0");
     await chmod(candidate, 0o700);
     await chmod(join(candidate, "dist"), 0o700);
     await chmod(join(candidate, "dist/client"), 0o700);
@@ -760,7 +1013,7 @@ test("manifest inventory tampering fails before migration and never changes curr
     const result = await runRehearsal(fixture, { receiptName: "tamper-receipt.json" });
     expect(result.exitCode).not.toBe(0);
     expect(JSON.parse(result.stderr)).toMatchObject({ code: "RELEASE_MANIFEST_INVALID" });
-    expect(await readlink(fixture.currentLink)).toBe("bridge");
+    expect(await readlink(fixture.currentLink)).toBe("v0.5.2");
     expect((await readFile(fixture.databaseState)).equals(before)).toBe(true);
     expect(JSON.parse(await readFile(join(fixture.root, "tamper-receipt.json"), "utf8")))
       .toMatchObject({
@@ -771,13 +1024,137 @@ test("manifest inventory tampering fails before migration and never changes curr
     await removeFixture(fixture);
   }
 
+  const legacyStaticFixture = await createFixture({ currentId: "v0.5.1" });
+  try {
+    const bridge = join(legacyStaticFixture.releaseRoot, "v0.5.2");
+    const legacyStaticPath = join(
+      bridge,
+      "legacy-runtime/dist/client/index.html",
+    );
+    const currentStaticBefore = await readFile(join(bridge, "dist/client/index.html"));
+    await chmod(bridge, 0o700);
+    await chmod(join(bridge, "legacy-runtime"), 0o700);
+    await chmod(join(bridge, "legacy-runtime/dist"), 0o700);
+    await chmod(join(bridge, "legacy-runtime/dist/client"), 0o700);
+    await chmod(legacyStaticPath, 0o600);
+    await writeFile(legacyStaticPath, "tampered schema-37 static asset\n");
+    await chmod(legacyStaticPath, 0o400);
+    await chmod(join(bridge, "legacy-runtime/dist/client"), 0o500);
+    await chmod(join(bridge, "legacy-runtime/dist"), 0o500);
+    await chmod(join(bridge, "legacy-runtime"), 0o500);
+    await chmod(bridge, 0o500);
+    expect(
+      (await readFile(join(bridge, "dist/client/index.html"))).equals(currentStaticBefore),
+    ).toBe(true);
+    const before = await readFile(legacyStaticFixture.databaseState);
+    const result = await runRehearsal(legacyStaticFixture, {
+      candidateId: "v0.5.2",
+      operation: "bridge-switch",
+      receiptName: "legacy-static-tamper-receipt.json",
+    });
+    expect(result.exitCode).not.toBe(0);
+    expect(JSON.parse(result.stderr)).toMatchObject({ code: "RELEASE_MANIFEST_INVALID" });
+    expect(await readlink(legacyStaticFixture.currentLink)).toBe("v0.5.1");
+    expect((await readFile(legacyStaticFixture.databaseState)).equals(before)).toBe(true);
+  } finally {
+    await removeFixture(legacyStaticFixture);
+  }
+
+  for (const { label, weakenLegacy } of [
+    {
+      label: "archive",
+      weakenLegacy: (manifest: Record<string, any>) => {
+        manifest.legacyRuntime.archiveSha256 = sha256("tampered exact archive");
+      },
+    },
+    {
+      label: "peeled-commit",
+      weakenLegacy: (manifest: Record<string, any>) => {
+        manifest.legacyRuntime.peeledCommit = "0".repeat(40);
+      },
+    },
+    {
+      label: "commit-tree",
+      weakenLegacy: (manifest: Record<string, any>) => {
+        manifest.legacyRuntime.commitTree = "1".repeat(40);
+      },
+    },
+    {
+      label: "tracked-files",
+      weakenLegacy: (manifest: Record<string, any>) => {
+        manifest.legacyRuntime.trackedFiles =
+          exactLegacyRuntimeContract.trackedFiles - 1;
+      },
+    },
+    {
+      label: "original-inventory",
+      weakenLegacy: (manifest: Record<string, any>) => {
+        manifest.legacyRuntime.originalInventorySha256 =
+          sha256("tampered exact original inventory");
+      },
+    },
+    {
+      label: "build-attestation",
+      weakenLegacy: (manifest: Record<string, any>) => {
+        delete manifest.legacyRuntime.build;
+      },
+    },
+    {
+      label: "schema37-static-path",
+      weakenLegacy: (manifest: Record<string, any>) => {
+        manifest.runtime.health.legacySchema37StaticAsset.path =
+          manifest.runtime.health.staticAsset.path;
+      },
+    },
+  ]) {
+    const weakenedBridgeFixture = await createFixture({ currentId: "v0.5.1" });
+    try {
+      const bridge = join(weakenedBridgeFixture.releaseRoot, "v0.5.2");
+      const manifestPath = join(bridge, "release-manifest.json");
+      await chmod(bridge, 0o700);
+      await chmod(manifestPath, 0o600);
+      const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+      weakenLegacy(manifest);
+      await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+      await chmod(manifestPath, 0o400);
+      await chmod(bridge, 0o500);
+      const before = await readFile(weakenedBridgeFixture.databaseState);
+      const result = await runRehearsal(weakenedBridgeFixture, {
+        candidateId: "v0.5.2",
+        operation: "bridge-switch",
+        receiptName:
+          `weak-bridge-${label}-${randomBytes(8).toString("hex")}.json`,
+      });
+      expect(result.exitCode).not.toBe(0);
+      expect(JSON.parse(result.stderr)).toMatchObject({ code: "RELEASE_MANIFEST_INVALID" });
+      expect(await readlink(weakenedBridgeFixture.currentLink)).toBe("v0.5.1");
+      expect((await readFile(weakenedBridgeFixture.databaseState)).equals(before)).toBe(true);
+    } finally {
+      await removeFixture(weakenedBridgeFixture);
+    }
+  }
+
   for (const weaken of [
     (manifest: Record<string, any>) => { delete manifest.hostPrerequisites.sandbox; },
     (manifest: Record<string, any>) => { delete manifest.build.networkAudit; },
+    (manifest: Record<string, any>) => { manifest.releaseRole = "bridge"; },
+    (manifest: Record<string, any>) => { manifest.packageVersion = "0.5.2"; },
+    (manifest: Record<string, any>) => {
+      manifest.databaseCompatibility.activeSchemaVersions = [37, 39];
+    },
+    (manifest: Record<string, any>) => {
+      manifest.migration = {
+        arguments: exactMigrationArguments,
+        command: "/opt/node22/bin/node",
+        httpListener: false,
+        permittedReleaseRole: "bridge",
+        placeholders: exactMigrationPlaceholders,
+      };
+    },
   ]) {
     const weakenedFixture = await createFixture();
     try {
-      const candidate = join(weakenedFixture.releaseRoot, "candidate");
+      const candidate = join(weakenedFixture.releaseRoot, "v0.6.0");
       const manifestPath = join(candidate, "release-manifest.json");
       await chmod(candidate, 0o700);
       await chmod(manifestPath, 0o600);
@@ -792,11 +1169,36 @@ test("manifest inventory tampering fails before migration and never changes curr
       });
       expect(result.exitCode).not.toBe(0);
       expect(JSON.parse(result.stderr)).toMatchObject({ code: "RELEASE_MANIFEST_INVALID" });
-      expect(await readlink(weakenedFixture.currentLink)).toBe("bridge");
+      expect(await readlink(weakenedFixture.currentLink)).toBe("v0.5.2");
       expect((await readFile(weakenedFixture.databaseState)).equals(before)).toBe(true);
     } finally {
       await removeFixture(weakenedFixture);
     }
+  }
+
+  const unboundMigrationFixture = await createFixture({ currentId: "v0.5.1" });
+  try {
+    const bridge = join(unboundMigrationFixture.releaseRoot, "v0.5.2");
+    const manifestPath = join(bridge, "release-manifest.json");
+    await chmod(bridge, 0o700);
+    await chmod(manifestPath, 0o600);
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.migration.arguments[0] = "scripts/not-the-bound-migration.mjs";
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    await chmod(manifestPath, 0o400);
+    await chmod(bridge, 0o500);
+    const before = await readFile(unboundMigrationFixture.databaseState);
+    const result = await runRehearsal(unboundMigrationFixture, {
+      candidateId: "v0.5.2",
+      operation: "bridge-switch",
+      receiptName: "unbound-migration.json",
+    });
+    expect(result.exitCode).not.toBe(0);
+    expect(JSON.parse(result.stderr)).toMatchObject({ code: "RELEASE_MANIFEST_INVALID" });
+    expect(await readlink(unboundMigrationFixture.currentLink)).toBe("v0.5.1");
+    expect((await readFile(unboundMigrationFixture.databaseState)).equals(before)).toBe(true);
+  } finally {
+    await removeFixture(unboundMigrationFixture);
   }
 });
 
@@ -804,7 +1206,7 @@ test("oversized static health declaration is rejected before any response buffer
   test.setTimeout(60_000);
   const fixture = await createFixture();
   try {
-    const candidate = join(fixture.releaseRoot, "candidate");
+    const candidate = join(fixture.releaseRoot, "v0.6.0");
     const manifestPath = join(candidate, "release-manifest.json");
     await chmod(candidate, 0o700);
     await chmod(manifestPath, 0o600);
@@ -817,7 +1219,7 @@ test("oversized static health declaration is rejected before any response buffer
     const result = await runRehearsal(fixture, { receiptName: "oversized-receipt.json" });
     expect(result.exitCode).not.toBe(0);
     expect(JSON.parse(result.stderr)).toMatchObject({ code: "RELEASE_MANIFEST_INVALID" });
-    expect(await readlink(fixture.currentLink)).toBe("bridge");
+    expect(await readlink(fixture.currentLink)).toBe("v0.5.2");
     expect((await readFile(fixture.databaseState)).equals(before)).toBe(true);
   } finally {
     await removeFixture(fixture);
@@ -843,7 +1245,7 @@ test("oversized static health declaration is rejected before any response buffer
     }, sequencingReceipt);
     expect(retried.exitCode).not.toBe(0);
     expect(JSON.parse(retried.stderr)).toMatchObject({ code: "OPERATION_RESERVED" });
-    expect(await readlink(crashFixture.currentLink)).toBe("bridge");
+    expect(await readlink(crashFixture.currentLink)).toBe("v0.5.2");
     expect(JSON.parse(await readFile(crashFixture.databaseState, "utf8")).schemaVersion).toBe(37);
   } finally {
     await removeFixture(crashFixture);

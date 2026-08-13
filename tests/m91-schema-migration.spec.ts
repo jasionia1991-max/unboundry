@@ -51,6 +51,8 @@ import {
   migrateSchema37To39,
   SchemaMigrationError,
 } from "../server/schemaMigration";
+import { createRuntimeRoleCoordinator } from "../server/runtimeRole";
+import { acquireLegacyChildGuardian } from "../server/legacyChildGuardian";
 import { expect, test } from "./safe-test";
 
 const executeFile = promisify(execFile);
@@ -1149,6 +1151,17 @@ test("write lock serializes migrators and blocks replacement TOCTOU", async () =
         mode: "apply",
         scratchRoot: root,
         testClock: { drainMilliseconds: 0, sleep: async () => undefined },
+      })).rejects.toMatchObject({
+        code: "SCHEMA_MIGRATION_RUNTIME_LEASE_UNAVAILABLE",
+      });
+      await expect(migrateSchema37To39({
+        busyTimeoutMilliseconds: 0,
+        dataDirectory,
+        expectedSourceLogicalSha256: expectedSha,
+        mode: "apply",
+        runtimeDirectory: join(root, "secondary-migration-runtime"),
+        scratchRoot: root,
+        testClock: { drainMilliseconds: 0, sleep: async () => undefined },
       })).rejects.toMatchObject({ code: "SCHEMA_MIGRATION_LOCK_UNAVAILABLE" });
       renameSync(databasePath, displacedPath);
       renameSync(replacementPath, databasePath);
@@ -1344,9 +1357,7 @@ test("marker, directory identity, and dangling links fail closed", async () => {
         },
         scratchRoot: root,
         testClock: { drainMilliseconds: 0, sleep: async () => undefined },
-      })).rejects.toMatchObject({
-        code: "SCHEMA_MIGRATION_DATA_DIRECTORY_CHANGED",
-      });
+      })).rejects.toMatchObject({ code: "SCHEMA_MIGRATION_GUARDIAN_UNSAFE" });
     });
     expect(await readdir(displacedDirectory)).toContain(
       migrationIncompleteMarker,
@@ -1373,6 +1384,7 @@ test("marker, directory identity, and dangling links fail closed", async () => {
 test("dry-run and CLI validate exact v37 plus logical SHA without source writes", async () => {
   const root = await mkdtemp(join(tmpdir(), "unboundry-m91-dry-run-"));
   const dataDirectory = join(root, "data");
+  const runtimeDirectory = join(root, "runtime");
   try {
     const databasePath = await createExactSchema(dataDirectory, 37);
     const source = new DatabaseSync(databasePath, { readOnly: true });
@@ -1396,6 +1408,54 @@ test("dry-run and CLI validate exact v37 plus logical SHA without source writes"
     });
     expect(await sourceFingerprint(dataDirectory)).toEqual(before);
 
+    await expect(executeFile(process.execPath, [
+      migrationScript,
+      "--dry-run",
+      "--data-dir",
+      dataDirectory,
+      "--expected-logical-sha256",
+      expectedSha,
+      "--scratch-root",
+      root,
+    ], { env: process.env, timeout: 10_000 })).rejects.toMatchObject({
+      code: 1,
+      stderr: expect.stringContaining("SCHEMA_MIGRATION_ARGUMENT_INVALID"),
+    });
+    expect(await sourceFingerprint(dataDirectory)).toEqual(before);
+
+    const cliLeaseOwner = createRuntimeRoleCoordinator({
+      dataDirectory,
+      role: "active",
+      runtimeDirectory,
+    });
+    let cliLeaseFailure:
+      | (Error & { code?: number; stderr?: string })
+      | undefined;
+    try {
+      await executeFile(process.execPath, [
+        migrationScript,
+        "--dry-run",
+        "--data-dir",
+        dataDirectory,
+        "--expected-logical-sha256",
+        expectedSha,
+        "--runtime-dir",
+        runtimeDirectory,
+        "--scratch-root",
+        root,
+      ], { env: process.env, timeout: 10_000 });
+    } catch (error) {
+      cliLeaseFailure = error as Error & { code?: number; stderr?: string };
+    } finally {
+      cliLeaseOwner.close();
+    }
+    expect(cliLeaseFailure?.code).toBe(1);
+    expect(JSON.parse(cliLeaseFailure?.stderr ?? "{}")).toMatchObject({
+      code: "SCHEMA_MIGRATION_RUNTIME_LEASE_UNAVAILABLE",
+      ok: false,
+    });
+    expect(await sourceFingerprint(dataDirectory)).toEqual(before);
+
     const cli = await executeFile(process.execPath, [
       migrationScript,
       "--dry-run",
@@ -1403,6 +1463,8 @@ test("dry-run and CLI validate exact v37 plus logical SHA without source writes"
       dataDirectory,
       "--expected-logical-sha256",
       expectedSha,
+      "--runtime-dir",
+      runtimeDirectory,
       "--scratch-root",
       root,
     ], { env: process.env, timeout: 10_000 });
@@ -1422,6 +1484,337 @@ test("dry-run and CLI validate exact v37 plus logical SHA without source writes"
       code: "SCHEMA_MIGRATION_SOURCE_SHA_MISMATCH",
     });
     expect(await sourceFingerprint(dataDirectory)).toEqual(before);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("migration owns the runtime lease and releases it after success or failure", async () => {
+  const root = await mkdtemp(join(tmpdir(), "unboundry-m91-runtime-lease-"));
+  const dataDirectory = join(root, "data");
+  const runtimeDirectory = join(root, "runtime");
+  const swappedDataDirectory = join(root, "swapped-data");
+  const swappedRuntimeDirectory = join(root, "swapped-runtime");
+  const displacedRuntimeDirectory = join(root, "swapped-runtime-displaced");
+  const guardianSwapDataDirectory = join(root, "guardian-swap-data");
+  const guardianSwapRuntimeDirectory = join(root, "guardian-swap-runtime");
+  const closeUnknownDataDirectory = join(root, "close-unknown-data");
+  const closeUnknownRuntimeDirectory = join(root, "close-unknown-runtime");
+  const releaseUnknownDataDirectory = join(root, "release-unknown-data");
+  const releaseUnknownRuntimeDirectory = join(root, "release-unknown-runtime");
+  const unsafeDataDirectory = join(root, "unsafe-data");
+  const unsafeRuntimeDirectory = join(root, "unsafe-runtime");
+  try {
+    const databasePath = await createExactSchema(dataDirectory, 37);
+    const expectedSha = expectedLogicalSha(databasePath, root);
+    const sourceBeforeConflict = await sourceFingerprint(dataDirectory);
+    const activeRuntime = createRuntimeRoleCoordinator({
+      dataDirectory,
+      role: "active",
+      runtimeDirectory,
+    });
+    try {
+      await expect(migrateSchema37To39({
+        dataDirectory,
+        expectedSourceLogicalSha256: expectedSha,
+        mode: "dry-run",
+        runtimeDirectory,
+        scratchRoot: root,
+      })).rejects.toMatchObject({
+        code: "SCHEMA_MIGRATION_RUNTIME_LEASE_UNAVAILABLE",
+      });
+      expect(await sourceFingerprint(dataDirectory)).toEqual(
+        sourceBeforeConflict,
+      );
+    } finally {
+      activeRuntime.close();
+    }
+
+    const guardianBeforeConflict = await sourceFingerprint(dataDirectory);
+    const occupiedGuardian = acquireLegacyChildGuardian({
+      dataDirectory,
+      runtimeDirectory,
+    });
+    try {
+      await expect(migrateSchema37To39({
+        dataDirectory,
+        expectedSourceLogicalSha256: expectedSha,
+        mode: "dry-run",
+        runtimeDirectory,
+        scratchRoot: root,
+      })).rejects.toMatchObject({
+        code: "SCHEMA_MIGRATION_GUARDIAN_UNAVAILABLE",
+      });
+      expect(await sourceFingerprint(dataDirectory)).toEqual(
+        guardianBeforeConflict,
+      );
+    } finally {
+      occupiedGuardian.release();
+    }
+
+    const successfulDryRun = await migrateSchema37To39({
+      dataDirectory,
+      expectedSourceLogicalSha256: expectedSha,
+      mode: "dry-run",
+      runtimeDirectory,
+      scratchRoot: root,
+    });
+    expect(successfulDryRun.status).toBe("ready");
+    const ownerAfterSuccess = createRuntimeRoleCoordinator({
+      dataDirectory,
+      role: "active",
+      runtimeDirectory,
+    });
+    expect(ownerAfterSuccess.snapshot().activeLeaseHeld).toBe(true);
+    ownerAfterSuccess.close();
+
+    const sourceBeforeFailure = await sourceFingerprint(dataDirectory);
+    await expect(migrateSchema37To39({
+      dataDirectory,
+      expectedSourceLogicalSha256: "0".repeat(64),
+      mode: "dry-run",
+      runtimeDirectory,
+      scratchRoot: root,
+    })).rejects.toMatchObject({
+      code: "SCHEMA_MIGRATION_SOURCE_SHA_MISMATCH",
+    });
+    expect(await sourceFingerprint(dataDirectory)).toEqual(sourceBeforeFailure);
+    const ownerAfterFailure = createRuntimeRoleCoordinator({
+      dataDirectory,
+      role: "active",
+      runtimeDirectory,
+    });
+    expect(ownerAfterFailure.snapshot().activeLeaseHeld).toBe(true);
+    ownerAfterFailure.close();
+
+    const swappedDatabasePath = await createExactSchema(
+      swappedDataDirectory,
+      37,
+    );
+    const swappedExpectedSha = expectedLogicalSha(swappedDatabasePath, root);
+    const swappedDatabaseBefore = createHash("sha256")
+      .update(await readFile(swappedDatabasePath))
+      .digest("hex");
+    let runtimeSwapped = false;
+    await expect(migrateSchema37To39({
+      dataDirectory: swappedDataDirectory,
+      expectedSourceLogicalSha256: swappedExpectedSha,
+      mode: "apply",
+      onCheckpoint: (checkpoint) => {
+        if (checkpoint !== "source-locked" || runtimeSwapped) return;
+        runtimeSwapped = true;
+        renameSync(swappedRuntimeDirectory, displacedRuntimeDirectory);
+        mkdirSync(swappedRuntimeDirectory, { mode: 0o700 });
+      },
+      runtimeDirectory: swappedRuntimeDirectory,
+      scratchRoot: root,
+    })).rejects.toMatchObject({ code: "SCHEMA_MIGRATION_GUARDIAN_UNSAFE" });
+    expect(runtimeSwapped).toBe(true);
+    expect(createHash("sha256")
+      .update(await readFile(swappedDatabasePath))
+      .digest("hex")).toBe(swappedDatabaseBefore);
+    expect(expectedLogicalSha(swappedDatabasePath, root)).toBe(
+      swappedExpectedSha,
+    );
+    const swappedSource = new DatabaseSync(swappedDatabasePath, {
+      readOnly: true,
+    });
+    expect(swappedSource.prepare("PRAGMA user_version").get()).toEqual({
+      user_version: 37,
+    });
+    swappedSource.close();
+
+    const guardianSwapDatabasePath = await createExactSchema(
+      guardianSwapDataDirectory,
+      37,
+    );
+    const guardianSwapExpectedSha = expectedLogicalSha(
+      guardianSwapDatabasePath,
+      root,
+    );
+    const guardianSwapBefore = await sourceFingerprint(
+      guardianSwapDataDirectory,
+    );
+    const guardianPath = join(
+      guardianSwapRuntimeDirectory,
+      "legacy-child-role.sqlite",
+    );
+    const displacedGuardianPath = `${guardianPath}.displaced`;
+    let guardianSwapped = false;
+    await expect(migrateSchema37To39({
+      dataDirectory: guardianSwapDataDirectory,
+      expectedSourceLogicalSha256: guardianSwapExpectedSha,
+      mode: "apply",
+      onCheckpoint: (checkpoint) => {
+        if (checkpoint !== "source-locked" || guardianSwapped) return;
+        guardianSwapped = true;
+        renameSync(guardianPath, displacedGuardianPath);
+        writeFileSync(guardianPath, "", { flag: "wx", mode: 0o600 });
+      },
+      runtimeDirectory: guardianSwapRuntimeDirectory,
+      scratchRoot: root,
+    })).rejects.toMatchObject({
+      code: "SCHEMA_MIGRATION_GUARDIAN_UNSAFE",
+    });
+    expect(guardianSwapped).toBe(true);
+    expect(await sourceFingerprint(guardianSwapDataDirectory)).toEqual(
+      guardianSwapBefore,
+    );
+    const guardianSwapSource = new DatabaseSync(guardianSwapDatabasePath, {
+      readOnly: true,
+    });
+    expect(guardianSwapSource.prepare("PRAGMA user_version").get()).toEqual({
+      user_version: 37,
+    });
+    guardianSwapSource.close();
+    let guardianSwapHandoffError: unknown;
+    try {
+      createRuntimeRoleCoordinator({
+        dataDirectory: guardianSwapDataDirectory,
+        role: "active",
+        runtimeDirectory: guardianSwapRuntimeDirectory,
+      });
+    } catch (error) {
+      guardianSwapHandoffError = error;
+    }
+    expect(guardianSwapHandoffError).toMatchObject({
+      code: "RUNTIME_ACTIVE_LEASE_UNAVAILABLE",
+    });
+
+    const closeUnknownDatabasePath = await createExactSchema(
+      closeUnknownDataDirectory,
+      37,
+    );
+    const closeUnknownExpectedSha = expectedLogicalSha(
+      closeUnknownDatabasePath,
+      root,
+    );
+    const closeUnknownBefore = await sourceFingerprint(closeUnknownDataDirectory);
+    const originalDatabaseClose = DatabaseSync.prototype.close;
+    let closeUnknownFailure: unknown;
+    try {
+      DatabaseSync.prototype.close = function () {
+        throw new Error("m91 injected application database close uncertainty");
+      };
+      await migrateSchema37To39({
+        dataDirectory: closeUnknownDataDirectory,
+        expectedSourceLogicalSha256: closeUnknownExpectedSha,
+        mode: "dry-run",
+        runtimeDirectory: closeUnknownRuntimeDirectory,
+        scratchRoot: root,
+      });
+    } catch (error) {
+      closeUnknownFailure = error;
+    } finally {
+      DatabaseSync.prototype.close = originalDatabaseClose;
+    }
+    expect(closeUnknownFailure).toMatchObject({
+      code: "SCHEMA_MIGRATION_DATABASE_CLOSE_UNKNOWN",
+    });
+    expect(await sourceFingerprint(closeUnknownDataDirectory)).toEqual(
+      closeUnknownBefore,
+    );
+    let closeUnknownHandoffError: unknown;
+    try {
+      createRuntimeRoleCoordinator({
+        dataDirectory: closeUnknownDataDirectory,
+        role: "active",
+        runtimeDirectory: closeUnknownRuntimeDirectory,
+      });
+    } catch (error) {
+      closeUnknownHandoffError = error;
+    }
+    expect(closeUnknownHandoffError).toMatchObject({
+      code: "RUNTIME_ACTIVE_LEASE_UNAVAILABLE",
+    });
+
+    const releaseUnknownDatabasePath = await createExactSchema(
+      releaseUnknownDataDirectory,
+      37,
+    );
+    const releaseUnknownExpectedSha = expectedLogicalSha(
+      releaseUnknownDatabasePath,
+      root,
+    );
+    const releaseUnknownBefore = await sourceFingerprint(
+      releaseUnknownDataDirectory,
+    );
+    const releaseUnknownGuardianPath = join(
+      releaseUnknownRuntimeDirectory,
+      "legacy-child-role.sqlite",
+    );
+    let guardianCloseCalls = 0;
+    let releaseUnknownFailure: unknown;
+    try {
+      DatabaseSync.prototype.close = function () {
+        const databaseList = this.prepare("PRAGMA database_list").all() as Array<{
+          file?: unknown;
+          name?: unknown;
+        }>;
+        const main = databaseList.find(({ name }) => name === "main");
+        if (main?.file === releaseUnknownGuardianPath) {
+          guardianCloseCalls += 1;
+          throw new Error("m91 injected guardian release uncertainty");
+        }
+        return originalDatabaseClose.call(this);
+      };
+      await migrateSchema37To39({
+        dataDirectory: releaseUnknownDataDirectory,
+        expectedSourceLogicalSha256: releaseUnknownExpectedSha,
+        mode: "dry-run",
+        runtimeDirectory: releaseUnknownRuntimeDirectory,
+        scratchRoot: root,
+      });
+    } catch (error) {
+      releaseUnknownFailure = error;
+    } finally {
+      DatabaseSync.prototype.close = originalDatabaseClose;
+    }
+    expect(guardianCloseCalls).toBe(1);
+    expect(releaseUnknownFailure).toMatchObject({
+      code: "SCHEMA_MIGRATION_GUARDIAN_UNSAFE",
+    });
+    expect(await sourceFingerprint(releaseUnknownDataDirectory)).toEqual(
+      releaseUnknownBefore,
+    );
+    let releaseUnknownHandoffError: unknown;
+    try {
+      createRuntimeRoleCoordinator({
+        dataDirectory: releaseUnknownDataDirectory,
+        role: "active",
+        runtimeDirectory: releaseUnknownRuntimeDirectory,
+      });
+    } catch (error) {
+      releaseUnknownHandoffError = error;
+    }
+    expect(releaseUnknownHandoffError).toMatchObject({
+      code: "RUNTIME_ACTIVE_LEASE_UNAVAILABLE",
+    });
+
+    const unsafeDatabasePath = await createExactSchema(
+      unsafeDataDirectory,
+      37,
+    );
+    const unsafeExpectedSha = expectedLogicalSha(unsafeDatabasePath, root);
+    const unsafeSourceBefore = await sourceFingerprint(unsafeDataDirectory);
+    await mkdir(unsafeRuntimeDirectory, { mode: 0o700 });
+    const unsafeLeasePath = join(unsafeRuntimeDirectory, "active-role.sqlite");
+    const unsafeLease = new DatabaseSync(unsafeLeasePath);
+    unsafeLease.exec("CREATE TABLE wrong_contract (id INTEGER PRIMARY KEY)");
+    unsafeLease.close();
+    chmodSync(unsafeLeasePath, 0o600);
+    await expect(migrateSchema37To39({
+      dataDirectory: unsafeDataDirectory,
+      expectedSourceLogicalSha256: unsafeExpectedSha,
+      mode: "dry-run",
+      runtimeDirectory: unsafeRuntimeDirectory,
+      scratchRoot: root,
+    })).rejects.toMatchObject({
+      code: "SCHEMA_MIGRATION_RUNTIME_LEASE_UNSAFE",
+    });
+    expect(await sourceFingerprint(unsafeDataDirectory)).toEqual(
+      unsafeSourceBefore,
+    );
   } finally {
     await rm(root, { force: true, recursive: true });
   }

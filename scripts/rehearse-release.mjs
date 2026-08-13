@@ -39,6 +39,61 @@ const BACKUP_FORMAT = "unboundry-frozen-backup-receipt-v1";
 const SEQUENCING_FORMAT = "unboundry-synthetic-sequencing-receipt-v1";
 const RESERVATION_FORMAT = "unboundry-synthetic-operation-reservation-v1";
 const RELEASE_FORMAT = "unboundry-immutable-release";
+const RELEASE_MANIFEST_SCHEMA = 3;
+const releaseVersionByRole = Object.freeze({
+  bridge: "0.5.2",
+  final: "0.6.0",
+});
+const exactLegacyRuntimeContract = Object.freeze({
+  archiveSha256: "e7a619c4d9dbaca14d1032ef18f83f81dcfb36c9402976debc4f8f546c8bb5d0",
+  commitTree: "0990690bd9828757b82f59861f950ce6ff9ed4f8",
+  originalInventorySha256:
+    "cd98d90aaae56de756164fa0434dfb6bb144598183536c6d91067308e8d24517",
+  peeledCommit: "7f7d6177a564056a6f41ff83dfb7ba913b21603b",
+  trackedFiles: 371,
+});
+const exactLegacyProductionDependencies = Object.freeze({
+  "@xyflow/react": Object.freeze({ requested: "12.11.2", version: "12.11.2" }),
+  "ali-oss": Object.freeze({ requested: "^6.23.0", version: "6.23.0" }),
+  archiver: Object.freeze({ requested: "^8.0.0", version: "8.0.0" }),
+  react: Object.freeze({ requested: "19.2.8", version: "19.2.8" }),
+  "react-dom": Object.freeze({ requested: "19.2.8", version: "19.2.8" }),
+});
+const exactLegacyBuildSteps = Object.freeze([
+  Object.freeze({
+    arguments: Object.freeze(["node_modules/typescript/bin/tsc", "--noEmit"]),
+    command: "node",
+  }),
+  Object.freeze({
+    arguments: Object.freeze([
+      "node_modules/vite/bin/vite.js",
+      "build",
+      "--configLoader",
+      "runner",
+    ]),
+    command: "node",
+  }),
+]);
+const exactLegacySourceLockSha256 =
+  "79612b35753b970b10223f50adc396c0a064c41bfa8779bb9698b40f9ce0296e";
+const exactMigrationArguments = Object.freeze([
+  "scripts/migrate-schema37-to39.mjs",
+  "--apply",
+  "--data-dir",
+  "${UNBOUNDRY_DATA_DIR}",
+  "--runtime-dir",
+  "${UNBOUNDRY_RUNTIME_DIR}",
+  "--expected-logical-sha256",
+  "${UNBOUNDRY_EXPECTED_SCHEMA37_LOGICAL_SHA256}",
+  "--scratch-root",
+  "${UNBOUNDRY_MIGRATION_SCRATCH_ROOT}",
+]);
+const exactMigrationPlaceholders = Object.freeze({
+  UNBOUNDRY_DATA_DIR: "absolute-private-data-directory",
+  UNBOUNDRY_EXPECTED_SCHEMA37_LOGICAL_SHA256: "lowercase-sha256",
+  UNBOUNDRY_MIGRATION_SCRATCH_ROOT: "absolute-private-migration-scratch-directory",
+  UNBOUNDRY_RUNTIME_DIR: "absolute-private-runtime-directory-shared-with-service",
+});
 const REQUIRED_QUIET_MILLISECONDS = 60_000;
 const MAXIMUM_FIXED_FILE_BYTES = 512 * 1024 * 1024;
 const MAXIMUM_MANIFEST_BYTES = 16 * 1024 * 1024;
@@ -84,6 +139,17 @@ const exactForbiddenEnvironment = Object.freeze([
   "NODE_PATH",
   "UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION",
   "UNBOUNDRY_MAINTENANCE_MODE",
+  "UNBOUNDRY_SAFE_TEST",
+]);
+const formalForbiddenEnvironment = Object.freeze([
+  "LD_LIBRARY_PATH",
+  "LD_PRELOAD",
+  "NODE_OPTIONS",
+  "NODE_PATH",
+  "UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION",
+  "UNBOUNDRY_LEGACY_RUNTIME_ROOT",
+  "UNBOUNDRY_MAINTENANCE_MODE",
+  "UNBOUNDRY_RELEASE_ROLE",
   "UNBOUNDRY_SAFE_TEST",
 ]);
 const exactPlaceholders = Object.freeze({
@@ -635,7 +701,20 @@ function normalizedRelativePath(value, label) {
   return parts;
 }
 
-function validateRuntimeContract(runtime) {
+function validateRuntimeContract(runtime, releaseRole = "legacy") {
+  const bridge = releaseRole === "bridge";
+  const formal = bridge || releaseRole === "final";
+  const expectedPlaceholders = formal
+    ? Object.freeze({
+        UNBOUNDRY_DATA_DIR: "absolute-private-data-directory",
+        UNBOUNDRY_PORT: "loopback-port",
+        UNBOUNDRY_RUNTIME_HOME: "absolute-private-runtime-home-directory",
+        UNBOUNDRY_RUNTIME_DIR: "absolute-private-runtime-directory",
+        UNBOUNDRY_RUNTIME_ROLE: "active-or-non-active-runtime-role",
+        UNBOUNDRY_RUNTIME_TEMP: "absolute-private-runtime-temporary-directory",
+        UNBOUNDRY_VITE_CACHE_DIR: "absolute-private-cache-directory",
+      })
+    : exactPlaceholders;
   if (
     !runtime || typeof runtime !== "object" || !isAbsolute(runtime.command) ||
     runtime.cwd !== "." || !Array.isArray(runtime.arguments) ||
@@ -650,9 +729,11 @@ function validateRuntimeContract(runtime) {
       "${UNBOUNDRY_PORT}",
       "--strictPort",
     ]) ||
-    JSON.stringify(runtime.forbiddenEnvironment) !== JSON.stringify(exactForbiddenEnvironment) ||
+    JSON.stringify(runtime.forbiddenEnvironment) !== JSON.stringify(
+      formal ? formalForbiddenEnvironment : exactForbiddenEnvironment,
+    ) ||
     JSON.stringify(runtime.forbiddenEnvironmentPrefixes) !== JSON.stringify(["UNBOUNDRY_TEST_"]) ||
-    JSON.stringify(runtime.placeholders) !== JSON.stringify(exactPlaceholders)
+    JSON.stringify(runtime.placeholders) !== JSON.stringify(expectedPlaceholders)
   ) fail("RELEASE_MANIFEST_INVALID", "Release runtime contract is incomplete or unexpected");
   const environment = runtime.environment;
   const placeholderVariables = Object.freeze({
@@ -704,12 +785,36 @@ function validateRuntimeContract(runtime) {
     health?.versionPath !== "/api/version" ||
     typeof health.version !== "string" || !health.version ||
     health.staticAsset?.url !== "/" ||
-    typeof health.staticAsset?.path !== "string" ||
+    health.staticAsset?.path !== "dist/client/index.html" ||
     !sha256Pattern.test(health.staticAsset?.sha256 ?? "") ||
     !Number.isSafeInteger(health.staticAsset?.size) || health.staticAsset.size <= 0 ||
     health.staticAsset.size > MAXIMUM_STATIC_HEALTH_BYTES
   ) fail("RELEASE_MANIFEST_INVALID", "Release three-layer health contract is invalid");
   normalizedRelativePath(health.staticAsset.path, "Static health asset");
+  const legacyStatic = health.legacySchema37StaticAsset;
+  if (
+    bridge
+      ? legacyStatic?.url !== "/" ||
+        legacyStatic?.path !== "legacy-runtime/dist/client/index.html" ||
+        !sha256Pattern.test(legacyStatic?.sha256 ?? "") ||
+        !Number.isSafeInteger(legacyStatic?.size) || legacyStatic.size <= 0 ||
+        legacyStatic.size > MAXIMUM_STATIC_HEALTH_BYTES
+      : legacyStatic !== undefined
+  ) {
+    fail(
+      "RELEASE_MANIFEST_INVALID",
+      "Release schema-37 static health contract is invalid",
+    );
+  }
+  if (bridge) {
+    normalizedRelativePath(
+      legacyStatic.path,
+      "Schema-37 static health asset",
+    );
+    if (legacyStatic.path === health.staticAsset.path) {
+      fail("RELEASE_MANIFEST_INVALID", "Schema-37 and current static health assets must differ");
+    }
+  }
 }
 
 function validatePrerequisites(manifest) {
@@ -824,7 +929,11 @@ async function inventoryRelease(releaseDirectory) {
   return inventory;
 }
 
-async function validateRelease(releaseRoot, releaseId, { injectedManifestFailure = false } = {}) {
+async function validateRelease(
+  releaseRoot,
+  releaseId,
+  { allowExactLegacy = false, injectedManifestFailure = false } = {},
+) {
   const releaseRootBefore = await lstat(releaseRoot).catch(() => undefined);
   if (!releaseRootBefore?.isDirectory() || releaseRootBefore.isSymbolicLink()) {
     fail("RELEASE_MANIFEST_INVALID", "Release root is unavailable");
@@ -844,14 +953,23 @@ async function validateRelease(releaseRoot, releaseId, { injectedManifestFailure
     mode: 0o400,
   });
   const manifest = parseDocument(manifestBytes, "Release manifest");
+  const exactLegacy = allowExactLegacy && manifest.schemaVersion === 2;
+  const releaseRole = exactLegacy ? "legacy" : manifest.releaseRole;
+  const expectedVersion = releaseVersionByRole[releaseRole];
   if (
-    injectedManifestFailure || manifest.format !== RELEASE_FORMAT || manifest.schemaVersion !== 2 ||
+    injectedManifestFailure || manifest.format !== RELEASE_FORMAT ||
+    (!exactLegacy && manifest.schemaVersion !== RELEASE_MANIFEST_SCHEMA) ||
     manifest.artifactClass !== "production" || manifest.buildPlatform !== "linux" ||
     manifest.buildArch !== "x64" || manifest.buildLibc !== "glibc" ||
     manifest.releaseId !== releaseId || !commitPattern.test(manifest.commit ?? "") ||
     !commitPattern.test(manifest.sourceTree ?? "") ||
     manifest.nodeVersion !== "22.23.1" || manifest.npmVersion !== "10.9.8" ||
-    typeof manifest.packageVersion !== "string" ||
+    (exactLegacy
+      ? manifest.packageVersion !== "0.5.1" || releaseId !== "v0.5.1"
+      : !expectedVersion || releaseId !== `v${expectedVersion}` ||
+        manifest.packageVersion !== expectedVersion ||
+        manifest.expectedVersion !== expectedVersion ||
+        manifest.releaseStage !== releaseRole || manifest.formalReleaseCommit !== true) ||
     manifest.runtime?.health?.version !== manifest.packageVersion ||
     manifest.admission?.directoryMode !== "0500" ||
     manifest.admission?.manifestInventoryVerified !== true ||
@@ -860,6 +978,22 @@ async function validateRelease(releaseRoot, releaseId, { injectedManifestFailure
       "atomic-staging-rename-manifest-verified",
     ]).has(manifest.admission?.rule)
   ) fail("RELEASE_MANIFEST_INVALID", "Release manifest identity or admission is invalid");
+  if (!exactLegacy) {
+    const expectedCompatibility = releaseRole === "bridge"
+      ? {
+          activeSchemaVersions: [37, 39],
+          migrationMode: "external-one-shot-only",
+          rollbackTargetForSchemaVersion: 39,
+        }
+      : {
+          activeSchemaVersions: [39],
+          migrationMode: "forbidden-from-final-runtime",
+          standbySchemaVersions: [37],
+        };
+    if (JSON.stringify(manifest.databaseCompatibility) !== JSON.stringify(expectedCompatibility)) {
+      fail("RELEASE_MANIFEST_INVALID", "Release database compatibility does not match its role");
+    }
+  }
   if (
     manifest.build?.networkSandboxVerified !== true ||
     manifest.build?.networkAudit?.blockedAttempts !== 0 ||
@@ -880,7 +1014,7 @@ async function validateRelease(releaseRoot, releaseId, { injectedManifestFailure
       },
     ])
   ) fail("RELEASE_MANIFEST_INVALID", "Release build attestation is incomplete");
-  validateRuntimeContract(manifest.runtime);
+  validateRuntimeContract(manifest.runtime, releaseRole);
   if (manifest.runtime.command !== "/opt/node22/bin/node") {
     fail("RELEASE_MANIFEST_INVALID", "Production runtime command is not the pinned Node executable");
   }
@@ -889,17 +1023,36 @@ async function validateRelease(releaseRoot, releaseId, { injectedManifestFailure
   if (JSON.stringify(inventory) !== JSON.stringify(manifest.files)) {
     fail("RELEASE_MANIFEST_INVALID", "Release inventory does not match its immutable manifest");
   }
-  const expectedRuntimeRoots = [
-    "dist",
-    "node_modules",
-    "client",
-    "server",
-    "types",
-    "vite.config.ts",
-    "spec/unboundry-state-fixtures.json",
-    "package.json",
-    "package-lock.json",
-  ];
+  const expectedRuntimeRoots = exactLegacy
+    ? [
+        "dist",
+        "node_modules",
+        "client",
+        "server",
+        "types",
+        "vite.config.ts",
+        "spec/unboundry-state-fixtures.json",
+        "package.json",
+        "package-lock.json",
+      ]
+    : [
+        "client",
+        "dist",
+        ...(releaseRole === "bridge" ? ["legacy-runtime"] : []),
+        "node_modules",
+        "package-lock.json",
+        "package.json",
+        ...(releaseRole === "bridge"
+          ? [
+              "scripts/migrate-schema37-to39.mjs",
+              "scripts/node-typescript-runtime.mjs",
+            ]
+          : []),
+        "server",
+        "spec/unboundry-state-fixtures.json",
+        "types",
+        "vite.config.ts",
+      ].sort();
   if (JSON.stringify(manifest.runtimeRoots) !== JSON.stringify(expectedRuntimeRoots)) {
     fail("RELEASE_MANIFEST_INVALID", "Release runtime roots differ from the production contract");
   }
@@ -913,6 +1066,85 @@ async function validateRelease(releaseRoot, releaseId, { injectedManifestFailure
       path === "node_modules/@playwright" || path.startsWith("node_modules/@playwright/")
     )
   ) fail("RELEASE_MANIFEST_INVALID", "Release runtime dependency closure is invalid");
+  let migrationArtifactSha256;
+  if (releaseRole === "bridge") {
+    const migrationEntry = inventory.find((entry) =>
+      entry.type === "file" && entry.path === "scripts/migrate-schema37-to39.mjs"
+    );
+    if (
+      manifest.migration?.command !== "/opt/node22/bin/node" ||
+      JSON.stringify(manifest.migration?.arguments) !== JSON.stringify(exactMigrationArguments) ||
+      manifest.migration?.httpListener !== false ||
+      manifest.migration?.permittedReleaseRole !== "bridge" ||
+      JSON.stringify(manifest.migration?.placeholders) !==
+        JSON.stringify(exactMigrationPlaceholders) ||
+      !migrationEntry?.sha256
+    ) fail("RELEASE_MANIFEST_INVALID", "Release migration is not artifact-bound");
+    migrationArtifactSha256 = migrationEntry.sha256;
+    const legacyEntries = inventory.filter((entry) =>
+      entry.path.startsWith("legacy-runtime/")
+    ).map((entry) => ({
+      ...entry,
+      path: entry.path.slice("legacy-runtime/".length),
+    }));
+    const legacyIndex = legacyEntries.find((entry) =>
+      entry.type === "file" && entry.path === "dist/client/index.html"
+    );
+    const legacyPackage = legacyEntries.find((entry) =>
+      entry.type === "file" && entry.path === "package.json"
+    );
+    const legacyLock = legacyEntries.find((entry) =>
+      entry.type === "file" && entry.path === "package-lock.json"
+    );
+    const legacy = manifest.legacyRuntime;
+    if (
+      legacy?.tag !== "v0.5.1" || legacy?.version !== "0.5.2" ||
+      legacy?.runtimeDependencyResolution !== "parent-release-node_modules" ||
+      legacy?.peeledCommit !== exactLegacyRuntimeContract.peeledCommit ||
+      legacy?.commitTree !== exactLegacyRuntimeContract.commitTree ||
+      legacy?.trackedFiles !== exactLegacyRuntimeContract.trackedFiles ||
+      legacy?.archiveSha256 !== exactLegacyRuntimeContract.archiveSha256 ||
+      legacy?.originalLockSha256 !== exactLegacySourceLockSha256 ||
+      legacy?.originalInventorySha256 !==
+        exactLegacyRuntimeContract.originalInventorySha256 ||
+      !sha256Pattern.test(legacy?.inventorySha256 ?? "") ||
+      !sha256Pattern.test(legacy?.clientIndexSha256 ?? "") ||
+      !sha256Pattern.test(legacy?.overlay?.["package.json"] ?? "") ||
+      !sha256Pattern.test(legacy?.overlay?.["package-lock.json"] ?? "") ||
+      JSON.stringify(Object.keys(legacy?.overlay ?? {}).sort()) !==
+        JSON.stringify(["package-lock.json", "package.json"]) ||
+      legacy.overlay["package.json"] !== legacyPackage?.sha256 ||
+      legacy.overlay["package-lock.json"] !== legacyLock?.sha256 ||
+      JSON.stringify(legacy.productionDependencies) !==
+        JSON.stringify(exactLegacyProductionDependencies) ||
+      legacyEntries.some((entry) =>
+        entry.path === "node_modules" || entry.path.startsWith("node_modules/")
+      ) ||
+      legacy.clientIndexSha256 !== legacyIndex?.sha256 ||
+      legacy.inventorySha256 !== sha256(Buffer.from(JSON.stringify(legacyEntries))) ||
+      legacy.build?.networkSandboxVerified !== true ||
+      legacy.build?.networkAudit?.blockedAttempts !== 0 ||
+      !Number.isSafeInteger(legacy.build?.networkAudit?.guardLoads) ||
+      legacy.build.networkAudit.guardLoads < 6 ||
+      JSON.stringify(legacy.build.networkAudit) !==
+        JSON.stringify(manifest.build.networkAudit) ||
+      legacy.build?.sourceLockSha256 !== exactLegacySourceLockSha256 ||
+      legacy.build?.lockSha256 !== legacy.overlay["package-lock.json"] ||
+      !sha256Pattern.test(legacy.build?.dependencyInventorySha256 ?? "") ||
+      legacy.build?.sandboxProfileSha256 !== manifest.build.sandboxProfileSha256 ||
+      legacy.build?.parentDependencyConfigLoadSmoke !== true ||
+      legacy.build?.workingDirectory !== "exact-v0.5.1-version-overlay" ||
+      JSON.stringify(legacy.build?.executedSteps) !== JSON.stringify(exactLegacyBuildSteps)
+    ) fail("RELEASE_MANIFEST_INVALID", "Bridge legacy runtime is incomplete or unbound");
+  } else if (releaseRole === "final") {
+    if (
+      manifest.migration !== undefined || manifest.legacyRuntime !== undefined ||
+      [...inventoryPaths].some((path) =>
+        path === "legacy-runtime" || path.startsWith("legacy-runtime/") ||
+        path === "scripts" || path.startsWith("scripts/")
+      )
+    ) fail("RELEASE_MANIFEST_INVALID", "Final release must not publish bridge-only artifacts");
+  }
   const staticEntry = inventory.find((entry) =>
     entry.type === "file" && entry.path === manifest.runtime.health.staticAsset.path
   );
@@ -920,6 +1152,21 @@ async function validateRelease(releaseRoot, releaseId, { injectedManifestFailure
     staticEntry?.sha256 !== manifest.runtime.health.staticAsset.sha256 ||
     staticEntry?.size !== manifest.runtime.health.staticAsset.size
   ) fail("RELEASE_MANIFEST_INVALID", "Static health artifact is not bound to the manifest");
+  if (releaseRole === "bridge") {
+    const legacyStatic = manifest.runtime.health.legacySchema37StaticAsset;
+    const legacyStaticEntry = inventory.find((entry) =>
+      entry.type === "file" && entry.path === legacyStatic.path
+    );
+    if (
+      legacyStaticEntry?.sha256 !== legacyStatic.sha256 ||
+      legacyStaticEntry?.size !== legacyStatic.size
+    ) {
+      fail(
+        "RELEASE_MANIFEST_INVALID",
+        "Schema-37 static health artifact is not bound to the manifest",
+      );
+    }
+  }
   const directoryAfter = await lstat(directory).catch(() => undefined);
   const releaseRootAfter = await lstat(releaseRoot).catch(() => undefined);
   if (
@@ -934,6 +1181,8 @@ async function validateRelease(releaseRoot, releaseId, { injectedManifestFailure
     directoryIdentity: directoryIdentity(details),
     manifest,
     manifestSha256: sha256(manifestBytes),
+    migrationArtifactSha256,
+    releaseRole,
   });
 }
 
@@ -1056,7 +1305,12 @@ async function readDataContracts(options) {
     state.format !== STATE_FORMAT || !new Set([37, 39]).has(state.schemaVersion) ||
     !releaseIdPattern.test(state.bridgeReleaseId ?? "") ||
     !releaseIdPattern.test(state.exactOldReleaseId ?? "") ||
-    state.bridgeReleaseId === state.exactOldReleaseId
+    !releaseIdPattern.test(state.finalReleaseId ?? "") ||
+    new Set([
+      state.bridgeReleaseId,
+      state.exactOldReleaseId,
+      state.finalReleaseId,
+    ]).size !== 3
   ) fail("DATA_STATE_INVALID", "Synthetic data state is invalid");
   const backupSnapshot = await fixedFileSnapshot(options.backupReceipt, "Frozen backup receipt", {
     maximumBytes: MAXIMUM_CONTROL_FILE_BYTES,
@@ -1342,13 +1596,25 @@ async function fetchWithDeadline(url, init = {}) {
   return fetch(url, { ...init, signal: AbortSignal.timeout(3_000) });
 }
 
+function staticHealthAsset(release, schemaVersion) {
+  if (
+    release.releaseRole === "bridge" && schemaVersion === 37
+  ) return release.manifest.runtime.health.legacySchema37StaticAsset;
+  return release.manifest.runtime.health.staticAsset;
+}
+
 async function verifyHealth(server, release, expectedRole) {
+  const state = parseDocument(
+    await readFile(releaseStatePath(server), "utf8"),
+    "Synthetic data state",
+  );
+  const staticAsset = staticHealthAsset(release, state.schemaVersion);
   const staticResponse = await fetchWithDeadline(`${server.origin}/`);
   const staticBytes = Buffer.from(await staticResponse.arrayBuffer());
   if (
     staticResponse.status !== 200 ||
-    staticBytes.length !== release.manifest.runtime.health.staticAsset.size ||
-    sha256(staticBytes) !== release.manifest.runtime.health.staticAsset.sha256
+    staticBytes.length !== staticAsset.size ||
+    sha256(staticBytes) !== staticAsset.sha256
   ) fail("STATIC_HEALTH_FAILED", "Static artifact health did not match the release manifest");
   const live = await fetchWithDeadline(`${server.origin}${release.manifest.runtime.health.livePath}`);
   if (live.status !== 200) fail("LIVE_HEALTH_FAILED", "Process liveness health failed");
@@ -1371,7 +1637,6 @@ async function verifyHealth(server, release, expectedRole) {
   } catch {
     fail("READY_HEALTH_FAILED", "Readiness health returned malformed JSON");
   }
-  const state = parseDocument(await readFile(releaseStatePath(server), "utf8"), "Synthetic data state");
   if (
     ready.status !== 200 || readyBody.status !== "ready" || readyBody.role !== expectedRole ||
     readyBody.schemaVersion !== state.schemaVersion ||
@@ -1398,12 +1663,17 @@ async function verifyWriteProbe(server) {
 }
 
 async function verifyStandbyHealth(server, release) {
+  const state = parseDocument(
+    await readFile(releaseStatePath(server), "utf8"),
+    "Synthetic data state",
+  );
+  const staticAsset = staticHealthAsset(release, state.schemaVersion);
   const staticResponse = await fetchWithDeadline(`${server.origin}/`);
   const staticBytes = Buffer.from(await staticResponse.arrayBuffer());
   if (
     staticResponse.status !== 200 ||
-    staticBytes.length !== release.manifest.runtime.health.staticAsset.size ||
-    sha256(staticBytes) !== release.manifest.runtime.health.staticAsset.sha256
+    staticBytes.length !== staticAsset.size ||
+    sha256(staticBytes) !== staticAsset.sha256
   ) fail("STATIC_HEALTH_FAILED", "Standby static health did not match the release manifest");
   const live = await fetchWithDeadline(`${server.origin}${release.manifest.runtime.health.livePath}`);
   if (live.status !== 200) fail("LIVE_HEALTH_FAILED", "Standby liveness health failed");
@@ -1611,6 +1881,11 @@ async function exerciseDrain(server) {
 }
 
 async function verifyMaintenanceHealth(server, release) {
+  const state = parseDocument(
+    await readFile(releaseStatePath(server), "utf8"),
+    "Synthetic data state",
+  );
+  const staticAsset = staticHealthAsset(release, state.schemaVersion);
   const staticResponse = await fetchWithDeadline(`${server.origin}/`);
   const staticBytes = Buffer.from(await staticResponse.arrayBuffer());
   const live = await fetchWithDeadline(`${server.origin}${release.manifest.runtime.health.livePath}`);
@@ -1620,8 +1895,8 @@ async function verifyMaintenanceHealth(server, release) {
     method: "POST",
   });
   if (
-    staticResponse.status !== 200 || staticBytes.length !== release.manifest.runtime.health.staticAsset.size ||
-    sha256(staticBytes) !== release.manifest.runtime.health.staticAsset.sha256 ||
+    staticResponse.status !== 200 || staticBytes.length !== staticAsset.size ||
+    sha256(staticBytes) !== staticAsset.sha256 ||
     live.status !== 200 || ready.status !== 503 ||
     dynamic.status !== 503 || dynamic.headers.get("retry-after") !== "1"
   ) fail("MAINTENANCE_HEALTH_FAILED", "Maintenance static/dynamic boundary is invalid");
@@ -1689,7 +1964,9 @@ async function orchestrate(options) {
     if (options.candidateId === initialCurrent.id) {
       fail("REHEARSAL_ARGUMENT_INVALID", "Candidate is already current");
     }
-    context.currentRelease = await validateRelease(options.releaseRoot, initialCurrent.id);
+    context.currentRelease = await validateRelease(options.releaseRoot, initialCurrent.id, {
+      allowExactLegacy: initialCurrent.id === contracts.state.exactOldReleaseId,
+    });
     context.currentServer = await startFakeServer(
       context.currentRelease,
       options.databaseState,
@@ -1699,6 +1976,7 @@ async function orchestrate(options) {
     steps.push("current-three-layer-health");
     if (options.failure === "build") fail("BUILD_STAGE_FAILED", "Injected build failure");
     candidateRelease = await validateRelease(options.releaseRoot, options.candidateId, {
+      allowExactLegacy: options.candidateId === contracts.state.exactOldReleaseId,
       injectedManifestFailure: options.failure === "manifest",
     });
     steps.push("candidate-manifest-verified");
@@ -1721,11 +1999,19 @@ async function orchestrate(options) {
       if (contracts.state.schemaVersion === 39 && options.candidateId !== contracts.state.bridgeReleaseId) {
         fail("BRIDGE_ROLLBACK_REQUIRED", "Schema 39 rollback target must be the verified bridge release");
       }
+      if (
+        contracts.state.schemaVersion !== 39 ||
+        initialCurrent.id !== contracts.state.finalReleaseId ||
+        context.currentRelease.releaseRole !== "final" ||
+        candidateRelease.releaseRole !== "bridge"
+      ) fail("BRIDGE_ROLLBACK_REQUIRED", "Rollback must switch the final schema 39 release to bridge");
     } else if (options.operation === "bridge-switch") {
       if (
         contracts.state.schemaVersion !== 37 ||
         initialCurrent.id !== contracts.state.exactOldReleaseId ||
-        options.candidateId !== contracts.state.bridgeReleaseId
+        context.currentRelease.releaseRole !== "legacy" ||
+        options.candidateId !== contracts.state.bridgeReleaseId ||
+        candidateRelease.releaseRole !== "bridge"
       ) {
         fail(
           "BRIDGE_STAGE_INVALID",
@@ -1733,7 +2019,11 @@ async function orchestrate(options) {
         );
       }
     } else if (
-      contracts.state.schemaVersion !== 37 || initialCurrent.id !== contracts.state.bridgeReleaseId
+      contracts.state.schemaVersion !== 37 ||
+      initialCurrent.id !== contracts.state.bridgeReleaseId ||
+      context.currentRelease.releaseRole !== "bridge" ||
+      options.candidateId !== contracts.state.finalReleaseId ||
+      candidateRelease.releaseRole !== "final"
     ) {
       fail(
         "MIGRATION_STAGE_INVALID",
@@ -1781,8 +2071,11 @@ async function orchestrate(options) {
       );
       const migratedState = await atomicWriteJson(options, options.databaseState, {
         ...contracts.state,
+        migrationArtifactSha256: context.currentRelease.migrationArtifactSha256,
         migratedFromBackupReceiptSha256: contracts.backupSha256,
         migrationHttpListenerStarted: false,
+        migrationManifestSha256: context.currentRelease.manifestSha256,
+        migrationReleaseId: context.currentRelease.manifest.releaseId,
         migrationSourceStateSha256: contracts.initialStateSha256,
         schemaVersion: 39,
       }, {
@@ -1878,7 +2171,9 @@ async function orchestrate(options) {
       context.currentServer = undefined;
       steps.push("old-release-drained-after-rollback-switch");
     }
-    const revalidatedOld = await validateRelease(options.releaseRoot, initialCurrent.id);
+    const revalidatedOld = await validateRelease(options.releaseRoot, initialCurrent.id, {
+      allowExactLegacy: initialCurrent.id === contracts.state.exactOldReleaseId,
+    });
     if (revalidatedOld.manifestSha256 !== context.currentRelease.manifestSha256) {
       fail("RELEASE_RETENTION_FAILED", "N-1 immutable manifest changed after publication");
     }
@@ -1915,11 +2210,20 @@ async function orchestrate(options) {
       }),
       syntheticFinishedAtEpochMs: Date.now(),
       syntheticMigration: Object.freeze({
+        artifactSha256: options.operation === "migrate-switch"
+          ? context.currentRelease.migrationArtifactSha256
+          : null,
         bridgeStoppedBeforeMigration: options.operation === "migrate-switch",
         committed: migrationCommitted,
         httpListenerStarted: false,
+        manifestSha256: options.operation === "migrate-switch"
+          ? context.currentRelease.manifestSha256
+          : null,
         quietMillisecondsRequired: REQUIRED_QUIET_MILLISECONDS,
         quietReceiptVerifiedBeforeBridgeStop: true,
+        releaseId: options.operation === "migrate-switch"
+          ? context.currentRelease.manifest.releaseId
+          : null,
         restartAfterCommit: options.operation === "migrate-switch",
       }),
       syntheticNginx: nginxEvidence,
@@ -1934,6 +2238,10 @@ async function orchestrate(options) {
       }),
       syntheticPointerAfter: pointerAfter,
       syntheticPointerBefore: initialCurrent?.id,
+      syntheticReleaseRoles: Object.freeze({
+        candidate: candidateRelease.releaseRole,
+        current: context.currentRelease.releaseRole,
+      }),
       syntheticRetainedReleaseIds: Object.freeze([initialCurrent.id, options.candidateId].sort()),
       syntheticSequenceId: sequence.sequenceId,
       syntheticSequenceReceiptSha256: sequence.sha256,
@@ -2079,6 +2387,10 @@ async function orchestrate(options) {
 async function internalFakeServer() {
   const { createServer } = await import("node:http");
   const manifest = JSON.parse(await readFile(process.env.UNBOUNDRY_M95_MANIFEST, "utf8"));
+  const release = Object.freeze({
+    manifest,
+    releaseRole: manifest.releaseRole ?? "legacy",
+  });
   const releaseDirectory = process.env.UNBOUNDRY_M95_RELEASE_DIR;
   const role = process.env.UNBOUNDRY_M95_ROLE;
   const statePath = process.env.UNBOUNDRY_M95_STATE;
@@ -2105,7 +2417,9 @@ async function internalFakeServer() {
   const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
     if (url.pathname === "/") {
-      const bytes = await readFile(join(releaseDirectory, manifest.runtime.health.staticAsset.path));
+      const state = JSON.parse(await readFile(statePath, "utf8"));
+      const asset = staticHealthAsset(release, state.schemaVersion);
+      const bytes = await readFile(join(releaseDirectory, asset.path));
       response.statusCode = failure === "static-health" ? 500 : 200;
       response.end(failure === "static-health" ? "corrupt" : bytes);
       return;

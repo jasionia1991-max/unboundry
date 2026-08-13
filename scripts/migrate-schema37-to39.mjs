@@ -37,6 +37,7 @@ function parseArguments(argv) {
     if (![
       "--data-dir",
       "--expected-logical-sha256",
+      "--runtime-dir",
       "--scratch-root",
       "--test-duration-probe-audit",
       "--test-duration-probe-executable",
@@ -50,16 +51,23 @@ function parseArguments(argv) {
     values.set(argument, value);
     index += 1;
   }
-  if (!mode || !values.has("--data-dir") || !values.has("--expected-logical-sha256")) {
+  if (
+    !mode || !values.has("--data-dir") ||
+    !values.has("--expected-logical-sha256") || !values.has("--runtime-dir")
+  ) {
     fail(
       "SCHEMA_MIGRATION_ARGUMENT_INVALID",
-      "Migration requires one explicit mode, data directory, and expected logical SHA-256",
+      "Migration requires one explicit mode, data directory, runtime directory, and expected logical SHA-256",
     );
   }
   return {
     dataDirectory: normalizedAbsolute(values.get("--data-dir"), "Data directory"),
     expectedSourceLogicalSha256: values.get("--expected-logical-sha256"),
     mode,
+    runtimeDirectory: normalizedAbsolute(
+      values.get("--runtime-dir"),
+      "Runtime directory",
+    ),
     scratchRoot: values.has("--scratch-root")
       ? normalizedAbsolute(values.get("--scratch-root"), "Scratch root")
       : undefined,
@@ -96,7 +104,11 @@ function redact(message, paths) {
 let pathArguments = [];
 try {
   const options = parseArguments(process.argv.slice(2));
-  pathArguments = [options.dataDirectory, options.scratchRoot].filter(Boolean);
+  pathArguments = [
+    options.dataDirectory,
+    options.runtimeDirectory,
+    options.scratchRoot,
+  ].filter(Boolean);
   const result = await migrateSchema37To39(options);
   process.stdout.write(`${JSON.stringify({ ok: true, ...result })}\n`);
 } catch (error) {

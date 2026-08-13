@@ -1,10 +1,32 @@
 import { createHash } from "node:crypto";
 import { lstat, readFile, realpath } from "node:fs/promises";
-import { isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
+import {
+  AdmittedReleaseError,
+  validateAdmittedRelease,
+} from "./lib/admitted-release.mjs";
+import {
+  assertAttestedReleaseArtifacts,
+  readReleaseAttestation,
+  ReleaseAttestationError,
+} from "./lib/release-attestation.mjs";
 
-const FORMAT = "unboundry-release-ops-validation-v1";
-const EVIDENCE_CLASS = "static-contract";
+const FORMAT = "unboundry-release-ops-validation-v2";
+const EVIDENCE_CLASS = "artifact-bound-static-contract";
 const MAXIMUM_TEMPLATE_BYTES = 256 * 1024;
+const releaseAttestationEnvironmentNames = Object.freeze([
+  "UNBOUNDRY_BRIDGE_RELEASE_MANIFEST",
+  "UNBOUNDRY_BRIDGE_RELEASE_MANIFEST_SHA256",
+  "UNBOUNDRY_FINAL_RELEASE_MANIFEST",
+  "UNBOUNDRY_FINAL_RELEASE_MANIFEST_SHA256",
+  "UNBOUNDRY_RELEASE_ATTESTATION_PATH",
+  "UNBOUNDRY_RELEASE_ATTESTATION_ROOT",
+  "UNBOUNDRY_RELEASE_ATTESTATION_SHA256",
+  "UNBOUNDRY_RELEASE_SOURCE_SHA256",
+  "UNBOUNDRY_SAFE_RUN_NONCE",
+  "UNBOUNDRY_SAFE_TEST",
+  "UNBOUNDRY_TEST_ROOT",
+]);
 const exactNginxPlaceholders = Object.freeze([
   "UNBOUNDRY_SERVER_NAME",
   "UNBOUNDRY_TLS_CERTIFICATE",
@@ -33,7 +55,9 @@ const exactUnsetEnvironment = Object.freeze([
   "NODE_OPTIONS",
   "NODE_PATH",
   "UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION",
+  "UNBOUNDRY_LEGACY_RUNTIME_ROOT",
   "UNBOUNDRY_MAINTENANCE_MODE",
+  "UNBOUNDRY_RELEASE_ROLE",
   "UNBOUNDRY_SAFE_TEST",
 ]);
 
@@ -62,13 +86,19 @@ function normalizedAbsolutePath(value, label) {
 }
 
 function parseArguments(argv) {
-  if (argv.length !== 4) {
+  if (argv.length !== 10) {
     fail(
       "OPS_ARGUMENT_INVALID",
-      "Exactly --nginx-template and --systemd-template are required",
+      "Exactly the three ops templates and both release manifests are required",
     );
   }
-  const allowed = new Set(["--nginx-template", "--systemd-template"]);
+  const allowed = new Set([
+    "--bridge-release-manifest",
+    "--final-release-manifest",
+    "--migration-systemd-template",
+    "--nginx-template",
+    "--systemd-template",
+  ]);
   const values = new Map();
   for (let index = 0; index < argv.length; index += 2) {
     const name = argv[index];
@@ -79,12 +109,96 @@ function parseArguments(argv) {
     values.set(name, value);
   }
   return Object.freeze({
+    bridgeManifest: normalizedAbsolutePath(
+      values.get("--bridge-release-manifest"),
+      "bridge release manifest",
+    ),
+    finalManifest: normalizedAbsolutePath(
+      values.get("--final-release-manifest"),
+      "final release manifest",
+    ),
+    migrationSystemd: normalizedAbsolutePath(
+      values.get("--migration-systemd-template"),
+      "migration systemd template",
+    ),
     nginx: normalizedAbsolutePath(values.get("--nginx-template"), "nginx template"),
     systemd: normalizedAbsolutePath(
       values.get("--systemd-template"),
       "systemd template",
     ),
   });
+}
+
+async function releaseValidationExpectation(options) {
+  const attestationEnvironmentPresent = releaseAttestationEnvironmentNames
+    .filter((name) => process.env[name] !== undefined);
+  if (attestationEnvironmentPresent.length === 0) {
+    fail(
+      "OPS_RELEASE_RELATIONSHIP_UNPROVEN",
+      "Formal bridge-to-final parent commit evidence is required",
+    );
+  }
+  if (
+    process.env.UNBOUNDRY_SAFE_TEST !== "1" ||
+    attestationEnvironmentPresent.length !== releaseAttestationEnvironmentNames.length
+  ) fail("OPS_RELEASE_INVALID", "Partial release attestation environment is forbidden");
+  try {
+    const attestation = await readReleaseAttestation();
+    if (
+      attestation.manifestPaths.bridge !== options.bridgeManifest ||
+      attestation.manifestPaths.final !== options.finalManifest
+    ) fail("OPS_RELEASE_INVALID", "Release manifests do not match the runner attestation");
+    return Object.freeze({
+      expectation: attestation.expectation,
+      manifestSha256: attestation.manifestSha256,
+      relationship: attestation.relationship,
+    });
+  } catch (error) {
+    if (error instanceof OpsValidationError) throw error;
+    if (error instanceof ReleaseAttestationError) {
+      fail("OPS_RELEASE_INVALID", "Release attestation failed closed");
+    }
+    throw error;
+  }
+}
+
+async function validateReleasePair(options, validationExpectation) {
+  try {
+    const [bridge, final] = await Promise.all([
+      validateAdmittedRelease({
+        expectedManifestSha256: validationExpectation.manifestSha256.bridge,
+        expectedRole: "bridge",
+        manifestPath: options.bridgeManifest,
+        testExpectation: validationExpectation.expectation,
+      }),
+      validateAdmittedRelease({
+        expectedManifestSha256: validationExpectation.manifestSha256.final,
+        expectedRole: "final",
+        manifestPath: options.finalManifest,
+        testExpectation: validationExpectation.expectation,
+      }),
+    ]);
+    if (
+      bridge.directory === final.directory ||
+      dirname(bridge.directory) !== dirname(final.directory) ||
+      bridge.releaseRoot !== final.releaseRoot ||
+      JSON.stringify(bridge.rootIdentity) !== JSON.stringify(final.rootIdentity)
+    ) fail("OPS_RELEASE_INVALID", "Bridge and final releases must be distinct siblings");
+    assertAttestedReleaseArtifacts(validationExpectation, { bridge, final });
+    return Object.freeze({ bridge, final });
+  } catch (error) {
+    if (error instanceof OpsValidationError) throw error;
+    if (error instanceof AdmittedReleaseError) {
+      fail("OPS_RELEASE_INVALID", "A release artifact failed closed admission");
+    }
+    if (error instanceof ReleaseAttestationError) {
+      fail(
+        "OPS_RELEASE_RELATIONSHIP_UNPROVEN",
+        "Release manifests are not bound to the attested source pair",
+      );
+    }
+    throw error;
+  }
 }
 
 function currentUid() {
@@ -423,7 +537,7 @@ function requireProxyContract(block, timeout) {
   const exact = [
     "Connection \"\"",
     "Host $host",
-    "X-Forwarded-For $proxy_add_x_forwarded_for",
+    "X-Forwarded-For $remote_addr",
     "X-Forwarded-Proto https",
     "X-Request-ID $request_id",
   ].sort();
@@ -568,7 +682,7 @@ function validateNginx(text) {
   return Object.freeze({ placeholders, upstreamAddress: "127.0.0.1", upstreamPort: 4173 });
 }
 
-function parseSystemd(text) {
+function parseSystemd(text, expectedSections = ["Unit", "Service", "Install"]) {
   const sections = new Map();
   let section;
   for (const [index, raw] of text.split("\n").entries()) {
@@ -595,10 +709,133 @@ function parseSystemd(text) {
     values.push(value);
     directives.set(key, values);
   }
-  if (JSON.stringify([...sections.keys()]) !== JSON.stringify(["Unit", "Service", "Install"])) {
-    fail("OPS_TEMPLATE_INVALID", "systemd sections must be Unit, Service, Install in order");
+  if (JSON.stringify([...sections.keys()]) !== JSON.stringify(expectedSections)) {
+    fail(
+      "OPS_TEMPLATE_INVALID",
+      `systemd sections must be ${expectedSections.join(", ")} in order`,
+    );
   }
   return sections;
+}
+
+function validateMigrationSystemd(text) {
+  const placeholders = placeholderNames(text);
+  if (
+    JSON.stringify(placeholders) !==
+      JSON.stringify(["UNBOUNDRY_EXPECTED_SCHEMA37_LOGICAL_SHA256"]) ||
+    /-----BEGIN |\b(?:password|token|secret|api[_-]?key)\s*=/i.test(text)
+  ) {
+    fail(
+      "OPS_TEMPLATE_INVALID",
+      "migration systemd template has an invalid placeholder or secret",
+    );
+  }
+  const sections = parseSystemd(text, ["Unit", "Service"]);
+  const unit = sections.get("Unit");
+  const service = sections.get("Service");
+  const exactUnitValues = Object.freeze({
+    After: "unboundry.service",
+    Conflicts: "unboundry.service",
+    Description: "Unboundry schema 37 to 39 one-shot migration",
+    RequiresMountsFor: "/opt/unboundry/releases/v0.5.2 /var/lib/unboundry",
+  });
+  expectExactKeys(unit, Object.keys(exactUnitValues), "Migration Unit");
+  for (const [key, value] of Object.entries(exactUnitValues)) {
+    expectOne(unit, key, value);
+  }
+  const exactServiceValues = Object.freeze({
+    AmbientCapabilities: "",
+    CacheDirectory: "unboundry-migration",
+    CacheDirectoryMode: "0700",
+    CapabilityBoundingSet: "",
+    ExecStart: "/opt/node22/bin/node /opt/unboundry/releases/v0.5.2/scripts/migrate-schema37-to39.mjs --apply --data-dir /var/lib/unboundry --runtime-dir /run/unboundry --expected-logical-sha256 {{UNBOUNDRY_EXPECTED_SCHEMA37_LOGICAL_SHA256}} --scratch-root /var/cache/unboundry-migration",
+    Group: "unboundry",
+    InaccessiblePaths: "/home /root /media /mnt",
+    KillMode: "mixed",
+    KillSignal: "SIGTERM",
+    LimitNOFILE: "1024",
+    LockPersonality: "yes",
+    NoNewPrivileges: "yes",
+    PrivateDevices: "yes",
+    PrivateNetwork: "yes",
+    PrivateTmp: "yes",
+    ProcSubset: "pid",
+    ProtectClock: "yes",
+    ProtectControlGroups: "yes",
+    ProtectHome: "yes",
+    ProtectHostname: "yes",
+    ProtectKernelLogs: "yes",
+    ProtectKernelModules: "yes",
+    ProtectKernelTunables: "yes",
+    ProtectProc: "invisible",
+    ProtectSystem: "strict",
+    ReadOnlyPaths: "/opt/unboundry/releases/v0.5.2",
+    ReadWritePaths: "/var/lib/unboundry /run/unboundry /var/cache/unboundry-migration",
+    RemoveIPC: "yes",
+    RestrictAddressFamilies: "AF_UNIX",
+    RestrictNamespaces: "yes",
+    RestrictRealtime: "yes",
+    RestrictSUIDSGID: "yes",
+    RuntimeDirectory: "unboundry",
+    RuntimeDirectoryMode: "0700",
+    RuntimeDirectoryPreserve: "yes",
+    SendSIGKILL: "yes",
+    StandardError: "journal",
+    StandardOutput: "journal",
+    StateDirectory: "unboundry",
+    StateDirectoryMode: "0700",
+    SyslogIdentifier: "unboundry-migrate-schema37-to39",
+    SystemCallArchitectures: "native",
+    TasksMax: "64",
+    TimeoutStartSec: "1h",
+    TimeoutStopSec: "30s",
+    Type: "oneshot",
+    UMask: "0077",
+    UnsetEnvironment: exactUnsetEnvironment.join(" "),
+    User: "unboundry",
+    WorkingDirectory: "/opt/unboundry/releases/v0.5.2",
+  });
+  expectExactKeys(
+    service,
+    [...Object.keys(exactServiceValues), "Environment"],
+    "Migration Service",
+  );
+  for (const [key, value] of Object.entries(exactServiceValues)) {
+    expectOne(service, key, value);
+  }
+  const environment = [...(service.get("Environment") ?? [])].sort();
+  const expectedEnvironment = [
+    '"HOME=/run/unboundry"',
+    '"NODE_ENV=production"',
+    '"PATH=/opt/node22/bin:/usr/bin:/bin"',
+    '"TEMP=/run/unboundry"',
+    '"TMP=/run/unboundry"',
+    '"TMPDIR=/run/unboundry"',
+  ].sort();
+  if (JSON.stringify(environment) !== JSON.stringify(expectedEnvironment)) {
+    fail(
+      "OPS_TEMPLATE_INVALID",
+      "migration environment does not match the exact allowlist",
+    );
+  }
+  if (
+    /\b(?:EnvironmentFile|PassEnvironment|ExecStartPre|ExecStartPost|ExecStopPost)=/
+      .test(text)
+  ) {
+    fail(
+      "OPS_TEMPLATE_INVALID",
+      "migration external environment and hook expansion are forbidden",
+    );
+  }
+  return Object.freeze({
+    bridgeReleaseDirectory: "/opt/unboundry/releases/v0.5.2",
+    dataDirectory: "/var/lib/unboundry",
+    execStart: exactServiceValues.ExecStart,
+    expectedSourceLogicalSha256Placeholder:
+      "UNBOUNDRY_EXPECTED_SCHEMA37_LOGICAL_SHA256",
+    runtimeDirectory: "/run/unboundry",
+    workingDirectory: exactServiceValues.WorkingDirectory,
+  });
 }
 
 function expectExactKeys(section, allowed, label) {
@@ -671,7 +908,7 @@ function validateSystemd(text) {
     RestrictSUIDSGID: "yes",
     RuntimeDirectory: "unboundry",
     RuntimeDirectoryMode: "0700",
-    RuntimeDirectoryPreserve: "restart",
+    RuntimeDirectoryPreserve: "yes",
     SendSIGKILL: "yes",
     StandardError: "journal",
     StandardOutput: "journal",
@@ -718,25 +955,102 @@ function validateSystemd(text) {
     currentLink: "/opt/unboundry/current",
     dataDirectory: exactRuntimeEnvironment.UNBOUNDRY_DATA_DIR,
     environmentKeys: [...environment.keys()].sort(),
+    execStart: exactServiceValues.ExecStart,
     runtimeDirectory: exactRuntimeEnvironment.UNBOUNDRY_RUNTIME_DIR,
     runtimePort: 4173,
   });
 }
 
+function materializeMigrationCommand(bridge) {
+  const values = Object.freeze({
+    "${UNBOUNDRY_DATA_DIR}": "/var/lib/unboundry",
+    "${UNBOUNDRY_EXPECTED_SCHEMA37_LOGICAL_SHA256}":
+      "{{UNBOUNDRY_EXPECTED_SCHEMA37_LOGICAL_SHA256}}",
+    "${UNBOUNDRY_MIGRATION_SCRATCH_ROOT}": "/var/cache/unboundry-migration",
+    "${UNBOUNDRY_RUNTIME_DIR}": "/run/unboundry",
+  });
+  const arguments_ = bridge.manifest.migration.arguments.map((argument, index) => {
+    if (index === 0) return join("/opt/unboundry/releases/v0.5.2", argument);
+    return values[argument] ?? argument;
+  });
+  return ["/opt/node22/bin/node", ...arguments_].join(" ");
+}
+
+function assertArtifactOpsContract({ bridge, final }, systemd, migrationSystemd) {
+  if (
+    bridge.releaseId !== "v0.5.2" || bridge.version !== "0.5.2" ||
+    final.releaseId !== "v0.6.0" || final.version !== "0.6.0" ||
+    bridge.manifest.runtime.health.version !== "0.5.2" ||
+    final.manifest.runtime.health.version !== "0.6.0"
+  ) fail("OPS_CROSS_CONTRACT_INVALID", "Release versions do not match the ops contract");
+  if (
+    migrationSystemd.bridgeReleaseDirectory !==
+      `/opt/unboundry/releases/${bridge.releaseId}` ||
+    migrationSystemd.workingDirectory !==
+      `/opt/unboundry/releases/${bridge.releaseId}` ||
+    migrationSystemd.dataDirectory !== systemd.dataDirectory ||
+    migrationSystemd.runtimeDirectory !== systemd.runtimeDirectory ||
+    migrationSystemd.execStart !== materializeMigrationCommand(bridge)
+  ) fail("OPS_CROSS_CONTRACT_INVALID", "Migration unit is not bound to the bridge artifact");
+  const expectedRuntimeExecStart = [
+    "/opt/node22/bin/node",
+    "/opt/unboundry/current/node_modules/vite/bin/vite.js",
+    ...bridge.manifest.runtime.arguments.slice(1).map((argument) =>
+      argument === "${UNBOUNDRY_PORT}" ? String(systemd.runtimePort) : argument),
+  ].join(" ");
+  if (
+    systemd.execStart !== expectedRuntimeExecStart ||
+    JSON.stringify(bridge.manifest.runtime.arguments) !==
+      JSON.stringify(final.manifest.runtime.arguments) ||
+    bridge.manifest.runtime.cwd !== "." || final.manifest.runtime.cwd !== "."
+  ) fail("OPS_CROSS_CONTRACT_INVALID", "Runtime unit is not shared by both artifacts");
+}
+
+function sameAdmittedRelease(left, right) {
+  return left.directory === right.directory &&
+    left.manifestSha256 === right.manifestSha256 &&
+    left.inventorySha256 === right.inventorySha256 &&
+    left.migrationArtifactSha256 === right.migrationArtifactSha256 &&
+    left.releaseRoot === right.releaseRoot &&
+    JSON.stringify(left.directoryIdentity) === JSON.stringify(right.directoryIdentity) &&
+    JSON.stringify(left.rootIdentity) === JSON.stringify(right.rootIdentity);
+}
+
 async function main() {
   const options = parseArguments(process.argv.slice(2));
-  if (options.nginx === options.systemd) {
-    fail("OPS_ARGUMENT_INVALID", "nginx and systemd templates must be distinct files");
+  if (
+    new Set([
+      options.nginx,
+      options.systemd,
+      options.migrationSystemd,
+      options.bridgeManifest,
+      options.finalManifest,
+    ]).size !== 5
+  ) {
+    fail("OPS_ARGUMENT_INVALID", "all ops inputs must be distinct files");
   }
-  const [nginxFile, systemdFile] = await Promise.all([
+  const [migrationSystemdFile, nginxFile, systemdFile] = await Promise.all([
+    readPinnedTemplate(
+      options.migrationSystemd,
+      "migration systemd template",
+    ),
     readPinnedTemplate(options.nginx, "nginx template"),
     readPinnedTemplate(options.systemd, "systemd template"),
   ]);
   const nginx = validateNginx(nginxFile.text);
   const systemd = validateSystemd(systemdFile.text);
+  const migrationSystemd = validateMigrationSystemd(migrationSystemdFile.text);
   if (nginx.upstreamAddress !== "127.0.0.1" || nginx.upstreamPort !== systemd.runtimePort) {
     fail("OPS_CROSS_CONTRACT_INVALID", "nginx upstream and systemd listener do not match");
   }
+  const validationExpectation = await releaseValidationExpectation(options);
+  const releasesBefore = await validateReleasePair(options, validationExpectation);
+  assertArtifactOpsContract(releasesBefore, systemd, migrationSystemd);
+  const releasesAfter = await validateReleasePair(options, validationExpectation);
+  if (
+    !sameAdmittedRelease(releasesBefore.bridge, releasesAfter.bridge) ||
+    !sameAdmittedRelease(releasesBefore.final, releasesAfter.final)
+  ) fail("OPS_RELEASE_CHANGED", "Release artifacts changed during ops validation");
   process.stdout.write(`${JSON.stringify({
     crossContract: {
       currentLink: systemd.currentLink,
@@ -744,10 +1058,20 @@ async function main() {
       loopbackAddress: nginx.upstreamAddress,
       port: nginx.upstreamPort,
       runtimeDirectory: systemd.runtimeDirectory,
+      migrationBridgeReleaseDirectory:
+        migrationSystemd.bridgeReleaseDirectory,
+      migrationExpectedSourceLogicalSha256Placeholder:
+        migrationSystemd.expectedSourceLogicalSha256Placeholder,
+      bridgeManifestSha256: releasesBefore.bridge.manifestSha256,
+      finalManifestSha256: releasesBefore.final.manifestSha256,
+      releaseRelationship: validationExpectation.relationship,
     },
     evidenceClass: EVIDENCE_CLASS,
     format: FORMAT,
     limitations: [
+      ...(validationExpectation.relationship.crossCommitProof
+        ? []
+        : ["cross-commit-proof-not-established"]),
       "nginx-t-not-executed",
       "systemd-analyze-not-executed",
       "production-host-not-inspected",
@@ -756,6 +1080,25 @@ async function main() {
       bytes: nginxFile.bytes.length,
       placeholders: nginx.placeholders,
       sha256: sha256(nginxFile.bytes),
+    },
+    migrationSystemd: {
+      bytes: migrationSystemdFile.bytes.length,
+      sha256: sha256(migrationSystemdFile.bytes),
+    },
+    releases: {
+      bridge: {
+        inventorySha256: releasesBefore.bridge.inventorySha256,
+        manifestSha256: releasesBefore.bridge.manifestSha256,
+        migrationArtifactSha256: releasesBefore.bridge.migrationArtifactSha256,
+        releaseId: releasesBefore.bridge.releaseId,
+        version: releasesBefore.bridge.version,
+      },
+      final: {
+        inventorySha256: releasesBefore.final.inventorySha256,
+        manifestSha256: releasesBefore.final.manifestSha256,
+        releaseId: releasesBefore.final.releaseId,
+        version: releasesBefore.final.version,
+      },
     },
     systemd: {
       bytes: systemdFile.bytes.length,

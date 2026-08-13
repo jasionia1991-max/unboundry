@@ -35,11 +35,25 @@ import {
   type LegacyMediaDurationProbe,
   type LegacyMediaBackfillSummary,
 } from "./database.ts";
+import {
+  createRuntimeRoleCoordinator,
+  RuntimeRoleError,
+  type RuntimeRoleCoordinator,
+} from "./runtimeRole.ts";
+import {
+  acquireLegacyChildGuardian,
+  LegacyChildGuardianError,
+  type LegacyChildGuardian,
+} from "./legacyChildGuardian.ts";
 
 const sourceSchemaVersion = 37;
 const requiredDrainMilliseconds = 60_000;
 const markerContract = "unboundry-schema37-to39-v1";
 const sha256Pattern = /^[a-f0-9]{64}$/;
+// An indeterminate DB/guardian/main release must not be left to native handle
+// finalization. Keep the owner reachable until process exit so no successor can
+// infer that an unsafe migration handed off its writer authority.
+const indeterminateMigrationOwners = new Set<object>();
 
 type MigrationMarker = Readonly<{
   contract: typeof markerContract;
@@ -103,6 +117,7 @@ export type SchemaMigrationOptions = Readonly<{
   expectedSourceLogicalSha256: string;
   mode: "apply" | "dry-run";
   onCheckpoint?: (checkpoint: SchemaMigrationCheckpoint) => void;
+  runtimeDirectory?: string;
   scratchRoot?: string;
   testClock?: Readonly<{
     drainMilliseconds: number;
@@ -126,6 +141,91 @@ export class SchemaMigrationError extends Error {
 
 function fail(code: string, message: string): never {
   throw new SchemaMigrationError(code, message);
+}
+
+function migrationRuntimeLeaseFailure(error: unknown): never {
+  if (error instanceof RuntimeRoleError) {
+    if (
+      error.code === "RUNTIME_ROLE_PATH_UNSAFE" ||
+      error.code === "RUNTIME_ACTIVE_LEASE_LOST" ||
+      error.code === "RUNTIME_ACTIVE_LEASE_RELEASE_UNKNOWN"
+    ) {
+      fail(
+        "SCHEMA_MIGRATION_RUNTIME_LEASE_UNSAFE",
+        "Migration runtime active lease is unsafe",
+      );
+    }
+    fail(
+      "SCHEMA_MIGRATION_RUNTIME_LEASE_UNAVAILABLE",
+      "Another runtime already owns the migration writer lease",
+    );
+  }
+  throw error;
+}
+
+function assertMigrationRuntimeLease(coordinator: RuntimeRoleCoordinator) {
+  try {
+    coordinator.assertActive("writer");
+  } catch (error) {
+    migrationRuntimeLeaseFailure(error);
+  }
+}
+
+function acquireMigrationRuntimeLease(
+  dataDirectory: string,
+  runtimeDirectory: string | undefined,
+): RuntimeRoleCoordinator {
+  let coordinator: RuntimeRoleCoordinator | undefined;
+  try {
+    // The migration has no HTTP surface, but it is the maintenance writer and
+    // therefore must own the same exclusive active lease as the HTTP runtime.
+    coordinator = createRuntimeRoleCoordinator({
+      dataDirectory,
+      role: "active",
+      ...(runtimeDirectory ? { runtimeDirectory } : {}),
+    });
+    assertMigrationRuntimeLease(coordinator);
+    return coordinator;
+  } catch (error) {
+    try {
+      coordinator?.close();
+    } catch {
+      // A failed acquisition never hands an indeterminate lease to migration.
+    }
+    if (error instanceof SchemaMigrationError) throw error;
+    if (error instanceof RuntimeRoleError) migrationRuntimeLeaseFailure(error);
+    fail(
+      "SCHEMA_MIGRATION_RUNTIME_LEASE_UNAVAILABLE",
+      "Migration runtime active lease is unavailable",
+    );
+  }
+}
+
+function migrationGuardianFailure(error: unknown): never {
+  if (error instanceof LegacyChildGuardianError) {
+    const unsafe = new Set([
+      "LEGACY_CHILD_GUARDIAN_LOST",
+      "LEGACY_CHILD_GUARDIAN_RELEASE_UNKNOWN",
+      "LEGACY_CHILD_GUARDIAN_UNSAFE",
+    ]).has(error.code);
+    fail(
+      unsafe
+        ? "SCHEMA_MIGRATION_GUARDIAN_UNSAFE"
+        : "SCHEMA_MIGRATION_GUARDIAN_UNAVAILABLE",
+      unsafe
+        ? "Migration legacy-child guardian is unsafe"
+        : "A legacy child already owns the migration guardian",
+    );
+  }
+  throw error;
+}
+
+function assertMigrationGuardian(guardian: LegacyChildGuardian) {
+  try {
+    guardian.assertHeld();
+  } catch (error) {
+    migrationGuardianFailure(error);
+  }
 }
 
 function normalizedAbsolute(path: string, label: string) {
@@ -870,6 +970,9 @@ export async function migrateSchema37To39(
     options.scratchRoot ?? resolve(tmpdir()),
     "Scratch root",
   );
+  const runtimeDirectory = options.runtimeDirectory === undefined
+    ? undefined
+    : normalizedAbsolute(options.runtimeDirectory, "Runtime directory");
   if (!sha256Pattern.test(options.expectedSourceLogicalSha256)) {
     fail("SCHEMA_MIGRATION_ARGUMENT_INVALID", "Expected logical SHA-256 is invalid");
   }
@@ -888,56 +991,115 @@ export async function migrateSchema37To39(
   }
   const databasePath = join(dataDirectory, "unboundry.sqlite");
   const before = assertOwnedDatabase(databasePath);
-  try {
-    lstatSync(join(dataDirectory, ".unboundry-restore-incomplete"));
-    fail("SCHEMA_MIGRATION_RESTORE_INCOMPLETE", "Restore maintenance is incomplete");
-  } catch (error) {
-    if (
-      error instanceof SchemaMigrationError || !error ||
-      typeof error !== "object" || !("code" in error) || error.code !== "ENOENT"
-    ) throw error;
-  }
   const markerPath = join(dataDirectory, migrationIncompleteMarker);
-  const existingMarkerState = readMarker(markerPath);
-  const existingMarker = existingMarkerState?.document;
-  let activeMarker = existingMarker;
-  if (
-    existingMarker &&
-    existingMarker.expectedSourceLogicalSha256 !==
-      options.expectedSourceLogicalSha256
-  ) fail("SCHEMA_MIGRATION_MARKER_MISMATCH", "Migration marker contract does not match");
-  if (
-    existingMarker && (
-      existingMarker.databaseDev !== String(before.dev) ||
-      existingMarker.databaseIno !== String(before.ino)
-    )
-  ) {
-    fail(
-      "SCHEMA_MIGRATION_DATABASE_CHANGED",
-      "Migration marker belongs to a different application database",
+  const clock = migrationClock(options);
+  const inspectionRoot = createInspectionRoot(scratchRoot);
+  let migrationRuntime: RuntimeRoleCoordinator | undefined;
+  let migrationGuardian: LegacyChildGuardian | undefined;
+  try {
+    migrationRuntime = acquireMigrationRuntimeLease(
+      dataDirectory,
+      runtimeDirectory,
     );
+    const heldRuntimeDirectory = migrationRuntime.snapshot().runtimeDirectory;
+    if (!heldRuntimeDirectory) {
+      fail(
+        "SCHEMA_MIGRATION_RUNTIME_LEASE_UNSAFE",
+        "Migration runtime active lease has no physical runtime directory",
+      );
+    }
+    migrationGuardian = acquireLegacyChildGuardian({
+      dataDirectory,
+      runtimeDirectory: heldRuntimeDirectory,
+    });
+    assertMigrationRuntimeLease(migrationRuntime);
+    assertMigrationGuardian(migrationGuardian);
+  } catch (error) {
+    let guardianReleaseFailed = false;
+    try {
+      migrationGuardian?.release();
+    } catch {
+      guardianReleaseFailed = true;
+      if (migrationGuardian) indeterminateMigrationOwners.add(migrationGuardian);
+      if (migrationRuntime) indeterminateMigrationOwners.add(migrationRuntime);
+    }
+    if (!guardianReleaseFailed) {
+      try {
+        migrationRuntime?.close();
+      } catch {
+        if (migrationRuntime) indeterminateMigrationOwners.add(migrationRuntime);
+      }
+    }
+    rmSync(inspectionRoot, { force: true, recursive: true });
+    if (error instanceof SchemaMigrationError) throw error;
+    if (error instanceof LegacyChildGuardianError) {
+      migrationGuardianFailure(error);
+    }
+    if (error instanceof RuntimeRoleError) migrationRuntimeLeaseFailure(error);
+    throw error;
   }
-
   const assertPinnedPaths = () => {
     assertSameOwnedDataDirectory(dataDirectory, ownedDataDirectory.details);
     assertSameOwnedDatabase(databasePath, before);
+    assertMigrationRuntimeLease(migrationRuntime);
+    assertMigrationGuardian(migrationGuardian);
   };
-  let pinnedMarker = existingMarkerState;
+  let existingMarkerState: PinnedMigrationMarker | undefined;
+  let existingMarker: MigrationMarker | undefined;
+  let activeMarker: MigrationMarker | undefined;
+  let pinnedMarker: PinnedMigrationMarker | undefined;
   const assertPinnedMarker = () => {
     if (!pinnedMarker) {
       fail("SCHEMA_MIGRATION_MARKER_CHANGED", "Migration marker is unavailable");
     }
     assertSameMigrationMarker(markerPath, pinnedMarker);
   };
-
-  const clock = migrationClock(options);
-  const inspectionRoot = createInspectionRoot(scratchRoot);
+  const emitCheckpoint = (checkpoint: SchemaMigrationCheckpoint) => {
+    assertPinnedPaths();
+    options.onCheckpoint?.(checkpoint);
+    assertPinnedPaths();
+  };
   let durationProbe: NativeDurationProbeControl | undefined;
   let database: DatabaseSync | undefined;
   let transactionOpen = false;
   let schemaCommitted = false;
   try {
-    durationProbe = nativeDurationProbeControl(options);
+    assertPinnedPaths();
+    try {
+      lstatSync(join(dataDirectory, ".unboundry-restore-incomplete"));
+      fail("SCHEMA_MIGRATION_RESTORE_INCOMPLETE", "Restore maintenance is incomplete");
+    } catch (error) {
+      if (
+        error instanceof SchemaMigrationError || !error ||
+        typeof error !== "object" || !("code" in error) || error.code !== "ENOENT"
+      ) throw error;
+    }
+    assertPinnedPaths();
+    existingMarkerState = readMarker(markerPath);
+    existingMarker = existingMarkerState?.document;
+    activeMarker = existingMarker;
+    pinnedMarker = existingMarkerState;
+    if (
+      existingMarker &&
+      existingMarker.expectedSourceLogicalSha256 !==
+        options.expectedSourceLogicalSha256
+    ) fail("SCHEMA_MIGRATION_MARKER_MISMATCH", "Migration marker contract does not match");
+    if (
+      existingMarker && (
+        existingMarker.databaseDev !== String(before.dev) ||
+        existingMarker.databaseIno !== String(before.ino)
+      )
+    ) {
+      fail(
+        "SCHEMA_MIGRATION_DATABASE_CHANGED",
+        "Migration marker belongs to a different application database",
+      );
+    }
+    assertPinnedPaths();
+    durationProbe = nativeDurationProbeControl({
+      ...options,
+      onCheckpoint: emitCheckpoint,
+    });
     const busyTimeoutMilliseconds = options.busyTimeoutMilliseconds ?? 5_000;
     if (
       !Number.isInteger(busyTimeoutMilliseconds) ||
@@ -995,7 +1157,7 @@ export async function migrateSchema37To39(
         options.expectedSourceLogicalSha256,
       );
       assertFrozenSourceDrain(database);
-      options.onCheckpoint?.("source-locked");
+      emitCheckpoint("source-locked");
       if (options.mode === "dry-run") {
         assertPinnedPaths();
         database.exec("ROLLBACK");
@@ -1044,14 +1206,14 @@ export async function migrateSchema37To39(
         options.expectedSourceLogicalSha256,
       );
       assertFrozenSourceDrain(database);
-      options.onCheckpoint?.("drain-complete");
+      emitCheckpoint("drain-complete");
       assertPinnedPaths();
       assertPinnedMarker();
       applyPendingSchemaMigrationsInTransaction(database, {
         sourceVersion: sourceSchemaVersion,
         onMigrationApplied: ({ version: migratedVersion }) => {
-          if (migratedVersion === 38) options.onCheckpoint?.("schema-38-applied");
-          if (migratedVersion === 39) options.onCheckpoint?.("schema-39-applied");
+          if (migratedVersion === 38) emitCheckpoint("schema-38-applied");
+          if (migratedVersion === 39) emitCheckpoint("schema-39-applied");
           assertPinnedPaths();
           assertPinnedMarker();
         },
@@ -1063,7 +1225,7 @@ export async function migrateSchema37To39(
       callerOwnsTransaction: true,
       durationProbe: durationProbe.probe,
       onRow: () => {
-        options.onCheckpoint?.("backfill-row");
+        emitCheckpoint("backfill-row");
         assertPinnedPaths();
         assertPinnedMarker();
       },
@@ -1101,7 +1263,7 @@ export async function migrateSchema37To39(
     database.exec("COMMIT");
     transactionOpen = false;
     schemaCommitted = true;
-    options.onCheckpoint?.("schema-committed");
+    emitCheckpoint("schema-committed");
     assertPinnedPaths();
     assertPinnedMarker();
     revalidateLegacyMediaBackfillEvidence(database, mediaEvidence);
@@ -1143,7 +1305,7 @@ export async function migrateSchema37To39(
       }
       throw error;
     }
-    options.onCheckpoint?.("complete");
+    emitCheckpoint("complete");
     return Object.freeze({
       backfilledChecksums: backfill.checksums,
       backfilledDurations: backfill.durations,
@@ -1181,10 +1343,11 @@ export async function migrateSchema37To39(
     ) throw error;
     fail("SCHEMA_MIGRATION_FAILED", "Schema migration failed");
   } finally {
+    let databaseCloseError: unknown;
     try {
       database?.close();
-    } catch {
-      // The marker keeps ordinary runtime fail-closed after apply failures.
+    } catch (error) {
+      databaseCloseError = error;
     }
     try {
       durationProbe?.close();
@@ -1192,7 +1355,54 @@ export async function migrateSchema37To39(
       // Audit events are synchronously fsynced before the database marker can
       // be removed. Avoid manufacturing an unmarked database failure on close.
     }
+    let guardianReleaseError: unknown;
+    if (!databaseCloseError) {
+      try {
+        assertMigrationGuardian(migrationGuardian);
+        migrationGuardian.release();
+      } catch (error) {
+        guardianReleaseError = error;
+      }
+    }
+    let runtimeReleaseError: unknown;
+    if (!databaseCloseError && !guardianReleaseError) {
+      try {
+        assertMigrationRuntimeLease(migrationRuntime);
+        migrationRuntime.close();
+      } catch (error) {
+        runtimeReleaseError = error;
+      }
+    }
     rmSync(inspectionRoot, { force: true, recursive: true });
+    if (databaseCloseError) {
+      indeterminateMigrationOwners.add(migrationGuardian);
+      indeterminateMigrationOwners.add(migrationRuntime);
+      fail(
+        "SCHEMA_MIGRATION_DATABASE_CLOSE_UNKNOWN",
+        "Migration database close is indeterminate; writer lease remains held",
+      );
+    }
+    if (guardianReleaseError) {
+      indeterminateMigrationOwners.add(migrationGuardian);
+      indeterminateMigrationOwners.add(migrationRuntime);
+      if (guardianReleaseError instanceof SchemaMigrationError) {
+        throw guardianReleaseError;
+      }
+      if (guardianReleaseError instanceof LegacyChildGuardianError) {
+        migrationGuardianFailure(guardianReleaseError);
+      }
+      throw guardianReleaseError;
+    }
+    if (runtimeReleaseError) {
+      indeterminateMigrationOwners.add(migrationRuntime);
+      if (runtimeReleaseError instanceof SchemaMigrationError) {
+        throw runtimeReleaseError;
+      }
+      if (runtimeReleaseError instanceof RuntimeRoleError) {
+        migrationRuntimeLeaseFailure(runtimeReleaseError);
+      }
+      throw runtimeReleaseError;
+    }
   }
   fail("SCHEMA_MIGRATION_FAILED", "Schema migration failed");
 }

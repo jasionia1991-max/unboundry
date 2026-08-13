@@ -5,7 +5,9 @@ import {
   openSync,
   readSync,
   realpathSync,
+  readFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join, relative, resolve, sep } from "node:path";
@@ -75,6 +77,16 @@ import {
   runtimeRoleFromEnvironment,
   type RuntimeRoleCoordinator,
 } from "./server/runtimeRole";
+import {
+  bridgeRuntimeMode,
+  releaseRoleFromEnvironment,
+  type BridgeRuntimeMode,
+} from "./server/bridgeRuntimeMode";
+import {
+  createLegacyRuntimeSupervisor,
+  type LegacyRuntimeSupervisor,
+} from "./server/legacyRuntimeSupervisor";
+import { createLegacyReverseProxy } from "./server/legacyReverseProxy";
 
 import {
   currentVersion,
@@ -114,7 +126,9 @@ type ApiHandler = (
 ) => Promise<void> | void;
 
 type RuntimeInstance = {
+  bridgeMode?: BridgeRuntimeMode;
   generationStartupWorkerGate: GenerationStartupWorkerGate;
+  legacySupervisor?: LegacyRuntimeSupervisor;
   lifecycle?: RuntimeLifecycle;
   roleCoordinator?: RuntimeRoleCoordinator;
   unregisterGeneration?: () => void;
@@ -133,17 +147,23 @@ type GenerationStartupWorkerGate = {
 function createMainRuntimeLifecycle(
   generationStartupWorkerGate: GenerationStartupWorkerGate,
   roleCoordinator?: RuntimeRoleCoordinator,
+  options: Readonly<{
+    allowLegacySchema37Business?: boolean;
+    beforeActiveLeaseRelease?: (
+      remainingDeadlineMs: number,
+    ) => Promise<void> | void;
+    legacyRuntimeReadinessGuard?: () => boolean;
+  }> = {},
 ) {
-  const registeredActiveCoordinator = Boolean(
-    roleCoordinator?.role() === "active" &&
-      roleCoordinator.snapshot().activeLeaseHeld,
-  );
   return createRuntimeLifecycle({
-    ...(registeredActiveCoordinator
-      ? {
-          beforeActiveLeaseRelease: () =>
-            prepareGenerationRuntimeRoleTeardown(roleCoordinator!),
-        }
+    ...(options.allowLegacySchema37Business
+      ? { allowLegacySchema37Business: true }
+      : {}),
+    ...(options.beforeActiveLeaseRelease
+      ? { beforeActiveLeaseRelease: options.beforeActiveLeaseRelease }
+      : {}),
+    ...(options.legacyRuntimeReadinessGuard
+      ? { legacyRuntimeReadinessGuard: options.legacyRuntimeReadinessGuard }
       : {}),
     legacyStandbyDatabaseGuard: databaseMatchesFrozenSchema37Contract,
     readinessDatabaseGuard: (database) => {
@@ -194,6 +214,57 @@ function containsPath(parent: string, child: string) {
   const path = relative(parent, child);
   return path !== "" && path !== ".." &&
     !path.startsWith(`..${sep}`) && !path.startsWith(sep);
+}
+
+function legacyRuntimeRootForRelease() {
+  const fixedReleaseRoot = join(appRoot, "legacy-runtime");
+  const override = process.env.UNBOUNDRY_LEGACY_RUNTIME_ROOT;
+  if (!override) return fixedReleaseRoot;
+  if (process.env.UNBOUNDRY_SAFE_TEST !== "1") {
+    throw new Error(
+      "LEGACY_RUNTIME_ROOT_FORBIDDEN: production bridge runtime root is release-bound",
+    );
+  }
+  try {
+    const testRoot = realpathSync(String(process.env.UNBOUNDRY_TEST_ROOT ?? ""));
+    const systemTemporaryRoot = realpathSync(String(
+      process.env.UNBOUNDRY_SYSTEM_TEMPORARY_ROOT ?? "",
+    ));
+    const exactRuntimeRoot = realpathSync(String(
+      process.env.UNBOUNDRY_V051_RUNTIME_ROOT ?? "",
+    ));
+    const attestationPath = realpathSync(String(
+      process.env.UNBOUNDRY_V051_ATTESTATION_PATH ?? "",
+    ));
+    const attestationDetails = lstatSync(attestationPath);
+    const attestationBytes = readFileSync(attestationPath);
+    const attestation = JSON.parse(attestationBytes.toString("utf8")) as {
+      contract?: unknown;
+      nonce?: unknown;
+      runtimeRoot?: unknown;
+    };
+    if (
+      resolve(override) !== override || realpathSync(override) !== override ||
+      override !== exactRuntimeRoot || !containsPath(systemTemporaryRoot, override) ||
+      !containsPath(systemTemporaryRoot, testRoot) ||
+      !containsPath(systemTemporaryRoot, attestationPath) ||
+      attestationDetails.isSymbolicLink() || !attestationDetails.isFile() ||
+      attestationDetails.nlink !== 1 ||
+      typeof process.getuid !== "function" ||
+      attestationDetails.uid !== process.getuid() ||
+      (attestationDetails.mode & 0o777) !== 0o400 ||
+      createHash("sha256").update(attestationBytes).digest("hex") !==
+        process.env.UNBOUNDRY_V051_ATTESTATION_SHA256 ||
+      attestation.contract !== "unboundry-v051-safe-runner-attestation-v2" ||
+      attestation.nonce !== process.env.UNBOUNDRY_V051_ATTESTATION_NONCE ||
+      attestation.runtimeRoot !== override
+    ) throw new Error("unsafe");
+    return override;
+  } catch {
+    throw new Error(
+      "LEGACY_RUNTIME_ROOT_UNSAFE: safe-test legacy root failed runner attestation",
+    );
+  }
 }
 
 function safeMediaStartupRecoveryGate(rawGate: string) {
@@ -341,7 +412,10 @@ type RuntimeServer = {
     once: (event: "close" | "listening", listener: () => void) => void;
   } | null;
   middlewares: {
-    use: (path: string, handler: (...args: any[]) => void) => void;
+    use: {
+      (handler: (...args: any[]) => void): void;
+      (path: string, handler: (...args: any[]) => void): void;
+    };
   };
 };
 
@@ -398,7 +472,9 @@ function runtimeFoundationApi(
     let installedRoleCoordinator: RuntimeRoleCoordinator | undefined;
     let installedLifecycle: RuntimeLifecycle | undefined;
     let installedGenerationUnregister: (() => void) | undefined;
+    let installedLegacySupervisor: LegacyRuntimeSupervisor | undefined;
     try {
+      const releaseRole = releaseRoleFromEnvironment(currentVersion);
       installedRoleCoordinator = createRuntimeRoleCoordinator({
         dataDirectory: appDataDirectory(),
         role: runtimeRoleFromEnvironment(),
@@ -407,7 +483,53 @@ function runtimeFoundationApi(
           : {}),
       });
       runtime.roleCoordinator = installedRoleCoordinator;
-      if (
+      installedLifecycle = createMainRuntimeLifecycle(
+        runtime.generationStartupWorkerGate,
+        installedRoleCoordinator,
+        {
+          allowLegacySchema37Business: releaseRole === "bridge",
+          beforeActiveLeaseRelease: async (remainingDeadlineMs) => {
+            if (installedLegacySupervisor) {
+              await installedLegacySupervisor.shutdown(remainingDeadlineMs);
+            }
+            if (installedGenerationUnregister) {
+              prepareGenerationRuntimeRoleTeardown(installedRoleCoordinator!);
+            }
+          },
+          legacyRuntimeReadinessGuard: () =>
+            installedLegacySupervisor?.isReady() ?? false,
+        },
+      );
+      runtime.lifecycle = installedLifecycle;
+      const startupProbe = installedLifecycle.probeDatabase();
+      const selectedBridgeMode = bridgeRuntimeMode({
+        probe: startupProbe,
+        releaseRole,
+        runtimeRole: installedRoleCoordinator.role(),
+      });
+      runtime.bridgeMode = selectedBridgeMode;
+      if (selectedBridgeMode === "legacy-schema37") {
+        if (!installedLifecycle.observeStartupDatabaseProbe(startupProbe)) {
+          throw new Error(
+            "LEGACY_RUNTIME_DATABASE_UNAVAILABLE: schema-37 identity could not be pinned",
+          );
+        }
+        const legacyRoot = legacyRuntimeRootForRelease();
+        installedLegacySupervisor = createLegacyRuntimeSupervisor({
+          dataDirectory: appDataDirectory(),
+          legacyRoot,
+          runtimeDirectory: installedRoleCoordinator.snapshot().runtimeDirectory!,
+          shutdownDeadlineMs: installedLifecycle.getShutdownDeadlineMs(),
+        });
+        runtime.legacySupervisor = installedLegacySupervisor;
+        await installedLegacySupervisor.start();
+        const postStartProbe = installedLifecycle.probeDatabase();
+        if (!installedLifecycle.observeStartupDatabaseProbe(postStartProbe)) {
+          throw new Error(
+            "LEGACY_RUNTIME_DATABASE_CHANGED: schema or database identity changed during child startup",
+          );
+        }
+      } else if (
         installedRoleCoordinator.role() === "active" &&
         installedRoleCoordinator.snapshot().activeLeaseHeld
       ) {
@@ -415,12 +537,16 @@ function runtimeFoundationApi(
           registerGenerationRuntimeRoleCoordinator(installedRoleCoordinator);
         runtime.unregisterGeneration = installedGenerationUnregister;
       }
-      installedLifecycle = createMainRuntimeLifecycle(
-        runtime.generationStartupWorkerGate,
-        installedRoleCoordinator,
-      );
-      runtime.lifecycle = installedLifecycle;
     } catch (error) {
+      if (installedLegacySupervisor) {
+        try {
+          await installedLegacySupervisor.abortStartup();
+        } catch {
+          // Do not release an active lease when legacy process termination is
+          // indeterminate. The process must exit to clear both identities.
+          throw error;
+        }
+      }
       if (installedGenerationUnregister && installedRoleCoordinator) {
         try {
           unregisterGenerationRuntimeRoleCoordinatorBeforeStartup(
@@ -435,6 +561,8 @@ function runtimeFoundationApi(
         coordinatorClosed = true;
       } catch {}
       if (coordinatorClosed) {
+        runtime.bridgeMode = undefined;
+        runtime.legacySupervisor = undefined;
         runtime.unregisterGeneration = undefined;
         runtime.roleCoordinator = undefined;
         runtime.lifecycle = undefined;
@@ -444,6 +572,8 @@ function runtimeFoundationApi(
     }
     const exactRoleCoordinator = installedRoleCoordinator;
     const exactLifecycle = installedLifecycle;
+    const exactBridgeMode = runtime.bridgeMode;
+    const exactLegacySupervisor = installedLegacySupervisor;
     let unregisterVersionLifecycle: () => void = () => undefined;
     const exactHealth = (kind: "live" | "ready") => apiBoundary(
       `health.${kind}`,
@@ -468,6 +598,8 @@ function runtimeFoundationApi(
     const finalizeRuntimeTeardown = () => {
       installedGenerationUnregister?.();
       runtime.unregisterGeneration = undefined;
+      runtime.bridgeMode = undefined;
+      runtime.legacySupervisor = undefined;
       runtime.roleCoordinator = undefined;
       runtime.lifecycle = undefined;
       releaseProcessRuntimeOwner(processOwner);
@@ -507,6 +639,19 @@ function runtimeFoundationApi(
       // those fail-closed handlers can end an API response without calling next.
       installSecurityHeaders(server, allowDevelopmentHmr);
       unregisterVersionLifecycle = registerVersionLifecycle(exactLifecycle);
+      if (exactBridgeMode === "legacy-schema37" && exactLegacySupervisor) {
+        const legacyProxy = createLegacyReverseProxy({
+          lifecycle: exactLifecycle,
+          supervisor: exactLegacySupervisor,
+        });
+        server.middlewares.use((request, response, next) => {
+          // Health and version are authoritative parent endpoints. Everything
+          // else, including static files and business APIs, stays on the exact
+          // v0.5.1 engine while the database is schema 37. The proxy owns the
+          // single canonical target parser used for this parent/child split.
+          legacyProxy.dispatch(request, response, next);
+        });
+      }
       server.middlewares.use("/api/health/live", exactHealth("live"));
       server.middlewares.use("/api/health/ready", exactHealth("ready"));
       server.middlewares.use("/api", exactLifecycle.middleware);
@@ -533,17 +678,21 @@ function runtimeFoundationApi(
       ) {
         throw new Error("M81 controlled runtime configure failure");
       }
-      greenfieldDatabaseStartup(exactLifecycle, exactRoleCoordinator);
-      await mediaLifecycleStartupRecovery(
-        exactLifecycle,
-        exactRoleCoordinator,
-      );
-      persistentGenerationTaskStartup(
-        server,
-        exactLifecycle,
-        exactRoleCoordinator,
-        runtime.generationStartupWorkerGate,
-      );
+      if (exactBridgeMode !== "legacy-schema37") {
+        greenfieldDatabaseStartup(exactLifecycle, exactRoleCoordinator);
+        await mediaLifecycleStartupRecovery(
+          exactLifecycle,
+          exactRoleCoordinator,
+        );
+        persistentGenerationTaskStartup(
+          server,
+          exactLifecycle,
+          exactRoleCoordinator,
+          runtime.generationStartupWorkerGate,
+        );
+      } else {
+        runtime.generationStartupWorkerGate.state = "deferred";
+      }
     } catch (error) {
       try {
         await closeRuntime();

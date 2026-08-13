@@ -39,8 +39,11 @@ import { authApi, hashPassword } from "../server/auth";
 import {
   BackupInspectionError,
   inspectBackupDatabase,
+  inspectLockedBackupDatabase,
   validateBackupSecrets,
 } from "../server/backupInspection";
+// @ts-expect-error The safe runner is the sole issuer of this MJS attestation.
+import { readReleaseAttestation } from "../scripts/lib/release-attestation.mjs";
 import {
   BackupPackageError,
   createEncryptedBackup,
@@ -63,6 +66,44 @@ import {
 import { createRuntimeLifecycle } from "../server/runtimeLifecycle";
 
 const execute = promisify(execFile);
+
+function attestedReleaseManifests() {
+  const bridge = process.env.UNBOUNDRY_BRIDGE_RELEASE_MANIFEST;
+  const final = process.env.UNBOUNDRY_FINAL_RELEASE_MANIFEST;
+  const testRoot = process.env.UNBOUNDRY_TEST_ROOT;
+  const attestationPath = process.env.UNBOUNDRY_RELEASE_ATTESTATION_PATH;
+  if (
+    !bridge || !final || !testRoot || !attestationPath ||
+    !bridge.startsWith(`${dirname(testRoot)}/`) ||
+    !final.startsWith(`${dirname(testRoot)}/`) ||
+    !attestationPath.startsWith(`${testRoot}/`)
+  ) throw new Error("m10 operational release environment is incomplete");
+  return Object.freeze({ bridge, final });
+}
+
+async function makeArtifactPathsWritable(paths: readonly string[]) {
+  const modes = new Map<string, number>();
+  for (const path of paths) {
+    const details = await lstat(path);
+    if (
+      details.isSymbolicLink() ||
+      (!details.isDirectory() && !details.isFile())
+    ) {
+      throw new Error("operational release became unsafe");
+    }
+    modes.set(path, details.mode & 0o777);
+    await chmod(path, details.isDirectory() ? 0o700 : 0o600);
+  }
+  return modes;
+}
+
+async function restoreArtifactPathModes(
+  modes: ReadonlyMap<string, number>,
+) {
+  for (const [path, mode] of [...modes.entries()].reverse()) {
+    await chmod(path, mode);
+  }
+}
 
 const fixtureSentinel = "REM009A-PLAINTEXT-MUST-STAY-PRIVATE";
 const fixturePassword = "Synthetic-Backup-Password-2026!";
@@ -88,6 +129,27 @@ type ReservationMarkerFixture = Readonly<{
 
 function sha256(value: Buffer | string) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function shortPcmWavFixture() {
+  const sampleRate = 8_000;
+  const sampleCount = 800;
+  const dataBytes = sampleCount * 2;
+  const wav = Buffer.alloc(44 + dataBytes);
+  wav.write("RIFF", 0, "ascii");
+  wav.writeUInt32LE(36 + dataBytes, 4);
+  wav.write("WAVE", 8, "ascii");
+  wav.write("fmt ", 12, "ascii");
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(sampleRate * 2, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write("data", 36, "ascii");
+  wav.writeUInt32LE(dataBytes, 40);
+  return wav;
 }
 
 function encryptedDocument(
@@ -760,8 +822,8 @@ async function createFinalSchema37Fixture(root: string) {
   `).run(objectKey);
   const providerAttemptAt = "2026-01-01T00:00:00.000Z";
   const generationFrozenAt = "2026-01-01T00:02:00.000Z";
-  const legacyAudioName = "preserved-legacy-audio.bin";
-  const legacyAudioBytes = Buffer.from("REM009B exact-v37 local audio duration fixture");
+  const legacyAudioName = "preserved-legacy-audio.wav";
+  const legacyAudioBytes = shortPcmWavFixture();
   await writeFile(
     join(fixture.dataDirectory, "media", legacyAudioName),
     legacyAudioBytes,
@@ -775,7 +837,7 @@ async function createFinalSchema37Fixture(root: string) {
       media_width, media_height, storage_profile_id
     ) VALUES (
       'audio', 'preserved-legacy-audio', 'backup-user', ?, ?, ?, ?,
-      'local', ?, 'audio/mpeg', ?, 'ready', NULL, NULL, 'pending',
+      'local', ?, 'audio/wav', ?, 'ready', NULL, NULL, 'pending',
       NULL, NULL, NULL
     )
   `).run(
@@ -939,6 +1001,7 @@ async function createFinalSchema37Fixture(root: string) {
     join(fixture.dataDirectory, "unboundry.sqlite"),
     fixture.dataDirectory,
   );
+  const releaseManifests = attestedReleaseManifests();
   return Object.freeze({
     ...fixture,
     expectedDatabaseLogicalSha256: inspection.logicalSha256,
@@ -946,6 +1009,7 @@ async function createFinalSchema37Fixture(root: string) {
     legacyAudioName,
     objectKey,
     providerAttemptAt,
+    releaseManifests,
   });
 }
 
@@ -1063,7 +1127,13 @@ async function productionBuildArtifactSummary(root: string) {
   });
 }
 
-async function restoredStateSummary(root: string) {
+async function restoredStateSummary(
+  root: string,
+  databaseLogicalSha256: string,
+) {
+  if (!/^[a-f0-9]{64}$/.test(databaseLogicalSha256)) {
+    throw new Error("restored database logical SHA is invalid");
+  }
   const maximumEntries = 100_000;
   const maximumBytes = 1024 * 1024 * 1024 * 1024;
   const maximumDepth = 64;
@@ -1072,10 +1142,6 @@ async function restoredStateSummary(root: string) {
   const maximumInventoryPathBytes = 16 * 1024 * 1024;
   const canonicalRoot = await realpath(root);
   const records: Array<Record<string, unknown>> = [];
-  const databaseLogicalSha256 = inspectBackupDatabase(
-    join(canonicalRoot, "unboundry.sqlite"),
-    canonicalRoot,
-  ).logicalSha256;
   let encounteredEntries = 1;
   let encounteredPathBytes = 0;
   let restoredStateBytes = 0;
@@ -3032,7 +3098,7 @@ test("schema-38 and schema-37 backups stay exact through inspection, format-2 ve
 
 test("final-candidate exact-v37 chain rehydrates fake OSS offline and validates normal runtime startup", async () => {
   const root = await mkdtemp(join(tmpdir(), "unboundry-final-v37-"));
-  const productionBuildRoot = join(process.cwd(), "dist", "client");
+  const checkoutBuildRoot = join(process.cwd(), "dist", "client");
   const finalCandidateSource = await readFile(
     join(process.cwd(), "scripts", "backup-final-candidate.mjs"),
     "utf8",
@@ -3043,13 +3109,23 @@ test("final-candidate exact-v37 chain rehydrates fake OSS offline and validates 
   expect(finalCandidateSource).not.toContain(
     "UNBOUNDRY_TEST_FINAL_INVENTORY_SWAP_RELEASE",
   );
-  const buildArtifactBefore = await productionBuildArtifactSummary(
-    productionBuildRoot,
+  const checkoutBuildArtifactBefore = await productionBuildArtifactSummary(
+    checkoutBuildRoot,
   );
-  const buildTreeBefore = await treeFingerprint(productionBuildRoot);
+  const checkoutBuildTreeBefore = await treeFingerprint(checkoutBuildRoot);
   let fixture: Awaited<ReturnType<typeof createFinalSchema37Fixture>> | undefined;
   try {
+    const releaseAttestation = await readReleaseAttestation();
     fixture = await createFinalSchema37Fixture(root);
+    const productionBuildRoot = join(
+      dirname(fixture.releaseManifests.final),
+      "dist",
+      "client",
+    );
+    const buildArtifactBefore = await productionBuildArtifactSummary(
+      productionBuildRoot,
+    );
+    const buildTreeBefore = await treeFingerprint(productionBuildRoot);
     const targetDirectory = join(root, "restored-v37");
     const fakeOssTarget = join(root, "rehydrated-fake-oss");
     const result = await execute(
@@ -3060,10 +3136,14 @@ test("final-candidate exact-v37 chain rehydrates fake OSS offline and validates 
         fixture.dataDirectory,
         "--backup-root",
         fixture.backupRoot,
+        "--bridge-release-manifest",
+        fixture.releaseManifests.bridge,
         "--target-data-dir",
         targetDirectory,
         "--fake-oss-target-dir",
         fakeOssTarget,
+        "--final-release-manifest",
+        fixture.releaseManifests.final,
         "--scratch-root",
         fixture.scratchRoot,
         "--expected-database-logical-sha256",
@@ -3118,6 +3198,7 @@ test("final-candidate exact-v37 chain rehydrates fake OSS offline and validates 
       migrationApplied: {
         backfilledDurations: number;
         drainMilliseconds: number;
+        expectedSourceLogicalSha256: string;
         nativeDurationProbeAuditSha256: string;
         nativeDurationProbes: number;
         sourceVersion: number;
@@ -3129,6 +3210,37 @@ test("final-candidate exact-v37 chain rehydrates fake OSS offline and validates 
         externalNetworkAttempts: number;
         nativeDurationProbes: number;
         sha256: string;
+      };
+      releaseEvidence: {
+        bridge: {
+          commit: string;
+          manifestSha256: string;
+          releaseId: string;
+          releaseRole: string;
+          sourceTree: string;
+          version: string;
+        };
+        final: {
+          commit: string;
+          manifestSha256: string;
+          releaseId: string;
+          releaseRole: string;
+          sourceTree: string;
+          version: string;
+        };
+      };
+      releaseRelationship: {
+        bridgeCommit: string;
+        bridgeSourceTree: string;
+        bridgeSourceVersion: string;
+        changedPaths: string[];
+        crossCommitProof: boolean;
+        finalCommit: string;
+        finalParentIsBridgeCommit: boolean;
+        finalSourceTree: string;
+        finalSourceVersion: string;
+        mode: string;
+        proofSha256: string;
       };
       migrationInspection: {
         logicalSha256: string;
@@ -3142,6 +3254,50 @@ test("final-candidate exact-v37 chain rehydrates fake OSS offline and validates 
           bootstrapRequired: boolean;
         };
         canvasDocumentsRead: number;
+        bridgeSchema37: {
+          externalNetworkAttempts: number;
+          legacyMetadataBackfill: {
+            durationAfter: {
+              failed: number;
+              pending: number;
+              ready: number;
+              sha256: string;
+              total: number;
+            };
+            durationBefore: {
+              failed: number;
+              pending: number;
+              ready: number;
+              sha256: string;
+              total: number;
+            };
+            invariantSha256: string;
+            logicalSha256After: string;
+            logicalSha256Before: string;
+            metadataChanged: boolean;
+          };
+          readiness: {
+            mode: string;
+            mutationsAccepted: boolean;
+            schemaVersion: number;
+            status: string;
+          };
+          releaseId: string;
+          servedStaticAssetSha256: string;
+          version: string;
+        };
+        bridgeSchema39: {
+          externalNetworkAttempts: number;
+          readiness: {
+            mode: string;
+            mutationsAccepted: boolean;
+            schemaVersion: number;
+            status: string;
+          };
+          releaseId: string;
+          servedStaticAssetSha256: string;
+          version: string;
+        };
         buildArtifactSha256: string;
         buildBytes: number;
         buildFiles: number;
@@ -3165,13 +3321,17 @@ test("final-candidate exact-v37 chain rehydrates fake OSS offline and validates 
         shutdown: string;
         startupMediaRecoveryCandidates: number;
         targetLogicalSha256: string;
+        postBridge37LogicalSha256: string;
         indexSha256: string;
         restoredStateBytes: number;
         restoredStateEntries: number;
         restoredStateSha256: string;
       };
     };
-    const restoredStateAfterPreview = await restoredStateSummary(targetDirectory);
+    const restoredStateAfterPreview = await restoredStateSummary(
+      targetDirectory,
+      summary.startupValidation.targetLogicalSha256,
+    );
     expect(summary).toMatchObject({
       backup: { ossMirrors: 1, schemaVersion: 37 },
       expectedDatabaseLogicalSha256: fixture.expectedDatabaseLogicalSha256,
@@ -3182,15 +3342,18 @@ test("final-candidate exact-v37 chain rehydrates fake OSS offline and validates 
       migrationApplied: {
         backfilledDurations: 1,
         drainMilliseconds: 0,
-        nativeDurationProbes: 2,
         sourceVersion: 37,
         targetVersion: 39,
       },
       migrationNativeAudit: {
         externalNetworkAttempts: 0,
-        nativeDurationProbes: 2,
       },
       migrationInspection: { userVersion: currentSchemaVersion },
+      releaseEvidence: {
+        bridge: { releaseId: "v0.5.2", releaseRole: "bridge", version: "0.5.2" },
+        final: { releaseId: "v0.6.0", releaseRole: "final", version: "0.6.0" },
+      },
+      releaseRelationship: releaseAttestation.relationship,
       restored: { schemaVersion: 37 },
       startupValidation: {
         activeGenerationTasks: 0,
@@ -3199,6 +3362,29 @@ test("final-candidate exact-v37 chain rehydrates fake OSS offline and validates 
           bootstrapRequired: false,
         },
         canvasDocumentsRead: 1,
+        bridgeSchema37: {
+          externalNetworkAttempts: 0,
+          legacyMetadataBackfill: {},
+          readiness: {
+            mode: "schema37-bridge-active",
+            mutationsAccepted: true,
+            schemaVersion: 37,
+            status: "ready",
+          },
+          releaseId: "v0.5.2",
+          version: "0.5.2",
+        },
+        bridgeSchema39: {
+          externalNetworkAttempts: 0,
+          readiness: {
+            mode: "active",
+            mutationsAccepted: true,
+            schemaVersion: 39,
+            status: "ready",
+          },
+          releaseId: "v0.5.2",
+          version: "0.5.2",
+        },
         ...buildArtifactBefore,
         externalNetworkAttempts: 0,
         listenerReleased: true,
@@ -3229,6 +3415,10 @@ test("final-candidate exact-v37 chain rehydrates fake OSS offline and validates 
     expect(await productionBuildArtifactSummary(productionBuildRoot))
       .toEqual(buildArtifactBefore);
     expect(await treeFingerprint(productionBuildRoot)).toBe(buildTreeBefore);
+    expect(await productionBuildArtifactSummary(checkoutBuildRoot))
+      .toEqual(checkoutBuildArtifactBefore);
+    expect(await treeFingerprint(checkoutBuildRoot))
+      .toBe(checkoutBuildTreeBefore);
     expect({
       restoredStateBytes: summary.startupValidation.restoredStateBytes,
       restoredStateEntries: summary.startupValidation.restoredStateEntries,
@@ -3240,10 +3430,70 @@ test("final-candidate exact-v37 chain rehydrates fake OSS offline and validates 
       .toBe(summary.migrationApplied.targetLogicalSha256);
     expect(summary.migrationApplied.nativeDurationProbeAuditSha256)
       .toBe(summary.migrationNativeAudit.sha256);
+    const expectedNativeDurationProbes =
+      summary.migrationApplied.backfilledDurations +
+      summary.startupValidation.bridgeSchema37.legacyMetadataBackfill
+        .durationAfter.total;
+    expect(summary.migrationApplied.nativeDurationProbes)
+      .toBe(expectedNativeDurationProbes);
+    expect(summary.migrationNativeAudit.nativeDurationProbes)
+      .toBe(expectedNativeDurationProbes);
     expect(summary.migrationNativeAudit.argumentContractSha256)
       .toMatch(/^[a-f0-9]{64}$/);
+    expect(summary.releaseEvidence.bridge.manifestSha256)
+      .toMatch(/^[a-f0-9]{64}$/);
+    expect(summary.releaseEvidence.final.manifestSha256)
+      .toMatch(/^[a-f0-9]{64}$/);
+    expect(summary.releaseEvidence.bridge.commit)
+      .not.toBe(summary.releaseEvidence.final.commit);
+    expect(summary.releaseEvidence.bridge.sourceTree)
+      .not.toBe(summary.releaseEvidence.final.sourceTree);
     expect(summary.startupValidation.targetLogicalSha256)
       .toBe(summary.migrationApplied.targetLogicalSha256);
+    expect(summary.startupValidation.postBridge37LogicalSha256)
+      .toBe(summary.migrationApplied.expectedSourceLogicalSha256);
+    expect(
+      summary.startupValidation.bridgeSchema37.legacyMetadataBackfill
+        .logicalSha256Before,
+    ).toBe(fixture.expectedDatabaseLogicalSha256);
+    expect(
+      summary.startupValidation.bridgeSchema37.legacyMetadataBackfill
+        .logicalSha256After,
+    ).toBe(summary.startupValidation.postBridge37LogicalSha256);
+    expect(
+      summary.startupValidation.bridgeSchema37.legacyMetadataBackfill
+        .durationBefore,
+    ).toMatchObject({ failed: 0, pending: 1, ready: 0, total: 1 });
+    expect(
+      summary.startupValidation.bridgeSchema37.legacyMetadataBackfill
+        .durationAfter,
+    ).toMatchObject({ failed: 0, pending: 1, ready: 0, total: 1 });
+    expect(
+      summary.startupValidation.bridgeSchema37.legacyMetadataBackfill
+        .durationAfter.sha256,
+    ).toBe(
+      summary.startupValidation.bridgeSchema37.legacyMetadataBackfill
+        .durationBefore.sha256,
+    );
+    expect(
+      summary.startupValidation.bridgeSchema37.legacyMetadataBackfill
+        .metadataChanged,
+    ).toBe(
+      summary.startupValidation.bridgeSchema37.legacyMetadataBackfill
+        .logicalSha256After !==
+        summary.startupValidation.bridgeSchema37.legacyMetadataBackfill
+          .logicalSha256Before,
+    );
+    expect(
+      summary.startupValidation.bridgeSchema37.legacyMetadataBackfill
+        .invariantSha256,
+    ).toMatch(/^[a-f0-9]{64}$/);
+    expect(summary.startupValidation.bridgeSchema37.servedStaticAssetSha256)
+      .toMatch(/^[a-f0-9]{64}$/);
+    expect(summary.startupValidation.bridgeSchema39.servedStaticAssetSha256)
+      .toMatch(/^[a-f0-9]{64}$/);
+    expect(summary.startupValidation.bridgeSchema37.servedStaticAssetSha256)
+      .not.toBe(summary.startupValidation.bridgeSchema39.servedStaticAssetSha256);
     expect(summary.fakeOssRecovery.objects).toHaveLength(1);
     expect(summary.fakeOssRecovery.objects[0]).toMatchObject({
       objectKey: fixture.objectKey,
@@ -3274,18 +3524,33 @@ test("final-candidate exact-v37 chain rehydrates fake OSS offline and validates 
       versionId: "fake-version-1",
     });
 
-    const restoredInspection = inspectBackupDatabase(
-      join(targetDirectory, "unboundry.sqlite"),
+    const restoredDatabasePath = join(targetDirectory, "unboundry.sqlite");
+    await expect(validateBackupSecrets(
+      restoredDatabasePath,
+      join(targetDirectory, "secrets"),
       targetDirectory,
-    );
-    expect(restoredInspection).toMatchObject({
-      userVersion: currentSchemaVersion,
+    )).resolves.toEqual({
+      accountCredentials: 1,
+      masterKeyPresent: true,
+      providerDocumentProfiles: 1,
+      storageDocumentProfiles: 1,
     });
     const restored = new DatabaseSync(
-      join(targetDirectory, "unboundry.sqlite"),
-      { readOnly: true },
+      restoredDatabasePath,
+      { timeout: 5_000 },
     );
+    let verifiedRestoredLogicalSha256: string | undefined;
     try {
+      restored.exec("BEGIN IMMEDIATE");
+      const restoredInspection = inspectLockedBackupDatabase(
+        restored,
+        targetDirectory,
+      );
+      expect(restoredInspection).toMatchObject({
+        logicalSha256: summary.startupValidation.targetLogicalSha256,
+        userVersion: currentSchemaVersion,
+      });
+      verifiedRestoredLogicalSha256 = restoredInspection.logicalSha256;
       for (const [table, expected] of [
         ["canvas_documents", 1],
         ["project_metadata", 1],
@@ -3321,19 +3586,14 @@ test("final-candidate exact-v37 chain rehydrates fake OSS offline and validates 
         duration_status: "ready",
       });
     } finally {
+      if (restored.isTransaction) restored.exec("ROLLBACK");
       restored.close();
     }
-    await expect(validateBackupSecrets(
-      join(targetDirectory, "unboundry.sqlite"),
-      join(targetDirectory, "secrets"),
+    expect(verifiedRestoredLogicalSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(await restoredStateSummary(
       targetDirectory,
-    )).resolves.toEqual({
-      accountCredentials: 1,
-      masterKeyPresent: true,
-      providerDocumentProfiles: 1,
-      storageDocumentProfiles: 1,
-    });
-    expect(await restoredStateSummary(targetDirectory))
+      verifiedRestoredLogicalSha256!,
+    ))
       .toEqual(restoredStateAfterPreview);
     expect(await readdir(fixture.scratchRoot)).toEqual([]);
   } finally {
@@ -3366,10 +3626,14 @@ test("final-candidate preflight rejects physical path aliases and keys under wor
         fixture!.dataDirectory,
         "--backup-root",
         fixture!.backupRoot,
+        "--bridge-release-manifest",
+        fixture!.releaseManifests.bridge,
         "--target-data-dir",
         overrides.targetDirectory ?? targetDirectory,
         "--fake-oss-target-dir",
         overrides.fakeOssTarget ?? fakeOssTarget,
+        "--final-release-manifest",
+        fixture!.releaseManifests.final,
         "--scratch-root",
         fixture!.scratchRoot,
         "--expected-database-logical-sha256",
@@ -3430,10 +3694,14 @@ test("final-candidate preflight rejects physical path aliases and keys under wor
         swapFixture.dataDirectory,
         "--backup-root",
         swapFixture.backupRoot,
+        "--bridge-release-manifest",
+        swapFixture.releaseManifests.bridge,
         "--target-data-dir",
         swapTarget,
         "--fake-oss-target-dir",
         swapFakeOss,
+        "--final-release-manifest",
+        swapFixture.releaseManifests.final,
         "--scratch-root",
         swapFixture.scratchRoot,
         "--expected-database-logical-sha256",
@@ -3482,8 +3750,9 @@ test("final-candidate preflight rejects physical path aliases and keys under wor
         },
       );
       const rootToSwap = kind === "build"
-        ? join(process.cwd(), "dist", "client")
+        ? join(dirname(swapFixture.releaseManifests.bridge), "dist", "client")
         : swapTarget;
+      let artifactModes: ReadonlyMap<string, number> | undefined;
       const displacedRoot = `${rootToSwap}.m10-root-swap`;
       let swapped = false;
       try {
@@ -3511,6 +3780,12 @@ test("final-candidate preflight rejects physical path aliases and keys under wor
           });
         });
         expect(notification).toBe(`inventory:${kind}`);
+        if (kind === "build") {
+          artifactModes = await makeArtifactPathsWritable([
+            dirname(swapFixture.releaseManifests.bridge),
+            join(dirname(swapFixture.releaseManifests.bridge), "dist"),
+          ]);
+        }
         await rename(rootToSwap, displacedRoot);
         swapped = true;
         await mkdir(rootToSwap, { mode: 0o700 });
@@ -3553,6 +3828,9 @@ test("final-candidate preflight rejects physical path aliases and keys under wor
           await rm(rootToSwap, { force: true, recursive: true });
           await rename(displacedRoot, rootToSwap);
         }
+        if (kind === "build" && artifactModes) {
+          await restoreArtifactPathModes(artifactModes!);
+        }
       }
     };
 
@@ -3574,6 +3852,42 @@ test("final-candidate preflight rejects physical path aliases and keys under wor
     expect(await readdir(fixture.backupRoot)).toEqual([]);
     await expect(lstat(targetDirectory)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(lstat(fakeOssTarget)).rejects.toMatchObject({ code: "ENOENT" });
+
+    const bridgeManifestDirectory = dirname(fixture.releaseManifests.bridge);
+    const bridgeManifestBytes = await readFile(fixture.releaseManifests.bridge);
+    const invalidBridgeManifest = JSON.parse(bridgeManifestBytes.toString("utf8")) as
+      Record<string, unknown>;
+    const legacyRuntime = invalidBridgeManifest.legacyRuntime as
+      Record<string, unknown>;
+    legacyRuntime.archiveSha256 = "0".repeat(64);
+    const bridgeArtifactModes = await makeArtifactPathsWritable([
+      bridgeManifestDirectory,
+      fixture.releaseManifests.bridge,
+    ]);
+    try {
+      await writeFile(
+        fixture.releaseManifests.bridge,
+        `${JSON.stringify(invalidBridgeManifest, null, 2)}\n`,
+      );
+      await restoreArtifactPathModes(bridgeArtifactModes);
+      let manifestFailure: (Error & { stderr?: string }) | undefined;
+      try {
+        await execute(process.execPath, finalArguments(), { cwd: process.cwd() });
+      } catch (error) {
+        manifestFailure = error as Error & { stderr?: string };
+      }
+      expect(JSON.parse(manifestFailure?.stderr ?? "{}")).toMatchObject({
+        code: "FINAL_BACKUP_RELEASE_MANIFEST_CHANGED",
+      });
+    } finally {
+      await makeArtifactPathsWritable([
+        bridgeManifestDirectory,
+        fixture.releaseManifests.bridge,
+      ]);
+      await writeFile(fixture.releaseManifests.bridge, bridgeManifestBytes);
+      await restoreArtifactPathModes(bridgeArtifactModes);
+    }
+    expect(await readdir(fixture.backupRoot)).toEqual([]);
 
     const nestedKeyCases = [
       {

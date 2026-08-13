@@ -22,13 +22,22 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import net from "node:net";
+import {
+  attestReleaseSourcePair,
+  assertReleaseSourcePairArtifacts,
+  RELEASE_SOURCE_PAIR_MODES,
+} from "./lib/release-source-pair.mjs";
 
 const EXPECTED_NODE = "22.23.1";
 const EXPECTED_NPM = "10.9.8";
 const FORBIDDEN_PORT = 4173;
 const USER_HOME = "/Users/mymy";
+const BACKUP_FINAL_CANDIDATE_SPEC = "tests/m10-backup.spec.ts";
 const EXACT_V051_SPEC = "tests/m92-version-compatibility.spec.ts";
 const IMMUTABLE_RELEASE_SPEC = "tests/m94-immutable-release.spec.ts";
+const RELEASE_OPS_SPEC = "tests/m96-release-ops.spec.ts";
+const RELEASE_ATTESTATION_CONTRACT =
+  "unboundry-operational-releases-v1";
 const EXACT_V051 = Object.freeze({
   annotatedTagObject: "2e556760b693d1cee1b8b37db3e6747a916bcaf2",
   archiveSha256:
@@ -43,6 +52,8 @@ const EXACT_V051 = Object.freeze({
     "vite.config.ts":
       "759d61ec22585cb447e80edd675efd0af1228a61448fd0e6829998ad46065786",
   }),
+  originalInventorySha256:
+    "cd98d90aaae56de756164fa0434dfb6bb144598183536c6d91067308e8d24517",
   peeledCommit: "7f7d6177a564056a6f41ff83dfb7ba913b21603b",
   tag: "v0.5.1",
   trackedEntries: 371,
@@ -54,6 +65,9 @@ const repositoryRoot = realpathSync(resolve(dirname(scriptPath), ".."));
 let activeSuiteRoot;
 let exactV051Attestation;
 let listener4173Baseline;
+const operationalReleaseArtifacts = new Map();
+const operationalReleasePrerequisites = new Map();
+const writableOperationalReleaseArtifacts = new Map();
 let privateNodePath;
 let privateNodeRuntimeRoot;
 let privateNpmCliPath;
@@ -755,6 +769,17 @@ function sandboxProfile(testRoot, sourceRoot, configuredBrowserRoot) {
       `(deny file-write* (subpath "${quote(exactV051Attestation.runtimeRoot)}"))`,
     );
   }
+  for (const artifact of operationalReleaseArtifacts.values()) {
+    rules.push(
+      `(allow file-read* (subpath "${quote(artifact.root)}"))`,
+      `(deny file-write* (subpath "${quote(artifact.root)}"))`,
+    );
+  }
+  for (const artifact of writableOperationalReleaseArtifacts.values()) {
+    rules.push(
+      `(allow file-read* file-write* (subpath "${quote(artifact.root)}"))`,
+    );
+  }
   return rules.join("\n");
 }
 
@@ -1209,7 +1234,7 @@ function validateExtractedExactV051Files(
   }
 }
 
-function extractExactV051Runtime(runtimeRoot) {
+function extractExactV051Runtime(runtimeRoot, archivePath) {
   const archive = spawnSync(
     "/usr/bin/git",
     [
@@ -1236,6 +1261,8 @@ function extractExactV051Runtime(runtimeRoot) {
   if (archiveSha256 !== EXACT_V051.archiveSha256) {
     fail("exact v0.5.1 complete-tree archive does not match the frozen contract");
   }
+  writeFileSync(archivePath, archive.stdout, { flag: "wx", mode: 0o400 });
+  chmodSync(archivePath, 0o400);
   const extracted = spawnSync(
     "/usr/bin/tar",
     ["-x", "-C", runtimeRoot],
@@ -1327,10 +1354,12 @@ function assertExactV051AttestationUnchanged() {
   let currentDetails;
   let root;
   let evidence;
+  let archive;
   let bytes;
   try {
     root = lstatSync(exactV051Attestation.root);
     evidence = lstatSync(exactV051Attestation.path);
+    archive = lstatSync(exactV051Attestation.archivePath);
     bytes = readFileSync(exactV051Attestation.path);
     currentDetails = JSON.parse(bytes.toString("utf8"));
   } catch {
@@ -1339,10 +1368,15 @@ function assertExactV051AttestationUnchanged() {
   if (
     realpathSync(exactV051Attestation.root) !== exactV051Attestation.root ||
     realpathSync(exactV051Attestation.path) !== exactV051Attestation.path ||
+    realpathSync(exactV051Attestation.archivePath) !== exactV051Attestation.archivePath ||
     !root.isDirectory() || root.isSymbolicLink() ||
     (root.mode & 0o777) !== 0o500 ||
     !evidence.isFile() || evidence.isSymbolicLink() || evidence.nlink !== 1 ||
     (evidence.mode & 0o777) !== 0o400 ||
+    !archive.isFile() || archive.isSymbolicLink() || archive.nlink !== 1 ||
+    (archive.mode & 0o777) !== 0o400 ||
+    sha256Bytes(readFileSync(exactV051Attestation.archivePath)) !==
+      EXACT_V051.archiveSha256 ||
     sha256Bytes(bytes) !== exactV051Attestation.sha256 ||
     JSON.stringify(currentDetails) !== JSON.stringify(exactV051Attestation.details)
   ) fail("exact v0.5.1 runner attestation changed after preparation");
@@ -1357,6 +1391,7 @@ async function prepareExactV051Attestation(sourceRoot, browserRoot, suiteRoot) {
   const runnerDataDirectory = join(rehearsalRoot, "runner-data");
   const cacheRoot = join(rehearsalRoot, "npm-cache");
   const attestationRoot = join(rehearsalRoot, "attestation");
+  const archivePath = join(attestationRoot, "exact-v0.5.1.tar");
   for (const directory of [
     runtimeRoot,
     workRoot,
@@ -1367,7 +1402,7 @@ async function prepareExactV051Attestation(sourceRoot, browserRoot, suiteRoot) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     chmodSync(directory, 0o700);
   }
-  const archiveSha256 = extractExactV051Runtime(runtimeRoot);
+  const archiveSha256 = extractExactV051Runtime(runtimeRoot, archivePath);
   const auditFile = join(rehearsalRoot, "network-audit.jsonl");
   const reportFile = join(rehearsalRoot, "unused-report.json");
   const rawEvidencePath = join(workRoot, "raw-evidence.json");
@@ -1501,6 +1536,8 @@ async function prepareExactV051Attestation(sourceRoot, browserRoot, suiteRoot) {
   chmodSync(attestationPath, 0o400);
   chmodSync(attestationRoot, 0o500);
   exactV051Attestation = Object.freeze({
+    archivePath,
+    cacheRoot,
     details: attestation,
     nonce,
     path: attestationPath,
@@ -1893,6 +1930,26 @@ async function executeSpec(
   if (spec === EXACT_V051_SPEC) {
     Object.assign(env, exactV051AttestationEnvironment());
   }
+  let writableReleaseArtifact;
+  if (spec === BACKUP_FINAL_CANDIDATE_SPEC) {
+    writableReleaseArtifact = createWritableOperationalReleaseClone(
+      iteration,
+      testRoot,
+    );
+    Object.assign(
+      env,
+      operationalReleaseEnvironment(writableReleaseArtifact, testRoot, env),
+    );
+  } else if (new Set([EXACT_V051_SPEC, RELEASE_OPS_SPEC]).has(spec)) {
+    Object.assign(
+      env,
+      operationalReleaseEnvironment(
+        operationalReleaseArtifacts.get(iteration),
+        testRoot,
+        env,
+      ),
+    );
+  }
   try {
     console.log(`[safe-runner] ${spec} (iteration ${iteration}, ports ${port}/${auxiliaryPort})`);
     const result = await sandboxedPlaywright(sourceRoot, testRoot, env);
@@ -1923,6 +1980,23 @@ async function executeSpec(
     return summary;
   } finally {
     if (spec === EXACT_V051_SPEC) assertExactV051AttestationUnchanged();
+    if (new Set([
+      BACKUP_FINAL_CANDIDATE_SPEC,
+      EXACT_V051_SPEC,
+      RELEASE_OPS_SPEC,
+    ]).has(spec)) {
+      const artifact = operationalReleaseArtifacts.get(iteration);
+      if (artifact) assertOperationalReleaseArtifactsUnchanged(artifact);
+    }
+    if (writableReleaseArtifact) {
+      try {
+        assertOperationalReleaseArtifactsUnchanged(writableReleaseArtifact);
+      } finally {
+        writableOperationalReleaseArtifacts.delete(testRoot);
+        makeImmutableReleaseFixtureRemovable(writableReleaseArtifact.root);
+        rmSync(writableReleaseArtifact.root, { force: true, recursive: true });
+      }
+    }
     assertTrackedSnapshotUnchanged();
     rmSync(testRoot, { force: true, recursive: true });
   }
@@ -1964,8 +2038,8 @@ async function discover(specs, suiteRoot, sourceRoot, browserRoot) {
         })}`,
       );
     }
-    if (discovery.tests !== 931) {
-      fail(`the frozen 931-test inventory changed to ${discovery.tests}`);
+    if (discovery.tests !== 938) {
+      fail(`the frozen 938-test inventory changed to ${discovery.tests}`);
     }
     const idsByFile = {};
     const { entries } = collectReportEntries(reportFile, sourceRoot);
@@ -2037,6 +2111,46 @@ function makeImmutableReleaseFixtureRemovable(root) {
     }
   };
   visit(root);
+}
+
+function stableOperationalReleasePrerequisites(suiteRoot, iteration) {
+  const existing = operationalReleasePrerequisites.get(iteration);
+  if (existing) return existing;
+  const root = join(
+    suiteRoot,
+    "operational-release-prerequisites",
+    `iteration-${String(iteration).padStart(2, "0")}`,
+  );
+  mkdirSync(root, { recursive: true, mode: 0o700 });
+  const ffmpegExecutable = join(root, "ffmpeg");
+  const ffprobeExecutable = join(root, "ffprobe");
+  writeImmutableReleaseFixtureFile(
+    ffmpegExecutable,
+    "#!/bin/sh\nprintf 'ffmpeg version m94-operational-snapshot\\n'\n",
+    0o500,
+  );
+  writeImmutableReleaseFixtureFile(
+    ffprobeExecutable,
+    "#!/bin/sh\nprintf 'ffprobe version m94-operational-snapshot\\n'\n",
+    0o500,
+  );
+  chmodSync(root, 0o500);
+  const result = Object.freeze({ ffmpegExecutable, ffprobeExecutable, root });
+  operationalReleasePrerequisites.set(iteration, result);
+  return result;
+}
+
+function copySnapshotFileForFixture(sourceRoot, repository, file) {
+  const sourcePath = join(sourceRoot, file);
+  const details = lstatSync(sourcePath);
+  if (!details.isFile() || details.isSymbolicLink()) {
+    fail(`bridge builder snapshot input is unsafe: ${file}`);
+  }
+  writeImmutableReleaseFixtureFile(
+    join(repository, file),
+    readFileSync(sourcePath),
+    details.mode & 0o111 ? 0o500 : 0o600,
+  );
 }
 
 async function createImmutableReleaseFixture(
@@ -2139,8 +2253,16 @@ async function createImmutableReleaseFixture(
       private: true,
       scripts: { build: "tsc --noEmit && vite build" },
       type: "module",
-      version: "0.0.0-m94",
+      version: "0.6.0",
     }, null, 2)}\n`,
+  );
+  writeImmutableReleaseFixtureFile(
+    join(repository, "scripts/migrate-schema37-to39.mjs"),
+    "throw new Error('synthetic migration is never executed');\n",
+  );
+  writeImmutableReleaseFixtureFile(
+    join(repository, "scripts/node-typescript-runtime.mjs"),
+    "export {};\n",
   );
   writeImmutableReleaseFixtureFile(
     join(repository, "vendor/playwright-test/package.json"),
@@ -2382,22 +2504,368 @@ async function createImmutableReleaseFixture(
     ffmpegExecutable,
     ffprobeExecutable,
     npmCache,
+    releaseId: "v0.6.0",
+    releaseRole: "final",
     releases,
     repository,
     root,
     scratch,
     setupAudit,
     setupEnvironment,
+    targetVersion: "0.6.0",
   });
 }
 
+async function createSnapshotImmutableReleaseFixture(
+  suiteRoot,
+  sourceRoot,
+  browserRoot,
+  iteration,
+  releaseRole,
+) {
+  if (releaseRole === "bridge" && !exactV051Attestation) {
+    fail("exact v0.5.1 attestation must precede the bridge release builder gate");
+  }
+  if (!new Set(["bridge", "final"]).has(releaseRole)) {
+    fail(`unsupported full snapshot release role ${releaseRole}`);
+  }
+  const root = mkdtempSync(join(
+    suiteRoot,
+    `immutable-release-${String(iteration).padStart(2, "0")}-${releaseRole}-`,
+  ));
+  chmodSync(root, 0o700);
+  const repository = join(root, "repo");
+  const releases = join(root, "releases");
+  const scratch = join(root, "scratch");
+  const npmCache = join(root, "npm-cache");
+  const prerequisites = stableOperationalReleasePrerequisites(
+    suiteRoot,
+    iteration,
+  );
+  const dataDirectory = join(root, "setup-data");
+  const auditFile = join(root, "setup-network-audit.jsonl");
+  const reportFile = join(root, "unused-report.json");
+  for (const directory of [
+    repository,
+    releases,
+    scratch,
+    npmCache,
+    dataDirectory,
+  ]) mkdirSync(directory, { recursive: true, mode: 0o700 });
+  writeFileSync(auditFile, "", { encoding: "utf8", flag: "wx", mode: 0o600 });
+  const port = await freePort();
+  const auxiliaryPort = await freePort(new Set([port]));
+  const setupEnvironment = sanitizedEnvironment({
+    auxiliaryPort,
+    auditFile,
+    browserRoot,
+    dataDirectory,
+    port,
+    reportFile,
+    sourceRoot,
+    spec: join(sourceRoot, IMMUTABLE_RELEASE_SPEC),
+    testRoot: root,
+  });
+  setupEnvironment.GIT_CONFIG_GLOBAL = "/dev/null";
+  setupEnvironment.GIT_CONFIG_NOSYSTEM = "1";
+  run("/bin/cp", [
+    "-cR",
+    join(exactV051Attestation.cacheRoot, "_cacache"),
+    join(npmCache, "_cacache"),
+  ]);
+  for (const file of snapshotBaseline.files) {
+    copySnapshotFileForFixture(sourceRoot, repository, file);
+  }
+  const packagePath = join(repository, "package.json");
+  const lockPath = join(repository, "package-lock.json");
+  const packageDocument = JSON.parse(readFileSync(packagePath, "utf8"));
+  const lockDocument = JSON.parse(readFileSync(lockPath, "utf8"));
+  const sourceVersion = packageDocument.version;
+  if (!new Set(["0.5.2", "0.6.0"]).has(sourceVersion)) {
+    fail(`bridge builder snapshot has unsupported source version ${sourceVersion}`);
+  }
+  if (sourceVersion === "0.6.0") {
+    fail(
+      "a 0.6.0 source requires an attested direct-parent 0.5.2 bridge tree; " +
+        "version-only bridge rewriting is forbidden",
+    );
+  }
+  const targetVersion = releaseRole === "bridge" ? "0.5.2" : "0.6.0";
+  packageDocument.version = targetVersion;
+  lockDocument.version = targetVersion;
+  lockDocument.packages[""].version = targetVersion;
+  writeFileSync(packagePath, `${JSON.stringify(packageDocument, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  writeFileSync(lockPath, `${JSON.stringify(lockDocument, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  const { ffmpegExecutable, ffprobeExecutable } = prerequisites;
+  await sandboxedNode(
+    sourceRoot,
+    root,
+    setupEnvironment,
+    [
+      "--input-type=module",
+      "-e",
+      `if (process.versions.node !== ${JSON.stringify(EXPECTED_NODE)}) ` +
+        `throw new Error("unexpected fixture Node version");`,
+    ],
+    { cwd: repository },
+  );
+  await sandboxedCommand(
+    sourceRoot,
+    root,
+    setupEnvironment,
+    "/usr/bin/git",
+    ["-c", "init.templateDir=", "init", "--quiet"],
+    { cwd: repository },
+  );
+  await sandboxedCommand(
+    sourceRoot,
+    root,
+    setupEnvironment,
+    "/usr/bin/git",
+    ["add", "--all"],
+    { cwd: repository },
+  );
+  await sandboxedCommand(
+    sourceRoot,
+    root,
+    setupEnvironment,
+    "/usr/bin/git",
+    [
+      "-c",
+      "user.name=M94",
+      "-c",
+      "user.email=m94@example.invalid",
+      "commit",
+      "--quiet",
+      "-m",
+      `${releaseRole} snapshot ${targetVersion} from ${sourceVersion}`,
+    ],
+    { cwd: repository },
+  );
+  const commit = (
+    await sandboxedCommand(
+      sourceRoot,
+      root,
+      setupEnvironment,
+      "/usr/bin/git",
+      ["rev-parse", "HEAD"],
+      { capture: true, cwd: repository },
+    )
+  ).stdout.trim();
+  const setupAudit = assertAudit(auditFile, new Set([port, auxiliaryPort]));
+  return Object.freeze({
+    commit,
+    ffmpegExecutable,
+    ffprobeExecutable,
+    legacySourceArchive: releaseRole === "bridge"
+      ? exactV051Attestation.archivePath
+      : undefined,
+    npmCache,
+    releaseId: `v${targetVersion}`,
+    releaseRole,
+    releases,
+    repository,
+    root,
+    scratch,
+    setupAudit,
+    sourceVersion,
+    targetVersion,
+  });
+}
+
+async function createSnapshotImmutableReleasePairFixture(
+  suiteRoot,
+  sourceRoot,
+  browserRoot,
+  iteration,
+) {
+  const sourceVersion = JSON.parse(
+    readFileSync(join(sourceRoot, "package.json"), "utf8"),
+  ).version;
+  if (sourceVersion === "0.5.2") {
+    const bridge = await createSnapshotImmutableReleaseFixture(
+      suiteRoot,
+      sourceRoot,
+      browserRoot,
+      iteration,
+      "bridge",
+    );
+    const packagePath = join(bridge.repository, "package.json");
+    const lockPath = join(bridge.repository, "package-lock.json");
+    const packageDocument = JSON.parse(readFileSync(packagePath, "utf8"));
+    const lockDocument = JSON.parse(readFileSync(lockPath, "utf8"));
+    packageDocument.version = "0.6.0";
+    lockDocument.version = "0.6.0";
+    lockDocument.packages[""].version = "0.6.0";
+    writeFileSync(packagePath, `${JSON.stringify(packageDocument, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    writeFileSync(lockPath, `${JSON.stringify(lockDocument, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    const gitEnvironment = immutableReleaseControllerEnvironment(bridge.root);
+    run("/usr/bin/git", ["add", "--", "package.json", "package-lock.json"], {
+      cwd: bridge.repository,
+      env: gitEnvironment,
+    });
+    run("/usr/bin/git", [
+      "-c",
+      "user.name=M94",
+      "-c",
+      "user.email=m94@example.invalid",
+      "commit",
+      "--quiet",
+      "-m",
+      "final direct child 0.6.0",
+    ], { cwd: bridge.repository, env: gitEnvironment });
+    const finalCommit = run("/usr/bin/git", ["rev-parse", "HEAD"], {
+      capture: true,
+      cwd: bridge.repository,
+      env: gitEnvironment,
+    }).stdout.trim();
+    const finalReleases = join(bridge.root, "final-releases");
+    const finalScratch = join(bridge.root, "final-scratch");
+    mkdirSync(finalReleases, { mode: 0o700 });
+    mkdirSync(finalScratch, { mode: 0o700 });
+    const relationship = await attestReleaseSourcePair({
+      finalCommit,
+      mode: RELEASE_SOURCE_PAIR_MODES.synthetic,
+      repository: realpathSync(bridge.repository),
+    });
+    if (relationship.bridgeCommit !== bridge.commit) {
+      fail("synthetic release source-pair parent identity changed");
+    }
+    const final = Object.freeze({
+      ...bridge,
+      commit: finalCommit,
+      legacySourceArchive: undefined,
+      releaseId: "v0.6.0",
+      releaseRole: "final",
+      releases: finalReleases,
+      scratch: finalScratch,
+      targetVersion: "0.6.0",
+    });
+    return Object.freeze({ bridge, final, relationship, setupAudit: bridge.setupAudit });
+  }
+  if (sourceVersion !== "0.6.0") {
+    fail(`release source-pair fixture has unsupported version ${sourceVersion}`);
+  }
+  const finalCommit = workspaceBaseline.head;
+  const relationship = await attestReleaseSourcePair({
+    finalCommit,
+    mode: RELEASE_SOURCE_PAIR_MODES.formal,
+    repository: repositoryRoot,
+  });
+  if (sourceRecordsFingerprint(finalCommit, sourceFileRecords(
+    repositoryRoot,
+    workspaceBaseline.files,
+    "formal release source",
+  )) !== workspaceBaseline.sha256) {
+    fail("formal release source must be the clean final HEAD tree");
+  }
+  const root = mkdtempSync(join(
+    suiteRoot,
+    `immutable-release-${String(iteration).padStart(2, "0")}-formal-pair-`,
+  ));
+  chmodSync(root, 0o700);
+  const repository = join(root, "repo");
+  const npmCache = join(root, "npm-cache");
+  const bridgeReleases = join(root, "bridge-releases");
+  const bridgeScratch = join(root, "bridge-scratch");
+  const finalReleases = join(root, "final-releases");
+  const finalScratch = join(root, "final-scratch");
+  for (const directory of [
+    npmCache,
+    bridgeReleases,
+    bridgeScratch,
+    finalReleases,
+    finalScratch,
+  ]) mkdirSync(directory, { recursive: true, mode: 0o700 });
+  run("/bin/cp", [
+    "-cR",
+    join(exactV051Attestation.cacheRoot, "_cacache"),
+    join(npmCache, "_cacache"),
+  ]);
+  const gitEnvironment = immutableReleaseControllerEnvironment(root);
+  run("/usr/bin/git", [
+    "clone",
+    "--quiet",
+    "--no-checkout",
+    "--no-hardlinks",
+    repositoryRoot,
+    repository,
+  ], { env: gitEnvironment });
+  run("/usr/bin/git", ["checkout", "--quiet", "--detach", finalCommit], {
+    cwd: repository,
+    env: gitEnvironment,
+  });
+  const clonedRelationship = await attestReleaseSourcePair({
+    finalCommit,
+    mode: RELEASE_SOURCE_PAIR_MODES.formal,
+    repository: realpathSync(repository),
+  });
+  if (JSON.stringify(clonedRelationship) !== JSON.stringify(relationship)) {
+    fail("isolated formal release source-pair clone changed identity");
+  }
+  const prerequisites = stableOperationalReleasePrerequisites(suiteRoot, iteration);
+  const shared = {
+    ffmpegExecutable: prerequisites.ffmpegExecutable,
+    ffprobeExecutable: prerequisites.ffprobeExecutable,
+    npmCache,
+    repository,
+    root,
+    setupAudit: Object.freeze({ guardLoads: 0 }),
+  };
+  const bridge = Object.freeze({
+    ...shared,
+    commit: relationship.bridgeCommit,
+    legacySourceArchive: exactV051Attestation.archivePath,
+    releaseId: "v0.5.2",
+    releaseRole: "bridge",
+    releases: bridgeReleases,
+    scratch: bridgeScratch,
+    sourceVersion: "0.5.2",
+    targetVersion: "0.5.2",
+  });
+  const final = Object.freeze({
+    ...shared,
+    commit: relationship.finalCommit,
+    releaseId: "v0.6.0",
+    releaseRole: "final",
+    releases: finalReleases,
+    scratch: finalScratch,
+    sourceVersion: "0.6.0",
+    targetVersion: "0.6.0",
+  });
+  return Object.freeze({ bridge, final, relationship, setupAudit: shared.setupAudit });
+}
+
 function immutableReleaseBuilderArguments(fixture) {
+  const role = fixture.releaseRole;
+  const version = fixture.targetVersion;
+  if (
+    !new Set(["bridge", "final"]).has(role) ||
+    (role === "bridge" ? version !== "0.5.2" : version !== "0.6.0") ||
+    fixture.releaseId !== `v${version}`
+  ) fail("immutable release fixture identity is invalid");
   return [
     join(fixture.repository, "scripts/build-release.mjs"),
     "--artifact-class",
     "synthetic-test",
     "--commit",
     fixture.commit,
+    "--expected-version",
+    version,
+    "--formal-release-commit",
+    "false",
     "--ffmpeg-executable",
     fixture.ffmpegExecutable,
     "--ffprobe-executable",
@@ -2408,6 +2876,13 @@ function immutableReleaseBuilderArguments(fixture) {
     fixture.scratch,
     "--npm-cache",
     fixture.npmCache,
+    "--release-id",
+    fixture.releaseId,
+    "--release-role",
+    role,
+    ...(role === "bridge"
+      ? ["--legacy-source-archive", fixture.legacySourceArchive]
+      : []),
     "--target-platform",
     process.platform,
     "--target-arch",
@@ -2426,7 +2901,7 @@ async function runImmutableReleaseBuilder(fixture) {
       capture: true,
       cwd: fixture.repository,
       env: immutableReleaseControllerEnvironment(fixture.root),
-      timeout: 2 * 60_000,
+      timeout: fixture.releaseRole === "bridge" ? 15 * 60_000 : 2 * 60_000,
     },
   );
 }
@@ -2449,32 +2924,385 @@ function immutableReleaseEntries(path) {
   return readdirSync(path).sort();
 }
 
+function captureOperationalHostPrerequisites(manifests) {
+  let captured;
+  for (const manifest of manifests) {
+    const entries = [...(manifest.hostPrerequisites?.executables ?? [])]
+      .sort((left, right) => left.name.localeCompare(right.name));
+    if (
+      entries.length !== 3 ||
+      JSON.stringify(entries.map((entry) => entry.name)) !==
+        JSON.stringify(["ffmpeg", "ffprobe", "node"])
+    ) fail("operational release host prerequisites are incomplete");
+    const current = entries.map((entry) => {
+      const details = lstatSync(entry.path);
+      const version = spawnSync(entry.path, entry.arguments, {
+        encoding: "utf8",
+        env: { LANG: "C", LC_ALL: "C", PATH: "/usr/bin:/bin", TZ: "UTC" },
+        maxBuffer: 1024 * 1024,
+      });
+      const output = String(version.stdout ?? "").trim();
+      if (
+        realpathSync(entry.path) !== entry.path ||
+        !details.isFile() || details.isSymbolicLink() || details.nlink !== 1 ||
+        details.uid !== process.getuid() || (details.mode & 0o022) !== 0 ||
+        (details.mode & 0o111) === 0 || version.status !== 0 ||
+        sha256Bytes(readFileSync(entry.path)) !== entry.sha256 ||
+        sha256Bytes(output) !== entry.versionOutputSha256 ||
+        !(new RegExp(entry.versionPattern)).test(output)
+      ) fail(`operational ${entry.name} prerequisite is not revalidatable`);
+      return Object.freeze({
+        entry: Object.freeze(entry),
+        identity: Object.freeze({
+          ctimeMs: details.ctimeMs,
+          dev: details.dev,
+          ino: details.ino,
+          mode: details.mode,
+          mtimeMs: details.mtimeMs,
+          nlink: details.nlink,
+          size: details.size,
+          uid: details.uid,
+        }),
+        output,
+      });
+    });
+    if (captured && JSON.stringify(current.map(({ entry }) => entry)) !==
+        JSON.stringify(captured.map(({ entry }) => entry))) {
+      fail("bridge and final host prerequisite manifests diverged");
+    }
+    captured ??= current;
+  }
+  return Object.freeze(captured);
+}
+
+function assertOperationalHostPrerequisitesUnchanged(artifact) {
+  for (const prerequisite of artifact.hostPrerequisites) {
+    const { entry, identity, output } = prerequisite;
+    const details = lstatSync(entry.path);
+    const version = spawnSync(entry.path, entry.arguments, {
+      encoding: "utf8",
+      env: { LANG: "C", LC_ALL: "C", PATH: "/usr/bin:/bin", TZ: "UTC" },
+      maxBuffer: 1024 * 1024,
+    });
+    if (
+      realpathSync(entry.path) !== entry.path ||
+      !details.isFile() || details.isSymbolicLink() ||
+      details.dev !== identity.dev || details.ino !== identity.ino ||
+      details.uid !== identity.uid || details.mode !== identity.mode ||
+      details.nlink !== identity.nlink || details.size !== identity.size ||
+      details.mtimeMs !== identity.mtimeMs || details.ctimeMs !== identity.ctimeMs ||
+      sha256Bytes(readFileSync(entry.path)) !== entry.sha256 ||
+      version.status !== 0 || String(version.stdout ?? "").trim() !== output ||
+      sha256Bytes(output) !== entry.versionOutputSha256
+    ) fail(`operational ${entry.name} prerequisite changed`);
+  }
+  for (const role of ["bridge", "final"]) {
+    const manifest = JSON.parse(readFileSync(
+      artifact.releases[role].manifestPath,
+      "utf8",
+    ));
+    const entries = [...(manifest.hostPrerequisites?.executables ?? [])]
+      .sort((left, right) => left.name.localeCompare(right.name));
+    if (JSON.stringify(entries) !== JSON.stringify(
+      artifact.hostPrerequisites.map(({ entry }) => entry),
+    )) fail(`${role} operational prerequisite manifest changed`);
+  }
+}
+
+function assertOperationalReleaseArtifactsUnchanged(artifact) {
+  const root = lstatSync(artifact.root);
+  if (
+    realpathSync(artifact.root) !== artifact.root ||
+    !root.isDirectory() || root.isSymbolicLink() ||
+    root.dev !== artifact.rootIdentity.dev ||
+    root.ino !== artifact.rootIdentity.ino || root.uid !== artifact.rootIdentity.uid ||
+    (root.mode & 0o777) !== 0o500
+  ) fail("operational release attestation root changed");
+  const releasesRoot = join(artifact.root, "releases");
+  const releasesRootDetails = lstatSync(releasesRoot);
+  if (
+    realpathSync(releasesRoot) !== releasesRoot ||
+    !releasesRootDetails.isDirectory() || releasesRootDetails.isSymbolicLink() ||
+    releasesRootDetails.dev !== artifact.releasesRootIdentity.dev ||
+    releasesRootDetails.ino !== artifact.releasesRootIdentity.ino ||
+    releasesRootDetails.uid !== artifact.releasesRootIdentity.uid ||
+    (releasesRootDetails.mode & 0o777) !== 0o500
+  ) fail("operational release directory changed");
+  for (const role of ["bridge", "final"]) {
+    const release = artifact.releases[role];
+    const directory = lstatSync(release.directory);
+    const manifest = lstatSync(release.manifestPath);
+    if (
+      !directory.isDirectory() || directory.isSymbolicLink() ||
+      directory.dev !== release.directoryIdentity.dev ||
+      directory.ino !== release.directoryIdentity.ino ||
+      directory.uid !== release.directoryIdentity.uid ||
+      (directory.mode & 0o777) !== 0o500 ||
+      !manifest.isFile() || manifest.isSymbolicLink() || manifest.nlink !== 1 ||
+      (manifest.mode & 0o777) !== 0o400 ||
+      sha256Bytes(readFileSync(release.manifestPath)) !== release.manifestSha256
+    ) fail(`${role} operational release artifact changed`);
+  }
+  assertOperationalHostPrerequisitesUnchanged(artifact);
+}
+
+function preserveOperationalReleaseArtifacts({
+  bridgeDirectory,
+  bridgeManifestSha256,
+  finalDirectory,
+  finalManifestSha256,
+  iteration,
+  relationship,
+  suiteRoot,
+}) {
+  if (operationalReleaseArtifacts.has(iteration)) {
+    fail(`operational release artifact iteration ${iteration} already exists`);
+  }
+  const root = join(
+    suiteRoot,
+    "operational-release-attestations",
+    `iteration-${String(iteration).padStart(2, "0")}`,
+  );
+  const releasesRoot = join(root, "releases");
+  mkdirSync(releasesRoot, { recursive: true, mode: 0o700 });
+  chmodSync(root, 0o700);
+  chmodSync(releasesRoot, 0o700);
+  try {
+    const releases = {};
+    const releaseManifests = {};
+    for (const [role, sourceDirectory, releaseId, manifestSha256] of [
+      ["bridge", bridgeDirectory, "v0.5.2", bridgeManifestSha256],
+      ["final", finalDirectory, "v0.6.0", finalManifestSha256],
+    ]) {
+      const directory = join(releasesRoot, releaseId);
+      run("/bin/cp", ["-pR", sourceDirectory, directory]);
+      const manifestPath = join(directory, "release-manifest.json");
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+      if (
+        manifest.releaseRole !== role || manifest.releaseId !== releaseId ||
+        manifest.artifactClass !== "synthetic-test" ||
+        manifest.formalReleaseCommit !== false ||
+        sha256Bytes(readFileSync(manifestPath)) !== manifestSha256
+      ) fail(`${role} operational release copy is not artifact-exact`);
+      releaseManifests[role] = manifest;
+      releases[role] = Object.freeze({
+        directory,
+        directoryIdentity: Object.freeze((() => {
+          const details = lstatSync(directory);
+          return { dev: details.dev, ino: details.ino, uid: details.uid };
+        })()),
+        manifestPath,
+        manifestSha256,
+      });
+    }
+    assertReleaseSourcePairArtifacts(relationship, {
+      bridge: releaseManifests.bridge,
+      final: releaseManifests.final,
+    });
+    chmodSync(releasesRoot, 0o500);
+    chmodSync(root, 0o500);
+    const hostPrerequisites = captureOperationalHostPrerequisites([
+      releaseManifests.bridge,
+      releaseManifests.final,
+    ]);
+    const artifact = Object.freeze({
+      expectation: Object.freeze({
+        artifactClass: "synthetic-test",
+        buildArch: process.arch,
+        buildLibc: immutableReleaseLibc(),
+        buildPlatform: process.platform,
+        formalReleaseCommit: false,
+        runtimeCommand: privateNodePath,
+      }),
+      iteration,
+      hostPrerequisites,
+      relationship,
+      releases: Object.freeze(releases),
+      releasesRootIdentity: Object.freeze((() => {
+        const details = lstatSync(releasesRoot);
+        return { dev: details.dev, ino: details.ino, uid: details.uid };
+      })()),
+      root,
+      rootIdentity: Object.freeze((() => {
+        const details = lstatSync(root);
+        return { dev: details.dev, ino: details.ino, uid: details.uid };
+      })()),
+      sourceSnapshotSha256: snapshotBaseline.sha256,
+    });
+    operationalReleaseArtifacts.set(iteration, artifact);
+    assertOperationalReleaseArtifactsUnchanged(artifact);
+    return artifact;
+  } catch (error) {
+    if (existsSync(root)) {
+      makeImmutableReleaseFixtureRemovable(root);
+      rmSync(root, { force: true, recursive: true });
+    }
+    throw error;
+  }
+}
+
+function createWritableOperationalReleaseClone(iteration, testRoot) {
+  if (writableOperationalReleaseArtifacts.has(testRoot)) {
+    fail(`writable operational release clone already exists for ${basename(testRoot)}`);
+  }
+  const source = operationalReleaseArtifacts.get(iteration);
+  if (!source) {
+    fail(`operational release artifact iteration ${iteration} was not prepared`);
+  }
+  assertOperationalReleaseArtifactsUnchanged(source);
+  const root = join(
+    dirname(testRoot),
+    `${basename(testRoot)}-operational-release-clone`,
+  );
+  if (
+    existsSync(root) || !isInside(dirname(testRoot), root) ||
+    isInside(testRoot, root) ||
+    [...operationalReleaseArtifacts.values()].some((artifact) =>
+      isInside(artifact.root, root) || isInside(root, artifact.root))
+  ) fail("writable operational release clone root is unsafe");
+  try {
+    run("/bin/cp", ["-pR", source.root, root]);
+    const releasesRoot = join(root, "releases");
+    const releases = {};
+    for (const [role, releaseId] of [
+      ["bridge", "v0.5.2"],
+      ["final", "v0.6.0"],
+    ]) {
+      const sourceRelease = source.releases[role];
+      const directory = join(releasesRoot, releaseId);
+      const manifestPath = join(directory, "release-manifest.json");
+      const manifestBytes = readFileSync(manifestPath);
+      if (
+        sha256Bytes(manifestBytes) !== sourceRelease.manifestSha256 ||
+        !manifestBytes.equals(readFileSync(sourceRelease.manifestPath))
+      ) fail(`${role} writable operational release clone is not artifact-exact`);
+      releases[role] = Object.freeze({
+        directory,
+        directoryIdentity: Object.freeze((() => {
+          const details = lstatSync(directory);
+          return { dev: details.dev, ino: details.ino, uid: details.uid };
+        })()),
+        manifestPath,
+        manifestSha256: sourceRelease.manifestSha256,
+      });
+    }
+    const artifact = Object.freeze({
+      expectation: source.expectation,
+      hostPrerequisites: source.hostPrerequisites,
+      iteration,
+      relationship: source.relationship,
+      releases: Object.freeze(releases),
+      releasesRootIdentity: Object.freeze((() => {
+        const details = lstatSync(releasesRoot);
+        return { dev: details.dev, ino: details.ino, uid: details.uid };
+      })()),
+      root,
+      rootIdentity: Object.freeze((() => {
+        const details = lstatSync(root);
+        return { dev: details.dev, ino: details.ino, uid: details.uid };
+      })()),
+      sourceSnapshotSha256: source.sourceSnapshotSha256,
+    });
+    writableOperationalReleaseArtifacts.set(testRoot, artifact);
+    assertOperationalReleaseArtifactsUnchanged(artifact);
+    return artifact;
+  } catch (error) {
+    writableOperationalReleaseArtifacts.delete(testRoot);
+    if (existsSync(root)) {
+      makeImmutableReleaseFixtureRemovable(root);
+      rmSync(root, { force: true, recursive: true });
+    }
+    throw error;
+  }
+}
+
+function operationalReleaseEnvironment(artifact, testRoot, environment) {
+  if (!artifact) {
+    fail("operational release artifact was not prepared");
+  }
+  assertOperationalReleaseArtifactsUnchanged(artifact);
+  const attestationPath = join(testRoot, "operational-release-attestation.json");
+  const document = Object.freeze({
+    artifactRoot: artifact.root,
+    contract: RELEASE_ATTESTATION_CONTRACT,
+    expectation: artifact.expectation,
+    nonce: environment.UNBOUNDRY_SAFE_RUN_NONCE,
+    relationship: artifact.relationship,
+    releases: Object.freeze({
+      bridge: Object.freeze({
+        manifestPath: artifact.releases.bridge.manifestPath,
+        manifestSha256: artifact.releases.bridge.manifestSha256,
+        releaseId: "v0.5.2",
+      }),
+      final: Object.freeze({
+        manifestPath: artifact.releases.final.manifestPath,
+        manifestSha256: artifact.releases.final.manifestSha256,
+        releaseId: "v0.6.0",
+      }),
+    }),
+    source: Object.freeze({
+      snapshotSha256: artifact.sourceSnapshotSha256,
+    }),
+  });
+  writeFileSync(attestationPath, `${JSON.stringify(document, null, 2)}\n`, {
+    encoding: "utf8",
+    flag: "wx",
+    mode: 0o400,
+  });
+  chmodSync(attestationPath, 0o400);
+  return {
+    UNBOUNDRY_BRIDGE_RELEASE_MANIFEST:
+      artifact.releases.bridge.manifestPath,
+    UNBOUNDRY_BRIDGE_RELEASE_MANIFEST_SHA256:
+      artifact.releases.bridge.manifestSha256,
+    UNBOUNDRY_FINAL_RELEASE_MANIFEST:
+      artifact.releases.final.manifestPath,
+    UNBOUNDRY_FINAL_RELEASE_MANIFEST_SHA256:
+      artifact.releases.final.manifestSha256,
+    UNBOUNDRY_RELEASE_ATTESTATION_PATH: attestationPath,
+    UNBOUNDRY_RELEASE_ATTESTATION_ROOT: artifact.root,
+    UNBOUNDRY_RELEASE_ATTESTATION_SHA256:
+      sha256Bytes(readFileSync(attestationPath)),
+    UNBOUNDRY_RELEASE_SOURCE_SHA256: artifact.sourceSnapshotSha256,
+  };
+}
+
 async function runImmutableReleaseOperationalCheck(
   suiteRoot,
   sourceRoot,
   browserRoot,
   iteration,
 ) {
-  // synthetic local-tarball operational fixture exercises Darwin builder mechanics without publishing npm bin links
-  let clean;
+  // Full snapshot bridge/final fixtures prove the release closure; the local-tarball
+  // malicious fixture keeps an isolated fail-closed sandbox regression.
+  let bridge;
+  let builderInvocations = 0;
+  let final;
   let malicious;
+  let pair;
+  const invokeBuilder = async (fixture) => {
+    builderInvocations += 1;
+    return await runImmutableReleaseBuilder(fixture);
+  };
   try {
-    clean = await createImmutableReleaseFixture(
+    pair = await createSnapshotImmutableReleasePairFixture(
       suiteRoot,
       sourceRoot,
       browserRoot,
       iteration,
-      "clean",
     );
-    const result = await runImmutableReleaseBuilder(clean);
+    ({ bridge, final } = pair);
+    const result = await invokeBuilder(final);
     if (result.status !== 0) {
       fail(`clean immutable release build failed: ${result.stderr.trim()}`);
     }
     const summary = JSON.parse(result.stdout.trim());
-    const releaseDirectory = join(clean.releases, clean.commit);
+    const releaseDirectory = join(final.releases, "v0.6.0");
     if (
-      summary.commit !== clean.commit || summary.releaseDirectory !== releaseDirectory ||
+      summary.commit !== final.commit || summary.releaseDirectory !== releaseDirectory ||
       summary.artifactClass !== "synthetic-test" ||
+      summary.releaseRole !== "final" || summary.expectedVersion !== "0.6.0" ||
+      summary.formalReleaseCommit !== false ||
       summary.buildPlatform !== process.platform || summary.buildArch !== process.arch ||
       summary.buildLibc !== immutableReleaseLibc() ||
       summary.admission?.rule !== "marker-absent-directory-0500-manifest-verified"
@@ -2485,7 +3313,7 @@ async function runImmutableReleaseOperationalCheck(
       fail("immutable release directory was not published read-only");
     }
     const rootEntries = immutableReleaseEntries(releaseDirectory);
-    for (const required of [
+    const expectedFinalRootEntries = [
       "client",
       "dist",
       "node_modules",
@@ -2496,11 +3324,9 @@ async function runImmutableReleaseOperationalCheck(
       "spec",
       "types",
       "vite.config.ts",
-    ]) {
-      if (!rootEntries.includes(required)) fail(`immutable release omitted ${required}`);
-    }
-    if (rootEntries.includes(".env.example") || rootEntries.includes(".incomplete")) {
-      fail("immutable release published a forbidden root entry");
+    ].sort();
+    if (JSON.stringify(rootEntries) !== JSON.stringify(expectedFinalRootEntries)) {
+      fail("final immutable release root closure is inexact");
     }
     if (immutableReleaseEntries(join(releaseDirectory, "node_modules")).includes(".bin")) {
       fail("immutable release published npm bin links");
@@ -2522,13 +3348,34 @@ async function runImmutableReleaseOperationalCheck(
     if (
       manifest.format !== "unboundry-immutable-release" ||
       manifest.artifactClass !== "synthetic-test" ||
-      manifest.commit !== clean.commit ||
+      manifest.schemaVersion !== 3 || manifest.releaseRole !== "final" ||
+      manifest.expectedVersion !== "0.6.0" || manifest.releaseId !== "v0.6.0" ||
+      manifest.formalReleaseCommit !== false ||
+      JSON.stringify(manifest.databaseCompatibility) !== JSON.stringify({
+        activeSchemaVersions: [39],
+        migrationMode: "forbidden-from-final-runtime",
+        standbySchemaVersions: [37],
+      }) ||
+      JSON.stringify(manifest.runtimeRoots) !== JSON.stringify([
+        "client",
+        "dist",
+        "node_modules",
+        "package-lock.json",
+        "package.json",
+        "server",
+        "spec/unboundry-state-fixtures.json",
+        "types",
+        "vite.config.ts",
+      ]) ||
+      manifest.legacyRuntime !== undefined || manifest.migration !== undefined ||
+      manifest.commit !== final.commit ||
       manifest.build?.networkSandboxVerified !== true ||
       manifest.build?.networkAudit?.blockedAttempts !== 0 ||
       manifest.build?.networkAudit?.guardLoads < 2 ||
       !/^[0-9a-f]{40}$/.test(String(manifest.sourceTree ?? "")) ||
       manifest.runtime?.command !== privateNodePath || manifest.runtime?.cwd !== "." ||
-      manifest.runtime?.health?.version !== "0.0.0-m94"
+      manifest.runtime?.health?.legacySchema37StaticAsset !== undefined ||
+      manifest.runtime?.health?.version !== "0.6.0"
     ) fail("immutable release manifest did not satisfy the synthetic contract");
     const prerequisiteByName = new Map(
       (manifest.hostPrerequisites?.executables ?? []).map((entry) => [entry.name, entry]),
@@ -2545,11 +3392,11 @@ async function runImmutableReleaseOperationalCheck(
       nodePrerequisite.versionPattern !== `^v${EXPECTED_NODE.replaceAll(".", "\\.")}$`
     ) fail("immutable release manifest did not pin the Node prerequisite");
     for (const [name, path] of [
-      ["ffmpeg", clean.ffmpegExecutable],
-      ["ffprobe", clean.ffprobeExecutable],
+      ["ffmpeg", final.ffmpegExecutable],
+      ["ffprobe", final.ffprobeExecutable],
     ]) {
       const prerequisite = prerequisiteByName.get(name);
-      const version = `${name} version m94-synthetic`;
+      const version = `${name} version m94-operational-snapshot`;
       if (
         prerequisite?.path !== path || prerequisite.required !== true ||
         JSON.stringify(prerequisite.arguments) !== JSON.stringify(["-version"]) ||
@@ -2580,13 +3427,17 @@ async function runImmutableReleaseOperationalCheck(
     if ([...manifestPaths].some((path) => path.startsWith("node_modules/@playwright/"))) {
       fail("immutable release manifest retained a Playwright development package");
     }
+    if ([...manifestPaths].some((path) =>
+      path === "legacy-runtime" || path.startsWith("legacy-runtime/") ||
+      path === "scripts" || path.startsWith("scripts/")
+    )) fail("final immutable release retained a bridge-only artifact");
     for (const required of [
       "dist/client/index.html",
       "node_modules/@vitejs/plugin-react/dist/index.js",
       "node_modules/vite/bin/vite.js",
-      "server/runtime.ts",
+      "server/runtimeLifecycle.ts",
       "spec/unboundry-state-fixtures.json",
-      "types/runtime.ts",
+      "types/nodeInputs.ts",
       "vite.config.ts",
     ]) {
       if (!manifestPaths.has(required)) fail(`immutable release manifest omitted ${required}`);
@@ -2601,10 +3452,80 @@ async function runImmutableReleaseOperationalCheck(
         !/^[0-9a-f]{64}$/.test(String(entry.sha256 ?? ""))
       ))
     )) fail("immutable release manifest contains an invalid inventory entry");
-    const repeated = await runImmutableReleaseBuilder(clean);
+    const repeated = await invokeBuilder(final);
     parseImmutableReleaseFailure(repeated, "RELEASE_TARGET_EXISTS");
     if (!readFileSync(summary.manifestPath).equals(manifestBytes)) {
       fail("repeat immutable release attempt changed the admitted manifest");
+    }
+
+    const bridgeResult = await invokeBuilder(bridge);
+    if (bridgeResult.status !== 0) {
+      fail(`bridge immutable release build failed: ${bridgeResult.stderr.trim()}`);
+    }
+    const bridgeSummary = JSON.parse(bridgeResult.stdout.trim());
+    const bridgeDirectory = join(bridge.releases, "v0.5.2");
+    const bridgeManifestBytes = readFileSync(bridgeSummary.manifestPath);
+    const bridgeManifest = JSON.parse(bridgeManifestBytes.toString("utf8"));
+    if (
+      sha256Bytes(bridgeManifestBytes) !== bridgeSummary.manifestSha256 ||
+      bridgeSummary.releaseDirectory !== bridgeDirectory ||
+      bridgeSummary.releaseRole !== "bridge" ||
+      bridgeSummary.expectedVersion !== "0.5.2" ||
+      bridgeSummary.formalReleaseCommit !== false ||
+      bridgeManifest.schemaVersion !== 3 ||
+      bridgeManifest.releaseRole !== "bridge" ||
+      bridgeManifest.packageVersion !== "0.5.2" ||
+      bridgeManifest.legacyRuntime?.tag !== EXACT_V051.tag ||
+      bridgeManifest.legacyRuntime?.archiveSha256 !== EXACT_V051.archiveSha256 ||
+      bridgeManifest.legacyRuntime?.peeledCommit !== EXACT_V051.peeledCommit ||
+      bridgeManifest.legacyRuntime?.commitTree !== EXACT_V051.commitTree ||
+      bridgeManifest.legacyRuntime?.trackedFiles !== EXACT_V051.trackedEntries ||
+      bridgeManifest.legacyRuntime?.originalInventorySha256 !==
+        EXACT_V051.originalInventorySha256 ||
+      bridgeManifest.legacyRuntime?.build?.parentDependencyConfigLoadSmoke !== true ||
+      bridgeManifest.legacyRuntime?.build?.sourceLockSha256 !==
+        bridgeManifest.legacyRuntime?.originalLockSha256 ||
+      bridgeManifest.legacyRuntime?.build?.lockSha256 !==
+        bridgeManifest.legacyRuntime?.overlay?.["package-lock.json"] ||
+      bridgeManifest.legacyRuntime?.build?.networkSandboxVerified !== true ||
+      bridgeManifest.legacyRuntime?.build?.networkAudit?.blockedAttempts !== 0 ||
+      bridgeManifest.legacyRuntime?.build?.networkAudit?.guardLoads < 6 ||
+      bridgeManifest.runtime?.health?.staticAsset?.path !== "dist/client/index.html" ||
+      bridgeManifest.runtime?.health?.legacySchema37StaticAsset?.path !==
+        "legacy-runtime/dist/client/index.html" ||
+      bridgeManifest.runtime.health.staticAsset.sha256 ===
+        bridgeManifest.runtime.health.legacySchema37StaticAsset.sha256 ||
+      bridgeManifest.migration?.permittedReleaseRole !== "bridge" ||
+      bridgeManifest.commit === manifest.commit ||
+      bridgeManifest.sourceTree === manifest.sourceTree ||
+      bridgeManifest.commit !== pair.relationship.bridgeCommit ||
+      bridgeManifest.sourceTree !== pair.relationship.bridgeSourceTree ||
+      manifest.commit !== pair.relationship.finalCommit ||
+      manifest.sourceTree !== pair.relationship.finalSourceTree
+    ) fail("bridge immutable release manifest did not satisfy the exact dual-runtime contract");
+    const bridgeManifestPaths = new Set(
+      (bridgeManifest.files ?? []).map((entry) => entry.path),
+    );
+    for (const required of [
+      "dist/client/index.html",
+      "legacy-runtime/dist/client/index.html",
+      "legacy-runtime/package.json",
+      "legacy-runtime/package-lock.json",
+      "scripts/migrate-schema37-to39.mjs",
+      "scripts/node-typescript-runtime.mjs",
+    ]) {
+      if (!bridgeManifestPaths.has(required)) {
+        fail(`bridge immutable release omitted ${required}`);
+      }
+    }
+    if ([...bridgeManifestPaths].some((path) =>
+      path === "legacy-runtime/node_modules" ||
+      path.startsWith("legacy-runtime/node_modules/")
+    )) fail("bridge immutable release published nested legacy dependencies");
+    const repeatedBridge = await invokeBuilder(bridge);
+    parseImmutableReleaseFailure(repeatedBridge, "RELEASE_TARGET_EXISTS");
+    if (!readFileSync(bridgeSummary.manifestPath).equals(bridgeManifestBytes)) {
+      fail("repeat bridge release attempt changed the admitted manifest");
     }
 
     malicious = await createImmutableReleaseFixture(
@@ -2614,7 +3535,7 @@ async function runImmutableReleaseOperationalCheck(
       iteration,
       "malicious",
     );
-    const maliciousResult = await runImmutableReleaseBuilder(malicious);
+    const maliciousResult = await invokeBuilder(malicious);
     const maliciousFailure = parseImmutableReleaseFailure(
       maliciousResult,
       "RELEASE_COMMAND_FAILED",
@@ -2626,30 +3547,58 @@ async function runImmutableReleaseOperationalCheck(
     ) fail("malicious immutable release failure disclosure was unsafe");
     if (
       JSON.stringify(immutableReleaseEntries(malicious.releases)) !==
-        JSON.stringify([malicious.commit]) ||
-      JSON.stringify(immutableReleaseEntries(join(malicious.releases, malicious.commit))) !==
-        JSON.stringify([".incomplete"]) ||
-      immutableReleaseEntries(malicious.scratch).length !== 0
+        JSON.stringify([malicious.releaseId]) ||
+      JSON.stringify(immutableReleaseEntries(
+        join(malicious.releases, malicious.releaseId),
+      )) !==
+        JSON.stringify([".incomplete"])
     ) fail("malicious immutable release did not retain exactly one incomplete reservation");
+    for (const fixture of [final, bridge, malicious]) {
+      if (immutableReleaseEntries(fixture.scratch).length !== 0) {
+        fail(`${fixture.releaseRole} immutable release retained build scratch residue`);
+      }
+    }
+
+    preserveOperationalReleaseArtifacts({
+      bridgeDirectory,
+      bridgeManifestSha256: bridgeSummary.manifestSha256,
+      finalDirectory: releaseDirectory,
+      finalManifestSha256: summary.manifestSha256,
+      iteration,
+      relationship: pair.relationship,
+      suiteRoot,
+    });
 
     const evidence = Object.freeze({
-      builderInvocations: 3,
-      cleanBuilds: 1,
+      bridgeBuilds: 1,
+      bridgeSourceVersion: bridge.sourceVersion,
+      builderInvocations,
+      cleanBuilds: 2,
       iteration,
       maliciousRejections: 1,
       manifestSha256: summary.manifestSha256,
       npmBinLinksPublished: 0,
-      repeatRejections: 1,
-      setupGuardLoads: clean.setupAudit.guardLoads + malicious.setupAudit.guardLoads,
+      releaseRelationship: pair.relationship.mode,
+      repeatRejections: 2,
+      setupGuardLoads:
+        pair.setupAudit.guardLoads + malicious.setupAudit.guardLoads,
       status: "pass",
     });
     console.log(JSON.stringify({ operationalCheck: "immutable-release-builder", ...evidence }));
     return evidence;
+  } catch (error) {
+    if (error && typeof error === "object") {
+      error.immutableReleaseBuilderInvocations = builderInvocations;
+    }
+    throw error;
   } finally {
-    for (const fixture of [clean, malicious]) {
-      if (!fixture) continue;
-      makeImmutableReleaseFixtureRemovable(fixture.root);
-      rmSync(fixture.root, { force: true, recursive: true });
+    const fixtureRoots = new Set(
+      [bridge, final, malicious].filter(Boolean).map((fixture) => fixture.root),
+    );
+    for (const root of fixtureRoots) {
+      if (!existsSync(root)) continue;
+      makeImmutableReleaseFixtureRemovable(root);
+      rmSync(root, { force: true, recursive: true });
     }
     assertTrackedSnapshotUnchanged();
   }
@@ -2701,7 +3650,10 @@ async function main() {
   assertTrackedSnapshotUnchanged();
   if (
     options.command === "full" ||
-    (options.command === "run" && specs.includes(EXACT_V051_SPEC))
+    (options.command === "run" && (
+      specs.includes(EXACT_V051_SPEC) || specs.includes(IMMUTABLE_RELEASE_SPEC) ||
+      specs.includes(BACKUP_FINAL_CANDIDATE_SPEC) || specs.includes(RELEASE_OPS_SPEC)
+    ))
   ) {
     await prepareExactV051Attestation(sourceRoot, browserRoot, suiteRoot);
   }
@@ -2721,7 +3673,9 @@ async function main() {
   }
 
   const immutableReleaseSelected =
-    options.command === "full" || specs.includes(IMMUTABLE_RELEASE_SPEC);
+    options.command === "full" || specs.includes(IMMUTABLE_RELEASE_SPEC) ||
+    specs.includes(EXACT_V051_SPEC) ||
+    specs.includes(BACKUP_FINAL_CANDIDATE_SPEC) || specs.includes(RELEASE_OPS_SPEC);
   const immutableReleaseOperationalEvidence = [];
   if (immutableReleaseSelected) {
     for (let iteration = 1; iteration <= options.repeat; iteration += 1) {
@@ -2738,7 +3692,16 @@ async function main() {
         const message = String(error instanceof Error ? error.message : error)
           .replaceAll(suiteRoot, "<suite-root>")
           .slice(0, 2_000);
-        const evidence = Object.freeze({ iteration, message, status: "failed" });
+        const builderInvocations = error && typeof error === "object" &&
+            Number.isSafeInteger(error.immutableReleaseBuilderInvocations)
+          ? error.immutableReleaseBuilderInvocations
+          : 0;
+        const evidence = Object.freeze({
+          builderInvocations,
+          iteration,
+          message,
+          status: "failed",
+        });
         immutableReleaseOperationalEvidence.push(evidence);
         console.error(JSON.stringify({
           operationalCheck: "immutable-release-builder",
@@ -2815,7 +3778,7 @@ async function main() {
           0,
         ),
         expectedAttempts: immutableReleaseSelected ? options.repeat : 0,
-        expectedBuilderInvocations: immutableReleaseSelected ? options.repeat * 3 : 0,
+        expectedBuilderInvocations: immutableReleaseSelected ? options.repeat * 5 : 0,
         failed: immutableReleaseOperationalEvidence.filter(
           (evidence) => evidence.status !== "pass",
         ).length,
@@ -2875,6 +3838,9 @@ main()
           cleanupErrors.push(error);
         }
         try {
+          if (existsSync(exactV051Attestation.archivePath)) {
+            chmodSync(exactV051Attestation.archivePath, 0o600);
+          }
           if (existsSync(exactV051Attestation.path)) {
             chmodSync(exactV051Attestation.path, 0o600);
           }
@@ -2892,6 +3858,35 @@ main()
         }
       } catch (error) {
         cleanupErrors.push(error);
+      }
+      for (const artifact of operationalReleaseArtifacts.values()) {
+        try {
+          assertOperationalReleaseArtifactsUnchanged(artifact);
+          makeImmutableReleaseFixtureRemovable(artifact.root);
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+      }
+      for (const [testRoot, artifact] of writableOperationalReleaseArtifacts) {
+        try {
+          assertOperationalReleaseArtifactsUnchanged(artifact);
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+        try {
+          makeImmutableReleaseFixtureRemovable(artifact.root);
+        } catch (error) {
+          cleanupErrors.push(error);
+        } finally {
+          writableOperationalReleaseArtifacts.delete(testRoot);
+        }
+      }
+      for (const prerequisite of operationalReleasePrerequisites.values()) {
+        try {
+          makeImmutableReleaseFixtureRemovable(prerequisite.root);
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
       }
       try {
         rmSync(activeSuiteRoot, { force: true, recursive: true });

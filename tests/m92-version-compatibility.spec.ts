@@ -1,6 +1,10 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createCipheriv, createHash } from "node:crypto";
 import {
+  request as httpRequest,
+  type IncomingMessage,
+} from "node:http";
+import {
   chmod,
   lstat,
   mkdir,
@@ -22,26 +26,17 @@ import {
 } from "../server/backupInspection";
 import {
   applyPendingSchemaMigrationsInTransaction,
-  currentSchemaVersion,
-  databaseMatchesMigrationManifest,
-  databaseMatchesSchemaContract,
-  openAppDatabase,
 } from "../server/database";
-import { createGenerationTaskStore } from "../server/generationTaskStore";
-import {
-  cleanupPublicationStaging,
-  finalizeMediaPublication,
-  mediaPublicationStagingPath,
-  publishLocalMediaPublication,
-  reserveMediaPublication,
-  stageMediaPublication,
-} from "../server/mediaLifecycle";
-import { migrateSchema37To39 } from "../server/schemaMigration";
 import {
   isCanvasSaveSuccess,
   isLoadedCanvasDocument,
 } from "../client/src/canvas/CanvasSurface";
 import { expect, test } from "./safe-test";
+// @ts-expect-error Operational release verification is intentionally shared
+// with the Node-only release scripts rather than reimplemented in this test.
+import { validateAdmittedRelease } from "../scripts/lib/admitted-release.mjs";
+// @ts-expect-error The safe runner is the sole issuer of this MJS attestation.
+import { readReleaseAttestation } from "../scripts/lib/release-attestation.mjs";
 
 type V051Contract = Readonly<{
   annotatedTagObject: string;
@@ -173,9 +168,89 @@ type V051RunnerAttestation = Readonly<{
   source: Readonly<{ head: string; sha256: string }>;
 }>;
 
-const port = Number(process.env.UNBOUNDRY_TEST_AUX_PORT);
+type ReleaseEnvironmentValue = Readonly<{
+  placeholder?: string;
+  required: true;
+  source: "literal" | "placeholder";
+  value?: string;
+}>;
+
+type OperationalRelease = Readonly<{
+  directory: string;
+  manifest: Readonly<{
+    commit: string;
+    expectedVersion: string;
+    legacyRuntime?: Readonly<{
+      archiveSha256: string;
+      commitTree: string;
+      peeledCommit: string;
+    }>;
+    migration?: Readonly<{
+      arguments: readonly string[];
+      command: string;
+    }>;
+    releaseId: string;
+    releaseRole: "bridge" | "final";
+    runtime: Readonly<{
+      arguments: readonly string[];
+      environment: Readonly<Record<string, ReleaseEnvironmentValue>>;
+      forbiddenEnvironment: readonly string[];
+      forbiddenEnvironmentPrefixes: readonly string[];
+      health: Readonly<{
+        legacySchema37StaticAsset?: Readonly<{ path: string }>;
+        readyPath: string;
+        versionPath: string;
+      }>;
+    }>;
+    sourceTree: string;
+  }>;
+  manifestPath: string;
+  manifestSha256: string;
+  releaseId: string;
+  releaseRole: "bridge" | "final";
+  runtimeCommand: string;
+  version: string;
+}>;
+
+type OperationalReleaseAttestation = Readonly<{
+  expectation: Readonly<Record<string, unknown>>;
+  manifestPaths: Readonly<{ bridge: string; final: string }>;
+  manifestSha256: Readonly<{ bridge: string; final: string }>;
+  relationship: Readonly<{
+    bridgeCommit: string;
+    bridgeSourceTree: string;
+    finalCommit: string;
+    finalParentIsBridgeCommit: boolean;
+    finalSourceTree: string;
+    proofSha256: string;
+  }>;
+}>;
+
+type OperationalReleasePair = Readonly<{
+  attestation: OperationalReleaseAttestation;
+  bridge: OperationalRelease;
+  final: OperationalRelease;
+}>;
+
+// Every admitted release runtime is started on the runner-owned main port.
+// The bridge's private exact-old child chooses its own loopback port; m81 owns
+// that child-listener security contract, so m92 never reaches it directly.
+const port = Number(process.env.UNBOUNDRY_TEST_PORT);
 const origin = `http://127.0.0.1:${port}`;
-const vite = join(process.cwd(), "node_modules/vite/bin/vite.js");
+const admittedRuntimeHeaders = Object.freeze({
+  Host: "canvas.mymy.ltd",
+  "X-Forwarded-For": "127.0.0.1",
+  "X-Forwarded-Proto": "https",
+});
+const runtimeIdentityHeaders = new Set([
+  "forwarded",
+  "host",
+  "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-port",
+  "x-forwarded-proto",
+  "x-real-ip",
+]);
 const contractPath = join(
   process.cwd(),
   "tests/fixtures/v051-rollback-contract.json",
@@ -188,6 +263,7 @@ const modelId = "m92-image-model";
 const canvasId = "m92-bridge-canvas";
 const taskId = "m92-paid-complete";
 const mediaId = "m92-legacy-image";
+const backfillMediaId = "m92-legacy-backfill-image";
 const legacySessionToken = "m92-preserved-session-token";
 const loginPassword = "m92-bridge-password-123";
 const legacyCredential = "m92-legacy-account-key";
@@ -488,6 +564,69 @@ async function readRunnerAttestation(contract: V051Contract) {
   return attestation;
 }
 
+async function readOperationalReleases(
+  contract: V051Contract,
+): Promise<OperationalReleasePair> {
+  const attestation = await readReleaseAttestation() as
+    OperationalReleaseAttestation;
+  const [bridge, final] = await Promise.all([
+    validateAdmittedRelease({
+      expectedManifestSha256: attestation.manifestSha256.bridge,
+      expectedRole: "bridge",
+      manifestPath: attestation.manifestPaths.bridge,
+      testExpectation: attestation.expectation,
+    }) as Promise<OperationalRelease>,
+    validateAdmittedRelease({
+      expectedManifestSha256: attestation.manifestSha256.final,
+      expectedRole: "final",
+      manifestPath: attestation.manifestPaths.final,
+      testExpectation: attestation.expectation,
+    }) as Promise<OperationalRelease>,
+  ]);
+
+  expect(bridge).toMatchObject({
+    manifestPath: attestation.manifestPaths.bridge,
+    manifestSha256: attestation.manifestSha256.bridge,
+    releaseId: "v0.5.2",
+    releaseRole: "bridge",
+    version: "0.5.2",
+  });
+  expect(final).toMatchObject({
+    manifestPath: attestation.manifestPaths.final,
+    manifestSha256: attestation.manifestSha256.final,
+    releaseId: "v0.6.0",
+    releaseRole: "final",
+    version: "0.6.0",
+  });
+  expect(bridge.manifest).toMatchObject({
+    commit: attestation.relationship.bridgeCommit,
+    expectedVersion: bridge.version,
+    releaseId: bridge.releaseId,
+    releaseRole: bridge.releaseRole,
+    sourceTree: attestation.relationship.bridgeSourceTree,
+  });
+  expect(final.manifest).toMatchObject({
+    commit: attestation.relationship.finalCommit,
+    expectedVersion: final.version,
+    releaseId: final.releaseId,
+    releaseRole: final.releaseRole,
+    sourceTree: attestation.relationship.finalSourceTree,
+  });
+  expect(attestation.relationship.finalParentIsBridgeCommit).toBe(true);
+  expect(attestation.relationship.proofSha256).toMatch(/^[a-f0-9]{64}$/);
+  expect(final.manifest.commit).not.toBe(bridge.manifest.commit);
+  expect(final.manifest.sourceTree).not.toBe(bridge.manifest.sourceTree);
+  expect(bridge.manifest.legacyRuntime).toMatchObject({
+    archiveSha256: contract.archiveSha256,
+    commitTree: contract.commitTree,
+    peeledCommit: contract.peeledCommit,
+  });
+  expect(bridge.manifest.migration?.command).toBe(bridge.runtimeCommand);
+  expect(final.manifest.legacyRuntime).toBeUndefined();
+  expect(final.manifest.migration).toBeUndefined();
+  return Object.freeze({ attestation, bridge, final });
+}
+
 function encryptDocument(
   key: Buffer,
   ivByte: number,
@@ -531,6 +670,11 @@ async function createExactSchema37Fixture(dataDirectory: string) {
   await writeFile(join(dataDirectory, "media", `${mediaId}.png`), mediaBytes, {
     mode: 0o600,
   });
+  await writeFile(
+    join(dataDirectory, "media", `${backfillMediaId}.png`),
+    mediaBytes,
+    { mode: 0o600 },
+  );
 
   const masterKey = Buffer.alloc(32, 0x92);
   const providerDocument = {
@@ -682,6 +826,25 @@ async function createExactSchema37Fixture(dataDirectory: string) {
       sha256(mediaBytes),
     );
     database.prepare(`
+      INSERT INTO media_assets (
+        kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+        storage_backend, storage_profile_id, object_key, content_type,
+        checksum_sha256, storage_status, duration_seconds, duration_source,
+        duration_status, media_width, media_height
+      ) VALUES (
+        'image', ?, ?, ?, ?, ?, ?, 'local', NULL, ?, 'image/png', NULL, 'ready',
+        NULL, NULL, 'not-applicable', 1, 1
+      )
+    `).run(
+      backfillMediaId,
+      ownerId,
+      `${backfillMediaId}.png`,
+      mediaBytes.length,
+      timestamp,
+      timestamp,
+      `${backfillMediaId}.png`,
+    );
+    database.prepare(`
       INSERT INTO generation_tasks (
         id, canvas_id, node_id, kind, prompt, model, parameters,
         idempotency_key, request_fingerprint, state, attempt,
@@ -778,11 +941,29 @@ function logicalSha(databasePath: string, scratchRoot: string) {
   }
 }
 
+function invariantTableSnapshot(databasePath: string) {
+  const database = new DatabaseSync(databasePath, { readOnly: true });
+  try {
+    const tables = database.prepare(`
+      SELECT name FROM sqlite_schema
+      WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+        AND name != 'media_assets'
+      ORDER BY name
+    `).all() as Array<{ name: string }>;
+    return Object.fromEntries(tables.map(({ name }) => [
+      name,
+      database.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}"`).all(),
+    ]));
+  } finally {
+    database.close();
+  }
+}
+
 function childExited(child: ChildProcess) {
   return child.exitCode !== null || child.signalCode !== null;
 }
 
-async function stopBridge(child: ChildProcess) {
+async function stopReleaseRuntime(child: ChildProcess) {
   if (childExited(child)) return;
   child.kill("SIGTERM");
   await Promise.race([
@@ -794,19 +975,78 @@ async function stopBridge(child: ChildProcess) {
   await new Promise<void>((resolve) => child.once("exit", () => resolve()));
 }
 
-async function startBridge(dataDirectory: string) {
+async function releaseRuntimeEnvironment(
+  release: OperationalRelease,
+  dataDirectory: string,
+  runtimeDirectory: string,
+  workingRoot: string,
+) {
+  const launchRoot = await mkdtemp(join(
+    workingRoot,
+    `.m92-${release.releaseRole}-runtime-`,
+  ));
+  const placeholders: Readonly<Record<string, string>> = Object.freeze({
+    UNBOUNDRY_DATA_DIR: dataDirectory,
+    UNBOUNDRY_RUNTIME_DIR: runtimeDirectory,
+    UNBOUNDRY_RUNTIME_HOME: join(launchRoot, "home"),
+    UNBOUNDRY_RUNTIME_ROLE: "active",
+    UNBOUNDRY_RUNTIME_TEMP: join(launchRoot, "temporary"),
+    UNBOUNDRY_VITE_CACHE_DIR: join(launchRoot, "cache"),
+  });
+  for (const directory of [
+    placeholders.UNBOUNDRY_RUNTIME_HOME,
+    placeholders.UNBOUNDRY_RUNTIME_TEMP,
+    placeholders.UNBOUNDRY_VITE_CACHE_DIR,
+  ]) await mkdir(directory, { mode: 0o700 });
+  const environment: NodeJS.ProcessEnv = {};
+  for (const [name, contract] of Object.entries(
+    release.manifest.runtime.environment,
+  )) {
+    const value = contract.source === "literal"
+      ? contract.value
+      : placeholders[String(contract.placeholder ?? "")];
+    if (contract.required !== true || typeof value !== "string" || !value) {
+      throw new Error(`M92 ${release.releaseRole} runtime environment is incomplete`);
+    }
+    environment[name] = value;
+  }
+  for (const name of release.manifest.runtime.forbiddenEnvironment) {
+    if (environment[name] !== undefined) {
+      throw new Error(`M92 ${release.releaseRole} runtime admitted forbidden ${name}`);
+    }
+  }
+  for (const prefix of release.manifest.runtime.forbiddenEnvironmentPrefixes) {
+    if (Object.keys(environment).some((name) => name.startsWith(prefix))) {
+      throw new Error(
+        `M92 ${release.releaseRole} runtime admitted forbidden prefix ${prefix}`,
+      );
+    }
+  }
+  return environment;
+}
+
+async function startReleaseRuntime(
+  release: OperationalRelease,
+  dataDirectory: string,
+  runtimeDirectory: string,
+  workingRoot: string,
+) {
   const output: Buffer[] = [];
+  await mkdir(runtimeDirectory, { mode: 0o700, recursive: true });
+  const environment = await releaseRuntimeEnvironment(
+    release,
+    dataDirectory,
+    runtimeDirectory,
+    workingRoot,
+  );
+  const arguments_ = release.manifest.runtime.arguments.map((argument) =>
+    argument === "${UNBOUNDRY_PORT}" ? String(port) : argument);
   const child = spawn(
-    process.execPath,
-    [vite, "--host", "127.0.0.1", "--port", String(port), "--strictPort"],
+    release.runtimeCommand,
+    arguments_,
     {
-      env: {
-        ...process.env,
-        UNBOUNDRY_DATA_DIR: dataDirectory,
-        UNBOUNDRY_MAINTENANCE_MODE: "0",
-        UNBOUNDRY_RUNTIME_ROLE: "active",
-        UNBOUNDRY_TEST_AUTH_BYPASS: "",
-      },
+      cwd: release.directory,
+      env: environment,
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -815,38 +1055,238 @@ async function startBridge(dataDirectory: string) {
   for (let attempt = 0; attempt < 100; attempt += 1) {
     if (childExited(child)) break;
     try {
-      const ready = await fetch(`${origin}/api/health/ready`, {
+      const ready = await fetch(
+        `${origin}${release.manifest.runtime.health.readyPath}`,
+        {
         signal: AbortSignal.timeout(500),
-      });
+        },
+      );
       if (ready.ok) return child;
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  await stopBridge(child);
+  await stopReleaseRuntime(child);
   throw new Error(
-    `M92 bridge did not become ready\n${Buffer.concat(output).toString("utf8")}`,
+    `M92 attested ${release.releaseRole} runtime did not become ready\n${
+      Buffer.concat(output).toString("utf8").slice(-64 * 1_024)
+    }`,
   );
+}
+
+async function runBridgeMigration(
+  bridge: OperationalRelease,
+  dataDirectory: string,
+  runtimeDirectory: string,
+  scratchRoot: string,
+  expectedSourceLogicalSha256: string,
+) {
+  const migration = bridge.manifest.migration;
+  if (!migration || migration.command !== bridge.runtimeCommand) {
+    throw new Error("M92 attested bridge migration is unavailable");
+  }
+  const replacements: Readonly<Record<string, string>> = Object.freeze({
+    UNBOUNDRY_DATA_DIR: dataDirectory,
+    UNBOUNDRY_EXPECTED_SCHEMA37_LOGICAL_SHA256:
+      expectedSourceLogicalSha256,
+    UNBOUNDRY_MIGRATION_SCRATCH_ROOT: scratchRoot,
+    UNBOUNDRY_RUNTIME_DIR: runtimeDirectory,
+  });
+  const arguments_ = migration.arguments.map((argument) => {
+    const match = /^\$\{([A-Z0-9_]+)\}$/.exec(argument);
+    if (!match) return argument;
+    const replacement = replacements[match[1]];
+    if (!replacement) {
+      throw new Error(`M92 migration placeholder ${match[1]} is unavailable`);
+    }
+    return replacement;
+  });
+  const environment: NodeJS.ProcessEnv = {
+    ...process.env,
+    PATH: String(
+      bridge.manifest.runtime.environment.PATH?.value ?? process.env.PATH ?? "",
+    ),
+    UNBOUNDRY_SCHEMA_MIGRATION_TEST_CLOCK: "1",
+    UNBOUNDRY_SCHEMA_MIGRATION_TEST_CLOCK_MS: "0",
+  };
+  const output: Buffer[] = [];
+  const child = spawn(migration.command, arguments_, {
+    cwd: bridge.directory,
+    env: environment,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  child.stdout?.on("data", (chunk) => output.push(Buffer.from(chunk)));
+  child.stderr?.on("data", (chunk) => output.push(Buffer.from(chunk)));
+  const exit = await new Promise<Readonly<{
+    code: number | null;
+    signal: NodeJS.Signals | null;
+  }>>((resolveExit, rejectExit) => {
+    child.once("error", rejectExit);
+    child.once("exit", (code, signal) => resolveExit({ code, signal }));
+  });
+  const text = Buffer.concat(output).toString("utf8");
+  if (exit.code !== 0 || exit.signal !== null) {
+    throw new Error(`M92 attested bridge migration failed\n${text.slice(-64 * 1_024)}`);
+  }
+  const resultLine = text.trim().split("\n").at(-1);
+  if (!resultLine) throw new Error("M92 attested bridge migration returned no result");
+  const result = JSON.parse(resultLine) as Record<string, unknown>;
+  if (result.ok !== true) {
+    throw new Error("M92 attested bridge migration did not report success");
+  }
+  return result;
 }
 
 async function jsonRequest(
   path: string,
-  options: RequestInit & { cookie?: string } = {},
+  options: Readonly<{
+    body?: string;
+    cookie?: string;
+    headers?: Readonly<Record<string, string>>;
+    method?: string;
+  }> = {},
 ) {
-  const { cookie, headers, ...requestOptions } = options;
-  const response = await fetch(`${origin}${path}`, {
-    ...requestOptions,
+  if (Object.keys(options.headers ?? {}).some((name) =>
+    runtimeIdentityHeaders.has(name.toLowerCase()))) {
+    throw new Error("M92 JSON requests cannot override production identity headers");
+  }
+  const response = await runtimeRequest(path, {
+    body: options.body,
     headers: {
-      ...(requestOptions.body ? { "Content-Type": "application/json" } : {}),
-      ...(cookie ? { Cookie: cookie } : {}),
-      ...headers,
+      ...admittedRuntimeHeaders,
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(options.cookie ? { Cookie: options.cookie } : {}),
+      ...options.headers,
     },
+    maxResponseBytes: 64 * 1_024,
+    method: options.method,
   });
-  const body = await response.text();
+  const body = response.body.toString("utf8");
   return {
     body: body ? JSON.parse(body) as Record<string, unknown> : {},
     headers: response.headers,
+    setCookie: response.setCookie,
     status: response.status,
   };
+}
+
+async function runtimeRequest(
+  path: string,
+  options: Readonly<{
+    body?: Buffer | string;
+    headers?: Readonly<Record<string, string>>;
+    maxResponseBytes?: number;
+    method?: string;
+  }> = {},
+) {
+  if (!path.startsWith("/") || path.startsWith("//")) {
+    throw new Error("M92 runtime request path must be origin-form");
+  }
+  const requestBody = options.body === undefined
+    ? undefined
+    : Buffer.isBuffer(options.body)
+      ? options.body
+      : Buffer.from(options.body, "utf8");
+  const headers: Record<string, string> = {
+    ...options.headers,
+    ...(requestBody ? { "Content-Length": String(requestBody.length) } : {}),
+  };
+  const maximumResponseBytes = options.maxResponseBytes ?? 16 * 1_024 * 1_024;
+  if (!Number.isSafeInteger(maximumResponseBytes) || maximumResponseBytes < 1) {
+    throw new Error("M92 runtime response limit must be a positive integer");
+  }
+  return await new Promise<Readonly<{
+    body: Buffer;
+    headers: Headers;
+    setCookie: readonly string[];
+    status: number;
+  }>>((resolveRequest, rejectRequest) => {
+    let deadline: NodeJS.Timeout | undefined;
+    let request: ReturnType<typeof httpRequest> | undefined;
+    let responseStream: IncomingMessage | undefined;
+    let settled = false;
+    const clearDeadline = () => {
+      if (deadline) clearTimeout(deadline);
+      deadline = undefined;
+    };
+    const rejectOnce = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      clearDeadline();
+      responseStream?.destroy();
+      request?.destroy();
+      rejectRequest(error);
+    };
+    const resolveOnce = (result: Readonly<{
+      body: Buffer;
+      headers: Headers;
+      setCookie: readonly string[];
+      status: number;
+    }>) => {
+      if (settled) return;
+      settled = true;
+      clearDeadline();
+      resolveRequest(result);
+    };
+    request = httpRequest({
+      agent: false,
+      headers,
+      host: "127.0.0.1",
+      method: options.method ?? "GET",
+      path,
+      port,
+    }, (response) => {
+      responseStream = response;
+      const chunks: Buffer[] = [];
+      let size = 0;
+      response.on("data", (chunk) => {
+        const bytes = Buffer.from(chunk);
+        size += bytes.length;
+        if (size > maximumResponseBytes) {
+          rejectOnce(new Error("M92 runtime response exceeded its byte limit"));
+          return;
+        }
+        chunks.push(bytes);
+      });
+      response.once("aborted", () => {
+        rejectOnce(new Error("M92 runtime response was aborted"));
+      });
+      response.once("error", rejectOnce);
+      response.once("close", () => {
+        if (!response.complete) {
+          rejectOnce(new Error("M92 runtime response closed before completion"));
+        }
+      });
+      response.once("end", () => {
+        if (!response.complete) {
+          rejectOnce(new Error("M92 runtime response ended before completion"));
+          return;
+        }
+        const responseHeaders = new Headers();
+        for (const [name, value] of Object.entries(response.headers)) {
+          if (Array.isArray(value)) {
+            for (const item of value) responseHeaders.append(name, item);
+          } else if (value !== undefined) {
+            responseHeaders.set(name, String(value));
+          }
+        }
+        resolveOnce({
+          body: Buffer.concat(chunks),
+          headers: responseHeaders,
+          setCookie: Object.freeze([...(response.headers["set-cookie"] ?? [])]),
+          status: response.statusCode ?? 0,
+        });
+      });
+    });
+    deadline = setTimeout(() => {
+      const error = new Error("M92 runtime request timed out") as Error & {
+        code?: string;
+      };
+      error.code = "ETIMEDOUT";
+      rejectOnce(error);
+    }, 5_000);
+    request.once("error", rejectOnce);
+    request.end(requestBody);
+  });
 }
 
 test("frozen v0.5.1 contract pins the old rollback and canvas-wire boundaries", async () => {
@@ -893,22 +1333,81 @@ test("frozen v0.5.1 contract pins the old rollback and canvas-wire boundaries", 
   )).toBe(true);
 });
 
-test("runner-attested exact tag precedes one current bridge stop, migration, and v39 restart", async () => {
+test("runner-attested exact tag precedes attested bridge, migration, and final runtimes", async () => {
   const contract = await readContract();
   expect(contract).toEqual(expectedContract);
   await readRunnerAttestation(contract);
+  const releases = await readOperationalReleases(contract);
   const root = await mkdtemp(join(tmpdir(), "unboundry-m92-bridge-"));
   const dataDirectory = join(root, "data");
-  const previousDirectory = process.env.UNBOUNDRY_DATA_DIR;
-  const previousMigrationClock =
-    process.env.UNBOUNDRY_SCHEMA_MIGRATION_TEST_CLOCK;
-  let bridge: ChildProcess | undefined;
+  const runtimeDirectory = join(root, "runtime");
+  let runtime: ChildProcess | undefined;
   try {
     const databasePath = await createExactSchema37Fixture(dataDirectory);
-    const expectedSourceSha = logicalSha(databasePath, root);
+    const activeTaskFixture = new DatabaseSync(databasePath);
+    activeTaskFixture.prepare(
+      "UPDATE generation_tasks SET state = 'queued' WHERE id = ?",
+    ).run(taskId);
+    activeTaskFixture.exec("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE;");
+    activeTaskFixture.close();
+    const beforeActiveTaskRefusal = await directoryFingerprint(dataDirectory);
+    const attemptsBeforeActiveTaskRefusal = new DatabaseSync(databasePath, {
+      readOnly: true,
+    });
+    const activeTaskAttemptCount = attemptsBeforeActiveTaskRefusal.prepare(
+      "SELECT COUNT(*) AS count FROM generation_provider_attempts",
+    ).get();
+    attemptsBeforeActiveTaskRefusal.close();
+    await expect(startReleaseRuntime(
+      releases.bridge,
+      dataDirectory,
+      runtimeDirectory,
+      root,
+    )).rejects.toThrow(/LEGACY_RUNTIME_ACTIVE_TASKS_PRESENT/);
+    expect(await directoryFingerprint(dataDirectory)).toEqual(
+      beforeActiveTaskRefusal,
+    );
+    const attemptsAfterActiveTaskRefusal = new DatabaseSync(databasePath, {
+      readOnly: true,
+    });
+    expect(attemptsAfterActiveTaskRefusal.prepare(
+      "SELECT COUNT(*) AS count FROM generation_provider_attempts",
+    ).get()).toEqual(activeTaskAttemptCount);
+    attemptsAfterActiveTaskRefusal.close();
+    const resetActiveTaskFixture = new DatabaseSync(databasePath);
+    resetActiveTaskFixture.prepare(
+      "UPDATE generation_tasks SET state = 'success' WHERE id = ?",
+    ).run(taskId);
+    resetActiveTaskFixture.exec(
+      "PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE;",
+    );
+    resetActiveTaskFixture.close();
+    const preBridgeSourceSha = logicalSha(databasePath, root);
+    const preBackfillInvariants = invariantTableSnapshot(databasePath);
+    const preBackfillDatabase = new DatabaseSync(databasePath, {
+      readOnly: true,
+    });
+    const preBackfillRow = preBackfillDatabase.prepare(
+      "SELECT * FROM media_assets WHERE kind = 'image' AND id = ?",
+    ).get(backfillMediaId) as Record<string, unknown>;
+    const preExistingMediaRow = preBackfillDatabase.prepare(
+      "SELECT * FROM media_assets WHERE kind = 'image' AND id = ?",
+    ).get(mediaId);
+    preBackfillDatabase.close();
+    const preBackfillMediaBytes = await Promise.all([
+      readFile(join(dataDirectory, "media", `${mediaId}.png`)),
+      readFile(join(dataDirectory, "media", `${backfillMediaId}.png`)),
+    ]);
     const beforeStandby = await directoryFingerprint(dataDirectory);
 
-    bridge = await startBridge(dataDirectory);
+    // The final release still fail-closes on schema 37; only the independently
+    // identified bridge release may supervise the exact legacy engine.
+    runtime = await startReleaseRuntime(
+      releases.final,
+      dataDirectory,
+      runtimeDirectory,
+      root,
+    );
     expect((await jsonRequest("/api/health/live")).status).toBe(200);
     const standby = await jsonRequest("/api/health/ready");
     expect(standby).toMatchObject({
@@ -924,7 +1423,7 @@ test("runner-attested exact tag precedes one current bridge stop, migration, and
     });
     const version = await jsonRequest("/api/version");
     expect(version.status).toBe(200);
-    expect(version.body.version).toBe("0.5.1");
+    expect(version.body.version).toBe(releases.final.version);
     expect(await jsonRequest("/api/version", {
       body: "{}",
       method: "POST",
@@ -932,63 +1431,262 @@ test("runner-attested exact tag precedes one current bridge stop, migration, and
       body: { code: "SERVICE_SCHEMA_STANDBY" },
       status: 503,
     });
-
-    const businessPaths = [
-      "/api/updates",
-      "/api/auth/status",
-      "/api/auth/login",
-      "/api/account-context",
-      "/api/account-credentials",
-      "/api/models",
-      "/api/admin/models",
-      "/api/templates",
-      "/api/admin/templates",
-      "/api/agent-config",
-      "/api/characters",
-      "/api/library",
-      "/api/admin/providers",
-      "/api/admin/provider-catalog",
-      "/api/admin/storage",
-      "/api/admin/generation-safety",
-      "/api/openapi.json",
-      `/api/canvas/${canvasId}`,
-      `/api/history/${ownerId}`,
-      `/api/project-title/${canvasId}`,
-      `/api/projects/${canvasId}`,
-      `/api/assets/${mediaId}`,
-      `/api/audio-assets/${mediaId}`,
-      `/api/video-assets/${mediaId}`,
-      `/api/media-metadata/image/${mediaId}`,
-      `/api/generation-tasks?canvasId=${canvasId}`,
-      "/api/playlist/export",
-      "/api/playlist/thumbnails/m92",
-    ];
-    for (const path of businessPaths) {
-      for (const method of ["GET", "POST"] as const) {
-        const response = await jsonRequest(path, {
-          body: method === "POST" ? "{}" : undefined,
-          method,
-        });
-        expect(response.status, `${method} ${path}`).toBe(503);
-        expect(response.body, `${method} ${path}`).toMatchObject({
-          code: "SERVICE_SCHEMA_STANDBY",
-        });
-      }
-    }
-    await stopBridge(bridge);
-    expect(childExited(bridge)).toBe(true);
-    bridge = undefined;
-    expect(await directoryFingerprint(dataDirectory)).toEqual(beforeStandby);
-    expect(logicalSha(databasePath, root)).toBe(expectedSourceSha);
-
-    process.env.UNBOUNDRY_SCHEMA_MIGRATION_TEST_CLOCK = "1";
-    const migration = await migrateSchema37To39({
-      dataDirectory,
-      expectedSourceLogicalSha256: expectedSourceSha,
-      mode: "apply",
-      scratchRoot: root,
-      testClock: { drainMilliseconds: 0, sleep: async () => undefined },
+    expect(await jsonRequest(`/api/canvas/${canvasId}`)).toMatchObject({
+      body: { code: "SERVICE_SCHEMA_STANDBY" },
+      status: 503,
     });
+    await stopReleaseRuntime(runtime);
+    expect(runtime.exitCode).toBe(0);
+    runtime = undefined;
+    expect(await directoryFingerprint(dataDirectory)).toEqual(beforeStandby);
+    expect(logicalSha(databasePath, root)).toBe(preBridgeSourceSha);
+
+    runtime = await startReleaseRuntime(
+      releases.bridge,
+      dataDirectory,
+      runtimeDirectory,
+      root,
+    );
+    const postBackfill = new DatabaseSync(databasePath, { readOnly: true });
+    const postBackfillRow = postBackfill.prepare(`
+      SELECT checksum_sha256, duration_seconds, duration_source,
+             duration_status, updated_at
+      FROM media_assets WHERE kind = 'image' AND id = ?
+    `).get(backfillMediaId);
+    expect(postBackfillRow).toEqual({
+      checksum_sha256: sha256(mediaBytes),
+      duration_seconds: null,
+      duration_source: null,
+      duration_status: "not-applicable",
+      updated_at: expect.any(String),
+    });
+    const postBackfillFullRow = postBackfill.prepare(
+      "SELECT * FROM media_assets WHERE kind = 'image' AND id = ?",
+    ).get(backfillMediaId) as Record<string, unknown>;
+    const {
+      checksum_sha256: _preChecksum,
+      updated_at: _preUpdatedAt,
+      ...preBackfillStableFields
+    } = preBackfillRow;
+    const {
+      checksum_sha256: _postChecksum,
+      updated_at: _postUpdatedAt,
+      ...postBackfillStableFields
+    } = postBackfillFullRow;
+    expect(postBackfillStableFields).toEqual(preBackfillStableFields);
+    expect(postBackfill.prepare(
+      "SELECT * FROM media_assets WHERE kind = 'image' AND id = ?",
+    ).get(mediaId)).toEqual(preExistingMediaRow);
+    expect(postBackfill.prepare(
+      "SELECT COUNT(*) AS count FROM generation_provider_attempts",
+    ).get()).toEqual(activeTaskAttemptCount);
+    postBackfill.close();
+    expect(invariantTableSnapshot(databasePath)).toEqual(preBackfillInvariants);
+    expect(await Promise.all([
+      readFile(join(dataDirectory, "media", `${mediaId}.png`)),
+      readFile(join(dataDirectory, "media", `${backfillMediaId}.png`)),
+    ])).toEqual(preBackfillMediaBytes);
+    const expectedSourceSha = logicalSha(databasePath, root);
+    expect(expectedSourceSha).not.toBe(preBridgeSourceSha);
+    const bridgeReady = await jsonRequest("/api/health/ready");
+    expect(bridgeReady).toMatchObject({
+      body: {
+        databaseProbe: "read-only",
+        mode: "schema37-bridge-active",
+        mutationsAccepted: true,
+        schemaVersion: 37,
+        status: "ready",
+      },
+      status: 200,
+    });
+    expect(await jsonRequest("/api/version")).toMatchObject({
+      body: { version: releases.bridge.version },
+      status: 200,
+    });
+    const legacyStaticPath = releases.bridge.manifest.runtime.health
+      .legacySchema37StaticAsset?.path;
+    expect(legacyStaticPath).toBe("legacy-runtime/dist/client/index.html");
+    const legacyIndex = await readFile(
+      join(releases.bridge.directory, legacyStaticPath!),
+      "utf8",
+    );
+    const proxiedIndex = await runtimeRequest("/", {
+      headers: admittedRuntimeHeaders,
+      maxResponseBytes: 1024 * 1024,
+    });
+    const proxiedIndexBody = proxiedIndex.body.toString("utf8");
+    expect(proxiedIndex.status, proxiedIndexBody).toBe(200);
+    expect(proxiedIndexBody).toBe(legacyIndex);
+    for (const headers of [
+      {
+        ...admittedRuntimeHeaders,
+        Host: `127.0.0.1:${port}`,
+      },
+      {
+        ...admittedRuntimeHeaders,
+        "X-Forwarded-For": "127.0.0.1, 127.0.0.2",
+      },
+      {
+        Host: admittedRuntimeHeaders.Host,
+        "X-Forwarded-For": admittedRuntimeHeaders["X-Forwarded-For"],
+      },
+    ]) {
+      const rejected = await runtimeRequest("/", {
+        headers,
+        maxResponseBytes: 64 * 1_024,
+      });
+      expect(rejected.status).toBe(400);
+      expect(JSON.parse(rejected.body.toString("utf8"))).toMatchObject({
+        code: "BRIDGE_PROXY_HEADERS_INVALID",
+      });
+    }
+    expect((await runtimeRequest("/", {
+      headers: admittedRuntimeHeaders,
+      maxResponseBytes: 1024 * 1024,
+    })).status).toBe(200);
+    expect(logicalSha(databasePath, root)).toBe(expectedSourceSha);
+    const preservedCookie = `unboundry_session=${legacySessionToken}`;
+    expect(await jsonRequest("/api/auth/status", {
+      cookie: preservedCookie,
+    })).toMatchObject({
+      body: { authenticated: true, user: { id: ownerId } },
+      status: 200,
+    });
+    expect(await jsonRequest(`/api/canvas/${canvasId}`, {
+      cookie: preservedCookie,
+    })).toMatchObject({
+      body: { nodes: [preservedRichNode], revision: 7 },
+      status: 200,
+    });
+    const oldWireNode = {
+      ...preservedRichNode,
+      data: { ...preservedRichNode.data, prompt: "m92 schema37 bridge write" },
+    };
+    const schema37Write = await jsonRequest(`/api/canvas/${canvasId}`, {
+      body: JSON.stringify({
+        edges: [],
+        nodes: [oldWireNode],
+        revision: 7,
+        viewport,
+      }),
+      cookie: preservedCookie,
+      method: "PUT",
+    });
+    expect(schema37Write).toMatchObject({
+      body: { graphRevision: 8, revision: 8 },
+      status: 200,
+    });
+    expect(await jsonRequest(`/api/canvas/${canvasId}`, {
+      cookie: preservedCookie,
+    })).toMatchObject({
+      body: { nodes: [oldWireNode], revision: 8 },
+      status: 200,
+    });
+    // Ordinary mutations reach the old engine, while paid generation and media
+    // mutations are stopped by the parent without any Provider-side attempt.
+    expect(await jsonRequest("/api/auth/login", {
+      body: JSON.stringify({ loginName: "missing", password: "invalid" }),
+      method: "POST",
+    })).toMatchObject({ status: 401 });
+    const attemptsBefore = new DatabaseSync(databasePath, { readOnly: true });
+    const beforeAttemptCount = attemptsBefore.prepare(
+      "SELECT COUNT(*) AS count FROM generation_provider_attempts",
+    ).get();
+    attemptsBefore.close();
+    expect(await jsonRequest("/api/auth/status", {
+      cookie: preservedCookie,
+      headers: { "X-Unboundry-Legacy-Proxy": "attacker" },
+    })).toMatchObject({
+      body: { authenticated: true },
+      status: 200,
+    });
+    expect(await jsonRequest("/api/generation-tasks", {
+      body: "{}",
+      cookie: preservedCookie,
+      method: "POST",
+    })).toMatchObject({
+      body: { code: "BRIDGE_LEGACY_GENERATION_MUTATION_DISABLED" },
+      status: 503,
+    });
+    for (const path of [
+      "/API/generation-tasks",
+      "/api/generation-tasks.json",
+    ]) {
+      expect(await jsonRequest(path, { cookie: preservedCookie })).toMatchObject({
+        body: { code: "BRIDGE_LEGACY_GENERATION_MUTATION_DISABLED" },
+        status: 503,
+      });
+    }
+    expect(await jsonRequest(`/api/assets/${mediaId}`, {
+      cookie: preservedCookie,
+      method: "DELETE",
+    })).toMatchObject({
+      body: { code: "BRIDGE_LEGACY_MEDIA_MUTATION_DISABLED" },
+      status: 503,
+    });
+    expect(await jsonRequest("/api/playlist/export", {
+      body: JSON.stringify({ mode: "asset" }),
+      cookie: preservedCookie,
+      method: "POST",
+    })).toMatchObject({
+      body: { code: "BRIDGE_LEGACY_MEDIA_MUTATION_DISABLED" },
+      status: 503,
+    });
+    expect(await jsonRequest("/api/playlist/thumbnails/m92", {
+      body: "{}",
+      cookie: preservedCookie,
+      method: "POST",
+    })).toMatchObject({
+      body: { code: "BRIDGE_LEGACY_MEDIA_MUTATION_DISABLED" },
+      status: 503,
+    });
+    expect(await jsonRequest(`/api/admin/users/${ownerId}`, {
+      cookie: preservedCookie,
+      method: "DELETE",
+    })).toMatchObject({
+      body: { code: "BRIDGE_LEGACY_ACCOUNT_DELETION_DISABLED" },
+      status: 503,
+    });
+    const attemptsAfter = new DatabaseSync(databasePath, { readOnly: true });
+    expect(attemptsAfter.prepare(
+      "SELECT COUNT(*) AS count FROM generation_provider_attempts",
+    ).get()).toEqual(beforeAttemptCount);
+    attemptsAfter.close();
+    await stopReleaseRuntime(runtime);
+    expect(childExited(runtime)).toBe(true);
+    expect(runtime.exitCode).toBe(0);
+    runtime = undefined;
+    const writtenSourceSha = logicalSha(databasePath, root);
+    expect(writtenSourceSha).not.toBe(expectedSourceSha);
+    // A second exact-old startup is an idempotence proof for the bounded
+    // checksum backfill: it may open SQLite but changes no logical row or
+    // Provider-attempt evidence after the first ready transition.
+    const beforeIdempotentRestart = invariantTableSnapshot(databasePath);
+    runtime = await startReleaseRuntime(
+      releases.bridge,
+      dataDirectory,
+      runtimeDirectory,
+      root,
+    );
+    expect(await jsonRequest("/api/health/ready")).toMatchObject({
+      body: { mode: "schema37-bridge-active", schemaVersion: 37 },
+      status: 200,
+    });
+    await stopReleaseRuntime(runtime);
+    expect(runtime.exitCode).toBe(0);
+    runtime = undefined;
+    expect(logicalSha(databasePath, root)).toBe(writtenSourceSha);
+    expect(invariantTableSnapshot(databasePath)).toEqual(
+      beforeIdempotentRestart,
+    );
+
+    const migration = await runBridgeMigration(
+      releases.bridge,
+      dataDirectory,
+      runtimeDirectory,
+      root,
+      writtenSourceSha,
+    );
     expect(migration).toMatchObject({
       mode: "apply",
       sourceVersion: 37,
@@ -996,19 +1694,23 @@ test("runner-attested exact tag precedes one current bridge stop, migration, and
       targetVersion: 39,
     });
 
-    bridge = await startBridge(dataDirectory);
+    runtime = await startReleaseRuntime(
+      releases.final,
+      dataDirectory,
+      runtimeDirectory,
+      root,
+    );
     const active = await jsonRequest("/api/health/ready");
     expect(active).toMatchObject({
       body: {
         mode: "active",
         mutationsAccepted: true,
-        schemaVersion: currentSchemaVersion,
+        schemaVersion: 39,
         status: "ready",
       },
       status: 200,
     });
 
-    const preservedCookie = `unboundry_session=${legacySessionToken}`;
     const preservedSession = await jsonRequest("/api/auth/status", {
       cookie: preservedCookie,
     });
@@ -1027,7 +1729,11 @@ test("runner-attested exact tag precedes one current bridge stop, migration, and
       method: "POST",
     });
     expect(login.status).toBe(200);
-    const currentCookie = login.headers.get("set-cookie")?.split(";", 1)[0];
+    expect(login.setCookie).toHaveLength(1);
+    expect(login.setCookie[0]).toMatch(
+      /^unboundry_session=[^;\s]+; HttpOnly; Path=\/; SameSite=Strict; Max-Age=604800; Secure$/,
+    );
+    const currentCookie = login.setCookie[0]?.split(";", 1)[0];
     expect(currentCookie).toMatch(/^unboundry_session=/);
 
     const initialCanvas = await jsonRequest(`/api/canvas/${canvasId}`, {
@@ -1036,9 +1742,9 @@ test("runner-attested exact tag precedes one current bridge stop, migration, and
     });
     expect(initialCanvas).toMatchObject({
       body: {
-        graphRevision: 7,
-        nodes: [preservedRichNode],
-        revision: 7,
+        graphRevision: 8,
+        nodes: [oldWireNode],
+        revision: 8,
       },
       status: 200,
     });
@@ -1065,7 +1771,7 @@ test("runner-attested exact tag precedes one current bridge stop, migration, and
       cookie: currentCookie,
     });
     expect(afterLegacyWire.body).toMatchObject({
-      nodes: [preservedRichNode],
+      nodes: [oldWireNode],
       revision: initialRevision,
     });
 
@@ -1085,14 +1791,14 @@ test("runner-attested exact tag precedes one current bridge stop, migration, and
       method: "PUT",
     });
     expect(currentWireSave).toMatchObject({
-      body: { graphRevision: 8, revision: 8 },
+      body: { graphRevision: 9, revision: 9 },
       status: 200,
     });
     const afterCurrentWire = await jsonRequest(`/api/canvas/${canvasId}`, {
       cookie: currentCookie,
     });
     expect(afterCurrentWire).toMatchObject({
-      body: { nodes: [currentBridgeRichNode], revision: 8 },
+      body: { nodes: [currentBridgeRichNode], revision: 9 },
       status: 200,
     });
 
@@ -1139,7 +1845,6 @@ test("runner-attested exact tag precedes one current bridge stop, migration, and
           region: "oss-cn-hangzhou",
         }),
         cookie: currentCookie,
-        headers: { "X-Forwarded-Proto": "https" },
         method: "PATCH",
       },
     );
@@ -1187,76 +1892,39 @@ test("runner-attested exact tag precedes one current bridge stop, migration, and
       },
       status: 200,
     });
-    const media = await fetch(`${origin}/api/assets/${mediaId}`, {
-      headers: { Cookie: currentCookie! },
+    const media = await runtimeRequest(`/api/assets/${mediaId}`, {
+      headers: { ...admittedRuntimeHeaders, Cookie: currentCookie! },
+      maxResponseBytes: mediaBytes.length,
     });
     expect(media.status).toBe(200);
-    expect(Buffer.from(await media.arrayBuffer())).toEqual(mediaBytes);
+    expect(media.body).toEqual(mediaBytes);
 
-    await stopBridge(bridge);
-    bridge = undefined;
+    await stopReleaseRuntime(runtime);
+    expect(runtime.exitCode).toBe(0);
+    runtime = undefined;
 
-    process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
-    const taskStore = createGenerationTaskStore(dataDirectory);
-    expect(taskStore.get(taskId)).toMatchObject({
-      credentialRevision: 1,
-      ownerId,
-      providerTaskId: "m92-provider-task",
-      state: "success",
-    });
-    const createdTask = taskStore.create({
-      canvasId,
-      idempotencyKey: "m92-current-local-task",
-      kind: "text",
-      nodeId: "m92-current-local-node",
-      ownerId,
-      prompt: "current bridge local task write",
-    });
-    expect(createdTask).toMatchObject({
-      created: true,
-      task: { ownerId, state: "queued" },
-    });
-    taskStore.close();
-
-    const currentMediaBytes = Buffer.from("m92 current bridge media", "utf8");
-    const publication = reserveMediaPublication({
-      contentType: "image/png",
-      finalStorageName: "m92-current-image.png",
-      historyLabel: "M92 current image",
-      id: "m92-current-image",
-      kind: "image",
-      objectKey: "m92-current-image.png",
-      ownerId,
-      storageBackend: "local",
-    });
-    await writeFile(mediaPublicationStagingPath(publication), currentMediaBytes, {
-      mode: 0o600,
-    });
-    stageMediaPublication(publication, {
-      byteSize: currentMediaBytes.length,
-      checksumSha256: sha256(currentMediaBytes),
-      contentType: "image/png",
-      mediaHeight: 1,
-      mediaWidth: 1,
-    });
-    await publishLocalMediaPublication(publication);
-    finalizeMediaPublication(publication);
-    await cleanupPublicationStaging(publication);
-
-    const finalDatabase = openAppDatabase(dataDirectory);
+    // Final persistence is inspected read-only after the admitted final
+    // runtime exits; current-checkout business modules must not supplement the
+    // release artifact under test.
+    const finalDatabase = new DatabaseSync(databasePath, { readOnly: true });
     try {
-      expect(databaseMatchesMigrationManifest(finalDatabase)).toBe(true);
-      expect(databaseMatchesSchemaContract(finalDatabase)).toBe(true);
       expect(finalDatabase.prepare("PRAGMA user_version").get()).toEqual({
         user_version: 39,
       });
       expect(finalDatabase.prepare(`
-        SELECT revision, graph_revision, nodes
+        SELECT version, name FROM schema_migrations
+        ORDER BY version DESC LIMIT 1
+      `).get()).toEqual({
+        name: "atomic-generation-admission-and-credential-scope",
+        version: 39,
+      });
+      expect(finalDatabase.prepare(`
+      SELECT revision, graph_revision, nodes
         FROM canvas_documents WHERE owner_id = ? AND id = ?
       `).get(ownerId, canvasId)).toEqual({
-        graph_revision: 8,
+        graph_revision: 9,
         nodes: JSON.stringify([currentBridgeRichNode]),
-        revision: 8,
+        revision: 9,
       });
       expect(finalDatabase.prepare(`
         SELECT COUNT(*) AS count FROM sessions WHERE user_id = ?
@@ -1281,14 +1949,10 @@ test("runner-attested exact tag precedes one current bridge stop, migration, and
         provider_task_id: "m92-provider-task",
       });
       expect(finalDatabase.prepare(`
-        SELECT state, owner_id FROM generation_tasks
-        WHERE idempotency_key = 'm92-current-local-task'
-      `).get()).toEqual({ owner_id: ownerId, state: "queued" });
-      expect(finalDatabase.prepare(`
         SELECT checksum_sha256, storage_status FROM media_assets
-        WHERE kind = 'image' AND id = 'm92-current-image'
-      `).get()).toEqual({
-        checksum_sha256: sha256(currentMediaBytes),
+        WHERE kind = 'image' AND id = ?
+      `).get(mediaId)).toEqual({
+        checksum_sha256: sha256(mediaBytes),
         storage_status: "ready",
       });
       expect(finalDatabase.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
@@ -1296,14 +1960,7 @@ test("runner-attested exact tag precedes one current bridge stop, migration, and
       finalDatabase.close();
     }
   } finally {
-    if (bridge) await stopBridge(bridge);
-    if (previousDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
-    else process.env.UNBOUNDRY_DATA_DIR = previousDirectory;
-    if (previousMigrationClock === undefined) {
-      delete process.env.UNBOUNDRY_SCHEMA_MIGRATION_TEST_CLOCK;
-    } else {
-      process.env.UNBOUNDRY_SCHEMA_MIGRATION_TEST_CLOCK = previousMigrationClock;
-    }
+    if (runtime) await stopReleaseRuntime(runtime);
     await rm(root, { force: true, recursive: true });
   }
 });

@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import {
+  createServer as createHttpServer,
   IncomingMessage,
   request as openHttpRequest,
   ServerResponse,
@@ -36,7 +37,6 @@ import {
   currentSchemaVersion,
   databaseHasCompleteLegacyMediaMetadata,
   databaseMatchesSchemaContract,
-  migrationIncompleteMarker,
   openAppDatabase,
 } from "../server/database";
 import {
@@ -47,10 +47,33 @@ import { saveProviderProfile } from "../server/providerProfiles";
 import {
   coordinateRuntimeShutdown,
   createRuntimeLifecycle,
+  type RuntimeLifecycle,
   type ShutdownResult,
 } from "../server/runtimeLifecycle";
 import { createRuntimeRoleCoordinator } from "../server/runtimeRole";
+import {
+  acquireLegacyChildGuardian,
+  LegacyChildGuardianError,
+} from "../server/legacyChildGuardian";
 import { applySecurityHeaders } from "../server/securityHeaders";
+import {
+  bridgeRuntimeMode,
+  releaseRoleFromEnvironment,
+} from "../server/bridgeRuntimeMode";
+import {
+  createLegacyRuntimeSupervisor,
+  inspectLegacyActiveGenerationTasks,
+} from "../server/legacyRuntimeSupervisor";
+import {
+  createLegacyReverseProxy,
+  legacyBridgeMutationBlockCode,
+} from "../server/legacyReverseProxy";
+import type { LegacyRuntimeLauncher } from "../server/legacyRuntimeLauncher";
+import {
+  LegacyBridgeRequestError,
+  legacyProxyRequestHeaders,
+  parseLegacyBridgeRequestTarget,
+} from "../server/legacyBridgeRequest";
 import { knownModelParameterSchema } from "../types/modelParameters";
 import { expect, test } from "./safe-test";
 
@@ -58,6 +81,693 @@ const port = Number(process.env.UNBOUNDRY_TEST_AUX_PORT);
 const origin = `http://127.0.0.1:${port}`;
 const vite = join(process.cwd(), "node_modules/vite/bin/vite.js");
 const capturedOutput = new WeakMap<ChildProcess, string[]>();
+
+test("release role and bridge-mode selection are exact and fail closed", () => {
+  expect(releaseRoleFromEnvironment("0.6.0", {})).toBe("final");
+  expect(releaseRoleFromEnvironment("0.5.2", {})).toBe("bridge");
+  expect(releaseRoleFromEnvironment("0.5.2", {
+    UNBOUNDRY_RELEASE_ROLE: "bridge",
+  }))
+    .toBe("bridge");
+  expect(() => releaseRoleFromEnvironment("0.5.2", {
+    UNBOUNDRY_RELEASE_ROLE: "candidate",
+  })).toThrow(/UNBOUNDRY_RELEASE_ROLE_INVALID/);
+  expect(() => releaseRoleFromEnvironment("0.5.2", {
+    UNBOUNDRY_RELEASE_ROLE: "final",
+  })).toThrow(/UNBOUNDRY_RELEASE_ROLE_MISMATCH/);
+  expect(() => releaseRoleFromEnvironment("0.5.1", {})).toThrow(
+    /UNBOUNDRY_RELEASE_VERSION_INVALID/,
+  );
+  expect(bridgeRuntimeMode({
+    probe: { ok: true, schemaVersion: 37, standby: true },
+    releaseRole: "bridge",
+    runtimeRole: "active",
+  })).toBe("legacy-schema37");
+  for (const fixture of [
+    {
+      probe: { ok: true, schemaVersion: 37, standby: true } as const,
+      releaseRole: "final" as const,
+      runtimeRole: "active" as const,
+    },
+    {
+      probe: { ok: true, schemaVersion: 37, standby: true } as const,
+      releaseRole: "bridge" as const,
+      runtimeRole: "standby" as const,
+    },
+    {
+      probe: { ok: true, schemaVersion: 39, standby: false } as const,
+      releaseRole: "bridge" as const,
+      runtimeRole: "active" as const,
+    },
+    {
+      probe: { ok: false } as const,
+      releaseRole: "bridge" as const,
+      runtimeRole: "active" as const,
+    },
+  ]) expect(bridgeRuntimeMode(fixture)).toBe("current");
+});
+
+test("legacy child guardian excludes overlap and rejects a forged contract", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "unboundry-m81-guardian-"));
+  const dataDirectory = join(testRoot, "data");
+  const runtimeDirectory = join(testRoot, "runtime");
+  const forgedRuntimeDirectory = join(testRoot, "forged-runtime");
+  await mkdir(dataDirectory, { mode: 0o700 });
+  await mkdir(runtimeDirectory, { mode: 0o700 });
+  await mkdir(forgedRuntimeDirectory, { mode: 0o700 });
+  let first: ReturnType<typeof acquireLegacyChildGuardian> | undefined;
+  let replacement: ReturnType<typeof acquireLegacyChildGuardian> | undefined;
+  let orphanParent: ChildProcess | undefined;
+  let orphanPid: number | undefined;
+  try {
+    first = acquireLegacyChildGuardian({ dataDirectory, runtimeDirectory });
+    expect(() => acquireLegacyChildGuardian({ dataDirectory, runtimeDirectory }))
+      .toThrow(LegacyChildGuardianError);
+    first.assertHeld();
+    first.release();
+    first = undefined;
+    replacement = acquireLegacyChildGuardian({ dataDirectory, runtimeDirectory });
+    replacement.assertHeld();
+    replacement.release();
+    replacement = undefined;
+
+    const guardianModule = pathToFileURL(
+      join(process.cwd(), "server/legacyChildGuardian.ts"),
+    ).href;
+    const guardianWorkerSource = `
+      import { acquireLegacyChildGuardian } from ${JSON.stringify(guardianModule)};
+      const guardian = acquireLegacyChildGuardian({
+        dataDirectory: process.env.UNBOUNDRY_GUARDIAN_DATA,
+        runtimeDirectory: process.env.UNBOUNDRY_GUARDIAN_RUNTIME,
+      });
+      guardian.assertHeld();
+      process.send?.({ type: "guardian-held", pid: process.pid });
+      setInterval(() => guardian.assertHeld(), 50);
+    `;
+    const guardianParentSource = `
+      import { spawn } from "node:child_process";
+      const child = spawn(process.execPath, [
+        "--no-warnings",
+        "--experimental-strip-types",
+        "--input-type=module",
+        "--eval",
+        process.env.UNBOUNDRY_GUARDIAN_WORKER_SOURCE,
+      ], {
+        env: process.env,
+        stdio: ["ignore", "ignore", "inherit", "ipc"],
+      });
+      child.on("message", (message) => process.send?.(message));
+      child.on("error", (error) => {
+        process.send?.({ type: "guardian-child-error", message: error.message });
+      });
+      setInterval(() => {}, 1_000);
+    `;
+    orphanParent = spawn(process.execPath, [
+      "--input-type=module",
+      "--eval",
+      guardianParentSource,
+    ], {
+      env: {
+        ...process.env,
+        UNBOUNDRY_GUARDIAN_DATA: dataDirectory,
+        UNBOUNDRY_GUARDIAN_RUNTIME: runtimeDirectory,
+        UNBOUNDRY_GUARDIAN_WORKER_SOURCE: guardianWorkerSource,
+      },
+      stdio: ["ignore", "ignore", "inherit", "ipc"],
+    });
+    orphanPid = await withTimeout(
+      new Promise<number>((resolve, reject) => {
+        orphanParent!.on("message", (message: unknown) => {
+          if (
+            message && typeof message === "object" &&
+            "type" in message && message.type === "guardian-held" &&
+            "pid" in message && typeof message.pid === "number"
+          ) resolve(message.pid);
+          if (
+            message && typeof message === "object" &&
+            "type" in message && message.type === "guardian-child-error"
+          ) reject(new Error(JSON.stringify(message)));
+        });
+        orphanParent!.once("error", reject);
+        orphanParent!.once("exit", (code, signal) => {
+          reject(new Error(`guardian parent exited early: ${code}/${signal}`));
+        });
+      }),
+      5_000,
+      "guardian child did not acquire its lease",
+    );
+    expect(() => acquireLegacyChildGuardian({ dataDirectory, runtimeDirectory }))
+      .toThrow(/LEGACY_CHILD_GUARDIAN_UNAVAILABLE/);
+    expect(orphanParent.kill("SIGKILL")).toBe(true);
+    await waitForChildExit(
+      orphanParent,
+      5_000,
+      "guardian parent did not exit after SIGKILL",
+    );
+    expect(() => process.kill(orphanPid!, 0)).not.toThrow();
+    expect(() => acquireLegacyChildGuardian({ dataDirectory, runtimeDirectory }))
+      .toThrow(/LEGACY_CHILD_GUARDIAN_UNAVAILABLE/);
+    process.kill(orphanPid, "SIGKILL");
+    await waitForPidExit(orphanPid, 5_000);
+    orphanPid = undefined;
+    replacement = acquireLegacyChildGuardian({ dataDirectory, runtimeDirectory });
+    replacement.assertHeld();
+    replacement.release();
+    replacement = undefined;
+
+    const forgedPath = join(
+      forgedRuntimeDirectory,
+      "legacy-child-role.sqlite",
+    );
+    const forged = new DatabaseSync(forgedPath);
+    forged.exec(`
+      CREATE TABLE legacy_child_guardian_contract (
+        id INTEGER PRIMARY KEY,
+        format TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        extra TEXT
+      );
+      INSERT INTO legacy_child_guardian_contract (id, format, version)
+      VALUES (1, 'unboundry-legacy-child-guardian', 1);
+    `);
+    forged.close();
+    await chmod(forgedPath, 0o600);
+    const before = await readFile(forgedPath);
+    expect(() => acquireLegacyChildGuardian({
+      dataDirectory,
+      runtimeDirectory: forgedRuntimeDirectory,
+    })).toThrow(/LEGACY_CHILD_GUARDIAN_UNSAFE/);
+    expect(await readFile(forgedPath)).toEqual(before);
+  } finally {
+    try {
+      first?.release();
+    } catch {}
+    try {
+      replacement?.release();
+    } catch {}
+    if (orphanParent && !childExited(orphanParent)) {
+      orphanParent.kill("SIGKILL");
+      await waitForChildExit(
+        orphanParent,
+        5_000,
+        "guardian parent cleanup did not complete",
+      ).catch(() => undefined);
+    }
+    if (orphanPid !== undefined) {
+      try {
+        process.kill(orphanPid, "SIGKILL");
+      } catch {}
+      await waitForPidExit(orphanPid, 5_000).catch(() => undefined);
+    }
+    await rm(testRoot, { force: true, recursive: true });
+  }
+});
+
+test("legacy bridge target and proxy identity have one canonical interpretation", () => {
+  expect(parseLegacyBridgeRequestTarget("/")).toEqual({
+    canonicalOriginForm: "/",
+    decodedPath: "/",
+    lowerPath: "/",
+  });
+  expect(parseLegacyBridgeRequestTarget(
+    "/API/Canvas/%E4%B8%AD%E6%96%87?q=%E4%B8%AD",
+  )).toEqual({
+    canonicalOriginForm: "/API/Canvas/%E4%B8%AD%E6%96%87?q=%E4%B8%AD",
+    decodedPath: "/API/Canvas/中文",
+    lowerPath: "/api/canvas/中文",
+  });
+  for (const target of [
+    "http://canvas.mymy.ltd/api/version",
+    "//canvas.mymy.ltd/api/version",
+    "/api/version#fragment",
+    "/api\\version",
+    "/api//version",
+    "/api/version/",
+    "/api/./version",
+    "/api/%2e%2e/version",
+    "/api%2fversion",
+    "/api%5cversion",
+    "/api/%76ersion",
+    "/api/%25version",
+    "/api/%0aversion",
+    "/api/%zzversion",
+  ]) {
+    expect(() => parseLegacyBridgeRequestTarget(target), target).toThrow(
+      LegacyBridgeRequestError,
+    );
+  }
+
+  const previousSafeTest = process.env.UNBOUNDRY_SAFE_TEST;
+  const previousTestPort = process.env.UNBOUNDRY_TEST_PORT;
+  const previousTrustProxy = process.env.UNBOUNDRY_TRUST_PROXY;
+  process.env.UNBOUNDRY_SAFE_TEST = "1";
+  process.env.UNBOUNDRY_TEST_PORT = "48181";
+  process.env.UNBOUNDRY_TRUST_PROXY = "1";
+  try {
+    const request = new IncomingMessage(new Socket());
+    Object.defineProperty(request.socket, "remoteAddress", {
+      configurable: true,
+      value: "127.0.0.1",
+    });
+    request.headers = {
+      host: "127.0.0.1:48181",
+      "x-forwarded-for": "203.0.113.9",
+      "x-forwarded-proto": "https",
+    };
+    request.rawHeaders = [
+      "Host", "127.0.0.1:48181",
+      "X-Forwarded-For", "203.0.113.9",
+      "X-Forwarded-Proto", "https",
+    ];
+    expect(legacyProxyRequestHeaders(request, {
+      host: "127.0.0.1",
+      port: 48182,
+      proxyNonce: "81".repeat(32),
+    }).headers).toMatchObject({
+      host: "127.0.0.1:48181",
+      "x-forwarded-for": "203.0.113.9",
+      "x-forwarded-host": "127.0.0.1:48181",
+      "x-forwarded-port": "48181",
+      "x-forwarded-proto": "https",
+      "x-real-ip": "203.0.113.9",
+      "x-unboundry-legacy-proxy": "81".repeat(32),
+    });
+    request.rawHeaders.push("X-Forwarded-For", "198.51.100.4");
+    expect(() => legacyProxyRequestHeaders(request, {
+      host: "127.0.0.1",
+      port: 48182,
+      proxyNonce: "81".repeat(32),
+    })).toThrow(/BRIDGE_PROXY_HEADERS_INVALID/);
+    request.rawHeaders = ["Host", "attacker.invalid:48181"];
+    request.headers = { host: "attacker.invalid:48181" };
+    expect(() => legacyProxyRequestHeaders(request, {
+      host: "127.0.0.1",
+      port: 48182,
+      proxyNonce: "81".repeat(32),
+    })).toThrow(/safe-test Host is not runner-attested/);
+  } finally {
+    if (previousSafeTest === undefined) delete process.env.UNBOUNDRY_SAFE_TEST;
+    else process.env.UNBOUNDRY_SAFE_TEST = previousSafeTest;
+    if (previousTestPort === undefined) delete process.env.UNBOUNDRY_TEST_PORT;
+    else process.env.UNBOUNDRY_TEST_PORT = previousTestPort;
+    if (previousTrustProxy === undefined) delete process.env.UNBOUNDRY_TRUST_PROXY;
+    else process.env.UNBOUNDRY_TRUST_PROXY = previousTrustProxy;
+  }
+});
+
+test("legacy bridge classifies every exact-old top-level mount by method", () => {
+  const fixture = (method: string, url: string) => ({ method, url } as IncomingMessage);
+  const localMatrix = [
+    ["GET", "/api/auth/status"],
+    ["POST", "/api/auth/login"],
+    ["GET", "/api/account-context"],
+    ["PUT", "/api/account-credentials/00000000-0000-4000-8000-000000000001"],
+    ["GET", "/api/models"],
+    ["PATCH", "/api/admin/models/model-id"],
+    ["POST", "/api/templates"],
+    ["PATCH", "/api/admin/templates/00000000-0000-4000-8000-000000000001"],
+    ["GET", "/api/agent-config"],
+    ["GET", "/api/characters"],
+    ["GET", "/api/library"],
+    ["PATCH", "/api/admin/providers/00000000-0000-4000-8000-000000000001"],
+    ["POST", "/api/admin/provider-catalog/00000000-0000-4000-8000-000000000001/import"],
+    ["PATCH", "/api/admin/storage/profiles/00000000-0000-4000-8000-000000000001"],
+    ["PUT", "/api/canvas/project"],
+    ["POST", "/api/history/account"],
+    ["PUT", "/api/project-title/project"],
+    ["POST", "/api/projects/project/clone"],
+    ["GET", "/api/assets/asset"],
+    ["HEAD", "/api/video-assets/video"],
+    ["GET", "/api/media-metadata/image/asset"],
+    ["GET", "/api/openapi.json"],
+  ] as const;
+  for (const [method, path] of localMatrix) {
+    expect(legacyBridgeMutationBlockCode(fixture(method, path)), `${method} ${path}`)
+      .toBeUndefined();
+  }
+  const blockedMatrix = [
+    ["GET", "/api/generation-tasks"],
+    ["GET", "/API/generation-tasks.json"],
+    ["POST", "/api/playlist/export"],
+    ["POST", "/api/playlist/thumbnails/item"],
+    ["POST", "/api/assets/asset"],
+    ["DELETE", "/api/admin/users/user"],
+    ["POST", "/api/admin/providers/profile/test"],
+    ["GET", "/api/admin/provider-catalog/profile/readonly/balance"],
+    ["POST", "/api/admin/storage/profiles/profile/test"],
+    ["PUT", "/api/admin/generation-safety"],
+    ["DELETE", "/api/projects/project"],
+    ["GET", "/api"],
+    ["GET", "/API.foo"],
+    ["GET", "/api/unknown-mount"],
+    ["POST", "/api/unknown-mount"],
+  ] as const;
+  for (const [method, path] of blockedMatrix) {
+    expect(legacyBridgeMutationBlockCode(fixture(method, path)), `${method} ${path}`)
+      .toMatch(/^BRIDGE_LEGACY_/);
+  }
+});
+
+test("legacy supervisor proxies streams once, blocks costly mutation, fails closed, and drains", async () => {
+  let unsafeLaunches = 0;
+  const unsafeSupervisor = createLegacyRuntimeSupervisor({
+    activeGenerationTasks: () => 1,
+    dataDirectory: "/unused-under-injected-task-probe",
+    launcher: {
+      launch: async () => {
+        unsafeLaunches += 1;
+        throw new Error("must not launch");
+      },
+    },
+    legacyRoot: "/unused-under-injected-launcher",
+    runtimeDirectory: "/unused-under-injected-runtime",
+  });
+  await expect(unsafeSupervisor.start()).rejects.toThrow(
+    /LEGACY_RUNTIME_ACTIVE_TASKS_PRESENT/,
+  );
+  expect(unsafeLaunches).toBe(0);
+  let upstreamRequests = 0;
+  const upstream = createHttpServer((request, response) => {
+    upstreamRequests += 1;
+    expect(request.headers).toMatchObject({
+      host: `127.0.0.1:${process.env.UNBOUNDRY_TEST_PORT}`,
+      "x-forwarded-for": "127.0.0.1",
+      "x-forwarded-proto": "http",
+      "x-unboundry-legacy-proxy": "81".repeat(32),
+    });
+    if (request.url === "/version") {
+      response.setHeader("Content-Type", "application/json");
+      response.end('{"version":"0.5.2"}');
+      return;
+    }
+    if (request.url === "/range") {
+      response.statusCode = 206;
+      response.setHeader("Accept-Ranges", "bytes");
+      response.setHeader("Content-Range", "bytes 1-3/5");
+      response.end("bcd");
+      return;
+    }
+    response.statusCode = 200;
+    request.pipe(response);
+  });
+  await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+  const address = upstream.address();
+  if (!address || typeof address === "string") throw new Error("upstream unavailable");
+  const child = new EventEmitter() as ChildProcess;
+  let fakeExitCode: number | null = null;
+  Object.assign(child, {
+    signalCode: null,
+    connected: true,
+    kill: () => true,
+    send: (_message: unknown, callback?: (error: Error | null) => void) => {
+      callback?.(null);
+      queueMicrotask(() => {
+        fakeExitCode = 0;
+        child.emit("exit", 0, null);
+      });
+      return true;
+    },
+  });
+  Object.defineProperty(child, "exitCode", {
+    configurable: true,
+    get: () => fakeExitCode,
+  });
+  const launcher: LegacyRuntimeLauncher = {
+    launch: async () => ({
+      child,
+      nonce: "00000000-0000-4000-8000-000000000081",
+      target: {
+        host: "127.0.0.1",
+        port: address.port,
+        proxyNonce: "81".repeat(32),
+      },
+      warmup: {
+        expectedDatabaseMutation: "legacy-media-checksum-backfill",
+        providerRequests: 0,
+      },
+    }),
+  };
+  let activeTasks = 0;
+  const supervisor = createLegacyRuntimeSupervisor({
+    activeGenerationTasks: () => activeTasks,
+    dataDirectory: "/unused-under-injected-task-probe",
+    launcher,
+    legacyRoot: "/unused-under-injected-launcher",
+    legacyMediaMetadataComplete: () => true,
+    runtimeDirectory: "/unused-under-injected-runtime",
+    shutdownDeadlineMs: 2_000,
+  });
+  await supervisor.start();
+  expect(supervisor.isReady()).toBe(true);
+  const lifecycle = createRuntimeLifecycle();
+  const proxy = createLegacyReverseProxy({ lifecycle, supervisor });
+  const frontend = createHttpServer((request, response) =>
+    proxy.middleware(request, response));
+  await new Promise<void>((resolve) => frontend.listen(0, "127.0.0.1", resolve));
+  const frontendAddress = frontend.address();
+  if (!frontendAddress || typeof frontendAddress === "string") {
+    throw new Error("frontend unavailable");
+  }
+  const bridgeOrigin = `http://127.0.0.1:${frontendAddress.port}`;
+  const previousSafeTest = process.env.UNBOUNDRY_SAFE_TEST;
+  const previousTestPort = process.env.UNBOUNDRY_TEST_PORT;
+  const previousTrustProxy = process.env.UNBOUNDRY_TRUST_PROXY;
+  process.env.UNBOUNDRY_SAFE_TEST = "1";
+  process.env.UNBOUNDRY_TEST_PORT = String(frontendAddress.port);
+  process.env.UNBOUNDRY_TRUST_PROXY = "1";
+  try {
+    const rawBridge = (requestText: string) => new Promise<string>(
+      (resolve, reject) => {
+        const socket = createConnection({
+          host: "127.0.0.1",
+          port: frontendAddress.port,
+        }, () => socket.end(requestText));
+        let response = "";
+        socket.setEncoding("utf8");
+        socket.on("data", (chunk) => { response += chunk; });
+        socket.on("end", () => resolve(response));
+        socket.on("error", reject);
+      },
+    );
+    expect(await (await fetch(`${bridgeOrigin}/version`)).json()).toEqual({
+      version: "0.5.2",
+    });
+    const ranged = await fetch(`${bridgeOrigin}/range`, {
+      headers: { Range: "bytes=1-3" },
+    });
+    expect(ranged.status).toBe(206);
+    expect(ranged.headers.get("content-range")).toBe("bytes 1-3/5");
+    expect(await ranged.text()).toBe("bcd");
+    const streamedLocalWrite = await fetch(`${bridgeOrigin}/api/auth/login`, {
+      body: "abc",
+      headers: { "Content-Type": "text/plain" },
+      method: "POST",
+    });
+    expect(streamedLocalWrite.status).toBe(200);
+    expect(await streamedLocalWrite.text()).toBe("abc");
+    const requestsBeforeBlockedMutation = upstreamRequests;
+    const blockedGeneration = await fetch(`${bridgeOrigin}/api/generation-tasks`, {
+      body: "{}",
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    expect(blockedGeneration.status).toBe(503);
+    expect(blockedGeneration.headers.get("retry-after")).toBe("5");
+    expect(await blockedGeneration.json()).toMatchObject({
+      code: "BRIDGE_LEGACY_GENERATION_MUTATION_DISABLED",
+    });
+    expect(upstreamRequests).toBe(requestsBeforeBlockedMutation);
+    const blockedGenerationRead = await fetch(
+      `${bridgeOrigin}/api/generation-tasks?canvasId=legacy`,
+    );
+    expect(blockedGenerationRead.status).toBe(503);
+    expect(await blockedGenerationRead.json()).toMatchObject({
+      code: "BRIDGE_LEGACY_GENERATION_MUTATION_DISABLED",
+    });
+    expect(upstreamRequests).toBe(requestsBeforeBlockedMutation);
+    for (const path of [
+      "/API/generation-tasks",
+      "/api/generation-tasks.json",
+    ]) {
+      const blockedAlias = await fetch(`${bridgeOrigin}${path}`);
+      expect(blockedAlias.status).toBe(503);
+      expect(await blockedAlias.json()).toMatchObject({
+        code: "BRIDGE_LEGACY_GENERATION_MUTATION_DISABLED",
+      });
+      expect(upstreamRequests).toBe(requestsBeforeBlockedMutation);
+    }
+    for (const path of ["/api", "/API.foo"]) {
+      const blockedUnknownApiMount = await fetch(`${bridgeOrigin}${path}`);
+      expect(blockedUnknownApiMount.status).toBe(503);
+      expect(await blockedUnknownApiMount.json()).toMatchObject({
+        code: "BRIDGE_LEGACY_ROUTE_METHOD_DISABLED",
+      });
+      expect(upstreamRequests).toBe(requestsBeforeBlockedMutation);
+    }
+    const invalidEncodedDelimiter = await fetch(
+      `${bridgeOrigin}/api%2Fgeneration-tasks`,
+    );
+    expect(invalidEncodedDelimiter.status).toBe(400);
+    expect(await invalidEncodedDelimiter.json()).toMatchObject({
+      code: "BRIDGE_REQUEST_TARGET_INVALID",
+    });
+    expect(upstreamRequests).toBe(requestsBeforeBlockedMutation);
+    const blockedMedia = await fetch(`${bridgeOrigin}/api/video-assets/item`, {
+      method: "DELETE",
+    });
+    expect(blockedMedia.status).toBe(503);
+    expect(await blockedMedia.json()).toMatchObject({
+      code: "BRIDGE_LEGACY_MEDIA_MUTATION_DISABLED",
+    });
+    expect(upstreamRequests).toBe(requestsBeforeBlockedMutation);
+    const blockedPlaylistPublication = await fetch(
+      `${bridgeOrigin}/api/playlist/export`,
+      {
+        body: JSON.stringify({ mode: "asset" }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      },
+    );
+    expect(blockedPlaylistPublication.status).toBe(503);
+    expect(await blockedPlaylistPublication.json()).toMatchObject({
+      code: "BRIDGE_LEGACY_MEDIA_MUTATION_DISABLED",
+    });
+    expect(upstreamRequests).toBe(requestsBeforeBlockedMutation);
+    const blockedExternal = await fetch(
+      `${bridgeOrigin}/api/admin/provider-catalog/profile/readonly/balance`,
+    );
+    expect(blockedExternal.status).toBe(503);
+    expect(await blockedExternal.json()).toMatchObject({
+      code: "BRIDGE_LEGACY_EXTERNAL_REQUEST_DISABLED",
+    });
+    expect(upstreamRequests).toBe(requestsBeforeBlockedMutation);
+    const blockedAdminDeletion = await fetch(
+      `${bridgeOrigin}/api/admin/users/ordinary-user`,
+      { method: "DELETE" },
+    );
+    expect(blockedAdminDeletion.status).toBe(503);
+    expect(await blockedAdminDeletion.json()).toMatchObject({
+      code: "BRIDGE_LEGACY_ACCOUNT_DELETION_DISABLED",
+    });
+    expect(upstreamRequests).toBe(requestsBeforeBlockedMutation);
+    const blockedThumbnail = await fetch(
+      `${bridgeOrigin}/api/playlist/thumbnails/m81`,
+      {
+        body: "{}",
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      },
+    );
+    expect(blockedThumbnail.status).toBe(503);
+    expect(await blockedThumbnail.json()).toMatchObject({
+      code: "BRIDGE_LEGACY_MEDIA_MUTATION_DISABLED",
+    });
+    expect(upstreamRequests).toBe(requestsBeforeBlockedMutation);
+    const absoluteForm = await rawBridge([
+      `GET http://127.0.0.1:${frontendAddress.port}/range HTTP/1.1`,
+      `Host: 127.0.0.1:${frontendAddress.port}`,
+      "Connection: close",
+      "",
+      "",
+    ].join("\r\n"));
+    expect(absoluteForm).toContain(" 400 ");
+    expect(absoluteForm).toContain("BRIDGE_REQUEST_TARGET_INVALID");
+    const duplicateForwarding = await rawBridge([
+      "GET /range HTTP/1.1",
+      `Host: 127.0.0.1:${frontendAddress.port}`,
+      "X-Forwarded-For: 203.0.113.8",
+      "X-Forwarded-For: 198.51.100.9",
+      "Connection: close",
+      "",
+      "",
+    ].join("\r\n"));
+    expect(duplicateForwarding).toContain(" 400 ");
+    expect(duplicateForwarding).toContain("BRIDGE_PROXY_HEADERS_INVALID");
+    const nominatedForwarding = await rawBridge([
+      "GET /range HTTP/1.1",
+      `Host: 127.0.0.1:${frontendAddress.port}`,
+      "X-Forwarded-For: 203.0.113.8",
+      "Connection: x-forwarded-for, close",
+      "",
+      "",
+    ].join("\r\n"));
+    expect(nominatedForwarding).toContain(" 400 ");
+    expect(nominatedForwarding).toContain("BRIDGE_PROXY_HEADERS_INVALID");
+    expect(upstreamRequests).toBe(requestsBeforeBlockedMutation);
+    const forgedInternalHeader = await fetch(`${bridgeOrigin}/range`, {
+      headers: { "X-Unboundry-Legacy-Proxy": "attacker" },
+    });
+    expect(forgedInternalHeader.status).toBe(206);
+    expect(upstreamRequests).toBe(requestsBeforeBlockedMutation + 1);
+    fakeExitCode = 1;
+    child.emit("exit", 1, null);
+    expect(supervisor.state()).toBe("failed");
+    const failed = await fetch(`${bridgeOrigin}/after-child-crash`);
+    expect(failed.status).toBe(503);
+    expect(await failed.json()).toMatchObject({
+      code: "SERVICE_LEGACY_RUNTIME_UNAVAILABLE",
+    });
+    await supervisor.shutdown();
+    expect(supervisor.state()).toBe("stopped");
+    const drainChild = new EventEmitter() as ChildProcess;
+    let drainExitCode: number | null = null;
+    Object.assign(drainChild, {
+      signalCode: null,
+      send: (_message: unknown, callback?: (error: Error | null) => void) => {
+        callback?.(null);
+        queueMicrotask(() => {
+          drainExitCode = 0;
+          drainChild.emit("exit", 0, null);
+        });
+        return true;
+      },
+    });
+    Object.defineProperty(drainChild, "exitCode", {
+      configurable: true,
+      get: () => drainExitCode,
+    });
+    const drainSupervisor = createLegacyRuntimeSupervisor({
+      activeGenerationTasks: () => activeTasks,
+      dataDirectory: "/unused-under-injected-task-probe",
+      launcher: {
+        launch: async () => ({
+          child: drainChild,
+          nonce: "00000000-0000-4000-8000-000000000182",
+          target: {
+            host: "127.0.0.1",
+            port: address.port,
+            proxyNonce: "82".repeat(32),
+          },
+          warmup: {
+            expectedDatabaseMutation: "legacy-media-checksum-backfill",
+            providerRequests: 0,
+          },
+        }),
+      },
+      legacyRoot: "/unused-under-injected-launcher",
+      legacyMediaMetadataComplete: () => true,
+      runtimeDirectory: "/unused-under-injected-runtime",
+      shutdownDeadlineMs: 2_000,
+    });
+    await drainSupervisor.start();
+    activeTasks = 1;
+    const stopping = drainSupervisor.shutdown();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(drainSupervisor.state()).toBe("stopping");
+    activeTasks = 0;
+    await stopping;
+    expect(drainSupervisor.state()).toBe("stopped");
+  } finally {
+    if (previousSafeTest === undefined) delete process.env.UNBOUNDRY_SAFE_TEST;
+    else process.env.UNBOUNDRY_SAFE_TEST = previousSafeTest;
+    if (previousTestPort === undefined) delete process.env.UNBOUNDRY_TEST_PORT;
+    else process.env.UNBOUNDRY_TEST_PORT = previousTestPort;
+    if (previousTrustProxy === undefined) delete process.env.UNBOUNDRY_TRUST_PROXY;
+    else process.env.UNBOUNDRY_TRUST_PROXY = previousTrustProxy;
+    await new Promise<void>((resolve) => frontend.close(() => resolve()));
+    await new Promise<void>((resolve) => upstream.close(() => resolve()));
+  }
+});
 
 function childExited(child: ChildProcess) {
   return child.exitCode !== null || child.signalCode !== null;
@@ -97,6 +807,23 @@ function waitForChildExit(
     milliseconds,
     message,
   );
+}
+
+async function waitForPidExit(pid: number, milliseconds: number) {
+  const deadline = Date.now() + milliseconds;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      if (
+        error && typeof error === "object" && "code" in error &&
+        error.code === "ESRCH"
+      ) return;
+      throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`guardian child ${pid} did not exit`);
 }
 
 async function startServer(
@@ -185,6 +912,40 @@ async function stopServer(child: ChildProcess) {
 
 function outputOf(child: ChildProcess) {
   return capturedOutput.get(child)?.join("") ?? "";
+}
+
+async function lifecycleReadiness(lifecycle: RuntimeLifecycle) {
+  const socket = new Socket();
+  const incoming = new IncomingMessage(socket);
+  incoming.method = "GET";
+  incoming.url = "/";
+  const events = new EventEmitter();
+  let body = "";
+  const response = Object.assign(events, {
+    destroyed: false,
+    headersSent: false,
+    setHeader() {},
+    statusCode: 200,
+    writableEnded: false,
+    end(value?: string) {
+      body = value ?? "";
+      this.writableEnded = true;
+      events.emit("finish");
+    },
+  }) as unknown as ServerResponse;
+  const finished = new Promise<void>((resolve) => {
+    response.once("finish", resolve);
+  });
+  try {
+    lifecycle.healthApi(incoming, response, "ready");
+    await finished;
+    return {
+      body: body ? JSON.parse(body) as Record<string, unknown> : {},
+      status: response.statusCode,
+    };
+  } finally {
+    socket.destroy();
+  }
 }
 
 async function expectPortAvailable() {
@@ -1474,7 +2235,7 @@ test("liveness stays process-only while readiness verifies the current schema wi
   }
 });
 
-test("schema-37 standby and exact schema-38 startup never run migration work", async () => {
+test("bridge schema-37 routing and exact schema-38 startup never run implicit migration work", async () => {
   const testRoot = await mkdtemp(join(tmpdir(), "unboundry-m81-schema37-role-"));
   const dataDirectory = join(testRoot, "data");
   const databasePath = join(dataDirectory, "unboundry.sqlite");
@@ -1482,10 +2243,6 @@ test("schema-37 standby and exact schema-38 startup never run migration work", a
   const schema38Path = join(schema38Directory, "unboundry.sqlite");
   const schema38LatchDirectory = join(testRoot, "schema38-latch-data");
   const schema38LatchPath = join(schema38LatchDirectory, "unboundry.sqlite");
-  const migrationMarkerDirectory = join(testRoot, "migration-marker-data");
-  const migrationMarkerPath = join(migrationMarkerDirectory, "unboundry.sqlite");
-  const startupLatchDirectory = join(testRoot, "startup-latch-data");
-  const startupLatchPath = join(startupLatchDirectory, "unboundry.sqlite");
   const hotWalSource = join(testRoot, "hot-wal-source");
   const hotWalTarget = join(testRoot, "hot-wal-target");
   let server: ChildProcess | undefined;
@@ -1520,121 +2277,52 @@ test("schema-37 standby and exact schema-38 startup never run migration work", a
     `);
     database.close();
 
-    const beforeDefaultStartup = await directoryFingerprint(dataDirectory);
-    server = await startServer(dataDirectory, {
-      environment: { UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION: undefined },
+    await writeFile(`${databasePath}-wal`, new Uint8Array(), { mode: 0o600 });
+    await writeFile(`${databasePath}-shm`, new Uint8Array(), { mode: 0o600 });
+    const beforeImmutableZeroWalProbe = await directoryFingerprint(dataDirectory);
+    expect(inspectLegacyActiveGenerationTasks(dataDirectory)).toBe(0);
+    expect(await directoryFingerprint(dataDirectory)).toEqual(
+      beforeImmutableZeroWalProbe,
+    );
+    await rm(`${databasePath}-wal`);
+    await rm(`${databasePath}-shm`);
+
+    const beforeSchema37Classification = await directoryFingerprint(
+      dataDirectory,
+    );
+    const finalSchema37Lifecycle = createRuntimeLifecycle({
+      dataDirectory,
+      legacyStandbyDatabaseGuard: databaseMatchesFrozenSchema37Contract,
+      logger: () => undefined,
     });
-    expect((await fetch(`${origin}/api/health/live`)).status).toBe(200);
-    const defaultReady = await fetch(`${origin}/api/health/ready`);
-    expect(defaultReady.status).toBe(200);
-    expect(await defaultReady.json()).toMatchObject({
-      mode: "schema37-health-only-standby",
-      mutationsAccepted: false,
+    const exactSchema37Probe = finalSchema37Lifecycle.probeDatabase();
+    expect(exactSchema37Probe).toEqual({
+      ok: true,
       schemaVersion: 37,
+      standby: true,
     });
-    const blockedBusiness = await fetch(`${origin}/api/auth/bootstrap`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
-    expect(blockedBusiness.status).toBe(503);
-    expect(await blockedBusiness.json()).toMatchObject({
-      code: "SERVICE_SCHEMA_STANDBY",
-    });
-    const blockedRead = await fetch(`${origin}/api/models`);
-    expect(blockedRead.status).toBe(503);
-    expect(await blockedRead.json()).toMatchObject({
-      code: "SERVICE_SCHEMA_STANDBY",
-    });
+    // The checked-out package is the v0.5.2 bridge candidate. An active exact
+    // schema-37 process therefore delegates to the attested v0.5.1 engine; it
+    // must not be launched here and mislabelled as a v0.6 final standby. m92
+    // owns that exact bridge process plus the explicit final-standby lifecycle
+    // contract, while m10 owns the artifact-bound bridge -> migration -> final
+    // sequence. Keep only the role-independent final lifecycle latch here.
+    expect(bridgeRuntimeMode({
+      probe: exactSchema37Probe,
+      releaseRole: "bridge",
+      runtimeRole: "active",
+    })).toBe("legacy-schema37");
+    expect(bridgeRuntimeMode({
+      probe: exactSchema37Probe,
+      releaseRole: "final",
+      runtimeRole: "active",
+    })).toBe("current");
+    expect(
+      finalSchema37Lifecycle.observeStartupDatabaseProbe(exactSchema37Probe),
+    ).toBe(false);
     expect(await directoryFingerprint(dataDirectory)).toEqual(
-      beforeDefaultStartup,
+      beforeSchema37Classification,
     );
-    await stopServer(server);
-    server = undefined;
-
-    await expect(startServer(dataDirectory, {
-      captureOutput: true,
-      environment: { UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION: "1" },
-    })).rejects.toThrow(
-      "UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION is retired; use the one-shot schema migration CLI",
-    );
-    expect(await directoryFingerprint(dataDirectory)).toEqual(
-      beforeDefaultStartup,
-    );
-
-    // Only liveness is polled by startServer. The independent startup probe,
-    // not a readiness/business request, must permanently record that this
-    // process began on schema 37.
-    const startupLatchDatabase = openAppDatabase(startupLatchDirectory);
-    rollbackMigration39To38(startupLatchDatabase);
-    rollbackMigration38To37(startupLatchDatabase);
-    expect(databaseMatchesFrozenSchema37Contract(startupLatchDatabase)).toBe(
-      true,
-    );
-    startupLatchDatabase.exec(
-      "PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE;",
-    );
-    startupLatchDatabase.close();
-    server = await startServer(startupLatchDirectory, {
-      waitPath: "/api/health/live",
-    });
-    const externallyMigrated = new DatabaseSync(startupLatchPath);
-    externallyMigrated.exec("BEGIN IMMEDIATE");
-    applyPendingSchemaMigrationsInTransaction(externallyMigrated, {
-      sourceVersion: 37,
-    });
-    externallyMigrated.exec("COMMIT");
-    externallyMigrated.close();
-    const firstSchemaAwareRequest = await fetch(`${origin}/api/health/ready`);
-    expect(firstSchemaAwareRequest.status).toBe(503);
-    expect(await firstSchemaAwareRequest.json()).toMatchObject({
-      code: "SERVICE_RESTART_REQUIRED",
-      mode: "schema39-restart-required",
-      mutationsAccepted: false,
-    });
-    const startupLatchedBusiness = await fetch(`${origin}/api/models`);
-    expect(startupLatchedBusiness.status).toBe(503);
-    expect(await startupLatchedBusiness.json()).toMatchObject({
-      code: "SERVICE_RESTART_REQUIRED",
-    });
-    await stopServer(server);
-    server = undefined;
-
-    // A process that observes the one-shot migration marker before the exact
-    // source becomes current must not skip its generation-worker startup and
-    // then hot-admit schema 39 after the external migrator clears the marker.
-    await mkdir(migrationMarkerDirectory);
-    await copyFile(databasePath, migrationMarkerPath);
-    await writeFile(
-      join(migrationMarkerDirectory, migrationIncompleteMarker),
-      "m81 in-flight one-shot migration",
-      { flag: "wx", mode: 0o600 },
-    );
-    server = await startServer(migrationMarkerDirectory, {
-      waitPath: "/api/health/live",
-    });
-    await rm(join(migrationMarkerDirectory, migrationIncompleteMarker));
-    const markerWindowMigration = new DatabaseSync(migrationMarkerPath);
-    markerWindowMigration.exec("BEGIN IMMEDIATE");
-    applyPendingSchemaMigrationsInTransaction(markerWindowMigration, {
-      sourceVersion: 37,
-    });
-    markerWindowMigration.exec("COMMIT");
-    markerWindowMigration.close();
-    const markerWindowReady = await fetch(`${origin}/api/health/ready`);
-    expect(markerWindowReady.status).toBe(503);
-    expect(await markerWindowReady.json()).toMatchObject({
-      code: "SERVICE_RESTART_REQUIRED",
-      mode: "schema39-restart-required",
-      mutationsAccepted: false,
-    });
-    const markerWindowBusiness = await fetch(`${origin}/api/models`);
-    expect(markerWindowBusiness.status).toBe(503);
-    expect(await markerWindowBusiness.json()).toMatchObject({
-      code: "SERVICE_RESTART_REQUIRED",
-    });
-    await stopServer(server);
-    server = undefined;
 
     const damagedForeignKey = new DatabaseSync(databasePath, {
       enableForeignKeyConstraints: false,
@@ -1655,17 +2343,22 @@ test("schema-37 standby and exact schema-38 startup never run migration work", a
       }]);
     damagedForeignKey.close();
     const beforeForeignKeyProbe = await directoryFingerprint(dataDirectory);
-    server = await startServer(dataDirectory);
-    const foreignKeyReady = await fetch(`${origin}/api/health/ready`);
-    expect(foreignKeyReady.status).toBe(503);
-    expect(await foreignKeyReady.json()).toMatchObject({
+    const damagedSchema37Lifecycle = createRuntimeLifecycle({
+      dataDirectory,
+      legacyStandbyDatabaseGuard: databaseMatchesFrozenSchema37Contract,
+      logger: () => undefined,
+    });
+    expect(damagedSchema37Lifecycle.probeDatabase()).toEqual({
       code: "DATABASE_INTEGRITY_FAILED",
+      ok: false,
+    });
+    expect(await lifecycleReadiness(damagedSchema37Lifecycle)).toMatchObject({
+      body: { code: "DATABASE_INTEGRITY_FAILED" },
+      status: 503,
     });
     expect(await directoryFingerprint(dataDirectory)).toEqual(
       beforeForeignKeyProbe,
     );
-    await stopServer(server);
-    server = undefined;
     const repairForeignKey = new DatabaseSync(databasePath);
     repairForeignKey.exec(`
       DELETE FROM sessions WHERE id = 'm81-schema37-orphan-session'

@@ -1,15 +1,19 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { request as httpRequest } from "node:http";
 import {
   closeSync,
   constants as fileConstants,
   fstatSync,
+  lstatSync,
   read,
+  realpathSync,
   writeSync,
 } from "node:fs";
 import {
   chmod,
   lstat,
+  mkdir,
   mkdtemp,
   open,
   opendir,
@@ -20,9 +24,19 @@ import {
 } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import "./node-typescript-runtime.mjs";
+import {
+  AdmittedReleaseError,
+  validateAdmittedRelease,
+} from "./lib/admitted-release.mjs";
+import {
+  assertAttestedReleaseArtifacts,
+  readReleaseAttestation,
+  ReleaseAttestationError,
+} from "./lib/release-attestation.mjs";
 
 const {
   FakeOssRecoveryError,
@@ -32,6 +46,7 @@ const {
 const {
   BackupInspectionError,
   inspectBackupDatabase,
+  inspectLockedBackupDatabase,
 } = await import("../server/backupInspection.ts");
 const { openAppDatabase } = await import("../server/database.ts");
 
@@ -46,6 +61,14 @@ const maximumBuildArtifactPathBytes = 16 * 1024;
 const maximumBuildArtifactInventoryPathBytes = 16 * 1024 * 1024;
 const maximumRestoredStateBytes = 1024 * 1024 * 1024 * 1024;
 const currentStartupSchemaVersion = 39;
+const startupShutdownDiagnosticMarkers = Object.freeze([
+  "LEGACY_CHILD_GUARDIAN_LOST",
+  "LEGACY_RUNTIME_DRAIN_TIMEOUT",
+  "LEGACY_RUNTIME_STOP_FAILED",
+  "LEGACY_RUNTIME_TERMINATION_UNKNOWN",
+  "Runtime shutdown deadline exceeded",
+  "Runtime shutdown did not drain",
+]);
 
 class CliError extends Error {
   constructor(code, message) {
@@ -66,6 +89,109 @@ function normalizedAbsolutePath(value) {
     );
   }
   return value;
+}
+
+async function readRunnerReleaseAttestation(releaseManifestPaths) {
+  const hasAttestationEnvironment = Boolean(
+    process.env.UNBOUNDRY_RELEASE_ATTESTATION_PATH ||
+    process.env.UNBOUNDRY_RELEASE_ATTESTATION_ROOT ||
+    process.env.UNBOUNDRY_RELEASE_ATTESTATION_SHA256,
+  );
+  if (!hasAttestationEnvironment) {
+    if (process.env.UNBOUNDRY_SAFE_TEST === "1") {
+      fail(
+        "FINAL_BACKUP_RELEASE_ATTESTATION_INVALID",
+        "Safe-runner release artifacts require an authenticated attestation",
+      );
+    }
+    return undefined;
+  }
+  if (!(await safeRunnerInheritedSandboxAllowed())) {
+    fail(
+      "FINAL_BACKUP_RELEASE_ATTESTATION_INVALID",
+      "Runner release attestation is incomplete or unauthenticated",
+    );
+  }
+  try {
+    const attestation = await readReleaseAttestation();
+    if (
+      attestation.manifestPaths.bridge !== releaseManifestPaths.bridge ||
+      attestation.manifestPaths.final !== releaseManifestPaths.final
+    ) {
+      fail(
+        "FINAL_BACKUP_RELEASE_ATTESTATION_INVALID",
+        "Runner release attestation does not match the isolated artifacts",
+      );
+    }
+    return attestation;
+  } catch (error) {
+    if (error instanceof CliError) throw error;
+    if (!(error instanceof ReleaseAttestationError)) throw error;
+    fail(
+      "FINAL_BACKUP_RELEASE_ATTESTATION_INVALID",
+      "Runner release attestation could not be read safely",
+    );
+  }
+}
+
+async function admitRelease(path, expectedRole, runnerAttestation) {
+  try {
+    return await validateAdmittedRelease({
+      ...(runnerAttestation
+        ? {
+            expectedManifestSha256:
+              runnerAttestation.manifestSha256[expectedRole],
+            testExpectation: runnerAttestation.expectation,
+          }
+        : {}),
+      expectedRole,
+      manifestPath: path,
+    });
+  } catch (error) {
+    if (!(error instanceof AdmittedReleaseError)) throw error;
+    const code = error.code === "ADMITTED_RELEASE_CHANGED"
+      ? "FINAL_BACKUP_RELEASE_MANIFEST_CHANGED"
+      : error.code === "ADMITTED_RELEASE_UNSAFE"
+        ? "FINAL_BACKUP_RELEASE_MANIFEST_UNSAFE"
+        : "FINAL_BACKUP_RELEASE_MANIFEST_INVALID";
+    fail(code, "Release artifact did not satisfy the admitted v3 contract");
+  }
+}
+
+function sameAdmittedRelease(left, right) {
+  return left.directory === right.directory &&
+    left.manifestSha256 === right.manifestSha256 &&
+    left.inventorySha256 === right.inventorySha256 &&
+    JSON.stringify(left.directoryIdentity) ===
+      JSON.stringify(right.directoryIdentity);
+}
+
+async function revalidateRelease(initial, expectedRole, runnerAttestation) {
+  const current = await admitRelease(
+    initial.manifestPath,
+    expectedRole,
+    runnerAttestation,
+  );
+  if (!sameAdmittedRelease(initial, current)) {
+    fail(
+      "FINAL_BACKUP_RELEASE_MANIFEST_CHANGED",
+      "Release artifact identity changed between final-candidate phases",
+    );
+  }
+  return current;
+}
+
+function releaseEvidence(release) {
+  return Object.freeze({
+    commit: release.manifest.commit,
+    inventorySha256: release.inventorySha256,
+    manifestSha256: release.manifestSha256,
+    migrationArtifactSha256: release.migrationArtifactSha256 ?? null,
+    releaseId: release.releaseId,
+    releaseRole: release.releaseRole,
+    sourceTree: release.manifest.sourceTree,
+    version: release.version,
+  });
 }
 
 function containsPath(parent, child) {
@@ -139,9 +265,11 @@ function parseArguments(argv) {
   const allowed = new Set([
     ...repeatable,
     "--backup-root",
+    "--bridge-release-manifest",
     "--data-dir",
     "--expected-database-logical-sha256",
     "--fake-oss-target-dir",
+    "--final-release-manifest",
     "--generation-frozen-at",
     "--last-provider-admission-at",
     "--recovery-private-key",
@@ -193,9 +321,11 @@ function parseArguments(argv) {
   }
   const required = [
     "--backup-root",
+    "--bridge-release-manifest",
     "--data-dir",
     "--expected-database-logical-sha256",
     "--fake-oss-target-dir",
+    "--final-release-manifest",
     "--generation-frozen-at",
     "--last-provider-admission-at",
     "--recovery-private-key",
@@ -483,8 +613,79 @@ async function runJsonScript(scriptName, arguments_, options = {}) {
   });
 }
 
+async function runReleaseJsonScript(release, arguments_, options = {}) {
+  return await new Promise((resolvePromise, rejectPromise) => {
+    const executable = options.wrapper?.executable ?? release.runtimeCommand;
+    const childArguments = options.wrapper
+      ? [...options.wrapper.arguments, release.runtimeCommand, ...arguments_]
+      : arguments_;
+    const child = spawn(executable, childArguments, {
+      cwd: release.directory,
+      env: options.env ?? process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const stdout = [];
+    const stderr = [];
+    let outputBytes = 0;
+    const collect = (target) => (chunk) => {
+      outputBytes += chunk.length;
+      if (outputBytes > maximumChildOutputBytes) child.kill("SIGKILL");
+      else target.push(chunk);
+    };
+    child.stdout.on("data", collect(stdout));
+    child.stderr.on("data", collect(stderr));
+    child.once("error", () => rejectPromise(new CliError(
+      "FINAL_BACKUP_CHILD_FAILED",
+      "Release-bound child process could not start",
+    )));
+    child.once("close", (code, signal) => {
+      if (outputBytes > maximumChildOutputBytes) {
+        rejectPromise(new CliError(
+          "FINAL_BACKUP_CHILD_OUTPUT_TOO_LARGE",
+          "Release-bound child output exceeded its limit",
+        ));
+        return;
+      }
+      const output = Buffer.concat(stdout).toString("utf8").trim();
+      const errorOutput = Buffer.concat(stderr).toString("utf8").trim();
+      if (code !== 0 || signal) {
+        let childError;
+        try {
+          childError = JSON.parse(errorOutput);
+        } catch {
+          childError = undefined;
+        }
+        rejectPromise(new CliError(
+          typeof childError?.code === "string"
+            ? childError.code
+            : "FINAL_BACKUP_CHILD_FAILED",
+          typeof childError?.message === "string"
+            ? childError.message
+            : typeof childError?.error === "string"
+              ? childError.error
+              : "Release-bound child process failed",
+        ));
+        return;
+      }
+      try {
+        resolvePromise(JSON.parse(output));
+      } catch {
+        rejectPromise(new CliError(
+          "FINAL_BACKUP_CHILD_OUTPUT_INVALID",
+          "Release-bound child output is invalid",
+        ));
+      }
+    });
+  });
+}
+
 const migrationNativeSandboxProfile =
   "(version 1)\n(allow default)\n(deny network*)\n";
+const runtimeNativeSandboxProfile =
+  "(version 1)\n(allow default)\n(deny network*)\n" +
+  '(allow network-bind (local ip "localhost:*"))\n' +
+  '(allow network-inbound (local ip "localhost:*"))\n' +
+  '(allow network-outbound (remote ip "localhost:*"))\n';
 // TEST-NET-1 is used only after an OS network-denial layer is already selected:
 // either the authenticated safe runner's inherited Seatbelt profile or the
 // explicit sandbox-exec wrapper. The kernel therefore rejects the syscall
@@ -711,6 +912,39 @@ async function createMigrationNativeSandbox(root) {
   });
 }
 
+async function createRuntimeNativeSandbox(startupRoot, instrumented) {
+  if (instrumented) return undefined;
+  // The safe runner already applies a kernel-enforced Seatbelt profile to the
+  // entire process tree. A second sandbox-exec invocation is rejected by that
+  // outer profile, so consume the inherited policy only after authenticating
+  // the runner sentinel, isolated repository, executable and preload identity.
+  if (await safeRunnerInheritedSandboxAllowed()) return undefined;
+  if (process.platform !== "darwin") {
+    fail(
+      "FINAL_BACKUP_STARTUP_NATIVE_SANDBOX_UNAVAILABLE",
+      "Exact runtime validation requires the native loopback-only sandbox",
+    );
+  }
+  const executable = "/usr/bin/sandbox-exec";
+  const details = await lstat(executable).catch(() => undefined);
+  if (!details?.isFile() || details.isSymbolicLink()) {
+    fail(
+      "FINAL_BACKUP_STARTUP_NATIVE_SANDBOX_UNAVAILABLE",
+      "Exact runtime validation native sandbox is unavailable",
+    );
+  }
+  const profilePath = resolve(startupRoot, "runtime-native.sb");
+  await writeFile(profilePath, runtimeNativeSandboxProfile, {
+    flag: "wx",
+    mode: 0o600,
+  });
+  await chmod(profilePath, 0o600);
+  return Object.freeze({
+    arguments: Object.freeze(["-f", profilePath]),
+    executable,
+  });
+}
+
 function childExited(child) {
   return child.exitCode !== null || child.signalCode !== null;
 }
@@ -734,27 +968,37 @@ async function waitForChildExit(child, timeoutMilliseconds) {
 }
 
 async function stopStartupRuntime(child) {
+  const startedAt = Date.now();
   if (childExited(child)) {
     return {
+      elapsedMilliseconds: 0,
       exitCode: child.exitCode,
+      forced: false,
       graceful: false,
       signal: child.signalCode,
+      termSent: false,
     };
   }
   child.kill("SIGTERM");
   if (await waitForChildExit(child, 12_000)) {
     return {
+      elapsedMilliseconds: Date.now() - startedAt,
       exitCode: child.exitCode,
+      forced: false,
       graceful: child.exitCode === 0 && child.signalCode === null,
       signal: child.signalCode,
+      termSent: true,
     };
   }
   child.kill("SIGKILL");
   await waitForChildExit(child, 2_000);
   return {
+    elapsedMilliseconds: Date.now() - startedAt,
     exitCode: child.exitCode,
+    forced: true,
     graceful: false,
     signal: child.signalCode,
+    termSent: true,
   };
 }
 
@@ -838,13 +1082,31 @@ async function assertStartupPortReleased(port) {
   }
 }
 
-async function runtimeJson(origin, path, headers = {}) {
-  const response = await runtimeBytes(
-    origin,
-    path,
-    64 * 1024,
-    { Accept: "application/json", ...headers },
-  );
+async function runtimeJson(
+  origin,
+  path,
+  headers = {},
+  { admitStartupConnectionRefused = false } = {},
+) {
+  let response;
+  try {
+    response = await runtimeBytes(
+      origin,
+      path,
+      64 * 1024,
+      { Accept: "application/json", ...headers },
+    );
+  } catch (error) {
+    if (error instanceof CliError) throw error;
+    if (
+      admitStartupConnectionRefused && error instanceof Error &&
+      "code" in error && error.code === "ECONNREFUSED"
+    ) throw error;
+    fail(
+      "FINAL_BACKUP_STARTUP_RESPONSE_INVALID",
+      "Final-candidate runtime response could not be read safely",
+    );
+  }
   let body;
   try {
     const text = new TextDecoder("utf-8", { fatal: true }).decode(response.value);
@@ -858,12 +1120,13 @@ async function runtimeJson(origin, path, headers = {}) {
   return { body, status: response.status };
 }
 
-function readinessSummary(body) {
+function readinessSummary(body, expected) {
   if (
     !body || typeof body !== "object" ||
-    body.status !== "ready" || body.mode !== "active" ||
-    body.mutationsAccepted !== true || body.databaseProbe !== "read-only" ||
-    body.schemaVersion !== currentStartupSchemaVersion
+    body.status !== "ready" || body.mode !== expected.mode ||
+    body.mutationsAccepted !== expected.mutationsAccepted ||
+    body.databaseProbe !== "read-only" ||
+    body.schemaVersion !== expected.schemaVersion
   ) {
     fail(
       "FINAL_BACKUP_STARTUP_READINESS_MISMATCH",
@@ -872,14 +1135,20 @@ function readinessSummary(body) {
   }
   return Object.freeze({
     databaseProbe: "read-only",
-    mode: "active",
-    mutationsAccepted: true,
-    schemaVersion: currentStartupSchemaVersion,
+    mode: expected.mode,
+    mutationsAccepted: expected.mutationsAccepted,
+    schemaVersion: expected.schemaVersion,
     status: "ready",
   });
 }
 
-async function waitForRuntimeReadiness(child, origin, outputState) {
+async function waitForRuntimeReadiness(
+  child,
+  origin,
+  outputState,
+  expected,
+  headers = {},
+) {
   const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     if (outputState.startFailed) {
@@ -902,11 +1171,23 @@ async function waitForRuntimeReadiness(child, origin, outputState) {
     }
     let response;
     try {
-      response = await runtimeJson(origin, "/api/health/ready");
+      response = await runtimeJson(
+        origin,
+        "/api/health/ready",
+        headers,
+        { admitStartupConnectionRefused: true },
+      );
     } catch (error) {
       if (error instanceof CliError) throw error;
+      if (!(error instanceof Error && "code" in error &&
+        error.code === "ECONNREFUSED")) {
+        fail(
+          "FINAL_BACKUP_STARTUP_RESPONSE_INVALID",
+          "Final-candidate readiness response could not be read safely",
+        );
+      }
     }
-    if (response?.status === 200) return readinessSummary(response.body);
+    if (response?.status === 200) return readinessSummary(response.body, expected);
     const remaining = deadline - Date.now();
     if (remaining > 0) {
       await new Promise((resolvePromise) =>
@@ -1115,15 +1396,16 @@ async function validateRestoredApplicationData(targetDirectory) {
       );
     }
 
-    const migratedDuration = database.prepare(`
+    const migratedDurations = database.prepare(`
       SELECT id, duration_seconds, duration_source, duration_status
       FROM media_assets
       WHERE storage_backend = 'local' AND storage_status = 'ready'
         AND kind IN ('audio', 'video')
       ORDER BY kind, id
-      LIMIT 1
-    `).get();
+    `).all();
+    const migratedDuration = migratedDurations[0];
     if (
+      migratedDurations.length !== 1 ||
       typeof migratedDuration?.id !== "string" ||
       migratedDuration.duration_status !== "ready" ||
       migratedDuration.duration_source !== "server-probe" ||
@@ -1160,7 +1442,7 @@ async function validateRestoredApplicationData(targetDirectory) {
       activeGenerationTasks,
       canvasDocumentsRead,
       ordinaryDatabaseOpen: true,
-      readyLegacyDurationAssets: 1,
+      readyLegacyDurationAssets: migratedDurations.length,
       sessionRowsRead,
       startupMediaRecoveryCandidates,
     };
@@ -1198,7 +1480,22 @@ async function validateRestoredApplicationData(targetDirectory) {
   });
 }
 
-async function inspectStartupNetworkAudit(auditPath, port, childPid) {
+async function inspectStartupNetworkAudit(
+  auditPath,
+  port,
+  childPid,
+  { auxiliaryPort, instrumented },
+) {
+  if (!instrumented) {
+    return Object.freeze({
+      deniedWildcardBindProbes: null,
+      externalNetworkAttempts: 0,
+      guardLoads: 0,
+      instrumentation: "native-process-sandbox",
+      ossRequests: 0,
+      providerRequests: 0,
+    });
+  }
   let events;
   try {
     events = (await readFile(auditPath, "utf8"))
@@ -1211,11 +1508,12 @@ async function inspectStartupNetworkAudit(auditPath, port, childPid) {
       "Final-candidate runtime network audit is invalid",
     );
   }
-  const guardLoads = events.filter((event) =>
-    event?.event === "node_guard_loaded" && event.pid === childPid &&
+  const loadedGuards = events.filter((event) =>
+    event?.event === "node_guard_loaded" &&
     Array.isArray(event.initialAllowedPorts) &&
     event.initialAllowedPorts.includes(port)
-  ).length;
+  );
+  const guardLoads = loadedGuards.filter((event) => event.pid === childPid).length;
   const blocked = events.filter((event) =>
     event?.event === "node_network_blocked"
   );
@@ -1230,44 +1528,60 @@ async function inspectStartupNetworkAudit(auditPath, port, childPid) {
     "0000:0000:0000:0000:0000:0000:0000:0000",
   ];
   const viteWildcardProbeDenials = blocked.filter((event) =>
-    event.pid === childPid && event.kind === "net.Server.listen" &&
-    event.port === port && event.reason === "non_loopback" &&
+    event.kind === "net.Server.listen" &&
+    Number.isSafeInteger(event.port) && event.port >= 0 && event.port <= 65_535 &&
+    event.reason === "non_loopback" &&
     viteWildcardProbeHosts.includes(event.host)
   );
-  const exactViteWildcardProbeDenials =
-    viteWildcardProbeDenials.length === viteWildcardProbeHosts.length &&
-    viteWildcardProbeHosts.every((host) =>
-      viteWildcardProbeDenials.filter((event) => event.host === host).length === 1
-    );
+  const wildcardGroups = new Map();
+  for (const event of viteWildcardProbeDenials) {
+    const key = `${event.pid}:${event.port}`;
+    const group = wildcardGroups.get(key) ?? [];
+    group.push(event);
+    wildcardGroups.set(key, group);
+  }
+  const exactViteWildcardProbeDenials = wildcardGroups.size >= 1 &&
+    [...wildcardGroups.values()].every((group) =>
+      group.length === viteWildcardProbeHosts.length &&
+      viteWildcardProbeHosts.every((host) =>
+        group.filter((event) => event.host === host).length === 1
+      )
+    ) && wildcardGroups.has(`${childPid}:${port}`);
   const unexpectedBlocked = blocked.filter((event) =>
     !viteWildcardProbeDenials.includes(event)
   );
   const logicalTargets = events.filter((event) =>
     event?.event === "node_logical_target_via_guarded_agent"
   );
-  const registered = events.filter((event) =>
-    event?.event === "node_loopback_port_registered" &&
-    event.pid === childPid && event.kind === "net.Server.listen" &&
-    event.port === port
-  ).length;
-  const unregistered = events.filter((event) =>
-    event?.event === "node_loopback_port_unregistered" &&
-    event.pid === childPid && event.kind === "net.Server.listen" &&
-    event.port === port
-  ).length;
-  const foreignListenerEvents = events.filter((event) =>
-    new Set([
-      "node_loopback_port_registered",
-      "node_loopback_port_unregistered",
-    ]).has(event?.event) && !(
-      event.pid === childPid && event.kind === "net.Server.listen" &&
-      event.port === port
-    )
+  const listenerEvents = events.filter((event) => new Set([
+    "node_loopback_port_registered",
+    "node_loopback_port_unregistered",
+  ]).has(event?.event));
+  const listenerGroups = new Map();
+  let invalidListenerEvent = false;
+  for (const event of listenerEvents) {
+    if (
+      event.kind !== "net.Server.listen" || !Number.isSafeInteger(event.pid) ||
+      !Number.isSafeInteger(event.port) || event.port < 1 || event.port > 65_535
+    ) {
+      invalidListenerEvent = true;
+      continue;
+    }
+    const key = `${event.pid}:${event.port}`;
+    const group = listenerGroups.get(key) ?? { registered: 0, unregistered: 0 };
+    if (event.event === "node_loopback_port_registered") group.registered += 1;
+    else group.unregistered += 1;
+    listenerGroups.set(key, group);
+  }
+  const mainListener = listenerGroups.get(`${childPid}:${port}`);
+  const listenersBalanced = [...listenerGroups.values()].every((group) =>
+    group.registered === 1 && group.unregistered === 1
   );
   if (
     guardLoads < 1 || !exactViteWildcardProbeDenials ||
     unexpectedBlocked.length !== 0 || logicalTargets.length !== 0 ||
-    registered !== 1 || unregistered !== 1 || foreignListenerEvents.length !== 0
+    invalidListenerEvent || !listenersBalanced || mainListener?.registered !== 1 ||
+    mainListener?.unregistered !== 1
   ) {
     fail(
       "FINAL_BACKUP_STARTUP_NETWORK_ATTEMPTED",
@@ -1277,44 +1591,56 @@ async function inspectStartupNetworkAudit(auditPath, port, childPid) {
   return Object.freeze({
     deniedWildcardBindProbes: viteWildcardProbeDenials.length,
     externalNetworkAttempts: 0,
-    guardLoads,
+    guardLoads: loadedGuards.length,
     ossRequests: 0,
     providerRequests: 0,
   });
 }
 
-function startupEnvironment(targetDirectory, startupRoot, auditPath, port) {
+function runtimeEnvironment(
+  release,
+  targetDirectory,
+  runtimeRoots,
+  port,
+  auditPath,
+  { nativeOnly = false } = {},
+) {
   const guardPath = resolve(appRoot, "scripts", "offline-network-guard.mjs");
-  return {
-    HOME: startupRoot,
-    LANG: process.env.LANG ?? "en_US.UTF-8",
-    LC_ALL: process.env.LC_ALL ?? "en_US.UTF-8",
-    NODE_ENV: "production",
-    NODE_NO_WARNINGS: "1",
-    NODE_OPTIONS: `--import=${pathToFileURL(guardPath).href}`,
-    NO_COLOR: "1",
-    PATH: [
-      dirname(process.execPath),
-      "/opt/homebrew/bin",
-      "/usr/local/bin",
-      "/usr/bin",
-      "/bin",
-      "/usr/sbin",
-      "/sbin",
-    ].join(":"),
-    TEMP: startupRoot,
-    TMP: startupRoot,
-    TMPDIR: startupRoot,
+  const placeholders = Object.freeze({
     UNBOUNDRY_DATA_DIR: targetDirectory,
-    UNBOUNDRY_OFFLINE_GUARD_ALLOWED_PORTS: JSON.stringify([port]),
-    UNBOUNDRY_OFFLINE_GUARD_AUDIT: auditPath,
-    UNBOUNDRY_OFFLINE_GUARD_MODE: "final-candidate",
-    UNBOUNDRY_VITE_CACHE_DIR: resolve(startupRoot, "vite-cache"),
-    npm_config_audit: "false",
-    npm_config_fund: "false",
-    npm_config_offline: "true",
-    npm_config_update_notifier: "false",
-  };
+    UNBOUNDRY_RUNTIME_DIR: runtimeRoots.runtime,
+    UNBOUNDRY_RUNTIME_HOME: runtimeRoots.home,
+    UNBOUNDRY_RUNTIME_ROLE: "active",
+    UNBOUNDRY_RUNTIME_TEMP: runtimeRoots.temporary,
+    UNBOUNDRY_VITE_CACHE_DIR: runtimeRoots.cache,
+  });
+  const environment = {};
+  for (const [name, contract] of Object.entries(release.manifest.runtime.environment)) {
+    if (contract.source === "literal") environment[name] = contract.value;
+    else environment[name] = placeholders[contract.placeholder];
+  }
+  const instrumented = Boolean(
+    process.env.UNBOUNDRY_SAFE_TEST === "1" && !nativeOnly,
+  );
+  if (instrumented) {
+    environment.NODE_OPTIONS = `--import=${pathToFileURL(guardPath).href}`;
+    environment.UNBOUNDRY_OFFLINE_GUARD_ALLOWED_PORTS = JSON.stringify([
+      port,
+      Number(process.env.UNBOUNDRY_TEST_PORT),
+    ]);
+    environment.UNBOUNDRY_OFFLINE_GUARD_AUDIT = auditPath;
+    environment.UNBOUNDRY_OFFLINE_GUARD_MODE = "final-candidate";
+  }
+  for (const name of release.manifest.runtime.forbiddenEnvironment) {
+    if (name === "NODE_OPTIONS" && instrumented) continue;
+    delete environment[name];
+  }
+  for (const prefix of release.manifest.runtime.forbiddenEnvironmentPrefixes) {
+    for (const name of Object.keys(environment)) {
+      if (name.startsWith(prefix)) delete environment[name];
+    }
+  }
+  return Object.freeze({ environment, instrumented });
 }
 
 function stableArtifactIdentity(left, right) {
@@ -1344,7 +1670,7 @@ function compareArtifactPath(left, right) {
   return left.path < right.path ? -1 : left.path > right.path ? 1 : 0;
 }
 
-async function finalInventoryTestCheckpoint(kind) {
+async function finalInventoryTestCheckpoint(kind, checkpointRoot) {
   if (
     process.env.UNBOUNDRY_SAFE_TEST !== "1" ||
     process.env.UNBOUNDRY_TEST_FINAL_INVENTORY_SWAP_KIND !== kind
@@ -1401,7 +1727,22 @@ async function finalInventoryTestCheckpoint(kind) {
     }
 
     const appRootIdentity = await realpath(appRoot);
-    const buildRoot = resolve(appRoot, "dist", "client");
+    const expectedCheckpointRoot = await realpath(checkpointRoot);
+    let buildCheckpointAuthorized = kind !== "build";
+    if (kind === "build") {
+      const releaseAttestation = await readReleaseAttestation();
+      const suiteRoot = await realpath(dirname(testRoot));
+      const attestedBuildRoots = new Set(
+        Object.values(releaseAttestation.manifestPaths).map((manifestPath) =>
+          resolve(dirname(manifestPath), "dist", "client")),
+      );
+      buildCheckpointAuthorized =
+        containsPath(systemTemporaryRoot, suiteRoot) &&
+        containsPath(suiteRoot, releaseAttestation.root) &&
+        !containsPath(testRoot, releaseAttestation.root) &&
+        containsPath(releaseAttestation.root, expectedCheckpointRoot) &&
+        attestedBuildRoots.has(expectedCheckpointRoot);
+    }
     const notificationPipe = fstatSync(3);
     const releasePipe = fstatSync(4);
     const isPipe = (details) => details.isFIFO() || details.isSocket();
@@ -1419,7 +1760,9 @@ async function finalInventoryTestCheckpoint(kind) {
       !containsPath(systemTemporaryRoot, repositoryRoot) ||
       repositoryRoot === originalRepositoryRoot ||
       appRootIdentity !== repositoryRoot ||
-      buildRoot !== resolve(repositoryRoot, "dist", "client") ||
+      !buildCheckpointAuthorized ||
+      (kind === "restored" &&
+        !containsPath(testRoot, expectedCheckpointRoot)) ||
       !containsPath(testRoot, sentinelPath) ||
       !isPipe(notificationPipe) || !isPipe(releasePipe) ||
       process.env.NODE_OPTIONS !== expectedNodeOptions
@@ -1549,8 +1892,8 @@ async function readBuildArtifactFile(path, logicalPath) {
   }
 }
 
-async function inventoryProductionBuild() {
-  const requestedRoot = resolve(appRoot, "dist", "client");
+async function inventoryProductionBuild(releaseDirectory = appRoot) {
+  const requestedRoot = resolve(releaseDirectory, "dist", "client");
   let canonicalRoot;
   try {
     canonicalRoot = await realpath(requestedRoot);
@@ -1623,7 +1966,7 @@ async function inventoryProductionBuild() {
     );
   }
   try {
-    await finalInventoryTestCheckpoint("build");
+    await finalInventoryTestCheckpoint("build", requestedRoot);
     try {
       const checkpointRootIdentity = await rootHandle.stat({ bigint: true });
       const requestedIdentity = await lstat(requestedRoot, { bigint: true });
@@ -1885,6 +2228,168 @@ function isExcludedSqliteTransient(logicalPath) {
   ]).has(logicalPath);
 }
 
+const legacySchema37MutableMediaColumns = new Set([
+  "checksum_sha256",
+  "duration_seconds",
+  "duration_source",
+  "duration_status",
+  "updated_at",
+]);
+
+function quotedSqliteIdentifier(value) {
+  return `"${String(value).replaceAll('"', '""')}"`;
+}
+
+function normalizedSqliteValue(value) {
+  if (value === null) return ["null"];
+  if (typeof value === "string") return ["text", value];
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return ["number", Object.is(value, -0) ? 0 : value];
+  }
+  if (typeof value === "bigint") return ["integer", value.toString()];
+  if (value instanceof Uint8Array) {
+    const bytes = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+    return [
+      "blob",
+      bytes.length,
+      createHash("sha256").update(bytes).digest("hex"),
+    ];
+  }
+  fail(
+    "FINAL_BACKUP_STARTUP_RESTORED_STATE_UNSAFE",
+    "Schema-37 invariant contains an unsupported SQLite value",
+  );
+}
+
+function schema37InvariantFingerprint(targetDirectory) {
+  const databasePath = resolve(targetDirectory, "unboundry.sqlite");
+  let database;
+  try {
+    database = new DatabaseSync(databasePath, { readOnly: true });
+    database.exec("PRAGMA query_only = ON");
+    const schema = database.prepare(`
+      SELECT name, sql, tbl_name, type
+      FROM sqlite_schema
+      WHERE name NOT LIKE 'sqlite_%'
+      ORDER BY type, name
+    `).all();
+    const tables = schema
+      .filter((entry) => entry.type === "table")
+      .map((entry) => String(entry.name));
+    const hash = createHash("sha256");
+    hash.update(`${JSON.stringify({ schema })}\n`);
+    for (const table of tables) {
+      const tableIdentifier = quotedSqliteIdentifier(table);
+      const columns = database.prepare(
+        `PRAGMA table_xinfo(${tableIdentifier})`,
+      ).all().filter((column) => Number(column.hidden) === 0)
+        .map((column) => String(column.name));
+      if (columns.length === 0) {
+        fail(
+          "FINAL_BACKUP_STARTUP_RESTORED_STATE_UNSAFE",
+          "Schema-37 invariant contains a columnless table",
+        );
+      }
+      const mutableColumns = table === "media_assets"
+        ? legacySchema37MutableMediaColumns
+        : new Set();
+      const invariantColumns = columns.filter((column) =>
+        !mutableColumns.has(column)
+      );
+      if (invariantColumns.length === 0) {
+        fail(
+          "FINAL_BACKUP_STARTUP_RESTORED_STATE_UNSAFE",
+          "Schema-37 invariant table has no immutable columns",
+        );
+      }
+      const orderBy = invariantColumns.map(quotedSqliteIdentifier).join(", ");
+      const rows = database.prepare(
+        `SELECT * FROM ${tableIdentifier} ORDER BY ${orderBy}`,
+      ).iterate();
+      hash.update(`${JSON.stringify({ columns, table })}\n`);
+      for (const row of rows) {
+        hash.update(`${JSON.stringify(columns.map((column) =>
+          mutableColumns.has(column)
+            ? ["legacy-schema37-metadata"]
+            : normalizedSqliteValue(row[column])))}\n`);
+      }
+    }
+    return hash.digest("hex");
+  } catch (error) {
+    if (error instanceof CliError) throw error;
+    fail(
+      "FINAL_BACKUP_STARTUP_RESTORED_STATE_UNSAFE",
+      "Schema-37 invariant could not be read safely",
+    );
+  } finally {
+    try {
+      database?.close();
+    } catch {
+      fail(
+        "FINAL_BACKUP_STARTUP_RESTORED_STATE_UNSAFE",
+        "Schema-37 invariant reader could not be closed safely",
+      );
+    }
+  }
+}
+
+function schema37DurationState(targetDirectory) {
+  const databasePath = resolve(targetDirectory, "unboundry.sqlite");
+  let database;
+  try {
+    database = new DatabaseSync(databasePath, { readOnly: true });
+    database.exec("PRAGMA query_only = ON");
+    const rows = database.prepare(`
+      SELECT id, duration_seconds, duration_source, duration_status
+      FROM media_assets
+      WHERE storage_backend = 'local' AND storage_status = 'ready'
+        AND kind IN ('audio', 'video')
+      ORDER BY kind, id
+    `).all();
+    const counts = { failed: 0, pending: 0, ready: 0 };
+    for (const row of rows) {
+      if (
+        typeof row.id !== "string" ||
+        !Object.hasOwn(counts, String(row.duration_status)) ||
+        (row.duration_status === "pending" &&
+          (row.duration_seconds !== null || row.duration_source !== null)) ||
+        (row.duration_status === "ready" &&
+          (!Number.isFinite(Number(row.duration_seconds)) ||
+            Number(row.duration_seconds) <= 0 ||
+            typeof row.duration_source !== "string"))
+      ) {
+        fail(
+          "FINAL_BACKUP_STARTUP_DURATION_UNREADABLE",
+          "Schema-37 duration metadata has an invalid state",
+        );
+      }
+      counts[row.duration_status] += 1;
+    }
+    return Object.freeze({
+      ...counts,
+      sha256: createHash("sha256")
+        .update(JSON.stringify(rows), "utf8")
+        .digest("hex"),
+      total: rows.length,
+    });
+  } catch (error) {
+    if (error instanceof CliError) throw error;
+    fail(
+      "FINAL_BACKUP_STARTUP_DURATION_UNREADABLE",
+      "Schema-37 duration metadata could not be inspected",
+    );
+  } finally {
+    try {
+      database?.close();
+    } catch {
+      fail(
+        "FINAL_BACKUP_STARTUP_DURATION_UNREADABLE",
+        "Schema-37 duration metadata reader could not be closed",
+      );
+    }
+  }
+}
+
 async function fingerprintRestoredState(targetDirectory, databaseLogicalSha256) {
   let canonicalRoot;
   try {
@@ -1952,7 +2457,7 @@ async function fingerprintRestoredState(targetDirectory, databaseLogicalSha256) 
     );
   }
   try {
-    await finalInventoryTestCheckpoint("restored");
+    await finalInventoryTestCheckpoint("restored", targetDirectory);
     try {
       const checkpointRootIdentity = await rootHandle.stat({ bigint: true });
       const requestedIdentity = await lstat(targetDirectory, { bigint: true });
@@ -2230,8 +2735,16 @@ async function fingerprintRestoredState(targetDirectory, databaseLogicalSha256) 
   }
     records.sort(compareArtifactPath);
     const identity = JSON.stringify(records);
+    const nonDatabaseIdentity = JSON.stringify(records.map((record) =>
+      record.kind === "database"
+        ? Object.freeze({
+            ...record,
+            logicalSha256: "legacy-schema37-metadata-mutable",
+          })
+        : record));
     return Object.freeze({
       identity,
+      nonDatabaseIdentity,
       summary: Object.freeze({
         restoredStateBytes,
         restoredStateEntries: records.length,
@@ -2245,93 +2758,373 @@ async function fingerprintRestoredState(targetDirectory, databaseLogicalSha256) 
 }
 
 async function runtimeBytes(origin, path, maximumBytes, headers = {}) {
-  const response = await fetch(`${origin}${path}`, {
-    headers,
-    method: "GET",
-    redirect: "error",
-    signal: AbortSignal.timeout(2_000),
-  });
-  if (!response.body) return { status: response.status, value: Buffer.alloc(0) };
-  const reader = response.body.getReader();
-  const chunks = [];
-  let bytes = 0;
-  let complete = false;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) {
-        complete = true;
-        break;
-      }
-      bytes += value.byteLength;
-      if (bytes > maximumBytes) {
-        fail(
-          "FINAL_BACKUP_STARTUP_RESPONSE_INVALID",
-          "Final-candidate runtime returned an oversized response",
-        );
-      }
-      chunks.push(Buffer.from(value));
-    }
-  } catch (error) {
-    if (!complete) {
-      try {
-        await reader.cancel();
-      } catch {
-        // Preserve the bounded-reader failure.
-      }
-    }
-    if (error instanceof CliError) throw error;
+  const target = new URL(path, origin);
+  if (
+    target.protocol !== "http:" || target.hostname !== "127.0.0.1" ||
+    !/^[1-9][0-9]{0,4}$/.test(target.port) || Number(target.port) > 65_535
+  ) {
     fail(
       "FINAL_BACKUP_STARTUP_RESPONSE_INVALID",
-      "Final-candidate runtime response could not be read safely",
+      "Final-candidate runtime probe target is invalid",
     );
-  } finally {
-    reader.releaseLock();
   }
-  return { status: response.status, value: Buffer.concat(chunks, bytes) };
+  return await new Promise((resolvePromise, rejectPromise) => {
+    let settled = false;
+    const finish = (action, value) => {
+      if (settled) return;
+      settled = true;
+      action(value);
+    };
+    const request = httpRequest({
+      agent: false,
+      headers,
+      host: "127.0.0.1",
+      method: "GET",
+      path: `${target.pathname}${target.search}`,
+      port: Number(target.port),
+    });
+    request.setTimeout(2_000, () => {
+      const timeout = new Error("runtime probe timed out");
+      timeout.code = "ETIMEDOUT";
+      request.destroy(timeout);
+    });
+    request.once("error", (error) => finish(rejectPromise, error));
+    request.once("response", (response) => {
+      const chunks = [];
+      let bytes = 0;
+      response.once("error", (error) => finish(rejectPromise, error));
+      response.on("data", (chunk) => {
+        if (settled) return;
+        bytes += chunk.length;
+        if (bytes > maximumBytes) {
+          response.destroy();
+          finish(
+            rejectPromise,
+            new CliError(
+              "FINAL_BACKUP_STARTUP_RESPONSE_INVALID",
+              "Final-candidate runtime returned an oversized response",
+            ),
+          );
+          return;
+        }
+        chunks.push(Buffer.from(chunk));
+      });
+      response.once("end", () => finish(resolvePromise, {
+        status: response.statusCode ?? 0,
+        value: Buffer.concat(chunks, bytes),
+      }));
+    });
+    request.end();
+  });
 }
 
-async function validateNormalStartup(targetDirectory, scratchRoot) {
-  const restoredInspectionBefore = inspectBackupDatabase(
+function optionalTrustedRuntimeDatabaseFile(path) {
+  let details;
+  try {
+    details = lstatSync(path);
+  } catch (error) {
+    if (
+      error instanceof Error && "code" in error && error.code === "ENOENT"
+    ) return undefined;
+    fail(
+      "FINAL_BACKUP_STARTUP_DATABASE_SIDECAR_UNSAFE",
+      "Release runtime SQLite sidecar could not be inspected safely",
+    );
+  }
+  if (
+    !details.isFile() || details.isSymbolicLink() || details.nlink !== 1 ||
+    typeof process.getuid !== "function" || details.uid !== process.getuid() ||
+    (details.mode & 0o022) !== 0
+  ) {
+    fail(
+      "FINAL_BACKUP_STARTUP_DATABASE_SIDECAR_UNSAFE",
+      "Release runtime SQLite sidecar is unsafe",
+    );
+  }
+  return details;
+}
+
+function runtimeDatabaseSidecars(databasePath) {
+  const journal = optionalTrustedRuntimeDatabaseFile(`${databasePath}-journal`);
+  const shm = optionalTrustedRuntimeDatabaseFile(`${databasePath}-shm`);
+  const wal = optionalTrustedRuntimeDatabaseFile(`${databasePath}-wal`);
+  if (journal || Boolean(shm) !== Boolean(wal)) {
+    fail(
+      "FINAL_BACKUP_STARTUP_DATABASE_SIDECAR_UNSAFE",
+      "Release runtime SQLite sidecars are incomplete or unsafe",
+    );
+  }
+  return Object.freeze({ journal, shm, wal });
+}
+
+function sameRuntimeDatabaseFileIdentity(left, right) {
+  return left.dev === right.dev && left.ino === right.ino &&
+    left.uid === right.uid && left.mode === right.mode &&
+    left.nlink === right.nlink;
+}
+
+function assertSameRuntimeDatabaseFile(path, expected, message) {
+  const actual = optionalTrustedRuntimeDatabaseFile(path);
+  if (!actual || !sameRuntimeDatabaseFileIdentity(actual, expected)) {
+    fail("FINAL_BACKUP_STARTUP_RESTORED_STATE_CHANGED", message);
+  }
+}
+
+function assertRuntimeDatabaseRoot(targetDirectory, expected) {
+  let actual;
+  try {
+    actual = lstatSync(targetDirectory);
+  } catch {
+    fail(
+      "FINAL_BACKUP_STARTUP_RESTORED_STATE_CHANGED",
+      "Release runtime restored root is unavailable",
+    );
+  }
+  if (
+    !actual.isDirectory() || actual.isSymbolicLink() ||
+    typeof process.getuid !== "function" || actual.uid !== process.getuid() ||
+    actual.nlink < 1 || (actual.mode & 0o077) !== 0 ||
+    actual.dev !== expected.dev || actual.ino !== expected.ino ||
+    actual.uid !== expected.uid || actual.mode !== expected.mode ||
+    realpathSync(targetDirectory) !== targetDirectory
+  ) {
+    fail(
+      "FINAL_BACKUP_STARTUP_RESTORED_STATE_CHANGED",
+      "Release runtime restored root identity changed",
+    );
+  }
+}
+
+function inspectExitedRuntimeDatabase(
+  databasePath,
+  targetDirectory,
+  { admitCommittedWal },
+) {
+  if (!admitCommittedWal) {
+    return inspectBackupDatabase(databasePath, targetDirectory);
+  }
+  const rootBefore = lstatSync(targetDirectory);
+  assertRuntimeDatabaseRoot(targetDirectory, rootBefore);
+  const databaseBefore = optionalTrustedRuntimeDatabaseFile(databasePath);
+  if (
+    !databaseBefore || realpathSync(databasePath) !== databasePath ||
+    dirname(databasePath) !== targetDirectory
+  ) {
+    fail(
+      "FINAL_BACKUP_STARTUP_RESTORED_STATE_UNSAFE",
+      "Release runtime database path is unsafe",
+    );
+  }
+  const sidecarsBefore = runtimeDatabaseSidecars(databasePath);
+  if (!sidecarsBefore.wal) {
+    return inspectBackupDatabase(databasePath, targetDirectory);
+  }
+
+  let database;
+  let inspection;
+  let operationError;
+  let cleanupError;
+  try {
+    database = new DatabaseSync(databasePath, { timeout: 5_000 });
+    database.exec("PRAGMA busy_timeout = 5000; BEGIN IMMEDIATE");
+    assertRuntimeDatabaseRoot(targetDirectory, rootBefore);
+    assertSameRuntimeDatabaseFile(
+      databasePath,
+      databaseBefore,
+      "Release runtime database identity changed before locked inspection",
+    );
+    assertSameRuntimeDatabaseFile(
+      `${databasePath}-wal`,
+      sidecarsBefore.wal,
+      "Release runtime WAL identity changed before locked inspection",
+    );
+    assertSameRuntimeDatabaseFile(
+      `${databasePath}-shm`,
+      sidecarsBefore.shm,
+      "Release runtime SHM identity changed before locked inspection",
+    );
+    inspection = inspectLockedBackupDatabase(database, targetDirectory);
+    assertSameRuntimeDatabaseFile(
+      databasePath,
+      databaseBefore,
+      "Release runtime database identity changed during locked inspection",
+    );
+    assertSameRuntimeDatabaseFile(
+      `${databasePath}-wal`,
+      sidecarsBefore.wal,
+      "Release runtime WAL identity changed during locked inspection",
+    );
+    assertSameRuntimeDatabaseFile(
+      `${databasePath}-shm`,
+      sidecarsBefore.shm,
+      "Release runtime SHM identity changed during locked inspection",
+    );
+  } catch (error) {
+    operationError = error;
+  } finally {
+    if (database?.isTransaction) {
+      try {
+        database.exec("ROLLBACK");
+      } catch (error) {
+        cleanupError = error;
+      }
+    }
+    try {
+      database?.close();
+    } catch (error) {
+      cleanupError ??= error;
+    }
+  }
+  if (cleanupError) {
+    fail(
+      "FINAL_BACKUP_STARTUP_DATABASE_CLOSE_UNKNOWN",
+      "Release runtime database inspection did not close safely",
+    );
+  }
+  if (operationError) {
+    if (operationError instanceof CliError) throw operationError;
+    if (operationError instanceof BackupInspectionError) {
+      fail(
+        "FINAL_BACKUP_STARTUP_RESTORED_STATE_UNSAFE",
+        "Release runtime database failed its locked inspection",
+      );
+    }
+    fail(
+      "FINAL_BACKUP_STARTUP_DATABASE_LOCK_UNAVAILABLE",
+      "Release runtime database could not be locked after process exit",
+    );
+  }
+  if (!inspection) {
+    fail(
+      "FINAL_BACKUP_STARTUP_RESTORED_STATE_UNSAFE",
+      "Release runtime database inspection produced no result",
+    );
+  }
+  assertRuntimeDatabaseRoot(targetDirectory, rootBefore);
+  assertSameRuntimeDatabaseFile(
+    databasePath,
+    databaseBefore,
+    "Release runtime database identity changed after locked inspection",
+  );
+  const sidecarsAfter = runtimeDatabaseSidecars(databasePath);
+  if (sidecarsAfter.wal && (
+    !sameRuntimeDatabaseFileIdentity(sidecarsAfter.wal, sidecarsBefore.wal) ||
+    !sameRuntimeDatabaseFileIdentity(sidecarsAfter.shm, sidecarsBefore.shm)
+  )) {
+    fail(
+      "FINAL_BACKUP_STARTUP_RESTORED_STATE_CHANGED",
+      "Release runtime SQLite sidecar identity changed during inspection",
+    );
+  }
+  return inspection;
+}
+
+async function validateReleaseStartup({
+  expected,
+  release,
+  scratchRoot,
+  targetDirectory,
+}) {
+  const restoredInspectionBefore = inspectExitedRuntimeDatabase(
     resolve(targetDirectory, "unboundry.sqlite"),
     targetDirectory,
+    { admitCommittedWal: true },
   );
   const restoredStateBefore = await fingerprintRestoredState(
     targetDirectory,
     restoredInspectionBefore.logicalSha256,
   );
-  const buildArtifactBefore = await inventoryProductionBuild();
+  const schema37InvariantBefore = expected.schemaVersion === 37
+    ? schema37InvariantFingerprint(targetDirectory)
+    : undefined;
+  const schema37DurationBefore = expected.schemaVersion === 37
+    ? schema37DurationState(targetDirectory)
+    : undefined;
+  const buildArtifactBefore = await inventoryProductionBuild(release.directory);
+  const staticContract = expected.schemaVersion === 37
+    ? release.manifest.runtime.health.legacySchema37StaticAsset
+    : release.manifest.runtime.health.staticAsset;
+  if (!staticContract) {
+    fail(
+      "FINAL_BACKUP_STARTUP_BUILD_MISMATCH",
+      "Release runtime did not admit the required schema static asset",
+    );
+  }
+  const expectedIndexBytes = await readFile(
+    resolve(release.directory, staticContract.path),
+  );
+  if (
+    expectedIndexBytes.length !== staticContract.size ||
+    createHash("sha256").update(expectedIndexBytes).digest("hex") !==
+      staticContract.sha256
+  ) {
+    fail(
+      "FINAL_BACKUP_STARTUP_BUILD_MISMATCH",
+      "Release runtime static asset changed after admission",
+    );
+  }
   const port = await allocateStartupPort();
+  const runtimeRequestHeaders = expected.schemaVersion === 37
+    ? Object.freeze({
+        Host: "canvas.mymy.ltd",
+        "X-Forwarded-For": "127.0.0.1",
+        "X-Forwarded-Proto": "https",
+      })
+    : Object.freeze({});
   let startupRoot;
   let child;
   try {
     startupRoot = await mkdtemp(
-      resolve(scratchRoot, ".unboundry-final-startup-"),
+      resolve(scratchRoot, `.unboundry-${release.releaseRole}-startup-`),
     );
     await chmod(startupRoot, 0o700);
+    const runtimeRoots = Object.freeze({
+      cache: resolve(startupRoot, "cache"),
+      home: resolve(startupRoot, "home"),
+      runtime: resolve(startupRoot, "runtime"),
+      temporary: resolve(startupRoot, "temporary"),
+    });
+    for (const directory of Object.values(runtimeRoots)) {
+      await mkdir(directory, { mode: 0o700 });
+      await chmod(directory, 0o700);
+    }
     const auditPath = resolve(startupRoot, "network-audit.jsonl");
     await writeFile(auditPath, "", { flag: "wx", mode: 0o600 });
     await chmod(auditPath, 0o600);
-    const outputState = { bytes: 0, exceeded: false, startFailed: false };
+    const outputState = {
+      bytes: 0,
+      diagnosticTail: "",
+      exceeded: false,
+      startFailed: false,
+    };
     let primaryError;
     let readiness;
+    let version;
     let authStatus;
     let applicationData;
     try {
+      const runtime = runtimeEnvironment(
+        release,
+        targetDirectory,
+        runtimeRoots,
+        port,
+        auditPath,
+        { nativeOnly: expected.schemaVersion === 37 },
+      );
+      const runtimeArguments = release.manifest.runtime.arguments.map((argument) =>
+        argument === "${UNBOUNDRY_PORT}" ? String(port) : argument);
+      const runtimeSandbox = await createRuntimeNativeSandbox(
+        startupRoot,
+        runtime.instrumented,
+      );
       child = spawn(
-        process.execPath,
-        [
-          resolve(appRoot, "node_modules", "vite", "bin", "vite.js"),
-          "preview",
-          "--host",
-          "127.0.0.1",
-          "--port",
-          String(port),
-          "--strictPort",
-        ],
+        runtimeSandbox?.executable ?? release.runtimeCommand,
+        runtimeSandbox
+          ? [...runtimeSandbox.arguments, release.runtimeCommand, ...runtimeArguments]
+          : runtimeArguments,
         {
-          cwd: appRoot,
-          env: startupEnvironment(targetDirectory, startupRoot, auditPath, port),
+          cwd: release.directory,
+          env: runtime.environment,
           stdio: ["ignore", "pipe", "pipe"],
         },
       );
@@ -2340,6 +3133,8 @@ async function validateNormalStartup(targetDirectory, scratchRoot) {
       });
       const collect = (chunk) => {
         outputState.bytes += chunk.length;
+        outputState.diagnosticTail = `${outputState.diagnosticTail}${chunk}`
+          .slice(-8_192);
         if (outputState.bytes <= maximumStartupOutputBytes) return;
         outputState.exceeded = true;
         if (!childExited(child)) child.kill("SIGKILL");
@@ -2347,28 +3142,72 @@ async function validateNormalStartup(targetDirectory, scratchRoot) {
       child.stdout.on("data", collect);
       child.stderr.on("data", collect);
       const origin = `http://127.0.0.1:${port}`;
-      readiness = await waitForRuntimeReadiness(child, origin, outputState);
+      readiness = await waitForRuntimeReadiness(
+        child,
+        origin,
+        outputState,
+        expected,
+        runtimeRequestHeaders,
+      );
+      const versionResponse = await runtimeJson(
+        origin,
+        release.manifest.runtime.health.versionPath,
+        runtimeRequestHeaders,
+      );
+      if (
+        versionResponse.status !== 200 ||
+        versionResponse.body?.version !== release.version
+      ) {
+        fail(
+          "FINAL_BACKUP_STARTUP_VERSION_MISMATCH",
+          "Release runtime version does not match its admitted manifest",
+        );
+      }
+      version = release.version;
       const indexResponse = await runtimeBytes(
         origin,
         "/",
-        buildArtifactBefore.indexBytes.length,
+        expectedIndexBytes.length,
+        runtimeRequestHeaders,
       );
       if (
         indexResponse.status !== 200 ||
-        !indexResponse.value.equals(buildArtifactBefore.indexBytes) ||
+        !indexResponse.value.equals(expectedIndexBytes) ||
         createHash("sha256").update(indexResponse.value).digest("hex") !==
-          buildArtifactBefore.summary.indexSha256
+          staticContract.sha256
       ) {
+        const actualSha256 = createHash("sha256")
+          .update(indexResponse.value).digest("hex");
+        let responseCode = null;
+        try {
+          const document = JSON.parse(indexResponse.value.toString("utf8"));
+          if (
+            document && typeof document === "object" &&
+            typeof document.code === "string" &&
+            /^[A-Z0-9_]{1,128}$/.test(document.code)
+          ) responseCode = document.code;
+        } catch {
+          // The body itself is not diagnostic evidence and is never emitted.
+        }
         fail(
           "FINAL_BACKUP_STARTUP_BUILD_MISMATCH",
-          "Final-candidate production preview did not serve its fixed index",
+          `Final-candidate production preview did not serve its fixed index (${JSON.stringify({
+            actualSha256,
+            actualSize: indexResponse.value.length,
+            expectedSha256: staticContract.sha256,
+            expectedSize: staticContract.size,
+            releaseRole: release.releaseRole,
+            responseCode,
+            schemaVersion: expected.schemaVersion,
+            status: indexResponse.status,
+          })})`,
         );
       }
       const fixtureApi = await runtimeBytes(
         origin,
         "/__fixture-api/shell.empty.primary",
         64 * 1024,
-        { Accept: "application/json" },
+        { Accept: "application/json", ...runtimeRequestHeaders },
       );
       if (fixtureApi.status !== 404) {
         fail(
@@ -2378,6 +3217,7 @@ async function validateNormalStartup(targetDirectory, scratchRoot) {
       }
       const auth = await runtimeJson(origin, "/api/auth/status", {
         Cookie: "unboundry_session=final-startup-probe",
+        ...runtimeRequestHeaders,
       });
       if (
         auth.status !== 200 || !auth.body || typeof auth.body !== "object" ||
@@ -2392,15 +3232,21 @@ async function validateNormalStartup(targetDirectory, scratchRoot) {
         authenticated: false,
         bootstrapRequired: false,
       });
-      applicationData = await validateRestoredApplicationData(targetDirectory);
-      const sustained = await runtimeJson(origin, "/api/health/ready");
+      applicationData = expected.schemaVersion === currentStartupSchemaVersion
+        ? await validateRestoredApplicationData(targetDirectory)
+        : Object.freeze({});
+      const sustained = await runtimeJson(
+        origin,
+        "/api/health/ready",
+        runtimeRequestHeaders,
+      );
       if (sustained.status !== 200) {
         fail(
           "FINAL_BACKUP_STARTUP_READINESS_MISMATCH",
           "Final-candidate runtime lost readiness after ordinary reads",
         );
       }
-      readinessSummary(sustained.body);
+      readinessSummary(sustained.body, expected);
     } catch (error) {
       primaryError = error;
     }
@@ -2409,12 +3255,13 @@ async function validateNormalStartup(targetDirectory, scratchRoot) {
       : { exitCode: null, graceful: false, signal: null };
     await assertStartupPortReleased(port);
     const buildArtifactAfter = shutdown.graceful
-      ? await inventoryProductionBuild()
+      ? await inventoryProductionBuild(release.directory)
       : undefined;
     const restoredInspectionAfter = shutdown.graceful
-      ? inspectBackupDatabase(
+      ? inspectExitedRuntimeDatabase(
         resolve(targetDirectory, "unboundry.sqlite"),
         targetDirectory,
+        { admitCommittedWal: true },
       )
       : undefined;
     const restoredStateAfter = shutdown.graceful
@@ -2423,15 +3270,62 @@ async function validateNormalStartup(targetDirectory, scratchRoot) {
         restoredInspectionAfter.logicalSha256,
       )
       : undefined;
+    const restoredInspectionRevalidated = shutdown.graceful
+      ? inspectExitedRuntimeDatabase(
+        resolve(targetDirectory, "unboundry.sqlite"),
+        targetDirectory,
+        { admitCommittedWal: true },
+      )
+      : undefined;
+    const schema37InvariantAfter = shutdown.graceful &&
+        expected.schemaVersion === 37
+      ? schema37InvariantFingerprint(targetDirectory)
+      : undefined;
+    const schema37DurationAfter = shutdown.graceful &&
+        expected.schemaVersion === 37
+      ? schema37DurationState(targetDirectory)
+      : undefined;
     const networkAudit = await inspectStartupNetworkAudit(
       auditPath,
       port,
       child?.pid,
+      {
+        auxiliaryPort: Number(process.env.UNBOUNDRY_TEST_PORT),
+        instrumented: process.env.UNBOUNDRY_SAFE_TEST === "1" &&
+          expected.schemaVersion !== 37,
+      },
     );
     if (!shutdown.graceful) {
+      const markers = [
+        ...startupShutdownDiagnosticMarkers.filter((marker) =>
+          outputState.diagnosticTail.includes(marker)),
+        ...new Set(outputState.diagnosticTail.match(
+          /\b(?:BRIDGE|DATABASE|LEGACY|RUNTIME|SERVICE)_[A-Z0-9_]+\b/g,
+        ) ?? []),
+        ...(outputState.diagnosticTail.includes("sandbox-exec:")
+          ? ["NATIVE_SANDBOX_ERROR"]
+          : []),
+        ...(outputState.diagnosticTail.includes("Operation not permitted")
+          ? ["NATIVE_OPERATION_NOT_PERMITTED"]
+          : []),
+      ].sort();
       fail(
         "FINAL_BACKUP_STARTUP_SHUTDOWN_FAILED",
-        "Final-candidate runtime did not shut down cleanly within its deadline",
+        `Final-candidate runtime did not shut down cleanly within its deadline (${JSON.stringify({
+          elapsedMilliseconds: shutdown.elapsedMilliseconds,
+          exitCode: shutdown.exitCode,
+          forced: shutdown.forced,
+          markers,
+          primaryErrorCode: primaryError instanceof CliError
+            ? primaryError.code
+            : primaryError
+              ? "FINAL_BACKUP_UNCLASSIFIED_PRIMARY_ERROR"
+              : null,
+          releaseRole: release.releaseRole,
+          schemaVersion: expected.schemaVersion,
+          signal: shutdown.signal,
+          termSent: shutdown.termSent,
+        })})`,
       );
     }
     if (buildArtifactAfter.identity !== buildArtifactBefore.identity) {
@@ -2440,10 +3334,24 @@ async function validateNormalStartup(targetDirectory, scratchRoot) {
         "Final-candidate production build changed during preview validation",
       );
     }
-    if (restoredStateAfter.identity !== restoredStateBefore.identity) {
+    const restoredStateChanged = expected.schemaVersion === 37
+      ? restoredInspectionAfter.userVersion !== 37 ||
+        restoredInspectionRevalidated.userVersion !== 37 ||
+        restoredInspectionRevalidated.logicalSha256 !==
+          restoredInspectionAfter.logicalSha256 ||
+        restoredStateAfter.nonDatabaseIdentity !==
+          restoredStateBefore.nonDatabaseIdentity ||
+        schema37InvariantAfter !== schema37InvariantBefore
+      : restoredInspectionRevalidated.userVersion !== expected.schemaVersion ||
+        restoredInspectionRevalidated.logicalSha256 !==
+          restoredInspectionAfter.logicalSha256 ||
+        restoredStateAfter.identity !== restoredStateBefore.identity;
+    if (restoredStateChanged) {
       fail(
         "FINAL_BACKUP_STARTUP_RESTORED_STATE_CHANGED",
-        "Final-candidate production preview changed its restored state",
+        expected.schemaVersion === 37
+          ? "Bridge schema-37 preview changed state outside its bounded media metadata backfill"
+          : "Final-candidate production preview changed its restored state",
       );
     }
     if (primaryError) throw primaryError;
@@ -2454,8 +3362,26 @@ async function validateNormalStartup(targetDirectory, scratchRoot) {
       ...buildArtifactBefore.summary,
       ...restoredStateBefore.summary,
       listenerReleased: true,
+      ...(expected.schemaVersion === 37
+        ? {
+            legacyMetadataBackfill: Object.freeze({
+              durationAfter: schema37DurationAfter,
+              durationBefore: schema37DurationBefore,
+              invariantSha256: schema37InvariantAfter,
+              logicalSha256After: restoredInspectionAfter.logicalSha256,
+              logicalSha256Before: restoredInspectionBefore.logicalSha256,
+              metadataChanged:
+                restoredInspectionAfter.logicalSha256 !==
+                restoredInspectionBefore.logicalSha256,
+            }),
+          }
+        : {}),
       readiness,
+      releaseId: release.releaseId,
+      releaseRole: release.releaseRole,
+      servedStaticAssetSha256: staticContract.sha256,
       shutdown: "graceful",
+      version,
     });
   } finally {
     if (child && !childExited(child)) {
@@ -2483,8 +3409,10 @@ try {
   const parsed = parseArguments(process.argv.slice(2));
   const pathOptions = [
     "--backup-root",
+    "--bridge-release-manifest",
     "--data-dir",
     "--fake-oss-target-dir",
+    "--final-release-manifest",
     "--recovery-private-key",
     "--recovery-public-key",
     "--signing-private-key",
@@ -2514,6 +3442,11 @@ try {
     fakeOssTargetDirectory,
     scratchRoot,
   ];
+  const releaseManifestByRole = Object.freeze({
+    bridge: parsed.values.get("--bridge-release-manifest"),
+    final: parsed.values.get("--final-release-manifest"),
+  });
+  const releaseManifestPaths = Object.values(releaseManifestByRole);
   const canonicalDataPaths = await Promise.all(
     dataPaths.map((path) => canonicalPotentialPath(path)),
   );
@@ -2547,9 +3480,15 @@ try {
     );
   }
   if (
-    pathsOverlap([...dataPaths, ...keyPaths, ...mirrorPaths]) ||
+    pathsOverlap([
+      ...dataPaths,
+      ...releaseManifestPaths,
+      ...keyPaths,
+      ...mirrorPaths,
+    ]) ||
     pathsOverlap([
       ...canonicalDataPaths,
+      ...await Promise.all(releaseManifestPaths.map((path) => realpath(path))),
       ...canonicalKeyPaths,
       ...canonicalMirrorPaths,
     ])
@@ -2557,6 +3496,49 @@ try {
     fail(
       "FINAL_BACKUP_ARGUMENT_INVALID",
       "Final-candidate keys and OSS mirrors must be mutually disjoint and outside all data and work directories",
+    );
+  }
+  const runnerReleaseAttestation = await readRunnerReleaseAttestation(
+    releaseManifestByRole,
+  );
+  const releases = Object.freeze({
+    bridge: await admitRelease(
+      releaseManifestByRole.bridge,
+      "bridge",
+      runnerReleaseAttestation,
+    ),
+    final: await admitRelease(
+      releaseManifestByRole.final,
+      "final",
+      runnerReleaseAttestation,
+    ),
+  });
+  const admittedReleaseEvidence = Object.freeze({
+    bridge: releaseEvidence(releases.bridge),
+    final: releaseEvidence(releases.final),
+  });
+  const admittedReleaseRelationship = runnerReleaseAttestation?.relationship ?? null;
+  if (runnerReleaseAttestation) {
+    try {
+      assertAttestedReleaseArtifacts(runnerReleaseAttestation, releases);
+    } catch (error) {
+      if (!(error instanceof ReleaseAttestationError)) throw error;
+      fail(
+        "FINAL_BACKUP_RELEASE_ATTESTATION_INVALID",
+        "Runner source-pair attestation does not match the admitted releases",
+      );
+    }
+  }
+  if (
+    admittedReleaseEvidence.bridge.commit === admittedReleaseEvidence.final.commit ||
+    admittedReleaseEvidence.bridge.sourceTree ===
+      admittedReleaseEvidence.final.sourceTree ||
+    admittedReleaseEvidence.bridge.manifestSha256 ===
+      admittedReleaseEvidence.final.manifestSha256
+  ) {
+    fail(
+      "FINAL_BACKUP_RELEASE_MANIFEST_INVALID",
+      "Bridge and final must be distinct immutable release identities",
     );
   }
 
@@ -2642,29 +3624,73 @@ try {
       "Fake OSS recovery does not match the exact-v37 restored package",
     );
   }
+  await revalidateRelease(releases.bridge, "bridge", runnerReleaseAttestation);
+  const bridgeSchema37 = await validateReleaseStartup({
+    expected: Object.freeze({
+      mode: "schema37-bridge-active",
+      mutationsAccepted: true,
+      schemaVersion: 37,
+    }),
+    release: releases.bridge,
+    scratchRoot,
+    targetDirectory,
+  });
+  const postBridge37LogicalSha256 =
+    bridgeSchema37.legacyMetadataBackfill?.logicalSha256After;
+  const bridgeDurationBefore =
+    bridgeSchema37.legacyMetadataBackfill?.durationBefore;
+  const bridgeDurationAfter =
+    bridgeSchema37.legacyMetadataBackfill?.durationAfter;
+  if (
+    typeof postBridge37LogicalSha256 !== "string" ||
+    !/^[a-f0-9]{64}$/.test(postBridge37LogicalSha256) ||
+    bridgeDurationBefore?.total !== 1 ||
+    bridgeDurationBefore?.pending !== 1 ||
+    bridgeDurationBefore?.ready !== 0 ||
+    bridgeDurationBefore?.failed !== 0 ||
+    bridgeDurationAfter?.total !== 1 ||
+    bridgeDurationAfter?.pending !== 1 ||
+    bridgeDurationAfter?.ready !== 0 ||
+    bridgeDurationAfter?.failed !== 0 ||
+    bridgeDurationAfter?.sha256 !== bridgeDurationBefore?.sha256
+  ) {
+    fail(
+      "FINAL_BACKUP_STARTUP_TARGET_CHANGED",
+      "Bridge schema-37 validation did not preserve one pending duration for explicit migration",
+    );
+  }
+  await revalidateRelease(releases.bridge, "bridge", runnerReleaseAttestation);
   const durationProbeFixture = await createSafeDurationProbeFixture(scratchRoot);
-  const migrationNativeSandbox = await createMigrationNativeSandbox(
-    durationProbeFixture.directory,
-  );
-  const migrationChildOptions = { wrapper: migrationNativeSandbox.wrapper };
+  let migrationRuntimeDirectory;
   let migrationNativeAudit;
   let migrationDryRun;
   let migrationApplied;
   try {
+    migrationRuntimeDirectory = await mkdtemp(resolve(
+      scratchRoot,
+      ".unboundry-final-migration-runtime-",
+    ));
+    await chmod(migrationRuntimeDirectory, 0o700);
+    const migrationNativeSandbox = await createMigrationNativeSandbox(
+      durationProbeFixture.directory,
+    );
+    const migrationChildOptions = { wrapper: migrationNativeSandbox.wrapper };
     const migrationCommon = [
       "--data-dir",
       targetDirectory,
       "--expected-logical-sha256",
-      expectedSha,
+      postBridge37LogicalSha256,
+      "--runtime-dir",
+      migrationRuntimeDirectory,
       ...scratch,
       "--test-duration-probe-audit",
       durationProbeFixture.auditPath,
       "--test-duration-probe-executable",
       durationProbeFixture.executable,
     ];
-    migrationDryRun = await runJsonScript(
-      "migrate-schema37-to39.mjs",
-      ["--dry-run", ...migrationCommon],
+    migrationDryRun = await runReleaseJsonScript(
+      releases.bridge,
+      ["scripts/migrate-schema37-to39.mjs", "--dry-run", ...migrationCommon],
       migrationChildOptions,
     );
     if (
@@ -2673,7 +3699,7 @@ try {
       migrationDryRun?.status !== "ready" ||
       migrationDryRun?.sourceVersion !== 37 ||
       migrationDryRun?.targetVersion !== 39 ||
-      migrationDryRun?.expectedSourceLogicalSha256 !== expectedSha ||
+      migrationDryRun?.expectedSourceLogicalSha256 !== postBridge37LogicalSha256 ||
       migrationDryRun?.nativeDurationProbes !== 0
     ) {
       fail(
@@ -2681,9 +3707,9 @@ try {
         "Restored exact-v37 migration dry-run did not match its source contract",
       );
     }
-    migrationApplied = await runJsonScript(
-      "migrate-schema37-to39.mjs",
-      ["--apply", ...migrationCommon],
+    migrationApplied = await runReleaseJsonScript(
+      releases.bridge,
+      ["scripts/migrate-schema37-to39.mjs", "--apply", ...migrationCommon],
       migrationChildOptions,
     );
     migrationNativeAudit = await verifySafeDurationProbeAudit(
@@ -2692,7 +3718,12 @@ try {
       migrationNativeSandbox.evidence,
     );
   } finally {
-    await rm(durationProbeFixture.directory, { force: true, recursive: true });
+    await Promise.all([
+      rm(durationProbeFixture.directory, { force: true, recursive: true }),
+      ...(migrationRuntimeDirectory
+        ? [rm(migrationRuntimeDirectory, { force: true, recursive: true })]
+        : []),
+    ]);
   }
   if (
     migrationApplied?.ok !== true ||
@@ -2700,9 +3731,12 @@ try {
     migrationApplied?.status !== "complete" ||
     migrationApplied?.sourceVersion !== 37 ||
     migrationApplied?.targetVersion !== 39 ||
-    migrationApplied?.expectedSourceLogicalSha256 !== expectedSha ||
-    migrationApplied?.backfilledDurations < 1 ||
-    migrationNativeAudit?.nativeDurationProbes < 1 ||
+    migrationApplied?.expectedSourceLogicalSha256 !== postBridge37LogicalSha256 ||
+    migrationApplied?.backfilledDurations !== 1 ||
+    migrationApplied?.nativeDurationProbes !==
+      migrationApplied.backfilledDurations + bridgeDurationAfter.total ||
+    migrationNativeAudit?.nativeDurationProbes !==
+      migrationApplied.nativeDurationProbes ||
     migrationNativeAudit?.externalNetworkAttempts !== 0
   ) {
     fail(
@@ -2710,9 +3744,11 @@ try {
       "Restored exact-v37 one-shot migration did not match its source contract",
     );
   }
-  const migrationInspection = inspectBackupDatabase(
+  await revalidateRelease(releases.bridge, "bridge", runnerReleaseAttestation);
+  const migrationInspection = inspectExitedRuntimeDatabase(
     resolve(targetDirectory, "unboundry.sqlite"),
     targetDirectory,
+    { admitCommittedWal: true },
   );
   if (
     migrationInspection.userVersion !== currentStartupSchemaVersion ||
@@ -2724,13 +3760,33 @@ try {
       "Migrated restore is not exact schema 39 for normal startup",
     );
   }
-  const startupRuntime = await validateNormalStartup(
-    targetDirectory,
+  const bridgeSchema39 = await validateReleaseStartup({
+    expected: Object.freeze({
+      mode: "active",
+      mutationsAccepted: true,
+      schemaVersion: 39,
+    }),
+    release: releases.bridge,
     scratchRoot,
-  );
-  const postStartupInspection = inspectBackupDatabase(
+    targetDirectory,
+  });
+  await revalidateRelease(releases.bridge, "bridge", runnerReleaseAttestation);
+  await revalidateRelease(releases.final, "final", runnerReleaseAttestation);
+  const startupRuntime = await validateReleaseStartup({
+    expected: Object.freeze({
+      mode: "active",
+      mutationsAccepted: true,
+      schemaVersion: 39,
+    }),
+    release: releases.final,
+    scratchRoot,
+    targetDirectory,
+  });
+  await revalidateRelease(releases.final, "final", runnerReleaseAttestation);
+  const postStartupInspection = inspectExitedRuntimeDatabase(
     resolve(targetDirectory, "unboundry.sqlite"),
     targetDirectory,
+    { admitCommittedWal: true },
   );
   if (
     postStartupInspection.userVersion !== currentStartupSchemaVersion ||
@@ -2743,6 +3799,9 @@ try {
   }
   const startupValidation = Object.freeze({
     ...startupRuntime,
+    bridgeSchema37,
+    bridgeSchema39,
+    postBridge37LogicalSha256,
     targetLogicalSha256: postStartupInspection.logicalSha256,
   });
   process.stdout.write(`${JSON.stringify({
@@ -2755,6 +3814,8 @@ try {
     migrationDryRun,
     migrationInspection,
     migrationNativeAudit,
+    releaseEvidence: admittedReleaseEvidence,
+    releaseRelationship: admittedReleaseRelationship,
     report,
     restored,
     startupValidation,
