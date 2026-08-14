@@ -1,8 +1,8 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`36`
+断点版本：`37`
 更新时间：`2026-08-15`
-状态：`PRODUCTION_V0_6_0_SCHEMA39_LIVE_REAL_GENERATION_AND_DR_ACCEPTED_NO_ACTIVE_REM`
+状态：`PRODUCTION_V0_6_0_SCHEMA39_LIVE_REAL_GENERATION_DR_AND_DOCUMENTS_ACCEPTED_NO_ACTIVE_REM`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
 ## 1. 当前结论
@@ -20,7 +20,7 @@
 - 原schema37 raw backup SHA `7f14c611faab136c1ae8e9579bc47755f7298e4ea6e2bba516c71e85670f8fca` 已离机恢复PASS，inspection `b4d58243e88efe1c2c967ffab5f63ed6704d18324a80e8449ec9d3ad77e28e1d`。最终技术凭证 SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8` 为 `TECHNICAL_CUTOVER_VERIFIED`。
 - 技术凭证生成时 `userAcceptance=PENDING` 保持不变；用户随后确认生成任务状态可读取，并结合此前确认老项目大量生成/上传素材仍在、第4项正常，生产验收现为`USER PASS`，但不声称全部历史素材逐一验证。
 - 最终切换是人工受控bounded cutover，不冒充新的formal controller/full regression PASS；切换期间Provider/付费调用0。REM-010/011与本次G7为`PASS`，REM-001～009B继续`USER_REVIEW`，当前没有IN_PROGRESS REM。
-- 切换完成后用户另行明确授权真实生成和生产运维补验。唯一一次Doubao Seed文字任务`77d3feec-35c1-4b1e-87a2-c457983a8046`一次成功、无重试，结果“真实生成验收通过”，审计成本`10,000,000 microunits CNY`。公网Cookie、513,802,240字节上传/Range/完整下载、schema39自动OSS备份/保留与整机离机恢复均PASS；`DEP-003/005/006/007`与`OPS-002`闭环。该补验授权已经消费，未来Agent付费请求仍需新授权。
+- 切换完成后用户另行明确授权真实生成和生产运维补验。唯一一次Doubao Seed文字任务`77d3feec-35c1-4b1e-87a2-c457983a8046`一次成功、无重试，结果“真实生成验收通过”，审计成本`10,000,000 microunits CNY`。公网Cookie、513,802,240字节上传/Range/完整下载、schema39自动OSS备份/保留与整机离机恢复均PASS；`DEP-003/005/006/007`与`OPS-002`闭环。用户随后明确“文档确认通过”，`DEP-010 = PASS`。该补验授权已经消费，未来Agent付费请求仍需新授权。
 - 最后自动备份前缀`objects/backups/2026-08-14T23-15-59-569Z/`，356文件/267,091,270字节；active脚本SHA为`e50ac515…970c5`与`05721427…7b95f`。整机离机目录`/Users/mymy/Documents/unboundry/recovery/2026-08-15`，包874,823,680字节/SHA`d3b6023f…ae109`，fresh restore receipt SHA`151c7886…f3962`。
 
 ## 2. 项目身份
@@ -389,7 +389,7 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 备份：schema37 raw archive SHA 7f14c611faab136c1ae8e9579bc47755f7298e4ea6e2bba516c71e85670f8fca；offhost restore inspection b4d58243e88efe1c2c967ffab5f63ed6704d18324a80e8449ec9d3ad77e28e1d PASS
 限制：attempt 86/108/116/120/122为行政取消且禁止重试，PROVIDER_FAILED仅surrogate；3条音频仅改duration元数据；cutover Provider/paid calls=0
 未来授权：本次bridge/final生产授权已消费；任何生产读写、真实Provider/付费生成、push/tag/PR或新版本发布均需新授权
-下一步：没有本次发布链遗留施工；只可按新任务处理既有PARTIAL/PAUSED/BLOCK/NOT_STARTED项。DEP-010为USER_REVIEW，等待用户审阅本轮最终文档
+下一步：没有本次发布链或文档验收遗留施工；DEP-010已由用户确认并转为PASS。只可按新任务处理既有PARTIAL/PAUSED/BLOCK/NOT_STARTED项
 ```
 
 任何恢复者必须优先使用本节；第9节只保留历史，不得执行其“下一步”。

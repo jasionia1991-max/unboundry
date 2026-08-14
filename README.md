@@ -4,7 +4,7 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 ## 2026-08-15 最终生产收口（当前权威）
 
-- 当前状态：`REM-000 = PASS / REM-001～009B = USER_REVIEW / REM-010～011 = PASS / G7（本次 v0.6.0）= PASS / PRODUCTION = LIVE / USER ACCEPTED`。当前没有 `IN_PROGRESS` REM；除本次已闭环的 `DEP-003/005/006/007` 与 `OPS-002` 外，其余历史 `PARTIAL / PAUSED / BLOCK / NOT_STARTED` 项保持原状态。
+- 当前状态：`REM-000 = PASS / REM-001～009B = USER_REVIEW / REM-010～011 = PASS / G7（本次 v0.6.0）= PASS / PRODUCTION = LIVE / USER ACCEPTED`。当前没有 `IN_PROGRESS` REM；本次已闭环 `DEP-003/005/006/007/010` 与 `OPS-002`，其中 `DEP-010` 由用户明确“文档确认通过”后转为 `PASS`；其余历史 `PARTIAL / PAUSED / BLOCK / NOT_STARTED` 项保持原状态。
 - 生产指针为 `/opt/unboundry/current -> releases/v0.6.0`，服务 `active + enabled`、`NRestarts=0`、监听 `127.0.0.1:4173`；公网 live/ready/version/auth/root 均为 HTTP 200，version 为 `0.6.0`，ready 为 active/schema39。
 - 生产数据库在最新核验时为 schema39、integrity `ok`、FK 违约 0、`project_metadata rowid=14` 不存在、活动生成任务 0；共有 99 个任务、99 条 Provider attempt、416 个 ready 素材（local 346 + OSS 70）、pending 0。生产真实生成已开启，安全阈值为 `globalEnabled=1 / emergencyStop=0 / perUserConcurrency=1 / 各类型并发=1 / requestsPerMinute=5`。
 - F14 生产制品固定为 commit `eb4f99ea525390b0dd7a39d3cad55d882ffea41d` / tree `86b4e424b6d6324c5f24d4c633b0cd35baf0d626`，manifest `46e2365c48b8e8bdaa1847b1767ef2974a71f2d2b47c87743793c116e5ec2adf`，inventory `ac8ca43a9f8f6724ca67bd0899185fa3952e762e0400a1f9ce34f3ecfefc2bac`，tar `0e3a96a13299efba407ba98dc6501ae97297c9a82c067827b9f9befeb2c18944`。

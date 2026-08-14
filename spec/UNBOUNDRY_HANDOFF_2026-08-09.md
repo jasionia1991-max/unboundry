@@ -12,7 +12,7 @@
 - 封存技术凭证 `FINAL-CUTOVER-SUPPLEMENT.json` SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8` 为 `TECHNICAL_CUTOVER_VERIFIED`。凭证形成时 `userAcceptance=PENDING` 不得改写；用户随后确认生成任务状态可读取，并结合此前确认老项目大量生成/上传素材仍在、第4项正常，生产另记 `USER PASS`。不声称全部历史素材逐一验证。
 - 切换是人工受控 bounded cutover，不冒充新的 formal controller/full regression PASS；期间Provider/付费调用0。attempt 86/108/116/120/122已行政取消并禁止重试，`PROVIDER_FAILED`仅迁移/备份门surrogate；三条音频仅修正duration元数据12.656→12.696，字节/checksum不变。
 - 本次生产授权已消费。未来生产变更、真实Provider/付费生成、push/tag/PR或新版本发布必须重新授权；REM-001～009B和既有外部/延后项保持原状态。
-- 用户在最终切换后另行授权并完成上线能力补验：唯一一次 Doubao Seed 文字任务 `77d3feec-35c1-4b1e-87a2-c457983a8046` 一次成功、无重试，结果“真实生成验收通过”，审计成本 `10,000,000 microunits CNY`。公网Cookie、490MiB上传/Range/完整下载、schema39自动备份/30天保留与整机离机恢复均已闭环，`DEP-003/005/006/007` 与 `OPS-002` 为PASS。
+- 用户在最终切换后另行授权并完成上线能力补验：唯一一次 Doubao Seed 文字任务 `77d3feec-35c1-4b1e-87a2-c457983a8046` 一次成功、无重试，结果“真实生成验收通过”，审计成本 `10,000,000 microunits CNY`。公网Cookie、490MiB上传/Range/完整下载、schema39自动备份/30天保留与整机离机恢复均已闭环，`DEP-003/005/006/007` 与 `OPS-002` 为PASS；用户随后明确“文档确认通过”，`DEP-010 = PASS`。
 - 当前运维文件：`/opt/unboundry/scripts/backup-data.mjs` SHA `e50ac515…970c5`，`backup-to-oss.mjs` SHA `05721427…7b95f`；timer active/enabled。最后自动备份前缀 `objects/backups/2026-08-14T23-15-59-569Z/`，356文件/267,091,270字节。整机离机目录 `/Users/mymy/Documents/unboundry/recovery/2026-08-15`，tar SHA `d3b6023f…ae109`，fresh restore receipt SHA `151c7886…f3962`。
 
 ## 0A. 2026-08-09～2026-08-14 全量修复施工模式（历史）

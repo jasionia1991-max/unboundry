@@ -1,7 +1,7 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-15
-状态：`生产已运行 v0.6.0/schema39；REM-000 = PASS、REM-001～REM-009B = USER_REVIEW、REM-010/011 = PASS；G7（本次 v0.6.0）= PASS；PRODUCTION = LIVE / USER ACCEPTED；真实生成已开启，DEP-003/005/006/007 与 OPS-002 已完成。最终切换为人工受控 bounded cutover，不冒充新的 formal controller/full regression PASS；切换期间 Provider/付费生成调用仍为0，后续获明确授权的唯一真实生成另行记录。`
+状态：`生产已运行 v0.6.0/schema39；REM-000 = PASS、REM-001～REM-009B = USER_REVIEW、REM-010/011 = PASS；G7（本次 v0.6.0）= PASS；PRODUCTION = LIVE / USER ACCEPTED；真实生成已开启，DEP-003/005/006/007/010 与 OPS-002 已完成。最终切换为人工受控 bounded cutover，不冒充新的 formal controller/full regression PASS；切换期间 Provider/付费生成调用仍为0，后续获明确授权的唯一真实生成另行记录。`
 
 F14本地正式门证据绑定 HEAD `eb4f99ea525390b0dd7a39d3cad55d882ffea41d`、source/snapshot `6af5b891ebf9a460e941485d12934a4a217ed3e2d6feece90d7c6d1b5ac856b1`。日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b57009ec02e6973be441b5585bf`；full `1f6f958d57ee855b0272ddd2576277deef6ea3e299e5ccdc597d4ca1d4559741` / `903096ed64412e184dcefecfc28c6fedda809c17a570d3fa8729a3d176560b0b` / `adecd5164828a87452bf5974a594c19da2e00e54f4aed281c113d57240b7917a`；race `3d1b64868ef60e769158b31ee4f94efbed0015d251cfdac8b48f27f8918c5a18` / `fc08356cf3bc9eb96e8b18abdd9789b96aa615361897a205240537e2ba29eb46`。五轮异常0、4173不变、suite cleaned、exit0。
 唯一产品目标：从空仓库完整复刻 Unboundry 画布，不复用 Lumino/Lumino Web 的代码、组件、CSS、数据、后端、测试或部署。
@@ -14,7 +14,7 @@ F14本地正式门证据绑定 HEAD `eb4f99ea525390b0dd7a39d3cad55d882ffea41d`�
 - 回滚证据：原 schema37 raw backup SHA `7f14c611faab136c1ae8e9579bc47755f7298e4ea6e2bba516c71e85670f8fca`，离机恢复 inspection SHA `b4d58243e88efe1c2c967ffab5f63ed6704d18324a80e8449ec9d3ad77e28e1d` 为 PASS；生产 schema39 inspection SHA `a18f8224dd651b8217cb3d778845ee3f42b5bf91a5ff68291bfad4d4cb3ffa61`。
 - 封存技术凭证 SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8`，状态 `TECHNICAL_CUTOVER_VERIFIED`。凭证生成时的 `userAcceptance=PENDING` 保持不变；用户随后确认生成任务状态已可读取，并结合此前确认老项目大量生成/上传素材仍在、第4项正常，生产验收另记为 `USER PASS`。不扩大为“全部历史素材逐一验证”。
 - 五条历史 outcome-unknown attempt 86/108/116/120/122 已行政取消、禁止重试；`PROVIDER_FAILED` 仅是迁移/备份门 surrogate，原 REMOTE/TIMEOUT 事件保留。三条音频 duration 元数据 12.656→12.696，媒体字节/checksum未变。切换期间 Provider/付费生成调用均为0。
-- 状态结论：`REM-010 = PASS / REM-011 = PASS / G7 = PASS / PRODUCTION = LIVE / USER ACCEPTED`。REM-001～009B继续`USER_REVIEW`，既有外部或延后项不自动升级；DEP-010在七份最终文档一致性收口后进入`USER_REVIEW`，等待用户审阅文档本身。
+- 状态结论：`REM-010 = PASS / REM-011 = PASS / G7 = PASS / PRODUCTION = LIVE / USER ACCEPTED / DEP-010 = PASS`。REM-001～009B继续`USER_REVIEW`，既有外部或延后项不自动升级；七份最终文档完成一致性收口后，用户于2026-08-15明确“文档确认通过”。
 
 ### 2026-08-15 上线后真实能力与灾备收口
 

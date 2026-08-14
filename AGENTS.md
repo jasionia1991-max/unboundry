@@ -20,7 +20,7 @@
 - **2026-08-15 当前权威状态**：本次 `v0.5.2` bridge → `v0.6.0` final、schema37 → schema39 的原生产发布已经完成；`REM-010/011 = PASS`，`G7（本次 v0.6.0）= PASS`，生产为 `LIVE / USER ACCEPTED`。该授权已经消费完毕，不是以后继续改生产、迁移或发布的永久授权；
 - 生产现运行 `/opt/unboundry/current -> releases/v0.6.0`，数据库 schema39。最终封存技术凭证 SHA-256 为 `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8`，状态为 `TECHNICAL_CUTOVER_VERIFIED`；它生成时如实保留 `userAcceptance=PENDING`，之后用户另行确认“生成任务状态已可读取”，并结合此前对老项目素材与第4项正常的确认形成生产 `USER PASS`，不得回写或重算该凭证；
 - 最终切换是人工受控的 bounded cutover，不冒充新的 formal controller PASS 或切换后重新执行过 full regression；切换期间真实 Provider 与付费生成请求均为 0；
-- 2026-08-15 用户在切换完成后另行明确授权真实生成及生产运维补验：生产真实生成现保持开启，安全阈值固定为每用户/每类型并发 1、每分钟 5；唯一一次 Doubao Seed 文字生成已成功。`DEP-003 / DEP-005 / DEP-006 / DEP-007 / OPS-002` 已按公网 Cookie、490MiB 上传下载、schema39 自动备份/保留及整机离机恢复证据转为 `PASS`。该补验授权已消费，不得据此由 Agent 再发新的付费请求；产品供用户正常使用真实生成不受影响；
+- 2026-08-15 用户在切换完成后另行明确授权真实生成及生产运维补验：生产真实生成现保持开启，安全阈值固定为每用户/每类型并发 1、每分钟 5；唯一一次 Doubao Seed 文字生成已成功。`DEP-003 / DEP-005 / DEP-006 / DEP-007 / OPS-002` 已按公网 Cookie、490MiB 上传下载、schema39 自动备份/保留及整机离机恢复证据转为 `PASS`；用户随后明确“文档确认通过”，`DEP-010 = PASS`。该补验授权已消费，不得据此由 Agent 再发新的付费请求；产品供用户正常使用真实生成不受影响；
 - `REM-001～009B` 继续保持 `USER_REVIEW`，既有 `PARTIAL / PAUSED / BLOCK / NOT_STARTED` 项不因本次上线自动升级。当前没有 `IN_PROGRESS` REM；任何后续生产写入、真实 Provider/付费生成、push/tag/PR 或新版本发布都必须重新取得明确授权；
 
 - REM-000 施工文档已于 2026-08-09 获用户确认，状态为 `PASS`；

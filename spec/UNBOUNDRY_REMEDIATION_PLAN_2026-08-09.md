@@ -1,9 +1,9 @@
 # Unboundry 全量修复、优化与安全发布施工总方案
 
 状态：`COMPLETED_WITH_USER_ACCEPTANCE`
-计划版本：`1.30-production-operational-complete`
+计划版本：`1.31-production-docs-user-accepted`
 建立日期：`2026-08-09`
-当前结论：用户后续连续授权并完成 `v0.5.2` bridge、`v0.6.0` final 与 schema37→39 原生产切换；该一次性生产授权已经消费，不得复用于未来生产动作。`REM-010/011 = PASS`、`G7（本次v0.6.0）= PASS`、`PRODUCTION = LIVE / USER ACCEPTED`；REM-001～009B继续`USER_REVIEW`，其他既有PARTIAL/PAUSED/BLOCK/NOT_STARTED不自动升级。
+当前结论：用户后续连续授权并完成 `v0.5.2` bridge、`v0.6.0` final 与 schema37→39 原生产切换；该一次性生产授权已经消费，不得复用于未来生产动作。`REM-010/011 = PASS`、`G7（本次v0.6.0）= PASS`、`PRODUCTION = LIVE / USER ACCEPTED`、`DEP-010 = PASS`；REM-001～009B继续`USER_REVIEW`，其他既有PARTIAL/PAUSED/BLOCK/NOT_STARTED不自动升级。
 
 生产当前运行 `/opt/unboundry/current -> releases/v0.6.0`，service active/enabled、4173单监听；公网页面/version/auth正常。数据库schema39、integrity ok、FK0、row14 absent、active generation0、99 tasks/99 attempts、416 ready media（local346+OSS70）、pending0；globalEnabled1/emergencyStop0、每用户/每类型并发1、每分钟5。
 
@@ -522,7 +522,7 @@ REM-009B 已在合成数据上完成富含业务数据、媒体、secret 和假 
 - `DEP-005` 真实500MB级公网上传、Range与完整下载为PASS；
 - `DEP-006` schema39自动备份、清单式30天保留与整机离机恢复为PASS；
 - `DEP-007` 公网真实生成及生产安全阈值为PASS；
-- `DEP-010` 七份权威文档已完成最终同步，状态为 USER_REVIEW，等待用户审阅文档本身；
+- `DEP-010` 七份权威文档已完成最终同步，用户于2026-08-15明确“文档确认通过”，状态为PASS；
 - Mureka 真实生成和其他已 PAUSED/PARTIAL 项保持原状态。
 
 ## 14. 本轮定义完成
@@ -536,7 +536,7 @@ REM-009B 已在合成数据上完成富含业务数据、媒体、secret 和假 
 - 发布后业务健康、数据一致性和任务状态正常；
 - TASKS、验收矩阵、交接和施工断点完成最终收口。
 
-完成结论（2026-08-15）：`REM-010/011 = PASS`、`G7（本次v0.6.0）= PASS`、生产 `v0.6.0/schema39 LIVE / TECHNICAL_CUTOVER_VERIFIED / USER ACCEPTED`。最终技术凭证 SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8`；凭证生成后用户另行确认生成任务状态可读取。REM-001～009B继续USER_REVIEW，DEP-010为USER_REVIEW，其他既有PARTIAL/PAUSED/BLOCK/NOT_STARTED项保持原状态。本次manual bounded cutover不声明formal controller PASS或切换后full regression PASS。
+完成结论（2026-08-15）：`REM-010/011 = PASS`、`G7（本次v0.6.0）= PASS`、生产 `v0.6.0/schema39 LIVE / TECHNICAL_CUTOVER_VERIFIED / USER ACCEPTED`、`DEP-010 = PASS`。最终技术凭证 SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8`；凭证生成后用户另行确认生成任务状态可读取，并于最终文档收口后明确“文档确认通过”。REM-001～009B继续USER_REVIEW，其他既有PARTIAL/PAUSED/BLOCK/NOT_STARTED项保持原状态。本次manual bounded cutover不声明formal controller PASS或切换后full regression PASS。
 
 ## 15. 变更记录
 
@@ -575,3 +575,4 @@ REM-009B 已在合成数据上完成富含业务数据、媒体、secret 和假 
 | 2026-08-14 | 1.28-production-bridge-all-authorized | 用户明确“全部授权”，连续放行 `v0.5.2` bridge 的formal Linux/bwrap、真实OSS只读镜像、维护停服、完整备份恢复、严格rowid14修复、Node22.23.2副本补证、切换与必要回滚 | 授权不替代安全门；各门未全部PASS前production gated HOLD。`v0.6.0`/schema39、真实Provider、push/tag/PR仍未授权 |
 | 2026-08-15 | 1.29-production-final-complete | `v0.5.2` bridge与`v0.6.0` final两阶段原生产切换完成；生产运行F14 v0.6.0/schema39，备份/离机恢复、数据完整性、公网健康与后续用户验收闭环。REM-010/011与本次G7为PASS；技术凭证SHA `5c78e7bc…`，manual bounded cutover边界如实保留 | 本次一次性生产授权已消费；未授权未来生产动作、真实Provider/付费生成或push/tag/PR。REM-001～009B及既有外部/延后项不自动升级 |
 | 2026-08-15 | 1.30-production-operational-complete | 用户另行授权并完成真实生成、公网Cookie、500MB级上传下载、schema39日常备份/清单式保留与整机离机恢复。唯一真实文字任务一次成功；DEP-003/005/006/007与OPS-002转PASS，生产生成开关以并发1/RPM5安全开启 | 该补验发生在切换完成后，不改写切换期间Provider调用0；不授权未来Agent继续付费或push/tag/PR |
+| 2026-08-15 | 1.31-production-docs-user-accepted | 七份权威文档完成最终一致性收口，用户明确“文档确认通过”，DEP-010转PASS | 仅确认文档收口，不改变REM-001～009B及既有PARTIAL/PAUSED/BLOCK/NOT_STARTED项 |
