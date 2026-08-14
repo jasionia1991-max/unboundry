@@ -1,15 +1,27 @@
 # Unboundry 全量修复、优化与安全发布施工总方案
 
-状态：`APPROVED_BY_USER`
-计划版本：`1.19-offline`
+状态：`COMPLETED_WITH_USER_ACCEPTANCE`
+计划版本：`1.30-production-operational-complete`
 建立日期：`2026-08-09`
-当前授权：用户已于 2026-08-09 确认本施工文档并启动一次性离线 Goal；**已授权 REM-001～010 与 REM-011 离线工程部分连续施工、本地 checkpoint/功能/candidate commit，未授权真实数据、4173、真实 Provider/OSS、原生产 SSH/连接、push、tag、PR、release 或发布**。2026-08-13 用户另行明确授权且仅完成了第二台、非原生产 Ubuntu 验证机的隔离 SSH 测试；随后确认版本方案为桥梁 `v0.5.2`、最终候选 `v0.6.0`，但明确不授权连接生产或发布。当前状态为 `REM-000 PASS / REM-001～REM-009B USER_REVIEW / REM-010～REM-011 IN_PROGRESS`。本轮B/F提交前桥梁源码证据快照是 package/lock `0.5.2`，四项 P1 与 Mac synthetic direct-child/artifact 定向门已通过；formal B/F是否存在须在恢复时以Git现场核验，提交存在本身不关闭full/三轮/竞态压力或新双阶段G0～G6，G7/DEC-REM-006 仍 pending。F-054 前 `8b639ffe…` 的旧证据只保留为产品 core 历史基线；原生产同版本/模块仍未核验，production HOLD。
+当前结论：用户后续连续授权并完成 `v0.5.2` bridge、`v0.6.0` final 与 schema37→39 原生产切换；该一次性生产授权已经消费，不得复用于未来生产动作。`REM-010/011 = PASS`、`G7（本次v0.6.0）= PASS`、`PRODUCTION = LIVE / USER ACCEPTED`；REM-001～009B继续`USER_REVIEW`，其他既有PARTIAL/PAUSED/BLOCK/NOT_STARTED不自动升级。
+
+生产当前运行 `/opt/unboundry/current -> releases/v0.6.0`，service active/enabled、4173单监听；公网页面/version/auth正常。数据库schema39、integrity ok、FK0、row14 absent、active generation0、99 tasks/99 attempts、416 ready media（local346+OSS70）、pending0；globalEnabled1/emergencyStop0、每用户/每类型并发1、每分钟5。
+
+F14生产artifact固定为commit `eb4f99ea525390b0dd7a39d3cad55d882ffea41d` / tree `86b4e424b6d6324c5f24d4c633b0cd35baf0d626` / manifest `46e2365c48b8e8bdaa1847b1767ef2974a71f2d2b47c87743793c116e5ec2adf` / inventory `ac8ca43a9f8f6724ca67bd0899185fa3952e762e0400a1f9ce34f3ecfefc2bac` / tar `0e3a96a13299efba407ba98dc6501ae97297c9a82c067827b9f9befeb2c18944`。原schema37 raw backup `7f14c611…` 已离机恢复PASS（inspection `b4d58243…`）。最终技术凭证 SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8` 为 `TECHNICAL_CUTOVER_VERIFIED`。
+
+凭证生成时的 `userAcceptance=PENDING` 是不可改写的时点事实；用户之后确认生成任务状态可读取，并结合此前确认老项目大量生成/上传素材仍在、第4项正常，生产另记 `USER PASS`。该范围不等于全部历史素材逐一验证。最终切换是manual bounded cutover，不冒充新的formal controller/full regression PASS；切换期间Provider/付费调用0。五条outcome-unknown attempt已行政取消且禁止重试，`PROVIDER_FAILED`仅为迁移/备份门surrogate；三条音频仅修正duration元数据，字节/checksum不变。
+
+切换后用户另行明确要求真实生成必须可用并授权全部生产能力补验：唯一一次Doubao Seed文字任务一次成功、无重试；513,802,240字节MP4完成公网POST201、Range206和完整SHA回读后删除；真实HTTPS登录Cookie实测`Secure/HttpOnly/SameSite=Strict`。schema39日常备份入口已修复，最终自动任务上传356文件/267,091,270字节，30天保留使用本地签名清单精确Delete而不依赖RAM拒绝的ListObjects；874,823,680字节整机离机包fresh restore PASS。由此`DEP-003/005/006/007`与`OPS-002`转为PASS；这不改写切换期间零Provider调用的历史事实，也不授权未来Agent再次付费。
+
+以下原生产只读预检与B14/F14施工段是2026-08-14切换前历史：当时服务保持v0.5.1/schema37在线，B13因历史raw SQL形态fail-close，REM-010/011重铸。凡其中`IN_PROGRESS / HOLD / 未授权 / 尚未执行`与上方最终状态冲突，均按历史时点理解。
+
+B14/F14 source pair形成后，clean F14本地正式门已完成：targeted81/81、full2832/2832、race1420/1420全部PASS，异常0、source/snapshot `6af5b891ebf9a460e941485d12934a4a217ed3e2d6feece90d7c6d1b5ac856b1`与4173不变、suite cleaned、均exit0。日志SHA：targeted `b9d260babe051c1f89ef86256ade2d57fda19b57009ec02e6973be441b5585bf`；full `1f6f958d57ee855b0272ddd2576277deef6ea3e299e5ccdc597d4ca1d4559741` / `903096ed64412e184dcefecfc28c6fedda809c17a570d3fa8729a3d176560b0b` / `adecd5164828a87452bf5974a594c19da2e00e54f4aed281c113d57240b7917a`；race `3d1b64868ef60e769158b31ee4f94efbed0015d251cfdac8b48f27f8918c5a18` / `fc08356cf3bc9eb96e8b18abdd9789b96aa615361897a205240537e2ba29eb46`。
 
 > 用户已于 2026-08-09 确认本文档为本轮权威施工合同。任何 Agent 在上下文压缩、换人或恢复任务后，都必须重新读取本文件和 `UNBOUNDRY_REMEDIATION_CHECKPOINT.md`，不得凭内部记忆或压缩摘要继续施工。
 
 ## 1. 目标与真实承诺
 
-本轮目标是：线上 `v0.5.1` 继续服务，全部授权范围内的修复、优化和验证先在线下完成；bridge `v0.5.2` / final `v0.6.0` 版本号已确认，但只能在两个 formal 产物与双阶段门全部完成后，再分别由用户授权原生产连接和发布。
+本轮目标已经达成：修复与验证先在线下完成，再以 `v0.5.2` bridge 和 `v0.6.0` final 分阶段进入原生产；当前生产已运行 `v0.6.0/schema39`。下列“能/不能承诺”保留为施工合同和证据边界，不是尚未执行清单。
 
 能作出的承诺：
 
@@ -37,11 +49,11 @@
 | Git 状态 | `main...origin/main [ahead 1]`；三份已由用户确认的文档存在未提交修改 |
 | package 版本 | `0.5.1` |
 | 线上版本 | `canvas.mymy.ltd` 运行 `v0.5.1` |
-| 线上程序/数据 | 数据目录历史记录一致为 `/var/lib/unboundry`；程序目录在交接与旧部署计划中分别为 `/opt/unboundry`、`/opt/unboundry-app`，原生产未获 SSH 授权核实 |
+| 线上程序/数据 | 2026-08-14只读现场已核实：systemd `unboundry.service`、程序 `/opt/unboundry`、数据 `/var/lib/unboundry`；`/opt/unboundry-app`仅为历史计划 |
 | 数据库结构 | 当前迁移最高版本 `37` |
 | 本轮检测到的本机 Node | `v25.9.0` |
 | 施工目标 Node | Node 22 LTS；精确 Node/npm 版本在 REM-001 决策并固定。历史生产记录为 `v22.23.2`，本轮未复核当前生产精确版本 |
-| 当前代码授权 | 一次性离线 Goal 已激活；REM-000 PASS、REM-001～009B USER_REVIEW、REM-010～011 IN_PROGRESS；版本方案确认为 bridge `v0.5.2` / final `v0.6.0`。本轮桥梁源码证据快照为 package/lock `0.5.2`，仅通过 Mac synthetic 定向门；原生产、真实服务、迁移、tag/release/发布排除，DEC-REM-006 pending |
+| 切换前代码授权（历史） | REM-001～009B USER_REVIEW，REM-010/011因B14/F14重铸为IN_PROGRESS。B14 `3b48f61…` / F14 `eb4f99e…` formal source pair、本地targeted/full/race自动门已完成，proof `517d2d24…`；formal Linux artifacts未完成。原生产bridge的formal/OSS/备份/条件修复/Node waiver/切换与必要回滚已全部授权，但必须逐门PASS；final仍HOLD。现行状态以上方“当前结论”为准 |
 
 基线发生变化时，先更新断点文件并说明原因；未经用户确认不得静默换仓库、换分支、换线上版本或换目标。
 
@@ -62,7 +74,7 @@
 - 用户新指令可以改变计划，但必须先写入“决策记录”，再改代码；
 - 仓库文档、Git 状态、测试证据和上下文摘要不一致时，停止施工并向用户报告；
 - Codex memory、rollout summary 和压缩摘要只可用于定位线索，不能作为完成、PASS 或发布证据；
-- 同时只允许一个独立施工流处于 `IN_PROGRESS`；F-054 后 REM-010/011 是同一双版本 release 收口流，允许二者同步标为 `IN_PROGRESS`，不授权并行开展无关施工。
+- 同时只允许一个独立施工流处于 `IN_PROGRESS`；当前没有IN_PROGRESS REM。未来新施工必须重新建立断点和授权，不能复用本次已消费的生产许可。
 
 ## 4. 绝对红线
 
@@ -139,17 +151,17 @@
 | F-018 | 创建、重命名等失败路径可能丢失草稿或没有明确错误反馈 | P1 | REM-007，离线候选已修 |
 | F-019 | 备份脚本会用可迁移/回填的数据库入口打开源库，可能先改库再备份 | P0 | REM-009A 已以真正只读源快照和格式 2 备份离线收口 |
 | F-020 | 数据库、媒体、密钥分阶段复制且无写锁；manifest 覆盖不完整、权限未强制 | P0 | REM-009A 建立格式 2 底座，REM-009B 完成最终候选跨域冻结/恢复，离线收口 |
-| F-021 | 发布脚本允许脏文件/.env 风险、原地构建、无 `npm ci`、无可靠备份/回滚 | P0 | legacy deploy 已 fail-close；固定提交、锁文件安装、产物哈希和不可变目录的 builder/rehearsal 底座已实现，第二 Ubuntu 验证机 production-class builder 曾 PASS；但 F-054 后 `v0.5.2 / v0.6.0` 两个真实产物与 manifest 尚未完成，旧 `8b639ffe…` 仅为 core 历史基线，当前仍归 REM-010/011 |
-| F-022 | 发布健康检查只查版本号，不打开数据库；发布后才 push，步骤不可安全拆分 | P0 | 三层健康与 build/switch/rollback 分离底座、Ubuntu Docker/第二验证机 nginx/systemd 静态门已有历史 PASS；F-054 后须在真实 `v0.5.2 / v0.6.0` 双产物上重跑，原生产、G7 与 DEC-REM-006 未完成 |
-| F-023 | 新旧服务同时连接真实库会争抢运行中生成任务；SSE 和长请求不会自动排空 | P0 | runtime role、跨进程 active lease、请求/SSE/generation drain 已接入并由 m81/m93 覆盖；合成切换合同与最终 targeted 已通过，真实生产/多机切换未验证，生产风险仍开放 |
-| F-024 | 数据库迁移到未知版本后，`v0.5.1` 会拒绝启动，普通蓝绿回滚是假回滚 | P0 | REM-009B 已证明 exact v0.5.1 对 schema39 安全拒绝且不能作为迁移后回滚目标；合成 rehearsal 及最终 targeted 已按迁移阶段约束回滚，隔离 Linux builder/ops 子门已 PASS；服务器运行/迁移/切换与原生产仍未验证，bridge 风险继续开放 |
+| F-021 | 发布脚本允许脏文件/.env 风险、原地构建、无 `npm ci`、无可靠备份/回滚 | P0 | legacy deploy 已 fail-close；formal B14/F14 固定提交、锁文件安装、产物哈希、manifest/inventory 与不可变目录已在第二 Ubuntu 验证机完成。原生产最终使用 F14 不可变 artifact，并以独立备份/恢复和人工受控切换收口；未执行仓库 push/tag/PR |
+| F-022 | 发布健康检查只查版本号，不打开数据库；发布后才 push，步骤不可安全拆分 | P0 | B14/F14 formal 路径完成多层健康与 build/migrate/switch/rollback 分离；原生产切换后已核验 public live/ready/version/auth/root、schema39完整性、服务与current身份。本次为manual bounded cutover，不冒充formal controller PASS；仓库未push |
+| F-023 | 新旧服务同时连接真实库会争抢运行中生成任务；SSE 和长请求不会自动排空 | P0 | runtime role、跨进程 active lease、请求/SSE/generation drain 已接入并由自动门、隔离Linux与原生产维护冻结/active=0证据覆盖；切换后仅一个active worker，Provider/付费调用0 |
+| F-024 | 数据库迁移到未知版本后，`v0.5.1` 会拒绝启动，普通蓝绿回滚是假回滚 | P0 | exact v0.5.1 对schema39安全拒绝已证明；生产按v0.5.2 bridge→v0.6.0 final完成schema37→39迁移，原schema37 raw备份已离机恢复PASS。旧v0.5.1不再被声明为schema39回滚目标 |
 | F-025 | OSS 镜像、密码重置和修复脚本存在 dry-run、目录选择、回显、路径和失败退出问题 | P1 | REM-008 已修密码重置/存储修复子范围；真实 OSS mirror/backup-to-OSS 继续冻结，最终恢复材料归 REM-009B/010 |
 | F-026 | 当前推荐回归只覆盖约 80/105 spec、391/519 既有测试；并非真正全量 | P0 | REM-001 |
 | F-027 | 固定端口、共享临时库、仓库 tmp 残留和继承真实环境使测试隔离不可靠 | P0 | REM-001 |
 | F-028 | 本机 Node 25 与生产 Node 22 不一致，部分结果已受版本影响 | P1 | REM-001 已修；离线施工固定 Node 22.23.1 |
 | F-029 | `npm audit` 报 1 个 high 级传递依赖告警；目前未确认项目存在可达的 size=0 调用路径。另缺少完整安全响应头和结构化脱敏日志 | P1 | REM-002 日志 + REM-008 `nanoid 3.3.18`、离线 audit 0 与安全头已收口；只代表当前 lock snapshot/离线候选 |
 | F-030 | 大型前端包、缓存/URL 生命周期、长列表和大图内存仍有实际优化空间 | P2 | REM-008 已收口本轮可验证子范围；不排除后续 P2 优化 |
-| F-031 | 即使 schema 仍为 37，新版写入的画布 JSON、任务快照、媒体状态/命名和加密 AAD 也可能不被 v0.5.1 安全理解；只比较 schema 会形成假回滚 | P0 | REM-009B 合成矩阵继续证明格式/拒绝边界，但 F-054 否定其“真实 bridge runtime”含义；`v0.5.2` schema37 基础业务允许面、高风险 mutation 拒绝和 schema39 回滚必须在真实双引擎产物重验 |
+| F-031 | 即使 schema 仍为 37，新版写入的画布 JSON、任务快照、媒体状态/命名和加密 AAD 也可能不被 v0.5.1 安全理解；只比较 schema 会形成假回滚 | P0 | REM-009B 合成矩阵继续证明格式/拒绝边界；F-054 后 formal `v0.5.2` 双引擎产物已重验 schema37 基础业务允许面、高风险 mutation 拒绝和 schema39 回滚，并由隔离 Linux receipt 绑定。原生产数据兼容仍未获授权核验 |
 | F-032 | 当前账号删除会清理相关 `admin_audit_events`；若改为保留审计将改变已 PASS 的 PERM-011 合同 | P0/产品决策 | REM-006 已确认继续 PERM-011：清理旧相关审计，仅保留唯一 `delete_user` 记录 |
 | F-033 | 账号删除前未可靠排空/阻止该账号的活动生成任务，删除后任务仍可能写媒体结果 | P0 | REM-006，离线候选已修 |
 | F-034 | 主 tsconfig 未覆盖 `server/generationProvider.ts` 与 `playwright.4174.config.ts`，仅说“TypeScript 通过”仍可能漏检跟踪源码 | P1 | REM-001 已修并持续由动态源码门禁覆盖 |
@@ -172,7 +184,7 @@
 | F-051 | 私钥/可信签名公钥、工作根与父链缺少完整 owner/mode/inode 隔离，签名私钥还可能被当 OSS 镜像打包 | P1 | REM-009A，已修 |
 | F-052 | 备份/验签/恢复清理故障可覆盖原错误、遗留明文临时目录，rollback/close 异常可阻止主密钥或 DEK 清零 | P1 | REM-009A，已修 |
 | F-053 | 数据根内部可写项/硬链接缺少完整性约束，且 pending/failed OSS `object_key` 被静默排除，形成不完整备份 | P1 | REM-009A，已修 |
-| F-054 | 现有 runtime 对 schema37 只提供 `schema37-health-only-standby`，业务 API 返回 `SERVICE_SCHEMA_STANDBY`；m95/rehearsal 的 bridge、exact、candidate 又是合成夹具，未运行一个既能在 schema37 正常营业、又能在 schema39 作回滚目标的真实不可变桥梁 | P0 | REM-010/011 重新 `IN_PROGRESS`；实施 `v0.5.2` 双引擎 bridge，并对 `v0.5.2 / v0.6.0` 重新执行双阶段 G0～G6 |
+| F-054 | 旧 runtime 对 schema37 只提供 `schema37-health-only-standby`，业务 API 返回 `SERVICE_SCHEMA_STANDBY`；旧 m95/rehearsal 的 bridge、exact、candidate 又是合成夹具，未运行一个既能在 schema37 正常营业、又能在 schema39 作回滚目标的真实不可变桥梁 | P0 | B13因两种生产历史exact raw-SQL形态缺口被禁止上线；B14/F14重铸、formal门、bridge营业与final迁移均已完成，生产现运行F14 v0.6.0/schema39。REM-010/011与本次G7已PASS |
 
 ## 7. 施工批次
 
@@ -304,7 +316,7 @@ REM-009A 在核心持久化修改前完成：建立只读备份、合成库恢�
 
 ### REM-010：不可变发布、切换与回滚系统
 
-状态：`IN_PROGRESS`。runtime role、跨进程 active lease、请求/SSE/generation drain、Darwin builder/rehearsal、三层健康/排空/切换/回滚编排及静态 nginx/systemd 运维合同已实现，legacy `deploy.mjs` 继续立即 fail-close。F-054 后的 `v0.5.2` 双引擎桥梁源码与四项 P1 已落地，当前安全清单为 `117 specs / 938 tests`，源码 `319 = 292 TS/TSX + 27 JS/MJS`，运维脚本 `18 = 15 行为验证 + 3 哈希冻结`。B/F提交前Mac synthetic direct-child/artifact 定向门已绿；formal B/F身份须以Git现场核验，而提交存在本身不完成full、三轮、竞态压力或新双阶段G0～G6。旧 `8b639ffe…` 的 `117/931`、三轮与竞态结果继续只作为产品 core 历史基线。
+状态：`PASS`。B13/F13自动与用户证据只作回归基线；B13未上线。B14→F14正式链、formal Linux、Node22.23.2补证、原schema37备份/离机恢复、OSS70、条件修复、schema39迁移、current切换与最终健康均已完成。F14生产artifact与最终技术凭证见本文顶部。
 
 `1e96e26f…` 是早期 m92 maintenance-mode fixture 窄修复后、上一轮六文档同步前脏功能树的历史 tested source 指纹，不是最新 current-tree full。
 
@@ -312,9 +324,9 @@ REM-009A 在核心持久化修改前完成：建立只读备份、合成库恢�
 
 首个 clean candidate `b9b4691a1d06d8321578b7552ea5e14b23fb85e2` 在后续 Provider/current-open 压力运行中暴露 `Application database sidecars changed before writer open`，确认为最后旧 SQLite writer 关闭时的真实 WAL/SHM 交接竞态，因此失效。替代候选 `8b639ffe6c5f091c51e1914f2e2c18edf9333d90` / tree `219c4df072426cfe92f33dc4045f021064972e9c` 使用 held-reader 窄修复：完整 WAL/SHM 对（含零字节 WAL）走普通只读检查，inspection 读事务保持到新 writer 取得 `BEGIN IMMEDIATE`并完成 identity/sidecar/schema/digest 复核后才释放；symlink、hardlink、unsafe mode、orphan sidecar、journal 与其他替换继续 fail-close。m91 确定性覆盖 hot-WAL 与 zero-WAL 的旧最后连接关闭。
 
-旧 fixed clean offline core baseline 含 429 files，source/snapshot SHA-256 `652b946441ee46e43bcbfbfc635dfc5aaacf5e640529ebec5bc7bd34c798dbb0`。三个独立 fresh full 每轮均为 `117/117 specs、931/931 PASS`，合计 `2793/2793`；每轮 failed/skipped/retries/reportErrors/blocked 全 0、`deniedViteWildcardProbes=534`、builder `1/3/1/0`，合计 builder `3/9/3/0`。关键竞态包两轮各 `5 specs × repeat 10 = 570/570`，合计 `1140/1140`，每轮异常计数全 0、`deniedViteWildcardProbes=1980`，五个关键 spec 各累计 20 次。五轮均使用 Node `22.23.1` / npm `10.9.8`，source/snapshot 前后不变，4173 listener `dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae` 前后不变，suite cleaned、exit 0。该时点按旧合同记录的 G0～G6 只保留为历史 core 基线；F-054 之后 `v0.5.2 / v0.6.0` 的 G0～G6 均重新 pending。
+旧 fixed clean offline core baseline 含 429 files，source/snapshot SHA-256 `652b946441ee46e43bcbfbfc635dfc5aaacf5e640529ebec5bc7bd34c798dbb0`。三个独立 fresh full 每轮均为 `117/117 specs、931/931 PASS`，合计 `2793/2793`；每轮 failed/skipped/retries/reportErrors/blocked 全 0、`deniedViteWildcardProbes=534`、builder `1/3/1/0`，合计 builder `3/9/3/0`。关键竞态包两轮各 `5 specs × repeat 10 = 570/570`，合计 `1140/1140`，每轮异常计数全 0、`deniedViteWildcardProbes=1980`，五个关键 spec 各累计 20 次。五轮均使用 Node `22.23.1` / npm `10.9.8`，source/snapshot 前后不变，4173 listener `dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae` 前后不变，suite cleaned、exit 0。该时点按旧合同记录的 G0～G6 只保留为历史 core 基线；F-054 之后 `v0.5.2 / v0.6.0` 的 G0～G6 在当时重新 pending，现行 formal B13/F13 状态与仍未关闭边界以上文为准。
 
-冻结实现合同：`v0.5.2` 必须是一个自包含的不可变双引擎 bridge release。共享外层 supervisor 是唯一公网 listener，统一负责 runtime role、跨进程 active lease、request/SSE/generation drain 与子引擎生命周期；它先以只读连接探测 `user_version`，schema37 选择内嵌 exact-v0.5.1-compatible 引擎，schema39 选择内嵌 v0.6.0-compatible 业务引擎，schema38 与未知版本仅维护态 fail-close。schema37 只开放登录/会话、项目/画布等基础业务读写与既有媒体读取；生成提交/重试/取消、上传/删除/发布等高风险 generation/media mutation 必须由 supervisor allowlist 之外统一 fail-close，离线验收 Provider 请求必须为0。schema39 分支必须完成当前业务读写并能作为 `v0.6.0` 上线后的回滚目标。启动、存活/就绪检查均不得迁移；显式 migrator 只能在维护、排空、备份和 60 秒 admission 窗口满足后执行。manifest 必须分别哈希 supervisor、两个引擎、各自 lock/build 输入与静态资源，运行时不得依赖 Git checkout、npm registry 或其他网络组装。
+冻结实现合同：`v0.5.2` 必须是一个自包含的不可变双引擎 bridge release。共享外层 supervisor 是唯一公网 listener，统一负责 runtime role、跨进程 active lease、request/SSE/generation drain 与子引擎生命周期；它先以只读连接探测 `user_version`，schema37 选择内嵌 exact-v0.5.1-compatible 引擎，schema39 选择内嵌 v0.6.0-compatible 业务引擎，schema38 与未知版本仅维护态 fail-close。schema37 只开放登录/会话、项目/画布等基础业务读写与既有媒体读取；生成提交/重试/取消、上传/删除/发布等高风险 generation/media mutation 必须由 supervisor allowlist 之外统一 fail-close，离线验收 `generation_provider_attempts=0` 且成功外部出站0。schema39 分支必须完成当前业务读写并能作为 `v0.6.0` 上线后的回滚目标。启动、存活/就绪检查均不得迁移；显式 migrator 只能在维护、排空、备份和 60 秒 admission 窗口满足后执行。manifest 必须分别哈希 supervisor、两个引擎、各自 lock/build 输入与静态资源，运行时不得依赖 Git checkout、npm registry 或其他网络组装。
 
 本轮实现审计已关闭四项 P1：（A）exact-v0.5.1 child 使用不含 ffmpeg/ffprobe 的受控 PATH，warmup 只补 checksum，duration 保持 pending 到显式 migrator；有效 PCM WAV 回归证明 bridge 前后恰好 1 条 pending、migrator 恰好回填 1 条、final 恰好 1 条 ready。（B）safe runner 按 iteration 持有 bridge/final 共用的 ffmpeg/ffprobe 先决件，反复验证 path/inode/uid/mode/nlink/size/time/hash/version 并在 suite 末清理。（C）source-pair 只允许 `0.5.2→0.6.0` 直接子提交改动 package/lock 三个版本值；`47fc53b9… / 75/75` 固定为隔离临时Git内的B/F提交前 `synthetic-direct-child-fixture` 证据，后续提交存在也不会把它升级为formal证据；formal门必须以clean final HEAD和唯一真实`v0.5.2`父提交重新证明。（D）m92 只从认证 attestation 取得 admitted bridge/final 与 bridge 产物内 migrator，不使用当前 checkout 或手写 shim。
 
@@ -326,7 +338,7 @@ REM-009A 在核心持久化修改前完成：建立只读备份、合成库恢�
 
 ### REM-011：候选版本全量验收与正式发布门
 
-状态：`IN_PROGRESS`，与 REM-010 组成同一双版本收口工作流，不表示允许两个互不相关的施工项并发。用户已确认 DEC-REM-005：bridge `v0.5.2`、final `v0.6.0`。已有B/F提交前 authenticated operational bridge/final 的 Mac synthetic 定向证据；formal B/F身份以恢复时Git现场核验。完整发现为 `117/938`但只执行了 `7/75`定向门；即使B/F提交已存在，full/三轮/竞态压力和其余双阶段 G0～G6 仍 pending，G7 尚不可进入，DEC-REM-006 pending。
+状态：`PASS`。旧F13的117/942、targeted79、full2826、race1380、G5/G6只作回归基线。F14发现117 specs/944 tests；clean targeted81/81、三个fresh full合计2832/2832、两轮race合计1420/1420全部PASS且异常0，formal Linux证据完成。生产v0.6.0/schema39已完成技术核验，用户随后确认生成任务状态可读取；最终切换不冒充切换后又跑过一次full regression。
 
 范围：全部自动测试、三轮全新环境、并发与故障注入、备份恢复、发布回滚演练、用户本地候选页验收、文档收口。
 
@@ -352,7 +364,7 @@ REM-009A 在核心持久化修改前完成：建立只读备份、合成库恢�
 
 ### G2 完整自动测试
 
-- 原始基线 105/105 spec、519/519 既有测试已全部纳入；REM-001 后为 520，REM-002 后为 536，REM-009A 后为 542，REM-003 后为 107/687，REM-004 后为 109/762，REM-005 后为 109/790，REM-006 后为 109/804，REM-007 后为 109/841，REM-008 历史批次为 `111/111 spec、891/891 tests`，REM-009B 历史全量为 `114/114 spec、912/912 tests`；`8b639ffe…` core 基线为 `117 specs / 931 tests`。F-054 双引擎桥梁源码的当前安全发现已更新为 `117 specs / 938 tests`，但最新证据只执行 `7 specs / 75 tests`定向门；完整 full 仍必须执行数等于 `938`，且必须绑定后续 formal bridge/final 直接父子提交；
+- 原始基线 105/105 spec、519/519 既有测试已全部纳入；REM-001 后为 520，REM-002 后为 536，REM-009A 后为 542，REM-003 后为 107/687，REM-004 后为 109/762，REM-005 后为 109/790，REM-006 后为 109/804，REM-007 后为 109/841，REM-008 历史批次为 `111/111 spec、891/891 tests`，REM-009B 历史全量为 `114/114 spec、912/912 tests`；`8b639ffe…` core 基线为 `117 specs / 931 tests`，pre-formal 双引擎门为 `117/938` discovery 与 `75/75` targeted。formal F13 最终发现并执行 `117 specs / 942 tests`，三轮合计 `2826/2826`；
 - 失败 0、skip 总数 0、fixme 0、only 0、依赖 retry 才通过 0；真实 OSS/Provider 外部验真移出离线清单，以本地假服务替代逻辑覆盖；
 - 逐文件隔离全量与关键组合回归均通过；
 - 真实 OSS/Provider 验真不伪装成离线门禁，使用假 OSS/Provider 覆盖逻辑。
@@ -362,7 +374,7 @@ REM-009A 在核心持久化修改前完成：建立只读备份、合成库恢�
 
 - 完整全量在三个全新临时环境连续通过；
 - 关键竞态使用确定性屏障并至少压力复跑 20 次；
-- `8b639ffe…` core 基线已在三个独立 safe-suite 环境完成 `931/931 × 3`；m44/m81/m91/m93/m95 关键包以两次独立 `repeat 10` 完成 `570/570 × 2`，五个 spec 各累计 20 次。新双引擎源码的 Mac synthetic 定向 `75/75` 不满足本门；formal `v0.5.2 / v0.6.0` 必须在其真实直接父子提交上重新完成三轮 full 与关键竞态压力；
+- `8b639ffe…` core 基线已在三个独立 safe-suite 环境完成 `931/931 × 3`；其五 spec 关键包以两次独立 `repeat 10` 完成 `570/570 × 2`。formal F13 又在三个 fresh suite 完成 `942/942 × 3 = 2826/2826`；m44/m81/m91/m92/m93/m95 六 spec 以两次独立 `repeat 10` 完成 `690/690 × 2 = 1380/1380`，每轮异常计数为 0、source/snapshot 与 listener 身份不变、suite cleaned；
 - 覆盖保存乱序、上传中断、取消/完成竞争、Provider 挂起、OSS 断线、ffmpeg 挂死、备份失败；
 - 无僵尸进程、残留端口和本轮临时目录。
 
@@ -375,13 +387,15 @@ REM-009A 在核心持久化修改前完成：建立只读备份、合成库恢�
 
 ### G5 发布回滚演练
 
-- 第一阶段 `v0.5.2`：同一不可变产物必须在 schema37 提供基础业务允许面的真实读写，同时确定性拒绝全部高风险 generation/media mutation 且 Provider=0；在 schema39 提供完整业务读写并充当回滚目标；schema38/未知版本 fail-close，健康/启动不迁移；
+- 第一阶段 `v0.5.2`：同一不可变产物必须在 schema37 提供基础业务允许面的真实读写，同时确定性拒绝全部高风险 generation/media mutation，`generation_provider_attempts=0`且成功外部出站0；在 schema39 提供完整业务读写并充当回滚目标；schema38/未知版本 fail-close，健康/启动不迁移；
 - 第二阶段 `v0.6.0`：从已验证的 `v0.5.2` schema37 状态出发，经维护/排空/备份和显式 one-shot migration 进入 schema39，再验证完整业务、故障恢复以及回滚到同一 `v0.5.2` schema39 引擎；
 - 按“桥梁已就绪/未迁移”“静态维护”“迁移后只读”“恢复写入后”分别验证回滚，不笼统承诺每个阶段动态旧版都可访问；
 - 正常服务阶段请求完成率 100%、连接重置 0、超时 0、响应体/版本正确、延迟不超过演练阈值；静态维护阶段页面返回预期 200，动态 API 可按计划返回 503 + `Retry-After`，不得被误判为发布故障；
 - 回滚后画布写入和媒体读取正常；
 - 编排中的 Git push、tag、SSH 和生产切换全部为假实现；生成的 nginx 配置必须在本地可用的同版本/同模块环境做真实 `nginx -t`，systemd unit 做真实静态校验，生产核验仍等待发布授权；
 - 在途保存只允许以同一幂等请求恢复且最终不丢数据；只允许幂等 GET 自动重试，绝不自动重试 POST。
+
+当前证据边界：隔离 Linux production-validation receipt 已证明双阶段迁移、切换、回滚、重切与 60 秒 drain；m92/m95/full 也覆盖业务与故障合同，rollback 后画布 API 写入由 G6 C 阶段的真实编辑、保存、重载手工确认。Mac synthetic-test 外置控制器资格验证 `700/700` 与六类loopback状态机 PASS，receipt `6f2f2dce…` 明确 `formalG5Evidence=false`。其后 DEC-REM-007 单次不可变审批在第二台非生产 Linux 验证机运行 formal B13/F13：outer receipt `PASS / formalG5Evidence=true / g5NormalRequestMetrics=PASS`，SHA-256 `ed319a33611c8b0454fdab16e0ae85cc27bb1711a5c10a6df389bc57ee8d620b`；inner `380ec25897f8d642c379301a313a572eb20d31e75a1ffefcc454a89487b64ad0`，requests `15d69b90ffdd4a686fd3653f664c0ec90f933281e16757f57ce07f13e5f43a92`。B37/B39/F39/B39_ROLLBACK/F39_RESWITCH 五阶段各140，共 `700/700` 完整且语义有效，mismatch/reset/timeout/oversize/other均0；观测 p50/p95/p99/max `24.633/74.981/89.501/103.58ms`，hard deadline2000ms，`productionSlo=false`。六类负向状态机PASS，final schema39 integrity ok/FK0/marker absent/Provider attempts0，Provider/OSS/付费workload0；host before=after，4173与uid996进程均0，清理完成。G5 coverage 为 `PASS`。可选 nginx/systemd/ffmpeg/ffprobe ops supplement仍未运行，但不是本次normal-metrics必要门；上述结果不是原生产SLO，也不授权G7或生产。
 
 ### G6 用户验收与文档
 
@@ -390,13 +404,14 @@ REM-009A 在核心持久化修改前完成：建立只读备份、合成库恢�
 - `TASKS.md`、验收矩阵、施工断点同步；
 - 真实 Provider、真实 OSS 公网兼容等未执行范围明确保留为未验证。
 
+2026-08-14 G6 执行结果：用户在隔离临时数据与动态 loopback 端口完成并明确最终通过。A 为 B13/schema37 登录、Text/Image 与画布读写，文字在固定 250×250 内自动换行；B 为真实60秒排空及 v37→39 migration 后，在 F13/schema39 编辑、保存、重载；C 为回切 B13/schema39 后编辑、保存、重载；final 为再次切回 F13 的最终视觉复核。证据 SHA-256 `d9f781600e169b93da6955fbc3395a24747edde148942b12fdcec7fa3d85358d`。F13 阶段曾手动点击一次合成禁用 Provider `/test`，返回 HTTP 400；`generation_provider_attempts=0`、无付费生成、成功外部出站0，但不宣称所有 Provider/test 请求为0。G6 状态为 `USER PASS`，只覆盖隔离候选，不是原生产、真实 Provider/OSS、公网兼容或发布证明。
+
 ### G7 发布授权
 
-- 本次 Goal 的本地 commit 已获授权；`8b639ffe…` 及其旧 G0～G6 只作为 core 历史基线。`47fc53b9… / 75/75` 永久是B/F提交前的Mac synthetic direct-child/artifact定向证据，不是formal `v0.5.2` / `v0.6.0` release commit证据；formal B/F是否已形成以Git现场核验，但双阶段 G0～G6 尚未通过，因此 G7 尚不可进入；
-- 备份与回滚方案完整；
-- 用户已明确确认正式版本方案：bridge `v0.5.2`、final `v0.6.0`；该确认只关闭 DEC-REM-005；
-- 用户随后分别明确确认允许连接/发布桥梁，以及允许迁移/发布最终版；
-- 本地 commit 权限不扩张为 push/tag/原生产 SSH 修改/发布；第二验证机的单次隔离 SSH 授权也不扩张范围。DEC-REM-006 仍 pending。
+- `PASS（仅本次 v0.6.0 发布）`：bridge/final版本、formal证据、备份/恢复、生产切换、schema39数据健康与后续用户确认已闭环；
+- 本次授权已经消费，不授权未来生产动作或下一版本；
+- 本地commit权限从未扩张为push/tag/PR，仓库发布动作仍未执行；
+- manual bounded cutover与此前full/formal证据分层记录，不伪造controller PASS或切换后full regression。
 
 依赖准备与测试断网分开：REM-001 必须记录准确 npm 版本并优先准备锁定缓存，门禁使用 `npm ci --offline`；若缓存缺失，需要访问公共 npm registry，先向用户单独说明并获授权。Provider/OSS/生产域名在任何阶段都不因依赖准备而放行。
 
@@ -406,7 +421,7 @@ REM-009A 在核心持久化修改前完成：建立只读备份、合成库恢�
 
 每个修复先评估能否复用现有表、事务和状态。不能为了实现方便随意加迁移。但“仍是 v37”不等于一定能回滚：还必须证明 `v0.5.1` 能安全读取和回写候选版产生的画布 JSON、任务快照、媒体状态/命名、配置与加密 AAD，不会丢弃未知字段或误处理状态。只有 schema 和数据格式兼容矩阵都通过，才允许把 `v0.5.1` 作为回滚目标；否则即使不升 schema，也必须使用兼容桥梁版本。
 
-REM-004 评估后确认持久媒体发布/删除 journal 属必要 P0，形成 schema 38 离线候选；REM-005 为原子付费边界、凭据 epoch 和 admission 账本追加 schema 39，当前离线候选为 schema 39。该结果不改变生产 v0.5.1/schema 37；v0.5.1 会拒绝候选库，迁移后不得直接以 v0.5.1 回滚。
+REM-004 评估后确认持久媒体发布/删除 journal 属必要 P0，形成 schema 38 离线候选；REM-005 为原子付费边界、凭据 epoch 和 admission 账本追加 schema 39。该段是施工决策历史；最终生产已完成 schema37→39 迁移并运行 v0.6.0，v0.5.1 会拒绝该库且不得作为当前回滚目标。
 
 ### 9.2 schema 或数据格式不兼容时
 
@@ -422,9 +437,9 @@ REM-004 评估后确认持久媒体发布/删除 journal 属必要 P0，形成 s
 
 REM-009B 已在合成数据上完成富含业务数据、媒体、secret 和假 OSS 的冻结 v37 格式 2 create → verify → restore → migrate → start、一次性 exact-v37→schema39 maintenance migration、写锁内来源复核、中间故障恢复及 exact-v0.5.1→当时所谓 current bridge→schema39 数据格式与安全拒绝边界矩阵；exact v0.5.1 对 schema39 安全拒绝，迁移后不能回滚到 v0.5.1。这仍不是生产迁移或生产回滚证明。F-054 后确认当时的 bridge 是合成角色，真实 current runtime 在 schema37 只是 health-only standby，因此 REM-010/011 重新施工。migration 39 的 admission 表故意不从历史任务推断回填，未来生产迁移前仍必须冻结新生成、排空活动任务，并从最后一次可能 Provider admission 起持续至少 60 秒，再迁移并只启动唯一 active worker。
 
-用户已经确认两个版本号：bridge `v0.5.2`、final `v0.6.0`。这只关闭 DEC-REM-005。本轮B/F提交前桥梁源码快照和 authenticated operational artifacts 已通过 Mac synthetic 定向门；formal B/F身份必须在恢复时以Git现场核验，若存在还必须证明F唯一父B且只改package/lock三个版本值。`v0.5.2` 仍必须证明 schema37 基础业务允许面正常、generation/media 高风险 mutation fail-close 且 Provider=0，并证明 schema39 完整回滚；`v0.6.0` 再证明显式迁移后的 schema39 完整营业。full/三轮/竞态压力、双阶段 G0～G6、原生产主机同版本/模块与 G7 都尚未完成；DEC-REM-006 仍要求两次独立生产授权。
+用户已确认并完成bridge `v0.5.2`、final `v0.6.0`。B14/F14证明F唯一父B且只改package/lock三版本字段；旧B13/F13自动、Linux、G5/G6证据只作回归基线。formal Linux、真实OSS镜像、正式备份/离机恢复、条件修复、bridge/final切换与schema39最终核验均已完成。
 
-历史首选曾是对 `v0.5.1` 保持完整双向兼容并只发布一次；schema39 已使其不可行。现冻结为两版本方案：桥梁 `v0.5.2` 是第一次独立正式发布，最终 `v0.6.0` 是第二次独立正式发布。版本号已讲明并确认，但两次生产连接/发布授权都尚未获得；不得把本地 `ok go`、离线测试授权或第二验证机授权解释为任一次原生产授权。
+历史首选曾是对`v0.5.1`保持完整双向兼容并只发布一次；schema39使其不可行，最终按两版本方案完成。旧v0.5.1不能直接连接schema39；未来回滚或发布必须另立方案和授权。
 
 ### 9.3 正式切换顺序
 
@@ -491,31 +506,37 @@ REM-009B 已在合成数据上完成富含业务数据、媒体、secret 和假 
 | DEC-REM-001 | 用户确认本施工文档成为权威合同；REM-001～011 的实施授权仍需另行确认 | 已确认（2026-08-09）；离线实施授权也已同日确认 |
 | DEC-REM-002 | 是否允许建立仅本地 checkpoint commit（绝不 push） | 已确认：允许本地 checkpoint、功能和 candidate commit；绝不 push/tag/PR |
 | DEC-REM-003 | 账号删除继续遵守 PERM-011，或明确以新公共模板/授权/审计/tombstone 合同替代并重新验收受影响 PASS；KEY-008、AUTH-006 不得回退 | 已确认：沿用 PERM-011；公共模板及必要素材转交受保护最高权限账号；其他私有数据按既有合同安全清理 |
-| DEC-REM-004 | 首选保持 v0.5.1 双向兼容并只发布一次；若 schema 或数据格式不兼容，用户选择“桥梁+最终版两次发布，分别确认两个版本号和两次生产授权”或“推迟不兼容改动”；不得绕过桥梁直接升级 | 已确认采用两版本：F-054 后由真实双引擎 `v0.5.2` bridge 先覆盖 schema37 基础业务允许面并在 schema39 作回滚，再由 `v0.6.0` 完成最终迁移；REM-010/011 IN_PROGRESS，production HOLD |
+| DEC-REM-004 | 首选保持 v0.5.1 双向兼容并只发布一次；若 schema 或数据格式不兼容，用户选择“桥梁+最终版两次发布，分别确认两个版本号和两次生产授权”或“推迟不兼容改动”；不得绕过桥梁直接升级 | 已确认并执行两版本方案：`v0.5.2` bridge覆盖schema37并提供迁移回滚边界，`v0.6.0`完成最终迁移；REM-010/011与本次G7已PASS，生产v0.6.0/schema39 LIVE |
 | DEC-REM-005 | 正式候选版本号 | 已确认（2026-08-13）：桥梁 `v0.5.2`、最终候选 `v0.6.0`；只确认命名，不授权 tag/release/连接生产/发布 |
-| DEC-REM-006 | 是否允许连接生产主机并发布 | `PENDING`；未来 `v0.5.2` 连接/发布与 `v0.6.0` 迁移/发布是两次独立生产动作，各自另行确认 |
+| DEC-REM-006 | 是否允许连接生产主机并发布 | bridge `v0.5.2` 与 final `v0.6.0` 两阶段生产授权均已明确取得、执行并完成；一次性授权已消费，不得复用于未来生产连接、切换或发布 |
+| DEC-REM-007 | 是否允许在既有第二台非生产验证机对 formal B13/F13 执行一次 G5 formal supplement | 已确认并执行完毕（2026-08-14，用户回复“ok 授权 go”）：独立不可变审批下唯一一次隔离执行 PASS，one-shot marker 已消费且不得重跑。该授权不包含原生产、4173、真实 Provider/OSS、push/tag/release 或发布 |
+| DEC-REM-008 | 原生产是否可使用 Node 22.23.2 | 已确认允许；formal manifest 的 22.23.1 证据不改写、不冒充实际 runtime，必须以相同 B 候选和生产 Node 22.23.2/SHA 在恢复副本补充验证 |
+| DEC-REM-009 | 是否允许修复唯一 FK 孤儿 | 已确认仅删除 `project_metadata rowid=14`；前提是维护挡写、旧服务停止、无写者、可恢复原始备份完成且删除前后身份/FK/逻辑内容精确复核。不得扩大为其他清理 |
+| DEC-REM-010 | 是否允许真实 OSS 只读镜像与安装/使用 bwrap | 已确认并在本次bridge/final链中执行；70个OSS对象只读镜像与隔离门已完成。该授权已消费，不包含未来OSS访问或主机安装操作 |
 
 ## 13. 当前外部验收边界
 
 以下既有状态不因本计划建立而改变：
 
-- `DEP-003` Secure Cookie 浏览器确认仍为 PARTIAL；
-- `DEP-005` 真实 500MB 公网上传仍为 NOT_STARTED；
-- `DEP-006` OSS 旧备份自动清理仍受 RAM ListObjects 权限限制；
-- `DEP-007` 公网真实生成仍为 PARTIAL；
-- `DEP-010` 部署文档与剩余验收仍为 PARTIAL；
+- `DEP-003` Secure Cookie真实公网登录响应验证为PASS；
+- `DEP-005` 真实500MB级公网上传、Range与完整下载为PASS；
+- `DEP-006` schema39自动备份、清单式30天保留与整机离机恢复为PASS；
+- `DEP-007` 公网真实生成及生产安全阈值为PASS；
+- `DEP-010` 七份权威文档已完成最终同步，状态为 USER_REVIEW，等待用户审阅文档本身；
 - Mureka 真实生成和其他已 PAUSED/PARTIAL 项保持原状态。
 
 ## 14. 本轮定义完成
 
-本轮只有同时满足以下条件才算完成：
+本轮已按以下条件完成：
 
 - REM-000～REM-011（含 REM-009A/009B）中用户批准纳入的范围全部达到对应状态；
 - G0～G7 全部满足；
 - 没有把真实外部未验证项虚报为 PASS；
-- 用户已确认 bridge/final 版本号，并在未来分别明确授权两次原生产连接/发布；
+- 用户已确认 bridge/final 版本号，并已分别授权和完成两次原生产连接/发布；该授权已消费；
 - 发布后业务健康、数据一致性和任务状态正常；
 - TASKS、验收矩阵、交接和施工断点完成最终收口。
+
+完成结论（2026-08-15）：`REM-010/011 = PASS`、`G7（本次v0.6.0）= PASS`、生产 `v0.6.0/schema39 LIVE / TECHNICAL_CUTOVER_VERIFIED / USER ACCEPTED`。最终技术凭证 SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8`；凭证生成后用户另行确认生成任务状态可读取。REM-001～009B继续USER_REVIEW，DEP-010为USER_REVIEW，其他既有PARTIAL/PAUSED/BLOCK/NOT_STARTED项保持原状态。本次manual bounded cutover不声明formal controller PASS或切换后full regression PASS。
 
 ## 15. 变更记录
 
@@ -543,3 +564,14 @@ REM-009B 已在合成数据上完成富含业务数据、媒体、secret 和假 
 | 2026-08-13 | 1.17-offline | 首个clean candidate `b9b4691…`被真实WAL/SHM交接竞态击穿并失效；held-reader窄修复后以fixed clean offline candidate `8b639ffe…`完成三个独立full `2793/2793`、两包关键压力`1140/1140`及G0～G6，REM-010/011离线工程进入USER_REVIEW | G7、原生产核验、正式版本号与随后独立发布授权仍缺；package 0.5.1、production HOLD，不含push/tag/PR/release/production |
 | 2026-08-13 | 1.18-offline | F-054 确认旧 current 在 schema37 只有 health-only standby、m95/rehearsal bridge 为合成夹具；`8b639ffe…` 旧 G0～G6 降为产品 core 历史基线，REM-010/011 重回 IN_PROGRESS。冻结单产物双引擎 bridge：schema37 基础业务允许面 active、高风险 generation/media mutation fail-close 且 Provider=0；schema39 为完整回滚引擎。用户确认 bridge `v0.5.2` / final `v0.6.0` | 仅 DEC-REM-005 confirmed；DEC-REM-006 pending，未授权原生产连接/迁移、tag/release或发布，production HOLD |
 | 2026-08-13 | 1.19-offline | 桥梁源码快照统一 package/lock `0.5.2`，发现清单更新为117/938、源码319、运维18；关闭 duration owner、稳定先决件、direct-child source-pair、m92 admitted-artifact provenance 四项P1。首轮74/75只暴露m92 `fetch` Host夹具问题，产品规则未放宽；`node:http`窄修复后m92 2/2、最终7-spec 75/75 | 仅未提交bridge源码的Mac synthetic direct-child/artifact定向门；非full/三轮/竞态/formal release/Linux production/原生产/发布，REM-010/011 IN_PROGRESS、G0～G6/G7/DEC-REM-006 pending、production HOLD |
+| 2026-08-14 | 1.20-offline | formal B13/F13 唯一直接父子与三版本值合同冻结；targeted79、三轮full2826、两轮race1380及隔离Linux production-validation receipt通过，REM-010/011进入USER_REVIEW。明确依赖图仅继承历史audit0、G5动态指标/rollback API写未单测且可选ops supplement未执行 | USER_REVIEW不等于G7、原生产或发布；DEC-REM-006 pending，production HOLD |
+| 2026-08-14 | 1.21-offline | 用户完成G6隔离A/B/C+final四阶段实页验收并明确最终通过：B13/schema37→F13/schema39→B13/schema39 rollback→F13 reswitch；Text/Image、保存重载、固定尺寸换行与rollback后画布API写均确认。G5仅剩精确latency/reset/timeout与未执行ops supplement边界 | G6 USER PASS仅覆盖隔离候选；G5 PARTIAL、G7 BLOCKED、DEC-REM-006 pending、production HOLD |
+| 2026-08-14 | 1.22-offline | G5外置控制器完成Mac synthetic-test五阶段资格验证：700/700完整且语义有效，mismatch/reset/timeout/oversize/其他传输错误均0，六类loopback状态机自测PASS；controller `c78a6a36…`、receipt `6f2f2dce…`、requests `49eddde2…` 已冻结 | receipt明确formalG5Evidence=false；Linux formal artifact supplement和可选ops supplement未执行，G5仍PARTIAL，G7/DEC-REM-006/production继续HOLD |
+| 2026-08-14 | 1.23-offline | DEC-REM-007 单次不可变审批在第二台非生产 Linux 验证机完成 formal B13/F13 supplement：outer receipt `ed319a33…` 为 `PASS / formalG5Evidence=true`，五阶段700/700、传输错误0、六类状态机PASS，G6 C已关闭rollback API写缺口 | G5 coverage PASS；观测延迟不是原生产SLO，可选ops supplement仍未执行且非本次必要门。REM-001～011仍USER_REVIEW，G7/DEC-REM-006/production继续HOLD |
+| 2026-08-14 | 1.24-production-bridge-preflight | 用户授权原生产第一阶段 bridge 准备、Node22.23.2 例外与条件式删除唯一 FK 孤儿；只读预检发现真实库两张表的 exact 历史 SQL 形态未被 B13 接纳，并确认70个ready OSS恢复材料仍缺可信versionId镜像，因此B13停止、B14/F14重铸 | 未停服、未写生产库、未访问真实OSS、未安装bwrap、未发布；`v0.6.0`迁移/发布仍未授权，production HOLD |
+| 2026-08-14 | 1.25-b14-f14-source-pair | B14 `3b48f61c…` / tree `c8b0d75c…` 与唯一直接子 F14 `eb4f99ea…` / tree `86b4e424…` 已形成；B14相对F13准确7文件，F14相对B14仅package/lock三版本字段，formal proof `517d2d24…` PASS。两版m81 41/41、tsc/source coverage/build PASS | 新targeted81、full2832、race1420、formal Linux artifacts/receipt仍待完成；真实OSS+bwrap未授权，未停服/写库/迁移/发布，production HOLD |
+| 2026-08-14 | 1.26-b14-f14-targeted-pass | clean standalone F14 clone完成7-spec targeted `81/81 PASS`；异常计数全0、builder 1/5 PASS、source/snapshot `6af5b891…`、4173 identity不变、suite cleaned、exit0，日志 `b9d260ba…` | full2832、race1420与formal Linux artifacts/receipt仍待完成；真实OSS+bwrap未授权，未停服/写库/迁移/发布，production HOLD |
+| 2026-08-14 | 1.27-b14-f14-local-gates-pass | 同一standalone clean F14身份下完成三个独立fresh full `2832/2832`与两轮独立六spec repeat10 `1420/1420`；异常0、full builder3/15、race builder20/100全绿，source/snapshot `6af5b891…`与4173不变、suite cleaned、均exit0 | formal Linux artifacts/receipt仍待完成；真实OSS+bwrap未授权，未停服/写库/迁移/发布，production HOLD |
+| 2026-08-14 | 1.28-production-bridge-all-authorized | 用户明确“全部授权”，连续放行 `v0.5.2` bridge 的formal Linux/bwrap、真实OSS只读镜像、维护停服、完整备份恢复、严格rowid14修复、Node22.23.2副本补证、切换与必要回滚 | 授权不替代安全门；各门未全部PASS前production gated HOLD。`v0.6.0`/schema39、真实Provider、push/tag/PR仍未授权 |
+| 2026-08-15 | 1.29-production-final-complete | `v0.5.2` bridge与`v0.6.0` final两阶段原生产切换完成；生产运行F14 v0.6.0/schema39，备份/离机恢复、数据完整性、公网健康与后续用户验收闭环。REM-010/011与本次G7为PASS；技术凭证SHA `5c78e7bc…`，manual bounded cutover边界如实保留 | 本次一次性生产授权已消费；未授权未来生产动作、真实Provider/付费生成或push/tag/PR。REM-001～009B及既有外部/延后项不自动升级 |
+| 2026-08-15 | 1.30-production-operational-complete | 用户另行授权并完成真实生成、公网Cookie、500MB级上传下载、schema39日常备份/清单式保留与整机离机恢复。唯一真实文字任务一次成功；DEP-003/005/006/007与OPS-002转PASS，生产生成开关以并发1/RPM5安全开启 | 该补验发生在切换完成后，不改写切换期间Provider调用0；不授权未来Agent继续付费或push/tag/PR |
