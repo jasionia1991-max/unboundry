@@ -36,8 +36,10 @@ import {
   POLLING_PAUSED_MESSAGE,
   waitForGenerationTaskWithPause,
 } from "../generation/taskPolling";
-import type {
-  NodeGenerationOutcome,
+import {
+  workflowModelSelectionProblem,
+  workflowSubmissionPreflightProblem,
+  type NodeGenerationOutcome,
 } from "../generation/workflowExecution";
 import { visibleGenerationError } from "../generation/generationErrors";
 import {
@@ -376,12 +378,23 @@ function AudioNodeImpl({
     targetId: id,
     targetKind: "audio",
   });
+  const modelSelectionProblem = workflowModelSelectionProblem({
+    isFixture,
+    kind: "audio",
+    model: selectedAudioModel,
+    status: audioModelSelection.status,
+    unavailableReason: audioModelUnavailableReason,
+  });
   const inputProblems: NodeInputProblem[] = [
     ...(modelSwitchProblem
       ? [{ code: "MODEL_UNSUPPORTED" as const, message: modelSwitchProblem }]
       : []),
     ...inputPreflight.problems,
     ...serverInputProblems,
+  ];
+  const workflowProblems: NodeInputProblem[] = [
+    ...(modelSelectionProblem ? [modelSelectionProblem] : []),
+    ...inputProblems,
   ];
   const hasCompatibleUpstreamText = inputPreflight.inputs.some((input) =>
     input.kind === "text" &&
@@ -1061,6 +1074,43 @@ function AudioNodeImpl({
     }
   };
 
+  const persistWorkflowInputFailure = async (problem: NodeInputProblem) => {
+    setNodes((nodes) => nodes.map((node) => node.id === id
+      ? {
+          ...node,
+          data: {
+            ...node.data,
+            audioGenerationError: problem.message,
+            audioGenerationErrorCode: problem.code,
+            audioGenerationInputKey: undefined,
+            audioGenerationOwnershipKey: undefined,
+            audioGenerating: false,
+            audioGenerationRetryAllowed: undefined,
+            audioGenerationRetryBlockCode: undefined,
+            audioGenerationRetryBlockReason: undefined,
+            audioGenerationTaskId: undefined,
+          },
+        }
+      : node));
+    setUploadError(problem.message);
+    setRetryTaskId(undefined);
+    await flushCanvasSave();
+    return { message: problem.message, status: "failed" as const };
+  };
+
+  const preflightWorkflowNode = async (context: {
+    executableIds: ReadonlySet<string>;
+  }): Promise<NodeRunResult> => {
+    const problem = workflowSubmissionPreflightProblem({
+      executableIds: context.executableIds,
+      inputs: inputPreflight.inputs,
+      problems: workflowProblems,
+    });
+    return problem
+      ? persistWorkflowInputFailure(problem)
+      : { status: "success" };
+  };
+
   const runWorkflowNode = async (): Promise<NodeRunResult> => {
     const before = getNodes().find((node) => node.id === id);
     if (!before) return { status: "failed" };
@@ -1089,10 +1139,17 @@ function AudioNodeImpl({
   const runWorkflowNodeRef = useRef<() => Promise<NodeRunResult>>(
     async () => ({ status: "skipped" }),
   );
+  const preflightWorkflowNodeRef = useRef<(
+    context: { executableIds: ReadonlySet<string> },
+  ) => Promise<NodeRunResult>>(
+    async () => ({ status: "success" }),
+  );
   runWorkflowNodeRef.current = runWorkflowNode;
+  preflightWorkflowNodeRef.current = preflightWorkflowNode;
   useEffect(
     () =>
       registerWorkflowNode(id, {
+        preflight: (context) => preflightWorkflowNodeRef.current(context),
         run: createSaveGateRun(
           waitForCanvasRevision,
           () => runWorkflowNodeRef.current(),
@@ -2176,6 +2233,7 @@ function AudioNodeImpl({
                 return;
               }
               setModelSwitchProblem("");
+              setServerInputProblems([]);
               checkpoint();
               setNodes((nodes) =>
                 nodes.map((node) =>
@@ -2184,6 +2242,15 @@ function AudioNodeImpl({
                         ...node,
                         data: {
                           ...node.data,
+                          audioGenerationError: undefined,
+                          audioGenerationErrorCode: undefined,
+                          audioGenerationInputKey: undefined,
+                          audioGenerationOwnershipKey: undefined,
+                          audioGenerating: false,
+                          audioGenerationRetryAllowed: undefined,
+                          audioGenerationRetryBlockCode: undefined,
+                          audioGenerationRetryBlockReason: undefined,
+                          audioGenerationTaskId: undefined,
                           audioModelId: modelId,
                           audioModelName: displayName,
                           audioParameters: nextParameters,

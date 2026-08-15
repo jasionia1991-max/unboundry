@@ -92,11 +92,13 @@ import {
   VolcengineArkTextError,
 } from "./volcengineArkTextProvider";
 import {
+  prepareRelayGptImageRequest,
   pollRelayMediaTask,
   RelayProviderError,
-  requestRelayGptImage,
   requestRelayText,
+  sendPreparedRelayGptImageRequest,
   submitRelayMedia,
+  type RelayImageResult,
   type RelayMediaParamValue,
   type RelayTextContextInput,
   type RelayTextProviderProtocol,
@@ -501,7 +503,11 @@ async function withProviderRequestLease<T>(input: {
   fetcher: typeof fetch;
   ownerId: string;
   profileId: string;
-  request: (profile: ProviderProfile, fetcher: typeof fetch) => Promise<T>;
+  request: (
+    profile: ProviderProfile,
+    fetcher: typeof fetch,
+    providerBoundary: (beforeRequest?: () => void) => () => void,
+  ) => Promise<T>;
   task?: Pick<
     GenerationTask,
     "credentialRevision" | "modelConfiguration" | "providerProfileId"
@@ -522,9 +528,22 @@ async function withProviderRequestLease<T>(input: {
         lease.credentialRevision,
       );
     }
+    const providerBoundary = (beforeRequest?: () => void) => {
+      let crossed = false;
+      return () => {
+        if (crossed) return;
+        beforeRequest?.();
+        crossed = true;
+        // Pinned relay transport does not invoke the injected fetch wrapper.
+        // Release explicitly at its final beforeRequest boundary so unrelated
+        // Storage reservations are not serialized behind the remote response.
+        lease.release();
+      };
+    };
     return await input.request(
       profile,
       fetchWithProviderLease(lease, input.fetcher),
+      providerBoundary,
     );
   } finally {
     // Local validation, a rejected Provider-attempt boundary, or a synchronous
@@ -2659,6 +2678,7 @@ async function executeImageTask(taskId: string) {
       });
       return;
     }
+    const providerProfileId = running.providerProfileId;
     const protocol = taskProviderProtocol(running);
     const references = imageReferences(running.parameters.references);
     const inputReferences = await Promise.all(
@@ -2715,45 +2735,58 @@ async function executeImageTask(taskId: string) {
     if (protocol !== "gpt-image") throw new RelayProviderError("FORMAT");
     const profile = await taskProviderSnapshotProfile(running, current.ownerId);
     assertRelayProfile(profile, protocol);
-    const relayResult = await withProviderRequestLease({
-      expected: profile,
-      fetcher: fetch,
-      ownerId: current.ownerId,
-      profileId: running.providerProfileId,
-      task: running,
-      request: (currentProfile, leasedFetch) =>
-        requestRelayGptImage(
-          assertRelayProfile(currentProfile, protocol),
-          {
-            capability: "image",
-            count: 1,
-            inputImages: inputReferences,
-            model: running.providerModelId!,
-            operation: inputReferences.length ? "edit" : "generation",
-            prompt: running.prompt,
-            providerProtocol: protocol,
-            quality: ["auto", "low", "medium", "high"].includes(
-              String(running.parameters.quality),
-            )
-              ? running.parameters.quality as "auto" | "low" | "medium" | "high"
-              : "auto",
-            responseFormat: "b64_json",
-            size: gptImageSizeForAspectRatio(running.parameters.aspectRatio),
-          },
-          {
-            beforeProviderRequest: () => taskStore().recordProviderAttempt(taskId),
-            fetcher: leasedFetch,
-            mediaLifecycle: { ownerId },
-            signal: controller.signal,
-            usePinnedTransport: true,
-          },
-        ),
+    const prepared = await prepareRelayGptImageRequest({
+      capability: "image",
+      count: 1,
+      inputImages: inputReferences,
+      model: running.providerModelId!,
+      operation: inputReferences.length ? "edit" : "generation",
+      prompt: running.prompt,
+      providerProtocol: protocol,
+      quality: ["auto", "low", "medium", "high"].includes(
+        String(running.parameters.quality),
+      )
+        ? running.parameters.quality as "auto" | "low" | "medium" | "high"
+        : "auto",
+      responseFormat: "b64_json",
+      size: gptImageSizeForAspectRatio(running.parameters.aspectRatio),
+    }, {
+      mediaLifecycle: { ownerId },
+      signal: controller.signal,
     });
+    const relayResult = await (async (): Promise<RelayImageResult> => {
+      try {
+        return await withProviderRequestLease<RelayImageResult>({
+          expected: profile,
+          fetcher: fetch,
+          ownerId,
+          profileId: providerProfileId,
+          task: running,
+          request: (currentProfile, leasedFetch, providerBoundary) =>
+            sendPreparedRelayGptImageRequest(
+              assertRelayProfile(currentProfile, protocol),
+              prepared.request,
+              {
+                beforeProviderRequest: providerBoundary(
+                  () => taskStore().recordProviderAttempt(taskId),
+                ),
+                fetcher: leasedFetch,
+                signal: controller.signal,
+                usePinnedTransport: true,
+              },
+            ),
+        });
+      } finally {
+        await prepared.cleanup();
+      }
+    })();
     taskStore().markProviderResponseReceived({
       executionAttempt: running.attempt,
       taskId,
     });
-    if (relayResult.outputs.length !== 1) throw new RelayProviderError("FORMAT");
+    if (relayResult.outputs.length !== 1) {
+      throw new RelayProviderError("PROVIDER_RESULT_FORMAT", true);
+    }
     await saveRelayMediaOutput({
       actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
       output: relayResult.outputs[0],

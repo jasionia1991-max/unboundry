@@ -3,6 +3,28 @@
 更新时间：2026-08-15
 状态：`生产已运行 v0.6.0/schema39；REM-000 = PASS、REM-001～REM-009B = USER_REVIEW、REM-010/011 = PASS；G7（本次 v0.6.0）= PASS；PRODUCTION = LIVE / USER ACCEPTED；真实生成已开启，DEP-003/005/006/007/010 与 OPS-002 已完成。最终切换为人工受控 bounded cutover，不冒充新的 formal controller/full regression PASS；切换期间 Provider/付费生成调用仍为0，后续获明确授权的唯一真实生成另行记录。`
 
+### 2026-08-15 电商参考图工作流完整修复（INC-ECOM-002）
+
+- 状态：`OFFLINE_PRODUCT_REGRESSION_PASS / RELEASE_GATE_PENDING`。本地实现、受影响定向和全部非发布产品回归已完成；正式发布制品门等待未来clean candidate，仍不授权SSH、生产、真实Provider/OSS、付费、版本发布或commit/push/tag/PR。
+- 权威断点：`spec/INC_ECOM_002_REFERENCE_WORKFLOW_REMEDIATION_2026-08-15.md`。任何上下文压缩或换Agent后必须先读该文件恢复，不得依赖聊天记忆继续。
+- 硬边界：用户设置的并发`500`不动；`mediaRoutingEnabled`、OSS配置/密钥/对象和真实数据不动；历史失败任务不自动重提。
+- 已确认根因：GPT Image执行先持有Provider generation lease，再为本地`data:`参考图申请Storage reservation；两者使用同一`provider-profile-write-lock.sqlite`，在Provider `fetch`前形成同锁自锁并于约5秒超时，Provider请求尚未发出。
+- 已完成实现：参考图`prepare/send/cleanup`拆锁；Storage busy/上传/签名、Provider请求/结果格式分阶段错误；整组先扫描全部节点并以失败数量/首节点阻止任何task POST；模型缺失/停用不再静默默认；模板edge角色/顺序导入保留；公共模板发布/恢复/更新语义门和管理页状态。
+- 模板矩阵：源码两条电商种子均为`NEEDS_MODEL`；「服装详情页｜面料与工艺拆解」及服务器其余新模板因生产图不在离线快照中保持`USER_RECHECK`，详见`spec/INC_ECOM_002_TEMPLATE_COMPATIBILITY_MATRIX_2026-08-15.md`。
+- 当前自动证据：m88含确定性Storage busy与1/5/20并行参考图`34/34 PASS`；修复一次旧Text输入提示误伤后，m22/m29/m36/m50/m65 `28/28 PASS`；生产只读审计后修复`text→storyboard`误报，m77更新为`9/9 PASS`。只读生产矩阵为19条模板全部`NEEDS_MODEL`、`INVALID=0`，共99个缺模型节点（published模板87个）。冻结清单现为`117 files / 954 tests`；用户已授权形成clean candidate并补正式full，尚未完成。全部已执行自动项使用假Provider/OSS与loopback，真实请求0。
+
+### 2026-08-15 电商模板生成故障热修复（INC-ECOM-001）
+
+- 状态：`USER_RECHECK`。用户已明确授权“修复并恢复结果”；本项未创建新的生成任务，也未重新提交或重新付费生成，等待用户刷新原画布确认。
+- 已确认三条独立故障路径：首次失败发生在 Provider 请求前；整组执行遇到不支持图片上游的模型时以 `skipped` 静默停止；任务 `9687eb96-b4b3-44c6-bf40-7fb31a854137` 的 Provider 任务 `105388646` 已成功，但同一结果 URL 同时出现在 `result_url` 与 `result_urls`，本地适配器误判为多结果并报 `FORMAT`。
+- 当前施工范围：Provider 结果别名去重；整组执行将模型/输入不兼容持久化为节点错误并返回明确失败；只恢复 Provider 已完成的既有任务及结果，不重新提交 Provider。
+- 自动验收：重复别名只产生一个输出；不兼容整组执行不产生 generation task POST/Provider 请求，节点错误保存并可重载；定向测试、类型检查与构建通过。
+- 用户验收：恢复后刷新原画布可看到既有黑猫结果；模型不兼容时组运行明确失败并在图片节点保留红色原因。自动检查通过后仅记 `USER_RECHECK`，由用户实页确认后才能记 `PASS`。
+- 完成证据：Node `22.23.1` / npm `10.9.8` 下两份零费用定向 spec `34/34 PASS`，TypeScript 与 production build PASS，Provider 请求为0；生产不可变运维热修复已切换到 `releases/v0.6.1-hotfix-inc-ecom-001-20260815`，应用公开版本仍为 `0.6.0`。
+- 恢复证据：原任务仍为 `9687eb96-b4b3-44c6-bf40-7fb31a854137`，只轮询原 Provider 任务 `105388646`；Provider attempt 仍恰好1条、execution attempt 仍为1且已从 `response-received` 收口为 `completed`，没有第二次 Provider 提交。任务本地恢复轮次为 attempt2并成功，结果素材 `860bccb1-bb24-4683-9985-4335a5f95b81` 已绑定原图片节点。
+- 结果完整性：PNG `1254×1254`、`1,758,108` bytes、SHA-256 `71589ac18b2802d6bface50963c1a2c69f3ae7e8f491ea651d83483b001e36b8`，数据库记录与实际文件逐字节一致；schema39 integrity ok / FK0 / active generation0。服务 active、NRestarts0，公网 live/ready/version 均正常。
+- 回滚证据：恢复前数据库备份 SHA-256 `b47e76052d89901dc1158acaee43406ac112b27f0ee7baaa399db73c157fb807`；Provider 结果成功后、画布绑定前数据库备份 SHA-256 `f2d6170cd67a9960c9493fe324943e493c64815f7285d2321e5235639c529869`。
+
 F14本地正式门证据绑定 HEAD `eb4f99ea525390b0dd7a39d3cad55d882ffea41d`、source/snapshot `6af5b891ebf9a460e941485d12934a4a217ed3e2d6feece90d7c6d1b5ac856b1`。日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b57009ec02e6973be441b5585bf`；full `1f6f958d57ee855b0272ddd2576277deef6ea3e299e5ccdc597d4ca1d4559741` / `903096ed64412e184dcefecfc28c6fedda809c17a570d3fa8729a3d176560b0b` / `adecd5164828a87452bf5974a594c19da2e00e54f4aed281c113d57240b7917a`；race `3d1b64868ef60e769158b31ee4f94efbed0015d251cfdac8b48f27f8918c5a18` / `fc08356cf3bc9eb96e8b18abdd9789b96aa615361897a205240537e2ba29eb46`。五轮异常0、4173不变、suite cleaned、exit0。
 唯一产品目标：从空仓库完整复刻 Unboundry 画布，不复用 Lumino/Lumino Web 的代码、组件、CSS、数据、后端、测试或部署。
 

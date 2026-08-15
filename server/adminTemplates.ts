@@ -17,6 +17,7 @@ import { hasPermission } from "./permissions";
 import {
   accountDeletionBlocksTemplateMutation,
   listPublicTemplates,
+  parseTemplateGraph,
   parsePublicCategory,
   publicTemplateCard,
   validTemplateGraph,
@@ -24,6 +25,11 @@ import {
   type PublicTemplateRow,
   type PublicTemplateStatus,
 } from "./templateCatalog";
+import {
+  assertPublicTemplatePublishable,
+  auditPublicTemplateCompatibility,
+  PublicTemplateCompatibilityError,
+} from "./templateCompatibility";
 import {
   isRealCategory,
   REAL_CATEGORIES,
@@ -168,11 +174,28 @@ function adminTemplateItem(
   row: PublicTemplateRow,
   includeGraph: boolean,
 ) {
+  const graph = parseTemplateGraph(row.graph);
   return {
     ...publicTemplateCard(store, row, includeGraph),
     archivedAt: row.archived_at ?? undefined,
+    compatibility: graph
+      ? auditPublicTemplateCompatibility(store, graph)
+      : {
+          issues: [{ message: "模板图 JSON 无法安全解析" }],
+          status: "INVALID",
+        },
     status: row.status,
   };
+}
+
+function templateErrorBody(error: unknown, fallback: string) {
+  return error instanceof PublicTemplateCompatibilityError
+    ? {
+        code: error.code,
+        error: error.message,
+        issues: error.audit.issues,
+      }
+    : { error: error instanceof Error ? error.message : fallback };
 }
 
 export function savePublicTemplate(
@@ -185,13 +208,17 @@ export function savePublicTemplate(
   const description = validatedDescription(input.description);
   const previewImage = validatedPreviewImage(input.previewImage);
   const status = validatedStatus(input.status) ?? "draft";
-  if (!validTemplateGraph(input.graph)) {
+  const templateGraph = input.graph;
+  if (!validTemplateGraph(templateGraph)) {
     throw new Error("模板图结构无效");
   }
-  const graph = JSON.stringify(input.graph);
+  const graph = JSON.stringify(templateGraph);
   const id = randomUUID();
   const timestamp = new Date().toISOString();
   return accountMutation(store, actorId, () => {
+    if (status === "published") {
+      assertPublicTemplatePublishable(store, templateGraph);
+    }
     store.prepare(`
         INSERT INTO public_templates (
           id, title, description, category, graph, cover_asset_id,
@@ -263,6 +290,12 @@ export function updatePublicTemplate(
       ? existing.preview_image
       : previewImage;
     const nextStatus = status ?? existing.status;
+    const nextGraph = graph ?? existing.graph;
+    if (nextStatus === "published") {
+      const parsedGraph = parseTemplateGraph(nextGraph);
+      if (!parsedGraph) throw new Error("模板图结构无效");
+      assertPublicTemplatePublishable(store, parsedGraph);
+    }
     store.prepare(`
         UPDATE public_templates
         SET
@@ -280,7 +313,7 @@ export function updatePublicTemplate(
       nextTitle,
       nextDescription,
       nextCategory ? JSON.stringify(nextCategory) : null,
-      graph ?? existing.graph,
+      nextGraph,
       nextPreviewImage,
       nextStatus,
       actorId,
@@ -329,6 +362,9 @@ export function restorePublicTemplate(
   return accountMutation(store, actorId, () => {
     const existing = publicTemplateRow(store, id);
     if (!existing) throw new Error("公共模板不存在");
+    const graph = parseTemplateGraph(existing.graph);
+    if (!graph) throw new Error("模板图结构无效");
+    assertPublicTemplatePublishable(store, graph);
     store.prepare(`
         UPDATE public_templates
         SET status = 'published', updated_by = ?, updated_at = ?, archived_at = NULL
@@ -429,9 +465,7 @@ export async function adminTemplatesApi(
     } catch (error) {
       if (error instanceof HttpRequestError) throw error;
       if (respondAccountDeleteConflict(response, error)) return;
-      json(response, 400, {
-        error: error instanceof Error ? error.message : "公共模板保存失败",
-      });
+      json(response, 400, templateErrorBody(error, "公共模板保存失败"));
     }
     return;
   }
@@ -457,9 +491,11 @@ export async function adminTemplatesApi(
       if (error instanceof HttpRequestError) throw error;
       if (respondAccountDeleteConflict(response, error)) return;
       const message = error instanceof Error ? error.message : "公共模板更新失败";
-      json(response, message === "公共模板不存在" ? 404 : 400, {
-        error: message,
-      });
+      json(
+        response,
+        message === "公共模板不存在" ? 404 : 400,
+        templateErrorBody(error, "公共模板更新失败"),
+      );
     }
     return;
   }

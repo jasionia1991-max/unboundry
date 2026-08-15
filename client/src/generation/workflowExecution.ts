@@ -17,6 +17,129 @@ export type NodeRunResult = {
   status: NodeRunStatus;
 };
 
+export type WorkflowInputProblem = {
+  code: string;
+  edgeId?: string;
+  message: string;
+};
+
+export type WorkflowModelSelectionProblem = {
+  code: "MODEL_UNAVAILABLE";
+  message: string;
+};
+
+export type WorkflowResolvedInput = {
+  compatibility: "blocked" | "compatible";
+  edgeId: string;
+  kind: "audio" | "image" | "text" | "video";
+  sourceNodeId: string;
+  state: "empty" | "invalid" | "missing" | "ready" | "uploading";
+};
+
+const submissionInvariantProblemCodes = new Set([
+  "COMBINATION_UNSUPPORTED",
+  "GRAPH_INVALID",
+  "MODEL_UNSUPPORTED",
+  "MODEL_UNAVAILABLE",
+  "ORDER_INVALID",
+  "QUANTITY_EXCEEDED",
+  "ROLE_CONFLICT",
+  "ROLE_UNSUPPORTED",
+]);
+
+const modelKindLabels = {
+  audio: "音频",
+  image: "图片",
+  text: "文字",
+  video: "视频",
+} as const;
+
+/**
+ * A disabled, removed or not-yet-loaded model is a static group-run blocker.
+ * Without this check an earlier layer could create paid work before the later
+ * node discovers that it has no usable model.
+ */
+export function workflowModelSelectionProblem(input: {
+  isFixture: boolean;
+  kind: keyof typeof modelKindLabels;
+  model?: { generationAvailable?: boolean; generationUnavailableReason?: string };
+  status: "error" | "loading" | "ready";
+  unavailableReason?: string;
+}): WorkflowModelSelectionProblem | undefined {
+  if (input.isFixture) return undefined;
+  const label = modelKindLabels[input.kind];
+  if (input.status !== "ready") {
+    return {
+      code: "MODEL_UNAVAILABLE",
+      message: `${label}模型目录尚未加载完成，请稍后再试`,
+    };
+  }
+  if (!input.model) {
+    return {
+      code: "MODEL_UNAVAILABLE",
+      message: input.unavailableReason || `请明确选择兼容的${label}模型`,
+    };
+  }
+  if (input.model.generationAvailable === false) {
+    return {
+      code: "MODEL_UNAVAILABLE",
+      message: input.model.generationUnavailableReason ||
+        `当前${label}模型暂不可生成，请重新选择`,
+    };
+  }
+  return undefined;
+}
+
+/**
+ * Return a problem that is already certain before any node in the group runs.
+ * Empty output from an executable upstream is deferred because the earlier
+ * workflow layer may legitimately create it. Model, role, order and graph
+ * incompatibilities cannot be repaired by running an upstream node and must
+ * therefore block the whole group before the first task submission.
+ */
+export function workflowSubmissionPreflightProblem<
+  Problem extends WorkflowInputProblem,
+>(input: {
+  executableIds: ReadonlySet<string>;
+  inputs: readonly WorkflowResolvedInput[];
+  problems: readonly Problem[];
+}) {
+  for (const problem of input.problems) {
+    if (submissionInvariantProblemCodes.has(problem.code)) return problem;
+    const resolved = problem.edgeId
+      ? input.inputs.find((candidate) => candidate.edgeId === problem.edgeId)
+      : undefined;
+    if (problem.code === "MISSING") return problem;
+    if (
+      problem.code === "EMPTY" ||
+      problem.code === "UPLOADING" ||
+      problem.code === "INVALID"
+    ) {
+      if (resolved?.compatibility === "blocked") return problem;
+      if (resolved && input.executableIds.has(resolved.sourceNodeId)) continue;
+      return problem;
+    }
+    if (problem.code === "PROMPT_MISSING") {
+      const futureText = input.inputs.some((candidate) =>
+        candidate.kind === "text" &&
+        candidate.state !== "missing" &&
+        input.executableIds.has(candidate.sourceNodeId));
+      if (futureText) continue;
+      return problem;
+    }
+    if (problem.code === "REQUIRED_MISSING") {
+      const futureInput = input.inputs.some((candidate) =>
+        candidate.compatibility === "compatible" &&
+        candidate.state !== "missing" &&
+        input.executableIds.has(candidate.sourceNodeId));
+      if (futureInput) continue;
+      return problem;
+    }
+    return problem;
+  }
+  return undefined;
+}
+
 /**
  * Outcome returned by a node's own generation routine. It lets the workflow
  * runner surface the real reason (for example a cost limit) instead of

@@ -152,6 +152,7 @@ type TemplateCatalogCard = {
   description?: string;
   graph?: {
     edges: Array<{
+      data?: { inputOrder?: number; inputRole?: string };
       id: string;
       source: string;
       sourceHandle: "source";

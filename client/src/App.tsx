@@ -6489,9 +6489,14 @@ function accountCredentialStatusLabel(status: AccountCredentialItem["keyStatus"]
 }
 
 type AdminPublicTemplateStatus = "draft" | "published" | "archived";
+type AdminPublicTemplateCompatibilityStatus = "INVALID" | "NEEDS_MODEL" | "PASS";
 
 type AdminPublicTemplate = {
   categories: string[];
+  compatibility: {
+    issues: Array<{ message: string; nodeTitle?: string }>;
+    status: AdminPublicTemplateCompatibilityStatus;
+  };
   createdAt: string;
   description: string;
   graph?: Record<string, unknown>;
@@ -6506,6 +6511,14 @@ function publicTemplateStatusLabel(status: AdminPublicTemplateStatus) {
   if (status === "published") return "已发布";
   if (status === "draft") return "草稿";
   return "已归档";
+}
+
+function publicTemplateCompatibilityLabel(
+  status: AdminPublicTemplateCompatibilityStatus,
+) {
+  if (status === "PASS") return "兼容检查通过";
+  if (status === "NEEDS_MODEL") return "需要绑定模型";
+  return "模板无效";
 }
 
 function AdminTemplatesPage({ currentUser }: { currentUser: AuthUser }) {
@@ -6761,6 +6774,15 @@ function AdminTemplatesPage({ currentUser }: { currentUser: AuthUser }) {
                     更新于{" "}
                     {new Date(template.updatedAt).toLocaleString("zh-CN")}
                   </small>
+                  <small
+                    className="admin-template-compatibility-detail"
+                    title={template.compatibility.issues[0]?.message}
+                  >
+                    {template.compatibility.issues[0]?.nodeTitle
+                      ? `${template.compatibility.issues[0].nodeTitle}：`
+                      : ""}
+                    {template.compatibility.issues[0]?.message}
+                  </small>
                 </div>
                 <b
                   className="admin-template-status"
@@ -6768,11 +6790,21 @@ function AdminTemplatesPage({ currentUser }: { currentUser: AuthUser }) {
                 >
                   {publicTemplateStatusLabel(template.status)}
                 </b>
+                <b
+                  className="admin-template-compatibility"
+                  data-compatibility={template.compatibility.status}
+                >
+                  {publicTemplateCompatibilityLabel(template.compatibility.status)}
+                </b>
                 <div className="admin-template-actions">
                   {template.status === "draft" && (
                     <button
-                      disabled={busyId === template.id}
+                      disabled={
+                        busyId === template.id ||
+                        template.compatibility.status !== "PASS"
+                      }
                       onClick={() => void changeStatus(template, "published")}
+                      title={template.compatibility.issues[0]?.message}
                       type="button"
                     >
                       发布
@@ -6789,8 +6821,12 @@ function AdminTemplatesPage({ currentUser }: { currentUser: AuthUser }) {
                   )}
                   {template.status === "archived" ? (
                     <button
-                      disabled={busyId === template.id}
+                      disabled={
+                        busyId === template.id ||
+                        template.compatibility.status !== "PASS"
+                      }
                       onClick={() => void changeStatus(template, "published")}
+                      title={template.compatibility.issues[0]?.message}
                       type="button"
                     >
                       恢复

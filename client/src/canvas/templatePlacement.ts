@@ -26,6 +26,9 @@ export const TEMPLATE_MAX_ROWS = 10;
 export const TEMPLATE_MIN_SIZE = { height: 220, width: 320 };
 /** 空画布导入时相对视野中心的随机偏移幅度。 */
 export const TEMPLATE_EMPTY_JITTER = 50;
+/** Imported executable templates without a pinned model must never borrow a default. */
+export const TEMPLATE_MODEL_SELECTION_REQUIRED_ID =
+  "__template_requires_model_selection__";
 
 function rectsIntersect(left: PlacementRect, right: PlacementRect) {
   return !(

@@ -58,6 +58,7 @@ type TemplateGraphNode = {
 };
 
 type TemplateGraphEdge = {
+  data?: Record<string, unknown>;
   id: string;
   source: string;
   sourceHandle: "source";

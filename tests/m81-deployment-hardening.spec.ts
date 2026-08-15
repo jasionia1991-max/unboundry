@@ -28,8 +28,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
+  BackupInspectionError,
   databaseMatchesFrozenSchema37Contract,
   databaseMatchesFrozenSchema38Contract,
+  inspectBackupDatabase,
 } from "../server/backupInspection";
 import { saveAccountCredential } from "../server/accountCredentials";
 import {
@@ -2435,6 +2437,131 @@ function initializePrivateSyntheticSchema(
   }
 }
 
+const productionHistoricAssetHistorySql = `CREATE TABLE asset_history (
+      account_id TEXT NOT NULL,
+      id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      label TEXT NOT NULL,
+      preview TEXT NOT NULL,
+      created_at TEXT NOT NULL, owner_id TEXT,
+      PRIMARY KEY (account_id, id)
+    )`;
+
+const productionHistoricProviderProfilesSql = `CREATE TABLE provider_profiles (
+        id TEXT PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        driver TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('disabled', 'enabled')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      , key_status TEXT NOT NULL DEFAULT 'unchecked'
+        CHECK (key_status IN ('unchecked', 'valid', 'invalid', 'unknown')), key_checked_at TEXT, catalog_key_status TEXT NOT NULL DEFAULT 'unchecked'
+        CHECK (
+          catalog_key_status IN (
+            'unchecked',
+            'valid',
+            'invalid',
+            'permission',
+            'unknown'
+          )
+        ), catalog_checked_at TEXT, catalog_synced_at TEXT, catalog_last_error_code TEXT, catalog_models TEXT NOT NULL DEFAULT '[]'
+        CHECK (json_valid(catalog_models)), catalog_endpoints TEXT NOT NULL DEFAULT '[]'
+        CHECK (json_valid(catalog_endpoints)), catalog_model_count INTEGER NOT NULL DEFAULT 0
+        CHECK (catalog_model_count >= 0), catalog_endpoint_count INTEGER NOT NULL DEFAULT 0
+        CHECK (catalog_endpoint_count >= 0), catalog_control_request_count INTEGER NOT NULL DEFAULT 0
+        CHECK (catalog_control_request_count >= 0), catalog_credential_revision TEXT, provider_configuration_version INTEGER NOT NULL DEFAULT 0
+        CHECK (provider_configuration_version >= 0), catalog_sync_token TEXT, catalog_diagnostics TEXT NOT NULL DEFAULT '{}'
+        CHECK (json_valid(catalog_diagnostics)))`;
+
+const productionHistoricTableSqlHashes = Object.freeze({
+  asset_history:
+    "0053af18d88bd9872c210fa69fba542dd7254ba0f7e6d6c736e3635e5ca65300",
+  provider_profiles:
+    "47a50d882fbf7e6c5045800b3fa66b4ddb7ccba9f1a2a0646c81ec3b816d87e2",
+});
+
+function tableSchemaSql(database: DatabaseSync, tableName: string) {
+  const row = database.prepare(`
+    SELECT sql
+    FROM sqlite_schema
+    WHERE type = 'table' AND name = ? AND tbl_name = ?
+  `).get(tableName, tableName) as { sql?: unknown } | undefined;
+  return String(row?.sql ?? "");
+}
+
+function tableSchemaSqlHash(database: DatabaseSync, tableName: string) {
+  return createHash("sha256")
+    .update(tableSchemaSql(database, tableName))
+    .digest("hex");
+}
+
+function tablePragmaFingerprint(database: DatabaseSync, tableName: string) {
+  if (!/^[a-z][a-z0-9_]*$/.test(tableName)) {
+    throw new Error("Unsafe table name in schema fixture");
+  }
+  const indexes = database.prepare(
+    `PRAGMA index_list("${tableName}")`,
+  ).all() as Array<{ name?: unknown }>;
+  return JSON.stringify({
+    columns: database.prepare(`PRAGMA table_xinfo("${tableName}")`).all(),
+    foreignKeys: database
+      .prepare(`PRAGMA foreign_key_list("${tableName}")`)
+      .all(),
+    indexColumns: indexes.map((index) => {
+      const indexName = String(index.name ?? "");
+      if (!/^[a-z][a-z0-9_]*$/.test(indexName)) {
+        throw new Error("Unsafe index name in schema fixture");
+      }
+      return {
+        columns: database.prepare(`PRAGMA index_xinfo("${indexName}")`).all(),
+        name: indexName,
+      };
+    }),
+    indexes,
+    tableFlags: (database.prepare(
+      `PRAGMA table_list("${tableName}")`,
+    ).all() as Array<{ strict?: unknown; wr?: unknown }>).map((table) => ({
+      strict: Number(table.strict),
+      wr: Number(table.wr),
+    })),
+  });
+}
+
+function rewriteTableSchemaSql(
+  database: DatabaseSync,
+  tableName: string,
+  sql: string,
+) {
+  const schemaVersion = Number((database.prepare("PRAGMA schema_version").get() as {
+    schema_version?: unknown;
+  }).schema_version);
+  database.exec("PRAGMA writable_schema = ON");
+  try {
+    const result = database.prepare(`
+      UPDATE sqlite_schema
+      SET sql = ?
+      WHERE type = 'table' AND name = ? AND tbl_name = ?
+    `).run(sql, tableName, tableName);
+    expect(Number(result.changes)).toBe(1);
+  } finally {
+    database.exec("PRAGMA writable_schema = OFF");
+  }
+  database.exec(`PRAGMA schema_version = ${schemaVersion + 1}`);
+}
+
+function expectBackupSchemaRejected(databasePath: string, inspectionRoot: string) {
+  let error: unknown;
+  try {
+    inspectBackupDatabase(databasePath, inspectionRoot);
+  } catch (caught) {
+    error = caught;
+  }
+  expect(error).toBeInstanceOf(BackupInspectionError);
+  expect((error as BackupInspectionError).code).toBe(
+    "BACKUP_DATABASE_SCHEMA_UNSUPPORTED",
+  );
+}
+
 function cookie(response: Response) {
   return response.headers.get("set-cookie")?.split(";")[0] ?? "";
 }
@@ -2725,6 +2852,228 @@ test("liveness stays process-only while readiness verifies the current schema wi
     await expectMissing(missingDataDirectory);
   } finally {
     if (server) await stopServer(server);
+    await rm(testRoot, { force: true, recursive: true });
+  }
+});
+
+test("exact production historic schema-37 SQL is bridge and final compatible", async () => {
+  const inspectionRoot = await mkdtemp(
+    join(tmpdir(), "unboundry-m81-production-schema37-"),
+  );
+  const databasePath = join(inspectionRoot, "unboundry.sqlite");
+  let database: DatabaseSync | undefined;
+  try {
+    database = initializePrivateSyntheticSchema(inspectionRoot, 37);
+    const semanticsBefore = Object.freeze({
+      asset_history: tablePragmaFingerprint(database, "asset_history"),
+      provider_profiles: tablePragmaFingerprint(database, "provider_profiles"),
+    });
+
+    rewriteTableSchemaSql(
+      database,
+      "asset_history",
+      productionHistoricAssetHistorySql,
+    );
+    rewriteTableSchemaSql(
+      database,
+      "provider_profiles",
+      productionHistoricProviderProfilesSql,
+    );
+
+    for (const tableName of ["asset_history", "provider_profiles"] as const) {
+      expect(tableSchemaSqlHash(database, tableName)).toBe(
+        productionHistoricTableSqlHashes[tableName],
+      );
+      expect(tablePragmaFingerprint(database, tableName)).toBe(
+        semanticsBefore[tableName],
+      );
+    }
+    expect(database.prepare("PRAGMA integrity_check").all()).toEqual([
+      { integrity_check: "ok" },
+    ]);
+    expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    expect(databaseMatchesFrozenSchema37Contract(database)).toBe(true);
+    database.close();
+    database = undefined;
+
+    expect(inspectBackupDatabase(databasePath, inspectionRoot)).toMatchObject({
+      foreignKeyViolations: 0,
+      integrityCheck: "ok",
+      userVersion: 37,
+    });
+
+    database = new DatabaseSync(databasePath);
+    database.exec("BEGIN IMMEDIATE");
+    applyPendingSchemaMigrationsInTransaction(database, {
+      sourceVersion: 37,
+      targetVersion: 38,
+    });
+    database.exec("COMMIT");
+    expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    expect(databaseMatchesFrozenSchema38Contract(database)).toBe(true);
+    database.close();
+    database = undefined;
+
+    expect(inspectBackupDatabase(databasePath, inspectionRoot)).toMatchObject({
+      foreignKeyViolations: 0,
+      integrityCheck: "ok",
+      userVersion: 38,
+    });
+
+    database = new DatabaseSync(databasePath);
+    database.exec("BEGIN IMMEDIATE");
+    applyPendingSchemaMigrationsInTransaction(database, { sourceVersion: 38 });
+    database.exec("COMMIT");
+    expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    expect(databaseMatchesSchemaContract(database)).toBe(true);
+    for (const tableName of ["asset_history", "provider_profiles"] as const) {
+      expect(tableSchemaSqlHash(database, tableName)).toBe(
+        productionHistoricTableSqlHashes[tableName],
+      );
+      expect(tablePragmaFingerprint(database, tableName)).toBe(
+        semanticsBefore[tableName],
+      );
+    }
+    database.close();
+    database = undefined;
+
+    expect(inspectBackupDatabase(databasePath, inspectionRoot)).toMatchObject({
+      foreignKeyViolations: 0,
+      integrityCheck: "ok",
+      userVersion: currentSchemaVersion,
+    });
+  } finally {
+    database?.close();
+    await rm(inspectionRoot, { force: true, recursive: true });
+  }
+});
+
+test("near-miss and semantic variants of production schema SQL stay rejected", async () => {
+  const testRoot = await mkdtemp(
+    join(tmpdir(), "unboundry-m81-production-schema37-near-miss-"),
+  );
+  const fixtures = [
+    {
+      acceptedHashes: [
+        "700ecc72764b59b1bcd84eb921cab728e5f66e8c4f2affd70a41e6a51aade6c6",
+        productionHistoricTableSqlHashes.asset_history,
+      ],
+      name: "asset-whitespace",
+      nearMissSql: productionHistoricAssetHistorySql.replace(
+        "      account_id TEXT NOT NULL",
+        "       account_id TEXT NOT NULL",
+      ),
+      preservesPragmas: true,
+      tableName: "asset_history",
+    },
+    {
+      acceptedHashes: [
+        "5a123ee9694b90e7bfb5cd43bcb4df3b00a367ac25974f48052068b178085809",
+        productionHistoricTableSqlHashes.provider_profiles,
+      ],
+      name: "provider-whitespace",
+      nearMissSql: productionHistoricProviderProfilesSql.replace(
+        "catalog_diagnostics TEXT NOT NULL",
+        "catalog_diagnostics  TEXT NOT NULL",
+      ),
+      preservesPragmas: true,
+      tableName: "provider_profiles",
+    },
+    {
+      acceptedHashes: [
+        "700ecc72764b59b1bcd84eb921cab728e5f66e8c4f2affd70a41e6a51aade6c6",
+        productionHistoricTableSqlHashes.asset_history,
+      ],
+      name: "asset-nullable-account",
+      nearMissSql: productionHistoricAssetHistorySql.replace(
+        "account_id TEXT NOT NULL",
+        "account_id TEXT",
+      ),
+      preservesPragmas: false,
+      tableName: "asset_history",
+    },
+    {
+      acceptedHashes: [
+        "5a123ee9694b90e7bfb5cd43bcb4df3b00a367ac25974f48052068b178085809",
+        productionHistoricTableSqlHashes.provider_profiles,
+      ],
+      name: "provider-disabled-json-check",
+      nearMissSql: productionHistoricProviderProfilesSql.replace(
+        "CHECK (json_valid(catalog_diagnostics))",
+        "CHECK (1)",
+      ),
+      preservesPragmas: true,
+      tableName: "provider_profiles",
+    },
+  ] as const;
+
+  try {
+    for (const fixture of fixtures) {
+      const inspectionRoot = join(testRoot, fixture.name);
+      const databasePath = join(inspectionRoot, "unboundry.sqlite");
+      await mkdir(inspectionRoot, { mode: 0o700 });
+      let database: DatabaseSync | undefined;
+      try {
+        database = initializePrivateSyntheticSchema(inspectionRoot, 37);
+        const semanticsBefore = tablePragmaFingerprint(
+          database,
+          fixture.tableName,
+        );
+        rewriteTableSchemaSql(
+          database,
+          fixture.tableName,
+          fixture.nearMissSql,
+        );
+        const semanticsAfter = tablePragmaFingerprint(
+          database,
+          fixture.tableName,
+        );
+        if (fixture.preservesPragmas) {
+          expect(semanticsAfter).toBe(semanticsBefore);
+        } else {
+          expect(semanticsAfter).not.toBe(semanticsBefore);
+        }
+        expect(fixture.acceptedHashes).not.toContain(
+          tableSchemaSqlHash(database, fixture.tableName),
+        );
+        expect(database.prepare("PRAGMA integrity_check").all()).toEqual([
+          { integrity_check: "ok" },
+        ]);
+        expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+        expect(databaseMatchesFrozenSchema37Contract(database)).toBe(false);
+        database.close();
+        database = undefined;
+        expectBackupSchemaRejected(databasePath, inspectionRoot);
+
+        database = new DatabaseSync(databasePath);
+        database.exec("BEGIN IMMEDIATE");
+        applyPendingSchemaMigrationsInTransaction(database, {
+          sourceVersion: 37,
+          targetVersion: 38,
+        });
+        database.exec("COMMIT");
+        expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+        expect(databaseMatchesFrozenSchema38Contract(database)).toBe(false);
+        database.close();
+        database = undefined;
+        expectBackupSchemaRejected(databasePath, inspectionRoot);
+
+        database = new DatabaseSync(databasePath);
+        database.exec("BEGIN IMMEDIATE");
+        applyPendingSchemaMigrationsInTransaction(database, {
+          sourceVersion: 38,
+        });
+        database.exec("COMMIT");
+        expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+        expect(databaseMatchesSchemaContract(database)).toBe(false);
+        database.close();
+        database = undefined;
+        expectBackupSchemaRejected(databasePath, inspectionRoot);
+      } finally {
+        database?.close();
+      }
+    }
+  } finally {
     await rm(testRoot, { force: true, recursive: true });
   }
 });

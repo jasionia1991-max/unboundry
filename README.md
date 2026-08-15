@@ -2,6 +2,10 @@
 
 TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mymy.ltd`，当前线上 `v0.6.0 / schema39`）。
 
+## 2026-08-15 当前离线事件（优先读取）
+
+`INC-ECOM-002 = RELEASE_CANDIDATE_AUTHORIZED / FULL_PENDING`：参考图准备已移到Provider边界之前，整组全图预检、模型显式选择、模板发布兼容门和管理页兼容状态均已实现；1/5/20并行假OSS及Storage busy/上传/签名/Provider/清理故障注入均通过。生产模板只读审计已完成：schema39共19条（18 published、1 archived），`PASS=0 / NEEDS_MODEL=19 / INVALID=0`，问题均为模板执行节点未保存模型；「服装详情页｜面料与工艺拆解」为5个节点缺模型。合法`text→storyboard`曾被候选审计器误报，已修正并新增m77专项`9/9 PASS`。用户已授权本地clean candidate与正式full；仍禁止修改并发500、OSS路由、生产数据/服务、真实Provider/OSS、付费、push/tag/PR和发布。权威断点为 `spec/INC_ECOM_002_REFERENCE_WORKFLOW_REMEDIATION_2026-08-15.md`，模板矩阵为 `spec/INC_ECOM_002_TEMPLATE_COMPATIBILITY_MATRIX_2026-08-15.md`。
+
 ## 2026-08-15 最终生产收口（当前权威）
 
 - 当前状态：`REM-000 = PASS / REM-001～009B = USER_REVIEW / REM-010～011 = PASS / G7（本次 v0.6.0）= PASS / PRODUCTION = LIVE / USER ACCEPTED`。当前没有 `IN_PROGRESS` REM；本次已闭环 `DEP-003/005/006/007/010` 与 `OPS-002`，其中 `DEP-010` 由用户明确“文档确认通过”后转为 `PASS`；其余历史 `PARTIAL / PAUSED / BLOCK / NOT_STARTED` 项保持原状态。

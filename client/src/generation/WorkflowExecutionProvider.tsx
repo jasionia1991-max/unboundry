@@ -21,6 +21,9 @@ import {
 export type { NodeRunResult };
 
 export type NodeRunRegistration = {
+  preflight?: (input: {
+    executableIds: ReadonlySet<string>;
+  }) => Promise<NodeRunResult> | NodeRunResult;
   run: () => Promise<NodeRunResult>;
 };
 
@@ -110,6 +113,38 @@ export function WorkflowExecutionProvider({
         layers = buildWorkflowLayers(children, edges);
       } catch (error) {
         notify(error instanceof Error ? error.message : "整组执行失败");
+        return;
+      }
+      const preflightFailures: Array<{ message: string; nodeId: string }> = [];
+      for (const nodeId of executableIds) {
+        const registration = registrations.current.get(nodeId);
+        if (!registration) {
+          preflightFailures.push({ message: "节点尚未就绪", nodeId });
+          continue;
+        }
+        const result = await registration.preflight?.({ executableIds }) ?? {
+          status: "success" as const,
+        };
+        if (result.status !== "success") {
+          preflightFailures.push({
+            message: result.message ?? "请检查标红节点",
+            nodeId,
+          });
+        }
+      }
+      if (preflightFailures.length > 0) {
+        const first = preflightFailures[0];
+        const firstNode = nodeById.get(first.nodeId);
+        const firstTitle = typeof firstNode?.data.title === "string" &&
+            firstNode.data.title.trim()
+          ? firstNode.data.title.trim()
+          : typeof firstNode?.data.label === "string" && firstNode.data.label.trim()
+            ? firstNode.data.label.trim()
+            : first.nodeId;
+        notify(
+          `整组执行已阻止：发现 ${preflightFailures.length} 个不兼容节点；首个“${firstTitle}”：${first.message}（未提交任何生成任务）`,
+          "error",
+        );
         return;
       }
       const running = { cancelled: false };

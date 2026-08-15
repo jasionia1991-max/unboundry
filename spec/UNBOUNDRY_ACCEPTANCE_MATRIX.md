@@ -13,6 +13,10 @@
 2026-08-07 权限管理（PERM-001～012）与公共模板（PUB-001～011）已全部经用户实页验收为 `PASS`，两功能放行门达成；生成安全「并发与频率」上限按用户要求放宽至 1000（v33）。
 2026-08-09 用户实页确认 `STORAGE-004 / PERF-002～005 / DEP-004` 全部通过；六项均由 `USER_RECHECK` 改为 `PASS`，该验收收口时点矩阵无 `USER_RECHECK` 项。
 
+2026-08-15 `INC-ECOM-002 = RELEASE_CANDIDATE_AUTHORIZED / FULL_PENDING`：参考图prepare/send拆锁、Provider前后五类错误、整组task创建前全图预检、模型显式选择、模板edge语义保留、公共模板发布兼容门和管理页状态已实现；Storage busy及1/5/20并行专项通过。生产只读模板审计共19条：18 published、1 archived，全部`NEEDS_MODEL`，`PASS=0 / INVALID=0`；99个执行节点未保存模型，其中published模板87个，「服装详情页｜面料与工艺拆解」为5个。候选审计器的`text→storyboard`误报已修复，m77`9/9 PASS`，冻结清单现为`117 files / 954 tests`。用户已授权形成clean candidate并补正式full；并发500、OSS路由、生产写入/服务、真实Provider/OSS、付费、push/tag/PR和发布仍不在授权内。
+
+2026-08-15 `INC-ECOM-001 = USER_RECHECK`：重复结果 URL 解析与整组执行静默停止已修复，零费用定向 `34/34 PASS`、TypeScript/build PASS；生产已切换到不可变运维热修复 `releases/v0.6.1-hotfix-inc-ecom-001-20260815`。既有任务 `9687eb96-b4b3-44c6-bf40-7fb31a854137` 只轮询原 Provider 任务 `105388646` 后成功，Provider attempt 仍为唯一一条 execution attempt1，没有第二次提交；结果素材 `860bccb1-bb24-4683-9985-4335a5f95b81` 已绑定原节点并通过文件 checksum、schema39 integrity/FK0、active0、公网健康验证。原画布结果与节点错误提示仍须由用户实页确认后才能 `PASS`。
+
 2026-08-13 用户在隔离实页发现 default 项目卡片错误路由与 Video 重复 Prompt 两个历史覆盖缺口；`CANVAS-019 / INPUT-005` 已在候选中修复并由安全定向17/17通过。用户随后在端口58352的同一隔离实页明确确认两项修改均通过，二者恢复为 `PASS`。页面修复后的首轮 full `930/931` 暴露 m44 协作 current-open reservation 竞态；产品协议修复后 m44+m91 targeted `15/15`，fresh full `117/117 specs、931/931 PASS`，异常计数全0，证据绑定文档同步前 429-file snapshot `db91d80b…`，4173 listener不变、suite cleaned、exit0。
 历史阶段记录（最终候选前）：REM-001～REM-009B 已进入`USER_REVIEW`，REM-010当时仍为`IN_PROGRESS`；runtime/lease/drain、m92严格fixture修复、Docker/第二验证机builder/ops、页面与reservation修复及脏树单轮931/931均已完成，但当时尚不是fixed candidate或REM-011三轮。该历史证据、`1e96e26f…`与`db91d80b…`指纹继续保留，不冒充最终候选。
 

@@ -1,9 +1,21 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`37`
+断点版本：`41`
 更新时间：`2026-08-15`
-状态：`PRODUCTION_V0_6_0_SCHEMA39_LIVE_REAL_GENERATION_DR_AND_DOCUMENTS_ACCEPTED_NO_ACTIVE_REM`
+状态：`INC_ECOM_002_PRODUCTION_READ_ONLY_AUDITED_RELEASE_CANDIDATE_AUTHORIZED_FULL_PENDING`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
+
+## 0. 当前新事件：INC-ECOM-002
+
+- 用户已确认电商参考图工作流完整修复方案，并追加授权本地clean candidate、正式full和生产模板只读审计。
+- 权威事件断点：`spec/INC_ECOM_002_REFERENCE_WORKFLOW_REMEDIATION_2026-08-15.md`。恢复者必须在本文件当前结论前先读取它。
+- 当前阶段：`D3 生产只读模板审计完成，clean candidate与正式full施工中`。
+- 已完成：参考图`prepare/send/cleanup`拆锁和Provider最终边界；五类阶段错误；整组task创建前全节点预检；缺失/停用模型显式阻止；模板edge角色/顺序保留；公共模板发布/恢复/更新兼容门；管理页矩阵和发布按钮门禁。
+- 当前生产只读矩阵：schema39共19条模板（18 published、1 archived）全部`NEEDS_MODEL`，`INVALID=0 / PASS=0`；共99个执行节点未保存模型，其中published模板87个。「服装详情页｜面料与工艺拆解」为5个节点缺模型。矩阵文件：`spec/INC_ECOM_002_TEMPLATE_COMPATIBILITY_MATRIX_2026-08-15.md`。
+- 已通过定向：m88含Storage busy与1/5/20并行`34/34`、m53 `23/23`、m22+m70+m77 `30/30`；旧Text输入提示误伤修复后的五spec `28/28`。最终安全入口发现`117 files / 953 tests`，全部非发布产品测试`113 files / 926 tests`为`926/926 PASS`且异常计数0，源码快照与4173不变、真实外部请求0。
+- full边界：冻结清单已因新增Storyboard审计专项更新为`117 files / 954 tests`；m77当前`9/9 PASS`。用户已授权按正式source pair形成clean candidate并补full，不得绕过门禁。
+- 用户设置的并发`500`、OSS路由、OSS配置/密钥/对象、生产数据和服务均禁止修改；真实Provider/OSS、付费、push/tag/PR和发布均未授权。
+- `INC-ECOM-001 = USER_RECHECK` 的重复结果别名去重、节点错误落盘和既有结果恢复继续保留；不得把它扩大为参考图自锁、全图预检或模板包已验收。
 
 ## 1. 当前结论
 

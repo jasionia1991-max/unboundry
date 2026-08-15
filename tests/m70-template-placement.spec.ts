@@ -6,6 +6,7 @@ import {
   offsetTemplate,
   templateAnchor,
   templateBounds,
+  TEMPLATE_MODEL_SELECTION_REQUIRED_ID,
   viewportForBounds,
 } from "../client/src/canvas/templatePlacement";
 
@@ -254,6 +255,22 @@ test("importing a template on a real project centers it and settles the save sta
 
   // 动画期间保存被闸门挡掉，最终只有节点保存 + 镜头提交等少量请求。
   expect(canvasPuts).toBeLessThanOrEqual(3);
+
+  const imported = (await (
+    await request.get(`/api/canvas/${project.id}`)
+  ).json()) as {
+    nodes: Array<{ data: Record<string, unknown>; type: string }>;
+  };
+  const executableWithRequiredModel = imported.nodes.filter((node) => {
+    if (!["audio", "image", "text", "video"].includes(node.type)) return false;
+    return node.data[`${node.type}ModelId`] ===
+      TEMPLATE_MODEL_SELECTION_REQUIRED_ID;
+  });
+  expect(executableWithRequiredModel).toHaveLength(8);
+  expect(executableWithRequiredModel.every((node) =>
+    node.data[node.type === "video" ? "videoModel" : `${node.type}ModelName`] ===
+      "请选择兼容模型"
+  )).toBe(true);
 
   await request.delete(`/api/projects/${project.id}`);
 });

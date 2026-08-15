@@ -79,10 +79,12 @@ import {
   offsetTemplate,
   templateAnchor,
   templateBounds,
+  TEMPLATE_MODEL_SELECTION_REQUIRED_ID,
   viewportForBounds,
 } from "./templatePlacement";
 import { GenerationCanvasContext } from "../generation/GenerationCanvasContext";
 import { WorkflowExecutionProvider } from "../generation/WorkflowExecutionProvider";
+import { isExecutableWorkflowNode } from "../generation/workflowExecution";
 import {
   resolvePublishedModel,
   type PublishedModel,
@@ -172,6 +174,7 @@ export type CanvasShellMenuCommand = {
   action: "apply-template" | "dismiss" | "toggle-add";
   graph?: {
     edges: Array<{
+      data?: { inputOrder?: number; inputRole?: string };
       id: string;
       source: string;
       sourceHandle: "source";
@@ -3230,20 +3233,70 @@ export function CanvasSurface({
     }
     appliedTemplateSequence.current = shellMenuCommand.sequence;
     const idMap = new Map<string, string>();
+    const sourceNodeById = new Map(
+      graph.nodes.map((node) => [node.id, node]),
+    );
+    const incomingTextTargets = new Set(
+      graph.edges
+        .filter((edge) => sourceNodeById.get(edge.source)?.type === "text")
+        .map((edge) => edge.target),
+    );
     const appliedNodes: ProbeNodeType[] = graph.nodes.map((source) => {
       const id = `${source.type}-${crypto.randomUUID()}`;
       idMap.set(source.id, id);
+      let data: ProbeNodeType["data"] = {
+        ...source.data,
+        label: source.data.label ?? "Node",
+        title: typeof source.data.title === "string"
+          ? source.data.title
+          : source.data.label ?? "Node",
+      };
+      if (
+        ["audio", "image", "text", "video"].includes(source.type) &&
+        isExecutableWorkflowNode(source, {
+          hasIncomingText: incomingTextTargets.has(source.id),
+        })
+      ) {
+        const savedModelId = source.type === "audio"
+          ? data.audioModelId?.trim()
+          : source.type === "image"
+            ? data.imageModelId?.trim()
+            : source.type === "text"
+              ? data.textModelId?.trim()
+              : source.type === "video"
+                ? data.videoModelId?.trim()
+                : "";
+        if (!savedModelId) {
+          data = source.type === "audio"
+            ? {
+                ...data,
+                audioModelId: TEMPLATE_MODEL_SELECTION_REQUIRED_ID,
+                audioModelName: "请选择兼容模型",
+              }
+            : source.type === "image"
+              ? {
+                  ...data,
+                  imageModelId: TEMPLATE_MODEL_SELECTION_REQUIRED_ID,
+                  imageModelName: "请选择兼容模型",
+                }
+              : source.type === "text"
+                ? {
+                    ...data,
+                    textModelId: TEMPLATE_MODEL_SELECTION_REQUIRED_ID,
+                    textModelName: "请选择兼容模型",
+                  }
+                : {
+                    ...data,
+                    videoModel: "请选择兼容模型",
+                    videoModelId: TEMPLATE_MODEL_SELECTION_REQUIRED_ID,
+                  };
+        }
+      }
       return {
         id,
         type: source.type,
         position: source.position,
-        data: {
-          ...source.data,
-          label: source.data.label ?? "Node",
-          title: typeof source.data.title === "string"
-            ? source.data.title
-            : source.data.label ?? "Node",
-        },
+        data,
         style: source.style ??
           (source.type === "group"
             ? { height: 500, width: 800 }
@@ -3259,6 +3312,7 @@ export function CanvasSurface({
     }));
     const groupNode = appliedNodes.find((node) => node.type === "group");
     const appliedEdges: CuttableEdge[] = graph.edges.map((edge) => ({
+      ...(edge.data ? { data: { ...edge.data } } : {}),
       id: `template-edge-${crypto.randomUUID()}`,
       source: idMap.get(edge.source) ?? edge.source,
       target: idMap.get(edge.target) ?? edge.target,

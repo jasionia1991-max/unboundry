@@ -187,8 +187,13 @@ export type RelayProviderErrorCode =
   | "FORMAT"
   | "NETWORK"
   | "PERMISSION"
+  | "PROVIDER_REQUEST_FAILED"
+  | "PROVIDER_RESULT_FORMAT"
   | "PROXY_CONFIGURATION"
   | "RATE_LIMIT"
+  | "REFERENCE_SIGN_FAILED"
+  | "REFERENCE_STORAGE_BUSY"
+  | "REFERENCE_UPLOAD_FAILED"
   | "REMOTE"
   | "TIMEOUT";
 
@@ -198,8 +203,15 @@ const errorMessages: Record<RelayProviderErrorCode, string> = {
   FORMAT: "中转站请求或响应格式无法安全识别",
   NETWORK: "无法连接中转站",
   PERMISSION: "当前API Key没有所选模型或接口权限",
+  PROVIDER_REQUEST_FAILED:
+    "已向模型提交，但请求未完成；为避免重复扣费，本次不会自动重提",
+  PROVIDER_RESULT_FORMAT:
+    "模型已响应，但结果格式无法安全识别；本次不会自动重提",
   PROXY_CONFIGURATION: "本机代理地址模式阻止安全连接，请管理员检查代理设置",
   RATE_LIMIT: "中转站正在限流，请稍后再试",
+  REFERENCE_SIGN_FAILED: "参考图临时链接创建失败，本次未向模型提交",
+  REFERENCE_STORAGE_BUSY: "参考图临时存储繁忙，本次未向模型提交",
+  REFERENCE_UPLOAD_FAILED: "参考图临时上传失败，本次未向模型提交",
   REMOTE: "中转站暂时无法完成请求",
   TIMEOUT: "等待中转站响应超时；异步任务可能仍在运行",
 };
@@ -230,6 +242,17 @@ export type RelayTemporaryImageObjectStore = Readonly<{
   createReadUrl: typeof createPrivateAliyunOssReadUrl;
   deleteObject: typeof deletePrivateAliyunOssObject;
   uploadObject: typeof uploadPrivateAliyunOssObject;
+}>;
+
+/**
+ * A transient, in-memory GPT Image request whose local data references have
+ * already been materialized. Signed URLs must never be persisted. Cleanup is
+ * idempotent and retains the existing publication journal when object deletion
+ * cannot be completed immediately.
+ */
+export type PreparedRelayGptImageRequest = Readonly<{
+  cleanup: () => Promise<void>;
+  request: RelayGptImageRequest;
 }>;
 
 const defaultTemporaryImageObjectStore: RelayTemporaryImageObjectStore = {
@@ -1149,11 +1172,33 @@ function parseGptImageResult(body: unknown): RelayImageResult {
   };
 }
 
-export async function requestRelayGptImage(
-  connection: RelayProviderConnection,
+function referencePreparationError(
+  error: unknown,
+  fallback: Extract<
+    RelayProviderErrorCode,
+    "REFERENCE_UPLOAD_FAILED" | "REFERENCE_SIGN_FAILED"
+  >,
+) {
+  if (error instanceof RelayProviderError) return error;
+  if (
+    error instanceof Error &&
+    /(?:database\s+is\s+)?(?:locked|busy)|configuration\s+is\s+busy/i.test(error.message)
+  ) {
+    return new RelayProviderError("REFERENCE_STORAGE_BUSY");
+  }
+  return new RelayProviderError(fallback);
+}
+
+/**
+ * Materialize local data references before acquiring the Provider request
+ * lease. Provider and Storage configuration intentionally share one
+ * cross-process lock; nesting this operation inside the Provider lease would
+ * self-block until the five-second lock timeout.
+ */
+export async function prepareRelayGptImageRequest(
   request: RelayGptImageRequest,
   execution: RelayProviderExecution,
-) {
+): Promise<PreparedRelayGptImageRequest> {
   if (!providerProtocolSupportsCapability(request.providerProtocol, request.capability)) {
     throw new RelayProviderError("FORMAT");
   }
@@ -1166,6 +1211,19 @@ export async function requestRelayGptImage(
     reservation: MediaPublicationReservation;
   }> = [];
   let fixedProfile: AliyunStorageProfile | undefined;
+  let cleanupStarted = false;
+  const cleanup = async () => {
+    if (cleanupStarted) return;
+    cleanupStarted = true;
+    if (!fixedProfile) return;
+    for (const temporary of temporaryPublications.reverse()) {
+      await compensateMediaPublication(temporary.reservation, {
+        code: "RELAY_TEMP_REFERENCE_CLEANUP",
+        deleteExternalObject: objectStore.deleteObject,
+        profile: fixedProfile,
+      }).catch(() => false);
+    }
+  };
   try {
     const inputImages = [...(request.inputImages ?? [])];
     const dataImages = inputImages.flatMap((image, inputIndex) => {
@@ -1187,84 +1245,152 @@ export async function requestRelayGptImage(
     });
 
     if (dataImages.length > 0) {
-      const retained = await withReadableStorageProfileReservation((profile) => {
-        if (!execution.mediaLifecycle?.ownerId) {
-          throw new RelayProviderError("FORMAT");
-        }
-        fixedProfile = profile;
-        for (const dataImage of dataImages) {
-          const id = randomUUID();
-          const reservation = reserveMediaPublication({
-            contentType: dataImage.contentType,
-            finalStorageName: `${id}.${dataImage.extension}`,
-            id,
-            kind: "image",
-            objectKey: createAliyunOssObjectKey("image", dataImage.extension),
-            ownerId: execution.mediaLifecycle!.ownerId,
-            storageBackend: "oss",
-            storageProfileId: profile.id,
-          });
-          temporaryPublications.push({
-            bytes: dataImage.bytes,
-            contentType: dataImage.contentType,
-            inputIndex: dataImage.inputIndex,
-            reservation,
-          });
-        }
-        return true;
-      });
+      let retained: boolean | undefined;
+      try {
+        retained = await withReadableStorageProfileReservation((profile) => {
+          if (!execution.mediaLifecycle?.ownerId) {
+            throw new RelayProviderError("FORMAT");
+          }
+          fixedProfile = profile;
+          for (const dataImage of dataImages) {
+            const id = randomUUID();
+            const reservation = reserveMediaPublication({
+              contentType: dataImage.contentType,
+              finalStorageName: `${id}.${dataImage.extension}`,
+              id,
+              kind: "image",
+              objectKey: createAliyunOssObjectKey("image", dataImage.extension),
+              ownerId: execution.mediaLifecycle!.ownerId,
+              storageBackend: "oss",
+              storageProfileId: profile.id,
+            });
+            temporaryPublications.push({
+              bytes: dataImage.bytes,
+              contentType: dataImage.contentType,
+              inputIndex: dataImage.inputIndex,
+              reservation,
+            });
+          }
+          return true;
+        });
+      } catch (error) {
+        throw referencePreparationError(error, "REFERENCE_UPLOAD_FAILED");
+      }
       if (retained && fixedProfile) {
         for (const temporary of temporaryPublications) {
-          const stagingPath = mediaPublicationStagingPath(temporary.reservation);
-          await mkdir(dirname(stagingPath), { recursive: true });
-          await writeFile(stagingPath, temporary.bytes, { flag: "wx" });
-          const checksumSha256 = createHash("sha256")
-            .update(temporary.bytes)
-            .digest("hex");
-          stageMediaPublication(temporary.reservation, {
-            byteSize: temporary.bytes.length,
-            checksumSha256,
-            contentType: temporary.contentType,
-          });
-          await objectStore.uploadObject({
-            byteSize: temporary.bytes.length,
-            checksumSha256,
-            contentType: temporary.contentType,
-            credentials: fixedProfile,
-            filePath: stagingPath,
-            objectKey: temporary.reservation.objectKey,
-          });
-          markExternalMediaPublicationReady(temporary.reservation);
-          inputImages[temporary.inputIndex] = await objectStore.createReadUrl(
-            temporary.reservation.objectKey,
-            fixedProfile,
-            300,
-          );
+          try {
+            const stagingPath = mediaPublicationStagingPath(temporary.reservation);
+            await mkdir(dirname(stagingPath), { recursive: true });
+            await writeFile(stagingPath, temporary.bytes, { flag: "wx" });
+            const checksumSha256 = createHash("sha256")
+              .update(temporary.bytes)
+              .digest("hex");
+            stageMediaPublication(temporary.reservation, {
+              byteSize: temporary.bytes.length,
+              checksumSha256,
+              contentType: temporary.contentType,
+            });
+            await objectStore.uploadObject({
+              byteSize: temporary.bytes.length,
+              checksumSha256,
+              contentType: temporary.contentType,
+              credentials: fixedProfile,
+              filePath: stagingPath,
+              objectKey: temporary.reservation.objectKey,
+            });
+            markExternalMediaPublicationReady(temporary.reservation);
+          } catch (error) {
+            throw referencePreparationError(error, "REFERENCE_UPLOAD_FAILED");
+          }
+          try {
+            inputImages[temporary.inputIndex] = await objectStore.createReadUrl(
+              temporary.reservation.objectKey,
+              fixedProfile,
+              300,
+            );
+          } catch (error) {
+            throw referencePreparationError(error, "REFERENCE_SIGN_FAILED");
+          }
         }
       }
     }
-    const route = cleanImageRequest({ ...request, inputImages });
-    const body = await relayJsonRequest({
+    return {
+      cleanup,
+      request: request.inputImages === undefined
+        ? request
+        : { ...request, inputImages },
+    };
+  } catch (error) {
+    await cleanup();
+    throw error;
+  }
+}
+
+/** Send a request that has already completed all local reference preparation. */
+export async function sendPreparedRelayGptImageRequest(
+  connection: RelayProviderConnection,
+  request: RelayGptImageRequest,
+  execution: RelayProviderExecution,
+) {
+  if (!providerProtocolSupportsCapability(request.providerProtocol, request.capability)) {
+    throw new RelayProviderError("FORMAT");
+  }
+  const route = cleanImageRequest(request);
+  let providerBoundaryCrossed = false;
+  let body: unknown;
+  try {
+    body = await relayJsonRequest({
       body: route.body,
       connection,
-      execution,
+      execution: {
+        ...execution,
+        beforeProviderRequest: () => {
+          execution.beforeProviderRequest?.();
+          providerBoundaryCrossed = true;
+        },
+      },
       maximumRequestBytes: mediaRequestLimitBytes,
       maximumResponseBytes: mediaResponseLimitBytes,
       method: "POST",
       path: route.path,
       protocol: request.providerProtocol,
+      providerTaskMayStillRun: true,
     });
-    return parseGptImageResult(body);
-  } finally {
-    if (fixedProfile) {
-      for (const temporary of temporaryPublications.reverse()) {
-        await compensateMediaPublication(temporary.reservation, {
-          code: "RELAY_TEMP_REFERENCE_CLEANUP",
-          deleteExternalObject: objectStore.deleteObject,
-          profile: fixedProfile,
-        }).catch(() => false);
-      }
+  } catch (error) {
+    if (!providerBoundaryCrossed) throw error;
+    if (error instanceof RelayProviderError && error.code === "FORMAT") {
+      throw new RelayProviderError(
+        "PROVIDER_RESULT_FORMAT",
+        error.providerTaskMayStillRun,
+      );
     }
+    throw new RelayProviderError(
+      "PROVIDER_REQUEST_FAILED",
+      true,
+    );
+  }
+  try {
+    return parseGptImageResult(body);
+  } catch {
+    throw new RelayProviderError("PROVIDER_RESULT_FORMAT", true);
+  }
+}
+
+/** Convenience entry point for callers that do not already hold a Provider lease. */
+export async function requestRelayGptImage(
+  connection: RelayProviderConnection,
+  request: RelayGptImageRequest,
+  execution: RelayProviderExecution,
+) {
+  const prepared = await prepareRelayGptImageRequest(request, execution);
+  try {
+    return await sendPreparedRelayGptImageRequest(
+      connection,
+      prepared.request,
+      execution,
+    );
+  } finally {
+    await prepared.cleanup();
   }
 }
 
@@ -1399,9 +1525,9 @@ function resultUrls(body: Record<string, unknown>) {
       else if (isRecord(output)) values.push(output.url, output.result_url);
     }
   }
-  return values
+  return Array.from(new Set(values
     .filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
-    .map(cleanTransientOutputUrl);
+    .map(cleanTransientOutputUrl)));
 }
 
 function parseMediaTaskSnapshot(

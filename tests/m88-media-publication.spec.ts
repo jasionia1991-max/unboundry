@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
+import { DatabaseSync } from "node:sqlite";
 import { assetStorage } from "../server/assetStorage";
 import { adminTemplatesApi } from "../server/adminTemplates";
 import { audioStorage } from "../server/audioStorage";
@@ -58,7 +59,11 @@ import {
   readyMediaForOwner,
 } from "../server/mediaRegistry";
 import { projectsApi } from "../server/projects";
-import { requestRelayGptImage } from "../server/relayProviderAdapters";
+import {
+  prepareRelayGptImageRequest,
+  requestRelayGptImage,
+  sendPreparedRelayGptImageRequest,
+} from "../server/relayProviderAdapters";
 import { templateCatalogApi } from "../server/templateCatalog";
 import {
   activateStorageProfile,
@@ -3813,6 +3818,296 @@ test("GPT Image keeps data references inline when no readable OSS profile exists
     });
     expect(providerCalls).toBe(1);
     expect(result).toMatchObject({ state: "success" });
+  });
+});
+
+test("GPT Image prepares OSS references before the Provider request boundary", async () => {
+  await withDataDirectory("relay-reference-boundary", async (directory) => {
+    const ownerId = "m88-relay-boundary-owner";
+    addOwner(directory, ownerId);
+    const profile = await saveStorageProfile({
+      accessKeyId: "m88-boundary-access-key",
+      accessKeySecret: "m88-boundary-secret-key",
+      bucket: "m88-boundary-bucket",
+      endpoint: "https://oss-cn-shanghai.aliyuncs.com",
+      label: "M88 boundary",
+      region: "oss-cn-shanghai",
+    });
+    await markStorageProfileVerified(profile.id);
+    await activateStorageProfile(profile.id);
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
+    let providerCalls = 0;
+    let uploaded = false;
+    let signed = false;
+    const prepared = await prepareRelayGptImageRequest({
+      capability: "image",
+      inputImages: [`data:image/png;base64,${png.toString("base64")}`],
+      model: "gpt-image-2",
+      operation: "edit",
+      prompt: "m88 ordered reference",
+      providerProtocol: "gpt-image",
+      responseFormat: "b64_json",
+    }, {
+      mediaLifecycle: { ownerId },
+      temporaryImageObjectStore: {
+        createReadUrl: async (objectKey) => {
+          expect(uploaded).toBe(true);
+          signed = true;
+          return `https://signed.example.test/${encodeURIComponent(objectKey)}`;
+        },
+        deleteObject: async () => undefined,
+        uploadObject: async () => {
+          uploaded = true;
+          return {
+            etag: "m88-boundary-etag",
+            requestId: "m88-boundary-put",
+            versionId: "",
+          };
+        },
+      },
+    });
+    expect(uploaded).toBe(true);
+    expect(signed).toBe(true);
+    expect(providerCalls).toBe(0);
+
+    try {
+      const result = await sendPreparedRelayGptImageRequest({
+        apiKey: "m88-boundary-provider-key",
+        baseUrl: "https://relay.example.test/v1",
+      }, prepared.request, {
+        fetcher: async (_input, init) => {
+          providerCalls += 1;
+          expect(String(init?.body)).toContain("https://signed.example.test/");
+          return new Response(JSON.stringify({
+            data: [{ b64_json: png.toString("base64"), media_type: "image/png" }],
+          }), {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          });
+        },
+      });
+      expect(result).toMatchObject({ state: "success" });
+    } finally {
+      await prepared.cleanup();
+    }
+    expect(providerCalls).toBe(1);
+  });
+});
+
+test("GPT Image prepares 1, 5 and 20 parallel OSS references without lock timeout", async () => {
+  await withDataDirectory("relay-reference-parallel", async (directory) => {
+    const ownerId = "m88-relay-parallel-owner";
+    addOwner(directory, ownerId);
+    const profile = await saveStorageProfile({
+      accessKeyId: "m88-parallel-access-key",
+      accessKeySecret: "m88-parallel-secret-key",
+      bucket: "m88-parallel-bucket",
+      endpoint: "https://oss-cn-shanghai.aliyuncs.com",
+      label: "M88 parallel",
+      region: "oss-cn-shanghai",
+    });
+    await markStorageProfileVerified(profile.id);
+    await activateStorageProfile(profile.id);
+    expect((await listStorageProfiles()).mediaRoutingEnabled).not.toBe(true);
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
+
+    for (const count of [1, 5, 20]) {
+      const uploaded = new Set<string>();
+      const deleted = new Set<string>();
+      const providerAttempts = new Map<string, number>();
+      const prepared = await Promise.all(Array.from({ length: count }, (_, index) =>
+        prepareRelayGptImageRequest({
+          capability: "image",
+          inputImages: [`data:image/png;base64,${png.toString("base64")}`],
+          model: "gpt-image-2",
+          operation: "edit",
+          prompt: `m88 parallel reference ${count}-${index}`,
+          providerProtocol: "gpt-image",
+          responseFormat: "b64_json",
+        }, {
+          mediaLifecycle: { ownerId },
+          temporaryImageObjectStore: {
+            createReadUrl: async (objectKey) => {
+              expect(uploaded.has(objectKey)).toBe(true);
+              return `https://signed.example.test/${encodeURIComponent(objectKey)}`;
+            },
+            deleteObject: async (objectKey) => {
+              deleted.add(objectKey);
+            },
+            uploadObject: async ({ objectKey }) => {
+              uploaded.add(objectKey);
+              return {
+                etag: `m88-parallel-${index}`,
+                requestId: `m88-parallel-put-${index}`,
+                versionId: "",
+              };
+            },
+          },
+        })));
+      expect(prepared).toHaveLength(count);
+      expect(uploaded.size).toBe(count);
+
+      try {
+        const results = await Promise.all(prepared.map((item) =>
+          sendPreparedRelayGptImageRequest({
+            apiKey: "m88-parallel-provider-key",
+            baseUrl: "https://relay.example.test/v1",
+          }, item.request, {
+            fetcher: async (_input, init) => {
+              const image = (JSON.parse(String(init?.body)) as { image: string })
+                .image;
+              providerAttempts.set(image, (providerAttempts.get(image) ?? 0) + 1);
+              return new Response(JSON.stringify({
+                data: [{
+                  b64_json: png.toString("base64"),
+                  media_type: "image/png",
+                }],
+              }), {
+                headers: { "Content-Type": "application/json" },
+                status: 200,
+              });
+            },
+          })
+        ));
+        expect(results).toHaveLength(count);
+      } finally {
+        await Promise.all(prepared.map((item) => item.cleanup()));
+      }
+      expect(providerAttempts.size).toBe(count);
+      expect(Array.from(providerAttempts.values())).toEqual(
+        Array.from({ length: count }, () => 1),
+      );
+      expect(deleted.size).toBe(count);
+    }
+  });
+});
+
+test("GPT Image upload and signing failures make zero Provider requests", async () => {
+  await withDataDirectory("relay-reference-preflight-failures", async (directory) => {
+    const ownerId = "m88-relay-preflight-owner";
+    addOwner(directory, ownerId);
+    const profile = await saveStorageProfile({
+      accessKeyId: "m88-preflight-access-key",
+      accessKeySecret: "m88-preflight-secret-key",
+      bucket: "m88-preflight-bucket",
+      endpoint: "https://oss-cn-shanghai.aliyuncs.com",
+      label: "M88 preflight",
+      region: "oss-cn-shanghai",
+    });
+    await markStorageProfileVerified(profile.id);
+    await activateStorageProfile(profile.id);
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
+    const request = {
+      capability: "image" as const,
+      inputImages: [`data:image/png;base64,${png.toString("base64")}`],
+      model: "gpt-image-2",
+      operation: "edit" as const,
+      prompt: "m88 rejected reference",
+      providerProtocol: "gpt-image" as const,
+      responseFormat: "b64_json" as const,
+    };
+    let providerCalls = 0;
+    const providerFetcher = async () => {
+      providerCalls += 1;
+      throw new Error("Provider boundary must not be crossed");
+    };
+
+    await expect(requestRelayGptImage({
+      apiKey: "m88-preflight-provider-key",
+      baseUrl: "https://relay.example.test/v1",
+    }, request, {
+      fetcher: providerFetcher,
+      mediaLifecycle: { ownerId },
+      temporaryImageObjectStore: {
+        createReadUrl: async () => "https://signed.example.test/unreachable",
+        deleteObject: async () => undefined,
+        uploadObject: async () => {
+          throw new Error("deterministic upload failure");
+        },
+      },
+    })).rejects.toMatchObject({ code: "REFERENCE_UPLOAD_FAILED" });
+    expect(providerCalls).toBe(0);
+
+    await expect(requestRelayGptImage({
+      apiKey: "m88-preflight-provider-key",
+      baseUrl: "https://relay.example.test/v1",
+    }, request, {
+      fetcher: providerFetcher,
+      mediaLifecycle: { ownerId },
+      temporaryImageObjectStore: {
+        createReadUrl: async () => {
+          throw new Error("deterministic signing failure");
+        },
+        deleteObject: async () => undefined,
+        uploadObject: async () => ({
+          etag: "m88-signing-etag",
+          requestId: "m88-signing-put",
+          versionId: "",
+        }),
+      },
+    })).rejects.toMatchObject({ code: "REFERENCE_SIGN_FAILED" });
+    expect(providerCalls).toBe(0);
+  });
+});
+
+test("GPT Image reports a busy reference store before any Provider request", async () => {
+  await withDataDirectory("relay-reference-storage-busy", async (directory) => {
+    const ownerId = "m88-relay-storage-busy-owner";
+    addOwner(directory, ownerId);
+    const profile = await saveStorageProfile({
+      accessKeyId: "m88-storage-busy-access-key",
+      accessKeySecret: "m88-storage-busy-secret-key",
+      bucket: "m88-storage-busy-bucket",
+      endpoint: "https://oss-cn-shanghai.aliyuncs.com",
+      label: "M88 storage busy",
+      region: "oss-cn-shanghai",
+    });
+    await markStorageProfileVerified(profile.id);
+    await activateStorageProfile(profile.id);
+    const lock = new DatabaseSync(join(
+      directory,
+      "secrets",
+      "provider-profile-write-lock.sqlite",
+    ));
+    let providerCalls = 0;
+    try {
+      lock.exec("PRAGMA busy_timeout = 25; BEGIN IMMEDIATE");
+      await expect(requestRelayGptImage({
+        apiKey: "m88-storage-busy-provider-key",
+        baseUrl: "https://relay.example.test/v1",
+      }, {
+        capability: "image",
+        inputImages: [
+          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        ],
+        model: "gpt-image-2",
+        operation: "edit",
+        prompt: "m88 storage busy reference",
+        providerProtocol: "gpt-image",
+        responseFormat: "b64_json",
+      }, {
+        fetcher: async () => {
+          providerCalls += 1;
+          throw new Error("Provider boundary must not be crossed");
+        },
+        mediaLifecycle: { ownerId },
+      })).rejects.toMatchObject({ code: "REFERENCE_STORAGE_BUSY" });
+      expect(providerCalls).toBe(0);
+    } finally {
+      try {
+        lock.exec("ROLLBACK");
+      } catch {}
+      lock.close();
+    }
   });
 });
 

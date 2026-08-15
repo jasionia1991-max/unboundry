@@ -55,8 +55,10 @@ import {
   POLLING_PAUSED_MESSAGE,
   waitForGenerationTaskWithPause,
 } from "../generation/taskPolling";
-import type {
-  NodeGenerationOutcome,
+import {
+  workflowModelSelectionProblem,
+  workflowSubmissionPreflightProblem,
+  type NodeGenerationOutcome,
 } from "../generation/workflowExecution";
 import {
   generationFailureMessage,
@@ -608,6 +610,13 @@ function TextNodeImpl({
       ? `生成失败：${generationError}；点击右侧按钮重试原任务`
       : generationError
     : "";
+  const modelSelectionProblem = workflowModelSelectionProblem({
+    isFixture,
+    kind: "text",
+    model: selectedTextModel,
+    status: textModelSelection.status,
+    unavailableReason: textModelUnavailableReason,
+  });
   const inputProblems: NodeInputProblem[] = modelSwitchProblem
     ? [
         { code: "MODEL_UNSUPPORTED", message: modelSwitchProblem },
@@ -624,6 +633,10 @@ function TextNodeImpl({
           ? [{ code: "INVALID" as const, message: generationProblem }]
           : []),
       ];
+  const workflowProblems: NodeInputProblem[] = [
+    ...(modelSelectionProblem ? [modelSelectionProblem] : []),
+    ...inputProblems,
+  ];
   // An empty local Prompt is normal in the accepted 200px creator state.
   // It only becomes part of the expanded upstream area when references exist;
   // actual input/model compatibility problems still expand immediately.
@@ -1429,6 +1442,42 @@ function TextNodeImpl({
     }
   };
 
+  const persistWorkflowInputFailure = async (problem: NodeInputProblem) => {
+    setNodes((nodes) => nodes.map((node) => node.id === id
+      ? {
+          ...node,
+          data: {
+            ...node.data,
+            textGenerationError: problem.message,
+            textGenerationErrorCode: problem.code,
+            textGenerationInputKey: undefined,
+            textGenerationOwnershipKey: undefined,
+            textGenerating: false,
+            textGenerationRetryAllowed: undefined,
+            textGenerationRetryBlockCode: undefined,
+            textGenerationRetryBlockReason: undefined,
+            textGenerationTaskId: undefined,
+          },
+        }
+      : node));
+    setGenerationError(problem.message);
+    await flushCanvasSave();
+    return { message: problem.message, status: "failed" as const };
+  };
+
+  const preflightWorkflowNode = async (context: {
+    executableIds: ReadonlySet<string>;
+  }): Promise<NodeRunResult> => {
+    const problem = workflowSubmissionPreflightProblem({
+      executableIds: context.executableIds,
+      inputs: inputPreflight.inputs,
+      problems: workflowProblems,
+    });
+    return problem
+      ? persistWorkflowInputFailure(problem)
+      : { status: "success" };
+  };
+
   const runWorkflowNode = async (): Promise<NodeRunResult> => {
     const before = getNodes().find((node) => node.id === id);
     if (!before) return { status: "failed" };
@@ -1457,10 +1506,17 @@ function TextNodeImpl({
   const runWorkflowNodeRef = useRef<() => Promise<NodeRunResult>>(
     async () => ({ status: "skipped" }),
   );
+  const preflightWorkflowNodeRef = useRef<(
+    context: { executableIds: ReadonlySet<string> },
+  ) => Promise<NodeRunResult>>(
+    async () => ({ status: "success" }),
+  );
   runWorkflowNodeRef.current = runWorkflowNode;
+  preflightWorkflowNodeRef.current = preflightWorkflowNode;
   useEffect(
     () =>
       registerWorkflowNode(id, {
+        preflight: (context) => preflightWorkflowNodeRef.current(context),
         run: createSaveGateRun(
           waitForCanvasRevision,
           () => runWorkflowNodeRef.current(),
@@ -1782,6 +1838,7 @@ function TextNodeImpl({
               }
               revokeTextTaskForGenerationInputChange();
               setModelSwitchProblem("");
+              setServerInputProblems([]);
               checkpoint();
               setNodes((nodes) =>
                 nodes.map((node) =>

@@ -13,9 +13,15 @@ import {
   updatePublicTemplate,
 } from "../server/adminTemplates";
 import {
+  auditPublicTemplateCompatibility,
+  auditStoredPublicTemplates,
+  PublicTemplateCompatibilityError,
+} from "../server/templateCompatibility";
+import {
   listPublicTemplates,
   publicTemplateCard,
 } from "../server/templateCatalog";
+import { defaultParameterSchema } from "../types/modelParameters";
 
 const port = Number(process.env.UNBOUNDRY_TEST_AUX_PORT);
 const origin = `http://127.0.0.1:${port}`;
@@ -78,6 +84,7 @@ function uploadPlaceholderGraph() {
   return {
     edges: [
       {
+        data: { inputOrder: 1, inputRole: "prompt" },
         id: "pub-edge-1",
         source: "pub-text",
         sourceHandle: "source",
@@ -116,6 +123,85 @@ function uploadPlaceholderGraph() {
     ],
     version: 1,
   };
+}
+
+function pinnedImageGenerationGraph(modelId?: string) {
+  return {
+    edges: [{
+      data: { inputOrder: 1, inputRole: "reference-image" },
+      id: "compat-edge",
+      source: "compat-reference",
+      sourceHandle: "source",
+      target: "compat-target",
+      targetHandle: "target",
+      type: "cuttable",
+    }],
+    nodes: [{
+      data: { label: "Group", title: "兼容检查组" },
+      id: "compat-group",
+      position: { x: 0, y: 0 },
+      style: { height: 348, width: 828 },
+      type: "group",
+      zIndex: 0,
+    }, {
+      data: { label: "Image", title: "商品参考图" },
+      id: "compat-reference",
+      parentId: "compat-group",
+      position: { x: 20, y: 20 },
+      style: { height: 250, width: 250 },
+      type: "image",
+      zIndex: 1,
+    }, {
+      data: {
+        imageModelId: modelId,
+        imageParameters: {},
+        imagePrompt: "生成商品主图",
+        imagePromptReady: true,
+        label: "Image",
+        title: "商品主图",
+      },
+      id: "compat-target",
+      parentId: "compat-group",
+      position: { x: 300, y: 20 },
+      style: { height: 250, width: 250 },
+      type: "image",
+      zIndex: 1,
+    }],
+    version: 1,
+  };
+}
+
+function seedPublishedImageModel(
+  store: ReturnType<typeof openAppDatabase>,
+  modelId: string,
+  maxReferenceImages: number,
+) {
+  const now = timestamp();
+  const providerId = `${modelId}-provider`;
+  store.prepare(`
+    INSERT INTO provider_profiles (
+      id, display_name, driver, status, created_at, updated_at,
+      provider_configuration_version
+    ) VALUES (?, '模板兼容测试平台', 'multi-protocol-relay', 'enabled', ?, ?, 1)
+  `).run(providerId, now, now);
+  const schema = defaultParameterSchema("image");
+  schema.referenceInputs.image = maxReferenceImages;
+  store.prepare(`
+    INSERT INTO model_profiles (
+      id, display_name, provider_profile_id, provider_model_id,
+      capability, status, default_parameters, created_at, updated_at,
+      max_cost_microunits, cost_currency, provider_protocol
+    ) VALUES (
+      ?, '模板兼容图片模型', ?, 'gpt-image-2', 'image', 'published',
+      ?, ?, ?, 1000000, 'USD', 'gpt-image'
+    )
+  `).run(modelId, providerId, JSON.stringify(schema), now, now);
+  store.prepare(`
+    INSERT INTO node_model_bindings (
+      node_type, model_id, enabled, is_default, sort_order, created_at, updated_at
+    ) VALUES ('image', ?, 1, 1, 1, ?, ?)
+  `).run(modelId, now, now);
+  return schema;
 }
 
 test("v31 migration creates public_templates with the two real seeds idempotently", async () => {
@@ -379,6 +465,134 @@ test("public template storage enforces validation, status transitions and seed p
   }
 });
 
+test("public template publication pins a compatible model before becoming visible", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-public-compat-"));
+  try {
+    const store = openAppDatabase(dataDirectory);
+    try {
+      const now = timestamp();
+      store.prepare(`
+        INSERT INTO users (
+          id, login_name, display_name, password_hash, role, status,
+          created_at, updated_at
+        ) VALUES (
+          'compat-admin', 'compat-admin', 'Compat Admin', 'test-only',
+          'admin', 'active', ?, ?
+        )
+      `).run(now, now);
+      const modelId = "template-compatible-image";
+      const schema = seedPublishedImageModel(store, modelId, 0);
+      const draft = savePublicTemplate(store, "compat-admin", {
+        graph: pinnedImageGenerationGraph(),
+        title: "待绑定模型模板",
+      });
+      expect(() => updatePublicTemplate(
+        store,
+        "compat-admin",
+        draft.id,
+        { status: "published" },
+      )).toThrow(PublicTemplateCompatibilityError);
+      expect(store.prepare(`
+        SELECT status FROM public_templates WHERE id = ?
+      `).get(draft.id)).toEqual({ status: "draft" });
+
+      expect(() => updatePublicTemplate(
+        store,
+        "compat-admin",
+        draft.id,
+        {
+          graph: pinnedImageGenerationGraph(modelId),
+          status: "published",
+        },
+      )).toThrow("当前模型不支持image类型上游");
+      expect(store.prepare(`
+        SELECT status FROM public_templates WHERE id = ?
+      `).get(draft.id)).toEqual({ status: "draft" });
+
+      schema.referenceInputs.image = 1;
+      store.prepare(`
+        UPDATE model_profiles SET default_parameters = ?, updated_at = ?
+        WHERE id = ?
+      `).run(JSON.stringify(schema), new Date(Date.now() + 1).toISOString(), modelId);
+      const published = updatePublicTemplate(
+        store,
+        "compat-admin",
+        draft.id,
+        {
+          graph: pinnedImageGenerationGraph(modelId),
+          status: "published",
+        },
+      );
+      expect(published.status).toBe("published");
+      expect(
+        auditStoredPublicTemplates(store).find((item) => item.id === draft.id),
+      ).toMatchObject({ issues: [], status: "PASS" });
+
+      archivePublicTemplate(store, "compat-admin", draft.id);
+      store.prepare(`
+        UPDATE model_profiles SET status = 'disabled' WHERE id = ?
+      `).run(modelId);
+      expect(() => restorePublicTemplate(store, "compat-admin", draft.id))
+        .toThrow("未发布、已停用或节点类型不匹配");
+      expect(store.prepare(`
+        SELECT status FROM public_templates WHERE id = ?
+      `).get(draft.id)).toEqual({ status: "archived" });
+
+      const seedAudits = auditStoredPublicTemplates(store).filter((item) =>
+        item.id === "0786e042-095e-4551-b91b-365492e91241" ||
+        item.id === "aaf7cc53-a595-45da-a6bb-7c93309e0962");
+      expect(seedAudits).toHaveLength(2);
+      expect(seedAudits.map((item) => item.status)).toEqual([
+        "NEEDS_MODEL",
+        "NEEDS_MODEL",
+      ]);
+    } finally {
+      store.close();
+    }
+  } finally {
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("template compatibility keeps canvas-only storyboard connections valid", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-public-storyboard-"));
+  try {
+    const store = openAppDatabase(dataDirectory);
+    try {
+      expect(auditPublicTemplateCompatibility(store, {
+        edges: [{
+          id: "storyboard-edge",
+          source: "storyboard-text",
+          sourceHandle: "source",
+          target: "storyboard-table",
+          targetHandle: "target",
+          type: "cuttable",
+        }],
+        nodes: [{
+          data: { label: "Text", title: "分镜脚本" },
+          id: "storyboard-text",
+          position: { x: 0, y: 0 },
+          style: { height: 250, width: 250 },
+          type: "text",
+          zIndex: 0,
+        }, {
+          data: { label: "Storyboard", title: "抖音分镜表" },
+          id: "storyboard-table",
+          position: { x: 300, y: 0 },
+          style: { height: 250, width: 500 },
+          type: "storyboard",
+          zIndex: 0,
+        }],
+        version: 1,
+      })).toEqual({ issues: [], status: "PASS" });
+    } finally {
+      store.close();
+    }
+  } finally {
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
 test("public template writes fence account deletion and keep audit atomic", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-public-fence-"));
   try {
@@ -503,6 +717,21 @@ test("admin CRUD API, ordinary 403 and the public GET keep the seed contract", a
     });
     expect(bootstrap.status).toBe(201);
     const adminCookie = cookie(bootstrap);
+
+    const incompatiblePublish = await request("/api/admin/templates", {
+      body: JSON.stringify({
+        graph: pinnedImageGenerationGraph(),
+        status: "published",
+        title: "禁止静默选模型",
+      }),
+      cookie: adminCookie,
+      method: "POST",
+    });
+    expect(incompatiblePublish.status).toBe(400);
+    await expect(incompatiblePublish.json()).resolves.toMatchObject({
+      code: "TEMPLATE_COMPATIBILITY_FAILED",
+      issues: [{ code: "MODEL_SELECTION_REQUIRED", nodeId: "compat-target" }],
+    });
 
     const fenceStore = openAppDatabase(dataDirectory);
     try {
@@ -825,6 +1054,16 @@ test("a published upload-placeholder template imports for an ordinary account wi
     await expect(page.locator(".react-flow__node-group")).toHaveCount(1);
     await expect(page.locator(".react-flow__node-text")).toHaveCount(1);
     await expect(page.locator(".react-flow__node-image")).toHaveCount(1);
+    const importedCanvas = await (
+      await page.request.get(`/api/canvas/${project.id}`)
+    ).json() as {
+      edges: Array<{ data?: { inputOrder?: number; inputRole?: string } }>;
+    };
+    expect(importedCanvas.edges).toHaveLength(1);
+    expect(importedCanvas.edges[0].data).toEqual({
+      inputOrder: 1,
+      inputRole: "prompt",
+    });
 
     await page.request.delete(`/api/canvas/${project.id}`);
     await page.request.delete(`/api/projects/${project.id}`);
@@ -858,6 +1097,11 @@ test("admin templates page creates, edits, archives and restores public template
     await expect(
       page.getByTestId("admin-templates-list"),
     ).toContainText("213.电商图片生成专家");
+    const seedCard = page
+      .locator(".admin-template-card")
+      .filter({ hasText: "电商详情页工作流" });
+    await expect(seedCard.locator("[data-compatibility='NEEDS_MODEL']"))
+      .toContainText("需要绑定模型");
 
     await page.getByRole("button", { name: "新建公共模板" }).click();
     const modal = page.getByTestId("admin-template-modal");
@@ -876,6 +1120,8 @@ test("admin templates page creates, edits, archives and restores public template
       .filter({ hasText: "UI 新建模板" });
     await expect(createdCard).toBeVisible();
     await expect(createdCard.locator("[data-status='published']")).toBeVisible();
+    await expect(createdCard.locator("[data-compatibility='PASS']"))
+      .toContainText("兼容检查通过");
     const publicList = await page.request.get(
       "/api/templates?space=public&q=UI 新建模板",
     );

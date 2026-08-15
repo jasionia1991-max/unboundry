@@ -2650,6 +2650,9 @@ export const currentSchemaContract = Object.freeze({
     ]),
     asset_history: Object.freeze([
       "700ecc72764b59b1bcd84eb921cab728e5f66e8c4f2affd70a41e6a51aade6c6",
+      // Exact migration-v1 indentation retained by the admitted production
+      // schema-37 lineage. Semantic or whitespace normalization is forbidden.
+      "0053af18d88bd9872c210fa69fba542dd7254ba0f7e6d6c736e3635e5ca65300",
     ]),
     canvas_documents: Object.freeze([
       "c1513fd4d7a98acd1826e952f442877b40f8395a8052b15e85479559da0cefdf",
@@ -2694,6 +2697,9 @@ export const currentSchemaContract = Object.freeze({
     ]),
     provider_profiles: Object.freeze([
       "5a123ee9694b90e7bfb5cd43bcb4df3b00a367ac25974f48052068b178085809",
+      // Exact historic catalog_diagnostics declaration without identifier
+      // quotes. Only this observed SQL fingerprint is additionally admitted.
+      "47a50d882fbf7e6c5045800b3fa66b4ddb7ccba9f1a2a0646c81ec3b816d87e2",
     ]),
     public_templates: Object.freeze([
       "dbe59ae26271823809c64e9acc2cbac41c2873de127723d746b5c3335f0423b9",

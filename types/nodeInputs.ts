@@ -74,6 +74,7 @@ export type NodeInputProblem = {
     | "INVALID"
     | "MISSING"
     | "GRAPH_INVALID"
+    | "MODEL_UNAVAILABLE"
     | "MODEL_UNSUPPORTED"
     | "COMBINATION_UNSUPPORTED"
     | "ORDER_INVALID"

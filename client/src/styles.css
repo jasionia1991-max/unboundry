@@ -10546,6 +10546,10 @@ sup {
   white-space: nowrap;
 }
 
+.admin-template-info .admin-template-compatibility-detail {
+  color: #d1a77e;
+}
+
 .admin-template-status {
   grid-column: 1 / -1;
   justify-self: start;
@@ -10565,6 +10569,27 @@ sup {
 .admin-template-status[data-status="archived"] {
   color: #e3bd90;
   background: rgba(184, 128, 65, 0.16);
+}
+
+.admin-template-compatibility {
+  grid-column: 1 / -1;
+  justify-self: start;
+  padding: 3px 10px;
+  border-radius: 999px;
+  color: #e3bd90;
+  background: rgba(184, 128, 65, 0.16);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.admin-template-compatibility[data-compatibility="PASS"] {
+  color: #bfe6d0;
+  background: rgba(74, 169, 116, 0.16);
+}
+
+.admin-template-compatibility[data-compatibility="INVALID"] {
+  color: #efb2b2;
+  background: rgba(184, 65, 65, 0.18);
 }
 
 .admin-template-actions {

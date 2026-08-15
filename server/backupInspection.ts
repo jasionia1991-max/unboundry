@@ -155,7 +155,12 @@ const schema37Contract = Object.freeze({
       "82e604628c4a2ce90c37ad6cba7f5d82fb71e6a21703d361bb03bf980730c0ce",
       "9b5cd05337e0787660d20beabbd57e55ae0384618304e74ec60410adccfe98ab",
     ]),
-    asset_history: Object.freeze(["700ecc72764b59b1bcd84eb921cab728e5f66e8c4f2affd70a41e6a51aade6c6"]),
+    asset_history: Object.freeze([
+      "700ecc72764b59b1bcd84eb921cab728e5f66e8c4f2affd70a41e6a51aade6c6",
+      // Exact migration-v1 indentation retained by the admitted production
+      // schema-37 lineage. Semantic or whitespace normalization is forbidden.
+      "0053af18d88bd9872c210fa69fba542dd7254ba0f7e6d6c736e3635e5ca65300",
+    ]),
     canvas_documents: Object.freeze(["c1513fd4d7a98acd1826e952f442877b40f8395a8052b15e85479559da0cefdf"]),
     generation_provider_attempts: Object.freeze(["2e1effabd1d125941ff89256881802c56189d640eeb3c9ebc8f86c61ba7a14e2"]),
     generation_safety_settings: Object.freeze(["f40be7744655d146b2ecd0f8897b024d98a1db94a39284e53cc27d40ba9bc38c"]),
@@ -174,7 +179,12 @@ const schema37Contract = Object.freeze({
       "7c3c7e2f42885cd3ce92c2284761bbcb99715d8f9eafe8cd575002a5a894f35a",
     ]),
     project_metadata: Object.freeze(["343804fcd2f4d99f4acab95c0e604bab64efd1f09c0a5ebb0e9df0347d14511e"]),
-    provider_profiles: Object.freeze(["5a123ee9694b90e7bfb5cd43bcb4df3b00a367ac25974f48052068b178085809"]),
+    provider_profiles: Object.freeze([
+      "5a123ee9694b90e7bfb5cd43bcb4df3b00a367ac25974f48052068b178085809",
+      // Exact historic catalog_diagnostics declaration without identifier
+      // quotes. Only this observed SQL fingerprint is additionally admitted.
+      "47a50d882fbf7e6c5045800b3fa66b4ddb7ccba9f1a2a0646c81ec3b816d87e2",
+    ]),
     public_templates: Object.freeze([
       "dbe59ae26271823809c64e9acc2cbac41c2873de127723d746b5c3335f0423b9",
       "181a61ea6c1dd6ecadb314598b354bad1cab669bddd2057963d0d80e6eab1809",

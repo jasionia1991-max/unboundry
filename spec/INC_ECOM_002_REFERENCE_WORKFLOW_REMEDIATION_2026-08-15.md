@@ -1,0 +1,171 @@
+# INC-ECOM-002 电商参考图工作流修复方案与施工断点
+
+状态：`OFFLINE_PRODUCT_REGRESSION_PASS_RELEASE_GATE_PENDING`
+建立日期：`2026-08-15`
+当前阶段：`D2 非发布产品回归926/926通过，正式发布制品门待clean candidate`
+
+## 1. 当前授权与硬边界
+
+用户已确认本方案，可以开始本地离线代码、测试和文档施工。
+
+用户随后明确授权形成 clean candidate、运行正式全量，并通过既有 SSH 对生产模板做只读审计。本批当前允许：
+
+- 修改本地代码、测试和项目文档；
+- 使用全新临时数据目录、动态 loopback 端口、假 Provider 和假 OSS；
+- 运行项目安全测试入口、类型检查和构建；
+- 对现有公共模板图做静态契约检查；
+- 通过既有 SSH 对生产模板和模型合同做 `readOnly + query_only` 审计；
+- 创建本地 bridge/final candidate commit，并在 clean formal source 上运行安全 full。
+
+本批明确禁止：
+
+- 修改用户已设置的并发值；当前按用户设置的 `500` 视为冻结外部状态；
+- 修改 `mediaRoutingEnabled`、OSS 配置、密钥、Bucket、RAM 权限或真实对象；
+- 修改生产数据、重启服务、切换 release 或发布；
+- 发起真实 Provider、真实 OSS 或任何可能收费的请求；
+- 自动重提历史失败任务；
+- push、tag 或 PR。
+
+生产、真实 Provider/OSS、付费验收、版本号和发布均需后续独立明确授权。
+
+## 2. 已确认事实
+
+### 2.1 第一次参考图失败的代码根因
+
+当前 GPT Image 参考图路径存在同锁自锁：
+
+1. `generationTasks.ts` 的 `withProviderRequestLease` 先取得 Provider generation lease；
+2. lease 在真正调用 `fetch` 前不会释放；
+3. `requestRelayGptImage` 在调用 `fetch` 前，为 `data:` 本地参考图调用 `withReadableStorageProfileReservation`；
+4. Provider 配置与 Storage 配置都使用 `secrets/provider-profile-write-lock.sqlite`；
+5. 同一请求在持锁期间再次 `BEGIN IMMEDIATE`，等待约 5 秒后失败；Provider 尚未收到请求。
+
+现场原始异常文字已被旧的通用 `GENERATION_FAILED` 覆盖，不能追溯原文；但当前调用顺序、同一锁文件与 5 秒超时已形成确定性代码根因。
+
+### 2.2 既有热修复边界
+
+`INC-ECOM-001 = USER_RECHECK` 只完成：
+
+- Provider 响应中重复结果 URL 别名去重；
+- 整组执行遇到节点级不兼容时不再静默停止，错误会写回节点；
+- 只恢复 Provider 已完成的既有任务，没有第二次 Provider 提交。
+
+它没有完成：参考图同锁自锁、整组提交前全图兼容预检、显眼的输入不兼容提示、公共模板发布兼容门和全部电商模板验收。
+
+## 3. 修复设计
+
+### A. 参考图准备与付费边界拆分（P0）
+
+把 GPT Image 调用拆为两个阶段：
+
+1. `prepare`：在 Provider lease 之外解析本地参考图、固定 Storage profile、建立 publication journal、上传临时 OSS 对象并生成短时签名 URL；完成后释放 Storage 锁；
+2. `send`：重新取得 Provider generation lease，复核任务快照、Provider 配置和账号 credential revision，只在最终网络边界登记唯一 Provider attempt 并发起请求；
+3. `cleanup`：无论成功、失败或取消均补偿临时对象；清理失败保留 journal，交现有恢复机制继续处理，绝不因此重提 Provider。
+
+不得用延长 5 秒超时、打开永久 OSS 路由、移除 Provider 安全 lease 或自动重试来掩盖问题。
+
+### B. 错误真相与恢复语义（P0）
+
+至少区分并持久化以下阶段，页面明确显示是否已越过 Provider 边界：
+
+- `REFERENCE_STORAGE_BUSY`：参考图存储准备繁忙，Provider attempt 必须为 0；
+- `REFERENCE_UPLOAD_FAILED`：临时上传失败，Provider attempt 必须为 0；
+- `REFERENCE_SIGN_FAILED`：短时签名失败，Provider attempt 必须为 0；
+- `PROVIDER_REQUEST_FAILED`：已进入 Provider 请求阶段；
+- `PROVIDER_RESULT_FORMAT`：Provider 已响应，但结果格式无法安全收口。
+
+不得保存或展示密钥、完整签名 URL、原始媒体字节或敏感提示词。
+
+### C. 整组执行前全图兼容预检（P0）
+
+在创建任何 generation task 之前，对组内所有可执行节点完成静态预检：
+
+- 模型存在且已发布；
+- 上游类型、角色、数量和参数组合被模型支持；
+- 图结构、节点引用和循环依赖合法；
+- 静态不兼容时整组阻止，task POST 和 Provider attempt 均为 0；
+- 节点保留常驻、可刷新恢复的明确错误；组提示给出失败节点数量并定位首个问题。
+
+静态兼容预检与逐层运行时就绪检查必须分开：允许上游 Text 在前一层生成后供下游使用，但不能允许模型能力不兼容的节点先产生部分付费任务。
+
+### D. 公共模板兼容门与模板包审计（P0/P1）
+
+公共模板从 `draft` 进入 `published` 前必须增加语义检查，不能只验证 JSON 外形：
+
+- 节点 ID、edge 端点、parent、角色、顺序、重复边和 DAG 合法；
+- 每个生成节点推导所需 capability、输入类型/数量/角色和参数；
+- 推荐模型存在且兼容；不兼容时拒绝发布并返回逐节点原因；
+- 导入时推荐模型失效不得静默切换到收费或质量不同的模型，必须要求用户明确选择兼容模型。
+
+对全部现有电商模板生成一份静态矩阵：`PASS / NEEDS_MODEL / INVALID / USER_RECHECK`。未经静态通过和代表性真实验收，不得标记为“已验证模板”。
+
+## 4. 零费用自动验收
+
+所有自动检查使用临时数据、假 OSS、假 Provider和动态 loopback，真实外部请求为 0。
+
+必须覆盖：
+
+1. `mediaRoutingEnabled=false + active OSS + 本地参考图` 能在假 Provider 收到一次签名 URL 请求；
+2. 1、5、20 个并行参考图节点无 5 秒锁超时，每个任务最多一次 Provider attempt；
+3. OSS 上传、签名、Provider 配置变化、请求失败、结果成功和清理失败逐点故障注入；
+4. 清理失败保留可恢复 journal，重启恢复不重新请求 Provider；
+5. 任一静态不兼容节点使整组 task POST=0、Provider attempt=0；
+6. 上游 Text→下游 Image 的合法分层工作流仍可运行；
+7. 重复结果别名只保存一个结果，两个不同结果在预期单结果时安全拒绝；
+8. 节点错误保存、重载和重新选择兼容模型后的清除语义正确；
+9. 所有公共模板通过结构与能力静态审计，失败模板不能发布；
+10. 受影响专项、关键并发压力、TypeScript、production build 和安全全量回归全部通过。
+
+## 5. 真实验收与发布门（当前未授权）
+
+零费用证据完成后，仍需用户分别授权：
+
+1. 单参考图、单图片节点、最多一次付费请求的真实 smoke；
+2. 明确节点数和最大请求数后，对「服装详情页｜面料与工艺拆解」做一次完整真实验收；
+3. 新正式版本号；
+4. 生产备份、不可变 release、切换与必要回滚。
+
+第一次失败发生在 Provider 前，没有远端结果可恢复；修复后再次生成属于新的付费请求，绝不自动执行。`INC-ECOM-001` 已恢复的既有结果继续保留，不得重提。
+
+## 6. 连续施工与上下文恢复
+
+每完成一个阶段，必须同步本文件、`TASKS.md`、`spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md` 和 `spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md`。任何上下文压缩或换 Agent 后，按以下顺序恢复：
+
+1. `AGENTS.md`；
+2. `README.md`；
+3. 本文件；
+4. `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md` 顶部当前事件；
+5. `TASKS.md` 的 `INC-ECOM-002`；
+6. 验收矩阵的 `INC-ECOM-002`；
+7. 只读核对仓库路径、分支、HEAD、工作树、package 与 Node。
+
+任一身份或授权不一致立即停止。聊天摘要和内部记忆只能帮助定位，不能替代本断点。
+
+## 6.1 当前施工结果
+
+- A已完成：本地`data:`参考图在Provider lease外完成临时OSS上传和短时签名；发送阶段只持Provider lease；清理失败保留journal且不重提Provider。
+- B已完成：新增`REFERENCE_STORAGE_BUSY / REFERENCE_UPLOAD_FAILED / REFERENCE_SIGN_FAILED / PROVIDER_REQUEST_FAILED / PROVIDER_RESULT_FORMAT`；页面说明是否越过Provider边界，不展示签名URL、密钥或原始媒体。
+- C已完成：整组执行先预检全部可执行节点，再创建任何运行组/task；提示失败节点数量和首个节点；节点错误持久化；模型目录未就绪、模型缺失、停用或能力不兼容均为静态阻止项。
+- D已完成实现：公共模板进入/恢复/更新为published前做结构、DAG、角色、顺序、参数、明确模型和能力检查；管理页显示兼容状态；模板导入保留edge角色/顺序，缺模型时要求用户明确选择而非借用默认模型。
+- 生产只读矩阵已完成：schema39 共19条模板（18 published、1 archived）均为`NEEDS_MODEL`，`INVALID=0 / PASS=0`；唯一问题为99个执行节点没有保存模型，其中published模板87个。「服装详情页｜面料与工艺拆解」明确为5个节点缺模型。详见`INC_ECOM_002_TEMPLATE_COMPATIBILITY_MATRIX_2026-08-15.md`。
+- 审计器回归已修复：首次只读审计把5条短视频模板的合法`text→storyboard`连线误报INVALID；已改为复用画布连接合同，新增m77专项并`9/9 PASS`。
+- 已通过安全定向：m88含确定性Storage busy和1/5/20并行参考图`34/34`；m53 `23/23`；m22+m70+m77 `30/30`；修复旧Text输入提示误伤后m22/m29/m36/m50/m65 `28/28`。上传/签名失败、Provider请求/结果、清理journal、模板发布门、管理页和组预检均由假Provider/OSS验证；真实外部请求0。
+- 最终非发布产品回归：安全入口发现`117 files / 953 tests`；执行全部不依赖正式发布制品的`113 files / 926 tests`，结果`926/926 PASS`，失败/跳过/重试/报告错误/blocked均0，`deniedViteWildcardProbes=516`；文档同步前449-file source/snapshot SHA-256均为`d5836ca074537bb763fbac07722d711ca25b897028a6e48bee9b11272ce958cc`，4173 listener SHA-256仍为`dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae`，suite已清理。
+- full发布制品边界：`m10/m92/m94/m96`共27项依赖clean formal source和不可变release artifact；当前工作树含本批未提交改动，full在`RELEASE_SOURCE_PAIR_DIRTY`处按设计fail-close，`builderInvocations=0`，没有产品断言失败。不得绕过clean门，也不得把926/926称为117-file full PASS；只有未来获准形成clean candidate后才能补跑。
+- 待完成：按本轮授权形成clean bridge/final candidate并跑正式full。真实smoke、生产模板写入修正、用户实页和发布仍未授权。
+
+## 7. 当前恢复卡
+
+```text
+项目：/Users/mymy/Documents/unboundry/app
+分支：codex/unboundry-offline-remediation-2026-08-09
+本断点建立时 HEAD：812b06531854aed450eb77e977102ada9efc53d2
+package：0.6.0
+当前事件：INC-ECOM-002
+状态：OFFLINE_PRODUCT_REGRESSION_PASS_RELEASE_GATE_PENDING
+当前阶段：D2 非发布产品回归926/926通过，正式发布制品门待clean candidate
+既有脏改动：INC-ECOM-001 热修复、相关测试和历史施工文件，全部保留，不得 reset/clean
+允许：本地代码、测试、文档、临时数据、假 Provider/OSS、动态 loopback
+禁止：并发/OSS路由修改、SSH、生产、真实Provider/OSS、付费、commit/push/tag/PR/发布
+下一步：只读核对最终diff和文档；如用户另行授权commit/candidate，再在clean formal source上补m10/m92/m94/m96与full发布门
+```

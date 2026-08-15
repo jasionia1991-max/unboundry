@@ -131,9 +131,15 @@ const generationErrorCodeMessages: Record<
   PROVIDER_DRIVER_MISMATCH: "平台连接配置不匹配，请联系管理员",
   PROVIDER_FAILED: "模型平台未完成本次生成，请重试",
   PROVIDER_PROFILE_MISSING: "平台安全配置缺失，请联系管理员",
+  PROVIDER_REQUEST_FAILED:
+    "已向模型提交，但请求未完成；为避免重复扣费，本次不会自动重提",
   PROVIDER_RECOVERY_ATTEMPT_USED: "模型配置更新后的恢复尝试已使用，请等待结果或联系管理员",
   PROVIDER_REVERIFY_REQUIRED: "平台连接资料已更新，请管理员完成只读连接检查",
+  PROVIDER_RESULT_FORMAT: "模型已响应，但结果无法安全识别；本次不会自动重提",
   RATE_LIMIT: "操作太频繁，请稍后再试",
+  REFERENCE_SIGN_FAILED: "参考图临时链接创建失败，本次没有向模型提交",
+  REFERENCE_STORAGE_BUSY: "参考图临时存储繁忙，本次没有向模型提交",
+  REFERENCE_UPLOAD_FAILED: "参考图临时上传失败，本次没有向模型提交",
   RETRY_OUTCOME_UNKNOWN:
     "上次生成结果无法确认，为避免重复扣费，不能一键重试；请先到模型平台核对任务记录，确认后修改生成内容再提交",
   RETRY_SNAPSHOT_CHANGED: "任务快照已变化，不能继续旧任务，请重新提交",

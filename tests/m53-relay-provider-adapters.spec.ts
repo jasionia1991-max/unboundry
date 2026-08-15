@@ -520,9 +520,57 @@ test("GPT Image requests PNG and rejects JPEG or WebP output bytes", async () =>
         expect(JSON.parse(String(init?.body))).toMatchObject({ output_format: "png" });
         return jsonResponse({ data: [fixture] });
       },
-    })).rejects.toMatchObject({ code: "FORMAT" });
+    })).rejects.toMatchObject({ code: "PROVIDER_RESULT_FORMAT" });
   }
   expect(calls).toBe(3);
+});
+
+test("GPT Image distinguishes preflight, Provider request and result failures", async () => {
+  const validRequest: RelayGptImageRequest = {
+    capability: "image",
+    model: "gpt-image-2",
+    operation: "generation",
+    prompt: "stage classification",
+    providerProtocol: "gpt-image",
+    responseFormat: "b64_json",
+  };
+  let boundaries = 0;
+  await expect(requestRelayGptImage(connection, {
+    ...validRequest,
+    count: 11,
+  }, {
+    beforeProviderRequest: () => {
+      boundaries += 1;
+    },
+    fetcher: async () => {
+      throw new Error("must not reach Provider");
+    },
+  })).rejects.toMatchObject({ code: "FORMAT" });
+  expect(boundaries).toBe(0);
+
+  await expect(requestRelayGptImage(connection, validRequest, {
+    beforeProviderRequest: () => {
+      boundaries += 1;
+    },
+    fetcher: async () => {
+      throw new Error("deterministic Provider request failure");
+    },
+  })).rejects.toMatchObject({
+    code: "PROVIDER_REQUEST_FAILED",
+    providerTaskMayStillRun: true,
+  });
+  expect(boundaries).toBe(1);
+
+  await expect(requestRelayGptImage(connection, validRequest, {
+    beforeProviderRequest: () => {
+      boundaries += 1;
+    },
+    fetcher: async () => jsonResponse({ data: [{ unexpected: true }] }),
+  })).rejects.toMatchObject({
+    code: "PROVIDER_RESULT_FORMAT",
+    providerTaskMayStillRun: true,
+  });
+  expect(boundaries).toBe(2);
 });
 
 test("generic media submission accepts image, video and audio fixtures only", async () => {
@@ -709,6 +757,33 @@ test("media polling maps stable states and treats every result URL as transient"
   ));
   expect(JSON.stringify(relayProviderSafeSnapshot(success)))
     .not.toContain("signed.example.test");
+});
+
+test("media polling deduplicates one provider result repeated across response aliases", async () => {
+  const signedUrl = "https://signed.example.test/result.png?signature=short";
+  const result = await pollRelayMediaTask(connection, {
+    capability: "image",
+    externalTaskId: "task_duplicate_aliases",
+    providerProtocol: "media-generate",
+  }, {
+    fetcher: async () => jsonResponse({
+      cost: 0.1485,
+      is_final: true,
+      outputs: [{ result_url: signedUrl }, { url: signedUrl }],
+      result_url: signedUrl,
+      result_urls: [signedUrl],
+      state: "success",
+    }),
+  });
+
+  expect(result).toMatchObject({
+    capability: "image",
+    outputs: [{ kind: "image", transport: "transient-url" }],
+    providerCostUnits: 0.1485,
+    state: "success",
+  });
+  if (result.state !== "success") throw new Error("expected success result");
+  expect(result.outputs).toHaveLength(1);
 });
 
 test("unknown task states and mismatched media results fail closed", async () => {

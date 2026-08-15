@@ -37,8 +37,10 @@ import {
   POLLING_PAUSED_MESSAGE,
   waitForGenerationTaskWithPause,
 } from "../generation/taskPolling";
-import type {
-  NodeGenerationOutcome,
+import {
+  workflowModelSelectionProblem,
+  workflowSubmissionPreflightProblem,
+  type NodeGenerationOutcome,
 } from "../generation/workflowExecution";
 import { visibleGenerationError } from "../generation/generationErrors";
 import {
@@ -405,9 +407,24 @@ function VideoNodeImpl({
     targetId: id,
     targetKind: "video",
   });
-  const inputProblems: NodeInputProblem[] = modelSwitchProblem
-    ? [{ code: "MODEL_UNSUPPORTED", message: modelSwitchProblem }, ...inputPreflight.problems, ...serverInputProblems]
-    : [...inputPreflight.problems, ...serverInputProblems];
+  const modelSelectionProblem = workflowModelSelectionProblem({
+    isFixture,
+    kind: "video",
+    model: selectedVideoModel,
+    status: videoModelSelection.status,
+    unavailableReason: videoModelUnavailableReason,
+  });
+  const inputProblems: NodeInputProblem[] = [
+    ...(modelSwitchProblem
+      ? [{ code: "MODEL_UNSUPPORTED" as const, message: modelSwitchProblem }]
+      : []),
+    ...inputPreflight.problems,
+    ...serverInputProblems,
+  ];
+  const workflowProblems: NodeInputProblem[] = [
+    ...(modelSelectionProblem ? [modelSelectionProblem] : []),
+    ...inputProblems,
+  ];
   const inputFeedbackFingerprint = JSON.stringify({
     edges: canvasEdges.map((edge) => [edge.id, edge.source, edge.target, edge.data]),
     model: selectedVideoModel?.id,
@@ -1048,6 +1065,43 @@ function VideoNodeImpl({
     }
   };
 
+  const persistWorkflowInputFailure = async (problem: NodeInputProblem) => {
+    setNodes((nodes) => nodes.map((node) => node.id === id
+      ? {
+          ...node,
+          data: {
+            ...node.data,
+            videoGenerationError: problem.message,
+            videoGenerationErrorCode: problem.code,
+            videoGenerationInputKey: undefined,
+            videoGenerationOwnershipKey: undefined,
+            videoGenerating: false,
+            videoGenerationRetryAllowed: undefined,
+            videoGenerationRetryBlockCode: undefined,
+            videoGenerationRetryBlockReason: undefined,
+            videoGenerationTaskId: undefined,
+          },
+        }
+      : node));
+    setUploadError(problem.message);
+    setRetryTaskId(undefined);
+    await flushCanvasSave();
+    return { message: problem.message, status: "failed" as const };
+  };
+
+  const preflightWorkflowNode = async (context: {
+    executableIds: ReadonlySet<string>;
+  }): Promise<NodeRunResult> => {
+    const problem = workflowSubmissionPreflightProblem({
+      executableIds: context.executableIds,
+      inputs: inputPreflight.inputs,
+      problems: workflowProblems,
+    });
+    return problem
+      ? persistWorkflowInputFailure(problem)
+      : { status: "success" };
+  };
+
   const runWorkflowNode = async (): Promise<NodeRunResult> => {
     const before = getNodes().find((node) => node.id === id);
     if (!before) return { status: "failed" };
@@ -1076,10 +1130,17 @@ function VideoNodeImpl({
   const runWorkflowNodeRef = useRef<() => Promise<NodeRunResult>>(
     async () => ({ status: "skipped" }),
   );
+  const preflightWorkflowNodeRef = useRef<(
+    context: { executableIds: ReadonlySet<string> },
+  ) => Promise<NodeRunResult>>(
+    async () => ({ status: "success" }),
+  );
   runWorkflowNodeRef.current = runWorkflowNode;
+  preflightWorkflowNodeRef.current = preflightWorkflowNode;
   useEffect(
     () =>
       registerWorkflowNode(id, {
+        preflight: (context) => preflightWorkflowNodeRef.current(context),
         run: createSaveGateRun(
           waitForCanvasRevision,
           () => runWorkflowNodeRef.current(),
@@ -2146,6 +2207,7 @@ function VideoNodeImpl({
                 return;
               }
               setModelSwitchProblem("");
+              setServerInputProblems([]);
               checkpoint();
               setNodes((nodes) =>
                 nodes.map((node) =>
@@ -2154,6 +2216,15 @@ function VideoNodeImpl({
                         ...node,
                         data: {
                           ...node.data,
+                          videoGenerationError: undefined,
+                          videoGenerationErrorCode: undefined,
+                          videoGenerationInputKey: undefined,
+                          videoGenerationOwnershipKey: undefined,
+                          videoGenerating: false,
+                          videoGenerationRetryAllowed: undefined,
+                          videoGenerationRetryBlockCode: undefined,
+                          videoGenerationRetryBlockReason: undefined,
+                          videoGenerationTaskId: undefined,
                           videoModel: displayName,
                           videoModelId: modelId,
                           videoParameters: nextParameters,

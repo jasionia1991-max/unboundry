@@ -50,8 +50,10 @@ import {
   POLLING_PAUSED_MESSAGE,
   waitForGenerationTaskWithPause,
 } from "../generation/taskPolling";
-import type {
-  NodeGenerationOutcome,
+import {
+  workflowModelSelectionProblem,
+  workflowSubmissionPreflightProblem,
+  type NodeGenerationOutcome,
 } from "../generation/workflowExecution";
 import { visibleGenerationError } from "../generation/generationErrors";
 import {
@@ -1358,12 +1360,23 @@ function ImageNodeImpl({
     targetId: id,
     targetKind: "image",
   });
+  const modelSelectionProblem = workflowModelSelectionProblem({
+    isFixture,
+    kind: "image",
+    model: selectedImageModel,
+    status: imageModelSelection.status,
+    unavailableReason: imageModelUnavailableReason,
+  });
   const inputProblems: NodeInputProblem[] = [
     ...(modelSwitchProblem
       ? [{ code: "MODEL_UNSUPPORTED" as const, message: modelSwitchProblem }]
       : []),
     ...inputPreflight.problems,
     ...serverInputProblems,
+  ];
+  const workflowProblems: NodeInputProblem[] = [
+    ...(modelSelectionProblem ? [modelSelectionProblem] : []),
+    ...inputProblems,
   ];
   const inputFeedbackKey = JSON.stringify({
     edges: inputPreflight.inputs.map((input) => ({
@@ -2093,6 +2106,43 @@ function ImageNodeImpl({
     }
   };
 
+  const persistWorkflowInputFailure = async (problem: NodeInputProblem) => {
+    setNodes((nodes) => nodes.map((node) => node.id === id
+      ? {
+          ...node,
+          data: {
+            ...node.data,
+            imageGenerationError: problem.message,
+            imageGenerationErrorCode: problem.code,
+            imageGenerationInputKey: undefined,
+            imageGenerationOwnershipKey: undefined,
+            imageGenerating: false,
+            imageGenerationRetryAllowed: undefined,
+            imageGenerationRetryBlockCode: undefined,
+            imageGenerationRetryBlockReason: undefined,
+            imageGenerationTaskId: undefined,
+          },
+        }
+      : node));
+    setUploadError(problem.message);
+    setRetryTaskId(undefined);
+    await flushCanvasSave();
+    return { message: problem.message, status: "failed" as const };
+  };
+
+  const preflightWorkflowNode = async (context: {
+    executableIds: ReadonlySet<string>;
+  }): Promise<NodeRunResult> => {
+    const problem = workflowSubmissionPreflightProblem({
+      executableIds: context.executableIds,
+      inputs: inputPreflight.inputs,
+      problems: workflowProblems,
+    });
+    return problem
+      ? persistWorkflowInputFailure(problem)
+      : { status: "success" };
+  };
+
   const runWorkflowNode = async (): Promise<NodeRunResult> => {
     const before = getNodes().find((node) => node.id === id);
     if (!before) return { status: "failed" };
@@ -2105,13 +2155,17 @@ function ImageNodeImpl({
     ) {
       return { message: "节点正在生成中", status: "busy" };
     }
+    const blockingProblem = inputProblems[0];
+    if (blockingProblem) {
+      return persistWorkflowInputFailure(blockingProblem);
+    }
     const outcome = await generateImage();
     if (outcome.status === "failed") {
       return { message: outcome.message, status: "failed" };
     }
     if (outcome.status === "skipped") {
       return {
-        message: inputPreflight.problems[0]?.message,
+        message: inputProblems[0]?.message,
         status: "skipped",
       };
     }
@@ -2121,10 +2175,17 @@ function ImageNodeImpl({
   const runWorkflowNodeRef = useRef<() => Promise<NodeRunResult>>(
     async () => ({ status: "skipped" }),
   );
+  const preflightWorkflowNodeRef = useRef<(
+    context: { executableIds: ReadonlySet<string> },
+  ) => Promise<NodeRunResult>>(
+    async () => ({ status: "success" }),
+  );
   runWorkflowNodeRef.current = runWorkflowNode;
+  preflightWorkflowNodeRef.current = preflightWorkflowNode;
   useEffect(
     () =>
       registerWorkflowNode(id, {
+        preflight: (context) => preflightWorkflowNodeRef.current(context),
         run: createSaveGateRun(
           waitForCanvasRevision,
           () => runWorkflowNodeRef.current(),
@@ -3320,6 +3381,7 @@ function ImageNodeImpl({
                 return;
               }
               setModelSwitchProblem("");
+              setServerInputProblems([]);
               checkpoint();
               setNodes((nodes) =>
                 nodes.map((node) =>
@@ -3328,6 +3390,15 @@ function ImageNodeImpl({
                         ...node,
                         data: {
                           ...node.data,
+                          imageGenerationError: undefined,
+                          imageGenerationErrorCode: undefined,
+                          imageGenerationInputKey: undefined,
+                          imageGenerationOwnershipKey: undefined,
+                          imageGenerating: false,
+                          imageGenerationRetryAllowed: undefined,
+                          imageGenerationRetryBlockCode: undefined,
+                          imageGenerationRetryBlockReason: undefined,
+                          imageGenerationTaskId: undefined,
                           imageParameters: nextValues,
                           imageAspectRatio: supportedImageValue(
                             nextParameters.aspectRatios,

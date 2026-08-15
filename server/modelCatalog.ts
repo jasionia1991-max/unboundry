@@ -69,7 +69,12 @@ type ModelRow = {
   status: ModelStatus;
 };
 
-function parameterSchema(row: ModelRow): ModelParameterSchema {
+type ModelSchemaRow = Pick<
+  ModelRow,
+  "capability" | "default_parameters" | "provider_driver" | "provider_model_id"
+>;
+
+function parameterSchema(row: ModelSchemaRow): ModelParameterSchema {
   const fallback = knownModelParameterSchema({
     capability: row.capability,
     providerDriver: row.provider_driver,
@@ -94,6 +99,66 @@ function parameterSchema(row: ModelRow): ModelParameterSchema {
   }
 }
 
+export type PublishedTemplateModelContract = {
+  capability: Capability;
+  displayName: string;
+  id: string;
+  isDefault: boolean;
+  mediaInputPolicy?: "seedance-2";
+  parameterSchema: ModelParameterSchema;
+  sortOrder: number;
+};
+
+/** Static model contracts used by public-template publication checks. */
+export function publishedTemplateModelContracts(
+  store: DatabaseSync,
+): PublishedTemplateModelContract[] {
+  const rows = store.prepare(`
+    SELECT
+      model_profiles.id,
+      model_profiles.display_name,
+      model_profiles.provider_model_id,
+      model_profiles.capability,
+      model_profiles.default_parameters,
+      provider_profiles.driver AS provider_driver,
+      node_model_bindings.is_default,
+      node_model_bindings.sort_order
+    FROM model_profiles
+    JOIN provider_profiles
+      ON provider_profiles.id = model_profiles.provider_profile_id
+    JOIN node_model_bindings
+      ON node_model_bindings.model_id = model_profiles.id
+      AND node_model_bindings.node_type = model_profiles.capability
+    WHERE
+      model_profiles.status = 'published'
+      AND model_profiles.archived_at IS NULL
+      AND node_model_bindings.enabled = 1
+    ORDER BY
+      CASE model_profiles.capability
+        WHEN 'text' THEN 1
+        WHEN 'image' THEN 2
+        WHEN 'video' THEN 3
+        ELSE 4
+      END,
+      node_model_bindings.sort_order,
+      model_profiles.created_at
+  `).all() as Array<ModelSchemaRow & {
+    display_name: string;
+    id: string;
+    is_default: number;
+    sort_order: number;
+  }>;
+  return rows.map((row) => ({
+    capability: row.capability,
+    displayName: row.display_name,
+    id: row.id,
+    isDefault: Boolean(row.is_default),
+    mediaInputPolicy: mediaInputPolicy(row),
+    parameterSchema: parameterSchema(row),
+    sortOrder: row.sort_order,
+  }));
+}
+
 function imageParameters(row: ModelRow) {
   if (row.capability !== "image") return undefined;
   const schema = parameterSchema(row);
@@ -107,7 +172,7 @@ function imageParameters(row: ModelRow) {
   };
 }
 
-function mediaInputPolicy(row: ModelRow) {
+function mediaInputPolicy(row: ModelSchemaRow) {
   return row.capability === "video" &&
       row.provider_driver === "volcengine-ark" &&
       /^doubao-seedance-[a-z0-9-]+$/i.test(row.provider_model_id)
