@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "generatedAt": "2026-08-15",
+  "width": 1200,
+  "height": 675,
+  "files": [
+    { "target": "ecommerce-womenswear-white-hero.jpg", "bytes": 47309, "sha256": "53ec8b10d95ab5d3f0350a07b5c4da963fb8301592e2ed68bdc7bb43eae25517" },
+    { "target": "ecommerce-menswear-white-hero.jpg", "bytes": 95841, "sha256": "1659561c0bcf23b25855fdc56ee93023019e409d79bb5dd941ba22fb50d4da84" },
+    { "target": "ecommerce-womenswear-lifestyle.jpg", "bytes": 67529, "sha256": "13dd30c19eb73c9c15a60f605fe93c61b23dc98b5f8b99c485edb84002860431" },
+    { "target": "ecommerce-menswear-commute-outdoor.jpg", "bytes": 113289, "sha256": "64a13a44984083b27feb121328b6c3075fd6d1d8c41c284897af9abf2ab06728" },
+    { "target": "ecommerce-womenswear-five-panel.jpg", "bytes": 133815, "sha256": "57557a7d11c1e39a46c0bb44465a042695d2ccc7b004b984e831d933ad2d7e72" },
+    { "target": "ecommerce-menswear-five-panel.jpg", "bytes": 231079, "sha256": "ea86209e3055b362bdf2f1813d22049365a4de8431ef77ff8a545d69b07b0c60" },
+    { "target": "ecommerce-fabric-craft-detail.jpg", "bytes": 108172, "sha256": "72257b0b0228e7c6f96f16c4fb7a3c253c0d342c18a29b0be53c2a47fd37801f" },
+    { "target": "ecommerce-fit-size-guide.jpg", "bytes": 77329, "sha256": "5f082bb02211ec9c5ece621a5636a87fb558152946ecd59cfa368d90350f1117" },
+    { "target": "ecommerce-color-variants.jpg", "bytes": 156387, "sha256": "761550b2fa4c1422dff27e0da56498c2805e8a22051a374ea93c9415abcb94a5" },
+    { "target": "ecommerce-douyin-vertical-cover.jpg", "bytes": 125208, "sha256": "211f0570abe41583aca2805770acff3ef75baa34809e212e79fdcb80b52e4147" },
+    { "target": "ecommerce-douyin-six-second-motion.jpg", "bytes": 88324, "sha256": "330c9b532262d73b8905005c22b5551f8dd8086a9c435e99a8f25edb483bc82c" },
+    { "target": "ecommerce-douyin-womenswear-15s.jpg", "bytes": 110438, "sha256": "03052b8b4e27f1d2bbc429d24cfdfd634580a56d4114bc062a9103b031dbe637" },
+    { "target": "ecommerce-douyin-menswear-15s.jpg", "bytes": 196019, "sha256": "fcbb500c8913bac1ccb9cc6a1ba2267c4aacb67f7992f9afe965dce01c9f009c" },
+    { "target": "ecommerce-douyin-fabric-macro.jpg", "bytes": 465323, "sha256": "7274b108553b3060a8b98469436375c7859328cc2a06f431542fe867e42ea105" },
+    { "target": "ecommerce-douyin-four-shot-batch.jpg", "bytes": 87061, "sha256": "65bcbf5dbb614571cc685ee604bd487ce86f62de4a720f783b976d4c840449b0" },
+    { "target": "ecommerce-douyin-live-clip.jpg", "bytes": 91882, "sha256": "72877aebf1ace645516f7d84125ae46d23c516e1e7e2dc50c9e94558bcf64e62" }
+  ]
+}

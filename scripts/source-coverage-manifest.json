@@ -16,6 +16,12 @@
     "verify"
   ],
   "operationalScripts": {
+    "scripts/apply-ecommerce-template-cover-paths.mjs": {
+      "mode": "frozen",
+      "scriptSha256": "f4dfbad416dd05130799c6ee4bbb9845de3eef1942578d4b4fd9fa2cbd23dfea",
+      "reason": "Can update production template rows; automatic execution is forbidden and apply requires an explicit flag.",
+      "manualNpmScripts": []
+    },
     "scripts/backup-data.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "399b3f1b04bbef6014a0400493999718182eb2522d70723ad671a8aab6eb66e9",
@@ -37,6 +43,12 @@
       "manualNpmScripts": [
         "data:backup:oss"
       ]
+    },
+    "scripts/build-template-cover-content-overlay.mjs": {
+      "mode": "frozen",
+      "scriptSha256": "ce6c140ad0b7a8b6fd22d52cb3ac11822bbcc1a9807baec58bf5ad2dd20bcf59",
+      "reason": "Can modify an immutable release staging tree; automatic execution is forbidden.",
+      "manualNpmScripts": []
     },
     "scripts/build-release.mjs": {
       "mode": "behavior-test",
@@ -70,6 +82,12 @@
       "mode": "frozen",
       "scriptSha256": "87a51ef534aaf40fe53c2ed27c9d9a4eba6c3ac8c6e83f2ea3253fddc9df139f",
       "reason": "Legacy production deployment is replaced by an immediate fail-closed error; automatic execution remains forbidden.",
+      "manualNpmScripts": []
+    },
+    "scripts/fetch-ecommerce-template-covers.mjs": {
+      "mode": "frozen",
+      "scriptSha256": "1fb026e4d11de8206a0d2a3785c4d358957c41d15e8957bdad4177a54221fa84",
+      "reason": "Contacts image hosts and writes local cover files; automatic execution is forbidden.",
       "manualNpmScripts": []
     },
     "scripts/mirror-oss-to-local.mjs": {
@@ -114,6 +132,12 @@
       "target": "tests/m96-release-ops.spec.ts",
       "marker": "static ops contract validates the loopback nginx and hardened current-release unit",
       "targetSha256": "5b6f68c845819d3ed151adfc7d3b3d12bfe2e8100aeecd3ae02f8b3698b38187"
+    },
+    "scripts/verify-ecommerce-template-covers.mjs": {
+      "mode": "frozen",
+      "scriptSha256": "287e945380a6b32e9046698ed17cfcc6639b59cebe7649f52372a06fdeb45b30",
+      "reason": "Performs a read-only receipt and build-copy verification for the manually published covers.",
+      "manualNpmScripts": []
     },
     "scripts/report-media-integrity.mjs": {
       "mode": "behavior-test",

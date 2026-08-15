@@ -1,0 +1,155 @@
+{
+  "version": 1,
+  "retrievedAt": "2026-08-15",
+  "license": {
+    "name": "Unsplash License",
+    "url": "https://unsplash.com/license",
+    "summary": "Free commercial and non-commercial use; attribution is appreciated but not required. Images are used as template-card illustrations and are not redistributed as a stock-photo service."
+  },
+  "covers": [
+    {
+      "templateId": "00000000-0000-4000-8000-000000000101",
+      "templateTitle": "女装货架主图｜白底标准款",
+      "target": "ecommerce-womenswear-white-hero.jpg",
+      "sourcePage": "https://unsplash.com/photos/a-woman-in-black-pants-and-a-tan-top-hfmZJKflzkY",
+      "sourceImage": "https://images.unsplash.com/photo-1637562772998-0addded728eb?fm=jpg&fit=crop&w=1200&h=675&q=82",
+      "creator": "Reza Roshan",
+      "creatorUrl": "https://unsplash.com/@rezamr2"
+    },
+    {
+      "templateId": "00000000-0000-4000-8000-000000000102",
+      "templateTitle": "男装货架主图｜白底标准款",
+      "target": "ecommerce-menswear-white-hero.jpg",
+      "sourcePage": "https://unsplash.com/photos/man-wearing-white-crew-neck-t-shirt-iun3EnrZKxI",
+      "sourceImage": "https://images.unsplash.com/photo-1553859943-a02c5418b798?fm=jpg&fit=crop&w=1200&h=675&q=82",
+      "creator": "sobhan joodi",
+      "creatorUrl": "https://unsplash.com/@sbhnleo"
+    },
+    {
+      "templateId": "00000000-0000-4000-8000-000000000103",
+      "templateTitle": "女装货架主图｜生活方式场景",
+      "target": "ecommerce-womenswear-lifestyle.jpg",
+      "sourcePage": "https://unsplash.com/photos/woman-in-yellow-tracksuit-standing-on-basketball-court-side-nimElTcTNyY",
+      "sourceImage": "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?fm=jpg&fit=crop&w=1200&h=675&q=82",
+      "creator": "Dom Hill",
+      "creatorUrl": "https://unsplash.com/@domjewel"
+    },
+    {
+      "templateId": "00000000-0000-4000-8000-000000000104",
+      "templateTitle": "男装货架主图｜通勤/户外场景",
+      "target": "ecommerce-menswear-commute-outdoor.jpg",
+      "sourcePage": "https://unsplash.com/photos/man-wearing-jacket-standing-near-wall-2pj3R9GZQpI",
+      "sourceImage": "https://images.unsplash.com/photo-1541980161-32fe8af73880?fm=jpg&fit=crop&w=1200&h=675&q=82",
+      "creator": "Nathan Dumlao",
+      "creatorUrl": "https://unsplash.com/@nate_dumlao"
+    },
+    {
+      "templateId": "00000000-0000-4000-8000-000000000105",
+      "templateTitle": "女装详情页｜五图转化组",
+      "target": "ecommerce-womenswear-five-panel.jpg",
+      "sourcePage": "https://unsplash.com/photos/woman-standing-in-park-Mhktr6dFD3I",
+      "sourceImage": "https://images.unsplash.com/photo-1578632292335-df3abbb0d586?fm=jpg&fit=crop&w=1200&h=675&q=82",
+      "creator": "Max Titov",
+      "creatorUrl": "https://unsplash.com/@fearvi"
+    },
+    {
+      "templateId": "00000000-0000-4000-8000-000000000106",
+      "templateTitle": "男装详情页｜五图转化组",
+      "target": "ecommerce-menswear-five-panel.jpg",
+      "sourcePage": "https://unsplash.com/photos/man-in-black-zip-up-jacket-and-black-pants-wearing-black-sunglasses-mLYusppA05c",
+      "sourceImage": "https://images.unsplash.com/photo-1586231912972-d0970f9ce787?fm=jpg&fit=crop&w=1200&h=675&q=82",
+      "creator": "Nguyen Pham",
+      "creatorUrl": "https://unsplash.com/@nguyenpham3103"
+    },
+    {
+      "templateId": "00000000-0000-4000-8000-000000000107",
+      "templateTitle": "服装详情页｜面料与工艺拆解",
+      "target": "ecommerce-fabric-craft-detail.jpg",
+      "sourcePage": "https://unsplash.com/photos/photo-of-gray-sewing-machine-foot-lock-with-thread-on-black-cloth-jNKv4QohAk0",
+      "sourceImage": "https://images.unsplash.com/photo-1497997092403-f091fcf5b6c4?fm=jpg&fit=crop&w=1200&h=675&q=82",
+      "creator": "Omar Alrawi",
+      "creatorUrl": "https://unsplash.com/@omaralrawi"
+    },
+    {
+      "templateId": "00000000-0000-4000-8000-000000000108",
+      "templateTitle": "服装详情页｜版型与尺码说明",
+      "target": "ecommerce-fit-size-guide.jpg",
+      "sourcePage": "https://unsplash.com/photos/selective-focus-photography-of-tape-measure-cixohzDpNIo",
+      "sourceImage": "https://images.unsplash.com/photo-1523901839036-a3030662f220?fm=jpg&fit=crop&w=1200&h=675&q=82",
+      "creator": "Siora Photography",
+      "creatorUrl": "https://unsplash.com/@siora18"
+    },
+    {
+      "templateId": "00000000-0000-4000-8000-000000000109",
+      "templateTitle": "服装上新｜颜色变体与搭配",
+      "target": "ecommerce-color-variants.jpg",
+      "sourcePage": "https://unsplash.com/photos/a-bunch-of-shirts-are-hanging-on-a-rack-94Tvp4AhlUU",
+      "sourceImage": "https://images.unsplash.com/photo-1737748612418-e39bcd6503a2?fm=jpg&fit=crop&w=1200&h=675&q=82",
+      "creator": "Bernd Dittrich",
+      "creatorUrl": "https://unsplash.com/@hdbernd"
+    },
+    {
+      "templateId": "00000000-0000-4000-8000-000000000110",
+      "templateTitle": "直播间/抖音｜9:16商品封面",
+      "target": "ecommerce-douyin-vertical-cover.jpg",
+      "sourcePage": "https://unsplash.com/photos/woman-in-brown-coat-standing-near-black-metal-gate-during-daytime-vj-_S20w04o",
+      "sourceImage": "https://images.unsplash.com/photo-1618244972963-dbee1a7edc95?fm=jpg&fit=crop&w=1200&h=675&q=82",
+      "creator": "The AW Creative Digital Marketing",
+      "creatorUrl": "https://unsplash.com/@theawguide"
+    },
+    {
+      "templateId": "00000000-0000-4000-8000-000000000111",
+      "templateTitle": "抖音带货｜6秒商品主图动效",
+      "target": "ecommerce-douyin-six-second-motion.jpg",
+      "sourcePage": "https://unsplash.com/photos/a-woman-holding-a-camera-up-to-a-mirror-rtpX6teXLsM",
+      "sourceImage": "https://images.unsplash.com/photo-1683203438853-f2105d43f559?fm=jpg&fit=crop&w=1200&h=675&q=82",
+      "creator": "Anna Barsukova",
+      "creatorUrl": "https://unsplash.com/@nutok"
+    },
+    {
+      "templateId": "00000000-0000-4000-8000-000000000112",
+      "templateTitle": "抖音女装｜15秒穿搭转化",
+      "target": "ecommerce-douyin-womenswear-15s.jpg",
+      "sourcePage": "https://unsplash.com/photos/woman-wearing-sunglasses-mVGW8j9rrC4",
+      "sourceImage": "https://images.unsplash.com/photo-1562572159-4efc207f5aff?fm=jpg&fit=crop&w=1200&h=675&q=82",
+      "creator": "Napat Saeng",
+      "creatorUrl": "https://unsplash.com/@napats"
+    },
+    {
+      "templateId": "00000000-0000-4000-8000-000000000113",
+      "templateTitle": "抖音男装｜15秒功能卖点",
+      "target": "ecommerce-douyin-menswear-15s.jpg",
+      "sourcePage": "https://unsplash.com/photos/man-in-blue-denim-jacket-holding-wood-kJ5ttDhaVj4",
+      "sourceImage": "https://images.unsplash.com/photo-1603686249189-4f4d79d3c11e?fm=jpg&fit=crop&w=1200&h=675&q=82",
+      "creator": "Briana Tozour",
+      "creatorUrl": "https://unsplash.com/@britozour"
+    },
+    {
+      "templateId": "00000000-0000-4000-8000-000000000114",
+      "templateTitle": "抖音带货｜服装细节与面料微距",
+      "target": "ecommerce-douyin-fabric-macro.jpg",
+      "sourcePage": "https://unsplash.com/photos/a-close-up-of-a-blue-jean-fabric-I2WQQaXSy-k",
+      "sourceImage": "https://images.unsplash.com/photo-1645859724073-d9bff094b1c7?fm=jpg&fit=crop&w=1200&h=675&q=82",
+      "creator": "Second Breakfast",
+      "creatorUrl": "https://unsplash.com/@breakfast2"
+    },
+    {
+      "templateId": "00000000-0000-4000-8000-000000000115",
+      "templateTitle": "抖音上新｜四镜头批量短视频",
+      "target": "ecommerce-douyin-four-shot-batch.jpg",
+      "sourcePage": "https://unsplash.com/photos/person-using-smartphone-and-capturing-images-lkHNDf-oXTk",
+      "sourceImage": "https://images.unsplash.com/photo-1543525469-65b61cc2bc06?fm=jpg&fit=crop&w=1200&h=675&q=82",
+      "creator": "charlesdeluvio",
+      "creatorUrl": "https://unsplash.com/@charlesdeluvio"
+    },
+    {
+      "templateId": "00000000-0000-4000-8000-000000000116",
+      "templateTitle": "抖音直播切片｜商品三段式",
+      "target": "ecommerce-douyin-live-clip.jpg",
+      "sourcePage": "https://unsplash.com/photos/black-condenser-microphone-UUPpu2sYV6E",
+      "sourceImage": "https://images.unsplash.com/photo-1554200876-907f9286c2a1?fm=jpg&fit=crop&w=1200&h=675&q=82",
+      "creator": "CoWomen",
+      "creatorUrl": "https://unsplash.com/@cowomen"
+    }
+  ]
+}
