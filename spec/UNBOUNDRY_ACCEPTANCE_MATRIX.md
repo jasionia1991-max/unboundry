@@ -3,9 +3,9 @@
 基线日期：2026-07-27  
 当前状态更新：2026-08-16
 
-2026-08-16 `INC-UI-002 = LOCAL_IMPLEMENTED_AUTO_PASS / USER_RECHECK`：框选仍对普通节点保留局部相交语义，但Group只有被选框完整包含才进入框选，解决巨大Group误选和打组范围扩大；Image/Video/Audio共用OSS/媒体读取失败占位并保留原asset/source，CSP只在`img-src/media-src`放行`https://*.aliyuncs.com`，生成/上传错误继续位于恢复层上方；Text/Image/Video/Audio/Playlist/Group/Storyboard七类长标题统一省略并暴露完整title。build PASS，`m41+m98 54/54 PASS`，非冻结发布运维集合`114/114 specs、938/938 PASS`，异常0、4173不变、真实Provider/OSS/付费请求0。4份冻结release运维spec仍绑定0.6.0 source-pair，未冒充formal full。生产仍为v0.6.1/schema39，SEL-001、MEDIA-LOAD-001～003、TITLE-001～007等待用户线上复验。
+2026-08-16 `INC-UI-002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：框选仍对普通节点保留局部相交语义，但Group只有被选框完整包含才进入框选，解决巨大Group误选和打组范围扩大；Image/Video/Audio共用OSS/媒体读取失败占位并保留原asset/source，CSP只在`img-src/media-src`放行`https://*.aliyuncs.com`，生成/上传错误继续位于恢复层上方；Text/Image/Video/Audio/Playlist/Group/Storyboard七类长标题统一省略并暴露完整title。build PASS，`m41+m98 54/54 PASS`；正式安全全量 `118/118 specs、965/965 PASS`，异常0、4173不变、真实Provider/OSS/付费请求0。生产已运行v0.6.2/schema39；SEL-001、MEDIA-LOAD-001～003、TITLE-001～007等待用户线上复验。
 
-2026-08-15 `INC-UI-001 = LOCAL_IMPLEMENTED_AUTO_PASS_USER_RECHECK / V0.6.2_CONFIRMED`：设置页返回来源画布、返回工作空间、浏览器favicon与动态标题的本地候选已实现。返回优先级为`URL from → 当前账号本标签最近真实项目 → 工作空间`，只接受当前账号项目ID并以只读项目列表校验，默认画布不作为返回动作的隐式兜底。受影响10份spec `102/102 PASS`，新增与多项目定向`m66 28/28 PASS`；临时洁净候选正式full为`117/117 specs、962/962 PASS`且所有异常计数0，Provider/付费/OSS请求0、4173不变。NAV-001～004、BRAND-001～003现为`USER_RECHECK`，生产保持v0.6.1/schema39且尚未发布本候选。
+2026-08-16 `INC-UI-001 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：设置页返回来源画布、返回工作空间、浏览器favicon与动态标题已发布。返回优先级为`URL from → 当前账号本标签最近真实项目 → 工作空间`，只接受当前账号项目ID并以只读项目列表校验，默认画布不作为返回动作的隐式兜底。受影响10份spec `102/102 PASS`，新增与多项目定向`m66 28/28 PASS`；最终正式安全全量为`118/118 specs、965/965 PASS`且所有异常计数0，Provider/付费/OSS请求0、4173不变。NAV-001～004、BRAND-001～003仍为`USER_RECHECK`，生产现为v0.6.2/schema39。
 
 2026-08-15 `INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`：整组生产调用路径已改为事件驱动DAG流水；多个直接生成式上游严格AND，分流独立推进、汇流等待全部、失败只阻塞后代，四类节点提交前刷新runtime preflight；静态不兼容仍零任务阻止整组。正式full基线`117/117 specs、959/959 PASS`，v0.6.1准入修复后相关8份spec `110/110 PASS`，精确HEAD build PASS，Provider请求0。生产已切换到不可变v0.6.1目录；公网version/live/ready及主JS哈希通过，schema39 quick_check ok/FK0，tasks109/attempts107/active0和并发500前后不变。用户随后在线上实页复验并明确确认“通过通过”。
 
@@ -15,9 +15,9 @@
 状态：`AUTHORITATIVE`  
 状态夹具：`unboundry-state-fixtures.json`
 
-2026-08-15 当前权威状态：生产已运行 `v0.6.1/schema39`，`INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-010/011 = PASS`，`PRODUCTION = LIVE`。v0.6.0的既有用户验收与本次v0.6.1工作流流水执行语义已分别完成确认。
+2026-08-16 当前权威状态：生产已运行 `v0.6.2/schema39`，`INC-UI-001/002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-010/011 = PASS`，`PRODUCTION = LIVE`。既有用户验收全部保留，新UI修复等待用户线上肉眼确认。
 
-最新核验为service active/enabled、current→`releases/v0.6.1-inc-ecom-007-20260815`、公网version 0.6.1/live/ready/root正常且主JS与release同哈希；schema39/quick_check ok/FK0、active generation0、109 tasks/107 attempts、43 public templates（42 published）。本次切换前后计数与并发/RPM 500不变，Provider/付费调用0；恢复副本清单验证PASS。v0.6.0原schema37备份、整机schema39包及既有用户验收继续保留为历史证据。用户明确“都通过了”后，REM-000～011（含009A/009B）全部为`PASS`；未实际运行的两张付费图片和其他电商视频只作为可选付费抽验延期，既有PARTIAL/PAUSED/BLOCK/NOT_STARTED条目保持不变。
+最新核验为service active、NRestarts0、current→`releases/v0.6.2-inc-ui-002-20260816`、公网version 0.6.2/live/ready/root正常且主JS与release同哈希；schema39/quick_check ok/FK0、active generation0、118 tasks/116 attempts、43 public templates（42 published）。本次切换前后计数与并发/RPM 500不变，Provider/付费调用与OSS写入0；备份和独立恢复副本清单验证PASS。v0.6.0原schema37备份、整机schema39包及既有用户验收继续保留为历史证据。未实际运行的两张付费图片和其他电商视频只作为可选付费抽验延期，既有PARTIAL/PAUSED/BLOCK/NOT_STARTED条目保持不变。
 
 2026-08-07 三功能新增 21 条（TPL-001～007 / ZIP-001～006 / KEY-001～008）已全部经用户实页验收为 `PASS`，M11 放行门达成；其余历史统计与状态仍以各节为准，`INPUT-006`保持`PARTIAL`（Mureka真实生成暂缓）。
 2026-08-07 权限管理（PERM-001～012）与公共模板（PUB-001～011）已全部经用户实页验收为 `PASS`，两功能放行门达成；生成安全「并发与频率」上限按用户要求放宽至 1000（v33）。

@@ -1,10 +1,10 @@
 # INC-UI-001 设置页返回来源画布与浏览器品牌标识修改方案
 
-状态：`LOCAL_IMPLEMENTED_AUTO_PASS_USER_RECHECK / V0.6.2_CONFIRMED / PRODUCTION_UNCHANGED`
+状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
 
 建立日期：`2026-08-15`
 
-适用版本：用户已同意作为 `v0.6.2` 候选并授权实施；本地候选已完成且自动门通过。当前真实package、`v0.6.1`标签与生产制品保持不可变，本次授权不构成生产发布授权。
+适用版本：`v0.6.2` 已于 2026-08-16 发布到生产；自动门与生产切换通过，等待用户线上肉眼复验。既有 `v0.6.1` Git 标签未移动，本次未获得新的 push/tag/PR 授权。
 
 ## 1. 用户目标
 
@@ -286,7 +286,7 @@ HTML 首屏兜底标题改为 `无央｜AI 无限画布`，React 挂载后由动
 3. 完整阅读本文件；
 4. 读取 `TASKS.md` 的 `INC-UI-001` 段和验收矩阵的 NAV/BRAND 行；
 5. 只读核对仓库 `/Users/mymy/Documents/unboundry/app`、分支、HEAD、工作树、package 与 Node；
-6. 当前状态应为 `LOCAL_IMPLEMENTED_AUTO_PASS_USER_RECHECK / PRODUCTION v0.6.1 UNCHANGED`；
+6. 当前状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；
 7. 不重复实施；下一步只在用户明确授权后准备/发布候选，再由用户完成可见实页验收。commit、push、tag、PR更新与生产发布仍须服从最新授权。
 
 恢复时必须先复述三条不可漂移规则：

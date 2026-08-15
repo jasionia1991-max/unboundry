@@ -1,10 +1,17 @@
 # 无央 Unboundry
 
-TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mymy.ltd`，当前线上 `v0.6.1 / schema39`）。
+TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mymy.ltd`，当前线上 `v0.6.2 / schema39`）。
 
-## 2026-08-16 画布UI恢复候选（本地完成，待用户复验）
+## 2026-08-16 画布 UI 恢复（已发布，待用户线上复验）
 
-`INC-UI-002 = LOCAL_IMPLEMENTED_AUTO_PASS / USER_RECHECK`：巨大Group附近框选只在Group被完整包含时才选中，普通节点仍保留局部相交框选；OSS图片/视频/音频读取失败时保留素材并显示统一灰阶重载/重新上传状态，CSP只在媒体来源放行阿里云OSS；七类节点长标题统一省略并可查看完整值。build PASS，m41+m98 `54/54 PASS`，非冻结发布运维集合`114/114 specs、938/938 PASS`，真实Provider/OSS/付费请求0。4份冻结release运维spec仍绑定0.6.0 source-pair，因此不声明formal full。线上仍是v0.6.1，本候选尚未发布。
+`INC-UI-001/002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：设置页会返回进入前的真实项目并提供“返回工作空间”，浏览器 favicon 和页面标题已恢复；巨大 Group 只有被框选完整包含时才进入选区，普通节点仍保留局部相交框选；图片/视频/音频读取失败会保留素材并显示统一灰阶重载/重新上传状态；七类节点长标题统一省略并可查看完整值。正式安全全量为 `118/118 specs、965/965 PASS`，失败、跳过、重试、blocked 与报告错误均为 0；真实 Provider/OSS/付费请求 0。生产已原子切换到不可变目录 `v0.6.2-inc-ui-002-20260816`，公网 version/live/ready、标题、favicon、CSP 与静态资源哈希均通过，schema39 数据和安全配置保持不变。自动与上线验证不能代替用户肉眼验收，相关条目继续保持 `USER_RECHECK`。
+
+## 2026-08-16 v0.6.2 生产状态（当前权威）
+
+- 生产指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.2-inc-ui-002-20260816`；服务 active，`NRestarts=0`，公网 `/api/version` 返回 `0.6.2`，ready 为 active/schema39。
+- 数据前后保持：schema39、quick_check `ok`、FK 违约 0、active generation 0、tasks 118、Provider attempts 116、公共模板 43（42 published）；并发/RPM 及四类生成并发仍为 500。
+- 发布期间真实 Provider 调用、生成任务、OSS 写入与付费请求均为 0。停机备份与独立恢复副本位于 `/var/lib/unboundry-rollbacks/inc-ui-002-20260815T180956Z`，两份清单一致且恢复检查通过。
+- 发布源码 commit 为 `8ebe70544828a3aebe258def9d658e1ab68a6104`，但本次没有获得新的 push/tag/PR 授权，因此 GitHub 仍保持既有 v0.6.1 发布状态。
 
 ## 2026-08-15 整组工作流流水线修复（已发布并通过用户实页验收）
 
@@ -22,7 +29,7 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 `INC-ECOM-002/003 = PRODUCTION_STATIC_REPAIR_PASS / ONE_REQUEST_REAL_IMAGE_SMOKE_PASS / USER_RESULT_PASS / OPTIONAL_PAID_GENERATION_DEFERRED`：参考图拆锁、错误分层、模板模型绑定与发布兼容门均已上线，目标节点`工艺拆解·完整商品`的一次1K真实图片复验成功；用户随后明确“都通过了”。该模板另外两个图片输出和其他电商视频没有再次发起付费生成，只作为可选内容抽验延期，不冒充真实生成PASS，也不阻塞v0.6.1发布。
 
-## 2026-08-15 最终生产收口（当前权威）
+## 2026-08-15 v0.6.1 生产收口（历史时点）
 
 - 当前状态：`REM-000～011（含009A/009B） = PASS / PRODUCTION = LIVE / INC-ECOM-001～007已按各自边界完成用户收口`。v0.6.0既有用户验收与v0.6.1新增流水执行语义均已分别确认；未执行的付费两图/视频抽验及其余历史 `PARTIAL / PAUSED / BLOCK / NOT_STARTED` 项保持延期或原状态。
 - 生产指针为 `/opt/unboundry/current -> releases/v0.6.1-inc-ecom-007-20260815`，服务 `active + enabled`、`NRestarts=0`、监听 `127.0.0.1:4173`；公网 live/ready/version/root 均正常，version 为 `0.6.1`，ready 为 active/schema39。

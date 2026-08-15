@@ -1,0 +1,72 @@
+{
+  "format": "unboundry-production-receipt-v1",
+  "incident": "INC-UI-002",
+  "releasedAt": "2026-08-16T02:17:02.615+08:00",
+  "status": "PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK",
+  "version": "0.6.2",
+  "schemaVersion": 39,
+  "source": {
+    "commit": "8ebe70544828a3aebe258def9d658e1ab68a6104",
+    "tree": "ad1b93bc68ca0e09df410d5b5904b33bd4b22686",
+    "archiveSha256": "7547b98f1309b16ec63b48ecda394ba2e9104d71ee6fbd7916642edb2fbcdc4f"
+  },
+  "artifact": {
+    "releasePath": "/opt/unboundry/releases/v0.6.2-inc-ui-002-20260816",
+    "currentPath": "/opt/unboundry/current",
+    "inventorySha256": "f1606bded48644149cc328017d2fa74f8932512c8f0747714f7f5ec81e139f2e",
+    "inventoryFiles": 4687,
+    "distArchiveSha256": "a3fc301f7f22c4ecf4db97395444c2a9d40a72b9c837a4c5a7f8a0847243a2c5"
+  },
+  "validation": {
+    "safeFull": {
+      "specsPassed": 118,
+      "specsTotal": 118,
+      "testsPassed": 965,
+      "testsTotal": 965,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0
+    },
+    "isolatedLinuxSmoke": "PASS",
+    "publicVersion": "0.6.2",
+    "publicLive": "PASS",
+    "publicReady": "ACTIVE_SCHEMA39",
+    "serviceActive": true,
+    "serviceRestarts": 0,
+    "publicMainJsSha256": "4ca8a385961407f24e0ef0eb1b025dc3e4c189a9118d6b90440cde8244f56d8a",
+    "publicCanvasShellSha256": "f17c4da0c47d59ea3c6ddf8de27e7d4a87754a945985396cf0e0f01fc969e272"
+  },
+  "dataBeforeAfter": {
+    "quickCheck": "ok",
+    "foreignKeyViolations": 0,
+    "generationTasks": 118,
+    "providerAttempts": 116,
+    "activeGenerationTasks": 0,
+    "publicTemplates": 43,
+    "publishedTemplates": 42,
+    "globalEnabled": 1,
+    "emergencyStop": 0,
+    "perUserConcurrency": 500,
+    "requestsPerMinute": 500,
+    "textConcurrency": 500,
+    "imageConcurrency": 500,
+    "videoConcurrency": 500,
+    "audioConcurrency": 500
+  },
+  "rollback": {
+    "path": "/var/lib/unboundry-rollbacks/inc-ui-002-20260815T180956Z",
+    "deploymentReceiptSha256": "e0dd9634d4d7979d526a8858c80a2bdb791e9d62a2dfa90dd752d1c820fed0c4",
+    "sourceAndRestoreManifestSha256": "b1754f94df1916276bac2debbc5dda5b03afffc01c2602eeec057f40bd0c2909",
+    "sourceInspection": "PASS",
+    "restoreInspection": "PASS"
+  },
+  "externalEffects": {
+    "providerCalls": 0,
+    "paidGenerationRequests": 0,
+    "ossWrites": 0
+  },
+  "userAcceptance": "PENDING_ONLINE_RECHECK",
+  "githubPublication": "NOT_AUTHORIZED_FOR_V0.6.2"
+}

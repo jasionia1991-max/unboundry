@@ -1,7 +1,7 @@
 # INC-UI-002 画布框选、OSS 素材显示与节点长标题修复
 
 日期：2026-08-16  
-状态：`LOCAL_IMPLEMENTED_AUTO_PASS / USER_RECHECK`  
+状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
 候选版本：`v0.6.2`（真实 package 仍为 `0.6.1`）
 
 ## 1. 用户问题与施工边界
@@ -66,6 +66,6 @@
 
 ## 7. 证据边界与下一步
 
-- `m10 / m92 / m94 / m96` 共 4 份冻结发布运维 spec 未在本次 UI 候选中重跑：当前 package 为 `0.6.1`，而不可变 release source-pair 夹具仍固定只接纳 `0.6.0`，正式 `full` 会在准备发布产物前 fail-close。本次没有为 UI 修复改写冻结发布合同，因此不得把 `114/114` 表述为 formal full regression。
-- 当前仅为本地候选自动通过，线上仍是既有 `v0.6.1`。用户需在后续明确授权发布后，才能制作发布制品、备份、切换并进行线上实页复验。
+- 发布准入已补齐：`m10 / m92 / m94 / m96` 继续验证冻结的备份、版本兼容、不可变制品与发布运维合同，runner只投影合成历史`0.5.2→0.6.0`source-pair，不修改冻结合同。最终正式安全full为`118/118 specs、965/965 PASS`，异常计数均为0。
+- 生产已于2026-08-16原子切换到`/opt/unboundry/releases/v0.6.2-inc-ui-002-20260816`；公网version/live/ready、标题、favicon、CSP和静态资源哈希均通过。生产数据与安全配置前后不变，发布期间Provider/付费调用与OSS写入0。
 - 用户线上复验建议：框选巨大 Group 附近三个节点并打组；重新上传一张真实素材观察 OSS 显示与重载；分别查看七类长标题。用户确认前保持 `USER_RECHECK`。

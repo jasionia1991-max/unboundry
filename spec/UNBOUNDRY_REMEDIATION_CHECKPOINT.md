@@ -1,11 +1,11 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`59`
+断点版本：`60`
 更新时间：`2026-08-16`
 状态：`INC_UI_002_LOCAL_IMPLEMENTED_AUTO_PASS_USER_RECHECK_V0_6_2_LOCAL_ONLY`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
-## 0. 当前新事件：INC-UI-002
+## 0. 当前新事件：INC-UI-002（已发布，待用户线上复验）
 
 - 用户授权一次性修复三个全局UI问题，并要求对齐既有灰阶UI规范：巨大Group附近框选三个节点时误选大范围、OSS素材出现原生坏媒体图标/失败边框、七类节点长标题显示不全。
 - 权威方案与完成证据：`spec/INC_UI_002_CANVAS_SELECTION_MEDIA_TITLE_REMEDIATION_2026-08-16.md`。
@@ -13,7 +13,10 @@
 - Image/Video/Audio共用媒体恢复层；保留asset/source和底层媒体DOM，不自动删除/重传；CSP只给`img-src/media-src`增加`https://*.aliyuncs.com`；任务/上传alert始终可操作。
 - 七类标题统一ellipsis与完整title，输入和IME不变；新增m98并纳入安全清单，库存为`118 specs / 965 tests`。
 - 自动门：build PASS；m41+m98 `54/54 PASS`；非冻结发布运维集合`114/114 specs、938/938 PASS`，异常0，source snapshot和4173不变，真实Provider/OSS/付费请求0。
-- 4份冻结release运维spec仍绑定0.6.0 source-pair，不得把114份写成formal full；当前只到`USER_RECHECK`。package/生产仍v0.6.1；发布、commit、push、tag、PR更新、SSH和真实外部请求未获本次授权。
+- 用户随后明确授权“一次性搞完并上线”。发布准入采用合成历史`0.5.2→0.6.0`版本对运行`m10/m92/m94/m96`，保持冻结合同不变；最终安全全量`118/118 specs、965/965 PASS`，异常0，Provider/OSS/付费请求0。
+- package与生产现均为v0.6.2。源码commit为`8ebe70544828a3aebe258def9d658e1ab68a6104`，生产已原子切换到`/opt/unboundry/releases/v0.6.2-inc-ui-002-20260816`；公网version/live/ready、标题、favicon、CSP及静态资源哈希均通过。
+- 备份与独立恢复副本为`/var/lib/unboundry-rollbacks/inc-ui-002-20260815T180956Z`，清单SHA一致`b1754f94…c2909`；schema39/quick_check ok/FK0，tasks118/attempts116/active0、模板43/42和并发500前后不变，Provider/付费调用/OSS写入0。
+- 当前状态为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；未获新的push/tag/PR授权，GitHub保持既有状态。生产凭证见`spec/INC_UI_002_PRODUCTION_RECEIPT_2026-08-16.json`。
 
 ## 0A. 前一事件：INC-UI-001
 
@@ -22,8 +25,8 @@
 - 冻结返回规则：`URL from → 当前账号本标签最近真实项目 → 工作空间`；来源只允许项目 ID并经`GET /api/projects`校验，默认画布不再作为返回动作的隐式兜底；网络校验失败留在当前页提示重试。
 - 用户随后明确“同意你的建议，然后开始吧”：`v0.6.2`候选版本已确认，功能代码与隔离测试已授权；共享返回解析器、8页双返回页头、工作空间闭环、favicon和动态标题均已完成。
 - 自动门完成：安全预检通过；受影响10份spec `102/102 PASS`，m66 `28/28 PASS`；临时洁净候选full为`117/117 specs、962/962 PASS`，所有异常计数0，immutable builder `attempts=1 / invocations=5 / passed=1`，source/snapshot `ea3410620444862090b076e8b0d9e250ed24e6f4f983b3937ecff9ecf4bce0e1`前后不变，4173 listener `dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae`前后不变，Provider/付费/OSS请求0，临时目录已清理。
-- NAV-001～004与BRAND-001～003进入`USER_RECHECK`，不可在用户可见浏览器确认前记PASS。本地真实package仍为0.6.1。
-- 当前`v0.6.1`标签与生产制品不可修改，Draft PR #1保持Draft；commit、push、tag、PR更新、SSH、生产发布和真实外部请求仍未授权。
+- NAV-001～004与BRAND-001～003保持`USER_RECHECK`，不可在用户可见浏览器确认前记PASS；该功能已随package/生产v0.6.2发布。
+- 当前`v0.6.1`标签与Draft PR #1未更新；INC-UI-001已随v0.6.2生产发布，用户线上复验前仍为`USER_RECHECK`。
 
 ## 0B. 前一事件：INC-ECOM-007
 
@@ -96,15 +99,15 @@
 ## 1. 当前结论
 
 - 用户已于 2026-08-09 明确回复“施工文档确认通过”，REM-000 = `PASS`。
-- 施工总方案以 v1.0 建立权威合同，当前版本为 `1.32-v0.6.1-release-user-accepted`。
+- 施工总方案以 v1.0 建立权威合同，当前版本为 `1.33-v0.6.2-inc-ui-002-production-user-recheck`。
 - 用户已于 2026-08-09 明确启动一次性离线 Goal，Goal ID `019fe226-4d7b-7831-a254-106e40b346c2`；REM-001～010 与 REM-011 离线工程部分可按依赖顺序连续施工，中途不再逐项询问。
 - 允许本地代码/测试/脚本/配置/文档/package 修改、动态 loopback 临时环境、假 Provider/OSS/服务器、必要测试容器和本地 checkpoint/功能/candidate commit。
 - 用户在随后连续指令中授权并完成了bridge、final与schema39切换；该一次性生产授权现已消费，不得用于未来生产动作、Provider、push/tag/PR或新版本发布。
 - 用户明确允许原生产使用实际 Node `22.23.2`，但 formal manifest 的 Node22.23.1 绑定保持原样，必须对相同候选在生产Node/SHA上做副本兼容补证；不得把waiver写成formal conformance。
 - 用户还授权：仅在维护、旧服务停止、无写者、可恢复原始备份完成并精确复核后，删除唯一 FK 孤儿 `project_metadata rowid=14`；不得扩大为其他生产清理。
 - 真实OSS只读HEAD/GET以及必要的bwrap安装/使用已经纳入最新bridge总授权；只允许按冻结控制器、最小权限和只读对象合同执行。
-- 生产现运行 `/opt/unboundry/current -> releases/v0.6.1-inc-ecom-007-20260815`，service active/enabled、NRestarts0、监听127.0.0.1:4173；公网live/ready/version/root正常，version 0.6.1、ready active/schema39，主JS哈希与release相同。
-- 数据最新核验：schema39、quick_check ok、FK0、active generation0、109 tasks/107 provider attempts、43 public templates（42 published）；本次发布前后生成开关、并发/RPM 500、模板、Provider和OSS配置均未改变。
+- 生产现运行 `/opt/unboundry/current -> releases/v0.6.2-inc-ui-002-20260816`，service active、NRestarts0、监听127.0.0.1:4173；公网live/ready/version/root正常，version 0.6.2、ready active/schema39，主JS哈希与release相同。
+- 数据最新核验：schema39、quick_check ok、FK0、active generation0、118 tasks/116 provider attempts、43 public templates（42 published）；本次发布前后生成开关、并发/RPM 500、模板、Provider和OSS配置均未改变。
 - 原schema37 raw backup SHA `7f14c611faab136c1ae8e9579bc47755f7298e4ea6e2bba516c71e85670f8fca` 已离机恢复PASS，inspection `b4d58243e88efe1c2c967ffab5f63ed6704d18324a80e8449ec9d3ad77e28e1d`。最终技术凭证 SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8` 为 `TECHNICAL_CUTOVER_VERIFIED`。
 - 技术凭证生成时 `userAcceptance=PENDING` 保持不变；用户随后确认生成任务状态可读取，并结合此前确认老项目大量生成/上传素材仍在、第4项正常，生产验收现为`USER PASS`，但不声称全部历史素材逐一验证。
 - 最终切换是人工受控bounded cutover，不冒充新的formal controller/full regression PASS；切换期间Provider/付费调用0。用户明确“都通过了”后，REM-000～011（含009A/009B）均为`PASS`，当前没有IN_PROGRESS REM。
@@ -117,14 +120,14 @@
 |---|---|
 | 仓库根 | `/Users/mymy/Documents/unboundry/app` |
 | 生产站点 | `https://canvas.mymy.ltd` |
-| 线上版本 | `v0.6.1` / schema39 |
-| package 版本 | 本地checkout与生产均为`0.6.1`；INC-ECOM-007生产源commit为`f3d3fc8…` |
+| 线上版本 | `v0.6.2` / schema39 |
+| package 版本 | 本地checkout与生产均为`0.6.2`；INC-UI-002生产源commit为`8ebe705…` |
 | 生产程序目录 | 2026-08-14 原生产只读核实为 systemd `unboundry.service`、应用 `/opt/unboundry`；`/opt/unboundry-app` 仅为历史记录，不得用于动作目标 |
 | 生产数据目录 | `/var/lib/unboundry` |
 | 本地真实数据目录 | `/Users/mymy/Documents/unboundry/app/data` |
 | 真实本地服务端口 | `4173`，有守护进程，不得用于测试 |
 | 生产/历史数据库基线 | 当前schema39、integrity ok、FK0、ready local348/OSS70/pending0；INC-ECOM-002停机备份与迁移前schema37 raw备份均保留 |
-| 当前生产制品 | INC-ECOM-007 source `f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf` / tree `dd1180077032a42f1ab7ce7ca614906898d1f414` / inventory `c467c7c2…d2237f` |
+| 当前生产制品 | INC-UI-002 source `8ebe70544828a3aebe258def9d658e1ab68a6104` / tree `ad1b93bc68ca0e09df410d5b5904b33bd4b22686` / inventory `f1606bded48644149cc328017d2fa74f8932512c8f0747714f7f5ec81e139f2e` |
 | Node | formal构建/验证为v22.23.1；生产为`/opt/node22/bin/node` v22.23.2，production-specific waiver与恢复副本补证已完成 |
 
 ### 2.1 Goal 启动前只读预检
@@ -463,22 +466,22 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 
 任一项不一致时立即停止，更新证据并向用户说明，禁止根据摘要猜测。
 
-## 10. 2026-08-15 当前恢复卡
+## 10. 2026-08-16 当前恢复卡
 
 ```text
 项目路径：/Users/mymy/Documents/unboundry/app
-本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；生产源commit f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf；禁止reset/clean；GitHub分支push、v0.6.1 tag和Draft PR #1已完成
-生产：canvas.mymy.ltd；v0.6.1/schema39；/opt/unboundry/current -> releases/v0.6.1-inc-ecom-007-20260815
-生产artifact：source commit f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf；tree dd1180077032a42f1ab7ce7ca614906898d1f414；inventory c467c7c264da03421a14fabf93c90bc40faa3edfad1a7dfdff802112f1d2237f
-当前状态：INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
-技术凭证：spec/INC_ECOM_007_PRODUCTION_RECEIPT_2026-08-15.json SHA 91c05297a940ee18d5b6aef3d3878e5e8ff776c0f28a868f7fc975eafc5f819c；备份/恢复 inventory 73554c0a84001d953c27f55c011f77fff8b873db2918ea3e4eca0b19a7535f24
-用户验收：v0.6.0既有验收保持；v0.6.1的流水、多入参AND、分流和失败隔离已由用户线上实页确认通过
-数据库：schema39；quick_check ok；FK0；109 tasks/107 attempts；43 public templates/42 published；active0；globalEnabled1/emergencyStop0；per-user/kind concurrency与RPM均500
+本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.2生产源commit 8ebe70544828a3aebe258def9d658e1ab68a6104；禁止reset/clean；GitHub仍停在v0.6.1 tag和Draft PR #1
+生产：canvas.mymy.ltd；v0.6.2/schema39；/opt/unboundry/current -> releases/v0.6.2-inc-ui-002-20260816
+生产artifact：source commit 8ebe70544828a3aebe258def9d658e1ab68a6104；tree ad1b93bc68ca0e09df410d5b5904b33bd4b22686；inventory f1606bded48644149cc328017d2fa74f8932512c8f0747714f7f5ec81e139f2e
+当前状态：INC-UI-001/002已发布自动通过、待用户复验；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
+技术凭证：spec/INC_UI_002_PRODUCTION_RECEIPT_2026-08-16.json；生产deployment receipt SHA e0dd9634d4d7979d526a8858c80a2bdb791e9d62a2dfa90dd752d1c820fed0c4；备份/恢复 inventory b1754f94df1916276bac2debbc5dda5b03afffc01c2602eeec057f40bd0c2909
+用户验收：既有v0.6.0/v0.6.1验收保持；v0.6.2的导航、favicon、框选、坏媒体恢复和长标题等待用户线上复验
+数据库：schema39；quick_check ok；FK0；118 tasks/116 attempts；43 public templates/42 published；active0；globalEnabled1/emergencyStop0；per-user/kind concurrency与RPM均500
 备份：schema37 raw archive SHA 7f14c611faab136c1ae8e9579bc47755f7298e4ea6e2bba516c71e85670f8fca；offhost restore inspection b4d58243e88efe1c2c967ffab5f63ed6704d18324a80e8449ec9d3ad77e28e1d PASS
 限制：attempt 86/108/116/120/122为行政取消且禁止重试，PROVIDER_FAILED仅surrogate；3条音频仅改duration元数据；cutover Provider/paid calls=0
-GitHub：branch codex/unboundry-offline-remediation-2026-08-09已推送；annotated tag v0.6.1 -> f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf；Draft PR https://github.com/jasionia1991-max/unboundry/pull/1
-未来授权：本次bridge/final生产授权与GitHub发布授权均已消费；未来生产读写、真实Provider/付费生成或新发布仍需新授权
-下一步：没有本次发布遗留施工；只可按新任务处理既有PARTIAL/PAUSED/BLOCK/NOT_STARTED项或可选付费两图/视频抽验
+GitHub：branch/tag/PR仍是既有v0.6.1状态；v0.6.2未push、未tag、未更新PR
+未来授权：本次v0.6.2生产发布授权已消费；未来生产读写、真实Provider/付费生成、push/tag/PR或新发布仍需新授权
+下一步：用户按v0.6.2验收清单线上复验；确认后再把INC-UI-001/002从USER_RECHECK改为USER PASS
 ```
 
 任何恢复者必须优先使用本节；第9节只保留历史，不得执行其“下一步”。

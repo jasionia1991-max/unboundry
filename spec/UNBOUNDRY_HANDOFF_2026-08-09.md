@@ -2,13 +2,13 @@
 
 > 写给下一个接手的人/AI agent。目标：看完本文后不需要向用户问“项目在哪、怎么跑、怎么发布、有什么红线”。
 
-## 当前新任务：INC-UI-002（2026-08-16，本地候选完成）
+## 当前新任务：INC-UI-002（2026-08-16，已发布待用户复验）
 
-用户要求一次性修复巨大Group附近框选误选、OSS素材坏媒体视觉和七类节点长标题。权威记录为`spec/INC_UI_002_CANVAS_SELECTION_MEDIA_TITLE_REMEDIATION_2026-08-16.md`。最终合同：普通节点继续Partial框选，只有Group要求选框完整包含；Image/Video/Audio保留asset/source并使用统一灰阶恢复层，CSP只在`img-src/media-src`放行`https://*.aliyuncs.com`；七类标题统一ellipsis和完整title。build PASS，m41+m98 `54/54 PASS`，非冻结发布运维集合`114/114 specs、938/938 PASS`，异常0、4173不变、真实Provider/OSS/付费请求0。4份冻结release运维spec仍绑定0.6.0 source-pair，未冒充formal full。当前为`LOCAL_IMPLEMENTED_AUTO_PASS / USER_RECHECK / PRODUCTION v0.6.1 UNCHANGED`，没有发布、commit、push、tag或PR更新。
+用户要求一次性修复巨大Group附近框选误选、OSS素材坏媒体视觉和七类节点长标题。权威记录为`spec/INC_UI_002_CANVAS_SELECTION_MEDIA_TITLE_REMEDIATION_2026-08-16.md`。最终合同：普通节点继续Partial框选，只有Group要求选框完整包含；Image/Video/Audio保留asset/source并使用统一灰阶恢复层，CSP只在`img-src/media-src`放行`https://*.aliyuncs.com`；七类标题统一ellipsis和完整title。最终安全全量`118/118 specs、965/965 PASS`，异常0、4173不变、真实Provider/OSS/付费请求0。源码commit`8ebe705…`，生产已原子切换到`/opt/unboundry/releases/v0.6.2-inc-ui-002-20260816`，公网version/live/ready、标题、favicon、CSP和静态资源哈希通过；schema39数据、模板和并发保持不变。当前为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，未push/tag/更新PR。生产凭证为`spec/INC_UI_002_PRODUCTION_RECEIPT_2026-08-16.json`。
 
-## 当前新任务：INC-UI-001（2026-08-15，本地候选完成）
+## 当前新任务：INC-UI-001（2026-08-16，已随v0.6.2发布待用户复验）
 
-用户要求设置页「返回画布」回到进入前的真实项目并新增「返回工作空间」，浏览器标签显示无央favicon和准确项目/页面标题。权威文档为`spec/INC_UI_001_SETTINGS_RETURN_AND_BROWSER_IDENTITY_PLAN_2026-08-15.md`。返回规则固定为`from项目ID → 当前账号本标签最近真实项目 → 工作空间`，默认画布不作隐式返回兜底，项目ID须经当前账号只读项目列表校验。用户确认`v0.6.2`候选并授权实施后，本地代码、受影响自动测试和安全full均已完成：`117/117 specs、962/962 PASS`，所有异常计数0，Provider/付费/OSS请求0、4173不变。当前为`LOCAL_IMPLEMENTED_AUTO_PASS_USER_RECHECK / PRODUCTION v0.6.1 UNCHANGED`；真实package仍0.6.1，commit、push、PR更新和生产发布仍未授权。
+用户要求设置页「返回画布」回到进入前的真实项目并新增「返回工作空间」，浏览器标签显示无央favicon和准确项目/页面标题。权威文档为`spec/INC_UI_001_SETTINGS_RETURN_AND_BROWSER_IDENTITY_PLAN_2026-08-15.md`。返回规则固定为`from项目ID → 当前账号本标签最近真实项目 → 工作空间`，默认画布不作隐式返回兜底，项目ID须经当前账号只读项目列表校验。该功能已随v0.6.2发布，最终安全full为`118/118 specs、965/965 PASS`，Provider/付费/OSS请求0、4173不变；当前为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。
 
 ## 当前增量：INC-ECOM-007（2026-08-15）
 
@@ -18,10 +18,14 @@
 
 第三批P0/P1/P2共12条服装电商工作流已在用户明确“确定 发布”后单事务导入生产。恢复副本与生产写后兼容审计均为全库43/43 PASS、第三批12/12 PASS、问题0；生产43条模板、42条published，第三批12条均有graph和preview，公网12张复用封面均HTTP200 image/jpeg。发布前后tasks109、Provider attempts107、active0，并发/RPM仍全部500，Provider/付费生成/OSS变化0。用户随后明确“都通过了”，当前状态为`PRODUCTION_PUBLISHED_USER_PASS`。详细记录与凭证为`spec/INC_ECOM_006_ECOMMERCE_WORKFLOW_BATCH_3_2026-08-15.md`和`spec/ecommerce-workflow-batch-3-production-receipt.json`。
 
-## 0. 2026-08-15 最终生产状态（当前权威）
+## 0. 2026-08-16 最终生产状态（当前权威）
 
-- 当前状态：`REM-000～011（含009A/009B）PASS / PRODUCTION LIVE / INC-ECOM-001～007按各自证据边界完成用户收口`。v0.6.0既有用户验收与v0.6.1新增流水执行语义均已确认。
-- 生产运行 `v0.6.1/schema39`，`/opt/unboundry/current -> releases/v0.6.1-inc-ecom-007-20260815`；service active/enabled、NRestarts0、127.0.0.1:4173。公网live/ready/version/root正常，version 0.6.1、ready active/schema39；公网主JS哈希与release一致。
+- 当前状态：`REM-000～011（含009A/009B）PASS / PRODUCTION LIVE / INC-UI-001/002已发布待用户复验 / INC-ECOM-001～007按各自证据边界完成用户收口`。
+- 生产运行 `v0.6.2/schema39`，`/opt/unboundry/current -> releases/v0.6.2-inc-ui-002-20260816`；service active、NRestarts0、127.0.0.1:4173。公网live/ready/version/root正常，version 0.6.2、ready active/schema39；公网主JS、CanvasShell、CSS、WorkspacePage和favicon哈希与release一致。
+- v0.6.2源码commit`8ebe70544828a3aebe258def9d658e1ab68a6104`/tree`ad1b93bc68ca0e09df410d5b5904b33bd4b22686`，release inventory`f1606bded48644149cc328017d2fa74f8932512c8f0747714f7f5ec81e139f2e`；备份/恢复目录`/var/lib/unboundry-rollbacks/inc-ui-002-20260815T180956Z`，清单一致`b1754f94…c2909`。
+- 数据最新核验：schema39、quick_check ok、FK0、active generation0、118 tasks/116 provider attempts、43 public templates（42 published）；生成开关、并发/RPM500、模板、Provider和OSS配置前后不变，发布期间Provider/付费调用与OSS写入0。
+
+以下条目保留v0.6.0/v0.6.1各增量发布的历史证据；出现“当前”字样时只代表该历史时点，不覆盖上方v0.6.2权威状态。
 - INC-ECOM-004已为16条电商模板发布真实封面；生产18条published模板现`withPreview=18 / withoutPreview=0`。最终静态内容叠加绑定本地commit `d908c4b3824cd36638f02fec51cbe335f6aacd52`，manifest `340452f7…d7a9`、inventory `1d795f29…f464`；公网16张均HTTP200、`image/jpeg`且SHA逐项相符。用户已确认“都通过了”，状态为`PRODUCTION_STATIC_COVERS_DEPLOYED / USER_VISUAL_PASS`。
 - 该叠加以当前可信formal base `5386c744…47b1`为底，只增加双目录静态文件和manifest绑定，不冒充fresh formal builder/full regression。首轮只写源码静态目录的source-only产物被公网哈希门检出并退役保留；最终产物同时包含`client/public/templates`和`dist/client/templates`。
 - INC-ECOM-004回滚材料：停机备份`/var/lib/unboundry-rollbacks/inc-ecom-004-20260815T080758Z`；原formal release在`/opt/unboundry/retired-releases/20260815T080758Z-pre-inc-ecom-004/v0.6.0`；source-only产物在`/opt/unboundry/retired-releases/20260815T081400Z-inc-ecom-004-source-only/v0.6.0`。发布前后tasks109/attempts107/active0，并发500、Provider与数据manifest未变，OSS/付费生成0。
@@ -75,12 +79,12 @@ Docker Ubuntu 子门的 rootless-userns 阻塞已按设计 fail-close。随后�
 
 ## 1. 项目一句话
 
-一个 TapNow 风格的 AI 画布应用（React + Vite + Node 原生 SQLite），支持文本/图片/视频/音频生成节点、连线工作流、模板、多项目工作空间、账号与管理员权限。当前**已发布到生产服务器** `canvas.mymy.ltd`，线上版本 `v0.6.1`、数据库 schema39。
+一个 TapNow 风格的 AI 画布应用（React + Vite + Node 原生 SQLite），支持文本/图片/视频/音频生成节点、连线工作流、模板、多项目工作空间、账号与管理员权限。当前**已发布到生产服务器** `canvas.mymy.ltd`，线上版本 `v0.6.2`、数据库 schema39。
 
 ## 2. 仓库与环境
 
 - 仓库根：`/Users/mymy/Documents/unboundry/app`（注意：系统工作区根目录写的是 `tapnow1_1复刻`，那个路径在本机不存在，**一律用 unboundry/app**）。
-- Git：当前专用分支 `codex/unboundry-offline-remediation-2026-08-09`已推送到远程`https://github.com/jasionia1991-max/unboundry.git`；注释标签`v0.6.1`精确指向生产源commit `f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf`；Draft PR为`https://github.com/jasionia1991-max/unboundry/pull/1`。本地文档HEAD与生产源commit分开理解；本次GitHub发布授权已消费。
+- Git：当前专用分支 `codex/unboundry-offline-remediation-2026-08-09`此前已推送到远程`https://github.com/jasionia1991-max/unboundry.git`；注释标签`v0.6.1`仍精确指向旧生产源commit `f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf`；Draft PR为`https://github.com/jasionia1991-max/unboundry/pull/1`。v0.6.2生产源commit为本地`8ebe70544828a3aebe258def9d658e1ab68a6104`，本次未获新的push/tag/PR授权，因此远端尚未同步v0.6.2。
 - Node：formal 构建/验证固定 `v22.23.1` 与 npm `10.9.8`；生产 `/opt/node22/bin/node` 为 `v22.23.2`，production-specific waiver及恢复副本补证已完成。formal manifest的22.23.1绑定仍不改写，也不把旧Linux receipt冒充实际22.23.2 runtime证据。
 - 历史依赖/检查方式曾为 `npm install`、`npx tsc --noEmit`、`npm run build`，仍不得直接作为施工入口。当前唯一安全总入口是 `node scripts/run-safe-tests.mjs <preflight|list|run|full>`；它在跟踪文件隔离快照内用 `npm ci --offline --ignore-scripts` 准备依赖，并统一执行源码、构建、重启和测试门禁。
 - 代码结构速览：
@@ -122,7 +126,7 @@ Docker Ubuntu 子门的 rootless-userns 阻塞已按设计 fail-close。随后�
 ## 5. 服务器运维事实
 
 - SSH：`ssh live-cockpit`（`~/.ssh/config` 已配置，腾讯云轻量）。
-- 服务：systemd `unboundry.service`、release `/opt/unboundry/releases/v0.6.1-inc-ecom-007-20260815`、current `/opt/unboundry/current`、数据 `/var/lib/unboundry`、监听 `127.0.0.1:4173`；旧 `unboundry-replica.service` / `/opt/unboundry-app` 仅为历史计划。当前上线事实不授权未来 stop/restart/current切换。
+- 服务：systemd `unboundry.service`、release `/opt/unboundry/releases/v0.6.2-inc-ui-002-20260816`、current `/opt/unboundry/current`、数据 `/var/lib/unboundry`、监听 `127.0.0.1:4173`；旧 `unboundry-replica.service` / `/opt/unboundry-app` 仅为历史计划。当前上线事实不授权未来 stop/restart/current切换。
 - **历史风险事实**：现有 v0.5.1 preview 会在首次数据库请求（如 `/api/auth/status`）时懒迁移/回填。新施工禁止用健康接口“激活迁移”；REM-009/010 必须将就绪检查与显式迁移完全分开。
 - **历史运行事实**：本地 4173 有守护进程可能自动拉起。当前 REM 施工禁止 kill、重启、探测或复用 4173；旧的黑屏重启处理不是当前施工指令。
 - 版本更新推送：`/api/version` + `/api/updates`（SSE），发布后用户端会弹“版本已更新”提示，属于正常机制。
@@ -215,4 +219,4 @@ ssh live-cockpit "curl -fsS http://127.0.0.1:4173/api/version"
 5. 向用户先报告恢复出的项目、版本、当前项和授权；
 6. 任一不一致都必须停止，不得依据内部记忆、历史 PASS 或压缩摘要猜测继续。
 
-当前执行点：`INC-ECOM-001～007 USER ACCEPTED / REM-000～011（含009A/009B）PASS / PRODUCTION LIVE / GITHUB DRAFT PR #1 OPEN`。生产v0.6.1/schema39；流水修复、三批模板与封面均已发布并完成用户收口。GitHub分支push、v0.6.1 tag和Draft PR已完成；未实际运行的付费两图/视频抽验继续延期。
+当前执行点：`INC-UI-001/002 PRODUCTION PUBLISHED USER RECHECK / INC-ECOM-001～007 USER ACCEPTED / REM-000～011（含009A/009B）PASS / PRODUCTION LIVE / GITHUB DRAFT PR #1 OPEN`。生产v0.6.2/schema39；UI恢复已上线待用户复验，流水修复、三批模板与封面均已发布并完成用户收口。GitHub仍停留在v0.6.1 tag和既有Draft PR；未实际运行的付费两图/视频抽验继续延期。
