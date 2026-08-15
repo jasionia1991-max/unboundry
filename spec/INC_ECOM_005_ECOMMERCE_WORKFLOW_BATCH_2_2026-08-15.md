@@ -1,6 +1,6 @@
 # INC-ECOM-005：第二批电商工作流模板包
 
-日期：2026-08-15  
+日期：2026-08-15
 当前状态：`PRODUCTION_PUBLISHED_USER_PASS`
 
 ## 1. 目标与边界

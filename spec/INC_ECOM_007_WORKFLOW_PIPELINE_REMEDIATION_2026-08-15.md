@@ -1,6 +1,6 @@
 # INC-ECOM-007：整组工作流流水线全局修复
 
-更新时间：2026-08-15  
+更新时间：2026-08-15
 状态：`LOCAL_FORMAL_FULL_PASS / USER_RECHECK / PRODUCTION_NOT_DEPLOYED`
 
 ## 1. 用户确认的执行合同
