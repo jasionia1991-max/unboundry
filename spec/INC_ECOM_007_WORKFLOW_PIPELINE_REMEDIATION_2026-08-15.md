@@ -1,7 +1,7 @@
 # INC-ECOM-007：整组工作流流水线全局修复
 
 更新时间：2026-08-15
-状态：`LOCAL_FORMAL_FULL_PASS / USER_RECHECK / PRODUCTION_NOT_DEPLOYED`
+状态：`PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK`
 
 ## 1. 用户确认的执行合同
 
@@ -12,7 +12,7 @@
 - 一个分支运行失败只阻塞其后代，其他无依赖关系的分支继续；整组最终报告部分失败。
 - 手动单节点运行合同不放宽：空、上传中、无效或缺失的上游仍阻止用户直接运行下游。
 - 整组开始前仍执行零任务静态门：循环、图错误、模型缺失/停用、类型/角色/顺序/数量不兼容、缺失的人工上传和无提示词根节点均在任何生成任务 POST 前阻止。
-- 本修复不调整并发/RPM，不修改模板、Provider、OSS、数据库或生产；验证不得产生真实或付费请求。
+- 本修复和发布不调整并发/RPM，不修改模板、Provider、OSS或数据库；验证与切换不得产生真实或付费请求。
 
 ## 2. 已确认根因
 
@@ -49,11 +49,14 @@
 - 2026-08-15：Node `22.23.1` / npm `10.9.8` 下，7份相关spec定向 `69/69 PASS`；TypeScript、source coverage和production build均PASS，Provider/真实请求为0。
 - 2026-08-15：在临时洁净直接父子候选上完成正式安全full：`117/117 specs、959/959 PASS`，failed/skipped/retries/reportErrors/blocked全0；immutable builder `attempts=1 / invocations=5 / passed=1`，source/snapshot `28b203bb76275b9566727e51e2384674c7ddcf9851cc98c80fd3aed11b8a30c4`前后不变，4173 listener不变，safe suite已清理。
 - 临时验证身份仅用于满足不可变release测试：bridge `7cbce6dd26c99ea25cf88ffddb8c34694bdc06ec`、final `8013ebc12b70cae98bcc1277b4701d79370d3a32`；不是实际仓库commit、发布候选或生产授权。
-- 当前结论：本地技术修复和正式全量自动门已通过；用户实页复验仍为 `USER_RECHECK`。本次没有修改并发、模板、Provider、OSS、数据库或生产，没有commit/push/tag/PR，也没有部署到服务器。
+- 2026-08-15：正式源已冻结为commit `f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf` / tree `dd1180077032a42f1ab7ce7ca614906898d1f414`；v0.6.1明确运行时准入后相关8份spec `110/110 PASS`，精确HEAD production build PASS。
+- 2026-08-15：生产已切换到不可变目录`/opt/unboundry/releases/v0.6.1-inc-ecom-007-20260815`；release inventory `c467c7c2…d2237f`。公网version为0.6.1，live/ready正常，主JS SHA-256 `8bc2ebb6…e1204`与release相同；service active/enabled、NRestarts0。
+- 2026-08-15：停机备份`/var/lib/unboundry-rollbacks/inc-ecom-007-20260815T135418Z`已完成全树清单与恢复副本核验，二者SHA-256同为`73554c0a…535f24`。发布前后schema39、quick_check ok、FK0、tasks109、attempts107、active0、模板43/42和并发/RPM 500均不变，Provider/付费请求0。
+- 当前结论：`PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK`。代码与生产技术发布已完成；生产凭证SHA-256为`91c05297…5f819c`并已封存到本轮备份目录。未push/tag/PR。只有用户线上实页流水线复验仍待确认。
 
 ## 6. 用户复验方式
 
-1. 刷新线上画布并从模板创建一份新工作流；线上必须先部署本修复，否则仍会运行旧执行器。
+1. 强制刷新`https://canvas.mymy.ltd`并从模板创建一份新工作流；`/api/version`应显示`0.6.1`。
 2. 运行 `Text → Image` 整组：Text先生成；Image等待且不显示“Text还没有生成正文”的提前失败，Text成功保存后Image自动开始。
 3. 对含两个生成式上游的目标节点：一个完成、一个仍运行时目标必须保持等待；两个均成功后只启动一次。
 4. 对分流图：快分支后代应在无关慢分支结束前启动；某分支失败时只阻塞该分支后代，独立分支继续，整组最终报告部分失败。

@@ -1,10 +1,10 @@
 # 无央 Unboundry
 
-TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mymy.ltd`，当前线上 `v0.6.0 / schema39`）。
+TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mymy.ltd`，当前线上 `v0.6.1 / schema39`）。
 
-## 2026-08-15 整组工作流流水线修复（本地正式全量通过，未部署）
+## 2026-08-15 整组工作流流水线修复（已发布，待用户实页复验）
 
-`INC-ECOM-007 = LOCAL_FORMAL_FULL_PASS / USER_RECHECK / PRODUCTION_NOT_DEPLOYED`：整组执行已改为事件驱动DAG流水；多直接生成式上游严格AND，分流独立推进、汇流等待全部、失败只阻塞后代，Text/Image/Video/Audio在实际提交前统一刷新runtime preflight。相关7份spec `69/69 PASS`；临时洁净候选正式full `117/117 specs、959/959 PASS`，异常0、immutable builder `1/5/1`、source/snapshot `28b203bb…a30c4`不变、4173不变、真实Provider请求0。本次未改并发、模板、Provider、OSS、数据库或生产，未commit/push/tag/PR；线上仍是旧执行器，需独立发布后再由用户实页复验。
+`INC-ECOM-007 = PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK`：整组执行已改为事件驱动DAG流水；多直接生成式上游严格AND，分流独立推进、汇流等待全部、失败只阻塞后代，Text/Image/Video/Audio在实际提交前统一刷新runtime preflight。正式full基线`117/117 specs、959/959 PASS`，版本准入修复后相关8份spec `110/110 PASS`，精确发布HEAD build PASS，真实Provider请求0。生产已原子切换到不可变`v0.6.1`发布目录，公网version/live/ready和主JS哈希一致；schema39、quick_check ok、FK0、tasks109、attempts107、active0及并发500均前后不变。停机备份已完成恢复副本校验；当前只待用户刷新线上画布完成实页复验。
 
 ## 2026-08-15 第三批电商工作流（已发布，待用户视觉确认）
 
@@ -20,9 +20,9 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 ## 2026-08-15 最终生产收口（当前权威）
 
-- 当前状态：`REM-000 = PASS / REM-001～009B = USER_REVIEW / REM-010～011 = PASS / G7（本次 v0.6.0）= PASS / PRODUCTION = LIVE / USER ACCEPTED`。当前没有 `IN_PROGRESS` REM；本次已闭环 `DEP-003/005/006/007/010` 与 `OPS-002`，其中 `DEP-010` 由用户明确“文档确认通过”后转为 `PASS`；其余历史 `PARTIAL / PAUSED / BLOCK / NOT_STARTED` 项保持原状态。
-- 生产指针为 `/opt/unboundry/current -> releases/v0.6.0`，服务 `active + enabled`、`NRestarts=0`、监听 `127.0.0.1:4173`；公网 live/ready/version/auth/root 均为 HTTP 200，version 为 `0.6.0`，ready 为 active/schema39。
-- 生产数据库在最新核验时为 schema39、integrity `ok`、FK 违约 0、`project_metadata rowid=14` 不存在、活动生成任务 0；共有 99 个任务、99 条 Provider attempt、416 个 ready 素材（local 346 + OSS 70）、pending 0。生产真实生成已开启，安全阈值为 `globalEnabled=1 / emergencyStop=0 / perUserConcurrency=1 / 各类型并发=1 / requestsPerMinute=5`。
+- 当前状态：`REM-000 = PASS / REM-001～009B = USER_REVIEW / REM-010～011 = PASS / G7（历史 v0.6.0）= PASS / PRODUCTION = LIVE / INC-ECOM-007 = USER_RECHECK`。v0.6.0既有用户验收仍有效；v0.6.1新增流水执行语义待用户实页确认。其余历史 `PARTIAL / PAUSED / BLOCK / NOT_STARTED` 项保持原状态。
+- 生产指针为 `/opt/unboundry/current -> releases/v0.6.1-inc-ecom-007-20260815`，服务 `active + enabled`、`NRestarts=0`、监听 `127.0.0.1:4173`；公网 live/ready/version/root 均正常，version 为 `0.6.1`，ready 为 active/schema39。
+- 生产数据库在最新核验时为 schema39、quick_check `ok`、FK 违约 0、活动生成任务 0；共有109个任务、107条Provider attempt、43条公共模板（42 published）。安全阈值保持`globalEnabled=1 / emergencyStop=0 / per-user、RPM及四类并发均500`；本次切换前后任务与attempt计数相同，Provider/付费调用0。
 - F14 生产制品固定为 commit `eb4f99ea525390b0dd7a39d3cad55d882ffea41d` / tree `86b4e424b6d6324c5f24d4c633b0cd35baf0d626`，manifest `46e2365c48b8e8bdaa1847b1767ef2974a71f2d2b47c87743793c116e5ec2adf`，inventory `ac8ca43a9f8f6724ca67bd0899185fa3952e762e0400a1f9ce34f3ecfefc2bac`，tar `0e3a96a13299efba407ba98dc6501ae97297c9a82c067827b9f9befeb2c18944`。
 - 原 schema37 完整备份 SHA-256 `7f14c611faab136c1ae8e9579bc47755f7298e4ea6e2bba516c71e85670f8fca` 已完成离机恢复验证，inspection SHA-256 `b4d58243e88efe1c2c967ffab5f63ed6704d18324a80e8449ec9d3ad77e28e1d`；schema39 迁移后 inspection SHA-256 `a18f8224dd651b8217cb3d778845ee3f42b5bf91a5ff68291bfad4d4cb3ffa61`。
 - 最终技术凭证为 `/var/tmp/unboundry-final-94f66e5260759e7d58096fafd30c46f812f2cd96d4a18409d18ffbf1ab338c6d/evidence/FINAL-CUTOVER-SUPPLEMENT.json`，SHA-256 `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8`，状态 `TECHNICAL_CUTOVER_VERIFIED`。凭证生成时 `userAcceptance=PENDING` 是不可改写的时点事实；用户随后确认生成任务状态已可读取，并结合此前确认老项目中大量已生成/上传素材仍在、第4项正常，生产验收现为 `USER PASS`。这不等于逐一验证了所有历史素材或所有延后功能。

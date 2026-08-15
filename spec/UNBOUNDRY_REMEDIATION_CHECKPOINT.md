@@ -1,19 +1,21 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`52`
+断点版本：`53`
 更新时间：`2026-08-15`
-状态：`INC_ECOM_007_LOCAL_FORMAL_FULL_PASS_USER_RECHECK_PRODUCTION_NOT_DEPLOYED`
+状态：`INC_ECOM_007_PRODUCTION_PUBLISHED_TECHNICAL_PASS_USER_RECHECK`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
 ## 0. 当前新事件：INC-ECOM-007
 
 - 用户确认整组运行必须按依赖流水：多入参全部本轮成功并保存后才运行；分流独立推进；汇流严格等待全部；分支失败只阻塞后代。
 - 已确认是通用执行器缺陷：全图动态预检过早、真实resolver的blocked空态绕过延后分支、测试夹具失真、整层屏障以及节点运行时输入快照可能陈旧。
-- 用户授权一次性完成本地修复和零付费验证，不要求中途重复询问。禁止修改并发、模板、Provider、OSS、数据库或生产，禁止真实/付费请求。
+- 用户随后明确确认版本并授权发布；该发布授权已消费。发布保持并发、模板、Provider、OSS和数据库不变，禁止真实/付费请求。
 - 实现已完成：生产调用路径使用事件驱动DAG调度，直接生成式上游严格AND；快分支独立推进、失败只阻塞后代、取消不再派发新节点；Text/Image/Video/Audio统一static/runtime预检并在提交前刷新输入。
 - 自动门已完成：相关7份spec `69/69 PASS`；临时洁净直接父子候选上的正式安全full为`117/117 specs、959/959 PASS`，所有异常计数0，immutable builder `attempts=1 / invocations=5 / passed=1`，source/snapshot `28b203bb76275b9566727e51e2384674c7ddcf9851cc98c80fd3aed11b8a30c4`前后不变，4173不变，Provider/真实请求0。
-- 临时bridge/final `7cbce6dd26c99ea25cf88ffddb8c34694bdc06ec` / `8013ebc12b70cae98bcc1277b4701d79370d3a32`只用于不可变release测试，不是实际仓库commit或发布授权；实际仓库未commit/push/tag/PR。
-- 当前阶段：`LOCAL_FORMAL_FULL_PASS / USER_RECHECK / PRODUCTION_NOT_DEPLOYED`。生产仍运行旧执行器；下一步只能在取得独立发布授权后形成正式产物、部署并由用户实页复验。权威记录见`spec/INC_ECOM_007_WORKFLOW_PIPELINE_REMEDIATION_2026-08-15.md`。
+- 正式release commit `f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf` / tree `dd1180077032a42f1ab7ce7ca614906898d1f414`已形成；明确准入v0.6.1后相关8份spec `110/110 PASS`，精确HEAD build PASS。未push/tag/PR。
+- 生产已原子切换到`/opt/unboundry/releases/v0.6.1-inc-ecom-007-20260815`；release inventory `c467c7c2…d2237f`。备份/恢复目录`/var/lib/unboundry-rollbacks/inc-ecom-007-20260815T135418Z`，清单一致`73554c0a…535f24`。
+- 公网version 0.6.1、live/ready和主JS哈希PASS；service active/enabled、NRestarts0。schema39 quick_check ok/FK0，tasks109/attempts107/active0、模板43/42及并发/RPM 500前后不变；Provider/付费调用0。
+- 当前阶段：`PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK`。下一步只需用户刷新线上页面验证流水、多入参AND、分流和失败隔离。权威记录与生产凭证见`spec/INC_ECOM_007_WORKFLOW_PIPELINE_REMEDIATION_2026-08-15.md`、`spec/INC_ECOM_007_PRODUCTION_RECEIPT_2026-08-15.json`。
 
 ## 0A. 前一事件：INC-ECOM-006
 
@@ -81,8 +83,8 @@
 - 用户明确允许原生产使用实际 Node `22.23.2`，但 formal manifest 的 Node22.23.1 绑定保持原样，必须对相同候选在生产Node/SHA上做副本兼容补证；不得把waiver写成formal conformance。
 - 用户还授权：仅在维护、旧服务停止、无写者、可恢复原始备份完成并精确复核后，删除唯一 FK 孤儿 `project_metadata rowid=14`；不得扩大为其他生产清理。
 - 真实OSS只读HEAD/GET以及必要的bwrap安装/使用已经纳入最新bridge总授权；只允许按冻结控制器、最小权限和只读对象合同执行。
-- 生产现运行 `/opt/unboundry/current -> releases/v0.6.0`，service active/enabled、NRestarts0、监听127.0.0.1:4173；公网live/ready/version/auth/root均200，ready active/schema39。
-- 数据最新核验：schema39、quick_check ok、active generation0、109 tasks/107 provider attempts、421 ready media（local351+OSS70）、pending publication0；INC-ECOM-003未修改现有生成开关、并发、频率或OSS配置。
+- 生产现运行 `/opt/unboundry/current -> releases/v0.6.1-inc-ecom-007-20260815`，service active/enabled、NRestarts0、监听127.0.0.1:4173；公网live/ready/version/root正常，version 0.6.1、ready active/schema39，主JS哈希与release相同。
+- 数据最新核验：schema39、quick_check ok、FK0、active generation0、109 tasks/107 provider attempts、43 public templates（42 published）；本次发布前后生成开关、并发/RPM 500、模板、Provider和OSS配置均未改变。
 - 原schema37 raw backup SHA `7f14c611faab136c1ae8e9579bc47755f7298e4ea6e2bba516c71e85670f8fca` 已离机恢复PASS，inspection `b4d58243e88efe1c2c967ffab5f63ed6704d18324a80e8449ec9d3ad77e28e1d`。最终技术凭证 SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8` 为 `TECHNICAL_CUTOVER_VERIFIED`。
 - 技术凭证生成时 `userAcceptance=PENDING` 保持不变；用户随后确认生成任务状态可读取，并结合此前确认老项目大量生成/上传素材仍在、第4项正常，生产验收现为`USER PASS`，但不声称全部历史素材逐一验证。
 - 最终切换是人工受控bounded cutover，不冒充新的formal controller/full regression PASS；切换期间Provider/付费调用0。REM-010/011与本次G7为`PASS`，REM-001～009B继续`USER_REVIEW`，当前没有IN_PROGRESS REM。
@@ -445,13 +447,13 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 
 ```text
 项目路径：/Users/mymy/Documents/unboundry/app
-本地文档checkout：branch codex/unboundry-offline-remediation-2026-08-09；HEAD a9051ce896cb6dda8e1ec6d1593f1de128484378；工作树含既有源码/测试改动与本轮七份文档改动，禁止reset/clean
-生产：canvas.mymy.ltd；v0.6.0/schema39；/opt/unboundry/current -> releases/v0.6.0
-生产artifact：commit eb4f99ea525390b0dd7a39d3cad55d882ffea41d；tree 86b4e424b6d6324c5f24d4c633b0cd35baf0d626；manifest 46e2365c48b8e8bdaa1847b1767ef2974a71f2d2b47c87743793c116e5ec2adf；inventory ac8ca43a9f8f6724ca67bd0899185fa3952e762e0400a1f9ce34f3ecfefc2bac；tar 0e3a96a13299efba407ba98dc6501ae97297c9a82c067827b9f9befeb2c18944
-当前状态：REM-000 PASS；REM-001～009B USER_REVIEW；REM-010/011 PASS；G7（本次v0.6.0）PASS；PRODUCTION LIVE / USER ACCEPTED；无IN_PROGRESS REM
-技术凭证：FINAL-CUTOVER-SUPPLEMENT.json SHA 5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8；TECHNICAL_CUTOVER_VERIFIED；manual bounded cutover；非formal controller/full regression PASS
-用户验收：技术凭证形成后，用户另行确认生成任务状态可读取；结合此前确认老项目大量生成/上传素材仍在、第4项正常。不得扩大为全部历史素材逐一验证
-数据库：schema39；integrity ok；FK0；row14 absent；99 tasks/99 attempts；416 ready media(local346+OSS70)；active0/pending0；globalEnabled1/emergencyStop0；per-user/kind concurrency1；RPM5
+本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；生产源commit f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf；禁止reset/clean/push/tag/PR
+生产：canvas.mymy.ltd；v0.6.1/schema39；/opt/unboundry/current -> releases/v0.6.1-inc-ecom-007-20260815
+生产artifact：source commit f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf；tree dd1180077032a42f1ab7ce7ca614906898d1f414；inventory c467c7c264da03421a14fabf93c90bc40faa3edfad1a7dfdff802112f1d2237f
+当前状态：INC-ECOM-007 PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK；REM-000 PASS；REM-001～009B USER_REVIEW；REM-010/011 PASS；PRODUCTION LIVE
+技术凭证：spec/INC_ECOM_007_PRODUCTION_RECEIPT_2026-08-15.json SHA 91c05297a940ee18d5b6aef3d3878e5e8ff776c0f28a868f7fc975eafc5f819c；备份/恢复 inventory 73554c0a84001d953c27f55c011f77fff8b873db2918ea3e4eca0b19a7535f24
+用户验收：v0.6.0既有验收保持；v0.6.1的流水、多入参AND、分流和失败隔离仍须线上实页确认
+数据库：schema39；quick_check ok；FK0；109 tasks/107 attempts；43 public templates/42 published；active0；globalEnabled1/emergencyStop0；per-user/kind concurrency与RPM均500
 备份：schema37 raw archive SHA 7f14c611faab136c1ae8e9579bc47755f7298e4ea6e2bba516c71e85670f8fca；offhost restore inspection b4d58243e88efe1c2c967ffab5f63ed6704d18324a80e8449ec9d3ad77e28e1d PASS
 限制：attempt 86/108/116/120/122为行政取消且禁止重试，PROVIDER_FAILED仅surrogate；3条音频仅改duration元数据；cutover Provider/paid calls=0
 未来授权：本次bridge/final生产授权已消费；任何生产读写、真实Provider/付费生成、push/tag/PR或新版本发布均需新授权

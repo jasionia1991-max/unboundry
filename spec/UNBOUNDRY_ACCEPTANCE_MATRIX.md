@@ -3,7 +3,7 @@
 基线日期：2026-07-27  
 当前状态更新：2026-08-15
 
-2026-08-15 `INC-ECOM-007 = LOCAL_FORMAL_FULL_PASS / USER_RECHECK / PRODUCTION_NOT_DEPLOYED`：整组生产调用路径已改为事件驱动DAG流水；多个直接生成式上游严格AND，分流独立推进、汇流等待全部、失败只阻塞后代，四类节点提交前刷新runtime preflight；静态不兼容仍零任务阻止整组。7份相关spec `69/69 PASS`；临时洁净候选正式full `117/117 specs、959/959 PASS`，异常0、builder `1/5/1`、source/snapshot `28b203bb…a30c4`不变、4173不变、真实Provider请求0。该结论是本地技术PASS，不是生产部署或用户实页PASS；第三批工作流运行时验收继续等待发布后用户复验。
+2026-08-15 `INC-ECOM-007 = PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK`：整组生产调用路径已改为事件驱动DAG流水；多个直接生成式上游严格AND，分流独立推进、汇流等待全部、失败只阻塞后代，四类节点提交前刷新runtime preflight；静态不兼容仍零任务阻止整组。正式full基线`117/117 specs、959/959 PASS`，v0.6.1准入修复后相关8份spec `110/110 PASS`，精确HEAD build PASS，Provider请求0。生产已切换到不可变v0.6.1目录；公网version/live/ready及主JS哈希通过，schema39 quick_check ok/FK0，tasks109/attempts107/active0和并发500前后不变。技术发布PASS不替代用户线上实页确认。
 
 2026-08-15 `INC-ECOM-006 = PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_VISUAL_REVIEW`：用户明确“确定 发布”，第三批P0/P1/P2共12条已单事务导入生产，显示版本仍为`v0.6.0`。恢复副本与生产写后兼容审计均为全库43/43 PASS、第三批12/12 PASS、问题0；生产43条模板、42条published，第三批12/12均有graph+preview，公网12张封面HTTP200 image/jpeg。schema39 quick_check ok/FK0、service active/enabled、NRestarts0。发布前后tasks109、Provider attempts107、active0，并发/RPM均保持500，Provider/付费生成/OSS变化0。当前技术发布PASS，不替代用户刷新模板面板后的可见性、视觉与运行时确认。
 
@@ -11,9 +11,9 @@
 状态：`AUTHORITATIVE`  
 状态夹具：`unboundry-state-fixtures.json`
 
-2026-08-15 当前权威状态：生产已运行 `v0.6.0/schema39`，`REM-010/011 = PASS`，`G7（本次 v0.6.0）= PASS`，`PRODUCTION = LIVE / USER ACCEPTED`。最终技术凭证 SHA-256 `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8` 为 `TECHNICAL_CUTOVER_VERIFIED`；凭证生成时的 `userAcceptance=PENDING` 不改写，用户随后确认生成任务状态已可读取，并结合此前确认老项目大量已生成/上传素材仍在、第4项正常，形成独立生产 `USER PASS`。该确认不等于逐一验证全部历史素材或所有延后功能。
+2026-08-15 当前权威状态：生产已运行 `v0.6.1/schema39`，`INC-ECOM-007 = PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK`，`REM-010/011 = PASS`，`PRODUCTION = LIVE`。v0.6.0的既有用户验收仍有效；本次新增的工作流流水执行语义必须由用户在v0.6.1实页另行确认，不能用旧验收代替。
 
-最终核验为 service active/enabled、current→`releases/v0.6.0`、公网页面/version/auth正常、schema39/integrity ok/FK0、active generation0、99 tasks/99 attempts、416 ready media（local346+OSS70）、pending0；切换期间 Provider/付费调用0。切换后用户另行授权的唯一 Doubao Seed 文字生成一次成功、无重试，生产生成开关现为开启且并发/频率已收紧。原schema37备份 `7f14c611…` 与最新整机schema39包均已离机恢复PASS。最终切换为人工受控 bounded cutover，不声明新的 formal controller PASS 或切换后 full regression PASS。REM-001～009B继续`USER_REVIEW`，未在本次补验范围内的既有 PARTIAL/PAUSED/BLOCK/NOT_STARTED 条目保持不变。
+最新核验为service active/enabled、current→`releases/v0.6.1-inc-ecom-007-20260815`、公网version 0.6.1/live/ready/root正常且主JS与release同哈希；schema39/quick_check ok/FK0、active generation0、109 tasks/107 attempts、43 public templates（42 published）。本次切换前后计数与并发/RPM 500不变，Provider/付费调用0；恢复副本清单验证PASS。v0.6.0原schema37备份、整机schema39包及既有用户验收继续保留为历史证据。REM-001～009B继续`USER_REVIEW`，未在本次补验范围内的既有PARTIAL/PAUSED/BLOCK/NOT_STARTED条目保持不变。
 
 2026-08-07 三功能新增 21 条（TPL-001～007 / ZIP-001～006 / KEY-001～008）已全部经用户实页验收为 `PASS`，M11 放行门达成；其余历史统计与状态仍以各节为准，`INPUT-006`保持`PARTIAL`（Mureka真实生成暂缓）。
 2026-08-07 权限管理（PERM-001～012）与公共模板（PUB-001～011）已全部经用户实页验收为 `PASS`，两功能放行门达成；生成安全「并发与频率」上限按用户要求放宽至 1000（v33）。
