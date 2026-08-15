@@ -1,7 +1,7 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-15
-状态：`生产已运行 v0.6.1/schema39；INC-ECOM-001～007已按各自证据边界完成用户收口；REM-000～011（含009A/009B）= PASS；PRODUCTION = LIVE。`
+状态：`生产已运行 v0.6.1/schema39；INC-ECOM-001～007已按各自证据边界完成用户收口；REM-000～011（含009A/009B）= PASS；GitHub branch/tag/Draft PR已发布；PRODUCTION = LIVE。`
 
 ### 2026-08-15 整组工作流流水线全局修复（INC-ECOM-007）
 
@@ -13,6 +13,7 @@
 - 发布：本地release commit `f3d3fc8…8d1f414`；生产指针已切换到`/opt/unboundry/releases/v0.6.1-inc-ecom-007-20260815`。公网version为0.6.1，live/ready正常，主JS哈希与release一致；service active/enabled、NRestarts0。
 - 数据/回滚：停机备份`/var/lib/unboundry-rollbacks/inc-ecom-007-20260815T135418Z`，备份与恢复清单SHA均为`73554c0a…535f24`；schema39 quick_check ok/FK0，tasks109/attempts107/active0、模板43/42及并发500前后不变，Provider/付费调用0。
 - 用户验收：发布后用户在线上实页复验并明确回复“通过通过”，INC-ECOM-007正式收口为USER PASS。
+- GitHub：分支`codex/unboundry-offline-remediation-2026-08-09`已推送；注释标签`v0.6.1`精确指向生产源commit `f3d3fc8…8d1f414`；Draft PR [#1](https://github.com/jasionia1991-max/unboundry/pull/1)已创建，merge state为CLEAN，当前无CI checks报告。
 - 权威断点与验收合同：`spec/INC_ECOM_007_WORKFLOW_PIPELINE_REMEDIATION_2026-08-15.md`。
 
 ### 2026-08-15 第三批服装电商工作流（INC-ECOM-006）
@@ -301,7 +302,7 @@ F14本地正式门证据绑定 HEAD `eb4f99ea525390b0dd7a39d3cad55d882ffea41d`�
 
 ## 当前阶段
 
-阶段：`生产 v0.6.1/schema39 LIVE / REM-000～011（含009A/009B）PASS / USER ACCEPTED / 无IN_PROGRESS REM / 本次GitHub push、v0.6.1 tag和Draft PR已获授权`
+阶段：`生产 v0.6.1/schema39 LIVE / REM-000～011（含009A/009B）PASS / USER ACCEPTED / 无IN_PROGRESS REM / GitHub push、v0.6.1 tag和Draft PR已完成`
 
 画布、固定界面、Text、Image、Video、Audio、Playlist、Group、外围面板、账号、管理员模型中心、生成安全和新图片私有OSS链路已通过当前范围验收；Comment、社区、TapTV、竞技场、额度和链接分享已按用户决定取消。OpenRouter GPT Image 2已完成一次用户授权的历史真实生成，图片连线参考图及真实结果零费用重启恢复均已通过；本次 cutover 未发起 Provider 或付费生成请求。
 

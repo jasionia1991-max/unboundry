@@ -21,7 +21,7 @@
 - 生产现运行 `/opt/unboundry/current -> releases/v0.6.1-inc-ecom-007-20260815`，数据库 schema39。v0.6.1生产源commit为`f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf`，生产凭证为`spec/INC_ECOM_007_PRODUCTION_RECEIPT_2026-08-15.json`。原v0.6.0最终封存技术凭证 SHA-256 为 `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8`，其生成时的`userAcceptance=PENDING`仍是不可改写的历史时点事实；
 - 最终切换是人工受控的 bounded cutover，不冒充新的 formal controller PASS 或切换后重新执行过 full regression；切换期间真实 Provider 与付费生成请求均为 0；
 - 2026-08-15 用户在切换完成后另行明确授权真实生成及生产运维补验：生产真实生成现保持开启，安全阈值固定为每用户/每类型并发 1、每分钟 5；唯一一次 Doubao Seed 文字生成已成功。`DEP-003 / DEP-005 / DEP-006 / DEP-007 / OPS-002` 已按公网 Cookie、490MiB 上传下载、schema39 自动备份/保留及整机离机恢复证据转为 `PASS`；用户随后明确“文档确认通过”，`DEP-010 = PASS`。该补验授权已消费，不得据此由 Agent 再发新的付费请求；产品供用户正常使用真实生成不受影响；
-- 用户于2026-08-15明确“都通过了”，REM-001～009B由`USER_REVIEW`收口为`PASS`，INC-ECOM-001/004/006及已生成图片内容也完成用户验收。未实际运行的另外两张付费图片与其他电商视频真实生成仅作为可选付费抽验延期，不冒充真实生成PASS，也不阻塞v0.6.1发布；既有 `PARTIAL / PAUSED / BLOCK / NOT_STARTED` 项不自动升级。当前没有 `IN_PROGRESS` REM；用户已单独授权本次GitHub push、v0.6.1 tag和Draft PR，授权完成后即消费；
+- 用户于2026-08-15明确“都通过了”，REM-001～009B由`USER_REVIEW`收口为`PASS`，INC-ECOM-001/004/006及已生成图片内容也完成用户验收。未实际运行的另外两张付费图片与其他电商视频真实生成仅作为可选付费抽验延期，不冒充真实生成PASS，也不阻塞v0.6.1发布；既有 `PARTIAL / PAUSED / BLOCK / NOT_STARTED` 项不自动升级。当前没有 `IN_PROGRESS` REM；本次GitHub分支push、精确指向生产源commit的`v0.6.1`注释标签及Draft PR #1均已完成，授权已消费；
 
 - REM-000 施工文档已于 2026-08-09 获用户确认，状态为 `PASS`；
 - 用户已于 2026-08-09 明确启动一次性离线 Goal，合并授权 REM-001～010 与 REM-011 离线工程部分；各 REM 仍按施工总方案依赖顺序分析、实施、测试、review 和更新文档，中途不再逐项询问；

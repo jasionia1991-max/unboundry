@@ -32,3 +32,9 @@
 - 生产凭证：`spec/INC_ECOM_007_PRODUCTION_RECEIPT_2026-08-15.json`
 - 停机备份：`/var/lib/unboundry-rollbacks/inc-ecom-007-20260815T135418Z`
 - 备份与恢复清单SHA-256：`73554c0a84001d953c27f55c011f77fff8b873db2918ea3e4eca0b19a7535f24`
+
+## GitHub发布
+
+- 分支：`codex/unboundry-offline-remediation-2026-08-09`
+- 注释标签：`v0.6.1`，目标为生产源commit `f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf`
+- Draft PR：[#1 Release v0.6.1 workflow execution and ecommerce templates](https://github.com/jasionia1991-max/unboundry/pull/1)

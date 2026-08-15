@@ -72,7 +72,7 @@ Docker Ubuntu 子门的 rootless-userns 阻塞已按设计 fail-close。随后�
 ## 2. 仓库与环境
 
 - 仓库根：`/Users/mymy/Documents/unboundry/app`（注意：系统工作区根目录写的是 `tapnow1_1复刻`，那个路径在本机不存在，**一律用 unboundry/app**）。
-- Git：当前专用分支 `codex/unboundry-offline-remediation-2026-08-09`，远程 `https://github.com/jasionia1991-max/unboundry.git`；生产v0.6.1源commit固定为`f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf`，本地文档HEAD以`git rev-parse HEAD`为准并与生产源commit分开理解。本次GitHub push、v0.6.1 tag与Draft PR已获明确授权，完成后授权即消费。
+- Git：当前专用分支 `codex/unboundry-offline-remediation-2026-08-09`已推送到远程`https://github.com/jasionia1991-max/unboundry.git`；注释标签`v0.6.1`精确指向生产源commit `f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf`；Draft PR为`https://github.com/jasionia1991-max/unboundry/pull/1`。本地文档HEAD与生产源commit分开理解；本次GitHub发布授权已消费。
 - Node：formal 构建/验证固定 `v22.23.1` 与 npm `10.9.8`；生产 `/opt/node22/bin/node` 为 `v22.23.2`，production-specific waiver及恢复副本补证已完成。formal manifest的22.23.1绑定仍不改写，也不把旧Linux receipt冒充实际22.23.2 runtime证据。
 - 历史依赖/检查方式曾为 `npm install`、`npx tsc --noEmit`、`npm run build`，仍不得直接作为施工入口。当前唯一安全总入口是 `node scripts/run-safe-tests.mjs <preflight|list|run|full>`；它在跟踪文件隔离快照内用 `npm ci --offline --ignore-scripts` 准备依赖，并统一执行源码、构建、重启和测试门禁。
 - 代码结构速览：
@@ -207,4 +207,4 @@ ssh live-cockpit "curl -fsS http://127.0.0.1:4173/api/version"
 5. 向用户先报告恢复出的项目、版本、当前项和授权；
 6. 任一不一致都必须停止，不得依据内部记忆、历史 PASS 或压缩摘要猜测继续。
 
-当前执行点：`INC-ECOM-001～007 USER ACCEPTED / REM-000～011（含009A/009B）PASS / PRODUCTION LIVE`。生产v0.6.1/schema39；流水修复、三批模板与封面均已发布并完成用户收口。未实际运行的付费两图/视频抽验继续延期；本次GitHub push、v0.6.1 tag和Draft PR已获单独授权，完成后即消费。
+当前执行点：`INC-ECOM-001～007 USER ACCEPTED / REM-000～011（含009A/009B）PASS / PRODUCTION LIVE / GITHUB DRAFT PR #1 OPEN`。生产v0.6.1/schema39；流水修复、三批模板与封面均已发布并完成用户收口。GitHub分支push、v0.6.1 tag和Draft PR已完成；未实际运行的付费两图/视频抽验继续延期。

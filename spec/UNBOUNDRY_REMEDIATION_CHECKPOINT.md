@@ -447,7 +447,7 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 
 ```text
 项目路径：/Users/mymy/Documents/unboundry/app
-本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；生产源commit f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf；禁止reset/clean；本次GitHub push/tag/PR已授权
+本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；生产源commit f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf；禁止reset/clean；GitHub分支push、v0.6.1 tag和Draft PR #1已完成
 生产：canvas.mymy.ltd；v0.6.1/schema39；/opt/unboundry/current -> releases/v0.6.1-inc-ecom-007-20260815
 生产artifact：source commit f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf；tree dd1180077032a42f1ab7ce7ca614906898d1f414；inventory c467c7c264da03421a14fabf93c90bc40faa3edfad1a7dfdff802112f1d2237f
 当前状态：INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
@@ -456,8 +456,9 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 数据库：schema39；quick_check ok；FK0；109 tasks/107 attempts；43 public templates/42 published；active0；globalEnabled1/emergencyStop0；per-user/kind concurrency与RPM均500
 备份：schema37 raw archive SHA 7f14c611faab136c1ae8e9579bc47755f7298e4ea6e2bba516c71e85670f8fca；offhost restore inspection b4d58243e88efe1c2c967ffab5f63ed6704d18324a80e8449ec9d3ad77e28e1d PASS
 限制：attempt 86/108/116/120/122为行政取消且禁止重试，PROVIDER_FAILED仅surrogate；3条音频仅改duration元数据；cutover Provider/paid calls=0
-未来授权：本次bridge/final生产授权已消费；用户已单独授权本次GitHub push、v0.6.1 tag和Draft PR，完成后即消费；未来生产读写、真实Provider/付费生成或新发布仍需新授权
-下一步：完成本次GitHub push、v0.6.1 tag和Draft PR；其后只可按新任务处理既有PARTIAL/PAUSED/BLOCK/NOT_STARTED项或可选付费两图/视频抽验
+GitHub：branch codex/unboundry-offline-remediation-2026-08-09已推送；annotated tag v0.6.1 -> f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf；Draft PR https://github.com/jasionia1991-max/unboundry/pull/1
+未来授权：本次bridge/final生产授权与GitHub发布授权均已消费；未来生产读写、真实Provider/付费生成或新发布仍需新授权
+下一步：没有本次发布遗留施工；只可按新任务处理既有PARTIAL/PAUSED/BLOCK/NOT_STARTED项或可选付费两图/视频抽验
 ```
 
 任何恢复者必须优先使用本节；第9节只保留历史，不得执行其“下一步”。
