@@ -1,8 +1,8 @@
 # INC-ECOM-002 电商参考图工作流修复方案与施工断点
 
-状态：`OFFLINE_PRODUCT_REGRESSION_PASS_RELEASE_GATE_PENDING`
+状态：`LOCAL_FORMAL_FULL_PASS_PRODUCTION_REPAIR_PENDING`
 建立日期：`2026-08-15`
-当前阶段：`D2 非发布产品回归926/926通过，正式发布制品门待clean candidate`
+当前阶段：`D4 clean formal full 954/954通过，生产模板修正与真实验收待独立授权`
 
 ## 1. 当前授权与硬边界
 
@@ -151,8 +151,8 @@
 - 审计器回归已修复：首次只读审计把5条短视频模板的合法`text→storyboard`连线误报INVALID；已改为复用画布连接合同，新增m77专项并`9/9 PASS`。
 - 已通过安全定向：m88含确定性Storage busy和1/5/20并行参考图`34/34`；m53 `23/23`；m22+m70+m77 `30/30`；修复旧Text输入提示误伤后m22/m29/m36/m50/m65 `28/28`。上传/签名失败、Provider请求/结果、清理journal、模板发布门、管理页和组预检均由假Provider/OSS验证；真实外部请求0。
 - 最终非发布产品回归：安全入口发现`117 files / 953 tests`；执行全部不依赖正式发布制品的`113 files / 926 tests`，结果`926/926 PASS`，失败/跳过/重试/报告错误/blocked均0，`deniedViteWildcardProbes=516`；文档同步前449-file source/snapshot SHA-256均为`d5836ca074537bb763fbac07722d711ca25b897028a6e48bee9b11272ce958cc`，4173 listener SHA-256仍为`dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae`，suite已清理。
-- full发布制品边界：`m10/m92/m94/m96`共27项依赖clean formal source和不可变release artifact；当前工作树含本批未提交改动，full在`RELEASE_SOURCE_PAIR_DIRTY`处按设计fail-close，`builderInvocations=0`，没有产品断言失败。不得绕过clean门，也不得把926/926称为117-file full PASS；只有未来获准形成clean candidate后才能补跑。
-- 待完成：按本轮授权形成clean bridge/final candidate并跑正式full。真实smoke、生产模板写入修正、用户实页和发布仍未授权。
+- 正式候选与full已完成：bridge `45e9cefe489ffea23970517c420bf9c64a49896b`（v0.5.2）和其唯一直接子final `e1e0e0d33809a519e8856d11135237a6a30ff912`（v0.6.0）已形成，B→F只改`package.json/package-lock.json`三个版本值。clean final上安全入口执行`117/117 specs、954/954 PASS`，失败/跳过/重试/报告错误/blocked均0，`deniedViteWildcardProbes=516`；immutable builder `attempts=1 / builderInvocations=5 / passed=1 / failed=0`；449-file source/snapshot SHA-256均为`0720f06d14e8c3d85ee22e596a28c51f7a1f68b6c1dceb46f66b7bc8633e27e8`，4173 listener SHA-256仍为`dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae`，suite cleaned、exit0。
+- 待完成：生产模板写入修正、受限真实smoke、用户实页和发布均需独立授权；本轮没有生产写入、服务重启、release切换或真实Provider/OSS请求。
 
 ## 7. 当前恢复卡
 
@@ -162,10 +162,12 @@
 本断点建立时 HEAD：812b06531854aed450eb77e977102ada9efc53d2
 package：0.6.0
 当前事件：INC-ECOM-002
-状态：OFFLINE_PRODUCT_REGRESSION_PASS_RELEASE_GATE_PENDING
-当前阶段：D2 非发布产品回归926/926通过，正式发布制品门待clean candidate
+状态：LOCAL_FORMAL_FULL_PASS_PRODUCTION_REPAIR_PENDING
+当前阶段：D4 clean formal full 954/954通过，生产模板修正待授权
 既有脏改动：INC-ECOM-001 热修复、相关测试和历史施工文件，全部保留，不得 reset/clean
-允许：本地代码、测试、文档、临时数据、假 Provider/OSS、动态 loopback
-禁止：并发/OSS路由修改、SSH、生产、真实Provider/OSS、付费、commit/push/tag/PR/发布
-下一步：只读核对最终diff和文档；如用户另行授权commit/candidate，再在clean formal source上补m10/m92/m94/m96与full发布门
+正式候选：bridge 45e9cefe489ffea23970517c420bf9c64a49896b；final e1e0e0d33809a519e8856d11135237a6a30ff912
+正式full：117/117 specs，954/954 PASS，builder 1/5/1/0
+允许：本地证据文档收口
+禁止：并发/OSS路由修改、生产写入/服务、真实Provider/OSS、付费、push/tag/PR/发布
+下一步：等待用户决定是否授权生产模板绑定模型与受限真实验收
 ```

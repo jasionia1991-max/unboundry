@@ -4,7 +4,7 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 ## 2026-08-15 当前离线事件（优先读取）
 
-`INC-ECOM-002 = RELEASE_CANDIDATE_AUTHORIZED / FULL_PENDING`：参考图准备已移到Provider边界之前，整组全图预检、模型显式选择、模板发布兼容门和管理页兼容状态均已实现；1/5/20并行假OSS及Storage busy/上传/签名/Provider/清理故障注入均通过。生产模板只读审计已完成：schema39共19条（18 published、1 archived），`PASS=0 / NEEDS_MODEL=19 / INVALID=0`，问题均为模板执行节点未保存模型；「服装详情页｜面料与工艺拆解」为5个节点缺模型。合法`text→storyboard`曾被候选审计器误报，已修正并新增m77专项`9/9 PASS`。用户已授权本地clean candidate与正式full；仍禁止修改并发500、OSS路由、生产数据/服务、真实Provider/OSS、付费、push/tag/PR和发布。权威断点为 `spec/INC_ECOM_002_REFERENCE_WORKFLOW_REMEDIATION_2026-08-15.md`，模板矩阵为 `spec/INC_ECOM_002_TEMPLATE_COMPATIBILITY_MATRIX_2026-08-15.md`。
+`INC-ECOM-002 = LOCAL_FORMAL_FULL_PASS / PRODUCTION_REPAIR_PENDING`：参考图准备已移到Provider边界之前，整组全图预检、模型显式选择、模板发布兼容门和管理页兼容状态均已实现；1/5/20并行假OSS及Storage busy/上传/签名/Provider/清理故障注入均通过。正式候选为bridge `45e9cefe489ffea23970517c420bf9c64a49896b`与其唯一直接子final `e1e0e0d33809a519e8856d11135237a6a30ff912`，B→F只改package/lock三个版本值。clean final上正式full为`117/117 specs、954/954 PASS`，异常计数全0，builder `attempts=1 / invocations=5 / passed=1`，source/snapshot `0720f06d14e8c3d85ee22e596a28c51f7a1f68b6c1dceb46f66b7bc8633e27e8`，4173不变、suite cleaned。生产只读模板审计为19条全部`NEEDS_MODEL`、`INVALID=0`；仍禁止修改并发500、OSS路由、生产数据/服务、真实Provider/OSS、付费、push/tag/PR和发布。
 
 ## 2026-08-15 最终生产收口（当前权威）
 

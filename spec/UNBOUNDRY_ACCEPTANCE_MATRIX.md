@@ -13,7 +13,7 @@
 2026-08-07 权限管理（PERM-001～012）与公共模板（PUB-001～011）已全部经用户实页验收为 `PASS`，两功能放行门达成；生成安全「并发与频率」上限按用户要求放宽至 1000（v33）。
 2026-08-09 用户实页确认 `STORAGE-004 / PERF-002～005 / DEP-004` 全部通过；六项均由 `USER_RECHECK` 改为 `PASS`，该验收收口时点矩阵无 `USER_RECHECK` 项。
 
-2026-08-15 `INC-ECOM-002 = RELEASE_CANDIDATE_AUTHORIZED / FULL_PENDING`：参考图prepare/send拆锁、Provider前后五类错误、整组task创建前全图预检、模型显式选择、模板edge语义保留、公共模板发布兼容门和管理页状态已实现；Storage busy及1/5/20并行专项通过。生产只读模板审计共19条：18 published、1 archived，全部`NEEDS_MODEL`，`PASS=0 / INVALID=0`；99个执行节点未保存模型，其中published模板87个，「服装详情页｜面料与工艺拆解」为5个。候选审计器的`text→storyboard`误报已修复，m77`9/9 PASS`，冻结清单现为`117 files / 954 tests`。用户已授权形成clean candidate并补正式full；并发500、OSS路由、生产写入/服务、真实Provider/OSS、付费、push/tag/PR和发布仍不在授权内。
+2026-08-15 `INC-ECOM-002 = LOCAL_FORMAL_FULL_PASS / PRODUCTION_REPAIR_PENDING`：参考图prepare/send拆锁、Provider前后五类错误、整组task创建前全图预检、模型显式选择、模板edge语义保留、公共模板发布兼容门和管理页状态已实现；Storage busy及1/5/20并行专项通过。正式bridge `45e9cefe489ffea23970517c420bf9c64a49896b`与final `e1e0e0d33809a519e8856d11135237a6a30ff912`已形成，B→F仅package/lock三个版本值；clean final正式full `117/117 specs、954/954 PASS`，异常0，builder `1/5/1/0`，source/snapshot `0720f06d14e8c3d85ee22e596a28c51f7a1f68b6c1dceb46f66b7bc8633e27e8`。生产只读模板审计共19条全部`NEEDS_MODEL`、`INVALID=0`；99个执行节点未保存模型，其中published模板87个，「服装详情页｜面料与工艺拆解」为5个。生产写入修正、真实生成、用户实页和发布仍未授权。
 
 2026-08-15 `INC-ECOM-001 = USER_RECHECK`：重复结果 URL 解析与整组执行静默停止已修复，零费用定向 `34/34 PASS`、TypeScript/build PASS；生产已切换到不可变运维热修复 `releases/v0.6.1-hotfix-inc-ecom-001-20260815`。既有任务 `9687eb96-b4b3-44c6-bf40-7fb31a854137` 只轮询原 Provider 任务 `105388646` 后成功，Provider attempt 仍为唯一一条 execution attempt1，没有第二次提交；结果素材 `860bccb1-bb24-4683-9985-4335a5f95b81` 已绑定原节点并通过文件 checksum、schema39 integrity/FK0、active0、公网健康验证。原画布结果与节点错误提示仍须由用户实页确认后才能 `PASS`。
 

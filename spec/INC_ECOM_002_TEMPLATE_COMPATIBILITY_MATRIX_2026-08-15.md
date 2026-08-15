@@ -46,4 +46,4 @@
 
 生产只读审计共读取 19 条模板：18 条 published、1 条 archived；结果为 `PASS=0 / NEEDS_MODEL=19 / INVALID=0`。唯一问题代码为 `MODEL_SELECTION_REQUIRED`，共 99 个节点，其中 published 模板 87 个。首次审计曾把五条短视频模板的合法 `text→storyboard` 画布连线误报为 `INVALID`；根因是审计器把非生成型 Storyboard 错当作四类生成输入，现已改为复用画布连接合同，并新增专项测试，m77 当前 `9/9 PASS`。这说明图结构未发现确定性非法项，但不等于真实出图、用户验收或发布证明。
 
-离线自动证据：模板发布/恢复/管理页/导入语义专项已通过；Storyboard审计回归修复后 m77 `9/9 PASS`。此前非发布产品回归为`926/926 PASS`；新增专项使冻结清单更新为`117 files / 954 tests`，正式 clean candidate full 仍待本轮执行。
+离线自动证据：模板发布/恢复/管理页/导入语义专项已通过；Storyboard审计回归修复后 m77 `9/9 PASS`。正式final候选 `e1e0e0d33809a519e8856d11135237a6a30ff912` 上clean full为`117/117 specs、954/954 PASS`，异常计数全0，builder `1/5/1/0`。该证据不写生产模板，也不替代真实出图和用户验收。
