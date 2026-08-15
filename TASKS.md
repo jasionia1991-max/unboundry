@@ -3,6 +3,14 @@
 更新时间：2026-08-15
 状态：`生产已运行 v0.6.0/schema39；REM-000 = PASS、REM-001～REM-009B = USER_REVIEW、REM-010/011 = PASS；G7（本次 v0.6.0）= PASS；PRODUCTION = LIVE / USER ACCEPTED；真实生成已开启，DEP-003/005/006/007/010 与 OPS-002 已完成。最终切换为人工受控 bounded cutover，不冒充新的 formal controller/full regression PASS；切换期间 Provider/付费生成调用仍为0，后续获明确授权的唯一真实生成另行记录。`
 
+### 2026-08-15 电商模板封面发布（INC-ECOM-004）
+
+- 状态：`PRODUCTION_STATIC_COVERS_DEPLOYED / USER_VISUAL_REVIEW`。16条电商模板封面已发布，生产18条published模板现为`withPreview=18 / withoutPreview=0`；最终视觉取舍仍等用户刷新模板面板确认。
+- 本地内容commit `d908c4b3824cd36638f02fec51cbe335f6aacd52`；构建PASS、封面源/构建副本16/16哈希一致、m77公共模板专项`9/9 PASS`。来源与授权记录在`spec/ecommerce-template-cover-sources.json`，文件receipt在`spec/ecommerce-template-cover-receipt.json`。
+- 生产采用formal `v0.6.0` base manifest `5386c744…47b1`上的有界静态内容叠加；最终manifest `340452f7f407cb3ab18a15cd8d4b4ab73b42a860238ac0306df67047758ed7a9`、inventory `1d795f29e256da4e8fefd8b446ba42f114a3d8ba2f431fb1220559a04b12f464`，不冒充重新运行formal builder或full regression。
+- 首轮上线后公网哈希门发现只绑定`client/public`、未绑定Vite preview实际服务的`dist/client`，因此返回HTML fallback；该source-only产物已保留在`/opt/unboundry/retired-releases/20260815T081400Z-inc-ecom-004-source-only/v0.6.0`。修正后双目录各16个文件均入inventory，二次切换后公网16/16均为`200 image/jpeg`且SHA逐项相符。
+- 停机备份与恢复验证在`/var/lib/unboundry-rollbacks/inc-ecom-004-20260815T080758Z`，原formal release保存在`/opt/unboundry/retired-releases/20260815T080758Z-pre-inc-ecom-004/v0.6.0`。上线后service active/NRestarts0，schema39 quick_check ok/FK0/active0，tasks109、Provider attempts107；并发/RPM仍全部500，Provider配置和数据manifest未变，OSS未改、真实生成/付费请求0、未push/tag/PR。
+
 ### 2026-08-15 GPT Image 真实 smoke 超时修复（INC-ECOM-003）
 
 - 状态：`REFERENCE/OSS/PREFLIGHT_PASS / GPT_IMAGE_TIMEOUT_REPAIR_DEPLOYED / ONE_REQUEST_REAL_IMAGE_SMOKE_PASS / USER_RESULT_REVIEW`。目标模板另外两个图片节点、完整三图和用户结果验收继续`PENDING`。

@@ -1,11 +1,21 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`45`
+断点版本：`46`
 更新时间：`2026-08-15`
-状态：`INC_ECOM_003_ONE_REQUEST_REAL_IMAGE_SMOKE_PASS_USER_RESULT_REVIEW`
+状态：`INC_ECOM_004_PRODUCTION_STATIC_COVERS_DEPLOYED_USER_VISUAL_REVIEW`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
-## 0. 当前新事件：INC-ECOM-003
+## 0. 当前新事件：INC-ECOM-004
+
+- 用户已明确授权发布模板封面，并单独确认继续使用`v0.6.0`；该一次性生产授权已经消费。
+- 16张1200×675 JPG已发布，生产18条published模板现全部有`preview_image`。公网逐文件核对为16/16 HTTP200、`image/jpeg`且SHA与receipt一致；live/ready/version/root均200。
+- 最终内容commit `d908c4b3824cd36638f02fec51cbe335f6aacd52`；base formal manifest `5386c744…47b1`，有界内容叠加manifest `340452f7…d7a9`、inventory `1d795f29…f464`。该叠加同时绑定`client/public/templates`和实际preview目录`dist/client/templates`，不声明fresh formal builder/full regression PASS。
+- 首轮source-only叠加被上线后公网哈希门立即检出HTML fallback，未被误记为PASS；该产物已退役保留。最终修正版切换后service active、NRestarts0、schema39 quick_check ok/FK0、active0。
+- 停机备份和临时恢复验证：`/var/lib/unboundry-rollbacks/inc-ecom-004-20260815T080758Z`；原formal release：`/opt/unboundry/retired-releases/20260815T080758Z-pre-inc-ecom-004/v0.6.0`；首轮source-only release：`/opt/unboundry/retired-releases/20260815T081400Z-inc-ecom-004-source-only/v0.6.0`。
+- 零费用边界：发布前后tasks109、Provider attempts107、active0；per-user/RPM/Text/Image/Video/Audio仍全部500，`provider_profiles`逐行未变，数据manifest SHA仍`980e90a9…28d0`，OSS未改；未调用Provider、未生成、未push/tag/PR。
+- 当前结论：`PRODUCTION_STATIC_COVERS_DEPLOYED / USER_VISUAL_REVIEW`。技术发布门已通过，封面视觉选择仍待用户刷新模板面板确认。
+
+## 0A. 前一事件：INC-ECOM-003
 
 - 用户在180秒修复部署后重新授权并要求控制成本：保持GPT Image 2专用协议、3:4、1K，只对同一节点再提交一次，不运行另外两图或视频，不重试。
 - 新task `9e4faf78-e466-4ae7-8799-2c9d2150bed6`、Provider attempt 132约58.6秒一次成功，result asset `9f755d07-42df-47a0-9bd1-443030244a59`已绑定原节点；ready PNG `1023×1537`、1,545,396 bytes、SHA-256 `ecf51e6c…ddb44`。
@@ -18,7 +28,7 @@
 - 当前生产：service active；公网live/ready/version/root正常；schema39 quick_check ok、active0、tasks109、Provider attempts107、pending publication0。用户设置的per-user/RPM/Text/Image/Video/Audio仍全部500；Provider/Storage密文配置SHA部署前后未变，OSS未改。
 - 当前状态：`REFERENCE/OSS/PREFLIGHT_PASS / GPT_IMAGE_TIMEOUT_REPAIR_DEPLOYED / ONE_REQUEST_REAL_IMAGE_SMOKE_PASS / USER_RESULT_REVIEW`。完整三图、视频和用户实页结果继续`PENDING`；另外两图、push/tag/PR都没有授权。
 
-## 0A. 前一事件：INC-ECOM-002
+## 0B. 前一事件：INC-ECOM-002
 
 - 用户已确认电商参考图工作流完整修复方案；随后追加授权正式候选部署、生产模板模型绑定、备份、必要停启与零付费页面/API复核。
 - 权威事件断点：`spec/INC_ECOM_002_REFERENCE_WORKFLOW_REMEDIATION_2026-08-15.md`。恢复者必须在本文件当前结论前先读取它。
