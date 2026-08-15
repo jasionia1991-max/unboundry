@@ -13,7 +13,7 @@
 ## 技术与上线证据
 
 - 正式安全全量：`118/118 specs、965/965 tests PASS`，所有异常计数为0。
-- 生产：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.2-inc-ui-002-20260816`，公网version/live/ready与静态资源哈希通过。
+- 生产最初发布到`v0.6.2-inc-ui-002-20260816`，随后视频协议热修复发布到`/opt/unboundry/releases/v0.6.2-inc-video-001-20260816`；公网version/live/ready通过，上一release完整保留。
 - 数据：schema39、quick_check ok、FK0，生成任务、Provider attempt、模板和安全阈值切换前后相同。
 - 成本：本次发布没有真实Provider调用、没有付费生成、没有OSS写入。
 - 回滚：`/var/lib/unboundry-rollbacks/inc-ui-002-20260815T180956Z`的源备份和独立恢复副本均通过逻辑与清单检查。
@@ -26,6 +26,8 @@
 
 ## 真实生产工作流复验
 
-用户授权真实API消耗后，生产项目`v0.6.2 真实工作流低成本验收`完成`Text → Image`整组生成：Text先完成，Image随后启动；整组两个任务均一次成功、无重试。图片限制为`1:1 / 1K`，结果PNG 1024×1024、OSS ready；刷新后完整工作流和结果仍存在。另有一次单Text预检成功。为控制成本，没有运行视频、音频或额外图片。
+用户授权真实API消耗后，生产项目`v0.6.2 真实工作流低成本验收`完成`Text → Image`整组生成：Text先完成，Image随后启动；整组两个任务均一次成功、无重试。图片限制为`1:1 / 1K`，结果PNG 1024×1024、OSS ready；刷新后完整工作流和结果仍存在。另有一次单Text预检成功。
 
-生产复验后公网仍为v0.6.2 active/schema39，数据库quick_check ok、FK0、active generation 0。详细任务与素材证据见`spec/V0_6_2_REAL_WORKFLOW_SMOKE_2026-08-16.json`。
+真实视频排障确认Grok首帧需要中转站`images`数组契约，代码已全局修复并通过`118/118 specs、965/965 tests`。修复后Grok请求被受理，但中转上游两次0%网络超时，故停止重试并把默认视频模型切为Seedance。随后使用无人物文本、4秒/480p/无音频完成一次Seedance视频，task`c0269665-4db5-46a1-bc13-2d5574a66cca`一次成功；结果MP4为864×496、4.042秒、OSS ready，刷新后仍可播放。真人参考图被Seedance内容安全拒绝的记录保留为Provider限制，不冒充应用故障。
+
+生产复验后公网仍为v0.6.2 active/schema39，数据库quick_check ok、FK0、active generation 0。详细任务、素材与热修复证据见`spec/V0_6_2_REAL_WORKFLOW_SMOKE_2026-08-16.json`、`spec/INC_VIDEO_001_PRODUCTION_RECEIPT_2026-08-16.json`。

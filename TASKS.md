@@ -1,7 +1,15 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-16
-状态：`生产已运行 v0.6.2/schema39；INC-UI-001/002已发布且自动全量通过，等待用户线上复验；INC-ECOM-001～007已按各自证据边界完成用户收口；REM-000～011（含009A/009B）= PASS；PRODUCTION = LIVE。`
+状态：`生产已运行 v0.6.2/schema39；INC-VIDEO-001已发布并完成真实Seedance视频闭环，等待用户次日复验；INC-UI-001/002已发布且自动全量通过，等待用户线上复验；INC-ECOM-001～007已按各自证据边界完成用户收口；REM-000～011（含009A/009B）= PASS；PRODUCTION = LIVE。`
+
+### 2026-08-16 视频协议热修复与真实生成（INC-VIDEO-001）
+
+- 状态：`PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_RECHECK`。Grok首帧已按中转站契约从`first_frame_url`改为`images`数组并限制恰好1张；定向`m57 9/9`、正式全量`118/118 specs、965/965 tests`通过，异常0。
+- 生产：current已切到`/opt/unboundry/releases/v0.6.2-inc-video-001-20260816`，commit`959c1e287fb25943ca13037332030e99b39725be`、tree`6539868d…3845`、inventory`cf1c6e1a…40b5`；旧`v0.6.2-inc-ui-002-20260816`完整保留。公网v0.6.2 live/ready正常，service active+enabled、NRestarts0。
+- 真实结论：Grok修复后请求已按正确契约受理，但中转上游两次0%网络超时，停止继续重试；默认视频模型改为`Seedance 2.0 Mini`。包含真人参考图的Seedance请求被内容安全拒绝，不视为工作流故障且未重试。
+- 成功闭环：Seedance文生视频task`c0269665-4db5-46a1-bc13-2d5574a66cca`一次成功，4秒/480p/无音频；asset`fbfed94d-e41e-4858-8e7e-96c4eae98c4a.mp4`为OSS ready、864×496、4.042秒、1,117,495 bytes。页面刷新后视频仍可播放，浏览器readyState4且media error为空。
+- 收尾：数据库tasks126/attempts125/active0、quick_check ok、FK0；应用账本记录成功视频actual cost`568316 microunits CNY`，不冒充Provider账单。详细凭证：`spec/INC_VIDEO_001_PRODUCTION_RECEIPT_2026-08-16.json`、`spec/V0_6_2_REAL_WORKFLOW_SMOKE_2026-08-16.json`。未push/tag/更新PR。
 
 ### 2026-08-16 画布框选、OSS 素材显示与节点长标题（INC-UI-002）
 
@@ -16,11 +24,12 @@
 
 ### 2026-08-16 v0.6.2 真实工作流低成本验收
 
-- 状态：`PRODUCTION_REAL_WORKFLOW_SMOKE_PASS / USER_RECHECK`。用户明确允许真实API消耗并要求控制成本；只运行2次文字和1次最低规格`1:1 / 1K`图片，不运行视频/音频，不重试。
+- 状态：`PRODUCTION_REAL_WORKFLOW_SMOKE_PASS / USER_RECHECK`。用户明确允许真实API消耗并要求控制成本；完成2次文字、1次最低规格`1:1 / 1K`图片和1次`4秒 / 480p / 无音频`成功视频。视频排障过程另有失败/安全拒绝证据，Grok只手动重试1次，确认上游网络超时后不再重试。
 - 整组流水：项目`5e1f6462-4ac3-4f35-b2f0-72462987e318`内建立`Text → Image`并打组。整组Text任务`54834dc5-e376-449d-80b9-7efd183a7e4e`先于Image完成，Image任务`6dc65b87-e564-4eac-b44b-af1867efe134`随后启动并成功；两者均attempt1、Provider attempt1、retry0。
 - 结果：Text回写`挺括免烫垂感显瘦 通勤百搭白衬衫`；Image结果asset`427ee182-5f42-4bf8-a932-4c8ef81b3969`为PNG 1024×1024、1,298,394 bytes、OSS ready、checksum`63377430…5ec9`。浏览器刷新后Group、边、文字和图片仍在，图片natural size 1024×1024，控制台warning/error为0。
 - 页面：`/connections?from=<projectId>`显示双返回；“返回画布”精确回到该项目，“返回工作空间”进入`/canvas/projects?from=<projectId>`，标题分别为`我的连接｜无央`、项目名和`工作空间｜无央`。
-- 收尾：公网v0.6.2 ready active/schema39；数据库tasks121/attempts119/active0、quick_check ok、FK0。系统账本的microunits仅为应用审计字段，不冒充Provider最终账单。详细凭证：`spec/V0_6_2_REAL_WORKFLOW_SMOKE_2026-08-16.json`。
+- 视频：默认模型已切到Seedance；task`c0269665-4db5-46a1-bc13-2d5574a66cca`一次成功，MP4为864×496、4.042秒、OSS ready，刷新后仍可播放。真人参考图可能被Seedance内容安全拒绝，这是Provider限制，不是调度/OSS失败。
+- 收尾：公网v0.6.2 ready active/schema39；数据库tasks126/attempts125/active0、quick_check ok、FK0。系统账本的microunits仅为应用审计字段，不冒充Provider最终账单。详细凭证：`spec/V0_6_2_REAL_WORKFLOW_SMOKE_2026-08-16.json`。
 
 ### 2026-08-15 整组工作流流水线全局修复（INC-ECOM-007）
 

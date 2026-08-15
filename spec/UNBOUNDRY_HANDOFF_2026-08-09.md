@@ -2,6 +2,10 @@
 
 > 写给下一个接手的人/AI agent。目标：看完本文后不需要向用户问“项目在哪、怎么跑、怎么发布、有什么红线”。
 
+## 当前新任务：INC-VIDEO-001（2026-08-16，已发布且真实视频PASS，待用户次日复验）
+
+Grok首帧中转协议已从`first_frame_url`修为`images`数组并限制恰好1张，定向`m57 9/9`及正式全量`118/118 specs、965/965 tests`通过。生产已切到`/opt/unboundry/releases/v0.6.2-inc-video-001-20260816`，公网v0.6.2 live/ready正常，schema39无迁移。修复后Grok请求能被正确契约受理，但中转上游两次0%网络超时，已停止重试并将默认视频模型改为`Seedance 2.0 Mini`。Seedance文生视频task`c0269665-4db5-46a1-bc13-2d5574a66cca`一次成功，4秒/480p/无音频，MP4已OSS ready，刷新后浏览器可播放；真人参考图会被Seedance内容安全拒绝，不能把该Provider限制写成应用故障。当前数据库tasks126/attempts125/active0、quick_check ok、FK0。详细凭证为`spec/INC_VIDEO_001_PRODUCTION_RECEIPT_2026-08-16.json`和`spec/V0_6_2_REAL_WORKFLOW_SMOKE_2026-08-16.json`；未push/tag/更新PR。
+
 ## 当前新任务：INC-UI-002（2026-08-16，已发布待用户复验）
 
 用户要求一次性修复巨大Group附近框选误选、OSS素材坏媒体视觉和七类节点长标题。权威记录为`spec/INC_UI_002_CANVAS_SELECTION_MEDIA_TITLE_REMEDIATION_2026-08-16.md`。最终合同：普通节点继续Partial框选，只有Group要求选框完整包含；Image/Video/Audio保留asset/source并使用统一灰阶恢复层，CSP只在`img-src/media-src`放行`https://*.aliyuncs.com`；七类标题统一ellipsis和完整title。最终安全全量`118/118 specs、965/965 PASS`，异常0、4173不变、真实Provider/OSS/付费请求0。源码commit`8ebe705…`，生产已原子切换到`/opt/unboundry/releases/v0.6.2-inc-ui-002-20260816`，公网version/live/ready、标题、favicon、CSP和静态资源哈希通过；schema39数据、模板和并发保持不变。当前为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，未push/tag/更新PR。生产凭证为`spec/INC_UI_002_PRODUCTION_RECEIPT_2026-08-16.json`。
@@ -20,10 +24,10 @@
 
 ## 0. 2026-08-16 最终生产状态（当前权威）
 
-- 当前状态：`REM-000～011（含009A/009B）PASS / PRODUCTION LIVE / INC-UI-001/002已发布待用户复验 / INC-ECOM-001～007按各自证据边界完成用户收口`。
-- 生产运行 `v0.6.2/schema39`，`/opt/unboundry/current -> releases/v0.6.2-inc-ui-002-20260816`；service active、NRestarts0、127.0.0.1:4173。公网live/ready/version/root正常，version 0.6.2、ready active/schema39；公网主JS、CanvasShell、CSS、WorkspacePage和favicon哈希与release一致。
-- v0.6.2源码commit`8ebe70544828a3aebe258def9d658e1ab68a6104`/tree`ad1b93bc68ca0e09df410d5b5904b33bd4b22686`，release inventory`f1606bded48644149cc328017d2fa74f8932512c8f0747714f7f5ec81e139f2e`；备份/恢复目录`/var/lib/unboundry-rollbacks/inc-ui-002-20260815T180956Z`，清单一致`b1754f94…c2909`。
-- 数据最新核验：schema39、quick_check ok、FK0、active generation0、118 tasks/116 provider attempts、43 public templates（42 published）；生成开关、并发/RPM500、模板、Provider和OSS配置前后不变，发布期间Provider/付费调用与OSS写入0。
+- 当前状态：`REM-000～011（含009A/009B）PASS / PRODUCTION LIVE / INC-VIDEO-001真实视频PASS待用户次日复验 / INC-UI-001/002已发布待用户复验 / INC-ECOM-001～007按各自证据边界完成用户收口`。
+- 生产运行 `v0.6.2/schema39`，`/opt/unboundry/current -> releases/v0.6.2-inc-video-001-20260816`；service active+enabled、NRestarts0、127.0.0.1:4173。公网live/ready/version/root正常，version 0.6.2、ready active/schema39；当前默认视频模型为Seedance 2.0 Mini。
+- 视频热修复源码commit`959c1e287fb25943ca13037332030e99b39725be`/tree`6539868d3aa5df8be2fdbf3d10e8c6414ffe3845`，release inventory`cf1c6e1aa33438e0d05dba11593f8095a30795a03a51dcd36f48d7d31ab340b5`；上一`v0.6.2-inc-ui-002-20260816`完整保留，原备份/恢复材料不变。
+- 数据最新核验：schema39、quick_check ok、FK0、active generation0、126 tasks/125 provider attempts、43 public templates（42 published）。真实`Text → Image`流水与Seedance文生视频均成功并刷新持久；Grok中转上游网络超时与真人参考图内容安全限制已分开记录。
 
 以下条目保留v0.6.0/v0.6.1各增量发布的历史证据；出现“当前”字样时只代表该历史时点，不覆盖上方v0.6.2权威状态。
 - INC-ECOM-004已为16条电商模板发布真实封面；生产18条published模板现`withPreview=18 / withoutPreview=0`。最终静态内容叠加绑定本地commit `d908c4b3824cd36638f02fec51cbe335f6aacd52`，manifest `340452f7…d7a9`、inventory `1d795f29…f464`；公网16张均HTTP200、`image/jpeg`且SHA逐项相符。用户已确认“都通过了”，状态为`PRODUCTION_STATIC_COVERS_DEPLOYED / USER_VISUAL_PASS`。
@@ -126,7 +130,7 @@ Docker Ubuntu 子门的 rootless-userns 阻塞已按设计 fail-close。随后�
 ## 5. 服务器运维事实
 
 - SSH：`ssh live-cockpit`（`~/.ssh/config` 已配置，腾讯云轻量）。
-- 服务：systemd `unboundry.service`、release `/opt/unboundry/releases/v0.6.2-inc-ui-002-20260816`、current `/opt/unboundry/current`、数据 `/var/lib/unboundry`、监听 `127.0.0.1:4173`；旧 `unboundry-replica.service` / `/opt/unboundry-app` 仅为历史计划。当前上线事实不授权未来 stop/restart/current切换。
+- 服务：systemd `unboundry.service`、release `/opt/unboundry/releases/v0.6.2-inc-video-001-20260816`、current `/opt/unboundry/current`、数据 `/var/lib/unboundry`、监听 `127.0.0.1:4173`；上一`v0.6.2-inc-ui-002-20260816`完整保留，旧 `unboundry-replica.service` / `/opt/unboundry-app` 仅为历史计划。当前上线事实不授权未来 stop/restart/current切换。
 - **历史风险事实**：现有 v0.5.1 preview 会在首次数据库请求（如 `/api/auth/status`）时懒迁移/回填。新施工禁止用健康接口“激活迁移”；REM-009/010 必须将就绪检查与显式迁移完全分开。
 - **历史运行事实**：本地 4173 有守护进程可能自动拉起。当前 REM 施工禁止 kill、重启、探测或复用 4173；旧的黑屏重启处理不是当前施工指令。
 - 版本更新推送：`/api/version` + `/api/updates`（SSE），发布后用户端会弹“版本已更新”提示，属于正常机制。

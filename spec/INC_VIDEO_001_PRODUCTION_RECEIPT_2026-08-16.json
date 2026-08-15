@@ -1,0 +1,64 @@
+{
+  "format": "unboundry-production-hotfix-receipt-v1",
+  "incident": "INC-VIDEO-001",
+  "status": "PRODUCTION_PUBLISHED_REAL_VIDEO_PASS_USER_RECHECK",
+  "releasedAt": "2026-08-16T03:19:00+08:00",
+  "verifiedAt": "2026-08-16T03:36:30+08:00",
+  "version": "0.6.2",
+  "schemaVersion": 39,
+  "release": {
+    "path": "/opt/unboundry/releases/v0.6.2-inc-video-001-20260816",
+    "previousPath": "/opt/unboundry/releases/v0.6.2-inc-ui-002-20260816",
+    "sourceCommit": "959c1e287fb25943ca13037332030e99b39725be",
+    "sourceTree": "6539868d3aa5df8be2fdbf3d10e8c6414ffe3845",
+    "sourceArchiveSha256": "1da863f3160fbfb9ae9fe0289ebe70a33f7f94c9dc325960363bc3b913fd228c",
+    "distArchiveSha256": "a3fc301f7f22c4ecf4db97395444c2a9d40a72b9c837a4c5a7f8a0847243a2c5",
+    "inventorySha256": "cf1c6e1aa33438e0d05dba11593f8095a30795a03a51dcd36f48d7d31ab340b5",
+    "generationTasksSha256": "b432d9728c0bc33203f0939b08b166ec90d1834d41fda4594fd0cb0373de8482",
+    "note": "APPLICATION-RELEASE.json内sourceCommit字段记录为959c1e213eb97d69f5a9b02d8ef965edfd0358cc；本地真实提交为959c1e287fb25943ca13037332030e99b39725be，二者sourceTree均以本凭证记录的6539868d...3845作为内容闭包证据。"
+  },
+  "change": {
+    "model": "grok-imagine-video-1.5-preview",
+    "before": "首帧被发送为first_frame_url，和中转站模型契约不一致",
+    "after": "首帧发送为images数组，并在提交前强制恰好1张",
+    "databaseMigration": false,
+    "defaultVideoModel": "Seedance 2.0 Mini"
+  },
+  "automatedValidation": {
+    "targeted": "m57 9/9 PASS",
+    "full": "118/118 specs, 965/965 tests PASS",
+    "failed": 0,
+    "skipped": 0,
+    "retries": 0
+  },
+  "realValidation": {
+    "projectId": "5e1f6462-4ac3-4f35-b2f0-72462987e318",
+    "textTask": "54834dc5-e376-449d-80b9-7efd183a7e4e",
+    "imageTask": "6dc65b87-e564-4eac-b44b-af1867efe134",
+    "videoTask": "c0269665-4db5-46a1-bc13-2d5574a66cca",
+    "videoAsset": "fbfed94d-e41e-4858-8e7e-96c4eae98c4a.mp4",
+    "textBeforeImage": "PASS",
+    "videoGeneration": "PASS",
+    "videoReloadPersistence": "PASS",
+    "videoOssReady": "PASS"
+  },
+  "productionAfter": {
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "nRestarts": 0,
+    "publicVersion": "0.6.2",
+    "publicLive": "PASS",
+    "publicReady": "active-schema39",
+    "databaseQuickCheck": "ok",
+    "foreignKeyViolations": 0,
+    "generationTasks": 126,
+    "providerAttempts": 125,
+    "activeGenerationTasks": 0,
+    "warningOrHigherJournalEntriesSinceHotfix": 0
+  },
+  "rollback": {
+    "previousReleaseIntact": true,
+    "previousPath": "/opt/unboundry/releases/v0.6.2-inc-ui-002-20260816"
+  },
+  "userAcceptance": "PENDING_NEXT_DAY_RECHECK"
+}

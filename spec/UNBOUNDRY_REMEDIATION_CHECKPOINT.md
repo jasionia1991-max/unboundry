@@ -1,11 +1,20 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`60`
+断点版本：`61`
 更新时间：`2026-08-16`
-状态：`INC_UI_002_LOCAL_IMPLEMENTED_AUTO_PASS_USER_RECHECK_V0_6_2_LOCAL_ONLY`
+状态：`INC_VIDEO_001_PRODUCTION_PUBLISHED_REAL_VIDEO_PASS_USER_RECHECK_V0_6_2`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
-## 0. 当前新事件：INC-UI-002（已发布，待用户线上复验）
+## 0. 当前新事件：INC-VIDEO-001（已发布，真实视频PASS，待用户次日复验）
+
+- 用户明确授权真实API消耗并要求尽量控制成本，目标是次日能正常使用工作流生成。
+- 根因与修复：`grok-imagine-video-1.5-preview`首帧中转契约要求`images`数组，旧代码发送`first_frame_url`；现已在统一提交路径映射为数组并限制恰好1张。定向m57 `9/9 PASS`，正式全量`118/118 specs、965/965 tests PASS`，失败/跳过/重试0。
+- 生产已切到`/opt/unboundry/releases/v0.6.2-inc-video-001-20260816`，源码commit`959c1e287fb25943ca13037332030e99b39725be`、tree`6539868d…3845`、inventory`cf1c6e1a…40b5`；上一`v0.6.2-inc-ui-002-20260816`完整保留。公网v0.6.2 live/ready正常，service active+enabled、NRestarts0，schema39无迁移。
+- Grok修复后请求已按正确契约受理，但中转上游两次在0%网络超时；停止继续重试并把默认视频模型切到`Seedance 2.0 Mini`。真人参考图被Seedance内容安全拒绝，保留为Provider限制且未重试。
+- 真实成功：Seedance文生视频task`c0269665-4db5-46a1-bc13-2d5574a66cca`一次成功，4秒/480p/无音频；asset`fbfed94d-e41e-4858-8e7e-96c4eae98c4a.mp4`为OSS ready、864×496、4.042秒、1,117,495 bytes。刷新后浏览器readyState4、media error为空。
+- 收尾：数据库tasks126/attempts125/active0、quick_check ok、FK0；应用账本记录成功视频actual cost`568316 microunits CNY`，不冒充Provider最终账单。详细凭证为`spec/INC_VIDEO_001_PRODUCTION_RECEIPT_2026-08-16.json`、`spec/V0_6_2_REAL_WORKFLOW_SMOKE_2026-08-16.json`。未push/tag/更新PR。
+
+## 0A. 前一事件：INC-UI-002（已发布，待用户线上复验）
 
 - 用户授权一次性修复三个全局UI问题，并要求对齐既有灰阶UI规范：巨大Group附近框选三个节点时误选大范围、OSS素材出现原生坏媒体图标/失败边框、七类节点长标题显示不全。
 - 权威方案与完成证据：`spec/INC_UI_002_CANVAS_SELECTION_MEDIA_TITLE_REMEDIATION_2026-08-16.md`。
@@ -18,7 +27,7 @@
 - 备份与独立恢复副本为`/var/lib/unboundry-rollbacks/inc-ui-002-20260815T180956Z`，清单SHA一致`b1754f94…c2909`；schema39/quick_check ok/FK0，tasks118/attempts116/active0、模板43/42和并发500前后不变，Provider/付费调用/OSS写入0。
 - 当前状态为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；未获新的push/tag/PR授权，GitHub保持既有状态。生产凭证见`spec/INC_UI_002_PRODUCTION_RECEIPT_2026-08-16.json`。
 
-## 0A. 前一事件：INC-UI-001
+## 0B. 前一事件：INC-UI-001
 
 - 用户要求先为两项优化建立防失忆的详细修改方案：设置页返回进入前的真实项目并新增「返回工作空间」；浏览器标签显示无央 favicon 和准确页面/项目标题。
 - 权威方案：`spec/INC_UI_001_SETTINGS_RETURN_AND_BROWSER_IDENTITY_PLAN_2026-08-15.md`。
@@ -28,7 +37,7 @@
 - NAV-001～004与BRAND-001～003保持`USER_RECHECK`，不可在用户可见浏览器确认前记PASS；该功能已随package/生产v0.6.2发布。
 - 当前`v0.6.1`标签与Draft PR #1未更新；INC-UI-001已随v0.6.2生产发布，用户线上复验前仍为`USER_RECHECK`。
 
-## 0B. 前一事件：INC-ECOM-007
+## 0C. 前一事件：INC-ECOM-007
 
 - 用户确认整组运行必须按依赖流水：多入参全部本轮成功并保存后才运行；分流独立推进；汇流严格等待全部；分支失败只阻塞后代。
 - 已确认是通用执行器缺陷：全图动态预检过早、真实resolver的blocked空态绕过延后分支、测试夹具失真、整层屏障以及节点运行时输入快照可能陈旧。
@@ -40,7 +49,7 @@
 - 公网version 0.6.1、live/ready和主JS哈希PASS；service active/enabled、NRestarts0。schema39 quick_check ok/FK0，tasks109/attempts107/active0、模板43/42及并发/RPM 500前后不变；Provider/付费调用0。
 - 用户随后在v0.6.1线上实页完成复验并明确回复“通过通过”；INC-ECOM-007收口为`PRODUCTION_PUBLISHED_USER_PASS`。权威记录与生产凭证见`spec/INC_ECOM_007_WORKFLOW_PIPELINE_REMEDIATION_2026-08-15.md`、`spec/INC_ECOM_007_PRODUCTION_RECEIPT_2026-08-15.json`。
 
-## 0C. 前一事件：INC-ECOM-006
+## 0D. 前一事件：INC-ECOM-006
 
 - 用户明确“确定 发布”；第三批12条声明式工作流已单事务导入生产，线上继续显示`v0.6.0`。
 - 最终停机一致备份：`/var/lib/unboundry-rollbacks/inc-ecom-006-20260815T101814Z`，数据库SHA `1d606cdf…f8d9d`，数据清单SHA `07be6b05…a274`、证据清单SHA `432aa233…70b6`并全量验签PASS。
@@ -50,7 +59,7 @@
 - 用户随后明确“都通过了”，当前为`PRODUCTION_PUBLISHED_USER_PASS`；未为验收运行真实生成。
 - 证据：`spec/INC_ECOM_006_ECOMMERCE_WORKFLOW_BATCH_3_2026-08-15.md`、`spec/ecommerce-workflow-batch-3-production-receipt.json`。
 
-## 0C. 前一事件：INC-ECOM-005
+## 0E. 前一事件：INC-ECOM-005
 
 - 用户要求补上此前列出的第二批P0/P1/P2工作流，并确认模板是否写死；随后明确确认继续`v0.6.0`并允许发布。12条已以声明式JSON数据事务导入生产，不是前端组件条件分支。
 - 停机一致备份与恢复验证目录`/var/lib/unboundry-rollbacks/inc-ecom-005-20260815T092428Z`；恢复数据库SHA`5a4df10e…c3de`，最终清单SHA`8313a3b6…f503`。
@@ -59,7 +68,7 @@
 - 用户随后明确第二批实页验收“通过1”，INC-ECOM-005收口为`PRODUCTION_PUBLISHED_USER_PASS`。用户同时要求开始第三批优秀工作流调研，当前只授权调研、本地数据包与零付费验证，不自动授权第三批生产发布。
 - 详细记录：`spec/INC_ECOM_005_ECOMMERCE_WORKFLOW_BATCH_2_2026-08-15.md`；receipt：`spec/ecommerce-workflow-batch-2-production-receipt.json`。
 
-## 0D. 前一事件：INC-ECOM-004
+## 0F. 前一事件：INC-ECOM-004
 
 - 用户已明确授权发布模板封面，并单独确认继续使用`v0.6.0`；该一次性生产授权已经消费。
 - 16张1200×675 JPG已发布，生产18条published模板现全部有`preview_image`。公网逐文件核对为16/16 HTTP200、`image/jpeg`且SHA与receipt一致；live/ready/version/root均200。
@@ -69,7 +78,7 @@
 - 零费用边界：发布前后tasks109、Provider attempts107、active0；per-user/RPM/Text/Image/Video/Audio仍全部500，`provider_profiles`逐行未变，数据manifest SHA仍`980e90a9…28d0`，OSS未改；未调用Provider、未生成、未push/tag/PR。
 - 当前结论：`PRODUCTION_STATIC_COVERS_DEPLOYED / USER_VISUAL_PASS`。技术发布门与用户视觉确认均已通过。
 
-## 0E. 前一事件：INC-ECOM-003
+## 0G. 前一事件：INC-ECOM-003
 
 - 用户在180秒修复部署后重新授权并要求控制成本：保持GPT Image 2专用协议、3:4、1K，只对同一节点再提交一次，不运行另外两图或视频，不重试。
 - 新task `9e4faf78-e466-4ae7-8799-2c9d2150bed6`、Provider attempt 132约58.6秒一次成功，result asset `9f755d07-42df-47a0-9bd1-443030244a59`已绑定原节点；ready PNG `1023×1537`、1,545,396 bytes、SHA-256 `ecf51e6c…ddb44`。
@@ -82,7 +91,7 @@
 - 当前生产：service active；公网live/ready/version/root正常；schema39 quick_check ok、active0、tasks109、Provider attempts107、pending publication0。用户设置的per-user/RPM/Text/Image/Video/Audio仍全部500；Provider/Storage密文配置SHA部署前后未变，OSS未改。
 - 当前状态：`REFERENCE/OSS/PREFLIGHT_PASS / GPT_IMAGE_TIMEOUT_REPAIR_DEPLOYED / ONE_REQUEST_REAL_IMAGE_SMOKE_PASS / USER_RESULT_REVIEW`。完整三图、视频和用户实页结果继续`PENDING`；另外两图、push/tag/PR都没有授权。
 
-## 0F. 前一事件：INC-ECOM-002
+## 0H. 前一事件：INC-ECOM-002
 
 - 用户已确认电商参考图工作流完整修复方案；随后追加授权正式候选部署、生产模板模型绑定、备份、必要停启与零付费页面/API复核。
 - 权威事件断点：`spec/INC_ECOM_002_REFERENCE_WORKFLOW_REMEDIATION_2026-08-15.md`。恢复者必须在本文件当前结论前先读取它。
@@ -106,8 +115,8 @@
 - 用户明确允许原生产使用实际 Node `22.23.2`，但 formal manifest 的 Node22.23.1 绑定保持原样，必须对相同候选在生产Node/SHA上做副本兼容补证；不得把waiver写成formal conformance。
 - 用户还授权：仅在维护、旧服务停止、无写者、可恢复原始备份完成并精确复核后，删除唯一 FK 孤儿 `project_metadata rowid=14`；不得扩大为其他生产清理。
 - 真实OSS只读HEAD/GET以及必要的bwrap安装/使用已经纳入最新bridge总授权；只允许按冻结控制器、最小权限和只读对象合同执行。
-- 生产现运行 `/opt/unboundry/current -> releases/v0.6.2-inc-ui-002-20260816`，service active、NRestarts0、监听127.0.0.1:4173；公网live/ready/version/root正常，version 0.6.2、ready active/schema39，主JS哈希与release相同。
-- 数据最新核验：schema39、quick_check ok、FK0、active generation0、118 tasks/116 provider attempts、43 public templates（42 published）；本次发布前后生成开关、并发/RPM 500、模板、Provider和OSS配置均未改变。
+- 生产现运行 `/opt/unboundry/current -> releases/v0.6.2-inc-video-001-20260816`，service active+enabled、NRestarts0、监听127.0.0.1:4173；公网live/ready/version/root正常，version 0.6.2、ready active/schema39。
+- 数据最新核验：schema39、quick_check ok、FK0、active generation0、126 tasks/125 provider attempts、43 public templates（42 published）；默认视频模型为Seedance，Grok仍启用但不再是默认。
 - 原schema37 raw backup SHA `7f14c611faab136c1ae8e9579bc47755f7298e4ea6e2bba516c71e85670f8fca` 已离机恢复PASS，inspection `b4d58243e88efe1c2c967ffab5f63ed6704d18324a80e8449ec9d3ad77e28e1d`。最终技术凭证 SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8` 为 `TECHNICAL_CUTOVER_VERIFIED`。
 - 技术凭证生成时 `userAcceptance=PENDING` 保持不变；用户随后确认生成任务状态可读取，并结合此前确认老项目大量生成/上传素材仍在、第4项正常，生产验收现为`USER PASS`，但不声称全部历史素材逐一验证。
 - 最终切换是人工受控bounded cutover，不冒充新的formal controller/full regression PASS；切换期间Provider/付费调用0。用户明确“都通过了”后，REM-000～011（含009A/009B）均为`PASS`，当前没有IN_PROGRESS REM。
@@ -470,13 +479,13 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 
 ```text
 项目路径：/Users/mymy/Documents/unboundry/app
-本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.2生产源commit 8ebe70544828a3aebe258def9d658e1ab68a6104；禁止reset/clean；GitHub仍停在v0.6.1 tag和Draft PR #1
-生产：canvas.mymy.ltd；v0.6.2/schema39；/opt/unboundry/current -> releases/v0.6.2-inc-ui-002-20260816
-生产artifact：source commit 8ebe70544828a3aebe258def9d658e1ab68a6104；tree ad1b93bc68ca0e09df410d5b5904b33bd4b22686；inventory f1606bded48644149cc328017d2fa74f8932512c8f0747714f7f5ec81e139f2e
-当前状态：INC-UI-001/002已发布自动通过、待用户复验；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
-技术凭证：spec/INC_UI_002_PRODUCTION_RECEIPT_2026-08-16.json；生产deployment receipt SHA e0dd9634d4d7979d526a8858c80a2bdb791e9d62a2dfa90dd752d1c820fed0c4；备份/恢复 inventory b1754f94df1916276bac2debbc5dda5b03afffc01c2602eeec057f40bd0c2909
-用户验收：既有v0.6.0/v0.6.1验收保持；v0.6.2的导航、favicon、框选、坏媒体恢复和长标题等待用户线上复验
-数据库：schema39；quick_check ok；FK0；118 tasks/116 attempts；43 public templates/42 published；active0；globalEnabled1/emergencyStop0；per-user/kind concurrency与RPM均500
+本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.2视频热修复生产源commit 959c1e287fb25943ca13037332030e99b39725be；禁止reset/clean；GitHub仍停在v0.6.1 tag和Draft PR #1
+生产：canvas.mymy.ltd；v0.6.2/schema39；/opt/unboundry/current -> releases/v0.6.2-inc-video-001-20260816
+生产artifact：source commit 959c1e287fb25943ca13037332030e99b39725be；tree 6539868d3aa5df8be2fdbf3d10e8c6414ffe3845；inventory cf1c6e1aa33438e0d05dba11593f8095a30795a03a51dcd36f48d7d31ab340b5
+当前状态：INC-VIDEO-001已发布且真实Seedance视频PASS、待用户次日复验；INC-UI-001/002已发布自动通过、待用户复验；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
+技术凭证：spec/INC_VIDEO_001_PRODUCTION_RECEIPT_2026-08-16.json；spec/V0_6_2_REAL_WORKFLOW_SMOKE_2026-08-16.json；上一UI发布与备份/恢复凭证继续保留
+用户验收：既有v0.6.0/v0.6.1验收保持；v0.6.2的导航、favicon、框选、坏媒体恢复、长标题和真实视频闭环等待用户线上复验
+数据库：schema39；quick_check ok；FK0；126 tasks/125 attempts；43 public templates/42 published；active0；默认视频模型Seedance；globalEnabled1/emergencyStop0；per-user/kind concurrency与RPM均500
 备份：schema37 raw archive SHA 7f14c611faab136c1ae8e9579bc47755f7298e4ea6e2bba516c71e85670f8fca；offhost restore inspection b4d58243e88efe1c2c967ffab5f63ed6704d18324a80e8449ec9d3ad77e28e1d PASS
 限制：attempt 86/108/116/120/122为行政取消且禁止重试，PROVIDER_FAILED仅surrogate；3条音频仅改duration元数据；cutover Provider/paid calls=0
 GitHub：branch/tag/PR仍是既有v0.6.1状态；v0.6.2未push、未tag、未更新PR

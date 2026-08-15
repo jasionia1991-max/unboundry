@@ -4,18 +4,18 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 ## 2026-08-16 画布 UI 恢复（已发布，待用户线上复验）
 
-`INC-UI-001/002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：设置页会返回进入前的真实项目并提供“返回工作空间”，浏览器 favicon 和页面标题已恢复；巨大 Group 只有被框选完整包含时才进入选区，普通节点仍保留局部相交框选；图片/视频/音频读取失败会保留素材并显示统一灰阶重载/重新上传状态；七类节点长标题统一省略并可查看完整值。正式安全全量为 `118/118 specs、965/965 PASS`，失败、跳过、重试、blocked 与报告错误均为 0；真实 Provider/OSS/付费请求 0。生产已原子切换到不可变目录 `v0.6.2-inc-ui-002-20260816`，公网 version/live/ready、标题、favicon、CSP 与静态资源哈希均通过，schema39 数据和安全配置保持不变。自动与上线验证不能代替用户肉眼验收，相关条目继续保持 `USER_RECHECK`。
+`INC-UI-001/002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：设置页会返回进入前的真实项目并提供“返回工作空间”，浏览器 favicon 和页面标题已恢复；巨大 Group 只有被框选完整包含时才进入选区，普通节点仍保留局部相交框选；图片/视频/音频读取失败会保留素材并显示统一灰阶重载/重新上传状态；七类节点长标题统一省略并可查看完整值。正式安全全量为 `118/118 specs、965/965 PASS`，失败、跳过、重试、blocked 与报告错误均为 0。该UI版本先发布到`v0.6.2-inc-ui-002-20260816`，随后视频协议热修复发布到新的不可变目录`v0.6.2-inc-video-001-20260816`；schema39数据与安全配置未迁移。自动与上线验证不能代替用户肉眼验收，相关条目继续保持 `USER_RECHECK`。
 
 ## 2026-08-16 v0.6.2 生产状态（当前权威）
 
-- 生产指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.2-inc-ui-002-20260816`；服务 active，`NRestarts=0`，公网 `/api/version` 返回 `0.6.2`，ready 为 active/schema39。
-- 数据前后保持：schema39、quick_check `ok`、FK 违约 0、active generation 0、tasks 118、Provider attempts 116、公共模板 43（42 published）；并发/RPM 及四类生成并发仍为 500。
-- 发布期间真实 Provider 调用、生成任务、OSS 写入与付费请求均为 0。停机备份与独立恢复副本位于 `/var/lib/unboundry-rollbacks/inc-ui-002-20260815T180956Z`，两份清单一致且恢复检查通过。
-- 发布源码 commit 为 `8ebe70544828a3aebe258def9d658e1ab68a6104`，但本次没有获得新的 push/tag/PR 授权，因此 GitHub 仍保持既有 v0.6.1 发布状态。
+- 生产指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.2-inc-video-001-20260816`；服务 active+enabled，`NRestarts=0`，公网 `/api/version` 返回 `0.6.2`，ready 为 active/schema39。
+- 视频热修复把Grok首帧按中转站真实契约映射为`images`数组并限制恰好1张；正式安全全量仍为`118/118 specs、965/965 PASS`。Grok契约已被中转站受理，但该上游两次在0%网络超时，因此停止重试并把默认视频模型切换为已真实成功的`Seedance 2.0 Mini`。
+- 最新数据核验：schema39、quick_check `ok`、FK 违约0、active generation0、tasks126、Provider attempts125。此前`v0.6.2-inc-ui-002-20260816`完整保留，可作为回滚目标。
+- 视频热修复源码commit为`959c1e287fb25943ca13037332030e99b39725be`、tree为`6539868d3aa5df8be2fdbf3d10e8c6414ffe3845`；本次没有新的push/tag/PR授权，因此GitHub仍保持既有v0.6.1发布状态。
 
 ### 真实工作流低成本验收
 
-2026-08-16 用户明确授权真实API消耗后，在生产项目`v0.6.2 真实工作流低成本验收`执行了一个`Text → Image`整组工作流：Text先成功，Image只在Text完成后启动；1张`1:1 / 1K`图片约92秒成功，刷新后文字、连线、Group和OSS图片均保持。整组两个任务均`attempt=1`、Provider attempt各1、retry 0；额外单节点文字预检也一次成功。没有运行视频/音频，没有并发追加或自动重试。公网ready仍为active/schema39，数据库quick_check ok、FK0、active0。
+2026-08-16 用户明确授权真实API消耗后，在生产项目`v0.6.2 真实工作流低成本验收`完成`Text → Image`整组工作流：Text先成功，Image只在Text完成后启动；1张`1:1 / 1K`图片约92秒成功，刷新后文字、连线、Group和OSS图片均保持。随后真实视频排障确认Grok中转上游网络超时，未再继续消耗；默认视频模型改为Seedance，并以`4秒 / 480p / 无音频 / 无人物`完成一次文生视频，task`c0269665-4db5-46a1-bc13-2d5574a66cca`一次成功。结果MP4为864×496、4.042秒、1,117,495 bytes、OSS ready，刷新后可播放且浏览器媒体无错误。成功视频在应用账本记录`568316 microunits CNY`，仅作审计字段，不冒充Provider账单。公网ready仍为active/schema39，数据库quick_check ok、FK0、active0。
 
 ## 2026-08-15 整组工作流流水线修复（已发布并通过用户实页验收）
 
