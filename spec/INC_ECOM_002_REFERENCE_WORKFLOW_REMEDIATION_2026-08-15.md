@@ -1,8 +1,8 @@
 # INC-ECOM-002 电商参考图工作流修复方案与施工断点
 
-状态：`PRODUCTION_STATIC_REPAIR_PASS_ONE_REQUEST_REAL_IMAGE_SMOKE_PASS_USER_RESULT_REVIEW`
+状态：`PRODUCTION_STATIC_REPAIR_PASS_ONE_REQUEST_REAL_IMAGE_SMOKE_PASS_USER_RESULT_PASS_OPTIONAL_PAID_GENERATION_DEFERRED`
 建立日期：`2026-08-15`
-当前阶段：`D7 180秒修复已formal部署；新授权下同一节点一次1K请求成功，结果待用户确认`
+当前阶段：`D8 180秒修复已formal部署；同一节点一次1K请求成功并获用户确认；其余付费抽验延期`
 
 ## 1. 当前授权与硬边界
 
@@ -174,7 +174,7 @@
 - 计数门：提交前tasks108、Provider attempts106、active0；提交后只增加task `9e4faf78-e466-4ae7-8799-2c9d2150bed6`和Provider attempt 132，最终tasks109、attempts107、active0，没有第二条新attempt。
 - 结果：约58.6秒一次成功，attempt为`completed`，result asset `9f755d07-42df-47a0-9bd1-443030244a59`已绑定节点；PNG `1023×1537`、1,545,396 bytes、SHA-256 `ecf51e6ca9f081b4b98cd12f9917b51bd8518129ab9613dc2a3f296d638ddb44`、storage ready。
 - 页面与数据：刷新原画布已显示生成结果及收藏、替换、下载、全屏等正常操作；数据库quick_check ok。系统审计字段记录estimated/actual均为10,000,000 microunits USD，这是管理员模型配置的记账值，不等于已核验上游账单。
-- 结论：超时修复后的`ONE_REQUEST_REAL_IMAGE_SMOKE_PASS`成立；图片内容质量仍为`USER_RESULT_REVIEW`。目标模板另外两个图片节点、完整三图和视频没有运行，未来继续需要独立授权。
+- 结论：超时修复后的`ONE_REQUEST_REAL_IMAGE_SMOKE_PASS`成立；用户随后明确“都通过了”，现有图片内容为`USER_RESULT_PASS`。目标模板另外两个图片节点与其他电商视频没有运行，只作为可选付费内容抽验延期，不冒充真实生成PASS。
 
 ## 7. 当前恢复卡
 
@@ -184,12 +184,12 @@
 本次生产候选：de0551c8187156f0283f330a39e15e5825f1f2c5
 package：0.6.0
 当前事件：INC-ECOM-003
-状态：PRODUCTION_STATIC_REPAIR_PASS_ONE_REQUEST_REAL_IMAGE_SMOKE_PASS_USER_RESULT_REVIEW
-当前阶段：D7 修复后同一节点一次1K请求成功，另外两图未运行
+状态：PRODUCTION_STATIC_REPAIR_PASS_ONE_REQUEST_REAL_IMAGE_SMOKE_PASS_USER_RESULT_PASS_OPTIONAL_PAID_GENERATION_DEFERRED
+当前阶段：D8 修复后同一节点一次1K请求成功并获用户确认，另外两图未运行且延期
 既有脏改动：INC-ECOM-001 热修复、相关测试和历史施工文件，全部保留，不得 reset/clean
 正式候选：bridge 3b43e9de40ba0921e29cd169e1c3cd945a247c17；final de0551c8187156f0283f330a39e15e5825f1f2c5
 正式full：117/117 specs，954/954 PASS，builder 1/5/1/0
 允许：本地证据文档收口
 禁止：自动重提任务e5cfd5bc或9e4faf78、并发/OSS路由修改、另外两图/视频真实Provider、push/tag/PR；本次成本受控单节点授权已消费
-下一步：等待用户确认当前图片质量；完整三图/视频继续单独授权
+下一步：无发布阻塞；另外两图与其他电商视频只在未来新授权下做可选付费抽验
 ```

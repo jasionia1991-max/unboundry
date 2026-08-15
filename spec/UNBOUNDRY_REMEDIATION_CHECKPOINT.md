@@ -1,8 +1,8 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`54`
+断点版本：`55`
 更新时间：`2026-08-15`
-状态：`INC_ECOM_007_PRODUCTION_PUBLISHED_USER_PASS`
+状态：`V0_6_1_RELEASE_CLOSED_USER_PASS`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
 ## 0. 当前新事件：INC-ECOM-007
@@ -12,7 +12,7 @@
 - 用户随后明确确认版本并授权发布；该发布授权已消费。发布保持并发、模板、Provider、OSS和数据库不变，禁止真实/付费请求。
 - 实现已完成：生产调用路径使用事件驱动DAG调度，直接生成式上游严格AND；快分支独立推进、失败只阻塞后代、取消不再派发新节点；Text/Image/Video/Audio统一static/runtime预检并在提交前刷新输入。
 - 自动门已完成：相关7份spec `69/69 PASS`；临时洁净直接父子候选上的正式安全full为`117/117 specs、959/959 PASS`，所有异常计数0，immutable builder `attempts=1 / invocations=5 / passed=1`，source/snapshot `28b203bb76275b9566727e51e2384674c7ddcf9851cc98c80fd3aed11b8a30c4`前后不变，4173不变，Provider/真实请求0。
-- 正式release commit `f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf` / tree `dd1180077032a42f1ab7ce7ca614906898d1f414`已形成；明确准入v0.6.1后相关8份spec `110/110 PASS`，精确HEAD build PASS。未push/tag/PR。
+- 正式release commit `f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf` / tree `dd1180077032a42f1ab7ce7ca614906898d1f414`已形成；明确准入v0.6.1后相关8份spec `110/110 PASS`，精确HEAD build PASS。
 - 生产已原子切换到`/opt/unboundry/releases/v0.6.1-inc-ecom-007-20260815`；release inventory `c467c7c2…d2237f`。备份/恢复目录`/var/lib/unboundry-rollbacks/inc-ecom-007-20260815T135418Z`，清单一致`73554c0a…535f24`。
 - 公网version 0.6.1、live/ready和主JS哈希PASS；service active/enabled、NRestarts0。schema39 quick_check ok/FK0，tasks109/attempts107/active0、模板43/42及并发/RPM 500前后不变；Provider/付费调用0。
 - 用户随后在v0.6.1线上实页完成复验并明确回复“通过通过”；INC-ECOM-007收口为`PRODUCTION_PUBLISHED_USER_PASS`。权威记录与生产凭证见`spec/INC_ECOM_007_WORKFLOW_PIPELINE_REMEDIATION_2026-08-15.md`、`spec/INC_ECOM_007_PRODUCTION_RECEIPT_2026-08-15.json`。
@@ -24,7 +24,7 @@
 - 恢复副本与生产写后兼容审计均为全库43/43 PASS、第三批12/12 PASS、问题0；生产43条模板、42条published，第三批12条均有graph和preview，公网12张封面均HTTP200 image/jpeg。
 - schema39 quick_check ok/FK0、service active/enabled、NRestarts0。发布前后tasks109、Provider attempts107、active0；并发/RPM仍全部500，Provider/付费生成/OSS变化0。
 - 首次恢复副本审计因临时audit root缺`node_modules`解析路径在生产写入前停止，服务自动重启且第三批仍为0；补齐临时路径后才继续发布，未绕过兼容门。
-- 当前为`PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_VISUAL_REVIEW`；下一步只需用户刷新模板面板确认第三批可见性与视觉效果，不运行真实生成。
+- 用户随后明确“都通过了”，当前为`PRODUCTION_PUBLISHED_USER_PASS`；未为验收运行真实生成。
 - 证据：`spec/INC_ECOM_006_ECOMMERCE_WORKFLOW_BATCH_3_2026-08-15.md`、`spec/ecommerce-workflow-batch-3-production-receipt.json`。
 
 ## 0A. 前一事件：INC-ECOM-005
@@ -44,14 +44,14 @@
 - 首轮source-only叠加被上线后公网哈希门立即检出HTML fallback，未被误记为PASS；该产物已退役保留。最终修正版切换后service active、NRestarts0、schema39 quick_check ok/FK0、active0。
 - 停机备份和临时恢复验证：`/var/lib/unboundry-rollbacks/inc-ecom-004-20260815T080758Z`；原formal release：`/opt/unboundry/retired-releases/20260815T080758Z-pre-inc-ecom-004/v0.6.0`；首轮source-only release：`/opt/unboundry/retired-releases/20260815T081400Z-inc-ecom-004-source-only/v0.6.0`。
 - 零费用边界：发布前后tasks109、Provider attempts107、active0；per-user/RPM/Text/Image/Video/Audio仍全部500，`provider_profiles`逐行未变，数据manifest SHA仍`980e90a9…28d0`，OSS未改；未调用Provider、未生成、未push/tag/PR。
-- 当前结论：`PRODUCTION_STATIC_COVERS_DEPLOYED / USER_VISUAL_REVIEW`。技术发布门已通过，封面视觉选择仍待用户刷新模板面板确认。
+- 当前结论：`PRODUCTION_STATIC_COVERS_DEPLOYED / USER_VISUAL_PASS`。技术发布门与用户视觉确认均已通过。
 
 ## 0C. 前一事件：INC-ECOM-003
 
 - 用户在180秒修复部署后重新授权并要求控制成本：保持GPT Image 2专用协议、3:4、1K，只对同一节点再提交一次，不运行另外两图或视频，不重试。
 - 新task `9e4faf78-e466-4ae7-8799-2c9d2150bed6`、Provider attempt 132约58.6秒一次成功，result asset `9f755d07-42df-47a0-9bd1-443030244a59`已绑定原节点；ready PNG `1023×1537`、1,545,396 bytes、SHA-256 `ecf51e6c…ddb44`。
 - 成本边界：提交前tasks108/attempts106/active0，完成后tasks109/attempts107/active0，只有一个新task和一个新attempt。系统审计记账值10,000,000 microunits USD不冒充上游实际账单。
-- 当前结论：`ONE_REQUEST_REAL_IMAGE_SMOKE_PASS / USER_RESULT_REVIEW`。数据库quick_check ok，刷新画布已显示结果；另外两个Image、完整三图和视频未运行，相关授权已消费。
+- 当前结论：`ONE_REQUEST_REAL_IMAGE_SMOKE_PASS / USER_RESULT_PASS / OPTIONAL_PAID_GENERATION_DEFERRED`。数据库quick_check ok，刷新画布已显示结果且用户已确认通过；另外两个Image和其他电商视频未运行，仅作为可选付费抽验延期。
 - 用户授权的真实边界已消费：只对「服装详情页｜面料与工艺拆解」的`工艺拆解·完整商品`节点提交一次真实图片Provider请求；不重试、不运行另外两个图片节点或视频。
 - 任务`e5cfd5bc-2863-4eb1-9546-4a93c76b17e7`、Provider attempt 131在约121秒后以`PROVIDER_REQUEST_FAILED`失败；attempt为`outcome-unknown`，`provider_task_id=null / result_asset_id=null`。同步协议没有留下可轮询ID，本次结果不能恢复；禁止自动重提。
 - 根因已修复：GPT Image专用同步请求从通用120秒期限改为统一Provider submit 180秒期限，未知结果和无自动重试语义不变。m53+m57+m88为`66/66 PASS`；正式安全full为`117/117 specs、954/954 PASS`。
@@ -71,12 +71,12 @@
 - 生产formal artifact：final commit `e1e0e0d33809a519e8856d11135237a6a30ff912`、tree `9bfb43d456f8e250657a82f4f4574dff73cb1620`、manifest `692995bc9f6fc6833b314afeaea65bc5d367142aa03234299c4ab02b76aa56ff`、inventory `a2b685f64e1f3acab915e6b22d1f6dc05b2ffd75f6d5345e006f5bcb6af96151`；current为`/opt/unboundry/releases/v0.6.0`，service active，公网live/ready/version/root正常。
 - 回滚：停机数据库备份`/var/lib/unboundry-rollbacks/inc-ecom-002-20260815`，主库SHA `347b07f2ade6b9f6a3f0d70d433ec0c828605d9b9101d34e343594c905ff94a8`并保留WAL/SHM；旧v0.6.0封存在`/opt/unboundry/retired-releases/20260815-pre-inc-ecom-002/v0.6.0`，前一INC-ECOM-001 hotfix release保留。
 - 零付费复核：部署前后generation tasks106、provider attempts104、admission events8、publication attempts3、active0；登录实页公共模板面板可见目标模板，控制台warning/error为0。并发和OSS路由/配置/密钥/对象未改；真实Provider/付费生成、push/tag/PR仍未授权。
-- `INC-ECOM-001 = USER_RECHECK` 的重复结果别名去重、节点错误落盘和既有结果恢复继续保留；不得把它扩大为参考图自锁、全图预检或模板包已验收。
+- `INC-ECOM-001 = PASS`：重复结果别名去重、节点错误落盘和既有结果恢复已由用户最终确认；不得把它扩大为参考图自锁、全图预检或未实际执行的付费生成。
 
 ## 1. 当前结论
 
 - 用户已于 2026-08-09 明确回复“施工文档确认通过”，REM-000 = `PASS`。
-- 施工总方案以 v1.0 建立权威合同，当前版本为 `1.30-production-operational-complete`。
+- 施工总方案以 v1.0 建立权威合同，当前版本为 `1.32-v0.6.1-release-user-accepted`。
 - 用户已于 2026-08-09 明确启动一次性离线 Goal，Goal ID `019fe226-4d7b-7831-a254-106e40b346c2`；REM-001～010 与 REM-011 离线工程部分可按依赖顺序连续施工，中途不再逐项询问。
 - 允许本地代码/测试/脚本/配置/文档/package 修改、动态 loopback 临时环境、假 Provider/OSS/服务器、必要测试容器和本地 checkpoint/功能/candidate commit。
 - 用户在随后连续指令中授权并完成了bridge、final与schema39切换；该一次性生产授权现已消费，不得用于未来生产动作、Provider、push/tag/PR或新版本发布。
@@ -87,7 +87,7 @@
 - 数据最新核验：schema39、quick_check ok、FK0、active generation0、109 tasks/107 provider attempts、43 public templates（42 published）；本次发布前后生成开关、并发/RPM 500、模板、Provider和OSS配置均未改变。
 - 原schema37 raw backup SHA `7f14c611faab136c1ae8e9579bc47755f7298e4ea6e2bba516c71e85670f8fca` 已离机恢复PASS，inspection `b4d58243e88efe1c2c967ffab5f63ed6704d18324a80e8449ec9d3ad77e28e1d`。最终技术凭证 SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8` 为 `TECHNICAL_CUTOVER_VERIFIED`。
 - 技术凭证生成时 `userAcceptance=PENDING` 保持不变；用户随后确认生成任务状态可读取，并结合此前确认老项目大量生成/上传素材仍在、第4项正常，生产验收现为`USER PASS`，但不声称全部历史素材逐一验证。
-- 最终切换是人工受控bounded cutover，不冒充新的formal controller/full regression PASS；切换期间Provider/付费调用0。REM-010/011与本次G7为`PASS`，REM-001～009B继续`USER_REVIEW`，当前没有IN_PROGRESS REM。
+- 最终切换是人工受控bounded cutover，不冒充新的formal controller/full regression PASS；切换期间Provider/付费调用0。用户明确“都通过了”后，REM-000～011（含009A/009B）均为`PASS`，当前没有IN_PROGRESS REM。
 - 切换完成后用户另行明确授权真实生成和生产运维补验。唯一一次Doubao Seed文字任务`77d3feec-35c1-4b1e-87a2-c457983a8046`一次成功、无重试，结果“真实生成验收通过”，审计成本`10,000,000 microunits CNY`。公网Cookie、513,802,240字节上传/Range/完整下载、schema39自动OSS备份/保留与整机离机恢复均PASS；`DEP-003/005/006/007`与`OPS-002`闭环。用户随后明确“文档确认通过”，`DEP-010 = PASS`。该补验授权已经消费，未来Agent付费请求仍需新授权。
 - 最后自动备份前缀`objects/backups/2026-08-14T23-15-59-569Z/`，356文件/267,091,270字节；active脚本SHA为`e50ac515…970c5`与`05721427…7b95f`。整机离机目录`/Users/mymy/Documents/unboundry/recovery/2026-08-15`，包874,823,680字节/SHA`d3b6023f…ae109`，fresh restore receipt SHA`151c7886…f3962`。
 
@@ -97,14 +97,14 @@
 |---|---|
 | 仓库根 | `/Users/mymy/Documents/unboundry/app` |
 | 生产站点 | `https://canvas.mymy.ltd` |
-| 线上版本 | `v0.6.0` / schema39 |
-| package 版本 | 本地checkout与生产均为`0.6.0`；INC-ECOM-003生产formal artifact commit为`de0551c…`，文档HEAD必须另行理解 |
+| 线上版本 | `v0.6.1` / schema39 |
+| package 版本 | 本地checkout与生产均为`0.6.1`；INC-ECOM-007生产源commit为`f3d3fc8…` |
 | 生产程序目录 | 2026-08-14 原生产只读核实为 systemd `unboundry.service`、应用 `/opt/unboundry`；`/opt/unboundry-app` 仅为历史记录，不得用于动作目标 |
 | 生产数据目录 | `/var/lib/unboundry` |
 | 本地真实数据目录 | `/Users/mymy/Documents/unboundry/app/data` |
 | 真实本地服务端口 | `4173`，有守护进程，不得用于测试 |
 | 生产/历史数据库基线 | 当前schema39、integrity ok、FK0、ready local348/OSS70/pending0；INC-ECOM-002停机备份与迁移前schema37 raw备份均保留 |
-| 当前生产制品 | INC-ECOM-003 final `de0551c8187156f0283f330a39e15e5825f1f2c5` / tree `b083289ae514f6b7c7c3cdef7953065deb2c7276` / manifest `5386c744…` |
+| 当前生产制品 | INC-ECOM-007 source `f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf` / tree `dd1180077032a42f1ab7ce7ca614906898d1f414` / inventory `c467c7c2…d2237f` |
 | Node | formal构建/验证为v22.23.1；生产为`/opt/node22/bin/node` v22.23.2，production-specific waiver与恢复副本补证已完成 |
 
 ### 2.1 Goal 启动前只读预检
@@ -140,20 +140,20 @@
 | ID | 内容 | 状态 | 用户授权 |
 |---|---|---|---|
 | REM-000 | 施工总方案、防漂移断点、项目级守则、入口和验收登记 | `PASS` | 用户 2026-08-09 确认通过 |
-| REM-001 | 绝对隔离测试底座、动态端口/临时目录、零外网、真正全量发现 | `USER_REVIEW` | 工程候选与首轮全量证据已完成，Goal 结束时集中交用户复核 |
-| REM-002 | API、进程与可观测性基础 | `USER_REVIEW` | 工程候选、专项与安全全量已完成，Goal 结束时集中交用户复核 |
-| REM-009A | 真正只读的备份、恢复与数据库兼容前置底座 | `USER_REVIEW` | 加密签名包、合成恢复、损坏拒绝、三轮与安全全量均已完成，Goal 结束时集中交用户复核 |
-| REM-003 | 画布持久化与 DATA-005 语义保护 | `USER_REVIEW` | 加载/保存凭据、每标签高水位、原子墓碑、持久草稿与生成门禁均已完成，Goal 结束时集中交用户复核 |
-| REM-004 | 统一媒体生命周期 | `USER_REVIEW` | 原子媒体发布/补偿、ready-only、权威尺寸、adoption ACK 与完整性报告已完成 |
-| REM-005 | 生成、幂等与付费边界 | `USER_REVIEW` | 原子 admission、最终付费闸、凭据 epoch、未知结果保护、deadline 与持久队列已完成 |
-| REM-006 | 账号删除、模板、权限与清理 | `USER_REVIEW` | PERM-011/KEY-008/AUTH-006 合同、专项/核心/安全全量与独立终审已完成 |
-| REM-007 | 前端生成恢复与失败体验 | `USER_REVIEW` | 四类 ownership/exact GET/终态 ACK、transport/retry fail-closed、mutation 失败体验及完整安全证据已完成 |
-| REM-008 | 资源、安全、性能和运维脚本 | `USER_REVIEW` | 登录/SSE、媒体资源、出站、安全头、依赖、脚本及必要性能治理已完成 |
-| REM-009B | 最终候选备份、恢复与双向兼容演练 | `USER_REVIEW` | 自动实现及同源自动证据完成；不是用户 PASS |
+| REM-001 | 绝对隔离测试底座、动态端口/临时目录、零外网、真正全量发现 | `PASS` | 工程候选与全量证据完成；用户2026-08-15明确“都通过了” |
+| REM-002 | API、进程与可观测性基础 | `PASS` | 工程候选、专项与安全全量完成；用户最终确认 |
+| REM-009A | 真正只读的备份、恢复与数据库兼容前置底座 | `PASS` | 加密签名包、合成恢复、损坏拒绝、三轮与安全全量完成；用户最终确认 |
+| REM-003 | 画布持久化与 DATA-005 语义保护 | `PASS` | 加载/保存凭据、每标签高水位、原子墓碑、持久草稿与生成门禁完成；用户最终确认 |
+| REM-004 | 统一媒体生命周期 | `PASS` | 原子媒体发布/补偿、ready-only、权威尺寸、adoption ACK 与完整性报告完成；用户最终确认 |
+| REM-005 | 生成、幂等与付费边界 | `PASS` | 原子 admission、最终付费闸、凭据 epoch、未知结果保护、deadline 与持久队列完成；用户最终确认 |
+| REM-006 | 账号删除、模板、权限与清理 | `PASS` | PERM-011/KEY-008/AUTH-006 合同、专项/核心/安全全量与独立终审完成；用户最终确认 |
+| REM-007 | 前端生成恢复与失败体验 | `PASS` | 四类 ownership/exact GET/终态 ACK、transport/retry fail-closed、mutation 失败体验及完整安全证据完成；用户最终确认 |
+| REM-008 | 资源、安全、性能和运维脚本 | `PASS` | 登录/SSE、媒体资源、出站、安全头、依赖、脚本及必要性能治理完成；用户最终确认 |
+| REM-009B | 最终候选备份、恢复与双向兼容演练 | `PASS` | 自动实现、同源自动证据与最终用户确认完成 |
 | REM-010 | 不可变发布、切换与回滚 | `PASS` | B14→F14正式链、formal Linux、Node22.23.2补证、raw备份/离机恢复、OSS70、条件修复、schema39迁移、current切换及最终健康全部完成；技术凭证`5c78e7bc…` |
 | REM-011 | 候选全量验收与正式发布门 | `PASS` | F14 targeted81/full2832/race1420与formal Linux证据保留；生产v0.6.0/schema39技术核验完成，用户后续确认任务状态可读取；G7本次PASS |
 
-REM-009B及REM-001～009B的`USER_REVIEW`保持不变；上线不替代用户逐项工程复核。REM-010/011、本次G7和生产用户验收已闭环。旧`8b639ffe…`、B13/F13与G5/G6继续只作历史/隔离回归证据。
+REM-001～009B已在用户明确“都通过了”后收口为`PASS`；REM-010/011、本次G7和生产用户验收均已闭环。旧`8b639ffe…`、B13/F13与G5/G6继续只作历史/隔离回归证据。
 
 ### 4.1 历史一次性授权的决策默认（已消费）
 
@@ -447,17 +447,17 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 
 ```text
 项目路径：/Users/mymy/Documents/unboundry/app
-本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；生产源commit f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf；禁止reset/clean/push/tag/PR
+本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；生产源commit f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf；禁止reset/clean；本次GitHub push/tag/PR已授权
 生产：canvas.mymy.ltd；v0.6.1/schema39；/opt/unboundry/current -> releases/v0.6.1-inc-ecom-007-20260815
 生产artifact：source commit f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf；tree dd1180077032a42f1ab7ce7ca614906898d1f414；inventory c467c7c264da03421a14fabf93c90bc40faa3edfad1a7dfdff802112f1d2237f
-当前状态：INC-ECOM-007 PRODUCTION_PUBLISHED_USER_PASS；REM-000 PASS；REM-001～009B USER_REVIEW；REM-010/011 PASS；PRODUCTION LIVE
+当前状态：INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
 技术凭证：spec/INC_ECOM_007_PRODUCTION_RECEIPT_2026-08-15.json SHA 91c05297a940ee18d5b6aef3d3878e5e8ff776c0f28a868f7fc975eafc5f819c；备份/恢复 inventory 73554c0a84001d953c27f55c011f77fff8b873db2918ea3e4eca0b19a7535f24
 用户验收：v0.6.0既有验收保持；v0.6.1的流水、多入参AND、分流和失败隔离已由用户线上实页确认通过
 数据库：schema39；quick_check ok；FK0；109 tasks/107 attempts；43 public templates/42 published；active0；globalEnabled1/emergencyStop0；per-user/kind concurrency与RPM均500
 备份：schema37 raw archive SHA 7f14c611faab136c1ae8e9579bc47755f7298e4ea6e2bba516c71e85670f8fca；offhost restore inspection b4d58243e88efe1c2c967ffab5f63ed6704d18324a80e8449ec9d3ad77e28e1d PASS
 限制：attempt 86/108/116/120/122为行政取消且禁止重试，PROVIDER_FAILED仅surrogate；3条音频仅改duration元数据；cutover Provider/paid calls=0
-未来授权：本次bridge/final生产授权已消费；任何生产读写、真实Provider/付费生成、push/tag/PR或新版本发布均需新授权
-下一步：没有本次发布链或文档验收遗留施工；DEP-010已由用户确认并转为PASS。只可按新任务处理既有PARTIAL/PAUSED/BLOCK/NOT_STARTED项
+未来授权：本次bridge/final生产授权已消费；用户已单独授权本次GitHub push、v0.6.1 tag和Draft PR，完成后即消费；未来生产读写、真实Provider/付费生成或新发布仍需新授权
+下一步：完成本次GitHub push、v0.6.1 tag和Draft PR；其后只可按新任务处理既有PARTIAL/PAUSED/BLOCK/NOT_STARTED项或可选付费两图/视频抽验
 ```
 
 任何恢复者必须优先使用本节；第9节只保留历史，不得执行其“下一步”。

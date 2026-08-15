@@ -1,7 +1,7 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-15
-状态：`生产已运行 v0.6.1/schema39；INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS；REM-000 = PASS、REM-001～REM-009B = USER_REVIEW、REM-010/011 = PASS；PRODUCTION = LIVE。`
+状态：`生产已运行 v0.6.1/schema39；INC-ECOM-001～007已按各自证据边界完成用户收口；REM-000～011（含009A/009B）= PASS；PRODUCTION = LIVE。`
 
 ### 2026-08-15 整组工作流流水线全局修复（INC-ECOM-007）
 
@@ -11,18 +11,18 @@
 - 实现：生产调用路径改用事件驱动DAG调度；每个节点仅在全部直接生成式上游本轮成功后启动，快分支不等待无关慢分支；四类节点在实际提交前统一刷新runtime preflight。
 - 验证：正式full基线`117/117 specs、959/959 PASS`；v0.6.1准入修复后相关8份spec `110/110 PASS`，精确HEAD build PASS，Provider/真实请求0。
 - 发布：本地release commit `f3d3fc8…8d1f414`；生产指针已切换到`/opt/unboundry/releases/v0.6.1-inc-ecom-007-20260815`。公网version为0.6.1，live/ready正常，主JS哈希与release一致；service active/enabled、NRestarts0。
-- 数据/回滚：停机备份`/var/lib/unboundry-rollbacks/inc-ecom-007-20260815T135418Z`，备份与恢复清单SHA均为`73554c0a…535f24`；schema39 quick_check ok/FK0，tasks109/attempts107/active0、模板43/42及并发500前后不变，Provider/付费调用0。未push/tag/PR。
+- 数据/回滚：停机备份`/var/lib/unboundry-rollbacks/inc-ecom-007-20260815T135418Z`，备份与恢复清单SHA均为`73554c0a…535f24`；schema39 quick_check ok/FK0，tasks109/attempts107/active0、模板43/42及并发500前后不变，Provider/付费调用0。
 - 用户验收：发布后用户在线上实页复验并明确回复“通过通过”，INC-ECOM-007正式收口为USER PASS。
 - 权威断点与验收合同：`spec/INC_ECOM_007_WORKFLOW_PIPELINE_REMEDIATION_2026-08-15.md`。
 
 ### 2026-08-15 第三批服装电商工作流（INC-ECOM-006）
 
-- 状态：`PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_VISUAL_REVIEW`。用户明确“确定 发布”，P0=5、P1=6、P2=1共12条已按声明式数据单事务导入生产，线上继续显示`v0.6.0`，不是前端条件硬编码。
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户明确“确定 发布”，P0=5、P1=6、P2=1共12条已按声明式数据单事务导入生产，不是前端条件硬编码；随后明确“都通过了”，可见性与视觉验收收口为PASS。
 - 恢复副本和生产写后兼容审计均为全库43/43 PASS、第三批12/12 PASS、问题0；生产43条模板、42条published，第三批12条均有graph和preview，公网12张封面HTTP200 image/jpeg。
 - 停机备份：`/var/lib/unboundry-rollbacks/inc-ecom-006-20260815T101814Z`，数据库SHA `1d606cdf…f8d9d`、数据清单SHA `07be6b05…a274`、证据清单SHA `432aa233…70b6`并验签PASS。
 - schema39 quick_check ok/FK0、service active/enabled、NRestarts0；发布前后tasks109、Provider attempts107、active0，并发/RPM均保持500，Provider/付费生成/OSS变化0。
 - 首次恢复副本审计因临时依赖解析路径缺失在生产写入前停止，服务自动恢复且第三批仍为0；补齐临时路径、恢复副本全绿后才发布。
-- 当前只待用户刷新模板面板确认第三批可见性和视觉效果；不自动运行图片或视频生成。
+- 用户已确认第三批可见性和视觉效果；未为验收自动运行图片或视频生成。
 - 证据：`spec/INC_ECOM_006_ECOMMERCE_WORKFLOW_BATCH_3_2026-08-15.md`、`spec/ecommerce-workflow-batch-3-production-receipt.json`。
 
 ### 2026-08-15 第二批电商工作流模板包（INC-ECOM-005）
@@ -36,7 +36,7 @@
 
 ### 2026-08-15 电商模板封面发布（INC-ECOM-004）
 
-- 状态：`PRODUCTION_STATIC_COVERS_DEPLOYED / USER_VISUAL_REVIEW`。16条电商模板封面已发布，生产18条published模板现为`withPreview=18 / withoutPreview=0`；最终视觉取舍仍等用户刷新模板面板确认。
+- 状态：`PRODUCTION_STATIC_COVERS_DEPLOYED / USER_VISUAL_PASS`。16条电商模板封面已发布，生产18条published模板现为`withPreview=18 / withoutPreview=0`；用户已明确“都通过了”。
 - 本地内容commit `d908c4b3824cd36638f02fec51cbe335f6aacd52`；构建PASS、封面源/构建副本16/16哈希一致、m77公共模板专项`9/9 PASS`。来源与授权记录在`spec/ecommerce-template-cover-sources.json`，文件receipt在`spec/ecommerce-template-cover-receipt.json`。
 - 生产采用formal `v0.6.0` base manifest `5386c744…47b1`上的有界静态内容叠加；最终manifest `340452f7f407cb3ab18a15cd8d4b4ab73b42a860238ac0306df67047758ed7a9`、inventory `1d795f29e256da4e8fefd8b446ba42f114a3d8ba2f431fb1220559a04b12f464`，不冒充重新运行formal builder或full regression。
 - 首轮上线后公网哈希门发现只绑定`client/public`、未绑定Vite preview实际服务的`dist/client`，因此返回HTML fallback；该source-only产物已保留在`/opt/unboundry/retired-releases/20260815T081400Z-inc-ecom-004-source-only/v0.6.0`。修正后双目录各16个文件均入inventory，二次切换后公网16/16均为`200 image/jpeg`且SHA逐项相符。
@@ -44,18 +44,18 @@
 
 ### 2026-08-15 GPT Image 真实 smoke 超时修复（INC-ECOM-003）
 
-- 状态：`REFERENCE/OSS/PREFLIGHT_PASS / GPT_IMAGE_TIMEOUT_REPAIR_DEPLOYED / ONE_REQUEST_REAL_IMAGE_SMOKE_PASS / USER_RESULT_REVIEW`。目标模板另外两个图片节点、完整三图和用户结果验收继续`PENDING`。
+- 状态：`REFERENCE/OSS/PREFLIGHT_PASS / GPT_IMAGE_TIMEOUT_REPAIR_DEPLOYED / ONE_REQUEST_REAL_IMAGE_SMOKE_PASS / USER_RESULT_PASS / OPTIONAL_PAID_GENERATION_DEFERRED`。用户已确认现有结果通过；目标模板另外两个图片节点和其他电商视频未再次付费生成，仅作为可选内容抽验延期。
 - 已按用户授权只提交一次：项目`18255461-b14f-40dd-9dbb-d3c307649387`、节点`工艺拆解·完整商品`、task `e5cfd5bc-2863-4eb1-9546-4a93c76b17e7`、Provider attempt 131；未运行另外两个图片节点、未运行视频、未自动重试。
 - 真实结果：请求在约121秒后以`PROVIDER_REQUEST_FAILED`结束，attempt为`outcome-unknown`；Provider没有返回`provider_task_id`，任务没有`result_asset_id`。因此这一次同步结果不能从本地恢复，重新生成会形成第二次可能收费的Provider提交，必须取得新的明确授权。
 - 根因与修复：GPT Image专用同步路径误用通用JSON默认`120000ms`，没有使用项目既有submit deadline `180000ms`。`server/relayProviderAdapters.ts`现显式复用`providerRequestTimeoutMsByOperation.submit`，且保持“不自动重提未知结果”。m53+m57+m88定向`66/66 PASS`；正式安全full `117/117 specs、954/954 PASS`。
 - 生产已切换到formal final `de0551c8187156f0283f330a39e15e5825f1f2c5` / tree `b083289ae514f6b7c7c3cdef7953065deb2c7276` / manifest `5386c74440f8868719bb7942af31437a1a2dfcbb9de28d604ccf836ddc1478b1`。停机备份在`/var/lib/unboundry-rollbacks/inc-ecom-003-20260815`，旧产物在`/opt/unboundry/retired-releases/20260815-pre-inc-ecom-003/v0.6.0`；公网live/ready/version/root正常，schema39 quick_check ok，active0。部署后刷新原验收画布，失败节点和“不自动重提/先核对模型平台”提示均保留。
 - 部署前后保持tasks108、Provider attempts106、pending publication0；用户的每用户/文字/图片/视频/音频并发和RPM仍为500，Provider与Storage密文配置SHA未变，OSS路由/配置/密钥/对象未改；未push/tag/PR。
 - 用户随后重新授权并要求控制成本：保持GPT Image 2专用协议、3:4、最低现有1K，只对同一`工艺拆解·完整商品`节点再提交一次，不运行另外两个图片节点且不重试。新task `9e4faf78-e466-4ae7-8799-2c9d2150bed6`、Provider attempt 132在约58.6秒一次成功，result asset `9f755d07-42df-47a0-9bd1-443030244a59`已绑定原节点。
-- 结果为ready本地PNG，`1023×1537`、1,545,396 bytes、SHA-256 `ecf51e6ca9f081b4b98cd12f9917b51bd8518129ab9613dc2a3f296d638ddb44`；数据库quick_check ok、active0、tasks109、Provider attempts107。系统审计记账字段为10,000,000 microunits USD（配置记账值，不冒充上游实际账单）。刷新画布已看到结果与下载/全屏等操作；真实技术smoke为PASS，画面质量仍待用户确认。
+- 结果为ready本地PNG，`1023×1537`、1,545,396 bytes、SHA-256 `ecf51e6ca9f081b4b98cd12f9917b51bd8518129ab9613dc2a3f296d638ddb44`；数据库quick_check ok、active0、tasks109、Provider attempts107。系统审计记账字段为10,000,000 microunits USD（配置记账值，不冒充上游实际账单）。刷新画布已看到结果与下载/全屏等操作；真实技术smoke与用户结果验收均为PASS。
 
 ### 2026-08-15 电商参考图工作流完整修复（INC-ECOM-002）
 
-- 状态：`PRODUCTION_STATIC_REPAIR_PASS / ONE_REQUEST_REAL_IMAGE_SMOKE_PASS / FULL_REAL_GENERATION_PENDING / USER_RESULT_REVIEW`。生产19条模板静态兼容均为`PASS`；修复后一次受限真实图片smoke已成功，完整图片/视频生成仍未执行，当前结果待用户确认。
+- 状态：`PRODUCTION_STATIC_REPAIR_PASS / ONE_REQUEST_REAL_IMAGE_SMOKE_PASS / USER_RESULT_PASS / OPTIONAL_PAID_GENERATION_DEFERRED`。生产19条模板静态兼容均为`PASS`；修复后一次受限真实图片smoke已成功并获用户确认。未执行的另外两图和其他视频只作为可选付费内容抽验延期。
 - 权威断点：`spec/INC_ECOM_002_REFERENCE_WORKFLOW_REMEDIATION_2026-08-15.md`。任何上下文压缩或换Agent后必须先读该文件恢复，不得依赖聊天记忆继续。
 - 硬边界：用户设置的并发`500`不动；`mediaRoutingEnabled`、OSS配置/密钥/对象和真实数据不动；历史失败任务不自动重提。
 - 已确认根因：GPT Image执行先持有Provider generation lease，再为本地`data:`参考图申请Storage reservation；两者使用同一`provider-profile-write-lock.sqlite`，在Provider `fetch`前形成同锁自锁并于约5秒超时，Provider请求尚未发出。
@@ -65,11 +65,11 @@
 
 ### 2026-08-15 电商模板生成故障热修复（INC-ECOM-001）
 
-- 状态：`USER_RECHECK`。用户已明确授权“修复并恢复结果”；本项未创建新的生成任务，也未重新提交或重新付费生成，等待用户刷新原画布确认。
+- 状态：`PASS`。用户已明确授权“修复并恢复结果”；本项未创建新的生成任务，也未重新提交或重新付费生成，用户随后以“都通过了”完成收口。
 - 已确认三条独立故障路径：首次失败发生在 Provider 请求前；整组执行遇到不支持图片上游的模型时以 `skipped` 静默停止；任务 `9687eb96-b4b3-44c6-bf40-7fb31a854137` 的 Provider 任务 `105388646` 已成功，但同一结果 URL 同时出现在 `result_url` 与 `result_urls`，本地适配器误判为多结果并报 `FORMAT`。
 - 当前施工范围：Provider 结果别名去重；整组执行将模型/输入不兼容持久化为节点错误并返回明确失败；只恢复 Provider 已完成的既有任务及结果，不重新提交 Provider。
 - 自动验收：重复别名只产生一个输出；不兼容整组执行不产生 generation task POST/Provider 请求，节点错误保存并可重载；定向测试、类型检查与构建通过。
-- 用户验收：恢复后刷新原画布可看到既有黑猫结果；模型不兼容时组运行明确失败并在图片节点保留红色原因。自动检查通过后仅记 `USER_RECHECK`，由用户实页确认后才能记 `PASS`。
+- 用户验收：恢复后刷新原画布可看到既有黑猫结果；模型不兼容时组运行明确失败并在图片节点保留红色原因。用户已明确“都通过了”，本项记为`PASS`。
 - 完成证据：Node `22.23.1` / npm `10.9.8` 下两份零费用定向 spec `34/34 PASS`，TypeScript 与 production build PASS，Provider 请求为0；生产不可变运维热修复已切换到 `releases/v0.6.1-hotfix-inc-ecom-001-20260815`，应用公开版本仍为 `0.6.0`。
 - 恢复证据：原任务仍为 `9687eb96-b4b3-44c6-bf40-7fb31a854137`，只轮询原 Provider 任务 `105388646`；Provider attempt 仍恰好1条、execution attempt 仍为1且已从 `response-received` 收口为 `completed`，没有第二次 Provider 提交。任务本地恢复轮次为 attempt2并成功，结果素材 `860bccb1-bb24-4683-9985-4335a5f95b81` 已绑定原图片节点。
 - 结果完整性：PNG `1254×1254`、`1,758,108` bytes、SHA-256 `71589ac18b2802d6bface50963c1a2c69f3ae7e8f491ea651d83483b001e36b8`，数据库记录与实际文件逐字节一致；schema39 integrity ok / FK0 / active generation0。服务 active、NRestarts0，公网 live/ready/version 均正常。
@@ -86,7 +86,7 @@ F14本地正式门证据绑定 HEAD `eb4f99ea525390b0dd7a39d3cad55d882ffea41d`�
 - 回滚证据：原 schema37 raw backup SHA `7f14c611faab136c1ae8e9579bc47755f7298e4ea6e2bba516c71e85670f8fca`，离机恢复 inspection SHA `b4d58243e88efe1c2c967ffab5f63ed6704d18324a80e8449ec9d3ad77e28e1d` 为 PASS；生产 schema39 inspection SHA `a18f8224dd651b8217cb3d778845ee3f42b5bf91a5ff68291bfad4d4cb3ffa61`。
 - 封存技术凭证 SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8`，状态 `TECHNICAL_CUTOVER_VERIFIED`。凭证生成时的 `userAcceptance=PENDING` 保持不变；用户随后确认生成任务状态已可读取，并结合此前确认老项目大量生成/上传素材仍在、第4项正常，生产验收另记为 `USER PASS`。不扩大为“全部历史素材逐一验证”。
 - 五条历史 outcome-unknown attempt 86/108/116/120/122 已行政取消、禁止重试；`PROVIDER_FAILED` 仅是迁移/备份门 surrogate，原 REMOTE/TIMEOUT 事件保留。三条音频 duration 元数据 12.656→12.696，媒体字节/checksum未变。切换期间 Provider/付费生成调用均为0。
-- 状态结论：`REM-010 = PASS / REM-011 = PASS / G7 = PASS / PRODUCTION = LIVE / USER ACCEPTED / DEP-010 = PASS`。REM-001～009B继续`USER_REVIEW`，既有外部或延后项不自动升级；七份最终文档完成一致性收口后，用户于2026-08-15明确“文档确认通过”。
+- 状态结论：`REM-000～011（含009A/009B） = PASS / G7 = PASS / PRODUCTION = LIVE / USER ACCEPTED / DEP-010 = PASS`。用户于2026-08-15进一步明确“都通过了”，REM-001～009B完成用户收口；既有外部或延后项不自动升级。
 
 ### 2026-08-15 上线后真实能力与灾备收口
 
@@ -118,16 +118,16 @@ F14本地正式门证据绑定 HEAD `eb4f99ea525390b0dd7a39d3cad55d882ffea41d`�
 | ID | 施工包 | 切换前状态（历史） | 当时下一道门 |
 |---|---|---|---|
 | REM-000 | 施工文档与防漂移机制 | PASS | 2026-08-09 用户确认通过 |
-| REM-001 | 测试安全底座与真正全量发现 | USER_REVIEW | 安全入口、105/520 清单、源码覆盖和首轮全绿证据已完成；Goal 结束时集中交用户复核 |
-| REM-002 | API、进程与可观测性基础 | USER_REVIEW | 统一异常边界、严格维护/关闭、只读 readiness、脱敏日志与进程生命周期已完成；Goal 结束时集中交用户复核 |
-| REM-003 | 画布持久化与 DATA-005 语义保护 | USER_REVIEW | 加载/保存基线、每标签高水位、跨标签收敛、原子墓碑、持久草稿及生成门禁已完成；Goal 结束时集中交用户复核 |
-| REM-004 | 统一媒体生命周期 | USER_REVIEW | 原子发布/补偿、ready-only、权威尺寸、adoption ACK 与完整性报告完成；F-004/F-036 和 F-005 媒体发布子范围关闭 |
-| REM-005 | 生成、幂等与付费边界 | USER_REVIEW | 原子 admission、最终付费闸、凭据 epoch、未知结果保护、deadline 与持久队列完成；单 active process 前提 |
-| REM-006 | 账号删除、模板、权限与清理 | USER_REVIEW | PERM-011/KEY-008/AUTH-006 下的可重试删除 saga、转交、权限/凭据和 actor fence 已完成；等待用户复核 |
-| REM-007 | 前端生成恢复与失败体验 | USER_REVIEW | 四类 ownership/exact GET/终态 ACK、transport/retry fail-closed 与 mutation 失败体验已完成；等待用户复核 |
-| REM-008 | 资源、安全、性能和运维脚本 | USER_REVIEW | 登录/SSE、媒体资源、出站、安全头、依赖、脚本及必要性能治理已完成；等待用户复核 |
-| REM-009A | 只读备份、恢复与数据库兼容前置底座 | USER_REVIEW | 加密签名包、合成库恢复、损坏拒绝、权限/路径/OSS 完整性与三轮/全量证据已完成；Goal 结束时集中交用户复核 |
-| REM-009B | 最终候选备份、恢复与双向兼容演练 | USER_REVIEW | 自动实现及同源自动证据完成；等待用户复核，不是 USER PASS |
+| REM-001 | 测试安全底座与真正全量发现 | PASS | 安全入口、清单、源码覆盖和全绿证据完成；用户最终确认 |
+| REM-002 | API、进程与可观测性基础 | PASS | 统一异常边界、严格维护/关闭、只读 readiness、脱敏日志与进程生命周期完成；用户最终确认 |
+| REM-003 | 画布持久化与 DATA-005 语义保护 | PASS | 加载/保存基线、每标签高水位、跨标签收敛、原子墓碑、持久草稿及生成门禁完成；用户最终确认 |
+| REM-004 | 统一媒体生命周期 | PASS | 原子发布/补偿、ready-only、权威尺寸、adoption ACK 与完整性报告完成；用户最终确认 |
+| REM-005 | 生成、幂等与付费边界 | PASS | 原子 admission、最终付费闸、凭据 epoch、未知结果保护、deadline 与持久队列完成；用户最终确认 |
+| REM-006 | 账号删除、模板、权限与清理 | PASS | PERM-011/KEY-008/AUTH-006 下的删除saga、转交、权限/凭据和actor fence完成；用户最终确认 |
+| REM-007 | 前端生成恢复与失败体验 | PASS | 四类 ownership/exact GET/终态 ACK、transport/retry fail-closed 与 mutation 失败体验完成；用户最终确认 |
+| REM-008 | 资源、安全、性能和运维脚本 | PASS | 登录/SSE、媒体资源、出站、安全头、依赖、脚本及必要性能治理完成；用户最终确认 |
+| REM-009A | 只读备份、恢复与数据库兼容前置底座 | PASS | 加密签名包、合成库恢复、损坏拒绝、权限/路径/OSS完整性与三轮/全量证据完成；用户最终确认 |
+| REM-009B | 最终候选备份、恢复与双向兼容演练 | PASS | 自动实现、同源自动证据与最终用户确认完成 |
 | REM-010 | 不可变发布、切换与回滚 | IN_PROGRESS | B14 `3b48f61c…` / F14 `eb4f99ea…` source pair与proof `517d2d24…`已形成；只追加两个完整exact hash，未做trim/normalize，schema37/38/39正负例、两版m81 41/41、tsc/source coverage/build PASS。formal Linux artifacts/receipt与Node22.23.2恢复副本门待完成 |
 | REM-011 | 候选全量验收与正式发布门 | IN_PROGRESS | 旧B13/F13证据只作回归基线。F14 clean targeted `81/81`、full `2832/2832`、race `1420/1420` 全部PASS，异常0、snapshot/listener不变、suite cleaned；Linux production-validation尚未完成。真实OSS HEAD/GET、bwrap、正式备份、条件修复与bridge切换均已获授权，按门禁顺序执行中；完成前production HOLD |
 
@@ -301,7 +301,7 @@ F14本地正式门证据绑定 HEAD `eb4f99ea525390b0dd7a39d3cad55d882ffea41d`�
 
 ## 当前阶段
 
-阶段：`生产 v0.6.0/schema39 LIVE / REM-001～009B USER_REVIEW / REM-010/011 PASS / G7（本次v0.6.0）PASS / USER ACCEPTED / 无IN_PROGRESS REM / 后续生产修改、Provider、push/tag/PR或新版本发布均需新授权`
+阶段：`生产 v0.6.1/schema39 LIVE / REM-000～011（含009A/009B）PASS / USER ACCEPTED / 无IN_PROGRESS REM / 本次GitHub push、v0.6.1 tag和Draft PR已获授权`
 
 画布、固定界面、Text、Image、Video、Audio、Playlist、Group、外围面板、账号、管理员模型中心、生成安全和新图片私有OSS链路已通过当前范围验收；Comment、社区、TapTV、竞技场、额度和链接分享已按用户决定取消。OpenRouter GPT Image 2已完成一次用户授权的历史真实生成，图片连线参考图及真实结果零费用重启恢复均已通过；本次 cutover 未发起 Provider 或付费生成请求。
 

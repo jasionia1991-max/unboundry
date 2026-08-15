@@ -4,17 +4,17 @@
 
 ## 当前增量：INC-ECOM-007（2026-08-15）
 
-用户发现整组运行会把本轮尚未生成的上游Text提前判成下游Image失败。通用执行器现已改为事件驱动DAG流水：每个节点仅在全部直接生成式上游本轮成功后启动，多入参严格AND；快分支不等待无关慢分支，失败只阻塞后代；Text/Image/Video/Audio在实际提交前统一刷新runtime preflight，静态不兼容仍在零任务阶段阻止整组。正式full基线`117/117 specs、959/959 PASS`，v0.6.1准入修复后相关8份spec `110/110 PASS`，精确HEAD build PASS，Provider请求0。生产已切换到`/opt/unboundry/releases/v0.6.1-inc-ecom-007-20260815`；公网version/live/ready和主JS哈希通过，schema39、任务/attempt/并发配置前后不变，备份恢复已验证。用户随后在线上实页明确确认“通过通过”，当前状态为`PRODUCTION_PUBLISHED_USER_PASS`；未push/tag/PR。权威记录与凭证为`spec/INC_ECOM_007_WORKFLOW_PIPELINE_REMEDIATION_2026-08-15.md`、`spec/INC_ECOM_007_PRODUCTION_RECEIPT_2026-08-15.json`。
+用户发现整组运行会把本轮尚未生成的上游Text提前判成下游Image失败。通用执行器现已改为事件驱动DAG流水：每个节点仅在全部直接生成式上游本轮成功后启动，多入参严格AND；快分支不等待无关慢分支，失败只阻塞后代；Text/Image/Video/Audio在实际提交前统一刷新runtime preflight，静态不兼容仍在零任务阶段阻止整组。正式full基线`117/117 specs、959/959 PASS`，v0.6.1准入修复后相关8份spec `110/110 PASS`，精确HEAD build PASS，Provider请求0。生产已切换到`/opt/unboundry/releases/v0.6.1-inc-ecom-007-20260815`；公网version/live/ready和主JS哈希通过，schema39、任务/attempt/并发配置前后不变，备份恢复已验证。用户随后在线上实页明确确认“通过通过”，当前状态为`PRODUCTION_PUBLISHED_USER_PASS`。权威记录与凭证为`spec/INC_ECOM_007_WORKFLOW_PIPELINE_REMEDIATION_2026-08-15.md`、`spec/INC_ECOM_007_PRODUCTION_RECEIPT_2026-08-15.json`。
 
 ## 当前增量：INC-ECOM-006（2026-08-15）
 
-第三批P0/P1/P2共12条服装电商工作流已在用户明确“确定 发布”后单事务导入生产，显示版本继续为`v0.6.0`。恢复副本与生产写后兼容审计均为全库43/43 PASS、第三批12/12 PASS、问题0；生产43条模板、42条published，第三批12条均有graph和preview，公网12张复用封面均HTTP200 image/jpeg。发布前后tasks109、Provider attempts107、active0，并发/RPM仍全部500，Provider/付费生成/OSS变化0。当前状态为`PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_VISUAL_REVIEW`，只待用户刷新模板面板确认可见性与视觉效果。详细记录与凭证为`spec/INC_ECOM_006_ECOMMERCE_WORKFLOW_BATCH_3_2026-08-15.md`和`spec/ecommerce-workflow-batch-3-production-receipt.json`。
+第三批P0/P1/P2共12条服装电商工作流已在用户明确“确定 发布”后单事务导入生产。恢复副本与生产写后兼容审计均为全库43/43 PASS、第三批12/12 PASS、问题0；生产43条模板、42条published，第三批12条均有graph和preview，公网12张复用封面均HTTP200 image/jpeg。发布前后tasks109、Provider attempts107、active0，并发/RPM仍全部500，Provider/付费生成/OSS变化0。用户随后明确“都通过了”，当前状态为`PRODUCTION_PUBLISHED_USER_PASS`。详细记录与凭证为`spec/INC_ECOM_006_ECOMMERCE_WORKFLOW_BATCH_3_2026-08-15.md`和`spec/ecommerce-workflow-batch-3-production-receipt.json`。
 
 ## 0. 2026-08-15 最终生产状态（当前权威）
 
-- 当前状态：`REM-000 PASS / REM-001～009B USER_REVIEW / REM-010～011 PASS / G7（历史v0.6.0）PASS / PRODUCTION LIVE / INC-ECOM-007 USER PASS`。v0.6.0既有用户验收与v0.6.1新增流水执行语义均已确认。
+- 当前状态：`REM-000～011（含009A/009B）PASS / PRODUCTION LIVE / INC-ECOM-001～007按各自证据边界完成用户收口`。v0.6.0既有用户验收与v0.6.1新增流水执行语义均已确认。
 - 生产运行 `v0.6.1/schema39`，`/opt/unboundry/current -> releases/v0.6.1-inc-ecom-007-20260815`；service active/enabled、NRestarts0、127.0.0.1:4173。公网live/ready/version/root正常，version 0.6.1、ready active/schema39；公网主JS哈希与release一致。
-- INC-ECOM-004已为16条电商模板发布真实封面；生产18条published模板现`withPreview=18 / withoutPreview=0`。最终静态内容叠加绑定本地commit `d908c4b3824cd36638f02fec51cbe335f6aacd52`，manifest `340452f7…d7a9`、inventory `1d795f29…f464`；公网16张均HTTP200、`image/jpeg`且SHA逐项相符。状态为`PRODUCTION_STATIC_COVERS_DEPLOYED / USER_VISUAL_REVIEW`，不把技术复核写成用户视觉PASS。
+- INC-ECOM-004已为16条电商模板发布真实封面；生产18条published模板现`withPreview=18 / withoutPreview=0`。最终静态内容叠加绑定本地commit `d908c4b3824cd36638f02fec51cbe335f6aacd52`，manifest `340452f7…d7a9`、inventory `1d795f29…f464`；公网16张均HTTP200、`image/jpeg`且SHA逐项相符。用户已确认“都通过了”，状态为`PRODUCTION_STATIC_COVERS_DEPLOYED / USER_VISUAL_PASS`。
 - 该叠加以当前可信formal base `5386c744…47b1`为底，只增加双目录静态文件和manifest绑定，不冒充fresh formal builder/full regression。首轮只写源码静态目录的source-only产物被公网哈希门检出并退役保留；最终产物同时包含`client/public/templates`和`dist/client/templates`。
 - INC-ECOM-004回滚材料：停机备份`/var/lib/unboundry-rollbacks/inc-ecom-004-20260815T080758Z`；原formal release在`/opt/unboundry/retired-releases/20260815T080758Z-pre-inc-ecom-004/v0.6.0`；source-only产物在`/opt/unboundry/retired-releases/20260815T081400Z-inc-ecom-004-source-only/v0.6.0`。发布前后tasks109/attempts107/active0，并发500、Provider与数据manifest未变，OSS/付费生成0。
 - 当前生产formal artifact（INC-ECOM-003）：commit `de0551c8187156f0283f330a39e15e5825f1f2c5`、tree `b083289ae514f6b7c7c3cdef7953065deb2c7276`、manifest `5386c74440f8868719bb7942af31437a1a2dfcbb9de28d604ccf836ddc1478b1`。前一INC-ECOM-002产物保存在`/opt/unboundry/retired-releases/20260815-pre-inc-ecom-003/v0.6.0`，更早hotfix与旧产物继续保留，不得删除。
@@ -26,7 +26,7 @@
 - INC-ECOM-003真实smoke只提交一次：目标节点`工艺拆解·完整商品`，task `e5cfd5bc-2863-4eb1-9546-4a93c76b17e7`、Provider attempt 131。参考图/OSS/预检通过，但旧专用同步路径在约121秒触发120秒deadline，任务为`failed / PROVIDER_REQUEST_FAILED`，attempt为`outcome-unknown`，没有Provider task ID和结果素材；系统没有自动重提，本次结果不能恢复。
 - GPT Image同步期限已从120秒修为统一submit 180秒，定向66/66和正式full 954/954通过；上述新formal artifact已部署。停机备份`/var/lib/unboundry-rollbacks/inc-ecom-003-20260815`与旧release均可回滚；公网和数据库复核正常。该状态仅为`TIMEOUT_REPAIR_DEPLOYED`，不是图片结果PASS或USER PASS。
 - 用户随后重新授权并要求控制成本：保持3:4/1K，只对同一节点再提交一次。task `9e4faf78-e466-4ae7-8799-2c9d2150bed6`、Provider attempt 132约58.6秒一次成功；ready结果asset `9f755d07-42df-47a0-9bd1-443030244a59`为PNG `1023×1537`、1,545,396 bytes、SHA-256 `ecf51e6c…ddb44`，已绑定原节点并在刷新后显示。计数只增加一个task和一个attempt，没有重试；技术smoke为`PASS`，图片内容为`USER_RESULT_REVIEW`。
-- 本次成本受控单节点授权已消费。完整三图/视频、另外两图、push/tag/PR或新版本发布必须重新授权；REM-001～009B和既有外部/延后项保持原状态。
+- 本次成本受控单节点授权已消费。用户已确认现有结果通过；另外两图和其他电商视频未实际运行，仅作为可选付费抽验延期，不冒充真实生成PASS。REM-001～009B已因用户明确“都通过了”收口为PASS，既有外部/延后项保持原状态。
 - 用户在最终切换后另行授权并完成上线能力补验：唯一一次 Doubao Seed 文字任务 `77d3feec-35c1-4b1e-87a2-c457983a8046` 一次成功、无重试，结果“真实生成验收通过”，审计成本 `10,000,000 microunits CNY`。公网Cookie、490MiB上传/Range/完整下载、schema39自动备份/30天保留与整机离机恢复均已闭环，`DEP-003/005/006/007` 与 `OPS-002` 为PASS；用户随后明确“文档确认通过”，`DEP-010 = PASS`。
 - 当前运维文件：`/opt/unboundry/scripts/backup-data.mjs` SHA `e50ac515…970c5`，`backup-to-oss.mjs` SHA `05721427…7b95f`；timer active/enabled。最后自动备份前缀 `objects/backups/2026-08-14T23-15-59-569Z/`，356文件/267,091,270字节。整机离机目录 `/Users/mymy/Documents/unboundry/recovery/2026-08-15`，tar SHA `d3b6023f…ae109`，fresh restore receipt SHA `151c7886…f3962`。
 
@@ -72,7 +72,7 @@ Docker Ubuntu 子门的 rootless-userns 阻塞已按设计 fail-close。随后�
 ## 2. 仓库与环境
 
 - 仓库根：`/Users/mymy/Documents/unboundry/app`（注意：系统工作区根目录写的是 `tapnow1_1复刻`，那个路径在本机不存在，**一律用 unboundry/app**）。
-- Git：当前专用分支 `codex/unboundry-offline-remediation-2026-08-09`，远程 `https://github.com/jasionia1991-max/unboundry.git`；本地文档 checkout HEAD 为 `a9051ce896cb6dda8e1ec6d1593f1de128484378`，与生产F14 artifact commit `eb4f99ea…`必须分开理解；本任务不 push/tag/PR。
+- Git：当前专用分支 `codex/unboundry-offline-remediation-2026-08-09`，远程 `https://github.com/jasionia1991-max/unboundry.git`；生产v0.6.1源commit固定为`f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf`，本地文档HEAD以`git rev-parse HEAD`为准并与生产源commit分开理解。本次GitHub push、v0.6.1 tag与Draft PR已获明确授权，完成后授权即消费。
 - Node：formal 构建/验证固定 `v22.23.1` 与 npm `10.9.8`；生产 `/opt/node22/bin/node` 为 `v22.23.2`，production-specific waiver及恢复副本补证已完成。formal manifest的22.23.1绑定仍不改写，也不把旧Linux receipt冒充实际22.23.2 runtime证据。
 - 历史依赖/检查方式曾为 `npm install`、`npx tsc --noEmit`、`npm run build`，仍不得直接作为施工入口。当前唯一安全总入口是 `node scripts/run-safe-tests.mjs <preflight|list|run|full>`；它在跟踪文件隔离快照内用 `npm ci --offline --ignore-scripts` 准备依赖，并统一执行源码、构建、重启和测试门禁。
 - 代码结构速览：
@@ -114,7 +114,7 @@ Docker Ubuntu 子门的 rootless-userns 阻塞已按设计 fail-close。随后�
 ## 5. 服务器运维事实
 
 - SSH：`ssh live-cockpit`（`~/.ssh/config` 已配置，腾讯云轻量）。
-- 服务：systemd `unboundry.service`、release `/opt/unboundry/releases/v0.6.0`、current `/opt/unboundry/current`、数据 `/var/lib/unboundry`、监听 `127.0.0.1:4173`；旧 `unboundry-replica.service` / `/opt/unboundry-app` 仅为历史计划。当前上线事实不授权未来 stop/restart/current切换。
+- 服务：systemd `unboundry.service`、release `/opt/unboundry/releases/v0.6.1-inc-ecom-007-20260815`、current `/opt/unboundry/current`、数据 `/var/lib/unboundry`、监听 `127.0.0.1:4173`；旧 `unboundry-replica.service` / `/opt/unboundry-app` 仅为历史计划。当前上线事实不授权未来 stop/restart/current切换。
 - **历史风险事实**：现有 v0.5.1 preview 会在首次数据库请求（如 `/api/auth/status`）时懒迁移/回填。新施工禁止用健康接口“激活迁移”；REM-009/010 必须将就绪检查与显式迁移完全分开。
 - **历史运行事实**：本地 4173 有守护进程可能自动拉起。当前 REM 施工禁止 kill、重启、探测或复用 4173；旧的黑屏重启处理不是当前施工指令。
 - 版本更新推送：`/api/version` + `/api/updates`（SSE），发布后用户端会弹“版本已更新”提示，属于正常机制。
@@ -144,7 +144,7 @@ Docker Ubuntu 子门的 rootless-userns 阻塞已按设计 fail-close。随后�
 ## 9. 验收状态速览
 
 - 已 PASS：GEN-010、SAFETY-004、AUTH-004/005/006/007、STORAGE-004、PERF-002～005、DEP-004，以及更早的大批项目；2026-08-13 新发现缺口修复后，用户又在端口 58352 的隔离实页确认默认画布路由与 Text→Video Prompt 两项均通过，CANVAS-019 与 INPUT-005 也已恢复为 `PASS`。
-- `CANVAS-019 / INPUT-005` 保持用户 `PASS`。INC-ECOM-007已由用户在v0.6.1线上确认，状态为`USER PASS`；REM-000、REM-010/011为`PASS`，REM-001～009B为`USER_REVIEW`。旧B13/F13 G5/G6和v0.6.0生产USER PASS继续保留为历史证据。
+- `CANVAS-019 / INPUT-005` 保持用户 `PASS`。INC-ECOM-001～007已按各自证据边界完成用户收口；REM-000～011（含009A/009B）均为`PASS`。旧B13/F13 G5/G6和v0.6.0生产USER PASS继续保留为历史证据。
 - 暂停/延后：Mureka 真实生成（AUDIO-REAL-001，需用户在 Mureka 官网确认额度）、IMGEDIT-007 打光、AUTH-002/OPEN-009 团队多人、OPEN-019/021、正式部署流程收尾（域名/备案等）。
 
 ## 10. 历史测试失败/偶发记录（当前冻结全量已全绿）
@@ -207,4 +207,4 @@ ssh live-cockpit "curl -fsS http://127.0.0.1:4173/api/version"
 5. 向用户先报告恢复出的项目、版本、当前项和授权；
 6. 任一不一致都必须停止，不得依据内部记忆、历史 PASS 或压缩摘要猜测继续。
 
-当前执行点：`INC-ECOM-007 PRODUCTION_PUBLISHED_USER_PASS / REM-000 PASS / REM-001～009B USER_REVIEW / REM-010/011 PASS / PRODUCTION LIVE / INC-ECOM-006 USER_VISUAL_REVIEW`。生产v0.6.1/schema39；流水修复与第三批均已发布，后续生产动作、Provider、push/tag/PR或新版本发布均无现成授权。
+当前执行点：`INC-ECOM-001～007 USER ACCEPTED / REM-000～011（含009A/009B）PASS / PRODUCTION LIVE`。生产v0.6.1/schema39；流水修复、三批模板与封面均已发布并完成用户收口。未实际运行的付费两图/视频抽验继续延期；本次GitHub push、v0.6.1 tag和Draft PR已获单独授权，完成后即消费。

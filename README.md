@@ -6,21 +6,21 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 `INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`：整组执行已改为事件驱动DAG流水；多直接生成式上游严格AND，分流独立推进、汇流等待全部、失败只阻塞后代，Text/Image/Video/Audio在实际提交前统一刷新runtime preflight。正式full基线`117/117 specs、959/959 PASS`，版本准入修复后相关8份spec `110/110 PASS`，精确发布HEAD build PASS，真实Provider请求0。生产已原子切换到不可变`v0.6.1`发布目录，公网version/live/ready和主JS哈希一致；schema39、quick_check ok、FK0、tasks109、attempts107、active0及并发500均前后不变。停机备份已完成恢复副本校验；用户随后在线上实页明确确认“通过通过”。
 
-## 2026-08-15 第三批电商工作流（已发布，待用户视觉确认）
+## 2026-08-15 第三批电商工作流（已发布并通过用户确认）
 
-`INC-ECOM-006 = PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_VISUAL_REVIEW`：用户明确“确定 发布”后，第三批P0/P1/P2共12条已按声明式数据单事务导入生产，线上继续显示`v0.6.0`。生产全库43/43兼容PASS、第三批12/12 PASS、问题0；42条published，第三批12条均有graph与实图封面，公网封面12/12 HTTP200 image/jpeg。schema39 quick_check ok/FK0、service active/enabled、NRestarts0。发布前后tasks109、Provider attempts107、active0，并发/RPM仍全部500，Provider/付费生成/OSS变化0。当前只待用户刷新模板面板确认可见性与视觉效果。
+`INC-ECOM-006 = PRODUCTION_PUBLISHED_USER_PASS`：用户明确“确定 发布”后，第三批P0/P1/P2共12条已按声明式数据单事务导入生产；生产全库43/43兼容PASS、第三批12/12 PASS、问题0，42条published，第三批12条均有graph与实图封面，公网封面12/12 HTTP200 image/jpeg。schema39 quick_check ok/FK0、service active/enabled、NRestarts0。发布前后tasks109、Provider attempts107、active0，并发/RPM仍全部500，Provider/付费生成/OSS变化0；用户随后明确“都通过了”，可见性与视觉验收收口为PASS。
 
 ## 2026-08-15 第二批电商工作流（已发布）
 
 `INC-ECOM-005 = PRODUCTION_PUBLISHED_USER_PASS`：用户已确认继续`v0.6.0`并允许发布，此前列出的P0/P1/P2共12条工作流已事务导入生产。当前生产兼容审计12/12 PASS、问题0，运行时目录读取30条published模板，第二批12条均有graph和实图封面；公网12/12封面HTTP200 image/jpeg。schema39 quick_check ok/FK0、service active/enabled、NRestarts0。发布前后tasks109、Provider attempts107、active0，并发/RPM仍全部500，Provider/付费生成/OSS变化0。用户随后明确第二批实页验收“通过1”；模板不是前端硬编码，默认拓扑、元提示词和模型ID作为`public_templates.graph`数据保存，应用时复制为画布的新节点。
 
-## 2026-08-15 当前离线事件（优先读取）
+## 2026-08-15 电商参考图修复（已发布并完成用户收口）
 
-`INC-ECOM-002 = LOCAL_FORMAL_FULL_PASS / PRODUCTION_REPAIR_PENDING`：参考图准备已移到Provider边界之前，整组全图预检、模型显式选择、模板发布兼容门和管理页兼容状态均已实现；1/5/20并行假OSS及Storage busy/上传/签名/Provider/清理故障注入均通过。正式候选为bridge `45e9cefe489ffea23970517c420bf9c64a49896b`与其唯一直接子final `e1e0e0d33809a519e8856d11135237a6a30ff912`，B→F只改package/lock三个版本值。clean final上正式full为`117/117 specs、954/954 PASS`，异常计数全0，builder `attempts=1 / invocations=5 / passed=1`，source/snapshot `0720f06d14e8c3d85ee22e596a28c51f7a1f68b6c1dceb46f66b7bc8633e27e8`，4173不变、suite cleaned。生产只读模板审计为19条全部`NEEDS_MODEL`、`INVALID=0`；仍禁止修改并发500、OSS路由、生产数据/服务、真实Provider/OSS、付费、push/tag/PR和发布。
+`INC-ECOM-002/003 = PRODUCTION_STATIC_REPAIR_PASS / ONE_REQUEST_REAL_IMAGE_SMOKE_PASS / USER_RESULT_PASS / OPTIONAL_PAID_GENERATION_DEFERRED`：参考图拆锁、错误分层、模板模型绑定与发布兼容门均已上线，目标节点`工艺拆解·完整商品`的一次1K真实图片复验成功；用户随后明确“都通过了”。该模板另外两个图片输出和其他电商视频没有再次发起付费生成，只作为可选内容抽验延期，不冒充真实生成PASS，也不阻塞v0.6.1发布。
 
 ## 2026-08-15 最终生产收口（当前权威）
 
-- 当前状态：`REM-000 = PASS / REM-001～009B = USER_REVIEW / REM-010～011 = PASS / G7（历史 v0.6.0）= PASS / PRODUCTION = LIVE / INC-ECOM-007 = USER PASS`。v0.6.0既有用户验收与v0.6.1新增流水执行语义均已分别确认；其余历史 `PARTIAL / PAUSED / BLOCK / NOT_STARTED` 项保持原状态。
+- 当前状态：`REM-000～011（含009A/009B） = PASS / PRODUCTION = LIVE / INC-ECOM-001～007已按各自边界完成用户收口`。v0.6.0既有用户验收与v0.6.1新增流水执行语义均已分别确认；未执行的付费两图/视频抽验及其余历史 `PARTIAL / PAUSED / BLOCK / NOT_STARTED` 项保持延期或原状态。
 - 生产指针为 `/opt/unboundry/current -> releases/v0.6.1-inc-ecom-007-20260815`，服务 `active + enabled`、`NRestarts=0`、监听 `127.0.0.1:4173`；公网 live/ready/version/root 均正常，version 为 `0.6.1`，ready 为 active/schema39。
 - 生产数据库在最新核验时为 schema39、quick_check `ok`、FK 违约 0、活动生成任务 0；共有109个任务、107条Provider attempt、43条公共模板（42 published）。安全阈值保持`globalEnabled=1 / emergencyStop=0 / per-user、RPM及四类并发均500`；本次切换前后任务与attempt计数相同，Provider/付费调用0。
 - F14 生产制品固定为 commit `eb4f99ea525390b0dd7a39d3cad55d882ffea41d` / tree `86b4e424b6d6324c5f24d4c633b0cd35baf0d626`，manifest `46e2365c48b8e8bdaa1847b1767ef2974a71f2d2b47c87743793c116e5ec2adf`，inventory `ac8ca43a9f8f6724ca67bd0899185fa3952e762e0400a1f9ce34f3ecfefc2bac`，tar `0e3a96a13299efba407ba98dc6501ae97297c9a82c067827b9f9befeb2c18944`。
