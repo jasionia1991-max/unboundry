@@ -2329,7 +2329,10 @@ function appendRelayMediaParam(
 }
 
 export async function relayMediaParametersForTask(
-  task: Pick<GenerationTask, "kind" | "modelConfiguration" | "ownerId" | "parameters">,
+  task: Pick<
+    GenerationTask,
+    "kind" | "modelConfiguration" | "ownerId" | "parameters" | "providerModelId"
+  >,
   mediaUrlForOwner: typeof providerMediaUrlForOwner,
 ) {
   if (
@@ -2368,6 +2371,8 @@ export async function relayMediaParametersForTask(
     throw new RelayProviderError("FORMAT");
   }
   const seenOrders = new Set<number>();
+  const grokImagineVideo15 = task.kind === "video" &&
+    task.providerModelId === "grok-imagine-video-1.5-preview";
   const inputs = rawInputs.map((raw) => {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
       throw new RelayProviderError("FORMAT");
@@ -2396,7 +2401,10 @@ export async function relayMediaParametersForTask(
     ) {
       throw new RelayProviderError("FORMAT");
     }
-    const parameterName = relayMediaRoleParameters[input.role]?.[input.kind];
+    const parameterName = grokImagineVideo15 && input.kind === "image" &&
+        input.role === "first-frame"
+      ? "images"
+      : relayMediaRoleParameters[input.role]?.[input.kind];
     if (!parameterName) throw new RelayProviderError("FORMAT");
     return {
       assetId: input.assetId,
@@ -2407,17 +2415,29 @@ export async function relayMediaParametersForTask(
   }).sort((left, right) => left.order - right.order);
   for (const input of inputs) {
     if (input.kind === "text") continue;
-    appendRelayMediaParam(
-      parameters,
-      input.parameterName,
-      await mediaUrlForOwner({
-        assetId: input.assetId,
-        kind: input.kind,
-        ownerId: task.ownerId,
-      }, {
-        rules: referenceMediaRulesForTask(task) ?? genericReferenceMediaRules,
-      }),
-    );
+    const mediaUrl = await mediaUrlForOwner({
+      assetId: input.assetId,
+      kind: input.kind,
+      ownerId: task.ownerId,
+    }, {
+      rules: referenceMediaRulesForTask(task) ?? genericReferenceMediaRules,
+    });
+    if (grokImagineVideo15 && input.parameterName === "images") {
+      const existing = parameters.images;
+      parameters.images = existing === undefined
+        ? [mediaUrl]
+        : Array.isArray(existing)
+          ? [...existing, mediaUrl]
+          : [existing, mediaUrl];
+    } else {
+      appendRelayMediaParam(parameters, input.parameterName, mediaUrl);
+    }
+  }
+  if (
+    grokImagineVideo15 &&
+    (!Array.isArray(parameters.images) || parameters.images.length !== 1)
+  ) {
+    throw new RelayProviderError("FORMAT");
   }
   return parameters;
 }

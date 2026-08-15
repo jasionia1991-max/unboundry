@@ -238,6 +238,50 @@ test("relay media parameters use explicit role mapping and keep transient URLs o
     }),
     async () => "https://signed.example.test/unused",
   )).rejects.toMatchObject({ code: "FORMAT" });
+
+  const grokTask = relayTask("video", "media-generate", {
+    parameters: {
+      aspectRatio: "16:9",
+      duration: "1",
+      inputSchemaVersion: 1,
+      inputs: [
+        { assetId: "first.png", kind: "image", order: 1, role: "first-frame", sourceNodeId: "first" },
+      ],
+      resolution: "480p",
+    },
+    providerModelId: "grok-imagine-video-1.5-preview",
+  });
+
+  await expect(relayMediaParametersForTask(grokTask, async ({ assetId }) =>
+    `https://signed.example.test/${assetId}?expires=300`
+  )).resolves.toEqual({
+    aspect_ratio: "16:9",
+    duration: "1",
+    images: ["https://signed.example.test/first.png?expires=300"],
+    resolution: "480p",
+  });
+
+  await expect(relayMediaParametersForTask(
+    relayTask("video", "media-generate", {
+      parameters: { inputSchemaVersion: 1, inputs: [] },
+      providerModelId: "grok-imagine-video-1.5-preview",
+    }),
+    async () => "https://signed.example.test/unused",
+  )).rejects.toMatchObject({ code: "FORMAT" });
+
+  await expect(relayMediaParametersForTask(
+    relayTask("video", "media-generate", {
+      parameters: {
+        inputSchemaVersion: 1,
+        inputs: [
+          { assetId: "first.png", kind: "image", order: 1, role: "first-frame", sourceNodeId: "first" },
+          { assetId: "second.png", kind: "image", order: 2, role: "first-frame", sourceNodeId: "second" },
+        ],
+      },
+      providerModelId: "grok-imagine-video-1.5-preview",
+    }),
+    async ({ assetId }) => `https://signed.example.test/${assetId}?expires=300`,
+  )).rejects.toMatchObject({ code: "FORMAT" });
 });
 
 test("Doubao TTS relay audio maps documented UI fields without forwarding snapshots", async () => {
