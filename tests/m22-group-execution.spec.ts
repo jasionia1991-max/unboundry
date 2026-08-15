@@ -3,14 +3,17 @@ import { expect, test, type APIRequestContext } from "./safe-test";
 import {
   buildWorkflowLayers,
   isExecutableWorkflowNode,
+  runWorkflowGraph,
   runWorkflowLayers,
   workflowModelSelectionProblem,
+  workflowRuntimePreflightDisposition,
   workflowSubmissionPreflightProblem,
   type WorkflowNodeShape,
 } from "../client/src/generation/workflowExecution";
 import { friendlyGenerationMessage } from "../client/src/generation/friendlyGenerationMessage";
 import { createSaveGateRun } from "../client/src/generation/saveGate";
 import { defaultParameterSchema } from "../types/modelParameters";
+import { resolveNodeInputs } from "../types/nodeInputs";
 
 async function existingCanvasSaveMetadata(
   request: APIRequestContext,
@@ -229,6 +232,155 @@ test("workflow submission preflight defers future output but blocks model incomp
     model: { generationAvailable: true },
     status: "ready",
   })).toBeUndefined();
+});
+
+test("real resolver empty generated Text is waiting during group preflight", () => {
+  const resolved = resolveNodeInputs({
+    edges: [{ id: "text-image", source: "text", target: "image" }],
+    modelSchema: defaultParameterSchema("image"),
+    nodes: [{
+      data: {
+        content: "",
+        label: "Text",
+        textPrompt: "先生成商品卖点正文",
+        textPromptReady: true,
+      },
+      id: "text",
+      type: "text",
+    }, {
+      data: { imagePromptReady: true, label: "Image" },
+      id: "image",
+      type: "image",
+    }],
+    ownPrompt: "",
+    targetId: "image",
+    targetKind: "image",
+  });
+  expect(resolved.inputs[0]).toMatchObject({
+    compatibility: "blocked",
+    sourceNodeId: "text",
+    state: "empty",
+  });
+  expect(resolved.problems[0]).toMatchObject({ code: "EMPTY" });
+  const executableIds = new Set(["text", "image"]);
+  expect(workflowSubmissionPreflightProblem({
+    executableIds,
+    inputs: resolved.inputs,
+    problems: resolved.problems,
+  })).toBeUndefined();
+  expect(workflowRuntimePreflightDisposition({
+    executableIds,
+    inputs: resolved.inputs,
+    problems: resolved.problems,
+  })).toMatchObject({ status: "waiting" });
+  for (const code of ["REQUIRED_MISSING", "ROLE_CONFLICT"] as const) {
+    expect(workflowSubmissionPreflightProblem({
+      executableIds,
+      inputs: resolved.inputs,
+      problems: [{ code, message: "等待本轮必需上游输入" }],
+    })).toBeUndefined();
+    expect(workflowRuntimePreflightDisposition({
+      executableIds,
+      inputs: resolved.inputs,
+      problems: [{ code, message: "等待本轮必需上游输入" }],
+    })).toMatchObject({ status: "waiting" });
+  }
+});
+
+test("workflow graph starts a ready branch child without waiting for a slow sibling", async () => {
+  let releaseSlow: () => void = () => {};
+  const slow = new Promise<void>((resolve) => {
+    releaseSlow = resolve;
+  });
+  const events: string[] = [];
+  const result = await runWorkflowGraph({
+    edges: [{ id: "root-fast", source: "root", target: "fast" }, {
+      id: "root-slow",
+      source: "root",
+      target: "slow",
+    }, {
+      id: "fast-child",
+      source: "fast",
+      target: "child",
+    }],
+    executableIds: new Set(["root", "fast", "slow", "child"]),
+    isCancelled: () => false,
+    runNode: async (nodeId) => {
+      events.push(`start:${nodeId}`);
+      if (nodeId === "slow") await slow;
+      if (nodeId === "child") releaseSlow();
+      events.push(`end:${nodeId}`);
+      return { status: "success" };
+    },
+  });
+  expect(result).toEqual({ status: "success" });
+  expect(events.indexOf("start:child")).toBeLessThan(events.indexOf("end:slow"));
+});
+
+test("workflow graph waits for every direct input before a multi-input node", async () => {
+  let releaseSecond: () => void = () => {};
+  const second = new Promise<void>((resolve) => {
+    releaseSecond = resolve;
+  });
+  let joinStarts = 0;
+  const run = runWorkflowGraph({
+    edges: [{ id: "a-join", source: "a", target: "join" }, {
+      id: "b-join",
+      source: "b",
+      target: "join",
+    }],
+    executableIds: new Set(["a", "b", "join"]),
+    isCancelled: () => false,
+    runNode: async (nodeId) => {
+      if (nodeId === "b") await second;
+      if (nodeId === "join") joinStarts += 1;
+      return { status: "success" };
+    },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  expect(joinStarts).toBe(0);
+  releaseSecond();
+  await expect(run).resolves.toEqual({ status: "success" });
+  expect(joinStarts).toBe(1);
+});
+
+test("workflow graph isolates a failed branch and continues independent work", async () => {
+  const executed: string[] = [];
+  const result = await runWorkflowGraph({
+    edges: [{ id: "bad-child", source: "bad", target: "blocked-child" }],
+    executableIds: new Set(["bad", "blocked-child", "independent"]),
+    isCancelled: () => false,
+    runNode: async (nodeId) => {
+      executed.push(nodeId);
+      return nodeId === "bad"
+        ? { message: "上游生成失败", status: "failed" }
+        : { status: "success" };
+    },
+  });
+  expect(executed).toContain("independent");
+  expect(executed).not.toContain("blocked-child");
+  expect(result).toMatchObject({
+    blockedNodeIds: ["blocked-child"],
+    failedNodeIds: ["bad"],
+    status: "failed",
+  });
+});
+
+test("workflow graph cancellation prevents new dispatch", async () => {
+  let cancelled = false;
+  const executed: string[] = [];
+  const result = await runWorkflowGraph({
+    edges: [{ id: "a-b", source: "a", target: "b" }],
+    executableIds: new Set(["a", "b"]),
+    isCancelled: () => cancelled,
+    runNode: async (nodeId) => {
+      executed.push(nodeId);
+      cancelled = true;
+      return { status: "success" };
+    },
+  });
+  expect(result.status).toBe("cancelled");
+  expect(executed).toEqual(["a"]);
 });
 
 test("friendly generation messages avoid long English and jargon", () => {

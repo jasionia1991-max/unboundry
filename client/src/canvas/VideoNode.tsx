@@ -39,8 +39,10 @@ import {
 } from "../generation/taskPolling";
 import {
   workflowModelSelectionProblem,
+  workflowRuntimePreflightDisposition,
   workflowSubmissionPreflightProblem,
   type NodeGenerationOutcome,
+  type WorkflowPreflightPhase,
 } from "../generation/workflowExecution";
 import { visibleGenerationError } from "../generation/generationErrors";
 import {
@@ -1091,12 +1093,22 @@ function VideoNodeImpl({
 
   const preflightWorkflowNode = async (context: {
     executableIds: ReadonlySet<string>;
+    phase: WorkflowPreflightPhase;
   }): Promise<NodeRunResult> => {
-    const problem = workflowSubmissionPreflightProblem({
+    const common = {
       executableIds: context.executableIds,
       inputs: inputPreflight.inputs,
       problems: workflowProblems,
-    });
+    };
+    if (context.phase !== "static") {
+      const disposition = workflowRuntimePreflightDisposition(common);
+      if (disposition.status === "ready") return { status: "success" };
+      if (disposition.status === "waiting" && context.phase === "runtime") {
+        return { message: disposition.problem.message, status: "busy" };
+      }
+      return persistWorkflowInputFailure(disposition.problem);
+    }
+    const problem = workflowSubmissionPreflightProblem(common);
     return problem
       ? persistWorkflowInputFailure(problem)
       : { status: "success" };
@@ -1131,7 +1143,10 @@ function VideoNodeImpl({
     async () => ({ status: "skipped" }),
   );
   const preflightWorkflowNodeRef = useRef<(
-    context: { executableIds: ReadonlySet<string> },
+    context: {
+      executableIds: ReadonlySet<string>;
+      phase: WorkflowPreflightPhase;
+    },
   ) => Promise<NodeRunResult>>(
     async () => ({ status: "success" }),
   );

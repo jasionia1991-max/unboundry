@@ -3,6 +3,35 @@
 更新时间：2026-08-15
 状态：`生产已运行 v0.6.0/schema39；REM-000 = PASS、REM-001～REM-009B = USER_REVIEW、REM-010/011 = PASS；G7（本次 v0.6.0）= PASS；PRODUCTION = LIVE / USER ACCEPTED；真实生成已开启，DEP-003/005/006/007/010 与 OPS-002 已完成。最终切换为人工受控 bounded cutover，不冒充新的 formal controller/full regression PASS；切换期间 Provider/付费生成调用仍为0，后续获明确授权的唯一真实生成另行记录。`
 
+### 2026-08-15 整组工作流流水线全局修复（INC-ECOM-007）
+
+- 状态：`LOCAL_FORMAL_FULL_PASS / USER_RECHECK / PRODUCTION_NOT_DEPLOYED`。用户已确认多入参严格AND、分流独立推进、汇流等待全部上游、分支失败只阻塞后代；本地修复和自动门已完成。
+- 根因：整组开始前动态预检全部下游；真实resolver把空上游标为blocked而延后逻辑顺序错误；测试使用了不可能的兼容状态；生产runner存在整层屏障；四类节点需在实际提交前刷新运行时输入。
+- 范围：重构通用DAG调度与Text/Image/Video/Audio整组登记协议；不修改并发、模板、Provider、OSS、数据库或生产，不发真实/付费请求。
+- 实现：生产调用路径改用事件驱动DAG调度；每个节点仅在全部直接生成式上游本轮成功后启动，快分支不等待无关慢分支；四类节点在实际提交前统一刷新runtime preflight。
+- 验证：7份相关spec `69/69 PASS`；临时洁净候选正式full `117/117 specs、959/959 PASS`，异常计数全0，immutable builder `1/5/1`，source/snapshot `28b203bb…a30c4`不变，4173不变，Provider/真实请求0。
+- 边界：实际仓库未commit/push/tag/PR，生产未部署；线上仍使用旧执行器，需另行正式发布后才能做用户实页验收。
+- 权威断点与验收合同：`spec/INC_ECOM_007_WORKFLOW_PIPELINE_REMEDIATION_2026-08-15.md`。
+
+### 2026-08-15 第三批服装电商工作流（INC-ECOM-006）
+
+- 状态：`PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_VISUAL_REVIEW`。用户明确“确定 发布”，P0=5、P1=6、P2=1共12条已按声明式数据单事务导入生产，线上继续显示`v0.6.0`，不是前端条件硬编码。
+- 恢复副本和生产写后兼容审计均为全库43/43 PASS、第三批12/12 PASS、问题0；生产43条模板、42条published，第三批12条均有graph和preview，公网12张封面HTTP200 image/jpeg。
+- 停机备份：`/var/lib/unboundry-rollbacks/inc-ecom-006-20260815T101814Z`，数据库SHA `1d606cdf…f8d9d`、数据清单SHA `07be6b05…a274`、证据清单SHA `432aa233…70b6`并验签PASS。
+- schema39 quick_check ok/FK0、service active/enabled、NRestarts0；发布前后tasks109、Provider attempts107、active0，并发/RPM均保持500，Provider/付费生成/OSS变化0。
+- 首次恢复副本审计因临时依赖解析路径缺失在生产写入前停止，服务自动恢复且第三批仍为0；补齐临时路径、恢复副本全绿后才发布。
+- 当前只待用户刷新模板面板确认第三批可见性和视觉效果；不自动运行图片或视频生成。
+- 证据：`spec/INC_ECOM_006_ECOMMERCE_WORKFLOW_BATCH_3_2026-08-15.md`、`spec/ecommerce-workflow-batch-3-production-receipt.json`。
+
+### 2026-08-15 第二批电商工作流模板包（INC-ECOM-005）
+
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户已确认继续`v0.6.0`并允许发布；此前清单P0=5、P1=6、P2=1共12条已完整落为声明式数据并事务导入生产，随后用户明确第二批实页验收“通过1”。
+- 数据包SHA `53fa501e…8cde`，物化图SHA `4735ec32…17b8`；在线上一致副本中导入后调用当前生产兼容审计，12/12 PASS、问题0。封面复用已留存授权证据的12张实图，无新增生成/下载成本。
+- Node22.23.1下source coverage PASS、build PASS、m77 `9/9 PASS`。生产精确兼容审计12/12 PASS；运行时目录读取第二批12/12 graph+preview，公网封面12/12 HTTP200 image/jpeg。schema39 quick_check ok/FK0，service active/enabled、NRestarts0。
+- 架构边界：运行时由通用模板目录读取`public_templates.graph`，应用时复制并重建节点/连线ID；固定默认拓扑、元提示词和明确模型ID是模板数据，不是前端组件硬编码。
+- 发布前后tasks109、Provider attempts107、active0；并发/RPM仍全部500，未调用Provider、未创建生成任务，未修改模型、Provider或OSS；不是full regression，用户实页视觉验收现为PASS。
+- 权威记录：`spec/INC_ECOM_005_ECOMMERCE_WORKFLOW_BATCH_2_2026-08-15.md`；生产receipt为`spec/ecommerce-workflow-batch-2-production-receipt.json`。
+
 ### 2026-08-15 电商模板封面发布（INC-ECOM-004）
 
 - 状态：`PRODUCTION_STATIC_COVERS_DEPLOYED / USER_VISUAL_REVIEW`。16条电商模板封面已发布，生产18条published模板现为`withPreview=18 / withoutPreview=0`；最终视觉取舍仍等用户刷新模板面板确认。

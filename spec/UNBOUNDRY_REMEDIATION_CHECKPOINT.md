@@ -1,11 +1,40 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`46`
+断点版本：`52`
 更新时间：`2026-08-15`
-状态：`INC_ECOM_004_PRODUCTION_STATIC_COVERS_DEPLOYED_USER_VISUAL_REVIEW`
+状态：`INC_ECOM_007_LOCAL_FORMAL_FULL_PASS_USER_RECHECK_PRODUCTION_NOT_DEPLOYED`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
-## 0. 当前新事件：INC-ECOM-004
+## 0. 当前新事件：INC-ECOM-007
+
+- 用户确认整组运行必须按依赖流水：多入参全部本轮成功并保存后才运行；分流独立推进；汇流严格等待全部；分支失败只阻塞后代。
+- 已确认是通用执行器缺陷：全图动态预检过早、真实resolver的blocked空态绕过延后分支、测试夹具失真、整层屏障以及节点运行时输入快照可能陈旧。
+- 用户授权一次性完成本地修复和零付费验证，不要求中途重复询问。禁止修改并发、模板、Provider、OSS、数据库或生产，禁止真实/付费请求。
+- 实现已完成：生产调用路径使用事件驱动DAG调度，直接生成式上游严格AND；快分支独立推进、失败只阻塞后代、取消不再派发新节点；Text/Image/Video/Audio统一static/runtime预检并在提交前刷新输入。
+- 自动门已完成：相关7份spec `69/69 PASS`；临时洁净直接父子候选上的正式安全full为`117/117 specs、959/959 PASS`，所有异常计数0，immutable builder `attempts=1 / invocations=5 / passed=1`，source/snapshot `28b203bb76275b9566727e51e2384674c7ddcf9851cc98c80fd3aed11b8a30c4`前后不变，4173不变，Provider/真实请求0。
+- 临时bridge/final `7cbce6dd26c99ea25cf88ffddb8c34694bdc06ec` / `8013ebc12b70cae98bcc1277b4701d79370d3a32`只用于不可变release测试，不是实际仓库commit或发布授权；实际仓库未commit/push/tag/PR。
+- 当前阶段：`LOCAL_FORMAL_FULL_PASS / USER_RECHECK / PRODUCTION_NOT_DEPLOYED`。生产仍运行旧执行器；下一步只能在取得独立发布授权后形成正式产物、部署并由用户实页复验。权威记录见`spec/INC_ECOM_007_WORKFLOW_PIPELINE_REMEDIATION_2026-08-15.md`。
+
+## 0A. 前一事件：INC-ECOM-006
+
+- 用户明确“确定 发布”；第三批12条声明式工作流已单事务导入生产，线上继续显示`v0.6.0`。
+- 最终停机一致备份：`/var/lib/unboundry-rollbacks/inc-ecom-006-20260815T101814Z`，数据库SHA `1d606cdf…f8d9d`，数据清单SHA `07be6b05…a274`、证据清单SHA `432aa233…70b6`并全量验签PASS。
+- 恢复副本与生产写后兼容审计均为全库43/43 PASS、第三批12/12 PASS、问题0；生产43条模板、42条published，第三批12条均有graph和preview，公网12张封面均HTTP200 image/jpeg。
+- schema39 quick_check ok/FK0、service active/enabled、NRestarts0。发布前后tasks109、Provider attempts107、active0；并发/RPM仍全部500，Provider/付费生成/OSS变化0。
+- 首次恢复副本审计因临时audit root缺`node_modules`解析路径在生产写入前停止，服务自动重启且第三批仍为0；补齐临时路径后才继续发布，未绕过兼容门。
+- 当前为`PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_VISUAL_REVIEW`；下一步只需用户刷新模板面板确认第三批可见性与视觉效果，不运行真实生成。
+- 证据：`spec/INC_ECOM_006_ECOMMERCE_WORKFLOW_BATCH_3_2026-08-15.md`、`spec/ecommerce-workflow-batch-3-production-receipt.json`。
+
+## 0A. 前一事件：INC-ECOM-005
+
+- 用户要求补上此前列出的第二批P0/P1/P2工作流，并确认模板是否写死；随后明确确认继续`v0.6.0`并允许发布。12条已以声明式JSON数据事务导入生产，不是前端组件条件分支。
+- 停机一致备份与恢复验证目录`/var/lib/unboundry-rollbacks/inc-ecom-005-20260815T092428Z`；恢复数据库SHA`5a4df10e…c3de`，最终清单SHA`8313a3b6…f503`。
+- 生产精确兼容审计12/12 PASS、问题0；运行时目录读取第二批12/12 graph+preview。生产31条模板、30条published且全部有preview；公网12张封面均HTTP200 image/jpeg。
+- schema39 quick_check ok/FK0、service active/enabled、NRestarts0。发布前后tasks109、Provider attempts107、active0；并发/RPM仍全部500，Provider/付费生成/OSS变化0。
+- 用户随后明确第二批实页验收“通过1”，INC-ECOM-005收口为`PRODUCTION_PUBLISHED_USER_PASS`。用户同时要求开始第三批优秀工作流调研，当前只授权调研、本地数据包与零付费验证，不自动授权第三批生产发布。
+- 详细记录：`spec/INC_ECOM_005_ECOMMERCE_WORKFLOW_BATCH_2_2026-08-15.md`；receipt：`spec/ecommerce-workflow-batch-2-production-receipt.json`。
+
+## 0B. 前一事件：INC-ECOM-004
 
 - 用户已明确授权发布模板封面，并单独确认继续使用`v0.6.0`；该一次性生产授权已经消费。
 - 16张1200×675 JPG已发布，生产18条published模板现全部有`preview_image`。公网逐文件核对为16/16 HTTP200、`image/jpeg`且SHA与receipt一致；live/ready/version/root均200。
@@ -15,7 +44,7 @@
 - 零费用边界：发布前后tasks109、Provider attempts107、active0；per-user/RPM/Text/Image/Video/Audio仍全部500，`provider_profiles`逐行未变，数据manifest SHA仍`980e90a9…28d0`，OSS未改；未调用Provider、未生成、未push/tag/PR。
 - 当前结论：`PRODUCTION_STATIC_COVERS_DEPLOYED / USER_VISUAL_REVIEW`。技术发布门已通过，封面视觉选择仍待用户刷新模板面板确认。
 
-## 0A. 前一事件：INC-ECOM-003
+## 0C. 前一事件：INC-ECOM-003
 
 - 用户在180秒修复部署后重新授权并要求控制成本：保持GPT Image 2专用协议、3:4、1K，只对同一节点再提交一次，不运行另外两图或视频，不重试。
 - 新task `9e4faf78-e466-4ae7-8799-2c9d2150bed6`、Provider attempt 132约58.6秒一次成功，result asset `9f755d07-42df-47a0-9bd1-443030244a59`已绑定原节点；ready PNG `1023×1537`、1,545,396 bytes、SHA-256 `ecf51e6c…ddb44`。

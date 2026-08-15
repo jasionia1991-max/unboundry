@@ -17,6 +17,8 @@ export type NodeRunResult = {
   status: NodeRunStatus;
 };
 
+export type WorkflowPreflightPhase = "runtime" | "runtime-final" | "static";
+
 export type WorkflowInputProblem = {
   code: string;
   edgeId?: string;
@@ -105,6 +107,13 @@ export function workflowSubmissionPreflightProblem<
   problems: readonly Problem[];
 }) {
   for (const problem of input.problems) {
+    if (
+      problem.code === "ROLE_CONFLICT" &&
+      !problem.edgeId &&
+      input.inputs.some((candidate) =>
+        candidate.state !== "missing" &&
+        input.executableIds.has(candidate.sourceNodeId))
+    ) continue;
     if (submissionInvariantProblemCodes.has(problem.code)) return problem;
     const resolved = problem.edgeId
       ? input.inputs.find((candidate) => candidate.edgeId === problem.edgeId)
@@ -115,7 +124,6 @@ export function workflowSubmissionPreflightProblem<
       problem.code === "UPLOADING" ||
       problem.code === "INVALID"
     ) {
-      if (resolved?.compatibility === "blocked") return problem;
       if (resolved && input.executableIds.has(resolved.sourceNodeId)) continue;
       return problem;
     }
@@ -129,7 +137,6 @@ export function workflowSubmissionPreflightProblem<
     }
     if (problem.code === "REQUIRED_MISSING") {
       const futureInput = input.inputs.some((candidate) =>
-        candidate.compatibility === "compatible" &&
         candidate.state !== "missing" &&
         input.executableIds.has(candidate.sourceNodeId));
       if (futureInput) continue;
@@ -138,6 +145,73 @@ export function workflowSubmissionPreflightProblem<
     return problem;
   }
   return undefined;
+}
+
+export type WorkflowRuntimePreflightDisposition<
+  Problem extends WorkflowInputProblem,
+> =
+  | { problem: Problem; status: "blocked" }
+  | { problem: Problem; status: "waiting" }
+  | { status: "ready" };
+
+/**
+ * Reclassify a node's current input state immediately before its task is
+ * submitted. A dynamic problem that belongs to a producer participating in
+ * this run is transient: React may still be rendering the producer's newly
+ * persisted output. Everything else is a real runtime blocker.
+ */
+export function workflowRuntimePreflightDisposition<
+  Problem extends WorkflowInputProblem,
+>(input: {
+  executableIds: ReadonlySet<string>;
+  inputs: readonly WorkflowResolvedInput[];
+  problems: readonly Problem[];
+}): WorkflowRuntimePreflightDisposition<Problem> {
+  for (const problem of input.problems) {
+    if (
+      problem.code === "ROLE_CONFLICT" &&
+      !problem.edgeId &&
+      input.inputs.some((candidate) =>
+        candidate.state !== "missing" &&
+        input.executableIds.has(candidate.sourceNodeId))
+    ) {
+      return { problem, status: "waiting" };
+    }
+    if (submissionInvariantProblemCodes.has(problem.code)) {
+      return { problem, status: "blocked" };
+    }
+    const resolved = problem.edgeId
+      ? input.inputs.find((candidate) => candidate.edgeId === problem.edgeId)
+      : undefined;
+    if (
+      problem.code === "EMPTY" ||
+      problem.code === "UPLOADING" ||
+      problem.code === "INVALID"
+    ) {
+      return resolved && input.executableIds.has(resolved.sourceNodeId)
+        ? { problem, status: "waiting" }
+        : { problem, status: "blocked" };
+    }
+    if (problem.code === "PROMPT_MISSING") {
+      const futureText = input.inputs.some((candidate) =>
+        candidate.kind === "text" &&
+        candidate.state !== "missing" &&
+        input.executableIds.has(candidate.sourceNodeId));
+      return futureText
+        ? { problem, status: "waiting" }
+        : { problem, status: "blocked" };
+    }
+    if (problem.code === "REQUIRED_MISSING") {
+      const futureInput = input.inputs.some((candidate) =>
+        candidate.state !== "missing" &&
+        input.executableIds.has(candidate.sourceNodeId));
+      return futureInput
+        ? { problem, status: "waiting" }
+        : { problem, status: "blocked" };
+    }
+    return { problem, status: "blocked" };
+  }
+  return { status: "ready" };
 }
 
 /**
@@ -296,6 +370,184 @@ export async function runWorkflowLayers(input: {
         status: "skipped",
       };
     }
+  }
+  return { status: "success" };
+}
+
+export type WorkflowGraphNodeState =
+  | "blocked"
+  | "failed"
+  | "pending"
+  | "running"
+  | "skipped"
+  | "success";
+
+export type WorkflowGraphRunResult =
+  | {
+      blockedNodeIds: string[];
+      failedNodeIds: string[];
+      message?: string;
+      status: "failed";
+    }
+  | {
+      blockedNodeIds: string[];
+      message?: string;
+      skippedNodeIds: string[];
+      status: "skipped";
+    }
+  | {
+      completedNodeIds: string[];
+      pendingNodeIds: string[];
+      status: "cancelled";
+    }
+  | { status: "success" };
+
+/**
+ * Dependency-driven workflow runner. It deliberately has no layer barrier:
+ * once all direct producers of a node have succeeded in this run, that node
+ * may start even while an unrelated branch is still running. A failed branch
+ * blocks only its descendants.
+ */
+export async function runWorkflowGraph(input: {
+  edges: readonly WorkflowEdgeShape[];
+  executableIds: ReadonlySet<string>;
+  isCancelled: () => boolean;
+  onNodeStateChange?: (
+    nodeId: string,
+    state: WorkflowGraphNodeState,
+    completed: number,
+    total: number,
+  ) => void;
+  runNode: (nodeId: string) => Promise<NodeRunResult>;
+}): Promise<WorkflowGraphRunResult> {
+  const nodeIds = Array.from(input.executableIds);
+  const parents = new Map(nodeIds.map((nodeId) => [nodeId, new Set<string>()]));
+  for (const edge of input.edges) {
+    if (
+      edge.source !== edge.target &&
+      input.executableIds.has(edge.source) &&
+      input.executableIds.has(edge.target)
+    ) {
+      parents.get(edge.target)?.add(edge.source);
+    }
+  }
+  const states = new Map<string, WorkflowGraphNodeState>(
+    nodeIds.map((nodeId) => [nodeId, "pending"]),
+  );
+  const active = new Map<
+    string,
+    Promise<{ nodeId: string; result: NodeRunResult }>
+  >();
+  const messages = new Map<string, string>();
+  let completed = 0;
+
+  const transition = (nodeId: string, state: WorkflowGraphNodeState) => {
+    states.set(nodeId, state);
+    if (["blocked", "failed", "skipped", "success"].includes(state)) {
+      completed += 1;
+    }
+    input.onNodeStateChange?.(nodeId, state, completed, nodeIds.length);
+  };
+
+  while (completed < nodeIds.length) {
+    let changed = false;
+    if (!input.isCancelled()) {
+      for (const nodeId of nodeIds) {
+        if (states.get(nodeId) !== "pending") continue;
+        const dependencyStates = Array.from(parents.get(nodeId) ?? [])
+          .map((parentId) => states.get(parentId));
+        if (dependencyStates.some((state) =>
+          state === "blocked" || state === "failed" || state === "skipped"
+        )) {
+          transition(nodeId, "blocked");
+          changed = true;
+        }
+      }
+      for (const nodeId of nodeIds) {
+        if (states.get(nodeId) !== "pending") continue;
+        const dependencyStates = Array.from(parents.get(nodeId) ?? [])
+          .map((parentId) => states.get(parentId));
+        if (!dependencyStates.every((state) => state === "success")) continue;
+        transition(nodeId, "running");
+        const pending = (async () => {
+          try {
+            return { nodeId, result: await input.runNode(nodeId) };
+          } catch {
+            return {
+              nodeId,
+              result: { status: "failed" as const },
+            };
+          }
+        })();
+        active.set(nodeId, pending);
+        changed = true;
+      }
+    }
+
+    if (active.size === 0) {
+      if (input.isCancelled()) {
+        return {
+          completedNodeIds: nodeIds.filter((nodeId) =>
+            ["failed", "skipped", "success"].includes(states.get(nodeId) ?? "")
+          ),
+          pendingNodeIds: nodeIds.filter((nodeId) =>
+            states.get(nodeId) === "pending" || states.get(nodeId) === "blocked"
+          ),
+          status: "cancelled",
+        };
+      }
+      if (!changed && completed < nodeIds.length) {
+        const unresolved = nodeIds.filter((nodeId) => states.get(nodeId) === "pending");
+        return {
+          blockedNodeIds: unresolved,
+          failedNodeIds: [],
+          message: "工作流存在无法解析的依赖",
+          status: "failed",
+        };
+      }
+      continue;
+    }
+
+    const settled = await Promise.race(active.values());
+    active.delete(settled.nodeId);
+    if (settled.result.message) {
+      messages.set(settled.nodeId, settled.result.message);
+    }
+    transition(
+      settled.nodeId,
+      settled.result.status === "success"
+        ? "success"
+        : settled.result.status === "failed"
+          ? "failed"
+          : "skipped",
+    );
+  }
+
+  if (input.isCancelled()) {
+    return {
+      completedNodeIds: nodeIds.filter((nodeId) => states.get(nodeId) === "success"),
+      pendingNodeIds: [],
+      status: "cancelled",
+    };
+  }
+  const failedNodeIds = nodeIds.filter((nodeId) => states.get(nodeId) === "failed");
+  const skippedNodeIds = nodeIds.filter((nodeId) => states.get(nodeId) === "skipped");
+  const blockedNodeIds = nodeIds.filter((nodeId) => states.get(nodeId) === "blocked");
+  if (failedNodeIds.length > 0) {
+    return {
+      blockedNodeIds,
+      failedNodeIds,
+      message: failedNodeIds.map((nodeId) => messages.get(nodeId)).find(Boolean),
+      status: "failed",
+    };
+  }
+  if (skippedNodeIds.length > 0) {
+    return {
+      blockedNodeIds,
+      message: skippedNodeIds.map((nodeId) => messages.get(nodeId)).find(Boolean),
+      skippedNodeIds,
+      status: "skipped",
+    };
   }
   return { status: "success" };
 }

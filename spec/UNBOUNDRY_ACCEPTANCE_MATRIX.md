@@ -2,6 +2,12 @@
 
 基线日期：2026-07-27  
 当前状态更新：2026-08-15
+
+2026-08-15 `INC-ECOM-007 = LOCAL_FORMAL_FULL_PASS / USER_RECHECK / PRODUCTION_NOT_DEPLOYED`：整组生产调用路径已改为事件驱动DAG流水；多个直接生成式上游严格AND，分流独立推进、汇流等待全部、失败只阻塞后代，四类节点提交前刷新runtime preflight；静态不兼容仍零任务阻止整组。7份相关spec `69/69 PASS`；临时洁净候选正式full `117/117 specs、959/959 PASS`，异常0、builder `1/5/1`、source/snapshot `28b203bb…a30c4`不变、4173不变、真实Provider请求0。该结论是本地技术PASS，不是生产部署或用户实页PASS；第三批工作流运行时验收继续等待发布后用户复验。
+
+2026-08-15 `INC-ECOM-006 = PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_VISUAL_REVIEW`：用户明确“确定 发布”，第三批P0/P1/P2共12条已单事务导入生产，显示版本仍为`v0.6.0`。恢复副本与生产写后兼容审计均为全库43/43 PASS、第三批12/12 PASS、问题0；生产43条模板、42条published，第三批12/12均有graph+preview，公网12张封面HTTP200 image/jpeg。schema39 quick_check ok/FK0、service active/enabled、NRestarts0。发布前后tasks109、Provider attempts107、active0，并发/RPM均保持500，Provider/付费生成/OSS变化0。当前技术发布PASS，不替代用户刷新模板面板后的可见性、视觉与运行时确认。
+
+2026-08-15 `INC-ECOM-005 = PRODUCTION_PUBLISHED_USER_PASS`：用户已确认继续`v0.6.0`并允许发布，第二批P0/P1/P2共12条电商工作流已事务导入生产。生产兼容审计12/12 PASS、问题0；运行时目录读取第二批12/12 graph+preview，公网12张封面均HTTP200 image/jpeg。生产现31条模板、30条published且全部有preview；schema39 quick_check ok/FK0，service active/enabled、NRestarts0。发布前后tasks109、Provider attempts107、active0，并发/RPM仍全部500，Provider/生成/OSS变化0。模板默认图是数据库JSON数据，应用时复制为新画布节点，不是前端组件条件硬编码；用户随后明确第二批实页验收“通过1”。
 状态：`AUTHORITATIVE`  
 状态夹具：`unboundry-state-fixtures.json`
 

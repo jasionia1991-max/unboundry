@@ -2,6 +2,14 @@
 
 > 写给下一个接手的人/AI agent。目标：看完本文后不需要向用户问“项目在哪、怎么跑、怎么发布、有什么红线”。
 
+## 当前增量：INC-ECOM-007（2026-08-15）
+
+用户发现整组运行会把本轮尚未生成的上游Text提前判成下游Image失败。通用执行器现已改为事件驱动DAG流水：每个节点仅在全部直接生成式上游本轮成功后启动，多入参严格AND；快分支不等待无关慢分支，失败只阻塞后代；Text/Image/Video/Audio在实际提交前统一刷新runtime preflight，静态不兼容仍在零任务阶段阻止整组。相关7份spec `69/69 PASS`；临时洁净候选正式full `117/117 specs、959/959 PASS`，异常0、immutable builder `1/5/1`、source/snapshot `28b203bb…a30c4`不变、4173不变、真实Provider请求0。当前状态为`LOCAL_FORMAL_FULL_PASS / USER_RECHECK / PRODUCTION_NOT_DEPLOYED`：实际仓库未commit/push/tag/PR，生产仍运行旧执行器；后续必须先取得独立发布授权，再形成正式产物、部署并进行用户实页验收。权威记录为`spec/INC_ECOM_007_WORKFLOW_PIPELINE_REMEDIATION_2026-08-15.md`。
+
+## 当前增量：INC-ECOM-006（2026-08-15）
+
+第三批P0/P1/P2共12条服装电商工作流已在用户明确“确定 发布”后单事务导入生产，显示版本继续为`v0.6.0`。恢复副本与生产写后兼容审计均为全库43/43 PASS、第三批12/12 PASS、问题0；生产43条模板、42条published，第三批12条均有graph和preview，公网12张复用封面均HTTP200 image/jpeg。发布前后tasks109、Provider attempts107、active0，并发/RPM仍全部500，Provider/付费生成/OSS变化0。当前状态为`PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_VISUAL_REVIEW`，只待用户刷新模板面板确认可见性与视觉效果。详细记录与凭证为`spec/INC_ECOM_006_ECOMMERCE_WORKFLOW_BATCH_3_2026-08-15.md`和`spec/ecommerce-workflow-batch-3-production-receipt.json`。
+
 ## 0. 2026-08-15 最终生产状态（当前权威）
 
 - 当前状态：`REM-000 PASS / REM-001～009B USER_REVIEW / REM-010～011 PASS / G7（本次 v0.6.0）PASS / PRODUCTION LIVE / USER ACCEPTED`；无 `IN_PROGRESS` REM。
@@ -199,4 +207,4 @@ ssh live-cockpit "curl -fsS http://127.0.0.1:4173/api/version"
 5. 向用户先报告恢复出的项目、版本、当前项和授权；
 6. 任一不一致都必须停止，不得依据内部记忆、历史 PASS 或压缩摘要猜测继续。
 
-当前执行点：`REM-000 PASS / REM-001～009B USER_REVIEW / REM-010～011 PASS / G7（本次v0.6.0）PASS / PRODUCTION LIVE / USER ACCEPTED / 无IN_PROGRESS REM`。最终技术凭证SHA `5c78e7bc…46c2d8`，生产v0.6.0/schema39。后续生产动作、Provider、push/tag/PR或新版本发布均无现成授权，必须另建任务与断点。
+当前执行点：`REM-000 PASS / REM-001～009B USER_REVIEW / REM-010～011 PASS / G7（本次v0.6.0）PASS / PRODUCTION LIVE / USER ACCEPTED / INC-ECOM-006 TECHNICAL PASS / USER_VISUAL_REVIEW`。生产v0.6.0/schema39；第三批已发布，后续生产动作、Provider、push/tag/PR或新版本发布均无现成授权。

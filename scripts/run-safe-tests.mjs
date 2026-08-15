@@ -2038,8 +2038,8 @@ async function discover(specs, suiteRoot, sourceRoot, browserRoot) {
         })}`,
       );
     }
-    if (discovery.tests !== 954) {
-      fail(`the frozen 954-test inventory changed to ${discovery.tests}`);
+    if (discovery.tests !== 959) {
+      fail(`the frozen 959-test inventory changed to ${discovery.tests}`);
     }
     const idsByFile = {};
     const { entries } = collectReportEntries(reportFile, sourceRoot);

@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "event": "INC-ECOM-005",
+  "status": "PRODUCTION_PUBLISHED_TECHNICAL_PASS",
+  "displayVersion": "0.6.0",
+  "publishedAt": "2026-08-15T09:26:27.412Z",
+  "package": {
+    "path": "spec/ecommerce-workflow-batch-2.json",
+    "sha256": "53fa501eb88b8d926714e23541d2bea720ee6a3b276c2afaee311aa5a2ca8cde",
+    "graphSha256": "4735ec3235bdbf571ce08e468a9f8c28899cd7a942564d9d053de7c57de017b8",
+    "templates": 12,
+    "priorityCounts": {
+      "P0": 5,
+      "P1": 6,
+      "P2": 1
+    }
+  },
+  "backup": {
+    "path": "/var/lib/unboundry-rollbacks/inc-ecom-005-20260815T092428Z",
+    "restoredDatabaseSha256": "5a4df10eed13cbab14c1cc0bcc25d86f17212ccb1613c0e04859e9b9f1b2c3de",
+    "manifestSha256": "8313a3b6cf083f25a2947e47357196a6dfbde166f900404ac55fd5f2ab4ef503",
+    "verification": {
+      "schemaVersion": 39,
+      "quickCheck": "ok",
+      "foreignKeyViolations": 0,
+      "templates": 19,
+      "batch2Templates": 0,
+      "generationTasks": 109,
+      "providerAttempts": 107
+    }
+  },
+  "publication": {
+    "inserted": 12,
+    "applyReceiptSha256": "f6c62647823f9262c5655963c62083d34af5a4474b7cdd194ee5346c588b7ba3",
+    "compatibilityReceiptSha256": "81fa79594a178896e4a11b97cc7eaec1fe69a3d552a22a859d41be7a2d7e2d53",
+    "catalogReceiptSha256": "33d98debd0a9b4e27f5915552c4731fb8d33dc2b1617091a4f8ce7ff4f25a7ea",
+    "compatibility": {
+      "pass": 12,
+      "needsModel": 0,
+      "invalid": 0,
+      "issues": 0
+    },
+    "catalog": {
+      "templatesTotal": 31,
+      "publishedTotal": 30,
+      "publishedWithPreview": 30,
+      "batch2Published": 12,
+      "batch2WithGraph": 12,
+      "batch2WithPreview": 12
+    }
+  },
+  "runtime": {
+    "release": "/opt/unboundry/releases/v0.6.0",
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "nRestarts": 0,
+    "schemaVersion": 39,
+    "quickCheck": "ok",
+    "foreignKeyViolations": 0,
+    "activeGenerationTasks": 0,
+    "liveHttp": 200,
+    "readyHttp": 200,
+    "rootHttp": 200,
+    "publicVersion": "0.6.0",
+    "coversHttp200": 12,
+    "coversContentType": "image/jpeg"
+  },
+  "costBoundary": {
+    "generationTasksBefore": 109,
+    "generationTasksAfter": 109,
+    "providerAttemptsBefore": 107,
+    "providerAttemptsAfter": 107,
+    "providerRequestsCreated": 0,
+    "paidGenerationRequests": 0,
+    "ossChanges": 0,
+    "safetySettingsChanged": false,
+    "perUserConcurrency": 500,
+    "requestsPerMinute": 500,
+    "textConcurrency": 500,
+    "imageConcurrency": 500,
+    "videoConcurrency": 500,
+    "audioConcurrency": 500
+  },
+  "userAcceptance": {
+    "status": "PASS",
+    "confirmedAt": "2026-08-15T09:36:01Z",
+    "scope": "Second-batch template visibility and visual acceptance"
+  }
+}

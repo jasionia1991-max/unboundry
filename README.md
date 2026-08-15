@@ -2,6 +2,18 @@
 
 TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mymy.ltd`，当前线上 `v0.6.0 / schema39`）。
 
+## 2026-08-15 整组工作流流水线修复（本地正式全量通过，未部署）
+
+`INC-ECOM-007 = LOCAL_FORMAL_FULL_PASS / USER_RECHECK / PRODUCTION_NOT_DEPLOYED`：整组执行已改为事件驱动DAG流水；多直接生成式上游严格AND，分流独立推进、汇流等待全部、失败只阻塞后代，Text/Image/Video/Audio在实际提交前统一刷新runtime preflight。相关7份spec `69/69 PASS`；临时洁净候选正式full `117/117 specs、959/959 PASS`，异常0、immutable builder `1/5/1`、source/snapshot `28b203bb…a30c4`不变、4173不变、真实Provider请求0。本次未改并发、模板、Provider、OSS、数据库或生产，未commit/push/tag/PR；线上仍是旧执行器，需独立发布后再由用户实页复验。
+
+## 2026-08-15 第三批电商工作流（已发布，待用户视觉确认）
+
+`INC-ECOM-006 = PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_VISUAL_REVIEW`：用户明确“确定 发布”后，第三批P0/P1/P2共12条已按声明式数据单事务导入生产，线上继续显示`v0.6.0`。生产全库43/43兼容PASS、第三批12/12 PASS、问题0；42条published，第三批12条均有graph与实图封面，公网封面12/12 HTTP200 image/jpeg。schema39 quick_check ok/FK0、service active/enabled、NRestarts0。发布前后tasks109、Provider attempts107、active0，并发/RPM仍全部500，Provider/付费生成/OSS变化0。当前只待用户刷新模板面板确认可见性与视觉效果。
+
+## 2026-08-15 第二批电商工作流（已发布）
+
+`INC-ECOM-005 = PRODUCTION_PUBLISHED_USER_PASS`：用户已确认继续`v0.6.0`并允许发布，此前列出的P0/P1/P2共12条工作流已事务导入生产。当前生产兼容审计12/12 PASS、问题0，运行时目录读取30条published模板，第二批12条均有graph和实图封面；公网12/12封面HTTP200 image/jpeg。schema39 quick_check ok/FK0、service active/enabled、NRestarts0。发布前后tasks109、Provider attempts107、active0，并发/RPM仍全部500，Provider/付费生成/OSS变化0。用户随后明确第二批实页验收“通过1”；模板不是前端硬编码，默认拓扑、元提示词和模型ID作为`public_templates.graph`数据保存，应用时复制为画布的新节点。
+
 ## 2026-08-15 当前离线事件（优先读取）
 
 `INC-ECOM-002 = LOCAL_FORMAL_FULL_PASS / PRODUCTION_REPAIR_PENDING`：参考图准备已移到Provider边界之前，整组全图预检、模型显式选择、模板发布兼容门和管理页兼容状态均已实现；1/5/20并行假OSS及Storage busy/上传/签名/Provider/清理故障注入均通过。正式候选为bridge `45e9cefe489ffea23970517c420bf9c64a49896b`与其唯一直接子final `e1e0e0d33809a519e8856d11135237a6a30ff912`，B→F只改package/lock三个版本值。clean final上正式full为`117/117 specs、954/954 PASS`，异常计数全0，builder `attempts=1 / invocations=5 / passed=1`，source/snapshot `0720f06d14e8c3d85ee22e596a28c51f7a1f68b6c1dceb46f66b7bc8633e27e8`，4173不变、suite cleaned。生产只读模板审计为19条全部`NEEDS_MODEL`、`INVALID=0`；仍禁止修改并发500、OSS路由、生产数据/服务、真实Provider/OSS、付费、push/tag/PR和发布。

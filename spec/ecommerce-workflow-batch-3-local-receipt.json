@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "event": "INC-ECOM-006",
+  "status": "LOCAL_PACKAGE_VALIDATED_PRODUCTION_NOT_AUTHORIZED",
+  "validatedDate": "2026-08-15",
+  "package": {
+    "path": "spec/ecommerce-workflow-batch-3.json",
+    "sha256": "796fd6287df501d1647f131513b772f1f798ba0effa59002eee48d8897826f42",
+    "graphSha256": "9dd99f8bfdae25dbadd4dc7473301110b92eba258b0e6c39837c97b86c317ade",
+    "templates": 12,
+    "priorityCounts": {
+      "P0": 5,
+      "P1": 6,
+      "P2": 1
+    },
+    "templateIds": [
+      "00000000-0000-4000-8000-000000000301",
+      "00000000-0000-4000-8000-000000000302",
+      "00000000-0000-4000-8000-000000000303",
+      "00000000-0000-4000-8000-000000000304",
+      "00000000-0000-4000-8000-000000000305",
+      "00000000-0000-4000-8000-000000000306",
+      "00000000-0000-4000-8000-000000000307",
+      "00000000-0000-4000-8000-000000000308",
+      "00000000-0000-4000-8000-000000000309",
+      "00000000-0000-4000-8000-000000000310",
+      "00000000-0000-4000-8000-000000000311",
+      "00000000-0000-4000-8000-000000000312"
+    ]
+  },
+  "materialization": {
+    "publisher": "scripts/apply-ecommerce-workflow-batch-2.mjs",
+    "publisherSha256": "8b1b85b7063d0a0cd422cc134d88ca2e5bc8a9135aca2e9ebb69d6b766639bbb",
+    "syntheticSchemaVersion": 39,
+    "quickCheck": "ok",
+    "foreignKeyViolations": 0,
+    "activeGenerationTasks": 0,
+    "dryRunBefore": {
+      "existing": 0,
+      "missing": 12
+    },
+    "apply": {
+      "inserted": 12,
+      "existing": 12,
+      "missing": 0
+    },
+    "idempotentDryRunAfter": {
+      "existing": 12,
+      "missing": 0
+    },
+    "nodeEdgeCounts": {
+      "301": "6/6",
+      "302": "10/18",
+      "303": "8/10",
+      "304": "8/10",
+      "305": "8/10",
+      "306": "9/12",
+      "307": "8/10",
+      "308": "10/14",
+      "309": "8/10",
+      "310": "8/10",
+      "311": "8/10",
+      "312": "7/8"
+    }
+  },
+  "covers": {
+    "strategy": "reuse-existing-licensed-static-covers",
+    "count": 12,
+    "uniquePaths": 12,
+    "totalBytes": 1349498,
+    "downloads": 0,
+    "generations": 0
+  },
+  "targetedValidation": {
+    "runner": "scripts/run-safe-tests.mjs run --spec m77-public-templates",
+    "sourceCoverage": {
+      "status": "PASS",
+      "sourceFiles": 330,
+      "typescript": "293/293",
+      "javascript": "37/37",
+      "operationalScripts": 24
+    },
+    "productionBuild": "PASS",
+    "discovered": {
+      "specs": 117,
+      "tests": 954
+    },
+    "executed": {
+      "specs": 1,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "reportErrors": 0,
+      "blocked": 0
+    },
+    "sourceSnapshotSha256": "341bbd42e5a2499847924100b5c137b76542eb19a08cf4b03245a98fb1db4e5d",
+    "listener4173Sha256": "dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae",
+    "suiteCleaned": true,
+    "scope": "targeted-not-full-regression"
+  },
+  "deferredGates": {
+    "currentProductionModelContractDryRun": "PENDING_NEW_PUBLISH_AUTHORIZATION",
+    "productionCompatibilityAudit": "PENDING_NEW_PUBLISH_AUTHORIZATION",
+    "productionPublish": "NOT_AUTHORIZED",
+    "userLivePageAcceptance": "NOT_STARTED"
+  },
+  "costBoundary": {
+    "providerRequests": 0,
+    "paidGenerationRequests": 0,
+    "ossChanges": 0,
+    "productionWrites": 0,
+    "concurrencyChanges": 0
+  }
+}
