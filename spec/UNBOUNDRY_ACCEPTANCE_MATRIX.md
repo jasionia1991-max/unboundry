@@ -1,7 +1,11 @@
 # Unboundry 绿地复刻验收矩阵
 
 基线日期：2026-07-27  
-当前状态更新：2026-08-15
+当前状态更新：2026-08-16
+
+2026-08-16 `INC-UI-002 = LOCAL_IMPLEMENTED_AUTO_PASS / USER_RECHECK`：框选仍对普通节点保留局部相交语义，但Group只有被选框完整包含才进入框选，解决巨大Group误选和打组范围扩大；Image/Video/Audio共用OSS/媒体读取失败占位并保留原asset/source，CSP只在`img-src/media-src`放行`https://*.aliyuncs.com`，生成/上传错误继续位于恢复层上方；Text/Image/Video/Audio/Playlist/Group/Storyboard七类长标题统一省略并暴露完整title。build PASS，`m41+m98 54/54 PASS`，非冻结发布运维集合`114/114 specs、938/938 PASS`，异常0、4173不变、真实Provider/OSS/付费请求0。4份冻结release运维spec仍绑定0.6.0 source-pair，未冒充formal full。生产仍为v0.6.1/schema39，SEL-001、MEDIA-LOAD-001～003、TITLE-001～007等待用户线上复验。
+
+2026-08-15 `INC-UI-001 = LOCAL_IMPLEMENTED_AUTO_PASS_USER_RECHECK / V0.6.2_CONFIRMED`：设置页返回来源画布、返回工作空间、浏览器favicon与动态标题的本地候选已实现。返回优先级为`URL from → 当前账号本标签最近真实项目 → 工作空间`，只接受当前账号项目ID并以只读项目列表校验，默认画布不作为返回动作的隐式兜底。受影响10份spec `102/102 PASS`，新增与多项目定向`m66 28/28 PASS`；临时洁净候选正式full为`117/117 specs、962/962 PASS`且所有异常计数0，Provider/付费/OSS请求0、4173不变。NAV-001～004、BRAND-001～003现为`USER_RECHECK`，生产保持v0.6.1/schema39且尚未发布本候选。
 
 2026-08-15 `INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`：整组生产调用路径已改为事件驱动DAG流水；多个直接生成式上游严格AND，分流独立推进、汇流等待全部、失败只阻塞后代，四类节点提交前刷新runtime preflight；静态不兼容仍零任务阻止整组。正式full基线`117/117 specs、959/959 PASS`，v0.6.1准入修复后相关8份spec `110/110 PASS`，精确HEAD build PASS，Provider请求0。生产已切换到不可变v0.6.1目录；公网version/live/ready及主JS哈希通过，schema39 quick_check ok/FK0，tasks109/attempts107/active0和并发500前后不变。用户随后在线上实页复验并明确确认“通过通过”。
 
@@ -237,6 +241,18 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 | AUTH-005 | P0 | 账号管理 | 管理员可创建第二个及更多管理员账号（角色可选），创建写审计；普通管理员之间可互相停用/删除/改角色/重置密码 | m11 7/7（多管理员创建与互管）、m78 7/7、OpenAPI 同步；2026-08-09 用户实页确认通过 | PASS |
 | AUTH-006 | P0 | 账号管理 | 第一个创建的管理员自动成为受保护最高权限账号（mymy/麦哥）；其他管理员永远不能停用/删除/降级/重置密码/改权限它；root 自己也不能在网页上改自己角色/删除自己；账号管理页显示“最高权限”徽标并禁用操作 | v37 迁移（最早管理员置 protected）、m11 受保护矩阵、真实库副本演练确认麦哥被标记；2026-08-09 用户实页确认通过 | PASS |
 | AUTH-007 | P0 | 个人菜单/账号管理 | 自己改密码（需旧密码，吊销其他会话）；管理员可重置普通/其他管理员密码（受保护 root 除外，吊销全部会话）；root 忘密码时用服务器应急脚本重置 | m11 密码重置与会话吊销用例、`scripts/reset-account-password.mjs`；2026-08-09 用户实页确认通过 | PASS |
+
+### 8.1 设置返回链与浏览器身份（INC-UI-001）
+
+| ID | 优先级 | 项目 | 验收动作与断言 | 当前证据/缺口 | 实现状态 |
+|---|---|---|---|---|---|
+| NAV-001 | P0 | 设置页返回来源画布 | 从真实项目A进入任意完整设置页后，「返回画布」经当前账号项目列表校验回到A，不固定进入默认画布 | 共享解析器与8页接线已实现；m66来源项目返回自动断言通过，待用户实页复验 | USER_RECHECK |
+| NAV-002 | P0 | 设置页双返回按钮 | `/connections`及7个`/admin/*`完整页面共享「返回画布」「返回工作空间」；设置页内部跳转不丢`from` | 共享页头、来源传播、busy/error状态和8页自动断言通过，待用户实页复验 | USER_RECHECK |
+| NAV-003 | P0 | 工作空间闭环与失败兜底 | A→设置→工作空间→返回画布仍回A；来源删除、无历史或网络失败不误跳默认画布 | Workspace已复用共享解析器；闭环、无来源和API错误fail-closed自动断言通过 | USER_RECHECK |
+| NAV-004 | P0 | 来源安全与账号隔离 | `from`只接受安全项目ID并属于当前账号；拒绝URL/非法编码/default，双击只请求/导航一次 | 当前账号列表校验、非法/default/开放重定向拒绝与单飞自动断言通过 | USER_RECHECK |
+| BRAND-001 | P1 | 浏览器favicon | Chrome标签显示清晰的无央无限符号；开发与构建`/favicon.svg`均200且字节一致 | favicon资源、HTML link和构建自动断言通过；待用户浏览器视觉确认 | USER_RECHECK |
+| BRAND-002 | P1 | 动态页面标题 | 项目、默认画布、工作空间、登录和全部设置页使用准确`页面名｜无央`标题 | 静态兜底和页面身份模块已接线，自动标题矩阵通过；待用户实页确认 | USER_RECHECK |
+| BRAND-003 | P1 | 项目标题联动 | 项目重命名即时更新浏览器标签，刷新后与持久标题一致；空标题安全回退 | CanvasShell标题状态、重命名和空标题自动断言通过；待用户实页确认 | USER_RECHECK |
 
 ## 9. 播放列表、Agent 与外围面板
 

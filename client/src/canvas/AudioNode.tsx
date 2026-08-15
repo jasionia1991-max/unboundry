@@ -13,6 +13,10 @@ import { useCanvasCheckpoint } from "./CanvasHistory";
 import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
+import {
+  MediaLoadFallback,
+  useMediaLoadRecovery,
+} from "./MediaLoadFallback";
 import { NODE_DEFAULT_SIZES } from "./mediaGeometry";
 import { NodeModelControl } from "./NodeModelControl";
 import { NodeParameterControl } from "./NodeParameterControl";
@@ -197,6 +201,7 @@ function AudioNodeImpl({
   selected,
 }: NodeProps<ProbeNodeType>) {
   const singleNodeChrome = useSingleNodeChrome(selected, dragging);
+  const mediaLoad = useMediaLoadRecovery(data.audioSrc);
   const inputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const uploadBaseline = useRef<ProbeNodeType | undefined>(undefined);
@@ -2382,7 +2387,7 @@ function AudioNodeImpl({
           </span>
         )}
       </Handle>
-      <div className="audio-node-title nodrag">
+      <div className="canvas-node-title audio-node-title nodrag">
         <svg aria-hidden="true" viewBox="0 0 18 18">
           <path d="M7 14a3 3 0 1 1-2-2.82V5l9-2v8a3 3 0 1 1-2-2.82V5.5L7 6.6Z" />
         </svg>
@@ -2421,7 +2426,9 @@ function AudioNodeImpl({
             value={titleControl.value}
           />
         ) : (
-          <span>{titleControl.committedValue}</span>
+          <span title={titleControl.committedValue}>
+            {titleControl.committedValue}
+          </span>
         )}
       </div>
       <div
@@ -2469,9 +2476,13 @@ function AudioNodeImpl({
         {data.audioSrc ? (
           <>
             <audio
+              className={mediaLoad.failed ? "media-load-obscured" : undefined}
               data-testid="audio-node-media"
+              key={mediaLoad.key}
               onEnded={() => setPlaying(false)}
+              onError={mediaLoad.markFailed}
               onLoadedMetadata={(event) => {
+                mediaLoad.markLoaded();
                 if (persistenceReady) {
                   applyLoadedAudioDuration(event.currentTarget.duration);
                 }
@@ -2483,7 +2494,7 @@ function AudioNodeImpl({
               }
               preload="metadata"
               ref={audioRef}
-              src={data.audioSrc}
+              src={mediaLoad.source}
             />
             <div className="audio-waveform">
               <div className="audio-waveform-bars" aria-hidden="true">
@@ -2554,6 +2565,13 @@ function AudioNodeImpl({
             </svg>
           </div>
         ) : null}
+        {data.audioSrc && mediaLoad.failed && (
+          <MediaLoadFallback
+            kind="音频"
+            onReload={mediaLoad.reload}
+            onReplace={() => inputRef.current?.click()}
+          />
+        )}
         {(generating || uploading) && (
           <div
             aria-label={uploading ? "音频上传中" : "音频生成中"}

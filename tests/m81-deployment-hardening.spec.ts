@@ -96,6 +96,7 @@ const capturedOutput = new WeakMap<ChildProcess, string[]>();
 test("release role and bridge-mode selection are exact and fail closed", () => {
   expect(releaseRoleFromEnvironment("0.6.0", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.6.1", {})).toBe("final");
+  expect(releaseRoleFromEnvironment("0.6.2", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.5.2", {})).toBe("bridge");
   expect(releaseRoleFromEnvironment("0.5.2", {
     UNBOUNDRY_RELEASE_ROLE: "bridge",
@@ -1478,8 +1479,14 @@ function assertSecurityHeaders(
       framePolicy.allowSameOriginChildFrames ? "'self'" : "'none'"
     }`,
   );
-  expect(policy).toContain("img-src 'self' blob: data:");
-  expect(policy).toContain("media-src 'self' blob: data:");
+  expect(policy).toContain(
+    "img-src 'self' blob: data: https://*.aliyuncs.com",
+  );
+  expect(policy).toContain(
+    "media-src 'self' blob: data: https://*.aliyuncs.com",
+  );
+  expect(policy).not.toContain("script-src https://*.aliyuncs.com");
+  expect(policy).not.toContain("connect-src https://*.aliyuncs.com");
   expect(policy).toContain(
     development
       ? "connect-src 'self' ws: wss:"

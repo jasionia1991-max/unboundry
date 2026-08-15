@@ -5,6 +5,11 @@ import { join } from "node:path";
 import { openAppDatabase } from "../server/database";
 import { hasOtherOwnerProject } from "../server/canvasPersistence";
 import { deleteProjectRows, projectCover } from "../server/projects";
+import {
+  parseSourceProjectId,
+  safeProjectId,
+  withCanvasSource,
+} from "../client/src/navigation/canvasReturn";
 
 const onePixelPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
@@ -1317,7 +1322,7 @@ test("workspace back returns to the originating project, not the default canvas"
   await request.delete(`/api/projects/${project.id}`);
 });
 
-test("workspace entry points are visible from the default canvas and workspace returns to canvas", async ({
+test("workspace entry points are visible from the default canvas and workspace does not invent a return canvas", async ({
   page,
 }) => {
   await page.goto("/canvas");
@@ -1332,14 +1337,159 @@ test("workspace entry points are visible from the default canvas and workspace r
   await expect(page.getByTestId("workspace-page")).toBeVisible();
 
   await page.getByTestId("workspace-back").click();
-  await expect(page).toHaveURL(/\/canvas$/);
-  await expect(page.getByTestId("canvas-shell")).toBeVisible();
+  await expect(page).toHaveURL(/\/canvas\/projects$/);
+  await expect(page.locator("#workspace-error")).toContainText(
+    "没有可返回的真实项目画布",
+  );
 
+  await page.goto("/canvas");
   await page.getByTestId("user-avatar").click();
   await expect(page.getByTestId("account-popover")).toBeVisible();
   await page.getByTestId("account-popover").getByText("工作空间").click();
   await expect(page).toHaveURL(/\/canvas\/projects$/);
   await expect(page.getByTestId("workspace-page")).toBeVisible();
+});
+
+test("settings pages keep their source project and expose both return actions", async ({
+  page,
+  request,
+}) => {
+  const created = await request.post("/api/projects", { data: {} });
+  expect(created.status()).toBe(201);
+  const project = (await created.json()) as { id: string };
+  const source = `from=${encodeURIComponent(project.id)}`;
+  const pages = [
+    ["/connections", "我的连接｜无央"],
+    ["/admin/models", "模型中心｜无央"],
+    ["/admin/providers", "平台连接｜无央"],
+    ["/admin/accounts", "账号管理｜无央"],
+    ["/admin/storage", "存储中心｜无央"],
+    ["/admin/generation-safety", "生成安全｜无央"],
+    ["/admin/templates", "公共模板管理｜无央"],
+    ["/admin/api-contract", "接口说明｜无央"],
+  ] as const;
+
+  for (const [path, title] of pages) {
+    await page.goto(`${path}?${source}`);
+    const actions = page.getByTestId("settings-header-actions");
+    await expect(actions).toBeVisible();
+    await expect(actions.getByRole("button", { name: "返回画布" }))
+      .toBeVisible();
+    await expect(actions.getByRole("button", { name: "返回工作空间" }))
+      .toBeVisible();
+    await expect(page).toHaveTitle(title);
+  }
+
+  await page.goto(`/admin/models?${source}`);
+  await page.getByRole("button", { name: "管理平台连接" }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/admin/providers\\?from=${project.id}$`),
+  );
+
+  await page.getByTestId("settings-header-actions")
+    .getByRole("button", { name: "返回画布" }).click();
+  await expect(page).toHaveURL(new RegExp(`/canvas/${project.id}$`));
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-persistence-ready",
+    "true",
+  );
+
+  await page.getByTestId("user-avatar").click();
+  await page.getByTestId("account-popover").getByText("我的连接").click();
+  await expect(page).toHaveURL(
+    new RegExp(`/connections\\?from=${project.id}$`),
+  );
+  await page.getByTestId("settings-header-actions")
+    .getByRole("button", { name: "返回工作空间" }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/canvas/projects\\?from=${project.id}$`),
+  );
+  await page.getByTestId("workspace-back").click();
+  await expect(page).toHaveURL(new RegExp(`/canvas/${project.id}$`));
+
+  await request.delete(`/api/projects/${project.id}`);
+});
+
+test("return lookup falls back to the per-user tab project and fails closed on API errors", async ({
+  page,
+  request,
+}) => {
+  expect(parseSourceProjectId("?from=default")).toBeUndefined();
+  expect(parseSourceProjectId("?from=%2F%2Fevil.example"))
+    .toBeUndefined();
+  expect(safeProjectId(`p${"x".repeat(200)}`)).toBeUndefined();
+  expect(withCanvasSource("/connections?tab=keys", "safe-project"))
+    .toBe("/connections?tab=keys&from=safe-project");
+  expect(() => withCanvasSource("https://evil.example", "safe-project"))
+    .toThrow("internal path");
+
+  const created = await request.post("/api/projects", { data: {} });
+  expect(created.status()).toBe(201);
+  const project = (await created.json()) as { id: string };
+
+  await page.goto(`/canvas/${project.id}`);
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-persistence-ready",
+    "true",
+  );
+  await page.goto("/connections?from=deleted-project");
+  await page.getByTestId("settings-header-actions")
+    .getByRole("button", { name: "返回画布" }).click();
+  await expect(page).toHaveURL(new RegExp(`/canvas/${project.id}$`));
+
+  await page.goto(`/connections?from=${project.id}`);
+  let projectListReads = 0;
+  await page.route("**/api/projects", async (route) => {
+    projectListReads += 1;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ error: "synthetic failure" }),
+      status: 503,
+    });
+  });
+  await page.getByTestId("settings-header-actions")
+    .getByRole("button", { name: "返回画布" }).evaluate((button) => {
+      (button as HTMLButtonElement).click();
+      (button as HTMLButtonElement).click();
+    });
+  await expect(page).toHaveURL(
+    new RegExp(`/connections\\?from=${project.id}$`),
+  );
+  await expect(page.getByTestId("settings-return-error")).toContainText(
+    "暂时无法确认原画布",
+  );
+  expect(projectListReads).toBe(1);
+  await page.unroute("**/api/projects");
+
+  await request.delete(`/api/projects/${project.id}`);
+});
+
+test("favicon and browser title identify the workspace and update with the project title", async ({
+  page,
+  request,
+}) => {
+  const icon = await request.get("/favicon.svg");
+  expect(icon.ok()).toBeTruthy();
+  expect(await icon.text()).toContain("<svg");
+
+  await page.goto("/canvas/projects");
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute(
+    "href",
+    "/favicon.svg",
+  );
+  await expect(page).toHaveTitle("工作空间｜无央");
+
+  const created = await request.post("/api/projects", { data: {} });
+  expect(created.status()).toBe(201);
+  const project = (await created.json()) as { id: string };
+  await page.goto(`/canvas/${project.id}`);
+  await expect(page).toHaveTitle("未命名项目｜无央");
+  await page.getByTestId("title-input").fill("   ");
+  await expect(page).toHaveTitle("未命名项目｜无央");
+  await page.getByTestId("title-input").fill("春季女装项目");
+  await expect(page).toHaveTitle("春季女装项目｜无央");
+
+  await request.delete(`/api/projects/${project.id}`);
 });
 
 test("selection mode selects cards, shows bottom bar and deletes selected", async ({

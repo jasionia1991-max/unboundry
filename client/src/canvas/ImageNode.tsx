@@ -22,6 +22,10 @@ import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
 import {
+  MediaLoadFallback,
+  useMediaLoadRecovery,
+} from "./MediaLoadFallback";
+import {
   discardImageAsset,
   uploadImageAsset,
   uploadPngAsset,
@@ -1180,6 +1184,7 @@ function ImageNodeImpl({
   selected,
 }: NodeProps<ProbeNodeType>) {
   const singleNodeChrome = useSingleNodeChrome(selected, dragging);
+  const mediaLoad = useMediaLoadRecovery(data.imageSrc);
   const inputRef = useRef<HTMLInputElement>(null);
   const moreRef = useRef<HTMLSpanElement>(null);
   const uploadInFlight = useRef(false);
@@ -3587,7 +3592,7 @@ function ImageNodeImpl({
           </span>
         )}
       </Handle>
-      <div className="image-node-title nodrag">
+      <div className="canvas-node-title image-node-title nodrag">
         <svg aria-hidden="true" viewBox="0 0 18 18">
           <rect height="14" rx="3" width="16" x="1" y="2" />
           <circle cx="12.5" cy="6.5" r="1.5" />
@@ -3628,7 +3633,9 @@ function ImageNodeImpl({
             value={titleControl.value}
           />
         ) : (
-          <span>{titleControl.committedValue}</span>
+          <span title={titleControl.committedValue}>
+            {titleControl.committedValue}
+          </span>
         )}
       </div>
       <div
@@ -3673,10 +3680,15 @@ function ImageNodeImpl({
         {preview ? (
           <img
             alt=""
-            className="image-node-preview"
+            className={`image-node-preview${
+              mediaLoad.failed ? " media-load-obscured" : ""
+            }`}
             data-testid="image-node-preview"
             draggable={false}
+            key={mediaLoad.key}
+            onError={mediaLoad.markFailed}
             onLoad={(event) => {
+              mediaLoad.markLoaded();
               const current = getNode(id);
               if (
                 !current ||
@@ -3694,7 +3706,7 @@ function ImageNodeImpl({
               deferredPreviewAutoFit.current = undefined;
               applyPreviewAutoFit(naturalSize.width, naturalSize.height);
             }}
-            src={preview}
+            src={mediaLoad.source}
           />
         ) : !generating && !uploading ? (
           <div aria-hidden="true" className="image-node-empty-action">
@@ -3705,6 +3717,13 @@ function ImageNodeImpl({
             </svg>
           </div>
         ) : null}
+        {preview && mediaLoad.failed && (
+          <MediaLoadFallback
+            kind="图片"
+            onReload={mediaLoad.reload}
+            onReplace={() => inputRef.current?.click()}
+          />
+        )}
         {(generating || uploading) && (
           <div
             aria-label={uploading ? "图片上传中" : "Generating..."}
@@ -3724,7 +3743,7 @@ function ImageNodeImpl({
             />
           </div>
         )}
-        {generatedSuccess && (
+        {generatedSuccess && !mediaLoad.failed && (
           <button
             aria-label="收藏"
             aria-pressed={favorite}
@@ -3737,7 +3756,7 @@ function ImageNodeImpl({
             </svg>
           </button>
         )}
-        {preview && !generating && !uploading && (
+        {preview && !mediaLoad.failed && !generating && !uploading && (
           <button
             aria-label="替换"
             className="image-node-replace nodrag nopan"
@@ -3767,7 +3786,7 @@ function ImageNodeImpl({
           <span className="node-handle-plus" />
         </span>
       </Handle>
-      {fullscreen && preview &&
+      {fullscreen && preview && !mediaLoad.failed &&
         createPortal(
           <div
             className="image-detail-backdrop"

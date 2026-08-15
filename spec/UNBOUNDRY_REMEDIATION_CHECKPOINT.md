@@ -1,11 +1,31 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`55`
-更新时间：`2026-08-15`
-状态：`V0_6_1_RELEASE_CLOSED_USER_PASS`
+断点版本：`59`
+更新时间：`2026-08-16`
+状态：`INC_UI_002_LOCAL_IMPLEMENTED_AUTO_PASS_USER_RECHECK_V0_6_2_LOCAL_ONLY`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
-## 0. 当前新事件：INC-ECOM-007
+## 0. 当前新事件：INC-UI-002
+
+- 用户授权一次性修复三个全局UI问题，并要求对齐既有灰阶UI规范：巨大Group附近框选三个节点时误选大范围、OSS素材出现原生坏媒体图标/失败边框、七类节点长标题显示不全。
+- 权威方案与完成证据：`spec/INC_UI_002_CANVAS_SELECTION_MEDIA_TITLE_REMEDIATION_2026-08-16.md`。
+- 最终选择合同不是全局Full：普通节点继续Partial框选，只有Group在框选结束时要求选框完整包含；点击/Shift和四方向框选保持不变。
+- Image/Video/Audio共用媒体恢复层；保留asset/source和底层媒体DOM，不自动删除/重传；CSP只给`img-src/media-src`增加`https://*.aliyuncs.com`；任务/上传alert始终可操作。
+- 七类标题统一ellipsis与完整title，输入和IME不变；新增m98并纳入安全清单，库存为`118 specs / 965 tests`。
+- 自动门：build PASS；m41+m98 `54/54 PASS`；非冻结发布运维集合`114/114 specs、938/938 PASS`，异常0，source snapshot和4173不变，真实Provider/OSS/付费请求0。
+- 4份冻结release运维spec仍绑定0.6.0 source-pair，不得把114份写成formal full；当前只到`USER_RECHECK`。package/生产仍v0.6.1；发布、commit、push、tag、PR更新、SSH和真实外部请求未获本次授权。
+
+## 0A. 前一事件：INC-UI-001
+
+- 用户要求先为两项优化建立防失忆的详细修改方案：设置页返回进入前的真实项目并新增「返回工作空间」；浏览器标签显示无央 favicon 和准确页面/项目标题。
+- 权威方案：`spec/INC_UI_001_SETTINGS_RETURN_AND_BROWSER_IDENTITY_PLAN_2026-08-15.md`。
+- 冻结返回规则：`URL from → 当前账号本标签最近真实项目 → 工作空间`；来源只允许项目 ID并经`GET /api/projects`校验，默认画布不再作为返回动作的隐式兜底；网络校验失败留在当前页提示重试。
+- 用户随后明确“同意你的建议，然后开始吧”：`v0.6.2`候选版本已确认，功能代码与隔离测试已授权；共享返回解析器、8页双返回页头、工作空间闭环、favicon和动态标题均已完成。
+- 自动门完成：安全预检通过；受影响10份spec `102/102 PASS`，m66 `28/28 PASS`；临时洁净候选full为`117/117 specs、962/962 PASS`，所有异常计数0，immutable builder `attempts=1 / invocations=5 / passed=1`，source/snapshot `ea3410620444862090b076e8b0d9e250ed24e6f4f983b3937ecff9ecf4bce0e1`前后不变，4173 listener `dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae`前后不变，Provider/付费/OSS请求0，临时目录已清理。
+- NAV-001～004与BRAND-001～003进入`USER_RECHECK`，不可在用户可见浏览器确认前记PASS。本地真实package仍为0.6.1。
+- 当前`v0.6.1`标签与生产制品不可修改，Draft PR #1保持Draft；commit、push、tag、PR更新、SSH、生产发布和真实外部请求仍未授权。
+
+## 0B. 前一事件：INC-ECOM-007
 
 - 用户确认整组运行必须按依赖流水：多入参全部本轮成功并保存后才运行；分流独立推进；汇流严格等待全部；分支失败只阻塞后代。
 - 已确认是通用执行器缺陷：全图动态预检过早、真实resolver的blocked空态绕过延后分支、测试夹具失真、整层屏障以及节点运行时输入快照可能陈旧。
@@ -17,7 +37,7 @@
 - 公网version 0.6.1、live/ready和主JS哈希PASS；service active/enabled、NRestarts0。schema39 quick_check ok/FK0，tasks109/attempts107/active0、模板43/42及并发/RPM 500前后不变；Provider/付费调用0。
 - 用户随后在v0.6.1线上实页完成复验并明确回复“通过通过”；INC-ECOM-007收口为`PRODUCTION_PUBLISHED_USER_PASS`。权威记录与生产凭证见`spec/INC_ECOM_007_WORKFLOW_PIPELINE_REMEDIATION_2026-08-15.md`、`spec/INC_ECOM_007_PRODUCTION_RECEIPT_2026-08-15.json`。
 
-## 0A. 前一事件：INC-ECOM-006
+## 0C. 前一事件：INC-ECOM-006
 
 - 用户明确“确定 发布”；第三批12条声明式工作流已单事务导入生产，线上继续显示`v0.6.0`。
 - 最终停机一致备份：`/var/lib/unboundry-rollbacks/inc-ecom-006-20260815T101814Z`，数据库SHA `1d606cdf…f8d9d`，数据清单SHA `07be6b05…a274`、证据清单SHA `432aa233…70b6`并全量验签PASS。
@@ -27,7 +47,7 @@
 - 用户随后明确“都通过了”，当前为`PRODUCTION_PUBLISHED_USER_PASS`；未为验收运行真实生成。
 - 证据：`spec/INC_ECOM_006_ECOMMERCE_WORKFLOW_BATCH_3_2026-08-15.md`、`spec/ecommerce-workflow-batch-3-production-receipt.json`。
 
-## 0A. 前一事件：INC-ECOM-005
+## 0C. 前一事件：INC-ECOM-005
 
 - 用户要求补上此前列出的第二批P0/P1/P2工作流，并确认模板是否写死；随后明确确认继续`v0.6.0`并允许发布。12条已以声明式JSON数据事务导入生产，不是前端组件条件分支。
 - 停机一致备份与恢复验证目录`/var/lib/unboundry-rollbacks/inc-ecom-005-20260815T092428Z`；恢复数据库SHA`5a4df10e…c3de`，最终清单SHA`8313a3b6…f503`。
@@ -36,7 +56,7 @@
 - 用户随后明确第二批实页验收“通过1”，INC-ECOM-005收口为`PRODUCTION_PUBLISHED_USER_PASS`。用户同时要求开始第三批优秀工作流调研，当前只授权调研、本地数据包与零付费验证，不自动授权第三批生产发布。
 - 详细记录：`spec/INC_ECOM_005_ECOMMERCE_WORKFLOW_BATCH_2_2026-08-15.md`；receipt：`spec/ecommerce-workflow-batch-2-production-receipt.json`。
 
-## 0B. 前一事件：INC-ECOM-004
+## 0D. 前一事件：INC-ECOM-004
 
 - 用户已明确授权发布模板封面，并单独确认继续使用`v0.6.0`；该一次性生产授权已经消费。
 - 16张1200×675 JPG已发布，生产18条published模板现全部有`preview_image`。公网逐文件核对为16/16 HTTP200、`image/jpeg`且SHA与receipt一致；live/ready/version/root均200。
@@ -46,7 +66,7 @@
 - 零费用边界：发布前后tasks109、Provider attempts107、active0；per-user/RPM/Text/Image/Video/Audio仍全部500，`provider_profiles`逐行未变，数据manifest SHA仍`980e90a9…28d0`，OSS未改；未调用Provider、未生成、未push/tag/PR。
 - 当前结论：`PRODUCTION_STATIC_COVERS_DEPLOYED / USER_VISUAL_PASS`。技术发布门与用户视觉确认均已通过。
 
-## 0C. 前一事件：INC-ECOM-003
+## 0E. 前一事件：INC-ECOM-003
 
 - 用户在180秒修复部署后重新授权并要求控制成本：保持GPT Image 2专用协议、3:4、1K，只对同一节点再提交一次，不运行另外两图或视频，不重试。
 - 新task `9e4faf78-e466-4ae7-8799-2c9d2150bed6`、Provider attempt 132约58.6秒一次成功，result asset `9f755d07-42df-47a0-9bd1-443030244a59`已绑定原节点；ready PNG `1023×1537`、1,545,396 bytes、SHA-256 `ecf51e6c…ddb44`。
@@ -59,7 +79,7 @@
 - 当前生产：service active；公网live/ready/version/root正常；schema39 quick_check ok、active0、tasks109、Provider attempts107、pending publication0。用户设置的per-user/RPM/Text/Image/Video/Audio仍全部500；Provider/Storage密文配置SHA部署前后未变，OSS未改。
 - 当前状态：`REFERENCE/OSS/PREFLIGHT_PASS / GPT_IMAGE_TIMEOUT_REPAIR_DEPLOYED / ONE_REQUEST_REAL_IMAGE_SMOKE_PASS / USER_RESULT_REVIEW`。完整三图、视频和用户实页结果继续`PENDING`；另外两图、push/tag/PR都没有授权。
 
-## 0B. 前一事件：INC-ECOM-002
+## 0F. 前一事件：INC-ECOM-002
 
 - 用户已确认电商参考图工作流完整修复方案；随后追加授权正式候选部署、生产模板模型绑定、备份、必要停启与零付费页面/API复核。
 - 权威事件断点：`spec/INC_ECOM_002_REFERENCE_WORKFLOW_REMEDIATION_2026-08-15.md`。恢复者必须在本文件当前结论前先读取它。

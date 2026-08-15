@@ -4016,6 +4016,7 @@ type CurrentDatabaseOpenReservation = Readonly<{
 
 const currentDatabaseOpenReservationWaitMilliseconds = 25;
 const currentDatabaseOpenReservationTimeoutMilliseconds = 5_000;
+const currentDatabasePreWriterInspectionAttempts = 8;
 const nanosecondsPerMillisecond = 1_000_000n;
 const currentDatabaseOpenReservationWaitCell = new Int32Array(
   new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT),
@@ -4801,7 +4802,48 @@ export function openAppDatabase(
     let inspected: ReturnType<typeof inspectExistingCurrentDatabase> | undefined;
     let openFailure: unknown;
     try {
-      inspected = inspectExistingCurrentDatabase(databasePath);
+      // A former last WAL writer can close after the sidecar pair has been
+      // captured but before the read-only inspection transaction has joined
+      // that WAL. SQLite may then remove and recreate the legitimate pair.
+      // Retry only that exact pre-reader identity handoff, while retaining the
+      // same private cooperative reservation. Every unsafe/incomplete shape,
+      // main-database identity change and post-hook mutation still fails
+      // closed, and repeated churn is bounded.
+      for (
+        let attempt = 1;
+        attempt <= currentDatabasePreWriterInspectionAttempts;
+        attempt += 1
+      ) {
+        inspected = inspectExistingCurrentDatabase(databasePath);
+        assertCurrentDatabaseOpenReservation(reservation);
+        assertSameCurrentDatabaseIdentity(databasePath, inspected.details);
+        try {
+          assertCurrentDatabaseSidecarsBeforeWriterOpen(
+            databasePath,
+            inspected.sidecars,
+          );
+          break;
+        } catch (error) {
+          const isBenignPreReaderHandoff = error instanceof Error &&
+            error.message ===
+              "Application database sidecars changed before writer open";
+          if (
+            !isBenignPreReaderHandoff ||
+            attempt === currentDatabasePreWriterInspectionAttempts
+          ) throw error;
+          inspected.release();
+          inspected = undefined;
+          Atomics.wait(
+            currentDatabaseOpenReservationWaitCell,
+            0,
+            0,
+            currentDatabaseOpenReservationWaitMilliseconds,
+          );
+        }
+      }
+      if (!inspected) {
+        throw new Error("Application database inspection did not stabilize");
+      }
       duringCurrentDatabaseOpenForTests?.(
         "before-writer-sidecar-validation",
         databasePath,

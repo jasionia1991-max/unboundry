@@ -2012,7 +2012,7 @@ function TextNodeImpl({
         ref={cardRef}
         style={{ background }}
       >
-        <div className="text-node-title nodrag">
+        <div className="canvas-node-title text-node-title nodrag">
           <svg aria-hidden="true" viewBox="0 0 14 14">
             <path d="M9.7 10.84H2.04M7.8 7H2.04M11.96 3.16H2.04" />
           </svg>
@@ -2053,7 +2053,9 @@ function TextNodeImpl({
               value={titleControl.value}
             />
           ) : (
-            <span>{titleControl.committedValue}</span>
+            <span title={titleControl.committedValue}>
+              {titleControl.committedValue}
+            </span>
           )}
         </div>
 

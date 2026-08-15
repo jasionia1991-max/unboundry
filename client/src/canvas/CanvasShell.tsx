@@ -22,6 +22,12 @@ import { useCompositionSafeText } from "./CompositionSafeText";
 import { hasInteractionProbeNodes } from "./probeFixtures";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { clearProjectLocalKeys } from "../projects/projectStorage";
+import {
+  pathWithCurrentCanvasSource,
+  projectWorkspacePath,
+  rememberLastProjectId,
+} from "../navigation/canvasReturn";
+import { normalizedPageLabel, usePageTitle } from "../pageIdentity";
 import type { AccountPermission } from "../../../types/accountPermissions";
 
 type ShellButtonProps = {
@@ -1030,6 +1036,13 @@ export function CanvasShell({
   const [projectTitleValue, setProjectTitleValue] = useState(
     initialProjectTitle.title,
   );
+  usePageTitle(
+    projectId
+      ? normalizedPageLabel(projectTitleValue, "未命名项目")
+      : fixtureId
+        ? "画布"
+        : "默认画布",
+  );
   const [agentOpen, setAgentOpen] = useState(
     fixtureId === "panel.agent.expanded-empty" ||
       fixtureId === "menu.agent.add-and-model" ||
@@ -1753,11 +1766,7 @@ export function CanvasShell({
   // 每个标签页独立记住“最近打开的项目”，供工作空间返回时兜底。
   useEffect(() => {
     if (!projectId) return;
-    try {
-      sessionStorage.setItem(`unboundry:last-project:${userId}`, projectId);
-    } catch {
-      // 隐私模式等场景忽略；工作空间的 ?from 参数仍是主路径。
-    }
+    rememberLastProjectId(userId, projectId);
   }, [projectId, userId]);
 
   useEffect(
@@ -2428,9 +2437,7 @@ export function CanvasShell({
           <button
             onClick={() => {
               setProjectMenuOpen(false);
-              window.location.href = projectId
-                ? `/canvas/projects?from=${encodeURIComponent(projectId)}`
-                : "/canvas/projects";
+              window.location.href = projectWorkspacePath(projectId);
             }}
             type="button"
           >
@@ -3354,7 +3361,12 @@ export function CanvasShell({
                   className="template-browser-admin-entry"
                   data-testid="admin-templates-entry"
                   onClick={() => {
-                    window.location.href = "/admin/templates";
+                    window.location.href = pathWithCurrentCanvasSource(
+                      "/admin/templates",
+                      userId,
+                      window.location.search,
+                      projectId,
+                    );
                   }}
                   type="button"
                 >

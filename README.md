@@ -2,6 +2,10 @@
 
 TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mymy.ltd`，当前线上 `v0.6.1 / schema39`）。
 
+## 2026-08-16 画布UI恢复候选（本地完成，待用户复验）
+
+`INC-UI-002 = LOCAL_IMPLEMENTED_AUTO_PASS / USER_RECHECK`：巨大Group附近框选只在Group被完整包含时才选中，普通节点仍保留局部相交框选；OSS图片/视频/音频读取失败时保留素材并显示统一灰阶重载/重新上传状态，CSP只在媒体来源放行阿里云OSS；七类节点长标题统一省略并可查看完整值。build PASS，m41+m98 `54/54 PASS`，非冻结发布运维集合`114/114 specs、938/938 PASS`，真实Provider/OSS/付费请求0。4份冻结release运维spec仍绑定0.6.0 source-pair，因此不声明formal full。线上仍是v0.6.1，本候选尚未发布。
+
 ## 2026-08-15 整组工作流流水线修复（已发布并通过用户实页验收）
 
 `INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`：整组执行已改为事件驱动DAG流水；多直接生成式上游严格AND，分流独立推进、汇流等待全部、失败只阻塞后代，Text/Image/Video/Audio在实际提交前统一刷新runtime preflight。正式full基线`117/117 specs、959/959 PASS`，版本准入修复后相关8份spec `110/110 PASS`，精确发布HEAD build PASS，真实Provider请求0。生产已原子切换到不可变`v0.6.1`发布目录，公网version/live/ready和主JS哈希一致；schema39、quick_check ok、FK0、tasks109、attempts107、active0及并发500均前后不变。停机备份已完成恢复副本校验；用户随后在线上实页明确确认“通过通过”。

@@ -35,6 +35,7 @@ import {
   useState,
   type Dispatch,
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type SetStateAction,
   type WheelEvent as ReactWheelEvent,
 } from "react";
@@ -2559,6 +2560,7 @@ export function CanvasSurface({
   }, [effectivePersistenceLoadState, onLoadStateChange]);
   const uploadInput = useRef<HTMLInputElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
+  const marqueeStart = useRef<{ x: number; y: number } | undefined>(undefined);
   const syncSentFingerprintCount = useCallback(() => {
     worldRef.current?.setAttribute(
       "data-save-fingerprint-count",
@@ -6366,6 +6368,15 @@ export function CanvasSurface({
         setNodeContextMenu(undefined);
       }}
       onPointerMove={trackPointerWorld}
+      onPointerDownCapture={(event: ReactPointerEvent<HTMLDivElement>) => {
+        const target = event.target;
+        marqueeStart.current =
+          event.button === 0 &&
+            target instanceof Element &&
+            target.classList.contains("react-flow__pane")
+            ? { x: event.clientX, y: event.clientY }
+            : undefined;
+      }}
       ref={worldRef}
       role="application"
     >
@@ -6715,6 +6726,37 @@ export function CanvasSurface({
         }}
         onSelectionChange={({ nodes: selectedNodes }) => {
           if (persistenceReady) setPrimaryId(selectedNodes.at(-1)?.id);
+        }}
+        onSelectionEnd={(event) => {
+          const start = marqueeStart.current;
+          marqueeStart.current = undefined;
+          if (!start || !worldRef.current) return;
+          const selection = {
+            bottom: Math.max(start.y, event.clientY),
+            left: Math.min(start.x, event.clientX),
+            right: Math.max(start.x, event.clientX),
+            top: Math.min(start.y, event.clientY),
+          };
+          const partiallySelectedGroupIds = new Set<string>();
+          for (const element of worldRef.current.querySelectorAll<HTMLElement>(
+            ".react-flow__node-group.selected",
+          )) {
+            const bounds = element.getBoundingClientRect();
+            const fullyContained =
+              bounds.left >= selection.left &&
+              bounds.right <= selection.right &&
+              bounds.top >= selection.top &&
+              bounds.bottom <= selection.bottom;
+            if (!fullyContained && element.dataset.id) {
+              partiallySelectedGroupIds.add(element.dataset.id);
+            }
+          }
+          if (partiallySelectedGroupIds.size === 0) return;
+          setNodes((current) => current.map((node) =>
+            partiallySelectedGroupIds.has(node.id)
+              ? { ...node, selected: false }
+              : node
+          ));
         }}
         onViewportChange={(next) => {
           if (persistenceReady) handleViewportChange(next);

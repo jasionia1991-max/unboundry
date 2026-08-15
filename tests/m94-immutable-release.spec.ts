@@ -486,13 +486,22 @@ test("tracked source snapshot pins registry inputs without claiming a Git HEAD o
   const packageLock = JSON.parse(await readFile(
     join(process.cwd(), "package-lock.json"),
     "utf8",
-  )) as { packages: Record<string, { integrity?: string; resolved?: string }> };
+  )) as {
+    version?: string;
+    packages: Record<string, {
+      integrity?: string;
+      resolved?: string;
+      version?: string;
+    }>;
+  };
   const registryPackages = Object.entries(packageLock.packages)
     .filter(([path]) => path.startsWith("node_modules/"));
   expect(packageDocument).toMatchObject({
     name: "unboundry-private-replica",
-    version: expect.stringMatching(/^0\.(?:5\.2|6\.0)$/),
+    version: expect.stringMatching(/^0\.(?:5\.2|6\.\d+)$/),
   });
+  expect(packageLock.version).toBe(packageDocument.version);
+  expect(packageLock.packages[""]?.version).toBe(packageDocument.version);
   expect(registryPackages.length).toBeGreaterThan(0);
   expect(registryPackages.every(([, entry]) =>
     typeof entry.resolved !== "string" || (

@@ -2,6 +2,14 @@
 
 > 写给下一个接手的人/AI agent。目标：看完本文后不需要向用户问“项目在哪、怎么跑、怎么发布、有什么红线”。
 
+## 当前新任务：INC-UI-002（2026-08-16，本地候选完成）
+
+用户要求一次性修复巨大Group附近框选误选、OSS素材坏媒体视觉和七类节点长标题。权威记录为`spec/INC_UI_002_CANVAS_SELECTION_MEDIA_TITLE_REMEDIATION_2026-08-16.md`。最终合同：普通节点继续Partial框选，只有Group要求选框完整包含；Image/Video/Audio保留asset/source并使用统一灰阶恢复层，CSP只在`img-src/media-src`放行`https://*.aliyuncs.com`；七类标题统一ellipsis和完整title。build PASS，m41+m98 `54/54 PASS`，非冻结发布运维集合`114/114 specs、938/938 PASS`，异常0、4173不变、真实Provider/OSS/付费请求0。4份冻结release运维spec仍绑定0.6.0 source-pair，未冒充formal full。当前为`LOCAL_IMPLEMENTED_AUTO_PASS / USER_RECHECK / PRODUCTION v0.6.1 UNCHANGED`，没有发布、commit、push、tag或PR更新。
+
+## 当前新任务：INC-UI-001（2026-08-15，本地候选完成）
+
+用户要求设置页「返回画布」回到进入前的真实项目并新增「返回工作空间」，浏览器标签显示无央favicon和准确项目/页面标题。权威文档为`spec/INC_UI_001_SETTINGS_RETURN_AND_BROWSER_IDENTITY_PLAN_2026-08-15.md`。返回规则固定为`from项目ID → 当前账号本标签最近真实项目 → 工作空间`，默认画布不作隐式返回兜底，项目ID须经当前账号只读项目列表校验。用户确认`v0.6.2`候选并授权实施后，本地代码、受影响自动测试和安全full均已完成：`117/117 specs、962/962 PASS`，所有异常计数0，Provider/付费/OSS请求0、4173不变。当前为`LOCAL_IMPLEMENTED_AUTO_PASS_USER_RECHECK / PRODUCTION v0.6.1 UNCHANGED`；真实package仍0.6.1，commit、push、PR更新和生产发布仍未授权。
+
 ## 当前增量：INC-ECOM-007（2026-08-15）
 
 用户发现整组运行会把本轮尚未生成的上游Text提前判成下游Image失败。通用执行器现已改为事件驱动DAG流水：每个节点仅在全部直接生成式上游本轮成功后启动，多入参严格AND；快分支不等待无关慢分支，失败只阻塞后代；Text/Image/Video/Audio在实际提交前统一刷新runtime preflight，静态不兼容仍在零任务阶段阻止整组。正式full基线`117/117 specs、959/959 PASS`，v0.6.1准入修复后相关8份spec `110/110 PASS`，精确HEAD build PASS，Provider请求0。生产已切换到`/opt/unboundry/releases/v0.6.1-inc-ecom-007-20260815`；公网version/live/ready和主JS哈希通过，schema39、任务/attempt/并发配置前后不变，备份恢复已验证。用户随后在线上实页明确确认“通过通过”，当前状态为`PRODUCTION_PUBLISHED_USER_PASS`。权威记录与凭证为`spec/INC_ECOM_007_WORKFLOW_PIPELINE_REMEDIATION_2026-08-15.md`、`spec/INC_ECOM_007_PRODUCTION_RECEIPT_2026-08-15.json`。

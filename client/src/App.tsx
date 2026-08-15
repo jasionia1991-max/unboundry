@@ -42,6 +42,14 @@ import {
   type AccountPermission,
 } from "../../types/accountPermissions";
 import { REAL_CATEGORIES } from "../../types/templateCategories";
+import { usePageTitle } from "./pageIdentity";
+import {
+  pathWithCurrentCanvasSource,
+} from "./navigation/canvasReturn";
+import {
+  SettingsPageHeader,
+  settingsDestination,
+} from "./navigation/SettingsPageHeader";
 
 const CanvasShell = lazy(async () => ({
   default: (await import("./canvas/CanvasShell")).CanvasShell,
@@ -483,6 +491,7 @@ function AccountForm({
   bootstrap: boolean;
   onSuccess: (user: AuthUser) => void;
 }) {
+  usePageTitle("登录");
   const [displayName, setDisplayName] = useState("");
   const [loginName, setLoginName] = useState("");
   const [password, setPassword] = useState("");
@@ -797,18 +806,11 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
 
   return (
     <main className="admin-page" data-testid="admin-accounts-page">
-      <header>
-        <div>
-          <span aria-hidden="true" className="replica-mark" />
-          <div>
-            <strong>账号管理</strong>
-            <small>管理员：{currentUser.displayName}</small>
-          </div>
-        </div>
-        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
-          返回画布
-        </button>
-      </header>
+      <SettingsPageHeader
+        displayName={`管理员：${currentUser.displayName}`}
+        pageTitle="账号管理"
+        userId={currentUser.id}
+      />
       <div className="admin-layout">
         <section className="admin-card">
           <h1>添加账号</h1>
@@ -2667,18 +2669,12 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
       className="admin-page provider-admin-page"
       data-testid="admin-providers-page"
     >
-      <header>
-        <div>
-          <span aria-hidden="true" className="replica-mark" />
-          <div>
-            <strong>管理员平台连接</strong>
-            <small>管理员：{currentUser.displayName}</small>
-          </div>
-        </div>
-        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
-          返回画布
-        </button>
-      </header>
+      <SettingsPageHeader
+        browserTitle="平台连接"
+        displayName={`管理员：${currentUser.displayName}`}
+        pageTitle="管理员平台连接"
+        userId={currentUser.id}
+      />
       <div className="model-safety-banner provider-safety-banner">
         <div>
           <strong>这里只保存平台连接</strong>
@@ -2687,7 +2683,12 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
           </span>
         </div>
         <button
-          onClick={() => { window.location.href = "/admin/models"; }}
+          onClick={() => {
+            window.location.href = settingsDestination(
+              "/admin/models",
+              currentUser.id,
+            );
+          }}
           type="button"
         >
           前往模型中心
@@ -4907,18 +4908,12 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
 
   return (
     <main className="admin-page model-admin-page" data-testid="admin-models-page">
-      <header>
-        <div>
-          <span aria-hidden="true" className="replica-mark" />
-          <div>
-            <strong>管理员模型中心</strong>
-            <small>管理员：{currentUser.displayName}</small>
-          </div>
-        </div>
-        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
-          返回画布
-        </button>
-      </header>
+      <SettingsPageHeader
+        browserTitle="模型中心"
+        displayName={`管理员：${currentUser.displayName}`}
+        pageTitle="管理员模型中心"
+        userId={currentUser.id}
+      />
       <div className="model-safety-banner">
         <div>
           <strong>当前只配置用户可见模型</strong>
@@ -4928,7 +4923,12 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
           </span>
         </div>
         <button
-          onClick={() => { window.location.href = "/admin/providers"; }}
+          onClick={() => {
+            window.location.href = settingsDestination(
+              "/admin/providers",
+              currentUser.id,
+            );
+          }}
           type="button"
         >
           管理平台连接
@@ -4945,7 +4945,12 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
               <span>选择平台连接</span>
               {providers.length === 0 ? (
                 <button
-                  onClick={() => { window.location.href = "/admin/providers"; }}
+                  onClick={() => {
+                    window.location.href = settingsDestination(
+                      "/admin/providers",
+                      currentUser.id,
+                    );
+                  }}
                   type="button"
                 >
                   先添加平台连接
@@ -5659,18 +5664,12 @@ function AdminStorage({ currentUser }: { currentUser: AuthUser }) {
       className="admin-page storage-admin-page"
       data-testid="admin-storage-page"
     >
-      <header>
-        <div>
-          <span aria-hidden="true" className="replica-mark" />
-          <div>
-            <strong>管理员存储中心</strong>
-            <small>管理员：{currentUser.displayName}</small>
-          </div>
-        </div>
-        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
-          返回画布
-        </button>
-      </header>
+      <SettingsPageHeader
+        browserTitle="存储中心"
+        displayName={`管理员：${currentUser.displayName}`}
+        pageTitle="管理员存储中心"
+        userId={currentUser.id}
+      />
       <div
         className="storage-safety-banner"
         data-cloud-enabled={status?.oss.mediaRoutingEnabled ?? false}
@@ -6032,18 +6031,12 @@ function AdminGenerationSafety({
       className="admin-page generation-safety-page"
       data-testid="admin-generation-safety-page"
     >
-      <header>
-        <div>
-          <span aria-hidden="true" className="replica-mark" />
-          <div>
-            <strong>管理员生成安全中心</strong>
-            <small>管理员：{currentUser.displayName}</small>
-          </div>
-        </div>
-        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
-          返回画布
-        </button>
-      </header>
+      <SettingsPageHeader
+        browserTitle="生成安全"
+        displayName={`管理员：${currentUser.displayName}`}
+        pageTitle="管理员生成安全中心"
+        userId={currentUser.id}
+      />
       <div
         className="generation-safety-banner"
         data-stopped={
@@ -6409,18 +6402,12 @@ function AdminApiContract({ currentUser }: { currentUser: AuthUser }) {
 
   return (
     <main className="admin-page" data-testid="admin-api-contract-page">
-      <header>
-        <div>
-          <span aria-hidden="true" className="replica-mark" />
-          <div>
-            <strong>自有接口说明</strong>
-            <small>管理员：{currentUser.displayName}</small>
-          </div>
-        </div>
-        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
-          返回画布
-        </button>
-      </header>
+      <SettingsPageHeader
+        browserTitle="接口说明"
+        displayName={`管理员：${currentUser.displayName}`}
+        pageTitle="自有接口说明"
+        userId={currentUser.id}
+      />
       <div className="api-contract-layout">
         <section className="admin-card api-contract-summary">
           <div>
@@ -6717,18 +6704,11 @@ function AdminTemplatesPage({ currentUser }: { currentUser: AuthUser }) {
 
   return (
     <main className="admin-page" data-testid="admin-templates-page">
-      <header>
-        <div>
-          <span aria-hidden="true" className="replica-mark" />
-          <div>
-            <strong>公共模板管理</strong>
-            <small>管理员：{currentUser.displayName}</small>
-          </div>
-        </div>
-        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
-          返回画布
-        </button>
-      </header>
+      <SettingsPageHeader
+        displayName={`管理员：${currentUser.displayName}`}
+        pageTitle="公共模板管理"
+        userId={currentUser.id}
+      />
       {notice && (
         <p className="storage-admin-notice provider-page-message">{notice}</p>
       )}
@@ -7111,18 +7091,11 @@ function MyConnectionsPage({ currentUser }: { currentUser: AuthUser }) {
       className="admin-page connections-page"
       data-testid="connections-page"
     >
-      <header>
-        <div>
-          <span aria-hidden="true" className="replica-mark" />
-          <div>
-            <strong>我的连接</strong>
-            <small>{currentUser.displayName}</small>
-          </div>
-        </div>
-        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
-          返回画布
-        </button>
-      </header>
+      <SettingsPageHeader
+        displayName={currentUser.displayName}
+        pageTitle="我的连接"
+        userId={currentUser.id}
+      />
       <section className="admin-card connections-intro">
         <h1>我的平台密钥</h1>
         <p>
@@ -7445,6 +7418,13 @@ function AuthenticatedApplication({
     );
   }
   const pathname = window.location.pathname;
+  const fromCurrentCanvas = (path: string) =>
+    pathWithCurrentCanvasSource(
+      path,
+      status.user!.id,
+      window.location.search,
+      projectId,
+    );
   if (pathname === "/admin/accounts") {
     return (
       <AdminRouteGuard
@@ -7562,13 +7542,17 @@ function AuthenticatedApplication({
           <strong>{status.user.displayName}</strong>
           <span>@{status.user.loginName}</span>
           <button
-            onClick={() => { window.location.href = "/canvas/projects"; }}
+            onClick={() => {
+              window.location.href = fromCurrentCanvas("/canvas/projects");
+            }}
             type="button"
           >
             工作空间
           </button>
           <button
-            onClick={() => { window.location.href = "/connections"; }}
+            onClick={() => {
+              window.location.href = fromCurrentCanvas("/connections");
+            }}
             type="button"
           >
             我的连接
@@ -7579,7 +7563,9 @@ function AuthenticatedApplication({
             status.user.role,
           ) && (
               <button
-                onClick={() => { window.location.href = "/admin/models"; }}
+                onClick={() => {
+                  window.location.href = fromCurrentCanvas("/admin/models");
+                }}
                 type="button"
               >
                 模型中心
@@ -7591,7 +7577,9 @@ function AuthenticatedApplication({
             status.user.role,
           ) && (
               <button
-                onClick={() => { window.location.href = "/admin/providers"; }}
+                onClick={() => {
+                  window.location.href = fromCurrentCanvas("/admin/providers");
+                }}
                 type="button"
               >
                 平台连接
@@ -7603,7 +7591,9 @@ function AuthenticatedApplication({
             status.user.role,
           ) && (
               <button
-                onClick={() => { window.location.href = "/admin/accounts"; }}
+                onClick={() => {
+                  window.location.href = fromCurrentCanvas("/admin/accounts");
+                }}
                 type="button"
               >
                 账号管理
@@ -7615,7 +7605,9 @@ function AuthenticatedApplication({
             status.user.role,
           ) && (
               <button
-                onClick={() => { window.location.href = "/admin/storage"; }}
+                onClick={() => {
+                  window.location.href = fromCurrentCanvas("/admin/storage");
+                }}
                 type="button"
               >
                 存储中心
@@ -7628,7 +7620,9 @@ function AuthenticatedApplication({
           ) && (
               <button
                 onClick={() => {
-                  window.location.href = "/admin/generation-safety";
+                  window.location.href = fromCurrentCanvas(
+                    "/admin/generation-safety",
+                  );
                 }}
                 type="button"
               >
@@ -7641,7 +7635,9 @@ function AuthenticatedApplication({
             status.user.role,
           ) && (
               <button
-                onClick={() => { window.location.href = "/admin/templates"; }}
+                onClick={() => {
+                  window.location.href = fromCurrentCanvas("/admin/templates");
+                }}
                 type="button"
               >
                 公共模板管理

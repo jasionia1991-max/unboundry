@@ -14,6 +14,10 @@ import { useCanvasCheckpoint } from "./CanvasHistory";
 import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
+import {
+  MediaLoadFallback,
+  useMediaLoadRecovery,
+} from "./MediaLoadFallback";
 import { fitVisualMediaSize } from "./mediaGeometry";
 import { NodeModelControl } from "./NodeModelControl";
 import { NodeParameterControl } from "./NodeParameterControl";
@@ -228,6 +232,7 @@ function VideoNodeImpl({
   selected,
 }: NodeProps<ProbeNodeType>) {
   const singleNodeChrome = useSingleNodeChrome(selected, dragging);
+  const mediaLoad = useMediaLoadRecovery(data.videoSrc);
   const inputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const fullscreenVideoRef = useRef<HTMLVideoElement>(null);
@@ -2354,7 +2359,7 @@ function VideoNodeImpl({
           </span>
         )}
       </Handle>
-      <div className="video-node-title nodrag">
+      <div className="canvas-node-title video-node-title nodrag">
         <svg aria-hidden="true" viewBox="0 0 18 18">
           <rect height="14" rx="3" width="16" x="1" y="2" />
           <path d="m7 6 5 3-5 3Z" />
@@ -2394,7 +2399,9 @@ function VideoNodeImpl({
             value={titleControl.value}
           />
         ) : (
-          <span>{titleControl.committedValue}</span>
+          <span title={titleControl.committedValue}>
+            {titleControl.committedValue}
+          </span>
         )}
       </div>
       <div
@@ -2438,11 +2445,18 @@ function VideoNodeImpl({
         {data.videoSrc ? (
           <>
             <video
-              className="video-node-preview"
+              className={`video-node-preview${
+                mediaLoad.failed ? " media-load-obscured" : ""
+              }`}
               data-testid="video-node-preview"
+              key={mediaLoad.key}
               muted={muted}
               onEnded={() => setPlaying(false)}
-              onLoadedMetadata={(event) => captureMetadata(event.currentTarget)}
+              onError={mediaLoad.markFailed}
+              onLoadedMetadata={(event) => {
+                mediaLoad.markLoaded();
+                captureMetadata(event.currentTarget);
+              }}
               onPause={() => setPlaying(false)}
               onPlay={() => setPlaying(true)}
               onTimeUpdate={(event) =>
@@ -2451,7 +2465,7 @@ function VideoNodeImpl({
               playsInline
               preload="auto"
               ref={videoRef}
-              src={data.videoSrc}
+              src={mediaLoad.source}
             />
             <button
               aria-label={muted ? "开启声音" : "静音"}
@@ -2508,6 +2522,13 @@ function VideoNodeImpl({
             </svg>
           </div>
         ) : null}
+        {data.videoSrc && mediaLoad.failed && (
+          <MediaLoadFallback
+            kind="视频"
+            onReload={mediaLoad.reload}
+            onReplace={() => inputRef.current?.click()}
+          />
+        )}
         {(generating || uploading) && (
           <div
             aria-label={uploading ? "视频上传中" : "视频生成中"}
@@ -2546,6 +2567,7 @@ function VideoNodeImpl({
       </Handle>
       {fullscreen &&
         data.videoSrc &&
+        !mediaLoad.failed &&
         createPortal(
           <div className="video-detail-backdrop" data-testid="video-detail">
             <div className="video-detail-dialog">

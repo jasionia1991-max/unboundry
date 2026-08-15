@@ -1,7 +1,16 @@
 # Unboundry 绿地复刻当前任务
 
-更新时间：2026-08-15
-状态：`生产已运行 v0.6.1/schema39；INC-ECOM-001～007已按各自证据边界完成用户收口；REM-000～011（含009A/009B）= PASS；GitHub branch/tag/Draft PR已发布；PRODUCTION = LIVE。`
+更新时间：2026-08-16
+状态：`生产已运行 v0.6.1/schema39；INC-UI-001/002本地候选已自动通过并等待用户复验，尚未发布；INC-ECOM-001～007已按各自证据边界完成用户收口；REM-000～011（含009A/009B）= PASS；PRODUCTION = LIVE。`
+
+### 2026-08-16 画布框选、OSS 素材显示与节点长标题（INC-UI-002）
+
+- 状态：`LOCAL_IMPLEMENTED_AUTO_PASS / USER_RECHECK`；本地候选版本目标为v0.6.2，真实package和线上仍为v0.6.1，没有发布、commit、push、tag或PR更新。
+- 框选：普通节点保持局部相交选中，只对Group要求选框完整包含；巨大Group与三个目标节点相交时不再扩大选区，三个节点可精确打组。
+- 媒体：CSP只在`img-src/media-src`放行既有严格服务端OSS流程使用的`https://*.aliyuncs.com`；Image/Video/Audio读取失败后保留asset/source、隐藏原生坏媒体图标并显示统一灰阶重载/重新上传状态，不自动上传或删除。
+- 标题：Text/Image/Video/Audio/Playlist/Group/Storyboard七类节点统一单行省略并保留完整title，编辑和IME语义不变。
+- 自动门：build PASS；`m41+m98 54/54 PASS`；非冻结发布运维集合`114/114 specs、938/938 PASS`，异常0、source snapshot与4173不变，Provider/真实OSS/付费请求0。
+- 证据边界：4份冻结发布运维spec仍绑定0.6.0 source-pair合同，本次UI候选没有改写它们，故上述114份不是formal full。权威记录：`spec/INC_UI_002_CANVAS_SELECTION_MEDIA_TITLE_REMEDIATION_2026-08-16.md`。
 
 ### 2026-08-15 整组工作流流水线全局修复（INC-ECOM-007）
 
@@ -302,9 +311,20 @@ F14本地正式门证据绑定 HEAD `eb4f99ea525390b0dd7a39d3cad55d882ffea41d`�
 
 ## 当前阶段
 
-阶段：`生产 v0.6.1/schema39 LIVE / REM-000～011（含009A/009B）PASS / USER ACCEPTED / 无IN_PROGRESS REM / GitHub push、v0.6.1 tag和Draft PR已完成`
+阶段：`INC-UI-001 LOCAL_IMPLEMENTED_AUTO_PASS_USER_RECHECK / v0.6.2候选已确认 / 生产 v0.6.1/schema39保持LIVE / Draft PR保持Draft`
 
 画布、固定界面、Text、Image、Video、Audio、Playlist、Group、外围面板、账号、管理员模型中心、生成安全和新图片私有OSS链路已通过当前范围验收；Comment、社区、TapTV、竞技场、额度和链接分享已按用户决定取消。OpenRouter GPT Image 2已完成一次用户授权的历史真实生成，图片连线参考图及真实结果零费用重启恢复均已通过；本次 cutover 未发起 Provider 或付费生成请求。
+
+### 2026-08-15 INC-UI-001 设置页返回来源画布与浏览器品牌标识（本地候选已完成，待用户实页复验）
+
+- 用户要求：所有完整设置页的「返回画布」不再固定进入默认画布，而是回到进入设置前的真实项目；旁边新增「返回工作空间」；浏览器标签显示无央图标和准确标题。
+- 只读根因：`App.tsx`中8个设置/管理页和账号浮层使用固定路由，8个页头均硬编码`/canvas`；现有`CanvasShell`/`WorkspacePage`虽已有`from`和按用户/标签页的最近项目记录，但没有被设置页统一复用，工作空间仍以`/canvas`兜底。`client/index.html`仅有固定`<title>画布</title>`且没有favicon link。
+- 冻结规则：`from项目ID → 当前账号本标签最近真实项目 → 工作空间`；排除`default`，只接受站内项目ID并经`GET /api/projects`校验；网络失败留页提示，不盲跳、不回默认画布。设置页之间必须保留来源；A→设置→工作空间→返回画布仍回A。
+- 已实现共享导航解析器和共享设置页头，覆盖`/connections`及7个`/admin/*`完整页面；账号浮层和设置页内部跳转传播来源；工作空间复用同一解析器。来源经当前账号项目列表校验，网络错误留页，双击单飞。
+- 已新增`client/public/favicon.svg`、静态兜底标题和动态页面/项目标题；项目标题变化即时联动浏览器标签，空标题有安全回退。
+- 自动验证：安全预检通过；受影响10份spec `102/102 PASS`，新增与多项目定向`m66 28/28 PASS`；临时洁净候选正式full为`117/117 specs、962/962 PASS`，failed/skipped/retries/reportErrors/blocked均为0，immutable builder `attempts=1 / builderInvocations=5 / passed=1`，source/snapshot SHA-256 `ea3410620444862090b076e8b0d9e250ed24e6f4f983b3937ecff9ecf4bce0e1`前后不变，4173 listener哈希`dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae`前后不变，Provider/付费/OSS请求0。
+- 权威详细方案：`spec/INC_UI_001_SETTINGS_RETURN_AND_BROWSER_IDENTITY_PLAN_2026-08-15.md`。NAV-001～004、BRAND-001～003进入`USER_RECHECK`，不能在用户可见实页确认前记PASS。
+- 用户已确认`v0.6.2`候选并授权功能实现与隔离测试；本地真实package仍为0.6.1。生产发布仍需后续单独授权；当前未commit/push/tag/更新PR，生产保持v0.6.1/schema39。
 
 ### 2026-08-08 小地图拖动与点击跳转修复（已验收并进入 v0.4.7 发布）
 

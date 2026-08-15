@@ -2,6 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GrayMenuSelect } from "../ui/GrayMenuSelect";
 import { InlineOptionGroup } from "../ui/InlineOptionGroup";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import {
+  projectCanvasPath,
+  rememberLastProjectId,
+  resolveReturnProject,
+  RETURN_PROJECT_LOOKUP_DEADLINE_MS,
+} from "../navigation/canvasReturn";
+import { usePageTitle } from "../pageIdentity";
 import { clearProjectLocalKeys } from "./projectStorage";
 
 type ProjectCover = {
@@ -55,12 +62,6 @@ function dateTime(timestamp: number | null) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
     date.getDate(),
   )} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function canvasPath(id: string) {
-  return id === "default"
-    ? "/canvas"
-    : `/canvas/${encodeURIComponent(id)}`;
 }
 
 function projectTitleRecord(value: unknown): ProjectTitleRecord | undefined {
@@ -162,6 +163,7 @@ function deleteProjectRequest(id: string) {
 }
 
 export function WorkspacePage({ userId = "" }: { userId?: string }) {
+  usePageTitle("工作空间");
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -178,25 +180,15 @@ export function WorkspacePage({ userId = "" }: { userId?: string }) {
   const [batchDeleteIds, setBatchDeleteIds] = useState<readonly string[]>();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [menuFor, setMenuFor] = useState<string>();
+  const [returningToCanvas, setReturningToCanvas] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const mounted = useRef(true);
+  const returnLookup = useRef<AbortController | undefined>(undefined);
   const createInFlight = useRef(false);
   const deleteInFlight = useRef<ProjectDeleteAction | undefined>(undefined);
   const renameInFlight = useRef<string | undefined>(undefined);
   const renameUpdatedAt = useRef(0);
   const selectMode = selectedIds.size > 0;
-  const fromProject = useMemo(
-    () =>
-      new URLSearchParams(window.location.search).get("from")?.trim() || "",
-    [],
-  );
-
-  const rememberLastProject = (id: string) => {
-    try {
-      sessionStorage.setItem(`unboundry:last-project:${userId}`, id);
-    } catch {
-      // 隐私模式等场景忽略。
-    }
-  };
 
   const load = useCallback(async (
     showLoading = true,
@@ -239,6 +231,14 @@ export function WorkspacePage({ userId = "" }: { userId?: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      returnLookup.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     if (renamingId && !renameSavingId) renameInputRef.current?.focus();
@@ -426,44 +426,50 @@ export function WorkspacePage({ userId = "" }: { userId?: string }) {
   };
 
   const openProject = (id: string) => {
-    rememberLastProject(id);
-    window.location.href = canvasPath(id);
+    if (id === "default") {
+      window.location.href = "/canvas";
+      return;
+    }
+    rememberLastProjectId(userId, id);
+    window.location.href = projectCanvasPath(id);
   };
 
   const backToCanvas = async () => {
-    const candidates = fromProject ? [fromProject] : [];
+    if (returnLookup.current) return;
+    const controller = new AbortController();
+    returnLookup.current = controller;
+    setReturningToCanvas(true);
+    setError("");
+    let timedOut = false;
+    const deadline = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, RETURN_PROJECT_LOOKUP_DEADLINE_MS);
     try {
-      const last = sessionStorage.getItem(`unboundry:last-project:${userId}`);
-      if (last && !candidates.includes(last)) candidates.push(last);
-    } catch {
-      // 无本标签页记录时直接回落默认画布。
-    }
-    if (candidates.length > 0) {
-      try {
-        const response = await fetch("/api/projects", {
-          headers: { Accept: "application/json" },
-        });
-        if (response.ok) {
-          const body = (await response.json()) as {
-            projects: Array<{ id: string }>;
-          };
-          const alive = new Set(body.projects.map((project) => project.id));
-          for (const id of candidates) {
-            if (alive.has(id)) {
-              window.location.href = canvasPath(id);
-              return;
-            }
-          }
-        }
-      } catch {
-        // 列表读取失败时直接尝试第一个候选，项目缺失由画布页处理。
-        if (candidates[0]) {
-          window.location.href = canvasPath(candidates[0]);
-          return;
-        }
+      const projectId = await resolveReturnProject({
+        search: window.location.search,
+        signal: controller.signal,
+        userId,
+      });
+      if (projectId) {
+        window.location.href = projectCanvasPath(projectId);
+      } else {
+        setError("没有可返回的真实项目画布，请先打开一个项目");
       }
+    } catch (caught) {
+      if (!mounted.current || (controller.signal.aborted && !timedOut)) return;
+      setError(
+        timedOut
+          ? "原画布确认超时，请重试"
+          : caught instanceof Error
+            ? `暂时无法确认原画布：${caught.message}`
+            : "暂时无法确认原画布，请重试",
+      );
+    } finally {
+      window.clearTimeout(deadline);
+      if (returnLookup.current === controller) returnLookup.current = undefined;
+      if (mounted.current) setReturningToCanvas(false);
     }
-    window.location.href = "/canvas";
   };
 
   const cloneProject = async (project: ProjectSummary) => {
@@ -681,12 +687,14 @@ export function WorkspacePage({ userId = "" }: { userId?: string }) {
         </div>
         <div className="workspace-toolbar">
           <button
+            aria-busy={returningToCanvas || undefined}
             className="workspace-back-button"
             data-testid="workspace-back"
+            disabled={returningToCanvas}
             onClick={() => void backToCanvas()}
             type="button"
           >
-            返回画布
+            {returningToCanvas ? "正在确认…" : "返回画布"}
           </button>
           <input
             aria-label="搜索项目"
