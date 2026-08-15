@@ -3,6 +3,8 @@
 基线日期：2026-07-27  
 当前状态更新：2026-08-16
 
+2026-08-16 `V0.6.2 REAL WORKFLOW SMOKE = PASS / USER_RECHECK`：用户授权真实API消耗后，在生产建立并运行`Text → Image`整组工作流。整组Text先成功，Image随后才启动；两个任务均attempt1、Provider attempt1、retry0。唯一图片为`1:1 / 1K`，结果PNG 1024×1024、OSS ready；刷新后Group、连线、文字和图片均持久。额外一次单Text预检也成功；没有运行视频/音频、没有并发追加或自动重试。设置页返回原项目、返回工作空间及动态标题亦通过生产实页验证。公网ready active/schema39，数据库quick_check ok/FK0/active0。该结果证明真实低成本闭环，不代替用户明早的内容与交互验收。
+
 2026-08-16 `INC-UI-002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：框选仍对普通节点保留局部相交语义，但Group只有被选框完整包含才进入框选，解决巨大Group误选和打组范围扩大；Image/Video/Audio共用OSS/媒体读取失败占位并保留原asset/source，CSP只在`img-src/media-src`放行`https://*.aliyuncs.com`，生成/上传错误继续位于恢复层上方；Text/Image/Video/Audio/Playlist/Group/Storyboard七类长标题统一省略并暴露完整title。build PASS，`m41+m98 54/54 PASS`；正式安全全量 `118/118 specs、965/965 PASS`，异常0、4173不变、真实Provider/OSS/付费请求0。生产已运行v0.6.2/schema39；SEL-001、MEDIA-LOAD-001～003、TITLE-001～007等待用户线上复验。
 
 2026-08-16 `INC-UI-001 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：设置页返回来源画布、返回工作空间、浏览器favicon与动态标题已发布。返回优先级为`URL from → 当前账号本标签最近真实项目 → 工作空间`，只接受当前账号项目ID并以只读项目列表校验，默认画布不作为返回动作的隐式兜底。受影响10份spec `102/102 PASS`，新增与多项目定向`m66 28/28 PASS`；最终正式安全全量为`118/118 specs、965/965 PASS`且所有异常计数0，Provider/付费/OSS请求0、4173不变。NAV-001～004、BRAND-001～003仍为`USER_RECHECK`，生产现为v0.6.2/schema39。

@@ -14,6 +14,14 @@
 - 数据/回滚：备份与恢复副本为`/var/lib/unboundry-rollbacks/inc-ui-002-20260815T180956Z`，清单SHA均为`b1754f94…c2909`；schema39 quick_check ok/FK0，tasks118/attempts116/active0、模板43/42及并发500前后不变，Provider/付费调用/OSS写入0。
 - 权威记录：`spec/INC_UI_002_CANVAS_SELECTION_MEDIA_TITLE_REMEDIATION_2026-08-16.md`、`spec/INC_UI_002_PRODUCTION_RECEIPT_2026-08-16.json`。用户尚未进行线上肉眼复验，因此不写成USER PASS。
 
+### 2026-08-16 v0.6.2 真实工作流低成本验收
+
+- 状态：`PRODUCTION_REAL_WORKFLOW_SMOKE_PASS / USER_RECHECK`。用户明确允许真实API消耗并要求控制成本；只运行2次文字和1次最低规格`1:1 / 1K`图片，不运行视频/音频，不重试。
+- 整组流水：项目`5e1f6462-4ac3-4f35-b2f0-72462987e318`内建立`Text → Image`并打组。整组Text任务`54834dc5-e376-449d-80b9-7efd183a7e4e`先于Image完成，Image任务`6dc65b87-e564-4eac-b44b-af1867efe134`随后启动并成功；两者均attempt1、Provider attempt1、retry0。
+- 结果：Text回写`挺括免烫垂感显瘦 通勤百搭白衬衫`；Image结果asset`427ee182-5f42-4bf8-a932-4c8ef81b3969`为PNG 1024×1024、1,298,394 bytes、OSS ready、checksum`63377430…5ec9`。浏览器刷新后Group、边、文字和图片仍在，图片natural size 1024×1024，控制台warning/error为0。
+- 页面：`/connections?from=<projectId>`显示双返回；“返回画布”精确回到该项目，“返回工作空间”进入`/canvas/projects?from=<projectId>`，标题分别为`我的连接｜无央`、项目名和`工作空间｜无央`。
+- 收尾：公网v0.6.2 ready active/schema39；数据库tasks121/attempts119/active0、quick_check ok、FK0。系统账本的microunits仅为应用审计字段，不冒充Provider最终账单。详细凭证：`spec/V0_6_2_REAL_WORKFLOW_SMOKE_2026-08-16.json`。
+
 ### 2026-08-15 整组工作流流水线全局修复（INC-ECOM-007）
 
 - 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户已确认多入参严格AND、分流独立推进、汇流等待全部上游、分支失败只阻塞后代；修复、自动门、生产发布与线上实页验收均已完成。

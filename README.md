@@ -13,6 +13,10 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 - 发布期间真实 Provider 调用、生成任务、OSS 写入与付费请求均为 0。停机备份与独立恢复副本位于 `/var/lib/unboundry-rollbacks/inc-ui-002-20260815T180956Z`，两份清单一致且恢复检查通过。
 - 发布源码 commit 为 `8ebe70544828a3aebe258def9d658e1ab68a6104`，但本次没有获得新的 push/tag/PR 授权，因此 GitHub 仍保持既有 v0.6.1 发布状态。
 
+### 真实工作流低成本验收
+
+2026-08-16 用户明确授权真实API消耗后，在生产项目`v0.6.2 真实工作流低成本验收`执行了一个`Text → Image`整组工作流：Text先成功，Image只在Text完成后启动；1张`1:1 / 1K`图片约92秒成功，刷新后文字、连线、Group和OSS图片均保持。整组两个任务均`attempt=1`、Provider attempt各1、retry 0；额外单节点文字预检也一次成功。没有运行视频/音频，没有并发追加或自动重试。公网ready仍为active/schema39，数据库quick_check ok、FK0、active0。
+
 ## 2026-08-15 整组工作流流水线修复（已发布并通过用户实页验收）
 
 `INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`：整组执行已改为事件驱动DAG流水；多直接生成式上游严格AND，分流独立推进、汇流等待全部、失败只阻塞后代，Text/Image/Video/Audio在实际提交前统一刷新runtime preflight。正式full基线`117/117 specs、959/959 PASS`，版本准入修复后相关8份spec `110/110 PASS`，精确发布HEAD build PASS，真实Provider请求0。生产已原子切换到不可变`v0.6.1`发布目录，公网version/live/ready和主JS哈希一致；schema39、quick_check ok、FK0、tasks109、attempts107、active0及并发500均前后不变。停机备份已完成恢复副本校验；用户随后在线上实页明确确认“通过通过”。

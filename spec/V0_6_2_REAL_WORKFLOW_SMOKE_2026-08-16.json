@@ -1,0 +1,89 @@
+{
+  "format": "unboundry-real-workflow-smoke-v1",
+  "status": "PRODUCTION_REAL_WORKFLOW_SMOKE_PASS_USER_RECHECK",
+  "observedAt": "2026-08-16T02:34:00+08:00",
+  "version": "0.6.2",
+  "schemaVersion": 39,
+  "project": {
+    "id": "5e1f6462-4ac3-4f35-b2f0-72462987e318",
+    "name": "v0.6.2 真实工作流低成本验收",
+    "groupName": "真实生成闭环｜文字→图片"
+  },
+  "costControl": {
+    "textRequests": 2,
+    "imageRequests": 1,
+    "imageQuality": "1K",
+    "imageAspectRatio": "1:1",
+    "videoRequests": 0,
+    "audioRequests": 0,
+    "automaticRetries": 0,
+    "note": "Microunit values below are application audit fields, not a Provider invoice."
+  },
+  "directTextPreflight": {
+    "taskId": "fd1241b7-0bca-4a17-a4d6-c0415732c38f",
+    "state": "success",
+    "attempt": 1,
+    "providerAttemptRows": 1,
+    "retryEvents": 0,
+    "providerModelId": "doubao-seed-2-0-lite-260428",
+    "providerUsageTokens": 755
+  },
+  "groupRun": {
+    "dependency": "text-before-image",
+    "text": {
+      "taskId": "54834dc5-e376-449d-80b9-7efd183a7e4e",
+      "state": "success",
+      "attempt": 1,
+      "providerAttemptRows": 1,
+      "retryEvents": 0,
+      "providerModelId": "doubao-seed-2-0-lite-260428",
+      "providerUsageTokens": 638,
+      "result": "挺括免烫垂感显瘦 通勤百搭白衬衫",
+      "createdAt": "2026-08-15T18:31:18.229Z",
+      "updatedAt": "2026-08-15T18:31:33.233Z"
+    },
+    "image": {
+      "taskId": "6dc65b87-e564-4eac-b44b-af1867efe134",
+      "state": "success",
+      "attempt": 1,
+      "providerAttemptRows": 1,
+      "retryEvents": 0,
+      "providerModelId": "gpt-image-2",
+      "resultAssetId": "427ee182-5f42-4bf8-a932-4c8ef81b3969",
+      "createdAt": "2026-08-15T18:31:34.775Z",
+      "updatedAt": "2026-08-15T18:33:06.711Z"
+    }
+  },
+  "resultAsset": {
+    "id": "427ee182-5f42-4bf8-a932-4c8ef81b3969",
+    "kind": "image",
+    "storageBackend": "oss",
+    "storageStatus": "ready",
+    "contentType": "image/png",
+    "byteSize": 1298394,
+    "width": 1024,
+    "height": 1024,
+    "checksumSha256": "63377430a82698357863720691bc859e20bb2efc46fd2e60934d9b980ee05ec9",
+    "browserComplete": true,
+    "browserNaturalWidth": 1024,
+    "browserNaturalHeight": 1024
+  },
+  "browser": {
+    "refreshPersistence": "PASS",
+    "consoleWarnings": 0,
+    "consoleErrors": 0,
+    "returnToSourceCanvas": "PASS",
+    "returnToWorkspace": "PASS",
+    "dynamicTitles": "PASS"
+  },
+  "productionAfter": {
+    "publicVersion": "0.6.2",
+    "ready": "active-schema39",
+    "quickCheck": "ok",
+    "foreignKeyViolations": 0,
+    "generationTasks": 121,
+    "providerAttempts": 119,
+    "activeGenerationTasks": 0
+  },
+  "userAcceptance": "PENDING_NEXT_DAY_RECHECK"
+}
