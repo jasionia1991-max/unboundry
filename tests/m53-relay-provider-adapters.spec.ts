@@ -1,6 +1,7 @@
 import { expect, test } from "./safe-test";
 import {
   pollRelayMediaTask,
+  relayGptImageRequestTimeoutMs,
   relayMediaCancellationBoundary,
   relayProviderSafeSnapshot,
   requestRelayGptImage,
@@ -408,6 +409,7 @@ test("protocol media-input gaps reject explicitly before any Provider request", 
 });
 
 test("GPT Image generation and edits use their dedicated endpoints", async () => {
+  expect(relayGptImageRequestTimeoutMs).toBe(180_000);
   const calls: Array<{ init?: RequestInit; url: string }> = [];
   const fixtures = [
     jsonResponse({

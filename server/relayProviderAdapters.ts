@@ -28,6 +28,7 @@ import {
   fetchPublicHttps,
   OutboundDestinationError,
 } from "./outboundNetwork";
+import { providerRequestTimeoutMsByOperation } from "./providerRequestDeadline";
 
 export type RelayCapability = "audio" | "image" | "text" | "video";
 
@@ -276,6 +277,13 @@ const modelPattern = /^[a-z0-9][a-z0-9._:/-]{0,199}$/i;
 const taskIdPattern = /^[a-z0-9][a-z0-9._:-]{0,159}$/i;
 const sizePattern = /^(?:auto|\d{2,5}x\d{2,5})$/;
 const forbiddenParamName = /(?:api.?key|authorization|credential|password|secret|token|notify.?url)/i;
+
+// GPT Image's synchronous edit endpoint regularly needs longer than the
+// generic JSON request window, especially when it has to fetch a reference
+// image and return a base64 payload. Keep it on the shared Provider submit
+// deadline so a slow, valid response is not cut off at the old 120s default.
+export const relayGptImageRequestTimeoutMs =
+  providerRequestTimeoutMsByOperation.submit;
 const mediaParamNamesByCapability = {
   audio: new Set([
     "audioMode",
@@ -1344,6 +1352,8 @@ export async function sendPreparedRelayGptImageRequest(
       connection,
       execution: {
         ...execution,
+        timeoutMs:
+          execution.timeoutMs ?? relayGptImageRequestTimeoutMs,
         beforeProviderRequest: () => {
           execution.beforeProviderRequest?.();
           providerBoundaryCrossed = true;
