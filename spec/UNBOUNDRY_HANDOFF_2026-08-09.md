@@ -6,12 +6,13 @@
 
 - 当前状态：`REM-000 PASS / REM-001～009B USER_REVIEW / REM-010～011 PASS / G7（本次 v0.6.0）PASS / PRODUCTION LIVE / USER ACCEPTED`；无 `IN_PROGRESS` REM。
 - 生产运行 `v0.6.0/schema39`，`/opt/unboundry/current -> releases/v0.6.0`；service active/enabled、NRestarts0、127.0.0.1:4173，nginx active配置SHA `2c6e90d1…`且配置检查exit0。公网live/ready/version/auth/root均200，ready active/schema39。
-- 生产F14：commit `eb4f99ea525390b0dd7a39d3cad55d882ffea41d`、tree `86b4e424b6d6324c5f24d4c633b0cd35baf0d626`、manifest `46e2365c48b8e8bdaa1847b1767ef2974a71f2d2b47c87743793c116e5ec2adf`、inventory `ac8ca43a9f8f6724ca67bd0899185fa3952e762e0400a1f9ce34f3ecfefc2bac`、tar `0e3a96a13299efba407ba98dc6501ae97297c9a82c067827b9f9befeb2c18944`。
-- 数据最新核验：schema39、integrity ok、FK0、row14 absent、active generation0、99 tasks/99 attempts、416 ready media（local346+OSS70）、pending0；真实生成已开启，`globalEnabled1/emergencyStop0`，每用户/每类型并发1、每分钟5。
+- 当前生产formal artifact（INC-ECOM-002）：commit `e1e0e0d33809a519e8856d11135237a6a30ff912`、tree `9bfb43d456f8e250657a82f4f4574dff73cb1620`、manifest `692995bc9f6fc6833b314afeaea65bc5d367142aa03234299c4ab02b76aa56ff`、inventory `a2b685f64e1f3acab915e6b22d1f6dc05b2ffd75f6d5345e006f5bcb6af96151`。前一current hotfix与旧v0.6.0均保留作回滚，不得删除。
+- 数据最新核验：schema39、integrity ok、FK0、active generation0、106 tasks/104 provider attempts、418 ready media（local348+OSS70）、pending0；生产生成开关与并发/频率沿用用户现有设置，本次未修改。
 - 原schema37 raw backup SHA `7f14c611faab136c1ae8e9579bc47755f7298e4ea6e2bba516c71e85670f8fca` 已完成离机恢复验证，inspection SHA `b4d58243e88efe1c2c967ffab5f63ed6704d18324a80e8449ec9d3ad77e28e1d`；迁移后inspection SHA `a18f8224dd651b8217cb3d778845ee3f42b5bf91a5ff68291bfad4d4cb3ffa61`。
 - 封存技术凭证 `FINAL-CUTOVER-SUPPLEMENT.json` SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8` 为 `TECHNICAL_CUTOVER_VERIFIED`。凭证形成时 `userAcceptance=PENDING` 不得改写；用户随后确认生成任务状态可读取，并结合此前确认老项目大量生成/上传素材仍在、第4项正常，生产另记 `USER PASS`。不声称全部历史素材逐一验证。
 - 切换是人工受控 bounded cutover，不冒充新的 formal controller/full regression PASS；期间Provider/付费调用0。attempt 86/108/116/120/122已行政取消并禁止重试，`PROVIDER_FAILED`仅迁移/备份门surrogate；三条音频仅修正duration元数据12.656→12.696，字节/checksum不变。
-- 本次生产授权已消费。未来生产变更、真实Provider/付费生成、push/tag/PR或新版本发布必须重新授权；REM-001～009B和既有外部/延后项保持原状态。
+- INC-ECOM-002已完成formal部署、停机备份和模板事务：19条模板全部静态`PASS`，99个执行节点缺模型0（published87；Text50/Image42/Video7），7处历史`Auto`已规范化；目标模板「服装详情页｜面料与工艺拆解」2个Text与3个Image节点均已绑定。回滚库在`/var/lib/unboundry-rollbacks/inc-ecom-002-20260815`，主库停机SHA `347b07f2…94a8`。零付费复核前后tasks106/provider attempts104，公网健康、登录模板面板和控制台均正常；真实生成未执行。
+- 本次INC-ECOM-002生产授权已消费。未来生产变更、真实Provider/付费生成、push/tag/PR或新版本发布必须重新授权；REM-001～009B和既有外部/延后项保持原状态。
 - 用户在最终切换后另行授权并完成上线能力补验：唯一一次 Doubao Seed 文字任务 `77d3feec-35c1-4b1e-87a2-c457983a8046` 一次成功、无重试，结果“真实生成验收通过”，审计成本 `10,000,000 microunits CNY`。公网Cookie、490MiB上传/Range/完整下载、schema39自动备份/30天保留与整机离机恢复均已闭环，`DEP-003/005/006/007` 与 `OPS-002` 为PASS；用户随后明确“文档确认通过”，`DEP-010 = PASS`。
 - 当前运维文件：`/opt/unboundry/scripts/backup-data.mjs` SHA `e50ac515…970c5`，`backup-to-oss.mjs` SHA `05721427…7b95f`；timer active/enabled。最后自动备份前缀 `objects/backups/2026-08-14T23-15-59-569Z/`，356文件/267,091,270字节。整机离机目录 `/Users/mymy/Documents/unboundry/recovery/2026-08-15`，tar SHA `d3b6023f…ae109`，fresh restore receipt SHA `151c7886…f3962`。
 

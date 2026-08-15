@@ -1,7 +1,7 @@
 # INC-ECOM-002 电商模板兼容性矩阵
 
 检查日期：`2026-08-15`
-证据范围：当前本地源码快照，以及通过既有 SSH 对生产 schema39 数据库执行的 `readOnly + PRAGMA query_only=ON` 导出；生产数据只进入本机内存数据库供候选审计器计算。未写生产、未调用真实 Provider/OSS、未生成或付费。
+证据范围：先以`readOnly + PRAGMA query_only=ON`完成生产审计；随后在用户明确授权下停服备份、部署formal final，并以单事务为生产模板绑定明确模型。写后再次只读审计和登录实页复核。全程未调用真实Provider/OSS、未生成或付费。
 
 ## 状态定义
 
@@ -14,25 +14,25 @@
 
 | 模板 | 来源 | 状态 | 静态结论 | 下一步 |
 |---|---|---:|---|---|
-| 电商详情页工作流 | 生产 published | `NEEDS_MODEL` | 8 个执行节点未保存模型 | 管理员逐节点选择兼容模型并保存 |
-| 213.电商图片生成专家 | 生产 published | `NEEDS_MODEL` | 12 个执行节点未保存模型 | 同上 |
-| 测试管理新建模板 | 生产 archived | `NEEDS_MODEL` | 12 个执行节点未保存模型 | 保持归档；如需恢复，先绑定模型 |
-| 女装货架主图｜白底标准款 | 生产 published | `NEEDS_MODEL` | 3 个执行节点未保存模型 | 绑定 Text/Image 模型 |
-| 男装货架主图｜白底标准款 | 生产 published | `NEEDS_MODEL` | 3 个执行节点未保存模型 | 同上 |
-| 女装货架主图｜生活方式场景 | 生产 published | `NEEDS_MODEL` | 3 个执行节点未保存模型 | 同上 |
-| 男装货架主图｜通勤/户外场景 | 生产 published | `NEEDS_MODEL` | 3 个执行节点未保存模型 | 同上 |
-| 女装详情页｜五图转化组 | 生产 published | `NEEDS_MODEL` | 7 个执行节点未保存模型 | 绑定 Text 与 5 个 Image 节点模型 |
-| 男装详情页｜五图转化组 | 生产 published | `NEEDS_MODEL` | 7 个执行节点未保存模型 | 同上 |
-| 服装详情页｜面料与工艺拆解 | 生产 published | `NEEDS_MODEL` | 5 个执行节点未保存模型 | 绑定 Text/Image 模型后才可做真实复验 |
-| 服装详情页｜版型与尺码说明 | 生产 published | `NEEDS_MODEL` | 4 个执行节点未保存模型 | 绑定模型 |
-| 服装上新｜颜色变体与搭配 | 生产 published | `NEEDS_MODEL` | 5 个执行节点未保存模型 | 绑定模型 |
-| 直播间/抖音｜9:16商品封面 | 生产 published | `NEEDS_MODEL` | 4 个执行节点未保存模型 | 绑定模型 |
-| 抖音带货｜6秒商品主图动效 | 生产 published | `NEEDS_MODEL` | 3 个执行节点未保存模型 | 绑定 Text/Image/Video 模型 |
-| 抖音女装｜15秒穿搭转化 | 生产 published | `NEEDS_MODEL` | 4 个执行节点未保存模型 | 绑定模型 |
-| 抖音男装｜15秒功能卖点 | 生产 published | `NEEDS_MODEL` | 4 个执行节点未保存模型 | 绑定模型 |
-| 抖音带货｜服装细节与面料微距 | 生产 published | `NEEDS_MODEL` | 3 个执行节点未保存模型 | 绑定模型 |
-| 抖音上新｜四镜头批量短视频 | 生产 published | `NEEDS_MODEL` | 5 个执行节点未保存模型 | 绑定模型 |
-| 抖音直播切片｜商品三段式 | 生产 published | `NEEDS_MODEL` | 4 个执行节点未保存模型 | 绑定模型 |
+| 电商详情页工作流 | 生产 published | `PASS` | 8 个执行节点已绑定兼容模型，历史`Auto`已规范化 | 真实结果待受限验收 |
+| 213.电商图片生成专家 | 生产 published | `PASS` | 12 个执行节点已绑定兼容模型 | 真实结果待受限验收 |
+| 测试管理新建模板 | 生产 archived | `PASS` | 12 个执行节点已绑定；继续保持归档 | 如恢复仍须走发布门 |
+| 女装货架主图｜白底标准款 | 生产 published | `PASS` | 3 个Text/Image执行节点已绑定 | 真实结果待受限验收 |
+| 男装货架主图｜白底标准款 | 生产 published | `PASS` | 3 个Text/Image执行节点已绑定 | 同上 |
+| 女装货架主图｜生活方式场景 | 生产 published | `PASS` | 3 个Text/Image执行节点已绑定 | 同上 |
+| 男装货架主图｜通勤/户外场景 | 生产 published | `PASS` | 3 个Text/Image执行节点已绑定 | 同上 |
+| 女装详情页｜五图转化组 | 生产 published | `PASS` | 7 个执行节点已绑定 | 同上 |
+| 男装详情页｜五图转化组 | 生产 published | `PASS` | 7 个执行节点已绑定 | 同上 |
+| 服装详情页｜面料与工艺拆解 | 生产 published | `PASS` | 2个Text绑定Doubao Seed，3个Image绑定GPT Image 2专用协议 | 下一步做受限真实复验 |
+| 服装详情页｜版型与尺码说明 | 生产 published | `PASS` | 4 个执行节点已绑定 | 真实结果待受限验收 |
+| 服装上新｜颜色变体与搭配 | 生产 published | `PASS` | 5 个执行节点已绑定 | 同上 |
+| 直播间/抖音｜9:16商品封面 | 生产 published | `PASS` | 4 个执行节点已绑定 | 同上 |
+| 抖音带货｜6秒商品主图动效 | 生产 published | `PASS` | Text/Image/Video节点已绑定 | 同上 |
+| 抖音女装｜15秒穿搭转化 | 生产 published | `PASS` | 4 个执行节点已绑定 | 同上 |
+| 抖音男装｜15秒功能卖点 | 生产 published | `PASS` | 4 个执行节点已绑定 | 同上 |
+| 抖音带货｜服装细节与面料微距 | 生产 published | `PASS` | 3 个执行节点已绑定 | 同上 |
+| 抖音上新｜四镜头批量短视频 | 生产 published | `PASS` | 5 个执行节点已绑定 | 同上 |
+| 抖音直播切片｜商品三段式 | 生产 published | `PASS` | 4 个执行节点已绑定 | 同上 |
 
 ## 已落实的门禁
 
@@ -44,6 +44,6 @@
 
 ## 证据边界
 
-生产只读审计共读取 19 条模板：18 条 published、1 条 archived；结果为 `PASS=0 / NEEDS_MODEL=19 / INVALID=0`。唯一问题代码为 `MODEL_SELECTION_REQUIRED`，共 99 个节点，其中 published 模板 87 个。首次审计曾把五条短视频模板的合法 `text→storyboard` 画布连线误报为 `INVALID`；根因是审计器把非生成型 Storyboard 错当作四类生成输入，现已改为复用画布连接合同，并新增专项测试，m77 当前 `9/9 PASS`。这说明图结构未发现确定性非法项，但不等于真实出图、用户验收或发布证明。
+生产初始只读审计共读取19条模板：18条published、1条archived；当时结果为`PASS=0 / NEEDS_MODEL=19 / INVALID=0`，99个执行节点缺模型，其中published模板87个。事务绑定后复核为`PASS=19 / NEEDS_MODEL=0 / INVALID=0`，执行节点缺模型0；类型分布为Text50/Image42/Video7，7处历史`Auto`已规范化为`auto`。首次审计曾把五条短视频模板的合法`text→storyboard`画布连线误报为`INVALID`；根因已修复并由m77 `9/9 PASS`覆盖。
 
-离线自动证据：模板发布/恢复/管理页/导入语义专项已通过；Storyboard审计回归修复后 m77 `9/9 PASS`。正式final候选 `e1e0e0d33809a519e8856d11135237a6a30ff912` 上clean full为`117/117 specs、954/954 PASS`，异常计数全0，builder `1/5/1/0`。该证据不写生产模板，也不替代真实出图和用户验收。
+离线自动证据：模板发布/恢复/管理页/导入语义专项已通过；Storyboard审计回归修复后m77 `9/9 PASS`。正式final `e1e0e0d33809a519e8856d11135237a6a30ff912` 上clean full为`117/117 specs、954/954 PASS`，异常计数全0，builder `1/5/1/0`。生产formal manifest为`692995bc9f6fc6833b314afeaea65bc5d367142aa03234299c4ab02b76aa56ff`；零付费复核前后generation tasks106、provider attempts104，未新增请求。上述PASS是静态结构、模型、参数与输入合同PASS，不替代真实图片/视频结果和用户验收。

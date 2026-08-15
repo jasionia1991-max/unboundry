@@ -1,20 +1,22 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`42`
+断点版本：`43`
 更新时间：`2026-08-15`
-状态：`INC_ECOM_002_LOCAL_FORMAL_FULL_PASS_PRODUCTION_REPAIR_PENDING`
+状态：`INC_ECOM_002_PRODUCTION_STATIC_REPAIR_PASS_REAL_GENERATION_PENDING`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
 ## 0. 当前新事件：INC-ECOM-002
 
-- 用户已确认电商参考图工作流完整修复方案，并追加授权本地clean candidate、正式full和生产模板只读审计。
+- 用户已确认电商参考图工作流完整修复方案；随后追加授权正式候选部署、生产模板模型绑定、备份、必要停启与零付费页面/API复核。
 - 权威事件断点：`spec/INC_ECOM_002_REFERENCE_WORKFLOW_REMEDIATION_2026-08-15.md`。恢复者必须在本文件当前结论前先读取它。
-- 当前阶段：`D4 生产只读模板审计与clean formal full完成，生产修正待独立授权`。
+- 当前阶段：`D5 formal生产部署、模板绑定和零付费复核完成，真实生成待独立授权`。
 - 已完成：参考图`prepare/send/cleanup`拆锁和Provider最终边界；五类阶段错误；整组task创建前全节点预检；缺失/停用模型显式阻止；模板edge角色/顺序保留；公共模板发布/恢复/更新兼容门；管理页矩阵和发布按钮门禁。
-- 当前生产只读矩阵：schema39共19条模板（18 published、1 archived）全部`NEEDS_MODEL`，`INVALID=0 / PASS=0`；共99个执行节点未保存模型，其中published模板87个。「服装详情页｜面料与工艺拆解」为5个节点缺模型。矩阵文件：`spec/INC_ECOM_002_TEMPLATE_COMPATIBILITY_MATRIX_2026-08-15.md`。
+- 当前生产矩阵：schema39共19条模板（18 published、1 archived）全部`PASS`，`NEEDS_MODEL=0 / INVALID=0`；99个执行节点均保存明确模型，其中published模板87个，Text50/Image42/Video7。「服装详情页｜面料与工艺拆解」2个Text和3个Image节点均已绑定。矩阵文件：`spec/INC_ECOM_002_TEMPLATE_COMPATIBILITY_MATRIX_2026-08-15.md`。
 - 已通过定向：m88含Storage busy与1/5/20并行`34/34`、m53 `23/23`、m22+m70+m77 `30/30`；旧Text输入提示误伤修复后的五spec `28/28`。最终安全入口发现`117 files / 953 tests`，全部非发布产品测试`113 files / 926 tests`为`926/926 PASS`且异常计数0，源码快照与4173不变、真实外部请求0。
 - 正式候选：bridge `45e9cefe489ffea23970517c420bf9c64a49896b`（v0.5.2）与唯一直接子final `e1e0e0d33809a519e8856d11135237a6a30ff912`（v0.6.0），B→F仅package/lock三个版本值。clean final正式full `117/117 specs、954/954 PASS`，异常0，builder `1/5/1/0`，source/snapshot `0720f06d14e8c3d85ee22e596a28c51f7a1f68b6c1dceb46f66b7bc8633e27e8`，4173不变、suite cleaned。
-- 用户设置的并发`500`、OSS路由、OSS配置/密钥/对象、生产数据和服务均禁止修改；真实Provider/OSS、付费、push/tag/PR和发布均未授权。
+- 生产formal artifact：final commit `e1e0e0d33809a519e8856d11135237a6a30ff912`、tree `9bfb43d456f8e250657a82f4f4574dff73cb1620`、manifest `692995bc9f6fc6833b314afeaea65bc5d367142aa03234299c4ab02b76aa56ff`、inventory `a2b685f64e1f3acab915e6b22d1f6dc05b2ffd75f6d5345e006f5bcb6af96151`；current为`/opt/unboundry/releases/v0.6.0`，service active，公网live/ready/version/root正常。
+- 回滚：停机数据库备份`/var/lib/unboundry-rollbacks/inc-ecom-002-20260815`，主库SHA `347b07f2ade6b9f6a3f0d70d433ec0c828605d9b9101d34e343594c905ff94a8`并保留WAL/SHM；旧v0.6.0封存在`/opt/unboundry/retired-releases/20260815-pre-inc-ecom-002/v0.6.0`，前一INC-ECOM-001 hotfix release保留。
+- 零付费复核：部署前后generation tasks106、provider attempts104、admission events8、publication attempts3、active0；登录实页公共模板面板可见目标模板，控制台warning/error为0。并发和OSS路由/配置/密钥/对象未改；真实Provider/付费生成、push/tag/PR仍未授权。
 - `INC-ECOM-001 = USER_RECHECK` 的重复结果别名去重、节点错误落盘和既有结果恢复继续保留；不得把它扩大为参考图自锁、全图预检或模板包已验收。
 
 ## 1. 当前结论
@@ -28,7 +30,7 @@
 - 用户还授权：仅在维护、旧服务停止、无写者、可恢复原始备份完成并精确复核后，删除唯一 FK 孤儿 `project_metadata rowid=14`；不得扩大为其他生产清理。
 - 真实OSS只读HEAD/GET以及必要的bwrap安装/使用已经纳入最新bridge总授权；只允许按冻结控制器、最小权限和只读对象合同执行。
 - 生产现运行 `/opt/unboundry/current -> releases/v0.6.0`，service active/enabled、NRestarts0、监听127.0.0.1:4173；公网live/ready/version/auth/root均200，ready active/schema39。
-- 数据最新核验：schema39、integrity ok、FK0、row14 absent、active generation0、99 tasks/99 attempts、416 ready media（local346+OSS70）、pending0；globalEnabled1/emergencyStop0、每用户/每类型并发1、每分钟5。
+- 数据最新核验：schema39、integrity ok、FK0、active generation0、106 tasks/104 provider attempts、418 ready media（local348+OSS70）、pending0；INC-ECOM-002未修改现有生成开关、并发或频率。
 - 原schema37 raw backup SHA `7f14c611faab136c1ae8e9579bc47755f7298e4ea6e2bba516c71e85670f8fca` 已离机恢复PASS，inspection `b4d58243e88efe1c2c967ffab5f63ed6704d18324a80e8449ec9d3ad77e28e1d`。最终技术凭证 SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8` 为 `TECHNICAL_CUTOVER_VERIFIED`。
 - 技术凭证生成时 `userAcceptance=PENDING` 保持不变；用户随后确认生成任务状态可读取，并结合此前确认老项目大量生成/上传素材仍在、第4项正常，生产验收现为`USER PASS`，但不声称全部历史素材逐一验证。
 - 最终切换是人工受控bounded cutover，不冒充新的formal controller/full regression PASS；切换期间Provider/付费调用0。REM-010/011与本次G7为`PASS`，REM-001～009B继续`USER_REVIEW`，当前没有IN_PROGRESS REM。
@@ -42,13 +44,13 @@
 | 仓库根 | `/Users/mymy/Documents/unboundry/app` |
 | 生产站点 | `https://canvas.mymy.ltd` |
 | 线上版本 | `v0.6.0` / schema39 |
-| package 版本 | 本地checkout package为`0.6.0`；生产F14 artifact commit为`eb4f99ea…`，不得与本地HEAD `a9051ce…`混同 |
+| package 版本 | 本地checkout与生产均为`0.6.0`；INC-ECOM-002生产formal artifact commit为`e1e0e0d…`，文档HEAD必须另行理解 |
 | 生产程序目录 | 2026-08-14 原生产只读核实为 systemd `unboundry.service`、应用 `/opt/unboundry`；`/opt/unboundry-app` 仅为历史记录，不得用于动作目标 |
 | 生产数据目录 | `/var/lib/unboundry` |
 | 本地真实数据目录 | `/Users/mymy/Documents/unboundry/app/data` |
 | 真实本地服务端口 | `4173`，有守护进程，不得用于测试 |
-| 生产/历史数据库基线 | 当前schema39、integrity ok、FK0、row14 absent、ready local346/OSS70/pending0；迁移前schema37 raw备份及离机恢复证据保留 |
-| 当前生产制品 | F14 `eb4f99ea525390b0dd7a39d3cad55d882ffea41d` / tree `86b4e424b6d6324c5f24d4c633b0cd35baf0d626` / manifest `46e2365c…` / inventory `ac8ca43a…` / tar `0e3a96a1…` |
+| 生产/历史数据库基线 | 当前schema39、integrity ok、FK0、ready local348/OSS70/pending0；INC-ECOM-002停机备份与迁移前schema37 raw备份均保留 |
+| 当前生产制品 | INC-ECOM-002 final `e1e0e0d33809a519e8856d11135237a6a30ff912` / tree `9bfb43d456f8e250657a82f4f4574dff73cb1620` / manifest `692995bc…` / inventory `a2b685f6…` |
 | Node | formal构建/验证为v22.23.1；生产为`/opt/node22/bin/node` v22.23.2，production-specific waiver与恢复副本补证已完成 |
 
 ### 2.1 Goal 启动前只读预检

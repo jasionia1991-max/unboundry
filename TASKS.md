@@ -5,13 +5,13 @@
 
 ### 2026-08-15 电商参考图工作流完整修复（INC-ECOM-002）
 
-- 状态：`OFFLINE_PRODUCT_REGRESSION_PASS / RELEASE_GATE_PENDING`。本地实现、受影响定向和全部非发布产品回归已完成；正式发布制品门等待未来clean candidate，仍不授权SSH、生产、真实Provider/OSS、付费、版本发布或commit/push/tag/PR。
+- 状态：`PRODUCTION_STATIC_REPAIR_PASS / REAL_GENERATION_PENDING`。正式候选已部署，生产19条模板静态兼容均为`PASS`；真实图片/视频生成和用户结果验收仍未执行。
 - 权威断点：`spec/INC_ECOM_002_REFERENCE_WORKFLOW_REMEDIATION_2026-08-15.md`。任何上下文压缩或换Agent后必须先读该文件恢复，不得依赖聊天记忆继续。
 - 硬边界：用户设置的并发`500`不动；`mediaRoutingEnabled`、OSS配置/密钥/对象和真实数据不动；历史失败任务不自动重提。
 - 已确认根因：GPT Image执行先持有Provider generation lease，再为本地`data:`参考图申请Storage reservation；两者使用同一`provider-profile-write-lock.sqlite`，在Provider `fetch`前形成同锁自锁并于约5秒超时，Provider请求尚未发出。
 - 已完成实现：参考图`prepare/send/cleanup`拆锁；Storage busy/上传/签名、Provider请求/结果格式分阶段错误；整组先扫描全部节点并以失败数量/首节点阻止任何task POST；模型缺失/停用不再静默默认；模板edge角色/顺序导入保留；公共模板发布/恢复/更新语义门和管理页状态。
-- 模板矩阵：源码两条电商种子均为`NEEDS_MODEL`；「服装详情页｜面料与工艺拆解」及服务器其余新模板因生产图不在离线快照中保持`USER_RECHECK`，详见`spec/INC_ECOM_002_TEMPLATE_COMPATIBILITY_MATRIX_2026-08-15.md`。
-- 当前自动证据：m88含确定性Storage busy与1/5/20并行参考图`34/34 PASS`；修复一次旧Text输入提示误伤后，m22/m29/m36/m50/m65 `28/28 PASS`；生产只读审计后修复`text→storyboard`误报，m77更新为`9/9 PASS`。正式bridge `45e9cefe489ffea23970517c420bf9c64a49896b`与final `e1e0e0d33809a519e8856d11135237a6a30ff912`已形成，B→F仅package/lock三个版本值；clean final正式full `117/117 specs、954/954 PASS`，异常0，builder `1/5/1/0`，source/snapshot `0720f06d14e8c3d85ee22e596a28c51f7a1f68b6c1dceb46f66b7bc8633e27e8`，4173不变、suite cleaned。只读生产矩阵为19条模板全部`NEEDS_MODEL`、`INVALID=0`，共99个缺模型节点（published模板87个）。生产写入修正、真实生成、发布仍未授权。
+- 模板矩阵：生产19条模板（18 published、1 archived）已为99个执行节点保存明确模型，其中published模板87个；`PASS=19 / NEEDS_MODEL=0 / INVALID=0`。目标模板「服装详情页｜面料与工艺拆解」2个Text与3个Image节点均已绑定，详见`spec/INC_ECOM_002_TEMPLATE_COMPATIBILITY_MATRIX_2026-08-15.md`。
+- 当前自动与生产证据：m88含确定性Storage busy与1/5/20并行参考图`34/34 PASS`；修复一次旧Text输入提示误伤后，m22/m29/m36/m50/m65 `28/28 PASS`；生产只读审计后修复`text→storyboard`误报，m77更新为`9/9 PASS`。正式bridge `45e9cefe489ffea23970517c420bf9c64a49896b`与final `e1e0e0d33809a519e8856d11135237a6a30ff912`已形成，B→F仅package/lock三个版本值；clean final正式full `117/117 specs、954/954 PASS`，异常0，builder `1/5/1/0`，source/snapshot `0720f06d14e8c3d85ee22e596a28c51f7a1f68b6c1dceb46f66b7bc8633e27e8`。生产formal artifact manifest `692995bc9f6fc6833b314afeaea65bc5d367142aa03234299c4ab02b76aa56ff`、inventory `a2b685f64e1f3acab915e6b22d1f6dc05b2ffd75f6d5345e006f5bcb6af96151`已切换到`/opt/unboundry/releases/v0.6.0`。停机备份`/var/lib/unboundry-rollbacks/inc-ecom-002-20260815`完整可读，模板事务后schema39 integrity ok/FK0。零付费复核前后generation tasks=`106`、provider attempts=`104`、active=`0`，未产生新任务或Provider请求；公网live/ready/version/root正常，登录实页可见目标模板且控制台无warning/error。并发和OSS未改；真实生成仍须单独授权。
 
 ### 2026-08-15 电商模板生成故障热修复（INC-ECOM-001）
 

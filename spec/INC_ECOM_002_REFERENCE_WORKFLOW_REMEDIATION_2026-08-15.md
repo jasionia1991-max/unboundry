@@ -1,8 +1,8 @@
 # INC-ECOM-002 电商参考图工作流修复方案与施工断点
 
-状态：`LOCAL_FORMAL_FULL_PASS_PRODUCTION_REPAIR_PENDING`
+状态：`PRODUCTION_STATIC_REPAIR_PASS_REAL_GENERATION_PENDING`
 建立日期：`2026-08-15`
-当前阶段：`D4 clean formal full 954/954通过，生产模板修正与真实验收待独立授权`
+当前阶段：`D5 formal生产部署与模板静态修正完成，真实生成待独立授权`
 
 ## 1. 当前授权与硬边界
 
@@ -26,7 +26,7 @@
 - 自动重提历史失败任务；
 - push、tag 或 PR。
 
-生产、真实 Provider/OSS、付费验收、版本号和发布均需后续独立明确授权。
+上述边界是本事件首批授权的历史记录。用户随后明确授权正式候选部署、生产模板模型绑定、备份、必要停启和零付费页面/API复核；仍未授权真实 Provider/付费生成、并发或 OSS 变更、push/tag/PR。
 
 ## 2. 已确认事实
 
@@ -116,14 +116,13 @@
 9. 所有公共模板通过结构与能力静态审计，失败模板不能发布；
 10. 受影响专项、关键并发压力、TypeScript、production build 和安全全量回归全部通过。
 
-## 5. 真实验收与发布门（当前未授权）
+## 5. 真实验收与发布门
 
-零费用证据完成后，仍需用户分别授权：
+正式部署与模板静态修正已经用户授权并完成；仍需用户另行授权：
 
 1. 单参考图、单图片节点、最多一次付费请求的真实 smoke；
 2. 明确节点数和最大请求数后，对「服装详情页｜面料与工艺拆解」做一次完整真实验收；
-3. 新正式版本号；
-4. 生产备份、不可变 release、切换与必要回滚。
+3. 如真实验收暴露新问题，再决定是否需要新正式版本号。
 
 第一次失败发生在 Provider 前，没有远端结果可恢复；修复后再次生成属于新的付费请求，绝不自动执行。`INC-ECOM-001` 已恢复的既有结果继续保留，不得重提。
 
@@ -152,22 +151,26 @@
 - 已通过安全定向：m88含确定性Storage busy和1/5/20并行参考图`34/34`；m53 `23/23`；m22+m70+m77 `30/30`；修复旧Text输入提示误伤后m22/m29/m36/m50/m65 `28/28`。上传/签名失败、Provider请求/结果、清理journal、模板发布门、管理页和组预检均由假Provider/OSS验证；真实外部请求0。
 - 最终非发布产品回归：安全入口发现`117 files / 953 tests`；执行全部不依赖正式发布制品的`113 files / 926 tests`，结果`926/926 PASS`，失败/跳过/重试/报告错误/blocked均0，`deniedViteWildcardProbes=516`；文档同步前449-file source/snapshot SHA-256均为`d5836ca074537bb763fbac07722d711ca25b897028a6e48bee9b11272ce958cc`，4173 listener SHA-256仍为`dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae`，suite已清理。
 - 正式候选与full已完成：bridge `45e9cefe489ffea23970517c420bf9c64a49896b`（v0.5.2）和其唯一直接子final `e1e0e0d33809a519e8856d11135237a6a30ff912`（v0.6.0）已形成，B→F只改`package.json/package-lock.json`三个版本值。clean final上安全入口执行`117/117 specs、954/954 PASS`，失败/跳过/重试/报告错误/blocked均0，`deniedViteWildcardProbes=516`；immutable builder `attempts=1 / builderInvocations=5 / passed=1 / failed=0`；449-file source/snapshot SHA-256均为`0720f06d14e8c3d85ee22e596a28c51f7a1f68b6c1dceb46f66b7bc8633e27e8`，4173 listener SHA-256仍为`dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae`，suite cleaned、exit0。
-- 待完成：生产模板写入修正、受限真实smoke、用户实页和发布均需独立授权；本轮没有生产写入、服务重启、release切换或真实Provider/OSS请求。
+- 生产部署已完成：Linux x64 glibc formal artifact绑定final `e1e0e0d33809a519e8856d11135237a6a30ff912`、source tree `9bfb43d456f8e250657a82f4f4574dff73cb1620`、Node22.23.1/npm10.9.8；manifest `692995bc9f6fc6833b314afeaea65bc5d367142aa03234299c4ab02b76aa56ff`、inventory `a2b685f64e1f3acab915e6b22d1f6dc05b2ffd75f6d5345e006f5bcb6af96151`均通过 admitted-release 全量库存复核。生产current已从保留的INC-ECOM-001 hotfix切换到`/opt/unboundry/releases/v0.6.0`。
+- 生产模板事务已完成：19条模板全部静态`PASS`，99个执行节点明确绑定模型（published模板87个；Text50/Image42/Video7），缺模型0；7处历史`Auto`规范化为`auto`。目标模板「服装详情页｜面料与工艺拆解」2个Text节点绑定Doubao Seed，3个Image节点绑定GPT Image 2专用协议。短视频节点绑定grok-video-3.5，避免Seedance不支持`reference-image`角色的问题。
+- 回滚与零费用证据：停服后创建`/var/lib/unboundry-rollbacks/inc-ecom-002-20260815`，主库停机SHA-256 `347b07f2ade6b9f6a3f0d70d433ec0c828605d9b9101d34e343594c905ff94a8`并保留WAL/SHM，副本schema39/integrity ok/FK0；旧`v0.6.0`产物保存在`/opt/unboundry/retired-releases/20260815-pre-inc-ecom-002/v0.6.0`，前一current hotfix未删除。部署前后generation tasks=`106`、provider attempts=`104`、admission events=`8`、publication attempts=`3`、active=`0`，没有生成或付费请求。
+- 零付费生产复核已完成：service active，公网live/ready/version/root正常，version0.6.0、ready active/schema39；登录Chrome实页打开公共模板面板，可见「服装详情页｜面料与工艺拆解」及其他电商模板，控制台warning/error为0。该项只证明页面与静态合同，不是图片真实生成或用户结果验收。
+- 待完成：一次受限真实图片smoke、目标模板完整真实生成和用户实页结果确认；两者继续独立控制请求数与费用。本次未改用户并发、OSS路由/配置/密钥/对象，也未push/tag/PR。
 
 ## 7. 当前恢复卡
 
 ```text
 项目：/Users/mymy/Documents/unboundry/app
 分支：codex/unboundry-offline-remediation-2026-08-09
-本断点建立时 HEAD：812b06531854aed450eb77e977102ada9efc53d2
+本次生产候选：e1e0e0d33809a519e8856d11135237a6a30ff912；本轮文档同步父提交：60f9b56e3a2c674ddaf40aa9b2d8ce3cc32ea3cd
 package：0.6.0
 当前事件：INC-ECOM-002
-状态：LOCAL_FORMAL_FULL_PASS_PRODUCTION_REPAIR_PENDING
-当前阶段：D4 clean formal full 954/954通过，生产模板修正待授权
+状态：PRODUCTION_STATIC_REPAIR_PASS_REAL_GENERATION_PENDING
+当前阶段：D5 formal生产部署、模板绑定和零付费复核完成
 既有脏改动：INC-ECOM-001 热修复、相关测试和历史施工文件，全部保留，不得 reset/clean
 正式候选：bridge 45e9cefe489ffea23970517c420bf9c64a49896b；final e1e0e0d33809a519e8856d11135237a6a30ff912
 正式full：117/117 specs，954/954 PASS，builder 1/5/1/0
 允许：本地证据文档收口
-禁止：并发/OSS路由修改、生产写入/服务、真实Provider/OSS、付费、push/tag/PR/发布
-下一步：等待用户决定是否授权生产模板绑定模型与受限真实验收
+禁止：并发/OSS路由修改、真实Provider/OSS、付费、push/tag/PR；既有生产授权已消费
+下一步：等待用户决定是否授权一次受限真实图片smoke与目标模板完整真实验收
 ```
