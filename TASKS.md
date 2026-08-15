@@ -1,17 +1,18 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-15
-状态：`生产已运行 v0.6.1/schema39；INC-ECOM-007 = PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK；REM-000 = PASS、REM-001～REM-009B = USER_REVIEW、REM-010/011 = PASS；PRODUCTION = LIVE。`
+状态：`生产已运行 v0.6.1/schema39；INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS；REM-000 = PASS、REM-001～REM-009B = USER_REVIEW、REM-010/011 = PASS；PRODUCTION = LIVE。`
 
 ### 2026-08-15 整组工作流流水线全局修复（INC-ECOM-007）
 
-- 状态：`PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK`。用户已确认多入参严格AND、分流独立推进、汇流等待全部上游、分支失败只阻塞后代；修复、自动门与生产发布均已完成。
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户已确认多入参严格AND、分流独立推进、汇流等待全部上游、分支失败只阻塞后代；修复、自动门、生产发布与线上实页验收均已完成。
 - 根因：整组开始前动态预检全部下游；真实resolver把空上游标为blocked而延后逻辑顺序错误；测试使用了不可能的兼容状态；生产runner存在整层屏障；四类节点需在实际提交前刷新运行时输入。
 - 范围：重构通用DAG调度与Text/Image/Video/Audio整组登记协议；发布不修改并发、模板、Provider、OSS或数据库，不发真实/付费请求。
 - 实现：生产调用路径改用事件驱动DAG调度；每个节点仅在全部直接生成式上游本轮成功后启动，快分支不等待无关慢分支；四类节点在实际提交前统一刷新runtime preflight。
 - 验证：正式full基线`117/117 specs、959/959 PASS`；v0.6.1准入修复后相关8份spec `110/110 PASS`，精确HEAD build PASS，Provider/真实请求0。
 - 发布：本地release commit `f3d3fc8…8d1f414`；生产指针已切换到`/opt/unboundry/releases/v0.6.1-inc-ecom-007-20260815`。公网version为0.6.1，live/ready正常，主JS哈希与release一致；service active/enabled、NRestarts0。
 - 数据/回滚：停机备份`/var/lib/unboundry-rollbacks/inc-ecom-007-20260815T135418Z`，备份与恢复清单SHA均为`73554c0a…535f24`；schema39 quick_check ok/FK0，tasks109/attempts107/active0、模板43/42及并发500前后不变，Provider/付费调用0。未push/tag/PR。
+- 用户验收：发布后用户在线上实页复验并明确回复“通过通过”，INC-ECOM-007正式收口为USER PASS。
 - 权威断点与验收合同：`spec/INC_ECOM_007_WORKFLOW_PIPELINE_REMEDIATION_2026-08-15.md`。
 
 ### 2026-08-15 第三批服装电商工作流（INC-ECOM-006）

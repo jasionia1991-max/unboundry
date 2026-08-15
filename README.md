@@ -2,9 +2,9 @@
 
 TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mymy.ltd`，当前线上 `v0.6.1 / schema39`）。
 
-## 2026-08-15 整组工作流流水线修复（已发布，待用户实页复验）
+## 2026-08-15 整组工作流流水线修复（已发布并通过用户实页验收）
 
-`INC-ECOM-007 = PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK`：整组执行已改为事件驱动DAG流水；多直接生成式上游严格AND，分流独立推进、汇流等待全部、失败只阻塞后代，Text/Image/Video/Audio在实际提交前统一刷新runtime preflight。正式full基线`117/117 specs、959/959 PASS`，版本准入修复后相关8份spec `110/110 PASS`，精确发布HEAD build PASS，真实Provider请求0。生产已原子切换到不可变`v0.6.1`发布目录，公网version/live/ready和主JS哈希一致；schema39、quick_check ok、FK0、tasks109、attempts107、active0及并发500均前后不变。停机备份已完成恢复副本校验；当前只待用户刷新线上画布完成实页复验。
+`INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`：整组执行已改为事件驱动DAG流水；多直接生成式上游严格AND，分流独立推进、汇流等待全部、失败只阻塞后代，Text/Image/Video/Audio在实际提交前统一刷新runtime preflight。正式full基线`117/117 specs、959/959 PASS`，版本准入修复后相关8份spec `110/110 PASS`，精确发布HEAD build PASS，真实Provider请求0。生产已原子切换到不可变`v0.6.1`发布目录，公网version/live/ready和主JS哈希一致；schema39、quick_check ok、FK0、tasks109、attempts107、active0及并发500均前后不变。停机备份已完成恢复副本校验；用户随后在线上实页明确确认“通过通过”。
 
 ## 2026-08-15 第三批电商工作流（已发布，待用户视觉确认）
 
@@ -20,7 +20,7 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 ## 2026-08-15 最终生产收口（当前权威）
 
-- 当前状态：`REM-000 = PASS / REM-001～009B = USER_REVIEW / REM-010～011 = PASS / G7（历史 v0.6.0）= PASS / PRODUCTION = LIVE / INC-ECOM-007 = USER_RECHECK`。v0.6.0既有用户验收仍有效；v0.6.1新增流水执行语义待用户实页确认。其余历史 `PARTIAL / PAUSED / BLOCK / NOT_STARTED` 项保持原状态。
+- 当前状态：`REM-000 = PASS / REM-001～009B = USER_REVIEW / REM-010～011 = PASS / G7（历史 v0.6.0）= PASS / PRODUCTION = LIVE / INC-ECOM-007 = USER PASS`。v0.6.0既有用户验收与v0.6.1新增流水执行语义均已分别确认；其余历史 `PARTIAL / PAUSED / BLOCK / NOT_STARTED` 项保持原状态。
 - 生产指针为 `/opt/unboundry/current -> releases/v0.6.1-inc-ecom-007-20260815`，服务 `active + enabled`、`NRestarts=0`、监听 `127.0.0.1:4173`；公网 live/ready/version/root 均正常，version 为 `0.6.1`，ready 为 active/schema39。
 - 生产数据库在最新核验时为 schema39、quick_check `ok`、FK 违约 0、活动生成任务 0；共有109个任务、107条Provider attempt、43条公共模板（42 published）。安全阈值保持`globalEnabled=1 / emergencyStop=0 / per-user、RPM及四类并发均500`；本次切换前后任务与attempt计数相同，Provider/付费调用0。
 - F14 生产制品固定为 commit `eb4f99ea525390b0dd7a39d3cad55d882ffea41d` / tree `86b4e424b6d6324c5f24d4c633b0cd35baf0d626`，manifest `46e2365c48b8e8bdaa1847b1767ef2974a71f2d2b47c87743793c116e5ec2adf`，inventory `ac8ca43a9f8f6724ca67bd0899185fa3952e762e0400a1f9ce34f3ecfefc2bac`，tar `0e3a96a13299efba407ba98dc6501ae97297c9a82c067827b9f9befeb2c18944`。

@@ -4,7 +4,7 @@
 
 ## 当前增量：INC-ECOM-007（2026-08-15）
 
-用户发现整组运行会把本轮尚未生成的上游Text提前判成下游Image失败。通用执行器现已改为事件驱动DAG流水：每个节点仅在全部直接生成式上游本轮成功后启动，多入参严格AND；快分支不等待无关慢分支，失败只阻塞后代；Text/Image/Video/Audio在实际提交前统一刷新runtime preflight，静态不兼容仍在零任务阶段阻止整组。正式full基线`117/117 specs、959/959 PASS`，v0.6.1准入修复后相关8份spec `110/110 PASS`，精确HEAD build PASS，Provider请求0。生产已切换到`/opt/unboundry/releases/v0.6.1-inc-ecom-007-20260815`；公网version/live/ready和主JS哈希通过，schema39、任务/attempt/并发配置前后不变，备份恢复已验证。当前状态为`PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK`；未push/tag/PR，只待用户线上实页复验。权威记录与凭证为`spec/INC_ECOM_007_WORKFLOW_PIPELINE_REMEDIATION_2026-08-15.md`、`spec/INC_ECOM_007_PRODUCTION_RECEIPT_2026-08-15.json`。
+用户发现整组运行会把本轮尚未生成的上游Text提前判成下游Image失败。通用执行器现已改为事件驱动DAG流水：每个节点仅在全部直接生成式上游本轮成功后启动，多入参严格AND；快分支不等待无关慢分支，失败只阻塞后代；Text/Image/Video/Audio在实际提交前统一刷新runtime preflight，静态不兼容仍在零任务阶段阻止整组。正式full基线`117/117 specs、959/959 PASS`，v0.6.1准入修复后相关8份spec `110/110 PASS`，精确HEAD build PASS，Provider请求0。生产已切换到`/opt/unboundry/releases/v0.6.1-inc-ecom-007-20260815`；公网version/live/ready和主JS哈希通过，schema39、任务/attempt/并发配置前后不变，备份恢复已验证。用户随后在线上实页明确确认“通过通过”，当前状态为`PRODUCTION_PUBLISHED_USER_PASS`；未push/tag/PR。权威记录与凭证为`spec/INC_ECOM_007_WORKFLOW_PIPELINE_REMEDIATION_2026-08-15.md`、`spec/INC_ECOM_007_PRODUCTION_RECEIPT_2026-08-15.json`。
 
 ## 当前增量：INC-ECOM-006（2026-08-15）
 
@@ -12,7 +12,7 @@
 
 ## 0. 2026-08-15 最终生产状态（当前权威）
 
-- 当前状态：`REM-000 PASS / REM-001～009B USER_REVIEW / REM-010～011 PASS / G7（历史v0.6.0）PASS / PRODUCTION LIVE / INC-ECOM-007 USER_RECHECK`。v0.6.0既有用户验收保留，v0.6.1新增流水执行语义待用户实页确认。
+- 当前状态：`REM-000 PASS / REM-001～009B USER_REVIEW / REM-010～011 PASS / G7（历史v0.6.0）PASS / PRODUCTION LIVE / INC-ECOM-007 USER PASS`。v0.6.0既有用户验收与v0.6.1新增流水执行语义均已确认。
 - 生产运行 `v0.6.1/schema39`，`/opt/unboundry/current -> releases/v0.6.1-inc-ecom-007-20260815`；service active/enabled、NRestarts0、127.0.0.1:4173。公网live/ready/version/root正常，version 0.6.1、ready active/schema39；公网主JS哈希与release一致。
 - INC-ECOM-004已为16条电商模板发布真实封面；生产18条published模板现`withPreview=18 / withoutPreview=0`。最终静态内容叠加绑定本地commit `d908c4b3824cd36638f02fec51cbe335f6aacd52`，manifest `340452f7…d7a9`、inventory `1d795f29…f464`；公网16张均HTTP200、`image/jpeg`且SHA逐项相符。状态为`PRODUCTION_STATIC_COVERS_DEPLOYED / USER_VISUAL_REVIEW`，不把技术复核写成用户视觉PASS。
 - 该叠加以当前可信formal base `5386c744…47b1`为底，只增加双目录静态文件和manifest绑定，不冒充fresh formal builder/full regression。首轮只写源码静态目录的source-only产物被公网哈希门检出并退役保留；最终产物同时包含`client/public/templates`和`dist/client/templates`。
@@ -144,7 +144,7 @@ Docker Ubuntu 子门的 rootless-userns 阻塞已按设计 fail-close。随后�
 ## 9. 验收状态速览
 
 - 已 PASS：GEN-010、SAFETY-004、AUTH-004/005/006/007、STORAGE-004、PERF-002～005、DEP-004，以及更早的大批项目；2026-08-13 新发现缺口修复后，用户又在端口 58352 的隔离实页确认默认画布路由与 Text→Video Prompt 两项均通过，CANVAS-019 与 INPUT-005 也已恢复为 `PASS`。
-- `CANVAS-019 / INPUT-005` 保持用户 `PASS`。INC-ECOM-007为`USER_RECHECK`，只待v0.6.1线上流水、多入参AND、分流和失败隔离确认；REM-000、REM-010/011为`PASS`，REM-001～009B为`USER_REVIEW`。旧B13/F13 G5/G6和v0.6.0生产USER PASS保留为历史证据，不替代本次新语义验收。
+- `CANVAS-019 / INPUT-005` 保持用户 `PASS`。INC-ECOM-007已由用户在v0.6.1线上确认，状态为`USER PASS`；REM-000、REM-010/011为`PASS`，REM-001～009B为`USER_REVIEW`。旧B13/F13 G5/G6和v0.6.0生产USER PASS继续保留为历史证据。
 - 暂停/延后：Mureka 真实生成（AUDIO-REAL-001，需用户在 Mureka 官网确认额度）、IMGEDIT-007 打光、AUTH-002/OPEN-009 团队多人、OPEN-019/021、正式部署流程收尾（域名/备案等）。
 
 ## 10. 历史测试失败/偶发记录（当前冻结全量已全绿）
@@ -207,4 +207,4 @@ ssh live-cockpit "curl -fsS http://127.0.0.1:4173/api/version"
 5. 向用户先报告恢复出的项目、版本、当前项和授权；
 6. 任一不一致都必须停止，不得依据内部记忆、历史 PASS 或压缩摘要猜测继续。
 
-当前执行点：`INC-ECOM-007 PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK / REM-000 PASS / REM-001～009B USER_REVIEW / REM-010/011 PASS / PRODUCTION LIVE / INC-ECOM-006 USER_VISUAL_REVIEW`。生产v0.6.1/schema39；流水修复与第三批均已发布，后续生产动作、Provider、push/tag/PR或新版本发布均无现成授权。
+当前执行点：`INC-ECOM-007 PRODUCTION_PUBLISHED_USER_PASS / REM-000 PASS / REM-001～009B USER_REVIEW / REM-010/011 PASS / PRODUCTION LIVE / INC-ECOM-006 USER_VISUAL_REVIEW`。生产v0.6.1/schema39；流水修复与第三批均已发布，后续生产动作、Provider、push/tag/PR或新版本发布均无现成授权。

@@ -1,7 +1,7 @@
 # INC-ECOM-007：整组工作流流水线全局修复
 
 更新时间：2026-08-15
-状态：`PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK`
+状态：`PRODUCTION_PUBLISHED_USER_PASS`
 
 ## 1. 用户确认的执行合同
 
@@ -52,7 +52,8 @@
 - 2026-08-15：正式源已冻结为commit `f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf` / tree `dd1180077032a42f1ab7ce7ca614906898d1f414`；v0.6.1明确运行时准入后相关8份spec `110/110 PASS`，精确HEAD production build PASS。
 - 2026-08-15：生产已切换到不可变目录`/opt/unboundry/releases/v0.6.1-inc-ecom-007-20260815`；release inventory `c467c7c2…d2237f`。公网version为0.6.1，live/ready正常，主JS SHA-256 `8bc2ebb6…e1204`与release相同；service active/enabled、NRestarts0。
 - 2026-08-15：停机备份`/var/lib/unboundry-rollbacks/inc-ecom-007-20260815T135418Z`已完成全树清单与恢复副本核验，二者SHA-256同为`73554c0a…535f24`。发布前后schema39、quick_check ok、FK0、tasks109、attempts107、active0、模板43/42和并发/RPM 500均不变，Provider/付费请求0。
-- 当前结论：`PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK`。代码与生产技术发布已完成；生产凭证SHA-256为`91c05297…5f819c`并已封存到本轮备份目录。未push/tag/PR。只有用户线上实页流水线复验仍待确认。
+- 2026-08-15：用户在v0.6.1线上实页完成复验并明确回复“通过通过”；流水、多入参AND、分流推进和失败隔离的本轮用户验收记为PASS。
+- 当前结论：`PRODUCTION_PUBLISHED_USER_PASS`。代码、生产技术发布与用户线上验收均已完成；生产凭证SHA-256为`91c05297…5f819c`并已封存到本轮备份目录。未push/tag/PR。
 
 ## 6. 用户复验方式
 

@@ -3,7 +3,7 @@
 基线日期：2026-07-27  
 当前状态更新：2026-08-15
 
-2026-08-15 `INC-ECOM-007 = PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK`：整组生产调用路径已改为事件驱动DAG流水；多个直接生成式上游严格AND，分流独立推进、汇流等待全部、失败只阻塞后代，四类节点提交前刷新runtime preflight；静态不兼容仍零任务阻止整组。正式full基线`117/117 specs、959/959 PASS`，v0.6.1准入修复后相关8份spec `110/110 PASS`，精确HEAD build PASS，Provider请求0。生产已切换到不可变v0.6.1目录；公网version/live/ready及主JS哈希通过，schema39 quick_check ok/FK0，tasks109/attempts107/active0和并发500前后不变。技术发布PASS不替代用户线上实页确认。
+2026-08-15 `INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`：整组生产调用路径已改为事件驱动DAG流水；多个直接生成式上游严格AND，分流独立推进、汇流等待全部、失败只阻塞后代，四类节点提交前刷新runtime preflight；静态不兼容仍零任务阻止整组。正式full基线`117/117 specs、959/959 PASS`，v0.6.1准入修复后相关8份spec `110/110 PASS`，精确HEAD build PASS，Provider请求0。生产已切换到不可变v0.6.1目录；公网version/live/ready及主JS哈希通过，schema39 quick_check ok/FK0，tasks109/attempts107/active0和并发500前后不变。用户随后在线上实页复验并明确确认“通过通过”。
 
 2026-08-15 `INC-ECOM-006 = PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_VISUAL_REVIEW`：用户明确“确定 发布”，第三批P0/P1/P2共12条已单事务导入生产，显示版本仍为`v0.6.0`。恢复副本与生产写后兼容审计均为全库43/43 PASS、第三批12/12 PASS、问题0；生产43条模板、42条published，第三批12/12均有graph+preview，公网12张封面HTTP200 image/jpeg。schema39 quick_check ok/FK0、service active/enabled、NRestarts0。发布前后tasks109、Provider attempts107、active0，并发/RPM均保持500，Provider/付费生成/OSS变化0。当前技术发布PASS，不替代用户刷新模板面板后的可见性、视觉与运行时确认。
 
@@ -11,7 +11,7 @@
 状态：`AUTHORITATIVE`  
 状态夹具：`unboundry-state-fixtures.json`
 
-2026-08-15 当前权威状态：生产已运行 `v0.6.1/schema39`，`INC-ECOM-007 = PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK`，`REM-010/011 = PASS`，`PRODUCTION = LIVE`。v0.6.0的既有用户验收仍有效；本次新增的工作流流水执行语义必须由用户在v0.6.1实页另行确认，不能用旧验收代替。
+2026-08-15 当前权威状态：生产已运行 `v0.6.1/schema39`，`INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-010/011 = PASS`，`PRODUCTION = LIVE`。v0.6.0的既有用户验收与本次v0.6.1工作流流水执行语义已分别完成确认。
 
 最新核验为service active/enabled、current→`releases/v0.6.1-inc-ecom-007-20260815`、公网version 0.6.1/live/ready/root正常且主JS与release同哈希；schema39/quick_check ok/FK0、active generation0、109 tasks/107 attempts、43 public templates（42 published）。本次切换前后计数与并发/RPM 500不变，Provider/付费调用0；恢复副本清单验证PASS。v0.6.0原schema37备份、整机schema39包及既有用户验收继续保留为历史证据。REM-001～009B继续`USER_REVIEW`，未在本次补验范围内的既有PARTIAL/PAUSED/BLOCK/NOT_STARTED条目保持不变。
 

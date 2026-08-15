@@ -1,8 +1,8 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`53`
+断点版本：`54`
 更新时间：`2026-08-15`
-状态：`INC_ECOM_007_PRODUCTION_PUBLISHED_TECHNICAL_PASS_USER_RECHECK`
+状态：`INC_ECOM_007_PRODUCTION_PUBLISHED_USER_PASS`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
 ## 0. 当前新事件：INC-ECOM-007
@@ -15,7 +15,7 @@
 - 正式release commit `f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf` / tree `dd1180077032a42f1ab7ce7ca614906898d1f414`已形成；明确准入v0.6.1后相关8份spec `110/110 PASS`，精确HEAD build PASS。未push/tag/PR。
 - 生产已原子切换到`/opt/unboundry/releases/v0.6.1-inc-ecom-007-20260815`；release inventory `c467c7c2…d2237f`。备份/恢复目录`/var/lib/unboundry-rollbacks/inc-ecom-007-20260815T135418Z`，清单一致`73554c0a…535f24`。
 - 公网version 0.6.1、live/ready和主JS哈希PASS；service active/enabled、NRestarts0。schema39 quick_check ok/FK0，tasks109/attempts107/active0、模板43/42及并发/RPM 500前后不变；Provider/付费调用0。
-- 当前阶段：`PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK`。下一步只需用户刷新线上页面验证流水、多入参AND、分流和失败隔离。权威记录与生产凭证见`spec/INC_ECOM_007_WORKFLOW_PIPELINE_REMEDIATION_2026-08-15.md`、`spec/INC_ECOM_007_PRODUCTION_RECEIPT_2026-08-15.json`。
+- 用户随后在v0.6.1线上实页完成复验并明确回复“通过通过”；INC-ECOM-007收口为`PRODUCTION_PUBLISHED_USER_PASS`。权威记录与生产凭证见`spec/INC_ECOM_007_WORKFLOW_PIPELINE_REMEDIATION_2026-08-15.md`、`spec/INC_ECOM_007_PRODUCTION_RECEIPT_2026-08-15.json`。
 
 ## 0A. 前一事件：INC-ECOM-006
 
@@ -450,9 +450,9 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；生产源commit f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf；禁止reset/clean/push/tag/PR
 生产：canvas.mymy.ltd；v0.6.1/schema39；/opt/unboundry/current -> releases/v0.6.1-inc-ecom-007-20260815
 生产artifact：source commit f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf；tree dd1180077032a42f1ab7ce7ca614906898d1f414；inventory c467c7c264da03421a14fabf93c90bc40faa3edfad1a7dfdff802112f1d2237f
-当前状态：INC-ECOM-007 PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK；REM-000 PASS；REM-001～009B USER_REVIEW；REM-010/011 PASS；PRODUCTION LIVE
+当前状态：INC-ECOM-007 PRODUCTION_PUBLISHED_USER_PASS；REM-000 PASS；REM-001～009B USER_REVIEW；REM-010/011 PASS；PRODUCTION LIVE
 技术凭证：spec/INC_ECOM_007_PRODUCTION_RECEIPT_2026-08-15.json SHA 91c05297a940ee18d5b6aef3d3878e5e8ff776c0f28a868f7fc975eafc5f819c；备份/恢复 inventory 73554c0a84001d953c27f55c011f77fff8b873db2918ea3e4eca0b19a7535f24
-用户验收：v0.6.0既有验收保持；v0.6.1的流水、多入参AND、分流和失败隔离仍须线上实页确认
+用户验收：v0.6.0既有验收保持；v0.6.1的流水、多入参AND、分流和失败隔离已由用户线上实页确认通过
 数据库：schema39；quick_check ok；FK0；109 tasks/107 attempts；43 public templates/42 published；active0；globalEnabled1/emergencyStop0；per-user/kind concurrency与RPM均500
 备份：schema37 raw archive SHA 7f14c611faab136c1ae8e9579bc47755f7298e4ea6e2bba516c71e85670f8fca；offhost restore inspection b4d58243e88efe1c2c967ffab5f63ed6704d18324a80e8449ec9d3ad77e28e1d PASS
 限制：attempt 86/108/116/120/122为行政取消且禁止重试，PROVIDER_FAILED仅surrogate；3条音频仅改duration元数据；cutover Provider/paid calls=0
