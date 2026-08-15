@@ -1,18 +1,22 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`44`
+断点版本：`45`
 更新时间：`2026-08-15`
-状态：`INC_ECOM_003_REAL_IMAGE_SMOKE_FAIL_PROVIDER_TIMEOUT_REPAIR_DEPLOYED`
+状态：`INC_ECOM_003_ONE_REQUEST_REAL_IMAGE_SMOKE_PASS_USER_RESULT_REVIEW`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
 ## 0. 当前新事件：INC-ECOM-003
 
+- 用户在180秒修复部署后重新授权并要求控制成本：保持GPT Image 2专用协议、3:4、1K，只对同一节点再提交一次，不运行另外两图或视频，不重试。
+- 新task `9e4faf78-e466-4ae7-8799-2c9d2150bed6`、Provider attempt 132约58.6秒一次成功，result asset `9f755d07-42df-47a0-9bd1-443030244a59`已绑定原节点；ready PNG `1023×1537`、1,545,396 bytes、SHA-256 `ecf51e6c…ddb44`。
+- 成本边界：提交前tasks108/attempts106/active0，完成后tasks109/attempts107/active0，只有一个新task和一个新attempt。系统审计记账值10,000,000 microunits USD不冒充上游实际账单。
+- 当前结论：`ONE_REQUEST_REAL_IMAGE_SMOKE_PASS / USER_RESULT_REVIEW`。数据库quick_check ok，刷新画布已显示结果；另外两个Image、完整三图和视频未运行，相关授权已消费。
 - 用户授权的真实边界已消费：只对「服装详情页｜面料与工艺拆解」的`工艺拆解·完整商品`节点提交一次真实图片Provider请求；不重试、不运行另外两个图片节点或视频。
 - 任务`e5cfd5bc-2863-4eb1-9546-4a93c76b17e7`、Provider attempt 131在约121秒后以`PROVIDER_REQUEST_FAILED`失败；attempt为`outcome-unknown`，`provider_task_id=null / result_asset_id=null`。同步协议没有留下可轮询ID，本次结果不能恢复；禁止自动重提。
 - 根因已修复：GPT Image专用同步请求从通用120秒期限改为统一Provider submit 180秒期限，未知结果和无自动重试语义不变。m53+m57+m88为`66/66 PASS`；正式安全full为`117/117 specs、954/954 PASS`。
 - production formal final：commit `de0551c8187156f0283f330a39e15e5825f1f2c5`、tree `b083289ae514f6b7c7c3cdef7953065deb2c7276`、manifest `5386c74440f8868719bb7942af31437a1a2dfcbb9de28d604ccf836ddc1478b1`，已部署到`/opt/unboundry/releases/v0.6.0`。旧release在`/opt/unboundry/retired-releases/20260815-pre-inc-ecom-003/v0.6.0`；停机备份在`/var/lib/unboundry-rollbacks/inc-ecom-003-20260815`且SHA清单验证通过。
-- 当前生产：service active；公网live/ready/version/root正常；schema39 quick_check ok、active0、tasks108、Provider attempts106、pending publication0。用户设置的per-user/RPM/Text/Image/Video/Audio仍全部500；Provider/Storage密文配置SHA部署前后未变，OSS未改。
-- 当前状态：`REFERENCE/OSS/PREFLIGHT_PASS / REAL_IMAGE_SMOKE_FAIL_PROVIDER_TIMEOUT / GPT_IMAGE_TIMEOUT_REPAIR_DEPLOYED / OUTCOME_UNKNOWN_NO_AUTO_RETRY`。完整三图、视频和用户实页结果继续`PENDING`；第二次真实生成、push/tag/PR都没有授权。
+- 当前生产：service active；公网live/ready/version/root正常；schema39 quick_check ok、active0、tasks109、Provider attempts107、pending publication0。用户设置的per-user/RPM/Text/Image/Video/Audio仍全部500；Provider/Storage密文配置SHA部署前后未变，OSS未改。
+- 当前状态：`REFERENCE/OSS/PREFLIGHT_PASS / GPT_IMAGE_TIMEOUT_REPAIR_DEPLOYED / ONE_REQUEST_REAL_IMAGE_SMOKE_PASS / USER_RESULT_REVIEW`。完整三图、视频和用户实页结果继续`PENDING`；另外两图、push/tag/PR都没有授权。
 
 ## 0A. 前一事件：INC-ECOM-002
 
@@ -39,7 +43,7 @@
 - 用户还授权：仅在维护、旧服务停止、无写者、可恢复原始备份完成并精确复核后，删除唯一 FK 孤儿 `project_metadata rowid=14`；不得扩大为其他生产清理。
 - 真实OSS只读HEAD/GET以及必要的bwrap安装/使用已经纳入最新bridge总授权；只允许按冻结控制器、最小权限和只读对象合同执行。
 - 生产现运行 `/opt/unboundry/current -> releases/v0.6.0`，service active/enabled、NRestarts0、监听127.0.0.1:4173；公网live/ready/version/auth/root均200，ready active/schema39。
-- 数据最新核验：schema39、quick_check ok、active generation0、108 tasks/106 provider attempts、418 ready media（local348+OSS70）、pending publication0；INC-ECOM-003未修改现有生成开关、并发、频率或OSS配置。
+- 数据最新核验：schema39、quick_check ok、active generation0、109 tasks/107 provider attempts、421 ready media（local351+OSS70）、pending publication0；INC-ECOM-003未修改现有生成开关、并发、频率或OSS配置。
 - 原schema37 raw backup SHA `7f14c611faab136c1ae8e9579bc47755f7298e4ea6e2bba516c71e85670f8fca` 已离机恢复PASS，inspection `b4d58243e88efe1c2c967ffab5f63ed6704d18324a80e8449ec9d3ad77e28e1d`。最终技术凭证 SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8` 为 `TECHNICAL_CUTOVER_VERIFIED`。
 - 技术凭证生成时 `userAcceptance=PENDING` 保持不变；用户随后确认生成任务状态可读取，并结合此前确认老项目大量生成/上传素材仍在、第4项正常，生产验收现为`USER PASS`，但不声称全部历史素材逐一验证。
 - 最终切换是人工受控bounded cutover，不冒充新的formal controller/full regression PASS；切换期间Provider/付费调用0。REM-010/011与本次G7为`PASS`，REM-001～009B继续`USER_REVIEW`，当前没有IN_PROGRESS REM。

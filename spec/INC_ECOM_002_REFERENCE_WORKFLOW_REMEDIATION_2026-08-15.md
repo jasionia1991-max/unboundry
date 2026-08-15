@@ -1,8 +1,8 @@
 # INC-ECOM-002 电商参考图工作流修复方案与施工断点
 
-状态：`PRODUCTION_STATIC_REPAIR_PASS_REAL_IMAGE_SMOKE_FAIL_PROVIDER_TIMEOUT_REPAIR_DEPLOYED`
+状态：`PRODUCTION_STATIC_REPAIR_PASS_ONE_REQUEST_REAL_IMAGE_SMOKE_PASS_USER_RESULT_REVIEW`
 建立日期：`2026-08-15`
-当前阶段：`D6 单次真实图片smoke已执行并在旧120秒期限失败；180秒修复已formal部署，第二次付费提交待新授权`
+当前阶段：`D7 180秒修复已formal部署；新授权下同一节点一次1K请求成功，结果待用户确认`
 
 ## 1. 当前授权与硬边界
 
@@ -168,6 +168,14 @@
 - 部署后：service active，公网live/ready/version/root正常，ready active/schema39；quick_check ok、active0、tasks108、Provider attempts106、pending publication0。刷新原验收画布后，失败节点和“不自动重提/先核对模型平台”提示仍可见，没有伪造结果或清除未知状态。Provider/Storage密文配置SHA前后不变，用户设置的各并发和RPM仍为500，OSS路由/配置/密钥/对象未改。
 - 当前结论：`REFERENCE/OSS/PREFLIGHT_PASS`已获得真实路径证据；`REAL_IMAGE_SMOKE_FAIL_PROVIDER_TIMEOUT`保留；代码状态为`GPT_IMAGE_TIMEOUT_REPAIR_DEPLOYED`。不能标记真实图片PASS或用户PASS，下一次生成必须由用户重新授权。
 
+## 6.3 修复后成本受控真实复验
+
+- 新授权边界：只对同一`工艺拆解·完整商品`节点提交一次；保持GPT Image 2专用协议、3:4与最低现有1K，不运行另外两个图片节点，不自动重试。
+- 计数门：提交前tasks108、Provider attempts106、active0；提交后只增加task `9e4faf78-e466-4ae7-8799-2c9d2150bed6`和Provider attempt 132，最终tasks109、attempts107、active0，没有第二条新attempt。
+- 结果：约58.6秒一次成功，attempt为`completed`，result asset `9f755d07-42df-47a0-9bd1-443030244a59`已绑定节点；PNG `1023×1537`、1,545,396 bytes、SHA-256 `ecf51e6ca9f081b4b98cd12f9917b51bd8518129ab9613dc2a3f296d638ddb44`、storage ready。
+- 页面与数据：刷新原画布已显示生成结果及收藏、替换、下载、全屏等正常操作；数据库quick_check ok。系统审计字段记录estimated/actual均为10,000,000 microunits USD，这是管理员模型配置的记账值，不等于已核验上游账单。
+- 结论：超时修复后的`ONE_REQUEST_REAL_IMAGE_SMOKE_PASS`成立；图片内容质量仍为`USER_RESULT_REVIEW`。目标模板另外两个图片节点、完整三图和视频没有运行，未来继续需要独立授权。
+
 ## 7. 当前恢复卡
 
 ```text
@@ -176,12 +184,12 @@
 本次生产候选：de0551c8187156f0283f330a39e15e5825f1f2c5
 package：0.6.0
 当前事件：INC-ECOM-003
-状态：PRODUCTION_STATIC_REPAIR_PASS_REAL_IMAGE_SMOKE_FAIL_PROVIDER_TIMEOUT_REPAIR_DEPLOYED
-当前阶段：D6 单次真实smoke失败已保留，180秒修复formal部署完成
+状态：PRODUCTION_STATIC_REPAIR_PASS_ONE_REQUEST_REAL_IMAGE_SMOKE_PASS_USER_RESULT_REVIEW
+当前阶段：D7 修复后同一节点一次1K请求成功，另外两图未运行
 既有脏改动：INC-ECOM-001 热修复、相关测试和历史施工文件，全部保留，不得 reset/clean
 正式候选：bridge 3b43e9de40ba0921e29cd169e1c3cd945a247c17；final de0551c8187156f0283f330a39e15e5825f1f2c5
 正式full：117/117 specs，954/954 PASS，builder 1/5/1/0
 允许：本地证据文档收口
-禁止：自动重提任务e5cfd5bc、并发/OSS路由修改、第二次真实Provider/付费、push/tag/PR；既有单次smoke与部署授权已消费
-下一步：等待用户决定是否另行授权修复后的第二次单节点真实图片生成；完整三图/视频继续单独授权
+禁止：自动重提任务e5cfd5bc或9e4faf78、并发/OSS路由修改、另外两图/视频真实Provider、push/tag/PR；本次成本受控单节点授权已消费
+下一步：等待用户确认当前图片质量；完整三图/视频继续单独授权
 ```

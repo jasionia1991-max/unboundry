@@ -23,7 +23,7 @@
 | 男装货架主图｜通勤/户外场景 | 生产 published | `PASS` | 3 个Text/Image执行节点已绑定 | 同上 |
 | 女装详情页｜五图转化组 | 生产 published | `PASS` | 7 个执行节点已绑定 | 同上 |
 | 男装详情页｜五图转化组 | 生产 published | `PASS` | 7 个执行节点已绑定 | 同上 |
-| 服装详情页｜面料与工艺拆解 | 生产 published | `PASS` | 2个Text绑定Doubao Seed，3个Image绑定GPT Image 2专用协议 | 单节点真实smoke在旧120秒期限失败；180秒修复已部署，完整真实结果仍待新授权 |
+| 服装详情页｜面料与工艺拆解 | 生产 published | `PASS` | 2个Text绑定Doubao Seed，3个Image绑定GPT Image 2专用协议 | 修复后`工艺拆解·完整商品`一次1K真实smoke PASS；另外两图与完整结果仍待授权 |
 | 服装详情页｜版型与尺码说明 | 生产 published | `PASS` | 4 个执行节点已绑定 | 真实结果待受限验收 |
 | 服装上新｜颜色变体与搭配 | 生产 published | `PASS` | 5 个执行节点已绑定 | 同上 |
 | 直播间/抖音｜9:16商品封面 | 生产 published | `PASS` | 4 个执行节点已绑定 | 同上 |
@@ -49,3 +49,5 @@
 离线自动证据：模板发布/恢复/管理页/导入语义专项已通过；Storyboard审计回归修复后m77 `9/9 PASS`。正式final `e1e0e0d33809a519e8856d11135237a6a30ff912` 上clean full为`117/117 specs、954/954 PASS`，异常计数全0，builder `1/5/1/0`。生产formal manifest为`692995bc9f6fc6833b314afeaea65bc5d367142aa03234299c4ab02b76aa56ff`；零付费复核前后generation tasks106、provider attempts104，未新增请求。上述PASS是静态结构、模型、参数与输入合同PASS，不替代真实图片/视频结果和用户验收。
 
 后续单次真实smoke只执行了目标模板的`工艺拆解·完整商品`节点：参考图/OSS/预检通过，但task `e5cfd5bc-2863-4eb1-9546-4a93c76b17e7`在旧同步请求120秒期限后失败，Provider未返回task ID或结果素材，且未知结果保护未自动重提。专用GPT Image期限已修为180秒并以final `de0551c8187156f0283f330a39e15e5825f1f2c5`、production manifest `5386c74440f8868719bb7942af31437a1a2dfcbb9de28d604ccf836ddc1478b1`部署。矩阵`PASS`仍只表示静态兼容；目标模板的真实图片结果、完整三图和用户验收继续`PENDING`。
+
+新授权的成本受控复验保持3:4/1K，只提交同一节点一次：task `9e4faf78-e466-4ae7-8799-2c9d2150bed6`、Provider attempt 132约58.6秒一次成功，结果PNG `1023×1537`、SHA-256 `ecf51e6c…ddb44`已绑定原节点；tasks108→109、attempts106→107，没有重试。该节点技术smoke现为`PASS`，内容质量为`USER_RESULT_REVIEW`；另外两个Image、完整三图和视频仍未运行。
