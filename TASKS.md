@@ -3,9 +3,18 @@
 更新时间：2026-08-15
 状态：`生产已运行 v0.6.0/schema39；REM-000 = PASS、REM-001～REM-009B = USER_REVIEW、REM-010/011 = PASS；G7（本次 v0.6.0）= PASS；PRODUCTION = LIVE / USER ACCEPTED；真实生成已开启，DEP-003/005/006/007/010 与 OPS-002 已完成。最终切换为人工受控 bounded cutover，不冒充新的 formal controller/full regression PASS；切换期间 Provider/付费生成调用仍为0，后续获明确授权的唯一真实生成另行记录。`
 
+### 2026-08-15 GPT Image 真实 smoke 超时修复（INC-ECOM-003）
+
+- 状态：`REFERENCE/OSS/PREFLIGHT_PASS / REAL_IMAGE_SMOKE_FAIL_PROVIDER_TIMEOUT / GPT_IMAGE_TIMEOUT_REPAIR_DEPLOYED / OUTCOME_UNKNOWN_NO_AUTO_RETRY`。目标模板完整三图和用户结果验收继续`PENDING`。
+- 已按用户授权只提交一次：项目`18255461-b14f-40dd-9dbb-d3c307649387`、节点`工艺拆解·完整商品`、task `e5cfd5bc-2863-4eb1-9546-4a93c76b17e7`、Provider attempt 131；未运行另外两个图片节点、未运行视频、未自动重试。
+- 真实结果：请求在约121秒后以`PROVIDER_REQUEST_FAILED`结束，attempt为`outcome-unknown`；Provider没有返回`provider_task_id`，任务没有`result_asset_id`。因此这一次同步结果不能从本地恢复，重新生成会形成第二次可能收费的Provider提交，必须取得新的明确授权。
+- 根因与修复：GPT Image专用同步路径误用通用JSON默认`120000ms`，没有使用项目既有submit deadline `180000ms`。`server/relayProviderAdapters.ts`现显式复用`providerRequestTimeoutMsByOperation.submit`，且保持“不自动重提未知结果”。m53+m57+m88定向`66/66 PASS`；正式安全full `117/117 specs、954/954 PASS`。
+- 生产已切换到formal final `de0551c8187156f0283f330a39e15e5825f1f2c5` / tree `b083289ae514f6b7c7c3cdef7953065deb2c7276` / manifest `5386c74440f8868719bb7942af31437a1a2dfcbb9de28d604ccf836ddc1478b1`。停机备份在`/var/lib/unboundry-rollbacks/inc-ecom-003-20260815`，旧产物在`/opt/unboundry/retired-releases/20260815-pre-inc-ecom-003/v0.6.0`；公网live/ready/version/root正常，schema39 quick_check ok，active0。部署后刷新原验收画布，失败节点和“不自动重提/先核对模型平台”提示均保留。
+- 部署前后保持tasks108、Provider attempts106、pending publication0；用户的每用户/文字/图片/视频/音频并发和RPM仍为500，Provider与Storage密文配置SHA未变，OSS路由/配置/密钥/对象未改；未push/tag/PR。
+
 ### 2026-08-15 电商参考图工作流完整修复（INC-ECOM-002）
 
-- 状态：`PRODUCTION_STATIC_REPAIR_PASS / REAL_GENERATION_PENDING`。正式候选已部署，生产19条模板静态兼容均为`PASS`；真实图片/视频生成和用户结果验收仍未执行。
+- 状态：`PRODUCTION_STATIC_REPAIR_PASS / REAL_IMAGE_SMOKE_FAIL_PROVIDER_TIMEOUT / TIMEOUT_REPAIR_DEPLOYED / FULL_REAL_GENERATION_PENDING`。生产19条模板静态兼容均为`PASS`；一次受限真实图片smoke已失败且未自动重试，完整图片/视频生成和用户结果验收仍未执行。
 - 权威断点：`spec/INC_ECOM_002_REFERENCE_WORKFLOW_REMEDIATION_2026-08-15.md`。任何上下文压缩或换Agent后必须先读该文件恢复，不得依赖聊天记忆继续。
 - 硬边界：用户设置的并发`500`不动；`mediaRoutingEnabled`、OSS配置/密钥/对象和真实数据不动；历史失败任务不自动重提。
 - 已确认根因：GPT Image执行先持有Provider generation lease，再为本地`data:`参考图申请Storage reservation；两者使用同一`provider-profile-write-lock.sqlite`，在Provider `fetch`前形成同锁自锁并于约5秒超时，Provider请求尚未发出。

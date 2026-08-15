@@ -1,7 +1,7 @@
 # INC-ECOM-002 电商模板兼容性矩阵
 
 检查日期：`2026-08-15`
-证据范围：先以`readOnly + PRAGMA query_only=ON`完成生产审计；随后在用户明确授权下停服备份、部署formal final，并以单事务为生产模板绑定明确模型。写后再次只读审计和登录实页复核。全程未调用真实Provider/OSS、未生成或付费。
+证据范围：先以`readOnly + PRAGMA query_only=ON`完成生产审计；随后在用户明确授权下停服备份、部署formal final，并以单事务为生产模板绑定明确模型。写后再次只读审计和登录实页复核；这段静态绑定阶段没有调用真实Provider/OSS。之后另获授权的一次真实图片smoke及其失败边界在本文末尾单独记录。
 
 ## 状态定义
 
@@ -23,7 +23,7 @@
 | 男装货架主图｜通勤/户外场景 | 生产 published | `PASS` | 3 个Text/Image执行节点已绑定 | 同上 |
 | 女装详情页｜五图转化组 | 生产 published | `PASS` | 7 个执行节点已绑定 | 同上 |
 | 男装详情页｜五图转化组 | 生产 published | `PASS` | 7 个执行节点已绑定 | 同上 |
-| 服装详情页｜面料与工艺拆解 | 生产 published | `PASS` | 2个Text绑定Doubao Seed，3个Image绑定GPT Image 2专用协议 | 下一步做受限真实复验 |
+| 服装详情页｜面料与工艺拆解 | 生产 published | `PASS` | 2个Text绑定Doubao Seed，3个Image绑定GPT Image 2专用协议 | 单节点真实smoke在旧120秒期限失败；180秒修复已部署，完整真实结果仍待新授权 |
 | 服装详情页｜版型与尺码说明 | 生产 published | `PASS` | 4 个执行节点已绑定 | 真实结果待受限验收 |
 | 服装上新｜颜色变体与搭配 | 生产 published | `PASS` | 5 个执行节点已绑定 | 同上 |
 | 直播间/抖音｜9:16商品封面 | 生产 published | `PASS` | 4 个执行节点已绑定 | 同上 |
@@ -47,3 +47,5 @@
 生产初始只读审计共读取19条模板：18条published、1条archived；当时结果为`PASS=0 / NEEDS_MODEL=19 / INVALID=0`，99个执行节点缺模型，其中published模板87个。事务绑定后复核为`PASS=19 / NEEDS_MODEL=0 / INVALID=0`，执行节点缺模型0；类型分布为Text50/Image42/Video7，7处历史`Auto`已规范化为`auto`。首次审计曾把五条短视频模板的合法`text→storyboard`画布连线误报为`INVALID`；根因已修复并由m77 `9/9 PASS`覆盖。
 
 离线自动证据：模板发布/恢复/管理页/导入语义专项已通过；Storyboard审计回归修复后m77 `9/9 PASS`。正式final `e1e0e0d33809a519e8856d11135237a6a30ff912` 上clean full为`117/117 specs、954/954 PASS`，异常计数全0，builder `1/5/1/0`。生产formal manifest为`692995bc9f6fc6833b314afeaea65bc5d367142aa03234299c4ab02b76aa56ff`；零付费复核前后generation tasks106、provider attempts104，未新增请求。上述PASS是静态结构、模型、参数与输入合同PASS，不替代真实图片/视频结果和用户验收。
+
+后续单次真实smoke只执行了目标模板的`工艺拆解·完整商品`节点：参考图/OSS/预检通过，但task `e5cfd5bc-2863-4eb1-9546-4a93c76b17e7`在旧同步请求120秒期限后失败，Provider未返回task ID或结果素材，且未知结果保护未自动重提。专用GPT Image期限已修为180秒并以final `de0551c8187156f0283f330a39e15e5825f1f2c5`、production manifest `5386c74440f8868719bb7942af31437a1a2dfcbb9de28d604ccf836ddc1478b1`部署。矩阵`PASS`仍只表示静态兼容；目标模板的真实图片结果、完整三图和用户验收继续`PENDING`。

@@ -1,11 +1,20 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`43`
+断点版本：`44`
 更新时间：`2026-08-15`
-状态：`INC_ECOM_002_PRODUCTION_STATIC_REPAIR_PASS_REAL_GENERATION_PENDING`
+状态：`INC_ECOM_003_REAL_IMAGE_SMOKE_FAIL_PROVIDER_TIMEOUT_REPAIR_DEPLOYED`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
-## 0. 当前新事件：INC-ECOM-002
+## 0. 当前新事件：INC-ECOM-003
+
+- 用户授权的真实边界已消费：只对「服装详情页｜面料与工艺拆解」的`工艺拆解·完整商品`节点提交一次真实图片Provider请求；不重试、不运行另外两个图片节点或视频。
+- 任务`e5cfd5bc-2863-4eb1-9546-4a93c76b17e7`、Provider attempt 131在约121秒后以`PROVIDER_REQUEST_FAILED`失败；attempt为`outcome-unknown`，`provider_task_id=null / result_asset_id=null`。同步协议没有留下可轮询ID，本次结果不能恢复；禁止自动重提。
+- 根因已修复：GPT Image专用同步请求从通用120秒期限改为统一Provider submit 180秒期限，未知结果和无自动重试语义不变。m53+m57+m88为`66/66 PASS`；正式安全full为`117/117 specs、954/954 PASS`。
+- production formal final：commit `de0551c8187156f0283f330a39e15e5825f1f2c5`、tree `b083289ae514f6b7c7c3cdef7953065deb2c7276`、manifest `5386c74440f8868719bb7942af31437a1a2dfcbb9de28d604ccf836ddc1478b1`，已部署到`/opt/unboundry/releases/v0.6.0`。旧release在`/opt/unboundry/retired-releases/20260815-pre-inc-ecom-003/v0.6.0`；停机备份在`/var/lib/unboundry-rollbacks/inc-ecom-003-20260815`且SHA清单验证通过。
+- 当前生产：service active；公网live/ready/version/root正常；schema39 quick_check ok、active0、tasks108、Provider attempts106、pending publication0。用户设置的per-user/RPM/Text/Image/Video/Audio仍全部500；Provider/Storage密文配置SHA部署前后未变，OSS未改。
+- 当前状态：`REFERENCE/OSS/PREFLIGHT_PASS / REAL_IMAGE_SMOKE_FAIL_PROVIDER_TIMEOUT / GPT_IMAGE_TIMEOUT_REPAIR_DEPLOYED / OUTCOME_UNKNOWN_NO_AUTO_RETRY`。完整三图、视频和用户实页结果继续`PENDING`；第二次真实生成、push/tag/PR都没有授权。
+
+## 0A. 前一事件：INC-ECOM-002
 
 - 用户已确认电商参考图工作流完整修复方案；随后追加授权正式候选部署、生产模板模型绑定、备份、必要停启与零付费页面/API复核。
 - 权威事件断点：`spec/INC_ECOM_002_REFERENCE_WORKFLOW_REMEDIATION_2026-08-15.md`。恢复者必须在本文件当前结论前先读取它。
@@ -30,7 +39,7 @@
 - 用户还授权：仅在维护、旧服务停止、无写者、可恢复原始备份完成并精确复核后，删除唯一 FK 孤儿 `project_metadata rowid=14`；不得扩大为其他生产清理。
 - 真实OSS只读HEAD/GET以及必要的bwrap安装/使用已经纳入最新bridge总授权；只允许按冻结控制器、最小权限和只读对象合同执行。
 - 生产现运行 `/opt/unboundry/current -> releases/v0.6.0`，service active/enabled、NRestarts0、监听127.0.0.1:4173；公网live/ready/version/auth/root均200，ready active/schema39。
-- 数据最新核验：schema39、integrity ok、FK0、active generation0、106 tasks/104 provider attempts、418 ready media（local348+OSS70）、pending0；INC-ECOM-002未修改现有生成开关、并发或频率。
+- 数据最新核验：schema39、quick_check ok、active generation0、108 tasks/106 provider attempts、418 ready media（local348+OSS70）、pending publication0；INC-ECOM-003未修改现有生成开关、并发、频率或OSS配置。
 - 原schema37 raw backup SHA `7f14c611faab136c1ae8e9579bc47755f7298e4ea6e2bba516c71e85670f8fca` 已离机恢复PASS，inspection `b4d58243e88efe1c2c967ffab5f63ed6704d18324a80e8449ec9d3ad77e28e1d`。最终技术凭证 SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8` 为 `TECHNICAL_CUTOVER_VERIFIED`。
 - 技术凭证生成时 `userAcceptance=PENDING` 保持不变；用户随后确认生成任务状态可读取，并结合此前确认老项目大量生成/上传素材仍在、第4项正常，生产验收现为`USER PASS`，但不声称全部历史素材逐一验证。
 - 最终切换是人工受控bounded cutover，不冒充新的formal controller/full regression PASS；切换期间Provider/付费调用0。REM-010/011与本次G7为`PASS`，REM-001～009B继续`USER_REVIEW`，当前没有IN_PROGRESS REM。
@@ -44,13 +53,13 @@
 | 仓库根 | `/Users/mymy/Documents/unboundry/app` |
 | 生产站点 | `https://canvas.mymy.ltd` |
 | 线上版本 | `v0.6.0` / schema39 |
-| package 版本 | 本地checkout与生产均为`0.6.0`；INC-ECOM-002生产formal artifact commit为`e1e0e0d…`，文档HEAD必须另行理解 |
+| package 版本 | 本地checkout与生产均为`0.6.0`；INC-ECOM-003生产formal artifact commit为`de0551c…`，文档HEAD必须另行理解 |
 | 生产程序目录 | 2026-08-14 原生产只读核实为 systemd `unboundry.service`、应用 `/opt/unboundry`；`/opt/unboundry-app` 仅为历史记录，不得用于动作目标 |
 | 生产数据目录 | `/var/lib/unboundry` |
 | 本地真实数据目录 | `/Users/mymy/Documents/unboundry/app/data` |
 | 真实本地服务端口 | `4173`，有守护进程，不得用于测试 |
 | 生产/历史数据库基线 | 当前schema39、integrity ok、FK0、ready local348/OSS70/pending0；INC-ECOM-002停机备份与迁移前schema37 raw备份均保留 |
-| 当前生产制品 | INC-ECOM-002 final `e1e0e0d33809a519e8856d11135237a6a30ff912` / tree `9bfb43d456f8e250657a82f4f4574dff73cb1620` / manifest `692995bc…` / inventory `a2b685f6…` |
+| 当前生产制品 | INC-ECOM-003 final `de0551c8187156f0283f330a39e15e5825f1f2c5` / tree `b083289ae514f6b7c7c3cdef7953065deb2c7276` / manifest `5386c744…` |
 | Node | formal构建/验证为v22.23.1；生产为`/opt/node22/bin/node` v22.23.2，production-specific waiver与恢复副本补证已完成 |
 
 ### 2.1 Goal 启动前只读预检

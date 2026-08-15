@@ -1,8 +1,8 @@
 # INC-ECOM-002 电商参考图工作流修复方案与施工断点
 
-状态：`PRODUCTION_STATIC_REPAIR_PASS_REAL_GENERATION_PENDING`
+状态：`PRODUCTION_STATIC_REPAIR_PASS_REAL_IMAGE_SMOKE_FAIL_PROVIDER_TIMEOUT_REPAIR_DEPLOYED`
 建立日期：`2026-08-15`
-当前阶段：`D5 formal生产部署与模板静态修正完成，真实生成待独立授权`
+当前阶段：`D6 单次真实图片smoke已执行并在旧120秒期限失败；180秒修复已formal部署，第二次付费提交待新授权`
 
 ## 1. 当前授权与硬边界
 
@@ -124,7 +124,7 @@
 2. 明确节点数和最大请求数后，对「服装详情页｜面料与工艺拆解」做一次完整真实验收；
 3. 如真实验收暴露新问题，再决定是否需要新正式版本号。
 
-第一次失败发生在 Provider 前，没有远端结果可恢复；修复后再次生成属于新的付费请求，绝不自动执行。`INC-ECOM-001` 已恢复的既有结果继续保留，不得重提。
+第一次失败发生在 Provider 前，没有远端结果可恢复。此后用户已授权一次受限真实图片smoke；该请求已越过Provider边界但在同步端点约121秒时被旧120秒deadline中止，没有返回`provider_task_id`或结果素材。它属于`outcome-unknown`，不得自动重提。180秒修复部署后再次生成仍属于新的可能收费请求，必须取得新的明确授权。`INC-ECOM-001` 已恢复的既有结果继续保留，不得重提。
 
 ## 6. 连续施工与上下文恢复
 
@@ -155,22 +155,33 @@
 - 生产模板事务已完成：19条模板全部静态`PASS`，99个执行节点明确绑定模型（published模板87个；Text50/Image42/Video7），缺模型0；7处历史`Auto`规范化为`auto`。目标模板「服装详情页｜面料与工艺拆解」2个Text节点绑定Doubao Seed，3个Image节点绑定GPT Image 2专用协议。短视频节点绑定grok-video-3.5，避免Seedance不支持`reference-image`角色的问题。
 - 回滚与零费用证据：停服后创建`/var/lib/unboundry-rollbacks/inc-ecom-002-20260815`，主库停机SHA-256 `347b07f2ade6b9f6a3f0d70d433ec0c828605d9b9101d34e343594c905ff94a8`并保留WAL/SHM，副本schema39/integrity ok/FK0；旧`v0.6.0`产物保存在`/opt/unboundry/retired-releases/20260815-pre-inc-ecom-002/v0.6.0`，前一current hotfix未删除。部署前后generation tasks=`106`、provider attempts=`104`、admission events=`8`、publication attempts=`3`、active=`0`，没有生成或付费请求。
 - 零付费生产复核已完成：service active，公网live/ready/version/root正常，version0.6.0、ready active/schema39；登录Chrome实页打开公共模板面板，可见「服装详情页｜面料与工艺拆解」及其他电商模板，控制台warning/error为0。该项只证明页面与静态合同，不是图片真实生成或用户结果验收。
-- 待完成：一次受限真实图片smoke、目标模板完整真实生成和用户实页结果确认；两者继续独立控制请求数与费用。本次未改用户并发、OSS路由/配置/密钥/对象，也未push/tag/PR。
+- 后续状态：一次受限真实图片smoke已执行并按失败事实保留；目标模板完整真实生成和用户实页结果确认仍待新授权并继续独立控制请求数与费用。本次未改用户并发、OSS路由/配置/密钥/对象，也未push/tag/PR。
+
+## 6.2 单次真实 smoke 与超时修复结果
+
+- 授权边界：仅目标模板「服装详情页｜面料与工艺拆解」的`工艺拆解·完整商品`节点，最多一次真实图片Provider请求；不自动重试、不运行另外两个图片节点或视频。
+- 执行事实：项目`18255461-b14f-40dd-9dbb-d3c307649387`，任务`e5cfd5bc-2863-4eb1-9546-4a93c76b17e7`，Provider attempt 131。参考图/OSS准备与静态预检均通过，请求只提交一次；约121秒后任务为`failed / PROVIDER_REQUEST_FAILED`，attempt为`outcome-unknown`，`provider_task_id=null / result_asset_id=null`。
+- 可恢复性：该模型绑定使用GPT Image专用同步协议；Provider在连接期限内没有返回可轮询任务ID，因此本次结果不能从Unboundry恢复。未知结果保护按设计没有创建第二个attempt。
+- 新根因：`sendPreparedRelayGptImageRequest`沿用通用JSON请求默认`120000ms`，而项目统一Provider submit deadline已是`180000ms`；历史专用图片编辑成功耗时曾达到约70～115秒，本次精确撞到旧120秒窗口。
+- 代码修复：`server/relayProviderAdapters.ts`显式使用`providerRequestTimeoutMsByOperation.submit`，导出并测试GPT Image deadline为`180000ms`；不改变同步协议、不改变自动重试规则。m53+m57+m88定向`66/66 PASS`，clean正式full `117/117 specs、954/954 PASS`。
+- 正式部署：final commit `de0551c8187156f0283f330a39e15e5825f1f2c5`、tree `b083289ae514f6b7c7c3cdef7953065deb2c7276`、Linux x64 glibc production manifest `5386c74440f8868719bb7942af31437a1a2dfcbb9de28d604ccf836ddc1478b1`已部署到`/opt/unboundry/releases/v0.6.0`。旧release保存在`/opt/unboundry/retired-releases/20260815-pre-inc-ecom-003/v0.6.0`，停机备份在`/var/lib/unboundry-rollbacks/inc-ecom-003-20260815`且SHA清单全量通过。
+- 部署后：service active，公网live/ready/version/root正常，ready active/schema39；quick_check ok、active0、tasks108、Provider attempts106、pending publication0。刷新原验收画布后，失败节点和“不自动重提/先核对模型平台”提示仍可见，没有伪造结果或清除未知状态。Provider/Storage密文配置SHA前后不变，用户设置的各并发和RPM仍为500，OSS路由/配置/密钥/对象未改。
+- 当前结论：`REFERENCE/OSS/PREFLIGHT_PASS`已获得真实路径证据；`REAL_IMAGE_SMOKE_FAIL_PROVIDER_TIMEOUT`保留；代码状态为`GPT_IMAGE_TIMEOUT_REPAIR_DEPLOYED`。不能标记真实图片PASS或用户PASS，下一次生成必须由用户重新授权。
 
 ## 7. 当前恢复卡
 
 ```text
 项目：/Users/mymy/Documents/unboundry/app
 分支：codex/unboundry-offline-remediation-2026-08-09
-本次生产候选：e1e0e0d33809a519e8856d11135237a6a30ff912；本轮文档同步父提交：60f9b56e3a2c674ddaf40aa9b2d8ce3cc32ea3cd
+本次生产候选：de0551c8187156f0283f330a39e15e5825f1f2c5
 package：0.6.0
-当前事件：INC-ECOM-002
-状态：PRODUCTION_STATIC_REPAIR_PASS_REAL_GENERATION_PENDING
-当前阶段：D5 formal生产部署、模板绑定和零付费复核完成
+当前事件：INC-ECOM-003
+状态：PRODUCTION_STATIC_REPAIR_PASS_REAL_IMAGE_SMOKE_FAIL_PROVIDER_TIMEOUT_REPAIR_DEPLOYED
+当前阶段：D6 单次真实smoke失败已保留，180秒修复formal部署完成
 既有脏改动：INC-ECOM-001 热修复、相关测试和历史施工文件，全部保留，不得 reset/clean
-正式候选：bridge 45e9cefe489ffea23970517c420bf9c64a49896b；final e1e0e0d33809a519e8856d11135237a6a30ff912
+正式候选：bridge 3b43e9de40ba0921e29cd169e1c3cd945a247c17；final de0551c8187156f0283f330a39e15e5825f1f2c5
 正式full：117/117 specs，954/954 PASS，builder 1/5/1/0
 允许：本地证据文档收口
-禁止：并发/OSS路由修改、真实Provider/OSS、付费、push/tag/PR；既有生产授权已消费
-下一步：等待用户决定是否授权一次受限真实图片smoke与目标模板完整真实验收
+禁止：自动重提任务e5cfd5bc、并发/OSS路由修改、第二次真实Provider/付费、push/tag/PR；既有单次smoke与部署授权已消费
+下一步：等待用户决定是否另行授权修复后的第二次单节点真实图片生成；完整三图/视频继续单独授权
 ```
