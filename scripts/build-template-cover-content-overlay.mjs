@@ -115,8 +115,11 @@ try {
     receipt?.files?.length !== 16
   ) fail("OVERLAY_INPUT_INVALID", "Base release or cover manifests are invalid");
   const receiptByTarget = new Map(receipt.files.map((item) => [item.target, item]));
-  const targetDirectory = join(releaseDirectory, "client", "public", "templates");
-  await chmod(targetDirectory, 0o700);
+  const targetDirectories = [
+    join(releaseDirectory, "client", "public", "templates"),
+    join(releaseDirectory, "dist", "client", "templates"),
+  ];
+  for (const targetDirectory of targetDirectories) await chmod(targetDirectory, 0o700);
   const covers = [];
   try {
     for (const source of sources.covers) {
@@ -125,28 +128,32 @@ try {
         fail("OVERLAY_INPUT_INVALID", `Invalid cover declaration: ${source.target}`);
       }
       const inputPath = join(coversDirectory, source.target);
-      const outputPath = join(targetDirectory, source.target);
       const bytes = await readFile(inputPath);
       if (bytes.length !== expected.bytes || sha256(bytes) !== expected.sha256) {
         fail("OVERLAY_INPUT_INVALID", `Cover receipt mismatch: ${source.target}`);
       }
-      try {
-        await lstat(outputPath);
-        fail("OVERLAY_TARGET_EXISTS", `Cover already exists in base release: ${source.target}`);
-      } catch (error) {
-        if (error?.code !== "ENOENT") throw error;
+      const paths = [];
+      for (const targetDirectory of targetDirectories) {
+        const outputPath = join(targetDirectory, source.target);
+        try {
+          await lstat(outputPath);
+          fail("OVERLAY_TARGET_EXISTS", `Cover already exists in base release: ${source.target}`);
+        } catch (error) {
+          if (error?.code !== "ENOENT") throw error;
+        }
+        await copyFile(inputPath, outputPath);
+        await chmod(outputPath, 0o400);
+        paths.push(relative(releaseDirectory, outputPath).split(sep).join("/"));
       }
-      await copyFile(inputPath, outputPath);
-      await chmod(outputPath, 0o400);
       covers.push({
-        path: `client/public/templates/${source.target}`,
+        paths,
         sha256: expected.sha256,
         size: expected.bytes,
         templateId: source.templateId,
       });
     }
   } finally {
-    await chmod(targetDirectory, 0o500);
+    for (const targetDirectory of targetDirectories) await chmod(targetDirectory, 0o500);
   }
 
   manifest.contentOverlay = {

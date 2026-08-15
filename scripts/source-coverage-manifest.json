@@ -46,7 +46,7 @@
     },
     "scripts/build-template-cover-content-overlay.mjs": {
       "mode": "frozen",
-      "scriptSha256": "ce6c140ad0b7a8b6fd22d52cb3ac11822bbcc1a9807baec58bf5ad2dd20bcf59",
+      "scriptSha256": "0c034ec65de02d3ad47cbd45cdf4276e2e7065aefcca1be5eb12482890a5221e",
       "reason": "Can modify an immutable release staging tree; automatic execution is forbidden.",
       "manualNpmScripts": []
     },

@@ -15,6 +15,7 @@
 - 文件尺寸与 SHA-256：`spec/ecommerce-template-cover-receipt.json`。
 - 本地验证：`scripts/verify-ecommerce-template-covers.mjs`。
 - 生产模板路径事务：`scripts/apply-ecommerce-template-cover-paths.mjs`，默认 dry-run，只有显式 `--apply` 才写入；要求 schema39、quick_check ok、FK0、active generation 0，并拒绝覆盖非空的意外封面路径。
+- release 内容叠加同时绑定源码静态目录 `client/public/templates` 与 Vite preview 实际服务目录 `dist/client/templates`，两份字节均纳入同一不可变 inventory。
 
 ## 发布门
 
