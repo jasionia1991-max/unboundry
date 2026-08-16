@@ -2760,9 +2760,29 @@ export function CanvasSurface({
   const updateViewportDom = (next: Viewport) => {
     const world = worldRef.current;
     if (world) {
+      const titleZoom = Math.max(next.zoom, 0.01);
+      const counterScale = titleZoom < 1 ? 1 / titleZoom : 1;
+      const titleWidth = `${Math.min(titleZoom, 1) * 100}%`;
       world.setAttribute("data-viewport-x", String(next.x));
       world.setAttribute("data-viewport-y", String(next.y));
       world.setAttribute("data-viewport-zoom", String(next.zoom));
+      world.setAttribute(
+        "data-title-zoom-band",
+        titleZoom < 0.35
+          ? "overview"
+          : titleZoom < 0.65
+            ? "compact"
+            : "detail",
+      );
+      world.style.setProperty(
+        "--canvas-title-counter-scale",
+        String(counterScale),
+      );
+      world.style.setProperty("--canvas-title-available-width", titleWidth);
+      world.style.setProperty(
+        "--canvas-storyboard-title-gap",
+        `${10 / titleZoom}px`,
+      );
     }
   };
 

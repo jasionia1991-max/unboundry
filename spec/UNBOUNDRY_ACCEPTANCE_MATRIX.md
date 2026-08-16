@@ -3,6 +3,10 @@
 基线日期：2026-07-27  
 当前状态更新：2026-08-16
 
+2026-08-16 `INC-UI-005 = RELEASE_CANDIDATE`：Group标题与组框保持约20px屏幕间隔并限制72～180px；15%总览时组内节点标题默认隐藏，组hover或选中后恢复。明确不增加组标题栏、组内视觉边距/边框，不移动组内节点，不改变持久坐标、连线与普通未分组节点标题。`GROUP-TITLE-001～004`待本次v0.6.4自动与生产门完成后更新。
+
+2026-08-16 `INC-UI-004 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：Text/Image/Video/Audio/Playlist/Storyboard标题在`zoom < 1`时使用屏幕空间补偿，15%总览约12px、35%～100%约14px；灰白对比度、500字重和轻微暗色阴影已统一。标题屏幕宽度限制96～180px，Storyboard上限220px，长标题继续ellipsis并保留完整`title`；Group沿用自身补偿避免双重放大。总览未选中标题不拦截指针，选中标题仍可编辑；节点几何、连线、保存文档均不变。`TITLE-ZOOM-001～006`自动通过：相关6份spec `16/16 PASS`，正式安全全量`118/118 specs、968/968 tests PASS`，异常0、4173不变、真实Provider/付费/OSS请求0。生产已切到`v0.6.3-inc-ui-004-20260816`；隔离Linux启动、公网资源哈希、冻结备份恢复、active/schema39和数据不变门通过，tasks153/attempts152/active0及模板46/45不变。用户肉眼验收仍为`USER_RECHECK`。
+
 2026-08-16 `INC-UI-003 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：公共模板页和编辑弹窗已改用统一灰阶布局、GrayMenuSelect、自绘复选框、主次按钮、焦点圈定和窄屏布局。旧epoch journal与服务器document相同时零PUT结算，不同时保留journal且零PUT/零生成，并可在新标签打开服务器权威版本，原标签恢复副本不被覆盖。m77 10/10、m86 83/83及正式安全全量118/118 specs、967/967 tests PASS，异常0。生产已切到v0.6.3/schema39，公网健康、数据不变和Chrome真实恢复路径/UI合同均通过；真实Provider/付费/OSS写入0。仍需用户肉眼复验。
 
 2026-08-16 `INC-VIDEO-001 / V0.6.2 REAL WORKFLOW SMOKE = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_RECHECK`：用户授权真实API消耗后，在生产建立并运行`Text → Image`整组工作流。整组Text先成功，Image随后才启动；两个任务均attempt1、Provider attempt1、retry0。唯一图片为`1:1 / 1K`，结果PNG 1024×1024、OSS ready；刷新后Group、连线、文字和图片均持久。随后Grok首帧按真实中转契约修为`images`数组，正式全量`118/118 specs、965/965 tests`通过并发布到`v0.6.2-inc-video-001-20260816`。Grok修复后请求被受理，但中转上游两次0%网络超时，停止重试并把默认视频模型切为Seedance；Seedance无人物文生视频task`c0269665-4db5-46a1-bc13-2d5574a66cca`一次成功，4秒/480p/无音频，MP4 864×496、OSS ready，刷新后浏览器可播放。真人参考图被Seedance内容安全拒绝，记录为Provider限制。公网ready active/schema39，数据库tasks126/attempts125/active0、quick_check ok/FK0。该结果证明真实低成本闭环，不代替用户明早的内容与交互验收。

@@ -1181,6 +1181,7 @@ function ImageNodeImpl({
   data,
   dragging,
   id,
+  parentId,
   selected,
 }: NodeProps<ProbeNodeType>) {
   const singleNodeChrome = useSingleNodeChrome(selected, dragging);
@@ -3592,7 +3593,10 @@ function ImageNodeImpl({
           </span>
         )}
       </Handle>
-      <div className="canvas-node-title image-node-title nodrag">
+      <div
+        className="canvas-node-title image-node-title nodrag"
+        data-parent-group-id={parentId}
+      >
         <svg aria-hidden="true" viewBox="0 0 18 18">
           <rect height="14" rx="3" width="16" x="1" y="2" />
           <circle cx="12.5" cy="6.5" r="1.5" />

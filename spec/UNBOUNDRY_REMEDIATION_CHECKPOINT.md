@@ -1,11 +1,27 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`61`
+断点版本：`64`
 更新时间：`2026-08-16`
-状态：`INC_VIDEO_001_PRODUCTION_PUBLISHED_REAL_VIDEO_PASS_USER_RECHECK_V0_6_2`
+状态：`INC_UI_005_V0_6_4_RELEASE_CANDIDATE_AUTHORIZED`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
-## 0. 当前新事件：INC-VIDEO-001（已发布，真实视频PASS，待用户次日复验）
+## 0. 当前新事件：INC-UI-005（v0.6.4发布候选，已授权）
+
+- 用户确认不增加组内视觉边距/边框，同意组标题总览层级方案；随后单独确认版本号`v0.6.4`并授权上线、commit、push、tag和合并PR。
+- 候选实现：组标题固定屏幕间隔约20px、宽度72～180px；15%总览默认隐藏组内节点标题，组hover或选中后恢复。
+- 不增加标题栏、内边距或边框，不移动组内节点；组/节点持久坐标、连线和普通未分组节点标题不变。
+- 当前断点：先完成精确候选安全全量；过门后才允许提交、推送、PR、标签和生产切换。真实Provider、付费生成与OSS写入均不在本次范围。
+
+## 0A. 前一事件：INC-UI-004（已发布，待用户复验）
+
+- 用户认可“低缩放标题保持屏幕可读”的预览方案并授权施工及生产发布；本轮未授权、也未执行commit/push/tag/PR。
+- 普通节点标题由`CanvasSurface.updateViewportDom`实时写入zoom档位、反向缩放、可用宽度和Storyboard标题间距；React状态与持久画布文档不加入任何缩放派生字段。
+- 15%总览约12px，35%～100%约14px；灰白、500字重、轻微暗色阴影。Group继续使用既有独立补偿，仅提亮；普通/Storyboard长标题保持ellipsis与完整`title`。
+- 总览未选中标题`pointer-events:none`，选中标题恢复交互；节点尺寸、位置、连线、保存指纹与UI两档字体合同不变。
+- 相关6份spec `16/16 PASS`；正式安全全量`118/118 specs、968/968 tests PASS`，failed/skipped/retries/blocked/reportErrors均0，source/snapshot `e1bfb993cf6f4cb4d9567912b0b82487b63809875d881e8d8c3fb79b9417a843`一致，4173 listener未变，suite cleaned，exit0。真实Provider、付费生成和真实OSS请求0。
+- 生产已切到`/opt/unboundry/releases/v0.6.3-inc-ui-004-20260816`；隔离Linux启动、公网JS/CSS逐字节哈希、冻结备份恢复均PASS。service active+enabled、NRestarts0、公网v0.6.3 ready active/schema39；切换前后tasks153/attempts152/active0及模板46/45不变，真实Provider/付费/OSS写入0。当前为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；权威文档与回执为`spec/INC_UI_004_CANVAS_TITLE_ZOOM_LEGIBILITY_2026-08-16.md`、`spec/INC_UI_004_PRODUCTION_RECEIPT_2026-08-16.json`。
+
+## 0B. 前一事件：INC-VIDEO-001（已发布，真实视频PASS，待用户次日复验）
 
 - 用户明确授权真实API消耗并要求尽量控制成本，目标是次日能正常使用工作流生成。
 - 根因与修复：`grok-imagine-video-1.5-preview`首帧中转契约要求`images`数组，旧代码发送`first_frame_url`；现已在统一提交路径映射为数组并限制恰好1张。定向m57 `9/9 PASS`，正式全量`118/118 specs、965/965 tests PASS`，失败/跳过/重试0。
@@ -14,7 +30,7 @@
 - 真实成功：Seedance文生视频task`c0269665-4db5-46a1-bc13-2d5574a66cca`一次成功，4秒/480p/无音频；asset`fbfed94d-e41e-4858-8e7e-96c4eae98c4a.mp4`为OSS ready、864×496、4.042秒、1,117,495 bytes。刷新后浏览器readyState4、media error为空。
 - 收尾：数据库tasks126/attempts125/active0、quick_check ok、FK0；应用账本记录成功视频actual cost`568316 microunits CNY`，不冒充Provider最终账单。详细凭证为`spec/INC_VIDEO_001_PRODUCTION_RECEIPT_2026-08-16.json`、`spec/V0_6_2_REAL_WORKFLOW_SMOKE_2026-08-16.json`。专用分支已推送，`v0.6.2`标签指向生产源码commit`959c1e287…`，Draft PR #1已更新且CLEAN。
 
-## 0A. 前一事件：INC-UI-002（已发布，待用户线上复验）
+## 0C. 前一事件：INC-UI-002（已发布，待用户线上复验）
 
 - 用户授权一次性修复三个全局UI问题，并要求对齐既有灰阶UI规范：巨大Group附近框选三个节点时误选大范围、OSS素材出现原生坏媒体图标/失败边框、七类节点长标题显示不全。
 - 权威方案与完成证据：`spec/INC_UI_002_CANVAS_SELECTION_MEDIA_TITLE_REMEDIATION_2026-08-16.md`。
@@ -27,7 +43,7 @@
 - 备份与独立恢复副本为`/var/lib/unboundry-rollbacks/inc-ui-002-20260815T180956Z`，清单SHA一致`b1754f94…c2909`；schema39/quick_check ok/FK0，tasks118/attempts116/active0、模板43/42和并发500前后不变，Provider/付费调用/OSS写入0。
 - 当前状态为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；未获新的push/tag/PR授权，GitHub保持既有状态。生产凭证见`spec/INC_UI_002_PRODUCTION_RECEIPT_2026-08-16.json`。
 
-## 0B. 前一事件：INC-UI-001
+## 0D. 前一事件：INC-UI-001
 
 - 用户要求先为两项优化建立防失忆的详细修改方案：设置页返回进入前的真实项目并新增「返回工作空间」；浏览器标签显示无央 favicon 和准确页面/项目标题。
 - 权威方案：`spec/INC_UI_001_SETTINGS_RETURN_AND_BROWSER_IDENTITY_PLAN_2026-08-15.md`。
@@ -37,7 +53,7 @@
 - NAV-001～004与BRAND-001～003保持`USER_RECHECK`，不可在用户可见浏览器确认前记PASS；该功能已随package/生产v0.6.2发布。
 - 当前`v0.6.1`标签与Draft PR #1未更新；INC-UI-001已随v0.6.2生产发布，用户线上复验前仍为`USER_RECHECK`。
 
-## 0C. 前一事件：INC-ECOM-007
+## 0E. 前一事件：INC-ECOM-007
 
 - 用户确认整组运行必须按依赖流水：多入参全部本轮成功并保存后才运行；分流独立推进；汇流严格等待全部；分支失败只阻塞后代。
 - 已确认是通用执行器缺陷：全图动态预检过早、真实resolver的blocked空态绕过延后分支、测试夹具失真、整层屏障以及节点运行时输入快照可能陈旧。

@@ -1,7 +1,23 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-16
-状态：`生产当前运行 v0.6.3/schema39；INC-UI-003已发布且自动与Chrome实页技术验证通过，待用户复验；既有INC-VIDEO-001、INC-UI-001/002及INC-ECOM状态保持。`
+状态：`生产当前运行 v0.6.3/schema39；v0.6.4组标题总览层级候选正在发布；既有INC-UI-004、INC-UI-003、INC-VIDEO-001、INC-UI-001/002及INC-ECOM状态保持。`
+
+### 2026-08-16 组标题总览层级（INC-UI-005）
+
+- 状态：`RELEASE_CANDIDATE`。用户确认不增加组内视觉边距/边框，同意其余总览层级方案，并明确确认版本`v0.6.4`、授权上线、commit、push、tag与合并PR。
+- 实现：组标题使用稳定的屏幕空间宽度72～180px，与组框顶部保持约20px距离；15%总览默认隐藏组内节点标题，鼠标进入组或选中组时恢复，避免大量模板并列时标题堆叠。
+- 明确不做：不增加组标题栏，不增加组内视觉内边距或边框，不移动组内节点，不改变组/节点持久坐标、连线与普通未分组节点标题。
+- 自动门与生产结果：发布完成后补齐。
+
+### 2026-08-16 节点标题缩放可读性（INC-UI-004）
+
+- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。用户已确认预览方案并授权施工及生产发布；本次未授权、也未执行commit/push/tag/PR。
+- 实现：Text/Image/Video/Audio/Playlist/Storyboard标题在`zoom < 1`时按屏幕空间补偿；15%总览保持约12px，35%～100%保持约14px。标题使用更亮灰白、500字重和轻微暗色阴影，不增加底板、不改变节点/连线几何或持久数据。
+- 细节：标题屏幕宽度限制96～180px，Storyboard上限220px；长标题继续单行省略并保留完整`title`。Group保留既有独立反向缩放，仅轻度提亮，避免双重放大。总览档未选中标题不拦截画布指针，选中标题仍可编辑。
+- 自动门：相关6份spec `16/16 PASS`；正式安全全量`118/118 specs、968/968 tests PASS`，失败/跳过/重试/blocked/reportErrors均0，生产构建PASS，source/snapshot一致，4173 listener不变，真实Provider/付费/OSS请求0。
+- 发布：current已切到`/opt/unboundry/releases/v0.6.3-inc-ui-004-20260816`，上一版完整保留；公网JS/CSS哈希与候选相符，service active+enabled、NRestarts0、ready active/schema39。冻结备份恢复副本`quick_check=ok`、FK0；切换前后tasks153/attempts152/active0及模板46/45不变，真实Provider/付费/OSS写入0。
+- 权威记录：`spec/INC_UI_004_CANVAS_TITLE_ZOOM_LEGIBILITY_2026-08-16.md`、`spec/INC_UI_004_PRODUCTION_RECEIPT_2026-08-16.json`。自动页面与上线验证不代替用户肉眼验收。
 
 ### 2026-08-16 公共模板 UI 与旧画布会话恢复（INC-UI-003）
 

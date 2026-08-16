@@ -4864,6 +4864,7 @@ sup {
   color: rgba(245, 245, 245, 0.6);
   font-size: var(--tap-font-primary);
   line-height: 20px;
+  pointer-events: auto;
   transform-origin: top left;
   white-space: nowrap;
 }
@@ -4879,7 +4880,9 @@ sup {
 }
 
 .group-node-title input {
-  width: 120px;
+  width: auto;
+  min-width: 0;
+  flex: 1 1 auto;
   height: 20px;
   padding: 0;
   border: 0;
@@ -4890,9 +4893,37 @@ sup {
 }
 
 .canvas-node-title {
-  width: 100%;
-  max-width: 100%;
+  width: clamp(96px, var(--canvas-title-available-width, 100%), 180px);
+  max-width: none;
   min-width: 0;
+  color: rgba(245, 245, 245, 0.86);
+  font-size: var(--tap-font-primary);
+  font-weight: 500;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.canvas-node-title:not(.group-node-title) {
+  transform: scale(var(--canvas-title-counter-scale, 1));
+  transform-origin: left bottom;
+}
+
+.canvas-world[data-title-zoom-band="overview"] .canvas-node-title:not(.group-node-title) {
+  font-size: var(--tap-font-secondary);
+  pointer-events: none;
+}
+
+.canvas-world[data-title-zoom-band="overview"]
+  .canvas-node-title[data-parent-group-id]:not([data-group-title-revealed]) {
+  visibility: hidden;
+  opacity: 0;
+}
+
+.canvas-world[data-title-zoom-band="overview"]
+  .react-flow__node.selected
+  .canvas-node-title {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .canvas-node-title > svg {
@@ -4901,6 +4932,7 @@ sup {
 
 .canvas-node-title > span {
   display: block;
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4913,13 +4945,15 @@ sup {
 }
 
 .group-node-title.canvas-node-title {
-  width: min(240px, calc(100% - 8px));
-  max-width: calc(100% - 8px);
+  max-width: 180px;
+  color: rgba(245, 245, 245, 0.78);
 }
 
 .storyboard-node-title.canvas-node-title {
-  width: min(560px, calc(100% + 32px));
-  max-width: calc(100% + 32px);
+  top: auto;
+  bottom: var(--canvas-storyboard-title-gap, 10px);
+  width: clamp(160px, var(--canvas-title-available-width, 100%), 220px);
+  max-width: none;
 }
 
 .media-load-fallback {

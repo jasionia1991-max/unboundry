@@ -50,6 +50,7 @@ function GroupNodeImpl({
   dragging,
   id,
   selected,
+  width,
 }: NodeProps<ProbeNodeType>) {
   const singleNodeChrome = useSingleNodeChrome(selected, dragging);
   const checkpoint = useCanvasCheckpoint();
@@ -77,6 +78,7 @@ function GroupNodeImpl({
   );
   const [colorMenu, setColorMenu] = useState(false);
   const [layoutMenu, setLayoutMenu] = useState(false);
+  const [titleHovered, setTitleHovered] = useState(false);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [templateTitle, setTemplateTitle] = useState("");
   const [templateCategory, setTemplateCategory] = useState("");
@@ -342,10 +344,15 @@ function GroupNodeImpl({
     top: -94 * scale,
     transform: `scale(${scale})`,
   };
+  const titleScreenWidth = Math.max(
+    72,
+    Math.min(180, Math.max(0, (width ?? 312) * zoom - 12)),
+  );
   const titleStyle = {
     left: 4 * scale,
-    top: -28 * scale,
+    top: -40 * scale,
     transform: `scale(${scale})`,
+    width: titleScreenWidth,
   };
   const childCount = getNodes().filter((node) => node.parentId === id).length;
   const hasDownload = getNodes().some(
@@ -353,6 +360,29 @@ function GroupNodeImpl({
       node.parentId === id &&
       Boolean(node.data.imageSrc ?? node.data.videoSrc ?? node.data.audioSrc),
   );
+
+  useEffect(() => {
+    const canvasWorld = document.querySelector<HTMLElement>(
+      '[data-testid="canvas-world"]',
+    );
+    if (!canvasWorld) return;
+    const reveal = selected || titleHovered;
+    const childTitles = canvasWorld.querySelectorAll<HTMLElement>(
+      ".canvas-node-title[data-parent-group-id]",
+    );
+    childTitles.forEach((title) => {
+      if (title.dataset.parentGroupId === id) {
+        title.toggleAttribute("data-group-title-revealed", reveal);
+      }
+    });
+    return () => {
+      childTitles.forEach((title) => {
+        if (title.dataset.parentGroupId === id) {
+          title.removeAttribute("data-group-title-revealed");
+        }
+      });
+    };
+  }, [childCount, id, selected, titleHovered]);
 
   return (
     <>
@@ -499,6 +529,8 @@ function GroupNodeImpl({
       )}
       <div
         className="canvas-node-title group-node-title nodrag"
+        onPointerEnter={() => setTitleHovered(true)}
+        onPointerLeave={() => setTitleHovered(false)}
         style={titleStyle}
       >
         <svg aria-hidden="true" viewBox="0 0 24 24">
@@ -544,6 +576,8 @@ function GroupNodeImpl({
         className="group-node-body"
         data-child-count={childCount}
         data-testid={`group-node-${id}`}
+        onPointerEnter={() => setTitleHovered(true)}
+        onPointerLeave={() => setTitleHovered(false)}
         onPointerDown={beginMove}
         style={{ background: data.groupColor ?? "transparent" }}
       />

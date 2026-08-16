@@ -2,6 +2,14 @@
 
 > 写给下一个接手的人/AI agent。目标：看完本文后不需要向用户问“项目在哪、怎么跑、怎么发布、有什么红线”。
 
+## 当前新任务：INC-UI-005（v0.6.4发布候选，已授权）
+
+用户明确不要组内新增视觉边距/边框，并同意其余总览层级方案；随后单独确认`v0.6.4`版本号并授权上线、commit、push、tag和合并PR。候选让Group标题与组框保持约20px屏幕间隔、宽度限制72～180px；15%总览默认隐藏组内节点标题，组hover或选中时恢复。不增加标题栏、内边距或边框，不移动组内节点，不改变持久坐标、连线或普通未分组节点标题。当前须先完成精确候选安全全量，通过后才进入GitHub和生产动作；本次不含真实Provider、付费生成或OSS写入。
+
+## 当前新任务：INC-UI-004（2026-08-16，已发布待用户复验）
+
+用户确认节点标题缩放可读性预览并授权施工及上线。普通节点标题在`zoom < 1`时按屏幕空间补偿，15%总览约12px、35%～100%约14px；颜色提亮为中高对比灰白、字重500、轻微暗色阴影，不增加底板。长标题保持单行省略和完整`title`，Group保留既有独立补偿避免双重放大，Storyboard有独立宽度上限；总览未选中标题不拦截画布指针，选中标题仍可编辑。节点/连线几何和持久数据不变。相关6份spec `16/16 PASS`，正式安全全量`118/118 specs、968/968 tests PASS`，异常0、4173不变、真实Provider/付费/OSS请求0。生产current已切到`/opt/unboundry/releases/v0.6.3-inc-ui-004-20260816`；隔离Linux启动、公网资源哈希、冻结备份恢复、active/schema39与数据不变门均PASS，tasks153/attempts152/active0及模板46/45不变。当前是`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；本次未执行GitHub动作，未来发布与GitHub动作仍须新授权。权威文档与回执为`spec/INC_UI_004_CANVAS_TITLE_ZOOM_LEGIBILITY_2026-08-16.md`、`spec/INC_UI_004_PRODUCTION_RECEIPT_2026-08-16.json`。
+
 ## 当前新任务：INC-UI-003（2026-08-16，v0.6.3已发布待用户复验）
 
 公共模板管理UI已对齐灰阶规范；特定项目返回画布失败已定位为单标签旧server-epoch pagehide journal。相同document指纹会零PUT结算并正常加载；不同内容保留journal并提供“打开服务器版本”，新标签载入权威画布且原标签恢复副本不被覆盖。正式安全全量118/118 specs、967/967 tests PASS，异常0。生产current已切到`/opt/unboundry/releases/v0.6.3-inc-ui-003-r2-20260816`，公网v0.6.3、active/schema39、NRestarts0；备份/恢复与数据不变检查通过，真实Provider/付费/OSS写入0。登录Chrome已验证目标画布恢复、公共模板返回路径、编辑弹窗UI和键盘合同；当前仅待用户肉眼复验。权威记录为`spec/INC_UI_003_PUBLIC_TEMPLATE_AND_CANVAS_LOAD_RECOVERY_2026-08-16.md`及`spec/INC_UI_003_PRODUCTION_RECEIPT_2026-08-16.json`。

@@ -413,6 +413,7 @@ function PlaylistNodeImpl({
   data,
   dragging,
   id,
+  parentId,
   selected,
 }: NodeProps<ProbeNodeType>) {
   const singleNodeChrome = useSingleNodeChrome(selected, dragging);
@@ -1173,7 +1174,10 @@ function PlaylistNodeImpl({
             )}
           </div>
         )}
-        <div className="canvas-node-title playlist-node-title">
+        <div
+          className="canvas-node-title playlist-node-title"
+          data-parent-group-id={parentId}
+        >
           <svg aria-hidden="true" viewBox="0 0 20 20">
             <rect height="14" rx="2" width="14" x="3" y="3" />
             <path d="M3 7h3M3 13h3M14 7h3M14 13h3M7 3v14M13 3v14" />

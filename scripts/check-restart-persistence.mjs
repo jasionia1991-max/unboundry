@@ -30,6 +30,7 @@ const origin = `http://127.0.0.1:${port}`;
 }
 
 async function start() {
+  let output = "";
   const child = spawn(
     process.execPath,
     [vite, "--host", "127.0.0.1", "--port", String(port), "--strictPort"],
@@ -39,12 +40,19 @@ async function start() {
         UNBOUNDRY_DATA_DIR: dataDir,
         UNBOUNDRY_TEST_AUTH_BYPASS: "1",
       },
-      stdio: "ignore",
+      stdio: ["ignore", "pipe", "pipe"],
     },
   );
+  const rememberOutput = (chunk) => {
+    output = `${output}${String(chunk)}`.slice(-4_000);
+  };
+  child.stdout?.on("data", rememberOutput);
+  child.stderr?.on("data", rememberOutput);
   for (let attempt = 0; attempt < 50; attempt += 1) {
     if (child.exitCode !== null) {
-      throw new Error(`Test server exited before becoming ready (${child.exitCode})`);
+      throw new Error(
+        `Test server exited before becoming ready (${child.exitCode})\n${output}`,
+      );
     }
     try {
       const response = await fetch(`${origin}/api/health/ready`);
