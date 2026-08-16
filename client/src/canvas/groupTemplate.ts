@@ -156,7 +156,7 @@ export function serializeGroupTemplate(options: {
   );
   if (!group) throw new Error("未找到要保存的组");
   const children = options.nodes.filter(
-    (node) => node.parentId === options.groupId,
+    (node) => node.id !== options.groupId && node.parentId === options.groupId,
   );
   if (children.some((node) => node.type === "probe")) {
     throw new Error("组内包含测试节点，无法保存为模板");
@@ -169,6 +169,9 @@ export function serializeGroupTemplate(options: {
     .map(serializeEdge);
   const groupNode = serializeNode(group);
   groupNode.position = { x: 0, y: 0 };
+  // The serialized group is the template root even if historical canvas data
+  // carried an invalid self-parent link. Never publish a cyclic template.
+  delete groupNode.parentId;
   return {
     edges: childEdges,
     nodes: [groupNode, ...children.map(serializeNode)],

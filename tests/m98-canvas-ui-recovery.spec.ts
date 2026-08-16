@@ -272,7 +272,23 @@ test("node titles keep readable screen-space typography across zoom bands", asyn
       style: { height: 280, width: 620 },
       type: "storyboard",
     },
-  ], { x: 80, y: 80, zoom: 1 });
+    {
+      data: titleData("负坐标模板组"),
+      id: "negative-group",
+      parentId: "negative-group",
+      position: { x: -1080, y: -1080 },
+      style: { height: 520, width: 760 },
+      type: "group",
+    },
+    {
+      data: titleData("组内节点"),
+      id: "negative-child",
+      parentId: "negative-group",
+      position: { x: 40, y: 40 },
+      style: { height: 220, width: 280 },
+      type: "image",
+    },
+  ], { x: 770, y: 730, zoom: 0.15 });
 
   await page.goto(`/__fixture/${canvasId}`);
   const world = page.getByTestId("canvas-world");
@@ -281,6 +297,21 @@ test("node titles keep readable screen-space typography across zoom bands", asyn
   const textNode = page.locator('.react-flow__node[data-id="readable-text"]');
   const title = textNode.locator(".canvas-node-title");
   const titleText = title.locator("span");
+  const negativeGroup = page.locator(
+    '.react-flow__node[data-id="negative-group"]',
+  );
+  const negativeChild = page.locator(
+    '.react-flow__node[data-id="negative-child"]',
+  );
+  await expect(negativeGroup).toBeVisible();
+  await expect(negativeChild).toBeVisible();
+  await negativeGroup.click({ position: { x: 30, y: 50 } });
+  await expect(negativeGroup).toHaveClass(/selected/);
+  const negativeBefore = await Promise.all([
+    negativeGroup.evaluate((element) => (element as HTMLElement).style.transform),
+    negativeChild.evaluate((element) => (element as HTMLElement).style.transform),
+  ]);
+  expect(negativeBefore[0]).toContain("translate(-1080px, -1080px)");
 
   await slider.fill("0.6");
   await expect(world).toHaveAttribute("data-title-zoom-band", "compact");
@@ -339,4 +370,37 @@ test("node titles keep readable screen-space typography across zoom bands", asyn
     .locator(".storyboard-node-title");
   await expect(storyboardTitle).toHaveCSS("pointer-events", "none");
   expect((await storyboardTitle.boundingBox())!.width).toBeLessThanOrEqual(221);
+  const transformsBefore = await Promise.all([
+    group.evaluate((element) => (element as HTMLElement).style.transform),
+    page
+      .locator('.react-flow__node[data-id="readable-group-child"]')
+      .evaluate((element) => (element as HTMLElement).style.transform),
+  ]);
+  for (const zoom of ["0.27", "0.15", "0.6", "0.15", "1", "0.15"]) {
+    await slider.fill(zoom);
+    await expect(world).toHaveAttribute("data-viewport-zoom", zoom);
+  }
+
+  await expect.poll(async () => Promise.all([
+    group.evaluate((element) => (element as HTMLElement).style.transform),
+    page
+      .locator('.react-flow__node[data-id="readable-group-child"]')
+      .evaluate((element) => (element as HTMLElement).style.transform),
+  ])).toEqual(transformsBefore);
+  const persisted = await request.get(`/api/canvas/${canvasId}`);
+  expect(persisted.ok()).toBeTruthy();
+  const document = await persisted.json() as {
+    nodes: Array<{
+      id: string;
+      position: { x: number; y: number };
+    }>;
+  };
+  expect(document.nodes.find((node) => node.id === "readable-group")?.position)
+    .toEqual({ x: 620, y: 120 });
+  expect(document.nodes.find((node) => node.id === "readable-group-child")?.position)
+    .toEqual({ x: 40, y: 60 });
+  await expect.poll(async () => Promise.all([
+    negativeGroup.evaluate((element) => (element as HTMLElement).style.transform),
+    negativeChild.evaluate((element) => (element as HTMLElement).style.transform),
+  ])).toEqual(negativeBefore);
 });

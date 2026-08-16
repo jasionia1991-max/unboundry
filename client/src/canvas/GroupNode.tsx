@@ -1,7 +1,6 @@
 import {
   NodeResizer,
   useReactFlow,
-  useViewport,
   type NodeProps,
 } from "@xyflow/react";
 import {
@@ -50,13 +49,12 @@ function GroupNodeImpl({
   dragging,
   id,
   selected,
-  width,
 }: NodeProps<ProbeNodeType>) {
   const singleNodeChrome = useSingleNodeChrome(selected, dragging);
   const checkpoint = useCanvasCheckpoint();
-  const { getEdges, getNode, getNodes } = useReactFlow<ProbeNodeType>();
+  const { getEdges, getNode, getNodes, getViewport } =
+    useReactFlow<ProbeNodeType>();
   const { setNodes } = useCanvasGraphMutation();
-  const { zoom } = useViewport();
   const { canvasId, isFixture, notify } = useGenerationCanvas();
   const { cancelGroup, executeGroup, executingGroupIds } =
     useWorkflowExecution();
@@ -136,6 +134,7 @@ function GroupNodeImpl({
     const startX = event.clientX;
     const startY = event.clientY;
     const start = group.position;
+    const startZoom = Math.max(getViewport().zoom, 0.01);
     setNodes((nodes) =>
       nodes.map((node) => ({ ...node, selected: node.id === id })),
     );
@@ -147,8 +146,8 @@ function GroupNodeImpl({
             ? {
                 ...node,
                 position: {
-                  x: start.x + (pointerEvent.clientX - startX) / zoom,
-                  y: start.y + (pointerEvent.clientY - startY) / zoom,
+                  x: start.x + (pointerEvent.clientX - startX) / startZoom,
+                  y: start.y + (pointerEvent.clientY - startY) / startZoom,
                 },
               }
             : node,
@@ -337,23 +336,6 @@ function GroupNodeImpl({
     }
   };
 
-  const scale = 1 / Math.max(zoom, 0.01);
-  const toolbarStyle = {
-    left: "50%",
-    marginLeft: -195 * scale,
-    top: -94 * scale,
-    transform: `scale(${scale})`,
-  };
-  const titleScreenWidth = Math.max(
-    72,
-    Math.min(180, Math.max(0, (width ?? 312) * zoom - 12)),
-  );
-  const titleStyle = {
-    left: 4 * scale,
-    top: -40 * scale,
-    transform: `scale(${scale})`,
-    width: titleScreenWidth,
-  };
   const childCount = getNodes().filter((node) => node.parentId === id).length;
   const hasDownload = getNodes().some(
     (node) =>
@@ -387,10 +369,6 @@ function GroupNodeImpl({
   return (
     <>
       <NodeResizer
-        handleStyle={{
-          height: 24 * scale,
-          width: 24 * scale,
-        }}
         isVisible={singleNodeChrome}
         minHeight={147}
         minWidth={312}
@@ -400,7 +378,6 @@ function GroupNodeImpl({
         <div
           className="group-node-toolbar nodrag nopan"
           data-testid="group-node-toolbar"
-          style={toolbarStyle}
         >
           <button
             aria-label="组合框颜色"
@@ -531,7 +508,6 @@ function GroupNodeImpl({
         className="canvas-node-title group-node-title nodrag"
         onPointerEnter={() => setTitleHovered(true)}
         onPointerLeave={() => setTitleHovered(false)}
-        style={titleStyle}
       >
         <svg aria-hidden="true" viewBox="0 0 24 24">
           <rect height="12" rx="2" width="14" x="3" y="7" />

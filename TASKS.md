@@ -1,7 +1,16 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-16
-状态：`生产当前运行 v0.6.4/schema39；INC-UI-005已发布并完成自动与浏览器技术验证，待用户复验；既有INC-UI-004、INC-UI-003、INC-VIDEO-001、INC-UI-001/002及INC-ECOM状态保持。`
+状态：`v0.6.5已发布到生产并完成自动与登录实页技术验证；INC-UI-006为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，既有验收状态保持。`
+
+### 2026-08-16 缩放时节点/模板坐标漂移（INC-UI-006）
+
+- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。用户确认版本v0.6.5并授权全量测试、坐标恢复、冻结备份、发布及GitHub收尾；生产实页复现的缩放污染已修复并发布。
+- 根因链：v0.6.4 Group组件直接订阅viewport，并在每次缩放React重渲染时同时改标题、工具栏及NodeResizer几何；React Flow在负坐标父子Group挂载/测量切换时可能回报被动position change，既有`onNodesChange`未区分镜头重算与用户拖动，因而可能写入并持久化。
+- 修复：Group不再订阅viewport；标题和工具栏仅消费CanvasSurface命令式维护的CSS变量，NodeResizer恢复官方单层autoScale；组标题拖动开始时只读取一次实时zoom。`applyViewport`在调用React Flow前先开启交互闸门，缩放/平移安静期只过滤非拖拽position change，dimensions/selection及真实拖动继续正常处理。画布载入、模板应用和组模板序列化统一阻断`parentId===id`的历史根组自引用。
+- 自动门：相关6份spec定向`69/69 PASS`；正式安全全量`118/118 specs、968/968 tests PASS`，异常0，4173 listener不变，真实Provider/付费/OSS请求0。
+- 生产数据前置：目标组数据库为自引用根及相对`(-24,-24)`，15%实页DOM为`(-1128,-1128)`；冻结备份后按已复现的原始世界坐标恢复为无父级`(-1080,-1080)`。另一自引用根只移除自引用并保留其保存坐标，不猜测位置。
+- 发布：精确源码commit`d19e9dbf564f5806adface7807fbf7182bcdafc8`；生产current已切到`/opt/unboundry/releases/v0.6.5-inc-ui-006-20260816`。冻结备份恢复、公网哈希、service/schema39与数据不变门通过；登录实页72节点连续缩放`movedIds=[]`。仍需用户在原问题画布肉眼复验，自动结果不能代替`USER_RECHECK`。
 
 ### 2026-08-16 组标题总览层级（INC-UI-005）
 
@@ -357,7 +366,7 @@ F14本地正式门证据绑定 HEAD `eb4f99ea525390b0dd7a39d3cad55d882ffea41d`�
 
 ## 当前阶段
 
-阶段：`INC-UI-005 PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK / 生产 v0.6.4/schema39 LIVE / GitHub发布收尾中`
+阶段：`INC-UI-006 PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK / 生产 v0.6.5/schema39 LIVE / GitHub发布收尾中`
 
 画布、固定界面、Text、Image、Video、Audio、Playlist、Group、外围面板、账号、管理员模型中心、生成安全和新图片私有OSS链路已通过当前范围验收；Comment、社区、TapTV、竞技场、额度和链接分享已按用户决定取消。OpenRouter GPT Image 2已完成一次用户授权的历史真实生成，图片连线参考图及真实结果零费用重启恢复均已通过；本次 cutover 未发起 Provider 或付费生成请求。
 

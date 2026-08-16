@@ -1,18 +1,25 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`65`
+断点版本：`66`
 更新时间：`2026-08-16`
-状态：`INC_UI_005_V0_6_4_PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK`
+状态：`INC_UI_006_V0_6_5_PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
-## 0. 当前新事件：INC-UI-005（v0.6.4已发布，待用户复验）
+## 0. 当前新事件：INC-UI-006（v0.6.5已发布，待用户复验）
+
+- 用户确认v0.6.5并授权全量测试、坐标恢复、冻结备份、发布、commit、push、tag与PR合并。
+- 修复Group的viewport重渲染和镜头期被动position change持久化，并在载入、模板应用和组模板保存时阻断`parentId===id`自引用根；真实拖动、键盘移动和resize不变。
+- 精确源码commit`d19e9dbf564f5806adface7807fbf7182bcdafc8`通过定向69/69及安全全量118/118 specs、968/968 tests，异常0；真实Provider、付费生成和OSS写入0。
+- 生产current已切到`/opt/unboundry/releases/v0.6.5-inc-ui-006-20260816`，公网资源、冻结备份恢复、service/schema39与数据不变门PASS。目标组恢复无父级`(-1080,-1080)`；另一自引用根只移除自引用并保留坐标。登录实页72节点连续缩放无位移，`movedIds=[]`。当前仅待用户肉眼复验。
+
+## 0A. 前一事件：INC-UI-005（v0.6.4已发布，待用户复验）
 
 - 用户确认不增加组内视觉边距/边框，同意组标题总览层级方案；随后单独确认版本号`v0.6.4`并授权上线、commit、push、tag和合并PR。
 - 已发布实现：组标题固定屏幕间隔约20px、宽度72～180px；15%总览默认隐藏组内节点标题，组hover或选中后仅恢复该组。
 - 不增加标题栏、内边距或边框，不移动组内节点；组/节点持久坐标、连线和普通未分组节点标题不变。
 - 发布门：精确源码commit`ba5805c4448e504d33238947ea9aec1dfa160166`通过`118/118 specs、968/968 tests PASS`，异常0；首个夹带旧dist的中间产物被真实浏览器门拒绝，最终以fresh build发布到`/opt/unboundry/releases/v0.6.4-inc-ui-005-20260816-r2`。公网资源、隔离启动、冻结备份恢复、service/schema39和数据不变门均PASS；15%与约27%实页合同验证通过。真实Provider、付费生成与OSS写入均为0，当前仅待用户肉眼复验。
 
-## 0A. 前一事件：INC-UI-004（已发布，待用户复验）
+## 0B. 前一事件：INC-UI-004（已发布，待用户复验）
 
 - 用户认可“低缩放标题保持屏幕可读”的预览方案并授权施工及生产发布；本轮未授权、也未执行commit/push/tag/PR。
 - 普通节点标题由`CanvasSurface.updateViewportDom`实时写入zoom档位、反向缩放、可用宽度和Storyboard标题间距；React状态与持久画布文档不加入任何缩放派生字段。
@@ -21,7 +28,7 @@
 - 相关6份spec `16/16 PASS`；正式安全全量`118/118 specs、968/968 tests PASS`，failed/skipped/retries/blocked/reportErrors均0，source/snapshot `e1bfb993cf6f4cb4d9567912b0b82487b63809875d881e8d8c3fb79b9417a843`一致，4173 listener未变，suite cleaned，exit0。真实Provider、付费生成和真实OSS请求0。
 - 生产已切到`/opt/unboundry/releases/v0.6.3-inc-ui-004-20260816`；隔离Linux启动、公网JS/CSS逐字节哈希、冻结备份恢复均PASS。service active+enabled、NRestarts0、公网v0.6.3 ready active/schema39；切换前后tasks153/attempts152/active0及模板46/45不变，真实Provider/付费/OSS写入0。当前为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；权威文档与回执为`spec/INC_UI_004_CANVAS_TITLE_ZOOM_LEGIBILITY_2026-08-16.md`、`spec/INC_UI_004_PRODUCTION_RECEIPT_2026-08-16.json`。
 
-## 0B. 前一事件：INC-VIDEO-001（已发布，真实视频PASS，待用户次日复验）
+## 0C. 前一事件：INC-VIDEO-001（已发布，真实视频PASS，待用户次日复验）
 
 - 用户明确授权真实API消耗并要求尽量控制成本，目标是次日能正常使用工作流生成。
 - 根因与修复：`grok-imagine-video-1.5-preview`首帧中转契约要求`images`数组，旧代码发送`first_frame_url`；现已在统一提交路径映射为数组并限制恰好1张。定向m57 `9/9 PASS`，正式全量`118/118 specs、965/965 tests PASS`，失败/跳过/重试0。
@@ -30,7 +37,7 @@
 - 真实成功：Seedance文生视频task`c0269665-4db5-46a1-bc13-2d5574a66cca`一次成功，4秒/480p/无音频；asset`fbfed94d-e41e-4858-8e7e-96c4eae98c4a.mp4`为OSS ready、864×496、4.042秒、1,117,495 bytes。刷新后浏览器readyState4、media error为空。
 - 收尾：数据库tasks126/attempts125/active0、quick_check ok、FK0；应用账本记录成功视频actual cost`568316 microunits CNY`，不冒充Provider最终账单。详细凭证为`spec/INC_VIDEO_001_PRODUCTION_RECEIPT_2026-08-16.json`、`spec/V0_6_2_REAL_WORKFLOW_SMOKE_2026-08-16.json`。专用分支已推送，`v0.6.2`标签指向生产源码commit`959c1e287…`，Draft PR #1已更新且CLEAN。
 
-## 0C. 前一事件：INC-UI-002（已发布，待用户线上复验）
+## 0D. 前一事件：INC-UI-002（已发布，待用户线上复验）
 
 - 用户授权一次性修复三个全局UI问题，并要求对齐既有灰阶UI规范：巨大Group附近框选三个节点时误选大范围、OSS素材出现原生坏媒体图标/失败边框、七类节点长标题显示不全。
 - 权威方案与完成证据：`spec/INC_UI_002_CANVAS_SELECTION_MEDIA_TITLE_REMEDIATION_2026-08-16.md`。
@@ -43,7 +50,7 @@
 - 备份与独立恢复副本为`/var/lib/unboundry-rollbacks/inc-ui-002-20260815T180956Z`，清单SHA一致`b1754f94…c2909`；schema39/quick_check ok/FK0，tasks118/attempts116/active0、模板43/42和并发500前后不变，Provider/付费调用/OSS写入0。
 - 当前状态为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；未获新的push/tag/PR授权，GitHub保持既有状态。生产凭证见`spec/INC_UI_002_PRODUCTION_RECEIPT_2026-08-16.json`。
 
-## 0D. 前一事件：INC-UI-001
+## 0E. 前一事件：INC-UI-001
 
 - 用户要求先为两项优化建立防失忆的详细修改方案：设置页返回进入前的真实项目并新增「返回工作空间」；浏览器标签显示无央 favicon 和准确页面/项目标题。
 - 权威方案：`spec/INC_UI_001_SETTINGS_RETURN_AND_BROWSER_IDENTITY_PLAN_2026-08-15.md`。
@@ -53,7 +60,7 @@
 - NAV-001～004与BRAND-001～003保持`USER_RECHECK`，不可在用户可见浏览器确认前记PASS；该功能已随package/生产v0.6.2发布。
 - 当前`v0.6.1`标签与Draft PR #1未更新；INC-UI-001已随v0.6.2生产发布，用户线上复验前仍为`USER_RECHECK`。
 
-## 0E. 前一事件：INC-ECOM-007
+## 0F. 前一事件：INC-ECOM-007
 
 - 用户确认整组运行必须按依赖流水：多入参全部本轮成功并保存后才运行；分流独立推进；汇流严格等待全部；分支失败只阻塞后代。
 - 已确认是通用执行器缺陷：全图动态预检过早、真实resolver的blocked空态绕过延后分支、测试夹具失真、整层屏障以及节点运行时输入快照可能陈旧。
@@ -65,7 +72,7 @@
 - 公网version 0.6.1、live/ready和主JS哈希PASS；service active/enabled、NRestarts0。schema39 quick_check ok/FK0，tasks109/attempts107/active0、模板43/42及并发/RPM 500前后不变；Provider/付费调用0。
 - 用户随后在v0.6.1线上实页完成复验并明确回复“通过通过”；INC-ECOM-007收口为`PRODUCTION_PUBLISHED_USER_PASS`。权威记录与生产凭证见`spec/INC_ECOM_007_WORKFLOW_PIPELINE_REMEDIATION_2026-08-15.md`、`spec/INC_ECOM_007_PRODUCTION_RECEIPT_2026-08-15.json`。
 
-## 0D. 前一事件：INC-ECOM-006
+## 0G. 前一事件：INC-ECOM-006
 
 - 用户明确“确定 发布”；第三批12条声明式工作流已单事务导入生产，线上继续显示`v0.6.0`。
 - 最终停机一致备份：`/var/lib/unboundry-rollbacks/inc-ecom-006-20260815T101814Z`，数据库SHA `1d606cdf…f8d9d`，数据清单SHA `07be6b05…a274`、证据清单SHA `432aa233…70b6`并全量验签PASS。
@@ -75,7 +82,7 @@
 - 用户随后明确“都通过了”，当前为`PRODUCTION_PUBLISHED_USER_PASS`；未为验收运行真实生成。
 - 证据：`spec/INC_ECOM_006_ECOMMERCE_WORKFLOW_BATCH_3_2026-08-15.md`、`spec/ecommerce-workflow-batch-3-production-receipt.json`。
 
-## 0E. 前一事件：INC-ECOM-005
+## 0H. 前一事件：INC-ECOM-005
 
 - 用户要求补上此前列出的第二批P0/P1/P2工作流，并确认模板是否写死；随后明确确认继续`v0.6.0`并允许发布。12条已以声明式JSON数据事务导入生产，不是前端组件条件分支。
 - 停机一致备份与恢复验证目录`/var/lib/unboundry-rollbacks/inc-ecom-005-20260815T092428Z`；恢复数据库SHA`5a4df10e…c3de`，最终清单SHA`8313a3b6…f503`。
@@ -84,7 +91,7 @@
 - 用户随后明确第二批实页验收“通过1”，INC-ECOM-005收口为`PRODUCTION_PUBLISHED_USER_PASS`。用户同时要求开始第三批优秀工作流调研，当前只授权调研、本地数据包与零付费验证，不自动授权第三批生产发布。
 - 详细记录：`spec/INC_ECOM_005_ECOMMERCE_WORKFLOW_BATCH_2_2026-08-15.md`；receipt：`spec/ecommerce-workflow-batch-2-production-receipt.json`。
 
-## 0F. 前一事件：INC-ECOM-004
+## 0I. 前一事件：INC-ECOM-004
 
 - 用户已明确授权发布模板封面，并单独确认继续使用`v0.6.0`；该一次性生产授权已经消费。
 - 16张1200×675 JPG已发布，生产18条published模板现全部有`preview_image`。公网逐文件核对为16/16 HTTP200、`image/jpeg`且SHA与receipt一致；live/ready/version/root均200。
@@ -94,7 +101,7 @@
 - 零费用边界：发布前后tasks109、Provider attempts107、active0；per-user/RPM/Text/Image/Video/Audio仍全部500，`provider_profiles`逐行未变，数据manifest SHA仍`980e90a9…28d0`，OSS未改；未调用Provider、未生成、未push/tag/PR。
 - 当前结论：`PRODUCTION_STATIC_COVERS_DEPLOYED / USER_VISUAL_PASS`。技术发布门与用户视觉确认均已通过。
 
-## 0G. 前一事件：INC-ECOM-003
+## 0J. 前一事件：INC-ECOM-003
 
 - 用户在180秒修复部署后重新授权并要求控制成本：保持GPT Image 2专用协议、3:4、1K，只对同一节点再提交一次，不运行另外两图或视频，不重试。
 - 新task `9e4faf78-e466-4ae7-8799-2c9d2150bed6`、Provider attempt 132约58.6秒一次成功，result asset `9f755d07-42df-47a0-9bd1-443030244a59`已绑定原节点；ready PNG `1023×1537`、1,545,396 bytes、SHA-256 `ecf51e6c…ddb44`。
@@ -107,7 +114,7 @@
 - 当前生产：service active；公网live/ready/version/root正常；schema39 quick_check ok、active0、tasks109、Provider attempts107、pending publication0。用户设置的per-user/RPM/Text/Image/Video/Audio仍全部500；Provider/Storage密文配置SHA部署前后未变，OSS未改。
 - 当前状态：`REFERENCE/OSS/PREFLIGHT_PASS / GPT_IMAGE_TIMEOUT_REPAIR_DEPLOYED / ONE_REQUEST_REAL_IMAGE_SMOKE_PASS / USER_RESULT_REVIEW`。完整三图、视频和用户实页结果继续`PENDING`；另外两图、push/tag/PR都没有授权。
 
-## 0H. 前一事件：INC-ECOM-002
+## 0K. 前一事件：INC-ECOM-002
 
 - 用户已确认电商参考图工作流完整修复方案；随后追加授权正式候选部署、生产模板模型绑定、备份、必要停启与零付费页面/API复核。
 - 权威事件断点：`spec/INC_ECOM_002_REFERENCE_WORKFLOW_REMEDIATION_2026-08-15.md`。恢复者必须在本文件当前结论前先读取它。
@@ -493,22 +500,22 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 
 ## 10. 2026-08-16 当前恢复卡
 
-> 2026-08-16 INC-UI-005增量断点：v0.6.4已发布，current→`v0.6.4-inc-ui-005-20260816-r2`，公网v0.6.4、service active+enabled、schema39、NRestarts0。正式安全全量118/118 specs、968/968 tests PASS；Chrome在15%与约27%完成组标题合同验证，生产数据不变，真实Provider/付费/OSS写入0。当前仅待用户肉眼复验；以INC-UI-005文档和生产receipt为准。
+> 2026-08-16 INC-UI-006增量断点：v0.6.5已发布，current→`v0.6.5-inc-ui-006-20260816`，公网v0.6.5、service active+enabled、schema39、NRestarts0。正式安全全量118/118 specs、968/968 tests PASS；目标组坐标已从冻结证据精确恢复，Chrome对72节点连续缩放无位移，生产数据不变，真实Provider/付费/OSS写入0。当前仅待用户肉眼复验；以INC-UI-006文档和生产receipt为准。
 
 ```text
 项目路径：/Users/mymy/Documents/unboundry/app
-本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.4生产源commit ba5805c4448e504d33238947ea9aec1dfa160166；禁止reset/clean
-生产：canvas.mymy.ltd；v0.6.4/schema39；/opt/unboundry/current -> releases/v0.6.4-inc-ui-005-20260816-r2
-生产artifact：source commit ba5805c4448e504d33238947ea9aec1dfa160166；tree 89dbef401b9ca9dd347e9127e1f309e3559cf2ce；inventory 8ad5b316eea8ffe05583b00c79ce505a5a279cd05abd4966bcf555f5eab197ca
-当前状态：INC-UI-005已发布并完成自动与Chrome实页技术验证、待用户复验；既有INC-UI-004/003、INC-VIDEO-001、INC-UI-001/002状态保持；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
-技术凭证：spec/INC_UI_005_PRODUCTION_RECEIPT_2026-08-16.json；spec/INC_UI_005_GROUP_TITLE_OVERVIEW_2026-08-16.md；既有视频与UI发布凭证继续保留
-用户验收：既有v0.6.0/v0.6.1验收保持；v0.6.4组标题总览、v0.6.3公共模板UI与旧标签恢复、v0.6.2其余UI/视频项等待用户线上复验
+本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.5生产源commit d19e9dbf564f5806adface7807fbf7182bcdafc8；禁止reset/clean
+生产：canvas.mymy.ltd；v0.6.5/schema39；/opt/unboundry/current -> releases/v0.6.5-inc-ui-006-20260816
+生产artifact：source commit d19e9dbf564f5806adface7807fbf7182bcdafc8；tree e360800190fa20993984bcc560d25d5eef1cfbfa；inventory cd9296aec4662dceb00cdd22256040ee91512971f36049d5ba3af0a7bdb0a53b
+当前状态：INC-UI-006已发布并完成自动与Chrome实页技术验证、待用户复验；既有INC-UI-005/004/003、INC-VIDEO-001、INC-UI-001/002状态保持；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
+技术凭证：spec/INC_UI_006_PRODUCTION_RECEIPT_2026-08-16.json；spec/INC_UI_006_CANVAS_ZOOM_POSITION_STABILITY_2026-08-16.md；既有视频与UI发布凭证继续保留
+用户验收：既有v0.6.0/v0.6.1验收保持；v0.6.5坐标稳定、v0.6.4组标题总览、v0.6.3公共模板UI与旧标签恢复、v0.6.2其余UI/视频项等待用户线上复验
 数据库：schema39；quick_check ok；FK0；153 tasks/152 attempts；46 public templates/45 published；active0；默认视频模型Seedance；既有生成安全配置不变
-备份：/var/lib/unboundry-rollbacks/inc-ui-005-r2-frozen-20260816T135322Z；冻结源与恢复副本清单SHA efcdf8cead2309f9dcded98d67135f6e911a8b11d7b7698d59d7fdccdc8f8834，二者均PASS；历史schema37/offhost备份继续保留
+备份：/var/lib/unboundry-rollbacks/inc-ui-006-frozen-20260816T152307Z；冻结源与恢复副本均363文件，清单SHA ba6baec6408f1a34d542cffc87cdf69717b82138154af4b049979a413657633e，二者均PASS；历史schema37/offhost备份继续保留
 限制：attempt 86/108/116/120/122为行政取消且禁止重试，PROVIDER_FAILED仅surrogate；3条音频仅改duration元数据；cutover Provider/paid calls=0
-GitHub：v0.6.4源码分支已推送，PR #3与精确源码注释标签由当前已授权发布流程收尾
-未来授权：本次v0.6.4生产与GitHub发布授权在收尾完成后消费；未来生产读写、真实Provider/付费生成、push/tag/PR或新发布仍需新授权
-下一步：用户按v0.6.4验收清单线上复验；确认后再把INC-UI-005从USER_RECHECK改为USER PASS
+GitHub：v0.6.5源码、精确源码注释标签与PR合并由当前已授权发布流程收尾
+未来授权：本次v0.6.5生产与GitHub发布授权在收尾完成后消费；未来生产读写、真实Provider/付费生成、push/tag/PR或新发布仍需新授权
+下一步：用户按v0.6.5验收清单线上复验；确认后再把INC-UI-006从USER_RECHECK改为USER PASS
 ```
 
 任何恢复者必须优先使用本节；第9节只保留历史，不得执行其“下一步”。
