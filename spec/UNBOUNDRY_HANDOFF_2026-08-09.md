@@ -2,6 +2,18 @@
 
 > 写给下一个接手的人/AI agent。目标：看完本文后不需要向用户问“项目在哪、怎么跑、怎么发布、有什么红线”。
 
+## 当前新任务：INC-UI-005（v0.6.4已发布，待用户复验）
+
+用户明确不要组内新增视觉边距/边框，并同意其余总览层级方案；随后单独确认`v0.6.4`版本号并授权上线、commit、push、tag和合并PR。Group标题与组框保持约20px屏幕间隔、宽度限制72～180px；15%总览默认隐藏组内节点标题，组hover或选中时仅恢复该组。不增加标题栏、内边距或边框，不移动组内节点，不改变持久坐标、连线或普通未分组节点标题。精确源码commit`ba5805c4448e504d33238947ea9aec1dfa160166`通过安全全量118/118 specs、968/968 tests；首个夹带旧dist的产物被浏览器发布门拒绝，最终fresh build已发布到`/opt/unboundry/releases/v0.6.4-inc-ui-005-20260816-r2`。公网资源、冻结备份恢复、service/schema39、数据不变和Chrome四项合同均PASS；真实Provider、付费生成与OSS写入0。当前为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，权威凭证为`spec/INC_UI_005_GROUP_TITLE_OVERVIEW_2026-08-16.md`与`spec/INC_UI_005_PRODUCTION_RECEIPT_2026-08-16.json`。
+
+## 当前新任务：INC-UI-004（2026-08-16，已发布待用户复验）
+
+用户确认节点标题缩放可读性预览并授权施工及上线。普通节点标题在`zoom < 1`时按屏幕空间补偿，15%总览约12px、35%～100%约14px；颜色提亮为中高对比灰白、字重500、轻微暗色阴影，不增加底板。长标题保持单行省略和完整`title`，Group保留既有独立补偿避免双重放大，Storyboard有独立宽度上限；总览未选中标题不拦截画布指针，选中标题仍可编辑。节点/连线几何和持久数据不变。相关6份spec `16/16 PASS`，正式安全全量`118/118 specs、968/968 tests PASS`，异常0、4173不变、真实Provider/付费/OSS请求0。生产current已切到`/opt/unboundry/releases/v0.6.3-inc-ui-004-20260816`；隔离Linux启动、公网资源哈希、冻结备份恢复、active/schema39与数据不变门均PASS，tasks153/attempts152/active0及模板46/45不变。当前是`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；本次未执行GitHub动作，未来发布与GitHub动作仍须新授权。权威文档与回执为`spec/INC_UI_004_CANVAS_TITLE_ZOOM_LEGIBILITY_2026-08-16.md`、`spec/INC_UI_004_PRODUCTION_RECEIPT_2026-08-16.json`。
+
+## 当前新任务：INC-UI-003（2026-08-16，v0.6.3已发布待用户复验）
+
+公共模板管理UI已对齐灰阶规范；特定项目返回画布失败已定位为单标签旧server-epoch pagehide journal。相同document指纹会零PUT结算并正常加载；不同内容保留journal并提供“打开服务器版本”，新标签载入权威画布且原标签恢复副本不被覆盖。正式安全全量118/118 specs、967/967 tests PASS，异常0。生产current已切到`/opt/unboundry/releases/v0.6.3-inc-ui-003-r2-20260816`，公网v0.6.3、active/schema39、NRestarts0；备份/恢复与数据不变检查通过，真实Provider/付费/OSS写入0。登录Chrome已验证目标画布恢复、公共模板返回路径、编辑弹窗UI和键盘合同；当前仅待用户肉眼复验。权威记录为`spec/INC_UI_003_PUBLIC_TEMPLATE_AND_CANVAS_LOAD_RECOVERY_2026-08-16.md`及`spec/INC_UI_003_PRODUCTION_RECEIPT_2026-08-16.json`。
+
 ## 当前新任务：INC-VIDEO-001（2026-08-16，已发布且真实视频PASS，待用户次日复验）
 
 Grok首帧中转协议已从`first_frame_url`修为`images`数组并限制恰好1张，定向`m57 9/9`及正式全量`118/118 specs、965/965 tests`通过。生产已切到`/opt/unboundry/releases/v0.6.2-inc-video-001-20260816`，公网v0.6.2 live/ready正常，schema39无迁移。修复后Grok请求能被正确契约受理，但中转上游两次0%网络超时，已停止重试并将默认视频模型改为`Seedance 2.0 Mini`。Seedance文生视频task`c0269665-4db5-46a1-bc13-2d5574a66cca`一次成功，4秒/480p/无音频，MP4已OSS ready，刷新后浏览器可播放；真人参考图会被Seedance内容安全拒绝，不能把该Provider限制写成应用故障。当前数据库tasks126/attempts125/active0、quick_check ok、FK0。详细凭证为`spec/INC_VIDEO_001_PRODUCTION_RECEIPT_2026-08-16.json`和`spec/V0_6_2_REAL_WORKFLOW_SMOKE_2026-08-16.json`；专用分支、`v0.6.2`标签和Draft PR #1均已同步。
@@ -24,12 +36,12 @@ Grok首帧中转协议已从`first_frame_url`修为`images`数组并限制恰好
 
 ## 0. 2026-08-16 最终生产状态（当前权威）
 
-- 当前状态：`REM-000～011（含009A/009B）PASS / PRODUCTION LIVE / INC-VIDEO-001真实视频PASS待用户次日复验 / INC-UI-001/002已发布待用户复验 / INC-ECOM-001～007按各自证据边界完成用户收口`。
-- 生产运行 `v0.6.2/schema39`，`/opt/unboundry/current -> releases/v0.6.2-inc-video-001-20260816`；service active+enabled、NRestarts0、127.0.0.1:4173。公网live/ready/version/root正常，version 0.6.2、ready active/schema39；当前默认视频模型为Seedance 2.0 Mini。
-- 视频热修复源码commit`959c1e287fb25943ca13037332030e99b39725be`/tree`6539868d3aa5df8be2fdbf3d10e8c6414ffe3845`，release inventory`cf1c6e1aa33438e0d05dba11593f8095a30795a03a51dcd36f48d7d31ab340b5`；上一`v0.6.2-inc-ui-002-20260816`完整保留，原备份/恢复材料不变。
-- 数据最新核验：schema39、quick_check ok、FK0、active generation0、126 tasks/125 provider attempts、43 public templates（42 published）。真实`Text → Image`流水与Seedance文生视频均成功并刷新持久；Grok中转上游网络超时与真人参考图内容安全限制已分开记录。
+- 当前状态：`REM-000～011（含009A/009B）PASS / PRODUCTION LIVE / INC-UI-003已发布自动与实页技术验证PASS待用户复验 / INC-VIDEO-001真实视频PASS待用户复验 / INC-UI-001/002已发布待用户复验 / INC-ECOM-001～007按各自证据边界完成用户收口`。
+- 生产运行 `v0.6.3/schema39`，`/opt/unboundry/current -> releases/v0.6.3-inc-ui-003-r2-20260816`；service active+enabled、NRestarts0、127.0.0.1:4173。公网live/ready/version/root正常，version 0.6.3、ready active/schema39；默认视频模型仍为Seedance 2.0 Mini。
+- v0.6.3源码commit`399c0fb40c2ffe36c21a8e93ad61549e5d703696`/tree`bf0f1f775d9a62a77e194f35273d18d2ca0d722a`，release inventory`1e56c7e22d2846bae403abff13d8277249174a035434cf1d9923af797082b7c8`；上一不可变release及全部历史备份继续保留。
+- 数据最新核验：schema39、quick_check ok、FK0、active generation0、132 tasks/131 provider attempts、46 public templates（45 published）。INC-UI-003发布前后数据不变，Provider/付费/OSS写入0；真实`Text → Image`流水与Seedance视频的既有结果保持。
 
-以下条目保留v0.6.0/v0.6.1各增量发布的历史证据；出现“当前”字样时只代表该历史时点，不覆盖上方v0.6.2权威状态。
+以下条目保留v0.6.0/v0.6.1各增量发布的历史证据；出现“当前”字样时只代表该历史时点，不覆盖上方v0.6.3权威状态。
 - INC-ECOM-004已为16条电商模板发布真实封面；生产18条published模板现`withPreview=18 / withoutPreview=0`。最终静态内容叠加绑定本地commit `d908c4b3824cd36638f02fec51cbe335f6aacd52`，manifest `340452f7…d7a9`、inventory `1d795f29…f464`；公网16张均HTTP200、`image/jpeg`且SHA逐项相符。用户已确认“都通过了”，状态为`PRODUCTION_STATIC_COVERS_DEPLOYED / USER_VISUAL_PASS`。
 - 该叠加以当前可信formal base `5386c744…47b1`为底，只增加双目录静态文件和manifest绑定，不冒充fresh formal builder/full regression。首轮只写源码静态目录的source-only产物被公网哈希门检出并退役保留；最终产物同时包含`client/public/templates`和`dist/client/templates`。
 - INC-ECOM-004回滚材料：停机备份`/var/lib/unboundry-rollbacks/inc-ecom-004-20260815T080758Z`；原formal release在`/opt/unboundry/retired-releases/20260815T080758Z-pre-inc-ecom-004/v0.6.0`；source-only产物在`/opt/unboundry/retired-releases/20260815T081400Z-inc-ecom-004-source-only/v0.6.0`。发布前后tasks109/attempts107/active0，并发500、Provider与数据manifest未变，OSS/付费生成0。

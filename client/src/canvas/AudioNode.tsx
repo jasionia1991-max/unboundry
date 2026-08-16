@@ -198,6 +198,7 @@ function AudioNodeImpl({
   data,
   dragging,
   id,
+  parentId,
   selected,
 }: NodeProps<ProbeNodeType>) {
   const singleNodeChrome = useSingleNodeChrome(selected, dragging);
@@ -2387,7 +2388,10 @@ function AudioNodeImpl({
           </span>
         )}
       </Handle>
-      <div className="canvas-node-title audio-node-title nodrag">
+      <div
+        className="canvas-node-title audio-node-title nodrag"
+        data-parent-group-id={parentId}
+      >
         <svg aria-hidden="true" viewBox="0 0 18 18">
           <path d="M7 14a3 3 0 1 1-2-2.82V5l9-2v8a3 3 0 1 1-2-2.82V5.5L7 6.6Z" />
         </svg>

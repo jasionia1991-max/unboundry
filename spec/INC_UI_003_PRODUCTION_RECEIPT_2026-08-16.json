@@ -1,0 +1,83 @@
+{
+  "format": "unboundry-production-receipt-v1",
+  "incident": "INC-UI-003",
+  "releasedAt": "2026-08-16T18:04:49+08:00",
+  "status": "PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK",
+  "version": "0.6.3",
+  "schemaVersion": 39,
+  "source": {
+    "commit": "399c0fb40c2ffe36c21a8e93ad61549e5d703696",
+    "tree": "bf0f1f775d9a62a77e194f35273d18d2ca0d722a",
+    "archiveSha256": "ff7d5a20b0d52b11fa8e67fa8463955f0779cf679f16a23d7aa9b5dc5fc81bd8",
+    "snapshotSha256": "9605b5ecb8bb136e05833e029fecb9a7ab1a764a59d7fb05b46eb93649735bd3"
+  },
+  "artifact": {
+    "releasePath": "/opt/unboundry/releases/v0.6.3-inc-ui-003-r2-20260816",
+    "previousReleasePath": "/opt/unboundry/releases/v0.6.3-inc-ui-003-20260816",
+    "currentPath": "/opt/unboundry/current",
+    "inventorySha256": "1e56c7e22d2846bae403abff13d8277249174a035434cf1d9923af797082b7c8",
+    "inventoryFiles": 5014,
+    "distArchiveSha256": "5359cdb8aee4756bb6adf7f255d0eca0448789d3173ee7e073e22e2f8843b7a0",
+    "distFilesSha256": "87a51adcaa4a21a46f480cc3e6fb5c64625392965f03c2320e1ef62a01558208",
+    "distFiles": 32
+  },
+  "validation": {
+    "safeFull": {
+      "specsPassed": 118,
+      "specsTotal": 118,
+      "testsPassed": 967,
+      "testsTotal": 967,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0
+    },
+    "isolatedLinuxSmoke": "PASS",
+    "publicVersion": "0.6.3",
+    "publicLive": "PASS",
+    "publicReady": "ACTIVE_SCHEMA39",
+    "serviceActive": true,
+    "serviceRestarts": 0,
+    "serviceMainPid": 753455,
+    "publicMainJsSha256": "fdd12aeed196f44eeaee451e48ce88a9ca9de61a54aa1367690a572dabb72377",
+    "publicMainCssSha256": "8215918a927af49aee4558c745c65e5d043314629154a11cf248f79f4dfc4aaa",
+    "publicCanvasShellSha256": "b3cbcaaf7fe5520ce3cabf8ae49b86975c0bb932d010ea779642e6126527bf54",
+    "targetCanvasServerVersionOpened": true,
+    "originalLocalRecoveryJournalPreserved": true,
+    "settingsReturnTargetVerified": true,
+    "publicTemplateDialogUiVerified": true,
+    "dialogKeyboardContractVerified": true
+  },
+  "dataBeforeAfter": {
+    "quickCheck": "ok",
+    "foreignKeyViolations": 0,
+    "generationTasks": 132,
+    "cancelledGenerationTasks": 6,
+    "failedGenerationTasks": 14,
+    "successfulGenerationTasks": 112,
+    "providerAttempts": 131,
+    "activeGenerationTasks": 0,
+    "publicTemplates": 46,
+    "archivedTemplates": 1,
+    "publishedTemplates": 45
+  },
+  "rollback": {
+    "path": "/var/lib/unboundry-rollbacks/inc-ui-003-20260816T0930Z",
+    "frozenSourcePath": "/var/lib/unboundry-rollbacks/inc-ui-003-20260816T0930Z/frozen-source/2026-08-16T09-31-09-177Z",
+    "restoreCopyPath": "/var/lib/unboundry-rollbacks/inc-ui-003-20260816T0930Z/restore-copy",
+    "sourceAndRestoreManifestSha256": "fb0570333953ac59823a9d3c22ab698bd97d390db9bd5f32dc853c94ea67dd25",
+    "sourceInspection": "PASS",
+    "restoreInspection": "PASS",
+    "rows": 1735,
+    "mediaFiles": 353,
+    "mediaBytes": 280626212
+  },
+  "externalEffects": {
+    "providerCalls": 0,
+    "paidGenerationRequests": 0,
+    "ossWrites": 0
+  },
+  "userAcceptance": "PENDING_ONLINE_RECHECK",
+  "githubPublication": "NOT_AUTHORIZED_FOR_V0.6.3"
+}

@@ -1,7 +1,34 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-16
-状态：`生产已运行 v0.6.2/schema39；INC-VIDEO-001已发布并完成真实Seedance视频闭环，等待用户次日复验；INC-UI-001/002已发布且自动全量通过，等待用户线上复验；INC-ECOM-001～007已按各自证据边界完成用户收口；REM-000～011（含009A/009B）= PASS；PRODUCTION = LIVE。`
+状态：`生产当前运行 v0.6.4/schema39；INC-UI-005已发布并完成自动与浏览器技术验证，待用户复验；既有INC-UI-004、INC-UI-003、INC-VIDEO-001、INC-UI-001/002及INC-ECOM状态保持。`
+
+### 2026-08-16 组标题总览层级（INC-UI-005）
+
+- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。用户确认不增加组内视觉边距/边框，同意其余总览层级方案，并明确确认版本`v0.6.4`、授权上线、commit、push、tag与合并PR。
+- 实现：组标题使用稳定的屏幕空间宽度72～180px，与组框顶部保持约20px距离；15%总览默认隐藏组内节点标题，鼠标进入组或选中组时恢复，避免大量模板并列时标题堆叠。
+- 明确不做：不增加组标题栏，不增加组内视觉内边距或边框，不移动组内节点，不改变组/节点持久坐标、连线与普通未分组节点标题。
+- 自动门：精确源码commit `ba5805c4448e504d33238947ea9aec1dfa160166`通过正式安全全量`118/118 specs、968/968 tests PASS`，失败/跳过/重试/blocked/reportErrors均0，真实Provider/付费/OSS请求0。
+- 生产结果：current已切到`/opt/unboundry/releases/v0.6.4-inc-ui-005-20260816-r2`；首个夹带旧dist的中间产物被浏览器发布门拒绝，最终版本使用精确源码fresh build。公网JS/CSS哈希、隔离启动、冻结备份恢复、service active+enabled、NRestarts0、schema39与数据不变门均通过，tasks153/attempts152/active0及模板46/45不变。15%和约27%实页验证四项合同通过，用户肉眼验收仍为`USER_RECHECK`。
+
+### 2026-08-16 节点标题缩放可读性（INC-UI-004）
+
+- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。用户已确认预览方案并授权施工及生产发布；本次未授权、也未执行commit/push/tag/PR。
+- 实现：Text/Image/Video/Audio/Playlist/Storyboard标题在`zoom < 1`时按屏幕空间补偿；15%总览保持约12px，35%～100%保持约14px。标题使用更亮灰白、500字重和轻微暗色阴影，不增加底板、不改变节点/连线几何或持久数据。
+- 细节：标题屏幕宽度限制96～180px，Storyboard上限220px；长标题继续单行省略并保留完整`title`。Group保留既有独立反向缩放，仅轻度提亮，避免双重放大。总览档未选中标题不拦截画布指针，选中标题仍可编辑。
+- 自动门：相关6份spec `16/16 PASS`；正式安全全量`118/118 specs、968/968 tests PASS`，失败/跳过/重试/blocked/reportErrors均0，生产构建PASS，source/snapshot一致，4173 listener不变，真实Provider/付费/OSS请求0。
+- 发布：current已切到`/opt/unboundry/releases/v0.6.3-inc-ui-004-20260816`，上一版完整保留；公网JS/CSS哈希与候选相符，service active+enabled、NRestarts0、ready active/schema39。冻结备份恢复副本`quick_check=ok`、FK0；切换前后tasks153/attempts152/active0及模板46/45不变，真实Provider/付费/OSS写入0。
+- 权威记录：`spec/INC_UI_004_CANVAS_TITLE_ZOOM_LEGIBILITY_2026-08-16.md`、`spec/INC_UI_004_PRODUCTION_RECEIPT_2026-08-16.json`。自动页面与上线验证不代替用户肉眼验收。
+
+### 2026-08-16 公共模板 UI 与旧画布会话恢复（INC-UI-003）
+
+- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；用户确认版本v0.6.3并授权一次性完成构建、备份、发布和零付费验证，生产切换已完成。
+- UI：公共模板列表、编辑弹窗、下拉、复选框、按钮、焦点圈定与移动端布局统一对齐灰阶UI规范。
+- 加载：旧服务器epoch的pagehide journal若与权威服务器document指纹完全一致，则零PUT结算并正常进入；若不同则保留journal、零PUT/零生成并提供“打开服务器版本”，新标签载入权威画布，原标签继续保留本地恢复副本。
+- 自动门：118/118 specs、967/967 tests PASS，异常0，source snapshot与4173 listener不变；真实Provider、付费生成和真实OSS写入0。
+- 发布：current已切到`/opt/unboundry/releases/v0.6.3-inc-ui-003-r2-20260816`，公网0.6.3、active/schema39、NRestarts0；备份恢复副本通过，切换前后tasks132/attempts131/active0及模板46/45不变，Provider/付费/OSS写入0。
+- 实页技术验证：目标旧标签显示双恢复操作；新标签服务器版本完整加载且原journal保留；公共模板返回画布及编辑弹窗UI/键盘合同通过。肉眼验收保持USER_RECHECK。
+- 权威记录：`spec/INC_UI_003_PUBLIC_TEMPLATE_AND_CANVAS_LOAD_RECOVERY_2026-08-16.md`、`spec/INC_UI_003_PRODUCTION_RECEIPT_2026-08-16.json`、`spec/V0_6_3_RELEASE_NOTES_2026-08-16.md`。
 
 ### 2026-08-16 视频协议热修复与真实生成（INC-VIDEO-001）
 
@@ -330,7 +357,7 @@ F14本地正式门证据绑定 HEAD `eb4f99ea525390b0dd7a39d3cad55d882ffea41d`�
 
 ## 当前阶段
 
-阶段：`INC-UI-001/002 PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK / 生产 v0.6.2/schema39 LIVE / Draft PR仍为既有v0.6.1状态`
+阶段：`INC-UI-005 PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK / 生产 v0.6.4/schema39 LIVE / GitHub发布收尾中`
 
 画布、固定界面、Text、Image、Video、Audio、Playlist、Group、外围面板、账号、管理员模型中心、生成安全和新图片私有OSS链路已通过当前范围验收；Comment、社区、TapTV、竞技场、额度和链接分享已按用户决定取消。OpenRouter GPT Image 2已完成一次用户授权的历史真实生成，图片连线参考图及真实结果零费用重启恢复均已通过；本次 cutover 未发起 Provider 或付费生成请求。
 

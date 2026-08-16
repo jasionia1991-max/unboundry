@@ -1,0 +1,73 @@
+{
+  "incident": "INC-UI-004",
+  "status": "PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK",
+  "publishedAt": "2026-08-16T11:45:57Z",
+  "url": "https://canvas.mymy.ltd",
+  "version": "0.6.3",
+  "release": {
+    "current": "/opt/unboundry/releases/v0.6.3-inc-ui-004-20260816",
+    "previous": "/opt/unboundry/releases/v0.6.3-inc-ui-003-r2-20260816",
+    "baseCommit": "62e394ecd4c15ac31546f0b62bfe467a8d08bfac",
+    "sourceArchiveSha256": "806ed853024e11b2945c08e70234087ea4850ef3b406b1deece4a82e98cb818d",
+    "distArchiveSha256": "28b29d889fd808967900bd48a49245d9989b069b35de1fb79b2d87a8cc6edbee",
+    "inventorySha256": "36be28fa3859769b67f12249eea90b0e66644537ea06ddc562eb84c7c16e6f74"
+  },
+  "validation": {
+    "relatedSpecs": 6,
+    "relatedTests": 16,
+    "safeSpecs": 118,
+    "safeTests": 968,
+    "failed": 0,
+    "skipped": 0,
+    "retries": 0,
+    "blocked": 0,
+    "reportErrors": 0,
+    "productionBuild": "PASS",
+    "isolatedLinuxSmoke": "PASS",
+    "publicAssetHash": "PASS",
+    "featureMarkers": "PASS"
+  },
+  "publicAssets": {
+    "/assets/index-DwXEVdGC.js": "28af079c2a00ae07740e0d36591ced09685e248b1de1f08fdda9d41c2c88ab44",
+    "/assets/index-B7jR_7VW.css": "65767acc21d81022f608fc09ff7d1a79a7caa5dcf03d21f3455db49c47dfa5e2"
+  },
+  "runtime": {
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "restarts": 0,
+    "runtimeRole": "active",
+    "mutationsAccepted": true,
+    "schemaVersion": 39,
+    "quickCheck": "ok",
+    "foreignKeyViolations": 0
+  },
+  "dataBefore": {
+    "generationTasks": 153,
+    "providerAttempts": 152,
+    "activeGenerationTasks": 0,
+    "publicTemplates": 46,
+    "publishedTemplates": 45
+  },
+  "dataAfter": {
+    "generationTasks": 153,
+    "providerAttempts": 152,
+    "activeGenerationTasks": 0,
+    "publicTemplates": 46,
+    "publishedTemplates": 45
+  },
+  "rollback": {
+    "frozenBackup": "/var/lib/unboundry-rollbacks/inc-ui-004-frozen-20260816T114458Z",
+    "fileManifestMatch": true,
+    "restoreCopyQuickCheck": "ok",
+    "restoreCopyForeignKeyViolations": 0,
+    "restoreCopySchemaVersion": 39
+  },
+  "externalEffects": {
+    "realProviderRequests": 0,
+    "paidGenerationRequests": 0,
+    "ossWrites": 0,
+    "schemaMigration": false,
+    "githubActions": 0
+  },
+  "userAcceptance": "USER_RECHECK"
+}

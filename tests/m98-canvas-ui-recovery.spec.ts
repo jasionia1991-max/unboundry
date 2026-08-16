@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 type SeedNode = {
   data: Record<string, unknown>;
   id: string;
+  parentId?: string;
   position: { x: number; y: number };
   style: { height: number; width: number };
   type: "audio" | "group" | "image" | "playlist" | "storyboard" | "text" | "video";
@@ -234,4 +235,108 @@ test("all seven node titles ellipsize consistently and expose the full title", a
     expect(await title.evaluate((element) => element.scrollWidth > element.clientWidth))
       .toBe(true);
   }
+});
+
+test("node titles keep readable screen-space typography across zoom bands", async ({
+  page,
+  request,
+}) => {
+  const canvasId = "persistence.nodes-assets-viewport";
+  await seedCanvas(request, canvasId, [
+    {
+      data: titleData("服装主体标准化｜超长标题用于缩放可读性验证"),
+      id: "readable-text",
+      position: { x: 160, y: 160 },
+      style: { height: 250, width: 320 },
+      type: "text",
+    },
+    {
+      data: titleData("服装一键上新｜P0主图与详情页"),
+      id: "readable-group",
+      position: { x: 620, y: 120 },
+      style: { height: 520, width: 760 },
+      type: "group",
+    },
+    {
+      data: titleData("组内上传服装参考图"),
+      id: "readable-group-child",
+      parentId: "readable-group",
+      position: { x: 40, y: 60 },
+      style: { height: 220, width: 280 },
+      type: "image",
+    },
+    {
+      data: titleData("分镜总览｜动作镜头与带货节奏"),
+      id: "readable-storyboard",
+      position: { x: 160, y: 560 },
+      style: { height: 280, width: 620 },
+      type: "storyboard",
+    },
+  ], { x: 80, y: 80, zoom: 1 });
+
+  await page.goto(`/__fixture/${canvasId}`);
+  const world = page.getByTestId("canvas-world");
+  await expect(world).toHaveAttribute("data-persistence-ready", "true");
+  const slider = page.getByTestId("zoom-slider");
+  const textNode = page.locator('.react-flow__node[data-id="readable-text"]');
+  const title = textNode.locator(".canvas-node-title");
+  const titleText = title.locator("span");
+
+  await slider.fill("0.6");
+  await expect(world).toHaveAttribute("data-title-zoom-band", "compact");
+  await expect(title).toHaveCSS("font-size", "14px");
+  await expect(title).toHaveCSS("font-weight", "500");
+  await expect(title).toHaveCSS("color", "rgba(245, 245, 245, 0.86)");
+  await expect(title).toHaveCSS("pointer-events", "all");
+  expect(await title.evaluate((element) => getComputedStyle(element).textShadow))
+    .not.toBe("none");
+  expect(await title.evaluate((element) => getComputedStyle(element).transform))
+    .toContain("1.666");
+  await expect(titleText).toHaveCSS("text-overflow", "ellipsis");
+  expect(await titleText.evaluate((element) => element.scrollWidth > element.clientWidth))
+    .toBe(true);
+  await textNode.click({ position: { x: 160, y: 120 } });
+  await expect(textNode).toHaveClass(/selected/);
+
+  await slider.fill("0.15");
+  await expect(world).toHaveAttribute("data-title-zoom-band", "overview");
+  await expect(title).toHaveCSS("font-size", "12px");
+  await expect(title).toHaveCSS("pointer-events", "auto");
+  const overview = await title.evaluate((element) => ({
+    height: element.getBoundingClientRect().height,
+    transform: getComputedStyle(element).transform,
+    width: element.getBoundingClientRect().width,
+  }));
+  expect(overview.transform).toContain("6.666");
+  expect(overview.height).toBeCloseTo(26, 0);
+  expect(overview.width).toBeGreaterThanOrEqual(95);
+  expect(overview.width).toBeLessThanOrEqual(181);
+
+  const groupTitle = page
+    .locator('.react-flow__node[data-id="readable-group"]')
+    .locator(".group-node-title");
+  await expect(groupTitle).toHaveCSS("font-size", "14px");
+  await expect(groupTitle).toHaveCSS("color", "rgba(245, 245, 245, 0.78)");
+  const group = page.locator('.react-flow__node[data-id="readable-group"]');
+  const groupBox = (await group.boundingBox())!;
+  const groupTitleBox = (await groupTitle.boundingBox())!;
+  expect(groupTitleBox.width).toBeGreaterThanOrEqual(71);
+  expect(groupTitleBox.width).toBeLessThanOrEqual(181);
+  expect(groupBox.y - (groupTitleBox.y + groupTitleBox.height)).toBeCloseTo(20, 0);
+
+  const groupChildTitle = page
+    .locator('.react-flow__node[data-id="readable-group-child"]')
+    .locator(".canvas-node-title");
+  await expect(groupChildTitle).toBeHidden();
+  const groupBody = page.getByTestId("group-node-readable-group");
+  await groupBody.dispatchEvent("pointerover");
+  await expect(groupChildTitle).toBeVisible();
+  await groupBody.dispatchEvent("pointerout");
+  await expect(groupChildTitle).toBeHidden();
+
+  const storyboardTitle = page
+    .locator('.react-flow__node[data-id="readable-storyboard"]')
+    .locator(".storyboard-node-title");
+  await expect(storyboardTitle).toHaveCSS("pointer-events", "none");
+  expect((await storyboardTitle.boundingBox())!.width).toBeLessThanOrEqual(221);
 });

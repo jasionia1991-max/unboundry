@@ -229,6 +229,7 @@ function VideoNodeImpl({
   data,
   dragging,
   id,
+  parentId,
   selected,
 }: NodeProps<ProbeNodeType>) {
   const singleNodeChrome = useSingleNodeChrome(selected, dragging);
@@ -2359,7 +2360,10 @@ function VideoNodeImpl({
           </span>
         )}
       </Handle>
-      <div className="canvas-node-title video-node-title nodrag">
+      <div
+        className="canvas-node-title video-node-title nodrag"
+        data-parent-group-id={parentId}
+      >
         <svg aria-hidden="true" viewBox="0 0 18 18">
           <rect height="14" rx="3" width="16" x="1" y="2" />
           <path d="m7 6 5 3-5 3Z" />

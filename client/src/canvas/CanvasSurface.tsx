@@ -233,6 +233,16 @@ const PERSIST_SAVE_SESSION_STORAGE_PREFIX =
 const PERSIST_SAVE_SESSION_SCOPE_INDEX_KEY =
   "unboundry:canvas-save-session:v2:scopes";
 export type CanvasLoadState = "failed" | "loading" | "missing" | "ready";
+type CanvasLoadFailureKind =
+  | "connection"
+  | "invalid-response"
+  | "stale-save-session"
+  | "storage"
+  | "unknown";
+type CanvasLoadFailure = {
+  kind: CanvasLoadFailureKind;
+  message: string;
+};
 type LoadedCanvasDocument = {
   currentWriterSequence: number;
   currentWriterSessionId: string | null;
@@ -268,6 +278,58 @@ type CanvasPendingSaveAttempt = {
   rejectedByServer?: boolean;
   saveSequence: number;
 };
+
+class CanvasStaleSaveSessionError extends Error {
+  constructor() {
+    super("Canvas pending save belongs to an old server epoch");
+    this.name = "CanvasStaleSaveSessionError";
+  }
+}
+
+function canvasLoadFailure(error: unknown): CanvasLoadFailure {
+  if (error instanceof CanvasStaleSaveSessionError) {
+    return {
+      kind: "stale-save-session",
+      message:
+        "检测到服务器重启前仍有一份未确认的本地保存，且内容与服务器版本不同。当前页会保留这份本地恢复副本；请打开服务器版本继续使用，系统不会覆盖任何一份内容。",
+    };
+  }
+  if (error instanceof CanvasSaveSessionStorageError) {
+    return {
+      kind: "storage",
+      message:
+        "浏览器会话存储不可用，已停止画布保存和生成以保护数据。请恢复浏览器存储后重试。",
+    };
+  }
+  const message = error instanceof Error ? error.message : "";
+  if (
+    message.includes("timed out") ||
+    message.startsWith("Canvas load failed:") ||
+    error instanceof TypeError
+  ) {
+    return {
+      kind: "connection",
+      message:
+        "暂时无法从服务器读取画布。没有打开空白画布，也没有保存或生成；请检查连接后重试。",
+    };
+  }
+  if (
+    message.includes("invalid") ||
+    message.includes("stale document") ||
+    message.includes("save fence")
+  ) {
+    return {
+      kind: "invalid-response",
+      message:
+        "服务器返回的画布数据不完整。为保护原内容，当前页没有保存或生成，请稍后重试。",
+    };
+  }
+  return {
+    kind: "unknown",
+    message:
+      "画布暂时无法安全打开。没有打开空白画布，也没有保存或生成，请重试。",
+  };
+}
 type CanvasPendingPagehide = {
   attemptId: string;
   payload: string;
@@ -2347,6 +2409,8 @@ export function CanvasSurface({
   const persistenceLoadIdentity = useRef({ epoch: 0, scopeId: "" });
   const [persistenceLoadState, setPersistenceLoadState] =
     useState<CanvasLoadState>(persistenceFixture ? "loading" : "ready");
+  const [persistenceLoadFailure, setPersistenceLoadFailure] =
+    useState<CanvasLoadFailure>();
   const [persistenceLoadAttempt, setPersistenceLoadAttempt] = useState(0);
   const persistenceReady =
     !persistenceFixture ||
@@ -2696,9 +2760,29 @@ export function CanvasSurface({
   const updateViewportDom = (next: Viewport) => {
     const world = worldRef.current;
     if (world) {
+      const titleZoom = Math.max(next.zoom, 0.01);
+      const counterScale = titleZoom < 1 ? 1 / titleZoom : 1;
+      const titleWidth = `${Math.min(titleZoom, 1) * 100}%`;
       world.setAttribute("data-viewport-x", String(next.x));
       world.setAttribute("data-viewport-y", String(next.y));
       world.setAttribute("data-viewport-zoom", String(next.zoom));
+      world.setAttribute(
+        "data-title-zoom-band",
+        titleZoom < 0.35
+          ? "overview"
+          : titleZoom < 0.65
+            ? "compact"
+            : "detail",
+      );
+      world.style.setProperty(
+        "--canvas-title-counter-scale",
+        String(counterScale),
+      );
+      world.style.setProperty("--canvas-title-available-width", titleWidth);
+      world.style.setProperty(
+        "--canvas-storyboard-title-gap",
+        `${10 / titleZoom}px`,
+      );
     }
   };
 
@@ -4133,6 +4217,7 @@ export function CanvasSurface({
         persistenceObservedLoadToken.current = undefined;
         setConfirmedPersistenceRevision(undefined);
         setConfirmedGraphRevision(undefined);
+        setPersistenceLoadFailure(canvasLoadFailure(error));
         setPersistenceLoadState("failed");
         onSaveConflict(
           "浏览器会话存储不可用，已停止画布保存以保护数据，请恢复后重试",
@@ -4166,6 +4251,7 @@ export function CanvasSurface({
     }
 
     persistenceReadyRef.current = false;
+    setPersistenceLoadFailure(undefined);
     setPersistenceLoadState("loading");
     setConfirmedPersistenceRevision(undefined);
     setConfirmedGraphRevision(undefined);
@@ -4186,7 +4272,7 @@ export function CanvasSurface({
 
     const controller = new AbortController();
     let disposed = false;
-    const markLoadFailed = () => {
+    const markLoadFailed = (error: unknown) => {
       if (disposed || !isCurrentLoad()) return;
       persistenceLoadIdentity.current = {
         epoch: epoch + 1,
@@ -4197,6 +4283,7 @@ export function CanvasSurface({
       persistenceObservedLoadToken.current = undefined;
       setConfirmedPersistenceRevision(undefined);
       setConfirmedGraphRevision(undefined);
+      setPersistenceLoadFailure(canvasLoadFailure(error));
       setPersistenceLoadState("failed");
     };
     let timeout: number | undefined;
@@ -4304,13 +4391,26 @@ export function CanvasSurface({
           canvasDocumentFingerprint(normalizedLoadedDocument) ===
             pendingSnapshot.fingerprint,
         );
+        const oldEpochDocumentProvesPending = Boolean(
+          pending &&
+          pendingSnapshot &&
+          normalizedLoadedDocument &&
+          pending.serverEpoch !== fence.saveEpoch &&
+          canvasDocumentFingerprint(normalizedLoadedDocument) ===
+            pendingSnapshot.fingerprint,
+        );
         persistenceServerEpoch.current = fence.saveEpoch;
         persistenceSequenceFloor.current = Math.max(
           persistenceSequenceFloor.current,
           fence.sessionHighWaterSequence,
         );
 
-        if (pending && (highWaterProvesPending || currentWriterProvesPending)) {
+        if (
+          pending &&
+          (highWaterProvesPending ||
+            currentWriterProvesPending ||
+            oldEpochDocumentProvesPending)
+        ) {
           if (persistenceSaveSequence.current !== pending.saveSequence) {
             throw new Error("Canvas has an unconfirmed save after its journal");
           }
@@ -4321,8 +4421,11 @@ export function CanvasSurface({
           persistencePendingPagehide.current = undefined;
           persistCanvasSaveSession(pending.attemptId);
         } else if (pending) {
-          if (pending.serverEpoch !== fence.saveEpoch || !pendingSnapshot) {
-            throw new Error("Canvas pending save belongs to an old server epoch");
+          if (!pendingSnapshot) {
+            throw new Error("Canvas pending pagehide journal is invalid");
+          }
+          if (pending.serverEpoch !== fence.saveEpoch) {
+            throw new CanvasStaleSaveSessionError();
           }
           const replaySequence = Math.max(
             persistenceSaveSequence.current,
@@ -4532,8 +4635,8 @@ export function CanvasSurface({
           },
           150,
         );
-      } catch {
-        markLoadFailed();
+      } catch (error) {
+        markLoadFailed(error);
       } finally {
         window.clearTimeout(timeout);
       }
@@ -6833,6 +6936,7 @@ export function CanvasSurface({
         <section
           aria-live={effectivePersistenceLoadState === "loading" ? "polite" : "assertive"}
           className="canvas-load-gate"
+          data-error-kind={persistenceLoadFailure?.kind}
           data-state={effectivePersistenceLoadState}
           data-testid="canvas-load-state"
         >
@@ -6849,18 +6953,41 @@ export function CanvasSurface({
                 ? "确认原内容前不会保存或生成。"
                 : effectivePersistenceLoadState === "missing"
                   ? "该项目可能已被删除或不属于当前账号，没有创建空白画布。"
-                  : "没有打开空白画布，也没有保存或生成。请检查连接后重试。"}
+                  : persistenceLoadFailure?.message ??
+                    "没有打开空白画布，也没有保存或生成。请检查连接后重试。"}
             </span>
             {effectivePersistenceLoadState === "failed" && (
-              <button
-                data-testid="canvas-load-retry"
-                onClick={() =>
-                  setPersistenceLoadAttempt((attempt) => attempt + 1)
-                }
-                type="button"
-              >
-                重试加载
-              </button>
+              <div className="canvas-load-actions">
+                {persistenceLoadFailure?.kind === "stale-save-session" && (
+                  <button
+                    data-testid="canvas-load-server-version"
+                    onClick={() =>
+                      window.open(
+                        window.location.href,
+                        "_blank",
+                        "noopener,noreferrer",
+                      )
+                    }
+                    type="button"
+                  >
+                    打开服务器版本
+                  </button>
+                )}
+                <button
+                  className={
+                    persistenceLoadFailure?.kind === "stale-save-session"
+                      ? "is-secondary"
+                      : undefined
+                  }
+                  data-testid="canvas-load-retry"
+                  onClick={() =>
+                    setPersistenceLoadAttempt((attempt) => attempt + 1)
+                  }
+                  type="button"
+                >
+                  重试加载
+                </button>
+              </div>
             )}
           </div>
         </section>
