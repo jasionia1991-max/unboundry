@@ -195,18 +195,30 @@ test("fast pan keeps visible nodes mounted and zoom-out mounts all", async ({
 
   const pane = page.locator(".react-flow__pane").first();
   const paneBox = (await pane.boundingBox())!;
+  const world = page.getByTestId("canvas-world");
+  const beforePanY = Number(await world.getAttribute("data-viewport-y"));
   await page.mouse.move(
     paneBox.x + paneBox.width / 2,
     paneBox.y + paneBox.height / 2,
   );
   for (let step = 0; step < 40; step += 1) {
-    await page.mouse.wheel(0, 400);
+    // Keep the stress pan inside the 200-node document. The former 400px
+    // delta only appeared to pass while Text bodies incorrectly swallowed
+    // wheel events; once Text correctly hands panning back to the canvas it
+    // moves the viewport far beyond every node and no longer tests culling.
+    await page.mouse.wheel(0, 40);
     await page.waitForTimeout(8);
   }
   await page.waitForTimeout(300);
+  const afterPanY = Number(await world.getAttribute("data-viewport-y"));
+  expect(afterPanY).not.toBe(beforePanY);
   const afterPan = await page.locator(".react-flow__node").count();
   expect(afterPan).toBeGreaterThan(0);
 
+  // Recenter before checking the overview culling contract. Zooming in place
+  // after a real pan intentionally preserves the pointer-centered viewport;
+  // it is not expected to rediscover a document that was panned away.
+  await page.getByTestId("fit-view").click();
   await page.getByTestId("zoom-slider").fill("0.15");
   await page.waitForTimeout(500);
   expect(await page.locator(".react-flow__node").count()).toBe(200);

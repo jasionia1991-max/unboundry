@@ -18,7 +18,8 @@ export function releaseRoleFromEnvironment(
     ? "bridge"
     : packageVersion === "0.6.0" || packageVersion === "0.6.1" ||
         packageVersion === "0.6.2" || packageVersion === "0.6.3" ||
-        packageVersion === "0.6.4" || packageVersion === "0.6.5"
+        packageVersion === "0.6.4" || packageVersion === "0.6.5" ||
+        packageVersion === "0.6.6"
       ? "final"
       : undefined;
   if (!packageRole) {

@@ -2064,7 +2064,7 @@ function TextNodeImpl({
         </div>
 
         <div
-          className={`text-node-editor-wrap nowheel${bodyEditing ? " nodrag" : ""}`}
+          className={`text-node-editor-wrap${bodyEditing ? " nowheel nodrag" : ""}`}
           data-editing={bodyEditing}
           data-empty={empty}
           data-testid="canvas-node-text-content"
