@@ -9,11 +9,11 @@
 - 生产：current已切到`/opt/unboundry/releases/v0.6.2-inc-video-001-20260816`，commit`959c1e287fb25943ca13037332030e99b39725be`、tree`6539868d…3845`、inventory`cf1c6e1a…40b5`；旧`v0.6.2-inc-ui-002-20260816`完整保留。公网v0.6.2 live/ready正常，service active+enabled、NRestarts0。
 - 真实结论：Grok修复后请求已按正确契约受理，但中转上游两次0%网络超时，停止继续重试；默认视频模型改为`Seedance 2.0 Mini`。包含真人参考图的Seedance请求被内容安全拒绝，不视为工作流故障且未重试。
 - 成功闭环：Seedance文生视频task`c0269665-4db5-46a1-bc13-2d5574a66cca`一次成功，4秒/480p/无音频；asset`fbfed94d-e41e-4858-8e7e-96c4eae98c4a.mp4`为OSS ready、864×496、4.042秒、1,117,495 bytes。页面刷新后视频仍可播放，浏览器readyState4且media error为空。
-- 收尾：数据库tasks126/attempts125/active0、quick_check ok、FK0；应用账本记录成功视频actual cost`568316 microunits CNY`，不冒充Provider账单。详细凭证：`spec/INC_VIDEO_001_PRODUCTION_RECEIPT_2026-08-16.json`、`spec/V0_6_2_REAL_WORKFLOW_SMOKE_2026-08-16.json`。未push/tag/更新PR。
+- 收尾：数据库tasks126/attempts125/active0、quick_check ok、FK0；应用账本记录成功视频actual cost`568316 microunits CNY`，不冒充Provider账单。详细凭证：`spec/INC_VIDEO_001_PRODUCTION_RECEIPT_2026-08-16.json`、`spec/V0_6_2_REAL_WORKFLOW_SMOKE_2026-08-16.json`。专用分支已推送，`v0.6.2`标签精确指向生产源码commit`959c1e287…`，Draft PR #1已更新且CLEAN。
 
 ### 2026-08-16 画布框选、OSS 素材显示与节点长标题（INC-UI-002）
 
-- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；package 与线上均为 v0.6.2，生产已发布，尚待用户实页确认；没有新的 push、tag 或 PR 更新。
+- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；package 与线上均为 v0.6.2，生产已发布，尚待用户实页确认；相关提交已随v0.6.2专用分支、标签和Draft PR #1同步到GitHub。
 - 框选：普通节点保持局部相交选中，只对Group要求选框完整包含；巨大Group与三个目标节点相交时不再扩大选区，三个节点可精确打组。
 - 媒体：CSP只在`img-src/media-src`放行既有严格服务端OSS流程使用的`https://*.aliyuncs.com`；Image/Video/Audio读取失败后保留asset/source、隐藏原生坏媒体图标并显示统一灰阶重载/重新上传状态，不自动上传或删除。
 - 标题：Text/Image/Video/Audio/Playlist/Group/Storyboard七类节点统一单行省略并保留完整title，编辑和IME语义不变。

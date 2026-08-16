@@ -17,7 +17,7 @@
 状态：`AUTHORITATIVE`  
 状态夹具：`unboundry-state-fixtures.json`
 
-2026-08-16 当前权威状态：生产已运行 `v0.6.2/schema39`，`INC-VIDEO-001 = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_RECHECK`，`INC-UI-001/002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-010/011 = PASS`，`PRODUCTION = LIVE`。既有用户验收全部保留，新UI修复与视频闭环等待用户线上肉眼确认。
+2026-08-16 当前权威状态：生产已运行 `v0.6.2/schema39`，`INC-VIDEO-001 = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_RECHECK`，`INC-UI-001/002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-010/011 = PASS`，`PRODUCTION = LIVE`。既有用户验收全部保留，新UI修复与视频闭环等待用户线上肉眼确认；专用分支已推送，`v0.6.2`标签精确绑定生产源码commit`959c1e287…`，Draft PR #1已更新且CLEAN。
 
 最新核验为service active+enabled、NRestarts0、current→`releases/v0.6.2-inc-video-001-20260816`、公网version 0.6.2/live/ready/root正常；schema39/quick_check ok/FK0、active generation0、126 tasks/125 attempts、43 public templates（42 published）。成功视频asset`fbfed94d-e41e-4858-8e7e-96c4eae98c4a.mp4`为OSS ready；默认视频模型为Seedance。上一不可变release、v0.6.0原schema37备份、整机schema39包及既有用户验收继续保留。未实际运行的两张付费图片仍作为可选付费抽验延期，既有PARTIAL/PAUSED/BLOCK/NOT_STARTED条目保持不变。
 

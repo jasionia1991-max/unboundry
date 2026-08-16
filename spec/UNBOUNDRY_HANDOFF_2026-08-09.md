@@ -4,7 +4,7 @@
 
 ## 当前新任务：INC-VIDEO-001（2026-08-16，已发布且真实视频PASS，待用户次日复验）
 
-Grok首帧中转协议已从`first_frame_url`修为`images`数组并限制恰好1张，定向`m57 9/9`及正式全量`118/118 specs、965/965 tests`通过。生产已切到`/opt/unboundry/releases/v0.6.2-inc-video-001-20260816`，公网v0.6.2 live/ready正常，schema39无迁移。修复后Grok请求能被正确契约受理，但中转上游两次0%网络超时，已停止重试并将默认视频模型改为`Seedance 2.0 Mini`。Seedance文生视频task`c0269665-4db5-46a1-bc13-2d5574a66cca`一次成功，4秒/480p/无音频，MP4已OSS ready，刷新后浏览器可播放；真人参考图会被Seedance内容安全拒绝，不能把该Provider限制写成应用故障。当前数据库tasks126/attempts125/active0、quick_check ok、FK0。详细凭证为`spec/INC_VIDEO_001_PRODUCTION_RECEIPT_2026-08-16.json`和`spec/V0_6_2_REAL_WORKFLOW_SMOKE_2026-08-16.json`；未push/tag/更新PR。
+Grok首帧中转协议已从`first_frame_url`修为`images`数组并限制恰好1张，定向`m57 9/9`及正式全量`118/118 specs、965/965 tests`通过。生产已切到`/opt/unboundry/releases/v0.6.2-inc-video-001-20260816`，公网v0.6.2 live/ready正常，schema39无迁移。修复后Grok请求能被正确契约受理，但中转上游两次0%网络超时，已停止重试并将默认视频模型改为`Seedance 2.0 Mini`。Seedance文生视频task`c0269665-4db5-46a1-bc13-2d5574a66cca`一次成功，4秒/480p/无音频，MP4已OSS ready，刷新后浏览器可播放；真人参考图会被Seedance内容安全拒绝，不能把该Provider限制写成应用故障。当前数据库tasks126/attempts125/active0、quick_check ok、FK0。详细凭证为`spec/INC_VIDEO_001_PRODUCTION_RECEIPT_2026-08-16.json`和`spec/V0_6_2_REAL_WORKFLOW_SMOKE_2026-08-16.json`；专用分支、`v0.6.2`标签和Draft PR #1均已同步。
 
 ## 当前新任务：INC-UI-002（2026-08-16，已发布待用户复验）
 
@@ -88,7 +88,7 @@ Docker Ubuntu 子门的 rootless-userns 阻塞已按设计 fail-close。随后�
 ## 2. 仓库与环境
 
 - 仓库根：`/Users/mymy/Documents/unboundry/app`（注意：系统工作区根目录写的是 `tapnow1_1复刻`，那个路径在本机不存在，**一律用 unboundry/app**）。
-- Git：当前专用分支 `codex/unboundry-offline-remediation-2026-08-09`此前已推送到远程`https://github.com/jasionia1991-max/unboundry.git`；注释标签`v0.6.1`仍精确指向旧生产源commit `f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf`；Draft PR为`https://github.com/jasionia1991-max/unboundry/pull/1`。v0.6.2生产源commit为本地`8ebe70544828a3aebe258def9d658e1ab68a6104`，本次未获新的push/tag/PR授权，因此远端尚未同步v0.6.2。
+- Git：当前专用分支 `codex/unboundry-offline-remediation-2026-08-09`已推送到远程`https://github.com/jasionia1991-max/unboundry.git`；注释标签`v0.6.2`精确指向当前生产源码commit`959c1e287fb25943ca13037332030e99b39725be`，`v0.6.1`标签仍保留旧生产边界；Draft PR [#1](https://github.com/jasionia1991-max/unboundry/pull/1)已更新为完整v0.6.2范围，base为main、merge state CLEAN、当前未报告CI checks。
 - Node：formal 构建/验证固定 `v22.23.1` 与 npm `10.9.8`；生产 `/opt/node22/bin/node` 为 `v22.23.2`，production-specific waiver及恢复副本补证已完成。formal manifest的22.23.1绑定仍不改写，也不把旧Linux receipt冒充实际22.23.2 runtime证据。
 - 历史依赖/检查方式曾为 `npm install`、`npx tsc --noEmit`、`npm run build`，仍不得直接作为施工入口。当前唯一安全总入口是 `node scripts/run-safe-tests.mjs <preflight|list|run|full>`；它在跟踪文件隔离快照内用 `npm ci --offline --ignore-scripts` 准备依赖，并统一执行源码、构建、重启和测试门禁。
 - 代码结构速览：

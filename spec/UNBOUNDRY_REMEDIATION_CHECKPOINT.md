@@ -12,7 +12,7 @@
 - 生产已切到`/opt/unboundry/releases/v0.6.2-inc-video-001-20260816`，源码commit`959c1e287fb25943ca13037332030e99b39725be`、tree`6539868d…3845`、inventory`cf1c6e1a…40b5`；上一`v0.6.2-inc-ui-002-20260816`完整保留。公网v0.6.2 live/ready正常，service active+enabled、NRestarts0，schema39无迁移。
 - Grok修复后请求已按正确契约受理，但中转上游两次在0%网络超时；停止继续重试并把默认视频模型切到`Seedance 2.0 Mini`。真人参考图被Seedance内容安全拒绝，保留为Provider限制且未重试。
 - 真实成功：Seedance文生视频task`c0269665-4db5-46a1-bc13-2d5574a66cca`一次成功，4秒/480p/无音频；asset`fbfed94d-e41e-4858-8e7e-96c4eae98c4a.mp4`为OSS ready、864×496、4.042秒、1,117,495 bytes。刷新后浏览器readyState4、media error为空。
-- 收尾：数据库tasks126/attempts125/active0、quick_check ok、FK0；应用账本记录成功视频actual cost`568316 microunits CNY`，不冒充Provider最终账单。详细凭证为`spec/INC_VIDEO_001_PRODUCTION_RECEIPT_2026-08-16.json`、`spec/V0_6_2_REAL_WORKFLOW_SMOKE_2026-08-16.json`。未push/tag/更新PR。
+- 收尾：数据库tasks126/attempts125/active0、quick_check ok、FK0；应用账本记录成功视频actual cost`568316 microunits CNY`，不冒充Provider最终账单。详细凭证为`spec/INC_VIDEO_001_PRODUCTION_RECEIPT_2026-08-16.json`、`spec/V0_6_2_REAL_WORKFLOW_SMOKE_2026-08-16.json`。专用分支已推送，`v0.6.2`标签指向生产源码commit`959c1e287…`，Draft PR #1已更新且CLEAN。
 
 ## 0A. 前一事件：INC-UI-002（已发布，待用户线上复验）
 
@@ -479,7 +479,7 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 
 ```text
 项目路径：/Users/mymy/Documents/unboundry/app
-本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.2视频热修复生产源commit 959c1e287fb25943ca13037332030e99b39725be；禁止reset/clean；GitHub仍停在v0.6.1 tag和Draft PR #1
+本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.2视频热修复生产源commit 959c1e287fb25943ca13037332030e99b39725be；禁止reset/clean；分支已推送，v0.6.2 tag与Draft PR #1已更新
 生产：canvas.mymy.ltd；v0.6.2/schema39；/opt/unboundry/current -> releases/v0.6.2-inc-video-001-20260816
 生产artifact：source commit 959c1e287fb25943ca13037332030e99b39725be；tree 6539868d3aa5df8be2fdbf3d10e8c6414ffe3845；inventory cf1c6e1aa33438e0d05dba11593f8095a30795a03a51dcd36f48d7d31ab340b5
 当前状态：INC-VIDEO-001已发布且真实Seedance视频PASS、待用户次日复验；INC-UI-001/002已发布自动通过、待用户复验；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
@@ -488,7 +488,7 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 数据库：schema39；quick_check ok；FK0；126 tasks/125 attempts；43 public templates/42 published；active0；默认视频模型Seedance；globalEnabled1/emergencyStop0；per-user/kind concurrency与RPM均500
 备份：schema37 raw archive SHA 7f14c611faab136c1ae8e9579bc47755f7298e4ea6e2bba516c71e85670f8fca；offhost restore inspection b4d58243e88efe1c2c967ffab5f63ed6704d18324a80e8449ec9d3ad77e28e1d PASS
 限制：attempt 86/108/116/120/122为行政取消且禁止重试，PROVIDER_FAILED仅surrogate；3条音频仅改duration元数据；cutover Provider/paid calls=0
-GitHub：branch/tag/PR仍是既有v0.6.1状态；v0.6.2未push、未tag、未更新PR
+GitHub：专用branch已推送；注释标签v0.6.2精确指向生产源码commit 959c1e287fb25943ca13037332030e99b39725be；Draft PR #1 base=main、merge state=CLEAN、当前无CI checks报告
 未来授权：本次v0.6.2生产发布授权已消费；未来生产读写、真实Provider/付费生成、push/tag/PR或新发布仍需新授权
 下一步：用户按v0.6.2验收清单线上复验；确认后再把INC-UI-001/002从USER_RECHECK改为USER PASS
 ```

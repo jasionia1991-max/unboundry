@@ -11,7 +11,7 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 - 生产指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.2-inc-video-001-20260816`；服务 active+enabled，`NRestarts=0`，公网 `/api/version` 返回 `0.6.2`，ready 为 active/schema39。
 - 视频热修复把Grok首帧按中转站真实契约映射为`images`数组并限制恰好1张；正式安全全量仍为`118/118 specs、965/965 PASS`。Grok契约已被中转站受理，但该上游两次在0%网络超时，因此停止重试并把默认视频模型切换为已真实成功的`Seedance 2.0 Mini`。
 - 最新数据核验：schema39、quick_check `ok`、FK 违约0、active generation0、tasks126、Provider attempts125。此前`v0.6.2-inc-ui-002-20260816`完整保留，可作为回滚目标。
-- 视频热修复源码commit为`959c1e287fb25943ca13037332030e99b39725be`、tree为`6539868d3aa5df8be2fdbf3d10e8c6414ffe3845`；本次没有新的push/tag/PR授权，因此GitHub仍保持既有v0.6.1发布状态。
+- 视频热修复源码commit为`959c1e287fb25943ca13037332030e99b39725be`、tree为`6539868d3aa5df8be2fdbf3d10e8c6414ffe3845`；专用分支已推送，注释标签`v0.6.2`精确指向该生产源码提交，Draft PR [#1](https://github.com/jasionia1991-max/unboundry/pull/1)已更新为完整v0.6.2范围且merge state为CLEAN。
 
 ### 真实工作流低成本验收
 
