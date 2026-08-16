@@ -1,11 +1,19 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`67`
-更新时间：`2026-08-16`
-状态：`INC_UI_006_V0_6_5_PRODUCTION_PUBLISHED_USER_PASS_CLOSED`
+断点版本：`68`
+更新时间：`2026-08-17`
+状态：`INC_UI_007_V0_6_6_PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
-## 0. 最新已完成事件：INC-UI-006（v0.6.5已发布并通过用户验收）
+## 0. 最新已完成事件：INC-UI-007（v0.6.6已发布，待用户复验）
+
+- 用户同意组标题、Text拖动画布和模板目录刷新三项方案，并提前授权风险控制、全量测试、冻结备份、生产发布、commit、push、tag和PR合并。
+- Group/模板标题改为距主体约8px，宽度72～320px并允许完整换行；不增加组内边距/边框，不移动节点、不改持久坐标。Text节点仅在真实编辑态隔离拖拽/滚轮，浏览态恢复画布平移。模板目录每次打开和BFCache恢复时都用`no-store`重新读取，管理页改名后无需刷新整页即可看到新名称。
+- 精确源码commit`31bb1e9aa6bbdf08f84fd7d5c95ab5d5ee00dbec`通过定向`17/17`及正式安全全量`118/118 specs、969/969 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。
+- 生产current已切到`/opt/unboundry/releases/v0.6.6-inc-ui-007-20260817`；冻结备份恢复、公网资源逐字节哈希、service/schema39和数据不变门均PASS。生产保持153 tasks、152 attempts、active0、47 public templates（46 published）。
+- `v0.6.6`标签精确指向源码commit；PR #6已合并到`main`，merge commit`6581a88c044db4e5efb8e694c4da1681defca730`。当前为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，不可替代用户醒来后的实页确认。
+
+## 0.1 前一事件：INC-UI-006（v0.6.5已发布并通过用户验收）
 
 - 用户确认v0.6.5并授权全量测试、坐标恢复、冻结备份、发布、commit、push、tag与PR合并。
 - 修复Group的viewport重渲染和镜头期被动position change持久化，并在载入、模板应用和组模板保存时阻断`parentId===id`自引用根；真实拖动、键盘移动和resize不变。

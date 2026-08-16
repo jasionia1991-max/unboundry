@@ -2,7 +2,11 @@
 
 > 写给下一个接手的人/AI agent。目标：看完本文后不需要向用户问“项目在哪、怎么跑、怎么发布、有什么红线”。
 
-## 最新已完成事件：INC-UI-006（v0.6.5已发布并通过用户验收）
+## 最新已完成事件：INC-UI-007（v0.6.6已发布，待用户复验）
+
+用户同意并授权一次性修复三项UI问题及完整发布收尾：Group/模板标题改为距主体约8px、72～320px宽并完整换行，且不增加组内视觉边距/边框、不改变节点坐标；Text节点只在真实编辑态阻止画布手势，浏览态可像其他节点一样拖动画布；公共模板目录在每次打开和BFCache恢复时以`no-store`重新获取，管理页改名后回到画布能刷新Dock名称。精确源码commit`31bb1e9aa6bbdf08f84fd7d5c95ab5d5ee00dbec`通过定向`17/17`及安全全量`118/118 specs、969/969 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.6-inc-ui-007-20260817`，公网资源哈希、冻结备份恢复、service/schema39及数据不变门PASS；生产保持153 tasks、152 attempts、active0、47 public templates（46 published）。`v0.6.6`已推送，PR #6已合并到`main`（merge commit`6581a88c044db4e5efb8e694c4da1681defca730`）。当前状态是`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，不能写成用户验收PASS。
+
+## 历史事件：INC-UI-006（v0.6.5已发布并通过用户验收）
 
 用户确认v0.6.5并授权全量测试、核查/恢复目标组坐标、冻结备份、发布及GitHub收尾。根因是Group订阅viewport触发测量重渲染后，被动position change被通用保存路径持久化；历史模板根组`parentId===id`自引用放大了负坐标不确定性。v0.6.5移除Group的React viewport订阅、由CanvasSurface命令式维护标题CSS变量，并在镜头安静期过滤非拖拽position change；画布载入、模板应用和组模板保存统一阻断自引用根。精确源码commit`d19e9dbf564f5806adface7807fbf7182bcdafc8`通过定向69/69及安全全量118/118 specs、968/968 tests，异常0。生产current已切到`/opt/unboundry/releases/v0.6.5-inc-ui-006-20260816`；冻结备份恢复、公网哈希、schema39和数据不变门均PASS。目标组恢复为无父级`(-1080,-1080)`，另一自引用根只移除自引用并保留坐标；登录实页72节点连续缩放无位移，`movedIds=[]`。真实Provider、付费生成和OSS写入0。`v0.6.5`标签精确指向生产源码，PR #4已合并到`main`（merge commit`0a8cfcb6c6bd1735ae921eedf2ec3b453f48493b`）；用户随后明确回复“通过”，当前为`PRODUCTION_PUBLISHED_USER_PASS`。权威凭证为`spec/INC_UI_006_CANVAS_ZOOM_POSITION_STABILITY_2026-08-16.md`和`spec/INC_UI_006_PRODUCTION_RECEIPT_2026-08-16.json`。
 
