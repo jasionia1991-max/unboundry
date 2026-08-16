@@ -421,6 +421,7 @@ test("group template serializer keeps prompts, parameters, roles and durable med
       title: "电商组",
     },
     { x: 100, y: 80 },
+    "group-1",
   );
   const image = makeNode(
     "child-image",
@@ -508,6 +509,7 @@ test("group template serializer keeps prompts, parameters, roles and durable med
     "child-audio",
   ]);
   expect(graph.nodes[0].position).toEqual({ x: 0, y: 0 });
+  expect(graph.nodes[0].parentId).toBeUndefined();
   expect(graph.nodes[1].position).toEqual({ x: 20, y: 30 });
   expect(graph.nodes[1].parentId).toBe("group-1");
   expect(graph.edges.map((edge) => edge.id)).toEqual(["edge-1"]);

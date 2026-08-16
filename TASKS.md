@@ -1,7 +1,16 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-16
-状态：`生产当前运行 v0.6.4/schema39；INC-UI-005已发布并完成自动与浏览器技术验证，待用户复验；既有INC-UI-004、INC-UI-003、INC-VIDEO-001、INC-UI-001/002及INC-ECOM状态保持。`
+状态：`v0.6.5已获用户授权并冻结为发布候选；生产当前仍运行v0.6.4/schema39，INC-UI-006完成定向69/69，正在执行正式全量、冻结备份、目标组坐标恢复、发布与实页复验；既有验收状态保持。`
+
+### 2026-08-16 缩放时节点/模板坐标漂移（INC-UI-006）
+
+- 状态：`RELEASE_CANDIDATE_AUTO_PASS / PRODUCTION_PENDING / USER_RECHECK`。用户已确认版本v0.6.5，并授权全量测试、核查/恢复该组坐标、冻结备份、发布、commit、push、tag与PR合并。生产实页已复现：同一Group在视口回到完全相同的15%后，世界坐标从`(-1080,-1080)`变为`(-1128,-1128)`，子节点同步偏移48；这不是正常视觉位移，而是镜头动作污染了图坐标。
+- 根因链：v0.6.4 Group组件直接订阅viewport，并在每次缩放React重渲染时同时改标题、工具栏及NodeResizer几何；React Flow在负坐标父子Group挂载/测量切换时可能回报被动position change，既有`onNodesChange`未区分镜头重算与用户拖动，因而可能写入并持久化。
+- 修复：Group不再订阅viewport；标题和工具栏仅消费CanvasSurface命令式维护的CSS变量，NodeResizer恢复官方单层autoScale；组标题拖动开始时只读取一次实时zoom。`applyViewport`在调用React Flow前先开启交互闸门，缩放/平移安静期只过滤非拖拽position change，dimensions/selection及真实拖动继续正常处理。画布载入、模板应用和组模板序列化统一阻断`parentId===id`的历史根组自引用。
+- 自动门：负坐标自引用Group+子节点在15%/27%/60%/100%往返后DOM transform和服务端持久坐标完全不变；相关6份spec定向`69/69 PASS`。每轮safe runner均通过构建、TypeScript/source与不可变发布前置门，4173 listener不变，真实Provider/付费/OSS请求0。
+- 生产数据前置：目标组数据库为自引用根及相对`(-24,-24)`，15%实页DOM为`(-1128,-1128)`；冻结备份后按已复现的原始世界坐标恢复为无父级`(-1080,-1080)`。另一自引用根只移除自引用并保留其保存坐标，不猜测位置。
+- 边界：尚未运行118-spec正式全量，尚未commit/push/tag/发布；生产仍为v0.6.4。发布后必须由用户在原问题画布连续缩放复验，自动结果不能代替`USER_RECHECK`。
 
 ### 2026-08-16 组标题总览层级（INC-UI-005）
 

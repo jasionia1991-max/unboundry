@@ -107,6 +107,20 @@ import { UpdateNotice } from "../updates/UpdateNotice";
 
 const emptyNodes: ProbeNodeType[] = [];
 
+/**
+ * React Flow does not support a node whose parent points to itself. Older
+ * public-template data can contain that invalid root link; treat the template
+ * root as a world-space node before it reaches React Flow so viewport
+ * measurement can never fold its own position back into the graph.
+ */
+export function normalizeCanvasParentLinks<T extends { id: string; parentId?: string }>(
+  nodes: readonly T[],
+): T[] {
+  return nodes.map((node) =>
+    node.parentId === node.id ? { ...node, parentId: undefined } : node,
+  );
+}
+
 export function initialCanvasViewport(fixtureId?: string): Viewport {
   if (fixtureId === "legacy.dense-canvas.neutral") {
     return { x: 102.734, y: -21.543, zoom: 0.15 };
@@ -733,7 +747,9 @@ function pendingPagehideSnapshot(
     }
     const snapshot = {
       edges: document.edges as CuttableEdge[],
-      nodes: normalizePersistedMediaNodes(document.nodes) as ProbeNodeType[],
+      nodes: normalizeCanvasParentLinks(
+        normalizePersistedMediaNodes(document.nodes) as ProbeNodeType[],
+      ),
       viewport: document.viewport as Viewport,
     };
     return {
@@ -2805,6 +2821,10 @@ export function CanvasSurface({
   }, []);
 
   const applyViewport = useCallback((next: Viewport) => {
+    // Open the viewport-interaction gate before React Flow receives the
+    // command. setViewport can synchronously reconcile mounted group nodes;
+    // those passive reconciliations must never become persisted graph moves.
+    markCanvasInteraction();
     viewportRef.current = next;
     updateViewportDom(next);
     if (selectedNodeCountRef.current > 1) setViewport(next);
@@ -2814,9 +2834,6 @@ export function CanvasSurface({
     } else {
       pendingProgrammaticViewport.current = next;
     }
-    // 程序化视口变化不一定触发 ReactFlow 的 onViewportChange，
-    // 显式调度安静期，保证持久化 watcher 重新评估并保存。
-    markCanvasInteraction();
   }, [markCanvasInteraction]);
 
   const handleMiniMapClick = useCallback(
@@ -3390,12 +3407,16 @@ export function CanvasSurface({
         zIndex: source.zIndex,
         selected: false,
       };
-    }).map((node, index) => ({
-      ...node,
-      parentId: graph.nodes[index].parentId
-        ? idMap.get(graph.nodes[index].parentId!)
-        : undefined,
-    }));
+    }).map((node, index) => {
+      const source = graph.nodes[index];
+      return {
+        ...node,
+        parentId:
+          source.parentId && source.parentId !== source.id
+            ? idMap.get(source.parentId)
+            : undefined,
+      };
+    });
     const groupNode = appliedNodes.find((node) => node.type === "group");
     const appliedEdges: CuttableEdge[] = graph.edges.map((edge) => ({
       ...(edge.data ? { data: { ...edge.data } } : {}),
@@ -4367,7 +4388,9 @@ export function CanvasSurface({
         const normalizedLoadedDocument = document
           ? {
               ...document,
-              nodes: normalizePersistedMediaNodes(document.nodes),
+              nodes: normalizeCanvasParentLinks(
+                normalizePersistedMediaNodes(document.nodes),
+              ),
               edges: document.edges.map((edge) =>
                 stripSelectionFlowMarkers(
                   edge.style && typeof edge.style === "object"
@@ -4595,7 +4618,9 @@ export function CanvasSurface({
         }
         const hydratedDocument = {
           ...document,
-          nodes: normalizePersistedMediaNodes(document.nodes),
+          nodes: normalizeCanvasParentLinks(
+            normalizePersistedMediaNodes(document.nodes),
+          ),
           edges: (document.edges ?? []).map((edge) =>
             stripSelectionFlowMarkers(
               edge.style && typeof edge.style === "object"
@@ -4875,7 +4900,9 @@ export function CanvasSurface({
           }
           const hydratedBaseline = {
             ...baseline,
-            nodes: normalizePersistedMediaNodes(baseline.nodes),
+            nodes: normalizeCanvasParentLinks(
+              normalizePersistedMediaNodes(baseline.nodes),
+            ),
             edges: baseline.edges.map((edge) =>
               stripSelectionFlowMarkers(
                 edge.style && typeof edge.style === "object"
@@ -6660,7 +6687,7 @@ export function CanvasSurface({
         onNodesChange={(changes) => {
           // Keep ReactFlow's passive measurements in the controlled nodes so
           // the first hydrated data edit cannot temporarily hide the node.
-          const acceptedChanges = persistenceReady
+          let acceptedChanges = persistenceReady
             ? changes
             : changes.filter(
                 (change) =>
@@ -6673,6 +6700,26 @@ export function CanvasSurface({
           if (!persistenceReady) {
             onNodesChange(acceptedChanges);
             return;
+          }
+          const now = performance.now();
+          const viewportInteracting =
+            lastViewportInteractionAt.current > 0 &&
+            now - lastViewportInteractionAt.current < VIEWPORT_QUIET_MS;
+          const activelyDraggingNode =
+            nodeDragging.current ||
+            acceptedChanges.some(
+              (change) =>
+                change.type === "position" && change.dragging === true,
+            );
+          if (viewportInteracting && !activelyDraggingNode) {
+            // Zoom/pan may mount, unmount or re-measure a parent group. React
+            // Flow can report that passive reconciliation as a position
+            // change. A camera-only action is not graph editing, so retain
+            // measurements/selections but discard unsolicited coordinates.
+            acceptedChanges = acceptedChanges.filter(
+              (change) => change.type !== "position",
+            );
+            if (acceptedChanges.length === 0) return;
           }
           if (
             nodeDragging.current &&
