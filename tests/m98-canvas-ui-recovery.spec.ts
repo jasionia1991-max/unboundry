@@ -189,7 +189,7 @@ test("image video and audio load errors use the shared neutral fallback without 
   expect(uploadRequests).toEqual([]);
 });
 
-test("all seven node titles ellipsize consistently and expose the full title", async ({
+test("node titles ellipsize while group titles stay complete", async ({
   page,
   request,
 }) => {
@@ -229,6 +229,16 @@ test("all seven node titles ellipsize consistently and expose the full title", a
       .locator(`.react-flow__node[data-id="long-${type}"]`)
       .locator(".canvas-node-title > span");
     await expect(title).toHaveAttribute("title", `${type}｜${longTitle}`);
+    if (type === "group") {
+      await expect(title).toHaveCSS("overflow", "visible");
+      await expect(title).toHaveCSS("text-overflow", "clip");
+      await expect(title).toHaveCSS("white-space", "normal");
+      expect(await title.evaluate((element) => ({
+        horizontalOverflow: element.scrollWidth > element.clientWidth,
+        verticalOverflow: element.scrollHeight > element.clientHeight,
+      }))).toEqual({ horizontalOverflow: false, verticalOverflow: false });
+      continue;
+    }
     await expect(title).toHaveCSS("overflow", "hidden");
     await expect(title).toHaveCSS("text-overflow", "ellipsis");
     await expect(title).toHaveCSS("white-space", "nowrap");
@@ -251,7 +261,7 @@ test("node titles keep readable screen-space typography across zoom bands", asyn
       type: "text",
     },
     {
-      data: titleData("服装一键上新｜P0主图与详情页"),
+      data: titleData("服装一键上新｜P0主图与详情页｜参考实物一致性与自动纠错工作流"),
       id: "readable-group",
       position: { x: 620, y: 120 },
       style: { height: 520, width: 760 },
@@ -352,8 +362,15 @@ test("node titles keep readable screen-space typography across zoom bands", asyn
   const groupBox = (await group.boundingBox())!;
   const groupTitleBox = (await groupTitle.boundingBox())!;
   expect(groupTitleBox.width).toBeGreaterThanOrEqual(71);
-  expect(groupTitleBox.width).toBeLessThanOrEqual(181);
-  expect(groupBox.y - (groupTitleBox.y + groupTitleBox.height)).toBeCloseTo(20, 0);
+  expect(groupTitleBox.width).toBeLessThanOrEqual(321);
+  expect(groupBox.y - (groupTitleBox.y + groupTitleBox.height)).toBeCloseTo(8, 0);
+  const groupTitleText = groupTitle.locator("span");
+  await expect(groupTitleText).toHaveCSS("text-overflow", "clip");
+  await expect(groupTitleText).toHaveCSS("white-space", "normal");
+  expect(await groupTitleText.evaluate((element) => ({
+    horizontalOverflow: element.scrollWidth > element.clientWidth,
+    verticalOverflow: element.scrollHeight > element.clientHeight,
+  }))).toEqual({ horizontalOverflow: false, verticalOverflow: false });
 
   const groupChildTitle = page
     .locator('.react-flow__node[data-id="readable-group-child"]')
@@ -403,4 +420,78 @@ test("node titles keep readable screen-space typography across zoom bands", asyn
     negativeGroup.evaluate((element) => (element as HTMLElement).style.transform),
     negativeChild.evaluate((element) => (element as HTMLElement).style.transform),
   ])).toEqual(negativeBefore);
+});
+
+test("Text body pans the canvas until editing starts", async ({ page, request }) => {
+  const canvasId = "persistence.nodes-assets-viewport";
+  await seedCanvas(request, canvasId, [{
+    data: {
+      content: Array.from({ length: 24 }, (_, index) => `正文第${index + 1}行`).join("\n"),
+      label: "Text",
+      title: "文字节点平移合同",
+    },
+    id: "text-pan-contract",
+    position: { x: 260, y: 180 },
+    style: { height: 250, width: 320 },
+    type: "text",
+  }], { x: 0, y: 0, zoom: 1 });
+
+  await page.goto(`/__fixture/${canvasId}`);
+  const world = page.getByTestId("canvas-world");
+  await expect(world).toHaveAttribute("data-persistence-ready", "true");
+  const body = page.getByTestId("canvas-node-text-content");
+  await expect(body).not.toHaveClass(/nowheel/);
+  const bodyBox = (await body.boundingBox())!;
+  const viewportBefore = {
+    x: Number(await world.getAttribute("data-viewport-x")),
+    y: Number(await world.getAttribute("data-viewport-y")),
+  };
+  await page.mouse.move(bodyBox.x + bodyBox.width / 2, bodyBox.y + 80);
+  await page.mouse.wheel(120, 80);
+  await expect.poll(async () => ({
+    x: Number(await world.getAttribute("data-viewport-x")),
+    y: Number(await world.getAttribute("data-viewport-y")),
+  })).not.toEqual(viewportBefore);
+  const viewportAfterWheel = {
+    x: Number(await world.getAttribute("data-viewport-x")),
+    y: Number(await world.getAttribute("data-viewport-y")),
+  };
+  await page.mouse.move(bodyBox.x + bodyBox.width / 2, bodyBox.y + 80);
+  await page.mouse.down({ button: "middle" });
+  await page.mouse.move(
+    bodyBox.x + bodyBox.width / 2 + 70,
+    bodyBox.y + 125,
+    { steps: 4 },
+  );
+  await page.mouse.up({ button: "middle" });
+  await expect.poll(async () => ({
+    x: Number(await world.getAttribute("data-viewport-x")),
+    y: Number(await world.getAttribute("data-viewport-y")),
+  })).not.toEqual(viewportAfterWheel);
+
+  await body.dblclick({ position: { x: bodyBox.width / 2, y: 80 } });
+  await expect(body).toHaveClass(/nowheel/);
+  await expect(body).toHaveClass(/nodrag/);
+  const editingViewport = {
+    x: Number(await world.getAttribute("data-viewport-x")),
+    y: Number(await world.getAttribute("data-viewport-y")),
+  };
+  const editingBox = (await body.boundingBox())!;
+  await page.mouse.move(editingBox.x + editingBox.width / 2, editingBox.y + 80);
+  await page.mouse.wheel(120, 80);
+  await page.waitForTimeout(150);
+  expect({
+    x: Number(await world.getAttribute("data-viewport-x")),
+    y: Number(await world.getAttribute("data-viewport-y")),
+  }).toEqual(editingViewport);
+  await page.getByTestId("text-node-editor").press("Escape");
+  await expect(body).not.toHaveClass(/nowheel/);
+
+  const persisted = await request.get(`/api/canvas/${canvasId}`);
+  expect(persisted.ok()).toBeTruthy();
+  const document = await persisted.json() as {
+    nodes: Array<{ id: string; position: { x: number; y: number } }>;
+  };
+  expect(document.nodes.find((node) => node.id === "text-pan-contract")?.position)
+    .toEqual({ x: 260, y: 180 });
 });

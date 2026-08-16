@@ -1278,7 +1278,10 @@ export function CanvasShell({
     if (surface === "search") setNodeSearchOpen(true);
     if (surface === "share") setShareOpen(true);
     if (surface === "tasks") setTasksOpen(true);
-    if (surface === "templates") setTemplatesOpen(true);
+    if (surface === "templates") {
+      setTemplateCatalogRevision((revision) => revision + 1);
+      setTemplatesOpen(true);
+    }
   };
 
   const finishAgentVoice = () => {
@@ -1385,6 +1388,7 @@ export function CanvasShell({
     setTemplateCatalogLoading(true);
     setTemplateCatalogError("");
     void fetch(`/api/templates?${parameters.toString()}`, {
+      cache: "no-store",
       headers: { Accept: "application/json" },
       signal: controller.signal,
     })
@@ -1434,6 +1438,16 @@ export function CanvasShell({
     templateCatalogRevision,
     userId,
   ]);
+  useEffect(() => {
+    const refreshRestoredTemplateCatalog = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        setTemplateCatalogRevision((revision) => revision + 1);
+      }
+    };
+    window.addEventListener("pageshow", refreshRestoredTemplateCatalog);
+    return () =>
+      window.removeEventListener("pageshow", refreshRestoredTemplateCatalog);
+  }, []);
   const visibleTemplateCards = templateCards;
   useEffect(() => {
     const controller = new AbortController();

@@ -1166,6 +1166,13 @@ test("admin templates page creates, edits, archives and restores public template
       ((await publicList.json()) as { items: Array<{ id: string }> }).items,
     ).toHaveLength(1);
 
+    await page.goto("/canvas");
+    await page.getByTestId("templates").click();
+    const canvasTemplates = page.getByTestId("templates-panel");
+    await expect(canvasTemplates).toContainText("UI 新建模板");
+    await page.goto("/admin/templates");
+    await expect(page.getByTestId("admin-templates-page")).toBeVisible();
+
     await createdCard.getByRole("button", { name: "编辑" }).click();
     await expect(modal).toBeVisible();
     await modal.getByLabel(/模板标题/).fill("UI 编辑后");
@@ -1175,6 +1182,14 @@ test("admin templates page creates, edits, archives and restores public template
         .locator(".admin-template-card")
         .filter({ hasText: "UI 编辑后" }),
     ).toBeVisible();
+
+    await page.goBack();
+    await page.getByTestId("templates").click();
+    await expect(canvasTemplates).toBeVisible();
+    await expect(canvasTemplates).toContainText("UI 编辑后");
+    await expect(canvasTemplates).not.toContainText("UI 新建模板");
+    await page.goto("/admin/templates");
+    await expect(page.getByTestId("admin-templates-page")).toBeVisible();
 
     await page
       .locator(".admin-template-card")
