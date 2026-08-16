@@ -17,11 +17,11 @@
 
 ## 2. 当前授权边界
 
-- **2026-08-15 当前权威状态**：`v0.5.2` bridge → `v0.6.0` final、schema37 → schema39 的原生产发布以及后续 `v0.6.1` 工作流流水执行修复均已完成；`REM-000～011（含009A/009B） = PASS`，生产为 `LIVE / USER ACCEPTED`。生产授权已经消费完毕，不是以后继续改生产、迁移或发布的永久授权；
-- 生产现运行 `/opt/unboundry/current -> releases/v0.6.1-inc-ecom-007-20260815`，数据库 schema39。v0.6.1生产源commit为`f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf`，生产凭证为`spec/INC_ECOM_007_PRODUCTION_RECEIPT_2026-08-15.json`。原v0.6.0最终封存技术凭证 SHA-256 为 `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8`，其生成时的`userAcceptance=PENDING`仍是不可改写的历史时点事实；
-- 最终切换是人工受控的 bounded cutover，不冒充新的 formal controller PASS 或切换后重新执行过 full regression；切换期间真实 Provider 与付费生成请求均为 0；
-- 2026-08-15 用户在切换完成后另行明确授权真实生成及生产运维补验：生产真实生成现保持开启，安全阈值固定为每用户/每类型并发 1、每分钟 5；唯一一次 Doubao Seed 文字生成已成功。`DEP-003 / DEP-005 / DEP-006 / DEP-007 / OPS-002` 已按公网 Cookie、490MiB 上传下载、schema39 自动备份/保留及整机离机恢复证据转为 `PASS`；用户随后明确“文档确认通过”，`DEP-010 = PASS`。该补验授权已消费，不得据此由 Agent 再发新的付费请求；产品供用户正常使用真实生成不受影响；
-- 用户于2026-08-15明确“都通过了”，REM-001～009B由`USER_REVIEW`收口为`PASS`，INC-ECOM-001/004/006及已生成图片内容也完成用户验收。未实际运行的另外两张付费图片与其他电商视频真实生成仅作为可选付费抽验延期，不冒充真实生成PASS，也不阻塞v0.6.1发布；既有 `PARTIAL / PAUSED / BLOCK / NOT_STARTED` 项不自动升级。当前没有 `IN_PROGRESS` REM；本次GitHub分支push、精确指向生产源commit的`v0.6.1`注释标签及Draft PR #1均已完成，授权已消费；
+- **2026-08-16 当前权威状态**：生产运行`v0.6.5/schema39`，`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.5-inc-ui-006-20260816`；service active+enabled、NRestarts0，公网version/live/ready及schema39通过。`INC-UI-006 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-000～011（含009A/009B） = PASS`，当前没有施工中的INC或REM；
+- v0.6.5生产源码commit为`d19e9dbf564f5806adface7807fbf7182bcdafc8`、tree为`e360800190fa20993984bcc560d25d5eef1cfbfa`；注释标签`v0.6.5`精确指向该源码。PR #4已于2026-08-16合并到`main`，merge commit为`0a8cfcb6c6bd1735ae921eedf2ec3b453f48493b`。生产凭证为`spec/INC_UI_006_PRODUCTION_RECEIPT_2026-08-16.json`；
+- v0.6.5正式安全全量为`118/118 specs、968/968 tests PASS`，异常0；目标画布已从冻结证据恢复坐标，登录生产实页对72个已挂载节点连续缩放后`movedIds=[]`。用户随后明确回复“通过”，因此该事件已从`USER_RECHECK`收口为`USER_PASS`；
+- 冻结备份位于`/var/lib/unboundry-rollbacks/inc-ui-006-frozen-20260816T152307Z`，冻结源与恢复副本均363文件且清单SHA-256同为`ba6baec6408f1a34d542cffc87cdf69717b82138154af4b049979a413657633e`。发布与验证期间真实Provider请求、付费生成和OSS写入均为0；
+- 既有v0.6.0～v0.6.4、真实工作流与视频证据继续作为历史记录保留；其历史时点字段不得改写。其他仍为`USER_RECHECK / PARTIAL / PAUSED / BLOCK / NOT_STARTED`的独立条目不因INC-UI-006通过而自动升级。v0.6.5生产与GitHub授权已经消费完毕，不是未来继续改生产、数据、Provider、OSS、push/tag/PR或发布的永久授权；
 
 - REM-000 施工文档已于 2026-08-09 获用户确认，状态为 `PASS`；
 - 用户已于 2026-08-09 明确启动一次性离线 Goal，合并授权 REM-001～010 与 REM-011 离线工程部分；各 REM 仍按施工总方案依赖顺序分析、实施、测试、review 和更新文档，中途不再逐项询问；

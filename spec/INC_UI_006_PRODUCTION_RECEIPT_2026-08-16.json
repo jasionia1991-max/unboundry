@@ -1,7 +1,7 @@
 {
   "incident": "INC-UI-006",
   "version": "0.6.5",
-  "status": "PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK",
+  "status": "PRODUCTION_PUBLISHED_USER_PASS",
   "publishedAt": "2026-08-16T15:28:43Z",
   "source": {
     "commit": "d19e9dbf564f5806adface7807fbf7182bcdafc8",
@@ -64,6 +64,17 @@
     "consoleErrors": []
   },
   "externalEffects": { "realProviderRequests": 0, "paidGenerationRequests": 0, "ossWrites": 0 },
-  "github": { "stateAtReceiptCommit": "PENDING_AUTHORIZED_PUSH_TAG_PR_MERGE", "tagTarget": "d19e9dbf564f5806adface7807fbf7182bcdafc8" },
-  "userAcceptance": "USER_RECHECK"
+  "github": {
+    "stateAtReceiptCommit": "PENDING_AUTHORIZED_PUSH_TAG_PR_MERGE",
+    "finalState": "MERGED",
+    "pullRequest": 4,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/4",
+    "mergedAt": "2026-08-16T15:37:53Z",
+    "mergeCommit": "0a8cfcb6c6bd1735ae921eedf2ec3b453f48493b",
+    "tag": "v0.6.5",
+    "tagTarget": "d19e9dbf564f5806adface7807fbf7182bcdafc8"
+  },
+  "userAcceptance": "USER_PASS",
+  "userAcceptedAt": "2026-08-16",
+  "userAcceptanceEvidence": "User explicitly replied 通过 after production verification."
 }

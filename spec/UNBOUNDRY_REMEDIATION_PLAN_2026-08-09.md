@@ -1,11 +1,11 @@
 # Unboundry 全量修复、优化与安全发布施工总方案
 
 状态：`COMPLETED_WITH_USER_ACCEPTANCE`
-计划版本：`1.32-v0.6.1-release-user-accepted`
+计划版本：`1.33-v0.6.5-user-accepted`
 建立日期：`2026-08-09`
-当前结论：用户后续连续授权并完成 `v0.5.2` bridge、`v0.6.0` final、schema37→39原生产切换以及`v0.6.1`工作流流水执行修复。`REM-000～011（含009A/009B） = PASS`、`PRODUCTION = LIVE / USER ACCEPTED`、`DEP-010 = PASS`；其他既有PARTIAL/PAUSED/BLOCK/NOT_STARTED不自动升级。
+当前结论：用户后续连续授权并完成 `v0.5.2` bridge、`v0.6.0` final、schema37→39原生产切换、`v0.6.1`工作流流水执行修复以及`v0.6.5`画布缩放坐标稳定修复。`REM-000～011（含009A/009B） = PASS`、`INC-UI-006 = PRODUCTION_PUBLISHED_USER_PASS`、`PRODUCTION = LIVE / USER ACCEPTED`、`DEP-010 = PASS`；当前没有施工中的INC或REM，其他既有USER_RECHECK/PARTIAL/PAUSED/BLOCK/NOT_STARTED不自动升级。
 
-生产当前运行 `/opt/unboundry/current -> releases/v0.6.1-inc-ecom-007-20260815`，service active/enabled、4173单监听；公网version/live/ready/root正常。数据库schema39、quick_check ok、FK0、active generation0、109 tasks/107 attempts、43 public templates（42 published）；globalEnabled1/emergencyStop0、每用户/每类型并发及RPM均500。
+生产当前运行 `/opt/unboundry/current -> /opt/unboundry/releases/v0.6.5-inc-ui-006-20260816`，service active/enabled、NRestarts0；公网version/live/ready与schema39通过。v0.6.5源码commit为`d19e9dbf564f5806adface7807fbf7182bcdafc8`、tree为`e360800190fa20993984bcc560d25d5eef1cfbfa`，标签`v0.6.5`精确指向该源码；PR #4已于2026-08-16合并到`main`（merge commit `0a8cfcb6c6bd1735ae921eedf2ec3b453f48493b`）。正式安全全量`118/118 specs、968/968 tests PASS`，生产实页对72个已挂载节点连续缩放后`movedIds=[]`，用户随后明确回复“通过”。
 
 F14生产artifact固定为commit `eb4f99ea525390b0dd7a39d3cad55d882ffea41d` / tree `86b4e424b6d6324c5f24d4c633b0cd35baf0d626` / manifest `46e2365c48b8e8bdaa1847b1767ef2974a71f2d2b47c87743793c116e5ec2adf` / inventory `ac8ca43a9f8f6724ca67bd0899185fa3952e762e0400a1f9ce34f3ecfefc2bac` / tar `0e3a96a13299efba407ba98dc6501ae97297c9a82c067827b9f9befeb2c18944`。原schema37 raw backup `7f14c611…` 已离机恢复PASS（inspection `b4d58243…`）。最终技术凭证 SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8` 为 `TECHNICAL_CUTOVER_VERIFIED`。
 
@@ -21,7 +21,7 @@ B14/F14 source pair形成后，clean F14本地正式门已完成：targeted81/81
 
 ## 1. 目标与真实承诺
 
-本轮目标已经达成：修复与验证先在线下完成，再以 `v0.5.2` bridge 和 `v0.6.0` final 分阶段进入原生产；后续工作流流水执行修复已以`v0.6.1/schema39`发布并获用户确认。下列“能/不能承诺”保留为施工合同和证据边界，不是尚未执行清单。
+本轮目标已经达成：修复与验证先在线下完成，再以 `v0.5.2` bridge 和 `v0.6.0` final 分阶段进入原生产；后续工作流流水执行与画布缩放坐标稳定修复已分别以`v0.6.1/schema39`和`v0.6.5/schema39`发布并获用户确认。下列“能/不能承诺”保留为施工合同和证据边界，不是尚未执行清单。
 
 能作出的承诺：
 
@@ -536,7 +536,7 @@ REM-009B 已在合成数据上完成富含业务数据、媒体、secret 和假 
 - 发布后业务健康、数据一致性和任务状态正常；
 - TASKS、验收矩阵、交接和施工断点完成最终收口。
 
-完成结论（2026-08-15）：`REM-000～011（含009A/009B） = PASS`、生产 `v0.6.1/schema39 LIVE / USER ACCEPTED`、`DEP-010 = PASS`。v0.6.0最终技术凭证 SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8`与v0.6.1生产凭证继续分别保留；用户最终明确“都通过了”。其他既有PARTIAL/PAUSED/BLOCK/NOT_STARTED项以及未执行的可选付费两图/视频抽验保持延期或原状态。本次manual bounded cutover不声明formal controller PASS或切换后full regression PASS。
+完成结论（2026-08-16）：`REM-000～011（含009A/009B） = PASS`、`INC-UI-006 = PRODUCTION_PUBLISHED_USER_PASS`、生产 `v0.6.5/schema39 LIVE / USER ACCEPTED`、`DEP-010 = PASS`，当前没有施工中的INC或REM。v0.6.0最终技术凭证 SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8`、v0.6.1历史生产凭证与v0.6.5生产凭证继续分别保留；用户在v0.6.5生产验证后明确回复“通过”。其他既有USER_RECHECK/PARTIAL/PAUSED/BLOCK/NOT_STARTED项以及未执行的可选付费两图/视频抽验保持延期或原状态。本次manual bounded cutover不声明formal controller PASS；v0.6.5的`118/118 specs、968/968 tests PASS`是该版本正式安全全量证据。
 
 ## 15. 变更记录
 
@@ -577,3 +577,4 @@ REM-009B 已在合成数据上完成富含业务数据、媒体、secret 和假 
 | 2026-08-15 | 1.30-production-operational-complete | 用户另行授权并完成真实生成、公网Cookie、500MB级上传下载、schema39日常备份/清单式保留与整机离机恢复。唯一真实文字任务一次成功；DEP-003/005/006/007与OPS-002转PASS，生产生成开关以并发1/RPM5安全开启 | 该补验发生在切换完成后，不改写切换期间Provider调用0；不授权未来Agent继续付费或push/tag/PR |
 | 2026-08-15 | 1.31-production-docs-user-accepted | 七份权威文档完成最终一致性收口，用户明确“文档确认通过”，DEP-010转PASS | 仅确认文档收口，不改变REM-001～009B及既有PARTIAL/PAUSED/BLOCK/NOT_STARTED项 |
 | 2026-08-15 | 1.32-v0.6.1-release-user-accepted | v0.6.1工作流流水修复上线并通过用户实页验收；用户进一步明确“都通过了”，REM-001～009B、电商模板/封面、原结果恢复与现有图片结果完成收口 | 未实际运行的付费两图/视频抽验及既有PARTIAL/PAUSED/BLOCK/NOT_STARTED项不自动升级 |
+| 2026-08-16 | 1.33-v0.6.5-user-accepted | v0.6.5画布缩放坐标稳定修复发布、目标组坐标恢复、全量与生产实页验证完成；用户明确“通过”，INC-UI-006收口，`v0.6.5`标签与PR #4合并完成 | 其他既有USER_RECHECK/PARTIAL/PAUSED/BLOCK/NOT_STARTED保持原状态；本次生产与GitHub授权已消费 |
