@@ -1,16 +1,17 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`66`
+断点版本：`67`
 更新时间：`2026-08-16`
-状态：`INC_UI_006_V0_6_5_PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK`
+状态：`INC_UI_006_V0_6_5_PRODUCTION_PUBLISHED_USER_PASS_CLOSED`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
-## 0. 当前新事件：INC-UI-006（v0.6.5已发布，待用户复验）
+## 0. 最新已完成事件：INC-UI-006（v0.6.5已发布并通过用户验收）
 
 - 用户确认v0.6.5并授权全量测试、坐标恢复、冻结备份、发布、commit、push、tag与PR合并。
 - 修复Group的viewport重渲染和镜头期被动position change持久化，并在载入、模板应用和组模板保存时阻断`parentId===id`自引用根；真实拖动、键盘移动和resize不变。
 - 精确源码commit`d19e9dbf564f5806adface7807fbf7182bcdafc8`通过定向69/69及安全全量118/118 specs、968/968 tests，异常0；真实Provider、付费生成和OSS写入0。
-- 生产current已切到`/opt/unboundry/releases/v0.6.5-inc-ui-006-20260816`，公网资源、冻结备份恢复、service/schema39与数据不变门PASS。目标组恢复无父级`(-1080,-1080)`；另一自引用根只移除自引用并保留坐标。登录实页72节点连续缩放无位移，`movedIds=[]`。当前仅待用户肉眼复验。
+- 生产current已切到`/opt/unboundry/releases/v0.6.5-inc-ui-006-20260816`，公网资源、冻结备份恢复、service/schema39与数据不变门PASS。目标组恢复无父级`(-1080,-1080)`；另一自引用根只移除自引用并保留坐标。登录实页72节点连续缩放无位移，`movedIds=[]`。
+- `v0.6.5`注释标签精确指向生产源码commit`d19e9dbf564f5806adface7807fbf7182bcdafc8`；PR #4已合并到`main`，merge commit`0a8cfcb6c6bd1735ae921eedf2ec3b453f48493b`。用户随后明确回复“通过”，INC-UI-006正式收口为`PRODUCTION_PUBLISHED_USER_PASS`；当前无施工中INC或REM。
 
 ## 0A. 前一事件：INC-UI-005（v0.6.4已发布，待用户复验）
 
@@ -500,22 +501,22 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 
 ## 10. 2026-08-16 当前恢复卡
 
-> 2026-08-16 INC-UI-006增量断点：v0.6.5已发布，current→`v0.6.5-inc-ui-006-20260816`，公网v0.6.5、service active+enabled、schema39、NRestarts0。正式安全全量118/118 specs、968/968 tests PASS；目标组坐标已从冻结证据精确恢复，Chrome对72节点连续缩放无位移，生产数据不变，真实Provider/付费/OSS写入0。当前仅待用户肉眼复验；以INC-UI-006文档和生产receipt为准。
+> 2026-08-16 INC-UI-006最终断点：v0.6.5已发布，current→`v0.6.5-inc-ui-006-20260816`，公网v0.6.5、service active+enabled、schema39、NRestarts0。正式安全全量118/118 specs、968/968 tests PASS；目标组坐标已从冻结证据精确恢复，Chrome对72节点连续缩放无位移，生产数据不变，真实Provider/付费/OSS写入0。用户已明确回复“通过”，PR #4已合并；以INC-UI-006文档和生产receipt为准。
 
 ```text
 项目路径：/Users/mymy/Documents/unboundry/app
 本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.5生产源commit d19e9dbf564f5806adface7807fbf7182bcdafc8；禁止reset/clean
 生产：canvas.mymy.ltd；v0.6.5/schema39；/opt/unboundry/current -> releases/v0.6.5-inc-ui-006-20260816
 生产artifact：source commit d19e9dbf564f5806adface7807fbf7182bcdafc8；tree e360800190fa20993984bcc560d25d5eef1cfbfa；inventory cd9296aec4662dceb00cdd22256040ee91512971f36049d5ba3af0a7bdb0a53b
-当前状态：INC-UI-006已发布并完成自动与Chrome实页技术验证、待用户复验；既有INC-UI-005/004/003、INC-VIDEO-001、INC-UI-001/002状态保持；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
+当前状态：INC-UI-006已发布并完成自动、Chrome实页与用户验收，状态PRODUCTION_PUBLISHED_USER_PASS；既有INC-UI-005/004/003、INC-VIDEO-001、INC-UI-001/002状态保持；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE；当前无施工中INC或REM
 技术凭证：spec/INC_UI_006_PRODUCTION_RECEIPT_2026-08-16.json；spec/INC_UI_006_CANVAS_ZOOM_POSITION_STABILITY_2026-08-16.md；既有视频与UI发布凭证继续保留
-用户验收：既有v0.6.0/v0.6.1验收保持；v0.6.5坐标稳定、v0.6.4组标题总览、v0.6.3公共模板UI与旧标签恢复、v0.6.2其余UI/视频项等待用户线上复验
+用户验收：既有v0.6.0/v0.6.1验收保持；v0.6.5坐标稳定已USER PASS；v0.6.4组标题总览、v0.6.3公共模板UI与旧标签恢复、v0.6.2其余UI/视频项继续等待用户线上复验
 数据库：schema39；quick_check ok；FK0；153 tasks/152 attempts；46 public templates/45 published；active0；默认视频模型Seedance；既有生成安全配置不变
 备份：/var/lib/unboundry-rollbacks/inc-ui-006-frozen-20260816T152307Z；冻结源与恢复副本均363文件，清单SHA ba6baec6408f1a34d542cffc87cdf69717b82138154af4b049979a413657633e，二者均PASS；历史schema37/offhost备份继续保留
 限制：attempt 86/108/116/120/122为行政取消且禁止重试，PROVIDER_FAILED仅surrogate；3条音频仅改duration元数据；cutover Provider/paid calls=0
-GitHub：v0.6.5源码、精确源码注释标签与PR合并由当前已授权发布流程收尾
-未来授权：本次v0.6.5生产与GitHub发布授权在收尾完成后消费；未来生产读写、真实Provider/付费生成、push/tag/PR或新发布仍需新授权
-下一步：用户按v0.6.5验收清单线上复验；确认后再把INC-UI-006从USER_RECHECK改为USER PASS
+GitHub：v0.6.5注释标签精确指向生产源码d19e9dbf564f5806adface7807fbf7182bcdafc8；PR #4已合并到main，merge commit 0a8cfcb6c6bd1735ae921eedf2ec3b453f48493b
+未来授权：本次v0.6.5生产与GitHub发布授权已消费；未来生产读写、真实Provider/付费生成、push/tag/PR或新发布仍需新授权
+下一步：当前无施工中事项；新Agent应先按AGENTS.md读取顺序恢复，再根据用户最新请求建立新的授权与断点，不得继续消费v0.6.5授权
 ```
 
 任何恢复者必须优先使用本节；第9节只保留历史，不得执行其“下一步”。

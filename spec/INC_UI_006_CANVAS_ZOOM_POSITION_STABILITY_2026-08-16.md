@@ -1,6 +1,6 @@
 # INC-UI-006：画布缩放坐标稳定性
 
-状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
+状态：`PRODUCTION_PUBLISHED_USER_PASS`
 版本：`v0.6.5`
 日期：`2026-08-16`
 
@@ -34,4 +34,5 @@
 - 冻结备份及恢复副本均为363个文件，清单SHA-256均为`ba6baec6408f1a34d542cffc87cdf69717b82138154af4b049979a413657633e`，恢复库`quick_check=ok / FK0`。
 - 目标画布仅修复两个历史自引用根：目标组恢复为无父级`(-1080,-1080)`；另一组只移除自引用并保留`(-1354.7552083333335,-1468.1145833333335)`。节点89、边145和viewport保持不变。
 - 登录生产实页对72个已挂载节点执行`.27→.6→.15→1→.27→.15`连续缩放，所有DOM transform前后完全一致，`movedIds=[]`，浏览器错误日志为空；数据库坐标及revision保持不变。
-- 完整生产凭证见`spec/INC_UI_006_PRODUCTION_RECEIPT_2026-08-16.json`；仍需用户在原画布肉眼复验，自动结论不替代`USER_RECHECK`。
+- 完整生产凭证见`spec/INC_UI_006_PRODUCTION_RECEIPT_2026-08-16.json`。用户随后在原问题画布复验并明确回复“通过”，本事件正式收口为`PRODUCTION_PUBLISHED_USER_PASS`。
+- `v0.6.5`注释标签精确指向生产源码commit`d19e9dbf564f5806adface7807fbf7182bcdafc8`；PR #4已合并到`main`，merge commit为`0a8cfcb6c6bd1735ae921eedf2ec3b453f48493b`。
