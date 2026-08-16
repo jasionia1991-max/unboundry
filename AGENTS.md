@@ -17,11 +17,11 @@
 
 ## 2. 当前授权边界
 
-- **2026-08-16 当前权威状态**：生产运行`v0.6.5/schema39`，`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.5-inc-ui-006-20260816`；service active+enabled、NRestarts0，公网version/live/ready及schema39通过。`INC-UI-006 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-000～011（含009A/009B） = PASS`，当前没有施工中的INC或REM；
-- v0.6.5生产源码commit为`d19e9dbf564f5806adface7807fbf7182bcdafc8`、tree为`e360800190fa20993984bcc560d25d5eef1cfbfa`；注释标签`v0.6.5`精确指向该源码。PR #4已于2026-08-16合并到`main`，merge commit为`0a8cfcb6c6bd1735ae921eedf2ec3b453f48493b`。生产凭证为`spec/INC_UI_006_PRODUCTION_RECEIPT_2026-08-16.json`；
-- v0.6.5正式安全全量为`118/118 specs、968/968 tests PASS`，异常0；目标画布已从冻结证据恢复坐标，登录生产实页对72个已挂载节点连续缩放后`movedIds=[]`。用户随后明确回复“通过”，因此该事件已从`USER_RECHECK`收口为`USER_PASS`；
-- 冻结备份位于`/var/lib/unboundry-rollbacks/inc-ui-006-frozen-20260816T152307Z`，冻结源与恢复副本均363文件且清单SHA-256同为`ba6baec6408f1a34d542cffc87cdf69717b82138154af4b049979a413657633e`。发布与验证期间真实Provider请求、付费生成和OSS写入均为0；
-- 既有v0.6.0～v0.6.4、真实工作流与视频证据继续作为历史记录保留；其历史时点字段不得改写。其他仍为`USER_RECHECK / PARTIAL / PAUSED / BLOCK / NOT_STARTED`的独立条目不因INC-UI-006通过而自动升级。v0.6.5生产与GitHub授权已经消费完毕，不是未来继续改生产、数据、Provider、OSS、push/tag/PR或发布的永久授权；
+- **2026-08-17 当前权威状态**：生产运行`v0.6.6/schema39`，`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.6-inc-ui-007-20260817`；service active+enabled、NRestarts0，公网version、入口和关键静态资源哈希及schema39通过。`INC-UI-007 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`REM-000～011（含009A/009B） = PASS`，当前没有施工中的INC或REM；
+- v0.6.6生产源码commit为`31bb1e9aa6bbdf08f84fd7d5c95ab5d5ee00dbec`、tree为`c7184cf60929070ea1411a3e56b958b220f5b499`；注释标签`v0.6.6`精确指向该源码。PR #6已于2026-08-17合并到`main`，merge commit为`6581a88c044db4e5efb8e694c4da1681defca730`。生产凭证为`spec/INC_UI_007_PRODUCTION_RECEIPT_2026-08-17.json`；
+- v0.6.6正式安全全量为`118/118 specs、969/969 tests PASS`，异常0；Group标题、Text阅读态画布平移和模板目录返回刷新已由真实Playwright回归覆盖。自动和生产技术验证已通过，但用户醒来后的肉眼复验仍为`USER_RECHECK`，不得提前记为USER PASS；
+- 冻结备份位于`/var/lib/unboundry-rollbacks/inc-ui-007-frozen-20260816T182639Z`，冻结源与恢复副本均363文件且清单SHA-256同为`9e088862f03f23aeabc68881ed5d8a9c1ad3a992124af509ace10ae89a953895`。发布与验证期间真实Provider请求、付费生成和OSS写入均为0；
+- 既有v0.6.0～v0.6.5、真实工作流与视频证据继续作为历史记录保留；其历史时点字段不得改写。其他仍为`USER_RECHECK / PARTIAL / PAUSED / BLOCK / NOT_STARTED`的独立条目不因INC-UI-007自动升级。v0.6.6生产与GitHub授权已经消费完毕，不是未来继续改生产、数据、Provider、OSS、push/tag/PR或发布的永久授权；
 
 - REM-000 施工文档已于 2026-08-09 获用户确认，状态为 `PASS`；
 - 用户已于 2026-08-09 明确启动一次性离线 Goal，合并授权 REM-001～010 与 REM-011 离线工程部分；各 REM 仍按施工总方案依赖顺序分析、实施、测试、review 和更新文档，中途不再逐项询问；
