@@ -238,10 +238,18 @@ sup {
   line-height: 20px;
 }
 
+.canvas-load-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .canvas-load-gate button {
   min-width: 112px;
   height: 34px;
-  margin: 8px auto 0;
+  margin: 0;
   padding: 0 16px;
   border: 0;
   border-radius: 10px;
@@ -249,6 +257,12 @@ sup {
   background: #f2f2f2;
   font: inherit;
   cursor: pointer;
+}
+
+.canvas-load-gate button.is-secondary {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #d7d7d7;
+  background: #292929;
 }
 
 .canvas-grid {

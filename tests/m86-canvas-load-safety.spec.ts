@@ -3911,6 +3911,20 @@ test("an old-epoch pagehide journal fails closed when a foreign writer cannot pr
   await expect(page.getByTestId("canvas-load-state")).toContainText(
     "服务器重启前仍有一份未确认的本地保存",
   );
+  await expect(page.getByTestId("canvas-load-server-version")).toHaveText(
+    "打开服务器版本",
+  );
+  await page.evaluate(() => {
+    const testWindow = window as typeof window & { __m86OpenedUrl?: string };
+    window.open = ((url?: string | URL) => {
+      testWindow.__m86OpenedUrl = String(url ?? "");
+      return null;
+    }) as typeof window.open;
+  });
+  await page.getByTestId("canvas-load-server-version").click();
+  await expect.poll(() => page.evaluate(() =>
+    (window as typeof window & { __m86OpenedUrl?: string }).__m86OpenedUrl,
+  )).toContain(`/__fixture/${canvasId}`);
   expect(getCount).toBeGreaterThanOrEqual(1);
   expect(putCount).toBe(0);
   const stored = await readCanvasSaveSession(page, canvasId);

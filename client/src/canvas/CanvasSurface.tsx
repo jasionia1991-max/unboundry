@@ -291,7 +291,7 @@ function canvasLoadFailure(error: unknown): CanvasLoadFailure {
     return {
       kind: "stale-save-session",
       message:
-        "检测到服务器重启前仍有一份未确认的本地保存，且内容与服务器版本不同。为保护两份内容，当前页没有覆盖任何数据；请新建空白标签页后粘贴当前网址，查看服务器版本。",
+        "检测到服务器重启前仍有一份未确认的本地保存，且内容与服务器版本不同。当前页会保留这份本地恢复副本；请打开服务器版本继续使用，系统不会覆盖任何一份内容。",
     };
   }
   if (error instanceof CanvasSaveSessionStorageError) {
@@ -6937,15 +6937,37 @@ export function CanvasSurface({
                     "没有打开空白画布，也没有保存或生成。请检查连接后重试。"}
             </span>
             {effectivePersistenceLoadState === "failed" && (
-              <button
-                data-testid="canvas-load-retry"
-                onClick={() =>
-                  setPersistenceLoadAttempt((attempt) => attempt + 1)
-                }
-                type="button"
-              >
-                重试加载
-              </button>
+              <div className="canvas-load-actions">
+                {persistenceLoadFailure?.kind === "stale-save-session" && (
+                  <button
+                    data-testid="canvas-load-server-version"
+                    onClick={() =>
+                      window.open(
+                        window.location.href,
+                        "_blank",
+                        "noopener,noreferrer",
+                      )
+                    }
+                    type="button"
+                  >
+                    打开服务器版本
+                  </button>
+                )}
+                <button
+                  className={
+                    persistenceLoadFailure?.kind === "stale-save-session"
+                      ? "is-secondary"
+                      : undefined
+                  }
+                  data-testid="canvas-load-retry"
+                  onClick={() =>
+                    setPersistenceLoadAttempt((attempt) => attempt + 1)
+                  }
+                  type="button"
+                >
+                  重试加载
+                </button>
+              </div>
             )}
           </div>
         </section>
