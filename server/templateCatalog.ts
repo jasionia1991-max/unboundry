@@ -312,10 +312,12 @@ function isFiniteNumber(value: unknown): value is number {
 
 export function validTemplateGraph(value: unknown): value is TemplateGraph {
   if (!isRecord(value)) return false;
+  if (value.version !== 1) return false;
   const nodes = value.nodes;
   const edges = value.edges;
   if (!Array.isArray(nodes) || nodes.length > 500) return false;
   if (!Array.isArray(edges) || edges.length > 1000) return false;
+  const nodeById = new Map<string, Record<string, unknown>>();
   for (const rawNode of nodes) {
     if (!isRecord(rawNode)) return false;
     const type = rawNode.type;
@@ -332,6 +334,7 @@ export function validTemplateGraph(value: unknown): value is TemplateGraph {
     ) {
       return false;
     }
+    if (nodeById.has(rawNode.id)) return false;
     if (
       !isRecord(rawNode.position) ||
       !isFiniteNumber(rawNode.position.x) ||
@@ -363,7 +366,25 @@ export function validTemplateGraph(value: unknown): value is TemplateGraph {
     if (!isRecord(rawNode.data) || typeof rawNode.data.label !== "string") {
       return false;
     }
+    nodeById.set(rawNode.id, rawNode);
   }
+  let topLevelNodes = 0;
+  for (const rawNode of nodeById.values()) {
+    if (rawNode.parentId === undefined) {
+      topLevelNodes += 1;
+      continue;
+    }
+    if (
+      rawNode.parentId === rawNode.id ||
+      rawNode.type === "group" ||
+      nodeById.get(rawNode.parentId as string)?.type !== "group"
+    ) {
+      return false;
+    }
+  }
+  if (nodes.length > 0 && topLevelNodes === 0) return false;
+  const edgeIds = new Set<string>();
+  const edgePairs = new Set<string>();
   for (const rawEdge of edges) {
     if (!isRecord(rawEdge)) return false;
     for (const key of ["id", "source", "target"] as const) {
@@ -376,6 +397,21 @@ export function validTemplateGraph(value: unknown): value is TemplateGraph {
         return false;
       }
     }
+    const edgeId = rawEdge.id as string;
+    const sourceId = rawEdge.source as string;
+    const targetId = rawEdge.target as string;
+    if (
+      edgeIds.has(edgeId) ||
+      sourceId === targetId ||
+      !nodeById.has(sourceId) ||
+      !nodeById.has(targetId)
+    ) {
+      return false;
+    }
+    const edgePair = `${sourceId}\0${targetId}`;
+    if (edgePairs.has(edgePair)) return false;
+    edgeIds.add(edgeId);
+    edgePairs.add(edgePair);
     if (
       rawEdge.sourceHandle !== undefined &&
       typeof rawEdge.sourceHandle !== "string"

@@ -40,6 +40,8 @@
     "data:mirror-oss": "node scripts/mirror-oss-to-local.mjs",
     "data:verify-backup": "node scripts/verify-backup.mjs",
     "data:restore-backup": "node scripts/restore-backup.mjs",
+    "verify:apparel-auto-launch": "node scripts/verify-ecommerce-apparel-auto-launch.mjs",
+    "apply:apparel-auto-launch": "node scripts/apply-ecommerce-apparel-auto-launch.mjs",
     "test:backup": "node scripts/run-safe-tests.mjs run --spec tests/m10-backup.spec.ts",
     "test:fixture-prod": "UNBOUNDRY_TEST_PREVIEW=1 playwright test tests/fixture-production.spec.ts",
     "test:safe:preflight": "node scripts/run-safe-tests.mjs preflight",
