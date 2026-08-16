@@ -1,7 +1,16 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-16
-状态：`生产已运行 v0.6.2/schema39；INC-VIDEO-001已发布并完成真实Seedance视频闭环，等待用户次日复验；INC-UI-001/002已发布且自动全量通过，等待用户线上复验；INC-ECOM-001～007已按各自证据边界完成用户收口；REM-000～011（含009A/009B）= PASS；PRODUCTION = LIVE。`
+状态：`生产当前运行 v0.6.2/schema39；INC-UI-003已完成967/967安全全量并获v0.6.3发布授权，生产切换待执行；既有INC-VIDEO-001、INC-UI-001/002及INC-ECOM状态保持。`
+
+### 2026-08-16 公共模板 UI 与旧画布会话恢复（INC-UI-003）
+
+- 状态：`RELEASE_AUTHORIZED / AUTOMATED PASS / PRODUCTION PENDING`；用户确认版本v0.6.3并授权一次性完成构建、备份、发布和零付费验证。
+- UI：公共模板列表、编辑弹窗、下拉、复选框、按钮、焦点圈定与移动端布局统一对齐灰阶UI规范。
+- 加载：旧服务器epoch的pagehide journal若与权威服务器document指纹完全一致，则零PUT结算并正常进入；若不同则保留journal、零PUT/零生成并显示专用冲突说明。
+- 自动门：118/118 specs、967/967 tests PASS，异常0，source snapshot与4173 listener不变；真实Provider、付费生成和真实OSS写入0。
+- 发布边界：schema39不迁移；生产切换前做可恢复备份，切换后核验公网健康、数据计数、目标项目和UI；肉眼验收保持USER_RECHECK。
+- 权威记录：`spec/INC_UI_003_PUBLIC_TEMPLATE_AND_CANVAS_LOAD_RECOVERY_2026-08-16.md`、`spec/V0_6_3_RELEASE_NOTES_2026-08-16.md`。
 
 ### 2026-08-16 视频协议热修复与真实生成（INC-VIDEO-001）
 

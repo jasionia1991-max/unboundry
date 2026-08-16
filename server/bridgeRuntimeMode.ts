@@ -17,7 +17,7 @@ export function releaseRoleFromEnvironment(
   const packageRole = packageVersion === "0.5.2"
     ? "bridge"
     : packageVersion === "0.6.0" || packageVersion === "0.6.1" ||
-        packageVersion === "0.6.2"
+        packageVersion === "0.6.2" || packageVersion === "0.6.3"
       ? "final"
       : undefined;
   if (!packageRole) {

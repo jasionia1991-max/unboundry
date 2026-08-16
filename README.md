@@ -1,6 +1,10 @@
 # 无央 Unboundry
 
-TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mymy.ltd`，当前线上 `v0.6.2 / schema39`）。
+TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mymy.ltd`，当前线上 `v0.6.2 / schema39`；`v0.6.3` 已授权且自动全量通过，待生产切换）。
+
+## 2026-08-16 公共模板 UI 与旧画布会话恢复（待发布）
+
+`INC-UI-003 = RELEASE_AUTHORIZED / AUTOMATED PASS / PRODUCTION PENDING`：公共模板管理页和编辑弹窗已对齐统一灰阶UI、GrayMenuSelect、自绘复选框、主次按钮、焦点圈定及窄屏布局。特定项目返回失败的根因是浏览器单标签遗留的旧server-epoch pagehide journal；当本地journal文档与服务器权威文档指纹完全一致时会零PUT结算并正常进入，不一致时继续保留双方内容、零PUT/零生成并显示专用冲突提示。正式安全全量为`118/118 specs、967/967 tests PASS`，异常0、source snapshot与4173不变、真实Provider/付费/OSS写入0。用户已确认版本v0.6.3并授权发布，schema39不迁移。
 
 ## 2026-08-16 画布 UI 恢复（已发布，待用户线上复验）
 

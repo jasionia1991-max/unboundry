@@ -3904,11 +3904,74 @@ test("an old-epoch pagehide journal fails closed when a foreign writer cannot pr
     "data-persistence-state",
     "failed",
   );
+  await expect(page.getByTestId("canvas-load-state")).toHaveAttribute(
+    "data-error-kind",
+    "stale-save-session",
+  );
+  await expect(page.getByTestId("canvas-load-state")).toContainText(
+    "服务器重启前仍有一份未确认的本地保存",
+  );
   expect(getCount).toBeGreaterThanOrEqual(1);
   expect(putCount).toBe(0);
   const stored = await readCanvasSaveSession(page, canvasId);
   expect(stored?.pendingPagehide?.attemptId).toBe(SAVE_ATTEMPT_A);
   expect(stored?.confirmedSequence).toBe(0);
+  expect(generationPosts()).toBe(0);
+});
+
+test("an old-epoch pagehide journal is safely settled when the server document is identical", async ({
+  page,
+}) => {
+  const canvasId = "node.text.empty";
+  const pendingPayload = canvasSavePayload({ canvasTitle: "A2" });
+  await seedCanvasSaveSession(page, canvasId, {
+    confirmedSequence: 0,
+    pendingPagehide: {
+      attemptId: SAVE_ATTEMPT_A,
+      payload: pendingPayload,
+      saveSequence: 1,
+      serverEpoch: SAVE_EPOCH_A,
+    },
+    saveSequence: 1,
+    saveSessionId: SAVE_SESSION_A,
+    serverEpoch: SAVE_EPOCH_A,
+    storageRevision: 0,
+  });
+  let putCount = 0;
+  const generationPosts = generationPostCount(page);
+  await page.route(`**/api/canvas/${canvasId}`, async (route) => {
+    if (route.request().method() !== "GET") {
+      putCount += 1;
+      await route.fulfill({ status: 500 });
+      return;
+    }
+    await route.fulfill({
+      body: JSON.stringify({
+        ...textDocument("A2", 3, LOAD_TOKEN_B),
+        currentWriterSequence: 1,
+        currentWriterSessionId: SAVE_SESSION_B,
+        saveEpoch: SAVE_EPOCH_B,
+        sessionHighWaterAttemptId: null,
+        sessionHighWaterSequence: 0,
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+
+  await page.goto(`/__fixture/${canvasId}`);
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-persistence-state",
+    "ready",
+  );
+  await page.locator('.react-flow__node[data-id="text-primary"]').click();
+  await expect(page.getByTestId("canvas-node-title")).toHaveValue("A2");
+  expect(putCount).toBe(0);
+  const stored = await readCanvasSaveSession(page, canvasId);
+  expect(stored?.confirmedSequence).toBe(1);
+  expect(stored?.saveSequence).toBe(1);
+  expect(stored?.pendingPagehide).toBeUndefined();
+  expect(stored?.serverEpoch).toBe(SAVE_EPOCH_B);
   expect(generationPosts()).toBe(0);
 });
 

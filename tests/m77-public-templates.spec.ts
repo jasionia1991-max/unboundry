@@ -1121,13 +1121,32 @@ test("admin templates page creates, edits, archives and restores public template
     await expect(seedCard.locator("[data-compatibility='NEEDS_MODEL']"))
       .toContainText("需要绑定模型");
 
-    await page.getByRole("button", { name: "新建公共模板" }).click();
+    const newTemplateButton = page.getByRole("button", {
+      name: "新建公共模板",
+    });
+    await newTemplateButton.click();
     const modal = page.getByTestId("admin-template-modal");
+    await expect(modal).toBeVisible();
+    await expect(
+      page.getByRole("dialog", { name: "新建公共模板" }),
+    ).toBeVisible();
+    await expect(modal.getByLabel(/模板标题/)).toBeFocused();
+    const toolsCheckbox = modal.getByRole("checkbox", { name: "工具" });
+    await expect(toolsCheckbox).toHaveCSS("appearance", "none");
+    const templatesSection = page.locator(".admin-templates-section");
+    expect((await templatesSection.boundingBox())?.width).toBeLessThanOrEqual(960);
+    await page.keyboard.press("Escape");
+    await expect(modal).toHaveCount(0);
+    await expect(newTemplateButton).toBeFocused();
+
+    await newTemplateButton.click();
     await expect(modal).toBeVisible();
     await modal.getByLabel(/模板标题/).fill("UI 新建模板");
     await modal.getByLabel(/说明/).fill("通过管理页创建");
     await modal.getByRole("checkbox", { name: "工具" }).check();
-    await modal.getByLabel(/状态/).selectOption("published");
+    const statusSelect = modal.getByTestId("admin-template-status-select");
+    await statusSelect.getByRole("combobox", { name: "状态" }).click();
+    await statusSelect.getByRole("option", { name: "发布" }).click();
     await modal
       .getByLabel(/模板图 JSON/)
       .fill(JSON.stringify(uploadPlaceholderGraph()));

@@ -477,6 +477,8 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 
 ## 10. 2026-08-16 当前恢复卡
 
+> 2026-08-16 INC-UI-003增量断点：用户确认v0.6.3并授权发布；公共模板灰阶UI与旧server-epoch journal安全结算已完成，正式安全全量118/118 specs、967/967 tests PASS，异常0且零真实Provider/付费/OSS写入。生产实时只读结果为current→`v0.6.2-inc-ecom-009-20260816`、公网v0.6.2、active/schema39。v0.6.3尚未切换；schema不迁移。下方恢复卡中指向video release的内容是此前时点，执行时以上述实时结果及INC-UI-003文档为准。
+
 ```text
 项目路径：/Users/mymy/Documents/unboundry/app
 本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.2视频热修复生产源commit 959c1e287fb25943ca13037332030e99b39725be；禁止reset/clean；分支已推送，v0.6.2 tag与Draft PR #1已更新

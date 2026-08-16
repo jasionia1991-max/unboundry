@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
 import { ModelCatalogProvider } from "./models/ModelCatalog";
@@ -6526,6 +6527,60 @@ function AdminTemplatesPage({ currentUser }: { currentUser: AuthUser }) {
     title: "",
   });
   const [modalError, setModalError] = useState("");
+  const templateModalRef = useRef<HTMLElement | null>(null);
+  const templateModalReturnFocusRef = useRef<HTMLElement | null>(null);
+
+  const closeTemplateModal = () => setCreating(false);
+
+  useEffect(() => {
+    if (!creating) return;
+    const returnFocus = templateModalReturnFocusRef.current;
+    const focusFrame = window.requestAnimationFrame(() => {
+      templateModalRef.current
+        ?.querySelector<HTMLElement>("[data-autofocus='true']")
+        ?.focus();
+    });
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      if (returnFocus?.isConnected) {
+        window.requestAnimationFrame(() => returnFocus.focus());
+      }
+    };
+  }, [creating]);
+
+  const handleTemplateModalKeyDown = (
+    event: ReactKeyboardEvent<HTMLElement>,
+  ) => {
+    if (event.key === "Escape") {
+      if (
+        templateModalRef.current?.querySelector(
+          ".gray-menu-select[data-open='true']",
+        )
+      ) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      closeTemplateModal();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = [
+      ...(templateModalRef.current?.querySelectorAll<HTMLElement>(
+        "button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
+      ) ?? []),
+    ].filter((element) => element.offsetParent !== null);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
 
   const load = async () => {
     setError("");
@@ -6594,6 +6649,10 @@ function AdminTemplatesPage({ currentUser }: { currentUser: AuthUser }) {
   };
 
   const openCreate = () => {
+    templateModalReturnFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
     setEditing(undefined);
     setModalError("");
     setDraft({
@@ -6617,6 +6676,10 @@ function AdminTemplatesPage({ currentUser }: { currentUser: AuthUser }) {
   };
 
   const openEdit = async (template: AdminPublicTemplate) => {
+    templateModalReturnFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
     setEditing(template);
     setModalError("");
     setDraft({
@@ -6693,7 +6756,7 @@ function AdminTemplatesPage({ currentUser }: { currentUser: AuthUser }) {
         });
         setNotice(`「${draft.title}」已创建`);
       }
-      setCreating(false);
+      closeTemplateModal();
       await load();
     } catch (caught) {
       setModalError(
@@ -6703,7 +6766,10 @@ function AdminTemplatesPage({ currentUser }: { currentUser: AuthUser }) {
   };
 
   return (
-    <main className="admin-page" data-testid="admin-templates-page">
+    <main
+      className="admin-page admin-templates-page"
+      data-testid="admin-templates-page"
+    >
       <SettingsPageHeader
         displayName={`管理员：${currentUser.displayName}`}
         pageTitle="公共模板管理"
@@ -6839,138 +6905,172 @@ function AdminTemplatesPage({ currentUser }: { currentUser: AuthUser }) {
           className="admin-template-modal-backdrop"
           onMouseDown={(event) => {
             if (event.currentTarget !== event.target) return;
-            setCreating(false);
+            closeTemplateModal();
           }}
         >
           <section
-            aria-label={editing ? "编辑公共模板" : "新建公共模板"}
+            aria-labelledby="admin-template-modal-title"
             aria-modal="true"
             className="admin-template-modal"
             data-testid="admin-template-modal"
+            onKeyDown={handleTemplateModalKeyDown}
+            ref={templateModalRef}
             role="dialog"
           >
-            <h2>{editing ? "编辑公共模板" : "新建公共模板"}</h2>
-            <label>
-              模板标题（1–40 字符）
-              <input
-                maxLength={40}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    title: event.target.value,
-                  }))
-                }
-                placeholder="例如：电商主图工作流"
-                value={draft.title}
-              />
-            </label>
-            <label>
-              说明（可选）
-              <input
-                maxLength={200}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    description: event.target.value,
-                  }))
-                }
-                placeholder="普通账号看到的模板说明"
-                value={draft.description}
-              />
-            </label>
-            <div className="admin-template-categories">
-              <span>分类（可多选）</span>
+            <header className="admin-template-modal-header">
               <div>
-                {REAL_CATEGORIES.map((category) => (
-                  <label key={category}>
-                    <input
-                      checked={draft.categories.includes(category)}
-                      className="admin-compact-checkbox"
-                      onChange={(event) =>
-                        setDraft((current) => ({
-                          ...current,
-                          categories: event.target.checked
-                            ? [...current.categories, category]
-                            : current.categories.filter(
-                                (item) => item !== category,
-                              ),
-                        }))
-                      }
-                      type="checkbox"
-                    />
-                    <span>{category}</span>
-                  </label>
-                ))}
+                <span>公共模板</span>
+                <h2 id="admin-template-modal-title">
+                  {editing ? "编辑公共模板" : "新建公共模板"}
+                </h2>
               </div>
-            </div>
-            <label>
-              封面路径（可选，例如 /templates/demo.png）
-              <input
-                maxLength={500}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    previewImage: event.target.value,
-                  }))
-                }
-                placeholder="/templates/demo.png"
-                value={draft.previewImage}
-              />
-            </label>
-            <label>
-              状态
-              <select
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    status: event.target.value as AdminPublicTemplateStatus,
-                  }))
-                }
-                value={draft.status}
+              <button
+                aria-label="关闭公共模板弹窗"
+                className="admin-template-modal-close"
+                onClick={closeTemplateModal}
+                type="button"
               >
-                <option value="draft">草稿</option>
-                <option value="published">发布</option>
-              </select>
-            </label>
-            {!editing && (
+                ×
+              </button>
+            </header>
+            <div className="admin-template-modal-fields">
               <label>
-                基于现有模板（可选）
-                <select
-                  onChange={(event) => void pickBaseTemplate(event.target.value)}
-                  value={draft.baseTemplateId}
-                >
-                  <option value="">不基于现有模板</option>
-                  {templates.map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.title}
-                    </option>
-                  ))}
-                </select>
+                模板标题（1–40 字符）
+                <input
+                  data-autofocus="true"
+                  maxLength={40}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      title: event.target.value,
+                    }))
+                  }
+                  placeholder="例如：电商主图工作流"
+                  value={draft.title}
+                />
               </label>
-            )}
-            <label>
-              模板图 JSON（节点≤500、边≤1000、7 种类型）
-              <textarea
-                className="admin-template-graph-json"
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    graphJson: event.target.value,
-                  }))
-                }
-                placeholder='{"nodes":[...],"edges":[...],"version":1}'
-                spellCheck={false}
-                value={draft.graphJson}
-              />
-            </label>
+              <div className="admin-template-field">
+                <span>状态</span>
+                <GrayMenuSelect
+                  ariaLabel="状态"
+                  className="admin-template-select"
+                  onChange={(value) =>
+                    setDraft((current) => ({
+                      ...current,
+                      status: value as AdminPublicTemplateStatus,
+                    }))
+                  }
+                  options={[
+                    { label: "草稿", value: "draft" },
+                    { label: "发布", value: "published" },
+                    ...(draft.status === "archived"
+                      ? [{ disabled: true, label: "已归档", value: "archived" }]
+                      : []),
+                  ]}
+                  testId="admin-template-status-select"
+                  value={draft.status}
+                />
+              </div>
+              <label className="admin-template-field-wide">
+                说明（可选）
+                <input
+                  maxLength={200}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      description: event.target.value,
+                    }))
+                  }
+                  placeholder="普通账号看到的模板说明"
+                  value={draft.description}
+                />
+              </label>
+              <div className="admin-template-categories admin-template-field-wide">
+                <span>分类（可多选）</span>
+                <div>
+                  {REAL_CATEGORIES.map((category) => (
+                    <label key={category}>
+                      <input
+                        checked={draft.categories.includes(category)}
+                        className="admin-compact-checkbox"
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            categories: event.target.checked
+                              ? [...current.categories, category]
+                              : current.categories.filter(
+                                  (item) => item !== category,
+                                ),
+                          }))
+                        }
+                        type="checkbox"
+                      />
+                      <span>{category}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <label>
+                封面路径（可选）
+                <input
+                  maxLength={500}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      previewImage: event.target.value,
+                    }))
+                  }
+                  placeholder="/templates/demo.png"
+                  value={draft.previewImage}
+                />
+              </label>
+              {!editing && (
+                <div className="admin-template-field">
+                  <span>基于现有模板（可选）</span>
+                  <GrayMenuSelect
+                    ariaLabel="基于现有模板（可选）"
+                    className="admin-template-select"
+                    onChange={(value) => void pickBaseTemplate(value)}
+                    options={[
+                      { label: "不基于现有模板", value: "" },
+                      ...templates.map((template) => ({
+                        label: template.title,
+                        value: template.id,
+                      })),
+                    ]}
+                    testId="admin-template-base-select"
+                    value={draft.baseTemplateId}
+                  />
+                </div>
+              )}
+              <label className="admin-template-field-wide">
+                模板图 JSON（节点≤500、边≤1000、7 种类型）
+                <textarea
+                  className="admin-template-graph-json"
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      graphJson: event.target.value,
+                    }))
+                  }
+                  placeholder='{"nodes":[...],"edges":[...],"version":1}'
+                  spellCheck={false}
+                  value={draft.graphJson}
+                />
+              </label>
+            </div>
             {modalError && (
               <p className="auth-error" role="alert">{modalError}</p>
             )}
             <div className="admin-template-modal-actions">
-              <button onClick={() => setCreating(false)} type="button">
+              <button onClick={closeTemplateModal} type="button">
                 取消
               </button>
-              <button onClick={() => void submit()} type="button">
+              <button
+                className="admin-template-primary"
+                onClick={() => void submit()}
+                type="button"
+              >
                 保存
               </button>
             </div>
