@@ -1,6 +1,6 @@
 # INC-UI-006：画布缩放坐标稳定性
 
-状态：`RELEASE_CANDIDATE_AUTO_PASS / PRODUCTION_PENDING / USER_RECHECK`
+状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
 版本：`v0.6.5`
 日期：`2026-08-16`
 
@@ -27,3 +27,11 @@
 - 正式发布必须通过安全全量118份spec/968项测试、冻结备份可恢复、schema39完整性、公网资源哈希、生产实页多轮缩放及服务/数据不变门。
 - 不运行真实Provider、付费生成或OSS写入；自动测试与线上技术复验不代替用户`USER_RECHECK`。
 
+## 发布结果
+
+- 精确生产源码为`d19e9dbf564f5806adface7807fbf7182bcdafc8`，正式安全全量`118/118 specs、968/968 tests PASS`，失败、跳过、重试、blocked与reportErrors均为0。
+- 生产已切换至`/opt/unboundry/releases/v0.6.5-inc-ui-006-20260816`；公网`version=0.6.5`、ready active/schema39、service active+enabled、NRestarts0，公网JS/CSS与fresh build逐字节一致。
+- 冻结备份及恢复副本均为363个文件，清单SHA-256均为`ba6baec6408f1a34d542cffc87cdf69717b82138154af4b049979a413657633e`，恢复库`quick_check=ok / FK0`。
+- 目标画布仅修复两个历史自引用根：目标组恢复为无父级`(-1080,-1080)`；另一组只移除自引用并保留`(-1354.7552083333335,-1468.1145833333335)`。节点89、边145和viewport保持不变。
+- 登录生产实页对72个已挂载节点执行`.27→.6→.15→1→.27→.15`连续缩放，所有DOM transform前后完全一致，`movedIds=[]`，浏览器错误日志为空；数据库坐标及revision保持不变。
+- 完整生产凭证见`spec/INC_UI_006_PRODUCTION_RECEIPT_2026-08-16.json`；仍需用户在原画布肉眼复验，自动结论不替代`USER_RECHECK`。

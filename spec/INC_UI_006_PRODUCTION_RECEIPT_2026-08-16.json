@@ -1,0 +1,69 @@
+{
+  "incident": "INC-UI-006",
+  "version": "0.6.5",
+  "status": "PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK",
+  "publishedAt": "2026-08-16T15:28:43Z",
+  "source": {
+    "commit": "d19e9dbf564f5806adface7807fbf7182bcdafc8",
+    "tree": "e360800190fa20993984bcc560d25d5eef1cfbfa",
+    "archiveSha256": "3983507ab0b7c9168c1273936a8567e199cdc609b45fd2e2b55f00f44a6226e1"
+  },
+  "tests": {
+    "targeted": { "specs": 6, "passed": 69, "failed": 0 },
+    "full": { "specsPassed": 118, "specsTotal": 118, "testsPassed": 968, "testsTotal": 968, "failed": 0, "skipped": 0, "retries": 0, "blocked": 0, "reportErrors": 0 },
+    "sourceSnapshotSha256": "6fb82d667f45f0d10d6614d80f25140c373696f59f11925fc0571f1a8900a79f",
+    "listenerBeforeAfterSha256": "24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244"
+  },
+  "backup": {
+    "path": "/var/lib/unboundry-rollbacks/inc-ui-006-frozen-20260816T152307Z",
+    "files": 363,
+    "frozenManifestSha256": "ba6baec6408f1a34d542cffc87cdf69717b82138154af4b049979a413657633e",
+    "restoreManifestSha256": "ba6baec6408f1a34d542cffc87cdf69717b82138154af4b049979a413657633e",
+    "restoreQuickCheck": "ok",
+    "restoreForeignKeyViolations": 0
+  },
+  "coordinateRecovery": {
+    "canvasId": "14601b3e-3073-443f-9799-7a4fc02362c1",
+    "beforeRevision": 402,
+    "afterRevision": 403,
+    "afterGraphVersion": 60,
+    "nodeCount": 89,
+    "edgeCount": 145,
+    "viewport": { "x": 769.5636577769797, "y": 730.0396954569811, "zoom": 0.15 },
+    "changedNodeIds": ["group-dc249a6d-4e99-40fa-b8bf-da570f0570e6", "group-c7ae69e9-442c-44aa-8ca4-346a7dab7c00"],
+    "target": { "id": "group-dc249a6d-4e99-40fa-b8bf-da570f0570e6", "parentId": null, "position": { "x": -1080, "y": -1080 } },
+    "preserved": { "id": "group-c7ae69e9-442c-44aa-8ca4-346a7dab7c00", "parentId": null, "position": { "x": -1354.7552083333335, "y": -1468.1145833333335 } },
+    "selfParentGroupsAfter": 0,
+    "beforeNodesSha256": "178512b192e9c7f4bc26038e558b25018f60ed4a61700e2b9f0b493610f943b5",
+    "afterNodesSha256": "4fa4e2db9b41ca581eb7dea53b37ea70db3ecf2b67d5fcaddb1b20f2d26691e0"
+  },
+  "production": {
+    "release": "/opt/unboundry/releases/v0.6.5-inc-ui-006-20260816",
+    "previousRelease": "/opt/unboundry/releases/v0.6.4-inc-ui-005-20260816-r2",
+    "releaseInventorySha256": "cd9296aec4662dceb00cdd222560d25d5eef1cfbfa",
+    "freshDistArchiveSha256": "1c5d45199b148c4847e0154429221d591a5d830149b1fe1cb94d3adde8780066",
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "restartCount": 0,
+    "schemaVersion": 39,
+    "quickCheck": "ok",
+    "foreignKeyViolations": 0,
+    "tasks": 153,
+    "providerAttempts": 152,
+    "activeGenerations": 0,
+    "publicTemplates": 46,
+    "publishedTemplates": 45
+  },
+  "browser": {
+    "authenticatedProductionPage": true,
+    "mountedNodes": 72,
+    "zoomSequence": [0.27, 0.6, 0.15, 1, 0.27, 0.15],
+    "movedNodeIds": [],
+    "targetTransformStable": true,
+    "preservedTransformStable": true,
+    "consoleErrors": []
+  },
+  "externalEffects": { "realProviderRequests": 0, "paidGenerationRequests": 0, "ossWrites": 0 },
+  "github": { "stateAtReceiptCommit": "PENDING_AUTHORIZED_PUSH_TAG_PR_MERGE", "tagTarget": "d19e9dbf564f5806adface7807fbf7182bcdafc8" },
+  "userAcceptance": "USER_RECHECK"
+}

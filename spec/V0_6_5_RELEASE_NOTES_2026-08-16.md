@@ -1,6 +1,6 @@
 # Unboundry v0.6.5 发布说明
 
-状态：`RELEASE_CANDIDATE / PRODUCTION_PENDING / USER_RECHECK`
+状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
 日期：`2026-08-16`
 
 ## 内容
@@ -12,7 +12,7 @@
 
 ## 发布门
 
-- 相关6份spec定向69/69通过；正式安全全量、生产备份恢复、源码精确构建、公网哈希和实页缩放复验完成后才能切换为已发布状态。
+- 相关6份spec定向69/69通过；正式安全全量118/118 specs、968/968 tests通过，异常0。
+- 生产冻结备份/恢复、精确源码fresh build、公网哈希、schema39完整性、数据不变及登录实页72节点连续缩放均通过；生产已运行v0.6.5。
 - 本次不迁移schema，不运行真实Provider或付费生成，不写OSS。
-- 详细证据见`spec/INC_UI_006_CANVAS_ZOOM_POSITION_STABILITY_2026-08-16.md`及发布后receipt。
-
+- 详细证据见`spec/INC_UI_006_CANVAS_ZOOM_POSITION_STABILITY_2026-08-16.md`及`spec/INC_UI_006_PRODUCTION_RECEIPT_2026-08-16.json`。

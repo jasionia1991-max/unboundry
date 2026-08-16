@@ -2,6 +2,10 @@
 
 > 写给下一个接手的人/AI agent。目标：看完本文后不需要向用户问“项目在哪、怎么跑、怎么发布、有什么红线”。
 
+## 当前新任务：INC-UI-006（v0.6.5已发布，待用户复验）
+
+用户确认v0.6.5并授权全量测试、核查/恢复目标组坐标、冻结备份、发布及GitHub收尾。根因是Group订阅viewport触发测量重渲染后，被动position change被通用保存路径持久化；历史模板根组`parentId===id`自引用放大了负坐标不确定性。v0.6.5移除Group的React viewport订阅、由CanvasSurface命令式维护标题CSS变量，并在镜头安静期过滤非拖拽position change；画布载入、模板应用和组模板保存统一阻断自引用根。精确源码commit`d19e9dbf564f5806adface7807fbf7182bcdafc8`通过定向69/69及安全全量118/118 specs、968/968 tests，异常0。生产current已切到`/opt/unboundry/releases/v0.6.5-inc-ui-006-20260816`；冻结备份恢复、公网哈希、schema39和数据不变门均PASS。目标组恢复为无父级`(-1080,-1080)`，另一自引用根只移除自引用并保留坐标；登录实页72节点连续缩放无位移，`movedIds=[]`。真实Provider、付费生成和OSS写入0；当前为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，权威凭证为`spec/INC_UI_006_CANVAS_ZOOM_POSITION_STABILITY_2026-08-16.md`和`spec/INC_UI_006_PRODUCTION_RECEIPT_2026-08-16.json`。
+
 ## 当前新任务：INC-UI-005（v0.6.4已发布，待用户复验）
 
 用户明确不要组内新增视觉边距/边框，并同意其余总览层级方案；随后单独确认`v0.6.4`版本号并授权上线、commit、push、tag和合并PR。Group标题与组框保持约20px屏幕间隔、宽度限制72～180px；15%总览默认隐藏组内节点标题，组hover或选中时仅恢复该组。不增加标题栏、内边距或边框，不移动组内节点，不改变持久坐标、连线或普通未分组节点标题。精确源码commit`ba5805c4448e504d33238947ea9aec1dfa160166`通过安全全量118/118 specs、968/968 tests；首个夹带旧dist的产物被浏览器发布门拒绝，最终fresh build已发布到`/opt/unboundry/releases/v0.6.4-inc-ui-005-20260816-r2`。公网资源、冻结备份恢复、service/schema39、数据不变和Chrome四项合同均PASS；真实Provider、付费生成与OSS写入0。当前为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，权威凭证为`spec/INC_UI_005_GROUP_TITLE_OVERVIEW_2026-08-16.md`与`spec/INC_UI_005_PRODUCTION_RECEIPT_2026-08-16.json`。
@@ -36,12 +40,12 @@ Grok首帧中转协议已从`first_frame_url`修为`images`数组并限制恰好
 
 ## 0. 2026-08-16 最终生产状态（当前权威）
 
-- 当前状态：`REM-000～011（含009A/009B）PASS / PRODUCTION LIVE / INC-UI-003已发布自动与实页技术验证PASS待用户复验 / INC-VIDEO-001真实视频PASS待用户复验 / INC-UI-001/002已发布待用户复验 / INC-ECOM-001～007按各自证据边界完成用户收口`。
-- 生产运行 `v0.6.3/schema39`，`/opt/unboundry/current -> releases/v0.6.3-inc-ui-003-r2-20260816`；service active+enabled、NRestarts0、127.0.0.1:4173。公网live/ready/version/root正常，version 0.6.3、ready active/schema39；默认视频模型仍为Seedance 2.0 Mini。
-- v0.6.3源码commit`399c0fb40c2ffe36c21a8e93ad61549e5d703696`/tree`bf0f1f775d9a62a77e194f35273d18d2ca0d722a`，release inventory`1e56c7e22d2846bae403abff13d8277249174a035434cf1d9923af797082b7c8`；上一不可变release及全部历史备份继续保留。
-- 数据最新核验：schema39、quick_check ok、FK0、active generation0、132 tasks/131 provider attempts、46 public templates（45 published）。INC-UI-003发布前后数据不变，Provider/付费/OSS写入0；真实`Text → Image`流水与Seedance视频的既有结果保持。
+- 当前状态：`REM-000～011（含009A/009B）PASS / PRODUCTION LIVE / INC-UI-006～003已发布自动与实页技术验证PASS待用户复验 / INC-VIDEO-001真实视频PASS待用户复验 / INC-UI-001/002已发布待用户复验 / INC-ECOM-001～007按各自证据边界完成用户收口`。
+- 生产运行 `v0.6.5/schema39`，`/opt/unboundry/current -> releases/v0.6.5-inc-ui-006-20260816`；service active+enabled、NRestarts0、127.0.0.1:4173。公网live/ready/version/root正常，version 0.6.5、ready active/schema39；默认视频模型仍为Seedance 2.0 Mini。
+- v0.6.5源码commit`d19e9dbf564f5806adface7807fbf7182bcdafc8`/tree`e360800190fa20993984bcc560d25d5eef1cfbfa`，release inventory`cd9296aec4662dceb00cdd22256040ee91512971f36049d5ba3af0a7bdb0a53b`；上一不可变release及全部历史备份继续保留。
+- 数据最新核验：schema39、quick_check ok、FK0、active generation0、153 tasks/152 provider attempts、46 public templates（45 published）。目标画布89节点/145边及viewport不变，无自引用根，登录实页72节点连续缩放无位移；Provider/付费/OSS写入0，既有真实流水与Seedance视频结果保持。
 
-以下条目保留v0.6.0/v0.6.1各增量发布的历史证据；出现“当前”字样时只代表该历史时点，不覆盖上方v0.6.3权威状态。
+以下条目保留v0.6.0/v0.6.1各增量发布的历史证据；出现“当前”字样时只代表该历史时点，不覆盖上方v0.6.5权威状态。
 - INC-ECOM-004已为16条电商模板发布真实封面；生产18条published模板现`withPreview=18 / withoutPreview=0`。最终静态内容叠加绑定本地commit `d908c4b3824cd36638f02fec51cbe335f6aacd52`，manifest `340452f7…d7a9`、inventory `1d795f29…f464`；公网16张均HTTP200、`image/jpeg`且SHA逐项相符。用户已确认“都通过了”，状态为`PRODUCTION_STATIC_COVERS_DEPLOYED / USER_VISUAL_PASS`。
 - 该叠加以当前可信formal base `5386c744…47b1`为底，只增加双目录静态文件和manifest绑定，不冒充fresh formal builder/full regression。首轮只写源码静态目录的source-only产物被公网哈希门检出并退役保留；最终产物同时包含`client/public/templates`和`dist/client/templates`。
 - INC-ECOM-004回滚材料：停机备份`/var/lib/unboundry-rollbacks/inc-ecom-004-20260815T080758Z`；原formal release在`/opt/unboundry/retired-releases/20260815T080758Z-pre-inc-ecom-004/v0.6.0`；source-only产物在`/opt/unboundry/retired-releases/20260815T081400Z-inc-ecom-004-source-only/v0.6.0`。发布前后tasks109/attempts107/active0，并发500、Provider与数据manifest未变，OSS/付费生成0。

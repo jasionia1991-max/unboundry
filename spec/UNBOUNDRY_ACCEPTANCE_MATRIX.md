@@ -3,7 +3,7 @@
 基线日期：2026-07-27  
 当前状态更新：2026-08-16
 
-2026-08-16 `INC-UI-006 = RELEASE_CANDIDATE_AUTO_PASS / PRODUCTION_PENDING / USER_RECHECK`：用户确认v0.6.5并授权全量、坐标恢复、备份发布与GitHub收尾。生产实页确认同一负坐标Group在视口返回相同15%后从`(-1080,-1080)`漂移到`(-1128,-1128)`，并发现历史模板根组`parentId===id`自引用；这是镜头缩放和无效父子拓扑污染图坐标，不是正常视觉变化。候选移除Group的React viewport订阅和NodeResizer重复缩放，标题/工具栏改为命令式CSS变量；镜头交互安静期过滤非拖拽position change；画布载入、模板应用和组模板保存阻断自引用根。真实拖动、键盘移动、resize及measurement仍保留。相关6份spec定向`69/69 PASS`，构建与安全前置门通过，Provider/付费/OSS请求0。生产仍为v0.6.4，正式full和发布进行中，发布后仍须用户实页复验。
+2026-08-16 `INC-UI-006 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：移除Group的React viewport订阅和NodeResizer重复缩放，标题/工具栏改为命令式CSS变量；镜头交互安静期过滤非拖拽position change；画布载入、模板应用和组模板保存阻断自引用根，真实拖动、键盘移动、resize及measurement仍保留。定向`69/69`及正式安全全量`118/118 specs、968/968 tests PASS`，异常0。冻结备份后目标组恢复为无父级`(-1080,-1080)`，另一自引用根只移除自引用并保留原坐标；节点89、边145及viewport不变。生产已运行v0.6.5，公网资源、schema39、数据不变和登录实页72节点连续缩放均通过，`movedIds=[]`；Provider/付费/OSS请求0。仍须用户实页肉眼复验。
 
 2026-08-16 `INC-UI-005 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：Group标题与组框保持约20px屏幕间隔并限制72～180px；15%总览时组内节点标题默认隐藏，组hover或选中后仅恢复该组。明确不增加组标题栏、组内视觉边距/边框，不移动组内节点，不改变持久坐标、连线与普通未分组节点标题。`GROUP-TITLE-001～004`自动与生产技术验证通过：正式安全全量118/118 specs、968/968 tests PASS，异常0；生产最终切到`v0.6.4-inc-ui-005-20260816-r2`，公网资源、隔离启动、冻结备份恢复、active/schema39和数据不变门通过。Chrome在15%及约27%验证默认隐藏、单组披露、间距和宽度合同通过；真实Provider/付费/OSS写入0。用户肉眼验收仍为`USER_RECHECK`。
 
@@ -25,9 +25,9 @@
 状态：`AUTHORITATIVE`  
 状态夹具：`unboundry-state-fixtures.json`
 
-2026-08-16 当前权威状态：生产已运行 `v0.6.4/schema39`；`INC-UI-006 = LOCAL_CANDIDATE_AUTO_PASS / USER_RECHECK`且尚未发布；`INC-UI-005/004/003 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-VIDEO-001 = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_RECHECK`，`INC-UI-001/002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-010/011 = PASS`，`PRODUCTION = LIVE`。既有用户验收全部保留。
+2026-08-16 当前权威状态：生产已运行 `v0.6.5/schema39`；`INC-UI-006/005/004/003 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-VIDEO-001 = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_RECHECK`，`INC-UI-001/002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-010/011 = PASS`，`PRODUCTION = LIVE`。既有用户验收全部保留。
 
-最新核验为service active+enabled、NRestarts0、current→`releases/v0.6.4-inc-ui-005-20260816-r2`、公网version 0.6.4及精确JS/CSS哈希通过；公网未认证live/ready受鉴权门保护，服务、数据库与已登录Chrome分别完成验证。schema39/quick_check ok/FK0、active generation0、153 tasks/152 attempts、46 public templates（45 published）。INC-UI-005切换前后数据不变，Provider/付费/OSS写入0；成功视频asset与默认Seedance状态保持。上一不可变release、冻结备份、v0.6.0原schema37备份、整机schema39包及既有用户验收继续保留。未实际运行的两张付费图片仍作为可选付费抽验延期，既有PARTIAL/PAUSED/BLOCK/NOT_STARTED条目保持不变。
+最新核验为service active+enabled、NRestarts0、current→`releases/v0.6.5-inc-ui-006-20260816`、公网version 0.6.5及精确JS/CSS哈希通过。schema39/quick_check ok/FK0、active generation0、153 tasks/152 attempts、46 public templates（45 published）。目标画布revision403、graph60、89节点/145边、viewport不变，无自引用根；登录Chrome连续缩放72节点无坐标变化。Provider/付费/OSS写入0；成功视频asset与默认Seedance状态保持。上一不可变release、冻结备份、v0.6.0原schema37备份、整机schema39包及既有用户验收继续保留。未实际运行的两张付费图片仍作为可选付费抽验延期，既有PARTIAL/PAUSED/BLOCK/NOT_STARTED条目保持不变。
 
 2026-08-07 三功能新增 21 条（TPL-001～007 / ZIP-001～006 / KEY-001～008）已全部经用户实页验收为 `PASS`，M11 放行门达成；其余历史统计与状态仍以各节为准，`INPUT-006`保持`PARTIAL`（Mureka真实生成暂缓）。
 2026-08-07 权限管理（PERM-001～012）与公共模板（PUB-001～011）已全部经用户实页验收为 `PASS`，两功能放行门达成；生成安全「并发与频率」上限按用户要求放宽至 1000（v33）。
