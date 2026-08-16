@@ -1,6 +1,6 @@
 # Unboundry v0.6.4 发布说明
 
-状态：`RELEASE_CANDIDATE`
+状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
 日期：`2026-08-16`
 
 ## 内容
@@ -12,5 +12,8 @@
 
 ## 发布门
 
-- 安全全量、精确构建、GitHub提交/PR/合并、注释标签与生产发布凭证在本次流程完成后补齐。
-- 本次不运行真实Provider或付费生成，不写OSS，不迁移schema。
+- 精确源码commit`ba5805c4448e504d33238947ea9aec1dfa160166`通过安全全量`118/118 specs、968/968 tests PASS`，异常0。
+- 生产最终发布目录为`/opt/unboundry/releases/v0.6.4-inc-ui-005-20260816-r2`；首个旧dist产物被浏览器门拒绝，最终公网使用fresh build资源。
+- 公网资源哈希、隔离启动、冻结备份恢复、service/schema39、数据不变与Chrome总览合同均通过；详细凭证见`spec/INC_UI_005_PRODUCTION_RECEIPT_2026-08-16.json`。
+- GitHub分支与PR #3已建立，合并与精确源码注释标签由本次已授权流程收尾。
+- 本次未运行真实Provider或付费生成，未写OSS，未迁移schema。

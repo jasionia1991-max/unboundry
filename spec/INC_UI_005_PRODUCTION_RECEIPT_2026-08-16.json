@@ -1,0 +1,101 @@
+{
+  "incident": "INC-UI-005",
+  "version": "0.6.4",
+  "status": "PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK",
+  "published_at": "2026-08-16T13:53:22Z",
+  "production_url": "https://canvas.mymy.ltd",
+  "release": {
+    "current": "/opt/unboundry/releases/v0.6.4-inc-ui-005-20260816-r2",
+    "previous": "/opt/unboundry/releases/v0.6.3-inc-ui-004-20260816",
+    "rejected_intermediate": "/opt/unboundry/releases/v0.6.4-inc-ui-005-20260816",
+    "source_commit": "ba5805c4448e504d33238947ea9aec1dfa160166",
+    "source_tree": "89dbef401b9ca9dd347e9127e1f309e3559cf2ce",
+    "source_archive_sha256": "1b5a7734a663376d37f8c202f2cfce85143e836a0a499036fe396b8c656505be",
+    "fresh_dist_archive_sha256": "8c767d9e8eeca4140f778f0ef29d4a297ef2a6fb357fb7ed31163c18ca474cdb",
+    "inventory_sha256": "8ad5b316eea8ffe05583b00c79ce505a5a279cd05abd4966bcf555f5eab197ca",
+    "intermediate_disposition": "REJECTED_BY_LIVE_BROWSER_GATE_OLD_DIST_NOT_ACCEPTED"
+  },
+  "safe_tests": {
+    "specs_passed": 118,
+    "specs_total": 118,
+    "tests_passed": 968,
+    "tests_total": 968,
+    "failed": 0,
+    "skipped": 0,
+    "retries": 0,
+    "blocked": 0,
+    "report_errors": 0,
+    "source_sha256": "53ae719ac384b2a70d1ce9671dc22e7e6a8d51e1c4e4de0cabfb4fe770cd74c0",
+    "listener_4173_unchanged": true,
+    "real_provider_requests": 0,
+    "paid_generation_requests": 0,
+    "oss_writes": 0
+  },
+  "public_assets": {
+    "javascript": {
+      "path": "/assets/index-BC99O9mm.js",
+      "sha256": "d53689b4a9d83a70ec1ff2c80a2deb00140397920e09d992985675957e0279a5"
+    },
+    "css": {
+      "path": "/assets/index-Dx7Enc5O.css",
+      "sha256": "c03706ce985911eac4a9b80d46148827b4280f51e602f397b975d3fe9242d297"
+    }
+  },
+  "runtime": {
+    "service_active": true,
+    "service_enabled": true,
+    "service_restarts": 0,
+    "schema_version": 39,
+    "quick_check": "ok",
+    "foreign_key_violations": 0,
+    "generation_tasks_before": 153,
+    "generation_tasks_after": 153,
+    "provider_attempts_before": 152,
+    "provider_attempts_after": 152,
+    "active_generation_before": 0,
+    "active_generation_after": 0,
+    "public_templates_before": 46,
+    "public_templates_after": 46,
+    "published_templates_before": 45,
+    "published_templates_after": 45,
+    "unauthenticated_live_ready": "401_AUTH_GATE_EXPECTED"
+  },
+  "rollback": {
+    "primary_backup": "/var/lib/unboundry-rollbacks/inc-ui-005-r2-frozen-20260816T135322Z",
+    "frozen_manifest_sha256": "efcdf8cead2309f9dcded98d67135f6e911a8b11d7b7698d59d7fdccdc8f8834",
+    "restore_manifest_identical": true,
+    "restore_quick_check": "ok",
+    "restore_foreign_key_violations": 0,
+    "restore_schema_version": 39
+  },
+  "browser_acceptance": {
+    "project_id": "14601b3e-3073-443f-9799-7a4fc02362c1",
+    "authenticated": true,
+    "zoom_0_269": {
+      "group_count": 7,
+      "child_title_count": 31,
+      "child_titles_visible_default": 0,
+      "group_title_body_gap_px": 22.69,
+      "group_title_width_px": 180,
+      "hovered_group_visible_child_titles": 14,
+      "other_group_visible_child_titles": 0
+    },
+    "zoom_0_15": {
+      "child_title_count": 39,
+      "child_titles_visible_default": 0,
+      "group_title_body_gap_px": 21.5,
+      "group_title_width_px_min": 102.59,
+      "group_title_width_px_max": 180
+    },
+    "zoom_restored": 0.27,
+    "cloud_save_confirmed": true,
+    "console_errors": 0
+  },
+  "github": {
+    "pull_request": 3,
+    "pull_request_url": "https://github.com/jasionia1991-max/unboundry/pull/3",
+    "state_at_receipt_commit": "OPEN_PENDING_AUTHORIZED_MERGE",
+    "annotated_tag_target": "ba5805c4448e504d33238947ea9aec1dfa160166"
+  },
+  "user_acceptance": "USER_RECHECK"
+}

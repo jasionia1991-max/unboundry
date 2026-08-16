@@ -1,16 +1,16 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`64`
+断点版本：`65`
 更新时间：`2026-08-16`
-状态：`INC_UI_005_V0_6_4_RELEASE_CANDIDATE_AUTHORIZED`
+状态：`INC_UI_005_V0_6_4_PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
-## 0. 当前新事件：INC-UI-005（v0.6.4发布候选，已授权）
+## 0. 当前新事件：INC-UI-005（v0.6.4已发布，待用户复验）
 
 - 用户确认不增加组内视觉边距/边框，同意组标题总览层级方案；随后单独确认版本号`v0.6.4`并授权上线、commit、push、tag和合并PR。
-- 候选实现：组标题固定屏幕间隔约20px、宽度72～180px；15%总览默认隐藏组内节点标题，组hover或选中后恢复。
+- 已发布实现：组标题固定屏幕间隔约20px、宽度72～180px；15%总览默认隐藏组内节点标题，组hover或选中后仅恢复该组。
 - 不增加标题栏、内边距或边框，不移动组内节点；组/节点持久坐标、连线和普通未分组节点标题不变。
-- 当前断点：先完成精确候选安全全量；过门后才允许提交、推送、PR、标签和生产切换。真实Provider、付费生成与OSS写入均不在本次范围。
+- 发布门：精确源码commit`ba5805c4448e504d33238947ea9aec1dfa160166`通过`118/118 specs、968/968 tests PASS`，异常0；首个夹带旧dist的中间产物被真实浏览器门拒绝，最终以fresh build发布到`/opt/unboundry/releases/v0.6.4-inc-ui-005-20260816-r2`。公网资源、隔离启动、冻结备份恢复、service/schema39和数据不变门均PASS；15%与约27%实页合同验证通过。真实Provider、付费生成与OSS写入均为0，当前仅待用户肉眼复验。
 
 ## 0A. 前一事件：INC-UI-004（已发布，待用户复验）
 
@@ -493,22 +493,22 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 
 ## 10. 2026-08-16 当前恢复卡
 
-> 2026-08-16 INC-UI-003增量断点：v0.6.3已发布，current→`v0.6.3-inc-ui-003-r2-20260816`，公网v0.6.3、active/schema39、NRestarts0。公共模板灰阶UI、旧journal同内容零PUT结算、冲突时保留本地副本并在新标签打开服务器版本均已实现；正式安全全量118/118 specs、967/967 tests PASS，Chrome目标画布恢复和UI合同通过，生产数据前后不变，真实Provider/付费/OSS写入0。当前仅待用户肉眼复验；以INC-UI-003文档和生产receipt为准。
+> 2026-08-16 INC-UI-005增量断点：v0.6.4已发布，current→`v0.6.4-inc-ui-005-20260816-r2`，公网v0.6.4、service active+enabled、schema39、NRestarts0。正式安全全量118/118 specs、968/968 tests PASS；Chrome在15%与约27%完成组标题合同验证，生产数据不变，真实Provider/付费/OSS写入0。当前仅待用户肉眼复验；以INC-UI-005文档和生产receipt为准。
 
 ```text
 项目路径：/Users/mymy/Documents/unboundry/app
-本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.3生产源commit 399c0fb40c2ffe36c21a8e93ad61549e5d703696；禁止reset/clean；v0.6.3尚未push/tag/更新Draft PR
-生产：canvas.mymy.ltd；v0.6.3/schema39；/opt/unboundry/current -> releases/v0.6.3-inc-ui-003-r2-20260816
-生产artifact：source commit 399c0fb40c2ffe36c21a8e93ad61549e5d703696；tree bf0f1f775d9a62a77e194f35273d18d2ca0d722a；inventory 1e56c7e22d2846bae403abff13d8277249174a035434cf1d9923af797082b7c8
-当前状态：INC-UI-003已发布并完成自动与Chrome实页技术验证、待用户复验；INC-VIDEO-001已发布且真实Seedance视频PASS、待用户复验；INC-UI-001/002已发布自动通过、待用户复验；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
-技术凭证：spec/INC_UI_003_PRODUCTION_RECEIPT_2026-08-16.json；spec/INC_UI_003_PUBLIC_TEMPLATE_AND_CANVAS_LOAD_RECOVERY_2026-08-16.md；既有视频与UI发布凭证继续保留
-用户验收：既有v0.6.0/v0.6.1验收保持；v0.6.3公共模板UI、目标旧标签恢复及v0.6.2其余UI/视频项等待用户线上复验
-数据库：schema39；quick_check ok；FK0；132 tasks/131 attempts；46 public templates/45 published；active0；默认视频模型Seedance；既有生成安全配置不变
-备份：/var/lib/unboundry-rollbacks/inc-ui-003-20260816T0930Z；冻结源与恢复副本清单SHA fb0570333953ac59823a9d3c22ab698bd97d390db9bd5f32dc853c94ea67dd25，二者均PASS；历史schema37/offhost备份继续保留
+本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.4生产源commit ba5805c4448e504d33238947ea9aec1dfa160166；禁止reset/clean
+生产：canvas.mymy.ltd；v0.6.4/schema39；/opt/unboundry/current -> releases/v0.6.4-inc-ui-005-20260816-r2
+生产artifact：source commit ba5805c4448e504d33238947ea9aec1dfa160166；tree 89dbef401b9ca9dd347e9127e1f309e3559cf2ce；inventory 8ad5b316eea8ffe05583b00c79ce505a5a279cd05abd4966bcf555f5eab197ca
+当前状态：INC-UI-005已发布并完成自动与Chrome实页技术验证、待用户复验；既有INC-UI-004/003、INC-VIDEO-001、INC-UI-001/002状态保持；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
+技术凭证：spec/INC_UI_005_PRODUCTION_RECEIPT_2026-08-16.json；spec/INC_UI_005_GROUP_TITLE_OVERVIEW_2026-08-16.md；既有视频与UI发布凭证继续保留
+用户验收：既有v0.6.0/v0.6.1验收保持；v0.6.4组标题总览、v0.6.3公共模板UI与旧标签恢复、v0.6.2其余UI/视频项等待用户线上复验
+数据库：schema39；quick_check ok；FK0；153 tasks/152 attempts；46 public templates/45 published；active0；默认视频模型Seedance；既有生成安全配置不变
+备份：/var/lib/unboundry-rollbacks/inc-ui-005-r2-frozen-20260816T135322Z；冻结源与恢复副本清单SHA efcdf8cead2309f9dcded98d67135f6e911a8b11d7b7698d59d7fdccdc8f8834，二者均PASS；历史schema37/offhost备份继续保留
 限制：attempt 86/108/116/120/122为行政取消且禁止重试，PROVIDER_FAILED仅surrogate；3条音频仅改duration元数据；cutover Provider/paid calls=0
-GitHub：v0.6.2专用branch/tag/Draft PR #1为历史已发布状态；v0.6.3本地生产源及文档提交尚未push/tag/更新PR
-未来授权：本次v0.6.3生产发布授权已消费；未来生产读写、真实Provider/付费生成、push/tag/PR或新发布仍需新授权
-下一步：用户按v0.6.3验收清单线上复验；确认后再把INC-UI-003从USER_RECHECK改为USER PASS
+GitHub：v0.6.4源码分支已推送，PR #3与精确源码注释标签由当前已授权发布流程收尾
+未来授权：本次v0.6.4生产与GitHub发布授权在收尾完成后消费；未来生产读写、真实Provider/付费生成、push/tag/PR或新发布仍需新授权
+下一步：用户按v0.6.4验收清单线上复验；确认后再把INC-UI-005从USER_RECHECK改为USER PASS
 ```
 
 任何恢复者必须优先使用本节；第9节只保留历史，不得执行其“下一步”。

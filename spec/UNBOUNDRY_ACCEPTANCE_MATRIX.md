@@ -3,7 +3,7 @@
 基线日期：2026-07-27  
 当前状态更新：2026-08-16
 
-2026-08-16 `INC-UI-005 = RELEASE_CANDIDATE`：Group标题与组框保持约20px屏幕间隔并限制72～180px；15%总览时组内节点标题默认隐藏，组hover或选中后恢复。明确不增加组标题栏、组内视觉边距/边框，不移动组内节点，不改变持久坐标、连线与普通未分组节点标题。`GROUP-TITLE-001～004`待本次v0.6.4自动与生产门完成后更新。
+2026-08-16 `INC-UI-005 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：Group标题与组框保持约20px屏幕间隔并限制72～180px；15%总览时组内节点标题默认隐藏，组hover或选中后仅恢复该组。明确不增加组标题栏、组内视觉边距/边框，不移动组内节点，不改变持久坐标、连线与普通未分组节点标题。`GROUP-TITLE-001～004`自动与生产技术验证通过：正式安全全量118/118 specs、968/968 tests PASS，异常0；生产最终切到`v0.6.4-inc-ui-005-20260816-r2`，公网资源、隔离启动、冻结备份恢复、active/schema39和数据不变门通过。Chrome在15%及约27%验证默认隐藏、单组披露、间距和宽度合同通过；真实Provider/付费/OSS写入0。用户肉眼验收仍为`USER_RECHECK`。
 
 2026-08-16 `INC-UI-004 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：Text/Image/Video/Audio/Playlist/Storyboard标题在`zoom < 1`时使用屏幕空间补偿，15%总览约12px、35%～100%约14px；灰白对比度、500字重和轻微暗色阴影已统一。标题屏幕宽度限制96～180px，Storyboard上限220px，长标题继续ellipsis并保留完整`title`；Group沿用自身补偿避免双重放大。总览未选中标题不拦截指针，选中标题仍可编辑；节点几何、连线、保存文档均不变。`TITLE-ZOOM-001～006`自动通过：相关6份spec `16/16 PASS`，正式安全全量`118/118 specs、968/968 tests PASS`，异常0、4173不变、真实Provider/付费/OSS请求0。生产已切到`v0.6.3-inc-ui-004-20260816`；隔离Linux启动、公网资源哈希、冻结备份恢复、active/schema39和数据不变门通过，tasks153/attempts152/active0及模板46/45不变。用户肉眼验收仍为`USER_RECHECK`。
 
@@ -23,9 +23,9 @@
 状态：`AUTHORITATIVE`  
 状态夹具：`unboundry-state-fixtures.json`
 
-2026-08-16 当前权威状态：生产已运行 `v0.6.3/schema39`，`INC-UI-003 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-VIDEO-001 = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_RECHECK`，`INC-UI-001/002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-010/011 = PASS`，`PRODUCTION = LIVE`。既有用户验收全部保留；v0.6.3源码尚未push/tag/更新PR。
+2026-08-16 当前权威状态：生产已运行 `v0.6.4/schema39`，`INC-UI-005/004/003 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-VIDEO-001 = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_RECHECK`，`INC-UI-001/002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-010/011 = PASS`，`PRODUCTION = LIVE`。既有用户验收全部保留。
 
-最新核验为service active+enabled、NRestarts0、current→`releases/v0.6.3-inc-ui-003-r2-20260816`、公网version 0.6.3/live/ready/root正常；schema39/quick_check ok/FK0、active generation0、132 tasks/131 attempts、46 public templates（45 published）。INC-UI-003切换前后数据不变，Provider/付费/OSS写入0；成功视频asset与默认Seedance状态保持。上一不可变release、v0.6.0原schema37备份、整机schema39包及既有用户验收继续保留。未实际运行的两张付费图片仍作为可选付费抽验延期，既有PARTIAL/PAUSED/BLOCK/NOT_STARTED条目保持不变。
+最新核验为service active+enabled、NRestarts0、current→`releases/v0.6.4-inc-ui-005-20260816-r2`、公网version 0.6.4及精确JS/CSS哈希通过；公网未认证live/ready受鉴权门保护，服务、数据库与已登录Chrome分别完成验证。schema39/quick_check ok/FK0、active generation0、153 tasks/152 attempts、46 public templates（45 published）。INC-UI-005切换前后数据不变，Provider/付费/OSS写入0；成功视频asset与默认Seedance状态保持。上一不可变release、冻结备份、v0.6.0原schema37备份、整机schema39包及既有用户验收继续保留。未实际运行的两张付费图片仍作为可选付费抽验延期，既有PARTIAL/PAUSED/BLOCK/NOT_STARTED条目保持不变。
 
 2026-08-07 三功能新增 21 条（TPL-001～007 / ZIP-001～006 / KEY-001～008）已全部经用户实页验收为 `PASS`，M11 放行门达成；其余历史统计与状态仍以各节为准，`INPUT-006`保持`PARTIAL`（Mureka真实生成暂缓）。
 2026-08-07 权限管理（PERM-001～012）与公共模板（PUB-001～011）已全部经用户实页验收为 `PASS`，两功能放行门达成；生成安全「并发与频率」上限按用户要求放宽至 1000（v33）。
