@@ -1,16 +1,17 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-16
-状态：`生产当前运行 v0.6.2/schema39；INC-UI-003已完成967/967安全全量并获v0.6.3发布授权，生产切换待执行；既有INC-VIDEO-001、INC-UI-001/002及INC-ECOM状态保持。`
+状态：`生产当前运行 v0.6.3/schema39；INC-UI-003已发布且自动与Chrome实页技术验证通过，待用户复验；既有INC-VIDEO-001、INC-UI-001/002及INC-ECOM状态保持。`
 
 ### 2026-08-16 公共模板 UI 与旧画布会话恢复（INC-UI-003）
 
-- 状态：`RELEASE_AUTHORIZED / AUTOMATED PASS / PRODUCTION PENDING`；用户确认版本v0.6.3并授权一次性完成构建、备份、发布和零付费验证。
+- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；用户确认版本v0.6.3并授权一次性完成构建、备份、发布和零付费验证，生产切换已完成。
 - UI：公共模板列表、编辑弹窗、下拉、复选框、按钮、焦点圈定与移动端布局统一对齐灰阶UI规范。
-- 加载：旧服务器epoch的pagehide journal若与权威服务器document指纹完全一致，则零PUT结算并正常进入；若不同则保留journal、零PUT/零生成并显示专用冲突说明。
+- 加载：旧服务器epoch的pagehide journal若与权威服务器document指纹完全一致，则零PUT结算并正常进入；若不同则保留journal、零PUT/零生成并提供“打开服务器版本”，新标签载入权威画布，原标签继续保留本地恢复副本。
 - 自动门：118/118 specs、967/967 tests PASS，异常0，source snapshot与4173 listener不变；真实Provider、付费生成和真实OSS写入0。
-- 发布边界：schema39不迁移；生产切换前做可恢复备份，切换后核验公网健康、数据计数、目标项目和UI；肉眼验收保持USER_RECHECK。
-- 权威记录：`spec/INC_UI_003_PUBLIC_TEMPLATE_AND_CANVAS_LOAD_RECOVERY_2026-08-16.md`、`spec/V0_6_3_RELEASE_NOTES_2026-08-16.md`。
+- 发布：current已切到`/opt/unboundry/releases/v0.6.3-inc-ui-003-r2-20260816`，公网0.6.3、active/schema39、NRestarts0；备份恢复副本通过，切换前后tasks132/attempts131/active0及模板46/45不变，Provider/付费/OSS写入0。
+- 实页技术验证：目标旧标签显示双恢复操作；新标签服务器版本完整加载且原journal保留；公共模板返回画布及编辑弹窗UI/键盘合同通过。肉眼验收保持USER_RECHECK。
+- 权威记录：`spec/INC_UI_003_PUBLIC_TEMPLATE_AND_CANVAS_LOAD_RECOVERY_2026-08-16.md`、`spec/INC_UI_003_PRODUCTION_RECEIPT_2026-08-16.json`、`spec/V0_6_3_RELEASE_NOTES_2026-08-16.md`。
 
 ### 2026-08-16 视频协议热修复与真实生成（INC-VIDEO-001）
 
@@ -339,7 +340,7 @@ F14本地正式门证据绑定 HEAD `eb4f99ea525390b0dd7a39d3cad55d882ffea41d`�
 
 ## 当前阶段
 
-阶段：`INC-UI-001/002 PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK / 生产 v0.6.2/schema39 LIVE / Draft PR仍为既有v0.6.1状态`
+阶段：`INC-UI-003 PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK / 生产 v0.6.3/schema39 LIVE / v0.6.3尚未push/tag/更新PR`
 
 画布、固定界面、Text、Image、Video、Audio、Playlist、Group、外围面板、账号、管理员模型中心、生成安全和新图片私有OSS链路已通过当前范围验收；Comment、社区、TapTV、竞技场、额度和链接分享已按用户决定取消。OpenRouter GPT Image 2已完成一次用户授权的历史真实生成，图片连线参考图及真实结果零费用重启恢复均已通过；本次 cutover 未发起 Provider 或付费生成请求。
 

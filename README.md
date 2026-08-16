@@ -1,16 +1,16 @@
 # 无央 Unboundry
 
-TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mymy.ltd`，当前线上 `v0.6.2 / schema39`；`v0.6.3` 已授权且自动全量通过，待生产切换）。
+TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mymy.ltd`，当前线上 `v0.6.3 / schema39`）。
 
-## 2026-08-16 公共模板 UI 与旧画布会话恢复（待发布）
+## 2026-08-16 公共模板 UI 与旧画布会话恢复（已发布，待用户复验）
 
-`INC-UI-003 = RELEASE_AUTHORIZED / AUTOMATED PASS / PRODUCTION PENDING`：公共模板管理页和编辑弹窗已对齐统一灰阶UI、GrayMenuSelect、自绘复选框、主次按钮、焦点圈定及窄屏布局。特定项目返回失败的根因是浏览器单标签遗留的旧server-epoch pagehide journal；当本地journal文档与服务器权威文档指纹完全一致时会零PUT结算并正常进入，不一致时继续保留双方内容、零PUT/零生成并显示专用冲突提示。正式安全全量为`118/118 specs、967/967 tests PASS`，异常0、source snapshot与4173不变、真实Provider/付费/OSS写入0。用户已确认版本v0.6.3并授权发布，schema39不迁移。
+`INC-UI-003 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：公共模板管理页和编辑弹窗已对齐统一灰阶UI、GrayMenuSelect、自绘复选框、主次按钮、焦点圈定及窄屏布局。特定项目返回失败的根因是浏览器单标签遗留的旧server-epoch pagehide journal；内容相同时零PUT结算，不同时保留双方内容并提供“打开服务器版本”，新标签载入权威画布且原标签恢复副本不被覆盖。正式安全全量`118/118 specs、967/967 tests PASS`；生产已切到`v0.6.3-inc-ui-003-r2-20260816`，公网0.6.3、active/schema39、NRestarts0。Chrome真实验证目标画布恢复、返回路径和弹窗UI/键盘合同通过；切换前后tasks132/attempts131/active0及模板46/45不变，真实Provider/付费/OSS写入0。自动与上线验证不代替用户肉眼验收。
 
 ## 2026-08-16 画布 UI 恢复（已发布，待用户线上复验）
 
 `INC-UI-001/002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：设置页会返回进入前的真实项目并提供“返回工作空间”，浏览器 favicon 和页面标题已恢复；巨大 Group 只有被框选完整包含时才进入选区，普通节点仍保留局部相交框选；图片/视频/音频读取失败会保留素材并显示统一灰阶重载/重新上传状态；七类节点长标题统一省略并可查看完整值。正式安全全量为 `118/118 specs、965/965 PASS`，失败、跳过、重试、blocked 与报告错误均为 0。该UI版本先发布到`v0.6.2-inc-ui-002-20260816`，随后视频协议热修复发布到新的不可变目录`v0.6.2-inc-video-001-20260816`；schema39数据与安全配置未迁移。自动与上线验证不能代替用户肉眼验收，相关条目继续保持 `USER_RECHECK`。
 
-## 2026-08-16 v0.6.2 生产状态（当前权威）
+## 2026-08-16 v0.6.2 生产状态（历史时点，已由v0.6.3替代）
 
 - 生产指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.2-inc-video-001-20260816`；服务 active+enabled，`NRestarts=0`，公网 `/api/version` 返回 `0.6.2`，ready 为 active/schema39。
 - 视频热修复把Grok首帧按中转站真实契约映射为`images`数组并限制恰好1张；正式安全全量仍为`118/118 specs、965/965 PASS`。Grok契约已被中转站受理，但该上游两次在0%网络超时，因此停止重试并把默认视频模型切换为已真实成功的`Seedance 2.0 Mini`。

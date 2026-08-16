@@ -3,7 +3,7 @@
 基线日期：2026-07-27  
 当前状态更新：2026-08-16
 
-2026-08-16 `INC-UI-003 = RELEASE_AUTHORIZED / AUTOMATED PASS / PRODUCTION PENDING`：公共模板页和编辑弹窗已改用统一灰阶布局、GrayMenuSelect、自绘复选框、主次按钮、焦点圈定和窄屏布局。特定画布返回失败的根因是浏览器标签内旧服务器epoch的pagehide journal；当journal document与服务器权威document指纹完全一致时，客户端零PUT安全结算并正常加载，不一致时继续保留journal并零PUT/零生成 fail-close。m77 10/10、m86 83/83及正式安全全量118/118 specs、967/967 tests PASS，异常0、4173不变、真实Provider/付费/OSS写入0。v0.6.3生产发布已获授权，发布后仍需用户肉眼复验。
+2026-08-16 `INC-UI-003 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：公共模板页和编辑弹窗已改用统一灰阶布局、GrayMenuSelect、自绘复选框、主次按钮、焦点圈定和窄屏布局。旧epoch journal与服务器document相同时零PUT结算，不同时保留journal且零PUT/零生成，并可在新标签打开服务器权威版本，原标签恢复副本不被覆盖。m77 10/10、m86 83/83及正式安全全量118/118 specs、967/967 tests PASS，异常0。生产已切到v0.6.3/schema39，公网健康、数据不变和Chrome真实恢复路径/UI合同均通过；真实Provider/付费/OSS写入0。仍需用户肉眼复验。
 
 2026-08-16 `INC-VIDEO-001 / V0.6.2 REAL WORKFLOW SMOKE = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_RECHECK`：用户授权真实API消耗后，在生产建立并运行`Text → Image`整组工作流。整组Text先成功，Image随后才启动；两个任务均attempt1、Provider attempt1、retry0。唯一图片为`1:1 / 1K`，结果PNG 1024×1024、OSS ready；刷新后Group、连线、文字和图片均持久。随后Grok首帧按真实中转契约修为`images`数组，正式全量`118/118 specs、965/965 tests`通过并发布到`v0.6.2-inc-video-001-20260816`。Grok修复后请求被受理，但中转上游两次0%网络超时，停止重试并把默认视频模型切为Seedance；Seedance无人物文生视频task`c0269665-4db5-46a1-bc13-2d5574a66cca`一次成功，4秒/480p/无音频，MP4 864×496、OSS ready，刷新后浏览器可播放。真人参考图被Seedance内容安全拒绝，记录为Provider限制。公网ready active/schema39，数据库tasks126/attempts125/active0、quick_check ok/FK0。该结果证明真实低成本闭环，不代替用户明早的内容与交互验收。
 
@@ -19,9 +19,9 @@
 状态：`AUTHORITATIVE`  
 状态夹具：`unboundry-state-fixtures.json`
 
-2026-08-16 当前权威状态：生产已运行 `v0.6.2/schema39`，`INC-VIDEO-001 = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_RECHECK`，`INC-UI-001/002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-010/011 = PASS`，`PRODUCTION = LIVE`。既有用户验收全部保留，新UI修复与视频闭环等待用户线上肉眼确认；专用分支已推送，`v0.6.2`标签精确绑定生产源码commit`959c1e287…`，Draft PR #1已更新且CLEAN。
+2026-08-16 当前权威状态：生产已运行 `v0.6.3/schema39`，`INC-UI-003 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-VIDEO-001 = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_RECHECK`，`INC-UI-001/002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-010/011 = PASS`，`PRODUCTION = LIVE`。既有用户验收全部保留；v0.6.3源码尚未push/tag/更新PR。
 
-最新核验为service active+enabled、NRestarts0、current→`releases/v0.6.2-inc-video-001-20260816`、公网version 0.6.2/live/ready/root正常；schema39/quick_check ok/FK0、active generation0、126 tasks/125 attempts、43 public templates（42 published）。成功视频asset`fbfed94d-e41e-4858-8e7e-96c4eae98c4a.mp4`为OSS ready；默认视频模型为Seedance。上一不可变release、v0.6.0原schema37备份、整机schema39包及既有用户验收继续保留。未实际运行的两张付费图片仍作为可选付费抽验延期，既有PARTIAL/PAUSED/BLOCK/NOT_STARTED条目保持不变。
+最新核验为service active+enabled、NRestarts0、current→`releases/v0.6.3-inc-ui-003-r2-20260816`、公网version 0.6.3/live/ready/root正常；schema39/quick_check ok/FK0、active generation0、132 tasks/131 attempts、46 public templates（45 published）。INC-UI-003切换前后数据不变，Provider/付费/OSS写入0；成功视频asset与默认Seedance状态保持。上一不可变release、v0.6.0原schema37备份、整机schema39包及既有用户验收继续保留。未实际运行的两张付费图片仍作为可选付费抽验延期，既有PARTIAL/PAUSED/BLOCK/NOT_STARTED条目保持不变。
 
 2026-08-07 三功能新增 21 条（TPL-001～007 / ZIP-001～006 / KEY-001～008）已全部经用户实页验收为 `PASS`，M11 放行门达成；其余历史统计与状态仍以各节为准，`INPUT-006`保持`PARTIAL`（Mureka真实生成暂缓）。
 2026-08-07 权限管理（PERM-001～012）与公共模板（PUB-001～011）已全部经用户实页验收为 `PASS`，两功能放行门达成；生成安全「并发与频率」上限按用户要求放宽至 1000（v33）。

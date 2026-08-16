@@ -477,22 +477,22 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 
 ## 10. 2026-08-16 当前恢复卡
 
-> 2026-08-16 INC-UI-003增量断点：用户确认v0.6.3并授权发布；公共模板灰阶UI与旧server-epoch journal安全结算已完成，正式安全全量118/118 specs、967/967 tests PASS，异常0且零真实Provider/付费/OSS写入。生产实时只读结果为current→`v0.6.2-inc-ecom-009-20260816`、公网v0.6.2、active/schema39。v0.6.3尚未切换；schema不迁移。下方恢复卡中指向video release的内容是此前时点，执行时以上述实时结果及INC-UI-003文档为准。
+> 2026-08-16 INC-UI-003增量断点：v0.6.3已发布，current→`v0.6.3-inc-ui-003-r2-20260816`，公网v0.6.3、active/schema39、NRestarts0。公共模板灰阶UI、旧journal同内容零PUT结算、冲突时保留本地副本并在新标签打开服务器版本均已实现；正式安全全量118/118 specs、967/967 tests PASS，Chrome目标画布恢复和UI合同通过，生产数据前后不变，真实Provider/付费/OSS写入0。当前仅待用户肉眼复验；以INC-UI-003文档和生产receipt为准。
 
 ```text
 项目路径：/Users/mymy/Documents/unboundry/app
-本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.2视频热修复生产源commit 959c1e287fb25943ca13037332030e99b39725be；禁止reset/clean；分支已推送，v0.6.2 tag与Draft PR #1已更新
-生产：canvas.mymy.ltd；v0.6.2/schema39；/opt/unboundry/current -> releases/v0.6.2-inc-video-001-20260816
-生产artifact：source commit 959c1e287fb25943ca13037332030e99b39725be；tree 6539868d3aa5df8be2fdbf3d10e8c6414ffe3845；inventory cf1c6e1aa33438e0d05dba11593f8095a30795a03a51dcd36f48d7d31ab340b5
-当前状态：INC-VIDEO-001已发布且真实Seedance视频PASS、待用户次日复验；INC-UI-001/002已发布自动通过、待用户复验；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
-技术凭证：spec/INC_VIDEO_001_PRODUCTION_RECEIPT_2026-08-16.json；spec/V0_6_2_REAL_WORKFLOW_SMOKE_2026-08-16.json；上一UI发布与备份/恢复凭证继续保留
-用户验收：既有v0.6.0/v0.6.1验收保持；v0.6.2的导航、favicon、框选、坏媒体恢复、长标题和真实视频闭环等待用户线上复验
-数据库：schema39；quick_check ok；FK0；126 tasks/125 attempts；43 public templates/42 published；active0；默认视频模型Seedance；globalEnabled1/emergencyStop0；per-user/kind concurrency与RPM均500
-备份：schema37 raw archive SHA 7f14c611faab136c1ae8e9579bc47755f7298e4ea6e2bba516c71e85670f8fca；offhost restore inspection b4d58243e88efe1c2c967ffab5f63ed6704d18324a80e8449ec9d3ad77e28e1d PASS
+本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.3生产源commit 399c0fb40c2ffe36c21a8e93ad61549e5d703696；禁止reset/clean；v0.6.3尚未push/tag/更新Draft PR
+生产：canvas.mymy.ltd；v0.6.3/schema39；/opt/unboundry/current -> releases/v0.6.3-inc-ui-003-r2-20260816
+生产artifact：source commit 399c0fb40c2ffe36c21a8e93ad61549e5d703696；tree bf0f1f775d9a62a77e194f35273d18d2ca0d722a；inventory 1e56c7e22d2846bae403abff13d8277249174a035434cf1d9923af797082b7c8
+当前状态：INC-UI-003已发布并完成自动与Chrome实页技术验证、待用户复验；INC-VIDEO-001已发布且真实Seedance视频PASS、待用户复验；INC-UI-001/002已发布自动通过、待用户复验；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
+技术凭证：spec/INC_UI_003_PRODUCTION_RECEIPT_2026-08-16.json；spec/INC_UI_003_PUBLIC_TEMPLATE_AND_CANVAS_LOAD_RECOVERY_2026-08-16.md；既有视频与UI发布凭证继续保留
+用户验收：既有v0.6.0/v0.6.1验收保持；v0.6.3公共模板UI、目标旧标签恢复及v0.6.2其余UI/视频项等待用户线上复验
+数据库：schema39；quick_check ok；FK0；132 tasks/131 attempts；46 public templates/45 published；active0；默认视频模型Seedance；既有生成安全配置不变
+备份：/var/lib/unboundry-rollbacks/inc-ui-003-20260816T0930Z；冻结源与恢复副本清单SHA fb0570333953ac59823a9d3c22ab698bd97d390db9bd5f32dc853c94ea67dd25，二者均PASS；历史schema37/offhost备份继续保留
 限制：attempt 86/108/116/120/122为行政取消且禁止重试，PROVIDER_FAILED仅surrogate；3条音频仅改duration元数据；cutover Provider/paid calls=0
-GitHub：专用branch已推送；注释标签v0.6.2精确指向生产源码commit 959c1e287fb25943ca13037332030e99b39725be；Draft PR #1 base=main、merge state=CLEAN、当前无CI checks报告
-未来授权：本次v0.6.2生产发布授权已消费；未来生产读写、真实Provider/付费生成、push/tag/PR或新发布仍需新授权
-下一步：用户按v0.6.2验收清单线上复验；确认后再把INC-UI-001/002从USER_RECHECK改为USER PASS
+GitHub：v0.6.2专用branch/tag/Draft PR #1为历史已发布状态；v0.6.3本地生产源及文档提交尚未push/tag/更新PR
+未来授权：本次v0.6.3生产发布授权已消费；未来生产读写、真实Provider/付费生成、push/tag/PR或新发布仍需新授权
+下一步：用户按v0.6.3验收清单线上复验；确认后再把INC-UI-003从USER_RECHECK改为USER PASS
 ```
 
 任何恢复者必须优先使用本节；第9节只保留历史，不得执行其“下一步”。
