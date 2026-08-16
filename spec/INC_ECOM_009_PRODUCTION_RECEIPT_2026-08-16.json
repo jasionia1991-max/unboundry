@@ -1,0 +1,67 @@
+{
+  "format": "unboundry-production-hotfix-receipt-v1",
+  "incident": "INC-ECOM-009",
+  "status": "PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK",
+  "version": "0.6.2",
+  "schemaVersion": 39,
+  "release": {
+    "path": "/opt/unboundry/releases/v0.6.2-inc-ecom-009-20260816",
+    "previousPath": "/opt/unboundry/releases/v0.6.2-inc-video-001-20260816",
+    "inventorySha256": "7f894401640f511a261cbdaba33ba5fe12658a27094c293d35c8349e8d2ad88e",
+    "templateCatalogSha256": "d23b919430c4a23b3b6e387c03d7f7c15964031487cff15ad988daab469821b8"
+  },
+  "rootCause": "The apparel template compiler assigned parentId=template-group to the outer template-group itself, leaving no top-level node for offsetTemplate to move.",
+  "repair": {
+    "templateIds": [
+      "00000000-0000-4000-8000-000000000901",
+      "00000000-0000-4000-8000-000000000902",
+      "00000000-0000-4000-8000-000000000903"
+    ],
+    "firstApplyRows": 3,
+    "secondApplyRows": 0,
+    "after": [
+      { "idSuffix": "0901", "nodes": 9, "edges": 15, "topLevel": 1, "selfParent": 0 },
+      { "idSuffix": "0902", "nodes": 10, "edges": 18, "topLevel": 1, "selfParent": 0 },
+      { "idSuffix": "0903", "nodes": 15, "edges": 30, "topLevel": 1, "selfParent": 0 }
+    ]
+  },
+  "automatedValidation": {
+    "targeted": "m70 + m77 = 19/19 PASS",
+    "full": "118/118 specs, 966/966 tests PASS",
+    "failed": 0,
+    "skipped": 0,
+    "retries": 0,
+    "blocked": 0
+  },
+  "realBrowserValidation": {
+    "projectId": "14601b3e-3073-443f-9799-7a4fc02362c1",
+    "template": "服装一键自动上新｜主图详情页 + 抖音带货",
+    "firstGroup": { "id": "group-7e4e9b65-b3f5-4c51-8dd1-f5858c541147", "x": 1526, "y": -2344, "children": 14 },
+    "secondGroup": { "id": "group-91789e1a-81a5-44f0-bddc-01bccc15484b", "x": 3076, "y": -24, "children": 14 },
+    "overlap": false,
+    "verticalGap": 100,
+    "catalogReloadRequiredForTabsOpenedBeforeRepair": true
+  },
+  "productionAfter": {
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "nRestarts": 0,
+    "publicVersion": "0.6.2",
+    "publicLive": "PASS",
+    "publicReady": "active-schema39",
+    "databaseQuickCheck": "ok",
+    "foreignKeyViolations": 0,
+    "generationTasks": 132,
+    "providerAttempts": 131,
+    "activeGenerationTasks": 0,
+    "warningOrHigherJournalEntriesSinceHotfix": 0
+  },
+  "rollback": {
+    "databasePath": "/var/lib/unboundry-rollbacks/inc-ecom-009-20260816T0340Z",
+    "databaseSha256": "10f0c7fbc9de0352e59355d0d287d6ea9fa645c7b6de4b338a6c4a009e9fff3f",
+    "previousReleaseIntact": true
+  },
+  "paidProviderRequests": 0,
+  "ossWrites": 0,
+  "userAcceptance": "PENDING_RECHECK"
+}

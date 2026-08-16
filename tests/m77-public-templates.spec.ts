@@ -20,6 +20,7 @@ import {
 import {
   listPublicTemplates,
   publicTemplateCard,
+  validTemplateGraph,
 } from "../server/templateCatalog";
 import { defaultParameterSchema } from "../types/modelParameters";
 
@@ -124,6 +125,23 @@ function uploadPlaceholderGraph() {
     version: 1,
   };
 }
+
+test("template graph contract rejects self-parented groups and missing top-level nodes", () => {
+  const valid = uploadPlaceholderGraph();
+  expect(validTemplateGraph(valid)).toBe(true);
+
+  const selfParented = structuredClone(valid);
+  selfParented.nodes[0].parentId = selfParented.nodes[0].id;
+  expect(validTemplateGraph(selfParented)).toBe(false);
+
+  const missingParent = structuredClone(valid);
+  missingParent.nodes[1].parentId = "missing-group";
+  expect(validTemplateGraph(missingParent)).toBe(false);
+
+  const duplicateNode = structuredClone(valid);
+  duplicateNode.nodes[2].id = duplicateNode.nodes[1].id;
+  expect(validTemplateGraph(duplicateNode)).toBe(false);
+});
 
 function pinnedImageGenerationGraph(modelId?: string) {
   return {

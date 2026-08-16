@@ -1,0 +1,221 @@
+{
+  "version": 1,
+  "kind": "APPAREL_AUTO_LAUNCH_PROMPT_PACK",
+  "status": "local-candidate",
+  "locale": "zh-CN",
+  "sourceAttribution": {
+    "mode": "original-composition",
+    "note": "由公开服装电商工作流的可复用结构整理，并按本项目节点契约重写；不复制第三方工作流资产。"
+  },
+  "tokens": {
+    "facts": "{{product_facts}}",
+    "sourceImage": "{{source_image}}",
+    "normalizedImage": "{{normalized_garment_image}}",
+    "direction": "{{creative_direction}}",
+    "aspectRatio": "{{aspect_ratio}}",
+    "sharedFidelity": "{{shared_fidelity}}",
+    "negative": "{{negative_rules}}"
+  },
+  "sharedRules": {
+    "fidelity": "以参考服装为唯一事实来源：保持款式、颜色、纹理、版型、领型、袖型、长度、logo/文字位置不变；无法确认的内容写入 uncertain，不得猜测或补造。",
+    "commercial": "画面干净、主体清晰、留出电商裁切安全区；不添加品牌、材质、功能、价格、销量、认证等参考图没有明确出现的卖点。",
+    "negative": "不要改款、换色、增删口袋/纽扣/拉链、改变领袖结构、改变衣长、虚构印花文字或logo；不要多余手指、畸形肢体、重复商品、错字、水印、边框、低清、过度磨皮。"
+  },
+  "promptBindings": {
+    "shared_fidelity": "sharedRules.fidelity",
+    "negative_rules": "sharedRules.negative"
+  },
+  "factExtraction": {
+    "id": "extract_product_facts",
+    "type": "text",
+    "role": "facts",
+    "prompt": "你是服装电商事实抽取器。根据 {{source_image}} 逐项观察，只输出严格 JSON，不要 Markdown、不要营销文案。字段：category, gender, garment_type, color, pattern, silhouette, collar, sleeve, length, fabric_visible_features, craft_visible_features, logo_or_text, confirmed_claims, uncertain, do_not_invent。confirmed_claims 只能写参考图明确可见或用户明确提供的事实；看不清的字段写入 uncertain；do_not_invent 固定写明不得新增的卖点。{{shared_fidelity}}",
+    "outputSchema": {
+      "type": "object",
+      "required": [
+        "category",
+        "gender",
+        "garment_type",
+        "color",
+        "pattern",
+        "silhouette",
+        "collar",
+        "sleeve",
+        "length",
+        "fabric_visible_features",
+        "craft_visible_features",
+        "logo_or_text",
+        "confirmed_claims",
+        "uncertain",
+        "do_not_invent"
+      ]
+    }
+  },
+  "workflows": [
+    {
+      "id": "apparel_auto_launch_p0",
+      "priority": "P0",
+      "title": "服装一键上新｜主图与详情页",
+      "description": "上传一张手拍图、白底图或模特图后，自动提取事实、整理服装，再并行生成货架主图、试穿主图和详情页组图。",
+      "inputModes": ["hand_photo", "white_background", "model_photo"],
+      "nodes": [
+        { "id": "upload_reference", "type": "image", "role": "input", "title": "上传服装参考图", "prompt": "" },
+        { "id": "extract_product_facts", "type": "text", "role": "facts", "title": "提取服装事实", "promptRef": "factExtraction" },
+        {
+          "id": "normalize_garment",
+          "type": "image",
+          "role": "normalize",
+          "title": "服装主体标准化",
+          "prompt": "根据 {{source_image}} 与 {{product_facts}}，只整理服装主体：去除杂乱背景并保持原服装的颜色、面料可见纹理、版型、结构、logo/文字位置和比例不变；生成自然、完整、无裁切的商品参考图。{{shared_fidelity}}"
+        },
+        {
+          "id": "build_p0_direction",
+          "type": "text",
+          "role": "director",
+          "title": "生成P0画面导演稿",
+          "prompt": "根据 {{product_facts}} 和 {{normalized_garment_image}}，输出严格 JSON：hero_prompt、try_on_prompt、detail_page_prompt、detail_panels、aspect_ratio。为每个画面写清主体、镜头、背景、光线、构图、留白和电商用途；只使用 confirmed_claims，不确定项不得写成事实。"
+        },
+        {
+          "id": "shelf_hero",
+          "type": "image",
+          "role": "output",
+          "title": "货架电商主图",
+          "prompt": "{{creative_direction.hero_prompt}}。以 {{normalized_garment_image}} 为唯一服装参考，商品正面完整展示，纯白或极浅中性背景，柔和棚拍光，边缘干净，主体占画布约75%，四周保留安全边距；不添加文字、价格、logo或不存在的配饰。{{negative_rules}}"
+        },
+        {
+          "id": "try_on",
+          "type": "image",
+          "role": "output",
+          "title": "服装试穿主图",
+          "prompt": "{{creative_direction.try_on_prompt}}。将 {{normalized_garment_image}} 的服装准确穿到自然姿态的成年模特身上，服装结构和颜色不得改变；简洁电商棚拍或干净生活场景，露出完整穿搭比例，避免脸部抢主体。{{negative_rules}}"
+        },
+        {
+          "id": "detail_page",
+          "type": "image",
+          "role": "output",
+          "title": "服装详情页组图",
+          "prompt": "{{creative_direction.detail_page_prompt}}。以 {{normalized_garment_image}} 为产品锚点，输出 {{creative_direction.detail_panels}} 张详情页组图：整体展示、版型/结构、面料近景、工艺细节、尺码/洗护信息版式。只展示可确认事实；没有事实的区域用克制留白，不生成虚假参数或错别字。{{negative_rules}}"
+        },
+        {
+          "id": "p0_quality_gate",
+          "type": "text",
+          "role": "quality_gate",
+          "title": "P0一致性检查",
+          "prompt": "检查 {{shelf_hero}}、{{try_on}}、{{detail_page}} 是否与 {{product_facts}} 和 {{normalized_garment_image}} 一致。严格 JSON 输出 pass、issues、needs_regenerate；发现改款、错色、虚构卖点、错字、裁切、肢体/手指异常时 needs_regenerate=true，并只指出具体问题。"
+        }
+      ],
+      "edges": [
+        ["upload_reference", "extract_product_facts"],
+        ["upload_reference", "normalize_garment"],
+        ["extract_product_facts", "normalize_garment"],
+        ["extract_product_facts", "build_p0_direction"],
+        ["normalize_garment", "build_p0_direction"],
+        ["build_p0_direction", "shelf_hero"],
+        ["normalize_garment", "shelf_hero"],
+        ["build_p0_direction", "try_on"],
+        ["normalize_garment", "try_on"],
+        ["build_p0_direction", "detail_page"],
+        ["normalize_garment", "detail_page"],
+        ["shelf_hero", "p0_quality_gate"],
+        ["try_on", "p0_quality_gate"],
+        ["detail_page", "p0_quality_gate"],
+        ["extract_product_facts", "p0_quality_gate"]
+      ]
+    },
+    {
+      "id": "apparel_auto_launch_p1",
+      "priority": "P1",
+      "title": "服装一键带货｜OOTD与抖音短视频",
+      "description": "复用同一份服装事实和标准化服装图，自动生成种草图、动作组图、短视频分镜和口播台本，避免重复上传。",
+      "inputModes": ["hand_photo", "white_background", "model_photo"],
+      "nodes": [
+        { "id": "upload_reference", "type": "image", "role": "input", "title": "上传服装参考图", "prompt": "" },
+        { "id": "extract_product_facts", "type": "text", "role": "facts", "title": "提取服装事实", "promptRef": "factExtraction" },
+        {
+          "id": "normalize_garment",
+          "type": "image",
+          "role": "normalize",
+          "title": "服装主体标准化",
+          "prompt": "根据 {{source_image}} 与 {{product_facts}}，生成无杂乱背景的完整服装参考图；保持所有可见结构、颜色、纹理与logo/文字位置不变。{{shared_fidelity}}"
+        },
+        {
+          "id": "build_p1_direction",
+          "type": "text",
+          "role": "director",
+          "title": "生成P1带货导演稿",
+          "prompt": "根据 {{product_facts}} 和 {{normalized_garment_image}}，输出严格 JSON：ootd_prompt、pose_prompt、video_script、shot_list、cover_prompt。视频脚本 15-25 秒，按 0-3/3-8/8-15/15-25 秒分镜，包含画面、动作、字幕、口播、转场和 CTA；只使用 confirmed_claims，不夸大、不承诺、不编造参数。"
+        },
+        {
+          "id": "ootd_scene",
+          "type": "image",
+          "role": "output",
+          "title": "OOTD种草图",
+          "prompt": "{{creative_direction.ootd_prompt}}。将 {{normalized_garment_image}} 准确呈现在成年模特身上，城市通勤/周末生活方式场景，构图有层次但服装始终是主体；保持服装结构、颜色、图案和长度。{{negative_rules}}"
+        },
+        {
+          "id": "pose_set",
+          "type": "image",
+          "role": "output",
+          "title": "短视频动作封面组",
+          "prompt": "{{creative_direction.pose_prompt}}。基于 {{normalized_garment_image}} 生成 3-4 个自然动作关键帧：正面展示、侧面转身、面料/细节手势、行走定格；同一件服装、同一模特风格、结构和颜色一致。{{negative_rules}}"
+        },
+        {
+          "id": "douyin_video",
+          "type": "video",
+          "role": "output",
+          "title": "抖音15-25秒带货视频",
+          "prompt": "{{creative_direction.video_script}}。以 {{pose_set}} 作为唯一视觉参考，保持服装和人物连续性；竖屏 {{aspect_ratio}}，节奏明快，首秒展示商品，字幕简短且只使用可确认卖点，不生成品牌/价格/功效承诺。"
+        },
+        {
+          "id": "douyin_caption",
+          "type": "text",
+          "role": "output",
+          "title": "抖音发布文案",
+          "prompt": "根据 {{product_facts}} 与 {{creative_direction.video_script}} 输出 3 组短标题、正文、话题标签和合规提醒。只写可确认事实；禁止绝对化、虚假稀缺、虚构材质/功能/销量。"
+        },
+        {
+          "id": "p1_quality_gate",
+          "type": "text",
+          "role": "quality_gate",
+          "title": "P1一致性检查",
+          "prompt": "检查 {{ootd_scene}}、{{pose_set}}、{{douyin_video}}、{{douyin_caption}} 是否与 {{product_facts}} 一致。输出严格 JSON：pass、issues、needs_regenerate；重点检查服装连续性、字幕错字、虚假卖点、画幅和首秒商品露出。"
+        }
+      ],
+      "edges": [
+        ["upload_reference", "extract_product_facts"],
+        ["upload_reference", "normalize_garment"],
+        ["extract_product_facts", "normalize_garment"],
+        ["extract_product_facts", "build_p1_direction"],
+        ["normalize_garment", "build_p1_direction"],
+        ["build_p1_direction", "ootd_scene"],
+        ["normalize_garment", "ootd_scene"],
+        ["build_p1_direction", "pose_set"],
+        ["normalize_garment", "pose_set"],
+        ["build_p1_direction", "douyin_video"],
+        ["pose_set", "douyin_video"],
+        ["extract_product_facts", "douyin_caption"],
+        ["build_p1_direction", "douyin_caption"],
+        ["ootd_scene", "p1_quality_gate"],
+        ["pose_set", "p1_quality_gate"],
+        ["douyin_video", "p1_quality_gate"],
+        ["douyin_caption", "p1_quality_gate"],
+        ["extract_product_facts", "p1_quality_gate"]
+      ]
+    }
+  ],
+  "orchestrator": {
+    "id": "apparel_auto_launch_all",
+    "title": "服装一键自动上新｜P0主图详情页 + P1抖音带货",
+    "entryNode": "upload_reference",
+    "pipelineRefs": ["apparel_auto_launch_p0", "apparel_auto_launch_p1"],
+    "uploadOnce": true,
+    "fanOutAfter": "extract_product_facts",
+    "joinPolicy": "生成式节点等待其所有入参对应的上游节点成功后才启动；同层无依赖分支可并行。",
+    "costPolicy": {
+      "defaultMode": "preview-first",
+      "maxImageOutputsPerRun": 6,
+      "maxVideoOutputsPerRun": 1,
+      "neverAutoRetryPaidGeneration": true
+    }
+  }
+}
