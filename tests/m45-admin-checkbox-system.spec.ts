@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./safe-test";
 
 type CheckboxGeometry = {
   appearance: string;
@@ -109,7 +109,7 @@ test("all model-admin checkbox roles use the compact gray control without paid r
   const localWrites: string[] = [];
   const providerRequests: string[] = [];
   const localOrigin = new URL(
-    baseURL ?? "http://127.0.0.1:4173",
+    baseURL!,
   ).origin;
 
   page.on("request", (request) => {

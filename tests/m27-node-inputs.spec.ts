@@ -3,7 +3,7 @@ import {
   test,
   type APIRequestContext,
   type Page,
-} from "@playwright/test";
+} from "./safe-test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
@@ -152,7 +152,7 @@ const zeroModelIds = new Set<string>();
 const garmentAssetId = "fixture-garment-image";
 
 async function ensureGarmentAsset(request: APIRequestContext) {
-  await request.delete(`/api/assets/${garmentAssetId}`);
+  if ((await request.get(`/api/assets/${garmentAssetId}`)).ok()) return;
   const bytes = await readFile(resolve(
     process.cwd(),
     "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
@@ -729,7 +729,11 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
     },
   });
   expect(staleCreate.ok()).toBeTruthy();
-  const staleRevision = (await staleCreate.json() as { revision: number }).revision;
+  const staleBaseline = await staleCreate.json() as {
+    loadToken: string;
+    revision: number;
+  };
+  const staleRevision = staleBaseline.revision;
   const staleAdvance = await request.put(`/api/canvas/${staleCanvasId}`, {
     data: {
       edges: [],
@@ -738,6 +742,8 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
         id: "target",
         type: "image",
       }],
+      observedLoadToken: staleBaseline.loadToken,
+      observedRevision: staleBaseline.revision,
       revision: staleRevision,
       viewport: { x: 1, y: 0, zoom: 1 },
     },
@@ -1307,11 +1313,17 @@ test("server orders same-session saves and lets different tabs last-write-win", 
     },
   });
   expect(create.ok()).toBeTruthy();
+  const created = await create.json() as {
+    loadToken: string;
+    revision: number;
+  };
 
   const older = await request.put(url, {
     data: {
       edges: [],
       nodes: [{ id: "older" }],
+      observedLoadToken: created.loadToken,
+      observedRevision: created.revision,
       revision: 1,
       saveSequence: 2,
       saveSessionId: session,
@@ -1323,6 +1335,8 @@ test("server orders same-session saves and lets different tabs last-write-win", 
     data: {
       edges: [],
       nodes: [{ id: "latest" }],
+      observedLoadToken: created.loadToken,
+      observedRevision: created.revision,
       revision: 1,
       saveSequence: 3,
       saveSessionId: session,
@@ -1335,6 +1349,8 @@ test("server orders same-session saves and lets different tabs last-write-win", 
     data: {
       edges: [],
       nodes: [{ id: "must-not-win" }],
+      observedLoadToken: created.loadToken,
+      observedRevision: created.revision,
       revision: 1,
       saveSequence: 2,
       saveSessionId: session,
@@ -1342,15 +1358,25 @@ test("server orders same-session saves and lets different tabs last-write-win", 
     },
   });
   expect(lateOlder.status()).toBe(409);
-  await expect(lateOlder.json()).resolves.toMatchObject({
-    revision: 3,
-    saveSequence: 3,
-    saveSessionId: session,
+  await expect(lateOlder.json()).resolves.toEqual({
+    code: "CANVAS_SAVE_SUPERSEDED",
+    currentGraphRevision: 3,
+    currentRevision: 3,
+    currentWriterSequence: 3,
+    currentWriterSessionId: session,
+    error: "Superseded same-session save",
+    rejectedAttemptId: null,
+    rejectedSequence: 2,
+    rejectedSessionId: session,
+    sessionHighWaterAttemptId: null,
+    sessionHighWaterSequence: 3,
   });
   const differentTab = await request.put(url, {
     data: {
       edges: [],
       nodes: [{ id: "other-tab" }],
+      observedLoadToken: created.loadToken,
+      observedRevision: created.revision,
       revision: 1,
       saveSequence: 99,
       saveSessionId: "different-session-1234",

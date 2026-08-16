@@ -3,11 +3,13 @@ import {
   test,
   type APIRequestContext,
   type Page,
-} from "@playwright/test";
+} from "./safe-test";
 import { execFileSync } from "node:child_process";
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { tryCommitCanvasNodeAdoption } from "../client/src/canvas/CanvasGraphMutationContext";
+import type { ProbeNodeType } from "../client/src/canvas/ProbeNode";
 
 const mediaDirectory = mkdtempSync(join(tmpdir(), "unboundry-upload-transaction-"));
 const videoFile = join(mediaDirectory, "transaction.mp4");
@@ -71,6 +73,21 @@ const uploadConfig = {
     inputTestId: "video-upload-input",
   },
 } as const;
+
+const clientUploadBranches = [
+  { id: "image", kind: "image", label: "Image upload" },
+  { id: "playlist", kind: "video", label: "Playlist export" },
+  { id: "video", kind: "video", label: "Video upload" },
+  { id: "audio", kind: "audio", label: "Audio upload" },
+] as const;
+
+type ClientUploadBranch = (typeof clientUploadBranches)[number];
+
+function branchPostPattern(branch: ClientUploadBranch) {
+  return branch.id === "playlist"
+    ? "**/api/playlist/export"
+    : `**${uploadConfig[branch.kind].endpoint}*`;
+}
 
 function emptyNode(kind: MediaKind, index: number) {
   return {
@@ -170,6 +187,16 @@ function monitorProviderRequests(page: Page) {
   return taskPosts;
 }
 
+function monitorAssetDeletes(page: Page) {
+  const deletedPaths: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "DELETE") {
+      deletedPaths.push(new URL(request.url()).pathname);
+    }
+  });
+  return deletedPaths;
+}
+
 function responseGate(page: Page, pattern: string, count: number) {
   const createdResolvers: Array<(asset: CreatedAsset) => void> = [];
   const releaseResolvers: Array<() => void> = [];
@@ -210,7 +237,330 @@ function responseGate(page: Page, pattern: string, count: number) {
   };
 }
 
+function committedResponseFailure(
+  page: Page,
+  pattern: string,
+  browserOutcome: "bad-gateway" | "lost",
+) {
+  let resolveCreated!: (asset: CreatedAsset) => void;
+  const created = new Promise<CreatedAsset>((resolve) => {
+    resolveCreated = resolve;
+  });
+  let intercepted = false;
+  void page.route(pattern, async (route) => {
+    if (route.request().method() !== "POST" || intercepted) {
+      await route.continue();
+      return;
+    }
+    intercepted = true;
+    const response = await route.fetch();
+    const body = await response.body();
+    resolveCreated(JSON.parse(body.toString()) as CreatedAsset);
+    // The origin has already committed and returned the ready asset. Lose or
+    // replace only the browser-facing response so compensation must use the
+    // request id even when an intermediary reports an explicit 5xx.
+    if (browserOutcome === "lost") {
+      await route.abort("failed");
+    } else {
+      await route.fulfill({
+        body: JSON.stringify({
+          code: "UPSTREAM_WRAPPER_FAILED",
+          error: "The intermediary lost the committed origin response",
+        }),
+        contentType: "application/json",
+        status: 502,
+      });
+    }
+  });
+  return created;
+}
+
+function mediaIdCollision(
+  page: Page,
+  request: APIRequestContext,
+  branch: ClientUploadBranch,
+  bodyFailure?: "empty" | "malformed",
+) {
+  const kind = branch.kind;
+  let resolveOriginal!: (asset: CreatedAsset) => void;
+  const original = new Promise<CreatedAsset>((resolve) => {
+    resolveOriginal = resolve;
+  });
+  let resolveDelivered!: () => void;
+  const delivered = new Promise<void>((resolve) => {
+    resolveDelivered = resolve;
+  });
+  let intercepted = false;
+  void page.route(branchPostPattern(branch), async (route) => {
+    if (route.request().method() !== "POST" || intercepted) {
+      await route.continue();
+      return;
+    }
+    intercepted = true;
+    const assetId = branch.id === "playlist"
+      ? String((route.request().postDataJSON() as { assetId?: unknown }).assetId ?? "")
+      : decodeURIComponent(
+          new URL(route.request().url()).pathname.split("/").at(-1)!,
+        );
+    resolveOriginal(await seedAsset(request, kind, assetId));
+    const response = await route.fetch();
+    expect(response.status()).toBe(409);
+    expect(await response.json()).toMatchObject({
+      code: "MEDIA_ID_UNAVAILABLE",
+    });
+    if (bodyFailure) {
+      await route.fulfill({
+        body: bodyFailure === "empty" ? "" : "{",
+        contentType: "application/json",
+        status: 409,
+      });
+    } else {
+      await route.fulfill({ response });
+    }
+    resolveDelivered();
+  });
+  return { delivered, original };
+}
+
+function mismatchedCommittedResponse(
+  page: Page,
+  branch: ClientUploadBranch,
+  replacement: CreatedAsset,
+) {
+  let resolveRequested!: (asset: CreatedAsset) => void;
+  const requested = new Promise<CreatedAsset>((resolve) => {
+    resolveRequested = resolve;
+  });
+  let intercepted = false;
+  void page.route(branchPostPattern(branch), async (route) => {
+    if (route.request().method() !== "POST" || intercepted) {
+      await route.continue();
+      return;
+    }
+    intercepted = true;
+    const response = await route.fetch();
+    const asset = await response.json() as CreatedAsset;
+    expect(response.status()).toBe(201);
+    resolveRequested(asset);
+    await route.fulfill({
+      body: JSON.stringify({
+        ...asset,
+        assetId: replacement.assetId,
+        url: replacement.url,
+      }),
+      contentType: "application/json",
+      status: 201,
+    });
+  });
+  return requested;
+}
+
+function branchCanvasId(branch: ClientUploadBranch, _scenario: string) {
+  return branch.id === "playlist"
+    ? "node.playlist.clips-ready"
+    : `node.${branch.kind}.empty`;
+}
+
+async function openClientUploadBranch(
+  page: Page,
+  request: APIRequestContext,
+  branch: ClientUploadBranch,
+  canvasId: string,
+) {
+  if (branch.id === "playlist") {
+    await request.delete(`/api/canvas/${canvasId}`);
+  } else {
+    await saveCanvas(request, canvasId, [emptyNode(branch.kind, 0)]);
+  }
+  await page.goto(`/__fixture/${canvasId}`);
+  await expect(page.getByTestId("canvas-world"))
+    .toHaveAttribute("data-persistence-ready", "true");
+}
+
+async function triggerClientUploadBranch(
+  page: Page,
+  branch: ClientUploadBranch,
+) {
+  if (branch.id === "playlist") {
+    const playlist = page.locator(
+      '.react-flow__node-playlist[data-id="playlist-primary"]',
+    );
+    await playlist.click();
+    await page.getByRole("button", { name: "导出播放列表" }).click();
+    await page.getByTestId("playlist-export-menu")
+      .getByRole("menuitem", { name: /导出到画布/ })
+      .click();
+    return;
+  }
+
+  await page.locator(
+    `.react-flow__node[data-id="${branch.kind}-transaction"]`,
+  ).getByTestId(uploadConfig[branch.kind].inputTestId)
+    .setInputFiles(uploadConfig[branch.kind].file);
+}
+
+async function expectClientUploadNotAdopted(
+  page: Page,
+  request: APIRequestContext,
+  branch: ClientUploadBranch,
+  canvasId: string,
+  assetIds: string[],
+) {
+  if (branch.id === "playlist") {
+    await expect(page.locator('.react-flow__node-video[data-id^="video-from-"]'))
+      .toHaveCount(0);
+    await expect.poll(async () =>
+      (await persistedNodes(request, canvasId)).some((node) =>
+        node.id.startsWith("video-from-") ||
+        assetIds.includes(String(node.data.assetId ?? ""))
+      )).toBeFalsy();
+    return;
+  }
+
+  const node = page.locator(
+    `.react-flow__node[data-id="${branch.kind}-transaction"]`,
+  );
+  for (const assetId of assetIds) {
+    await expect.poll(async () =>
+      node.locator("[data-asset-id]").evaluateAll(
+        (elements, expectedAssetId) => elements.some((element) =>
+          element.getAttribute("data-asset-id") === expectedAssetId
+        ),
+        assetId,
+      )).toBeFalsy();
+  }
+  await expect.poll(async () =>
+    (await persistedNodes(request, canvasId)).some((candidate) =>
+      assetIds.includes(String(candidate.data.assetId ?? ""))
+    )).toBeFalsy();
+}
+
+async function expectClientUploadFailureSettled(
+  page: Page,
+  branch: ClientUploadBranch,
+) {
+  const feedback = branch.id === "playlist"
+    ? page.locator('.playlist-export-state[role="status"]')
+    : page.locator(
+        `.react-flow__node[data-id="${branch.kind}-transaction"]`,
+      ).getByRole("alert");
+  await expect(feedback).toBeVisible();
+  await expect(feedback).not.toHaveText("");
+}
+
+function persistenceLossGate(page: Page, canvasId: string) {
+  let resolveCreated!: () => void;
+  let resolveRelease!: () => void;
+  const created = new Promise<void>((resolve) => {
+    resolveCreated = resolve;
+  });
+  const release = new Promise<void>((resolve) => {
+    resolveRelease = resolve;
+  });
+  let rejectExternalBaseline = false;
+  let intercepted = false;
+  void page.route(`**/api/canvas/${canvasId}`, async (route) => {
+    if (route.request().method() === "GET" && rejectExternalBaseline) {
+      rejectExternalBaseline = false;
+      await route.fulfill({
+        body: JSON.stringify({ error: "External baseline unavailable" }),
+        contentType: "application/json",
+        status: 500,
+      });
+      return;
+    }
+    if (route.request().method() !== "PUT" || intercepted) {
+      await route.continue();
+      return;
+    }
+    intercepted = true;
+    const payload = route.request().postDataJSON() as {
+      observedRevision?: number;
+      saveAttemptId: string;
+      saveSequence: number;
+      saveSessionId: string;
+    };
+    resolveCreated();
+    await release;
+    const currentRevision = Math.max(0, Number(payload.observedRevision ?? 0)) + 1;
+    const sessionHighWaterSequence = Number(payload.saveSequence) + 1;
+    rejectExternalBaseline = true;
+    await route.fulfill({
+      body: JSON.stringify({
+        code: "CANVAS_SAVE_SUPERSEDED",
+        currentGraphRevision: currentRevision,
+        currentRevision,
+        currentWriterSequence: sessionHighWaterSequence,
+        currentWriterSessionId: "m37-foreign-writer",
+        error: "A foreign revision invalidated the upload adoption scope",
+        rejectedAttemptId: payload.saveAttemptId,
+        rejectedSequence: payload.saveSequence,
+        rejectedSessionId: payload.saveSessionId,
+        sessionHighWaterAttemptId:
+          "77777777-7777-4777-8777-777777777777",
+        sessionHighWaterSequence,
+      }),
+      contentType: "application/json",
+      status: 409,
+    });
+  });
+  return {
+    created,
+    release: () => resolveRelease(),
+  };
+}
+
+async function paidProviderRequests(request: APIRequestContext) {
+  const status = await (
+    await request.get("/api/generation-tasks/status")
+  ).json() as { paidProviderRequests: number };
+  return status.paidProviderRequests;
+}
+
 test.afterAll(() => rmSync(mediaDirectory, { force: true, recursive: true }));
+
+test("atomic media adoption rejects a persistence ref closed in the same tick", () => {
+  const current = [emptyNode("image", 0)] as unknown as ProbeNodeType[];
+  let committed: ProbeNodeType[] | undefined;
+  let persistenceReady = true;
+  const staleChildReady = true;
+  let updateCalled = false;
+  const adopted = tryCommitCanvasNodeAdoption({
+    commit: (nodes) => {
+      committed = nodes;
+    },
+    currentNodes: () => current,
+    persistenceReady: () => persistenceReady,
+    targetNodeId: current[0]!.id,
+    update: (nodes) => {
+      updateCalled = true;
+      persistenceReady = false;
+      return nodes.map((node) => ({ ...node, selected: true }));
+    },
+  });
+
+  expect(staleChildReady).toBe(true);
+  expect(adopted).toBe(false);
+  expect(updateCalled).toBe(true);
+  expect(committed).toBeUndefined();
+});
+
+test("atomic media adoption rejects a target removed before commit", () => {
+  const current = [emptyNode("image", 0)] as unknown as ProbeNodeType[];
+  let committed: ProbeNodeType[] | undefined;
+  const adopted = tryCommitCanvasNodeAdoption({
+    commit: (nodes) => {
+      committed = nodes;
+    },
+    currentNodes: () => [],
+    persistenceReady: () => true,
+    targetNodeId: current[0]!.id,
+    update: (nodes) => nodes,
+  });
+
+  expect(adopted).toBe(false);
+  expect(committed).toBeUndefined();
+});
 
 test("ready Image, Video and Audio replacements keep the accepted asset when upload fails", async ({
   page,
@@ -417,3 +767,433 @@ test("later Image, Video and Audio uploads win when older responses arrive last"
     }
   }
 });
+
+for (const kind of ["image", "video", "audio"] as const) {
+  test(`${kind} upload deletes its fresh asset when persistence becomes unavailable before adoption`, async ({
+    page,
+    request,
+  }) => {
+    const canvasId = "interaction.upload-media-sandbox-current";
+    const uploadGate = responseGate(
+      page,
+      `**${uploadConfig[kind].endpoint}*`,
+      1,
+    );
+    const persistenceGate = persistenceLossGate(page, canvasId);
+    const before = await paidProviderRequests(request);
+    const taskPosts = monitorProviderRequests(page);
+    const deletedPaths = monitorAssetDeletes(page);
+
+    try {
+      await saveCanvas(request, canvasId, [emptyNode(kind, 0)]);
+      await page.goto(`/__fixture/${canvasId}`);
+      const world = page.getByTestId("canvas-world");
+      await expect(world).toHaveAttribute("data-persistence-ready", "true");
+      const node = page.locator(
+        `.react-flow__node[data-id="${kind}-transaction"]`,
+      );
+
+      await node.getByTestId(uploadConfig[kind].inputTestId)
+        .setInputFiles(uploadConfig[kind].file);
+      const [asset] = await Promise.all([
+        uploadGate.created[0],
+        persistenceGate.created,
+      ]);
+
+      persistenceGate.release();
+      await expect(world).toHaveAttribute("data-persistence-ready", "false");
+      uploadGate.release(0);
+
+      await expect.poll(async () => (
+        await request.get(`${uploadConfig[kind].endpoint}${asset.assetId}`)
+      ).status()).toBe(404);
+      expect(deletedPaths).toContain(
+        `${uploadConfig[kind].endpoint}${encodeURIComponent(asset.assetId)}`,
+      );
+      await expect.poll(async () =>
+        node.locator("[data-asset-id]").evaluateAll(
+          (elements, expectedAssetId) => elements.some((element) =>
+            element.getAttribute("data-asset-id") === expectedAssetId
+          ),
+          asset.assetId,
+        )).toBeFalsy();
+      expect((await persistedNodes(request, canvasId))[0]?.data.assetId)
+        .toBeUndefined();
+      expect(await paidProviderRequests(request)).toBe(before);
+      expect(taskPosts).toEqual([]);
+    } finally {
+      persistenceGate.release();
+      uploadGate.releaseAll();
+      await request.delete(`/api/canvas/${canvasId}`);
+    }
+  });
+}
+
+test("Image crop deletes a completed derived upload when persistence closes before graph adoption", async ({
+  page,
+  request,
+}) => {
+  const canvasId = "node.image.empty";
+  const sourceAsset = await seedAsset(request, "image", "m37-crop-source");
+  const uploadGate = responseGate(page, "**/api/assets/*", 1);
+  const persistenceGate = persistenceLossGate(page, canvasId);
+  const before = await paidProviderRequests(request);
+  const taskPosts = monitorProviderRequests(page);
+  const deletedPaths = monitorAssetDeletes(page);
+
+  try {
+    await saveCanvas(request, canvasId, [readyNode("image", 0, sourceAsset)]);
+    await page.goto(`/__fixture/${canvasId}`);
+    const world = page.getByTestId("canvas-world");
+    await expect(world).toHaveAttribute("data-persistence-ready", "true");
+    const sourceNode = page.locator(
+      '.react-flow__node-image[data-id="image-transaction"]',
+    );
+    await sourceNode.click();
+    await page.getByRole("button", { name: "裁剪" }).click();
+    await page.getByRole("button", { name: "确认裁剪" }).click();
+    const derivedAsset = await uploadGate.created[0];
+
+    const title = sourceNode.getByTestId("image-node-title-input");
+    await title.fill("crop persistence fence", { force: true });
+    await title.evaluate((input: HTMLInputElement) => input.blur());
+    await persistenceGate.created;
+    persistenceGate.release();
+    await expect(world).toHaveAttribute("data-persistence-ready", "false");
+    uploadGate.release(0);
+
+    await expect.poll(async () => (
+      await request.get(`/api/assets/${derivedAsset.assetId}`)
+    ).status()).toBe(404);
+    expect(deletedPaths).toContain(
+      `/api/assets/${encodeURIComponent(derivedAsset.assetId)}`,
+    );
+    await expect(page.locator('.react-flow__node-image[data-id^="image-crop-"]'))
+      .toHaveCount(0);
+    await expect(page.locator(".react-flow__node-image")).toHaveCount(1);
+    expect((await persistedNodes(request, canvasId)).some((node) =>
+      node.data.assetId === derivedAsset.assetId
+    )).toBeFalsy();
+    expect(await paidProviderRequests(request)).toBe(before);
+    expect(taskPosts).toEqual([]);
+  } finally {
+    persistenceGate.release();
+    uploadGate.releaseAll();
+    await request.delete(`/api/canvas/${canvasId}`);
+    await request.delete(`/api/assets/${sourceAsset.assetId}`);
+  }
+});
+
+test("canvas create-menu upload deletes a completed asset when persistence closes before node adoption", async ({
+  page,
+  request,
+}) => {
+  const canvasId = "interaction.upload-image";
+  const uploadGate = responseGate(page, "**/api/assets/*", 1);
+  const persistenceGate = persistenceLossGate(page, canvasId);
+  const before = await paidProviderRequests(request);
+  const taskPosts = monitorProviderRequests(page);
+  const deletedPaths = monitorAssetDeletes(page);
+
+  try {
+    await saveCanvas(request, canvasId, []);
+    await page.goto(`/__fixture/${canvasId}`);
+    const world = page.getByTestId("canvas-world");
+    await expect(world).toHaveAttribute("data-persistence-ready", "true");
+
+    await world.dblclick({ position: { x: 300, y: 260 } });
+    await page.getByTestId("add-node-menu")
+      .getByRole("menuitem", { name: "文本", exact: true })
+      .click();
+    await persistenceGate.created;
+    await world.dblclick({ position: { x: 760, y: 300 } });
+    await page.getByTestId("canvas-image-upload-input").setInputFiles(imageFile);
+    const asset = await uploadGate.created[0];
+
+    persistenceGate.release();
+    await expect(world).toHaveAttribute("data-persistence-ready", "false");
+    uploadGate.release(0);
+
+    await expect.poll(async () => (
+      await request.get(`/api/assets/${asset.assetId}`)
+    ).status()).toBe(404);
+    expect(deletedPaths).toContain(
+      `/api/assets/${encodeURIComponent(asset.assetId)}`,
+    );
+    await expect(page.locator(".react-flow__node-image")).toHaveCount(0);
+    expect((await persistedNodes(request, canvasId)).some((node) =>
+      node.data.assetId === asset.assetId
+    )).toBeFalsy();
+    expect(await paidProviderRequests(request)).toBe(before);
+    expect(taskPosts).toEqual([]);
+  } finally {
+    persistenceGate.release();
+    uploadGate.releaseAll();
+    await request.delete(`/api/canvas/${canvasId}`);
+  }
+});
+
+test("Playlist export deletes its completed video when persistence closes before canvas adoption", async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(60_000);
+  const canvasId = "node.playlist.clips-ready";
+  const before = await paidProviderRequests(request);
+  const taskPosts = monitorProviderRequests(page);
+  const deletedPaths = monitorAssetDeletes(page);
+
+  await request.delete(`/api/canvas/${canvasId}`);
+  await page.goto(`/__fixture/${canvasId}`);
+  const world = page.getByTestId("canvas-world");
+  await expect(world).toHaveAttribute("data-persistence-ready", "true");
+  const uploadGate = responseGate(page, "**/api/playlist/export", 1);
+  const persistenceGate = persistenceLossGate(page, canvasId);
+
+  try {
+    const playlist = page.locator(
+      '.react-flow__node-playlist[data-id="playlist-primary"]',
+    );
+    await playlist.click();
+    await page.getByRole("button", { name: "导出播放列表" }).click();
+    await page.getByTestId("playlist-export-menu")
+      .getByRole("menuitem", { name: /导出到画布/ })
+      .click();
+    const asset = await uploadGate.created[0];
+
+    const title = playlist.getByTestId("playlist-node-title-input");
+    await title.fill("playlist persistence fence");
+    await title.evaluate((input: HTMLInputElement) => input.blur());
+    await persistenceGate.created;
+    persistenceGate.release();
+    await expect(world).toHaveAttribute("data-persistence-ready", "false");
+    uploadGate.release(0);
+
+    await expect.poll(async () => (
+      await request.get(`/api/video-assets/${asset.assetId}`)
+    ).status()).toBe(404);
+    expect(deletedPaths).toContain(
+      `/api/video-assets/${encodeURIComponent(asset.assetId)}`,
+    );
+    await expect(page.locator('.react-flow__node-video[data-id^="video-from-"]'))
+      .toHaveCount(0);
+    expect((await persistedNodes(request, canvasId)).some((node) =>
+      node.id.startsWith("video-from-") || node.data.assetId === asset.assetId
+    )).toBeFalsy();
+    expect(await paidProviderRequests(request)).toBe(before);
+    expect(taskPosts).toEqual([]);
+  } finally {
+    persistenceGate.release();
+    uploadGate.releaseAll();
+    await request.delete(`/api/canvas/${canvasId}`);
+  }
+});
+
+for (const branch of clientUploadBranches) {
+  for (const browserOutcome of ["lost", "bad-gateway"] as const) {
+    test(`${branch.label} compensates its ready asset when the committed response is ${browserOutcome}`, async ({
+      page,
+      request,
+    }) => {
+      if (branch.id === "playlist") test.setTimeout(60_000);
+      const canvasId = branchCanvasId(
+        branch,
+        `committed-${browserOutcome}`,
+      );
+      const created = committedResponseFailure(
+        page,
+        branchPostPattern(branch),
+        browserOutcome,
+      );
+      const deletedPaths = monitorAssetDeletes(page);
+      const before = await paidProviderRequests(request);
+      const taskPosts = monitorProviderRequests(page);
+
+      try {
+        await openClientUploadBranch(page, request, branch, canvasId);
+        await triggerClientUploadBranch(page, branch);
+        const asset = await created;
+        const assetPath =
+          `${uploadConfig[branch.kind].endpoint}${encodeURIComponent(asset.assetId)}`;
+
+        await expect.poll(async () => (
+          await request.get(assetPath)
+        ).status()).toBe(404);
+        expect(deletedPaths).toEqual([assetPath]);
+        await expectClientUploadNotAdopted(
+          page,
+          request,
+          branch,
+          canvasId,
+          [asset.assetId],
+        );
+        expect(await paidProviderRequests(request)).toBe(before);
+        expect(taskPosts).toEqual([]);
+      } finally {
+        await request.delete(`/api/canvas/${canvasId}`);
+      }
+    });
+  }
+}
+
+for (const branch of clientUploadBranches) {
+  test(`${branch.label} preserves the existing asset on an explicit media id collision`, async ({
+    page,
+    request,
+  }) => {
+    if (branch.id === "playlist") test.setTimeout(60_000);
+    const canvasId = branchCanvasId(branch, "media-id-collision");
+    const deletedPaths = monitorAssetDeletes(page);
+    const before = await paidProviderRequests(request);
+    const taskPosts = monitorProviderRequests(page);
+    const collision = mediaIdCollision(page, request, branch);
+    let originalAsset: CreatedAsset | undefined;
+
+    try {
+      await openClientUploadBranch(page, request, branch, canvasId);
+      await triggerClientUploadBranch(page, branch);
+      originalAsset = await collision.original;
+      await collision.delivered;
+      await expectClientUploadFailureSettled(page, branch);
+      const originalPath =
+        `${uploadConfig[branch.kind].endpoint}${encodeURIComponent(originalAsset.assetId)}`;
+
+      expect((await request.get(originalPath)).status()).toBe(200);
+      expect(deletedPaths).toEqual([]);
+      await expectClientUploadNotAdopted(
+        page,
+        request,
+        branch,
+        canvasId,
+        [originalAsset.assetId],
+      );
+      expect(await paidProviderRequests(request)).toBe(before);
+      expect(taskPosts).toEqual([]);
+    } finally {
+      await request.delete(`/api/canvas/${canvasId}`);
+      if (originalAsset) {
+        await request.delete(
+          `${uploadConfig[branch.kind].endpoint}${originalAsset.assetId}`,
+        );
+      }
+    }
+  });
+}
+
+for (const branch of clientUploadBranches) {
+  for (const bodyFailure of ["empty", "malformed"] as const) {
+    test(`${branch.label} preserves a collided asset when the 409 body is ${bodyFailure}`, async ({
+      page,
+      request,
+    }) => {
+      if (branch.id === "playlist") test.setTimeout(60_000);
+      const canvasId = branchCanvasId(
+        branch,
+        `media-id-collision-${bodyFailure}`,
+      );
+      const deletedPaths = monitorAssetDeletes(page);
+      const before = await paidProviderRequests(request);
+      const taskPosts = monitorProviderRequests(page);
+      const collision = mediaIdCollision(
+        page,
+        request,
+        branch,
+        bodyFailure,
+      );
+      let originalAsset: CreatedAsset | undefined;
+
+      try {
+        await openClientUploadBranch(page, request, branch, canvasId);
+        await triggerClientUploadBranch(page, branch);
+        originalAsset = await collision.original;
+        await collision.delivered;
+        await expectClientUploadFailureSettled(page, branch);
+        const originalPath =
+          `${uploadConfig[branch.kind].endpoint}${encodeURIComponent(originalAsset.assetId)}`;
+
+        expect((await request.get(originalPath)).status()).toBe(200);
+        expect(deletedPaths).toEqual([]);
+        await expectClientUploadNotAdopted(
+          page,
+          request,
+          branch,
+          canvasId,
+          [originalAsset.assetId],
+        );
+        expect(await paidProviderRequests(request)).toBe(before);
+        expect(taskPosts).toEqual([]);
+      } finally {
+        await request.delete(`/api/canvas/${canvasId}`);
+        if (originalAsset) {
+          await request.delete(
+            `${uploadConfig[branch.kind].endpoint}${originalAsset.assetId}`,
+          );
+        }
+      }
+    });
+  }
+}
+
+for (const branch of clientUploadBranches) {
+  test(`${branch.label} rejects a mismatched successful asset response`, async ({
+    page,
+    request,
+  }) => {
+    if (branch.id === "playlist") test.setTimeout(60_000);
+    const canvasId = branchCanvasId(branch, "mismatched-success");
+    const replacementId = branch.kind === "image"
+      ? `m37-${branch.id}-mismatch-existing`
+      : `m37-${branch.id}-mismatch-existing.${
+        branch.kind === "video" ? "mp4" : "wav"
+      }`;
+    const replacement = await seedAsset(
+      request,
+      branch.kind,
+      replacementId,
+    );
+    const requested = mismatchedCommittedResponse(
+      page,
+      branch,
+      replacement,
+    );
+    const deletedPaths = monitorAssetDeletes(page);
+    const before = await paidProviderRequests(request);
+    const taskPosts = monitorProviderRequests(page);
+    let requestedAsset: CreatedAsset | undefined;
+
+    try {
+      await openClientUploadBranch(page, request, branch, canvasId);
+      await triggerClientUploadBranch(page, branch);
+      requestedAsset = await requested;
+      const requestedPath =
+        `${uploadConfig[branch.kind].endpoint}${encodeURIComponent(requestedAsset.assetId)}`;
+      const replacementPath =
+        `${uploadConfig[branch.kind].endpoint}${encodeURIComponent(replacement.assetId)}`;
+
+      await expect.poll(async () => (
+        await request.get(requestedPath)
+      ).status()).toBe(404);
+      expect((await request.get(replacementPath)).status()).toBe(200);
+      expect(deletedPaths).toEqual([requestedPath]);
+      await expectClientUploadNotAdopted(
+        page,
+        request,
+        branch,
+        canvasId,
+        [requestedAsset.assetId, replacement.assetId],
+      );
+      expect(await paidProviderRequests(request)).toBe(before);
+      expect(taskPosts).toEqual([]);
+    } finally {
+      await request.delete(`/api/canvas/${canvasId}`);
+      await request.delete(
+        `${uploadConfig[branch.kind].endpoint}${replacement.assetId}`,
+      );
+      if (requestedAsset) {
+        await request.delete(
+          `${uploadConfig[branch.kind].endpoint}${requestedAsset.assetId}`,
+        );
+      }
+    }
+  });
+}

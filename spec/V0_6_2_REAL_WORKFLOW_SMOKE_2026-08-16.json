@@ -1,0 +1,163 @@
+{
+  "format": "unboundry-real-workflow-smoke-v1",
+  "status": "PRODUCTION_REAL_WORKFLOW_SMOKE_PASS_USER_RECHECK",
+  "observedAt": "2026-08-16T03:36:30+08:00",
+  "version": "0.6.2",
+  "schemaVersion": 39,
+  "project": {
+    "id": "5e1f6462-4ac3-4f35-b2f0-72462987e318",
+    "name": "v0.6.2 真实工作流低成本验收",
+    "groupName": "真实生成闭环｜文字→图片"
+  },
+  "costControl": {
+    "textRequests": 2,
+    "imageRequests": 1,
+    "imageQuality": "1K",
+    "imageAspectRatio": "1:1",
+    "videoTaskCreates": 5,
+    "videoProviderAttempts": 6,
+    "audioRequests": 0,
+    "automaticRetries": 0,
+    "manualRetries": 1,
+    "successfulVideoActualCostMicrounits": 568316,
+    "successfulVideoCostCurrency": "CNY",
+    "note": "为定位并修复真实视频协议共创建5个视频任务、发生6次Provider attempt；最后只追加1个4秒/480p/无音频的Seedance文生视频验收。Microunit值是应用账本审计字段，不冒充Provider最终账单。"
+  },
+  "directTextPreflight": {
+    "taskId": "fd1241b7-0bca-4a17-a4d6-c0415732c38f",
+    "state": "success",
+    "attempt": 1,
+    "providerAttemptRows": 1,
+    "retryEvents": 0,
+    "providerModelId": "doubao-seed-2-0-lite-260428",
+    "providerUsageTokens": 755
+  },
+  "groupRun": {
+    "dependency": "text-before-image",
+    "text": {
+      "taskId": "54834dc5-e376-449d-80b9-7efd183a7e4e",
+      "state": "success",
+      "attempt": 1,
+      "providerAttemptRows": 1,
+      "retryEvents": 0,
+      "providerModelId": "doubao-seed-2-0-lite-260428",
+      "providerUsageTokens": 638,
+      "result": "挺括免烫垂感显瘦 通勤百搭白衬衫",
+      "createdAt": "2026-08-15T18:31:18.229Z",
+      "updatedAt": "2026-08-15T18:31:33.233Z"
+    },
+    "image": {
+      "taskId": "6dc65b87-e564-4eac-b44b-af1867efe134",
+      "state": "success",
+      "attempt": 1,
+      "providerAttemptRows": 1,
+      "retryEvents": 0,
+      "providerModelId": "gpt-image-2",
+      "resultAssetId": "427ee182-5f42-4bf8-a932-4c8ef81b3969",
+      "createdAt": "2026-08-15T18:31:34.775Z",
+      "updatedAt": "2026-08-15T18:33:06.711Z"
+    }
+  },
+  "resultAsset": {
+    "id": "427ee182-5f42-4bf8-a932-4c8ef81b3969",
+    "kind": "image",
+    "storageBackend": "oss",
+    "storageStatus": "ready",
+    "contentType": "image/png",
+    "byteSize": 1298394,
+    "width": 1024,
+    "height": 1024,
+    "checksumSha256": "63377430a82698357863720691bc859e20bb2efc46fd2e60934d9b980ee05ec9",
+    "browserComplete": true,
+    "browserNaturalWidth": 1024,
+    "browserNaturalHeight": 1024
+  },
+  "videoRepair": {
+    "incident": "INC-VIDEO-001",
+    "releasePath": "/opt/unboundry/releases/v0.6.2-inc-video-001-20260816",
+    "sourceCommit": "959c1e287fb25943ca13037332030e99b39725be",
+    "sourceTree": "6539868d3aa5df8be2fdbf3d10e8c6414ffe3845",
+    "inventorySha256": "cf1c6e1aa33438e0d05dba11593f8095a30795a03a51dcd36f48d7d31ab340b5",
+    "serverGenerationTasksSha256": "b432d9728c0bc33203f0939b08b166ec90d1834d41fda4594fd0cb0373de8482",
+    "contract": "grok-imagine-video-1.5-preview的首帧必须映射为images数组且只允许1张",
+    "validation": "118/118 specs, 965/965 tests, failed 0, skipped 0, retries 0",
+    "grokEvidence": {
+      "preRepairTaskIds": [
+        "863af56d-aa62-4c6b-ae71-b9fc17ed29ce",
+        "9b93453f-4181-47b1-99eb-76eab4ab8a32"
+      ],
+      "postRepairTaskId": "22643c3a-b393-42df-a2e5-1cf148490ca9",
+      "postRepairProviderTaskIds": ["106199400", "106199612"],
+      "postRepairResult": "正确images契约被中转站受理，但两次均在0%因上游网络连接超时失败；actual_cost_microunits为空，因此停止继续重试。"
+    },
+    "defaultVideoModel": {
+      "displayName": "Seedance 2.0 Mini",
+      "providerModelId": "doubao-seedance-2-0-mini-260615",
+      "isDefault": true,
+      "reason": "Grok中转上游当前不稳定，避免用户次日默认落到已知超时路径。"
+    }
+  },
+  "videoRealSmoke": {
+    "contentSafetyProbe": {
+      "taskId": "14ab1f16-2746-4fc5-921b-cc94ae033713",
+      "state": "failed",
+      "attempt": 1,
+      "providerTaskId": null,
+      "outcome": "outcome-unknown",
+      "reason": "输入参考图可能包含真人，被Seedance内容安全拒绝；这不是调度或OSS故障，未重试。"
+    },
+    "textToVideo": {
+      "taskId": "c0269665-4db5-46a1-bc13-2d5574a66cca",
+      "state": "success",
+      "attempt": 1,
+      "providerAttemptRows": 1,
+      "providerTaskId": "cgt-20260816033218-pnqh2",
+      "providerModelId": "doubao-seedance-2-0-mini-260615",
+      "inputMode": "text",
+      "durationRequestedSeconds": 4,
+      "resolution": "480p",
+      "aspectRatio": "16:9",
+      "generateAudio": false,
+      "actualCostMicrounits": 568316,
+      "costCurrency": "CNY",
+      "resultAssetId": "fbfed94d-e41e-4858-8e7e-96c4eae98c4a.mp4"
+    }
+  },
+  "videoResultAsset": {
+    "id": "fbfed94d-e41e-4858-8e7e-96c4eae98c4a.mp4",
+    "kind": "video",
+    "storageBackend": "oss",
+    "storageStatus": "ready",
+    "contentType": "video/mp4",
+    "byteSize": 1117495,
+    "width": 864,
+    "height": 496,
+    "durationSeconds": 4.042,
+    "durationSource": "server-probe",
+    "durationStatus": "ready",
+    "checksumSha256": "a2daa789fd688a6f2e0366bddab994c55ea976a321b0207a77c3b0bd9c26e624",
+    "browserRefreshPersistence": "PASS",
+    "browserReadyState": 4,
+    "browserDurationSeconds": 4.041667,
+    "browserMediaError": null
+  },
+  "browser": {
+    "refreshPersistence": "PASS",
+    "consoleWarnings": 0,
+    "consoleErrors": 0,
+    "returnToSourceCanvas": "PASS",
+    "returnToWorkspace": "PASS",
+    "dynamicTitles": "PASS"
+  },
+  "productionAfter": {
+    "releasePath": "/opt/unboundry/releases/v0.6.2-inc-video-001-20260816",
+    "publicVersion": "0.6.2",
+    "ready": "active-schema39",
+    "quickCheck": "ok",
+    "foreignKeyViolations": 0,
+    "generationTasks": 126,
+    "providerAttempts": 125,
+    "activeGenerationTasks": 0
+  },
+  "userAcceptance": "PENDING_NEXT_DAY_RECHECK"
+}

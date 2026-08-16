@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 test("last tab to save wins and other tabs converge to the latest content", async ({
   context,
@@ -14,6 +14,10 @@ test("last tab to save wins and other tabs converge to the latest content", asyn
   const secondWorld = secondPage.getByTestId("canvas-world");
   await expect(firstWorld).toHaveAttribute("data-persistence-ready", "true");
   await expect(secondWorld).toHaveAttribute("data-persistence-ready", "true");
+  const secondReloadGet = secondPage.waitForRequest((request) =>
+    request.method() === "GET" &&
+    new URL(request.url()).pathname ===
+      "/api/canvas/persistence.revision-conflict");
 
   const firstNode = page.locator('[data-id="conflict-node"]');
   const firstBox = (await firstNode.boundingBox())!;
@@ -30,6 +34,8 @@ test("last tab to save wins and other tabs converge to the latest content", asyn
       return document.nodes[0].position.x;
     })
     .toBeGreaterThan(480);
+  await secondReloadGet;
+  await expect(secondWorld).toHaveAttribute("data-persistence-ready", "true");
 
   const secondNode = secondPage.locator('[data-id="conflict-node"]');
   const secondBox = (await secondNode.boundingBox())!;

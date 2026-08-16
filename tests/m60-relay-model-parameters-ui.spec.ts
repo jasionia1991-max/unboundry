@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./safe-test";
 import {
   knownModelParameterSchema,
   type ModelCapability,
@@ -21,17 +21,36 @@ async function routeFixtureCanvas(
   canvasId: string,
   document?: Record<string, unknown>,
 ) {
+  const loadToken = "m60-fixture-load-token";
+  const saveEpoch = "v1.m60-fixture-save-epoch";
   await page.route(`**/api/canvas/${canvasId}`, async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill(document
-        ? { contentType: "application/json", json: document, status: 200 }
+        ? {
+            contentType: "application/json",
+            json: {
+              ...document,
+              currentWriterSequence: 0,
+              currentWriterSessionId: null,
+              loadToken,
+              saveEpoch,
+              sessionHighWaterAttemptId: null,
+              sessionHighWaterSequence: 0,
+            },
+            status: 200,
+          }
         : { status: 404 });
       return;
     }
     const input = route.request().postDataJSON() as { revision?: number };
+    const revision = Number(input.revision ?? 0) + 1;
     await route.fulfill({
       contentType: "application/json",
-      json: { revision: Number(input.revision ?? 0) + 1 },
+      json: {
+        graphRevision: revision,
+        loadToken: `m60-fixture-load-token-${revision}`,
+        revision,
+      },
       status: 200,
     });
   });
@@ -58,7 +77,7 @@ test("relay Text node exposes bounded defaults and keeps them in zero-Provider p
   baseURL,
   page,
 }) => {
-  const localOrigin = new URL(baseURL ?? "http://127.0.0.1:4173").origin;
+  const localOrigin = new URL(baseURL!).origin;
   const externalRequests: string[] = [];
   const generationRequests: string[] = [];
   let preflightBody: Record<string, unknown> | undefined;
@@ -187,7 +206,7 @@ test("relay doubao TTS node shows only documented controls and reveals emotion s
   baseURL,
   page,
 }) => {
-  const localOrigin = new URL(baseURL ?? "http://127.0.0.1:4173").origin;
+  const localOrigin = new URL(baseURL!).origin;
   const externalRequests: string[] = [];
   const generationRequests: string[] = [];
   let preflightBody: Record<string, unknown> | undefined;
@@ -324,7 +343,7 @@ test("admin model center presents the bounded relay Text and doubao TTS schemas"
   baseURL,
   page,
 }) => {
-  const localOrigin = new URL(baseURL ?? "http://127.0.0.1:4173").origin;
+  const localOrigin = new URL(baseURL!).origin;
   const externalRequests: string[] = [];
   const generationRequests: string[] = [];
   page.on("request", (request) => {

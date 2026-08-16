@@ -1,16 +1,19 @@
 {
   "name": "unboundry-private-replica",
-  "version": "0.5.1",
+  "version": "0.6.2",
   "private": true,
   "type": "module",
+  "packageManager": "npm@10.9.8",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.23.1 <23",
+    "npm": "10.9.8"
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "data:repair-storage": "node scripts/repair-storage-state.mjs",
+    "data:report-media": "node scripts/report-media-integrity.mjs",
     "check:greenfield": "node scripts/check-greenfield.mjs",
     "test:shell": "playwright test tests/m0-shell.spec.ts",
     "test:viewport": "playwright test tests/m1-viewport.spec.ts",
@@ -26,7 +29,7 @@
     "test:storyboard": "playwright test tests/m2-storyboard-node.spec.ts",
     "test:persistence": "playwright test tests/m3-persistence.spec.ts",
     "test:history": "playwright test tests/m3-history.spec.ts",
-    "test:restart": "node scripts/check-restart-persistence.mjs",
+    "test:restart": "node scripts/run-safe-tests.mjs run --spec tests/m3-persistence.spec.ts",
     "test:revision": "playwright test tests/m3-revision-conflict.spec.ts",
     "test:upload": "playwright test tests/m4-image-upload.spec.ts",
     "test:audio-upload": "playwright test tests/m4-audio-upload.spec.ts",
@@ -36,24 +39,28 @@
     "data:backup:oss": "node scripts/backup-to-oss.mjs",
     "data:mirror-oss": "node scripts/mirror-oss-to-local.mjs",
     "data:verify-backup": "node scripts/verify-backup.mjs",
-    "test:backup": "playwright test tests/m10-backup.spec.ts",
+    "data:restore-backup": "node scripts/restore-backup.mjs",
+    "test:backup": "node scripts/run-safe-tests.mjs run --spec tests/m10-backup.spec.ts",
     "test:fixture-prod": "UNBOUNDRY_TEST_PREVIEW=1 playwright test tests/fixture-production.spec.ts",
-    "verify": "npm run check:greenfield && npm run build && playwright test tests/m*.spec.ts && npm run test:restart && npm run test:fixture-prod"
+    "test:safe:preflight": "node scripts/run-safe-tests.mjs preflight",
+    "test:safe:list": "node scripts/run-safe-tests.mjs list",
+    "test:safe": "node scripts/run-safe-tests.mjs run",
+    "verify": "node scripts/run-safe-tests.mjs full"
   },
   "dependencies": {
+    "@vitejs/plugin-react": "6.0.4",
     "@xyflow/react": "12.11.2",
     "ali-oss": "^6.23.0",
     "archiver": "^8.0.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "vite": "8.1.5"
   },
   "devDependencies": {
     "@playwright/test": "1.62.0",
-    "@types/node": "26.1.1",
+    "@types/node": "22.20.1",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
-    "@vitejs/plugin-react": "6.0.4",
-    "typescript": "7.0.2",
-    "vite": "8.1.5"
+    "typescript": "7.0.2"
   }
 }

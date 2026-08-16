@@ -1,255 +1,223 @@
-import { createHash } from "node:crypto";
-import { spawn } from "node:child_process";
-import {
-  cp,
-  mkdtemp,
-  readFile,
-  readdir,
-  rm,
-  stat,
-} from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { basename, join, relative, resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { constants as fileConstants } from "node:fs";
+import { lstat, open, realpath } from "node:fs/promises";
+import { dirname, relative, resolve, sep } from "node:path";
+import "./node-typescript-runtime.mjs";
 
-function argument(name) {
-  const index = process.argv.indexOf(name);
-  return index >= 0 ? process.argv[index + 1] : undefined;
+const {
+  BackupPackageError,
+  verifyEncryptedBackup,
+} = await import("../server/backupPackage.ts");
+
+const maximumKeyBytes = 64 * 1024;
+
+class CliError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+  }
 }
 
-async function sha256(path) {
-  return createHash("sha256").update(await readFile(path)).digest("hex");
+function fail(code, message) {
+  throw new CliError(code, message);
 }
 
-async function latestBackup(backupRoot) {
-  const entries = await readdir(backupRoot, { withFileTypes: true });
-  const candidates = entries
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort()
-    .reverse();
-  for (const candidate of candidates) {
-    const directory = join(backupRoot, candidate);
-    try {
-      if ((await stat(join(directory, "manifest.json"))).isFile()) {
-        return directory;
-      }
-    } catch (error) {
-      if (error?.code !== "ENOENT") throw error;
+function normalizedAbsolutePath(value) {
+  if (!value || resolve(value) !== value) {
+    fail("BACKUP_ARGUMENT_INVALID", "All path arguments must be normalized absolute paths");
+  }
+  return value;
+}
+
+function containsPath(parent, child) {
+  const difference = relative(parent, child);
+  return difference === "" ||
+    (!difference.startsWith(`..${sep}`) && difference !== "..");
+}
+
+async function assertKeysOutside(paths, roots) {
+  const [canonicalPaths, canonicalRoots] = await Promise.all([
+    Promise.all(paths.map((path) => realpath(path).catch(() => path))),
+    Promise.all(roots.map((root) => realpath(root).catch(() => root))),
+  ]);
+  if (canonicalPaths.some((path) =>
+    canonicalRoots.some((root) => containsPath(root, path)))) {
+    fail("BACKUP_KEY_LOCATION_INVALID", "Key files must be outside backup and work directories");
+  }
+}
+
+function parseArguments(argv) {
+  const values = new Map();
+  const allowed = new Set([
+    "--backup-dir",
+    "--recovery-private-key",
+    "--scratch-root",
+    "--trusted-signing-public-key",
+  ]);
+  for (let index = 0; index < argv.length; index += 2) {
+    const option = argv[index];
+    const value = argv[index + 1];
+    if (!allowed.has(option) || !value || value.startsWith("--")) {
+      fail("BACKUP_ARGUMENT_INVALID", "Unknown, misplaced, or incomplete verify argument");
     }
+    if (values.has(option)) fail("BACKUP_ARGUMENT_INVALID", "Duplicate verify argument");
+    values.set(option, value);
   }
-  throw new Error("No complete backup directory found");
-}
-
-async function restoredMedia(directory) {
-  const entries = [];
-  async function visit(current) {
-    for (const entry of await readdir(current, { withFileTypes: true })) {
-      const path = join(current, entry.name);
-      if (entry.isSymbolicLink()) {
-        throw new Error(`Restored media contains symbolic link: ${entry.name}`);
-      }
-      if (entry.isDirectory()) {
-        await visit(path);
-        continue;
-      }
-      if (!entry.isFile()) continue;
-      const details = await stat(path);
-      entries.push({
-        path: relative(directory, path),
-        sha256: await sha256(path),
-        size: details.size,
-      });
-    }
-  }
-  await visit(directory);
-  return entries.sort((left, right) => left.path.localeCompare(right.path));
-}
-
-function tableCounts(database, expected) {
-  return Object.fromEntries(
-    Object.keys(expected).map((table) => [
-      table,
-      Number(
-        database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get().count,
-      ),
-    ]),
-  );
-}
-
-async function startRuntime(dataDirectory, port) {
-  const vite = join(process.cwd(), "node_modules/vite/bin/vite.js");
-  const child = spawn(
-    process.execPath,
-    [vite, "--host", "127.0.0.1", "--port", String(port), "--strictPort"],
-    {
-      env: {
-        ...process.env,
-        UNBOUNDRY_DATA_DIR: dataDirectory,
-        UNBOUNDRY_TEST_AUTH_BYPASS: "1",
-      },
-      stdio: "ignore",
-    },
-  );
-  const origin = `http://127.0.0.1:${port}`;
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    if (child.exitCode !== null) break;
-    try {
-      const response = await fetch(origin);
-      if (response.ok) return { child, origin };
-    } catch {}
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  child.kill("SIGTERM");
-  throw new Error("Restored application did not start");
-}
-
-async function stopRuntime(child) {
-  if (child.exitCode !== null) return;
-  child.kill("SIGTERM");
-  await new Promise((resolve) => child.once("exit", resolve));
-}
-
-function mediaUrl(origin, file) {
-  if (file.toLowerCase().endsWith(".mp4")) {
-    return `${origin}/api/video-assets/${encodeURIComponent(file)}`;
-  }
-  if (/\.(?:wav|mp3|m4a|aac)$/i.test(file)) {
-    return `${origin}/api/audio-assets/${encodeURIComponent(file)}`;
-  }
-  return `${origin}/api/assets/${encodeURIComponent(file.replace(/\.png$/i, ""))}`;
-}
-
-const backupRoot = resolve(
-  argument("--backup-root") ??
-    process.env.UNBOUNDRY_BACKUP_DIR ??
-    join(process.cwd(), "backups"),
-);
-const requestedDirectory = argument("--backup-dir");
-const backupDirectory = requestedDirectory
-  ? resolve(requestedDirectory)
-  : await latestBackup(backupRoot);
-const manifest = JSON.parse(
-  await readFile(join(backupDirectory, "manifest.json"), "utf8"),
-);
-const runtimePortValue = argument("--runtime-port");
-const runtimePort = runtimePortValue ? Number(runtimePortValue) : undefined;
-if (
-  runtimePort !== undefined &&
-  (!Number.isInteger(runtimePort) || runtimePort < 1024 || runtimePort > 65_535)
-) {
-  throw new Error("Invalid runtime verification port");
-}
-
-if (
-  manifest?.format !== 1 ||
-  manifest.database?.file !== "unboundry.sqlite" ||
-  !Array.isArray(manifest.media?.files)
-) {
-  throw new Error("Invalid backup manifest");
-}
-const expectedSecrets = Array.isArray(manifest.secrets?.files)
-  ? manifest.secrets.files
-  : [];
-
-const restoredDirectory = await mkdtemp(join(tmpdir(), "unboundry-restore-"));
-let runtime;
-try {
-  await cp(join(backupDirectory, "unboundry.sqlite"), join(restoredDirectory, "unboundry.sqlite"), {
-    errorOnExist: true,
-  });
-  await cp(join(backupDirectory, "media"), join(restoredDirectory, "media"), {
-    errorOnExist: true,
-    recursive: true,
-  });
-  try {
-    await cp(
-      join(backupDirectory, "secrets"),
-      join(restoredDirectory, "secrets"),
-      { errorOnExist: true, recursive: true },
+  const required = [
+    "--backup-dir",
+    "--recovery-private-key",
+    "--trusted-signing-public-key",
+  ];
+  if (required.some((option) => !values.has(option))) {
+    fail(
+      "BACKUP_ARGUMENT_INVALID",
+      "Verify requires explicit backup and trusted key arguments",
     );
-  } catch (error) {
-    if (error?.code !== "ENOENT") throw error;
   }
+  return values;
+}
 
-  const databasePath = join(restoredDirectory, "unboundry.sqlite");
-  if ((await sha256(databasePath)) !== manifest.database.sha256) {
-    throw new Error("Restored database checksum mismatch");
+function keyMetadataIsSafe(details, role) {
+  if (typeof process.getuid !== "function") return false;
+  const uid = BigInt(process.getuid());
+  const trustedOwner = details.uid === 0n || details.uid === uid;
+  const writeProtected = (details.mode & 0o022n) === 0n;
+  const privateMode = role !== "private" || (details.mode & 0o077n) === 0n;
+  return trustedOwner && writeProtected && privateMode && details.nlink === 1n;
+}
+
+async function validateKeyDirectoryChain(path, allowTrustedLinks) {
+  if (typeof process.getuid !== "function") {
+    fail("BACKUP_KEY_LOCATION_INVALID", "Key ancestry cannot be trusted");
   }
-  const database = new DatabaseSync(databasePath, { readOnly: true });
-  const quickCheck = database.prepare("PRAGMA quick_check").get().quick_check;
-  const schemaVersion = Number(
-    database.prepare("PRAGMA user_version").get().user_version,
-  );
-  const counts = tableCounts(database, manifest.database.tableCounts);
-  const firstCanvas = database
-    .prepare("SELECT id FROM canvas_documents ORDER BY id LIMIT 1")
-    .get();
-  database.close();
+  const uid = BigInt(process.getuid());
+  let current = path;
+  for (;;) {
+    const details = await lstat(current, { bigint: true }).catch(() => undefined);
+    const trustedOwner = details && (details.uid === 0n || details.uid === uid);
+    const trustedLink = trustedOwner && allowTrustedLinks && details.isSymbolicLink();
+    const mode = details ? details.mode & 0o7777n : 0n;
+    const trustedDirectory = trustedOwner && details.isDirectory() &&
+      ((mode & 0o022n) === 0n ||
+        ((mode & 0o1000n) !== 0n && (details.uid === 0n || details.uid === uid)));
+    if (!trustedLink && !trustedDirectory) {
+      fail("BACKUP_KEY_LOCATION_INVALID", "Key ancestry cannot be trusted");
+    }
+    const parent = dirname(current);
+    if (parent === current) return;
+    current = parent;
+  }
+}
 
+async function assertTrustedKeyAncestry(path) {
+  const parent = dirname(path);
+  await validateKeyDirectoryChain(parent, true);
+  await validateKeyDirectoryChain(await realpath(parent), false);
+}
+
+async function readKey(path, role = "anchor") {
+  await assertTrustedKeyAncestry(path);
+  const details = await lstat(path, { bigint: true }).catch(() => undefined);
   if (
-    quickCheck !== "ok" ||
-    schemaVersion !== manifest.database.schemaVersion ||
-    JSON.stringify(counts) !== JSON.stringify(manifest.database.tableCounts)
+    !details ||
+    details.isSymbolicLink() ||
+    !details.isFile() ||
+    details.size < 1n ||
+    details.size > BigInt(maximumKeyBytes) ||
+    !keyMetadataIsSafe(details, role)
   ) {
-    throw new Error("Restored database contents do not match the manifest");
+    fail("BACKUP_KEY_INVALID", "A key file is unavailable or invalid");
   }
-
-  const media = await restoredMedia(join(restoredDirectory, "media"));
-  if (JSON.stringify(media) !== JSON.stringify(manifest.media.files)) {
-    throw new Error("Restored media contents do not match the manifest");
-  }
-  let secrets = [];
+  let handle;
   try {
-    secrets = await restoredMedia(join(restoredDirectory, "secrets"));
-  } catch (error) {
-    if (error?.code !== "ENOENT") throw error;
-  }
-  if (JSON.stringify(secrets) !== JSON.stringify(expectedSecrets)) {
-    throw new Error("Restored encrypted secrets do not match the manifest");
-  }
-
-  let runtimeVerified = false;
-  if (runtimePort !== undefined) {
-    runtime = await startRuntime(restoredDirectory, runtimePort);
-    if (firstCanvas) {
-      const canvasResponse = await fetch(
-        `${runtime.origin}/api/canvas/${encodeURIComponent(firstCanvas.id)}`,
-      );
-      if (!canvasResponse.ok) {
-        throw new Error("Restored application could not read a canvas");
-      }
-    }
-    if (media.length) {
-      const mediaResponse = await fetch(mediaUrl(runtime.origin, media[0].path));
-      if (
-        !mediaResponse.ok ||
-        (await mediaResponse.arrayBuffer()).byteLength !== media[0].size
-      ) {
-        throw new Error("Restored application could not read media");
-      }
-    }
+    handle = await open(
+      path,
+      fileConstants.O_RDONLY | (fileConstants.O_NOFOLLOW ?? 0),
+    );
+    const opened = await handle.stat({ bigint: true });
     if (
-      !(await fetch(`${runtime.origin}/api/generation-tasks/status`)).ok
+      !opened.isFile() ||
+      opened.size !== details.size ||
+      opened.dev !== details.dev ||
+      opened.ino !== details.ino ||
+      opened.mtimeNs !== details.mtimeNs ||
+      opened.ctimeNs !== details.ctimeNs ||
+      !keyMetadataIsSafe(opened, role)
     ) {
-      throw new Error("Restored application could not read generation state");
+      fail("BACKUP_KEY_INVALID", "A key file changed while it was being read");
     }
-    runtimeVerified = true;
+    const material = await handle.readFile();
+    const after = await handle.stat({ bigint: true });
+    if (
+      after.size !== opened.size ||
+      after.dev !== opened.dev ||
+      after.ino !== opened.ino ||
+      after.mtimeNs !== opened.mtimeNs ||
+      after.ctimeNs !== opened.ctimeNs ||
+      !keyMetadataIsSafe(after, role)
+    ) {
+      material.fill(0);
+      fail("BACKUP_KEY_INVALID", "A key file changed while it was being read");
+    }
+    return material;
+  } catch (error) {
+    if (error instanceof CliError) throw error;
+    fail("BACKUP_KEY_INVALID", "A key file is unavailable or invalid");
+  } finally {
+    await handle?.close().catch(() => undefined);
   }
+}
 
-  console.log(
-    JSON.stringify({
-      backupDirectory,
-      backupName: basename(backupDirectory),
-      databaseQuickCheck: quickCheck,
-      mediaBytes: media.reduce((total, entry) => total + entry.size, 0),
-      mediaFiles: media.length,
-      restoredToTemporaryDirectory: true,
-      runtimeVerified,
-      schemaVersion,
-    }),
+function redactPaths(message, paths) {
+  let safe = String(message || "Backup verification failed");
+  for (const path of [...paths].sort((left, right) => right.length - left.length)) {
+    safe = safe.replaceAll(path, "[path]");
+  }
+  return safe;
+}
+
+let pathArguments = [];
+const keyMaterials = [];
+try {
+  const values = parseArguments(process.argv.slice(2));
+  const value = (option) => normalizedAbsolutePath(values.get(option));
+  const packageDirectory = value("--backup-dir");
+  const recoveryPrivateKeyPath = value("--recovery-private-key");
+  const trustedSigningPublicKeyPath = value("--trusted-signing-public-key");
+  const scratchValue = values.get("--scratch-root");
+  const scratchRoot = scratchValue
+    ? normalizedAbsolutePath(scratchValue)
+    : undefined;
+  await assertKeysOutside(
+    [recoveryPrivateKeyPath, trustedSigningPublicKeyPath],
+    [packageDirectory, ...(scratchRoot ? [scratchRoot] : [])],
   );
+  pathArguments = [
+    packageDirectory,
+    recoveryPrivateKeyPath,
+    trustedSigningPublicKeyPath,
+    ...(scratchRoot ? [scratchRoot] : []),
+  ];
+  const recoveryPrivateKey = await readKey(recoveryPrivateKeyPath, "private");
+  keyMaterials.push(recoveryPrivateKey);
+  const trustedSigningPublicKey = await readKey(trustedSigningPublicKeyPath);
+  keyMaterials.push(trustedSigningPublicKey);
+  const result = await verifyEncryptedBackup({
+    packageDirectory,
+    recoveryPrivateKey,
+    scratchRoot,
+    trustedSigningPublicKey,
+  });
+  process.stdout.write(`${JSON.stringify(result)}\n`);
+} catch (error) {
+  const known = error instanceof CliError || error instanceof BackupPackageError;
+  process.stderr.write(`${JSON.stringify({
+    code: known ? error.code : "BACKUP_VERIFY_FAILED",
+    message: redactPaths(
+      known ? error.message : "Backup verification failed",
+      pathArguments,
+    ),
+  })}\n`);
+  process.exitCode = 1;
 } finally {
-  if (runtime) await stopRuntime(runtime.child);
-  await rm(restoredDirectory, { force: true, recursive: true });
+  for (const material of keyMaterials) material.fill(0);
 }

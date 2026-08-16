@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, test, type Locator } from "./safe-test";
 
 async function composeTitle(input: Locator, value: string, finish = true) {
   await input.dispatchEvent("compositionstart");

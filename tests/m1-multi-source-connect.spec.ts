@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 test("one shared plus connects every selected node to the dropped-on node", async ({
   page,

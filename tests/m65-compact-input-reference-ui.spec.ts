@@ -4,7 +4,7 @@ import {
   type APIRequestContext,
   type Locator,
   type Page,
-} from "@playwright/test";
+} from "./safe-test";
 import {
   defaultParameterSchema,
   type ModelParameterSchema,
@@ -23,6 +23,7 @@ const textSummary = "这段上游文字摘要只能在用户主动打开详情�
 const longProblem = "这是一条用于检查不兼容引用的完整长原因：当前图片素材没有通过安全格式校验，引用必须保留，但原因不应该以橙色长段落在创建器中重复常驻";
 
 type CanvasDocument = {
+  loadToken: string;
   revision: number;
 };
 
@@ -75,9 +76,12 @@ async function seedCanvas(
   generationError = "",
 ) {
   const current = await request.get(`/api/canvas/${destinationCanvasId}`);
-  const revision = current.ok()
-    ? (await current.json() as CanvasDocument).revision
-    : 0;
+  const currentDocument = current.ok()
+    ? await current.json() as CanvasDocument
+    : undefined;
+  if (!currentDocument) {
+    expect(current.status()).toBe(404);
+  }
   const inputSources = [
     { key: "text", kind: "text" },
     { key: "image", kind: "image" },
@@ -178,7 +182,13 @@ async function seedCanvas(
           type: "text",
         },
       ],
-      revision,
+      ...(currentDocument
+        ? {
+            observedLoadToken: currentDocument.loadToken,
+            observedRevision: currentDocument.revision,
+          }
+        : {}),
+      revision: currentDocument?.revision ?? 0,
       viewport: { x: 5, y: 5, zoom: 0.68 },
     },
   });
@@ -546,9 +556,14 @@ test.describe.serial("compact upstream references stay one-row and zero Provider
     } finally {
       const latest = await request.get("/api/canvas/default");
       if (original && latest.ok()) {
-        const revision = (await latest.json() as CanvasDocument).revision;
+        const latestDocument = await latest.json() as CanvasDocument;
         await request.put("/api/canvas/default", {
-          data: { ...original, revision },
+          data: {
+            ...original,
+            observedLoadToken: latestDocument.loadToken,
+            observedRevision: latestDocument.revision,
+            revision: latestDocument.revision,
+          },
         });
       } else if (!original) {
         await request.delete("/api/canvas/default");

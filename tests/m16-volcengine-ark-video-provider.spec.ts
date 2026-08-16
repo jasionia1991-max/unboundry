@@ -1,8 +1,13 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ProviderProfile } from "../server/providerProfiles";
+import {
+  type ProviderRequestDeadlineOverrides,
+  type ProviderRequestDeadlineScheduler,
+  waitForProviderDelay,
+} from "../server/providerRequestDeadline";
 import {
   createGenerationTaskStore,
   failRecoveredGenerationTasks,
@@ -23,6 +28,54 @@ const profile: ProviderProfile = {
   label: "Ark test",
   updatedAt: "2026-08-01T00:00:00.000Z",
 };
+
+function manualDeadline() {
+  let callback: (() => void) | undefined;
+  const scheduler: ProviderRequestDeadlineScheduler = {
+    clearTimeout() {
+      callback = undefined;
+    },
+    setTimeout(value) {
+      callback = value;
+      return "manual-deadline";
+    },
+  };
+  return {
+    expire() {
+      const current = callback;
+      if (!current) throw new Error("deadline is not armed");
+      current();
+    },
+    options: { scheduler, timeoutMs: 10_000 },
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+async function expectRequestTimeout(
+  operation: (
+    fetcher: typeof fetch,
+    deadlineOptions: ProviderRequestDeadlineOverrides,
+  ) => Promise<unknown>,
+) {
+  const timer = manualDeadline();
+  const requestStarted = deferred<AbortSignal | null>();
+  const fetcher: typeof fetch = async (_input, init) => {
+    requestStarted.resolve(init?.signal ?? null);
+    return await new Promise<Response>(() => undefined);
+  };
+  const pending = operation(fetcher, timer.options);
+  const requestSignal = await requestStarted.promise;
+  timer.expire();
+  await expect(pending).rejects.toMatchObject({ code: "TIMEOUT" });
+  expect(requestSignal?.aborted).toBe(true);
+}
 
 test("Seedance Mini create request uses the selected supported parameters", async () => {
   let url = "";
@@ -350,6 +403,59 @@ test("Seedance Mini status and cancellation use the original Provider task", asy
   ]);
 });
 
+test("Seedance submit, poll and cancel each enforce an injectable hard deadline", async () => {
+  await expectRequestTimeout((fetcher, deadlineOptions) =>
+    createVolcengineArkVideoTask(
+      profile,
+      {
+        model: "doubao-seedance-2-0-mini-260615",
+        prompt: "submit deadline",
+      },
+      fetcher,
+      undefined,
+      undefined,
+      deadlineOptions,
+    )
+  );
+  await expectRequestTimeout((fetcher, deadlineOptions) =>
+    getVolcengineArkVideoTask(
+      profile,
+      "cgt-deadline-poll",
+      fetcher,
+      undefined,
+      deadlineOptions,
+    )
+  );
+  await expectRequestTimeout((fetcher, deadlineOptions) =>
+    cancelVolcengineArkVideoTask(
+      profile,
+      "cgt-deadline-cancel",
+      fetcher,
+      undefined,
+      deadlineOptions,
+    )
+  );
+});
+
+test("provider polling delay removes its abort listener after normal resolve", async () => {
+  const listeners = new Set<EventListenerOrEventListenerObject>();
+  const signal = {
+    aborted: false,
+    addEventListener(_type: string, listener: EventListenerOrEventListenerObject) {
+      listeners.add(listener);
+    },
+    removeEventListener(_type: string, listener: EventListenerOrEventListenerObject) {
+      listeners.delete(listener);
+    },
+  } as unknown as AbortSignal;
+  const timer = manualDeadline();
+  const pending = waitForProviderDelay(2_000, signal, timer.options.scheduler);
+  expect(listeners.size).toBe(1);
+  timer.expire();
+  await pending;
+  expect(listeners.size).toBe(0);
+});
+
 test("Provider errors are safe and do not expose the key or remote response", async () => {
   const remoteBody = "remote-sensitive-details";
   const request = createVolcengineArkVideoTask(
@@ -382,12 +488,13 @@ test("service restart keeps the original Ark task id and does not create a dupli
       kind: "video",
       model: "seedance-mini",
       nodeId: "video-recovery",
-      ownerId: "owner-test",
+      ownerId: "__test__",
       prompt: "一只黑猫在窗边回头",
       providerModelId: "doubao-seedance-2-0-mini-260615",
       providerProfileId: "ark-profile",
     });
     first.transition(created.task.id, "running");
+    first.recordProviderAttempt(created.task.id);
     first.setProviderTaskId(created.task.id, "cgt-original-001");
     first.close();
 

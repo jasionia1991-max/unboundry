@@ -3,21 +3,32 @@ import {
   type ProviderProtocol,
 } from "../types/relayProtocols";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import {
   createAliyunOssObjectKey,
   createPrivateAliyunOssReadUrl,
   deletePrivateAliyunOssObject,
   uploadPrivateAliyunOssObject,
 } from "./aliyunOss";
-import { readableStorageProfile } from "./secureStorageProfiles";
+import {
+  compensateMediaPublication,
+  markExternalMediaPublicationReady,
+  mediaPublicationStagingPath,
+  reserveMediaPublication,
+  stageMediaPublication,
+  type MediaPublicationReservation,
+} from "./mediaLifecycle";
+import {
+  type AliyunStorageProfile,
+  withReadableStorageProfileReservation,
+} from "./secureStorageProfiles";
 import type { DestinationResolver } from "./outboundNetwork";
 import {
   fetchPublicHttps,
   OutboundDestinationError,
 } from "./outboundNetwork";
+import { providerRequestTimeoutMsByOperation } from "./providerRequestDeadline";
 
 export type RelayCapability = "audio" | "image" | "text" | "video";
 
@@ -177,8 +188,13 @@ export type RelayProviderErrorCode =
   | "FORMAT"
   | "NETWORK"
   | "PERMISSION"
+  | "PROVIDER_REQUEST_FAILED"
+  | "PROVIDER_RESULT_FORMAT"
   | "PROXY_CONFIGURATION"
   | "RATE_LIMIT"
+  | "REFERENCE_SIGN_FAILED"
+  | "REFERENCE_STORAGE_BUSY"
+  | "REFERENCE_UPLOAD_FAILED"
   | "REMOTE"
   | "TIMEOUT";
 
@@ -188,8 +204,15 @@ const errorMessages: Record<RelayProviderErrorCode, string> = {
   FORMAT: "中转站请求或响应格式无法安全识别",
   NETWORK: "无法连接中转站",
   PERMISSION: "当前API Key没有所选模型或接口权限",
+  PROVIDER_REQUEST_FAILED:
+    "已向模型提交，但请求未完成；为避免重复扣费，本次不会自动重提",
+  PROVIDER_RESULT_FORMAT:
+    "模型已响应，但结果格式无法安全识别；本次不会自动重提",
   PROXY_CONFIGURATION: "本机代理地址模式阻止安全连接，请管理员检查代理设置",
   RATE_LIMIT: "中转站正在限流，请稍后再试",
+  REFERENCE_SIGN_FAILED: "参考图临时链接创建失败，本次未向模型提交",
+  REFERENCE_STORAGE_BUSY: "参考图临时存储繁忙，本次未向模型提交",
+  REFERENCE_UPLOAD_FAILED: "参考图临时上传失败，本次未向模型提交",
   REMOTE: "中转站暂时无法完成请求",
   TIMEOUT: "等待中转站响应超时；异步任务可能仍在运行",
 };
@@ -208,11 +231,36 @@ export class RelayProviderError extends Error {
 export type RelayProviderExecution = Readonly<{
   beforeProviderRequest?: () => void;
   fetcher?: typeof fetch;
+  mediaLifecycle?: Readonly<{ ownerId: string }>;
   resolver?: DestinationResolver;
   signal?: AbortSignal;
+  temporaryImageObjectStore?: RelayTemporaryImageObjectStore;
   timeoutMs?: number;
   usePinnedTransport?: boolean;
 }>;
+
+export type RelayTemporaryImageObjectStore = Readonly<{
+  createReadUrl: typeof createPrivateAliyunOssReadUrl;
+  deleteObject: typeof deletePrivateAliyunOssObject;
+  uploadObject: typeof uploadPrivateAliyunOssObject;
+}>;
+
+/**
+ * A transient, in-memory GPT Image request whose local data references have
+ * already been materialized. Signed URLs must never be persisted. Cleanup is
+ * idempotent and retains the existing publication journal when object deletion
+ * cannot be completed immediately.
+ */
+export type PreparedRelayGptImageRequest = Readonly<{
+  cleanup: () => Promise<void>;
+  request: RelayGptImageRequest;
+}>;
+
+const defaultTemporaryImageObjectStore: RelayTemporaryImageObjectStore = {
+  createReadUrl: createPrivateAliyunOssReadUrl,
+  deleteObject: deletePrivateAliyunOssObject,
+  uploadObject: uploadPrivateAliyunOssObject,
+};
 
 export const relayMediaCancellationBoundary = Object.freeze({
   localAbortBehavior: "stop-local-request-and-polling-only" as const,
@@ -229,6 +277,13 @@ const modelPattern = /^[a-z0-9][a-z0-9._:/-]{0,199}$/i;
 const taskIdPattern = /^[a-z0-9][a-z0-9._:-]{0,159}$/i;
 const sizePattern = /^(?:auto|\d{2,5}x\d{2,5})$/;
 const forbiddenParamName = /(?:api.?key|authorization|credential|password|secret|token|notify.?url)/i;
+
+// GPT Image's synchronous edit endpoint regularly needs longer than the
+// generic JSON request window, especially when it has to fetch a reference
+// image and return a base64 payload. Keep it on the shared Provider submit
+// deadline so a slow, valid response is not cut off at the old 120s default.
+export const relayGptImageRequestTimeoutMs =
+  providerRequestTimeoutMsByOperation.submit;
 const mediaParamNamesByCapability = {
   audio: new Set([
     "audioMode",
@@ -1125,36 +1180,65 @@ function parseGptImageResult(body: unknown): RelayImageResult {
   };
 }
 
-export async function requestRelayGptImage(
-  connection: RelayProviderConnection,
+function referencePreparationError(
+  error: unknown,
+  fallback: Extract<
+    RelayProviderErrorCode,
+    "REFERENCE_UPLOAD_FAILED" | "REFERENCE_SIGN_FAILED"
+  >,
+) {
+  if (error instanceof RelayProviderError) return error;
+  if (
+    error instanceof Error &&
+    /(?:database\s+is\s+)?(?:locked|busy)|configuration\s+is\s+busy/i.test(error.message)
+  ) {
+    return new RelayProviderError("REFERENCE_STORAGE_BUSY");
+  }
+  return new RelayProviderError(fallback);
+}
+
+/**
+ * Materialize local data references before acquiring the Provider request
+ * lease. Provider and Storage configuration intentionally share one
+ * cross-process lock; nesting this operation inside the Provider lease would
+ * self-block until the five-second lock timeout.
+ */
+export async function prepareRelayGptImageRequest(
   request: RelayGptImageRequest,
   execution: RelayProviderExecution,
-) {
+): Promise<PreparedRelayGptImageRequest> {
   if (!providerProtocolSupportsCapability(request.providerProtocol, request.capability)) {
     throw new RelayProviderError("FORMAT");
   }
-  // 优创等中转站的 /v1/images/edits 不接受 data: URL 作为 image 参数；
-  // 本地参考图先临时上传到私有 OSS 并换成短时签名 URL，请求结束后删除。
-  const temporaryDirectory = await mkdtemp(join(tmpdir(), "unboundry-gpt-image-"));
-  const uploadedKeys: string[] = [];
+  const objectStore = execution.temporaryImageObjectStore ??
+    defaultTemporaryImageObjectStore;
+  const temporaryPublications: Array<{
+    bytes: Buffer;
+    contentType: string;
+    inputIndex: number;
+    reservation: MediaPublicationReservation;
+  }> = [];
+  let fixedProfile: AliyunStorageProfile | undefined;
+  let cleanupStarted = false;
+  const cleanup = async () => {
+    if (cleanupStarted) return;
+    cleanupStarted = true;
+    if (!fixedProfile) return;
+    for (const temporary of temporaryPublications.reverse()) {
+      await compensateMediaPublication(temporary.reservation, {
+        code: "RELAY_TEMP_REFERENCE_CLEANUP",
+        deleteExternalObject: objectStore.deleteObject,
+        profile: fixedProfile,
+      }).catch(() => false);
+    }
+  };
   try {
-    const inputImages: string[] = [];
-    for (const image of request.inputImages ?? []) {
-      if (!image.startsWith("data:")) {
-        inputImages.push(image);
-        continue;
-      }
-      const profile = await readableStorageProfile();
-      if (!profile) {
-        inputImages.push(image);
-        continue;
-      }
+    const inputImages = [...(request.inputImages ?? [])];
+    const dataImages = inputImages.flatMap((image, inputIndex) => {
+      if (!image.startsWith("data:")) return [];
       const match =
         /^data:image\/(png|jpeg|webp);base64,([a-z0-9+/=\r\n]+)$/i.exec(image);
-      if (!match) {
-        inputImages.push(image);
-        continue;
-      }
+      if (!match) throw new RelayProviderError("FORMAT");
       const mime = `image/${match[1].toLowerCase()}`;
       const extension = match[1].toLowerCase() === "png"
         ? "png"
@@ -1165,49 +1249,158 @@ export async function requestRelayGptImage(
       if (!bytes.length || bytes.length > 20 * 1024 * 1024) {
         throw new RelayProviderError("FORMAT");
       }
-      const objectKey = createAliyunOssObjectKey("image", extension);
-      const filePath = join(
-        temporaryDirectory,
-        `${randomUUID()}.${extension}`,
-      );
-      await writeFile(filePath, bytes, { flag: "wx" });
+      return [{ bytes, contentType: mime, extension, inputIndex }];
+    });
+
+    if (dataImages.length > 0) {
+      let retained: boolean | undefined;
       try {
-        await uploadPrivateAliyunOssObject({
-          byteSize: bytes.length,
-          checksumSha256: createHash("sha256").update(bytes).digest("hex"),
-          contentType: mime,
-          credentials: profile,
-          filePath,
-          objectKey,
+        retained = await withReadableStorageProfileReservation((profile) => {
+          if (!execution.mediaLifecycle?.ownerId) {
+            throw new RelayProviderError("FORMAT");
+          }
+          fixedProfile = profile;
+          for (const dataImage of dataImages) {
+            const id = randomUUID();
+            const reservation = reserveMediaPublication({
+              contentType: dataImage.contentType,
+              finalStorageName: `${id}.${dataImage.extension}`,
+              id,
+              kind: "image",
+              objectKey: createAliyunOssObjectKey("image", dataImage.extension),
+              ownerId: execution.mediaLifecycle!.ownerId,
+              storageBackend: "oss",
+              storageProfileId: profile.id,
+            });
+            temporaryPublications.push({
+              bytes: dataImage.bytes,
+              contentType: dataImage.contentType,
+              inputIndex: dataImage.inputIndex,
+              reservation,
+            });
+          }
+          return true;
         });
-      } finally {
-        await rm(filePath, { force: true });
+      } catch (error) {
+        throw referencePreparationError(error, "REFERENCE_UPLOAD_FAILED");
       }
-      uploadedKeys.push(objectKey);
-      inputImages.push(
-        await createPrivateAliyunOssReadUrl(objectKey, profile, 300),
-      );
+      if (retained && fixedProfile) {
+        for (const temporary of temporaryPublications) {
+          try {
+            const stagingPath = mediaPublicationStagingPath(temporary.reservation);
+            await mkdir(dirname(stagingPath), { recursive: true });
+            await writeFile(stagingPath, temporary.bytes, { flag: "wx" });
+            const checksumSha256 = createHash("sha256")
+              .update(temporary.bytes)
+              .digest("hex");
+            stageMediaPublication(temporary.reservation, {
+              byteSize: temporary.bytes.length,
+              checksumSha256,
+              contentType: temporary.contentType,
+            });
+            await objectStore.uploadObject({
+              byteSize: temporary.bytes.length,
+              checksumSha256,
+              contentType: temporary.contentType,
+              credentials: fixedProfile,
+              filePath: stagingPath,
+              objectKey: temporary.reservation.objectKey,
+            });
+            markExternalMediaPublicationReady(temporary.reservation);
+          } catch (error) {
+            throw referencePreparationError(error, "REFERENCE_UPLOAD_FAILED");
+          }
+          try {
+            inputImages[temporary.inputIndex] = await objectStore.createReadUrl(
+              temporary.reservation.objectKey,
+              fixedProfile,
+              300,
+            );
+          } catch (error) {
+            throw referencePreparationError(error, "REFERENCE_SIGN_FAILED");
+          }
+        }
+      }
     }
-    const route = cleanImageRequest({ ...request, inputImages });
-    const body = await relayJsonRequest({
+    return {
+      cleanup,
+      request: request.inputImages === undefined
+        ? request
+        : { ...request, inputImages },
+    };
+  } catch (error) {
+    await cleanup();
+    throw error;
+  }
+}
+
+/** Send a request that has already completed all local reference preparation. */
+export async function sendPreparedRelayGptImageRequest(
+  connection: RelayProviderConnection,
+  request: RelayGptImageRequest,
+  execution: RelayProviderExecution,
+) {
+  if (!providerProtocolSupportsCapability(request.providerProtocol, request.capability)) {
+    throw new RelayProviderError("FORMAT");
+  }
+  const route = cleanImageRequest(request);
+  let providerBoundaryCrossed = false;
+  let body: unknown;
+  try {
+    body = await relayJsonRequest({
       body: route.body,
       connection,
-      execution,
+      execution: {
+        ...execution,
+        timeoutMs:
+          execution.timeoutMs ?? relayGptImageRequestTimeoutMs,
+        beforeProviderRequest: () => {
+          execution.beforeProviderRequest?.();
+          providerBoundaryCrossed = true;
+        },
+      },
       maximumRequestBytes: mediaRequestLimitBytes,
       maximumResponseBytes: mediaResponseLimitBytes,
       method: "POST",
       path: route.path,
       protocol: request.providerProtocol,
+      providerTaskMayStillRun: true,
     });
-    return parseGptImageResult(body);
-  } finally {
-    const profile = await readableStorageProfile();
-    if (profile) {
-      for (const key of uploadedKeys) {
-        await deletePrivateAliyunOssObject(key, profile).catch(() => undefined);
-      }
+  } catch (error) {
+    if (!providerBoundaryCrossed) throw error;
+    if (error instanceof RelayProviderError && error.code === "FORMAT") {
+      throw new RelayProviderError(
+        "PROVIDER_RESULT_FORMAT",
+        error.providerTaskMayStillRun,
+      );
     }
-    await rm(temporaryDirectory, { force: true, recursive: true });
+    throw new RelayProviderError(
+      "PROVIDER_REQUEST_FAILED",
+      true,
+    );
+  }
+  try {
+    return parseGptImageResult(body);
+  } catch {
+    throw new RelayProviderError("PROVIDER_RESULT_FORMAT", true);
+  }
+}
+
+/** Convenience entry point for callers that do not already hold a Provider lease. */
+export async function requestRelayGptImage(
+  connection: RelayProviderConnection,
+  request: RelayGptImageRequest,
+  execution: RelayProviderExecution,
+) {
+  const prepared = await prepareRelayGptImageRequest(request, execution);
+  try {
+    return await sendPreparedRelayGptImageRequest(
+      connection,
+      prepared.request,
+      execution,
+    );
+  } finally {
+    await prepared.cleanup();
   }
 }
 
@@ -1342,9 +1535,9 @@ function resultUrls(body: Record<string, unknown>) {
       else if (isRecord(output)) values.push(output.url, output.result_url);
     }
   }
-  return values
+  return Array.from(new Set(values
     .filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
-    .map(cleanTransientOutputUrl);
+    .map(cleanTransientOutputUrl)));
 }
 
 function parseMediaTaskSnapshot(

@@ -4,11 +4,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { authGate } from "../server/auth";
 import {
   appDataDirectory,
   currentSchemaVersion,
+  openAppDatabase,
 } from "../server/database";
 import {
   adminModelsApi,
@@ -92,6 +93,7 @@ test("model archive, restore and guarded deletion preserve identity and never ca
   let server: Server | undefined;
   try {
     expect(appDataDirectory()).toBe(directory);
+    openAppDatabase(directory).close();
     const profile = await saveProviderProfile({
       apiKey: `lifecycle-${randomUUID()}`,
       baseUrl: "https://openrouter.ai/api/v1",
@@ -534,6 +536,174 @@ test("model archive, restore and guarded deletion preserve identity and never ca
       );
     } finally {
       recoveredStore.close();
+    }
+  } finally {
+    if (server) await stopServer(server);
+    if (previousDataDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
+    else process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
+    if (previousBypass === undefined) delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+    else process.env.UNBOUNDRY_TEST_AUTH_BYPASS = previousBypass;
+    await rm(directory, { force: true, recursive: true });
+  }
+});
+
+test("model admin writes fence account deletion and roll back when audit insertion fails", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-model-fence-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  const previousBypass = process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
+  process.env.UNBOUNDRY_TEST_AUTH_BYPASS = "1";
+  let server: Server | undefined;
+  try {
+    openAppDatabase(directory).close();
+    const profile = await saveProviderProfile({
+      apiKey: `model-fence-${randomUUID()}`,
+      baseUrl: "https://openrouter.ai/api/v1",
+      driver: "openrouter",
+      label: "Model Fence Provider",
+    });
+    const started = await startLifecycleServer();
+    server = started.server;
+    const { origin } = started;
+    const createModel = async (displayName: string) => {
+      const created = await api(origin, "POST", "/api/admin/models", {
+        capability: "text",
+        displayName,
+        isDefault: false,
+        providerModelId: `test/${displayName.toLowerCase().replaceAll(" ", "-")}`,
+        providerProfileId: profile.id,
+        sortOrder: 100,
+        status: "draft",
+      });
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      return String(created.body.model.id);
+    };
+
+    const editableId = await createModel("Fence Editable");
+    const restorableId = await createModel("Fence Restorable");
+    const deletableId = await createModel("Fence Deletable");
+    expect((await api(
+      origin,
+      "POST",
+      `/api/admin/models/${restorableId}/archive`,
+    )).status).toBe(200);
+    expect((await api(
+      origin,
+      "POST",
+      `/api/admin/models/${deletableId}/archive`,
+    )).status).toBe(200);
+
+    const store = databaseAt(directory);
+    try {
+      const beforeAuditCount = Number((store.prepare(`
+        SELECT COUNT(*) AS count FROM admin_audit_events
+      `).get() as { count: number }).count);
+      const now = new Date().toISOString();
+      store.prepare(`
+        INSERT INTO account_delete_intents (
+          owner_id, state, error_code, retry_count, created_at, updated_at
+        ) VALUES ('__test__', 'running', NULL, 0, ?, ?)
+      `).run(now, now);
+
+      const blockedResults = await Promise.all([
+        api(origin, "POST", "/api/admin/models", {
+          capability: "text",
+          displayName: "Blocked Create",
+          isDefault: false,
+          providerModelId: "test/blocked-create",
+          providerProfileId: profile.id,
+          sortOrder: 100,
+          status: "draft",
+        }),
+        api(origin, "PATCH", `/api/admin/models/${editableId}`, {
+          displayName: "Blocked Rename",
+        }),
+        api(origin, "POST", `/api/admin/models/${editableId}/archive`),
+        api(origin, "POST", `/api/admin/models/${restorableId}/restore`),
+        api(origin, "DELETE", `/api/admin/models/${deletableId}`),
+      ]);
+      for (const blocked of blockedResults) {
+        expect(blocked).toMatchObject({
+          body: { code: "ACCOUNT_DELETE_ACTIVE" },
+          status: 409,
+        });
+      }
+      expect(store.prepare(`
+        SELECT display_name, archived_at
+        FROM model_profiles WHERE id = ?
+      `).get(editableId)).toEqual({
+        archived_at: null,
+        display_name: "Fence Editable",
+      });
+      expect(store.prepare(`
+        SELECT archived_at IS NOT NULL AS archived
+        FROM model_profiles WHERE id = ?
+      `).get(restorableId)).toEqual({ archived: 1 });
+      expect(store.prepare(`
+        SELECT COUNT(*) AS count FROM model_profiles WHERE id = ?
+      `).get(deletableId)).toEqual({ count: 1 });
+      expect(store.prepare(`
+        SELECT COUNT(*) AS count FROM model_profiles
+        WHERE display_name = 'Blocked Create'
+      `).get()).toEqual({ count: 0 });
+      expect(Number((store.prepare(`
+        SELECT COUNT(*) AS count FROM admin_audit_events
+      `).get() as { count: number }).count)).toBe(beforeAuditCount);
+
+      store.prepare(`
+        DELETE FROM account_delete_intents WHERE owner_id = '__test__'
+      `).run();
+      const committed = await api(
+        origin,
+        "PATCH",
+        `/api/admin/models/${editableId}`,
+        { displayName: "Commit First Rename" },
+      );
+      expect(committed.status).toBe(200);
+      store.prepare(`
+        INSERT INTO account_delete_intents (
+          owner_id, state, error_code, retry_count, created_at, updated_at
+        ) VALUES ('__test__', 'running', NULL, 0, ?, ?)
+      `).run(now, now);
+      expect(store.prepare(`
+        SELECT display_name FROM model_profiles WHERE id = ?
+      `).get(editableId)).toEqual({ display_name: "Commit First Rename" });
+      expect(store.prepare(`
+        SELECT COUNT(*) AS count
+        FROM admin_audit_events
+        WHERE action = 'update_model'
+          AND json_extract(details, '$.modelId') = ?
+      `).get(editableId)).toEqual({ count: 1 });
+
+      store.prepare(`
+        DELETE FROM account_delete_intents WHERE owner_id = '__test__'
+      `).run();
+      store.exec(`
+        CREATE TRIGGER test_model_audit_fault
+        BEFORE INSERT ON admin_audit_events
+        WHEN NEW.action = 'update_model'
+        BEGIN
+          SELECT RAISE(ABORT, 'test model audit fault');
+        END;
+      `);
+      const auditFault = await api(
+        origin,
+        "PATCH",
+        `/api/admin/models/${editableId}`,
+        { displayName: "Must Roll Back" },
+      );
+      expect(auditFault.status).toBe(400);
+      expect(store.prepare(`
+        SELECT display_name FROM model_profiles WHERE id = ?
+      `).get(editableId)).toEqual({ display_name: "Commit First Rename" });
+      expect(store.prepare(`
+        SELECT COUNT(*) AS count
+        FROM admin_audit_events
+        WHERE action = 'update_model'
+          AND json_extract(details, '$.modelId') = ?
+      `).get(editableId)).toEqual({ count: 1 });
+    } finally {
+      store.close();
     }
   } finally {
     if (server) await stopServer(server);

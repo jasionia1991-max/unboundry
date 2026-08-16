@@ -4,9 +4,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { authGate } from "../server/auth";
-import { appDataDirectory } from "../server/database";
+import { appDataDirectory, openAppDatabase } from "../server/database";
 import {
   getProviderCatalog,
   importProviderCatalogDrafts,
@@ -26,6 +26,7 @@ async function temporaryDataDirectory<T>(
   process.env.UNBOUNDRY_DATA_DIR = directory;
   try {
     expect(appDataDirectory()).toBe(directory);
+    openAppDatabase(directory).close();
     return await run(directory);
   } finally {
     if (previous === undefined) delete process.env.UNBOUNDRY_DATA_DIR;

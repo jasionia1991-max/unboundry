@@ -1,4 +1,10 @@
 import type { ProviderProfile } from "./providerProfiles";
+import {
+  ProviderRequestDeadlineError,
+  type ProviderRequestDeadline,
+  type ProviderRequestDeadlineOverrides,
+  withProviderRequestDeadline,
+} from "./providerRequestDeadline";
 
 export type ArkTextInput = {
   kind: "audio" | "image" | "text" | "video";
@@ -22,7 +28,8 @@ export class VolcengineArkTextError extends Error {
       | "NETWORK"
       | "PERMISSION"
       | "RATE_LIMIT"
-      | "REMOTE",
+      | "REMOTE"
+      | "TIMEOUT",
     message: string,
   ) {
     super(message);
@@ -140,11 +147,14 @@ function providerContent(input: ArkTextInput) {
   return { audio_url: input.url, type: "input_audio" };
 }
 
-async function limitedJson(response: Response) {
+async function limitedJson(
+  response: Response,
+  deadline: ProviderRequestDeadline,
+) {
   if (!response.body) {
     throw new VolcengineArkTextError("FORMAT", "方舟没有返回可读文字结果");
   }
-  const reader = response.body.getReader();
+  const reader = deadline.wrapStream(response.body).getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
   while (true) {
@@ -152,7 +162,7 @@ async function limitedJson(response: Response) {
     if (done) break;
     size += value.byteLength;
     if (size > 2 * 1_024 * 1_024) {
-      await reader.cancel();
+      void reader.cancel().catch(() => undefined);
       throw new VolcengineArkTextError("FORMAT", "方舟文字结果超过安全上限");
     }
     chunks.push(value);
@@ -166,9 +176,12 @@ async function limitedJson(response: Response) {
   }
 }
 
-async function providerErrorText(response: Response) {
+async function providerErrorText(
+  response: Response,
+  deadline: ProviderRequestDeadline,
+) {
   if (!response.body) return "";
-  const reader = response.body.getReader();
+  const reader = deadline.wrapStream(response.body).getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
   while (true) {
@@ -176,7 +189,7 @@ async function providerErrorText(response: Response) {
     if (done) break;
     size += value.byteLength;
     if (size > 4_096) {
-      await reader.cancel();
+      void reader.cancel().catch(() => undefined);
       break;
     }
     chunks.push(value);
@@ -231,6 +244,7 @@ export async function createVolcengineArkTextResponse(
   fetcher: typeof fetch = fetch,
   signal?: AbortSignal,
   beforeProviderRequest?: () => void,
+  deadlineOptions?: ProviderRequestDeadlineOverrides,
 ): Promise<ArkTextResult> {
   const prompt = input.prompt.trim();
   const inputs = normalizeInputs(input.inputs);
@@ -265,55 +279,70 @@ export async function createVolcengineArkTextResponse(
   }
   beforeProviderRequest?.();
   try {
-    const response = await fetcher(`${profile.baseUrl}/responses`, {
-      body: serializedBody,
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${profile.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      method: "POST",
-      redirect: "error",
+    return await withProviderRequestDeadline({
+      ...deadlineOptions,
+      operation: "submit",
       signal,
+    }, async (deadline) => {
+      const response = await deadline.race(fetcher(`${profile.baseUrl}/responses`, {
+        body: serializedBody,
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${profile.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+        redirect: "error",
+        signal: deadline.signal,
+      }));
+      if (response.status === 401) {
+        if (response.body) void response.body.cancel().catch(() => undefined);
+        throw new VolcengineArkTextError(
+          "AUTH",
+          "火山方舟API Key无效或已失效，请由管理员更新平台连接",
+        );
+      }
+      if (response.status === 403) {
+        if (response.body) void response.body.cancel().catch(() => undefined);
+        throw new VolcengineArkTextError(
+          "PERMISSION",
+          "当前API Key没有所选文字模型权限，请在方舟控制台开通模型服务并更新平台连接",
+        );
+      }
+      if (response.status === 429) {
+        if (response.body) void response.body.cancel().catch(() => undefined);
+        throw new VolcengineArkTextError("RATE_LIMIT", "火山方舟正在限流，请稍后再试");
+      }
+      if (!response.ok) {
+        const message = await providerErrorText(response, deadline);
+        throw new VolcengineArkTextError(
+          "REMOTE",
+          message || "火山方舟暂时无法完成文字生成",
+        );
+      }
+      const body = await limitedJson(response, deadline);
+      if (body.status !== "completed") {
+        throw new VolcengineArkTextError("FORMAT", "方舟没有返回已完成的文字结果");
+      }
+      const usage = body.usage && typeof body.usage === "object" && !Array.isArray(body.usage)
+        ? body.usage as Record<string, unknown>
+        : {};
+      const tokens = Number(usage.total_tokens);
+      return {
+        providerUsageTokens: Number.isSafeInteger(tokens) && tokens >= 0
+          ? tokens
+          : undefined,
+        text: outputText(body),
+      };
     });
-    if (response.status === 401) {
-      throw new VolcengineArkTextError(
-        "AUTH",
-        "火山方舟API Key无效或已失效，请由管理员更新平台连接",
-      );
-    }
-    if (response.status === 403) {
-      throw new VolcengineArkTextError(
-        "PERMISSION",
-        "当前API Key没有所选文字模型权限，请在方舟控制台开通模型服务并更新平台连接",
-      );
-    }
-    if (response.status === 429) {
-      throw new VolcengineArkTextError("RATE_LIMIT", "火山方舟正在限流，请稍后再试");
-    }
-    if (!response.ok) {
-      const message = await providerErrorText(response);
-      throw new VolcengineArkTextError(
-        "REMOTE",
-        message || "火山方舟暂时无法完成文字生成",
-      );
-    }
-    const body = await limitedJson(response);
-    if (body.status !== "completed") {
-      throw new VolcengineArkTextError("FORMAT", "方舟没有返回已完成的文字结果");
-    }
-    const usage = body.usage && typeof body.usage === "object" && !Array.isArray(body.usage)
-      ? body.usage as Record<string, unknown>
-      : {};
-    const tokens = Number(usage.total_tokens);
-    return {
-      providerUsageTokens: Number.isSafeInteger(tokens) && tokens >= 0
-        ? tokens
-        : undefined,
-      text: outputText(body),
-    };
   } catch (error) {
     if (error instanceof VolcengineArkTextError) throw error;
+    if (error instanceof ProviderRequestDeadlineError) {
+      throw new VolcengineArkTextError(
+        error.code,
+        error.code === "TIMEOUT" ? "文字生成请求超时" : "文字生成已取消",
+      );
+    }
     if (signal?.aborted) {
       throw new VolcengineArkTextError("CANCELLED", "文字生成已取消");
     }

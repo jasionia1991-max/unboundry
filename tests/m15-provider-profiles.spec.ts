@@ -4,13 +4,14 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
+import { openAppDatabase } from "../server/database";
 import {
   saveProviderProfile,
   verifyProviderProfile,
 } from "../server/providerProfiles";
 
-const port = 4199;
+const port = Number(process.env.UNBOUNDRY_TEST_AUX_PORT);
 const origin = `http://127.0.0.1:${port}`;
 const vite = join(process.cwd(), "node_modules/vite/bin/vite.js");
 
@@ -275,6 +276,9 @@ test("read-only Provider verification checks model lists without generating", as
   const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
   process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   try {
+    // Greenfield publication owns an exactly empty directory. Establish the
+    // current database before Provider persistence creates secrets/lock files.
+    openAppDatabase(dataDirectory).close();
     const secret = ["sk", "readonly", randomUUID()].join("-");
     const profile = await saveProviderProfile({
       apiKey: secret,
@@ -424,6 +428,9 @@ test("Provider Key status persists invalid and uncertain rechecks without stale 
   const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
   process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   try {
+    // Greenfield publication owns an exactly empty directory. Establish the
+    // current database before Provider persistence creates secrets/lock files.
+    openAppDatabase(dataDirectory).close();
     const profile = await saveProviderProfile({
       apiKey: ["sk", "status", randomUUID()].join("-"),
       baseUrl: "https://openrouter.ai/api/v1",
@@ -556,7 +563,7 @@ test("administrator Provider page stays simple and makes zero external requests"
   baseURL,
   page,
 }) => {
-  const localOrigin = new URL(baseURL ?? "http://127.0.0.1:4173").origin;
+  const localOrigin = new URL(baseURL!).origin;
   const externalRequests: string[] = [];
   page.on("request", (browserRequest) => {
     const url = new URL(browserRequest.url());

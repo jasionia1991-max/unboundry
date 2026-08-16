@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 type CharacterCatalog = {
   categories: string[];
@@ -68,10 +68,18 @@ test("the local character catalog supports categories, filters and pagination", 
 
 test("the AI character overlay reads the local catalog without provider requests", async ({
   page,
+  request,
 }) => {
+  const before = await (await request.get("/api/generation-tasks/status")).json() as {
+    paidProviderRequests: number;
+  };
   let providerRequests = 0;
   page.on("request", (request) => {
-    if (/openrouter|volces|provider|generation-tasks/i.test(request.url())) {
+    const url = request.url();
+    if (
+      (request.method() === "POST" && /\/api\/generation-tasks(?:[/?]|$)/.test(url)) ||
+      /openrouter|volces|mureka|lk888|lk666/i.test(url)
+    ) {
       providerRequests += 1;
     }
   });
@@ -86,5 +94,9 @@ test("the AI character overlay reads the local catalog without provider requests
   const filteredCount = await page.getByTestId("ai-character-card").count();
   expect(filteredCount).toBeGreaterThan(0);
   expect(filteredCount).toBeLessThan(60);
+  const after = await (await request.get("/api/generation-tasks/status")).json() as {
+    paidProviderRequests: number;
+  };
+  expect(after.paidProviderRequests).toBe(before.paidProviderRequests);
   expect(providerRequests).toBe(0);
 });

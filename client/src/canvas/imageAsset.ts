@@ -1,9 +1,16 @@
+import {
+  fetchTrustedMediaMetadata,
+  hasTrustedMediaDimensions,
+} from "./mediaInputMetadata";
+
 export type ImageAsset = {
   assetId: string;
   byteSize: number;
   contentType: "image/png";
   fileName: string;
   height: number;
+  mediaHeight?: number;
+  mediaWidth?: number;
   storageBackend: "local" | "oss";
   url: string;
   width: number;
@@ -117,17 +124,58 @@ export async function uploadPngAsset(file: File): Promise<ImageAsset> {
     throw new Error("请选择20MB以内的PNG图片");
   }
 
-  const response = await fetch(`/api/assets/${crypto.randomUUID()}`, {
-    body: file,
-    headers: {
-      "Content-Type": file.type,
-      "X-File-Name": encodeURIComponent(file.name),
-    },
-    method: "POST",
-  });
-  const asset = await response.json() as ImageAsset & { error?: string };
-  if (!response.ok) throw new Error(asset.error ?? "上传失败");
-  return asset;
+  const requestedAssetId = crypto.randomUUID();
+  let shouldCompensate = true;
+  try {
+    const response = await fetch(`/api/assets/${requestedAssetId}`, {
+      body: file,
+      headers: {
+        "Content-Type": file.type,
+        "X-File-Name": encodeURIComponent(file.name),
+      },
+      method: "POST",
+    });
+    if (response.status === 409) shouldCompensate = false;
+    const asset = await response.json() as ImageAsset & {
+      error?: string;
+    };
+    if (!response.ok) {
+      throw new Error(asset.error ?? "上传失败");
+    }
+    if (asset.assetId !== requestedAssetId) {
+      throw new Error("服务端返回的图片素材标识不一致");
+    }
+    if (hasTrustedMediaDimensions(asset)) return asset;
+
+    const metadata = await fetchTrustedMediaMetadata("image", requestedAssetId);
+    if (!hasTrustedMediaDimensions(metadata)) {
+      throw new Error("服务端返回的图片尺寸未经可信校验");
+    }
+    return {
+      ...asset,
+      mediaHeight: metadata.mediaHeight,
+      mediaWidth: metadata.mediaWidth,
+    };
+  } catch (error) {
+    // The request id is known before the POST. If the server committed but the
+    // browser lost the response, this exact-id DELETE prevents a ready orphan.
+    // An observable HTTP 409 is the server's reservation no-clobber result, so
+    // the id may belong to an earlier asset even when its body is unreadable.
+    // Every other failure is ambiguous and must compensate the fresh request id.
+    if (shouldCompensate) await discardImageAsset(requestedAssetId);
+    throw error;
+  }
+}
+
+export async function discardImageAsset(assetId: string) {
+  try {
+    await fetch(`/api/assets/${encodeURIComponent(assetId)}`, {
+      method: "DELETE",
+    });
+  } catch {
+    // A fresh upload that was never adopted must stay detached even when the
+    // best-effort cleanup request is temporarily unavailable.
+  }
 }
 
 export async function uploadImageAsset(file: File): Promise<ImageAsset> {

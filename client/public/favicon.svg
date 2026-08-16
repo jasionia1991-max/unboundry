@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="mark" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9fdcff" />
+      <stop offset="1" stop-color="#f2fbff" />
+    </linearGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#18191c" />
+      <stop offset="1" stop-color="#08090b" />
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#tile)" />
+  <path
+    d="M47.3 22.4c-4.1 0-7.8 1.6-10.6 4.4L32 31.5l-4.7-4.7a15 15 0 0 0-10.6-4.4A10.7 10.7 0 0 0 6 33.1a10.7 10.7 0 0 0 10.7 10.7c4.1 0 7.8-1.6 10.6-4.4l4.7-4.7 4.7 4.7a15 15 0 0 0 10.6 4.4A10.7 10.7 0 0 0 58 33.1a10.7 10.7 0 0 0-10.7-10.7Zm0 5.2a5.5 5.5 0 1 1 0 11c-2.7 0-5.2-1-7-2.9l-4.7-4.6 4.7-4.6a9.8 9.8 0 0 1 7-2.9Zm-30.6 0c2.7 0 5.2 1 7 2.9l4.7 4.6-4.7 4.6a9.8 9.8 0 0 1-7 2.9 5.5 5.5 0 1 1 0-11Z"
+    fill="none"
+    stroke="url(#mark)"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="3.6"
+  />
+</svg>

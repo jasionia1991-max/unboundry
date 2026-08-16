@@ -1,8 +1,17 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
+import {
+  AccountMutationBlockedError,
+  assertAccountMutationAllowed,
+} from "./accountMutationFence";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
+import {
+  decodedRequestPath,
+  HttpRequestError,
+  readJsonBody,
+} from "./httpRequest";
 import { hasPermission } from "./permissions";
 import {
   generationSafetyStatus,
@@ -60,7 +69,12 @@ type ModelRow = {
   status: ModelStatus;
 };
 
-function parameterSchema(row: ModelRow): ModelParameterSchema {
+type ModelSchemaRow = Pick<
+  ModelRow,
+  "capability" | "default_parameters" | "provider_driver" | "provider_model_id"
+>;
+
+function parameterSchema(row: ModelSchemaRow): ModelParameterSchema {
   const fallback = knownModelParameterSchema({
     capability: row.capability,
     providerDriver: row.provider_driver,
@@ -85,6 +99,66 @@ function parameterSchema(row: ModelRow): ModelParameterSchema {
   }
 }
 
+export type PublishedTemplateModelContract = {
+  capability: Capability;
+  displayName: string;
+  id: string;
+  isDefault: boolean;
+  mediaInputPolicy?: "seedance-2";
+  parameterSchema: ModelParameterSchema;
+  sortOrder: number;
+};
+
+/** Static model contracts used by public-template publication checks. */
+export function publishedTemplateModelContracts(
+  store: DatabaseSync,
+): PublishedTemplateModelContract[] {
+  const rows = store.prepare(`
+    SELECT
+      model_profiles.id,
+      model_profiles.display_name,
+      model_profiles.provider_model_id,
+      model_profiles.capability,
+      model_profiles.default_parameters,
+      provider_profiles.driver AS provider_driver,
+      node_model_bindings.is_default,
+      node_model_bindings.sort_order
+    FROM model_profiles
+    JOIN provider_profiles
+      ON provider_profiles.id = model_profiles.provider_profile_id
+    JOIN node_model_bindings
+      ON node_model_bindings.model_id = model_profiles.id
+      AND node_model_bindings.node_type = model_profiles.capability
+    WHERE
+      model_profiles.status = 'published'
+      AND model_profiles.archived_at IS NULL
+      AND node_model_bindings.enabled = 1
+    ORDER BY
+      CASE model_profiles.capability
+        WHEN 'text' THEN 1
+        WHEN 'image' THEN 2
+        WHEN 'video' THEN 3
+        ELSE 4
+      END,
+      node_model_bindings.sort_order,
+      model_profiles.created_at
+  `).all() as Array<ModelSchemaRow & {
+    display_name: string;
+    id: string;
+    is_default: number;
+    sort_order: number;
+  }>;
+  return rows.map((row) => ({
+    capability: row.capability,
+    displayName: row.display_name,
+    id: row.id,
+    isDefault: Boolean(row.is_default),
+    mediaInputPolicy: mediaInputPolicy(row),
+    parameterSchema: parameterSchema(row),
+    sortOrder: row.sort_order,
+  }));
+}
+
 function imageParameters(row: ModelRow) {
   if (row.capability !== "image") return undefined;
   const schema = parameterSchema(row);
@@ -98,7 +172,7 @@ function imageParameters(row: ModelRow) {
   };
 }
 
-function mediaInputPolicy(row: ModelRow) {
+function mediaInputPolicy(row: ModelSchemaRow) {
   return row.capability === "video" &&
       row.provider_driver === "volcengine-ark" &&
       /^doubao-seedance-[a-z0-9-]+$/i.test(row.provider_model_id)
@@ -243,16 +317,16 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.end(JSON.stringify(body));
 }
 
-async function readBody<T>(request: IncomingMessage) {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > 64 * 1_024) throw new Error("Payload too large");
-    chunks.push(bytes);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
+function respondAccountMutationConflict(
+  response: ServerResponse,
+  error: unknown,
+) {
+  if (!(error instanceof AccountMutationBlockedError)) return false;
+  json(response, 409, {
+    code: error.code,
+    error: error.message,
+  });
+  return true;
 }
 
 function adminModel(
@@ -779,7 +853,7 @@ export async function adminModelsApi(
     return;
   }
   const store = db();
-  const path = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+  const path = decodedRequestPath(request).replace(
     /^\/+/,
     "",
   );
@@ -836,6 +910,7 @@ export async function adminModelsApi(
     let next: ModelRow | undefined;
     store.exec("BEGIN IMMEDIATE");
     try {
+      assertAccountMutationAllowed(store, identity.userId);
       const current = modelRows(store, identity.userId).find(
         (row) => row.id === modelId,
       );
@@ -929,15 +1004,9 @@ export async function adminModelsApi(
         (row) => row.id === modelId,
       );
       store.exec("COMMIT");
-    } catch {
+    } catch (error) {
       if (store.isTransaction) store.exec("ROLLBACK");
-      try {
-        audit(store, identity.userId, `model.${action}_rejected`, modelId, {
-          reason: "TRANSACTION_FAILED",
-        });
-      } catch {
-        // The lifecycle response must not expose storage internals.
-      }
+      if (respondAccountMutationConflict(response, error)) return;
       json(response, 409, {
         code: "LIFECYCLE_UPDATE_FAILED",
         error: action === "archive" ? "模型归档失败" : "模型恢复失败",
@@ -969,6 +1038,7 @@ export async function adminModelsApi(
   if (request.method === "DELETE" && /^[a-z0-9-]{3,80}$/i.test(path)) {
     store.exec("BEGIN IMMEDIATE");
     try {
+      assertAccountMutationAllowed(store, identity.userId);
       const current = modelRows(store, identity.userId).find(
         (row) => row.id === path,
       );
@@ -1016,15 +1086,9 @@ export async function adminModelsApi(
         id: path,
         paidProviderRequests: 0,
       });
-    } catch {
+    } catch (error) {
       if (store.isTransaction) store.exec("ROLLBACK");
-      try {
-        audit(store, identity.userId, "model.delete_rejected", path, {
-          reason: "TRANSACTION_FAILED",
-        });
-      } catch {
-        // The deletion response must not expose storage internals.
-      }
+      if (respondAccountMutationConflict(response, error)) return;
       json(response, 409, {
         code: "MODEL_DELETE_FAILED",
         error: "模型删除失败",
@@ -1036,7 +1100,10 @@ export async function adminModelsApi(
   if (request.method === "POST" && !path) {
     try {
       const input = cleanModelInput(
-        await readBody<Parameters<typeof cleanModelInput>[0]>(request),
+        await readJsonBody<Parameters<typeof cleanModelInput>[0]>(
+          request,
+          64 * 1_024,
+        ),
       );
       const id = randomUUID();
       const timestamp = new Date().toISOString();
@@ -1080,6 +1147,7 @@ export async function adminModelsApi(
       });
       store.exec("BEGIN IMMEDIATE");
       try {
+        assertAccountMutationAllowed(store, identity.userId);
         store
           .prepare(`
             INSERT INTO model_profiles (
@@ -1154,7 +1222,9 @@ export async function adminModelsApi(
           modelLifecycleSummary(row, modelReferenceCounts(store, row.id)),
         ),
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
+      if (respondAccountMutationConflict(response, error)) return;
       json(response, 400, { error: "Model profile is invalid" });
     }
     return;
@@ -1169,7 +1239,7 @@ export async function adminModelsApi(
       return;
     }
     try {
-      const body = await readBody<{
+      const body = await readJsonBody<{
         displayName?: unknown;
         isDefault?: unknown;
         providerModelId?: unknown;
@@ -1178,7 +1248,7 @@ export async function adminModelsApi(
         parameterSchema?: unknown;
         sortOrder?: unknown;
         status?: unknown;
-      }>(request);
+      }>(request, 64 * 1_024);
       const nextStatus = (body.status ?? current.status) as ModelStatus;
       const input = cleanModelInput({
         capability: current.capability,
@@ -1193,16 +1263,6 @@ export async function adminModelsApi(
         status: nextStatus,
         parameterSchema: body.parameterSchema ?? parameterSchema(current),
       });
-      if (current.archived_at && input.isDefault) {
-        audit(store, identity.userId, "model.update_rejected", path, {
-          reason: "ARCHIVED_MODEL_CANNOT_BE_DEFAULT",
-        });
-        json(response, 409, {
-          code: "ARCHIVED_MODEL_CANNOT_BE_DEFAULT",
-          error: "已归档模型不能设为默认，请先恢复模型",
-        });
-        return;
-      }
       const provider = store
         .prepare(`
           SELECT id, driver
@@ -1254,6 +1314,18 @@ export async function adminModelsApi(
       });
       store.exec("BEGIN IMMEDIATE");
       try {
+        assertAccountMutationAllowed(store, identity.userId);
+        if (current.archived_at && input.isDefault) {
+          audit(store, identity.userId, "model.update_rejected", path, {
+            reason: "ARCHIVED_MODEL_CANNOT_BE_DEFAULT",
+          });
+          store.exec("COMMIT");
+          json(response, 409, {
+            code: "ARCHIVED_MODEL_CANNOT_BE_DEFAULT",
+            error: "已归档模型不能设为默认，请先恢复模型",
+          });
+          return;
+        }
         if (input.isDefault) {
           store
             .prepare(`
@@ -1334,7 +1406,9 @@ export async function adminModelsApi(
           modelLifecycleSummary(row, modelReferenceCounts(store, row.id)),
         ),
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
+      if (respondAccountMutationConflict(response, error)) return;
       json(response, 400, { error: "Model update is invalid" });
     }
     return;

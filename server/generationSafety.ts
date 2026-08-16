@@ -1,11 +1,20 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
+import {
+  AccountMutationBlockedError,
+  assertAccountMutationAllowed,
+} from "./accountMutationFence";
 import { requestIdentity } from "./auth";
 import { hasPermission } from "./permissions";
 import {
   appDataDirectory,
   openAppDatabase,
 } from "./database";
+import {
+  decodedRequestPath,
+  HttpRequestError,
+  readJsonBody,
+} from "./httpRequest";
 import {
   generationProviderAttemptCounts,
   type GenerationTaskKind,
@@ -75,23 +84,179 @@ const kindColumns: Record<GenerationTaskKind, keyof SafetyRow> = {
   video: "video_concurrency",
 };
 
+function safetyRow(database: DatabaseSync) {
+  return database
+    .prepare("SELECT * FROM generation_safety_settings WHERE id = 1")
+    .get() as SafetyRow;
+}
+
+function switchDecision(row: SafetyRow): GenerationAdmission | undefined {
+  if (row.emergency_stop) {
+    return {
+      allowed: false,
+      code: "EMERGENCY_STOP",
+      message: "管理员已紧急停止真实生成",
+    };
+  }
+  if (!row.global_enabled) {
+    return {
+      allowed: false,
+      code: "GLOBAL_DISABLED",
+      message: "管理员已关闭真实生成",
+    };
+  }
+  return undefined;
+}
+
+/**
+ * Durable Provider-attempt circuit. Only definitive Provider outcomes count;
+ * local validation failures and overwritten task terminal states do not.
+ */
+export function generationProviderCircuitDecisionInTransaction(
+  database: DatabaseSync,
+  input: {
+    kind: GenerationTaskKind;
+    now?: Date;
+    providerProfileId: string;
+  },
+): GenerationAdmission {
+  const row = safetyRow(database);
+  const cooldownStart = new Date(
+    (input.now ?? new Date()).getTime() - row.cooldown_minutes * 60_000,
+  ).toISOString();
+  const outcomes = database
+    .prepare(`
+      SELECT outcome
+      FROM generation_provider_attempts
+      WHERE
+        provider_profile_id = ?
+        AND kind = ?
+        AND outcome IN ('provider-failed', 'completed')
+        AND finished_at IS NOT NULL
+        AND finished_at >= ?
+      ORDER BY finished_at DESC, id DESC
+      LIMIT ?
+    `)
+    .all(
+      input.providerProfileId,
+      input.kind,
+      cooldownStart,
+      row.failure_threshold,
+    ) as Array<{ outcome: "completed" | "provider-failed" }>;
+  if (
+    outcomes.length === row.failure_threshold &&
+    outcomes.every(({ outcome }) => outcome === "provider-failed")
+  ) {
+    return {
+      allowed: false,
+      code: "PROVIDER_COOLDOWN",
+      message: "模型服务连续失败，已暂停新任务",
+    };
+  }
+  return { allowed: true, code: "ALLOWED" };
+}
+
+/**
+ * Authoritative admission check. The caller must already own the surrounding
+ * BEGIN IMMEDIATE transaction and must insert the task/admission before commit.
+ */
+export function generationAdmissionInTransaction(
+  database: DatabaseSync,
+  input: {
+    kind: GenerationTaskKind;
+    now?: Date;
+    ownerId: string;
+    providerProfileId: string;
+  },
+): GenerationAdmission {
+  const row = safetyRow(database);
+  const switched = switchDecision(row);
+  if (switched) return switched;
+
+  const now = input.now ?? new Date();
+  const minuteStart = new Date(now.getTime() - 60_000).toISOString();
+  const activePlaceholders = activeStates.map(() => "?").join(", ");
+
+  const recentRequests = Number(
+    (
+      database
+        .prepare(`
+          SELECT COUNT(*) AS count
+          FROM generation_admission_events
+          WHERE owner_id = ? AND created_at >= ?
+        `)
+        .get(input.ownerId, minuteStart) as { count: number }
+    ).count,
+  );
+  if (recentRequests >= row.requests_per_minute) {
+    return {
+      allowed: false,
+      code: "RATE_LIMIT",
+      message: "请求过于频繁，请稍后再试",
+    };
+  }
+
+  const activeForUser = Number(
+    (
+      database
+        .prepare(`
+          SELECT COUNT(*) AS count
+          FROM generation_tasks
+          WHERE owner_id = ? AND state IN (${activePlaceholders})
+        `)
+        .get(input.ownerId, ...activeStates) as { count: number }
+    ).count,
+  );
+  if (activeForUser >= row.per_user_concurrency) {
+    return {
+      allowed: false,
+      code: "USER_CONCURRENCY",
+      message: "当前运行任务已达到用户上限",
+    };
+  }
+
+  // Per-kind limits are platform-wide. Per-account isolation is enforced by
+  // the independent per_user_concurrency setting above.
+  const activeForKind = Number(
+    (
+      database
+        .prepare(`
+          SELECT COUNT(*) AS count
+          FROM generation_tasks
+          WHERE kind = ? AND state IN (${activePlaceholders})
+        `)
+        .get(input.kind, ...activeStates) as { count: number }
+    ).count,
+  );
+  if (activeForKind >= Number(row[kindColumns[input.kind]])) {
+    return {
+      allowed: false,
+      code: "KIND_CONCURRENCY",
+      message: "当前类型的运行任务已达到上限",
+    };
+  }
+
+  return generationProviderCircuitDecisionInTransaction(database, input);
+}
+
+/** Last paid-boundary safety gate; rate/concurrency were consumed at admission. */
+export function generationProviderBoundaryDecisionInTransaction(
+  database: DatabaseSync,
+  input: {
+    kind: GenerationTaskKind;
+    now?: Date;
+    providerProfileId: string;
+  },
+): GenerationAdmission {
+  const switched = switchDecision(safetyRow(database));
+  return switched ?? generationProviderCircuitDecisionInTransaction(database, input);
+}
+
 function json(response: ServerResponse, status: number, body: unknown) {
   response.statusCode = status;
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   response.end(JSON.stringify(body));
-}
-
-async function readBody<T>(request: IncomingMessage) {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > 64 * 1_024) throw new Error("请求内容过大");
-    chunks.push(bytes);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
 }
 
 function toSettings(row: SafetyRow): GenerationSafetySettings {
@@ -187,6 +352,42 @@ function cleanSettings(input: Partial<SafetyInput>): SafetyInput {
   };
 }
 
+function validateSettingsPatch(input: Partial<SafetyInput>) {
+  if (
+    input.globalEnabled !== undefined &&
+    typeof input.globalEnabled !== "boolean"
+  ) {
+    throw new Error("安全开关设置无效");
+  }
+  if (
+    input.emergencyStop !== undefined &&
+    typeof input.emergencyStop !== "boolean"
+  ) {
+    throw new Error("安全开关设置无效");
+  }
+  if (
+    input.runningTaskPolicy !== undefined &&
+    !["cancel", "wait"].includes(String(input.runningTaskPolicy))
+  ) {
+    throw new Error("安全开关设置无效");
+  }
+  const integerFields = [
+    ["audioConcurrency", 1, 1_000, "音频并发"],
+    ["cooldownMinutes", 1, 1_440, "熔断时间"],
+    ["failureThreshold", 1, 20, "失败阈值"],
+    ["imageConcurrency", 1, 1_000, "图片并发"],
+    ["perUserConcurrency", 1, 1_000, "用户并发"],
+    ["requestsPerMinute", 1, 1_000, "请求频率"],
+    ["textConcurrency", 1, 1_000, "文字并发"],
+    ["videoConcurrency", 1, 1_000, "视频并发"],
+  ] as const;
+  for (const [key, minimum, maximum, label] of integerFields) {
+    if (input[key] !== undefined) {
+      cleanInteger(input[key], minimum, maximum, label);
+    }
+  }
+}
+
 export function createGenerationSafetyStore(
   dataDirectory = appDataDirectory(),
 ) {
@@ -199,10 +400,7 @@ export function createGenerationSafetyStore(
     return toSettings(read.get() as SafetyRow);
   }
 
-  function update(input: Partial<SafetyInput>) {
-    // 旧客户端/旧标签可能仍提交已废弃的成本字段；cleanSettings 只读取
-    // 当前仍支持的字段，多余字段会被自然忽略，不会写库。
-    const clean = cleanSettings({ ...settings(), ...input });
+  function writeSettings(clean: SafetyInput) {
     const timestamp = new Date().toISOString();
     database
       .prepare(`
@@ -236,7 +434,56 @@ export function createGenerationSafetyStore(
         clean.runningTaskPolicy,
         timestamp,
       );
+  }
+
+  function update(input: Partial<SafetyInput>) {
+    // 旧客户端/旧标签可能仍提交已废弃的成本字段；cleanSettings 只读取
+    // 当前仍支持的字段，多余字段会被自然忽略，不会写库。
+    validateSettingsPatch(input);
+    const clean = cleanSettings({ ...settings(), ...input });
+    writeSettings(clean);
     return settings();
+  }
+
+  function updateForAdmin(
+    actorUserId: string,
+    input: Partial<SafetyInput>,
+  ) {
+    // JSON parsing and field validation must finish before taking the write
+    // lock. The authoritative merge and account fence stay inside it.
+    validateSettingsPatch(input);
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      assertAccountMutationAllowed(database, actorUserId);
+      const before = settings();
+      const clean = cleanSettings({ ...before, ...input });
+      writeSettings(clean);
+      const after = settings();
+      const applyRunningTaskPolicyAfterCommit =
+        after.emergencyStop &&
+        after.runningTaskPolicy === "cancel" &&
+        (!before.emergencyStop || before.runningTaskPolicy !== "cancel");
+      audit(database, actorUserId, {
+        after,
+        before,
+        ...(applyRunningTaskPolicyAfterCommit
+          ? {
+              runningTaskPolicyEffect: {
+                phase: "after-commit",
+                policy: "cancel",
+              },
+            }
+          : {}),
+      });
+      database.exec("COMMIT");
+      return {
+        applyRunningTaskPolicyAfterCommit,
+        settings: after,
+      };
+    } catch (error) {
+      if (database.isTransaction) database.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   function admission(input: {
@@ -245,126 +492,7 @@ export function createGenerationSafetyStore(
     ownerId: string;
     providerProfileId: string;
   }): GenerationAdmission {
-    const row = read.get() as SafetyRow;
-    if (row.emergency_stop) {
-      return {
-        allowed: false,
-        code: "EMERGENCY_STOP",
-        message: "管理员已紧急停止真实生成",
-      };
-    }
-    if (!row.global_enabled) {
-      return {
-        allowed: false,
-        code: "GLOBAL_DISABLED",
-        message: "管理员已关闭真实生成",
-      };
-    }
-
-    const now = input.now ?? new Date();
-    const minuteStart = new Date(now.getTime() - 60_000).toISOString();
-    const cooldownStart = new Date(
-      now.getTime() - row.cooldown_minutes * 60_000,
-    ).toISOString();
-    const activePlaceholders = activeStates.map(() => "?").join(", ");
-
-    const recentRequests = Number(
-      (
-        database
-          .prepare(`
-            SELECT COUNT(*) AS count
-            FROM generation_tasks
-            WHERE owner_id = ? AND created_at >= ?
-          `)
-          .get(input.ownerId, minuteStart) as { count: number }
-      ).count,
-    );
-    if (recentRequests >= row.requests_per_minute) {
-      return {
-        allowed: false,
-        code: "RATE_LIMIT",
-        message: "请求过于频繁，请稍后再试",
-      };
-    }
-
-    const activeForUser = Number(
-      (
-        database
-          .prepare(`
-            SELECT COUNT(*) AS count
-            FROM generation_tasks
-            WHERE owner_id = ? AND state IN (${activePlaceholders})
-          `)
-          .get(input.ownerId, ...activeStates) as { count: number }
-      ).count,
-    );
-    if (activeForUser >= row.per_user_concurrency) {
-      return {
-        allowed: false,
-        code: "USER_CONCURRENCY",
-        message: "当前运行任务已达到用户上限",
-      };
-    }
-
-    const activeForKind = Number(
-      (
-        database
-          .prepare(`
-            SELECT COUNT(*) AS count
-            FROM generation_tasks
-            WHERE
-              owner_id = ?
-              AND kind = ?
-              AND state IN (${activePlaceholders})
-          `)
-          .get(input.ownerId, input.kind, ...activeStates) as {
-          count: number;
-        }
-      ).count,
-    );
-    if (activeForKind >= Number(row[kindColumns[input.kind]])) {
-      return {
-        allowed: false,
-        code: "KIND_CONCURRENCY",
-        message: "当前类型的运行任务已达到上限",
-      };
-    }
-
-    const failedRows = database
-      .prepare(`
-        SELECT state, updated_at
-        FROM generation_tasks
-        WHERE
-          provider_profile_id = ?
-          AND kind = ?
-          AND owner_id = ?
-          AND state IN ('failed', 'success')
-          AND updated_at >= ?
-        ORDER BY updated_at DESC
-        LIMIT ?
-      `)
-      .all(
-        input.providerProfileId,
-        input.kind,
-        input.ownerId,
-        cooldownStart,
-        row.failure_threshold,
-      ) as Array<{
-        state: "failed" | "success";
-        updated_at: string;
-      }>;
-    if (
-      failedRows.length === row.failure_threshold &&
-      failedRows.every(({ state }) => state === "failed")
-    ) {
-      return {
-        allowed: false,
-        code: "PROVIDER_COOLDOWN",
-        message: "模型服务连续失败，已暂停新任务",
-      };
-    }
-
-    return { allowed: true, code: "ALLOWED" };
+    return generationAdmissionInTransaction(database, input);
   }
 
   return {
@@ -374,6 +502,7 @@ export function createGenerationSafetyStore(
     },
     settings,
     update,
+    updateForAdmin,
   };
 }
 
@@ -448,7 +577,7 @@ export async function adminGenerationSafetyApi(
     });
     return;
   }
-  const path = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+  const path = decodedRequestPath(request).replace(
     /^\/+/,
     "",
   );
@@ -461,24 +590,56 @@ export async function adminGenerationSafetyApi(
   }
   if (request.method === "PUT" && !path) {
     try {
-      const before = safetyStore().settings();
-      const settings = safetyStore().update(
-        await readBody<Partial<SafetyInput>>(request),
+      const input = await readJsonBody<Partial<SafetyInput>>(
+        request,
+        64 * 1_024,
       );
-      const database = openAppDatabase();
-      try {
-        audit(database, identity.userId, {
-          after: settings,
-          before,
-        });
-      } finally {
-        database.close();
+      const {
+        applyRunningTaskPolicyAfterCommit,
+        settings,
+      } = safetyStore().updateForAdmin(identity.userId, input);
+      let runningTaskPolicySummary:
+        | {
+            cancelled: number;
+            error?: string;
+            failed: number;
+            waiting: number;
+          }
+        | undefined;
+      // Running-task cancellation may await Provider-aware task transitions,
+      // so it intentionally starts only after settings + audit have committed.
+      if (applyRunningTaskPolicyAfterCommit) {
+        try {
+          const { applyEmergencyStopRunningTaskPolicy } = await import(
+            "./generationTasks"
+          );
+          runningTaskPolicySummary =
+            await applyEmergencyStopRunningTaskPolicy();
+        } catch (error) {
+          runningTaskPolicySummary = {
+            cancelled: 0,
+            error: error instanceof Error
+              ? error.message
+              : "紧急停止后的任务取消失败",
+            failed: 1,
+            waiting: 0,
+          };
+        }
       }
       json(response, 200, {
         ...providerStatus(),
+        ...(runningTaskPolicySummary ? { runningTaskPolicySummary } : {}),
         settings,
       });
     } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
+      if (error instanceof AccountMutationBlockedError) {
+        json(response, 409, {
+          code: error.code,
+          error: error.message,
+        });
+        return;
+      }
       json(response, 400, {
         error: error instanceof Error ? error.message : "安全设置保存失败",
       });

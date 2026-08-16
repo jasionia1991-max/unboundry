@@ -1,10 +1,11 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { saveGeneratedAudio } from "../server/audioStorage";
 import { openAppDatabase } from "../server/database";
+import type { ProviderRequestDeadlineScheduler } from "../server/providerRequestDeadline";
 import {
   downloadProviderResultMedia,
   safeProviderResultUrl,
@@ -35,14 +36,45 @@ const publicResolver = (async () => [{
   family: 4 as const,
 }]) as any;
 
+function manualDeadline() {
+  let callback: (() => void) | undefined;
+  const scheduler: ProviderRequestDeadlineScheduler = {
+    clearTimeout() {
+      callback = undefined;
+    },
+    setTimeout(value) {
+      callback = value;
+      return "manual-deadline";
+    },
+  };
+  return {
+    expire() {
+      const current = callback;
+      if (!current) throw new Error("deadline is not armed");
+      current();
+    },
+    options: { scheduler, timeoutMs: 10_000 },
+  };
+}
+
 test("Provider result URLs reject credentials, local networks and leaked keys", async () => {
-  const key = "relay-secret-test-key";
+  const key = "relay/secret+test-key";
+  const split = Math.floor(key.length / 2);
   for (const value of [
     `https://cdn.example.test/result.png?key=${key}`,
+    `https://cdn.example.test/result.png?key=${key.slice(0, split)}\r${key.slice(split)}`,
+    `https://cdn.example.test/result.png?key=${key.slice(0, split)}\n${key.slice(split)}`,
+    `https://cdn.example.test/result.png?key=${key.slice(0, split)}\t${key.slice(split)}`,
+    `https://cdn.example.test/result.png?key=${encodeURIComponent(key)}`,
+    `https://cdn.example.test/result.png?key=${encodeURIComponent(encodeURIComponent(key))}`,
     "https://user:password@cdn.example.test/result.png",
     "http://cdn.example.test/result.png",
+    "https://cdn.example.test:8443/result.png",
     "https://127.0.0.1/result.png",
     "https://192.168.1.8/result.png",
+    "https://198.51.100.8/result.png",
+    "https://[::1]/result.png",
+    "https://[2001:db8::8]/result.png",
     "https://localhost/result.png",
     "https://media.local/result.png",
   ]) {
@@ -54,11 +86,44 @@ test("Provider result URLs reject credentials, local networks and leaked keys", 
   ).toBe("https://cdn.example.test/result.png?expires=300");
 });
 
+test("Provider result fake fetchers require both safe-test and temporary-data gates", async () => {
+  const previousSafeTest = process.env.UNBOUNDRY_SAFE_TEST;
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  let fetchCalls = 0;
+  const fixture = () => downloadProviderResultMedia({
+    apiKey: "safe-key",
+    kind: "image" as const,
+    resolver: publicResolver,
+    testFetcher: (async () => {
+      fetchCalls += 1;
+      return new Response(Buffer.from("not reached"), {
+        headers: { "content-type": "image/png" },
+      });
+    }) as typeof fetch,
+    url: "https://cdn.example.test/result.png",
+  });
+  try {
+    delete process.env.UNBOUNDRY_SAFE_TEST;
+    await expect(fixture()).rejects.toMatchObject({ code: "FORMAT" });
+
+    process.env.UNBOUNDRY_SAFE_TEST = "1";
+    process.env.UNBOUNDRY_DATA_DIR =
+      process.env.UNBOUNDRY_SYSTEM_TEMPORARY_ROOT;
+    await expect(fixture()).rejects.toMatchObject({ code: "FORMAT" });
+  } finally {
+    if (previousSafeTest === undefined) delete process.env.UNBOUNDRY_SAFE_TEST;
+    else process.env.UNBOUNDRY_SAFE_TEST = previousSafeTest;
+    if (previousDataDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
+    else process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
+  }
+  expect(fetchCalls).toBe(0);
+});
+
 test("Provider media download is unauthenticated, redirect-free and type checked", async () => {
   const requests: Array<{ authorization: string | null; method?: string; redirect?: string }> = [];
   const result = await downloadProviderResultMedia({
     apiKey: "never-forward-this-key",
-    fetcher: (async (_url, init) => {
+    testFetcher: (async (_url, init) => {
       requests.push({
         authorization: new Headers(init?.headers).get("Authorization"),
         method: init?.method,
@@ -78,10 +143,11 @@ test("Provider media download is unauthenticated, redirect-free and type checked
     method: "GET",
     redirect: "error",
   }]);
+  await result.body.cancel();
 
   await expect(downloadProviderResultMedia({
     apiKey: "safe-key",
-    fetcher: (async () => new Response(Buffer.from("html"), {
+    testFetcher: (async () => new Response(Buffer.from("html"), {
       headers: { "Content-Type": "text/html" },
     })) as typeof fetch,
     kind: "video",
@@ -92,7 +158,7 @@ test("Provider media download is unauthenticated, redirect-free and type checked
   const audio = await downloadProviderResultMedia({
     apiKey: "safe-key",
     expectedContentType: "audio/mp4",
-    fetcher: (async () => new Response(Buffer.from("m4a"), {
+    testFetcher: (async () => new Response(Buffer.from("m4a"), {
       headers: { "Content-Type": "application/octet-stream" },
     })) as typeof fetch,
     kind: "audio",
@@ -100,11 +166,12 @@ test("Provider media download is unauthenticated, redirect-free and type checked
     url: "https://cdn.example.test/result.m4a",
   });
   expect(audio.contentType).toBe("audio/mp4");
+  await audio.body.cancel();
 
   for (const remoteType of ["audio/ogg; codecs=opus", "application/ogg"]) {
     const ogg = await downloadProviderResultMedia({
       apiKey: "safe-key",
-      fetcher: (async () => new Response(Buffer.from("OggS OpusHead"), {
+      testFetcher: (async () => new Response(Buffer.from("OggS OpusHead"), {
         headers: { "Content-Type": remoteType },
       })) as typeof fetch,
       kind: "audio",
@@ -112,11 +179,12 @@ test("Provider media download is unauthenticated, redirect-free and type checked
       url: "https://cdn.example.test/result.ogg",
     });
     expect(ogg.contentType).toBe("audio/ogg");
+    await ogg.body.cancel();
   }
   const opaqueOgg = await downloadProviderResultMedia({
     apiKey: "safe-key",
     expectedContentType: "audio/ogg",
-    fetcher: (async () => new Response(Buffer.from("OggS OpusHead"), {
+    testFetcher: (async () => new Response(Buffer.from("OggS OpusHead"), {
       headers: { "Content-Type": "application/octet-stream" },
     })) as typeof fetch,
     kind: "audio",
@@ -124,20 +192,98 @@ test("Provider media download is unauthenticated, redirect-free and type checked
     url: "https://cdn.example.test/result-opaque.ogg",
   });
   expect(opaqueOgg.contentType).toBe("audio/ogg");
+  await opaqueOgg.body.cancel();
 });
 
-test("Provider result DNS rebinding to a private address is blocked before download", async () => {
-  let fetchCalls = 0;
-  await expect(downloadProviderResultMedia({
+test("Provider result hard deadline covers request and complete body consumption", async () => {
+  const requestTimer = manualDeadline();
+  let requestSignal: AbortSignal | null | undefined;
+  let requestStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    requestStarted = resolve;
+  });
+  const pending = downloadProviderResultMedia({
     apiKey: "safe-key",
-    fetcher: (async () => {
-      fetchCalls += 1;
-      return new Response(Buffer.from("not reached"));
+    deadlineOptions: requestTimer.options,
+    testFetcher: (async (_url, init) => {
+      requestSignal = init?.signal;
+      requestStarted();
+      return await new Promise<Response>(() => undefined);
     }) as typeof fetch,
+    kind: "image",
+    resolver: publicResolver,
+    url: "https://cdn.example.test/request-timeout.png",
+  });
+  await started;
+  requestTimer.expire();
+  await expect(pending).rejects.toMatchObject({ code: "TIMEOUT" });
+  expect(requestSignal?.aborted).toBe(true);
+
+  const bodyTimer = manualDeadline();
+  const downloaded = await downloadProviderResultMedia({
+    apiKey: "safe-key",
+    deadlineOptions: bodyTimer.options,
+    testFetcher: (async () => new Response(new ReadableStream<Uint8Array>({
+      start() {
+        // Headers arrive, but the fake CDN never finishes the body.
+      },
+    }), {
+      headers: { "Content-Type": "video/mp4" },
+      status: 200,
+    })) as typeof fetch,
+    kind: "video",
+    resolver: publicResolver,
+    url: "https://cdn.example.test/body-timeout.mp4",
+  });
+  const read = downloaded.body.getReader().read();
+  bodyTimer.expire();
+  await expect(read).rejects.toMatchObject({ code: "TIMEOUT" });
+});
+
+test("Provider result stream maps caller abort to CANCELLED", async () => {
+  const timer = manualDeadline();
+  const controller = new AbortController();
+  const downloaded = await downloadProviderResultMedia({
+    apiKey: "safe-key",
+    deadlineOptions: timer.options,
+    testFetcher: (async () => new Response(new ReadableStream<Uint8Array>({
+      start() {
+        // The body remains pending until the caller aborts.
+      },
+    }), {
+      headers: { "Content-Type": "audio/mpeg" },
+      status: 200,
+    })) as typeof fetch,
     kind: "audio",
-    resolver: (async () => [{ address: "10.0.0.8", family: 4 }]) as any,
-    url: "https://cdn.example.test/result.mp3",
-  })).rejects.toMatchObject({ code: "FORMAT" });
+    resolver: publicResolver,
+    signal: controller.signal,
+    url: "https://cdn.example.test/cancelled.mp3",
+  });
+  const read = downloaded.body.getReader().read();
+  controller.abort();
+  await expect(read).rejects.toMatchObject({ code: "CANCELLED" });
+});
+
+test("Provider result private and mixed DNS answers are blocked before download", async () => {
+  let fetchCalls = 0;
+  for (const records of [
+    [{ address: "10.0.0.8", family: 4 }],
+    [
+      { address: "8.8.8.8", family: 4 },
+      { address: "fd00::8", family: 6 },
+    ],
+  ]) {
+    await expect(downloadProviderResultMedia({
+      apiKey: "safe-key",
+      testFetcher: (async () => {
+        fetchCalls += 1;
+        return new Response(Buffer.from("not reached"));
+      }) as typeof fetch,
+      kind: "audio",
+      resolver: (async () => records) as any,
+      url: "https://cdn.example.test/result.mp3",
+    })).rejects.toMatchObject({ code: "FORMAT" });
+  }
   expect(fetchCalls).toBe(0);
 });
 

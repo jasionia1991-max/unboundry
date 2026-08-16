@@ -1,7 +1,7 @@
 # Unboundry 节点入参/引用逻辑完整优化计划
 
-状态：`P0/P1 LOCAL CANDIDATE IMPLEMENTED / INPUT-001～007 PARTIAL / NOT ACCEPTANCE PASS`
-更新时间：2026-08-04
+状态：`P0/P1 LOCAL CANDIDATE IMPLEMENTED / INPUT-005 PASS`
+更新时间：2026-08-13
 
 依据：
 
@@ -9,13 +9,17 @@
 - 当前本地的Canvas、四类节点、模型参数schema、生成任务和Provider适配代码。
 - 目标是复刻已确认的Unboundry入参行为，同时给未来新增模型留下可配置扩展点；不复用Lumino/Lumino Web。
 
+2026-08-13 产品裁决：原始实页勘测中 Video 仍要求本节点 Prompt，这一历史事实保留在 survey；用户在旧项目复测后确认该规则造成重复输入，当前产品改为“已就绪上游 Text 或 Video 本节点 Prompt 任一可提供最终 Prompt，两者都有则按顺序合并，两者都没有才阻止”。Provider只接收解析后的非空最终 Prompt，不依赖它来自哪个界面字段。
+
+2026-08-13 验收收口：共享前后端解析器修正及零任务/零付费定向检查通过后，用户在端口58352的隔离实页确认空 Video 本节点 Prompt 能正确使用已就绪上游 Text，原阻止提示消失；`INPUT-005` 恢复为 `PASS`。用户确认与随后当前脏功能树单轮 full `931/931 PASS` 分开记录；二者均不是新的付费生成、固定正式候选或生产发布证据。
+
 ## 一、目标行为基线
 
 | 目标节点 | 允许的直接上游 | 上游作用 | 目标自身Prompt |
 |---|---|---|---|
 | Text | Text、Image、Video、Audio | Text是文字母版/上下文；Image、Video、Audio是多模态理解素材 | 默认必填；允许模型配置为上游Text可代替 |
 | Image | Text、Image | Text是生成指令；Image是参考图 | 上游Text可代替；否则必填 |
-| Video | Text、Image、Video、Audio | Text指令 + 多模态参考素材 | 当前Unboundry实测仍需要目标Prompt；先按必填实现 |
+| Video | Text、Image、Video、Audio | Text指令 + 多模态参考素材 | 上游Text可代替；与本节点Prompt并存时合并；两者都无则必填 |
 | Audio | Text | Text可直接提供生成指令 | 上游Text可代替；歌词仍为独立字段 |
 
 禁止直连：Video→Image、Audio→Image、Image/Video/Audio→Audio。非法拖线不创建edge，应打开与来源类型相匹配的“引用该节点生成”菜单。
@@ -125,7 +129,7 @@ type ModelInputRule = {
 
 - Image：`effectivePrompt = ownPrompt || upstreamText`；若两者都有，默认按“上游母版 + 本节点补充”合并，并允许用户查看最终文本。
 - Text：自身Prompt必填，媒体只进入多模态消息，不拼到纯文本字符串里。
-- Video：自身Prompt必填；上游Text作为附加指令，媒体按角色进入Provider字段。
+- Video：`effectivePrompt = upstreamText + ownPrompt`（只拼接非空部分）；上游Text可独立提供生成指令，本节点Prompt可作为补充，媒体按角色进入Provider字段。
 - Audio：上游Text与自身Prompt按`merge`规则合并；歌词只进入歌词字段，不能混入普通Prompt。
 
 ## 五、服务端与Provider方案

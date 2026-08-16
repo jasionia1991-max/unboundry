@@ -15,11 +15,21 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
 import { useCanvasCheckpoint } from "./CanvasHistory";
 import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
-import { mergePlaylist } from "./playlistExport";
+import {
+  fetchTrustedMediaMetadata,
+  hasTrustedMediaDimensions,
+  trustedMediaPatch,
+} from "./mediaInputMetadata";
+import {
+  downloadMergedPlaylist,
+  PlaylistExportError,
+  publishPlaylist,
+} from "./playlistExport";
 import type { PlaylistClip, ProbeNodeType } from "./ProbeNode";
 import {
   thumbnailStrip,
@@ -45,15 +55,33 @@ function preciseTime(seconds: number, step: number) {
   )}.${String(milliseconds).padStart(3, "0")}`;
 }
 
-function downloadBlob(blob: Blob, name: string) {
-  const url = URL.createObjectURL(blob);
+function downloadDirectVideo(source: string, name: string) {
+  const url = new URL(source, window.location.origin);
+  if (
+    url.origin !== window.location.origin ||
+    !(
+      /^\/api\/video-assets\/[^/]+$/.test(url.pathname) ||
+      /^\/fixtures\/[a-z0-9][a-z0-9._-]{0,120}\.mp4$/i.test(url.pathname)
+    )
+  ) {
+    throw new Error("片段不是可下载的已保存视频");
+  }
   const link = document.createElement("a");
-  link.href = url;
+  link.href = `${url.pathname}${url.search}`;
   link.download = name;
   document.body.append(link);
   link.click();
   link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
+async function discardPlaylistVideoAsset(assetId: string) {
+  try {
+    await fetch(`/api/video-assets/${encodeURIComponent(assetId)}`, {
+      method: "DELETE",
+    });
+  } catch {
+    // A fresh export that was never adopted must remain detached.
+  }
 }
 
 const ClipFrame = memo(function ClipFrame({
@@ -72,11 +100,13 @@ const ClipFrame = memo(function ClipFrame({
 
   useEffect(() => {
     let active = true;
-    void thumbnailStrip(src).then((next) => {
+    const lease = thumbnailStrip(src);
+    void lease.result.then((next) => {
       if (active) setStrip(next);
     });
     return () => {
       active = false;
+      lease.release();
     };
   }, [src]);
 
@@ -410,7 +440,13 @@ function PlaylistNodeImpl({
   const zoomValue = useRef(1);
   const { getNode, getViewport, screenToFlowPosition } =
     useReactFlow<ProbeNodeType>();
-  const { setNodes } = useCanvasGraphMutation();
+  const { setNodes, tryAdoptNodes } = useCanvasGraphMutation();
+  const { accountId, canvasId, persistenceReady } = useGenerationCanvas();
+  const mediaAdoptionScopeRef = useRef(`${accountId}\u0000${canvasId}`);
+  mediaAdoptionScopeRef.current = `${accountId}\u0000${canvasId}`;
+  const persistenceReadyLive = useRef(persistenceReady);
+  persistenceReadyLive.current = persistenceReady;
+  const mountedRef = useRef(true);
   const [activeClipId, setActiveClipId] = useState<string>();
   const [currentTime, setCurrentTime] = useState(0);
   const [dragVisual, setDragVisual] = useState<{
@@ -437,6 +473,12 @@ function PlaylistNodeImpl({
     start: 0,
   });
   const checkpoint = useCanvasCheckpoint();
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   const titleControl = useCompositionSafeText({
     onCommit: (nextTitle) => {
       setTitle(nextTitle);
@@ -861,15 +903,16 @@ function PlaylistNodeImpl({
     });
   };
 
-  const mergedBlob = async () => {
+  const downloadMerged = () => {
     setExportState("正在合并视频…");
     try {
-      const blob = await mergePlaylist(clips);
-      setExportState("导出完成");
-      return blob;
+      downloadMergedPlaylist(
+        clips,
+        `${title || "Playlist"}.mp4`,
+      );
+      setExportState("下载已开始");
     } catch (error) {
       setExportState(error instanceof Error ? error.message : "导出失败");
-      throw error;
     }
   };
 
@@ -877,10 +920,8 @@ function PlaylistNodeImpl({
     setExportState("正在准备原始片段…");
     try {
       for (const [index, clip] of clips.entries()) {
-        const response = await fetch(clip.src);
-        if (!response.ok) throw new Error(`无法读取片段：${clip.title}`);
-        downloadBlob(
-          await response.blob(),
+        downloadDirectVideo(
+          clip.src,
           `${index + 1}-${clip.title || "片段"}.mp4`,
         );
         await new Promise((resolve) => window.setTimeout(resolve, 120));
@@ -1010,12 +1051,8 @@ function PlaylistNodeImpl({
                 </button>
                 <button
                   onClick={() => {
-                    void mergedBlob()
-                      .then((blob) =>
-                        downloadBlob(blob, `${title || "Playlist"}.mp4`),
-                      )
-                      .catch(() => undefined)
-                      .finally(() => setExportMenu(false));
+                    downloadMerged();
+                    setExportMenu(false);
                   }}
                   role="menuitem"
                   type="button"
@@ -1024,29 +1061,53 @@ function PlaylistNodeImpl({
                 </button>
                 <button
                   onClick={() => {
-                    void mergedBlob()
-                      .then(async (blob) => {
-                        const assetId = `${crypto.randomUUID()}.mp4`;
-                        const response = await fetch(
-                          `/api/video-assets/${assetId}`,
-                          {
-                            body: blob,
-                            headers: {
-                              "Content-Type": "video/mp4",
-                              "X-File-Name": encodeURIComponent(
-                                `${title || "Playlist"}.mp4`,
-                              ),
-                            },
-                            method: "POST",
-                          },
-                        );
-                        const asset = await response.json() as {
-                          assetId: string;
-                          error?: string;
-                          url: string;
-                        };
-                        if (!response.ok) {
-                          throw new Error(asset.error ?? "视频保存失败");
+                    if (!persistenceReadyLive.current) return;
+                    const scope = mediaAdoptionScopeRef.current;
+                    const requestedAssetId = `${crypto.randomUUID()}.mp4`;
+                    setExportState("正在合并视频…");
+                    void publishPlaylist(
+                      clips,
+                      requestedAssetId,
+                      `${title || "Playlist"}.mp4`,
+                    )
+                      .then(async (asset) => {
+                        if (asset.assetId !== requestedAssetId) {
+                          throw new Error("服务端返回的视频素材标识不一致");
+                        }
+                        const trustedMetadata =
+                          Number.isSafeInteger(asset.byteSize) &&
+                            Number(asset.byteSize) > 0 &&
+                            asset.contentType === "video/mp4" &&
+                            Number.isFinite(asset.durationSeconds) &&
+                            (asset.storageBackend === "local" ||
+                              asset.storageBackend === "oss") &&
+                            hasTrustedMediaDimensions(asset)
+                            ? {
+                                assetId: asset.assetId,
+                                byteSize: Number(asset.byteSize),
+                                contentType: asset.contentType,
+                                durationSeconds: Number(asset.durationSeconds),
+                                durationStatus: "ready" as const,
+                                kind: "video" as const,
+                                mediaHeight: asset.mediaHeight,
+                                mediaWidth: asset.mediaWidth,
+                                storageBackend: asset.storageBackend,
+                              }
+                            : await fetchTrustedMediaMetadata(
+                                "video",
+                                asset.assetId,
+                              );
+                        if (!hasTrustedMediaDimensions(trustedMetadata)) {
+                          throw new Error("服务端返回的视频尺寸未经可信校验");
+                        }
+                        if (
+                          !mountedRef.current ||
+                          !persistenceReadyLive.current ||
+                          mediaAdoptionScopeRef.current !== scope ||
+                          !getNode(id)
+                        ) {
+                          await discardPlaylistVideoAsset(asset.assetId);
+                          return;
                         }
                         const nodeId = `video-from-${id}-${Date.now()}`;
                         const position = screenToFlowPosition({
@@ -1054,7 +1115,7 @@ function PlaylistNodeImpl({
                           y: window.innerHeight / 2 - 125,
                         });
                         checkpoint();
-                        setNodes((nodes) => {
+                        const adopted = tryAdoptNodes(id, (nodes) => {
                           return [
                             ...nodes,
                             {
@@ -1063,6 +1124,7 @@ function PlaylistNodeImpl({
                               position,
                               data: {
                                 assetId: asset.assetId,
+                                ...trustedMediaPatch(trustedMetadata),
                                 label: "Video",
                                 sourceKind: "video",
                                 title: title || "Playlist",
@@ -1070,23 +1132,36 @@ function PlaylistNodeImpl({
                                 videoCreatedAt: new Intl.DateTimeFormat(
                                   "zh-CN",
                                 ).format(new Date()),
-                                videoDuration: total,
-                                videoFileSize: blob.size,
+                                videoDuration:
+                                  trustedMetadata.durationSeconds ?? total,
+                                videoFileSize: trustedMetadata.byteSize,
+                                videoHeight: trustedMetadata.mediaHeight,
                                 videoModel: "播放列表导出",
                                 videoPrompt: "",
                                 videoSrc: asset.url,
+                                videoWidth: trustedMetadata.mediaWidth,
                               },
                               style: { height: 250, width: 444 },
                             },
                           ];
                         });
+                        if (!adopted) {
+                          await discardPlaylistVideoAsset(asset.assetId);
+                          return;
+                        }
                         setExportState("已导出到画布中央");
                       })
-                      .catch((error) =>
+                      .catch(async (error) => {
+                        if (
+                          !(error instanceof PlaylistExportError) ||
+                          error.status !== 409
+                        ) {
+                          await discardPlaylistVideoAsset(requestedAssetId);
+                        }
                         setExportState(
                           error instanceof Error ? error.message : "导出失败",
-                        ),
-                      )
+                        );
+                      })
                       .finally(() => setExportMenu(false));
                   }}
                   role="menuitem"
@@ -1098,7 +1173,7 @@ function PlaylistNodeImpl({
             )}
           </div>
         )}
-        <div className="playlist-node-title">
+        <div className="canvas-node-title playlist-node-title">
           <svg aria-hidden="true" viewBox="0 0 20 20">
             <rect height="14" rx="2" width="14" x="3" y="3" />
             <path d="M3 7h3M3 13h3M14 7h3M14 13h3M7 3v14M13 3v14" />
@@ -1139,7 +1214,9 @@ function PlaylistNodeImpl({
               value={titleControl.value}
             />
           ) : (
-            <span>{titleControl.committedValue}</span>
+            <span title={titleControl.committedValue}>
+              {titleControl.committedValue}
+            </span>
           )}
         </div>
 

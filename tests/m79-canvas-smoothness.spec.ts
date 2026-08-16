@@ -1,4 +1,32 @@
-import { expect, test } from "@playwright/test";
+import { randomUUID } from "node:crypto";
+import { expect, test, type APIRequestContext } from "./safe-test";
+
+const previewAccount = Object.freeze({
+  displayName: "Preview Performance Owner",
+  loginName: "preview-performance-owner",
+  password: "preview-performance-password-2026",
+});
+
+test.beforeEach(async ({ context }) => {
+  // Use the browser-owned request context so the real production session is
+  // shared with both API setup calls and the page under measurement.
+  const request = context.request;
+  const bootstrap = await request.post("/api/auth/bootstrap", {
+    data: previewAccount,
+  });
+  expect([201, 409]).toContain(bootstrap.status());
+  const login = await request.post("/api/auth/login", {
+    data: {
+      loginName: previewAccount.loginName,
+      password: previewAccount.password,
+    },
+  });
+  expect(login.status()).toBe(200);
+  await expect.poll(async () => {
+    const status = await request.get("/api/auth/status");
+    return (await status.json()) as { authenticated?: boolean };
+  }).toMatchObject({ authenticated: true });
+});
 
 function denseDocument(nodeCount: number) {
   const nodes = Array.from({ length: nodeCount }, (_, index) => ({
@@ -27,6 +55,31 @@ function denseDocument(nodeCount: number) {
     type: "cuttable",
   }));
   return { edges, nodes, revision: 0, viewport: { x: 0, y: 0, zoom: 1 } };
+}
+
+async function saveDenseProjectCanvas(
+  request: APIRequestContext,
+  canvasId: string,
+  nodeCount: number,
+) {
+  const baselineResponse = await request.get(`/api/canvas/${canvasId}`);
+  expect(baselineResponse.ok()).toBeTruthy();
+  const baseline = (await baselineResponse.json()) as {
+    loadToken: string;
+    revision: number;
+  };
+  const saved = await request.put(`/api/canvas/${canvasId}`, {
+    data: {
+      ...denseDocument(nodeCount),
+      observedLoadToken: baseline.loadToken,
+      observedRevision: baseline.revision,
+      revision: baseline.revision,
+      saveAttemptId: randomUUID(),
+      saveSequence: 1,
+      saveSessionId: randomUUID(),
+    },
+  });
+  expect(saved.ok()).toBeTruthy();
 }
 
 function startMeters(page: import("@playwright/test").Page) {
@@ -86,15 +139,14 @@ function summarize(meters: { frames: number[]; longTasks: number[] }) {
 }
 
 test("60-node canvas drag stays smooth in production preview", async ({
+  context,
   page,
-  request,
 }) => {
-  const project = await (
-    await request.post("/api/projects", { data: {} })
-  ).json() as { id: string };
-  await request.put(`/api/canvas/${project.id}`, {
-    data: denseDocument(60),
-  });
+  const request = context.request;
+  const created = await request.post("/api/projects", { data: {} });
+  expect(created.status()).toBe(201);
+  const project = (await created.json()) as { id: string };
+  await saveDenseProjectCanvas(request, project.id, 60);
   await page.goto(`/canvas/${project.id}`);
   await expect(page.getByTestId("canvas-world")).toHaveAttribute(
     "data-persistence-ready",
@@ -126,15 +178,14 @@ test("60-node canvas drag stays smooth in production preview", async ({
 });
 
 test("fast pan keeps visible nodes mounted and zoom-out mounts all", async ({
+  context,
   page,
-  request,
 }) => {
-  const project = await (
-    await request.post("/api/projects", { data: {} })
-  ).json() as { id: string };
-  await request.put(`/api/canvas/${project.id}`, {
-    data: denseDocument(200),
-  });
+  const request = context.request;
+  const created = await request.post("/api/projects", { data: {} });
+  expect(created.status()).toBe(201);
+  const project = (await created.json()) as { id: string };
+  await saveDenseProjectCanvas(request, project.id, 200);
   await page.goto(`/canvas/${project.id}`);
   await expect(page.getByTestId("canvas-world")).toHaveAttribute(
     "data-persistence-ready",

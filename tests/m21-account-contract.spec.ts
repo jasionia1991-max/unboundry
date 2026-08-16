@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 test("the private account contract returns only the current personal scope", async ({
   request,

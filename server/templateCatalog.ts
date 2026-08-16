@@ -3,7 +3,17 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
+import {
+  decodedRequestPath,
+  HttpRequestError,
+  readJsonBody,
+} from "./httpRequest";
 import { isRealCategory } from "../types/templateCategories";
+
+export function accountDeletionBlocksTemplateMutation(error: unknown) {
+  return error instanceof Error &&
+    error.message.includes("account deletion blocks template mutation");
+}
 
 type RawTemplateNode = {
   data?: {
@@ -48,6 +58,7 @@ type TemplateGraphNode = {
 };
 
 type TemplateGraphEdge = {
+  data?: Record<string, unknown>;
   id: string;
   source: string;
   sourceHandle: "source";
@@ -291,18 +302,6 @@ function boundedInteger(value: string | null, fallback: number, maximum: number)
     : undefined;
 }
 
-async function readBody<T>(request: IncomingMessage) {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > 512 * 1_024) throw new Error("Payload too large");
-    chunks.push(bytes);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -408,6 +407,29 @@ export function parseTemplateGraph(value: string): TemplateGraph | undefined {
   }
 }
 
+function readyCoverKind(
+  store: DatabaseSync,
+  ownerId: string | null,
+  assetId: string,
+  expectedKind?: "image" | "video",
+) {
+  if (!ownerId) return undefined;
+  const media = store.prepare(`
+    SELECT kind
+    FROM media_assets
+    WHERE
+      id = ?
+      AND owner_id = ?
+      AND storage_status = 'ready'
+      AND kind IN ('image', 'video')
+  `).all(assetId, ownerId) as Array<{ kind: "image" | "video" }>;
+  const matches = expectedKind
+    ? media.filter((row) => row.kind === expectedKind)
+    : media;
+  if (matches.length !== 1) return undefined;
+  return matches[0].kind;
+}
+
 function resolveTemplateCover(
   store: DatabaseSync,
   ownerId: string,
@@ -419,16 +441,21 @@ function resolveTemplateCover(
     const placeholders = nodeIds.map(() => "?").join(",");
     const task = store
       .prepare(`
-        SELECT result_asset_id
-        FROM generation_tasks
+        SELECT tasks.result_asset_id
+        FROM generation_tasks AS tasks
+        JOIN media_assets AS media
+          ON media.id = tasks.result_asset_id
+          AND media.kind = tasks.kind
+          AND media.owner_id = tasks.owner_id
+          AND media.storage_status = 'ready'
         WHERE
-          canvas_id = ?
-          AND owner_id = ?
-          AND state = 'success'
-          AND kind IN ('image', 'video')
-          AND result_asset_id IS NOT NULL
-          AND node_id IN (${placeholders})
-        ORDER BY updated_at DESC, rowid DESC
+          tasks.canvas_id = ?
+          AND tasks.owner_id = ?
+          AND tasks.state = 'success'
+          AND tasks.kind IN ('image', 'video')
+          AND tasks.result_asset_id IS NOT NULL
+          AND tasks.node_id IN (${placeholders})
+        ORDER BY tasks.updated_at DESC, tasks.rowid DESC
         LIMIT 1
       `)
       .get(sourceCanvasId, ownerId, ...nodeIds) as
@@ -439,7 +466,11 @@ function resolveTemplateCover(
   for (const node of graph.nodes) {
     if (node.type !== "image" && node.type !== "video") continue;
     const assetId = node.data.assetId;
-    if (typeof assetId === "string" && assetId.trim()) return assetId.trim();
+    if (
+      typeof assetId === "string" &&
+      assetId.trim() &&
+      readyCoverKind(store, ownerId, assetId.trim(), node.type)
+    ) return assetId.trim();
   }
   return null;
 }
@@ -452,29 +483,8 @@ export function userTemplateCard(
 ): UserTemplateCard {
   let cover: UserTemplateCard["cover"] = null;
   if (row.cover_asset_id) {
-    const media = store
-      .prepare(`
-        SELECT kind
-        FROM media_assets
-        WHERE id = ? AND owner_id = ?
-      `)
-      .get(row.cover_asset_id, ownerId) as
-      | { kind: "audio" | "image" | "video" }
-      | undefined;
-    let kind = media?.kind;
-    if (kind !== "image" && kind !== "video") {
-      // 素材登记可能已被清理：按模板图内的节点类型兜底，仍可渲染封面。
-      const graph = parseTemplateGraph(row.graph);
-      const node = graph?.nodes.find(
-        (candidate) =>
-          (candidate.type === "image" || candidate.type === "video") &&
-          candidate.data.assetId === row.cover_asset_id,
-      );
-      if (node && (node.type === "image" || node.type === "video")) {
-        kind = node.type;
-      }
-    }
-    if (kind === "image" || kind === "video") {
+    const kind = readyCoverKind(store, ownerId, row.cover_asset_id);
+    if (kind) {
       cover = { assetId: row.cover_asset_id, kind };
     }
   }
@@ -513,24 +523,11 @@ export function publicTemplateCard(
 ): PublicTemplateCard {
   let cover: PublicTemplateCard["cover"] = null;
   if (row.cover_asset_id) {
-    const media = store
-      .prepare("SELECT kind FROM media_assets WHERE id = ?")
-      .get(row.cover_asset_id) as
-      | { kind: "audio" | "image" | "video" }
-      | undefined;
-    let kind = media?.kind;
-    if (kind !== "image" && kind !== "video") {
-      const graph = parseTemplateGraph(row.graph);
-      const node = graph?.nodes.find(
-        (candidate) =>
-          (candidate.type === "image" || candidate.type === "video") &&
-          candidate.data.assetId === row.cover_asset_id,
-      );
-      if (node && (node.type === "image" || node.type === "video")) {
-        kind = node.type;
-      }
-    }
-    if (kind === "image" || kind === "video") {
+    // Public cards remain publicly listable, but resolving their cover must not
+    // grant cross-account media access. Only the creator's ready media may be
+    // referenced; seed templates without an owner use preview_image instead.
+    const kind = readyCoverKind(store, row.created_by, row.cover_asset_id);
+    if (kind) {
       cover = { assetId: row.cover_asset_id, kind };
     }
   }
@@ -747,7 +744,7 @@ export async function templateCatalogApi(
   response: ServerResponse,
 ) {
   const identity = requestIdentity(request);
-  const path = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+  const path = decodedRequestPath(request).replace(
     /^\/+/,
     "",
   );
@@ -829,12 +826,23 @@ export async function templateCatalogApi(
       return;
     }
     try {
-      const input = await readBody<Record<string, unknown>>(request);
+      const input = await readJsonBody<Record<string, unknown>>(
+        request,
+        512 * 1_024,
+      );
       const row = saveUserTemplate(store, identity.userId, input);
       json(response, 201, {
         template: userTemplateCard(store, identity.userId, row, false),
       });
     } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
+      if (accountDeletionBlocksTemplateMutation(error)) {
+        json(response, 409, {
+          code: "ACCOUNT_DELETE_ACTIVE",
+          error: "账号删除正在进行，不能再保存模板",
+        });
+        return;
+      }
       const message = error instanceof Error ? error.message : "模板保存失败";
       json(response, 400, { error: message });
     }

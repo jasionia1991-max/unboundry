@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import {
   ADMIN_ONLY_PERMISSIONS,
   ALL_PERMISSIONS,
@@ -12,13 +12,17 @@ import {
 } from "../types/accountPermissions";
 import { currentSchemaVersion, openAppDatabase } from "../server/database";
 import {
+  AccountPermissionMutationBlockedError,
+  accountExtraPermissionsFromWriteInput,
   accountPermissionSet,
+  accountPermissionSnapshot,
   hasPermission,
+  setAccountExtraPermissions,
   setAccountPermissions,
 } from "../server/permissions";
 import type { RequestIdentity } from "../server/auth";
 
-const port = 4198;
+const port = Number(process.env.UNBOUNDRY_TEST_AUX_PORT);
 const origin = `http://127.0.0.1:${port}`;
 const vite = join(process.cwd(), "node_modules/vite/bin/vite.js");
 
@@ -220,6 +224,31 @@ test("hasPermission and setAccountPermissions enforce the extra-grant model", as
       expect(hasPermission(userAIdentity, permission, store)).toBe(true);
     }
     expect(hasPermission(userAIdentity, "manage_models", store)).toBe(false);
+    expect(accountPermissionSnapshot(store, "perm-user-a")).toEqual({
+      defaultPermissions: [...DEFAULT_USER_PERMISSIONS],
+      effectivePermissions: [...DEFAULT_USER_PERMISSIONS],
+      extraPermissions: [],
+      permissions: [...DEFAULT_USER_PERMISSIONS],
+    });
+    expect(accountPermissionSnapshot(store, "perm-admin")).toEqual({
+      defaultPermissions: [...ALL_PERMISSIONS],
+      effectivePermissions: [...ALL_PERMISSIONS],
+      extraPermissions: [],
+      permissions: [...ALL_PERMISSIONS],
+    });
+    expect(accountExtraPermissionsFromWriteInput({
+      extraPermissions: ["manage_storage", "manage_models"],
+    })).toEqual(["manage_models", "manage_storage"]);
+    expect(accountExtraPermissionsFromWriteInput({
+      permissions: ["manage_models", "generate"],
+    })).toEqual(["manage_models"]);
+    expect(() => accountExtraPermissionsFromWriteInput({
+      extraPermissions: ["generate"],
+    })).toThrow("默认权限");
+    expect(() => accountExtraPermissionsFromWriteInput({
+      extraPermissions: [],
+      permissions: [],
+    })).toThrow("不能同时提交");
 
     // 非法/越权/自改/管理员目标全部拒绝。
     expect(() =>
@@ -253,9 +282,8 @@ test("hasPermission and setAccountPermissions enforce the extra-grant model", as
     ).toThrow("账号不存在");
 
     // 授予额外权限：默认权限不落库；撤销后不再有额外权限。
-    setAccountPermissions(store, "perm-admin", "perm-user-a", [
+    setAccountExtraPermissions(store, "perm-admin", "perm-user-a", [
       "manage_models",
-      "generate",
     ]);
     const granted = accountPermissionSet(store, "perm-user-a");
     expect(granted.has("manage_models")).toBe(true);
@@ -284,6 +312,76 @@ test("hasPermission and setAccountPermissions enforce the extra-grant model", as
     ).toMatchObject({
       action: "account_permissions.update",
     });
+    expect(accountPermissionSnapshot(store, "perm-user-a")).toEqual({
+      defaultPermissions: [...DEFAULT_USER_PERMISSIONS],
+      effectivePermissions: [
+        "manage_models",
+        ...DEFAULT_USER_PERMISSIONS,
+      ],
+      extraPermissions: ["manage_models"],
+      permissions: ["manage_models", ...DEFAULT_USER_PERMISSIONS],
+    });
+
+    // Disabled targets remain administratively editable; deletion intent wins.
+    store.prepare("UPDATE users SET status = 'disabled' WHERE id = ?")
+      .run("perm-user-a");
+    expect(
+      setAccountExtraPermissions(store, "perm-admin", "perm-user-a", [
+        "manage_models",
+        "manage_storage",
+      ]),
+    ).toEqual({ added: ["manage_storage"], removed: [] });
+    expect(
+      setAccountExtraPermissions(store, "perm-admin", "perm-user-a", [
+        "manage_models",
+      ]),
+    ).toEqual({ added: [], removed: ["manage_storage"] });
+
+    const auditCountBeforeDeleteIntent = Number((store.prepare(`
+      SELECT COUNT(*) AS count
+      FROM admin_audit_events
+      WHERE action = 'account_permissions.update'
+    `).get() as { count: number }).count);
+    store.prepare(`
+      INSERT INTO account_delete_intents (
+        owner_id, state, error_code, retry_count, created_at, updated_at
+      ) VALUES (?, 'running', NULL, 0, ?, ?)
+    `).run("perm-user-a", now, now);
+    let targetDeleteError: unknown;
+    try {
+      setAccountExtraPermissions(store, "perm-admin", "perm-user-a", [
+        "manage_storage",
+      ]);
+    } catch (error) {
+      targetDeleteError = error;
+    }
+    expect(targetDeleteError).toBeInstanceOf(
+      AccountPermissionMutationBlockedError,
+    );
+    expect(targetDeleteError).toMatchObject({ code: "ACCOUNT_DELETE_ACTIVE" });
+    expect(accountPermissionSnapshot(store, "perm-user-a").extraPermissions)
+      .toEqual(["manage_models"]);
+    store.prepare("DELETE FROM account_delete_intents WHERE owner_id = ?")
+      .run("perm-user-a");
+    store.prepare(`
+      INSERT INTO account_delete_intents (
+        owner_id, state, error_code, retry_count, created_at, updated_at
+      ) VALUES (?, 'failed', 'TEST', 1, ?, ?)
+    `).run("perm-admin", now, now);
+    let actorDeleteError: unknown;
+    try {
+      setAccountExtraPermissions(store, "perm-admin", "perm-user-a", []);
+    } catch (error) {
+      actorDeleteError = error;
+    }
+    expect(actorDeleteError).toMatchObject({ code: "ACCOUNT_DELETE_ACTIVE" });
+    store.prepare("DELETE FROM account_delete_intents WHERE owner_id = ?")
+      .run("perm-admin");
+    expect(Number((store.prepare(`
+      SELECT COUNT(*) AS count
+      FROM admin_audit_events
+      WHERE action = 'account_permissions.update'
+    `).get() as { count: number }).count)).toBe(auditCountBeforeDeleteIntent);
 
     setAccountPermissions(store, "perm-admin", "perm-user-a", []);
     expect(hasPermission(userAIdentity, "manage_models", store)).toBe(false);
@@ -364,6 +462,9 @@ test("permission API enforces guards, grants/revokes extras and audits", async (
     );
     expect(readOrdinary.status).toBe(200);
     expect(await readOrdinary.json()).toEqual({
+      defaultPermissions: [...DEFAULT_USER_PERMISSIONS],
+      effectivePermissions: [...DEFAULT_USER_PERMISSIONS],
+      extraPermissions: [],
       permissions: [
         "manage_projects",
         "generate",
@@ -382,9 +483,12 @@ test("permission API enforces guards, grants/revokes extras and audits", async (
       { cookie: adminCookie },
     );
     expect(readAdmin.status).toBe(200);
-    expect(
-      ((await readAdmin.json()) as { permissions: string[] }).permissions,
-    ).toHaveLength(12);
+    expect(await readAdmin.json()).toMatchObject({
+      defaultPermissions: [...ALL_PERMISSIONS],
+      effectivePermissions: [...ALL_PERMISSIONS],
+      extraPermissions: [],
+      permissions: [...ALL_PERMISSIONS],
+    });
 
     // 普通账号无 manage_permissions / manage_accounts：相关接口 403。
     expect(
@@ -421,7 +525,7 @@ test("permission API enforces guards, grants/revokes extras and audits", async (
     const invalid = await request(
       `/api/admin/users/${ordinaryId}/permissions`,
       {
-        body: JSON.stringify({ permissions: ["manage_unknown"] }),
+        body: JSON.stringify({ extraPermissions: ["manage_unknown"] }),
         cookie: adminCookie,
         method: "PUT",
       },
@@ -430,7 +534,7 @@ test("permission API enforces guards, grants/revokes extras and audits", async (
     const selfWrite = await request(
       `/api/admin/users/${adminId}/permissions`,
       {
-        body: JSON.stringify({ permissions: [] }),
+        body: JSON.stringify({ extraPermissions: [] }),
         cookie: adminCookie,
         method: "PUT",
       },
@@ -439,7 +543,7 @@ test("permission API enforces guards, grants/revokes extras and audits", async (
     const superGrant = await request(
       `/api/admin/users/${ordinaryId}/permissions`,
       {
-        body: JSON.stringify({ permissions: ["manage_accounts"] }),
+        body: JSON.stringify({ extraPermissions: ["manage_accounts"] }),
         cookie: adminCookie,
         method: "PUT",
       },
@@ -451,7 +555,7 @@ test("permission API enforces guards, grants/revokes extras and audits", async (
       `/api/admin/users/${ordinaryId}/permissions`,
       {
         body: JSON.stringify({
-          permissions: ["manage_models", "generate"],
+          extraPermissions: ["manage_models"],
         }),
         cookie: adminCookie,
         method: "PUT",
@@ -460,6 +564,12 @@ test("permission API enforces guards, grants/revokes extras and audits", async (
     expect(grant.status).toBe(200);
     expect(await grant.json()).toMatchObject({
       added: ["manage_models"],
+      defaultPermissions: [...DEFAULT_USER_PERMISSIONS],
+      effectivePermissions: [
+        "manage_models",
+        ...DEFAULT_USER_PERMISSIONS,
+      ],
+      extraPermissions: ["manage_models"],
       permissions: [
         "manage_models",
         "manage_projects",
@@ -469,6 +579,104 @@ test("permission API enforces guards, grants/revokes extras and audits", async (
         "manage_own_credentials",
       ],
     });
+    const legacyNoop = await request(
+      `/api/admin/users/${ordinaryId}/permissions`,
+      {
+        body: JSON.stringify({
+          permissions: ["manage_models", ...DEFAULT_USER_PERMISSIONS],
+        }),
+        cookie: adminCookie,
+        method: "PUT",
+      },
+    );
+    expect(legacyNoop.status).toBe(200);
+    expect(await legacyNoop.json()).toMatchObject({
+      added: [],
+      extraPermissions: ["manage_models"],
+      removed: [],
+    });
+    const ambiguous = await request(
+      `/api/admin/users/${ordinaryId}/permissions`,
+      {
+        body: JSON.stringify({ extraPermissions: [], permissions: [] }),
+        cookie: adminCookie,
+        method: "PUT",
+      },
+    );
+    expect(ambiguous.status).toBe(400);
+    const intentStore = openAppDatabase(dataDirectory);
+    try {
+      const now = timestamp();
+      intentStore.prepare("UPDATE users SET status = 'disabled' WHERE id = ?")
+        .run(ordinaryId);
+    } finally {
+      intentStore.close();
+    }
+    const disabledGrant = await request(
+      `/api/admin/users/${ordinaryId}/permissions`,
+      {
+        body: JSON.stringify({
+          extraPermissions: ["manage_models", "manage_storage"],
+        }),
+        cookie: adminCookie,
+        method: "PUT",
+      },
+    );
+    expect(disabledGrant.status).toBe(200);
+    expect(await disabledGrant.json()).toMatchObject({
+      added: ["manage_storage"],
+      extraPermissions: ["manage_models", "manage_storage"],
+      removed: [],
+    });
+    const disabledRevoke = await request(
+      `/api/admin/users/${ordinaryId}/permissions`,
+      {
+        body: JSON.stringify({ extraPermissions: ["manage_models"] }),
+        cookie: adminCookie,
+        method: "PUT",
+      },
+    );
+    expect(disabledRevoke.status).toBe(200);
+    expect(await disabledRevoke.json()).toMatchObject({
+      added: [],
+      extraPermissions: ["manage_models"],
+      removed: ["manage_storage"],
+    });
+    const deleteIntentStore = openAppDatabase(dataDirectory);
+    try {
+      const now = timestamp();
+      deleteIntentStore.prepare(`
+        INSERT INTO account_delete_intents (
+          owner_id, state, error_code, retry_count, created_at, updated_at
+        ) VALUES (?, 'running', NULL, 0, ?, ?)
+      `).run(ordinaryId, now, now);
+    } finally {
+      deleteIntentStore.close();
+    }
+    const blockedByDeleteIntent = await request(
+      `/api/admin/users/${ordinaryId}/permissions`,
+      {
+        body: JSON.stringify({ extraPermissions: ["manage_storage"] }),
+        cookie: adminCookie,
+        method: "PUT",
+      },
+    );
+    expect(blockedByDeleteIntent.status).toBe(409);
+    expect(await blockedByDeleteIntent.json()).toMatchObject({
+      code: "ACCOUNT_DELETE_ACTIVE",
+    });
+    const intentCleanup = openAppDatabase(dataDirectory);
+    try {
+      intentCleanup.prepare(
+        "DELETE FROM account_delete_intents WHERE owner_id = ?",
+      ).run(ordinaryId);
+      intentCleanup.prepare("UPDATE users SET status = 'active' WHERE id = ?")
+        .run(ordinaryId);
+      expect(accountPermissionSnapshot(intentCleanup, ordinaryId).extraPermissions)
+        .toEqual(["manage_models"]);
+    } finally {
+      intentCleanup.close();
+    }
     expect(
       (await request("/api/admin/models", { cookie: userCookie })).status,
     ).toBe(200);
@@ -488,13 +696,17 @@ test("permission API enforces guards, grants/revokes extras and audits", async (
     const revoke = await request(
       `/api/admin/users/${ordinaryId}/permissions`,
       {
-        body: JSON.stringify({ permissions: [] }),
+        body: JSON.stringify({ extraPermissions: [] }),
         cookie: adminCookie,
         method: "PUT",
       },
     );
     expect(revoke.status).toBe(200);
-    expect(await revoke.json()).toMatchObject({ removed: ["manage_models"] });
+    expect(await revoke.json()).toMatchObject({
+      effectivePermissions: [...DEFAULT_USER_PERMISSIONS],
+      extraPermissions: [],
+      removed: ["manage_models"],
+    });
     expect(
       (await request("/api/admin/models", { cookie: userCookie })).status,
     ).toBe(403);
@@ -509,6 +721,7 @@ test("admin account page edits permissions with compact checkboxes and persisten
 }) => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-perm-ui-"));
   let server: ChildProcess | undefined;
+  let releasePermissionSave = () => {};
   try {
     server = await startServer(dataDirectory);
     const bootstrap = await page.request.post("/api/auth/bootstrap", {
@@ -530,6 +743,37 @@ test("admin account page edits permissions with compact checkboxes and persisten
     const ordinaryId = (
       (await created.json()).user as { id: string }
     ).id;
+    const seeded = await page.request.put(
+      `/api/admin/users/${ordinaryId}/permissions`,
+      { data: { extraPermissions: ["manage_models"] } },
+    );
+    expect(seeded.status()).toBe(200);
+    const permissionWrites: unknown[] = [];
+    let signalPermissionSaveStarted = () => {};
+    const permissionSaveStarted = new Promise<void>((resolve) => {
+      signalPermissionSaveStarted = resolve;
+    });
+    const permissionSaveReleased = new Promise<void>((resolve) => {
+      releasePermissionSave = resolve;
+    });
+    await page.route(
+      `**/api/admin/users/${ordinaryId}/permissions`,
+      async (route) => {
+        if (route.request().method() === "PUT") {
+          signalPermissionSaveStarted();
+          await permissionSaveReleased;
+        }
+        await route.continue();
+      },
+    );
+    page.on("request", (browserRequest) => {
+      if (
+        browserRequest.method() === "PUT" &&
+        browserRequest.url().endsWith(`/api/admin/users/${ordinaryId}/permissions`)
+      ) {
+        permissionWrites.push(browserRequest.postDataJSON());
+      }
+    });
 
     await page.goto("/admin/accounts");
     const section = page.getByTestId(`permissions-${ordinaryId}`);
@@ -547,12 +791,45 @@ test("admin account page edits permissions with compact checkboxes and persisten
     await expect(
       section.getByRole("checkbox", { name: /权限管理/ }),
     ).toBeDisabled();
+    await expect(
+      section.getByRole("checkbox", { name: /发起生成/ }),
+    ).toBeDisabled();
+    await expect(
+      section.getByRole("checkbox", { name: /发起生成/ }),
+    ).toBeChecked();
+    await expect(
+      section.getByRole("checkbox", { name: /模型中心/ }),
+    ).toBeChecked();
+    await expect(
+      section.getByRole("button", { name: "保存权限" }),
+    ).toBeDisabled();
+    expect(permissionWrites).toEqual([]);
 
-    await section.getByRole("checkbox", { name: /模型中心/ }).check();
     await section.getByRole("checkbox", { name: /生成安全/ }).check();
     await expect(section.getByText("有未保存的修改")).toBeVisible();
-    await section.getByRole("button", { name: "保存权限" }).click();
+    await section.getByRole("checkbox", { name: /生成安全/ }).uncheck();
     await expect(section.getByText("有未保存的修改")).toHaveCount(0);
+    await expect(
+      section.getByRole("button", { name: "保存权限" }),
+    ).toBeDisabled();
+    expect(permissionWrites).toEqual([]);
+    await section.getByRole("checkbox", { name: /生成安全/ }).check();
+    const generationSafety = section.getByRole("checkbox", { name: /生成安全/ });
+    await section.getByRole("button", { name: "保存权限" }).click();
+    await permissionSaveStarted;
+    await expect(generationSafety).toBeDisabled();
+    await expect(
+      section.getByRole("button", { name: "保存中…" }),
+    ).toBeDisabled();
+    await generationSafety.evaluate((checkbox: HTMLInputElement) => {
+      checkbox.click();
+    });
+    await expect(generationSafety).toBeChecked();
+    releasePermissionSave();
+    await expect(section.getByText("有未保存的修改")).toHaveCount(0);
+    expect(permissionWrites).toEqual([{
+      extraPermissions: ["manage_models", "manage_generation_safety"],
+    }]);
 
     await page.reload();
     const reloaded = page.getByTestId(`permissions-${ordinaryId}`);
@@ -570,8 +847,89 @@ test("admin account page edits permissions with compact checkboxes and persisten
       `/api/admin/users/${ordinaryId}/permissions`,
     );
     expect(
-      ((await read.json()) as { permissions: string[] }).permissions,
-    ).toContain("manage_models");
+      ((await read.json()) as { extraPermissions: string[] }).extraPermissions,
+    ).toEqual(["manage_models", "manage_generation_safety"]);
+  } finally {
+    releasePermissionSave();
+    if (server) await stopServer(server);
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("permission load failure is fail-closed and never submits an empty grant set", async ({
+  page,
+}) => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-perm-ui-load-"));
+  let server: ChildProcess | undefined;
+  try {
+    server = await startServer(dataDirectory);
+    expect((await page.request.post("/api/auth/bootstrap", {
+      data: {
+        displayName: "Owner",
+        loginName: "owner",
+        password: "owner-password-123",
+      },
+    })).status()).toBe(201);
+    const created = await page.request.post("/api/admin/users", {
+      data: {
+        displayName: "Load failure user",
+        loginName: "load-failure-user",
+        password: "load-failure-password-123",
+      },
+    });
+    expect(created.status()).toBe(201);
+    const ordinaryId = (
+      (await created.json()).user as { id: string }
+    ).id;
+    expect((await page.request.put(
+      `/api/admin/users/${ordinaryId}/permissions`,
+      { data: { extraPermissions: ["manage_models"] } },
+    )).status()).toBe(200);
+
+    let permissionWrites = 0;
+    const permissionRoute =
+      `**/api/admin/users/${ordinaryId}/permissions`;
+    await page.route(permissionRoute, async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({
+          body: JSON.stringify({ error: "deterministic permission read failure" }),
+          contentType: "application/json",
+          status: 503,
+        });
+        return;
+      }
+      if (route.request().method() === "PUT") permissionWrites += 1;
+      await route.continue();
+    });
+
+    await page.goto("/admin/accounts");
+    const section = page.getByTestId(`permissions-${ordinaryId}`);
+    await expect(section.getByTestId(`permissions-load-${ordinaryId}`))
+      .toContainText("权限读取失败");
+    const save = section.getByRole("button", { name: "保存权限" });
+    await expect(save).toBeDisabled();
+    await save.evaluate((button: HTMLButtonElement) => button.click());
+    expect(permissionWrites).toBe(0);
+
+    const store = openAppDatabase(dataDirectory);
+    try {
+      expect(store.prepare(`
+        SELECT permission
+        FROM account_permissions
+        WHERE account_id = ?
+        ORDER BY permission
+      `).all(ordinaryId)).toEqual([{ permission: "manage_models" }]);
+    } finally {
+      store.close();
+    }
+
+    await page.unroute(permissionRoute);
+    await section.getByRole("button", { name: "重试读取" }).click();
+    await expect(
+      section.getByRole("checkbox", { name: /模型中心/ }),
+    ).toBeChecked();
+    await expect(save).toBeDisabled();
+    expect(permissionWrites).toBe(0);
   } finally {
     if (server) await stopServer(server);
     await rm(dataDirectory, { force: true, recursive: true });
@@ -612,8 +970,35 @@ test("ordinary accounts see only granted entries and direct admin routes redirec
         password: "ordinary-pass-123",
       },
     });
+    await page.addInitScript(() => {
+      const key = "m78-unauthorized-admin-rendered";
+      if (sessionStorage.getItem(key) === null) {
+        sessionStorage.setItem(key, "false");
+      }
+      new MutationObserver(() => {
+        if (document.querySelector('[data-testid="admin-models-page"]')) {
+          sessionStorage.setItem(key, "true");
+        }
+      }).observe(document, { childList: true, subtree: true });
+    });
     await page.goto("/admin/models");
-    await page.waitForURL("/");
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByTestId("admin-models-page")).toHaveCount(0);
+    expect(
+      await page.evaluate(() =>
+        sessionStorage.getItem("m78-unauthorized-admin-rendered")
+      ),
+    ).toBe("false");
+    const redirectedUrl = page.url();
+    expect(
+      await page.evaluate(() =>
+        new Promise<string>((resolve) => {
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => resolve(window.location.href))
+          );
+        })
+      ),
+    ).toBe(redirectedUrl);
     await page.goto("/canvas");
     await page.getByTestId("user-avatar").click();
     const popover = page.getByTestId("account-popover");
@@ -647,6 +1032,7 @@ test("ordinary accounts see only granted entries and direct admin routes redirec
       },
     });
     await page.goto("/admin/models");
+    await expect(page).toHaveURL(/\/admin\/models$/);
     await expect(page.getByTestId("admin-models-page")).toBeVisible();
     await page.goto("/canvas");
     await page.getByTestId("user-avatar").click();
@@ -744,7 +1130,7 @@ test("deleting an account removes its permission rows and keeps audit history", 
           ).count,
         ),
       ).toBe(0);
-      // 删除事务清空历史审计，删除动作本身在事务外再记一条 delete_user。
+      // 同一最终事务清空历史审计并写入唯一 delete_user，任一步失败都回滚。
       const auditAfter = store
         .prepare(`
           SELECT action

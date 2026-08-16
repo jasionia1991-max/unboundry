@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./safe-test";
 import {
   canvasDocumentFingerprint,
   canvasGraphFingerprint,
@@ -156,12 +156,15 @@ test("server graph revision stays stable for viewport-only saves", async ({
   expect(created.ok()).toBe(true);
   const first = await created.json() as {
     graphRevision: number;
+    loadToken: string;
     revision: number;
   };
 
   const viewportSave = await request.put(`/api/canvas/${canvasId}`, {
     data: {
       ...initial,
+      observedLoadToken: first.loadToken,
+      observedRevision: first.revision,
       revision: first.revision,
       viewport: { x: 120, y: -80, zoom: 1.4 },
     },
@@ -169,6 +172,7 @@ test("server graph revision stays stable for viewport-only saves", async ({
   expect(viewportSave.ok()).toBe(true);
   const second = await viewportSave.json() as {
     graphRevision: number;
+    loadToken: string;
     revision: number;
   };
   expect(second.revision).toBe(first.revision + 1);
@@ -178,6 +182,8 @@ test("server graph revision stays stable for viewport-only saves", async ({
     data: {
       ...initial,
       nodes: [{ data: { content: "新节点" }, id: "text-a", type: "text" }],
+      observedLoadToken: second.loadToken,
+      observedRevision: second.revision,
       revision: second.revision,
       viewport: { x: 120, y: -80, zoom: 1.4 },
     },

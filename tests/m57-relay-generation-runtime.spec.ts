@@ -1,9 +1,10 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   createGenerationTaskStore,
+  generationProviderAttemptCounts,
   type GenerationTask,
 } from "../server/generationTaskStore";
 import { openAppDatabase } from "../server/database";
@@ -237,6 +238,50 @@ test("relay media parameters use explicit role mapping and keep transient URLs o
     }),
     async () => "https://signed.example.test/unused",
   )).rejects.toMatchObject({ code: "FORMAT" });
+
+  const grokTask = relayTask("video", "media-generate", {
+    parameters: {
+      aspectRatio: "16:9",
+      duration: "1",
+      inputSchemaVersion: 1,
+      inputs: [
+        { assetId: "first.png", kind: "image", order: 1, role: "first-frame", sourceNodeId: "first" },
+      ],
+      resolution: "480p",
+    },
+    providerModelId: "grok-imagine-video-1.5-preview",
+  });
+
+  await expect(relayMediaParametersForTask(grokTask, async ({ assetId }) =>
+    `https://signed.example.test/${assetId}?expires=300`
+  )).resolves.toEqual({
+    aspect_ratio: "16:9",
+    duration: "1",
+    images: ["https://signed.example.test/first.png?expires=300"],
+    resolution: "480p",
+  });
+
+  await expect(relayMediaParametersForTask(
+    relayTask("video", "media-generate", {
+      parameters: { inputSchemaVersion: 1, inputs: [] },
+      providerModelId: "grok-imagine-video-1.5-preview",
+    }),
+    async () => "https://signed.example.test/unused",
+  )).rejects.toMatchObject({ code: "FORMAT" });
+
+  await expect(relayMediaParametersForTask(
+    relayTask("video", "media-generate", {
+      parameters: {
+        inputSchemaVersion: 1,
+        inputs: [
+          { assetId: "first.png", kind: "image", order: 1, role: "first-frame", sourceNodeId: "first" },
+          { assetId: "second.png", kind: "image", order: 2, role: "first-frame", sourceNodeId: "second" },
+        ],
+      },
+      providerModelId: "grok-imagine-video-1.5-preview",
+    }),
+    async ({ assetId }) => `https://signed.example.test/${assetId}?expires=300`,
+  )).rejects.toMatchObject({ code: "FORMAT" });
 });
 
 test("Doubao TTS relay audio maps documented UI fields without forwarding snapshots", async () => {
@@ -380,10 +425,6 @@ test("relay media image video and audio share local-only cancel and resumable ta
       providerTaskId: `remote:${kind}:001`,
       state: "failed",
     });
-    expect(retrySafetyDecision(task)).toEqual({
-      allowed: true,
-      mode: "resume-provider-task",
-    });
     expect(generationTaskCancellationMode({ ...task, state: "running" }))
       .toBe("cancel-relay-media-local");
   }
@@ -397,9 +438,13 @@ test("relay media image video and audio share local-only cancel and resumable ta
       kind: "image",
       modelConfiguration: { providerProtocol: "media-generate" },
       nodeId: "relay-image-node",
+      ownerId: "__test__",
       prompt: "image",
+      providerModelId: "relay-image-model",
+      providerProfileId: relayProfile.id,
     });
     store.transition(created.task.id, "running");
+    store.recordProviderAttempt(created.task.id);
     store.setProviderTaskId(created.task.id, "remote:image:001");
     store.transition(created.task.id, "failed", { code: "TIMEOUT", message: "timeout" });
     store.transition(
@@ -411,6 +456,121 @@ test("relay media image video and audio share local-only cancel and resumable ta
     expect(store.get(created.task.id)?.providerTaskId).toBe("remote:image:001");
     store.close();
   } finally {
+    await rm(directory, { force: true, recursive: true });
+  }
+});
+
+test("a lost relay response remains outcome-unknown across reopen and blocks paid retry", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-relay-unknown-outcome-"));
+  const previousDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
+  let store: ReturnType<typeof createGenerationTaskStore> | undefined;
+  try {
+    store = createGenerationTaskStore(directory);
+    const created = store.create({
+      canvasId: "relay-unknown-outcome-canvas",
+      idempotencyKey: "relay-unknown-outcome-0001",
+      kind: "text",
+      modelConfiguration: {
+        providerConfigurationVersion: 1,
+        providerDriver: "multi-protocol-relay",
+        providerProtocol: "openai-chat",
+      },
+      nodeId: "relay-unknown-outcome-node",
+      ownerId: "__test__",
+      parameters: { inputSchemaVersion: 1, inputs: [] },
+      prompt: "the remote may have received this exact request",
+      providerModelId: "relay-text-model",
+      providerProfileId: relayProfile.id,
+    });
+    let providerSubmits = 0;
+    await executeTextTaskWithDependencies(created.task.id, {
+      acquireProfile: async () => ({
+        profile: relayProfile,
+        release() {},
+      }),
+      fetcher: async () => {
+        providerSubmits += 1;
+        throw new TypeError("synthetic response lost after request acceptance");
+      },
+      mediaUrlForOwner: async () => "unused",
+      store,
+    });
+
+    expect(providerSubmits).toBe(1);
+    expect(store.get(created.task.id)).toMatchObject({
+      errorCode: "NETWORK",
+      providerTaskId: undefined,
+      state: "failed",
+    });
+    expect(store.getProviderAttemptForTask(created.task.id)).toMatchObject({
+      executionAttempt: 1,
+      failureCode: "NETWORK",
+      outcome: "outcome-unknown",
+    });
+
+    store.close();
+    store = undefined;
+    const reopened = createGenerationTaskStore(directory);
+    const failed = reopened.get(created.task.id);
+    expect(reopened.getProviderAttemptForTask(created.task.id)).toMatchObject({
+      executionAttempt: 1,
+      failureCode: "NETWORK",
+      outcome: "outcome-unknown",
+    });
+    reopened.close();
+    expect(failed).toBeTruthy();
+
+    const countsBeforeDecision = openAppDatabase(directory);
+    const before = {
+      events: Number((countsBeforeDecision.prepare(`
+        SELECT COUNT(*) AS count FROM generation_task_events
+      `).get() as { count: number }).count),
+      history: Number((countsBeforeDecision.prepare(`
+        SELECT COUNT(*) AS count FROM asset_history
+      `).get() as { count: number }).count),
+      media: Number((countsBeforeDecision.prepare(`
+        SELECT COUNT(*) AS count FROM media_assets
+      `).get() as { count: number }).count),
+      tasks: Number((countsBeforeDecision.prepare(`
+        SELECT COUNT(*) AS count FROM generation_tasks
+      `).get() as { count: number }).count),
+    };
+    countsBeforeDecision.close();
+
+    expect(retrySafetyDecision(failed!)).toMatchObject({
+      allowed: false,
+      code: "RETRY_OUTCOME_UNKNOWN",
+    });
+
+    const countsAfterDecision = openAppDatabase(directory);
+    try {
+      expect({
+        events: Number((countsAfterDecision.prepare(`
+          SELECT COUNT(*) AS count FROM generation_task_events
+        `).get() as { count: number }).count),
+        history: Number((countsAfterDecision.prepare(`
+          SELECT COUNT(*) AS count FROM asset_history
+        `).get() as { count: number }).count),
+        media: Number((countsAfterDecision.prepare(`
+          SELECT COUNT(*) AS count FROM media_assets
+        `).get() as { count: number }).count),
+        tasks: Number((countsAfterDecision.prepare(`
+          SELECT COUNT(*) AS count FROM generation_tasks
+        `).get() as { count: number }).count),
+      }).toEqual(before);
+      expect(generationProviderAttemptCounts(countsAfterDecision)).toEqual({
+        historicalEstimatedProviderAttempts: 0,
+        paidProviderRequests: 1,
+      });
+    } finally {
+      countsAfterDecision.close();
+    }
+    expect(providerSubmits).toBe(1);
+  } finally {
+    store?.close();
+    if (previousDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
+    else process.env.UNBOUNDRY_DATA_DIR = previousDirectory;
     await rm(directory, { force: true, recursive: true });
   }
 });

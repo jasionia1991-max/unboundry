@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import {
   getProviderProfile,
   providerProfileWriteLockPath,
@@ -16,7 +16,7 @@ import {
   importArkCatalogDrafts,
   syncArkProviderCatalog,
 } from "../server/providerCatalog";
-import { appDataDirectory } from "../server/database";
+import { appDataDirectory, openAppDatabase } from "../server/database";
 
 function arkResponse(action: string) {
   if (action === "ListFoundationModels") {
@@ -278,6 +278,7 @@ test("Ark AK/SK remains encrypted while catalog sync and draft import are durabl
   const accessKeyId = `AKLT${randomUUID().replaceAll("-", "")}`;
   const secretAccessKey = `secret-${randomUUID()}-${randomUUID()}`;
   try {
+    openAppDatabase(dataDirectory).close();
     const profile = await saveProviderProfile({
       apiKey: `ark-api-${randomUUID()}`,
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
@@ -497,6 +498,7 @@ test("catalog failures preserve the last snapshot and stale sync cannot overwrit
   const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
   process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   try {
+    openAppDatabase(dataDirectory).close();
     const profile = await saveProviderProfile({
       apiKey: `ark-api-${randomUUID()}`,
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
@@ -686,6 +688,7 @@ test("the last sync caller claims its database token before credential preparati
   process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   const databasePath = join(dataDirectory, "unboundry.sqlite");
   try {
+    openAppDatabase(dataDirectory).close();
     const profile = await saveProviderProfile({
       apiKey: `ark-api-${randomUUID()}`,
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
@@ -755,6 +758,7 @@ test("database sync tokens reject late success and failure from an older process
   process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   const databasePath = join(dataDirectory, "unboundry.sqlite");
   try {
+    openAppDatabase(dataDirectory).close();
     const profile = await saveProviderProfile({
       apiKey: `ark-api-${randomUUID()}`,
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
@@ -888,6 +892,7 @@ test("catalog deadline starts before credential preparation and skips remote rea
   process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   const databasePath = join(dataDirectory, "unboundry.sqlite");
   try {
+    openAppDatabase(dataDirectory).close();
     const profile = await saveProviderProfile({
       apiKey: `ark-api-${randomUUID()}`,
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
@@ -957,7 +962,7 @@ test("Ark catalog administration UI stays local and imports only reviewed drafts
   baseURL,
   page,
 }) => {
-  const localOrigin = new URL(baseURL ?? "http://127.0.0.1:4173").origin;
+  const localOrigin = new URL(baseURL!).origin;
   const externalRequests: string[] = [];
   const generationRequests: string[] = [];
   const catalogRequests: Array<{ body: unknown; method: string; path: string }> = [];

@@ -1,8 +1,326 @@
 # Unboundry 绿地复刻当前任务
 
-更新时间：2026-08-07
-状态：`绿地画布主体已验收 / 图片与Seedance真实链路已PASS / API-001～006已PASS / 节点入参INPUT-001～005、007已PASS，INPUT-006保持PARTIAL / 多协议中转站RELAY-001～012全部PASS / 画布搜索缩放与多选打组回归已PASS / Mureka Audio真实生成暂缓 / 功能1（我的模板）、功能2（批量下载）、功能3（账号私有平台密钥）已全部验收PASS，M11放行门达成 / 账号权限PERM-001～012与公共模板PUB-001～011已全部验收PASS / 生成安全并发与频率上限放宽至1000（v33） / 正式部署未开始`
+更新时间：2026-08-16
+状态：`生产已运行 v0.6.2/schema39；INC-VIDEO-001已发布并完成真实Seedance视频闭环，等待用户次日复验；INC-UI-001/002已发布且自动全量通过，等待用户线上复验；INC-ECOM-001～007已按各自证据边界完成用户收口；REM-000～011（含009A/009B）= PASS；PRODUCTION = LIVE。`
+
+### 2026-08-16 视频协议热修复与真实生成（INC-VIDEO-001）
+
+- 状态：`PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_RECHECK`。Grok首帧已按中转站契约从`first_frame_url`改为`images`数组并限制恰好1张；定向`m57 9/9`、正式全量`118/118 specs、965/965 tests`通过，异常0。
+- 生产：current已切到`/opt/unboundry/releases/v0.6.2-inc-video-001-20260816`，commit`959c1e287fb25943ca13037332030e99b39725be`、tree`6539868d…3845`、inventory`cf1c6e1a…40b5`；旧`v0.6.2-inc-ui-002-20260816`完整保留。公网v0.6.2 live/ready正常，service active+enabled、NRestarts0。
+- 真实结论：Grok修复后请求已按正确契约受理，但中转上游两次0%网络超时，停止继续重试；默认视频模型改为`Seedance 2.0 Mini`。包含真人参考图的Seedance请求被内容安全拒绝，不视为工作流故障且未重试。
+- 成功闭环：Seedance文生视频task`c0269665-4db5-46a1-bc13-2d5574a66cca`一次成功，4秒/480p/无音频；asset`fbfed94d-e41e-4858-8e7e-96c4eae98c4a.mp4`为OSS ready、864×496、4.042秒、1,117,495 bytes。页面刷新后视频仍可播放，浏览器readyState4且media error为空。
+- 收尾：数据库tasks126/attempts125/active0、quick_check ok、FK0；应用账本记录成功视频actual cost`568316 microunits CNY`，不冒充Provider账单。详细凭证：`spec/INC_VIDEO_001_PRODUCTION_RECEIPT_2026-08-16.json`、`spec/V0_6_2_REAL_WORKFLOW_SMOKE_2026-08-16.json`。专用分支已推送，`v0.6.2`标签精确指向生产源码commit`959c1e287…`，Draft PR #1已更新且CLEAN。
+
+### 2026-08-16 画布框选、OSS 素材显示与节点长标题（INC-UI-002）
+
+- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；package 与线上均为 v0.6.2，生产已发布，尚待用户实页确认；相关提交已随v0.6.2专用分支、标签和Draft PR #1同步到GitHub。
+- 框选：普通节点保持局部相交选中，只对Group要求选框完整包含；巨大Group与三个目标节点相交时不再扩大选区，三个节点可精确打组。
+- 媒体：CSP只在`img-src/media-src`放行既有严格服务端OSS流程使用的`https://*.aliyuncs.com`；Image/Video/Audio读取失败后保留asset/source、隐藏原生坏媒体图标并显示统一灰阶重载/重新上传状态，不自动上传或删除。
+- 标题：Text/Image/Video/Audio/Playlist/Group/Storyboard七类节点统一单行省略并保留完整title，编辑和IME语义不变。
+- 自动门：build PASS；`m41+m98 54/54 PASS`；发布准入修正后正式安全全量 `118/118 specs、965/965 PASS`，异常0、source snapshot与4173不变，Provider/真实OSS/付费请求0。原先暂未纳入的4份是`m10/m92/m94/m96`发布安全spec；runner以合成历史`0.5.2→0.6.0`版本对验证冻结合同，不修改合同本身。
+- 发布：源码commit `8ebe70544828a3aebe258def9d658e1ab68a6104`；生产指针已切换到`/opt/unboundry/releases/v0.6.2-inc-ui-002-20260816`，公网version/live/ready、标题、favicon、CSP和静态资源哈希均通过，service active、NRestarts0。
+- 数据/回滚：备份与恢复副本为`/var/lib/unboundry-rollbacks/inc-ui-002-20260815T180956Z`，清单SHA均为`b1754f94…c2909`；schema39 quick_check ok/FK0，tasks118/attempts116/active0、模板43/42及并发500前后不变，Provider/付费调用/OSS写入0。
+- 权威记录：`spec/INC_UI_002_CANVAS_SELECTION_MEDIA_TITLE_REMEDIATION_2026-08-16.md`、`spec/INC_UI_002_PRODUCTION_RECEIPT_2026-08-16.json`。用户尚未进行线上肉眼复验，因此不写成USER PASS。
+
+### 2026-08-16 v0.6.2 真实工作流低成本验收
+
+- 状态：`PRODUCTION_REAL_WORKFLOW_SMOKE_PASS / USER_RECHECK`。用户明确允许真实API消耗并要求控制成本；完成2次文字、1次最低规格`1:1 / 1K`图片和1次`4秒 / 480p / 无音频`成功视频。视频排障过程另有失败/安全拒绝证据，Grok只手动重试1次，确认上游网络超时后不再重试。
+- 整组流水：项目`5e1f6462-4ac3-4f35-b2f0-72462987e318`内建立`Text → Image`并打组。整组Text任务`54834dc5-e376-449d-80b9-7efd183a7e4e`先于Image完成，Image任务`6dc65b87-e564-4eac-b44b-af1867efe134`随后启动并成功；两者均attempt1、Provider attempt1、retry0。
+- 结果：Text回写`挺括免烫垂感显瘦 通勤百搭白衬衫`；Image结果asset`427ee182-5f42-4bf8-a932-4c8ef81b3969`为PNG 1024×1024、1,298,394 bytes、OSS ready、checksum`63377430…5ec9`。浏览器刷新后Group、边、文字和图片仍在，图片natural size 1024×1024，控制台warning/error为0。
+- 页面：`/connections?from=<projectId>`显示双返回；“返回画布”精确回到该项目，“返回工作空间”进入`/canvas/projects?from=<projectId>`，标题分别为`我的连接｜无央`、项目名和`工作空间｜无央`。
+- 视频：默认模型已切到Seedance；task`c0269665-4db5-46a1-bc13-2d5574a66cca`一次成功，MP4为864×496、4.042秒、OSS ready，刷新后仍可播放。真人参考图可能被Seedance内容安全拒绝，这是Provider限制，不是调度/OSS失败。
+- 收尾：公网v0.6.2 ready active/schema39；数据库tasks126/attempts125/active0、quick_check ok、FK0。系统账本的microunits仅为应用审计字段，不冒充Provider最终账单。详细凭证：`spec/V0_6_2_REAL_WORKFLOW_SMOKE_2026-08-16.json`。
+
+### 2026-08-15 整组工作流流水线全局修复（INC-ECOM-007）
+
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户已确认多入参严格AND、分流独立推进、汇流等待全部上游、分支失败只阻塞后代；修复、自动门、生产发布与线上实页验收均已完成。
+- 根因：整组开始前动态预检全部下游；真实resolver把空上游标为blocked而延后逻辑顺序错误；测试使用了不可能的兼容状态；生产runner存在整层屏障；四类节点需在实际提交前刷新运行时输入。
+- 范围：重构通用DAG调度与Text/Image/Video/Audio整组登记协议；发布不修改并发、模板、Provider、OSS或数据库，不发真实/付费请求。
+- 实现：生产调用路径改用事件驱动DAG调度；每个节点仅在全部直接生成式上游本轮成功后启动，快分支不等待无关慢分支；四类节点在实际提交前统一刷新runtime preflight。
+- 验证：正式full基线`117/117 specs、959/959 PASS`；v0.6.1准入修复后相关8份spec `110/110 PASS`，精确HEAD build PASS，Provider/真实请求0。
+- 发布：本地release commit `f3d3fc8…8d1f414`；生产指针已切换到`/opt/unboundry/releases/v0.6.1-inc-ecom-007-20260815`。公网version为0.6.1，live/ready正常，主JS哈希与release一致；service active/enabled、NRestarts0。
+- 数据/回滚：停机备份`/var/lib/unboundry-rollbacks/inc-ecom-007-20260815T135418Z`，备份与恢复清单SHA均为`73554c0a…535f24`；schema39 quick_check ok/FK0，tasks109/attempts107/active0、模板43/42及并发500前后不变，Provider/付费调用0。
+- 用户验收：发布后用户在线上实页复验并明确回复“通过通过”，INC-ECOM-007正式收口为USER PASS。
+- GitHub：分支`codex/unboundry-offline-remediation-2026-08-09`已推送；注释标签`v0.6.1`精确指向生产源commit `f3d3fc8…8d1f414`；Draft PR [#1](https://github.com/jasionia1991-max/unboundry/pull/1)已创建，merge state为CLEAN，当前无CI checks报告。
+- 权威断点与验收合同：`spec/INC_ECOM_007_WORKFLOW_PIPELINE_REMEDIATION_2026-08-15.md`。
+
+### 2026-08-15 第三批服装电商工作流（INC-ECOM-006）
+
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户明确“确定 发布”，P0=5、P1=6、P2=1共12条已按声明式数据单事务导入生产，不是前端条件硬编码；随后明确“都通过了”，可见性与视觉验收收口为PASS。
+- 恢复副本和生产写后兼容审计均为全库43/43 PASS、第三批12/12 PASS、问题0；生产43条模板、42条published，第三批12条均有graph和preview，公网12张封面HTTP200 image/jpeg。
+- 停机备份：`/var/lib/unboundry-rollbacks/inc-ecom-006-20260815T101814Z`，数据库SHA `1d606cdf…f8d9d`、数据清单SHA `07be6b05…a274`、证据清单SHA `432aa233…70b6`并验签PASS。
+- schema39 quick_check ok/FK0、service active/enabled、NRestarts0；发布前后tasks109、Provider attempts107、active0，并发/RPM均保持500，Provider/付费生成/OSS变化0。
+- 首次恢复副本审计因临时依赖解析路径缺失在生产写入前停止，服务自动恢复且第三批仍为0；补齐临时路径、恢复副本全绿后才发布。
+- 用户已确认第三批可见性和视觉效果；未为验收自动运行图片或视频生成。
+- 证据：`spec/INC_ECOM_006_ECOMMERCE_WORKFLOW_BATCH_3_2026-08-15.md`、`spec/ecommerce-workflow-batch-3-production-receipt.json`。
+
+### 2026-08-15 第二批电商工作流模板包（INC-ECOM-005）
+
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户已确认继续`v0.6.0`并允许发布；此前清单P0=5、P1=6、P2=1共12条已完整落为声明式数据并事务导入生产，随后用户明确第二批实页验收“通过1”。
+- 数据包SHA `53fa501e…8cde`，物化图SHA `4735ec32…17b8`；在线上一致副本中导入后调用当前生产兼容审计，12/12 PASS、问题0。封面复用已留存授权证据的12张实图，无新增生成/下载成本。
+- Node22.23.1下source coverage PASS、build PASS、m77 `9/9 PASS`。生产精确兼容审计12/12 PASS；运行时目录读取第二批12/12 graph+preview，公网封面12/12 HTTP200 image/jpeg。schema39 quick_check ok/FK0，service active/enabled、NRestarts0。
+- 架构边界：运行时由通用模板目录读取`public_templates.graph`，应用时复制并重建节点/连线ID；固定默认拓扑、元提示词和明确模型ID是模板数据，不是前端组件硬编码。
+- 发布前后tasks109、Provider attempts107、active0；并发/RPM仍全部500，未调用Provider、未创建生成任务，未修改模型、Provider或OSS；不是full regression，用户实页视觉验收现为PASS。
+- 权威记录：`spec/INC_ECOM_005_ECOMMERCE_WORKFLOW_BATCH_2_2026-08-15.md`；生产receipt为`spec/ecommerce-workflow-batch-2-production-receipt.json`。
+
+### 2026-08-15 电商模板封面发布（INC-ECOM-004）
+
+- 状态：`PRODUCTION_STATIC_COVERS_DEPLOYED / USER_VISUAL_PASS`。16条电商模板封面已发布，生产18条published模板现为`withPreview=18 / withoutPreview=0`；用户已明确“都通过了”。
+- 本地内容commit `d908c4b3824cd36638f02fec51cbe335f6aacd52`；构建PASS、封面源/构建副本16/16哈希一致、m77公共模板专项`9/9 PASS`。来源与授权记录在`spec/ecommerce-template-cover-sources.json`，文件receipt在`spec/ecommerce-template-cover-receipt.json`。
+- 生产采用formal `v0.6.0` base manifest `5386c744…47b1`上的有界静态内容叠加；最终manifest `340452f7f407cb3ab18a15cd8d4b4ab73b42a860238ac0306df67047758ed7a9`、inventory `1d795f29e256da4e8fefd8b446ba42f114a3d8ba2f431fb1220559a04b12f464`，不冒充重新运行formal builder或full regression。
+- 首轮上线后公网哈希门发现只绑定`client/public`、未绑定Vite preview实际服务的`dist/client`，因此返回HTML fallback；该source-only产物已保留在`/opt/unboundry/retired-releases/20260815T081400Z-inc-ecom-004-source-only/v0.6.0`。修正后双目录各16个文件均入inventory，二次切换后公网16/16均为`200 image/jpeg`且SHA逐项相符。
+- 停机备份与恢复验证在`/var/lib/unboundry-rollbacks/inc-ecom-004-20260815T080758Z`，原formal release保存在`/opt/unboundry/retired-releases/20260815T080758Z-pre-inc-ecom-004/v0.6.0`。上线后service active/NRestarts0，schema39 quick_check ok/FK0/active0，tasks109、Provider attempts107；并发/RPM仍全部500，Provider配置和数据manifest未变，OSS未改、真实生成/付费请求0、未push/tag/PR。
+
+### 2026-08-15 GPT Image 真实 smoke 超时修复（INC-ECOM-003）
+
+- 状态：`REFERENCE/OSS/PREFLIGHT_PASS / GPT_IMAGE_TIMEOUT_REPAIR_DEPLOYED / ONE_REQUEST_REAL_IMAGE_SMOKE_PASS / USER_RESULT_PASS / OPTIONAL_PAID_GENERATION_DEFERRED`。用户已确认现有结果通过；目标模板另外两个图片节点和其他电商视频未再次付费生成，仅作为可选内容抽验延期。
+- 已按用户授权只提交一次：项目`18255461-b14f-40dd-9dbb-d3c307649387`、节点`工艺拆解·完整商品`、task `e5cfd5bc-2863-4eb1-9546-4a93c76b17e7`、Provider attempt 131；未运行另外两个图片节点、未运行视频、未自动重试。
+- 真实结果：请求在约121秒后以`PROVIDER_REQUEST_FAILED`结束，attempt为`outcome-unknown`；Provider没有返回`provider_task_id`，任务没有`result_asset_id`。因此这一次同步结果不能从本地恢复，重新生成会形成第二次可能收费的Provider提交，必须取得新的明确授权。
+- 根因与修复：GPT Image专用同步路径误用通用JSON默认`120000ms`，没有使用项目既有submit deadline `180000ms`。`server/relayProviderAdapters.ts`现显式复用`providerRequestTimeoutMsByOperation.submit`，且保持“不自动重提未知结果”。m53+m57+m88定向`66/66 PASS`；正式安全full `117/117 specs、954/954 PASS`。
+- 生产已切换到formal final `de0551c8187156f0283f330a39e15e5825f1f2c5` / tree `b083289ae514f6b7c7c3cdef7953065deb2c7276` / manifest `5386c74440f8868719bb7942af31437a1a2dfcbb9de28d604ccf836ddc1478b1`。停机备份在`/var/lib/unboundry-rollbacks/inc-ecom-003-20260815`，旧产物在`/opt/unboundry/retired-releases/20260815-pre-inc-ecom-003/v0.6.0`；公网live/ready/version/root正常，schema39 quick_check ok，active0。部署后刷新原验收画布，失败节点和“不自动重提/先核对模型平台”提示均保留。
+- 部署前后保持tasks108、Provider attempts106、pending publication0；用户的每用户/文字/图片/视频/音频并发和RPM仍为500，Provider与Storage密文配置SHA未变，OSS路由/配置/密钥/对象未改；未push/tag/PR。
+- 用户随后重新授权并要求控制成本：保持GPT Image 2专用协议、3:4、最低现有1K，只对同一`工艺拆解·完整商品`节点再提交一次，不运行另外两个图片节点且不重试。新task `9e4faf78-e466-4ae7-8799-2c9d2150bed6`、Provider attempt 132在约58.6秒一次成功，result asset `9f755d07-42df-47a0-9bd1-443030244a59`已绑定原节点。
+- 结果为ready本地PNG，`1023×1537`、1,545,396 bytes、SHA-256 `ecf51e6ca9f081b4b98cd12f9917b51bd8518129ab9613dc2a3f296d638ddb44`；数据库quick_check ok、active0、tasks109、Provider attempts107。系统审计记账字段为10,000,000 microunits USD（配置记账值，不冒充上游实际账单）。刷新画布已看到结果与下载/全屏等操作；真实技术smoke与用户结果验收均为PASS。
+
+### 2026-08-15 电商参考图工作流完整修复（INC-ECOM-002）
+
+- 状态：`PRODUCTION_STATIC_REPAIR_PASS / ONE_REQUEST_REAL_IMAGE_SMOKE_PASS / USER_RESULT_PASS / OPTIONAL_PAID_GENERATION_DEFERRED`。生产19条模板静态兼容均为`PASS`；修复后一次受限真实图片smoke已成功并获用户确认。未执行的另外两图和其他视频只作为可选付费内容抽验延期。
+- 权威断点：`spec/INC_ECOM_002_REFERENCE_WORKFLOW_REMEDIATION_2026-08-15.md`。任何上下文压缩或换Agent后必须先读该文件恢复，不得依赖聊天记忆继续。
+- 硬边界：用户设置的并发`500`不动；`mediaRoutingEnabled`、OSS配置/密钥/对象和真实数据不动；历史失败任务不自动重提。
+- 已确认根因：GPT Image执行先持有Provider generation lease，再为本地`data:`参考图申请Storage reservation；两者使用同一`provider-profile-write-lock.sqlite`，在Provider `fetch`前形成同锁自锁并于约5秒超时，Provider请求尚未发出。
+- 已完成实现：参考图`prepare/send/cleanup`拆锁；Storage busy/上传/签名、Provider请求/结果格式分阶段错误；整组先扫描全部节点并以失败数量/首节点阻止任何task POST；模型缺失/停用不再静默默认；模板edge角色/顺序导入保留；公共模板发布/恢复/更新语义门和管理页状态。
+- 模板矩阵：生产19条模板（18 published、1 archived）已为99个执行节点保存明确模型，其中published模板87个；`PASS=19 / NEEDS_MODEL=0 / INVALID=0`。目标模板「服装详情页｜面料与工艺拆解」2个Text与3个Image节点均已绑定，详见`spec/INC_ECOM_002_TEMPLATE_COMPATIBILITY_MATRIX_2026-08-15.md`。
+- 当前自动与生产证据：m88含确定性Storage busy与1/5/20并行参考图`34/34 PASS`；修复一次旧Text输入提示误伤后，m22/m29/m36/m50/m65 `28/28 PASS`；生产只读审计后修复`text→storyboard`误报，m77更新为`9/9 PASS`。正式bridge `45e9cefe489ffea23970517c420bf9c64a49896b`与final `e1e0e0d33809a519e8856d11135237a6a30ff912`已形成，B→F仅package/lock三个版本值；clean final正式full `117/117 specs、954/954 PASS`，异常0，builder `1/5/1/0`，source/snapshot `0720f06d14e8c3d85ee22e596a28c51f7a1f68b6c1dceb46f66b7bc8633e27e8`。生产formal artifact manifest `692995bc9f6fc6833b314afeaea65bc5d367142aa03234299c4ab02b76aa56ff`、inventory `a2b685f64e1f3acab915e6b22d1f6dc05b2ffd75f6d5345e006f5bcb6af96151`已切换到`/opt/unboundry/releases/v0.6.0`。停机备份`/var/lib/unboundry-rollbacks/inc-ecom-002-20260815`完整可读，模板事务后schema39 integrity ok/FK0。零付费复核前后generation tasks=`106`、provider attempts=`104`、active=`0`，未产生新任务或Provider请求；公网live/ready/version/root正常，登录实页可见目标模板且控制台无warning/error。并发和OSS未改；真实生成仍须单独授权。
+
+### 2026-08-15 电商模板生成故障热修复（INC-ECOM-001）
+
+- 状态：`PASS`。用户已明确授权“修复并恢复结果”；本项未创建新的生成任务，也未重新提交或重新付费生成，用户随后以“都通过了”完成收口。
+- 已确认三条独立故障路径：首次失败发生在 Provider 请求前；整组执行遇到不支持图片上游的模型时以 `skipped` 静默停止；任务 `9687eb96-b4b3-44c6-bf40-7fb31a854137` 的 Provider 任务 `105388646` 已成功，但同一结果 URL 同时出现在 `result_url` 与 `result_urls`，本地适配器误判为多结果并报 `FORMAT`。
+- 当前施工范围：Provider 结果别名去重；整组执行将模型/输入不兼容持久化为节点错误并返回明确失败；只恢复 Provider 已完成的既有任务及结果，不重新提交 Provider。
+- 自动验收：重复别名只产生一个输出；不兼容整组执行不产生 generation task POST/Provider 请求，节点错误保存并可重载；定向测试、类型检查与构建通过。
+- 用户验收：恢复后刷新原画布可看到既有黑猫结果；模型不兼容时组运行明确失败并在图片节点保留红色原因。用户已明确“都通过了”，本项记为`PASS`。
+- 完成证据：Node `22.23.1` / npm `10.9.8` 下两份零费用定向 spec `34/34 PASS`，TypeScript 与 production build PASS，Provider 请求为0；生产不可变运维热修复已切换到 `releases/v0.6.1-hotfix-inc-ecom-001-20260815`，应用公开版本仍为 `0.6.0`。
+- 恢复证据：原任务仍为 `9687eb96-b4b3-44c6-bf40-7fb31a854137`，只轮询原 Provider 任务 `105388646`；Provider attempt 仍恰好1条、execution attempt 仍为1且已从 `response-received` 收口为 `completed`，没有第二次 Provider 提交。任务本地恢复轮次为 attempt2并成功，结果素材 `860bccb1-bb24-4683-9985-4335a5f95b81` 已绑定原图片节点。
+- 结果完整性：PNG `1254×1254`、`1,758,108` bytes、SHA-256 `71589ac18b2802d6bface50963c1a2c69f3ae7e8f491ea651d83483b001e36b8`，数据库记录与实际文件逐字节一致；schema39 integrity ok / FK0 / active generation0。服务 active、NRestarts0，公网 live/ready/version 均正常。
+- 回滚证据：恢复前数据库备份 SHA-256 `b47e76052d89901dc1158acaee43406ac112b27f0ee7baaa399db73c157fb807`；Provider 结果成功后、画布绑定前数据库备份 SHA-256 `f2d6170cd67a9960c9493fe324943e493c64815f7285d2321e5235639c529869`。
+
+F14本地正式门证据绑定 HEAD `eb4f99ea525390b0dd7a39d3cad55d882ffea41d`、source/snapshot `6af5b891ebf9a460e941485d12934a4a217ed3e2d6feece90d7c6d1b5ac856b1`。日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b57009ec02e6973be441b5585bf`；full `1f6f958d57ee855b0272ddd2576277deef6ea3e299e5ccdc597d4ca1d4559741` / `903096ed64412e184dcefecfc28c6fedda809c17a570d3fa8729a3d176560b0b` / `adecd5164828a87452bf5974a594c19da2e00e54f4aed281c113d57240b7917a`；race `3d1b64868ef60e769158b31ee4f94efbed0015d251cfdac8b48f27f8918c5a18` / `fc08356cf3bc9eb96e8b18abdd9789b96aa615361897a205240537e2ba29eb46`。五轮异常0、4173不变、suite cleaned、exit0。
 唯一产品目标：从空仓库完整复刻 Unboundry 画布，不复用 Lumino/Lumino Web 的代码、组件、CSS、数据、后端、测试或部署。
+
+### 2026-08-15 v0.6.0/schema39 最终生产收口
+
+- F14 生产制品：commit `eb4f99ea525390b0dd7a39d3cad55d882ffea41d`、tree `86b4e424b6d6324c5f24d4c633b0cd35baf0d626`、manifest `46e2365c48b8e8bdaa1847b1767ef2974a71f2d2b47c87743793c116e5ec2adf`、inventory `ac8ca43a9f8f6724ca67bd0899185fa3952e762e0400a1f9ce34f3ecfefc2bac`、tar `0e3a96a13299efba407ba98dc6501ae97297c9a82c067827b9f9befeb2c18944`；生产 current 已指向 `releases/v0.6.0`。
+- 最终核验：service active/enabled、NRestarts=0、4173 单监听；nginx 配置 SHA `2c6e90d1e558ac9b9bbc27f54f58620dfdbd863ea9383b2e2aac5c2c29c6020f` 且 `nginx -t=0`；公网 live/ready/version/auth/root 均 200，version0.6.0，ready active/schema39。
+- 数据：schema39、integrity ok、FK0、row14 absent、active generation=0；99 tasks / 99 provider attempts / 416 ready media（local346 + OSS70）/ pending0；globalEnabled1、emergencyStop0、每用户及每类型并发1、每分钟5。
+- 回滚证据：原 schema37 raw backup SHA `7f14c611faab136c1ae8e9579bc47755f7298e4ea6e2bba516c71e85670f8fca`，离机恢复 inspection SHA `b4d58243e88efe1c2c967ffab5f63ed6704d18324a80e8449ec9d3ad77e28e1d` 为 PASS；生产 schema39 inspection SHA `a18f8224dd651b8217cb3d778845ee3f42b5bf91a5ff68291bfad4d4cb3ffa61`。
+- 封存技术凭证 SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8`，状态 `TECHNICAL_CUTOVER_VERIFIED`。凭证生成时的 `userAcceptance=PENDING` 保持不变；用户随后确认生成任务状态已可读取，并结合此前确认老项目大量生成/上传素材仍在、第4项正常，生产验收另记为 `USER PASS`。不扩大为“全部历史素材逐一验证”。
+- 五条历史 outcome-unknown attempt 86/108/116/120/122 已行政取消、禁止重试；`PROVIDER_FAILED` 仅是迁移/备份门 surrogate，原 REMOTE/TIMEOUT 事件保留。三条音频 duration 元数据 12.656→12.696，媒体字节/checksum未变。切换期间 Provider/付费生成调用均为0。
+- 状态结论：`REM-000～011（含009A/009B） = PASS / G7 = PASS / PRODUCTION = LIVE / USER ACCEPTED / DEP-010 = PASS`。用户于2026-08-15进一步明确“都通过了”，REM-001～009B完成用户收口；既有外部或延后项不自动升级。
+
+### 2026-08-15 上线后真实能力与灾备收口
+
+- 用户明确要求真实生成必须可用。生产开关已改为 `globalEnabled=1 / emergencyStop=0`，并把遗留的500并发收紧为每用户1、文字/图片/视频/音频各1、每分钟5、连续失败阈值3、冷却30分钟。唯一一次 Doubao Seed 文字请求任务 `77d3feec-35c1-4b1e-87a2-c457983a8046` 一次成功、无重试，返回“真实生成验收通过”；审计成本字段为 `10,000,000 microunits CNY`。
+- `DEP-003 = PASS`：用一次性临时账号对公网 HTTPS 登录响应实测 `Set-Cookie` 具有 `Secure / HttpOnly / SameSite=Strict / Path=/`；临时账号与会话已删除。
+- `DEP-005 = PASS`：513,802,240 字节 MP4 公网上传201、Range206、完整下载SHA与源同为 `db3b808e…abd1`、ffprobe正常；测试素材删除204，库内素材回到416。
+- `DEP-006 / OPS-002 = PASS`：修复schema39日常备份入口后，最终自动任务向 `objects/backups/2026-08-14T23-15-59-569Z/` 上传356文件/267,091,270字节；30天保留改为本地签名清单精确删除，不再依赖被RAM拒绝的ListObjects。整机离机包保存于 `/Users/mymy/Documents/unboundry/recovery/2026-08-15`，874,823,680字节、SHA `d3b6023f…ae109`，fresh restore核对release/Node/systemd/nginx、schema39/integrity/FK0、99 tasks/99 attempts、416 media和生成开关全部PASS，receipt SHA `151c7886…f3962`。
+- `DEP-007 = PASS`：公网真实Provider生成已成功且安全门仍生效；本次只提交一次，不为测试熔断而制造额外付费失败。未来Agent再次发付费请求仍需新的明确授权。
+
+### 2026-08-09 状态收口与交接索引
+
+- 验收状态收口（用户 2026-08-09 确认）：`GEN-010 / SAFETY-004 / CANVAS-019 / AUTH-004 / AUTH-005 / AUTH-006 / AUTH-007` 已由 `USER_RECHECK` 改为 `PASS`。
+- 第二批验收状态收口（用户 2026-08-09 确认）：`STORAGE-004 / PERF-002 / PERF-003 / PERF-004 / PERF-005 / DEP-004` 已由 `USER_RECHECK` 改为 `PASS`；该时点原有产品验收矩阵无 `USER_RECHECK` 项。随后新增的施工治理项 `REM-000` 也已于同日获用户确认并改为 `PASS`。
+- 当时线上状态（2026-08-09）：生产服务器 `canvas.mymy.ltd` 运行 v0.5.1；该历史状态已被上方 2026-08-15 最终收口覆盖。本地开发 4173 使用 `app/data`，与服务器 `/var/lib/unboundry` 是两份数据。
+- **新接手 agent 必读**：`AGENTS.md` → `README.md` → `spec/UNBOUNDRY_REMEDIATION_PLAN_2026-08-09.md` → `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md` → `spec/UNBOUNDRY_HANDOFF_2026-08-09.md` → 本文件当前 REM 区块 → 验收矩阵当前 REM 区块。
+
+### 2026-08-09 全量修复施工治理（历史；REM-000 用户已确认 PASS）
+
+以下表格和随后 2026-08-14 原生产预检段保留切换前施工时点；其中 `IN_PROGRESS / HOLD / 当前动作 / 尚未完成` 均为历史事实，最终状态以本文顶部 2026-08-15 收口段为准。
+
+- 用户明确要求先做施工文档，防止上下文压缩、换 Agent 或长任务后失忆和范围漂移；本批授权只包含文档，不包含业务代码、测试配置、脚本、commit、push 或发布。
+- 新建 `spec/UNBOUNDRY_REMEDIATION_PLAN_2026-08-09.md`：冻结线上 v0.5.1、schema 37、红线、既有产品合同、34 类审计风险、REM-000～011 施工顺序、G0～G7 绿灯、数据库桥梁版本和回滚规则；首选保持 v0.5.1 双向兼容、仅一次最终发布，若不兼容必须单独说明并获得桥梁/最终版两次生产授权。
+- 新建 `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md`：记录当前唯一施工项、Git 基线、已有脏文件、授权、外部动作计数、未决决策和恢复硬停止点。
+- 新建项目级 `AGENTS.md`，并更新 README、交接文档和验收矩阵入口；恢复后不得凭内部记忆继续，必须先核对仓库文档和 Git。
+- 文档建立基线：`main`、HEAD `262c66c4087d915b03971191ee00a9bfba74da65`、相对远端 ahead 1、package/线上 `v0.5.1`、数据库 v37；一次性 Goal 的本地基线 commit 为 `34909f283e417c6772dcbdfebb6e717db85d0605`。REM-001 已固定离线施工 Node `v22.23.1`、npm `10.9.8`；这只是本地候选基线，历史生产记录仍为 `v22.23.2`，原生产未获 SSH 授权复核当前版本。
+- 已有 `TASKS.md`、验收矩阵、交接文档三份未提交修改来自用户已确认的六项 PASS，本批保留并在其上追加，没有 reset、clean 或覆盖。
+- 用户已于 2026-08-09 明确启动一次性离线 Goal，并把 REM-001～010 与 REM-011 离线工程部分合并授权；中途按施工文档依赖顺序连续实施，不再逐项询问。2026-08-13 用户又确认桥梁 `v0.5.2`、最终 `v0.6.0` 的版本方案；该确认不授权生产、真实数据、原生产连接/迁移、push/tag/PR、tag/release 或发布。
+
+| ID | 施工包 | 切换前状态（历史） | 当时下一道门 |
+|---|---|---|---|
+| REM-000 | 施工文档与防漂移机制 | PASS | 2026-08-09 用户确认通过 |
+| REM-001 | 测试安全底座与真正全量发现 | PASS | 安全入口、清单、源码覆盖和全绿证据完成；用户最终确认 |
+| REM-002 | API、进程与可观测性基础 | PASS | 统一异常边界、严格维护/关闭、只读 readiness、脱敏日志与进程生命周期完成；用户最终确认 |
+| REM-003 | 画布持久化与 DATA-005 语义保护 | PASS | 加载/保存基线、每标签高水位、跨标签收敛、原子墓碑、持久草稿及生成门禁完成；用户最终确认 |
+| REM-004 | 统一媒体生命周期 | PASS | 原子发布/补偿、ready-only、权威尺寸、adoption ACK 与完整性报告完成；用户最终确认 |
+| REM-005 | 生成、幂等与付费边界 | PASS | 原子 admission、最终付费闸、凭据 epoch、未知结果保护、deadline 与持久队列完成；用户最终确认 |
+| REM-006 | 账号删除、模板、权限与清理 | PASS | PERM-011/KEY-008/AUTH-006 下的删除saga、转交、权限/凭据和actor fence完成；用户最终确认 |
+| REM-007 | 前端生成恢复与失败体验 | PASS | 四类 ownership/exact GET/终态 ACK、transport/retry fail-closed 与 mutation 失败体验完成；用户最终确认 |
+| REM-008 | 资源、安全、性能和运维脚本 | PASS | 登录/SSE、媒体资源、出站、安全头、依赖、脚本及必要性能治理完成；用户最终确认 |
+| REM-009A | 只读备份、恢复与数据库兼容前置底座 | PASS | 加密签名包、合成库恢复、损坏拒绝、权限/路径/OSS完整性与三轮/全量证据完成；用户最终确认 |
+| REM-009B | 最终候选备份、恢复与双向兼容演练 | PASS | 自动实现、同源自动证据与最终用户确认完成 |
+| REM-010 | 不可变发布、切换与回滚 | IN_PROGRESS | B14 `3b48f61c…` / F14 `eb4f99ea…` source pair与proof `517d2d24…`已形成；只追加两个完整exact hash，未做trim/normalize，schema37/38/39正负例、两版m81 41/41、tsc/source coverage/build PASS。formal Linux artifacts/receipt与Node22.23.2恢复副本门待完成 |
+| REM-011 | 候选全量验收与正式发布门 | IN_PROGRESS | 旧B13/F13证据只作回归基线。F14 clean targeted `81/81`、full `2832/2832`、race `1420/1420` 全部PASS，异常0、snapshot/listener不变、suite cleaned；Linux production-validation尚未完成。真实OSS HEAD/GET、bwrap、正式备份、条件修复与bridge切换均已获授权，按门禁顺序执行中；完成前production HOLD |
+
+### 2026-08-14 原生产 bridge 只读预检与 B14/F14 重铸（历史）
+
+- 用户最新明确“全部授权”，范围按最近的五道 bridge 门解释：允许连续完成 `v0.5.2` 的 formal Linux/bwrap、真实OSS只读HEAD/GET、维护停服、完整备份/恢复、严格rowid14修复、Node22.23.2副本补证、切换与必要回滚；不含 `v0.6.0`、schema39 migration、真实 Provider、push/tag/PR。当前动作尚未执行完成。
+- 只读现场确认 `unboundry.service`、`/opt/unboundry`、Node `22.23.2`、schema37。用户显式接受 Node22.23.2 production-specific waiver；formal manifest 的22.23.1绑定保持不变，后续必须在恢复副本用同一22.23.2二进制/SHA补充验证，不能把旧formal receipt直接冒充实际生产runtime证据。
+- 数据库 `integrity_check` 正常，但 `foreign_key_check` 精确发现 `project_metadata rowid=14` 一条孤儿。用户仅授权在维护、旧服务停止、无写者、可恢复原始备份与精确前后复核全部成立后删除该行；这些先决条件尚未满足，故尚未执行。
+- B13 readiness 对两个历史等价 sqlite_schema 原文 fail-close：`asset_history=0053af18…65300`、`provider_profiles=47a50d88…d87e2`。已证明差异仅为空白/标识符引号且完整 pragma 语义一致；选择 B14/F14 exact full-hash allowlist，而不是重建生产表。候选同时在 runtime 与 backup inspection 两门追加 exact hash，并保留未知空白/语义近似拒绝。
+- 正式备份仍需覆盖70个 ready OSS对象及可信 versionId；本地字节不等于正式镜像。真实 OSS HEAD/GET 与 bwrap 已获授权，但必须先取得逐对象version-pinned镜像并通过完整性门；不得以不完整备份启动维护或删除 row14。
+- 最新只读复核重新锁定原生产身份且未产生状态变更：SSH host key严格匹配；hostname `VM-0-5-ubuntu`，unit `/etc/systemd/system/unboundry.service` SHA `7a675665…`，app `/opt/unboundry` package `0.5.1`，Node22.23.2二进制SHA `3517c2df…`；schema37、integrity ok、唯一FK仍为rowid14、ready local346/OSS70、pending/failed/active generation均0。主库/WAL SHA为 `ba600dab…` / `c862a1ea…` 且查询前后identity不变。服务仍active并持有可写WAL，nginx仍正常代理，正式备份目录不存在、OSS staging为空；所以在formal/镜像/备份门完成前未启维护、未停服、未写库。
+- bwrap 预置门已关闭：生产 apt candidate `0.9.0-1ubuntu0.1` 的 deb SHA `1b506492…`；安装前先解包确认 `/usr/bin/bwrap`与B14 manifest的binary/version-output SHA `52231e1c…` / `768cbc12…`精确一致，安装后再次复核并完成root outer、inner全capability set=0、NoNewPrivs=1、仅loopback私网smoke PASS。安装前后`unboundry.service` tuple不变，未进维护或访问数据/OSS。
+
+### 2026-08-12 REM-009B 最终候选恢复与兼容演练（自动证据完成）
+
+- 只用合成富数据、媒体、密钥和假 OSS 完成格式 2 create/verify/restore、one-shot exact-v37→schema39 maintenance migration、写锁内来源复核、中间 schema38/39 与回填故障恢复、假 OSS 重建、正常启动及冻结 exact-v0.5.1→current bridge→schema39 数据格式与安全拒绝边界矩阵；exact v0.5.1 对 schema39 安全拒绝，迁移后不能回滚到 v0.5.1；旧一体化 `deploy.mjs` 已 fail-close。
+- 提交前同内容功能树 SHA-256 `7cf46804f952e580e9574a08a93f42ad53c051d4fcd5f2705691f82c8330326b`：核心 8-spec 三轮 `399/399`（deniedViteWildcardProbes `567`），安全全量 `114/114 spec、912/912 PASS`，failed/skipped/retries/reportErrors/blocked 均为 0（full deniedViteWildcardProbes `516`）；Node `22.23.1` / npm `10.9.8`；源码 303，TS/TSX `283/283`、JS/MJS `20/20`，运维脚本 15；snapshot 不变，4173 listener 前后均为 `1be6a5d9061f3be72e5d45a0acf7cb70f5fe86ac645fceff60138b4b718d35dd`。
+- 功能提交 `9a158a92563814791fefb8d4e6c5531eca610d78` 包含相同功能内容；未在该 commit 后或文档后树重跑。REM-009B 进入 `USER_REVIEW`，不是用户 PASS，也不是对真实数据、真实 Provider/OSS、生产迁移、发布或 REM-011 最终门的证明。
+- 残余边界：current-database-open reservation 可序列化协作打开，但同 UID 非协作进程仍可能替换这个极窄路径；不宣称该风险已消除。一次独立只读审计曾越权对 `app/data` 执行 immutable 聚合查询；结果未纳入证据，写入/外部请求为 0，之后未再访问。
+- 在 REM-009B 收口的历史时点，REM-010 刚进入完整离线候选施工，当时为 `IN_PROGRESS`、REM-011 为 `NOT_STARTED`；这些历史 REM-009B 数字不代表本文顶部的最新状态。
+
+### 2026-08-13 REM-010/011 旧固定离线候选证据（现仅作产品 core 历史基线）
+
+- runtime role、跨进程 active lease、请求/SSE/generation drain 已接入应用启动、请求、worker 与关闭生命周期；m81/m93 覆盖这些合同。legacy `deploy.mjs` 继续立即 fail-close，不可作为替代发布入口。
+- Darwin 合成环境的不可变 builder/rehearsal 已实现；nginx/systemd 静态运维合同与严格校验器已加入，但不冒充真实生产主机或同版本工具验证。
+- 该历史候选的发现清单为 `117 specs / 931 tests`；源码覆盖为 `309 = 286 TS/TSX + 23 JS/MJS`；运维脚本为 `18 = 15 行为验证 + 3 哈希冻结`。此前修复后 targeted m81/m93/m94/m95/m96 为 `49/49 PASS`，其历史证据继续保留；该时点 full 证据见下方。
+- 用户随后授权隔离 Docker Ubuntu 子门。受控联网镜像/lock 依赖准备后，正式验证容器使用 `--network none`、无端口、无 host bind、非 privileged；联网准备只持有 package/lock 和私有 cache，不含项目源码、凭据或真实数据。429-file 候选归档 SHA-256 `08917263ed588d77c03d4a9123017119c86121a01b72d65b3e2a0fe11e8ecd01`，容器一次性 clean commit `6e1e9eef95e3c1f45cb0c5d11faa7c6cd16650fb` 仅标记为 `isolated-docker-ubuntu-amd64-ephemeral-candidate`，`formalReleaseCommit=false`。
+- Ubuntu 24.04.4 amd64/glibc 2.39、Node `22.23.1` / npm `10.9.8` 下，隔离 cache 的 `npm ci --offline` 安装 185 packages 并 PASS；active/maintenance 两份渲染配置均由 nginx `1.24.0` 真实 `nginx -t` PASS，systemd `255` 的 `systemd-analyze verify` PASS。未启动 nginx/systemd/Vite、未监听或连接 4173。
+- production builder 以普通 `unboundry` 用户、0 effective capabilities 动态执行正式 Linux 分支；Docker Desktop 拒绝 bwrap 建立 rootless user namespace，builder 返回 `RELEASE_COMMAND_FAILED` 并明确 `fail-closed incomplete release reservation retained`。release 只含 0700 目录与 0600 `.incomplete`，没有完整产物；这是 `ENVIRONMENT BLOCK` 和失败关闭证据，不是 builder PASS。
+- 用户随后单独授权仅通过 SSH 在第二台、非原项目生产的 Ubuntu 24.04 x86_64 服务器执行隔离验证。`isolated-server-ubuntu-amd64-ephemeral-candidate` 的 429-file tar SHA-256 为 `a322ec21affe7c2e73c510fceb74d5c953bee213b25084954b735f18d7be494b`，一次性 clean commit `ef206cd3dcc94ea6657a12ab7963580fe4e9bb5c` / tree `ab68ce7d3725869e674a7b7a7c3fdb0b74e5d29e`，`formalReleaseCommit=false`。
+- 首次 production builder 将 `npm ci --omit=dev` 留下的空 `node_modules/@playwright` scope 目录误判为运行时开发依赖，按设计 fail-close 并保留 `.incomplete`。窄修复后仅允许该空目录，继续拒绝非目录或任一 `@playwright/*` 子项；r2 以普通 `unboundry` 用户、0 effective capabilities 在 Linux x64/glibc + bwrap 断网路径真实 PASS。manifest SHA-256 `79e5d45dfbb9e51ec7fc60e1f5527a11f30f1d3d9638b682741c4306a25db02a`，5270 条 inventory 独立精确复核一致，release 为 0500、无 `.incomplete`，`networkSandboxVerified=true`，网络 namespace 拒绝探针通过，构建步骤未观察到外网尝试。active/maintenance `nginx -t` 与 `systemd-analyze verify` 真实 PASS，未启动服务；现有 nginx/Docker 配置和服务未修改、未 reload/restart，4173 listener 为 0。
+- 修复后当前树在 Node `22.23.1` / npm `10.9.8` 下重跑 m81/m93/m94/m95/m96：`49/49 PASS`，所有异常计数为 0，`deniedViteWildcardProbes=198`；snapshot SHA-256 `7bf6b035e3b909098ae64fd255d14ddef7258b6bf3860c75970f344434b58038` 前后不变，4173 listener 身份前后不变。
+- 随后的第一轮 full 为 `117/117 specs、930/931 PASS`；唯一失败是 m92 bridge fixture 显式传入空 `UNBOUNDRY_MAINTENANCE_MODE`，严格 runtime role 合同按设计报 `RUNTIME_ROLE_INVALID`。产品 parser 未放宽；仅把 fixture 改为 `UNBOUNDRY_RUNTIME_ROLE=active`、maintenance `0`，并在 m93 增补空串拒绝断言。m92+m93 targeted 随后 `9/9 PASS`。
+- fresh full 在 Node `22.23.1` / npm `10.9.8` 下为 `117/117 specs、931/931 PASS`，failed/skipped/retries/reportErrors/blocked 全 0，`deniedViteWildcardProbes=534`；builder operational `attempts=1 / builderInvocations=3 / passed=1 / failed=0`。证据绑定 HEAD `9a76edc3deadad7fe1552977bb3f92baad019542` 下 429-file tested source snapshot `1e96e26feb6334611e9c2205e22d25c6eacbac54b224f44bd3b26bdcfd6f030b`，前后不变；4173 listener `dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae` 前后不变，suite cleaned、exit 0。
+- `1e96e26f…` 属于 m92 fixture 窄修复后、上一轮六文档同步前脏功能树的历史 full，不绑定 commit，也不是 fixed clean/formal candidate、REM-011 三轮、G0～G6、原生产主机运行/迁移/切换、用户 PASS 或发布授权。该历史时点 REM-010 仍为 `IN_PROGRESS`、REM-011 为 `NOT_STARTED`；现行状态以顶部状态和本节后续 fixed candidate 证据为准。production HOLD 从未放开；仅第二验证机 SSH 获本次授权，未连接/修改原生产。真实数据只读越界披露仍以紧邻的 REM-009B 残余边界记录为准。
+- 用户随后在端口 58352 的隔离手工验收页发现两个既有 PASS 未覆盖的真实路径：虚拟 `default` 项目卡片进入 `/canvas/default` 后被缺失项目保护弹回工作空间；`Text → Video` 连线和文字均已持久化，但旧规则仍强制 Video 重复填写本节点 Prompt。当前候选把 default 的工作空间/返回画布入口统一到规范 `/canvas`；Video 改为“已就绪上游 Text 或本节点 Prompt 任一即可，两者都有则合并，两者都无仍阻止”，客户端与服务端共享同一解析器。
+- m11 绿地默认卡片正向跳转与 m30 `Text + Image → Video` 上游文字、无文字负边界、服务端持久图重解析和零任务/零付费请求均已覆盖；唯一安全入口定向 `17/17 PASS`，Node `22.23.1` / npm `10.9.8`，failed/skipped/retries/reportErrors/blocked 为 0，snapshot `f714feb259dae032d61ad751feb5e67bb0bde07ea6cb0e6d026ecf07b903f9be` 与 4173 listener 均前后不变，suite cleaned。用户随后在端口 58352 的同一隔离实页明确确认默认画布不再回跳、空本节点 Prompt 的 Video 正确接收已就绪上游 Text，两项均通过，`CANVAS-019 / INPUT-005` 恢复为 `PASS`。
+- 页面修复后的首轮 full 为 `117/117 specs、930/931 PASS`，唯一失败是 m44 两个协作进程并发打开 exact-current DB 时暴露 reservation 创建/释放竞态，snapshot `84ddf2b9d74b551fecad7fb1e325055be3f8c42103bcf5018e06e2730030eb76`。产品并发协议修复后，m44+m91 targeted `15/15 PASS`；fresh full 为 `117/117 specs、931/931 PASS`，failed/skipped/retries/reportErrors/blocked 全 0，`deniedViteWildcardProbes=534`，builder operational `attempts=1 / builderInvocations=3 / passed=1 / failed=0`。证据绑定 HEAD `9a76edc3deadad7fe1552977bb3f92baad019542` 下 429-file tested source snapshot `db91d80b2605d638f5cb2df296a81292b52dcf4b98fa874e934e83737495532f`，前后不变；4173 listener `dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae` 前后不变，suite cleaned、exit 0。
+- 上述脏树证据首先冻结为 clean candidate `b9b4691`，但两个 OS 进程 Provider save 压力运行暴露 `Application database sidecars changed before writer open`，确认为 SQLite 最后旧 writer 关闭时的真实 WAL/SHM 交接竞态；`b9b4691` 因此失效，不得再当作候选。
+- 替代候选 HEAD `8b639ffe6c5f091c51e1914f2e2c18edf9333d90`、tree `219c4df072426cfe92f33dc4045f021064972e9c` 使用 held-reader 窄修复：完整 WAL/SHM 对（包括零字节 WAL）走普通只读检查，inspection 读事务保持到新 writer 取得 `BEGIN IMMEDIATE`并完成 identity/sidecar/schema/digest 复核后才释放；symlink/hardlink/unsafe/orphan/journal 继续 fail-close。m91 确定性覆盖 hot-WAL 与 zero-WAL 的旧最后连接关闭。
+- 最终 fixed clean offline candidate 含 429 files，source/snapshot SHA-256 `652b946441ee46e43bcbfbfc635dfc5aaacf5e640529ebec5bc7bd34c798dbb0`。三个独立 fresh full 每轮均为 `117/117 specs、931/931 PASS`，合计 `2793/2793`；各轮异常计数全 0、`deniedViteWildcardProbes=534`、builder `1/3/1/0`，合计 builder `3/9/3/0`；日志 SHA-256 前缀依次 `c5a8da15…`、`06aed03d…`、`edbb4550…`。
+- 关键包压力两轮各为 `5 specs × repeat 10 = 570/570`，合计 `1140/1140`，每轮异常计数全 0、`deniedViteWildcardProbes=1980`，各关键场景累计 20 次；日志 SHA-256 前缀 `881023af…`、`edefe9ea…`。五轮均为 Node `22.23.1` / npm `10.9.8`，snapshot unchanged，4173 listener `dfd25fc2…` unchanged，suite cleaned、exit 0。
+- 该时点曾按旧合同记录候选绑定 G0～G6 全绿并把 REM-010/011 置为 `USER_REVIEW`。F-054 后这些数字只保留为 `8b639ffe…` 产品 core、安全 runner、runtime/lease/drain 与合成运维底座的历史基线，不得转移为 `v0.5.2` bridge 或 `v0.6.0` final 的正式 release 门。
+
+### 2026-08-13 F-054 双引擎桥梁纠偏与版本方案确认（REM-010/011 重新施工）
+
+- 审计确认现有 source 在 schema37 仅进入 `schema37-health-only-standby`，除健康接口外的业务 API 返回 `503 SERVICE_SCHEMA_STANDBY`；m95/rehearsal 中的 bridge、exact、candidate 为合成夹具，未执行一个能在 schema37 正常营业、在 schema39 作回滚目标的真实 release runtime。因此 `8b639ffe…` 不是可发布桥梁，REM-010/011 回到 `IN_PROGRESS`，登记 P0 `F-054`。
+- 用户确认版本方案：兼容桥梁 `v0.5.2`，最终候选 `v0.6.0`。该确认时 package 仍为 `0.5.1`；该确认只关闭 DEC-REM-005，不是 tag/release 或任一原生产授权，DEC-REM-006 仍 pending，production HOLD。
+- 冻结 `v0.5.2` 为单一不可变双引擎产物：共享外层 supervisor 是唯一公网 listener，并统一执行 runtime role、active lease、request/SSE/generation drain；启动先只读探测 `user_version`。schema37 路由到内嵌 exact-v0.5.1-compatible 引擎，只开放登录/会话、项目/画布等基础业务读写与既有媒体读取，生成提交/重试/取消、上传/删除/发布等高风险 generation/media mutation 全部 fail-close，离线验证 `generation_provider_attempts=0` 且成功外部出站0；schema39 路由到内嵌 v0.6.0-compatible 业务引擎并可作迁移后回滚；schema38/未知版本只允许维护态 fail-close。健康检查/启动不得迁移，显式 one-shot migrator 仅可在维护、排空和备份完成后运行。
+- bridge manifest 必须分别绑定并哈希 supervisor、两个引擎、lock/build 输入与静态资源；运行时不得拉 Git 或联网组装。`v0.6.0` 是独立不可变最终产物，只以 schema39 完整营业，不把 health-only schema37 standby 冒充 bridge。
+- 双阶段离线门冻结如下：第一阶段对 `v0.5.2` 证明 schema37 基础业务允许面真实读写、所有高风险 generation/media mutation 确定性拒绝、`generation_provider_attempts=0` 且成功外部出站0，schema39 完整业务回滚，schema38/未知 fail-close、无启动迁移、唯一 writer/worker 与排空/恢复、不可变构建清单和跨引擎旧静态资源；第二阶段对 `v0.6.0` 证明显式 v37→v39 迁移、schema39 完整业务、失败恢复与回滚到同一 `v0.5.2`、三轮全新环境、关键竞态压力和全部发现测试零异常。两个阶段都只用临时合成数据、动态 loopback 与假 Provider/OSS；测试完成前不得继承旧 G0～G6 结论。
+- 离线两阶段全部通过也只可进入 `USER_REVIEW`；先连接/发布 `v0.5.2`、再迁移/发布 `v0.6.0` 是两次独立生产动作。该历史时点尚未连接原生产；现已只读预检并取得bridge准备窄授权，现行边界以本文顶部B14/F14段为准。
+
+### 2026-08-13 F-054 双引擎桥梁源码定向门（历史 pre-formal）
+
+- 本轮桥梁源码证据快照将 `package.json`、`package-lock.json` 顶层和 lock 根的三个版本值统一为 `0.5.2`。当前安全清单发现 `117 specs / 938 tests`，源码 `319 = 292 TS/TSX + 27 JS/MJS`，运维脚本 `18 = 15 行为验证 + 3 哈希冻结`。
+- P1-A 关闭 duration owner 漂移：exact-v0.5.1 child 使用不含 ffmpeg/ffprobe 的受控 PATH，warmup 只补 checksum，唯一有效 PCM WAV duration 在 bridge 启动前后都保持 pending；显式 migrator 恰好回填 1 条，final 恰好读到 1 条 ready。
+- P1-B 关闭先决件生命周期漂移：safe runner 按 iteration 持有 bridge/final 共用的 ffmpeg/ffprobe，在构建、运行和清理前重复核对 path/inode/uid/mode/nlink/size/time/hash/version，只在 suite 末统一清理。
+- P1-C 关闭版本改写伪直子关系：新 source-pair 证明 `0.6.0` 是 `0.5.2` 直接子提交，且唯一变化是 package/lock 三个版本值。本轮 Mac 门使用隔离临时 Git 中的 `synthetic-direct-child-fixture`；formal 门始终必须从 Git 现场证明 `0.6.0` 为 clean HEAD、唯一真实父提交是 formal `0.5.2`，且只改三个版本值，不允许重写 bridge。
+- P1-D 关闭 m92 来源伪证：m92 只读认证 operational release attestation，从 admitted manifest 启动 bridge/final，并调用 bridge 产物内 migrator，不再使用当前 checkout、手写 final shim 或 checkout migrator。
+- 首轮七个关键 spec 为 `74/75`，唯一失败是 m92 夹具的 `fetch` 未保留显式 `Host: canvas.mymy.ltd`。产品代理头规则未放宽；夹具改用 `node:http` 后 m92 `2/2 PASS`。最终重跑发现 `117/938`，执行 `7 specs / 75 tests`且 `75/75 PASS`，failed/skipped/retries/reportErrors/blocked 全0，`deniedViteWildcardProbes=186`，builder `1/5/1/0`。证据绑定 HEAD `8f607cdb5f70d760033699077dab738575a4ea69` 下文档同步前 440-file source/snapshot `47fc53b93eaa6af2379484211979d7cec5199bc21dada1b424b0561f59d4c084`，log SHA-256 `4e41ed6f23795eb161746c8d370bc75bf4570a0e3798f0358e2f7832a7a334db`；snapshot 前后不变，4173 listener `dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae` 不变，suite cleaned、exit0。
+- 该 `47fc53b9… / 75/75` 证据形成于 B/F 提交之前，永久只是 Mac synthetic direct-child/artifact 定向门，不是 full、三轮全新环境、关键竞态压力、formal `v0.5.2` artifact、formal `v0.6.0` direct child、Linux production-class builder、原生产核验或发布。该历史时点 REM-010/011 保持 `IN_PROGRESS`；现行状态以下一节为准。
+
+### 2026-08-14 formal B13/F13 离线候选收口
+
+- formal bridge B13 为 commit `51ef51ad18ae7cb7053147ba3c1dc8577fcd771d` / tree `663228d401a03e0afaa4d644aa54347f065f3eaa` / `v0.5.2`；formal final F13 为其唯一直接子 commit `a9051ce896cb6dda8e1ec6d1593f1de128484378` / tree `94bd8ccd8febb61aaa07304423f9c2242f4e96ac` / `v0.6.0`。B13→F13 仅 `package.json`、`package-lock.json` 三个版本值变化，source-pair proof 为 `960f50b3bee454a30f148ca9db13379d3ad5275cb3109349285def71fbffb7e5`。
+- formal targeted 为 `79/79 PASS`（日志 SHA-256 `0549e23d15e950b7c89138365b8ddf4e452d7d039e906e0dd71021251d0f7852`）。三个独立 fresh full 每轮均为 `117/117 specs、942/942 PASS`，合计 `2826/2826`；两轮关键包均为 `6 specs × repeat 10 = 690/690`，合计 `1380/1380`。每轮 failed/skipped/retries/reportErrors/blocked 均为 0，Node `22.23.1` / npm `10.9.8`，F13 下 443-file source/snapshot `b36a20db6fe3c75f20e59d5ed96bc98ed8737bbe85c4d05e0f7e3c59364e2436` 前后不变，4173 listener `dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae` 不变且 suite cleaned。full 日志/摘要 SHA-256 为 `34291275… / 79015673… / 70269938…`，race 日志为 `8500e51a… / 00f16e7f…`。
+- 第二台非原生产 Ubuntu 验证机的隔离 Linux production-validation 对本轮 B13/F13 正式 PASS，receipt SHA-256 `8f1ea00385828327d81bc7c9f9f7ef71a48fe87c58d6cb190ce45953a59c36eb`。它实际完成 schema37→39、B37→B39→F39→B39 rollback→F39 reswitch、真实 60 秒 drain、2 次 native duration probe、1 条 backfill、备份/验签/恢复与零成功外部出站；`/var/lib/unboundry`、current pointer、4173、宿主服务与旧证据根均未改变。
+- F13 lock 的 234 个非根依赖节点与 REM-008 历史 audit=0 提交 `ff9a2adbb9ba93c9646935b2b22b318fb5503f21` 的精确图逐项相同；本轮没有新的 advisory 数据库，因此不得写成 fresh audit。
+- G6 用户 A/B/C+final 四阶段实页验收已最终 USER PASS：B13/schema37 确认登录、文字编辑/保存/刷新、250×250 自动换行与既有图片；F13/schema39 追加 `-F39通过` 并刷新保持；回滚 B13/schema39 追加 `-B39回滚通过` 并刷新保持；最终重切 F13/schema39 后两次修改、图片与换行均保持。证据 SHA-256 `d9f781600e169b93da6955fbc3395a24747edde148942b12fdcec7fa3d85358d`。期间合成禁用 Provider 的一次检查连接返回 HTTP 400；无付费生成或成功外部出站，`generation_provider_attempts=0`，但确有一次失败的 Provider 检查尝试。
+- G5 已在 DEC-REM-007 单次不可变审批绑定下完成 formal Linux supplement：executionId `61b1b5dfab2e78ec4fd8d93a2caa13af3f3e724cadb489133ff6b0e191d8e755`，outer receipt `PASS / formalG5Evidence=true` SHA `ed319a33611c8b0454fdab16e0ae85cc27bb1711a5c10a6df389bc57ee8d620b`，inner candidate `380ec25897f8d642c379301a313a572eb20d31e75a1ffefcc454a89487b64ad0`，requests `15d69b90ffdd4a686fd3653f664c0ec90f933281e16757f57ce07f13e5f43a92`。B37/B39/F39/B39_ROLLBACK/F39_RESWITCH 共`700/700`且传输错误0，G5 coverage为`PASS`。该B13/F13证据现只作B14/F14回归基线；REM-010/011为`IN_PROGRESS`，G7/production HOLD。
+
+### 2026-08-09 REM-001 离线安全底座（工程候选已完成）
+
+- 固定本地施工运行时：Node `22.23.1`、npm `10.9.8`；`.node-version`、`packageManager`、engines 与安全入口相互校验。依赖在隔离快照内执行 `npm ci --offline --ignore-scripts`，安装前后 package/lock 哈希不变。
+- 新增唯一安全入口 `scripts/run-safe-tests.mjs`、Node 网络守卫、浏览器守卫、源码覆盖清单和逐 spec 模式清单。105 个 Playwright spec 精确分区，运行时发现 `105/105` 文件、`520/520` 唯一测试；`skip/only/fixme/retry` 均为 0。
+- 每个 spec 使用新的系统临时目录、独立 HOME/cache/report/data 和两个动态 loopback 端口；Node 与浏览器只允许本轮登记端口，4173 的 bind/connect 均会失败。真实 Provider/OSS/代理凭据不进入子进程，Vite 安全模式不读取仓库 `.env`。
+- 内核文件负控对真实数据、备份、密钥等受保护路径完成 24 次拒绝验证，测试子进程成功访问真实路径为 0；网络负控 24 类全部通过。所有受管命令均有独立进程组、超时 TERM→KILL、进程组消失与端口释放证明。
+- 源码门动态覆盖当前 272 个源文件：TS/TSX `258/258` 纳入类型检查，JS/MJS `14/14` 语法检查；9 个运维脚本为 4 个行为验证 + 5 个哈希冻结。生产构建、绿地检查、两次重启持久化均在隔离沙箱中通过。
+- 第一次诚实全量运行暴露 18 个失败和 1 个串行连带未执行项；逐项归因后修正陈旧路由/文案、等待假绿、坐标时序和本地模块误计，并修复 4 个 review 新发现问题：F-035 权威媒体元数据预检、F-037 账号浮层重渲染覆盖选择、F-038 render 内重定向、F-039 模板动画期间保存风暴。
+- F-035 定向安全测试 `8/8`；m17/m70 修复后五轮 `120/120`；修复后首轮全量为 `520/520 PASS`，`failed/skipped/retries/reportErrors/blocked = 0`，临时目录已清理，4173 监听身份哈希前后不变。
+- 新增 F-036：参考图片宽高仍未从 `media_assets` 以权威字段进入通用预检，图片尺寸/比例规则可能静默绕过；已登记到 REM-004/005，未在 REM-001 擅自扩张持久化施工。
+- `GOV-001`：一名只读 reviewer 曾用仓库级文件枚举只看到被忽略的备份/密钥文件名，没有读取内容、stat/hash、修改或网络动作。故最终只能声称“安全 runner/测试子进程真实路径访问为 0”，不能声称整个 Goal 所有 agent 行为绝对为 0。
+- 本项保持 schema `37`、package `0.5.1`，未访问真实数据、4173、真实 Provider/OSS、生产、SSH，也未 push/tag/PR/发布。工程状态进入 `USER_REVIEW`；本轮合并授权允许继续 REM-002。
+
+### 2026-08-09 REM-002 API、进程与可观测性基础（工程候选已完成）
+
+- 新增统一 HTTP 请求边界：13 处 JSON body reader 收敛到相同的大小、Content-Type、UTF-8 和中止规则；20 个服务路径入口及 3 个编码文件名改为安全解码；畸形 `%`、过大请求、错误媒体类型和异步异常只返回结构化 4xx/5xx，不再形成未处理 Promise。
+- 每个请求使用 UUID request ID，并只写固定 8 字段的脱敏结构化日志；业务 4xx/5xx 不再被错误记录成 `OK`。维护和关闭期间只放行已证明无副作用的 health/version 路由，其余 API（包括会懒迁移、回填或恢复任务的 GET）统一返回 `503 + Retry-After`。
+- 就绪检查不调用 `openAppDatabase`、不初始化任务存储、不创建业务行。它只读核验 schema 37 的完整迁移账本、19 张表、27 个显式索引、5 个触发器及 SQLite 完整性；活跃 WAL 有 SHM 时读取已提交快照，无 SHM 时 fail-closed。已登记且逐项验证 v21 目录修复与 v31→v32 模板补列的有限历史物理形态，未知或语义损坏形态一律不就绪。
+- 优雅关闭同时等待响应、handler 清理、请求体和 SSE；大/慢请求体会被安全排空，SSE 收到维护事件后结束。Vite dev/preview 的 SIGTERM/SIGINT 处理改为精确捕获并恢复自己的监听器，不删除宿主监听器；超时或 close 失败有硬截止。生成任务的 3 个后台启动点统一吸收同步 throw、Promise rejection 和失败回写异常，避免未处理 rejection 杀进程。
+- 登记并关闭 F-041～F-047：维护 GET 副作用旁路、只看响应的假排空、后台生成 rejection、readiness 假阳性/WAL 语义、Vite 信号所有权、错误日志记成 OK、JSON/URL 错误边界不一致。
+- 专项 `m81` 为 `17/17 PASS`。最终安全全量在固定 Node `22.23.1` / npm `10.9.8` 下发现并执行 `105/105 spec、536/536 PASS`；`failed/skipped/retries/reportErrors/blocked = 0`；源码门为 274 个文件、TS/TSX `260/260`、JS/MJS `14/14`，构建、重启持久化、临时目录清理均通过。
+- 一次诊断全量中，安全入口检测到本轮之外的 4173 守护服务监听身份在运行期间变化并正确 fail-closed；没有连接、终止或重启该服务。外部监听稳定后重新完整执行为 `536/536 PASS`，前后监听身份 SHA-256 均为 `0bbb8e5874e169f362481f626b49123e554ae478e4c261b7691e2eb30e80c14f`。
+- 本项保持 schema `37`、package `0.5.1`；未读取/修改真实数据，未操作 4173，未请求真实 Provider/OSS，未连接生产，未 push/tag/PR/发布。工程状态进入 `USER_REVIEW`，当前施工切换到 REM-009A。
+- REM-002 本地功能提交固定为 `c7b2af01b5441fe9532d7f1e2696cd4fc2ceac89`；仅存在于专用本地分支，未 push/tag/PR。
+
+### 2026-08-09 REM-009A 只读备份、验签与恢复底座（工程候选已完成）
+
+- 新增格式 2 加密备份包：数据库、媒体、密钥和假 OSS 镜像逐文件 AES-256-GCM 加密，恢复密钥使用 RSA-3072 OAEP-SHA256 包裹，整个包由 Ed25519 独立签名；恢复私钥与可信签名公钥始终在包外。
+- 源库不再调用 `openAppDatabase`、不做 checkpoint 或迁移；只把 SQLite main/WAL/journal 原样复制到本轮私有临时目录，再在副本上生成一致快照。检查覆盖 schema 37 完整迁移账本、19 张业务表、`sqlite_sequence`、完整 schema、行级逻辑指纹、integrity/FK、三类密钥文档真实解密能力。
+- 媒体同时覆盖已登记本地文件、孤儿本地文件和 ready OSS 对象内容镜像；每个 OSS 镜像强制绑定 `object_key + versionId + byte_size + checksum`。任何带 `object_key` 的 pending/failed OSS 行直接拒绝备份，不能静默遗漏。
+- 所有数据、包、工作目录、密钥和镜像路径均核验完整可信父链；输入文件读取前、打开后、读取后复核 owner、权限、inode、大小、时间与硬链接数。私钥必须 0600 等价最小权限，签名私钥不能被伪装成 OSS 镜像打包。
+- 创建和恢复使用独占目录预留、不可覆盖的逐项发布与 incomplete marker；运行时 readiness 会拒绝任何残留恢复 marker（含悬空符号链接）。损坏签名、manifest、任一密文对象、外来文件、竞态替换或中途故障都不会覆盖既有目标。
+- 旧的真实 OSS 上传/镜像脚本继续 fail-closed 冻结；新增显式绝对路径、显式 `--source-frozen` 的 backup/verify/restore 薄入口，不存在默认 `app/data` 或仓库 backups 路径。
+- 新登记并关闭 F-050～F-053；REM-003 只读复核另登记 F-048/F-049。专项 `m10 9/9`；最终快照三轮 `27/27`；最终安全全量 `105/105 spec、542/542 PASS`，failed/skipped/retries/reportErrors/blocked 均为 0；源码 277，TS/TSX `262/262`，JS/MJS `15/15`，4173 监听身份不变。
+- 两路独立终审均确认剩余 P0/P1 为 0。保持 schema `37`、package `0.5.1`；未读取/修改真实数据，未请求真实 Provider/OSS，未连接生产/SSH，未 push/tag/PR/发布。
+- REM-009A 本地功能提交固定为 `ee998db80414cabb211fdc590712a0c257a25e50`；仅存在于专用本地分支。工程状态进入 `USER_REVIEW`，当前唯一施工项切换到 REM-003。
+
+### 2026-08-09 REM-003 画布持久化与 DATA-005 语义保护（工程候选已完成）
+
+- 服务端把 canvas、项目更新时间、删除墓碑复核与每账号/画布/会话高水位放入同一 `BEGIN IMMEDIATE` 事务；同标签旧 sequence、同 sequence 异 attempt、进程重启后的旧 load token 和 legacy 高风险交接均 fail-closed，不同标签继续保留 DATA-005 最后保存者胜。
+- GET/PUT 使用进程 epoch、owner/canvas/revision 绑定的加载凭据；candidate 保存、revision 0、404/create、项目删除、账号物理删除、容量上限和 SQLite 故障均有稳定结构化合同。OpenAPI 同步 GET/PUT/DELETE、401/403/409/503 精确响应。
+- 客户端只有当前账号+画布成功 hydration 后才开放编辑、保存和生成；保存 journal 以 session/sequence/attempt/epoch 严格 CAS 持久化，覆盖普通保存、pagehide、丢响应、超时、重载、BFCache 状态机、跨标签广播与外部基线重放。未知提交结果重试同一 payload，确定性冲突保留草稿且停止付费入口。
+- 节点生成轮询、重试、任务面板和媒体结果均绑定当前 scope、输入 key 与 task owner；旧 scope、旧请求、取消迟到响应或旧任务成功不能覆盖新输入。ReactFlow 在 loading 期只接受纯被动 dimensions 测量，避免首个标题提交把已水化节点隐藏/失焦，同时不产生额外保存。
+- 固定 Node `22.23.1` / npm `10.9.8`，测试源码指纹 `2ae382d4b0bed4cfa1e570d1e0172c2b84365dba4abf38ea095eb68e7c59875a`：13-spec 专项 `205/205`，m28 十轮 `30/30`，m41/m85/m86 三轮 `450/450`，安全全量发现并执行 `107/107 spec、687/687 PASS`；failed/skipped/retries/reportErrors/blocked 均为 0。源码 279，TS/TSX `264/264`、JS/MJS `15/15`；构建、两次重启持久化、临时目录清理均通过，4173 监听身份前后均为 `d57f27dc87024c26184ab9233355cabd31cd48d39c03bbe1d301fef586e4470c`。
+- 独立终审未发现剩余 P0/P1。schema `37`、package `0.5.1` 不变；测试只用临时合成数据、假 Provider/OSS 和动态 loopback，未读取/修改真实数据，未操作 4173、生产或外部服务。
+- REM-003 功能内容提交为 `2a0b7f9819d3075d5fd339e20c5badd389cd51ae`；测试运行于提交前相同文件内容的上述源码指纹，不冒充运行时已经位于该 commit。仅存在于专用本地分支，未 push/tag/PR。工程状态进入 `USER_REVIEW`，当前唯一施工项切换到 REM-004。
+
+### 2026-08-11 REM-004 统一媒体生命周期（工程候选已完成）
+
+- 离线 schema 38 候选新增媒体发布 attempt、媒体删除 intent、账号删除 intent 与约束触发器；本地和假 OSS 统一执行 reserve → stage → publish → finalize，并用持久 journal 完成失败补偿、进程启动恢复、单飞删除与 profile 固定。
+- 所有媒体读取、历史、项目/模板封面、生成结果与下载只消费 owner/kind 精确匹配的 ready 素材；F-036 改为以服务端权威尺寸重建输入。客户端只有同步 adoption ACK 成功才采用新素材，否则按精确 ID 补偿；只读媒体完整性 CLI 与格式 2 备份共同核对 schema 37/38、媒体、publication、密钥和假 OSS 证据。
+- 本项只关闭 `F-004`、`F-036` 与 `F-005` 的媒体发布/补偿/恢复子范围。Provider 付费、任务幂等、限额、停止重查与未知结果保护继续归 REM-005；账号任务、模板、权限、凭据、审计及完整删除合同继续归 REM-006。
+- 固定 Node `22.23.1` / npm `10.9.8`，冻结源码指纹 `f6974d0456eb09b864e7302b85d47172d93d57182610ec42b95c42be4427454c`：8-spec 专项 `158/158`，同组核心三轮 `474/474`，安全全量发现/执行 `109/109 spec、762/762 PASS`；failed/skipped/retries/reportErrors/blocked 均为 0。源码 284，TS/TSX `268/268`、JS/MJS `16/16`；11 个运维脚本为 6 个行为验证 + 5 个哈希冻结。4173 监听身份前后均为 `c9663ffd4e9e26c675482e713e301f681f172b976a50df952d903fac9f00da0e`，本 Goal 未连接、终止或重启该监听。
+- 两路独立终审未发现剩余即时产品 P0/P1。REM-004 功能提交为 `9f1019e5686ccce4f646b54a2be6ccd5ab4864d0`；测试绑定提交前相同功能内容的冻结工作区指纹，文档修改后的新指纹不得冒充已运行证据。工程状态进入 `USER_REVIEW`，当前唯一施工项切换到 REM-005。
+- schema 38 只是必要 P0 的离线候选，线上 v0.5.1/schema 37 未读取或改动，生产发布保持 HOLD。本段在 REM-004 时登记的富数据备份恢复、one-shot migration、写锁内复核和回填故障恢复要求，现已由 REM-009B 用合成数据完成；结论是 exact-v0.5.1→current bridge→schema39 数据格式与安全拒绝边界成立，exact v0.5.1 对 schema39 安全拒绝，迁移后不能回滚到 v0.5.1。生产 bridge 接线、切换、回滚及必要的两版本/两次独立生产授权仍归 REM-010。
+
+### 2026-08-11 REM-005 生成、幂等与付费边界（工程候选已完成）
+
+- schema 39 在 schema 38 媒体底座上新增 owner-scoped idempotency、generation admission 账本、credential epoch 高水位及带 outcome/revision/scope 的 Provider attempt 账本；schema 37/38 加密备份继续由各自冻结合同精确检查。
+- `BEGIN IMMEDIATE` 内原子完成稳定意图幂等命中、安全开关、RPM/并发/熔断 admission 与任务插入；最终付费边界再次核验停止状态、owner/model/profile/credential revision 与权威参数，排队后急停不能越过 Provider 边界。
+- Provider 已 accepted、response-received 或 outcome-unknown 时不得自动创建新付费 attempt；只有全部既有 paid evidence 均为 definitive-rejected/provider-failed 时才允许新付费重试。失败且结果可能已存在的任务可由用户显式 abandon，账本与 remote ID 保留且 Provider 请求为 0。
+- 关闭 `F-008`、`F-009`、`F-010`，并与 REM-004 一起关闭 `F-005`；`F-014` 只关闭 Provider deadline 子范围，结果 URL 出站保护仍归 REM-008。上述结论以单一 active process 为前提，`F-023` 仍归 REM-010。
+- migration 39 的 admission 表不从历史任务推断回填。REM-009B/010 必须演练：冻结新生成、排空活动任务、自最后一次可能 Provider admission 起至少 60 秒无新 admission，再执行 one-shot exact-v37→schema39 迁移并只启动唯一 active worker。
+- 固定 Node `22.23.1` / npm `10.9.8`，冻结功能树指纹 `6a1363df8a6977e996db4b9e45aa823a89e28d6fe3955d85d6ea0ca9b315fcf9`：m81 `23/23`、6-spec 受影响组三轮 `207/207`、安全全量 `109/109 spec、790/790 PASS`；failed/skipped/retries/reportErrors/blocked 均为 0，`deniedViteWildcardProbes=474`。源码 285，TS/TSX `269/269`、JS/MJS `16/16`；11 个运维脚本为 6 个行为验证 + 5 个哈希冻结。4173 listener 前后均为 `6fb8de970741a8dee0ab4c8790e237f3fe5a4c0a3cd4c1cd6a89af12fd6e16c7`。
+- 三路独立终审未发现剩余即时产品 P0/P1。测试运行于功能提交前、HEAD `2beaec585d2d33a11341b98349b31b89b41d3a62` 的上述冻结脏工作树；REM-005 功能提交 `b3ceba04b5ddcf781dd58ce355be0e0f7665450e` 包含相同功能文件内容，未在该 commit 后或文档后树重跑。本项进入 `USER_REVIEW`，当前唯一施工项切换到 REM-006；这不是用户 PASS、真实数据迁移、真实 Provider/OSS、生产发布或 REM-011 最终三轮。
+
+### 2026-08-11 REM-006 账号删除、模板、权限与清理（工程候选已完成）
+
+- 账号删除以持久 intent 和可重试 saga 收口：先禁用账号并撤销 session，活动或结果未知生成任务阻止删除，公共模板及必要媒体转交受保护最高权限账号，本地/假 OSS 物理媒体逐项清理失败可重试，最终数据库收口再验证 actor、intent、任务、媒体和模板状态。
+- 继续严格遵守 `PERM-011 / KEY-008 / AUTH-006`：被删账号的权限、凭据和相关旧审计按原合同清理，仅保留由操作管理员写入的唯一 `delete_user` 记录；受保护最高权限账号不可删除。F-006/F-007/F-017A/F-033 已在离线候选修复，F-032 仅是对上述旧 PERM-011 语义的确认，未改成保留旧审计。
+- 权限页仅保存服务端返回的有效额外授予集，GET 失败不开放破坏性保存，同账号保存在途时复选框与保存按钮禁用。账号凭据、Provider profile/catalog 与存储文档真实 HTTP 变更都在最终线性化点重查 actor 删除 fence，SQLite 业务元数据与审计同一事务成败；加密文档在锁内写入，并在确定性审计失败时按快照恢复；远程 probe 在锁外完成后再持锁重查。
+- 测试运行于功能提交前、HEAD `731b984d7e32a0b9ee648c0e7fa1bd49e59deb14` 下 403-file 冻结脏工作树，SHA-256 为 `9873952efd5a7b1f0d84d65698be79069a89aae47ab25ff277dabf6b4ef2016d`：14-spec 定向 `112/112`，核心 7-spec `repeat=3` 共 `222/222`，安全全量 `109/109 spec、804/804 PASS`；failed/skipped/retries/reportErrors/blocked 均为 0，`deniedViteWildcardProbes=477`。源码 286，TS/TSX `270/270`、JS/MJS `16/16`；11 个运维脚本为 6 个行为验证 + 5 个哈希冻结。4173 listener 前后均为 `38911ab014a12dd3353ee0897359ebfb26f075144de1ce0b35e760f2df6dea3d`。
+- 独立终审未发现剩余即时产品 P0/P1。功能提交 `67cc39302d756bc00bff7ac31e31de7a7f574574` 包含相同的 23 个功能/测试/runner 文件，未在该 commit 后或文档后树重跑。本项进入 `USER_REVIEW`，当前唯一施工项切换到 REM-007；这不是用户 PASS、真实数据、真实 Provider/OSS、生产迁移、发布许可或 REM-011 最终三轮。
+- 上述结论仅在单一 active process 前提下成立，进程内 lease/文档锁不关闭 F-023，仍归 REM-010。账号删除不是跨物理媒体的单事务；加密文档与 SQLite 只证明确定性审计失败时不留文档变更，不声称跨文件系统/SQLite 的进程崩溃原子性。线上 v0.5.1/schema 37 保持不变，schema 39 仅离线候选，production HOLD；未读取/修改真实数据，未操作 4173，未请求真实 Provider/OSS，未连接生产。
+
+### 2026-08-12 REM-007 前端生成恢复与失败体验（工程候选已完成）
+
+- F-016/F-017B/F-018 已在离线候选修复。文字/图片/视频/音频节点以持久 `*GenerationOwnershipKey`、exact task/idempotency GET 和完整 model/name/normalized parameters 快照绑定 active task；付费 POST 前先把 effective 快照持久到 canvas 并取得 fresh revision，新任务期间保留旧预览。对仍匹配当前 ownership 的 active task，success/failed/cancelled 节点状态先持久并获得 canvas ACK，再按 taskId 清 submission intent；preflight 拒绝保留 intent；恢复调用缺失或不同于已有 raw ownership proof 时不认领并保留。显式输入或新 ownership 会撤销/替换旧 intent；legacy signature 无法升级、恢复路径确认持久绑定已失效、提交前 exact GET 命中 cancelled，以及正式付费任务 POST 的确定性 4xx 等不可复用分支，按对应 guard 清理 intent；复制节点会清 generation binding。
+- 正式付费任务 POST 及其响应体共用 deadline；该 POST 出现网络/status 0/5xx 未知结果时只按原 idempotency key exact GET reconcile，绝不重发付费任务 POST。retry 先保存取得 revision，再由服务端最终 `BEGIN IMMEDIATE` 核验 live canvas/node/kind/taskId/inputKey/attempt/updatedAt；响应丢失只对同 task exact GET reconcile。localStorage ownership/intent 写失败在付费前 fail-closed。
+- Workspace create/rename/delete、CanvasShell create/clone/delete 与 UpdateNotice reload-after-save 各自具 in-flight fence 和显式失败处理；Workspace DELETE 与删除后核验所用列表 GET 具 deadline（列表覆盖 response body）。Workspace 删除向 ConfirmDialog 传入 busy，ConfirmDialog 负责 focus/Escape/a11y；CanvasShell 删除依靠外层 fence。真实 Mureka `INPUT-006 / AUDIO-REAL-001` 未恢复，继续 PARTIAL/暂停。
+- 测试运行于功能提交前、HEAD `26ff9396194499365c79e5bc85238631ed44ef7a` 下 403-file 冻结脏工作树 `ce7b4856b00b3ab12ee4853ece0b07b01dec86619bbca7865daa4edb659cc957`：adjacency 12-spec `142/142`、target 10-spec `255/255`、核心 8-spec `repeat=3` 共 `606/606`、安全全量 `109/109 spec、841/841 PASS`；failed/skipped/retries/reportErrors/blocked 均为 0，full `deniedViteWildcardProbes=477`。固定 Node `22.23.1` / npm `10.9.8`；源码 286，TS/TSX `270/270`、JS/MJS `16/16`；11 个运维脚本为 6 个行为验证 + 5 个哈希冻结；4173 listener 前后均为 `91689b3fefccfb3fe32ffc44e2b10a3146976b76d497183f56f7457924a7e219`。
+- 功能提交 `138f7ff0f9481e73355fbd9a9fd2c548ee9cee1a` 包含相同功能文件，未在该 commit 后或文档后树重跑。本项进入 `USER_REVIEW`，当时唯一施工项切换到 REM-008；不是用户 PASS、真实数据/真实 Provider/OSS、生产迁移、发布许可或 REM-011 最终三轮。REM-007 无 schema 迁移；新增 ownership 是可选 canvas JSON/localStorage 字段，其旧数据格式与安全拒绝边界后来已由 REM-009B 矩阵覆盖。结论只在单一 active process 前提下成立，F-023 留 REM-010；不宣称跨标签分布式互斥。package `0.5.1`、线上 schema 37 不变，schema 39 仅离线候选，production HOLD。
+
+### 2026-08-12 REM-008 资源、安全、性能和运维脚本（工程候选已完成）
+
+- `F-012`～`F-015` 的离线候选范围已收口：登录使用有界 token bucket 和 fail-fast 密码校验并发，SSE 使用全局/每键连接准入并限制慢客户端；请求体、播放列表导出和缩略图改为受控流式路径；Provider 结果与 OSS endpoint 使用私网/保留地址/IPv6 拒绝、DNS pinning、redirect fail-closed 和 deadline。以上只由动态 loopback 与假 Provider/OSS 证明。
+- 保留 `DEP-005` 的 500MiB 视频合同，不用降上限规避资源治理。上传、生成结果、播放列表和缩略图统一受进程/账号/磁盘 reservation 约束；ffmpeg/ffprobe 使用有界队列、超时、TERM→KILL 进程组收口和 stderr/output 上限；压力与故障后 permit、子进程和临时资源回落。
+- 安全响应头覆盖 CSP、Permissions-Policy、Referrer-Policy、nosniff 与 HTTPS 条件 HSTS；锁文件把 `nanoid` 固定为 `3.3.18`，隔离 `npm ci --offline`、生产构建和离线 audit 均通过。`F-029` 只按当前 lock snapshot 与离线候选收口，不冒充生产供应链证明。
+- 密码重置和存储修复默认 dry-run，apply 要求显式可信绝对路径、私密密码文件与有效管理员 actor，并以审计、锁、补偿和恢复收口；`F-025` 只关闭这两个脚本子范围。真实 OSS mirror/backup-to-OSS 继续哈希冻结，最终远端恢复材料仍归 REM-009B/010。
+- `F-030` 本轮可验证子范围已处理：App/Workspace 按需包拆分、历史素材游标分页、图片/视频懒加载、缩略图缓存上限与 object URL 回收；不宣称消灭所有后续 P2 优化空间。`F-028/F-034` 继续由固定 Node 22 和全源码门禁满足。
+- 测试运行于功能提交前、HEAD `d63af1224bbadfab00cdd65256c16afaf4195fa1` 下冻结脏工作树 `79625ac9768e99351f00190389a76e19945355405a3235608f219afd4d2d81be`：核心 15-spec `repeat=3` 共 `588/588`，安全全量 `111/111 spec、891/891 PASS`；failed/skipped/retries/reportErrors/blocked 均为 0，full `deniedViteWildcardProbes=492`。Node `22.23.1` / npm `10.9.8`；源码 294，TS/TSX `277/277`、JS/MJS `17/17`；12 个运维脚本为 9 个行为验证 + 3 个哈希冻结；4173 listener 前后均为 `09d55bc82aab1e1f04aae60397395befd6d17c41b5b2622bcde7c4c7b1b8ec2`。
+- 功能提交 `ff9a2adbb9ba93c9646935b2b22b318fb5503f21` 包含相同功能文件，未在该 commit 后或文档后树重跑。本项进入 `USER_REVIEW`，当前唯一施工项切换到 REM-009B；不是用户 PASS、真实 500MiB 上传、真实数据/Provider/OSS、浏览器 TLS/生产安全头、生产迁移、发布许可或 REM-011 最终三轮。资源/SSE/进程/出站合同只在单一 active process 内成立，磁盘 reservation 不是 OS 全局配额，脚本不声称文件系统/SQLite 跨介质崩溃原子；F-020/F-024 留 REM-009B，F-022/F-023 留 REM-010。package `0.5.1`、线上 schema 37 不变，schema 39 仅离线候选，production HOLD。
 
 ### 2026-08-06 多项目（项目制画布）功能
 
@@ -12,9 +330,20 @@
 
 ## 当前阶段
 
-阶段：`M5真实生成可靠性已收口 / 阶段G Video真实链路已接通 / 多协议中转站RELAY-001～012已PASS / 画布搜索缩放与多选打组回归已PASS`
+阶段：`INC-UI-001/002 PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK / 生产 v0.6.2/schema39 LIVE / Draft PR仍为既有v0.6.1状态`
 
-画布、固定界面、Text、Image、Video、Audio、Playlist、Group、外围面板、账号、管理员模型中心、生成安全和新图片私有OSS链路已通过当前范围验收；Comment、社区、TapTV、竞技场、额度和链接分享已按用户决定取消。OpenRouter GPT Image 2已完成一次用户授权的真实生成，图片连线参考图及真实结果零费用重启恢复均已通过；当前不进入正式部署。
+画布、固定界面、Text、Image、Video、Audio、Playlist、Group、外围面板、账号、管理员模型中心、生成安全和新图片私有OSS链路已通过当前范围验收；Comment、社区、TapTV、竞技场、额度和链接分享已按用户决定取消。OpenRouter GPT Image 2已完成一次用户授权的历史真实生成，图片连线参考图及真实结果零费用重启恢复均已通过；本次 cutover 未发起 Provider 或付费生成请求。
+
+### 2026-08-16 INC-UI-001 设置页返回来源画布与浏览器品牌标识（已发布，待用户实页复验）
+
+- 用户要求：所有完整设置页的「返回画布」不再固定进入默认画布，而是回到进入设置前的真实项目；旁边新增「返回工作空间」；浏览器标签显示无央图标和准确标题。
+- 只读根因：`App.tsx`中8个设置/管理页和账号浮层使用固定路由，8个页头均硬编码`/canvas`；现有`CanvasShell`/`WorkspacePage`虽已有`from`和按用户/标签页的最近项目记录，但没有被设置页统一复用，工作空间仍以`/canvas`兜底。`client/index.html`仅有固定`<title>画布</title>`且没有favicon link。
+- 冻结规则：`from项目ID → 当前账号本标签最近真实项目 → 工作空间`；排除`default`，只接受站内项目ID并经`GET /api/projects`校验；网络失败留页提示，不盲跳、不回默认画布。设置页之间必须保留来源；A→设置→工作空间→返回画布仍回A。
+- 已实现共享导航解析器和共享设置页头，覆盖`/connections`及7个`/admin/*`完整页面；账号浮层和设置页内部跳转传播来源；工作空间复用同一解析器。来源经当前账号项目列表校验，网络错误留页，双击单飞。
+- 已新增`client/public/favicon.svg`、静态兜底标题和动态页面/项目标题；项目标题变化即时联动浏览器标签，空标题有安全回退。
+- 自动验证：安全预检通过；受影响10份spec `102/102 PASS`，新增与多项目定向`m66 28/28 PASS`；临时洁净候选正式full为`117/117 specs、962/962 PASS`，failed/skipped/retries/reportErrors/blocked均为0，immutable builder `attempts=1 / builderInvocations=5 / passed=1`，source/snapshot SHA-256 `ea3410620444862090b076e8b0d9e250ed24e6f4f983b3937ecff9ecf4bce0e1`前后不变，4173 listener哈希`dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae`前后不变，Provider/付费/OSS请求0。
+- 权威详细方案：`spec/INC_UI_001_SETTINGS_RETURN_AND_BROWSER_IDENTITY_PLAN_2026-08-15.md`。NAV-001～004、BRAND-001～003进入`USER_RECHECK`，不能在用户可见实页确认前记PASS。
+- 用户随后授权完整上线；本功能已随v0.6.2发布。最终安全full为`118/118 specs、965/965 PASS`，生产version/live/ready、标题、favicon与静态资源哈希通过；未push/tag/更新PR。用户实页确认前仍为`USER_RECHECK`。
 
 ### 2026-08-08 小地图拖动与点击跳转修复（已验收并进入 v0.4.7 发布）
 
@@ -972,7 +1301,7 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - 脚本（L3）：`scripts/backup-to-oss.mjs`（本地备份后上传 OSS `backups/` 前缀，含干跑与 retain-days 清理，首次真实上传待用户授权）；`scripts/mirror-oss-to-local.mjs`（OSS `objects/*` 镜像回本地并核对 SHA-256，首次真实运行待授权）；npm scripts `data:repair-storage` / `data:backup:oss` / `data:mirror-oss`。
 - 验证：tsc、`npm run build` 通过（仅既有 chunk 体积提示）；m80 专项 4/4（重测不降级、路由关闭存量 OSS 仍 307 读取、无可用配置告警、新素材登记所属配置）；m10/m13/m31/m72 回归合计 30 通过、1 跳过（m13 真实 OSS 专项需 `UNBOUNDRY_REAL_OSS_VERIFY=1`）。
 - 顺带修复：m10「trusted-duration migration」用例的老库 fixture 漏建 `project_metadata`（既有遗漏，与本批无关但导致该用例失败），已补齐；m31 媒体构造补 `storageProfileId`。
-- 待用户：4173 实页刷新确认旧 OSS 素材恢复显示（热重载已生效，无需等待重启）；授权首次真实 OSS 备份上传与反向镜像；STORAGE-004 由 USER_RECHECK 转 PASS 需用户实页确认。
+- 后续确认：2026-08-09 用户实页确认旧 OSS 素材已恢复显示，`STORAGE-004` 正式转为 `PASS`。首次真实 OSS 备份上传与反向镜像仍属于独立授权事项，不随本项验收扩大。
 
 ### 2026-08-08 部署方案立项（DRAFT，未改代码）
 
@@ -997,7 +1326,7 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - 安全验证：公网 POST /api/auth/bootstrap 实测 403；未登录素材 401；UNBOUNDRY_TRUST_PROXY/SECURE_COOKIES=1；服务环境无任何 UNBOUNDRY_TEST_*；vite preview.allowedHosts 放行 canvas.mymy.ltd。
 - 备份：unboundry-backup.timer 每日 03:30（Persistent=true）；首次真实备份已上传 OSS `objects/backups/2026-08-07T20-18-27-167Z/`（317 文件，HEAD 抽查 OK）；恢复演练通过（verify-backup --runtime-port 4198）。
 - 脚本修复：backup-to-oss 干跑 flag、`--backup-root` 参数、改用 OSS client.put（`objects/backups/` 前缀兼容 RAM 最小权限）、list 签名修复、清理 fail-soft；mirror 跳过备份前缀、list 修复。
-- 延期/待办：① ~~服务器代理（OpenRouter）~~ **已取消**（用户决定：云服务器不装代理软件，避免云厂商风控与合规风险；OpenRouter 不启用，火山方舟为当前生成平台）；② RAM 无 ListObjects，旧备份清理与镜像待放行权限后启用；③ 待用户实页验收 DEP-004（旧 OSS 素材）、多设备、大视频上传、Cookie Secure、火山方舟公网生成。
+- 延期/待办：① ~~服务器代理（OpenRouter）~~ **已取消**（用户决定：云服务器不装代理软件，避免云厂商风控与合规风险；OpenRouter 不启用，火山方舟为当前生成平台）；② RAM 无 ListObjects，旧备份清理与镜像待放行权限后启用；③ 多设备、大视频上传、Cookie Secure、火山方舟公网生成仍按验收矩阵各自状态推进。`DEP-004` 已于 2026-08-09 获用户实页确认并转为 `PASS`。
 - 用户确认：2026-08-08 用户已在 https://canvas.mymy.ltd 登录成功。
 
 ### 2026-08-08 品牌更名与图标（中文「无央」、英文「Unboundry」）

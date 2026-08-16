@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 const checkedAt = "2026-08-03T12:00:00.000Z";
 
@@ -24,7 +24,7 @@ test("Provider model directories follow declared capabilities without paid reque
   baseURL,
   page,
 }) => {
-  const localOrigin = new URL(baseURL ?? "http://127.0.0.1:4173").origin;
+  const localOrigin = new URL(baseURL!).origin;
   const externalRequests: string[] = [];
   const generationRequests: string[] = [];
   const catalogRequests: string[] = [];
@@ -295,7 +295,7 @@ test("Provider catalog action bars stay anchored across providers and viewport w
   baseURL,
   page,
 }) => {
-  const localOrigin = new URL(baseURL ?? "http://127.0.0.1:4173").origin;
+  const localOrigin = new URL(baseURL!).origin;
   const externalRequests: string[] = [];
   const generationRequests: string[] = [];
   const catalogRequests: string[] = [];
@@ -538,6 +538,7 @@ test("Provider catalog action bars stay anchored across providers and viewport w
 });
 
 test("large discovered catalogs stay searchable with the selected action always above the list", async ({
+  baseURL,
   page,
 }) => {
   const models = Array.from({ length: 337 }, (_, index) => {
@@ -588,9 +589,10 @@ test("large discovered catalogs stay searchable with the selected action always 
     updatedAt: checkedAt,
   };
   const externalRequests: string[] = [];
+  const localOrigin = new URL(baseURL!).origin;
   page.on("request", (request) => {
     const url = new URL(request.url());
-    if (url.origin !== "http://127.0.0.1:4173" && url.origin !== "http://127.0.0.1:4174") {
+    if (url.origin !== localOrigin) {
       externalRequests.push(request.url());
     }
   });

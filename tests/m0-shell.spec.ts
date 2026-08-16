@@ -1,6 +1,8 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, guardBrowserContext, test, type Locator } from "./safe-test";
 import { composeTextControl } from "./helpers/ime";
+import { openAppDatabase } from "../server/database";
 
 type Bounds = [number, number, number, number];
 
@@ -104,6 +106,92 @@ type HistoryFixture = {
   };
   counts: Record<"image" | "video" | "audio" | "world3d", number>;
 };
+
+const historyFixtureMedia = [
+  ["image", "history-image-1"],
+  ["image", "history-image-2"],
+  ["video", "history-video-1"],
+  ["audio", "history-audio-1"],
+  ["audio", "history-audio-2"],
+  ["audio", "history-audio-3"],
+  ["audio", "history-audio-4"],
+] as const;
+
+function prepareHistoryFixtureMedia(dataDirectory: string) {
+  const store = openAppDatabase(dataDirectory);
+  try {
+    store.exec("BEGIN IMMEDIATE");
+    store.prepare(`
+      DELETE FROM asset_history WHERE account_id = 'fixture-account'
+    `).run();
+    const removeMedia = store.prepare(`
+      DELETE FROM media_assets
+      WHERE owner_id = '__test__' AND kind = ? AND id = ?
+    `);
+    const insertMedia = store.prepare(`
+      INSERT INTO media_assets (
+        kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+        storage_status, checksum_sha256, duration_seconds, duration_source,
+        duration_status
+      ) VALUES (?, ?, '__test__', ?, 1, ?, ?, 'ready', ?, ?, ?, ?)
+    `);
+    const timestamp = new Date().toISOString();
+    for (const [kind, id] of historyFixtureMedia) {
+      const timedMedia = kind === "video" || kind === "audio";
+      removeMedia.run(kind, id);
+      insertMedia.run(
+        kind,
+        id,
+        `history-shell-${kind}-${id}`,
+        timestamp,
+        timestamp,
+        createHash("sha256")
+          .update(`history-shell:${kind}:${id}`)
+          .digest("hex"),
+        timedMedia ? 1 : null,
+        timedMedia ? "server-probe" : null,
+        timedMedia ? "ready" : "not-applicable",
+      );
+    }
+    store.exec("COMMIT");
+  } catch (error) {
+    try {
+      store.exec("ROLLBACK");
+    } catch {
+      // Preserve the setup failure.
+    }
+    throw error;
+  } finally {
+    store.close();
+  }
+}
+
+function cleanupHistoryFixtureMedia(dataDirectory: string) {
+  const store = openAppDatabase(dataDirectory);
+  try {
+    store.exec("BEGIN IMMEDIATE");
+    store.prepare(`
+      DELETE FROM asset_history WHERE account_id = 'fixture-account'
+    `).run();
+    const removeMedia = store.prepare(`
+      DELETE FROM media_assets
+      WHERE owner_id = '__test__' AND kind = ? AND id = ?
+    `);
+    for (const [kind, id] of historyFixtureMedia) {
+      removeMedia.run(kind, id);
+    }
+    store.exec("COMMIT");
+  } catch (error) {
+    try {
+      store.exec("ROLLBACK");
+    } catch {
+      // Preserve the cleanup failure.
+    }
+    throw error;
+  } finally {
+    store.close();
+  }
+}
 
 type ProjectMenuFixture = {
   id: string;
@@ -545,6 +633,9 @@ test("node search matches title, Prompt and body then locates the result", async
 
   await page.goto("/__fixture/interaction.node-search.populated");
   const world = page.getByTestId("canvas-world");
+  await expect.poll(async () =>
+    Number(await world.getAttribute("data-viewport-zoom")),
+  ).toBeGreaterThan(0);
   const initialZoom = await world.getAttribute("data-viewport-zoom");
   await page.mouse.move(900, 700);
   await page.mouse.wheel(600, 400);
@@ -555,7 +646,9 @@ test("node search matches title, Prompt and body then locates the result", async
       return x < 0 && y < 0;
     })
     .toBe(true);
-  await expect(world).toHaveAttribute("data-viewport-zoom", initialZoom!);
+  await expect.poll(async () =>
+    world.getAttribute("data-viewport-zoom"),
+  ).toBe(initialZoom);
   await page.getByTestId("node-search").click();
   const dialog = page.getByRole("dialog", { name: "节点搜索" });
   const input = page.getByRole("searchbox", { name: fixture.placeholder });
@@ -834,76 +927,88 @@ test("workflow templates match panel, notice, tabs and browse-all states", async
 
 test("history media tabs, counts, browse-all zoom and sorting match", async ({
   page,
+  request,
 }) => {
   const fixture = await loadHistoryFixture();
-  await page.goto(`/__fixture/${fixture.id}`);
+  const dataDirectoryResponse = await request.get("/api/test-data-directory");
+  expect(dataDirectoryResponse.ok()).toBeTruthy();
+  const { dataDirectory } = await dataDirectoryResponse.json() as {
+    dataDirectory: string;
+  };
+  prepareHistoryFixtureMedia(dataDirectory);
 
-  const panel = page.getByTestId("history-panel");
-  await expect(panel).toBeVisible();
-  await expect(page.getByTestId("history-count-image")).toHaveText(
-    String(fixture.counts.image),
-  );
-  await expect(page.getByTestId("history-count-video")).toHaveText(
-    String(fixture.counts.video),
-  );
-  await expect(page.getByTestId("history-count-audio")).toHaveText(
-    String(fixture.counts.audio),
-  );
-  await expect(page.getByTestId("history-count-world3d")).toHaveText(
-    String(fixture.counts.world3d),
-  );
-  const panelBounds = await panel.boundingBox();
-  const [panelX, panelY, panelWidth, panelHeight] = fixture.elements.panel;
-  expect(panelBounds).toMatchObject({
-    x: panelX,
-    y: panelY,
-    width: panelWidth,
-    height: panelHeight,
-  });
-  await expect(panel.getByText("2026-07-27", { exact: true })).toBeVisible();
-  await expect(panel.getByText("2026-07-23", { exact: true })).toBeVisible();
+  try {
+    await page.goto(`/__fixture/${fixture.id}`);
 
-  await panel.getByRole("tab", { name: /视频历史/ }).click();
-  await expect(panel.getByRole("button", { name: "视频 1" })).toBeVisible();
-  await panel.getByRole("tab", { name: /音频/ }).click();
-  await expect(panel.locator(".history-card")).toHaveCount(
-    fixture.counts.audio,
-  );
-  await panel.getByRole("tab", { name: /图片历史/ }).click();
+    const panel = page.getByTestId("history-panel");
+    await expect(panel).toBeVisible();
+    await expect(page.getByTestId("history-count-image")).toHaveText(
+      String(fixture.counts.image),
+    );
+    await expect(page.getByTestId("history-count-video")).toHaveText(
+      String(fixture.counts.video),
+    );
+    await expect(page.getByTestId("history-count-audio")).toHaveText(
+      String(fixture.counts.audio),
+    );
+    await expect(page.getByTestId("history-count-world3d")).toHaveText(
+      String(fixture.counts.world3d),
+    );
+    const panelBounds = await panel.boundingBox();
+    const [panelX, panelY, panelWidth, panelHeight] = fixture.elements.panel;
+    expect(panelBounds).toMatchObject({
+      x: panelX,
+      y: panelY,
+      width: panelWidth,
+      height: panelHeight,
+    });
+    await expect(panel.getByText("2026-07-27", { exact: true })).toBeVisible();
+    await expect(panel.getByText("2026-07-23", { exact: true })).toBeVisible();
 
-  await panel.getByRole("button", { name: "浏览全部历史" }).click();
-  const browser = page.getByTestId("history-browser");
-  await expect(browser).toBeVisible();
-  const browserBounds = await browser.boundingBox();
-  const [x, y, width, height] = fixture.elements.browseAll;
-  expect(Math.abs(browserBounds!.x - x)).toBeLessThanOrEqual(1);
-  expect(Math.abs(browserBounds!.y - y)).toBeLessThanOrEqual(1);
-  expect(Math.abs(browserBounds!.width - width)).toBeLessThanOrEqual(1);
-  expect(Math.abs(browserBounds!.height - height)).toBeLessThanOrEqual(1);
-  await expect(
-    browser.getByRole("navigation", { name: "历史素材类型" }),
-  ).toContainText("图片历史");
+    await panel.getByRole("tab", { name: /视频历史/ }).click();
+    await expect(panel.getByRole("button", { name: "视频 1" })).toBeVisible();
+    await panel.getByRole("tab", { name: /音频/ }).click();
+    await expect(panel.locator(".history-card")).toHaveCount(
+      fixture.counts.audio,
+    );
+    await panel.getByRole("tab", { name: /图片历史/ }).click();
 
-  const firstCard = browser.locator(".history-card").first();
-  expect((await firstCard.boundingBox())!.width).toBe(120);
-  await browser.getByRole("button", { name: "放大历史缩略图" }).click();
-  expect((await firstCard.boundingBox())!.width).toBe(130);
-  await expect(
-    browser.locator(".history-browser-date-group h3").first(),
-  ).toHaveText("2026-07-27");
-  await browser
-    .getByRole("button", { name: "当前最新在前，点击改为最早在前" })
-    .click();
-  await expect(
-    browser.locator(".history-browser-date-group h3").first(),
-  ).toHaveText("2026-07-23");
-  await browser.getByRole("button", { name: "关闭全部历史" }).click();
-  await expect(browser).toHaveCount(0);
+    await panel.getByRole("button", { name: "浏览全部历史" }).click();
+    const browser = page.getByTestId("history-browser");
+    await expect(browser).toBeVisible();
+    const browserBounds = await browser.boundingBox();
+    const [x, y, width, height] = fixture.elements.browseAll;
+    expect(Math.abs(browserBounds!.x - x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(browserBounds!.y - y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(browserBounds!.width - width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(browserBounds!.height - height)).toBeLessThanOrEqual(1);
+    await expect(
+      browser.getByRole("navigation", { name: "历史素材类型" }),
+    ).toContainText("图片历史");
 
-  await panel.getByRole("button", { name: "浏览全部历史" }).click();
-  await expect(browser).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(browser).toHaveCount(0);
+    const firstCard = browser.locator(".history-card").first();
+    expect((await firstCard.boundingBox())!.width).toBe(120);
+    await browser.getByRole("button", { name: "放大历史缩略图" }).click();
+    expect((await firstCard.boundingBox())!.width).toBe(130);
+    await expect(
+      browser.locator(".history-browser-date-group h3").first(),
+    ).toHaveText("2026-07-27");
+    await browser
+      .getByRole("button", { name: "当前最新在前，点击改为最早在前" })
+      .click();
+    await expect(
+      browser.locator(".history-browser-date-group h3").first(),
+    ).toHaveText("2026-07-23");
+    await browser.getByRole("button", { name: "关闭全部历史" }).click();
+    await expect(browser).toHaveCount(0);
+
+    await panel.getByRole("button", { name: "浏览全部历史" }).click();
+    await expect(browser).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(browser).toHaveCount(0);
+  } finally {
+    cleanupHistoryFixtureMedia(dataDirectory);
+  }
 });
 
 test("project menu keeps only the current private-project actions", async ({
@@ -1498,10 +1603,29 @@ test("P1 creators and the selected Text creator never block the user Dock", asyn
   await expect(page.getByTestId("image-creator")).toBeVisible();
   await user.click();
 
-  await page.locator('.react-flow__node[data-id="input-master-text"]').click();
+  const world = page.getByTestId("canvas-world");
+  const textNode = page.locator(
+    '.react-flow__node[data-id="input-master-text"]',
+  );
+  await textNode.click();
+  await expect(textNode).toHaveClass(/selected/);
+  await expect(page.locator(".react-flow__node.selected")).toHaveCount(1);
+  await expect(world).toHaveAttribute("data-selected-node-count", "1");
+  await expect(world).toHaveAttribute("data-primary-node", "input-master-text");
   await expect(page.getByTestId("text-creator")).toBeVisible();
   await user.click();
   await expect(page.getByTestId("account-popover")).toBeVisible();
+  await expect(textNode).toHaveClass(/selected/);
+  await expect(page.locator(".react-flow__node.selected")).toHaveCount(1);
+  await expect(world).toHaveAttribute("data-selected-node-count", "1");
+  await expect(world).toHaveAttribute("data-primary-node", "input-master-text");
+  await expect(page.getByTestId("text-creator")).toBeVisible();
+  await user.click();
+  await expect(page.getByTestId("account-popover")).toHaveCount(0);
+  await expect(textNode).toHaveClass(/selected/);
+  await expect(page.locator(".react-flow__node.selected")).toHaveCount(1);
+  await expect(world).toHaveAttribute("data-selected-node-count", "1");
+  await expect(world).toHaveAttribute("data-primary-node", "input-master-text");
   await expect(page.getByTestId("text-creator")).toBeVisible();
 });
 
@@ -1615,12 +1739,12 @@ test("responsive anchors stay within the frozen 1px contract", async ({
   browser,
 }) => {
   for (const baseline of await loadResponsiveBaselines()) {
-    const context = await browser.newContext({
+    const context = await guardBrowserContext(await browser.newContext({
       baseURL,
       colorScheme: "dark",
       deviceScaleFactor: baseline.deviceScaleFactor,
       viewport: { width: baseline.width, height: baseline.height },
-    });
+    }));
     const page = await context.newPage();
 
     await page.goto("/__fixture/shell.empty.primary");
@@ -1667,7 +1791,13 @@ test("visible responsive previews keep an exact target CSS viewport", async ({
     { route: "1512x982", width: 1512, height: 982 },
     { route: "1920x1080", width: 1920, height: 1080 },
   ]) {
-    await page.goto(`/__responsive-preview/${target.route}`);
+    const previewResponse = await page.goto(
+      `/__responsive-preview/${target.route}`,
+    );
+    expect(previewResponse?.headers()["content-security-policy"]).toContain(
+      "frame-src 'self'",
+    );
+    expect(previewResponse?.headers()["x-frame-options"]).toBe("DENY");
 
     const preview = page.getByTestId("responsive-preview");
     await expect(preview).toHaveAttribute(
@@ -1709,5 +1839,13 @@ test("visible responsive previews keep an exact target CSS viewport", async ({
       height: target.height,
       width: target.width,
     });
+
+    const embeddedResponse = await page.request.get(
+      `/__fixture/shell.empty.primary?embedded=${target.route}`,
+    );
+    expect(embeddedResponse.headers()["content-security-policy"]).toContain(
+      "frame-ancestors 'self'",
+    );
+    expect(embeddedResponse.headers()["x-frame-options"]).toBe("SAMEORIGIN");
   }
 });

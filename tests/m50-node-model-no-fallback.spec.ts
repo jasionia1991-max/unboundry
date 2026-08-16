@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { withVideoReferenceInputModeForNewEdges } from "../client/src/canvas/CanvasSurface";
 import { withImageReferenceInputMode } from "../client/src/canvas/imageReferenceMode";
 import type { ProbeNodeType } from "../client/src/canvas/ProbeNode";

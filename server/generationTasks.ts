@@ -1,8 +1,17 @@
-import { randomUUID } from "node:crypto";
+import { statSync } from "node:fs";
+import { appendFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { pathToFileURL } from "node:url";
 import { imageReferenceForProvider, saveGeneratedPng } from "./assetStorage";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
+import {
+  decodedRequestPath,
+  HttpRequestError,
+  readJsonBody,
+} from "./httpRequest";
 import {
   createGenerationSafetyStore,
   generationSafetyStatus,
@@ -12,17 +21,26 @@ import {
   failRecoveredGenerationTasks,
   generationProviderAttemptCounts,
   GenerationProviderAttemptBlockedError,
+  GenerationTaskAdmissionError,
+  GenerationTaskAbandonError,
   GenerationTaskCanvasRevisionConflictError,
   GenerationTaskConflictError,
+  GenerationTaskOwnerDeletingError,
   GenerationTaskProviderBoundaryError,
+  GenerationTaskRetryFenceError,
+  GenerationTaskTransitionError,
+  type GenerationPaidRetrySnapshot,
+  type GenerationProviderAttemptEvidence,
   type GenerationTask,
+  type GenerationTaskCanvasRetryBinding,
   type GenerationTaskInput,
 } from "./generationTaskStore";
+import { waitForProviderDelay } from "./providerRequestDeadline";
 import {
   generateOpenRouterImage,
   OpenRouterImageError,
 } from "./openRouterImageProvider";
-import { readableMediaForOwner } from "./mediaRegistry";
+import { readableMediaForOwner, readyMediaForOwner } from "./mediaRegistry";
 import {
   arkVideoBase64BudgetBytes,
   arkVideoBase64Bytes,
@@ -39,9 +57,7 @@ import {
 } from "./providerMedia";
 import {
   acquireProviderGenerationRequestLease,
-  accountCredentialVersion,
   getProviderGenerationProfileState,
-  getProviderProfileForGeneration,
   providerConfigurationVersion,
   ProviderGenerationConfigurationError,
   type ProviderGenerationRequestLease,
@@ -76,11 +92,13 @@ import {
   VolcengineArkTextError,
 } from "./volcengineArkTextProvider";
 import {
+  prepareRelayGptImageRequest,
   pollRelayMediaTask,
   RelayProviderError,
-  requestRelayGptImage,
   requestRelayText,
+  sendPreparedRelayGptImageRequest,
   submitRelayMedia,
+  type RelayImageResult,
   type RelayMediaParamValue,
   type RelayTextContextInput,
   type RelayTextProviderProtocol,
@@ -90,7 +108,15 @@ import {
   downloadProviderResultMedia,
   ProviderResultMediaError,
 } from "./providerResultMedia";
-import { removeUnpublishedGeneratedMedia } from "./generatedMediaCleanup";
+import {
+  hasPendingGeneratedMediaPublications,
+  hasPendingMediaDeletions,
+  hasPendingUploadMediaPublications,
+  pendingGeneratedPublicationTaskIds,
+  recoverPendingGeneratedMediaPublications,
+  recoverPendingMediaDeletions,
+  recoverPendingUploadMediaPublications,
+} from "./mediaLifecycle";
 import {
   cleanParameterSchema,
   knownModelParameterSchema,
@@ -118,12 +144,133 @@ import {
   isProviderProtocol,
   type ProviderProtocol,
 } from "../types/relayProtocols";
+import type { RuntimeRoleCoordinator } from "./runtimeRole";
 
 let store: ReturnType<typeof createGenerationTaskStore> | undefined;
+let storeDataDirectory: string | undefined;
+let persistentGenerationWorkerStartup:
+  | Promise<PersistentGenerationWorkerStartupResult>
+  | undefined;
+let persistentGenerationWorkerCoordinator: RuntimeRoleCoordinator | undefined;
+let persistentGenerationWorkerDataDirectory: string | undefined;
+const launchedGenerationTasks = new Set<string>();
 const runningImageRequests = new Map<string, AbortController>();
 const runningVideoRequests = new Map<string, AbortController>();
 const runningAudioRequests = new Map<string, AbortController>();
 const runningTextRequests = new Map<string, AbortController>();
+let runtimeRoleCoordinator: RuntimeRoleCoordinator | undefined;
+let preparedRuntimeRoleCoordinator: RuntimeRoleCoordinator | undefined;
+let runtimeRoleRegistrationRequired = false;
+
+export function registerGenerationRuntimeRoleCoordinator(
+  coordinator: RuntimeRoleCoordinator,
+) {
+  if (runtimeRoleCoordinator && runtimeRoleCoordinator !== coordinator) {
+    throw new Error("Generation runtime role coordinator is already registered");
+  }
+  if (coordinator.dataDirectory() !== appDataDirectory()) {
+    throw new Error("Generation runtime role coordinator data directory changed");
+  }
+  runtimeRoleRegistrationRequired = true;
+  runtimeRoleCoordinator = coordinator;
+  preparedRuntimeRoleCoordinator = undefined;
+  return () => {
+    if (runtimeRoleCoordinator !== coordinator) return;
+    if (preparedRuntimeRoleCoordinator !== coordinator) {
+      throw new Error(
+        "Generation runtime role coordinator cannot unregister before teardown",
+      );
+    }
+    runtimeRoleCoordinator = undefined;
+    preparedRuntimeRoleCoordinator = undefined;
+  };
+}
+
+export function prepareGenerationRuntimeRoleTeardown(
+  coordinator: RuntimeRoleCoordinator,
+) {
+  if (runtimeRoleCoordinator !== coordinator) {
+    throw new Error("Generation runtime role coordinator identity changed");
+  }
+  const snapshot = coordinator.snapshot();
+  if (
+    snapshot.role !== "active" || !snapshot.activeLeaseHeld ||
+    !snapshot.draining
+  ) {
+    throw new Error("Generation runtime teardown requires a draining active lease");
+  }
+  if (
+    launchedGenerationTasks.size !== 0 || runningImageRequests.size !== 0 ||
+    runningVideoRequests.size !== 0 || runningAudioRequests.size !== 0 ||
+    runningTextRequests.size !== 0
+  ) {
+    throw new Error("Generation runtime teardown still has active executions");
+  }
+  // The shared runtime drain has already waited through Provider transport and
+  // durable failure/result persistence. Close the cached writer while the
+  // exclusive active lease is still held, then make a later runtime initialize
+  // a fresh store/worker promise bound to its own coordinator and data path.
+  store?.close();
+  store = undefined;
+  storeDataDirectory = undefined;
+  persistentGenerationWorkerStartup = undefined;
+  persistentGenerationWorkerCoordinator = undefined;
+  persistentGenerationWorkerDataDirectory = undefined;
+  launchedGenerationTasks.clear();
+  runningImageRequests.clear();
+  runningVideoRequests.clear();
+  runningAudioRequests.clear();
+  runningTextRequests.clear();
+  preparedRuntimeRoleCoordinator = coordinator;
+}
+
+export function unregisterGenerationRuntimeRoleCoordinatorBeforeStartup(
+  coordinator: RuntimeRoleCoordinator,
+) {
+  if (runtimeRoleCoordinator !== coordinator) {
+    throw new Error("Generation runtime role coordinator identity changed");
+  }
+  if (
+    store || persistentGenerationWorkerStartup ||
+    launchedGenerationTasks.size !== 0 || runningImageRequests.size !== 0 ||
+    runningVideoRequests.size !== 0 || runningAudioRequests.size !== 0 ||
+    runningTextRequests.size !== 0
+  ) {
+    throw new Error(
+      "Generation runtime role coordinator already started durable work",
+    );
+  }
+  preparedRuntimeRoleCoordinator = coordinator;
+  runtimeRoleCoordinator = undefined;
+  preparedRuntimeRoleCoordinator = undefined;
+}
+
+function runRegisteredGenerationExecution<T>(
+  execute: () => Promise<T> | T,
+  abort?: () => void,
+) {
+  if (runtimeRoleCoordinator) {
+    return runtimeRoleCoordinator.runDetached(
+      "generation-worker",
+      execute,
+      abort,
+    );
+  }
+  if (runtimeRoleRegistrationRequired) {
+    throw new Error("Generation runtime role coordinator is unavailable");
+  }
+  return Promise.resolve().then(execute);
+}
+
+export function runGenerationExecutionForRuntimeTest<T>(
+  execute: () => Promise<T> | T,
+  abort?: () => void,
+) {
+  if (process.env.UNBOUNDRY_SAFE_TEST !== "1") {
+    throw new Error("Generation runtime test seam is unavailable");
+  }
+  return runRegisteredGenerationExecution(execute, abort);
+}
 
 // 金额限额功能已移除（v36）。任务仍保留成本记账：估算值只作为审计参考
 // 写入任务记录，不再参与任何预检、拦截或界面展示。
@@ -217,13 +364,19 @@ function assertRelayProfile(
 }
 
 function requireTaskProviderSnapshot(
-  task: Pick<GenerationTask, "modelConfiguration">,
+  task: Pick<
+    GenerationTask,
+    "credentialRevision" | "modelConfiguration" | "providerProfileId"
+  >,
   profile: ProviderProfile,
-  ownerId: string,
+  observedCredentialRevision?: number,
 ) {
   const expectedDriver = task.modelConfiguration.providerDriver;
   const expectedVersion = task.modelConfiguration.providerConfigurationVersion;
+  const expectedProfileId = task.providerProfileId ??
+    task.modelConfiguration.providerProfileId;
   if (
+    (typeof expectedProfileId === "string" && expectedProfileId !== profile.id) ||
     (typeof expectedDriver === "string" && expectedDriver !== profile.driver) ||
     (
       typeof expectedVersion === "number" &&
@@ -235,11 +388,12 @@ function requireTaskProviderSnapshot(
       "平台连接配置已变化，已阻止旧任务继续请求",
     );
   }
-  const expectedCredentialVersion = task.modelConfiguration.credentialVersion;
+  const expectedCredentialVersion = task.credentialRevision ??
+    task.modelConfiguration.credentialVersion;
   if (
     typeof expectedCredentialVersion === "number" &&
     expectedCredentialVersion > 0 &&
-    accountCredentialVersion(ownerId, profile.id) !== expectedCredentialVersion
+    observedCredentialRevision !== expectedCredentialVersion
   ) {
     throw new ProviderGenerationConfigurationError(
       "ACCOUNT_CREDENTIAL_CHANGED",
@@ -249,11 +403,27 @@ function requireTaskProviderSnapshot(
   return profile;
 }
 
-function taskStore() {
+type GenerationLaunchOptions = {
+  providerFetcher?: typeof fetch;
+  settledExecutions?: Promise<void>[];
+};
+
+function taskStore(launchOptions?: GenerationLaunchOptions) {
+  if (!runtimeRoleCoordinator && runtimeRoleRegistrationRequired) {
+    throw new Error("Generation runtime role coordinator is unavailable");
+  }
+  runtimeRoleCoordinator?.assertActive("writer");
+  const dataDirectory = appDataDirectory();
+  if (store && storeDataDirectory !== dataDirectory) {
+    throw new Error("Generation task store data directory changed");
+  }
   if (store) return store;
-  store = createGenerationTaskStore(appDataDirectory());
-  failRecoveredGenerationTasks(store);
+  store = createGenerationTaskStore(dataDirectory);
+  storeDataDirectory = dataDirectory;
+  const pendingPublicationTasks = pendingGeneratedPublicationTaskIds();
+  failRecoveredGenerationTasks(store, pendingPublicationTasks);
   for (const task of store.listRecovering()) {
+    if (pendingPublicationTasks.has(task.id)) continue;
     const protocol = taskProviderProtocol(task);
     if (
       task.providerTaskId &&
@@ -264,20 +434,32 @@ function taskStore() {
       )
     ) {
       store.resume(task.id);
-      setTimeout(
-        () => void (task.kind === "image"
-          ? executeImageTask(task.id)
-          : task.kind === "video"
-            ? executeVideoTask(task.id)
-            : executeAudioTask(task.id)),
-        0,
-      );
+      launchGenerationTask(task.id, task.kind, launchOptions);
     } else {
       store.transition(task.id, "failed", {
         code: "SERVICE_RESTARTED",
         message: "服务重启后无法安全继续本次生成，系统未重新提交",
       });
     }
+  }
+  for (const task of store.listQueued()) {
+    launchGenerationTask(task.id, task.kind, launchOptions);
+  }
+  const recoverGenerated =
+    pendingPublicationTasks.size > 0 || hasPendingGeneratedMediaPublications();
+  const recoverUploads = hasPendingUploadMediaPublications();
+  const recoverDeletions = hasPendingMediaDeletions();
+  if (recoverGenerated || recoverUploads || recoverDeletions) {
+    void runRegisteredGenerationExecution(() =>
+      settleDetachedGenerationExecution(
+        async () => {
+          if (recoverDeletions) await recoverPendingMediaDeletions();
+          if (recoverUploads) await recoverPendingUploadMediaPublications();
+          if (recoverGenerated) await recoverPendingGeneratedMediaPublications();
+        },
+        () => undefined,
+      )
+    ).catch(() => undefined);
   }
   return store;
 }
@@ -321,7 +503,15 @@ async function withProviderRequestLease<T>(input: {
   fetcher: typeof fetch;
   ownerId: string;
   profileId: string;
-  request: (profile: ProviderProfile, fetcher: typeof fetch) => Promise<T>;
+  request: (
+    profile: ProviderProfile,
+    fetcher: typeof fetch,
+    providerBoundary: (beforeRequest?: () => void) => () => void,
+  ) => Promise<T>;
+  task?: Pick<
+    GenerationTask,
+    "credentialRevision" | "modelConfiguration" | "providerProfileId"
+  >;
 }) {
   const lease = await acquireProviderGenerationRequestLease(
     input.profileId,
@@ -331,13 +521,61 @@ async function withProviderRequestLease<T>(input: {
     const profile = input.expected
       ? requireSameProviderConfiguration(input.expected, lease.profile)
       : lease.profile;
+    if (input.task) {
+      requireTaskProviderSnapshot(
+        input.task,
+        profile,
+        lease.credentialRevision,
+      );
+    }
+    const providerBoundary = (beforeRequest?: () => void) => {
+      let crossed = false;
+      return () => {
+        if (crossed) return;
+        beforeRequest?.();
+        crossed = true;
+        // Pinned relay transport does not invoke the injected fetch wrapper.
+        // Release explicitly at its final beforeRequest boundary so unrelated
+        // Storage reservations are not serialized behind the remote response.
+        lease.release();
+      };
+    };
     return await input.request(
       profile,
       fetchWithProviderLease(lease, input.fetcher),
+      providerBoundary,
     );
   } finally {
     // Local validation, a rejected Provider-attempt boundary, or a synchronous
     // fetch error can all exit before the wrapper above releases the lease.
+    lease.release();
+  }
+}
+
+async function taskProviderSnapshotProfile(
+  task: Pick<
+    GenerationTask,
+    "credentialRevision" | "modelConfiguration" | "providerProfileId"
+  >,
+  ownerId: string,
+) {
+  if (!task.providerProfileId) {
+    throw new ProviderGenerationConfigurationError(
+      "PROVIDER_CONFIGURATION_MISMATCH",
+      "平台连接配置与任务快照不一致，已阻止旧任务继续请求",
+    );
+  }
+  const lease = await acquireProviderGenerationRequestLease(
+    task.providerProfileId,
+    ownerId,
+  );
+  try {
+    return requireTaskProviderSnapshot(
+      task,
+      lease.profile,
+      lease.credentialRevision,
+    );
+  } finally {
     lease.release();
   }
 }
@@ -347,6 +585,16 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   response.end(JSON.stringify(body));
+}
+
+function injectInitialGenerationPostCommitFailure(request: IncomingMessage) {
+  if (
+    process.env.UNBOUNDRY_SAFE_TEST === "1" &&
+    request.headers["x-unboundry-test-generation-post-commit-failure"] ===
+      "before-launch"
+  ) {
+    throw new Error("Controlled initial generation post-commit failure");
+  }
 }
 
 function canvasRevisionConflict(response: ServerResponse, error: unknown) {
@@ -362,37 +610,68 @@ function canvasRevisionConflict(response: ServerResponse, error: unknown) {
   return true;
 }
 
-async function readBody<T>(request: IncomingMessage) {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > 64 * 1_024) throw new Error("请求内容过大");
-    chunks.push(bytes);
+function taskAbandonAllowed(
+  task: GenerationTask,
+  providerAttempt: GenerationProviderAttemptEvidence | undefined,
+) {
+  if (task.state !== "failed" || !providerAttempt) return false;
+  if (task.providerTaskId) {
+    return providerAttempt.providerTaskId === task.providerTaskId &&
+      ["accepted", "response-received"].includes(providerAttempt.outcome);
   }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
+  return !providerAttempt.providerTaskId &&
+    providerAttempt.executionAttempt === task.attempt &&
+    providerAttempt.outcome === "response-received";
 }
 
-function taskSummary(task: GenerationTask) {
-  const resultMedia = task.kind !== "text" && task.resultAssetId && task.ownerId
-    ? readableMediaForOwner(task.ownerId, task.kind, task.resultAssetId)
+function taskSummary(
+  task: GenerationTask,
+  retryBinding?: GenerationTaskCanvasRetryBinding,
+) {
+  const publishedResultAssetId = task.state === "success"
+    ? task.resultAssetId
     : undefined;
-  const retryDecision = retrySafetyDecision(task);
+  const resultMedia = task.kind !== "text" && publishedResultAssetId && task.ownerId
+    ? readyMediaForOwner(task.ownerId, task.kind, publishedResultAssetId)
+    : undefined;
+  const providerAttempt = taskStore().getProviderAttemptForTask(task.id);
+  const unsafeProviderAttempt = taskStore()
+    .hasUnsafeProviderAttemptForNewPaidRetry(task.id);
+  const retryDecision = retrySafetyDecision(
+    task,
+    providerAttempt,
+    unsafeProviderAttempt,
+  );
   const resumeSnapshotProblem =
     retryDecision.allowed && retryDecision.mode === "resume-provider-task"
       ? resumeProviderTaskSnapshotProblem(task)
       : undefined;
-  const retry = resumeSnapshotProblem
+  const snapshotRetry = resumeSnapshotProblem
     ? {
         allowed: false as const,
         code: "RETRY_SNAPSHOT_CHANGED",
         reason: resumeSnapshotProblem,
       }
     : retryDecision;
+  const bindingMatches = Boolean(
+    task.state === "failed" &&
+    retryBinding &&
+    retryBinding.taskId === task.id &&
+    retryBinding.kind === task.kind &&
+    retryBinding.nodeId === task.nodeId,
+  );
+  const retry = snapshotRetry.allowed && !bindingMatches
+    ? {
+        allowed: false as const,
+        code: "RETRY_BINDING_STALE",
+        reason: "任务已不再绑定当前节点输入，请从节点重新提交",
+      }
+    : snapshotRetry;
   return {
+    abandonAllowed: taskAbandonAllowed(task, providerAttempt),
     actualCostMicrounits: task.actualCostMicrounits,
     attempt: task.attempt,
+    canvasRevision: bindingMatches ? retryBinding?.canvasRevision : undefined,
     canvasId: task.canvasId,
     createdAt: task.createdAt,
     errorCode: task.errorCode,
@@ -400,6 +679,9 @@ function taskSummary(task: GenerationTask) {
     estimatedCostMicrounits: task.estimatedCostMicrounits,
     costCurrency: task.costCurrency,
     id: task.id,
+    generationInputKey: bindingMatches
+      ? retryBinding?.generationInputKey
+      : undefined,
     kind: task.kind,
     model: task.model,
     nodeId: task.nodeId,
@@ -407,7 +689,7 @@ function taskSummary(task: GenerationTask) {
     retryAllowed: retry.allowed,
     retryBlockCode: retry.allowed ? undefined : retry.code,
     retryBlockReason: retry.allowed ? undefined : retry.reason,
-    resultAssetId: task.resultAssetId,
+    resultAssetId: resultMedia ? publishedResultAssetId : undefined,
     resultText: task.resultText,
     resultMedia: resultMedia
       ? {
@@ -415,19 +697,29 @@ function taskSummary(task: GenerationTask) {
           contentType: resultMedia.contentType,
           durationSeconds: resultMedia.durationSeconds,
           durationStatus: resultMedia.durationStatus,
+          mediaHeight: resultMedia.mediaHeight,
+          mediaWidth: resultMedia.mediaWidth,
           storageBackend: resultMedia.storageBackend,
         }
       : undefined,
-    resultUrl: task.resultAssetId
+    resultUrl: resultMedia && publishedResultAssetId
       ? task.kind === "video"
-        ? `/api/video-assets/${task.resultAssetId}`
+        ? `/api/video-assets/${publishedResultAssetId}`
         : task.kind === "audio"
-          ? `/api/audio-assets/${task.resultAssetId}`
-          : `/api/assets/${task.resultAssetId}`
+          ? `/api/audio-assets/${publishedResultAssetId}`
+          : `/api/assets/${publishedResultAssetId}`
       : undefined,
     state: task.state,
     updatedAt: task.updatedAt,
   };
+}
+
+function taskSummaryForOwner(task: GenerationTask, ownerId?: string) {
+  if (task.state !== "failed") return taskSummary(task);
+  const binding = taskStore()
+    .retryBindingsForCanvas(task.canvasId, ownerId)
+    .get(task.id);
+  return taskSummary(task, binding);
 }
 
 type GenerationModelRow = {
@@ -460,6 +752,23 @@ type NodeInputGenerationRequest = Omit<Partial<GenerationTaskInput>, "kind"> & {
   kind?: NodeInputKind;
   ownPrompt?: string;
 };
+
+function generationRequestIntent(
+  body: NodeInputGenerationRequest,
+  kind: NodeInputKind,
+) {
+  return {
+    canvasId: String(body.canvasId ?? ""),
+    inputSchemaVersion: body.inputSchemaVersion,
+    inputs: body.inputs,
+    kind,
+    model: body.model ?? null,
+    nodeId: String(body.nodeId ?? ""),
+    ownPrompt: body.ownPrompt,
+    parameters: body.parameters ?? {},
+    prompt: String(body.prompt ?? ""),
+  };
+}
 
 function generationModelSchema(
   kind: NodeInputKind,
@@ -696,6 +1005,7 @@ async function generationRuntimeDecision(input: {
     input.ownerId,
   ).catch(() => ({
     configurationAligned: false as const,
+    credentialRevision: undefined,
     profile: undefined,
     reason: "configuration-mismatch" as const,
   }));
@@ -770,10 +1080,7 @@ async function generationRuntimeDecision(input: {
       adapterSupported,
       configured,
     },
-    credentialVersion: accountCredentialVersion(
-      input.ownerId,
-      input.model.provider_profile_id,
-    ),
+    credentialVersion: providerState.credentialRevision,
     providerBalance: {
       checked: false,
       reason: "零Provider预检不读取Provider账户余额",
@@ -792,6 +1099,44 @@ function generationRuntimeProblems(problem: { code: string; message: string }) {
     code: modelProblem ? "MODEL_UNSUPPORTED" as const : "INVALID" as const,
     message: problem.message,
   }];
+}
+
+const atomicAdmissionProblemCodes = new Set([
+  "EMERGENCY_STOP",
+  "GLOBAL_DISABLED",
+  "GLOBAL_GENERATION_DISABLED",
+  "KIND_CONCURRENCY",
+  "PROVIDER_COOLDOWN",
+  "RATE_LIMIT",
+  "USER_CONCURRENCY",
+]);
+
+const missingProviderSnapshotPriorityCodes = new Set([
+  "EMERGENCY_STOP",
+  "GLOBAL_DISABLED",
+  "GLOBAL_GENERATION_DISABLED",
+]);
+
+function staticRuntimeProblem(
+  runtime: Awaited<ReturnType<typeof generationRuntimeDecision>>,
+) {
+  const problem = runtime.enqueueProblem;
+  return problem && !atomicAdmissionProblemCodes.has(problem.code)
+    ? problem
+    : undefined;
+}
+
+function preAdmissionRuntimeProblem(
+  runtime: Awaited<ReturnType<typeof generationRuntimeDecision>>,
+) {
+  if (
+    !runtime.providerProfile &&
+    runtime.enqueueProblem &&
+    missingProviderSnapshotPriorityCodes.has(runtime.enqueueProblem.code)
+  ) {
+    return runtime.enqueueProblem;
+  }
+  return staticRuntimeProblem(runtime);
 }
 
 function missingModelMessage(kind: NodeInputKind) {
@@ -1314,9 +1659,336 @@ function safeFailure(error: unknown, kind: "text" | "audio" | "image" | "video")
   };
 }
 
+export async function settleDetachedGenerationExecution(
+  execute: () => void | Promise<void>,
+  persistFailure: (error: unknown) => void | Promise<void>,
+) {
+  try {
+    await execute();
+  } catch (error) {
+    try {
+      await persistFailure(error);
+    } catch {
+      // Detached work has no caller to receive a second persistence failure.
+      // The original rejection is deliberately contained as well.
+    }
+  }
+}
+
+function persistDetachedGenerationFailure(
+  taskId: string,
+  kind: GenerationTask["kind"],
+  error: unknown,
+) {
+  try {
+    const generationStore = taskStore();
+    let current = generationStore.get(taskId);
+    if (!current || ["cancelled", "failed", "success"].includes(current.state)) {
+      return;
+    }
+    if (current.state === "queued") {
+      current = generationStore.transition(taskId, "running");
+    }
+    if (current?.state !== "running" && current?.state !== "recovering") return;
+    generationStore.transition(taskId, "failed", safeFailure(error, kind));
+  } catch {
+    // Database/state races cannot be reported to a detached caller. Swallowing
+    // here prevents the failure-reporting path from becoming an unhandled
+    // rejection; later recovery still sees the last committed task state.
+  }
+}
+
+function launchGenerationTask(
+  taskId: string,
+  kind: GenerationTask["kind"],
+  options?: GenerationLaunchOptions,
+) {
+  if (launchedGenerationTasks.has(taskId)) return;
+  launchedGenerationTasks.add(taskId);
+  const execute = () => settleDetachedGenerationExecution(
+    () => kind === "text"
+      ? executeTextTask(taskId, options?.providerFetcher)
+      : kind === "video"
+      ? executeVideoTask(taskId, options?.providerFetcher)
+      : kind === "audio"
+        ? executeAudioTask(taskId)
+        : executeImageTask(taskId),
+    (error) => persistDetachedGenerationFailure(taskId, kind, error),
+  ).finally(() => {
+    launchedGenerationTasks.delete(taskId);
+  });
+  const abort = () => {
+    runningImageRequests.get(taskId)?.abort();
+    runningVideoRequests.get(taskId)?.abort();
+    runningAudioRequests.get(taskId)?.abort();
+    runningTextRequests.get(taskId)?.abort();
+  };
+  if (options?.settledExecutions) {
+    try {
+      options.settledExecutions.push(
+        runRegisteredGenerationExecution(execute, abort),
+      );
+    } catch {
+      launchedGenerationTasks.delete(taskId);
+    }
+    return;
+  }
+  if (!runtimeRoleCoordinator) {
+    setTimeout(() => {
+      void execute();
+    }, 0);
+    return;
+  }
+  let cancelledBeforeStart = false;
+  try {
+    void runRegisteredGenerationExecution(
+      () => new Promise<void>((resolve) => {
+        setTimeout(() => {
+          if (cancelledBeforeStart) {
+            launchedGenerationTasks.delete(taskId);
+            resolve();
+            return;
+          }
+          void execute().then(resolve);
+        }, 0);
+      }),
+      () => {
+        cancelledBeforeStart = true;
+        abort();
+      },
+    ).catch(() => {
+      launchedGenerationTasks.delete(taskId);
+    });
+  } catch {
+    // Shutdown can freeze detached admission after the durable task commit but
+    // before scheduling. Leave the task queued for the next active owner; no
+    // Provider request has started in this branch.
+    launchedGenerationTasks.delete(taskId);
+  }
+}
+
+export type PersistentGenerationWorkerStartupResult = {
+  activeTaskCount: number;
+  writerOpened: boolean;
+};
+
+function optionalFileStat(path: string) {
+  try {
+    return statSync(path);
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) return undefined;
+    throw error;
+  }
+}
+
+function committedActiveGenerationTaskCount() {
+  const databasePath = join(appDataDirectory(), "unboundry.sqlite");
+  const walBytes = optionalFileStat(`${databasePath}-wal`)?.size ?? 0;
+  const sharedMemoryPresent = Boolean(
+    optionalFileStat(`${databasePath}-shm`)?.isFile(),
+  );
+  if (walBytes > 0 && !sharedMemoryPresent) {
+    throw new Error("Generation startup cannot inspect an uncoordinated WAL");
+  }
+  const databaseLocation = walBytes > 0
+    ? databasePath
+    : `${pathToFileURL(databasePath).href}?immutable=1`;
+  const database = new DatabaseSync(databaseLocation, {
+    readOnly: true,
+    timeout: 1_000,
+  });
+  try {
+    const row = database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM generation_tasks
+      WHERE state IN ('queued', 'running', 'recovering', 'retrying')
+    `).get() as { count?: unknown } | undefined;
+    return Number(row?.count ?? 0);
+  } finally {
+    database.close();
+  }
+}
+
+function failInterruptedRetryingGenerationTasks() {
+  const database = openAppDatabase(appDataDirectory());
+  const timestamp = new Date().toISOString();
+  try {
+    database.exec("BEGIN IMMEDIATE");
+    const rows = database.prepare(`
+      SELECT id
+      FROM generation_tasks
+      WHERE state = 'retrying'
+      ORDER BY created_at ASC, rowid ASC
+    `).all() as Array<{ id: string }>;
+    const fail = database.prepare(`
+      UPDATE generation_tasks
+      SET
+        state = 'failed',
+        error_code = 'RETRY_INTERRUPTED',
+        error_message = '服务重启中断了重试准备，未创建新的模型平台请求',
+        updated_at = ?
+      WHERE id = ? AND state = 'retrying'
+    `);
+    const record = database.prepare(`
+      INSERT INTO generation_task_events (
+        task_id, state, error_code, error_message, created_at
+      ) VALUES (
+        ?, 'failed', 'RETRY_INTERRUPTED',
+        '服务重启中断了重试准备，未创建新的模型平台请求', ?
+      )
+    `);
+    for (const row of rows) {
+      if (fail.run(timestamp, row.id).changes === 1) {
+        record.run(row.id, timestamp);
+      }
+    }
+    database.exec("COMMIT");
+  } catch (error) {
+    try {
+      database.exec("ROLLBACK");
+    } catch {}
+    throw error;
+  } finally {
+    database.close();
+  }
+}
+
+function startupWorkerTestProviderFetcher(): typeof fetch | undefined {
+  if (
+    process.env.UNBOUNDRY_SAFE_TEST !== "1" ||
+    process.env.UNBOUNDRY_TEST_GENERATION_STARTUP_FAKE_PROVIDER !== "1"
+  ) return undefined;
+  const evidencePath = join(
+    appDataDirectory(),
+    ".unboundry-startup-provider-fixture.log",
+  );
+  return async (input, init) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    await appendFile(
+      evidencePath,
+      `${JSON.stringify({ method, url })}\n`,
+      { encoding: "utf8", flag: "a" },
+    );
+    if (
+      process.env.UNBOUNDRY_TEST_GENERATION_STARTUP_HANG === "1"
+    ) {
+      return await new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        const rejectAbort = () => reject(
+          new DOMException("M81 controlled Provider abort", "AbortError"),
+        );
+        if (signal?.aborted) {
+          rejectAbort();
+          return;
+        }
+        signal?.addEventListener("abort", rejectAbort, { once: true });
+      });
+    }
+    if (method === "GET" && url.includes("/contents/generations/tasks/")) {
+      return new Response(JSON.stringify({
+        error: { code: "M81_FAKE_PROVIDER_FAILED" },
+        status: "failed",
+      }), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+    return new Response(JSON.stringify({
+      output: [{
+        content: [{
+          text: "M81 startup worker fake Provider result",
+          type: "output_text",
+        }],
+        status: "completed",
+        type: "message",
+      }],
+      status: "completed",
+      usage: { total_tokens: 1 },
+    }), {
+      headers: { "Content-Type": "application/json" },
+      status: 200,
+    });
+  };
+}
+
+/**
+ * Starts or recovers durable active work once per process. The first pass is
+ * read-only so an idle database never opens the writer or creates SQLite sidecars.
+ */
+export function initializePersistentGenerationTaskWorker() {
+  if (!runtimeRoleCoordinator && runtimeRoleRegistrationRequired) {
+    throw new Error("Generation runtime role coordinator is unavailable");
+  }
+  runtimeRoleCoordinator?.assertActive("generation-worker");
+  const dataDirectory = appDataDirectory();
+  if (persistentGenerationWorkerStartup) {
+    if (
+      persistentGenerationWorkerCoordinator !== runtimeRoleCoordinator ||
+      persistentGenerationWorkerDataDirectory !== dataDirectory
+    ) {
+      throw new Error("Generation startup worker runtime identity changed");
+    }
+    return persistentGenerationWorkerStartup;
+  }
+  const initialize = async () => {
+    if (
+      process.env.UNBOUNDRY_SAFE_TEST === "1" &&
+      process.env.UNBOUNDRY_TEST_GENERATION_STARTUP_OBSERVE === "1"
+    ) {
+      await appendFile(
+        join(dataDirectory, ".unboundry-startup-worker-observer.log"),
+        `${JSON.stringify({ event: "persistent-worker-start" })}\n`,
+        { encoding: "utf8", flag: "a" },
+      );
+    }
+    const activeTaskCount = committedActiveGenerationTaskCount();
+    if (activeTaskCount === 0) {
+      return { activeTaskCount, writerOpened: false };
+    }
+    if (
+      process.env.UNBOUNDRY_SAFE_TEST === "1" &&
+      process.env.UNBOUNDRY_TEST_GENERATION_STARTUP_FAILURE === "1"
+    ) {
+      throw new Error("M81 controlled generation startup failure");
+    }
+    failInterruptedRetryingGenerationTasks();
+    const providerFetcher = startupWorkerTestProviderFetcher();
+    const settledExecutions =
+      providerFetcher &&
+        process.env.UNBOUNDRY_TEST_GENERATION_STARTUP_HANG !== "1"
+        ? [] as Promise<void>[]
+        : undefined;
+    const launchOptions = { providerFetcher, settledExecutions };
+    const generationStore = taskStore(launchOptions);
+    // If another in-process caller initialized the store first, cover any
+    // still-queued task here. launchGenerationTask is itself idempotent.
+    for (const task of generationStore.listQueued()) {
+      launchGenerationTask(task.id, task.kind, launchOptions);
+    }
+    if (settledExecutions) await Promise.all(settledExecutions);
+    return { activeTaskCount, writerOpened: true };
+  };
+  persistentGenerationWorkerCoordinator = runtimeRoleCoordinator;
+  persistentGenerationWorkerDataDirectory = dataDirectory;
+  persistentGenerationWorkerStartup = runtimeRoleCoordinator
+    ? runtimeRoleCoordinator.runDetached("generation-worker", initialize)
+    : initialize();
+  return persistentGenerationWorkerStartup;
+}
+
 type TextTaskStore = Pick<
   ReturnType<typeof createGenerationTaskStore>,
-  "complete" | "get" | "recordProviderAttempt" | "transition"
+  | "complete"
+  | "get"
+  | "markProviderResponseReceived"
+  | "recordProviderAttempt"
+  | "transition"
 >;
 
 type PersistedTextTaskInput = NodeInputSnapshot & { text?: string };
@@ -1381,7 +2053,7 @@ function relayContextMimeType(input: {
   kind: "audio" | "image" | "video";
   ownerId: string;
 }) {
-  const stored = input.contentType ?? readableMediaForOwner(
+  const stored = input.contentType ?? readyMediaForOwner(
     input.ownerId,
     input.kind,
     input.assetId,
@@ -1481,7 +2153,11 @@ export async function executeTextTaskWithDependencies(
     );
     let result: { providerUsageTokens?: number; text: string };
     try {
-      requireTaskProviderSnapshot(running, lease.profile, running.ownerId!);
+      requireTaskProviderSnapshot(
+        running,
+        lease.profile,
+        lease.credentialRevision,
+      );
       const leasedFetch = fetchWithProviderLease(lease, dependencies.fetcher);
       if (protocol === "native") {
         if (lease.profile.driver !== "volcengine-ark") {
@@ -1537,6 +2213,10 @@ export async function executeTextTaskWithDependencies(
       lease.release();
     }
     if (dependencies.store.get(taskId)?.state !== "running") return;
+    dependencies.store.markProviderResponseReceived({
+      executionAttempt: running.attempt,
+      taskId,
+    });
     dependencies.store.complete(taskId, {
       // Ark does not return a reliable per-response bill. Keep budget
       // accounting conservative by recording the administrator-protected cap.
@@ -1555,13 +2235,13 @@ export async function executeTextTaskWithDependencies(
   }
 }
 
-async function executeTextTask(taskId: string) {
+async function executeTextTask(taskId: string, fetcher: typeof fetch = fetch) {
   const controller = new AbortController();
   runningTextRequests.set(taskId, controller);
   try {
     await executeTextTaskWithDependencies(taskId, {
       acquireProfile: acquireProviderGenerationRequestLease,
-      fetcher: fetch,
+      fetcher,
       mediaUrlForOwner: providerMediaUrlForOwner,
       signal: controller.signal,
       store: taskStore(),
@@ -1649,7 +2329,10 @@ function appendRelayMediaParam(
 }
 
 export async function relayMediaParametersForTask(
-  task: Pick<GenerationTask, "kind" | "modelConfiguration" | "ownerId" | "parameters">,
+  task: Pick<
+    GenerationTask,
+    "kind" | "modelConfiguration" | "ownerId" | "parameters" | "providerModelId"
+  >,
   mediaUrlForOwner: typeof providerMediaUrlForOwner,
 ) {
   if (
@@ -1688,6 +2371,8 @@ export async function relayMediaParametersForTask(
     throw new RelayProviderError("FORMAT");
   }
   const seenOrders = new Set<number>();
+  const grokImagineVideo15 = task.kind === "video" &&
+    task.providerModelId === "grok-imagine-video-1.5-preview";
   const inputs = rawInputs.map((raw) => {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
       throw new RelayProviderError("FORMAT");
@@ -1716,7 +2401,10 @@ export async function relayMediaParametersForTask(
     ) {
       throw new RelayProviderError("FORMAT");
     }
-    const parameterName = relayMediaRoleParameters[input.role]?.[input.kind];
+    const parameterName = grokImagineVideo15 && input.kind === "image" &&
+        input.role === "first-frame"
+      ? "images"
+      : relayMediaRoleParameters[input.role]?.[input.kind];
     if (!parameterName) throw new RelayProviderError("FORMAT");
     return {
       assetId: input.assetId,
@@ -1727,17 +2415,29 @@ export async function relayMediaParametersForTask(
   }).sort((left, right) => left.order - right.order);
   for (const input of inputs) {
     if (input.kind === "text") continue;
-    appendRelayMediaParam(
-      parameters,
-      input.parameterName,
-      await mediaUrlForOwner({
-        assetId: input.assetId,
-        kind: input.kind,
-        ownerId: task.ownerId,
-      }, {
-        rules: referenceMediaRulesForTask(task) ?? genericReferenceMediaRules,
-      }),
-    );
+    const mediaUrl = await mediaUrlForOwner({
+      assetId: input.assetId,
+      kind: input.kind,
+      ownerId: task.ownerId,
+    }, {
+      rules: referenceMediaRulesForTask(task) ?? genericReferenceMediaRules,
+    });
+    if (grokImagineVideo15 && input.parameterName === "images") {
+      const existing = parameters.images;
+      parameters.images = existing === undefined
+        ? [mediaUrl]
+        : Array.isArray(existing)
+          ? [...existing, mediaUrl]
+          : [existing, mediaUrl];
+    } else {
+      appendRelayMediaParam(parameters, input.parameterName, mediaUrl);
+    }
+  }
+  if (
+    grokImagineVideo15 &&
+    (!Array.isArray(parameters.images) || parameters.images.length !== 1)
+  ) {
+    throw new RelayProviderError("FORMAT");
   }
   return parameters;
 }
@@ -1772,12 +2472,14 @@ async function readGeneratedPngBody(body: ReadableStream<Uint8Array>) {
 }
 
 async function saveRelayMediaOutput(input: {
+  actualCostMicrounits: number;
   expectedAudioContentType?: string;
   output: RelayTransientMediaOutput;
   ownerId: string;
   profile: ProviderProfile;
   prompt: string;
   signal: AbortSignal;
+  taskId: string;
 }) {
   if (input.output.transport === "bytes") {
     if (input.output.kind !== "image" || input.output.mimeType !== "image/png") {
@@ -1787,6 +2489,10 @@ async function saveRelayMediaOutput(input: {
       bytes: Buffer.from(input.output.bytes),
       label: input.prompt.slice(0, 120),
       ownerId: input.ownerId,
+      task: {
+        actualCostMicrounits: input.actualCostMicrounits,
+        taskId: input.taskId,
+      },
     });
     return saved.assetId;
   }
@@ -1803,6 +2509,10 @@ async function saveRelayMediaOutput(input: {
       bytes: await readGeneratedPngBody(downloaded.body),
       label: input.prompt.slice(0, 120),
       ownerId: input.ownerId,
+      task: {
+        actualCostMicrounits: input.actualCostMicrounits,
+        taskId: input.taskId,
+      },
     });
     return saved.assetId;
   }
@@ -1811,6 +2521,10 @@ async function saveRelayMediaOutput(input: {
       body: downloaded.body,
       label: input.prompt.slice(0, 120),
       ownerId: input.ownerId,
+      task: {
+        actualCostMicrounits: input.actualCostMicrounits,
+        taskId: input.taskId,
+      },
     });
     return saved.assetId;
   }
@@ -1824,6 +2538,10 @@ async function saveRelayMediaOutput(input: {
       | "audio/wav",
     label: input.prompt.slice(0, 120),
     ownerId: input.ownerId,
+    task: {
+      actualCostMicrounits: input.actualCostMicrounits,
+      taskId: input.taskId,
+    },
   });
   return saved.assetId;
 }
@@ -1836,43 +2554,12 @@ function relayAudioResultContentType(format: unknown) {
   return format === "mp3" ? "audio/mpeg" : undefined;
 }
 
-async function completeRelayMediaTask(input: {
-  actualCostMicrounits: number;
-  kind: "audio" | "image" | "video";
-  ownerId: string;
-  resultAssetId: string;
-  taskId: string;
-}) {
-  const discard = () => removeUnpublishedGeneratedMedia({
-    assetId: input.resultAssetId,
-    kind: input.kind,
-    ownerId: input.ownerId,
-  });
-  if (taskStore().get(input.taskId)?.state !== "running") {
-    await discard();
-    return false;
-  }
+async function waitForRelayMedia(milliseconds: number, signal: AbortSignal) {
   try {
-    taskStore().complete(input.taskId, {
-      actualCostMicrounits: input.actualCostMicrounits,
-      resultAssetId: input.resultAssetId,
-    });
-    return true;
-  } catch (error) {
-    await discard();
-    if (taskStore().get(input.taskId)?.state === "cancelled") return false;
-    throw error;
+    await waitForProviderDelay(milliseconds, signal);
+  } catch {
+    throw new RelayProviderError("CANCELLED", true);
   }
-}
-
-function waitForRelayMedia(milliseconds: number, signal: AbortSignal) {
-  return new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(resolve, milliseconds);
-    signal.addEventListener("abort", () => {
-      clearTimeout(timer);
-      reject(new RelayProviderError("CANCELLED", true));
-    }, { once: true });
-  });
 }
 
 async function executeRelayMediaTask(
@@ -1900,15 +2587,8 @@ async function executeRelayMediaTask(
   const ownerId = running.ownerId!;
   const protocol = taskProviderProtocol(running);
   if (protocol !== "media-generate") throw new RelayProviderError("FORMAT");
-  const profile = requireTaskProviderSnapshot(
-    running,
-    await getProviderProfileForGeneration(
-      running.providerProfileId,
-      running.ownerId!,
-    ),
-    running.ownerId!,
-  );
-  const connection = assertRelayProfile(profile, protocol);
+  const profile = await taskProviderSnapshotProfile(running, running.ownerId!);
+  assertRelayProfile(profile, protocol);
   let providerTaskId = running.providerTaskId;
   if (!providerTaskId) {
     const params = await relayMediaParametersForTask(
@@ -1920,8 +2600,9 @@ async function executeRelayMediaTask(
       fetcher: fetch,
       ownerId: ownerId,
       profileId: running.providerProfileId,
-      request: (currentProfile, leasedFetch) =>
-        submitRelayMedia(
+      task: running,
+      request: async (currentProfile, leasedFetch) => {
+        const created = await submitRelayMedia(
           assertRelayProfile(currentProfile, protocol),
           {
             capability: kind,
@@ -1937,10 +2618,12 @@ async function executeRelayMediaTask(
             signal: controller.signal,
             usePinnedTransport: true,
           },
-        ),
+        );
+        taskStore().setProviderTaskId(taskId, created.externalTaskId);
+        return created;
+      },
     });
     providerTaskId = submission.externalTaskId;
-    taskStore().setProviderTaskId(taskId, providerTaskId);
   }
   for (let poll = 0; poll < 450; poll += 1) {
     if (taskStore().get(taskId)?.state !== "running") return;
@@ -1949,6 +2632,7 @@ async function executeRelayMediaTask(
       fetcher: fetch,
       ownerId: ownerId,
       profileId: running.providerProfileId,
+      task: running,
       request: (currentProfile, leasedFetch) =>
         pollRelayMediaTask(
           assertRelayProfile(currentProfile, protocol),
@@ -1972,8 +2656,10 @@ async function executeRelayMediaTask(
       return;
     }
     if (status.state === "success") {
+      taskStore().markProviderResponseReceivedForTask(taskId);
       if (status.outputs.length !== 1) throw new RelayProviderError("FORMAT");
-      const resultAssetId = await saveRelayMediaOutput({
+      await saveRelayMediaOutput({
+        actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
         expectedAudioContentType: kind === "audio"
           ? relayAudioResultContentType(running.parameters.format)
           : undefined,
@@ -1982,12 +2668,6 @@ async function executeRelayMediaTask(
         profile,
         prompt: running.prompt,
         signal: controller.signal,
-      });
-      await completeRelayMediaTask({
-        actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
-        kind,
-        ownerId,
-        resultAssetId,
         taskId,
       });
       return;
@@ -2000,6 +2680,7 @@ async function executeRelayMediaTask(
 async function executeImageTask(taskId: string) {
   const current = taskStore().get(taskId);
   if (!current || !["queued", "running"].includes(current.state) || !current.ownerId) return;
+  const ownerId = current.ownerId;
   const controller = new AbortController();
   runningImageRequests.set(taskId, controller);
   try {
@@ -2017,6 +2698,7 @@ async function executeImageTask(taskId: string) {
       });
       return;
     }
+    const providerProfileId = running.providerProfileId;
     const protocol = taskProviderProtocol(running);
     const references = imageReferences(running.parameters.references);
     const inputReferences = await Promise.all(
@@ -2029,9 +2711,10 @@ async function executeImageTask(taskId: string) {
         fetcher: fetch,
         ownerId: current.ownerId,
         profileId: running.providerProfileId,
+        task: running,
         request: (profile, leasedFetch) =>
           generateOpenRouterImage(
-            requireTaskProviderSnapshot(running, profile, current.ownerId!),
+            profile,
             {
               aspectRatio:
                 typeof running.parameters.aspectRatio === "string"
@@ -2053,72 +2736,84 @@ async function executeImageTask(taskId: string) {
             () => taskStore().recordProviderAttempt(taskId),
           ),
       });
+      taskStore().markProviderResponseReceived({
+        executionAttempt: running.attempt,
+        taskId,
+      });
       const saved = await saveGeneratedPng({
         bytes: result.bytes,
         label: running.prompt.slice(0, 120),
         ownerId: current.ownerId,
+        task: {
+          actualCostMicrounits: result.actualCostMicrounits,
+          taskId,
+        },
       });
-      taskStore().complete(taskId, {
-        actualCostMicrounits: result.actualCostMicrounits,
-        resultAssetId: saved.assetId,
-      });
+      void saved;
       return;
     }
     if (protocol !== "gpt-image") throw new RelayProviderError("FORMAT");
-    const profile = requireTaskProviderSnapshot(
-      running,
-      await getProviderProfileForGeneration(
-        running.providerProfileId,
-        current.ownerId,
-      ),
-      current.ownerId,
-    );
+    const profile = await taskProviderSnapshotProfile(running, current.ownerId);
     assertRelayProfile(profile, protocol);
-    const relayResult = await withProviderRequestLease({
-      expected: profile,
-      fetcher: fetch,
-      ownerId: current.ownerId,
-      profileId: running.providerProfileId,
-      request: (currentProfile, leasedFetch) =>
-        requestRelayGptImage(
-          assertRelayProfile(currentProfile, protocol),
-          {
-            capability: "image",
-            count: 1,
-            inputImages: inputReferences,
-            model: running.providerModelId!,
-            operation: inputReferences.length ? "edit" : "generation",
-            prompt: running.prompt,
-            providerProtocol: protocol,
-            quality: ["auto", "low", "medium", "high"].includes(
-              String(running.parameters.quality),
-            )
-              ? running.parameters.quality as "auto" | "low" | "medium" | "high"
-              : "auto",
-            responseFormat: "b64_json",
-            size: gptImageSizeForAspectRatio(running.parameters.aspectRatio),
-          },
-          {
-            beforeProviderRequest: () => taskStore().recordProviderAttempt(taskId),
-            fetcher: leasedFetch,
-            signal: controller.signal,
-            usePinnedTransport: true,
-          },
-        ),
+    const prepared = await prepareRelayGptImageRequest({
+      capability: "image",
+      count: 1,
+      inputImages: inputReferences,
+      model: running.providerModelId!,
+      operation: inputReferences.length ? "edit" : "generation",
+      prompt: running.prompt,
+      providerProtocol: protocol,
+      quality: ["auto", "low", "medium", "high"].includes(
+        String(running.parameters.quality),
+      )
+        ? running.parameters.quality as "auto" | "low" | "medium" | "high"
+        : "auto",
+      responseFormat: "b64_json",
+      size: gptImageSizeForAspectRatio(running.parameters.aspectRatio),
+    }, {
+      mediaLifecycle: { ownerId },
+      signal: controller.signal,
     });
-    if (relayResult.outputs.length !== 1) throw new RelayProviderError("FORMAT");
-    const resultAssetId = await saveRelayMediaOutput({
+    const relayResult = await (async (): Promise<RelayImageResult> => {
+      try {
+        return await withProviderRequestLease<RelayImageResult>({
+          expected: profile,
+          fetcher: fetch,
+          ownerId,
+          profileId: providerProfileId,
+          task: running,
+          request: (currentProfile, leasedFetch, providerBoundary) =>
+            sendPreparedRelayGptImageRequest(
+              assertRelayProfile(currentProfile, protocol),
+              prepared.request,
+              {
+                beforeProviderRequest: providerBoundary(
+                  () => taskStore().recordProviderAttempt(taskId),
+                ),
+                fetcher: leasedFetch,
+                signal: controller.signal,
+                usePinnedTransport: true,
+              },
+            ),
+        });
+      } finally {
+        await prepared.cleanup();
+      }
+    })();
+    taskStore().markProviderResponseReceived({
+      executionAttempt: running.attempt,
+      taskId,
+    });
+    if (relayResult.outputs.length !== 1) {
+      throw new RelayProviderError("PROVIDER_RESULT_FORMAT", true);
+    }
+    await saveRelayMediaOutput({
+      actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
       output: relayResult.outputs[0],
       ownerId: current.ownerId,
       profile,
       prompt: running.prompt,
       signal: controller.signal,
-    });
-    await completeRelayMediaTask({
-      actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
-      kind: "image",
-      ownerId: current.ownerId,
-      resultAssetId,
       taskId,
     });
   } catch (error) {
@@ -2136,14 +2831,12 @@ async function executeImageTask(taskId: string) {
   }
 }
 
-function wait(milliseconds: number, signal: AbortSignal) {
-  return new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(resolve, milliseconds);
-    signal.addEventListener("abort", () => {
-      clearTimeout(timer);
-      reject(new VolcengineArkVideoError("CANCELLED", "视频任务已取消"));
-    }, { once: true });
-  });
+async function wait(milliseconds: number, signal: AbortSignal) {
+  try {
+    await waitForProviderDelay(milliseconds, signal);
+  } catch {
+    throw new VolcengineArkVideoError("CANCELLED", "视频任务已取消");
+  }
 }
 
 const arkVideoMediaRoles = new Set<ArkVideoMediaInput["role"]>([
@@ -2256,7 +2949,10 @@ async function arkVideoMediaInputs(task: GenerationTask): Promise<ArkVideoMediaI
   return inputs;
 }
 
-async function executeVideoTask(taskId: string) {
+async function executeVideoTask(
+  taskId: string,
+  fetcher: typeof fetch = fetch,
+) {
   const current = taskStore().get(taskId);
   if (!current || !["queued", "running"].includes(current.state) || !current.ownerId) return;
   if (taskProviderProtocol(current) === "media-generate") {
@@ -2296,14 +2992,7 @@ async function executeVideoTask(taskId: string) {
   const controller = new AbortController();
   runningVideoRequests.set(taskId, controller);
   try {
-    const profile = requireTaskProviderSnapshot(
-      running,
-      await getProviderProfileForGeneration(
-        running.providerProfileId,
-        running.ownerId!,
-      ),
-      running.ownerId!,
-    );
+    const profile = await taskProviderSnapshotProfile(running, running.ownerId!);
     if (profile.driver !== "volcengine-ark") {
       throw new VolcengineArkVideoError("FORMAT", "视频模型配置已失效");
     }
@@ -2312,11 +3001,12 @@ async function executeVideoTask(taskId: string) {
       const inputs = await arkVideoMediaInputs(running);
       const created = await withProviderRequestLease({
         expected: profile,
-        fetcher: fetch,
+        fetcher,
         ownerId: running.ownerId!,
         profileId: running.providerProfileId,
-        request: (currentProfile, leasedFetch) =>
-          createVolcengineArkVideoTask(
+        task: running,
+        request: async (currentProfile, leasedFetch) => {
+          const created = await createVolcengineArkVideoTask(
             currentProfile,
             {
               duration: typeof running.parameters.duration === "number"
@@ -2337,19 +3027,22 @@ async function executeVideoTask(taskId: string) {
             leasedFetch,
             controller.signal,
             () => taskStore().recordProviderAttempt(taskId),
-          ),
+          );
+          taskStore().setProviderTaskId(taskId, created.id);
+          return created;
+        },
       });
       providerTaskId = created.id;
-      taskStore().setProviderTaskId(taskId, providerTaskId);
     }
 
     for (let poll = 0; poll < 450; poll += 1) {
       if (taskStore().get(taskId)?.state !== "running") return;
       const status = await withProviderRequestLease({
         expected: profile,
-        fetcher: fetch,
+        fetcher,
         ownerId: running.ownerId!,
         profileId: running.providerProfileId,
+        task: running,
         request: (currentProfile, leasedFetch) =>
           getVolcengineArkVideoTask(
             currentProfile,
@@ -2376,35 +3069,30 @@ async function executeVideoTask(taskId: string) {
         return;
       }
       if (status.state === "succeeded") {
+        taskStore().markProviderResponseReceivedForTask(taskId);
         if (!status.videoUrl || status.providerUsageTokens === undefined) {
           throw new VolcengineArkVideoError("FORMAT", "方舟未返回完整的视频结果");
         }
-        const videoResponse = await fetch(status.videoUrl, {
-          headers: { Accept: "video/mp4" },
-          redirect: "error",
+        const downloaded = await downloadProviderResultMedia({
+          apiKey: profile.apiKey ?? "",
+          kind: "video",
           signal: controller.signal,
-        });
-        if (
-          !videoResponse.ok ||
-          !videoResponse.body ||
-          !String(videoResponse.headers.get("content-type") ?? "").toLowerCase().includes("video")
-        ) {
-          throw new VolcengineArkVideoError("REMOTE", "方舟视频结果暂时无法下载");
-        }
-        const saved = await saveGeneratedMp4({
-          body: videoResponse.body,
-          label: running.prompt.slice(0, 120),
-          ownerId: running.ownerId!,
+          url: status.videoUrl,
         });
         const actualCostMicrounits = Math.ceil(
           status.providerUsageTokens *
           seedanceMiniAudioPriceMicrounitsPerThousandTokens /
           1_000,
         );
-        taskStore().complete(taskId, {
-          actualCostMicrounits,
-          providerUsageTokens: status.providerUsageTokens,
-          resultAssetId: saved.assetId,
+        await saveGeneratedMp4({
+          body: downloaded.body,
+          label: running.prompt.slice(0, 120),
+          ownerId: running.ownerId!,
+          task: {
+            actualCostMicrounits,
+            providerUsageTokens: status.providerUsageTokens,
+            taskId,
+          },
         });
         return;
       }
@@ -2426,14 +3114,12 @@ async function executeVideoTask(taskId: string) {
   }
 }
 
-function waitForAudio(milliseconds: number, signal: AbortSignal) {
-  return new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(resolve, milliseconds);
-    signal.addEventListener("abort", () => {
-      clearTimeout(timer);
-      reject(new MurekaAudioError("CANCELLED"));
-    }, { once: true });
-  });
+async function waitForAudio(milliseconds: number, signal: AbortSignal) {
+  try {
+    await waitForProviderDelay(milliseconds, signal);
+  } catch {
+    throw new MurekaAudioError("CANCELLED");
+  }
 }
 
 function audioQueryKind(parameters: Record<string, unknown>): MurekaAudioQueryKind {
@@ -2482,14 +3168,7 @@ async function executeAudioTask(taskId: string) {
   const controller = new AbortController();
   runningAudioRequests.set(taskId, controller);
   try {
-    const profile = requireTaskProviderSnapshot(
-      running,
-      await getProviderProfileForGeneration(
-        running.providerProfileId,
-        running.ownerId!,
-      ),
-      running.ownerId!,
-    );
+    const profile = await taskProviderSnapshotProfile(running, running.ownerId!);
     if (profile.driver !== "mureka") {
       throw new MurekaAudioError("FORMAT");
     }
@@ -2501,8 +3180,9 @@ async function executeAudioTask(taskId: string) {
         fetcher: fetch,
         ownerId: running.ownerId!,
         profileId: running.providerProfileId,
-        request: (currentProfile, leasedFetch) =>
-          createMurekaAudioTask(
+        task: running,
+        request: async (currentProfile, leasedFetch) => {
+          const created = await createMurekaAudioTask(
             currentProfile,
             {
               lyrics: running.parameters.lyrics,
@@ -2516,10 +3196,12 @@ async function executeAudioTask(taskId: string) {
             leasedFetch,
             controller.signal,
             () => taskStore().recordProviderAttempt(taskId),
-          ),
+          );
+          taskStore().setProviderTaskId(taskId, created.id);
+          return created;
+        },
       });
       providerTaskId = created.id;
-      taskStore().setProviderTaskId(taskId, providerTaskId);
     }
 
     for (let poll = 0; poll < 450; poll += 1) {
@@ -2529,6 +3211,7 @@ async function executeAudioTask(taskId: string) {
         fetcher: fetch,
         ownerId: running.ownerId!,
         profileId: running.providerProfileId,
+        task: running,
         request: (currentProfile, leasedFetch) =>
           getMurekaAudioTask(
             currentProfile,
@@ -2553,25 +3236,25 @@ async function executeAudioTask(taskId: string) {
         return;
       }
       if (status.state === "succeeded") {
+        taskStore().markProviderResponseReceivedForTask(taskId);
         if (!status.audioUrl) {
           throw new MurekaAudioError("FORMAT");
         }
         const audioBody = await downloadMurekaAudioResult(
           profile,
           status.audioUrl,
-          fetch,
-          controller.signal,
+          { signal: controller.signal },
         );
-        const saved = await saveGeneratedMp3({
+        await saveGeneratedMp3({
           body: audioBody,
           label: running.prompt.slice(0, 120),
           ownerId: running.ownerId!,
-        });
-        taskStore().complete(taskId, {
-          // Mureka does not return a per-task bill. Record the configured
-          // protected maximum so budget accounting remains conservative.
-          actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
-          resultAssetId: saved.assetId,
+          task: {
+            // Mureka does not return a per-task bill. Record the configured
+            // protected maximum so budget accounting remains conservative.
+            actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+            taskId,
+          },
         });
         return;
       }
@@ -2595,7 +3278,9 @@ async function executeAudioTask(taskId: string) {
 
 export function retrySnapshotCompatibilityProblem(
   task: GenerationTask,
-  model: GenerationModelRow,
+  model: GenerationModelRow | undefined,
+  mode: "new-provider-attempt" | "resume-provider-task" =
+    "new-provider-attempt",
 ) {
   if (task.parameters.inputSchemaVersion !== 1) {
     return "原任务没有可核对的节点输入快照，请回到节点重新提交";
@@ -2608,14 +3293,21 @@ export function retrySnapshotCompatibilityProblem(
   delete parameterValues.inputSchemaVersion;
   delete parameterValues.inputs;
   delete parameterValues.references;
-  let parameters: Record<string, ModelParameterValue>;
-  try {
-    parameters = validateParameterValues(
-      generationModelSchema(task.kind, model),
-      parameterValues,
-    );
-  } catch {
-    return "当前模型参数规则已更新，原任务参数不再兼容，请回到节点重新提交";
+  const modelSchema = mode === "new-provider-attempt"
+    ? model
+      ? generationModelSchema(task.kind, model)
+      : undefined
+    : undefined;
+  if (mode === "new-provider-attempt" && !modelSchema) {
+    return "原模型已停用、归档或不可用";
+  }
+  let parameters: Record<string, ModelParameterValue> = {};
+  if (modelSchema) {
+    try {
+      parameters = validateParameterValues(modelSchema, parameterValues);
+    } catch {
+      return "当前模型参数规则已更新，原任务参数不再兼容，请回到节点重新提交";
+    }
   }
 
   const nodes: Array<{
@@ -2630,6 +3322,8 @@ export function retrySnapshotCompatibilityProblem(
     target: string;
   }> = [];
   const snapshotImageReferences: ImageReference[] = [];
+  const snapshotOrders = new Set<number>();
+  const snapshotSources = new Set<string>();
   for (const [index, raw] of rawInputs.entries()) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
       return "原任务保存的节点输入快照无效，请回到节点重新提交";
@@ -2645,10 +3339,15 @@ export function retrySnapshotCompatibilityProblem(
       !/^[a-z0-9._-]{1,160}$/i.test(sourceNodeId) ||
       !/^[a-z][a-z-]{0,39}$/.test(role) ||
       !Number.isSafeInteger(order) ||
-      order < 1
+      order < 1 ||
+      sourceNodeId === task.nodeId ||
+      snapshotOrders.has(order) ||
+      snapshotSources.has(sourceNodeId)
     ) {
       return "原任务保存的节点输入顺序、类型或角色无效，请回到节点重新提交";
     }
+    snapshotOrders.add(order);
+    snapshotSources.add(sourceNodeId);
     const assetId = typeof item.assetId === "string" ? item.assetId : "";
     if (
       item.kind !== "text" &&
@@ -2664,24 +3363,28 @@ export function retrySnapshotCompatibilityProblem(
     } else {
       data.assetId = assetId;
       data[`${item.kind}Src`] = `snapshot:${assetId}`;
-      // 重试快照只核对结构兼容性：素材在任务保存时已就绪，
-      // 用可信元数据标记让预检把快照素材视为 ready，而不是要求重新联网确认。
-      data.mediaMetadataSource = "server";
-      data.mediaMetadataStatus = "ready";
-      data.mediaByteSize = 1;
-      data.mediaStorageBackend = item.kind === "video" ? "oss" : "local";
-      data.mediaContentType =
-        item.kind === "image"
-          ? "image/png"
-          : item.kind === "video"
-            ? "video/mp4"
-            : "audio/mpeg";
-      if (item.kind === "video") {
-        data.mediaDurationSeconds = 5;
-        data.videoWidth = 1280;
-        data.videoHeight = 720;
-      } else if (item.kind === "audio") {
-        data.mediaDurationSeconds = 10;
+      if (mode === "new-provider-attempt") {
+        const media = task.ownerId
+          ? readyMediaForOwner(task.ownerId, item.kind, assetId)
+          : undefined;
+        if (!media) {
+          return "原任务保存的素材不存在、未就绪或不属于当前账号，请回到节点重新提交";
+        }
+        // A new paid attempt must be checked against the current model using
+        // the exact durable metadata. Never manufacture values from the old
+        // snapshot merely to make a tightened rule pass.
+        data.mediaMetadataSource = "server";
+        data.mediaMetadataStatus = item.kind === "image"
+          ? "ready"
+          : media.durationStatus === "not-applicable"
+            ? "failed"
+            : media.durationStatus;
+        data.mediaByteSize = media.byteSize;
+        data.mediaStorageBackend = media.storageBackend;
+        data.mediaContentType = media.contentType;
+        data.mediaDurationSeconds = media.durationSeconds ?? undefined;
+        data.mediaWidth = media.mediaWidth ?? undefined;
+        data.mediaHeight = media.mediaHeight ?? undefined;
       }
       if (item.kind === "image") {
         snapshotImageReferences.push({
@@ -2716,6 +3419,11 @@ export function retrySnapshotCompatibilityProblem(
     }
   }
 
+  // An existing Provider task has already consumed its inputs. Resuming its
+  // status/result retrieval must survive later media deletion or model-rule
+  // tightening, while still rejecting a malformed or rewritten snapshot.
+  if (mode === "resume-provider-task") return undefined;
+
   const hasUpstreamText = rawInputs.some((raw) =>
     raw && typeof raw === "object" && !Array.isArray(raw) &&
     (raw as Record<string, unknown>).kind === "text"
@@ -2726,7 +3434,7 @@ export function retrySnapshotCompatibilityProblem(
       : "";
   const preflight = resolveNodeInputs({
     edges,
-    modelSchema: generationModelSchema(task.kind, model),
+    modelSchema,
     nodes,
     ownPrompt: compatibilityOwnPrompt,
     parameters,
@@ -2734,29 +3442,6 @@ export function retrySnapshotCompatibilityProblem(
     targetKind: task.kind,
   });
   return preflight.problems[0]?.message;
-}
-
-const unknownProviderRetryOutcomes = new Set([
-  "FORMAT",
-  "GENERATION_FAILED",
-  "NETWORK",
-  "REMOTE",
-  "SERVICE_RESTARTED",
-  "TIMEOUT",
-]);
-
-function taskEnteredProviderOnLatestExecution(task: GenerationTask) {
-  const database = openAppDatabase();
-  try {
-    return Boolean(database.prepare(`
-      SELECT 1
-      FROM generation_provider_attempts
-      WHERE task_id = ? AND execution_attempt = ?
-      LIMIT 1
-    `).get(task.id, task.attempt));
-  } finally {
-    database.close();
-  }
 }
 
 type RetrySafetyDecision =
@@ -2768,7 +3453,35 @@ type RetrySafetyDecision =
   | { allowed: true; mode: "resume-provider-task" }
   | { allowed: false; code: string; reason: string };
 
-export function retrySafetyDecision(task: GenerationTask): RetrySafetyDecision {
+export function retrySafetyDecision(
+  task: GenerationTask,
+  providerAttempt = taskStore().getProviderAttemptForTask(task.id),
+  unsafeProviderAttempt = taskStore()
+    .hasUnsafeProviderAttemptForNewPaidRetry(task.id),
+): RetrySafetyDecision {
+  const exactAbandonedEvidence = Boolean(
+    providerAttempt &&
+    (
+      task.providerTaskId
+        ? providerAttempt.providerTaskId === task.providerTaskId &&
+          ["accepted", "response-received"].includes(providerAttempt.outcome)
+        : !providerAttempt.providerTaskId &&
+          providerAttempt.executionAttempt === task.attempt &&
+          providerAttempt.outcome === "response-received"
+    )
+  );
+  if (
+    task.state === "cancelled" &&
+    task.errorCode === "USER_ABANDONED" &&
+    exactAbandonedEvidence
+  ) {
+    return {
+      allowed: false,
+      code: "RETRY_OUTCOME_UNKNOWN",
+      reason:
+        "该平台结果已显式放弃本地继续恢复；已保留付费证据，不能自动重试或再次付费提交",
+    };
+  }
   if (task.state !== "failed") {
     return {
       allowed: false,
@@ -2779,7 +3492,8 @@ export function retrySafetyDecision(task: GenerationTask): RetrySafetyDecision {
   const protocol = taskProviderProtocol(task);
   if (
     task.providerTaskId &&
-    task.errorCode !== "PROVIDER_FAILED" &&
+    providerAttempt &&
+    ["accepted", "response-received"].includes(providerAttempt.outcome) &&
     (
       (protocol === "media-generate" && task.kind !== "text") ||
       (protocol === "native" && (task.kind === "video" || task.kind === "audio"))
@@ -2788,12 +3502,8 @@ export function retrySafetyDecision(task: GenerationTask): RetrySafetyDecision {
     return { allowed: true, mode: "resume-provider-task" };
   }
   if (
-    task.errorCode &&
-    unknownProviderRetryOutcomes.has(task.errorCode) &&
-    (
-      task.errorCode === "SERVICE_RESTARTED" ||
-      taskEnteredProviderOnLatestExecution(task)
-    )
+    (task.providerTaskId && !providerAttempt) ||
+    unsafeProviderAttempt
   ) {
     return {
       allowed: false,
@@ -2834,16 +3544,11 @@ export function retrySafetyDecision(task: GenerationTask): RetrySafetyDecision {
 }
 
 function resumeProviderTaskSnapshotProblem(task: GenerationTask) {
-  const model = resolveModel(task.kind, task.model, task.ownerId ?? "");
-  if (!model) return "原模型已停用、归档或不可用";
-  if (
-    model.provider_profile_id !== task.providerProfileId ||
-    model.provider_model_id !== task.providerModelId ||
-    (model.provider_protocol ?? "native") !== taskProviderProtocol(task)
-  ) {
-    return "原任务的模型、平台连接或协议配置已变化";
-  }
-  return retrySnapshotCompatibilityProblem(task, model);
+  return retrySnapshotCompatibilityProblem(
+    task,
+    undefined,
+    "resume-provider-task",
+  );
 }
 
 export function generationTaskCancellationMode(task: GenerationTask) {
@@ -2883,6 +3588,7 @@ async function cancelGenerationTask(task: GenerationTask) {
       fetcher: fetch,
       ownerId: task.ownerId ?? "",
       profileId: task.providerProfileId,
+      task,
       request: (profile, leasedFetch) =>
         cancelVolcengineArkVideoTask(
           profile,
@@ -2916,6 +3622,40 @@ async function cancelGenerationTask(task: GenerationTask) {
 }
 
 /**
+ * Applies the administrator's emergency-stop cancellation policy without
+ * claiming that an unsupported or already-unknown Provider request stopped.
+ */
+export async function applyEmergencyStopRunningTaskPolicy() {
+  const generationStore = taskStore();
+  const summary = { cancelled: 0, failed: 0, waiting: 0 };
+  for (const task of generationStore.listActive()) {
+    const mode = generationTaskCancellationMode(task);
+    if (
+      mode === "provider-cancel-unavailable" ||
+      mode === "cancel-relay-media-local"
+    ) {
+      summary.waiting += 1;
+      continue;
+    }
+    try {
+      await cancelGenerationTask(task);
+      summary.cancelled += 1;
+    } catch (error) {
+      if (
+        error instanceof GenerationTaskProviderBoundaryError ||
+        (error instanceof Error &&
+          (error as { code?: string }).code === "PROVIDER_CANCEL_UNAVAILABLE")
+      ) {
+        summary.waiting += 1;
+      } else {
+        summary.failed += 1;
+      }
+    }
+  }
+  return summary;
+}
+
+/**
  * Cancel every active generation task of a canvas. Used by project deletion so
  * a removed project cannot leave a live task writing results back afterwards.
  */
@@ -2923,13 +3663,8 @@ export async function cancelCanvasGenerationTasks(
   canvasId: string,
   ownerId?: string,
 ) {
-  const tasks = ownerId === undefined
-    ? taskStore().list(canvasId)
-    : taskStore().listForOwner(canvasId, ownerId);
+  const tasks = taskStore().listActiveForCanvas(canvasId, ownerId);
   for (const task of tasks) {
-    if (!["queued", "running", "recovering", "retrying"].includes(task.state)) {
-      continue;
-    }
     await cancelGenerationTask(task);
   }
 }
@@ -2938,7 +3673,7 @@ export async function generationTasks(
   request: IncomingMessage,
   response: ServerResponse,
 ) {
-  const path = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+  const path = decodedRequestPath(request).replace(
     /^\/+/,
     "",
   );
@@ -2989,12 +3724,16 @@ export async function generationTasks(
     const requestUrl = new URL(request.url ?? "", "http://127.0.0.1");
     const canvasId = requestUrl.searchParams.get("canvasId") ?? "";
     try {
+      const generationStore = taskStore();
+      const ownerId = identity.bypass ? undefined : identity.userId;
+      const tasks = identity.bypass
+        ? generationStore.list(canvasId)
+        : generationStore.listForOwner(canvasId, identity.userId);
+      const bindings = tasks.some(({ state }) => state === "failed")
+        ? generationStore.retryBindingsForCanvas(canvasId, ownerId)
+        : new Map<string, GenerationTaskCanvasRetryBinding>();
       json(response, 200, {
-        tasks: (
-          identity.bypass
-            ? taskStore().list(canvasId)
-            : taskStore().listForOwner(canvasId, identity.userId)
-        ).map(taskSummary),
+        tasks: tasks.map((task) => taskSummary(task, bindings.get(task.id))),
       });
     } catch {
       json(response, 400, { error: "Invalid canvas ID" });
@@ -3021,7 +3760,10 @@ export async function generationTasks(
         });
         return;
       }
-      json(response, 200, taskSummary(task));
+      json(response, 200, taskSummaryForOwner(
+        task,
+        identity.bypass ? undefined : identity.userId,
+      ));
     } catch {
       json(response, 400, { error: "Invalid idempotency lookup" });
     }
@@ -3044,7 +3786,10 @@ export async function generationTasks(
       await cancelGenerationTask(task);
       const cancelled = taskStore().get(path);
       if (!cancelled) throw new Error("Generation task not found");
-      json(response, 200, taskSummary(cancelled));
+      json(response, 200, taskSummaryForOwner(
+        cancelled,
+        identity.bypass ? undefined : identity.userId,
+      ));
     } catch (error) {
       if (
         error instanceof Error &&
@@ -3068,14 +3813,124 @@ export async function generationTasks(
     return;
   }
 
-  const retryMatch = path.match(/^([a-z0-9._-]+)\/retry$/i);
-  if (request.method === "POST" && retryMatch) {
-    const taskId = retryMatch[1];
+  const abandonMatch = path.match(/^([a-z0-9._-]+)\/abandon$/i);
+  if (request.method === "POST" && abandonMatch) {
+    const taskId = abandonMatch[1];
     const task = identity.bypass
       ? taskStore().get(taskId)
       : taskStore().getForOwner(taskId, identity.userId);
     if (!task) {
       json(response, 404, { error: "Generation task not found" });
+      return;
+    }
+    try {
+      const body = await readJsonBody<{
+        acknowledgeRemoteResultMayBeLost?: unknown;
+        expectedAttempt?: unknown;
+        expectedUpdatedAt?: unknown;
+      }>(request, 2 * 1_024);
+      if (
+        body.acknowledgeRemoteResultMayBeLost !== true ||
+        !Number.isSafeInteger(body.expectedAttempt) ||
+        Number(body.expectedAttempt) < 1 ||
+        typeof body.expectedUpdatedAt !== "string"
+      ) {
+        json(response, 400, {
+          code: "ABANDON_ACK_REQUIRED",
+          error: "必须确认将不再尝试恢复该平台结果",
+        });
+        return;
+      }
+      const abandoned = taskStore().abandonAcceptedProviderTask({
+        expectedAttempt: Number(body.expectedAttempt),
+        expectedUpdatedAt: body.expectedUpdatedAt,
+        taskId,
+      });
+      if (!abandoned) throw new Error("Generation task not found");
+      json(response, 200, taskSummaryForOwner(
+        abandoned,
+        identity.bypass ? undefined : identity.userId,
+      ));
+    } catch (error) {
+      if (error instanceof GenerationTaskAbandonError) {
+        json(response, 409, {
+          code: error.code,
+          error: error.message,
+        });
+        return;
+      }
+      json(response, 409, {
+        code: "PROVIDER_RESULT_NOT_ABANDONABLE",
+        error: "Generation task cannot be abandoned",
+      });
+    }
+    return;
+  }
+
+  const retryMatch = path.match(/^([a-z0-9._-]+)\/retry$/i);
+  if (request.method === "POST" && retryMatch) {
+    const taskId = retryMatch[1];
+    const body = await readJsonBody<{
+      canvasId?: unknown;
+      expectedAttempt?: unknown;
+      expectedCanvasRevision?: unknown;
+      expectedGenerationInputKey?: unknown;
+      expectedUpdatedAt?: unknown;
+      kind?: unknown;
+      nodeId?: unknown;
+    }>(request, 256 * 1_024);
+    if (
+      typeof body.canvasId !== "string" ||
+      !/^[a-z0-9._-]{1,120}$/i.test(body.canvasId) ||
+      !Number.isSafeInteger(body.expectedAttempt) ||
+      Number(body.expectedAttempt) < 0 ||
+      !Number.isSafeInteger(body.expectedCanvasRevision) ||
+      Number(body.expectedCanvasRevision) < 0 ||
+      typeof body.expectedGenerationInputKey !== "string" ||
+      body.expectedGenerationInputKey.length < 1 ||
+      body.expectedGenerationInputKey.length > 100_000 ||
+      typeof body.expectedUpdatedAt !== "string" ||
+      body.expectedUpdatedAt.length < 1 ||
+      body.expectedUpdatedAt.length > 80 ||
+      (body.kind !== "text" &&
+        body.kind !== "image" &&
+        body.kind !== "video" &&
+        body.kind !== "audio") ||
+      typeof body.nodeId !== "string" ||
+      !/^[a-z0-9._-]{1,160}$/i.test(body.nodeId)
+    ) {
+      json(response, 400, {
+        code: "RETRY_FENCE_REQUIRED",
+        error: "重试请求缺少当前画布与任务绑定证据",
+      });
+      return;
+    }
+    const task = identity.bypass
+      ? taskStore().get(taskId)
+      : taskStore().getForOwner(taskId, identity.userId);
+    if (!task) {
+      json(response, 404, { error: "Generation task not found" });
+      return;
+    }
+    if (
+      task.canvasId !== body.canvasId ||
+      task.nodeId !== body.nodeId ||
+      task.kind !== body.kind
+    ) {
+      json(response, 409, {
+        code: "RETRY_BINDING_STALE",
+        error: "任务已不再绑定当前画布节点",
+      });
+      return;
+    }
+    if (
+      task.attempt !== Number(body.expectedAttempt) ||
+      task.updatedAt !== body.expectedUpdatedAt
+    ) {
+      json(response, 409, {
+        code: "RETRY_TASK_CHANGED",
+        error: "任务状态已变化，请刷新后再试",
+      });
       return;
     }
     const retry = retrySafetyDecision(task);
@@ -3097,14 +3952,19 @@ export async function generationTasks(
       }
       try {
         if (!task.providerProfileId) throw new Error("Provider profile missing");
-        requireTaskProviderSnapshot(
-          task,
-          await getProviderProfileForGeneration(
-            task.providerProfileId,
-            task.ownerId ?? "",
-          ),
+        const lease = await acquireProviderGenerationRequestLease(
+          task.providerProfileId,
           task.ownerId ?? "",
         );
+        try {
+          requireTaskProviderSnapshot(
+            task,
+            lease.profile,
+            lease.credentialRevision,
+          );
+        } finally {
+          lease.release();
+        }
       } catch {
         json(response, 409, {
           code: "PROVIDER_CONFIGURATION_MISMATCH",
@@ -3113,6 +3973,7 @@ export async function generationTasks(
         return;
       }
     }
+    let paidRetrySnapshot: GenerationPaidRetrySnapshot | undefined;
     if (retry.mode === "new-provider-attempt") {
       const runtime = await generationRuntimeDecision({
         canSubmit: true,
@@ -3120,39 +3981,117 @@ export async function generationTasks(
         model: retry.model,
         ownerId: identity.bypass ? "__test__" : identity.userId,
       });
-      if (!runtime.canEnqueue) {
+      const runtimeProblem = preAdmissionRuntimeProblem(runtime);
+      if (runtimeProblem) {
         json(response, 409, {
-          code: runtime.enqueueProblem?.code ?? "MODEL_UNAVAILABLE",
-          error: runtime.enqueueProblem?.message ?? "当前模型暂不可生成",
+          code: runtimeProblem.code,
+          error: runtimeProblem.message,
         });
         return;
       }
+      if (
+        !runtime.providerProfile ||
+        !Number.isSafeInteger(runtime.credentialVersion) ||
+        Number(runtime.credentialVersion) < 1
+      ) {
+        json(response, 409, {
+          code: "ACCOUNT_CREDENTIAL_CHANGED",
+          error: "平台密钥版本已变化，请按当前配置重试",
+        });
+        return;
+      }
+      paidRetrySnapshot = {
+        credentialRevision: Number(runtime.credentialVersion),
+        modelConfiguration: {
+          credentialVersion: Number(runtime.credentialVersion),
+          modelId: retry.model.id,
+          parameterSchema: generationModelSchema(task.kind, retry.model),
+          providerConfigurationVersion: providerConfigurationVersion(
+            runtime.providerProfile,
+          ),
+          providerDriver: retry.model.provider_driver,
+          providerModelId: retry.model.provider_model_id,
+          providerProtocol: retry.model.provider_protocol ?? "native",
+          providerProfileId: retry.model.provider_profile_id,
+        },
+        providerModelId: retry.model.provider_model_id,
+        providerProfileId: retry.model.provider_profile_id,
+      };
     }
+    let queued: GenerationTask | undefined;
     try {
-      taskStore().transition(
-        taskId,
-        "retrying",
-        undefined,
-        retry.mode === "resume-provider-task"
-          ? { preserveProviderTaskId: true }
-          : undefined,
-      );
-      const queued = taskStore().transition(taskId, "queued");
-      if (!queued) throw new Error("Generation task not found");
-      setTimeout(
-        () => void (task.kind === "text"
-          ? executeTextTask(taskId)
-          : task.kind === "video"
-          ? executeVideoTask(taskId)
-          : task.kind === "audio"
-            ? executeAudioTask(taskId)
-            : executeImageTask(taskId)),
-        0,
-      );
-      json(response, 202, taskSummary(queued));
-    } catch {
-      json(response, 409, { error: "Generation task cannot be retried" });
+      queued = retry.mode === "resume-provider-task"
+        ? taskStore().admitRetry({
+            canvasId: body.canvasId,
+            expectedAttempt: Number(body.expectedAttempt),
+            expectedCanvasRevision: Number(body.expectedCanvasRevision),
+            expectedGenerationInputKey: body.expectedGenerationInputKey,
+            expectedUpdatedAt: body.expectedUpdatedAt,
+            kind: body.kind,
+            mode: "resume-provider-task",
+            nodeId: body.nodeId,
+            taskId,
+          })
+        : taskStore().admitRetry({
+            canvasId: body.canvasId,
+            expectedAttempt: Number(body.expectedAttempt),
+            expectedCanvasRevision: Number(body.expectedCanvasRevision),
+            expectedGenerationInputKey: body.expectedGenerationInputKey,
+            expectedUpdatedAt: body.expectedUpdatedAt,
+            kind: body.kind,
+            mode: "new-paid-attempt",
+            nodeId: body.nodeId,
+            snapshot: paidRetrySnapshot!,
+            taskId,
+          });
+      if (!queued) {
+        json(response, 409, {
+          code: "RETRY_TASK_CHANGED",
+          error: "任务状态已变化，请刷新后再试",
+        });
+        return;
+      }
+    } catch (error) {
+      if (canvasRevisionConflict(response, error)) {
+        // The final BEGIN IMMEDIATE fence observed a newer durable graph.
+      } else if (error instanceof GenerationTaskRetryFenceError) {
+        json(response, 409, { code: error.code, error: error.message });
+      } else if (error instanceof GenerationTaskAdmissionError) {
+        json(response, 409, { code: error.code, error: error.message });
+      } else if (error instanceof GenerationProviderAttemptBlockedError) {
+        json(response, 409, { code: error.code, error: error.message });
+      } else if (error instanceof GenerationTaskOwnerDeletingError) {
+        json(response, 409, { code: error.code, error: error.message });
+      } else if (error instanceof GenerationTaskTransitionError) {
+        json(response, 409, {
+          code: "RETRY_TASK_CHANGED",
+          error: "任务状态已变化，请刷新后再试",
+        });
+      } else {
+        json(response, 500, {
+          code: "GENERATION_RETRY_FAILED",
+          error: "生成任务重试暂时无法处理，请核对任务状态后再试",
+        });
+      }
+      return;
     }
+    let summary: ReturnType<typeof taskSummaryForOwner>;
+    try {
+      launchGenerationTask(taskId, task.kind);
+      summary = taskSummaryForOwner(
+        queued,
+        identity.bypass ? undefined : identity.userId,
+      );
+    } catch {
+      // admitRetry already committed. A 5xx lets the client reconcile the exact
+      // task without issuing a second retry mutation.
+      json(response, 500, {
+        code: "GENERATION_RETRY_ACCEPTED_RESPONSE_FAILED",
+        error: "重试已提交，任务响应暂不可用，请等待状态核对",
+      });
+      return;
+    }
+    json(response, 202, summary);
     return;
   }
 
@@ -3164,13 +4103,19 @@ export async function generationTasks(
       json(response, 404, { error: "Generation task not found" });
       return;
     }
-    json(response, 200, taskSummary(task));
+    json(response, 200, taskSummaryForOwner(
+      task,
+      identity.bypass ? undefined : identity.userId,
+    ));
     return;
   }
 
   if (request.method === "POST" && path === "preflight") {
     try {
-      const body = await readBody<NodeInputGenerationRequest>(request);
+      const body = await readJsonBody<NodeInputGenerationRequest>(
+        request,
+        64 * 1_024,
+      );
       if (
         body.kind !== "text" &&
         body.kind !== "image" &&
@@ -3229,6 +4174,7 @@ export async function generationTasks(
         providerRequests: 0,
       });
     } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       if (canvasRevisionConflict(response, error)) return;
       json(response, 400, {
         error: error instanceof Error ? error.message : "提交前检查失败",
@@ -3239,7 +4185,10 @@ export async function generationTasks(
 
   if (request.method === "POST" && (path === "" || path === "/")) {
     try {
-      const body = await readBody<NodeInputGenerationRequest>(request);
+      const body = await readJsonBody<NodeInputGenerationRequest>(
+        request,
+        64 * 1_024,
+      );
       if (
         body.kind !== "text" && body.kind !== "image" &&
         body.kind !== "video" && body.kind !== "audio"
@@ -3250,10 +4199,26 @@ export async function generationTasks(
         });
         return;
       }
+      const ownerId = identity.bypass ? "__test__" : identity.userId;
+      const idempotencyKey = String(body.idempotencyKey ?? "");
+      const requestIntent = generationRequestIntent(body, body.kind);
+      const existing = taskStore().getIdempotentIntent({
+        canvasId: String(body.canvasId ?? ""),
+        idempotencyKey,
+        ownerId,
+        requestIntent,
+      });
+      if (existing) {
+        json(response, 200, taskSummaryForOwner(
+          existing,
+          identity.bypass ? undefined : identity.userId,
+        ));
+        return;
+      }
       const model = resolveModel(
         body.kind,
         body.model,
-        identity.bypass ? "__test__" : identity.userId,
+        ownerId,
       );
       if (!model) {
         const message = missingModelMessage(body.kind);
@@ -3267,7 +4232,6 @@ export async function generationTasks(
         });
         return;
       }
-      const ownerId = identity.bypass ? "__test__" : identity.userId;
       if (
         body.inputSchemaVersion !== undefined &&
         body.inputSchemaVersion !== 1
@@ -3310,8 +4274,9 @@ export async function generationTasks(
         model,
         ownerId,
       });
-      if (!runtime.canEnqueue || !runtime.providerProfile) {
-        const problem = runtime.enqueueProblem ?? {
+      const runtimeProblem = preAdmissionRuntimeProblem(runtime);
+      if (runtimeProblem || !runtime.providerProfile) {
+        const problem = runtimeProblem ?? {
           code: "MODEL_UNAVAILABLE",
           message: "当前模型暂不可生成",
         };
@@ -3346,14 +4311,15 @@ export async function generationTasks(
           ownerId,
         });
       }
-      const created = taskStore().create({
+      const created = taskStore().admitOrGet({
         canvasId: String(body.canvasId ?? ""),
+        credentialRevision: runtime.credentialVersion,
         expectedCanvasRevision: body.canvasRevision,
         estimatedCostMicrounits: taskAuditEstimatedCostMicrounits[
           model.cost_currency
         ],
         costCurrency: model.cost_currency,
-        idempotencyKey: String(body.idempotencyKey || randomUUID()),
+        idempotencyKey,
         kind: body.kind,
         model: model.id,
         modelConfiguration: {
@@ -3398,26 +4364,55 @@ export async function generationTasks(
         prompt: strictInput.finalPrompt,
         providerModelId: model.provider_model_id,
         providerProfileId: model.provider_profile_id,
+        requestIntent,
       });
-      if (created.created) {
-        setTimeout(
-          () => void (body.kind === "text"
-            ? executeTextTask(created.task.id)
-            : body.kind === "video"
-            ? executeVideoTask(created.task.id)
-            : body.kind === "audio"
-              ? executeAudioTask(created.task.id)
-            : executeImageTask(created.task.id)),
-          0,
+      try {
+        injectInitialGenerationPostCommitFailure(request);
+        if (created.created) {
+          launchGenerationTask(created.task.id, body.kind);
+        }
+        json(
+          response,
+          created.created ? 202 : 200,
+          taskSummaryForOwner(
+            created.task,
+            identity.bypass ? undefined : identity.userId,
+          ),
         );
+      } catch {
+        // admitOrGet already committed. A 5xx makes the browser reconcile this
+        // exact owner-scoped idempotency key instead of minting a second paid
+        // task. If the socket itself is gone, the network failure has the same
+        // reconcilable meaning and must not escape into the outer 4xx mapper.
+        try {
+          json(response, 500, {
+            code: "GENERATION_TASK_ACCEPTED_RESPONSE_FAILED",
+            error: "生成任务已提交，响应暂不可用，请等待状态核对",
+          });
+        } catch {}
       }
-      json(response, created.created ? 202 : 200, taskSummary(created.task));
     } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
       if (canvasRevisionConflict(response, error)) {
         return;
       } else if (error instanceof GenerationTaskConflictError) {
         json(response, 409, {
           code: "IDEMPOTENCY_CONFLICT",
+          error: error.message,
+        });
+      } else if (error instanceof GenerationTaskOwnerDeletingError) {
+        json(response, 409, {
+          code: error.code,
+          error: "账号删除正在进行，不能再创建或重试生成任务",
+        });
+      } else if (error instanceof GenerationTaskAdmissionError) {
+        json(response, 409, {
+          code: error.code,
+          error: error.message,
+        });
+      } else if (error instanceof GenerationProviderAttemptBlockedError) {
+        json(response, 409, {
+          code: error.code,
           error: error.message,
         });
       } else {

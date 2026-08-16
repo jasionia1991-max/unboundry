@@ -1,12 +1,23 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
+import {
+  AccountMutationBlockedError,
+  assertAccountMutationAllowed,
+} from "./accountMutationFence";
 import { recordAudit } from "./audit";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
+import {
+  decodedRequestPath,
+  HttpRequestError,
+  readJsonBody,
+} from "./httpRequest";
 import { hasPermission } from "./permissions";
 import {
+  accountDeletionBlocksTemplateMutation,
   listPublicTemplates,
+  parseTemplateGraph,
   parsePublicCategory,
   publicTemplateCard,
   validTemplateGraph,
@@ -14,6 +25,11 @@ import {
   type PublicTemplateRow,
   type PublicTemplateStatus,
 } from "./templateCatalog";
+import {
+  assertPublicTemplatePublishable,
+  auditPublicTemplateCompatibility,
+  PublicTemplateCompatibilityError,
+} from "./templateCompatibility";
 import {
   isRealCategory,
   REAL_CATEGORIES,
@@ -44,16 +60,43 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.end(JSON.stringify(body));
 }
 
-async function readBody<T>(request: IncomingMessage) {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > 512 * 1_024) throw new Error("Payload too large");
-    chunks.push(bytes);
+function respondAccountDeleteConflict(
+  response: ServerResponse,
+  error: unknown,
+) {
+  if (
+    !(error instanceof AccountMutationBlockedError) &&
+    !accountDeletionBlocksTemplateMutation(error)
+  ) {
+    return false;
   }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
+  const code = error instanceof AccountMutationBlockedError
+    ? error.code
+    : "ACCOUNT_DELETE_ACTIVE";
+  json(response, 409, {
+    code,
+    error: code === "ACCOUNT_DELETE_ACTIVE"
+      ? "账号删除正在进行，不能再修改公共模板"
+      : "账号不可用，不能再修改公共模板",
+  });
+  return true;
+}
+
+function accountMutation<T>(
+  store: DatabaseSync,
+  actorId: string,
+  mutation: () => T,
+) {
+  store.exec("BEGIN IMMEDIATE");
+  try {
+    assertAccountMutationAllowed(store, actorId);
+    const result = mutation();
+    store.exec("COMMIT");
+    return result;
+  } catch (error) {
+    if (store.isTransaction) store.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 function boundedInteger(value: string | null, fallback: number, maximum: number) {
@@ -131,11 +174,28 @@ function adminTemplateItem(
   row: PublicTemplateRow,
   includeGraph: boolean,
 ) {
+  const graph = parseTemplateGraph(row.graph);
   return {
     ...publicTemplateCard(store, row, includeGraph),
     archivedAt: row.archived_at ?? undefined,
+    compatibility: graph
+      ? auditPublicTemplateCompatibility(store, graph)
+      : {
+          issues: [{ message: "模板图 JSON 无法安全解析" }],
+          status: "INVALID",
+        },
     status: row.status,
   };
+}
+
+function templateErrorBody(error: unknown, fallback: string) {
+  return error instanceof PublicTemplateCompatibilityError
+    ? {
+        code: error.code,
+        error: error.message,
+        issues: error.audit.issues,
+      }
+    : { error: error instanceof Error ? error.message : fallback };
 }
 
 export function savePublicTemplate(
@@ -148,26 +208,30 @@ export function savePublicTemplate(
   const description = validatedDescription(input.description);
   const previewImage = validatedPreviewImage(input.previewImage);
   const status = validatedStatus(input.status) ?? "draft";
-  if (!validTemplateGraph(input.graph)) {
+  const templateGraph = input.graph;
+  if (!validTemplateGraph(templateGraph)) {
     throw new Error("模板图结构无效");
   }
+  const graph = JSON.stringify(templateGraph);
   const id = randomUUID();
   const timestamp = new Date().toISOString();
-  store
-    .prepare(`
-      INSERT INTO public_templates (
-        id, title, description, category, graph, cover_asset_id,
-        preview_image, status, created_by, created_at,
-        updated_by, updated_at, archived_at
-      )
-      VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, NULL)
-    `)
-    .run(
+  return accountMutation(store, actorId, () => {
+    if (status === "published") {
+      assertPublicTemplatePublishable(store, templateGraph);
+    }
+    store.prepare(`
+        INSERT INTO public_templates (
+          id, title, description, category, graph, cover_asset_id,
+          preview_image, status, created_by, created_at,
+          updated_by, updated_at, archived_at
+        )
+        VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, NULL)
+      `).run(
       id,
       title,
       description,
       category ? JSON.stringify(category) : null,
-      JSON.stringify(input.graph),
+      graph,
       previewImage,
       status,
       actorId,
@@ -175,12 +239,13 @@ export function savePublicTemplate(
       actorId,
       timestamp,
     );
-  recordAudit(store, actorId, "public_template.create", null, {
-    id,
-    status,
-    title,
+    recordAudit(store, actorId, "public_template.create", null, {
+      id,
+      status,
+      title,
+    });
+    return publicTemplateRow(store, id)!;
   });
-  return publicTemplateRow(store, id)!;
 }
 
 export function updatePublicTemplate(
@@ -189,64 +254,81 @@ export function updatePublicTemplate(
   id: string,
   input: Record<string, unknown>,
 ): PublicTemplateRow {
-  const existing = publicTemplateRow(store, id);
-  if (!existing) throw new Error("公共模板不存在");
-  const title =
-    input.title !== undefined ? validatedTitle(input.title) : existing.title;
-  const category =
-    input.category !== undefined
-      ? validatedCategory(input.category)
-      : parsePublicCategory(existing.category);
-  const description =
-    input.description !== undefined
-      ? validatedDescription(input.description)
-      : existing.description;
-  const previewImage =
-    input.previewImage !== undefined
-      ? validatedPreviewImage(input.previewImage)
-      : existing.preview_image;
-  const status =
-    input.status !== undefined
-      ? validatedStatus(input.status)!
-      : existing.status;
+  const title = input.title === undefined
+    ? undefined
+    : validatedTitle(input.title);
+  const category = input.category === undefined
+    ? undefined
+    : validatedCategory(input.category);
+  const description = input.description === undefined
+    ? undefined
+    : validatedDescription(input.description);
+  const previewImage = input.previewImage === undefined
+    ? undefined
+    : validatedPreviewImage(input.previewImage);
+  const status = input.status === undefined
+    ? undefined
+    : validatedStatus(input.status)!;
   if (input.graph !== undefined && !validTemplateGraph(input.graph)) {
     throw new Error("模板图结构无效");
   }
+  const graph = input.graph === undefined
+    ? undefined
+    : JSON.stringify(input.graph);
   const timestamp = new Date().toISOString();
-  store
-    .prepare(`
-      UPDATE public_templates
-      SET
-        title = ?,
-        description = ?,
-        category = ?,
-        graph = ?,
-        preview_image = ?,
-        status = ?,
-        updated_by = ?,
-        updated_at = ?,
-        archived_at = CASE WHEN ? = 'archived' THEN COALESCE(archived_at, ?) ELSE NULL END
-      WHERE id = ?
-    `)
-    .run(
-      title,
-      description,
-      category ? JSON.stringify(category) : null,
-      input.graph !== undefined ? JSON.stringify(input.graph) : existing.graph,
-      previewImage,
-      status,
+  return accountMutation(store, actorId, () => {
+    const existing = publicTemplateRow(store, id);
+    if (!existing) throw new Error("公共模板不存在");
+    const nextTitle = title ?? existing.title;
+    const nextCategory = category === undefined
+      ? parsePublicCategory(existing.category)
+      : category;
+    const nextDescription = description === undefined
+      ? existing.description
+      : description;
+    const nextPreviewImage = previewImage === undefined
+      ? existing.preview_image
+      : previewImage;
+    const nextStatus = status ?? existing.status;
+    const nextGraph = graph ?? existing.graph;
+    if (nextStatus === "published") {
+      const parsedGraph = parseTemplateGraph(nextGraph);
+      if (!parsedGraph) throw new Error("模板图结构无效");
+      assertPublicTemplatePublishable(store, parsedGraph);
+    }
+    store.prepare(`
+        UPDATE public_templates
+        SET
+          title = ?,
+          description = ?,
+          category = ?,
+          graph = ?,
+          preview_image = ?,
+          status = ?,
+          updated_by = ?,
+          updated_at = ?,
+          archived_at = CASE WHEN ? = 'archived' THEN COALESCE(archived_at, ?) ELSE NULL END
+        WHERE id = ?
+      `).run(
+      nextTitle,
+      nextDescription,
+      nextCategory ? JSON.stringify(nextCategory) : null,
+      nextGraph,
+      nextPreviewImage,
+      nextStatus,
       actorId,
       timestamp,
-      status,
+      nextStatus,
       timestamp,
       id,
     );
-  recordAudit(store, actorId, "public_template.update", null, {
-    id,
-    status,
-    title,
+    recordAudit(store, actorId, "public_template.update", null, {
+      id,
+      status: nextStatus,
+      title: nextTitle,
+    });
+    return publicTemplateRow(store, id)!;
   });
-  return publicTemplateRow(store, id)!;
 }
 
 export function archivePublicTemplate(
@@ -254,21 +336,21 @@ export function archivePublicTemplate(
   actorId: string,
   id: string,
 ) {
-  const existing = publicTemplateRow(store, id);
-  if (!existing) throw new Error("公共模板不存在");
   const timestamp = new Date().toISOString();
-  store
-    .prepare(`
-      UPDATE public_templates
-      SET status = 'archived', updated_by = ?, updated_at = ?, archived_at = ?
-      WHERE id = ?
-    `)
-    .run(actorId, timestamp, timestamp, id);
-  recordAudit(store, actorId, "public_template.archive", null, {
-    id,
-    title: existing.title,
+  return accountMutation(store, actorId, () => {
+    const existing = publicTemplateRow(store, id);
+    if (!existing) throw new Error("公共模板不存在");
+    store.prepare(`
+        UPDATE public_templates
+        SET status = 'archived', updated_by = ?, updated_at = ?, archived_at = ?
+        WHERE id = ?
+      `).run(actorId, timestamp, timestamp, id);
+    recordAudit(store, actorId, "public_template.archive", null, {
+      id,
+      title: existing.title,
+    });
+    return publicTemplateRow(store, id)!;
   });
-  return publicTemplateRow(store, id)!;
 }
 
 export function restorePublicTemplate(
@@ -276,21 +358,24 @@ export function restorePublicTemplate(
   actorId: string,
   id: string,
 ) {
-  const existing = publicTemplateRow(store, id);
-  if (!existing) throw new Error("公共模板不存在");
   const timestamp = new Date().toISOString();
-  store
-    .prepare(`
-      UPDATE public_templates
-      SET status = 'published', updated_by = ?, updated_at = ?, archived_at = NULL
-      WHERE id = ?
-    `)
-    .run(actorId, timestamp, id);
-  recordAudit(store, actorId, "public_template.restore", null, {
-    id,
-    title: existing.title,
+  return accountMutation(store, actorId, () => {
+    const existing = publicTemplateRow(store, id);
+    if (!existing) throw new Error("公共模板不存在");
+    const graph = parseTemplateGraph(existing.graph);
+    if (!graph) throw new Error("模板图结构无效");
+    assertPublicTemplatePublishable(store, graph);
+    store.prepare(`
+        UPDATE public_templates
+        SET status = 'published', updated_by = ?, updated_at = ?, archived_at = NULL
+        WHERE id = ?
+      `).run(actorId, timestamp, id);
+    recordAudit(store, actorId, "public_template.restore", null, {
+      id,
+      title: existing.title,
+    });
+    return publicTemplateRow(store, id)!;
   });
-  return publicTemplateRow(store, id)!;
 }
 
 /** 物理删除仅对非种子模板开放；种子（created_by 为 NULL）不可物理删除。 */
@@ -299,17 +384,19 @@ export function deletePublicTemplate(
   actorId: string,
   id: string,
 ) {
-  const existing = publicTemplateRow(store, id);
-  if (!existing) throw new Error("公共模板不存在");
-  if (existing.created_by === null) {
-    throw new Error("种子模板不可物理删除");
-  }
-  store.prepare("DELETE FROM public_templates WHERE id = ?").run(id);
-  recordAudit(store, actorId, "public_template.delete", null, {
-    id,
-    title: existing.title,
+  return accountMutation(store, actorId, () => {
+    const existing = publicTemplateRow(store, id);
+    if (!existing) throw new Error("公共模板不存在");
+    if (existing.created_by === null) {
+      throw new Error("种子模板不可物理删除");
+    }
+    store.prepare("DELETE FROM public_templates WHERE id = ?").run(id);
+    recordAudit(store, actorId, "public_template.delete", null, {
+      id,
+      title: existing.title,
+    });
+    return true;
   });
-  return true;
 }
 
 export async function adminTemplatesApi(
@@ -322,7 +409,7 @@ export async function adminTemplatesApi(
     return;
   }
   const store = db();
-  const path = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+  const path = decodedRequestPath(request).replace(
     /^\/+/,
     "",
   );
@@ -367,15 +454,18 @@ export async function adminTemplatesApi(
 
   if (request.method === "POST" && !path) {
     try {
-      const input = await readBody<Record<string, unknown>>(request);
+      const input = await readJsonBody<Record<string, unknown>>(
+        request,
+        512 * 1_024,
+      );
       const row = savePublicTemplate(store, identity.userId, input);
       json(response, 201, {
         template: adminTemplateItem(store, row, true),
       });
     } catch (error) {
-      json(response, 400, {
-        error: error instanceof Error ? error.message : "公共模板保存失败",
-      });
+      if (error instanceof HttpRequestError) throw error;
+      if (respondAccountDeleteConflict(response, error)) return;
+      json(response, 400, templateErrorBody(error, "公共模板保存失败"));
     }
     return;
   }
@@ -389,16 +479,23 @@ export async function adminTemplatesApi(
 
   if (request.method === "PATCH") {
     try {
-      const input = await readBody<Record<string, unknown>>(request);
+      const input = await readJsonBody<Record<string, unknown>>(
+        request,
+        512 * 1_024,
+      );
       const row = updatePublicTemplate(store, identity.userId, templateId, input);
       json(response, 200, {
         template: adminTemplateItem(store, row, true),
       });
     } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
+      if (respondAccountDeleteConflict(response, error)) return;
       const message = error instanceof Error ? error.message : "公共模板更新失败";
-      json(response, message === "公共模板不存在" ? 404 : 400, {
-        error: message,
-      });
+      json(
+        response,
+        message === "公共模板不存在" ? 404 : 400,
+        templateErrorBody(error, "公共模板更新失败"),
+      );
     }
     return;
   }
@@ -413,6 +510,7 @@ export async function adminTemplatesApi(
         status: row.status,
       });
     } catch (error) {
+      if (respondAccountDeleteConflict(response, error)) return;
       const message = error instanceof Error ? error.message : "公共模板归档失败";
       json(response, message === "公共模板不存在" ? 404 : 400, {
         error: message,

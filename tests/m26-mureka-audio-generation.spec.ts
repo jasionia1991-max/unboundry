@@ -1,6 +1,14 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { execFileSync } from "node:child_process";
+import { EventEmitter } from "node:events";
+import type { ClientRequest, IncomingMessage } from "node:http";
+import { Readable } from "node:stream";
 import type { ProviderProfile } from "../server/providerProfiles";
+import type { PublicHttpsFetchDependencies } from "../server/outboundNetwork";
+import {
+  type ProviderRequestDeadlineOverrides,
+  type ProviderRequestDeadlineScheduler,
+} from "../server/providerRequestDeadline";
 import {
   createMurekaAudioTask,
   downloadMurekaAudioResult,
@@ -24,6 +32,137 @@ const profile: ProviderProfile & { apiKey: string } = {
   label: "Mureka Test",
   updatedAt: "2026-08-02T00:00:00.000Z",
 };
+
+const publicResolver = (async () => [{
+  address: "8.8.8.8",
+  family: 4 as const,
+}]) as any;
+
+function pinnedResultNetwork(
+  responseFactory: (
+    url: URL,
+    options: Record<string, unknown>,
+  ) => Promise<Response> | Response,
+  resolver: PublicHttpsFetchDependencies["resolver"] = publicResolver,
+) {
+  const requests: Array<{
+    address: string;
+    authorization: string | null;
+    family: number;
+    method: string;
+    url: string;
+  }> = [];
+  const requester = ((
+    url: URL,
+    options: Record<string, unknown>,
+    respond: (response: IncomingMessage) => void,
+  ) => {
+    const request = new EventEmitter() as ClientRequest;
+    request.end = (() => {
+      const lookup = options.lookup as
+        | ((
+          hostname: string,
+          lookupOptions: { family?: number },
+          callback: (
+            error: Error | null,
+            address: string,
+            family: number,
+          ) => void,
+        ) => void)
+        | undefined;
+      if (!lookup) {
+        request.emit("error", new Error("pinned lookup missing"));
+        return request;
+      }
+      lookup(url.hostname, { family: 0 }, async (error, address, family) => {
+        if (error) {
+          request.emit("error", error);
+          return;
+        }
+        const headers = new Headers(options.headers as HeadersInit | undefined);
+        requests.push({
+          address,
+          authorization: headers.get("authorization"),
+          family,
+          method: String(options.method ?? "GET"),
+          url: url.toString(),
+        });
+        try {
+          const response = await responseFactory(url, options);
+          const incoming = response.body
+            ? Readable.fromWeb(response.body as any) as IncomingMessage
+            : Readable.from([]) as IncomingMessage;
+          const rawHeaders: string[] = [];
+          response.headers.forEach((value, name) => {
+            rawHeaders.push(name, value);
+          });
+          Object.assign(incoming, {
+            rawHeaders,
+            statusCode: response.status,
+            statusMessage: response.statusText,
+          });
+          respond(incoming);
+        } catch (responseError) {
+          request.emit("error", responseError);
+        }
+      });
+      return request;
+    }) as ClientRequest["end"];
+    return request;
+  }) as NonNullable<PublicHttpsFetchDependencies["requester"]>;
+  return {
+    network: { requester, resolver },
+    requests,
+  };
+}
+
+function manualDeadline() {
+  let callback: (() => void) | undefined;
+  const scheduler: ProviderRequestDeadlineScheduler = {
+    clearTimeout() {
+      callback = undefined;
+    },
+    setTimeout(value) {
+      callback = value;
+      return "manual-deadline";
+    },
+  };
+  return {
+    expire() {
+      const current = callback;
+      if (!current) throw new Error("deadline is not armed");
+      current();
+    },
+    options: { scheduler, timeoutMs: 10_000 },
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+async function expectRequestTimeout(
+  operation: (
+    fetcher: typeof fetch,
+    deadlineOptions: ProviderRequestDeadlineOverrides,
+  ) => Promise<unknown>,
+) {
+  const timer = manualDeadline();
+  const requestStarted = deferred<AbortSignal | null>();
+  const fetcher: typeof fetch = async (_input, init) => {
+    requestStarted.resolve(init?.signal ?? null);
+    return await new Promise<Response>(() => undefined);
+  };
+  const pending = operation(fetcher, timer.options);
+  const requestSignal = await requestStarted.promise;
+  timer.expire();
+  await expect(pending).rejects.toMatchObject({ code: "TIMEOUT" });
+  expect(requestSignal?.aborted).toBe(true);
+}
 
 test("Mureka task creation and polling use the official endpoints without real network", async () => {
   const calls: Array<{ body?: string; method?: string; url: string }> = [];
@@ -120,6 +259,165 @@ test("Mureka polling normalizes pending, failure and safe errors", async () => {
       status: "succeeded",
     }), { status: 200 }),
   )).rejects.toBeInstanceOf(MurekaAudioError);
+});
+
+test("Mureka submit and poll each enforce an injectable hard deadline", async () => {
+  await expectRequestTimeout((fetcher, deadlineOptions) =>
+    createMurekaAudioTask(
+      profile,
+      {
+        model: "mureka-9",
+        musicGenerationMode: "instrumental",
+        outputCount: 1,
+        prompt: "submit deadline",
+        streamPlayback: false,
+      },
+      fetcher,
+      undefined,
+      undefined,
+      deadlineOptions,
+    )
+  );
+  await expectRequestTimeout((fetcher, deadlineOptions) =>
+    getMurekaAudioTask(
+      profile,
+      "mureka-task-poll-deadline",
+      "song",
+      fetcher,
+      undefined,
+      deadlineOptions,
+    )
+  );
+});
+
+test("Mureka poll deadline covers a response body that hangs after headers", async () => {
+  const timer = manualDeadline();
+  const bodyStarted = deferred<void>();
+  const body = {
+    getReader() {
+      bodyStarted.resolve(undefined);
+      return {
+        cancel: async () => undefined,
+        read: () => new Promise<ReadableStreamReadResult<Uint8Array>>(() => undefined),
+      };
+    },
+  } as unknown as ReadableStream<Uint8Array>;
+  const pending = getMurekaAudioTask(
+    profile,
+    "mureka-task-body-deadline",
+    "song",
+    async () => ({
+      body,
+      ok: true,
+      status: 200,
+    }) as Response,
+    undefined,
+    timer.options,
+  );
+
+  await bodyStarted.promise;
+  timer.expire();
+  await expect(pending).rejects.toMatchObject({ code: "TIMEOUT" });
+});
+
+test("Mureka result download deadline remains active through stream consumption", async () => {
+  const timer = manualDeadline();
+  const fixture = pinnedResultNetwork(() =>
+    new Response(new ReadableStream<Uint8Array>({
+      start() {
+        // Headers arrive, but the fake Provider never finishes the body.
+      },
+    }), {
+      headers: { "Content-Type": "audio/mpeg" },
+      status: 200,
+    })
+  );
+  const result = await downloadMurekaAudioResult(
+    profile,
+    "https://cdn.example.test/result.mp3",
+    { deadlineOptions: timer.options, network: fixture.network },
+  );
+  const read = result.getReader().read();
+  timer.expire();
+  await expect(read).rejects.toMatchObject({ code: "TIMEOUT" });
+});
+
+test("Mureka result URLs use the shared port, DNS, redirect and credential guard", async () => {
+  const split = Math.floor(profile.apiKey.length / 2);
+  for (const audioUrl of [
+    "https://cdn.example.test:8443/result.mp3",
+    "https://user:password@cdn.example.test/result.mp3",
+    "https://[::1]/result.mp3",
+    `https://cdn.example.test/${encodeURIComponent(profile.apiKey)}.mp3`,
+    `https://cdn.example.test/${profile.apiKey.slice(0, split)}\r${profile.apiKey.slice(split)}.mp3`,
+    `https://cdn.example.test/${profile.apiKey.slice(0, split)}\n${profile.apiKey.slice(split)}.mp3`,
+    `https://cdn.example.test/${profile.apiKey.slice(0, split)}\t${profile.apiKey.slice(split)}.mp3`,
+    `https://cdn.example.test/t%65st-secret-never-returned.mp3`,
+    `https://cdn.example.test/t%2565st-secret-never-returned.mp3`,
+  ]) {
+    await expect(getMurekaAudioTask(
+      profile,
+      "mureka-task-unsafe-result",
+      "song",
+      async () => new Response(JSON.stringify({
+        choices: [{ url: audioUrl }],
+        status: "succeeded",
+      }), { status: 200 }),
+    )).rejects.toMatchObject({ code: "FORMAT" });
+  }
+
+  let mixedRequestCalls = 0;
+  const mixed = pinnedResultNetwork(() => {
+    mixedRequestCalls += 1;
+    return new Response(Buffer.from("not reached"));
+  }, (async () => [
+    { address: "8.8.8.8", family: 4 },
+    { address: "10.0.0.8", family: 4 },
+  ]) as any);
+  await expect(downloadMurekaAudioResult(
+    profile,
+    "https://cdn.example.test/result.mp3",
+    { network: mixed.network },
+  )).rejects.toMatchObject({ code: "FORMAT" });
+  expect(mixedRequestCalls).toBe(0);
+
+  let resolverCalls = 0;
+  const successful = pinnedResultNetwork(() =>
+    new Response(Buffer.from("mureka-audio"), {
+      headers: { "content-type": "application/octet-stream" },
+    }), (async () => {
+      resolverCalls += 1;
+      return resolverCalls === 1
+        ? [{ address: "8.8.8.8", family: 4 }]
+        : [{ address: "10.0.0.8", family: 4 }];
+    }) as any
+  );
+  const downloaded = await downloadMurekaAudioResult(
+    profile,
+    "https://cdn.example.test/result.mp3",
+    { network: successful.network },
+  );
+  expect(resolverCalls).toBe(1);
+  expect(successful.requests).toEqual([{
+    address: "8.8.8.8",
+    authorization: null,
+    family: 4,
+    method: "GET",
+    url: "https://cdn.example.test/result.mp3",
+  }]);
+  expect(Buffer.from(await new Response(downloaded).arrayBuffer()).toString())
+    .toBe("mureka-audio");
+
+  const redirect = pinnedResultNetwork(() => new Response(null, {
+    headers: { location: "https://127.0.0.1/private.mp3" },
+    status: 302,
+  }));
+  await expect(downloadMurekaAudioResult(
+    profile,
+    "https://cdn.example.test/redirect.mp3",
+    { network: redirect.network },
+  )).rejects.toMatchObject({ code: "REMOTE" });
+  expect(redirect.requests).toHaveLength(1);
 });
 
 test("Mureka remote errors and nested echoes never expose or persist the API key", async () => {
@@ -219,16 +517,19 @@ test("Mureka remote errors and nested echoes never expose or persist the API key
   ));
   expect(unsafeResult).toMatchObject({ code: "FORMAT" });
 
-  const downloadError = await captureError(downloadMurekaAudioResult(
-    profile,
-    "https://cdn.example.test/result.mp3",
-    async () => new Response(JSON.stringify(remoteEcho), {
+  const remoteDownload = pinnedResultNetwork(() =>
+    new Response(JSON.stringify(remoteEcho), {
       headers: {
         "content-type": "application/json",
         "x-remote-debug": profile.apiKey,
       },
       status: 500,
-    }),
+    })
+  );
+  const downloadError = await captureError(downloadMurekaAudioResult(
+    profile,
+    "https://cdn.example.test/result.mp3",
+    { network: remoteDownload.network },
   ));
   expect(downloadError).toMatchObject({
     code: "REMOTE",
@@ -320,6 +621,7 @@ test("audio provider task id survives restart without creating a duplicate task"
       providerProfileId: "provider-mureka-test",
     });
     first.transition(created.task.id, "running");
+    first.recordProviderAttempt(created.task.id);
     first.setProviderTaskId(created.task.id, "mureka-provider-task-001");
     first.close();
 

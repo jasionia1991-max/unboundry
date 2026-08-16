@@ -15,13 +15,18 @@ export type GenerationTaskState =
   | "recovering";
 
 export type GenerationTaskSummary = {
+  abandonAllowed?: boolean;
   costCurrency: "CNY" | "USD";
   attempt: number;
+  canvasRevision?: number;
   canvasId: string;
   createdAt: string;
   errorCode?: string;
   errorMessage?: string;
   id: string;
+  generationInputKey?: string;
+  /** Client-local ownership evidence restored from the durable browser intent. */
+  generationOwnershipKey?: string;
   kind: GenerationTaskKind;
   model?: string;
   nodeId: string;
@@ -35,6 +40,8 @@ export type GenerationTaskSummary = {
     contentType: string;
     durationSeconds: number | null;
     durationStatus: "failed" | "not-applicable" | "pending" | "ready";
+    mediaHeight: number | null;
+    mediaWidth: number | null;
     storageBackend: "local" | "oss";
   };
   resultText?: string;
@@ -71,6 +78,9 @@ export class GenerationRequestError extends Error {
   }
 }
 
+const GENERATION_TASK_STATUS_READ_TIMEOUT_MS = 10_000;
+export const GENERATION_TASK_MUTATION_TIMEOUT_MS = 12_000;
+
 function safeProblems(value: unknown): NodeInputProblem[] {
   if (!Array.isArray(value)) return [];
   return value.filter((problem): problem is NodeInputProblem =>
@@ -101,6 +111,122 @@ async function readJson<T>(response: Response): Promise<T> {
   return body;
 }
 
+async function readTaskStatusJson<T>(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  signal?: AbortSignal,
+  allowNotFound = false,
+): Promise<T | undefined> {
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+  const controller = new AbortController();
+  let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+  const callerAbort = new Promise<never>((_resolve, reject) => {
+    if (!signal) return;
+    onAbort = () => {
+      controller.abort(signal.reason);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timeout = globalThis.setTimeout(() => {
+      reject(new GenerationRequestError(
+        "任务状态查询超时",
+        0,
+        "TASK_STATUS_TIMEOUT",
+      ));
+      controller.abort("generation-task-status-timeout");
+    }, GENERATION_TASK_STATUS_READ_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([
+      (async () => {
+        const response = await fetch(input, {
+          ...init,
+          signal: controller.signal,
+        });
+        if (allowNotFound && response.status === 404) return undefined;
+        return readJson<T>(response);
+      })(),
+      callerAbort,
+      deadline,
+    ]);
+  } finally {
+    if (timeout !== undefined) globalThis.clearTimeout(timeout);
+    if (signal && onAbort) signal.removeEventListener("abort", onAbort);
+  }
+}
+
+async function readMutationJson<T>(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+  const controller = new AbortController();
+  let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+  let observedStatus: number | undefined;
+  const callerAbort = new Promise<never>((_resolve, reject) => {
+    if (!signal) return;
+    onAbort = () => {
+      controller.abort(signal.reason);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timeout = globalThis.setTimeout(() => {
+      const status = observedStatus !== undefined && observedStatus >= 400
+        ? observedStatus
+        : 0;
+      reject(new GenerationRequestError(
+        status > 0
+          ? `生成任务服务响应超时（${status}）`
+          : "生成请求响应超时，正在核对已有任务",
+        status,
+        status > 0
+          ? "GENERATION_HTTP_RESPONSE_TIMEOUT"
+          : "GENERATION_RESPONSE_TIMEOUT",
+      ));
+      controller.abort("generation-task-mutation-timeout");
+    }, GENERATION_TASK_MUTATION_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([
+      (async () => {
+        const response = await fetch(input, {
+          ...init,
+          signal: controller.signal,
+        });
+        observedStatus = response.status;
+        try {
+          return await readJson<T>(response);
+        } catch (error) {
+          if (!(error instanceof GenerationRequestError)) {
+            throw new GenerationRequestError(
+              "生成任务服务响应异常，正在核对已有任务",
+              response.ok ? 0 : response.status,
+              "GENERATION_SERVER_RESPONSE_INVALID",
+            );
+          }
+          throw error;
+        }
+      })(),
+      callerAbort,
+      deadline,
+    ]);
+  } finally {
+    if (timeout !== undefined) globalThis.clearTimeout(timeout);
+    if (signal && onAbort) signal.removeEventListener("abort", onAbort);
+  }
+}
+
 export async function getGenerationCapabilityStatus(
   signal?: AbortSignal,
 ): Promise<GenerationCapabilityStatus> {
@@ -116,12 +242,11 @@ export async function getGenerationTask(
   taskId: string,
   signal?: AbortSignal,
 ): Promise<GenerationTaskSummary> {
-  return readJson(
-    await fetch(`/api/generation-tasks/${encodeURIComponent(taskId)}`, {
-      cache: "no-store",
-      signal,
-    }),
-  );
+  return await readTaskStatusJson<GenerationTaskSummary>(
+    `/api/generation-tasks/${encodeURIComponent(taskId)}`,
+    { cache: "no-store" },
+    signal,
+  ) as GenerationTaskSummary;
 }
 
 export async function cancelGenerationTask(
@@ -136,36 +261,172 @@ export async function cancelGenerationTask(
   );
 }
 
-export async function retryGenerationTask(
-  taskId: string,
+export async function abandonGenerationTask(
+  task: Pick<GenerationTaskSummary, "attempt" | "id" | "updatedAt">,
   signal?: AbortSignal,
 ): Promise<GenerationTaskSummary> {
   return readJson(
     await fetch(
-      `/api/generation-tasks/${encodeURIComponent(taskId)}/retry`,
-      { method: "POST", signal },
+      `/api/generation-tasks/${encodeURIComponent(task.id)}/abandon`,
+      {
+        body: JSON.stringify({
+          acknowledgeRemoteResultMayBeLost: true,
+          expectedAttempt: task.attempt,
+          expectedUpdatedAt: task.updatedAt,
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+        signal,
+      },
     ),
   );
+}
+
+export const GENERATION_TASK_RETRY_ACCEPTED_EVENT =
+  "unboundry:generation-task-retry-accepted";
+
+export type GenerationTaskRetryAcceptedDetail = {
+  attempt: number;
+  canvasId: string;
+  kind: GenerationTaskKind;
+  nodeId: string;
+  taskId: string;
+  updatedAt: string;
+};
+
+export type GenerationRetryTarget = {
+  canvasId: string;
+  generationInputKey: string;
+  kind: GenerationTaskKind;
+  nodeId: string;
+  taskId: string;
+};
+
+export type GenerationRetryGate = () => Promise<number>;
+
+export type GenerationOwnershipOptions = {
+  generationOwnershipKey?: string;
+};
+
+function retryTargetMatches(
+  task: GenerationTaskSummary,
+  target: GenerationRetryTarget,
+) {
+  return task.id === target.taskId &&
+    task.canvasId === target.canvasId &&
+    task.kind === target.kind &&
+    task.nodeId === target.nodeId;
+}
+
+function retryWasAccepted(
+  before: Pick<GenerationTaskSummary, "attempt">,
+  after: GenerationTaskSummary,
+) {
+  return after.state !== "failed" || after.attempt > before.attempt;
+}
+
+function mutationOutcomeMayBeUnknown(error: unknown) {
+  if (error instanceof GenerationRequestError) {
+    return error.status === 0 || error.status >= 500;
+  }
+  if (error instanceof TypeError) return true;
+  return error instanceof DOMException &&
+    (error.name === "NetworkError" || error.name === "TimeoutError");
+}
+
+export async function retryGenerationTask(
+  target: GenerationRetryTarget,
+  waitForCanvasRevision: GenerationRetryGate,
+  signal?: AbortSignal,
+): Promise<GenerationTaskSummary> {
+  const expectedCanvasRevision = await waitForCanvasRevision();
+  const before = await getGenerationTask(target.taskId, signal);
+  if (
+    !retryTargetMatches(before, target) ||
+    !target.generationInputKey ||
+    before.generationInputKey !== target.generationInputKey
+  ) {
+    throw new GenerationRequestError(
+      "任务已不再绑定当前节点输入，请从节点重新提交",
+      409,
+      "RETRY_BINDING_STALE",
+    );
+  }
+  if (before.state !== "failed") {
+    throw new GenerationRequestError(
+      "任务状态已变化，请刷新后再试",
+      409,
+      "RETRY_TASK_CHANGED",
+    );
+  }
+  const body = JSON.stringify({
+    canvasId: target.canvasId,
+    expectedAttempt: before.attempt,
+    expectedCanvasRevision,
+    expectedGenerationInputKey: target.generationInputKey,
+    expectedUpdatedAt: before.updatedAt,
+    kind: target.kind,
+    nodeId: target.nodeId,
+  });
+  try {
+    const accepted = await readMutationJson<GenerationTaskSummary>(
+      `/api/generation-tasks/${encodeURIComponent(target.taskId)}/retry`,
+      {
+        body,
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      },
+      signal,
+    );
+    if (!retryTargetMatches(accepted, target)) {
+      throw new GenerationRequestError(
+        "生成任务关联不一致，请刷新后重试",
+        409,
+        "RETRY_BINDING_STALE",
+      );
+    }
+    if (!retryWasAccepted(before, accepted)) {
+      throw new GenerationRequestError(
+        "重试响应尚未确认，正在核对任务状态",
+        0,
+        "RETRY_RESPONSE_NOT_CONFIRMED",
+      );
+    }
+    return accepted;
+  } catch (error) {
+    if (signal?.aborted || !mutationOutcomeMayBeUnknown(error)) {
+      throw error;
+    }
+    try {
+      const recovered = await getGenerationTask(target.taskId, signal);
+      if (
+        retryTargetMatches(recovered, target) &&
+        retryWasAccepted(before, recovered)
+      ) {
+        return recovered;
+      }
+    } catch {
+      // Preserve the unknown POST result. A second retry POST is never issued.
+    }
+    throw error;
+  }
 }
 
 export async function listGenerationTasks(
   canvasId: string,
   signal?: AbortSignal,
 ): Promise<GenerationTaskSummary[]> {
-  const body = await readJson<{ tasks: GenerationTaskSummary[] }>(
-    await fetch(
-      `/api/generation-tasks?canvasId=${encodeURIComponent(canvasId)}`,
-      {
-        cache: "no-store",
-        signal,
-      },
-    ),
+  const body = await readTaskStatusJson<{ tasks: GenerationTaskSummary[] }>(
+    `/api/generation-tasks?canvasId=${encodeURIComponent(canvasId)}`,
+    { cache: "no-store" },
+    signal,
   );
-  return body.tasks;
+  return body?.tasks ?? [];
 }
 
 type GenerationSubmissionIntent = {
   canvasId: string;
+  generationOwnershipKey?: string;
   idempotencyKey: string;
   kind: GenerationTaskKind;
   nodeId: string;
@@ -181,6 +442,7 @@ export type RecoverableGenerationInput = Omit<
 >;
 
 export type EnsuredGenerationTask = {
+  generationOwnershipKey?: string;
   idempotencyKey: string;
   recovered: boolean;
   task: GenerationTaskSummary;
@@ -237,6 +499,10 @@ function validIntent(
     typeof intent.idempotencyKey === "string" &&
     /^[a-z0-9._:-]{8,200}$/i.test(intent.idempotencyKey) &&
     typeof intent.requestSignature === "string" &&
+    (intent.generationOwnershipKey === undefined ||
+      (typeof intent.generationOwnershipKey === "string" &&
+        intent.generationOwnershipKey.length > 0 &&
+        intent.generationOwnershipKey.length <= 2_000)) &&
     typeof intent.updatedAt === "string" &&
     (intent.taskId === undefined || typeof intent.taskId === "string");
 }
@@ -275,24 +541,67 @@ function writeSubmissionIntent(
     intent.canvasId,
     intent.nodeId,
   );
-  submissionIntentMemory.set(slot, intent);
   try {
     window.localStorage.setItem(slot, JSON.stringify(intent));
   } catch {
-    // See readSubmissionIntent: remaining in-memory is the safe fallback.
+    throw new GenerationRequestError(
+      "浏览器无法安全保存生成请求，请允许本地存储后重试",
+      503,
+      "GENERATION_INTENT_STORAGE_UNAVAILABLE",
+    );
   }
+  // A new or upgraded intent must never become usable in this page until its
+  // durable copy exists. This keeps preflight and the paid POST fail-closed.
+  submissionIntentMemory.set(slot, intent);
 }
 
 function prepareGenerationSubmission(
   accountId: string,
   kind: GenerationTaskKind,
   input: RecoverableGenerationInput,
+  options: GenerationOwnershipOptions,
 ) {
   const signature = requestSignature(kind, input);
   const current = readSubmissionIntent(accountId, kind, input.canvasId, input.nodeId);
-  if (current?.requestSignature === signature) return current;
+  const generationOwnershipKey = options.generationOwnershipKey?.trim() || undefined;
+  if (current) {
+    if (generationOwnershipKey && current.generationOwnershipKey) {
+      if (current.generationOwnershipKey === generationOwnershipKey) {
+        // Catalog-derived request fields may drift. Once both sides carry the
+        // same raw ownership proof, keep the original paid idempotency intent.
+        return current;
+      }
+      // A different non-empty ownership key is a genuinely different run and
+      // deliberately falls through to mint a new idempotency key.
+    } else if (generationOwnershipKey) {
+      if (current.requestSignature !== signature) {
+        // A legacy intent has no raw ownership proof. Never attach today's key
+        // to it unless the old catalog-derived signature still matches exactly.
+        clearGenerationSubmissionIntent(
+          kind,
+          input.canvasId,
+          input.nodeId,
+          undefined,
+          accountId,
+        );
+        throw new GenerationRequestError(
+          "旧生成任务无法证明仍属于当前输入，请再次提交",
+          409,
+          "GENERATION_OWNERSHIP_UNPROVEN",
+        );
+      }
+      const upgraded = { ...current, generationOwnershipKey };
+      writeSubmissionIntent(accountId, upgraded);
+      return upgraded;
+    } else if (current.requestSignature === signature) {
+      // Callers without ownership evidence retain the exact legacy signature
+      // fence; they never receive the relaxed catalog-drift behavior above.
+      return current;
+    }
+  }
   const intent: GenerationSubmissionIntent = {
     canvasId: input.canvasId,
+    ...(generationOwnershipKey ? { generationOwnershipKey } : {}),
     idempotencyKey: crypto.randomUUID(),
     kind,
     nodeId: input.nodeId,
@@ -310,11 +619,32 @@ function rememberGenerationTask(
   intent: GenerationSubmissionIntent,
   task: GenerationTaskSummary,
 ) {
-  writeSubmissionIntent(accountId, {
-    ...intent,
-    taskId: task.id,
-    updatedAt: new Date().toISOString(),
-  });
+  try {
+    writeSubmissionIntent(accountId, {
+      ...intent,
+      taskId: task.id,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    if (
+      !(error instanceof GenerationRequestError) ||
+      error.code !== "GENERATION_INTENT_STORAGE_UNAVAILABLE"
+    ) {
+      throw error;
+    }
+    // The original durable idempotency intent (and its same-page memory copy)
+    // is sufficient to recover this exact task. Do not hide a confirmed task
+    // merely because the optional taskId annotation could not be refreshed.
+  }
+}
+
+function taskWithGenerationOwnership(
+  task: GenerationTaskSummary,
+  intent: GenerationSubmissionIntent,
+) {
+  return intent.generationOwnershipKey
+    ? { ...task, generationOwnershipKey: intent.generationOwnershipKey }
+    : task;
 }
 
 export function clearGenerationSubmissionIntent(
@@ -340,13 +670,13 @@ export async function getGenerationTaskByIdempotency(
   idempotencyKey: string,
   signal?: AbortSignal,
 ): Promise<GenerationTaskSummary | undefined> {
-  const response = await fetch(
+  return readTaskStatusJson<GenerationTaskSummary>(
     `/api/generation-tasks/by-idempotency?canvasId=${encodeURIComponent(canvasId)}` +
       `&idempotencyKey=${encodeURIComponent(idempotencyKey)}`,
-    { cache: "no-store", signal },
+    { cache: "no-store" },
+    signal,
+    true,
   );
-  if (response.status === 404) return undefined;
-  return readJson(response);
 }
 
 export async function recoverPendingGenerationTask(
@@ -356,15 +686,36 @@ export async function recoverPendingGenerationTask(
   signal?: AbortSignal,
   currentInput?: RecoverableGenerationInput,
   accountId = "",
+  options: GenerationOwnershipOptions = {},
 ) {
-  const intent = readSubmissionIntent(accountId, kind, canvasId, nodeId);
+  let intent = readSubmissionIntent(accountId, kind, canvasId, nodeId);
   if (!intent) return undefined;
-  if (
-    currentInput &&
-    intent.requestSignature !== requestSignature(kind, currentInput)
-  ) {
-    clearGenerationSubmissionIntent(kind, canvasId, nodeId, intent.taskId, accountId);
-    return undefined;
+  const generationOwnershipKey = options.generationOwnershipKey?.trim() || undefined;
+  if (intent.generationOwnershipKey) {
+    if (
+      !generationOwnershipKey ||
+      generationOwnershipKey !== intent.generationOwnershipKey
+    ) {
+      // Keep the already-verified intent intact. A caller without the same raw
+      // ownership proof cannot poll or claim its task.
+      return undefined;
+    }
+  } else {
+    if (!currentInput || !generationOwnershipKey) return undefined;
+    if (intent.requestSignature !== requestSignature(kind, currentInput)) {
+      clearGenerationSubmissionIntent(
+        kind,
+        canvasId,
+        nodeId,
+        intent.taskId,
+        accountId,
+      );
+      return undefined;
+    }
+    // No await occurs between validating the legacy signature and persisting
+    // its first raw ownership proof.
+    intent = { ...intent, generationOwnershipKey };
+    writeSubmissionIntent(accountId, intent);
   }
   const task = await getGenerationTaskByIdempotency(
     canvasId,
@@ -377,19 +728,20 @@ export async function recoverPendingGenerationTask(
     return undefined;
   }
   rememberGenerationTask(accountId, intent, task);
-  return task;
+  return taskWithGenerationOwnership(task, intent);
 }
 
 async function postGeneration(
   kind: GenerationTaskKind,
   input: GenerationPreflightInput,
 ) {
-  return readJson<GenerationTaskSummary>(
-    await fetch("/api/generation-tasks", {
+  return readMutationJson<GenerationTaskSummary>(
+    "/api/generation-tasks",
+    {
       body: JSON.stringify({ ...input, kind }),
       headers: { "Content-Type": "application/json" },
       method: "POST",
-    }),
+    },
   );
 }
 
@@ -403,8 +755,10 @@ export async function ensureGenerationTask(
   kind: GenerationTaskKind,
   input: RecoverableGenerationInput,
   accountId = "",
+  assertCurrentInput?: () => void,
+  options: GenerationOwnershipOptions = {},
 ): Promise<EnsuredGenerationTask> {
-  const intent = prepareGenerationSubmission(accountId, kind, input);
+  const intent = prepareGenerationSubmission(accountId, kind, input, options);
   const prepared = { ...input, idempotencyKey: intent.idempotencyKey };
   const existing = await getGenerationTaskByIdempotency(
     input.canvasId,
@@ -437,7 +791,12 @@ export async function ensureGenerationTask(
       );
     }
     rememberGenerationTask(accountId, intent, existing);
-    return { idempotencyKey: intent.idempotencyKey, recovered: true, task: existing };
+    return {
+      generationOwnershipKey: intent.generationOwnershipKey,
+      idempotencyKey: intent.idempotencyKey,
+      recovered: true,
+      task: taskWithGenerationOwnership(existing, intent),
+    };
   }
 
   const preflight = await preflightGeneration(kind, prepared);
@@ -452,39 +811,68 @@ export async function ensureGenerationTask(
     );
   }
 
+  // No await is allowed between this last caller-owned semantic fence and the
+  // paid POST invocation. postGeneration starts fetch synchronously.
+  assertCurrentInput?.();
   try {
     const task = await postGeneration(kind, prepared);
+    if (
+      task.canvasId !== input.canvasId ||
+      task.kind !== kind ||
+      task.nodeId !== input.nodeId ||
+      task.state === "cancelled"
+    ) {
+      throw new GenerationRequestError(
+        "生成任务关联不一致，请修改内容后再试",
+        409,
+        "IDEMPOTENCY_CONFLICT",
+      );
+    }
     rememberGenerationTask(accountId, intent, task);
-    return { idempotencyKey: intent.idempotencyKey, recovered: false, task };
+    return {
+      generationOwnershipKey: intent.generationOwnershipKey,
+      idempotencyKey: intent.idempotencyKey,
+      recovered: false,
+      task: taskWithGenerationOwnership(task, intent),
+    };
   } catch (error) {
     // The POST may have reached the server even when its response did not reach
     // the browser. One read-only reconciliation prevents the next click from
     // creating a second paid task.
-    try {
-      const recovered = await getGenerationTaskByIdempotency(
-        input.canvasId,
-        intent.idempotencyKey,
-      );
-      if (recovered) {
-        rememberGenerationTask(accountId, intent, recovered);
-        return {
-          idempotencyKey: intent.idempotencyKey,
-          recovered: true,
-          task: recovered,
-        };
+    if (mutationOutcomeMayBeUnknown(error)) {
+      try {
+        const recovered = await getGenerationTaskByIdempotency(
+          input.canvasId,
+          intent.idempotencyKey,
+        );
+        if (
+          recovered &&
+          recovered.canvasId === input.canvasId &&
+          recovered.kind === kind &&
+          recovered.nodeId === input.nodeId &&
+          recovered.state !== "cancelled"
+        ) {
+          rememberGenerationTask(accountId, intent, recovered);
+          return {
+            generationOwnershipKey: intent.generationOwnershipKey,
+            idempotencyKey: intent.idempotencyKey,
+            recovered: true,
+            task: taskWithGenerationOwnership(recovered, intent),
+          };
+        }
+      } catch {
+        // Preserve and surface the original submission error. The durable intent
+        // remains available for the next refresh/retry lookup.
       }
-    } catch {
-      // Preserve and surface the original submission error. The durable intent
-      // remains available for the next refresh/retry lookup.
     }
     if (
       error instanceof GenerationRequestError &&
-      error.code === "IDEMPOTENCY_CONFLICT"
+      error.status >= 400 &&
+      error.status < 500
     ) {
-      // A key left by another signed-in owner (or the extremely unlikely
-      // compact-signature collision) must not permanently poison this node.
-      // The server confirmed that no task owned by the current user can be
-      // recovered under it, so the next explicit click may safely mint a key.
+      // A deterministic client rejection is never hidden by an older task found
+      // under this key. The next explicit click gets a fresh key instead of
+      // inheriting a rejected/conflicting intent.
       clearGenerationSubmissionIntent(
         kind,
         input.canvasId,

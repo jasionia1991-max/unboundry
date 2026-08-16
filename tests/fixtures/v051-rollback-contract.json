@@ -1,0 +1,70 @@
+{
+  "contract": "unboundry-v051-rollback-boundary-v3",
+  "tag": "v0.5.1",
+  "annotatedTagObject": "2e556760b693d1cee1b8b37db3e6747a916bcaf2",
+  "peeledCommit": "7f7d6177a564056a6f41ff83dfb7ba913b21603b",
+  "commitTree": "0990690bd9828757b82f59861f950ce6ff9ed4f8",
+  "archiveSha256": "e7a619c4d9dbaca14d1032ef18f83f81dcfb36c9402976debc4f8f546c8bb5d0",
+  "trackedEntries": 371,
+  "files": {
+    "package.json": "142da3969ae57ca686507377777b67783e9375474282467bc54dd9c77c60fa91",
+    "server/canvasPersistence.ts": "ec1b2612fc8b974347744eee97bc2428ae1c29ab0c89177f5e50f2ef05923a7b",
+    "server/database.ts": "3d907b9ea518b5e6ec3c1a03d0c68877cd8a28c49d3d20add173efc777103ed4",
+    "vite.config.ts": "759d61ec22585cb447e80edd675efd0af1228a61448fd0e6829998ad46065786"
+  },
+  "database": {
+    "latestMigrationName": "protected-root-admin",
+    "latestSchemaVersion": 37,
+    "rejectsUnknownMigrationRows": true,
+    "firstUnknownTargetVersion": 38
+  },
+  "canvasSave": {
+    "recognizesObservedLoadToken": false,
+    "recognizesObservedRevision": false,
+    "validatesSaveAttemptId": false,
+    "acceptsPayloadWithCurrentFenceFields": true,
+    "persistsPayloadWithCurrentFenceFields": true,
+    "oldSuccessIncludesLoadToken": false,
+    "freshCurrentClientCanHydrateOldServer": false,
+    "currentClientAcceptsOldSuccess": false,
+    "preservesUnknownNodeData": true,
+    "legacyRequiredFields": [
+      "revision",
+      "nodes",
+      "edges",
+      "viewport"
+    ],
+    "legacyOptionalFenceFields": [
+      "saveSessionId",
+      "saveSequence"
+    ],
+    "currentBridgeExistingCanvasRejectCode": "CANVAS_LOAD_REQUIRED"
+  },
+  "schema39ExactTagRuntime": {
+    "startsHttpListenerBeforeDatabaseOpen": true,
+    "versionEndpointReturns200BeforeDatabaseOpen": true,
+    "firstDatabaseBackedRequestTerminatesProcess": true,
+    "rejectionMessage": "Unknown database migration 38:durable-media-publications",
+    "logicalRowsUnchanged": true,
+    "databaseBytesUnchanged": false,
+    "journalModeChangedToWalBeforeRejection": true,
+    "sqliteSidecarsMayBeCreated": true,
+    "directRollbackSupported": false
+  },
+  "processTransition": {
+    "bridgeMustStopBeforeMigration": true,
+    "oneShotStartsHttpListener": false,
+    "restartAfterCommitRequired": true,
+    "sameProcessHotActivationSupported": false,
+    "schema37ReadyHttpStatus": 200,
+    "schema37ReadyMode": "schema37-health-only-standby",
+    "schema37MutationsAccepted": false
+  },
+  "safeGate": {
+    "attestationContract": "unboundry-v051-safe-runner-attestation-v2",
+    "exactTagRuntimeRequired": true,
+    "externalRehearsalRequired": false,
+    "runsBeforeProductTests": true,
+    "scope": "m92-or-full"
+  }
+}

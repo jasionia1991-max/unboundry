@@ -1,8 +1,12 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 test("Agent records locally, stops, clears and cancels without Provider requests", async ({
   page,
+  request,
 }) => {
+  const before = await (await request.get("/api/generation-tasks/status")).json() as {
+    paidProviderRequests: number;
+  };
   await page.addInitScript(() => {
     const fakeTrack = { stop() {} };
     Object.defineProperty(navigator, "mediaDevices", {
@@ -41,7 +45,11 @@ test("Agent records locally, stops, clears and cancels without Provider requests
 
   const providerRequests: string[] = [];
   page.on("request", (request) => {
-    if (/provider|generate|transcri|speech/i.test(request.url())) {
+    const url = request.url();
+    if (
+      (request.method() === "POST" && /\/api\/generation-tasks(?:[/?]|$)/.test(url)) ||
+      /openrouter|volces|mureka|lk888|lk666/i.test(url)
+    ) {
       providerRequests.push(request.url());
     }
   });
@@ -67,6 +75,10 @@ test("Agent records locally, stops, clears and cancels without Provider requests
   await page.getByRole("button", { name: "语音输入" }).click();
   await page.getByRole("button", { name: "取消" }).click();
   await expect(page.getByTestId("agent-voice-panel")).toHaveCount(0);
+  const after = await (await request.get("/api/generation-tasks/status")).json() as {
+    paidProviderRequests: number;
+  };
+  expect(after.paidProviderRequests).toBe(before.paidProviderRequests);
   expect(providerRequests).toEqual([]);
 });
 

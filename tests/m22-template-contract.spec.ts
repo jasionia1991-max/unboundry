@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 test("template API provides the two real e-commerce templates and their graph data", async ({
   page,

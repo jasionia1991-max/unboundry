@@ -3,7 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
+import { openAppDatabase } from "../server/database";
 import { generationProviderAttemptCounts } from "../server/generationTaskStore";
 import { OutboundProxyConfigurationError } from "../server/outboundNetwork";
 import {
@@ -31,6 +32,7 @@ async function withTemporaryData(
   const previous = process.env.UNBOUNDRY_DATA_DIR;
   process.env.UNBOUNDRY_DATA_DIR = directory;
   try {
+    openAppDatabase(directory).close();
     await run(directory);
   } finally {
     if (previous === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
@@ -190,7 +192,7 @@ test("平台连接页展示可执行的Key和目录代理提示", async ({
   baseURL,
   page,
 }) => {
-  const localOrigin = new URL(baseURL ?? "http://127.0.0.1:4175").origin;
+  const localOrigin = new URL(baseURL!).origin;
   const externalRequests: string[] = [];
   const generationRequests: string[] = [];
   page.on("request", (request) => {

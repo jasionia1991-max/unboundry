@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 test("文字生视频 shortcut creates the observed two-node animated workflow", async ({
   page,

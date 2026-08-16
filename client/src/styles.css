@@ -198,6 +198,59 @@ sup {
   touch-action: none;
 }
 
+.canvas-world:not([data-persistence-state="ready"]) .react-flow {
+  pointer-events: none;
+}
+
+.canvas-load-gate {
+  position: absolute;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  padding: 24px;
+  place-items: center;
+  cursor: default;
+  background: rgba(0, 0, 0, 0.72);
+  pointer-events: auto;
+}
+
+.canvas-load-gate > div {
+  display: grid;
+  width: min(420px, calc(100vw - 48px));
+  padding: 22px 24px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  gap: 8px;
+  color: #f5f5f5;
+  background: #1c1c1c;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.48);
+  text-align: center;
+}
+
+.canvas-load-gate strong {
+  font-size: var(--tap-font-primary);
+  line-height: 24px;
+}
+
+.canvas-load-gate span {
+  color: #aaa;
+  font-size: var(--tap-font-primary);
+  line-height: 20px;
+}
+
+.canvas-load-gate button {
+  min-width: 112px;
+  height: 34px;
+  margin: 8px auto 0;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 10px;
+  color: #151515;
+  background: #f2f2f2;
+  font: inherit;
+  cursor: pointer;
+}
+
 .canvas-grid {
   position: absolute;
   inset: 0;
@@ -3785,7 +3838,7 @@ sup {
 
 .audio-node-upload-error {
   position: absolute;
-  z-index: 2;
+  z-index: 3;
   padding: 8px 10px;
   border-radius: 8px;
   color: #f1b0b0;
@@ -4822,6 +4875,119 @@ sup {
   font: inherit;
 }
 
+.canvas-node-title {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.canvas-node-title > svg {
+  flex: 0 0 auto;
+}
+
+.canvas-node-title > span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-node-title > input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.group-node-title.canvas-node-title {
+  width: min(240px, calc(100% - 8px));
+  max-width: calc(100% - 8px);
+}
+
+.storyboard-node-title.canvas-node-title {
+  width: min(560px, calc(100% + 32px));
+  max-width: calc(100% + 32px);
+}
+
+.media-load-fallback {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: inherit;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 6px;
+  color: rgba(245, 245, 245, 0.72);
+  background: #18181b;
+  text-align: center;
+}
+
+.media-load-obscured {
+  opacity: 0;
+}
+
+.media-load-fallback > svg {
+  width: 34px;
+  height: 34px;
+  margin-bottom: 2px;
+  fill: none;
+  stroke: #686868;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.media-load-fallback > strong {
+  color: #d4d4d4;
+  font-size: var(--tap-font-primary);
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.media-load-fallback > span {
+  color: #7a7a7a;
+  font-size: var(--tap-font-secondary);
+  line-height: 18px;
+}
+
+.media-load-fallback > div {
+  display: flex;
+  margin-top: 4px;
+  gap: 8px;
+}
+
+.media-load-fallback button {
+  display: inline-flex;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  align-items: center;
+  justify-content: center;
+  color: #d4d4d4;
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+  font-size: var(--tap-font-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.media-load-fallback button:hover {
+  color: #f5f5f5;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* Keep task/upload recovery actionable when the retained media URL also fails. */
+.image-node-upload-error,
+.video-node-upload-error,
+.audio-node-upload-error {
+  z-index: 5;
+}
+
 .group-node-toolbar {
   position: absolute;
   z-index: 8;
@@ -5754,6 +5920,12 @@ sup {
 
 .shell-button:hover {
   background: rgba(255, 255, 255, 0.08);
+}
+
+.shell-button:disabled {
+  opacity: 0.45;
+  background: transparent;
+  cursor: not-allowed;
 }
 
 .shell-button:focus-visible {
@@ -8140,6 +8312,35 @@ sup {
   scrollbar-width: thin;
 }
 
+.history-pagination {
+  display: grid;
+  padding: 12px 8px 4px;
+  place-items: center;
+  gap: 8px;
+  color: #aaa;
+  font-size: var(--tap-font-secondary);
+  text-align: center;
+}
+
+.history-pagination p {
+  margin: 0;
+}
+
+.history-pagination button {
+  min-height: 30px;
+  padding: 5px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 7px;
+  color: #ddd;
+  background: rgba(255, 255, 255, 0.07);
+  cursor: pointer;
+}
+
+.history-pagination button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
 .history-date-group {
   margin: 0 0 11px;
 }
@@ -8188,7 +8389,8 @@ sup {
 }
 
 .history-card-image,
-.history-card-video {
+.history-card-video,
+.history-card-video-placeholder {
   position: absolute;
   z-index: 1;
   inset: 0;
@@ -10121,6 +10323,53 @@ sup {
   cursor: pointer;
 }
 
+.admin-page > header > .settings-header-actions {
+  position: relative;
+  display: flex;
+  min-width: 282px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.admin-page > header > .settings-header-actions button {
+  min-width: 116px;
+}
+
+.admin-page > header > .settings-header-actions button:disabled {
+  color: #8f8f93;
+  cursor: wait;
+  opacity: 0.76;
+}
+
+.settings-return-error {
+  width: 100%;
+  max-width: 360px;
+  color: #e3a1a1;
+  font-size: var(--tap-font-secondary);
+  line-height: 1.45;
+  text-align: right;
+}
+
+@media (max-width: 720px) {
+  .admin-page > header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .admin-page > header > .settings-header-actions {
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-start;
+  }
+
+  .settings-return-error {
+    max-width: none;
+    text-align: left;
+  }
+}
+
 .admin-layout {
   display: grid;
   max-width: 960px;
@@ -10457,6 +10706,10 @@ sup {
   white-space: nowrap;
 }
 
+.admin-template-info .admin-template-compatibility-detail {
+  color: #d1a77e;
+}
+
 .admin-template-status {
   grid-column: 1 / -1;
   justify-self: start;
@@ -10476,6 +10729,27 @@ sup {
 .admin-template-status[data-status="archived"] {
   color: #e3bd90;
   background: rgba(184, 128, 65, 0.16);
+}
+
+.admin-template-compatibility {
+  grid-column: 1 / -1;
+  justify-self: start;
+  padding: 3px 10px;
+  border-radius: 999px;
+  color: #e3bd90;
+  background: rgba(184, 128, 65, 0.16);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.admin-template-compatibility[data-compatibility="PASS"] {
+  color: #bfe6d0;
+  background: rgba(74, 169, 116, 0.16);
+}
+
+.admin-template-compatibility[data-compatibility="INVALID"] {
+  color: #efb2b2;
+  background: rgba(184, 65, 65, 0.18);
 }
 
 .admin-template-actions {

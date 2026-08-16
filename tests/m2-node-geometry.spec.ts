@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 const sizeOf = async (page: import("@playwright/test").Page, id: string) => {
   const zoom = Number(

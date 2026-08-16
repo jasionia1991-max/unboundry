@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 test("click, Shift-click and four-direction marquee selection", async ({
   page,

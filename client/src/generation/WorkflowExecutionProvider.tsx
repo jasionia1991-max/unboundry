@@ -14,15 +14,44 @@ import {
   buildWorkflowLayers,
   isExecutableWorkflowNode,
   isWorkflowNodeGenerating,
-  runWorkflowLayers,
+  runWorkflowGraph,
   type NodeRunResult,
+  type WorkflowPreflightPhase,
 } from "./workflowExecution";
 
 export type { NodeRunResult };
 
 export type NodeRunRegistration = {
+  preflight?: (input: {
+    executableIds: ReadonlySet<string>;
+    phase: WorkflowPreflightPhase;
+  }) => Promise<NodeRunResult> | NodeRunResult;
   run: () => Promise<NodeRunResult>;
 };
+
+const runtimeInputRefreshTimeoutMs = 5_000;
+
+async function waitForRuntimePreflight(
+  registration: NodeRunRegistration,
+  executableIds: ReadonlySet<string>,
+) {
+  if (!registration.preflight) return { status: "success" as const };
+  const deadline = Date.now() + runtimeInputRefreshTimeoutMs;
+  while (true) {
+    const result = await registration.preflight({
+      executableIds,
+      phase: "runtime",
+    });
+    if (result.status !== "busy") return result;
+    if (Date.now() >= deadline) {
+      return registration.preflight({
+        executableIds,
+        phase: "runtime-final",
+      });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
 
 type WorkflowExecutionValue = {
   cancelGroup: (groupId: string) => void;
@@ -105,33 +134,86 @@ export function WorkflowExecutionProvider({
         notify("组内有节点正在生成，请等待完成后再试");
         return;
       }
-      let layers: string[][];
       try {
-        layers = buildWorkflowLayers(children, edges);
+        buildWorkflowLayers(children, edges);
       } catch (error) {
         notify(error instanceof Error ? error.message : "整组执行失败");
+        return;
+      }
+      const preflightFailures: Array<{ message: string; nodeId: string }> = [];
+      for (const nodeId of executableIds) {
+        const registration = registrations.current.get(nodeId);
+        if (!registration) {
+          preflightFailures.push({ message: "节点尚未就绪", nodeId });
+          continue;
+        }
+        const result = await registration.preflight?.({
+          executableIds,
+          phase: "static",
+        }) ?? {
+          status: "success" as const,
+        };
+        if (result.status !== "success") {
+          preflightFailures.push({
+            message: result.message ?? "请检查标红节点",
+            nodeId,
+          });
+        }
+      }
+      if (preflightFailures.length > 0) {
+        const first = preflightFailures[0];
+        const firstNode = nodeById.get(first.nodeId);
+        const firstTitle = typeof firstNode?.data.title === "string" &&
+            firstNode.data.title.trim()
+          ? firstNode.data.title.trim()
+          : typeof firstNode?.data.label === "string" && firstNode.data.label.trim()
+            ? firstNode.data.label.trim()
+            : first.nodeId;
+        notify(
+          `整组执行已阻止：发现 ${preflightFailures.length} 个不兼容节点；首个“${firstTitle}”：${first.message}（未提交任何生成任务）`,
+          "error",
+        );
         return;
       }
       const running = { cancelled: false };
       runningGroups.current.set(groupId, running);
       setExecutingGroupIds(new Set(runningGroups.current.keys()));
       try {
-        const result = await runWorkflowLayers({
+        let lastCompleted = 0;
+        const result = await runWorkflowGraph({
+          edges,
           executableIds,
           isCancelled: () => running.cancelled,
-          layers,
-          onLayer: (current, total) => {
-            notify(`整组执行中：第 ${current}/${total} 层`);
+          onNodeStateChange: (_nodeId, state, completed, total) => {
+            if (
+              ["blocked", "failed", "skipped", "success"].includes(state) &&
+              completed > lastCompleted
+            ) {
+              lastCompleted = completed;
+              notify(`整组执行中：已完成 ${completed}/${total} 个节点`);
+            }
           },
-          runNode: (nodeId) =>
-            registrations.current.get(nodeId)?.run() ??
-              Promise.resolve({ status: "skipped" }),
+          runNode: async (nodeId) => {
+            const registration = registrations.current.get(nodeId);
+            if (!registration) {
+              return { message: "节点尚未就绪", status: "failed" };
+            }
+            const preflight = await waitForRuntimePreflight(
+              registration,
+              executableIds,
+            );
+            if (preflight.status !== "success") return preflight;
+            return registration.run();
+          },
         });
         if (result.status === "success") {
           notify("整组执行完成", "success");
         } else if (result.status === "failed") {
+          const blocked = result.blockedNodeIds.length > 0
+            ? `；另有 ${result.blockedNodeIds.length} 个后续节点因上游失败未运行`
+            : "";
           notify(
-            `整组执行失败：${result.message ?? "请查看节点错误提示"}`,
+            `整组执行部分失败：${result.message ?? "请查看节点错误提示"}${blocked}`,
             "error",
           );
         } else if (result.status === "skipped") {

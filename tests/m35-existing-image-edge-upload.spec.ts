@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./safe-test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { knownModelParameterSchema } from "../types/modelParameters";

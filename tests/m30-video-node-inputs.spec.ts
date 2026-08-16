@@ -3,7 +3,7 @@ import {
   test,
   type APIRequestContext,
   type Page,
-} from "@playwright/test";
+} from "./safe-test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
@@ -15,12 +15,36 @@ import {
   knownModelParameterSchema,
   type ModelParameterSchema,
 } from "../types/modelParameters";
+import { openAppDatabase } from "../server/database";
+import { resolvePersistedNodeInputs } from "../server/inputPreflight";
 
 const seedanceSchema = knownModelParameterSchema({
   capability: "video",
   providerDriver: "volcengine-ark",
   providerModelId: "doubao-seedance-2-0-mini-260615",
 });
+
+function serverFixtureSchema(): ModelParameterSchema {
+  const rules = seedanceSchema.referenceMediaRules!;
+  const audio = { ...rules.audio! };
+  const video = { ...rules.video! };
+  // The checked-in audio fixture is deliberately long. This local-only model
+  // exercises authoritative metadata hydration, not a paid Seedance limit.
+  delete audio.maxDurationSeconds;
+  delete audio.maxTotalDurationSeconds;
+  delete audio.minDurationSeconds;
+  delete video.minPixelCount;
+  return {
+    ...seedanceSchema,
+    referenceMediaRules: {
+      ...rules,
+      audio,
+      video: { ...video, minDurationSeconds: 0 },
+    },
+  };
+}
+
+const serverSchema = serverFixtureSchema();
 
 type GraphNode = {
   data: Record<string, unknown>;
@@ -46,7 +70,20 @@ function readyMediaNode(
       assetId: `${id}.${kind === "image" ? "png" : kind === "video" ? "mp4" : "mp3"}`,
       [`${kind}Src`]: `https://signed.example.test/${id}?signature=short-lived`,
       label: kind,
+      mediaByteSize: 1_024,
+      mediaContentType: kind === "image"
+        ? "image/png"
+        : kind === "video"
+          ? "video/mp4"
+          : "audio/mpeg",
+      mediaDurationSeconds: kind === "image" ? undefined : kind === "video" ? 5 : 4,
+      mediaMetadataSource: "server",
+      mediaMetadataStatus: "ready",
+      mediaStorageBackend: kind === "video" ? "oss" : "local",
       title: `${kind}-${index}`,
+      ...(kind === "image" || kind === "video"
+        ? { mediaHeight: 720, mediaWidth: 1_280 }
+        : {}),
       ...data,
     },
     id,
@@ -134,7 +171,7 @@ function videoPreflight(input: {
   });
 }
 
-test("Video multimodal accepts Text plus 9 images, 3 videos and 3 audios with a URL-free snapshot", () => {
+test("Video accepts merged or upstream-only Text plus ready media with a URL-free snapshot", () => {
   const graph = multimodalGraph({ audio: 3, image: 9, video: 3 });
   const result = videoPreflight({ ...graph, mode: "multimodal" });
 
@@ -167,6 +204,58 @@ test("Video multimodal accepts Text plus 9 images, 3 videos and 3 audios with a 
   expect(JSON.stringify(result.snapshot)).not.toMatch(
     /https?:|signed|signature|imageSrc|videoSrc|audioSrc/i,
   );
+
+  const upstreamOnlyGraph = multimodalGraph({ audio: 0, image: 1, video: 0 });
+  const upstreamOnly = videoPreflight({
+    ...upstreamOnlyGraph,
+    mode: "multimodal",
+    ownPrompt: "",
+  });
+  expect(upstreamOnly.inputs.find(({ kind }) => kind === "text")).toMatchObject({
+    compatibility: "compatible",
+    kind: "text",
+    role: "instruction",
+    state: "ready",
+  });
+  expect(upstreamOnly.finalPrompt).toBe(
+    "上游文字指令：保持商品颜色，并使用舒缓的镜头节奏。",
+  );
+  expect(upstreamOnly.problems).toEqual([]);
+  expect(upstreamOnly.canSubmit).toBeTruthy();
+  expect(upstreamOnly.snapshot).toEqual([
+    {
+      kind: "text",
+      order: 1,
+      role: "instruction",
+      sourceNodeId: "p3-text-1",
+    },
+    {
+      assetId: "p3-image-1.png",
+      kind: "image",
+      order: 2,
+      role: "subject",
+      sourceNodeId: "p3-image-1",
+    },
+  ]);
+  expect(JSON.stringify(upstreamOnly.snapshot)).not.toMatch(
+    /https?:|signed|signature|imageSrc|videoSrc|audioSrc/i,
+  );
+
+  const withoutPrompt = videoPreflight({
+    edges: [],
+    mode: "text",
+    nodes: [{
+      data: { label: "Video", title: "无文字目标视频" },
+      id: "p3-target-video",
+      type: "video",
+    }],
+    ownPrompt: "",
+  });
+  expect(withoutPrompt.finalPrompt).toBe("");
+  expect(withoutPrompt.canSubmit).toBeFalsy();
+  expect(withoutPrompt.problems).toContainEqual(expect.objectContaining({
+    code: "PROMPT_MISSING",
+  }));
 });
 
 test("Video keeps all 10/4/4 edges and blocks only the references beyond 9/3/3", () => {
@@ -339,7 +428,7 @@ async function ensureServerModel(request: APIRequestContext) {
       data: {
         isDefault: false,
         maxCostMicrounits: 0,
-        parameterSchema: seedanceSchema,
+        parameterSchema: serverSchema,
         status: "published",
       },
     });
@@ -352,7 +441,7 @@ async function ensureServerModel(request: APIRequestContext) {
       displayName: serverModelName,
       isDefault: false,
       maxCostMicrounits: 0,
-      parameterSchema: seedanceSchema,
+      parameterSchema: serverSchema,
       providerModelId: "fixture/p3-video-inputs",
       providerProfileId: "provider-unconfigured",
       sortOrder: 9_300,
@@ -364,11 +453,6 @@ async function ensureServerModel(request: APIRequestContext) {
 }
 
 async function uploadServerMedia(request: APIRequestContext) {
-  await Promise.all([
-    request.delete(`/api/assets/${serverImageAssetId}`),
-    request.delete(`/api/video-assets/${serverVideoAssetId}`),
-    request.delete(`/api/audio-assets/${serverAudioAssetId}`),
-  ]);
   const [image, video, audio] = await Promise.all([
     readFile(resolve(
       process.cwd(),
@@ -377,20 +461,20 @@ async function uploadServerMedia(request: APIRequestContext) {
     readFile(resolve(process.cwd(), "client/public/fixtures/video-success.mp4")),
     readFile(resolve(process.cwd(), "client/public/fixtures/audio-success.mp3")),
   ]);
-  const responses = await Promise.all([
-    request.post(`/api/assets/${serverImageAssetId}`, {
+  const responses = [
+    await request.post(`/api/assets/${serverImageAssetId}`, {
       data: image,
       headers: { "Content-Type": "image/png", "X-File-Name": "p3-server.png" },
     }),
-    request.post(`/api/video-assets/${serverVideoAssetId}`, {
+    await request.post(`/api/video-assets/${serverVideoAssetId}`, {
       data: video,
       headers: { "Content-Type": "video/mp4", "X-File-Name": "p3-server.mp4" },
     }),
-    request.post(`/api/audio-assets/${serverAudioAssetId}`, {
+    await request.post(`/api/audio-assets/${serverAudioAssetId}`, {
       data: audio,
       headers: { "Content-Type": "audio/mpeg", "X-File-Name": "p3-server.mp3" },
     }),
-  ]);
+  ];
   expect(responses.map((response) => response.status())).toEqual([201, 201, 201]);
 }
 
@@ -402,6 +486,7 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
 
   test.afterAll(async ({ request }) => {
     await request.delete(`/api/canvas/${serverCanvasId}`);
+    await request.delete(`/api/canvas/${serverCanvasId}-image-dimensions`);
     await request.delete("/api/canvas/node.video.empty");
     await Promise.all([
       request.delete(`/api/assets/${serverImageAssetId}`),
@@ -436,7 +521,7 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
           {
             data: {
               title: "服务端Video目标",
-              videoPrompt: "服务端持久化画布对应的本节点Prompt",
+              videoPrompt: "",
             },
             id: "server-video",
             type: "video",
@@ -466,7 +551,7 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
       kind: "video",
       model: serverModelId,
       nodeId: "server-video",
-      ownPrompt: "服务端持久化画布对应的本节点Prompt",
+      ownPrompt: "",
       parameters: { inputMode: "multimodal" },
       prompt: "前端伪造的最终Prompt不能成为事实来源",
     };
@@ -478,10 +563,12 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
     const preflight = await preflightResponse.json() as {
       canEnqueue: boolean;
       canSubmit: boolean;
-      costCurrency: string;
-      estimatedCostMicrounits: number;
       finalPrompt: string;
-      inputs: Array<{ edgeId: string }>;
+      inputs: Array<{
+        compatibility: "blocked" | "compatible";
+        edgeId: string;
+        state: string;
+      }>;
       problems: Array<{ code: string }>;
       provider: { adapterSupported: boolean; configured: boolean };
       providerBalance: { checked: boolean; status: string };
@@ -491,8 +578,8 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
     };
     expect(preflight.canSubmit).toBeTruthy();
     expect(preflight.canEnqueue).toBeFalsy();
-    expect(preflight.costCurrency).toBe("USD");
-    expect(preflight.estimatedCostMicrounits).toBe(0);
+    expect(preflight).not.toHaveProperty("costCurrency");
+    expect(preflight).not.toHaveProperty("estimatedCostMicrounits");
     expect(preflight.problems).toEqual([]);
     expect(preflight.provider).toEqual({
       adapterSupported: false,
@@ -504,15 +591,16 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
     });
     expect(typeof preflight.safetyAdmission.allowed).toBe("boolean");
     expect(preflight.providerRequests).toBe(0);
-    expect(preflight.finalPrompt).toBe(
-      "服务端持久化的上游文字\n\n服务端持久化画布对应的本节点Prompt",
-    );
+    expect(preflight.finalPrompt).toBe("服务端持久化的上游文字");
     expect(preflight.inputs.map(({ edgeId }) => edgeId)).toEqual([
       "server-edge-text",
       "server-edge-image",
       "server-edge-video",
       "server-edge-audio",
     ]);
+    expect(preflight.inputs.every((input) =>
+      input.state === "ready" && input.compatibility === "compatible"))
+      .toBeTruthy();
     expect(preflight.snapshot).toEqual([
       { kind: "text", order: 1, role: "instruction", sourceNodeId: "server-text" },
       { assetId: serverImageAssetId, kind: "image", order: 2, role: "subject", sourceNodeId: "server-image" },
@@ -534,7 +622,283 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
     expect(after.paidProviderRequests).toBe(before.paidProviderRequests);
   });
 
-  test("a newly added Video media edge upgrades mode in the same undo step while hydration and deletion keep the saved mode", async ({
+  test("server preflight replaces forged Image dimensions with ready owner metadata and fails closed when dimensions are missing", async ({
+    request,
+  }) => {
+    const canvasId = `${serverCanvasId}-image-dimensions`;
+    await request.delete(`/api/canvas/${canvasId}`);
+    const saved = await request.put(`/api/canvas/${canvasId}`, {
+      data: {
+        edges: [{
+          data: { inputOrder: 1, inputRole: "subject" },
+          id: "authoritative-image-edge",
+          source: "authoritative-image",
+          target: "authoritative-video",
+        }],
+        nodes: [
+          {
+            data: {
+              assetId: serverImageAssetId,
+              imageSrc: `/api/assets/${serverImageAssetId}`,
+              inputState: "ready",
+              mediaByteSize: 1,
+              mediaContentType: "image/png",
+              mediaHeight: 720,
+              mediaMetadataSource: "server",
+              mediaMetadataStatus: "ready",
+              mediaStorageBackend: "local",
+              mediaWidth: 800,
+              title: "客户端伪造尺寸的图片",
+            },
+            id: "authoritative-image",
+            type: "image",
+          },
+          {
+            data: {
+              title: "权威尺寸目标",
+              videoPrompt: "必须使用数据库中的图片尺寸",
+            },
+            id: "authoritative-video",
+            type: "video",
+          },
+        ],
+        revision: 0,
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+    expect(saved.ok()).toBeTruthy();
+    const revision = (await saved.json() as { revision: number }).revision;
+    const before = await (await request.get("/api/generation-tasks/status")).json() as {
+      paidProviderRequests: number;
+    };
+    const metadataResponse = await request.get(
+      `/api/media-metadata/image/${serverImageAssetId}`,
+    );
+    expect(metadataResponse.ok()).toBeTruthy();
+    expect(await metadataResponse.json()).toMatchObject({
+      mediaHeight: 720,
+      mediaWidth: 1_280,
+    });
+
+    const dimensionSchema: ModelParameterSchema = {
+      ...serverSchema,
+      referenceMediaRules: {
+        ...serverSchema.referenceMediaRules!,
+        image: {
+          ...serverSchema.referenceMediaRules!.image!,
+          maxWidth: 1_000,
+        },
+      },
+    };
+    const resolve = () => resolvePersistedNodeInputs({
+      bypass: true,
+      canvasId,
+      expectedRevision: revision,
+      modelSchema: dimensionSchema,
+      ownerId: "__test__",
+      parameters: { inputMode: "multimodal" },
+      targetId: "authoritative-video",
+      targetKind: "video",
+    });
+    const database = openAppDatabase();
+    const original = database.prepare(`
+      SELECT media_height, media_width
+      FROM media_assets
+      WHERE owner_id = '__test__' AND kind = 'image' AND id = ?
+    `).get(serverImageAssetId) as {
+      media_height: number | null;
+      media_width: number | null;
+    } | undefined;
+    try {
+      expect(original).toEqual({ media_height: 720, media_width: 1_280 });
+      const authoritative = resolve();
+      expect(authoritative.canSubmit).toBeFalsy();
+      expect(authoritative.inputs[0]).toMatchObject({
+        compatibility: "blocked",
+        mediaHeight: 720,
+        mediaWidth: 1_280,
+      });
+      expect(authoritative.problems).toContainEqual(expect.objectContaining({
+        edgeId: "authoritative-image-edge",
+        message: expect.stringContaining("宽度需不超过1000px"),
+      }));
+
+      expect(database.prepare(`
+        UPDATE media_assets
+        SET media_height = NULL, media_width = NULL
+        WHERE owner_id = '__test__' AND kind = 'image' AND id = ?
+      `).run(serverImageAssetId).changes).toBe(1);
+      const missing = resolve();
+      expect(missing.canSubmit).toBeFalsy();
+      expect(missing.inputs[0]).toMatchObject({
+        compatibility: "blocked",
+        mediaHeight: undefined,
+        mediaWidth: undefined,
+      });
+      expect(missing.problems).toContainEqual(expect.objectContaining({
+        edgeId: "authoritative-image-edge",
+        message: expect.stringContaining("分辨率尚未经过服务端校验"),
+      }));
+    } finally {
+      if (original) {
+        database.prepare(`
+          UPDATE media_assets
+          SET media_height = ?, media_width = ?
+          WHERE owner_id = '__test__' AND kind = 'image' AND id = ?
+        `).run(original.media_height, original.media_width, serverImageAssetId);
+      }
+      database.close();
+      await request.delete(`/api/canvas/${canvasId}`);
+    }
+    const after = await (await request.get("/api/generation-tasks/status")).json() as {
+      paidProviderRequests: number;
+    };
+    expect(after.paidProviderRequests).toBe(before.paidProviderRequests);
+  });
+
+  test("server metadata hydration rejects forged ready fields for missing, foreign-owned and not-ready assets", async ({
+    request,
+  }) => {
+    const canvasId = `${serverCanvasId}-metadata-negative`;
+    const foreignOwnerId = "p3-foreign-media-owner";
+    const database = openAppDatabase();
+    const original = database.prepare(`
+      SELECT owner_id, storage_status
+      FROM media_assets
+      WHERE kind = 'image' AND id = ?
+    `).get(serverImageAssetId) as {
+      owner_id: string;
+      storage_status: "failed" | "pending" | "ready";
+    } | undefined;
+    if (!original) {
+      database.close();
+      throw new Error("P3 metadata negative test image was not registered");
+    }
+
+    const expectBlocked = async (assetId: string) => {
+      await request.delete(`/api/canvas/${canvasId}`);
+      const saved = await request.put(`/api/canvas/${canvasId}`, {
+        data: {
+          edges: [{
+            data: { inputOrder: 1, inputRole: "subject" },
+            id: "metadata-negative-edge",
+            source: "metadata-negative-image",
+            target: "metadata-negative-video",
+          }],
+          nodes: [
+            {
+              data: {
+                assetId,
+                imageSrc: `/api/assets/${assetId}`,
+                inputState: "ready",
+                mediaByteSize: 1,
+                mediaContentType: "image/png",
+                mediaMetadataSource: "server",
+                mediaMetadataStatus: "ready",
+                mediaStorageBackend: "local",
+                title: "伪造可信状态的图片",
+              },
+              id: "metadata-negative-image",
+              type: "image",
+            },
+            {
+              data: {
+                title: "元数据负控目标",
+                videoPrompt: "服务端必须重新核对素材归属和状态",
+              },
+              id: "metadata-negative-video",
+              type: "video",
+            },
+          ],
+          revision: 0,
+          viewport: { x: 0, y: 0, zoom: 1 },
+        },
+      });
+      expect(saved.ok()).toBeTruthy();
+      const revision = (await saved.json() as { revision: number }).revision;
+      const response = await request.post("/api/generation-tasks/preflight", {
+        data: {
+          canvasId,
+          canvasRevision: revision,
+          idempotencyKey: `p3-metadata-negative-${assetId}-${Date.now()}`,
+          inputSchemaVersion: 1,
+          inputs: [],
+          kind: "video",
+          model: serverModelId,
+          nodeId: "metadata-negative-video",
+          ownPrompt: "服务端必须重新核对素材归属和状态",
+          parameters: { inputMode: "multimodal" },
+          prompt: "客户端伪造提示词",
+        },
+      });
+      expect(response.ok()).toBeTruthy();
+      const preflight = await response.json() as {
+        canSubmit: boolean;
+        inputs: Array<{
+          compatibility: string;
+          reason?: string;
+          sourceNodeId: string;
+          state: string;
+        }>;
+        problems: Array<{ code: string; message: string }>;
+      };
+      expect(preflight.canSubmit).toBeFalsy();
+      expect(preflight.inputs.find(({ sourceNodeId }) =>
+        sourceNodeId === "metadata-negative-image"))
+        .toMatchObject({
+          compatibility: "blocked",
+          reason: "素材不存在、尚未保存或不属于当前账号",
+          state: "invalid",
+        });
+      expect(preflight.problems).toContainEqual(expect.objectContaining({
+        code: "INVALID",
+        message: "素材不存在、尚未保存或不属于当前账号",
+      }));
+    };
+
+    try {
+      const timestamp = new Date().toISOString();
+      database.prepare(`
+        INSERT OR IGNORE INTO users (
+          id, login_name, display_name, password_hash, role, status,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 'user', 'active', ?, ?)
+      `).run(
+        foreignOwnerId,
+        foreignOwnerId,
+        "P3 Foreign Media Owner",
+        "test-only-not-a-login",
+        timestamp,
+        timestamp,
+      );
+      await expectBlocked("p3-missing-image");
+
+      expect(database.prepare(`
+        UPDATE media_assets SET owner_id = ?
+        WHERE kind = 'image' AND id = ?
+      `).run(foreignOwnerId, serverImageAssetId).changes).toBe(1);
+      await expectBlocked(serverImageAssetId);
+
+      expect(database.prepare(`
+        UPDATE media_assets SET owner_id = ?, storage_status = 'pending'
+        WHERE kind = 'image' AND id = ?
+      `).run(original.owner_id, serverImageAssetId).changes).toBe(1);
+      await expectBlocked(serverImageAssetId);
+    } finally {
+      try {
+        database.prepare(`
+          UPDATE media_assets SET owner_id = ?, storage_status = ?
+          WHERE kind = 'image' AND id = ?
+        `).run(original.owner_id, original.storage_status, serverImageAssetId);
+        database.prepare("DELETE FROM users WHERE id = ?").run(foreignOwnerId);
+      } finally {
+        database.close();
+        await request.delete(`/api/canvas/${canvasId}`);
+      }
+    }
+  });
+
+  test("a ready Text supplies an empty Video Prompt while a new media edge upgrades mode in the same undo step", async ({
     page,
     request,
   }) => {
@@ -546,7 +910,15 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
     const saved = await request.put(`/api/canvas/${canvasId}`, {
       data: {
         edges: [{
-          data: { inputOrder: 1, inputRole: "reference-image" },
+          data: { inputOrder: 1, inputRole: "instruction" },
+          id: "p3-ui-text-edge",
+          source: "p3-ui-text",
+          sourceHandle: "source",
+          target: "p3-ui-video",
+          targetHandle: "target",
+          type: "cuttable",
+        }, {
+          data: { inputOrder: 2, inputRole: "reference-image" },
           id: "p3-ui-existing-edge",
           source: "p3-ui-image-1",
           sourceHandle: "source",
@@ -555,6 +927,16 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
           type: "cuttable",
         }],
         nodes: [
+          {
+            data: {
+              content: "上游文字直接作为视频生成指令",
+              title: "视频生成文字",
+            },
+            id: "p3-ui-text",
+            position: { x: 80, y: -230 },
+            style: { height: 250, width: 250 },
+            type: "text",
+          },
           {
             data: {
               assetId: serverImageAssetId,
@@ -582,7 +964,7 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
               title: "Video目标",
               videoModelId: serverModelId,
               videoParameters: { inputMode: "text" },
-              videoPrompt: "用参考素材生成商品视频",
+              videoPrompt: "",
               videoPromptReady: true,
             },
             id: "p3-ui-video",
@@ -599,8 +981,8 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
 
     await page.goto(`/__fixture/${canvasId}`);
     const world = page.getByTestId("canvas-world");
-    await expect(world).toHaveAttribute("data-node-count", "3");
-    await expect(world).toHaveAttribute("data-edge-count", "1");
+    await expect(world).toHaveAttribute("data-node-count", "4");
+    await expect(world).toHaveAttribute("data-edge-count", "2");
     await page.locator('.react-flow__node[data-id="p3-ui-video"]').click();
     const creator = page.getByTestId("video-creator");
     await expect(creator).toBeVisible();
@@ -610,23 +992,26 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
       .toBeVisible();
 
     await connectNodes(page, "p3-ui-image-2", "p3-ui-video");
-    await expect(world).toHaveAttribute("data-edge-count", "2");
+    await expect(world).toHaveAttribute("data-edge-count", "3");
     await expect(creator.getByRole("button", { exact: true, name: "全能参考" }))
       .toBeVisible();
+    await expect(creator.getByTestId("video-creator-prompt")).toHaveValue("");
+    await expect(creator.getByTestId("upstream-input-p3-ui-text")).toBeVisible();
+    await expect(creator.getByTestId("upstream-input-problem")).toHaveCount(0);
 
     await page.keyboard.press("Meta+z");
-    await expect(world).toHaveAttribute("data-edge-count", "1");
+    await expect(world).toHaveAttribute("data-edge-count", "2");
     await expect(creator.getByRole("button", { exact: true, name: "文本" }))
       .toBeVisible();
 
     await connectNodes(page, "p3-ui-image-2", "p3-ui-video");
-    await expect(world).toHaveAttribute("data-edge-count", "2");
+    await expect(world).toHaveAttribute("data-edge-count", "3");
     await expect(creator.getByRole("button", { exact: true, name: "全能参考" }))
       .toBeVisible();
     await page.getByTestId("upstream-input-p3-ui-image-2")
       .getByRole("button", { name: /删除引用/ })
       .click();
-    await expect(world).toHaveAttribute("data-edge-count", "1");
+    await expect(world).toHaveAttribute("data-edge-count", "2");
     await expect(creator.getByRole("button", { exact: true, name: "全能参考" }))
       .toBeVisible();
     await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
@@ -635,16 +1020,19 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
       edges: unknown[];
       nodes: Array<{ data: { videoParameters?: { inputMode?: string } }; id: string }>;
     };
-    expect(persisted.edges).toHaveLength(1);
+    expect(persisted.edges).toHaveLength(2);
     expect(persisted.nodes.find(({ id }) => id === "p3-ui-video")?.data.videoParameters)
       .toMatchObject({ inputMode: "multimodal" });
 
     await page.reload();
-    await expect(world).toHaveAttribute("data-edge-count", "1");
+    await expect(world).toHaveAttribute("data-edge-count", "2");
     await page.locator('.react-flow__node[data-id="p3-ui-video"]').click();
-    await expect(page.getByTestId("video-creator")
+    const restoredCreator = page.getByTestId("video-creator");
+    await expect(restoredCreator
       .getByRole("button", { exact: true, name: "全能参考" }))
       .toBeVisible();
+    await expect(restoredCreator.getByTestId("video-creator-prompt")).toHaveValue("");
+    await expect(restoredCreator.getByTestId("upstream-input-problem")).toHaveCount(0);
     const after = await (await request.get("/api/generation-tasks/status")).json() as {
       paidProviderRequests: number;
     };

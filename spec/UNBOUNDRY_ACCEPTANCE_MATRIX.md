@@ -1,19 +1,71 @@
 # Unboundry 绿地复刻验收矩阵
 
 基线日期：2026-07-27  
-当前状态更新：2026-08-07
+当前状态更新：2026-08-16
+
+2026-08-16 `INC-VIDEO-001 / V0.6.2 REAL WORKFLOW SMOKE = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_RECHECK`：用户授权真实API消耗后，在生产建立并运行`Text → Image`整组工作流。整组Text先成功，Image随后才启动；两个任务均attempt1、Provider attempt1、retry0。唯一图片为`1:1 / 1K`，结果PNG 1024×1024、OSS ready；刷新后Group、连线、文字和图片均持久。随后Grok首帧按真实中转契约修为`images`数组，正式全量`118/118 specs、965/965 tests`通过并发布到`v0.6.2-inc-video-001-20260816`。Grok修复后请求被受理，但中转上游两次0%网络超时，停止重试并把默认视频模型切为Seedance；Seedance无人物文生视频task`c0269665-4db5-46a1-bc13-2d5574a66cca`一次成功，4秒/480p/无音频，MP4 864×496、OSS ready，刷新后浏览器可播放。真人参考图被Seedance内容安全拒绝，记录为Provider限制。公网ready active/schema39，数据库tasks126/attempts125/active0、quick_check ok/FK0。该结果证明真实低成本闭环，不代替用户明早的内容与交互验收。
+
+2026-08-16 `INC-UI-002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：框选仍对普通节点保留局部相交语义，但Group只有被选框完整包含才进入框选，解决巨大Group误选和打组范围扩大；Image/Video/Audio共用OSS/媒体读取失败占位并保留原asset/source，CSP只在`img-src/media-src`放行`https://*.aliyuncs.com`，生成/上传错误继续位于恢复层上方；Text/Image/Video/Audio/Playlist/Group/Storyboard七类长标题统一省略并暴露完整title。build PASS，`m41+m98 54/54 PASS`；正式安全全量 `118/118 specs、965/965 PASS`，异常0、4173不变、真实Provider/OSS/付费请求0。生产已运行v0.6.2/schema39；SEL-001、MEDIA-LOAD-001～003、TITLE-001～007等待用户线上复验。
+
+2026-08-16 `INC-UI-001 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：设置页返回来源画布、返回工作空间、浏览器favicon与动态标题已发布。返回优先级为`URL from → 当前账号本标签最近真实项目 → 工作空间`，只接受当前账号项目ID并以只读项目列表校验，默认画布不作为返回动作的隐式兜底。受影响10份spec `102/102 PASS`，新增与多项目定向`m66 28/28 PASS`；最终正式安全全量为`118/118 specs、965/965 PASS`且所有异常计数0，Provider/付费/OSS请求0、4173不变。NAV-001～004、BRAND-001～003仍为`USER_RECHECK`，生产现为v0.6.2/schema39。
+
+2026-08-15 `INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`：整组生产调用路径已改为事件驱动DAG流水；多个直接生成式上游严格AND，分流独立推进、汇流等待全部、失败只阻塞后代，四类节点提交前刷新runtime preflight；静态不兼容仍零任务阻止整组。正式full基线`117/117 specs、959/959 PASS`，v0.6.1准入修复后相关8份spec `110/110 PASS`，精确HEAD build PASS，Provider请求0。生产已切换到不可变v0.6.1目录；公网version/live/ready及主JS哈希通过，schema39 quick_check ok/FK0，tasks109/attempts107/active0和并发500前后不变。用户随后在线上实页复验并明确确认“通过通过”。
+
+2026-08-15 `INC-ECOM-006 = PRODUCTION_PUBLISHED_USER_PASS`：用户明确“确定 发布”，第三批P0/P1/P2共12条已单事务导入生产。恢复副本与生产写后兼容审计均为全库43/43 PASS、第三批12/12 PASS、问题0；生产43条模板、42条published，第三批12/12均有graph+preview，公网12张封面HTTP200 image/jpeg。schema39 quick_check ok/FK0、service active/enabled、NRestarts0。发布前后tasks109、Provider attempts107、active0，并发/RPM均保持500，Provider/付费生成/OSS变化0。用户随后明确“都通过了”，第三批可见性与视觉验收收口为PASS。
+
+2026-08-15 `INC-ECOM-005 = PRODUCTION_PUBLISHED_USER_PASS`：用户已确认继续`v0.6.0`并允许发布，第二批P0/P1/P2共12条电商工作流已事务导入生产。生产兼容审计12/12 PASS、问题0；运行时目录读取第二批12/12 graph+preview，公网12张封面均HTTP200 image/jpeg。生产现31条模板、30条published且全部有preview；schema39 quick_check ok/FK0，service active/enabled、NRestarts0。发布前后tasks109、Provider attempts107、active0，并发/RPM仍全部500，Provider/生成/OSS变化0。模板默认图是数据库JSON数据，应用时复制为新画布节点，不是前端组件条件硬编码；用户随后明确第二批实页验收“通过1”。
 状态：`AUTHORITATIVE`  
 状态夹具：`unboundry-state-fixtures.json`
 
+2026-08-16 当前权威状态：生产已运行 `v0.6.2/schema39`，`INC-VIDEO-001 = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_RECHECK`，`INC-UI-001/002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-010/011 = PASS`，`PRODUCTION = LIVE`。既有用户验收全部保留，新UI修复与视频闭环等待用户线上肉眼确认；专用分支已推送，`v0.6.2`标签精确绑定生产源码commit`959c1e287…`，Draft PR #1已更新且CLEAN。
+
+最新核验为service active+enabled、NRestarts0、current→`releases/v0.6.2-inc-video-001-20260816`、公网version 0.6.2/live/ready/root正常；schema39/quick_check ok/FK0、active generation0、126 tasks/125 attempts、43 public templates（42 published）。成功视频asset`fbfed94d-e41e-4858-8e7e-96c4eae98c4a.mp4`为OSS ready；默认视频模型为Seedance。上一不可变release、v0.6.0原schema37备份、整机schema39包及既有用户验收继续保留。未实际运行的两张付费图片仍作为可选付费抽验延期，既有PARTIAL/PAUSED/BLOCK/NOT_STARTED条目保持不变。
+
 2026-08-07 三功能新增 21 条（TPL-001～007 / ZIP-001～006 / KEY-001～008）已全部经用户实页验收为 `PASS`，M11 放行门达成；其余历史统计与状态仍以各节为准，`INPUT-006`保持`PARTIAL`（Mureka真实生成暂缓）。
 2026-08-07 权限管理（PERM-001～012）与公共模板（PUB-001～011）已全部经用户实页验收为 `PASS`，两功能放行门达成；生成安全「并发与频率」上限按用户要求放宽至 1000（v33）。
+2026-08-09 用户实页确认 `STORAGE-004 / PERF-002～005 / DEP-004` 全部通过；六项均由 `USER_RECHECK` 改为 `PASS`，该验收收口时点矩阵无 `USER_RECHECK` 项。
+
+2026-08-15 `INC-ECOM-004 = PRODUCTION_STATIC_COVERS_DEPLOYED / USER_VISUAL_PASS`：16张1200×675 JPG已为16条电商模板写入静态资源和`preview_image`，生产18条published模板现`withPreview=18 / withoutPreview=0`。本地build与源/构建副本16/16哈希PASS，m77 `9/9 PASS`；生产最终manifest `340452f7…d7a9`、inventory `1d795f29…f464`绑定formal base、内容commit、来源/授权manifest、receipt以及`client/public`/`dist/client`双目录字节。首轮source-only产物被公网哈希门检出HTML fallback后退役保留，修正版上线后16/16公网文件均HTTP200、`image/jpeg`且SHA相符，live/ready/version/root正常，schema39 quick_check ok/FK0/active0。发布前后tasks109、Provider attempts107；并发500、Provider配置与数据manifest不变，OSS和付费生成0。用户随后明确“都通过了”；本次仍不声明fresh formal builder或full regression。
+
+2026-08-15 `INC-ECOM-002 = PRODUCTION_STATIC_REPAIR_PASS / ONE_REQUEST_REAL_IMAGE_SMOKE_PASS / USER_RESULT_PASS / OPTIONAL_PAID_GENERATION_DEFERRED`：参考图prepare/send拆锁、Provider前后五类错误、模型显式选择、模板edge语义保留、公共模板发布兼容门和管理页状态已实现；Storage busy及1/5/20并行专项通过。生产19条模板事务绑定后为`PASS=19 / NEEDS_MODEL=0 / INVALID=0`，99个执行节点缺模型0；目标模板2个Text与3个Image均已绑定，`工艺拆解·完整商品`一次1K真实smoke成功。用户随后明确“都通过了”。另外两个图片节点和其他电商视频未再次付费生成，只作为可选内容抽验延期；并发与OSS未改。
+
+2026-08-15 `INC-ECOM-003 = REAL_IMAGE_SMOKE_FAIL_PROVIDER_TIMEOUT / GPT_IMAGE_TIMEOUT_REPAIR_DEPLOYED / OUTCOME_UNKNOWN_NO_AUTO_RETRY`：按用户授权仅对「服装详情页｜面料与工艺拆解」的`工艺拆解·完整商品`提交一次真实图片请求；task `e5cfd5bc-2863-4eb1-9546-4a93c76b17e7`、Provider attempt 131在约121秒后失败，`provider_task_id`和`result_asset_id`均为空。参考图/OSS/静态预检已通过，但同步Provider没有留下可恢复任务ID；系统未自动重提。根因是GPT Image专用同步路径误用120秒通用JSON期限，现已复用统一submit 180秒合同；定向66/66和正式full 954/954通过。formal final `de0551c8187156f0283f330a39e15e5825f1f2c5` / manifest `5386c74440f8868719bb7942af31437a1a2dfcbb9de28d604ccf836ddc1478b1`已部署，公网健康、schema39 quick_check、active0正常；tasks108/attempts106不变于部署前。并发500和OSS配置未改。该项不是图片结果PASS或USER PASS；第二次生成必须新授权。
+
+2026-08-15 后续新授权的成本受控复验：仍只运行`工艺拆解·完整商品`，保持GPT Image 2专用协议、3:4、1K，不运行另外两图且不重试。task `9e4faf78-e466-4ae7-8799-2c9d2150bed6`、Provider attempt 132约58.6秒一次成功，ready结果asset `9f755d07-42df-47a0-9bd1-443030244a59`为PNG `1023×1537`、1,545,396 bytes、SHA-256 `ecf51e6c…ddb44`；tasks109/attempts107/active0、quick_check ok。该单节点真实技术smoke为`PASS`，用户现已确认结果通过；未实际生成的另外两图不写成真实生成PASS。
+
+2026-08-15 `INC-ECOM-001 = PASS`：重复结果 URL 解析与整组执行静默停止已修复，零费用定向 `34/34 PASS`、TypeScript/build PASS；既有任务 `9687eb96-b4b3-44c6-bf40-7fb31a854137` 只轮询原 Provider 任务 `105388646` 后成功，Provider attempt 仍为唯一一条 execution attempt1，没有第二次提交；结果素材 `860bccb1-bb24-4683-9985-4335a5f95b81` 已绑定原节点并通过文件 checksum、schema39 integrity/FK0、active0、公网健康验证。用户随后明确“都通过了”，原结果恢复与错误提示完成用户收口。
+
+2026-08-13 用户在隔离实页发现 default 项目卡片错误路由与 Video 重复 Prompt 两个历史覆盖缺口；`CANVAS-019 / INPUT-005` 已在候选中修复并由安全定向17/17通过。用户随后在端口58352的同一隔离实页明确确认两项修改均通过，二者恢复为 `PASS`。页面修复后的首轮 full `930/931` 暴露 m44 协作 current-open reservation 竞态；产品协议修复后 m44+m91 targeted `15/15`，fresh full `117/117 specs、931/931 PASS`，异常计数全0，证据绑定文档同步前 429-file snapshot `db91d80b…`，4173 listener不变、suite cleaned、exit0。
+历史阶段记录（最终候选前）：REM-001～REM-009B 已进入`USER_REVIEW`，REM-010当时仍为`IN_PROGRESS`；runtime/lease/drain、m92严格fixture修复、Docker/第二验证机builder/ops、页面与reservation修复及脏树单轮931/931均已完成，但当时尚不是fixed candidate或REM-011三轮。该历史证据、`1e96e26f…`与`db91d80b…`指纹继续保留，不冒充最终候选。
+
+2026-08-13 commit `8b639ffe6c5f091c51e1914f2e2c18edf9333d90` / tree `219c4df072426cfe92f33dc4045f021064972e9c` 的 429-file、source/snapshot `652b946…`、三个 full 合计2793/2793、两包竞态合计1140/1140与旧G0～G6继续作为产品 core 历史基线。F-054 后确认该 runtime 在schema37只提供health-only standby，m95/rehearsal bridge为合成夹具，不是可发布桥梁。随后 pre-formal 双引擎实现与75/75定向门仅作为历史过程证据。
+
+2026-08-14 formal bridge B13 `51ef51ad18ae7cb7053147ba3c1dc8577fcd771d` / tree `663228d401a03e0afaa4d644aa54347f065f3eaa` / v0.5.2 与其唯一直接子 final F13 `a9051ce896cb6dda8e1ec6d1593f1de128484378` / tree `94bd8ccd8febb61aaa07304423f9c2242f4e96ac` / v0.6.0 曾固定，B→F仅package/lock三个版本值变化。formal targeted79/79、三轮full2826/2826、两轮六spec竞态1380/1380均通过且异常0；隔离非生产Linux production-validation外层receipt SHA `8f1ea003…` PASS，完成B37→B39→F39→B39 rollback→F39 reswitch、真实60秒drain与备份恢复，成功外部出站0。F13非根234节点依赖图与REM-008历史audit0图一致但非fresh audit。该证据时点REM-010/011进入`USER_REVIEW`；G5 formal Linux supplement PASS且`formalG5Evidence=true`，G6 `USER PASS`。这些现仅作为B14/F14重铸的回归基线；2026-08-14时点状态以下方原生产预检段为准，最终状态以上方2026-08-15当前权威段为准。
+
+2026-08-14，用户在隔离临时数据与动态 loopback 端口完成 G6 并明确最终通过：A 为 B13/schema37 登录、Text/Image 与画布读写，文字节点在固定 250×250 内自动换行；B 为真实 60 秒排空及 v37→39 migration 后，在 F13/schema39 编辑、保存、重载；C 为回切 B13/schema39 后编辑、保存、重载；final 为再次切回 F13 的最终视觉复核。rollback 后画布 API 写入缺口由 C 阶段关闭。G6 证据 SHA-256 `d9f781600e169b93da6955fbc3395a24747edde148942b12fdcec7fa3d85358d`。F13 阶段曾手动点击一次合成禁用 Provider 的 `/test`，返回 HTTP 400；`generation_provider_attempts=0`、无付费生成、成功外部出站 0，但不得写成所有 Provider/test 请求为 0。该 USER PASS 仅覆盖隔离候选，不是原生产、真实 Provider/OSS、公网兼容或发布证明。
+
+2026-08-14 G5 外置控制器的 Mac synthetic-test 资格验证 PASS：controller SHA-256 `c78a6a367f07b72a043baf31e8d9ac80a459b029b26c4c50be7735415950b8b4`，receipt SHA-256 `6f2f2dcefbd45e2e1860c5017158d68ccd7a3e902bed946744725e98f098946d`，requests JSONL SHA-256 `49eddde273e06f33cf5aa6269d8fb3278d01d0b3eb2953d28bc3ee411d86ab23`。同一合成 B/F 夹具按 B37→B39→F39→B39 rollback→F39 reswitch 五阶段执行，7 路 GET × 每路20次，共 `700/700` 完整且语义有效；mismatch/reset/timeout/oversize/其他传输错误均为0，观测 max `9.102ms`（仅为本机观测，不是 production SLO）。另有 valid/500语义错/partial reset/hard timeout/oversize/connection-refused 六类 loopback 状态机自测 PASS；4173 既有 listener 身份前后不变。该 receipt 明确 `formalG5Evidence=false`，只证明控制器与合成夹具资格，不是 Linux formal B13/F13、原生产或发布证据。
+
+2026-08-14 同日，DEC-REM-007 授权的单次 formal Linux supplement 在既有第二台非生产验证机完成。executionId `61b1b5dfab2e78ec4fd8d93a2caa13af3f3e724cadb489133ff6b0e191d8e755`；approval SHA-256 `dfc267e115b2278a30c8f6b214fe30bef05abe7f0075856fc3686b5cfecccc6b`；wrapper/formal controller/helper 分别为 `74e63ac68dd6a42f89f37dd577219adff5a4b3de320108a6e3f932aa2d8a4e43` / `41d5173e399a4b9dae0161e9d357254d5f4c6d6685af8c8b3b223cef83b82adb` / `46ec2a44fa71ba84eac7ffc02a561fedbe0a5550d3a6fa257cb8404b01d000c4`。outer receipt `PASS / formalG5Evidence=true` SHA-256 `ed319a33611c8b0454fdab16e0ae85cc27bb1711a5c10a6df389bc57ee8d620b`，inner candidate `380ec25897f8d642c379301a313a572eb20d31e75a1ffefcc454a89487b64ad0`，requests `15d69b90ffdd4a686fd3653f664c0ec90f933281e16757f57ce07f13e5f43a92`。B37/B39/F39/B39_ROLLBACK/F39_RESWITCH 每阶段140，共`700/700`完整且语义有效，mismatch/reset/timeout/oversize/other均0；p50/p95/p99/max `24.633/74.981/89.501/103.58ms`，deadline2000ms，`productionSlo=false`。六类loopback状态机PASS；final schema39 integrity ok/FK0/marker absent/Provider attempts0；Provider/OSS/付费workload0；private net/process/caps均0。host before=after SHA `5474649e…`，4173=0、uid996=0，旧roots/services/nginx/原生产路径不变，root sealed、cleanup0。G6 C已关闭rollback API write，因此G5 coverage为`PASS`；上述延迟不是原生产SLO。
+
+2026-08-14 原生产只读预检后，B13禁止上线。B14 `3b48f61c…` / tree `c8b0d75c…` 与唯一直接子 F14 `eb4f99ea…` / tree `86b4e424…` 已形成，proof `517d2d24…` PASS；只追加两个完整exact hash并同步runtime/backup两门。两版m81 41/41、发现117 specs/944 tests、tsc/source coverage/build PASS；clean F14 targeted `81/81`、三轮full `2832/2832`、两轮race `1420/1420`全部PASS，异常0、snapshot `6af5b891…`与4173不变、suite cleaned、均exit0；Linux未完成。用户最新已授权 `v0.5.2` bridge 的全部剩余门：formal Linux/bwrap、OSS只读HEAD/GET、维护停服、完整备份恢复、严格rowid14修复、Node22.23.2副本补证、切换与必要回滚；当前尚未完成停服/写库/迁移/切换。
+
+F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b57009ec02e6973be441b5585bf`；full1/2/3 `1f6f958d57ee855b0272ddd2576277deef6ea3e299e5ccdc597d4ca1d4559741` / `903096ed64412e184dcefecfc28c6fedda809c17a570d3fa8729a3d176560b0b` / `adecd5164828a87452bf5974a594c19da2e00e54f4aed281c113d57240b7917a`；race1/2 `3d1b64868ef60e769158b31ee4f94efbed0015d251cfdac8b48f27f8918c5a18` / `fc08356cf3bc9eb96e8b18abdd9789b96aa615361897a205240537e2ba29eb46`。
+
+`v0.5.2` 验收边界：同一不可变双引擎产物由共享supervisor只读选schema；schema37只开放登录/会话、项目/画布等基础业务读写和既有媒体读取，高风险generation/media mutation全部fail-close，`generation_provider_attempts=0`且成功外部出站0；schema39提供完整回滚；schema38/未知拒绝，启动/健康不迁移。`v0.6.0`为独立final，必须显式迁移后在schema39完整营业并能回滚到同一`v0.5.2`。bridge与final各需独立manifest/hash、三轮/竞态/全发现零异常；当前 bridge 准备授权不等于发布、迁移或 final 授权。
+
+本轮已关闭四项P1：exact-old child只做checksum warmup且duration留给显式migrator；bridge/final共用并反复认证稳定工具先决件；source-pair只允许0.5.2直接子0.6.0改package/lock三个版本值；m92从认证manifest启动两个产物并调用bridge产物内migrator。首轮关键七spec `74/75`的唯一失败是测试`fetch`未保留生产Host；产品安全规则未放宽，改用`node:http`并补生产头正反例/Cookie安全属性后，m92 `2/2`、最终七spec `75/75`。最终定向发现117/938，异常计数0、denied186、builder1/5/1/0，证据绑定文档同步前440-file source/snapshot `47fc53b9…`，snapshot/listener不变、cleaned/exit0。这是Mac synthetic定向门，不是full、formal双提交、Linux production或G0～G6证明。
+
+`1e96e26f…` 是 m92 fixture 窄修复后、上一轮六文档同步前脏功能树的历史 tested source 指纹；不绑定 commit，也不冒充最新或正式候选 full。
 
 ## 1. 判定规则
 
 | 状态 | 含义 |
 |---|---|
 | `NOT_STARTED` | 复刻实现尚未验收 |
-| `PASS` | Unboundry 证据、自动检查、真实浏览器人工验收全部通过 |
+| `IN_PROGRESS` | 用户已明确授权该项，正在隔离实施；通常只允许一个独立施工流。F-054 后 REM-010/011 属同一双版本收口流，可同步为该状态 |
+| `PASS` | 该项适用的证据完整且已经用户确认；可见产品行为还必须有真实浏览器验收。PASS 不自动扩张到未执行的真实 Provider、OSS 或生产环境边界 |
+| `USER_REVIEW` | 文档或工程基础设施候选已完成，等待用户按证据/文档复核；不要求伪造浏览器实页 |
 | `USER_RECHECK` | 候选实现和自动检查已完成，仍必须等待用户实页确认 |
 | `PARTIAL` | 当前范围已有真实证据，但同一条目的剩余必要条件尚未完成 |
 | `BLOCK` | 用户验收失败、证据不足或必要外部能力不可用 |
@@ -150,7 +202,7 @@
 | GEN-007 | P0 | — | 幂等提交和服务重启不重复任务、不重复历史；内部持久任务表、请求指纹、状态事件审计、真实Provider提交、结果素材发布和画布引用已接通；真实图片与真实视频结果均通过停止、重启、刷新、历史和下载复验 | 图片任务`438b50dd-cd9c-42ed-8321-1fcbd49adf35`和视频任务`788ebeaa-b37d-499a-becc-64ae16f2a9f5`均保持唯一任务/历史/媒体和画布引用；视频重启后数据库仍为7条任务且只有1条视频任务，2026-08-01用户实页确认 | PASS |
 | GEN-008 | P0 | `node.text.creator-open` | 选中文字节点后显示参考素材、提示词、模型、数量和提交区；失焦关闭；真实能力接入前所有动作按钮保持禁用且不得调用付费 Provider | 参考38–39、控件状态、网络检查及用户实页复验 | PASS |
 | GEN-009 | P0 | `node.image.reference-ready` | 图片节点通过连线成为目标图片生成节点的参考素材；目标输入区显示参考图缩略片，删除缩略片同时删除对应连线，撤销同时恢复连线与缩略片；提交只保存归属当前账号且状态ready的素材ID，执行时才生成短时私有OSS地址或校验后的本机PNG数据，不持久化短时地址；模型不支持或超过上限时必须拒绝且不得调用Provider | 2026-07-31 Unboundry单张图片活体补测、OpenRouter官方`input_references`规则、构建、图片节点9项及Provider/任务/上传/模型13项零付费自动检查；2026-08-01用户实页确认通过 | PASS |
-| GEN-010 | P0 | 图片生成恢复轮询 | 页面在图片任务仍运行时重载/重挂载后，节点必须自动继续轮询并在服务端成功后即时显示结果，无需再手动刷新；文字/音频/视频已有同等恢复行为 | m41 新增回归用例（运行中重载→自动出图）15/15、m2 图片节点全过、tsc/构建通过；2026-08-08 修复 ImageNode 恢复分支只置“生成中”不恢复轮询的缺陷 | USER_RECHECK |
+| GEN-010 | P0 | 图片生成恢复轮询 | 页面在图片任务仍运行时重载/重挂载后，节点必须自动继续轮询并在服务端成功后即时显示结果，无需再手动刷新；文字/音频/视频已有同等恢复行为 | m41 新增回归用例（运行中重载→自动出图）15/15、m2 图片节点全过、tsc/构建通过；2026-08-08 修复 ImageNode 恢复分支只置“生成中”不恢复轮询的缺陷；2026-08-09 用户实页确认通过 | PASS |
 
 ### 7.1 节点入参与引用优化
 
@@ -160,7 +212,7 @@
 | INPUT-002 | P0 | 统一输入解析与UI状态 | 从edge解析来源及`empty/uploading/ready/invalid/missing`；统一引用卡、角色、顺序、阻塞原因、删除/撤销和刷新恢复 | 四节点已共用edge解析器、引用卡和阻塞状态；2026-08-05用户实页确认就绪/上传中断/来源缺失/校验失败状态卡与原因、edge保留、删卡/撤销/刷新持久化（隔离4188），结合INPUT-007刷新与服务重启证据收口 | PASS |
 | INPUT-003 | P0 | Image的Text+Image闭环 | 上游Text作为提示词母版，上游Image作为参考图；自身Prompt为空可用母版，两者都有时显示最终合并Prompt；服务端保存不可变输入快照 | Text+Image、最终Prompt预览、assetId输入快照及前后端预检已有候选；2026-08-05用户实页确认空Prompt使用母版、补充后显示合并最终Prompt、删卡/撤销/刷新保持（隔离4189 fixture、零付费） | PASS |
 | INPUT-004 | P0 | Text四类上游 | Text、Image、Video、Audio均可作为理解输入；自身指令默认必填，模型可配置上游Text替代；不支持媒体时保留edge并显示模型不兼容 | Text已接共享解析、四类引用卡、任务快照和真实任务入口；2026-08-05用户实页确认紧凑四类引用卡、详情浮层唯一、+N溢出及不可生成提示收起（零费用）；真实任务`09ec3592-69d7-4dab-8f41-cf7d7c97f784`用Gemini 3.5 Flash Lite连Image/Video/Audio三上游成功生成并返回结果，任务快照三入参完整；用户宣布验收通过 | PASS |
-| INPUT-005 | P0 | Video全能参考 | Text、Image、Video、Audio卡片及首帧/尾帧/主体/普通参考角色；Seedance当前规则最多9图/3视频/3音频；提交前完成参数、费用和Provider能力预检 | Video已接四类解析、角色、数量、阻塞原因和任务快照；2026-08-05用户实页确认四类卡片、主体/参考图片/参考视频/参考音频/指令角色、首尾帧模式切换、仅文字模型切换保留不兼容edge及刷新持久化（隔离4185、零费用）；9图/3视频/3音频真实提交已打通：4173 真实画布 Seedance 2.0 Mini 全能参考 9图/3视频/3音频（视频1280×720、合计14.5秒，音频合计14秒）点击 Generate，方舟任务`cgt-20260805223417-9jrxf`成功，结果进入私有OSS（4.096秒，¥2.54，usage 181,210 tokens）；提交前预检与 Provider 能力预检证据齐备，另补参考视频总像素≥409600 的服务端校验与存量回填；用户在4173实页确认结果并宣布验收通过 | PASS |
+| INPUT-005 | P0 | Video全能参考 | Text、Image、Video、Audio卡片及首帧/尾帧/主体/普通参考角色；已就绪上游Text或Video本节点Prompt任一即可提供最终Prompt，两者都有按顺序合并、两者都无仍阻止；Seedance当前规则最多9图/3视频/3音频；提交前完成参数、费用和Provider能力预检 | 2026-08-05 四类卡片、角色、持久化及9图/3视频/3音频真实生成 PASS 证据继续保留。2026-08-13 用户发现旧规则虽已解析 `Text → Video`，仍误强制重复填写本节点Prompt；共享前后端解析器已修正，m30 同一既有测试覆盖 `Text + Image → Video` 空本节点Prompt通过、无任何文字仍阻止及服务端零任务/零付费请求，定向17/17通过；用户随后在当前隔离实页确认提示消失与连线语义正确 | PASS |
 | INPUT-006 | P1 | Audio文字合并 | 只接受Text上游；区分上游母版、自身Prompt和歌词，展示最终合并结果；重试不得重复任务 | Audio已接上游Text解析和合并候选；2026-08-05用户实页确认母版/自身Prompt/歌词区分显示、合并正确、角色切换与刷新持久化（隔离4186、零费用）；Mureka真实生成仍由`AUDIO-REAL-001`暂缓 | PARTIAL |
 | INPUT-007 | P0 | 新模型、预检和持久化 | 管理员配置输入类型、数量、角色、组合、必填条件和Provider适配；不兼容切换不静默删引用；刷新/重启/复制/删除/重试不重复 | 管理页、共享角色/组合/Prompt策略、服务端重解析和输入快照已有候选；2026-08-05用户实页确认模型切换保留不兼容edge、首尾帧角色策略、9图/3视频/3音频超限提示、删除/撤销、刷新与服务重启持久化（隔离4187），复制目标唯一且不复制引用、上传中断/来源缺失/校验失败状态保留edge并显示原因、刷新持久化（隔离4188）；全程零费用、任务0、媒体1、副本唯一；重试/历史去重/余额保护由既有`OPEN-007/DATA-004/SAFETY-001`覆盖 | PASS |
 
@@ -177,20 +229,32 @@
 | AUTH-002 | P0 | — | owner 可邀请/撤销，member 不可管理成员；团队项目和成员系统均按用户决定后期再做 | 用户决定后期再做 | PAUSED |
 | AUTH-003 | P0 | `tests/m9-provider-secret-safety.spec.ts` | Provider 密钥不进入浏览器源码/产物、请求头、外部网络、仓库敏感文件或错误响应；当前零Provider接入 | 源码与生产包扫描、浏览器网络、4类错误响应及敏感文件检查 | PASS |
 | OPS-001 | P0 | — | 当前未部署服务只监听`127.0.0.1:4173`，本机可访问而局域网地址不可访问；不得把本地验证表述为公网部署 | 进程参数、监听socket、本机与局域网地址对照探测及2026-08-01用户确认 | PASS |
-| OPS-002 | P0 | — | SQLite+媒体备份可恢复到新目录并正常登录播放 | 阶段B前后备份均含SQLite、273个媒体文件及逐文件SHA-256清单，并已恢复到临时新目录真实启动；登录、管理员接管旧数据和跨账号隔离已自动及人工通过；正式服务器定时备份与整机恢复演练仍未开始 | PARTIAL |
+| OPS-002 | P0 | — | SQLite+媒体备份可恢复到新目录并正常登录播放 | schema39自动备份已上传OSS；整机离机包包含运行目录、Node、systemd/nginx及最终数据备份，874,823,680字节/SHA `d3b6023f…ae109`，fresh restore核验schema39/integrity/FK0、99 tasks/99 attempts、416 media及运行制品/配置哈希PASS，receipt `151c7886…f3962` | PASS |
 | STORAGE-001 | P0 | — | 管理员专属存储状态、普通用户隐藏；本机素材保持可读并记录对象键、类型和SHA-256；未配置OSS时云请求必须关闭且密钥不进入浏览器或数据库 | 存储/权限/上传专项16项、全量99项自动检查、273个本机素材校验值、schema 7可恢复备份及用户实页复验 | PASS |
 | STORAGE-002 | P0 | `/admin/storage` | 阿里云私有Bucket、最小权限RAM身份、随机对象键、私有上传、V4短时读取签名、失败清理及云端Range/下载完整；路由默认关闭且只作用于新素材，旧本机素材不自动迁移 | 新RAM身份真实连接、短时读取和清理成功；新图片私有上传后数据库记录为OSS/ready且本机273个旧文件未变化，真实根画布刷新后仍保留图片节点，真实Range与完整下载SHA-256一致；构建、全量103项及生产隔离通过；2026-07-31用户在内置浏览器确认新图片显示、刷新保留和下载通过 | PASS |
 | STORAGE-003 | P0 | `/admin/storage` | 管理员可在网页新增/替换OSS配置；AK/SK密码输入且不回显，服务端专用文件加密保存，普通账号、浏览器、SQLite、接口及审计均不得获得完整密钥；保存不访问云端，测试连接和选为正式配置必须分开授权 | 项目构建、相关专项7项、全量100项、重启恢复及正式构建隔离检查通过；管理员页面独立滚动及画布隔离28项检查通过；用户实页确认配置保存和页面滚动正常 | PASS |
-| STORAGE-004 | P0 | `/admin/storage` | 读取永远按素材自身存储后端：云路由开关只影响新素材写哪里；正式配置被重复「测试连接」不得降级导致旧OSS素材失读；素材登记所属OSS配置；状态接口如实暴露原始/生效开关并告警 | m80 专项 4/4 + m10/m13/m31/m72 回归 30 通过 1 跳过；真实配置已修复（TapFK 恢复 active、routing=false）并回填 70 行；tsc/构建通过 | USER_RECHECK |
+| STORAGE-004 | P0 | `/admin/storage` | 读取永远按素材自身存储后端：云路由开关只影响新素材写哪里；正式配置被重复「测试连接」不得降级导致旧OSS素材失读；素材登记所属OSS配置；状态接口如实暴露原始/生效开关并告警 | m80 专项 4/4 + m10/m13/m31/m72 回归 30 通过 1 跳过；真实配置已修复（TapFK 恢复 active、routing=false）并回填 70 行；tsc/构建通过；2026-08-09 用户实页确认旧 OSS 素材恢复显示 | PASS |
 | SAFETY-001 | P0 | `/admin/generation-safety` | 管理员独占真实生成总开关、紧急停止、用户/类型并发、每分钟频率、连续失败冷却和运行中任务策略；普通用户不显示额度或费用UI | schema 8持久设置、管理员权限与审计、规则直接检查及管理页专项；Provider未连接且付费请求为0；2026-08-08 起不再包含任何金额预算/上限 | 已移除（金额限制部分） |
 | SAFETY-002 | P0 | 服务端 admission | 费用统计按账号隔离并支持账号独立限额 | 2026-08-08 用户决定取消全部金额限制；v36 删除账号限额表与相关逻辑 | 已移除 |
 | SAFETY-003 | P1 | 「我的连接」页内区块 | 账号独立消耗上限设置与已用展示 | 2026-08-08 随金额限制功能整体移除；m81 专项删除，登录用例迁至 m11 | 已移除 |
-| SAFETY-004 | P0 | 全项目 | 不再存在任何生成金额限制/上限：无全局/账号/模型级预算、无费用未知拦截、无“额度已用完”文案；任务成本仍记录（仅审计参考）；付费模型安全校验（Base64/时长/参考素材）不因移除成本而失效 | m14 3/3（含无成本字段断言）、m11 5/5、m20 19 路径、m27 20/20、m22/m38/m44/m49/m52/m55/m56/m60/m65/m10 全过、m74 仅剩已知基线失败、v36 真实库副本迁移演练通过 | USER_RECHECK |
-| CANVAS-019 | P1 | `/canvas/projects` | 工作空间固定显示“默认画布”卡片（不可删除、不可选择），默认画布里的节点与素材始终有入口，不再出现“画布有内容但工作空间找不到” | 服务端 `/api/projects` 恒返回 default 卡片、m66 14/14（含默认卡片用例） | USER_RECHECK |
-| AUTH-004 | P0 | 登录页 | 登录（含首次创建管理员）成功后直接进入工作空间，不再停在登录前的画布 URL | m81 登录落地用例、登录后 `window.location` 强制 `/canvas/projects` | USER_RECHECK |
-| AUTH-005 | P0 | 账号管理 | 管理员可创建第二个及更多管理员账号（角色可选），创建写审计；普通管理员之间可互相停用/删除/改角色/重置密码 | m11 7/7（多管理员创建与互管）、m78 7/7、OpenAPI 同步 | USER_RECHECK |
-| AUTH-006 | P0 | 账号管理 | 第一个创建的管理员自动成为受保护最高权限账号（mymy/麦哥）；其他管理员永远不能停用/删除/降级/重置密码/改权限它；root 自己也不能在网页上改自己角色/删除自己；账号管理页显示“最高权限”徽标并禁用操作 | v37 迁移（最早管理员置 protected）、m11 受保护矩阵、真实库副本演练确认麦哥被标记 | USER_RECHECK |
-| AUTH-007 | P0 | 个人菜单/账号管理 | 自己改密码（需旧密码，吊销其他会话）；管理员可重置普通/其他管理员密码（受保护 root 除外，吊销全部会话）；root 忘密码时用服务器应急脚本重置 | m11 密码重置与会话吊销用例、`scripts/reset-account-password.mjs` | USER_RECHECK |
+| SAFETY-004 | P0 | 全项目 | 不再存在任何生成金额限制/上限：无全局/账号/模型级预算、无费用未知拦截、无“额度已用完”文案；任务成本仍记录（仅审计参考）；付费模型安全校验（Base64/时长/参考素材）不因移除成本而失效 | m14 3/3（含无成本字段断言）、m11 5/5、m20 19 路径、m27 20/20、m22/m38/m44/m49/m52/m55/m56/m60/m65/m10 全过、m74 仅剩已知基线失败、v36 真实库副本迁移演练通过；2026-08-09 用户实页确认通过 | PASS |
+| CANVAS-019 | P1 | `/canvas/projects` | 工作空间固定显示“默认画布”卡片（不可删除、不可选择），点击后进入规范 `/canvas`，默认画布里的节点与素材始终有入口，不得经 `/canvas/default` 回跳工作空间 | 2026-08-09 默认卡片可见性实页 PASS 证据继续保留；2026-08-13 用户发现点击虚拟 default 卡片会经不存在的项目路由回跳。当前候选统一 default 卡片/返回入口到 `/canvas`，m11 新增绿地正向点击并等待持久化就绪，m11+m30 定向17/17通过；用户随后在当前隔离实页确认默认画布可正常进入且不再回跳 | PASS |
+| AUTH-004 | P0 | 登录页 | 登录（含首次创建管理员）成功后直接进入工作空间，不再停在登录前的画布 URL | m81 登录落地用例、登录后 `window.location` 强制 `/canvas/projects`；2026-08-09 用户实页确认通过 | PASS |
+| AUTH-005 | P0 | 账号管理 | 管理员可创建第二个及更多管理员账号（角色可选），创建写审计；普通管理员之间可互相停用/删除/改角色/重置密码 | m11 7/7（多管理员创建与互管）、m78 7/7、OpenAPI 同步；2026-08-09 用户实页确认通过 | PASS |
+| AUTH-006 | P0 | 账号管理 | 第一个创建的管理员自动成为受保护最高权限账号（mymy/麦哥）；其他管理员永远不能停用/删除/降级/重置密码/改权限它；root 自己也不能在网页上改自己角色/删除自己；账号管理页显示“最高权限”徽标并禁用操作 | v37 迁移（最早管理员置 protected）、m11 受保护矩阵、真实库副本演练确认麦哥被标记；2026-08-09 用户实页确认通过 | PASS |
+| AUTH-007 | P0 | 个人菜单/账号管理 | 自己改密码（需旧密码，吊销其他会话）；管理员可重置普通/其他管理员密码（受保护 root 除外，吊销全部会话）；root 忘密码时用服务器应急脚本重置 | m11 密码重置与会话吊销用例、`scripts/reset-account-password.mjs`；2026-08-09 用户实页确认通过 | PASS |
+
+### 8.1 设置返回链与浏览器身份（INC-UI-001）
+
+| ID | 优先级 | 项目 | 验收动作与断言 | 当前证据/缺口 | 实现状态 |
+|---|---|---|---|---|---|
+| NAV-001 | P0 | 设置页返回来源画布 | 从真实项目A进入任意完整设置页后，「返回画布」经当前账号项目列表校验回到A，不固定进入默认画布 | 共享解析器与8页接线已实现；m66来源项目返回自动断言通过，待用户实页复验 | USER_RECHECK |
+| NAV-002 | P0 | 设置页双返回按钮 | `/connections`及7个`/admin/*`完整页面共享「返回画布」「返回工作空间」；设置页内部跳转不丢`from` | 共享页头、来源传播、busy/error状态和8页自动断言通过，待用户实页复验 | USER_RECHECK |
+| NAV-003 | P0 | 工作空间闭环与失败兜底 | A→设置→工作空间→返回画布仍回A；来源删除、无历史或网络失败不误跳默认画布 | Workspace已复用共享解析器；闭环、无来源和API错误fail-closed自动断言通过 | USER_RECHECK |
+| NAV-004 | P0 | 来源安全与账号隔离 | `from`只接受安全项目ID并属于当前账号；拒绝URL/非法编码/default，双击只请求/导航一次 | 当前账号列表校验、非法/default/开放重定向拒绝与单飞自动断言通过 | USER_RECHECK |
+| BRAND-001 | P1 | 浏览器favicon | Chrome标签显示清晰的无央无限符号；开发与构建`/favicon.svg`均200且字节一致 | favicon资源、HTML link和构建自动断言通过；待用户浏览器视觉确认 | USER_RECHECK |
+| BRAND-002 | P1 | 动态页面标题 | 项目、默认画布、工作空间、登录和全部设置页使用准确`页面名｜无央`标题 | 静态兜底和页面身份模块已接线，自动标题矩阵通过；待用户实页确认 | USER_RECHECK |
+| BRAND-003 | P1 | 项目标题联动 | 项目重命名即时更新浏览器标签，刷新后与持久标题一致；空标题安全回退 | CanvasShell标题状态、重命名和空标题自动断言通过；待用户实页确认 | USER_RECHECK |
 
 ## 9. 播放列表、Agent 与外围面板
 
@@ -354,15 +418,15 @@
 |---|---|
 | M11 | 2026-08-07 用户逐项实页确认通过；回归按 `TASKS.md` 记录为全绿（已知基线失败单独标注） |
 
-## 18. 2026-08-08 画布丝滑度（实现+自动验证完成，逐项等用户实页确认）
+## 18. 2026-08-08 画布丝滑度（实现、自动验证与用户实页确认均已完成）
 
 | ID | 优先级 | 验收动作与断言 | 证据 | 实现状态 |
 |---|---|---|---|---|
 | PERF-001 | P0 | 拖动节点时功能栏/创作框隐藏、松手恢复（对齐 Unboundry） | 自动回归 + 用户实页确认 | PASS |
-| PERF-002 | P0 | 缩放/平移流畅（成品模式约 120fps、0 长任务、最大帧 ≤17ms） | m79 + 真实 Chrome 实测 | USER_RECHECK |
-| PERF-003 | P0 | 60 节点拖动流畅（成品模式约 119fps、0 长任务） | m79 + 真实 Chrome 实测 | USER_RECHECK |
-| PERF-004 | P1 | 200 节点可视区域渲染（快速平移节点实时挂载、缩小全量挂载） | m79 + 真实 Chrome 实测 | USER_RECHECK |
-| PERF-005 | P0 | 保存安静期（拖动/缩放中不写库、停手后保存，多标签/revision 语义不变） | m71/m3 自动断言 | USER_RECHECK |
+| PERF-002 | P0 | 缩放/平移流畅（成品模式约 120fps、0 长任务、最大帧 ≤17ms） | m79 + 真实 Chrome 实测 + 2026-08-09 用户实页确认 | PASS |
+| PERF-003 | P0 | 60 节点拖动流畅（成品模式约 119fps、0 长任务） | m79 + 真实 Chrome 实测 + 2026-08-09 用户实页确认 | PASS |
+| PERF-004 | P1 | 200 节点可视区域渲染（快速平移节点实时挂载、缩小全量挂载） | m79 + 真实 Chrome 实测 + 2026-08-09 用户实页确认 | PASS |
+| PERF-005 | P0 | 保存安静期（拖动/缩放中不写库、停手后保存，多标签/revision 语义不变） | m71/m3 自动断言 + 2026-08-09 用户实页确认 | PASS |
 
 ## 17. 2026-08-07 公共模板新条目（待用户实页验收）
 
@@ -405,19 +469,41 @@
 | PERM-011 | P0 | 删除账号级联 | 删除账号后权限行 0 残留；历史审计按既有语义清理并保留 delete_user 记录 | m78/m11 自动 | PASS |
 | PERM-012 | P0 | OpenAPI 收口 | `/api/admin/users/{userId}/permissions` 与 AccountPermission schema 已登记，m20 契约同步 | m20 自动 | PASS |
 
-## 19. 2026-08-08 部署（方案 DRAFT，阶段 1 加固完成，其余待服务器信息）
+## 19. 2026-08-08 部署（线上 v0.5.1 已运行；旧方案仅作历史依据，安全发布重建见 REM-009/010）
 
-方案：`spec/UNBOUNDRY_DEPLOYMENT_PLAN_2026-08-08.md`。用户已确认部署目标（云服务器 + 域名 + 多设备访问同一份数据），并提供「已有域名和服务器」；服务器/域名具体信息整理中。
+历史方案：`spec/UNBOUNDRY_DEPLOYMENT_PLAN_2026-08-08.md`。站点现已上线 `canvas.mymy.ltd` v0.5.1；其中服务器路径、Node 和费用上限等文字可能过时，本轮不得把旧方案当当前施工命令，安全发布以 REM-009/010 候选经用户确认后为准。
 
 | ID | 优先级 | 验收动作与断言 | 证据 | 实现状态 |
 |---|---|---|---|---|
 | DEP-001 | P0 | 公网 HTTPS 访问；手机/Win11 浏览器登录并操作同一份数据 | https://canvas.mymy.ltd 外网 200、`/api/auth/status` 正常；2026-08-08 用户实页登录成功 | PASS |
 | DEP-002 | P0 | 首管理员不可远程创建；未登录/越权访问管理接口 403 | 公网 bootstrap 实测 403 + m81 + 既有 m78 权限矩阵 | PASS |
-| DEP-003 | P0 | 存储写操作公网仅 HTTPS；Cookie 带 Secure | nginx 80→301、`UNBOUNDRY_TRUST_PROXY/SECURE_COOKIES=1`、m81 HTTPS 转发头断言 | PARTIAL（待浏览器 DevTools 确认 Secure） |
-| DEP-004 | P0 | 旧本地素材 + 旧 OSS 素材 + 新素材（云路由开启后）全部可读 | 服务器数据 378 素材就位；STORAGE-004/m80 存储语义已覆盖 | USER_RECHECK（请用户打开含旧 OSS 素材的画布确认） |
-| DEP-005 | P0 | 上传 500MB 级视频成功；批量下载、播放、Range 正常 | nginx `client_max_body_size 600m` + proxy 超时已配置 | NOT_STARTED |
-| DEP-006 | P0 | 每日备份自动执行并上传 OSS；恢复演练通过 | timer 每日 03:30；首次备份已传 OSS 并 HEAD 抽查；恢复演练 runtimeVerified=true | PARTIAL（自动清理旧备份待 RAM ListObjects 权限） |
-| DEP-007 | P0 | 生成安全（并发/频率/费用上限）公网场景生效 | 服务端配置沿用；火山方舟可用；OpenRouter 不启用（服务器不装代理，用户决定） | PARTIAL（待公网生成实测） |
+| DEP-003 | P0 | 存储写操作公网仅 HTTPS；Cookie 带 Secure | nginx 80→301；一次性临时账号经真实公网HTTPS登录，响应Cookie实测同时具有 `Secure / HttpOnly / SameSite=Strict / Path=/`，账号与会话随后删除 | PASS |
+| DEP-004 | P0 | 旧本地素材 + 旧 OSS 素材 + 新素材（云路由开启后）全部可读 | 服务器数据 378 素材就位；STORAGE-004/m80 存储语义已覆盖；2026-08-09 用户实页确认通过 | PASS |
+| DEP-005 | P0 | 上传 500MB 级视频成功；批量下载、播放、Range 正常 | 513,802,240字节MP4公网POST201、Range206、完整下载SHA与源同为`db3b808e…abd1`、ffprobe正常；测试素材DELETE204并确认不存在。既有自动门继续覆盖批量下载/播放器协议 | PASS |
+| DEP-006 | P0 | 每日备份自动执行并上传 OSS；恢复演练通过 | schema39入口修复后timer任务上传356文件/267,091,270字节；RAM实测DeleteObject允许、ListObjects拒绝，保留逻辑改用本地签名manifest精确删除并在最终任务完成retention pass；整机离机恢复PASS | PASS |
+| DEP-007 | P0 | 生成安全的总开关、紧急停止、并发/频率、连续失败冷却在公网场景生效；任务成本只作审计，不展示、不拦截 | 生产`globalEnabled=1/emergencyStop=0`，每用户/每类型并发1、每分钟5、失败阈值3/冷却30；唯一一次Doubao Seed真实文字任务一次成功、无重试，结果“真实生成验收通过”。自动门覆盖限流/熔断，不额外制造付费失败 | PASS |
 | DEP-008 | P0 | 服务器重启后服务自恢复，数据/会话/任务不丢 | systemd enable+restart 多次验证 active | PASS |
 | DEP-009 | P0 | 测试后门变量未设置；测试夹具/测试账号不存在 | 服务环境仅 DATA_DIR/SECURE_COOKIES/TRUST_PROXY；devFixture 仅 dev；`__test__` 已核对为 0 | PASS |
-| DEP-010 | P0 | 文档收口（TASKS/矩阵/部署手册）并逐项用户确认 | 部署计划/TASKS/矩阵已更新 | PARTIAL（待剩余验收项确认） |
+| DEP-010 | P0 | 文档收口（TASKS/矩阵/部署手册）并逐项用户确认 | 七份权威文档已按 v0.6.0/schema39 最终态同步；技术凭证与后续用户生产验收分层记录；用户于2026-08-15明确“文档确认通过” | PASS |
+
+## 20. 2026-08-09 全量修复、优化与安全发布施工项
+
+权威施工合同：`spec/UNBOUNDRY_REMEDIATION_PLAN_2026-08-09.md`，已于 2026-08-09 获用户确认；同日一次性离线 Goal 授权已生效。本节登记新的修复施工，不自动推翻任何历史 PASS；各 REM 按依赖顺序连续实施，不再逐项询问。文档/工程证据完成进入 `USER_REVIEW`，需要实页的产品行为进入 `USER_RECHECK`，用户确认后才能 `PASS`。
+
+| ID | 优先级 | 验收动作与断言 | 当前证据/边界 | 实现状态 |
+|---|---|---|---|---|
+| REM-000 | P0 | 总方案、施工断点、项目级守则、README/交接/TASKS/矩阵入口一致；上下文恢复有硬停止点；本批零代码/测试/外部动作 | 文档级验证与三路独立复核完成；2026-08-09 用户明确确认通过 | PASS |
+| REM-001 | P0 | 固定 Node 22；动态端口和逐 spec 新临时目录；拒绝 4173/真实路径；Node+浏览器非 loopback 断网；发现与执行清单覆盖全部测试；所有 Git 跟踪 TS/TSX 均有主检查或明确的独立检查 | Node 22.23.1/npm 10.9.8；105/520 精确发现与执行；TS/TSX 258/258、JS/MJS 14/14；文件/网络各 24 类负控；修复后首轮全量 520/520，0 fail/skip/retry/reportError/blocked；临时目录清理且4173监听身份不变。仅证明 runner/测试子进程真实路径访问为0，GOV-001 已记录 | PASS |
+| REM-002 | P0 | 畸形 URL 与异步异常不杀进程；日志脱敏；存活/就绪/维护/优雅关闭可验证 | 统一 JSON/URL/异步边界、UUID+8字段脱敏日志、API严格维护 allowlist、响应+handler+body+SSE 排空、精确信号所有权、后台生成 rejection 吸收均完成；readiness 不调用 openAppDatabase，核验 schema37 完整迁移账本、19表/27索引/5触发器及有限已知历史形态。m81 17/17；最终安全全量 105/536、536/536，0 fail/skip/retry/reportError/blocked；TS/TSX 260/260、JS/MJS 14/14；schema37/package0.5.1 不变 | PASS |
+| REM-003 | P0 | 加载失败不保存/不生成；同标签旧保存不能覆盖新快照；跨标签继续按 DATA-005 最后保存者胜；项目删除不复活 | F-001/F-002/F-003/F-040/F-048/F-049 已关闭；load token+epoch、session/sequence/attempt 高水位、strict journal CAS、原子墓碑与生成门禁已落地。指纹 `2ae382d4…`：专项205/205、m28十轮30/30、核心三轮450/450、安全全量107/687且687/687，全部异常计数0；源码264 TS+15 JS全覆盖；独立终审P0/P1=0；schema37/package0.5.1不变；功能提交`2a0b7f9819d3075d5fd339e20c5badd389cd51ae` | PASS |
+| REM-004 | P0 | 跨账号并发素材 ID 不互相覆盖；pending/ready/failed 和补偿闭环；每个故障点无不可见孤儿/悬空引用 | F-004、F-036 与 F-005 媒体发布子范围关闭；schema38 publication/delete/account intent、ready-only、权威尺寸、同步 adoption ACK 与只读完整性报告已落地。指纹 `f6974d…`：专项158/158、三轮474/474、全量109/762且762/762，异常计数0；源码268 TS+16 JS全覆盖；功能提交`9f1019e5686ccce4f646b54a2be6ccd5ab4864d0`。Provider付费/幂等仍归REM-005，账号删除完整合同仍归REM-006 | PASS |
+| REM-005 | P0 | 幂等、限额检查、任务插入原子；Provider 前重查停止；未知结果不重复付费；并发限额和零外网证据 | schema39 owner-scoped 幂等、原子 admission、最终付费闸、credential epoch、paid outcome、deadline、持久队列与显式 abandon 已落地；关闭 F-008/F-009/F-010，与 REM-004 一起关闭 F-005，F-014 仅 deadline 子范围。测试运行于功能提交前、HEAD `2beaec585d2d33a11341b98349b31b89b41d3a62` 的脏工作树指纹 `6a1363df8a6977e996db4b9e45aa823a89e28d6fe3955d85d6ea0ca9b315fcf9`：m81 23/23、核心6-spec三轮207/207、全量109/790且790/790，异常计数0；源码269 TS+16 JS全覆盖。功能提交`b3ceba04b5ddcf781dd58ce355be0e0f7665450e`含相同功能文件，未在commit后/文档后树重跑；单 active process 前提，F-023仍归REM-010 | PASS |
+| REM-006 | P0 | 账号含任务/媒体/模板/权限/凭据/审计时删除全成或一致失败；清理可重试；权限无修改保存不清空额外授权；KEY-008/AUTH-006 不回退 | 持久 intent + 可重试 saga、公共模板/必要媒体转交、活动/未知任务阻断、权限/凭据与 Provider/catalog/存储 actor fence 已完成；F-006/F-007/F-017A/F-033 离线候选已修，F-032 继续 PERM-011：清理旧相关审计，仅保留唯一 `delete_user`。提交前 HEAD `731b984…` 下 403-file 指纹 `9873952e…`：定向 112/112、核心三轮 222/222、全量 109/804 且 804/804 PASS，异常计数0；源码 270 TS + 16 JS；功能提交 `67cc39302d756bc00bff7ac31e31de7a7f574574` 含相同功能文件，未在 commit/docs 后重跑。仅单 active process，F-023 留 REM-010；不声称跨物理媒体或文件系统/SQLite 崩溃原子 | PASS |
+| REM-007 | P0 | 四类生成在首次/重生成/刷新/丢响应/重启/取消/失败/成功/旧结果场景恢复；更新失败不强刷；草稿不丢 | F-016/F-017B/F-018 离线候选已修；四类持久 ownership/exact GET/完整模型参数快照/fresh revision、旧预览、匹配 ownership active task 的 terminal ACK cleanup、正式付费任务 POST 未知结果 reconcile、retry/localStorage fail-closed 已收口。Workspace create/rename/delete、CanvasShell create/clone/delete 与 UpdateNotice reload-after-save 具 in-flight fence/显式失败处理；Workspace 删除核验具 deadline，ConfirmDialog 负责 busy/focus/Escape/a11y。测试运行于功能提交前 HEAD `26ff9396194499365c79e5bc85238631ed44ef7a` 下 403-file 指纹 `ce7b4856b00b3ab12ee4853ece0b07b01dec86619bbca7865daa4edb659cc957`：adjacency 142/142、target 255/255、核心8-spec三轮606/606、全量109/841且841/841 PASS，异常计数0、full deniedViteWildcardProbes477；Node22.23.1/npm10.9.8；源码270 TS+16 JS，op11=6+5；4173 hash `91689b3fefccfb3fe32ffc44e2b10a3146976b76d497183f56f7457924a7e219` 不变。功能提交 `138f7ff0f9481e73355fbd9a9fd2c548ee9cee1a` 含相同功能文件，未在commit/docs后重跑。无schema迁移；可选canvas JSON/localStorage字段兼容留REM-009B；仅单active process，不宣称跨标签互斥，F-023留REM-010；真实Mureka仍PARTIAL/暂停 | PASS |
+| REM-008 | P1 | 登录/SSE/大文件/ffmpeg/Provider/OSS 资源和网络边界受控；安全头、依赖、脚本、内存和必要包拆分通过压力验证 | F-012～F-015 离线候选范围已收口；保留500MiB合同，登录/SSE有界准入、受控流式媒体、进程/账号/磁盘reservation、ffmpeg/ffprobe有界队列与进程组终止、Provider/OSS DNS pinning/私网/IPv6/重定向拒绝、安全头、nanoid3.3.18、密码重置/存储修复及按需包/历史分页/懒加载/缓存URL回收已完成。测试运行于功能提交前 HEAD `d63af1224bbadfab00cdd65256c16afaf4195fa1` 下指纹 `79625ac9768e99351f00190389a76e19945355405a3235608f219afd4d2d81be`：核心15-spec三轮588/588、全量111/891且891/891 PASS，异常计数0、full deniedViteWildcardProbes492；Node22.23.1/npm10.9.8；源码277 TS+17 JS，op12=9+3；4173 hash `09d55bc82aab1e1f04aae60397395befd6d17c41b5b2622bcde7c4c7b1b8ec2` 不变。功能提交`ff9a2adbb9ba93c9646935b2b22b318fb5503f21`含相同功能文件，未在commit/docs后重跑。F-025只关闭密码/修复脚本子范围，`mirror-oss` / `backup-to-oss` 继续哈希冻结；F-030只收口当前可验证P2子范围；仅单active process，非跨进程/多机/OS全局配额 | PASS |
+| REM-009A | P0 | 建立真正只读的数据库/媒体/密钥备份、合成库恢复、损坏拒绝、加密与故障注入底座；备份连接绝不调用 openAppDatabase | 格式2逐文件加密+独立签名；源库只复制到私有临时目录后处理；schema37/19表+sqlite_sequence/密钥真解密/本地媒体/孤儿/假OSS版本与校验全覆盖；不可覆盖发布、marker fail-closed、路径/密钥/权限/硬链接与损坏矩阵完成。m10 9/9、最终三轮27/27、最终安全全量105/542且542/542，0 fail/skip/retry/reportError/blocked；TS/TSX262/262、JS/MJS15/15；两路独立终审无P0/P1；schema37/package0.5.1不变 | PASS |
+| REM-009B | P0 | 用最终候选执行备份恢复、v0.5.1 双向数据格式兼容、必要桥梁与迁移失败恢复演练 | 合成富数据/媒体/密钥/假OSS已完成格式2恢复、one-shot migration、故障恢复、假OSS重建和冻结v0.5.1→当前bridge→schema39数据格式与安全拒绝边界矩阵；exact v0.5.1对schema39安全拒绝，迁移后回滚目标不是v0.5.1。父HEAD`bbcd5e0…`同内容树SHA`7cf46804…`：核心三轮399/399、全量114/912且912/912 PASS，异常0；源码283 TS+20 JS，op15=12+3；listener`1be6a5…`不变。功能提交`9a158a92563814791fefb8d4e6c5531eca610d78`含相同内容，commit/docs后未重跑。同UID非协作reservation替换为残余边界；无真实数据/Provider/OSS/生产证明 | PASS |
+| REM-010 | P0 | 固定 SHA 不可变 release；三层健康检查；活动任务归零；单任务处理器；请求/SSE/generation 排空；真实双引擎、跨版本数据格式矩阵、离线切换和回滚全过 | B14→F14正式产物链、formal Linux、Node22.23.2补证、原schema37备份/离机恢复、OSS70、条件修复、schema39迁移、current切换及最终健康均已完成；F14 manifest `46e2365c…`、inventory `ac8ca43a…`、最终技术凭证 `5c78e7bc…` | PASS |
+| REM-011 | P0 | `v0.5.2 / v0.6.0` 双阶段G0～G6全绿后才可进入G7；所有发现测试零失败/意外跳过/retry；三轮全新环境；用户验收；生产授权独立确认 | F14 clean targeted81/81、full2832/2832、race1420/1420及formal Linux证据均保留；生产 v0.6.0/schema39 已切换并完成技术核验，用户随后确认生成任务状态可读取。bounded cutover不冒充新controller/full run | PASS |
+
+REM-009B的历史`USER_REVIEW`与114/912证据保持原义；REM-001～009B均未因上线批量抬为PASS。REM-010/011现为`PASS`；G5 coverage PASS、隔离G6 USER PASS继续保留为历史证据，生产另有2026-08-15 USER PASS。G7仅对本次v0.6.0发布为PASS，不授权未来发布或push/tag/PR。五条outcome-unknown attempt（86/108/116/120/122）已行政取消且禁止重试，`PROVIDER_FAILED`仅为迁移/备份门surrogate；三条音频仅修正duration元数据，媒体字节/checksum不变。

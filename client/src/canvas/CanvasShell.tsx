@@ -13,6 +13,7 @@ import {
   initialCanvasViewport,
   type AgentCanvasReference,
   type CanvasLibraryAsset,
+  type CanvasLoadState,
   type CanvasSearchEntry,
   type CanvasShellMenuCommand,
 } from "./CanvasSurface";
@@ -21,6 +22,12 @@ import { useCompositionSafeText } from "./CompositionSafeText";
 import { hasInteractionProbeNodes } from "./probeFixtures";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { clearProjectLocalKeys } from "../projects/projectStorage";
+import {
+  pathWithCurrentCanvasSource,
+  projectWorkspacePath,
+  rememberLastProjectId,
+} from "../navigation/canvasReturn";
+import { normalizedPageLabel, usePageTitle } from "../pageIdentity";
 import type { AccountPermission } from "../../../types/accountPermissions";
 
 type ShellButtonProps = {
@@ -29,6 +36,7 @@ type ShellButtonProps = {
   className?: string;
   onClick?: () => void;
   active?: boolean;
+  disabled?: boolean;
   children: ReactNode;
 };
 
@@ -41,10 +49,108 @@ type HistoryAsset = {
   preview: string;
 };
 
+type HistoryCounts = Record<HistoryKind, number>;
+
+type HistoryPage = {
+  counts: HistoryCounts;
+  items: HistoryAsset[];
+  nextCursor?: string;
+};
+
+const historyPageSize = 60;
+
+function emptyHistoryCounts(): HistoryCounts {
+  return { audio: 0, image: 0, video: 0, world3d: 0 };
+}
+
+function historyAccountIdForFixture(fixtureId?: string) {
+  if (fixtureId === "panel.history.final") return "fixture-account";
+  if (fixtureId === "node.video.success") return "fixture-video-success";
+  if (fixtureId === "node.audio.success") return "fixture-audio-success";
+  return "local-user";
+}
+
+function historySeedForFixture(fixtureId?: string) {
+  if (fixtureId === "panel.history.final") return historySeed;
+  if (fixtureId === "node.video.success") {
+    return [historySeed.find((item) => item.kind === "video")!];
+  }
+  if (fixtureId === "node.audio.success") {
+    return historySeed.filter((item) => item.kind === "audio").slice(0, 2);
+  }
+  return [];
+}
+
+function validHistoryPage(value: unknown): value is HistoryPage {
+  if (!value || typeof value !== "object") return false;
+  const page = value as Partial<HistoryPage>;
+  if (!page.counts || typeof page.counts !== "object" || !Array.isArray(page.items)) {
+    return false;
+  }
+  const kinds: HistoryKind[] = ["image", "video", "audio", "world3d"];
+  if (
+    kinds.some(
+      (kind) =>
+        !Number.isSafeInteger(page.counts?.[kind]) ||
+        Number(page.counts?.[kind]) < 0,
+    )
+  ) {
+    return false;
+  }
+  if (
+    page.nextCursor !== undefined &&
+    (typeof page.nextCursor !== "string" || page.nextCursor.length > 512)
+  ) {
+    return false;
+  }
+  return page.items.every(
+    (item) =>
+      Boolean(item) &&
+      typeof item === "object" &&
+      /^[a-z0-9._-]+$/i.test(item.id) &&
+      kinds.includes(item.kind) &&
+      typeof item.label === "string" &&
+      item.label.length >= 1 &&
+      item.label.length <= 120 &&
+      typeof item.preview === "string" &&
+      item.preview.length <= 1_000 &&
+      (item.createdAt === undefined ||
+        (typeof item.createdAt === "string" && item.createdAt.length <= 80)),
+  );
+}
+
+async function fetchHistoryPage(input: {
+  accountId: string;
+  cursor?: string;
+  kind: HistoryKind;
+  newestFirst: boolean;
+  signal?: AbortSignal;
+}) {
+  const parameters = new URLSearchParams({
+    kind: input.kind,
+    limit: String(historyPageSize),
+    order: input.newestFirst ? "newest" : "oldest",
+  });
+  if (input.cursor) parameters.set("cursor", input.cursor);
+  const response = await fetch(
+    `/api/history/${encodeURIComponent(input.accountId)}?${parameters.toString()}`,
+    {
+      headers: { Accept: "application/json" },
+      signal: input.signal,
+    },
+  );
+  if (!response.ok) throw new Error(`历史素材读取失败 (${response.status})`);
+  const page: unknown = await response.json();
+  if (!validHistoryPage(page)) throw new Error("历史素材响应格式无效");
+  return page;
+}
+
 type ProjectTitleRecord = {
   title: string;
   updatedAt: number;
 };
+
+type ProjectAction = "clone" | "create" | "delete";
 
 type TemplateCatalogCard = {
   categories: string[];
@@ -52,6 +158,7 @@ type TemplateCatalogCard = {
   description?: string;
   graph?: {
     edges: Array<{
+      data?: { inputOrder?: number; inputRole?: string };
       id: string;
       source: string;
       sourceHandle: "source";
@@ -182,18 +289,47 @@ function readProjectTitleDraft(
   try {
     const value = window.localStorage.getItem(projectTitleStorageKey(userId, id));
     if (!value) return undefined;
-    const record = JSON.parse(value) as ProjectTitleRecord;
-    if (
-      typeof record.title !== "string" ||
-      record.title.length > 120 ||
-      !Number.isSafeInteger(record.updatedAt)
-    ) {
-      return undefined;
-    }
-    return record;
+    return parseProjectTitleRecord(JSON.parse(value));
   } catch {
     return undefined;
   }
+}
+
+function parseProjectTitleRecord(
+  value: unknown,
+): ProjectTitleRecord | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Partial<ProjectTitleRecord>;
+  if (
+    typeof record.title !== "string" ||
+    record.title.length > 120 ||
+    !Number.isSafeInteger(record.updatedAt) ||
+    (record.updatedAt ?? -1) < 0
+  ) {
+    return undefined;
+  }
+  return record as ProjectTitleRecord;
+}
+
+function projectMutationResponse(value: unknown) {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as {
+    id?: unknown;
+    title?: unknown;
+    updatedAt?: unknown;
+  };
+  if (
+    typeof candidate.id !== "string" ||
+    !/^[a-z0-9._-]+$/i.test(candidate.id) ||
+    typeof candidate.title !== "string" ||
+    candidate.title.length > 120 ||
+    typeof candidate.updatedAt !== "number" ||
+    !Number.isSafeInteger(candidate.updatedAt) ||
+    candidate.updatedAt < 1
+  ) {
+    return undefined;
+  }
+  return candidate as { id: string; title: string; updatedAt: number };
 }
 
 function writeProjectTitleDraft(
@@ -253,6 +389,13 @@ function historyMediaUrl(item: HistoryAsset) {
   return patterns[item.kind]?.test(item.preview) ? item.preview : undefined;
 }
 
+function persistedHistoryPreview(item: HistoryAsset) {
+  if (item.kind === "video") return `/api/video-assets/${item.id}`;
+  if (item.kind === "audio") return `/api/audio-assets/${item.id}`;
+  if (item.kind === "image") return `/api/assets/${item.id}`;
+  return item.preview;
+}
+
 function HistoryCardMedia({ item }: { item: HistoryAsset }) {
   const mediaUrl = historyMediaUrl(item);
   if (item.kind === "image" && mediaUrl) {
@@ -260,30 +403,67 @@ function HistoryCardMedia({ item }: { item: HistoryAsset }) {
       <img
         alt=""
         className="history-card-image"
+        decoding="async"
         draggable={false}
+        loading="lazy"
         src={mediaUrl}
       />
     );
   }
   if (item.kind === "video" && mediaUrl) {
+    return <LazyHistoryVideo mediaUrl={mediaUrl} />;
+  }
+  return null;
+}
+
+function LazyHistoryVideo({ mediaUrl }: { mediaUrl: string }) {
+  const placeholder = useRef<HTMLSpanElement>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (visible) return;
+    const element = placeholder.current;
+    if (!element || typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        setVisible(true);
+        observer.disconnect();
+      },
+      { rootMargin: "160px" },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [visible]);
+
+  if (!visible) {
     return (
-      <video
+      <span
         aria-hidden="true"
-        className="history-card-video"
-        muted
-        onLoadedMetadata={(event) => {
-          event.currentTarget.currentTime = Math.min(
-            0.08,
-            event.currentTarget.duration || 0,
-          );
-        }}
-        playsInline
-        preload="metadata"
-        src={mediaUrl}
+        className="history-card-video-placeholder"
+        ref={placeholder}
       />
     );
   }
-  return null;
+  return (
+    <video
+      aria-hidden="true"
+      className="history-card-video"
+      muted
+      onLoadedMetadata={(event) => {
+        event.currentTarget.currentTime = Math.min(
+          0.08,
+          event.currentTarget.duration || 0,
+        );
+      }}
+      playsInline
+      preload="metadata"
+      src={mediaUrl}
+    />
+  );
 }
 
 function ShellButton({
@@ -292,6 +472,7 @@ function ShellButton({
   className = "",
   onClick,
   active,
+  disabled,
   children,
 }: ShellButtonProps) {
   return (
@@ -300,6 +481,7 @@ function ShellButton({
       className={`shell-button ${className}`}
       data-active={active || undefined}
       data-testid={testId}
+      disabled={disabled}
       onClick={onClick}
       title={label}
       type="button"
@@ -697,6 +879,14 @@ export function CanvasShell({
     role === "admin" ||
     permissions?.includes("manage_public_templates") === true;
   const projectTitleId = projectId ?? fixtureId ?? "default";
+  const durableFixture =
+    !fixtureId ||
+    fixtureId.startsWith("persistence.") ||
+    fixtureId?.startsWith("node.") ||
+    fixtureId === "panel.history.final" ||
+    fixtureId === "panel.assets.drag-ready" ||
+    fixtureId === "interaction.upload-image" ||
+    fixtureId === "interaction.upload-media-sandbox-current";
   const initialProjectTitle =
     readProjectTitleDraft(userId, projectTitleId) ??
     ({ title: defaultProjectTitle, updatedAt: 0 } satisfies ProjectTitleRecord);
@@ -801,6 +991,16 @@ export function CanvasShell({
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [historyTab, setHistoryTab] = useState<HistoryKind>("image");
   const [historyItems, setHistoryItems] = useState<HistoryAsset[]>([]);
+  const [historyCounts, setHistoryCounts] = useState<HistoryCounts>(
+    emptyHistoryCounts,
+  );
+  const [historyNextCursor, setHistoryNextCursor] = useState<string>();
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [historyRefreshEpoch, setHistoryRefreshEpoch] = useState(0);
+  const historyLoadSequence = useRef(0);
+  const historyLoadMoreAbort = useRef<AbortController | undefined>(undefined);
+  const historyLoadMoreInFlight = useRef(false);
   const [historyZoom, setHistoryZoom] = useState(120);
   const [historyNewestFirst, setHistoryNewestFirst] = useState(true);
   const [historyPreviewItem, setHistoryPreviewItem] = useState<HistoryAsset>();
@@ -828,11 +1028,20 @@ export function CanvasShell({
   }, []);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [projectActionBusy, setProjectActionBusy] = useState<ProjectAction>();
+  const [projectActionError, setProjectActionError] = useState("");
   const [shareOpen, setShareOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const [keyboardShortcutsOpen, setKeyboardShortcutsOpen] = useState(false);
   const [projectTitleValue, setProjectTitleValue] = useState(
     initialProjectTitle.title,
+  );
+  usePageTitle(
+    projectId
+      ? normalizedPageLabel(projectTitleValue, "未命名项目")
+      : fixtureId
+        ? "画布"
+        : "默认画布",
   );
   const [agentOpen, setAgentOpen] = useState(
     fixtureId === "panel.agent.expanded-empty" ||
@@ -865,7 +1074,29 @@ export function CanvasShell({
   const [graphHasContent, setGraphHasContent] = useState(() =>
     hasInteractionProbeNodes(fixtureId),
   );
-  const [saveStatus, setSaveStatus] = useState("已保存到云端");
+  const [saveStatus, setSaveStatus] = useState(
+    durableFixture ? "正在加载画布..." : "已保存到云端",
+  );
+  const [canvasLoadState, setCanvasLoadState] = useState<CanvasLoadState>(
+    durableFixture ? "loading" : "ready",
+  );
+  const canvasScopeId = JSON.stringify([userId, projectTitleId]);
+  const [generationRetryGate, setGenerationRetryGate] = useState<{
+    run: () => Promise<number>;
+    scopeId: string;
+  }>();
+  const [canvasLoadScopeId, setCanvasLoadScopeId] = useState(canvasScopeId);
+  const effectiveCanvasLoadState: CanvasLoadState =
+    canvasLoadScopeId === canvasScopeId
+      ? canvasLoadState
+      : durableFixture
+        ? "loading"
+        : "ready";
+  const registerGenerationRetryGate = useCallback((
+    gate: (() => Promise<number>) | undefined,
+  ) => {
+    setGenerationRetryGate(gate ? { run: gate, scopeId: canvasScopeId } : undefined);
+  }, [canvasScopeId]);
   const agentPromptControl = useCompositionSafeText({
     onCommit: setAgentPrompt,
     value: agentPrompt,
@@ -901,14 +1132,21 @@ export function CanvasShell({
   const agentVoiceTimer = useRef<number | undefined>(undefined);
   const agentVoiceCancelled = useRef(false);
   const projectTitleUpdatedAt = useRef(initialProjectTitle.updatedAt);
-  const durableFixture =
-    !fixtureId ||
-    fixtureId.startsWith("persistence.") ||
-    fixtureId?.startsWith("node.") ||
-    fixtureId === "panel.history.final" ||
-    fixtureId === "panel.assets.drag-ready" ||
-    fixtureId === "interaction.upload-image" ||
-    fixtureId === "interaction.upload-media-sandbox-current";
+  const projectTitleSaveAttempt = useRef(0);
+  const projectActionInFlight = useRef<ProjectAction | undefined>(undefined);
+  useEffect(() => {
+    setTextVideoStarted(false);
+    setFocusNodeRequest(undefined);
+    setHistoryAssetRequest(undefined);
+    setShellMenuCommand(undefined);
+    setViewportRequest(undefined);
+    const state: CanvasLoadState = durableFixture ? "loading" : "ready";
+    setCanvasLoadScopeId(canvasScopeId);
+    setCanvasLoadState(state);
+    setSaveStatus(
+      state === "loading" ? "正在加载画布..." : "已保存到云端",
+    );
+  }, [canvasScopeId, durableFixture]);
   const hasProbeNodes =
     hasInteractionProbeNodes(fixtureId) || textVideoStarted;
   const zoomRatio = Math.min(1, Math.max(0, (zoomSummary - 0.15) / 1.85));
@@ -957,6 +1195,7 @@ export function CanvasShell({
   };
 
   const requestCanvasMenu = (action: CanvasShellMenuCommand["action"]) => {
+    if (action !== "dismiss" && effectiveCanvasLoadState !== "ready") return;
     setShellMenuCommand((current) => ({
       action,
       sequence: (current?.sequence ?? 0) + 1,
@@ -964,7 +1203,7 @@ export function CanvasShell({
   };
 
   const applyTemplate = (template: TemplateCatalogCard) => {
-    if (!template.graph) return;
+    if (effectiveCanvasLoadState !== "ready" || !template.graph) return;
     recordRecentTemplate(userId, template.id);
     setTemplateNoticeOpen(false);
     setTemplatesOpen(false);
@@ -1262,6 +1501,7 @@ export function CanvasShell({
   };
   const addHistoryPreviewToCanvas = () => {
     if (
+      effectiveCanvasLoadState !== "ready" ||
       !historyPreviewItem ||
       !historyPreviewUrl ||
       historyPreviewItem.kind === "world3d"
@@ -1282,6 +1522,57 @@ export function CanvasShell({
     setHistoryOpen(false);
   };
 
+  const loadMoreHistory = async () => {
+    if (
+      !historyNextCursor ||
+      historyLoading ||
+      historyLoadMoreInFlight.current
+    ) {
+      return;
+    }
+    const requestSequence = historyLoadSequence.current + 1;
+    historyLoadSequence.current = requestSequence;
+    const cursor = historyNextCursor;
+    const controller = new AbortController();
+    historyLoadMoreAbort.current = controller;
+    historyLoadMoreInFlight.current = true;
+    setHistoryError("");
+    setHistoryLoading(true);
+    try {
+      const page = await fetchHistoryPage({
+        accountId: historyAccountIdForFixture(fixtureId),
+        cursor,
+        kind: historyTab,
+        newestFirst: historyNewestFirst,
+        signal: controller.signal,
+      });
+      if (requestSequence !== historyLoadSequence.current) return;
+      setHistoryCounts(page.counts);
+      setHistoryItems((current) => {
+        const known = new Set(current.map((item) => `${item.kind}\0${item.id}`));
+        return [
+          ...current,
+          ...page.items.filter((item) => !known.has(`${item.kind}\0${item.id}`)),
+        ];
+      });
+      setHistoryNextCursor(page.nextCursor);
+    } catch (error) {
+      if (requestSequence === historyLoadSequence.current) {
+        setHistoryError(
+          error instanceof Error ? error.message : "历史素材读取失败",
+        );
+      }
+    } finally {
+      if (historyLoadMoreAbort.current === controller) {
+        historyLoadMoreAbort.current = undefined;
+        historyLoadMoreInFlight.current = false;
+      }
+      if (requestSequence === historyLoadSequence.current) {
+        setHistoryLoading(false);
+      }
+    }
+  };
+
   const persistProjectTitle = useCallback(
     (title: string) => {
       const updatedAt = Math.max(
@@ -1289,6 +1580,8 @@ export function CanvasShell({
         projectTitleUpdatedAt.current + 1,
       );
       const record = { title, updatedAt };
+      const attempt = projectTitleSaveAttempt.current + 1;
+      projectTitleSaveAttempt.current = attempt;
       projectTitleUpdatedAt.current = updatedAt;
       writeProjectTitleDraft(userId, projectTitleId, record);
       setSaveStatus("保存中...");
@@ -1298,11 +1591,25 @@ export function CanvasShell({
         keepalive: true,
         method: "PUT",
       })
-        .then((response) => {
+        .then(async (response) => {
           if (!response.ok) throw new Error("Project title save failed");
-          setSaveStatus("已保存到云端");
+          const saved = parseProjectTitleRecord(await response.json());
+          if (
+            !saved ||
+            saved.title !== record.title ||
+            saved.updatedAt !== record.updatedAt
+          ) {
+            throw new Error("Project title response is stale");
+          }
+          if (projectTitleSaveAttempt.current === attempt) {
+            setSaveStatus("已保存到云端");
+          }
         })
-        .catch(() => setSaveStatus("项目名称保存失败"));
+        .catch(() => {
+          if (projectTitleSaveAttempt.current === attempt) {
+            setSaveStatus("项目名称保存失败，请重试");
+          }
+        });
     },
     [projectTitleId, userId],
   );
@@ -1314,37 +1621,82 @@ export function CanvasShell({
     value: projectTitleValue,
   });
 
+  const beginProjectAction = (action: ProjectAction) => {
+    if (projectActionInFlight.current) return false;
+    projectActionInFlight.current = action;
+    setProjectActionBusy(action);
+    setProjectActionError("");
+    return true;
+  };
+
+  const finishProjectAction = (action: ProjectAction) => {
+    if (projectActionInFlight.current !== action) return;
+    projectActionInFlight.current = undefined;
+    setProjectActionBusy(undefined);
+  };
+
   const createProjectFromMenu = async () => {
-    const response = await fetch("/api/projects", {
-      body: "{}",
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    });
-    if (!response.ok) return;
-    const created = (await response.json()) as { id: string };
-    window.location.href = `/canvas/${created.id}`;
+    if (!beginProjectAction("create")) return;
+    try {
+      const response = await fetch("/api/projects", {
+        body: "{}",
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      if (!response.ok) throw new Error(`服务器返回 ${response.status}`);
+      const created = projectMutationResponse(await response.json());
+      if (!created) throw new Error("服务器返回了无效项目");
+      window.location.href = `/canvas/${encodeURIComponent(created.id)}`;
+    } catch (caught) {
+      const detail = caught instanceof Error ? caught.message.trim() : "";
+      setProjectActionError(
+        detail ? `新建项目失败：${detail}` : "新建项目失败，请重试",
+      );
+    } finally {
+      finishProjectAction("create");
+    }
   };
 
   const cloneCurrentProject = async () => {
-    if (!projectId) return;
-    const response = await fetch(
-      `/api/projects/${encodeURIComponent(projectId)}/clone`,
-      { method: "POST" },
-    );
-    if (!response.ok) return;
-    const cloned = (await response.json()) as { id: string };
-    window.location.href = `/canvas/${cloned.id}`;
+    if (!projectId || !beginProjectAction("clone")) return;
+    try {
+      const response = await fetch(
+        `/api/projects/${encodeURIComponent(projectId)}/clone`,
+        { method: "POST" },
+      );
+      if (!response.ok) throw new Error(`服务器返回 ${response.status}`);
+      const cloned = projectMutationResponse(await response.json());
+      if (!cloned) throw new Error("服务器返回了无效项目");
+      window.location.href = `/canvas/${encodeURIComponent(cloned.id)}`;
+    } catch (caught) {
+      const detail = caught instanceof Error ? caught.message.trim() : "";
+      setProjectActionError(
+        detail ? `克隆项目失败：${detail}` : "克隆项目失败，请重试",
+      );
+    } finally {
+      finishProjectAction("clone");
+    }
   };
 
   const deleteCurrentProject = async () => {
-    if (!projectId) return;
-    const response = await fetch(
-      `/api/projects/${encodeURIComponent(projectId)}`,
-      { method: "DELETE" },
-    );
-    if (!response.ok) return;
-    clearProjectLocalKeys(projectId, userId);
-    window.location.href = "/canvas/projects";
+    if (!projectId || !beginProjectAction("delete")) return;
+    try {
+      const response = await fetch(
+        `/api/projects/${encodeURIComponent(projectId)}`,
+        { method: "DELETE" },
+      );
+      if (!response.ok) throw new Error(`服务器返回 ${response.status}`);
+      setDeleteConfirmOpen(false);
+      clearProjectLocalKeys(projectId, userId);
+      window.location.href = "/canvas/projects";
+    } catch (caught) {
+      const detail = caught instanceof Error ? caught.message.trim() : "";
+      setProjectActionError(
+        detail ? `删除项目失败：${detail}` : "删除项目失败，请重试",
+      );
+    } finally {
+      finishProjectAction("delete");
+    }
   };
 
   useEffect(() => {
@@ -1357,7 +1709,11 @@ export function CanvasShell({
       .then(async (response) => {
         if (response.status === 404) return undefined;
         if (!response.ok) throw new Error("Project title load failed");
-        return (await response.json()) as ProjectTitleRecord;
+        const record = parseProjectTitleRecord(await response.json());
+        if (!record || record.updatedAt < 1) {
+          throw new Error("Project title response is invalid");
+        }
+        return record;
       })
       .then((serverRecord) => {
         if (controller.signal.aborted) return;
@@ -1410,11 +1766,7 @@ export function CanvasShell({
   // 每个标签页独立记住“最近打开的项目”，供工作空间返回时兜底。
   useEffect(() => {
     if (!projectId) return;
-    try {
-      sessionStorage.setItem(`unboundry:last-project:${userId}`, projectId);
-    } catch {
-      // 隐私模式等场景忽略；工作空间的 ?from 参数仍是主路径。
-    }
+    rememberLastProjectId(userId, projectId);
   }, [projectId, userId]);
 
   useEffect(
@@ -1796,36 +2148,39 @@ export function CanvasShell({
 
   useEffect(() => {
     if (!historyOpen) return;
+    historyLoadMoreAbort.current?.abort();
+    historyLoadMoreAbort.current = undefined;
+    historyLoadMoreInFlight.current = false;
     const controller = new AbortController();
-    const accountId =
-      fixtureId === "panel.history.final"
-        ? "fixture-account"
-        : fixtureId === "node.video.success"
-          ? "fixture-video-success"
-          : fixtureId === "node.audio.success"
-            ? "fixture-audio-success"
-          : "local-user";
-    const url = `/api/history/${accountId}`;
+    const requestSequence = historyLoadSequence.current + 1;
+    historyLoadSequence.current = requestSequence;
+    const accountId = historyAccountIdForFixture(fixtureId);
+    const seed = historySeedForFixture(fixtureId);
+    setHistoryItems([]);
+    setHistoryNextCursor(undefined);
+    setHistoryError("");
+    setHistoryLoading(true);
 
-    void fetch(url, {
-      headers: { Accept: "application/json" },
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`History load failed: ${response.status}`);
-        const { items } = await response.json() as { items: HistoryAsset[] };
-        const seed = fixtureId === "panel.history.final"
-          ? historySeed
-          : fixtureId === "node.video.success"
-            ? [historySeed.find((item) => item.kind === "video")!]
-            : fixtureId === "node.audio.success"
-              ? historySeed.filter((item) => item.kind === "audio").slice(0, 2)
-            : [];
-        if (items.length || !seed.length) return items;
+    void (async () => {
+      let page = await fetchHistoryPage({
+        accountId,
+        kind: historyTab,
+        newestFirst: historyNewestFirst,
+        signal: controller.signal,
+      });
+      const total = Object.values(page.counts).reduce(
+        (sum, count) => sum + count,
+        0,
+      );
+      if (total === 0 && seed.length > 0) {
+        const url = `/api/history/${encodeURIComponent(accountId)}`;
         const created = await Promise.all(
           seed.map((item) =>
             fetch(url, {
-              body: JSON.stringify(item),
+              body: JSON.stringify({
+                ...item,
+                preview: persistedHistoryPreview(item),
+              }),
               headers: { "Content-Type": "application/json" },
               method: "POST",
               signal: controller.signal,
@@ -1833,16 +2188,59 @@ export function CanvasShell({
           ),
         );
         if (created.some((response) => !response.ok)) {
-          throw new Error("History seed failed");
+          throw new Error("历史素材初始化失败");
         }
-        return seed;
+        page = await fetchHistoryPage({
+          accountId,
+          kind: historyTab,
+          newestFirst: historyNewestFirst,
+          signal: controller.signal,
+        });
+      }
+      if (
+        controller.signal.aborted ||
+        requestSequence !== historyLoadSequence.current
+      ) {
+        return;
+      }
+      setHistoryCounts(page.counts);
+      setHistoryItems(page.items);
+      setHistoryNextCursor(page.nextCursor);
+    })()
+      .catch((error) => {
+        if (
+          !controller.signal.aborted &&
+          requestSequence === historyLoadSequence.current
+        ) {
+          setHistoryError(
+            error instanceof Error ? error.message : "历史素材读取失败",
+          );
+        }
       })
-      .then(setHistoryItems)
-      .catch(() => {
-        if (!controller.signal.aborted) setHistoryItems([]);
+      .finally(() => {
+        if (
+          !controller.signal.aborted &&
+          requestSequence === historyLoadSequence.current
+        ) {
+          setHistoryLoading(false);
+        }
       });
-    return () => controller.abort();
-  }, [fixtureId, historyOpen]);
+    return () => {
+      controller.abort();
+      historyLoadMoreAbort.current?.abort();
+      historyLoadMoreAbort.current = undefined;
+      historyLoadMoreInFlight.current = false;
+      if (requestSequence === historyLoadSequence.current) {
+        historyLoadSequence.current += 1;
+      }
+    };
+  }, [
+    fixtureId,
+    historyNewestFirst,
+    historyOpen,
+    historyRefreshEpoch,
+    historyTab,
+  ]);
 
   const markSaving = useCallback(() => {
     setSaveStatus("保存中...");
@@ -1863,10 +2261,24 @@ export function CanvasShell({
   const markSaveSuccess = useCallback(() => {
     setSaveStatus("已保存到云端");
   }, []);
+  const markCanvasLoadState = useCallback((state: CanvasLoadState) => {
+    setCanvasLoadScopeId(canvasScopeId);
+    setCanvasLoadState(state);
+    setSaveStatus(
+      state === "ready"
+        ? "已保存到云端"
+        : state === "loading"
+          ? "正在加载画布..."
+          : state === "missing"
+            ? "项目不存在"
+            : "画布加载失败",
+    );
+  }, [canvasScopeId]);
 
   return (
     <main
       className="canvas-shell"
+      data-canvas-load-state={effectiveCanvasLoadState}
       data-agent-open={agentOpen || undefined}
       data-dock-placement={assetsOpen ? "after-assets" : "default"}
       data-fixture-id={fixtureId}
@@ -1874,6 +2286,7 @@ export function CanvasShell({
       data-testid="canvas-shell"
     >
       <CanvasSurface
+        key={canvasScopeId}
         accountId={userId}
         agentReferenceMode={agentReferenceMode}
         fixtureId={fixtureId}
@@ -1892,6 +2305,8 @@ export function CanvasShell({
         }
         onReady={(fitView) => setFitWorld(() => fitView)}
         onGraphContentChange={setGraphHasContent}
+        onGenerationRetryGateChange={registerGenerationRetryGate}
+        onLoadStateChange={markCanvasLoadState}
         onOpenAssets={() => {
           closePrimarySurfaces();
           setAssetsOpen(true);
@@ -1956,6 +2371,17 @@ export function CanvasShell({
         </section>
       )}
 
+      {projectActionError && (
+        <section
+          aria-live="assertive"
+          className="save-conflict-toast"
+          data-testid="project-action-error"
+          role="alert"
+        >
+          {projectActionError}
+        </section>
+      )}
+
       <section className="project-area" data-testid="project-area">
         <ShellButton
           active={projectMenuOpen}
@@ -1974,6 +2400,7 @@ export function CanvasShell({
             aria-label="项目名称"
             data-composition-active={projectTitleControl.composing || undefined}
             data-testid="title-input"
+            disabled={effectiveCanvasLoadState !== "ready"}
             maxLength={120}
             onBlur={() => projectTitleControl.blur()}
             onChange={(event) =>
@@ -2010,9 +2437,7 @@ export function CanvasShell({
           <button
             onClick={() => {
               setProjectMenuOpen(false);
-              window.location.href = projectId
-                ? `/canvas/projects?from=${encodeURIComponent(projectId)}`
-                : "/canvas/projects";
+              window.location.href = projectWorkspacePath(projectId);
             }}
             type="button"
           >
@@ -2030,20 +2455,28 @@ export function CanvasShell({
           >
             重命名
           </button>
-          <button onClick={() => void createProjectFromMenu()} type="button">
-            新建项目
+          <button
+            disabled={projectActionBusy !== undefined}
+            onClick={() => void createProjectFromMenu()}
+            type="button"
+          >
+            {projectActionBusy === "create" ? "正在新建…" : "新建项目"}
           </button>
           <button
-            disabled={!projectId}
+            disabled={!projectId || projectActionBusy !== undefined}
             onClick={() => void cloneCurrentProject()}
             type="button"
           >
-            克隆项目
+            {projectActionBusy === "clone" ? "正在克隆…" : "克隆项目"}
           </button>
           <div className="project-menu-divider" />
           <button
             className="project-menu-delete"
-            disabled={!projectId || projectId === "default"}
+            disabled={
+              !projectId ||
+              projectId === "default" ||
+              projectActionBusy !== undefined
+            }
             onClick={() => setDeleteConfirmOpen(true)}
             title={
               projectId === "default"
@@ -2063,7 +2496,9 @@ export function CanvasShell({
         <ConfirmDialog
           danger
           message={`确定要删除项目「${projectTitleValue}」？画布和生成任务记录将删除，素材库中的媒体会保留。`}
-          onCancel={() => setDeleteConfirmOpen(false)}
+          onCancel={() => {
+            if (projectActionBusy !== "delete") setDeleteConfirmOpen(false);
+          }}
           onConfirm={() => void deleteCurrentProject()}
           title="确认删除"
         />
@@ -2142,6 +2577,7 @@ export function CanvasShell({
                   ? () => togglePrimarySurface("tasks", tasksOpen)
                 : undefined
             }
+            disabled={testId === "add-node" && effectiveCanvasLoadState !== "ready"}
             testId={testId}
           >
             <LineIcon name={icon} />
@@ -2812,13 +3248,21 @@ export function CanvasShell({
               >
                 {visibleTemplateCards.slice(0, 10).map((card) => (
                   <article
+                    aria-disabled={effectiveCanvasLoadState !== "ready"}
                     className="template-card"
                     key={card.id}
-                    onClick={() => applyTemplate(card)}
+                    onClick={
+                      effectiveCanvasLoadState === "ready"
+                        ? () => applyTemplate(card)
+                        : undefined
+                    }
                     role="button"
-                    tabIndex={0}
+                    tabIndex={effectiveCanvasLoadState === "ready" ? 0 : -1}
                     onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
+                      if (
+                        effectiveCanvasLoadState === "ready" &&
+                        (event.key === "Enter" || event.key === " ")
+                      ) {
                         event.preventDefault();
                         applyTemplate(card);
                       }
@@ -2917,7 +3361,12 @@ export function CanvasShell({
                   className="template-browser-admin-entry"
                   data-testid="admin-templates-entry"
                   onClick={() => {
-                    window.location.href = "/admin/templates";
+                    window.location.href = pathWithCurrentCanvasSource(
+                      "/admin/templates",
+                      userId,
+                      window.location.search,
+                      projectId,
+                    );
                   }}
                   type="button"
                 >
@@ -2994,17 +3443,25 @@ export function CanvasShell({
                 >
                   {visibleTemplateCards.map((card) => (
                     <article
+                      aria-disabled={effectiveCanvasLoadState !== "ready"}
                       className="template-browser-card"
                       key={card.id}
-                      onClick={() => applyTemplate(card)}
+                      onClick={
+                        effectiveCanvasLoadState === "ready"
+                          ? () => applyTemplate(card)
+                          : undefined
+                      }
                       role="button"
-                      tabIndex={0}
+                      tabIndex={effectiveCanvasLoadState === "ready" ? 0 : -1}
                       onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
+                        if (
+                          effectiveCanvasLoadState === "ready" &&
+                          (event.key === "Enter" || event.key === " ")
+                        ) {
                           event.preventDefault();
                           applyTemplate(card);
-                      }
-                    }}
+                        }
+                      }}
                   >
                     {templateTab === "我的模板" && (
                       <button
@@ -3056,7 +3513,17 @@ export function CanvasShell({
       {tasksOpen && (
         <GenerationTasksPanel
           canvasId={projectId ?? fixtureId ?? "default"}
+          canvasScopeId={canvasScopeId}
+          key={canvasScopeId}
           open={tasksOpen}
+          panelRef={tasksPanel}
+          retryEnabled={
+            !fixtureId &&
+            effectiveCanvasLoadState === "ready" &&
+            !saveConflict &&
+            generationRetryGate?.scopeId === canvasScopeId
+          }
+          waitForCanvasRevision={generationRetryGate?.run}
         />
       )}
 
@@ -3082,7 +3549,7 @@ export function CanvasShell({
                   {label}
                   <span aria-hidden="true">(</span>
                   <span data-testid={`history-count-${kind}`}>
-                    {historyItems.filter((item) => item.kind === kind).length}
+                    {historyCounts[kind]}
                   </span>
                   <span aria-hidden="true">)</span>
                 </button>
@@ -3122,7 +3589,35 @@ export function CanvasShell({
                 </section>
               ))}
               {filteredHistoryItems.length === 0 && (
-                <p className="history-empty">暂无历史素材</p>
+                !historyLoading && !historyError && (
+                  <p className="history-empty">暂无历史素材</p>
+                )
+              )}
+              {!historyExpanded && historyLoading && historyItems.length === 0 && (
+                <p className="history-empty" role="status">正在读取历史素材…</p>
+              )}
+              {!historyExpanded && historyError && (
+                <div className="history-pagination">
+                  <p role="alert">{historyError}</p>
+                  <button
+                    onClick={() => setHistoryRefreshEpoch((epoch) => epoch + 1)}
+                    type="button"
+                  >
+                    重新读取
+                  </button>
+                </div>
+              )}
+              {!historyExpanded && historyNextCursor && !historyError && (
+                <div className="history-pagination">
+                  <button
+                    data-testid="history-load-more"
+                    disabled={historyLoading}
+                    onClick={() => void loadMoreHistory()}
+                    type="button"
+                  >
+                    {historyLoading ? "正在加载…" : "加载更多历史素材"}
+                  </button>
+                </div>
               )}
             </div>
           </section>
@@ -3162,7 +3657,7 @@ export function CanvasShell({
                         <LineIcon name={icon} />
                         <span>{label}</span>
                         <small>
-                          {historyItems.filter((item) => item.kind === kind).length}
+                          {historyCounts[kind]}
                         </small>
                       </button>
                     ))}
@@ -3278,7 +3773,38 @@ export function CanvasShell({
                       </section>
                     ))}
                     {filteredHistoryItems.length === 0 && (
-                      <p className="history-empty">暂无历史素材</p>
+                      !historyLoading && !historyError && (
+                        <p className="history-empty">暂无历史素材</p>
+                      )
+                    )}
+                    {historyLoading && historyItems.length === 0 && (
+                      <p className="history-empty" role="status">
+                        正在读取历史素材…
+                      </p>
+                    )}
+                    {historyError && (
+                      <div className="history-pagination">
+                        <p role="alert">{historyError}</p>
+                        <button
+                          onClick={() =>
+                            setHistoryRefreshEpoch((epoch) => epoch + 1)}
+                          type="button"
+                        >
+                          重新读取
+                        </button>
+                      </div>
+                    )}
+                    {historyNextCursor && !historyError && (
+                      <div className="history-pagination">
+                        <button
+                          data-testid="history-browser-load-more"
+                          disabled={historyLoading}
+                          onClick={() => void loadMoreHistory()}
+                          type="button"
+                        >
+                          {historyLoading ? "正在加载…" : "加载更多历史素材"}
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -3354,7 +3880,11 @@ export function CanvasShell({
                 </div>
                 <footer>
                   <button
-                    disabled={!historyPreviewUrl || historyPreviewItem.kind === "world3d"}
+                    disabled={
+                      effectiveCanvasLoadState !== "ready" ||
+                      !historyPreviewUrl ||
+                      historyPreviewItem.kind === "world3d"
+                    }
                     onClick={addHistoryPreviewToCanvas}
                     type="button"
                   >
@@ -3374,7 +3904,7 @@ export function CanvasShell({
         </>
       )}
 
-      {!graphHasContent && !textVideoStarted && (
+      {effectiveCanvasLoadState === "ready" && !graphHasContent && !textVideoStarted && (
         <section
           aria-label="快捷创作"
           className="empty-quick-actions"
@@ -3421,6 +3951,7 @@ export function CanvasShell({
           testId="minimap-toggle"
           className="control minimap"
           active={minimapOpen}
+          disabled={effectiveCanvasLoadState !== "ready"}
           onClick={() => setMinimapOpen((open) => !open)}
         >
           <LineIcon className="control-default-icon" name="minimap" />
@@ -3431,6 +3962,7 @@ export function CanvasShell({
           testId="snap-toggle"
           className="control snap"
           active={snapEnabled}
+          disabled={effectiveCanvasLoadState !== "ready"}
           onClick={() => setSnapEnabled((active) => !active)}
         >
           <LineIcon className="control-default-icon" name="snap" />
@@ -3440,6 +3972,7 @@ export function CanvasShell({
           label="适应视图"
           testId="fit-view"
           className="control fit"
+          disabled={effectiveCanvasLoadState !== "ready"}
           onClick={() =>
             hasProbeNodes
               ? fitWorld?.()
@@ -3467,14 +4000,17 @@ export function CanvasShell({
           <input
             aria-label="画布缩放"
             data-testid="zoom-slider"
+            disabled={effectiveCanvasLoadState !== "ready"}
             max="2"
             min="0.15"
-            onChange={(event) =>
+            onChange={(event) => {
+              const nextZoom = Number(event.target.value);
+              setZoomSummary(nextZoom);
               setViewportRequest({
                 sequence: ++zoomRequestSequence.current,
-                zoom: Number(event.target.value),
-              })
-            }
+                zoom: nextZoom,
+              });
+            }}
             step="0.01"
             type="range"
             value={zoomSummary}

@@ -1,0 +1,68 @@
+[Unit]
+Description=Unboundry schema 37 to 39 one-shot migration
+After=unboundry.service
+Conflicts=unboundry.service
+RequiresMountsFor=/opt/unboundry/releases/v0.5.2 /var/lib/unboundry
+
+[Service]
+Type=oneshot
+User=unboundry
+Group=unboundry
+UMask=0077
+WorkingDirectory=/opt/unboundry/releases/v0.5.2
+ExecStart=/opt/node22/bin/node /opt/unboundry/releases/v0.5.2/scripts/migrate-schema37-to39.mjs --apply --data-dir /var/lib/unboundry --runtime-dir /run/unboundry --expected-logical-sha256 {{UNBOUNDRY_EXPECTED_SCHEMA37_LOGICAL_SHA256}} --scratch-root /var/cache/unboundry-migration
+
+Environment="NODE_ENV=production"
+Environment="PATH=/opt/node22/bin:/usr/bin:/bin"
+Environment="HOME=/run/unboundry"
+Environment="TEMP=/run/unboundry"
+Environment="TMP=/run/unboundry"
+Environment="TMPDIR=/run/unboundry"
+UnsetEnvironment=LD_LIBRARY_PATH LD_PRELOAD NODE_OPTIONS NODE_PATH UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION UNBOUNDRY_LEGACY_RUNTIME_ROOT UNBOUNDRY_MAINTENANCE_MODE UNBOUNDRY_RELEASE_ROLE UNBOUNDRY_SAFE_TEST
+
+StateDirectory=unboundry
+StateDirectoryMode=0700
+RuntimeDirectory=unboundry
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+CacheDirectory=unboundry-migration
+CacheDirectoryMode=0700
+
+TimeoutStartSec=1h
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+KillMode=mixed
+SendSIGKILL=yes
+
+PrivateNetwork=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX
+ReadOnlyPaths=/opt/unboundry/releases/v0.5.2
+ReadWritePaths=/var/lib/unboundry /run/unboundry /var/cache/unboundry-migration
+InaccessiblePaths=/home /root /media /mnt
+
+LimitNOFILE=1024
+TasksMax=64
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=unboundry-migrate-schema37-to39

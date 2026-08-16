@@ -1,7 +1,13 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { CanvasShell } from "./canvas/CanvasShell";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { ModelCatalogProvider } from "./models/ModelCatalog";
-import { WorkspacePage } from "./projects/WorkspacePage";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { GrayMenuSelect } from "./ui/GrayMenuSelect";
 import {
@@ -36,6 +42,21 @@ import {
   type AccountPermission,
 } from "../../types/accountPermissions";
 import { REAL_CATEGORIES } from "../../types/templateCategories";
+import { usePageTitle } from "./pageIdentity";
+import {
+  pathWithCurrentCanvasSource,
+} from "./navigation/canvasReturn";
+import {
+  SettingsPageHeader,
+  settingsDestination,
+} from "./navigation/SettingsPageHeader";
+
+const CanvasShell = lazy(async () => ({
+  default: (await import("./canvas/CanvasShell")).CanvasShell,
+}));
+const WorkspacePage = lazy(async () => ({
+  default: (await import("./projects/WorkspacePage")).WorkspacePage,
+}));
 
 type Fixture = {
   id: string;
@@ -64,6 +85,51 @@ type AuthStatus = {
   permissions?: AccountPermission[];
   user?: AuthUser;
 };
+
+type AccountPermissionDetails = {
+  defaultPermissions: AccountPermission[];
+  effectivePermissions: AccountPermission[];
+  extraPermissions: AccountPermission[];
+  permissions: AccountPermission[];
+};
+
+function orderedPermissions(permissions: readonly AccountPermission[]) {
+  return [...new Set(permissions)].sort(
+    (left, right) =>
+      ALL_PERMISSIONS.indexOf(left) - ALL_PERMISSIONS.indexOf(right),
+  );
+}
+
+function samePermissions(
+  left: readonly AccountPermission[],
+  right: readonly AccountPermission[],
+) {
+  const orderedLeft = orderedPermissions(left);
+  const orderedRight = orderedPermissions(right);
+  return orderedLeft.length === orderedRight.length &&
+    orderedLeft.every((permission, index) => permission === orderedRight[index]);
+}
+
+function permissionDetailsFromResponse(body: {
+  defaultPermissions?: AccountPermission[];
+  effectivePermissions?: AccountPermission[];
+  extraPermissions?: AccountPermission[];
+  permissions: AccountPermission[];
+}): AccountPermissionDetails {
+  const defaultPermissions = body.defaultPermissions ??
+    [...DEFAULT_USER_PERMISSIONS];
+  const effectivePermissions = body.effectivePermissions ?? body.permissions;
+  const extraPermissions = body.extraPermissions ??
+    effectivePermissions.filter(
+      (permission) => !defaultPermissions.includes(permission),
+    );
+  return {
+    defaultPermissions: orderedPermissions(defaultPermissions),
+    effectivePermissions: orderedPermissions(effectivePermissions),
+    extraPermissions: orderedPermissions(extraPermissions),
+    permissions: orderedPermissions(body.permissions),
+  };
+}
 
 type AdminModel = {
   archived?: boolean;
@@ -293,12 +359,33 @@ type ApiContractDocument = {
   paths: Record<string, Record<string, ApiContractOperation>>;
 };
 
+function decodedRouteComponent(value: string) {
+  try {
+    const decoded = decodeURIComponent(value);
+    return !decoded ||
+        decoded.length > 200 ||
+        decoded.includes("/") ||
+        decoded.includes("\\") ||
+        decoded.includes("\0")
+      ? undefined
+      : decoded;
+  } catch {
+    return undefined;
+  }
+}
+
 const fixtureMatch = window.location.pathname.match(/^\/__fixture\/([^/]+)$/);
+const fixtureRouteId = fixtureMatch
+  ? decodedRouteComponent(fixtureMatch[1])
+  : undefined;
 const responsivePreviewMatch = window.location.pathname.match(
   /^\/__responsive-preview\/(1280x720|1440x900|1512x982|1920x1080)$/,
 );
 const projectWorkspaceMatch = window.location.pathname === "/canvas/projects";
 const projectCanvasMatch = window.location.pathname.match(/^\/canvas\/([^/]+)$/);
+const projectCanvasId = projectCanvasMatch
+  ? decodedRouteComponent(projectCanvasMatch[1])
+  : undefined;
 
 function ResponsivePreview({
   height,
@@ -404,6 +491,7 @@ function AccountForm({
   bootstrap: boolean;
   onSuccess: (user: AuthUser) => void;
 }) {
+  usePageTitle("登录");
   const [displayName, setDisplayName] = useState("");
   const [loginName, setLoginName] = useState("");
   const [password, setPassword] = useState("");
@@ -514,7 +602,10 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState<AuthUser>();
   const [permissionsByUser, setPermissionsByUser] = useState<
-    Record<string, AccountPermission[]>
+    Record<string, AccountPermissionDetails>
+  >({});
+  const [permissionLoadErrors, setPermissionLoadErrors] = useState<
+    Record<string, string>
   >({});
   const [permissionDrafts, setPermissionDrafts] = useState<
     Record<string, AccountPermission[]>
@@ -534,22 +625,29 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
         "/api/admin/users",
       );
       setUsers(result);
-      const next: Record<string, AccountPermission[]> = {};
+      const next: Record<string, AccountPermissionDetails> = {};
+      const nextErrors: Record<string, string> = {};
       await Promise.all(
         result
           .filter((user) => user.role !== "admin")
           .map(async (user) => {
             try {
               const body = await jsonRequest<{
+                defaultPermissions?: AccountPermission[];
+                effectivePermissions?: AccountPermission[];
+                extraPermissions?: AccountPermission[];
                 permissions: AccountPermission[];
               }>(`/api/admin/users/${encodeURIComponent(user.id)}/permissions`);
-              next[user.id] = body.permissions;
-            } catch {
-              // 单个账号权限读取失败不阻塞账号列表。
+              next[user.id] = permissionDetailsFromResponse(body);
+            } catch (caught) {
+              nextErrors[user.id] = caught instanceof Error
+                ? caught.message
+                : "权限读取失败";
             }
           }),
       );
       setPermissionsByUser(next);
+      setPermissionLoadErrors(nextErrors);
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "账号列表读取失败",
@@ -651,33 +749,46 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
     checked: boolean,
   ) => {
     setPermissionDrafts((current) => {
-      const base =
-        current[user.id] ??
-        permissionsByUser[user.id] ??
-        [...DEFAULT_USER_PERMISSIONS];
-      const next = checked
+      const details = permissionsByUser[user.id];
+      if (!details || details.defaultPermissions.includes(permission)) {
+        return current;
+      }
+      const base = current[user.id] ?? details.extraPermissions;
+      const next = orderedPermissions(checked
         ? [...base, permission]
-        : base.filter((candidate) => candidate !== permission);
+        : base.filter((candidate) => candidate !== permission));
+      if (samePermissions(next, details.extraPermissions)) {
+        const withoutUnchangedDraft = { ...current };
+        delete withoutUnchangedDraft[user.id];
+        return withoutUnchangedDraft;
+      }
       return { ...current, [user.id]: next };
     });
   };
 
   const savePermissions = async (user: AuthUser) => {
+    const draft = permissionDrafts[user.id];
+    if (!permissionsByUser[user.id] || !draft) return;
     setPermissionBusy(user.id);
     setPermissionError("");
     try {
-      const body = await jsonRequest<{ permissions: AccountPermission[] }>(
+      const body = await jsonRequest<{
+        defaultPermissions?: AccountPermission[];
+        effectivePermissions?: AccountPermission[];
+        extraPermissions?: AccountPermission[];
+        permissions: AccountPermission[];
+      }>(
         `/api/admin/users/${encodeURIComponent(user.id)}/permissions`,
         {
           body: JSON.stringify({
-            permissions: permissionDrafts[user.id] ?? [],
+            extraPermissions: draft,
           }),
           method: "PUT",
         },
       );
       setPermissionsByUser((current) => ({
         ...current,
-        [user.id]: body.permissions,
+        [user.id]: permissionDetailsFromResponse(body),
       }));
       setPermissionDrafts((current) => {
         const next = { ...current };
@@ -695,18 +806,11 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
 
   return (
     <main className="admin-page" data-testid="admin-accounts-page">
-      <header>
-        <div>
-          <span aria-hidden="true" className="replica-mark" />
-          <div>
-            <strong>账号管理</strong>
-            <small>管理员：{currentUser.displayName}</small>
-          </div>
-        </div>
-        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
-          返回画布
-        </button>
-      </header>
+      <SettingsPageHeader
+        displayName={`管理员：${currentUser.displayName}`}
+        pageTitle="账号管理"
+        userId={currentUser.id}
+      />
       <div className="admin-layout">
         <section className="admin-card">
           <h1>添加账号</h1>
@@ -767,8 +871,18 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
           {permissionError && (
             <p className="auth-error" role="alert">{permissionError}</p>
           )}
-          {users.map((user) => (
-            <article key={user.id}>
+          {users.map((user) => {
+            const permissionDetails = permissionsByUser[user.id];
+            const permissionDraft = permissionDrafts[user.id];
+            const effectivePermissions = permissionDetails
+              ? orderedPermissions([
+                  ...permissionDetails.defaultPermissions,
+                  ...(permissionDraft ?? permissionDetails.extraPermissions),
+                ])
+              : [];
+            const permissionLoadError = permissionLoadErrors[user.id];
+            return (
+              <article key={user.id}>
               <div className="account-list-row">
                 <div>
                   <strong>{user.displayName}</strong>
@@ -838,47 +952,66 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
                   </p>
                 ) : (
                   <>
-                    <div className="account-permissions-grid">
-                      {ALL_PERMISSIONS.map((permission) => {
-                        const adminOnly = ADMIN_ONLY_PERMISSIONS.includes(
-                          permission,
-                        );
-                        const effective =
-                          permissionDrafts[user.id] ??
-                          permissionsByUser[user.id] ??
-                          [...DEFAULT_USER_PERMISSIONS];
-                        return (
-                          <label
-                            className="account-permission-option"
-                            key={permission}
-                            title={permissionLabel(permission)}
-                          >
-                            <input
-                              checked={effective.includes(permission)}
-                              className="admin-compact-checkbox"
-                              disabled={adminOnly}
-                              onChange={(event) =>
-                                togglePermission(
-                                  user,
-                                  permission,
-                                  event.target.checked,
-                                )
-                              }
-                              type="checkbox"
-                            />
-                            <span>{permissionLabel(permission)}</span>
-                            {adminOnly && (
-                              <small className="account-permission-locked">
-                                仅管理员
-                              </small>
-                            )}
-                          </label>
-                        );
-                      })}
-                    </div>
+                    {permissionDetails ? (
+                      <div className="account-permissions-grid">
+                        {ALL_PERMISSIONS.map((permission) => {
+                          const adminOnly = ADMIN_ONLY_PERMISSIONS.includes(
+                            permission,
+                          );
+                          const defaultPermission =
+                            permissionDetails.defaultPermissions.includes(
+                              permission,
+                            );
+                          return (
+                            <label
+                              className="account-permission-option"
+                              key={permission}
+                              title={permissionLabel(permission)}
+                            >
+                              <input
+                                checked={effectivePermissions.includes(permission)}
+                                className="admin-compact-checkbox"
+                                disabled={
+                                  permissionBusy === user.id ||
+                                  adminOnly ||
+                                  defaultPermission
+                                }
+                                onChange={(event) =>
+                                  togglePermission(
+                                    user,
+                                    permission,
+                                    event.target.checked,
+                                  )
+                                }
+                                type="checkbox"
+                              />
+                              <span>{permissionLabel(permission)}</span>
+                              {(adminOnly || defaultPermission) && (
+                                <small className="account-permission-locked">
+                                  {defaultPermission ? "默认" : "仅管理员"}
+                                </small>
+                              )}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p
+                        className="account-permissions-readonly"
+                        data-testid={`permissions-load-${user.id}`}
+                      >
+                        {permissionLoadError
+                          ? `权限读取失败：${permissionLoadError}`
+                          : "正在读取权限…"}
+                      </p>
+                    )}
                     <div className="account-permissions-actions">
                       <button
-                        disabled={permissionBusy === user.id}
+                        disabled={
+                          Boolean(permissionBusy) ||
+                          !permissionDetails ||
+                          !permissionDraft
+                        }
                         onClick={() => void savePermissions(user)}
                         type="button"
                       >
@@ -886,7 +1019,12 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
                           ? "保存中…"
                           : "保存权限"}
                       </button>
-                      {permissionDrafts[user.id] && (
+                      {permissionLoadError && (
+                        <button onClick={() => void load()} type="button">
+                          重试读取
+                        </button>
+                      )}
+                      {permissionDraft && (
                         <span className="account-permissions-dirty">
                           有未保存的修改
                         </span>
@@ -895,8 +1033,9 @@ function AdminAccounts({ currentUser }: { currentUser: AuthUser }) {
                   </>
                 )}
               </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </section>
       </div>
       {deleting && (
@@ -2530,18 +2669,12 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
       className="admin-page provider-admin-page"
       data-testid="admin-providers-page"
     >
-      <header>
-        <div>
-          <span aria-hidden="true" className="replica-mark" />
-          <div>
-            <strong>管理员平台连接</strong>
-            <small>管理员：{currentUser.displayName}</small>
-          </div>
-        </div>
-        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
-          返回画布
-        </button>
-      </header>
+      <SettingsPageHeader
+        browserTitle="平台连接"
+        displayName={`管理员：${currentUser.displayName}`}
+        pageTitle="管理员平台连接"
+        userId={currentUser.id}
+      />
       <div className="model-safety-banner provider-safety-banner">
         <div>
           <strong>这里只保存平台连接</strong>
@@ -2550,7 +2683,12 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
           </span>
         </div>
         <button
-          onClick={() => { window.location.href = "/admin/models"; }}
+          onClick={() => {
+            window.location.href = settingsDestination(
+              "/admin/models",
+              currentUser.id,
+            );
+          }}
           type="button"
         >
           前往模型中心
@@ -4770,18 +4908,12 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
 
   return (
     <main className="admin-page model-admin-page" data-testid="admin-models-page">
-      <header>
-        <div>
-          <span aria-hidden="true" className="replica-mark" />
-          <div>
-            <strong>管理员模型中心</strong>
-            <small>管理员：{currentUser.displayName}</small>
-          </div>
-        </div>
-        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
-          返回画布
-        </button>
-      </header>
+      <SettingsPageHeader
+        browserTitle="模型中心"
+        displayName={`管理员：${currentUser.displayName}`}
+        pageTitle="管理员模型中心"
+        userId={currentUser.id}
+      />
       <div className="model-safety-banner">
         <div>
           <strong>当前只配置用户可见模型</strong>
@@ -4791,7 +4923,12 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
           </span>
         </div>
         <button
-          onClick={() => { window.location.href = "/admin/providers"; }}
+          onClick={() => {
+            window.location.href = settingsDestination(
+              "/admin/providers",
+              currentUser.id,
+            );
+          }}
           type="button"
         >
           管理平台连接
@@ -4808,7 +4945,12 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
               <span>选择平台连接</span>
               {providers.length === 0 ? (
                 <button
-                  onClick={() => { window.location.href = "/admin/providers"; }}
+                  onClick={() => {
+                    window.location.href = settingsDestination(
+                      "/admin/providers",
+                      currentUser.id,
+                    );
+                  }}
                   type="button"
                 >
                   先添加平台连接
@@ -5522,18 +5664,12 @@ function AdminStorage({ currentUser }: { currentUser: AuthUser }) {
       className="admin-page storage-admin-page"
       data-testid="admin-storage-page"
     >
-      <header>
-        <div>
-          <span aria-hidden="true" className="replica-mark" />
-          <div>
-            <strong>管理员存储中心</strong>
-            <small>管理员：{currentUser.displayName}</small>
-          </div>
-        </div>
-        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
-          返回画布
-        </button>
-      </header>
+      <SettingsPageHeader
+        browserTitle="存储中心"
+        displayName={`管理员：${currentUser.displayName}`}
+        pageTitle="管理员存储中心"
+        userId={currentUser.id}
+      />
       <div
         className="storage-safety-banner"
         data-cloud-enabled={status?.oss.mediaRoutingEnabled ?? false}
@@ -5895,18 +6031,12 @@ function AdminGenerationSafety({
       className="admin-page generation-safety-page"
       data-testid="admin-generation-safety-page"
     >
-      <header>
-        <div>
-          <span aria-hidden="true" className="replica-mark" />
-          <div>
-            <strong>管理员生成安全中心</strong>
-            <small>管理员：{currentUser.displayName}</small>
-          </div>
-        </div>
-        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
-          返回画布
-        </button>
-      </header>
+      <SettingsPageHeader
+        browserTitle="生成安全"
+        displayName={`管理员：${currentUser.displayName}`}
+        pageTitle="管理员生成安全中心"
+        userId={currentUser.id}
+      />
       <div
         className="generation-safety-banner"
         data-stopped={
@@ -6272,18 +6402,12 @@ function AdminApiContract({ currentUser }: { currentUser: AuthUser }) {
 
   return (
     <main className="admin-page" data-testid="admin-api-contract-page">
-      <header>
-        <div>
-          <span aria-hidden="true" className="replica-mark" />
-          <div>
-            <strong>自有接口说明</strong>
-            <small>管理员：{currentUser.displayName}</small>
-          </div>
-        </div>
-        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
-          返回画布
-        </button>
-      </header>
+      <SettingsPageHeader
+        browserTitle="接口说明"
+        displayName={`管理员：${currentUser.displayName}`}
+        pageTitle="自有接口说明"
+        userId={currentUser.id}
+      />
       <div className="api-contract-layout">
         <section className="admin-card api-contract-summary">
           <div>
@@ -6352,9 +6476,14 @@ function accountCredentialStatusLabel(status: AccountCredentialItem["keyStatus"]
 }
 
 type AdminPublicTemplateStatus = "draft" | "published" | "archived";
+type AdminPublicTemplateCompatibilityStatus = "INVALID" | "NEEDS_MODEL" | "PASS";
 
 type AdminPublicTemplate = {
   categories: string[];
+  compatibility: {
+    issues: Array<{ message: string; nodeTitle?: string }>;
+    status: AdminPublicTemplateCompatibilityStatus;
+  };
   createdAt: string;
   description: string;
   graph?: Record<string, unknown>;
@@ -6369,6 +6498,14 @@ function publicTemplateStatusLabel(status: AdminPublicTemplateStatus) {
   if (status === "published") return "已发布";
   if (status === "draft") return "草稿";
   return "已归档";
+}
+
+function publicTemplateCompatibilityLabel(
+  status: AdminPublicTemplateCompatibilityStatus,
+) {
+  if (status === "PASS") return "兼容检查通过";
+  if (status === "NEEDS_MODEL") return "需要绑定模型";
+  return "模板无效";
 }
 
 function AdminTemplatesPage({ currentUser }: { currentUser: AuthUser }) {
@@ -6567,18 +6704,11 @@ function AdminTemplatesPage({ currentUser }: { currentUser: AuthUser }) {
 
   return (
     <main className="admin-page" data-testid="admin-templates-page">
-      <header>
-        <div>
-          <span aria-hidden="true" className="replica-mark" />
-          <div>
-            <strong>公共模板管理</strong>
-            <small>管理员：{currentUser.displayName}</small>
-          </div>
-        </div>
-        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
-          返回画布
-        </button>
-      </header>
+      <SettingsPageHeader
+        displayName={`管理员：${currentUser.displayName}`}
+        pageTitle="公共模板管理"
+        userId={currentUser.id}
+      />
       {notice && (
         <p className="storage-admin-notice provider-page-message">{notice}</p>
       )}
@@ -6624,6 +6754,15 @@ function AdminTemplatesPage({ currentUser }: { currentUser: AuthUser }) {
                     更新于{" "}
                     {new Date(template.updatedAt).toLocaleString("zh-CN")}
                   </small>
+                  <small
+                    className="admin-template-compatibility-detail"
+                    title={template.compatibility.issues[0]?.message}
+                  >
+                    {template.compatibility.issues[0]?.nodeTitle
+                      ? `${template.compatibility.issues[0].nodeTitle}：`
+                      : ""}
+                    {template.compatibility.issues[0]?.message}
+                  </small>
                 </div>
                 <b
                   className="admin-template-status"
@@ -6631,11 +6770,21 @@ function AdminTemplatesPage({ currentUser }: { currentUser: AuthUser }) {
                 >
                   {publicTemplateStatusLabel(template.status)}
                 </b>
+                <b
+                  className="admin-template-compatibility"
+                  data-compatibility={template.compatibility.status}
+                >
+                  {publicTemplateCompatibilityLabel(template.compatibility.status)}
+                </b>
                 <div className="admin-template-actions">
                   {template.status === "draft" && (
                     <button
-                      disabled={busyId === template.id}
+                      disabled={
+                        busyId === template.id ||
+                        template.compatibility.status !== "PASS"
+                      }
                       onClick={() => void changeStatus(template, "published")}
+                      title={template.compatibility.issues[0]?.message}
                       type="button"
                     >
                       发布
@@ -6652,8 +6801,12 @@ function AdminTemplatesPage({ currentUser }: { currentUser: AuthUser }) {
                   )}
                   {template.status === "archived" ? (
                     <button
-                      disabled={busyId === template.id}
+                      disabled={
+                        busyId === template.id ||
+                        template.compatibility.status !== "PASS"
+                      }
                       onClick={() => void changeStatus(template, "published")}
+                      title={template.compatibility.issues[0]?.message}
                       type="button"
                     >
                       恢复
@@ -6938,18 +7091,11 @@ function MyConnectionsPage({ currentUser }: { currentUser: AuthUser }) {
       className="admin-page connections-page"
       data-testid="connections-page"
     >
-      <header>
-        <div>
-          <span aria-hidden="true" className="replica-mark" />
-          <div>
-            <strong>我的连接</strong>
-            <small>{currentUser.displayName}</small>
-          </div>
-        </div>
-        <button onClick={() => { window.location.href = "/canvas"; }} type="button">
-          返回画布
-        </button>
-      </header>
+      <SettingsPageHeader
+        displayName={currentUser.displayName}
+        pageTitle="我的连接"
+        userId={currentUser.id}
+      />
       <section className="admin-card connections-intro">
         <h1>我的平台密钥</h1>
         <p>
@@ -7143,6 +7289,30 @@ function ChangeOwnPasswordDialog({
   );
 }
 
+function EffectRedirect({ to }: { to: string }) {
+  const redirectStarted = useRef(false);
+  useEffect(() => {
+    if (redirectStarted.current || window.location.pathname === to) return;
+    redirectStarted.current = true;
+    window.location.replace(to);
+  }, [to]);
+  return (
+    <main className="system-message" data-testid="route-redirect">
+      正在返回可访问页面…
+    </main>
+  );
+}
+
+function AdminRouteGuard({
+  allowed,
+  children,
+}: {
+  allowed: boolean;
+  children: ReactNode;
+}) {
+  return allowed ? children : <EffectRedirect to="/" />;
+}
+
 function AuthenticatedApplication({
   fixtureId,
   projectId,
@@ -7247,98 +7417,106 @@ function AuthenticatedApplication({
       />
     );
   }
-  if (window.location.pathname === "/admin/accounts") {
-    if (
-      !hasClientPermission(
-        status.permissions,
-        "manage_accounts",
-        status.user.role,
-      )
-    ) {
-      window.location.replace("/");
-      return null;
-    }
-    return <AdminAccounts currentUser={status.user} />;
+  const pathname = window.location.pathname;
+  const fromCurrentCanvas = (path: string) =>
+    pathWithCurrentCanvasSource(
+      path,
+      status.user!.id,
+      window.location.search,
+      projectId,
+    );
+  if (pathname === "/admin/accounts") {
+    return (
+      <AdminRouteGuard
+        allowed={hasClientPermission(
+          status.permissions,
+          "manage_accounts",
+          status.user.role,
+        )}
+      >
+        <AdminAccounts currentUser={status.user} />
+      </AdminRouteGuard>
+    );
   }
-  if (window.location.pathname === "/admin/models") {
-    if (
-      !hasClientPermission(
-        status.permissions,
-        "manage_models",
-        status.user.role,
-      )
-    ) {
-      window.location.replace("/");
-      return null;
-    }
-    return <AdminModels currentUser={status.user} />;
+  if (pathname === "/admin/models") {
+    return (
+      <AdminRouteGuard
+        allowed={hasClientPermission(
+          status.permissions,
+          "manage_models",
+          status.user.role,
+        )}
+      >
+        <AdminModels currentUser={status.user} />
+      </AdminRouteGuard>
+    );
   }
-  if (window.location.pathname === "/admin/providers") {
-    if (
-      !hasClientPermission(
-        status.permissions,
-        "manage_providers",
-        status.user.role,
-      )
-    ) {
-      window.location.replace("/");
-      return null;
-    }
-    return <AdminProviders currentUser={status.user} />;
+  if (pathname === "/admin/providers") {
+    return (
+      <AdminRouteGuard
+        allowed={hasClientPermission(
+          status.permissions,
+          "manage_providers",
+          status.user.role,
+        )}
+      >
+        <AdminProviders currentUser={status.user} />
+      </AdminRouteGuard>
+    );
   }
-  if (window.location.pathname === "/admin/storage") {
-    if (
-      !hasClientPermission(
-        status.permissions,
-        "manage_storage",
-        status.user.role,
-      )
-    ) {
-      window.location.replace("/");
-      return null;
-    }
-    return <AdminStorage currentUser={status.user} />;
+  if (pathname === "/admin/storage") {
+    return (
+      <AdminRouteGuard
+        allowed={hasClientPermission(
+          status.permissions,
+          "manage_storage",
+          status.user.role,
+        )}
+      >
+        <AdminStorage currentUser={status.user} />
+      </AdminRouteGuard>
+    );
   }
-  if (window.location.pathname === "/admin/generation-safety") {
-    if (
-      !hasClientPermission(
-        status.permissions,
-        "manage_generation_safety",
-        status.user.role,
-      )
-    ) {
-      window.location.replace("/");
-      return null;
-    }
-    return <AdminGenerationSafety currentUser={status.user} />;
+  if (pathname === "/admin/generation-safety") {
+    return (
+      <AdminRouteGuard
+        allowed={hasClientPermission(
+          status.permissions,
+          "manage_generation_safety",
+          status.user.role,
+        )}
+      >
+        <AdminGenerationSafety currentUser={status.user} />
+      </AdminRouteGuard>
+    );
   }
-  if (window.location.pathname === "/admin/api-contract") {
-    if (
-      !hasClientPermission(
-        status.permissions,
-        "manage_accounts",
-        status.user.role,
-      )
-    ) {
-      window.location.replace("/");
-      return null;
-    }
-    return <AdminApiContract currentUser={status.user} />;
+  if (pathname === "/admin/api-contract") {
+    return (
+      <AdminRouteGuard
+        allowed={hasClientPermission(
+          status.permissions,
+          "manage_accounts",
+          status.user.role,
+        )}
+      >
+        <AdminApiContract currentUser={status.user} />
+      </AdminRouteGuard>
+    );
   }
-  if (window.location.pathname === "/admin/templates") {
-    if (
-      !hasClientPermission(
-        status.permissions,
-        "manage_public_templates",
-        status.user.role,
-      )
-    ) {
-      window.location.replace("/");
-      return null;
-    }
-    return <AdminTemplatesPage currentUser={status.user} />;
+  if (pathname === "/admin/templates") {
+    return (
+      <AdminRouteGuard
+        allowed={hasClientPermission(
+          status.permissions,
+          "manage_public_templates",
+          status.user.role,
+        )}
+      >
+        <AdminTemplatesPage currentUser={status.user} />
+      </AdminRouteGuard>
+    );
   }
-  if (window.location.pathname === "/connections") {
+  if (pathname === "/connections") {
     return <MyConnectionsPage currentUser={status.user} />;
   }
 
@@ -7353,7 +7531,7 @@ function AuthenticatedApplication({
         role={status.user.role}
         userId={status.user.id}
         userInitial={status.user.displayName.trim().charAt(0).toLocaleUpperCase() || "M"}
-        workspace={workspace || window.location.pathname === "/"}
+        workspace={workspace || pathname === "/"}
       />
       {accountOpen && (
         <aside
@@ -7364,13 +7542,17 @@ function AuthenticatedApplication({
           <strong>{status.user.displayName}</strong>
           <span>@{status.user.loginName}</span>
           <button
-            onClick={() => { window.location.href = "/canvas/projects"; }}
+            onClick={() => {
+              window.location.href = fromCurrentCanvas("/canvas/projects");
+            }}
             type="button"
           >
             工作空间
           </button>
           <button
-            onClick={() => { window.location.href = "/connections"; }}
+            onClick={() => {
+              window.location.href = fromCurrentCanvas("/connections");
+            }}
             type="button"
           >
             我的连接
@@ -7381,7 +7563,9 @@ function AuthenticatedApplication({
             status.user.role,
           ) && (
               <button
-                onClick={() => { window.location.href = "/admin/models"; }}
+                onClick={() => {
+                  window.location.href = fromCurrentCanvas("/admin/models");
+                }}
                 type="button"
               >
                 模型中心
@@ -7393,7 +7577,9 @@ function AuthenticatedApplication({
             status.user.role,
           ) && (
               <button
-                onClick={() => { window.location.href = "/admin/providers"; }}
+                onClick={() => {
+                  window.location.href = fromCurrentCanvas("/admin/providers");
+                }}
                 type="button"
               >
                 平台连接
@@ -7405,7 +7591,9 @@ function AuthenticatedApplication({
             status.user.role,
           ) && (
               <button
-                onClick={() => { window.location.href = "/admin/accounts"; }}
+                onClick={() => {
+                  window.location.href = fromCurrentCanvas("/admin/accounts");
+                }}
                 type="button"
               >
                 账号管理
@@ -7417,7 +7605,9 @@ function AuthenticatedApplication({
             status.user.role,
           ) && (
               <button
-                onClick={() => { window.location.href = "/admin/storage"; }}
+                onClick={() => {
+                  window.location.href = fromCurrentCanvas("/admin/storage");
+                }}
                 type="button"
               >
                 存储中心
@@ -7430,7 +7620,9 @@ function AuthenticatedApplication({
           ) && (
               <button
                 onClick={() => {
-                  window.location.href = "/admin/generation-safety";
+                  window.location.href = fromCurrentCanvas(
+                    "/admin/generation-safety",
+                  );
                 }}
                 type="button"
               >
@@ -7443,7 +7635,9 @@ function AuthenticatedApplication({
             status.user.role,
           ) && (
               <button
-                onClick={() => { window.location.href = "/admin/templates"; }}
+                onClick={() => {
+                  window.location.href = fromCurrentCanvas("/admin/templates");
+                }}
                 type="button"
               >
                 公共模板管理
@@ -7480,6 +7674,10 @@ function AuthenticatedApplication({
   );
 }
 
+function navigateToProjectWorkspace() {
+  window.location.href = "/canvas/projects";
+}
+
 function CanvasApplication({
   accountOpen,
   fixtureId,
@@ -7501,41 +7699,50 @@ function CanvasApplication({
   userInitial: string;
   workspace?: boolean;
 }) {
-  if (workspace) {
-    return <WorkspacePage userId={userId} />;
-  }
   return (
-    <ModelCatalogProvider>
-      <CanvasShell
-        accountOpen={accountOpen}
-        fixtureId={fixtureId}
-        onAccountOpenChange={onAccountOpenChange}
-        onProjectMissing={() => {
-          window.location.href = "/canvas/projects";
-        }}
-        permissions={permissions}
-        projectId={projectId}
-        role={role}
-        userId={userId}
-        userInitial={userInitial}
-      />
-    </ModelCatalogProvider>
+    <Suspense
+      fallback={(
+        <main className="system-message" role="status">
+          正在加载工作区…
+        </main>
+      )}
+    >
+      {workspace ? (
+        <WorkspacePage userId={userId} />
+      ) : (
+        <ModelCatalogProvider>
+          <CanvasShell
+            accountOpen={accountOpen}
+            fixtureId={fixtureId}
+            onAccountOpenChange={onAccountOpenChange}
+            onProjectMissing={navigateToProjectWorkspace}
+            permissions={permissions}
+            projectId={projectId}
+            role={role}
+            userId={userId}
+            userInitial={userInitial}
+          />
+        </ModelCatalogProvider>
+      )}
+    </Suspense>
   );
 }
 
 export function App() {
   const [fixtureState, setFixtureState] = useState<FixtureState>(() =>
     fixtureMatch
-      ? { state: "loading", id: decodeURIComponent(fixtureMatch[1]) }
+      ? fixtureRouteId
+        ? { state: "loading", id: fixtureRouteId }
+        : { state: "error", message: "Fixture route is invalid" }
       : { state: "idle" },
   );
 
   useEffect(() => {
-    if (!fixtureMatch || !import.meta.env.DEV) {
+    if (!fixtureRouteId || !import.meta.env.DEV) {
       return;
     }
 
-    const id = decodeURIComponent(fixtureMatch[1]);
+    const id = fixtureRouteId;
     const controller = new AbortController();
 
     fetch(`/__fixture-api/${encodeURIComponent(id)}`, {
@@ -7618,9 +7825,16 @@ export function App() {
     return <AuthenticatedApplication workspace />;
   }
   if (projectCanvasMatch) {
+    if (!projectCanvasId) {
+      return (
+        <main className="system-message" role="alert">
+          Project route is invalid.
+        </main>
+      );
+    }
     return (
       <AuthenticatedApplication
-        projectId={decodeURIComponent(projectCanvasMatch[1])}
+        projectId={projectCanvasId}
       />
     );
   }

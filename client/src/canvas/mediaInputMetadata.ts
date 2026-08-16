@@ -7,8 +7,19 @@ export type TrustedMediaMetadata = {
   durationSeconds: number | null;
   durationStatus: "failed" | "not-applicable" | "pending" | "ready";
   kind: Exclude<NodeInputKind, "text">;
+  mediaHeight?: number | null;
+  mediaWidth?: number | null;
   storageBackend: "local" | "oss";
 };
+
+export function hasTrustedMediaDimensions(
+  metadata: Pick<TrustedMediaMetadata, "mediaHeight" | "mediaWidth">,
+): metadata is typeof metadata & { mediaHeight: number; mediaWidth: number } {
+  return Number.isSafeInteger(metadata.mediaHeight) &&
+    Number(metadata.mediaHeight) > 0 &&
+    Number.isSafeInteger(metadata.mediaWidth) &&
+    Number(metadata.mediaWidth) > 0;
+}
 
 export function mediaUploadState(
   inputState: Extract<NodeInputState, "uploading" | "invalid">,
@@ -32,9 +43,11 @@ export function trustedMediaPatch(metadata: TrustedMediaMetadata) {
     mediaByteSize: metadata.byteSize,
     mediaContentType: metadata.contentType,
     mediaDurationSeconds: metadata.durationSeconds ?? undefined,
+    mediaHeight: metadata.mediaHeight ?? undefined,
     mediaMetadataSource: "server" as const,
     mediaMetadataStatus: metadataStatus,
     mediaStorageBackend: metadata.storageBackend,
+    mediaWidth: metadata.mediaWidth ?? undefined,
   };
 }
 

@@ -1,0 +1,75 @@
+{
+  "applicationVersion": "0.6.1",
+  "backup": {
+    "directory": "/var/lib/unboundry-rollbacks/inc-ecom-007-20260815T135418Z",
+    "inventorySha256": "73554c0a84001d953c27f55c011f77fff8b873db2918ea3e4eca0b19a7535f24",
+    "restoreInventorySha256": "73554c0a84001d953c27f55c011f77fff8b873db2918ea3e4eca0b19a7535f24",
+    "restoreSnapshotMatched": true
+  },
+  "cutover": {
+    "completedAt": "2026-08-15T13:54:21Z",
+    "currentTarget": "/opt/unboundry/releases/v0.6.1-inc-ecom-007-20260815",
+    "previousTarget": "/opt/unboundry/releases/v0.6.0",
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "serviceRestarts": 0
+  },
+  "databaseBeforeAndAfter": {
+    "activeGenerationTasks": 0,
+    "foreignKeyViolations": 0,
+    "generationTasks": 109,
+    "providerAttempts": 107,
+    "publicTemplates": 43,
+    "publishedTemplates": 42,
+    "quickCheck": "ok",
+    "safety": {
+      "audioConcurrency": 500,
+      "emergencyStop": 0,
+      "globalEnabled": 1,
+      "imageConcurrency": 500,
+      "perUserConcurrency": 500,
+      "requestsPerMinute": 500,
+      "textConcurrency": 500,
+      "videoConcurrency": 500
+    },
+    "schemaVersion": 39
+  },
+  "incident": "INC-ECOM-007",
+  "preflightInterruption": {
+    "cause": "SQLite SHM was included in an inventory before the read-only restore probe; the probe can refresh ephemeral SHM bytes, so the first restore comparison stopped before cutover.",
+    "dataMutation": false,
+    "releaseSwitched": false,
+    "serviceRestoredOnPreviousRelease": true
+  },
+  "productionChecks": {
+    "localLive": "PASS",
+    "localReady": "PASS active schema39",
+    "localVersion": "0.6.1",
+    "publicLive": "PASS",
+    "publicMainJavaScriptSha256": "8bc2ebb62d3be9701395d4259b0b7d091a485cccaeac493198b8dc52369e1204",
+    "publicMainJavaScriptMatchesRelease": true,
+    "publicReady": "PASS active schema39",
+    "publicVersion": "0.6.1"
+  },
+  "providerBoundary": {
+    "generationTaskDelta": 0,
+    "providerAttemptDelta": 0,
+    "realOrPaidProviderRequests": 0
+  },
+  "release": {
+    "directory": "/opt/unboundry/releases/v0.6.1-inc-ecom-007-20260815",
+    "inventorySha256": "c467c7c264da03421a14fabf93c90bc40faa3edfad1a7dfdff802112f1d2237f",
+    "receiptSha256": "6259419319431cc34fc4c5fd66e827840429f148e88e510eab7297eae4f6eddb",
+    "sourceCommit": "f3d3fc8b2d4cb846b446fa4a46afbdcd796e2ccf",
+    "sourceTree": "dd1180077032a42f1ab7ce7ca614906898d1f414"
+  },
+  "status": "PRODUCTION_PUBLISHED_TECHNICAL_PASS_USER_RECHECK",
+  "tests": {
+    "affectedAfterVersionAdmissionFix": "8 specs, 110/110 PASS",
+    "baselineFormalFull": "117/117 specs, 959/959 PASS",
+    "buildFromExactReleaseHead": "PASS",
+    "providerRequests": 0,
+    "sourceCoverage": "PASS",
+    "typescript": "PASS"
+  }
+}

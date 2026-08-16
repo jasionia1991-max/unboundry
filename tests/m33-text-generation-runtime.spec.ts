@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,7 +16,9 @@ import {
 import {
   defaultParameterValues,
   knownModelParameterSchema,
+  submissionParameterValues,
 } from "../types/modelParameters";
+import { generationInputKey } from "../client/src/generation/generationRetry";
 
 const profile: ProviderProfile = {
   apiKey: "test-secret-never-returned",
@@ -707,6 +709,14 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
     providerModelId: "doubao-seed-2-0-lite-260428",
   });
   expect(parameterSchema).toBeTruthy();
+  const defaultParameters = defaultParameterValues(parameterSchema!);
+  const taskInputKey = generationInputKey({
+    inputs: [],
+    modelId,
+    ownPrompt: "请生成商品描述",
+    parameters: submissionParameterValues(parameterSchema!, defaultParameters),
+    prompt: "请生成商品描述",
+  });
   let currentTaskId = "text-ui-failure-001";
   let providerRequests = 0;
   let taskRetries = 0;
@@ -745,6 +755,7 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
         ? { errorCode: "AUTH", errorMessage: "零Provider模拟授权失败" }
         : {}),
       id,
+      generationInputKey: taskInputKey,
       kind: "text",
       model: modelId,
       nodeId,
@@ -831,7 +842,7 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
             content: "",
             label: "Text",
             textModelId: modelId,
-            textParameters: defaultParameterValues(parameterSchema!),
+            textParameters: defaultParameters,
             textPrompt: "请生成商品描述",
             title: "失败恢复目标",
           },
@@ -854,7 +865,7 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
     const creator = page.getByTestId("text-creator");
     await creator.getByRole("button", { name: "Generate" }).click();
     await expect(creator.getByTestId("upstream-input-problem"))
-      .toContainText("生成失败：零Provider模拟授权失败");
+      .toContainText("生成失败：当前平台连接没有该模型的使用权限");
     await expect(creator.getByRole("button", { name: "Retry generation" }))
       .toBeEnabled();
     await expect.poll(async () => {
@@ -864,7 +875,8 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
       return canvas.nodes.find((node) => node.id === nodeId)?.data;
     }).toMatchObject({
       textGenerating: false,
-      textGenerationError: "零Provider模拟授权失败",
+      textGenerationError: "当前平台连接没有该模型的使用权限",
+      textGenerationErrorCode: "AUTH",
       textGenerationTaskId: "text-ui-failure-001",
     });
     expect(taskSubmissions).toBe(1);
@@ -881,7 +893,7 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
     await page.getByTestId(`rf__node-${nodeId}`).click();
     const restoredCreator = page.getByTestId("text-creator");
     await expect(restoredCreator.getByTestId("upstream-input-problem"))
-      .toContainText("零Provider模拟授权失败");
+      .toContainText("当前平台连接没有该模型的使用权限");
     await expect(restoredCreator.getByRole("button", { name: "Retry generation" }))
       .toBeEnabled();
     expect(taskSubmissions).toBe(1);

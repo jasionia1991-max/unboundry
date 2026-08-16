@@ -10,6 +10,7 @@ import {
 } from "@xyflow/react";
 import {
   memo,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -20,13 +21,21 @@ import { useCanvasCheckpoint } from "./CanvasHistory";
 import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
-import { uploadImageAsset, uploadPngAsset } from "./imageAsset";
+import {
+  MediaLoadFallback,
+  useMediaLoadRecovery,
+} from "./MediaLoadFallback";
+import {
+  discardImageAsset,
+  uploadImageAsset,
+  uploadPngAsset,
+} from "./imageAsset";
 import { withImageReferenceInputMode } from "./imageReferenceMode";
 import { fitVisualMediaSize, NODE_DEFAULT_SIZES } from "./mediaGeometry";
 import { NodeModelControl } from "./NodeModelControl";
 import { NodeParameterControl } from "./NodeParameterControl";
 import { EmptyMediaUploadToolbar } from "./EmptyMediaUploadToolbar";
-import type { ProbeNodeType } from "./ProbeNode";
+import { generationOwnershipKey, type ProbeNodeType } from "./ProbeNode";
 import {
   usePublishedModelSelection,
 } from "../models/ModelCatalog";
@@ -45,8 +54,12 @@ import {
   POLLING_PAUSED_MESSAGE,
   waitForGenerationTaskWithPause,
 } from "../generation/taskPolling";
-import type {
-  NodeGenerationOutcome,
+import {
+  workflowModelSelectionProblem,
+  workflowRuntimePreflightDisposition,
+  workflowSubmissionPreflightProblem,
+  type NodeGenerationOutcome,
+  type WorkflowPreflightPhase,
 } from "../generation/workflowExecution";
 import { visibleGenerationError } from "../generation/generationErrors";
 import {
@@ -58,11 +71,14 @@ import {
   cancelGenerationTask,
   clearGenerationSubmissionIntent,
   ensureGenerationTask,
+  GENERATION_TASK_RETRY_ACCEPTED_EVENT,
   GenerationRequestError,
+  getGenerationTask,
   listGenerationTasks,
   recoverPendingGenerationTask,
   retryGenerationTask,
   waitForGenerationTask,
+  type GenerationTaskRetryAcceptedDetail,
   type GenerationTaskSummary,
 } from "../generation/generationTasks";
 import {
@@ -75,6 +91,7 @@ import {
 import {
   availableNodeInputRoles,
   blockedModelSwitchProblem,
+  defaultNodeInputRole,
   moveNodeInputEdge,
   resolveNodeInputs,
   type NodeInputProblem,
@@ -83,16 +100,35 @@ import { UpstreamInputCards } from "./UpstreamInputCards";
 import { GenerationAvailabilityNotice } from "./GenerationAvailabilityNotice";
 import {
   fetchTrustedMediaMetadata,
+  hasTrustedMediaDimensions,
   mediaUploadState,
   trustedMediaPatch,
 } from "./mediaInputMetadata";
 
 type CropBox = { height: number; width: number; x: number; y: number };
+type ImageGenerationRun = {
+  inputKey?: string;
+  ownershipKey?: string;
+  taskId: string;
+  token: symbol;
+};
+
+function imageTaskMatchesNode(
+  task: GenerationTaskSummary,
+  canvasId: string,
+  nodeId: string,
+  taskId = task.id,
+) {
+  return task.id === taskId &&
+    task.canvasId === canvasId &&
+    task.kind === "image" &&
+    task.nodeId === nodeId;
+}
 
 // 页面重载/节点重挂载时，运行中的图片任务必须由恢复逻辑继续轮询，
 // 否则服务端已成功的结果要等下一次刷新才会显示。同一任务只允许一个
 // 恢复轮询器，避免重挂载产生重复轮询。
-const recoveredImagePollingTasks = new Set<string>();
+const recoveredImagePollingTasks = new Map<string, symbol>();
 type CropRatio = "原图" | "1:1" | "4:3" | "3:4" | "16:9" | "9:16" | "21:9" | "自定义";
 type MultiAngle = { rotation: number; scale: number; tilt: number; wide: boolean };
 type RedrawTool = "brush" | "box" | "erase";
@@ -166,17 +202,6 @@ function restoreImageUploadBaseline(
       mediaStorageBackend: baseline.data.mediaStorageBackend,
     },
   };
-}
-
-async function discardUnadoptedImageAsset(assetId: string) {
-  try {
-    await fetch(`/api/assets/${encodeURIComponent(assetId)}`, {
-      method: "DELETE",
-    });
-  } catch {
-    // The upload operation owns this fresh id. Cleanup is best-effort and must
-    // never revive a stale result in the node.
-  }
 }
 
 function supportedImageValue(values: string[], preferred?: string) {
@@ -1159,23 +1184,58 @@ function ImageNodeImpl({
   selected,
 }: NodeProps<ProbeNodeType>) {
   const singleNodeChrome = useSingleNodeChrome(selected, dragging);
+  const mediaLoad = useMediaLoadRecovery(data.imageSrc);
   const inputRef = useRef<HTMLInputElement>(null);
   const moreRef = useRef<HTMLSpanElement>(null);
   const uploadInFlight = useRef(false);
   const uploadBaseline = useRef<ProbeNodeType | undefined>(undefined);
   const uploadOperation = useRef(0);
+  const deferredPreviewAutoFit = useRef<{
+    height: number;
+    width: number;
+  } | undefined>(undefined);
   const { getEdges, getNode, getNodes } = useReactFlow<ProbeNodeType>();
   const { register: registerWorkflowNode } = useWorkflowExecution();
-  const { setEdges, setNodes } = useCanvasGraphMutation();
+  const { setEdges, setNodes, tryAdoptNodes } = useCanvasGraphMutation();
   const canvasEdges = useEdges();
   const canvasNodes = useNodes<ProbeNodeType>();
   const checkpoint = useCanvasCheckpoint();
   const promptControl = useCompositionSafeText({
     onCommit: (nextPrompt) => {
+      if (nextPrompt === (data.imagePrompt ?? "")) return;
+      generationRunRef.current = undefined;
+      setActiveTaskId(undefined);
+      pollingPausedTaskIdRef.current = undefined;
+      setPollingPausedTaskId(undefined);
+      setRetryTaskId(undefined);
+      setServerInputProblems([]);
+      setUploadError("");
+      clearGenerationSubmissionIntent(
+        "image",
+        canvasId,
+        id,
+        data.imageGenerationTaskId,
+        accountId,
+      );
       setNodes((nodes) =>
         nodes.map((node) =>
           node.id === id
-            ? { ...node, data: { ...node.data, imagePrompt: nextPrompt } }
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  imageGenerationError: undefined,
+                  imageGenerationErrorCode: undefined,
+                  imageGenerationInputKey: undefined,
+                  imageGenerationOwnershipKey: undefined,
+                  imageGenerating: false,
+                  imageGenerationRetryAllowed: undefined,
+                  imageGenerationRetryBlockCode: undefined,
+                  imageGenerationRetryBlockReason: undefined,
+                  imageGenerationTaskId: undefined,
+                  imagePrompt: nextPrompt,
+                },
+              }
             : node,
         ),
       );
@@ -1202,8 +1262,14 @@ function ImageNodeImpl({
     canvasRevision,
     flushCanvasSave,
     isFixture,
+    persistenceReady,
+    retryGenerationEnabled,
     waitForCanvasRevision,
   } = useGenerationCanvas();
+  const mediaAdoptionScopeRef = useRef(`${accountId}\u0000${canvasId}`);
+  mediaAdoptionScopeRef.current = `${accountId}\u0000${canvasId}`;
+  const persistenceReadyLive = useRef(persistenceReady);
+  persistenceReadyLive.current = persistenceReady;
   const imageModelSelection = usePublishedModelSelection(
     "image",
     data.imageModelId,
@@ -1211,6 +1277,7 @@ function ImageNodeImpl({
   );
   const imageModels = imageModelSelection.models;
   const selectedImageModel = imageModelSelection.model;
+  const selectedImageModelId = imageModelSelection.selectedId;
   const imageModelUnavailableReason = imageModelSelection.unavailableReason;
   const imageParameterSchema = selectedImageModel?.parameterSchema ??
     defaultParameterSchema("image");
@@ -1242,12 +1309,15 @@ function ImageNodeImpl({
     imageParameters.qualities,
     String(imageParameterValues.quality ?? data.imageQuality ?? ""),
   );
-  const imageSubmissionParameterValues = selectedImageModel
-    ? submissionParameterValues(imageParameterSchema, {
+  const effectiveImageParameters = selectedImageModel
+    ? {
         ...imageParameterValues,
         aspectRatio,
         quality,
-      })
+      }
+    : {};
+  const imageSubmissionParameterValues = selectedImageModel
+    ? submissionParameterValues(imageParameterSchema, effectiveImageParameters)
     : {};
   const generatedSuccess = Boolean(data.imageGeneratedSuccess);
   const generating = Boolean(data.imageGenerating);
@@ -1265,7 +1335,14 @@ function ImageNodeImpl({
   const [retryTaskId, setRetryTaskId] = useState<string>();
   const [pollingPausedTaskId, setPollingPausedTaskId] = useState<string>();
   const pollingPausedTaskIdRef = useRef<string | undefined>(undefined);
+  const [unverifiedRecoveryTaskId, setUnverifiedRecoveryTaskId] =
+    useState<string>();
+  const [recoveryEpoch, setRecoveryEpoch] = useState(0);
+  const generationRunRef = useRef<ImageGenerationRun | undefined>(undefined);
+  const liveGenerationInputKeyRef = useRef<string | undefined>(undefined);
+  const liveGenerationOwnershipKeyRef = useRef<string | undefined>(undefined);
   const [serverInputProblems, setServerInputProblems] = useState<NodeInputProblem[]>([]);
+  const [retryWakeEpoch, setRetryWakeEpoch] = useState(0);
   const [uploadError, setUploadError] = useState(
     visibleGenerationError(data.imageGenerationError),
   );
@@ -1290,12 +1367,23 @@ function ImageNodeImpl({
     targetId: id,
     targetKind: "image",
   });
+  const modelSelectionProblem = workflowModelSelectionProblem({
+    isFixture,
+    kind: "image",
+    model: selectedImageModel,
+    status: imageModelSelection.status,
+    unavailableReason: imageModelUnavailableReason,
+  });
   const inputProblems: NodeInputProblem[] = [
     ...(modelSwitchProblem
       ? [{ code: "MODEL_UNSUPPORTED" as const, message: modelSwitchProblem }]
       : []),
     ...inputPreflight.problems,
     ...serverInputProblems,
+  ];
+  const workflowProblems: NodeInputProblem[] = [
+    ...(modelSelectionProblem ? [modelSelectionProblem] : []),
+    ...inputProblems,
   ];
   const inputFeedbackKey = JSON.stringify({
     edges: inputPreflight.inputs.map((input) => ({
@@ -1313,17 +1401,102 @@ function ImageNodeImpl({
   });
   const imageGenerationInputKey = createGenerationInputKey({
     inputs: inputPreflight.inputs,
-    modelId: selectedImageModel?.id,
+    modelId: selectedImageModelId,
     ownPrompt: promptControl.committedValue,
     parameters: imageSubmissionParameterValues,
     prompt: inputPreflight.finalPrompt,
   });
+  const generationOwnershipUpstream = inputPreflight.inputs.map((input) => {
+      const edge = canvasEdges.find((candidate) =>
+        candidate.id === input.edgeId
+      );
+      return {
+        assetId: input.kind === "text" ? undefined : input.assetId,
+        edgeId: input.edgeId,
+        metadataStatus: input.metadataStatus,
+        order: input.order,
+        ready: input.state === "ready",
+        role: typeof edge?.data?.inputRole === "string"
+          ? edge.data.inputRole
+          : defaultNodeInputRole(input.kind, "image"),
+        source: input.sourceNodeId,
+        sourceKind: input.kind,
+        src: input.kind === "text" ? undefined : input.preview,
+        status: input.state,
+        text: input.kind === "text" ? input.text : undefined,
+      };
+    });
+  const effectiveGenerationInputFingerprint = generationOwnershipKey({
+    aspectRatio: selectedImageModel ? aspectRatio : data.imageAspectRatio,
+    modelId: selectedImageModelId,
+    parameters: selectedImageModel
+      ? effectiveImageParameters
+      : data.imageParameters,
+    prompt: promptControl.committedValue,
+    quality: selectedImageModel ? quality : data.imageQuality,
+    upstream: generationOwnershipUpstream,
+  });
+  const rawGenerationInputFingerprint = generationOwnershipKey({
+    // Once a task is ownership-bound, catalog changes must not reinterpret its
+    // saved full model snapshot. Before admission, use the effective values
+    // materialized and ACKed on the canvas below.
+    aspectRatio: data.imageGenerationOwnershipKey
+      ? data.imageAspectRatio
+      : selectedImageModel
+        ? aspectRatio
+        : data.imageAspectRatio,
+    modelId: data.imageGenerationOwnershipKey
+      ? data.imageModelId
+      : selectedImageModelId,
+    parameters: data.imageGenerationOwnershipKey
+      ? data.imageParameters
+      : selectedImageModel
+        ? effectiveImageParameters
+        : data.imageParameters,
+    prompt: promptControl.committedValue,
+    quality: data.imageGenerationOwnershipKey
+      ? data.imageQuality
+      : selectedImageModel
+        ? quality
+        : data.imageQuality,
+    // Only durable source/edge semantics belong here. Compatibility, resolver
+    // reasons, and resolved roles can drift with the model catalog.
+    upstream: generationOwnershipUpstream,
+  });
+  liveGenerationInputKeyRef.current = imageGenerationInputKey;
+  liveGenerationOwnershipKeyRef.current = rawGenerationInputFingerprint;
+  const beginImageGenerationRun = (
+    taskId: string,
+    inputKey?: string,
+    ownershipKey?: string,
+  ): ImageGenerationRun => {
+    const run = { inputKey, ownershipKey, taskId, token: Symbol(taskId) };
+    generationRunRef.current = run;
+    setActiveTaskId(taskId);
+    return run;
+  };
+  const ownsImageGenerationRun = (run: ImageGenerationRun) =>
+    generationRunRef.current === run &&
+    (run.ownershipKey === undefined ||
+      liveGenerationOwnershipKeyRef.current === run.ownershipKey);
+  const endImageGenerationRun = (run: ImageGenerationRun) => {
+    if (generationRunRef.current !== run) return;
+    generationRunRef.current = undefined;
+    setActiveTaskId((current) =>
+      current === run.taskId ? undefined : current,
+    );
+  };
   // 只有“当前输入”对应的生成结果才视为已完成；改提示词/参数/参考后允许重新生成。
   const generatedForCurrentInput = Boolean(
     data.imageGeneratedSuccess &&
     data.imageGenerationInputKey === imageGenerationInputKey,
   );
-  const stableGenerationInputKey = useRef<string | undefined>(undefined);
+  const stableRawGenerationInputFingerprint = useRef<string | undefined>(
+    undefined,
+  );
+  const legacyRecoveryCatalogKey = data.imageGenerationOwnershipKey
+    ? "ownership-bound"
+    : `${imageModelSelection.status}:${selectedImageModelId ?? ""}:${imageGenerationInputKey}`;
 
   useEffect(() => {
     setModelSwitchProblem("");
@@ -1338,59 +1511,99 @@ function ImageNodeImpl({
   }, [data.imageGenerationError, data.inputState, data.inputStateReason]);
 
   useEffect(() => {
-    setServerInputProblems([]);
-  }, [inputFeedbackKey]);
+    const wakeAcceptedRetry = (event: Event) => {
+      const detail = (event as CustomEvent<GenerationTaskRetryAcceptedDetail>)
+        .detail;
+      if (
+        detail?.canvasId === canvasId &&
+        detail.nodeId === id &&
+        detail.kind === "image" &&
+        detail.taskId === data.imageGenerationTaskId
+      ) {
+        setRetryWakeEpoch((current) => current + 1);
+      }
+    };
+    window.addEventListener(
+      GENERATION_TASK_RETRY_ACCEPTED_EVENT,
+      wakeAcceptedRetry,
+    );
+    return () => window.removeEventListener(
+      GENERATION_TASK_RETRY_ACCEPTED_EVENT,
+      wakeAcceptedRetry,
+    );
+  }, [canvasId, data.imageGenerationTaskId, id]);
 
   useEffect(() => {
-    if (canvasRevision === undefined) return;
-    const previous = stableGenerationInputKey.current;
-    stableGenerationInputKey.current = imageGenerationInputKey;
+    if (!persistenceReady) {
+      stableRawGenerationInputFingerprint.current = undefined;
+      return;
+    }
+    const previous = stableRawGenerationInputFingerprint.current;
+    stableRawGenerationInputFingerprint.current = rawGenerationInputFingerprint;
     const persistedMismatch = Boolean(
-      data.imageGenerationInputKey &&
-      data.imageGenerationInputKey !== imageGenerationInputKey,
+      data.imageGenerationOwnershipKey &&
+      data.imageGenerationOwnershipKey !== rawGenerationInputFingerprint,
     );
-    if (!persistedMismatch && (
-      previous === undefined || previous === imageGenerationInputKey
-    )) return;
+    if (
+      !persistedMismatch &&
+      (previous === undefined || previous === rawGenerationInputFingerprint)
+    ) {
+      return;
+    }
+    if (
+      !data.imageGenerating &&
+      !data.imageGenerationTaskId &&
+      !data.imageGenerationInputKey &&
+      !data.imageGenerationOwnershipKey
+    ) return;
+    generationRunRef.current = undefined;
+    setActiveTaskId(undefined);
+    pollingPausedTaskIdRef.current = undefined;
+    setPollingPausedTaskId(undefined);
     setRetryTaskId(undefined);
     setServerInputProblems([]);
-    if (data.imageGenerationTaskId || data.imageGenerationInputKey) {
-      clearGenerationSubmissionIntent(
-        "image",
-        canvasId,
-        id,
-        data.imageGenerationTaskId,
-        accountId,
-      );
-      setUploadError("");
-      setNodes((nodes) => nodes.map((node) => node.id === id
-        ? {
-            ...node,
-            data: {
-              ...node.data,
-              imageGenerationError: undefined,
-              imageGenerationErrorCode: undefined,
-              imageGenerationInputKey: undefined,
-              imageGenerationRetryAllowed: undefined,
-              imageGenerationRetryBlockCode: undefined,
-              imageGenerationRetryBlockReason: undefined,
-              imageGenerationTaskId: undefined,
-            },
-          }
-        : node));
-    }
+    setUploadError("");
+    clearGenerationSubmissionIntent("image", canvasId, id, undefined, accountId);
+    setNodes((nodes) => nodes.map((node) => node.id === id
+      ? {
+          ...node,
+          data: {
+            ...node.data,
+            imageGenerationError: undefined,
+            imageGenerationErrorCode: undefined,
+            imageGenerationInputKey: undefined,
+            imageGenerationOwnershipKey: undefined,
+            imageGenerating: false,
+            imageGenerationRetryAllowed: undefined,
+            imageGenerationRetryBlockCode: undefined,
+            imageGenerationRetryBlockReason: undefined,
+            imageGenerationTaskId: undefined,
+          },
+        }
+      : node));
   }, [
-    canvasRevision,
+    accountId,
     canvasId,
+    data.imageGenerating,
     data.imageGenerationInputKey,
+    data.imageGenerationOwnershipKey,
     data.imageGenerationTaskId,
     id,
-    imageGenerationInputKey,
+    persistenceReady,
+    rawGenerationInputFingerprint,
     setNodes,
   ]);
 
   useEffect(() => {
-    if (data.inputState !== "uploading" || uploadInFlight.current) return;
+    setServerInputProblems([]);
+  }, [inputFeedbackKey]);
+
+  useEffect(() => {
+    if (
+      !persistenceReady ||
+      data.inputState !== "uploading" ||
+      uploadInFlight.current
+    ) return;
     const message = "上传已中断，请重新上传";
     setNodes((nodes) => nodes.map((node) => node.id === id
       ? {
@@ -1401,7 +1614,7 @@ function ImageNodeImpl({
           },
         }
       : node));
-  }, [data.inputState, id, setNodes]);
+  }, [data.inputState, id, persistenceReady, setNodes]);
 
   useEffect(() => {
     if (!uploadInFlight.current || data.inputState === "uploading") return;
@@ -1409,6 +1622,13 @@ function ImageNodeImpl({
     uploadInFlight.current = false;
     uploadBaseline.current = undefined;
   }, [data.inputState]);
+
+  useEffect(() => {
+    if (persistenceReady || !uploadInFlight.current) return;
+    uploadOperation.current += 1;
+    uploadInFlight.current = false;
+    uploadBaseline.current = undefined;
+  }, [persistenceReady]);
 
   useEffect(() => () => {
     uploadOperation.current += 1;
@@ -1418,6 +1638,7 @@ function ImageNodeImpl({
 
   useEffect(() => {
     if (
+      !persistenceReady ||
       isFixture ||
       !data.assetId ||
       !data.imageSrc ||
@@ -1461,6 +1682,7 @@ function ImageNodeImpl({
     data.inputState,
     data.mediaMetadataSource,
     id,
+    persistenceReady,
     setNodes,
   ]);
   const incomingImageReferences = inputPreflight.inputs
@@ -1481,7 +1703,7 @@ function ImageNodeImpl({
     canvasRevision,
     inputSchemaVersion: 1 as const,
     inputs: inputPreflight.snapshot,
-    model: selectedImageModel?.id,
+    model: selectedImageModelId,
     nodeId: id,
     ownPrompt: promptControl.committedValue,
     parameters: {
@@ -1497,19 +1719,40 @@ function ImageNodeImpl({
   const retryAvailable = Boolean(
     retryTaskId &&
     data.imageGenerationInputKey === imageGenerationInputKey &&
+    (!data.imageGenerationOwnershipKey ||
+      data.imageGenerationOwnershipKey === rawGenerationInputFingerprint) &&
     data.imageGenerationRetryAllowed === true &&
     selectedImageModel &&
     selectedImageModel.generationAvailable !== false,
   );
 
+  const clearImageIntentAfterDurableTerminalPatch = (taskId: string) => {
+    void (async () => {
+      try {
+        await flushCanvasSave();
+        clearGenerationSubmissionIntent(
+          "image",
+          canvasId,
+          id,
+          taskId,
+          accountId,
+        );
+      } catch {
+        // Keep the intent for exact-GET recovery when the canvas ACK is lost.
+      }
+    })();
+  };
+
   const persistImageGenerationFailure = (
     taskId: string,
+    run: ImageGenerationRun,
     message: string,
     errorCode: string | undefined,
     retryAllowed: boolean,
     retryBlockCode?: string,
     retryBlockReason?: string,
   ) => {
+    if (!ownsImageGenerationRun(run) || run.taskId !== taskId) return false;
     const visibleMessage = generationFailureMessage(
       message,
       retryAllowed ? undefined : retryBlockReason,
@@ -1525,7 +1768,10 @@ function ImageNodeImpl({
                 ...node.data,
                 imageGenerationError: visibleMessage,
                 imageGenerationErrorCode: errorCode,
-                imageGenerationInputKey,
+                imageGenerationInputKey:
+                  run.inputKey ?? node.data.imageGenerationInputKey,
+                imageGenerationOwnershipKey:
+                  run.ownershipKey ?? node.data.imageGenerationOwnershipKey,
                 imageGenerating: false,
                 imageGenerationRetryAllowed: retryAllowed,
                 imageGenerationRetryBlockCode: retryBlockCode,
@@ -1538,9 +1784,55 @@ function ImageNodeImpl({
     );
     setUploadError(visibleMessage);
     setRetryTaskId(retryAllowed ? taskId : undefined);
+    clearImageIntentAfterDurableTerminalPatch(taskId);
+    endImageGenerationRun(run);
+    return true;
   };
 
-  const applyGeneratedImage = (task: GenerationTaskSummary) => {
+  const persistImageGenerationCancellation = (
+    taskId: string,
+    run: ImageGenerationRun,
+    message: string,
+  ) => {
+    if (!ownsImageGenerationRun(run) || run.taskId !== taskId) return false;
+    pollingPausedTaskIdRef.current = undefined;
+    setPollingPausedTaskId(undefined);
+    setNodes((nodes) =>
+      nodes.map((node) =>
+        node.id === id
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                imageGenerationError: message,
+                imageGenerationErrorCode: undefined,
+                imageGenerationInputKey: undefined,
+                imageGenerationOwnershipKey: undefined,
+                imageGenerating: false,
+                imageGenerationRetryAllowed: undefined,
+                imageGenerationRetryBlockCode: undefined,
+                imageGenerationRetryBlockReason: undefined,
+                imageGenerationTaskId: undefined,
+              },
+            }
+          : node,
+      ),
+    );
+    setUploadError(message);
+    setRetryTaskId(undefined);
+    clearImageIntentAfterDurableTerminalPatch(taskId);
+    endImageGenerationRun(run);
+    return true;
+  };
+
+  const applyGeneratedImage = async (
+    task: GenerationTaskSummary,
+    run: ImageGenerationRun,
+  ) => {
+    if (
+      !ownsImageGenerationRun(run) ||
+      !imageTaskMatchesNode(task, canvasId, id, run.taskId)
+    ) return false;
     if (task.state !== "success" || !task.resultAssetId || !task.resultUrl) {
       throw new Error(task.errorMessage ?? "图片生成失败，请稍后再试");
     }
@@ -1578,7 +1870,10 @@ function ImageNodeImpl({
           : node,
       ),
     );
+    await flushCanvasSave();
     clearGenerationSubmissionIntent("image", canvasId, id, task.id, accountId);
+    endImageGenerationRun(run);
+    return true;
   };
 
   const generateImage = async (): Promise<NodeGenerationOutcome> => {
@@ -1598,15 +1893,78 @@ function ImageNodeImpl({
     setRetryTaskId(undefined);
     setSubmitting(true);
     let submittedTaskId: string | undefined;
+    let generationRun: ImageGenerationRun | undefined;
+    let bindingPersisted = false;
+    const requestedGenerationInputKey = imageGenerationInputKey;
+    const requestedGenerationOwnershipKey =
+      effectiveGenerationInputFingerprint;
+    const requestedModelId = selectedImageModelId;
+    const requestedModelName = imageModelSelection.displayName;
+    const requestedParameters = { ...effectiveImageParameters };
     try {
-      await flushCanvasSave();
-      const { task: submitted } = await ensureGenerationTask(
+      setNodes((nodes) => nodes.map((node) => node.id === id
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              imageAspectRatio: aspectRatio,
+              imageModelId: requestedModelId,
+              imageModelName: requestedModelName,
+              imageParameters: requestedParameters,
+              imageQuality: quality,
+            },
+          }
+        : node));
+      const freshCanvasRevision = await waitForCanvasRevision();
+      if (
+        liveGenerationOwnershipKeyRef.current !== requestedGenerationOwnershipKey
+      ) {
+        return {
+          message: "生成输入已修改，已停止本次生成",
+          status: "failed",
+        };
+      }
+      const {
+        generationOwnershipKey: persistedGenerationOwnershipKey,
+        task: submitted,
+      } = await ensureGenerationTask(
         "image",
-        imageGenerationRequestInput,
+        {
+          ...imageGenerationRequestInput,
+          canvasRevision: freshCanvasRevision,
+        },
         accountId,
+        () => {
+          if (
+            liveGenerationOwnershipKeyRef.current !==
+              requestedGenerationOwnershipKey
+          ) {
+            throw new Error("生成输入已修改，已停止本次生成");
+          }
+        },
+        { generationOwnershipKey: requestedGenerationOwnershipKey },
       );
       submittedTaskId = submitted.id;
-      setActiveTaskId(submitted.id);
+      if (
+        liveGenerationOwnershipKeyRef.current !== requestedGenerationOwnershipKey
+      ) {
+        clearGenerationSubmissionIntent(
+          "image",
+          canvasId,
+          id,
+          submitted.id,
+          accountId,
+        );
+        return {
+          message: "生成输入已修改，旧任务结果不会覆盖当前内容",
+          status: "failed",
+        };
+      }
+      generationRun = beginImageGenerationRun(
+        submitted.id,
+        requestedGenerationInputKey,
+        requestedGenerationOwnershipKey,
+      );
       checkpoint();
       setNodes((nodes) =>
         nodes.map((node) =>
@@ -1619,16 +1977,37 @@ function ImageNodeImpl({
                   imageGenerationError: undefined,
                   imageGenerationErrorCode: undefined,
                   imageGenerationInputKey,
+                  imageGenerationOwnershipKey:
+                    persistedGenerationOwnershipKey ??
+                    requestedGenerationOwnershipKey,
                   imageGenerating: true,
                   imageGenerationRetryAllowed: undefined,
                   imageGenerationRetryBlockCode: undefined,
                   imageGenerationRetryBlockReason: undefined,
                   imageGenerationTaskId: submitted.id,
+                  imageAspectRatio: aspectRatio,
+                  imageModelId: requestedModelId,
+                  imageModelName: requestedModelName,
+                  imageParameters: requestedParameters,
+                  imageQuality: quality,
                 },
               }
           : node,
         ),
       );
+      await flushCanvasSave();
+      bindingPersisted = true;
+      if (
+        !generationRun ||
+        !ownsImageGenerationRun(generationRun) ||
+        liveGenerationOwnershipKeyRef.current !==
+          requestedGenerationOwnershipKey
+      ) {
+        return {
+          message: "生成输入已修改，旧任务结果不会覆盖当前内容",
+          status: "failed",
+        };
+      }
       // Submission is complete once the durable task id has been persisted.
       // Keep polling under imageGenerating so the same button can safely
       // cancel that task instead of remaining disabled for the whole run.
@@ -1636,19 +2015,39 @@ function ImageNodeImpl({
       let task: Awaited<ReturnType<typeof waitForGenerationTask>>;
       try {
         task = await waitForGenerationTaskWithPause(submitted.id, () => {
+          if (
+            !generationRun ||
+            !ownsImageGenerationRun(generationRun)
+          ) return;
           pollingPausedTaskIdRef.current = submitted.id;
           setPollingPausedTaskId(submitted.id);
           setUploadError(POLLING_PAUSED_MESSAGE);
         });
       } catch (error) {
+        if (
+          !generationRun ||
+          !ownsImageGenerationRun(generationRun)
+        ) return { status: "skipped" };
         if (pollingPausedTaskIdRef.current === submitted.id) {
           return { message: POLLING_PAUSED_MESSAGE, status: "failed" };
         }
         throw error;
       }
+      if (!generationRun || !ownsImageGenerationRun(generationRun)) {
+        return { status: "skipped" };
+      }
+      if (task.state === "cancelled") {
+        const message = task.errorMessage ?? "图片生成已取消";
+        persistImageGenerationCancellation(task.id, generationRun, message);
+        return {
+          message: friendlyGenerationMessage(message, "image"),
+          status: "failed",
+        };
+      }
       if (task.state !== "success") {
         persistImageGenerationFailure(
           task.id,
+          generationRun,
           friendlyGenerationMessage(
             task.errorMessage,
             "image",
@@ -1663,7 +2062,7 @@ function ImageNodeImpl({
           status: "failed",
         };
       }
-      applyGeneratedImage(task);
+      await applyGeneratedImage(task, generationRun);
       pollingPausedTaskIdRef.current = undefined;
       setPollingPausedTaskId(undefined);
       setRetryTaskId(undefined);
@@ -1676,12 +2075,26 @@ function ImageNodeImpl({
         ? error.message
         : generationMessageFallback("image");
       const friendly = friendlyGenerationMessage(message, "image");
-      if (submittedTaskId) {
+      if (
+        submittedTaskId &&
+        generationRun &&
+        ownsImageGenerationRun(generationRun)
+      ) {
+        if (!bindingPersisted) {
+          pollingPausedTaskIdRef.current = submittedTaskId;
+          setPollingPausedTaskId(submittedTaskId);
+          setUploadError("画布尚未安全保存，任务状态未查询；请重新检查");
+          return {
+            message: "画布尚未安全保存，任务状态未查询；请重新检查",
+            status: "failed",
+          };
+        }
         const errorCode = error instanceof GenerationRequestError
           ? error.code
           : "TASK_STATUS_UNKNOWN";
         persistImageGenerationFailure(
           submittedTaskId,
+          generationRun,
           friendly,
           errorCode,
           false,
@@ -1690,14 +2103,61 @@ function ImageNodeImpl({
             ? error.message
             : "任务状态暂时无法确认，不能一键重试，请稍后刷新查看",
         );
-      } else {
+      } else if (!generationRun) {
         setUploadError(friendly);
       }
       return { message: friendly, status: "failed" };
     } finally {
       setSubmitting(false);
-      setActiveTaskId(undefined);
+      if (generationRun) endImageGenerationRun(generationRun);
     }
+  };
+
+  const persistWorkflowInputFailure = async (problem: NodeInputProblem) => {
+    setNodes((nodes) => nodes.map((node) => node.id === id
+      ? {
+          ...node,
+          data: {
+            ...node.data,
+            imageGenerationError: problem.message,
+            imageGenerationErrorCode: problem.code,
+            imageGenerationInputKey: undefined,
+            imageGenerationOwnershipKey: undefined,
+            imageGenerating: false,
+            imageGenerationRetryAllowed: undefined,
+            imageGenerationRetryBlockCode: undefined,
+            imageGenerationRetryBlockReason: undefined,
+            imageGenerationTaskId: undefined,
+          },
+        }
+      : node));
+    setUploadError(problem.message);
+    setRetryTaskId(undefined);
+    await flushCanvasSave();
+    return { message: problem.message, status: "failed" as const };
+  };
+
+  const preflightWorkflowNode = async (context: {
+    executableIds: ReadonlySet<string>;
+    phase: WorkflowPreflightPhase;
+  }): Promise<NodeRunResult> => {
+    const common = {
+      executableIds: context.executableIds,
+      inputs: inputPreflight.inputs,
+      problems: workflowProblems,
+    };
+    if (context.phase !== "static") {
+      const disposition = workflowRuntimePreflightDisposition(common);
+      if (disposition.status === "ready") return { status: "success" };
+      if (disposition.status === "waiting" && context.phase === "runtime") {
+        return { message: disposition.problem.message, status: "busy" };
+      }
+      return persistWorkflowInputFailure(disposition.problem);
+    }
+    const problem = workflowSubmissionPreflightProblem(common);
+    return problem
+      ? persistWorkflowInputFailure(problem)
+      : { status: "success" };
   };
 
   const runWorkflowNode = async (): Promise<NodeRunResult> => {
@@ -1712,13 +2172,17 @@ function ImageNodeImpl({
     ) {
       return { message: "节点正在生成中", status: "busy" };
     }
+    const blockingProblem = inputProblems[0];
+    if (blockingProblem) {
+      return persistWorkflowInputFailure(blockingProblem);
+    }
     const outcome = await generateImage();
     if (outcome.status === "failed") {
       return { message: outcome.message, status: "failed" };
     }
     if (outcome.status === "skipped") {
       return {
-        message: inputPreflight.problems[0]?.message,
+        message: inputProblems[0]?.message,
         status: "skipped",
       };
     }
@@ -1728,10 +2192,20 @@ function ImageNodeImpl({
   const runWorkflowNodeRef = useRef<() => Promise<NodeRunResult>>(
     async () => ({ status: "skipped" }),
   );
+  const preflightWorkflowNodeRef = useRef<(
+    context: {
+      executableIds: ReadonlySet<string>;
+      phase: WorkflowPreflightPhase;
+    },
+  ) => Promise<NodeRunResult>>(
+    async () => ({ status: "success" }),
+  );
   runWorkflowNodeRef.current = runWorkflowNode;
+  preflightWorkflowNodeRef.current = preflightWorkflowNode;
   useEffect(
     () =>
       registerWorkflowNode(id, {
+        preflight: (context) => preflightWorkflowNodeRef.current(context),
         run: createSaveGateRun(
           waitForCanvasRevision,
           () => runWorkflowNodeRef.current(),
@@ -1742,37 +2216,88 @@ function ImageNodeImpl({
   );
 
   const retryImageGeneration = async () => {
-    if (!retryTaskId || !retryAvailable || generating || submitting) return;
+    if (
+      !retryTaskId ||
+      !retryAvailable ||
+      isFixture ||
+      !retryGenerationEnabled ||
+      generating ||
+      submitting
+    ) return;
     const taskId = retryTaskId;
-    setUploadError("");
-    setServerInputProblems([]);
-    setActiveTaskId(taskId);
-    setNodes((nodes) =>
-      nodes.map((node) =>
-        node.id === id
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                imageGenerationError: undefined,
-                imageGenerationErrorCode: undefined,
-                imageGenerationInputKey,
-                imageGenerating: true,
-                imageGenerationRetryAllowed: undefined,
-                imageGenerationRetryBlockCode: undefined,
-                imageGenerationRetryBlockReason: undefined,
-                imageGenerationTaskId: taskId,
-              },
-            }
-          : node,
-      ),
-    );
+    const requestedGenerationInputKey = imageGenerationInputKey;
+    const requestedGenerationOwnershipKey = rawGenerationInputFingerprint;
+    setSubmitting(true);
+    let retryAccepted = false;
+    let generationRun: ImageGenerationRun | undefined;
     try {
-      await retryGenerationTask(taskId);
-      const task = await waitForGenerationTask(taskId);
+      await retryGenerationTask({
+        canvasId,
+        generationInputKey: requestedGenerationInputKey,
+        kind: "image",
+        nodeId: id,
+        taskId,
+      }, async () => {
+        const revision = await waitForCanvasRevision();
+        if (
+          liveGenerationInputKeyRef.current !== requestedGenerationInputKey
+        ) {
+          throw new Error("生成输入已修改，已停止本次重试");
+        }
+        generationRun = beginImageGenerationRun(
+          taskId,
+          requestedGenerationInputKey,
+          requestedGenerationOwnershipKey,
+        );
+        return revision;
+      });
+      if (
+        !generationRun ||
+        !ownsImageGenerationRun(generationRun)
+      ) return;
+      retryAccepted = true;
+      setUploadError("");
+      setServerInputProblems([]);
+      setNodes((nodes) =>
+        nodes.map((node) =>
+          node.id === id
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  imageGenerationError: undefined,
+                  imageGenerationErrorCode: undefined,
+                  imageGenerationInputKey,
+                  imageGenerationOwnershipKey: requestedGenerationOwnershipKey,
+                  imageGenerating: true,
+                  imageGenerationRetryAllowed: undefined,
+                  imageGenerationRetryBlockCode: undefined,
+                  imageGenerationRetryBlockReason: undefined,
+                  imageGenerationTaskId: taskId,
+                },
+              }
+            : node,
+        ),
+      );
+      const task = await waitForGenerationTaskWithPause(taskId, () => {
+        if (!generationRun || !ownsImageGenerationRun(generationRun)) return;
+        pollingPausedTaskIdRef.current = taskId;
+        setPollingPausedTaskId(taskId);
+        setUploadError(POLLING_PAUSED_MESSAGE);
+      });
+      if (!generationRun || !ownsImageGenerationRun(generationRun)) return;
+      if (task.state === "cancelled") {
+        persistImageGenerationCancellation(
+          task.id,
+          generationRun,
+          task.errorMessage ?? "图片生成已取消",
+        );
+        return;
+      }
       if (task.state !== "success") {
         persistImageGenerationFailure(
           task.id,
+          generationRun,
           task.errorMessage ?? "图片生成失败，请稍后再试",
           task.errorCode,
           safelyRetryableGenerationTask(task),
@@ -1781,9 +2306,20 @@ function ImageNodeImpl({
         );
         return;
       }
-      applyGeneratedImage(task);
+      await applyGeneratedImage(task, generationRun);
       setRetryTaskId(undefined);
     } catch (error) {
+      if (
+        generationRun &&
+        pollingPausedTaskIdRef.current === taskId &&
+        ownsImageGenerationRun(generationRun)
+      ) return;
+      if (!retryAccepted && !(error instanceof GenerationRequestError)) {
+        setUploadError(
+          error instanceof Error ? error.message : "画布尚未安全保存，不能重试生成",
+        );
+        return;
+      }
       if (error instanceof GenerationRequestError) {
         setServerInputProblems(error.problems);
       }
@@ -1793,18 +2329,22 @@ function ImageNodeImpl({
       const errorCode = error instanceof GenerationRequestError
         ? error.code
         : "TASK_STATUS_UNKNOWN";
-      persistImageGenerationFailure(
-        taskId,
-        message,
-        errorCode,
-        false,
-        errorCode,
-        error instanceof GenerationRequestError
-          ? error.message
-          : "任务状态暂时无法确认，不能一键重试，请稍后刷新查看",
-      );
+      if (generationRun && ownsImageGenerationRun(generationRun)) {
+        persistImageGenerationFailure(
+          taskId,
+          generationRun,
+          message,
+          errorCode,
+          false,
+          errorCode,
+          error instanceof GenerationRequestError
+            ? error.message
+            : "任务状态暂时无法确认，不能一键重试，请稍后刷新查看",
+        );
+      }
     } finally {
-      setActiveTaskId(undefined);
+      if (generationRun) endImageGenerationRun(generationRun);
+      setSubmitting(false);
     }
   };
 
@@ -1814,11 +2354,32 @@ function ImageNodeImpl({
     pollingPausedTaskIdRef.current = undefined;
     setPollingPausedTaskId(undefined);
     setUploadError("");
+    const generationRun = beginImageGenerationRun(
+      taskId,
+      data.imageGenerationInputKey,
+      data.imageGenerationOwnershipKey ?? rawGenerationInputFingerprint,
+    );
     try {
-      const task = await waitForGenerationTask(taskId);
+      await flushCanvasSave();
+      const task = await waitForGenerationTaskWithPause(taskId, () => {
+        if (!ownsImageGenerationRun(generationRun)) return;
+        pollingPausedTaskIdRef.current = taskId;
+        setPollingPausedTaskId(taskId);
+        setUploadError(POLLING_PAUSED_MESSAGE);
+      });
+      if (!ownsImageGenerationRun(generationRun)) return;
+      if (task.state === "cancelled") {
+        persistImageGenerationCancellation(
+          task.id,
+          generationRun,
+          task.errorMessage ?? "图片生成已取消",
+        );
+        return;
+      }
       if (task.state !== "success") {
         persistImageGenerationFailure(
           task.id,
+          generationRun,
           friendlyGenerationMessage(task.errorMessage, "image", task.errorCode),
           task.errorCode,
           safelyRetryableGenerationTask(task),
@@ -1827,9 +2388,11 @@ function ImageNodeImpl({
         );
         return;
       }
-      applyGeneratedImage(task);
+      await applyGeneratedImage(task, generationRun);
       setRetryTaskId(undefined);
     } catch (error) {
+      if (!ownsImageGenerationRun(generationRun)) return;
+      if (pollingPausedTaskIdRef.current === taskId) return;
       if (isTransientPollingError(error)) {
         pollingPausedTaskIdRef.current = taskId;
         setPollingPausedTaskId(taskId);
@@ -1840,8 +2403,19 @@ function ImageNodeImpl({
         error instanceof Error ? error.message : "图片生成失败，请稍后再试",
       );
     } finally {
-      setActiveTaskId(undefined);
+      endImageGenerationRun(generationRun);
     }
+  };
+
+  const recheckImageTaskStatus = () => {
+    if (
+      unverifiedRecoveryTaskId &&
+      unverifiedRecoveryTaskId === data.imageGenerationTaskId
+    ) {
+      setRecoveryEpoch((current) => current + 1);
+      return;
+    }
+    void resumeImagePolling();
   };
 
   const cancelImageGeneration = async () => {
@@ -1851,34 +2425,18 @@ function ImageNodeImpl({
       setPollingPausedTaskId(undefined);
     }
     if (!activeTaskId) return;
+    const generationRun = generationRunRef.current?.taskId === activeTaskId
+      ? generationRunRef.current
+      : undefined;
     try {
       const task = await cancelGenerationTask(activeTaskId);
       if (task.state !== "cancelled") return;
-      const message = task.errorMessage ?? "图片生成已取消";
-      setNodes((nodes) =>
-        nodes.map((node) =>
-          node.id === id
-            ? {
-                ...node,
-                data: {
-                  ...node.data,
-                  imageGenerationError: message,
-                  imageGenerationErrorCode: undefined,
-                  imageGenerationInputKey: undefined,
-                  imageGenerating: false,
-                  imageGenerationRetryAllowed: undefined,
-                  imageGenerationRetryBlockCode: undefined,
-                  imageGenerationRetryBlockReason: undefined,
-                  imageGenerationTaskId: undefined,
-                },
-              }
-            : node,
-        ),
+      if (!generationRun || !ownsImageGenerationRun(generationRun)) return;
+      persistImageGenerationCancellation(
+        task.id,
+        generationRun,
+        task.errorMessage ?? "图片生成已取消",
       );
-      setUploadError(message);
-      setRetryTaskId(undefined);
-      clearGenerationSubmissionIntent("image", canvasId, id, task.id, accountId);
-      setActiveTaskId(undefined);
     } catch (error) {
       setUploadError(
         error instanceof Error ? error.message : "取消生成失败",
@@ -1887,38 +2445,80 @@ function ImageNodeImpl({
   };
 
   useEffect(() => {
-    if (preview || isFixture) return;
+    if (!persistenceReady || isFixture || generationRunRef.current) return;
+    const persistedTaskId = data.imageGenerationTaskId;
+    const persistedInputKey = data.imageGenerationInputKey;
+    const persistedOwnershipKey = data.imageGenerationOwnershipKey;
+    const catalogReady = imageModelSelection.status === "ready" &&
+      Boolean(selectedImageModel);
     const controller = new AbortController();
-    void recoverPendingGenerationTask(
-      "image",
-      canvasId,
-      id,
-      controller.signal,
-      imageGenerationRequestInput,
-      accountId,
-    )
-      .then(async (pending) => ({
-        recoveredIntent: Boolean(pending),
-        tasks: pending
-          ? [pending]
-          : await listGenerationTasks(canvasId, controller.signal),
-      }))
-      .then(({ recoveredIntent, tasks }) => {
-        const latest = tasks.filter((task) => task.nodeId === id).at(-1);
-        if (latest?.state === "success") {
-          applyGeneratedImage(latest);
-        } else if (latest?.state === "cancelled") {
-          const message = latest.errorMessage ?? "图片生成已取消";
-          setNodes((nodes) =>
-            nodes.map((node) =>
-              node.id === id
+    let pollingOwner:
+      | { taskId: string; token: symbol }
+      | undefined;
+    let generationRun: ImageGenerationRun | undefined;
+    let persistedTaskReadPending = false;
+    void (async () => {
+      let task: GenerationTaskSummary | undefined;
+      let recoveredIntent = false;
+      if (persistedTaskId) {
+        if (
+          persistedOwnershipKey &&
+          persistedOwnershipKey !== rawGenerationInputFingerprint
+        ) {
+          setUnverifiedRecoveryTaskId((current) =>
+            current === persistedTaskId ? undefined : current
+          );
+          clearGenerationSubmissionIntent(
+            "image",
+            canvasId,
+            id,
+            persistedTaskId,
+            accountId,
+          );
+          setNodes((nodes) => nodes.map((node) =>
+            node.id === id && node.data.imageGenerationTaskId === persistedTaskId
+              ? {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    imageGenerationError: undefined,
+                    imageGenerationErrorCode: undefined,
+                    imageGenerationInputKey: undefined,
+                    imageGenerationOwnershipKey: undefined,
+                    imageGenerating: false,
+                    imageGenerationRetryAllowed: undefined,
+                    imageGenerationRetryBlockCode: undefined,
+                    imageGenerationRetryBlockReason: undefined,
+                    imageGenerationTaskId: undefined,
+                  },
+                }
+              : node
+          ));
+          return;
+        }
+        if (!persistedOwnershipKey) {
+          if (!catalogReady) return;
+          if (!persistedInputKey || persistedInputKey !== imageGenerationInputKey) {
+            setUnverifiedRecoveryTaskId((current) =>
+              current === persistedTaskId ? undefined : current
+            );
+            clearGenerationSubmissionIntent(
+              "image",
+              canvasId,
+              id,
+              persistedTaskId,
+              accountId,
+            );
+            setNodes((nodes) => nodes.map((node) =>
+              node.id === id && node.data.imageGenerationTaskId === persistedTaskId
                 ? {
                     ...node,
                     data: {
                       ...node.data,
-                      imageGenerationError: message,
+                      imageGenerationError: undefined,
                       imageGenerationErrorCode: undefined,
                       imageGenerationInputKey: undefined,
+                      imageGenerationOwnershipKey: undefined,
                       imageGenerating: false,
                       imageGenerationRetryAllowed: undefined,
                       imageGenerationRetryBlockCode: undefined,
@@ -1926,158 +2526,256 @@ function ImageNodeImpl({
                       imageGenerationTaskId: undefined,
                     },
                   }
-                : node,
-            ),
+                : node
+            ));
+            return;
+          }
+        }
+        persistedTaskReadPending = true;
+        task = await getGenerationTask(persistedTaskId, controller.signal);
+        persistedTaskReadPending = false;
+      } else {
+        task = await recoverPendingGenerationTask(
+          "image",
+          canvasId,
+          id,
+          controller.signal,
+          selectedImageModel ? imageGenerationRequestInput : undefined,
+          accountId,
+          { generationOwnershipKey: rawGenerationInputFingerprint },
+        );
+        recoveredIntent = Boolean(task);
+        if (!task && data.imageGenerating) {
+          if (!data.imageGenerationOwnershipKey && !catalogReady) return;
+          const matches = (await listGenerationTasks(canvasId, controller.signal))
+            .filter((candidate) =>
+              candidate.kind === "image" && candidate.nodeId === id
+            );
+          if (matches.length === 1) task = matches[0];
+        }
+      }
+      if (controller.signal.aborted || !task) return;
+      const recoveredOwnershipKey = persistedOwnershipKey ??
+        task.generationOwnershipKey;
+      if (
+        recoveredOwnershipKey &&
+        recoveredOwnershipKey !== rawGenerationInputFingerprint
+      ) {
+        if (persistedTaskId) {
+          setUnverifiedRecoveryTaskId((current) =>
+            current === persistedTaskId ? undefined : current
           );
-          setUploadError(message);
-          setRetryTaskId(undefined);
+        }
+        clearGenerationSubmissionIntent(
+          "image",
+          canvasId,
+          id,
+          persistedTaskId ?? task.id,
+          accountId,
+        );
+        return;
+      }
+      if (!recoveredOwnershipKey) {
+        if (!catalogReady) return;
+        const legacyInputKey = persistedInputKey ?? task.generationInputKey;
+        if (!legacyInputKey || legacyInputKey !== imageGenerationInputKey) {
+          if (persistedTaskId) {
+            setUnverifiedRecoveryTaskId((current) =>
+              current === persistedTaskId ? undefined : current
+            );
+          }
           clearGenerationSubmissionIntent(
             "image",
             canvasId,
             id,
-            latest.id,
+            persistedTaskId ?? task.id,
             accountId,
           );
-        } else if (latest?.state === "failed") {
-          const matchesPersistedInput =
-            recoveredIntent || (
-              data.imageGenerationTaskId === latest.id &&
-              data.imageGenerationInputKey === imageGenerationInputKey
-            );
-          if (matchesPersistedInput) {
-            const retainPersistedBlock =
-              data.imageGenerationRetryAllowed === false;
-            persistImageGenerationFailure(
-              latest.id,
-              retainPersistedBlock && data.imageGenerationError
-                ? data.imageGenerationError
-                : latest.errorMessage ?? "图片生成失败，请稍后再试",
-              retainPersistedBlock
-                ? data.imageGenerationErrorCode
-                : latest.errorCode,
-              retainPersistedBlock
-                ? false
-                : safelyRetryableGenerationTask(latest),
-              retainPersistedBlock
-                ? data.imageGenerationRetryBlockCode
-                : latest.retryBlockCode,
-              retainPersistedBlock
-                ? data.imageGenerationRetryBlockReason
-                : latest.retryBlockReason,
-            );
-          }
-        } else if (
-          latest &&
-          ["queued", "running", "retrying", "recovering"].includes(
-            latest.state,
-          )
-        ) {
-          setActiveTaskId(latest.id);
-          setNodes((nodes) =>
-            nodes.map((node) =>
-              node.id === id
-                ? {
-                    ...node,
-                    data: {
-                      ...node.data,
-                      imageGenerationError: undefined,
-                      imageGenerationErrorCode: undefined,
-                      imageGenerationInputKey,
-                      imageGenerating: true,
-                      imageGenerationRetryAllowed: undefined,
-                      imageGenerationRetryBlockCode: undefined,
-                      imageGenerationRetryBlockReason: undefined,
-                      imageGenerationTaskId: latest.id,
-                    },
-                  }
-                : node,
-            ),
-          );
-          if (recoveredImagePollingTasks.has(latest.id)) return;
-          recoveredImagePollingTasks.add(latest.id);
-          void (async () => {
-            try {
-              const finished = await waitForGenerationTaskWithPause(
-                latest.id,
-                () => {
-                  pollingPausedTaskIdRef.current = latest.id;
-                  setPollingPausedTaskId(latest.id);
-                  setUploadError(POLLING_PAUSED_MESSAGE);
-                },
-              );
-              if (finished.state === "success") {
-                applyGeneratedImage(finished);
-              } else if (finished.state === "failed") {
-                persistImageGenerationFailure(
-                  finished.id,
-                  friendlyGenerationMessage(
-                    finished.errorMessage ?? "图片生成失败，请稍后再试",
-                    "image",
-                  ),
-                  finished.errorCode,
-                  safelyRetryableGenerationTask(finished),
-                  finished.retryBlockCode,
-                  finished.retryBlockReason,
-                );
-              } else if (finished.state === "cancelled") {
-                const message = finished.errorMessage ?? "图片生成已取消";
-                setNodes((nodes) =>
-                  nodes.map((node) =>
-                    node.id === id
-                      ? {
-                          ...node,
-                          data: {
-                            ...node.data,
-                            imageGenerationError: message,
-                            imageGenerationErrorCode: undefined,
-                            imageGenerationInputKey: undefined,
-                            imageGenerating: false,
-                            imageGenerationRetryAllowed: undefined,
-                            imageGenerationRetryBlockCode: undefined,
-                            imageGenerationRetryBlockReason: undefined,
-                            imageGenerationTaskId: undefined,
-                          },
-                        }
-                      : node,
-                  ),
-                );
-                setUploadError(message);
-                setRetryTaskId(undefined);
-                clearGenerationSubmissionIntent(
-                  "image",
-                  canvasId,
-                  id,
-                  finished.id,
-                  accountId,
-                );
-              }
-            } catch (error) {
-              if (isTransientPollingError(error)) {
-                pollingPausedTaskIdRef.current = latest.id;
-                setPollingPausedTaskId(latest.id);
-                setUploadError(POLLING_PAUSED_MESSAGE);
-              } else if (
-                !(error instanceof DOMException && error.name === "AbortError")
-              ) {
-                setUploadError(
-                  error instanceof Error
-                    ? error.message
-                    : "图片生成失败，请稍后再试",
-                );
-              }
-            } finally {
-              recoveredImagePollingTasks.delete(latest.id);
-              setActiveTaskId(undefined);
-            }
-          })();
+          return;
         }
-      })
+      }
+      if (!imageTaskMatchesNode(task, canvasId, id, persistedTaskId ?? task.id)) {
+        if (persistedTaskId) {
+          setUnverifiedRecoveryTaskId((current) =>
+            current === persistedTaskId ? undefined : current
+          );
+          clearGenerationSubmissionIntent(
+            "image",
+            canvasId,
+            id,
+            persistedTaskId,
+            accountId,
+          );
+          setNodes((nodes) => nodes.map((node) =>
+            node.id === id && node.data.imageGenerationTaskId === persistedTaskId
+              ? {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    imageGenerationError: undefined,
+                    imageGenerationErrorCode: undefined,
+                    imageGenerationInputKey: undefined,
+                    imageGenerationOwnershipKey: undefined,
+                    imageGenerating: false,
+                    imageGenerationRetryAllowed: undefined,
+                    imageGenerationRetryBlockCode: undefined,
+                    imageGenerationRetryBlockReason: undefined,
+                    imageGenerationTaskId: undefined,
+                  },
+                }
+              : node
+          ));
+        }
+        return;
+      }
+      if (persistedTaskId) {
+        setUnverifiedRecoveryTaskId((current) =>
+          current === persistedTaskId ? undefined : current
+        );
+        setUploadError("");
+      }
+      const polling = ["queued", "running", "retrying", "recovering"]
+        .includes(task.state);
+      if (polling && recoveredImagePollingTasks.has(task.id)) return;
+      generationRun = beginImageGenerationRun(
+        task.id,
+        persistedInputKey ?? task.generationInputKey,
+        recoveredOwnershipKey ?? rawGenerationInputFingerprint,
+      );
+      if (!ownsImageGenerationRun(generationRun)) return;
+      if (task.state === "success") {
+        await applyGeneratedImage(task, generationRun);
+        return;
+      }
+      if (task.state === "cancelled") {
+        persistImageGenerationCancellation(
+          task.id,
+          generationRun,
+          task.errorMessage ?? "图片生成已取消",
+        );
+        return;
+      }
+      if (task.state === "failed") {
+        const retainPersistedBlock =
+          !recoveredIntent && data.imageGenerationRetryAllowed === false;
+        persistImageGenerationFailure(
+          task.id,
+          generationRun,
+          retainPersistedBlock && data.imageGenerationError
+            ? data.imageGenerationError
+            : task.errorMessage ?? "图片生成失败，请稍后再试",
+          retainPersistedBlock ? data.imageGenerationErrorCode : task.errorCode,
+          retainPersistedBlock ? false : safelyRetryableGenerationTask(task),
+          retainPersistedBlock
+            ? data.imageGenerationRetryBlockCode
+            : task.retryBlockCode,
+          retainPersistedBlock
+            ? data.imageGenerationRetryBlockReason
+            : task.retryBlockReason,
+        );
+        return;
+      }
+      const ownerToken = Symbol(task.id);
+      pollingOwner = { taskId: task.id, token: ownerToken };
+      recoveredImagePollingTasks.set(task.id, ownerToken);
+      setNodes((nodes) => nodes.map((node) => node.id === id
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              imageGenerationError: undefined,
+              imageGenerationErrorCode: undefined,
+              imageGenerationInputKey:
+                persistedInputKey ?? task.generationInputKey,
+              imageGenerationOwnershipKey: recoveredOwnershipKey,
+              imageGenerating: true,
+              imageGenerationRetryAllowed: undefined,
+              imageGenerationRetryBlockCode: undefined,
+              imageGenerationRetryBlockReason: undefined,
+              imageGenerationTaskId: task.id,
+            },
+          }
+        : node));
+      const finished = await waitForGenerationTaskWithPause(
+        task.id,
+        () => {
+          if (
+            recoveredImagePollingTasks.get(task.id) !== ownerToken ||
+            !generationRun ||
+            !ownsImageGenerationRun(generationRun)
+          ) return;
+          pollingPausedTaskIdRef.current = task.id;
+          setPollingPausedTaskId(task.id);
+          setUploadError(POLLING_PAUSED_MESSAGE);
+        },
+        controller.signal,
+      );
+      if (
+        recoveredImagePollingTasks.get(task.id) !== ownerToken ||
+        !generationRun ||
+        !ownsImageGenerationRun(generationRun) ||
+        !imageTaskMatchesNode(finished, canvasId, id, task.id)
+      ) return;
+      if (finished.state === "success") {
+        await applyGeneratedImage(finished, generationRun);
+      } else if (finished.state === "failed") {
+        persistImageGenerationFailure(
+          finished.id,
+          generationRun,
+          friendlyGenerationMessage(
+            finished.errorMessage ?? "图片生成失败，请稍后再试",
+            "image",
+          ),
+          finished.errorCode,
+          safelyRetryableGenerationTask(finished),
+          finished.retryBlockCode,
+          finished.retryBlockReason,
+        );
+      } else if (finished.state === "cancelled") {
+        persistImageGenerationCancellation(
+          finished.id,
+          generationRun,
+          finished.errorMessage ?? "图片生成已取消",
+        );
+      }
+    })()
       .catch((error) => {
-        if (!(error instanceof DOMException && error.name === "AbortError")) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        if (
+          persistedTaskId &&
+          persistedTaskReadPending &&
+          isTransientPollingError(error)
+        ) {
+          setUnverifiedRecoveryTaskId(persistedTaskId);
+          setUploadError(POLLING_PAUSED_MESSAGE);
+          return;
+        }
+        if (persistedTaskId && persistedTaskReadPending) {
+          setUnverifiedRecoveryTaskId((current) =>
+            current === persistedTaskId ? undefined : current
+          );
+        }
+        if (generationRun && ownsImageGenerationRun(generationRun) &&
+          isTransientPollingError(error)) {
+          pollingPausedTaskIdRef.current = generationRun.taskId;
+          setPollingPausedTaskId(generationRun.taskId);
+          setUploadError(POLLING_PAUSED_MESSAGE);
+        } else if (!generationRun || ownsImageGenerationRun(generationRun)) {
           setUploadError("生成任务状态暂时无法读取");
         }
+        if (generationRun) endImageGenerationRun(generationRun);
       });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (
+        pollingOwner &&
+        recoveredImagePollingTasks.get(pollingOwner.taskId) ===
+          pollingOwner.token
+      ) {
+        recoveredImagePollingTasks.delete(pollingOwner.taskId);
+      }
+      if (generationRun) endImageGenerationRun(generationRun);
+    };
   }, [
     canvasId,
     data.imageGenerationError,
@@ -2086,10 +2784,15 @@ function ImageNodeImpl({
     data.imageGenerationRetryBlockCode,
     data.imageGenerationRetryBlockReason,
     data.imageGenerationInputKey,
+    data.imageGenerationOwnershipKey,
+    data.imageGenerating,
     data.imageGenerationTaskId,
     id,
-    imageGenerationInputKey,
-    preview,
+    persistenceReady,
+    rawGenerationInputFingerprint,
+    recoveryEpoch,
+    retryWakeEpoch,
+    legacyRecoveryCatalogKey,
   ]);
 
   useEffect(() => {
@@ -2128,6 +2831,7 @@ function ImageNodeImpl({
     const baseline = uploadBaseline.current ?? getNode(id);
     if (baseline && !uploadBaseline.current) uploadBaseline.current = baseline;
     const operation = uploadOperation.current + 1;
+    const scope = mediaAdoptionScopeRef.current;
     uploadOperation.current = operation;
     uploadInFlight.current = true;
     setUploadError("");
@@ -2150,9 +2854,11 @@ function ImageNodeImpl({
       createdAssetId = asset.assetId;
       if (
         operation !== uploadOperation.current ||
+        scope !== mediaAdoptionScopeRef.current ||
+        !persistenceReadyLive.current ||
         getNode(id)?.data.inputState !== "uploading"
       ) {
-        await discardUnadoptedImageAsset(asset.assetId);
+        await discardImageAsset(asset.assetId);
         return;
       }
       const upload = asset as typeof asset & {
@@ -2164,6 +2870,7 @@ function ImageNodeImpl({
         Number.isFinite(upload.byteSize) &&
         upload.byteSize! > 0 &&
         upload.contentType === "image/png" &&
+        hasTrustedMediaDimensions(upload) &&
         (upload.storageBackend === "local" || upload.storageBackend === "oss")
           ? {
               assetId: upload.assetId,
@@ -2172,18 +2879,22 @@ function ImageNodeImpl({
               durationSeconds: null,
               durationStatus: "not-applicable" as const,
               kind: "image" as const,
+              mediaHeight: upload.mediaHeight,
+              mediaWidth: upload.mediaWidth,
               storageBackend: upload.storageBackend,
             }
           : await fetchTrustedMediaMetadata("image", upload.assetId);
       if (
         operation !== uploadOperation.current ||
+        scope !== mediaAdoptionScopeRef.current ||
+        !persistenceReadyLive.current ||
         getNode(id)?.data.inputState !== "uploading"
       ) {
-        await discardUnadoptedImageAsset(asset.assetId);
+        await discardImageAsset(asset.assetId);
         return;
       }
       const wasReadyReplacement = hasReadyImageMedia(baseline);
-      setNodes((nodes) =>
+      const adopted = tryAdoptNodes(id, (nodes) =>
         {
           const liveEdges = getEdges();
           const nodesById = new Map(nodes.map((node) => [node.id, node]));
@@ -2230,10 +2941,15 @@ function ImageNodeImpl({
           });
         },
       );
+      if (!adopted) {
+        await discardImageAsset(asset.assetId);
+        createdAssetId = undefined;
+        return;
+      }
+      createdAssetId = undefined;
       setTransientUploadError("");
     } catch (error) {
-      if (operation !== uploadOperation.current) return;
-      if (createdAssetId) await discardUnadoptedImageAsset(createdAssetId);
+      if (createdAssetId) await discardImageAsset(createdAssetId);
       if (operation !== uploadOperation.current) return;
       const message = error instanceof Error ? error.message : "图片上传失败";
       if (baseline && hasReadyImageMedia(baseline)) {
@@ -2271,16 +2987,31 @@ function ImageNodeImpl({
 
   const applyCrop = async (file: File) => {
     const source = getNode(id);
-    if (!source) throw new Error("原图片节点不存在");
+    if (!source || !persistenceReadyLive.current) {
+      throw new Error("画布尚未完成安全加载");
+    }
+    const operation = uploadOperation.current;
+    const scope = mediaAdoptionScopeRef.current;
     const asset = await uploadPngAsset(file);
-    const metadata = await fetchTrustedMediaMetadata("image", asset.assetId);
+    let adopted = false;
+    try {
+      const metadata = await fetchTrustedMediaMetadata("image", asset.assetId);
+      if (
+        operation !== uploadOperation.current ||
+        scope !== mediaAdoptionScopeRef.current ||
+        !persistenceReadyLive.current ||
+        !getNode(id)
+      ) {
+        await discardImageAsset(asset.assetId);
+        return;
+      }
     const derivedId = `image-crop-${crypto.randomUUID()}`;
     const derivedSize = fitVisualMediaSize(asset.width, asset.height);
     const sourceWidth = typeof source.style?.width === "number"
       ? source.style.width
       : 250;
     checkpoint();
-    setNodes((nodes) => [
+    adopted = tryAdoptNodes(id, (nodes) => [
       ...nodes.map((node) => ({ ...node, selected: false })),
       {
         id: derivedId,
@@ -2301,6 +3032,10 @@ function ImageNodeImpl({
         style: { ...derivedSize },
       },
     ]);
+    if (!adopted) {
+      await discardImageAsset(asset.assetId);
+      return;
+    }
     setEdges((edges) => [
       ...edges,
       {
@@ -2314,7 +3049,43 @@ function ImageNodeImpl({
       },
     ]);
     setCropOpen(false);
+    } catch (error) {
+      if (!adopted) await discardImageAsset(asset.assetId);
+      throw error;
+    }
   };
+
+  const applyPreviewAutoFit = useCallback((
+    width: number,
+    height: number,
+    resetHydrationMeasurement = false,
+  ) => {
+    const size = fitVisualMediaSize(width, height);
+    setNodes((nodes) =>
+      nodes.map((node) =>
+        node.id !== id ||
+        (!resetHydrationMeasurement && (
+          typeof node.width === "number" ||
+          typeof node.height === "number"
+        ))
+          ? node
+          : {
+              ...node,
+              ...(resetHydrationMeasurement
+                ? { height: undefined, measured: undefined, width: undefined }
+                : {}),
+              style: { ...node.style, ...size },
+            },
+      ),
+    );
+  }, [id, setNodes]);
+
+  useEffect(() => {
+    if (!persistenceReady || !deferredPreviewAutoFit.current) return;
+    const { height, width } = deferredPreviewAutoFit.current;
+    deferredPreviewAutoFit.current = undefined;
+    applyPreviewAutoFit(width, height, true);
+  }, [applyPreviewAutoFit, persistenceReady]);
 
   return (
     <>
@@ -2630,6 +3401,7 @@ function ImageNodeImpl({
                 return;
               }
               setModelSwitchProblem("");
+              setServerInputProblems([]);
               checkpoint();
               setNodes((nodes) =>
                 nodes.map((node) =>
@@ -2638,6 +3410,15 @@ function ImageNodeImpl({
                         ...node,
                         data: {
                           ...node.data,
+                          imageGenerationError: undefined,
+                          imageGenerationErrorCode: undefined,
+                          imageGenerationInputKey: undefined,
+                          imageGenerationOwnershipKey: undefined,
+                          imageGenerating: false,
+                          imageGenerationRetryAllowed: undefined,
+                          imageGenerationRetryBlockCode: undefined,
+                          imageGenerationRetryBlockReason: undefined,
+                          imageGenerationTaskId: undefined,
                           imageParameters: nextValues,
                           imageAspectRatio: supportedImageValue(
                             nextParameters.aspectRatios,
@@ -2811,7 +3592,7 @@ function ImageNodeImpl({
           </span>
         )}
       </Handle>
-      <div className="image-node-title nodrag">
+      <div className="canvas-node-title image-node-title nodrag">
         <svg aria-hidden="true" viewBox="0 0 18 18">
           <rect height="14" rx="3" width="16" x="1" y="2" />
           <circle cx="12.5" cy="6.5" r="1.5" />
@@ -2852,7 +3633,9 @@ function ImageNodeImpl({
             value={titleControl.value}
           />
         ) : (
-          <span>{titleControl.committedValue}</span>
+          <span title={titleControl.committedValue}>
+            {titleControl.committedValue}
+          </span>
         )}
       </div>
       <div
@@ -2869,16 +3652,24 @@ function ImageNodeImpl({
             {retryAvailable && (
               <button
                 aria-label="重试生成"
+                disabled={
+                  submitting ||
+                  generating ||
+                  isFixture ||
+                  !retryGenerationEnabled
+                }
                 onClick={() => void retryImageGeneration()}
                 type="button"
               >
                 重试
               </button>
             )}
-            {pollingPausedTaskId && (
+            {(pollingPausedTaskId ||
+              (unverifiedRecoveryTaskId &&
+                unverifiedRecoveryTaskId === data.imageGenerationTaskId)) && (
               <button
                 aria-label="重新检查任务状态"
-                onClick={() => void resumeImagePolling()}
+                onClick={recheckImageTaskStatus}
                 type="button"
               >
                 重新检查
@@ -2886,7 +3677,54 @@ function ImageNodeImpl({
             )}
           </div>
         )}
-        {generating || uploading ? (
+        {preview ? (
+          <img
+            alt=""
+            className={`image-node-preview${
+              mediaLoad.failed ? " media-load-obscured" : ""
+            }`}
+            data-testid="image-node-preview"
+            draggable={false}
+            key={mediaLoad.key}
+            onError={mediaLoad.markFailed}
+            onLoad={(event) => {
+              mediaLoad.markLoaded();
+              const current = getNode(id);
+              if (
+                !current ||
+                typeof current.width === "number" ||
+                typeof current.height === "number"
+              ) return;
+              const naturalSize = {
+                height: event.currentTarget.naturalHeight,
+                width: event.currentTarget.naturalWidth,
+              };
+              if (!persistenceReady) {
+                deferredPreviewAutoFit.current = naturalSize;
+                return;
+              }
+              deferredPreviewAutoFit.current = undefined;
+              applyPreviewAutoFit(naturalSize.width, naturalSize.height);
+            }}
+            src={mediaLoad.source}
+          />
+        ) : !generating && !uploading ? (
+          <div aria-hidden="true" className="image-node-empty-action">
+            <svg aria-hidden="true" viewBox="0 0 48 48">
+              <rect height="34" rx="6" width="38" x="5" y="7" />
+              <circle cx="33" cy="17" r="3" />
+              <path d="m9 36 10-10 7 7 5-5 8 8" />
+            </svg>
+          </div>
+        ) : null}
+        {preview && mediaLoad.failed && (
+          <MediaLoadFallback
+            kind="图片"
+            onReload={mediaLoad.reload}
+            onReplace={() => inputRef.current?.click()}
+          />
+        )}
+        {(generating || uploading) && (
           <div
             aria-label={uploading ? "图片上传中" : "Generating..."}
             className="image-node-generating"
@@ -2904,43 +3742,8 @@ function ImageNodeImpl({
               data-testid="image-node-loading-grid"
             />
           </div>
-        ) : preview ? (
-          <img
-            alt=""
-            className="image-node-preview"
-            data-testid="image-node-preview"
-            draggable={false}
-            onLoad={(event) => {
-              const current = getNode(id);
-              if (
-                !current ||
-                typeof current.width === "number" ||
-                typeof current.height === "number"
-              ) return;
-              const size = fitVisualMediaSize(
-                event.currentTarget.naturalWidth,
-                event.currentTarget.naturalHeight,
-              );
-              setNodes((nodes) =>
-                nodes.map((node) =>
-                  node.id === id
-                    ? { ...node, style: { ...node.style, ...size } }
-                    : node,
-                ),
-              );
-            }}
-            src={preview}
-          />
-        ) : (
-          <div aria-hidden="true" className="image-node-empty-action">
-            <svg aria-hidden="true" viewBox="0 0 48 48">
-              <rect height="34" rx="6" width="38" x="5" y="7" />
-              <circle cx="33" cy="17" r="3" />
-              <path d="m9 36 10-10 7 7 5-5 8 8" />
-            </svg>
-          </div>
         )}
-        {generatedSuccess && (
+        {generatedSuccess && !mediaLoad.failed && (
           <button
             aria-label="收藏"
             aria-pressed={favorite}
@@ -2953,7 +3756,7 @@ function ImageNodeImpl({
             </svg>
           </button>
         )}
-        {preview && !generating && !uploading && (
+        {preview && !mediaLoad.failed && !generating && !uploading && (
           <button
             aria-label="替换"
             className="image-node-replace nodrag nopan"
@@ -2983,7 +3786,7 @@ function ImageNodeImpl({
           <span className="node-handle-plus" />
         </span>
       </Handle>
-      {fullscreen && preview &&
+      {fullscreen && preview && !mediaLoad.failed &&
         createPortal(
           <div
             className="image-detail-backdrop"

@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext } from "@playwright/test";
+import { expect, test, type APIRequestContext } from "./safe-test";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { createReadStream, mkdtempSync, rmSync } from "node:fs";
@@ -100,9 +100,11 @@ test("MP4 playback, range delivery, download and metadata survive a reload", asy
         mediaByteSize: number;
         mediaContentType: string;
         mediaDurationSeconds: number;
+        mediaHeight: number;
         mediaMetadataSource: string;
         mediaMetadataStatus: string;
         mediaStorageBackend: string;
+        mediaWidth: number;
         videoDuration: number;
         videoHeight: number;
         videoSrc: string;
@@ -116,9 +118,11 @@ test("MP4 playback, range delivery, download and metadata survive a reload", asy
   expect(videoNode.data).toMatchObject({
     inputState: "ready",
     mediaContentType: "video/mp4",
+    mediaHeight: 180,
     mediaMetadataSource: "server",
     mediaMetadataStatus: "ready",
     mediaStorageBackend: "local",
+    mediaWidth: 320,
     videoHeight: 180,
     videoWidth: 320,
   });
@@ -134,6 +138,8 @@ test("MP4 playback, range delivery, download and metadata survive a reload", asy
     byteSize: videoNode.data.mediaByteSize,
     contentType: "video/mp4",
     durationStatus: "ready",
+    mediaHeight: 180,
+    mediaWidth: 320,
     storageBackend: "local",
   });
 

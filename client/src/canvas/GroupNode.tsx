@@ -498,7 +498,7 @@ function GroupNodeImpl({
         </div>
       )}
       <div
-        className="group-node-title nodrag"
+        className="canvas-node-title group-node-title nodrag"
         style={titleStyle}
       >
         <svg aria-hidden="true" viewBox="0 0 24 24">
@@ -535,7 +535,9 @@ function GroupNodeImpl({
             value={titleControl.value}
           />
         ) : (
-          <span>{titleControl.committedValue}</span>
+          <span title={titleControl.committedValue}>
+            {titleControl.committedValue}
+          </span>
         )}
       </div>
       <div

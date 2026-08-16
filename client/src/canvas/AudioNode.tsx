@@ -8,16 +8,20 @@ import {
   useReactFlow,
   type NodeProps,
 } from "@xyflow/react";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useCanvasCheckpoint } from "./CanvasHistory";
 import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
+import {
+  MediaLoadFallback,
+  useMediaLoadRecovery,
+} from "./MediaLoadFallback";
 import { NODE_DEFAULT_SIZES } from "./mediaGeometry";
 import { NodeModelControl } from "./NodeModelControl";
 import { NodeParameterControl } from "./NodeParameterControl";
 import { EmptyMediaUploadToolbar } from "./EmptyMediaUploadToolbar";
-import type { ProbeNodeType } from "./ProbeNode";
+import { generationOwnershipKey, type ProbeNodeType } from "./ProbeNode";
 import {
   usePublishedModelSelection,
 } from "../models/ModelCatalog";
@@ -36,8 +40,12 @@ import {
   POLLING_PAUSED_MESSAGE,
   waitForGenerationTaskWithPause,
 } from "../generation/taskPolling";
-import type {
-  NodeGenerationOutcome,
+import {
+  workflowModelSelectionProblem,
+  workflowRuntimePreflightDisposition,
+  workflowSubmissionPreflightProblem,
+  type NodeGenerationOutcome,
+  type WorkflowPreflightPhase,
 } from "../generation/workflowExecution";
 import { visibleGenerationError } from "../generation/generationErrors";
 import {
@@ -49,11 +57,14 @@ import {
   cancelGenerationTask,
   clearGenerationSubmissionIntent,
   ensureGenerationTask,
+  GENERATION_TASK_RETRY_ACCEPTED_EVENT,
   GenerationRequestError,
+  getGenerationTask,
   listGenerationTasks,
   recoverPendingGenerationTask,
   retryGenerationTask,
   waitForGenerationTask,
+  type GenerationTaskRetryAcceptedDetail,
   type GenerationTaskSummary,
 } from "../generation/generationTasks";
 import {
@@ -67,6 +78,7 @@ import {
 import {
   availableNodeInputRoles,
   blockedModelSwitchProblem,
+  defaultNodeInputRole,
   moveNodeInputEdge,
   resolveNodeInputs,
   type NodeInputProblem,
@@ -78,6 +90,25 @@ import {
   mediaUploadState,
   trustedMediaPatch,
 } from "./mediaInputMetadata";
+
+type AudioPollingRun = {
+  inputKey?: string;
+  ownershipKey?: string;
+  taskId: string;
+  token: symbol;
+};
+
+function audioTaskMatchesNode(
+  task: GenerationTaskSummary,
+  canvasId: string,
+  nodeId: string,
+  taskId = task.id,
+) {
+  return task.id === taskId &&
+    task.canvasId === canvasId &&
+    task.kind === "audio" &&
+    task.nodeId === nodeId;
+}
 
 function clock(seconds = 0) {
   const safe = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
@@ -170,6 +201,7 @@ function AudioNodeImpl({
   selected,
 }: NodeProps<ProbeNodeType>) {
   const singleNodeChrome = useSingleNodeChrome(selected, dragging);
+  const mediaLoad = useMediaLoadRecovery(data.audioSrc);
   const inputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const uploadBaseline = useRef<ProbeNodeType | undefined>(undefined);
@@ -179,7 +211,7 @@ function AudioNodeImpl({
   const waveformSourceAttempted = useRef<string | undefined>(undefined);
   const { getNode, getNodes } = useReactFlow<ProbeNodeType>();
   const { register: registerWorkflowNode } = useWorkflowExecution();
-  const { setEdges, setNodes } = useCanvasGraphMutation();
+  const { setEdges, setNodes, tryAdoptNodes } = useCanvasGraphMutation();
   const canvasEdges = useEdges();
   const canvasNodes = useNodes<ProbeNodeType>();
   const checkpoint = useCanvasCheckpoint();
@@ -189,8 +221,14 @@ function AudioNodeImpl({
     canvasRevision,
     flushCanvasSave,
     isFixture,
+    persistenceReady,
+    retryGenerationEnabled,
     waitForCanvasRevision,
   } = useGenerationCanvas();
+  const mediaAdoptionScopeRef = useRef(`${accountId}\u0000${canvasId}`);
+  mediaAdoptionScopeRef.current = `${accountId}\u0000${canvasId}`;
+  const persistenceReadyLive = useRef(persistenceReady);
+  persistenceReadyLive.current = persistenceReady;
   const audioModelSelection = usePublishedModelSelection(
     "audio",
     data.audioModelId,
@@ -198,6 +236,7 @@ function AudioNodeImpl({
   );
   const audioModels = audioModelSelection.models;
   const selectedAudioModel = audioModelSelection.model;
+  const selectedAudioModelId = audioModelSelection.selectedId;
   const audioModelUnavailableReason = audioModelSelection.unavailableReason;
   const audioParameterSchema = selectedAudioModel?.parameterSchema ??
     defaultParameterSchema("audio");
@@ -248,15 +287,73 @@ function AudioNodeImpl({
   const [retryTaskId, setRetryTaskId] = useState<string>();
   const [pollingPausedTaskId, setPollingPausedTaskId] = useState<string>();
   const pollingPausedTaskIdRef = useRef<string | undefined>(undefined);
+  const [unverifiedRecoveryTaskId, setUnverifiedRecoveryTaskId] =
+    useState<string>();
+  const [recoveryEpoch, setRecoveryEpoch] = useState(0);
+  const generationPollingRunRef = useRef<AudioPollingRun | undefined>(undefined);
+  const liveGenerationInputKeyRef = useRef<string | undefined>(undefined);
+  const liveGenerationOwnershipKeyRef = useRef<string | undefined>(undefined);
   const [serverInputProblems, setServerInputProblems] = useState<NodeInputProblem[]>([]);
+  const [retryWakeEpoch, setRetryWakeEpoch] = useState(0);
   const uploading = data.inputState === "uploading";
+  const beginGenerationPollingRun = (
+    taskId: string,
+    inputKey?: string,
+    ownershipKey?: string,
+  ): AudioPollingRun => {
+    const run = { inputKey, ownershipKey, taskId, token: Symbol(taskId) };
+    generationPollingRunRef.current = run;
+    setActiveTaskId(taskId);
+    return run;
+  };
+  const ownsGenerationPollingRun = (run: AudioPollingRun) =>
+    generationPollingRunRef.current === run &&
+    (run.ownershipKey === undefined ||
+      liveGenerationOwnershipKeyRef.current === run.ownershipKey);
+  const endGenerationPollingRun = (run: AudioPollingRun) => {
+    if (generationPollingRunRef.current !== run) return;
+    generationPollingRunRef.current = undefined;
+    setActiveTaskId((current) =>
+      current === run.taskId ? undefined : current,
+    );
+  };
   const promptControl = useCompositionSafeText({
     onCommit: (nextPrompt) => {
+      if (nextPrompt === prompt) return;
       setPrompt(nextPrompt);
+      generationPollingRunRef.current = undefined;
+      setActiveTaskId(undefined);
+      pollingPausedTaskIdRef.current = undefined;
+      setPollingPausedTaskId(undefined);
+      setRetryTaskId(undefined);
+      setServerInputProblems([]);
+      setUploadError("");
+      clearGenerationSubmissionIntent(
+        "audio",
+        canvasId,
+        id,
+        data.audioGenerationTaskId,
+        accountId,
+      );
       setNodes((nodes) =>
         nodes.map((node) =>
           node.id === id
-            ? { ...node, data: { ...node.data, audioPrompt: nextPrompt } }
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  audioGenerationError: undefined,
+                  audioGenerationErrorCode: undefined,
+                  audioGenerationInputKey: undefined,
+                  audioGenerationOwnershipKey: undefined,
+                  audioGenerating: false,
+                  audioGenerationRetryAllowed: undefined,
+                  audioGenerationRetryBlockCode: undefined,
+                  audioGenerationRetryBlockReason: undefined,
+                  audioGenerationTaskId: undefined,
+                  audioPrompt: nextPrompt,
+                },
+              }
             : node,
         ),
       );
@@ -288,12 +385,23 @@ function AudioNodeImpl({
     targetId: id,
     targetKind: "audio",
   });
+  const modelSelectionProblem = workflowModelSelectionProblem({
+    isFixture,
+    kind: "audio",
+    model: selectedAudioModel,
+    status: audioModelSelection.status,
+    unavailableReason: audioModelUnavailableReason,
+  });
   const inputProblems: NodeInputProblem[] = [
     ...(modelSwitchProblem
       ? [{ code: "MODEL_UNSUPPORTED" as const, message: modelSwitchProblem }]
       : []),
     ...inputPreflight.problems,
     ...serverInputProblems,
+  ];
+  const workflowProblems: NodeInputProblem[] = [
+    ...(modelSelectionProblem ? [modelSelectionProblem] : []),
+    ...inputProblems,
   ];
   const hasCompatibleUpstreamText = inputPreflight.inputs.some((input) =>
     input.kind === "text" &&
@@ -319,30 +427,99 @@ function AudioNodeImpl({
   });
   const audioGenerationInputKey = createGenerationInputKey({
     inputs: inputPreflight.inputs,
-    modelId: selectedAudioModel?.id,
+    modelId: selectedAudioModelId,
     ownPrompt: promptControl.committedValue,
     parameters: audioSubmissionParameters,
     prompt: inputPreflight.finalPrompt,
   });
+  const generationOwnershipUpstream = inputPreflight.inputs.map((input) => {
+      const edge = canvasEdges.find((candidate) =>
+        candidate.id === input.edgeId
+      );
+      return {
+        assetId: input.kind === "text" ? undefined : input.assetId,
+        edgeId: input.edgeId,
+        metadataStatus: input.metadataStatus,
+        order: input.order,
+        ready: input.state === "ready",
+        role: typeof edge?.data?.inputRole === "string"
+          ? edge.data.inputRole
+          : defaultNodeInputRole(input.kind, "audio"),
+        source: input.sourceNodeId,
+        sourceKind: input.kind,
+        src: input.kind === "text" ? undefined : input.preview,
+        status: input.state,
+        text: input.kind === "text" ? input.text : undefined,
+      };
+    });
+  const effectiveGenerationInputFingerprint = generationOwnershipKey({
+    modelId: selectedAudioModelId,
+    parameters: selectedAudioModel ? audioParameters : data.audioParameters,
+    prompt: promptControl.committedValue,
+    upstream: generationOwnershipUpstream,
+  });
+  const rawGenerationInputFingerprint = generationOwnershipKey({
+    // Once a task is ownership-bound, catalog changes must not reinterpret its
+    // saved model snapshot. Before admission, use the effective values that are
+    // materialized and ACKed on the canvas below.
+    modelId: data.audioGenerationOwnershipKey
+      ? data.audioModelId
+      : selectedAudioModelId,
+    parameters: data.audioGenerationOwnershipKey
+      ? data.audioParameters
+      : selectedAudioModel
+        ? audioParameters
+        : data.audioParameters,
+    prompt: promptControl.committedValue,
+    // Only durable source/edge semantics belong here. Compatibility, resolver
+    // reasons, and resolved roles can drift with the model catalog.
+    upstream: generationOwnershipUpstream,
+  });
+  liveGenerationInputKeyRef.current = audioGenerationInputKey;
+  liveGenerationOwnershipKeyRef.current = rawGenerationInputFingerprint;
   const audioGenerationRequestInput = {
     canvasId,
     canvasRevision,
     inputSchemaVersion: 1 as const,
     inputs: inputPreflight.snapshot,
-    model: selectedAudioModel?.id,
+    model: selectedAudioModelId,
     nodeId: id,
     ownPrompt: promptControl.committedValue,
     parameters: audioSubmissionParameters,
     prompt: inputPreflight.finalPrompt,
   };
-  const stableGenerationInputKey = useRef<string | undefined>(undefined);
+  const stableRawGenerationInputFingerprint = useRef<string | undefined>(
+    undefined,
+  );
+  const legacyRecoveryCatalogKey = data.audioGenerationOwnershipKey
+    ? "ownership-bound"
+    : `${audioModelSelection.status}:${selectedAudioModelId ?? ""}:${audioGenerationInputKey}`;
   const retryAvailable = Boolean(
     retryTaskId &&
     data.audioGenerationInputKey === audioGenerationInputKey &&
+    (!data.audioGenerationOwnershipKey ||
+      data.audioGenerationOwnershipKey === rawGenerationInputFingerprint) &&
     data.audioGenerationRetryAllowed === true &&
     selectedAudioModel &&
     selectedAudioModel.generationAvailable !== false,
   );
+
+  const clearAudioIntentAfterDurableTerminalPatch = (taskId: string) => {
+    void (async () => {
+      try {
+        await flushCanvasSave();
+        clearGenerationSubmissionIntent(
+          "audio",
+          canvasId,
+          id,
+          taskId,
+          accountId,
+        );
+      } catch {
+        // Keep the intent for exact-GET recovery when the canvas ACK is lost.
+      }
+    })();
+  };
   const relayCancellationAvailable =
     selectedAudioModel?.providerProtocol === "media-generate";
 
@@ -363,51 +540,86 @@ function AudioNodeImpl({
   }, [inputFeedbackKey]);
 
   useEffect(() => {
-    if (canvasRevision === undefined) return;
-    const previous = stableGenerationInputKey.current;
-    stableGenerationInputKey.current = audioGenerationInputKey;
-    const persistedMismatch = Boolean(
-      data.audioGenerationInputKey &&
-      data.audioGenerationInputKey !== audioGenerationInputKey,
+    const wakeAcceptedRetry = (event: Event) => {
+      const detail = (event as CustomEvent<GenerationTaskRetryAcceptedDetail>)
+        .detail;
+      if (
+        detail?.canvasId === canvasId &&
+        detail.nodeId === id &&
+        detail.kind === "audio" &&
+        detail.taskId === data.audioGenerationTaskId
+      ) {
+        setRetryWakeEpoch((current) => current + 1);
+      }
+    };
+    window.addEventListener(
+      GENERATION_TASK_RETRY_ACCEPTED_EVENT,
+      wakeAcceptedRetry,
     );
-    if (!persistedMismatch && (
-      previous === undefined || previous === audioGenerationInputKey
-    )) return;
-    setRetryTaskId(undefined);
-    setActiveTaskId(undefined);
-    setServerInputProblems([]);
-    if (data.audioGenerationTaskId || data.audioGenerationInputKey) {
-      clearGenerationSubmissionIntent(
-        "audio",
-        canvasId,
-        id,
-        data.audioGenerationTaskId,
-        accountId,
-      );
-      setUploadError("");
-      setNodes((nodes) => nodes.map((node) => node.id === id
-        ? {
-            ...node,
-            data: {
-              ...node.data,
-              audioGenerationError: undefined,
-              audioGenerationErrorCode: undefined,
-              audioGenerationInputKey: undefined,
-              audioGenerationRetryAllowed: undefined,
-              audioGenerationRetryBlockCode: undefined,
-              audioGenerationRetryBlockReason: undefined,
-              audioGenerationTaskId: undefined,
-            },
-          }
-        : node));
+    return () => window.removeEventListener(
+      GENERATION_TASK_RETRY_ACCEPTED_EVENT,
+      wakeAcceptedRetry,
+    );
+  }, [canvasId, data.audioGenerationTaskId, id]);
+
+  useEffect(() => {
+    if (!persistenceReady) {
+      stableRawGenerationInputFingerprint.current = undefined;
+      return;
     }
+    const previous = stableRawGenerationInputFingerprint.current;
+    stableRawGenerationInputFingerprint.current = rawGenerationInputFingerprint;
+    const persistedMismatch = Boolean(
+      data.audioGenerationOwnershipKey &&
+      data.audioGenerationOwnershipKey !== rawGenerationInputFingerprint,
+    );
+    if (
+      !persistedMismatch &&
+      (previous === undefined || previous === rawGenerationInputFingerprint)
+    ) {
+      return;
+    }
+    if (
+      !data.audioGenerating &&
+      !data.audioGenerationTaskId &&
+      !data.audioGenerationInputKey &&
+      !data.audioGenerationOwnershipKey
+    ) return;
+    generationPollingRunRef.current = undefined;
+    setActiveTaskId(undefined);
+    pollingPausedTaskIdRef.current = undefined;
+    setPollingPausedTaskId(undefined);
+    setRetryTaskId(undefined);
+    setServerInputProblems([]);
+    setUploadError("");
+    clearGenerationSubmissionIntent("audio", canvasId, id, undefined, accountId);
+    setNodes((nodes) => nodes.map((node) => node.id === id
+      ? {
+          ...node,
+          data: {
+            ...node.data,
+            audioGenerationError: undefined,
+            audioGenerationErrorCode: undefined,
+            audioGenerationInputKey: undefined,
+            audioGenerationOwnershipKey: undefined,
+            audioGenerating: false,
+            audioGenerationRetryAllowed: undefined,
+            audioGenerationRetryBlockCode: undefined,
+            audioGenerationRetryBlockReason: undefined,
+            audioGenerationTaskId: undefined,
+          },
+        }
+      : node));
   }, [
-    audioGenerationInputKey,
+    accountId,
     canvasId,
-    canvasRevision,
+    data.audioGenerating,
     data.audioGenerationInputKey,
+    data.audioGenerationOwnershipKey,
     data.audioGenerationTaskId,
     id,
+    persistenceReady,
+    rawGenerationInputFingerprint,
     setNodes,
   ]);
 
@@ -418,6 +630,8 @@ function AudioNodeImpl({
     retryAllowed: boolean,
     retryBlockCode?: string,
     retryBlockReason?: string,
+    generationInputKey?: string,
+    generationOwnershipKey?: string,
   ) => {
     const visibleMessage = generationFailureMessage(
       message,
@@ -432,7 +646,10 @@ function AudioNodeImpl({
             ...node.data,
             audioGenerationError: visibleMessage,
             audioGenerationErrorCode: errorCode,
-            audioGenerationInputKey,
+            audioGenerationInputKey:
+              generationInputKey ?? node.data.audioGenerationInputKey,
+            audioGenerationOwnershipKey:
+              generationOwnershipKey ?? node.data.audioGenerationOwnershipKey,
             audioGenerating: false,
             audioGenerationRetryAllowed: retryAllowed,
             audioGenerationRetryBlockCode: retryBlockCode,
@@ -443,6 +660,7 @@ function AudioNodeImpl({
       : node));
     setUploadError(visibleMessage);
     setRetryTaskId(retryAllowed ? taskId : undefined);
+    clearAudioIntentAfterDurableTerminalPatch(taskId);
   };
 
   const persistAudioGenerationCancellation = (
@@ -457,6 +675,7 @@ function AudioNodeImpl({
             audioGenerationError: message,
             audioGenerationErrorCode: undefined,
             audioGenerationInputKey: undefined,
+            audioGenerationOwnershipKey: undefined,
             audioGenerating: false,
             audioGenerationRetryAllowed: undefined,
             audioGenerationRetryBlockCode: undefined,
@@ -467,12 +686,15 @@ function AudioNodeImpl({
       : node));
     setUploadError(message);
     setRetryTaskId(undefined);
-    setActiveTaskId(undefined);
-    clearGenerationSubmissionIntent("audio", canvasId, id, taskId, accountId);
+    clearAudioIntentAfterDurableTerminalPatch(taskId);
   };
 
   useEffect(() => {
-    if (data.inputState !== "uploading" || uploadInFlight.current) return;
+    if (
+      !persistenceReady ||
+      data.inputState !== "uploading" ||
+      uploadInFlight.current
+    ) return;
     const message = "上传已中断，请重新上传";
     setNodes((nodes) => nodes.map((node) => node.id === id
       ? {
@@ -483,7 +705,7 @@ function AudioNodeImpl({
           },
         }
       : node));
-  }, [data.inputState, id, setNodes]);
+  }, [data.inputState, id, persistenceReady, setNodes]);
 
   useEffect(() => {
     if (!uploadInFlight.current || data.inputState === "uploading") return;
@@ -493,6 +715,15 @@ function AudioNodeImpl({
     uploadInFlight.current = false;
     uploadBaseline.current = undefined;
   }, [data.inputState]);
+
+  useEffect(() => {
+    if (persistenceReady || !uploadInFlight.current) return;
+    uploadOperation.current += 1;
+    uploadController.current?.abort();
+    uploadController.current = undefined;
+    uploadInFlight.current = false;
+    uploadBaseline.current = undefined;
+  }, [persistenceReady]);
 
   useEffect(() => () => {
     uploadOperation.current += 1;
@@ -504,6 +735,7 @@ function AudioNodeImpl({
 
   useEffect(() => {
     if (
+      !persistenceReady ||
       isFixture ||
       !data.assetId ||
       !data.audioSrc ||
@@ -549,14 +781,20 @@ function AudioNodeImpl({
     data.inputState,
     data.mediaMetadataSource,
     id,
+    persistenceReady,
     setNodes,
   ]);
 
-  const applyGeneratedAudio = (
+  const applyGeneratedAudio = async (
     task: GenerationTaskSummary,
     cleanPrompt: string,
+    run: AudioPollingRun,
   ) => {
-    if (!task.resultAssetId || !task.resultUrl) {
+    if (
+      !ownsGenerationPollingRun(run) ||
+      !audioTaskMatchesNode(task, canvasId, id, run.taskId)
+    ) return false;
+    if (task.state !== "success" || !task.resultAssetId || !task.resultUrl) {
       throw new Error("音频结果不完整");
     }
     checkpoint(false);
@@ -592,13 +830,18 @@ function AudioNodeImpl({
                 audioGenerationError: undefined,
                 audioGenerationErrorCode: undefined,
                 audioGenerationInputKey: undefined,
+                audioGenerationOwnershipKey: undefined,
                 audioGenerating: false,
                 audioGenerationRetryAllowed: undefined,
                 audioGenerationRetryBlockCode: undefined,
                 audioGenerationRetryBlockReason: undefined,
                 audioGenerationTaskId: undefined,
-                audioModelId: selectedAudioModel?.id,
-                audioModelName: selectedAudioModel?.displayName ?? "Mureka",
+                audioModelId:
+                  audioModelSelection.selectedId ?? node.data.audioModelId,
+                audioModelName:
+                  audioModelSelection.displayName ??
+                  node.data.audioModelName ??
+                  "Mureka",
                 audioPrompt: cleanPrompt,
                 audioSrc: task.resultUrl,
                 audioWaveform: undefined,
@@ -607,7 +850,9 @@ function AudioNodeImpl({
           : node,
       ),
     );
+    await flushCanvasSave();
     clearGenerationSubmissionIntent("audio", canvasId, id, task.id, accountId);
+    return true;
   };
 
   const generateAudio = async (): Promise<NodeGenerationOutcome> => {
@@ -628,15 +873,76 @@ function AudioNodeImpl({
     setRetryTaskId(undefined);
     setSubmitting(true);
     let submittedTaskId: string | undefined;
+    let pollingRun: AudioPollingRun | undefined;
+    let bindingPersisted = false;
+    const requestedGenerationInputKey = audioGenerationInputKey;
+    const requestedGenerationOwnershipKey =
+      effectiveGenerationInputFingerprint;
+    const requestedModelId = selectedAudioModelId;
+    const requestedModelName = audioModelSelection.displayName;
+    const requestedParameters = { ...audioParameters };
     try {
-      await flushCanvasSave();
-      const { task: submitted } = await ensureGenerationTask(
+      setNodes((nodes) => nodes.map((node) => node.id === id
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              audioModelId: requestedModelId,
+              audioModelName: requestedModelName,
+              audioParameters: requestedParameters,
+            },
+          }
+        : node));
+      const freshCanvasRevision = await waitForCanvasRevision();
+      if (
+        liveGenerationOwnershipKeyRef.current !== requestedGenerationOwnershipKey
+      ) {
+        return {
+          message: "生成输入已修改，已停止本次生成",
+          status: "failed",
+        };
+      }
+      const {
+        generationOwnershipKey: persistedGenerationOwnershipKey,
+        task: submitted,
+      } = await ensureGenerationTask(
         "audio",
-        audioGenerationRequestInput,
+        {
+          ...audioGenerationRequestInput,
+          canvasRevision: freshCanvasRevision,
+        },
         accountId,
+        () => {
+          if (
+            liveGenerationOwnershipKeyRef.current !==
+              requestedGenerationOwnershipKey
+          ) {
+            throw new Error("生成输入已修改，已停止本次生成");
+          }
+        },
+        { generationOwnershipKey: requestedGenerationOwnershipKey },
       );
       submittedTaskId = submitted.id;
-      setActiveTaskId(submitted.id);
+      if (
+        liveGenerationOwnershipKeyRef.current !== requestedGenerationOwnershipKey
+      ) {
+        clearGenerationSubmissionIntent(
+          "audio",
+          canvasId,
+          id,
+          submitted.id,
+          accountId,
+        );
+        return {
+          message: "生成输入已修改，旧任务结果不会覆盖当前内容",
+          status: "failed",
+        };
+      }
+      pollingRun = beginGenerationPollingRun(
+        submitted.id,
+        requestedGenerationInputKey,
+        requestedGenerationOwnershipKey,
+      );
       checkpoint();
       setNodes((nodes) => nodes.map((node) => node.id === id
         ? {
@@ -646,27 +952,53 @@ function AudioNodeImpl({
               audioGenerationError: undefined,
               audioGenerationErrorCode: undefined,
               audioGenerationInputKey,
+              audioGenerationOwnershipKey:
+                persistedGenerationOwnershipKey ??
+                requestedGenerationOwnershipKey,
               audioGenerating: true,
               audioGenerationRetryAllowed: undefined,
               audioGenerationRetryBlockCode: undefined,
               audioGenerationRetryBlockReason: undefined,
               audioGenerationTaskId: submitted.id,
+              audioModelId: requestedModelId,
+              audioModelName: requestedModelName,
+              audioParameters: requestedParameters,
             },
           }
         : node));
+      await flushCanvasSave();
+      bindingPersisted = true;
+      if (
+        !pollingRun ||
+        !ownsGenerationPollingRun(pollingRun) ||
+        liveGenerationOwnershipKeyRef.current !==
+          requestedGenerationOwnershipKey
+      ) {
+        return {
+          message: "生成输入已修改，旧任务结果不会覆盖当前内容",
+          status: "failed",
+        };
+      }
       setSubmitting(false);
       let task: Awaited<ReturnType<typeof waitForGenerationTask>>;
       try {
         task = await waitForGenerationTaskWithPause(submitted.id, () => {
+          if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) return;
           pollingPausedTaskIdRef.current = submitted.id;
           setPollingPausedTaskId(submitted.id);
           setUploadError(POLLING_PAUSED_MESSAGE);
         });
       } catch (error) {
+        if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) {
+          return { status: "skipped" };
+        }
         if (pollingPausedTaskIdRef.current === submitted.id) {
           return { message: POLLING_PAUSED_MESSAGE, status: "failed" };
         }
         throw error;
+      }
+      if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) {
+        return { status: "skipped" };
       }
       if (task.state === "cancelled") {
         persistAudioGenerationCancellation(
@@ -695,7 +1027,11 @@ function AudioNodeImpl({
           status: "failed",
         };
       }
-      applyGeneratedAudio(task, promptControl.committedValue.trim());
+      await applyGeneratedAudio(
+        task,
+        promptControl.committedValue.trim(),
+        pollingRun,
+      );
       pollingPausedTaskIdRef.current = undefined;
       setPollingPausedTaskId(undefined);
       setRetryTaskId(undefined);
@@ -708,7 +1044,20 @@ function AudioNodeImpl({
         ? error.message
         : generationMessageFallback("audio");
       const friendly = friendlyGenerationMessage(message, "audio");
-      if (submittedTaskId) {
+      if (
+        submittedTaskId &&
+        pollingRun &&
+        ownsGenerationPollingRun(pollingRun)
+      ) {
+        if (!bindingPersisted) {
+          pollingPausedTaskIdRef.current = submittedTaskId;
+          setPollingPausedTaskId(submittedTaskId);
+          setUploadError("画布尚未安全保存，任务状态未查询；请重新检查");
+          return {
+            message: "画布尚未安全保存，任务状态未查询；请重新检查",
+            status: "failed",
+          };
+        }
         const errorCode = error instanceof GenerationRequestError
           ? error.code
           : "TASK_STATUS_UNKNOWN";
@@ -722,14 +1071,61 @@ function AudioNodeImpl({
             ? error.message
             : "任务状态暂时无法确认，不能一键重试，请稍后刷新查看",
         );
-      } else {
+      } else if (!pollingRun) {
         setUploadError(friendly);
       }
       return { message: friendly, status: "failed" };
     } finally {
       setSubmitting(false);
-      setActiveTaskId(undefined);
+      if (pollingRun) endGenerationPollingRun(pollingRun);
     }
+  };
+
+  const persistWorkflowInputFailure = async (problem: NodeInputProblem) => {
+    setNodes((nodes) => nodes.map((node) => node.id === id
+      ? {
+          ...node,
+          data: {
+            ...node.data,
+            audioGenerationError: problem.message,
+            audioGenerationErrorCode: problem.code,
+            audioGenerationInputKey: undefined,
+            audioGenerationOwnershipKey: undefined,
+            audioGenerating: false,
+            audioGenerationRetryAllowed: undefined,
+            audioGenerationRetryBlockCode: undefined,
+            audioGenerationRetryBlockReason: undefined,
+            audioGenerationTaskId: undefined,
+          },
+        }
+      : node));
+    setUploadError(problem.message);
+    setRetryTaskId(undefined);
+    await flushCanvasSave();
+    return { message: problem.message, status: "failed" as const };
+  };
+
+  const preflightWorkflowNode = async (context: {
+    executableIds: ReadonlySet<string>;
+    phase: WorkflowPreflightPhase;
+  }): Promise<NodeRunResult> => {
+    const common = {
+      executableIds: context.executableIds,
+      inputs: inputPreflight.inputs,
+      problems: workflowProblems,
+    };
+    if (context.phase !== "static") {
+      const disposition = workflowRuntimePreflightDisposition(common);
+      if (disposition.status === "ready") return { status: "success" };
+      if (disposition.status === "waiting" && context.phase === "runtime") {
+        return { message: disposition.problem.message, status: "busy" };
+      }
+      return persistWorkflowInputFailure(disposition.problem);
+    }
+    const problem = workflowSubmissionPreflightProblem(common);
+    return problem
+      ? persistWorkflowInputFailure(problem)
+      : { status: "success" };
   };
 
   const runWorkflowNode = async (): Promise<NodeRunResult> => {
@@ -760,10 +1156,20 @@ function AudioNodeImpl({
   const runWorkflowNodeRef = useRef<() => Promise<NodeRunResult>>(
     async () => ({ status: "skipped" }),
   );
+  const preflightWorkflowNodeRef = useRef<(
+    context: {
+      executableIds: ReadonlySet<string>;
+      phase: WorkflowPreflightPhase;
+    },
+  ) => Promise<NodeRunResult>>(
+    async () => ({ status: "success" }),
+  );
   runWorkflowNodeRef.current = runWorkflowNode;
+  preflightWorkflowNodeRef.current = preflightWorkflowNode;
   useEffect(
     () =>
       registerWorkflowNode(id, {
+        preflight: (context) => preflightWorkflowNodeRef.current(context),
         run: createSaveGateRun(
           waitForCanvasRevision,
           () => runWorkflowNodeRef.current(),
@@ -774,30 +1180,71 @@ function AudioNodeImpl({
   );
 
   const retryAudioGeneration = async () => {
-    if (!retryTaskId || !retryAvailable || generating || submitting) return;
+    if (
+      !retryTaskId ||
+      !retryAvailable ||
+      isFixture ||
+      !retryGenerationEnabled ||
+      generating ||
+      submitting
+    ) return;
     const taskId = retryTaskId;
-    setUploadError("");
-    setActiveTaskId(taskId);
-    setServerInputProblems([]);
-    setNodes((nodes) => nodes.map((node) => node.id === id
-      ? {
-          ...node,
-          data: {
-            ...node.data,
-            audioGenerationError: undefined,
-            audioGenerationErrorCode: undefined,
-            audioGenerationInputKey,
-            audioGenerating: true,
-            audioGenerationRetryAllowed: undefined,
-            audioGenerationRetryBlockCode: undefined,
-            audioGenerationRetryBlockReason: undefined,
-            audioGenerationTaskId: taskId,
-          },
-        }
-      : node));
+    const requestedGenerationInputKey = audioGenerationInputKey;
+    const requestedGenerationOwnershipKey = rawGenerationInputFingerprint;
+    setSubmitting(true);
+    let retryAccepted = false;
+    let pollingRun: AudioPollingRun | undefined;
     try {
-      await retryGenerationTask(taskId);
-      const task = await waitForGenerationTask(taskId);
+      await retryGenerationTask({
+        canvasId,
+        generationInputKey: requestedGenerationInputKey,
+        kind: "audio",
+        nodeId: id,
+        taskId,
+      }, async () => {
+        const revision = await waitForCanvasRevision();
+        if (
+          liveGenerationInputKeyRef.current !== requestedGenerationInputKey
+        ) {
+          throw new Error("生成输入已修改，已停止本次重试");
+        }
+        return revision;
+      });
+      if (
+        liveGenerationInputKeyRef.current !== requestedGenerationInputKey
+      ) return;
+      retryAccepted = true;
+      setUploadError("");
+      pollingRun = beginGenerationPollingRun(
+        taskId,
+        requestedGenerationInputKey,
+        requestedGenerationOwnershipKey,
+      );
+      setServerInputProblems([]);
+      setNodes((nodes) => nodes.map((node) => node.id === id
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              audioGenerationError: undefined,
+              audioGenerationErrorCode: undefined,
+              audioGenerationInputKey,
+              audioGenerationOwnershipKey: requestedGenerationOwnershipKey,
+              audioGenerating: true,
+              audioGenerationRetryAllowed: undefined,
+              audioGenerationRetryBlockCode: undefined,
+              audioGenerationRetryBlockReason: undefined,
+              audioGenerationTaskId: taskId,
+            },
+          }
+        : node));
+      const task = await waitForGenerationTaskWithPause(taskId, () => {
+        if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) return;
+        pollingPausedTaskIdRef.current = taskId;
+        setPollingPausedTaskId(taskId);
+        setUploadError(POLLING_PAUSED_MESSAGE);
+      });
+      if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) return;
       if (task.state === "cancelled") {
         persistAudioGenerationCancellation(
           task.id,
@@ -816,9 +1263,24 @@ function AudioNodeImpl({
         );
         return;
       }
-      applyGeneratedAudio(task, promptControl.committedValue.trim());
+      await applyGeneratedAudio(
+        task,
+        promptControl.committedValue.trim(),
+        pollingRun,
+      );
       setRetryTaskId(undefined);
     } catch (error) {
+      if (
+        pollingRun &&
+        pollingPausedTaskIdRef.current === taskId &&
+        ownsGenerationPollingRun(pollingRun)
+      ) return;
+      if (!retryAccepted && !(error instanceof GenerationRequestError)) {
+        setUploadError(
+          error instanceof Error ? error.message : "画布尚未安全保存，不能重试生成",
+        );
+        return;
+      }
       if (error instanceof GenerationRequestError) {
         setServerInputProblems(error.problems);
       }
@@ -828,18 +1290,21 @@ function AudioNodeImpl({
       const errorCode = error instanceof GenerationRequestError
         ? error.code
         : "TASK_STATUS_UNKNOWN";
-      persistAudioGenerationFailure(
-        taskId,
-        message,
-        errorCode,
-        false,
-        errorCode,
-        error instanceof GenerationRequestError
-          ? error.message
-          : "任务状态暂时无法确认，不能一键重试，请稍后刷新查看",
-      );
+      if (!pollingRun || ownsGenerationPollingRun(pollingRun)) {
+        persistAudioGenerationFailure(
+          taskId,
+          message,
+          errorCode,
+          false,
+          errorCode,
+          error instanceof GenerationRequestError
+            ? error.message
+            : "任务状态暂时无法确认，不能一键重试，请稍后刷新查看",
+        );
+      }
     } finally {
-      setActiveTaskId(undefined);
+      if (pollingRun) endGenerationPollingRun(pollingRun);
+      setSubmitting(false);
     }
   };
 
@@ -849,8 +1314,20 @@ function AudioNodeImpl({
     pollingPausedTaskIdRef.current = undefined;
     setPollingPausedTaskId(undefined);
     setUploadError("");
+    const pollingRun = beginGenerationPollingRun(
+      taskId,
+      data.audioGenerationInputKey,
+      data.audioGenerationOwnershipKey ?? rawGenerationInputFingerprint,
+    );
     try {
-      const task = await waitForGenerationTask(taskId);
+      await flushCanvasSave();
+      const task = await waitForGenerationTaskWithPause(taskId, () => {
+        if (!ownsGenerationPollingRun(pollingRun)) return;
+        pollingPausedTaskIdRef.current = taskId;
+        setPollingPausedTaskId(taskId);
+        setUploadError(POLLING_PAUSED_MESSAGE);
+      });
+      if (!ownsGenerationPollingRun(pollingRun)) return;
       if (task.state === "cancelled") {
         persistAudioGenerationCancellation(
           task.id,
@@ -869,9 +1346,15 @@ function AudioNodeImpl({
         );
         return;
       }
-      applyGeneratedAudio(task, promptControl.committedValue.trim());
+      await applyGeneratedAudio(
+        task,
+        promptControl.committedValue.trim(),
+        pollingRun,
+      );
       setRetryTaskId(undefined);
     } catch (error) {
+      if (!ownsGenerationPollingRun(pollingRun)) return;
+      if (pollingPausedTaskIdRef.current === taskId) return;
       if (isTransientPollingError(error)) {
         pollingPausedTaskIdRef.current = taskId;
         setPollingPausedTaskId(taskId);
@@ -882,8 +1365,19 @@ function AudioNodeImpl({
         error instanceof Error ? error.message : "音频生成失败，请稍后再试",
       );
     } finally {
-      setActiveTaskId(undefined);
+      endGenerationPollingRun(pollingRun);
     }
+  };
+
+  const recheckAudioTaskStatus = () => {
+    if (
+      unverifiedRecoveryTaskId &&
+      unverifiedRecoveryTaskId === data.audioGenerationTaskId
+    ) {
+      setRecoveryEpoch((current) => current + 1);
+      return;
+    }
+    void resumeAudioPolling();
   };
 
   const cancelAudioGeneration = async () => {
@@ -892,127 +1386,346 @@ function AudioNodeImpl({
       setPollingPausedTaskId(undefined);
     }
     if (!activeTaskId || !relayCancellationAvailable) return;
+    const taskId = activeTaskId;
+    const pollingRun = generationPollingRunRef.current?.taskId === taskId
+      ? generationPollingRunRef.current
+      : undefined;
     try {
-      const task = await cancelGenerationTask(activeTaskId);
+      const task = await cancelGenerationTask(taskId);
+      if (
+        !pollingRun ||
+        !ownsGenerationPollingRun(pollingRun) ||
+        task.id !== pollingRun.taskId
+      ) return;
       if (task.state !== "cancelled") return;
       persistAudioGenerationCancellation(
         task.id,
         task.errorMessage ?? "已停止本地等待，上游任务可能仍在运行",
       );
+      endGenerationPollingRun(pollingRun);
     } catch (error) {
+      if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) return;
       setUploadError(error instanceof Error ? error.message : "取消生成失败");
     }
   };
 
   useEffect(() => {
-    if (data.audioSrc || isFixture) return;
+    if (!persistenceReady || isFixture || generationPollingRunRef.current) return;
+    const persistedTaskId = data.audioGenerationTaskId;
+    const persistedInputKey = data.audioGenerationInputKey;
+    const persistedOwnershipKey = data.audioGenerationOwnershipKey;
+    const catalogReady = audioModelSelection.status === "ready" &&
+      Boolean(selectedAudioModel);
     const controller = new AbortController();
-    void recoverPendingGenerationTask(
-      "audio",
-      canvasId,
-      id,
-      controller.signal,
-      audioGenerationRequestInput,
-      accountId,
-    )
-      .then(async (pending) => ({
-        recoveredIntent: Boolean(pending),
-        tasks: pending
-          ? [pending]
-          : await listGenerationTasks(canvasId, controller.signal),
-      }))
-      .then(async ({ recoveredIntent, tasks }) => {
-        const latest = tasks
-          .filter((task) => task.kind === "audio" && task.nodeId === id)
-          .at(-1);
-        if (!latest) return;
-        if (latest.state === "success") {
-          applyGeneratedAudio(latest, promptControl.committedValue.trim());
-          return;
-        }
-        if (latest.state === "failed") {
-          const matchesPersistedInput = recoveredIntent || (
-            data.audioGenerationTaskId === latest.id &&
-            data.audioGenerationInputKey === audioGenerationInputKey
+    let pollingRun: AudioPollingRun | undefined;
+    let persistedTaskReadPending = false;
+    void (async () => {
+      let task: GenerationTaskSummary | undefined;
+      let recoveredIntent = false;
+      if (persistedTaskId) {
+        if (
+          persistedOwnershipKey &&
+          persistedOwnershipKey !== rawGenerationInputFingerprint
+        ) {
+          setUnverifiedRecoveryTaskId((current) =>
+            current === persistedTaskId ? undefined : current
           );
-          if (matchesPersistedInput) {
-            const retainPersistedBlock =
-              data.audioGenerationRetryAllowed === false;
-            persistAudioGenerationFailure(
-              latest.id,
-              retainPersistedBlock && data.audioGenerationError
-                ? data.audioGenerationError
-                : latest.errorMessage ?? "音频生成失败，请稍后再试",
-              retainPersistedBlock
-                ? data.audioGenerationErrorCode
-                : latest.errorCode,
-              retainPersistedBlock
-                ? false
-                : safelyRetryableGenerationTask(latest),
-              retainPersistedBlock
-                ? data.audioGenerationRetryBlockCode
-                : latest.retryBlockCode,
-              retainPersistedBlock
-                ? data.audioGenerationRetryBlockReason
-                : latest.retryBlockReason,
-            );
-          }
-          return;
-        }
-        if (latest.state === "cancelled") {
-          persistAudioGenerationCancellation(
-            latest.id,
-            latest.errorMessage ?? "音频生成已取消",
+          clearGenerationSubmissionIntent(
+            "audio",
+            canvasId,
+            id,
+            persistedTaskId,
+            accountId,
           );
+          setNodes((nodes) => nodes.map((node) =>
+            node.id === id && node.data.audioGenerationTaskId === persistedTaskId
+              ? {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    audioGenerationError: undefined,
+                    audioGenerationErrorCode: undefined,
+                    audioGenerationInputKey: undefined,
+                    audioGenerationOwnershipKey: undefined,
+                    audioGenerating: false,
+                    audioGenerationRetryAllowed: undefined,
+                    audioGenerationRetryBlockCode: undefined,
+                    audioGenerationRetryBlockReason: undefined,
+                    audioGenerationTaskId: undefined,
+                  },
+                }
+              : node
+          ));
           return;
         }
-        setActiveTaskId(latest.id);
-        setNodes((nodes) => nodes.map((node) => node.id === id
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                audioGenerationError: undefined,
-                audioGenerationErrorCode: undefined,
-                audioGenerationInputKey,
-                audioGenerating: true,
-                audioGenerationRetryAllowed: undefined,
-                audioGenerationRetryBlockCode: undefined,
-                audioGenerationRetryBlockReason: undefined,
-                audioGenerationTaskId: latest.id,
-              },
-            }
-          : node));
-        const finished = await waitForGenerationTask(latest.id, controller.signal);
-        if (finished.state === "success") {
-          applyGeneratedAudio(finished, promptControl.committedValue.trim());
-        } else {
-          if (finished.state === "failed") {
-            persistAudioGenerationFailure(
-              finished.id,
-              finished.errorMessage ?? "音频生成失败，请稍后再试",
-              finished.errorCode,
-              safelyRetryableGenerationTask(finished),
-              finished.retryBlockCode,
-              finished.retryBlockReason,
+        if (!persistedOwnershipKey) {
+          if (!catalogReady) return;
+          if (!persistedInputKey || persistedInputKey !== audioGenerationInputKey) {
+            setUnverifiedRecoveryTaskId((current) =>
+              current === persistedTaskId ? undefined : current
             );
-          } else if (finished.state === "cancelled") {
-            persistAudioGenerationCancellation(
-              finished.id,
-              finished.errorMessage ?? "音频生成已取消",
+            clearGenerationSubmissionIntent(
+              "audio",
+              canvasId,
+              id,
+              persistedTaskId,
+              accountId,
             );
+            setNodes((nodes) => nodes.map((node) =>
+              node.id === id && node.data.audioGenerationTaskId === persistedTaskId
+                ? {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      audioGenerationError: undefined,
+                      audioGenerationErrorCode: undefined,
+                      audioGenerationInputKey: undefined,
+                      audioGenerationOwnershipKey: undefined,
+                      audioGenerating: false,
+                      audioGenerationRetryAllowed: undefined,
+                      audioGenerationRetryBlockCode: undefined,
+                      audioGenerationRetryBlockReason: undefined,
+                      audioGenerationTaskId: undefined,
+                    },
+                  }
+                : node
+            ));
+            return;
           }
         }
-        setActiveTaskId(undefined);
-      })
+        persistedTaskReadPending = true;
+        task = await getGenerationTask(persistedTaskId, controller.signal);
+        persistedTaskReadPending = false;
+      } else {
+        task = await recoverPendingGenerationTask(
+          "audio",
+          canvasId,
+          id,
+          controller.signal,
+          selectedAudioModel ? audioGenerationRequestInput : undefined,
+          accountId,
+          { generationOwnershipKey: rawGenerationInputFingerprint },
+        );
+        recoveredIntent = Boolean(task);
+        if (!task && data.audioGenerating) {
+          if (!data.audioGenerationOwnershipKey && !catalogReady) return;
+          const matches = (await listGenerationTasks(canvasId, controller.signal))
+            .filter((candidate) =>
+              candidate.kind === "audio" && candidate.nodeId === id
+            );
+          if (matches.length === 1) task = matches[0];
+        }
+      }
+      if (controller.signal.aborted || !task) return;
+      const recoveredOwnershipKey = persistedOwnershipKey ??
+        task.generationOwnershipKey;
+      if (
+        recoveredOwnershipKey &&
+        recoveredOwnershipKey !== rawGenerationInputFingerprint
+      ) {
+        if (persistedTaskId) {
+          setUnverifiedRecoveryTaskId((current) =>
+            current === persistedTaskId ? undefined : current
+          );
+        }
+        clearGenerationSubmissionIntent(
+          "audio",
+          canvasId,
+          id,
+          persistedTaskId ?? task.id,
+          accountId,
+        );
+        return;
+      }
+      if (!recoveredOwnershipKey) {
+        if (!catalogReady) return;
+        const legacyInputKey = persistedInputKey ?? task.generationInputKey;
+        if (!legacyInputKey || legacyInputKey !== audioGenerationInputKey) {
+          if (persistedTaskId) {
+            setUnverifiedRecoveryTaskId((current) =>
+              current === persistedTaskId ? undefined : current
+            );
+          }
+          clearGenerationSubmissionIntent(
+            "audio",
+            canvasId,
+            id,
+            persistedTaskId ?? task.id,
+            accountId,
+          );
+          return;
+        }
+      }
+      if (!audioTaskMatchesNode(task, canvasId, id, persistedTaskId ?? task.id)) {
+        if (persistedTaskId) {
+          setUnverifiedRecoveryTaskId((current) =>
+            current === persistedTaskId ? undefined : current
+          );
+          clearGenerationSubmissionIntent(
+            "audio",
+            canvasId,
+            id,
+            persistedTaskId,
+            accountId,
+          );
+          setNodes((nodes) => nodes.map((node) =>
+            node.id === id && node.data.audioGenerationTaskId === persistedTaskId
+              ? {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    audioGenerationError: undefined,
+                    audioGenerationErrorCode: undefined,
+                    audioGenerationInputKey: undefined,
+                    audioGenerationOwnershipKey: undefined,
+                    audioGenerating: false,
+                    audioGenerationRetryAllowed: undefined,
+                    audioGenerationRetryBlockCode: undefined,
+                    audioGenerationRetryBlockReason: undefined,
+                    audioGenerationTaskId: undefined,
+                  },
+                }
+              : node
+          ));
+        }
+        return;
+      }
+      if (persistedTaskId) {
+        setUnverifiedRecoveryTaskId((current) =>
+          current === persistedTaskId ? undefined : current
+        );
+        setUploadError("");
+      }
+      pollingRun = beginGenerationPollingRun(
+        task.id,
+        persistedInputKey ?? task.generationInputKey,
+        recoveredOwnershipKey ?? rawGenerationInputFingerprint,
+      );
+      if (!ownsGenerationPollingRun(pollingRun)) return;
+      if (task.state === "success") {
+        await applyGeneratedAudio(
+          task,
+          promptControl.committedValue.trim(),
+          pollingRun,
+        );
+        return;
+      }
+      if (task.state === "failed") {
+        const retainPersistedBlock =
+          !recoveredIntent && data.audioGenerationRetryAllowed === false;
+        persistAudioGenerationFailure(
+          task.id,
+          retainPersistedBlock && data.audioGenerationError
+            ? data.audioGenerationError
+            : task.errorMessage ?? "音频生成失败，请稍后再试",
+          retainPersistedBlock ? data.audioGenerationErrorCode : task.errorCode,
+          retainPersistedBlock ? false : safelyRetryableGenerationTask(task),
+          retainPersistedBlock
+            ? data.audioGenerationRetryBlockCode
+            : task.retryBlockCode,
+          retainPersistedBlock
+            ? data.audioGenerationRetryBlockReason
+            : task.retryBlockReason,
+          persistedInputKey ?? task.generationInputKey,
+          recoveredOwnershipKey,
+        );
+        return;
+      }
+      if (task.state === "cancelled") {
+        persistAudioGenerationCancellation(
+          task.id,
+          task.errorMessage ?? "音频生成已取消",
+        );
+        return;
+      }
+      setNodes((nodes) => nodes.map((node) => node.id === id
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              audioGenerationError: undefined,
+              audioGenerationErrorCode: undefined,
+              audioGenerationInputKey:
+                persistedInputKey ?? task.generationInputKey,
+              audioGenerationOwnershipKey: recoveredOwnershipKey,
+              audioGenerating: true,
+              audioGenerationRetryAllowed: undefined,
+              audioGenerationRetryBlockCode: undefined,
+              audioGenerationRetryBlockReason: undefined,
+              audioGenerationTaskId: task.id,
+            },
+          }
+        : node));
+      const finished = await waitForGenerationTaskWithPause(
+        task.id,
+        () => {
+          if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) return;
+          pollingPausedTaskIdRef.current = task.id;
+          setPollingPausedTaskId(task.id);
+          setUploadError(POLLING_PAUSED_MESSAGE);
+        },
+        controller.signal,
+      );
+      if (
+        !pollingRun ||
+        !ownsGenerationPollingRun(pollingRun) ||
+        !audioTaskMatchesNode(finished, canvasId, id, task.id)
+      ) return;
+      if (finished.state === "success") {
+        await applyGeneratedAudio(
+          finished,
+          promptControl.committedValue.trim(),
+          pollingRun,
+        );
+      } else if (finished.state === "failed") {
+        persistAudioGenerationFailure(
+          finished.id,
+          finished.errorMessage ?? "音频生成失败，请稍后再试",
+          finished.errorCode,
+          safelyRetryableGenerationTask(finished),
+          finished.retryBlockCode,
+          finished.retryBlockReason,
+        );
+      } else if (finished.state === "cancelled") {
+        persistAudioGenerationCancellation(
+          finished.id,
+          finished.errorMessage ?? "音频生成已取消",
+        );
+      }
+    })()
       .catch((error) => {
-        if (!(error instanceof DOMException && error.name === "AbortError")) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        if (
+          persistedTaskId &&
+          persistedTaskReadPending &&
+          isTransientPollingError(error)
+        ) {
+          setUnverifiedRecoveryTaskId(persistedTaskId);
+          setUploadError(POLLING_PAUSED_MESSAGE);
+          return;
+        }
+        if (persistedTaskId && persistedTaskReadPending) {
+          setUnverifiedRecoveryTaskId((current) =>
+            current === persistedTaskId ? undefined : current
+          );
+        }
+        if (pollingRun && ownsGenerationPollingRun(pollingRun) &&
+          isTransientPollingError(error)) {
+          pollingPausedTaskIdRef.current = pollingRun.taskId;
+          setPollingPausedTaskId(pollingRun.taskId);
+          setUploadError(POLLING_PAUSED_MESSAGE);
+        } else if (!pollingRun || ownsGenerationPollingRun(pollingRun)) {
           setUploadError("生成任务状态暂时无法读取");
         }
+      })
+      .finally(() => {
+        if (pollingRun) endGenerationPollingRun(pollingRun);
       });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (pollingRun) endGenerationPollingRun(pollingRun);
+    };
   }, [
-    audioGenerationInputKey,
     canvasId,
     data.audioGenerationError,
     data.audioGenerationErrorCode,
@@ -1020,9 +1733,15 @@ function AudioNodeImpl({
     data.audioGenerationRetryBlockCode,
     data.audioGenerationRetryBlockReason,
     data.audioGenerationInputKey,
+    data.audioGenerationOwnershipKey,
+    data.audioGenerating,
     data.audioGenerationTaskId,
-    data.audioSrc,
     id,
+    persistenceReady,
+    recoveryEpoch,
+    retryWakeEpoch,
+    rawGenerationInputFingerprint,
+    legacyRecoveryCatalogKey,
   ]);
 
   useEffect(() => {
@@ -1037,6 +1756,7 @@ function AudioNodeImpl({
   useEffect(() => {
     const source = data.audioSrc;
     if (
+      !persistenceReady ||
       !source ||
       data.audioWaveform?.length ||
       waveformSourceAttempted.current === source
@@ -1091,7 +1811,13 @@ function AudioNodeImpl({
         waveformSourceAttempted.current = undefined;
       }
     };
-  }, [data.audioSrc, data.audioWaveform?.length, id, setNodes]);
+  }, [
+    data.audioSrc,
+    data.audioWaveform?.length,
+    id,
+    persistenceReady,
+    setNodes,
+  ]);
 
   useEffect(() => {
     if (!playing) return;
@@ -1107,10 +1833,48 @@ function AudioNodeImpl({
   const loadFile = async (file?: File) => {
     if (!file) return;
 
+    const extension =
+      file.type === "audio/wav" || file.type === "audio/x-wav"
+        ? "wav"
+        : file.type === "audio/mpeg" || file.type === "audio/mp3"
+          ? "mp3"
+          : file.type === "audio/mp4" || file.type === "audio/x-m4a"
+            ? "m4a"
+            : file.type === "audio/aac" || file.type === "audio/x-aac"
+              ? "aac"
+              : file.type === "audio/ogg" ||
+                  file.type === "application/ogg"
+                ? "ogg"
+                : undefined;
+    const preflightError = file.size > 50 * 1_024 * 1_024
+      ? "音频不能超过 50MiB"
+      : !extension
+        ? "当前音频格式不受支持"
+        : "";
+    if (preflightError) {
+      const current = getNode(id);
+      if (current && hasReadyAudioMedia(current)) {
+        setTransientUploadError(preflightError);
+      } else {
+        setUploadError(preflightError);
+        setNodes((nodes) => nodes.map((node) => node.id === id
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                ...mediaUploadState("invalid", preflightError),
+              },
+            }
+          : node));
+      }
+      return;
+    }
+
     const supersedingUpload = uploadInFlight.current;
     const baseline = uploadBaseline.current ?? getNode(id);
     if (baseline && !uploadBaseline.current) uploadBaseline.current = baseline;
     const operation = uploadOperation.current + 1;
+    const scope = mediaAdoptionScopeRef.current;
     uploadOperation.current = operation;
     uploadController.current?.abort();
     const controller = new AbortController();
@@ -1132,6 +1896,7 @@ function AudioNodeImpl({
     const localUrl = URL.createObjectURL(file);
     let adopted = false;
     let requestedAssetId: string | undefined;
+    let shouldCompensate = true;
     try {
       const context = new AudioContext();
       let decoded: AudioBuffer;
@@ -1143,24 +1908,12 @@ function AudioNodeImpl({
 
       if (
         operation !== uploadOperation.current ||
+        scope !== mediaAdoptionScopeRef.current ||
+        !persistenceReadyLive.current ||
         controller.signal.aborted ||
         getNode(id)?.data.inputState !== "uploading"
       ) return;
 
-      const extension =
-        file.type === "audio/wav" || file.type === "audio/x-wav"
-          ? "wav"
-          : file.type === "audio/mpeg" || file.type === "audio/mp3"
-            ? "mp3"
-            : file.type === "audio/mp4" || file.type === "audio/x-m4a"
-              ? "m4a"
-              : file.type === "audio/aac" || file.type === "audio/x-aac"
-                ? "aac"
-                : file.type === "audio/ogg" ||
-                    file.type === "application/ogg"
-                  ? "ogg"
-                  : undefined;
-      if (!extension) throw new Error("当前音频格式不受支持");
       requestedAssetId = `${crypto.randomUUID()}.${extension}`;
       const response = await fetch(`/api/audio-assets/${requestedAssetId}`, {
         body: file,
@@ -1171,6 +1924,7 @@ function AudioNodeImpl({
         method: "POST",
         signal: controller.signal,
       });
+      if (response.status === 409) shouldCompensate = false;
       const asset = await response.json() as {
         assetId: string;
         byteSize?: number;
@@ -1180,7 +1934,12 @@ function AudioNodeImpl({
         storageBackend?: "local" | "oss";
         url: string;
       };
-      if (!response.ok) throw new Error(asset.error ?? "音频上传失败");
+      if (!response.ok) {
+        throw new Error(asset.error ?? "音频上传失败");
+      }
+      if (asset.assetId !== requestedAssetId) {
+        throw new Error("服务端返回的音频素材标识不一致");
+      }
       const metadata =
         Number.isFinite(asset.byteSize) &&
         asset.byteSize! > 0 &&
@@ -1199,6 +1958,8 @@ function AudioNodeImpl({
           : await fetchTrustedMediaMetadata("audio", asset.assetId, controller.signal);
       if (
         operation !== uploadOperation.current ||
+        scope !== mediaAdoptionScopeRef.current ||
+        !persistenceReadyLive.current ||
         controller.signal.aborted ||
         getNode(id)?.data.inputState !== "uploading"
       ) {
@@ -1209,7 +1970,7 @@ function AudioNodeImpl({
 
       setCurrentTime(0);
       setPlaying(false);
-      setNodes((nodes) =>
+      adopted = tryAdoptNodes(id, (nodes) =>
         nodes.map((node) =>
           node.id === id
             ? {
@@ -1236,10 +1997,14 @@ function AudioNodeImpl({
             : node,
         ),
       );
-      adopted = true;
+      if (!adopted) {
+        await discardUnadoptedAudioAsset(requestedAssetId);
+        requestedAssetId = undefined;
+        return;
+      }
       setTransientUploadError("");
     } catch (error) {
-      if (!adopted && requestedAssetId) {
+      if (!adopted && requestedAssetId && shouldCompensate) {
         await discardUnadoptedAudioAsset(requestedAssetId);
         requestedAssetId = undefined;
       }
@@ -1296,6 +2061,28 @@ function AudioNodeImpl({
       setPlaying(false);
     }
   };
+
+  const applyLoadedAudioDuration = useCallback((nextDuration: number) => {
+    if (!Number.isFinite(nextDuration) || nextDuration < 0) return;
+    setNodes((nodes) =>
+      nodes.map((node) =>
+        node.id !== id || node.data.audioDuration === nextDuration
+          ? node
+          : {
+              ...node,
+              data: { ...node.data, audioDuration: nextDuration },
+            },
+      ),
+    );
+  }, [id, setNodes]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!persistenceReady || !data.audioSrc || !audio || audio.readyState < 1) {
+      return;
+    }
+    applyLoadedAudioDuration(audio.duration);
+  }, [applyLoadedAudioDuration, data.audioSrc, persistenceReady]);
 
   return (
     <>
@@ -1466,6 +2253,7 @@ function AudioNodeImpl({
                 return;
               }
               setModelSwitchProblem("");
+              setServerInputProblems([]);
               checkpoint();
               setNodes((nodes) =>
                 nodes.map((node) =>
@@ -1474,6 +2262,15 @@ function AudioNodeImpl({
                         ...node,
                         data: {
                           ...node.data,
+                          audioGenerationError: undefined,
+                          audioGenerationErrorCode: undefined,
+                          audioGenerationInputKey: undefined,
+                          audioGenerationOwnershipKey: undefined,
+                          audioGenerating: false,
+                          audioGenerationRetryAllowed: undefined,
+                          audioGenerationRetryBlockCode: undefined,
+                          audioGenerationRetryBlockReason: undefined,
+                          audioGenerationTaskId: undefined,
                           audioModelId: modelId,
                           audioModelName: displayName,
                           audioParameters: nextParameters,
@@ -1590,7 +2387,7 @@ function AudioNodeImpl({
           </span>
         )}
       </Handle>
-      <div className="audio-node-title nodrag">
+      <div className="canvas-node-title audio-node-title nodrag">
         <svg aria-hidden="true" viewBox="0 0 18 18">
           <path d="M7 14a3 3 0 1 1-2-2.82V5l9-2v8a3 3 0 1 1-2-2.82V5.5L7 6.6Z" />
         </svg>
@@ -1629,7 +2426,9 @@ function AudioNodeImpl({
             value={titleControl.value}
           />
         ) : (
-          <span>{titleControl.committedValue}</span>
+          <span title={titleControl.committedValue}>
+            {titleControl.committedValue}
+          </span>
         )}
       </div>
       <div
@@ -1649,16 +2448,24 @@ function AudioNodeImpl({
             {retryAvailable && (
               <button
                 aria-label="重试生成"
+                disabled={
+                  submitting ||
+                  generating ||
+                  isFixture ||
+                  !retryGenerationEnabled
+                }
                 onClick={() => void retryAudioGeneration()}
                 type="button"
               >
                 重试
               </button>
             )}
-            {pollingPausedTaskId && (
+            {(pollingPausedTaskId ||
+              (unverifiedRecoveryTaskId &&
+                unverifiedRecoveryTaskId === data.audioGenerationTaskId)) && (
               <button
                 aria-label="重新检查任务状态"
-                onClick={() => void resumeAudioPolling()}
+                onClick={recheckAudioTaskStatus}
                 type="button"
               >
                 重新检查
@@ -1666,44 +2473,19 @@ function AudioNodeImpl({
             )}
           </div>
         )}
-        {generating || uploading ? (
-          <div
-            aria-label={uploading ? "音频上传中" : "音频生成中"}
-            className="video-node-generating audio-node-generating"
-            data-testid="audio-node-generating"
-            role="status"
-          >
-            <span
-              className="image-node-generating-background video-node-generating-background"
-              data-testid="audio-node-generating-background"
-            />
-            <span
-              className="image-node-loading-grid video-node-loading-grid"
-              data-grid-columns="18"
-              data-grid-rows="12"
-              data-testid="audio-node-loading-grid"
-            />
-          </div>
-        ) : data.audioSrc ? (
+        {data.audioSrc ? (
           <>
             <audio
+              className={mediaLoad.failed ? "media-load-obscured" : undefined}
               data-testid="audio-node-media"
+              key={mediaLoad.key}
               onEnded={() => setPlaying(false)}
+              onError={mediaLoad.markFailed}
               onLoadedMetadata={(event) => {
-                const nextDuration = event.currentTarget.duration;
-                setNodes((nodes) =>
-                  nodes.map((node) =>
-                    node.id === id
-                      ? {
-                          ...node,
-                          data: {
-                            ...node.data,
-                            audioDuration: nextDuration,
-                          },
-                        }
-                      : node,
-                  ),
-                );
+                mediaLoad.markLoaded();
+                if (persistenceReady) {
+                  applyLoadedAudioDuration(event.currentTarget.duration);
+                }
               }}
               onPause={() => setPlaying(false)}
               onPlay={() => setPlaying(true)}
@@ -1712,7 +2494,7 @@ function AudioNodeImpl({
               }
               preload="metadata"
               ref={audioRef}
-              src={data.audioSrc}
+              src={mediaLoad.source}
             />
             <div className="audio-waveform">
               <div className="audio-waveform-bars" aria-hidden="true">
@@ -1776,11 +2558,37 @@ function AudioNodeImpl({
               替换
             </button>
           </>
-        ) : (
+        ) : !generating && !uploading ? (
           <div aria-hidden="true" className="audio-node-empty-action">
             <svg aria-hidden="true" viewBox="0 0 48 48">
               <path d="M18 34a7 7 0 1 1-5-6.7V13l24-5v19a7 7 0 1 1-5-6.7v-6l-14 3Z" />
             </svg>
+          </div>
+        ) : null}
+        {data.audioSrc && mediaLoad.failed && (
+          <MediaLoadFallback
+            kind="音频"
+            onReload={mediaLoad.reload}
+            onReplace={() => inputRef.current?.click()}
+          />
+        )}
+        {(generating || uploading) && (
+          <div
+            aria-label={uploading ? "音频上传中" : "音频生成中"}
+            className="video-node-generating audio-node-generating"
+            data-testid="audio-node-generating"
+            role="status"
+          >
+            <span
+              className="image-node-generating-background video-node-generating-background"
+              data-testid="audio-node-generating-background"
+            />
+            <span
+              className="image-node-loading-grid video-node-loading-grid"
+              data-grid-columns="18"
+              data-grid-rows="12"
+              data-testid="audio-node-loading-grid"
+            />
           </div>
         )}
         <input

@@ -1,0 +1,112 @@
+{
+  "version": 1,
+  "event": "INC-ECOM-006",
+  "status": "PRODUCTION_PUBLISHED_TECHNICAL_PASS",
+  "displayVersion": "0.6.0",
+  "publishedAt": "2026-08-15T10:18:15.284Z",
+  "package": {
+    "path": "spec/ecommerce-workflow-batch-3.json",
+    "sha256": "796fd6287df501d1647f131513b772f1f798ba0effa59002eee48d8897826f42",
+    "graphSha256": "9dd99f8bfdae25dbadd4dc7473301110b92eba258b0e6c39837c97b86c317ade",
+    "templates": 12,
+    "priorityCounts": {
+      "P0": 5,
+      "P1": 6,
+      "P2": 1
+    }
+  },
+  "preflight": {
+    "schemaVersion": 39,
+    "quickCheck": "ok",
+    "foreignKeyViolations": 0,
+    "activeGenerationTasks": 0,
+    "existing": 0,
+    "missing": 12,
+    "models": [
+      "GPT Image 2 · 专用协议",
+      "Doubao Seed",
+      "grok-video-3.5"
+    ],
+    "covers": 12,
+    "coverBytes": 1349498,
+    "initialAuditLoaderStop": {
+      "reason": "temporary audit root lacked its node_modules resolution path",
+      "productionWrites": 0,
+      "batch3RowsAfterStop": 0,
+      "serviceAutomaticallyRestarted": true
+    },
+    "recoveryCopy": {
+      "templates": 43,
+      "pass": 43,
+      "issues": 0,
+      "batch3Pass": 12,
+      "validationImportReceiptSha256": "6456be7b51eb34cc9ce49424e0a0e14696dbafdd874c26d73659f0ab8c22449a",
+      "validationCompatibilityReceiptSha256": "e898abf4df1bea0af11a7385a5867fb0348d233cdaca7ec1291be73b6d504afb"
+    }
+  },
+  "backup": {
+    "path": "/var/lib/unboundry-rollbacks/inc-ecom-006-20260815T101814Z",
+    "databaseSha256": "1d606cdf278eb2ae630b25b4c87d0c942a3bbefd32bd43716ae41505385f8d9d",
+    "dataManifestSha256": "07be6b058f539724f860e4178bec1b532283eb951732e15fb40378b86ef0a274",
+    "evidenceManifestSha256": "432aa233dda780cd22a240eb446c6897109de950398fa233f954e4f3d34270b6",
+    "manifestVerification": "PASS"
+  },
+  "publication": {
+    "inserted": 12,
+    "existingAfter": 12,
+    "missingAfter": 0,
+    "importReceiptSha256": "04d38dae293260b65daec19277869eb77402dab79b8f0168c2617be9a0b44f10",
+    "compatibilityReceiptSha256": "03428f6974dacdadd0a00cba96e4011c5c2b8534c1f46eb37144312be23df8bf",
+    "compatibility": {
+      "allTemplates": 43,
+      "allPass": 43,
+      "allIssues": 0,
+      "batch3Pass": 12,
+      "batch3Issues": 0
+    },
+    "catalog": {
+      "templatesTotal": 43,
+      "publishedTotal": 42,
+      "batch3Published": 12,
+      "batch3WithGraph": 12,
+      "batch3WithPreview": 12
+    }
+  },
+  "runtime": {
+    "release": "/opt/unboundry/releases/v0.6.0",
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "nRestarts": 0,
+    "schemaVersion": 39,
+    "quickCheck": "ok",
+    "foreignKeyViolations": 0,
+    "activeGenerationTasks": 0,
+    "rootHttp": 200,
+    "publicVersion": "0.6.0",
+    "authenticatedHealthRoutesWithoutSession": 401,
+    "coversHttp200": 12,
+    "coversContentType": "image/jpeg",
+    "coversTotalBytes": 1349498,
+    "coverHttpReceiptSha256": "8d13a712bf5e4d0d76915e7f541a18947bc95d2dae4f24513d500d61074d0525"
+  },
+  "costBoundary": {
+    "generationTasksBefore": 109,
+    "generationTasksAfter": 109,
+    "providerAttemptsBefore": 107,
+    "providerAttemptsAfter": 107,
+    "providerRequestsCreated": 0,
+    "paidGenerationRequests": 0,
+    "ossChanges": 0,
+    "safetySettingsChanged": false,
+    "perUserConcurrency": 500,
+    "requestsPerMinute": 500,
+    "textConcurrency": 500,
+    "imageConcurrency": 500,
+    "videoConcurrency": 500,
+    "audioConcurrency": 500
+  },
+  "userAcceptance": {
+    "status": "PENDING",
+    "scope": "third-batch template visibility and visual acceptance"
+  }
+}

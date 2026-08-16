@@ -39,6 +39,151 @@ function mediaNodeKind(value: unknown): value is MediaNodeKind {
   return value === "audio" || value === "image" || value === "video";
 }
 
+export type PersistedMediaReference = Readonly<{
+  assetId: string;
+  kind: MediaNodeKind;
+}>;
+
+function validAssetId(value: string) {
+  return value.length <= 120 && /^[a-z0-9._-]+$/i.test(value);
+}
+
+function durableAssetId(source: string, prefix: string) {
+  const normalized = source.trim();
+  if (!normalized.startsWith(prefix)) return undefined;
+  const encoded = normalized.slice(prefix.length);
+  if (!encoded || /[/?#]/.test(encoded)) {
+    throw new Error("Invalid persisted media reference");
+  }
+  let assetId = "";
+  try {
+    assetId = decodeURIComponent(encoded).trim();
+  } catch {
+    throw new Error("Invalid persisted media reference");
+  }
+  if (!assetId || !validAssetId(assetId)) {
+    throw new Error("Invalid persisted media reference");
+  }
+  return assetId;
+}
+
+/**
+ * Resolve a canonical, durable media API path. Other URLs and static paths are
+ * intentionally left alone, while malformed paths for these three endpoints
+ * fail closed so callers cannot silently lose a durable reference.
+ */
+export function persistedMediaReferenceFromSource(
+  source: string,
+): PersistedMediaReference | undefined {
+  const normalized = source.trim();
+  for (const kind of ["audio", "image", "video"] as const) {
+    const prefix = sourcePrefixes[kind];
+    if (!normalized.startsWith(prefix)) continue;
+    const assetId = durableAssetId(normalized, prefix);
+    if (!assetId) throw new Error("Invalid persisted media reference");
+    return { assetId, kind };
+  }
+  if (/^\/api\/(?:audio-assets|video-assets|assets)(?:\/|$)/.test(normalized)) {
+    throw new Error("Invalid persisted media reference");
+  }
+  return undefined;
+}
+
+/** Only top-level durable media nodes can adopt an upload publication. */
+export function persistedMediaReferences(
+  nodes: readonly unknown[],
+): PersistedMediaReference[] {
+  const references = new Map<string, PersistedMediaReference>();
+  for (const raw of nodes) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const node = raw as Record<string, unknown>;
+    if (!mediaNodeKind(node.type)) continue;
+    if (!node.data || typeof node.data !== "object" || Array.isArray(node.data)) {
+      continue;
+    }
+    const value = (node.data as Record<string, unknown>).assetId;
+    const assetId = typeof value === "string" ? value.trim() : "";
+    if (!assetId || !validAssetId(assetId)) {
+      continue;
+    }
+    references.set(`${node.type}\0${assetId}`, {
+      assetId,
+      kind: node.type,
+    });
+  }
+  return [...references.values()];
+}
+
+/**
+ * Public templates retain playlist clips as durable video API paths instead of
+ * top-level asset IDs. Account deletion uses this wider reference set when it
+ * transfers a public template; canvas upload adoption must keep using
+ * persistedMediaReferences so playlist clips do not become adoption roots.
+ */
+export function persistedTemplateMediaReferences(
+  nodes: readonly unknown[],
+): PersistedMediaReference[] {
+  const references = new Map(
+    persistedMediaReferences(nodes).map((reference) => [
+      `${reference.kind}\0${reference.assetId}`,
+      reference,
+    ]),
+  );
+  for (const raw of nodes) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const node = raw as Record<string, unknown>;
+    if (mediaNodeKind(node.type)) {
+      if (!node.data || typeof node.data !== "object" || Array.isArray(node.data)) {
+        throw new Error("Invalid persisted media reference");
+      }
+      const data = node.data as Record<string, unknown>;
+      const rawAssetId = data.assetId;
+      const assetId = typeof rawAssetId === "string" ? rawAssetId.trim() : "";
+      if (
+        rawAssetId !== undefined &&
+        (typeof rawAssetId !== "string" || assetId && !validAssetId(assetId))
+      ) {
+        throw new Error("Invalid persisted media reference");
+      }
+      const source = data[sourceKeys[node.type]];
+      if (typeof source === "string") {
+        const sourceAssetId = durableAssetId(source, sourcePrefixes[node.type]);
+        if (sourceAssetId) {
+          if (assetId && assetId !== sourceAssetId) {
+            throw new Error("Conflicting persisted media reference");
+          }
+          references.set(`${node.type}\0${sourceAssetId}`, {
+            assetId: sourceAssetId,
+            kind: node.type,
+          });
+        } else if (/^\/api\/(?:audio-assets|video-assets|assets)\//.test(source.trim())) {
+          throw new Error("Mismatched persisted media reference");
+        }
+      }
+    }
+    if (node.type !== "playlist") continue;
+    if (!node.data || typeof node.data !== "object" || Array.isArray(node.data)) {
+      continue;
+    }
+    const clips = (node.data as Record<string, unknown>).playlistClips;
+    if (clips === undefined) continue;
+    if (!Array.isArray(clips)) {
+      throw new Error("Invalid persisted playlist media references");
+    }
+    for (const rawClip of clips) {
+      if (!rawClip || typeof rawClip !== "object" || Array.isArray(rawClip)) {
+        throw new Error("Invalid persisted playlist media references");
+      }
+      const source = (rawClip as Record<string, unknown>).src;
+      if (typeof source !== "string") continue;
+      const assetId = durableAssetId(source, sourcePrefixes.video);
+      if (!assetId) continue;
+      references.set(`video\0${assetId}`, { assetId, kind: "video" });
+    }
+  }
+  return [...references.values()];
+}
+
 function isTemporaryOrRemoteSource(value: unknown): value is string {
   return (
     typeof value === "string" &&

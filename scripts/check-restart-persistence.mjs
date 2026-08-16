@@ -1,38 +1,33 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import "./node-typescript-runtime.mjs";
 
 const dataDir = await mkdtemp(join(tmpdir(), "unboundry-restart-p1-"));
 const databasePath = join(dataDir, "unboundry.sqlite");
 const vite = join(process.cwd(), "node_modules/vite/bin/vite.js");
 
-async function chooseIsolatedPort() {
-  return new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.unref();
-    probe.once("error", reject);
-    probe.listen({ host: "127.0.0.1", port: 0 }, () => {
-      const address = probe.address();
-      if (!address || typeof address === "string") {
-        probe.close();
-        reject(new Error("Could not allocate an isolated test port"));
-        return;
-      }
-      probe.close((error) => {
-        if (error) reject(error);
-        else resolve(address.port);
-      });
-    });
-  });
-}
-
-const port = await chooseIsolatedPort();
+assert.equal(
+  process.env.UNBOUNDRY_SAFE_TEST,
+  "1",
+  "Restart persistence checks must use scripts/run-safe-tests.mjs",
+);
+const port = Number(process.env.UNBOUNDRY_TEST_AUX_PORT);
+assert.ok(Number.isInteger(port) && port > 0 && port <= 65_535);
 assert.notEqual(port, 4173, "Restart check must never use the user's development port");
 const origin = `http://127.0.0.1:${port}`;
+
+// The runtime readiness probe is deliberately read-only and will not create a
+// greenfield database. This operational check owns a private synthetic data
+// directory, so initialize it explicitly before starting the first process.
+{
+  const runtime = await import("../server/database.ts");
+  const database = runtime.openAppDatabase(dataDir);
+  database.close();
+}
 
 async function start() {
   const child = spawn(
@@ -52,8 +47,11 @@ async function start() {
       throw new Error(`Test server exited before becoming ready (${child.exitCode})`);
     }
     try {
-      const response = await fetch(origin);
-      if (response.ok) return child;
+      const response = await fetch(`${origin}/api/health/ready`);
+      if (response.ok) {
+        const body = await response.json();
+        if (body?.status === "ready" && body?.mode === "active") return child;
+      }
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
@@ -576,6 +574,8 @@ try {
   const undoDeleted = await jsonRequest(`/api/canvas/${undoCanvasId}`, {
     body: JSON.stringify({
       ...canvas,
+      observedLoadToken: undoInitial.loadToken,
+      observedRevision: undoInitial.revision,
       revision: 1,
       saveSequence: 2,
       nodes: canvas.nodes.filter((node) => node.id !== "p1-restart-source-text"),
@@ -589,7 +589,11 @@ try {
   assert.equal(afterDelete.nodes.length, 2);
   assert.equal(afterDelete.edges.length, 1);
   const undoRestored = await jsonRequest(`/api/canvas/${undoCanvasId}`, {
-    body: JSON.stringify(undoRestoredCanvas),
+    body: JSON.stringify({
+      ...undoRestoredCanvas,
+      observedLoadToken: undoDeleted.loadToken,
+      observedRevision: undoDeleted.revision,
+    }),
     headers: { "Content-Type": "application/json" },
     method: "PUT",
   });

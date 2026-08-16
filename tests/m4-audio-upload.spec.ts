@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -94,6 +94,47 @@ test.afterEach(async ({ request }) => {
 });
 
 test.afterAll(() => rmSync(mediaDirectory, { force: true, recursive: true }));
+
+test("audio size is rejected before arrayBuffer decoding or upload", async ({
+  page,
+}) => {
+  let uploadPosts = 0;
+  page.on("request", (request) => {
+    if (
+      request.method() === "POST" &&
+      new URL(request.url()).pathname.startsWith("/api/audio-assets/")
+    ) {
+      uploadPosts += 1;
+    }
+  });
+  await page.goto(`/__fixture/${canvasId}`);
+  await expect(page.getByTestId("audio-upload-input")).toBeAttached();
+  await page.evaluate(() => {
+    const state = window as typeof window & { __audioArrayBuffers?: number };
+    state.__audioArrayBuffers = 0;
+    File.prototype.arrayBuffer = async function () {
+      state.__audioArrayBuffers = (state.__audioArrayBuffers ?? 0) + 1;
+      return new ArrayBuffer(0);
+    };
+    const file = new File([new Uint8Array([1])], "oversized.wav", {
+      type: "audio/wav",
+    });
+    Object.defineProperty(file, "size", { value: 50 * 1_024 * 1_024 + 1 });
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    const input = document.querySelector<HTMLInputElement>(
+      '[data-testid="audio-upload-input"]',
+    )!;
+    input.files = transfer.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await expect(page.getByRole("alert")).toContainText("音频不能超过 50MiB");
+  expect(await page.evaluate(() =>
+    (window as typeof window & { __audioArrayBuffers?: number })
+      .__audioArrayBuffers
+  )).toBe(0);
+  expect(uploadPosts).toBe(0);
+});
 
 test("WAV upload, playback controls and waveform survive a reload", async ({
   page,

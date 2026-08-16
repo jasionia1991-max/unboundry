@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { resolveNodeInputs } from "../types/nodeInputs";
 import {
   knownModelParameterSchema,

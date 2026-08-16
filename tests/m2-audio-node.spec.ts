@@ -1,4 +1,78 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
+import { openAppDatabase } from "../server/database";
+import { createHash } from "node:crypto";
+
+const historyAudioIds = ["history-audio-1", "history-audio-2"] as const;
+
+function prepareHistoryAudioMedia(dataDirectory: string) {
+  const store = openAppDatabase(dataDirectory);
+  try {
+    store.exec("BEGIN IMMEDIATE");
+    store.prepare(`
+      DELETE FROM asset_history WHERE account_id = 'fixture-audio-success'
+    `).run();
+    const removeMedia = store.prepare(`
+      DELETE FROM media_assets
+      WHERE owner_id = '__test__' AND kind = 'audio' AND id = ?
+    `);
+    const insertMedia = store.prepare(`
+      INSERT INTO media_assets (
+        kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+        storage_status, checksum_sha256, content_type, duration_seconds,
+        duration_source, duration_status
+      ) VALUES (
+        'audio', ?, '__test__', ?, 1, ?, ?, 'ready', ?, 'audio/mpeg', 184,
+        'server-probe', 'ready'
+      )
+    `);
+    const timestamp = new Date().toISOString();
+    for (const id of historyAudioIds) {
+      removeMedia.run(id);
+      insertMedia.run(
+        id,
+        `${id}.fixture`,
+        timestamp,
+        timestamp,
+        createHash("sha256").update(`history-audio:${id}`).digest("hex"),
+      );
+    }
+    store.exec("COMMIT");
+  } catch (error) {
+    try {
+      store.exec("ROLLBACK");
+    } catch {
+      // Preserve the setup failure.
+    }
+    throw error;
+  } finally {
+    store.close();
+  }
+}
+
+function cleanupHistoryAudioMedia(dataDirectory: string) {
+  const store = openAppDatabase(dataDirectory);
+  try {
+    store.exec("BEGIN IMMEDIATE");
+    store.prepare(`
+      DELETE FROM asset_history WHERE account_id = 'fixture-audio-success'
+    `).run();
+    const removeMedia = store.prepare(`
+      DELETE FROM media_assets
+      WHERE owner_id = '__test__' AND kind = 'audio' AND id = ?
+    `);
+    for (const id of historyAudioIds) removeMedia.run(id);
+    store.exec("COMMIT");
+  } catch (error) {
+    try {
+      store.exec("ROLLBACK");
+    } catch {
+      // Preserve the cleanup failure.
+    }
+    throw error;
+  } finally {
+    store.close();
+  }
+}
 
 function wav(seconds = 2, sampleRate = 8000) {
   const samples = seconds * sampleRate;
@@ -43,28 +117,38 @@ test("Audio success returns two local results without quota accounting", async (
   });
   await request.delete("/api/canvas/node.audio.success");
   await request.delete("/api/history/fixture-audio-success");
-  await page.goto("/__fixture/node.audio.success");
+  const dataDirectoryResponse = await request.get("/api/test-data-directory");
+  expect(dataDirectoryResponse.ok()).toBeTruthy();
+  const { dataDirectory } = await dataDirectoryResponse.json() as {
+    dataDirectory: string;
+  };
+  prepareHistoryAudioMedia(dataDirectory);
+  try {
+    await page.goto("/__fixture/node.audio.success");
 
-  const world = page.getByTestId("canvas-world");
-  await expect(world).toHaveAttribute("data-persistence-ready", "true");
-  await expect(page.locator(".react-flow__node-audio")).toHaveCount(2);
-  await expect(page.getByTestId("audio-node-media")).toHaveCount(2);
-  await expect(page.locator('[data-generated-result="true"]')).toHaveCount(2);
-  await expect(page.locator("[data-unit-cost]")).toHaveCount(0);
-  await expect(page.locator("[data-batch-cost]")).toHaveCount(0);
-  await expect(page.getByText("00:00/03:04", { exact: true })).toHaveCount(2);
-  await expect(page.getByTestId("credits")).toHaveCount(0);
+    const world = page.getByTestId("canvas-world");
+    await expect(world).toHaveAttribute("data-persistence-ready", "true");
+    await expect(page.locator(".react-flow__node-audio")).toHaveCount(2);
+    await expect(page.getByTestId("audio-node-media")).toHaveCount(2);
+    await expect(page.locator('[data-generated-result="true"]')).toHaveCount(2);
+    await expect(page.locator("[data-unit-cost]")).toHaveCount(0);
+    await expect(page.locator("[data-batch-cost]")).toHaveCount(0);
+    await expect(page.getByText("00:00/03:04", { exact: true })).toHaveCount(2);
+    await expect(page.getByTestId("credits")).toHaveCount(0);
 
-  await page.getByTestId("history").click();
-  await expect(page.getByTestId("history-panel")).toBeVisible();
-  await page.getByTestId("history-tab-audio").click();
-  await expect(page.getByTestId("history-count-audio")).toHaveText("2");
-  await expect(page.getByRole("button", { name: "音频 1" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "音频 2" })).toBeVisible();
+    await page.getByTestId("history").click();
+    await expect(page.getByTestId("history-panel")).toBeVisible();
+    await page.getByTestId("history-tab-audio").click();
+    await expect(page.getByTestId("history-count-audio")).toHaveText("2");
+    await expect(page.getByRole("button", { name: "音频 1" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "音频 2" })).toBeVisible();
 
-  const history = await request.get("/api/history/fixture-audio-success");
-  expect((await history.json() as { items: unknown[] }).items).toHaveLength(2);
-  expect(generationRequests).toEqual([]);
+    const history = await request.get("/api/history/fixture-audio-success");
+    expect((await history.json() as { items: unknown[] }).items).toHaveLength(2);
+    expect(generationRequests).toEqual([]);
+  } finally {
+    cleanupHistoryAudioMedia(dataDirectory);
+  }
 });
 
 test("Audio empty, upload and playback chrome match the frozen basic state", async ({

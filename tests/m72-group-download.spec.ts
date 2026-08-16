@@ -1,6 +1,6 @@
-import { expect, test, type APIRequestContext } from "@playwright/test";
+import { expect, test, type APIRequestContext } from "./safe-test";
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -93,6 +93,12 @@ async function setupDownloadCanvas(
   const created = await request.post("/api/projects", { data: {} });
   expect(created.status()).toBe(201);
   const project = (await created.json()) as { id: string };
+  const baselineResponse = await request.get(`/api/canvas/${project.id}`);
+  expect(baselineResponse.ok()).toBeTruthy();
+  const baseline = (await baselineResponse.json()) as {
+    loadToken: string;
+    revision: number;
+  };
   const store = openAppDatabase(dataDirectory);
   const timestamp = new Date().toISOString();
   store.exec(`
@@ -111,15 +117,19 @@ async function setupDownloadCanvas(
     "dl-video.mp4": Buffer.from("fake-video-bytes-456", "utf8"),
     "dl-audio.mp3": Buffer.from("fake-audio-bytes-789", "utf8"),
   };
+  const missingImageBytes = Buffer.from("missing-image-bytes", "utf8");
   for (const [name, bytes] of Object.entries(files)) {
     writeFileSync(join(mediaDirectory, name), bytes);
   }
   const registerMedia = store.prepare(`
     INSERT INTO media_assets (
       kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
-      storage_backend, object_key, content_type, storage_status
+      storage_backend, object_key, content_type, checksum_sha256,
+      storage_status, duration_seconds, duration_source, duration_status
     )
-    VALUES (?, ?, '__test__', ?, ?, ?, ?, 'local', ?, ?, 'ready')
+    VALUES (
+      ?, ?, '__test__', ?, ?, ?, ?, 'local', ?, ?, ?, 'ready', ?, ?, ?
+    )
   `);
   registerMedia.run(
     "image",
@@ -130,6 +140,10 @@ async function setupDownloadCanvas(
     timestamp,
     "dl-image.png",
     "image/png",
+    sha256(files["dl-image.png"]),
+    null,
+    null,
+    "not-applicable",
   );
   registerMedia.run(
     "video",
@@ -140,6 +154,10 @@ async function setupDownloadCanvas(
     timestamp,
     "dl-video.mp4",
     "video/mp4",
+    sha256(files["dl-video.mp4"]),
+    1,
+    "server-probe",
+    "ready",
   );
   registerMedia.run(
     "audio",
@@ -150,16 +168,24 @@ async function setupDownloadCanvas(
     timestamp,
     "dl-audio.mp3",
     "audio/mpeg",
+    sha256(files["dl-audio.mp3"]),
+    1,
+    "server-probe",
+    "ready",
   );
   registerMedia.run(
     "image",
     "dl-missing",
     "dl-missing.png",
-    10,
+    missingImageBytes.length,
     timestamp,
     timestamp,
     "dl-missing.png",
     "image/png",
+    sha256(missingImageBytes),
+    null,
+    null,
+    "not-applicable",
   );
 
   const registerTask = store.prepare(`
@@ -267,7 +293,12 @@ async function setupDownloadCanvas(
     data: {
       edges: [],
       nodes,
-      revision: 1,
+      observedLoadToken: baseline.loadToken,
+      observedRevision: baseline.revision,
+      revision: baseline.revision,
+      saveAttemptId: randomUUID(),
+      saveSequence: 1,
+      saveSessionId: randomUUID(),
       viewport: { x: 0, y: 0, zoom: 1 },
     },
   });
@@ -358,6 +389,32 @@ test("group download skips missing files, notes them and still completes", async
       )
     `)
     .run(project.id, new Date().toISOString(), new Date().toISOString());
+  store
+    .prepare(`
+      INSERT INTO media_assets (
+        kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+        storage_backend, object_key, content_type, storage_status
+      )
+      VALUES (
+        'image', 'dl-pending-oss', '__test__', 'dl-pending-oss.png', 10, ?, ?,
+        'oss', 'pending/dl-pending-oss.png', 'image/png', 'pending'
+      )
+    `)
+    .run(new Date().toISOString(), new Date().toISOString());
+  store
+    .prepare(`
+      INSERT INTO generation_tasks (
+        id, canvas_id, node_id, kind, prompt, model, parameters,
+        idempotency_key, request_fingerprint, state, attempt, owner_id,
+        result_asset_id, created_at, updated_at
+      )
+      VALUES (
+        'dl-task-pending-oss', ?, 'child-pending-oss', 'image', '', 'model-1',
+        '{}', 'dl-key-pending-oss', 'dl-fingerprint-pending-oss', 'success', 1,
+        '__test__', 'dl-pending-oss', ?, ?
+      )
+    `)
+    .run(project.id, new Date().toISOString(), new Date().toISOString());
   const storeCanvas = openAppDatabase(dataDirectory);
   const canvas = (
     storeCanvas
@@ -374,6 +431,15 @@ test("group download skips missing files, notes them and still completes", async
     type: "image",
     zIndex: 1,
   });
+  nodes.push({
+    data: { label: "Image", title: "尚未发布图" },
+    id: "child-pending-oss",
+    parentId: "dl-group",
+    position: { x: 300, y: 900 },
+    style: { height: 250, width: 250 },
+    type: "image",
+    zIndex: 1,
+  });
   storeCanvas
     .prepare("UPDATE canvas_documents SET nodes = ?, revision = revision + 1 WHERE id = ?")
     .run(JSON.stringify(nodes), project.id);
@@ -385,7 +451,7 @@ test("group download skips missing files, notes them and still completes", async
     { data: { groupId: "dl-group" } },
   );
   expect(response.status()).toBe(200);
-  expect(response.headers()["x-download-skipped"]).toBe("1");
+  expect(response.headers()["x-download-skipped"]).toBe("2");
   const zipBytes = await response.body();
   const working = mkdtempSync(join(tmpdir(), "unboundry-zip-skip-"));
   try {
@@ -402,6 +468,12 @@ test("group download skips missing files, notes them and still completes", async
     expect(
       readFileSync(join(output, "下载说明.txt"), "utf8"),
     ).toContain("结果素材文件缺失");
+    expect(
+      readFileSync(join(output, "下载说明.txt"), "utf8"),
+    ).toContain("尚未发布图");
+    expect(
+      readFileSync(join(output, "下载说明.txt"), "utf8"),
+    ).toContain("结果素材已不存在");
     expect(
       ["缺失图-5.png", "缺失图-1.png"].some((name) => {
         try {

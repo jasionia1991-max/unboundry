@@ -2,10 +2,10 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { openAppDatabase } from "../server/database";
 
-const port = 4194;
+const port = Number(process.env.UNBOUNDRY_TEST_AUX_PORT);
 const origin = `http://127.0.0.1:${port}`;
 const vite = join(process.cwd(), "node_modules/vite/bin/vite.js");
 
@@ -83,7 +83,14 @@ test("login lands on the workspace instead of the previous canvas URL", async ({
 
     await expect(page).toHaveURL(`${origin}/canvas/projects`);
     await expect(page.getByTestId("workspace-page")).toBeVisible();
-    await expect(page.getByTestId("project-card-default")).toBeVisible();
+    const defaultCard = page.getByTestId("project-card-default");
+    await expect(defaultCard).toBeVisible();
+    await defaultCard.click();
+    await expect(page).toHaveURL(`${origin}/canvas`);
+    await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+      "data-persistence-ready",
+      "true",
+    );
   } finally {
     if (server) await stopServer(server);
     await rm(dataDirectory, { force: true, recursive: true });
@@ -808,6 +815,50 @@ test("admin can disable and delete accounts whose ids are not uuid-shaped", asyn
         (user) => user.id === "cua-tester" || user.id === "legacy.admin",
       ),
     ).toBe(false);
+  } finally {
+    if (server) await stopServer(server);
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("login is rate limited before an unbounded password verification queue forms", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-auth-rate-"));
+  let server: ChildProcess | undefined;
+  try {
+    server = await startServer(dataDirectory);
+    const bootstrap = await request("/api/auth/bootstrap", {
+      body: JSON.stringify({
+        displayName: "Owner",
+        loginName: "owner",
+        password: "owner-password-123",
+      }),
+      method: "POST",
+    });
+    expect(bootstrap.status).toBe(201);
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const rejected = await request("/api/auth/login", {
+        body: JSON.stringify({
+          loginName: "owner",
+          password: "wrong-password-123",
+        }),
+        method: "POST",
+      });
+      expect(rejected.status).toBe(401);
+    }
+    const limited = await request("/api/auth/login", {
+      body: JSON.stringify({
+        loginName: "owner",
+        password: "wrong-password-123",
+      }),
+      method: "POST",
+    });
+    expect(limited.status).toBe(429);
+    expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);
+    expect(await limited.json()).toMatchObject({
+      code: "LOGIN_RATE_LIMITED",
+      error: "登录请求过多，请稍后再试",
+    });
   } finally {
     if (server) await stopServer(server);
     await rm(dataDirectory, { force: true, recursive: true });

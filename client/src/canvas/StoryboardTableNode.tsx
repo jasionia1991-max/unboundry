@@ -105,6 +105,7 @@ function StoryboardTableNodeImpl({
   const [menuOpen, setMenuOpen] = useState(false);
   const [view, setView] = useState<"default" | "creative">("default");
   const shots = data.storyboardShots ?? [];
+  const title = data.title ?? "剪辑结果 (0:03.5)";
 
   return (
     <section
@@ -113,12 +114,12 @@ function StoryboardTableNodeImpl({
       data-logical-size="1200x1000"
       data-testid={`storyboard-node-${id}`}
     >
-      <div className="storyboard-node-title">
+      <div className="canvas-node-title storyboard-node-title">
         <svg aria-hidden="true" viewBox="0 0 24 24">
           <rect height="16" rx="2" width="18" x="3" y="4" />
           <path d="M8 4v16M3 9h18" />
         </svg>
-        <span>{data.title ?? "剪辑结果 (0:03.5)"}</span>
+        <span title={title}>{title}</span>
       </div>
 
       <div className="storyboard-view-control nodrag nopan">

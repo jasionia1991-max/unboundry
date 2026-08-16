@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 async function waitForSettledViewport(page: import("@playwright/test").Page) {
   // 画布初始镜头是异步 fitView 的：等 data-viewport-zoom 与实际渲染一致，

@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { saveAccountCredential } from "../server/accountCredentials";
 import { openAppDatabase } from "../server/database";
 import { createGenerationSafetyStore } from "../server/generationSafety";
@@ -15,7 +15,9 @@ import {
 import {
   executeTextTaskWithDependencies,
   generationTaskCancellationMode,
+  retrySafetyDecision,
   retrySnapshotCompatibilityProblem,
+  settleDetachedGenerationExecution,
 } from "../server/generationTasks";
 import { evaluateModelRuntimeAvailability } from "../server/modelAvailability";
 import type { ProviderProfile } from "../server/providerProfiles";
@@ -35,7 +37,7 @@ const arkProfile: ProviderProfile = {
 };
 
 const textModelId = "doubao-seed-2-0-lite-260428";
-const incidentPort = 4201;
+const incidentPort = Number(process.env.UNBOUNDRY_TEST_AUX_PORT);
 const incidentOrigin = `http://127.0.0.1:${incidentPort}`;
 const vite = join(process.cwd(), "node_modules/vite/bin/vite.js");
 
@@ -85,6 +87,32 @@ async function incidentRequest(path: string, init: RequestInit = {}) {
     },
   });
 }
+
+test("detached generation execution contains execution and failure-write rejections", async () => {
+  const executionFailure = new Error("controlled execution failure");
+  let persistedFailure: unknown;
+  await settleDetachedGenerationExecution(
+    async () => {
+      throw executionFailure;
+    },
+    async (error) => {
+      persistedFailure = error;
+    },
+  );
+  expect(persistedFailure).toBe(executionFailure);
+
+  let persistenceAttempts = 0;
+  await settleDetachedGenerationExecution(
+    () => {
+      throw new Error("controlled synchronous failure");
+    },
+    async () => {
+      persistenceAttempts += 1;
+      throw new Error("controlled persistence failure");
+    },
+  );
+  expect(persistenceAttempts).toBe(1);
+});
 
 test("Ark Text distinguishes authentication and permission failures without leaking Provider details", async () => {
   const cases = [
@@ -173,7 +201,7 @@ test("Text authentication failures persist once with no result or recorded cost"
         },
         prompt: "根据服装图片生成商品描述",
         providerModelId: textModelId,
-        providerProfileId: `${arkProfile.id}-${index}`,
+        providerProfileId: arkProfile.id,
       });
       await executeTextTaskWithDependencies(created.task.id, {
         fetcher: async () => {
@@ -223,57 +251,181 @@ test("Text authentication failures persist once with no result or recorded cost"
   }
 });
 
-test("an auth incident grants one atomic provider-kind recovery attempt and isolates other kinds", async () => {
+test("an auth incident grants one atomic recovery attempt per credential revision", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-provider-recovery-slot-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
   const store = createGenerationTaskStore(dataDirectory);
   const database = openAppDatabase(dataDirectory);
   try {
+    const ownerId = "provider-recovery-owner";
     const providerProfileId = "provider-recovery-slot";
+    const imageProviderProfileId = "provider-recovery-openrouter";
     const modelProfileId = "model-recovery-text";
+    const imageModelProfileId = "model-unrelated-image";
+    const videoModelProfileId = "model-unrelated-video";
     const baseline = new Date(Date.now() - 60_000).toISOString();
     database.prepare(`
+      INSERT INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      ) VALUES (?, ?, 'Recovery Owner', 'fixture-only', 'user', 'active', ?, ?)
+    `).run(ownerId, ownerId, baseline, baseline);
+    const insertProvider = database.prepare(`
       INSERT INTO provider_profiles (
-        id, display_name, driver, status, created_at, updated_at
-      ) VALUES (?, 'Recovery Ark', 'volcengine-ark', 'enabled', ?, ?)
-    `).run(providerProfileId, baseline, baseline);
-    database.prepare(`
-      INSERT INTO model_profiles (
-        id, display_name, provider_profile_id, provider_model_id,
-        capability, status, default_parameters, created_at, updated_at,
-        max_cost_microunits, cost_currency
-      ) VALUES (
-        ?, 'Recovery Text', ?, ?, 'text', 'published', '{}', ?, ?,
-        5000000, 'CNY'
-      )
-    `).run(
-      modelProfileId,
+        id, display_name, driver, status, created_at, updated_at,
+        provider_configuration_version
+      ) VALUES (?, ?, ?, 'enabled', ?, ?, 1)
+    `);
+    insertProvider.run(
       providerProfileId,
-      textModelId,
+      "Recovery Ark",
+      "volcengine-ark",
       baseline,
       baseline,
     );
+    insertProvider.run(
+      imageProviderProfileId,
+      "Recovery OpenRouter",
+      "openrouter",
+      baseline,
+      baseline,
+    );
+    const insertModel = database.prepare(`
+      INSERT INTO model_profiles (
+        id, display_name, provider_profile_id, provider_model_id,
+        capability, status, default_parameters, created_at, updated_at,
+        max_cost_microunits, cost_currency, provider_protocol
+      ) VALUES (
+        ?, ?, ?, ?, ?, 'published', ?, ?, ?, 5000000, ?, 'native'
+      )
+    `);
+    const models = ([
+      {
+        capability: "text",
+        currency: "CNY",
+        displayName: "Recovery Text",
+        id: modelProfileId,
+        providerDriver: "volcengine-ark",
+        providerModelId: textModelId,
+        providerProfileId,
+      },
+      {
+        capability: "image",
+        currency: "USD",
+        displayName: "Unrelated Image",
+        id: imageModelProfileId,
+        providerDriver: "openrouter",
+        providerModelId: "openai/gpt-image-2",
+        providerProfileId: imageProviderProfileId,
+      },
+      {
+        capability: "video",
+        currency: "CNY",
+        displayName: "Unrelated Video",
+        id: videoModelProfileId,
+        providerDriver: "volcengine-ark",
+        providerModelId: "doubao-seedance-2-0-mini-260615",
+        providerProfileId,
+      },
+    ] as const).map((model) => ({
+      ...model,
+      parameterSchema: knownModelParameterSchema({
+        capability: model.capability,
+        providerDriver: model.providerDriver,
+        providerModelId: model.providerModelId,
+      }),
+    }));
+    const insertBinding = database.prepare(`
+      INSERT INTO node_model_bindings (
+        node_type, model_id, enabled, is_default, sort_order,
+        created_at, updated_at
+      ) VALUES (?, ?, 1, 1, 1, ?, ?)
+    `);
+    for (const model of models) {
+      insertModel.run(
+        model.id,
+        model.displayName,
+        model.providerProfileId,
+        model.providerModelId,
+        model.capability,
+        JSON.stringify(model.parameterSchema),
+        baseline,
+        baseline,
+        model.currency,
+      );
+      insertBinding.run(
+        model.capability,
+        model.id,
+        baseline,
+        baseline,
+      );
+    }
+    database.prepare(`
+      UPDATE generation_safety_settings
+      SET
+        global_enabled = 1,
+        emergency_stop = 0,
+        per_user_concurrency = 10,
+        requests_per_minute = 120,
+        image_concurrency = 5,
+        video_concurrency = 5,
+        audio_concurrency = 5,
+        text_concurrency = 5,
+        failure_threshold = 3,
+        cooldown_minutes = 30,
+        running_task_policy = 'wait',
+        updated_at = ?
+      WHERE id = 1
+    `).run(baseline);
+    const credential = await saveAccountCredential(
+      database,
+      ownerId,
+      providerProfileId,
+      "test-only-recovery-key",
+    );
+    const imageCredential = await saveAccountCredential(
+      database,
+      ownerId,
+      imageProviderProfileId,
+      "test-only-image-recovery-key",
+    );
+    let credentialRevision = credential.credentialVersion;
 
     let sequence = 0;
     const runningTask = (kind: "image" | "text" | "video", model: string) => {
       sequence += 1;
-      const created = store.create({
+      const modelFixture = models.find(({ id }) => id === model)!;
+      const taskCredentialRevision = modelFixture.providerProfileId ===
+          providerProfileId
+        ? credentialRevision
+        : imageCredential.credentialVersion;
+      const created = store.admitOrGet({
         canvasId: "default",
         costCurrency: kind === "image" ? "USD" : "CNY",
+        credentialRevision: taskCredentialRevision,
         estimatedCostMicrounits: 5_000_000,
         idempotencyKey: `provider-recovery-${sequence}`,
         kind,
         model,
+        modelConfiguration: {
+          credentialVersion: taskCredentialRevision,
+          modelId: model,
+          parameterSchema: modelFixture.parameterSchema,
+          providerConfigurationVersion: 1,
+          providerDriver: modelFixture.providerDriver,
+          providerModelId: modelFixture.providerModelId,
+          providerProfileId: modelFixture.providerProfileId,
+          providerProtocol: "native",
+        },
         nodeId: `recovery-node-${sequence}`,
-        ownerId: "__test__",
+        ownerId,
         parameters: {},
         prompt: "recovery boundary test",
-        providerModelId: kind === "text"
-          ? textModelId
-          : kind === "video"
-            ? "doubao-seedance-2-0-mini-260615"
-            : "openai/gpt-image-2",
-        providerProfileId,
+        providerModelId: modelFixture.providerModelId,
+        providerProfileId: modelFixture.providerProfileId,
       });
+      expect(created.created).toBe(true);
       return store.transition(created.task.id, "running")!;
     };
 
@@ -283,10 +435,36 @@ test("an auth incident grants one atomic provider-kind recovery attempt and isol
       code: "AUTH",
       message: "safe auth incident",
     });
+    const placeOutcomeBeforeNextCredentialMutation = (taskId: string) => {
+      const timestamp = new Date(Date.now() - 1).toISOString();
+      database.prepare(`
+        UPDATE generation_provider_attempts
+        SET created_at = ?, finished_at = ?
+        WHERE task_id = ?
+      `).run(timestamp, timestamp, taskId);
+    };
+    placeOutcomeBeforeNextCredentialMutation(incident.id);
 
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    database.prepare(`UPDATE model_profiles SET updated_at = ? WHERE id = ?`)
-      .run(new Date().toISOString(), modelProfileId);
+    const staleRevision = runningTask("text", modelProfileId);
+    credentialRevision = (await saveAccountCredential(
+      database,
+      ownerId,
+      providerProfileId,
+      "test-only-recovery-key-revision-2",
+    )).credentialVersion;
+    expect(credentialRevision).toBe(2);
+    expect(() => store.recordProviderAttempt(staleRevision.id)).toThrow(
+      GenerationProviderAttemptBlockedError,
+    );
+    try {
+      store.recordProviderAttempt(staleRevision.id);
+    } catch (error) {
+      expect(error).toMatchObject({ code: "ACCOUNT_CREDENTIAL_CHANGED" });
+    }
+    store.transition(staleRevision.id, "failed", {
+      code: "ACCOUNT_CREDENTIAL_CHANGED",
+      message: "old credential revision remains blocked",
+    });
 
     const firstRecovery = runningTask("text", modelProfileId);
     const competingRecovery = runningTask("text", modelProfileId);
@@ -325,7 +503,7 @@ test("an auth incident grants one atomic provider-kind recovery attempt and isol
     });
 
     // The incident is provider+kind scoped: Image and Video remain independent.
-    const image = runningTask("image", "model-unrelated-image");
+    const image = runningTask("image", imageModelProfileId);
     expect(store.recordProviderAttempt(image.id)).toMatchObject({
       executionAttempt: 1,
     });
@@ -333,7 +511,7 @@ test("an auth incident grants one atomic provider-kind recovery attempt and isol
       code: "RATE_LIMIT",
       message: "unrelated image result",
     });
-    const video = runningTask("video", "model-unrelated-video");
+    const video = runningTask("video", videoModelProfileId);
     expect(store.recordProviderAttempt(video.id)).toMatchObject({
       executionAttempt: 1,
     });
@@ -342,9 +520,14 @@ test("an auth incident grants one atomic provider-kind recovery attempt and isol
       message: "unrelated video result",
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    database.prepare(`UPDATE model_profiles SET updated_at = ? WHERE id = ?`)
-      .run(new Date().toISOString(), modelProfileId);
+    placeOutcomeBeforeNextCredentialMutation(firstRecovery.id);
+    credentialRevision = (await saveAccountCredential(
+      database,
+      ownerId,
+      providerProfileId,
+      "test-only-recovery-key-revision-3",
+    )).credentialVersion;
+    expect(credentialRevision).toBe(3);
     const secondRecovery = runningTask("text", modelProfileId);
     store.recordProviderAttempt(secondRecovery.id);
     store.complete(secondRecovery.id, {
@@ -358,18 +541,69 @@ test("an auth incident grants one atomic provider-kind recovery attempt and isol
       executionAttempt: 1,
     });
     const attempts = database.prepare(`
-      SELECT evidence, kind
+      SELECT credential_revision, evidence, kind, outcome, owner_id
       FROM generation_provider_attempts
       ORDER BY id
-    `).all() as Array<{ evidence: string; kind: string }>;
+    `).all() as Array<{
+      credential_revision: number;
+      evidence: string;
+      kind: string;
+      outcome: string;
+      owner_id: string;
+    }>;
     expect(attempts).toHaveLength(6);
     expect(attempts.every(({ evidence }) => evidence === "provider-boundary"))
       .toBe(true);
+    expect(attempts.every(({ owner_id }) => owner_id === ownerId)).toBe(true);
+    expect(attempts.map(({ credential_revision }) => credential_revision))
+      .toEqual([1, 2, 1, 2, 3, 3]);
+    expect(attempts.map(({ outcome }) => outcome)).toEqual([
+      "definitive-rejected",
+      "definitive-rejected",
+      "definitive-rejected",
+      "definitive-rejected",
+      "completed",
+      "boundary-claimed",
+    ]);
     expect(attempts.filter(({ kind }) => kind === "image")).toHaveLength(1);
     expect(attempts.filter(({ kind }) => kind === "video")).toHaveLength(1);
+    expect(database.prepare(`
+      SELECT credential_revision
+      FROM account_provider_credential_epochs
+      WHERE account_id = ? AND provider_profile_id = ?
+    `).get(ownerId, providerProfileId)).toEqual({
+      credential_revision: 3,
+    });
+    expect(database.prepare(`
+      SELECT credential_revision
+      FROM account_provider_credential_epochs
+      WHERE account_id = ? AND provider_profile_id = ?
+    `).get(ownerId, imageProviderProfileId)).toEqual({
+      credential_revision: 1,
+    });
+    const admissions = database.prepare(`
+      SELECT admission_type, execution_attempt, owner_id
+      FROM generation_admission_events
+      WHERE owner_id = ?
+      ORDER BY id
+    `).all(ownerId) as Array<{
+      admission_type: string;
+      execution_attempt: number;
+      owner_id: string;
+    }>;
+    expect(admissions).toHaveLength(9);
+    expect(admissions.every((admission) =>
+      admission.admission_type === "initial" &&
+      admission.execution_attempt === 1 &&
+      admission.owner_id === ownerId)).toBe(true);
   } finally {
     database.close();
     store.close();
+    if (previousDataDirectory === undefined) {
+      delete process.env.UNBOUNDRY_DATA_DIR;
+    } else {
+      process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
+    }
     await rm(dataDirectory, { force: true, recursive: true });
   }
 });
@@ -412,44 +646,64 @@ test("the incident cooldown ignores stale and unrelated Provider failures", asyn
         ?, 'safe failure', ?, ?, ?, 5000000, NULL, ?, ?, ?
       )
     `);
+    const insertProviderFailure = database.prepare(`
+      INSERT INTO generation_provider_attempts (
+        task_id, execution_attempt, provider_profile_id, provider_model_id,
+        kind, evidence, created_at, owner_id, credential_revision, outcome,
+        failure_code, finished_at
+      ) VALUES (
+        ?, 1, ?, ?, ?, 'historical-execution-attempt', ?, ?, 0,
+        'provider-failed', 'PROVIDER_FAILED', ?
+      )
+    `);
     const insertFailure = (input: {
-      code: string;
       id: string;
       kind: "audio" | "image" | "text" | "video";
       profileId: string;
       timestamp: string;
-    }) => insertTask.run(
-      input.id,
-      `node-${input.id}`,
-      input.kind,
-      `key-${input.id}`,
-      `fingerprint-${input.id}`,
-      input.code,
-      input.timestamp,
-      input.timestamp,
-      ownerId,
-      input.profileId,
-      input.kind === "text" ? textModelId : `model-${input.kind}`,
-      input.kind === "image" || input.kind === "audio" ? "USD" : "CNY",
-    );
+    }) => {
+      const providerModelId = input.kind === "text"
+        ? textModelId
+        : `model-${input.kind}`;
+      insertTask.run(
+        input.id,
+        `node-${input.id}`,
+        input.kind,
+        `key-${input.id}`,
+        `fingerprint-${input.id}`,
+        "PROVIDER_FAILED",
+        input.timestamp,
+        input.timestamp,
+        ownerId,
+        input.profileId,
+        providerModelId,
+        input.kind === "image" || input.kind === "audio" ? "USD" : "CNY",
+      );
+      insertProviderFailure.run(
+        input.id,
+        input.profileId,
+        providerModelId,
+        input.kind,
+        input.timestamp,
+        ownerId,
+        input.timestamp,
+      );
+    };
 
     insertFailure({
-      code: "RATE_LIMIT",
-      id: "old-audio-failure",
+      id: "old-audio-provider-failure",
       kind: "audio",
       profileId: "provider-mureka",
       timestamp: "2026-08-01T18:10:23.134Z",
     });
     insertFailure({
-      code: "AUTH",
-      id: "text-auth-one",
+      id: "text-provider-failure-one",
       kind: "text",
       profileId: arkProfile.id,
       timestamp: "2026-08-03T03:37:28.128Z",
     });
     insertFailure({
-      code: "AUTH",
-      id: "text-auth-two",
+      id: "text-provider-failure-two",
       kind: "text",
       profileId: arkProfile.id,
       timestamp: "2026-08-03T03:37:46.455Z",
@@ -463,8 +717,7 @@ test("the incident cooldown ignores stale and unrelated Provider failures", asyn
     })).toEqual({ allowed: true, code: "ALLOWED" });
 
     insertFailure({
-      code: "PERMISSION",
-      id: "text-permission-three",
+      id: "text-provider-failure-three",
       kind: "text",
       profileId: arkProfile.id,
       timestamp: "2026-08-03T03:38:00.000Z",
@@ -527,9 +780,47 @@ test("a generic Provider check cannot clear a newer capability authentication fa
   });
 });
 
-test("retry snapshot compatibility stays structural for Text Image Video and Audio", () => {
-  type RetryModel = Parameters<typeof retrySnapshotCompatibilityProblem>[1];
-  const timestamp = "2026-08-03T04:00:00.000Z";
+test("retry snapshot compatibility uses durable media while preserving structural checks", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-retry-media-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
+  const database = openAppDatabase(dataDirectory);
+  try {
+    const timestamp = "2026-08-03T04:00:00.000Z";
+    database.prepare(`
+      INSERT OR IGNORE INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      ) VALUES ('__test__', '__test__', 'Test User', 'test-only', 'admin', 'active', ?, ?)
+    `).run(timestamp, timestamp);
+    const insertReadyImage = database.prepare(`
+      INSERT INTO media_assets (
+        kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+        storage_backend, object_key, content_type, checksum_sha256,
+        storage_status, duration_seconds, duration_source, duration_status,
+        media_width, media_height
+      ) VALUES (
+        'image', ?, '__test__', ?, 1024, ?, ?, 'local', ?, 'image/png', ?,
+        'ready', NULL, NULL, 'not-applicable', 1280, 720
+      )
+    `);
+    for (const assetId of [
+      "text-context-image",
+      "image-reference",
+      "video-reference-image",
+    ]) {
+      insertReadyImage.run(
+        assetId,
+        `${assetId}.png`,
+        timestamp,
+        timestamp,
+        `${assetId}.png`,
+        "a".repeat(64),
+      );
+    }
+  type RetryModel = NonNullable<
+    Parameters<typeof retrySnapshotCompatibilityProblem>[1]
+  >;
   const model = (
     kind: "audio" | "image" | "text" | "video",
   ): RetryModel => {
@@ -688,6 +979,223 @@ test("retry snapshot compatibility stays structural for Text Image Video and Aud
     inputs[0].role = "wrong-role";
     expect(retrySnapshotCompatibilityProblem(incompatible, currentModel))
       .toContain("当前模型不支持");
+  }
+  } finally {
+    database.close();
+    if (previousDataDirectory === undefined) {
+      delete process.env.UNBOUNDRY_DATA_DIR;
+    } else {
+      process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
+    }
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("a new retry attempt fail-closes on exact ready media metadata without entering Provider", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-retry-rules-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
+  const database = openAppDatabase(dataDirectory);
+  try {
+    const timestamp = "2026-08-03T04:05:00.000Z";
+    const ownerId = "retry-media-owner";
+    const profileId = "retry-media-provider";
+    const modelId = "retry-media-video-model";
+    database.prepare(`
+      INSERT INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      ) VALUES (?, ?, 'Retry Media Owner', 'test-only', 'user', 'active', ?, ?)
+    `).run(ownerId, ownerId, timestamp, timestamp);
+    database.prepare(`
+      INSERT INTO provider_profiles (
+        id, display_name, driver, status, created_at, updated_at
+      ) VALUES (?, 'Retry Media Provider', 'volcengine-ark', 'enabled', ?, ?)
+    `).run(profileId, timestamp, timestamp);
+
+    const tightenedSchema = knownModelParameterSchema({
+      capability: "video",
+      providerDriver: "volcengine-ark",
+      providerModelId: "doubao-seedance-2-0-mini-260615",
+    });
+    const tightenedImageRules = tightenedSchema.referenceMediaRules?.image;
+    if (!tightenedImageRules) throw new Error("Seedance image rules missing");
+    tightenedImageRules.maxBytes = 1024;
+    tightenedImageRules.minWidth = 1000;
+    database.prepare(`
+      INSERT INTO model_profiles (
+        id, display_name, provider_profile_id, provider_model_id,
+        capability, status, default_parameters, created_at, updated_at,
+        max_cost_microunits, cost_currency
+      ) VALUES (
+        ?, 'Retry Media Video', ?, 'doubao-seedance-2-0-mini-260615',
+        'video', 'published', ?, ?, ?, 5000000, 'CNY'
+      )
+    `).run(
+      modelId,
+      profileId,
+      JSON.stringify(tightenedSchema),
+      timestamp,
+      timestamp,
+    );
+    database.prepare(`
+      INSERT INTO node_model_bindings (
+        node_type, model_id, enabled, is_default, sort_order,
+        created_at, updated_at
+      ) VALUES ('video', ?, 1, 0, 50, ?, ?)
+    `).run(modelId, timestamp, timestamp);
+
+    const insertImage = database.prepare(`
+      INSERT INTO media_assets (
+        kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+        storage_backend, object_key, content_type, checksum_sha256,
+        storage_status, duration_seconds, duration_source, duration_status,
+        media_width, media_height
+      ) VALUES (
+        'image', ?, ?, ?, ?, ?, ?, 'local', ?, 'image/png', ?, ?,
+        NULL, NULL, 'not-applicable', ?, ?
+      )
+    `);
+    const mediaFixtures = [
+      {
+        assetId: "retry-small-real-image",
+        byteSize: 512,
+        height: 720,
+        status: "ready",
+        width: 640,
+      },
+      {
+        assetId: "retry-overlimit-real-image",
+        byteSize: 2048,
+        height: 720,
+        status: "ready",
+        width: 1280,
+      },
+      {
+        assetId: "retry-missing-dimensions-image",
+        byteSize: 512,
+        height: null,
+        status: "ready",
+        width: null,
+      },
+      {
+        assetId: "retry-not-ready-image",
+        byteSize: 512,
+        height: 720,
+        status: "pending",
+        width: 1280,
+      },
+      {
+        assetId: "retry-compliant-real-image",
+        byteSize: 512,
+        height: 720,
+        status: "ready",
+        width: 1280,
+      },
+    ] as const;
+    for (const fixture of mediaFixtures) {
+      const storageName = `${fixture.assetId}.png`;
+      insertImage.run(
+        fixture.assetId,
+        ownerId,
+        storageName,
+        fixture.byteSize,
+        timestamp,
+        timestamp,
+        storageName,
+        "b".repeat(64),
+        fixture.status,
+        fixture.width,
+        fixture.height,
+      );
+    }
+
+    const retryTask = (assetId: string): GenerationTask => ({
+      attempt: 1,
+      canvasId: "retry-media-canvas",
+      costCurrency: "CNY",
+      createdAt: timestamp,
+      errorCode: "RATE_LIMIT",
+      errorMessage: "safe retry fixture",
+      id: `task-${assetId}`,
+      idempotencyKey: `key-${assetId}`,
+      kind: "video",
+      model: modelId,
+      modelConfiguration: {},
+      nodeId: `target-${assetId}`,
+      ownerId,
+      parameters: {
+        aspectRatio: "16:9",
+        duration: 5,
+        generateAudio: true,
+        inputMode: "multimodal",
+        inputSchemaVersion: 1,
+        inputs: [{
+          assetId,
+          kind: "image",
+          order: 1,
+          role: "reference-image",
+          sourceNodeId: `source-${assetId}`,
+        }],
+        outputCount: 1,
+        resolution: "480p",
+      },
+      prompt: "retry with exact durable media",
+      providerModelId: "doubao-seedance-2-0-mini-260615",
+      providerProfileId: profileId,
+      state: "failed",
+      updatedAt: timestamp,
+    });
+
+    const attemptsBefore = generationProviderAttemptCounts(database);
+    for (const assetId of [
+      "retry-small-real-image",
+      "retry-overlimit-real-image",
+      "retry-missing-dimensions-image",
+      "retry-not-ready-image",
+      "retry-missing-media",
+    ]) {
+      expect(retrySafetyDecision(retryTask(assetId))).toMatchObject({
+        allowed: false,
+        code: "RETRY_SNAPSHOT_INCOMPATIBLE",
+      });
+    }
+    expect(retrySafetyDecision(retryTask("retry-compliant-real-image")))
+      .toMatchObject({
+        allowed: true,
+        mode: "new-provider-attempt",
+      });
+    expect(generationProviderAttemptCounts(database)).toEqual(attemptsBefore);
+
+    const paidTaskWithDeletedMedia = retryTask("already-deleted-image");
+    paidTaskWithDeletedMedia.providerTaskId = "already-paid-provider-task";
+    expect(retrySnapshotCompatibilityProblem(
+      paidTaskWithDeletedMedia,
+      {
+        cost_currency: "CNY",
+        default_parameters: JSON.stringify(tightenedSchema),
+        id: modelId,
+        latest_auth_failure_at: null,
+        latest_capability_success_at: null,
+        latest_provider_attempt_at: null,
+        max_cost_microunits: 5_000_000,
+        model_configuration_updated_at: timestamp,
+        provider_configuration_updated_at: timestamp,
+        provider_driver: "volcengine-ark",
+        provider_model_id: "doubao-seedance-2-0-mini-260615",
+        provider_profile_id: profileId,
+        provider_status: "enabled",
+      },
+      "resume-provider-task",
+    )).toBeUndefined();
+  } finally {
+    database.close();
+    if (previousDataDirectory === undefined) {
+      delete process.env.UNBOUNDRY_DATA_DIR;
+    } else {
+      process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
+    }
+    await rm(dataDirectory, { force: true, recursive: true });
   }
 });
 
@@ -1031,6 +1539,12 @@ test("only capability success or an explicit Provider/model update clears an aut
           5000000, ?, ?, ?, ?, '{}'
         )
       `);
+      const retryFixtureKinds = new Map<
+        string,
+        "audio" | "image" | "text" | "video"
+      >();
+      const retryGenerationInputKey = (id: string) =>
+        `generation-input-${id}`;
       const addRetryFixture = (input: {
         code: string;
         id: string;
@@ -1040,22 +1554,38 @@ test("only capability success or an explicit Provider/model update clears an aut
         providerModelId: string;
         providerProfileId: string;
         providerTaskId?: string;
-      }) => insertRetryFixture.run(
-        input.id,
-        `node-${input.id}`,
-        input.kind,
-        input.modelId,
-        JSON.stringify(input.parameters),
-        `key-${input.id}`,
-        `fingerprint-${input.id}`,
-        input.code,
-        retryTimestamp,
-        retryTimestamp,
-        input.providerProfileId,
-        input.providerModelId,
-        input.providerTaskId ?? null,
-        input.kind === "text" || input.kind === "video" ? "CNY" : "USD",
-      );
+      }) => {
+        retryFixtureKinds.set(input.id, input.kind);
+        return insertRetryFixture.run(
+          input.id,
+          `node-${input.id}`,
+          input.kind,
+          input.modelId,
+          JSON.stringify(input.parameters),
+          `key-${input.id}`,
+          `fingerprint-${input.id}`,
+          input.code,
+          retryTimestamp,
+          retryTimestamp,
+          input.providerProfileId,
+          input.providerModelId,
+          input.providerTaskId ?? null,
+          input.kind === "text" || input.kind === "video" ? "CNY" : "USD",
+        );
+      };
+      const retryFence = (id: string) => {
+        const kind = retryFixtureKinds.get(id);
+        if (!kind) throw new Error(`Retry fixture not found: ${id}`);
+        return {
+          canvasId: "default",
+          expectedAttempt: 1,
+          expectedCanvasRevision: 1,
+          expectedGenerationInputKey: retryGenerationInputKey(id),
+          expectedUpdatedAt: retryTimestamp,
+          kind,
+          nodeId: `node-${id}`,
+        };
+      };
 
       addRetryFixture({
         code: "SERVICE_RESTARTED",
@@ -1076,12 +1606,17 @@ test("only capability success or an explicit Provider/model update clears an aut
       database.prepare(`
         INSERT INTO generation_provider_attempts (
           task_id, execution_attempt, provider_profile_id, provider_model_id,
-          kind, evidence, created_at
-        ) VALUES (?, 1, ?, ?, 'text', 'historical-execution-attempt', ?)
+          kind, evidence, owner_id, credential_revision, outcome,
+          failure_code, finished_at, created_at
+        ) VALUES (
+          ?, 1, ?, ?, 'text', 'historical-execution-attempt', '__test__', 0,
+          'outcome-unknown', 'SERVICE_RESTARTED', ?, ?
+        )
       `).run(
         "retry-old-service-restarted",
         arkProfileId,
         textModelId,
+        retryTimestamp,
         retryTimestamp,
       );
       addRetryFixture({
@@ -1103,12 +1638,17 @@ test("only capability success or an explicit Provider/model update clears an aut
       database.prepare(`
         INSERT INTO generation_provider_attempts (
           task_id, execution_attempt, provider_profile_id, provider_model_id,
-          kind, evidence, created_at
-        ) VALUES (?, 1, ?, ?, 'text', 'provider-boundary', ?)
+          kind, evidence, owner_id, credential_revision, outcome,
+          failure_code, finished_at, created_at
+        ) VALUES (
+          ?, 1, ?, ?, 'text', 'provider-boundary', '__test__', 0,
+          'outcome-unknown', 'NETWORK', ?, ?
+        )
       `).run(
         "retry-network-unknown",
         arkProfileId,
         textModelId,
+        retryTimestamp,
         retryTimestamp,
       );
       addRetryFixture({
@@ -1192,12 +1732,17 @@ test("only capability success or an explicit Provider/model update clears an aut
       database.prepare(`
         INSERT INTO generation_provider_attempts (
           task_id, execution_attempt, provider_profile_id, provider_model_id,
-          kind, evidence, created_at
-        ) VALUES (?, 1, ?, ?, 'video', 'provider-boundary', ?)
+          kind, evidence, owner_id, credential_revision, outcome,
+          failure_code, finished_at, created_at
+        ) VALUES (
+          ?, 1, ?, ?, 'video', 'provider-boundary', '__test__', 0,
+          'outcome-unknown', 'NETWORK', ?, ?
+        )
       `).run(
         "retry-video-network-no-id",
         arkProfileId,
         "doubao-seedance-2-0-mini-260615",
+        retryTimestamp,
         retryTimestamp,
       );
       addRetryFixture({
@@ -1241,13 +1786,96 @@ test("only capability success or an explicit Provider/model update clears an aut
         providerProfileId: "missing-audio-provider",
         providerTaskId: "audio-provider-task-resume",
       });
+      addRetryFixture({
+        code: "NETWORK",
+        id: "retry-video-existing-job-deleted-media",
+        kind: "video",
+        modelId: videoModelProfileId,
+        parameters: {
+          aspectRatio: "16:9",
+          duration: 5,
+          generateAudio: true,
+          inputMode: "multimodal",
+          inputSchemaVersion: 1,
+          inputs: [{
+            assetId: "deleted-after-provider-submit",
+            kind: "image",
+            order: 1,
+            role: "reference-image",
+            sourceNodeId: "deleted-after-provider-submit-source",
+          }],
+          outputCount: 1,
+          resolution: "480p",
+        },
+        providerModelId: "doubao-seedance-2-0-mini-260615",
+        providerProfileId: arkProfileId,
+        providerTaskId: "already-paid-video-provider-task",
+      });
+      database.prepare(`
+        INSERT INTO canvas_documents (
+          owner_id, id, revision, graph_revision, nodes, edges, viewport,
+          updated_at, save_session_id, save_sequence
+        ) VALUES ('__test__', 'default', 1, 1, ?, '[]', '{}', ?, NULL, 0)
+        ON CONFLICT(owner_id, id) DO UPDATE SET
+          revision = excluded.revision,
+          graph_revision = excluded.graph_revision,
+          nodes = excluded.nodes,
+          edges = excluded.edges,
+          viewport = excluded.viewport,
+          updated_at = excluded.updated_at,
+          save_session_id = NULL,
+          save_sequence = 0
+      `).run(
+        JSON.stringify(Array.from(retryFixtureKinds, ([id, kind]) => ({
+          data: {
+            [`${kind}GenerationInputKey`]: retryGenerationInputKey(id),
+            [`${kind}GenerationTaskId`]: id,
+          },
+          id: `node-${id}`,
+          type: kind,
+        }))),
+        retryTimestamp,
+      );
+      const insertAcceptedProviderTask = database.prepare(`
+        INSERT INTO generation_provider_attempts (
+          task_id, execution_attempt, provider_profile_id, provider_model_id,
+          kind, evidence, owner_id, credential_revision, outcome,
+          provider_task_id, created_at
+        ) VALUES (
+          ?, 1, ?, ?, ?, 'provider-boundary', '__test__', 0,
+          'accepted', ?, ?
+        )
+      `);
+      insertAcceptedProviderTask.run(
+        "retry-video-network-with-id",
+        "missing-video-provider",
+        "doubao-seedance-2-0-mini-260615",
+        "video",
+        "video-provider-task-resume",
+        retryTimestamp,
+      );
+      insertAcceptedProviderTask.run(
+        "retry-audio-download-with-id",
+        "missing-audio-provider",
+        "mureka-8",
+        "audio",
+        "audio-provider-task-resume",
+        retryTimestamp,
+      );
+      insertAcceptedProviderTask.run(
+        "retry-video-existing-job-deleted-media",
+        arkProfileId,
+        "doubao-seedance-2-0-mini-260615",
+        "video",
+        "already-paid-video-provider-task",
+        retryTimestamp,
+      );
 
       const recordedBeforeRetries = generationProviderAttemptCounts(database);
       for (const id of [
         "retry-old-service-restarted",
         "retry-network-unknown",
         "retry-video-network-no-id",
-        "retry-audio-restart-no-id",
       ]) {
         const summary = await incidentRequest(`/api/generation-tasks/${id}`);
         expect(summary.status).toBe(200);
@@ -1257,13 +1885,35 @@ test("only capability success or an explicit Provider/model update clears an aut
         });
         const response = await incidentRequest(
           `/api/generation-tasks/${id}/retry`,
-          { method: "POST" },
+          {
+            body: JSON.stringify(retryFence(id)),
+            method: "POST",
+          },
         );
         expect(response.status).toBe(409);
         expect(await response.json()).toMatchObject({
           code: "RETRY_OUTCOME_UNKNOWN",
         });
       }
+      const preBoundaryAudioRestart = await incidentRequest(
+        "/api/generation-tasks/retry-audio-restart-no-id",
+      );
+      expect(preBoundaryAudioRestart.status).toBe(200);
+      expect(await preBoundaryAudioRestart.json()).toMatchObject({
+        retryAllowed: false,
+        retryBlockCode: "MODEL_UNAVAILABLE",
+      });
+      const preBoundaryAudioRetry = await incidentRequest(
+        "/api/generation-tasks/retry-audio-restart-no-id/retry",
+        {
+          body: JSON.stringify(retryFence("retry-audio-restart-no-id")),
+          method: "POST",
+        },
+      );
+      expect(preBoundaryAudioRetry.status).toBe(409);
+      expect(await preBoundaryAudioRetry.json()).toMatchObject({
+        code: "MODEL_UNAVAILABLE",
+      });
       for (const id of [
         "retry-parameter-incompatible",
         "retry-input-rule-incompatible",
@@ -1276,7 +1926,10 @@ test("only capability success or an explicit Provider/model update clears an aut
         });
         const response = await incidentRequest(
           `/api/generation-tasks/${id}/retry`,
-          { method: "POST" },
+          {
+            body: JSON.stringify(retryFence(id)),
+            method: "POST",
+          },
         );
         expect(response.status).toBe(409);
         expect(await response.json()).toMatchObject({
@@ -1290,6 +1943,13 @@ test("only capability success or an explicit Provider/model update clears an aut
       expect(await safelyRetryable.json()).toMatchObject({
         retryAllowed: true,
       });
+      const paidJobWithDeletedMedia = await incidentRequest(
+        "/api/generation-tasks/retry-video-existing-job-deleted-media",
+      );
+      expect(paidJobWithDeletedMedia.status).toBe(200);
+      expect(await paidJobWithDeletedMedia.json()).toMatchObject({
+        retryAllowed: true,
+      });
       for (const id of [
         "retry-video-network-with-id",
         "retry-audio-download-with-id",
@@ -1297,16 +1957,18 @@ test("only capability success or an explicit Provider/model update clears an aut
         const summary = await incidentRequest(`/api/generation-tasks/${id}`);
         expect(summary.status).toBe(200);
         expect(await summary.json()).toMatchObject({
-          retryAllowed: false,
-          retryBlockCode: "RETRY_SNAPSHOT_CHANGED",
+          retryAllowed: true,
         });
         const response = await incidentRequest(
           `/api/generation-tasks/${id}/retry`,
-          { method: "POST" },
+          {
+            body: JSON.stringify(retryFence(id)),
+            method: "POST",
+          },
         );
         expect(response.status).toBe(409);
         expect(await response.json()).toMatchObject({
-          code: "RETRY_SNAPSHOT_CHANGED",
+          code: "PROVIDER_CONFIGURATION_MISMATCH",
         });
       }
       expect(database.prepare(`
@@ -1365,8 +2027,11 @@ test("only capability success or an explicit Provider/model update clears an aut
       database.prepare(`
         INSERT INTO generation_provider_attempts (
           task_id, execution_attempt, provider_profile_id, provider_model_id,
-          kind, evidence, created_at
-        ) VALUES (?, 1, ?, ?, 'text', 'provider-boundary', ?)
+          kind, evidence, owner_id, credential_revision, outcome, created_at
+        ) VALUES (
+          ?, 1, ?, ?, 'text', 'provider-boundary', '__test__', 0,
+          'boundary-claimed', ?
+        )
       `).run(
         "cancel-text-after-boundary",
         arkProfileId,
@@ -1399,7 +2064,7 @@ test("only capability success or an explicit Provider/model update clears an aut
       const expectedCounts = generationProviderAttemptCounts(database);
       expect(expectedCounts).toEqual({
         historicalEstimatedProviderAttempts: 1,
-        paidProviderRequests: 3,
+        paidProviderRequests: 6,
       });
       for (const endpoint of [
         "/api/generation-tasks/status",

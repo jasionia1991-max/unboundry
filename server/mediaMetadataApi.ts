@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { requestIdentity } from "./auth";
+import { decodedRequestPath } from "./httpRequest";
 import {
   mayReadMedia,
   readableMediaForOwner,
@@ -22,9 +23,9 @@ export function mediaMetadataApi(
     json(response, 405, { error: "Method not allowed" });
     return;
   }
-  const [kind, id, ...rest] = decodeURIComponent(
-    (request.url ?? "").split("?")[0],
-  ).replace(/^\/+/, "").split("/");
+  const [kind, id, ...rest] = decodedRequestPath(request)
+    .replace(/^\/+/, "")
+    .split("/");
   if (
     rest.length ||
     (kind !== "image" && kind !== "video" && kind !== "audio") ||
@@ -54,6 +55,8 @@ export function mediaMetadataApi(
     durationSeconds: media.durationSeconds,
     durationStatus: media.durationStatus,
     kind,
+    mediaHeight: media.mediaHeight,
+    mediaWidth: media.mediaWidth,
     storageBackend: media.storageBackend,
   });
 }

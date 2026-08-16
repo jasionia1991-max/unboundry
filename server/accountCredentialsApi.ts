@@ -3,13 +3,20 @@ import type { DatabaseSync } from "node:sqlite";
 import {
   accountCredentialKey,
   accountCredentialMaskFromKey,
+  accountCredentialRevision,
   accountCredentialRow,
   deleteAccountCredential,
   saveAccountCredential,
   verifyAccountCredential,
 } from "./accountCredentials";
+import { AccountMutationBlockedError } from "./accountMutationFence";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
+import {
+  decodedRequestPath,
+  HttpRequestError,
+  readJsonBody,
+} from "./httpRequest";
 import { listProviderProfiles } from "./providerProfiles";
 
 const profileIdPattern = /^[a-f0-9-]{36}$/i;
@@ -33,16 +40,13 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.end(JSON.stringify(body));
 }
 
-async function readBody<T>(request: IncomingMessage) {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > 64 * 1_024) throw new Error("Payload too large");
-    chunks.push(bytes);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
+function respondAccountMutationConflict(
+  response: ServerResponse,
+  error: unknown,
+) {
+  if (!(error instanceof AccountMutationBlockedError)) return false;
+  json(response, 409, { code: error.code, error: error.message });
+  return true;
 }
 
 async function publishedProviderProfiles(store: DatabaseSync) {
@@ -66,7 +70,7 @@ export async function accountCredentialsApi(
     return;
   }
   const store = db();
-  const path = decodeURIComponent((request.url ?? "").split("?")[0]).replace(
+  const path = decodedRequestPath(request).replace(
     /^\/+/,
     "",
   );
@@ -87,7 +91,9 @@ export async function accountCredentialsApi(
         items.push({
           apiKeyMask: key ? accountCredentialMaskFromKey(key) : undefined,
           baseUrl: profile.baseUrl,
-          credentialVersion: row ? Number(row.credential_version) : 0,
+          credentialVersion: row
+            ? Number(row.credential_version)
+            : accountCredentialRevision(store, identity.userId, profile.id),
           driver: profile.driver,
           keyCheckedAt: row?.key_checked_at ?? undefined,
           keyStatus: row?.key_status ?? "unchecked",
@@ -117,7 +123,10 @@ export async function accountCredentialsApi(
 
   if (request.method === "PUT" && !match[2]) {
     try {
-      const body = await readBody<{ apiKey?: unknown }>(request);
+      const body = await readJsonBody<{ apiKey?: unknown }>(
+        request,
+        64 * 1_024,
+      );
       const result = await saveAccountCredential(
         store,
         identity.userId,
@@ -126,6 +135,8 @@ export async function accountCredentialsApi(
       );
       json(response, 200, result);
     } catch (error) {
+      if (error instanceof HttpRequestError) throw error;
+      if (respondAccountMutationConflict(response, error)) return;
       json(response, 400, {
         error: error instanceof Error ? error.message : "平台密钥保存失败",
       });
@@ -150,6 +161,7 @@ export async function accountCredentialsApi(
         },
       });
     } catch (error) {
+      if (respondAccountMutationConflict(response, error)) return;
       json(response, 400, {
         error: error instanceof Error ? error.message : "平台密钥校验失败",
         keyStatus: "invalid",
@@ -159,11 +171,18 @@ export async function accountCredentialsApi(
   }
 
   if (request.method === "DELETE" && !match[2]) {
-    if (!deleteAccountCredential(store, identity.userId, profileId)) {
-      json(response, 404, { error: "平台密钥不存在" });
-      return;
+    try {
+      if (!(await deleteAccountCredential(store, identity.userId, profileId))) {
+        json(response, 404, { error: "平台密钥不存在" });
+        return;
+      }
+      json(response, 200, { deleted: true, profileId });
+    } catch (error) {
+      if (respondAccountMutationConflict(response, error)) return;
+      json(response, 400, {
+        error: error instanceof Error ? error.message : "平台密钥删除失败",
+      });
     }
-    json(response, 200, { deleted: true, profileId });
     return;
   }
 

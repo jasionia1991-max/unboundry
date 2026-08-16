@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 
 type LibraryCatalog = {
   folders: Array<{ id: string; kind: string; label: string }>;
@@ -67,10 +67,18 @@ test("the local library API provides spaces, folders, pagination and totals", as
 
 test("the material library UI reads its local catalog without provider traffic", async ({
   page,
+  request,
 }) => {
+  const before = await (await request.get("/api/generation-tasks/status")).json() as {
+    paidProviderRequests: number;
+  };
   let providerRequests = 0;
   page.on("request", (request) => {
-    if (/openrouter|volces|provider|generation-tasks/i.test(request.url())) {
+    const url = request.url();
+    if (
+      (request.method() === "POST" && /\/api\/generation-tasks(?:[/?]|$)/.test(url)) ||
+      /openrouter|volces|mureka|lk888|lk666/i.test(url)
+    ) {
       providerRequests += 1;
     }
   });
@@ -84,5 +92,9 @@ test("the material library UI reads its local catalog without provider traffic",
 
   await panel.getByRole("tab", { name: "团队" }).click();
   await expect(panel.getByText("该文件夹暂无素材", { exact: true })).toBeVisible();
+  const after = await (await request.get("/api/generation-tasks/status")).json() as {
+    paidProviderRequests: number;
+  };
+  expect(after.paidProviderRequests).toBe(before.paidProviderRequests);
   expect(providerRequests).toBe(0);
 });

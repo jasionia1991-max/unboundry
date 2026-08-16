@@ -3,13 +3,16 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import {
   accountCredentialKey,
   saveAccountCredential,
 } from "../server/accountCredentials";
 import { openAppDatabase } from "../server/database";
-import { createGenerationTaskStore } from "../server/generationTaskStore";
+import {
+  createGenerationTaskStore,
+  generationProviderAttemptCounts,
+} from "../server/generationTaskStore";
 import { executeTextTaskWithDependencies } from "../server/generationTasks";
 import { providerMediaUrlForOwner } from "../server/providerMedia";
 import {
@@ -20,7 +23,7 @@ import {
   saveProviderProfile,
 } from "../server/providerProfiles";
 
-const port = 4196;
+const port = Number(process.env.UNBOUNDRY_TEST_AUX_PORT);
 const origin = `http://127.0.0.1:${port}`;
 const vite = join(process.cwd(), "node_modules/vite/bin/vite.js");
 
@@ -234,10 +237,12 @@ test("a changed account credential version fails a queued task before any provid
       providerModelId: "doubao-seed-2-0-lite-260428",
       providerProfileId: profile.id,
     });
-    let providerCalls = 0;
+    expect(created.task.modelConfiguration.credentialVersion).toBe(99);
+    let fakeFetchCalls = 0;
+    let leaseAcquires = 0;
     await executeTextTaskWithDependencies(created.task.id, {
       acquireProfile: async () => {
-        providerCalls += 1;
+        leaseAcquires += 1;
         return {
           profile: {
             apiKey: "sk-second-key-5678",
@@ -252,6 +257,7 @@ test("a changed account credential version fails a queued task before any provid
         };
       },
       fetcher: async () => {
+        fakeFetchCalls += 1;
         throw new Error("provider must not be reached");
       },
       mediaUrlForOwner: providerMediaUrlForOwner,
@@ -261,7 +267,17 @@ test("a changed account credential version fails a queued task before any provid
     expect(failed?.state).toBe("failed");
     expect(failed?.errorCode).toBe("ACCOUNT_CREDENTIAL_CHANGED");
     expect(failed?.errorMessage).toBe("你的平台密钥已变更，请重新提交");
-    expect(providerCalls).toBe(1);
+    expect(leaseAcquires).toBe(1);
+    expect(fakeFetchCalls).toBe(0);
+    const attemptStore = openAppDatabase(directory);
+    try {
+      expect(generationProviderAttemptCounts(attemptStore)).toEqual({
+        historicalEstimatedProviderAttempts: 0,
+        paidProviderRequests: 0,
+      });
+    } finally {
+      attemptStore.close();
+    }
   } finally {
     delete process.env.UNBOUNDRY_DATA_DIR;
     if (previous !== undefined) process.env.UNBOUNDRY_DATA_DIR = previous;

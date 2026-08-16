@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./safe-test";
 import { defaultParameterSchema } from "../types/modelParameters";
 import { composeTextControl } from "./helpers/ime";
 

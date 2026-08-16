@@ -1,36 +1,117 @@
 import type { PlaylistClip } from "./ProbeNode";
 
-type PackedClip = {
-  end: number;
-  name: string;
-  size: number;
-  start: number;
+export type PublishedPlaylistAsset = {
+  assetId: string;
+  byteSize: number;
+  contentType: "video/mp4";
+  durationSeconds: number;
+  fileName: string;
+  mediaHeight?: number;
+  mediaWidth?: number;
+  storageBackend: "local" | "oss";
+  url: string;
 };
 
-export async function mergePlaylist(clips: PlaylistClip[]) {
-  const files = await Promise.all(
-    clips.map(async (clip) => {
-      const response = await fetch(clip.src);
-      if (!response.ok) throw new Error(`无法读取片段：${clip.title}`);
-      return response.blob();
-    }),
-  );
-  const metadata: PackedClip[] = files.map((file, index) => ({
-    end: clips[index].end,
-    name: `${clips[index].title || `片段 ${index + 1}`}.mp4`,
-    size: file.size,
-    start: clips[index].start,
-  }));
-  const header = new TextEncoder().encode(JSON.stringify(metadata));
-  const length = new Uint8Array(4);
-  new DataView(length.buffer).setUint32(0, header.byteLength);
-  const response = await fetch("/api/playlist/export", {
-    body: new Blob([length, header, ...files]),
-    headers: { "Content-Type": "application/octet-stream" },
+export class PlaylistExportError extends Error {
+  constructor(message: string, readonly status?: number) {
+    super(message);
+    this.name = "PlaylistExportError";
+  }
+}
+
+function assetIdFromVideoSource(src: string) {
+  const url = new URL(src, window.location.origin);
+  if (url.origin !== window.location.origin) return undefined;
+  const match = url.pathname.match(/^\/api\/video-assets\/([^/]+)$/);
+  if (!match) return undefined;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return undefined;
+  }
+}
+
+function exportClips(clips: PlaylistClip[]) {
+  return clips.map((clip) => {
+    const assetId = assetIdFromVideoSource(clip.src);
+    const source = new URL(clip.src, window.location.origin);
+    const fixturePath = source.origin === window.location.origin &&
+        /^\/fixtures\/[a-z0-9][a-z0-9._-]{0,120}\.mp4$/i.test(source.pathname)
+      ? source.pathname
+      : undefined;
+    if (!assetId && !fixturePath) {
+      throw new Error(`片段不是已保存的视频素材：${clip.title}`);
+    }
+    return {
+      assetId,
+      end: clip.end,
+      fixturePath,
+      start: clip.start,
+    };
+  });
+}
+
+async function exportRequest(
+  clips: PlaylistClip[],
+  input: {
+    assetId?: string;
+    fileName: string;
+    mode: "asset" | "download";
+  },
+) {
+  return fetch("/api/playlist/export", {
+    body: JSON.stringify({ ...input, clips: exportClips(clips) }),
+    headers: { "Content-Type": "application/json" },
     method: "POST",
   });
-  if (!response.ok) {
-    throw new Error((await response.text()) || "合并视频失败");
+}
+
+export function downloadMergedPlaylist(
+  clips: PlaylistClip[],
+  fileName = "Playlist.mp4",
+) {
+  const payload = JSON.stringify({
+    clips: exportClips(clips),
+    fileName,
+    mode: "download",
+  });
+  const form = document.createElement("form");
+  form.action = "/api/playlist/export";
+  form.hidden = true;
+  form.method = "POST";
+  // A native navigation consumes Content-Disposition without materializing a
+  // potentially 500MiB Blob in the renderer. A server-side failure remains
+  // visible in the new tab instead of replacing the editor.
+  form.target = "_blank";
+  const input = document.createElement("input");
+  input.name = "payload";
+  input.type = "hidden";
+  input.value = payload;
+  form.append(input);
+
+  document.body.append(form);
+  form.submit();
+  form.remove();
+}
+
+export async function publishPlaylist(
+  clips: PlaylistClip[],
+  assetId: string,
+  fileName = "Playlist.mp4",
+) {
+  const response = await exportRequest(clips, {
+    assetId,
+    fileName,
+    mode: "asset",
+  });
+  const asset = await response.json().catch(() => undefined) as
+    | PublishedPlaylistAsset & { error?: string }
+    | undefined;
+  if (!response.ok || !asset) {
+    throw new PlaylistExportError(
+      asset?.error || "视频保存失败",
+      response.status,
+    );
   }
-  return response.blob();
+  return asset;
 }

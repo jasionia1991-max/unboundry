@@ -1,0 +1,183 @@
+{
+  "schemaVersion": 1,
+  "expectedNode": "22.23.1",
+  "tsconfig": "tsconfig.check.json",
+  "infrastructureScripts": [
+    "scripts/check-offline-network-guard.mjs",
+    "scripts/check-source-coverage.mjs",
+    "scripts/offline-network-guard.mjs",
+    "scripts/run-safe-tests.mjs"
+  ],
+  "automaticNpmRoots": [
+    "build",
+    "test:safe:preflight",
+    "test:safe:list",
+    "test:safe",
+    "verify"
+  ],
+  "operationalScripts": {
+    "scripts/apply-ecommerce-workflow-batch-2.mjs": {
+      "mode": "frozen",
+      "scriptSha256": "8b1b85b7063d0a0cd422cc134d88ca2e5bc8a9135aca2e9ebb69d6b766639bbb",
+      "reason": "Can publish the reviewed second or third ecommerce workflow package into production; automatic execution is forbidden and apply requires an explicit flag.",
+      "manualNpmScripts": []
+    },
+    "scripts/apply-ecommerce-template-cover-paths.mjs": {
+      "mode": "frozen",
+      "scriptSha256": "f4dfbad416dd05130799c6ee4bbb9845de3eef1942578d4b4fd9fa2cbd23dfea",
+      "reason": "Can update production template rows; automatic execution is forbidden and apply requires an explicit flag.",
+      "manualNpmScripts": []
+    },
+    "scripts/backup-data.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "399b3f1b04bbef6014a0400493999718182eb2522d70723ad671a8aab6eb66e9",
+      "target": "tests/m10-backup.spec.ts",
+      "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
+      "targetSha256": "f9205a51b43e586ee62d43c9fbb0175a7e46b982617550d395b9cf81ba0c9efa"
+    },
+    "scripts/backup-final-candidate.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "c2f874bff8db77872e3e1a05074946241ea1760400b3968e4944f413c9eb9749",
+      "target": "tests/m10-backup.spec.ts",
+      "marker": "final-candidate exact-v37 chain rehydrates fake OSS offline and validates normal runtime startup",
+      "targetSha256": "f9205a51b43e586ee62d43c9fbb0175a7e46b982617550d395b9cf81ba0c9efa"
+    },
+    "scripts/backup-to-oss.mjs": {
+      "mode": "frozen",
+      "scriptSha256": "ea7d0d202f187f220231320237ddefbdc158267ee7af37804070aa1a2679f65c",
+      "reason": "May create a backup and contact or delete remote OSS objects; automatic execution is forbidden.",
+      "manualNpmScripts": [
+        "data:backup:oss"
+      ]
+    },
+    "scripts/build-template-cover-content-overlay.mjs": {
+      "mode": "frozen",
+      "scriptSha256": "0c034ec65de02d3ad47cbd45cdf4276e2e7065aefcca1be5eb12482890a5221e",
+      "reason": "Can modify an immutable release staging tree; automatic execution is forbidden.",
+      "manualNpmScripts": []
+    },
+    "scripts/build-release.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "c4ed308be00ed27239b6b53aa0f57cc51cda69422058d3ba41460657e45a8336",
+      "target": "scripts/run-safe-tests.mjs",
+      "marker": "Full snapshot bridge/final fixtures prove the release closure",
+      "targetSha256": "f6f4a1336681921642899305a53141d01a887d7f46ed76aad40b1fe9cde48b1e"
+    },
+    "scripts/check-greenfield.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "672fc239db81ff54f5103c9ef49897b4becbc042309b799f8db9a94ebefd2572",
+      "target": "tests/source-coverage-behavior.test.mjs",
+      "marker": "the greenfield operational script has an offline behavior check",
+      "targetSha256": "357e02fe6de3a45e9a7f9873cb958a2f2fe710c60ec8f020135624dd3458754f"
+    },
+    "scripts/check-restart-persistence.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "1645896f383a3894332ff030d17e2bc0356914c9068fd2ddef8372e99ac892f9",
+      "target": "scripts/run-safe-tests.mjs",
+      "marker": "scripts/check-restart-persistence.mjs",
+      "targetSha256": "f6f4a1336681921642899305a53141d01a887d7f46ed76aad40b1fe9cde48b1e"
+    },
+    "scripts/check-v051-exact-runtime.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "a1dc5bfd3e5afbc67f824f6aba36ff7408f561133021a1062b6b4e92dcdcd6db",
+      "target": "scripts/run-safe-tests.mjs",
+      "marker": "scripts/check-v051-exact-runtime.mjs",
+      "targetSha256": "f6f4a1336681921642899305a53141d01a887d7f46ed76aad40b1fe9cde48b1e"
+    },
+    "scripts/deploy.mjs": {
+      "mode": "frozen",
+      "scriptSha256": "87a51ef534aaf40fe53c2ed27c9d9a4eba6c3ac8c6e83f2ea3253fddc9df139f",
+      "reason": "Legacy production deployment is replaced by an immediate fail-closed error; automatic execution remains forbidden.",
+      "manualNpmScripts": []
+    },
+    "scripts/fetch-ecommerce-template-covers.mjs": {
+      "mode": "frozen",
+      "scriptSha256": "1fb026e4d11de8206a0d2a3785c4d358957c41d15e8957bdad4177a54221fa84",
+      "reason": "Contacts image hosts and writes local cover files; automatic execution is forbidden.",
+      "manualNpmScripts": []
+    },
+    "scripts/mirror-oss-to-local.mjs": {
+      "mode": "frozen",
+      "scriptSha256": "31dd58886acd7c45bc955574aed9c3159efd8055f5e9968295aaee2c846bb8f3",
+      "reason": "Reads real OSS configuration and can download remote objects; automatic execution is forbidden.",
+      "manualNpmScripts": [
+        "data:mirror-oss"
+      ]
+    },
+    "scripts/migrate-schema37-to39.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "5090797ba194569f47454fda4b4ff0fe0a6fd0fbf70aa470fd4c9a8296ca4a9e",
+      "target": "tests/m91-schema-migration.spec.ts",
+      "marker": "dry-run and CLI validate exact v37 plus logical SHA without source writes",
+      "targetSha256": "fabf3c72985bb96a90b6ed5cd0ffe91a0340674a2af2b4643e1deacefd882217"
+    },
+    "scripts/node-typescript-runtime.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "bcced30c64c59c604932067440d8c3dec663d7e8a2faca1a6b442658931453ce",
+      "target": "tests/m89-operations-safety.spec.ts",
+      "marker": "password reset apply consumes only a private file and commits actor audit atomically",
+      "targetSha256": "d7ecd23d5286418774d7a2b4002be5e1360b9b36abb3ccfa2894056dc58108c6"
+    },
+    "scripts/repair-storage-state.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "4e5bd0a295223786396d1d1fccd9807ac0b909cb8d539cf800ce785093976c4a",
+      "target": "tests/m89-operations-safety.spec.ts",
+      "marker": "storage repair apply binds backfill and audit to the selected administrator",
+      "targetSha256": "d7ecd23d5286418774d7a2b4002be5e1360b9b36abb3ccfa2894056dc58108c6"
+    },
+    "scripts/rehearse-release.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "efc37a99954748199ad6807a30964d6cc408bd3931a8a1660f78693dc7a0bda3",
+      "target": "tests/m95-release-switch.spec.ts",
+      "marker": "schema 37 bridge rehearsal migrates without HTTP, atomically switches, drains and retains N-1",
+      "targetSha256": "d9d539b2272a00150aaa3259e335c780551cbb2de6b27f352b0fb806fbdacfb6"
+    },
+    "scripts/validate-release-ops.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "0686c77e8c17aadb0c57961b7c8a49c32071045d6e2d7470f7d20310204b465a",
+      "target": "tests/m96-release-ops.spec.ts",
+      "marker": "static ops contract validates the loopback nginx and hardened current-release unit",
+      "targetSha256": "5b6f68c845819d3ed151adfc7d3b3d12bfe2e8100aeecd3ae02f8b3698b38187"
+    },
+    "scripts/verify-ecommerce-template-covers.mjs": {
+      "mode": "frozen",
+      "scriptSha256": "287e945380a6b32e9046698ed17cfcc6639b59cebe7649f52372a06fdeb45b30",
+      "reason": "Performs a read-only receipt and build-copy verification for the manually published covers.",
+      "manualNpmScripts": []
+    },
+    "scripts/report-media-integrity.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "85c72e6da73e597ab11842ffe7af16a355e6ecb97bd533cd1e2617b2aebb8c0b",
+      "target": "tests/m87-media-integrity.spec.ts",
+      "marker": "the read-only media report CLI requires a frozen absolute source and leaves it unchanged",
+      "targetSha256": "8bfe8607181d03891cd93df393e281b5e20579f7dc4c80796a4a51ff593129dc"
+    },
+    "scripts/reset-account-password.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "aa10e42f8e09457fde6e7aca3acc949eab2658e66ec0d306f4b5c387f745cad3",
+      "target": "tests/m89-operations-safety.spec.ts",
+      "marker": "password reset apply consumes only a private file and commits actor audit atomically",
+      "targetSha256": "d7ecd23d5286418774d7a2b4002be5e1360b9b36abb3ccfa2894056dc58108c6"
+    },
+    "scripts/restore-backup.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "dbc1b06fc7ca761b66cde24bf0e1e293951b87de10db2ab959abbf6ac9a20b76",
+      "target": "tests/m10-backup.spec.ts",
+      "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
+      "targetSha256": "f9205a51b43e586ee62d43c9fbb0175a7e46b982617550d395b9cf81ba0c9efa"
+    },
+    "scripts/run-linux-production-validation.mjs": {
+      "mode": "frozen",
+      "scriptSha256": "f074683369f0277d331f9863b2301811a807dc0eda5aaef5a4ea3de12b38b5ad",
+      "reason": "Runs immutable production artifacts in a Linux namespace and creates encrypted validation evidence; automatic execution is forbidden.",
+      "manualNpmScripts": []
+    },
+    "scripts/verify-backup.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "891d9c3db99cf458f88248e503c221e1f450f78f16b9f4d15af8d2f36f5c0efd",
+      "target": "tests/m10-backup.spec.ts",
+      "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
+      "targetSha256": "f9205a51b43e586ee62d43c9fbb0175a7e46b982617550d395b9cf81ba0c9efa"
+    }
+  }
+}

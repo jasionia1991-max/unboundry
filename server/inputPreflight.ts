@@ -9,8 +9,80 @@ import {
   type NodeInputPreflight,
 } from "../types/nodeInputs";
 import { normalizePersistedMediaNodes } from "../types/persistedMediaSources";
+import { readableMediaForOwner } from "./mediaRegistry";
 
 type CanvasRow = { edges: string; graph_revision: number; nodes: string };
+type PersistedNode = {
+  data?: Record<string, unknown>;
+  id: string;
+  type?: string;
+};
+
+const mediaNodeKinds = new Set(["audio", "image", "video"] as const);
+const persistedTrustedMediaKeys = [
+  "mediaByteSize",
+  "mediaContentType",
+  "mediaDurationSeconds",
+  "mediaHeight",
+  "mediaMetadataSource",
+  "mediaMetadataStatus",
+  "mediaStorageBackend",
+  "mediaWidth",
+] as const;
+
+function authoritativeMediaNodes(
+  nodes: readonly PersistedNode[],
+  ownerId: string,
+): PersistedNode[] {
+  return nodes.map((node) => {
+    if (!mediaNodeKinds.has(node.type as "audio" | "image" | "video")) {
+      return node;
+    }
+    const kind = node.type as "audio" | "image" | "video";
+    const data = { ...(node.data ?? {}) };
+    // Canvas JSON is browser-owned. Remove every field that merely claims to
+    // contain server metadata before rebuilding a transient trusted view.
+    for (const key of persistedTrustedMediaKeys) delete data[key];
+    if (kind === "video") {
+      delete data.videoHeight;
+      delete data.videoWidth;
+    }
+
+    const assetId = typeof data.assetId === "string" ? data.assetId.trim() : "";
+    if (!assetId) return { ...node, data };
+    const media = readableMediaForOwner(ownerId, kind, assetId);
+    if (!media || media.storageStatus !== "ready") {
+      return {
+        ...node,
+        data: {
+          ...data,
+          inputState: "invalid",
+          inputStateReason: "素材不存在、尚未保存或不属于当前账号",
+        },
+      };
+    }
+
+    delete data.inputStateReason;
+    data.inputState = "ready";
+    data.mediaByteSize = media.byteSize;
+    data.mediaContentType = media.contentType;
+    data.mediaDurationSeconds = media.durationSeconds ?? undefined;
+    data.mediaHeight = media.mediaHeight ?? undefined;
+    data.mediaMetadataSource = "server";
+    data.mediaMetadataStatus = kind === "image"
+      ? "ready"
+      : media.durationStatus === "not-applicable"
+        ? "failed"
+        : media.durationStatus;
+    data.mediaStorageBackend = media.storageBackend;
+    data.mediaWidth = media.mediaWidth ?? undefined;
+    if (kind === "video") {
+      data.videoHeight = media.mediaHeight ?? undefined;
+      data.videoWidth = media.mediaWidth ?? undefined;
+    }
+    return { ...node, data };
+  });
+}
 
 const nodePromptKeys: Record<NodeInputKind, string> = {
   audio: "audioPrompt",
@@ -94,11 +166,10 @@ export function resolvePersistedNodeInputs(input: {
     ) {
       throw new CanvasRevisionConflictError(row.graph_revision);
     }
-    const nodes = normalizePersistedMediaNodes(JSON.parse(row.nodes) as Array<{
-      data?: Record<string, unknown>;
-      id: string;
-      type?: string;
-    }>);
+    const nodes = authoritativeMediaNodes(
+      normalizePersistedMediaNodes(JSON.parse(row.nodes) as PersistedNode[]),
+      input.ownerId,
+    );
     const edges = JSON.parse(row.edges) as Array<{
       data?: Record<string, unknown>;
       id: string;
