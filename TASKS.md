@@ -1,11 +1,11 @@
 # Unboundry 绿地复刻当前任务
 
-更新时间：2026-08-17
-状态：`v0.6.11已发布，待用户复验。INC-UI-009为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，INC-UI-008为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，INC-GEN-003/002/001保持PRODUCTION_PUBLISHED_USER_PASS，既有其他验收状态保持。`
+更新时间：2026-08-18
+状态：`v0.6.11已发布并通过用户验收。INC-UI-009为PRODUCTION_PUBLISHED_USER_PASS，INC-UI-008为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，INC-GEN-003/002/001保持PRODUCTION_PUBLISHED_USER_PASS，既有其他验收状态保持。`
 
 ### 2026-08-17 整组下载改走数据盘（INC-UI-009）
 
-- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。用户确认按`v0.6.11`并说可以上线；尚未收到肉眼“通过”。
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户确认按`v0.6.11`并说可以上线；随后在生产实页明确回复“通过”。
 - 实现：整组/模板打包借空间和云端临时文件改走数据盘；盘上中性文件名；1GB保底和原有上限不降；按钮中文提示。
 - 自动门：正式安全全量`118/118 specs、969/969 tests PASS`，失败/跳过/重试/blocked/reportErrors均0。
 - 发布：commit`321668e1adf692e356b1e504230721451af8ddcf`已发布到`/opt/unboundry/releases/v0.6.11-inc-ui-009-20260817`；冻结备份/恢复副本、公网关键资源、service/schema39和数据不变门通过。
