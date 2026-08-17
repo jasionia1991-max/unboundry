@@ -6330,6 +6330,42 @@ sup {
 .tasks-row-time {
   color: #71717a;
   font-size: var(--tap-font-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tasks-group-summary {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  color: #a9a9a9;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: var(--tap-font-secondary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+}
+
+.generation-duration-hint {
+  flex: 0 0 auto;
+  color: #8f8f93;
+  font-size: var(--tap-font-secondary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.react-flow__node-group > .generation-duration-hint {
+  position: absolute;
+  top: calc(-42px * var(--canvas-title-counter-scale, 1));
+  left: 50%;
+  z-index: 8;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(39, 39, 39, 0.72);
+  transform: translateX(-50%) scale(var(--canvas-title-counter-scale, 1));
+  transform-origin: top center;
 }
 
 .tasks-row-actions {

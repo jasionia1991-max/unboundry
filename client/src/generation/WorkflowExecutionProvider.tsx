@@ -18,6 +18,7 @@ import {
   type NodeRunResult,
   type WorkflowPreflightPhase,
 } from "./workflowExecution";
+import { publishGroupRunSummary } from "./groupRunSummary";
 
 export type { NodeRunResult };
 
@@ -78,7 +79,7 @@ export function WorkflowExecutionProvider({
   getNodes: () => ProbeNodeType[];
   notify: (message: string, kind?: "error" | "info" | "success") => void;
 }) {
-  const { isFixture } = useGenerationCanvas();
+  const { canvasId, isFixture } = useGenerationCanvas();
   const registrations = useRef(new Map<string, NodeRunRegistration>());
   const runningGroups = useRef(new Map<string, { cancelled: boolean }>());
   const [executingGroupIds, setExecutingGroupIds] = useState<
@@ -176,6 +177,7 @@ export function WorkflowExecutionProvider({
         return;
       }
       const running = { cancelled: false };
+      const startedAt = Date.now();
       runningGroups.current.set(groupId, running);
       setExecutingGroupIds(new Set(runningGroups.current.keys()));
       try {
@@ -206,6 +208,13 @@ export function WorkflowExecutionProvider({
             return registration.run();
           },
         });
+        publishGroupRunSummary({
+          canvasId,
+          elapsedMs: Date.now() - startedAt,
+          groupId,
+          nodeCount: executableIds.size,
+          status: result.status,
+        });
         if (result.status === "success") {
           notify("整组执行完成", "success");
         } else if (result.status === "failed") {
@@ -230,7 +239,7 @@ export function WorkflowExecutionProvider({
         setExecutingGroupIds(new Set(runningGroups.current.keys()));
       }
     },
-    [getEdges, getNodes, isFixture, notify],
+    [canvasId, getEdges, getNodes, isFixture, notify],
   );
 
   const value = useMemo<WorkflowExecutionValue>(

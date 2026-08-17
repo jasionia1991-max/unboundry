@@ -41,6 +41,8 @@ import {
 import { UpstreamInputCards } from "./UpstreamInputCards";
 import { GenerationAvailabilityNotice } from "./GenerationAvailabilityNotice";
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
+import { useFinishedGenerationDuration } from "../generation/useFinishedGenerationDuration";
+import { GenerationDurationHint } from "./GenerationDurationHint";
 import {
   useWorkflowExecution,
   type NodeRunResult,
@@ -353,6 +355,11 @@ function TextNodeImpl({
     retryGenerationEnabled,
     waitForCanvasRevision,
   } = useGenerationCanvas();
+  const finishedDurationLabel = useFinishedGenerationDuration(
+    data.textGenerationTaskId,
+    singleNodeChrome && !data.textGenerating,
+    { canvasId, nodeId: id },
+  );
   const claimTextTask = (
     taskId: string,
     generationOwnershipKey?: string,
@@ -1897,6 +1904,7 @@ function TextNodeImpl({
             />
           )}
           <span className="text-creator-spacer" />
+          <GenerationDurationHint label={finishedDurationLabel} />
           <button aria-label="语音输入" disabled title="暂未开放" type="button">
             <svg aria-hidden="true" viewBox="0 0 24 24">
               <rect height="11" rx="4" width="6" x="9" y="3" />

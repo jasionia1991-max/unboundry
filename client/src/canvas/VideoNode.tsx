@@ -27,6 +27,8 @@ import {
   usePublishedModelSelection,
 } from "../models/ModelCatalog";
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
+import { useFinishedGenerationDuration } from "../generation/useFinishedGenerationDuration";
+import { GenerationDurationHint } from "./GenerationDurationHint";
 import {
   useWorkflowExecution,
   type NodeRunResult,
@@ -258,6 +260,11 @@ function VideoNodeImpl({
     retryGenerationEnabled,
     waitForCanvasRevision,
   } = useGenerationCanvas();
+  const finishedDurationLabel = useFinishedGenerationDuration(
+    data.videoGenerationTaskId,
+    singleNodeChrome && !data.videoGenerating,
+    { canvasId, nodeId: id },
+  );
   const mediaAdoptionScopeRef = useRef(`${accountId}\u0000${canvasId}`);
   mediaAdoptionScopeRef.current = `${accountId}\u0000${canvasId}`;
   const persistenceReadyLive = useRef(persistenceReady);
@@ -2294,6 +2301,7 @@ function VideoNodeImpl({
             </>
           )}
           <span className="video-creator-spacer" />
+          <GenerationDurationHint label={finishedDurationLabel} />
           {selectedVideoModel ? (
             <NodeParameterControl
               disabled={generating}

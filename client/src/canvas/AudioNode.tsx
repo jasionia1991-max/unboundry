@@ -26,6 +26,8 @@ import {
   usePublishedModelSelection,
 } from "../models/ModelCatalog";
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
+import { useFinishedGenerationDuration } from "../generation/useFinishedGenerationDuration";
+import { GenerationDurationHint } from "./GenerationDurationHint";
 import {
   useWorkflowExecution,
   type NodeRunResult,
@@ -226,6 +228,11 @@ function AudioNodeImpl({
     retryGenerationEnabled,
     waitForCanvasRevision,
   } = useGenerationCanvas();
+  const finishedDurationLabel = useFinishedGenerationDuration(
+    data.audioGenerationTaskId,
+    singleNodeChrome && !data.audioGenerating,
+    { canvasId, nodeId: id },
+  );
   const mediaAdoptionScopeRef = useRef(`${accountId}\u0000${canvasId}`);
   mediaAdoptionScopeRef.current = `${accountId}\u0000${canvasId}`;
   const persistenceReadyLive = useRef(persistenceReady);
@@ -2319,6 +2326,7 @@ function AudioNodeImpl({
             </>
           )}
           <span className="audio-creator-spacer" />
+          <GenerationDurationHint label={finishedDurationLabel} />
           {selectedAudioModel && (
             <NodeParameterControl
               keys={audioCountParameterKeys}
