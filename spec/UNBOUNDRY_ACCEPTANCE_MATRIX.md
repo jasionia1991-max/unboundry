@@ -5,7 +5,7 @@
 
 2026-08-18 `INC-UI-009 = PRODUCTION_PUBLISHED_USER_PASS`：整组/模板下载改走数据盘借空间，1GB保底和原有上限不降；盘上中性临时文件名；按钮中文提示。正式安全全量`118/118 specs、969/969 tests PASS`，异常0。生产已运行v0.6.11，公网资源逐字节哈希、冻结备份恢复、service/schema39与数据不变门通过，保持246 tasks、248 attempts、active0、47 public templates（46 published）；Provider/付费生成/OSS写入0。`v0.6.11`标签与PR #18合并完成；用户随后明确回复“通过”，本项正式收口。
 
-2026-08-18 `INC-GEN-004 = LOCAL_COMMITTED`：整组每个节点跑完后先存稳再让下游开工；等版本号时再确认画布没又变脏；整组「画布还在保存」最多再试一次；错误提示约8秒。正式安全全量`118/118 specs、971/971 tests PASS`，异常0。包版本已升到0.6.12，生产在切换前仍运行v0.6.11。
+2026-08-18 `INC-GEN-004 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：整组每个节点跑完后先存稳再让下游开工；等版本号时再确认画布没又变脏；整组「画布还在保存」最多再试一次；错误提示约8秒。正式安全全量`118/118 specs、971/971 tests PASS`，异常0。生产已运行v0.6.12，公网资源逐字节哈希、冻结备份恢复、service/schema39与数据不变门通过，保持256 tasks、258 attempts、active0、47 public templates（46 published）；Provider/付费生成/OSS写入0。`v0.6.12`标签与PR #21合并完成；用户肉眼验收仍为`USER_RECHECK`。
 
 2026-08-17 `INC-UI-008 = PRODUCTION_PUBLISHED_USER_PASS`：文字全屏改为图片同款画布遮罩，不再进系统全屏；中间只读正文可滚动，按钮为「复制」。正式安全全量`118/118 specs、969/969 tests PASS`，异常0。生产已运行v0.6.10，公网资源逐字节哈希、冻结备份恢复、service/schema39与数据不变门通过，保持246 tasks、248 attempts、active0、47 public templates（46 published）；Provider/付费生成/OSS写入0。`v0.6.10`标签与PR #16合并完成；用户于2026-08-18明确回复文字全屏也通过，本项正式收口。
 
@@ -39,9 +39,9 @@
 状态：`AUTHORITATIVE`  
 状态夹具：`unboundry-state-fixtures.json`
 
-2026-08-18 当前权威状态：生产仍运行 `v0.6.11/schema39`；`INC-GEN-004 = LOCAL_COMMITTED`；`INC-UI-009 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-UI-008 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-GEN-003 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-GEN-002 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-GEN-001 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-UI-007/006 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-UI-005/004/003 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-VIDEO-001 = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_RECHECK`，`INC-UI-001/002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-010/011 = PASS`，`PRODUCTION = LIVE`。既有其他用户验收与未完成状态全部保留。
+2026-08-18 当前权威状态：生产已运行 `v0.6.12/schema39`；`INC-GEN-004 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；`INC-UI-009 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-UI-008 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-GEN-003 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-GEN-002 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-GEN-001 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-UI-007/006 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-UI-005/004/003 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-VIDEO-001 = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_RECHECK`，`INC-UI-001/002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-010/011 = PASS`，`PRODUCTION = LIVE`。既有其他用户验收与未完成状态全部保留。
 
-最新核验为service active+enabled、NRestarts0、current→`releases/v0.6.11-inc-ui-009-20260817`、公网version 0.6.11及精确JS/CSS哈希通过。schema39/quick_check ok/FK0、active generation0、246 tasks/248 attempts、47 public templates（46 published）。INC-UI-009没有修改画布文档、节点坐标、连线、Provider配置或OSS对象；Provider/付费/OSS写入0。上一不可变release、冻结备份、v0.6.0原schema37备份、整机schema39包及既有用户验收继续保留。未实际运行的两张付费图片仍作为可选付费抽验延期，既有PARTIAL/PAUSED/BLOCK/NOT_STARTED条目保持不变。
+最新核验为service active+enabled、NRestarts0、current→`releases/v0.6.12-inc-gen-004-20260818`、公网version 0.6.12及精确JS/CSS哈希通过。schema39/quick_check ok/FK0、active generation0、256 tasks/258 attempts、47 public templates（46 published）。INC-GEN-004没有修改画布文档、节点坐标、连线、Provider配置或OSS对象；Provider/付费/OSS写入0。上一不可变release、冻结备份、v0.6.0原schema37备份、整机schema39包及既有用户验收继续保留。未实际运行的两张付费图片仍作为可选付费抽验延期，既有PARTIAL/PAUSED/BLOCK/NOT_STARTED条目保持不变。
 
 2026-08-07 三功能新增 21 条（TPL-001～007 / ZIP-001～006 / KEY-001～008）已全部经用户实页验收为 `PASS`，M11 放行门达成；其余历史统计与状态仍以各节为准，`INPUT-006`保持`PARTIAL`（Mureka真实生成暂缓）。
 2026-08-07 权限管理（PERM-001～012）与公共模板（PUB-001～011）已全部经用户实页验收为 `PASS`，两功能放行门达成；生成安全「并发与频率」上限按用户要求放宽至 1000（v33）。

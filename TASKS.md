@@ -1,14 +1,16 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-18
-状态：`v0.6.12本地已提交待发布。INC-GEN-004为LOCAL_COMMITTED，INC-UI-009/008为PRODUCTION_PUBLISHED_USER_PASS，INC-GEN-003/002/001保持PRODUCTION_PUBLISHED_USER_PASS，既有其他验收状态保持。生产在切换前仍运行v0.6.11。`
+状态：`v0.6.12已发布待用户复验。INC-GEN-004为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，INC-UI-009/008为PRODUCTION_PUBLISHED_USER_PASS，INC-GEN-003/002/001保持PRODUCTION_PUBLISHED_USER_PASS，既有其他验收状态保持。`
 
 ### 2026-08-18 整组节点结束后先存稳（INC-GEN-004）
 
-- 状态：`LOCAL_COMMITTED`。用户同意方案、版本顺延为`v0.6.12`，并授权验完后直接上线。
+- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。用户同意方案、版本顺延为`v0.6.12`，并授权验完后直接上线。
 - 实现：组内节点结束后等画面落稳并保存，再让下游开工；等版本号时再确认画布没又变脏；整组「画布还在保存」最多再试一次；错误提示约8秒。
 - 自动门：正式安全全量`118/118 specs、971/971 tests PASS`，失败/跳过/重试/blocked/reportErrors均0。
-- 发布：尚未切换生产。权威记录为`spec/INC_GEN_004_GROUP_RUN_PERSIST_BARRIER_2026-08-18.md`。
+- 发布：commit`dc1b4a8b37030b13169a2016ad12ed124892e74b`已发布到`/opt/unboundry/releases/v0.6.12-inc-gen-004-20260818`；冻结备份/恢复副本、公网关键资源、service/schema39和数据不变门通过。
+- 数据与外部影响：tasks256、attempts258、active0、公共模板47（46 published）前后不变；Provider/付费生成/OSS写入0。
+- GitHub：标签`v0.6.12`精确指向生产源码；PR #21已合并，merge commit`9558c9edab9b98a689925032b9702f620a69e516`。权威记录为`spec/INC_GEN_004_GROUP_RUN_PERSIST_BARRIER_2026-08-18.md`与生产receipt。
 
 ### 2026-08-17 整组下载改走数据盘（INC-UI-009）
 
