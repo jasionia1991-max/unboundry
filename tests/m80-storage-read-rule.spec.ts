@@ -24,6 +24,7 @@ import { registerMediaForOwner } from "../server/mediaRegistry";
 import { openAppDatabase } from "../server/database";
 import {
   fetchPrivateOssDownload,
+  groupDownloadWorkPrefix,
   spoolOssEntry,
 } from "../server/groupDownload";
 import type { PublicHttpsFetchDependencies } from "../server/outboundNetwork";
@@ -364,51 +365,117 @@ test("group download uses the pinned HTTPS guard for signed OSS reads", async ()
 
 test("group download body deadlines cancel stalled OSS reads and remove temp files", async () => {
   const directory = await mkdtemp(join(tmpdir(), "unboundry-m80-spool-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
   let cancelled = false;
   let requestSignal: AbortSignal | undefined;
-  try {
-    const result = await spoolOssEntry({
-      byteSize: 8,
-      extension: "png",
-      kind: "media",
-      media: {
-        assetId: "stalled-oss-asset",
-        backend: "oss",
-        objectKey: "objects/2026/08/image/stalled.png",
-        storageProfileId: "stalled-profile",
+  const noteSignal = (signal?: AbortSignal) => {
+    requestSignal = signal;
+  };
+  const stalledEntry = {
+    byteSize: 8,
+    extension: "png",
+    kind: "media" as const,
+    media: {
+      assetId: "stalled-oss-asset",
+      backend: "oss" as const,
+      objectKey: "objects/2026/08/image/stalled.png",
+      storageProfileId: "stalled-profile",
+    },
+    name: "stalled.png",
+    taskId: "stalled-task",
+  };
+  const stalledFetch = async (
+    _location: string,
+    _dependencies: unknown,
+    signal?: AbortSignal,
+  ) => {
+    requestSignal = signal;
+    return new Response(new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelled = true;
       },
-      name: "stalled.png",
-      taskId: "stalled-task",
-    }, new AbortController().signal, {
+      pull() {
+        // Deliberately never produces a chunk.
+      },
+    }), { status: 200 });
+  };
+  const stalledProfile = async () => ({
+    ...dummyProfile(),
+    createdAt: "2026-08-12T00:00:00.000Z",
+    id: "stalled-profile",
+    provider: "aliyun-oss" as const,
+    status: "active" as const,
+    updatedAt: "2026-08-12T00:00:00.000Z",
+  });
+  try {
+    const result = await spoolOssEntry(stalledEntry, new AbortController().signal, {
       bodyTimeoutMs: 5,
       createReadUrl: async () =>
         "https://m80-private-bucket.oss-cn-hangzhou.aliyuncs.com/stalled.png",
-      fetchDownload: async (_location, _dependencies, signal) => {
-        requestSignal = signal;
-        return new Response(new ReadableStream<Uint8Array>({
-          cancel() {
-            cancelled = true;
-          },
-          pull() {
-            // Deliberately never produces a chunk.
-          },
-        }), { status: 200 });
-      },
+      fetchDownload: stalledFetch,
       makeTempDirectory: () => mkdtemp(join(directory, "entry-")),
-      profileForMedia: async () => ({
-        ...dummyProfile(),
-        createdAt: "2026-08-12T00:00:00.000Z",
-        id: "stalled-profile",
-        provider: "aliyun-oss" as const,
-        status: "active" as const,
-        updatedAt: "2026-08-12T00:00:00.000Z",
-      }),
+      profileForMedia: stalledProfile,
     });
     expect(result).toBeUndefined();
     expect(requestSignal?.aborted).toBe(true);
     expect(cancelled).toBe(true);
     expect(await readdir(directory)).toEqual([]);
+
+    expect(groupDownloadWorkPrefix()).toBe(join(directory, "group-download-work-"));
+    cancelled = false;
+    noteSignal(undefined);
+    const defaultResult = await spoolOssEntry(
+      stalledEntry,
+      new AbortController().signal,
+      {
+        bodyTimeoutMs: 5,
+        createReadUrl: async () =>
+          "https://m80-private-bucket.oss-cn-hangzhou.aliyuncs.com/stalled.png",
+        fetchDownload: stalledFetch,
+        profileForMedia: stalledProfile,
+      },
+    );
+    expect(defaultResult).toBeUndefined();
+    expect(requestSignal?.aborted).toBe(true);
+    expect(cancelled).toBe(true);
+    expect(
+      (await readdir(directory)).filter((name) =>
+        name.startsWith("group-download-work-"),
+      ),
+    ).toEqual([]);
+
+    const spooled = await spoolOssEntry({
+      ...stalledEntry,
+      byteSize: 4,
+      name: "用户标题-1.png",
+    }, new AbortController().signal, {
+      createReadUrl: async () =>
+        "https://m80-private-bucket.oss-cn-hangzhou.aliyuncs.com/stalled.png",
+      fetchDownload: async () =>
+        new Response(new Uint8Array([1, 2, 3, 4]), {
+          headers: { "content-length": "4" },
+          status: 200,
+        }),
+      profileForMedia: stalledProfile,
+    });
+    expect(spooled).toBeDefined();
+    expect(spooled?.file.endsWith("/spool.png")).toBe(true);
+    expect(spooled?.file.includes("用户")).toBe(false);
+    expect(spooled?.tempDirectory.startsWith(groupDownloadWorkPrefix())).toBe(
+      true,
+    );
+    if (spooled) {
+      await rm(spooled.tempDirectory, { force: true, recursive: true });
+    }
+    expect(
+      (await readdir(directory)).filter((name) =>
+        name.startsWith("group-download-work-"),
+      ),
+    ).toEqual([]);
   } finally {
+    if (previousDataDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
+    else process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
     await rm(directory, { force: true, recursive: true });
   }
 });
