@@ -1,7 +1,6 @@
 import { ZipArchive } from "archiver";
-import { mkdtemp, open, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, open, rm, stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { finished } from "node:stream/promises";
@@ -27,6 +26,25 @@ const canvasIdPattern = /^[a-z0-9._-]+$/i;
 const nodeIdPattern = /^[a-z0-9._:-]{1,200}$/i;
 const MAX_DOWNLOAD_BYTES = 500 * 1024 * 1024;
 const MAX_DOWNLOAD_FILES = 200;
+const GROUP_DOWNLOAD_WORK_PREFIX = "group-download-work-";
+
+export function groupDownloadWorkPrefix() {
+  return join(appDataDirectory(), GROUP_DOWNLOAD_WORK_PREFIX);
+}
+
+/** On-disk spool name only. ZIP entry names stay on the sanitized title. */
+export function groupDownloadSpoolFileName(extension: string) {
+  const safe = /^[a-z0-9]{1,8}$/i.test(extension)
+    ? extension.toLocaleLowerCase()
+    : "bin";
+  return `spool.${safe}`;
+}
+
+async function defaultGroupDownloadTempDirectory() {
+  const parent = appDataDirectory();
+  await mkdir(parent, { recursive: true, mode: 0o700 });
+  return mkdtemp(groupDownloadWorkPrefix());
+}
 
 export type DownloadPlanInput = {
   byteSize: number;
@@ -272,10 +290,10 @@ export async function spoolOssEntry(
   let complete = false;
   let size = 0;
   try {
-    tempDirectory = await (execution.makeTempDirectory ?? mkdtemp)(
-      join(tmpdir(), "unboundry-group-download-"),
-    );
-    const file = join(tempDirectory, entry.name);
+    tempDirectory = await (
+      execution.makeTempDirectory ?? defaultGroupDownloadTempDirectory
+    )(groupDownloadWorkPrefix());
+    const file = join(tempDirectory, groupDownloadSpoolFileName(entry.extension));
     handle = await open(file, "wx");
     while (true) {
       const { done, value } = await readBodyChunk(reader, signal);
@@ -596,9 +614,10 @@ export async function groupDownloadApi(
   response.once("close", responseClosed);
   totalDeadline.addEventListener("abort", abortOperation, { once: true });
   try {
+    // Stat this volume; process temp may be below the 1 GiB floor.
     releaseResources = await reserveMediaResources({
       bytes: Math.max(1, plan.totalBytes),
-      directory: tmpdir(),
+      directory: appDataDirectory(),
       ownerId,
     });
     const failedOssTaskIds = new Set<string>();

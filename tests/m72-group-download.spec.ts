@@ -12,9 +12,11 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { openAppDatabase } from "../server/database";
+import { appDataDirectory, openAppDatabase } from "../server/database";
 import {
   downloadEntryName,
+  groupDownloadSpoolFileName,
+  groupDownloadWorkPrefix,
   planGroupDownload,
   sanitizeDownloadBaseName,
   type DownloadPlanInput,
@@ -30,6 +32,18 @@ test("download naming helpers sanitize titles and deduplicate by sequence", () =
   expect(sanitizeDownloadBaseName("a".repeat(120)).length).toBe(80);
   expect(downloadEntryName("商品图", 3, "png")).toBe("商品图-3.png");
   expect(downloadEntryName("视频", 10, "mp4")).toBe("视频-10.mp4");
+  expect(groupDownloadWorkPrefix()).toBe(
+    join(appDataDirectory(), "group-download-work-"),
+  );
+  expect(groupDownloadSpoolFileName("PNG")).toBe("spool.png");
+  expect(groupDownloadSpoolFileName("mp4")).toBe("spool.mp4");
+  expect(groupDownloadSpoolFileName("../x")).toBe("spool.bin");
+  expect(groupDownloadSpoolFileName("")).toBe("spool.bin");
+  const source = readFileSync(join(process.cwd(), "server/groupDownload.ts"), "utf8");
+  expect(source).toContain("directory: appDataDirectory()");
+  expect(source).toContain("groupDownloadSpoolFileName(entry.extension)");
+  expect(source).not.toContain('from "node:os"');
+  expect(source).not.toMatch(/directory:\s*tmpdir\s*\(/);
 });
 
 test("download plan enforces file and byte limits and maps text/media extensions", () => {
@@ -358,6 +372,11 @@ test("group download streams a zip with hashed contents and 说明-free names", 
       "你好，Unboundry\n第二行",
     );
     expect(existsSync(join(output, "下载说明.txt"))).toBeFalsy();
+    expect(
+      readdirSync(dataDirectory).filter((name) =>
+        name.startsWith("group-download-work-"),
+      ),
+    ).toEqual([]);
   } finally {
     rmSync(working, { force: true, recursive: true });
   }

@@ -284,8 +284,15 @@ function GroupNodeImpl({
       );
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as {
+          code?: string;
           error?: string;
         };
+        if (body.code === "INSUFFICIENT_STORAGE") {
+          throw new Error("磁盘空间不足，请稍后再试");
+        }
+        if (body.code === "RESOURCE_BUSY") {
+          throw new Error("打包人数较多，请稍后再试");
+        }
         throw new Error(body.error ?? "下载失败");
       }
       const blob = await response.blob();

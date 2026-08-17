@@ -2,6 +2,10 @@
 
 > 写给下一个接手的人/AI agent。目标：看完本文后不需要向用户问“项目在哪、怎么跑、怎么发布、有什么红线”。
 
+## 最新本地待发事件：INC-UI-009（v0.6.11本地已提交，尚未切生产）
+
+用户确认按`v0.6.11`并说可以上线。整组/模板下载借空间和云端临时文件改走数据盘，1GB保底不降，盘上不用节点标题当文件名。生产仍运行`v0.6.10`。当前状态是`LOCAL_COMMITTED / USER_RECHECK`，不能写成已上线。权威记录：`spec/INC_UI_009_GROUP_DOWNLOAD_STORAGE_2026-08-17.md`。
+
 ## 最新已发布事件：INC-UI-008（v0.6.10已发布，待用户复验）
 
 用户确认按`v0.6.10`并说可以上线。文字点「全屏」改为图片同款画布遮罩，不再进系统全屏。精确源码commit`7f85e608d4580f43d67beeaabe19ee0fac29787f`通过安全全量`118/118 specs、969/969 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.10-inc-ui-008-20260817`，公网资源哈希、冻结备份恢复、service/schema39及数据不变门PASS；生产保持246 tasks、248 attempts、active0、47 public templates（46 published）。`v0.6.10`已推送，PR #16已合并到`main`（merge commit`97f94292ce811c752a4c6b84f9370fed0abfd2cb`）。当前状态是`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，不能写成用户验收PASS。权威记录：`spec/INC_UI_008_TEXT_CANVAS_FULLSCREEN_2026-08-17.md`与`spec/INC_UI_008_PRODUCTION_RECEIPT_2026-08-17.json`。

@@ -448,6 +448,12 @@ test("real HTTP slow and oversized bodies receive structured close responses", a
 });
 
 test("resource budget preserves the exact 500MiB contract and releases idempotently", async () => {
+  expect(mediaResourceBudget.options).toMatchObject({
+    globalBytes: 2 * 1_024 * 1_024 * 1_024,
+    globalJobs: 2,
+    minimumFreeBytes: 1_024 * 1_024 * 1_024,
+    perOwnerJobs: 2,
+  });
   const maxVideoBytes = 500 * 1_024 * 1_024;
   const budget = new ResourceBudget({
     globalBytes: 2 * 1_024 * 1_024 * 1_024,
