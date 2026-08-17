@@ -1,14 +1,16 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-17
-状态：`v0.6.8本地已提交待发布；生产仍为v0.6.7。INC-GEN-002为LOCAL_COMMITTED / USER_RECHECK，INC-GEN-001仍为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，既有其他验收状态保持。`
+状态：`v0.6.8已发布，待用户复验。INC-GEN-002为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，INC-GEN-001仍为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，既有其他验收状态保持。`
 
 ### 2026-08-17 同层生成提交排队（INC-GEN-002）
 
-- 状态：`LOCAL_COMMITTED / USER_RECHECK`。用户确认按`v0.6.8`，并要求带上上线规矩、对齐文档后 commit。
+- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。用户确认按`v0.6.8`并说「上线，发布。」；尚未收到肉眼“通过”。
 - 实现：同一画布的等保存、提交任务、写回任务号排队；同层真正生成仍并行。图/字/视频/音频首次生成、重试、核对结果共用入口。
-- 自动门：类型检查通过；`m22` 18/18、`m40` 14/14、`m27` 20/20、`m41` 51/51；冻结清单保持 `118 specs / 969 tests`。
-- 发布：尚未切生产、未 push/tag/PR。权威记录为`spec/INC_GEN_002_CANVAS_SUBMIT_QUEUE_2026-08-17.md`。
+- 自动门：正式安全全量`118/118 specs、969/969 tests PASS`，失败/跳过/重试/blocked/reportErrors均0；定向`m22` 18/18、`m40` 14/14、`m27` 20/20、`m41` 51/51。
+- 发布：commit`c2e05d142a5556446d96a8532ca7297cba4e03a5`已发布到`/opt/unboundry/releases/v0.6.8-inc-gen-002-20260817`；冻结备份/恢复副本、公网关键资源、service/schema39和数据不变门通过。
+- 数据与外部影响：tasks230、attempts232、active0、公共模板47（46 published）前后不变；Provider/付费生成/OSS写入0。
+- GitHub：标签`v0.6.8`精确指向生产源码；PR #10已合并，merge commit`1e1d5b482148240409e283fc19e6f3ffa66202a4`。权威记录为`spec/INC_GEN_002_CANVAS_SUBMIT_QUEUE_2026-08-17.md`与生产receipt。
 
 ### 2026-08-17 生成用时与画布核对结果（INC-GEN-001）
 

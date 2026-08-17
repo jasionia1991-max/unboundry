@@ -2,16 +2,17 @@
 
 断点版本：`71`
 更新时间：`2026-08-17`
-状态：`INC_GEN_002_V0_6_8_LOCAL_COMMITTED_USER_RECHECK`
+状态：`INC_GEN_002_V0_6_8_PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
-## 0. 当前本地提交：INC-GEN-002（v0.6.8，待发布）
+## 0. 当前已发布事件：INC-GEN-002（v0.6.8已发布，待用户复验）
 
-- 用户确认按`v0.6.8`，带上上线规矩，对齐文档后 commit。
+- 用户确认按`v0.6.8`并说「上线，发布。」
 - 同一画布的等保存、提交任务、写回任务号排队；同层真正生成仍并行。
-- 类型检查通过；`m22` 18/18、`m40` 14/14、`m27` 20/20、`m41` 51/51；冻结清单仍为 969。
-- 生产仍运行 v0.6.7。尚未切生产、未 push/tag/PR。
-- 权威记录：`spec/INC_GEN_002_CANVAS_SUBMIT_QUEUE_2026-08-17.md`。
+- 精确源码commit`c2e05d142a5556446d96a8532ca7297cba4e03a5`通过正式安全全量`118/118 specs、969/969 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。
+- 生产current已切到`/opt/unboundry/releases/v0.6.8-inc-gen-002-20260817`；冻结备份恢复、公网资源逐字节哈希、service/schema39和数据不变门均PASS。生产保持230 tasks、232 attempts、active0、47 public templates（46 published）。
+- `v0.6.8`标签精确指向源码commit；PR #10已合并到`main`，merge commit`1e1d5b482148240409e283fc19e6f3ffa66202a4`。用户肉眼验收仍为`USER_RECHECK`。
+- 权威记录：`spec/INC_GEN_002_CANVAS_SUBMIT_QUEUE_2026-08-17.md`与`spec/INC_GEN_002_PRODUCTION_RECEIPT_2026-08-17.json`。
 
 ## 0.05 前一已发布事件：INC-GEN-001（v0.6.7已发布，待用户复验）
 
@@ -525,22 +526,22 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 
 ## 10. 2026-08-17 当前恢复卡
 
-> 2026-08-17 INC-GEN-002本地断点：v0.6.8已本地提交，生产仍为v0.6.7。同层生成提交排队与上线规矩入库；切生产前不得写成已上线。以INC-GEN-002文档为准。上一节v0.6.7恢复卡只作已发布历史。
+> 2026-08-17 INC-GEN-002已发布：v0.6.8已切生产并完成GitHub收尾。同层生成提交排队与上线规矩入库。以INC-GEN-002文档与生产receipt为准。上一节v0.6.7恢复卡只作已发布历史。
 
 ```text
 项目路径：/Users/mymy/Documents/unboundry/app
-本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.8本地提交待发布；禁止reset/clean
-生产：canvas.mymy.ltd；v0.6.7/schema39；/opt/unboundry/current -> releases/v0.6.7-inc-gen-001-20260817
-生产artifact：source commit a4dc45f4cdfa30547dac401fc29d6796ba233832；tree 904652dea6368fd294b6a6974939fc58874f536c
-当前状态：INC-GEN-002 LOCAL_COMMITTED / USER_RECHECK；INC-GEN-001 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK；INC-UI-007/006保持PRODUCTION_PUBLISHED_USER_PASS；既有INC-UI-005/004/003、INC-VIDEO-001、INC-UI-001/002状态保持；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
-技术凭证：spec/INC_GEN_002_CANVAS_SUBMIT_QUEUE_2026-08-17.md；spec/INC_GEN_001_PRODUCTION_RECEIPT_2026-08-17.json；既有v0.6.7及更早发布凭证继续保留
-用户验收：既有v0.6.0/v0.6.1/v0.6.5/v0.6.6验收保持；v0.6.8排队修复待发布后复验；v0.6.7用时与核对结果待用户复验；v0.6.4组标题总览、v0.6.3公共模板UI与旧标签恢复、v0.6.2其余UI/视频项继续等待用户线上复验
-数据库：schema39；quick_check ok；FK0；220 tasks/221 attempts；47 public templates/46 published；active0；默认视频模型Seedance；既有生成安全配置不变
-备份：/var/lib/unboundry-rollbacks/inc-gen-001-frozen-20260817T075553Z；冻结源与恢复副本均363文件，清单SHA c70f7eb5479f523055a230502fb6f7ae12722a332a7e856ac418995b85b8378a，二者均PASS；历史schema37/offhost及v0.6.6冻结备份继续保留
+本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.8已发布；禁止reset/clean
+生产：canvas.mymy.ltd；v0.6.8/schema39；/opt/unboundry/current -> releases/v0.6.8-inc-gen-002-20260817
+生产artifact：source commit c2e05d142a5556446d96a8532ca7297cba4e03a5；tree d8c8609be69c969ad7bef7db05b8656351726e33
+当前状态：INC-GEN-002 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK；INC-GEN-001 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK；INC-UI-007/006保持PRODUCTION_PUBLISHED_USER_PASS；既有INC-UI-005/004/003、INC-VIDEO-001、INC-UI-001/002状态保持；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
+技术凭证：spec/INC_GEN_002_PRODUCTION_RECEIPT_2026-08-17.json；spec/INC_GEN_002_CANVAS_SUBMIT_QUEUE_2026-08-17.md；既有v0.6.7及更早发布凭证继续保留
+用户验收：既有v0.6.0/v0.6.1/v0.6.5/v0.6.6验收保持；v0.6.8排队修复待用户复验；v0.6.7用时与核对结果待用户复验；v0.6.4组标题总览、v0.6.3公共模板UI与旧标签恢复、v0.6.2其余UI/视频项继续等待用户线上复验
+数据库：schema39；quick_check ok；FK0；230 tasks/232 attempts；47 public templates/46 published；active0；默认视频模型Seedance；既有生成安全配置不变
+备份：/var/lib/unboundry-rollbacks/inc-gen-002-frozen-20260817T104142Z；冻结源与恢复副本均363文件，清单SHA c99566ef9823e495fcc82c7084cda65be171c9b82abc8356852cf2280dfd08ac，二者均PASS；历史schema37/offhost及v0.6.7冻结备份继续保留
 限制：attempt 86/108/116/120/122为行政取消且禁止重试，PROVIDER_FAILED仅surrogate；3条音频仅改duration元数据；cutover Provider/paid calls=0
-GitHub：v0.6.7注释标签精确指向生产源码a4dc45f4cdfa30547dac401fc29d6796ba233832；PR #8已合并到main，merge commit 58da30589186296e0d275cdac73350f3dbec338a
-未来授权：本次v0.6.7生产与GitHub发布授权已消费；未来生产读写、真实Provider/付费生成、push/tag/PR或新发布仍需新授权
-下一步：v0.6.8已本地提交；切生产、push/tag/PR需使用用户对本轮的上线授权，不得继续消费v0.6.7授权
+GitHub：v0.6.8注释标签精确指向生产源码c2e05d142a5556446d96a8532ca7297cba4e03a5；PR #10已合并到main，merge commit 1e1d5b482148240409e283fc19e6f3ffa66202a4
+未来授权：本次v0.6.8生产与GitHub发布授权已消费；未来生产读写、真实Provider/付费生成、push/tag/PR或新发布仍需新授权
+下一步：等待用户肉眼复验v0.6.8同层一起跑以及v0.6.7用时/核对结果；不得继续消费本次授权
 ```
 
 任何恢复者必须优先使用本节；第9节只保留历史，不得执行其“下一步”。

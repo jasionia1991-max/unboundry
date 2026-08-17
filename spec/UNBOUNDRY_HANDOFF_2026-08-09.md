@@ -2,11 +2,11 @@
 
 > 写给下一个接手的人/AI agent。目标：看完本文后不需要向用户问“项目在哪、怎么跑、怎么发布、有什么红线”。
 
-## 当前本地提交：INC-GEN-002（v0.6.8，待发布）
+## 最新已发布事件：INC-GEN-002（v0.6.8已发布，待用户复验）
 
-用户确认按`v0.6.8`，并要求带上上线规矩、对齐文档后 commit。同层节点一起跑时，「等保存 → 提交任务 → 写回任务号」按画布排队，平台生成仍并行，避免互相报「画布还在保存」。生产仍运行 v0.6.7。状态`LOCAL_COMMITTED / USER_RECHECK`。权威记录：`spec/INC_GEN_002_CANVAS_SUBMIT_QUEUE_2026-08-17.md`。
+用户确认按`v0.6.8`并说「上线，发布。」同层节点一起跑时，「等保存 → 提交任务 → 写回任务号」按画布排队，平台生成仍并行，避免互相报「画布还在保存」。精确源码commit`c2e05d142a5556446d96a8532ca7297cba4e03a5`通过安全全量`118/118 specs、969/969 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.8-inc-gen-002-20260817`，公网资源哈希、冻结备份恢复、service/schema39及数据不变门PASS；生产保持230 tasks、232 attempts、active0、47 public templates（46 published）。`v0.6.8`已推送，PR #10已合并到`main`（merge commit`1e1d5b482148240409e283fc19e6f3ffa66202a4`）。当前状态是`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，不能写成用户验收PASS。权威记录：`spec/INC_GEN_002_CANVAS_SUBMIT_QUEUE_2026-08-17.md`与`spec/INC_GEN_002_PRODUCTION_RECEIPT_2026-08-17.json`。
 
-## 最新已发布事件：INC-GEN-001（v0.6.7已发布，待用户复验）
+## 前一已发布事件：INC-GEN-001（v0.6.7已发布，待用户复验）
 
 用户明确“那上线吧”。画布现已显示已完成生成用时；平台结果对不上时，用户在画布点「核对结果」即可收回成片或确认没有成片后再重试，不用自己去平台下图。精确源码commit`a4dc45f4cdfa30547dac401fc29d6796ba233832`通过安全全量`118/118 specs、969/969 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.7-inc-gen-001-20260817`，公网资源哈希、冻结备份恢复、service/schema39及数据不变门PASS；生产保持220 tasks、221 attempts、active0、47 public templates（46 published）。`v0.6.7`已推送，PR #8已合并到`main`（merge commit`58da30589186296e0d275cdac73350f3dbec338a`）。当前状态是`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，不能写成用户验收PASS。
 
@@ -52,13 +52,13 @@ Grok首帧中转协议已从`first_frame_url`修为`images`数组并限制恰好
 
 ## 0. 2026-08-17 最终生产状态（当前权威）
 
-- 当前状态：`REM-000～011（含009A/009B）PASS / PRODUCTION LIVE / INC-GEN-002本地已提交待发布 / INC-GEN-001已发布自动与技术验证PASS待用户复验 / INC-UI-007已发布并完成USER PASS / INC-UI-006已发布并完成USER PASS / INC-UI-005～003已发布自动与实页技术验证PASS待用户复验 / INC-VIDEO-001真实视频PASS待用户复验 / INC-UI-001/002已发布待用户复验 / INC-ECOM-001～007按各自证据边界完成用户收口`。
-- 生产运行 `v0.6.7/schema39`，`/opt/unboundry/current -> releases/v0.6.7-inc-gen-001-20260817`；service active+enabled、NRestarts0、127.0.0.1:4173。公网live/ready/version/root正常，version 0.6.7、ready active/schema39；默认视频模型仍为Seedance 2.0 Mini。
-- v0.6.7源码commit`a4dc45f4cdfa30547dac401fc29d6796ba233832`/tree`904652dea6368fd294b6a6974939fc58874f536c`；上一不可变release `v0.6.6-inc-ui-007-20260817`及全部历史备份继续保留。
-- 数据最新核验：schema39、quick_check ok、FK0、active generation0、220 tasks/221 provider attempts、47 public templates（46 published）。INC-GEN-001未改画布文档、节点坐标、连线、Provider或OSS；Provider/付费/OSS写入0，既有真实流水与Seedance视频结果保持。
-- GitHub当前权威状态：生产源码commit`a4dc45f4cdfa30547dac401fc29d6796ba233832`由注释标签`v0.6.7`精确标记；PR #8已合并到`main`，merge commit`58da30589186296e0d275cdac73350f3dbec338a`。该发布授权已消费；新commit/push/tag/PR、生产或外部服务动作均需新授权。
+- 当前状态：`REM-000～011（含009A/009B）PASS / PRODUCTION LIVE / INC-GEN-002已发布自动与技术验证PASS待用户复验 / INC-GEN-001已发布自动与技术验证PASS待用户复验 / INC-UI-007已发布并完成USER PASS / INC-UI-006已发布并完成USER PASS / INC-UI-005～003已发布自动与实页技术验证PASS待用户复验 / INC-VIDEO-001真实视频PASS待用户复验 / INC-UI-001/002已发布待用户复验 / INC-ECOM-001～007按各自证据边界完成用户收口`。
+- 生产运行 `v0.6.8/schema39`，`/opt/unboundry/current -> releases/v0.6.8-inc-gen-002-20260817`；service active+enabled、NRestarts0、127.0.0.1:4173。公网version/root正常，version 0.6.8；默认视频模型仍为Seedance 2.0 Mini。
+- v0.6.8源码commit`c2e05d142a5556446d96a8532ca7297cba4e03a5`/tree`d8c8609be69c969ad7bef7db05b8656351726e33`；上一不可变release `v0.6.7-inc-gen-001-20260817`及全部历史备份继续保留。
+- 数据最新核验：schema39、quick_check ok、FK0、active generation0、230 tasks/232 provider attempts、47 public templates（46 published）。INC-GEN-002未改画布文档、节点坐标、连线、Provider或OSS；Provider/付费/OSS写入0，既有真实流水与Seedance视频结果保持。
+- GitHub当前权威状态：生产源码commit`c2e05d142a5556446d96a8532ca7297cba4e03a5`由注释标签`v0.6.8`精确标记；PR #10已合并到`main`，merge commit`1e1d5b482148240409e283fc19e6f3ffa66202a4`。该发布授权已消费；新commit/push/tag/PR、生产或外部服务动作均需新授权。
 
-以下条目保留v0.6.0～v0.6.6各增量发布的历史证据；出现“当前”字样时只代表该历史时点，不覆盖上方v0.6.7权威状态。
+以下条目保留v0.6.0～v0.6.7各增量发布的历史证据；出现“当前”字样时只代表该历史时点，不覆盖上方v0.6.8权威状态。
 - INC-ECOM-004已为16条电商模板发布真实封面；生产18条published模板现`withPreview=18 / withoutPreview=0`。最终静态内容叠加绑定本地commit `d908c4b3824cd36638f02fec51cbe335f6aacd52`，manifest `340452f7…d7a9`、inventory `1d795f29…f464`；公网16张均HTTP200、`image/jpeg`且SHA逐项相符。用户已确认“都通过了”，状态为`PRODUCTION_STATIC_COVERS_DEPLOYED / USER_VISUAL_PASS`。
 - 该叠加以当前可信formal base `5386c744…47b1`为底，只增加双目录静态文件和manifest绑定，不冒充fresh formal builder/full regression。首轮只写源码静态目录的source-only产物被公网哈希门检出并退役保留；最终产物同时包含`client/public/templates`和`dist/client/templates`。
 - INC-ECOM-004回滚材料：停机备份`/var/lib/unboundry-rollbacks/inc-ecom-004-20260815T080758Z`；原formal release在`/opt/unboundry/retired-releases/20260815T080758Z-pre-inc-ecom-004/v0.6.0`；source-only产物在`/opt/unboundry/retired-releases/20260815T081400Z-inc-ecom-004-source-only/v0.6.0`。发布前后tasks109/attempts107/active0，并发500、Provider与数据manifest未变，OSS/付费生成0。
@@ -252,4 +252,4 @@ ssh live-cockpit "curl -fsS http://127.0.0.1:4173/api/version"
 5. 向用户先报告恢复出的项目、版本、当前项和授权；
 6. 任一不一致都必须停止，不得依据内部记忆、历史 PASS 或压缩摘要猜测继续。
 
-当前执行点：`INC-GEN-002 LOCAL_COMMITTED / USER_RECHECK / INC-GEN-001 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK / INC-UI-007 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-006 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-005～003、INC-UI-001/002、INC-VIDEO-001 仍为已发布待用户复验 / INC-ECOM-001～007 USER ACCEPTED / REM-000～011（含009A/009B）PASS / PRODUCTION LIVE`。生产仍为v0.6.7/schema39；current→`v0.6.7-inc-gen-001-20260817`。本地包版本0.6.8待发布。未实际运行的付费两图/视频抽验继续延期。
+当前执行点：`INC-GEN-002 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK / INC-GEN-001 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK / INC-UI-007 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-006 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-005～003、INC-UI-001/002、INC-VIDEO-001 仍为已发布待用户复验 / INC-ECOM-001～007 USER ACCEPTED / REM-000～011（含009A/009B）PASS / PRODUCTION LIVE`。生产已为v0.6.8/schema39；current→`v0.6.8-inc-gen-002-20260817`。未实际运行的付费两图/视频抽验继续延期。
