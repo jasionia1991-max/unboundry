@@ -20,7 +20,7 @@
 
 ## 2. 当前授权边界
 
-- **2026-08-18 当前权威状态**：生产已运行`v0.6.11/schema39`，`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.11-inc-ui-009-20260817`。`INC-UI-009 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-UI-008 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-GEN-003/002/001 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-UI-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-000～011（含009A/009B） = PASS`；
+- **2026-08-18 当前权威状态**：生产仍运行`v0.6.11/schema39`，`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.11-inc-ui-009-20260817`。`INC-GEN-004 = LOCAL_COMMITTED`（v0.6.12整组存稳，待发布），`INC-UI-009 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-UI-008 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-GEN-003/002/001 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-UI-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-000～011（含009A/009B） = PASS`；
 - v0.6.11生产源码commit为`321668e1adf692e356b1e504230721451af8ddcf`、tree为`3ea47f74267ec1e5c1b5c0d80fef51115161e021`；注释标签`v0.6.11`精确指向该源码。PR #18已于2026-08-17合并到`main`，merge commit为`749e45cb68feabd11b4ffc721e06df4cd46a2b77`。生产凭证为`spec/INC_UI_009_PRODUCTION_RECEIPT_2026-08-17.json`；
 - v0.6.11正式安全全量为`118/118 specs、969/969 tests PASS`，异常0。整组下载改走数据盘已发布，用户已回复“通过”；
 - 冻结备份位于`/var/lib/unboundry-rollbacks/inc-ui-009-frozen-20260817T161145Z`，冻结源与恢复副本均365文件且清单SHA-256同为`c835cdcd7eb112696115cbf7528c4aab206517838ecc11fc6e59a91aad5c8e4f`。发布与验证期间真实Provider请求、付费生成和OSS写入均为0；上一不可变release `v0.6.10-inc-ui-008-20260817`及对应冻结备份继续保留；

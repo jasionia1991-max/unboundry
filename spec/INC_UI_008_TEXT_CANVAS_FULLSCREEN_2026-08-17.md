@@ -1,6 +1,6 @@
 # INC-UI-008：文字节点画布级全屏
 
-状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
+状态：`PRODUCTION_PUBLISHED_USER_PASS`
 版本：`v0.6.10`
 日期：`2026-08-17`
 
@@ -32,6 +32,6 @@
 - 数据不变：切换后schema39、quick_check ok、FK0、tasks246、attempts248、active0、公共模板47（46 published）。
 - GitHub：注释标签`v0.6.10`指向`7f85e608d4580f43d67beeaabe19ee0fac29787f`；PR #16已合并，merge commit`97f94292ce811c752a4c6b84f9370fed0abfd2cb`。
 - 发布与验证期间真实Provider请求、付费生成和OSS写入均为0。
-- 自动验证不代替用户肉眼验收。请打开网站强制刷新后，看文字节点点「全屏」是否还进系统全屏。
+- 用户于 2026-08-18 明确回复文字全屏也通过，本项正式收口为`PRODUCTION_PUBLISHED_USER_PASS`。
 
 详细凭证：`spec/INC_UI_008_PRODUCTION_RECEIPT_2026-08-17.json`。

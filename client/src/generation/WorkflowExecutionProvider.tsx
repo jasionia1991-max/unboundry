@@ -11,6 +11,10 @@ import type { ProbeNodeType } from "../canvas/ProbeNode";
 import type { CuttableEdge } from "../canvas/canvasTypes";
 import { useGenerationCanvas } from "./GenerationCanvasContext";
 import {
+  persistGroupCanvasAfterNode,
+  runGroupNodeWithPersist,
+} from "./groupRunPersist";
+import {
   buildWorkflowLayers,
   isExecutableWorkflowNode,
   isWorkflowNodeGenerating,
@@ -211,12 +215,22 @@ export function WorkflowExecutionProvider({
             if (!registration) {
               return { message: "节点尚未就绪", status: "failed" };
             }
-            const preflight = await waitForRuntimePreflight(
-              registration,
-              executableIds,
-            );
-            if (preflight.status !== "success") return preflight;
-            return registration.run();
+            return runGroupNodeWithPersist({
+              isCancelled: () => running.cancelled,
+              persist: () =>
+                persistGroupCanvasAfterNode({
+                  flushCanvasSave,
+                  waitForCanvasRevision,
+                }),
+              run: async () => {
+                const preflight = await waitForRuntimePreflight(
+                  registration,
+                  executableIds,
+                );
+                if (preflight.status !== "success") return preflight;
+                return registration.run();
+              },
+            });
           },
         });
         publishGroupRunSummary({

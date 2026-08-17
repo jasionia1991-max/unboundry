@@ -1,7 +1,14 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-18
-状态：`v0.6.11已发布并通过用户验收。INC-UI-009为PRODUCTION_PUBLISHED_USER_PASS，INC-UI-008为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，INC-GEN-003/002/001保持PRODUCTION_PUBLISHED_USER_PASS，既有其他验收状态保持。`
+状态：`v0.6.12本地已提交待发布。INC-GEN-004为LOCAL_COMMITTED，INC-UI-009/008为PRODUCTION_PUBLISHED_USER_PASS，INC-GEN-003/002/001保持PRODUCTION_PUBLISHED_USER_PASS，既有其他验收状态保持。生产在切换前仍运行v0.6.11。`
+
+### 2026-08-18 整组节点结束后先存稳（INC-GEN-004）
+
+- 状态：`LOCAL_COMMITTED`。用户同意方案、版本顺延为`v0.6.12`，并授权验完后直接上线。
+- 实现：组内节点结束后等画面落稳并保存，再让下游开工；等版本号时再确认画布没又变脏；整组「画布还在保存」最多再试一次；错误提示约8秒。
+- 自动门：正式安全全量`118/118 specs、971/971 tests PASS`，失败/跳过/重试/blocked/reportErrors均0。
+- 发布：尚未切换生产。权威记录为`spec/INC_GEN_004_GROUP_RUN_PERSIST_BARRIER_2026-08-18.md`。
 
 ### 2026-08-17 整组下载改走数据盘（INC-UI-009）
 
@@ -14,7 +21,7 @@
 
 ### 2026-08-17 文字节点画布级全屏（INC-UI-008）
 
-- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。用户确认按`v0.6.10`并说可以上线；尚未收到肉眼“通过”。
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户确认按`v0.6.10`并说可以上线；2026-08-18明确回复文字全屏也通过。
 - 实现：文字全屏复用图片画布遮罩；只读正文可滚动；复制代替下载；拿掉系统全屏。
 - 自动门：正式安全全量`118/118 specs、969/969 tests PASS`，失败/跳过/重试/blocked/reportErrors均0。
 - 发布：commit`7f85e608d4580f43d67beeaabe19ee0fac29787f`已发布到`/opt/unboundry/releases/v0.6.10-inc-ui-008-20260817`；冻结备份/恢复副本、公网关键资源、service/schema39和数据不变门通过。
