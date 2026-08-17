@@ -9,6 +9,7 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import { memo, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useCanvasCheckpoint } from "./CanvasHistory";
 import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
@@ -306,6 +307,7 @@ function TextNodeImpl({
   const [background, setBackground] = useState("#1f1f1f");
   const [bodyEditing, setBodyEditing] = useState(false);
   const [empty, setEmpty] = useState(!data.content);
+  const [fullscreen, setFullscreen] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [saved, setSaved] = useState(false);
   const [modelSwitchProblem, setModelSwitchProblem] = useState("");
@@ -330,7 +332,6 @@ function TextNodeImpl({
   const [bodyValue, setBodyValue] = useState(() =>
     storedRichTextValue(data.content ?? "", data.contentHtml),
   );
-  const cardRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const bodyLocalValue = useRef(bodyValue);
   const activeTaskRef = useRef<string | null>(null);
@@ -751,6 +752,18 @@ function TextNodeImpl({
     setEmpty(!bodyValue.text.trim());
   }, [bodyEditing, bodyValue]);
 
+  useEffect(() => {
+    if (!fullscreen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setFullscreen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape, true);
+    return () => window.removeEventListener("keydown", closeOnEscape, true);
+  }, [fullscreen]);
+
   const edit = (command: string, value?: string) => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -761,6 +774,15 @@ function TextNodeImpl({
     bodyLocalValue.current = nextValue;
     setEmpty(!nextValue.text.trim());
     bodyControl.change(nextValue, false);
+  };
+
+  const copyTextContent = (liveEditor = false) => {
+    const bodyText = liveEditor
+      ? (editorRef.current?.innerText ?? bodyControl.committedValue.text)
+      : bodyControl.committedValue.text;
+    void navigator.clipboard
+      .writeText(`${titleControl.committedValue}\n${bodyText}`)
+      .catch(() => undefined);
   };
 
   const runTool = (name: ToolName) => {
@@ -783,13 +805,13 @@ function TextNodeImpl({
     } else if (name === "pin") {
       setPinned((current) => !current);
     } else if (name === "copy") {
-      void navigator.clipboard
-        .writeText(`${titleControl.committedValue}\n${editorRef.current?.innerText ?? ""}`)
-        .catch(() => undefined);
+      copyTextContent(true);
     } else if (name === "save") {
       setSaved(true);
-    } else {
-      void cardRef.current?.requestFullscreen();
+    } else if (name === "fullscreen") {
+      editorRef.current?.blur();
+      setBodyEditing(false);
+      setFullscreen(true);
     }
   };
 
@@ -2028,7 +2050,6 @@ function TextNodeImpl({
         className="text-node-card"
         data-pinned={pinned || undefined}
         data-testid={`text-node-${id}`}
-        ref={cardRef}
         style={{ background }}
       >
         <div
@@ -2203,6 +2224,45 @@ function TextNodeImpl({
           <span className="node-handle-plus" />
         </span>
       </Handle>
+      {fullscreen &&
+        createPortal(
+          <div
+            className="image-detail-backdrop"
+            data-testid="text-detail"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setFullscreen(false);
+            }}
+          >
+            <div
+              aria-label={`${titleControl.committedValue || "Text"} 文字详情`}
+              aria-modal="true"
+              className="image-detail-dialog text-detail-dialog"
+              role="dialog"
+            >
+              <div className="image-detail-actions">
+                <strong>{titleControl.committedValue || "Text"}</strong>
+                <button onClick={() => copyTextContent()} type="button">
+                  复制
+                </button>
+                <button
+                  aria-label="关闭文字详情"
+                  onClick={() => setFullscreen(false)}
+                  type="button"
+                >
+                  ×
+                </button>
+              </div>
+              <div
+                className="text-detail-body text-node-editor"
+                data-testid="text-detail-body"
+                dangerouslySetInnerHTML={{
+                  __html: bodyControl.committedValue.html,
+                }}
+              />
+            </div>
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

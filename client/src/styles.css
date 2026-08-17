@@ -1261,12 +1261,6 @@ sup {
   height: 24px !important;
 }
 
-.text-node-card:fullscreen {
-  width: min(960px, calc(100vw - 64px));
-  height: min(720px, calc(100vh - 64px));
-  margin: auto;
-}
-
 .text-node-title {
   position: absolute;
   top: -26px;
@@ -1516,11 +1510,27 @@ sup {
   pointer-events: auto;
 }
 
-.image-detail-actions button[aria-label="关闭图片详情"] {
+.image-detail-actions button[aria-label="关闭图片详情"],
+.image-detail-actions button[aria-label="关闭文字详情"] {
   width: 32px;
   padding: 0;
   font-size: var(--tap-font-primary);
   line-height: 1;
+}
+
+.text-detail-dialog {
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.text-detail-body {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 56px 28px 28px;
+  scrollbar-color: rgba(255, 255, 255, 0.125) transparent;
+  scrollbar-width: thin;
 }
 
 .image-node-favorite {

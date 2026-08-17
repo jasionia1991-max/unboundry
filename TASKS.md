@@ -1,7 +1,14 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-17
-状态：`v0.6.9已发布。INC-GEN-003/002/001均为PRODUCTION_PUBLISHED_USER_PASS，既有其他验收状态保持。`
+状态：`v0.6.10本地已提交待发布；生产仍为v0.6.9。INC-UI-008为LOCAL_COMMITTED / USER_RECHECK，INC-GEN-003/002/001保持PRODUCTION_PUBLISHED_USER_PASS，既有其他验收状态保持。`
+
+### 2026-08-17 文字节点画布级全屏（INC-UI-008）
+
+- 状态：`LOCAL_COMMITTED / USER_RECHECK`。用户确认按`v0.6.10`并说可以上线。
+- 实现：文字全屏复用图片画布遮罩；只读正文可滚动；复制代替下载；拿掉系统全屏。
+- 自动门：类型检查通过；定向`m2-text-node` 8/8、`m98` 5/5；冻结清单保持 `118 specs / 969 tests`。
+- 发布：尚未切生产、未 push/tag/PR。权威记录为`spec/INC_UI_008_TEXT_CANVAS_FULLSCREEN_2026-08-17.md`。
 
 ### 2026-08-17 失败生成自动核对（INC-GEN-003）
 

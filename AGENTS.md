@@ -20,11 +20,11 @@
 
 ## 2. 当前授权边界
 
-- **2026-08-17 当前权威状态**：生产已运行`v0.6.9/schema39`，`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.9-inc-gen-003-20260817`。`INC-GEN-003 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-GEN-002 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-GEN-001 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-UI-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-000～011（含009A/009B） = PASS`；
+- **2026-08-17 当前权威状态**：生产仍运行`v0.6.9/schema39`，`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.9-inc-gen-003-20260817`。本地已提交`v0.6.10`（`INC-UI-008`文字画布级全屏），尚未切生产。`INC-UI-008 = LOCAL_COMMITTED / USER_RECHECK`，`INC-GEN-003/002/001 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-UI-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-000～011（含009A/009B） = PASS`；
 - v0.6.9生产源码commit为`5517eb6e4d38bbca7530562503bb962b89ba029d`、tree为`0bad75ec1b9c175ce301287879d41272bc7656d7`；注释标签`v0.6.9`精确指向该源码。PR #12已于2026-08-17合并到`main`，merge commit为`e077d09e36530a5c6830ebce9f28482a3fce0667`。生产凭证为`spec/INC_GEN_003_PRODUCTION_RECEIPT_2026-08-17.json`；
-- v0.6.9正式安全全量为`118/118 specs、969/969 tests PASS`，异常0。失败生成自动核对已发布，用户随后明确回复“通过”，验收正式收口；
-- 冻结备份位于`/var/lib/unboundry-rollbacks/inc-gen-003-frozen-20260817T122251Z`，冻结源与恢复副本均365文件且清单SHA-256同为`11ea901611aefe9120af96812c46a2f31ec61fae03972a4bb1628a49a0bf51c2`。发布与验证期间真实Provider请求、付费生成和OSS写入均为0；上一不可变release `v0.6.8-inc-gen-002-20260817`及对应冻结备份继续保留；
-- 既有v0.6.0～v0.6.8、真实工作流与视频证据继续作为历史记录保留；其历史时点字段不得改写。其他仍为`USER_RECHECK / PARTIAL / PAUSED / BLOCK / NOT_STARTED`的独立条目不因INC-GEN-003自动升级。v0.6.9生产与GitHub授权已经消费完毕，不是未来继续改生产、数据、Provider、OSS、push/tag/PR或发布的永久授权；
+- 本地`v0.6.10`包版本已升，运行时承认该版本为 final。文字全屏复用图片画布遮罩，不再进系统全屏；
+- 冻结备份位于`/var/lib/unboundry-rollbacks/inc-gen-003-frozen-20260817T122251Z`，冻结源与恢复副本均365文件且清单SHA-256同为`11ea901611aefe9120af96812c46a2f31ec61fae03972a4bb1628a49a0bf51c2`。上一不可变release `v0.6.8-inc-gen-002-20260817`及对应冻结备份继续保留；
+- 既有v0.6.0～v0.6.9、真实工作流与视频证据继续作为历史记录保留；其历史时点字段不得改写。其他仍为`USER_RECHECK / PARTIAL / PAUSED / BLOCK / NOT_STARTED`的独立条目不因INC-UI-008自动升级。v0.6.9生产与GitHub授权已经消费完毕；本次用户确认按`v0.6.10`上线；
 
 - REM-000 施工文档已于 2026-08-09 获用户确认，状态为 `PASS`；
 - 用户已于 2026-08-09 明确启动一次性离线 Goal，合并授权 REM-001～010 与 REM-011 离线工程部分；各 REM 仍按施工总方案依赖顺序分析、实施、测试、review 和更新文档，中途不再逐项询问；
