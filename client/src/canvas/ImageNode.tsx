@@ -47,7 +47,10 @@ import {
   useWorkflowExecution,
   type NodeRunResult,
 } from "../generation/WorkflowExecutionProvider";
-import { createSaveGateRun } from "../generation/saveGate";
+import {
+  createSaveGateRun,
+  runExclusiveCanvasSubmit,
+} from "../generation/saveGate";
 import {
   friendlyGenerationMessage,
   generationMessageFallback,
@@ -1945,99 +1948,106 @@ function ImageNodeImpl({
             },
           }
         : node));
-      const freshCanvasRevision = await waitForCanvasRevision();
-      if (
-        liveGenerationOwnershipKeyRef.current !== requestedGenerationOwnershipKey
-      ) {
-        return {
-          message: "生成输入已修改，已停止本次生成",
-          status: "failed",
-        };
-      }
-      const {
-        generationOwnershipKey: persistedGenerationOwnershipKey,
-        task: submitted,
-      } = await ensureGenerationTask(
-        "image",
-        {
-          ...imageGenerationRequestInput,
-          canvasRevision: freshCanvasRevision,
-        },
-        accountId,
-        () => {
-          if (
-            liveGenerationOwnershipKeyRef.current !==
-              requestedGenerationOwnershipKey
-          ) {
-            throw new Error("生成输入已修改，已停止本次生成");
-          }
-        },
-        { generationOwnershipKey: requestedGenerationOwnershipKey },
-      );
-      submittedTaskId = submitted.id;
-      if (
-        liveGenerationOwnershipKeyRef.current !== requestedGenerationOwnershipKey
-      ) {
-        clearGenerationSubmissionIntent(
+      const admitted = await runExclusiveCanvasSubmit(canvasId, async () => {
+        const freshCanvasRevision = await waitForCanvasRevision();
+        if (
+          liveGenerationOwnershipKeyRef.current !==
+            requestedGenerationOwnershipKey
+        ) {
+          return {
+            message: "生成输入已修改，已停止本次生成",
+            status: "failed" as const,
+          };
+        }
+        const {
+          generationOwnershipKey: persistedGenerationOwnershipKey,
+          task: submitted,
+        } = await ensureGenerationTask(
           "image",
-          canvasId,
-          id,
-          submitted.id,
+          {
+            ...imageGenerationRequestInput,
+            canvasRevision: freshCanvasRevision,
+          },
           accountId,
+          () => {
+            if (
+              liveGenerationOwnershipKeyRef.current !==
+                requestedGenerationOwnershipKey
+            ) {
+              throw new Error("生成输入已修改，已停止本次生成");
+            }
+          },
+          { generationOwnershipKey: requestedGenerationOwnershipKey },
         );
-        return {
-          message: "生成输入已修改，旧任务结果不会覆盖当前内容",
-          status: "failed",
-        };
-      }
-      generationRun = beginImageGenerationRun(
-        submitted.id,
-        requestedGenerationInputKey,
-        requestedGenerationOwnershipKey,
-      );
-      checkpoint();
-      setNodes((nodes) =>
-        nodes.map((node) =>
-          node.id === id
-            ? {
-                ...node,
-                data: {
-                  ...node.data,
-                  imageGeneratedSuccess: false,
-                  imageGenerationError: undefined,
-                  imageGenerationErrorCode: undefined,
-                  imageGenerationInputKey,
-                  imageGenerationOwnershipKey:
-                    persistedGenerationOwnershipKey ??
-                    requestedGenerationOwnershipKey,
-                  imageGenerating: true,
-                  imageGenerationRetryAllowed: undefined,
-                  imageGenerationRetryBlockCode: undefined,
-                  imageGenerationRetryBlockReason: undefined,
-                  imageGenerationTaskId: submitted.id,
-                  imageAspectRatio: aspectRatio,
-                  imageModelId: requestedModelId,
-                  imageModelName: requestedModelName,
-                  imageParameters: requestedParameters,
-                  imageQuality: quality,
-                },
-              }
-          : node,
-        ),
-      );
-      await flushCanvasSave();
-      bindingPersisted = true;
-      if (
-        !generationRun ||
-        !ownsImageGenerationRun(generationRun) ||
-        liveGenerationOwnershipKeyRef.current !==
-          requestedGenerationOwnershipKey
-      ) {
-        return {
-          message: "生成输入已修改，旧任务结果不会覆盖当前内容",
-          status: "failed",
-        };
-      }
+        submittedTaskId = submitted.id;
+        if (
+          liveGenerationOwnershipKeyRef.current !==
+            requestedGenerationOwnershipKey
+        ) {
+          clearGenerationSubmissionIntent(
+            "image",
+            canvasId,
+            id,
+            submitted.id,
+            accountId,
+          );
+          return {
+            message: "生成输入已修改，旧任务结果不会覆盖当前内容",
+            status: "failed" as const,
+          };
+        }
+        generationRun = beginImageGenerationRun(
+          submitted.id,
+          requestedGenerationInputKey,
+          requestedGenerationOwnershipKey,
+        );
+        checkpoint();
+        setNodes((nodes) =>
+          nodes.map((node) =>
+            node.id === id
+              ? {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    imageGeneratedSuccess: false,
+                    imageGenerationError: undefined,
+                    imageGenerationErrorCode: undefined,
+                    imageGenerationInputKey,
+                    imageGenerationOwnershipKey:
+                      persistedGenerationOwnershipKey ??
+                      requestedGenerationOwnershipKey,
+                    imageGenerating: true,
+                    imageGenerationRetryAllowed: undefined,
+                    imageGenerationRetryBlockCode: undefined,
+                    imageGenerationRetryBlockReason: undefined,
+                    imageGenerationTaskId: submitted.id,
+                    imageAspectRatio: aspectRatio,
+                    imageModelId: requestedModelId,
+                    imageModelName: requestedModelName,
+                    imageParameters: requestedParameters,
+                    imageQuality: quality,
+                  },
+                }
+            : node,
+          ),
+        );
+        await flushCanvasSave();
+        bindingPersisted = true;
+        if (
+          !generationRun ||
+          !ownsImageGenerationRun(generationRun) ||
+          liveGenerationOwnershipKeyRef.current !==
+            requestedGenerationOwnershipKey
+        ) {
+          return {
+            message: "生成输入已修改，旧任务结果不会覆盖当前内容",
+            status: "failed" as const,
+          };
+        }
+        return { status: "admitted" as const, submitted };
+      });
+      if (admitted.status !== "admitted") return admitted;
+      const submitted = admitted.submitted;
       // Submission is complete once the durable task id has been persisted.
       // Keep polling under imageGenerating so the same button can safely
       // cancel that task instead of remaining disabled for the whole run.

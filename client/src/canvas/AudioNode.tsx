@@ -33,7 +33,10 @@ import {
   useWorkflowExecution,
   type NodeRunResult,
 } from "../generation/WorkflowExecutionProvider";
-import { createSaveGateRun } from "../generation/saveGate";
+import {
+  createSaveGateRun,
+  runExclusiveCanvasSubmit,
+} from "../generation/saveGate";
 import {
   friendlyGenerationMessage,
   generationMessageFallback,
@@ -923,92 +926,99 @@ function AudioNodeImpl({
             },
           }
         : node));
-      const freshCanvasRevision = await waitForCanvasRevision();
-      if (
-        liveGenerationOwnershipKeyRef.current !== requestedGenerationOwnershipKey
-      ) {
-        return {
-          message: "生成输入已修改，已停止本次生成",
-          status: "failed",
-        };
-      }
-      const {
-        generationOwnershipKey: persistedGenerationOwnershipKey,
-        task: submitted,
-      } = await ensureGenerationTask(
-        "audio",
-        {
-          ...audioGenerationRequestInput,
-          canvasRevision: freshCanvasRevision,
-        },
-        accountId,
-        () => {
-          if (
-            liveGenerationOwnershipKeyRef.current !==
-              requestedGenerationOwnershipKey
-          ) {
-            throw new Error("生成输入已修改，已停止本次生成");
-          }
-        },
-        { generationOwnershipKey: requestedGenerationOwnershipKey },
-      );
-      submittedTaskId = submitted.id;
-      if (
-        liveGenerationOwnershipKeyRef.current !== requestedGenerationOwnershipKey
-      ) {
-        clearGenerationSubmissionIntent(
+      const admitted = await runExclusiveCanvasSubmit(canvasId, async () => {
+        const freshCanvasRevision = await waitForCanvasRevision();
+        if (
+          liveGenerationOwnershipKeyRef.current !==
+            requestedGenerationOwnershipKey
+        ) {
+          return {
+            message: "生成输入已修改，已停止本次生成",
+            status: "failed" as const,
+          };
+        }
+        const {
+          generationOwnershipKey: persistedGenerationOwnershipKey,
+          task: submitted,
+        } = await ensureGenerationTask(
           "audio",
-          canvasId,
-          id,
-          submitted.id,
+          {
+            ...audioGenerationRequestInput,
+            canvasRevision: freshCanvasRevision,
+          },
           accountId,
+          () => {
+            if (
+              liveGenerationOwnershipKeyRef.current !==
+                requestedGenerationOwnershipKey
+            ) {
+              throw new Error("生成输入已修改，已停止本次生成");
+            }
+          },
+          { generationOwnershipKey: requestedGenerationOwnershipKey },
         );
-        return {
-          message: "生成输入已修改，旧任务结果不会覆盖当前内容",
-          status: "failed",
-        };
-      }
-      pollingRun = beginGenerationPollingRun(
-        submitted.id,
-        requestedGenerationInputKey,
-        requestedGenerationOwnershipKey,
-      );
-      checkpoint();
-      setNodes((nodes) => nodes.map((node) => node.id === id
-        ? {
-            ...node,
-            data: {
-              ...node.data,
-              audioGenerationError: undefined,
-              audioGenerationErrorCode: undefined,
-              audioGenerationInputKey,
-              audioGenerationOwnershipKey:
-                persistedGenerationOwnershipKey ??
-                requestedGenerationOwnershipKey,
-              audioGenerating: true,
-              audioGenerationRetryAllowed: undefined,
-              audioGenerationRetryBlockCode: undefined,
-              audioGenerationRetryBlockReason: undefined,
-              audioGenerationTaskId: submitted.id,
-              audioModelId: requestedModelId,
-              audioModelName: requestedModelName,
-              audioParameters: requestedParameters,
-            },
-          }
-        : node));
-      await flushCanvasSave();
-      bindingPersisted = true;
-      if (
-        !pollingRun ||
-        !ownsGenerationPollingRun(pollingRun) ||
-        liveGenerationOwnershipKeyRef.current !==
-          requestedGenerationOwnershipKey
-      ) {
-        return {
-          message: "生成输入已修改，旧任务结果不会覆盖当前内容",
-          status: "failed",
-        };
-      }
+        submittedTaskId = submitted.id;
+        if (
+          liveGenerationOwnershipKeyRef.current !==
+            requestedGenerationOwnershipKey
+        ) {
+          clearGenerationSubmissionIntent(
+            "audio",
+            canvasId,
+            id,
+            submitted.id,
+            accountId,
+          );
+          return {
+            message: "生成输入已修改，旧任务结果不会覆盖当前内容",
+            status: "failed" as const,
+          };
+        }
+        pollingRun = beginGenerationPollingRun(
+          submitted.id,
+          requestedGenerationInputKey,
+          requestedGenerationOwnershipKey,
+        );
+        checkpoint();
+        setNodes((nodes) => nodes.map((node) => node.id === id
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                audioGenerationError: undefined,
+                audioGenerationErrorCode: undefined,
+                audioGenerationInputKey,
+                audioGenerationOwnershipKey:
+                  persistedGenerationOwnershipKey ??
+                  requestedGenerationOwnershipKey,
+                audioGenerating: true,
+                audioGenerationRetryAllowed: undefined,
+                audioGenerationRetryBlockCode: undefined,
+                audioGenerationRetryBlockReason: undefined,
+                audioGenerationTaskId: submitted.id,
+                audioModelId: requestedModelId,
+                audioModelName: requestedModelName,
+                audioParameters: requestedParameters,
+              },
+            }
+          : node));
+        await flushCanvasSave();
+        bindingPersisted = true;
+        if (
+          !pollingRun ||
+          !ownsGenerationPollingRun(pollingRun) ||
+          liveGenerationOwnershipKeyRef.current !==
+            requestedGenerationOwnershipKey
+        ) {
+          return {
+            message: "生成输入已修改，旧任务结果不会覆盖当前内容",
+            status: "failed" as const,
+          };
+        }
+        return { status: "admitted" as const, submitted };
+      });
+      if (admitted.status !== "admitted") return admitted;
+      const submitted = admitted.submitted;
       setSubmitting(false);
       let task: Awaited<ReturnType<typeof waitForGenerationTask>>;
       try {

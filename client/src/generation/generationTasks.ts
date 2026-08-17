@@ -2,6 +2,7 @@ import type {
   NodeInputProblem,
   NodeInputSnapshot,
 } from "../../../types/nodeInputs";
+import { runExclusiveCanvasSubmit } from "./saveGate";
 import { rememberFinishedTaskDuration } from "./taskDurationCache";
 
 export type GenerationTaskKind = "text" | "image" | "video" | "audio";
@@ -300,6 +301,22 @@ export async function reconcileGenerationTask(
   providerTaskId?: string,
   signal?: AbortSignal,
 ): Promise<GenerationReconcileResult> {
+  return runExclusiveCanvasSubmit(target.canvasId, () =>
+    reconcileGenerationTaskUnlocked(
+      target,
+      waitForCanvasRevision,
+      providerTaskId,
+      signal,
+    ),
+  );
+}
+
+async function reconcileGenerationTaskUnlocked(
+  target: GenerationRetryTarget,
+  waitForCanvasRevision: GenerationRetryGate,
+  providerTaskId: string | undefined,
+  signal: AbortSignal | undefined,
+): Promise<GenerationReconcileResult> {
   const expectedCanvasRevision = await waitForCanvasRevision();
   const before = await getGenerationTask(target.taskId, signal);
   if (!retryTargetMatches(before, target) || !target.generationInputKey) {
@@ -433,6 +450,16 @@ export async function retryGenerationTask(
   target: GenerationRetryTarget,
   waitForCanvasRevision: GenerationRetryGate,
   signal?: AbortSignal,
+): Promise<GenerationTaskSummary> {
+  return runExclusiveCanvasSubmit(target.canvasId, () =>
+    retryGenerationTaskUnlocked(target, waitForCanvasRevision, signal),
+  );
+}
+
+async function retryGenerationTaskUnlocked(
+  target: GenerationRetryTarget,
+  waitForCanvasRevision: GenerationRetryGate,
+  signal: AbortSignal | undefined,
 ): Promise<GenerationTaskSummary> {
   const expectedCanvasRevision = await waitForCanvasRevision();
   const before = await getGenerationTask(target.taskId, signal);

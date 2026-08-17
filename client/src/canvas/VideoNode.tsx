@@ -34,7 +34,10 @@ import {
   useWorkflowExecution,
   type NodeRunResult,
 } from "../generation/WorkflowExecutionProvider";
-import { createSaveGateRun } from "../generation/saveGate";
+import {
+  createSaveGateRun,
+  runExclusiveCanvasSubmit,
+} from "../generation/saveGate";
 import {
   friendlyGenerationMessage,
   generationMessageFallback,
@@ -916,92 +919,99 @@ function VideoNodeImpl({
             },
           }
         : node));
-      const freshCanvasRevision = await waitForCanvasRevision();
-      if (
-        liveGenerationOwnershipKeyRef.current !== requestedGenerationOwnershipKey
-      ) {
-        return {
-          message: "生成输入已修改，已停止本次生成",
-          status: "failed",
-        };
-      }
-      const {
-        generationOwnershipKey: persistedGenerationOwnershipKey,
-        task: submitted,
-      } = await ensureGenerationTask(
-        "video",
-        {
-          ...videoGenerationRequestInput,
-          canvasRevision: freshCanvasRevision,
-        },
-        accountId,
-        () => {
-          if (
-            liveGenerationOwnershipKeyRef.current !==
-              requestedGenerationOwnershipKey
-          ) {
-            throw new Error("生成输入已修改，已停止本次生成");
-          }
-        },
-        { generationOwnershipKey: requestedGenerationOwnershipKey },
-      );
-      submittedTaskId = submitted.id;
-      if (
-        liveGenerationOwnershipKeyRef.current !== requestedGenerationOwnershipKey
-      ) {
-        clearGenerationSubmissionIntent(
+      const admitted = await runExclusiveCanvasSubmit(canvasId, async () => {
+        const freshCanvasRevision = await waitForCanvasRevision();
+        if (
+          liveGenerationOwnershipKeyRef.current !==
+            requestedGenerationOwnershipKey
+        ) {
+          return {
+            message: "生成输入已修改，已停止本次生成",
+            status: "failed" as const,
+          };
+        }
+        const {
+          generationOwnershipKey: persistedGenerationOwnershipKey,
+          task: submitted,
+        } = await ensureGenerationTask(
           "video",
-          canvasId,
-          id,
-          submitted.id,
+          {
+            ...videoGenerationRequestInput,
+            canvasRevision: freshCanvasRevision,
+          },
           accountId,
+          () => {
+            if (
+              liveGenerationOwnershipKeyRef.current !==
+                requestedGenerationOwnershipKey
+            ) {
+              throw new Error("生成输入已修改，已停止本次生成");
+            }
+          },
+          { generationOwnershipKey: requestedGenerationOwnershipKey },
         );
-        return {
-          message: "生成输入已修改，旧任务结果不会覆盖当前内容",
-          status: "failed",
-        };
-      }
-      pollingRun = beginGenerationPollingRun(
-        submitted.id,
-        requestedGenerationInputKey,
-        requestedGenerationOwnershipKey,
-      );
-      checkpoint();
-      setNodes((nodes) => nodes.map((node) => node.id === id
-        ? {
-            ...node,
-            data: {
-              ...node.data,
-              videoGenerationError: undefined,
-              videoGenerationErrorCode: undefined,
-              videoGenerationInputKey,
-              videoGenerationOwnershipKey:
-                persistedGenerationOwnershipKey ??
-                requestedGenerationOwnershipKey,
-              videoGenerating: true,
-              videoGenerationRetryAllowed: undefined,
-              videoGenerationRetryBlockCode: undefined,
-              videoGenerationRetryBlockReason: undefined,
-              videoGenerationTaskId: submitted.id,
-              videoModel: requestedModelName,
-              videoModelId: requestedModelId,
-              videoParameters: requestedParameters,
-            },
-          }
-        : node));
-      await flushCanvasSave();
-      bindingPersisted = true;
-      if (
-        !pollingRun ||
-        !ownsGenerationPollingRun(pollingRun) ||
-        liveGenerationOwnershipKeyRef.current !==
-          requestedGenerationOwnershipKey
-      ) {
-        return {
-          message: "生成输入已修改，旧任务结果不会覆盖当前内容",
-          status: "failed",
-        };
-      }
+        submittedTaskId = submitted.id;
+        if (
+          liveGenerationOwnershipKeyRef.current !==
+            requestedGenerationOwnershipKey
+        ) {
+          clearGenerationSubmissionIntent(
+            "video",
+            canvasId,
+            id,
+            submitted.id,
+            accountId,
+          );
+          return {
+            message: "生成输入已修改，旧任务结果不会覆盖当前内容",
+            status: "failed" as const,
+          };
+        }
+        pollingRun = beginGenerationPollingRun(
+          submitted.id,
+          requestedGenerationInputKey,
+          requestedGenerationOwnershipKey,
+        );
+        checkpoint();
+        setNodes((nodes) => nodes.map((node) => node.id === id
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                videoGenerationError: undefined,
+                videoGenerationErrorCode: undefined,
+                videoGenerationInputKey,
+                videoGenerationOwnershipKey:
+                  persistedGenerationOwnershipKey ??
+                  requestedGenerationOwnershipKey,
+                videoGenerating: true,
+                videoGenerationRetryAllowed: undefined,
+                videoGenerationRetryBlockCode: undefined,
+                videoGenerationRetryBlockReason: undefined,
+                videoGenerationTaskId: submitted.id,
+                videoModel: requestedModelName,
+                videoModelId: requestedModelId,
+                videoParameters: requestedParameters,
+              },
+            }
+          : node));
+        await flushCanvasSave();
+        bindingPersisted = true;
+        if (
+          !pollingRun ||
+          !ownsGenerationPollingRun(pollingRun) ||
+          liveGenerationOwnershipKeyRef.current !==
+            requestedGenerationOwnershipKey
+        ) {
+          return {
+            message: "生成输入已修改，旧任务结果不会覆盖当前内容",
+            status: "failed" as const,
+          };
+        }
+        return { status: "admitted" as const, submitted };
+      });
+      if (admitted.status !== "admitted") return admitted;
+      const submitted = admitted.submitted;
       // Submission is complete once the durable task id has been persisted.
       // Keep polling under videoGenerating so the same button can safely
       // cancel that task instead of remaining disabled for the whole run.
