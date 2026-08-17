@@ -1,7 +1,7 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-17
-状态：`v0.6.9已发布并通过用户验收。INC-GEN-003为PRODUCTION_PUBLISHED_USER_PASS，INC-GEN-002/001仍为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，既有其他验收状态保持。`
+状态：`v0.6.9已发布。INC-GEN-003/002/001均为PRODUCTION_PUBLISHED_USER_PASS，既有其他验收状态保持。`
 
 ### 2026-08-17 失败生成自动核对（INC-GEN-003）
 
@@ -14,7 +14,7 @@
 
 ### 2026-08-17 同层生成提交排队（INC-GEN-002）
 
-- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。用户确认按`v0.6.8`并说「上线，发布。」；尚未收到肉眼“通过”。
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户确认按`v0.6.8`并说「上线，发布。」；随后在生产实页明确回复“看了 也通过了”。
 - 实现：同一画布的等保存、提交任务、写回任务号排队；同层真正生成仍并行。图/字/视频/音频首次生成、重试、核对结果共用入口。
 - 自动门：正式安全全量`118/118 specs、969/969 tests PASS`，失败/跳过/重试/blocked/reportErrors均0；定向`m22` 18/18、`m40` 14/14、`m27` 20/20、`m41` 51/51。
 - 发布：commit`c2e05d142a5556446d96a8532ca7297cba4e03a5`已发布到`/opt/unboundry/releases/v0.6.8-inc-gen-002-20260817`；冻结备份/恢复副本、公网关键资源、service/schema39和数据不变门通过。
@@ -23,7 +23,7 @@
 
 ### 2026-08-17 生成用时与画布核对结果（INC-GEN-001）
 
-- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。用户明确“那上线吧”，按`v0.6.7`发布；尚未收到肉眼“通过”。
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户明确“那上线吧”，按`v0.6.7`发布；随后在生产实页明确回复“看了 也通过了”。
 - 实现：已完成生成显示用时；失败且结果未知时先核对平台任务，找到成片就收回，确认没有成片再重试；普通失败仍直接重试。
 - 自动门：正式安全全量`118/118 specs、969/969 tests PASS`，失败/跳过/重试/blocked/reportErrors均0，4173 listener不变。
 - 发布：commit`a4dc45f4cdfa30547dac401fc29d6796ba233832`已发布到`/opt/unboundry/releases/v0.6.7-inc-gen-001-20260817`；冻结备份/恢复副本、公网关键资源、service/schema39和数据不变门通过。

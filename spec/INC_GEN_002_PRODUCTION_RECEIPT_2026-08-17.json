@@ -1,7 +1,7 @@
 {
   "incident": "INC-GEN-002",
   "version": "0.6.8",
-  "status": "PRODUCTION_PUBLISHED_AUTO_PASS",
+  "status": "PRODUCTION_PUBLISHED_USER_PASS",
   "publishedAt": "2026-08-17T10:42:26Z",
   "source": {
     "commit": "c2e05d142a5556446d96a8532ca7297cba4e03a5",
@@ -88,6 +88,7 @@
     "tag": "v0.6.8",
     "tagTarget": "c2e05d142a5556446d96a8532ca7297cba4e03a5"
   },
-  "userAcceptance": "USER_RECHECK",
-  "userAcceptanceEvidence": "User authorized version v0.6.8 and 上线/发布. Automatic and publication gates passed. Visual acceptance is still pending."
+  "userAcceptance": "USER_PASS",
+  "userAcceptedAt": "2026-08-17",
+  "userAcceptanceEvidence": "User explicitly replied 看了 也通过了 after production verification of same-layer submit queue."
 }

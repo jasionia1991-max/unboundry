@@ -2,7 +2,7 @@
 
 断点版本：`71`
 更新时间：`2026-08-17`
-状态：`INC_GEN_003_V0_6_9_PRODUCTION_PUBLISHED_USER_PASS`
+状态：`INC_GEN_001_002_003_PRODUCTION_PUBLISHED_USER_PASS`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
 ## 0. 当前已发布事件：INC-GEN-003（v0.6.9已发布并通过用户验收）
@@ -14,22 +14,22 @@
 - `v0.6.9`标签精确指向源码commit；PR #12已合并到`main`，merge commit`e077d09e36530a5c6830ebce9f28482a3fce0667`。用户随后明确回复“通过”，INC-GEN-003正式收口为`PRODUCTION_PUBLISHED_USER_PASS`。
 - 权威记录：`spec/INC_GEN_003_AUTO_RECONCILE_2026-08-17.md`与`spec/INC_GEN_003_PRODUCTION_RECEIPT_2026-08-17.json`。
 
-## 0.04 前一已发布事件：INC-GEN-002（v0.6.8已发布，待用户复验）
+## 0.04 前一已发布事件：INC-GEN-002（v0.6.8已发布并通过用户验收）
 
 - 用户确认按`v0.6.8`并说「上线，发布。」
 - 同一画布的等保存、提交任务、写回任务号排队；同层真正生成仍并行。
 - 精确源码commit`c2e05d142a5556446d96a8532ca7297cba4e03a5`通过正式安全全量`118/118 specs、969/969 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。
 - 生产current已切到`/opt/unboundry/releases/v0.6.8-inc-gen-002-20260817`；冻结备份恢复、公网资源逐字节哈希、service/schema39和数据不变门均PASS。生产保持230 tasks、232 attempts、active0、47 public templates（46 published）。
-- `v0.6.8`标签精确指向源码commit；PR #10已合并到`main`，merge commit`1e1d5b482148240409e283fc19e6f3ffa66202a4`。用户肉眼验收仍为`USER_RECHECK`。
+- `v0.6.8`标签精确指向源码commit；PR #10已合并到`main`，merge commit`1e1d5b482148240409e283fc19e6f3ffa66202a4`。用户随后明确回复“看了 也通过了”，INC-GEN-002正式收口为`PRODUCTION_PUBLISHED_USER_PASS`。
 - 权威记录：`spec/INC_GEN_002_CANVAS_SUBMIT_QUEUE_2026-08-17.md`与`spec/INC_GEN_002_PRODUCTION_RECEIPT_2026-08-17.json`。
 
-## 0.05 前一已发布事件：INC-GEN-001（v0.6.7已发布，待用户复验）
+## 0.05 前一已发布事件：INC-GEN-001（v0.6.7已发布并通过用户验收）
 
 - 用户明确“那上线吧”，按`v0.6.7`发布生成用时和画布核对结果。
 - 选中节点/组/任务面板显示已完成用时，不写进画布。失败且结果未知时先核对平台任务；找到成片就收回，确认没有成片再重试。普通失败仍直接重试。
 - 精确源码commit`a4dc45f4cdfa30547dac401fc29d6796ba233832`通过正式安全全量`118/118 specs、969/969 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。
 - 生产current已切到`/opt/unboundry/releases/v0.6.7-inc-gen-001-20260817`；冻结备份恢复、公网资源逐字节哈希、service/schema39和数据不变门均PASS。生产保持220 tasks、221 attempts、active0、47 public templates（46 published）。
-- `v0.6.7`标签精确指向源码commit；PR #8已合并到`main`，merge commit`58da30589186296e0d275cdac73350f3dbec338a`。用户肉眼验收仍为`USER_RECHECK`。
+- `v0.6.7`标签精确指向源码commit；PR #8已合并到`main`，merge commit`58da30589186296e0d275cdac73350f3dbec338a`。用户随后明确回复“看了 也通过了”，INC-GEN-001正式收口为`PRODUCTION_PUBLISHED_USER_PASS`。
 
 ## 0.06 前一事件：INC-UI-007（v0.6.6已发布并通过用户验收）
 
@@ -535,22 +535,22 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 
 ## 10. 2026-08-17 当前恢复卡
 
-> 2026-08-17 INC-GEN-003已收口：v0.6.9已切生产，用户明确回复“通过”。失败生成自动核对入库。以INC-GEN-003文档与生产receipt为准。上一节v0.6.8恢复卡只作已发布历史。
+> 2026-08-17 INC-GEN-003/002/001已收口：v0.6.9已切生产，用户对自动核对回复“通过”，随后对同层一起跑和生成用时明确回复“看了 也通过了”。以各INC文档与生产receipt为准。
 
 ```text
 项目路径：/Users/mymy/Documents/unboundry/app
-本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.9已发布并通过用户验收；禁止reset/clean
+本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.9已发布，v0.6.7～v0.6.9用户验收通过；禁止reset/clean
 生产：canvas.mymy.ltd；v0.6.9/schema39；/opt/unboundry/current -> releases/v0.6.9-inc-gen-003-20260817
 生产artifact：source commit 5517eb6e4d38bbca7530562503bb962b89ba029d；tree 0bad75ec1b9c175ce301287879d41272bc7656d7
-当前状态：INC-GEN-003 PRODUCTION_PUBLISHED_USER_PASS；INC-GEN-002 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK；INC-GEN-001 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK；INC-UI-007/006保持PRODUCTION_PUBLISHED_USER_PASS；既有INC-UI-005/004/003、INC-VIDEO-001、INC-UI-001/002状态保持；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
-技术凭证：spec/INC_GEN_003_PRODUCTION_RECEIPT_2026-08-17.json；spec/INC_GEN_003_AUTO_RECONCILE_2026-08-17.md；既有v0.6.8及更早发布凭证继续保留
-用户验收：既有v0.6.0/v0.6.1/v0.6.5/v0.6.6/v0.6.9验收保持；v0.6.8排队修复待用户复验；v0.6.7用时与核对结果待用户复验；v0.6.4组标题总览、v0.6.3公共模板UI与旧标签恢复、v0.6.2其余UI/视频项继续等待用户线上复验
+当前状态：INC-GEN-003 PRODUCTION_PUBLISHED_USER_PASS；INC-GEN-002 PRODUCTION_PUBLISHED_USER_PASS；INC-GEN-001 PRODUCTION_PUBLISHED_USER_PASS；INC-UI-007/006保持PRODUCTION_PUBLISHED_USER_PASS；既有INC-UI-005/004/003、INC-VIDEO-001、INC-UI-001/002状态保持；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
+技术凭证：spec/INC_GEN_003_PRODUCTION_RECEIPT_2026-08-17.json；spec/INC_GEN_002_PRODUCTION_RECEIPT_2026-08-17.json；spec/INC_GEN_001_PRODUCTION_RECEIPT_2026-08-17.json；既有更早发布凭证继续保留
+用户验收：既有v0.6.0/v0.6.1/v0.6.5/v0.6.6/v0.6.7/v0.6.8/v0.6.9验收保持；v0.6.4组标题总览、v0.6.3公共模板UI与旧标签恢复、v0.6.2其余UI/视频项继续等待用户线上复验
 数据库：schema39；quick_check ok；FK0；237 tasks/239 attempts；47 public templates/46 published；active0；默认视频模型Seedance；既有生成安全配置不变
 备份：/var/lib/unboundry-rollbacks/inc-gen-003-frozen-20260817T122251Z；冻结源与恢复副本均365文件，清单SHA 11ea901611aefe9120af96812c46a2f31ec61fae03972a4bb1628a49a0bf51c2，二者均PASS；历史schema37/offhost及v0.6.8冻结备份继续保留
 限制：attempt 86/108/116/120/122为行政取消且禁止重试，PROVIDER_FAILED仅surrogate；3条音频仅改duration元数据；cutover Provider/paid calls=0
 GitHub：v0.6.9注释标签精确指向生产源码5517eb6e4d38bbca7530562503bb962b89ba029d；PR #12已合并到main，merge commit e077d09e36530a5c6830ebce9f28482a3fce0667
 未来授权：本次v0.6.9生产与GitHub发布授权已消费；未来生产读写、真实Provider/付费生成、push/tag/PR或新发布仍需新授权
-下一步：等待用户肉眼复验v0.6.8同层一起跑、v0.6.7用时/核对结果；不得继续消费本次授权
+下一步：无施工中INC/REM；不得继续消费本次授权
 ```
 
 任何恢复者必须优先使用本节；第9节只保留历史，不得执行其“下一步”。

@@ -1,6 +1,6 @@
 # INC-GEN-002：同层生成提交排队
 
-状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
+状态：`PRODUCTION_PUBLISHED_USER_PASS`
 版本：`v0.6.8`
 日期：`2026-08-17`
 
@@ -37,6 +37,6 @@
 - 数据不变：切换后schema39、quick_check ok、FK0、tasks230、attempts232、active0、公共模板47（46 published）。
 - GitHub：注释标签`v0.6.8`指向`c2e05d142a5556446d96a8532ca7297cba4e03a5`；PR #10已合并，merge commit`1e1d5b482148240409e283fc19e6f3ffa66202a4`。
 - 发布与验证期间真实Provider请求、付费生成和OSS写入均为0。
-- 自动验证不代替用户肉眼验收。请打开网站强制刷新后，看同一组里几个节点一起跑，还会不会集体报「画布还在保存」。
+- 用户随后在生产实页明确回复“看了 也通过了”，本事件正式收口为`PRODUCTION_PUBLISHED_USER_PASS`。
 
 详细凭证：`spec/INC_GEN_002_PRODUCTION_RECEIPT_2026-08-17.json`。
