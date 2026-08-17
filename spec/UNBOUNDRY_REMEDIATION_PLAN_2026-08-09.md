@@ -1,9 +1,9 @@
 # Unboundry 全量修复、优化与安全发布施工总方案
 
 状态：`COMPLETED_WITH_USER_ACCEPTANCE`
-计划版本：`1.45-v0.6.11-published`
+计划版本：`1.46-v0.6.11-user-accepted`
 建立日期：`2026-08-09`
-当前结论：用户后续连续授权并完成 `v0.5.2` bridge、`v0.6.0` final、schema37→39原生产切换、`v0.6.1`工作流流水执行修复、`v0.6.5`画布缩放坐标稳定修复、`v0.6.6`组标题/文字平移/模板目录刷新、`v0.6.7`生成用时与画布核对结果、`v0.6.8`同层生成提交排队、`v0.6.9`失败生成自动核对、`v0.6.10`文字画布级全屏，以及`v0.6.11`整组下载改走数据盘。`REM-000～011（含009A/009B） = PASS`、`INC-UI-009 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`、`INC-UI-008 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`、`INC-GEN-003 = PRODUCTION_PUBLISHED_USER_PASS`、`INC-GEN-002 = PRODUCTION_PUBLISHED_USER_PASS`、`INC-GEN-001 = PRODUCTION_PUBLISHED_USER_PASS`、`INC-UI-007 = PRODUCTION_PUBLISHED_USER_PASS`、`INC-UI-006 = PRODUCTION_PUBLISHED_USER_PASS`、`PRODUCTION = LIVE`、`DEP-010 = PASS`；其他既有USER_RECHECK/PARTIAL/PAUSED/BLOCK/NOT_STARTED不自动升级。生产已运行 v0.6.11，待用户肉眼复验。
+当前结论：用户后续连续授权并完成 `v0.5.2` bridge、`v0.6.0` final、schema37→39原生产切换、`v0.6.1`工作流流水执行修复、`v0.6.5`画布缩放坐标稳定修复、`v0.6.6`组标题/文字平移/模板目录刷新、`v0.6.7`生成用时与画布核对结果、`v0.6.8`同层生成提交排队、`v0.6.9`失败生成自动核对、`v0.6.10`文字画布级全屏，以及`v0.6.11`整组下载改走数据盘。`REM-000～011（含009A/009B） = PASS`、`INC-UI-009 = PRODUCTION_PUBLISHED_USER_PASS`、`INC-UI-008 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`、`INC-GEN-003 = PRODUCTION_PUBLISHED_USER_PASS`、`INC-GEN-002 = PRODUCTION_PUBLISHED_USER_PASS`、`INC-GEN-001 = PRODUCTION_PUBLISHED_USER_PASS`、`INC-UI-007 = PRODUCTION_PUBLISHED_USER_PASS`、`INC-UI-006 = PRODUCTION_PUBLISHED_USER_PASS`、`PRODUCTION = LIVE`、`DEP-010 = PASS`；其他既有USER_RECHECK/PARTIAL/PAUSED/BLOCK/NOT_STARTED不自动升级。生产已运行 v0.6.11，整组下载已通过用户验收。
 
 生产当前运行 `/opt/unboundry/current -> /opt/unboundry/releases/v0.6.11-inc-ui-009-20260817`，service active/enabled、NRestarts0；公网version与schema39通过。v0.6.11源码commit为`321668e1adf692e356b1e504230721451af8ddcf`、tree为`3ea47f74267ec1e5c1b5c0d80fef51115161e021`，标签`v0.6.11`精确指向该源码；PR #18已于2026-08-17合并到`main`（merge commit `749e45cb68feabd11b4ffc721e06df4cd46a2b77`）。正式安全全量`118/118 specs、969/969 tests PASS`。
 
@@ -590,3 +590,4 @@ REM-009B 已在合成数据上完成富含业务数据、媒体、secret 和假 
 | 2026-08-17 | 1.43-v0.6.10-published | v0.6.10文字画布级全屏已发布；INC-UI-008为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，生产current切到`v0.6.10-inc-ui-008-20260817`；`v0.6.10`标签与PR #16合并 | 用户确认版本并说可以上线；肉眼验收仍待确认；不改历史时点字段 |
 | 2026-08-17 | 1.44-v0.6.11-local | v0.6.11整组下载改走数据盘已本地提交；INC-UI-009为`LOCAL_COMMITTED / USER_RECHECK`；生产仍运行v0.6.10 | 用户确认版本并说可以上线；切生产前不得写成已上线 |
 | 2026-08-17 | 1.45-v0.6.11-published | v0.6.11整组下载改走数据盘已发布；INC-UI-009为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，生产current切到`v0.6.11-inc-ui-009-20260817`；`v0.6.11`标签与PR #18合并 | 用户确认版本并说可以上线；肉眼验收仍待确认；不改历史时点字段 |
+| 2026-08-18 | 1.46-v0.6.11-user-accepted | v0.6.11整组下载改走数据盘已通过用户验收；INC-UI-009收口为`PRODUCTION_PUBLISHED_USER_PASS` | 用户明确回复“通过”；仅同步文档当前态，不改历史时点字段；不自动升级v0.6.10及其他USER_RECHECK |

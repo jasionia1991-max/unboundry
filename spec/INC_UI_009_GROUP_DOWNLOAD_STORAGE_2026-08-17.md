@@ -1,6 +1,6 @@
 # INC-UI-009：整组下载改走数据盘
 
-状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
+状态：`PRODUCTION_PUBLISHED_USER_PASS`
 版本：`v0.6.11`
 日期：`2026-08-17`
 
@@ -32,6 +32,6 @@
 - 数据不变：切换后schema39、quick_check ok、FK0、tasks246、attempts248、active0、公共模板47（46 published）。
 - GitHub：注释标签`v0.6.11`指向`321668e1adf692e356b1e504230721451af8ddcf`；PR #18已合并，merge commit`749e45cb68feabd11b4ffc721e06df4cd46a2b77`。
 - 发布与验证期间真实Provider请求、付费生成和OSS写入均为0。
-- 自动验证不代替用户肉眼验收。请打开网站强制刷新后，看模板/组「整组下载」是否还能打出 zip。
+- 用户于 2026-08-18 明确回复“通过”，本项正式收口为`PRODUCTION_PUBLISHED_USER_PASS`。
 
 详细凭证：`spec/INC_UI_009_PRODUCTION_RECEIPT_2026-08-17.json`。
