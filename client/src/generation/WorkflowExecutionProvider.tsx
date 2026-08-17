@@ -79,7 +79,8 @@ export function WorkflowExecutionProvider({
   getNodes: () => ProbeNodeType[];
   notify: (message: string, kind?: "error" | "info" | "success") => void;
 }) {
-  const { canvasId, isFixture } = useGenerationCanvas();
+  const { canvasId, flushCanvasSave, isFixture, waitForCanvasRevision } =
+    useGenerationCanvas();
   const registrations = useRef(new Map<string, NodeRunRegistration>());
   const runningGroups = useRef(new Map<string, { cancelled: boolean }>());
   const [executingGroupIds, setExecutingGroupIds] = useState<
@@ -110,6 +111,16 @@ export function WorkflowExecutionProvider({
         return;
       }
       if (runningGroups.current.has(groupId)) return;
+      try {
+        await flushCanvasSave();
+        await waitForCanvasRevision();
+      } catch (error) {
+        notify(
+          error instanceof Error ? error.message : "画布还在保存，请稍后再试",
+          "error",
+        );
+        return;
+      }
       const nodes = getNodes();
       const edges = getEdges();
       const children = nodes.filter((node) => node.parentId === groupId);
@@ -239,7 +250,7 @@ export function WorkflowExecutionProvider({
         setExecutingGroupIds(new Set(runningGroups.current.keys()));
       }
     },
-    [canvasId, getEdges, getNodes, isFixture, notify],
+    [canvasId, flushCanvasSave, getEdges, getNodes, isFixture, notify, waitForCanvasRevision],
   );
 
   const value = useMemo<WorkflowExecutionValue>(

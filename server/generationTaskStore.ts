@@ -2723,6 +2723,142 @@ export function createGenerationTaskStore(dataDirectory: string) {
       });
     },
 
+    bindProviderTaskIdOnFailedTask(input: {
+      providerTaskId: string;
+      taskId: string;
+    }) {
+      if (
+        !providerTaskIdPattern.test(input.providerTaskId) ||
+        input.providerTaskId.length > 160
+      ) {
+        throw new Error("Invalid Provider task ID");
+      }
+      const timestamp = new Date().toISOString();
+      database.exec("BEGIN IMMEDIATE");
+      try {
+        const task = readById.get(input.taskId) as GenerationTaskRow | undefined;
+        if (!task || task.state !== "failed") {
+          throw new Error("Only a failed generation task can bind a Provider task ID");
+        }
+        if (
+          task.provider_task_id &&
+          task.provider_task_id !== input.providerTaskId
+        ) {
+          throw new Error("Provider task ID does not match the current task");
+        }
+        const updatedTask = database.prepare(`
+          UPDATE generation_tasks
+          SET provider_task_id = ?, updated_at = ?
+          WHERE
+            id = ?
+            AND state = 'failed'
+            AND (provider_task_id IS NULL OR provider_task_id = ?)
+        `).run(
+          input.providerTaskId,
+          timestamp,
+          input.taskId,
+          input.providerTaskId,
+        );
+        if (updatedTask.changes !== 1) {
+          throw new Error("Generation task changed concurrently");
+        }
+        const attempt = providerAttemptForTask(task);
+        if (attempt) {
+          if (
+            attempt.provider_task_id &&
+            attempt.provider_task_id !== input.providerTaskId
+          ) {
+            throw new Error("Provider task ID does not match the current attempt");
+          }
+          const updatedAttempt = database.prepare(`
+            UPDATE generation_provider_attempts
+            SET provider_task_id = ?
+            WHERE
+              task_id = ?
+              AND execution_attempt = ?
+              AND (provider_task_id IS NULL OR provider_task_id = ?)
+          `).run(
+            input.providerTaskId,
+            input.taskId,
+            attempt.execution_attempt,
+            input.providerTaskId,
+          );
+          if (updatedAttempt.changes !== 1) {
+            throw new Error("Provider attempt changed concurrently");
+          }
+        }
+        database.exec("COMMIT");
+      } catch (error) {
+        database.exec("ROLLBACK");
+        throw error;
+      }
+      return toTask(readById.get(input.taskId) as GenerationTaskRow);
+    },
+
+    confirmRemoteResultMissing(input: {
+      expectedUpdatedAt: string;
+      taskId: string;
+    }) {
+      const timestamp = new Date().toISOString();
+      database.exec("BEGIN IMMEDIATE");
+      try {
+        const task = readById.get(input.taskId) as GenerationTaskRow | undefined;
+        if (
+          !task ||
+          task.state !== "failed" ||
+          task.updated_at !== input.expectedUpdatedAt
+        ) {
+          throw new Error("Generation task changed concurrently");
+        }
+        const updatedTask = database.prepare(`
+          UPDATE generation_tasks
+          SET
+            error_code = 'PROVIDER_RESULT_MISSING',
+            error_message = '平台没有成片，可以重试',
+            updated_at = ?
+          WHERE id = ? AND state = 'failed' AND updated_at = ?
+        `).run(timestamp, input.taskId, input.expectedUpdatedAt);
+        if (updatedTask.changes !== 1) {
+          throw new Error("Generation task changed concurrently");
+        }
+        const attempt = providerAttemptForTask(task);
+        if (
+          attempt &&
+          [
+            "boundary-claimed",
+            "accepted",
+            "response-received",
+            "outcome-unknown",
+          ].includes(attempt.outcome)
+        ) {
+          const updatedAttempt = database.prepare(`
+            UPDATE generation_provider_attempts
+            SET
+              outcome = 'provider-failed',
+              failure_code = 'PROVIDER_RESULT_MISSING',
+              finished_at = ?
+            WHERE
+              task_id = ?
+              AND execution_attempt = ?
+              AND outcome = ?
+          `).run(
+            timestamp,
+            input.taskId,
+            attempt.execution_attempt,
+            attempt.outcome,
+          );
+          if (updatedAttempt.changes !== 1) {
+            throw new Error("Provider attempt changed concurrently");
+          }
+        }
+        database.exec("COMMIT");
+      } catch (error) {
+        database.exec("ROLLBACK");
+        throw error;
+      }
+      return toTask(readById.get(input.taskId) as GenerationTaskRow);
+    },
+
     complete(id: string, input: {
       actualCostMicrounits: number;
       providerUsageTokens?: number;

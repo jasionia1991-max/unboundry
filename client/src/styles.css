@@ -6346,6 +6346,24 @@ sup {
   line-height: 1.4;
 }
 
+.generation-reconcile-task-id {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #d4d4d8;
+  font-size: var(--tap-font-secondary);
+}
+
+.generation-reconcile-task-id input {
+  width: 148px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.28);
+  color: #f4f4f5;
+}
+
 .generation-duration-hint {
   flex: 0 0 auto;
   color: #8f8f93;

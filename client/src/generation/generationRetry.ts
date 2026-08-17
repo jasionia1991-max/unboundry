@@ -7,7 +7,7 @@ import {
 } from "./friendlyGenerationMessage";
 
 export const RETRY_OUTCOME_UNKNOWN_MESSAGE =
-  "上次生成结果无法确认，为避免重复扣费，不能一键重试；请先到模型平台核对任务记录，确认后修改生成内容再提交";
+  "上次结果还没对上，为避免重复扣费，请先点「核对结果」，不要重新生成";
 
 function stableValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stableValue);

@@ -4,6 +4,8 @@ import {
   cancelGenerationTask,
   GENERATION_TASK_RETRY_ACCEPTED_EVENT,
   listGenerationTasks,
+  reconcileGenerationTask,
+  reconcileOutcomeMessage,
   retryGenerationTask,
   type GenerationTaskSummary,
 } from "../generation/generationTasks";
@@ -83,9 +85,13 @@ function TaskRow({
   waitForCanvasRevision?: () => Promise<number>;
 }) {
   const [busy, setBusy] = useState(false);
+  const [needsTaskId, setNeedsTaskId] = useState(false);
+  const [providerTaskDraft, setProviderTaskDraft] = useState("");
+  const [confirmedMissing, setConfirmedMissing] = useState(false);
   const active = activeStates.has(task.state);
   const abandonable = task.state === "failed" && task.abandonAllowed === true;
   const retryable = task.state === "failed" && task.retryAllowed === true;
+  const reconcilable = task.state === "failed";
   const rowIsCurrent =
     task.canvasId === canvasId && isCurrentScope(canvasScopeId, canvasId);
   return (
@@ -134,6 +140,89 @@ function TaskRow({
           >
             取消
           </button>
+        )}
+        {reconcilable && (
+          <button
+            data-testid={`tasks-reconcile-${task.id}`}
+            disabled={
+              busy ||
+              !rowIsCurrent ||
+              !retryEnabled ||
+              !waitForCanvasRevision ||
+              !task.generationInputKey
+            }
+            onClick={() => {
+              if (
+                task.canvasId !== canvasId ||
+                !isCurrentScope(canvasScopeId, canvasId) ||
+                !retryEnabled ||
+                !waitForCanvasRevision ||
+                !task.generationInputKey
+              ) return;
+              const signal = getActionSignal(canvasScopeId, canvasId);
+              if (!signal) return;
+              setBusy(true);
+              void reconcileGenerationTask({
+                canvasId: task.canvasId,
+                generationInputKey: task.generationInputKey,
+                kind: task.kind,
+                nodeId: task.nodeId,
+                taskId: task.id,
+              }, waitForCanvasRevision, providerTaskDraft, signal)
+                .then((result) => {
+                  if (!isCurrentScope(canvasScopeId, canvasId)) return;
+                  if (result.outcome === "needs-task-id") {
+                    setNeedsTaskId(true);
+                  }
+                  if (result.outcome === "missing") {
+                    setConfirmedMissing(true);
+                    setNeedsTaskId(false);
+                  }
+                  onActionError(reconcileOutcomeMessage(result.outcome));
+                  if (result.outcome === "recovered") {
+                    window.dispatchEvent(new CustomEvent(
+                      GENERATION_TASK_RETRY_ACCEPTED_EVENT,
+                      {
+                        detail: {
+                          attempt: result.task.attempt,
+                          canvasId: result.task.canvasId,
+                          kind: result.task.kind,
+                          nodeId: result.task.nodeId,
+                          taskId: result.task.id,
+                          updatedAt: result.task.updatedAt,
+                        },
+                      },
+                    ));
+                  }
+                  onChanged();
+                })
+                .catch((error: unknown) => {
+                  if (!isCurrentScope(canvasScopeId, canvasId)) return;
+                  onActionError(
+                    error instanceof Error
+                      ? error.message
+                      : "核对结果失败，请稍后再试",
+                  );
+                })
+                .finally(() => {
+                  if (!isCurrentScope(canvasScopeId, canvasId)) return;
+                  setBusy(false);
+                });
+            }}
+            type="button"
+          >
+            {busy ? "核对中" : "核对结果"}
+          </button>
+        )}
+        {reconcilable && needsTaskId && (
+          <input
+            aria-label="平台任务号"
+            data-testid={`tasks-reconcile-task-id-${task.id}`}
+            disabled={busy}
+            onChange={(event) => setProviderTaskDraft(event.target.value)}
+            placeholder="平台任务号"
+            value={providerTaskDraft}
+          />
         )}
         {retryable && (
           <button

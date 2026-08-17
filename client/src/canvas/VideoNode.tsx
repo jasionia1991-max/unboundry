@@ -29,6 +29,7 @@ import {
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
 import { useFinishedGenerationDuration } from "../generation/useFinishedGenerationDuration";
 import { GenerationDurationHint } from "./GenerationDurationHint";
+import { GenerationReconcileControls } from "./GenerationReconcileControls";
 import {
   useWorkflowExecution,
   type NodeRunResult,
@@ -65,6 +66,8 @@ import {
   getGenerationTask,
   listGenerationTasks,
   recoverPendingGenerationTask,
+  reconcileGenerationTask,
+  reconcileOutcomeMessage,
   retryGenerationTask,
   waitForGenerationTask,
   type GenerationTaskRetryAcceptedDetail,
@@ -311,6 +314,10 @@ function VideoNodeImpl({
   );
   const [transientUploadError, setTransientUploadError] = useState("");
   const [retryTaskId, setRetryTaskId] = useState<string>();
+  const [reconcileBusy, setReconcileBusy] = useState(false);
+  const [reconcileNeedsTaskId, setReconcileNeedsTaskId] = useState(false);
+  const [reconcileProviderTaskId, setReconcileProviderTaskId] = useState("");
+  const [reconcileConfirmedMissing, setReconcileConfirmedMissing] = useState(false);
   const [pollingPausedTaskId, setPollingPausedTaskId] = useState<string>();
   const pollingPausedTaskIdRef = useRef<string | undefined>(undefined);
   const [unverifiedRecoveryTaskId, setUnverifiedRecoveryTaskId] =
@@ -529,6 +536,17 @@ function VideoNodeImpl({
     data.videoGenerationRetryAllowed === true &&
     selectedVideoModel &&
     selectedVideoModel.generationAvailable !== false,
+  );
+  const showVideoRetry = retryAvailable && (
+    reconcileConfirmedMissing ||
+    data.videoGenerationErrorCode === "PROVIDER_RESULT_MISSING" ||
+    data.videoGenerationErrorCode === "PROVIDER_FAILED"
+  );
+  const canReconcileVideo = Boolean(
+    data.videoGenerationTaskId &&
+    data.videoGenerationError &&
+    !generating &&
+    !isFixture,
   );
 
   const clearVideoIntentAfterDurableTerminalPatch = (taskId: string) => {
@@ -1361,6 +1379,106 @@ function VideoNodeImpl({
       );
     } finally {
       endGenerationPollingRun(pollingRun);
+    }
+  };
+
+  const reconcileVideoResult = async () => {
+    const taskId = data.videoGenerationTaskId;
+    if (
+      !taskId ||
+      !canReconcileVideo ||
+      reconcileBusy ||
+      isFixture ||
+      !retryGenerationEnabled
+    ) return;
+    setReconcileBusy(true);
+    try {
+      const result = await reconcileGenerationTask({
+        canvasId,
+        generationInputKey: videoGenerationInputKey,
+        kind: "video",
+        nodeId: id,
+        taskId,
+      }, waitForCanvasRevision, reconcileProviderTaskId);
+      const message = reconcileOutcomeMessage(result.outcome);
+      if (result.outcome === "needs-task-id") {
+        setReconcileNeedsTaskId(true);
+        setUploadError(message);
+        return;
+      }
+      if (result.outcome === "missing") {
+        setReconcileConfirmedMissing(true);
+        setReconcileNeedsTaskId(false);
+        setRetryTaskId(result.task.id);
+        setUploadError(message);
+        setNodes((nodes) =>
+          nodes.map((node) =>
+            node.id === id
+              ? {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    videoGenerationError: message,
+                    videoGenerationErrorCode: "PROVIDER_RESULT_MISSING",
+                    videoGenerating: false,
+                    videoGenerationRetryAllowed: true,
+                    videoGenerationTaskId: result.task.id,
+                  },
+                }
+              : node,
+          ),
+        );
+        return;
+      }
+      if (result.outcome !== "recovered") {
+        setUploadError(message);
+        return;
+      }
+      setReconcileNeedsTaskId(false);
+      setUploadError("");
+      const pollingRun = beginGenerationPollingRun(
+        taskId,
+        videoGenerationInputKey,
+        rawGenerationInputFingerprint,
+      );
+      setNodes((nodes) =>
+        nodes.map((node) =>
+          node.id === id
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  videoGenerationError: undefined,
+                  videoGenerationErrorCode: undefined,
+                  videoGenerating: true,
+                  videoGenerationTaskId: taskId,
+                },
+              }
+            : node,
+        ),
+      );
+      const task = await waitForGenerationTaskWithPause(taskId, () => {
+        if (!ownsGenerationPollingRun(pollingRun)) return;
+        pollingPausedTaskIdRef.current = taskId;
+        setPollingPausedTaskId(taskId);
+        setUploadError(POLLING_PAUSED_MESSAGE);
+      });
+      if (!ownsGenerationPollingRun(pollingRun)) return;
+      if (task.state === "success") {
+        await applyGeneratedVideo(
+          task,
+          promptControl.committedValue,
+          pollingRun,
+        );
+        return;
+      }
+      setUploadError(task.errorMessage ?? "视频生成失败，请稍后再试");
+    } catch (error) {
+      setUploadError(
+        error instanceof Error ? error.message : "核对结果失败，请稍后再试",
+      );
+    } finally {
+      setReconcileBusy(false);
     }
   };
 
@@ -2426,7 +2544,19 @@ function VideoNodeImpl({
             <span className="provider-error-summary">
               {transientUploadError || uploadError}
             </span>
-            {retryAvailable && (
+            {canReconcileVideo && (
+              <GenerationReconcileControls
+                busy={reconcileBusy || submitting}
+                canRetry={showVideoRetry}
+                needsTaskId={reconcileNeedsTaskId}
+                onReconcile={() => void reconcileVideoResult()}
+                onRetry={() => void retryVideoGeneration()}
+                providerTaskDraft={reconcileProviderTaskId}
+                retryEnabled={retryGenerationEnabled}
+                setProviderTaskDraft={setReconcileProviderTaskId}
+              />
+            )}
+            {!canReconcileVideo && retryAvailable && (
               <button
                 aria-label="重试生成"
                 disabled={

@@ -140,8 +140,10 @@ const generationErrorCodeMessages: Record<
   REFERENCE_SIGN_FAILED: "参考图临时链接创建失败，本次没有向模型提交",
   REFERENCE_STORAGE_BUSY: "参考图临时存储繁忙，本次没有向模型提交",
   REFERENCE_UPLOAD_FAILED: "参考图临时上传失败，本次没有向模型提交",
+  PROVIDER_RESULT_MISSING: "平台没有成片，可以重试",
+  RECONCILE_RATE_LIMIT: "核对太频繁，请稍后再试",
   RETRY_OUTCOME_UNKNOWN:
-    "上次生成结果无法确认，为避免重复扣费，不能一键重试；请先到模型平台核对任务记录，确认后修改生成内容再提交",
+    "上次结果还没对上，为避免重复扣费，请先点「核对结果」，不要重新生成",
   RETRY_SNAPSHOT_CHANGED: "任务快照已变化，不能继续旧任务，请重新提交",
   RETRY_SNAPSHOT_INCOMPATIBLE: "任务快照与当前节点不兼容，请重新提交",
   SERVICE_RESTARTED: "服务刚刚重启，任务状态已恢复，请重新检查",
