@@ -2,22 +2,25 @@
 
 本文件适用于 `/Users/mymy/Documents/unboundry/app` 全仓库。用户最新明确指令优先；若与仓库状态或本文冲突，先停止并向用户报告，不得猜测。
 
+人和 AI 共用的上线拍板规矩见仓库根目录 `上线规矩.md`。发布前必须分别获得版本号确认和允许发布；一次授权只用一次。
+
 ## 1. 每次开始或上下文恢复必读
 
 按顺序完整阅读：
 
-1. `README.md`
-2. `spec/UNBOUNDRY_REMEDIATION_PLAN_2026-08-09.md`
-3. `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md`
-4. `spec/UNBOUNDRY_HANDOFF_2026-08-09.md`
-5. `TASKS.md` 当前 REM 区块
-6. `spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md` 当前 REM 区块
+1. `上线规矩.md`
+2. `README.md`
+3. `spec/UNBOUNDRY_REMEDIATION_PLAN_2026-08-09.md`
+4. `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md`
+5. `spec/UNBOUNDRY_HANDOFF_2026-08-09.md`
+6. `TASKS.md` 当前 REM 区块
+7. `spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md` 当前 REM 区块
 
 然后只读核对 `pwd`、Git 分支、HEAD、工作树、package 版本和 Node 版本。与施工断点不一致时停止，不得继续施工。
 
 ## 2. 当前授权边界
 
-- **2026-08-17 当前权威状态**：生产运行`v0.6.7/schema39`，`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.7-inc-gen-001-20260817`；service active+enabled、NRestarts0，公网version、入口和关键静态资源哈希及schema39通过。`INC-GEN-001 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-UI-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-000～011（含009A/009B） = PASS`，当前没有施工中的INC或REM；
+- **2026-08-17 当前权威状态**：生产仍运行`v0.6.7/schema39`，`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.7-inc-gen-001-20260817`。本地已提交`v0.6.8`（`INC-GEN-002`同层生成提交排队 + 上线规矩），尚未切生产。`INC-GEN-002 = LOCAL_COMMITTED / USER_RECHECK`，`INC-GEN-001 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-UI-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-000～011（含009A/009B） = PASS`；
 - v0.6.7生产源码commit为`a4dc45f4cdfa30547dac401fc29d6796ba233832`、tree为`904652dea6368fd294b6a6974939fc58874f536c`；注释标签`v0.6.7`精确指向该源码。PR #8已于2026-08-17合并到`main`，merge commit为`58da30589186296e0d275cdac73350f3dbec338a`。生产凭证为`spec/INC_GEN_001_PRODUCTION_RECEIPT_2026-08-17.json`；
 - v0.6.7正式安全全量为`118/118 specs、969/969 tests PASS`，异常0。生成用时、画布核对结果和失败任务刷新保留已发布，待用户肉眼验收；
 - 冻结备份位于`/var/lib/unboundry-rollbacks/inc-gen-001-frozen-20260817T075553Z`，冻结源与恢复副本均363文件且清单SHA-256同为`c70f7eb5479f523055a230502fb6f7ae12722a332a7e856ac418995b85b8378a`。发布与验证期间真实Provider请求、付费生成和OSS写入均为0；

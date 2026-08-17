@@ -1,7 +1,14 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-17
-状态：`v0.6.7已发布到生产并完成自动与发布技术验证；INC-GEN-001为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，PR #8已合并，当前无施工中INC/REM，既有其他验收状态保持。`
+状态：`v0.6.8本地已提交待发布；生产仍为v0.6.7。INC-GEN-002为LOCAL_COMMITTED / USER_RECHECK，INC-GEN-001仍为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，既有其他验收状态保持。`
+
+### 2026-08-17 同层生成提交排队（INC-GEN-002）
+
+- 状态：`LOCAL_COMMITTED / USER_RECHECK`。用户确认按`v0.6.8`，并要求带上上线规矩、对齐文档后 commit。
+- 实现：同一画布的等保存、提交任务、写回任务号排队；同层真正生成仍并行。图/字/视频/音频首次生成、重试、核对结果共用入口。
+- 自动门：类型检查通过；`m22` 18/18、`m40` 14/14、`m27` 20/20、`m41` 51/51；冻结清单保持 `118 specs / 969 tests`。
+- 发布：尚未切生产、未 push/tag/PR。权威记录为`spec/INC_GEN_002_CANVAS_SUBMIT_QUEUE_2026-08-17.md`。
 
 ### 2026-08-17 生成用时与画布核对结果（INC-GEN-001）
 

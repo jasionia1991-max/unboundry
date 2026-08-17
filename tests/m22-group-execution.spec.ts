@@ -11,7 +11,10 @@ import {
   type WorkflowNodeShape,
 } from "../client/src/generation/workflowExecution";
 import { friendlyGenerationMessage } from "../client/src/generation/friendlyGenerationMessage";
-import { createSaveGateRun } from "../client/src/generation/saveGate";
+import {
+  createSaveGateRun,
+  runExclusiveCanvasSubmit,
+} from "../client/src/generation/saveGate";
 import { defaultParameterSchema } from "../types/modelParameters";
 import { resolveNodeInputs } from "../types/nodeInputs";
 
@@ -422,6 +425,53 @@ test("save gate waits for a durable canvas revision before running the node", as
   expect(await pending).toEqual({ status: "success" });
   expect(revisionConfirmed).toBe(true);
   expect(calls).toEqual(["run"]);
+
+  const events: string[] = [];
+  let releaseFirst!: () => void;
+  const firstHold = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+  const first = runExclusiveCanvasSubmit("canvas-a", async () => {
+    events.push("a-start");
+    await firstHold;
+    events.push("a-end");
+    return 1;
+  });
+  const second = runExclusiveCanvasSubmit("canvas-a", async () => {
+    events.push("a2-start");
+    return 2;
+  });
+  const other = runExclusiveCanvasSubmit("canvas-b", async () => {
+    events.push("b-start");
+    return 3;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(events).toEqual(["a-start", "b-start"]);
+  releaseFirst();
+  await expect(Promise.all([first, second, other])).resolves.toEqual([1, 2, 3]);
+  expect(events).toEqual(["a-start", "b-start", "a-end", "a2-start"]);
+
+  const failed = runExclusiveCanvasSubmit("canvas-fail", async () => {
+    throw new Error("first submit failed");
+  });
+  const afterFailure = runExclusiveCanvasSubmit("canvas-fail", async () => "ok");
+  await expect(failed).rejects.toThrow("first submit failed");
+  await expect(afterFailure).resolves.toBe("ok");
+
+  let revision = 14;
+  const seen: number[] = [];
+  await Promise.all([
+    runExclusiveCanvasSubmit("canvas-rev", async () => {
+      seen.push(revision);
+      revision += 1;
+    }),
+    runExclusiveCanvasSubmit("canvas-rev", async () => {
+      seen.push(revision);
+      revision += 1;
+    }),
+  ]);
+  expect(seen).toEqual([14, 15]);
+  expect(revision).toBe(16);
 });
 
 test("save gate turns a save failure into a friendly node failure", async () => {

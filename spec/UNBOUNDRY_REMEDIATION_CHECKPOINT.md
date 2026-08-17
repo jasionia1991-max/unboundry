@@ -2,10 +2,18 @@
 
 断点版本：`71`
 更新时间：`2026-08-17`
-状态：`INC_GEN_001_V0_6_7_PRODUCTION_PUBLISHED_USER_RECHECK`
+状态：`INC_GEN_002_V0_6_8_LOCAL_COMMITTED_USER_RECHECK`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
-## 0. 最新已完成事件：INC-GEN-001（v0.6.7已发布，待用户复验）
+## 0. 当前本地提交：INC-GEN-002（v0.6.8，待发布）
+
+- 用户确认按`v0.6.8`，带上上线规矩，对齐文档后 commit。
+- 同一画布的等保存、提交任务、写回任务号排队；同层真正生成仍并行。
+- 类型检查通过；`m22` 18/18、`m40` 14/14、`m27` 20/20、`m41` 51/51；冻结清单仍为 969。
+- 生产仍运行 v0.6.7。尚未切生产、未 push/tag/PR。
+- 权威记录：`spec/INC_GEN_002_CANVAS_SUBMIT_QUEUE_2026-08-17.md`。
+
+## 0.05 前一已发布事件：INC-GEN-001（v0.6.7已发布，待用户复验）
 
 - 用户明确“那上线吧”，按`v0.6.7`发布生成用时和画布核对结果。
 - 选中节点/组/任务面板显示已完成用时，不写进画布。失败且结果未知时先核对平台任务；找到成片就收回，确认没有成片再重试。普通失败仍直接重试。
@@ -13,7 +21,7 @@
 - 生产current已切到`/opt/unboundry/releases/v0.6.7-inc-gen-001-20260817`；冻结备份恢复、公网资源逐字节哈希、service/schema39和数据不变门均PASS。生产保持220 tasks、221 attempts、active0、47 public templates（46 published）。
 - `v0.6.7`标签精确指向源码commit；PR #8已合并到`main`，merge commit`58da30589186296e0d275cdac73350f3dbec338a`。用户肉眼验收仍为`USER_RECHECK`。
 
-## 0.05 前一事件：INC-UI-007（v0.6.6已发布并通过用户验收）
+## 0.06 前一事件：INC-UI-007（v0.6.6已发布并通过用户验收）
 
 - 用户同意组标题、Text拖动画布和模板目录刷新三项方案，并提前授权风险控制、全量测试、冻结备份、生产发布、commit、push、tag和PR合并。
 - Group/模板标题改为距主体约8px，宽度72～320px并允许完整换行；不增加组内边距/边框，不移动节点、不改持久坐标。Text节点仅在真实编辑态隔离拖拽/滚轮，浏览态恢复画布平移。模板目录每次打开和BFCache恢复时都用`no-store`重新读取，管理页改名后无需刷新整页即可看到新名称。
@@ -517,22 +525,22 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 
 ## 10. 2026-08-17 当前恢复卡
 
-> 2026-08-17 INC-GEN-001最终断点：v0.6.7已发布，current→`v0.6.7-inc-gen-001-20260817`，公网v0.6.7、service active+enabled、schema39、NRestarts0。正式安全全量118/118 specs、969/969 tests PASS；生成用时和画布核对结果已上线，待用户肉眼验收。PR #8已合并；以INC-GEN-001文档和生产receipt为准。上一节v0.6.6恢复卡只作历史。
+> 2026-08-17 INC-GEN-002本地断点：v0.6.8已本地提交，生产仍为v0.6.7。同层生成提交排队与上线规矩入库；切生产前不得写成已上线。以INC-GEN-002文档为准。上一节v0.6.7恢复卡只作已发布历史。
 
 ```text
 项目路径：/Users/mymy/Documents/unboundry/app
-本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.7生产源commit a4dc45f4cdfa30547dac401fc29d6796ba233832；禁止reset/clean
+本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.8本地提交待发布；禁止reset/clean
 生产：canvas.mymy.ltd；v0.6.7/schema39；/opt/unboundry/current -> releases/v0.6.7-inc-gen-001-20260817
 生产artifact：source commit a4dc45f4cdfa30547dac401fc29d6796ba233832；tree 904652dea6368fd294b6a6974939fc58874f536c
-当前状态：INC-GEN-001已发布并完成自动与发布技术验证，状态PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK；INC-UI-007/006保持PRODUCTION_PUBLISHED_USER_PASS；既有INC-UI-005/004/003、INC-VIDEO-001、INC-UI-001/002状态保持；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE；当前无施工中INC或REM
-技术凭证：spec/INC_GEN_001_PRODUCTION_RECEIPT_2026-08-17.json；spec/INC_GEN_001_GENERATION_DURATION_AND_RECONCILE_2026-08-17.md；既有v0.6.6及更早发布凭证继续保留
-用户验收：既有v0.6.0/v0.6.1/v0.6.5/v0.6.6验收保持；v0.6.7用时与核对结果待用户复验；v0.6.4组标题总览、v0.6.3公共模板UI与旧标签恢复、v0.6.2其余UI/视频项继续等待用户线上复验
+当前状态：INC-GEN-002 LOCAL_COMMITTED / USER_RECHECK；INC-GEN-001 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK；INC-UI-007/006保持PRODUCTION_PUBLISHED_USER_PASS；既有INC-UI-005/004/003、INC-VIDEO-001、INC-UI-001/002状态保持；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
+技术凭证：spec/INC_GEN_002_CANVAS_SUBMIT_QUEUE_2026-08-17.md；spec/INC_GEN_001_PRODUCTION_RECEIPT_2026-08-17.json；既有v0.6.7及更早发布凭证继续保留
+用户验收：既有v0.6.0/v0.6.1/v0.6.5/v0.6.6验收保持；v0.6.8排队修复待发布后复验；v0.6.7用时与核对结果待用户复验；v0.6.4组标题总览、v0.6.3公共模板UI与旧标签恢复、v0.6.2其余UI/视频项继续等待用户线上复验
 数据库：schema39；quick_check ok；FK0；220 tasks/221 attempts；47 public templates/46 published；active0；默认视频模型Seedance；既有生成安全配置不变
 备份：/var/lib/unboundry-rollbacks/inc-gen-001-frozen-20260817T075553Z；冻结源与恢复副本均363文件，清单SHA c70f7eb5479f523055a230502fb6f7ae12722a332a7e856ac418995b85b8378a，二者均PASS；历史schema37/offhost及v0.6.6冻结备份继续保留
 限制：attempt 86/108/116/120/122为行政取消且禁止重试，PROVIDER_FAILED仅surrogate；3条音频仅改duration元数据；cutover Provider/paid calls=0
 GitHub：v0.6.7注释标签精确指向生产源码a4dc45f4cdfa30547dac401fc29d6796ba233832；PR #8已合并到main，merge commit 58da30589186296e0d275cdac73350f3dbec338a
 未来授权：本次v0.6.7生产与GitHub发布授权已消费；未来生产读写、真实Provider/付费生成、push/tag/PR或新发布仍需新授权
-下一步：当前无施工中事项；新Agent应先按AGENTS.md读取顺序恢复，再根据用户最新请求建立新的授权与断点，不得继续消费v0.6.7授权
+下一步：v0.6.8已本地提交；切生产、push/tag/PR需使用用户对本轮的上线授权，不得继续消费v0.6.7授权
 ```
 
 任何恢复者必须优先使用本节；第9节只保留历史，不得执行其“下一步”。

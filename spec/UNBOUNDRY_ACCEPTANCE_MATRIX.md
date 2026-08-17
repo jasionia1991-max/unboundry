@@ -3,6 +3,8 @@
 基线日期：2026-07-27  
 当前状态更新：2026-08-17
 
+2026-08-17 `INC-GEN-002 = LOCAL_COMMITTED / USER_RECHECK`：同一画布上「等保存 → 提交任务 → 写回任务号」排队，同层真正生成仍并行，避免互相报「画布还在保存」。上线规矩页入库。包版本`0.6.8`。定向`m22/m40/m27/m41`通过，冻结清单仍为969。生产仍运行v0.6.7，本条在切生产前不得写成已上线。
+
 2026-08-17 `INC-GEN-001 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：已完成生成显示用时；画布可核对平台结果并收回成片，未知结果不直接重试，普通失败仍可重试。正式安全全量`118/118 specs、969/969 tests PASS`，异常0。生产已运行v0.6.7，公网资源逐字节哈希、冻结备份恢复、service/schema39与数据不变门通过，保持220 tasks、221 attempts、active0、47 public templates（46 published）；Provider/付费生成/OSS写入0。`v0.6.7`标签与PR #8合并完成；用户肉眼验收仍为`USER_RECHECK`。
 
 2026-08-17 `INC-UI-007 = PRODUCTION_PUBLISHED_USER_PASS`：Group/模板标题距主体约8px、宽度72～320px并允许完整换行，不增加组内视觉边距/边框且不改变节点坐标；Text节点浏览态恢复画布拖拽/滚轮/中键平移，真实编辑态继续隔离画布手势；公共模板目录每次打开和BFCache恢复时使用`no-store`重新获取，管理页改名后返回画布可刷新Dock名称。定向`17/17`及正式安全全量`118/118 specs、969/969 tests PASS`，异常0。生产已运行v0.6.6，公网资源逐字节哈希、冻结备份恢复、service/schema39与数据不变门通过，保持153 tasks、152 attempts、active0、47 public templates（46 published）；Provider/付费生成/OSS写入0。`v0.6.6`标签与PR #6合并完成；用户随后明确回复“通过”，本项正式收口。
@@ -29,7 +31,7 @@
 状态：`AUTHORITATIVE`  
 状态夹具：`unboundry-state-fixtures.json`
 
-2026-08-17 当前权威状态：生产已运行 `v0.6.7/schema39`；`INC-GEN-001 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；`INC-UI-007/006 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-UI-005/004/003 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-VIDEO-001 = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_RECHECK`，`INC-UI-001/002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-010/011 = PASS`，`PRODUCTION = LIVE`。当前无施工中INC/REM，既有其他用户验收与未完成状态全部保留。
+2026-08-17 当前权威状态：生产已运行 `v0.6.7/schema39`；本地已提交 `v0.6.8`；`INC-GEN-002 = LOCAL_COMMITTED / USER_RECHECK`；`INC-GEN-001 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；`INC-UI-007/006 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-UI-005/004/003 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-VIDEO-001 = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_RECHECK`，`INC-UI-001/002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-010/011 = PASS`，`PRODUCTION = LIVE`。既有其他用户验收与未完成状态全部保留。
 
 最新核验为service active+enabled、NRestarts0、current→`releases/v0.6.7-inc-gen-001-20260817`、公网version 0.6.7及精确JS/CSS哈希通过。schema39/quick_check ok/FK0、active generation0、220 tasks/221 attempts、47 public templates（46 published）。INC-GEN-001没有修改画布文档、节点坐标、连线、Provider配置或OSS对象；Provider/付费/OSS写入0。上一不可变release、冻结备份、v0.6.0原schema37备份、整机schema39包及既有用户验收继续保留。未实际运行的两张付费图片仍作为可选付费抽验延期，既有PARTIAL/PAUSED/BLOCK/NOT_STARTED条目保持不变。
 

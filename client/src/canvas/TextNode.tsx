@@ -47,7 +47,10 @@ import {
   useWorkflowExecution,
   type NodeRunResult,
 } from "../generation/WorkflowExecutionProvider";
-import { createSaveGateRun } from "../generation/saveGate";
+import {
+  createSaveGateRun,
+  runExclusiveCanvasSubmit,
+} from "../generation/saveGate";
 import {
   friendlyGenerationMessage,
   generationMessageFallback,
@@ -1301,95 +1304,102 @@ function TextNodeImpl({
             },
           }
         : node));
-      const freshCanvasRevision = await waitForCanvasRevision();
-      if (
-        textManualEditVersionRef.current !== manualEditVersion ||
-        liveGenerationOwnershipKeyRef.current !== requestedGenerationOwnershipKey
-      ) {
-        return {
-          message: "生成输入已修改，已停止本次生成",
-          status: "failed",
-        };
-      }
-      const {
-        generationOwnershipKey: persistedGenerationOwnershipKey,
-        task: submitted,
-      } = await ensureGenerationTask(
-        "text",
-        {
-          ...textGenerationRequestInput,
-          canvasRevision: freshCanvasRevision,
-        },
-        accountId,
-        () => {
-          if (
-            textManualEditVersionRef.current !== manualEditVersion ||
-            liveGenerationOwnershipKeyRef.current !==
-              requestedGenerationOwnershipKey
-          ) {
-            throw new Error("生成输入已修改，已停止本次生成");
-          }
-        },
-        { generationOwnershipKey: requestedGenerationOwnershipKey },
-      );
-      taskId = submitted.id;
-      if (
-        textManualEditVersionRef.current !== manualEditVersion ||
-        liveGenerationOwnershipKeyRef.current !== requestedGenerationOwnershipKey
-      ) {
-        clearGenerationSubmissionIntent(
+      const admitted = await runExclusiveCanvasSubmit(canvasId, async () => {
+        const freshCanvasRevision = await waitForCanvasRevision();
+        if (
+          textManualEditVersionRef.current !== manualEditVersion ||
+          liveGenerationOwnershipKeyRef.current !==
+            requestedGenerationOwnershipKey
+        ) {
+          return {
+            message: "生成输入已修改，已停止本次生成",
+            status: "failed" as const,
+          };
+        }
+        const {
+          generationOwnershipKey: persistedGenerationOwnershipKey,
+          task: submitted,
+        } = await ensureGenerationTask(
           "text",
-          canvasId,
-          id,
-          submitted.id,
+          {
+            ...textGenerationRequestInput,
+            canvasRevision: freshCanvasRevision,
+          },
           accountId,
+          () => {
+            if (
+              textManualEditVersionRef.current !== manualEditVersion ||
+              liveGenerationOwnershipKeyRef.current !==
+                requestedGenerationOwnershipKey
+            ) {
+              throw new Error("生成输入已修改，已停止本次生成");
+            }
+          },
+          { generationOwnershipKey: requestedGenerationOwnershipKey },
         );
-        return {
-          message: "生成输入已修改，旧任务结果不会覆盖当前内容",
-          status: "failed",
-        };
-      }
-      owner = claimTextTask(
-        taskId,
-        requestedGenerationOwnershipKey,
-        requestedGenerationInputKey,
-      );
-      checkpoint();
-      setNodes((nodes) => nodes.map((node) => node.id === id
-        ? {
-            ...node,
-            data: {
-              ...node.data,
-              textGenerationError: undefined,
-              textGenerationErrorCode: undefined,
-              textGenerationInputKey: generationInputKey,
-              textGenerationOwnershipKey:
-                persistedGenerationOwnershipKey ??
-                requestedGenerationOwnershipKey,
-              textGenerationRetryAllowed: undefined,
-              textGenerationRetryBlockCode: undefined,
-              textGenerationRetryBlockReason: undefined,
-              textGenerating: true,
-              textGenerationTaskId: submitted.id,
-              textModelId: requestedModelId,
-              textModelName: requestedModelName,
-              textParameters: requestedParameters,
-            },
-          }
-        : node));
-      await flushCanvasSave();
-      bindingPersisted = true;
-      if (
-        !ownsTextTask(owner) ||
-        liveGenerationOwnershipKeyRef.current !==
-          requestedGenerationOwnershipKey
-      ) {
-        return {
-          message: "生成输入已修改，旧任务结果不会覆盖当前内容",
-          status: "failed",
-        };
-      }
-      await finishTextTask(submitted.id, owner);
+        taskId = submitted.id;
+        if (
+          textManualEditVersionRef.current !== manualEditVersion ||
+          liveGenerationOwnershipKeyRef.current !==
+            requestedGenerationOwnershipKey
+        ) {
+          clearGenerationSubmissionIntent(
+            "text",
+            canvasId,
+            id,
+            submitted.id,
+            accountId,
+          );
+          return {
+            message: "生成输入已修改，旧任务结果不会覆盖当前内容",
+            status: "failed" as const,
+          };
+        }
+        owner = claimTextTask(
+          taskId,
+          requestedGenerationOwnershipKey,
+          requestedGenerationInputKey,
+        );
+        checkpoint();
+        setNodes((nodes) => nodes.map((node) => node.id === id
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                textGenerationError: undefined,
+                textGenerationErrorCode: undefined,
+                textGenerationInputKey: generationInputKey,
+                textGenerationOwnershipKey:
+                  persistedGenerationOwnershipKey ??
+                  requestedGenerationOwnershipKey,
+                textGenerationRetryAllowed: undefined,
+                textGenerationRetryBlockCode: undefined,
+                textGenerationRetryBlockReason: undefined,
+                textGenerating: true,
+                textGenerationTaskId: submitted.id,
+                textModelId: requestedModelId,
+                textModelName: requestedModelName,
+                textParameters: requestedParameters,
+              },
+            }
+          : node));
+        await flushCanvasSave();
+        bindingPersisted = true;
+        if (
+          !ownsTextTask(owner) ||
+          liveGenerationOwnershipKeyRef.current !==
+            requestedGenerationOwnershipKey
+        ) {
+          return {
+            message: "生成输入已修改，旧任务结果不会覆盖当前内容",
+            status: "failed" as const,
+          };
+        }
+        return { status: "admitted" as const, submitted, owner };
+      });
+      if (admitted.status !== "admitted") return admitted;
+      const submitted = admitted.submitted;
+      await finishTextTask(submitted.id, admitted.owner);
       if (pollingPausedTaskIdRef.current === submitted.id) {
         return { message: POLLING_PAUSED_MESSAGE, status: "failed" };
       }
