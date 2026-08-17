@@ -55,6 +55,8 @@ import { visibleGenerationError } from "../generation/generationErrors";
 import {
   generationFailureMessage,
   generationInputKey as createGenerationInputKey,
+  generationNeedsReconcile,
+  generationRetryVisible,
   safelyRetryableGenerationTask,
 } from "../generation/generationRetry";
 import {
@@ -537,16 +539,18 @@ function VideoNodeImpl({
     selectedVideoModel &&
     selectedVideoModel.generationAvailable !== false,
   );
-  const showVideoRetry = retryAvailable && (
-    reconcileConfirmedMissing ||
-    data.videoGenerationErrorCode === "PROVIDER_RESULT_MISSING" ||
-    data.videoGenerationErrorCode === "PROVIDER_FAILED"
-  );
+  const showVideoRetry = generationRetryVisible({
+    confirmedMissing: reconcileConfirmedMissing,
+    errorCode: data.videoGenerationErrorCode,
+    retryAvailable,
+  });
   const canReconcileVideo = Boolean(
     data.videoGenerationTaskId &&
     data.videoGenerationError &&
     !generating &&
-    !isFixture,
+    !isFixture &&
+    (generationNeedsReconcile(data.videoGenerationErrorCode) ||
+      reconcileNeedsTaskId),
   );
 
   const clearVideoIntentAfterDurableTerminalPatch = (taskId: string) => {

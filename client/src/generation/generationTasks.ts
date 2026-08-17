@@ -2,6 +2,7 @@ import type {
   NodeInputProblem,
   NodeInputSnapshot,
 } from "../../../types/nodeInputs";
+import { rememberFinishedTaskDuration } from "./taskDurationCache";
 
 export type GenerationTaskKind = "text" | "image" | "video" | "audio";
 
@@ -244,11 +245,13 @@ export async function getGenerationTask(
   taskId: string,
   signal?: AbortSignal,
 ): Promise<GenerationTaskSummary> {
-  return await readTaskStatusJson<GenerationTaskSummary>(
+  const task = await readTaskStatusJson<GenerationTaskSummary>(
     `/api/generation-tasks/${encodeURIComponent(taskId)}`,
     { cache: "no-store" },
     signal,
   ) as GenerationTaskSummary;
+  rememberFinishedTaskDuration(task);
+  return task;
 }
 
 export async function cancelGenerationTask(
@@ -513,7 +516,9 @@ export async function listGenerationTasks(
     { cache: "no-store" },
     signal,
   );
-  return body?.tasks ?? [];
+  const tasks = body?.tasks ?? [];
+  for (const task of tasks) rememberFinishedTaskDuration(task);
+  return tasks;
 }
 
 type GenerationSubmissionIntent = {

@@ -68,6 +68,8 @@ import { visibleGenerationError } from "../generation/generationErrors";
 import {
   generationFailureMessage,
   generationInputKey as createGenerationInputKey,
+  generationNeedsReconcile,
+  generationRetryVisible,
   safelyRetryableGenerationTask,
 } from "../generation/generationRetry";
 import {
@@ -1740,16 +1742,18 @@ function ImageNodeImpl({
     selectedImageModel &&
     selectedImageModel.generationAvailable !== false,
   );
-  const showImageRetry = retryAvailable && (
-    reconcileConfirmedMissing ||
-    data.imageGenerationErrorCode === "PROVIDER_RESULT_MISSING" ||
-    data.imageGenerationErrorCode === "PROVIDER_FAILED"
-  );
+  const showImageRetry = generationRetryVisible({
+    confirmedMissing: reconcileConfirmedMissing,
+    errorCode: data.imageGenerationErrorCode,
+    retryAvailable,
+  });
   const canReconcileImage = Boolean(
     data.imageGenerationTaskId &&
     data.imageGenerationError &&
     !generating &&
-    !isFixture,
+    !isFixture &&
+    (generationNeedsReconcile(data.imageGenerationErrorCode) ||
+      reconcileNeedsTaskId),
   );
 
   const clearImageIntentAfterDurableTerminalPatch = (taskId: string) => {

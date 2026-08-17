@@ -26,7 +26,6 @@ import {
   type GroupRunSummary,
 } from "../generation/groupRunSummary";
 import { GenerationDurationHint } from "./GenerationDurationHint";
-import { listGenerationTasks } from "../generation/generationTasks";
 import { isExecutableWorkflowNode } from "../generation/workflowExecution";
 import { GrayMenuSelect } from "../ui/GrayMenuSelect";
 
@@ -107,49 +106,6 @@ function GroupNodeImpl({
     window.addEventListener(GROUP_RUN_SUMMARY_EVENT, onSummary);
     return () => window.removeEventListener(GROUP_RUN_SUMMARY_EVENT, onSummary);
   }, [canvasId, id]);
-  const [fallbackGroupDuration, setFallbackGroupDuration] = useState<string>();
-  const childIdsKey = childNodes.map((node) => node.id).sort().join(",");
-  useEffect(() => {
-    if (!singleNodeChrome || executing || lastGroupRun || !canvasId || !childIdsKey) {
-      if (!lastGroupRun) setFallbackGroupDuration(undefined);
-      return;
-    }
-    const childIds = new Set(childIdsKey.split(","));
-    const controller = new AbortController();
-    void listGenerationTasks(canvasId, controller.signal)
-      .then((tasks) => {
-        if (controller.signal.aborted) return;
-        const latestByNode = new Map<string, (typeof tasks)[number]>();
-        for (const task of tasks) {
-          if (!childIds.has(task.nodeId)) continue;
-          if (!["cancelled", "failed", "success"].includes(task.state)) continue;
-          const previous = latestByNode.get(task.nodeId);
-          if (!previous || task.updatedAt > previous.updatedAt) {
-            latestByNode.set(task.nodeId, task);
-          }
-        }
-        const latest = [...latestByNode.values()];
-        if (!latest.length) {
-          setFallbackGroupDuration(undefined);
-          return;
-        }
-        const started = Math.min(
-          ...latest.map((task) => Date.parse(task.createdAt)),
-        );
-        const ended = Math.max(
-          ...latest.map((task) => Date.parse(task.updatedAt)),
-        );
-        if (!Number.isFinite(started) || !Number.isFinite(ended) || ended < started) {
-          setFallbackGroupDuration(undefined);
-          return;
-        }
-        setFallbackGroupDuration(`上次 ${formatGenerationDuration(ended - started)}`);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setFallbackGroupDuration(undefined);
-      });
-    return () => controller.abort();
-  }, [canvasId, childIdsKey, executing, lastGroupRun, singleNodeChrome]);
   const titleControl = useCompositionSafeText({
     onCommit: (title) => {
       setNodes((nodes) =>
@@ -446,7 +402,7 @@ function GroupNodeImpl({
           label={
             lastGroupRun
               ? `上次 ${formatGenerationDuration(lastGroupRun.elapsedMs)}`
-              : fallbackGroupDuration
+              : undefined
           }
           testId="group-last-duration"
         />

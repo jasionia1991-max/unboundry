@@ -80,3 +80,24 @@ export function safelyRetryableGenerationTask(
 ) {
   return task.state === "failed" && task.retryAllowed === true;
 }
+
+export function generationOutcomeUnknown(errorCode?: string | null) {
+  return errorCode === "RETRY_OUTCOME_UNKNOWN";
+}
+
+export function generationNeedsReconcile(errorCode?: string | null) {
+  return errorCode === "RETRY_OUTCOME_UNKNOWN" ||
+    errorCode === "PROVIDER_RESULT_MISSING" ||
+    errorCode === "PROVIDER_FAILED";
+}
+
+export function generationRetryVisible(input: {
+  confirmedMissing?: boolean;
+  errorCode?: string | null;
+  retryAvailable: boolean;
+}) {
+  return input.retryAvailable && (
+    !generationOutcomeUnknown(input.errorCode) ||
+    input.confirmedMissing === true
+  );
+}
