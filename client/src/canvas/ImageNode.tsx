@@ -40,6 +40,9 @@ import {
   usePublishedModelSelection,
 } from "../models/ModelCatalog";
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
+import { useFinishedGenerationDuration } from "../generation/useFinishedGenerationDuration";
+import { GenerationDurationHint } from "./GenerationDurationHint";
+import { GenerationReconcileControls } from "./GenerationReconcileControls";
 import {
   useWorkflowExecution,
   type NodeRunResult,
@@ -65,6 +68,8 @@ import { visibleGenerationError } from "../generation/generationErrors";
 import {
   generationFailureMessage,
   generationInputKey as createGenerationInputKey,
+  generationNeedsReconcile,
+  generationRetryVisible,
   safelyRetryableGenerationTask,
 } from "../generation/generationRetry";
 import {
@@ -76,6 +81,8 @@ import {
   getGenerationTask,
   listGenerationTasks,
   recoverPendingGenerationTask,
+  reconcileGenerationTask,
+  reconcileOutcomeMessage,
   retryGenerationTask,
   waitForGenerationTask,
   type GenerationTaskRetryAcceptedDetail,
@@ -1267,6 +1274,11 @@ function ImageNodeImpl({
     retryGenerationEnabled,
     waitForCanvasRevision,
   } = useGenerationCanvas();
+  const finishedDurationLabel = useFinishedGenerationDuration(
+    data.imageGenerationTaskId,
+    singleNodeChrome && !data.imageGenerating,
+    { canvasId, nodeId: id },
+  );
   const mediaAdoptionScopeRef = useRef(`${accountId}\u0000${canvasId}`);
   mediaAdoptionScopeRef.current = `${accountId}\u0000${canvasId}`;
   const persistenceReadyLive = useRef(persistenceReady);
@@ -1334,6 +1346,10 @@ function ImageNodeImpl({
   const [modelSwitchProblem, setModelSwitchProblem] = useState("");
   const [redrawOpen, setRedrawOpen] = useState(false);
   const [retryTaskId, setRetryTaskId] = useState<string>();
+  const [reconcileBusy, setReconcileBusy] = useState(false);
+  const [reconcileNeedsTaskId, setReconcileNeedsTaskId] = useState(false);
+  const [reconcileProviderTaskId, setReconcileProviderTaskId] = useState("");
+  const [reconcileConfirmedMissing, setReconcileConfirmedMissing] = useState(false);
   const [pollingPausedTaskId, setPollingPausedTaskId] = useState<string>();
   const pollingPausedTaskIdRef = useRef<string | undefined>(undefined);
   const [unverifiedRecoveryTaskId, setUnverifiedRecoveryTaskId] =
@@ -1725,6 +1741,19 @@ function ImageNodeImpl({
     data.imageGenerationRetryAllowed === true &&
     selectedImageModel &&
     selectedImageModel.generationAvailable !== false,
+  );
+  const showImageRetry = generationRetryVisible({
+    confirmedMissing: reconcileConfirmedMissing,
+    errorCode: data.imageGenerationErrorCode,
+    retryAvailable,
+  });
+  const canReconcileImage = Boolean(
+    data.imageGenerationTaskId &&
+    data.imageGenerationError &&
+    !generating &&
+    !isFixture &&
+    (generationNeedsReconcile(data.imageGenerationErrorCode) ||
+      reconcileNeedsTaskId),
   );
 
   const clearImageIntentAfterDurableTerminalPatch = (taskId: string) => {
@@ -2408,6 +2437,112 @@ function ImageNodeImpl({
     }
   };
 
+  const reconcileImageResult = async () => {
+    const taskId = data.imageGenerationTaskId;
+    if (
+      !taskId ||
+      !canReconcileImage ||
+      reconcileBusy ||
+      isFixture ||
+      !retryGenerationEnabled
+    ) return;
+    const requestedGenerationInputKey = imageGenerationInputKey;
+    const requestedGenerationOwnershipKey = rawGenerationInputFingerprint;
+    setReconcileBusy(true);
+    try {
+      const result = await reconcileGenerationTask({
+        canvasId,
+        generationInputKey: data.imageGenerationInputKey || imageGenerationInputKey,
+        kind: "image",
+        nodeId: id,
+        taskId,
+      }, waitForCanvasRevision, reconcileProviderTaskId);
+      const message = reconcileOutcomeMessage(result.outcome);
+      if (result.outcome === "needs-task-id") {
+        setReconcileNeedsTaskId(true);
+        setUploadError(message);
+        return;
+      }
+      if (result.outcome === "missing") {
+        setReconcileConfirmedMissing(true);
+        setReconcileNeedsTaskId(false);
+        setRetryTaskId(result.task.id);
+        setUploadError(message);
+        setNodes((nodes) =>
+          nodes.map((node) =>
+            node.id === id
+              ? {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    imageGenerationError: message,
+                    imageGenerationErrorCode: "PROVIDER_RESULT_MISSING",
+                    imageGenerating: false,
+                    imageGenerationRetryAllowed: true,
+                    imageGenerationTaskId: result.task.id,
+                  },
+                }
+              : node,
+          ),
+        );
+        return;
+      }
+      if (result.outcome !== "recovered") {
+        setUploadError(message);
+        return;
+      }
+      setReconcileNeedsTaskId(false);
+      setUploadError("");
+      const generationRun = beginImageGenerationRun(
+        taskId,
+        requestedGenerationInputKey,
+        requestedGenerationOwnershipKey,
+      );
+      setNodes((nodes) =>
+        nodes.map((node) =>
+          node.id === id
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  imageGenerationError: undefined,
+                  imageGenerationErrorCode: undefined,
+                  imageGenerating: true,
+                  imageGenerationTaskId: taskId,
+                },
+              }
+            : node,
+        ),
+      );
+      const task = await waitForGenerationTaskWithPause(taskId, () => {
+        if (!ownsImageGenerationRun(generationRun)) return;
+        pollingPausedTaskIdRef.current = taskId;
+        setPollingPausedTaskId(taskId);
+        setUploadError(POLLING_PAUSED_MESSAGE);
+      });
+      if (!ownsImageGenerationRun(generationRun)) return;
+      if (task.state === "success") {
+        await applyGeneratedImage(task, generationRun);
+        return;
+      }
+      persistImageGenerationFailure(
+        task.id,
+        generationRun,
+        task.errorMessage ?? "图片生成失败，请稍后再试",
+        task.errorCode,
+        safelyRetryableGenerationTask(task),
+        task.retryBlockCode,
+        task.retryBlockReason,
+      );
+    } catch (error) {
+      setUploadError(
+        error instanceof Error ? error.message : "核对结果失败，请稍后再试",
+      );
+    } finally {
+      setReconcileBusy(false);
+    }
+  };
+
   const recheckImageTaskStatus = () => {
     if (
       unverifiedRecoveryTaskId &&
@@ -2499,7 +2634,7 @@ function ImageNodeImpl({
         }
         if (!persistedOwnershipKey) {
           if (!catalogReady) return;
-          if (!persistedInputKey || persistedInputKey !== imageGenerationInputKey) {
+          if (persistedInputKey && persistedInputKey !== imageGenerationInputKey) {
             setUnverifiedRecoveryTaskId((current) =>
               current === persistedTaskId ? undefined : current
             );
@@ -2579,7 +2714,7 @@ function ImageNodeImpl({
       if (!recoveredOwnershipKey) {
         if (!catalogReady) return;
         const legacyInputKey = persistedInputKey ?? task.generationInputKey;
-        if (!legacyInputKey || legacyInputKey !== imageGenerationInputKey) {
+        if (legacyInputKey && legacyInputKey !== imageGenerationInputKey) {
           if (persistedTaskId) {
             setUnverifiedRecoveryTaskId((current) =>
               current === persistedTaskId ? undefined : current
@@ -3512,6 +3647,7 @@ function ImageNodeImpl({
             />
           )}
           <span className="image-creator-spacer" />
+          <GenerationDurationHint label={finishedDurationLabel} />
           {selectedImageModel ? (
             <NodeParameterControl
               disabled={generating}
@@ -3653,7 +3789,19 @@ function ImageNodeImpl({
             <span className="provider-error-summary">
               {transientUploadError || uploadError}
             </span>
-            {retryAvailable && (
+            {canReconcileImage && (
+              <GenerationReconcileControls
+                busy={reconcileBusy || submitting}
+                canRetry={showImageRetry}
+                needsTaskId={reconcileNeedsTaskId}
+                onReconcile={() => void reconcileImageResult()}
+                onRetry={() => void retryImageGeneration()}
+                providerTaskDraft={reconcileProviderTaskId}
+                retryEnabled={retryGenerationEnabled}
+                setProviderTaskDraft={setReconcileProviderTaskId}
+              />
+            )}
+            {!canReconcileImage && retryAvailable && (
               <button
                 aria-label="重试生成"
                 disabled={

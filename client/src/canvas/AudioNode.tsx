@@ -26,6 +26,9 @@ import {
   usePublishedModelSelection,
 } from "../models/ModelCatalog";
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
+import { useFinishedGenerationDuration } from "../generation/useFinishedGenerationDuration";
+import { GenerationDurationHint } from "./GenerationDurationHint";
+import { GenerationReconcileControls } from "./GenerationReconcileControls";
 import {
   useWorkflowExecution,
   type NodeRunResult,
@@ -51,6 +54,8 @@ import { visibleGenerationError } from "../generation/generationErrors";
 import {
   generationFailureMessage,
   generationInputKey as createGenerationInputKey,
+  generationNeedsReconcile,
+  generationRetryVisible,
   safelyRetryableGenerationTask,
 } from "../generation/generationRetry";
 import {
@@ -62,6 +67,8 @@ import {
   getGenerationTask,
   listGenerationTasks,
   recoverPendingGenerationTask,
+  reconcileGenerationTask,
+  reconcileOutcomeMessage,
   retryGenerationTask,
   waitForGenerationTask,
   type GenerationTaskRetryAcceptedDetail,
@@ -226,6 +233,11 @@ function AudioNodeImpl({
     retryGenerationEnabled,
     waitForCanvasRevision,
   } = useGenerationCanvas();
+  const finishedDurationLabel = useFinishedGenerationDuration(
+    data.audioGenerationTaskId,
+    singleNodeChrome && !data.audioGenerating,
+    { canvasId, nodeId: id },
+  );
   const mediaAdoptionScopeRef = useRef(`${accountId}\u0000${canvasId}`);
   mediaAdoptionScopeRef.current = `${accountId}\u0000${canvasId}`;
   const persistenceReadyLive = useRef(persistenceReady);
@@ -286,6 +298,10 @@ function AudioNodeImpl({
   );
   const [transientUploadError, setTransientUploadError] = useState("");
   const [retryTaskId, setRetryTaskId] = useState<string>();
+  const [reconcileBusy, setReconcileBusy] = useState(false);
+  const [reconcileNeedsTaskId, setReconcileNeedsTaskId] = useState(false);
+  const [reconcileProviderTaskId, setReconcileProviderTaskId] = useState("");
+  const [reconcileConfirmedMissing, setReconcileConfirmedMissing] = useState(false);
   const [pollingPausedTaskId, setPollingPausedTaskId] = useState<string>();
   const pollingPausedTaskIdRef = useRef<string | undefined>(undefined);
   const [unverifiedRecoveryTaskId, setUnverifiedRecoveryTaskId] =
@@ -503,6 +519,19 @@ function AudioNodeImpl({
     data.audioGenerationRetryAllowed === true &&
     selectedAudioModel &&
     selectedAudioModel.generationAvailable !== false,
+  );
+  const showAudioRetry = generationRetryVisible({
+    confirmedMissing: reconcileConfirmedMissing,
+    errorCode: data.audioGenerationErrorCode,
+    retryAvailable,
+  });
+  const canReconcileAudio = Boolean(
+    data.audioGenerationTaskId &&
+    data.audioGenerationError &&
+    !generating &&
+    !isFixture &&
+    (generationNeedsReconcile(data.audioGenerationErrorCode) ||
+      reconcileNeedsTaskId),
   );
 
   const clearAudioIntentAfterDurableTerminalPatch = (taskId: string) => {
@@ -1370,6 +1399,106 @@ function AudioNodeImpl({
     }
   };
 
+  const reconcileAudioResult = async () => {
+    const taskId = data.audioGenerationTaskId;
+    if (
+      !taskId ||
+      !canReconcileAudio ||
+      reconcileBusy ||
+      isFixture ||
+      !retryGenerationEnabled
+    ) return;
+    setReconcileBusy(true);
+    try {
+      const result = await reconcileGenerationTask({
+        canvasId,
+        generationInputKey: data.audioGenerationInputKey || audioGenerationInputKey,
+        kind: "audio",
+        nodeId: id,
+        taskId,
+      }, waitForCanvasRevision, reconcileProviderTaskId);
+      const message = reconcileOutcomeMessage(result.outcome);
+      if (result.outcome === "needs-task-id") {
+        setReconcileNeedsTaskId(true);
+        setUploadError(message);
+        return;
+      }
+      if (result.outcome === "missing") {
+        setReconcileConfirmedMissing(true);
+        setReconcileNeedsTaskId(false);
+        setRetryTaskId(result.task.id);
+        setUploadError(message);
+        setNodes((nodes) =>
+          nodes.map((node) =>
+            node.id === id
+              ? {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    audioGenerationError: message,
+                    audioGenerationErrorCode: "PROVIDER_RESULT_MISSING",
+                    audioGenerating: false,
+                    audioGenerationRetryAllowed: true,
+                    audioGenerationTaskId: result.task.id,
+                  },
+                }
+              : node,
+          ),
+        );
+        return;
+      }
+      if (result.outcome !== "recovered") {
+        setUploadError(message);
+        return;
+      }
+      setReconcileNeedsTaskId(false);
+      setUploadError("");
+      const pollingRun = beginGenerationPollingRun(
+        taskId,
+        audioGenerationInputKey,
+        rawGenerationInputFingerprint,
+      );
+      setNodes((nodes) =>
+        nodes.map((node) =>
+          node.id === id
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  audioGenerationError: undefined,
+                  audioGenerationErrorCode: undefined,
+                  audioGenerating: true,
+                  audioGenerationTaskId: taskId,
+                },
+              }
+            : node,
+        ),
+      );
+      const task = await waitForGenerationTaskWithPause(taskId, () => {
+        if (!ownsGenerationPollingRun(pollingRun)) return;
+        pollingPausedTaskIdRef.current = taskId;
+        setPollingPausedTaskId(taskId);
+        setUploadError(POLLING_PAUSED_MESSAGE);
+      });
+      if (!ownsGenerationPollingRun(pollingRun)) return;
+      if (task.state === "success") {
+        await applyGeneratedAudio(
+          task,
+          promptControl.committedValue.trim(),
+          pollingRun,
+        );
+        return;
+      }
+      setUploadError(task.errorMessage ?? "音频生成失败，请稍后再试");
+    } catch (error) {
+      setUploadError(
+        error instanceof Error ? error.message : "核对结果失败，请稍后再试",
+      );
+    } finally {
+      setReconcileBusy(false);
+    }
+  };
+
   const recheckAudioTaskStatus = () => {
     if (
       unverifiedRecoveryTaskId &&
@@ -1461,7 +1590,7 @@ function AudioNodeImpl({
         }
         if (!persistedOwnershipKey) {
           if (!catalogReady) return;
-          if (!persistedInputKey || persistedInputKey !== audioGenerationInputKey) {
+          if (persistedInputKey && persistedInputKey !== audioGenerationInputKey) {
             setUnverifiedRecoveryTaskId((current) =>
               current === persistedTaskId ? undefined : current
             );
@@ -1541,7 +1670,7 @@ function AudioNodeImpl({
       if (!recoveredOwnershipKey) {
         if (!catalogReady) return;
         const legacyInputKey = persistedInputKey ?? task.generationInputKey;
-        if (!legacyInputKey || legacyInputKey !== audioGenerationInputKey) {
+        if (legacyInputKey && legacyInputKey !== audioGenerationInputKey) {
           if (persistedTaskId) {
             setUnverifiedRecoveryTaskId((current) =>
               current === persistedTaskId ? undefined : current
@@ -2319,6 +2448,7 @@ function AudioNodeImpl({
             </>
           )}
           <span className="audio-creator-spacer" />
+          <GenerationDurationHint label={finishedDurationLabel} />
           {selectedAudioModel && (
             <NodeParameterControl
               keys={audioCountParameterKeys}
@@ -2449,7 +2579,19 @@ function AudioNodeImpl({
             <span className="provider-error-summary">
               {transientUploadError || uploadError}
             </span>
-            {retryAvailable && (
+            {canReconcileAudio && (
+              <GenerationReconcileControls
+                busy={reconcileBusy || submitting}
+                canRetry={showAudioRetry}
+                needsTaskId={reconcileNeedsTaskId}
+                onReconcile={() => void reconcileAudioResult()}
+                onRetry={() => void retryAudioGeneration()}
+                providerTaskDraft={reconcileProviderTaskId}
+                retryEnabled={retryGenerationEnabled}
+                setProviderTaskDraft={setReconcileProviderTaskId}
+              />
+            )}
+            {!canReconcileAudio && retryAvailable && (
               <button
                 aria-label="重试生成"
                 disabled={

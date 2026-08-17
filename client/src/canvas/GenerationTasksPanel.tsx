@@ -4,9 +4,17 @@ import {
   cancelGenerationTask,
   GENERATION_TASK_RETRY_ACCEPTED_EVENT,
   listGenerationTasks,
+  reconcileGenerationTask,
+  reconcileOutcomeMessage,
   retryGenerationTask,
   type GenerationTaskSummary,
 } from "../generation/generationTasks";
+import {
+  formatGenerationDuration,
+  GROUP_RUN_SUMMARY_EVENT,
+  readLastGroupRunSummary,
+  type GroupRunSummary,
+} from "../generation/groupRunSummary";
 
 const kindLabels: Record<GenerationTaskSummary["kind"], string> = {
   audio: "音频",
@@ -42,6 +50,16 @@ function relativeTime(timestamp: string) {
   return `${Math.floor(hours / 24)} 天前`;
 }
 
+function taskDurationLabel(task: GenerationTaskSummary) {
+  if (activeStates.has(task.state)) return relativeTime(task.updatedAt);
+  const started = Date.parse(task.createdAt);
+  const ended = Date.parse(task.updatedAt);
+  if (!Number.isFinite(started) || !Number.isFinite(ended) || ended < started) {
+    return relativeTime(task.updatedAt);
+  }
+  return `用时 ${formatGenerationDuration(ended - started)}`;
+}
+
 function TaskRow({
   canvasId,
   canvasScopeId,
@@ -67,9 +85,13 @@ function TaskRow({
   waitForCanvasRevision?: () => Promise<number>;
 }) {
   const [busy, setBusy] = useState(false);
+  const [needsTaskId, setNeedsTaskId] = useState(false);
+  const [providerTaskDraft, setProviderTaskDraft] = useState("");
+  const [confirmedMissing, setConfirmedMissing] = useState(false);
   const active = activeStates.has(task.state);
   const abandonable = task.state === "failed" && task.abandonAllowed === true;
   const retryable = task.state === "failed" && task.retryAllowed === true;
+  const reconcilable = task.state === "failed";
   const rowIsCurrent =
     task.canvasId === canvasId && isCurrentScope(canvasScopeId, canvasId);
   return (
@@ -87,8 +109,12 @@ function TaskRow({
       <span className={`tasks-row-state tasks-state-${task.state}`}>
         {stateLabels[task.state]}
       </span>
-      <span className="tasks-row-time">
-        {relativeTime(task.updatedAt)}
+      <span
+        className="tasks-row-time"
+        data-testid={`tasks-row-time-${task.id}`}
+        title={relativeTime(task.updatedAt)}
+      >
+        {taskDurationLabel(task)}
       </span>
       <span className="tasks-row-actions">
         {active && (
@@ -114,6 +140,89 @@ function TaskRow({
           >
             取消
           </button>
+        )}
+        {reconcilable && (
+          <button
+            data-testid={`tasks-reconcile-${task.id}`}
+            disabled={
+              busy ||
+              !rowIsCurrent ||
+              !retryEnabled ||
+              !waitForCanvasRevision ||
+              !task.generationInputKey
+            }
+            onClick={() => {
+              if (
+                task.canvasId !== canvasId ||
+                !isCurrentScope(canvasScopeId, canvasId) ||
+                !retryEnabled ||
+                !waitForCanvasRevision ||
+                !task.generationInputKey
+              ) return;
+              const signal = getActionSignal(canvasScopeId, canvasId);
+              if (!signal) return;
+              setBusy(true);
+              void reconcileGenerationTask({
+                canvasId: task.canvasId,
+                generationInputKey: task.generationInputKey,
+                kind: task.kind,
+                nodeId: task.nodeId,
+                taskId: task.id,
+              }, waitForCanvasRevision, providerTaskDraft, signal)
+                .then((result) => {
+                  if (!isCurrentScope(canvasScopeId, canvasId)) return;
+                  if (result.outcome === "needs-task-id") {
+                    setNeedsTaskId(true);
+                  }
+                  if (result.outcome === "missing") {
+                    setConfirmedMissing(true);
+                    setNeedsTaskId(false);
+                  }
+                  onActionError(reconcileOutcomeMessage(result.outcome));
+                  if (result.outcome === "recovered") {
+                    window.dispatchEvent(new CustomEvent(
+                      GENERATION_TASK_RETRY_ACCEPTED_EVENT,
+                      {
+                        detail: {
+                          attempt: result.task.attempt,
+                          canvasId: result.task.canvasId,
+                          kind: result.task.kind,
+                          nodeId: result.task.nodeId,
+                          taskId: result.task.id,
+                          updatedAt: result.task.updatedAt,
+                        },
+                      },
+                    ));
+                  }
+                  onChanged();
+                })
+                .catch((error: unknown) => {
+                  if (!isCurrentScope(canvasScopeId, canvasId)) return;
+                  onActionError(
+                    error instanceof Error
+                      ? error.message
+                      : "核对结果失败，请稍后再试",
+                  );
+                })
+                .finally(() => {
+                  if (!isCurrentScope(canvasScopeId, canvasId)) return;
+                  setBusy(false);
+                });
+            }}
+            type="button"
+          >
+            {busy ? "核对中" : "核对结果"}
+          </button>
+        )}
+        {reconcilable && needsTaskId && (
+          <input
+            aria-label="平台任务号"
+            data-testid={`tasks-reconcile-task-id-${task.id}`}
+            disabled={busy}
+            onChange={(event) => setProviderTaskDraft(event.target.value)}
+            placeholder="平台任务号"
+            value={providerTaskDraft}
+          />
         )}
         {retryable && (
           <button
@@ -231,6 +340,7 @@ export function GenerationTasksPanel({
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState("");
   const [readError, setReadError] = useState("");
+  const [groupSummary, setGroupSummary] = useState<GroupRunSummary>();
   const mounted = useRef(false);
   const scope = useRef({ canvasId, canvasScopeId });
   const refreshController = useRef<AbortController | null>(null);
@@ -309,6 +419,7 @@ export function GenerationTasksPanel({
     setTasks([]);
     setActionError("");
     setReadError("");
+    setGroupSummary(readLastGroupRunSummary(canvasId));
     setLoading(true);
     if (!open || !canvasId) {
       return () => currentActionController.abort("generation-task-scope-closed");
@@ -328,6 +439,16 @@ export function GenerationTasksPanel({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, canvasId, canvasScopeId]);
+
+  useEffect(() => {
+    const onSummary = (event: Event) => {
+      const summary = (event as CustomEvent<GroupRunSummary>).detail;
+      if (!summary || summary.canvasId !== canvasId) return;
+      setGroupSummary(summary);
+    };
+    window.addEventListener(GROUP_RUN_SUMMARY_EVENT, onSummary);
+    return () => window.removeEventListener(GROUP_RUN_SUMMARY_EVENT, onSummary);
+  }, [canvasId]);
 
   const active = tasks
     .filter((task) => activeStates.has(task.state))
@@ -366,6 +487,11 @@ export function GenerationTasksPanel({
         </p>
       ) : (
         <div className="tasks-list" data-testid="tasks-list">
+          {groupSummary && (
+            <p className="tasks-group-summary" data-testid="tasks-group-summary">
+              {`本轮整组 ${groupSummary.nodeCount} 个节点 · 共用时 ${formatGenerationDuration(groupSummary.elapsedMs)}`}
+            </p>
+          )}
           {active.length > 0 && (
             <section className="tasks-group">
               <h3>

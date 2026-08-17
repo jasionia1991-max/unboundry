@@ -19,6 +19,13 @@ import type { ProbeNodeType } from "./ProbeNode";
 import type { CuttableEdge } from "./canvasTypes";
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
 import { useWorkflowExecution } from "../generation/WorkflowExecutionProvider";
+import {
+  formatGenerationDuration,
+  GROUP_RUN_SUMMARY_EVENT,
+  readLastGroupRunSummaryForGroup,
+  type GroupRunSummary,
+} from "../generation/groupRunSummary";
+import { GenerationDurationHint } from "./GenerationDurationHint";
 import { isExecutableWorkflowNode } from "../generation/workflowExecution";
 import { GrayMenuSelect } from "../ui/GrayMenuSelect";
 
@@ -59,6 +66,9 @@ function GroupNodeImpl({
   const { cancelGroup, executeGroup, executingGroupIds } =
     useWorkflowExecution();
   const executing = executingGroupIds.has(id);
+  const [lastGroupRun, setLastGroupRun] = useState(
+    () => readLastGroupRunSummaryForGroup(canvasId, id),
+  );
   const allNodes = getNodes();
   const childNodes = allNodes.filter((node) => node.parentId === id);
   const incomingTextTargets = new Set(
@@ -83,6 +93,19 @@ function GroupNodeImpl({
   const [templateSaving, setTemplateSaving] = useState(false);
   const [templateError, setTemplateError] = useState("");
   const [downloadBusy, setDownloadBusy] = useState(false);
+
+  useEffect(() => {
+    setLastGroupRun(readLastGroupRunSummaryForGroup(canvasId, id));
+    const onSummary = (event: Event) => {
+      const summary = (event as CustomEvent<GroupRunSummary>).detail;
+      if (!summary || summary.canvasId !== canvasId || summary.groupId !== id) {
+        return;
+      }
+      setLastGroupRun(summary);
+    };
+    window.addEventListener(GROUP_RUN_SUMMARY_EVENT, onSummary);
+    return () => window.removeEventListener(GROUP_RUN_SUMMARY_EVENT, onSummary);
+  }, [canvasId, id]);
   const titleControl = useCompositionSafeText({
     onCommit: (title) => {
       setNodes((nodes) =>
@@ -374,6 +397,16 @@ function GroupNodeImpl({
         minWidth={312}
         onResizeStart={() => checkpoint()}
       />
+      {singleNodeChrome && !executing && (
+        <GenerationDurationHint
+          label={
+            lastGroupRun
+              ? `上次 ${formatGenerationDuration(lastGroupRun.elapsedMs)}`
+              : undefined
+          }
+          testId="group-last-duration"
+        />
+      )}
       {singleNodeChrome && (
         <div
           className="group-node-toolbar nodrag nopan"

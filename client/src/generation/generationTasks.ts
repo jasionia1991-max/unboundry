@@ -2,6 +2,7 @@ import type {
   NodeInputProblem,
   NodeInputSnapshot,
 } from "../../../types/nodeInputs";
+import { rememberFinishedTaskDuration } from "./taskDurationCache";
 
 export type GenerationTaskKind = "text" | "image" | "video" | "audio";
 
@@ -24,6 +25,8 @@ export type GenerationTaskSummary = {
   errorCode?: string;
   errorMessage?: string;
   id: string;
+  providerTaskBound?: boolean;
+  reconcileAllowed?: boolean;
   generationInputKey?: string;
   /** Client-local ownership evidence restored from the durable browser intent. */
   generationOwnershipKey?: string;
@@ -242,11 +245,13 @@ export async function getGenerationTask(
   taskId: string,
   signal?: AbortSignal,
 ): Promise<GenerationTaskSummary> {
-  return await readTaskStatusJson<GenerationTaskSummary>(
+  const task = await readTaskStatusJson<GenerationTaskSummary>(
     `/api/generation-tasks/${encodeURIComponent(taskId)}`,
     { cache: "no-store" },
     signal,
   ) as GenerationTaskSummary;
+  rememberFinishedTaskDuration(task);
+  return task;
 }
 
 export async function cancelGenerationTask(
@@ -259,6 +264,96 @@ export async function cancelGenerationTask(
       signal,
     }),
   );
+}
+
+export type GenerationReconcileOutcome =
+  | "check-failed"
+  | "missing"
+  | "needs-task-id"
+  | "recovered"
+  | "still-running";
+
+export type GenerationReconcileResult = {
+  outcome: GenerationReconcileOutcome;
+  task: GenerationTaskSummary;
+};
+
+export function reconcileOutcomeMessage(outcome: GenerationReconcileOutcome) {
+  if (outcome === "needs-task-id") {
+    return "系统没记下平台任务号，请填写后再核对";
+  }
+  if (outcome === "still-running") {
+    return "平台还在做，请稍后再核对";
+  }
+  if (outcome === "missing") {
+    return "平台没有成片，可以重试";
+  }
+  if (outcome === "check-failed") {
+    return "暂时查不到平台结果，请稍后再核对";
+  }
+  return "";
+}
+
+export async function reconcileGenerationTask(
+  target: GenerationRetryTarget,
+  waitForCanvasRevision: GenerationRetryGate,
+  providerTaskId?: string,
+  signal?: AbortSignal,
+): Promise<GenerationReconcileResult> {
+  const expectedCanvasRevision = await waitForCanvasRevision();
+  const before = await getGenerationTask(target.taskId, signal);
+  if (!retryTargetMatches(before, target) || !target.generationInputKey) {
+    throw new GenerationRequestError(
+      "任务已不再绑定当前节点输入，请从节点重新提交",
+      409,
+      "RETRY_BINDING_STALE",
+    );
+  }
+  if (
+    before.generationInputKey &&
+    before.generationInputKey !== target.generationInputKey
+  ) {
+    throw new GenerationRequestError(
+      "任务已不再绑定当前节点输入，请从节点重新提交",
+      409,
+      "RETRY_BINDING_STALE",
+    );
+  }
+  if (before.state !== "failed") {
+    throw new GenerationRequestError(
+      "任务状态已变化，请刷新后再试",
+      409,
+      "RETRY_TASK_CHANGED",
+    );
+  }
+  const body = await readMutationJson<GenerationReconcileResult>(
+    `/api/generation-tasks/${encodeURIComponent(target.taskId)}/reconcile`,
+    {
+      body: JSON.stringify({
+        canvasId: target.canvasId,
+        expectedAttempt: before.attempt,
+        expectedCanvasRevision,
+        expectedGenerationInputKey: target.generationInputKey,
+        expectedUpdatedAt: before.updatedAt,
+        kind: target.kind,
+        nodeId: target.nodeId,
+        ...(providerTaskId?.trim()
+          ? { providerTaskId: providerTaskId.trim() }
+          : {}),
+      }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    },
+    signal,
+  );
+  if (!body?.outcome || !body.task || !retryTargetMatches(body.task, target)) {
+    throw new GenerationRequestError(
+      "核对结果响应异常，请稍后再试",
+      500,
+      "RECONCILE_RESPONSE_INVALID",
+    );
+  }
+  return body;
 }
 
 export async function abandonGenerationTask(
@@ -421,7 +516,9 @@ export async function listGenerationTasks(
     { cache: "no-store" },
     signal,
   );
-  return body?.tasks ?? [];
+  const tasks = body?.tasks ?? [];
+  for (const task of tasks) rememberFinishedTaskDuration(task);
+  return tasks;
 }
 
 type GenerationSubmissionIntent = {

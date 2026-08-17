@@ -64,6 +64,9 @@ test("generation task panel lists running and failed tasks for the canvas", asyn
   await expect(page.getByText("排队中", { exact: true })).toHaveCount(1);
   await expect(page.getByText("运行中", { exact: true })).toHaveCount(0);
   await expect(page.getByText("失败", { exact: true })).toHaveCount(1);
+  await expect(page.getByTestId(`tasks-row-time-${failed.task.id}`)).toHaveText(
+    /^用时 /,
+  );
 });
 
 test("generation task panel explicitly abandons a received synchronous result without a Provider request", async ({

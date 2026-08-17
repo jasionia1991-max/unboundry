@@ -686,6 +686,8 @@ function taskSummary(
     model: task.model,
     nodeId: task.nodeId,
     prompt: task.prompt,
+    providerTaskBound: Boolean(task.providerTaskId),
+    reconcileAllowed: task.state === "failed",
     retryAllowed: retry.allowed,
     retryBlockCode: retry.allowed ? undefined : retry.code,
     retryBlockReason: retry.allowed ? undefined : retry.reason,
@@ -3509,8 +3511,8 @@ export function retrySafetyDecision(
       allowed: false,
       code: "RETRY_OUTCOME_UNKNOWN",
       reason: task.kind === "text" || task.kind === "image"
-        ? "上次文字或图片请求的结果无法确认，为避免重复扣费，不能直接重试；请先到模型平台核对任务记录，再从节点重新提交"
-        : "上次视频或音频请求可能已经创建，但没有保存平台任务编号；为避免重复扣费，不能创建新任务",
+        ? "上次结果还没对上，为避免重复扣费，请先点「核对结果」，不要重新生成"
+        : "上次视频或音频请求可能已经创建，但没有保存平台任务编号；请先点「核对结果」，不要重新生成",
     };
   }
   const model = resolveModel(task.kind, task.model, task.ownerId ?? "");
@@ -3667,6 +3669,82 @@ export async function cancelCanvasGenerationTasks(
   for (const task of tasks) {
     await cancelGenerationTask(task);
   }
+}
+
+const reconcileCooldownMs = 8_000;
+const lastReconcileAt = new Map<string, number>();
+
+type ReconcilePollState = "cannot-query" | "failed" | "running" | "success";
+
+async function pollReconcileProviderTask(
+  task: GenerationTask,
+  providerTaskId: string,
+  signal: AbortSignal,
+): Promise<ReconcilePollState> {
+  if (!task.ownerId || !task.providerProfileId) return "cannot-query";
+  const protocol = taskProviderProtocol(task);
+  if (protocol === "media-generate" && task.kind !== "text") {
+    const profile = await taskProviderSnapshotProfile(task, task.ownerId);
+    const status = await pollRelayMediaTask(
+      assertRelayProfile(profile, protocol),
+      {
+        capability: task.kind,
+        externalTaskId: providerTaskId,
+        providerProtocol: "media-generate",
+      },
+      { signal, usePinnedTransport: true },
+    );
+    if (status.state === "success") return "success";
+    if (status.state === "failed") return "failed";
+    return "running";
+  }
+  if (protocol === "native" && task.kind === "video") {
+    const profile = await taskProviderSnapshotProfile(task, task.ownerId);
+    const status = await getVolcengineArkVideoTask(
+      profile,
+      providerTaskId,
+      fetch,
+      signal,
+    );
+    if (status.state === "succeeded") return "success";
+    if (status.state === "failed" || status.state === "cancelled") return "failed";
+    return "running";
+  }
+  if (protocol === "native" && task.kind === "audio") {
+    const profile = await taskProviderSnapshotProfile(task, task.ownerId);
+    const status = await getMurekaAudioTask(
+      profile,
+      providerTaskId,
+      "song",
+      fetch,
+      signal,
+    );
+    if (status.state === "succeeded") return "success";
+    if (status.state === "failed" || status.state === "cancelled") return "failed";
+    return "running";
+  }
+  if (task.kind !== "text") {
+    try {
+      const profile = await taskProviderSnapshotProfile(task, task.ownerId);
+      const status = await pollRelayMediaTask(
+        assertRelayProfile(profile, "media-generate"),
+        {
+          capability: task.kind === "audio" || task.kind === "video"
+            ? task.kind
+            : "image",
+          externalTaskId: providerTaskId,
+          providerProtocol: "media-generate",
+        },
+        { signal, usePinnedTransport: true },
+      );
+      if (status.state === "success") return "success";
+      if (status.state === "failed") return "failed";
+      return "running";
+    } catch {
+      return "cannot-query";
+    }
+  }
+  return "cannot-query";
 }
 
 export async function generationTasks(
@@ -4092,6 +4170,238 @@ export async function generationTasks(
       return;
     }
     json(response, 202, summary);
+    return;
+  }
+
+  const reconcileMatch = path.match(/^([a-z0-9._-]+)\/reconcile$/i);
+  if (request.method === "POST" && reconcileMatch) {
+    const taskId = reconcileMatch[1];
+    const body = await readJsonBody<{
+      canvasId?: unknown;
+      expectedAttempt?: unknown;
+      expectedCanvasRevision?: unknown;
+      expectedGenerationInputKey?: unknown;
+      expectedUpdatedAt?: unknown;
+      kind?: unknown;
+      nodeId?: unknown;
+      providerTaskId?: unknown;
+    }>(request, 16 * 1_024);
+    if (
+      typeof body.canvasId !== "string" ||
+      !/^[a-z0-9._-]{1,120}$/i.test(body.canvasId) ||
+      !Number.isSafeInteger(body.expectedAttempt) ||
+      Number(body.expectedAttempt) < 0 ||
+      !Number.isSafeInteger(body.expectedCanvasRevision) ||
+      Number(body.expectedCanvasRevision) < 0 ||
+      typeof body.expectedGenerationInputKey !== "string" ||
+      body.expectedGenerationInputKey.length < 1 ||
+      body.expectedGenerationInputKey.length > 100_000 ||
+      typeof body.expectedUpdatedAt !== "string" ||
+      body.expectedUpdatedAt.length < 1 ||
+      body.expectedUpdatedAt.length > 80 ||
+      (body.kind !== "text" &&
+        body.kind !== "image" &&
+        body.kind !== "video" &&
+        body.kind !== "audio") ||
+      typeof body.nodeId !== "string" ||
+      !/^[a-z0-9._-]{1,160}$/i.test(body.nodeId)
+    ) {
+      json(response, 400, {
+        code: "RECONCILE_FENCE_REQUIRED",
+        error: "核对请求缺少当前画布与任务绑定证据",
+      });
+      return;
+    }
+    const providedTaskId = typeof body.providerTaskId === "string"
+      ? body.providerTaskId.trim()
+      : "";
+    if (
+      providedTaskId &&
+      (!/^[a-z0-9._:-]{1,160}$/i.test(providedTaskId))
+    ) {
+      json(response, 400, {
+        code: "PROVIDER_TASK_ID_INVALID",
+        error: "平台任务号格式不正确",
+      });
+      return;
+    }
+    const task = identity.bypass
+      ? taskStore().get(taskId)
+      : taskStore().getForOwner(taskId, identity.userId);
+    if (!task) {
+      json(response, 404, { error: "Generation task not found" });
+      return;
+    }
+    if (
+      task.canvasId !== body.canvasId ||
+      task.nodeId !== body.nodeId ||
+      task.kind !== body.kind
+    ) {
+      json(response, 409, {
+        code: "RETRY_BINDING_STALE",
+        error: "任务已不再绑定当前画布节点",
+      });
+      return;
+    }
+    if (
+      task.attempt !== Number(body.expectedAttempt) ||
+      task.updatedAt !== body.expectedUpdatedAt
+    ) {
+      json(response, 409, {
+        code: "RETRY_TASK_CHANGED",
+        error: "任务状态已变化，请刷新后再试",
+      });
+      return;
+    }
+    if (task.state !== "failed") {
+      json(response, 409, {
+        code: "TASK_NOT_FAILED",
+        error: "只有失败任务可以核对结果",
+      });
+      return;
+    }
+    const now = Date.now();
+    const previous = lastReconcileAt.get(task.id) ?? 0;
+    if (now - previous < reconcileCooldownMs) {
+      json(response, 429, {
+        code: "RECONCILE_RATE_LIMIT",
+        error: "核对太频繁，请稍后再试",
+      });
+      return;
+    }
+    lastReconcileAt.set(task.id, now);
+    let current = task;
+    if (providedTaskId && !current.providerTaskId) {
+      try {
+        current = taskStore().bindProviderTaskIdOnFailedTask({
+          providerTaskId: providedTaskId,
+          taskId: current.id,
+        });
+      } catch {
+        json(response, 409, {
+          code: "PROVIDER_TASK_ID_CONFLICT",
+          error: "无法绑定这个平台任务号",
+        });
+        return;
+      }
+    }
+    if (!current.providerTaskId) {
+      json(response, 200, {
+        outcome: "needs-task-id",
+        task: taskSummaryForOwner(
+          current,
+          identity.bypass ? undefined : identity.userId,
+        ),
+      });
+      return;
+    }
+    let pollState: ReconcilePollState;
+    const pollController = new AbortController();
+    const pollTimer = setTimeout(() => pollController.abort(), 20_000);
+    try {
+      pollState = await pollReconcileProviderTask(
+        current,
+        current.providerTaskId,
+        pollController.signal,
+      );
+    } catch {
+      json(response, 200, {
+        outcome: "check-failed",
+        task: taskSummaryForOwner(
+          current,
+          identity.bypass ? undefined : identity.userId,
+        ),
+      });
+      return;
+    } finally {
+      clearTimeout(pollTimer);
+    }
+    if (pollState === "cannot-query") {
+      json(response, 200, {
+        outcome: "needs-task-id",
+        task: taskSummaryForOwner(
+          current,
+          identity.bypass ? undefined : identity.userId,
+        ),
+      });
+      return;
+    }
+    if (pollState === "running") {
+      json(response, 200, {
+        outcome: "still-running",
+        task: taskSummaryForOwner(
+          current,
+          identity.bypass ? undefined : identity.userId,
+        ),
+      });
+      return;
+    }
+    if (pollState === "failed") {
+      try {
+        current = taskStore().confirmRemoteResultMissing({
+          expectedUpdatedAt: current.updatedAt,
+          taskId: current.id,
+        });
+      } catch {
+        json(response, 409, {
+          code: "RETRY_TASK_CHANGED",
+          error: "任务状态已变化，请刷新后再试",
+        });
+        return;
+      }
+      json(response, 200, {
+        outcome: "missing",
+        task: taskSummaryForOwner(
+          current,
+          identity.bypass ? undefined : identity.userId,
+        ),
+      });
+      return;
+    }
+    let queued: GenerationTask | undefined;
+    try {
+      queued = taskStore().admitRetry({
+        canvasId: body.canvasId,
+        expectedAttempt: current.attempt,
+        expectedCanvasRevision: Number(body.expectedCanvasRevision),
+        expectedGenerationInputKey: body.expectedGenerationInputKey,
+        expectedUpdatedAt: current.updatedAt,
+        kind: body.kind,
+        mode: "resume-provider-task",
+        nodeId: body.nodeId,
+        taskId: current.id,
+      });
+    } catch (error) {
+      if (canvasRevisionConflict(response, error)) return;
+      json(response, 409, {
+        code: "RECONCILE_RESUME_FAILED",
+        error: error instanceof Error ? error.message : "无法收回平台结果",
+      });
+      return;
+    }
+    if (!queued) {
+      json(response, 409, {
+        code: "RETRY_TASK_CHANGED",
+        error: "任务状态已变化，请刷新后再试",
+      });
+      return;
+    }
+    try {
+      launchGenerationTask(queued.id, queued.kind);
+    } catch {
+      json(response, 500, {
+        code: "GENERATION_RETRY_ACCEPTED_RESPONSE_FAILED",
+        error: "结果收回已开始，请等待状态核对",
+      });
+      return;
+    }
+    json(response, 200, {
+      outcome: "recovered",
+      task: taskSummaryForOwner(
+        queued,
+        identity.bypass ? undefined : identity.userId,
+      ),
+    });
     return;
   }
 
