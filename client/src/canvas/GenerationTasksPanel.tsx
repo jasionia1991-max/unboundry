@@ -85,8 +85,6 @@ function TaskRow({
   waitForCanvasRevision?: () => Promise<number>;
 }) {
   const [busy, setBusy] = useState(false);
-  const [needsTaskId, setNeedsTaskId] = useState(false);
-  const [providerTaskDraft, setProviderTaskDraft] = useState("");
   const [confirmedMissing, setConfirmedMissing] = useState(false);
   const active = activeStates.has(task.state);
   const abandonable = task.state === "failed" && task.abandonAllowed === true;
@@ -168,15 +166,11 @@ function TaskRow({
                 kind: task.kind,
                 nodeId: task.nodeId,
                 taskId: task.id,
-              }, waitForCanvasRevision, providerTaskDraft, signal)
+              }, waitForCanvasRevision, undefined, signal)
                 .then((result) => {
                   if (!isCurrentScope(canvasScopeId, canvasId)) return;
-                  if (result.outcome === "needs-task-id") {
-                    setNeedsTaskId(true);
-                  }
                   if (result.outcome === "missing") {
                     setConfirmedMissing(true);
-                    setNeedsTaskId(false);
                   }
                   onActionError(reconcileOutcomeMessage(result.outcome));
                   if (result.outcome === "recovered") {
@@ -213,16 +207,6 @@ function TaskRow({
           >
             {busy ? "核对中" : "核对结果"}
           </button>
-        )}
-        {reconcilable && needsTaskId && (
-          <input
-            aria-label="平台任务号"
-            data-testid={`tasks-reconcile-task-id-${task.id}`}
-            disabled={busy}
-            onChange={(event) => setProviderTaskDraft(event.target.value)}
-            placeholder="平台任务号"
-            value={providerTaskDraft}
-          />
         )}
         {retryable && (
           <button

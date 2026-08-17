@@ -2,6 +2,10 @@
 
 > 写给下一个接手的人/AI agent。目标：看完本文后不需要向用户问“项目在哪、怎么跑、怎么发布、有什么红线”。
 
+## 当前本地提交：INC-GEN-003（v0.6.9，待发布）
+
+用户问版本号并同意上线。失败后系统自己去平台用量明细里配对，对得上就收回，对不上或多条相近就停住，用户不再填任务号。生产仍运行 v0.6.8。状态`LOCAL_COMMITTED / USER_RECHECK`。权威记录：`spec/INC_GEN_003_AUTO_RECONCILE_2026-08-17.md`。
+
 ## 最新已发布事件：INC-GEN-002（v0.6.8已发布，待用户复验）
 
 用户确认按`v0.6.8`并说「上线，发布。」同层节点一起跑时，「等保存 → 提交任务 → 写回任务号」按画布排队，平台生成仍并行，避免互相报「画布还在保存」。精确源码commit`c2e05d142a5556446d96a8532ca7297cba4e03a5`通过安全全量`118/118 specs、969/969 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.8-inc-gen-002-20260817`，公网资源哈希、冻结备份恢复、service/schema39及数据不变门PASS；生产保持230 tasks、232 attempts、active0、47 public templates（46 published）。`v0.6.8`已推送，PR #10已合并到`main`（merge commit`1e1d5b482148240409e283fc19e6f3ffa66202a4`）。当前状态是`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，不能写成用户验收PASS。权威记录：`spec/INC_GEN_002_CANVAS_SUBMIT_QUEUE_2026-08-17.md`与`spec/INC_GEN_002_PRODUCTION_RECEIPT_2026-08-17.json`。
@@ -252,4 +256,4 @@ ssh live-cockpit "curl -fsS http://127.0.0.1:4173/api/version"
 5. 向用户先报告恢复出的项目、版本、当前项和授权；
 6. 任一不一致都必须停止，不得依据内部记忆、历史 PASS 或压缩摘要猜测继续。
 
-当前执行点：`INC-GEN-002 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK / INC-GEN-001 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK / INC-UI-007 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-006 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-005～003、INC-UI-001/002、INC-VIDEO-001 仍为已发布待用户复验 / INC-ECOM-001～007 USER ACCEPTED / REM-000～011（含009A/009B）PASS / PRODUCTION LIVE`。生产已为v0.6.8/schema39；current→`v0.6.8-inc-gen-002-20260817`。未实际运行的付费两图/视频抽验继续延期。
+当前执行点：`INC-GEN-003 LOCAL_COMMITTED / USER_RECHECK / INC-GEN-002 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK / INC-GEN-001 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK / INC-UI-007 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-006 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-005～003、INC-UI-001/002、INC-VIDEO-001 仍为已发布待用户复验 / INC-ECOM-001～007 USER ACCEPTED / REM-000～011（含009A/009B）PASS / PRODUCTION LIVE`。生产仍为v0.6.8/schema39；current→`v0.6.8-inc-gen-002-20260817`。本地包版本0.6.9待发布。未实际运行的付费两图/视频抽验继续延期。

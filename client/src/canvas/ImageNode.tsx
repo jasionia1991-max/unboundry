@@ -1350,8 +1350,6 @@ function ImageNodeImpl({
   const [redrawOpen, setRedrawOpen] = useState(false);
   const [retryTaskId, setRetryTaskId] = useState<string>();
   const [reconcileBusy, setReconcileBusy] = useState(false);
-  const [reconcileNeedsTaskId, setReconcileNeedsTaskId] = useState(false);
-  const [reconcileProviderTaskId, setReconcileProviderTaskId] = useState("");
   const [reconcileConfirmedMissing, setReconcileConfirmedMissing] = useState(false);
   const [pollingPausedTaskId, setPollingPausedTaskId] = useState<string>();
   const pollingPausedTaskIdRef = useRef<string | undefined>(undefined);
@@ -1755,8 +1753,7 @@ function ImageNodeImpl({
     data.imageGenerationError &&
     !generating &&
     !isFixture &&
-    (generationNeedsReconcile(data.imageGenerationErrorCode) ||
-      reconcileNeedsTaskId),
+    generationNeedsReconcile(data.imageGenerationErrorCode),
   );
 
   const clearImageIntentAfterDurableTerminalPatch = (taskId: string) => {
@@ -2466,16 +2463,10 @@ function ImageNodeImpl({
         kind: "image",
         nodeId: id,
         taskId,
-      }, waitForCanvasRevision, reconcileProviderTaskId);
+      }, waitForCanvasRevision);
       const message = reconcileOutcomeMessage(result.outcome);
-      if (result.outcome === "needs-task-id") {
-        setReconcileNeedsTaskId(true);
-        setUploadError(message);
-        return;
-      }
       if (result.outcome === "missing") {
         setReconcileConfirmedMissing(true);
-        setReconcileNeedsTaskId(false);
         setRetryTaskId(result.task.id);
         setUploadError(message);
         setNodes((nodes) =>
@@ -2501,7 +2492,6 @@ function ImageNodeImpl({
         setUploadError(message);
         return;
       }
-      setReconcileNeedsTaskId(false);
       setUploadError("");
       const generationRun = beginImageGenerationRun(
         taskId,
@@ -3803,12 +3793,9 @@ function ImageNodeImpl({
               <GenerationReconcileControls
                 busy={reconcileBusy || submitting}
                 canRetry={showImageRetry}
-                needsTaskId={reconcileNeedsTaskId}
                 onReconcile={() => void reconcileImageResult()}
                 onRetry={() => void retryImageGeneration()}
-                providerTaskDraft={reconcileProviderTaskId}
                 retryEnabled={retryGenerationEnabled}
-                setProviderTaskDraft={setReconcileProviderTaskId}
               />
             )}
             {!canReconcileImage && retryAvailable && (

@@ -1,9 +1,9 @@
 # Unboundry 全量修复、优化与安全发布施工总方案
 
 状态：`COMPLETED_WITH_USER_ACCEPTANCE`
-计划版本：`1.37-v0.6.8-published`
+计划版本：`1.38-v0.6.9-local`
 建立日期：`2026-08-09`
-当前结论：用户后续连续授权并完成 `v0.5.2` bridge、`v0.6.0` final、schema37→39原生产切换、`v0.6.1`工作流流水执行修复、`v0.6.5`画布缩放坐标稳定修复、`v0.6.6`组标题/文字平移/模板目录刷新、`v0.6.7`生成用时与画布核对结果，以及`v0.6.8`同层生成提交排队与上线规矩。`REM-000～011（含009A/009B） = PASS`、`INC-GEN-002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`、`INC-GEN-001 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`、`INC-UI-007 = PRODUCTION_PUBLISHED_USER_PASS`、`INC-UI-006 = PRODUCTION_PUBLISHED_USER_PASS`、`PRODUCTION = LIVE`、`DEP-010 = PASS`；其他既有USER_RECHECK/PARTIAL/PAUSED/BLOCK/NOT_STARTED不自动升级。生产已运行 v0.6.8，待用户肉眼复验。
+当前结论：用户后续连续授权并完成 `v0.5.2` bridge、`v0.6.0` final、schema37→39原生产切换、`v0.6.1`工作流流水执行修复、`v0.6.5`画布缩放坐标稳定修复、`v0.6.6`组标题/文字平移/模板目录刷新、`v0.6.7`生成用时与画布核对结果，以及`v0.6.8`同层生成提交排队与上线规矩。本地已提交`v0.6.9`失败生成自动核对。`REM-000～011（含009A/009B） = PASS`、`INC-GEN-003 = LOCAL_COMMITTED / USER_RECHECK`、`INC-GEN-002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`、`INC-GEN-001 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`、`INC-UI-007 = PRODUCTION_PUBLISHED_USER_PASS`、`INC-UI-006 = PRODUCTION_PUBLISHED_USER_PASS`、`PRODUCTION = LIVE`、`DEP-010 = PASS`；其他既有USER_RECHECK/PARTIAL/PAUSED/BLOCK/NOT_STARTED不自动升级。生产仍运行 v0.6.8，v0.6.9尚未切生产。
 
 生产当前运行 `/opt/unboundry/current -> /opt/unboundry/releases/v0.6.8-inc-gen-002-20260817`，service active/enabled、NRestarts0；公网version与schema39通过。v0.6.8源码commit为`c2e05d142a5556446d96a8532ca7297cba4e03a5`、tree为`d8c8609be69c969ad7bef7db05b8656351726e33`，标签`v0.6.8`精确指向该源码；PR #10已于2026-08-17合并到`main`（merge commit `1e1d5b482148240409e283fc19e6f3ffa66202a4`）。正式安全全量`118/118 specs、969/969 tests PASS`。
 
@@ -582,3 +582,4 @@ REM-009B 已在合成数据上完成富含业务数据、媒体、secret 和假 
 | 2026-08-17 | 1.35-v0.6.7-published | v0.6.7生成用时与画布核对结果已发布；INC-GEN-001为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，生产current切到`v0.6.7-inc-gen-001-20260817`；`v0.6.7`标签与PR #8合并 | 用户授权“上线吧”；肉眼验收仍待确认；不改历史时点字段 |
 | 2026-08-17 | 1.36-v0.6.8-local | v0.6.8同层生成提交排队与上线规矩已本地提交；INC-GEN-002为`LOCAL_COMMITTED / USER_RECHECK`；生产仍运行v0.6.7 | 用户确认版本并要求对齐文档后commit；切生产前不得写成已上线 |
 | 2026-08-17 | 1.37-v0.6.8-published | v0.6.8同层生成提交排队已发布；INC-GEN-002为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，生产current切到`v0.6.8-inc-gen-002-20260817`；`v0.6.8`标签与PR #10合并 | 用户授权“上线，发布。”；肉眼验收仍待确认；不改历史时点字段 |
+| 2026-08-17 | 1.38-v0.6.9-local | v0.6.9失败生成自动核对已本地提交；INC-GEN-003为`LOCAL_COMMITTED / USER_RECHECK`；生产仍运行v0.6.8 | 用户问版本号并同意上线；切生产前不得写成已上线 |

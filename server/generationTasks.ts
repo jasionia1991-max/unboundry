@@ -109,6 +109,10 @@ import {
   ProviderResultMediaError,
 } from "./providerResultMedia";
 import {
+  listRelayUsageRecords,
+  matchRelayUsageRecord,
+} from "./relayUsageReconcile";
+import {
   hasPendingGeneratedMediaPublications,
   hasPendingMediaDeletions,
   hasPendingUploadMediaPublications,
@@ -430,7 +434,10 @@ function taskStore(launchOptions?: GenerationLaunchOptions) {
       (
         task.kind === "video" ||
         task.kind === "audio" ||
-        (task.kind === "image" && protocol === "media-generate")
+        (
+          task.kind === "image" &&
+          (protocol === "media-generate" || protocol === "gpt-image")
+        )
       )
     ) {
       store.resume(task.id);
@@ -2679,6 +2686,87 @@ async function executeRelayMediaTask(
   throw new RelayProviderError("TIMEOUT", true);
 }
 
+async function recoverGptImageFromProviderTask(
+  taskId: string,
+  running: GenerationTask,
+  controller: AbortController,
+) {
+  if (!running.ownerId || !running.providerProfileId || !running.providerTaskId) {
+    throw new RelayProviderError("FORMAT");
+  }
+  const profile = await taskProviderSnapshotProfile(running, running.ownerId);
+  const status = await withProviderRequestLease({
+    expected: profile,
+    fetcher: fetch,
+    ownerId: running.ownerId,
+    profileId: running.providerProfileId,
+    task: running,
+    request: (currentProfile, leasedFetch) =>
+      pollRelayMediaTask(
+        assertRelayProfile(currentProfile, "media-generate"),
+        {
+          capability: "image",
+          externalTaskId: running.providerTaskId!,
+          providerProtocol: "media-generate",
+        },
+        {
+          fetcher: leasedFetch,
+          signal: controller.signal,
+          usePinnedTransport: true,
+        },
+      ),
+  });
+  if (status.state === "failed") {
+    taskStore().transition(taskId, "failed", {
+      code: "PROVIDER_FAILED",
+      message: "平台没有这张图",
+    });
+    return;
+  }
+  if (status.state !== "success") {
+    throw new RelayProviderError("TIMEOUT", true);
+  }
+  if (status.outputs.length !== 1) throw new RelayProviderError("PROVIDER_RESULT_FORMAT", true);
+  taskStore().markProviderResponseReceivedForTask(taskId);
+  await saveRelayMediaOutput({
+    actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+    output: status.outputs[0],
+    ownerId: running.ownerId,
+    profile,
+    prompt: running.prompt,
+    signal: controller.signal,
+    taskId,
+  });
+}
+
+async function autoMatchRelayProviderTask(task: GenerationTask) {
+  if (!task.ownerId || !task.providerProfileId || !task.providerModelId) {
+    return { status: "none" as const };
+  }
+  if (task.kind === "text") return { status: "none" as const };
+  const profile = await taskProviderSnapshotProfile(task, task.ownerId);
+  if (profile.driver !== "multi-protocol-relay") return { status: "none" as const };
+  const context = taskStore().listOwnerRelayMatchContext({
+    excludeTaskId: task.id,
+    kind: task.kind,
+    ownerId: task.ownerId,
+    providerModelId: task.providerModelId,
+  });
+  const siblingSuccesses = context.competitors
+    .filter((item) => item.state === "success")
+    .map((item) => ({ createdAt: item.createdAt, updatedAt: item.updatedAt }));
+  const records = await listRelayUsageRecords(profile);
+  return matchRelayUsageRecord({
+    competingLocals: context.competitors,
+    localCreatedAt: task.createdAt,
+    localUpdatedAt: task.updatedAt,
+    occupiedTaskIds: context.occupiedTaskIds,
+    providerModelId: task.providerModelId,
+    records,
+    siblingSuccesses,
+  });
+}
+
 async function executeImageTask(taskId: string) {
   const current = taskStore().get(taskId);
   if (!current || !["queued", "running"].includes(current.state) || !current.ownerId) return;
@@ -2755,6 +2843,10 @@ async function executeImageTask(taskId: string) {
       return;
     }
     if (protocol !== "gpt-image") throw new RelayProviderError("FORMAT");
+    if (running.providerTaskId) {
+      await recoverGptImageFromProviderTask(taskId, running, controller);
+      return;
+    }
     const profile = await taskProviderSnapshotProfile(running, current.ownerId);
     assertRelayProfile(profile, protocol);
     const prepared = await prepareRelayGptImageRequest({
@@ -2802,6 +2894,13 @@ async function executeImageTask(taskId: string) {
         await prepared.cleanup();
       }
     })();
+    if (relayResult.externalTaskId) {
+      try {
+        taskStore().setProviderTaskId(taskId, relayResult.externalTaskId);
+      } catch {
+        // Keep the already-received pixels even if the remote id cannot bind.
+      }
+    }
     taskStore().markProviderResponseReceived({
       executionAttempt: running.attempt,
       taskId,
@@ -3498,6 +3597,7 @@ export function retrySafetyDecision(
     ["accepted", "response-received"].includes(providerAttempt.outcome) &&
     (
       (protocol === "media-generate" && task.kind !== "text") ||
+      (protocol === "gpt-image" && task.kind === "image") ||
       (protocol === "native" && (task.kind === "video" || task.kind === "audio"))
     )
   ) {
@@ -4286,8 +4386,50 @@ export async function generationTasks(
       }
     }
     if (!current.providerTaskId) {
+      let match: Awaited<ReturnType<typeof autoMatchRelayProviderTask>>;
+      try {
+        match = await autoMatchRelayProviderTask(current);
+      } catch {
+        json(response, 200, {
+          outcome: "check-failed",
+          task: taskSummaryForOwner(
+            current,
+            identity.bypass ? undefined : identity.userId,
+          ),
+        });
+        return;
+      }
+      if (match.status === "many") {
+        json(response, 200, {
+          outcome: "ambiguous",
+          task: taskSummaryForOwner(
+            current,
+            identity.bypass ? undefined : identity.userId,
+          ),
+        });
+        return;
+      }
+      if (match.status === "one") {
+        try {
+          current = taskStore().bindProviderTaskIdOnFailedTask({
+            providerTaskId: match.record.taskId,
+            taskId: current.id,
+          });
+        } catch {
+          json(response, 200, {
+            outcome: "check-failed",
+            task: taskSummaryForOwner(
+              current,
+              identity.bypass ? undefined : identity.userId,
+            ),
+          });
+          return;
+        }
+      }
+    }
+    if (!current.providerTaskId) {
       json(response, 200, {
-        outcome: "needs-task-id",
+        outcome: "check-failed",
         task: taskSummaryForOwner(
           current,
           identity.bypass ? undefined : identity.userId,
@@ -4318,7 +4460,7 @@ export async function generationTasks(
     }
     if (pollState === "cannot-query") {
       json(response, 200, {
-        outcome: "needs-task-id",
+        outcome: "check-failed",
         task: taskSummaryForOwner(
           current,
           identity.bypass ? undefined : identity.userId,

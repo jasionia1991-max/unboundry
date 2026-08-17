@@ -142,6 +142,7 @@ export type RelayTransientMediaOutput =
 
 export type RelayImageResult = Readonly<{
   capability: "image";
+  externalTaskId?: string;
   outputs: readonly RelayTransientMediaOutput[];
   providerProtocol: "gpt-image";
   state: "success";
@@ -1172,8 +1173,15 @@ function parseGptImageResult(body: unknown): RelayImageResult {
     }
     throw new RelayProviderError("FORMAT");
   });
+  const taskIds = [...new Set(taskIdCandidates(body).flatMap((value) => {
+    const taskId = typeof value === "number" && Number.isSafeInteger(value)
+      ? String(value)
+      : typeof value === "string" ? value.trim() : "";
+    return taskIdPattern.test(taskId) ? [taskId] : [];
+  }))];
   return {
     capability: "image",
+    ...(taskIds.length === 1 ? { externalTaskId: taskIds[0] } : {}),
     outputs,
     providerProtocol: "gpt-image",
     state: "success",

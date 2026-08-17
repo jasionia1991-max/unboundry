@@ -302,8 +302,6 @@ function AudioNodeImpl({
   const [transientUploadError, setTransientUploadError] = useState("");
   const [retryTaskId, setRetryTaskId] = useState<string>();
   const [reconcileBusy, setReconcileBusy] = useState(false);
-  const [reconcileNeedsTaskId, setReconcileNeedsTaskId] = useState(false);
-  const [reconcileProviderTaskId, setReconcileProviderTaskId] = useState("");
   const [reconcileConfirmedMissing, setReconcileConfirmedMissing] = useState(false);
   const [pollingPausedTaskId, setPollingPausedTaskId] = useState<string>();
   const pollingPausedTaskIdRef = useRef<string | undefined>(undefined);
@@ -533,8 +531,7 @@ function AudioNodeImpl({
     data.audioGenerationError &&
     !generating &&
     !isFixture &&
-    (generationNeedsReconcile(data.audioGenerationErrorCode) ||
-      reconcileNeedsTaskId),
+    generationNeedsReconcile(data.audioGenerationErrorCode),
   );
 
   const clearAudioIntentAfterDurableTerminalPatch = (taskId: string) => {
@@ -1426,16 +1423,10 @@ function AudioNodeImpl({
         kind: "audio",
         nodeId: id,
         taskId,
-      }, waitForCanvasRevision, reconcileProviderTaskId);
+      }, waitForCanvasRevision);
       const message = reconcileOutcomeMessage(result.outcome);
-      if (result.outcome === "needs-task-id") {
-        setReconcileNeedsTaskId(true);
-        setUploadError(message);
-        return;
-      }
       if (result.outcome === "missing") {
         setReconcileConfirmedMissing(true);
-        setReconcileNeedsTaskId(false);
         setRetryTaskId(result.task.id);
         setUploadError(message);
         setNodes((nodes) =>
@@ -1461,7 +1452,6 @@ function AudioNodeImpl({
         setUploadError(message);
         return;
       }
-      setReconcileNeedsTaskId(false);
       setUploadError("");
       const pollingRun = beginGenerationPollingRun(
         taskId,
@@ -2593,12 +2583,9 @@ function AudioNodeImpl({
               <GenerationReconcileControls
                 busy={reconcileBusy || submitting}
                 canRetry={showAudioRetry}
-                needsTaskId={reconcileNeedsTaskId}
                 onReconcile={() => void reconcileAudioResult()}
                 onRetry={() => void retryAudioGeneration()}
-                providerTaskDraft={reconcileProviderTaskId}
                 retryEnabled={retryGenerationEnabled}
-                setProviderTaskDraft={setReconcileProviderTaskId}
               />
             )}
             {!canReconcileAudio && retryAvailable && (
