@@ -1,7 +1,7 @@
 {
   "incident": "INC-GEN-001",
   "version": "0.6.7",
-  "status": "PRODUCTION_PUBLISHED_AUTO_PASS",
+  "status": "PRODUCTION_PUBLISHED_USER_PASS",
   "publishedAt": "2026-08-17T07:56:00Z",
   "source": {
     "commit": "a4dc45f4cdfa30547dac401fc29d6796ba233832",
@@ -89,6 +89,7 @@
     "tag": "v0.6.7",
     "tagTarget": "a4dc45f4cdfa30547dac401fc29d6796ba233832"
   },
-  "userAcceptance": "USER_RECHECK",
-  "userAcceptanceEvidence": "User authorized 上线; automatic and publication gates passed. Visual acceptance is still pending."
+  "userAcceptance": "USER_PASS",
+  "userAcceptedAt": "2026-08-17",
+  "userAcceptanceEvidence": "User explicitly replied 看了 也通过了 after production verification of generation duration and result reconcile."
 }

@@ -1,6 +1,6 @@
 # INC-GEN-001：生成用时与画布核对结果
 
-状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
+状态：`PRODUCTION_PUBLISHED_USER_PASS`
 版本：`v0.6.7`
 日期：`2026-08-17`
 
@@ -23,4 +23,4 @@
 - 生产：current已切到`/opt/unboundry/releases/v0.6.7-inc-gen-001-20260817`，公网version为0.6.7，入口JS/CSS及CanvasShell与release逐字节一致。
 - 数据不变：切换前后schema39、quick_check ok、FK0、tasks220、attempts221、active0、公共模板47（46 published）。
 - GitHub：注释标签`v0.6.7`指向`a4dc45f4cdfa30547dac401fc29d6796ba233832`；PR #8已合并。
-- 自动验证不代替用户肉眼验收。
+- 用户随后在生产实页明确回复“看了 也通过了”，本事件正式收口为`PRODUCTION_PUBLISHED_USER_PASS`。
