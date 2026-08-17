@@ -88,6 +88,6 @@
     "tag": "v0.6.10",
     "tagTarget": "7f85e608d4580f43d67beeaabe19ee0fac29787f"
   },
-  "userAcceptance": "USER_RECHECK",
-  "userAcceptanceEvidence": "User confirmed version 0.6.10 and 可以上线. Automatic and publication gates passed. Visual acceptance is still pending."
+  "userAcceptance": "USER_PASS",
+  "userAcceptanceEvidence": "User confirmed version 0.6.10 and 可以上线. Automatic and publication gates passed. User later replied 文字全屏我顺便也通过 on 2026-08-18."
 }

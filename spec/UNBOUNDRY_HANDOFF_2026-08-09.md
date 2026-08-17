@@ -2,13 +2,17 @@
 
 > 写给下一个接手的人/AI agent。目标：看完本文后不需要向用户问“项目在哪、怎么跑、怎么发布、有什么红线”。
 
+## 最新本地事件：INC-GEN-004（v0.6.12已本地提交，待发布）
+
+用户同意整组存稳方案、版本顺延为`v0.6.12`，并授权验完后直接上线。整组每个节点跑完后先存稳再让下游开工；等版本号时再确认画布没又变脏；整组「画布还在保存」最多再试一次；错误提示约8秒。正式安全全量`118/118 specs、971/971 tests PASS`，异常0。生产在切换前仍运行v0.6.11。权威记录：`spec/INC_GEN_004_GROUP_RUN_PERSIST_BARRIER_2026-08-18.md`。
+
 ## 最新已发布事件：INC-UI-009（v0.6.11已发布并通过用户验收）
 
 用户确认按`v0.6.11`并说可以上线。整组/模板下载借空间和云端临时文件改走数据盘，1GB保底不降，盘上不用节点标题当文件名。精确源码commit`321668e1adf692e356b1e504230721451af8ddcf`通过安全全量`118/118 specs、969/969 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.11-inc-ui-009-20260817`，公网资源哈希、冻结备份恢复、service/schema39及数据不变门PASS；生产保持246 tasks、248 attempts、active0、47 public templates（46 published）。`v0.6.11`已推送，PR #18已合并到`main`（merge commit`749e45cb68feabd11b4ffc721e06df4cd46a2b77`）。用户随后明确回复“通过”，当前状态正式收口为`PRODUCTION_PUBLISHED_USER_PASS`。权威记录：`spec/INC_UI_009_GROUP_DOWNLOAD_STORAGE_2026-08-17.md`与`spec/INC_UI_009_PRODUCTION_RECEIPT_2026-08-17.json`。
 
-## 前一已发布事件：INC-UI-008（v0.6.10已发布，待用户复验）
+## 前一已发布事件：INC-UI-008（v0.6.10已发布并通过用户验收）
 
-用户确认按`v0.6.10`并说可以上线。文字点「全屏」改为图片同款画布遮罩，不再进系统全屏。精确源码commit`7f85e608d4580f43d67beeaabe19ee0fac29787f`通过安全全量`118/118 specs、969/969 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.10-inc-ui-008-20260817`，公网资源哈希、冻结备份恢复、service/schema39及数据不变门PASS；生产保持246 tasks、248 attempts、active0、47 public templates（46 published）。`v0.6.10`已推送，PR #16已合并到`main`（merge commit`97f94292ce811c752a4c6b84f9370fed0abfd2cb`）。当前状态是`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，不能写成用户验收PASS。权威记录：`spec/INC_UI_008_TEXT_CANVAS_FULLSCREEN_2026-08-17.md`与`spec/INC_UI_008_PRODUCTION_RECEIPT_2026-08-17.json`。
+用户确认按`v0.6.10`并说可以上线。文字点「全屏」改为图片同款画布遮罩，不再进系统全屏。精确源码commit`7f85e608d4580f43d67beeaabe19ee0fac29787f`通过安全全量`118/118 specs、969/969 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.10-inc-ui-008-20260817`，公网资源哈希、冻结备份恢复、service/schema39及数据不变门PASS；生产保持246 tasks、248 attempts、active0、47 public templates（46 published）。`v0.6.10`已推送，PR #16已合并到`main`（merge commit`97f94292ce811c752a4c6b84f9370fed0abfd2cb`）。用户于 2026-08-18 明确回复文字全屏也通过，当前状态正式收口为`PRODUCTION_PUBLISHED_USER_PASS`。权威记录：`spec/INC_UI_008_TEXT_CANVAS_FULLSCREEN_2026-08-17.md`与`spec/INC_UI_008_PRODUCTION_RECEIPT_2026-08-17.json`。
 
 ## 前一已发布事件：INC-GEN-003（v0.6.9已发布并通过用户验收）
 
@@ -264,4 +268,4 @@ ssh live-cockpit "curl -fsS http://127.0.0.1:4173/api/version"
 5. 向用户先报告恢复出的项目、版本、当前项和授权；
 6. 任一不一致都必须停止，不得依据内部记忆、历史 PASS 或压缩摘要猜测继续。
 
-当前执行点：`INC-UI-009 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-008 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK / INC-GEN-003 PRODUCTION_PUBLISHED_USER_PASS / INC-GEN-002 PRODUCTION_PUBLISHED_USER_PASS / INC-GEN-001 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-007 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-006 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-005～003、INC-UI-001/002、INC-VIDEO-001 仍为已发布待用户复验 / INC-ECOM-001～007 USER ACCEPTED / REM-000～011（含009A/009B）PASS / PRODUCTION LIVE`。生产已为v0.6.11/schema39；current→`v0.6.11-inc-ui-009-20260817`。未实际运行的付费两图/视频抽验继续延期。
+当前执行点：`INC-GEN-004 LOCAL_COMMITTED / INC-UI-009 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-008 PRODUCTION_PUBLISHED_USER_PASS / INC-GEN-003 PRODUCTION_PUBLISHED_USER_PASS / INC-GEN-002 PRODUCTION_PUBLISHED_USER_PASS / INC-GEN-001 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-007 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-006 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-005～003、INC-UI-001/002、INC-VIDEO-001 仍为已发布待用户复验 / INC-ECOM-001～007 USER ACCEPTED / REM-000～011（含009A/009B）PASS / PRODUCTION LIVE`。生产仍为v0.6.11/schema39；current→`v0.6.11-inc-ui-009-20260817`。v0.6.12整组存稳已本地提交待发布。未实际运行的付费两图/视频抽验继续延期。

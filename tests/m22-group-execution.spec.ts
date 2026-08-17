@@ -15,6 +15,13 @@ import {
   createSaveGateRun,
   runExclusiveCanvasSubmit,
 } from "../client/src/generation/saveGate";
+import {
+  isCanvasNotSavedMessage,
+  persistGroupCanvasAfterNode,
+  runGroupNodeWithPersist,
+  shouldAcceptCanvasRevision,
+  workflowToastDurationMs,
+} from "../client/src/generation/groupRunPersist";
 import { defaultParameterSchema } from "../types/modelParameters";
 import { resolveNodeInputs } from "../types/nodeInputs";
 
@@ -472,6 +479,142 @@ test("save gate waits for a durable canvas revision before running the node", as
   ]);
   expect(seen).toEqual([14, 15]);
   expect(revision).toBe(16);
+});
+
+test("group persist waits for paint and save before the next node can start", async () => {
+  const events: string[] = [];
+  const persist = async () => {
+    events.push("persist");
+    return undefined;
+  };
+  const started: string[] = [];
+  const result = await runWorkflowGraph({
+    edges: [
+      { id: "a-b", source: "a", target: "b" },
+    ],
+    executableIds: new Set(["a", "b"]),
+    isCancelled: () => false,
+    runNode: async (nodeId) => {
+      started.push(nodeId);
+      if (nodeId === "b") {
+        expect(events).toEqual(["persist"]);
+      }
+      return runGroupNodeWithPersist({
+        persist,
+        run: async () => ({ status: "success" }),
+      });
+    },
+  });
+  expect(result.status).toBe("success");
+  expect(started).toEqual(["a", "b"]);
+  expect(events).toEqual(["persist", "persist"]);
+});
+
+test("group persist retry happens once for a still-saving canvas and never for other failures", async () => {
+  const persistCalls: number[] = [];
+  let first = true;
+  const saved = await runGroupNodeWithPersist({
+    persist: async () => {
+      persistCalls.push(1);
+      return undefined;
+    },
+    run: async () => {
+      if (first) {
+        first = false;
+        return {
+          message: "画布还在保存，请稍等保存完成后再试",
+          status: "failed",
+        };
+      }
+      return { status: "success" };
+    },
+  });
+  expect(saved).toEqual({ status: "success" });
+  expect(persistCalls).toEqual([1, 1]);
+
+  let otherRuns = 0;
+  const other = await runGroupNodeWithPersist({
+    persist: async () => undefined,
+    run: async () => {
+      otherRuns += 1;
+      return { message: "模型平台未完成本次生成，请重试", status: "failed" };
+    },
+  });
+  expect(other).toMatchObject({
+    message: "模型平台未完成本次生成，请重试",
+    status: "failed",
+  });
+  expect(otherRuns).toBe(1);
+
+  const cancelled = await runGroupNodeWithPersist({
+    isCancelled: () => true,
+    persist: async () => undefined,
+    run: async () => ({
+      message: "画布内容还在保存，请等待自动保存完成后再试",
+      status: "failed",
+    }),
+  });
+  expect(cancelled).toEqual({
+    message: "整组执行已取消",
+    status: "skipped",
+  });
+
+  const persistFailed = await runGroupNodeWithPersist({
+    persist: async () => "画布保存超时，请稍后再试",
+    run: async () => ({ status: "success" }),
+  });
+  expect(persistFailed).toEqual({
+    message: "画布保存超时，请稍后再试",
+    status: "failed",
+  });
+
+  const keepOriginalFailure = await runGroupNodeWithPersist({
+    persist: async () => "画布保存超时，请稍后再试",
+    run: async () => ({ message: "请明确选择兼容的图片模型", status: "failed" }),
+  });
+  expect(keepOriginalFailure).toEqual({
+    message: "请明确选择兼容的图片模型",
+    status: "failed",
+  });
+
+  expect(isCanvasNotSavedMessage("画布还在保存，请稍等保存完成后再试")).toBe(
+    true,
+  );
+  expect(isCanvasNotSavedMessage("画布保存超时，请稍后再试")).toBe(false);
+  expect(isCanvasNotSavedMessage("模型平台未完成本次生成，请重试")).toBe(false);
+  expect(shouldAcceptCanvasRevision({
+    dirty: false,
+    revision: 12,
+    saving: false,
+  })).toBe(true);
+  expect(shouldAcceptCanvasRevision({
+    dirty: true,
+    revision: 12,
+    saving: false,
+  })).toBe(false);
+  expect(shouldAcceptCanvasRevision({
+    dirty: false,
+    revision: 12,
+    saving: true,
+  })).toBe(false);
+  expect(workflowToastDurationMs("error")).toBe(8_000);
+  expect(workflowToastDurationMs("success")).toBe(2_600);
+  expect(workflowToastDurationMs("info")).toBe(2_600);
+
+  const paintOrder: string[] = [];
+  await persistGroupCanvasAfterNode({
+    flushCanvasSave: async () => {
+      paintOrder.push("flush");
+    },
+    waitForCanvasRevision: async () => {
+      paintOrder.push("wait");
+      return 4;
+    },
+    waitForPaint: async () => {
+      paintOrder.push("paint");
+    },
+  });
+  expect(paintOrder).toEqual(["paint", "flush", "wait"]);
 });
 
 test("save gate turns a save failure into a friendly node failure", async () => {

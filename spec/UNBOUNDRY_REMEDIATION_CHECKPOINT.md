@@ -2,10 +2,17 @@
 
 断点版本：`74`
 更新时间：`2026-08-18`
-状态：`INC_UI_009_V0_6_11_PRODUCTION_PUBLISHED_USER_PASS`
+状态：`INC_GEN_004_V0_6_12_LOCAL_COMMITTED`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
-## 0. 当前已发布事件：INC-UI-009（v0.6.11已发布并通过用户验收）
+## 0. 当前本地事件：INC-GEN-004（v0.6.12已本地提交，待发布）
+
+- 用户同意整组存稳方案、版本顺延为`v0.6.12`，并授权验完后直接上线。
+- 整组每个节点跑完后先存稳再让下游开工；等版本号时再确认画布没又变脏；整组「画布还在保存」最多再试一次；错误提示约8秒。
+- 正式安全全量`118/118 specs、971/971 tests PASS`，异常0。生产在切换前仍运行v0.6.11。
+- 权威记录：`spec/INC_GEN_004_GROUP_RUN_PERSIST_BARRIER_2026-08-18.md`。
+
+## 0.01 前一已发布事件：INC-UI-009（v0.6.11已发布并通过用户验收）
 
 - 用户确认按`v0.6.11`并说可以上线。
 - 整组/模板下载借空间和云端临时文件改走数据盘；盘上中性文件名；1GB保底和原有上限不降。
@@ -14,13 +21,13 @@
 - `v0.6.11`标签精确指向源码commit；PR #18已合并到`main`，merge commit`749e45cb68feabd11b4ffc721e06df4cd46a2b77`。用户于 2026-08-18 明确回复“通过”，本项正式收口为`PRODUCTION_PUBLISHED_USER_PASS`。
 - 权威记录：`spec/INC_UI_009_GROUP_DOWNLOAD_STORAGE_2026-08-17.md`与`spec/INC_UI_009_PRODUCTION_RECEIPT_2026-08-17.json`。
 
-## 0.02 前一已发布事件：INC-UI-008（v0.6.10已发布，待用户复验）
+## 0.02 前一已发布事件：INC-UI-008（v0.6.10已发布并通过用户验收）
 
 - 用户确认按`v0.6.10`并说可以上线。
 - 文字全屏复用图片画布遮罩；只读正文可滚动；复制代替下载；拿掉系统全屏。
 - 精确源码commit`7f85e608d4580f43d67beeaabe19ee0fac29787f`通过正式安全全量`118/118 specs、969/969 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。
 - 生产current已切到`/opt/unboundry/releases/v0.6.10-inc-ui-008-20260817`；冻结备份恢复、公网资源逐字节哈希、service/schema39和数据不变门均PASS。生产保持246 tasks、248 attempts、active0、47 public templates（46 published）。
-- `v0.6.10`标签精确指向源码commit；PR #16已合并到`main`，merge commit`97f94292ce811c752a4c6b84f9370fed0abfd2cb`。用户肉眼验收仍为`USER_RECHECK`。
+- `v0.6.10`标签精确指向源码commit；PR #16已合并到`main`，merge commit`97f94292ce811c752a4c6b84f9370fed0abfd2cb`。用户于 2026-08-18 明确回复文字全屏也通过，本项正式收口为`PRODUCTION_PUBLISHED_USER_PASS`。
 - 权威记录：`spec/INC_UI_008_TEXT_CANVAS_FULLSCREEN_2026-08-17.md`与`spec/INC_UI_008_PRODUCTION_RECEIPT_2026-08-17.json`。
 
 ## 0.03 前一已发布事件：INC-GEN-003（v0.6.9已发布并通过用户验收）
@@ -553,22 +560,22 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 
 ## 10. 2026-08-17 当前恢复卡
 
-> 2026-08-18 INC-UI-009已通过用户验收：v0.6.11整组下载改走数据盘收口为USER_PASS。以INC-UI-009文档与生产receipt为准。v0.6.10文字全屏仍待复验。
+> 2026-08-18 INC-GEN-004 v0.6.12已本地提交待发布。INC-UI-008文字全屏已由用户回复通过。生产在切换前仍运行v0.6.11。
 
 ```text
 项目路径：/Users/mymy/Documents/unboundry/app
-本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.11已发布并通过用户验收；禁止reset/clean
+本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.12 INC-GEN-004 本地已提交待发布；禁止reset/clean
 生产：canvas.mymy.ltd；v0.6.11/schema39；/opt/unboundry/current -> releases/v0.6.11-inc-ui-009-20260817
 生产artifact：source commit 321668e1adf692e356b1e504230721451af8ddcf；tree 3ea47f74267ec1e5c1b5c0d80fef51115161e021
-当前状态：INC-UI-009 PRODUCTION_PUBLISHED_USER_PASS；INC-UI-008 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK；INC-GEN-003/002/001 PRODUCTION_PUBLISHED_USER_PASS；INC-UI-007/006保持PRODUCTION_PUBLISHED_USER_PASS；既有INC-UI-005/004/003、INC-VIDEO-001、INC-UI-001/002状态保持；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
-技术凭证：spec/INC_UI_009_PRODUCTION_RECEIPT_2026-08-17.json；spec/INC_UI_009_GROUP_DOWNLOAD_STORAGE_2026-08-17.md；既有v0.6.10及更早发布凭证继续保留
-用户验收：既有v0.6.0/v0.6.1/v0.6.5/v0.6.6/v0.6.7/v0.6.8/v0.6.9/v0.6.11验收保持；v0.6.10文字全屏待用户复验；v0.6.4组标题总览、v0.6.3公共模板UI与旧标签恢复、v0.6.2其余UI/视频项继续等待用户线上复验
+当前状态：INC-GEN-004 LOCAL_COMMITTED；INC-UI-009 PRODUCTION_PUBLISHED_USER_PASS；INC-UI-008 PRODUCTION_PUBLISHED_USER_PASS；INC-GEN-003/002/001 PRODUCTION_PUBLISHED_USER_PASS；INC-UI-007/006保持PRODUCTION_PUBLISHED_USER_PASS；既有INC-UI-005/004/003、INC-VIDEO-001、INC-UI-001/002状态保持；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
+技术凭证：spec/INC_GEN_004_GROUP_RUN_PERSIST_BARRIER_2026-08-18.md；既有v0.6.11及更早发布凭证继续保留
+用户验收：既有v0.6.0/v0.6.1/v0.6.5/v0.6.6/v0.6.7/v0.6.8/v0.6.9/v0.6.10/v0.6.11验收保持；v0.6.12待发布后复验；v0.6.4组标题总览、v0.6.3公共模板UI与旧标签恢复、v0.6.2其余UI/视频项继续等待用户线上复验
 数据库：schema39；quick_check ok；FK0；246 tasks/248 attempts；47 public templates/46 published；active0；默认视频模型Seedance；既有生成安全配置不变
 备份：/var/lib/unboundry-rollbacks/inc-ui-009-frozen-20260817T161145Z；冻结源与恢复副本均365文件，清单SHA c835cdcd7eb112696115cbf7528c4aab206517838ecc11fc6e59a91aad5c8e4f，二者均PASS；历史schema37/offhost及v0.6.10冻结备份继续保留
 限制：attempt 86/108/116/120/122为行政取消且禁止重试，PROVIDER_FAILED仅surrogate；3条音频仅改duration元数据；cutover Provider/paid calls=0
 GitHub：v0.6.11注释标签精确指向生产源码321668e1adf692e356b1e504230721451af8ddcf；PR #18已合并到main，merge commit 749e45cb68feabd11b4ffc721e06df4cd46a2b77
-未来授权：本次v0.6.11生产与GitHub发布授权已消费；未来生产读写、真实Provider/付费生成、push/tag/PR或新发布仍需新授权
-下一步：等待用户肉眼复验v0.6.10文字全屏是否还进系统全屏；不得把本次通过扩成其他条目或新发布
+未来授权：用户已授权本次v0.6.12验完后上线、commit、push、tag、PR；一次授权只用一次
+下一步：完成静默全量门后commit并按规矩发布v0.6.12；不得把本次授权扩成以后每一次发布
 ```
 
 任何恢复者必须优先使用本节；第9节只保留历史，不得执行其“下一步”。

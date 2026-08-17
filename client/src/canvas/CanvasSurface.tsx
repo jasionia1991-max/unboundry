@@ -84,6 +84,11 @@ import {
   viewportForBounds,
 } from "./templatePlacement";
 import { GenerationCanvasContext } from "../generation/GenerationCanvasContext";
+import {
+  shouldAcceptCanvasRevision,
+  waitForPaint,
+  workflowToastDurationMs,
+} from "../generation/groupRunPersist";
 import { WorkflowExecutionProvider } from "../generation/WorkflowExecutionProvider";
 import { isExecutableWorkflowNode } from "../generation/workflowExecution";
 import {
@@ -2417,7 +2422,7 @@ export function CanvasSurface({
       window.clearTimeout(workflowToastTimer.current);
       workflowToastTimer.current = window.setTimeout(
         () => setWorkflowToast(undefined),
-        2_600,
+        workflowToastDurationMs(kind),
       );
     },
     [],
@@ -6284,16 +6289,16 @@ export function CanvasSurface({
           // Let the latest render commit the confirmed revision before the
           // caller reads a fresh node closure. A timeout fallback keeps the
           // wait working even when requestAnimationFrame is throttled.
-          await new Promise((resolve) => {
-            const fallback = window.setTimeout(resolve, 100);
-            window.requestAnimationFrame(() => {
-              window.clearTimeout(fallback);
-              resolve(null);
-            });
-          });
+          await waitForPaint();
           assertSafePersistence();
-          const latest = generationCanvasRevisionRef.current;
-          if (latest !== undefined) return latest;
+          const candidate = {
+            dirty: persistenceDirty.current,
+            revision: generationCanvasRevisionRef.current,
+            saving: persistenceSaving.current,
+          };
+          if (shouldAcceptCanvasRevision(candidate)) {
+            return candidate.revision;
+          }
         }
       }
       await new Promise((resolve) => setTimeout(resolve, 60));
