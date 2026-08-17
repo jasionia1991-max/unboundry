@@ -1,6 +1,6 @@
 # INC-UI-007：组标题、文字节点平移与模板目录刷新
 
-状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
+状态：`PRODUCTION_PUBLISHED_USER_PASS`
 版本：`v0.6.6`
 日期：`2026-08-17`
 
@@ -44,4 +44,4 @@
 - 生产：current已切到`/opt/unboundry/releases/v0.6.6-inc-ui-007-20260817`，service active+enabled、NRestarts0；公网version为0.6.6，入口JS/CSS及CanvasShell动态chunk与release逐字节一致。
 - 数据不变：切换前后tasks153、Provider attempts152、active generation0、公共模板47（46 published）；真实Provider、付费生成和OSS写入均为0。
 - GitHub：`v0.6.6`标签精确指向生产源码；PR #6已合并到`main`，merge commit`6581a88c044db4e5efb8e694c4da1681defca730`。
-- 自动和发布技术验证不代替用户醒来后的肉眼验收，当前保持`USER_RECHECK`。
+- 用户随后对本轮三项修复明确回复“通过”，当前正式收口为`PRODUCTION_PUBLISHED_USER_PASS`。

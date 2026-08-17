@@ -1,17 +1,25 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`68`
+断点版本：`71`
 更新时间：`2026-08-17`
-状态：`INC_UI_007_V0_6_6_PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK`
+状态：`INC_GEN_001_V0_6_7_PRODUCTION_PUBLISHED_USER_RECHECK`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
-## 0. 最新已完成事件：INC-UI-007（v0.6.6已发布，待用户复验）
+## 0. 最新已完成事件：INC-GEN-001（v0.6.7已发布，待用户复验）
+
+- 用户明确“那上线吧”，按`v0.6.7`发布生成用时和画布核对结果。
+- 选中节点/组/任务面板显示已完成用时，不写进画布。失败且结果未知时先核对平台任务；找到成片就收回，确认没有成片再重试。普通失败仍直接重试。
+- 精确源码commit`a4dc45f4cdfa30547dac401fc29d6796ba233832`通过正式安全全量`118/118 specs、969/969 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。
+- 生产current已切到`/opt/unboundry/releases/v0.6.7-inc-gen-001-20260817`；冻结备份恢复、公网资源逐字节哈希、service/schema39和数据不变门均PASS。生产保持220 tasks、221 attempts、active0、47 public templates（46 published）。
+- `v0.6.7`标签精确指向源码commit；PR #8已合并到`main`，merge commit`58da30589186296e0d275cdac73350f3dbec338a`。用户肉眼验收仍为`USER_RECHECK`。
+
+## 0.05 前一事件：INC-UI-007（v0.6.6已发布并通过用户验收）
 
 - 用户同意组标题、Text拖动画布和模板目录刷新三项方案，并提前授权风险控制、全量测试、冻结备份、生产发布、commit、push、tag和PR合并。
 - Group/模板标题改为距主体约8px，宽度72～320px并允许完整换行；不增加组内边距/边框，不移动节点、不改持久坐标。Text节点仅在真实编辑态隔离拖拽/滚轮，浏览态恢复画布平移。模板目录每次打开和BFCache恢复时都用`no-store`重新读取，管理页改名后无需刷新整页即可看到新名称。
 - 精确源码commit`31bb1e9aa6bbdf08f84fd7d5c95ab5d5ee00dbec`通过定向`17/17`及正式安全全量`118/118 specs、969/969 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。
 - 生产current已切到`/opt/unboundry/releases/v0.6.6-inc-ui-007-20260817`；冻结备份恢复、公网资源逐字节哈希、service/schema39和数据不变门均PASS。生产保持153 tasks、152 attempts、active0、47 public templates（46 published）。
-- `v0.6.6`标签精确指向源码commit；PR #6已合并到`main`，merge commit`6581a88c044db4e5efb8e694c4da1681defca730`。当前为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，不可替代用户醒来后的实页确认。
+- `v0.6.6`标签精确指向源码commit；PR #6已合并到`main`，merge commit`6581a88c044db4e5efb8e694c4da1681defca730`。用户随后对本轮三项修复明确回复“通过”，INC-UI-007正式收口为`PRODUCTION_PUBLISHED_USER_PASS`。
 
 ## 0.1 前一事件：INC-UI-006（v0.6.5已发布并通过用户验收）
 
@@ -140,15 +148,15 @@
 ## 1. 当前结论
 
 - 用户已于 2026-08-09 明确回复“施工文档确认通过”，REM-000 = `PASS`。
-- 施工总方案以 v1.0 建立权威合同，当前版本为 `1.33-v0.6.2-inc-ui-002-production-user-recheck`。
+- 施工总方案以 v1.0 建立权威合同，当前版本为 `1.34-v0.6.6-user-accepted`。
 - 用户已于 2026-08-09 明确启动一次性离线 Goal，Goal ID `019fe226-4d7b-7831-a254-106e40b346c2`；REM-001～010 与 REM-011 离线工程部分可按依赖顺序连续施工，中途不再逐项询问。
 - 允许本地代码/测试/脚本/配置/文档/package 修改、动态 loopback 临时环境、假 Provider/OSS/服务器、必要测试容器和本地 checkpoint/功能/candidate commit。
 - 用户在随后连续指令中授权并完成了bridge、final与schema39切换；该一次性生产授权现已消费，不得用于未来生产动作、Provider、push/tag/PR或新版本发布。
 - 用户明确允许原生产使用实际 Node `22.23.2`，但 formal manifest 的 Node22.23.1 绑定保持原样，必须对相同候选在生产Node/SHA上做副本兼容补证；不得把waiver写成formal conformance。
 - 用户还授权：仅在维护、旧服务停止、无写者、可恢复原始备份完成并精确复核后，删除唯一 FK 孤儿 `project_metadata rowid=14`；不得扩大为其他生产清理。
 - 真实OSS只读HEAD/GET以及必要的bwrap安装/使用已经纳入最新bridge总授权；只允许按冻结控制器、最小权限和只读对象合同执行。
-- 生产现运行 `/opt/unboundry/current -> releases/v0.6.2-inc-video-001-20260816`，service active+enabled、NRestarts0、监听127.0.0.1:4173；公网live/ready/version/root正常，version 0.6.2、ready active/schema39。
-- 数据最新核验：schema39、quick_check ok、FK0、active generation0、126 tasks/125 provider attempts、43 public templates（42 published）；默认视频模型为Seedance，Grok仍启用但不再是默认。
+- 生产现运行 `/opt/unboundry/current -> releases/v0.6.6-inc-ui-007-20260817`，service active+enabled、NRestarts0、监听127.0.0.1:4173；公网live/ready/version/root正常，version 0.6.6、ready active/schema39。`INC-UI-007 = PRODUCTION_PUBLISHED_USER_PASS`。
+- 数据最新核验：schema39、quick_check ok、FK0、active generation0、153 tasks/152 provider attempts、47 public templates（46 published）；默认视频模型为Seedance，Grok仍启用但不再是默认。
 - 原schema37 raw backup SHA `7f14c611faab136c1ae8e9579bc47755f7298e4ea6e2bba516c71e85670f8fca` 已离机恢复PASS，inspection `b4d58243e88efe1c2c967ffab5f63ed6704d18324a80e8449ec9d3ad77e28e1d`。最终技术凭证 SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8` 为 `TECHNICAL_CUTOVER_VERIFIED`。
 - 技术凭证生成时 `userAcceptance=PENDING` 保持不变；用户随后确认生成任务状态可读取，并结合此前确认老项目大量生成/上传素材仍在、第4项正常，生产验收现为`USER PASS`，但不声称全部历史素材逐一验证。
 - 最终切换是人工受控bounded cutover，不冒充新的formal controller/full regression PASS；切换期间Provider/付费调用0。用户明确“都通过了”后，REM-000～011（含009A/009B）均为`PASS`，当前没有IN_PROGRESS REM。
@@ -161,14 +169,14 @@
 |---|---|
 | 仓库根 | `/Users/mymy/Documents/unboundry/app` |
 | 生产站点 | `https://canvas.mymy.ltd` |
-| 线上版本 | `v0.6.2` / schema39 |
-| package 版本 | 本地checkout与生产均为`0.6.2`；INC-UI-002生产源commit为`8ebe705…` |
+| 线上版本 | `v0.6.6` / schema39 |
+| package 版本 | 本地checkout与生产均为`0.6.6`；INC-UI-007生产源commit为`31bb1e9aa6bbdf08f84fd7d5c95ab5d5ee00dbec` |
 | 生产程序目录 | 2026-08-14 原生产只读核实为 systemd `unboundry.service`、应用 `/opt/unboundry`；`/opt/unboundry-app` 仅为历史记录，不得用于动作目标 |
 | 生产数据目录 | `/var/lib/unboundry` |
 | 本地真实数据目录 | `/Users/mymy/Documents/unboundry/app/data` |
 | 真实本地服务端口 | `4173`，有守护进程，不得用于测试 |
-| 生产/历史数据库基线 | 当前schema39、integrity ok、FK0、ready local348/OSS70/pending0；INC-ECOM-002停机备份与迁移前schema37 raw备份均保留 |
-| 当前生产制品 | INC-UI-002 source `8ebe70544828a3aebe258def9d658e1ab68a6104` / tree `ad1b93bc68ca0e09df410d5b5904b33bd4b22686` / inventory `f1606bded48644149cc328017d2fa74f8932512c8f0747714f7f5ec81e139f2e` |
+| 生产/历史数据库基线 | 当前schema39、integrity ok、FK0；最新发布核验为153 tasks/152 attempts、47 public templates（46 published）；INC-ECOM-002停机备份与迁移前schema37 raw备份均保留 |
+| 当前生产制品 | INC-UI-007 source `31bb1e9aa6bbdf08f84fd7d5c95ab5d5ee00dbec` / tree `c7184cf60929070ea1411a3e56b958b220f5b499` / inventory `b52d5312982de28d75eb6d678984e5aa48195cf22d7224cb68bb0b7c2b75b3fd` |
 | Node | formal构建/验证为v22.23.1；生产为`/opt/node22/bin/node` v22.23.2，production-specific waiver与恢复副本补证已完成 |
 
 ### 2.1 Goal 启动前只读预检
@@ -507,24 +515,24 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 
 任一项不一致时立即停止，更新证据并向用户说明，禁止根据摘要猜测。
 
-## 10. 2026-08-16 当前恢复卡
+## 10. 2026-08-17 当前恢复卡
 
-> 2026-08-16 INC-UI-006最终断点：v0.6.5已发布，current→`v0.6.5-inc-ui-006-20260816`，公网v0.6.5、service active+enabled、schema39、NRestarts0。正式安全全量118/118 specs、968/968 tests PASS；目标组坐标已从冻结证据精确恢复，Chrome对72节点连续缩放无位移，生产数据不变，真实Provider/付费/OSS写入0。用户已明确回复“通过”，PR #4已合并；以INC-UI-006文档和生产receipt为准。
+> 2026-08-17 INC-GEN-001最终断点：v0.6.7已发布，current→`v0.6.7-inc-gen-001-20260817`，公网v0.6.7、service active+enabled、schema39、NRestarts0。正式安全全量118/118 specs、969/969 tests PASS；生成用时和画布核对结果已上线，待用户肉眼验收。PR #8已合并；以INC-GEN-001文档和生产receipt为准。上一节v0.6.6恢复卡只作历史。
 
 ```text
 项目路径：/Users/mymy/Documents/unboundry/app
-本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.5生产源commit d19e9dbf564f5806adface7807fbf7182bcdafc8；禁止reset/clean
-生产：canvas.mymy.ltd；v0.6.5/schema39；/opt/unboundry/current -> releases/v0.6.5-inc-ui-006-20260816
-生产artifact：source commit d19e9dbf564f5806adface7807fbf7182bcdafc8；tree e360800190fa20993984bcc560d25d5eef1cfbfa；inventory cd9296aec4662dceb00cdd22256040ee91512971f36049d5ba3af0a7bdb0a53b
-当前状态：INC-UI-006已发布并完成自动、Chrome实页与用户验收，状态PRODUCTION_PUBLISHED_USER_PASS；既有INC-UI-005/004/003、INC-VIDEO-001、INC-UI-001/002状态保持；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE；当前无施工中INC或REM
-技术凭证：spec/INC_UI_006_PRODUCTION_RECEIPT_2026-08-16.json；spec/INC_UI_006_CANVAS_ZOOM_POSITION_STABILITY_2026-08-16.md；既有视频与UI发布凭证继续保留
-用户验收：既有v0.6.0/v0.6.1验收保持；v0.6.5坐标稳定已USER PASS；v0.6.4组标题总览、v0.6.3公共模板UI与旧标签恢复、v0.6.2其余UI/视频项继续等待用户线上复验
-数据库：schema39；quick_check ok；FK0；153 tasks/152 attempts；46 public templates/45 published；active0；默认视频模型Seedance；既有生成安全配置不变
-备份：/var/lib/unboundry-rollbacks/inc-ui-006-frozen-20260816T152307Z；冻结源与恢复副本均363文件，清单SHA ba6baec6408f1a34d542cffc87cdf69717b82138154af4b049979a413657633e，二者均PASS；历史schema37/offhost备份继续保留
+本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.7生产源commit a4dc45f4cdfa30547dac401fc29d6796ba233832；禁止reset/clean
+生产：canvas.mymy.ltd；v0.6.7/schema39；/opt/unboundry/current -> releases/v0.6.7-inc-gen-001-20260817
+生产artifact：source commit a4dc45f4cdfa30547dac401fc29d6796ba233832；tree 904652dea6368fd294b6a6974939fc58874f536c
+当前状态：INC-GEN-001已发布并完成自动与发布技术验证，状态PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK；INC-UI-007/006保持PRODUCTION_PUBLISHED_USER_PASS；既有INC-UI-005/004/003、INC-VIDEO-001、INC-UI-001/002状态保持；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE；当前无施工中INC或REM
+技术凭证：spec/INC_GEN_001_PRODUCTION_RECEIPT_2026-08-17.json；spec/INC_GEN_001_GENERATION_DURATION_AND_RECONCILE_2026-08-17.md；既有v0.6.6及更早发布凭证继续保留
+用户验收：既有v0.6.0/v0.6.1/v0.6.5/v0.6.6验收保持；v0.6.7用时与核对结果待用户复验；v0.6.4组标题总览、v0.6.3公共模板UI与旧标签恢复、v0.6.2其余UI/视频项继续等待用户线上复验
+数据库：schema39；quick_check ok；FK0；220 tasks/221 attempts；47 public templates/46 published；active0；默认视频模型Seedance；既有生成安全配置不变
+备份：/var/lib/unboundry-rollbacks/inc-gen-001-frozen-20260817T075553Z；冻结源与恢复副本均363文件，清单SHA c70f7eb5479f523055a230502fb6f7ae12722a332a7e856ac418995b85b8378a，二者均PASS；历史schema37/offhost及v0.6.6冻结备份继续保留
 限制：attempt 86/108/116/120/122为行政取消且禁止重试，PROVIDER_FAILED仅surrogate；3条音频仅改duration元数据；cutover Provider/paid calls=0
-GitHub：v0.6.5注释标签精确指向生产源码d19e9dbf564f5806adface7807fbf7182bcdafc8；PR #4已合并到main，merge commit 0a8cfcb6c6bd1735ae921eedf2ec3b453f48493b
-未来授权：本次v0.6.5生产与GitHub发布授权已消费；未来生产读写、真实Provider/付费生成、push/tag/PR或新发布仍需新授权
-下一步：当前无施工中事项；新Agent应先按AGENTS.md读取顺序恢复，再根据用户最新请求建立新的授权与断点，不得继续消费v0.6.5授权
+GitHub：v0.6.7注释标签精确指向生产源码a4dc45f4cdfa30547dac401fc29d6796ba233832；PR #8已合并到main，merge commit 58da30589186296e0d275cdac73350f3dbec338a
+未来授权：本次v0.6.7生产与GitHub发布授权已消费；未来生产读写、真实Provider/付费生成、push/tag/PR或新发布仍需新授权
+下一步：当前无施工中事项；新Agent应先按AGENTS.md读取顺序恢复，再根据用户最新请求建立新的授权与断点，不得继续消费v0.6.7授权
 ```
 
 任何恢复者必须优先使用本节；第9节只保留历史，不得执行其“下一步”。

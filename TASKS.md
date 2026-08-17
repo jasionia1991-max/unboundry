@@ -1,16 +1,25 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-17
-状态：`v0.6.6已发布到生产并完成自动与发布技术验证；INC-UI-007为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，PR #6已合并，当前无施工中INC/REM，既有其他验收状态保持。`
+状态：`v0.6.7已发布到生产并完成自动与发布技术验证；INC-GEN-001为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，PR #8已合并，当前无施工中INC/REM，既有其他验收状态保持。`
+
+### 2026-08-17 生成用时与画布核对结果（INC-GEN-001）
+
+- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。用户明确“那上线吧”，按`v0.6.7`发布；尚未收到肉眼“通过”。
+- 实现：已完成生成显示用时；失败且结果未知时先核对平台任务，找到成片就收回，确认没有成片再重试；普通失败仍直接重试。
+- 自动门：正式安全全量`118/118 specs、969/969 tests PASS`，失败/跳过/重试/blocked/reportErrors均0，4173 listener不变。
+- 发布：commit`a4dc45f4cdfa30547dac401fc29d6796ba233832`已发布到`/opt/unboundry/releases/v0.6.7-inc-gen-001-20260817`；冻结备份/恢复副本、公网关键资源、service/schema39和数据不变门通过。
+- 数据与外部影响：tasks220、attempts221、active0、公共模板47（46 published）前后不变；Provider/付费生成/OSS写入0。
+- GitHub：标签`v0.6.7`精确指向生产源码；PR #8已合并，merge commit`58da30589186296e0d275cdac73350f3dbec338a`。权威记录为`spec/INC_GEN_001_GENERATION_DURATION_AND_RECONCILE_2026-08-17.md`与生产receipt。
 
 ### 2026-08-17 组标题、文字节点平移与模板目录刷新（INC-UI-007）
 
-- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。用户同意风险、应对和检测方案，并一次性授权实现、测试、冻结备份、部署、commit、push、tag、PR合并。
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户同意风险、应对和检测方案，并一次性授权实现、测试、冻结备份、部署、commit、push、tag、PR合并；上线后对本轮三项修复明确回复“通过”。
 - 实现：Group标题约8px屏幕间隔、72～320px内容宽度并完整换行；不增加组内边距/边框，不修改节点坐标。Text阅读态允许画布滚轮/中键平移，编辑态继续隔离。模板目录每次打开和BFCache恢复均显式`no-store`刷新。
 - 自动门：最终定向`17/17 PASS`；正式安全全量`118/118 specs、969/969 tests PASS`，失败/跳过/重试/blocked/reportErrors均0，source snapshot和4173 listener不变。
 - 发布：commit`31bb1e9aa6bbdf08f84fd7d5c95ab5d5ee00dbec`已fresh build并发布到`/opt/unboundry/releases/v0.6.6-inc-ui-007-20260817`；冻结备份/恢复副本、release inventory、公网关键资源、service/schema39和数据不变门通过。
 - 数据与外部影响：tasks153、attempts152、active0、公共模板47（46 published）前后不变；Provider/付费生成/OSS写入0。
-- GitHub：标签`v0.6.6`精确指向生产源码；PR #6已合并，merge commit`6581a88c044db4e5efb8e694c4da1681defca730`。权威记录为`spec/INC_UI_007_CANVAS_TITLE_PAN_TEMPLATE_REFRESH_2026-08-17.md`与生产receipt；只待用户醒来后肉眼复验。
+- GitHub：标签`v0.6.6`精确指向生产源码；PR #6已合并，merge commit`6581a88c044db4e5efb8e694c4da1681defca730`。权威记录为`spec/INC_UI_007_CANVAS_TITLE_PAN_TEMPLATE_REFRESH_2026-08-17.md`与生产receipt；用户验收已收口。
 
 ### 2026-08-16 缩放时节点/模板坐标漂移（INC-UI-006）
 

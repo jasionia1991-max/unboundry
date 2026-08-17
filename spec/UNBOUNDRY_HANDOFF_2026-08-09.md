@@ -2,9 +2,13 @@
 
 > 写给下一个接手的人/AI agent。目标：看完本文后不需要向用户问“项目在哪、怎么跑、怎么发布、有什么红线”。
 
-## 最新已完成事件：INC-UI-007（v0.6.6已发布，待用户复验）
+## 最新已完成事件：INC-GEN-001（v0.6.7已发布，待用户复验）
 
-用户同意并授权一次性修复三项UI问题及完整发布收尾：Group/模板标题改为距主体约8px、72～320px宽并完整换行，且不增加组内视觉边距/边框、不改变节点坐标；Text节点只在真实编辑态阻止画布手势，浏览态可像其他节点一样拖动画布；公共模板目录在每次打开和BFCache恢复时以`no-store`重新获取，管理页改名后回到画布能刷新Dock名称。精确源码commit`31bb1e9aa6bbdf08f84fd7d5c95ab5d5ee00dbec`通过定向`17/17`及安全全量`118/118 specs、969/969 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.6-inc-ui-007-20260817`，公网资源哈希、冻结备份恢复、service/schema39及数据不变门PASS；生产保持153 tasks、152 attempts、active0、47 public templates（46 published）。`v0.6.6`已推送，PR #6已合并到`main`（merge commit`6581a88c044db4e5efb8e694c4da1681defca730`）。当前状态是`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，不能写成用户验收PASS。
+用户明确“那上线吧”。画布现已显示已完成生成用时；平台结果对不上时，用户在画布点「核对结果」即可收回成片或确认没有成片后再重试，不用自己去平台下图。精确源码commit`a4dc45f4cdfa30547dac401fc29d6796ba233832`通过安全全量`118/118 specs、969/969 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.7-inc-gen-001-20260817`，公网资源哈希、冻结备份恢复、service/schema39及数据不变门PASS；生产保持220 tasks、221 attempts、active0、47 public templates（46 published）。`v0.6.7`已推送，PR #8已合并到`main`（merge commit`58da30589186296e0d275cdac73350f3dbec338a`）。当前状态是`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，不能写成用户验收PASS。
+
+## 历史事件：INC-UI-007（v0.6.6已发布并通过用户验收）
+
+用户同意并授权一次性修复三项UI问题及完整发布收尾：Group/模板标题改为距主体约8px、72～320px宽并完整换行，且不增加组内视觉边距/边框、不改变节点坐标；Text节点只在真实编辑态阻止画布手势，浏览态可像其他节点一样拖动画布；公共模板目录在每次打开和BFCache恢复时以`no-store`重新获取，管理页改名后回到画布能刷新Dock名称。精确源码commit`31bb1e9aa6bbdf08f84fd7d5c95ab5d5ee00dbec`通过定向`17/17`及安全全量`118/118 specs、969/969 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.6-inc-ui-007-20260817`，公网资源哈希、冻结备份恢复、service/schema39及数据不变门PASS；生产保持153 tasks、152 attempts、active0、47 public templates（46 published）。`v0.6.6`已推送，PR #6已合并到`main`（merge commit`6581a88c044db4e5efb8e694c4da1681defca730`）。用户随后对本轮三项修复明确回复“通过”，当前状态正式收口为`PRODUCTION_PUBLISHED_USER_PASS`。
 
 ## 历史事件：INC-UI-006（v0.6.5已发布并通过用户验收）
 
@@ -42,15 +46,15 @@ Grok首帧中转协议已从`first_frame_url`修为`images`数组并限制恰好
 
 第三批P0/P1/P2共12条服装电商工作流已在用户明确“确定 发布”后单事务导入生产。恢复副本与生产写后兼容审计均为全库43/43 PASS、第三批12/12 PASS、问题0；生产43条模板、42条published，第三批12条均有graph和preview，公网12张复用封面均HTTP200 image/jpeg。发布前后tasks109、Provider attempts107、active0，并发/RPM仍全部500，Provider/付费生成/OSS变化0。用户随后明确“都通过了”，当前状态为`PRODUCTION_PUBLISHED_USER_PASS`。详细记录与凭证为`spec/INC_ECOM_006_ECOMMERCE_WORKFLOW_BATCH_3_2026-08-15.md`和`spec/ecommerce-workflow-batch-3-production-receipt.json`。
 
-## 0. 2026-08-16 最终生产状态（当前权威）
+## 0. 2026-08-17 最终生产状态（当前权威）
 
-- 当前状态：`REM-000～011（含009A/009B）PASS / PRODUCTION LIVE / INC-UI-006已发布并完成USER PASS / INC-UI-005～003已发布自动与实页技术验证PASS待用户复验 / INC-VIDEO-001真实视频PASS待用户复验 / INC-UI-001/002已发布待用户复验 / INC-ECOM-001～007按各自证据边界完成用户收口 / 当前无施工中INC或REM`。
-- 生产运行 `v0.6.5/schema39`，`/opt/unboundry/current -> releases/v0.6.5-inc-ui-006-20260816`；service active+enabled、NRestarts0、127.0.0.1:4173。公网live/ready/version/root正常，version 0.6.5、ready active/schema39；默认视频模型仍为Seedance 2.0 Mini。
-- v0.6.5源码commit`d19e9dbf564f5806adface7807fbf7182bcdafc8`/tree`e360800190fa20993984bcc560d25d5eef1cfbfa`，release inventory`cd9296aec4662dceb00cdd22256040ee91512971f36049d5ba3af0a7bdb0a53b`；上一不可变release及全部历史备份继续保留。
-- 数据最新核验：schema39、quick_check ok、FK0、active generation0、153 tasks/152 provider attempts、46 public templates（45 published）。目标画布89节点/145边及viewport不变，无自引用根，登录实页72节点连续缩放无位移；Provider/付费/OSS写入0，既有真实流水与Seedance视频结果保持。
-- GitHub当前权威状态：生产源码commit`d19e9dbf564f5806adface7807fbf7182bcdafc8`由注释标签`v0.6.5`精确标记；PR #4已合并到`main`，merge commit`0a8cfcb6c6bd1735ae921eedf2ec3b453f48493b`。该发布授权已消费；新commit/push/tag/PR、生产或外部服务动作均需新授权。
+- 当前状态：`REM-000～011（含009A/009B）PASS / PRODUCTION LIVE / INC-GEN-001已发布自动与技术验证PASS待用户复验 / INC-UI-007已发布并完成USER PASS / INC-UI-006已发布并完成USER PASS / INC-UI-005～003已发布自动与实页技术验证PASS待用户复验 / INC-VIDEO-001真实视频PASS待用户复验 / INC-UI-001/002已发布待用户复验 / INC-ECOM-001～007按各自证据边界完成用户收口 / 当前无施工中INC或REM`。
+- 生产运行 `v0.6.7/schema39`，`/opt/unboundry/current -> releases/v0.6.7-inc-gen-001-20260817`；service active+enabled、NRestarts0、127.0.0.1:4173。公网live/ready/version/root正常，version 0.6.7、ready active/schema39；默认视频模型仍为Seedance 2.0 Mini。
+- v0.6.7源码commit`a4dc45f4cdfa30547dac401fc29d6796ba233832`/tree`904652dea6368fd294b6a6974939fc58874f536c`；上一不可变release `v0.6.6-inc-ui-007-20260817`及全部历史备份继续保留。
+- 数据最新核验：schema39、quick_check ok、FK0、active generation0、220 tasks/221 provider attempts、47 public templates（46 published）。INC-GEN-001未改画布文档、节点坐标、连线、Provider或OSS；Provider/付费/OSS写入0，既有真实流水与Seedance视频结果保持。
+- GitHub当前权威状态：生产源码commit`a4dc45f4cdfa30547dac401fc29d6796ba233832`由注释标签`v0.6.7`精确标记；PR #8已合并到`main`，merge commit`58da30589186296e0d275cdac73350f3dbec338a`。该发布授权已消费；新commit/push/tag/PR、生产或外部服务动作均需新授权。
 
-以下条目保留v0.6.0/v0.6.1各增量发布的历史证据；出现“当前”字样时只代表该历史时点，不覆盖上方v0.6.5权威状态。
+以下条目保留v0.6.0～v0.6.6各增量发布的历史证据；出现“当前”字样时只代表该历史时点，不覆盖上方v0.6.7权威状态。
 - INC-ECOM-004已为16条电商模板发布真实封面；生产18条published模板现`withPreview=18 / withoutPreview=0`。最终静态内容叠加绑定本地commit `d908c4b3824cd36638f02fec51cbe335f6aacd52`，manifest `340452f7…d7a9`、inventory `1d795f29…f464`；公网16张均HTTP200、`image/jpeg`且SHA逐项相符。用户已确认“都通过了”，状态为`PRODUCTION_STATIC_COVERS_DEPLOYED / USER_VISUAL_PASS`。
 - 该叠加以当前可信formal base `5386c744…47b1`为底，只增加双目录静态文件和manifest绑定，不冒充fresh formal builder/full regression。首轮只写源码静态目录的source-only产物被公网哈希门检出并退役保留；最终产物同时包含`client/public/templates`和`dist/client/templates`。
 - INC-ECOM-004回滚材料：停机备份`/var/lib/unboundry-rollbacks/inc-ecom-004-20260815T080758Z`；原formal release在`/opt/unboundry/retired-releases/20260815T080758Z-pre-inc-ecom-004/v0.6.0`；source-only产物在`/opt/unboundry/retired-releases/20260815T081400Z-inc-ecom-004-source-only/v0.6.0`。发布前后tasks109/attempts107/active0，并发500、Provider与数据manifest未变，OSS/付费生成0。
@@ -104,12 +108,12 @@ Docker Ubuntu 子门的 rootless-userns 阻塞已按设计 fail-close。随后�
 
 ## 1. 项目一句话
 
-一个 TapNow 风格的 AI 画布应用（React + Vite + Node 原生 SQLite），支持文本/图片/视频/音频生成节点、连线工作流、模板、多项目工作空间、账号与管理员权限。当前**已发布到生产服务器** `canvas.mymy.ltd`，线上版本 `v0.6.2`、数据库 schema39。
+一个 TapNow 风格的 AI 画布应用（React + Vite + Node 原生 SQLite），支持文本/图片/视频/音频生成节点、连线工作流、模板、多项目工作空间、账号与管理员权限。当前**已发布到生产服务器** `canvas.mymy.ltd`，线上版本 `v0.6.6`、数据库 schema39。
 
 ## 2. 仓库与环境
 
 - 仓库根：`/Users/mymy/Documents/unboundry/app`（注意：系统工作区根目录写的是 `tapnow1_1复刻`，那个路径在本机不存在，**一律用 unboundry/app**）。
-- Git：当前专用分支 `codex/unboundry-offline-remediation-2026-08-09`已推送到远程`https://github.com/jasionia1991-max/unboundry.git`；注释标签`v0.6.2`精确指向当前生产源码commit`959c1e287fb25943ca13037332030e99b39725be`，`v0.6.1`标签仍保留旧生产边界；Draft PR [#1](https://github.com/jasionia1991-max/unboundry/pull/1)已更新为完整v0.6.2范围，base为main、merge state CLEAN、当前未报告CI checks。
+- Git：当前专用分支 `codex/unboundry-offline-remediation-2026-08-09`已推送到远程`https://github.com/jasionia1991-max/unboundry.git`；注释标签`v0.6.6`精确指向当前生产源码commit`31bb1e9aa6bbdf08f84fd7d5c95ab5d5ee00dbec`；PR #6与文档PR #7已合并到`main`。旧`v0.6.5`/`v0.6.2`/`v0.6.1`标签只保留历史生产边界。
 - Node：formal 构建/验证固定 `v22.23.1` 与 npm `10.9.8`；生产 `/opt/node22/bin/node` 为 `v22.23.2`，production-specific waiver及恢复副本补证已完成。formal manifest的22.23.1绑定仍不改写，也不把旧Linux receipt冒充实际22.23.2 runtime证据。
 - 历史依赖/检查方式曾为 `npm install`、`npx tsc --noEmit`、`npm run build`，仍不得直接作为施工入口。当前唯一安全总入口是 `node scripts/run-safe-tests.mjs <preflight|list|run|full>`；它在跟踪文件隔离快照内用 `npm ci --offline --ignore-scripts` 准备依赖，并统一执行源码、构建、重启和测试门禁。
 - 代码结构速览：
@@ -151,7 +155,7 @@ Docker Ubuntu 子门的 rootless-userns 阻塞已按设计 fail-close。随后�
 ## 5. 服务器运维事实
 
 - SSH：`ssh live-cockpit`（`~/.ssh/config` 已配置，腾讯云轻量）。
-- 服务：systemd `unboundry.service`、release `/opt/unboundry/releases/v0.6.2-inc-video-001-20260816`、current `/opt/unboundry/current`、数据 `/var/lib/unboundry`、监听 `127.0.0.1:4173`；上一`v0.6.2-inc-ui-002-20260816`完整保留，旧 `unboundry-replica.service` / `/opt/unboundry-app` 仅为历史计划。当前上线事实不授权未来 stop/restart/current切换。
+- 服务：systemd `unboundry.service`、release `/opt/unboundry/releases/v0.6.6-inc-ui-007-20260817`、current `/opt/unboundry/current`、数据 `/var/lib/unboundry`、监听 `127.0.0.1:4173`；上一`v0.6.5-inc-ui-006-20260816`完整保留，旧 `unboundry-replica.service` / `/opt/unboundry-app` 仅为历史计划。当前上线事实不授权未来 stop/restart/current切换。
 - **历史风险事实**：现有 v0.5.1 preview 会在首次数据库请求（如 `/api/auth/status`）时懒迁移/回填。新施工禁止用健康接口“激活迁移”；REM-009/010 必须将就绪检查与显式迁移完全分开。
 - **历史运行事实**：本地 4173 有守护进程可能自动拉起。当前 REM 施工禁止 kill、重启、探测或复用 4173；旧的黑屏重启处理不是当前施工指令。
 - 版本更新推送：`/api/version` + `/api/updates`（SSE），发布后用户端会弹“版本已更新”提示，属于正常机制。
@@ -244,4 +248,4 @@ ssh live-cockpit "curl -fsS http://127.0.0.1:4173/api/version"
 5. 向用户先报告恢复出的项目、版本、当前项和授权；
 6. 任一不一致都必须停止，不得依据内部记忆、历史 PASS 或压缩摘要猜测继续。
 
-当前执行点：`INC-UI-001/002 PRODUCTION PUBLISHED USER RECHECK / INC-ECOM-001～007 USER ACCEPTED / REM-000～011（含009A/009B）PASS / PRODUCTION LIVE / GITHUB DRAFT PR #1 OPEN`。生产v0.6.2/schema39；UI恢复已上线待用户复验，流水修复、三批模板与封面均已发布并完成用户收口。GitHub仍停留在v0.6.1 tag和既有Draft PR；未实际运行的付费两图/视频抽验继续延期。
+当前执行点：`INC-GEN-001 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK / INC-UI-007 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-006 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-005～003、INC-UI-001/002、INC-VIDEO-001 仍为已发布待用户复验 / INC-ECOM-001～007 USER ACCEPTED / REM-000～011（含009A/009B）PASS / PRODUCTION LIVE / 当前无施工中INC或REM`。生产v0.6.7/schema39；current→`v0.6.7-inc-gen-001-20260817`。`v0.6.7`标签与PR #8已合并。未实际运行的付费两图/视频抽验继续延期。
