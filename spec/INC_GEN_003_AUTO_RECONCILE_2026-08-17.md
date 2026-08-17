@@ -1,6 +1,6 @@
 # INC-GEN-003：失败生成自动核对
 
-状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
+状态：`PRODUCTION_PUBLISHED_USER_PASS`
 版本：`v0.6.9`
 日期：`2026-08-17`
 
@@ -36,6 +36,6 @@
 - 数据不变：切换后schema39、quick_check ok、FK0、tasks237、attempts239、active0、公共模板47（46 published）。
 - GitHub：注释标签`v0.6.9`指向`5517eb6e4d38bbca7530562503bb962b89ba029d`；PR #12已合并，merge commit`e077d09e36530a5c6830ebce9f28482a3fce0667`。
 - 发布与验证期间真实Provider请求、付费生成和OSS写入均为0。
-- 自动验证不代替用户肉眼验收。请打开网站强制刷新后，看失败节点点「核对结果」是否还要填任务号。
+- 用户随后在生产实页明确回复“通过”，本事件正式收口为`PRODUCTION_PUBLISHED_USER_PASS`。
 
 详细凭证：`spec/INC_GEN_003_PRODUCTION_RECEIPT_2026-08-17.json`。

@@ -1,11 +1,11 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-17
-状态：`v0.6.9已发布，待用户复验。INC-GEN-003为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，INC-GEN-002/001仍为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，既有其他验收状态保持。`
+状态：`v0.6.9已发布并通过用户验收。INC-GEN-003为PRODUCTION_PUBLISHED_USER_PASS，INC-GEN-002/001仍为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，既有其他验收状态保持。`
 
 ### 2026-08-17 失败生成自动核对（INC-GEN-003）
 
-- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。用户问版本号并同意上线，按`v0.6.9`发布；尚未收到肉眼“通过”。
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户问版本号并同意上线，按`v0.6.9`发布；随后在生产实页明确回复“通过”。
 - 实现：失败后按账号自动配对中转站用量明细；唯一命中才收回；多条相近停住。GPT Image 收回只查已有任务。拿掉手动填任务号。
 - 自动门：正式安全全量`118/118 specs、969/969 tests PASS`，失败/跳过/重试/blocked/reportErrors均0。
 - 发布：commit`5517eb6e4d38bbca7530562503bb962b89ba029d`已发布到`/opt/unboundry/releases/v0.6.9-inc-gen-003-20260817`；冻结备份/恢复副本、公网关键资源、service/schema39和数据不变门通过。

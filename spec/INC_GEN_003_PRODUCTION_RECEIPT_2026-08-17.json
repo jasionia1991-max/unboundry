@@ -1,7 +1,7 @@
 {
   "incident": "INC-GEN-003",
   "version": "0.6.9",
-  "status": "PRODUCTION_PUBLISHED_AUTO_PASS",
+  "status": "PRODUCTION_PUBLISHED_USER_PASS",
   "publishedAt": "2026-08-17T12:23:30Z",
   "source": {
     "commit": "5517eb6e4d38bbca7530562503bb962b89ba029d",
@@ -88,6 +88,7 @@
     "tag": "v0.6.9",
     "tagTarget": "5517eb6e4d38bbca7530562503bb962b89ba029d"
   },
-  "userAcceptance": "USER_RECHECK",
-  "userAcceptanceEvidence": "User asked 版本号到哪里了 and agreed 上线. Automatic and publication gates passed. Visual acceptance is still pending."
+  "userAcceptance": "USER_PASS",
+  "userAcceptedAt": "2026-08-17",
+  "userAcceptanceEvidence": "User explicitly replied 通过 after production verification of auto-reconcile without task ids."
 }
