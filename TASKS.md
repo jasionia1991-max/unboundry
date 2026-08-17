@@ -1,14 +1,16 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-17
-状态：`v0.6.10本地已提交待发布；生产仍为v0.6.9。INC-UI-008为LOCAL_COMMITTED / USER_RECHECK，INC-GEN-003/002/001保持PRODUCTION_PUBLISHED_USER_PASS，既有其他验收状态保持。`
+状态：`v0.6.10已发布，待用户复验。INC-UI-008为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，INC-GEN-003/002/001保持PRODUCTION_PUBLISHED_USER_PASS，既有其他验收状态保持。`
 
 ### 2026-08-17 文字节点画布级全屏（INC-UI-008）
 
-- 状态：`LOCAL_COMMITTED / USER_RECHECK`。用户确认按`v0.6.10`并说可以上线。
+- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。用户确认按`v0.6.10`并说可以上线；尚未收到肉眼“通过”。
 - 实现：文字全屏复用图片画布遮罩；只读正文可滚动；复制代替下载；拿掉系统全屏。
-- 自动门：类型检查通过；定向`m2-text-node` 8/8、`m98` 5/5；冻结清单保持 `118 specs / 969 tests`。
-- 发布：尚未切生产、未 push/tag/PR。权威记录为`spec/INC_UI_008_TEXT_CANVAS_FULLSCREEN_2026-08-17.md`。
+- 自动门：正式安全全量`118/118 specs、969/969 tests PASS`，失败/跳过/重试/blocked/reportErrors均0。
+- 发布：commit`7f85e608d4580f43d67beeaabe19ee0fac29787f`已发布到`/opt/unboundry/releases/v0.6.10-inc-ui-008-20260817`；冻结备份/恢复副本、公网关键资源、service/schema39和数据不变门通过。
+- 数据与外部影响：tasks246、attempts248、active0、公共模板47（46 published）前后不变；Provider/付费生成/OSS写入0。
+- GitHub：标签`v0.6.10`精确指向生产源码；PR #16已合并，merge commit`97f94292ce811c752a4c6b84f9370fed0abfd2cb`。权威记录为`spec/INC_UI_008_TEXT_CANVAS_FULLSCREEN_2026-08-17.md`与生产receipt。
 
 ### 2026-08-17 失败生成自动核对（INC-GEN-003）
 
