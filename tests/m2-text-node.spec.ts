@@ -125,6 +125,30 @@ test("Text matches neutral, selected and editing states", async ({
   await content.dblclick();
   await editor.fill("你好世界");
   await editor.press("Escape");
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await toolbar.getByRole("button", { name: "全屏" }).click();
+  const detail = page.getByTestId("text-detail");
+  await expect(detail).toBeVisible();
+  await expect(detail.getByTestId("text-detail-body")).toHaveText("你好世界");
+  await expect(detail.locator("strong")).toHaveText("测试a");
+  await expect(detail.getByRole("button", { name: "复制" })).toBeVisible();
+  expect(await page.evaluate(() => document.fullscreenElement)).toBeNull();
+  await detail.getByRole("button", { name: "复制" }).click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe("测试a\n你好世界");
+  await page.getByRole("button", { name: "关闭文字详情" }).click();
+  await expect(detail).toHaveCount(0);
+  await expect(toolbar).toBeVisible();
+  await toolbar.getByRole("button", { name: "全屏" }).click();
+  await expect(page.getByTestId("text-detail")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("text-detail")).toHaveCount(0);
+  await expect(node).toHaveClass(/selected/);
+  await expect(toolbar).toBeVisible();
+  await toolbar.getByRole("button", { name: "全屏" }).click();
+  await page.getByTestId("text-detail").click({ position: { x: 8, y: 8 } });
+  await expect(page.getByTestId("text-detail")).toHaveCount(0);
+  expect(await toolbar.boundingBox()).toMatchObject({ width: 617, height: 48 });
   await page.mouse.click(1000, 700);
   await page.evaluate(() => {
     const text = document.querySelector(

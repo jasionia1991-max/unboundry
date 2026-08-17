@@ -2,10 +2,18 @@
 
 断点版本：`71`
 更新时间：`2026-08-17`
-状态：`INC_GEN_001_002_003_PRODUCTION_PUBLISHED_USER_PASS`
+状态：`INC_UI_008_V0_6_10_LOCAL_COMMITTED_USER_RECHECK`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
-## 0. 当前已发布事件：INC-GEN-003（v0.6.9已发布并通过用户验收）
+## 0. 当前本地提交：INC-UI-008（v0.6.10，待发布）
+
+- 用户确认按`v0.6.10`并说可以上线。
+- 文字全屏复用图片画布遮罩；只读正文可滚动；复制代替下载；拿掉系统全屏。
+- 类型检查通过；定向`m2-text-node` 8/8、`m98` 5/5；冻结清单仍为 969。
+- 生产仍运行 v0.6.9。尚未切生产、未 push/tag/PR。
+- 权威记录：`spec/INC_UI_008_TEXT_CANVAS_FULLSCREEN_2026-08-17.md`。
+
+## 0.03 前一已发布事件：INC-GEN-003（v0.6.9已发布并通过用户验收）
 
 - 用户问版本号并同意上线，按`v0.6.9`。
 - 失败后自动配对中转站用量明细；唯一命中才收回；GPT Image 收回不新开付费请求；拿掉手动填号。
@@ -535,22 +543,22 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 
 ## 10. 2026-08-17 当前恢复卡
 
-> 2026-08-17 INC-GEN-003/002/001已收口：v0.6.9已切生产，用户对自动核对回复“通过”，随后对同层一起跑和生成用时明确回复“看了 也通过了”。以各INC文档与生产receipt为准。
+> 2026-08-17 INC-UI-008本地断点：v0.6.10已本地提交，生产仍为v0.6.9。文字画布级全屏入库；切生产前不得写成已上线。以INC-UI-008文档为准。上一节v0.6.9恢复卡只作已发布历史。
 
 ```text
 项目路径：/Users/mymy/Documents/unboundry/app
-本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.9已发布，v0.6.7～v0.6.9用户验收通过；禁止reset/clean
+本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.10本地提交待发布；禁止reset/clean
 生产：canvas.mymy.ltd；v0.6.9/schema39；/opt/unboundry/current -> releases/v0.6.9-inc-gen-003-20260817
 生产artifact：source commit 5517eb6e4d38bbca7530562503bb962b89ba029d；tree 0bad75ec1b9c175ce301287879d41272bc7656d7
-当前状态：INC-GEN-003 PRODUCTION_PUBLISHED_USER_PASS；INC-GEN-002 PRODUCTION_PUBLISHED_USER_PASS；INC-GEN-001 PRODUCTION_PUBLISHED_USER_PASS；INC-UI-007/006保持PRODUCTION_PUBLISHED_USER_PASS；既有INC-UI-005/004/003、INC-VIDEO-001、INC-UI-001/002状态保持；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
-技术凭证：spec/INC_GEN_003_PRODUCTION_RECEIPT_2026-08-17.json；spec/INC_GEN_002_PRODUCTION_RECEIPT_2026-08-17.json；spec/INC_GEN_001_PRODUCTION_RECEIPT_2026-08-17.json；既有更早发布凭证继续保留
-用户验收：既有v0.6.0/v0.6.1/v0.6.5/v0.6.6/v0.6.7/v0.6.8/v0.6.9验收保持；v0.6.4组标题总览、v0.6.3公共模板UI与旧标签恢复、v0.6.2其余UI/视频项继续等待用户线上复验
+当前状态：INC-UI-008 LOCAL_COMMITTED / USER_RECHECK；INC-GEN-003/002/001 PRODUCTION_PUBLISHED_USER_PASS；INC-UI-007/006保持PRODUCTION_PUBLISHED_USER_PASS；既有INC-UI-005/004/003、INC-VIDEO-001、INC-UI-001/002状态保持；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
+技术凭证：spec/INC_UI_008_TEXT_CANVAS_FULLSCREEN_2026-08-17.md；既有v0.6.9及更早发布凭证继续保留
+用户验收：既有v0.6.0/v0.6.1/v0.6.5/v0.6.6/v0.6.7/v0.6.8/v0.6.9验收保持；v0.6.10文字全屏待发布后复验；v0.6.4组标题总览、v0.6.3公共模板UI与旧标签恢复、v0.6.2其余UI/视频项继续等待用户线上复验
 数据库：schema39；quick_check ok；FK0；237 tasks/239 attempts；47 public templates/46 published；active0；默认视频模型Seedance；既有生成安全配置不变
 备份：/var/lib/unboundry-rollbacks/inc-gen-003-frozen-20260817T122251Z；冻结源与恢复副本均365文件，清单SHA 11ea901611aefe9120af96812c46a2f31ec61fae03972a4bb1628a49a0bf51c2，二者均PASS；历史schema37/offhost及v0.6.8冻结备份继续保留
 限制：attempt 86/108/116/120/122为行政取消且禁止重试，PROVIDER_FAILED仅surrogate；3条音频仅改duration元数据；cutover Provider/paid calls=0
 GitHub：v0.6.9注释标签精确指向生产源码5517eb6e4d38bbca7530562503bb962b89ba029d；PR #12已合并到main，merge commit e077d09e36530a5c6830ebce9f28482a3fce0667
-未来授权：本次v0.6.9生产与GitHub发布授权已消费；未来生产读写、真实Provider/付费生成、push/tag/PR或新发布仍需新授权
-下一步：无施工中INC/REM；不得继续消费本次授权
+未来授权：用户已确认按v0.6.10上线；该授权一次用完
+下一步：v0.6.10已本地提交；切生产、push/tag/PR使用本次上线授权
 ```
 
 任何恢复者必须优先使用本节；第9节只保留历史，不得执行其“下一步”。
