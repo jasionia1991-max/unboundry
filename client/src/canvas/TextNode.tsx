@@ -1027,7 +1027,7 @@ function TextNodeImpl({
         }
         if (!persistedOwnershipKey) {
           if (!catalogReady) return;
-          if (!persistedInputKey || persistedInputKey !== generationInputKey) {
+          if (persistedInputKey && persistedInputKey !== generationInputKey) {
             setUnverifiedRecoveryTaskId((current) =>
               current === persistedTaskId ? undefined : current
             );
@@ -1097,7 +1097,7 @@ function TextNodeImpl({
       if (!recoveredOwnershipKey) {
         if (!catalogReady) return;
         const legacyInputKey = persistedInputKey ?? task.generationInputKey;
-        if (!legacyInputKey || legacyInputKey !== generationInputKey) {
+        if (legacyInputKey && legacyInputKey !== generationInputKey) {
           if (persistedTaskId) {
             setUnverifiedRecoveryTaskId((current) =>
               current === persistedTaskId ? undefined : current

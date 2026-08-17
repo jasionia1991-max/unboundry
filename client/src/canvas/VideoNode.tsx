@@ -1395,7 +1395,7 @@ function VideoNodeImpl({
     try {
       const result = await reconcileGenerationTask({
         canvasId,
-        generationInputKey: videoGenerationInputKey,
+        generationInputKey: data.videoGenerationInputKey || videoGenerationInputKey,
         kind: "video",
         nodeId: id,
         taskId,
@@ -1582,7 +1582,7 @@ function VideoNodeImpl({
         }
         if (!persistedOwnershipKey) {
           if (!catalogReady) return;
-          if (!persistedInputKey || persistedInputKey !== videoGenerationInputKey) {
+          if (persistedInputKey && persistedInputKey !== videoGenerationInputKey) {
             setUnverifiedRecoveryTaskId((current) =>
               current === persistedTaskId ? undefined : current
             );
@@ -1662,7 +1662,7 @@ function VideoNodeImpl({
       if (!recoveredOwnershipKey) {
         if (!catalogReady) return;
         const legacyInputKey = persistedInputKey ?? task.generationInputKey;
-        if (!legacyInputKey || legacyInputKey !== videoGenerationInputKey) {
+        if (legacyInputKey && legacyInputKey !== videoGenerationInputKey) {
           if (persistedTaskId) {
             setUnverifiedRecoveryTaskId((current) =>
               current === persistedTaskId ? undefined : current

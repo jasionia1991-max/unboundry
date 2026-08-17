@@ -2448,7 +2448,7 @@ function ImageNodeImpl({
     try {
       const result = await reconcileGenerationTask({
         canvasId,
-        generationInputKey: requestedGenerationInputKey,
+        generationInputKey: data.imageGenerationInputKey || imageGenerationInputKey,
         kind: "image",
         nodeId: id,
         taskId,
@@ -2630,7 +2630,7 @@ function ImageNodeImpl({
         }
         if (!persistedOwnershipKey) {
           if (!catalogReady) return;
-          if (!persistedInputKey || persistedInputKey !== imageGenerationInputKey) {
+          if (persistedInputKey && persistedInputKey !== imageGenerationInputKey) {
             setUnverifiedRecoveryTaskId((current) =>
               current === persistedTaskId ? undefined : current
             );
@@ -2710,7 +2710,7 @@ function ImageNodeImpl({
       if (!recoveredOwnershipKey) {
         if (!catalogReady) return;
         const legacyInputKey = persistedInputKey ?? task.generationInputKey;
-        if (!legacyInputKey || legacyInputKey !== imageGenerationInputKey) {
+        if (legacyInputKey && legacyInputKey !== imageGenerationInputKey) {
           if (persistedTaskId) {
             setUnverifiedRecoveryTaskId((current) =>
               current === persistedTaskId ? undefined : current

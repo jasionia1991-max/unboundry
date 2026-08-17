@@ -299,9 +299,15 @@ export async function reconcileGenerationTask(
 ): Promise<GenerationReconcileResult> {
   const expectedCanvasRevision = await waitForCanvasRevision();
   const before = await getGenerationTask(target.taskId, signal);
+  if (!retryTargetMatches(before, target) || !target.generationInputKey) {
+    throw new GenerationRequestError(
+      "任务已不再绑定当前节点输入，请从节点重新提交",
+      409,
+      "RETRY_BINDING_STALE",
+    );
+  }
   if (
-    !retryTargetMatches(before, target) ||
-    !target.generationInputKey ||
+    before.generationInputKey &&
     before.generationInputKey !== target.generationInputKey
   ) {
     throw new GenerationRequestError(
