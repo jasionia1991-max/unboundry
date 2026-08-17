@@ -1,11 +1,11 @@
 # Unboundry 全量修复、优化与安全发布施工总方案
 
 状态：`COMPLETED_WITH_USER_ACCEPTANCE`
-计划版本：`1.33-v0.6.5-user-accepted`
+计划版本：`1.35-v0.6.7-published`
 建立日期：`2026-08-09`
-当前结论：用户后续连续授权并完成 `v0.5.2` bridge、`v0.6.0` final、schema37→39原生产切换、`v0.6.1`工作流流水执行修复以及`v0.6.5`画布缩放坐标稳定修复。`REM-000～011（含009A/009B） = PASS`、`INC-UI-006 = PRODUCTION_PUBLISHED_USER_PASS`、`PRODUCTION = LIVE / USER ACCEPTED`、`DEP-010 = PASS`；当前没有施工中的INC或REM，其他既有USER_RECHECK/PARTIAL/PAUSED/BLOCK/NOT_STARTED不自动升级。
+当前结论：用户后续连续授权并完成 `v0.5.2` bridge、`v0.6.0` final、schema37→39原生产切换、`v0.6.1`工作流流水执行修复、`v0.6.5`画布缩放坐标稳定修复、`v0.6.6`组标题/文字平移/模板目录刷新以及`v0.6.7`生成用时与画布核对结果。`REM-000～011（含009A/009B） = PASS`、`INC-GEN-001 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`、`INC-UI-007 = PRODUCTION_PUBLISHED_USER_PASS`、`INC-UI-006 = PRODUCTION_PUBLISHED_USER_PASS`、`PRODUCTION = LIVE`、`DEP-010 = PASS`；当前没有施工中的INC或REM，其他既有USER_RECHECK/PARTIAL/PAUSED/BLOCK/NOT_STARTED不自动升级。
 
-生产当前运行 `/opt/unboundry/current -> /opt/unboundry/releases/v0.6.5-inc-ui-006-20260816`，service active/enabled、NRestarts0；公网version/live/ready与schema39通过。v0.6.5源码commit为`d19e9dbf564f5806adface7807fbf7182bcdafc8`、tree为`e360800190fa20993984bcc560d25d5eef1cfbfa`，标签`v0.6.5`精确指向该源码；PR #4已于2026-08-16合并到`main`（merge commit `0a8cfcb6c6bd1735ae921eedf2ec3b453f48493b`）。正式安全全量`118/118 specs、968/968 tests PASS`，生产实页对72个已挂载节点连续缩放后`movedIds=[]`，用户随后明确回复“通过”。
+生产当前运行 `/opt/unboundry/current -> /opt/unboundry/releases/v0.6.7-inc-gen-001-20260817`，service active/enabled、NRestarts0；公网version/live/ready与schema39通过。v0.6.7源码commit为`a4dc45f4cdfa30547dac401fc29d6796ba233832`、tree为`904652dea6368fd294b6a6974939fc58874f536c`，标签`v0.6.7`精确指向该源码；PR #8已于2026-08-17合并到`main`（merge commit `58da30589186296e0d275cdac73350f3dbec338a`）。正式安全全量`118/118 specs、969/969 tests PASS`。
 
 F14生产artifact固定为commit `eb4f99ea525390b0dd7a39d3cad55d882ffea41d` / tree `86b4e424b6d6324c5f24d4c633b0cd35baf0d626` / manifest `46e2365c48b8e8bdaa1847b1767ef2974a71f2d2b47c87743793c116e5ec2adf` / inventory `ac8ca43a9f8f6724ca67bd0899185fa3952e762e0400a1f9ce34f3ecfefc2bac` / tar `0e3a96a13299efba407ba98dc6501ae97297c9a82c067827b9f9befeb2c18944`。原schema37 raw backup `7f14c611…` 已离机恢复PASS（inspection `b4d58243…`）。最终技术凭证 SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8` 为 `TECHNICAL_CUTOVER_VERIFIED`。
 
@@ -536,7 +536,7 @@ REM-009B 已在合成数据上完成富含业务数据、媒体、secret 和假 
 - 发布后业务健康、数据一致性和任务状态正常；
 - TASKS、验收矩阵、交接和施工断点完成最终收口。
 
-完成结论（2026-08-16）：`REM-000～011（含009A/009B） = PASS`、`INC-UI-006 = PRODUCTION_PUBLISHED_USER_PASS`、生产 `v0.6.5/schema39 LIVE / USER ACCEPTED`、`DEP-010 = PASS`，当前没有施工中的INC或REM。v0.6.0最终技术凭证 SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8`、v0.6.1历史生产凭证与v0.6.5生产凭证继续分别保留；用户在v0.6.5生产验证后明确回复“通过”。其他既有USER_RECHECK/PARTIAL/PAUSED/BLOCK/NOT_STARTED项以及未执行的可选付费两图/视频抽验保持延期或原状态。本次manual bounded cutover不声明formal controller PASS；v0.6.5的`118/118 specs、968/968 tests PASS`是该版本正式安全全量证据。
+完成结论（2026-08-17）：`REM-000～011（含009A/009B） = PASS`、`INC-UI-007 = PRODUCTION_PUBLISHED_USER_PASS`、生产 `v0.6.6/schema39 LIVE / USER ACCEPTED`、`DEP-010 = PASS`，当前没有施工中的INC或REM。v0.6.0最终技术凭证 SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8`、v0.6.1/v0.6.5历史生产凭证与v0.6.6生产凭证继续分别保留；用户在v0.6.6生产验证后明确回复“通过”。其他既有USER_RECHECK/PARTIAL/PAUSED/BLOCK/NOT_STARTED项以及未执行的可选付费两图/视频抽验保持延期或原状态。本次manual bounded cutover不声明formal controller PASS；v0.6.6的`118/118 specs、969/969 tests PASS`是该版本正式安全全量证据。
 
 ## 15. 变更记录
 
@@ -578,3 +578,5 @@ REM-009B 已在合成数据上完成富含业务数据、媒体、secret 和假 
 | 2026-08-15 | 1.31-production-docs-user-accepted | 七份权威文档完成最终一致性收口，用户明确“文档确认通过”，DEP-010转PASS | 仅确认文档收口，不改变REM-001～009B及既有PARTIAL/PAUSED/BLOCK/NOT_STARTED项 |
 | 2026-08-15 | 1.32-v0.6.1-release-user-accepted | v0.6.1工作流流水修复上线并通过用户实页验收；用户进一步明确“都通过了”，REM-001～009B、电商模板/封面、原结果恢复与现有图片结果完成收口 | 未实际运行的付费两图/视频抽验及既有PARTIAL/PAUSED/BLOCK/NOT_STARTED项不自动升级 |
 | 2026-08-16 | 1.33-v0.6.5-user-accepted | v0.6.5画布缩放坐标稳定修复发布、目标组坐标恢复、全量与生产实页验证完成；用户明确“通过”，INC-UI-006收口，`v0.6.5`标签与PR #4合并完成 | 其他既有USER_RECHECK/PARTIAL/PAUSED/BLOCK/NOT_STARTED保持原状态；本次生产与GitHub授权已消费 |
+| 2026-08-17 | 1.34-v0.6.6-user-accepted | v0.6.6组标题、文字节点平移与模板目录刷新已发布并通过用户验收；INC-UI-007收口为`PRODUCTION_PUBLISHED_USER_PASS`，生产current切到`v0.6.6-inc-ui-007-20260817`；同步顶部当前结论与完成结论 | 用户明确回复“通过”；仅同步文档当前态，不改历史时点字段 |
+| 2026-08-17 | 1.35-v0.6.7-published | v0.6.7生成用时与画布核对结果已发布；INC-GEN-001为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，生产current切到`v0.6.7-inc-gen-001-20260817`；`v0.6.7`标签与PR #8合并 | 用户授权“上线吧”；肉眼验收仍待确认；不改历史时点字段 |
