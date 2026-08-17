@@ -268,6 +268,7 @@ export async function cancelGenerationTask(
 }
 
 export type GenerationReconcileOutcome =
+  | "ambiguous"
   | "check-failed"
   | "missing"
   | "needs-task-id"
@@ -280,17 +281,17 @@ export type GenerationReconcileResult = {
 };
 
 export function reconcileOutcomeMessage(outcome: GenerationReconcileOutcome) {
-  if (outcome === "needs-task-id") {
-    return "系统没记下平台任务号，请填写后再核对";
+  if (outcome === "needs-task-id" || outcome === "check-failed") {
+    return "暂时查不到平台结果，请稍后再核对";
+  }
+  if (outcome === "ambiguous") {
+    return "平台上有多条相近记录，不能自动认领，请稍后再核对";
   }
   if (outcome === "still-running") {
     return "平台还在做，请稍后再核对";
   }
   if (outcome === "missing") {
     return "平台没有成片，可以重试";
-  }
-  if (outcome === "check-failed") {
-    return "暂时查不到平台结果，请稍后再核对";
   }
   return "";
 }

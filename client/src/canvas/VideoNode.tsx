@@ -320,8 +320,6 @@ function VideoNodeImpl({
   const [transientUploadError, setTransientUploadError] = useState("");
   const [retryTaskId, setRetryTaskId] = useState<string>();
   const [reconcileBusy, setReconcileBusy] = useState(false);
-  const [reconcileNeedsTaskId, setReconcileNeedsTaskId] = useState(false);
-  const [reconcileProviderTaskId, setReconcileProviderTaskId] = useState("");
   const [reconcileConfirmedMissing, setReconcileConfirmedMissing] = useState(false);
   const [pollingPausedTaskId, setPollingPausedTaskId] = useState<string>();
   const pollingPausedTaskIdRef = useRef<string | undefined>(undefined);
@@ -552,8 +550,7 @@ function VideoNodeImpl({
     data.videoGenerationError &&
     !generating &&
     !isFixture &&
-    (generationNeedsReconcile(data.videoGenerationErrorCode) ||
-      reconcileNeedsTaskId),
+    generationNeedsReconcile(data.videoGenerationErrorCode),
   );
 
   const clearVideoIntentAfterDurableTerminalPatch = (taskId: string) => {
@@ -1413,16 +1410,10 @@ function VideoNodeImpl({
         kind: "video",
         nodeId: id,
         taskId,
-      }, waitForCanvasRevision, reconcileProviderTaskId);
+      }, waitForCanvasRevision);
       const message = reconcileOutcomeMessage(result.outcome);
-      if (result.outcome === "needs-task-id") {
-        setReconcileNeedsTaskId(true);
-        setUploadError(message);
-        return;
-      }
       if (result.outcome === "missing") {
         setReconcileConfirmedMissing(true);
-        setReconcileNeedsTaskId(false);
         setRetryTaskId(result.task.id);
         setUploadError(message);
         setNodes((nodes) =>
@@ -1448,7 +1439,6 @@ function VideoNodeImpl({
         setUploadError(message);
         return;
       }
-      setReconcileNeedsTaskId(false);
       setUploadError("");
       const pollingRun = beginGenerationPollingRun(
         taskId,
@@ -2562,12 +2552,9 @@ function VideoNodeImpl({
               <GenerationReconcileControls
                 busy={reconcileBusy || submitting}
                 canRetry={showVideoRetry}
-                needsTaskId={reconcileNeedsTaskId}
                 onReconcile={() => void reconcileVideoResult()}
                 onRetry={() => void retryVideoGeneration()}
-                providerTaskDraft={reconcileProviderTaskId}
                 retryEnabled={retryGenerationEnabled}
-                setProviderTaskDraft={setReconcileProviderTaskId}
               />
             )}
             {!canReconcileVideo && retryAvailable && (

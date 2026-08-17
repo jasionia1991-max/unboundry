@@ -28,6 +28,7 @@ import {
   saveProviderProfile,
   verifyProviderProfile,
 } from "../server/providerProfiles";
+import { matchRelayUsageRecord } from "../server/relayUsageReconcile";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -1160,6 +1161,59 @@ test("multi-protocol relay verifies, syncs enhanced and fallback catalogs, and e
         url: "https://api.relay.example/v1/skills/models/vendor%2Fmodel",
       },
     ]);
+    const ootd = {
+      completedAt: "2026-08-17T11:03:23.000Z",
+      createdAt: "2026-08-17T11:01:17.000Z",
+      model: "gpt-image-2",
+      state: "success",
+      taskId: "107667916",
+    };
+    const cover = {
+      completedAt: "2026-08-17T11:02:35.000Z",
+      createdAt: "2026-08-17T11:01:17.000Z",
+      model: "gpt-image-2",
+      state: "success",
+      taskId: "107667921",
+    };
+    expect(matchRelayUsageRecord({
+      localCreatedAt: "2026-08-17T11:01:15.984Z",
+      localUpdatedAt: "2026-08-17T11:03:34.353Z",
+      occupiedTaskIds: [],
+      providerModelId: "gpt-image-2",
+      records: [ootd, cover],
+      siblingSuccesses: [{
+        createdAt: "2026-08-17T11:01:17.040Z",
+        updatedAt: "2026-08-17T11:02:41.693Z",
+      }],
+    })).toEqual({ status: "one", record: ootd });
+    expect(matchRelayUsageRecord({
+      localCreatedAt: "2026-08-17T11:01:15.984Z",
+      localUpdatedAt: "2026-08-17T11:03:34.353Z",
+      occupiedTaskIds: [],
+      providerModelId: "gpt-image-2",
+      records: [ootd, cover],
+    }).status).toBe("one");
+    expect(matchRelayUsageRecord({
+      competingLocals: [{
+        createdAt: "2026-08-17T11:01:17.040Z",
+        updatedAt: "2026-08-17T11:03:34.100Z",
+      }],
+      localCreatedAt: "2026-08-17T11:01:15.984Z",
+      localUpdatedAt: "2026-08-17T11:03:34.353Z",
+      occupiedTaskIds: [],
+      providerModelId: "gpt-image-2",
+      records: [ootd, cover],
+    }).status).toBe("many");
+    expect(matchRelayUsageRecord({
+      localCreatedAt: "2026-08-17T11:01:15.984Z",
+      localUpdatedAt: "2026-08-17T11:03:34.353Z",
+      occupiedTaskIds: [],
+      providerModelId: "gpt-image-2",
+      records: [ootd, {
+        ...cover,
+        completedAt: "2026-08-17T11:03:20.000Z",
+      }],
+    }).status).toBe("many");
 
     const previousBypass = process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
     process.env.UNBOUNDRY_TEST_AUTH_BYPASS = "1";

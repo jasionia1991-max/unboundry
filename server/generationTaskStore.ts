@@ -1487,6 +1487,62 @@ export function createGenerationTaskStore(dataDirectory: string) {
       return hasUnsafeProviderAttemptForNewPaidRetry(id);
     },
 
+    listOwnerRelayMatchContext(input: {
+      excludeTaskId: string;
+      kind: GenerationTask["kind"];
+      ownerId: string;
+      providerModelId: string;
+    }) {
+      if (
+        !identifierPattern.test(input.ownerId) ||
+        input.ownerId.length > 120 ||
+        !identifierPattern.test(input.excludeTaskId) ||
+        input.excludeTaskId.length > 120 ||
+        !identifierPattern.test(input.providerModelId) ||
+        input.providerModelId.length > 160
+      ) {
+        throw new Error("Invalid relay match context");
+      }
+      const occupied = database.prepare(`
+        SELECT provider_task_id
+        FROM generation_tasks
+        WHERE
+          owner_id = ?
+          AND provider_task_id IS NOT NULL
+      `).all(input.ownerId) as Array<{ provider_task_id: string }>;
+      const competitors = database.prepare(`
+        SELECT id, created_at, updated_at, state
+        FROM generation_tasks
+        WHERE
+          owner_id = ?
+          AND id != ?
+          AND kind = ?
+          AND provider_model_id = ?
+          AND state IN ('failed', 'success', 'running', 'queued', 'retrying', 'recovering')
+      `).all(
+        input.ownerId,
+        input.excludeTaskId,
+        input.kind,
+        input.providerModelId,
+      ) as Array<{
+        created_at: string;
+        id: string;
+        state: string;
+        updated_at: string;
+      }>;
+      return {
+        competitors: competitors.map((row) => ({
+          createdAt: row.created_at,
+          id: row.id,
+          state: row.state,
+          updatedAt: row.updated_at,
+        })),
+        occupiedTaskIds: occupied
+          .map((row) => row.provider_task_id)
+          .filter(Boolean),
+      };
+    },
+
     getByIdempotency(canvasId: string, idempotencyKey: string) {
       if (
         !identifierPattern.test(canvasId) ||
@@ -2772,7 +2828,13 @@ export function createGenerationTaskStore(dataDirectory: string) {
           }
           const updatedAttempt = database.prepare(`
             UPDATE generation_provider_attempts
-            SET provider_task_id = ?
+            SET
+              provider_task_id = ?,
+              outcome = CASE
+                WHEN outcome IN ('boundary-claimed', 'outcome-unknown')
+                  THEN 'accepted'
+                ELSE outcome
+              END
             WHERE
               task_id = ?
               AND execution_attempt = ?

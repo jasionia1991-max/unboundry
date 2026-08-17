@@ -2,10 +2,18 @@
 
 断点版本：`71`
 更新时间：`2026-08-17`
-状态：`INC_GEN_002_V0_6_8_PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK`
+状态：`INC_GEN_003_V0_6_9_LOCAL_COMMITTED_USER_RECHECK`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
-## 0. 当前已发布事件：INC-GEN-002（v0.6.8已发布，待用户复验）
+## 0. 当前本地提交：INC-GEN-003（v0.6.9，待发布）
+
+- 用户问版本号并同意上线，按`v0.6.9`。
+- 失败后自动配对中转站用量明细；唯一命中才收回；GPT Image 收回不新开付费请求；拿掉手动填号。
+- 类型检查通过；定向`m53/m41/m22/m5`通过；冻结清单仍为 969。
+- 生产仍运行 v0.6.8。尚未切生产、未 push/tag/PR。
+- 权威记录：`spec/INC_GEN_003_AUTO_RECONCILE_2026-08-17.md`。
+
+## 0.04 前一已发布事件：INC-GEN-002（v0.6.8已发布，待用户复验）
 
 - 用户确认按`v0.6.8`并说「上线，发布。」
 - 同一画布的等保存、提交任务、写回任务号排队；同层真正生成仍并行。
@@ -526,22 +534,22 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 
 ## 10. 2026-08-17 当前恢复卡
 
-> 2026-08-17 INC-GEN-002已发布：v0.6.8已切生产并完成GitHub收尾。同层生成提交排队与上线规矩入库。以INC-GEN-002文档与生产receipt为准。上一节v0.6.7恢复卡只作已发布历史。
+> 2026-08-17 INC-GEN-003本地断点：v0.6.9已本地提交，生产仍为v0.6.8。失败生成自动核对入库；切生产前不得写成已上线。以INC-GEN-003文档为准。上一节v0.6.8恢复卡只作已发布历史。
 
 ```text
 项目路径：/Users/mymy/Documents/unboundry/app
-本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.8已发布；禁止reset/clean
+本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.9本地提交待发布；禁止reset/clean
 生产：canvas.mymy.ltd；v0.6.8/schema39；/opt/unboundry/current -> releases/v0.6.8-inc-gen-002-20260817
 生产artifact：source commit c2e05d142a5556446d96a8532ca7297cba4e03a5；tree d8c8609be69c969ad7bef7db05b8656351726e33
-当前状态：INC-GEN-002 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK；INC-GEN-001 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK；INC-UI-007/006保持PRODUCTION_PUBLISHED_USER_PASS；既有INC-UI-005/004/003、INC-VIDEO-001、INC-UI-001/002状态保持；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
-技术凭证：spec/INC_GEN_002_PRODUCTION_RECEIPT_2026-08-17.json；spec/INC_GEN_002_CANVAS_SUBMIT_QUEUE_2026-08-17.md；既有v0.6.7及更早发布凭证继续保留
-用户验收：既有v0.6.0/v0.6.1/v0.6.5/v0.6.6验收保持；v0.6.8排队修复待用户复验；v0.6.7用时与核对结果待用户复验；v0.6.4组标题总览、v0.6.3公共模板UI与旧标签恢复、v0.6.2其余UI/视频项继续等待用户线上复验
+当前状态：INC-GEN-003 LOCAL_COMMITTED / USER_RECHECK；INC-GEN-002 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK；INC-GEN-001 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK；INC-UI-007/006保持PRODUCTION_PUBLISHED_USER_PASS；既有INC-UI-005/004/003、INC-VIDEO-001、INC-UI-001/002状态保持；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
+技术凭证：spec/INC_GEN_003_AUTO_RECONCILE_2026-08-17.md；spec/INC_GEN_002_PRODUCTION_RECEIPT_2026-08-17.json；既有v0.6.8及更早发布凭证继续保留
+用户验收：既有v0.6.0/v0.6.1/v0.6.5/v0.6.6验收保持；v0.6.9自动核对待发布后复验；v0.6.8排队修复待用户复验；v0.6.7用时与核对结果待用户复验；v0.6.4组标题总览、v0.6.3公共模板UI与旧标签恢复、v0.6.2其余UI/视频项继续等待用户线上复验
 数据库：schema39；quick_check ok；FK0；230 tasks/232 attempts；47 public templates/46 published；active0；默认视频模型Seedance；既有生成安全配置不变
 备份：/var/lib/unboundry-rollbacks/inc-gen-002-frozen-20260817T104142Z；冻结源与恢复副本均363文件，清单SHA c99566ef9823e495fcc82c7084cda65be171c9b82abc8356852cf2280dfd08ac，二者均PASS；历史schema37/offhost及v0.6.7冻结备份继续保留
 限制：attempt 86/108/116/120/122为行政取消且禁止重试，PROVIDER_FAILED仅surrogate；3条音频仅改duration元数据；cutover Provider/paid calls=0
 GitHub：v0.6.8注释标签精确指向生产源码c2e05d142a5556446d96a8532ca7297cba4e03a5；PR #10已合并到main，merge commit 1e1d5b482148240409e283fc19e6f3ffa66202a4
-未来授权：本次v0.6.8生产与GitHub发布授权已消费；未来生产读写、真实Provider/付费生成、push/tag/PR或新发布仍需新授权
-下一步：等待用户肉眼复验v0.6.8同层一起跑以及v0.6.7用时/核对结果；不得继续消费本次授权
+未来授权：用户已确认按v0.6.9上线；该授权一次用完
+下一步：v0.6.9已本地提交；切生产、push/tag/PR使用本次上线授权
 ```
 
 任何恢复者必须优先使用本节；第9节只保留历史，不得执行其“下一步”。
