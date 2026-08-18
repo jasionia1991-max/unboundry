@@ -15267,3 +15267,198 @@ sup {
   overflow: auto;
   white-space: pre-wrap;
 }
+
+.admin-gpt-image-size-map {
+  display: grid;
+  width: 100%;
+  padding: 12px;
+  gap: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 13px;
+  background: #151516;
+}
+
+.admin-gpt-image-size-map-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-gpt-image-size-map-heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.admin-gpt-image-size-map-heading strong {
+  color: #f2f2f2;
+  font-size: var(--tap-font-primary);
+}
+
+.admin-gpt-image-size-map-heading span {
+  color: #7f7f84;
+  font-size: var(--tap-font-secondary);
+  line-height: 1.55;
+}
+
+.admin-gpt-image-size-map-heading > button,
+.admin-gpt-image-size-row-add button,
+.admin-gpt-image-size-row button {
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  color: #e5e5e7;
+  background: #242425;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.admin-gpt-image-size-map-heading > button:hover,
+.admin-gpt-image-size-row-add button:hover,
+.admin-gpt-image-size-row button:hover {
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #f2f2f2;
+}
+
+.admin-gpt-image-size-map-heading > button:focus-visible,
+.admin-gpt-image-size-row-add button:focus-visible,
+.admin-gpt-image-size-row button:focus-visible,
+.admin-gpt-image-size-row input:focus-visible,
+.admin-gpt-image-size-row-add input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15);
+}
+
+.admin-gpt-image-size-tier {
+  display: grid;
+  padding: 9px;
+  gap: 8px;
+  border-radius: 10px;
+  background: #1e1e20;
+}
+
+.admin-gpt-image-size-tier > strong {
+  color: #e9e9eb;
+  font-size: 14px;
+}
+
+.admin-gpt-image-size-tier > small {
+  color: #85858a;
+  font-size: 12px;
+}
+
+.admin-gpt-image-size-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-gpt-image-size-ratio {
+  display: flex;
+  min-width: 64px;
+  height: 34px;
+  padding: 0 10px;
+  align-items: center;
+  border-radius: 9px;
+  color: #c9c9cc;
+  background: #29292b;
+  font-size: 14px;
+}
+
+.admin-gpt-image-size-row input,
+.admin-gpt-image-size-row-add input {
+  height: 38px;
+  padding: 0 11px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 10px;
+  outline: none;
+  color: #f2f2f2;
+  background: #141415;
+  font-size: 14px;
+}
+
+.admin-gpt-image-size-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.admin-gpt-image-size-row-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-gpt-image-size-row-add input {
+  flex: 1 1 130px;
+  min-width: 110px;
+}
+
+.admin-gpt-image-size-row input:focus,
+.admin-gpt-image-size-row-add input:focus {
+  border-color: rgba(255, 255, 255, 0.34);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.07);
+}
+
+.admin-gpt-image-size-error {
+  flex-basis: 100%;
+  color: #ff7d88;
+  font-size: 12px;
+}
+
+.admin-gpt-image-size-reference {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 10px;
+  background: #19191a;
+}
+
+.admin-gpt-image-size-reference strong {
+  color: #c9c9cc;
+  font-size: 14px;
+}
+
+.admin-gpt-image-size-reference table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.admin-gpt-image-size-reference th,
+.admin-gpt-image-size-reference td {
+  padding: 6px 8px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.admin-gpt-image-size-reference thead th {
+  color: #f2f2f2;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.admin-gpt-image-size-reference tbody td {
+  color: #b9b9bb;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.admin-gpt-image-size-reference tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.admin-gpt-image-size-reference tbody td:first-child {
+  color: #f2f2f2;
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .admin-gpt-image-size-map-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-gpt-image-size-map-heading > button {
+    width: 100%;
+  }
+}

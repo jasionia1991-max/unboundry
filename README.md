@@ -1,12 +1,12 @@
 # 无央 Unboundry
 
-TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mymy.ltd`；当前线上 `v0.6.16 / schema39`）。
+TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mymy.ltd`；当前线上 `v0.6.17 / schema39`）。
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 2026-08-18 下一件：优创专用协议按文档尺寸出图（INC-GEN-008，方案已对齐，未开工）
+## 2026-08-19 优创按文档尺寸出图 + 后台自改尺寸表（v0.6.17 已发布，待你复验）
 
-用户选 2K/4K 却一直出 1024×1536，是发送层把 `4k` 丢掉、尺寸只按比例写成 1K。方案与风险见 [`spec/INC_GEN_008_YOUCHOANG_GPT_IMAGE_SIZE_2026-08-18.md`](spec/INC_GEN_008_YOUCHOANG_GPT_IMAGE_SIZE_2026-08-18.md)。未听到「按这个做」之前不写功能代码。OpenRouter 出图先放下。
+`INC-GEN-008 + INC-GEN-009 = PRODUCTION_PUBLISHED_AUTO_PASS（待你复验）`：优创专用协议选 1K/2K/4K 时按文档像素真发 `size`，不再偷换成 1024×1536；默认画质已改为 1K；管理员后台可自改「画质档 × 比例 → 像素」映射，只影响优创 gpt-image。正式安全全量`118/118 specs、983/983 tests PASS`。生产已切到`v0.6.17-inc-gen-008-009-20260819`，冻结备份、schema39 和数据门通过；tasks322/attempts326/active0、模板48（46 published），真实 Provider/付费/OSS 写入 0。`v0.6.17` 标签指向精确生产源码，PR #31 已合并。等你打开线上页面复验。方案见 [`spec/INC_GEN_008_YOUCHOANG_GPT_IMAGE_SIZE_2026-08-18.md`](spec/INC_GEN_008_YOUCHOANG_GPT_IMAGE_SIZE_2026-08-18.md) 与 [`spec/INC_GEN_009_ADMIN_EDITABLE_GPT_IMAGE_SIZE_MAP_2026-08-19.md`](spec/INC_GEN_009_ADMIN_EDITABLE_GPT_IMAGE_SIZE_MAP_2026-08-19.md)。
 
 ## 2026-08-18 管理员可从画布组直接发公共模板（v0.6.16 已发布并通过用户验收）
 

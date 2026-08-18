@@ -1,9 +1,19 @@
 # INC-GEN-008：优创「GPT Image 2 · 专用协议」按文档尺寸出图
 
-状态：`IMPLEMENTED_TESTED_PENDING_RELEASE`（2026-08-19 用户已说「按这个做」；代码已实现并全量测绿，未定版本、未授权上线）  
-版本：未定（未授权上线）  
+状态：`PRODUCTION_PUBLISHED_AUTO_PASS`（2026-08-19 已按 `v0.6.17` 上线，待用户复验）  
+版本：`v0.6.17`（2026-08-19 上线，待用户复验）  
 日期：`2026-08-18`  
 权威快照：`spec/UNBOUNDRY_CURRENT_STATE.md`
+
+## 发布（2026-08-19 v0.6.17）
+
+- 代码已按 `v0.6.17` 发布到 `/opt/unboundry/releases/v0.6.17-inc-gen-008-009-20260819`；`current` 已切换，服务 active、NRestarts 0、schema39。
+- 生产默认画质已从 `4k` 改为 `1k`（只改优创专用协议这一行的默认值）。
+- 冻结备份：`/var/lib/unboundry-rollbacks/v0.6.17-frozen-RVxeGA`（365 文件，双清单 SHA `2d9ff809…`，数据库 integrity ok、FK 0）。
+- 发布前后数据门：tasks322/attempts326/active0、公共模板48（46 published）不变；真实 Provider/付费/OSS 写入 0。
+- 正式安全全量 `118/118 specs、983/983 tests PASS`；GitHub `v0.6.17` 标签、PR #31 已合并。
+- 权威凭证：`spec/INC_GEN_008_009_PRODUCTION_RECEIPT_2026-08-19.json`。
+- 用户还未打开线上页面复验，本项保持 `USER_RECHECK`。
 
 ## 用户要的结果
 

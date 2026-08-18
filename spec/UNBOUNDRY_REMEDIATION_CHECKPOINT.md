@@ -1,16 +1,17 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`76`
-更新时间：`2026-08-18`
-状态：`INC_GEN_008_PLAN_APPROVED_NOT_STARTED`
+断点版本：`77`
+更新时间：`2026-08-19`
+状态：`INC_GEN_008_PLUS_009_PRODUCTION_PUBLISHED_AUTO_PASS（待用户复验）`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。当前一页快照见 `UNBOUNDRY_CURRENT_STATE.md`。
 
-## 0. 当前待做：INC-GEN-008（方案已对齐，未改代码）
+## 0. 最新已发布事件：INC-GEN-008+009（v0.6.17，待用户复验）
 
-- 用户要优创「GPT Image 2 · 专用协议」按文档像素发 2K/4K，不再偷换成 1024×1536。
-- 第一刀只改 `gpt-image` 协议发送；默认画质改 1K；已存 4K 按真 4K；未知组合拦截。
-- 不做新增参数直发、不续 OpenRouter、不打开通用媒体。
-- 权威方案：`spec/INC_GEN_008_YOUCHOANG_GPT_IMAGE_SIZE_2026-08-18.md`。未听到「按这个做」不准写功能代码；未说版本号+可以上线不准发。
+- 用户确认方案并授权 `v0.6.17` 上线：优创专用协议按文档像素发 1K/2K/4K，生产默认画质已改 1K；管理员后台可自改尺寸映射；未知组合拦截不发不扣费。
+- 精确源码commit`e6b187bce50bb4189e029ab3389e316a3eb65501`通过正式安全全量`118/118 specs、983/983 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。
+- 生产current已切到`/opt/unboundry/releases/v0.6.17-inc-gen-008-009-20260819`；冻结备份、公网资源逐字节哈希、service/schema39和数据门均PASS。发布核验时保持322 tasks、326 attempts、active0、48 public templates（46 published）。
+- `v0.6.17`标签精确指向源码commit；PR #31已合并到`main`，merge commit`18e66ce39decdeb70b076cdd07b13abf1f243a80`。状态是`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。
+- 权威记录：`spec/INC_GEN_008_YOUCHOANG_GPT_IMAGE_SIZE_2026-08-18.md`、`spec/INC_GEN_009_ADMIN_EDITABLE_GPT_IMAGE_SIZE_MAP_2026-08-19.md`与`spec/INC_GEN_008_009_PRODUCTION_RECEIPT_2026-08-19.json`。
 
 ## 0.001 前一已发布事件：INC-UI-010（v0.6.16已发布并通过用户验收）
 

@@ -3191,10 +3191,12 @@ function AdminCustomParameterBuilder({
 
 function AdminGptImageSizeMapRowAdd({
   existing,
+  listIdBase,
   onAdd,
   tier,
 }: {
   existing: ReadonlySet<string>;
+  listIdBase: string;
   onAdd: (ratio: string, pixel: string) => void;
   tier: GptImageSizeTier;
 }) {
@@ -3225,11 +3227,12 @@ function AdminGptImageSizeMapRowAdd({
         onChange={(event) => setRatio(event.target.value)}
         placeholder="比例，如 9:16 或 auto"
         value={ratio}
+        list={`${listIdBase}-${tier}`}
       />
       <input
         aria-label={`新增${tier.toUpperCase()}像素`}
         onChange={(event) => setPixel(event.target.value)}
-        placeholder="如 2160x3840 或 auto"
+        placeholder="像素，如 2160x3840 或 auto"
         value={pixel}
       />
       <button onClick={add} type="button">加一行</button>
@@ -3296,7 +3299,7 @@ function AdminGptImageSizeMapEditor({
       <div className="admin-gpt-image-size-map-heading">
         <div>
           <strong>优创尺寸映射</strong>
-          <span>只对之后新提交的格子生效；清空后按文档内置表发送。</span>
+          <span>这里一般不用动：空着就按下面的内置表出图；想改某个组合才点「加一行」。保存后只对之后新提交的格子生效。</span>
         </div>
         <button onClick={() => updateSizeMap(undefined)} type="button">
           全部恢复内置默认
@@ -3309,7 +3312,7 @@ function AdminGptImageSizeMapEditor({
           <div className="admin-gpt-image-size-tier" data-tier={tier} key={tier}>
             <strong>{tier.toUpperCase()}</strong>
             {rows.length === 0 ? (
-              <small>未自定义，使用内置表</small>
+              <small>没填 = 按内置表发</small>
             ) : (
               rows.map(([ratio, pixel]) => (
                 <div className="admin-gpt-image-size-row" key={ratio}>
@@ -3329,6 +3332,7 @@ function AdminGptImageSizeMapEditor({
             )}
             <AdminGptImageSizeMapRowAdd
               existing={new Set(rows.map(([ratio]) => ratio))}
+              listIdBase={listIdBase}
               onAdd={addEntry(tier)}
               tier={tier}
             />
