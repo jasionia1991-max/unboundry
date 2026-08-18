@@ -67,6 +67,7 @@ import {
   type NodeGenerationOutcome,
   type WorkflowPreflightPhase,
 } from "../generation/workflowExecution";
+import { shouldIgnoreStaleCanvasSaveProblem } from "../generation/groupRunPersist";
 import { visibleGenerationError } from "../generation/generationErrors";
 import {
   generationFailureMessage,
@@ -2151,6 +2152,9 @@ function ImageNodeImpl({
   };
 
   const persistWorkflowInputFailure = async (problem: NodeInputProblem) => {
+    if (shouldIgnoreStaleCanvasSaveProblem(problem)) {
+      return { status: "success" as const };
+    }
     setNodes((nodes) => nodes.map((node) => node.id === id
       ? {
           ...node,

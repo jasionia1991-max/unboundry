@@ -20,6 +20,8 @@ import {
   persistGroupCanvasAfterNode,
   runGroupNodeWithPersist,
   shouldAcceptCanvasRevision,
+  shouldIgnoreStaleCanvasSaveProblem,
+  stripStaleCanvasSaveErrors,
   workflowToastDurationMs,
 } from "../client/src/generation/groupRunPersist";
 import { defaultParameterSchema } from "../types/modelParameters";
@@ -617,6 +619,67 @@ test("group persist retry happens once for a still-saving canvas and never for o
   expect(paintOrder).toEqual(["paint", "flush", "wait"]);
 });
 
+test("stale canvas-save leftovers are not group-incompatible and can be stripped", () => {
+  const leftover = {
+    code: "INVALID",
+    message: "画布还在保存，请稍等保存完成后再试",
+  };
+  expect(shouldIgnoreStaleCanvasSaveProblem(leftover)).toBe(true);
+  expect(workflowSubmissionPreflightProblem({
+    executableIds: new Set(["director", "cover"]),
+    inputs: [],
+    problems: [leftover],
+  })).toBeUndefined();
+  expect(workflowSubmissionPreflightProblem({
+    executableIds: new Set(["director", "cover"]),
+    inputs: [],
+    problems: [
+      leftover,
+      {
+        code: "MODEL_UNSUPPORTED",
+        message: "当前模型不支持image类型上游，引用已保留",
+      },
+    ],
+  })).toMatchObject({ code: "MODEL_UNSUPPORTED" });
+  expect(workflowRuntimePreflightDisposition({
+    executableIds: new Set(["director"]),
+    inputs: [],
+    problems: [leftover],
+  })).toEqual({ status: "ready" });
+
+  const stripped = stripStaleCanvasSaveErrors([
+    {
+      data: { title: "组" },
+      id: "group",
+      parentId: undefined,
+    },
+    {
+      data: {
+        textGenerationError: leftover.message,
+        textGenerationErrorCode: "INVALID",
+        title: "生成P1带货导演稿",
+      },
+      id: "director",
+      parentId: "group",
+    },
+    {
+      data: {
+        imageGenerationError: "图片生成失败，请稍后再试",
+        imageGenerationErrorCode: "GENERATION_FAILED",
+        title: "OOTD种草图",
+      },
+      id: "cover",
+      parentId: "group",
+    },
+  ], "group");
+  expect(stripped.changed).toBe(true);
+  expect(stripped.nodes[1]?.data).toEqual({ title: "生成P1带货导演稿" });
+  expect(stripped.nodes[2]?.data).toMatchObject({
+    imageGenerationError: "图片生成失败，请稍后再试",
+    imageGenerationErrorCode: "GENERATION_FAILED",
+  });
+});
+
 test("save gate turns a save failure into a friendly node failure", async () => {
   let runCalled = false;
   const run = createSaveGateRun(
@@ -817,6 +880,191 @@ test("group run persists an incompatible Image model error without creating a ta
     );
     await expect(page.getByTestId("image-node-target-image").getByRole("alert"))
       .toContainText(expectedMessage);
+    const after = await (await request.get("/api/generation-tasks/status")).json() as {
+      paidProviderRequests: number;
+    };
+    expect(after.paidProviderRequests).toBe(before.paidProviderRequests);
+    expect(taskPosts).toEqual([]);
+  } finally {
+    await request.delete(`/api/canvas/${project.id}`);
+    await request.delete(`/api/projects/${project.id}`);
+    await request.delete(`/api/assets/${assetId}`);
+  }
+});
+
+test("group run ignores a leftover canvas-save error and still blocks a real model incompatibility", async ({
+  page,
+  request,
+}) => {
+  const modelId = `fixture-no-image-reference-stale-${randomUUID()}`;
+  const assetId = `fixture-group-reference-stale-${randomUUID()}`;
+  const created = await request.post("/api/projects", { data: {} });
+  expect(created.status()).toBe(201);
+  const project = await created.json() as { id: string };
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  const uploaded = await request.post(`/api/assets/${assetId}`, {
+    data: png,
+    headers: { "Content-Type": "image/png", "X-File-Name": "reference.png" },
+  });
+  expect(uploaded.status()).toBe(201);
+  const before = await (await request.get("/api/generation-tasks/status")).json() as {
+    paidProviderRequests: number;
+  };
+  const taskPosts: string[] = [];
+  page.on("request", (entry) => {
+    if (entry.method() === "POST" && /\/api\/generation-tasks(?:$|\?)/.test(entry.url())) {
+      taskPosts.push(entry.url());
+    }
+  });
+  const parameterSchema = {
+    ...defaultParameterSchema("image"),
+    referenceInputs: { audio: 0, image: 0, video: 0 },
+  };
+  await page.route("**/api/models", async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        generationEnabled: true,
+        models: [{
+          capability: "image",
+          displayName: "不支持参考图测试模型",
+          generationAvailable: true,
+          id: modelId,
+          imageParameters: {
+            aspectRatios: ["auto"],
+            maxReferenceImages: 0,
+            qualities: ["auto"],
+          },
+          isDefault: true,
+          parameterSchema,
+        }, {
+          capability: "text",
+          displayName: "文字测试模型",
+          generationAvailable: true,
+          id: `fixture-text-${modelId}`,
+          isDefault: true,
+          parameterSchema: defaultParameterSchema("text"),
+        }],
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+
+  try {
+    const saveMetadata = await existingCanvasSaveMetadata(request, project.id);
+    const saved = await request.put(`/api/canvas/${project.id}`, {
+      data: {
+        edges: [{
+          data: { inputOrder: 1, inputRole: "reference-image" },
+          id: "edge-reference-target",
+          source: "reference-image",
+          sourceHandle: "source",
+          target: "target-image",
+          targetHandle: "target",
+          type: "cuttable",
+        }],
+        nodes: [{
+          data: { label: "Group", title: "图片生成组" },
+          id: "image-group",
+          position: { x: 100, y: 100 },
+          style: { height: 900, width: 900 },
+          type: "group",
+          zIndex: 0,
+        }, {
+          data: {
+            content: "已有导演稿",
+            label: "Text",
+            textGenerationError: "画布还在保存，请稍等保存完成后再试",
+            textGenerationErrorCode: "INVALID",
+            textPrompt: "生成P1带货导演稿",
+            textPromptReady: true,
+            title: "生成P1带货导演稿",
+          },
+          id: "director-text",
+          parentId: "image-group",
+          position: { x: 30, y: 60 },
+          style: { height: 200, width: 250 },
+          type: "text",
+          zIndex: 1,
+        }, {
+          data: {
+            assetId,
+            imageSrc: `/api/assets/${assetId}`,
+            inputState: "ready",
+            label: "Image",
+            title: "商品参考图",
+          },
+          id: "reference-image",
+          parentId: "image-group",
+          position: { x: 30, y: 280 },
+          style: { height: 250, width: 250 },
+          type: "image",
+          zIndex: 1,
+        }, {
+          data: {
+            imageModelId: modelId,
+            imageParameters: {},
+            imagePrompt: "生成商品主图",
+            imagePromptReady: true,
+            label: "Image",
+            title: "商品主图",
+          },
+          id: "target-image",
+          parentId: "image-group",
+          position: { x: 370, y: 280 },
+          style: { height: 250, width: 250 },
+          type: "image",
+          zIndex: 1,
+        }],
+        ...saveMetadata,
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+    expect(saved.ok()).toBeTruthy();
+
+    await page.goto(`/canvas/${project.id}`);
+    await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+      "data-persistence-ready",
+      "true",
+    );
+    await page.locator('[data-testid="rf__node-image-group"]').click({
+      position: { x: 5, y: 5 },
+    });
+    const execute = page.getByTestId("group-execute-button");
+    await expect(execute).toBeEnabled();
+    await execute.click();
+    const expectedMessage = "当前模型不支持image类型上游，引用已保留";
+    await expect(page.getByTestId("workflow-run-toast")).toContainText(
+      `整组执行已阻止：发现 1 个不兼容节点；首个“商品主图”：${expectedMessage}（未提交任何生成任务）`,
+    );
+    await expect(page.getByTestId("workflow-run-toast")).not.toContainText(
+      "画布还在保存",
+    );
+    await expect.poll(async () => {
+      const canvas = await (await request.get(`/api/canvas/${project.id}`)).json() as {
+        nodes: Array<{
+          data: {
+            imageGenerationError?: string;
+            textGenerationError?: string;
+            textGenerationErrorCode?: string;
+          };
+          id: string;
+        }>;
+      };
+      const director = canvas.nodes.find((node) => node.id === "director-text")?.data;
+      const target = canvas.nodes.find((node) => node.id === "target-image")?.data;
+      return {
+        directorError: director?.textGenerationError ?? "",
+        targetError: target?.imageGenerationError ?? "",
+      };
+    }).toEqual({
+      directorError: "",
+      targetError: expectedMessage,
+    });
+
     const after = await (await request.get("/api/generation-tasks/status")).json() as {
       paidProviderRequests: number;
     };

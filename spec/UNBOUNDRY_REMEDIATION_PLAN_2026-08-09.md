@@ -595,3 +595,5 @@ REM-009B 已在合成数据上完成富含业务数据、媒体、secret 和假 
 | 2026-08-18 | 1.48-v0.6.12-published | v0.6.12整组节点结束后先存稳已发布；INC-GEN-004为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，生产current切到`v0.6.12-inc-gen-004-20260818`；`v0.6.12`标签与PR #21合并 | 用户同意版本顺延并说直接上线；肉眼验收仍待确认；不改历史时点字段 |
 | 2026-08-18 | 1.49-v0.6.13-local | v0.6.13解开Seedance Mini付费验证锁已本地提交；INC-GEN-005为`LOCAL_COMMITTED`；生产仍运行v0.6.12 | 用户同意方案、版本顺延并授权验完后上线；切生产前不得写成已上线 |
 | 2026-08-18 | 1.50-v0.6.13-published | v0.6.13解开Seedance Mini付费验证锁已发布；INC-GEN-005为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，生产current切到`v0.6.13-inc-gen-005-20260818`；`v0.6.13`标签与PR #22合并 | 用户同意版本顺延并说直接上线；肉眼验收仍待确认；不改历史时点字段 |
+| 2026-08-18 | 1.51-v0.6.13-user-accepted | v0.6.13解开Seedance Mini付费验证锁已通过用户验收；INC-GEN-005收口为`PRODUCTION_PUBLISHED_USER_PASS` | 用户明确回复“通过”；仅同步文档当前态 |
+| 2026-08-18 | 1.52-v0.6.14-local | v0.6.14过期画布保存句不再挡整组已本地提交；INC-GEN-006为`LOCAL_COMMITTED`；生产仍运行v0.6.13 | 用户同意方案、版本顺延并说赶紧搞；切生产前不得写成已上线 |

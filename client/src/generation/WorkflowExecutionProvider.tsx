@@ -5,7 +5,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type Dispatch,
   type ReactNode,
+  type SetStateAction,
 } from "react";
 import type { ProbeNodeType } from "../canvas/ProbeNode";
 import type { CuttableEdge } from "../canvas/canvasTypes";
@@ -13,6 +15,7 @@ import { useGenerationCanvas } from "./GenerationCanvasContext";
 import {
   persistGroupCanvasAfterNode,
   runGroupNodeWithPersist,
+  stripStaleCanvasSaveErrors,
 } from "./groupRunPersist";
 import {
   buildWorkflowLayers,
@@ -77,11 +80,13 @@ export function WorkflowExecutionProvider({
   getEdges,
   getNodes,
   notify,
+  setNodes,
 }: {
   children: ReactNode;
   getEdges: () => CuttableEdge[];
   getNodes: () => ProbeNodeType[];
   notify: (message: string, kind?: "error" | "info" | "success") => void;
+  setNodes: Dispatch<SetStateAction<ProbeNodeType[]>>;
 }) {
   const { canvasId, flushCanvasSave, isFixture, waitForCanvasRevision } =
     useGenerationCanvas();
@@ -118,6 +123,12 @@ export function WorkflowExecutionProvider({
       try {
         await flushCanvasSave();
         await waitForCanvasRevision();
+        const stripped = stripStaleCanvasSaveErrors(getNodes(), groupId);
+        if (stripped.changed) {
+          setNodes(stripped.nodes);
+          await flushCanvasSave();
+          await waitForCanvasRevision();
+        }
       } catch (error) {
         notify(
           error instanceof Error ? error.message : "画布还在保存，请稍后再试",

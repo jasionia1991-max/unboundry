@@ -6398,6 +6398,7 @@ export function CanvasSurface({
         getEdges={() => pendingGuardedEdges.current ?? edgesRef.current}
         getNodes={() => pendingGuardedNodes.current ?? nodesRef.current}
         notify={showWorkflowToast}
+        setNodes={guardedSetNodes}
       >
       <CanvasGraphMutationContext.Provider
         value={{

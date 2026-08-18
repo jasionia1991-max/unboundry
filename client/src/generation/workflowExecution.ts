@@ -1,3 +1,5 @@
+import { shouldIgnoreStaleCanvasSaveProblem } from "./groupRunPersist";
+
 export type WorkflowNodeShape = {
   data: Record<string, unknown>;
   id: string;
@@ -107,6 +109,7 @@ export function workflowSubmissionPreflightProblem<
   problems: readonly Problem[];
 }) {
   for (const problem of input.problems) {
+    if (shouldIgnoreStaleCanvasSaveProblem(problem)) continue;
     if (
       problem.code === "ROLE_CONFLICT" &&
       !problem.edgeId &&
@@ -168,6 +171,7 @@ export function workflowRuntimePreflightDisposition<
   problems: readonly Problem[];
 }): WorkflowRuntimePreflightDisposition<Problem> {
   for (const problem of input.problems) {
+    if (shouldIgnoreStaleCanvasSaveProblem(problem)) continue;
     if (
       problem.code === "ROLE_CONFLICT" &&
       !problem.edgeId &&

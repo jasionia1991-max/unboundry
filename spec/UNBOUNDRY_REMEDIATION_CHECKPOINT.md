@@ -2,16 +2,23 @@
 
 断点版本：`74`
 更新时间：`2026-08-18`
-状态：`INC_GEN_005_V0_6_13_PRODUCTION_PUBLISHED_AUTO_PASS`
+状态：`INC_GEN_006_V0_6_14_LOCAL_COMMITTED`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
-## 0. 当前已发布事件：INC-GEN-005（v0.6.13已发布，待用户复验）
+## 0. 当前本地事件：INC-GEN-006（v0.6.14已本地提交，待发布）
+
+- 用户同意过期「画布还在保存」不再挡整组的方案，版本顺延为`v0.6.14`，并说赶紧搞。
+- 整组开跑前忽略这类过期句；开跑后清掉组内旧红字；真不兼容继续拦。
+- 正式安全全量`118/118 specs、973/973 tests PASS`，异常0；定向`m22` 22/22、`m81` 41/41。生产在切换前仍运行v0.6.13。
+- 权威记录：`spec/INC_GEN_006_STALE_CANVAS_SAVE_PREFLIGHT_2026-08-18.md`。
+
+## 0.01 前一已发布事件：INC-GEN-005（v0.6.13已发布并通过用户验收）
 
 - 用户同意解开 Seedance Mini 付费验证锁，版本顺延为`v0.6.13`，并授权验完后直接上线。
 - Mini 4～15秒与480p/720p可用；默认仍5秒/480p；保存失败不关编辑框。
 - 精确源码commit`e113c64333242df923b60cac4d83214f015a14d9`通过正式安全全量`118/118 specs、971/971 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。
 - 生产current已切到`/opt/unboundry/releases/v0.6.13-inc-gen-005-20260818`；冻结备份恢复、公网资源逐字节哈希、service/schema39和数据门均PASS。生产保持278 tasks、280 attempts、active0、47 public templates（46 published）。只改了 Seedance Mini 这一条已存配置。
-- `v0.6.13`标签精确指向源码commit；PR #22已合并到`main`，merge commit`ed53a0aaef187aeecd3048a2f00314f16bbb4a81`。当前状态是`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。
+- `v0.6.13`标签精确指向源码commit；PR #22已合并到`main`，merge commit`ed53a0aaef187aeecd3048a2f00314f16bbb4a81`。用户随后明确回复“通过”，本项收口为`PRODUCTION_PUBLISHED_USER_PASS`。
 - 权威记录：`spec/INC_GEN_005_SEEDANCE_MINI_UNLOCK_2026-08-18.md`与`spec/INC_GEN_005_PRODUCTION_RECEIPT_2026-08-18.json`。
 
 ## 0.01 前一已发布事件：INC-GEN-004（v0.6.12已发布，待用户复验）
