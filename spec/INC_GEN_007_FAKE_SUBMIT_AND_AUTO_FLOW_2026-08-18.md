@@ -1,6 +1,6 @@
 # INC-GEN-007：假提交误判 + 工作流自动核对/再试
 
-状态：`LOCAL_IN_PROGRESS`
+状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
 版本：`v0.6.15`
 日期：`2026-08-18`
 
@@ -31,8 +31,20 @@
 
 ## 自动验证
 
-待正式安全全量补齐。
+- 类型检查通过。
+- 定向 `m22` 23/23、`m5` 19/19、`m53` 23/23、`m41` 51/51、`m57` 9/9 通过。
+- 正式安全全量 `118/118 specs、976/976 tests PASS`，失败/跳过/重试/blocked/reportErrors均为0。4173 listener 不变。
+- 源码快照 541 文件，SHA-256 `7b964d31c0d582dc2b3375d2b9d243be60bc80f258be8867200404ed9f2c5aa5`。
 
 ## 生产发布
 
-待发布后填写。
+- 精确源码commit`5630dd6ee328266a27295bc9d2e7479f89147b32`、tree`6c2e82b4824be085a3258b7b7a113ed06849cf4d`。
+- 生产current已切到`/opt/unboundry/releases/v0.6.15-inc-gen-007-20260818`；上一不可变release `v0.6.14-inc-gen-006-20260818`完整保留。
+- 冻结备份`/var/lib/unboundry-rollbacks/inc-gen-007-frozen-20260818T072309Z`：冻结源与恢复副本均363文件，清单SHA-256同为`eb76f6aedddec4a80345271b074f558707804227c34790f506fd330207451f52`。
+- 公网version为0.6.15；入口JS/CSS及CanvasShell与release逐字节一致。
+- 切换前后schema39、quick_check ok、FK0、tasks299、attempts301、active0、公共模板47（46 published）。
+- GitHub：注释标签`v0.6.15`指向`5630dd6ee328266a27295bc9d2e7479f89147b32`；PR #26已合并，merge commit`714827c7152dcfd933ed96ab9427f479b57634de`。
+- 发布与验证期间真实Provider请求、付费生成和OSS写入均为0。
+- 自动验证不代替用户肉眼验收。请打开网站强制刷新后，再跑刚才那组：假提交不应再挡住，工作流应自己核对或再试一次并继续往下走。
+
+详细凭证：`spec/INC_GEN_007_PRODUCTION_RECEIPT_2026-08-18.json`。

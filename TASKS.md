@@ -1,7 +1,16 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-18
-状态：`v0.6.14已发布待用户复验。INC-GEN-006为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，INC-GEN-005为PRODUCTION_PUBLISHED_USER_PASS，INC-GEN-004为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，INC-UI-009/008为PRODUCTION_PUBLISHED_USER_PASS，既有其他验收状态保持。`
+状态：`v0.6.15已发布待用户复验。INC-GEN-007为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，INC-GEN-006为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，INC-GEN-005为PRODUCTION_PUBLISHED_USER_PASS，INC-GEN-004为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，INC-UI-009/008为PRODUCTION_PUBLISHED_USER_PASS，既有其他验收状态保持。`
+
+### 2026-08-18 假提交误判 + 工作流自动核对/再试（INC-GEN-007）
+
+- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。用户同意方案、版本顺延为`v0.6.15`，并说验完上线。
+- 实现：GPT Image 不再把没做成片的失败写成已提交；整组自己核对或再试一次并继续；同一输入真未知时不许再开新单。
+- 自动门：正式安全全量`118/118 specs、976/976 tests PASS`；定向`m22` 23/23、`m5` 19/19、`m53` 23/23、`m41` 51/51、`m57` 9/9。
+- 发布：commit`5630dd6ee328266a27295bc9d2e7479f89147b32`已发布到`/opt/unboundry/releases/v0.6.15-inc-gen-007-20260818`；冻结备份/恢复副本、公网关键资源、service/schema39和数据门通过。
+- 数据与外部影响：tasks299、attempts301、active0、公共模板47（46 published）前后不变；Provider/付费生成/OSS写入0。
+- GitHub：标签`v0.6.15`精确指向生产源码；PR #26已合并，merge commit`714827c7152dcfd933ed96ab9427f479b57634de`。权威记录为`spec/INC_GEN_007_FAKE_SUBMIT_AND_AUTO_FLOW_2026-08-18.md`与生产receipt。
 
 ### 2026-08-18 过期「画布还在保存」不再挡整组（INC-GEN-006）
 
