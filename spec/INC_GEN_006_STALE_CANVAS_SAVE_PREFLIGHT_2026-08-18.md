@@ -1,6 +1,6 @@
 # INC-GEN-006：过期「画布还在保存」不再挡整组
 
-状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
+状态：`PRODUCTION_PUBLISHED_USER_PASS`
 版本：`v0.6.14`
 日期：`2026-08-18`
 
@@ -39,6 +39,6 @@
 - 切换前后schema39、quick_check ok、FK0、tasks294、attempts296、active0、公共模板47（46 published）。
 - GitHub：注释标签`v0.6.14`指向`ce3bf7c4481c1cc549bec6e512fe3c5f7fb8273e`；PR #24已合并，merge commit`8d5ae4e0423b71898a08c0a5612d2776767f5b62`。
 - 发布与验证期间真实Provider请求、付费生成和OSS写入均为0。
-- 自动验证不代替用户肉眼验收。请打开网站强制刷新后，再点一次刚才那组：不应再弹出「不兼容节点…画布还在保存」。
+- 用户已于 2026-08-18 明确回复「全通过」，本项收口为 `PRODUCTION_PUBLISHED_USER_PASS`。
 
 详细凭证：`spec/INC_GEN_006_PRODUCTION_RECEIPT_2026-08-18.json`。

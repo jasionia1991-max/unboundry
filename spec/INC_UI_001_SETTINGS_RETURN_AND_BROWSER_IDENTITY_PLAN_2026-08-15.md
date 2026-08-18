@@ -1,6 +1,6 @@
 # INC-UI-001 设置页返回来源画布与浏览器品牌标识修改方案
 
-状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
+状态：`PRODUCTION_PUBLISHED_USER_PASS`
 
 建立日期：`2026-08-15`
 
@@ -259,15 +259,15 @@ HTML 首屏兜底标题改为 `无央｜AI 无限画布`，React 挂载后由动
 
 | ID | 优先级 | 验收合同 | 计划状态 |
 |---|---|---|---|
-| NAV-001 | P0 | 设置页返回进入前的有效真实项目，不固定回默认画布 | USER_RECHECK |
-| NAV-002 | P0 | 8 个设置页共享双返回按钮，设置页之间传播来源 | USER_RECHECK |
-| NAV-003 | P0 | 工作空间闭环保留来源；删除/无来源/网络失败不误跳默认画布 | USER_RECHECK |
-| NAV-004 | P0 | `from` 只接受当前账号项目 ID，无开放重定向、账号串线和重复导航 | USER_RECHECK |
-| BRAND-001 | P1 | 浏览器显示无央 favicon，开发与构建产物均存在 | USER_RECHECK |
-| BRAND-002 | P1 | 画布、工作空间、设置页和登录页使用准确动态标题 | USER_RECHECK |
-| BRAND-003 | P1 | 项目重命名即时更新标签，刷新后与持久标题一致 | USER_RECHECK |
+| NAV-001 | P0 | 设置页返回进入前的有效真实项目，不固定回默认画布 | PASS |
+| NAV-002 | P0 | 8 个设置页共享双返回按钮，设置页之间传播来源 | PASS |
+| NAV-003 | P0 | 工作空间闭环保留来源；删除/无来源/网络失败不误跳默认画布 | PASS |
+| NAV-004 | P0 | `from` 只接受当前账号项目 ID，无开放重定向、账号串线和重复导航 | PASS |
+| BRAND-001 | P1 | 浏览器显示无央 favicon，开发与构建产物均存在 | PASS |
+| BRAND-002 | P1 | 画布、工作空间、设置页和登录页使用准确动态标题 | PASS |
+| BRAND-003 | P1 | 项目重命名即时更新标签，刷新后与持久标题一致 | PASS |
 
-自动测试完成最多进入 `USER_RECHECK`；必须由用户在可见浏览器确认真实导航与 favicon 后才能记 `PASS`。
+用户于 2026-08-18 明确回复「全通过」，NAV-001～004、BRAND-001～003 收口为 `PASS`。
 
 ## 9. 发布、回滚与 Git 边界
 
@@ -286,7 +286,7 @@ HTML 首屏兜底标题改为 `无央｜AI 无限画布`，React 挂载后由动
 3. 完整阅读本文件；
 4. 读取 `TASKS.md` 的 `INC-UI-001` 段和验收矩阵的 NAV/BRAND 行；
 5. 只读核对仓库 `/Users/mymy/Documents/unboundry/app`、分支、HEAD、工作树、package 与 Node；
-6. 当前状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；
+6. 当前状态为 `PRODUCTION_PUBLISHED_USER_PASS`；用户于 2026-08-18 明确回复「全通过」；
 7. 不重复实施；下一步只在用户明确授权后准备/发布候选，再由用户完成可见实页验收。commit、push、tag、PR更新与生产发布仍须服从最新授权。
 
 恢复时必须先复述三条不可漂移规则：

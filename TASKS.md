@@ -1,7 +1,14 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-18
-状态：`v0.6.15已发布并通过用户验收。INC-GEN-007为PRODUCTION_PUBLISHED_USER_PASS，INC-GEN-006为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，INC-GEN-005为PRODUCTION_PUBLISHED_USER_PASS，INC-GEN-004为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，INC-UI-009/008为PRODUCTION_PUBLISHED_USER_PASS，既有其他验收状态保持。当前权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+状态：`v0.6.16准备发布。INC-UI-010为管理员画布直发公共模板。INC-GEN-007/006/005/004与INC-UI-009～001、INC-VIDEO-001均为USER PASS。当前权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+
+### 2026-08-18 管理员从画布组直接发布公共模板（INC-UI-010）
+
+- 状态：`LOCAL_IMPLEMENTED`。用户确认方案并说按`v0.6.16`上线。
+- 实现：管理员在「创建模板」可选发到公共模板；默认仍是我的模板。发公共时清掉私图，留下提示词、节点和连线。普通账号看不到该选项。
+- 自动门：定向`m71` 13/13、`m77` 11/11、`m81` 41/41；正式安全全量产品测试`118/118 specs、979/979 tests PASS`。
+- 权威记录：`spec/INC_UI_010_CANVAS_PUBLIC_TEMPLATE_2026-08-18.md`。
 
 ### 2026-08-18 假提交误判 + 工作流自动核对/再试（INC-GEN-007）
 
@@ -14,7 +21,7 @@
 
 ### 2026-08-18 过期「画布还在保存」不再挡整组（INC-GEN-006）
 
-- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。用户同意方案、版本顺延为`v0.6.14`，并说上线。
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户同意方案、版本顺延为`v0.6.14`，并说上线；2026-08-18明确回复「全通过」。
 - 实现：整组开跑前不再把上次的「画布还在保存」当成不兼容；开跑后清掉组里这类过期红字；真不兼容照样拦。
 - 自动门：正式安全全量`118/118 specs、973/973 tests PASS`；定向`m22` 22/22、`m81` 41/41。
 - 发布：commit`ce3bf7c4481c1cc549bec6e512fe3c5f7fb8273e`已发布到`/opt/unboundry/releases/v0.6.14-inc-gen-006-20260818`；冻结备份/恢复副本、公网关键资源、service/schema39和数据门通过。
@@ -32,7 +39,7 @@
 
 ### 2026-08-18 整组节点结束后先存稳（INC-GEN-004）
 
-- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。用户同意方案、版本顺延为`v0.6.12`，并授权验完后直接上线。
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户同意方案、版本顺延为`v0.6.12`，并授权验完后直接上线；2026-08-18明确回复「全通过」。
 - 实现：组内节点结束后等画面落稳并保存，再让下游开工；等版本号时再确认画布没又变脏；整组「画布还在保存」最多再试一次；错误提示约8秒。
 - 自动门：正式安全全量`118/118 specs、971/971 tests PASS`，失败/跳过/重试/blocked/reportErrors均0。
 - 发布：commit`dc1b4a8b37030b13169a2016ad12ed124892e74b`已发布到`/opt/unboundry/releases/v0.6.12-inc-gen-004-20260818`；冻结备份/恢复副本、公网关键资源、service/schema39和数据不变门通过。
@@ -104,34 +111,34 @@
 
 ### 2026-08-16 组标题总览层级（INC-UI-005）
 
-- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。用户确认不增加组内视觉边距/边框，同意其余总览层级方案，并明确确认版本`v0.6.4`、授权上线、commit、push、tag与合并PR。
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户确认不增加组内视觉边距/边框，同意其余总览层级方案，并明确确认版本`v0.6.4`、授权上线、commit、push、tag与合并PR；2026-08-18明确回复「全通过」。
 - 实现：组标题使用稳定的屏幕空间宽度72～180px，与组框顶部保持约20px距离；15%总览默认隐藏组内节点标题，鼠标进入组或选中组时恢复，避免大量模板并列时标题堆叠。
 - 明确不做：不增加组标题栏，不增加组内视觉内边距或边框，不移动组内节点，不改变组/节点持久坐标、连线与普通未分组节点标题。
 - 自动门：精确源码commit `ba5805c4448e504d33238947ea9aec1dfa160166`通过正式安全全量`118/118 specs、968/968 tests PASS`，失败/跳过/重试/blocked/reportErrors均0，真实Provider/付费/OSS请求0。
-- 生产结果：current已切到`/opt/unboundry/releases/v0.6.4-inc-ui-005-20260816-r2`；首个夹带旧dist的中间产物被浏览器发布门拒绝，最终版本使用精确源码fresh build。公网JS/CSS哈希、隔离启动、冻结备份恢复、service active+enabled、NRestarts0、schema39与数据不变门均通过，tasks153/attempts152/active0及模板46/45不变。15%和约27%实页验证四项合同通过，用户肉眼验收仍为`USER_RECHECK`。
+- 生产结果：current已切到`/opt/unboundry/releases/v0.6.4-inc-ui-005-20260816-r2`；首个夹带旧dist的中间产物被浏览器发布门拒绝，最终版本使用精确源码fresh build。公网JS/CSS哈希、隔离启动、冻结备份恢复、service active+enabled、NRestarts0、schema39与数据不变门均通过，tasks153/attempts152/active0及模板46/45不变。15%和约27%实页验证四项合同通过；用户于2026-08-18明确回复「全通过」，肉眼验收收口为`USER PASS`。
 
 ### 2026-08-16 节点标题缩放可读性（INC-UI-004）
 
-- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。用户已确认预览方案并授权施工及生产发布；本次未授权、也未执行commit/push/tag/PR。
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户已确认预览方案并授权施工及生产发布；本次未授权、也未执行commit/push/tag/PR。2026-08-18明确回复「全通过」。
 - 实现：Text/Image/Video/Audio/Playlist/Storyboard标题在`zoom < 1`时按屏幕空间补偿；15%总览保持约12px，35%～100%保持约14px。标题使用更亮灰白、500字重和轻微暗色阴影，不增加底板、不改变节点/连线几何或持久数据。
 - 细节：标题屏幕宽度限制96～180px，Storyboard上限220px；长标题继续单行省略并保留完整`title`。Group保留既有独立反向缩放，仅轻度提亮，避免双重放大。总览档未选中标题不拦截画布指针，选中标题仍可编辑。
 - 自动门：相关6份spec `16/16 PASS`；正式安全全量`118/118 specs、968/968 tests PASS`，失败/跳过/重试/blocked/reportErrors均0，生产构建PASS，source/snapshot一致，4173 listener不变，真实Provider/付费/OSS请求0。
 - 发布：current已切到`/opt/unboundry/releases/v0.6.3-inc-ui-004-20260816`，上一版完整保留；公网JS/CSS哈希与候选相符，service active+enabled、NRestarts0、ready active/schema39。冻结备份恢复副本`quick_check=ok`、FK0；切换前后tasks153/attempts152/active0及模板46/45不变，真实Provider/付费/OSS写入0。
-- 权威记录：`spec/INC_UI_004_CANVAS_TITLE_ZOOM_LEGIBILITY_2026-08-16.md`、`spec/INC_UI_004_PRODUCTION_RECEIPT_2026-08-16.json`。自动页面与上线验证不代替用户肉眼验收。
+- 权威记录：`spec/INC_UI_004_CANVAS_TITLE_ZOOM_LEGIBILITY_2026-08-16.md`、`spec/INC_UI_004_PRODUCTION_RECEIPT_2026-08-16.json`。用户于2026-08-18明确回复「全通过」，肉眼验收收口。
 
 ### 2026-08-16 公共模板 UI 与旧画布会话恢复（INC-UI-003）
 
-- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；用户确认版本v0.6.3并授权一次性完成构建、备份、发布和零付费验证，生产切换已完成。
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`；用户确认版本v0.6.3并授权一次性完成构建、备份、发布和零付费验证，生产切换已完成。2026-08-18明确回复「全通过」。
 - UI：公共模板列表、编辑弹窗、下拉、复选框、按钮、焦点圈定与移动端布局统一对齐灰阶UI规范。
 - 加载：旧服务器epoch的pagehide journal若与权威服务器document指纹完全一致，则零PUT结算并正常进入；若不同则保留journal、零PUT/零生成并提供“打开服务器版本”，新标签载入权威画布，原标签继续保留本地恢复副本。
 - 自动门：118/118 specs、967/967 tests PASS，异常0，source snapshot与4173 listener不变；真实Provider、付费生成和真实OSS写入0。
 - 发布：current已切到`/opt/unboundry/releases/v0.6.3-inc-ui-003-r2-20260816`，公网0.6.3、active/schema39、NRestarts0；备份恢复副本通过，切换前后tasks132/attempts131/active0及模板46/45不变，Provider/付费/OSS写入0。
-- 实页技术验证：目标旧标签显示双恢复操作；新标签服务器版本完整加载且原journal保留；公共模板返回画布及编辑弹窗UI/键盘合同通过。肉眼验收保持USER_RECHECK。
+- 实页技术验证：目标旧标签显示双恢复操作；新标签服务器版本完整加载且原journal保留；公共模板返回画布及编辑弹窗UI/键盘合同通过。用户于2026-08-18明确回复「全通过」，肉眼验收收口。
 - 权威记录：`spec/INC_UI_003_PUBLIC_TEMPLATE_AND_CANVAS_LOAD_RECOVERY_2026-08-16.md`、`spec/INC_UI_003_PRODUCTION_RECEIPT_2026-08-16.json`、`spec/V0_6_3_RELEASE_NOTES_2026-08-16.md`。
 
 ### 2026-08-16 视频协议热修复与真实生成（INC-VIDEO-001）
 
-- 状态：`PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_RECHECK`。Grok首帧已按中转站契约从`first_frame_url`改为`images`数组并限制恰好1张；定向`m57 9/9`、正式全量`118/118 specs、965/965 tests`通过，异常0。
+- 状态：`PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_PASS`。Grok首帧已按中转站契约从`first_frame_url`改为`images`数组并限制恰好1张；定向`m57 9/9`、正式全量`118/118 specs、965/965 tests`通过，异常0。用户于2026-08-18明确回复「全通过」。
 - 生产：current已切到`/opt/unboundry/releases/v0.6.2-inc-video-001-20260816`，commit`959c1e287fb25943ca13037332030e99b39725be`、tree`6539868d…3845`、inventory`cf1c6e1a…40b5`；旧`v0.6.2-inc-ui-002-20260816`完整保留。公网v0.6.2 live/ready正常，service active+enabled、NRestarts0。
 - 真实结论：Grok修复后请求已按正确契约受理，但中转上游两次0%网络超时，停止继续重试；默认视频模型改为`Seedance 2.0 Mini`。包含真人参考图的Seedance请求被内容安全拒绝，不视为工作流故障且未重试。
 - 成功闭环：Seedance文生视频task`c0269665-4db5-46a1-bc13-2d5574a66cca`一次成功，4秒/480p/无音频；asset`fbfed94d-e41e-4858-8e7e-96c4eae98c4a.mp4`为OSS ready、864×496、4.042秒、1,117,495 bytes。页面刷新后视频仍可播放，浏览器readyState4且media error为空。
@@ -139,18 +146,18 @@
 
 ### 2026-08-16 画布框选、OSS 素材显示与节点长标题（INC-UI-002）
 
-- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；package 与线上均为 v0.6.2，生产已发布，尚待用户实页确认；相关提交已随v0.6.2专用分支、标签和Draft PR #1同步到GitHub。
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`；package 与线上均为 v0.6.2，生产已发布；相关提交已随v0.6.2专用分支、标签和Draft PR #1同步到GitHub。用户于2026-08-18明确回复「全通过」。
 - 框选：普通节点保持局部相交选中，只对Group要求选框完整包含；巨大Group与三个目标节点相交时不再扩大选区，三个节点可精确打组。
 - 媒体：CSP只在`img-src/media-src`放行既有严格服务端OSS流程使用的`https://*.aliyuncs.com`；Image/Video/Audio读取失败后保留asset/source、隐藏原生坏媒体图标并显示统一灰阶重载/重新上传状态，不自动上传或删除。
 - 标题：Text/Image/Video/Audio/Playlist/Group/Storyboard七类节点统一单行省略并保留完整title，编辑和IME语义不变。
 - 自动门：build PASS；`m41+m98 54/54 PASS`；发布准入修正后正式安全全量 `118/118 specs、965/965 PASS`，异常0、source snapshot与4173不变，Provider/真实OSS/付费请求0。原先暂未纳入的4份是`m10/m92/m94/m96`发布安全spec；runner以合成历史`0.5.2→0.6.0`版本对验证冻结合同，不修改合同本身。
 - 发布：源码commit `8ebe70544828a3aebe258def9d658e1ab68a6104`；生产指针已切换到`/opt/unboundry/releases/v0.6.2-inc-ui-002-20260816`，公网version/live/ready、标题、favicon、CSP和静态资源哈希均通过，service active、NRestarts0。
 - 数据/回滚：备份与恢复副本为`/var/lib/unboundry-rollbacks/inc-ui-002-20260815T180956Z`，清单SHA均为`b1754f94…c2909`；schema39 quick_check ok/FK0，tasks118/attempts116/active0、模板43/42及并发500前后不变，Provider/付费调用/OSS写入0。
-- 权威记录：`spec/INC_UI_002_CANVAS_SELECTION_MEDIA_TITLE_REMEDIATION_2026-08-16.md`、`spec/INC_UI_002_PRODUCTION_RECEIPT_2026-08-16.json`。用户尚未进行线上肉眼复验，因此不写成USER PASS。
+- 权威记录：`spec/INC_UI_002_CANVAS_SELECTION_MEDIA_TITLE_REMEDIATION_2026-08-16.md`、`spec/INC_UI_002_PRODUCTION_RECEIPT_2026-08-16.json`。用户于2026-08-18明确回复「全通过」，收口为USER PASS。
 
 ### 2026-08-16 v0.6.2 真实工作流低成本验收
 
-- 状态：`PRODUCTION_REAL_WORKFLOW_SMOKE_PASS / USER_RECHECK`。用户明确允许真实API消耗并要求控制成本；完成2次文字、1次最低规格`1:1 / 1K`图片和1次`4秒 / 480p / 无音频`成功视频。视频排障过程另有失败/安全拒绝证据，Grok只手动重试1次，确认上游网络超时后不再重试。
+- 状态：`PRODUCTION_REAL_WORKFLOW_SMOKE_PASS / USER_PASS`。用户明确允许真实API消耗并要求控制成本；完成2次文字、1次最低规格`1:1 / 1K`图片和1次`4秒 / 480p / 无音频`成功视频。视频排障过程另有失败/安全拒绝证据，Grok只手动重试1次，确认上游网络超时后不再重试。用户于2026-08-18明确回复「全通过」。
 - 整组流水：项目`5e1f6462-4ac3-4f35-b2f0-72462987e318`内建立`Text → Image`并打组。整组Text任务`54834dc5-e376-449d-80b9-7efd183a7e4e`先于Image完成，Image任务`6dc65b87-e564-4eac-b44b-af1867efe134`随后启动并成功；两者均attempt1、Provider attempt1、retry0。
 - 结果：Text回写`挺括免烫垂感显瘦 通勤百搭白衬衫`；Image结果asset`427ee182-5f42-4bf8-a932-4c8ef81b3969`为PNG 1024×1024、1,298,394 bytes、OSS ready、checksum`63377430…5ec9`。浏览器刷新后Group、边、文字和图片仍在，图片natural size 1024×1024，控制台warning/error为0。
 - 页面：`/connections?from=<projectId>`显示双返回；“返回画布”精确回到该项目，“返回工作空间”进入`/canvas/projects?from=<projectId>`，标题分别为`我的连接｜无央`、项目名和`工作空间｜无央`。
@@ -456,11 +463,11 @@ F14本地正式门证据绑定 HEAD `eb4f99ea525390b0dd7a39d3cad55d882ffea41d`�
 
 ## 当前阶段
 
-阶段：`INC-UI-006 PRODUCTION_PUBLISHED_USER_PASS / 生产 v0.6.5/schema39 LIVE / PR #4已合并 / 当前无施工中INC或REM`
+阶段：`生产 v0.6.15/schema39 LIVE / INC-GEN-007～001与INC-UI-009～001、INC-VIDEO-001均为USER PASS / 当前无施工中INC或REM`
 
 画布、固定界面、Text、Image、Video、Audio、Playlist、Group、外围面板、账号、管理员模型中心、生成安全和新图片私有OSS链路已通过当前范围验收；Comment、社区、TapTV、竞技场、额度和链接分享已按用户决定取消。OpenRouter GPT Image 2已完成一次用户授权的历史真实生成，图片连线参考图及真实结果零费用重启恢复均已通过；本次 cutover 未发起 Provider 或付费生成请求。
 
-### 2026-08-16 INC-UI-001 设置页返回来源画布与浏览器品牌标识（已发布，待用户实页复验）
+### 2026-08-16 INC-UI-001 设置页返回来源画布与浏览器品牌标识（已发布并通过用户验收）
 
 - 用户要求：所有完整设置页的「返回画布」不再固定进入默认画布，而是回到进入设置前的真实项目；旁边新增「返回工作空间」；浏览器标签显示无央图标和准确标题。
 - 只读根因：`App.tsx`中8个设置/管理页和账号浮层使用固定路由，8个页头均硬编码`/canvas`；现有`CanvasShell`/`WorkspacePage`虽已有`from`和按用户/标签页的最近项目记录，但没有被设置页统一复用，工作空间仍以`/canvas`兜底。`client/index.html`仅有固定`<title>画布</title>`且没有favicon link。
@@ -468,8 +475,8 @@ F14本地正式门证据绑定 HEAD `eb4f99ea525390b0dd7a39d3cad55d882ffea41d`�
 - 已实现共享导航解析器和共享设置页头，覆盖`/connections`及7个`/admin/*`完整页面；账号浮层和设置页内部跳转传播来源；工作空间复用同一解析器。来源经当前账号项目列表校验，网络错误留页，双击单飞。
 - 已新增`client/public/favicon.svg`、静态兜底标题和动态页面/项目标题；项目标题变化即时联动浏览器标签，空标题有安全回退。
 - 自动验证：安全预检通过；受影响10份spec `102/102 PASS`，新增与多项目定向`m66 28/28 PASS`；临时洁净候选正式full为`117/117 specs、962/962 PASS`，failed/skipped/retries/reportErrors/blocked均为0，immutable builder `attempts=1 / builderInvocations=5 / passed=1`，source/snapshot SHA-256 `ea3410620444862090b076e8b0d9e250ed24e6f4f983b3937ecff9ecf4bce0e1`前后不变，4173 listener哈希`dfd25fc265125fe44b4046bb95bb89253a9ce7db9344e6afd4280f9a506e0dae`前后不变，Provider/付费/OSS请求0。
-- 权威详细方案：`spec/INC_UI_001_SETTINGS_RETURN_AND_BROWSER_IDENTITY_PLAN_2026-08-15.md`。NAV-001～004、BRAND-001～003进入`USER_RECHECK`，不能在用户可见实页确认前记PASS。
-- 用户随后授权完整上线；本功能已随v0.6.2发布。最终安全full为`118/118 specs、965/965 PASS`，生产version/live/ready、标题、favicon与静态资源哈希通过；未push/tag/更新PR。用户实页确认前仍为`USER_RECHECK`。
+- 权威详细方案：`spec/INC_UI_001_SETTINGS_RETURN_AND_BROWSER_IDENTITY_PLAN_2026-08-15.md`。NAV-001～004、BRAND-001～003已由用户于2026-08-18回复「全通过」收口为`PASS`。
+- 用户随后授权完整上线；本功能已随v0.6.2发布。最终安全full为`118/118 specs、965/965 PASS`，生产version/live/ready、标题、favicon与静态资源哈希通过；未push/tag/更新PR。用户于2026-08-18明确回复「全通过」，本项收口为`PRODUCTION_PUBLISHED_USER_PASS`。
 
 ### 2026-08-08 小地图拖动与点击跳转修复（已验收并进入 v0.4.7 发布）
 

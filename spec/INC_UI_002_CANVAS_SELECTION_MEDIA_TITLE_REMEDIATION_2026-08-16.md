@@ -1,7 +1,7 @@
 # INC-UI-002 画布框选、OSS 素材显示与节点长标题修复
 
 日期：2026-08-16  
-状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
+状态：`PRODUCTION_PUBLISHED_USER_PASS`
 候选版本：`v0.6.2`（真实 package 仍为 `0.6.1`）
 
 ## 1. 用户问题与施工边界
@@ -45,7 +45,7 @@
 - 媒体 `error` 后不出现原生损坏图标，节点边框保持实线；重新加载不触发上传，重新上传仍走现有事务；
 - 七类标题 span 均为省略显示且具有完整 `title`，单选进入 input 后完整标题可编辑；
 - 受影响专项、TypeScript、production build 与安全全量通过，真实 Provider/OSS/付费请求为 0；
-- 自动证据完成后状态只到 `USER_RECHECK`，不得代替用户实页确认。
+- 自动证据完成后状态只到 `USER_RECHECK`，不得代替用户实页确认。用户于 2026-08-18 明确回复「全通过」，本项现收口为 `PRODUCTION_PUBLISHED_USER_PASS`。
 
 ## 5. 已完成实现
 
@@ -68,4 +68,4 @@
 
 - 发布准入已补齐：`m10 / m92 / m94 / m96` 继续验证冻结的备份、版本兼容、不可变制品与发布运维合同，runner只投影合成历史`0.5.2→0.6.0`source-pair，不修改冻结合同。最终正式安全full为`118/118 specs、965/965 PASS`，异常计数均为0。
 - 生产已于2026-08-16原子切换到`/opt/unboundry/releases/v0.6.2-inc-ui-002-20260816`；公网version/live/ready、标题、favicon、CSP和静态资源哈希均通过。生产数据与安全配置前后不变，发布期间Provider/付费调用与OSS写入0。
-- 用户线上复验建议：框选巨大 Group 附近三个节点并打组；重新上传一张真实素材观察 OSS 显示与重载；分别查看七类长标题。用户确认前保持 `USER_RECHECK`。
+- 用户于 2026-08-18 明确回复「全通过」，本项收口为 `PRODUCTION_PUBLISHED_USER_PASS`。

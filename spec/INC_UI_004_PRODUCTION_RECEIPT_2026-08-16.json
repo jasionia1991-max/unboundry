@@ -1,6 +1,6 @@
 {
   "incident": "INC-UI-004",
-  "status": "PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK",
+  "status": "PRODUCTION_PUBLISHED_USER_PASS",
   "publishedAt": "2026-08-16T11:45:57Z",
   "url": "https://canvas.mymy.ltd",
   "version": "0.6.3",
@@ -69,5 +69,6 @@
     "schemaMigration": false,
     "githubActions": 0
   },
-  "userAcceptance": "USER_RECHECK"
+  "userAcceptance": "USER_PASS",
+  "userAcceptanceEvidence": "User replied 全通过，这几个全部都通过 on 2026-08-18."
 }

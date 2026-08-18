@@ -1,6 +1,6 @@
 # INC-GEN-004：整组节点结束后先存稳再往下跑
 
-状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
+状态：`PRODUCTION_PUBLISHED_USER_PASS`
 版本：`v0.6.12`
 日期：`2026-08-18`
 
@@ -41,6 +41,6 @@
 - 数据不变：切换后schema39、quick_check ok、FK0、tasks256、attempts258、active0、公共模板47（46 published）。
 - GitHub：注释标签`v0.6.12`指向`dc1b4a8b37030b13169a2016ad12ed124892e74b`；PR #21已合并，merge commit`9558c9edab9b98a689925032b9702f620a69e516`。
 - 发布与验证期间真实Provider请求、付费生成和OSS写入均为0。
-- 自动验证不代替用户肉眼验收。请打开网站强制刷新后，用「一键上新+自检」整组跑一遍，看还会不会中途闪红字停住。
+- 用户已于 2026-08-18 明确回复「全通过」，本项收口为 `PRODUCTION_PUBLISHED_USER_PASS`。
 
 详细凭证：`spec/INC_GEN_004_PRODUCTION_RECEIPT_2026-08-18.json`。

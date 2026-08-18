@@ -1,6 +1,6 @@
 # INC-UI-003 公共模板 UI 与画布旧会话恢复
 
-状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
+状态：`PRODUCTION_PUBLISHED_USER_PASS`
 
 ## 用户问题
 
@@ -35,4 +35,4 @@
 - 停机冻结备份和恢复副本均为schema39、quick_check ok、FK0，清单SHA-256同为`fb0570333953ac59823a9d3c22ab698bd97d390db9bd5f32dc853c94ea67dd25`。
 - 切换前后tasks132、Provider attempts131、active0、模板46/45完全不变；真实Provider、付费生成和OSS写入均为0。
 - 登录Chrome真实复核：旧冲突标签显示双恢复操作；点击“打开服务器版本”后新标签加载目标男装画布完整节点且显示已保存，原journal保留；从公共模板页“返回画布”同样正常；编辑弹窗720px/20px灰阶层级、GrayMenuSelect、8个紧凑复选框、主按钮、Escape关闭和焦点归还均通过。
-- 自动与上线技术验证不能代替用户肉眼验收，状态保持`USER_RECHECK`。完整凭证：`INC_UI_003_PRODUCTION_RECEIPT_2026-08-16.json`。
+- 用户于 2026-08-18 明确回复「全通过」，本项收口为 `PRODUCTION_PUBLISHED_USER_PASS`。完整凭证：`INC_UI_003_PRODUCTION_RECEIPT_2026-08-16.json`。

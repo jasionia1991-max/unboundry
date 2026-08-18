@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import type { Viewport } from "@xyflow/react";
+import { CanvasAccountProvider } from "./CanvasAccountContext";
 import {
   CANVAS_LIBRARY_ASSET_MIME,
   CanvasSurface,
@@ -2299,6 +2300,9 @@ export function CanvasShell({
       data-fixture-ready={fixtureId ? "true" : undefined}
       data-testid="canvas-shell"
     >
+      <CanvasAccountProvider
+        canManagePublicTemplates={canManagePublicTemplates}
+      >
       <CanvasSurface
         key={canvasScopeId}
         accountId={userId}
@@ -2335,6 +2339,7 @@ export function CanvasShell({
         snapEnabled={snapEnabled}
         textVideoStarted={textVideoStarted}
       />
+      </CanvasAccountProvider>
 
       {agentReferenceMode && (
         <section

@@ -14,7 +14,11 @@ import { useCanvasCheckpoint } from "./CanvasHistory";
 import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
-import { serializeGroupTemplate } from "./groupTemplate";
+import { useCanvasAccount } from "./CanvasAccountContext";
+import {
+  serializeGroupTemplate,
+  stripPrivateMediaForPublicTemplate,
+} from "./groupTemplate";
 import type { ProbeNodeType } from "./ProbeNode";
 import type { CuttableEdge } from "./canvasTypes";
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
@@ -63,6 +67,7 @@ function GroupNodeImpl({
     useReactFlow<ProbeNodeType>();
   const { setNodes } = useCanvasGraphMutation();
   const { canvasId, isFixture, notify } = useGenerationCanvas();
+  const { canManagePublicTemplates } = useCanvasAccount();
   const { cancelGroup, executeGroup, executingGroupIds } =
     useWorkflowExecution();
   const executing = executingGroupIds.has(id);
@@ -92,6 +97,9 @@ function GroupNodeImpl({
   const [templateCategory, setTemplateCategory] = useState("");
   const [templateSaving, setTemplateSaving] = useState(false);
   const [templateError, setTemplateError] = useState("");
+  const [templateDestination, setTemplateDestination] = useState<
+    "mine" | "public"
+  >("mine");
   const [downloadBusy, setDownloadBusy] = useState(false);
 
   useEffect(() => {
@@ -324,6 +332,8 @@ function GroupNodeImpl({
       setTemplateError("模板标题需为 1–40 个字符");
       return;
     }
+    const publishPublic =
+      canManagePublicTemplates && templateDestination === "public";
     setTemplateSaving(true);
     setTemplateError("");
     try {
@@ -333,33 +343,57 @@ function GroupNodeImpl({
         nodes: getNodes(),
       });
       const children = getNodes().filter((node) => node.parentId === id);
-      const response = await fetch("/api/templates", {
-        body: JSON.stringify({
-          category: templateCategory || undefined,
-          graph,
-          nodeIds: children.map((node) => node.id),
-          sourceCanvasId: canvasId,
-          title,
-        }),
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        method: "POST",
-      });
+      const response = publishPublic
+        ? await fetch("/api/admin/templates", {
+            body: JSON.stringify({
+              category: templateCategory ? [templateCategory] : undefined,
+              graph: stripPrivateMediaForPublicTemplate(graph),
+              status: "published",
+              title,
+            }),
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+            },
+            method: "POST",
+          })
+        : await fetch("/api/templates", {
+            body: JSON.stringify({
+              category: templateCategory || undefined,
+              graph,
+              nodeIds: children.map((node) => node.id),
+              sourceCanvasId: canvasId,
+              title,
+            }),
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+            },
+            method: "POST",
+          });
       const body = (await response.json().catch(() => ({}))) as {
         error?: string;
       };
       if (!response.ok) {
-        throw new Error(body.error ?? "模板保存失败");
+        throw new Error(
+          body.error ?? (publishPublic ? "公共模板发布失败" : "模板保存失败"),
+        );
       }
-      notify("模板已保存到我的模板", "success");
+      notify(
+        publishPublic ? "已发布到公共模板" : "模板已保存到我的模板",
+        "success",
+      );
       setTemplateDialogOpen(false);
       setTemplateTitle("");
       setTemplateCategory("");
+      setTemplateDestination("mine");
     } catch (error) {
       setTemplateError(
-        error instanceof Error ? error.message : "模板保存失败",
+        error instanceof Error
+          ? error.message
+          : publishPublic
+            ? "公共模板发布失败"
+            : "模板保存失败",
       );
     } finally {
       setTemplateSaving(false);
@@ -484,6 +518,7 @@ function GroupNodeImpl({
               setTemplateError("");
               setTemplateTitle("");
               setTemplateCategory("");
+              setTemplateDestination("mine");
               setTemplateDialogOpen(true);
             }}
             title={
@@ -655,6 +690,40 @@ function GroupNodeImpl({
                 value={templateCategory}
               />
             </label>
+            {canManagePublicTemplates && (
+              <fieldset
+                className="group-template-destination"
+                data-testid="group-template-destination"
+              >
+                <legend>保存到</legend>
+                <label>
+                  <input
+                    checked={templateDestination === "mine"}
+                    name="group-template-destination"
+                    onChange={() => setTemplateDestination("mine")}
+                    type="radio"
+                    value="mine"
+                  />
+                  <span>我的模板</span>
+                </label>
+                <label>
+                  <input
+                    checked={templateDestination === "public"}
+                    data-testid="group-template-destination-public"
+                    name="group-template-destination"
+                    onChange={() => setTemplateDestination("public")}
+                    type="radio"
+                    value="public"
+                  />
+                  <span>公共模板（所有人可见）</span>
+                </label>
+                {templateDestination === "public" && (
+                  <p className="group-template-destination-hint">
+                    所有账号都能看见并导入。组里的图会变成空上传位，提示词和连线会留下。
+                  </p>
+                )}
+              </fieldset>
+            )}
             {templateError && (
               <p className="group-template-error" role="alert">
                 {templateError}

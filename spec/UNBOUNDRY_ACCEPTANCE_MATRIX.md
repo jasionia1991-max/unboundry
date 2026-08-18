@@ -7,11 +7,11 @@
 
 2026-08-18 `INC-GEN-007 = PRODUCTION_PUBLISHED_USER_PASS`：GPT Image 不再把没做成片的失败写成已提交；整组自己核对或再试一次并继续；同一输入真未知时不许再开新单。正式安全全量`118/118 specs、976/976 tests PASS`，异常0。生产已运行v0.6.15；用户随后明确回复“通过”，本项正式收口。当前权威快照见 `spec/UNBOUNDRY_CURRENT_STATE.md`。
 
-2026-08-18 `INC-GEN-006 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：整组开跑前不再把上次的「画布还在保存」当成不兼容；开跑后清掉组里这类过期红字；真不兼容照样拦。正式安全全量`118/118 specs、973/973 tests PASS`，异常0。生产已运行v0.6.14，公网资源逐字节哈希、冻结备份恢复、service/schema39与数据门通过，保持294 tasks、296 attempts、active0、47 public templates（46 published）；Provider/付费生成/OSS写入0。`v0.6.14`标签与PR #24合并完成；用户肉眼验收仍为`USER_RECHECK`。
+2026-08-18 `INC-GEN-006 = PRODUCTION_PUBLISHED_USER_PASS`：整组开跑前不再把上次的「画布还在保存」当成不兼容；开跑后清掉组里这类过期红字；真不兼容照样拦。正式安全全量`118/118 specs、973/973 tests PASS`，异常0。生产已运行v0.6.14，公网资源逐字节哈希、冻结备份恢复、service/schema39与数据门通过，保持294 tasks、296 attempts、active0、47 public templates（46 published）；Provider/付费生成/OSS写入0。`v0.6.14`标签与PR #24合并完成；用户于2026-08-18明确回复「全通过」，本项正式收口。
 
 2026-08-18 `INC-GEN-005 = PRODUCTION_PUBLISHED_USER_PASS`：Seedance 2.0 Mini 去掉 6～15秒和720p的付费验证禁用；默认仍5秒/480p；1080p和16秒以上继续拦住；保存失败不关编辑框。正式安全全量`118/118 specs、971/971 tests PASS`，异常0。生产已运行v0.6.13；用户随后明确回复“通过”，本项正式收口。
 
-2026-08-18 `INC-GEN-004 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：整组每个节点跑完后先存稳再让下游开工；等版本号时再确认画布没又变脏；整组「画布还在保存」最多再试一次；错误提示约8秒。正式安全全量`118/118 specs、971/971 tests PASS`，异常0。生产已运行v0.6.12，公网资源逐字节哈希、冻结备份恢复、service/schema39与数据不变门通过，保持256 tasks、258 attempts、active0、47 public templates（46 published）；Provider/付费生成/OSS写入0。`v0.6.12`标签与PR #21合并完成；用户肉眼验收仍为`USER_RECHECK`。
+2026-08-18 `INC-GEN-004 = PRODUCTION_PUBLISHED_USER_PASS`：整组每个节点跑完后先存稳再让下游开工；等版本号时再确认画布没又变脏；整组「画布还在保存」最多再试一次；错误提示约8秒。正式安全全量`118/118 specs、971/971 tests PASS`，异常0。生产已运行v0.6.12，公网资源逐字节哈希、冻结备份恢复、service/schema39与数据不变门通过，保持256 tasks、258 attempts、active0、47 public templates（46 published）；Provider/付费生成/OSS写入0。`v0.6.12`标签与PR #21合并完成；用户于2026-08-18明确回复「全通过」，本项正式收口。
 
 2026-08-17 `INC-UI-008 = PRODUCTION_PUBLISHED_USER_PASS`：文字全屏改为图片同款画布遮罩，不再进系统全屏；中间只读正文可滚动，按钮为「复制」。正式安全全量`118/118 specs、969/969 tests PASS`，异常0。生产已运行v0.6.10，公网资源逐字节哈希、冻结备份恢复、service/schema39与数据不变门通过，保持246 tasks、248 attempts、active0、47 public templates（46 published）；Provider/付费生成/OSS写入0。`v0.6.10`标签与PR #16合并完成；用户于2026-08-18明确回复文字全屏也通过，本项正式收口。
 
@@ -25,17 +25,17 @@
 
 2026-08-16 `INC-UI-006 = PRODUCTION_PUBLISHED_USER_PASS`：移除Group的React viewport订阅和NodeResizer重复缩放，标题/工具栏改为命令式CSS变量；镜头交互安静期过滤非拖拽position change；画布载入、模板应用和组模板保存阻断自引用根，真实拖动、键盘移动、resize及measurement仍保留。定向`69/69`及正式安全全量`118/118 specs、968/968 tests PASS`，异常0。冻结备份后目标组恢复为无父级`(-1080,-1080)`，另一自引用根只移除自引用并保留原坐标；节点89、边145及viewport不变。生产已运行v0.6.5，公网资源、schema39、数据不变和登录实页72节点连续缩放均通过，`movedIds=[]`；Provider/付费/OSS请求0。用户随后明确回复“通过”，本项正式收口。
 
-2026-08-16 `INC-UI-005 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：Group标题与组框保持约20px屏幕间隔并限制72～180px；15%总览时组内节点标题默认隐藏，组hover或选中后仅恢复该组。明确不增加组标题栏、组内视觉边距/边框，不移动组内节点，不改变持久坐标、连线与普通未分组节点标题。`GROUP-TITLE-001～004`自动与生产技术验证通过：正式安全全量118/118 specs、968/968 tests PASS，异常0；生产最终切到`v0.6.4-inc-ui-005-20260816-r2`，公网资源、隔离启动、冻结备份恢复、active/schema39和数据不变门通过。Chrome在15%及约27%验证默认隐藏、单组披露、间距和宽度合同通过；真实Provider/付费/OSS写入0。用户肉眼验收仍为`USER_RECHECK`。
+2026-08-16 `INC-UI-005 = PRODUCTION_PUBLISHED_USER_PASS`：Group标题与组框保持约20px屏幕间隔并限制72～180px；15%总览时组内节点标题默认隐藏，组hover或选中后仅恢复该组。明确不增加组标题栏、组内视觉边距/边框，不移动组内节点，不改变持久坐标、连线与普通未分组节点标题。`GROUP-TITLE-001～004`自动与生产技术验证通过：正式安全全量118/118 specs、968/968 tests PASS，异常0；生产最终切到`v0.6.4-inc-ui-005-20260816-r2`，公网资源、隔离启动、冻结备份恢复、active/schema39和数据不变门通过。Chrome在15%及约27%验证默认隐藏、单组披露、间距和宽度合同通过；真实Provider/付费/OSS写入0。用户于2026-08-18明确回复「全通过」，本项正式收口。
 
-2026-08-16 `INC-UI-004 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：Text/Image/Video/Audio/Playlist/Storyboard标题在`zoom < 1`时使用屏幕空间补偿，15%总览约12px、35%～100%约14px；灰白对比度、500字重和轻微暗色阴影已统一。标题屏幕宽度限制96～180px，Storyboard上限220px，长标题继续ellipsis并保留完整`title`；Group沿用自身补偿避免双重放大。总览未选中标题不拦截指针，选中标题仍可编辑；节点几何、连线、保存文档均不变。`TITLE-ZOOM-001～006`自动通过：相关6份spec `16/16 PASS`，正式安全全量`118/118 specs、968/968 tests PASS`，异常0、4173不变、真实Provider/付费/OSS请求0。生产已切到`v0.6.3-inc-ui-004-20260816`；隔离Linux启动、公网资源哈希、冻结备份恢复、active/schema39和数据不变门通过，tasks153/attempts152/active0及模板46/45不变。用户肉眼验收仍为`USER_RECHECK`。
+2026-08-16 `INC-UI-004 = PRODUCTION_PUBLISHED_USER_PASS`：Text/Image/Video/Audio/Playlist/Storyboard标题在`zoom < 1`时使用屏幕空间补偿，15%总览约12px、35%～100%约14px；灰白对比度、500字重和轻微暗色阴影已统一。标题屏幕宽度限制96～180px，Storyboard上限220px，长标题继续ellipsis并保留完整`title`；Group沿用自身补偿避免双重放大。总览未选中标题不拦截指针，选中标题仍可编辑；节点几何、连线、保存文档均不变。`TITLE-ZOOM-001～006`自动通过：相关6份spec `16/16 PASS`，正式安全全量`118/118 specs、968/968 tests PASS`，异常0、4173不变、真实Provider/付费/OSS请求0。生产已切到`v0.6.3-inc-ui-004-20260816`；隔离Linux启动、公网资源哈希、冻结备份恢复、active/schema39和数据不变门通过，tasks153/attempts152/active0及模板46/45不变。用户于2026-08-18明确回复「全通过」，本项正式收口。
 
-2026-08-16 `INC-UI-003 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：公共模板页和编辑弹窗已改用统一灰阶布局、GrayMenuSelect、自绘复选框、主次按钮、焦点圈定和窄屏布局。旧epoch journal与服务器document相同时零PUT结算，不同时保留journal且零PUT/零生成，并可在新标签打开服务器权威版本，原标签恢复副本不被覆盖。m77 10/10、m86 83/83及正式安全全量118/118 specs、967/967 tests PASS，异常0。生产已切到v0.6.3/schema39，公网健康、数据不变和Chrome真实恢复路径/UI合同均通过；真实Provider/付费/OSS写入0。仍需用户肉眼复验。
+2026-08-16 `INC-UI-003 = PRODUCTION_PUBLISHED_USER_PASS`：公共模板页和编辑弹窗已改用统一灰阶布局、GrayMenuSelect、自绘复选框、主次按钮、焦点圈定和窄屏布局。旧epoch journal与服务器document相同时零PUT结算，不同时保留journal且零PUT/零生成，并可在新标签打开服务器权威版本，原标签恢复副本不被覆盖。m77 10/10、m86 83/83及正式安全全量118/118 specs、967/967 tests PASS，异常0。生产已切到v0.6.3/schema39，公网健康、数据不变和Chrome真实恢复路径/UI合同均通过；真实Provider/付费/OSS写入0。用户于2026-08-18明确回复「全通过」，本项正式收口。
 
-2026-08-16 `INC-VIDEO-001 / V0.6.2 REAL WORKFLOW SMOKE = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_RECHECK`：用户授权真实API消耗后，在生产建立并运行`Text → Image`整组工作流。整组Text先成功，Image随后才启动；两个任务均attempt1、Provider attempt1、retry0。唯一图片为`1:1 / 1K`，结果PNG 1024×1024、OSS ready；刷新后Group、连线、文字和图片均持久。随后Grok首帧按真实中转契约修为`images`数组，正式全量`118/118 specs、965/965 tests`通过并发布到`v0.6.2-inc-video-001-20260816`。Grok修复后请求被受理，但中转上游两次0%网络超时，停止重试并把默认视频模型切为Seedance；Seedance无人物文生视频task`c0269665-4db5-46a1-bc13-2d5574a66cca`一次成功，4秒/480p/无音频，MP4 864×496、OSS ready，刷新后浏览器可播放。真人参考图被Seedance内容安全拒绝，记录为Provider限制。公网ready active/schema39，数据库tasks126/attempts125/active0、quick_check ok/FK0。该结果证明真实低成本闭环，不代替用户明早的内容与交互验收。
+2026-08-16 `INC-VIDEO-001 / V0.6.2 REAL WORKFLOW SMOKE = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_PASS`：用户授权真实API消耗后，在生产建立并运行`Text → Image`整组工作流。整组Text先成功，Image随后才启动；两个任务均attempt1、Provider attempt1、retry0。唯一图片为`1:1 / 1K`，结果PNG 1024×1024、OSS ready；刷新后Group、连线、文字和图片均持久。随后Grok首帧按真实中转契约修为`images`数组，正式全量`118/118 specs、965/965 tests`通过并发布到`v0.6.2-inc-video-001-20260816`。Grok修复后请求被受理，但中转上游两次0%网络超时，停止重试并把默认视频模型切为Seedance；Seedance无人物文生视频task`c0269665-4db5-46a1-bc13-2d5574a66cca`一次成功，4秒/480p/无音频，MP4 864×496、OSS ready，刷新后浏览器可播放。真人参考图被Seedance内容安全拒绝，记录为Provider限制。公网ready active/schema39，数据库tasks126/attempts125/active0、quick_check ok/FK0。该结果证明真实低成本闭环。用户于2026-08-18明确回复「全通过」，本项正式收口。
 
-2026-08-16 `INC-UI-002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：框选仍对普通节点保留局部相交语义，但Group只有被选框完整包含才进入框选，解决巨大Group误选和打组范围扩大；Image/Video/Audio共用OSS/媒体读取失败占位并保留原asset/source，CSP只在`img-src/media-src`放行`https://*.aliyuncs.com`，生成/上传错误继续位于恢复层上方；Text/Image/Video/Audio/Playlist/Group/Storyboard七类长标题统一省略并暴露完整title。build PASS，`m41+m98 54/54 PASS`；正式安全全量 `118/118 specs、965/965 PASS`，异常0、4173不变、真实Provider/OSS/付费请求0。生产已运行v0.6.2/schema39；SEL-001、MEDIA-LOAD-001～003、TITLE-001～007等待用户线上复验。
+2026-08-16 `INC-UI-002 = PRODUCTION_PUBLISHED_USER_PASS`：框选仍对普通节点保留局部相交语义，但Group只有被选框完整包含才进入框选，解决巨大Group误选和打组范围扩大；Image/Video/Audio共用OSS/媒体读取失败占位并保留原asset/source，CSP只在`img-src/media-src`放行`https://*.aliyuncs.com`，生成/上传错误继续位于恢复层上方；Text/Image/Video/Audio/Playlist/Group/Storyboard七类长标题统一省略并暴露完整title。build PASS，`m41+m98 54/54 PASS`；正式安全全量 `118/118 specs、965/965 PASS`，异常0、4173不变、真实Provider/OSS/付费请求0。生产已运行v0.6.2/schema39；SEL-001、MEDIA-LOAD-001～003、TITLE-001～007由用户于2026-08-18回复「全通过」收口为PASS。
 
-2026-08-16 `INC-UI-001 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：设置页返回来源画布、返回工作空间、浏览器favicon与动态标题已发布。返回优先级为`URL from → 当前账号本标签最近真实项目 → 工作空间`，只接受当前账号项目ID并以只读项目列表校验，默认画布不作为返回动作的隐式兜底。受影响10份spec `102/102 PASS`，新增与多项目定向`m66 28/28 PASS`；最终正式安全全量为`118/118 specs、965/965 PASS`且所有异常计数0，Provider/付费/OSS请求0、4173不变。NAV-001～004、BRAND-001～003仍为`USER_RECHECK`，生产现为v0.6.2/schema39。
+2026-08-16 `INC-UI-001 = PRODUCTION_PUBLISHED_USER_PASS`：设置页返回来源画布、返回工作空间、浏览器favicon与动态标题已发布。返回优先级为`URL from → 当前账号本标签最近真实项目 → 工作空间`，只接受当前账号项目ID并以只读项目列表校验，默认画布不作为返回动作的隐式兜底。受影响10份spec `102/102 PASS`，新增与多项目定向`m66 28/28 PASS`；最终正式安全全量为`118/118 specs、965/965 PASS`且所有异常计数0，Provider/付费/OSS请求0、4173不变。NAV-001～004、BRAND-001～003由用户于2026-08-18回复「全通过」收口为`PASS`，生产现为v0.6.2/schema39。
 
 2026-08-15 `INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`：整组生产调用路径已改为事件驱动DAG流水；多个直接生成式上游严格AND，分流独立推进、汇流等待全部、失败只阻塞后代，四类节点提交前刷新runtime preflight；静态不兼容仍零任务阻止整组。正式full基线`117/117 specs、959/959 PASS`，v0.6.1准入修复后相关8份spec `110/110 PASS`，精确HEAD build PASS，Provider请求0。生产已切换到不可变v0.6.1目录；公网version/live/ready及主JS哈希通过，schema39 quick_check ok/FK0，tasks109/attempts107/active0和并发500前后不变。用户随后在线上实页复验并明确确认“通过通过”。
 
@@ -45,7 +45,7 @@
 状态：`AUTHORITATIVE`  
 状态夹具：`unboundry-state-fixtures.json`
 
-2026-08-18 当前权威状态：生产已运行 `v0.6.14/schema39`；`INC-GEN-006 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；`INC-GEN-005 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-GEN-004 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；`INC-UI-009 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-UI-008 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-GEN-003 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-GEN-002 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-GEN-001 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-UI-007/006 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-UI-005/004/003 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-VIDEO-001 = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_RECHECK`，`INC-UI-001/002 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-010/011 = PASS`，`PRODUCTION = LIVE`。既有其他用户验收与未完成状态全部保留。
+2026-08-18 当前权威状态：生产已运行 `v0.6.15/schema39`；`INC-GEN-007～001 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-UI-009～001 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-VIDEO-001 = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_PASS`；`INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`；`REM-010/011 = PASS`；`PRODUCTION = LIVE`。用户于2026-08-18回复「全通过」收口此前待复验旧项。既有其他用户验收与未完成状态全部保留。
 
 最新核验为service active+enabled、NRestarts0、current→`releases/v0.6.14-inc-gen-006-20260818`、公网version 0.6.14及精确JS/CSS哈希通过。schema39/quick_check ok/FK0、active generation0、294 tasks/296 attempts、47 public templates（46 published）。INC-GEN-006没有修改画布文档、节点坐标、连线、Provider配置或OSS对象；Provider/付费/OSS写入0。上一不可变release、冻结备份、v0.6.0原schema37备份、整机schema39包及既有用户验收继续保留。未实际运行的两张付费图片仍作为可选付费抽验延期，既有PARTIAL/PAUSED/BLOCK/NOT_STARTED条目保持不变。
 
@@ -276,13 +276,13 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 
 | ID | 优先级 | 项目 | 验收动作与断言 | 当前证据/缺口 | 实现状态 |
 |---|---|---|---|---|---|
-| NAV-001 | P0 | 设置页返回来源画布 | 从真实项目A进入任意完整设置页后，「返回画布」经当前账号项目列表校验回到A，不固定进入默认画布 | 共享解析器与8页接线已实现；m66来源项目返回自动断言通过，待用户实页复验 | USER_RECHECK |
-| NAV-002 | P0 | 设置页双返回按钮 | `/connections`及7个`/admin/*`完整页面共享「返回画布」「返回工作空间」；设置页内部跳转不丢`from` | 共享页头、来源传播、busy/error状态和8页自动断言通过，待用户实页复验 | USER_RECHECK |
-| NAV-003 | P0 | 工作空间闭环与失败兜底 | A→设置→工作空间→返回画布仍回A；来源删除、无历史或网络失败不误跳默认画布 | Workspace已复用共享解析器；闭环、无来源和API错误fail-closed自动断言通过 | USER_RECHECK |
-| NAV-004 | P0 | 来源安全与账号隔离 | `from`只接受安全项目ID并属于当前账号；拒绝URL/非法编码/default，双击只请求/导航一次 | 当前账号列表校验、非法/default/开放重定向拒绝与单飞自动断言通过 | USER_RECHECK |
-| BRAND-001 | P1 | 浏览器favicon | Chrome标签显示清晰的无央无限符号；开发与构建`/favicon.svg`均200且字节一致 | favicon资源、HTML link和构建自动断言通过；待用户浏览器视觉确认 | USER_RECHECK |
-| BRAND-002 | P1 | 动态页面标题 | 项目、默认画布、工作空间、登录和全部设置页使用准确`页面名｜无央`标题 | 静态兜底和页面身份模块已接线，自动标题矩阵通过；待用户实页确认 | USER_RECHECK |
-| BRAND-003 | P1 | 项目标题联动 | 项目重命名即时更新浏览器标签，刷新后与持久标题一致；空标题安全回退 | CanvasShell标题状态、重命名和空标题自动断言通过；待用户实页确认 | USER_RECHECK |
+| NAV-001 | P0 | 设置页返回来源画布 | 从真实项目A进入任意完整设置页后，「返回画布」经当前账号项目列表校验回到A，不固定进入默认画布 | 共享解析器与8页接线已实现；m66来源项目返回自动断言通过；用户2026-08-18回复「全通过」 | PASS |
+| NAV-002 | P0 | 设置页双返回按钮 | `/connections`及7个`/admin/*`完整页面共享「返回画布」「返回工作空间」；设置页内部跳转不丢`from` | 共享页头、来源传播、busy/error状态和8页自动断言通过；用户2026-08-18回复「全通过」 | PASS |
+| NAV-003 | P0 | 工作空间闭环与失败兜底 | A→设置→工作空间→返回画布仍回A；来源删除、无历史或网络失败不误跳默认画布 | Workspace已复用共享解析器；闭环、无来源和API错误fail-closed自动断言通过；用户2026-08-18回复「全通过」 | PASS |
+| NAV-004 | P0 | 来源安全与账号隔离 | `from`只接受安全项目ID并属于当前账号；拒绝URL/非法编码/default，双击只请求/导航一次 | 当前账号列表校验、非法/default/开放重定向拒绝与单飞自动断言通过；用户2026-08-18回复「全通过」 | PASS |
+| BRAND-001 | P1 | 浏览器favicon | Chrome标签显示清晰的无央无限符号；开发与构建`/favicon.svg`均200且字节一致 | favicon资源、HTML link和构建自动断言通过；用户2026-08-18回复「全通过」 | PASS |
+| BRAND-002 | P1 | 动态页面标题 | 项目、默认画布、工作空间、登录和全部设置页使用准确`页面名｜无央`标题 | 静态兜底和页面身份模块已接线，自动标题矩阵通过；用户2026-08-18回复「全通过」 | PASS |
+| BRAND-003 | P1 | 项目标题联动 | 项目重命名即时更新浏览器标签，刷新后与持久标题一致；空标题安全回退 | CanvasShell标题状态、重命名和空标题自动断言通过；用户2026-08-18回复「全通过」 | PASS |
 
 ## 9. 播放列表、Agent 与外围面板
 

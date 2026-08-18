@@ -1,6 +1,6 @@
 # INC-UI-005 组标题总览层级
 
-状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
+状态：`PRODUCTION_PUBLISHED_USER_PASS`
 目标版本：`v0.6.4`
 
 ## 用户问题
@@ -28,7 +28,7 @@
 - 首个发布产物夹带旧dist，被真实浏览器门发现并拒绝；最终使用精确源码fresh build发布，未把错误产物作为完成结果。
 - 生产current：`/opt/unboundry/releases/v0.6.4-inc-ui-005-20260816-r2`；公网版本与JS/CSS哈希、隔离启动、冻结备份恢复、service active+enabled、NRestarts0、schema39及数据不变门均通过。
 - 登录Chrome在约27%缩放验证7个组的标题间距约22.69px、组内标题默认0可见；hover指定组后仅该组14个标题恢复。在15%最小缩放验证间距约21.5px、组内39个标题默认0可见、宽度保持102.59～180px。
-- 详细回执：`spec/INC_UI_005_PRODUCTION_RECEIPT_2026-08-16.json`。自动与生产技术验证不代替用户肉眼验收。
+- 详细回执：`spec/INC_UI_005_PRODUCTION_RECEIPT_2026-08-16.json`。用户于 2026-08-18 明确回复「全通过」，本项收口为 `PRODUCTION_PUBLISHED_USER_PASS`。
 
 ## 发布边界
 

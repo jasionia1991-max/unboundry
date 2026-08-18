@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -1372,6 +1373,119 @@ test("browse-all admin entry follows permissions and recent-used filters by acco
     await expect(
       browser.locator(".template-browser-card").filter({ hasText: "最近使用B" }),
     ).toBeVisible();
+  } finally {
+    if (server) await stopServer(server);
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("ordinary canvas group save stays private and hides the public destination", async ({
+  page,
+}) => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-public-canvas-"));
+  let server: ChildProcess | undefined;
+  try {
+    server = await startServer(dataDirectory);
+    const bootstrap = await page.request.post("/api/auth/bootstrap", {
+      data: {
+        displayName: "Owner",
+        loginName: "owner",
+        password: "owner-password-123",
+      },
+    });
+    expect(bootstrap.status()).toBe(201);
+    const createdUser = await page.request.post("/api/admin/users", {
+      data: {
+        displayName: "Ordinary",
+        loginName: "ordinary",
+        password: "ordinary-pass-123",
+      },
+    });
+    expect(createdUser.status()).toBe(201);
+    await page.request.post("/api/auth/logout");
+    const login = await page.request.post("/api/auth/login", {
+      data: {
+        loginName: "ordinary",
+        password: "ordinary-pass-123",
+      },
+    });
+    expect(login.status()).toBe(200);
+
+    const project = (
+      (await (await page.request.post("/api/projects", { data: {} })).json()) as {
+        id: string;
+      }
+    );
+    const baseline = (await (
+      await page.request.get(`/api/canvas/${project.id}`)
+    ).json()) as { loadToken: string; revision: number };
+    const saved = await page.request.put(`/api/canvas/${project.id}`, {
+      data: {
+        edges: [],
+        nodes: [
+          {
+            data: { label: "Group", title: "普通用户组" },
+            id: "group-user",
+            position: { x: 80, y: 80 },
+            style: { height: 348, width: 548 },
+            type: "group",
+            zIndex: 0,
+          },
+          {
+            data: { label: "Text", title: "说明" },
+            id: "child-text",
+            parentId: "group-user",
+            position: { x: 20, y: 20 },
+            style: { height: 250, width: 250 },
+            type: "text",
+            zIndex: 1,
+          },
+        ],
+        observedLoadToken: baseline.loadToken,
+        observedRevision: baseline.revision,
+        revision: baseline.revision,
+        saveAttemptId: randomUUID(),
+        saveSequence: 1,
+        saveSessionId: randomUUID(),
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+    expect(saved.ok()).toBeTruthy();
+
+    await page.goto(`/canvas/${project.id}`);
+    await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+      "data-persistence-ready",
+      "true",
+    );
+    await page
+      .locator('[data-testid="rf__node-group-user"]')
+      .click({ position: { x: 5, y: 5 } });
+    await page.getByTestId("group-template-button").click();
+    await expect(page.getByTestId("group-template-destination")).toHaveCount(0);
+    await page.getByLabel("模板标题").fill("普通用户只能存自己的");
+    await page.getByTestId("group-template-submit").click();
+    await expect(page.getByTestId("workflow-run-toast")).toContainText(
+      "模板已保存到我的模板",
+    );
+
+    const mine = await page.request.get(
+      "/api/templates?space=mine&q=普通用户只能存自己的&limit=20",
+    );
+    expect(mine.ok()).toBeTruthy();
+    expect(
+      ((await mine.json()) as { items: Array<{ title: string }> }).items.some(
+        (item) => item.title === "普通用户只能存自己的",
+      ),
+    ).toBe(true);
+
+    const forbidden = await page.request.post("/api/admin/templates", {
+      data: {
+        graph: uploadPlaceholderGraph(),
+        status: "published",
+        title: "越权公共",
+      },
+    });
+    expect(forbidden.status()).toBe(403);
   } finally {
     if (server) await stopServer(server);
     await rm(dataDirectory, { force: true, recursive: true });

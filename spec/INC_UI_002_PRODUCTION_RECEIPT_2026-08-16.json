@@ -2,7 +2,7 @@
   "format": "unboundry-production-receipt-v1",
   "incident": "INC-UI-002",
   "releasedAt": "2026-08-16T02:17:02.615+08:00",
-  "status": "PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK",
+  "status": "PRODUCTION_PUBLISHED_USER_PASS",
   "version": "0.6.2",
   "schemaVersion": 39,
   "source": {
@@ -67,6 +67,7 @@
     "paidGenerationRequests": 0,
     "ossWrites": 0
   },
-  "userAcceptance": "PENDING_ONLINE_RECHECK",
+  "userAcceptance": "USER_PASS",
+  "userAcceptanceEvidence": "User replied 全通过，这几个全部都通过 on 2026-08-18.",
   "githubPublication": "NOT_AUTHORIZED_FOR_V0.6.2"
 }
