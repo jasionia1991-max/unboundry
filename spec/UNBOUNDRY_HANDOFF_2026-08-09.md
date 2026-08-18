@@ -6,9 +6,13 @@
 
 新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-18 的权威现状、产品合同和用户已点头的旧项收口。下面各节是历史增量，出现「当前」时只代表该时点。
 
-## 最新已发布事件：INC-UI-010（v0.6.16已发布，待用户复验）
+## 当前待做（未开工）：INC-GEN-008 优创专用协议按文档尺寸出图
 
-用户确认方案并说按`v0.6.16`上线。管理员在画布上打组、点「创建模板」，可选发到公共模板；默认仍是我的模板。发公共时清掉私图，留下提示词、节点和连线。普通账号看不到该选项。现有公共模板不改。精确源码commit`83fd8dce9e7d7cf3fb419599aa753e66f35cdc25`通过安全全量`118/118 specs、979/979 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.16-inc-ui-010-20260818`，公网资源哈希、冻结备份恢复、service/schema39及数据门PASS；发布核验时保持319 tasks、323 attempts、active0、47 public templates（46 published）。`v0.6.16`已推送，PR #29已合并到`main`（merge commit`dbfa94558ee73ce6658e5790358e23959e069b10`）。用户还没回复「通过」，当前状态是`PRODUCTION_PUBLISHED` / `USER_RECHECK`。权威记录：`spec/INC_UI_010_CANVAS_PUBLIC_TEMPLATE_2026-08-18.md`与`spec/INC_UI_010_PRODUCTION_RECEIPT_2026-08-18.json`。
+方案已与用户对齐并写入`spec/INC_GEN_008_YOUCHOANG_GPT_IMAGE_SIZE_2026-08-18.md`。代码未改。选 2K/4K 必须按优创文档发像素 `size`；默认改 1K；旧 4K 选择按真 4K 发；未知组合拦截。不做新增参数直发。OpenRouter 出图用户说先算了。未听到「按这个做」不准写功能代码。
+
+## 最新已发布事件：INC-UI-010（v0.6.16已发布并通过用户验收）
+
+用户确认方案并说按`v0.6.16`上线；随后明确回复「通过」。管理员在画布上打组、点「创建模板」，可选发到公共模板；默认仍是我的模板。发公共时清掉私图，留下提示词、节点和连线。普通账号看不到该选项。现有公共模板不改。精确源码commit`83fd8dce9e7d7cf3fb419599aa753e66f35cdc25`通过安全全量`118/118 specs、979/979 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.16-inc-ui-010-20260818`，公网资源哈希、冻结备份恢复、service/schema39及数据门PASS；发布核验时保持319 tasks、323 attempts、active0、47 public templates（46 published）。`v0.6.16`已推送，PR #29已合并到`main`（merge commit`dbfa94558ee73ce6658e5790358e23959e069b10`）。当前状态是`PRODUCTION_PUBLISHED_USER_PASS`。权威记录：`spec/INC_UI_010_CANVAS_PUBLIC_TEMPLATE_2026-08-18.md`与`spec/INC_UI_010_PRODUCTION_RECEIPT_2026-08-18.json`。
 
 ## 前一已发布事件：INC-GEN-007（v0.6.15已发布并通过用户验收）
 
@@ -285,4 +289,4 @@ ssh live-cockpit "curl -fsS http://127.0.0.1:4173/api/version"
 5. 向用户先报告恢复出的项目、版本、当前项和授权；
 6. 任一不一致都必须停止，不得依据内部记忆、历史 PASS 或压缩摘要猜测继续。
 
-当前执行点：`INC-UI-010 PRODUCTION_PUBLISHED / USER_RECHECK / INC-GEN-007～001 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-009～001 PRODUCTION_PUBLISHED_USER_PASS / INC-VIDEO-001 PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_PASS / INC-ECOM-001～007 USER ACCEPTED / REM-000～011（含009A/009B）PASS / PRODUCTION LIVE`。生产已为v0.6.16/schema39；current→`v0.6.16-inc-ui-010-20260818`。用户于2026-08-18回复「全通过」收口此前待复验旧项；v0.6.16本身还没收到「通过」。未实际运行的付费两图抽验继续延期。等用户手工验收本项或说下一件要的结果。
+当前执行点：`INC-GEN-008 PLAN_APPROVED_NOT_STARTED / INC-UI-010 PRODUCTION_PUBLISHED_USER_PASS / INC-GEN-007～001 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-009～001 PRODUCTION_PUBLISHED_USER_PASS / INC-VIDEO-001 PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_PASS / INC-ECOM-001～007 USER ACCEPTED / REM-000～011（含009A/009B）PASS / PRODUCTION LIVE`。生产已为v0.6.16/schema39；current→`v0.6.16-inc-ui-010-20260818`。下一件方案见`spec/INC_GEN_008_YOUCHOANG_GPT_IMAGE_SIZE_2026-08-18.md`。OpenRouter 出图先放下。未实际运行的付费两图抽验继续延期。未听到「按这个做」不准写 INC-GEN-008 代码。

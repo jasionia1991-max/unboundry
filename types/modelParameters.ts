@@ -134,6 +134,17 @@ export type ModelReferenceMediaRules = {
   video?: ModelReferenceMediaRule;
 };
 
+export type GptImageSizeTier = "1k" | "2k" | "4k";
+
+/**
+ * Admin-editable provider size mapping: quality tier -> aspect ratio -> pixel.
+ * Only honored for `gpt-image` image models; other protocols are rejected at
+ * save time.
+ */
+export type GptImageSizeMap = Partial<
+  Record<GptImageSizeTier, Record<string, string>>
+>;
+
 /**
  * Version 2 is deliberately provider-neutral. The browser only stores keys from
  * this registry; a server-side Provider adapter remains responsible for mapping
@@ -146,6 +157,7 @@ export type ModelParameterSchema = {
   inputPolicy?: ModelNodeInputPolicy;
   referenceMediaRules?: ModelReferenceMediaRules;
   referencePolicy?: ModelReferencePolicy;
+  sizeMap?: GptImageSizeMap;
   upstreamInputs?: ModelUpstreamInputs;
   version: 2;
 };
@@ -180,6 +192,62 @@ export const defaultParameterGroups: ModelParameterGroup[] = [
   { key: "advanced", label: "高级设置", order: 30 },
   { key: "output", label: "输出", order: 40 },
 ];
+
+export const gptImageSizeTiers: readonly GptImageSizeTier[] = [
+  "1k",
+  "2k",
+  "4k",
+];
+
+/**
+ * 优创「GPT Image 2 · 专用协议」文档尺寸表（2026-08-19 对照本地爬取快照
+ * `.crawl4ai-tool/out/ycaigc-all-models/057_image__gpt-image-2.json` 核对）。
+ * 1K / 2K / 4K 各档只支持文档列出的比例；文档没有的组合必须拦截，
+ * 不能静默退回 1024 系列，也不能乱猜像素。
+ */
+export const youchuangGptImageSizes: Readonly<
+  Record<GptImageSizeTier, Readonly<Record<string, string>>>
+> = {
+  "1k": {
+    "1:1": "1024x1024",
+    "2:3": "1024x1536",
+    "3:2": "1536x1024",
+    "3:4": "960x1280",
+    "4:3": "1280x960",
+    "9:16": "1088x1920",
+    "16:9": "1920x1088",
+    "4:5": "1024x1280",
+    "5:4": "1280x1024",
+    "1:2": "960x1920",
+    "2:1": "1920x960",
+  },
+  "2k": {
+    "1:1": "2048x2048",
+    "2:3": "2048x3072",
+    "3:2": "3072x2048",
+    "3:4": "1920x2560",
+    "4:3": "2560x1920",
+    "9:16": "1440x2560",
+    "16:9": "2560x1440",
+    "4:5": "2048x2560",
+    "5:4": "2560x2048",
+    "1:2": "1280x2560",
+    "2:1": "2560x1280",
+  },
+  "4k": {
+    "1:1": "2880x2880",
+    "2:3": "2304x3456",
+    "3:2": "3456x2304",
+    "3:4": "2400x3200",
+    "4:3": "3200x2400",
+    "9:16": "2160x3840",
+    "16:9": "3840x2160",
+    "4:5": "2560x3200",
+    "5:4": "3200x2560",
+    "1:2": "1920x3840",
+    "2:1": "3840x1920",
+  },
+};
 
 const options = (values: Array<ModelParameterValue | [string, ModelParameterValue]>) =>
   values.map((entry) => Array.isArray(entry)
@@ -1650,6 +1718,84 @@ function cleanReferenceMediaRules(value: unknown): ModelReferenceMediaRules {
   };
 }
 
+/**
+ * Row-level validation for one admin-edited size-map entry. Returns a
+ * human-readable Chinese message for the UI, or undefined when the entry is
+ * acceptable. The server uses the same rule set through `cleanGptImageSizeMap`.
+ */
+export function gptImageSizeMapEntryError(
+  ratio: string,
+  pixel: string,
+): string | undefined {
+  const cleanRatio = ratio.trim();
+  if (cleanRatio !== "auto" && !/^\d+:\d+$/.test(cleanRatio)) {
+    return "比例要写成 9:16 这样的格式";
+  }
+  const cleanPixel = pixel.trim();
+  if (cleanPixel === "auto") return undefined;
+  if (!/^\d{2,5}x\d{2,5}$/.test(cleanPixel)) {
+    return "像素要写成 2160x3840 这样的格式";
+  }
+  const [width, height] = cleanPixel.split("x").map(Number);
+  if (width % 16 !== 0 || height % 16 !== 0) {
+    return "宽高都必须是 16 的倍数";
+  }
+  if (width > 3840 || height > 3840) {
+    return "单边不能超过 3840";
+  }
+  const pixels = width * height;
+  if (pixels < 655_360 || pixels > 8_294_400) {
+    return "总像素要在 640x1024 到 3840x2160 之间";
+  }
+  if (Math.max(width, height) > Math.min(width, height) * 3) {
+    return "宽高比不能超过 3:1";
+  }
+  return undefined;
+}
+
+/**
+ * Strict server-side cleaning for the admin-editable size map. Any invalid
+ * tier, ratio, pixel or row count rejects the whole map so a partial bad save
+ * can never reach a paid request.
+ */
+export function cleanGptImageSizeMap(
+  input: unknown,
+): GptImageSizeMap | undefined {
+  if (input === undefined || input === null) return undefined;
+  if (typeof input !== "object" || Array.isArray(input)) {
+    throw new Error("Invalid model size map");
+  }
+  const raw = input as Record<string, unknown>;
+  for (const key of Object.keys(raw)) {
+    if (!(gptImageSizeTiers as readonly string[]).includes(key)) {
+      throw new Error("Invalid model size map");
+    }
+  }
+  const cleaned: GptImageSizeMap = {};
+  let hasEntries = false;
+  for (const tier of gptImageSizeTiers) {
+    const rawTier = raw[tier];
+    if (rawTier === undefined || rawTier === null) continue;
+    if (typeof rawTier !== "object" || Array.isArray(rawTier)) {
+      throw new Error("Invalid model size map");
+    }
+    const entries = Object.entries(rawTier as Record<string, unknown>);
+    if (entries.length > 24) throw new Error("Too many size map rows");
+    if (entries.length === 0) continue;
+    const rows: Record<string, string> = {};
+    for (const [rawRatio, rawPixel] of entries) {
+      const ratio = String(rawRatio).trim();
+      const pixel = typeof rawPixel === "string" ? rawPixel.trim() : "";
+      const message = gptImageSizeMapEntryError(ratio, pixel);
+      if (message) throw new Error("Invalid model size map");
+      rows[ratio] = pixel;
+    }
+    cleaned[tier] = rows;
+    hasEntries = true;
+  }
+  return hasEntries ? cleaned : undefined;
+}
+
 export function cleanParameterSchema(
   capability: ModelCapability,
   input: unknown,
@@ -1866,6 +2012,7 @@ export function cleanParameterSchema(
       switchPolicy: rawPolicy.switchPolicy,
     };
   }
+  const sizeMap = cleanGptImageSizeMap(candidate.sizeMap);
   let referencePolicy: ModelReferencePolicy | undefined;
   if (candidate.version === 2 && candidate.referencePolicy !== undefined) {
     const policy = candidate.referencePolicy as Partial<ModelReferencePolicy>;
@@ -1905,6 +2052,7 @@ export function cleanParameterSchema(
       ? { referenceMediaRules }
       : {}),
     referencePolicy,
+    ...(sizeMap ? { sizeMap } : {}),
     upstreamInputs,
     version: 2,
   };

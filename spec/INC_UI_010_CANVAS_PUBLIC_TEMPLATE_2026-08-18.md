@@ -1,6 +1,6 @@
 # INC-UI-010：管理员从画布组直接发布公共模板
 
-状态：`PRODUCTION_PUBLISHED`
+状态：`PRODUCTION_PUBLISHED_USER_PASS`
 版本：`v0.6.16`
 日期：`2026-08-18`
 
@@ -42,6 +42,6 @@
 - 切换前后schema39、quick_check ok、FK0、tasks319、attempts323、active0、公共模板47（46 published）。
 - GitHub：注释标签`v0.6.16`指向`83fd8dce9e7d7cf3fb419599aa753e66f35cdc25`；PR #29已合并，merge commit`dbfa94558ee73ce6658e5790358e23959e069b10`。
 - 发布与验证期间真实Provider请求、付费生成和OSS写入均为0。
-- 用户还没回复「通过」，本项保持 `USER_RECHECK`。
+- 用户已于 2026-08-18 明确回复「通过」，本项收口为 `PRODUCTION_PUBLISHED_USER_PASS`。
 
 详细凭证：`spec/INC_UI_010_PRODUCTION_RECEIPT_2026-08-18.json`。

@@ -301,6 +301,19 @@ function assertRelaySchemaCompatibility(input: {
   }
 }
 
+function assertSizeMapProtocolAllowed(
+  capability: Capability,
+  providerProtocol: ProviderProtocol,
+  schema: ModelParameterSchema,
+) {
+  if (
+    schema.sizeMap &&
+    !(capability === "image" && providerProtocol === "gpt-image")
+  ) {
+    throw new Error("Only gpt-image image models can configure a size map");
+  }
+}
+
 function db() {
   const directory = appDataDirectory();
   if (database && databaseDirectory === directory) return database;
@@ -1138,6 +1151,11 @@ export async function adminModelsApi(
           providerModelId: input.providerModelId,
         }),
       ), constraints);
+      assertSizeMapProtocolAllowed(
+        input.capability,
+        input.providerProtocol,
+        schema,
+      );
       assertRelaySchemaCompatibility({
         capability: input.capability,
         driver: provider.driver,
@@ -1304,6 +1322,11 @@ export async function adminModelsApi(
           providerDriver: provider.driver,
           providerModelId: input.providerModelId,
         }),
+      );
+      assertSizeMapProtocolAllowed(
+        current.capability,
+        input.providerProtocol,
+        validatedSchema,
       );
       assertRelaySchemaCompatibility({
         capability: current.capability,

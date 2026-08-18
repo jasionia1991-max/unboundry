@@ -2,19 +2,26 @@
 
 断点版本：`76`
 更新时间：`2026-08-18`
-状态：`INC_UI_010_V0_6_16_PRODUCTION_PUBLISHED`
+状态：`INC_GEN_008_PLAN_APPROVED_NOT_STARTED`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。当前一页快照见 `UNBOUNDRY_CURRENT_STATE.md`。
 
-## 0. 当前已发布事件：INC-UI-010（v0.6.16已发布，待用户复验）
+## 0. 当前待做：INC-GEN-008（方案已对齐，未改代码）
+
+- 用户要优创「GPT Image 2 · 专用协议」按文档像素发 2K/4K，不再偷换成 1024×1536。
+- 第一刀只改 `gpt-image` 协议发送；默认画质改 1K；已存 4K 按真 4K；未知组合拦截。
+- 不做新增参数直发、不续 OpenRouter、不打开通用媒体。
+- 权威方案：`spec/INC_GEN_008_YOUCHOANG_GPT_IMAGE_SIZE_2026-08-18.md`。未听到「按这个做」不准写功能代码；未说版本号+可以上线不准发。
+
+## 0.001 前一已发布事件：INC-UI-010（v0.6.16已发布并通过用户验收）
 
 - 用户确认方案并说按`v0.6.16`上线。
 - 管理员在画布上打组后可直接发成公共模板；默认仍是我的模板；发公共时清掉私图，留下提示词、节点和连线。
 - 精确源码commit`83fd8dce9e7d7cf3fb419599aa753e66f35cdc25`通过正式安全全量`118/118 specs、979/979 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。
 - 生产current已切到`/opt/unboundry/releases/v0.6.16-inc-ui-010-20260818`；冻结备份恢复、公网资源逐字节哈希、service/schema39和数据门均PASS。发布核验时保持319 tasks、323 attempts、active0、47 public templates（46 published）。
-- `v0.6.16`标签精确指向源码commit；PR #29已合并到`main`，merge commit`dbfa94558ee73ce6658e5790358e23959e069b10`。当前状态是`PRODUCTION_PUBLISHED`，用户验收仍是`USER_RECHECK`。
-- 权威记录：`spec/INC_UI_010_CANVAS_PUBLIC_TEMPLATE_2026-08-18.md`与`spec/INC_UI_010_PRODUCTION_RECEIPT_2026-08-18.json`。新会话先读 `spec/UNBOUNDRY_CURRENT_STATE.md`，等用户回复是否通过或说下一件要的结果。
+- `v0.6.16`标签精确指向源码commit；PR #29已合并到`main`，merge commit`dbfa94558ee73ce6658e5790358e23959e069b10`。用户已回复「通过」，状态是`PRODUCTION_PUBLISHED_USER_PASS`。
+- 权威记录：`spec/INC_UI_010_CANVAS_PUBLIC_TEMPLATE_2026-08-18.md`与`spec/INC_UI_010_PRODUCTION_RECEIPT_2026-08-18.json`。
 
-## 0.001 前一已发布事件：INC-GEN-007（v0.6.15已发布并通过用户验收）
+## 0.002 前一已发布事件：INC-GEN-007（v0.6.15已发布并通过用户验收）
 
 - 用户同意假提交误判与整组自动核对/再试方案，版本顺延为`v0.6.15`，验完后上线；随后明确回复“通过”。
 - GPT Image 不再把没做成片的失败写成已提交；整组自己核对或再试一次并继续；同一输入真未知时不许再开新单。
@@ -598,22 +605,22 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 
 ## 10. 2026-08-17 当前恢复卡
 
-> 2026-08-18 用户回复「全通过」：INC-GEN-006/004、INC-UI-005/004/003/002/001、INC-VIDEO-001 与此前已通过的 v0.6.15/v0.6.13/v0.6.10 一并收口。v0.6.16 INC-UI-010 已发布，等用户手工验收。
+> 2026-08-18 用户回复「全通过」收口旧项，并回复 v0.6.16「通过」。下一件 INC-GEN-008 方案已写入文档，未改代码。
 
 ```text
 项目路径：/Users/mymy/Documents/unboundry/app
-本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.16 INC-UI-010 已发布待复验；禁止reset/clean
+本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.16 LIVE USER PASS；INC-GEN-008 方案已对齐未开工；禁止reset/clean
 生产：canvas.mymy.ltd；v0.6.16/schema39；/opt/unboundry/current -> releases/v0.6.16-inc-ui-010-20260818
 生产artifact：source commit 83fd8dce9e7d7cf3fb419599aa753e66f35cdc25；tree 02abd9480cb410ef384c76502b430aa6d956ea18
-当前状态：INC-UI-010 PRODUCTION_PUBLISHED / USER_RECHECK；INC-GEN-007～001 PRODUCTION_PUBLISHED_USER_PASS；INC-UI-009～001 PRODUCTION_PUBLISHED_USER_PASS；INC-VIDEO-001 PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_PASS；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
-技术凭证：spec/INC_UI_010_PRODUCTION_RECEIPT_2026-08-18.json；spec/INC_UI_010_CANVAS_PUBLIC_TEMPLATE_2026-08-18.md；既有v0.6.15及更早发布凭证继续保留
-用户验收：v0.6.16管理员画布直发公共模板待复验；v0.6.15假提交/自动核对、v0.6.14过期保存句、v0.6.13 Mini锁、v0.6.12整组存稳、v0.6.11～v0.6.2所列UI/视频旧项均已由用户于2026-08-18收口为PASS；其他未点头条目不自动升级
-数据库：schema39；quick_check ok；FK0；319 tasks/323 attempts；47 public templates/46 published；active0；既有生成安全配置不变
-备份：/var/lib/unboundry-rollbacks/inc-ui-010-frozen-20260818T110641Z；冻结源与恢复副本均363文件，清单SHA ec0e0fda15aa455bc8b02e2fef6735c6021fbb8d7e984c51fd0567234ad8d3a1，二者均PASS；上一版inc-gen-007冻结备份及历史备份继续保留
-限制：cutover Provider/paid calls=0；未删除旧release或备份
-GitHub：v0.6.16注释标签精确指向生产源码83fd8dce9e7d7cf3fb419599aa753e66f35cdc25；PR #29已合并到main，merge commit dbfa94558ee73ce6658e5790358e23959e069b10
-未来授权：本次v0.6.16生产与GitHub发布授权已消费；未来生产读写、真实Provider/付费生成、push/tag/PR或新发布仍需新授权
-下一步：等待用户强制刷新后按手工清单验收并回复是否通过；不得把本次授权扩成以后每一次发布
+当前状态：INC-GEN-008 PLAN_APPROVED_NOT_STARTED；INC-UI-010 PRODUCTION_PUBLISHED_USER_PASS；INC-GEN-007～001 PRODUCTION_PUBLISHED_USER_PASS；INC-UI-009～001 PRODUCTION_PUBLISHED_USER_PASS；INC-VIDEO-001 PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_PASS；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
+技术凭证：spec/INC_GEN_008_YOUCHOANG_GPT_IMAGE_SIZE_2026-08-18.md；spec/INC_UI_010_PRODUCTION_RECEIPT_2026-08-18.json；既有v0.6.15及更早发布凭证继续保留
+用户验收：v0.6.16画布直发公共模板 USER PASS；OpenRouter 出图先放下；优创 4K 方案已对齐未做
+数据库：schema39；发布核验时 tasks319/attempts323；47 public templates/46 published；其后有真实生成，接手以现场库为准
+备份：/var/lib/unboundry-rollbacks/inc-ui-010-frozen-20260818T110641Z；清单SHA ec0e0fda15aa455bc8b02e2fef6735c6021fbb8d7e984c51fd0567234ad8d3a1；OpenRouter 操作另有 rollback json，未删
+限制：INC-GEN-008 未授权写代码；未授权真实 4K 出图；OpenRouter 不准再放行；未删除旧release或备份
+GitHub：v0.6.16注释标签精确指向生产源码83fd8dc；PR #29 merge dbfa94558ee73ce6658e5790358e23959e069b10
+未来授权：v0.6.16 发布授权已消费；INC-GEN-008 要「按这个做」才写代码；上线仍要新的版本号+可以上线
+下一步：换人接手后先读 INC-GEN-008 全文；补全优创 1K 尺寸表后再改 gpt-image 发送
 ```
 
 任何恢复者必须优先使用本节；第9节只保留历史，不得执行其“下一步”。
