@@ -85,10 +85,16 @@ export function generationOutcomeUnknown(errorCode?: string | null) {
   return errorCode === "RETRY_OUTCOME_UNKNOWN";
 }
 
-export function generationNeedsReconcile(errorCode?: string | null) {
+export function generationNeedsReconcile(
+  errorCode?: string | null,
+  retryBlockCode?: string | null,
+) {
   return errorCode === "RETRY_OUTCOME_UNKNOWN" ||
     errorCode === "PROVIDER_RESULT_MISSING" ||
-    errorCode === "PROVIDER_FAILED";
+    errorCode === "PROVIDER_FAILED" ||
+    errorCode === "PROVIDER_REQUEST_FAILED" ||
+    errorCode === "TIMEOUT" ||
+    retryBlockCode === "RETRY_OUTCOME_UNKNOWN";
 }
 
 export function generationRetryVisible(input: {

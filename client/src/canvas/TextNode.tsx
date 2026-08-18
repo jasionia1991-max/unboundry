@@ -87,6 +87,7 @@ import {
   type GenerationTaskRetryAcceptedDetail,
   type GenerationTaskSummary,
 } from "../generation/generationTasks";
+import { recoverWorkflowGenerationOnce } from "../generation/workflowGenerationRecovery";
 
 const tools = [
   ["背景颜色", "color"],
@@ -1296,7 +1297,9 @@ function TextNodeImpl({
     setNodes,
   ]);
 
-  const generateText = async (): Promise<NodeGenerationOutcome> => {
+  const generateText = async (
+    options: { autoRecover?: boolean } = {},
+  ): Promise<NodeGenerationOutcome> => {
     if (
       !inputPreflight.canSubmit ||
       !selectedTextModel ||
@@ -1435,6 +1438,27 @@ function TextNodeImpl({
         finished?.data.textGenerationError ||
         finished?.data.textGenerationErrorCode
       ) {
+        if (options.autoRecover && admitted.owner) {
+          const recovered = await recoverWorkflowGenerationOnce({
+            canvasId,
+            generationInputKey: requestedGenerationInputKey,
+            kind: "text",
+            nodeId: id,
+            taskId: submitted.id,
+            waitForCanvasRevision,
+          });
+          if (recovered.status === "success" && recovered.task) {
+            await applyGeneratedText(recovered.task, admitted.owner);
+            return { status: "success" };
+          }
+          return {
+            message: friendlyGenerationMessage(
+              recovered.message ?? finished.data.textGenerationError,
+              "text",
+            ),
+            status: "failed",
+          };
+        }
         return {
           message: friendlyGenerationMessage(
             finished.data.textGenerationError,
@@ -1550,7 +1574,7 @@ function TextNodeImpl({
     ) {
       return { message: "节点正在生成中", status: "busy" };
     }
-    const outcome = await generateText();
+    const outcome = await generateText({ autoRecover: true });
     if (outcome.status === "failed") {
       return { message: outcome.message, status: "failed" };
     }

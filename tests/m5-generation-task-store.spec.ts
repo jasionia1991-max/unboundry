@@ -1799,6 +1799,101 @@ test("retry admission rejects a task detached from its durable canvas binding", 
   }
 });
 
+test("GPT Image network and 4xx failures after the send boundary stay retryable", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-gpt-image-not-submitted-"));
+  const store = createGenerationTaskStore(dataDirectory);
+  try {
+    const created = store.create({
+      canvasId: "gpt-image-not-submitted",
+      idempotencyKey: "gpt-image-not-submitted-0001",
+      kind: "image",
+      modelConfiguration: { providerProtocol: "gpt-image" },
+      nodeId: "gpt-image-not-submitted-node",
+      ownerId: "__test__",
+      prompt: "short network fail must not look submitted",
+      providerModelId: "gpt-image-2",
+      providerProfileId: "gpt-image-profile",
+    }).task;
+    store.transition(created.id, "running");
+    store.recordProviderAttempt(created.id);
+    store.transition(created.id, "failed", {
+      code: "NETWORK",
+      message: "无法连接中转站",
+    });
+    expect(store.getProviderAttemptForTask(created.id)).toMatchObject({
+      failureCode: "NETWORK",
+      outcome: "provider-failed",
+    });
+    expect(store.hasUnsafeProviderAttemptForNewPaidRetry(created.id)).toBe(false);
+
+    const rejected = store.create({
+      canvasId: "gpt-image-not-submitted",
+      idempotencyKey: "gpt-image-not-submitted-0002",
+      kind: "image",
+      modelConfiguration: { providerProtocol: "gpt-image" },
+      nodeId: "gpt-image-not-submitted-reject",
+      ownerId: "__test__",
+      prompt: "4xx reject must not look submitted",
+      providerModelId: "gpt-image-2",
+      providerProfileId: "gpt-image-profile",
+    }).task;
+    store.transition(rejected.id, "running");
+    store.recordProviderAttempt(rejected.id);
+    store.transition(rejected.id, "failed", {
+      code: "REMOTE",
+      message: "中转站暂时无法完成请求",
+    });
+    expect(store.getProviderAttemptForTask(rejected.id)).toMatchObject({
+      failureCode: "REMOTE",
+      outcome: "provider-failed",
+    });
+    expect(store.hasUnsafeProviderAttemptForNewPaidRetry(rejected.id)).toBe(false);
+  } finally {
+    store.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("the same input cannot open a second paid task while the last outcome is unknown", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-unknown-same-input-"));
+  const seed = openAppDatabase(dataDirectory);
+  seedAtomicGenerationFixture(seed, ["atomic-owner-a"]);
+  seed.close();
+  const store = createGenerationTaskStore(dataDirectory);
+  try {
+    const first = store.admitOrGet(atomicImageRequest({
+      idempotencyKey: "same-input-unknown-0001",
+    })).task;
+    store.transition(first.id, "running");
+    store.recordProviderAttempt(first.id);
+    store.transition(first.id, "failed", {
+      code: "TIMEOUT",
+      message: "等待中转站响应超时；异步任务可能仍在运行",
+    });
+    expect(store.getProviderAttemptForTask(first.id)).toMatchObject({
+      outcome: "outcome-unknown",
+    });
+    expect(() => store.admitOrGet(atomicImageRequest({
+      idempotencyKey: "same-input-unknown-0002",
+    }))).toThrow(GenerationProviderAttemptBlockedError);
+    try {
+      store.admitOrGet(atomicImageRequest({
+        idempotencyKey: "same-input-unknown-0002",
+      }));
+    } catch (error) {
+      expect(error).toMatchObject({ code: "RETRY_OUTCOME_UNKNOWN" });
+    }
+    const otherNode = store.admitOrGet(atomicImageRequest({
+      idempotencyKey: "same-input-unknown-other-node",
+      nodeId: "atomic-image-other-node",
+    }));
+    expect(otherNode.created).toBe(true);
+  } finally {
+    store.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
 test("canvas lists keep every active task and only the latest 500 terminal tasks", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-task-window-"));
   const store = createGenerationTaskStore(dataDirectory);

@@ -4428,8 +4428,20 @@ export async function generationTasks(
       }
     }
     if (!current.providerTaskId) {
+      try {
+        current = taskStore().confirmRemoteResultMissing({
+          expectedUpdatedAt: current.updatedAt,
+          taskId: current.id,
+        });
+      } catch {
+        json(response, 409, {
+          code: "RETRY_TASK_CHANGED",
+          error: "任务状态已变化，请刷新后再试",
+        });
+        return;
+      }
       json(response, 200, {
-        outcome: "check-failed",
+        outcome: "missing",
         task: taskSummaryForOwner(
           current,
           identity.bypass ? undefined : identity.userId,

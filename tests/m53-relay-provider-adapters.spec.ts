@@ -558,10 +558,43 @@ test("GPT Image distinguishes preflight, Provider request and result failures", 
       throw new Error("deterministic Provider request failure");
     },
   })).rejects.toMatchObject({
-    code: "PROVIDER_REQUEST_FAILED",
-    providerTaskMayStillRun: true,
+    code: "NETWORK",
+    providerTaskMayStillRun: false,
   });
   expect(boundaries).toBe(1);
+
+  await expect(requestRelayGptImage(connection, validRequest, {
+    beforeProviderRequest: () => {
+      boundaries += 1;
+    },
+    fetcher: async () => jsonResponse({ error: { message: "invalid key" } }, 401),
+  })).rejects.toMatchObject({
+    code: "AUTH",
+    providerTaskMayStillRun: false,
+  });
+  expect(boundaries).toBe(2);
+
+  await expect(requestRelayGptImage(connection, validRequest, {
+    beforeProviderRequest: () => {
+      boundaries += 1;
+    },
+    fetcher: async () => jsonResponse({ error: { message: "bad image" } }, 400),
+  })).rejects.toMatchObject({
+    code: "REMOTE",
+    providerTaskMayStillRun: false,
+  });
+  expect(boundaries).toBe(3);
+
+  await expect(requestRelayGptImage(connection, validRequest, {
+    beforeProviderRequest: () => {
+      boundaries += 1;
+    },
+    fetcher: async () => jsonResponse({ error: { message: "upstream 502" } }, 502),
+  })).rejects.toMatchObject({
+    code: "REMOTE",
+    providerTaskMayStillRun: false,
+  });
+  expect(boundaries).toBe(4);
 
   await expect(requestRelayGptImage(connection, validRequest, {
     beforeProviderRequest: () => {
@@ -572,7 +605,7 @@ test("GPT Image distinguishes preflight, Provider request and result failures", 
     code: "PROVIDER_RESULT_FORMAT",
     providerTaskMayStillRun: true,
   });
-  expect(boundaries).toBe(2);
+  expect(boundaries).toBe(5);
 });
 
 test("generic media submission accepts image, video and audio fixtures only", async () => {

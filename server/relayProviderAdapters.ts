@@ -1382,10 +1382,10 @@ export async function sendPreparedRelayGptImageRequest(
         error.providerTaskMayStillRun,
       );
     }
-    throw new RelayProviderError(
-      "PROVIDER_REQUEST_FAILED",
-      true,
-    );
+    // Keep the real transport/auth/reject code. Rewriting every post-boundary
+    // failure as "already submitted" blocked retry when the platform never
+    // created a job.
+    throw error;
   }
   try {
     return parseGptImageResult(body);

@@ -79,6 +79,7 @@ import {
   type GenerationTaskRetryAcceptedDetail,
   type GenerationTaskSummary,
 } from "../generation/generationTasks";
+import { recoverWorkflowGenerationOnce } from "../generation/workflowGenerationRecovery";
 import {
   defaultParameterSchema,
   defaultParameterValues,
@@ -551,7 +552,10 @@ function VideoNodeImpl({
     data.videoGenerationError &&
     !generating &&
     !isFixture &&
-    generationNeedsReconcile(data.videoGenerationErrorCode),
+    generationNeedsReconcile(
+      data.videoGenerationErrorCode,
+      data.videoGenerationRetryBlockCode,
+    ),
   );
 
   const clearVideoIntentAfterDurableTerminalPatch = (taskId: string) => {
@@ -879,7 +883,9 @@ function VideoNodeImpl({
     return true;
   };
 
-  const generateVideo = async (): Promise<NodeGenerationOutcome> => {
+  const generateVideo = async (
+    options: { autoRecover?: boolean } = {},
+  ): Promise<NodeGenerationOutcome> => {
     const cleanPrompt = inputPreflight.finalPrompt;
     if (
       !cleanPrompt ||
@@ -1043,18 +1049,52 @@ function VideoNodeImpl({
         };
       }
       if (task.state !== "success") {
-        persistVideoGenerationFailure(
-          task.id,
-          friendlyGenerationMessage(task.errorMessage, "video"),
-          task.errorCode,
-          safelyRetryableGenerationTask(task),
-          task.retryBlockCode,
-          task.retryBlockReason,
-        );
-        return {
-          message: friendlyGenerationMessage(task.errorMessage, "video"),
-          status: "failed",
-        };
+        if (options.autoRecover) {
+          const recovered = await recoverWorkflowGenerationOnce({
+            canvasId,
+            generationInputKey: requestedGenerationInputKey,
+            kind: "video",
+            nodeId: id,
+            taskId: task.id,
+            waitForCanvasRevision,
+          });
+          if (recovered.status === "success" && recovered.task) {
+            task = recovered.task;
+          } else {
+            const failed = recovered.task ?? task;
+            persistVideoGenerationFailure(
+              failed.id,
+              friendlyGenerationMessage(
+                recovered.message ?? failed.errorMessage,
+                "video",
+              ),
+              failed.errorCode,
+              safelyRetryableGenerationTask(failed),
+              failed.retryBlockCode,
+              failed.retryBlockReason,
+            );
+            return {
+              message: friendlyGenerationMessage(
+                recovered.message ?? failed.errorMessage,
+                "video",
+              ),
+              status: "failed",
+            };
+          }
+        } else {
+          persistVideoGenerationFailure(
+            task.id,
+            friendlyGenerationMessage(task.errorMessage, "video"),
+            task.errorCode,
+            safelyRetryableGenerationTask(task),
+            task.retryBlockCode,
+            task.retryBlockReason,
+          );
+          return {
+            message: friendlyGenerationMessage(task.errorMessage, "video"),
+            status: "failed",
+          };
+        }
       }
       await applyGeneratedVideo(
         task,
@@ -1172,7 +1212,7 @@ function VideoNodeImpl({
     ) {
       return { message: "节点正在生成中", status: "busy" };
     }
-    const outcome = await generateVideo();
+    const outcome = await generateVideo({ autoRecover: true });
     if (outcome.status === "failed") {
       return { message: outcome.message, status: "failed" };
     }
