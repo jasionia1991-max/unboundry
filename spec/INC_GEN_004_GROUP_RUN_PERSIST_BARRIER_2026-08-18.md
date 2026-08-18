@@ -1,6 +1,6 @@
 # INC-GEN-004：整组节点结束后先存稳再往下跑
 
-状态：`LOCAL_COMMITTED`
+状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
 版本：`v0.6.12`
 日期：`2026-08-18`
 
@@ -31,3 +31,16 @@
 - 定向 `m22` 20/20、`m81` 41/41、`m27` 20/20 通过。
 - 正式安全全量 `118/118 specs、971/971 tests PASS`，失败/跳过/重试/blocked/reportErrors均为0。4173 listener 不变。
 - 源码快照 534 文件，SHA-256 `4c2e16713cfd576840412a8474e132f8ddfbfb1a0e006e3adaaefb549e1a9661`。
+
+## 生产发布
+
+- 精确源码commit`dc1b4a8b37030b13169a2016ad12ed124892e74b`、tree`4dc5aeafb5456e41e562563291353d67369e3159`。
+- 生产current已切到`/opt/unboundry/releases/v0.6.12-inc-gen-004-20260818`；上一不可变release `v0.6.11-inc-ui-009-20260817`完整保留。
+- 冻结备份`/var/lib/unboundry-rollbacks/inc-gen-004-frozen-20260817T192140Z`：冻结源与恢复副本均363文件，清单SHA-256同为`cbcaf491b3c724fc0861ded7c660a4d635bc47af3f78a1917a7bb815e7b8d6a0`。
+- 公网version为0.6.12；入口JS/CSS及CanvasShell与release逐字节一致。
+- 数据不变：切换后schema39、quick_check ok、FK0、tasks256、attempts258、active0、公共模板47（46 published）。
+- GitHub：注释标签`v0.6.12`指向`dc1b4a8b37030b13169a2016ad12ed124892e74b`；PR #21已合并，merge commit`9558c9edab9b98a689925032b9702f620a69e516`。
+- 发布与验证期间真实Provider请求、付费生成和OSS写入均为0。
+- 自动验证不代替用户肉眼验收。请打开网站强制刷新后，用「一键上新+自检」整组跑一遍，看还会不会中途闪红字停住。
+
+详细凭证：`spec/INC_GEN_004_PRODUCTION_RECEIPT_2026-08-18.json`。

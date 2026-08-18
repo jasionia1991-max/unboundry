@@ -4784,8 +4784,10 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
         method: "PATCH",
       });
       await load();
+      return true;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "模型修改失败");
+      return false;
     }
   };
 
@@ -4868,7 +4870,7 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
           ),
         }
       : editingParameterSchema;
-    await updateModel(model, {
+    const saved = await updateModel(model, {
       parameterSchema,
       providerProfileId: editingParameterProviderProfileId || model.providerProfileId,
       providerProtocol:
@@ -4876,6 +4878,7 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
           ? editingParameterProviderProtocol as ProviderProtocol
           : "native",
     });
+    if (!saved) return;
     setEditingParameterModelId("");
     setEditingParameterSchema(undefined);
     setEditingParameterProviderProfileId("");

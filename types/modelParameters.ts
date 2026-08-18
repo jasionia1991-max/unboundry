@@ -488,19 +488,6 @@ function catalogField(
   };
 }
 
-function markOptionsDisabled(
-  input: ModelParameterField,
-  values: ModelParameterValue[],
-  disabledReason: string,
-): ModelParameterField {
-  return {
-    ...input,
-    options: input.options.map((option) => values.includes(option.value)
-      ? { ...option, availability: "disabled", disabledReason }
-      : option),
-  };
-}
-
 function schema(
   fields: ModelParameterField[],
   referenceInputs: ModelReferenceInputs = emptyReferenceInputs,
@@ -681,7 +668,6 @@ export const seedanceFamilyReferenceMediaRules: ModelReferenceMediaRules = {
 };
 
 function seedanceParameterSchema(mini: boolean): ModelParameterSchema {
-  const pendingPaidVerificationReason = "尚未完成本项目真实付费验证";
   const durations = mini
     ? [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     : [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30];
@@ -689,16 +675,8 @@ function seedanceParameterSchema(mini: boolean): ModelParameterSchema {
   return schema([
     catalogField("inputMode", ["text", "first-last-frame", "multimodal"], "text"),
     catalogField("aspectRatio", ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9"], "16:9"),
-    markOptionsDisabled(
-      catalogField("resolution", resolutionOptions, "480p"),
-      mini ? ["720p"] : [],
-      pendingPaidVerificationReason,
-    ),
-    markOptionsDisabled(
-      catalogField("duration", durations, 5),
-      mini ? durations.filter((value) => value > 5) : [],
-      pendingPaidVerificationReason,
-    ),
+    catalogField("resolution", resolutionOptions, "480p"),
+    catalogField("duration", durations, 5),
     catalogField("generateAudio", [true, false], true),
     catalogField("outputCount", [1], 1),
   ], { audio: 3, image: 9, video: 3 }, {
