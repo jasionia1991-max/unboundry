@@ -2,6 +2,10 @@
 
 > 写给下一个接手的人/AI agent。目标：看完本文后不需要向用户问“项目在哪、怎么跑、怎么发布、有什么红线”。
 
+## 当前本地事件：INC-GEN-005（v0.6.13已本地提交，待发布）
+
+用户同意解开 Seedance Mini 付费验证锁，版本顺延为`v0.6.13`，并授权验完后直接上线。Mini 的 4～15 秒和 480p/720p 可用；默认仍是 5 秒/480p；1080p 和 16 秒以上继续拦住；保存失败不关编辑框。正式安全全量`118/118 specs、971/971 tests PASS`，异常0。生产在切换前仍运行 v0.6.12。权威记录：`spec/INC_GEN_005_SEEDANCE_MINI_UNLOCK_2026-08-18.md`。
+
 ## 最新已发布事件：INC-GEN-004（v0.6.12已发布，待用户复验）
 
 用户同意整组存稳方案、版本顺延为`v0.6.12`，并授权验完后直接上线。整组每个节点跑完后先存稳再让下游开工；等版本号时再确认画布没又变脏；整组「画布还在保存」最多再试一次；错误提示约8秒。精确源码commit`dc1b4a8b37030b13169a2016ad12ed124892e74b`通过安全全量`118/118 specs、971/971 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.12-inc-gen-004-20260818`，公网资源哈希、冻结备份恢复、service/schema39及数据不变门PASS；生产保持256 tasks、258 attempts、active0、47 public templates（46 published）。`v0.6.12`已推送，PR #21已合并到`main`（merge commit`9558c9edab9b98a689925032b9702f620a69e516`）。当前状态是`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。权威记录：`spec/INC_GEN_004_GROUP_RUN_PERSIST_BARRIER_2026-08-18.md`与`spec/INC_GEN_004_PRODUCTION_RECEIPT_2026-08-18.json`。
@@ -268,4 +272,4 @@ ssh live-cockpit "curl -fsS http://127.0.0.1:4173/api/version"
 5. 向用户先报告恢复出的项目、版本、当前项和授权；
 6. 任一不一致都必须停止，不得依据内部记忆、历史 PASS 或压缩摘要猜测继续。
 
-当前执行点：`INC-GEN-004 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK / INC-UI-009 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-008 PRODUCTION_PUBLISHED_USER_PASS / INC-GEN-003 PRODUCTION_PUBLISHED_USER_PASS / INC-GEN-002 PRODUCTION_PUBLISHED_USER_PASS / INC-GEN-001 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-007 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-006 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-005～003、INC-UI-001/002、INC-VIDEO-001 仍为已发布待用户复验 / INC-ECOM-001～007 USER ACCEPTED / REM-000～011（含009A/009B）PASS / PRODUCTION LIVE`。生产已为v0.6.12/schema39；current→`v0.6.12-inc-gen-004-20260818`。未实际运行的付费两图/视频抽验继续延期。
+当前执行点：`INC-GEN-005 LOCAL_COMMITTED / INC-GEN-004 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK / INC-UI-009 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-008 PRODUCTION_PUBLISHED_USER_PASS / INC-GEN-003 PRODUCTION_PUBLISHED_USER_PASS / INC-GEN-002 PRODUCTION_PUBLISHED_USER_PASS / INC-GEN-001 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-007 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-006 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-005～003、INC-UI-001/002、INC-VIDEO-001 仍为已发布待用户复验 / INC-ECOM-001～007 USER ACCEPTED / REM-000～011（含009A/009B）PASS / PRODUCTION LIVE`。生产仍为v0.6.12/schema39；current→`v0.6.12-inc-gen-004-20260818`。v0.6.13已本地提交待发布。未实际运行的付费两图/视频抽验继续延期。

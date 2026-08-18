@@ -104,15 +104,20 @@ test("future models use the safe shared parameter registry", () => {
     ]),
     switchPolicy: "keep-edge",
   });
-  expect(() => validateParameterValues(schema, {
+  expect(validateParameterValues(schema, {
     aspectRatio: "16:9",
     duration: 10,
     generateAudio: false,
     inputMode: "text",
     outputCount: 1,
     resolution: "720p",
-  })).toThrow("Unsupported model parameter value");
+  })).toMatchObject({
+    duration: 10,
+    resolution: "720p",
+  });
   expect(() => validateParameterValues(schema, { resolution: "1080p" }))
+    .toThrow("Unsupported model parameter value");
+  expect(() => validateParameterValues(schema, { duration: 16 }))
     .toThrow("Unsupported model parameter value");
   expect(() => validateParameterValues(schema, { providerRawOption: "unsafe" }))
     .toThrow("Unsupported model parameter");
