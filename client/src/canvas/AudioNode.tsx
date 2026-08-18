@@ -78,6 +78,7 @@ import {
   type GenerationTaskRetryAcceptedDetail,
   type GenerationTaskSummary,
 } from "../generation/generationTasks";
+import { recoverWorkflowGenerationOnce } from "../generation/workflowGenerationRecovery";
 import {
   activeParameterFields,
   defaultParameterSchema,
@@ -532,7 +533,10 @@ function AudioNodeImpl({
     data.audioGenerationError &&
     !generating &&
     !isFixture &&
-    generationNeedsReconcile(data.audioGenerationErrorCode),
+    generationNeedsReconcile(
+      data.audioGenerationErrorCode,
+      data.audioGenerationRetryBlockCode,
+    ),
   );
 
   const clearAudioIntentAfterDurableTerminalPatch = (taskId: string) => {
@@ -886,7 +890,9 @@ function AudioNodeImpl({
     return true;
   };
 
-  const generateAudio = async (): Promise<NodeGenerationOutcome> => {
+  const generateAudio = async (
+    options: { autoRecover?: boolean } = {},
+  ): Promise<NodeGenerationOutcome> => {
     const cleanPrompt = inputPreflight.finalPrompt;
     if (
       !cleanPrompt ||
@@ -1052,18 +1058,52 @@ function AudioNodeImpl({
         };
       }
       if (task.state !== "success") {
-        persistAudioGenerationFailure(
-          task.id,
-          friendlyGenerationMessage(task.errorMessage, "audio"),
-          task.errorCode,
-          safelyRetryableGenerationTask(task),
-          task.retryBlockCode,
-          task.retryBlockReason,
-        );
-        return {
-          message: friendlyGenerationMessage(task.errorMessage, "audio"),
-          status: "failed",
-        };
+        if (options.autoRecover) {
+          const recovered = await recoverWorkflowGenerationOnce({
+            canvasId,
+            generationInputKey: requestedGenerationInputKey,
+            kind: "audio",
+            nodeId: id,
+            taskId: task.id,
+            waitForCanvasRevision,
+          });
+          if (recovered.status === "success" && recovered.task) {
+            task = recovered.task;
+          } else {
+            const failed = recovered.task ?? task;
+            persistAudioGenerationFailure(
+              failed.id,
+              friendlyGenerationMessage(
+                recovered.message ?? failed.errorMessage,
+                "audio",
+              ),
+              failed.errorCode,
+              safelyRetryableGenerationTask(failed),
+              failed.retryBlockCode,
+              failed.retryBlockReason,
+            );
+            return {
+              message: friendlyGenerationMessage(
+                recovered.message ?? failed.errorMessage,
+                "audio",
+              ),
+              status: "failed",
+            };
+          }
+        } else {
+          persistAudioGenerationFailure(
+            task.id,
+            friendlyGenerationMessage(task.errorMessage, "audio"),
+            task.errorCode,
+            safelyRetryableGenerationTask(task),
+            task.retryBlockCode,
+            task.retryBlockReason,
+          );
+          return {
+            message: friendlyGenerationMessage(task.errorMessage, "audio"),
+            status: "failed",
+          };
+        }
       }
       await applyGeneratedAudio(
         task,
@@ -1181,7 +1221,7 @@ function AudioNodeImpl({
     ) {
       return { message: "节点正在生成中", status: "busy" };
     }
-    const outcome = await generateAudio();
+    const outcome = await generateAudio({ autoRecover: true });
     if (outcome.status === "failed") {
       return { message: outcome.message, status: "failed" };
     }

@@ -11,6 +11,8 @@ import {
   type WorkflowNodeShape,
 } from "../client/src/generation/workflowExecution";
 import { friendlyGenerationMessage } from "../client/src/generation/friendlyGenerationMessage";
+import { generationNeedsReconcile } from "../client/src/generation/generationRetry";
+import { workflowRecoveryPlan } from "../client/src/generation/workflowGenerationRecovery";
 import {
   createSaveGateRun,
   runExclusiveCanvasSubmit,
@@ -1075,4 +1077,41 @@ test("group run ignores a leftover canvas-save error and still blocks a real mod
     await request.delete(`/api/projects/${project.id}`);
     await request.delete(`/api/assets/${assetId}`);
   }
+});
+
+test("workflow recovery retries a fake submit and only reconciles a true unknown outcome", () => {
+  expect(workflowRecoveryPlan({
+    errorCode: "NETWORK",
+    retryAllowed: true,
+    state: "failed",
+  })).toBe("retry");
+  expect(workflowRecoveryPlan({
+    errorCode: "REMOTE",
+    retryAllowed: true,
+    state: "failed",
+  })).toBe("retry");
+  expect(workflowRecoveryPlan({
+    errorCode: "TIMEOUT",
+    retryAllowed: false,
+    retryBlockCode: "RETRY_OUTCOME_UNKNOWN",
+    state: "failed",
+  })).toBe("reconcile");
+  expect(workflowRecoveryPlan({
+    errorCode: "PROVIDER_REQUEST_FAILED",
+    retryAllowed: false,
+    retryBlockCode: "RETRY_OUTCOME_UNKNOWN",
+    state: "failed",
+  })).toBe("reconcile");
+  expect(workflowRecoveryPlan({
+    errorCode: "CANVAS_NOT_SAVED",
+    retryAllowed: false,
+    state: "failed",
+  })).toBe("stop");
+  expect(workflowRecoveryPlan({
+    state: "success",
+  })).toBe("success");
+  expect(generationNeedsReconcile("PROVIDER_REQUEST_FAILED")).toBe(true);
+  expect(generationNeedsReconcile("TIMEOUT")).toBe(true);
+  expect(generationNeedsReconcile("NETWORK", "RETRY_OUTCOME_UNKNOWN")).toBe(true);
+  expect(generationNeedsReconcile("INPUT_INVALID")).toBe(false);
 });

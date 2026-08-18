@@ -92,6 +92,7 @@ import {
   type GenerationTaskRetryAcceptedDetail,
   type GenerationTaskSummary,
 } from "../generation/generationTasks";
+import { recoverWorkflowGenerationOnce } from "../generation/workflowGenerationRecovery";
 import {
   defaultParameterSchema,
   defaultParameterValues,
@@ -1754,7 +1755,10 @@ function ImageNodeImpl({
     data.imageGenerationError &&
     !generating &&
     !isFixture &&
-    generationNeedsReconcile(data.imageGenerationErrorCode),
+    generationNeedsReconcile(
+      data.imageGenerationErrorCode,
+      data.imageGenerationRetryBlockCode,
+    ),
   );
 
   const clearImageIntentAfterDurableTerminalPatch = (taskId: string) => {
@@ -1907,7 +1911,9 @@ function ImageNodeImpl({
     return true;
   };
 
-  const generateImage = async (): Promise<NodeGenerationOutcome> => {
+  const generateImage = async (
+    options: { autoRecover?: boolean } = {},
+  ): Promise<NodeGenerationOutcome> => {
     const cleanPrompt = inputPreflight.finalPrompt;
     if (
       !cleanPrompt ||
@@ -2083,22 +2089,57 @@ function ImageNodeImpl({
         };
       }
       if (task.state !== "success") {
-        persistImageGenerationFailure(
-          task.id,
-          generationRun,
-          friendlyGenerationMessage(
-            task.errorMessage,
-            "image",
-          ),
-          task.errorCode,
-          safelyRetryableGenerationTask(task),
-          task.retryBlockCode,
-          task.retryBlockReason,
-        );
-        return {
-          message: friendlyGenerationMessage(task.errorMessage, "image"),
-          status: "failed",
-        };
+        if (options.autoRecover) {
+          const recovered = await recoverWorkflowGenerationOnce({
+            canvasId,
+            generationInputKey: requestedGenerationInputKey,
+            kind: "image",
+            nodeId: id,
+            taskId: task.id,
+            waitForCanvasRevision,
+          });
+          if (recovered.status === "success" && recovered.task) {
+            task = recovered.task;
+          } else {
+            const failed = recovered.task ?? task;
+            persistImageGenerationFailure(
+              failed.id,
+              generationRun,
+              friendlyGenerationMessage(
+                recovered.message ?? failed.errorMessage,
+                "image",
+              ),
+              failed.errorCode,
+              safelyRetryableGenerationTask(failed),
+              failed.retryBlockCode,
+              failed.retryBlockReason,
+            );
+            return {
+              message: friendlyGenerationMessage(
+                recovered.message ?? failed.errorMessage,
+                "image",
+              ),
+              status: "failed",
+            };
+          }
+        } else {
+          persistImageGenerationFailure(
+            task.id,
+            generationRun,
+            friendlyGenerationMessage(
+              task.errorMessage,
+              "image",
+            ),
+            task.errorCode,
+            safelyRetryableGenerationTask(task),
+            task.retryBlockCode,
+            task.retryBlockReason,
+          );
+          return {
+            message: friendlyGenerationMessage(task.errorMessage, "image"),
+            status: "failed",
+          };
+        }
       }
       await applyGeneratedImage(task, generationRun);
       pollingPausedTaskIdRef.current = undefined;
@@ -2217,7 +2258,7 @@ function ImageNodeImpl({
     if (blockingProblem) {
       return persistWorkflowInputFailure(blockingProblem);
     }
-    const outcome = await generateImage();
+    const outcome = await generateImage({ autoRecover: true });
     if (outcome.status === "failed") {
       return { message: outcome.message, status: "failed" };
     }

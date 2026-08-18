@@ -426,6 +426,19 @@ function whitelistedRequestIntent(value: Record<string, unknown>) {
   );
 }
 
+function rowProviderProtocol(row: Pick<GenerationTaskRow, "model_configuration">) {
+  try {
+    const parsed = JSON.parse(row.model_configuration) as {
+      providerProtocol?: unknown;
+    };
+    return typeof parsed.providerProtocol === "string"
+      ? parsed.providerProtocol
+      : "native";
+  } catch {
+    return "native";
+  }
+}
+
 function hashRequestIntent(value: Record<string, unknown>) {
   return requestIntentFingerprintVersion + createHash("sha256")
     .update(JSON.stringify(stableValue(value)))
@@ -1267,6 +1280,35 @@ export function createGenerationTaskStore(dataDirectory: string) {
             ...normalized.modelConfiguration,
             credentialVersion: admittedCredentialRevision,
           }));
+        }
+
+        const unresolvedSameInput = database.prepare(`
+          SELECT t.id
+          FROM generation_tasks AS t
+          JOIN generation_provider_attempts AS attempt
+            ON attempt.task_id = t.id
+            AND attempt.execution_attempt = t.attempt
+          WHERE
+            t.owner_id = ?
+            AND t.canvas_id = ?
+            AND t.node_id = ?
+            AND t.kind = ?
+            AND t.request_fingerprint = ?
+            AND t.state = 'failed'
+            AND attempt.outcome = 'outcome-unknown'
+          LIMIT 1
+        `).get(
+          normalized.ownerId,
+          normalized.canvasId,
+          normalized.nodeId,
+          normalized.kind,
+          fingerprint,
+        );
+        if (unresolvedSameInput) {
+          throw new GenerationProviderAttemptBlockedError(
+            "RETRY_OUTCOME_UNKNOWN",
+            "上次结果还没对上，为避免重复扣费，请先点「核对结果」，不要重新生成",
+          );
         }
 
         const admission = generationAdmissionInTransaction(database, {
@@ -2519,7 +2561,14 @@ export function createGenerationTaskStore(dataDirectory: string) {
               "PERMISSION",
               "RATE_LIMIT",
             ].includes(error?.code ?? "");
-            const providerFailed = error?.code === "PROVIDER_FAILED";
+            const gptImageNotSubmitted = rowProviderProtocol(current) === "gpt-image" &&
+              [
+                "NETWORK",
+                "REMOTE",
+                "PROXY_CONFIGURATION",
+              ].includes(error?.code ?? "");
+            const providerFailed = error?.code === "PROVIDER_FAILED" ||
+              gptImageNotSubmitted;
             const nextOutcome: GenerationProviderAttemptOutcome =
               definitiveRejected && attempt.outcome === "boundary-claimed"
                 ? "definitive-rejected"
