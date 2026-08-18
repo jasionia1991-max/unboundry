@@ -6,6 +6,11 @@
 权威快照：`spec/UNBOUNDRY_CURRENT_STATE.md`  
 前置：`spec/INC_GEN_008_YOUCHOANG_GPT_IMAGE_SIZE_2026-08-18.md`（第一刀已在工作区完成、全量测绿）
 
+## UI 对齐跟进（2026-08-19 v0.6.18）
+
+- 用户反馈该面板看不懂、按钮样式与项目 UI 不一致；`v0.6.18` 已把面板样式对齐暗黑规范（按钮/输入框/表格统一）、比例输入支持下拉建议、文案改成人话，出图逻辑不变。
+- 发布到 `/opt/unboundry/releases/v0.6.18-ui-align-20260819`；权威凭证：`spec/INC_GEN_009_UI_ALIGN_PRODUCTION_RECEIPT_2026-08-19.json`。
+
 ## 发布（2026-08-19 v0.6.17）
 
 - 代码已按 `v0.6.17` 发布到 `/opt/unboundry/releases/v0.6.17-inc-gen-008-009-20260819`；`current` 已切换，服务 active、NRestarts 0、schema39。

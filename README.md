@@ -1,8 +1,12 @@
 # 无央 Unboundry
 
-TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mymy.ltd`；当前线上 `v0.6.17 / schema39`）。
+TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mymy.ltd`；当前线上 `v0.6.18 / schema39`）。
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
+
+## 2026-08-19 优创尺寸映射面板 UI 对齐（v0.6.18 已发布，待你复验）
+
+管理员后台「优创尺寸映射」面板样式已对齐项目暗黑 UI：按钮/输入框/表格统一，比例输入支持下拉建议，说明文案改成人话（空着就按内置表出图）。出图逻辑不变。正式安全全量`118/118 specs、983/983 tests PASS`。生产已切到`v0.6.18-ui-align-20260819`，冻结备份、schema39 和数据门通过；tasks322/attempts326/active0、模板48（46 published），真实 Provider/付费/OSS 写入 0。`v0.6.18` 标签指向精确生产源码，PR #32 已合并。v0.6.17 也仍在等你复验。凭证 [`spec/INC_GEN_009_UI_ALIGN_PRODUCTION_RECEIPT_2026-08-19.json`](spec/INC_GEN_009_UI_ALIGN_PRODUCTION_RECEIPT_2026-08-19.json)。
 
 ## 2026-08-19 优创按文档尺寸出图 + 后台自改尺寸表（v0.6.17 已发布，待你复验）
 

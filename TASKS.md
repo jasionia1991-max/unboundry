@@ -1,7 +1,14 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-19
-状态：`v0.6.17已发布（2026-08-19）待用户复验；v0.6.16已发布且USER PASS。INC-GEN-008与INC-GEN-009已随v0.6.17上线，正在等你复验。当前权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+状态：`v0.6.18已发布（2026-08-19）待用户复验；v0.6.17也待用户复验；v0.6.16已发布且USER PASS。INC-GEN-008与INC-GEN-009已随v0.6.17上线，尺寸映射面板UI对齐已随v0.6.18上线，正在等你复验。当前权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+
+### 2026-08-19 优创尺寸映射面板 UI 对齐（v0.6.18）
+
+- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS`（待用户复验）。用户授权 `v0.6.18` 上线；已发布，正在等你复验（v0.6.17 也还在等你复验）。
+- 要的结果：管理员后台「优创尺寸映射」面板样式对齐项目暗黑 UI；比例输入可下拉选；说明文案改大白话；出图逻辑不变。
+- 自动门：正式安全全量 `118/118 specs、983/983 tests PASS`；定向 m18/m12/m17/m53/m57/m81 全绿。
+- 发布：commit `e47f50c0bde0ee23585f27b71ad8df240973161a1` 已发布到 `/opt/unboundry/releases/v0.6.18-ui-align-20260819`；冻结备份/数据门/schema39 通过；GitHub `v0.6.18` 标签、PR #32 已合并。凭证 `spec/INC_GEN_009_UI_ALIGN_PRODUCTION_RECEIPT_2026-08-19.json`。
 
 ### 2026-08-19 管理员后台自改优创尺寸映射（INC-GEN-009）
 
