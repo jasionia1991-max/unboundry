@@ -6,7 +6,11 @@
 
 新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-19 的权威现状、产品合同和用户已点头的旧项收口。下面各节是历史增量，出现「当前」时只代表该时点。
 
-## 最新已发布事件：INC-GEN-009 UI 对齐（v0.6.18 已发布，用户已复验通过）
+## 最新已发布事件：v0.6.19 验收收口（2026-08-19 已发布，待用户复验）
+
+v0.6.19 为验收收口发布：记录 v0.6.17/v0.6.18 用户复验通过、版本号升至 0.6.19、运行时放行新版本，无产品功能改动。精确源码commit`797a46bf4151eaf21195f35f91c575bee167d08b`通过安全全量`118/118 specs、983/983 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.19-acceptance-close-20260819`，公网资源哈希、冻结备份`v0.6.19-frozen-8fq2Wp`（365文件，双清单SHA`402a6dbe…`）、service/schema39及数据门PASS；发布核验时保持323 tasks、327 attempts、active0、48 public templates（46 published）。`v0.6.19`已推送，PR #33已合并到`main`（merge commit`adb3409029b92b4cac8c5101ce43e647adcc3586`）。当前状态是`PRODUCTION_PUBLISHED_AUTO_PASS`（待用户复验）。权威记录：`spec/V0_6_19_PRODUCTION_RECEIPT_2026-08-19.json`。
+
+## 前一已发布事件：INC-GEN-009 UI 对齐（v0.6.18 已发布，用户已复验通过）
 
 用户反馈管理员后台「优创尺寸映射」看不懂且样式与项目 UI 不一致，授权 `v0.6.18` 上线。本轮把面板样式对齐暗黑规范：按钮/输入框/表格统一，比例输入支持下拉建议，说明文案改成人话；出图逻辑不变。精确源码commit`e47f50c0bde0ee23585f27b71ad8df240973161a1`通过安全全量`118/118 specs、983/983 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.18-ui-align-20260819`，公网资源哈希、冻结备份、service/schema39及数据门PASS；发布核验时保持322 tasks、326 attempts、active0、48 public templates（46 published）。`v0.6.18`已推送，PR #32已合并到`main`（merge commit`265c8f63e867e122ecab2f145c362d5bdab3bd19`）。2026-08-19 用户回复「通过」，当前状态是`PRODUCTION_PUBLISHED_USER_PASS`（v0.6.17 同收口）。权威记录：`spec/INC_GEN_009_UI_ALIGN_PRODUCTION_RECEIPT_2026-08-19.json`。
 

@@ -2,10 +2,18 @@
 
 断点版本：`77`
 更新时间：`2026-08-19`
-状态：`V0_6_18_UI_ALIGN_PRODUCTION_PUBLISHED_USER_PASS（2026-08-19 用户复验通过）`
+状态：`V0_6_19_ACCEPTANCE_CLOSE_PRODUCTION_PUBLISHED_AUTO_PASS（2026-08-19 已发布，待用户复验）`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。当前一页快照见 `UNBOUNDRY_CURRENT_STATE.md`。
 
-## 0. 最新已发布事件：INC-GEN-009 UI 对齐（v0.6.18，用户已复验通过）
+## 0. 最新已发布事件：v0.6.19 验收收口（2026-08-19 已发布，待用户复验）
+
+- v0.6.19 为验收收口发布：记录 v0.6.17/v0.6.18 用户复验通过、版本号升至 0.6.19、运行时放行新版本，无产品功能改动。
+- 精确源码commit`797a46bf4151eaf21195f35f91c575bee167d08b`通过正式安全全量`118/118 specs、983/983 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。
+- 生产current已切到`/opt/unboundry/releases/v0.6.19-acceptance-close-20260819`；冻结备份`v0.6.19-frozen-8fq2Wp`（365文件，双清单SHA`402a6dbe…`）、公网资源逐字节哈希、service/schema39和数据门均PASS。发布核验时保持323 tasks、327 attempts、active0、48 public templates（46 published）。
+- `v0.6.19`标签精确指向源码commit；PR #33已合并到`main`，merge commit`adb3409029b92b4cac8c5101ce43e647adcc3586`。状态是`PRODUCTION_PUBLISHED_AUTO_PASS`（待用户复验）。
+- 权威记录：`spec/V0_6_19_PRODUCTION_RECEIPT_2026-08-19.json`。
+
+## 0.1 上一发布事件：INC-GEN-009 UI 对齐（v0.6.18，用户已复验通过）
 
 - 用户反馈管理员后台「优创尺寸映射」看不懂且样式不一致，授权 `v0.6.18` 上线；面板样式对齐暗黑 UI、比例输入支持下拉、文案改大白话，出图逻辑不变。
 - 精确源码commit`e47f50c0bde0ee23585f27b71ad8df240973161a1`通过正式安全全量`118/118 specs、983/983 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。

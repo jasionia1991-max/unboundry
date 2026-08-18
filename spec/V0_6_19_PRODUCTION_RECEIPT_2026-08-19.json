@@ -1,0 +1,111 @@
+{
+  "incident": "V0.6.19-ACCEPTANCE-CLOSE",
+  "version": "0.6.19",
+  "status": "PRODUCTION_PUBLISHED_AUTO_PASS",
+  "publishedAt": "2026-08-18T21:18:52Z",
+  "changes": {
+    "summary": "验收收口发布：记录 v0.6.17/v0.6.18 用户复验通过、版本号升至 0.6.19、运行时放行新版本；无产品功能改动。",
+    "scope": "文档与版本号收口；server/bridgeRuntimeMode.ts 仅把 0.6.19 加入 final 角色放行清单",
+    "generationLogicUnchanged": true
+  },
+  "source": {
+    "commit": "797a46bf4151eaf21195f35f91c575bee167d08b",
+    "tree": "919434fe665a590109ca1714a511646c5d1a263f",
+    "tagObject": "61d28013250b06499c32d74aec5a5e308a2fad12"
+  },
+  "tests": {
+    "full": {
+      "specsPassed": 118,
+      "specsTotal": 118,
+      "testsPassed": 983,
+      "testsTotal": 983,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0
+    },
+    "sourceFiles": 550,
+    "sourceSnapshotSha256": "cd5816efdf311ab167656391c0c8dfa971d03aa7d7b887a91e2370884f4ff15b",
+    "listenerBeforeAfterSha256": "24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244"
+  },
+  "backup": {
+    "path": "/var/lib/unboundry-rollbacks/v0.6.19-frozen-8fq2Wp",
+    "files": 365,
+    "frozenManifestSha256": "402a6dbea47c6cfff76a5cddf623173f2ad8136a55b788e7d6a77bbb46ab9bd2",
+    "restoreManifestSha256": "402a6dbea47c6cfff76a5cddf623173f2ad8136a55b788e7d6a77bbb46ab9bd2",
+    "restoreSchemaVersion": 39,
+    "restoreDatabaseIntegrity": "ok",
+    "restoreForeignKeyViolations": 0,
+    "restoreTasks": 323,
+    "restoreProviderAttempts": 327,
+    "restorePublicTemplates": 48,
+    "restorePublishedTemplates": 46
+  },
+  "production": {
+    "release": "/opt/unboundry/releases/v0.6.19-acceptance-close-20260819",
+    "previousRelease": "/opt/unboundry/releases/v0.6.18-ui-align-20260819",
+    "releaseInventoryFileSha256": "6f66a33a61bab655f42cdfe3bead08a6de5f867b2a8bcf22f90978cce95431b5",
+    "releaseInventoryLines": 5059,
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "restartCount": 0,
+    "schemaVersion": 39,
+    "databaseIntegrity": "ok",
+    "foreignKeyViolations": 0,
+    "tasks": 323,
+    "providerAttempts": 327,
+    "activeGenerations": 0,
+    "publicTemplates": 48,
+    "publishedTemplates": 46
+  },
+  "publicAssets": {
+    "version": "0.6.19",
+    "rootStatus": 200,
+    "title": "无央｜AI 无限画布",
+    "indexJs": {
+      "path": "/assets/index-BY2fZBwt.js",
+      "sha256": "0f79548857e5903267d46e6fd5af5f9c307c66d1a3d47dc4bf95eb6a6d0ef413",
+      "matchesRelease": true
+    },
+    "indexCss": {
+      "path": "/assets/index-DIlDf1FK.css",
+      "sha256": "d2f5130dca9fce3381340ef5c5ab341b80a3c4b0777108ef72fc73f05c511107",
+      "matchesRelease": true
+    },
+    "canvasShell": {
+      "path": "/assets/CanvasShell-CBmFv4j0.js",
+      "sha256": "0fbfa553ab5b95e5a2e39058bbd72bdf4cf9ef16e8a038ad7f9e2c73631b3873",
+      "matchesRelease": true
+    },
+    "workspacePage": {
+      "path": "/assets/WorkspacePage-cevQMHuw.js",
+      "sha256": "6397c192682259706e03b44dbf1fbf18d4fe911541492cefef6d440fa4ecf78d",
+      "matchesRelease": true
+    },
+    "projectStorage": {
+      "path": "/assets/projectStorage-BZA8ejMj.js",
+      "sha256": "aa82e0fd3006d9676e396b83574009ea3455c9569e24188c2687c66d2a3005a9",
+      "matchesRelease": true
+    }
+  },
+  "productionConfig": {
+    "gptImageDefaultQuality": "1k",
+    "unchangedFromPrevious": true
+  },
+  "externalEffects": {
+    "realProviderRequests": 0,
+    "paidGenerationRequests": 0,
+    "ossWrites": 0
+  },
+  "github": {
+    "state": "MERGED",
+    "pullRequest": 33,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/33",
+    "mergedAt": "2026-08-18T20:40:22Z",
+    "mergeCommit": "adb3409029b92b4cac8c5101ce43e647adcc3586",
+    "tag": "v0.6.19",
+    "tagTarget": "797a46bf4151eaf21195f35f91c575bee167d08b"
+  },
+  "userAcceptance": "USER_RECHECK"
+}
