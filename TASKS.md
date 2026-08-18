@@ -1,11 +1,18 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-18
-状态：`v0.6.13已发布待用户复验。INC-GEN-005为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，INC-GEN-004为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，INC-UI-009/008为PRODUCTION_PUBLISHED_USER_PASS，既有其他验收状态保持。`
+状态：`v0.6.14本地已提交待发布。INC-GEN-006为LOCAL_COMMITTED，INC-GEN-005为PRODUCTION_PUBLISHED_USER_PASS，INC-GEN-004为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，INC-UI-009/008为PRODUCTION_PUBLISHED_USER_PASS，既有其他验收状态保持。生产在切换前仍运行v0.6.13。`
+
+### 2026-08-18 过期「画布还在保存」不再挡整组（INC-GEN-006）
+
+- 状态：`LOCAL_COMMITTED`。用户同意方案、版本顺延为`v0.6.14`，并说赶紧搞。
+- 实现：整组开跑前不再把上次的「画布还在保存」当成不兼容；开跑后清掉组里这类过期红字；真不兼容照样拦。
+- 自动门：正式安全全量`118/118 specs、973/973 tests PASS`；定向`m22` 22/22、`m81` 41/41。
+- 发布：尚未切换生产。权威记录为`spec/INC_GEN_006_STALE_CANVAS_SAVE_PREFLIGHT_2026-08-18.md`。
 
 ### 2026-08-18 解开 Seedance Mini 时长/清晰度锁（INC-GEN-005）
 
-- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。用户同意方案、版本顺延为`v0.6.13`，并授权验完后直接上线。
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户同意方案、版本顺延为`v0.6.13`，并授权验完后直接上线；随后明确回复“通过”。
 - 实现：去掉 Mini 6～15秒和720p的付费验证禁用；默认仍5秒/480p；保存失败不关编辑框。
 - 自动门：正式安全全量`118/118 specs、971/971 tests PASS`，失败/跳过/重试/blocked/reportErrors均0；定向`m17` 15/15、`m81` 41/41。
 - 发布：commit`e113c64333242df923b60cac4d83214f015a14d9`已发布到`/opt/unboundry/releases/v0.6.13-inc-gen-005-20260818`；冻结备份/恢复副本、公网关键资源、service/schema39和数据门通过。只改了线上 Seedance Mini 这一条已存配置。

@@ -96,6 +96,6 @@
     "tag": "v0.6.13",
     "tagTarget": "e113c64333242df923b60cac4d83214f015a14d9"
   },
-  "userAcceptance": "USER_RECHECK",
-  "userAcceptanceEvidence": "User confirmed version increment to 0.6.13 and 直接上线. Automatic and publication gates passed. Visual recheck of Mini 6-15s/720p save-and-stay-open is still pending."
+  "userAcceptance": "USER_PASS",
+  "userAcceptanceEvidence": "User replied 通过 on 2026-08-18 after the Mini unlock was live."
 }

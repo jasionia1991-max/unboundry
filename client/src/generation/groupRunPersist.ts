@@ -20,6 +20,44 @@ export function isCanvasNotSavedMessage(message?: string): boolean {
     message.includes("画布还在保存");
 }
 
+export function shouldIgnoreStaleCanvasSaveProblem(problem?: {
+  message?: string;
+}): boolean {
+  return isCanvasNotSavedMessage(problem?.message);
+}
+
+const staleCanvasSaveErrorFields = [
+  ["audioGenerationError", "audioGenerationErrorCode"],
+  ["imageGenerationError", "imageGenerationErrorCode"],
+  ["textGenerationError", "textGenerationErrorCode"],
+  ["videoGenerationError", "videoGenerationErrorCode"],
+] as const;
+
+export function stripStaleCanvasSaveErrors<
+  Node extends { data?: Record<string, unknown>; parentId?: string },
+>(nodes: readonly Node[], groupId: string): { changed: boolean; nodes: Node[] } {
+  let changed = false;
+  const next = nodes.map((node) => {
+    if (node.parentId !== groupId) return node;
+    const data = node.data;
+    if (!data) return node;
+    let nextData: Record<string, unknown> | undefined;
+    for (const [errorKey, codeKey] of staleCanvasSaveErrorFields) {
+      const message = data[errorKey];
+      if (typeof message !== "string" || !isCanvasNotSavedMessage(message)) {
+        continue;
+      }
+      if (!nextData) nextData = { ...data };
+      delete nextData[errorKey];
+      delete nextData[codeKey];
+    }
+    if (!nextData) return node;
+    changed = true;
+    return { ...node, data: nextData };
+  });
+  return { changed, nodes: changed ? next : [...nodes] };
+}
+
 export function waitForPaint(): Promise<void> {
   return new Promise((resolve) => {
     let settled = false;

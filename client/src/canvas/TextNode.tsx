@@ -68,6 +68,7 @@ import {
   type NodeGenerationOutcome,
   type WorkflowPreflightPhase,
 } from "../generation/workflowExecution";
+import { shouldIgnoreStaleCanvasSaveProblem } from "../generation/groupRunPersist";
 import {
   generationFailureMessage,
   generationInputKey as createGenerationInputKey,
@@ -649,7 +650,11 @@ function TextNodeImpl({
       ];
   const workflowProblems: NodeInputProblem[] = [
     ...(modelSelectionProblem ? [modelSelectionProblem] : []),
-    ...inputProblems,
+    ...(modelSwitchProblem
+      ? [{ code: "MODEL_UNSUPPORTED" as const, message: modelSwitchProblem }]
+      : []),
+    ...inputPreflight.problems,
+    ...serverInputProblems,
   ];
   // An empty local Prompt is normal in the accepted 200px creator state.
   // It only becomes part of the expanded upstream area when references exist;
@@ -1485,6 +1490,9 @@ function TextNodeImpl({
   };
 
   const persistWorkflowInputFailure = async (problem: NodeInputProblem) => {
+    if (shouldIgnoreStaleCanvasSaveProblem(problem)) {
+      return { status: "success" as const };
+    }
     setNodes((nodes) => nodes.map((node) => node.id === id
       ? {
           ...node,
