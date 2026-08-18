@@ -1,6 +1,6 @@
 # INC-GEN-006：过期「画布还在保存」不再挡整组
 
-状态：`LOCAL_COMMITTED`
+状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
 版本：`v0.6.14`
 日期：`2026-08-18`
 
@@ -29,3 +29,16 @@
 - 定向 `m22` 22/22、`m81` 41/41 通过。
 - 正式安全全量 `118/118 specs、973/973 tests PASS`，失败/跳过/重试/blocked/reportErrors均为0。4173 listener 不变。
 - 源码快照 537 文件，SHA-256 `3173884e4d4c2c219b44106d75d47434cb16792c71f5ae43766017f998d328fb`。
+
+## 生产发布
+
+- 精确源码commit`ce3bf7c4481c1cc549bec6e512fe3c5f7fb8273e`、tree`da25dd2c1333c15235f1a791b99102736ee564a7`。
+- 生产current已切到`/opt/unboundry/releases/v0.6.14-inc-gen-006-20260818`；上一不可变release `v0.6.13-inc-gen-005-20260818`完整保留。
+- 冻结备份`/var/lib/unboundry-rollbacks/inc-gen-006-frozen-20260818T061517Z`：冻结源与恢复副本均363文件，清单SHA-256同为`524ab8fc2292bac179709baf2c46814b132bbf7a9fbe1683c0ad6165ac06dd5b`。
+- 公网version为0.6.14；入口JS/CSS及CanvasShell与release逐字节一致。
+- 切换前后schema39、quick_check ok、FK0、tasks294、attempts296、active0、公共模板47（46 published）。
+- GitHub：注释标签`v0.6.14`指向`ce3bf7c4481c1cc549bec6e512fe3c5f7fb8273e`；PR #24已合并，merge commit`8d5ae4e0423b71898a08c0a5612d2776767f5b62`。
+- 发布与验证期间真实Provider请求、付费生成和OSS写入均为0。
+- 自动验证不代替用户肉眼验收。请打开网站强制刷新后，再点一次刚才那组：不应再弹出「不兼容节点…画布还在保存」。
+
+详细凭证：`spec/INC_GEN_006_PRODUCTION_RECEIPT_2026-08-18.json`。

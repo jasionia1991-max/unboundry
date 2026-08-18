@@ -2,15 +2,17 @@
 
 断点版本：`74`
 更新时间：`2026-08-18`
-状态：`INC_GEN_006_V0_6_14_LOCAL_COMMITTED`
+状态：`INC_GEN_006_V0_6_14_PRODUCTION_PUBLISHED_AUTO_PASS`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
-## 0. 当前本地事件：INC-GEN-006（v0.6.14已本地提交，待发布）
+## 0. 当前已发布事件：INC-GEN-006（v0.6.14已发布，待用户复验）
 
-- 用户同意过期「画布还在保存」不再挡整组的方案，版本顺延为`v0.6.14`，并说赶紧搞。
+- 用户同意过期「画布还在保存」不再挡整组的方案，版本顺延为`v0.6.14`，并说上线。
 - 整组开跑前忽略这类过期句；开跑后清掉组内旧红字；真不兼容继续拦。
-- 正式安全全量`118/118 specs、973/973 tests PASS`，异常0；定向`m22` 22/22、`m81` 41/41。生产在切换前仍运行v0.6.13。
-- 权威记录：`spec/INC_GEN_006_STALE_CANVAS_SAVE_PREFLIGHT_2026-08-18.md`。
+- 精确源码commit`ce3bf7c4481c1cc549bec6e512fe3c5f7fb8273e`通过正式安全全量`118/118 specs、973/973 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。
+- 生产current已切到`/opt/unboundry/releases/v0.6.14-inc-gen-006-20260818`；冻结备份恢复、公网资源逐字节哈希、service/schema39和数据门均PASS。生产保持294 tasks、296 attempts、active0、47 public templates（46 published）。
+- `v0.6.14`标签精确指向源码commit；PR #24已合并到`main`，merge commit`8d5ae4e0423b71898a08c0a5612d2776767f5b62`。当前状态是`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。
+- 权威记录：`spec/INC_GEN_006_STALE_CANVAS_SAVE_PREFLIGHT_2026-08-18.md`与`spec/INC_GEN_006_PRODUCTION_RECEIPT_2026-08-18.json`。
 
 ## 0.01 前一已发布事件：INC-GEN-005（v0.6.13已发布并通过用户验收）
 

@@ -2,9 +2,9 @@
 
 > 写给下一个接手的人/AI agent。目标：看完本文后不需要向用户问“项目在哪、怎么跑、怎么发布、有什么红线”。
 
-## 当前本地事件：INC-GEN-006（v0.6.14已本地提交，待发布）
+## 最新已发布事件：INC-GEN-006（v0.6.14已发布，待用户复验）
 
-用户同意过期「画布还在保存」不再挡整组，版本顺延为`v0.6.14`，并说赶紧搞。整组开跑前忽略这类过期句，开跑后清掉组内旧红字；真不兼容继续拦。正式安全全量`118/118 specs、973/973 tests PASS`，异常0。生产在切换前仍运行 v0.6.13。权威记录：`spec/INC_GEN_006_STALE_CANVAS_SAVE_PREFLIGHT_2026-08-18.md`。
+用户同意过期「画布还在保存」不再挡整组，版本顺延为`v0.6.14`，并说上线。整组开跑前忽略这类过期句，开跑后清掉组内旧红字；真不兼容继续拦。精确源码commit`ce3bf7c4481c1cc549bec6e512fe3c5f7fb8273e`通过安全全量`118/118 specs、973/973 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.14-inc-gen-006-20260818`，公网资源哈希、冻结备份恢复、service/schema39及数据门PASS；生产保持294 tasks、296 attempts、active0、47 public templates（46 published）。`v0.6.14`已推送，PR #24已合并到`main`（merge commit`8d5ae4e0423b71898a08c0a5612d2776767f5b62`）。当前状态是`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。权威记录：`spec/INC_GEN_006_STALE_CANVAS_SAVE_PREFLIGHT_2026-08-18.md`与`spec/INC_GEN_006_PRODUCTION_RECEIPT_2026-08-18.json`。
 
 ## 最新已发布事件：INC-GEN-005（v0.6.13已发布并通过用户验收）
 
@@ -77,7 +77,7 @@ Grok首帧中转协议已从`first_frame_url`修为`images`数组并限制恰好
 ## 0. 2026-08-17 最终生产状态（当前权威）
 
 - 当前状态：`REM-000～011（含009A/009B）PASS / PRODUCTION LIVE / INC-UI-008已发布自动与技术验证PASS待用户复验 / INC-GEN-003已发布并完成USER PASS / INC-GEN-002已发布并完成USER PASS / INC-GEN-001已发布并完成USER PASS / INC-UI-007已发布并完成USER PASS / INC-UI-006已发布并完成USER PASS / INC-UI-005～003已发布自动与实页技术验证PASS待用户复验 / INC-VIDEO-001真实视频PASS待用户复验 / INC-UI-001/002已发布待用户复验 / INC-ECOM-001～007按各自证据边界完成用户收口`。
-- 生产运行 `v0.6.13/schema39`，`/opt/unboundry/current -> releases/v0.6.13-inc-gen-005-20260818`；service active+enabled、NRestarts0、127.0.0.1:4173。公网version/root正常，version 0.6.13；默认视频模型仍为Seedance 2.0 Mini，6～15秒和720p已解开。
+- 生产运行 `v0.6.14/schema39`，`/opt/unboundry/current -> releases/v0.6.14-inc-gen-006-20260818`；service active+enabled、NRestarts0、127.0.0.1:4173。公网version/root正常，version 0.6.14；默认视频模型仍为Seedance 2.0 Mini，6～15秒和720p已解开。
 - v0.6.11源码commit`321668e1adf692e356b1e504230721451af8ddcf`/tree`3ea47f74267ec1e5c1b5c0d80fef51115161e021`；上一不可变release `v0.6.10-inc-ui-008-20260817`及全部历史备份继续保留。
 - 数据最新核验：schema39、quick_check ok、FK0、active generation0、246 tasks/248 provider attempts、47 public templates（46 published）。INC-UI-009未改画布文档、节点坐标、连线、Provider或OSS；Provider/付费/OSS写入0，既有真实流水与Seedance视频结果保持。
 - GitHub当前权威状态：生产源码commit`321668e1adf692e356b1e504230721451af8ddcf`由注释标签`v0.6.11`精确标记；PR #18已合并到`main`，merge commit`749e45cb68feabd11b4ffc721e06df4cd46a2b77`。该发布授权已消费；新commit/push/tag/PR、生产或外部服务动作均需新授权。
