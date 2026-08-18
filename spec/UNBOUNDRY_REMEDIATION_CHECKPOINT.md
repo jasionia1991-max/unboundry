@@ -1,18 +1,18 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`75`
+断点版本：`76`
 更新时间：`2026-08-18`
-状态：`INC_GEN_007_V0_6_15_PRODUCTION_PUBLISHED_AUTO_PASS`
-用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
+状态：`INC_GEN_007_V0_6_15_PRODUCTION_PUBLISHED_USER_PASS`
+用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。当前一页快照见 `UNBOUNDRY_CURRENT_STATE.md`。
 
-## 0. 当前已发布事件：INC-GEN-007（v0.6.15已发布，待用户复验）
+## 0. 当前已发布事件：INC-GEN-007（v0.6.15已发布并通过用户验收）
 
-- 用户同意假提交误判与整组自动核对/再试方案，版本顺延为`v0.6.15`，并说验完上线。
+- 用户同意假提交误判与整组自动核对/再试方案，版本顺延为`v0.6.15`，验完后上线；随后明确回复“通过”。
 - GPT Image 不再把没做成片的失败写成已提交；整组自己核对或再试一次并继续；同一输入真未知时不许再开新单。
 - 精确源码commit`5630dd6ee328266a27295bc9d2e7479f89147b32`通过正式安全全量`118/118 specs、976/976 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。
-- 生产current已切到`/opt/unboundry/releases/v0.6.15-inc-gen-007-20260818`；冻结备份恢复、公网资源逐字节哈希、service/schema39和数据门均PASS。生产保持299 tasks、301 attempts、active0、47 public templates（46 published）。
-- `v0.6.15`标签精确指向源码commit；PR #26已合并到`main`，merge commit`714827c7152dcfd933ed96ab9427f479b57634de`。当前状态是`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。
-- 权威记录：`spec/INC_GEN_007_FAKE_SUBMIT_AND_AUTO_FLOW_2026-08-18.md`与`spec/INC_GEN_007_PRODUCTION_RECEIPT_2026-08-18.json`。
+- 生产current已切到`/opt/unboundry/releases/v0.6.15-inc-gen-007-20260818`；冻结备份恢复、公网资源逐字节哈希、service/schema39和数据门均PASS。发布核验时保持299 tasks、301 attempts、active0、47 public templates（46 published）。
+- `v0.6.15`标签精确指向源码commit；PR #26已合并到`main`，merge commit`714827c7152dcfd933ed96ab9427f479b57634de`。当前状态是`PRODUCTION_PUBLISHED_USER_PASS`。
+- 权威记录：`spec/INC_GEN_007_FAKE_SUBMIT_AND_AUTO_FLOW_2026-08-18.md`与`spec/INC_GEN_007_PRODUCTION_RECEIPT_2026-08-18.json`。新会话先读 `spec/UNBOUNDRY_CURRENT_STATE.md`，等用户说下一件要的结果。
 
 ## 0.005 前一已发布事件：INC-GEN-006（v0.6.14已发布，待用户复验）
 

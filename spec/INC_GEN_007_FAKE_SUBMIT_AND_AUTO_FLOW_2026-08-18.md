@@ -1,6 +1,6 @@
 # INC-GEN-007：假提交误判 + 工作流自动核对/再试
 
-状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
+状态：`PRODUCTION_PUBLISHED_USER_PASS`
 版本：`v0.6.15`
 日期：`2026-08-18`
 
@@ -45,6 +45,6 @@
 - 切换前后schema39、quick_check ok、FK0、tasks299、attempts301、active0、公共模板47（46 published）。
 - GitHub：注释标签`v0.6.15`指向`5630dd6ee328266a27295bc9d2e7479f89147b32`；PR #26已合并，merge commit`714827c7152dcfd933ed96ab9427f479b57634de`。
 - 发布与验证期间真实Provider请求、付费生成和OSS写入均为0。
-- 自动验证不代替用户肉眼验收。请打开网站强制刷新后，再跑刚才那组：假提交不应再挡住，工作流应自己核对或再试一次并继续往下走。
+- 用户已于 2026-08-18 明确回复「通过」，本项收口为 `PRODUCTION_PUBLISHED_USER_PASS`。
 
 详细凭证：`spec/INC_GEN_007_PRODUCTION_RECEIPT_2026-08-18.json`。

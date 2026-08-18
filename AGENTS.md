@@ -9,20 +9,21 @@
 按顺序完整阅读：
 
 1. `上线规矩.md`
-2. `README.md`
-3. `spec/UNBOUNDRY_REMEDIATION_PLAN_2026-08-09.md`
-4. `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md`
-5. `spec/UNBOUNDRY_HANDOFF_2026-08-09.md`
-6. `TASKS.md` 当前 REM 区块
-7. `spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md` 当前 REM 区块
+2. `spec/UNBOUNDRY_CURRENT_STATE.md`
+3. `README.md`
+4. `spec/UNBOUNDRY_REMEDIATION_PLAN_2026-08-09.md`
+5. `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md`
+6. `spec/UNBOUNDRY_HANDOFF_2026-08-09.md`
+7. `TASKS.md` 当前区块
+8. `spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md` 当前区块
 
 然后只读核对 `pwd`、Git 分支、HEAD、工作树、package 版本和 Node 版本。与施工断点不一致时停止，不得继续施工。
 
 ## 2. 当前授权边界
 
-- **2026-08-18 当前权威状态**：生产运行`v0.6.15/schema39`，`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.15-inc-gen-007-20260818`。`INC-GEN-007 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-GEN-006 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-GEN-005 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-GEN-004 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-UI-009 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-UI-008 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-GEN-003/002/001 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-UI-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-000～011（含009A/009B） = PASS`；
-- v0.6.15生产源码commit为`5630dd6ee328266a27295bc9d2e7479f89147b32`、tree为`6c2e82b4824be085a3258b7b7a113ed06849cf4d`；注释标签`v0.6.15`精确指向该源码。PR #26已于2026-08-18合并到`main`，merge commit为`714827c7152dcfd933ed96ab9427f479b57634de`。生产凭证为`spec/INC_GEN_007_PRODUCTION_RECEIPT_2026-08-18.json`；
-- v0.6.15正式安全全量为`118/118 specs、976/976 tests PASS`，异常0。假提交不再挡住、整组会自己核对或再试一次，待用户复验；
+- **2026-08-18 当前权威状态**：生产运行`v0.6.15/schema39`，`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.15-inc-gen-007-20260818`。`INC-GEN-007 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-GEN-006 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-GEN-005 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-GEN-004 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-UI-009/008 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-GEN-003/002/001 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-UI-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-000～011（含009A/009B） = PASS`。站着的产品合同和条目表见`spec/UNBOUNDRY_CURRENT_STATE.md`；
+- v0.6.15生产源码commit为`5630dd6ee328266a27295bc9d2e7479f89147b32`、tree为`6c2e82b4824be085a3258b7b7a113ed06849cf4d`；注释标签`v0.6.15`精确指向该源码。PR #26已于2026-08-18合并到`main`，merge commit为`714827c7152dcfd933ed96ab9427f479b57634de`。用户已回复「通过」。生产凭证为`spec/INC_GEN_007_PRODUCTION_RECEIPT_2026-08-18.json`；
+- v0.6.15正式安全全量为`118/118 specs、976/976 tests PASS`，异常0。假提交不再挡住，整组会自己核对或再试一次，用户已验收；
 - 冻结备份位于`/var/lib/unboundry-rollbacks/inc-gen-007-frozen-20260818T072309Z`，冻结源与恢复副本均363文件且清单SHA-256同为`eb76f6aedddec4a80345271b074f558707804227c34790f506fd330207451f52`。发布与验证期间真实Provider请求、付费生成和OSS写入均为0；上一不可变release `v0.6.14-inc-gen-006-20260818`及对应冻结备份继续保留；
 - 既有v0.6.0～v0.6.14、真实工作流与视频证据继续作为历史记录保留；其历史时点字段不得改写。其他仍为`USER_RECHECK / PARTIAL / PAUSED / BLOCK / NOT_STARTED`的独立条目不因INC-GEN-007自动升级。v0.6.15生产与GitHub授权已经消费完毕，不是未来继续改生产、数据、Provider、OSS、push/tag/PR或发布的永久授权；
 
@@ -47,6 +48,7 @@
 
 ## 4. 产品合同保护
 
+- 站着的结果：用户上传一张图，工作流自己跑完，用户下载。中间不要再发明必须人手点的步骤。
 - DATA-005：跨标签保持“最后保存者胜并同步”；只拒绝同一标签迟到旧请求。不得改成跨标签全局 CAS。
 - 普通账号默认五项权限不可撤销，只维护额外授予集。
 - 不恢复金额/额度/订阅功能。
