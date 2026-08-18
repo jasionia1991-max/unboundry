@@ -4,13 +4,13 @@
 
 ## 先读当前快照
 
-新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-18 的权威现状、产品合同和用户已点头的旧项收口。下面各节是历史增量，出现「当前」时只代表该时点。
+新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-19 的权威现状、产品合同和用户已点头的旧项收口。下面各节是历史增量，出现「当前」时只代表该时点。
 
-## 当前待做（未开工）：INC-GEN-008 优创专用协议按文档尺寸出图
+## 最新已发布事件：INC-GEN-008+009（v0.6.17 已发布，待用户复验）
 
-方案已与用户对齐并写入`spec/INC_GEN_008_YOUCHOANG_GPT_IMAGE_SIZE_2026-08-18.md`。代码未改。选 2K/4K 必须按优创文档发像素 `size`；默认改 1K；旧 4K 选择按真 4K 发；未知组合拦截。不做新增参数直发。OpenRouter 出图用户说先算了。未听到「按这个做」不准写功能代码。
+用户确认方案、说「按这个做」，并授权 `v0.6.17` 上线。优创专用协议选 1K/2K/4K 时按文档像素真发 `size`，不再偷换成 1024×1536；生产默认画质已从 4K 改为 1K；管理员后台可自改「画质档 × 比例 → 像素」映射，只影响优创 gpt-image；未知组合人话拦截不发不扣费。精确源码commit`e6b187bce50bb4189e029ab3389e316a3eb65501`通过安全全量`118/118 specs、983/983 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.17-inc-gen-008-009-20260819`，公网资源哈希、冻结备份、service/schema39及数据门PASS；发布核验时保持322 tasks、326 attempts、active0、48 public templates（46 published）。`v0.6.17`已推送，PR #31已合并到`main`（merge commit`18e66ce39decdeb70b076cdd07b13abf1f243a80`）。当前状态是`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。权威记录：`spec/INC_GEN_008_YOUCHOANG_GPT_IMAGE_SIZE_2026-08-18.md`、`spec/INC_GEN_009_ADMIN_EDITABLE_GPT_IMAGE_SIZE_MAP_2026-08-19.md`与`spec/INC_GEN_008_009_PRODUCTION_RECEIPT_2026-08-19.json`。
 
-## 最新已发布事件：INC-UI-010（v0.6.16已发布并通过用户验收）
+## 前一已发布事件：INC-UI-010（v0.6.16已发布并通过用户验收）
 
 用户确认方案并说按`v0.6.16`上线；随后明确回复「通过」。管理员在画布上打组、点「创建模板」，可选发到公共模板；默认仍是我的模板。发公共时清掉私图，留下提示词、节点和连线。普通账号看不到该选项。现有公共模板不改。精确源码commit`83fd8dce9e7d7cf3fb419599aa753e66f35cdc25`通过安全全量`118/118 specs、979/979 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.16-inc-ui-010-20260818`，公网资源哈希、冻结备份恢复、service/schema39及数据门PASS；发布核验时保持319 tasks、323 attempts、active0、47 public templates（46 published）。`v0.6.16`已推送，PR #29已合并到`main`（merge commit`dbfa94558ee73ce6658e5790358e23959e069b10`）。当前状态是`PRODUCTION_PUBLISHED_USER_PASS`。权威记录：`spec/INC_UI_010_CANVAS_PUBLIC_TEMPLATE_2026-08-18.md`与`spec/INC_UI_010_PRODUCTION_RECEIPT_2026-08-18.json`。
 
