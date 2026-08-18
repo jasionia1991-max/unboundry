@@ -1,7 +1,14 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-19
-状态：`v0.6.18已发布（2026-08-19）且用户已复验通过；v0.6.17已发布且用户已复验通过；v0.6.16已发布且USER PASS。INC-GEN-008与INC-GEN-009已随v0.6.17上线，尺寸映射面板UI对齐已随v0.6.18上线，用户2026-08-19回复「通过」已收口。当前权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+状态：`v0.6.19已发布（2026-08-19）待用户复验；v0.6.18与v0.6.17已发布且用户已复验通过；v0.6.16已发布且USER PASS。v0.6.19为验收收口发布（无功能改动）。当前权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+
+### 2026-08-19 验收收口发布（v0.6.19）
+
+- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS`（待用户复验）。用户要求做完整发布流程，版本号加一个小号；commit/tag/push/PR #33 合并均已完成，生产已切换到 v0.6.19。
+- 要的结果：记录 v0.6.17/v0.6.18 用户复验通过、版本号升至 0.6.19、运行时放行新版本；无产品功能改动。
+- 自动门：正式安全全量 `118/118 specs、983/983 tests PASS`，失败/跳过/重试/blocked/reportErrors均0；4173 listener 不变。
+- 发布：commit `797a46bf4151eaf21195f35f91c575bee167d08b` 已发布到 `/opt/unboundry/releases/v0.6.19-acceptance-close-20260819`；冻结备份 `v0.6.19-frozen-8fq2Wp`（365 文件，双清单 SHA `402a6dbe…`）/数据门/schema39 通过；GitHub `v0.6.19` 标签、PR #33 已合并。凭证 `spec/V0_6_19_PRODUCTION_RECEIPT_2026-08-19.json`。
 
 ### 2026-08-19 优创尺寸映射面板 UI 对齐（v0.6.18）
 
