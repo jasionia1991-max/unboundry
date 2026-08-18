@@ -341,12 +341,135 @@ test("Doubao TTS execution drops stale emotion scale while automatic emotion is 
   });
 });
 
-test("GPT Image maps supported canvas ratios to its bounded size contract", () => {
+test("GPT Image maps documented Youchuang size tiers and blocks missing combos", () => {
+  const youchuangSizes = {
+    "1k": {
+      "1:1": "1024x1024",
+      "2:3": "1024x1536",
+      "3:2": "1536x1024",
+      "3:4": "960x1280",
+      "4:3": "1280x960",
+      "9:16": "1088x1920",
+      "16:9": "1920x1088",
+      "4:5": "1024x1280",
+      "5:4": "1280x1024",
+      "1:2": "960x1920",
+      "2:1": "1920x960",
+    },
+    "2k": {
+      "1:1": "2048x2048",
+      "2:3": "2048x3072",
+      "3:2": "3072x2048",
+      "3:4": "1920x2560",
+      "4:3": "2560x1920",
+      "9:16": "1440x2560",
+      "16:9": "2560x1440",
+      "4:5": "2048x2560",
+      "5:4": "2560x2048",
+      "1:2": "1280x2560",
+      "2:1": "2560x1280",
+    },
+    "4k": {
+      "1:1": "2880x2880",
+      "2:3": "2304x3456",
+      "3:2": "3456x2304",
+      "3:4": "2400x3200",
+      "4:3": "3200x2400",
+      "9:16": "2160x3840",
+      "16:9": "3840x2160",
+      "4:5": "2560x3200",
+      "5:4": "3200x2560",
+      "1:2": "1920x3840",
+      "2:1": "3840x1920",
+    },
+  } as const;
   expect(gptImageSizeForAspectRatio("auto")).toBe("auto");
-  expect(gptImageSizeForAspectRatio("1:1")).toBe("1024x1024");
-  expect(gptImageSizeForAspectRatio("16:9")).toBe("1536x1024");
-  expect(gptImageSizeForAspectRatio("9:16")).toBe("1024x1536");
-  expect(() => gptImageSizeForAspectRatio("7:5")).toThrow();
+  expect(gptImageSizeForAspectRatio("auto", "4k")).toBe("auto");
+  for (const tier of ["1k", "2k", "4k"] as const) {
+    for (const [ratio, size] of Object.entries(youchuangSizes[tier])) {
+      expect(gptImageSizeForAspectRatio(ratio, tier)).toBe(size);
+    }
+  }
+  // 文档没有的组合必须拦截：21:9 各档都没有，未知比例也一样。
+  expect(() => gptImageSizeForAspectRatio("21:9", "1k")).toThrow();
+  expect(() => gptImageSizeForAspectRatio("21:9", "4k")).toThrow();
+  expect(() => gptImageSizeForAspectRatio("7:5", "1k")).toThrow();
+});
+
+test("gpt-image size lookup honors the admin map, then the built-in table", () => {
+  const adminMap = { "4k": { "9:16": "1792x1024" } };
+  expect(gptImageSizeForAspectRatio("9:16", "4k", adminMap))
+    .toBe("1792x1024");
+  expect(gptImageSizeForAspectRatio("16:9", "4k", adminMap))
+    .toBe("3840x2160");
+  expect(gptImageSizeForAspectRatio(
+    "auto",
+    "4k",
+    { "4k": { auto: "1024x1024" } },
+  )).toBe("1024x1024");
+  // 管理员没填的组合仍然按文档内置表/拦截，不乱发。
+  expect(() => gptImageSizeForAspectRatio("21:9", "4k", adminMap)).toThrow();
+  expect(() => gptImageSizeForAspectRatio(
+    "7:5",
+    "1k",
+    { "1k": { "9:16": "1088x1920" } },
+  )).toThrow();
+});
+
+test("gpt-image tasks snapshot the admin size map for later retries", async () => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "unboundry-gpt-size-map-snapshot-"),
+  );
+  try {
+    const store = createGenerationTaskStore(directory);
+    const created = store.create({
+      canvasId: "gpt-size-map-snapshot",
+      costCurrency: "USD",
+      estimatedCostMicrounits: 1_000_000,
+      idempotencyKey: "gpt-size-map-snapshot-request",
+      kind: "image",
+      model: "gpt-image-2",
+      modelConfiguration: {
+        modelId: "gpt-image-2",
+        parameterSchema: {
+          sizeMap: { "4k": { "9:16": "1792x1024" } },
+        },
+        providerModelId: "gpt-image-2",
+        providerProfileId: relayProfile.id,
+        providerProtocol: "gpt-image",
+      },
+      nodeId: "image-node",
+      ownerId: "__test__",
+      parameters: {
+        aspectRatio: "9:16",
+        inputSchemaVersion: 1,
+        inputs: [],
+        quality: "4k",
+      },
+      prompt: "尺寸映射快照测试",
+      providerModelId: "gpt-image-2",
+      providerProfileId: relayProfile.id,
+    });
+    store.close();
+
+    const reopened = createGenerationTaskStore(directory);
+    expect(reopened.get(created.task.id)).toMatchObject({
+      modelConfiguration: {
+        modelId: "gpt-image-2",
+        parameterSchema: {
+          sizeMap: { "4k": { "9:16": "1792x1024" } },
+        },
+        providerProtocol: "gpt-image",
+      },
+      parameters: {
+        aspectRatio: "9:16",
+        quality: "4k",
+      },
+    });
+    reopened.close();
+  } finally {
+    await rm(directory, { force: true, recursive: true });
+  }
 });
 
 test("a cancelled relay publication removes its local media and history", async () => {

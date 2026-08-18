@@ -1021,3 +1021,119 @@ test("all four node model types persist the shared upstream input contract witho
   }
   expect(generationPosts).toEqual([]);
 });
+
+test("administrators edit the gpt-image size map while other protocols reject it", async ({
+  page,
+}) => {
+  const relayResponse = await page.request.post("/api/admin/providers", {
+    data: {
+      apiKey: "relay-gpt-image-size-key",
+      baseUrl: "https://relay.example.test/v1",
+      driver: "multi-protocol-relay",
+      label: "Size Map Relay",
+    },
+  });
+  expect(relayResponse.status()).toBe(201);
+  const relay = (await relayResponse.json()).profile as { id: string };
+
+  const gptResponse = await page.request.post("/api/admin/models", {
+    data: {
+      capability: "image",
+      displayName: "GPT Image Size Map",
+      isDefault: false,
+      providerModelId: "gpt-image-2",
+      providerProfileId: relay.id,
+      providerProtocol: "gpt-image",
+      sortOrder: 70,
+      status: "published",
+    },
+  });
+  expect(gptResponse.status()).toBe(201);
+  const gptModel = (await gptResponse.json()).model as { id: string };
+
+  const nativeResponse = await page.request.post("/api/admin/models", {
+    data: {
+      capability: "image",
+      displayName: "Native Size Map Reject",
+      isDefault: false,
+      providerModelId: "unconfigured:image-size-map-reject",
+      providerProfileId: "provider-unconfigured",
+      sortOrder: 71,
+      status: "draft",
+    },
+  });
+  expect(nativeResponse.status()).toBe(201);
+  const nativeModel = (await nativeResponse.json()).model as { id: string };
+
+  const catalog = await (await page.request.get("/api/admin/models")).json() as {
+    models: Array<{ id: string; parameterSchema: ModelParameterSchema }>;
+  };
+  const gptSchema = structuredClone(
+    catalog.models.find((model) => model.id === gptModel.id)!.parameterSchema,
+  );
+  const nativeSchema = structuredClone(
+    catalog.models.find((model) => model.id === nativeModel.id)!.parameterSchema,
+  );
+
+  // 非 gpt-image 模型即使请求里带了映射也整体拒绝，防止串到别的平台。
+  expect((await page.request.patch(`/api/admin/models/${nativeModel.id}`, {
+    data: {
+      parameterSchema: {
+        ...nativeSchema,
+        sizeMap: { "4k": { "9:16": "2160x3840" } },
+      },
+    },
+  })).status()).toBe(400);
+
+  // 非法像素整体拒绝，不部分生效。
+  expect((await page.request.patch(`/api/admin/models/${gptModel.id}`, {
+    data: {
+      parameterSchema: {
+        ...gptSchema,
+        sizeMap: { "4k": { "9:16": "17x1024" } },
+      },
+    },
+  })).status()).toBe(400);
+
+  const valid = await page.request.patch(`/api/admin/models/${gptModel.id}`, {
+    data: {
+      parameterSchema: {
+        ...gptSchema,
+        sizeMap: { "4k": { "9:16": "2160x3840" } },
+      },
+    },
+  });
+  expect(valid.status()).toBe(200);
+
+  await page.goto("/admin/models?v=gpt-image-size-map");
+  const gptCard = page
+    .locator(".model-list article")
+    .filter({ hasText: "GPT Image Size Map" });
+  await gptCard.getByRole("button", { name: "参数设置" }).click();
+  const gptEditor = gptCard.locator(".admin-model-parameter-edit");
+  const sizeMapSection = gptEditor.getByTestId("admin-gpt-image-size-map");
+  await expect(sizeMapSection).toBeVisible();
+  await expect(sizeMapSection.getByText("文档内置表（参考）")).toBeVisible();
+  const tier4k = sizeMapSection.locator('[data-tier="4k"]');
+  await expect(tier4k).toContainText("9:16");
+  await tier4k.getByLabel("新增4K比例").fill("1:1");
+  await tier4k.getByLabel("新增4K像素").fill("2880x2880");
+  await tier4k.getByRole("button", { name: "加一行" }).click();
+  await gptEditor.getByRole("button", { name: "保存参数设置" }).click();
+
+  const after = await (await page.request.get("/api/admin/models")).json() as {
+    models: Array<{ id: string; parameterSchema: ModelParameterSchema }>;
+  };
+  const stored = after.models.find((model) => model.id === gptModel.id)?.parameterSchema;
+  expect(stored?.sizeMap).toMatchObject({
+    "4k": { "9:16": "2160x3840", "1:1": "2880x2880" },
+  });
+
+  // 非 gpt-image 模型的后台编辑页完全不出现这个区块。
+  const nativeCard = page
+    .locator(".model-list article")
+    .filter({ hasText: "Native Size Map Reject" });
+  await nativeCard.getByRole("button", { name: "参数设置" }).click();
+  const nativeEditor = nativeCard.locator(".admin-model-parameter-edit");
+  await expect(nativeEditor.getByTestId("admin-gpt-image-size-map")).toHaveCount(0);
+});

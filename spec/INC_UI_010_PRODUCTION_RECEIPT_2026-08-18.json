@@ -88,5 +88,6 @@
     "tag": "v0.6.16",
     "tagTarget": "83fd8dce9e7d7cf3fb419599aa753e66f35cdc25"
   },
-  "userAcceptance": "USER_RECHECK"
+  "userAcceptance": "USER_PASS",
+  "userAcceptanceEvidence": "User replied 通过 on 2026-08-18 after production publish of v0.6.16."
 }

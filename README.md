@@ -4,9 +4,13 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 2026-08-18 管理员可从画布组直接发公共模板（v0.6.16 已发布，待你复验）
+## 2026-08-18 下一件：优创专用协议按文档尺寸出图（INC-GEN-008，方案已对齐，未开工）
 
-`INC-UI-010 = PRODUCTION_PUBLISHED`：管理员在画布上打组、点「创建模板」，可选发到公共模板；默认仍是我的模板。发公共时清掉私图，留下提示词、节点和连线。普通账号看不到该选项。正式安全全量`118/118 specs、979/979 tests PASS`，异常0。生产已切到`v0.6.16-inc-ui-010-20260818`，冻结备份恢复、公网三份关键资源、schema39和数据门均通过；tasks319/attempts323/active0、模板47/46不变，真实Provider/付费/OSS写入0。`v0.6.16`标签指向精确生产源码，PR #29已合并。等你打开网站看过回复「通过」后，才收口验收。当前权威快照见 [`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)。
+用户选 2K/4K 却一直出 1024×1536，是发送层把 `4k` 丢掉、尺寸只按比例写成 1K。方案与风险见 [`spec/INC_GEN_008_YOUCHOANG_GPT_IMAGE_SIZE_2026-08-18.md`](spec/INC_GEN_008_YOUCHOANG_GPT_IMAGE_SIZE_2026-08-18.md)。未听到「按这个做」之前不写功能代码。OpenRouter 出图先放下。
+
+## 2026-08-18 管理员可从画布组直接发公共模板（v0.6.16 已发布并通过用户验收）
+
+`INC-UI-010 = PRODUCTION_PUBLISHED_USER_PASS`：管理员在画布上打组、点「创建模板」，可选发到公共模板；默认仍是我的模板。发公共时清掉私图，留下提示词、节点和连线。普通账号看不到该选项。正式安全全量`118/118 specs、979/979 tests PASS`，异常0。生产已切到`v0.6.16-inc-ui-010-20260818`。用户随后明确回复“通过”。当前权威快照见 [`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)。
 
 ## 2026-08-18 假提交不再挡住工作流（v0.6.15 已发布并通过用户验收）
 

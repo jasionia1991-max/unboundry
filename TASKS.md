@@ -1,11 +1,26 @@
 # Unboundry 绿地复刻当前任务
 
-更新时间：2026-08-18
-状态：`v0.6.16已发布，INC-UI-010待你复验。INC-GEN-007/006/005/004与INC-UI-009～001、INC-VIDEO-001均为USER PASS。当前权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+更新时间：2026-08-19
+状态：`v0.6.16已发布且USER PASS。INC-GEN-008与INC-GEN-009代码已在工作区实现并定向测绿，未定版本、未授权上线。当前权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+
+### 2026-08-19 管理员后台自改优创尺寸映射（INC-GEN-009）
+
+- 状态：`IMPLEMENTED_TESTED_PENDING_RELEASE`。用户已说「按这个做」；代码已实现，未定版本、未授权上线。
+- 要的结果：管理员在后台编辑「画质档 × 比例 → 像素」，只对优创 gpt-image 生效；新格子按管理员像素真发；没填回退内置表；非法/未知组合整体拒绝，不发不扣费。
+- 不做：任意参数直发收费口；OpenRouter / 通用媒体 / 视频发送。
+- 权威方案：`spec/INC_GEN_009_ADMIN_EDITABLE_GPT_IMAGE_SIZE_MAP_2026-08-19.md`。
+- 自动门：定向 m17 16/16、m57 11/11、m12 6/6、m53 23/23 全绿；正式安全全量 118/983 PASS。
+
+### 2026-08-18 优创专用协议按文档尺寸出图（INC-GEN-008）
+
+- 状态：`IMPLEMENTED_TESTED_PENDING_RELEASE`。用户确认要做并说「按这个做」；代码已实现并全量测绿。未定版本、未授权上线。
+- 要的结果：选 2K/4K 必须按优创文档像素发 `size`，不能再偷换成 1024×1536。默认 1K。旧的 4K 选择按真 4K 发。
+- 不做：新增参数直发收费口；OpenRouter 续查/放行；打开通用媒体。
+- 权威方案：`spec/INC_GEN_008_YOUCHOANG_GPT_IMAGE_SIZE_2026-08-18.md`。
 
 ### 2026-08-18 管理员从画布组直接发布公共模板（INC-UI-010）
 
-- 状态：`PRODUCTION_PUBLISHED`。用户确认方案并说按`v0.6.16`上线；自动门和线上切换已过，等你打开网站回复是否通过。
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户确认方案并说按`v0.6.16`上线；随后回复「通过」。
 - 实现：管理员在「创建模板」可选发到公共模板；默认仍是我的模板。发公共时清掉私图，留下提示词、节点和连线。普通账号看不到该选项。
 - 自动门：定向`m71` 13/13、`m77` 11/11、`m81` 41/41；正式安全全量产品测试`118/118 specs、979/979 tests PASS`。
 - 发布：commit`83fd8dce9e7d7cf3fb419599aa753e66f35cdc25`已发布到`/opt/unboundry/releases/v0.6.16-inc-ui-010-20260818`；冻结备份/恢复副本、公网关键资源、service/schema39和数据门通过。
@@ -465,7 +480,7 @@ F14本地正式门证据绑定 HEAD `eb4f99ea525390b0dd7a39d3cad55d882ffea41d`�
 
 ## 当前阶段
 
-阶段：`生产 v0.6.16/schema39 LIVE / INC-UI-010待你复验 / INC-GEN-007～001与INC-UI-009～001、INC-VIDEO-001均为USER PASS / 当前无施工中INC或REM`
+阶段：`生产 v0.6.16/schema39 LIVE / INC-UI-010 USER PASS / INC-GEN-008方案已对齐未开工 / INC-GEN-007～001与INC-UI-009～001、INC-VIDEO-001均为USER PASS`
 
 画布、固定界面、Text、Image、Video、Audio、Playlist、Group、外围面板、账号、管理员模型中心、生成安全和新图片私有OSS链路已通过当前范围验收；Comment、社区、TapTV、竞技场、额度和链接分享已按用户决定取消。OpenRouter GPT Image 2已完成一次用户授权的历史真实生成，图片连线参考图及真实结果零费用重启恢复均已通过；本次 cutover 未发起 Provider 或付费生成请求。
 

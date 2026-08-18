@@ -7,9 +7,11 @@ import { createGenerationTaskStore } from "../server/generationTaskStore";
 import { buildMurekaAudioRequest } from "../server/murekaAudioProvider";
 import { availableNodeInputRoles } from "../types/nodeInputs";
 import {
+  cleanGptImageSizeMap,
   cleanParameterSchema,
   defaultParameterSchema,
   defaultParameterValues,
+  gptImageSizeMapEntryError,
   knownModelParameterSchema,
   parameterKeysForGroups,
   parameterFieldVisible,
@@ -828,6 +830,41 @@ test("future custom parameters remain safe and automatically join node controls"
     referenceInputs: { audio: 0, image: 0, video: 0 },
     version: 2,
   })).toThrow("Invalid model parameter field");
+});
+
+test("admin gpt-image size maps clean strictly and reject unsafe pixels", () => {
+  const base = defaultParameterSchema("image");
+  const mapped = cleanParameterSchema("image", {
+    ...base,
+    sizeMap: {
+      "4k": { "9:16": "2160x3840", "1:1": "2880x2880" },
+      "2k": { auto: "auto" },
+    },
+  });
+  expect(mapped.sizeMap).toEqual({
+    "4k": { "9:16": "2160x3840", "1:1": "2880x2880" },
+    "2k": { auto: "auto" },
+  });
+  expect(cleanGptImageSizeMap({ "1k": {} })).toBeUndefined();
+  expect(cleanGptImageSizeMap({ "4k": { "9:16": "1792x1024" } }))
+    .toEqual({ "4k": { "9:16": "1792x1024" } });
+  expect(gptImageSizeMapEntryError("9:16", "17x1024")).toMatch(/16/);
+  expect(gptImageSizeMapEntryError("9:16", "3856x2160")).toMatch(/3840/);
+  expect(gptImageSizeMapEntryError("9:16", "640x640")).toMatch(/总像素/);
+  expect(gptImageSizeMapEntryError("9:16", "3840x960")).toMatch(/3:1/);
+  expect(gptImageSizeMapEntryError("1.5:1", "1024x1024")).toMatch(/比例/);
+  const invalid = (map: unknown) =>
+    expect(() => cleanParameterSchema("image", { ...base, sizeMap: map }))
+      .toThrow();
+  invalid({ "5k": { "9:16": "2160x3840" } });
+  invalid({ "4k": { "9:16": "17x1024" } });
+  invalid({ "4k": { "9:16": "3856x2160" } });
+  invalid({ "4k": { "9:16": "640x640" } });
+  invalid({ "4k": { "1:1": "3840x960" } });
+  const tooMany = Object.fromEntries(
+    Array.from({ length: 25 }, (_, index) => [`9:${index + 1}`, "1024x1024"]),
+  );
+  invalid({ "4k": tooMany });
 });
 
 test("generation tasks retain the submitted model configuration snapshot", async () => {

@@ -127,6 +127,9 @@ import {
   providerParameterSchema,
   validateParameterSchemaConstraints,
   validateParameterValues,
+  youchuangGptImageSizes,
+  type GptImageSizeMap,
+  type GptImageSizeTier,
   type ModelReferenceMediaRules,
   type ModelParameterSchema,
   type ModelParameterValue,
@@ -295,6 +298,14 @@ function referenceMediaRulesForTask(task: {
     return undefined;
   }
   return rules;
+}
+
+function snapshotGptImageSizeMap(
+  task: Pick<GenerationTask, "modelConfiguration">,
+): GptImageSizeMap | undefined {
+  const raw = task.modelConfiguration.parameterSchema;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  return (raw as ModelParameterSchema).sizeMap;
 }
 
 function adapterVideoLimitsForTask(task: GenerationTask): ArkVideoLimits {
@@ -2451,16 +2462,36 @@ export async function relayMediaParametersForTask(
   return parameters;
 }
 
-export function gptImageSizeForAspectRatio(value: unknown) {
+const youchuangQualityLabels: Record<string, string> = {
+  "1k": "1K",
+  "2k": "2K",
+  "4k": "4K",
+};
+
+export function gptImageSizeForAspectRatio(
+  value: unknown,
+  quality: unknown = "1k",
+  sizeMap?: GptImageSizeMap,
+) {
+  const ratio = value === undefined || value === null ? "auto" : String(value);
+  const tier = String(quality ?? "1k").toLowerCase();
+  const configured =
+    sizeMap?.[tier as GptImageSizeTier]?.[ratio];
+  if (configured !== undefined) return configured;
   if (value === undefined || value === "auto") return "auto" as const;
-  if (value === "1:1") return "1024x1024" as const;
-  if (["16:9", "4:3", "3:2", "5:4", "21:9"].includes(String(value))) {
-    return "1536x1024" as const;
+  const tierTable =
+    youchuangGptImageSizes[tier as keyof typeof youchuangGptImageSizes] ??
+    youchuangGptImageSizes["1k"];
+  const size = tierTable[ratio];
+  if (size === undefined) {
+    const label = youchuangQualityLabels[tier] ?? "当前";
+    throw new RelayProviderError(
+      "FORMAT",
+      false,
+      `优创这个画质档（${label}）不支持 ${ratio} 比例，请改回自动比例或换 1K 画质`,
+    );
   }
-  if (["9:16", "3:4", "2:3", "4:5"].includes(String(value))) {
-    return "1024x1536" as const;
-  }
-  throw new RelayProviderError("FORMAT");
+  return size;
 }
 
 async function readGeneratedPngBody(body: ReadableStream<Uint8Array>) {
@@ -2863,7 +2894,11 @@ async function executeImageTask(taskId: string) {
         ? running.parameters.quality as "auto" | "low" | "medium" | "high"
         : "auto",
       responseFormat: "b64_json",
-      size: gptImageSizeForAspectRatio(running.parameters.aspectRatio),
+      size: gptImageSizeForAspectRatio(
+        running.parameters.aspectRatio,
+        running.parameters.quality,
+        snapshotGptImageSizeMap(running),
+      ),
     }, {
       mediaLifecycle: { ownerId },
       signal: controller.signal,
