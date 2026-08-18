@@ -1,18 +1,18 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-19
-状态：`v0.6.18已发布（2026-08-19）待用户复验；v0.6.17也待用户复验；v0.6.16已发布且USER PASS。INC-GEN-008与INC-GEN-009已随v0.6.17上线，尺寸映射面板UI对齐已随v0.6.18上线，正在等你复验。当前权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+状态：`v0.6.18已发布（2026-08-19）且用户已复验通过；v0.6.17已发布且用户已复验通过；v0.6.16已发布且USER PASS。INC-GEN-008与INC-GEN-009已随v0.6.17上线，尺寸映射面板UI对齐已随v0.6.18上线，用户2026-08-19回复「通过」已收口。当前权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
 
 ### 2026-08-19 优创尺寸映射面板 UI 对齐（v0.6.18）
 
-- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS`（待用户复验）。用户授权 `v0.6.18` 上线；已发布，正在等你复验（v0.6.17 也还在等你复验）。
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户授权 `v0.6.18` 上线；2026-08-19 用户回复「通过」，UI 对齐复验收口。
 - 要的结果：管理员后台「优创尺寸映射」面板样式对齐项目暗黑 UI；比例输入可下拉选；说明文案改大白话；出图逻辑不变。
 - 自动门：正式安全全量 `118/118 specs、983/983 tests PASS`；定向 m18/m12/m17/m53/m57/m81 全绿。
 - 发布：commit `e47f50c0bde0ee23585f27b71ad8df240973161a1` 已发布到 `/opt/unboundry/releases/v0.6.18-ui-align-20260819`；冻结备份/数据门/schema39 通过；GitHub `v0.6.18` 标签、PR #32 已合并。凭证 `spec/INC_GEN_009_UI_ALIGN_PRODUCTION_RECEIPT_2026-08-19.json`。
 
 ### 2026-08-19 管理员后台自改优创尺寸映射（INC-GEN-009）
 
-- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS`（待用户复验）。用户已说「按这个做」，并授权 `v0.6.17` 上线；已发布，正在等你复验。
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户已说「按这个做」，并授权 `v0.6.17` 上线；2026-08-19 用户回复「通过」。
 - 要的结果：管理员在后台编辑「画质档 × 比例 → 像素」，只对优创 gpt-image 生效；新格子按管理员像素真发；没填回退内置表；非法/未知组合整体拒绝，不发不扣费。
 - 不做：任意参数直发收费口；OpenRouter / 通用媒体 / 视频发送。
 - 权威方案：`spec/INC_GEN_009_ADMIN_EDITABLE_GPT_IMAGE_SIZE_MAP_2026-08-19.md`。
@@ -21,7 +21,7 @@
 
 ### 2026-08-18 优创专用协议按文档尺寸出图（INC-GEN-008）
 
-- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS`（待用户复验）。用户确认要做并说「按这个做」，授权 `v0.6.17` 上线；已发布，正在等你复验。
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户确认要做并说「按这个做」，授权 `v0.6.17` 上线；2026-08-19 用户回复「通过」，真 4K 已出一张。
 - 要的结果：选 2K/4K 必须按优创文档像素发 `size`，不能再偷换成 1024×1536。默认 1K。旧的 4K 选择按真 4K 发。
 - 不做：新增参数直发收费口；OpenRouter 续查/放行；打开通用媒体。
 - 权威方案：`spec/INC_GEN_008_YOUCHOANG_GPT_IMAGE_SIZE_2026-08-18.md`。

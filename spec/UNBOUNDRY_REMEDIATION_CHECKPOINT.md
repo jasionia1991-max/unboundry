@@ -2,23 +2,23 @@
 
 断点版本：`77`
 更新时间：`2026-08-19`
-状态：`V0_6_18_UI_ALIGN_PRODUCTION_PUBLISHED_AUTO_PASS（待用户复验）`
+状态：`V0_6_18_UI_ALIGN_PRODUCTION_PUBLISHED_USER_PASS（2026-08-19 用户复验通过）`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。当前一页快照见 `UNBOUNDRY_CURRENT_STATE.md`。
 
-## 0. 最新已发布事件：INC-GEN-009 UI 对齐（v0.6.18，待用户复验）
+## 0. 最新已发布事件：INC-GEN-009 UI 对齐（v0.6.18，用户已复验通过）
 
 - 用户反馈管理员后台「优创尺寸映射」看不懂且样式不一致，授权 `v0.6.18` 上线；面板样式对齐暗黑 UI、比例输入支持下拉、文案改大白话，出图逻辑不变。
 - 精确源码commit`e47f50c0bde0ee23585f27b71ad8df240973161a1`通过正式安全全量`118/118 specs、983/983 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。
 - 生产current已切到`/opt/unboundry/releases/v0.6.18-ui-align-20260819`；冻结备份、公网资源逐字节哈希、service/schema39和数据门均PASS。发布核验时保持322 tasks、326 attempts、active0、48 public templates（46 published）。
-- `v0.6.18`标签精确指向源码commit；PR #32已合并到`main`，merge commit`265c8f63e867e122ecab2f145c362d5bdab3bd19`。状态是`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`（v0.6.17 同待复验）。
+- `v0.6.18`标签精确指向源码commit；PR #32已合并到`main`，merge commit`265c8f63e867e122ecab2f145c362d5bdab3bd19`。2026-08-19 用户强制刷新后回复「通过」，状态是`PRODUCTION_PUBLISHED_USER_PASS`（v0.6.17 同收口）。
 - 权威记录：`spec/INC_GEN_009_UI_ALIGN_PRODUCTION_RECEIPT_2026-08-19.json`。
 
-## 0.001 前一已发布事件：INC-GEN-008+009（v0.6.17，待用户复验）
+## 0.001 前一已发布事件：INC-GEN-008+009（v0.6.17，用户已复验通过）
 
 - 用户确认方案并授权 `v0.6.17` 上线：优创专用协议按文档像素发 1K/2K/4K，生产默认画质已改 1K；管理员后台可自改尺寸映射；未知组合拦截不发不扣费。
 - 精确源码commit`e6b187bce50bb4189e029ab3389e316a3eb65501`通过正式安全全量`118/118 specs、983/983 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。
 - 生产current已切到`/opt/unboundry/releases/v0.6.17-inc-gen-008-009-20260819`；冻结备份、公网资源逐字节哈希、service/schema39和数据门均PASS。发布核验时保持322 tasks、326 attempts、active0、48 public templates（46 published）。
-- `v0.6.17`标签精确指向源码commit；PR #31已合并到`main`，merge commit`18e66ce39decdeb70b076cdd07b13abf1f243a80`。状态是`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。
+- `v0.6.17`标签精确指向源码commit；PR #31已合并到`main`，merge commit`18e66ce39decdeb70b076cdd07b13abf1f243a80`。2026-08-19 用户回复「通过」并确认真 4K 已出一张，状态是`PRODUCTION_PUBLISHED_USER_PASS`。
 - 权威记录：`spec/INC_GEN_008_YOUCHOANG_GPT_IMAGE_SIZE_2026-08-18.md`、`spec/INC_GEN_009_ADMIN_EDITABLE_GPT_IMAGE_SIZE_MAP_2026-08-19.md`与`spec/INC_GEN_008_009_PRODUCTION_RECEIPT_2026-08-19.json`。
 
 ## 0.002 前一已发布事件：INC-UI-010（v0.6.16已发布并通过用户验收）
