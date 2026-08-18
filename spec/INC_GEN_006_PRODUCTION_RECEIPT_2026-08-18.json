@@ -1,0 +1,93 @@
+{
+  "incident": "INC-GEN-006",
+  "version": "0.6.14",
+  "status": "PRODUCTION_PUBLISHED_AUTO_PASS",
+  "publishedAt": "2026-08-18T06:16:00Z",
+  "source": {
+    "commit": "ce3bf7c4481c1cc549bec6e512fe3c5f7fb8273e",
+    "tree": "da25dd2c1333c15235f1a791b99102736ee564a7",
+    "tagObject": "68dd43503360f050d691a181775ef31ba1cb86a0"
+  },
+  "tests": {
+    "full": {
+      "specsPassed": 118,
+      "specsTotal": 118,
+      "testsPassed": 973,
+      "testsTotal": 973,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0
+    },
+    "sourceFiles": 537,
+    "sourceSnapshotSha256": "3173884e4d4c2c219b44106d75d47434cb16792c71f5ae43766017f998d328fb",
+    "listenerBeforeAfterSha256": "24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244"
+  },
+  "backup": {
+    "path": "/var/lib/unboundry-rollbacks/inc-gen-006-frozen-20260818T061517Z",
+    "files": 363,
+    "frozenManifestSha256": "524ab8fc2292bac179709baf2c46814b132bbf7a9fbe1683c0ad6165ac06dd5b",
+    "restoreManifestSha256": "524ab8fc2292bac179709baf2c46814b132bbf7a9fbe1683c0ad6165ac06dd5b",
+    "restoreSchemaVersion": 39,
+    "restoreQuickCheck": "ok",
+    "restoreForeignKeyViolations": 0,
+    "restoreTasks": 294,
+    "restoreProviderAttempts": 296,
+    "restorePublicTemplates": 47,
+    "restorePublishedTemplates": 46
+  },
+  "production": {
+    "release": "/opt/unboundry/releases/v0.6.14-inc-gen-006-20260818",
+    "previousRelease": "/opt/unboundry/releases/v0.6.13-inc-gen-005-20260818",
+    "releaseInventoryFileSha256": "722fed1e0cf46158206c276d3250972a516b32e0dca9cb37065d4d4e3d7f716b",
+    "releaseInventoryLines": 570,
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "restartCount": 0,
+    "schemaVersion": 39,
+    "quickCheck": "ok",
+    "foreignKeyViolations": 0,
+    "tasks": 294,
+    "providerAttempts": 296,
+    "activeGenerations": 0,
+    "publicTemplates": 47,
+    "publishedTemplates": 46
+  },
+  "publicAssets": {
+    "version": "0.6.14",
+    "rootStatus": 200,
+    "title": "无央｜AI 无限画布",
+    "indexJs": {
+      "path": "/assets/index-DsciZc36.js",
+      "sha256": "506e7a76ec678302c6d46ea6612e890034aaffe1faf8a60c9e9c2d1a576893fa",
+      "matchesRelease": true
+    },
+    "indexCss": {
+      "path": "/assets/index-wqmutQKA.css",
+      "sha256": "557d78a8c704f8c5d1a42701c0153c0ef34e8aa11be7ce5e839e13e60e8045ca",
+      "matchesRelease": true
+    },
+    "canvasShell": {
+      "path": "/assets/CanvasShell-CXLy0hAh.js",
+      "sha256": "ea757d9d37075cc4d271f495149abf725a6e92c04143077adb0eea4ad05d7867",
+      "matchesRelease": true
+    }
+  },
+  "externalEffects": {
+    "realProviderRequests": 0,
+    "paidGenerationRequests": 0,
+    "ossWrites": 0
+  },
+  "github": {
+    "repository": "jasionia1991-max/unboundry",
+    "pullRequest": 24,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/24",
+    "mergedAt": "2026-08-18T06:16:21Z",
+    "mergeCommit": "8d5ae4e0423b71898a08c0a5612d2776767f5b62",
+    "tag": "v0.6.14",
+    "tagTarget": "ce3bf7c4481c1cc549bec6e512fe3c5f7fb8273e"
+  },
+  "userAcceptance": "USER_RECHECK",
+  "userAcceptanceEvidence": "User confirmed version 0.6.14 and 上线. Automatic and publication gates passed. Visual recheck of a leftover canvas-save group run is still pending."
+}

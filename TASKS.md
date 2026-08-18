@@ -1,14 +1,16 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-18
-状态：`v0.6.14本地已提交待发布。INC-GEN-006为LOCAL_COMMITTED，INC-GEN-005为PRODUCTION_PUBLISHED_USER_PASS，INC-GEN-004为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，INC-UI-009/008为PRODUCTION_PUBLISHED_USER_PASS，既有其他验收状态保持。生产在切换前仍运行v0.6.13。`
+状态：`v0.6.14已发布待用户复验。INC-GEN-006为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，INC-GEN-005为PRODUCTION_PUBLISHED_USER_PASS，INC-GEN-004为PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK，INC-UI-009/008为PRODUCTION_PUBLISHED_USER_PASS，既有其他验收状态保持。`
 
 ### 2026-08-18 过期「画布还在保存」不再挡整组（INC-GEN-006）
 
-- 状态：`LOCAL_COMMITTED`。用户同意方案、版本顺延为`v0.6.14`，并说赶紧搞。
+- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。用户同意方案、版本顺延为`v0.6.14`，并说上线。
 - 实现：整组开跑前不再把上次的「画布还在保存」当成不兼容；开跑后清掉组里这类过期红字；真不兼容照样拦。
 - 自动门：正式安全全量`118/118 specs、973/973 tests PASS`；定向`m22` 22/22、`m81` 41/41。
-- 发布：尚未切换生产。权威记录为`spec/INC_GEN_006_STALE_CANVAS_SAVE_PREFLIGHT_2026-08-18.md`。
+- 发布：commit`ce3bf7c4481c1cc549bec6e512fe3c5f7fb8273e`已发布到`/opt/unboundry/releases/v0.6.14-inc-gen-006-20260818`；冻结备份/恢复副本、公网关键资源、service/schema39和数据门通过。
+- 数据与外部影响：tasks294、attempts296、active0、公共模板47（46 published）前后不变；Provider/付费生成/OSS写入0。
+- GitHub：标签`v0.6.14`精确指向生产源码；PR #24已合并，merge commit`8d5ae4e0423b71898a08c0a5612d2776767f5b62`。权威记录为`spec/INC_GEN_006_STALE_CANVAS_SAVE_PREFLIGHT_2026-08-18.md`与生产receipt。
 
 ### 2026-08-18 解开 Seedance Mini 时长/清晰度锁（INC-GEN-005）
 
