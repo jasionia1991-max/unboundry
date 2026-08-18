@@ -20,11 +20,11 @@
 
 ## 2. 当前授权边界
 
-- **2026-08-18 当前权威状态**：生产运行`v0.6.14/schema39`，`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.14-inc-gen-006-20260818`。`INC-GEN-006 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-GEN-005 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-GEN-004 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-UI-009 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-UI-008 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-GEN-003/002/001 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-UI-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-000～011（含009A/009B） = PASS`；
-- v0.6.14生产源码commit为`ce3bf7c4481c1cc549bec6e512fe3c5f7fb8273e`、tree为`da25dd2c1333c15235f1a791b99102736ee564a7`；注释标签`v0.6.14`精确指向该源码。PR #24已于2026-08-18合并到`main`，merge commit为`8d5ae4e0423b71898a08c0a5612d2776767f5b62`。生产凭证为`spec/INC_GEN_006_PRODUCTION_RECEIPT_2026-08-18.json`；
-- v0.6.14正式安全全量为`118/118 specs、973/973 tests PASS`，异常0。过期「画布还在保存」不再挡整组，待用户复验；
-- 冻结备份位于`/var/lib/unboundry-rollbacks/inc-gen-006-frozen-20260818T061517Z`，冻结源与恢复副本均363文件且清单SHA-256同为`524ab8fc2292bac179709baf2c46814b132bbf7a9fbe1683c0ad6165ac06dd5b`。发布与验证期间真实Provider请求、付费生成和OSS写入均为0；上一不可变release `v0.6.13-inc-gen-005-20260818`及对应冻结备份继续保留；
-- 既有v0.6.0～v0.6.13、真实工作流与视频证据继续作为历史记录保留；其历史时点字段不得改写。其他仍为`USER_RECHECK / PARTIAL / PAUSED / BLOCK / NOT_STARTED`的独立条目不因INC-GEN-006自动升级。v0.6.14生产与GitHub授权已经消费完毕，不是未来继续改生产、数据、Provider、OSS、push/tag/PR或发布的永久授权；
+- **2026-08-18 当前权威状态**：生产运行`v0.6.15/schema39`，`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.15-inc-gen-007-20260818`。`INC-GEN-007 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-GEN-006 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-GEN-005 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-GEN-004 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，`INC-UI-009 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-UI-008 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-GEN-003/002/001 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-UI-007 = PRODUCTION_PUBLISHED_USER_PASS`，`REM-000～011（含009A/009B） = PASS`；
+- v0.6.15生产源码commit为`5630dd6ee328266a27295bc9d2e7479f89147b32`、tree为`6c2e82b4824be085a3258b7b7a113ed06849cf4d`；注释标签`v0.6.15`精确指向该源码。PR #26已于2026-08-18合并到`main`，merge commit为`714827c7152dcfd933ed96ab9427f479b57634de`。生产凭证为`spec/INC_GEN_007_PRODUCTION_RECEIPT_2026-08-18.json`；
+- v0.6.15正式安全全量为`118/118 specs、976/976 tests PASS`，异常0。假提交不再挡住、整组会自己核对或再试一次，待用户复验；
+- 冻结备份位于`/var/lib/unboundry-rollbacks/inc-gen-007-frozen-20260818T072309Z`，冻结源与恢复副本均363文件且清单SHA-256同为`eb76f6aedddec4a80345271b074f558707804227c34790f506fd330207451f52`。发布与验证期间真实Provider请求、付费生成和OSS写入均为0；上一不可变release `v0.6.14-inc-gen-006-20260818`及对应冻结备份继续保留；
+- 既有v0.6.0～v0.6.14、真实工作流与视频证据继续作为历史记录保留；其历史时点字段不得改写。其他仍为`USER_RECHECK / PARTIAL / PAUSED / BLOCK / NOT_STARTED`的独立条目不因INC-GEN-007自动升级。v0.6.15生产与GitHub授权已经消费完毕，不是未来继续改生产、数据、Provider、OSS、push/tag/PR或发布的永久授权；
 
 - REM-000 施工文档已于 2026-08-09 获用户确认，状态为 `PASS`；
 - 用户已于 2026-08-09 明确启动一次性离线 Goal，合并授权 REM-001～010 与 REM-011 离线工程部分；各 REM 仍按施工总方案依赖顺序分析、实施、测试、review 和更新文档，中途不再逐项询问；

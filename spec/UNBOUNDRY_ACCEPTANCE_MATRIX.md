@@ -5,6 +5,8 @@
 
 2026-08-18 `INC-UI-009 = PRODUCTION_PUBLISHED_USER_PASS`：整组/模板下载改走数据盘借空间，1GB保底和原有上限不降；盘上中性临时文件名；按钮中文提示。正式安全全量`118/118 specs、969/969 tests PASS`，异常0。生产已运行v0.6.11，公网资源逐字节哈希、冻结备份恢复、service/schema39与数据不变门通过，保持246 tasks、248 attempts、active0、47 public templates（46 published）；Provider/付费生成/OSS写入0。`v0.6.11`标签与PR #18合并完成；用户随后明确回复“通过”，本项正式收口。
 
+2026-08-18 `INC-GEN-007 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：GPT Image 不再把没做成片的失败写成已提交；整组自己核对或再试一次并继续；同一输入真未知时不许再开新单。正式安全全量`118/118 specs、976/976 tests PASS`，异常0。生产已运行v0.6.15，公网资源逐字节哈希、冻结备份恢复、service/schema39与数据门通过，保持299 tasks、301 attempts、active0、47 public templates（46 published）；Provider/付费生成/OSS写入0。`v0.6.15`标签与PR #26合并完成；用户肉眼验收仍为`USER_RECHECK`。
+
 2026-08-18 `INC-GEN-006 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：整组开跑前不再把上次的「画布还在保存」当成不兼容；开跑后清掉组里这类过期红字；真不兼容照样拦。正式安全全量`118/118 specs、973/973 tests PASS`，异常0。生产已运行v0.6.14，公网资源逐字节哈希、冻结备份恢复、service/schema39与数据门通过，保持294 tasks、296 attempts、active0、47 public templates（46 published）；Provider/付费生成/OSS写入0。`v0.6.14`标签与PR #24合并完成；用户肉眼验收仍为`USER_RECHECK`。
 
 2026-08-18 `INC-GEN-005 = PRODUCTION_PUBLISHED_USER_PASS`：Seedance 2.0 Mini 去掉 6～15秒和720p的付费验证禁用；默认仍5秒/480p；1080p和16秒以上继续拦住；保存失败不关编辑框。正式安全全量`118/118 specs、971/971 tests PASS`，异常0。生产已运行v0.6.13；用户随后明确回复“通过”，本项正式收口。

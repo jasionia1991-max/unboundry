@@ -1,0 +1,82 @@
+{
+  "incident": "INC-GEN-007",
+  "version": "0.6.15",
+  "status": "PRODUCTION_PUBLISHED_AUTO_PASS",
+  "publishedAt": "2026-08-18T07:23:00Z",
+  "source": {
+    "commit": "5630dd6ee328266a27295bc9d2e7479f89147b32",
+    "tree": "6c2e82b4824be085a3258b7b7a113ed06849cf4d",
+    "tagObject": "8b9c4f72e68b1d2ca9c64c87a8549f46ea019a32"
+  },
+  "tests": {
+    "full": {
+      "specsPassed": 118,
+      "specsTotal": 118,
+      "testsPassed": 976,
+      "testsTotal": 976,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0
+    },
+    "sourceFiles": 541,
+    "sourceSnapshotSha256": "7b964d31c0d582dc2b3375d2b9d243be60bc80f258be8867200404ed9f2c5aa5",
+    "listenerBeforeAfterSha256": "24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244"
+  },
+  "backup": {
+    "path": "/var/lib/unboundry-rollbacks/inc-gen-007-frozen-20260818T072309Z",
+    "files": 363,
+    "frozenManifestSha256": "eb76f6aedddec4a80345271b074f558707804227c34790f506fd330207451f52",
+    "restoreManifestSha256": "eb76f6aedddec4a80345271b074f558707804227c34790f506fd330207451f52",
+    "restoreSchemaVersion": 39,
+    "restoreQuickCheck": "ok",
+    "restoreForeignKeyViolations": 0,
+    "restoreTasks": 299,
+    "restoreProviderAttempts": 301,
+    "restorePublicTemplates": 47,
+    "restorePublishedTemplates": 46
+  },
+  "production": {
+    "release": "/opt/unboundry/releases/v0.6.15-inc-gen-007-20260818",
+    "previousRelease": "/opt/unboundry/releases/v0.6.14-inc-gen-006-20260818",
+    "releaseInventoryFileSha256": "6666420298d2e7b3580d9e52c34f478309c4a601d17eb21bcadab3004a3d0824",
+    "releaseInventoryLines": 5051,
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "restartCount": 0,
+    "schemaVersion": 39,
+    "quickCheck": "ok",
+    "foreignKeyViolations": 0,
+    "tasks": 299,
+    "providerAttempts": 301,
+    "activeGenerations": 0,
+    "publicTemplates": 47,
+    "publishedTemplates": 46
+  },
+  "publicAssets": {
+    "version": "0.6.15",
+    "rootStatus": 200,
+    "title": "无央｜AI 无限画布",
+    "indexJs": {
+      "path": "/assets/index-Bc5tWwKY.js",
+      "sha256": "697e1beb9ac506ffe940507684ed5c5530b0acd9250cc7fd46c64d4b8ce77cb2",
+      "matchesRelease": true
+    },
+    "indexCss": {
+      "path": "/assets/index-wqmutQKA.css",
+      "sha256": "557d78a8c704f8c5d1a42701c0153c0ef34e8aa11be7ce5e839e13e60e8045ca",
+      "matchesRelease": true
+    },
+    "canvasShell": {
+      "path": "/assets/CanvasShell-CCX5H_1q.js",
+      "sha256": "073967628a40969b5e9c396153261407d79f73ac17678908883c8ad33edc41d2",
+      "matchesRelease": true
+    }
+  },
+  "externalEffects": {
+    "realProviderRequests": 0,
+    "paidGenerationRequests": 0,
+    "ossWrites": 0
+  }
+}
