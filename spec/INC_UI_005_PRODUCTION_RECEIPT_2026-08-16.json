@@ -1,7 +1,7 @@
 {
   "incident": "INC-UI-005",
   "version": "0.6.4",
-  "status": "PRODUCTION_PUBLISHED_AUTO_PASS_USER_RECHECK",
+  "status": "PRODUCTION_PUBLISHED_USER_PASS",
   "published_at": "2026-08-16T13:53:22Z",
   "production_url": "https://canvas.mymy.ltd",
   "release": {
@@ -97,5 +97,6 @@
     "state_at_receipt_commit": "OPEN_PENDING_AUTHORIZED_MERGE",
     "annotated_tag_target": "ba5805c4448e504d33238947ea9aec1dfa160166"
   },
-  "user_acceptance": "USER_RECHECK"
+  "user_acceptance": "USER_PASS",
+  "user_acceptance_evidence": "User replied 全通过，这几个全部都通过 on 2026-08-18."
 }

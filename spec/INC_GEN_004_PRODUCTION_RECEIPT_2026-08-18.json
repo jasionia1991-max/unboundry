@@ -1,7 +1,7 @@
 {
   "incident": "INC-GEN-004",
   "version": "0.6.12",
-  "status": "PRODUCTION_PUBLISHED_AUTO_PASS",
+  "status": "PRODUCTION_PUBLISHED_USER_PASS",
   "publishedAt": "2026-08-17T19:22:08Z",
   "source": {
     "commit": "dc1b4a8b37030b13169a2016ad12ed124892e74b",
@@ -88,6 +88,6 @@
     "tag": "v0.6.12",
     "tagTarget": "dc1b4a8b37030b13169a2016ad12ed124892e74b"
   },
-  "userAcceptance": "USER_RECHECK",
-  "userAcceptanceEvidence": "User confirmed version increment to 0.6.12 and 直接上线. Automatic and publication gates passed. Visual recheck of a full group run is still pending."
+  "userAcceptance": "USER_PASS",
+  "userAcceptanceEvidence": "User confirmed version increment to 0.6.12 and 直接上线. Automatic and publication gates passed. User later replied 全通过，这几个全部都通过 on 2026-08-18."
 }

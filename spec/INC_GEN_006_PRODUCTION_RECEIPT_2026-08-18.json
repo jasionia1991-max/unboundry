@@ -1,7 +1,7 @@
 {
   "incident": "INC-GEN-006",
   "version": "0.6.14",
-  "status": "PRODUCTION_PUBLISHED_AUTO_PASS",
+  "status": "PRODUCTION_PUBLISHED_USER_PASS",
   "publishedAt": "2026-08-18T06:16:00Z",
   "source": {
     "commit": "ce3bf7c4481c1cc549bec6e512fe3c5f7fb8273e",
@@ -88,6 +88,6 @@
     "tag": "v0.6.14",
     "tagTarget": "ce3bf7c4481c1cc549bec6e512fe3c5f7fb8273e"
   },
-  "userAcceptance": "USER_RECHECK",
-  "userAcceptanceEvidence": "User confirmed version 0.6.14 and 上线. Automatic and publication gates passed. Visual recheck of a leftover canvas-save group run is still pending."
+  "userAcceptance": "USER_PASS",
+  "userAcceptanceEvidence": "User confirmed version 0.6.14 and 上线. Automatic and publication gates passed. User later replied 全通过，这几个全部都通过 on 2026-08-18."
 }

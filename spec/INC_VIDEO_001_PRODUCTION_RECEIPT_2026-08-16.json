@@ -1,7 +1,7 @@
 {
   "format": "unboundry-production-hotfix-receipt-v1",
   "incident": "INC-VIDEO-001",
-  "status": "PRODUCTION_PUBLISHED_REAL_VIDEO_PASS_USER_RECHECK",
+  "status": "PRODUCTION_PUBLISHED_REAL_VIDEO_PASS_USER_PASS",
   "releasedAt": "2026-08-16T03:19:00+08:00",
   "verifiedAt": "2026-08-16T03:36:30+08:00",
   "version": "0.6.2",
@@ -60,5 +60,6 @@
     "previousReleaseIntact": true,
     "previousPath": "/opt/unboundry/releases/v0.6.2-inc-ui-002-20260816"
   },
-  "userAcceptance": "PENDING_NEXT_DAY_RECHECK"
+  "userAcceptance": "USER_PASS",
+  "userAcceptanceEvidence": "User replied 全通过，这几个全部都通过 on 2026-08-18."
 }

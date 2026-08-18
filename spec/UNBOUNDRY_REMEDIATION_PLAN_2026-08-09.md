@@ -1,9 +1,9 @@
 # Unboundry 全量修复、优化与安全发布施工总方案
 
 状态：`COMPLETED_WITH_USER_ACCEPTANCE`
-计划版本：`1.55-v0.6.15-user-accepted`
+计划版本：`1.56-backlog-user-accepted`
 建立日期：`2026-08-09`
-当前结论：生产运行`v0.6.15`。站着的产品合同是「上传一张图，工作流自己跑完，用户下载」。`INC-GEN-007`已由用户回复通过，收口为`PRODUCTION_PUBLISHED_USER_PASS`。`INC-GEN-005/003/002/001`、`INC-UI-009/008/007/006`、`INC-ECOM-007`、`REM-000～011`、`DEP-010`保持 PASS。`INC-GEN-006/004`与更早若干 UI 项仍为`USER_RECHECK`，不因本次通过自动升级。一页快照见`spec/UNBOUNDRY_CURRENT_STATE.md`。
+当前结论：生产运行`v0.6.15`。站着的产品合同是「上传一张图，工作流自己跑完，用户下载」。`INC-GEN-007`已由用户回复通过。用户于2026-08-18再回复「全通过」，`INC-GEN-006/004`、`INC-UI-005/004/003/002/001`、`INC-VIDEO-001`一并收口为 USER PASS。`INC-GEN-005/003/002/001`、`INC-UI-009/008/007/006`、`INC-ECOM-007`、`REM-000～011`、`DEP-010`保持 PASS。其他未点头条目不自动升级。一页快照见`spec/UNBOUNDRY_CURRENT_STATE.md`。
 
 生产当前运行 `/opt/unboundry/current -> /opt/unboundry/releases/v0.6.15-inc-gen-007-20260818`，service active/enabled、NRestarts0；公网version与schema39通过。v0.6.15源码commit为`5630dd6ee328266a27295bc9d2e7479f89147b32`、tree为`6c2e82b4824be085a3258b7b7a113ed06849cf4d`，标签`v0.6.15`精确指向该源码；PR #26已于2026-08-18合并到`main`（merge commit `714827c7152dcfd933ed96ab9427f479b57634de`）。正式安全全量`118/118 specs、976/976 tests PASS`。
 
@@ -600,3 +600,4 @@ REM-009B 已在合成数据上完成富含业务数据、媒体、secret 和假 
 | 2026-08-18 | 1.53-v0.6.14-published | v0.6.14过期画布保存句不再挡整组已发布；INC-GEN-006为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，生产current切到`v0.6.14-inc-gen-006-20260818`；`v0.6.14`标签与PR #24合并 | 用户说上线；肉眼验收仍待确认；不改历史时点字段 |
 | 2026-08-18 | 1.54-v0.6.15-published | v0.6.15假提交误判与整组自动核对/再试已发布；INC-GEN-007为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，生产current切到`v0.6.15-inc-gen-007-20260818`；`v0.6.15`标签与PR #26合并 | 用户同意方案、版本顺延并说验完上线；肉眼验收仍待确认；不改历史时点字段 |
 | 2026-08-18 | 1.55-v0.6.15-user-accepted | v0.6.15假提交/自动核对已由用户回复通过；INC-GEN-007收口为`PRODUCTION_PUBLISHED_USER_PASS`；新增当前权威快照`spec/UNBOUNDRY_CURRENT_STATE.md` | 用户说通过并要求对齐文档；不改生产、不改历史时点字段 |
+| 2026-08-18 | 1.56-backlog-user-accepted | 用户回复「全通过」；INC-GEN-006/004、INC-UI-005/004/003/002/001、INC-VIDEO-001收口为USER PASS | 仅同步文档当前态；不改生产、不改历史时点字段 |

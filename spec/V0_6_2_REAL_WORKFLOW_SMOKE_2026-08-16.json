@@ -1,6 +1,6 @@
 {
   "format": "unboundry-real-workflow-smoke-v1",
-  "status": "PRODUCTION_REAL_WORKFLOW_SMOKE_PASS_USER_RECHECK",
+  "status": "PRODUCTION_REAL_WORKFLOW_SMOKE_PASS_USER_PASS",
   "observedAt": "2026-08-16T03:36:30+08:00",
   "version": "0.6.2",
   "schemaVersion": 39,
@@ -159,5 +159,6 @@
     "providerAttempts": 125,
     "activeGenerationTasks": 0
   },
-  "userAcceptance": "PENDING_NEXT_DAY_RECHECK"
+  "userAcceptance": "USER_PASS",
+  "userAcceptanceEvidence": "User replied 全通过，这几个全部都通过 on 2026-08-18."
 }

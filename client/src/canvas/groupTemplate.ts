@@ -178,3 +178,56 @@ export function serializeGroupTemplate(options: {
     version: 1,
   };
 }
+
+const PUBLIC_PRIVATE_MEDIA_KEYS = [
+  "assetId",
+  "audioDuration",
+  "audioFileName",
+  "audioFileSize",
+  "mediaByteSize",
+  "mediaContentType",
+  "mediaDurationSeconds",
+  "mediaHeight",
+  "mediaMetadataSource",
+  "mediaMetadataStatus",
+  "mediaStorageBackend",
+  "mediaWidth",
+  "videoCreatedAt",
+  "videoFileSize",
+  "videoHeight",
+  "videoWidth",
+] as const;
+
+/**
+ * 公共模板不得带走项目私货素材。提示词、模型、参数、连线角色保留。
+ * 只用于发公共，不得拿去改「我的模板」保存路径。
+ */
+export function stripPrivateMediaForPublicTemplate(
+  graph: TemplateGraph,
+): TemplateGraph {
+  return {
+    edges: graph.edges.map((edge) => ({
+      ...edge,
+      ...(edge.data ? { data: { ...edge.data } } : {}),
+    })),
+    nodes: graph.nodes.map((node) => {
+      const data: Record<string, unknown> = { ...node.data };
+      for (const key of PUBLIC_PRIVATE_MEDIA_KEYS) {
+        delete data[key];
+      }
+      if (Array.isArray(data.playlistClips)) {
+        data.playlistClips = data.playlistClips.map((clip) => {
+          if (!clip || typeof clip !== "object") return clip;
+          return { ...clip, src: "" };
+        });
+      }
+      return {
+        ...node,
+        data: data as TemplateGraphNode["data"],
+        position: { ...node.position },
+        style: { ...node.style },
+      };
+    }),
+    version: 1,
+  };
+}

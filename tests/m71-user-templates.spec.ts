@@ -5,7 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ProbeNodeType } from "../client/src/canvas/ProbeNode";
 import type { CuttableEdge } from "../client/src/canvas/canvasTypes";
-import { serializeGroupTemplate } from "../client/src/canvas/groupTemplate";
+import {
+  serializeGroupTemplate,
+  stripPrivateMediaForPublicTemplate,
+} from "../client/src/canvas/groupTemplate";
 import { openAppDatabase } from "../server/database";
 import {
   deleteUserTemplate,
@@ -552,6 +555,30 @@ test("group template serializer keeps prompts, parameters, roles and durable med
   expect(savedAudioData.groupTemplate).toBeUndefined();
   expect(graph.nodes[0].data.groupColor).toBe("rgba(239, 68, 68, 0.16)");
   expect(graph.nodes[0].data.groupTemplate).toBeUndefined();
+
+  const publicGraph = stripPrivateMediaForPublicTemplate(graph);
+  const publicImage = publicGraph.nodes[1].data;
+  const publicAudio = publicGraph.nodes[2].data;
+  expect(publicImage.imagePrompt).toBe("生成商品图");
+  expect(publicImage.imagePromptReady).toBe(true);
+  expect(publicImage.imageParameters).toEqual({
+    aspectRatio: "1:1",
+    imageSize: "1K",
+  });
+  expect(publicAudio.audioPrompt).toBe("背景音乐");
+  expect(publicGraph.edges[0].data).toEqual({
+    inputOrder: 2,
+    inputRole: "reference-image",
+  });
+  expect(publicImage.assetId).toBeUndefined();
+  expect(publicImage.mediaStorageBackend).toBeUndefined();
+  expect(publicImage.mediaContentType).toBeUndefined();
+  expect(publicImage.mediaByteSize).toBeUndefined();
+  expect(publicImage.mediaMetadataStatus).toBeUndefined();
+  expect(publicAudio.assetId).toBeUndefined();
+  expect(publicAudio.mediaStorageBackend).toBeUndefined();
+  expect(graph.nodes[1].data.assetId).toBe("asset-1");
+  expect(graph.nodes[2].data.assetId).toBe("asset-2");
 });
 
 test("group template serializer rejects missing groups and probe children", () => {
@@ -772,6 +799,10 @@ test("group toolbar saves a private template and the my-templates panel lists an
     .locator('[data-testid="rf__node-group-1"]')
     .click({ position: { x: 5, y: 5 } });
   await page.getByTestId("group-template-button").click();
+  await expect(page.getByTestId("group-template-destination")).toBeVisible();
+  await expect(
+    page.getByTestId("group-template-destination-public"),
+  ).not.toBeChecked();
   await page.getByLabel("模板标题").fill("从画布保存的模板");
   await page.getByTestId("group-template-submit").click();
   await expect(page.getByTestId("workflow-run-toast")).toContainText(
@@ -819,6 +850,195 @@ test("group toolbar saves a private template and the my-templates panel lists an
     .getByRole("button", { name: "删除模板 从画布保存的模板" });
   await deleteButton.click();
   await expect(card).toHaveCount(0);
+
+  await request.delete(`/api/canvas/${project.id}`);
+  await request.delete(`/api/projects/${project.id}`);
+});
+
+test("admin can publish a canvas group to public templates without private media", async ({
+  page,
+  request,
+}) => {
+  const created = await request.post("/api/projects", { data: {} });
+  expect(created.status()).toBe(201);
+  const project = (await created.json()) as { id: string };
+  const saveMetadata = await existingCanvasSaveMetadata(request, project.id);
+  const saved = await request.put(`/api/canvas/${project.id}`, {
+    data: {
+      edges: [
+        {
+          data: { inputOrder: 1, inputRole: "prompt" },
+          id: "edge-public-1",
+          source: "child-text",
+          sourceHandle: "source",
+          target: "child-image",
+          targetHandle: "target",
+          type: "cuttable",
+        },
+      ],
+      nodes: [
+        {
+          data: { label: "Group", title: "待发公共组" },
+          id: "group-public",
+          position: { x: 80, y: 80 },
+          style: { height: 348, width: 548 },
+          type: "group",
+          zIndex: 0,
+        },
+        {
+          data: {
+            label: "Text",
+            textPrompt: "上传位说明",
+            title: "说明",
+          },
+          id: "child-text",
+          parentId: "group-public",
+          position: { x: 20, y: 20 },
+          style: { height: 250, width: 250 },
+          type: "text",
+          zIndex: 1,
+        },
+        {
+          data: {
+            assetId: "private-asset-should-not-publish",
+            label: "Image",
+            mediaByteSize: 2048,
+            mediaContentType: "image/png",
+            mediaMetadataStatus: "ready",
+            mediaStorageBackend: "oss",
+            title: "上传位图片",
+          },
+          id: "child-image",
+          parentId: "group-public",
+          position: { x: 300, y: 20 },
+          style: { height: 250, width: 250 },
+          type: "image",
+          zIndex: 1,
+        },
+      ],
+      ...saveMetadata,
+      viewport: { x: 0, y: 0, zoom: 1 },
+    },
+  });
+  expect(saved.ok()).toBeTruthy();
+
+  await page.goto(`/canvas/${project.id}`);
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-persistence-ready",
+    "true",
+  );
+  await page
+    .locator('[data-testid="rf__node-group-public"]')
+    .click({ position: { x: 5, y: 5 } });
+  await page.getByTestId("group-template-button").click();
+  await page.getByLabel("模板标题").fill("画布直发公共模板");
+  await page.getByTestId("group-template-destination-public").check();
+  await page.getByTestId("group-template-submit").click();
+  await expect(page.getByTestId("workflow-run-toast")).toContainText(
+    "已发布到公共模板",
+  );
+
+  const catalog = await request.get(
+    "/api/templates?space=public&q=画布直发公共模板&limit=20&includeGraph=true",
+  );
+  expect(catalog.ok()).toBeTruthy();
+  const body = (await catalog.json()) as {
+    items: Array<{
+      graph?: {
+        edges: Array<{ data?: { inputOrder?: number; inputRole?: string } }>;
+        nodes: Array<{ data: Record<string, unknown> }>;
+      };
+      title: string;
+    }>;
+  };
+  const published = body.items.find((item) => item.title === "画布直发公共模板");
+  expect(published).toBeTruthy();
+  expect(published?.graph?.nodes.some((node) => node.data.assetId)).toBe(false);
+  expect(
+    published?.graph?.nodes.some((node) => node.data.textPrompt === "上传位说明"),
+  ).toBe(true);
+  expect(published?.graph?.edges[0]?.data).toEqual({
+    inputOrder: 1,
+    inputRole: "prompt",
+  });
+
+  const mine = await request.get(
+    "/api/templates?space=mine&q=画布直发公共模板&limit=20",
+  );
+  expect(mine.ok()).toBeTruthy();
+  const mineBody = (await mine.json()) as { items: Array<{ title: string }> };
+  expect(
+    mineBody.items.some((item) => item.title === "画布直发公共模板"),
+  ).toBe(false);
+
+  await request.delete(`/api/canvas/${project.id}`);
+  await request.delete(`/api/projects/${project.id}`);
+});
+
+test("public canvas publish keeps the dialog open when compatibility fails", async ({
+  page,
+  request,
+}) => {
+  const created = await request.post("/api/projects", { data: {} });
+  expect(created.status()).toBe(201);
+  const project = (await created.json()) as { id: string };
+  const saveMetadata = await existingCanvasSaveMetadata(request, project.id);
+  const saved = await request.put(`/api/canvas/${project.id}`, {
+    data: {
+      edges: [],
+      nodes: [
+        {
+          data: { label: "Group", title: "缺模型组" },
+          id: "group-compat",
+          position: { x: 80, y: 80 },
+          style: { height: 348, width: 548 },
+          type: "group",
+          zIndex: 0,
+        },
+        {
+          data: {
+            imagePrompt: "生成商品主图",
+            imagePromptReady: true,
+            label: "Image",
+            title: "商品主图",
+          },
+          id: "child-image",
+          parentId: "group-compat",
+          position: { x: 20, y: 20 },
+          style: { height: 250, width: 250 },
+          type: "image",
+          zIndex: 1,
+        },
+      ],
+      ...saveMetadata,
+      viewport: { x: 0, y: 0, zoom: 1 },
+    },
+  });
+  expect(saved.ok()).toBeTruthy();
+
+  await page.goto(`/canvas/${project.id}`);
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-persistence-ready",
+    "true",
+  );
+  await page
+    .locator('[data-testid="rf__node-group-compat"]')
+    .click({ position: { x: 5, y: 5 } });
+  await page.getByTestId("group-template-button").click();
+  await page.getByLabel("模板标题").fill("缺模型不能发公共");
+  await page.getByTestId("group-template-destination-public").check();
+  await page.getByTestId("group-template-submit").click();
+  await expect(page.locator(".group-template-error")).toContainText("推荐模型");
+  await expect(page.getByTestId("group-template-dialog-backdrop")).toBeVisible();
+
+  const catalog = await request.get(
+    "/api/templates?space=public&q=缺模型不能发公共&limit=20",
+  );
+  expect(catalog.ok()).toBeTruthy();
+  const body = (await catalog.json()) as { items: Array<{ title: string }> };
+  expect(body.items.some((item) => item.title === "缺模型不能发公共")).toBe(
+    false,
+  );
 
   await request.delete(`/api/canvas/${project.id}`);
   await request.delete(`/api/projects/${project.id}`);

@@ -1,6 +1,6 @@
 # INC-UI-004 画布标题缩放可读性
 
-状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
+状态：`PRODUCTION_PUBLISHED_USER_PASS`
 
 ## 用户问题
 
@@ -38,11 +38,11 @@
 
 ## 用户验收状态
 
-- `TITLE-ZOOM-001`：15%总览标题肉眼可辨——`USER_RECHECK`。
-- `TITLE-ZOOM-002`：60%及100%标题清晰且不过度抢眼——`USER_RECHECK`。
-- `TITLE-ZOOM-003`：长标题省略与完整值查看——`USER_RECHECK`。
-- `TITLE-ZOOM-004`：缩放/拖拽/框选不被未选中标题拦截——`USER_RECHECK`。
-- `TITLE-ZOOM-005`：选中节点仍可编辑标题——`USER_RECHECK`。
-- `TITLE-ZOOM-006`：Group与Storyboard视觉层级符合灰阶UI规范——`USER_RECHECK`。
+- `TITLE-ZOOM-001`：15%总览标题肉眼可辨——`PASS`。
+- `TITLE-ZOOM-002`：60%及100%标题清晰且不过度抢眼——`PASS`。
+- `TITLE-ZOOM-003`：长标题省略与完整值查看——`PASS`。
+- `TITLE-ZOOM-004`：缩放/拖拽/框选不被未选中标题拦截——`PASS`。
+- `TITLE-ZOOM-005`：选中节点仍可编辑标题——`PASS`。
+- `TITLE-ZOOM-006`：Group与Storyboard视觉层级符合灰阶UI规范——`PASS`。
 
-当前线上已提供新标题样式；以上条目等待用户在真实画布以15%、60%和100%肉眼复验。
+用户于 2026-08-18 明确回复「全通过」，以上条目收口为 PASS。
