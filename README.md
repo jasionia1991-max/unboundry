@@ -4,9 +4,9 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 2026-08-18 假提交不再挡住工作流（v0.6.15 已发布，待你复验）
+## 2026-08-18 假提交不再挡住工作流（v0.6.15 已发布并通过用户验收）
 
-`INC-GEN-007 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：GPT Image 不到 1 秒的失败不再谎称已提交；整组会自己核对或再试一次并继续。正式安全全量`118/118 specs、976/976 tests PASS`，异常0。生产已切到`v0.6.15-inc-gen-007-20260818`，冻结备份恢复、公网三份关键资源、schema39和数据门均通过；tasks299/attempts301/active0、模板47/46不变，真实Provider/付费/OSS写入0。`v0.6.15`标签指向精确生产源码，PR #26已合并。请强制刷新后再跑刚才那组。
+`INC-GEN-007 = PRODUCTION_PUBLISHED_USER_PASS`：GPT Image 不到 1 秒的失败不再谎称已提交；整组会自己核对或再试一次并继续。正式安全全量`118/118 specs、976/976 tests PASS`，异常0。生产已切到`v0.6.15-inc-gen-007-20260818`。用户随后明确回复“通过”，验收正式收口。当前权威快照见 [`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)。
 
 ## 2026-08-18 过期「画布还在保存」不再挡整组（v0.6.14 已发布，待你复验）
 

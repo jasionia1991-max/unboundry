@@ -1,9 +1,9 @@
 # Unboundry 全量修复、优化与安全发布施工总方案
 
 状态：`COMPLETED_WITH_USER_ACCEPTANCE`
-计划版本：`1.54-v0.6.15-published`
+计划版本：`1.55-v0.6.15-user-accepted`
 建立日期：`2026-08-09`
-当前结论：用户后续连续授权并完成 `v0.5.2` bridge、`v0.6.0` final、schema37→39原生产切换、`v0.6.1`工作流流水执行修复、`v0.6.5`画布缩放坐标稳定修复、`v0.6.6`组标题/文字平移/模板目录刷新、`v0.6.7`生成用时与画布核对结果、`v0.6.8`同层生成提交排队、`v0.6.9`失败生成自动核对、`v0.6.10`文字画布级全屏、`v0.6.11`整组下载改走数据盘、`v0.6.12`整组节点结束后先存稳，以及`v0.6.13`解开Seedance Mini付费验证锁。`REM-000～011（含009A/009B） = PASS`、`INC-GEN-005 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`、`INC-GEN-004 = PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`、`INC-UI-009 = PRODUCTION_PUBLISHED_USER_PASS`、`INC-UI-008 = PRODUCTION_PUBLISHED_USER_PASS`、`INC-GEN-003 = PRODUCTION_PUBLISHED_USER_PASS`、`INC-GEN-002 = PRODUCTION_PUBLISHED_USER_PASS`、`INC-GEN-001 = PRODUCTION_PUBLISHED_USER_PASS`、`INC-UI-007 = PRODUCTION_PUBLISHED_USER_PASS`、`INC-UI-006 = PRODUCTION_PUBLISHED_USER_PASS`、`PRODUCTION = LIVE`、`DEP-010 = PASS`；其他既有USER_RECHECK/PARTIAL/PAUSED/BLOCK/NOT_STARTED不自动升级。生产已运行 v0.6.13；Mini锁待用户复验；整组存稳仍待用户复验；文字全屏已由用户回复通过。
+当前结论：生产运行`v0.6.15`。站着的产品合同是「上传一张图，工作流自己跑完，用户下载」。`INC-GEN-007`已由用户回复通过，收口为`PRODUCTION_PUBLISHED_USER_PASS`。`INC-GEN-005/003/002/001`、`INC-UI-009/008/007/006`、`INC-ECOM-007`、`REM-000～011`、`DEP-010`保持 PASS。`INC-GEN-006/004`与更早若干 UI 项仍为`USER_RECHECK`，不因本次通过自动升级。一页快照见`spec/UNBOUNDRY_CURRENT_STATE.md`。
 
 生产当前运行 `/opt/unboundry/current -> /opt/unboundry/releases/v0.6.15-inc-gen-007-20260818`，service active/enabled、NRestarts0；公网version与schema39通过。v0.6.15源码commit为`5630dd6ee328266a27295bc9d2e7479f89147b32`、tree为`6c2e82b4824be085a3258b7b7a113ed06849cf4d`，标签`v0.6.15`精确指向该源码；PR #26已于2026-08-18合并到`main`（merge commit `714827c7152dcfd933ed96ab9427f479b57634de`）。正式安全全量`118/118 specs、976/976 tests PASS`。
 
@@ -599,3 +599,4 @@ REM-009B 已在合成数据上完成富含业务数据、媒体、secret 和假 
 | 2026-08-18 | 1.52-v0.6.14-local | v0.6.14过期画布保存句不再挡整组已本地提交；INC-GEN-006为`LOCAL_COMMITTED`；生产仍运行v0.6.13 | 用户同意方案、版本顺延并说赶紧搞；切生产前不得写成已上线 |
 | 2026-08-18 | 1.53-v0.6.14-published | v0.6.14过期画布保存句不再挡整组已发布；INC-GEN-006为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，生产current切到`v0.6.14-inc-gen-006-20260818`；`v0.6.14`标签与PR #24合并 | 用户说上线；肉眼验收仍待确认；不改历史时点字段 |
 | 2026-08-18 | 1.54-v0.6.15-published | v0.6.15假提交误判与整组自动核对/再试已发布；INC-GEN-007为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，生产current切到`v0.6.15-inc-gen-007-20260818`；`v0.6.15`标签与PR #26合并 | 用户同意方案、版本顺延并说验完上线；肉眼验收仍待确认；不改历史时点字段 |
+| 2026-08-18 | 1.55-v0.6.15-user-accepted | v0.6.15假提交/自动核对已由用户回复通过；INC-GEN-007收口为`PRODUCTION_PUBLISHED_USER_PASS`；新增当前权威快照`spec/UNBOUNDRY_CURRENT_STATE.md` | 用户说通过并要求对齐文档；不改生产、不改历史时点字段 |
