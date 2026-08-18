@@ -1,14 +1,16 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-18
-状态：`v0.6.16准备发布。INC-UI-010为管理员画布直发公共模板。INC-GEN-007/006/005/004与INC-UI-009～001、INC-VIDEO-001均为USER PASS。当前权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+状态：`v0.6.16已发布，INC-UI-010待你复验。INC-GEN-007/006/005/004与INC-UI-009～001、INC-VIDEO-001均为USER PASS。当前权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
 
 ### 2026-08-18 管理员从画布组直接发布公共模板（INC-UI-010）
 
-- 状态：`LOCAL_IMPLEMENTED`。用户确认方案并说按`v0.6.16`上线。
+- 状态：`PRODUCTION_PUBLISHED`。用户确认方案并说按`v0.6.16`上线；自动门和线上切换已过，等你打开网站回复是否通过。
 - 实现：管理员在「创建模板」可选发到公共模板；默认仍是我的模板。发公共时清掉私图，留下提示词、节点和连线。普通账号看不到该选项。
 - 自动门：定向`m71` 13/13、`m77` 11/11、`m81` 41/41；正式安全全量产品测试`118/118 specs、979/979 tests PASS`。
-- 权威记录：`spec/INC_UI_010_CANVAS_PUBLIC_TEMPLATE_2026-08-18.md`。
+- 发布：commit`83fd8dce9e7d7cf3fb419599aa753e66f35cdc25`已发布到`/opt/unboundry/releases/v0.6.16-inc-ui-010-20260818`；冻结备份/恢复副本、公网关键资源、service/schema39和数据门通过。
+- 数据与外部影响：tasks319、attempts323、active0、公共模板47（46 published）前后不变；Provider/付费生成/OSS写入0。
+- GitHub：标签`v0.6.16`精确指向生产源码；PR #29已合并，merge commit`dbfa94558ee73ce6658e5790358e23959e069b10`。权威记录为`spec/INC_UI_010_CANVAS_PUBLIC_TEMPLATE_2026-08-18.md`与生产receipt。
 
 ### 2026-08-18 假提交误判 + 工作流自动核对/再试（INC-GEN-007）
 
@@ -463,7 +465,7 @@ F14本地正式门证据绑定 HEAD `eb4f99ea525390b0dd7a39d3cad55d882ffea41d`�
 
 ## 当前阶段
 
-阶段：`生产 v0.6.15/schema39 LIVE / INC-GEN-007～001与INC-UI-009～001、INC-VIDEO-001均为USER PASS / 当前无施工中INC或REM`
+阶段：`生产 v0.6.16/schema39 LIVE / INC-UI-010待你复验 / INC-GEN-007～001与INC-UI-009～001、INC-VIDEO-001均为USER PASS / 当前无施工中INC或REM`
 
 画布、固定界面、Text、Image、Video、Audio、Playlist、Group、外围面板、账号、管理员模型中心、生成安全和新图片私有OSS链路已通过当前范围验收；Comment、社区、TapTV、竞技场、额度和链接分享已按用户决定取消。OpenRouter GPT Image 2已完成一次用户授权的历史真实生成，图片连线参考图及真实结果零费用重启恢复均已通过；本次 cutover 未发起 Provider 或付费生成请求。
 

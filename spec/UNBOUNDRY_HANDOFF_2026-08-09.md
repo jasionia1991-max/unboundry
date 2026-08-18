@@ -6,7 +6,11 @@
 
 新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-18 的权威现状、产品合同和用户已点头的旧项收口。下面各节是历史增量，出现「当前」时只代表该时点。
 
-## 最新已发布事件：INC-GEN-007（v0.6.15已发布并通过用户验收）
+## 最新已发布事件：INC-UI-010（v0.6.16已发布，待用户复验）
+
+用户确认方案并说按`v0.6.16`上线。管理员在画布上打组、点「创建模板」，可选发到公共模板；默认仍是我的模板。发公共时清掉私图，留下提示词、节点和连线。普通账号看不到该选项。现有公共模板不改。精确源码commit`83fd8dce9e7d7cf3fb419599aa753e66f35cdc25`通过安全全量`118/118 specs、979/979 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.16-inc-ui-010-20260818`，公网资源哈希、冻结备份恢复、service/schema39及数据门PASS；发布核验时保持319 tasks、323 attempts、active0、47 public templates（46 published）。`v0.6.16`已推送，PR #29已合并到`main`（merge commit`dbfa94558ee73ce6658e5790358e23959e069b10`）。用户还没回复「通过」，当前状态是`PRODUCTION_PUBLISHED` / `USER_RECHECK`。权威记录：`spec/INC_UI_010_CANVAS_PUBLIC_TEMPLATE_2026-08-18.md`与`spec/INC_UI_010_PRODUCTION_RECEIPT_2026-08-18.json`。
+
+## 前一已发布事件：INC-GEN-007（v0.6.15已发布并通过用户验收）
 
 用户同意假提交误判与整组自动核对/再试方案，版本顺延为`v0.6.15`，验完后上线；随后明确回复“通过”。GPT Image 不再把没做成片的失败写成已提交；整组自己核对或再试一次并继续；同一输入真未知时不许再开新单。精确源码commit`5630dd6ee328266a27295bc9d2e7479f89147b32`通过安全全量`118/118 specs、976/976 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.15-inc-gen-007-20260818`，公网资源哈希、冻结备份恢复、service/schema39及数据门PASS；发布核验时保持299 tasks、301 attempts、active0、47 public templates（46 published）。`v0.6.15`已推送，PR #26已合并到`main`（merge commit`714827c7152dcfd933ed96ab9427f479b57634de`）。当前状态是`PRODUCTION_PUBLISHED_USER_PASS`。权威记录：`spec/INC_GEN_007_FAKE_SUBMIT_AND_AUTO_FLOW_2026-08-18.md`与`spec/INC_GEN_007_PRODUCTION_RECEIPT_2026-08-18.json`。
 
@@ -281,4 +285,4 @@ ssh live-cockpit "curl -fsS http://127.0.0.1:4173/api/version"
 5. 向用户先报告恢复出的项目、版本、当前项和授权；
 6. 任一不一致都必须停止，不得依据内部记忆、历史 PASS 或压缩摘要猜测继续。
 
-当前执行点：`INC-GEN-007～001 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-009～001 PRODUCTION_PUBLISHED_USER_PASS / INC-VIDEO-001 PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_PASS / INC-ECOM-001～007 USER ACCEPTED / REM-000～011（含009A/009B）PASS / PRODUCTION LIVE`。生产已为v0.6.15/schema39；current→`v0.6.15-inc-gen-007-20260818`。用户于2026-08-18回复「全通过」收口此前待复验旧项。未实际运行的付费两图抽验继续延期。等用户说下一件要的结果。
+当前执行点：`INC-UI-010 PRODUCTION_PUBLISHED / USER_RECHECK / INC-GEN-007～001 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-009～001 PRODUCTION_PUBLISHED_USER_PASS / INC-VIDEO-001 PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_PASS / INC-ECOM-001～007 USER ACCEPTED / REM-000～011（含009A/009B）PASS / PRODUCTION LIVE`。生产已为v0.6.16/schema39；current→`v0.6.16-inc-ui-010-20260818`。用户于2026-08-18回复「全通过」收口此前待复验旧项；v0.6.16本身还没收到「通过」。未实际运行的付费两图抽验继续延期。等用户手工验收本项或说下一件要的结果。
