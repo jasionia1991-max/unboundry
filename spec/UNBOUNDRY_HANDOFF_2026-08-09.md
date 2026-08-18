@@ -2,9 +2,9 @@
 
 > 写给下一个接手的人/AI agent。目标：看完本文后不需要向用户问“项目在哪、怎么跑、怎么发布、有什么红线”。
 
-## 当前本地事件：INC-GEN-005（v0.6.13已本地提交，待发布）
+## 最新已发布事件：INC-GEN-005（v0.6.13已发布，待用户复验）
 
-用户同意解开 Seedance Mini 付费验证锁，版本顺延为`v0.6.13`，并授权验完后直接上线。Mini 的 4～15 秒和 480p/720p 可用；默认仍是 5 秒/480p；1080p 和 16 秒以上继续拦住；保存失败不关编辑框。正式安全全量`118/118 specs、971/971 tests PASS`，异常0。生产在切换前仍运行 v0.6.12。权威记录：`spec/INC_GEN_005_SEEDANCE_MINI_UNLOCK_2026-08-18.md`。
+用户同意解开 Seedance Mini 付费验证锁，版本顺延为`v0.6.13`，并授权验完后直接上线。Mini 的 4～15 秒和 480p/720p 可用；默认仍是 5 秒/480p；1080p 和 16 秒以上继续拦住；保存失败不关编辑框。精确源码commit`e113c64333242df923b60cac4d83214f015a14d9`通过安全全量`118/118 specs、971/971 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.13-inc-gen-005-20260818`，公网资源哈希、冻结备份恢复、service/schema39及数据门PASS；生产保持278 tasks、280 attempts、active0、47 public templates（46 published）。只改了线上 Seedance Mini 这一条已存配置。`v0.6.13`已推送，PR #22已合并到`main`（merge commit`ed53a0aaef187aeecd3048a2f00314f16bbb4a81`）。当前状态是`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。权威记录：`spec/INC_GEN_005_SEEDANCE_MINI_UNLOCK_2026-08-18.md`与`spec/INC_GEN_005_PRODUCTION_RECEIPT_2026-08-18.json`。
 
 ## 最新已发布事件：INC-GEN-004（v0.6.12已发布，待用户复验）
 
@@ -73,7 +73,7 @@ Grok首帧中转协议已从`first_frame_url`修为`images`数组并限制恰好
 ## 0. 2026-08-17 最终生产状态（当前权威）
 
 - 当前状态：`REM-000～011（含009A/009B）PASS / PRODUCTION LIVE / INC-UI-008已发布自动与技术验证PASS待用户复验 / INC-GEN-003已发布并完成USER PASS / INC-GEN-002已发布并完成USER PASS / INC-GEN-001已发布并完成USER PASS / INC-UI-007已发布并完成USER PASS / INC-UI-006已发布并完成USER PASS / INC-UI-005～003已发布自动与实页技术验证PASS待用户复验 / INC-VIDEO-001真实视频PASS待用户复验 / INC-UI-001/002已发布待用户复验 / INC-ECOM-001～007按各自证据边界完成用户收口`。
-- 生产运行 `v0.6.12/schema39`，`/opt/unboundry/current -> releases/v0.6.12-inc-gen-004-20260818`；service active+enabled、NRestarts0、127.0.0.1:4173。公网version/root正常，version 0.6.12；默认视频模型仍为Seedance 2.0 Mini。
+- 生产运行 `v0.6.13/schema39`，`/opt/unboundry/current -> releases/v0.6.13-inc-gen-005-20260818`；service active+enabled、NRestarts0、127.0.0.1:4173。公网version/root正常，version 0.6.13；默认视频模型仍为Seedance 2.0 Mini，6～15秒和720p已解开。
 - v0.6.11源码commit`321668e1adf692e356b1e504230721451af8ddcf`/tree`3ea47f74267ec1e5c1b5c0d80fef51115161e021`；上一不可变release `v0.6.10-inc-ui-008-20260817`及全部历史备份继续保留。
 - 数据最新核验：schema39、quick_check ok、FK0、active generation0、246 tasks/248 provider attempts、47 public templates（46 published）。INC-UI-009未改画布文档、节点坐标、连线、Provider或OSS；Provider/付费/OSS写入0，既有真实流水与Seedance视频结果保持。
 - GitHub当前权威状态：生产源码commit`321668e1adf692e356b1e504230721451af8ddcf`由注释标签`v0.6.11`精确标记；PR #18已合并到`main`，merge commit`749e45cb68feabd11b4ffc721e06df4cd46a2b77`。该发布授权已消费；新commit/push/tag/PR、生产或外部服务动作均需新授权。
@@ -272,4 +272,4 @@ ssh live-cockpit "curl -fsS http://127.0.0.1:4173/api/version"
 5. 向用户先报告恢复出的项目、版本、当前项和授权；
 6. 任一不一致都必须停止，不得依据内部记忆、历史 PASS 或压缩摘要猜测继续。
 
-当前执行点：`INC-GEN-005 LOCAL_COMMITTED / INC-GEN-004 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK / INC-UI-009 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-008 PRODUCTION_PUBLISHED_USER_PASS / INC-GEN-003 PRODUCTION_PUBLISHED_USER_PASS / INC-GEN-002 PRODUCTION_PUBLISHED_USER_PASS / INC-GEN-001 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-007 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-006 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-005～003、INC-UI-001/002、INC-VIDEO-001 仍为已发布待用户复验 / INC-ECOM-001～007 USER ACCEPTED / REM-000～011（含009A/009B）PASS / PRODUCTION LIVE`。生产仍为v0.6.12/schema39；current→`v0.6.12-inc-gen-004-20260818`。v0.6.13已本地提交待发布。未实际运行的付费两图/视频抽验继续延期。
+当前执行点：`INC-GEN-005 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK / INC-GEN-004 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK / INC-UI-009 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-008 PRODUCTION_PUBLISHED_USER_PASS / INC-GEN-003 PRODUCTION_PUBLISHED_USER_PASS / INC-GEN-002 PRODUCTION_PUBLISHED_USER_PASS / INC-GEN-001 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-007 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-006 PRODUCTION_PUBLISHED_USER_PASS / INC-UI-005～003、INC-UI-001/002、INC-VIDEO-001 仍为已发布待用户复验 / INC-ECOM-001～007 USER ACCEPTED / REM-000～011（含009A/009B）PASS / PRODUCTION LIVE`。生产已为v0.6.13/schema39；current→`v0.6.13-inc-gen-005-20260818`。未实际运行的付费两图/视频抽验继续延期。
