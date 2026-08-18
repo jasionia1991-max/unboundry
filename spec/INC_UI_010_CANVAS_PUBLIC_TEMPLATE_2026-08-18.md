@@ -1,6 +1,6 @@
 # INC-UI-010：管理员从画布组直接发布公共模板
 
-状态：`LOCAL_IMPLEMENTED`
+状态：`PRODUCTION_PUBLISHED`
 版本：`v0.6.16`
 日期：`2026-08-18`
 
@@ -28,6 +28,20 @@
 
 ## 自动验证
 
-- 定向 `m71` 13/13、`m77` 11/11 通过。
-- 测试清单冻结为 `118 specs / 979 tests`。
-- 未改线上库、未真实付费、未动 OSS。
+- 定向 `m71` 13/13、`m77` 11/11、`m81` 41/41 通过。
+- 正式安全全量产品测试 `118/118 specs、979/979 tests PASS`，失败/跳过/重试/blocked/reportErrors均为0。
+- 源码快照 545 文件，SHA-256 `e7cebf4c713f6b24759b6b239a56b48d16cb4003ea6b5a49ea32054c2523868b`。
+- 未改线上库结构、未真实付费、未动 OSS。
+
+## 生产发布
+
+- 精确源码commit`83fd8dce9e7d7cf3fb419599aa753e66f35cdc25`、tree`02abd9480cb410ef384c76502b430aa6d956ea18`。
+- 生产current已切到`/opt/unboundry/releases/v0.6.16-inc-ui-010-20260818`；上一不可变release `v0.6.15-inc-gen-007-20260818`完整保留。
+- 冻结备份`/var/lib/unboundry-rollbacks/inc-ui-010-frozen-20260818T110641Z`：冻结源与恢复副本均363文件，清单SHA-256同为`ec0e0fda15aa455bc8b02e2fef6735c6021fbb8d7e984c51fd0567234ad8d3a1`。
+- 公网version为0.6.16；入口JS/CSS及CanvasShell与release逐字节一致。
+- 切换前后schema39、quick_check ok、FK0、tasks319、attempts323、active0、公共模板47（46 published）。
+- GitHub：注释标签`v0.6.16`指向`83fd8dce9e7d7cf3fb419599aa753e66f35cdc25`；PR #29已合并，merge commit`dbfa94558ee73ce6658e5790358e23959e069b10`。
+- 发布与验证期间真实Provider请求、付费生成和OSS写入均为0。
+- 用户还没回复「通过」，本项保持 `USER_RECHECK`。
+
+详细凭证：`spec/INC_UI_010_PRODUCTION_RECEIPT_2026-08-18.json`。

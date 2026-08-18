@@ -2,10 +2,19 @@
 
 断点版本：`76`
 更新时间：`2026-08-18`
-状态：`INC_GEN_007_V0_6_15_PRODUCTION_PUBLISHED_USER_PASS`
+状态：`INC_UI_010_V0_6_16_PRODUCTION_PUBLISHED`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。当前一页快照见 `UNBOUNDRY_CURRENT_STATE.md`。
 
-## 0. 当前已发布事件：INC-GEN-007（v0.6.15已发布并通过用户验收）
+## 0. 当前已发布事件：INC-UI-010（v0.6.16已发布，待用户复验）
+
+- 用户确认方案并说按`v0.6.16`上线。
+- 管理员在画布上打组后可直接发成公共模板；默认仍是我的模板；发公共时清掉私图，留下提示词、节点和连线。
+- 精确源码commit`83fd8dce9e7d7cf3fb419599aa753e66f35cdc25`通过正式安全全量`118/118 specs、979/979 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。
+- 生产current已切到`/opt/unboundry/releases/v0.6.16-inc-ui-010-20260818`；冻结备份恢复、公网资源逐字节哈希、service/schema39和数据门均PASS。发布核验时保持319 tasks、323 attempts、active0、47 public templates（46 published）。
+- `v0.6.16`标签精确指向源码commit；PR #29已合并到`main`，merge commit`dbfa94558ee73ce6658e5790358e23959e069b10`。当前状态是`PRODUCTION_PUBLISHED`，用户验收仍是`USER_RECHECK`。
+- 权威记录：`spec/INC_UI_010_CANVAS_PUBLIC_TEMPLATE_2026-08-18.md`与`spec/INC_UI_010_PRODUCTION_RECEIPT_2026-08-18.json`。新会话先读 `spec/UNBOUNDRY_CURRENT_STATE.md`，等用户回复是否通过或说下一件要的结果。
+
+## 0.001 前一已发布事件：INC-GEN-007（v0.6.15已发布并通过用户验收）
 
 - 用户同意假提交误判与整组自动核对/再试方案，版本顺延为`v0.6.15`，验完后上线；随后明确回复“通过”。
 - GPT Image 不再把没做成片的失败写成已提交；整组自己核对或再试一次并继续；同一输入真未知时不许再开新单。
@@ -589,22 +598,22 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 
 ## 10. 2026-08-17 当前恢复卡
 
-> 2026-08-18 用户回复「全通过」：INC-GEN-006/004、INC-UI-005/004/003/002/001、INC-VIDEO-001 与此前已通过的 v0.6.15/v0.6.13/v0.6.10 一并收口。下一件等用户再说。
+> 2026-08-18 用户回复「全通过」：INC-GEN-006/004、INC-UI-005/004/003/002/001、INC-VIDEO-001 与此前已通过的 v0.6.15/v0.6.13/v0.6.10 一并收口。v0.6.16 INC-UI-010 已发布，等用户手工验收。
 
 ```text
 项目路径：/Users/mymy/Documents/unboundry/app
-本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.13 INC-GEN-005 已发布待复验；禁止reset/clean
-生产：canvas.mymy.ltd；v0.6.13/schema39；/opt/unboundry/current -> releases/v0.6.13-inc-gen-005-20260818
-生产artifact：source commit e113c64333242df923b60cac4d83214f015a14d9；tree bc59883a2b8bdb6610dfe6e1a160b79b62c7a229
-当前状态：INC-GEN-007～001 PRODUCTION_PUBLISHED_USER_PASS；INC-UI-009～001 PRODUCTION_PUBLISHED_USER_PASS；INC-VIDEO-001 PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_PASS；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
-技术凭证：spec/INC_GEN_005_PRODUCTION_RECEIPT_2026-08-18.json；spec/INC_GEN_005_SEEDANCE_MINI_UNLOCK_2026-08-18.md；既有v0.6.12及更早发布凭证继续保留
-用户验收：v0.6.15假提交/自动核对、v0.6.14过期保存句、v0.6.13 Mini锁、v0.6.12整组存稳、v0.6.11～v0.6.2所列UI/视频旧项均已由用户于2026-08-18收口为PASS；其他未点头条目不自动升级
-数据库：schema39；quick_check ok；FK0；278 tasks/280 attempts；47 public templates/46 published；active0；默认视频模型Seedance Mini已解锁6-15秒和720p；既有生成安全配置不变
-备份：/var/lib/unboundry-rollbacks/inc-gen-004-frozen-20260817T192140Z；冻结源与恢复副本均363文件，清单SHA cbcaf491b3c724fc0861ded7c660a4d635bc47af3f78a1917a7bb815e7b8d6a0，二者均PASS；历史schema37/offhost及v0.6.11冻结备份继续保留
-限制：attempt 86/108/116/120/122为行政取消且禁止重试，PROVIDER_FAILED仅surrogate；3条音频仅改duration元数据；cutover Provider/paid calls=0
-GitHub：v0.6.12注释标签精确指向生产源码dc1b4a8b37030b13169a2016ad12ed124892e74b；PR #21已合并到main，merge commit 9558c9edab9b98a689925032b9702f620a69e516
-未来授权：本次v0.6.12生产与GitHub发布授权已消费；未来生产读写、真实Provider/付费生成、push/tag/PR或新发布仍需新授权
-下一步：等待用户强制刷新后跑「一键上新+自检」并回复是否通过；不得把本次授权扩成以后每一次发布
+本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.16 INC-UI-010 已发布待复验；禁止reset/clean
+生产：canvas.mymy.ltd；v0.6.16/schema39；/opt/unboundry/current -> releases/v0.6.16-inc-ui-010-20260818
+生产artifact：source commit 83fd8dce9e7d7cf3fb419599aa753e66f35cdc25；tree 02abd9480cb410ef384c76502b430aa6d956ea18
+当前状态：INC-UI-010 PRODUCTION_PUBLISHED / USER_RECHECK；INC-GEN-007～001 PRODUCTION_PUBLISHED_USER_PASS；INC-UI-009～001 PRODUCTION_PUBLISHED_USER_PASS；INC-VIDEO-001 PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_PASS；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
+技术凭证：spec/INC_UI_010_PRODUCTION_RECEIPT_2026-08-18.json；spec/INC_UI_010_CANVAS_PUBLIC_TEMPLATE_2026-08-18.md；既有v0.6.15及更早发布凭证继续保留
+用户验收：v0.6.16管理员画布直发公共模板待复验；v0.6.15假提交/自动核对、v0.6.14过期保存句、v0.6.13 Mini锁、v0.6.12整组存稳、v0.6.11～v0.6.2所列UI/视频旧项均已由用户于2026-08-18收口为PASS；其他未点头条目不自动升级
+数据库：schema39；quick_check ok；FK0；319 tasks/323 attempts；47 public templates/46 published；active0；既有生成安全配置不变
+备份：/var/lib/unboundry-rollbacks/inc-ui-010-frozen-20260818T110641Z；冻结源与恢复副本均363文件，清单SHA ec0e0fda15aa455bc8b02e2fef6735c6021fbb8d7e984c51fd0567234ad8d3a1，二者均PASS；上一版inc-gen-007冻结备份及历史备份继续保留
+限制：cutover Provider/paid calls=0；未删除旧release或备份
+GitHub：v0.6.16注释标签精确指向生产源码83fd8dce9e7d7cf3fb419599aa753e66f35cdc25；PR #29已合并到main，merge commit dbfa94558ee73ce6658e5790358e23959e069b10
+未来授权：本次v0.6.16生产与GitHub发布授权已消费；未来生产读写、真实Provider/付费生成、push/tag/PR或新发布仍需新授权
+下一步：等待用户强制刷新后按手工清单验收并回复是否通过；不得把本次授权扩成以后每一次发布
 ```
 
 任何恢复者必须优先使用本节；第9节只保留历史，不得执行其“下一步”。
