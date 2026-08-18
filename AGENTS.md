@@ -21,11 +21,11 @@
 
 ## 2. 当前授权边界
 
-- **2026-08-19 当前权威状态**：生产运行`v0.6.17/schema39`，`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.17-inc-gen-008-009-20260819`。`INC-GEN-008 = PRODUCTION_PUBLISHED_AUTO_PASS`（待用户复验），`INC-GEN-009 = PRODUCTION_PUBLISHED_AUTO_PASS`（待用户复验），`INC-UI-010 = PRODUCTION_PUBLISHED_USER_PASS`。`INC-GEN-007/006/005/004 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-UI-009～001 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-GEN-003/002/001 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-VIDEO-001 = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_PASS`，`REM-000～011（含009A/009B） = PASS`。站着的产品合同和条目表见`spec/UNBOUNDRY_CURRENT_STATE.md`；
-- v0.6.17生产源码commit为`e6b187bce50bb4189e029ab3389e316a3eb65501`、tree为`8f6208a6c7354063f5a057bf747ea409f21cbe1d`；注释标签`v0.6.17`精确指向该源码。PR #31已于2026-08-19合并到`main`，merge commit为`18e66ce39decdeb70b076cdd07b13abf1f243a80`。生产凭证为`spec/INC_GEN_008_009_PRODUCTION_RECEIPT_2026-08-19.json`；
-- v0.6.17正式安全全量为`118/118 specs、983/983 tests PASS`，异常0。优创专用协议按文档像素发 1K/2K/4K，生产默认画质已改为 1K，管理员后台可自改尺寸映射；
-- 冻结备份位于`/var/lib/unboundry-rollbacks/v0.6.17-frozen-RVxeGA`，冻结源与恢复副本均365文件且清单SHA-256同为`2d9ff809fd4a32e68e1252ecbe2ed63bc46b0e224b3b62965d917012d7d44562`。发布与验证期间真实Provider请求、付费生成和OSS写入均为0；上一不可变release `v0.6.16-inc-ui-010-20260818`及对应冻结备份继续保留；
-- 既有v0.6.0～v0.6.16、真实工作流与视频证据继续作为历史记录保留；其历史时点字段不得改写。用户于2026-08-18回复「全通过」只覆盖当时列出的待复验旧项；其他仍为`USER_RECHECK / PARTIAL / PAUSED / BLOCK / NOT_STARTED`的独立条目不自动升级。v0.6.17生产与GitHub授权已经消费完毕，不是未来继续改生产、数据、Provider、OSS、push/tag/PR或发布的永久授权；
+- **2026-08-19 当前权威状态**：生产运行`v0.6.18/schema39`，`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.18-ui-align-20260819`（v0.6.19 为验收收口发布）。`INC-GEN-009-UI-ALIGN（v0.6.18） = PRODUCTION_PUBLISHED_USER_PASS`（2026-08-19 用户回复「通过」），`INC-GEN-008 = PRODUCTION_PUBLISHED_USER_PASS`（2026-08-19 用户回复「通过」），`INC-GEN-009 = PRODUCTION_PUBLISHED_USER_PASS`（2026-08-19 用户回复「通过」），`INC-UI-010 = PRODUCTION_PUBLISHED_USER_PASS`。`INC-GEN-007/006/005/004 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-UI-009～001 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-GEN-003/002/001 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-VIDEO-001 = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_PASS`，`REM-000～011（含009A/009B） = PASS`。站着的产品合同和条目表见`spec/UNBOUNDRY_CURRENT_STATE.md`；
+- v0.6.18生产源码commit为`e47f50c0bde0ee23585f27b71ad8df240973161a1`、tree为`48bee3c2c050ced3d2854390ca1ef1d0aba8fae5`；注释标签`v0.6.18`精确指向该源码。PR #32已于2026-08-19合并到`main`，merge commit为`265c8f63e867e122ecab2f145c362d5bdab3bd19`。生产凭证为`spec/INC_GEN_009_UI_ALIGN_PRODUCTION_RECEIPT_2026-08-19.json`；
+- v0.6.18正式安全全量为`118/118 specs、983/983 tests PASS`，异常0。管理员后台「优创尺寸映射」面板样式对齐暗黑 UI、比例下拉、文案大白话；出图逻辑不变。优创专用协议按文档像素发 1K/2K/4K，生产默认画质保持 1K；
+- 冻结备份位于`/var/lib/unboundry-rollbacks/v0.6.18-frozen-vctAv7`，冻结源与恢复副本均365文件且清单SHA-256同为`b3bb61a68e03b810e8573f52d81c331f06b825feb3d67f9f4b202e3310aa7ca8`。发布与验证期间真实Provider请求、付费生成和OSS写入均为0；上一不可变release `v0.6.17-inc-gen-008-009-20260819`及对应冻结备份继续保留；
+- 既有v0.6.0～v0.6.17、真实工作流与视频证据继续作为历史记录保留；其历史时点字段不得改写。用户于2026-08-18回复「全通过」只覆盖当时列出的待复验旧项；其他仍为`USER_RECHECK / PARTIAL / PAUSED / BLOCK / NOT_STARTED`的独立条目不自动升级。v0.6.17与v0.6.18生产及GitHub授权已经消费完毕，不是未来继续改生产、数据、Provider、OSS、push/tag/PR或发布的永久授权；
 
 - REM-000 施工文档已于 2026-08-09 获用户确认，状态为 `PASS`；
 - 用户已于 2026-08-09 明确启动一次性离线 Goal，合并授权 REM-001～010 与 REM-011 离线工程部分；各 REM 仍按施工总方案依赖顺序分析、实施、测试、review 和更新文档，中途不再逐项询问；

@@ -1,0 +1,101 @@
+{
+  "incident": "INC-GEN-009-UI-ALIGN",
+  "version": "0.6.18",
+  "status": "PRODUCTION_PUBLISHED_AUTO_PASS",
+  "publishedAt": "2026-08-18T19:04:00Z",
+  "changes": {
+    "summary": "管理员后台「优创尺寸映射」面板样式对齐项目暗黑 UI 规范；比例输入支持下拉建议；说明文案改成人话；按钮/输入框/表格统一。出图逻辑不变。",
+    "scope": "仅管理员后台 gpt-image 尺寸映射面板的显示与交互",
+    "generationLogicUnchanged": true
+  },
+  "source": {
+    "commit": "e47f50c0bde0ee23585f27b71ad8df240973161a1",
+    "tree": "48bee3c2c050ced3d2854390ca1ef1d0aba8fae5",
+    "tagObject": "03c007152b9e9a190117a822429669975095e301"
+  },
+  "tests": {
+    "full": {
+      "specsPassed": 118,
+      "specsTotal": 118,
+      "testsPassed": 983,
+      "testsTotal": 983,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0
+    },
+    "sourceFiles": 549,
+    "sourceSnapshotSha256": "24a9fed5bac540996b6bb457516c7aeb889fe61ee6763853a7ed1eacc5d8dde5",
+    "listenerBeforeAfterSha256": "24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244"
+  },
+  "backup": {
+    "path": "/var/lib/unboundry-rollbacks/v0.6.18-frozen-vctAv7",
+    "files": 365,
+    "frozenManifestSha256": "b3bb61a68e03b810e8573f52d81c331f06b825feb3d67f9f4b202e3310aa7ca8",
+    "restoreManifestSha256": "b3bb61a68e03b810e8573f52d81c331f06b825feb3d67f9f4b202e3310aa7ca8",
+    "restoreSchemaVersion": 39,
+    "restoreDatabaseIntegrity": "ok",
+    "restoreForeignKeyViolations": 0,
+    "restoreTasks": 322,
+    "restoreProviderAttempts": 326,
+    "restorePublicTemplates": 48,
+    "restorePublishedTemplates": 46
+  },
+  "production": {
+    "release": "/opt/unboundry/releases/v0.6.18-ui-align-20260819",
+    "previousRelease": "/opt/unboundry/releases/v0.6.17-inc-gen-008-009-20260819",
+    "releaseInventoryFileSha256": "b88d7bacf355d24e1088fb2c8cbbfc835d4c8c32d7078565505e15e71ecddcae",
+    "releaseInventoryLines": 5058,
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "restartCount": 0,
+    "schemaVersion": 39,
+    "databaseIntegrity": "ok",
+    "foreignKeyViolations": 0,
+    "tasks": 322,
+    "providerAttempts": 326,
+    "activeGenerations": 0,
+    "publicTemplates": 48,
+    "publishedTemplates": 46
+  },
+  "publicAssets": {
+    "version": "0.6.18",
+    "rootStatus": 200,
+    "title": "无央｜AI 无限画布",
+    "indexJs": {
+      "path": "/assets/index-Bh7_AFL8.js",
+      "sha256": "19edd2febbcd48ce2b6204f26de91bedd0f61675a0a969aefbe48471044e84d0",
+      "matchesRelease": true
+    },
+    "indexCss": {
+      "path": "/assets/index-DIlDf1FK.css",
+      "sha256": "d2f5130dca9fce3381340ef5c5ab341b80a3c4b0777108ef72fc73f05c511107",
+      "matchesRelease": true
+    },
+    "canvasShell": {
+      "path": "/assets/CanvasShell-gHWKrr6h.js",
+      "sha256": "d572bd98f7c572f7590309779e59bc6aa70d0bd2a68a222ce19a1c4e015d850d",
+      "matchesRelease": true
+    }
+  },
+  "productionConfig": {
+    "gptImageDefaultQuality": "1k",
+    "unchangedFromPrevious": true
+  },
+  "externalEffects": {
+    "realProviderRequests": 0,
+    "paidGenerationRequests": 0,
+    "ossWrites": 0
+  },
+  "github": {
+    "state": "MERGED",
+    "pullRequest": 32,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/32",
+    "mergedAt": "2026-08-18T18:58:56Z",
+    "mergeCommit": "265c8f63e867e122ecab2f145c362d5bdab3bd19",
+    "tag": "v0.6.18",
+    "tagTarget": "e47f50c0bde0ee23585f27b71ad8df240973161a1"
+  },
+  "userAcceptance": "USER_RECHECK"
+}
