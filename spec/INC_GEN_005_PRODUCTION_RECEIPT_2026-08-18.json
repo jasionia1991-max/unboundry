@@ -1,0 +1,101 @@
+{
+  "incident": "INC-GEN-005",
+  "version": "0.6.13",
+  "status": "PRODUCTION_PUBLISHED_AUTO_PASS",
+  "publishedAt": "2026-08-18T05:12:25Z",
+  "source": {
+    "commit": "e113c64333242df923b60cac4d83214f015a14d9",
+    "tree": "bc59883a2b8bdb6610dfe6e1a160b79b62c7a229",
+    "tagObject": "0eef80a50269dda64a23994f7995f5b8871d14e7"
+  },
+  "tests": {
+    "full": {
+      "specsPassed": 118,
+      "specsTotal": 118,
+      "testsPassed": 971,
+      "testsTotal": 971,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0
+    },
+    "sourceFiles": 536,
+    "sourceSnapshotSha256": "81daa1592df7536d79fbcf79f62cf632fb64af0733578e45195232c1987d3b62",
+    "listenerBeforeAfterSha256": "24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244"
+  },
+  "backup": {
+    "path": "/var/lib/unboundry-rollbacks/inc-gen-005-frozen-20260818T051111Z",
+    "files": 363,
+    "frozenManifestSha256": "4e31aa610272a14b900804357068e39ca5c673a91bea486a004248f1e52f9fc3",
+    "restoreManifestSha256": "4e31aa610272a14b900804357068e39ca5c673a91bea486a004248f1e52f9fc3",
+    "restoreSchemaVersion": 39,
+    "restoreQuickCheck": "ok",
+    "restoreForeignKeyViolations": 0,
+    "restoreTasks": 278,
+    "restoreProviderAttempts": 280,
+    "restorePublicTemplates": 47,
+    "restorePublishedTemplates": 46
+  },
+  "production": {
+    "release": "/opt/unboundry/releases/v0.6.13-inc-gen-005-20260818",
+    "previousRelease": "/opt/unboundry/releases/v0.6.12-inc-gen-004-20260818",
+    "releaseInventoryFileSha256": "72ed0ddba55ee6abfdc555e7ba661b280cc416dea55b3604aa488fd226b9a569",
+    "releaseInventoryLines": 568,
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "restartCount": 0,
+    "schemaVersion": 39,
+    "quickCheck": "ok",
+    "foreignKeyViolations": 0,
+    "tasks": 278,
+    "providerAttempts": 280,
+    "activeGenerations": 0,
+    "publicTemplates": 47,
+    "publishedTemplates": 46,
+    "seedanceMiniModelId": "897d3dfc-83e4-48e9-a033-ca612338681b",
+    "seedanceMiniUnlock": {
+      "clearedDisabledOptions": 11,
+      "durationDefault": 5,
+      "resolutionDefault": "480p",
+      "remainingPaidVerificationLocks": 0,
+      "updatedAt": "2026-08-18T05:11:43.396Z"
+    }
+  },
+  "publicAssets": {
+    "version": "0.6.13",
+    "rootStatus": 200,
+    "title": "无央｜AI 无限画布",
+    "indexJs": {
+      "path": "/assets/index-CmhJORUV.js",
+      "sha256": "9b9aa890c13921348a2203ed9d79f14c330111784c8c38a3b4d60fd60d04d30f",
+      "matchesRelease": true
+    },
+    "indexCss": {
+      "path": "/assets/index-wqmutQKA.css",
+      "sha256": "557d78a8c704f8c5d1a42701c0153c0ef34e8aa11be7ce5e839e13e60e8045ca",
+      "matchesRelease": true
+    },
+    "canvasShell": {
+      "path": "/assets/CanvasShell-Dddieb_3.js",
+      "sha256": "5dc5e84caca5e2460cfd505cff5b93a2d89b3b83f2409807da0b9ea9929fe6dc",
+      "matchesRelease": true
+    }
+  },
+  "externalEffects": {
+    "realProviderRequests": 0,
+    "paidGenerationRequests": 0,
+    "ossWrites": 0
+  },
+  "github": {
+    "repository": "jasionia1991-max/unboundry",
+    "pullRequest": 22,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/22",
+    "mergedAt": "2026-08-18T05:13:46Z",
+    "mergeCommit": "ed53a0aaef187aeecd3048a2f00314f16bbb4a81",
+    "tag": "v0.6.13",
+    "tagTarget": "e113c64333242df923b60cac4d83214f015a14d9"
+  },
+  "userAcceptance": "USER_RECHECK",
+  "userAcceptanceEvidence": "User confirmed version increment to 0.6.13 and 直接上线. Automatic and publication gates passed. Visual recheck of Mini 6-15s/720p save-and-stay-open is still pending."
+}

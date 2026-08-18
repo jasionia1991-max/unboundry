@@ -2,15 +2,17 @@
 
 断点版本：`74`
 更新时间：`2026-08-18`
-状态：`INC_GEN_005_V0_6_13_LOCAL_COMMITTED`
+状态：`INC_GEN_005_V0_6_13_PRODUCTION_PUBLISHED_AUTO_PASS`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。
 
-## 0. 当前本地事件：INC-GEN-005（v0.6.13已本地提交，待发布）
+## 0. 当前已发布事件：INC-GEN-005（v0.6.13已发布，待用户复验）
 
 - 用户同意解开 Seedance Mini 付费验证锁，版本顺延为`v0.6.13`，并授权验完后直接上线。
 - Mini 4～15秒与480p/720p可用；默认仍5秒/480p；保存失败不关编辑框。
-- 正式安全全量`118/118 specs、971/971 tests PASS`，异常0；定向`m17` 15/15、`m81` 41/41。生产在切换前仍运行v0.6.12。
-- 权威记录：`spec/INC_GEN_005_SEEDANCE_MINI_UNLOCK_2026-08-18.md`。
+- 精确源码commit`e113c64333242df923b60cac4d83214f015a14d9`通过正式安全全量`118/118 specs、971/971 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。
+- 生产current已切到`/opt/unboundry/releases/v0.6.13-inc-gen-005-20260818`；冻结备份恢复、公网资源逐字节哈希、service/schema39和数据门均PASS。生产保持278 tasks、280 attempts、active0、47 public templates（46 published）。只改了 Seedance Mini 这一条已存配置。
+- `v0.6.13`标签精确指向源码commit；PR #22已合并到`main`，merge commit`ed53a0aaef187aeecd3048a2f00314f16bbb4a81`。当前状态是`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。
+- 权威记录：`spec/INC_GEN_005_SEEDANCE_MINI_UNLOCK_2026-08-18.md`与`spec/INC_GEN_005_PRODUCTION_RECEIPT_2026-08-18.json`。
 
 ## 0.01 前一已发布事件：INC-GEN-004（v0.6.12已发布，待用户复验）
 
@@ -569,17 +571,17 @@ commit/push/发布：仅本地 commit 已授权；push/tag/PR/发布禁止
 
 ## 10. 2026-08-17 当前恢复卡
 
-> 2026-08-18 INC-GEN-004 v0.6.12已发布，待用户复验整组是否还会闪红字。INC-UI-008文字全屏已由用户回复通过。
+> 2026-08-18 INC-GEN-005 v0.6.13已发布，待用户复验 Mini 时长/清晰度能否存住。INC-GEN-004 仍待复验整组是否还会闪红字。INC-UI-008文字全屏已由用户回复通过。
 
 ```text
 项目路径：/Users/mymy/Documents/unboundry/app
-本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.12 INC-GEN-004 已发布待复验；禁止reset/clean
-生产：canvas.mymy.ltd；v0.6.12/schema39；/opt/unboundry/current -> releases/v0.6.12-inc-gen-004-20260818
-生产artifact：source commit dc1b4a8b37030b13169a2016ad12ed124892e74b；tree 4dc5aeafb5456e41e562563291353d67369e3159
-当前状态：INC-GEN-004 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK；INC-UI-009 PRODUCTION_PUBLISHED_USER_PASS；INC-UI-008 PRODUCTION_PUBLISHED_USER_PASS；INC-GEN-003/002/001 PRODUCTION_PUBLISHED_USER_PASS；INC-UI-007/006保持PRODUCTION_PUBLISHED_USER_PASS；既有INC-UI-005/004/003、INC-VIDEO-001、INC-UI-001/002状态保持；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
-技术凭证：spec/INC_GEN_004_PRODUCTION_RECEIPT_2026-08-18.json；spec/INC_GEN_004_GROUP_RUN_PERSIST_BARRIER_2026-08-18.md；既有v0.6.11及更早发布凭证继续保留
-用户验收：既有v0.6.0/v0.6.1/v0.6.5/v0.6.6/v0.6.7/v0.6.8/v0.6.9/v0.6.10/v0.6.11验收保持；v0.6.12待用户复验；v0.6.4组标题总览、v0.6.3公共模板UI与旧标签恢复、v0.6.2其余UI/视频项继续等待用户线上复验
-数据库：schema39；quick_check ok；FK0；256 tasks/258 attempts；47 public templates/46 published；active0；默认视频模型Seedance；既有生成安全配置不变
+本地checkout：branch codex/unboundry-offline-remediation-2026-08-09；v0.6.13 INC-GEN-005 已发布待复验；禁止reset/clean
+生产：canvas.mymy.ltd；v0.6.13/schema39；/opt/unboundry/current -> releases/v0.6.13-inc-gen-005-20260818
+生产artifact：source commit e113c64333242df923b60cac4d83214f015a14d9；tree bc59883a2b8bdb6610dfe6e1a160b79b62c7a229
+当前状态：INC-GEN-005 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK；INC-GEN-004 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK；INC-UI-009 PRODUCTION_PUBLISHED_USER_PASS；INC-UI-008 PRODUCTION_PUBLISHED_USER_PASS；INC-GEN-003/002/001 PRODUCTION_PUBLISHED_USER_PASS；INC-UI-007/006保持PRODUCTION_PUBLISHED_USER_PASS；既有INC-UI-005/004/003、INC-VIDEO-001、INC-UI-001/002状态保持；INC-ECOM-001～007按各自证据边界完成用户收口；REM-000～011（含009A/009B）PASS；PRODUCTION LIVE
+技术凭证：spec/INC_GEN_005_PRODUCTION_RECEIPT_2026-08-18.json；spec/INC_GEN_005_SEEDANCE_MINI_UNLOCK_2026-08-18.md；既有v0.6.12及更早发布凭证继续保留
+用户验收：既有v0.6.0/v0.6.1/v0.6.5/v0.6.6/v0.6.7/v0.6.8/v0.6.9/v0.6.10/v0.6.11验收保持；v0.6.13与v0.6.12待用户复验；v0.6.4组标题总览、v0.6.3公共模板UI与旧标签恢复、v0.6.2其余UI/视频项继续等待用户线上复验
+数据库：schema39；quick_check ok；FK0；278 tasks/280 attempts；47 public templates/46 published；active0；默认视频模型Seedance Mini已解锁6-15秒和720p；既有生成安全配置不变
 备份：/var/lib/unboundry-rollbacks/inc-gen-004-frozen-20260817T192140Z；冻结源与恢复副本均363文件，清单SHA cbcaf491b3c724fc0861ded7c660a4d635bc47af3f78a1917a7bb815e7b8d6a0，二者均PASS；历史schema37/offhost及v0.6.11冻结备份继续保留
 限制：attempt 86/108/116/120/122为行政取消且禁止重试，PROVIDER_FAILED仅surrogate；3条音频仅改duration元数据；cutover Provider/paid calls=0
 GitHub：v0.6.12注释标签精确指向生产源码dc1b4a8b37030b13169a2016ad12ed124892e74b；PR #21已合并到main，merge commit 9558c9edab9b98a689925032b9702f620a69e516
