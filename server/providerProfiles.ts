@@ -581,6 +581,22 @@ export type ProviderGenerationRequestLease = {
   release: () => void;
 };
 
+/**
+ * Read-only Provider configuration snapshot used exclusively for work that
+ * must happen before the real generation lease (for example Files API
+ * uploads). It is fetched under the same cross-process lock as the lease so
+ * the encrypted document and the account credential row are read from the
+ * same configuration version, then the lock is released immediately. Callers
+ * must never make a Provider request while holding this snapshot.
+ */
+export type ProviderGenerationSnapshot = {
+  apiKey: string;
+  baseUrl: string;
+  configurationVersion: number;
+  credentialRevision: number;
+  profileId: string;
+};
+
 function defaultBaseUrl(driver: ProviderDriver) {
   if (driver === "mureka") return "https://api.mureka.ai";
   if (driver === "openrouter") return "https://openrouter.ai/api/v1";
@@ -1291,6 +1307,55 @@ export async function acquireProviderGenerationRequestLease(
   } catch (error) {
     lock.finish(false);
     throw error;
+  }
+}
+
+/**
+ * Acquires the same cross-process document lock used by profile writers,
+ * reads a consistent snapshot of the Provider profile and the account
+ * credential, then releases the lock before any network work. The snapshot
+ * must be kept in memory only and discarded after file cleanup finishes.
+ */
+export async function acquireProviderGenerationSnapshot(
+  profileId: string,
+  ownerId: string,
+): Promise<ProviderGenerationSnapshot> {
+  let lock: Awaited<ReturnType<typeof acquireDocumentLock>>;
+  try {
+    lock = await acquireDocumentLock();
+  } catch {
+    // A busy document lock means another Provider request or writer is
+    // currently holding the same lease. It is a transient contention signal,
+    // never a configuration change; callers may retry with bounded backoff.
+    throw new ProviderProfileLockBusyError();
+  }
+  try {
+    const document = await readDocument();
+    const profile = document.profiles.find(
+      (candidate) => candidate.id === profileId,
+    );
+    const state = generationProfileState(profileId, profile, db());
+    const generationState = state.reason === "ready"
+      ? await getProviderGenerationProfileState(profileId, ownerId)
+      : state;
+    const ready = profileForGenerationState(generationState);
+    if (!generationState.credentialRevision || !ready.apiKey) {
+      throw new ProviderGenerationConfigurationError(
+        "ACCOUNT_CREDENTIAL_MISSING",
+        "未配置你的平台密钥",
+      );
+    }
+    return {
+      apiKey: ready.apiKey,
+      baseUrl: ready.baseUrl,
+      configurationVersion: providerConfigurationVersion(ready),
+      credentialRevision: generationState.credentialRevision,
+      profileId: ready.id,
+    };
+  } catch (error) {
+    throw error;
+  } finally {
+    lock.finish(false);
   }
 }
 

@@ -7,6 +7,7 @@ import {
 } from "./providerRequestDeadline";
 
 export type ArkTextInput = {
+  fileId?: string;
   kind: "audio" | "image" | "text" | "video";
   order: number;
   role: "context-audio" | "context-image" | "context-text" | "context-video";
@@ -112,7 +113,12 @@ function normalizeInputs(value: unknown): ArkTextInput[] {
     seenOrders.add(Number(input.order));
     if (input.kind === "text") {
       const text = typeof input.text === "string" ? input.text.trim() : "";
-      if (!text || text.length > 100_000 || input.url !== undefined) {
+      if (
+        !text ||
+        text.length > 100_000 ||
+        input.url !== undefined ||
+        input.fileId !== undefined
+      ) {
         throw new VolcengineArkTextError("FORMAT", "文字上下文内容无效");
       }
       return {
@@ -122,7 +128,25 @@ function normalizeInputs(value: unknown): ArkTextInput[] {
         text,
       };
     }
-    if (!safeMediaUrl(input.kind, input.url) || input.text !== undefined) {
+    if (input.text !== undefined) {
+      throw new VolcengineArkTextError("FORMAT", "多媒体上下文内容无效");
+    }
+    if (input.fileId !== undefined) {
+      if (
+        input.kind !== "image" ||
+        input.url !== undefined ||
+        !/^file-[a-z0-9-]+$/i.test(input.fileId)
+      ) {
+        throw new VolcengineArkTextError("FORMAT", "多媒体上下文内容无效");
+      }
+      return {
+        fileId: input.fileId,
+        kind: "image",
+        order: Number(input.order),
+        role: "context-image",
+      };
+    }
+    if (!safeMediaUrl(input.kind, input.url)) {
       throw new VolcengineArkTextError("FORMAT", "多媒体上下文内容无效");
     }
     return {
@@ -139,6 +163,9 @@ function providerContent(input: ArkTextInput) {
     return { text: input.text, type: "input_text" };
   }
   if (input.kind === "image") {
+    if (input.fileId) {
+      return { file_id: input.fileId, type: "input_image" };
+    }
     return { image_url: input.url, type: "input_image" };
   }
   if (input.kind === "video") {
