@@ -2,16 +2,16 @@
 
 断点版本：`77`
 更新时间：`2026-08-19`
-状态：`V0_6_21_UNIVERSAL_PROVIDER_RESULT_SAVE_PRODUCTION_PUBLISHED_AUTO_PASS（2026-08-19 已发布，待用户复验）`
+状态：`V0_6_21_UNIVERSAL_PROVIDER_RESULT_SAVE_PRODUCTION_PUBLISHED_USER_PASS（2026-08-19 已发布，用户已复验通过）`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。当前一页快照见 `UNBOUNDRY_CURRENT_STATE.md`。
 
-## 0. 最新已发布事件：v0.6.21 通用保存保险丝（2026-08-19 已发布，待用户复验）
+## 0. 最新已发布事件：v0.6.21 通用保存保险丝（2026-08-19 已发布，用户已复验通过）
 
 - 用户确认版本号 `v0.6.21` 并说可以上线。
 - 平台已成功但本地保存成片瞬时失败不再判红：所有平台/模型共用保险丝，继续后台核对/轮询并保持呼吸灯；覆盖图片（relay/优创 GPT Image）、视频（relay/火山 Seedance 原生）、音频（relay/Mureka）；非瞬时/坏文件仍原样拦截；下载断流统一中性提示；不重复扣费。
 - 精确源码commit`fb195b9002ffe66c205f9fe1fa40c5427b23de49`通过正式安全全量`118/118 specs、986/986 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。
 - 生产current已切到`/opt/unboundry/releases/v0.6.21-universal-save-fuse-20260819`；冻结备份`v0.6.21-frozen-e941f4`（365文件，双清单SHA`ee45316f…`）、公网资源逐字节哈希、service/schema39和数据门均PASS。发布核验时保持395 tasks、402 attempts、active0、48 public templates（46 published）。
-- `v0.6.21`标签精确指向源码commit；PR #38已合并到`main`，merge commit`4cc325021c35167e1fa0b19a0b747e213e810ffc`。状态是`PRODUCTION_PUBLISHED_AUTO_PASS`（待用户复验）。
+- `v0.6.21`标签精确指向源码commit；PR #38已合并到`main`，merge commit`4cc325021c35167e1fa0b19a0b747e213e810ffc`。2026-08-19 用户回复「通过」，状态是`PRODUCTION_PUBLISHED_USER_PASS`。
 - 权威记录：`spec/V0_6_21_PRODUCTION_RECEIPT_2026-08-19.json`。
 
 ## 0. 最新已发布事件：v0.6.20 生成稳定性一次性修复（2026-08-19 已发布，待用户复验）

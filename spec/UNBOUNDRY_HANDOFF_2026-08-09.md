@@ -6,9 +6,9 @@
 
 新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-19 的权威现状、产品合同和用户已点头的旧项收口。下面各节是历史增量，出现「当前」时只代表该时点。
 
-## 最新已发布事件：通用保存保险丝（v0.6.21，2026-08-19 已发布，待用户复验）
+## 最新已发布事件：通用保存保险丝（v0.6.21，2026-08-19 已发布，用户已复验通过）
 
-用户确认版本号 `v0.6.21` 并说「提交，上线」。本轮把「平台已经成功、本地保存成片失败」做成所有平台/模型共用的保险丝：瞬时错误（网络断、下载超时、平台暂时拿不到、资源忙、媒体状态冲突）不再判红，任务继续后台核对/轮询并保持呼吸灯；覆盖图片（relay/优创 GPT Image）、视频（relay/火山 Seedance 原生）、音频（relay/Mureka）；非瞬时错误与坏文件仍原样拦截；下载中途断流统一为「模型结果暂时无法下载」；重试只重新下载保存，不重复提交平台生成、不重复扣费。精确源码commit`fb195b9002ffe66c205f9fe1fa40c5427b23de49`通过正式安全全量`118/118 specs、986/986 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.21-universal-save-fuse-20260819`，公网资源哈希、冻结备份`v0.6.21-frozen-e941f4`（365文件，双清单SHA`ee45316f…`）、service/schema39及数据门PASS；发布核验时保持395 tasks、402 attempts、active0、48 public templates（46 published）。`v0.6.21`已推送，PR #38已合并到`main`（merge commit`4cc325021c35167e1fa0b19a0b747e213e810ffc`）。当前状态是`PRODUCTION_PUBLISHED_AUTO_PASS`（待用户复验）。权威记录：`spec/V0_6_21_PRODUCTION_RECEIPT_2026-08-19.json`。
+用户确认版本号 `v0.6.21` 并说「提交，上线」。本轮把「平台已经成功、本地保存成片失败」做成所有平台/模型共用的保险丝：瞬时错误（网络断、下载超时、平台暂时拿不到、资源忙、媒体状态冲突）不再判红，任务继续后台核对/轮询并保持呼吸灯；覆盖图片（relay/优创 GPT Image）、视频（relay/火山 Seedance 原生）、音频（relay/Mureka）；非瞬时错误与坏文件仍原样拦截；下载中途断流统一为「模型结果暂时无法下载」；重试只重新下载保存，不重复提交平台生成、不重复扣费。精确源码commit`fb195b9002ffe66c205f9fe1fa40c5427b23de49`通过正式安全全量`118/118 specs、986/986 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.21-universal-save-fuse-20260819`，公网资源哈希、冻结备份`v0.6.21-frozen-e941f4`（365文件，双清单SHA`ee45316f…`）、service/schema39及数据门PASS；发布核验时保持395 tasks、402 attempts、active0、48 public templates（46 published）。`v0.6.21`已推送，PR #38已合并到`main`（merge commit`4cc325021c35167e1fa0b19a0b747e213e810ffc`）。2026-08-19 用户回复「通过」，当前状态是`PRODUCTION_PUBLISHED_USER_PASS`。权威记录：`spec/V0_6_21_PRODUCTION_RECEIPT_2026-08-19.json`。
 
 ## 最新已发布事件：INC-GEN-010 生成稳定性一次性修复（v0.6.20，2026-08-19 已发布，待用户复验）
 
