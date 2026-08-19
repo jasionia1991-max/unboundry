@@ -3642,13 +3642,13 @@ function ImageNodeImpl({
                           imageParameters: nextValues,
                           imageAspectRatio: supportedImageValue(
                             nextParameters.aspectRatios,
-                            "auto",
+                            node.data.imageAspectRatio,
                           ),
                           imageModelId: modelId,
                           imageModelName: displayName,
                           imageQuality: supportedImageValue(
                             nextParameters.qualities,
-                            "auto",
+                            node.data.imageQuality,
                           ),
                         },
                       }

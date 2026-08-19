@@ -1112,6 +1112,7 @@ test("workflow recovery retries a fake submit and only reconciles a true unknown
   })).toBe("success");
   expect(generationNeedsReconcile("PROVIDER_REQUEST_FAILED")).toBe(true);
   expect(generationNeedsReconcile("TIMEOUT")).toBe(true);
+  expect(generationNeedsReconcile("RESULT_DELAYED")).toBe(true);
   expect(generationNeedsReconcile("NETWORK", "RETRY_OUTCOME_UNKNOWN")).toBe(true);
   expect(generationNeedsReconcile("INPUT_INVALID")).toBe(false);
 });

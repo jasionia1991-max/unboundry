@@ -890,6 +890,7 @@ test("retry snapshot compatibility uses durable media while preserving structura
     prompt: "已保存的最终Prompt",
     providerModelId: currentModel.provider_model_id,
     providerProfileId: currentModel.provider_profile_id,
+    requestFingerprint: `retry-compatibility-${kind}-fingerprint`,
     state: "failed",
     updatedAt: timestamp,
   });
@@ -1155,6 +1156,7 @@ test("a new retry attempt fail-closes on exact ready media metadata without ente
       prompt: "retry with exact durable media",
       providerModelId: "doubao-seedance-2-0-mini-260615",
       providerProfileId: profileId,
+      requestFingerprint: `retry-media-${assetId}-fingerprint`,
       state: "failed",
       updatedAt: timestamp,
     });
@@ -1237,6 +1239,7 @@ test("preserved asynchronous Provider IDs stay resumable and cannot be discarded
       : "mureka-8",
     providerProfileId: `missing-${kind}-provider`,
     providerTaskId: `${kind}-provider-task-id`,
+    requestFingerprint: `async-provider-intent-${kind}-${state}-fingerprint`,
     state,
     updatedAt: timestamp,
   });

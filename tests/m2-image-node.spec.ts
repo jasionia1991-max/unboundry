@@ -4,6 +4,7 @@ import { composeTextControl } from "./helpers/ime";
 import { defaultParameterSchema } from "../types/modelParameters";
 
 test.beforeEach(async ({ page }, testInfo) => {
+  const retention = testInfo.title.includes("retains 2K");
   const referenceModel = testInfo.title.includes("reference chip");
   const displayName = referenceModel ? "GPT Image 2" : "Nano Banana 2 Lite";
   const parameterSchema = defaultParameterSchema("image");
@@ -12,8 +13,10 @@ test.beforeEach(async ({ page }, testInfo) => {
     if (field.key === "quality") {
       return {
         ...field,
-        defaultValue: "1k",
-        options: [{ label: "1K", value: "1k" }],
+        defaultValue: retention ? "2k" : "1k",
+        options: retention
+          ? [{ label: "1K", value: "1k" }, { label: "2K", value: "2k" }]
+          : [{ label: "1K", value: "1k" }],
       };
     }
     if (field.key === "outputCount") {
@@ -26,11 +29,36 @@ test.beforeEach(async ({ page }, testInfo) => {
     return field;
   });
   await page.route("**/api/models", async (route) => {
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        generationEnabled: false,
-        models: [{
+    const models = retention
+      ? [
+          {
+            capability: "image",
+            displayName: "Nano Banana 2 Lite",
+            generationAvailable: true,
+            id: "fixture-nano-banana-2-lite",
+            imageParameters: {
+              aspectRatios: ["1:1", "auto"],
+              maxReferenceImages: 0,
+              qualities: ["1k", "2k"],
+            },
+            isDefault: true,
+            parameterSchema,
+          },
+          {
+            capability: "image",
+            displayName: "GPT Image 2",
+            generationAvailable: true,
+            id: "fixture-gpt-image-2",
+            imageParameters: {
+              aspectRatios: ["1:1", "auto"],
+              maxReferenceImages: 0,
+              qualities: ["1k", "2k"],
+            },
+            isDefault: false,
+            parameterSchema,
+          },
+        ]
+      : [{
           capability: "image",
           displayName,
           generationAvailable: false,
@@ -42,7 +70,12 @@ test.beforeEach(async ({ page }, testInfo) => {
           },
           isDefault: true,
           parameterSchema,
-        }],
+        }];
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        generationEnabled: false,
+        models,
       }),
       status: 200,
     });
@@ -793,4 +826,40 @@ test("Image lighting stays unavailable while the feature is paused", async ({
   );
   await expect(page.getByTestId("image-lighting-panel")).toHaveCount(0);
   expect(generationRequests).toEqual([]);
+});
+
+test("Image model switch retains 2K quality when both models support it", async ({
+  page,
+}) => {
+  await page.goto("/canvas");
+  await page.getByTestId("add-node").click();
+  await page
+    .getByTestId("add-node-menu")
+    .getByRole("menuitem", { name: "图片", exact: true })
+    .click();
+  const creator = page.getByTestId("image-creator");
+  await expect(creator).toBeVisible();
+
+  await creator.getByRole("button", { name: "图片参数" }).click();
+  const parameterPanel = page.getByRole("dialog", { name: "图片生成参数" });
+  await expect(parameterPanel).toBeVisible();
+  const twoK = parameterPanel.getByRole("button", { name: "2K画质" });
+  await expect(twoK).toBeEnabled();
+  await expect(twoK).toBeVisible();
+  await twoK.click();
+  await expect(twoK).toHaveAttribute("aria-pressed", "true");
+  await expect(creator).toContainText("2K");
+
+  const model = page.getByRole("combobox", { name: "image模型" });
+  await expect(model).toContainText("Nano Banana 2 Lite");
+  await model.click();
+  await page.getByRole("option", { name: /GPT Image 2/ }).click();
+  await expect(page.getByRole("combobox", { name: "image模型" }))
+    .toContainText("GPT Image 2");
+  await expect(creator).toContainText("2K");
+  await creator.getByRole("button", { name: "图片参数" }).click();
+  await expect(parameterPanel).toBeVisible();
+  await expect(parameterPanel.getByRole("button", { name: "2K画质" }))
+    .toHaveAttribute("aria-pressed", "true");
+  await expect(creator).toContainText("2K");
 });

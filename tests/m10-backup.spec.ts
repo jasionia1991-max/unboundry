@@ -3647,7 +3647,7 @@ test("final-candidate exact-v37 chain rehydrates fake OSS offline and validates 
         ["canvas_documents", 1],
         ["project_metadata", 1],
         ["user_templates", 1],
-        ["public_templates", 3],
+        ["public_templates", 4],
         ["asset_history", 1],
         ["generation_tasks", 1],
         ["generation_provider_attempts", 1],

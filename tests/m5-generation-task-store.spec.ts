@@ -1091,6 +1091,91 @@ test("new paid retry blocks an unresolved older ledger when the current executio
   }
 });
 
+test("retry refuses a new paid attempt when a sibling with the same input already holds accepted evidence", async ({
+  request,
+}) => {
+  const dataDirectoryResponse = await request.get("/api/test-data-directory");
+  expect(dataDirectoryResponse.ok()).toBeTruthy();
+  const { dataDirectory } = (await dataDirectoryResponse.json()) as {
+    dataDirectory: string;
+  };
+  let store: ReturnType<typeof createGenerationTaskStore> | undefined =
+    createGenerationTaskStore(dataDirectory);
+  const input = {
+    canvasId: "sibling-retry-gate",
+    kind: "image" as const,
+    model: "sibling-retry-image",
+    modelConfiguration: { providerProtocol: "native" },
+    nodeId: "sibling-retry-node",
+    ownerId: "__test__",
+    parameters: {},
+    prompt: "identical sibling retry input",
+    providerModelId: "sibling-retry-model",
+    providerProfileId: "sibling-retry-profile",
+  };
+  try {
+    const first = store.create({
+      ...input,
+      idempotencyKey: "sibling-retry-first-0001",
+    }).task;
+    const second = store.create({
+      ...input,
+      idempotencyKey: "sibling-retry-second-0002",
+    }).task;
+    store.transition(first.id, "running");
+    const paid = store.recordProviderAttempt(first.id);
+    store.attachProviderTaskId({
+      executionAttempt: paid.executionAttempt,
+      providerTaskId: "sibling-retry-remote-0001",
+      taskId: first.id,
+    });
+    store.transition(first.id, "failed", {
+      code: "NETWORK",
+      message: "polling stopped after Provider acceptance",
+    });
+    store.transition(second.id, "running");
+    const failed = store.transition(second.id, "failed", {
+      code: "RATE_LIMIT",
+      message: "local failure before a new paid attempt",
+    })!;
+    const retryFence = seedGenerationRetryBinding(
+      dataDirectory,
+      failed,
+      "sibling-retry-input-key",
+    );
+    expect(store.getProviderAttemptForTask(first.id)).toMatchObject({
+      outcome: "accepted",
+    });
+    store.close();
+    store = undefined;
+
+    const before = openAppDatabase(dataDirectory);
+    let paidBefore = 0;
+    try {
+      paidBefore = generationProviderAttemptCounts(before).paidProviderRequests;
+    } finally {
+      before.close();
+    }
+    const retry = await request.post(
+      `/api/generation-tasks/${second.id}/retry`,
+      { data: retryFence },
+    );
+    expect(retry.status()).toBe(409);
+    await expect(retry.json()).resolves.toMatchObject({
+      code: "RETRY_OUTCOME_UNKNOWN",
+    });
+    const after = openAppDatabase(dataDirectory);
+    try {
+      expect(generationProviderAttemptCounts(after).paidProviderRequests)
+        .toBe(paidBefore);
+    } finally {
+      after.close();
+    }
+  } finally {
+    store?.close();
+  }
+});
+
 test("atomic admission serializes 20 contenders and replays stable owner-scoped intent first", async () => {
   test.setTimeout(120_000);
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-atomic-admission-"));
@@ -1888,6 +1973,96 @@ test("the same input cannot open a second paid task while the last outcome is un
       nodeId: "atomic-image-other-node",
     }));
     expect(otherNode.created).toBe(true);
+  } finally {
+    store.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("the same input cannot open a new task after a sibling already holds accepted or response-received evidence", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-sibling-paid-"));
+  const seed = openAppDatabase(dataDirectory);
+  seedAtomicGenerationFixture(seed, ["atomic-owner-a", "atomic-owner-b"]);
+  seed.prepare(`
+    UPDATE generation_safety_settings
+    SET per_user_concurrency = 20, image_concurrency = 20
+    WHERE id = 1
+  `).run();
+  seed.close();
+  const store = createGenerationTaskStore(dataDirectory);
+  try {
+    const accepted = store.admitOrGet(atomicImageRequest({
+      idempotencyKey: "sibling-paid-accepted-0001",
+    })).task;
+    store.transition(accepted.id, "running");
+    const acceptedPaid = store.recordProviderAttempt(accepted.id);
+    store.attachProviderTaskId({
+      credentialRevision: 1,
+      executionAttempt: acceptedPaid.executionAttempt,
+      providerTaskId: "sibling-paid-remote-0001",
+      taskId: accepted.id,
+    });
+    store.transition(accepted.id, "failed", {
+      code: "NETWORK",
+      message: "polling stopped after Provider acceptance",
+    });
+    expect(store.getProviderAttemptForTask(accepted.id)).toMatchObject({
+      outcome: "accepted",
+    });
+    expect(() => store.admitOrGet(atomicImageRequest({
+      idempotencyKey: "sibling-paid-accepted-0002",
+    }))).toThrow(GenerationProviderAttemptBlockedError);
+    try {
+      store.admitOrGet(atomicImageRequest({
+        idempotencyKey: "sibling-paid-accepted-0002",
+      }));
+    } catch (error) {
+      expect(error).toMatchObject({ code: "RETRY_OUTCOME_UNKNOWN" });
+    }
+
+    const responseReceived = store.admitOrGet(atomicImageRequest({
+      idempotencyKey: "sibling-paid-response-0001",
+      nodeId: "atomic-image-response-node",
+    })).task;
+    store.transition(responseReceived.id, "running");
+    const responsePaid = store.recordProviderAttempt(responseReceived.id);
+    store.markProviderResponseReceived({
+      executionAttempt: responsePaid.executionAttempt,
+      taskId: responseReceived.id,
+    });
+    store.transition(responseReceived.id, "failed", {
+      code: "MEDIA_PUBLICATION_FAILED",
+      message: "the paid response could not be published locally",
+    });
+    expect(store.getProviderAttemptForTask(responseReceived.id)).toMatchObject({
+      outcome: "response-received",
+    });
+    expect(() => store.admitOrGet(atomicImageRequest({
+      idempotencyKey: "sibling-paid-response-0002",
+      nodeId: "atomic-image-response-node",
+    }))).toThrow(GenerationProviderAttemptBlockedError);
+
+    const otherNode = store.admitOrGet(atomicImageRequest({
+      idempotencyKey: "sibling-paid-other-node-0003",
+      nodeId: "atomic-image-other-node",
+    }));
+    expect(otherNode.created).toBe(true);
+
+    const changedPrompt = store.admitOrGet({
+      ...atomicImageRequest({
+        idempotencyKey: "sibling-paid-changed-prompt-0004",
+      }),
+      prompt: "a genuinely different prompt",
+      requestIntent: {
+        canvasId: "atomic-canvas",
+        kind: "image",
+        model: "atomic-image-model",
+        nodeId: "atomic-image-node",
+        parameters: { count: 1, size: "1k" },
+        prompt: "a genuinely different prompt",
+      },
+    });
+    expect(changedPrompt.created).toBe(true);
   } finally {
     store.close();
     await rm(dataDirectory, { force: true, recursive: true });
