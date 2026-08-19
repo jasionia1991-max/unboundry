@@ -17,11 +17,15 @@ export function workflowRecoveryPlan(task: {
   errorCode?: string | null;
   retryAllowed?: boolean;
   retryBlockCode?: string | null;
+  attempt?: number;
   state: string;
 }) {
   if (task.state === "success") return "success" as const;
   if (task.state !== "failed") return "skip" as const;
-  if (task.retryAllowed === true) return "retry" as const;
+  // 系统自动重试整个生命周期只有一次（attempt >= 2 说明已经重试过）。
+  if (task.retryAllowed === true && (task.attempt ?? 1) < 2) {
+    return "retry" as const;
+  }
   if (generationNeedsReconcile(task.errorCode, task.retryBlockCode)) {
     return "reconcile" as const;
   }
@@ -77,7 +81,7 @@ export async function recoverWorkflowGenerationOnce(input: {
     task = result.task;
   }
 
-  if (!safelyRetryableGenerationTask(task)) {
+  if (!safelyRetryableGenerationTask(task) || task.attempt >= 2) {
     return {
       message: task.errorMessage,
       status: "failed",

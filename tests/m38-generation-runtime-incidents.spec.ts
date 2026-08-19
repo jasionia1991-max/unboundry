@@ -722,6 +722,18 @@ test("the incident cooldown ignores stale and unrelated Provider failures", asyn
       profileId: arkProfile.id,
       timestamp: "2026-08-03T03:38:00.000Z",
     });
+    // 平台没出片/结果不明不算明确失败，不应触发熔断。
+    expect(safety.admission({
+      kind: "text",
+      now,
+      ownerId,
+      providerProfileId: arkProfile.id,
+    })).toEqual({ allowed: true, code: "ALLOWED" });
+    database.prepare(`
+      UPDATE generation_provider_attempts
+      SET failure_code = 'PERMISSION'
+      WHERE owner_id = ? AND kind = 'text' AND provider_profile_id = ?
+    `).run(ownerId, arkProfile.id);
     expect(safety.admission({
       kind: "text",
       now,

@@ -213,6 +213,21 @@ test("generation safety settings contain no cost fields and admission blocks by 
         )
       `).run(`task-failed-${index}`, imageProviderId, timestamp, timestamp);
     }
+    // 平台没出片/结果不明不算明确失败，不应触发熔断。
+    expect(
+      safety.admission({
+        kind: "image",
+        ownerId: "owner-test",
+        providerProfileId: imageProviderId,
+      }),
+    ).toEqual({ allowed: true, code: "ALLOWED" });
+    database.prepare(`
+      UPDATE generation_provider_attempts
+      SET failure_code = 'PERMISSION'
+      WHERE owner_id = 'owner-test'
+        AND provider_profile_id = ?
+        AND kind = 'image'
+    `).run(imageProviderId);
     expect(
       safety.admission({
         kind: "image",
