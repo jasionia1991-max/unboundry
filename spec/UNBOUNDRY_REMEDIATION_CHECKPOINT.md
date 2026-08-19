@@ -1,9 +1,18 @@
 # Unboundry 全量修复施工断点
 
 断点版本：`77`
-更新时间：`2026-08-19`
-状态：`V0_6_23_GENERATION_STABILITY_ROOTFIX_PRODUCTION_PUBLISHED_PENDING_USER_RECHECK（2026-08-19 已发布，待用户复验）`
+更新时间：`2026-08-20`
+状态：`V0_6_24_ARK_FILES_API_PRODUCTION_PUBLISHED_PENDING_USER_RECHECK（2026-08-20 已发布，待用户复验）`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。当前一页快照见 `UNBOUNDRY_CURRENT_STATE.md`。
+
+## 0. 最新已发布事件：v0.6.24 方舟文字模型大图原图直传（2026-08-20 已发布，待用户复验）
+
+- 用户确认版本号 `v0.6.24` 并说「可以上线」（此前已点头做真实验证）。
+- 内容：10–20MB PNG 参考图原图直传方舟 Files API，用 file_id 交文字模型；上传/轮询/删除全程配置锁外；每 profile 并发 2、有界排队与超时；上传失败不产生计费；取消独立清理信号；开关 `UNBOUNDRY_ARK_FILES_API` 默认关闭。
+- 精确源码commit`87d39d264d463d341bbc0c989bfbca2a857f3e22`通过正式安全全量`119/119 specs、1006/1006 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。真实方舟验证通过（12,019,057 字节 PNG → `file-20260820015350-gzjcq` → 文字模型返回 1375 tokens → DELETE_OK）。
+- 生产current已切到`/opt/unboundry/releases/v0.6.24-ark-files-20260820`；冻结备份`v0.6.24-frozen-x7q2mz`（365文件，双清单SHA`ec7b6397…`）、公网资源逐字节哈希、service/schema39和数据门均PASS。发布核验时保持475 tasks、482 attempts、active0、49 public templates（47 published）。
+- `v0.6.24`标签精确指向源码commit；PR #48已合并到`main`，merge commit`baf1a23fd06a43884bd2272dab1f3c30e477853d`。2026-08-20 已发布，当前状态是`PRODUCTION_PUBLISHED_PENDING_USER_RECHECK`，待用户线上复验。
+- 权威记录：`spec/V0_6_24_PRODUCTION_RECEIPT_2026-08-20.json`、`spec/INC_GEN_011_ARK_FILES_API_2026-08-20.md`。
 
 ## 0. 最新已发布事件：v0.6.23 生成稳定性根治修复（2026-08-19 已发布，待用户复验）
 

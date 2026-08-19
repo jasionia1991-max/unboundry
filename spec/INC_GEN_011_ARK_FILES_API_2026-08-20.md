@@ -1,6 +1,6 @@
 # INC-GEN-011 方舟文字模型大图原图直传（Files API）
 
-状态：`IMPLEMENTED_REAL_VERIFIED_PENDING_RELEASE`（2026-08-20 实现已完成、隔离安全全量 1006/1006 全绿、真实方舟验证已通过；版本号已 bump 至 v0.6.24，待用户说「可以上线」后按 Runbook 发布）
+状态：`IMPLEMENTED_RELEASED`（2026-08-20 已随 v0.6.24 上线，待用户线上复验；隔离安全全量 1006/1006 全绿、真实方舟验证已通过）
 日期：2026-08-20
 权威快照：`spec/UNBOUNDRY_CURRENT_STATE.md`
 
@@ -153,6 +153,7 @@
 - 真出一张大图：必须用户单独点头。
 - 发布：必须分别听到版本号和「可以上线」，走仓库既有发布流程（tag / push / PR / 生产切换）。
 
+2026-08-20 用户已点头做真实验证，并确认版本号 v0.6.24 与「可以上线」；已按 Runbook 发布到 `/opt/unboundry/releases/v0.6.24-ark-files-20260820`，PR #48 已合并，权威回执见 `spec/V0_6_24_PRODUCTION_RECEIPT_2026-08-20.json`。
 ### 真实验证记录（2026-08-20，用户已点头）
 
 - 隔离生成 12,019,057 字节 PNG（随机噪点，PNG 头合法），通过真实 `uploadArkImageFile` 上传到方舟 Files API：
