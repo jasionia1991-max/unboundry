@@ -1,0 +1,112 @@
+{
+  "incident": "V0.6.21-UNIVERSAL_PROVIDER_RESULT_SAVE",
+  "version": "0.6.21",
+  "status": "PRODUCTION_PUBLISHED_AUTO_PASS",
+  "publishedAt": "2026-08-19T07:33:00Z",
+  "changes": {
+    "summary": "通用“平台成功但本地保存失败”保险丝：所有平台/模型共用；瞬时保存错误不再判红，继续后台核对/轮询并保持呼吸灯；覆盖图片（relay/优创 GPT Image）、视频（relay/火山 Seedance 原生）、音频（relay/Mureka）；非瞬时错误与坏文件仍原样拦截；下载中途断流统一为中性提示；不重复扣费。",
+    "scope": "server/generationTasks.ts、server/providerResultMedia.ts 及对应测试/清单；无数据库结构变更（schema39 不变）。",
+    "generationLogicUnchanged": false
+  },
+  "source": {
+    "commit": "fb195b9002ffe66c205f9fe1fa40c5427b23de49",
+    "tree": "1b702fdeb56c74fd9d6676dd91f859606d1afd5a",
+    "tagObject": "ed3a87721659c83b7334926a9cfa46452b6c3613"
+  },
+  "tests": {
+    "full": {
+      "specsPassed": 118,
+      "specsTotal": 118,
+      "testsPassed": 986,
+      "testsTotal": 986,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0
+    },
+    "sourceFiles": 554,
+    "sourceSnapshotSha256": "816674bad67709f8316dee9d0b68728e6f626e761d6255c2e010e581359a9941",
+    "listenerBeforeAfterSha256": "24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244"
+  },
+  "backup": {
+    "path": "/var/lib/unboundry-rollbacks/v0.6.21-frozen-e941f4",
+    "files": 365,
+    "frozenManifestSha256": "ee45316f293d42631d9c30c6f97cea2135952dc0fc474dfe602be4db289fc05d",
+    "restoreManifestSha256": "ee45316f293d42631d9c30c6f97cea2135952dc0fc474dfe602be4db289fc05d",
+    "restoreSchemaVersion": 39,
+    "restoreDatabaseIntegrity": "ok",
+    "restoreForeignKeyViolations": 0,
+    "restoreTasks": 395,
+    "restoreProviderAttempts": 402,
+    "restoreActiveGenerations": 0,
+    "restorePublicTemplates": 48,
+    "restorePublishedTemplates": 46
+  },
+  "production": {
+    "release": "/opt/unboundry/releases/v0.6.21-universal-save-fuse-20260819",
+    "previousRelease": "/opt/unboundry/releases/v0.6.20-inc-gen-010-20260819",
+    "releaseInventoryFileSha256": "271c4bfdedca224f61097ab11f76fe66319fb08e5c5be79961bb327c36575fad",
+    "releaseInventoryLines": 5771,
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "restartCount": 0,
+    "schemaVersion": 39,
+    "databaseIntegrity": "ok",
+    "foreignKeyViolations": 0,
+    "tasks": 395,
+    "providerAttempts": 402,
+    "activeGenerations": 0,
+    "publicTemplates": 48,
+    "publishedTemplates": 46
+  },
+  "publicAssets": {
+    "version": "0.6.21",
+    "rootStatus": 200,
+    "title": "无央｜AI 无限画布",
+    "indexJs": {
+      "path": "/assets/index-CN0ORBuW.js",
+      "sha256": "4722f1aa28c54b45a6c53644449f131eda1c7064d76d96df8e6d4c14d9c7c3a4",
+      "matchesRelease": true
+    },
+    "indexCss": {
+      "path": "/assets/index-s-NLq_c-.css",
+      "sha256": "cf5d15a21a83f71580f7b462d8d88ccb9bc7c76e41bd5753cf16c091265b72b4",
+      "matchesRelease": true
+    },
+    "canvasShell": {
+      "path": "/assets/CanvasShell-CAg2kWcr.js",
+      "sha256": "ca8e6e4bc3e8d73d01fddd39f18d393ea1354246151fe2bd73fe9f9aab3522e9",
+      "matchesRelease": true
+    },
+    "workspacePage": {
+      "path": "/assets/WorkspacePage-DqdYvEq_.js",
+      "sha256": "aa7800190441981c269c99a3f8c2184538e8ad04f04235ea3c939ece4bcf03af",
+      "matchesRelease": true
+    },
+    "projectStorage": {
+      "path": "/assets/projectStorage-COb0OFxV.js",
+      "sha256": "a8b3d9eb5885d559dfe291199a5cc744d98a7ed2d826d3978b965ed43a4d3af5",
+      "matchesRelease": true
+    }
+  },
+  "productionConfig": {
+    "gptImageDefaultQuality": "1k",
+    "unchangedFromPrevious": true
+  },
+  "externalEffects": {
+    "realProviderRequests": 0,
+    "paidGenerationRequests": 0,
+    "ossWrites": 0
+  },
+  "github": {
+    "state": "MERGED",
+    "pullRequest": 38,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/38",
+    "mergedAt": "2026-08-19T07:29:55Z",
+    "mergeCommit": "4cc325021c35167e1fa0b19a0b747e213e810ffc",
+    "tag": "v0.6.21",
+    "tagTarget": "fb195b9002ffe66c205f9fe1fa40c5427b23de49"
+  },
+  "userAcceptance": "USER_RECHECK"
+}

@@ -1,7 +1,15 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-19
-状态：`v0.6.20已发布（2026-08-19，INC-GEN-010 生成稳定性一次性修复）待用户复验；v0.6.19同待复验；v0.6.18与v0.6.17已发布且用户已复验通过；v0.6.16已发布且USER PASS。当前权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+状态：`v0.6.21已发布（2026-08-19，通用保存保险丝）待用户复验；v0.6.20与v0.6.19同待复验；v0.6.18与v0.6.17已发布且用户已复验通过；v0.6.16已发布且USER PASS。当前权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+
+### 2026-08-19 通用保存保险丝（v0.6.21）
+
+- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS`（待用户复验）。用户确认版本号 `v0.6.21` 并说可以上线；已发布，等你手工复验。
+- 要的结果：平台已经成功、本地保存成片时遇到瞬时问题不再判红。所有平台/模型共用同一道保险丝：瞬时错误继续后台核对/轮询并保持呼吸灯；覆盖图片（relay/优创 GPT Image）、视频（relay/火山 Seedance 原生）、音频（relay/Mureka）；非瞬时错误与坏文件仍原样拦截；下载中途断流统一为中性提示；不重复扣费。
+- 自动门：正式安全全量 `118/118 specs、986/986 tests PASS`，失败/跳过/重试/blocked/reportErrors均0；4173 listener 不变。
+- 发布：commit `fb195b9`（tag 目标）已发布到 `/opt/unboundry/releases/v0.6.21-universal-save-fuse-20260819`；冻结备份 `v0.6.21-frozen-e941f4`（365 文件，双清单 SHA `ee45316f…`）/数据门/schema39 通过；GitHub `v0.6.21` 标签、PR #38 已合并。
+- 权威凭证：`spec/V0_6_21_PRODUCTION_RECEIPT_2026-08-19.json`。
 
 ### 2026-08-19 生成稳定性一次性修复（v0.6.20）
 
