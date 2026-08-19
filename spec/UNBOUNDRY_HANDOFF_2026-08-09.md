@@ -6,6 +6,10 @@
 
 新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-19 的权威现状、产品合同和用户已点头的旧项收口。下面各节是历史增量，出现「当前」时只代表该时点。
 
+## 最新已发布事件：INC-GEN-010 生成稳定性一次性修复（v0.6.20，2026-08-19 已发布，待用户复验）
+
+用户说「先上线」并确认版本号 `v0.6.20`。本轮把生成流程改成：少红字、少手动操作，任务只要还在就保持呼吸灯。图片主轮询 5 分钟、视频 8 分钟，主窗结束后后台继续慢速核对（图片再补 5 分钟、视频再补 4 分钟）；图片/视频任务号丢失先从优创用量记录自动找回，确认缺失时整个任务只自动补提交一次（attempt >= 2 不再重试）；平台明确退款的任务自动确认缺失并重试一次，未确认退款不自动发起新付费；只有明确拒绝/本地问题才红字，超时/没出片走中性灰提示；结果下载网络/5xx 自动重试 3 次；熔断按账号拆分且只统计明确拒绝/completed；画布保存等待 8 秒放宽到 15 秒、按钮显示「正在保存画布…」。精确源码commit`66908c0b670e106de5261ca221328af428baf6d9`通过正式安全全量`118/118 specs、983/983 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.20-inc-gen-010-20260819`，公网资源哈希、冻结备份`v0.6.20-frozen-e8bcb7`（365文件，双清单SHA`6917975d…`）、service/schema39及数据门PASS；发布核验时保持358 tasks、364 attempts、active0、48 public templates（46 published）。`v0.6.20`已推送，PR #35已合并到`main`（merge commit`80f4ad64a65088b93c8750245e8cf35219426aae`）。当前状态是`PRODUCTION_PUBLISHED_AUTO_PASS`（待用户复验）。权威记录：`spec/V0_6_20_PRODUCTION_RECEIPT_2026-08-19.json`、`spec/INC_GEN_010_GENERATION_STABILITY_2026-08-19.md`。
+
 ## 最新已发布事件：v0.6.19 验收收口（2026-08-19 已发布，待用户复验）
 
 v0.6.19 为验收收口发布：记录 v0.6.17/v0.6.18 用户复验通过、版本号升至 0.6.19、运行时放行新版本，无产品功能改动。精确源码commit`797a46bf4151eaf21195f35f91c575bee167d08b`通过安全全量`118/118 specs、983/983 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.19-acceptance-close-20260819`，公网资源哈希、冻结备份`v0.6.19-frozen-8fq2Wp`（365文件，双清单SHA`402a6dbe…`）、service/schema39及数据门PASS；发布核验时保持323 tasks、327 attempts、active0、48 public templates（46 published）。`v0.6.19`已推送，PR #33已合并到`main`（merge commit`adb3409029b92b4cac8c5101ce43e647adcc3586`）。当前状态是`PRODUCTION_PUBLISHED_AUTO_PASS`（待用户复验）。权威记录：`spec/V0_6_19_PRODUCTION_RECEIPT_2026-08-19.json`。
