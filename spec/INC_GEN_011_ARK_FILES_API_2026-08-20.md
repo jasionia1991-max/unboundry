@@ -154,7 +154,6 @@
 - 发布：必须分别听到版本号和「可以上线」，走仓库既有发布流程（tag / push / PR / 生产切换）。
 
 2026-08-20 用户已点头做真实验证，并确认版本号 v0.6.24 与「可以上线」；已按 Runbook 发布到 `/opt/unboundry/releases/v0.6.24-ark-files-20260820`，PR #48 已合并，权威回执见 `spec/V0_6_24_PRODUCTION_RECEIPT_2026-08-20.json`。
-
 ### 真实验证记录（2026-08-20，用户已点头）
 
 - 隔离生成 12,019,057 字节 PNG（随机噪点，PNG 头合法），通过真实 `uploadArkImageFile` 上传到方舟 Files API：
