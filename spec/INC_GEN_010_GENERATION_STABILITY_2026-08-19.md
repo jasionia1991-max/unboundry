@@ -1,6 +1,6 @@
 # INC-GEN-010 生成稳定性一次性修复（v0.6.20）
 
-状态：`PRODUCTION_PUBLISHED_AUTO_PASS`（2026-08-19 已发布，待用户复验）
+状态：`PRODUCTION_PUBLISHED_AUTO_PASS`（2026-08-19 已发布，待用户复验；生产 current 已切到 `/opt/unboundry/releases/v0.6.20-inc-gen-010-20260819`）
 日期：2026-08-19
 版本：v0.6.20
 
@@ -32,4 +32,4 @@
 
 ## 凭证
 
-`spec/V0_6_20_PRODUCTION_RECEIPT_2026-08-19.json`（发布后生成）。
+`spec/V0_6_20_PRODUCTION_RECEIPT_2026-08-19.json`。
