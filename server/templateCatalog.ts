@@ -17,6 +17,7 @@ export function accountDeletionBlocksTemplateMutation(error: unknown) {
 
 type RawTemplateNode = {
   data?: {
+    contentOnly?: boolean;
     params?: { aspectRatio?: string; imageSize?: string };
     prompt?: string;
     text?: string;
@@ -233,9 +234,15 @@ export function buildTemplateGraph(record: TemplateCatalogDataRecord): TemplateG
     if (type === "text") {
       const prompt = raw.data?.prompt ?? "";
       const text = raw.data?.text ?? "";
-      data.textPrompt = prompt || text;
-      data.textPromptReady = true;
-      if (text) data.content = text;
+      if (raw.data?.contentOnly === true) {
+        // 母版节点：只保存内容供下游引用，不参与文字生成执行。
+        data.textPromptReady = false;
+        if (text) data.content = text;
+      } else {
+        data.textPrompt = prompt || text;
+        data.textPromptReady = true;
+        if (text) data.content = text;
+      }
     } else if (type === "image") {
       data.sourceKind = "image";
       const prompt = raw.data?.prompt?.trim() ?? "";

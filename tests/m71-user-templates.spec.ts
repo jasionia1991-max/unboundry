@@ -11,11 +11,14 @@ import {
 } from "../client/src/canvas/groupTemplate";
 import { openAppDatabase } from "../server/database";
 import {
+  buildTemplateGraph,
   deleteUserTemplate,
   listUserTemplates,
   saveUserTemplate,
   type UserTemplateCard,
 } from "../server/templateCatalog";
+import catalogData from "../server/templateCatalogData.json" with { type: "json" };
+import publicTemplateSeeds from "../server/publicTemplateSeeds.json" with { type: "json" };
 
 function templateGraph(overrides: {
   edgeCount?: number;
@@ -1232,4 +1235,57 @@ test("dragging a real canvas node saves after drag stop, not during the drag", a
   await expect.poll(() => writes.length).toBeGreaterThan(0);
   await request.delete(`/api/canvas/${project.id}`);
   await request.delete(`/api/projects/${project.id}`);
+});
+
+test("garment detail template keeps a generic master and six same-size generic shots", () => {
+  const record = catalogData["ecommerce-garment-detail-six"];
+  const graph = buildTemplateGraph(record);
+  const textNodes = graph.nodes.filter((node) => node.type === "text");
+  expect(textNodes).toHaveLength(1);
+  expect(textNodes[0].data).toMatchObject({
+    textPromptReady: false,
+  });
+  expect(textNodes[0].data.textPrompt).toBeUndefined();
+  const master = String(textNodes[0].data.content ?? "");
+  expect(master).toContain("六张");
+  expect(master).toContain("1:1");
+  expect(master).toContain("以白底参考图为唯一真相");
+  expect(master).not.toContain("九宫格");
+
+  const outputs = graph.nodes.filter(
+    (node) => node.type === "image" && node.data.imagePromptReady === true,
+  );
+  expect(outputs).toHaveLength(6);
+  expect(outputs.map((node) => String(node.data.title ?? ""))).toEqual([
+    "正面整体图",
+    "领口/腰头与开口结构",
+    "袖口/下摆与收口边缘",
+    "细节与辅料特写",
+    "面料肌理特写",
+    "缝线与工艺特写",
+  ]);
+  for (const node of outputs) {
+    const prompt = String(node.data.imagePrompt ?? "");
+    expect(prompt).not.toContain("蕾丝");
+    expect(prompt).not.toContain("九宫格");
+    expect(node.data.imageAspectRatio).toBe("1:1");
+    expect(String(node.data.imageQuality)).toBe("2k");
+  }
+  expect(record.description).toContain("1:1");
+  expect(record.description).not.toContain("九宫格");
+
+  const seed = publicTemplateSeeds.find((candidate) =>
+    candidate.id === "e6b7f8c4-8c7d-4f8e-9d0a-3a1b2c3d4e5f",
+  );
+  expect(seed).toBeDefined();
+  const seedText = seed!.graph.nodes.find((node) => node.type === "text") as {
+    data?: {
+      content?: string;
+      textPrompt?: string;
+      textPromptReady?: boolean;
+    };
+  };
+  expect(seedText?.data).toMatchObject({ textPromptReady: false });
+  expect(seedText?.data?.textPrompt).toBeUndefined();
+  expect(String(seedText?.data?.content ?? "")).toBe(master);
 });

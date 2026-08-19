@@ -114,6 +114,7 @@ export type GenerationTask = {
   providerProfileId?: string;
   providerTaskId?: string;
   providerUsageTokens?: number;
+  requestFingerprint: string;
   resultAssetId?: string;
   resultText?: string;
   actualCostMicrounits?: number;
@@ -634,6 +635,7 @@ function toTask(row: GenerationTaskRow): GenerationTask {
     providerProfileId: row.provider_profile_id ?? undefined,
     providerTaskId: row.provider_task_id ?? undefined,
     providerUsageTokens: row.provider_usage_tokens ?? undefined,
+    requestFingerprint: row.request_fingerprint,
     resultAssetId: row.result_asset_id ?? undefined,
     resultText: row.result_text ?? undefined,
     actualCostMicrounits: row.actual_cost_microunits ?? undefined,
@@ -1311,6 +1313,34 @@ export function createGenerationTaskStore(dataDirectory: string) {
           );
         }
 
+        const confirmedSameInput = database.prepare(`
+          SELECT t.id
+          FROM generation_tasks AS t
+          JOIN generation_provider_attempts AS attempt
+            ON attempt.task_id = t.id
+          WHERE
+            t.owner_id = ?
+            AND t.canvas_id = ?
+            AND t.node_id = ?
+            AND t.kind = ?
+            AND t.request_fingerprint = ?
+            AND t.state != 'cancelled'
+            AND attempt.outcome IN ('accepted', 'response-received')
+          LIMIT 1
+        `).get(
+          normalized.ownerId,
+          normalized.canvasId,
+          normalized.nodeId,
+          normalized.kind,
+          fingerprint,
+        );
+        if (confirmedSameInput) {
+          throw new GenerationProviderAttemptBlockedError(
+            "RETRY_OUTCOME_UNKNOWN",
+            "同一输入已有平台任务已受理或已出片，为避免重复扣费，请先「核对结果」，不要重新提交",
+          );
+        }
+
         const admission = generationAdmissionInTransaction(database, {
           kind: normalized.kind,
           now: options.now,
@@ -1527,6 +1557,41 @@ export function createGenerationTaskStore(dataDirectory: string) {
         throw new Error("Invalid generation task ID");
       }
       return hasUnsafeProviderAttemptForNewPaidRetry(id);
+    },
+
+    /**
+     * 同一画布/节点/输入指纹下，是否已有其它任务持有平台已受理或已出片的
+     * 付费证据。存在时绝不允许再开新的付费提交，只能收回旧结果。
+     */
+    hasConfirmedProviderOutcomeForSibling(taskId: string) {
+      if (!identifierPattern.test(taskId) || taskId.length > 120) {
+        throw new Error("Invalid generation task ID");
+      }
+      const row = readById.get(taskId) as GenerationTaskRow | undefined;
+      if (!row) return false;
+      return Boolean(database.prepare(`
+        SELECT 1
+        FROM generation_tasks AS t
+        JOIN generation_provider_attempts AS attempt
+          ON attempt.task_id = t.id
+        WHERE
+          t.owner_id = ?
+          AND t.canvas_id = ?
+          AND t.node_id = ?
+          AND t.kind = ?
+          AND t.request_fingerprint = ?
+          AND t.id != ?
+          AND t.state != 'cancelled'
+          AND attempt.outcome IN ('accepted', 'response-received')
+        LIMIT 1
+      `).get(
+        row.owner_id,
+        row.canvas_id,
+        row.node_id,
+        row.kind,
+        row.request_fingerprint,
+        row.id,
+      ));
     },
 
     listOwnerRelayMatchContext(input: {

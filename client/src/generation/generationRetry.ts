@@ -94,6 +94,7 @@ export function generationNeedsReconcile(
     errorCode === "PROVIDER_FAILED" ||
     errorCode === "PROVIDER_REQUEST_FAILED" ||
     errorCode === "TIMEOUT" ||
+    errorCode === "RESULT_DELAYED" ||
     retryBlockCode === "RETRY_OUTCOME_UNKNOWN";
 }
 

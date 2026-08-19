@@ -76,6 +76,7 @@ function relayTask(
     prompt: "fixture prompt",
     providerModelId: `vendor/${kind}-model`,
     providerProfileId: relayProfile.id,
+    requestFingerprint: "relay-fixture-request-fingerprint",
     state: "failed",
     updatedAt: "2026-08-03T00:00:01.000Z",
     ...overrides,
@@ -127,6 +128,46 @@ test("the shared save gate keeps polling on transient errors and throws real one
       throw new ProviderResultMediaError("FORMAT", "模型结果格式不受支持");
     },
   })).rejects.toMatchObject({ code: "FORMAT" });
+});
+
+test("the shared save gate keeps polling on unknown errors and records the real message", async () => {
+  const originalError = console.error;
+  const diagnostics: unknown[][] = [];
+  console.error = (...args) => {
+    diagnostics.push(args);
+  };
+  try {
+    let attempts = 0;
+    const unknown = () => attemptProviderResultSave({
+      taskId: "save-gate-unknown",
+      save: async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new Error("unknown local publication failure");
+        }
+      },
+    });
+    expect(await unknown()).toBe(false);
+    expect(await unknown()).toBe(true);
+    expect(attempts).toBe(2);
+    expect(diagnostics).toHaveLength(1);
+    const parsed = JSON.parse(String(diagnostics[0][0])) as {
+      errorCode: unknown;
+      event: string;
+      message: string;
+      stage: string;
+      taskId: string;
+    };
+    expect(parsed).toMatchObject({
+      event: "generation-diagnostic",
+      message: "unknown local publication failure",
+      stage: "save",
+      taskId: "save-gate-unknown",
+    });
+    expect(parsed.errorCode).toBeNull();
+  } finally {
+    console.error = originalError;
+  }
 });
 
 test("Gemini relay Text materializes ordered four-kind context once and persists no transient URL", async () => {

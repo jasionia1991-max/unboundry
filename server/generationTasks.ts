@@ -1713,6 +1713,17 @@ export function isTransientProviderResultSaveError(error: unknown) {
     error.code === "REMOTE";
 }
 
+function isDefinitiveProviderResultSaveError(error: unknown) {
+  return error instanceof ProviderResultMediaError ||
+    error instanceof RelayProviderError ||
+    error instanceof OpenRouterImageError ||
+    error instanceof VolcengineArkVideoError ||
+    error instanceof MurekaAudioError ||
+    error instanceof ProviderMediaError ||
+    error instanceof ProviderGenerationConfigurationError ||
+    error instanceof GenerationProviderAttemptBlockedError;
+}
+
 /**
  * 所有平台/模型的成片保存共用同一道保险丝：瞬时错误返回 false，
  * 调用方继续轮询并保持任务的呼吸灯；非瞬时错误原样抛出，
@@ -1726,7 +1737,12 @@ export async function attemptProviderResultSave(input: {
     await input.save();
     return true;
   } catch (error) {
-    if (!isTransientProviderResultSaveError(error)) throw error;
+    if (
+      !isTransientProviderResultSaveError(error) &&
+      isDefinitiveProviderResultSaveError(error)
+    ) {
+      throw error;
+    }
     logGenerationDiagnostic(input.taskId, "save", error);
     return false;
   }
@@ -1748,13 +1764,19 @@ function logGenerationDiagnostic(
           : error instanceof ResourceBudgetError
             ? error.code
             : undefined;
+    const rawCode =
+      error instanceof Error && "code" in error
+        ? (error as Error & { code?: unknown }).code
+        : undefined;
     console.error(JSON.stringify({
       event: "generation-diagnostic",
       timestamp: new Date().toISOString(),
       taskId,
       stage,
       errorName,
-      errorCode: failureCode ?? detectedCode ?? null,
+      errorCode: failureCode ?? detectedCode ??
+        (typeof rawCode === "string" ? rawCode : undefined) ?? null,
+      message: error instanceof Error ? error.message : String(error),
     }));
   } catch {
     // Diagnostics must never affect generation.
@@ -4218,6 +4240,14 @@ export function retrySafetyDecision(
       reason: task.kind === "text" || task.kind === "image"
         ? "上次结果还没对上，为避免重复扣费，请先点「核对结果」，不要重新生成"
         : "上次视频或音频请求可能已经创建，但没有保存平台任务编号；请先点「核对结果」，不要重新生成",
+    };
+  }
+  if (taskStore().hasConfirmedProviderOutcomeForSibling(task.id)) {
+    return {
+      allowed: false,
+      code: "RETRY_OUTCOME_UNKNOWN",
+      reason:
+        "同一输入已有平台任务已受理或已出片，为避免重复扣费，请先「核对结果」，不要重新提交",
     };
   }
   const model = resolveModel(task.kind, task.model, task.ownerId ?? "");

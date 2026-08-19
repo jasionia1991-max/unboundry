@@ -55,14 +55,14 @@
       "scriptSha256": "399b3f1b04bbef6014a0400493999718182eb2522d70723ad671a8aab6eb66e9",
       "target": "tests/m10-backup.spec.ts",
       "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
-      "targetSha256": "f9205a51b43e586ee62d43c9fbb0175a7e46b982617550d395b9cf81ba0c9efa"
+      "targetSha256": "e8653f3224b1c69c614df0297aa3c46190dbd5483eb34f95423c09ebd3d583ef"
     },
     "scripts/backup-final-candidate.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "c2f874bff8db77872e3e1a05074946241ea1760400b3968e4944f413c9eb9749",
       "target": "tests/m10-backup.spec.ts",
       "marker": "final-candidate exact-v37 chain rehydrates fake OSS offline and validates normal runtime startup",
-      "targetSha256": "f9205a51b43e586ee62d43c9fbb0175a7e46b982617550d395b9cf81ba0c9efa"
+      "targetSha256": "e8653f3224b1c69c614df0297aa3c46190dbd5483eb34f95423c09ebd3d583ef"
     },
     "scripts/backup-to-oss.mjs": {
       "mode": "frozen",
@@ -83,7 +83,7 @@
       "scriptSha256": "c4ed308be00ed27239b6b53aa0f57cc51cda69422058d3ba41460657e45a8336",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "Full snapshot bridge/final fixtures prove the release closure",
-      "targetSha256": "52fa0de699b5cffdf139e1da582c06db4d6a68c8a0cf44695e01902930a841c1"
+      "targetSha256": "40fb0d9b0ae8f405acfb8c5c2112547fa98e85b708eaab011337848f07158943"
     },
     "scripts/check-greenfield.mjs": {
       "mode": "behavior-test",
@@ -97,14 +97,14 @@
       "scriptSha256": "9b1807c98cd6e59a288fd8b81d29299bb5b34b67e7bed9a2003c8989c95d01e7",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-restart-persistence.mjs",
-      "targetSha256": "52fa0de699b5cffdf139e1da582c06db4d6a68c8a0cf44695e01902930a841c1"
+      "targetSha256": "40fb0d9b0ae8f405acfb8c5c2112547fa98e85b708eaab011337848f07158943"
     },
     "scripts/check-v051-exact-runtime.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "a1dc5bfd3e5afbc67f824f6aba36ff7408f561133021a1062b6b4e92dcdcd6db",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-v051-exact-runtime.mjs",
-      "targetSha256": "52fa0de699b5cffdf139e1da582c06db4d6a68c8a0cf44695e01902930a841c1"
+      "targetSha256": "40fb0d9b0ae8f405acfb8c5c2112547fa98e85b708eaab011337848f07158943"
     },
     "scripts/deploy.mjs": {
       "mode": "frozen",
@@ -186,7 +186,7 @@
       "scriptSha256": "dbc1b06fc7ca761b66cde24bf0e1e293951b87de10db2ab959abbf6ac9a20b76",
       "target": "tests/m10-backup.spec.ts",
       "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
-      "targetSha256": "f9205a51b43e586ee62d43c9fbb0175a7e46b982617550d395b9cf81ba0c9efa"
+      "targetSha256": "e8653f3224b1c69c614df0297aa3c46190dbd5483eb34f95423c09ebd3d583ef"
     },
     "scripts/run-linux-production-validation.mjs": {
       "mode": "frozen",
@@ -199,7 +199,7 @@
       "scriptSha256": "891d9c3db99cf458f88248e503c221e1f450f78f16b9f4d15af8d2f36f5c0efd",
       "target": "tests/m10-backup.spec.ts",
       "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
-      "targetSha256": "f9205a51b43e586ee62d43c9fbb0175a7e46b982617550d395b9cf81ba0c9efa"
+      "targetSha256": "e8653f3224b1c69c614df0297aa3c46190dbd5483eb34f95423c09ebd3d583ef"
     }
   }
 }
