@@ -171,7 +171,9 @@ export async function downloadProviderResultMedia(input: {
               error.code,
               error.code === "TIMEOUT" ? "模型结果下载超时" : "已停止等待模型结果",
             )
-          : error
+          : error instanceof ProviderResultMediaError
+            ? error
+            : new ProviderResultMediaError("NETWORK", "模型结果暂时无法下载")
       ),
       contentType,
     };

@@ -264,6 +264,38 @@ test("Provider result stream maps caller abort to CANCELLED", async () => {
   await expect(read).rejects.toMatchObject({ code: "CANCELLED" });
 });
 
+test("Provider result mid-stream failures map to NETWORK instead of leaking raw errors", async () => {
+  const timer = manualDeadline();
+  let pulls = 0;
+  const downloaded = await downloadProviderResultMedia({
+    apiKey: "safe-key",
+    deadlineOptions: timer.options,
+    testFetcher: (async () => new Response(new ReadableStream<Uint8Array>({
+      pull(streamController) {
+        pulls += 1;
+        if (pulls === 1) {
+          streamController.enqueue(new Uint8Array([1, 2, 3]));
+        } else {
+          streamController.error(new TypeError("connection terminated mid-body"));
+        }
+      },
+    }), {
+      headers: { "Content-Type": "image/png" },
+      status: 200,
+    })) as typeof fetch,
+    kind: "image",
+    resolver: publicResolver,
+    url: "https://cdn.example.test/stream-interrupted.png",
+  });
+  const reader = downloaded.body.getReader();
+  const first = await reader.read();
+  expect(first.done).toBe(false);
+  await expect(reader.read()).rejects.toMatchObject({
+    code: "NETWORK",
+    message: "模型结果暂时无法下载",
+  });
+});
+
 test("Provider result private and mixed DNS answers are blocked before download", async () => {
   let fetchCalls = 0;
   for (const records of [

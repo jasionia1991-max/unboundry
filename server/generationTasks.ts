@@ -4,7 +4,11 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
-import { imageReferenceForProvider, saveGeneratedPng } from "./assetStorage";
+import {
+  imageReferenceForProvider,
+  saveGeneratedPng,
+  validatePng,
+} from "./assetStorage";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
 import {
@@ -41,6 +45,7 @@ import {
   OpenRouterImageError,
 } from "./openRouterImageProvider";
 import { readableMediaForOwner, readyMediaForOwner } from "./mediaRegistry";
+import { ResourceBudgetError } from "./resourceBudget";
 import {
   arkVideoBase64BudgetBytes,
   arkVideoBase64Bytes,
@@ -114,6 +119,8 @@ import {
   hasPendingGeneratedMediaPublications,
   hasPendingMediaDeletions,
   hasPendingUploadMediaPublications,
+  MediaPublicationConflictError,
+  MediaPublicationStateError,
   pendingGeneratedPublicationTaskIds,
   recoverPendingGeneratedMediaPublications,
   recoverPendingMediaDeletions,
@@ -1665,6 +1672,21 @@ function safeFailure(error: unknown, kind: "text" | "audio" | "image" | "video")
   if (error instanceof ProviderResultMediaError) {
     return { code: error.code, message: error.message };
   }
+  if (error instanceof ResourceBudgetError) {
+    return {
+      code: "RESULT_DELAYED",
+      message: "系统正在处理，稍后会自动继续保存结果",
+    };
+  }
+  if (
+    error instanceof MediaPublicationConflictError ||
+    error instanceof MediaPublicationStateError
+  ) {
+    return {
+      code: "RESULT_DELAYED",
+      message: "系统正在处理，稍后会自动继续保存结果",
+    };
+  }
   return {
     code: "GENERATION_FAILED",
     message: kind === "text"
@@ -1675,6 +1697,68 @@ function safeFailure(error: unknown, kind: "text" | "audio" | "image" | "video")
         ? "音频生成失败，请稍后再试"
         : "图片生成失败，请稍后再试",
   };
+}
+
+export function isTransientProviderResultSaveError(error: unknown) {
+  if (error instanceof ResourceBudgetError) return true;
+  if (
+    error instanceof MediaPublicationConflictError ||
+    error instanceof MediaPublicationStateError
+  ) {
+    return true;
+  }
+  if (!(error instanceof ProviderResultMediaError)) return false;
+  return error.code === "NETWORK" ||
+    error.code === "TIMEOUT" ||
+    error.code === "REMOTE";
+}
+
+/**
+ * 所有平台/模型的成片保存共用同一道保险丝：瞬时错误返回 false，
+ * 调用方继续轮询并保持任务的呼吸灯；非瞬时错误原样抛出，
+ * 绝不把平台已成功、只是本地暂时保存不了的任务提前判红。
+ */
+export async function attemptProviderResultSave(input: {
+  taskId: string;
+  save: () => Promise<unknown>;
+}): Promise<boolean> {
+  try {
+    await input.save();
+    return true;
+  } catch (error) {
+    if (!isTransientProviderResultSaveError(error)) throw error;
+    logGenerationDiagnostic(input.taskId, "save", error);
+    return false;
+  }
+}
+
+function logGenerationDiagnostic(
+  taskId: string,
+  stage: string,
+  error: unknown,
+  failureCode?: string,
+) {
+  try {
+    const errorName = error instanceof Error ? error.name : typeof error;
+    const detectedCode =
+      error instanceof ProviderResultMediaError
+        ? error.code
+        : error instanceof RelayProviderError
+          ? error.code
+          : error instanceof ResourceBudgetError
+            ? error.code
+            : undefined;
+    console.error(JSON.stringify({
+      event: "generation-diagnostic",
+      timestamp: new Date().toISOString(),
+      taskId,
+      stage,
+      errorName,
+      errorCode: failureCode ?? detectedCode ?? null,
+    }));
+  } catch {
+    // Diagnostics must never affect generation.
+  }
 }
 
 export async function settleDetachedGenerationExecution(
@@ -2245,6 +2329,7 @@ export async function executeTextTaskWithDependencies(
   } catch (error) {
     if (dependencies.store.get(taskId)?.state === "cancelled") return;
     const failure = safeFailure(error, "text");
+    logGenerationDiagnostic(taskId, "text-execution", error, failure.code);
     try {
       dependencies.store.transition(taskId, "failed", failure);
     } catch {
@@ -2523,8 +2608,10 @@ async function saveRelayMediaOutput(input: {
     if (input.output.kind !== "image" || input.output.mimeType !== "image/png") {
       throw new ProviderResultMediaError("FORMAT", "模型结果格式不受支持");
     }
+    const bytes = Buffer.from(input.output.bytes);
+    validateRelayPng(bytes);
     const saved = await saveGeneratedPng({
-      bytes: Buffer.from(input.output.bytes),
+      bytes,
       label: input.prompt.slice(0, 120),
       ownerId: input.ownerId,
       task: {
@@ -2543,8 +2630,10 @@ async function saveRelayMediaOutput(input: {
     url: input.output.transientUrl,
   });
   if (input.output.kind === "image") {
+    const bytes = await readGeneratedPngBody(downloaded.body);
+    validateRelayPng(bytes);
     const saved = await saveGeneratedPng({
-      bytes: await readGeneratedPngBody(downloaded.body),
+      bytes,
       label: input.prompt.slice(0, 120),
       ownerId: input.ownerId,
       task: {
@@ -2582,6 +2671,14 @@ async function saveRelayMediaOutput(input: {
     },
   });
   return saved.assetId;
+}
+
+function validateRelayPng(bytes: Buffer) {
+  try {
+    validatePng(bytes);
+  } catch {
+    throw new RelayProviderError("PROVIDER_RESULT_FORMAT", true);
+  }
 }
 
 function relayAudioResultContentType(format: unknown) {
@@ -2728,16 +2825,21 @@ async function recoverRelayMediaAfterPoll(
         if (!running || running.state !== "running") return;
         taskStore().markProviderResponseReceivedForTask(taskId);
         if (status.outputs.length !== 1) throw new RelayProviderError("FORMAT");
-        await saveRelayMediaOutput({
-          actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
-          output: status.outputs[0],
-          ownerId: running.ownerId!,
-          profile,
-          prompt: running.prompt,
-          signal: controller.signal,
+        const saved = await attemptProviderResultSave({
           taskId,
+          save: () => saveRelayMediaOutput({
+            actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+            output: status.outputs[0],
+            ownerId: running.ownerId!,
+            profile,
+            prompt: running.prompt,
+            signal: controller.signal,
+            taskId,
+          }),
         });
-        return;
+        if (saved) return;
+        await waitForRelayMedia(10_000, controller.signal);
+        continue;
       }
       await waitForRelayMedia(10_000, controller.signal);
     }
@@ -2982,19 +3084,24 @@ async function executeRelayMediaTask(
       if (status.state === "success") {
         taskStore().markProviderResponseReceivedForTask(taskId);
         if (status.outputs.length !== 1) throw new RelayProviderError("FORMAT");
-        await saveRelayMediaOutput({
-          actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
-          expectedAudioContentType: kind === "audio"
-            ? relayAudioResultContentType(running.parameters.format)
-            : undefined,
-          output: status.outputs[0],
-          ownerId,
-          profile,
-          prompt: running.prompt,
-          signal: controller.signal,
+        const saved = await attemptProviderResultSave({
           taskId,
+          save: () => saveRelayMediaOutput({
+            actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+            expectedAudioContentType: kind === "audio"
+              ? relayAudioResultContentType(running.parameters.format)
+              : undefined,
+            output: status.outputs[0],
+            ownerId,
+            profile,
+            prompt: running.prompt,
+            signal: controller.signal,
+            taskId,
+          }),
         });
-        return;
+        if (saved) return;
+        await waitForRelayMedia(2_000, controller.signal);
+        continue;
       }
       await waitForRelayMedia(2_000, controller.signal);
     }
@@ -3023,47 +3130,71 @@ async function recoverGptImageFromProviderTask(
     throw new RelayProviderError("FORMAT");
   }
   const profile = await taskProviderSnapshotProfile(running, running.ownerId);
-  const status = await withProviderRequestLease({
-    expected: profile,
-    fetcher: fetch,
-    ownerId: running.ownerId,
-    profileId: running.providerProfileId,
-    task: running,
-    request: (currentProfile, leasedFetch) =>
-      pollRelayMediaTask(
-        assertRelayProfile(currentProfile, "media-generate"),
-        {
-          capability: "image",
-          externalTaskId: running.providerTaskId!,
-          providerProtocol: "media-generate",
-        },
-        {
-          fetcher: leasedFetch,
-          signal: controller.signal,
-          usePinnedTransport: true,
-        },
-      ),
-  });
-  if (status.state === "failed") {
-    taskStore().transition(taskId, "failed", {
-      code: "PROVIDER_FAILED",
-      message: "平台没有这张图",
+  for (let attempt = 0; attempt < relayMediaRecoveryLimit.image; attempt += 1) {
+    if (taskStore().get(taskId)?.state !== "running") return;
+    let status: Awaited<ReturnType<typeof pollRelayMediaTask>>;
+    try {
+      status = await withProviderRequestLease({
+        expected: profile,
+        fetcher: fetch,
+        ownerId: running.ownerId,
+        profileId: running.providerProfileId,
+        task: running,
+        request: (currentProfile, leasedFetch) =>
+          pollRelayMediaTask(
+            assertRelayProfile(currentProfile, "media-generate"),
+            {
+              capability: "image",
+              externalTaskId: running.providerTaskId!,
+              providerProtocol: "media-generate",
+            },
+            {
+              fetcher: leasedFetch,
+              signal: controller.signal,
+              usePinnedTransport: true,
+            },
+          ),
+      });
+    } catch (error) {
+      if (!isTransientRelayPollError(error)) throw error;
+      await waitForRelayMedia(10_000, controller.signal);
+      continue;
+    }
+    if (status.state === "failed") {
+      taskStore().transition(taskId, "failed", {
+        code: "PROVIDER_FAILED",
+        message: "平台没有这张图",
+      });
+      return;
+    }
+    if (status.state !== "success") {
+      await waitForRelayMedia(10_000, controller.signal);
+      continue;
+    }
+    if (status.outputs.length !== 1) {
+      throw new RelayProviderError("PROVIDER_RESULT_FORMAT", true);
+    }
+    taskStore().markProviderResponseReceivedForTask(taskId);
+    const saved = await attemptProviderResultSave({
+      taskId,
+      save: () => saveRelayMediaOutput({
+        actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+        output: status.outputs[0],
+        ownerId: running.ownerId!,
+        profile,
+        prompt: running.prompt,
+        signal: controller.signal,
+        taskId,
+      }),
     });
-    return;
+    if (saved) return;
+    await waitForRelayMedia(10_000, controller.signal);
   }
-  if (status.state !== "success") {
-    throw new RelayProviderError("TIMEOUT", true);
-  }
-  if (status.outputs.length !== 1) throw new RelayProviderError("PROVIDER_RESULT_FORMAT", true);
-  taskStore().markProviderResponseReceivedForTask(taskId);
-  await saveRelayMediaOutput({
-    actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
-    output: status.outputs[0],
-    ownerId: running.ownerId,
-    profile,
-    prompt: running.prompt,
-    signal: controller.signal,
-    taskId,
+  const final = taskStore().get(taskId);
+  if (!final || final.state !== "running") return;
+  taskStore().transition(taskId, "failed", {
+    code: "RESULT_DELAYED",
+    message: "平台还在处理，结果出来后系统会自动核对",
   });
 }
 
@@ -3265,6 +3396,7 @@ async function executeImageTask(taskId: string) {
   } catch (error) {
     if (taskStore().get(taskId)?.state === "cancelled") return;
     const failure = safeFailure(error, "image");
+    logGenerationDiagnostic(taskId, "image-execution", error, failure.code);
     try {
       taskStore().transition(taskId, "failed", failure);
     } catch {
@@ -3379,14 +3511,17 @@ async function recoverNativeVideoAfterPoll(
       return;
     }
     if (status.state === "succeeded") {
-      await saveVolcengineVideoResult(
+      const saved = await attemptProviderResultSave({
         taskId,
-        running,
-        profile,
-        status,
-        controller.signal,
-      );
-      return;
+        save: () => saveVolcengineVideoResult(
+          taskId,
+          running,
+          profile,
+          status,
+          controller.signal,
+        ),
+      });
+      if (saved) return;
     }
     await wait(10_000, controller.signal);
   }
@@ -3520,6 +3655,7 @@ async function executeVideoTask(
     } catch (error) {
       if (taskStore().get(taskId)?.state === "cancelled") return;
       const failure = safeFailure(error, "video");
+      logGenerationDiagnostic(taskId, "video-execution", error, failure.code);
       try {
         taskStore().transition(taskId, "failed", failure);
       } catch {
@@ -3634,14 +3770,19 @@ async function executeVideoTask(
         return;
       }
       if (status.state === "succeeded") {
-        await saveVolcengineVideoResult(
+        const saved = await attemptProviderResultSave({
           taskId,
-          running,
-          profile,
-          status,
-          controller.signal,
-        );
-        return;
+          save: () => saveVolcengineVideoResult(
+            taskId,
+            running,
+            profile,
+            status,
+            controller.signal,
+          ),
+        });
+        if (saved) return;
+        await wait(2_000, controller.signal);
+        continue;
       }
       await wait(2_000, controller.signal);
     }
@@ -3656,6 +3797,7 @@ async function executeVideoTask(
   } catch (error) {
     if (taskStore().get(taskId)?.state === "cancelled") return;
     const failure = safeFailure(error, "video");
+    logGenerationDiagnostic(taskId, "video-execution", error, failure.code);
     try {
       taskStore().transition(taskId, "failed", failure);
     } catch {
@@ -3693,6 +3835,7 @@ async function executeAudioTask(taskId: string) {
     } catch (error) {
       if (taskStore().get(taskId)?.state === "cancelled") return;
       const failure = safeFailure(error, "audio");
+      logGenerationDiagnostic(taskId, "audio-execution", error, failure.code);
       try {
         taskStore().transition(taskId, "failed", failure);
       } catch {
@@ -3794,23 +3937,31 @@ async function executeAudioTask(taskId: string) {
         if (!status.audioUrl) {
           throw new MurekaAudioError("FORMAT");
         }
-        const audioBody = await downloadMurekaAudioResult(
-          profile,
-          status.audioUrl,
-          { signal: controller.signal },
-        );
-        await saveGeneratedMp3({
-          body: audioBody,
-          label: running.prompt.slice(0, 120),
-          ownerId: running.ownerId!,
-          task: {
-            // Mureka does not return a per-task bill. Record the configured
-            // protected maximum so budget accounting remains conservative.
-            actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
-            taskId,
+        const audioUrl = status.audioUrl;
+        const saved = await attemptProviderResultSave({
+          taskId,
+          save: async () => {
+            const audioBody = await downloadMurekaAudioResult(
+              profile,
+              audioUrl,
+              { signal: controller.signal },
+            );
+            await saveGeneratedMp3({
+              body: audioBody,
+              label: running.prompt.slice(0, 120),
+              ownerId: running.ownerId!,
+              task: {
+                // Mureka does not return a per-task bill. Record the configured
+                // protected maximum so budget accounting remains conservative.
+                actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+                taskId,
+              },
+            });
           },
         });
-        return;
+        if (saved) return;
+        await waitForAudio(2_000, controller.signal);
+        continue;
       }
       await waitForAudio(2_000, controller.signal);
     }
@@ -3818,6 +3969,7 @@ async function executeAudioTask(taskId: string) {
   } catch (error) {
     if (taskStore().get(taskId)?.state === "cancelled") return;
     const failure = safeFailure(error, "audio");
+    logGenerationDiagnostic(taskId, "audio-execution", error, failure.code);
     try {
       taskStore().transition(taskId, "failed", failure);
     } catch {
