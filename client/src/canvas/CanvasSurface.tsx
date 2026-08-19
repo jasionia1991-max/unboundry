@@ -6247,7 +6247,7 @@ export function CanvasSurface({
     if (persistenceDirty.current && !persistenceSaving.current) {
       drainPersistenceQueueRef.current();
     }
-    const deadline = Date.now() + 8_000;
+    const deadline = Date.now() + 15_000;
     while (persistenceDirty.current || persistenceSaving.current) {
       assertSafePersistence();
       if (Date.now() > deadline) {
@@ -6257,7 +6257,7 @@ export function CanvasSurface({
     }
     assertSafePersistence();
   }, [persistenceFixture]);
-  const waitForCanvasRevision = useCallback(async (timeoutMs = 8_000) => {
+  const waitForCanvasRevision = useCallback(async (timeoutMs = 15_000) => {
     const assertSafePersistence = () => {
       if (
         persistenceFixture &&

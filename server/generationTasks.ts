@@ -96,9 +96,7 @@ import {
   pollRelayMediaTask,
   RelayProviderError,
   requestRelayText,
-  sendPreparedRelayGptImageRequest,
   submitRelayMedia,
-  type RelayImageResult,
   type RelayMediaParamValue,
   type RelayTextContextInput,
   type RelayTextProviderProtocol,
@@ -2602,10 +2600,260 @@ async function waitForRelayMedia(milliseconds: number, signal: AbortSignal) {
   }
 }
 
+const relayMediaPollLimit: Record<"audio" | "image" | "video", number> = {
+  audio: 450,
+  image: 150,
+  video: 240,
+};
+
+const relayMediaRecoveryLimit: Record<"audio" | "image" | "video", number> = {
+  audio: 0,
+  image: 30,
+  video: 24,
+};
+
+function isTransientRelayPollError(error: unknown) {
+  if (!(error instanceof RelayProviderError)) return false;
+  return error.code === "NETWORK" ||
+    error.code === "TIMEOUT" ||
+    error.code === "REMOTE" ||
+    error.code === "PROVIDER_REQUEST_FAILED" ||
+    error.code === "PROXY_CONFIGURATION";
+}
+
+async function settleRelayMediaFailed(
+  taskId: string,
+  refunded: boolean,
+) {
+  const current = taskStore().get(taskId);
+  if (!current || current.state !== "running") return;
+  taskStore().transition(taskId, "failed", {
+    code: "PROVIDER_FAILED",
+    message: refunded
+      ? "平台未完成本次生成（已退款），系统正在自动重试"
+      : "平台未完成本次生成，未确认是否退款；请核对后再试",
+  });
+  if (!refunded) return;
+  try {
+    const failed = taskStore().get(taskId);
+    if (!failed || failed.state !== "failed") return;
+    taskStore().confirmRemoteResultMissing({
+      expectedUpdatedAt: failed.updatedAt,
+      taskId,
+    });
+    await autoRetryRelayTaskOnce(taskId);
+  } catch {
+    // The task is already failed with a neutral message; a racing transition
+    // or a stale retry fence simply disables the automatic retry.
+  }
+}
+
+/**
+ * Bounded background continuation after the primary image/video polling
+ * window. The durable task stays running so the canvas keeps its breathing
+ * light; only definitive rejection, a confirmed refund retry, or the final
+ * neutral settlement turns the task terminal.
+ */
+async function recoverRelayMediaAfterPoll(
+  taskId: string,
+  kind: "image" | "video",
+  profile: ProviderProfile,
+  controller: AbortController,
+  providerTaskId: string | undefined,
+  releaseReferences?: () => Promise<void>,
+) {
+  try {
+    const attempts = relayMediaRecoveryLimit[kind];
+    let currentTaskId = providerTaskId;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      if (taskStore().get(taskId)?.state !== "running") return;
+      if (!currentTaskId) {
+        const current = taskStore().get(taskId);
+        if (!current || current.state !== "running") return;
+        let match: Awaited<ReturnType<typeof autoMatchRelayProviderTask>>;
+        try {
+          match = await autoMatchRelayProviderTask(current);
+        } catch {
+          match = { status: "none" };
+        }
+        if (match.status === "one") {
+          try {
+            taskStore().setProviderTaskId(taskId, match.record.taskId);
+            currentTaskId = match.record.taskId;
+          } catch {
+            // Another execution bound the same task first; keep searching.
+          }
+        }
+        if (!currentTaskId) {
+          await waitForRelayMedia(10_000, controller.signal);
+          continue;
+        }
+      }
+      let status: Awaited<ReturnType<typeof pollRelayMediaTask>>;
+      try {
+        const current = taskStore().get(taskId);
+        if (!current || current.state !== "running") return;
+        status = await withProviderRequestLease({
+          expected: profile,
+          fetcher: fetch,
+          ownerId: current.ownerId ?? "",
+          profileId: current.providerProfileId ?? profile.id,
+          task: current,
+          request: (currentProfile, leasedFetch) =>
+            pollRelayMediaTask(
+              assertRelayProfile(currentProfile, "media-generate"),
+              {
+                capability: kind,
+                externalTaskId: currentTaskId!,
+                providerProtocol: "media-generate",
+              },
+              {
+                fetcher: leasedFetch,
+                signal: controller.signal,
+                usePinnedTransport: true,
+              },
+            ),
+        });
+      } catch (error) {
+        if (!isTransientRelayPollError(error)) throw error;
+        await waitForRelayMedia(10_000, controller.signal);
+        continue;
+      }
+      if (status.state === "failed") {
+        await settleRelayMediaFailed(taskId, status.refunded === true);
+        return;
+      }
+      if (status.state === "success") {
+        const running = taskStore().get(taskId);
+        if (!running || running.state !== "running") return;
+        taskStore().markProviderResponseReceivedForTask(taskId);
+        if (status.outputs.length !== 1) throw new RelayProviderError("FORMAT");
+        await saveRelayMediaOutput({
+          actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+          output: status.outputs[0],
+          ownerId: running.ownerId!,
+          profile,
+          prompt: running.prompt,
+          signal: controller.signal,
+          taskId,
+        });
+        return;
+      }
+      await waitForRelayMedia(10_000, controller.signal);
+    }
+    const final = taskStore().get(taskId);
+    if (!final || final.state !== "running") return;
+    if (!currentTaskId) {
+      // The full search window found no platform record: treat the lost
+      // submission as not-submitted and let the automatic retry open one new
+      // paid attempt (only once in the task lifetime).
+      taskStore().transition(taskId, "failed", {
+        code: "PROVIDER_RESULT_MISSING",
+        message: "平台没有成片，系统正在自动重试",
+      });
+      try {
+        const failed = taskStore().get(taskId);
+        if (failed?.state === "failed") {
+          taskStore().confirmRemoteResultMissing({
+            expectedUpdatedAt: failed.updatedAt,
+            taskId,
+          });
+        }
+        await autoRetryRelayTaskOnce(taskId);
+      } catch {
+        // Leave the neutral failed task behind; the user can tap 核对/重试 once.
+      }
+      return;
+    }
+    taskStore().transition(taskId, "failed", {
+      code: "RESULT_DELAYED",
+      message: "平台还在处理，结果出来后系统会自动核对",
+    });
+  } finally {
+    if (releaseReferences) await releaseReferences().catch(() => undefined);
+  }
+}
+
+/**
+ * One automatic new-paid retry per task lifetime, using the exact same safe
+ * retry fences as the manual retry endpoint. It never fires twice because the
+ * retry itself advances the attempt number.
+ */
+async function autoRetryRelayTaskOnce(taskId: string) {
+  const task = taskStore().get(taskId);
+  if (!task || task.state !== "failed" || task.attempt >= 2) return false;
+  const retry = retrySafetyDecision(task);
+  if (!retry.allowed || retry.mode !== "new-provider-attempt") return false;
+  const binding = taskStore()
+    .retryBindingsForCanvas(task.canvasId, task.ownerId)
+    .get(task.id);
+  if (!binding) return false;
+  try {
+    const runtime = await generationRuntimeDecision({
+      canSubmit: true,
+      kind: task.kind,
+      model: retry.model,
+      ownerId: task.ownerId ?? "__test__",
+    });
+    const runtimeProblem = preAdmissionRuntimeProblem(runtime);
+    if (runtimeProblem) return false;
+    if (
+      !runtime.providerProfile ||
+      !Number.isSafeInteger(runtime.credentialVersion) ||
+      Number(runtime.credentialVersion) < 1
+    ) {
+      return false;
+    }
+    const snapshot: GenerationPaidRetrySnapshot = {
+      credentialRevision: Number(runtime.credentialVersion),
+      modelConfiguration: {
+        credentialVersion: Number(runtime.credentialVersion),
+        modelId: retry.model.id,
+        parameterSchema: generationModelSchema(task.kind, retry.model),
+        providerConfigurationVersion: providerConfigurationVersion(
+          runtime.providerProfile,
+        ),
+        providerDriver: retry.model.provider_driver,
+        providerModelId: retry.model.provider_model_id,
+        providerProtocol: retry.model.provider_protocol ?? "native",
+        providerProfileId: retry.model.provider_profile_id,
+      },
+      providerModelId: retry.model.provider_model_id,
+      providerProfileId: retry.model.provider_profile_id,
+    };
+    const queued = taskStore().admitRetry({
+      canvasId: task.canvasId,
+      expectedAttempt: task.attempt,
+      expectedCanvasRevision: binding.canvasRevision,
+      expectedGenerationInputKey: binding.generationInputKey,
+      expectedUpdatedAt: task.updatedAt,
+      kind: task.kind,
+      mode: "new-paid-attempt",
+      nodeId: task.nodeId,
+      snapshot,
+      taskId: task.id,
+    });
+    if (!queued) return false;
+    launchGenerationTask(task.id, task.kind);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function executeRelayMediaTask(
   taskId: string,
   kind: "audio" | "image" | "video",
   controller: AbortController,
+  options?: {
+    paramsBuilder?: (
+      running: GenerationTask,
+      profile: ProviderProfile,
+    ) => Promise<{
+      cleanup?: () => Promise<void>;
+      params: Record<string, RelayMediaParamValue>;
+    }>;
+  },
 ) {
   const current = taskStore().get(taskId);
   if (
@@ -2626,95 +2874,144 @@ async function executeRelayMediaTask(
   }
   const ownerId = running.ownerId!;
   const protocol = taskProviderProtocol(running);
-  if (protocol !== "media-generate") throw new RelayProviderError("FORMAT");
+  if (protocol !== "media-generate" && !(kind === "image" && protocol === "gpt-image")) {
+    throw new RelayProviderError("FORMAT");
+  }
   const profile = await taskProviderSnapshotProfile(running, running.ownerId!);
-  assertRelayProfile(profile, protocol);
+  assertRelayProfile(profile, "media-generate");
   let providerTaskId = running.providerTaskId;
-  if (!providerTaskId) {
-    const params = await relayMediaParametersForTask(
-      running,
-      providerMediaUrlForOwner,
-    );
-    const submission = await withProviderRequestLease({
-      expected: profile,
-      fetcher: fetch,
-      ownerId: ownerId,
-      profileId: running.providerProfileId,
-      task: running,
-      request: async (currentProfile, leasedFetch) => {
-        const created = await submitRelayMedia(
-          assertRelayProfile(currentProfile, protocol),
-          {
-            capability: kind,
-            model: running.providerModelId!,
-            params,
-            prompt: running.prompt,
-            providerProtocol: protocol,
+  let cleanup: (() => Promise<void>) | undefined;
+  let cleanupDeferred = false;
+  try {
+    if (!providerTaskId) {
+      const built = options?.paramsBuilder
+        ? await options.paramsBuilder(running, profile)
+        : undefined;
+      const params = built?.params ?? await relayMediaParametersForTask(
+        running,
+        providerMediaUrlForOwner,
+      );
+      cleanup = built?.cleanup;
+      try {
+        const submission = await withProviderRequestLease({
+          expected: profile,
+          fetcher: fetch,
+          ownerId: ownerId,
+          profileId: running.providerProfileId,
+          task: running,
+          request: async (currentProfile, leasedFetch) => {
+            const created = await submitRelayMedia(
+              assertRelayProfile(currentProfile, "media-generate"),
+              {
+                capability: kind,
+                model: running.providerModelId!,
+                params,
+                prompt: running.prompt,
+                providerProtocol: "media-generate",
+              },
+              {
+                beforeProviderRequest: () =>
+                  taskStore().recordProviderAttempt(taskId),
+                fetcher: leasedFetch,
+                signal: controller.signal,
+                usePinnedTransport: true,
+              },
+            );
+            taskStore().setProviderTaskId(taskId, created.externalTaskId);
+            return created;
           },
-          {
-            beforeProviderRequest: () =>
-              taskStore().recordProviderAttempt(taskId),
-            fetcher: leasedFetch,
-            signal: controller.signal,
-            usePinnedTransport: true,
-          },
-        );
-        taskStore().setProviderTaskId(taskId, created.externalTaskId);
-        return created;
-      },
-    });
-    providerTaskId = submission.externalTaskId;
-  }
-  for (let poll = 0; poll < 450; poll += 1) {
-    if (taskStore().get(taskId)?.state !== "running") return;
-    const status = await withProviderRequestLease({
-      expected: profile,
-      fetcher: fetch,
-      ownerId: ownerId,
-      profileId: running.providerProfileId,
-      task: running,
-      request: (currentProfile, leasedFetch) =>
-        pollRelayMediaTask(
-          assertRelayProfile(currentProfile, protocol),
-          {
-            capability: kind,
-            externalTaskId: providerTaskId!,
-            providerProtocol: protocol,
-          },
-          {
-            fetcher: leasedFetch,
-            signal: controller.signal,
-            usePinnedTransport: true,
-          },
-        ),
-    });
-    if (status.state === "failed") {
-      taskStore().transition(taskId, "failed", {
-        code: "PROVIDER_FAILED",
-        message: "中转站未完成本次生成",
-      });
-      return;
+        });
+        providerTaskId = submission.externalTaskId;
+      } catch (error) {
+        // The submission crossed the Provider boundary but its response was
+        // lost (no durable task id). Image/video enter usage-record recovery
+        // instead of failing red; references stay alive during that search.
+        if (
+          error instanceof RelayProviderError &&
+          error.providerTaskMayStillRun &&
+          (kind === "image" || kind === "video")
+        ) {
+          cleanupDeferred = true;
+          await recoverRelayMediaAfterPoll(
+            taskId,
+            kind,
+            profile,
+            controller,
+            undefined,
+            cleanup,
+          );
+          return;
+        }
+        throw error;
+      }
     }
-    if (status.state === "success") {
-      taskStore().markProviderResponseReceivedForTask(taskId);
-      if (status.outputs.length !== 1) throw new RelayProviderError("FORMAT");
-      await saveRelayMediaOutput({
-        actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
-        expectedAudioContentType: kind === "audio"
-          ? relayAudioResultContentType(running.parameters.format)
-          : undefined,
-        output: status.outputs[0],
-        ownerId,
-        profile,
-        prompt: running.prompt,
-        signal: controller.signal,
+    for (let poll = 0; poll < relayMediaPollLimit[kind]; poll += 1) {
+      if (taskStore().get(taskId)?.state !== "running") return;
+      let status: Awaited<ReturnType<typeof pollRelayMediaTask>>;
+      try {
+        status = await withProviderRequestLease({
+          expected: profile,
+          fetcher: fetch,
+          ownerId: ownerId,
+          profileId: running.providerProfileId,
+          task: running,
+          request: (currentProfile, leasedFetch) =>
+            pollRelayMediaTask(
+              assertRelayProfile(currentProfile, "media-generate"),
+              {
+                capability: kind,
+                externalTaskId: providerTaskId!,
+                providerProtocol: "media-generate",
+              },
+              {
+                fetcher: leasedFetch,
+                signal: controller.signal,
+                usePinnedTransport: true,
+              },
+            ),
+        });
+      } catch (error) {
+        if (!isTransientRelayPollError(error)) throw error;
+        await waitForRelayMedia(2_000, controller.signal);
+        continue;
+      }
+      if (status.state === "failed") {
+        await settleRelayMediaFailed(taskId, status.refunded === true);
+        return;
+      }
+      if (status.state === "success") {
+        taskStore().markProviderResponseReceivedForTask(taskId);
+        if (status.outputs.length !== 1) throw new RelayProviderError("FORMAT");
+        await saveRelayMediaOutput({
+          actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+          expectedAudioContentType: kind === "audio"
+            ? relayAudioResultContentType(running.parameters.format)
+            : undefined,
+          output: status.outputs[0],
+          ownerId,
+          profile,
+          prompt: running.prompt,
+          signal: controller.signal,
+          taskId,
+        });
+        return;
+      }
+      await waitForRelayMedia(2_000, controller.signal);
+    }
+    if (kind === "image" || kind === "video") {
+      await recoverRelayMediaAfterPoll(
         taskId,
-      });
+        kind,
+        profile,
+        controller,
+        providerTaskId,
+      );
       return;
     }
-    await waitForRelayMedia(2_000, controller.signal);
+    throw new RelayProviderError("TIMEOUT", true);
+  } finally {
+    if (cleanup && !cleanupDeferred) await cleanup().catch(() => undefined);
   }
-  throw new RelayProviderError("TIMEOUT", true);
 }
 
 async function recoverGptImageFromProviderTask(
@@ -2798,6 +3095,93 @@ async function autoMatchRelayProviderTask(task: GenerationTask) {
   });
 }
 
+/**
+ * 优创「GPT Image 2 · 专用协议」异步执行：先提交拿平台任务号，再轮询；
+ * 参考图临时链接保留 600 秒，任务终态后才清理。
+ */
+async function executeRelayGptImageTask(
+  taskId: string,
+  controller: AbortController,
+) {
+  const current = taskStore().get(taskId);
+  if (
+    !current ||
+    current.kind !== "image" ||
+    !["queued", "running"].includes(current.state) ||
+    !current.ownerId
+  ) return;
+  const running = current.state === "queued"
+    ? taskStore().transition(taskId, "running")
+    : current;
+  if (!running?.providerProfileId || !running.providerModelId) {
+    taskStore().transition(taskId, "failed", {
+      code: "MODEL_UNAVAILABLE",
+      message: "图片模型配置已失效",
+    });
+    return;
+  }
+  if (taskProviderProtocol(running) !== "gpt-image") {
+    throw new RelayProviderError("FORMAT");
+  }
+  if (running.providerTaskId) {
+    await recoverGptImageFromProviderTask(taskId, running, controller);
+    return;
+  }
+  const ownerId = running.ownerId!;
+  const profile = await taskProviderSnapshotProfile(running, ownerId);
+  assertRelayProfile(profile, "media-generate");
+  const references = imageReferences(running.parameters.references);
+  const inputReferences = await Promise.all(
+    references.map((reference) =>
+      imageReferenceForProvider(ownerId, reference.assetId, 600),
+    ),
+  );
+  const prepared = await prepareRelayGptImageRequest({
+    capability: "image",
+    count: 1,
+    inputImages: inputReferences,
+    model: running.providerModelId!,
+    operation: inputReferences.length ? "edit" : "generation",
+    prompt: running.prompt,
+    providerProtocol: "gpt-image",
+    quality: ["auto", "low", "medium", "high"].includes(
+      String(running.parameters.quality),
+    )
+      ? running.parameters.quality as "auto" | "low" | "medium" | "high"
+      : "auto",
+    responseFormat: "url",
+    size: gptImageSizeForAspectRatio(
+      running.parameters.aspectRatio,
+      running.parameters.quality,
+      snapshotGptImageSizeMap(running),
+    ),
+  }, {
+    mediaLifecycle: { ownerId },
+    referenceUrlTtlSeconds: 600,
+    signal: controller.signal,
+  });
+  const size = prepared.request.size ?? "auto";
+  const tier = String(running.parameters.quality).toLowerCase();
+  const resolutionLabel = youchuangQualityLabels[tier];
+  await executeRelayMediaTask(taskId, "image", controller, {
+    paramsBuilder: async () => {
+      const params: Record<string, RelayMediaParamValue> = {
+        n: 1,
+        quality: prepared.request.quality ?? "auto",
+        response_format: "url",
+        size,
+      };
+      if (prepared.request.inputImages?.length) {
+        params.images = [...prepared.request.inputImages];
+      }
+      if (size !== "auto" && resolutionLabel) {
+        params.resolution = resolutionLabel;
+      }
+      return { cleanup: prepared.cleanup, params };
+    },
+  });
+}
+
 async function executeImageTask(taskId: string) {
   const current = taskStore().get(taskId);
   if (!current || !["queued", "running"].includes(current.state) || !current.ownerId) return;
@@ -2808,6 +3192,10 @@ async function executeImageTask(taskId: string) {
     const currentProtocol = taskProviderProtocol(current);
     if (currentProtocol === "media-generate") {
       await executeRelayMediaTask(taskId, "image", controller);
+      return;
+    }
+    if (currentProtocol === "gpt-image") {
+      await executeRelayGptImageTask(taskId, controller);
       return;
     }
     if (current.state !== "queued") return;
@@ -2873,85 +3261,7 @@ async function executeImageTask(taskId: string) {
       void saved;
       return;
     }
-    if (protocol !== "gpt-image") throw new RelayProviderError("FORMAT");
-    if (running.providerTaskId) {
-      await recoverGptImageFromProviderTask(taskId, running, controller);
-      return;
-    }
-    const profile = await taskProviderSnapshotProfile(running, current.ownerId);
-    assertRelayProfile(profile, protocol);
-    const prepared = await prepareRelayGptImageRequest({
-      capability: "image",
-      count: 1,
-      inputImages: inputReferences,
-      model: running.providerModelId!,
-      operation: inputReferences.length ? "edit" : "generation",
-      prompt: running.prompt,
-      providerProtocol: protocol,
-      quality: ["auto", "low", "medium", "high"].includes(
-        String(running.parameters.quality),
-      )
-        ? running.parameters.quality as "auto" | "low" | "medium" | "high"
-        : "auto",
-      responseFormat: "b64_json",
-      size: gptImageSizeForAspectRatio(
-        running.parameters.aspectRatio,
-        running.parameters.quality,
-        snapshotGptImageSizeMap(running),
-      ),
-    }, {
-      mediaLifecycle: { ownerId },
-      signal: controller.signal,
-    });
-    const relayResult = await (async (): Promise<RelayImageResult> => {
-      try {
-        return await withProviderRequestLease<RelayImageResult>({
-          expected: profile,
-          fetcher: fetch,
-          ownerId,
-          profileId: providerProfileId,
-          task: running,
-          request: (currentProfile, leasedFetch, providerBoundary) =>
-            sendPreparedRelayGptImageRequest(
-              assertRelayProfile(currentProfile, protocol),
-              prepared.request,
-              {
-                beforeProviderRequest: providerBoundary(
-                  () => taskStore().recordProviderAttempt(taskId),
-                ),
-                fetcher: leasedFetch,
-                signal: controller.signal,
-                usePinnedTransport: true,
-              },
-            ),
-        });
-      } finally {
-        await prepared.cleanup();
-      }
-    })();
-    if (relayResult.externalTaskId) {
-      try {
-        taskStore().setProviderTaskId(taskId, relayResult.externalTaskId);
-      } catch {
-        // Keep the already-received pixels even if the remote id cannot bind.
-      }
-    }
-    taskStore().markProviderResponseReceived({
-      executionAttempt: running.attempt,
-      taskId,
-    });
-    if (relayResult.outputs.length !== 1) {
-      throw new RelayProviderError("PROVIDER_RESULT_FORMAT", true);
-    }
-    await saveRelayMediaOutput({
-      actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
-      output: relayResult.outputs[0],
-      ownerId: current.ownerId,
-      profile,
-      prompt: running.prompt,
-      signal: controller.signal,
-      taskId,
-    });
+    throw new RelayProviderError("FORMAT");
   } catch (error) {
     if (taskStore().get(taskId)?.state === "cancelled") return;
     const failure = safeFailure(error, "image");
@@ -2973,6 +3283,117 @@ async function wait(milliseconds: number, signal: AbortSignal) {
   } catch {
     throw new VolcengineArkVideoError("CANCELLED", "视频任务已取消");
   }
+}
+
+function transientArkVideoPollError(error: unknown) {
+  return error instanceof VolcengineArkVideoError &&
+    ["NETWORK", "TIMEOUT", "REMOTE"].includes(error.code);
+}
+
+async function saveVolcengineVideoResult(
+  taskId: string,
+  running: GenerationTask,
+  profile: ProviderProfile,
+  status: {
+    providerUsageTokens?: number;
+    videoUrl?: string;
+  },
+  signal: AbortSignal,
+) {
+  taskStore().markProviderResponseReceivedForTask(taskId);
+  if (!status.videoUrl || status.providerUsageTokens === undefined) {
+    throw new VolcengineArkVideoError("FORMAT", "方舟未返回完整的视频结果");
+  }
+  const downloaded = await downloadProviderResultMedia({
+    apiKey: profile.apiKey ?? "",
+    kind: "video",
+    signal,
+    url: status.videoUrl,
+  });
+  const actualCostMicrounits = Math.ceil(
+    status.providerUsageTokens *
+    seedanceMiniAudioPriceMicrounitsPerThousandTokens /
+    1_000,
+  );
+  await saveGeneratedMp4({
+    body: downloaded.body,
+    label: running.prompt.slice(0, 120),
+    ownerId: running.ownerId!,
+    task: {
+      actualCostMicrounits,
+      providerUsageTokens: status.providerUsageTokens,
+      taskId,
+    },
+  });
+}
+
+/**
+ * Bounded background continuation for native Ark video after the primary
+ * 8-minute window. The durable task stays running (canvas keeps the breathing
+ * light) while the platform result is re-checked at a slower cadence.
+ */
+async function recoverNativeVideoAfterPoll(
+  taskId: string,
+  running: GenerationTask,
+  profile: ProviderProfile,
+  providerTaskId: string,
+  controller: AbortController,
+) {
+  for (let attempt = 0; attempt < relayMediaRecoveryLimit.video; attempt += 1) {
+    if (taskStore().get(taskId)?.state !== "running") return;
+    let status: Awaited<ReturnType<typeof getVolcengineArkVideoTask>>;
+    try {
+      status = await withProviderRequestLease({
+        expected: profile,
+        fetcher: fetch,
+        ownerId: running.ownerId!,
+        profileId: running.providerProfileId!,
+        task: running,
+        request: (currentProfile, leasedFetch) =>
+          getVolcengineArkVideoTask(
+            currentProfile,
+            providerTaskId,
+            leasedFetch,
+            controller.signal,
+          ),
+      });
+    } catch (error) {
+      if (transientArkVideoPollError(error)) {
+        await wait(10_000, controller.signal);
+        continue;
+      }
+      throw error;
+    }
+    if (status.state === "cancelled") {
+      taskStore().transition(taskId, "cancelled", {
+        code: "PROVIDER_CANCELLED",
+        message: "视频任务已取消",
+      });
+      return;
+    }
+    if (status.state === "failed") {
+      taskStore().transition(taskId, "failed", {
+        code: "PROVIDER_FAILED",
+        message: "火山方舟未完成本次视频生成，未确认是否退款；请核对后再试",
+      });
+      return;
+    }
+    if (status.state === "succeeded") {
+      await saveVolcengineVideoResult(
+        taskId,
+        running,
+        profile,
+        status,
+        controller.signal,
+      );
+      return;
+    }
+    await wait(10_000, controller.signal);
+  }
+  taskStore().transition(taskId, "failed", {
+    code: "RESULT_DELAYED",
+    message: "平台还在处理，结果出来后系统会自动核对",
+  });
 }
 
 const arkVideoMediaRoles = new Set<ArkVideoMediaInput["role"]>([
@@ -3171,22 +3592,31 @@ async function executeVideoTask(
       providerTaskId = created.id;
     }
 
-    for (let poll = 0; poll < 450; poll += 1) {
+    for (let poll = 0; poll < relayMediaPollLimit.video; poll += 1) {
       if (taskStore().get(taskId)?.state !== "running") return;
-      const status = await withProviderRequestLease({
-        expected: profile,
-        fetcher,
-        ownerId: running.ownerId!,
-        profileId: running.providerProfileId,
-        task: running,
-        request: (currentProfile, leasedFetch) =>
-          getVolcengineArkVideoTask(
-            currentProfile,
-            providerTaskId,
-            leasedFetch,
-            controller.signal,
-          ),
-      });
+      let status: Awaited<ReturnType<typeof getVolcengineArkVideoTask>>;
+      try {
+        status = await withProviderRequestLease({
+          expected: profile,
+          fetcher,
+          ownerId: running.ownerId!,
+          profileId: running.providerProfileId,
+          task: running,
+          request: (currentProfile, leasedFetch) =>
+            getVolcengineArkVideoTask(
+              currentProfile,
+              providerTaskId,
+              leasedFetch,
+              controller.signal,
+            ),
+        });
+      } catch (error) {
+        if (transientArkVideoPollError(error)) {
+          await wait(2_000, controller.signal);
+          continue;
+        }
+        throw error;
+      }
       if (status.state === "cancelled") {
         taskStore().transition(taskId, "cancelled", {
           code: "PROVIDER_CANCELLED",
@@ -3196,45 +3626,33 @@ async function executeVideoTask(
       }
       if (status.state === "failed") {
         taskStore().transition(taskId, "failed", {
-          // A Provider-reported failed task is the only asynchronous outcome
-          // that may start a new paid task on retry. Remote error identifiers
-          // are not stable enough to drive that safety decision.
+          // Native Ark has no refund marker. Conservative: neutral failed,
+          // one-tap confirm before any new paid attempt.
           code: "PROVIDER_FAILED",
-          message: status.errorMessage || "火山方舟未完成本次视频生成",
+          message: "火山方舟未完成本次视频生成，未确认是否退款；请核对后再试",
         });
         return;
       }
       if (status.state === "succeeded") {
-        taskStore().markProviderResponseReceivedForTask(taskId);
-        if (!status.videoUrl || status.providerUsageTokens === undefined) {
-          throw new VolcengineArkVideoError("FORMAT", "方舟未返回完整的视频结果");
-        }
-        const downloaded = await downloadProviderResultMedia({
-          apiKey: profile.apiKey ?? "",
-          kind: "video",
-          signal: controller.signal,
-          url: status.videoUrl,
-        });
-        const actualCostMicrounits = Math.ceil(
-          status.providerUsageTokens *
-          seedanceMiniAudioPriceMicrounitsPerThousandTokens /
-          1_000,
+        await saveVolcengineVideoResult(
+          taskId,
+          running,
+          profile,
+          status,
+          controller.signal,
         );
-        await saveGeneratedMp4({
-          body: downloaded.body,
-          label: running.prompt.slice(0, 120),
-          ownerId: running.ownerId!,
-          task: {
-            actualCostMicrounits,
-            providerUsageTokens: status.providerUsageTokens,
-            taskId,
-          },
-        });
         return;
       }
       await wait(2_000, controller.signal);
     }
-    throw new VolcengineArkVideoError("TIMEOUT", "视频生成等待超时，可稍后重试");
+    await recoverNativeVideoAfterPoll(
+      taskId,
+      running,
+      profile,
+      providerTaskId,
+      controller,
+    );
+    return;
   } catch (error) {
     if (taskStore().get(taskId)?.state === "cancelled") return;
     const failure = safeFailure(error, "video");

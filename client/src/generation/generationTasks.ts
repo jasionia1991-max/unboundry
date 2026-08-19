@@ -1209,7 +1209,7 @@ export async function waitForGenerationTask(
   // Generic relay media is allowed to poll for at most 15 minutes server-side.
   // Keep the browser waiting slightly longer so it never reports a false local
   // failure while the durable server task is still running.
-  for (let attempt = 0; attempt < 960; attempt += 1) {
+  for (let attempt = 0; attempt < 1800; attempt += 1) {
     const task = await getGenerationTask(taskId, signal);
     if (["success", "failed", "cancelled"].includes(task.state)) return task;
     await new Promise<void>((resolve, reject) => {
@@ -1224,5 +1224,8 @@ export async function waitForGenerationTask(
       );
     });
   }
-  throw new Error("生成等待超时");
+  // The server task is still active after the local waiting window. Return the
+  // current snapshot so the caller can keep the breathing light and continue
+  // with automatic recovery instead of showing a red error.
+  return getGenerationTask(taskId, signal);
 }

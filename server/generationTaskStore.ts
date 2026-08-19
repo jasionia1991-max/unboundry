@@ -2183,6 +2183,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
             database,
             {
               kind: current.kind,
+              ownerId: current.owner_id ?? "__test__",
               providerProfileId: current.provider_profile_id,
             },
           );

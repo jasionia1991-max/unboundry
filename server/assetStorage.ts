@@ -70,6 +70,7 @@ function assetPath(id: string) {
 export async function imageReferenceForProvider(
   ownerId: string,
   assetId: string,
+  ttlSeconds = 300,
 ) {
   const media = readableMediaForOwner(ownerId, "image", assetId);
   if (!media || media.storageStatus !== "ready") {
@@ -84,7 +85,7 @@ export async function imageReferenceForProvider(
   if (media.storageBackend === "oss") {
     const profile = await storageProfileForMedia(media);
     if (!profile) throw new Error("前置图片的云端存储暂不可用");
-    return createPrivateAliyunOssReadUrl(media.objectKey, profile, 300);
+    return createPrivateAliyunOssReadUrl(media.objectKey, profile, ttlSeconds);
   }
   if (basename(media.storageName) !== media.storageName) {
     throw new Error("前置图片路径无效");

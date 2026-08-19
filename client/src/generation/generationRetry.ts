@@ -97,6 +97,35 @@ export function generationNeedsReconcile(
     retryBlockCode === "RETRY_OUTCOME_UNKNOWN";
 }
 
+/**
+ * 只有明确拒绝（权限/限流/参数/余额等）或本地可修的问题才算“红字”。
+ * 超时、结果不明、平台没出片、下载失败等一律走中性提示。
+ */
+export function generationFailureIsDefinitive(errorCode?: string | null) {
+  if (!errorCode) return false;
+  return new Set([
+    "ACCOUNT_CREDENTIAL_CHANGED",
+    "ACCOUNT_CREDENTIAL_INVALID",
+    "ACCOUNT_CREDENTIAL_MISSING",
+    "AUTH",
+    "CANVAS_NOT_SAVED",
+    "EMERGENCY_STOP",
+    "FORMAT",
+    "GLOBAL_DISABLED",
+    "INPUT_INVALID",
+    "KIND_CONCURRENCY",
+    "MODEL_UNAVAILABLE",
+    "PERMISSION",
+    "PROVIDER_COOLDOWN",
+    "PROVIDER_CONFIGURATION_MISMATCH",
+    "PROVIDER_RESULT_FORMAT",
+    "RATE_LIMIT",
+    "RETRY_SNAPSHOT_CHANGED",
+    "RETRY_SNAPSHOT_INCOMPATIBLE",
+    "USER_CONCURRENCY",
+  ]).has(errorCode);
+}
+
 export function generationRetryVisible(input: {
   confirmedMissing?: boolean;
   errorCode?: string | null;

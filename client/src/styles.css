@@ -3521,6 +3521,14 @@ sup {
   font-size: var(--tap-font-secondary);
 }
 
+.image-node-upload-error.neutral,
+.video-node-upload-error.neutral,
+.audio-node-upload-error.neutral {
+  color: #d8d3c8;
+  background: rgba(52, 52, 52, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
 .video-node-title {
   position: absolute;
   top: -26px;

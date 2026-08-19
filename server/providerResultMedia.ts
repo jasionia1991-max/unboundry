@@ -12,6 +12,7 @@ import {
   ProviderRequestDeadlineError,
   type ProviderRequestDeadlineOverrides,
 } from "./providerRequestDeadline";
+import { waitForProviderDelay } from "./providerRequestDeadline";
 
 export type ProviderResultMediaKind = "audio" | "image" | "video";
 
@@ -131,8 +132,9 @@ export async function downloadProviderResultMedia(input: {
     ...input.deadlineOptions,
     operation: "result-download",
     signal: input.signal,
+    timeoutMs: input.deadlineOptions?.timeoutMs ?? 60_000,
   });
-  try {
+  const attempt = async () => {
     const response = await deadline.race(fetchPublicHttps(url, {
       headers: {
         Accept: input.kind === "image"
@@ -151,7 +153,9 @@ export async function downloadProviderResultMedia(input: {
     }));
     if (!response.ok || !response.body) {
       if (response.body) void response.body.cancel().catch(() => undefined);
-      throw new ProviderResultMediaError("REMOTE", "模型结果暂时无法下载");
+      const error = new ProviderResultMediaError("REMOTE", "模型结果暂时无法下载");
+      Object.assign(error, { status: response.status });
+      throw error;
     }
     const declared = normalizedContentType(input.expectedContentType ?? "");
     const received = normalizedContentType(response.headers.get("content-type"));
@@ -171,28 +175,54 @@ export async function downloadProviderResultMedia(input: {
       ),
       contentType,
     };
-  } catch (error) {
-    deadline.complete();
-    if (error instanceof ProviderResultMediaError) throw error;
-    if (error instanceof ProviderRequestDeadlineError) {
-      throw new ProviderResultMediaError(
-        error.code,
-        error.code === "TIMEOUT" ? "模型结果下载超时" : "已停止等待模型结果",
+  };
+  let lastError: unknown;
+  for (let attemptNumber = 0; attemptNumber < 3; attemptNumber += 1) {
+    if (attemptNumber > 0) {
+      await waitForProviderDelay(
+        attemptNumber === 1 ? 2_000 : attemptNumber === 2 ? 4_000 : 8_000,
+        deadline.signal,
       );
     }
-    if (input.signal?.aborted) {
-      throw new ProviderResultMediaError("CANCELLED", "已停止等待模型结果");
+    try {
+      return await attempt();
+    } catch (error) {
+      const retryable = error instanceof ProviderResultMediaError &&
+        (
+          error.code === "NETWORK" ||
+          (
+            error.code === "REMOTE" &&
+            typeof (error as ProviderResultMediaError & { status?: number }).status === "number" &&
+            (error as ProviderResultMediaError & { status?: number }).status! >= 500
+          )
+        );
+      if (!retryable) {
+        deadline.complete();
+        if (error instanceof ProviderResultMediaError) throw error;
+        if (error instanceof ProviderRequestDeadlineError) {
+          throw new ProviderResultMediaError(
+            error.code,
+            error.code === "TIMEOUT" ? "模型结果下载超时" : "已停止等待模型结果",
+          );
+        }
+        if (input.signal?.aborted) {
+          throw new ProviderResultMediaError("CANCELLED", "已停止等待模型结果");
+        }
+        if (error instanceof OutboundDestinationError) {
+          throw new ProviderResultMediaError(
+            error.code,
+            error.code === "FORMAT"
+              ? "模型结果地址不可安全访问"
+              : error.code === "PROXY_CONFIGURATION"
+                ? "本机代理地址模式阻止安全下载"
+                : "模型结果地址暂时无法解析",
+          );
+        }
+        throw new ProviderResultMediaError("NETWORK", "模型结果暂时无法下载");
+      }
+      lastError = error;
     }
-    if (error instanceof OutboundDestinationError) {
-      throw new ProviderResultMediaError(
-        error.code,
-        error.code === "FORMAT"
-          ? "模型结果地址不可安全访问"
-          : error.code === "PROXY_CONFIGURATION"
-            ? "本机代理地址模式阻止安全下载"
-          : "模型结果地址暂时无法解析",
-      );
-    }
-    throw new ProviderResultMediaError("NETWORK", "模型结果暂时无法下载");
   }
+  deadline.complete();
+  throw lastError;
 }

@@ -110,17 +110,27 @@ function switchDecision(row: SafetyRow): GenerationAdmission | undefined {
 
 /**
  * Durable Provider-attempt circuit. Only definitive Provider outcomes count;
- * local validation failures and overwritten task terminal states do not.
+ * local validation failures, overwritten task terminal states, timeouts and
+ * “no result” platform failures do not. The circuit is scoped per owner so
+ * different accounts on the same connection never accumulate against each
+ * other.
  */
 export function generationProviderCircuitDecisionInTransaction(
   database: DatabaseSync,
   input: {
     kind: GenerationTaskKind;
     now?: Date;
+    ownerId: string;
     providerProfileId: string;
   },
 ): GenerationAdmission {
   const row = safetyRow(database);
+  const definitiveFailureCodes = [
+    "AUTH",
+    "PERMISSION",
+    "RATE_LIMIT",
+    "FORMAT",
+  ];
   const cooldownStart = new Date(
     (input.now ?? new Date()).getTime() - row.cooldown_minutes * 60_000,
   ).toISOString();
@@ -129,17 +139,24 @@ export function generationProviderCircuitDecisionInTransaction(
       SELECT outcome
       FROM generation_provider_attempts
       WHERE
-        provider_profile_id = ?
+        owner_id = ?
+        AND provider_profile_id = ?
         AND kind = ?
         AND outcome IN ('provider-failed', 'completed')
+        AND (
+          outcome = 'completed'
+          OR failure_code IN (${definitiveFailureCodes.map(() => "?").join(", ")})
+        )
         AND finished_at IS NOT NULL
         AND finished_at >= ?
       ORDER BY finished_at DESC, id DESC
       LIMIT ?
     `)
     .all(
+      input.ownerId,
       input.providerProfileId,
       input.kind,
+      ...definitiveFailureCodes,
       cooldownStart,
       row.failure_threshold,
     ) as Array<{ outcome: "completed" | "provider-failed" }>;
@@ -245,6 +262,7 @@ export function generationProviderBoundaryDecisionInTransaction(
   input: {
     kind: GenerationTaskKind;
     now?: Date;
+    ownerId: string;
     providerProfileId: string;
   },
 ): GenerationAdmission {

@@ -2695,8 +2695,9 @@ for (const ensureFenceCase of [
       const creator = page.getByTestId(`${kind}-creator`);
       await creator.getByRole("button", { name: "Generate" }).click();
       await heldRequestStarted;
-      await expect(creator.getByRole("button", { name: "Submitting..." }))
-        .toBeDisabled();
+      await expect(creator.getByRole("button", {
+        name: /正在保存画布|Submitting\.\.\./,
+      })).toBeDisabled();
       expect(createPosts).toBe(0);
 
       const prompt = kind === "audio"

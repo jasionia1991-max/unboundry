@@ -173,6 +173,7 @@ export type RelayMediaTaskSnapshot =
       code: "REMOTE";
       message: string;
       providerProtocol: "media-generate";
+      refunded?: boolean;
       state: "failed";
     }>
   | Readonly<{
@@ -233,6 +234,12 @@ export type RelayProviderExecution = Readonly<{
   beforeProviderRequest?: () => void;
   fetcher?: typeof fetch;
   mediaLifecycle?: Readonly<{ ownerId: string }>;
+  /**
+   * TTL for reference URLs materialized during preparation. Asynchronous
+   * submissions keep references alive until polling finishes, so callers that
+   * submit async must pass a TTL that covers the polling window.
+   */
+  referenceUrlTtlSeconds?: number;
   resolver?: DestinationResolver;
   signal?: AbortSignal;
   temporaryImageObjectStore?: RelayTemporaryImageObjectStore;
@@ -335,10 +342,14 @@ const mediaParamNamesByCapability = {
     "inputMode",
     "input_mode",
     "lens",
+    "n",
     "outputCount",
     "output_count",
     "quality",
     "reference_image_url",
+    "resolution",
+    "response_format",
+    "size",
     "style",
     "subject_image_url",
   ]),
@@ -1322,7 +1333,7 @@ export async function prepareRelayGptImageRequest(
             inputImages[temporary.inputIndex] = await objectStore.createReadUrl(
               temporary.reservation.objectKey,
               fixedProfile,
-              300,
+              execution.referenceUrlTtlSeconds ?? 300,
             );
           } catch (error) {
             throw referencePreparationError(error, "REFERENCE_SIGN_FAILED");
@@ -1574,11 +1585,16 @@ function parseMediaTaskSnapshot(
     };
   }
   if (state === "failed") {
+    const refunded =
+      body.refunded === true ||
+      body.refunded === 1 ||
+      body.refunded === "true";
     return {
       capability,
       code: "REMOTE",
       message: errorMessages.REMOTE,
       providerProtocol: "media-generate",
+      ...(refunded ? { refunded: true } : {}),
       state: "failed",
     };
   }
