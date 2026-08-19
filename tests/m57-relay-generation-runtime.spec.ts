@@ -11,12 +11,20 @@ import { openAppDatabase } from "../server/database";
 import { removeUnpublishedGeneratedMedia } from "../server/generatedMediaCleanup";
 import { registerMediaForOwner } from "../server/mediaRegistry";
 import {
+  attemptProviderResultSave,
   executeTextTaskWithDependencies,
   gptImageSizeForAspectRatio,
   generationTaskCancellationMode,
+  isTransientProviderResultSaveError,
   relayMediaParametersForTask,
   retrySafetyDecision,
 } from "../server/generationTasks";
+import {
+  MediaPublicationConflictError,
+  MediaPublicationStateError,
+} from "../server/mediaLifecycle";
+import { ResourceBudgetError } from "../server/resourceBudget";
+import { ProviderResultMediaError } from "../server/providerResultMedia";
 import type { ProviderProfile } from "../server/providerProfiles";
 
 const relayProfile: ProviderProfile = {
@@ -73,6 +81,53 @@ function relayTask(
     ...overrides,
   };
 }
+
+test("relay save blips are transient while result and local format errors are not", () => {
+  expect(isTransientProviderResultSaveError(
+    new ProviderResultMediaError("NETWORK", "模型结果暂时无法下载"),
+  )).toBe(true);
+  expect(isTransientProviderResultSaveError(
+    new ProviderResultMediaError("TIMEOUT", "模型结果下载超时"),
+  )).toBe(true);
+  expect(isTransientProviderResultSaveError(
+    new ProviderResultMediaError("REMOTE", "模型结果暂时无法下载"),
+  )).toBe(true);
+  expect(isTransientProviderResultSaveError(
+    new ResourceBudgetError("RESOURCE_BUSY", 429, "Media processing capacity is busy"),
+  )).toBe(true);
+  expect(isTransientProviderResultSaveError(
+    new MediaPublicationConflictError(),
+  )).toBe(true);
+  expect(isTransientProviderResultSaveError(
+    new MediaPublicationStateError("publication changed"),
+  )).toBe(true);
+  expect(isTransientProviderResultSaveError(
+    new ProviderResultMediaError("FORMAT", "模型结果格式不受支持"),
+  )).toBe(false);
+  expect(isTransientProviderResultSaveError(new Error("unknown"))).toBe(false);
+});
+
+test("the shared save gate keeps polling on transient errors and throws real ones", async () => {
+  let attempts = 0;
+  const transient = () => attemptProviderResultSave({
+    taskId: "save-gate-transient",
+    save: async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new ProviderResultMediaError("NETWORK", "模型结果暂时无法下载");
+      }
+    },
+  });
+  expect(await transient()).toBe(false);
+  expect(await transient()).toBe(true);
+
+  await expect(attemptProviderResultSave({
+    taskId: "save-gate-format",
+    save: () => {
+      throw new ProviderResultMediaError("FORMAT", "模型结果格式不受支持");
+    },
+  })).rejects.toMatchObject({ code: "FORMAT" });
+});
 
 test("Gemini relay Text materializes ordered four-kind context once and persists no transient URL", async () => {
   const directory = await mkdtemp(join(tmpdir(), "unboundry-relay-text-"));
