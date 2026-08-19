@@ -309,6 +309,12 @@ function VideoNodeImpl({
   const generating = Boolean(data.videoGenerating);
   const generatedSuccess = Boolean(data.videoSrc && data.videoPromptReady);
   const [activeTaskId, setActiveTaskId] = useState<string>();
+  // 页面刷新或组件重挂后 activeTaskId 会丢失，但持久化任务号还在；
+  // 取消按钮用它兜底，保证“生成中一定能取消”。
+  const cancelableTaskId = activeTaskId ??
+    (typeof data.videoGenerationTaskId === "string"
+      ? data.videoGenerationTaskId
+      : undefined);
   const [submitting, setSubmitting] = useState(false);
   const [savingCanvas, setSavingCanvas] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -1588,8 +1594,8 @@ function VideoNodeImpl({
       pollingPausedTaskIdRef.current = undefined;
       setPollingPausedTaskId(undefined);
     }
-    if (!activeTaskId) return;
-    const taskId = activeTaskId;
+    if (!cancelableTaskId) return;
+    const taskId = cancelableTaskId;
     const pollingRun = generationPollingRunRef.current?.taskId === taskId
       ? generationPollingRunRef.current
       : undefined;
@@ -2530,7 +2536,7 @@ function VideoNodeImpl({
             aria-label={
               savingCanvas
                 ? "正在保存画布…"
-                : generating && activeTaskId
+                : generating && cancelableTaskId
                   ? "取消生成"
                   : generating
                     ? "Generating..."
@@ -2559,7 +2565,7 @@ function VideoNodeImpl({
               savingCanvas ||
               uploading ||
               (generating
-                ? !activeTaskId
+                ? !cancelableTaskId
                 : generatedForCurrentInput ||
                   !inputPreflight.canSubmit ||
                   serverInputProblems.length > 0 ||
@@ -2572,7 +2578,7 @@ function VideoNodeImpl({
           >
             {savingCanvas
               ? "正在保存画布…"
-              : generating && activeTaskId
+              : generating && cancelableTaskId
                 ? "×"
                 : "↑"}
           </button>

@@ -13,14 +13,21 @@ import {
   type GenerationTask,
 } from "../server/generationTaskStore";
 import {
+  attemptProviderResultSave,
   executeTextTaskWithDependencies,
   generationTaskCancellationMode,
   retrySafetyDecision,
   retrySnapshotCompatibilityProblem,
+  runGenerationRecoverySweep,
   settleDetachedGenerationExecution,
 } from "../server/generationTasks";
 import { evaluateModelRuntimeAvailability } from "../server/modelAvailability";
-import type { ProviderProfile } from "../server/providerProfiles";
+import {
+  ProviderProfileLockBusyError,
+  type ProviderProfile,
+} from "../server/providerProfiles";
+import { ProviderResultMediaError } from "../server/providerResultMedia";
+import { StorageConfigurationBusyError } from "../server/secureStorageProfiles";
 import {
   createVolcengineArkTextResponse,
 } from "../server/volcengineArkTextProvider";
@@ -2101,6 +2108,187 @@ test("only capability success or an explicit Provider/model update clears an aut
     } else {
       process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
     }
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("provider result save treats SQLite lock contention as bounded transient failure", async () => {
+  let busyAttempts = 0;
+  const saved = await attemptProviderResultSave({
+    backoffMs: [0, 0, 0, 0, 0],
+    save: async () => {
+      busyAttempts += 1;
+      throw new StorageConfigurationBusyError();
+    },
+    taskId: "save-busy-task",
+  });
+  expect(saved).toBe(false);
+  expect(busyAttempts).toBe(5);
+
+  let lockAttempts = 0;
+  const lockSaved = await attemptProviderResultSave({
+    backoffMs: [0, 0, 0, 0, 0],
+    save: async () => {
+      lockAttempts += 1;
+      throw new ProviderProfileLockBusyError();
+    },
+    taskId: "save-lock-task",
+  });
+  expect(lockSaved).toBe(false);
+  expect(lockAttempts).toBe(5);
+
+  let definitiveAttempts = 0;
+  await expect(attemptProviderResultSave({
+    backoffMs: [0, 0, 0, 0, 0],
+    save: async () => {
+      definitiveAttempts += 1;
+      throw new ProviderResultMediaError("FORMAT", "result cannot be read");
+    },
+    taskId: "save-definitive-task",
+  })).rejects.toMatchObject({ code: "FORMAT" });
+  expect(definitiveAttempts).toBe(1);
+});
+
+test("server recovery sweep auto-resumes a failed task that still holds a Provider task id", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-recovery-sweep-"));
+  const store = createGenerationTaskStore(dataDirectory);
+  const database = openAppDatabase(dataDirectory);
+  try {
+    const ownerId = "sweep-owner";
+    const providerProfileId = "sweep-relay-provider";
+    const modelProfileId = "sweep-image-model";
+    const baseline = new Date(Date.now() - 60_000).toISOString();
+    database.prepare(`
+      INSERT INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      ) VALUES (?, ?, 'Sweep Owner', 'fixture-only', 'user', 'active', ?, ?)
+    `).run(ownerId, ownerId, baseline, baseline);
+    database.prepare(`
+      INSERT INTO provider_profiles (
+        id, display_name, driver, status, created_at, updated_at,
+        provider_configuration_version
+      ) VALUES (?, ?, 'multi-protocol-relay', 'enabled', ?, ?, 1)
+    `).run(providerProfileId, "Sweep Relay", baseline, baseline);
+    const parameterSchema = knownModelParameterSchema({
+      capability: "image",
+      providerDriver: "multi-protocol-relay",
+      providerModelId: "youchuang-gpt-image-2",
+    });
+    database.prepare(`
+      INSERT INTO model_profiles (
+        id, display_name, provider_profile_id, provider_model_id,
+        capability, status, default_parameters, created_at, updated_at,
+        max_cost_microunits, cost_currency, provider_protocol
+      ) VALUES (
+        ?, ?, ?, ?, 'image', 'published', ?, ?, ?, 5000000, 'CNY', 'media-generate'
+      )
+    `).run(
+      modelProfileId,
+      "Sweep Image",
+      providerProfileId,
+      "youchuang-gpt-image-2",
+      JSON.stringify(parameterSchema),
+      baseline,
+      baseline,
+    );
+    database.prepare(`
+      INSERT INTO node_model_bindings (
+        node_type, model_id, enabled, is_default, sort_order,
+        created_at, updated_at
+      ) VALUES ('image', ?, 1, 1, 1, ?, ?)
+    `).run(modelProfileId, baseline, baseline);
+    database.prepare(`
+      UPDATE generation_safety_settings
+      SET
+        global_enabled = 1,
+        emergency_stop = 0,
+        per_user_concurrency = 10,
+        requests_per_minute = 120,
+        image_concurrency = 5,
+        video_concurrency = 5,
+        audio_concurrency = 5,
+        text_concurrency = 5,
+        updated_at = ?
+      WHERE id = 1
+    `).run(baseline);
+    const credential = await saveAccountCredential(
+      database,
+      ownerId,
+      providerProfileId,
+      "test-only-sweep-key",
+    );
+    const created = store.admitOrGet({
+      canvasId: "sweep-canvas",
+      costCurrency: "CNY",
+      credentialRevision: credential.credentialVersion,
+      estimatedCostMicrounits: 5_000_000,
+      idempotencyKey: "sweep-recovery-1",
+      kind: "image",
+      model: modelProfileId,
+      modelConfiguration: {
+        credentialVersion: credential.credentialVersion,
+        modelId: modelProfileId,
+        parameterSchema,
+        providerConfigurationVersion: 1,
+        providerDriver: "multi-protocol-relay",
+        providerModelId: "youchuang-gpt-image-2",
+        providerProfileId,
+        providerProtocol: "media-generate",
+      },
+      nodeId: "sweep-node",
+      ownerId,
+      parameters: {
+        inputSchemaVersion: 1,
+        inputs: [],
+      },
+      prompt: "sweep recovery",
+      providerModelId: "youchuang-gpt-image-2",
+      providerProfileId,
+    });
+    expect(created.created).toBe(true);
+    const taskId = created.task.id;
+    const running = store.transition(taskId, "running");
+    expect(running).toMatchObject({ attempt: 1, state: "running" });
+    store.recordProviderAttempt(taskId);
+    store.setProviderTaskId(taskId, "sweep-provider-task-123");
+    store.transition(taskId, "failed", {
+      code: "RESULT_DELAYED",
+      message: "平台还在处理，结果出来后系统会自动核对",
+    });
+    const aged = new Date(Date.now() - 3 * 60_000).toISOString();
+    database.prepare(`
+      UPDATE generation_tasks SET updated_at = ? WHERE id = ?
+    `).run(aged, taskId);
+    database.prepare(`
+      INSERT INTO canvas_documents (
+        owner_id, id, revision, nodes, edges, viewport, updated_at, graph_revision
+      ) VALUES (?, ?, 1, ?, '[]', '{}', ?, 1)
+    `).run(
+      ownerId,
+      "sweep-canvas",
+      JSON.stringify([{
+        data: {
+          imageGenerationInputKey: "sweep-input-key",
+          imageGenerationTaskId: taskId,
+        },
+        id: "sweep-node",
+        type: "image",
+      }]),
+      baseline,
+    );
+
+    const launched: string[] = [];
+    await runGenerationRecoverySweep({
+      launch: (id) => launched.push(id),
+      store,
+    });
+    const recovered = store.get(taskId);
+    expect(recovered?.state).toBe("queued");
+    expect(recovered?.attempt).toBe(1);
+    expect(launched).toEqual([taskId]);
+  } finally {
+    database.close();
     await rm(dataDirectory, { force: true, recursive: true });
   }
 });

@@ -1342,6 +1342,12 @@ function ImageNodeImpl({
   const generating = Boolean(data.imageGenerating);
   const preview = data.imageSrc;
   const [activeTaskId, setActiveTaskId] = useState<string>();
+  // 页面刷新或组件重挂后 activeTaskId 会丢失，但持久化任务号还在；
+  // 取消按钮用它兜底，保证“生成中一定能取消”。
+  const cancelableTaskId = activeTaskId ??
+    (typeof data.imageGenerationTaskId === "string"
+      ? data.imageGenerationTaskId
+      : undefined);
   const [submitting, setSubmitting] = useState(false);
   const [savingCanvas, setSavingCanvas] = useState(false);
   const [favorite, setFavorite] = useState(false);
@@ -2644,12 +2650,12 @@ function ImageNodeImpl({
       pollingPausedTaskIdRef.current = undefined;
       setPollingPausedTaskId(undefined);
     }
-    if (!activeTaskId) return;
-    const generationRun = generationRunRef.current?.taskId === activeTaskId
+    if (!cancelableTaskId) return;
+    const generationRun = generationRunRef.current?.taskId === cancelableTaskId
       ? generationRunRef.current
       : undefined;
     try {
-      const task = await cancelGenerationTask(activeTaskId);
+      const task = await cancelGenerationTask(cancelableTaskId);
       if (task.state !== "cancelled") return;
       if (!generationRun || !ownsImageGenerationRun(generationRun)) return;
       persistImageGenerationCancellation(
@@ -3765,7 +3771,7 @@ function ImageNodeImpl({
             aria-label={
               savingCanvas
                 ? "正在保存画布…"
-                : generating && activeTaskId
+                : generating && cancelableTaskId
                   ? "取消生成"
                   : generating
                     ? "Generating..."
@@ -3777,7 +3783,7 @@ function ImageNodeImpl({
             data-tooltip={
               savingCanvas
                 ? "正在保存画布…"
-                : generating && activeTaskId
+                : generating && cancelableTaskId
                   ? "取消本次生成"
                   : isFixture
                     ? "验收页面不会调用真实生成"
@@ -3796,7 +3802,7 @@ function ImageNodeImpl({
               submitting ||
               savingCanvas ||
               (generating
-                ? !activeTaskId
+                ? !cancelableTaskId
                 : generatedForCurrentInput ||
                   !inputPreflight.canSubmit ||
                   !referencesSupported ||
@@ -3811,7 +3817,7 @@ function ImageNodeImpl({
           >
             {savingCanvas
               ? "正在保存画布…"
-              : generating && activeTaskId
+              : generating && cancelableTaskId
                 ? "×"
                 : "↑"}
           </button>

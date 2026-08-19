@@ -76,6 +76,15 @@ export class StorageProfileRepairRecoveryRequiredError extends Error {
   }
 }
 
+export class StorageConfigurationBusyError extends Error {
+  readonly code = "PERSISTENCE_BUSY" as const;
+
+  constructor() {
+    super("存储配置正在处理中，请稍后自动重试");
+    this.name = "StorageConfigurationBusyError";
+  }
+}
+
 type RepairMarker = Readonly<{
   afterSha256: string;
   beforeFile: string;
@@ -280,6 +289,14 @@ async function withDocumentMutationLock<T>(operation: () => Promise<T>) {
     // outcome-unknown error after the protected operation has succeeded.
     lockDatabase.exec("BEGIN IMMEDIATE");
     return await operation();
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      /database is locked|SQLITE_BUSY|busy/i.test(error.message)
+    ) {
+      throw new StorageConfigurationBusyError();
+    }
+    throw error;
   } finally {
     try {
       if (lockDatabase) {
@@ -1091,7 +1108,12 @@ export async function withStorageMediaRoutingReservation<T>(
     afterRead?: (routing: StorageMediaRouting) => Promise<void> | void;
   },
 ) {
-  return withDocumentMutationLock(async () => {
+  let routing!: StorageMediaRouting;
+  // The document mutation lock only guards the routing snapshot read. The
+  // caller's reservation (a main-store transaction) runs after the lock has
+  // been released so a busy Provider request can never serialize media
+  // persistence behind a long-running remote call.
+  await withDocumentMutationLock(async () => {
     const document = await readDocument();
     const profile = document.profiles.find(
       (candidate) =>
@@ -1099,13 +1121,13 @@ export async function withStorageMediaRoutingReservation<T>(
         candidate.id === document.activeProfileId &&
         candidate.status === "active",
     );
-    const routing: StorageMediaRouting = {
+    routing = {
       enabled: Boolean(document.mediaRoutingEnabled && profile),
       profile,
     };
     await execution?.afterRead?.(routing);
-    return reserve(routing);
   });
+  return reserve(routing);
 }
 
 export async function setStorageMediaRouting(

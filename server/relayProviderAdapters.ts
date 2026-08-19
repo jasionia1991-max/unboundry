@@ -20,6 +20,7 @@ import {
   type MediaPublicationReservation,
 } from "./mediaLifecycle";
 import {
+  StorageConfigurationBusyError,
   type AliyunStorageProfile,
   withReadableStorageProfileReservation,
 } from "./secureStorageProfiles";
@@ -1207,6 +1208,9 @@ function referencePreparationError(
   >,
 ) {
   if (error instanceof RelayProviderError) return error;
+  if (error instanceof StorageConfigurationBusyError) {
+    return new RelayProviderError("REFERENCE_STORAGE_BUSY");
+  }
   if (
     error instanceof Error &&
     /(?:database\s+is\s+)?(?:locked|busy)|configuration\s+is\s+busy/i.test(error.message)

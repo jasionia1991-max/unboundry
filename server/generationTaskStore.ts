@@ -1867,6 +1867,29 @@ export function createGenerationTaskStore(dataDirectory: string) {
       ).map(toTask);
     },
 
+    /**
+     * Failed tasks that still hold an accepted Provider task id and have not
+     * used their single automatic resume slot. The server-side recovery sweep
+     * uses this list so a result can be re-collected without any user action.
+     */
+    listFailedAutoRecoverable(olderThan: Date) {
+      return (
+        database
+          .prepare(`
+            SELECT *
+            FROM generation_tasks
+            WHERE
+              state = 'failed'
+              AND attempt < 2
+              AND provider_task_id IS NOT NULL
+              AND updated_at <= ?
+            ORDER BY updated_at ASC, rowid ASC
+            LIMIT 200
+          `)
+          .all(olderThan.toISOString()) as GenerationTaskRow[]
+      ).map(toTask);
+    },
+
     listEvents(id: string) {
       if (!identifierPattern.test(id) || id.length > 120) {
         throw new Error("Invalid generation task ID");
