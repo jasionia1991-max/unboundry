@@ -730,5 +730,226 @@
     "targetHandle": "left"
    }
   ]
+ },
+ "ecommerce-garment-detail-six": {
+  "id": "e6b7f8c4-8c7d-4f8e-9d0a-3a1b2c3d4e5f",
+  "title": "电商服装详情页组图（6张·1:1）",
+  "description": "上传一张服装白底图，自动生成6张电商详情页组图，全部1:1同尺寸：正面整体、V领蕾丝、袖口蕾丝、衣身蕾丝、面料肌理、缝线下摆，方便直接裁剪排版。",
+  "previewImage": "/templates/ecommerce-garment-detail-six.png",
+  "categories": [
+   "电商"
+  ],
+  "sourceTemplateId": "d2c8f86e-1a4b-4c9e-9d7f-5b6a7c8d9e01",
+  "nodes": [
+   {
+    "id": "f0cec9d1-e9dd-4a67-b957-ad5f31dfe645",
+    "type": "image",
+    "position": {
+     "x": 60,
+     "y": 60
+    },
+    "width": 250,
+    "height": 250,
+    "parentId": "group-new",
+    "data": {
+     "title": "白底图",
+     "params": {
+      "aspectRatio": "1:1",
+      "imageSize": "2K"
+     }
+    }
+   },
+   {
+    "id": "51bc295f-9bc9-463d-bbef-c0e8f591bb6c",
+    "type": "text",
+    "position": {
+     "x": 60,
+     "y": 480
+    },
+    "width": 250,
+    "height": 250,
+    "parentId": "group-new",
+    "data": {
+     "title": "精品提示词母版",
+     "text": "高端电商服装详情页组图。以白底参考图为唯一真相：同一件衣服，颜色深浅、色相、版型轮廓、面料质感、蕾丝花纹、缝线细节必须与参考图完全一致，不得改款、不得换衣、不得编造。真实商业棚拍：柔和侧光，明暗过渡干净，布纹与缝线清晰可见，自然垂感，轻微接触阴影，边缘锐利无白边。拒绝塑料感、蜡像脸、假水光、过度磨皮、雾面美颜、夸张滤镜、假光斑。没有事实依据的部位留白，不出现尺码、成分、功能等文字。方形构图，主体居中，四周留白均匀，适合详情页九宫格直接裁剪。"
+    }
+   },
+   {
+    "id": "fdcf924d-c864-4b25-ad8b-384030fdb397",
+    "type": "image",
+    "position": {
+     "x": 620,
+     "y": 60
+    },
+    "width": 250,
+    "height": 250,
+    "parentId": "group-new",
+    "data": {
+     "title": "正面整体图",
+     "prompt": "完整呈现整件衣服的廓形与版型，衣身全部入镜，领口、袖口、下摆自然下垂，四周留白均匀，适合做主图。",
+     "params": {
+      "aspectRatio": "1:1",
+      "imageSize": "2K"
+     }
+    }
+   },
+   {
+    "id": "6d1404fe-daa1-4bcb-b738-8d7065cec32e",
+    "type": "image",
+    "position": {
+     "x": 980,
+     "y": 60
+    },
+    "width": 250,
+    "height": 250,
+    "parentId": "group-new",
+    "data": {
+     "title": "V领蕾丝特写",
+     "prompt": "领口区域居中构图，蕾丝花纹清晰锐利、镂空边缘干净，针织与蕾丝的拼接关系看得清楚。",
+     "params": {
+      "aspectRatio": "1:1",
+      "imageSize": "2K"
+     }
+    }
+   },
+   {
+    "id": "26505fa8-41ec-41aa-ba4a-bbcfc32b0d0e",
+    "type": "image",
+    "position": {
+     "x": 1340,
+     "y": 60
+    },
+    "width": 250,
+    "height": 250,
+    "parentId": "group-new",
+    "data": {
+     "title": "袖口蕾丝特写",
+     "prompt": "袖口与蕾丝边缘细节放大，花型纹理分明，缝线针脚真实自然。",
+     "params": {
+      "aspectRatio": "1:1",
+      "imageSize": "2K"
+     }
+    }
+   },
+   {
+    "id": "c814b3f5-050a-472a-8f77-2082253ef14a",
+    "type": "image",
+    "position": {
+     "x": 620,
+     "y": 480
+    },
+    "width": 250,
+    "height": 250,
+    "parentId": "group-new",
+    "data": {
+     "title": "衣身蕾丝局部",
+     "prompt": "衣身中央蕾丝面料纹理特写，织纹走向、镂空疏密与参考图一致。",
+     "params": {
+      "aspectRatio": "1:1",
+      "imageSize": "2K"
+     }
+    }
+   },
+   {
+    "id": "94d27bc5-54ce-4ad0-acc3-a2a3b94e2312",
+    "type": "image",
+    "position": {
+     "x": 980,
+     "y": 480
+    },
+    "width": 250,
+    "height": 250,
+    "parentId": "group-new",
+    "data": {
+     "title": "面料肌理特写",
+     "prompt": "微距级展现面料织纹与触感，经纬线、起毛、垂坠光泽真实，不做柔化。",
+     "params": {
+      "aspectRatio": "1:1",
+      "imageSize": "2K"
+     }
+    }
+   },
+   {
+    "id": "47670495-9f21-4a1c-b7a4-9d575fcebfa0",
+    "type": "image",
+    "position": {
+     "x": 1340,
+     "y": 480
+    },
+    "width": 250,
+    "height": 250,
+    "parentId": "group-new",
+    "data": {
+     "title": "缝线与下摆特写",
+     "prompt": "下摆锁边与缝线针脚清晰，线迹整齐自然，面料边缘干净。",
+     "params": {
+      "aspectRatio": "1:1",
+      "imageSize": "2K"
+     }
+    }
+   }
+  ],
+  "edges": [
+   {
+    "id": "58f0e643-bbca-4c97-8981-798be13581ba",
+    "source": "f0cec9d1-e9dd-4a67-b957-ad5f31dfe645",
+    "target": "fdcf924d-c864-4b25-ad8b-384030fdb397"
+   },
+   {
+    "id": "6a033258-1414-4ae3-b096-4827222ba785",
+    "source": "51bc295f-9bc9-463d-bbef-c0e8f591bb6c",
+    "target": "fdcf924d-c864-4b25-ad8b-384030fdb397"
+   },
+   {
+    "id": "08eec448-4ac7-4db1-adfd-279a993abd94",
+    "source": "f0cec9d1-e9dd-4a67-b957-ad5f31dfe645",
+    "target": "6d1404fe-daa1-4bcb-b738-8d7065cec32e"
+   },
+   {
+    "id": "528283b7-9b08-4791-994a-5e47c7928585",
+    "source": "51bc295f-9bc9-463d-bbef-c0e8f591bb6c",
+    "target": "6d1404fe-daa1-4bcb-b738-8d7065cec32e"
+   },
+   {
+    "id": "57b3df61-49f0-4c93-bf33-bb349ade9c64",
+    "source": "f0cec9d1-e9dd-4a67-b957-ad5f31dfe645",
+    "target": "26505fa8-41ec-41aa-ba4a-bbcfc32b0d0e"
+   },
+   {
+    "id": "26508926-8a5c-4631-808b-d111497b9940",
+    "source": "51bc295f-9bc9-463d-bbef-c0e8f591bb6c",
+    "target": "26505fa8-41ec-41aa-ba4a-bbcfc32b0d0e"
+   },
+   {
+    "id": "87718fbd-4c71-4d0d-baf7-6f3113d57e28",
+    "source": "f0cec9d1-e9dd-4a67-b957-ad5f31dfe645",
+    "target": "c814b3f5-050a-472a-8f77-2082253ef14a"
+   },
+   {
+    "id": "bb23b196-71d8-419e-8d76-774f7c0c2be2",
+    "source": "51bc295f-9bc9-463d-bbef-c0e8f591bb6c",
+    "target": "c814b3f5-050a-472a-8f77-2082253ef14a"
+   },
+   {
+    "id": "13187e9b-37bb-47aa-8276-4f4908b6c7d5",
+    "source": "f0cec9d1-e9dd-4a67-b957-ad5f31dfe645",
+    "target": "94d27bc5-54ce-4ad0-acc3-a2a3b94e2312"
+   },
+   {
+    "id": "01d6322d-e5e4-4c0a-9953-3142ce0d02a4",
+    "source": "51bc295f-9bc9-463d-bbef-c0e8f591bb6c",
+    "target": "94d27bc5-54ce-4ad0-acc3-a2a3b94e2312"
+   },
+   {
+    "id": "f9b8fc1b-e28e-46d8-a6af-834cc556b09f",
+    "source": "f0cec9d1-e9dd-4a67-b957-ad5f31dfe645",
+    "target": "47670495-9f21-4a1c-b7a4-9d575fcebfa0"
+   },
+   {
+    "id": "2d1c94f5-8806-44c5-a25c-d97ef7889da6",
+    "source": "51bc295f-9bc9-463d-bbef-c0e8f591bb6c",
+    "target": "47670495-9f21-4a1c-b7a4-9d575fcebfa0"
+   }
+  ]
  }
 }

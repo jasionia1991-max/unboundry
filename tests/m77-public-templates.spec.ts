@@ -252,14 +252,16 @@ test("v31 migration creates public_templates with the two real seeds idempotentl
       status: string;
       title: string;
     }>;
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
     expect(rows.map((row) => row.status)).toEqual([
+      "published",
       "published",
       "published",
     ]);
     expect(rows.map((row) => row.id)).toEqual([
       "0786e042-095e-4551-b91b-365492e91241",
       "aaf7cc53-a595-45da-a6bb-7c93309e0962",
+      "e6b7f8c4-8c7d-4f8e-9d0a-3a1b2c3d4e5f",
     ]);
     for (const row of rows) {
       expect(JSON.parse(row.category)).toEqual(["电商"]);
@@ -292,7 +294,7 @@ test("v31 migration creates public_templates with the two real seeds idempotentl
             .get() as { count: number }
         ).count,
       ),
-    ).toBe(2);
+    ).toBe(3);
     reopened.close();
   } finally {
     await rm(dataDirectory, { force: true, recursive: true });
@@ -424,7 +426,7 @@ test("public template storage enforces validation, status transitions and seed p
       query: "",
       status: "published",
     });
-    expect(published.total).toBe(2);
+    expect(published.total).toBe(3);
     const ecommerceOnly = listPublicTemplates(store, {
       category: "电商",
       includeGraph: false,
@@ -433,7 +435,7 @@ test("public template storage enforces validation, status transitions and seed p
       query: "",
       status: "",
     });
-    expect(ecommerceOnly.total).toBe(3);
+    expect(ecommerceOnly.total).toBe(4);
 
     const updated = updatePublicTemplate(store, "pub-admin", created.id, {
       status: "published",
@@ -831,7 +833,7 @@ test("admin CRUD API, ordinary 403 and the public GET keep the seed contract", a
       pagination: { hasMore: boolean; total: number };
     };
     expect(catalog.categories).toContain("电商");
-    expect(catalog.pagination).toMatchObject({ total: 2, hasMore: false });
+    expect(catalog.pagination).toMatchObject({ total: 3, hasMore: false });
     const detail = catalog.items.find(
       (item) => item.id === "0786e042-095e-4551-b91b-365492e91241",
     )!;
@@ -845,6 +847,14 @@ test("admin CRUD API, ordinary 403 and the public GET keep the seed contract", a
     )!;
     expect(expert.graph?.nodes).toHaveLength(14);
     expect(expert.graph?.edges).toHaveLength(12);
+    const garment = catalog.items.find(
+      (item) => item.id === "e6b7f8c4-8c7d-4f8e-9d0a-3a1b2c3d4e5f",
+    )!;
+    expect(garment.graph?.nodes).toHaveLength(9);
+    expect(garment.graph?.edges).toHaveLength(12);
+    expect(
+      garment.graph?.nodes.filter((node) => node.type === "group"),
+    ).toHaveLength(1);
     for (const item of catalog.items) {
       expect(item.categories).toEqual(["电商"]);
       expect(item.previewImage).toMatch(/^\/templates\/.+\.png$/);

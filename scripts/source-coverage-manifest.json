@@ -30,6 +30,12 @@
       "reason": "Can publish the reviewed second or third ecommerce workflow package into production; automatic execution is forbidden and apply requires an explicit flag.",
       "manualNpmScripts": []
     },
+    "scripts/apply-public-template-seed.mjs": {
+      "mode": "frozen",
+      "scriptSha256": "629cf5b46ea98dd7e1d98a3cd8bcc21754770bc89042a9e21723c5324f0b737e",
+      "reason": "Can publish public template seeds into production; automatic execution is forbidden and apply requires an explicit flag.",
+      "manualNpmScripts": []
+    },
     "scripts/apply-ecommerce-template-cover-paths.mjs": {
       "mode": "frozen",
       "scriptSha256": "f4dfbad416dd05130799c6ee4bbb9845de3eef1942578d4b4fd9fa2cbd23dfea",
