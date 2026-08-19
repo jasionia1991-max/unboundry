@@ -14,21 +14,21 @@
 - `v0.6.21`标签精确指向源码commit；PR #38已合并到`main`，merge commit`4cc325021c35167e1fa0b19a0b747e213e810ffc`。2026-08-19 用户回复「通过」，状态是`PRODUCTION_PUBLISHED_USER_PASS`。
 - 权威记录：`spec/V0_6_21_PRODUCTION_RECEIPT_2026-08-19.json`。
 
-## 0. 最新已发布事件：v0.6.20 生成稳定性一次性修复（2026-08-19 已发布，待用户复验）
+## 0. 最新已发布事件：v0.6.20 生成稳定性一次性修复（2026-08-19 已发布，用户已复验通过）
 
 - 用户说「先上线」并确认版本号 `v0.6.20`（INC-GEN-010）。
 - 图片主轮询 5 分钟、视频 8 分钟，主窗后后台继续慢速核对；任务号丢失自动找回，确认缺失只自动补提交一次；平台退款自动确认并重试一次；只有明确拒绝/本地问题才红字；结果下载网络/5xx 自动重试 3 次；熔断按账号拆分；画布保存等待放宽到 15 秒。
 - 精确源码commit`66908c0b670e106de5261ca221328af428baf6d9`通过正式安全全量`118/118 specs、983/983 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。
 - 生产current已切到`/opt/unboundry/releases/v0.6.20-inc-gen-010-20260819`；冻结备份`v0.6.20-frozen-e8bcb7`（365文件，双清单SHA`6917975d…`）、公网资源逐字节哈希、service/schema39和数据门均PASS。发布核验时保持358 tasks、364 attempts、active0、48 public templates（46 published）。
-- `v0.6.20`标签精确指向源码commit；PR #35已合并到`main`，merge commit`80f4ad64a65088b93c8750245e8cf35219426aae`。状态是`PRODUCTION_PUBLISHED_AUTO_PASS`（待用户复验）。
+- `v0.6.20`标签精确指向源码commit；PR #35已合并到`main`，merge commit`80f4ad64a65088b93c8750245e8cf35219426aae`。2026-08-19 用户回复「通过」，状态是`PRODUCTION_PUBLISHED_USER_PASS`。
 - 权威记录：`spec/INC_GEN_010_GENERATION_STABILITY_2026-08-19.md`、`spec/V0_6_20_PRODUCTION_RECEIPT_2026-08-19.json`。
 
-## 0.01 上一已发布事件：v0.6.19 验收收口（2026-08-19 已发布，待用户复验）
+## 0.01 上一已发布事件：v0.6.19 验收收口（2026-08-19 已发布，用户已复验通过）
 
 - v0.6.19 为验收收口发布：记录 v0.6.17/v0.6.18 用户复验通过、版本号升至 0.6.19、运行时放行新版本，无产品功能改动。
 - 精确源码commit`797a46bf4151eaf21195f35f91c575bee167d08b`通过正式安全全量`118/118 specs、983/983 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。
 - 生产current已切到`/opt/unboundry/releases/v0.6.19-acceptance-close-20260819`；冻结备份`v0.6.19-frozen-8fq2Wp`（365文件，双清单SHA`402a6dbe…`）、公网资源逐字节哈希、service/schema39和数据门均PASS。发布核验时保持323 tasks、327 attempts、active0、48 public templates（46 published）。
-- `v0.6.19`标签精确指向源码commit；PR #33已合并到`main`，merge commit`adb3409029b92b4cac8c5101ce43e647adcc3586`。状态是`PRODUCTION_PUBLISHED_AUTO_PASS`（待用户复验）。
+- `v0.6.19`标签精确指向源码commit；PR #33已合并到`main`，merge commit`adb3409029b92b4cac8c5101ce43e647adcc3586`。2026-08-19 用户回复「通过」，状态是`PRODUCTION_PUBLISHED_USER_PASS`。
 - 权威记录：`spec/V0_6_19_PRODUCTION_RECEIPT_2026-08-19.json`。
 
 ## 0.1 上一发布事件：INC-GEN-009 UI 对齐（v0.6.18，用户已复验通过）
