@@ -9,6 +9,15 @@ import {
   saveGeneratedPng,
   validatePng,
 } from "./assetStorage";
+import {
+  arkFilesEnabled,
+  arkFilesImageMaximumBytes,
+  arkFilesImageThresholdBytes,
+  ArkFilesError,
+  readArkImageBytes,
+  uploadArkImageFile,
+} from "./arkFileUploader";
+import { createPrivateAliyunOssReadUrl } from "./aliyunOss";
 import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
 import {
@@ -44,7 +53,11 @@ import {
   generateOpenRouterImage,
   OpenRouterImageError,
 } from "./openRouterImageProvider";
-import { readableMediaForOwner, readyMediaForOwner } from "./mediaRegistry";
+import {
+  readableMediaForOwner,
+  readyMediaForOwner,
+  type MediaRecord,
+} from "./mediaRegistry";
 import { ResourceBudgetError } from "./resourceBudget";
 import {
   arkVideoBase64BudgetBytes,
@@ -62,12 +75,14 @@ import {
 } from "./providerMedia";
 import {
   acquireProviderGenerationRequestLease,
+  acquireProviderGenerationSnapshot,
   getProviderGenerationProfileState,
   providerConfigurationVersion,
   ProviderGenerationConfigurationError,
   ProviderProfileLockBusyError,
   type ProviderGenerationRequestLease,
   type ProviderProfile,
+  type ProviderGenerationSnapshot,
 } from "./providerProfiles";
 import {
   evaluateModelRuntimeAvailability,
@@ -127,7 +142,10 @@ import {
   recoverPendingMediaDeletions,
   recoverPendingUploadMediaPublications,
 } from "./mediaLifecycle";
-import { StorageConfigurationBusyError } from "./secureStorageProfiles";
+import {
+  StorageConfigurationBusyError,
+  storageProfileForMedia,
+} from "./secureStorageProfiles";
 import {
   cleanParameterSchema,
   knownModelParameterSchema,
@@ -1441,13 +1459,19 @@ function strictGenerationPreflight(input: {
       }
     }
     if (paidArkText) {
+      const arkFilesImage = arkFilesEnabled() &&
+        resolved.kind === "image" &&
+        media.contentType === "image/png" &&
+        media.byteSize > arkFilesImageThresholdBytes;
       const supported = resolved.kind === "image"
         ? media.contentType === "image/png"
         : resolved.kind === "video"
           ? media.contentType === "video/mp4"
           : media.contentType === "audio/mpeg" || media.contentType === "audio/wav";
       const maximumBytes = resolved.kind === "image"
-        ? 10 * 1024 * 1024
+        ? arkFilesImage
+          ? arkFilesImageMaximumBytes
+          : 10 * 1024 * 1024
         : resolved.kind === "video"
           ? 50 * 1024 * 1024
           : 15 * 1024 * 1024;
@@ -1467,7 +1491,7 @@ function strictGenerationPreflight(input: {
         });
         continue;
       }
-      if (media.storageBackend === "local") {
+      if (media.storageBackend === "local" && !arkFilesImage) {
         paidTextBase64Bytes += Math.ceil(media.byteSize / 3) * 4 + 64;
         if (paidTextBase64Bytes > 64 * 1_024 * 1_024) {
           appendProblem(persisted, {
@@ -1736,6 +1760,9 @@ function safeFailure(error: unknown, kind: "text" | "audio" | "image" | "video")
     return { code: error.code, message: error.message };
   }
   if (error instanceof VolcengineArkTextError) {
+    return { code: error.code, message: error.message };
+  }
+  if (error instanceof ArkFilesError) {
     return { code: error.code, message: error.message };
   }
   if (error instanceof RelayProviderError) {
@@ -2287,6 +2314,10 @@ function relayContextMimeType(input: {
 export async function executeTextTaskWithDependencies(
   taskId: string,
   dependencies: {
+    acquireGenerationSnapshot?: (
+      profileId: string,
+      ownerId: string,
+    ) => Promise<ProviderGenerationSnapshot>;
     acquireProfile: (
       profileId: string,
       ownerId: string,
@@ -2298,8 +2329,22 @@ export async function executeTextTaskWithDependencies(
       ownerId: string;
     }) => string | undefined;
     mediaUrlForOwner: typeof providerMediaUrlForOwner;
+    ossReadUrlForMedia?: (
+      media: MediaRecord,
+    ) => Promise<string>;
     signal?: AbortSignal;
     store: TextTaskStore;
+    uploadArkImage?: (input: {
+      bytes: Buffer;
+      fileName: string;
+      mimeType: string;
+      profileId: string;
+      signal?: AbortSignal;
+      snapshot: ProviderGenerationSnapshot;
+    }) => Promise<{
+      cleanup: (cleanupSignal?: AbortSignal) => Promise<void>;
+      fileId: string;
+    }>;
     usePinnedRelayTransport?: boolean;
   },
 ) {
@@ -2315,6 +2360,9 @@ export async function executeTextTaskWithDependencies(
     });
     return;
   }
+  const cleanups: Array<
+    (cleanupSignal?: AbortSignal) => Promise<void>
+  > = [];
   try {
     const protocol = taskProviderProtocol(running);
     if (protocol !== "native" && !relayTextProtocol(protocol)) {
@@ -2339,6 +2387,69 @@ export async function executeTextTaskWithDependencies(
         kind: snapshot.kind,
         ownerId: running.ownerId!,
       };
+      const acquireGenerationSnapshot =
+        dependencies.acquireGenerationSnapshot;
+      const ossReadUrlForMedia = dependencies.ossReadUrlForMedia;
+      const uploadArkImage = dependencies.uploadArkImage;
+      const arkFilesAvailable = protocol === "native" &&
+        arkFilesEnabled() &&
+        acquireGenerationSnapshot !== undefined &&
+        uploadArkImage !== undefined;
+      if (arkFilesAvailable && snapshot.kind === "image") {
+        const media = readableMediaForOwner(
+          running.ownerId!,
+          snapshot.kind,
+          snapshot.assetId!,
+        );
+        if (
+          media &&
+          media.storageStatus === "ready" &&
+          media.contentType === "image/png" &&
+          media.byteSize > arkFilesImageThresholdBytes &&
+          media.byteSize <= arkFilesImageMaximumBytes &&
+          (
+            ossReadUrlForMedia !== undefined ||
+            media.storageBackend !== "oss"
+          )
+        ) {
+          const generationSnapshot =
+            await acquireGenerationSnapshot(
+              running.providerProfileId,
+              running.ownerId!,
+            );
+          const ossReadUrl = media.storageBackend === "oss"
+            ? await ossReadUrlForMedia!(media)
+            : undefined;
+          const { bytes, fileName } = await readArkImageBytes({
+            assetId: mediaInput.assetId,
+            byteSize: media.byteSize,
+            checksumSha256: media.checksumSha256,
+            contentType: media.contentType,
+            objectKey: media.objectKey,
+            ossReadUrl,
+            ownerId: mediaInput.ownerId,
+            signal: dependencies.signal,
+            storageBackend: media.storageBackend,
+            storageName: media.storageName,
+          });
+          const uploaded = await uploadArkImage({
+            bytes,
+            fileName,
+            mimeType: media.contentType,
+            profileId: running.providerProfileId,
+            signal: dependencies.signal,
+            snapshot: generationSnapshot,
+          });
+          inputs.push({
+            fileId: uploaded.fileId,
+            kind: "image",
+            order: snapshot.order,
+            role: "context-image",
+          });
+          cleanups.push(uploaded.cleanup);
+          continue;
+        }
+      }
       const url = await dependencies.mediaUrlForOwner(mediaInput, {
         rules: referenceMediaRulesForTask(running) ?? genericReferenceMediaRules,
       });
@@ -2452,6 +2563,13 @@ export async function executeTextTaskWithDependencies(
     } catch {
       // A concurrent terminal transition wins; no second Provider call is made.
     }
+  } finally {
+    // Deletion uses its own signal: the task cancellation signal may already
+    // be aborted and would cancel the DELETE before it starts.
+    const cleanupSignal = new AbortController().signal;
+    await Promise.all(cleanups.map((cleanup) =>
+      cleanup(cleanupSignal).catch(() => undefined),
+    ));
   }
 }
 
@@ -2460,11 +2578,30 @@ async function executeTextTask(taskId: string, fetcher: typeof fetch = fetch) {
   runningTextRequests.set(taskId, controller);
   try {
     await executeTextTaskWithDependencies(taskId, {
+      acquireGenerationSnapshot: acquireProviderGenerationSnapshot,
       acquireProfile: acquireProviderGenerationRequestLease,
       fetcher,
       mediaUrlForOwner: providerMediaUrlForOwner,
+      ossReadUrlForMedia: async (media) => {
+        const storageProfile = await storageProfileForMedia(media);
+        if (!storageProfile) {
+          throw new ProviderMediaError(
+            "MEDIA_UNAVAILABLE",
+            "参考素材的云端存储暂不可用",
+          );
+        }
+        return createPrivateAliyunOssReadUrl(
+          media.objectKey,
+          storageProfile,
+          600,
+        );
+      },
       signal: controller.signal,
       store: taskStore(),
+      uploadArkImage: (input) => uploadArkImageFile({
+        ...input,
+        fetcher,
+      }),
       usePinnedRelayTransport: true,
     });
   } finally {
