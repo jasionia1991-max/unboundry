@@ -2,8 +2,17 @@
 
 断点版本：`77`
 更新时间：`2026-08-19`
-状态：`V0_6_21_UNIVERSAL_PROVIDER_RESULT_SAVE_PRODUCTION_PUBLISHED_USER_PASS（2026-08-19 已发布，用户已复验通过）`
+状态：`V0_6_22_GENERATION_STABILITY_QUAD_FIX_PRODUCTION_PUBLISHED_PENDING_USER_RECHECK（2026-08-19 已发布，待用户复验）`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。当前一页快照见 `UNBOUNDRY_CURRENT_STATE.md`。
+
+## 0. 最新已发布事件：v0.6.22 四合一生成稳定性修复（2026-08-19 已发布，待用户复验）
+
+- 用户确认方案、版本号 `v0.6.22` 并同意直接走完整发布流程。
+- 四合一：同输入防重扣费（同一输入已有平台已受理/已出片时只允许「核对结果」）；成片保存失败按瞬时/终局分类（瞬时继续后台核对/轮询并保持呼吸灯，终局按任务原样收口）；手动/自动重试共用同一道防重判断；切换模型保留已选比例与画质。服装模板同步改为通用服装描述并母版化（contentOnly）。
+- 精确源码commit`fc393adc4aaade91e65598ed3bbc9e4edd082f06`通过正式安全全量`118/118 specs、991/991 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。
+- 生产current已切到`/opt/unboundry/releases/v0.6.22-generation-stability-20260819`；冻结备份`v0.6.22-frozen-qrk9xf`（365文件，双清单SHA`f5fccbe5…`）、公网资源逐字节哈希、service/schema39和数据门均PASS。发布核验时保持467 tasks、474 attempts、active0、49 public templates（47 published）。
+- `v0.6.22`标签精确指向源码commit；PR #44已合并到`main`，merge commit`6b4ee831b8cab30c97b7cb174d4809ce1413e612`。2026-08-19 已发布，当前状态是`PRODUCTION_PUBLISHED_PENDING_USER_RECHECK`，待用户线上复验。
+- 权威记录：`spec/V0_6_22_PRODUCTION_RECEIPT_2026-08-19.json`。
 
 ## 0. 最新已发布事件：v0.6.21 通用保存保险丝（2026-08-19 已发布，用户已复验通过）
 

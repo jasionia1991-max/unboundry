@@ -1,7 +1,7 @@
 # Unboundry 版本发布 Runbook
 
 给人和接手的 AI 看。作用：从「版本号 + 上线授权」到「线上验证 + 文档收口」的每一步照做，避免每次现场拼命令、用错脚本。
-基线：v0.6.21（2026-08-19）按本流程发布并核验通过；本文不替代 `上线规矩.md` 的授权纪律。
+基线：v0.6.22（2026-08-19）按本流程发布并核验通过（待用户复验）；本文不替代 `上线规矩.md` 的授权纪律。
 
 **适用范围**：本 Runbook 只用于「代码 / 构建产物」变更（bump 版本、改逻辑、重发静态资源）。纯公共模板数据变更（新增/修改模板、预览图、种子）走 `上线规矩.md` 的「加模板轻量路径」，**不需要版本号、不打标签、不跑全量**，直接提交 + 服务器灌库。
 
@@ -52,7 +52,7 @@ node scripts/run-safe-tests.mjs full
 
 - 需要 Node 22.23.1（`/Users/mymy/.hermes/node/bin/node`）、npm 10.9.8、Playwright 浏览器缓存、npm 离线缓存，缺了 preflight 会明说。
 - 沙箱内跑会因端口 EPERM 失败，**必须在非沙箱环境**跑。
-- 通过标准：`118/118 specs、986/986 tests PASS`，failed/skipped/retries/blocked/reportErrors 全 0，`listener4173` unchanged。
+- 通过标准：`118/118 specs、991/991 tests PASS`，failed/skipped/retries/blocked/reportErrors 全 0，`listener4173` unchanged。
 
 ## 4. 服务器准备发布目录（staging）
 
