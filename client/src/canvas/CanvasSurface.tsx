@@ -6257,7 +6257,7 @@ export function CanvasSurface({
     }
     assertSafePersistence();
   }, [persistenceFixture]);
-  const waitForCanvasRevision = useCallback(async (timeoutMs = 15_000) => {
+  const waitForCanvasRevision = useCallback(async (timeoutMs = 30_000) => {
     const assertSafePersistence = () => {
       if (
         persistenceFixture &&

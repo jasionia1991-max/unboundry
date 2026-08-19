@@ -414,6 +414,15 @@ export class ProviderProfileInUseError extends Error {
   }
 }
 
+export class ProviderProfileLockBusyError extends Error {
+  readonly code = "PROVIDER_LOCK_BUSY" as const;
+
+  constructor() {
+    super("平台连接正在处理中，请稍后自动重试");
+    this.name = "ProviderProfileLockBusyError";
+  }
+}
+
 function assertProviderProfileMutationHasNoPaidWork(
   store: DatabaseSync,
   profileId: string,
@@ -1248,10 +1257,10 @@ export async function acquireProviderGenerationRequestLease(
   try {
     lock = await acquireDocumentLock();
   } catch {
-    throw new ProviderGenerationConfigurationError(
-      "PROVIDER_CONFIGURATION_MISMATCH",
-      "平台连接正在更新，已阻止本次生成",
-    );
+    // A busy document lock means another Provider request or writer is
+    // currently holding the same lease. It is a transient contention signal,
+    // never a configuration change; callers may retry with bounded backoff.
+    throw new ProviderProfileLockBusyError();
   }
   try {
     const document = await readDocument();

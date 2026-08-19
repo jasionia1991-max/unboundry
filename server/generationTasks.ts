@@ -65,6 +65,7 @@ import {
   getProviderGenerationProfileState,
   providerConfigurationVersion,
   ProviderGenerationConfigurationError,
+  ProviderProfileLockBusyError,
   type ProviderGenerationRequestLease,
   type ProviderProfile,
 } from "./providerProfiles";
@@ -126,6 +127,7 @@ import {
   recoverPendingMediaDeletions,
   recoverPendingUploadMediaPublications,
 } from "./mediaLifecycle";
+import { StorageConfigurationBusyError } from "./secureStorageProfiles";
 import {
   cleanParameterSchema,
   knownModelParameterSchema,
@@ -484,7 +486,71 @@ function taskStore(launchOptions?: GenerationLaunchOptions) {
       )
     ).catch(() => undefined);
   }
+  ensureGenerationRecoverySweep();
+  void runGenerationRecoverySweep().catch(() => undefined);
   return store;
+}
+
+let generationRecoverySweepTimer: NodeJS.Timeout | undefined;
+
+function ensureGenerationRecoverySweep() {
+  if (
+    generationRecoverySweepTimer ||
+    process.env.UNBOUNDRY_DISABLE_GENERATION_RECOVERY_SWEEP === "1"
+  ) {
+    return;
+  }
+  generationRecoverySweepTimer = setInterval(() => {
+    void runGenerationRecoverySweep().catch(() => undefined);
+  }, 30_000);
+  generationRecoverySweepTimer.unref?.();
+}
+
+/**
+ * Server-side safety net: any failed task that still holds an accepted
+ * Provider task id gets one automatic resume (never a new paid request).
+ * This guarantees re-collection does not depend on the browser being open
+ * or on the user tapping a button.
+ */
+export async function runGenerationRecoverySweep(options?: {
+  launch?: (taskId: string, kind: GenerationTask["kind"]) => void;
+  store?: ReturnType<typeof createGenerationTaskStore>;
+}) {
+  const launch = options?.launch ?? launchGenerationTask;
+  const store = options?.store ?? taskStore();
+  // 失败不足两分钟的任务先交给正在运行的轮询/自动重试通道，
+  // 避免前后端在同一窗口内重复抢同一个任务。
+  const olderThan = new Date(Date.now() - 2 * 60_000);
+  for (const task of store.listFailedAutoRecoverable(olderThan)) {
+    if (task.attempt >= 2 || task.state !== "failed") continue;
+    const retry = retrySafetyDecision(
+      task,
+      store.getProviderAttemptForTask(task.id),
+      store.hasUnsafeProviderAttemptForNewPaidRetry(task.id),
+    );
+    if (!retry.allowed || retry.mode !== "resume-provider-task") continue;
+    if (resumeProviderTaskSnapshotProblem(task)) continue;
+    const binding = store
+      .retryBindingsForCanvas(task.canvasId, task.ownerId ?? undefined)
+      .get(task.id);
+    if (!binding) continue;
+    try {
+      const queued = store.admitRetry({
+        canvasId: task.canvasId,
+        expectedAttempt: task.attempt,
+        expectedCanvasRevision: binding.canvasRevision,
+        expectedGenerationInputKey: binding.generationInputKey,
+        expectedUpdatedAt: task.updatedAt,
+        kind: task.kind,
+        mode: "resume-provider-task",
+        nodeId: task.nodeId,
+        taskId: task.id,
+      });
+      if (queued) launch(task.id, task.kind);
+    } catch {
+      // A concurrent terminal/fence transition wins; never force a paid retry.
+    }
+  }
 }
 
 function requireSameProviderConfiguration(
@@ -1645,6 +1711,12 @@ async function generationAvailability(ownerId: string) {
 }
 
 function safeFailure(error: unknown, kind: "text" | "audio" | "image" | "video") {
+  if (isPersistenceBusyError(error)) {
+    return {
+      code: "RESULT_DELAYED",
+      message: "系统正在处理，稍后会自动继续保存结果",
+    };
+  }
   if (error instanceof ProviderGenerationConfigurationError) {
     return { code: error.code, message: error.message };
   }
@@ -1699,6 +1771,17 @@ function safeFailure(error: unknown, kind: "text" | "audio" | "image" | "video")
   };
 }
 
+function isPersistenceBusyError(error: unknown) {
+  if (
+    error instanceof StorageConfigurationBusyError ||
+    error instanceof ProviderProfileLockBusyError
+  ) {
+    return true;
+  }
+  return error instanceof Error &&
+    /database is locked|SQLITE_BUSY|busy/i.test(error.message);
+}
+
 export function isTransientProviderResultSaveError(error: unknown) {
   if (error instanceof ResourceBudgetError) return true;
   if (
@@ -1707,6 +1790,7 @@ export function isTransientProviderResultSaveError(error: unknown) {
   ) {
     return true;
   }
+  if (isPersistenceBusyError(error)) return true;
   if (!(error instanceof ProviderResultMediaError)) return false;
   return error.code === "NETWORK" ||
     error.code === "TIMEOUT" ||
@@ -1730,21 +1814,27 @@ function isDefinitiveProviderResultSaveError(error: unknown) {
  * 绝不把平台已成功、只是本地暂时保存不了的任务提前判红。
  */
 export async function attemptProviderResultSave(input: {
+  backoffMs?: readonly number[];
   taskId: string;
   save: () => Promise<unknown>;
 }): Promise<boolean> {
-  try {
-    await input.save();
-    return true;
-  } catch (error) {
-    if (
-      !isTransientProviderResultSaveError(error) &&
-      isDefinitiveProviderResultSaveError(error)
-    ) {
-      throw error;
+  const backoffMs = input.backoffMs ??
+    [1_000, 2_000, 4_000, 8_000, 15_000];
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await input.save();
+      return true;
+    } catch (error) {
+      const transient = isTransientProviderResultSaveError(error) ||
+        !isDefinitiveProviderResultSaveError(error);
+      if (!transient) throw error;
+      if (attempt >= backoffMs.length - 1) {
+        logGenerationDiagnostic(input.taskId, "save", error);
+        return false;
+      }
+      logGenerationDiagnostic(input.taskId, "save-retry", error);
+      await new Promise((resolve) => setTimeout(resolve, backoffMs[attempt]));
     }
-    logGenerationDiagnostic(input.taskId, "save", error);
-    return false;
   }
 }
 
@@ -2321,8 +2411,13 @@ export async function executeTextTaskWithDependencies(
               : undefined,
           },
           {
-            beforeProviderRequest: () =>
-              dependencies.store.recordProviderAttempt(taskId),
+            beforeProviderRequest: () => {
+              dependencies.store.recordProviderAttempt(taskId);
+              // Pinned relay transport bypasses the injected fetch wrapper,
+              // so the Provider lease must be released at the request
+              // boundary instead of waiting for the remote response.
+              lease.release();
+            },
             fetcher: leasedFetch,
             signal: dependencies.signal,
             usePinnedTransport: dependencies.usePinnedRelayTransport,
@@ -2818,7 +2913,7 @@ async function recoverRelayMediaAfterPoll(
           ownerId: current.ownerId ?? "",
           profileId: current.providerProfileId ?? profile.id,
           task: current,
-          request: (currentProfile, leasedFetch) =>
+          request: (currentProfile, leasedFetch, providerBoundary) =>
             pollRelayMediaTask(
               assertRelayProfile(currentProfile, "media-generate"),
               {
@@ -2827,6 +2922,7 @@ async function recoverRelayMediaAfterPoll(
                 providerProtocol: "media-generate",
               },
               {
+                beforeProviderRequest: providerBoundary(),
                 fetcher: leasedFetch,
                 signal: controller.signal,
                 usePinnedTransport: true,
@@ -3023,7 +3119,7 @@ async function executeRelayMediaTask(
           ownerId: ownerId,
           profileId: running.providerProfileId,
           task: running,
-          request: async (currentProfile, leasedFetch) => {
+          request: async (currentProfile, leasedFetch, providerBoundary) => {
             const created = await submitRelayMedia(
               assertRelayProfile(currentProfile, "media-generate"),
               {
@@ -3034,8 +3130,9 @@ async function executeRelayMediaTask(
                 providerProtocol: "media-generate",
               },
               {
-                beforeProviderRequest: () =>
+                beforeProviderRequest: providerBoundary(() =>
                   taskStore().recordProviderAttempt(taskId),
+                ),
                 fetcher: leasedFetch,
                 signal: controller.signal,
                 usePinnedTransport: true,
@@ -3079,7 +3176,7 @@ async function executeRelayMediaTask(
           ownerId: ownerId,
           profileId: running.providerProfileId,
           task: running,
-          request: (currentProfile, leasedFetch) =>
+          request: (currentProfile, leasedFetch, providerBoundary) =>
             pollRelayMediaTask(
               assertRelayProfile(currentProfile, "media-generate"),
               {
@@ -3088,6 +3185,7 @@ async function executeRelayMediaTask(
                 providerProtocol: "media-generate",
               },
               {
+                beforeProviderRequest: providerBoundary(),
                 fetcher: leasedFetch,
                 signal: controller.signal,
                 usePinnedTransport: true,
@@ -3162,7 +3260,7 @@ async function recoverGptImageFromProviderTask(
         ownerId: running.ownerId,
         profileId: running.providerProfileId,
         task: running,
-        request: (currentProfile, leasedFetch) =>
+        request: (currentProfile, leasedFetch, providerBoundary) =>
           pollRelayMediaTask(
             assertRelayProfile(currentProfile, "media-generate"),
             {
@@ -3171,6 +3269,7 @@ async function recoverGptImageFromProviderTask(
               providerProtocol: "media-generate",
             },
             {
+              beforeProviderRequest: providerBoundary(),
               fetcher: leasedFetch,
               signal: controller.signal,
               usePinnedTransport: true,
@@ -4778,7 +4877,14 @@ export async function generationTasks(
         } finally {
           lease.release();
         }
-      } catch {
+      } catch (error) {
+        if (error instanceof ProviderProfileLockBusyError) {
+          json(response, 409, {
+            code: "PROVIDER_LOCK_BUSY",
+            error: "系统正在处理，请稍后自动重试",
+          });
+          return;
+        }
         json(response, 409, {
           code: "PROVIDER_CONFIGURATION_MISMATCH",
           error: "平台连接已变化，请在节点重新提交，不能继续旧任务",

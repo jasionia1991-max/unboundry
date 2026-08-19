@@ -4516,6 +4516,58 @@ test("storage routing read and media reservation hold one profile mutation lock"
   });
 });
 
+test("media reservation runs after the storage profile mutation lock is released", async () => {
+  await withDataDirectory("routing-reservation-lock-free", async (directory) => {
+    const ownerId = "m88-routing-free-owner";
+    addOwner(directory, ownerId);
+    const profile = await saveStorageProfile({
+      accessKeyId: "m88-routing-free-key",
+      accessKeySecret: "m88-routing-free-secret",
+      bucket: "m88-routing-free-bucket",
+      endpoint: "https://oss-cn-shanghai.aliyuncs.com",
+      label: "M88 routing free",
+      region: "oss-cn-shanghai",
+    });
+    await markStorageProfileVerified(profile.id);
+    await activateStorageProfile(profile.id);
+    await setStorageMediaRouting(true);
+    const id = "m88-routing-free-asset";
+    let nested: unknown;
+    let nestedError: unknown;
+    const publication = await withStorageMediaRoutingReservation(async (routing) => {
+      // reserve 在配置锁外执行：再取一次路由快照应立即成功，不能排队挂起。
+      try {
+        nested = await withStorageMediaRoutingReservation((inner) => ({
+          id: inner.profile?.id,
+        }));
+      } catch (error) {
+        nestedError = error;
+      }
+      return {
+        profile: routing.profile!,
+        reservation: reserveMediaPublication({
+          contentType: "image/png",
+          finalStorageName: `${id}.png`,
+          id,
+          kind: "image",
+          objectKey: `objects/2026/08/image/${id}.png`,
+          ownerId,
+          storageBackend: "oss",
+          storageProfileId: routing.profile!.id,
+        }),
+      };
+    });
+    expect(nestedError).toBeUndefined();
+    expect(nested).toMatchObject({ id: profile.id });
+    expect(publication.reservation.storageProfileId).toBe(profile.id);
+    await compensateMediaPublication(publication.reservation, {
+      code: "M88_ROUTING_FREE_CLEANUP",
+      deleteExternalObject: async () => undefined,
+      profile: publication.profile,
+    });
+  });
+});
+
 test("startup upload recovery cutoff cleans old attempts but never same-process new uploads", async () => {
   await withDataDirectory("upload-recovery-cutoff", async (directory) => {
     const ownerId = "m88-recovery-cutoff-owner";

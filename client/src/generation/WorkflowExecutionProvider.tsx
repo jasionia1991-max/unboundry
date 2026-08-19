@@ -113,6 +113,27 @@ export function WorkflowExecutionProvider({
     if (running) running.cancelled = true;
   }, []);
 
+  const waitForCanvasStable = useCallback(async (groupId: string) => {
+    // 画布自动保存期间不弹红字：最多等三轮，每轮 30 秒；
+    // 保存完成会自动继续，只有真正超时才给中性提示。
+    const attempts = 3;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        await flushCanvasSave();
+        await waitForCanvasRevision(30_000);
+        const stripped = stripStaleCanvasSaveErrors(getNodes(), groupId);
+        if (!stripped.changed) return;
+        setNodes(stripped.nodes);
+        await flushCanvasSave();
+        await waitForCanvasRevision(30_000);
+        return;
+      } catch (error) {
+        if (attempt === attempts - 1) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+      }
+    }
+  }, [flushCanvasSave, getNodes, setNodes, waitForCanvasRevision]);
+
   const executeGroup = useCallback(
     async (groupId: string) => {
       if (isFixture) {
@@ -121,18 +142,12 @@ export function WorkflowExecutionProvider({
       }
       if (runningGroups.current.has(groupId)) return;
       try {
-        await flushCanvasSave();
-        await waitForCanvasRevision();
-        const stripped = stripStaleCanvasSaveErrors(getNodes(), groupId);
-        if (stripped.changed) {
-          setNodes(stripped.nodes);
-          await flushCanvasSave();
-          await waitForCanvasRevision();
-        }
+        await waitForCanvasStable(groupId);
       } catch (error) {
         notify(
-          error instanceof Error ? error.message : "画布还在保存，请稍后再试",
-          "error",
+          error instanceof Error
+            ? error.message
+            : "画布内容还在保存，稍后会继续，请稍候",
         );
         return;
       }
@@ -275,7 +290,7 @@ export function WorkflowExecutionProvider({
         setExecutingGroupIds(new Set(runningGroups.current.keys()));
       }
     },
-    [canvasId, flushCanvasSave, getEdges, getNodes, isFixture, notify, waitForCanvasRevision],
+    [canvasId, getEdges, getNodes, isFixture, notify, waitForCanvasStable],
   );
 
   const value = useMemo<WorkflowExecutionValue>(

@@ -3,6 +3,7 @@ import {
   safelyRetryableGenerationTask,
 } from "./generationRetry";
 import {
+  GenerationRequestError,
   getGenerationTask,
   reconcileGenerationTask,
   reconcileOutcomeMessage,
@@ -12,6 +13,29 @@ import {
   type GenerationTaskKind,
   type GenerationTaskSummary,
 } from "./generationTasks";
+
+/**
+ * “平台连接正在处理中”是临时锁忙，不是失败：有界自动重试几次，
+ * 尽量不让用户看到需要手动操作的提示。
+ */
+async function withLockBusyRetry<T>(operation: () => Promise<T>): Promise<T> {
+  const attempts = 3;
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (
+        attempt < attempts - 1 &&
+        error instanceof GenerationRequestError &&
+        error.code === "PROVIDER_LOCK_BUSY"
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        continue;
+      }
+      throw error;
+    }
+  }
+}
 
 export function workflowRecoveryPlan(task: {
   errorCode?: string | null;
@@ -57,9 +81,11 @@ export async function recoverWorkflowGenerationOnce(input: {
   if (plan === "skip") return { status: "skipped", task };
 
   if (plan === "reconcile") {
-    const result = await reconcileGenerationTask(
-      target,
-      input.waitForCanvasRevision,
+    const result = await withLockBusyRetry(() =>
+      reconcileGenerationTask(
+        target,
+        input.waitForCanvasRevision,
+      ),
     );
     if (result.outcome === "recovered") {
       const finished = await waitForGenerationTask(result.task.id);
@@ -89,7 +115,9 @@ export async function recoverWorkflowGenerationOnce(input: {
     };
   }
 
-  const accepted = await retryGenerationTask(target, input.waitForCanvasRevision);
+  const accepted = await withLockBusyRetry(() =>
+    retryGenerationTask(target, input.waitForCanvasRevision),
+  );
   const finished = await waitForGenerationTask(accepted.id);
   if (finished.state === "success") return { status: "success", task: finished };
   return {

@@ -24,6 +24,12 @@
         "apply:apparel-auto-launch"
       ]
     },
+    "scripts/apply-recommended-generation-safety.mjs": {
+      "mode": "frozen",
+      "scriptSha256": "ab28697ca7b85751cb93db96c682a160191f18e173304d4ddb8da7a120b601ea",
+      "reason": "Writes the reviewed generation concurrency recommendations into the production database; automatic execution is forbidden and apply requires an explicit flag.",
+      "manualNpmScripts": []
+    },
     "scripts/apply-ecommerce-workflow-batch-2.mjs": {
       "mode": "frozen",
       "scriptSha256": "8b1b85b7063d0a0cd422cc134d88ca2e5bc8a9135aca2e9ebb69d6b766639bbb",
@@ -83,7 +89,7 @@
       "scriptSha256": "c4ed308be00ed27239b6b53aa0f57cc51cda69422058d3ba41460657e45a8336",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "Full snapshot bridge/final fixtures prove the release closure",
-      "targetSha256": "40fb0d9b0ae8f405acfb8c5c2112547fa98e85b708eaab011337848f07158943"
+      "targetSha256": "63a8551222a459dc9c8c09fb9cdd1ff475bfb2541dfa734c57b3f525cb09db79"
     },
     "scripts/check-greenfield.mjs": {
       "mode": "behavior-test",
@@ -97,14 +103,14 @@
       "scriptSha256": "9b1807c98cd6e59a288fd8b81d29299bb5b34b67e7bed9a2003c8989c95d01e7",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-restart-persistence.mjs",
-      "targetSha256": "40fb0d9b0ae8f405acfb8c5c2112547fa98e85b708eaab011337848f07158943"
+      "targetSha256": "63a8551222a459dc9c8c09fb9cdd1ff475bfb2541dfa734c57b3f525cb09db79"
     },
     "scripts/check-v051-exact-runtime.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "a1dc5bfd3e5afbc67f824f6aba36ff7408f561133021a1062b6b4e92dcdcd6db",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-v051-exact-runtime.mjs",
-      "targetSha256": "40fb0d9b0ae8f405acfb8c5c2112547fa98e85b708eaab011337848f07158943"
+      "targetSha256": "63a8551222a459dc9c8c09fb9cdd1ff475bfb2541dfa734c57b3f525cb09db79"
     },
     "scripts/deploy.mjs": {
       "mode": "frozen",

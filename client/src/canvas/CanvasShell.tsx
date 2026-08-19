@@ -1009,12 +1009,45 @@ export function CanvasShell({
     asset: CanvasLibraryAsset;
     sequence: number;
   }>();
+  // 手势诊断埋点：只记录，不改任何交互行为。
+  // 开启方式：地址栏加 ?gestureDiagnostics=1 后刷新，或
+  // localStorage.setItem("unboundry:gesture-diagnostics", "1")。
+  const gestureDiagnosticsOn = (() => {
+    try {
+      if (localStorage.getItem("unboundry:gesture-diagnostics") === "1") {
+        return true;
+      }
+      if (
+        typeof window !== "undefined" &&
+        new URLSearchParams(window.location.search).get("gestureDiagnostics") === "1"
+      ) {
+        localStorage.setItem("unboundry:gesture-diagnostics", "1");
+        return true;
+      }
+    } catch {
+      // 隐私模式等场景下 localStorage 不可用就静默关闭埋点。
+    }
+    return false;
+  })();
   // Infinite-canvas rule: zoom gestures must never zoom the browser page.
   // Ctrl+wheel / trackpad pinch anywhere in the app is consumed in the capture
   // phase so the surrounding chrome stays fixed; the canvas world handler
   // still converts the same gesture into canvas zoom.
   useEffect(() => {
     const blockBrowserPageZoom = (event: WheelEvent) => {
+      if (gestureDiagnosticsOn) {
+        console.info("[gesture-diagnostics]", {
+          ctrlKey: event.ctrlKey,
+          deltaMode: event.deltaMode,
+          deltaX: event.deltaX,
+          deltaY: event.deltaY,
+          target:
+            event.target instanceof Element
+              ? `${event.target.tagName}.${String(event.target.className)}`
+              : String(event.target),
+          type: event.type,
+        });
+      }
       if (!event.ctrlKey) return;
       event.preventDefault();
     };

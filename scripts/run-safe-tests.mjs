@@ -815,6 +815,9 @@ function sanitizedEnvironment({
     TMPDIR: testRoot,
     TEMP: testRoot,
     UNBOUNDRY_DATA_DIR: dataDirectory,
+    // 定时自动恢复在隔离测试环境里关闭：服务端恢复调度由专门的
+    // 单元测试直接调用验证，避免测试服务器误捞起夹具任务、误发网络请求。
+    UNBOUNDRY_DISABLE_GENERATION_RECOVERY_SWEEP: "1",
     UNBOUNDRY_SAFE_TEST: "1",
     UNBOUNDRY_SAFE_RUN_NONCE: sentinelNonce,
     UNBOUNDRY_SAFE_RUN_SENTINEL: sentinel,
@@ -2038,8 +2041,8 @@ async function discover(specs, suiteRoot, sourceRoot, browserRoot) {
         })}`,
       );
     }
-    if (discovery.tests !== 991) {
-      fail(`the frozen 991-test inventory changed to ${discovery.tests}`);
+    if (discovery.tests !== 994) {
+      fail(`the frozen 994-test inventory changed to ${discovery.tests}`);
     }
     const idsByFile = {};
     const { entries } = collectReportEntries(reportFile, sourceRoot);

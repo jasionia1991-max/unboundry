@@ -130,6 +130,7 @@ const generationErrorCodeMessages: Record<
   PROVIDER_CONFIGURATION_MISMATCH: "平台连接配置已变化，请刷新页面后重新提交",
   PROVIDER_DRIVER_MISMATCH: "平台连接配置不匹配，请联系管理员",
   PROVIDER_FAILED: "模型平台未完成本次生成，请重试",
+  PROVIDER_LOCK_BUSY: "系统正在处理，请稍后自动重试",
   PROVIDER_PROFILE_MISSING: "平台安全配置缺失，请联系管理员",
   PROVIDER_REQUEST_FAILED:
     "已向模型提交，但请求未完成；为避免重复扣费，本次不会自动重提",

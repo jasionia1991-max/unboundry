@@ -293,6 +293,12 @@ function AudioNodeImpl({
   const [currentTime, setCurrentTime] = useState(0);
   const generating = Boolean(data.audioGenerating);
   const [activeTaskId, setActiveTaskId] = useState<string>();
+  // 页面刷新或组件重挂后 activeTaskId 会丢失，但持久化任务号还在；
+  // 取消按钮用它兜底，保证“生成中一定能取消”。
+  const cancelableTaskId = activeTaskId ??
+    (typeof data.audioGenerationTaskId === "string"
+      ? data.audioGenerationTaskId
+      : undefined);
   const [submitting, setSubmitting] = useState(false);
   const [modelSwitchProblem, setModelSwitchProblem] = useState("");
   const [playing, setPlaying] = useState(false);
@@ -1559,8 +1565,8 @@ function AudioNodeImpl({
       pollingPausedTaskIdRef.current = undefined;
       setPollingPausedTaskId(undefined);
     }
-    if (!activeTaskId || !relayCancellationAvailable) return;
-    const taskId = activeTaskId;
+    if (!cancelableTaskId || !relayCancellationAvailable) return;
+    const taskId = cancelableTaskId;
     const pollingRun = generationPollingRunRef.current?.taskId === taskId
       ? generationPollingRunRef.current
       : undefined;
@@ -2508,7 +2514,7 @@ function AudioNodeImpl({
           )}
           <button
             aria-label={
-              generating && activeTaskId && relayCancellationAvailable
+              generating && cancelableTaskId && relayCancellationAvailable
                 ? "取消生成"
                 : generating
                   ? "Generating..."
@@ -2535,7 +2541,7 @@ function AudioNodeImpl({
             disabled={
               submitting ||
               (generating
-                ? !activeTaskId || !relayCancellationAvailable
+                ? !cancelableTaskId || !relayCancellationAvailable
                 : !inputPreflight.canSubmit ||
                   serverInputProblems.length > 0 ||
                   !selectedAudioModel ||
@@ -2547,7 +2553,7 @@ function AudioNodeImpl({
             }
             type="button"
           >
-            {generating && activeTaskId && relayCancellationAvailable
+            {generating && cancelableTaskId && relayCancellationAvailable
               ? "×"
               : generating
                 ? "…"

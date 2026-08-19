@@ -108,29 +108,35 @@ test("relay save blips are transient while result and local format errors are no
   expect(isTransientProviderResultSaveError(new Error("unknown"))).toBe(false);
 });
 
-test("the shared save gate keeps polling on transient errors and throws real ones", async () => {
+test("the shared save gate retries transient errors with a bounded budget and throws real ones", async () => {
   let attempts = 0;
   const transient = () => attemptProviderResultSave({
+    backoffMs: [0, 0, 0, 0, 0],
     taskId: "save-gate-transient",
     save: async () => {
       attempts += 1;
-      if (attempts === 1) {
+      if (attempts <= 5) {
         throw new ProviderResultMediaError("NETWORK", "模型结果暂时无法下载");
       }
     },
   });
   expect(await transient()).toBe(false);
   expect(await transient()).toBe(true);
+  expect(attempts).toBe(6);
 
+  let formatAttempts = 0;
   await expect(attemptProviderResultSave({
+    backoffMs: [0, 0, 0, 0, 0],
     taskId: "save-gate-format",
     save: () => {
+      formatAttempts += 1;
       throw new ProviderResultMediaError("FORMAT", "模型结果格式不受支持");
     },
   })).rejects.toMatchObject({ code: "FORMAT" });
+  expect(formatAttempts).toBe(1);
 });
 
-test("the shared save gate keeps polling on unknown errors and records the real message", async () => {
+test("the shared save gate retries unknown errors with a bounded budget and records the real message", async () => {
   const originalError = console.error;
   const diagnostics: unknown[][] = [];
   console.error = (...args) => {
@@ -139,19 +145,20 @@ test("the shared save gate keeps polling on unknown errors and records the real 
   try {
     let attempts = 0;
     const unknown = () => attemptProviderResultSave({
+      backoffMs: [0, 0, 0, 0, 0],
       taskId: "save-gate-unknown",
       save: async () => {
         attempts += 1;
-        if (attempts === 1) {
+        if (attempts <= 5) {
           throw new Error("unknown local publication failure");
         }
       },
     });
     expect(await unknown()).toBe(false);
     expect(await unknown()).toBe(true);
-    expect(attempts).toBe(2);
-    expect(diagnostics).toHaveLength(1);
-    const parsed = JSON.parse(String(diagnostics[0][0])) as {
+    expect(attempts).toBe(6);
+    expect(diagnostics).toHaveLength(5);
+    const parsed = JSON.parse(String(diagnostics.at(-1)![0])) as {
       errorCode: unknown;
       event: string;
       message: string;
