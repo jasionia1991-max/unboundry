@@ -2,8 +2,17 @@
 
 断点版本：`77`
 更新时间：`2026-08-19`
-状态：`V0_6_22_GENERATION_STABILITY_QUAD_FIX_PRODUCTION_PUBLISHED_PENDING_USER_RECHECK（2026-08-19 已发布，待用户复验）`
+状态：`V0_6_23_GENERATION_STABILITY_ROOTFIX_PRODUCTION_PUBLISHED_PENDING_USER_RECHECK（2026-08-19 已发布，待用户复验）`
 用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。当前一页快照见 `UNBOUNDRY_CURRENT_STATE.md`。
+
+## 0. 最新已发布事件：v0.6.23 生成稳定性根治修复（2026-08-19 已发布，待用户复验）
+
+- 用户确认版本号 `v0.6.23` 并说按流程发布（此前用户明确：以后 review 必须独立 agent 交叉）。
+- 根治内容：优创固定通道轮询/提交/恢复接上配置锁释放边界（发起平台请求即释放锁）；保存保险丝有界重试（5 次退避 1s/2s/4s/8s/15s）；锁忙不再误报「平台配置已变化」；服务端每 30 秒自动恢复有平台任务号的旧任务（只回收、绝不新付费）；前端锁忙自动重试、画布保存最长等 90 秒、取消用持久化任务号兜底；生产并发配置恢复推荐值 20/10/2/2/10/120。
+- 精确源码commit`56535e0fee9d595cc841a6da7812a40afa101187`通过正式安全全量`118/118 specs、994/994 tests PASS`，异常0；真实Provider、付费生成与OSS写入0。
+- 生产current已切到`/opt/unboundry/releases/v0.6.23-generation-stability-20260819`；冻结备份`v0.6.23-frozen-4b72b8`（365文件，双清单SHA`cd0a672d…`）、公网资源逐字节哈希、service/schema39和数据门均PASS。发布核验时保持473 tasks、480 attempts、active0、49 public templates（47 published）。
+- `v0.6.23`标签精确指向源码commit；PR #46已合并到`main`，merge commit`92ea16e0e2efa3c8f6afc7e28f50c3a616652241`。2026-08-19 已发布，当前状态是`PRODUCTION_PUBLISHED_PENDING_USER_RECHECK`，待用户线上复验。
+- 权威记录：`spec/V0_6_23_PRODUCTION_RECEIPT_2026-08-19.json`。
 
 ## 0. 最新已发布事件：v0.6.22 四合一生成稳定性修复（2026-08-19 已发布，待用户复验）
 
@@ -13,6 +22,7 @@
 - 生产current已切到`/opt/unboundry/releases/v0.6.22-generation-stability-20260819`；冻结备份`v0.6.22-frozen-qrk9xf`（365文件，双清单SHA`f5fccbe5…`）、公网资源逐字节哈希、service/schema39和数据门均PASS。发布核验时保持467 tasks、474 attempts、active0、49 public templates（47 published）。
 - `v0.6.22`标签精确指向源码commit；PR #44已合并到`main`，merge commit`6b4ee831b8cab30c97b7cb174d4809ce1413e612`。2026-08-19 已发布，当前状态是`PRODUCTION_PUBLISHED_PENDING_USER_RECHECK`，待用户线上复验。
 - 权威记录：`spec/V0_6_22_PRODUCTION_RECEIPT_2026-08-19.json`。
+- 注：用户继续排查后确认仍需全局根治，v0.6.23 已发布取代本版；本版待复验状态并入 v0.6.23 复验。
 
 ## 0. 最新已发布事件：v0.6.21 通用保存保险丝（2026-08-19 已发布，用户已复验通过）
 

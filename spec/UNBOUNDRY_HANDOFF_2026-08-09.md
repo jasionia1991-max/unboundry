@@ -6,6 +6,10 @@
 
 新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-19 的权威现状、产品合同和用户已点头的旧项收口。下面各节是历史增量，出现「当前」时只代表该时点。
 
+## 最新已发布事件：生成稳定性根治修复（v0.6.23，2026-08-19 已发布，待用户复验）
+
+用户确认版本号 `v0.6.23` 并说「按流程发布」。本轮针对 v0.6.22 上线后仍反复卡住/红字的问题做全局根治：优创固定通道的轮询、提交、恢复全部接上配置锁释放边界（发起平台请求即释放锁）；保存保险丝有界重试（5 次退避 1s/2s/4s/8s/15s），锁忙不再误报「配置已变化」；服务端每 30 秒自动扫描有平台任务号但本地未收片的旧任务并 resume（只回收、绝不重新付费提交）；前端锁忙自动重试、画布保存最长自动等 90 秒、取消用持久化任务号兜底；生产并发配置从 500 恢复推荐值（20/10/2/2/10/120）。精确源码commit`56535e0fee9d595cc841a6da7812a40afa101187`通过正式安全全量`118/118 specs、994/994 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.23-generation-stability-20260819`，公网资源哈希、冻结备份`v0.6.23-frozen-4b72b8`（365文件，双清单SHA`cd0a672d…`）、service/schema39及数据门PASS；发布核验时保持473 tasks、480 attempts、active0、49 public templates（47 published）。`v0.6.23`已推送，PR #46已合并到`main`（merge commit`92ea16e0e2efa3c8f6afc7e28f50c3a616652241`）。当前状态是`PRODUCTION_PUBLISHED_PENDING_USER_RECHECK`，待用户线上复验。权威记录：`spec/V0_6_23_PRODUCTION_RECEIPT_2026-08-19.json`。
+
 ## 最新已发布事件：四合一生成稳定性修复（v0.6.22，2026-08-19 已发布，待用户复验）
 
 用户确认方案、版本号 `v0.6.22` 并同意直接走完整发布流程。本轮四合一：1）同一输入已有平台任务已受理/已出片时禁止重复付费提交，只允许先「核对结果」；2）成片保存失败按瞬时/终局分类：瞬时错误继续后台核对/轮询并保持呼吸灯，终局错误按任务原样收口；3）手动/自动重试共用同一道同输入防重判断；4）切换模型时保留已选比例与画质。同时把服装模板提示词改为通用服装描述并母版化（contentOnly）。精确源码commit`fc393adc4aaade91e65598ed3bbc9e4edd082f06`通过正式安全全量`118/118 specs、991/991 tests PASS`，异常0，Provider/付费生成/OSS写入0。生产current为`/opt/unboundry/releases/v0.6.22-generation-stability-20260819`，公网资源哈希、冻结备份`v0.6.22-frozen-qrk9xf`（365文件，双清单SHA`f5fccbe5…`）、service/schema39及数据门PASS；发布核验时保持467 tasks、474 attempts、active0、49 public templates（47 published），服装模板已`--update-existing --apply`更新。`v0.6.22`已推送，PR #44已合并到`main`（merge commit`6b4ee831b8cab30c97b7cb174d4809ce1413e612`）。当前状态是`PRODUCTION_PUBLISHED_PENDING_USER_RECHECK`，待用户线上复验。权威记录：`spec/V0_6_22_PRODUCTION_RECEIPT_2026-08-19.json`。
