@@ -5,10 +5,11 @@
 
 ### 2026-08-19 电商服装详情页组图公共模板（加模板轻量路径）
 
-- 状态：`TEMPLATE_SOURCE_COMMITTED_PENDING_APPLY`（源码已提交，待服务器灌库 + 用户线上复验）。
+- 状态：`PRODUCTION_APPLIED_PENDING_USER_RECHECK`（2026-08-19 已按轻量路径灌入生产库，待用户打开线上页面复验）。
 - 要的结果：新增公共模板「电商服装详情页组图（6张·1:1）」：白底图输入 + 精品提示词母版 + 6 个 1:1·2K 出图节点（正面整体、V领蕾丝、袖口蕾丝、衣身蕾丝、面料肌理、缝线下摆），母版与白底图连到全部 6 个出图节点。
 - 立下的规矩：公共模板数据变更走「加模板轻量路径」，不需要版本号、不打标签、不跑全量；源码提交后由 `scripts/apply-public-template-seed.mjs` 灌生产库。规矩已写入 `上线规矩.md`，版本 Runbook 适用范围已同步注明。
 - 自动门：模板定向测试 m22/m77/m71/m81 共 66 条全绿；`run-safe-tests preflight` 通过；灌库脚本本地 dry-run/apply/幂等/冲突保护均已验证。
+- 上线：源码 commit `ad610b6`，PR #42 已合并（merge `b18742a9`）；生产备份 `/var/lib/unboundry-rollbacks/template-garment-six-20260819`（双清单一致）；已用 `scripts/apply-public-template-seed.mjs --apply` 写入生产库（published 46 → 47），schema39/服务 active，公网预览图 200。
 - 不做：不 bump 版本、不打 tag、不真实出图。
 
 ### 2026-08-19 通用保存保险丝（v0.6.21）
