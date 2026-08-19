@@ -1,6 +1,6 @@
 import { expect, test } from "./safe-test";
 
-test("template API provides the two real e-commerce templates and their graph data", async ({
+test("template API provides the three real e-commerce templates and their graph data", async ({
   page,
   request,
 }) => {
@@ -24,7 +24,7 @@ test("template API provides the two real e-commerce templates and their graph da
   expect(first.items).toHaveLength(1);
   expect(first.items[0].graph).toBeUndefined();
   expect(first.items[0].previewImage).toMatch(/^\/templates\/.+\.png$/);
-  expect(first.pagination).toEqual({ hasMore: true, limit: 1, offset: 0, total: 2 });
+  expect(first.pagination).toEqual({ hasMore: true, limit: 1, offset: 0, total: 3 });
 
   const imageExpertGraph = await request.get(
     "/api/templates?q=213.电商图片生成专家&limit=10&offset=0&includeGraph=true",
@@ -71,12 +71,41 @@ test("template API provides the two real e-commerce templates and their graph da
   expect(detail.items[0].graph.nodes.filter((node) => node.type === "text")).toHaveLength(2);
   expect(detail.items[0].graph.nodes.filter((node) => node.type === "image")).toHaveLength(9);
 
+  const garmentGraph = await request.get(
+    "/api/templates?q=服装详情页组图&limit=10&offset=0&includeGraph=true",
+  );
+  expect(garmentGraph.ok()).toBeTruthy();
+  const garment = await garmentGraph.json() as {
+    items: Array<{
+      graph: {
+        edges: Array<{ type: string }>;
+        nodes: Array<{ data: Record<string, unknown>; type: string }>;
+        version: 1;
+      };
+      id: string;
+    }>;
+  };
+  expect(garment.items).toHaveLength(1);
+  expect(garment.items[0].id).toBe("e6b7f8c4-8c7d-4f8e-9d0a-3a1b2c3d4e5f");
+  expect(garment.items[0].graph.version).toBe(1);
+  expect(garment.items[0].graph.nodes).toHaveLength(9);
+  expect(garment.items[0].graph.edges).toHaveLength(12);
+  expect(garment.items[0].graph.nodes.filter((node) => node.type === "group")).toHaveLength(1);
+  expect(garment.items[0].graph.nodes.filter((node) => node.type === "text")).toHaveLength(1);
+  const garmentImages = garment.items[0].graph.nodes.filter((node) => node.type === "image");
+  expect(garmentImages).toHaveLength(7);
+  for (const node of garmentImages) {
+    expect(node.data.imageAspectRatio).toBe("1:1");
+    expect(node.data.imageQuality).toBe("2k");
+  }
+
   await page.goto("/__fixture/panel.templates.public");
   const panel = page.getByTestId("templates-panel");
   await page.getByTestId("template-first-notice").getByRole("button", { name: "知道了" }).click();
   await panel.getByRole("searchbox", { name: "搜索资产包..." }).fill("电商");
   await expect(panel.getByText("电商详情页工作流", { exact: true })).toBeVisible();
   await expect(panel.getByText("213.电商图片生成专家", { exact: true })).toBeVisible();
+  await expect(panel.getByText("服装详情页组图", { exact: false })).toBeVisible();
   await panel.getByRole("searchbox", { name: "搜索资产包..." }).fill("分镜");
   await expect(panel.getByText("分镜大师", { exact: true })).toHaveCount(0);
 });

@@ -918,5 +918,315 @@
     "id": "aaf7cc53-a595-45da-a6bb-7c93309e0962",
     "previewImage": "/templates/ecommerce-image-expert-213.png",
     "title": "213.电商图片生成专家"
+  },
+  {
+    "id": "e6b7f8c4-8c7d-4f8e-9d0a-3a1b2c3d4e5f",
+    "title": "电商服装详情页组图（6张·1:1）",
+    "description": "上传一张服装白底图，自动生成6张电商详情页组图，全部1:1同尺寸：正面整体、V领蕾丝、袖口蕾丝、衣身蕾丝、面料肌理、缝线下摆，方便直接裁剪排版。",
+    "previewImage": "/templates/ecommerce-garment-detail-six.png",
+    "categories": [
+      "电商"
+    ],
+    "graph": {
+      "edges": [
+        {
+          "id": "template-edge-1",
+          "source": "template-node-1",
+          "target": "template-node-3",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-2",
+          "source": "template-node-2",
+          "target": "template-node-3",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-3",
+          "source": "template-node-1",
+          "target": "template-node-4",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-4",
+          "source": "template-node-2",
+          "target": "template-node-4",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-5",
+          "source": "template-node-1",
+          "target": "template-node-5",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-6",
+          "source": "template-node-2",
+          "target": "template-node-5",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-7",
+          "source": "template-node-1",
+          "target": "template-node-6",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-8",
+          "source": "template-node-2",
+          "target": "template-node-6",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-9",
+          "source": "template-node-1",
+          "target": "template-node-7",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-10",
+          "source": "template-node-2",
+          "target": "template-node-7",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-11",
+          "source": "template-node-1",
+          "target": "template-node-8",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        },
+        {
+          "id": "template-edge-12",
+          "source": "template-node-2",
+          "target": "template-node-8",
+          "sourceHandle": "source",
+          "targetHandle": "target",
+          "type": "cuttable"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "template-group",
+          "type": "group",
+          "position": {
+            "x": 36,
+            "y": 36
+          },
+          "data": {
+            "label": "Group",
+            "title": "电商服装详情页组图（6张·1:1）"
+          },
+          "style": {
+            "height": 718,
+            "width": 1578
+          },
+          "zIndex": 0
+        },
+        {
+          "id": "template-node-1",
+          "type": "image",
+          "position": {
+            "x": 24,
+            "y": 24
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Image",
+            "title": "白底图",
+            "sourceKind": "image",
+            "imagePromptReady": false,
+            "imageAspectRatio": "1:1",
+            "imageQuality": "2k"
+          },
+          "style": {
+            "height": 250,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-2",
+          "type": "text",
+          "position": {
+            "x": 24,
+            "y": 444
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Text",
+            "title": "精品提示词母版",
+            "textPrompt": "高端电商服装详情页组图。以白底参考图为唯一真相：同一件衣服，颜色深浅、色相、版型轮廓、面料质感、蕾丝花纹、缝线细节必须与参考图完全一致，不得改款、不得换衣、不得编造。真实商业棚拍：柔和侧光，明暗过渡干净，布纹与缝线清晰可见，自然垂感，轻微接触阴影，边缘锐利无白边。拒绝塑料感、蜡像脸、假水光、过度磨皮、雾面美颜、夸张滤镜、假光斑。没有事实依据的部位留白，不出现尺码、成分、功能等文字。方形构图，主体居中，四周留白均匀，适合详情页九宫格直接裁剪。",
+            "textPromptReady": true,
+            "content": "高端电商服装详情页组图。以白底参考图为唯一真相：同一件衣服，颜色深浅、色相、版型轮廓、面料质感、蕾丝花纹、缝线细节必须与参考图完全一致，不得改款、不得换衣、不得编造。真实商业棚拍：柔和侧光，明暗过渡干净，布纹与缝线清晰可见，自然垂感，轻微接触阴影，边缘锐利无白边。拒绝塑料感、蜡像脸、假水光、过度磨皮、雾面美颜、夸张滤镜、假光斑。没有事实依据的部位留白，不出现尺码、成分、功能等文字。方形构图，主体居中，四周留白均匀，适合详情页九宫格直接裁剪。"
+          },
+          "style": {
+            "height": 250,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-3",
+          "type": "image",
+          "position": {
+            "x": 584,
+            "y": 24
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Image",
+            "title": "正面整体图",
+            "sourceKind": "image",
+            "imagePromptReady": true,
+            "imagePrompt": "完整呈现整件衣服的廓形与版型，衣身全部入镜，领口、袖口、下摆自然下垂，四周留白均匀，适合做主图。",
+            "imageAspectRatio": "1:1",
+            "imageQuality": "2k"
+          },
+          "style": {
+            "height": 250,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-4",
+          "type": "image",
+          "position": {
+            "x": 944,
+            "y": 24
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Image",
+            "title": "V领蕾丝特写",
+            "sourceKind": "image",
+            "imagePromptReady": true,
+            "imagePrompt": "领口区域居中构图，蕾丝花纹清晰锐利、镂空边缘干净，针织与蕾丝的拼接关系看得清楚。",
+            "imageAspectRatio": "1:1",
+            "imageQuality": "2k"
+          },
+          "style": {
+            "height": 250,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-5",
+          "type": "image",
+          "position": {
+            "x": 1304,
+            "y": 24
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Image",
+            "title": "袖口蕾丝特写",
+            "sourceKind": "image",
+            "imagePromptReady": true,
+            "imagePrompt": "袖口与蕾丝边缘细节放大，花型纹理分明，缝线针脚真实自然。",
+            "imageAspectRatio": "1:1",
+            "imageQuality": "2k"
+          },
+          "style": {
+            "height": 250,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-6",
+          "type": "image",
+          "position": {
+            "x": 584,
+            "y": 444
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Image",
+            "title": "衣身蕾丝局部",
+            "sourceKind": "image",
+            "imagePromptReady": true,
+            "imagePrompt": "衣身中央蕾丝面料纹理特写，织纹走向、镂空疏密与参考图一致。",
+            "imageAspectRatio": "1:1",
+            "imageQuality": "2k"
+          },
+          "style": {
+            "height": 250,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-7",
+          "type": "image",
+          "position": {
+            "x": 944,
+            "y": 444
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Image",
+            "title": "面料肌理特写",
+            "sourceKind": "image",
+            "imagePromptReady": true,
+            "imagePrompt": "微距级展现面料织纹与触感，经纬线、起毛、垂坠光泽真实，不做柔化。",
+            "imageAspectRatio": "1:1",
+            "imageQuality": "2k"
+          },
+          "style": {
+            "height": 250,
+            "width": 250
+          },
+          "zIndex": 1
+        },
+        {
+          "id": "template-node-8",
+          "type": "image",
+          "position": {
+            "x": 1304,
+            "y": 444
+          },
+          "parentId": "template-group",
+          "data": {
+            "label": "Image",
+            "title": "缝线与下摆特写",
+            "sourceKind": "image",
+            "imagePromptReady": true,
+            "imagePrompt": "下摆锁边与缝线针脚清晰，线迹整齐自然，面料边缘干净。",
+            "imageAspectRatio": "1:1",
+            "imageQuality": "2k"
+          },
+          "style": {
+            "height": 250,
+            "width": 250
+          },
+          "zIndex": 1
+        }
+      ],
+      "version": 1
+    }
   }
 ]
