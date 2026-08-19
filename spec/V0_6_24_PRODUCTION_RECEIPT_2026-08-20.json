@@ -1,0 +1,123 @@
+{
+  "incident": "V0.6.24-ARK_FILES_API",
+  "version": "0.6.24",
+  "status": "PRODUCTION_PUBLISHED_AUTO_PASS",
+  "publishedAt": "2026-08-19T18:24:27Z",
+  "changes": {
+    "summary": "INC-GEN-011 方舟文字模型大图原图直传（Files API）：10–20MB PNG 参考图不再被 10MB 限制拦下/压缩，改为上传方舟临时文件后以 file_id 交给文字模型；上传/轮询/删除全程在配置锁外；每 profile 并发 2、有界排队与超时；开关 UNBOUNDRY_ARK_FILES_API 默认关闭，关闭时旧路径 100% 不变；上传失败不产生 attempt/计费记录；删除用独立清理信号，取消不留孤儿文件。版本 bump 至 v0.6.24。",
+    "scope": "server/arkFileUploader.ts（新增）、server/providerProfiles.ts、server/generationTasks.ts、server/volcengineArkTextProvider.ts、tests/m99-ark-files-api.spec.ts（新增）、spec/INC_GEN_011_ARK_FILES_API_2026-08-20.md（新增）及测试清单；无数据库结构变更（schema39 不变）。",
+    "generationLogicUnchanged": false
+  },
+  "source": {
+    "commit": "87d39d264d463d341bbc0c989bfbca2a857f3e22",
+    "tree": "d0b8396834d228170102a2e77d986a4e6918769e",
+    "tagObject": "b4c039bca33cd0a4c349e8f0846bbc2abfda466a"
+  },
+  "tests": {
+    "full": {
+      "specsPassed": 119,
+      "specsTotal": 119,
+      "testsPassed": 1006,
+      "testsTotal": 1006,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0
+    },
+    "sourceFiles": 564,
+    "sourceSnapshotSha256": "d3c039c52781a36b37a394abfdb972f7cdce8f0ab02a1b8ba0cc3dd8e077f7e8",
+    "listenerBeforeAfterSha256": "24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244"
+  },
+  "backup": {
+    "path": "/var/lib/unboundry-rollbacks/v0.6.24-frozen-x7q2mz",
+    "files": 365,
+    "frozenManifestSha256": "ec7b6397a36f18defb7fdbd33e788cfadd694e72aea0dc0b3ea006fc91a76a12",
+    "restoreManifestSha256": "ec7b6397a36f18defb7fdbd33e788cfadd694e72aea0dc0b3ea006fc91a76a12",
+    "databaseRows": 4543,
+    "mediaBytes": 284663380,
+    "mediaFiles": 355,
+    "restoreSchemaVersion": 39,
+    "restoreDatabaseIntegrity": "ok",
+    "restoreForeignKeyViolations": 0,
+    "restoreTasks": 475,
+    "restoreProviderAttempts": 482,
+    "restoreActiveGenerations": 0,
+    "restorePublicTemplates": 49,
+    "restorePublishedTemplates": 47
+  },
+  "production": {
+    "release": "/opt/unboundry/releases/v0.6.24-ark-files-20260820",
+    "previousRelease": "/opt/unboundry/releases/v0.6.23-generation-stability-20260819",
+    "releaseInventoryFileSha256": "1d926e11ceb4f4e7acceb1e1ac2fe10e8d6a505334264e59055f4fd4da198a0b",
+    "releaseInventoryLines": 5782,
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "restartCount": 0,
+    "schemaVersion": 39,
+    "databaseIntegrity": "ok",
+    "foreignKeyViolations": 0,
+    "tasks": 475,
+    "providerAttempts": 482,
+    "activeGenerations": 0,
+    "publicTemplates": 49,
+    "publishedTemplates": 47
+  },
+  "publicAssets": {
+    "version": "0.6.24",
+    "rootStatus": 200,
+    "title": "无央｜AI 无限画布",
+    "indexJs": {
+      "path": "/assets/index-BBEmhT-e.js",
+      "sha256": "7d36efb48197862a17878a21fd06a6412af07da8bfda4ebfc96bae613063254f",
+      "matchesRelease": true
+    },
+    "indexCss": {
+      "path": "/assets/index-s-NLq_c-.css",
+      "sha256": "cf5d15a21a83f71580f7b462d8d88ccb9bc7c76e41bd5753cf16c091265b72b4",
+      "matchesRelease": true
+    },
+    "canvasShell": {
+      "path": "/assets/CanvasShell-8fSpH3AH.js",
+      "sha256": "d00ca1ed8b2364248fe09b3ea5f60b63f1ba29c8bb3c9cbe61c86a3b8a5ff29b",
+      "matchesRelease": true
+    },
+    "workspacePage": {
+      "path": "/assets/WorkspacePage-BoBrOBHs.js",
+      "sha256": "d6a62b849f0bb8351a26888773fe91deeea7b0cd00b63f9855b6a6c40a67a32d",
+      "matchesRelease": true
+    },
+    "projectStorage": {
+      "path": "/assets/projectStorage-Bsj0QNTe.js",
+      "sha256": "25442718cf50b0c4f7c9a594da37ffb5d414a43cb5951f02f57c23dcd3e26215",
+      "matchesRelease": true
+    }
+  },
+  "productionConfig": {
+    "generationSafety": {
+      "per_user_concurrency": 20,
+      "image_concurrency": 10,
+      "video_concurrency": 2,
+      "audio_concurrency": 2,
+      "text_concurrency": 10,
+      "requests_per_minute": 120
+    },
+    "gptImageDefaultQuality": "1k",
+    "unchangedFromPrevious": true
+  },
+  "externalEffects": {
+    "realProviderRequests": 0,
+    "paidGenerationRequests": 0,
+    "ossWrites": 0
+  },
+  "github": {
+    "state": "MERGED",
+    "pullRequest": 48,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/48",
+    "mergedAt": "2026-08-19T18:20:31Z",
+    "mergeCommit": "baf1a23fd06a43884bd2272dab1f3c30e477853d",
+    "tag": "v0.6.24",
+    "tagTarget": "87d39d264d463d341bbc0c989bfbca2a857f3e22"
+  },
+  "userAcceptance": "USER_RECHECK"
+}

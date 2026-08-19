@@ -4,7 +4,11 @@
 
 ## 先读当前快照
 
-新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-19 的权威现状、产品合同和用户已点头的旧项收口。下面各节是历史增量，出现「当前」时只代表该时点。
+新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-20 的权威现状、产品合同和用户已点头的旧项收口。下面各节是历史增量，出现「当前」时只代表该时点。
+
+## 最新已发布事件：方舟文字模型大图原图直传（v0.6.24，2026-08-20 已发布，待用户复验）
+
+用户确认方案、版本号 `v0.6.24` 并说「可以上线」。本轮（INC-GEN-011）把火山方舟文字模型的 10–20MB PNG 参考图从「10MB 限制拦下/压缩转 Base64」改为「原图直传 Files API」：上传到方舟临时文件后用 file_id 交文字模型；上传/轮询/删除全程在配置锁外；每 profile 并发 2、有界排队与超时；上传失败不产生计费；取消后独立清理信号删除文件；开关 `UNBOUNDRY_ARK_FILES_API` 默认关闭。精确源码 commit`87d39d264d463d341bbc0c989bfbca2a857f3e22` 通过正式安全全量`119/119 specs、1006/1006 tests PASS`，异常0，Provider/付费生成/OSS写入0；真实方舟验证通过（12MB PNG → file_id → 文字模型返回 → 删除成功）。生产 current 为 `/opt/unboundry/releases/v0.6.24-ark-files-20260820`，公网资源哈希、冻结备份`v0.6.24-frozen-x7q2mz`（365文件，双清单SHA`ec7b6397…`）、service/schema39及数据门PASS；发布核验时保持475 tasks、482 attempts、active0、49 public templates（47 published）。`v0.6.24`已推送，PR #48已合并到`main`（merge commit`baf1a23fd06a43884bd2272dab1f3c30e477853d`）。当前状态是`PRODUCTION_PUBLISHED_PENDING_USER_RECHECK`，待用户线上复验。权威记录：`spec/V0_6_24_PRODUCTION_RECEIPT_2026-08-20.json`。
 
 ## 最新已发布事件：生成稳定性根治修复（v0.6.23，2026-08-19 已发布，待用户复验）
 
