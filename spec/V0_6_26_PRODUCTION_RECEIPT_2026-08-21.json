@@ -1,0 +1,124 @@
+{
+  "incident": "INC-GEN-012-VIEWPORT-INDEPENDENT-GROUP-RUN",
+  "version": "0.6.26",
+  "status": "PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS",
+  "publishedAt": "2026-08-20T18:46:03Z",
+  "changes": {
+    "summary": "整组执行不再依赖画布当前可见节点；活跃工作流相关节点定向保留 renderer，运行中结构与输入锁定，父组仍可移动；整轮跨标签 Web Lock、持久检查点、严格 task/ownership/result proof 与持续任务面板共同防止离屏静默漏跑和重复付费。",
+    "scope": "client/src/canvas、client/src/generation、相关安全测试与发布文档；无数据库结构变更（schema39 不变）。",
+    "generationLogicUnchanged": false
+  },
+  "source": {
+    "commit": "dc29cc00d5b379e3e8b8cb1746dc6cf85f01c140",
+    "tree": "0770cb7c03e335620906d0b3954e510aa30f9bf2",
+    "tagObject": "8faa516dc411e498f2d57df80ab33748adc8957a",
+    "mainMergeCommit": "4a675be056aaca4b3d3a3239136857fecbefbb94",
+    "mainTreeMatchesTag": true
+  },
+  "tests": {
+    "full": {
+      "specsPassed": 119,
+      "specsTotal": 119,
+      "testsPassed": 1025,
+      "testsTotal": 1025,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0
+    },
+    "sourceSnapshotSha256": "e4cc0d8ac4fa3fe0e2c8eb4afd3148fda3ae0200488fddfd5159f8cf7801628a",
+    "listenerBeforeAfterSha256": "24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244",
+    "targeted": "m22/m68/m79 39/39 PASS；版本文档修正后 m38 15/15 PASS",
+    "postGateFormattingOnly": "提交前 git diff --check 发现 INC 文档两处行尾空格；仅移除这两处 Markdown 空格，无代码或测试逻辑变化。"
+  },
+  "backup": {
+    "path": "/var/lib/unboundry-rollbacks/v0.6.26-frozen-234452",
+    "files": 365,
+    "frozenManifestSha256": "6b64da90d996446e570a60bc0454ead445defe42df09579787e796e39864b525",
+    "restoreManifestSha256": "6b64da90d996446e570a60bc0454ead445defe42df09579787e796e39864b525",
+    "databaseRows": 5293,
+    "mediaBytes": 284663380,
+    "mediaFiles": 355,
+    "restoreSchemaVersion": 39,
+    "restoreDatabaseIntegrity": "ok",
+    "restoreForeignKeyViolations": 0,
+    "restoreTasks": 569,
+    "restoreProviderAttempts": 577,
+    "restoreActiveGenerations": 0,
+    "restorePublicTemplates": 50,
+    "restorePublishedTemplates": 48
+  },
+  "production": {
+    "release": "/opt/unboundry/releases/v0.6.26-viewport-independent-group-run-20260821",
+    "previousRelease": "/opt/unboundry/releases/v0.6.25-generation-hardening-20260820",
+    "releaseInventoryFileSha256": "fcdef25411d25c6aa294108399e9c6e2a3b3fcef0192791be092bc390a7c4be9",
+    "releaseInventoryLines": 5795,
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "restartCount": 0,
+    "schemaVersion": 39,
+    "databaseIntegrity": "ok",
+    "foreignKeyViolations": 0,
+    "tasksBeforeAuthorizedValidation": 569,
+    "providerAttemptsBeforeAuthorizedValidation": 577,
+    "tasksAfterAuthorizedValidation": 580,
+    "providerAttemptsAfterAuthorizedValidation": 588,
+    "activeGenerationsAfterAuthorizedValidation": 0,
+    "publicTemplates": 50,
+    "publishedTemplates": 48
+  },
+  "publicAssets": {
+    "version": "0.6.26",
+    "rootStatus": 200,
+    "title": "无央｜AI 无限画布",
+    "allReleaseAssetsMatchedPublic": true,
+    "assets": {
+      "/assets/CanvasShell-4RJQIGux.js": "126c74d427bf41db52fb0d70b05fa254aa8c929c6d6c977a29f45e855fdeb20a",
+      "/assets/WorkspacePage-CP05hWI2.js": "600b6ce2f9e1da080b5f995d63740d8afc564921b3f4e6e68aae06ccb9d8d8b9",
+      "/assets/index-CwcnPawj.js": "a7a245dbc4426ca1a1f9fbd1b3f6ca91155c81b3d474b9065649de8ab310e4bf",
+      "/assets/index-DOTFXUZ8.css": "665f01268caade6967d85e4829aa35ce992c7c34cebb4b53236b8b2288f00d7a",
+      "/assets/projectStorage-qL_AENsp.js": "ff217a466414181ff02fb6c80ae38240efab2ecf17ba9185ddbccd2ab003fddc"
+    }
+  },
+  "authorizedRealValidation": {
+    "canvasId": "9dd7c462-cc1e-40e9-90c7-8e0131df490e",
+    "groupTitle": "一键上新+自检",
+    "action": "正常点击整组执行后，把运行中的父组拖出浏览器视口，并持续观察生成任务面板。",
+    "midRunEvidence": "父组离屏后任务面板显示已完成 5/11、正在处理 4；3 个最终主图任务均已进入运行。",
+    "finalSummary": {
+      "nodes": 11,
+      "success": 11,
+      "failed": 0,
+      "skipped": 0,
+      "notRun": 0,
+      "duration": "3:18"
+    },
+    "databaseEvidence": {
+      "newTasks": 11,
+      "newProviderAttempts": 11,
+      "kinds": "4 image + 7 text",
+      "allAttemptOneSuccess": true,
+      "duplicateSubmissionsObserved": 0,
+      "activeAfter": 0
+    },
+    "pageSaveState": "已保存到云端",
+    "browserConsoleErrorsOrWarnings": 0
+  },
+  "externalEffects": {
+    "realProviderGenerationTasks": 11,
+    "providerRetriesBeyondPlannedValidation": 0,
+    "ossMediaWrites": 4,
+    "productionCanvasMutated": true
+  },
+  "github": {
+    "state": "MERGED",
+    "pullRequest": 53,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/53",
+    "mergedAt": "2026-08-20T18:42:29Z",
+    "mergeCommit": "4a675be056aaca4b3d3a3239136857fecbefbb94",
+    "tag": "v0.6.26",
+    "tagTarget": "dc29cc00d5b379e3e8b8cb1746dc6cf85f01c140"
+  },
+  "userAcceptance": "USER_RECHECK"
+}

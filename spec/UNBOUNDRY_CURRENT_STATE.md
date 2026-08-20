@@ -5,20 +5,21 @@
 
 ## 一句话
 
-线上仍是 **v0.6.25 / schema39**（生成恢复与整组运行加固），2026-08-20 已发布；agent 真实页面、旧 queued 接力和 11MB Ark Files 端到端均通过，待用户主观复验。2026-08-21 的 INC-GEN-012“整组执行不受画布视野影响”已形成本地候选并通过完整自动门，但尚未提交、发布或获得用户实页复验，不能算线上已修。v0.6.24 为上一版；v0.6.21、v0.6.20、v0.6.19 已于 2026-08-19 复验通过；v0.6.18 的尺寸映射面板 UI 对齐已于 2026-08-19 通过用户复验。用户要的核心结果仍是：**上传一张图，工作流自己跑完，用户下载结果**。
+线上是 **v0.6.26 / schema39**（整组执行不受画布视野影响），2026-08-21 已发布；agent 已在真实页面启动“一键上新+自检”，随后把父组拖出屏幕，整组仍完整跑完 11/11，待用户主观复验。v0.6.25 为上一版。用户要的核心结果仍是：**上传一张图，工作流自己跑完，用户下载结果**。
 
-## INC-GEN-012 本地候选（2026-08-21，未发布）
+## INC-GEN-012 / v0.6.26 已发布（2026-08-21）
 
-- 状态：`V0.6.26_RELEASE_CANDIDATE_AUTO_PASS / USER_RECHECK`。用户已确认 v0.6.26 并授权本次上线与真实网站技术实测；发布完成前线上仍为 v0.6.25。权威方案与实施证据见 `spec/INC_GEN_012_VIEWPORT_INDEPENDENT_GROUP_RUN_2026-08-20.md`。
+- 状态：`PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`。用户已确认 v0.6.26 并授权上线与一次真实网站技术实测；授权已执行完毕。权威方案见 `spec/INC_GEN_012_VIEWPORT_INDEPENDENT_GROUP_RUN_2026-08-20.md`，生产回执见 `spec/V0_6_26_PRODUCTION_RECEIPT_2026-08-21.json`。
 - 已修边界：用户看得到组工具栏并点开始后，组内部分节点初始离屏、运行中平移/缩放/调整窗口或把父组拖出视口，都不再因 React Flow 虚拟化卸载 execution registration 而静默漏跑；全画布虚拟化仍保留。
 - 运行中的参与节点、结构及直接外部输入源只读，父组仍可移动；左侧任务面板持续显示进度并可停止后续；刷新后只在 task/ownership/result proof 能严格核对时继续，不能证明时 fail-closed，不盲目重复付费。
 - 跨标签用 Web Lock 持有整轮；没有 Web Locks 的浏览器明确阻止整组付费执行。单节点提交/重试也会核对其他标签页的整组租约。
-- 自动证据：m22/m68/m79 `39/39 PASS`；正式安全全量 `119/119 specs、1025/1025 tests PASS`，异常计数 0；source/snapshot SHA-256 均为 `e4f245ee689ad9158ffd97b5d81e592e60103e91e97f672d0a3ca2e5ee0f302c`；4173 listener 不变；未触发真实 Provider/OSS。
-- 尚缺：commit/push/tag/PR、生产发布、线上技术实测与用户主观复验。线上 v0.6.25 尚未因此发生变化。
+- 自动证据：m22/m68/m79 `39/39 PASS`；正式安全全量 `119/119 specs、1025/1025 tests PASS`，失败/重试/跳过均 0，4173 listener 不变。
+- 发布证据：tag `v0.6.26` 精确指向 commit `dc29cc00d5b379e3e8b8cb1746dc6cf85f01c140` / tree `0770cb7c03e335620906d0b3954e510aa30f9bf2`；PR #53 merge `4a675be056aaca4b3d3a3239136857fecbefbb94`，main tree 与 tag tree 一致。生产指针 `/opt/unboundry/current -> /opt/unboundry/releases/v0.6.26-viewport-independent-group-run-20260821`；冻结备份 `/var/lib/unboundry-rollbacks/v0.6.26-frozen-234452`，365 文件，两份清单 SHA 同为 `6b64da90d996446e570a60bc0454ead445defe42df09579787e796e39864b525`。切换前后 schema39/integrity ok/FK0/tasks569/attempts577/templates50/published48/active0 完全一致，公网 5 个构建资源逐字节一致。
+- 真实页面证据：画布 `9dd7c462-cc1e-40e9-90c7-8e0131df490e` 启动“一键上新+自检”后把父组拖出屏幕；任务面板仍从“已完成 5/11、正在处理 4”继续到“成功 11、失败 0、跳过 0、未运行 0”，总用时 3:18。生产正好新增 11 tasks / 11 attempts，全部 attempt 1 success，4 图 + 7 文，active0；页面“已保存到云端”，控制台 0 error/warn。尚缺用户主观复验，不能写 `USER_PASS`。
 
 ## v0.6.25 发布与真实验证（2026-08-20）
 
-- 当前代码包版本：**v0.6.26**；线上版本仍为 **v0.6.25**。v0.6.26 当前状态 `V0.6.26_RELEASE_CANDIDATE_AUTO_PASS / USER_RECHECK`；本次 v0.6.26 发布和一次真实网站技术实测已获用户授权，但尚未执行完成。v0.6.25 的完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
+- 当前代码包版本：**v0.6.26**；线上版本同为 **v0.6.26**。v0.6.26 状态 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`；v0.6.25 的完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
 - 事二「生成任务一直排队中」已在线闭环：已知任务 `c479826f-a426-4a11-854c-79ecc802bcbc` 从 `queued / attempt 1 / provider_task_id null` 在 v0.6.25 重启后自动接力，平台任务 `111092189` 完成，最终 `success / attempt 2`；没有盲目重复。
 - 事一已查清：2026-08-19 15:23–15:26Z 上游“服装主体标准化”图片成功并产出 11,596,744 字节 PNG；v0.6.23 的 10MB 文字输入预检随后拦下四个下游文字节点，五个后代未运行。不是客户端 DAG 漏发；红字把失败错归因给已经成功的上游图片节点。
 - “2:33 三张主图从未提交”的旧说法已被生产任务表与 nginx 202 提交记录否定：该轮 7 图 + 4 文全部 success。
