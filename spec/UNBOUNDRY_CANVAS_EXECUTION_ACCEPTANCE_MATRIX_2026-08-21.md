@@ -35,7 +35,7 @@
 | VIEW-001 | P0 | 开始时部分子节点离屏仍能完整预检/运行 | 浏览器 fixture + DAG终态 | PLANNED |
 | VIEW-002 | P0 | 运行中把当前/下游/整组拖出屏幕后继续 | 浏览器 fixture + task/summary断言 | PLANNED |
 | VIEW-003 | P0 | 节点真正卸载后执行仍继续 | mount/unmount 探针 + 运行终态 | AUTO_PASS（m22） |
-| VIEW-004 | P0 | 删除 `workflowRenderRetention` 后无执行回归 | 代码不存在依赖 + VIEW-001～003 | NOT_RUN（最终删除提交后复核） |
+| VIEW-004 | P0 | 删除 `workflowRenderRetention` 后无执行回归 | 代码不存在依赖 + VIEW-001～003 | AUTO_PASS（m22 + 文件已删除） |
 | VIEW-005 | P1 | 98/171/200 节点仍保留视口虚拟化和可接受交互 | 挂载数/长任务/浏览器指标 | PLANNED |
 
 ## 3. 运行期间使用手感与精确保护

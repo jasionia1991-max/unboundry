@@ -68,7 +68,7 @@
 - 尚未运行最终一次 safe full；
 - 尚未执行最小真实 Provider、受控真实页面、生产发布和生产技术验收；
 - 验收矩阵中只有已有明确自动证据的项目可登记 `AUTO_PASS`，其余保持 `NOT_RUN`；
-- `workflowRenderRetention.ts` 当前仅为 safe runner 在删除提交前读取 tracked inventory 的临时空 tombstone；最终提交必须真实删除。
+- `workflowRenderRetention.ts` 已从候选提交真实删除；执行和渲染均不存在该依赖。
 
 ## 5. 当前施工文件
 
@@ -160,7 +160,7 @@
 
 ## 11. 下一步唯一动作
 
-先提交已验证实现并真实删除临时 `workflowRenderRetention.ts` tombstone；随后在该提交上运行唯一一次 safe full。全量通过后执行三路最终独立复核、最小真实 Provider、受控真实页面、冻结备份/发布/生产技术验收和文档证据同步。
+提交 renderer retention 删除；随后在该提交上运行唯一一次 safe full。全量通过后执行三路最终独立复核、最小真实 Provider、受控真实页面、冻结备份/发布/生产技术验收和文档证据同步。
 
 ## 12. 最终完成前复核
 
