@@ -5,7 +5,14 @@
 状态：`HISTORICAL_CHECKPOINT / APPEND_ONLY`
 用途：保留各次施工与发布时点证据，不再充当当前恢复入口。**当前状态、未发布工作区与下一步只看 `UNBOUNDRY_CURRENT_STATE.md`；本文件任何旧命令或旧授权都不可复用。**
 
-## 0. 最新已发布事件：v0.6.25 生成恢复与整组运行加固（2026-08-20 已发布，agent 技术实页通过）
+## 0. 最新已发布事件：v0.6.26 整组执行不受画布视野影响（2026-08-21 已发布，agent 技术实页通过）
+
+- 精确 tag 源码 commit`dc29cc00d5b379e3e8b8cb1746dc6cf85f01c140`、tree`0770cb7c03e335620906d0b3954e510aa30f9bf2`；tag`v0.6.26`；PR #53 merge`4a675be056aaca4b3d3a3239136857fecbefbb94`，main tree 与 tag tree 一致。
+- 正式安全全量`119/119 specs、1025/1025 tests PASS`，异常0；生产release`/opt/unboundry/releases/v0.6.26-viewport-independent-group-run-20260821`，冻结备份`v0.6.26-frozen-234452`（365文件，双清单SHA`6b64da90…`），公网资源/service/schema39/integrity/FK门PASS。
+- 真实画布启动“一键上新+自检”后把父组拖出屏幕，任务仍从5/11继续到11/11；成功11、失败0、跳过0、未运行0，总用时3:18。数据库正好新增11 tasks/11 attempts，全部attempt1 success，active0；控制台0 error/warn。
+- 状态：`PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`。待用户主观复验，未冒充`USER_PASS`。权威回执：`spec/V0_6_26_PRODUCTION_RECEIPT_2026-08-21.json`。
+
+## 0. 上一已发布事件：v0.6.25 生成恢复与整组运行加固（2026-08-20 已发布，agent 技术实页通过）
 
 - 精确源码commit`57cef4ce26fc43cd0f828756850a2d3effcb161b`、tree`626b5945d64cde1a1c07c7b7765ce8a9661e82ff`；tag`v0.6.25`；PR #50 merge`e7174b0740ff1573cc8bda36f1242b8da8ff9e81`。
 - 正式安全全量`119/119 specs、1018/1018 tests PASS`，异常0；生产release`/opt/unboundry/releases/v0.6.25-generation-hardening-20260820`，冻结备份`v0.6.25-frozen-789d29`（365文件，双清单SHA`d15f3433…`），公网资源/service/schema39/integrity/FK门PASS。

@@ -6,7 +6,11 @@
 
 新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-20 的权威现状、产品合同和用户已点头的旧项收口。下面各节是历史增量，出现「当前」时只代表该时点。
 
-## 最新已发布事件：生成恢复与整组运行加固（v0.6.25，2026-08-20 已发布，agent 技术实页通过）
+## 最新已发布事件：整组执行不受画布视野影响（v0.6.26，2026-08-21 已发布，agent 技术实页通过）
+
+v0.6.26 已发布到 `/opt/unboundry/releases/v0.6.26-viewport-independent-group-run-20260821`。tag 源码 commit`dc29cc00d5b379e3e8b8cb1746dc6cf85f01c140`、tree`0770cb7c03e335620906d0b3954e510aa30f9bf2`；PR #53 merge`4a675be056aaca4b3d3a3239136857fecbefbb94`，main tree 与 tag tree 一致。正式安全全量`119/119 specs、1025/1025 tests PASS`，异常0。冻结备份`v0.6.26-frozen-234452`共365文件，两份清单SHA均为`6b64da90…`；公网资源、service、schema39、integrity、FK均PASS。真实画布把“一键上新+自检”父组拖出屏幕后仍完成11/11，数据库新增11 tasks/11 attempts且全部attempt1 success，控制台0 error/warn。状态`PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`；待用户主观复验。权威回执：`spec/V0_6_26_PRODUCTION_RECEIPT_2026-08-21.json`。
+
+## 上一已发布事件：生成恢复与整组运行加固（v0.6.25，2026-08-20 已发布，agent 技术实页通过）
 
 v0.6.25 已发布到 `/opt/unboundry/releases/v0.6.25-generation-hardening-20260820`。精确源码 commit`57cef4ce26fc43cd0f828756850a2d3effcb161b`、tree`626b5945d64cde1a1c07c7b7765ce8a9661e82ff`，tag`v0.6.25`；PR #50 merge`e7174b0740ff1573cc8bda36f1242b8da8ff9e81`，main tree 与 tag tree 一致。正式安全全量`119/119 specs、1018/1018 tests PASS`，异常0。冻结备份`v0.6.25-frozen-789d29`共365文件，两份清单SHA均为`d15f3433…`；公网资源、service、schema39、integrity、FK均PASS。生产旧 queued 任务`c479826f…`已自动接力并success；原事故画布真实11,596,744字节PNG在页面完成一次文字生成，Ark upload/poll/delete均success，页面已保存到云端且控制台0 error/warn。状态为`PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`；用户主观使用感受仍待复验。本次发布/真实验证授权已消费完毕。权威凭证：`spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
 

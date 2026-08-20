@@ -1,16 +1,17 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-21
-状态：`v0.6.25/schema39 已发布；agent 真实页面、旧 queued 接力和 11MB Ark Files 端到端均通过，待用户主观复验。当前权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+状态：`v0.6.26/schema39 已发布；agent 真实页面将“一键上新+自检”拖出屏幕后完整跑完 11/11，待用户主观复验。当前权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
 
-### 2026-08-20 整组执行不受画布视野影响（INC-GEN-012，本地候选）
+### 2026-08-21 整组执行不受画布视野影响（INC-GEN-012，v0.6.26 已发布）
 
-- 状态：`V0.6.26_RELEASE_CANDIDATE_AUTO_PASS / USER_RECHECK`。m22/m68/m79 安全定向 `39/39 PASS`，正式安全全量 `119/119 specs、1025/1025 tests PASS`，异常计数 0；用户已确认 v0.6.26 并授权本次上线与真实网站技术实测，发布完成前仍不是线上状态。
+- 状态：`PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`。m22/m68/m79 安全定向 `39/39 PASS`；正式安全全量 `119/119 specs、1025/1025 tests PASS`，异常计数 0。v0.6.26 已发布；agent 在真实页面启动“一键上新+自检”后把父组拖出屏幕，任务仍从 5/11 继续到 11/11：成功 11、失败 0、跳过 0、未运行 0，总用时 3:18；数据库正好新增 11 tasks / 11 attempts，全部 attempt 1 success，active 归零，页面控制台 0 error/warn。待用户主观复验。
 - 已实锤：React Flow 可视区域裁剪会卸载离屏节点，而整组 preflight/run registration 属于节点组件生命周期；开始前部分节点离屏会被误判“尚未就绪”，开始后拖出屏幕会使后续节点失败。用户已在真实页面复现“拖出屏幕后失败且提示不足”。
 - 本轮目标：目标组执行租约、固定运行快照、持续可见进度/失败摘要、运行中编辑/删除/离开保护、刷新后识别和手动“继续剩余节点”，同时保持同输入不重复付费与全画布虚拟化。
 - 已实施：点击即锁定参与图及直接外部输入源；离屏节点定向保活但不污染真实画布状态；父组可拖出屏幕；Web Lock 全程跨标签互斥；持续摘要/任务面板停止；成功 task/ownership/result proof；在途恢复等待且不自动重提；快照变化 fail-closed。定向测试还真实抓出并修正“双击误停止”和“任务面板停止空操作”。
 - 最终自动证据：Node 22.23.1 下 source/snapshot SHA 均为 `e4f245ee…f302c`；全量零失败、零重试、零跳过，4173 listener 不变，未触发真实 Provider/OSS。全量首轮两个文字 UI 时序断言在同源码下专项三轮 `45/45` 与独立五轮 `40/40` 复核通过；停止并发资源干扰后正式全量干净通过，未为凑绿改断言。
 - 权威方案：`spec/INC_GEN_012_VIEWPORT_INDEPENDENT_GROUP_RUN_2026-08-20.md`。
+- 发布：tag `v0.6.26` → commit `dc29cc00d5b379e3e8b8cb1746dc6cf85f01c140` / tree `0770cb7c03e335620906d0b3954e510aa30f9bf2`；PR #53 merge `4a675be056aaca4b3d3a3239136857fecbefbb94`，main tree 与 tag tree 一致。生产 release `/opt/unboundry/releases/v0.6.26-viewport-independent-group-run-20260821`；冻结备份 `/var/lib/unboundry-rollbacks/v0.6.26-frozen-234452`（365 文件，双清单 SHA `6b64da90…`）。权威回执：`spec/V0_6_26_PRODUCTION_RECEIPT_2026-08-21.json`。
 
 ### 2026-08-20 全局审计修复（v0.6.25 已发布）
 

@@ -1,8 +1,10 @@
 # INC-GEN-012：整组执行不再受画布视野影响
 
 更新日期：2026-08-21
-状态：`V0.6.26_RELEASE_CANDIDATE_AUTO_PASS / USER_RECHECK`（未发布）
+状态：`PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`
 目标：用户正常点击整组开始后，平移、缩放、调整窗口或把模板拖到屏幕外，都不能让后续节点静默失败；运行状态始终可见；刷新后可以在不重复付费的前提下继续剩余节点。
+
+生产收口：v0.6.26 已于 2026-08-21 发布。agent 在真实画布启动“一键上新+自检”后把父组拖出屏幕，任务仍从 5/11 继续到 11/11（成功 11、失败 0、跳过 0、未运行 0，总用时 3:18）；生产新增 11 tasks / 11 attempts，全部 attempt 1 success，active0，控制台 0 error/warn。待用户主观复验。权威回执：`spec/V0_6_26_PRODUCTION_RECEIPT_2026-08-21.json`。
 
 ## 1. 已确认事实
 
