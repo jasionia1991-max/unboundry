@@ -4,6 +4,8 @@ export type GenerationCanvasState = {
   /** 当前登录账号 ID，用于把本地草稿/同步频道按账号隔离。 */
   accountId: string;
   canvasId: string;
+  /** fixture 的真实身份；普通项目画布为空。 */
+  fixtureScopeId: string;
   /** fixture 验收页面不触发真实生成；真实画布（含项目画布）不受限。 */
   isFixture: boolean;
   /** 画布级短暂反馈（toast），供节点工具栏等深色浮层复用。 */
@@ -27,6 +29,7 @@ export type GenerationCanvasState = {
 export const GenerationCanvasContext = createContext<GenerationCanvasState>({
   accountId: "",
   canvasId: "",
+  fixtureScopeId: "",
   isFixture: false,
   notify: () => undefined,
   persistenceReady: true,

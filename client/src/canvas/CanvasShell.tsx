@@ -19,6 +19,7 @@ import {
   type CanvasShellMenuCommand,
 } from "./CanvasSurface";
 import { GenerationTasksPanel } from "./GenerationTasksPanel";
+import { createGroupRunSummaryScope } from "../generation/groupRunSummary";
 import { useCompositionSafeText } from "./CompositionSafeText";
 import { hasInteractionProbeNodes } from "./probeFixtures";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
@@ -1115,6 +1116,11 @@ export function CanvasShell({
     durableFixture ? "loading" : "ready",
   );
   const canvasScopeId = JSON.stringify([userId, projectTitleId]);
+  const groupRunScope = createGroupRunSummaryScope(
+    userId,
+    projectId ?? fixtureId ?? "default",
+    fixtureId ?? "",
+  );
   const [generationRetryGate, setGenerationRetryGate] = useState<{
     run: () => Promise<number>;
     scopeId: string;
@@ -3564,9 +3570,15 @@ export function CanvasShell({
 
       {tasksOpen && (
         <GenerationTasksPanel
-          canvasId={projectId ?? fixtureId ?? "default"}
           canvasScopeId={canvasScopeId}
+          groupRunScope={groupRunScope}
           key={canvasScopeId}
+          onLocateNode={(nodeId) =>
+            setFocusNodeRequest((current) => ({
+              id: nodeId,
+              sequence: (current?.sequence ?? 0) + 1,
+            }))
+          }
           open={tasksOpen}
           panelRef={tasksPanel}
           retryEnabled={

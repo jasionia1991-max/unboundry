@@ -84,6 +84,7 @@ import {
   viewportForBounds,
 } from "./templatePlacement";
 import { GenerationCanvasContext } from "../generation/GenerationCanvasContext";
+import { createGroupRunSummaryScope } from "../generation/groupRunSummary";
 import {
   shouldAcceptCanvasRevision,
   waitForPaint,
@@ -6323,8 +6324,11 @@ export function CanvasSurface({
   }, [onGenerationRetryGateChange, persistenceScopeId, waitForCanvasRevision]);
   const generationCanvasContextValue = useMemo(
     () => ({
-      accountId: accountId ?? "",
-      canvasId: persistenceId,
+      ...createGroupRunSummaryScope(
+        accountId ?? "",
+        persistenceId,
+        fixtureId ?? "",
+      ),
       canvasRevision: generationCanvasRevision,
       flushCanvasSave,
       isFixture: Boolean(fixtureId),

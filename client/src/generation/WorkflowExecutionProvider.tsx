@@ -23,9 +23,13 @@ import {
   isWorkflowNodeGenerating,
   runWorkflowGraph,
   type NodeRunResult,
+  type WorkflowGraphNodeState,
   type WorkflowPreflightPhase,
 } from "./workflowExecution";
-import { publishGroupRunSummary } from "./groupRunSummary";
+import {
+  nextGroupRunSequence,
+  publishGroupRunSummary,
+} from "./groupRunSummary";
 
 export type { NodeRunResult };
 
@@ -38,6 +42,37 @@ export type NodeRunRegistration = {
 };
 
 const runtimeInputRefreshTimeoutMs = 5_000;
+
+function workflowNodeTitle(node: ProbeNodeType | undefined, fallback: string) {
+  if (typeof node?.data.title === "string" && node.data.title.trim()) {
+    return node.data.title.trim();
+  }
+  if (typeof node?.data.label === "string" && node.data.label.trim()) {
+    return node.data.label.trim();
+  }
+  return fallback;
+}
+
+function workflowNodeErrorCode(node: ProbeNodeType | undefined) {
+  if (!node) return undefined;
+  const value = node.type === "text"
+    ? node.data.textGenerationErrorCode
+    : node.type === "image"
+      ? node.data.imageGenerationErrorCode
+      : node.type === "video"
+        ? node.data.videoGenerationErrorCode
+        : node.type === "audio"
+          ? node.data.audioGenerationErrorCode
+          : undefined;
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function workflowStateCount(
+  states: ReadonlyMap<string, WorkflowGraphNodeState>,
+  state: WorkflowGraphNodeState,
+) {
+  return Array.from(states.values()).filter((value) => value === state).length;
+}
 
 async function waitForRuntimePreflight(
   registration: NodeRunRegistration,
@@ -88,10 +123,20 @@ export function WorkflowExecutionProvider({
   notify: (message: string, kind?: "error" | "info" | "success") => void;
   setNodes: Dispatch<SetStateAction<ProbeNodeType[]>>;
 }) {
-  const { canvasId, flushCanvasSave, isFixture, waitForCanvasRevision } =
-    useGenerationCanvas();
+  const {
+    accountId,
+    canvasId,
+    fixtureScopeId,
+    flushCanvasSave,
+    isFixture,
+    waitForCanvasRevision,
+  } = useGenerationCanvas();
   const registrations = useRef(new Map<string, NodeRunRegistration>());
-  const runningGroups = useRef(new Map<string, { cancelled: boolean }>());
+  const startingGroupIds = useRef(new Set<string>());
+  const runningGroups = useRef(new Map<string, {
+    activeNodeIds: Set<string>;
+    cancelled: boolean;
+  }>());
   const [executingGroupIds, setExecutingGroupIds] = useState<
     ReadonlySet<string>
   >(new Set());
@@ -110,8 +155,13 @@ export function WorkflowExecutionProvider({
 
   const cancelGroup = useCallback((groupId: string) => {
     const running = runningGroups.current.get(groupId);
-    if (running) running.cancelled = true;
-  }, []);
+    if (!running || running.cancelled) return;
+    running.cancelled = true;
+    const activeCount = running.activeNodeIds.size;
+    notify(
+      `已停止后续节点；当前已开始的 ${activeCount} 个节点仍会继续处理，已经提交的任务会继续并保存结果。`,
+    );
+  }, [notify]);
 
   const waitForCanvasStable = useCallback(async (groupId: string) => {
     // 画布自动保存期间不弹红字：最多等三轮，每轮 30 秒；
@@ -140,7 +190,14 @@ export function WorkflowExecutionProvider({
         notify("验收页面不会触发真实生成");
         return;
       }
-      if (runningGroups.current.has(groupId)) return;
+      if (
+        runningGroups.current.has(groupId) ||
+        startingGroupIds.current.has(groupId)
+      ) return;
+      startingGroupIds.current.add(groupId);
+      const runId = crypto.randomUUID();
+      const runSequence = nextGroupRunSequence();
+      try {
       try {
         await waitForCanvasStable(groupId);
       } catch (error) {
@@ -182,7 +239,12 @@ export function WorkflowExecutionProvider({
         notify(error instanceof Error ? error.message : "整组执行失败");
         return;
       }
-      const preflightFailures: Array<{ message: string; nodeId: string }> = [];
+      const startedAt = Date.now();
+      const preflightFailures: Array<{
+        errorCode?: string;
+        message: string;
+        nodeId: string;
+      }> = [];
       for (const nodeId of executableIds) {
         const registration = registrations.current.get(nodeId);
         if (!registration) {
@@ -197,6 +259,7 @@ export function WorkflowExecutionProvider({
         };
         if (result.status !== "success") {
           preflightFailures.push({
+            errorCode: result.errorCode,
             message: result.message ?? "请检查标红节点",
             nodeId,
           });
@@ -205,20 +268,41 @@ export function WorkflowExecutionProvider({
       if (preflightFailures.length > 0) {
         const first = preflightFailures[0];
         const firstNode = nodeById.get(first.nodeId);
-        const firstTitle = typeof firstNode?.data.title === "string" &&
-            firstNode.data.title.trim()
-          ? firstNode.data.title.trim()
-          : typeof firstNode?.data.label === "string" && firstNode.data.label.trim()
-            ? firstNode.data.label.trim()
-            : first.nodeId;
+        const firstTitle = workflowNodeTitle(firstNode, first.nodeId);
+        publishGroupRunSummary({
+          accountId,
+          blockedCount: executableIds.size - preflightFailures.length,
+          blockedNodeIds: Array.from(executableIds).filter((nodeId) =>
+            !preflightFailures.some((failure) => failure.nodeId === nodeId)
+          ),
+          canvasId,
+          completedAt: Date.now(),
+          elapsedMs: Date.now() - startedAt,
+          errorCode: first.errorCode ?? workflowNodeErrorCode(firstNode),
+          failedCount: preflightFailures.length,
+          failedNodeIds: preflightFailures.map((failure) => failure.nodeId),
+          firstFailedNodeId: first.nodeId,
+          firstFailedNodeTitle: firstTitle,
+          fixtureScopeId,
+          groupId,
+          nodeCount: executableIds.size,
+          reason: first.message,
+          runId,
+          runSequence,
+          skippedCount: 0,
+          skippedNodeIds: [],
+          status: "failed",
+          startedAt,
+          successCount: 0,
+        });
         notify(
           `整组执行已阻止：发现 ${preflightFailures.length} 个不兼容节点；首个“${firstTitle}”：${first.message}（未提交任何生成任务）`,
           "error",
         );
         return;
       }
-      const running = { cancelled: false };
-      const startedAt = Date.now();
+      const running = { activeNodeIds: new Set<string>(), cancelled: false };
+      const nodeStates = new Map<string, WorkflowGraphNodeState>();
       runningGroups.current.set(groupId, running);
       setExecutingGroupIds(new Set(runningGroups.current.keys()));
       try {
@@ -227,7 +311,8 @@ export function WorkflowExecutionProvider({
           edges,
           executableIds,
           isCancelled: () => running.cancelled,
-          onNodeStateChange: (_nodeId, state, completed, total) => {
+          onNodeStateChange: (nodeId, state, completed, total) => {
+            nodeStates.set(nodeId, state);
             if (
               ["blocked", "failed", "skipped", "success"].includes(state) &&
               completed > lastCompleted
@@ -241,30 +326,83 @@ export function WorkflowExecutionProvider({
             if (!registration) {
               return { message: "节点尚未就绪", status: "failed" };
             }
-            return runGroupNodeWithPersist({
-              isCancelled: () => running.cancelled,
-              persist: () =>
-                persistGroupCanvasAfterNode({
-                  flushCanvasSave,
-                  waitForCanvasRevision,
-                }),
-              run: async () => {
-                const preflight = await waitForRuntimePreflight(
-                  registration,
-                  executableIds,
-                );
-                if (preflight.status !== "success") return preflight;
-                return registration.run();
-              },
-            });
+            running.activeNodeIds.add(nodeId);
+            try {
+              return await runGroupNodeWithPersist({
+                isCancelled: () => running.cancelled,
+                persist: () =>
+                  persistGroupCanvasAfterNode({
+                    flushCanvasSave,
+                    waitForCanvasRevision,
+                  }),
+                run: async () => {
+                  const preflight = await waitForRuntimePreflight(
+                    registration,
+                    executableIds,
+                  );
+                  if (preflight.status !== "success") return preflight;
+                  return registration.run();
+                },
+              });
+            } finally {
+              running.activeNodeIds.delete(nodeId);
+            }
           },
         });
+        const nodeIdsInStates = (states: WorkflowGraphNodeState[]) =>
+          Array.from(nodeStates.entries())
+            .filter(([, state]) => states.includes(state))
+            .map(([nodeId]) => nodeId);
+        const failedNodeIds = Array.from(new Set([
+          ...nodeIdsInStates(["failed"]),
+          ...(result.status === "failed" ? result.failedNodeIds : []),
+        ]));
+        const skippedNodeIds = Array.from(new Set([
+          ...nodeIdsInStates(["skipped"]),
+          ...(result.status === "skipped" ? result.skippedNodeIds : []),
+        ]));
+        const blockedNodeIds = Array.from(new Set([
+          ...nodeIdsInStates(["blocked", "pending"]),
+          ...(result.status === "failed" || result.status === "skipped"
+            ? result.blockedNodeIds
+            : []),
+          ...(result.status === "cancelled" ? result.pendingNodeIds : []),
+        ]));
+        const firstFailedNodeId = result.status === "failed"
+          ? result.firstFailure?.nodeId ?? failedNodeIds[0]
+          : failedNodeIds[0];
+        const latestNode = firstFailedNodeId
+          ? getNodes().find((node) => node.id === firstFailedNodeId)
+          : undefined;
         publishGroupRunSummary({
+          accountId,
+          blockedCount: blockedNodeIds.length,
+          blockedNodeIds,
           canvasId,
+          completedAt: Date.now(),
           elapsedMs: Date.now() - startedAt,
+          errorCode: result.status === "failed"
+            ? result.firstFailure?.errorCode ?? workflowNodeErrorCode(latestNode)
+            : workflowNodeErrorCode(latestNode),
+          failedCount: failedNodeIds.length,
+          failedNodeIds,
+          firstFailedNodeId,
+          firstFailedNodeTitle: firstFailedNodeId
+            ? workflowNodeTitle(latestNode, firstFailedNodeId)
+            : undefined,
+          fixtureScopeId,
           groupId,
           nodeCount: executableIds.size,
+          reason: result.status === "failed"
+            ? result.firstFailure?.message ?? "请查看失败节点的错误提示"
+            : "message" in result ? result.message : undefined,
+          runId,
+          runSequence,
+          skippedCount: skippedNodeIds.length,
+          skippedNodeIds,
           status: result.status,
+          startedAt,
+          successCount: workflowStateCount(nodeStates, "success"),
         });
         if (result.status === "success") {
           notify("整组执行完成", "success");
@@ -281,7 +419,7 @@ export function WorkflowExecutionProvider({
             `整组执行已停止：${result.message ?? "有节点未就绪"}`,
           );
         } else {
-          notify("整组执行已取消");
+          notify("已停止后续节点；已经开始的节点均已处理完毕");
         }
       } catch {
         notify("整组执行失败", "error");
@@ -289,8 +427,20 @@ export function WorkflowExecutionProvider({
         runningGroups.current.delete(groupId);
         setExecutingGroupIds(new Set(runningGroups.current.keys()));
       }
+      } finally {
+        startingGroupIds.current.delete(groupId);
+      }
     },
-    [canvasId, getEdges, getNodes, isFixture, notify, waitForCanvasStable],
+    [
+      accountId,
+      canvasId,
+      fixtureScopeId,
+      getEdges,
+      getNodes,
+      isFixture,
+      notify,
+      waitForCanvasStable,
+    ],
   );
 
   const value = useMemo<WorkflowExecutionValue>(

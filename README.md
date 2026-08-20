@@ -1,6 +1,8 @@
 # 无央 Unboundry
 
-TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mymy.ltd`；当前线上 `v0.6.20 / schema39`，INC-GEN-010 生成稳定性一次性修复，待你复验；v0.6.19 为验收收口发布）。
+TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mymy.ltd`）。
+
+**当前版本、未发布工作区、待验收项和下一步只以 [`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md) 为准。** 本 README 下方是按日期保留的历史变更账本，不承担“当前线上版本”播报，旧段落中的版本与状态只代表各自记录时点。
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 

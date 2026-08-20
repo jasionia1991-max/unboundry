@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "./safe-test";
@@ -16,6 +16,7 @@ import {
   attemptProviderResultSave,
   executeTextTaskWithDependencies,
   generationTaskCancellationMode,
+  launchGenerationTaskForRuntimeTest,
   retrySafetyDecision,
   retrySnapshotCompatibilityProblem,
   runGenerationRecoverySweep,
@@ -2114,16 +2115,21 @@ test("only capability success or an explicit Provider/model update clears an aut
 
 test("provider result save treats SQLite lock contention as bounded transient failure", async () => {
   let busyAttempts = 0;
+  const busyBackoffs: number[] = [];
   const saved = await attemptProviderResultSave({
-    backoffMs: [0, 0, 0, 0, 0],
+    backoffMs: [1_000, 2_000, 4_000, 8_000, 15_000],
     save: async () => {
       busyAttempts += 1;
       throw new StorageConfigurationBusyError();
     },
+    sleep: async (milliseconds) => {
+      busyBackoffs.push(milliseconds);
+    },
     taskId: "save-busy-task",
   });
   expect(saved).toBe(false);
-  expect(busyAttempts).toBe(5);
+  expect(busyAttempts).toBe(6);
+  expect(busyBackoffs).toEqual([1_000, 2_000, 4_000, 8_000, 15_000]);
 
   let lockAttempts = 0;
   const lockSaved = await attemptProviderResultSave({
@@ -2135,7 +2141,7 @@ test("provider result save treats SQLite lock contention as bounded transient fa
     taskId: "save-lock-task",
   });
   expect(lockSaved).toBe(false);
-  expect(lockAttempts).toBe(5);
+  expect(lockAttempts).toBe(6);
 
   let definitiveAttempts = 0;
   await expect(attemptProviderResultSave({
@@ -2291,4 +2297,272 @@ test("server recovery sweep auto-resumes a failed task that still holds a Provid
     database.close();
     await rm(dataDirectory, { force: true, recursive: true });
   }
+});
+
+test("server recovery sweep relaunches stale queued tasks and leaves fresh ones alone", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-queued-sweep-"));
+  const store = createGenerationTaskStore(dataDirectory);
+  const database = openAppDatabase(dataDirectory);
+  try {
+    const ownerId = "queued-sweep-owner";
+    const providerProfileId = "queued-sweep-relay-provider";
+    const modelProfileId = "queued-sweep-image-model";
+    const baseline = new Date(Date.now() - 60_000).toISOString();
+    database.prepare(`
+      INSERT INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      ) VALUES (?, ?, 'Queued Sweep Owner', 'fixture-only', 'user', 'active', ?, ?)
+    `).run(ownerId, ownerId, baseline, baseline);
+    database.prepare(`
+      INSERT INTO provider_profiles (
+        id, display_name, driver, status, created_at, updated_at,
+        provider_configuration_version
+      ) VALUES (?, ?, 'multi-protocol-relay', 'enabled', ?, ?, 1)
+    `).run(providerProfileId, "Queued Sweep Relay", baseline, baseline);
+    const parameterSchema = knownModelParameterSchema({
+      capability: "image",
+      providerDriver: "multi-protocol-relay",
+      providerModelId: "youchuang-gpt-image-2",
+    });
+    database.prepare(`
+      INSERT INTO model_profiles (
+        id, display_name, provider_profile_id, provider_model_id,
+        capability, status, default_parameters, created_at, updated_at,
+        max_cost_microunits, cost_currency, provider_protocol
+      ) VALUES (
+        ?, ?, ?, ?, 'image', 'published', ?, ?, ?, 5000000, 'CNY', 'media-generate'
+      )
+    `).run(
+      modelProfileId,
+      "Queued Sweep Image",
+      providerProfileId,
+      "youchuang-gpt-image-2",
+      JSON.stringify(parameterSchema),
+      baseline,
+      baseline,
+    );
+    database.prepare(`
+      INSERT INTO node_model_bindings (
+        node_type, model_id, enabled, is_default, sort_order,
+        created_at, updated_at
+      ) VALUES ('image', ?, 1, 1, 1, ?, ?)
+    `).run(modelProfileId, baseline, baseline);
+    database.prepare(`
+      UPDATE generation_safety_settings
+      SET
+        global_enabled = 1,
+        emergency_stop = 0,
+        per_user_concurrency = 10,
+        requests_per_minute = 120,
+        image_concurrency = 5,
+        video_concurrency = 5,
+        audio_concurrency = 5,
+        text_concurrency = 5,
+        updated_at = ?
+      WHERE id = 1
+    `).run(baseline);
+    const credential = await saveAccountCredential(
+      database,
+      ownerId,
+      providerProfileId,
+      "test-only-queued-sweep-key",
+    );
+    const modelConfiguration = {
+      credentialVersion: credential.credentialVersion,
+      modelId: modelProfileId,
+      parameterSchema,
+      providerConfigurationVersion: 1,
+      providerDriver: "multi-protocol-relay",
+      providerModelId: "youchuang-gpt-image-2",
+      providerProfileId,
+      providerProtocol: "media-generate",
+    };
+    const aged = store.admitOrGet({
+      canvasId: "queued-sweep-canvas",
+      costCurrency: "CNY",
+      credentialRevision: credential.credentialVersion,
+      estimatedCostMicrounits: 5_000_000,
+      idempotencyKey: "queued-sweep-aged-1",
+      kind: "image",
+      model: modelProfileId,
+      modelConfiguration,
+      nodeId: "queued-sweep-aged-node",
+      ownerId,
+      parameters: { inputSchemaVersion: 1, inputs: [] },
+      prompt: "aged queued task",
+      providerModelId: "youchuang-gpt-image-2",
+      providerProfileId,
+    });
+    const fresh = store.admitOrGet({
+      canvasId: "queued-sweep-canvas",
+      costCurrency: "CNY",
+      credentialRevision: credential.credentialVersion,
+      estimatedCostMicrounits: 5_000_000,
+      idempotencyKey: "queued-sweep-fresh-1",
+      kind: "image",
+      model: modelProfileId,
+      modelConfiguration,
+      nodeId: "queued-sweep-fresh-node",
+      ownerId,
+      parameters: { inputSchemaVersion: 1, inputs: [] },
+      prompt: "fresh queued task",
+      providerModelId: "youchuang-gpt-image-2",
+      providerProfileId,
+    });
+    expect(aged.created).toBe(true);
+    expect(fresh.created).toBe(true);
+    const agedAt = new Date(Date.now() - 3 * 60_000).toISOString();
+    const freshAt = new Date().toISOString();
+    database.prepare(`
+      UPDATE generation_tasks
+      SET created_at = ?, updated_at = ?
+      WHERE id = ?
+    `).run(agedAt, agedAt, aged.task.id);
+    database.prepare(`
+      UPDATE generation_tasks
+      SET created_at = ?, updated_at = ?
+      WHERE id = ?
+    `).run(agedAt, freshAt, fresh.task.id);
+
+    const launched: string[] = [];
+    await runGenerationRecoverySweep({
+      launch: (id) => {
+        launched.push(id);
+        expect(store.transition(id, "running")).toMatchObject({
+          attempt: 1,
+          state: "running",
+        });
+        store.transition(id, "failed", {
+          code: "TEST_EXECUTION_SETTLED",
+          message: "offline recovery launch reached the durable worker state",
+        });
+      },
+      store,
+    });
+    expect(launched).toEqual([aged.task.id]);
+    expect(store.get(aged.task.id)).toMatchObject({
+      attempt: 1,
+      errorCode: "TEST_EXECUTION_SETTLED",
+      state: "failed",
+    });
+    expect(store.listEvents(aged.task.id).map((event) => event.state)).toEqual([
+      "queued",
+      "running",
+      "failed",
+    ]);
+    expect(store.get(fresh.task.id)?.state).toBe("queued");
+    expect(store.listEvents(fresh.task.id).map((event) => event.state)).toEqual([
+      "queued",
+    ]);
+  } finally {
+    database.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("deferred relaunch starts exactly once after the old execution exits", async () => {
+  const taskId = "queued-relaunch-race-task";
+  const settledExecutions: Promise<void>[] = [];
+  let executionCount = 0;
+  let releaseFirst!: () => void;
+  let reportSecondStarted!: () => void;
+  const firstBarrier = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+  const secondStarted = new Promise<void>((resolve) => {
+    reportSecondStarted = resolve;
+  });
+  const execute = async () => {
+    executionCount += 1;
+    if (executionCount === 1) {
+      await firstBarrier;
+      return;
+    }
+    reportSecondStarted();
+  };
+
+  launchGenerationTaskForRuntimeTest({
+    execute,
+    kind: "image",
+    settledExecutions,
+    taskId,
+  });
+  for (let attempt = 0; attempt < 20 && executionCount === 0; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  expect(executionCount).toBe(1);
+
+  // Repeated retry/recovery signals while the old execution is still present
+  // coalesce into one pending relaunch.
+  launchGenerationTaskForRuntimeTest({
+    execute,
+    kind: "image",
+    settledExecutions,
+    taskId,
+  });
+  launchGenerationTaskForRuntimeTest({
+    execute,
+    kind: "image",
+    settledExecutions,
+    taskId,
+  });
+  expect(executionCount).toBe(1);
+
+  releaseFirst();
+  await secondStarted;
+  await Promise.all(settledExecutions);
+  expect(executionCount).toBe(2);
+});
+
+test("current-state documentation has one recovery authority and matches package version", async () => {
+  const [
+    agents,
+    checkpoint,
+    currentState,
+    incident,
+    matrix,
+    packageSource,
+    readme,
+    remediation,
+  ] = await Promise.all([
+    readFile("AGENTS.md", "utf8"),
+    readFile("spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md", "utf8"),
+    readFile("spec/UNBOUNDRY_CURRENT_STATE.md", "utf8"),
+    readFile(
+      "spec/INCIDENT_2026-08-20_TEMPLATE_GROUP_FAILURE_AND_QUEUED_TASK_HANDOFF.md",
+      "utf8",
+    ),
+    readFile("spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md", "utf8"),
+    readFile("package.json", "utf8"),
+    readFile("README.md", "utf8"),
+    readFile(
+      "spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md",
+      "utf8",
+    ),
+  ]);
+  const packageDocument = JSON.parse(packageSource) as { version: string };
+  expect(currentState).toContain(`当前代码包版本：**v${packageDocument.version}**`);
+  expect(readme).toContain(
+    "当前版本、未发布工作区、待验收项和下一步只以",
+  );
+  expect(readme).not.toContain("当前线上 `v");
+  expect(checkpoint).toContain("HISTORICAL_CHECKPOINT / APPEND_ONLY");
+  expect(matrix).toContain("AUTHORITATIVE_ACCEPTANCE_LEDGER");
+  expect(matrix).not.toContain("当前权威状态：生产已运行");
+  expect(agents.indexOf("spec/UNBOUNDRY_CURRENT_STATE.md"))
+    .toBeLessThan(agents.indexOf("README.md"));
+  expect(incident).toContain(
+    "spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md",
+  );
+  expect(remediation).toMatch(/状态：`IMPLEMENTED_(?:TARGETED_PASS|AUTO_PASS)/);
+  expect([
+    agents,
+    checkpoint,
+    currentState,
+    incident,
+    matrix,
+    readme,
+    remediation,
+  ].join("\n")).not.toContain("READY_FOR_IMPLEMENTATION / DOCUMENTED_ONLY");
 });

@@ -15,6 +15,7 @@ export type WorkflowEdgeShape = {
 export type NodeRunStatus = "busy" | "failed" | "skipped" | "success";
 
 export type NodeRunResult = {
+  errorCode?: string;
   message?: string;
   status: NodeRunStatus;
 };
@@ -389,7 +390,13 @@ export type WorkflowGraphNodeState =
 export type WorkflowGraphRunResult =
   | {
       blockedNodeIds: string[];
+      errorCode?: string;
       failedNodeIds: string[];
+      firstFailure?: {
+        errorCode?: string;
+        message?: string;
+        nodeId: string;
+      };
       message?: string;
       status: "failed";
     }
@@ -443,6 +450,11 @@ export async function runWorkflowGraph(input: {
     Promise<{ nodeId: string; result: NodeRunResult }>
   >();
   const messages = new Map<string, string>();
+  const failures: Array<{
+    errorCode?: string;
+    message?: string;
+    nodeId: string;
+  }> = [];
   let completed = 0;
 
   const transition = (nodeId: string, state: WorkflowGraphNodeState) => {
@@ -517,6 +529,13 @@ export async function runWorkflowGraph(input: {
     if (settled.result.message) {
       messages.set(settled.nodeId, settled.result.message);
     }
+    if (settled.result.status === "failed") {
+      failures.push({
+        errorCode: settled.result.errorCode,
+        message: settled.result.message,
+        nodeId: settled.nodeId,
+      });
+    }
     transition(
       settled.nodeId,
       settled.result.status === "success"
@@ -538,10 +557,13 @@ export async function runWorkflowGraph(input: {
   const skippedNodeIds = nodeIds.filter((nodeId) => states.get(nodeId) === "skipped");
   const blockedNodeIds = nodeIds.filter((nodeId) => states.get(nodeId) === "blocked");
   if (failedNodeIds.length > 0) {
+    const firstFailure = failures[0];
     return {
       blockedNodeIds,
+      errorCode: firstFailure?.errorCode,
       failedNodeIds,
-      message: failedNodeIds.map((nodeId) => messages.get(nodeId)).find(Boolean),
+      firstFailure,
+      message: firstFailure?.message,
       status: "failed",
     };
   }

@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "./safe-test";
 import { saveAccountCredential } from "../server/accountCredentials";
 import {
   ArkFilesError,
+  prepareArkImageFile,
   readArkImageBytes,
   uploadArkImageFile,
 } from "../server/arkFileUploader";
@@ -161,6 +162,7 @@ test("uploadArkImageFile uploads multipart, polls active and deletes on cleanup"
     fileName: "reference.png",
     fetcher,
     mimeType: "image/png",
+    ownerId: "__test__",
     profileId: "profile-upload-1",
     snapshot,
   });
@@ -175,18 +177,21 @@ test("uploadArkImageFile uploads multipart, polls active and deletes on cleanup"
   expect(calls.some((call) => call.method === "GET" &&
     call.url.endsWith("/files/file-upload-active"))).toBe(true);
 
-  await uploaded.cleanup();
+  await Promise.all([uploaded.cleanup(), uploaded.cleanup()]);
+  expect(calls.filter((call) => call.method === "DELETE")).toHaveLength(1);
   expect(calls.some((call) => call.method === "DELETE" &&
     call.url.endsWith("/files/file-upload-active"))).toBe(true);
 });
 
 test("upload maps auth and failed file status to clear errors", async () => {
   const bytes = largePngBytes(10 * 1024 * 1024 + 1);
+  let deleteCalls = 0;
   await expect(uploadArkImageFile({
     bytes,
     fileName: "a.png",
     fetcher: async () => new Response("{}", { status: 401 }),
     mimeType: "image/png",
+    ownerId: "__test__",
     profileId: "profile-auth-1",
     snapshot,
   })).rejects.toMatchObject({ code: "AUTH" });
@@ -195,15 +200,218 @@ test("upload maps auth and failed file status to clear errors", async () => {
     bytes,
     fileName: "a.png",
     fetcher: async (_input, init) => {
+      if (init?.method === "DELETE") {
+        deleteCalls += 1;
+        return new Response(null, { status: 200 });
+      }
       if (init?.method === "POST") {
         return fileObject("file-failed-status", "failed");
       }
       return fileObject("file-failed-status", "failed");
     },
     mimeType: "image/png",
+    ownerId: "__test__",
     profileId: "profile-failed-1",
     snapshot,
   })).rejects.toMatchObject({ code: "FORMAT", message: "文件处理失败" });
+  expect(deleteCalls).toBe(1);
+});
+
+test("poll cancellation and a hung poll both abort transport and delete the owned file", async () => {
+  const bytes = largePngBytes(10 * 1024 * 1024 + 1);
+  for (const mode of ["cancel", "timeout"] as const) {
+    const controller = new AbortController();
+    let getAborted = false;
+    let deleteCalls = 0;
+    const fetcher = async (_input: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "POST") return fileObject(`file-poll-${mode}`, "processing");
+      if (init?.method === "DELETE") {
+        deleteCalls += 1;
+        return new Response(null, { status: 200 });
+      }
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          getAborted = true;
+          reject(new DOMException("aborted", "AbortError"));
+        }, { once: true });
+      });
+    };
+    const pending = uploadArkImageFile({
+      bytes,
+      fileName: `${mode}.png`,
+      fetcher,
+      mimeType: "image/png",
+      ownerId: "__test__",
+      pollTimeoutMs: mode === "timeout" ? 25 : 5_000,
+      profileId: `profile-poll-${mode}`,
+      signal: controller.signal,
+      snapshot,
+    });
+    if (mode === "cancel") setTimeout(() => controller.abort(), 20);
+    await expect(pending).rejects.toMatchObject({
+      code: mode === "cancel" ? "CANCELLED" : "TIMEOUT",
+    });
+    expect(getAborted).toBe(true);
+    expect(deleteCalls).toBe(1);
+  }
+});
+
+test("upload deadline aborts the underlying POST instead of only winning a race", async () => {
+  const bytes = largePngBytes(10 * 1024 * 1024 + 1);
+  let postAborted = false;
+  await expect(uploadArkImageFile({
+    bytes,
+    fileName: "upload-timeout.png",
+    fetcher: async (_input, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          postAborted = true;
+          reject(new DOMException("aborted", "AbortError"));
+        }, { once: true });
+      }),
+    mimeType: "image/png",
+    ownerId: "__test__",
+    profileId: "profile-upload-timeout",
+    snapshot,
+    uploadTimeoutMs: 20,
+  })).rejects.toMatchObject({ code: "TIMEOUT" });
+  expect(postAborted).toBe(true);
+});
+
+test("OSS reads abort on deadline and reject streamed overflow before upload", async () => {
+  const declaredSize = 10 * 1024 * 1024 + 1;
+  const base = {
+    assetId: "oss-large-reference",
+    byteSize: declaredSize,
+    checksumSha256: "0".repeat(64),
+    contentType: "image/png",
+    objectKey: "private/oss-large-reference.png",
+    ossReadUrl: "https://oss.example.test/signed",
+    ownerId: "__test__",
+    storageBackend: "oss" as const,
+    storageName: "private/oss-large-reference.png",
+  };
+  let readAborted = false;
+  await expect(readArkImageBytes({
+    ...base,
+    fetcher: async (_input, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          readAborted = true;
+          reject(new DOMException("aborted", "AbortError"));
+        }, { once: true });
+      }),
+    readTimeoutMs: 20,
+  })).rejects.toMatchObject({ code: "TIMEOUT" });
+  expect(readAborted).toBe(true);
+
+  const overflow = largePngBytes(20 * 1024 * 1024 + 1);
+  await expect(readArkImageBytes({
+    ...base,
+    fetcher: async () => new Response(overflow),
+  })).rejects.toMatchObject({ code: "FORMAT" });
+});
+
+test("account-scoped preparation acquires its slot before reading the third image", async () => {
+  const bytes = largePngBytes(10 * 1024 * 1024 + 1);
+  const checksum = createHash("sha256").update(bytes).digest("hex");
+  let imageReads = 0;
+  const pendingPosts: Array<() => void> = [];
+  const arkFetcher = async (_input: string | URL | Request, init?: RequestInit) => {
+    if (init?.method === "POST") {
+      const index = pendingPosts.length;
+      return new Promise<Response>((resolve) => {
+        pendingPosts.push(() => resolve(fileObject(`file-prepare-${index}`, "processing")));
+      });
+    }
+    if (init?.method === "GET") return fileObject("file-prepare-active", "active");
+    return new Response(null, { status: 200 });
+  };
+  const prepare = (assetId: string, ownerId = "owner-a") => prepareArkImageFile({
+    fetcher: arkFetcher,
+    image: {
+      assetId,
+      byteSize: bytes.byteLength,
+      checksumSha256: checksum,
+      contentType: "image/png",
+      fetcher: async () => {
+        imageReads += 1;
+        return new Response(bytes);
+      },
+      objectKey: `private/${assetId}.png`,
+      ossReadUrl: `https://oss.example.test/${assetId}`,
+      ownerId,
+      storageBackend: "oss",
+      storageName: `private/${assetId}.png`,
+    },
+    mimeType: "image/png",
+    ownerId,
+    profileId: "shared-profile",
+    queueTimeoutMs: 1_000,
+    snapshot,
+  });
+
+  const first = prepare("prepare-a");
+  const second = prepare("prepare-b");
+  for (let attempt = 0; attempt < 80 && pendingPosts.length < 2; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  expect(imageReads).toBe(2);
+  const third = prepare("prepare-c");
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  expect(imageReads).toBe(2);
+
+  // A different account using the same profile gets its own two-slot gate.
+  const otherAccount = prepare("prepare-other", "owner-b");
+  for (let attempt = 0; attempt < 80 && imageReads < 3; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  expect(imageReads).toBe(3);
+
+  pendingPosts[0]();
+  for (let attempt = 0; attempt < 80 && imageReads < 4; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  expect(imageReads).toBe(4);
+  for (const release of pendingPosts) release();
+  await Promise.all([first, second, third, otherAccount]);
+
+  const controller = new AbortController();
+  let uploadCalls = 0;
+  let readAborted = false;
+  const cancelledRead = prepareArkImageFile({
+    fetcher: async () => {
+      uploadCalls += 1;
+      return new Response(null, { status: 500 });
+    },
+    image: {
+      assetId: "prepare-cancelled-read",
+      byteSize: bytes.byteLength,
+      checksumSha256: checksum,
+      contentType: "image/png",
+      fetcher: async (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            readAborted = true;
+            reject(new DOMException("aborted", "AbortError"));
+          }, { once: true });
+        }),
+      objectKey: "private/prepare-cancelled-read.png",
+      ossReadUrl: "https://oss.example.test/prepare-cancelled-read",
+      ownerId: "owner-cancelled-read",
+      storageBackend: "oss",
+      storageName: "private/prepare-cancelled-read.png",
+    },
+    mimeType: "image/png",
+    ownerId: "owner-cancelled-read",
+    profileId: "shared-profile",
+    signal: controller.signal,
+    snapshot,
+  });
+  setTimeout(() => controller.abort(), 20);
+  await expect(cancelledRead).rejects.toMatchObject({ code: "CANCELLED" });
+  expect(readAborted).toBe(true);
+  expect(uploadCalls).toBe(0);
 });
 
 test("upload poll timeout and queue timeout are bounded and explicit", async () => {
@@ -213,6 +421,7 @@ test("upload poll timeout and queue timeout are bounded and explicit", async () 
     fileName: "a.png",
     fetcher: async () => fileObject("file-processing", "processing"),
     mimeType: "image/png",
+    ownerId: "__test__",
     pollTimeoutMs: 60,
     profileId: "profile-poll-timeout",
     snapshot,
@@ -232,6 +441,7 @@ test("upload poll timeout and queue timeout are bounded and explicit", async () 
     fileName: "a.png",
     fetcher,
     mimeType: "image/png",
+    ownerId: "__test__",
     profileId: "profile-queue-timeout",
     snapshot,
   });
@@ -240,6 +450,7 @@ test("upload poll timeout and queue timeout are bounded and explicit", async () 
     fileName: "b.png",
     fetcher,
     mimeType: "image/png",
+    ownerId: "__test__",
     profileId: "profile-queue-timeout",
     snapshot,
   });
@@ -252,6 +463,7 @@ test("upload poll timeout and queue timeout are bounded and explicit", async () 
     fileName: "c.png",
     fetcher,
     mimeType: "image/png",
+    ownerId: "__test__",
     profileId: "profile-queue-timeout",
     queueTimeoutMs: 30,
     snapshot,
@@ -279,6 +491,7 @@ test("third upload waits for a per-profile slot instead of a global queue", asyn
     fileName: "a.png",
     fetcher,
     mimeType: "image/png",
+    ownerId: "__test__",
     profileId: "profile-gate-1",
     snapshot,
   });
@@ -287,6 +500,7 @@ test("third upload waits for a per-profile slot instead of a global queue", asyn
     fileName: "b.png",
     fetcher,
     mimeType: "image/png",
+    ownerId: "__test__",
     profileId: "profile-gate-1",
     snapshot,
   });
@@ -298,6 +512,7 @@ test("third upload waits for a per-profile slot instead of a global queue", asyn
     fileName: "c.png",
     fetcher,
     mimeType: "image/png",
+    ownerId: "__test__",
     profileId: "profile-gate-1",
     queueTimeoutMs: 500,
     snapshot,
@@ -314,6 +529,53 @@ test("third upload waits for a per-profile slot instead of a global queue", asyn
   await Promise.all([first, second, third]);
 });
 
+test("timed-out gate waiters cannot consume slots needed by a later valid upload", async () => {
+  const bytes = largePngBytes(10 * 1024 * 1024 + 1);
+  let postCalls = 0;
+  const pendingPosts: Array<() => void> = [];
+  const fetcher = async (_input: string | URL | Request, init?: RequestInit) => {
+    if (init?.method === "POST") {
+      postCalls += 1;
+      const fileId = `file-gate-stale-${postCalls}`;
+      if (postCalls <= 2) {
+        return new Promise<Response>((resolve) => {
+          pendingPosts.push(() => resolve(fileObject(fileId, "processing")));
+        });
+      }
+      return fileObject(fileId, "processing");
+    }
+    if (init?.method === "GET") return fileObject("file-gate-active", "active");
+    return new Response(null, { status: 200 });
+  };
+  const start = (fileName: string, queueTimeoutMs = 500) =>
+    uploadArkImageFile({
+      bytes,
+      fileName,
+      fetcher,
+      mimeType: "image/png",
+      ownerId: "__test__",
+      profileId: "profile-gate-stale",
+      queueTimeoutMs,
+      snapshot,
+    });
+  const first = start("a.png");
+  const second = start("b.png");
+  for (let attempt = 0; attempt < 50 && pendingPosts.length < 2; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  expect(pendingPosts).toHaveLength(2);
+  const staleOne = start("stale-one.png", 20);
+  const staleTwo = start("stale-two.png", 20);
+  await expect(staleOne).rejects.toMatchObject({ code: "RATE_LIMIT" });
+  await expect(staleTwo).rejects.toMatchObject({ code: "RATE_LIMIT" });
+
+  const valid = start("valid.png", 500);
+  pendingPosts[0]();
+  pendingPosts[1]();
+  await Promise.all([first, second, valid]);
+  expect(postCalls).toBe(3);
+});
+
 test("upload cancels when the task signal aborts", async () => {
   const controller = new AbortController();
   const bytes = largePngBytes(10 * 1024 * 1024 + 1);
@@ -327,12 +589,56 @@ test("upload cancels when the task signal aborts", async () => {
     fileName: "a.png",
     fetcher,
     mimeType: "image/png",
+    ownerId: "__test__",
     profileId: "profile-cancel-1",
     signal: controller.signal,
     snapshot,
   });
   setTimeout(() => controller.abort(), 20);
   await expect(pending).rejects.toMatchObject({ code: "CANCELLED" });
+});
+
+test("response-body abort and disconnect keep their distinct error classes", async () => {
+  const controller = new AbortController();
+  const bytes = largePngBytes(10 * 1024 * 1024 + 1);
+  const fetcher = async (_input: string | URL | Request, init?: RequestInit) => {
+    const body = new ReadableStream<Uint8Array>({
+      start(stream) {
+        stream.enqueue(new TextEncoder().encode("{"));
+        init?.signal?.addEventListener("abort", () => {
+          stream.error(new DOMException("aborted", "AbortError"));
+        }, { once: true });
+      },
+    });
+    return new Response(body, { status: 200 });
+  };
+  const pending = uploadArkImageFile({
+    bytes,
+    fileName: "body-abort.png",
+    fetcher,
+    mimeType: "image/png",
+    ownerId: "__test__",
+    profileId: "profile-body-abort",
+    signal: controller.signal,
+    snapshot,
+  });
+  setTimeout(() => controller.abort(), 20);
+  await expect(pending).rejects.toMatchObject({ code: "CANCELLED" });
+
+  await expect(uploadArkImageFile({
+    bytes,
+    fileName: "body-network-error.png",
+    fetcher: async () => new Response(new ReadableStream<Uint8Array>({
+      start(stream) {
+        stream.enqueue(new TextEncoder().encode("{"));
+        setTimeout(() => stream.error(new TypeError("socket disconnected")), 5);
+      },
+    }), { status: 200 }),
+    mimeType: "image/png",
+    ownerId: "__test__",
+    profileId: "profile-body-network-error",
+    snapshot,
+  })).rejects.toMatchObject({ code: "NETWORK" });
 });
 
 test("readArkImageBytes rejects missing, mismatched or invalid local files", async () => {
@@ -344,6 +650,10 @@ test("readArkImageBytes rejects missing, mismatched or invalid local files", asy
     const bytes = largePngBytes(10 * 1024 * 1024 + 1);
     const checksum = createHash("sha256").update(bytes).digest("hex");
     await writeFile(join(directory, "media", "read-reference.png"), bytes);
+    await symlink(
+      "read-reference.png",
+      join(directory, "media", "read-reference-link.png"),
+    );
     const base = {
       assetId: "read-reference",
       checksumSha256: checksum,
@@ -355,6 +665,11 @@ test("readArkImageBytes rejects missing, mismatched or invalid local files", asy
     };
     await expect(readArkImageBytes({
       ...base,
+      byteSize: bytes.byteLength,
+      storageName: "missing-reference.png",
+    })).rejects.toMatchObject({ code: "FORMAT" });
+    await expect(readArkImageBytes({
+      ...base,
       byteSize: bytes.byteLength - 1,
     })).rejects.toMatchObject({ code: "FORMAT" });
     await expect(readArkImageBytes({
@@ -362,6 +677,18 @@ test("readArkImageBytes rejects missing, mismatched or invalid local files", asy
       byteSize: bytes.byteLength,
       checksumSha256: "0".repeat(64),
     })).rejects.toMatchObject({ code: "FORMAT" });
+    await expect(readArkImageBytes({
+      ...base,
+      byteSize: bytes.byteLength,
+      storageName: "read-reference-link.png",
+    })).rejects.toMatchObject({ code: "FORMAT" });
+    const controller = new AbortController();
+    controller.abort("test-cancelled-local-read");
+    await expect(readArkImageBytes({
+      ...base,
+      byteSize: bytes.byteLength,
+      signal: controller.signal,
+    })).rejects.toMatchObject({ code: "CANCELLED" });
     const loaded = await readArkImageBytes({
       ...base,
       byteSize: bytes.byteLength,
@@ -433,7 +760,7 @@ async function insertLocalPng(directory: string, id: string, bytes: Buffer) {
   return storageName;
 }
 
-test("large PNG text task uploads via Files before base64 and cleans up after success", async () => {
+test("large PNG text task uses Files and cleanup failure cannot reverse Provider success", async () => {
   const directory = await mkdtemp(join(tmpdir(), "unboundry-ark-files-task-"));
   const previousData = process.env.UNBOUNDRY_DATA_DIR;
   const previousFlag = process.env.UNBOUNDRY_ARK_FILES_API;
@@ -487,10 +814,13 @@ test("large PNG text task uploads via Files before base64 and cleans up after su
         throw new Error("local media must not need an OSS read URL");
       },
       store,
-      uploadArkImage: async (input) => {
-        uploadedFileNames.push(input.fileName);
+      prepareArkImage: async (input) => {
+        uploadedFileNames.push(`${input.image.assetId}.png`);
         return {
-          cleanup: async () => { cleaned.push("file-large-1"); },
+          cleanup: async () => {
+            cleaned.push("file-large-1");
+            throw new ArkFilesError("NETWORK", "测试清理失败");
+          },
           fileId: "file-large-1",
         };
       },
@@ -563,7 +893,7 @@ test("flag off keeps the old base64 path for the same large PNG", async () => {
       },
       ossReadUrlForMedia: async () => "https://oss.example.test/signed",
       store,
-      uploadArkImage: async () => {
+      prepareArkImage: async () => {
         uploaded = true;
         return { cleanup: async () => undefined, fileId: "file-off" };
       },
@@ -628,7 +958,7 @@ test("upload failure never reaches the Provider boundary or attempts", async () 
       },
       mediaUrlForOwner: async () => "unused",
       store,
-      uploadArkImage: async () => {
+      prepareArkImage: async () => {
         throw new ArkFilesError("AUTH", "测试上传失败");
       },
     });
@@ -699,7 +1029,7 @@ test("configuration change after upload blocks the request and still cleans the 
       },
       mediaUrlForOwner: async () => "unused",
       store,
-      uploadArkImage: async () => ({
+      prepareArkImage: async () => ({
         cleanup: async () => { cleaned.push("file-version-1"); },
         fileId: "file-version-1",
       }),

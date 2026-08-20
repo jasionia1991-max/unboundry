@@ -120,7 +120,6 @@ test("the shared save gate retries transient errors with a bounded budget and th
       }
     },
   });
-  expect(await transient()).toBe(false);
   expect(await transient()).toBe(true);
   expect(attempts).toBe(6);
 
@@ -149,15 +148,15 @@ test("the shared save gate retries unknown errors with a bounded budget and reco
       taskId: "save-gate-unknown",
       save: async () => {
         attempts += 1;
-        if (attempts <= 5) {
+        if (attempts <= 6) {
           throw new Error("unknown local publication failure");
         }
       },
     });
     expect(await unknown()).toBe(false);
     expect(await unknown()).toBe(true);
-    expect(attempts).toBe(6);
-    expect(diagnostics).toHaveLength(5);
+    expect(attempts).toBe(7);
+    expect(diagnostics).toHaveLength(6);
     const parsed = JSON.parse(String(diagnostics.at(-1)![0])) as {
       errorCode: unknown;
       event: string;

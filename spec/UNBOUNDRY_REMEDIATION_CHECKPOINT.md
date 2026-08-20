@@ -1,9 +1,9 @@
 # Unboundry 全量修复施工断点
 
-断点版本：`77`
+断点版本：`77（历史冻结）`
 更新时间：`2026-08-20`
-状态：`V0_6_24_ARK_FILES_API_PRODUCTION_PUBLISHED_PENDING_USER_RECHECK（2026-08-20 已发布，待用户复验）`
-用途：上下文压缩、任务中断或更换 Agent 后恢复施工；**本文件记录当前状态，不代替用户授权**。当前一页快照见 `UNBOUNDRY_CURRENT_STATE.md`。
+状态：`HISTORICAL_CHECKPOINT / APPEND_ONLY`
+用途：保留各次施工与发布时点证据，不再充当当前恢复入口。**当前状态、未发布工作区与下一步只看 `UNBOUNDRY_CURRENT_STATE.md`；本文件任何旧命令或旧授权都不可复用。**
 
 ## 0. 最新已发布事件：v0.6.24 方舟文字模型大图原图直传（2026-08-20 已发布，待用户复验）
 

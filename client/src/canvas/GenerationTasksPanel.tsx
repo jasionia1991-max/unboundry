@@ -12,8 +12,12 @@ import {
 import {
   formatGenerationDuration,
   GROUP_RUN_SUMMARY_EVENT,
+  dismissGroupRunSummary,
+  groupRunSummaryMatchesScope,
+  isGroupRunSummaryDismissed,
   readLastGroupRunSummary,
   type GroupRunSummary,
+  type GroupRunSummaryScope,
 } from "../generation/groupRunSummary";
 
 const kindLabels: Record<GenerationTaskSummary["kind"], string> = {
@@ -39,6 +43,12 @@ const activeStates = new Set<GenerationTaskSummary["state"]>([
   "retrying",
   "running",
 ]);
+
+function visibleGroupRunSummary(summary: GroupRunSummary | undefined) {
+  return summary && !isGroupRunSummaryDismissed(summary)
+    ? summary
+    : undefined;
+}
 
 function relativeTime(timestamp: string) {
   const delta = Math.max(0, Date.now() - new Date(timestamp).getTime());
@@ -306,20 +316,23 @@ function TaskRow({
 }
 
 export function GenerationTasksPanel({
-  canvasId,
   canvasScopeId,
+  groupRunScope,
+  onLocateNode,
   open,
   panelRef,
   retryEnabled,
   waitForCanvasRevision,
 }: {
-  canvasId: string;
   canvasScopeId: string;
+  groupRunScope: GroupRunSummaryScope;
+  onLocateNode: (nodeId: string) => void;
   open: boolean;
   panelRef?: Ref<HTMLElement>;
   retryEnabled: boolean;
   waitForCanvasRevision?: () => Promise<number>;
 }) {
+  const canvasId = groupRunScope.canvasId;
   const [tasks, setTasks] = useState<GenerationTaskSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState("");
@@ -403,7 +416,7 @@ export function GenerationTasksPanel({
     setTasks([]);
     setActionError("");
     setReadError("");
-    setGroupSummary(readLastGroupRunSummary(canvasId));
+    setGroupSummary(visibleGroupRunSummary(readLastGroupRunSummary(groupRunScope)));
     setLoading(true);
     if (!open || !canvasId) {
       return () => currentActionController.abort("generation-task-scope-closed");
@@ -422,17 +435,23 @@ export function GenerationTasksPanel({
       currentActionController.abort("generation-task-scope-closed");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, canvasId, canvasScopeId]);
+  }, [
+    open,
+    canvasScopeId,
+    groupRunScope.accountId,
+    groupRunScope.canvasId,
+    groupRunScope.fixtureScopeId,
+  ]);
 
   useEffect(() => {
     const onSummary = (event: Event) => {
       const summary = (event as CustomEvent<GroupRunSummary>).detail;
-      if (!summary || summary.canvasId !== canvasId) return;
-      setGroupSummary(summary);
+      if (!summary || !groupRunSummaryMatchesScope(summary, groupRunScope)) return;
+      setGroupSummary(visibleGroupRunSummary(summary));
     };
     window.addEventListener(GROUP_RUN_SUMMARY_EVENT, onSummary);
     return () => window.removeEventListener(GROUP_RUN_SUMMARY_EVENT, onSummary);
-  }, [canvasId]);
+  }, [groupRunScope.accountId, groupRunScope.canvasId, groupRunScope.fixtureScopeId]);
 
   const active = tasks
     .filter((task) => activeStates.has(task.state))
@@ -463,6 +482,61 @@ export function GenerationTasksPanel({
       {visibleError && (
         <p className="tasks-error" role="alert">{visibleError}</p>
       )}
+      {groupSummary && (
+        <section
+          className="tasks-group-summary"
+          data-status={groupSummary.status}
+          data-testid="tasks-group-summary"
+        >
+          <div className="tasks-group-summary-header">
+            <strong>
+              {groupSummary.status === "success"
+                ? "最近一轮整组完成"
+                : groupSummary.status === "failed"
+                  ? "最近一轮整组部分失败"
+                  : groupSummary.status === "cancelled"
+                    ? "最近一轮已停止后续"
+                    : "最近一轮整组已停止"}
+            </strong>
+            <button
+              aria-label="关闭最近一轮整组摘要"
+              onClick={() => {
+                dismissGroupRunSummary(groupSummary);
+                setGroupSummary(undefined);
+              }}
+              type="button"
+            >
+              ×
+            </button>
+          </div>
+          <p>
+            {`${groupSummary.nodeCount} 个节点 · 成功 ${groupSummary.successCount} · 失败 ${groupSummary.failedCount} · 跳过 ${groupSummary.skippedCount} · 未运行 ${groupSummary.blockedCount} · 共用时 ${formatGenerationDuration(groupSummary.elapsedMs)}`}
+          </p>
+          {groupSummary.firstFailedNodeId && (
+            <p className="tasks-group-summary-problem">
+              <span>
+                {`首个失败：${groupSummary.firstFailedNodeTitle ?? groupSummary.firstFailedNodeId}${groupSummary.errorCode ? `（${groupSummary.errorCode}）` : ""}`}
+              </span>
+              {groupSummary.reason && <span>{groupSummary.reason}</span>}
+            </p>
+          )}
+          {!groupSummary.firstFailedNodeId && groupSummary.reason && (
+            <p className="tasks-group-summary-problem">
+              <span>{groupSummary.reason}</span>
+            </p>
+          )}
+          {groupSummary.firstFailedNodeId && (
+            <button
+              className="tasks-group-summary-locate"
+              data-testid="tasks-group-summary-locate"
+              onClick={() => onLocateNode(groupSummary.firstFailedNodeId!)}
+              type="button"
+            >
+              定位失败节点
+            </button>
+          )}
+        </section>
+      )}
       {loading && tasks.length === 0 ? (
         <p className="tasks-empty">正在读取生成任务…</p>
       ) : tasks.length === 0 ? (
@@ -471,11 +545,6 @@ export function GenerationTasksPanel({
         </p>
       ) : (
         <div className="tasks-list" data-testid="tasks-list">
-          {groupSummary && (
-            <p className="tasks-group-summary" data-testid="tasks-group-summary">
-              {`本轮整组 ${groupSummary.nodeCount} 个节点 · 共用时 ${formatGenerationDuration(groupSummary.elapsedMs)}`}
-            </p>
-          )}
           {active.length > 0 && (
             <section className="tasks-group">
               <h3>

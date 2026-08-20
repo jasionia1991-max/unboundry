@@ -1,7 +1,23 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-20
-状态：`v0.6.24已发布待用户复验（2026-08-20）；v0.6.23已发布待用户复验（由v0.6.24取代）；v0.6.21、v0.6.20、v0.6.19均已发布且用户已复验通过（2026-08-19）；v0.6.18与v0.6.17已发布且用户已复验通过；v0.6.16已发布且USER PASS。当前权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+状态：`v0.6.25 本地候选已获本次发布与最小真实验证授权，尚未发布；线上仍为 v0.6.24/schema39。当前权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+
+### 2026-08-20 全局审计修复（当前未发布工作区）
+
+- 状态：`IMPLEMENTED_AUTO_PASS / RELEASE_AUTHORIZED_NOT_RELEASED`。排队恢复、Ark Files 生命周期、保存退避、整组 UX 与文档单一事实源均已落地；用户已授权版本号 v0.6.25、发布和最小真实页面/11MB 模板验证，当前尚未 commit、尚未发布。
+- 关键纠正：事一不是 DAG 漏发；15:23–15:26Z 是 11,596,744 字节上游 PNG 被 v0.6.23 的 10MB 下游文字预检拦截。“2:33 三张主图未提交”已被任务表和 nginx 202 记录否定。
+- 已实施：Ark Files 生命周期/abort/限流/流上限/日志、本地单句柄安全读取、原子 gate 接力及响应体错误分类/reader 清理；queued 接力、`updatedAt` 恢复与真实 SQLite 状态迁移测试；保存退避第五档；“停止后续”真实语义；按账号/画布/fixture 隔离、缓存有界、旧轮次不可覆盖新轮次且可关闭/定位的失败摘要；任务面板规范 scope 单一来源；预检重复启动保护；CURRENT_STATE 单一事实源。
+- 实现前基线：安全全量 `119/119 specs、1007/1007 tests PASS`。实现后定向：m38 `15/15`、m99 `18/18`、m22 `26/26`、m57 `14/14 PASS`；实现后正式安全全量 `119/119 specs、1018/1018 tests PASS`，failed/skipped/retries/reportErrors/blocked 均为 0，source/snapshot SHA-256 均为 `e015b2d2fd7a86e4b75c46be2169296359bf9318cc04e4ec0efc776aa952e0e0`，4173 listener 不变，真实外部请求为 0。独立子 agent 终审未发现新的 P1/P2；这仍不是用户实页或真实 Provider 验收。
+- 权威实施记录：`spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`。生产、真实数据、真实 Provider/OSS、版本号与发布均未触碰。
+
+### 2026-08-20 事一/事二交接（历史交接时点，已由上方审计方案接管）
+
+- 状态：`SUPERSEDED_BY_GLOBAL_AUDIT_PLAN`。以下内容保留交接时点；当前结论与下一步见上方权威实施文档。
+- 事二：任务长期「排队中」。生产证据：画布 `b31fdb89…` 的任务 `c479826f…`（节点 `image-72bc261b…`）state=queued 且不再变化，同画布其余任务全部成功。根因：自动重试被旧执行挡下后没有补启动。修复：`server/generationTasks.ts` 延迟补发 + 恢复巡逻安全网；新增 1 条测试，清单 1006→1007，m38 定向 13/13 PASS。
+- 事一：「一键上新+自检」整组失败红字（23:26 CST 版本结论：11MB 参考图超过当时 10MB 限制，后续 6 节点被挡）+「牛仔裤组三张主图从未提交」的说法（2:33 时段生产数据显示该画布 7 图 + 4 文全部 success，与说法冲突）。
+- 生产现状：v0.6.24 / schema39 / `UNBOUNDRY_ARK_FILES_API=1`，但尚无用户侧 `ark-files-*` 真实上传记录，11MB 端到端验证待补。
+- 接手先读：`spec/INCIDENT_2026-08-20_TEMPLATE_GROUP_FAILURE_AND_QUEUED_TASK_HANDOFF.md`。
 
 ### 2026-08-20 方舟文字模型大图原图直传（v0.6.24）
 

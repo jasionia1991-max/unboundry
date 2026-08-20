@@ -6387,7 +6387,7 @@ sup {
 }
 
 .tasks-group-summary {
-  margin: 0;
+  margin: 10px 12px 0;
   padding: 8px 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;
@@ -6396,6 +6396,57 @@ sup {
   font-size: var(--tap-font-secondary);
   font-variant-numeric: tabular-nums;
   line-height: 1.4;
+}
+
+.tasks-group-summary[data-status="failed"] {
+  border-color: rgba(248, 113, 113, 0.24);
+  background: rgba(127, 29, 29, 0.12);
+}
+
+.tasks-group-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #e4e4e7;
+}
+
+.tasks-group-summary-header button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  color: #a1a1aa;
+  background: transparent;
+  cursor: pointer;
+}
+
+.tasks-group-summary-header button:hover,
+.tasks-group-summary-header button:focus-visible {
+  color: #f4f4f5;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.tasks-group-summary p {
+  margin: 4px 0 0;
+}
+
+.tasks-group-summary-problem {
+  display: grid;
+  gap: 2px;
+  color: #fca5a5;
+  overflow-wrap: anywhere;
+}
+
+.tasks-group-summary-locate {
+  margin-top: 7px;
+  padding: 4px 8px;
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  border-radius: 7px;
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.2);
+  cursor: pointer;
 }
 
 .generation-reconcile-task-id {

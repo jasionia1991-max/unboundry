@@ -110,7 +110,7 @@ export async function runGroupNodeWithPersist(input: {
     const persistError = await input.persist();
     if (persistError) return { message: persistError, status: "failed" };
     if (input.isCancelled?.()) {
-      return { message: "整组执行已取消", status: "skipped" };
+      return { message: "已停止后续节点", status: "skipped" };
     }
     result = await input.run();
   }
