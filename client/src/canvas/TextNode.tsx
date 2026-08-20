@@ -44,14 +44,7 @@ import { GenerationAvailabilityNotice } from "./GenerationAvailabilityNotice";
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
 import { useFinishedGenerationDuration } from "../generation/useFinishedGenerationDuration";
 import { GenerationDurationHint } from "./GenerationDurationHint";
-import {
-  useWorkflowExecution,
-  type NodeRunResult,
-} from "../generation/WorkflowExecutionProvider";
-import {
-  createSaveGateRun,
-  runExclusiveCanvasSubmit,
-} from "../generation/saveGate";
+import { runExclusiveCanvasSubmit } from "../generation/saveGate";
 import {
   friendlyGenerationMessage,
   generationMessageFallback,
@@ -62,13 +55,8 @@ import {
   waitForGenerationTaskWithPause,
 } from "../generation/taskPolling";
 import {
-  workflowModelSelectionProblem,
-  workflowRuntimePreflightDisposition,
-  workflowSubmissionPreflightProblem,
   type NodeGenerationOutcome,
-  type WorkflowPreflightPhase,
 } from "../generation/workflowExecution";
-import { shouldIgnoreStaleCanvasSaveProblem } from "../generation/groupRunPersist";
 import { groupRunResultKey } from "../generation/groupRunCheckpoint";
 import {
   generationFailureMessage,
@@ -348,7 +336,6 @@ function TextNodeImpl({
   } | null>(null);
   const { setEdges, setNodes } = useCanvasGraphMutation();
   const { getNodes } = useReactFlow<ProbeNodeType>();
-  const { register: registerWorkflowNode } = useWorkflowExecution();
   const canvasEdges = useEdges();
   const canvasNodes = useNodes<ProbeNodeType>();
   const checkpoint = useCanvasCheckpoint();
@@ -627,13 +614,6 @@ function TextNodeImpl({
       ? `生成失败：${generationError}；点击右侧按钮重试原任务`
       : generationError
     : "";
-  const modelSelectionProblem = workflowModelSelectionProblem({
-    isFixture,
-    kind: "text",
-    model: selectedTextModel,
-    status: textModelSelection.status,
-    unavailableReason: textModelUnavailableReason,
-  });
   const inputProblems: NodeInputProblem[] = modelSwitchProblem
     ? [
         { code: "MODEL_UNSUPPORTED", message: modelSwitchProblem },
@@ -650,14 +630,6 @@ function TextNodeImpl({
           ? [{ code: "INVALID" as const, message: generationProblem }]
           : []),
       ];
-  const workflowProblems: NodeInputProblem[] = [
-    ...(modelSelectionProblem ? [modelSelectionProblem] : []),
-    ...(modelSwitchProblem
-      ? [{ code: "MODEL_UNSUPPORTED" as const, message: modelSwitchProblem }]
-      : []),
-    ...inputPreflight.problems,
-    ...serverInputProblems,
-  ];
   // An empty local Prompt is normal in the accepted 200px creator state.
   // It only becomes part of the expanded upstream area when references exist;
   // actual input/model compatibility problems still expand immediately.
@@ -1002,7 +974,7 @@ function TextNodeImpl({
   };
 
   useEffect(() => {
-    if (!persistenceReady || isFixture) return;
+    if (!persistenceReady || isFixture || data.workflowExecutionRunId) return;
     const persistedTaskId = data.textGenerationTaskId;
     const persistedInputKey = data.textGenerationInputKey;
     const persistedOwnershipKey = data.textGenerationOwnershipKey;
@@ -1294,6 +1266,7 @@ function TextNodeImpl({
     data.textGenerationRetryBlockCode,
     data.textGenerationRetryBlockReason,
     data.textGenerationTaskId,
+    data.workflowExecutionRunId,
     id,
     isFixture,
     persistenceReady,
@@ -1543,110 +1516,6 @@ function TextNodeImpl({
       setSubmitting(false);
     }
   };
-
-  const persistWorkflowInputFailure = async (problem: NodeInputProblem) => {
-    if (shouldIgnoreStaleCanvasSaveProblem(problem)) {
-      return { status: "success" as const };
-    }
-    setNodes((nodes) => nodes.map((node) => node.id === id
-      ? {
-          ...node,
-          data: {
-            ...node.data,
-            textGenerationError: problem.message,
-            textGenerationErrorCode: problem.code,
-            textGenerationInputKey: undefined,
-            textGenerationOwnershipKey: undefined,
-            textGenerating: false,
-            textGenerationRetryAllowed: undefined,
-            textGenerationRetryBlockCode: undefined,
-            textGenerationRetryBlockReason: undefined,
-            textGenerationTaskId: undefined,
-          },
-        }
-      : node));
-    setGenerationError(problem.message);
-    await flushCanvasSave();
-    return {
-      errorCode: problem.code,
-      message: problem.message,
-      status: "failed" as const,
-    };
-  };
-
-  const preflightWorkflowNode = async (context: {
-    executableIds: ReadonlySet<string>;
-    phase: WorkflowPreflightPhase;
-  }): Promise<NodeRunResult> => {
-    const common = {
-      executableIds: context.executableIds,
-      inputs: inputPreflight.inputs,
-      problems: workflowProblems,
-    };
-    if (context.phase !== "static") {
-      const disposition = workflowRuntimePreflightDisposition(common);
-      if (disposition.status === "ready") return { status: "success" };
-      if (disposition.status === "waiting" && context.phase === "runtime") {
-        return { message: disposition.problem.message, status: "busy" };
-      }
-      return persistWorkflowInputFailure(disposition.problem);
-    }
-    const problem = workflowSubmissionPreflightProblem(common);
-    return problem
-      ? persistWorkflowInputFailure(problem)
-      : { status: "success" };
-  };
-
-  const runWorkflowNode = async (): Promise<NodeRunResult> => {
-    const before = getNodes().find((node) => node.id === id);
-    if (!before) return { status: "failed" };
-    if (isFixture || canvasRevision === undefined) {
-      return { status: "skipped" };
-    }
-    if (
-      before.data.textGenerating === true ||
-      before.data.inputState === "uploading"
-    ) {
-      return { message: "节点正在生成中", status: "busy" };
-    }
-    const outcome = await generateText({ autoRecover: true });
-    if (outcome.status === "failed") {
-      return { message: outcome.message, status: "failed" };
-    }
-    if (outcome.status === "skipped") {
-      return {
-        message: inputPreflight.problems[0]?.message,
-        status: "skipped",
-      };
-    }
-    return { status: "success", successProof: outcome.successProof };
-  };
-
-  const runWorkflowNodeRef = useRef<() => Promise<NodeRunResult>>(
-    async () => ({ status: "skipped" }),
-  );
-  const preflightWorkflowNodeRef = useRef<(
-    context: {
-      executableIds: ReadonlySet<string>;
-      phase: WorkflowPreflightPhase;
-    },
-  ) => Promise<NodeRunResult>>(
-    async () => ({ status: "success" }),
-  );
-  runWorkflowNodeRef.current = runWorkflowNode;
-  preflightWorkflowNodeRef.current = preflightWorkflowNode;
-  useEffect(
-    () =>
-      registerWorkflowNode(id, {
-        preflight: (context) => preflightWorkflowNodeRef.current(context),
-        run: createSaveGateRun(
-          waitForCanvasRevision,
-          () => runWorkflowNodeRef.current(),
-          "text",
-        ),
-      }),
-    [id, registerWorkflowNode, waitForCanvasRevision],
-  );
 
   const retryText = async () => {
     const taskId = data.textGenerationTaskId;

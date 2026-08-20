@@ -30,14 +30,7 @@ import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
 import { useFinishedGenerationDuration } from "../generation/useFinishedGenerationDuration";
 import { GenerationDurationHint } from "./GenerationDurationHint";
 import { GenerationReconcileControls } from "./GenerationReconcileControls";
-import {
-  useWorkflowExecution,
-  type NodeRunResult,
-} from "../generation/WorkflowExecutionProvider";
-import {
-  createSaveGateRun,
-  runExclusiveCanvasSubmit,
-} from "../generation/saveGate";
+import { runExclusiveCanvasSubmit } from "../generation/saveGate";
 import {
   friendlyGenerationMessage,
   generationMessageFallback,
@@ -48,13 +41,8 @@ import {
   waitForGenerationTaskWithPause,
 } from "../generation/taskPolling";
 import {
-  workflowModelSelectionProblem,
-  workflowRuntimePreflightDisposition,
-  workflowSubmissionPreflightProblem,
   type NodeGenerationOutcome,
-  type WorkflowPreflightPhase,
 } from "../generation/workflowExecution";
-import { shouldIgnoreStaleCanvasSaveProblem } from "../generation/groupRunPersist";
 import { groupRunResultKey } from "../generation/groupRunCheckpoint";
 import { visibleGenerationError } from "../generation/generationErrors";
 import {
@@ -257,7 +245,6 @@ function VideoNodeImpl({
     width: number;
   } | undefined>(undefined);
   const { getNode, getNodes } = useReactFlow<ProbeNodeType>();
-  const { register: registerWorkflowNode } = useWorkflowExecution();
   const { setEdges, setNodes, tryAdoptNodes } = useCanvasGraphMutation();
   const canvasEdges = useEdges();
   const canvasNodes = useNodes<ProbeNodeType>();
@@ -453,23 +440,12 @@ function VideoNodeImpl({
     targetId: id,
     targetKind: "video",
   });
-  const modelSelectionProblem = workflowModelSelectionProblem({
-    isFixture,
-    kind: "video",
-    model: selectedVideoModel,
-    status: videoModelSelection.status,
-    unavailableReason: videoModelUnavailableReason,
-  });
   const inputProblems: NodeInputProblem[] = [
     ...(modelSwitchProblem
       ? [{ code: "MODEL_UNSUPPORTED" as const, message: modelSwitchProblem }]
       : []),
     ...inputPreflight.problems,
     ...serverInputProblems,
-  ];
-  const workflowProblems: NodeInputProblem[] = [
-    ...(modelSelectionProblem ? [modelSelectionProblem] : []),
-    ...inputProblems,
   ];
   const inputFeedbackFingerprint = JSON.stringify({
     edges: canvasEdges.map((edge) => [edge.id, edge.source, edge.target, edge.data]),
@@ -1207,111 +1183,6 @@ function VideoNodeImpl({
     }
   };
 
-  const persistWorkflowInputFailure = async (problem: NodeInputProblem) => {
-    if (shouldIgnoreStaleCanvasSaveProblem(problem)) {
-      return { status: "success" as const };
-    }
-    setNodes((nodes) => nodes.map((node) => node.id === id
-      ? {
-          ...node,
-          data: {
-            ...node.data,
-            videoGenerationError: problem.message,
-            videoGenerationErrorCode: problem.code,
-            videoGenerationInputKey: undefined,
-            videoGenerationOwnershipKey: undefined,
-            videoGenerating: false,
-            videoGenerationRetryAllowed: undefined,
-            videoGenerationRetryBlockCode: undefined,
-            videoGenerationRetryBlockReason: undefined,
-            videoGenerationTaskId: undefined,
-          },
-        }
-      : node));
-    setUploadError(problem.message, problem.code);
-    setRetryTaskId(undefined);
-    await flushCanvasSave();
-    return {
-      errorCode: problem.code,
-      message: problem.message,
-      status: "failed" as const,
-    };
-  };
-
-  const preflightWorkflowNode = async (context: {
-    executableIds: ReadonlySet<string>;
-    phase: WorkflowPreflightPhase;
-  }): Promise<NodeRunResult> => {
-    const common = {
-      executableIds: context.executableIds,
-      inputs: inputPreflight.inputs,
-      problems: workflowProblems,
-    };
-    if (context.phase !== "static") {
-      const disposition = workflowRuntimePreflightDisposition(common);
-      if (disposition.status === "ready") return { status: "success" };
-      if (disposition.status === "waiting" && context.phase === "runtime") {
-        return { message: disposition.problem.message, status: "busy" };
-      }
-      return persistWorkflowInputFailure(disposition.problem);
-    }
-    const problem = workflowSubmissionPreflightProblem(common);
-    return problem
-      ? persistWorkflowInputFailure(problem)
-      : { status: "success" };
-  };
-
-  const runWorkflowNode = async (): Promise<NodeRunResult> => {
-    const before = getNodes().find((node) => node.id === id);
-    if (!before) return { status: "failed" };
-    if (isFixture || canvasRevision === undefined) {
-      return { status: "skipped" };
-    }
-    if (
-      before.data.videoGenerating === true ||
-      before.data.inputState === "uploading"
-    ) {
-      return { message: "节点正在生成中", status: "busy" };
-    }
-    const outcome = await generateVideo({ autoRecover: true });
-    if (outcome.status === "failed") {
-      return { message: outcome.message, status: "failed" };
-    }
-    if (outcome.status === "skipped") {
-      return {
-        message: inputPreflight.problems[0]?.message,
-        status: "skipped",
-      };
-    }
-    return { status: "success", successProof: outcome.successProof };
-  };
-
-  const runWorkflowNodeRef = useRef<() => Promise<NodeRunResult>>(
-    async () => ({ status: "skipped" }),
-  );
-  const preflightWorkflowNodeRef = useRef<(
-    context: {
-      executableIds: ReadonlySet<string>;
-      phase: WorkflowPreflightPhase;
-    },
-  ) => Promise<NodeRunResult>>(
-    async () => ({ status: "success" }),
-  );
-  runWorkflowNodeRef.current = runWorkflowNode;
-  preflightWorkflowNodeRef.current = preflightWorkflowNode;
-  useEffect(
-    () =>
-      registerWorkflowNode(id, {
-        preflight: (context) => preflightWorkflowNodeRef.current(context),
-        run: createSaveGateRun(
-          waitForCanvasRevision,
-          () => runWorkflowNodeRef.current(),
-          "video",
-        ),
-      }),
-    [id, registerWorkflowNode, waitForCanvasRevision],
-  );
-
   const retryVideoGeneration = async () => {
     if (
       !retryTaskId ||
@@ -1655,7 +1526,12 @@ function VideoNodeImpl({
   }, [data.videoPrompt]);
 
   useEffect(() => {
-    if (!persistenceReady || isFixture || generationPollingRunRef.current) return;
+    if (
+      !persistenceReady ||
+      isFixture ||
+      generationPollingRunRef.current ||
+      data.workflowExecutionRunId
+    ) return;
     const persistedTaskId = data.videoGenerationTaskId;
     const persistedInputKey = data.videoGenerationInputKey;
     const persistedOwnershipKey = data.videoGenerationOwnershipKey;
@@ -1984,6 +1860,7 @@ function VideoNodeImpl({
     data.videoGenerationOwnershipKey,
     data.videoGenerating,
     data.videoGenerationTaskId,
+    data.workflowExecutionRunId,
     id,
     persistenceReady,
     recoveryEpoch,

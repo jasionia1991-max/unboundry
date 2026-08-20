@@ -29,14 +29,7 @@ import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
 import { useFinishedGenerationDuration } from "../generation/useFinishedGenerationDuration";
 import { GenerationDurationHint } from "./GenerationDurationHint";
 import { GenerationReconcileControls } from "./GenerationReconcileControls";
-import {
-  useWorkflowExecution,
-  type NodeRunResult,
-} from "../generation/WorkflowExecutionProvider";
-import {
-  createSaveGateRun,
-  runExclusiveCanvasSubmit,
-} from "../generation/saveGate";
+import { runExclusiveCanvasSubmit } from "../generation/saveGate";
 import {
   friendlyGenerationMessage,
   generationMessageFallback,
@@ -47,13 +40,8 @@ import {
   waitForGenerationTaskWithPause,
 } from "../generation/taskPolling";
 import {
-  workflowModelSelectionProblem,
-  workflowRuntimePreflightDisposition,
-  workflowSubmissionPreflightProblem,
   type NodeGenerationOutcome,
-  type WorkflowPreflightPhase,
 } from "../generation/workflowExecution";
-import { shouldIgnoreStaleCanvasSaveProblem } from "../generation/groupRunPersist";
 import { groupRunResultKey } from "../generation/groupRunCheckpoint";
 import { visibleGenerationError } from "../generation/generationErrors";
 import {
@@ -224,7 +212,6 @@ function AudioNodeImpl({
   const uploadOperation = useRef(0);
   const waveformSourceAttempted = useRef<string | undefined>(undefined);
   const { getNode, getNodes } = useReactFlow<ProbeNodeType>();
-  const { register: registerWorkflowNode } = useWorkflowExecution();
   const { setEdges, setNodes, tryAdoptNodes } = useCanvasGraphMutation();
   const canvasEdges = useEdges();
   const canvasNodes = useNodes<ProbeNodeType>();
@@ -415,23 +402,12 @@ function AudioNodeImpl({
     targetId: id,
     targetKind: "audio",
   });
-  const modelSelectionProblem = workflowModelSelectionProblem({
-    isFixture,
-    kind: "audio",
-    model: selectedAudioModel,
-    status: audioModelSelection.status,
-    unavailableReason: audioModelUnavailableReason,
-  });
   const inputProblems: NodeInputProblem[] = [
     ...(modelSwitchProblem
       ? [{ code: "MODEL_UNSUPPORTED" as const, message: modelSwitchProblem }]
       : []),
     ...inputPreflight.problems,
     ...serverInputProblems,
-  ];
-  const workflowProblems: NodeInputProblem[] = [
-    ...(modelSelectionProblem ? [modelSelectionProblem] : []),
-    ...inputProblems,
   ];
   const hasCompatibleUpstreamText = inputPreflight.inputs.some((input) =>
     input.kind === "text" &&
@@ -1182,111 +1158,6 @@ function AudioNodeImpl({
     }
   };
 
-  const persistWorkflowInputFailure = async (problem: NodeInputProblem) => {
-    if (shouldIgnoreStaleCanvasSaveProblem(problem)) {
-      return { status: "success" as const };
-    }
-    setNodes((nodes) => nodes.map((node) => node.id === id
-      ? {
-          ...node,
-          data: {
-            ...node.data,
-            audioGenerationError: problem.message,
-            audioGenerationErrorCode: problem.code,
-            audioGenerationInputKey: undefined,
-            audioGenerationOwnershipKey: undefined,
-            audioGenerating: false,
-            audioGenerationRetryAllowed: undefined,
-            audioGenerationRetryBlockCode: undefined,
-            audioGenerationRetryBlockReason: undefined,
-            audioGenerationTaskId: undefined,
-          },
-        }
-      : node));
-    setUploadError(problem.message);
-    setRetryTaskId(undefined);
-    await flushCanvasSave();
-    return {
-      errorCode: problem.code,
-      message: problem.message,
-      status: "failed" as const,
-    };
-  };
-
-  const preflightWorkflowNode = async (context: {
-    executableIds: ReadonlySet<string>;
-    phase: WorkflowPreflightPhase;
-  }): Promise<NodeRunResult> => {
-    const common = {
-      executableIds: context.executableIds,
-      inputs: inputPreflight.inputs,
-      problems: workflowProblems,
-    };
-    if (context.phase !== "static") {
-      const disposition = workflowRuntimePreflightDisposition(common);
-      if (disposition.status === "ready") return { status: "success" };
-      if (disposition.status === "waiting" && context.phase === "runtime") {
-        return { message: disposition.problem.message, status: "busy" };
-      }
-      return persistWorkflowInputFailure(disposition.problem);
-    }
-    const problem = workflowSubmissionPreflightProblem(common);
-    return problem
-      ? persistWorkflowInputFailure(problem)
-      : { status: "success" };
-  };
-
-  const runWorkflowNode = async (): Promise<NodeRunResult> => {
-    const before = getNodes().find((node) => node.id === id);
-    if (!before) return { status: "failed" };
-    if (isFixture || canvasRevision === undefined) {
-      return { status: "skipped" };
-    }
-    if (
-      before.data.audioGenerating === true ||
-      before.data.inputState === "uploading"
-    ) {
-      return { message: "节点正在生成中", status: "busy" };
-    }
-    const outcome = await generateAudio({ autoRecover: true });
-    if (outcome.status === "failed") {
-      return { message: outcome.message, status: "failed" };
-    }
-    if (outcome.status === "skipped") {
-      return {
-        message: inputPreflight.problems[0]?.message,
-        status: "skipped",
-      };
-    }
-    return { status: "success", successProof: outcome.successProof };
-  };
-
-  const runWorkflowNodeRef = useRef<() => Promise<NodeRunResult>>(
-    async () => ({ status: "skipped" }),
-  );
-  const preflightWorkflowNodeRef = useRef<(
-    context: {
-      executableIds: ReadonlySet<string>;
-      phase: WorkflowPreflightPhase;
-    },
-  ) => Promise<NodeRunResult>>(
-    async () => ({ status: "success" }),
-  );
-  runWorkflowNodeRef.current = runWorkflowNode;
-  preflightWorkflowNodeRef.current = preflightWorkflowNode;
-  useEffect(
-    () =>
-      registerWorkflowNode(id, {
-        preflight: (context) => preflightWorkflowNodeRef.current(context),
-        run: createSaveGateRun(
-          waitForCanvasRevision,
-          () => runWorkflowNodeRef.current(),
-          "audio",
-        ),
-      }),
-    [id, registerWorkflowNode, waitForCanvasRevision],
-  );
-
   const retryAudioGeneration = async () => {
     if (
       !retryTaskId ||
@@ -1617,7 +1488,12 @@ function AudioNodeImpl({
   };
 
   useEffect(() => {
-    if (!persistenceReady || isFixture || generationPollingRunRef.current) return;
+    if (
+      !persistenceReady ||
+      isFixture ||
+      generationPollingRunRef.current ||
+      data.workflowExecutionRunId
+    ) return;
     const persistedTaskId = data.audioGenerationTaskId;
     const persistedInputKey = data.audioGenerationInputKey;
     const persistedOwnershipKey = data.audioGenerationOwnershipKey;
@@ -1946,6 +1822,7 @@ function AudioNodeImpl({
     data.audioGenerationOwnershipKey,
     data.audioGenerating,
     data.audioGenerationTaskId,
+    data.workflowExecutionRunId,
     id,
     persistenceReady,
     recoveryEpoch,

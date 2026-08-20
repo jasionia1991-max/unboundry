@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { expect, test, type APIRequestContext } from "./safe-test";
 import {
   buildWorkflowLayers,
@@ -38,21 +39,78 @@ import {
 } from "../client/src/generation/groupRunSummary";
 import {
   acquireGroupRunLease,
+  clearGroupRunCheckpoint,
   clearGroupRunStarting,
   confirmGroupRunNavigation,
   groupRunSnapshotFingerprint,
   groupRunSuccessProof,
   hasForeignActiveGroupRunLeaseForCanvas,
   markGroupRunStarting,
+  readGroupRunCheckpoint,
   readGroupRunStarting,
   releaseGroupRunLease,
+  writeGroupRunCheckpoint,
   verifiedCheckpointSuccessIds,
   type GroupRunCheckpoint,
 } from "../client/src/generation/groupRunCheckpoint";
-import { retainWorkflowNodesForRender } from "../client/src/generation/workflowRenderRetention";
+import { NodeExecutorRegistry } from "../client/src/generation/nodeExecutorRegistry";
+import {
+  createNodeExecutorRegistry,
+  workflowResultOwnerMatches,
+} from "../client/src/generation/workflowNodeExecutors";
 import type { ProbeNodeType } from "../client/src/canvas/ProbeNode";
 import { defaultParameterSchema } from "../types/modelParameters";
 import { resolveNodeInputs } from "../types/nodeInputs";
+
+test("headless workflow registry owns all four executable node kinds", () => {
+  expect(createNodeExecutorRegistry().kinds().sort()).toEqual([
+    "audio",
+    "image",
+    "text",
+    "video",
+  ]);
+  const boundNode: ProbeNodeType = {
+    data: {
+      label: "Text",
+      textGenerationOwnershipKey: "owner-a",
+      textGenerationTaskId: "task-a",
+      workflowExecutionRunId: "run-a",
+    },
+    id: "text-a",
+    position: { x: 0, y: 0 },
+    type: "text",
+  };
+  expect(workflowResultOwnerMatches(boundNode, {
+    kind: "text",
+    ownershipKey: "owner-a",
+    runId: "run-a",
+    taskId: "task-a",
+  })).toBe(true);
+  expect(workflowResultOwnerMatches(boundNode, {
+    kind: "text",
+    ownershipKey: "owner-a",
+    runId: "run-b",
+    taskId: "task-a",
+  })).toBe(false);
+  expect(workflowResultOwnerMatches(undefined, {
+    kind: "text",
+    ownershipKey: "owner-a",
+    runId: "run-a",
+    taskId: "task-a",
+  })).toBe(false);
+});
+
+test("headless workflow registry rejects duplicate executor ownership", () => {
+  const executor = {
+    kind: "text" as const,
+    preflight: async () => ({ status: "success" as const }),
+    recover: async () => ({ status: "success" as const }),
+    run: async () => ({ status: "success" as const }),
+  };
+  expect(() => new NodeExecutorRegistry([executor, executor])).toThrow(
+    "节点执行器重复注册：text",
+  );
+});
 
 async function existingCanvasSaveMetadata(
   request: APIRequestContext,
@@ -669,7 +727,7 @@ test("group run proof survives terminal cleanup and graph forwards the task proo
   }]);
 });
 
-test("group run starting guard and cross-tab lease fail closed", async () => {
+test("group run starting guard permits disjoint leases and rejects overlap", async () => {
   const host = globalThis as unknown as { window?: Window };
   const previousWindow = host.window;
   const values = new Map<string, string>();
@@ -718,16 +776,76 @@ test("group run starting guard and cross-tab lease fail closed", async () => {
     expect(readGroupRunStarting(scope)).toBeUndefined();
 
     const now = Date.now();
-    expect(await acquireGroupRunLease(scope, "run-a", "owner-a", now)).toBe(true);
-    expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas")).toBe(true);
-    expect(await acquireGroupRunLease(scope, "run-b", "owner-b", now + 1)).toBe(false);
+    expect(await acquireGroupRunLease(
+      scope,
+      "run-a",
+      "owner-a",
+      now,
+      ["group-a", "node-a"],
+    )).toBe(true);
+    expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas", "node-a"))
+      .toBe(true);
+    expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas", "node-c"))
+      .toBe(false);
+    expect(await acquireGroupRunLease(
+      scope,
+      "run-b",
+      "owner-b",
+      now + 1,
+      ["node-a"],
+    )).toBe(false);
+    expect(await acquireGroupRunLease(
+      scope,
+      "run-c",
+      "owner-c",
+      now + 2,
+      ["group-c", "node-c"],
+    )).toBe(true);
+    const checkpoint = (runId: string, groupId: string): GroupRunCheckpoint => ({
+      accountId: scope.accountId,
+      canvasId: scope.canvasId,
+      executableNodeIds: [`node-${groupId.at(-1)}`],
+      fixtureScopeId: scope.fixtureScopeId,
+      groupId,
+      nodeStates: {},
+      runId,
+      snapshotFingerprint: `snapshot-${runId}`,
+      startedAt: now,
+      status: "running",
+      successProofs: {},
+      updatedAt: now,
+      version: 1,
+    });
+    expect(writeGroupRunCheckpoint(
+      checkpoint("run-a", "group-a"),
+      { ownerId: "owner-a", runId: "run-a" },
+    )).toBe(true);
+    expect(writeGroupRunCheckpoint(
+      checkpoint("run-c", "group-c"),
+      { ownerId: "owner-c", runId: "run-c" },
+    )).toBe(true);
+    expect(readGroupRunCheckpoint(scope, "run-a")?.groupId).toBe("group-a");
+    expect(readGroupRunCheckpoint(scope, "run-c")?.groupId).toBe("group-c");
+    expect(clearGroupRunCheckpoint(
+      scope,
+      { ownerId: "owner-a", runId: "run-a" },
+    )).toBe(true);
+    expect(readGroupRunCheckpoint(scope, "run-a")).toBeUndefined();
+    expect(readGroupRunCheckpoint(scope, "run-c")?.groupId).toBe("group-c");
     expect(releaseGroupRunLease(scope, "run-a", "owner-a")).toBe(true);
+    expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas", "node-a"))
+      .toBe(false);
+    expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas", "node-c"))
+      .toBe(true);
+    expect(releaseGroupRunLease(scope, "run-c", "owner-c")).toBe(true);
+    expect(clearGroupRunCheckpoint(scope)).toBe(true);
     expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas")).toBe(false);
     Object.defineProperty(fakeWindow, "navigator", {
       configurable: true,
       value: {},
     });
-    expect(await acquireGroupRunLease(scope, "run-c", "owner-c", now + 2)).toBe(false);
+    expect(await acquireGroupRunLease(scope, "run-d", "owner-d", now + 3))
+      .toBe(false);
   } finally {
     clearGroupRunStarting(scope, "run-a");
     if (previousWindow) host.window = previousWindow;
@@ -735,37 +853,21 @@ test("group run starting guard and cross-tab lease fail closed", async () => {
   }
 });
 
-test("workflow render retention is targeted and never mutates canvas nodes", () => {
-  const nodes: ProbeNodeType[] = [
-    {
-      id: "kept",
-      type: "text",
-      data: { label: "保活" },
-      position: { x: 10, y: 20 },
-      selected: true,
-    },
-    {
-      id: "virtualized",
-      type: "text",
-      data: { label: "普通" },
-      position: { x: 30, y: 40 },
-    },
-  ];
-  const before = structuredClone(nodes);
-  const rendered = retainWorkflowNodesForRender(nodes, new Set(["kept"]));
-  expect(nodes).toEqual(before);
-  expect(rendered[0]).toMatchObject({
-    className: "workflow-run-locked",
-    connectable: false,
-    deletable: false,
-    dragging: true,
-    draggable: false,
-    position: { x: 10, y: 20 },
-    selectable: false,
-    selected: false,
-    style: { pointerEvents: "none" },
-  });
-  expect(rendered[1]).toBe(nodes[1]);
+test("workflow execution has no component registration or render-retention dependency", () => {
+  const provider = readFileSync(
+    "client/src/generation/WorkflowExecutionProvider.tsx",
+    "utf8",
+  );
+  const executors = readFileSync(
+    "client/src/generation/workflowNodeExecutors.ts",
+    "utf8",
+  );
+  const canvas = readFileSync("client/src/canvas/CanvasSurface.tsx", "utf8");
+  expect(provider).not.toContain("registerWorkflowNode");
+  expect(provider).not.toContain("waitForRegistrations");
+  expect(canvas).not.toContain("retainWorkflowNodesForRender");
+  expect(executors).not.toContain("document.");
+  expect(executors).not.toContain("window.");
 });
 
 test("workflow graph stop waits for an active node and reports descendants pending", async () => {
@@ -1510,7 +1612,7 @@ test("group run mounts an offscreen Image for preflight and persists the real mo
   }
 });
 
-test("running group locks child edits while the parent can leave the viewport", async ({
+test("running group locks participants while unrelated canvas edits stay available", async ({
   page,
   request,
 }) => {
@@ -1703,11 +1805,11 @@ test("running group locks child edits while the parent can leave the viewport", 
     for (const shortcut of ["Meta+a", "Meta+v", "Meta+x", "Meta+z", "Meta+Shift+z"]) {
       await page.keyboard.press(shortcut);
     }
-    await expect(canvas).toHaveAttribute("data-node-count", beforeCommands.nodeCount ?? "");
     await expect(canvas).toHaveAttribute(
-      "data-selected-node-count",
-      beforeCommands.selectedCount ?? "",
+      "data-node-count",
+      String(Number(beforeCommands.nodeCount) + 2),
     );
+    await expect(canvas).toHaveAttribute("data-selected-node-count", "1");
 
     await page.getByTestId("tasks").click();
     await expect(page.getByTestId("tasks-panel")).toBeVisible();
@@ -1716,6 +1818,9 @@ test("running group locks child edits while the parent can leave the viewport", 
       "running",
     );
 
+    await page.locator('[data-testid="rf__node-run-group"]').click({
+      position: { x: 8, y: 8 },
+    });
     const body = page.getByTestId("group-node-run-group");
     const box = await body.boundingBox();
     if (!box) throw new Error("running group body is not mounted");
@@ -1729,13 +1834,14 @@ test("running group locks child edits while the parent can leave the viewport", 
       return current.nodes.find((node) => node.id === "run-group")?.position.x ?? 0;
     }).toBeLessThan(-200);
     await expect(canvas).toHaveAttribute("data-workflow-run-active", "true");
+    await page.getByTestId("tasks").click();
     await expect(page.getByTestId("tasks-group-summary")).toHaveAttribute(
       "data-status",
       "running",
     );
-    // The parent may be virtualized after leaving the viewport, but renderer
-    // retention keeps the active child mounted and non-interactive.
-    await expect(child).toHaveCount(1);
+    // The active child is truly unmounted after leaving the viewport; the
+    // headless executor and durable task keep the run alive.
+    await expect(child).toHaveCount(0);
     await page.getByTestId("tasks-group-stop").click();
     await expect(page.getByTestId("tasks-group-summary")).toHaveAttribute(
       "data-status",

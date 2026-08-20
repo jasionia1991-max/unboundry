@@ -12,7 +12,16 @@ import {
 } from "react";
 import type { ProbeNodeType } from "../canvas/ProbeNode";
 import type { CuttableEdge } from "../canvas/canvasTypes";
+import {
+  useModelCatalogStatus,
+  usePublishedModels,
+} from "../models/ModelCatalog";
 import { useGenerationCanvas } from "./GenerationCanvasContext";
+import {
+  type NodeExecutor,
+  type NodeExecutorContext,
+} from "./nodeExecutorRegistry";
+import { createNodeExecutorRegistry } from "./workflowNodeExecutors";
 import {
   persistGroupCanvasAfterNode,
   runGroupNodeWithPersist,
@@ -56,17 +65,7 @@ import {
 
 export type { NodeRunResult };
 
-export type NodeRunRegistration = {
-  preflight?: (input: {
-    executableIds: ReadonlySet<string>;
-    phase: WorkflowPreflightPhase;
-  }) => Promise<NodeRunResult> | NodeRunResult;
-  run: () => Promise<NodeRunResult>;
-};
-
 const runtimeInputRefreshTimeoutMs = 5_000;
-const registrationReadyTimeoutMs = 5_000;
-const inFlightRecoveryTimeoutMs = 30_000;
 
 function workflowNodeTitle(node: ProbeNodeType | undefined, fallback: string) {
   if (typeof node?.data.title === "string" && node.data.title.trim()) {
@@ -100,37 +99,44 @@ function workflowStateCount(
 }
 
 async function waitForRuntimePreflight(
-  registration: NodeRunRegistration,
+  executor: NodeExecutor,
+  nodeId: string,
+  context: NodeExecutorContext,
   executableIds: ReadonlySet<string>,
   isCancelled?: () => boolean,
 ) {
-  if (!registration.preflight) return { status: "success" as const };
   const deadline = Date.now() + runtimeInputRefreshTimeoutMs;
   while (true) {
     if (isCancelled?.()) return { message: "已停止后续节点", status: "skipped" as const };
-    const result = await registration.preflight({
+    const result = await executor.preflight(
+      nodeId,
+      context,
       executableIds,
-      phase: "runtime",
-    });
+      "runtime",
+    );
     if (isCancelled?.()) return { message: "已停止后续节点", status: "skipped" as const };
     if (result.status !== "busy") return result;
     if (Date.now() >= deadline) {
       if (isCancelled?.()) {
         return { message: "已停止后续节点", status: "skipped" as const };
       }
-      return registration.preflight({
+      return executor.preflight(
+        nodeId,
+        context,
         executableIds,
-        phase: "runtime-final",
-      });
+        "runtime-final",
+      );
     }
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
 }
 
 async function runRegisteredNodeWithRefreshRecovery(input: {
+  context: NodeExecutorContext;
+  executor: NodeExecutor;
   executableIds: ReadonlySet<string>;
   isCancelled: () => boolean;
-  registration: NodeRunRegistration;
+  nodeId: string;
 }) {
   const deadline = Date.now() + runtimeInputRefreshTimeoutMs;
   while (true) {
@@ -138,7 +144,9 @@ async function runRegisteredNodeWithRefreshRecovery(input: {
       return { message: "已停止后续节点", status: "skipped" as const };
     }
     const preflight = await waitForRuntimePreflight(
-      input.registration,
+      input.executor,
+      input.nodeId,
+      input.context,
       input.executableIds,
       input.isCancelled,
     );
@@ -148,7 +156,11 @@ async function runRegisteredNodeWithRefreshRecovery(input: {
     if (input.isCancelled()) {
       return { message: "已停止后续节点", status: "skipped" as const };
     }
-    const result = await input.registration.run();
+    const result = await input.executor.run(
+      input.nodeId,
+      input.context,
+      input.executableIds,
+    );
     if (result.status !== "busy") return result;
     if (input.isCancelled()) {
       return { message: "已停止后续节点", status: "skipped" as const };
@@ -156,46 +168,6 @@ async function runRegisteredNodeWithRefreshRecovery(input: {
     if (Date.now() >= deadline) return result;
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-}
-
-async function waitForExistingNodeRecovery(input: {
-  getNode: () => ProbeNodeType | undefined;
-  isCancelled: () => boolean;
-}) : Promise<NodeRunResult> {
-  const deadline = Date.now() + inFlightRecoveryTimeoutMs;
-  while (Date.now() < deadline) {
-    if (input.isCancelled()) {
-      return { message: "已停止后续节点", status: "skipped" };
-    }
-    const node = input.getNode();
-    const proof = groupRunSuccessProof(node);
-    if (node && !isWorkflowNodeGenerating(node)) {
-      const errorCode = workflowNodeErrorCode(node);
-      if (errorCode) {
-        return {
-          errorCode,
-          message: "刷新后现有生成任务未成功，未自动重新提交",
-          status: "failed",
-        };
-      }
-      if (proof) return { status: "success", successProof: proof };
-      const data = node.data as Record<string, unknown>;
-      const hasPersistedTask = ["audio", "image", "text", "video"].some(
-        (kind) => typeof data[`${kind}GenerationTaskId`] === "string",
-      );
-      if (!hasPersistedTask) {
-        return {
-          message: "刷新后现有生成任务未能恢复，未自动重新提交",
-          status: "failed",
-        };
-      }
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  return {
-    message: "刷新后现有生成任务仍在恢复，未自动重新提交",
-    status: "failed",
-  };
 }
 
 type WorkflowExecutionValue = {
@@ -206,7 +178,6 @@ type WorkflowExecutionValue = {
   ) => Promise<void>;
   executingGroupIds: ReadonlySet<string>;
   lockedNodeIds: ReadonlySet<string>;
-  register: (nodeId: string, registration: NodeRunRegistration) => () => void;
 };
 
 const WorkflowExecutionContext = createContext<WorkflowExecutionValue>({
@@ -214,7 +185,6 @@ const WorkflowExecutionContext = createContext<WorkflowExecutionValue>({
   executeGroup: async () => undefined,
   executingGroupIds: new Set(),
   lockedNodeIds: new Set(),
-  register: () => () => undefined,
 });
 
 export function WorkflowExecutionProvider({
@@ -240,7 +210,21 @@ export function WorkflowExecutionProvider({
     isFixture,
     waitForCanvasRevision,
   } = useGenerationCanvas();
-  const registrations = useRef(new Map<string, NodeRunRegistration>());
+  const registry = useMemo(() => createNodeExecutorRegistry(), []);
+  const modelCatalogStatus = useModelCatalogStatus();
+  const textModels = usePublishedModels("text");
+  const imageModels = usePublishedModels("image");
+  const audioModels = usePublishedModels("audio");
+  const videoModels = usePublishedModels("video");
+  const executorModelCatalog = useMemo(() => ({
+    models: {
+      audio: audioModels,
+      image: imageModels,
+      text: textModels,
+      video: videoModels,
+    },
+    status: modelCatalogStatus,
+  }), [audioModels, imageModels, modelCatalogStatus, textModels, videoModels]);
   const startingGroupIds = useRef(new Set<string>());
   const startingGroups = useRef(new Map<string, {
     cancelled: boolean;
@@ -255,43 +239,28 @@ export function WorkflowExecutionProvider({
     navigationStopped: boolean;
     ownerId: string;
     publishStopping: () => void;
+    runId: string;
   }>());
+  const runLocks = useRef(new Map<string, ReadonlySet<string>>());
   const [executingGroupIds, setExecutingGroupIds] = useState<
     ReadonlySet<string>
   >(new Set());
   const [lockedNodeIds, setLockedNodeIds] = useState<ReadonlySet<string>>(
     new Set(),
   );
-
-  const register = useCallback(
-    (nodeId: string, registration: NodeRunRegistration) => {
-      registrations.current.set(nodeId, registration);
-      return () => {
-        if (registrations.current.get(nodeId) === registration) {
-          registrations.current.delete(nodeId);
-        }
-      };
-    },
-    [],
-  );
-
-  const waitForRegistrations = useCallback(async (
-    nodeIds: ReadonlySet<string>,
-    isCancelled?: () => boolean,
-  ) => {
-    const deadline = Date.now() + registrationReadyTimeoutMs;
-    while (Date.now() < deadline) {
-      if (isCancelled?.()) return false;
-      if (Array.from(nodeIds).every((nodeId) => registrations.current.has(nodeId))) {
-        return true;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 25));
+  const publishActiveRunState = useCallback(() => {
+    const nextGroups = new Set([
+      ...startingGroups.current.keys(),
+      ...runningGroups.current.keys(),
+    ]);
+    const nextLocks = new Set<string>();
+    for (const locks of runLocks.current.values()) {
+      for (const nodeId of locks) nextLocks.add(nodeId);
     }
-    if (isCancelled?.()) return false;
-    return Array.from(nodeIds).every((nodeId) =>
-      registrations.current.has(nodeId)
-    );
-  }, []);
+    setExecutingGroupIds(nextGroups);
+    setLockedNodeIds(nextLocks);
+    onRetainedNodeIdsChange(nextLocks);
+  }, [onRetainedNodeIdsChange]);
 
   useEffect(() => {
     if (executingGroupIds.size === 0 && startingGroupIds.current.size === 0) {
@@ -371,28 +340,49 @@ export function WorkflowExecutionProvider({
         notify("验收页面不会触发真实生成");
         return;
       }
-      if (runningGroups.current.size > 0 || startingGroupIds.current.size > 0) {
-        if (runningGroups.current.has(groupId) || startingGroupIds.current.has(groupId)) {
-          return;
-        }
-        notify("当前画布已有一组正在执行，请等待完成后再开始另一组");
+      if (runningGroups.current.has(groupId) || startingGroupIds.current.has(groupId)) {
         return;
       }
       const scope = { accountId, canvasId, fixtureScopeId };
-      if (!resumeCheckpoint && readGroupRunCheckpoint(scope)) {
+      const existingCheckpoint = !resumeCheckpoint
+        ? readGroupRunCheckpoint(scope)
+        : undefined;
+      const liveRunIds = new Set([
+        ...[...startingGroups.current.values()].map((run) => run.runId),
+        ...[...runningGroups.current.values()].map((run) => run.runId),
+      ]);
+      if (existingCheckpoint && !liveRunIds.has(existingCheckpoint.runId)) {
         notify("当前画布有一轮未完成记录，请在生成任务面板继续或明确放弃后再开始新一轮", "error");
+        return;
+      }
+      const candidateNodes = getNodes();
+      const candidateEdges = getEdges();
+      const childIds = new Set(
+        candidateNodes
+          .filter((node) => node.parentId === groupId)
+          .map((node) => node.id),
+      );
+      const candidateLockIds = new Set([groupId, ...childIds]);
+      for (const edge of candidateEdges) {
+        if (childIds.has(edge.target)) candidateLockIds.add(edge.source);
+      }
+      const conflictingNodeId = [...candidateLockIds].find((nodeId) =>
+        [...runLocks.current.values()].some((locks) => locks.has(nodeId))
+      );
+      if (conflictingNodeId) {
+        notify("另一轮正在使用相同节点或输入，本轮未提交任何生成任务", "error");
         return;
       }
       startingGroupIds.current.add(groupId);
       const runId = resumeCheckpoint?.runId ?? crypto.randomUUID();
       startingGroups.current.set(groupId, { cancelled: false, runId });
+      runLocks.current.set(runId, candidateLockIds);
       markGroupRunStarting(scope, groupId, runId);
       // The preparation phase is active too: this drives beforeunload and
       // keeps the task-panel stop action usable while nodes are mounting.
-      setExecutingGroupIds(new Set([groupId]));
+      publishActiveRunState();
       const runSequence = nextGroupRunSequence();
       let checkpoint: GroupRunCheckpoint | undefined;
-      let retained = false;
       let leaseAcquired = false;
       let leaseTimer: number | undefined;
       let summaryBaseForError: (() => Omit<GroupRunSummary, "status">) | undefined;
@@ -400,7 +390,7 @@ export function WorkflowExecutionProvider({
       const isStartingCancelled = () =>
         startingGroups.current.get(groupId)?.cancelled === true;
       const expectedLease = () => ({ ownerId, runId });
-      const retainRunNodes = (
+      const refreshRunLocks = (
         candidateNodes: readonly ProbeNodeType[],
         candidateEdges: readonly CuttableEdge[],
       ) => {
@@ -413,14 +403,13 @@ export function WorkflowExecutionProvider({
         for (const edge of candidateEdges) {
           if (childIds.has(edge.target)) retainedNodeIds.add(edge.source);
         }
-        onRetainedNodeIdsChange(retainedNodeIds);
-        setLockedNodeIds(retainedNodeIds);
-        retained = true;
+        runLocks.current.set(runId, retainedNodeIds);
+        publishActiveRunState();
       };
       try {
         // Freeze edits at the click boundary, before save/lease/registration
         // awaits. Direct external sources are part of the input snapshot too.
-        retainRunNodes(getNodes(), getEdges());
+        refreshRunLocks(getNodes(), getEdges());
         try {
           await waitForCanvasStable(groupId, isStartingCancelled);
         } catch (error) {
@@ -508,7 +497,13 @@ export function WorkflowExecutionProvider({
         }
 
         if (isStartingCancelled()) return;
-        leaseAcquired = await acquireGroupRunLease(scope, runId, ownerId);
+        leaseAcquired = await acquireGroupRunLease(
+          scope,
+          runId,
+          ownerId,
+          Date.now(),
+          [...candidateLockIds],
+        );
         if (!leaseAcquired) {
           notify(
             "locks" in window.navigator
@@ -536,15 +531,28 @@ export function WorkflowExecutionProvider({
           }
         }, groupRunLeaseHeartbeatMs);
 
-        retainRunNodes(nodes, edges);
+        refreshRunLocks(nodes, edges);
         const remainingIds = new Set(
           [...executableIds].filter((id) => !initialSuccessNodeIds.has(id)),
         );
-        if (!await waitForRegistrations(remainingIds, isStartingCancelled)) {
-          notify("整组节点未能完成加载，本轮没有提交生成任务", "error");
-          return;
-        }
         if (isStartingCancelled()) return;
+
+        const createExecutorContext = (
+          isCancelled: () => boolean,
+        ): NodeExecutorContext => ({
+          accountId,
+          canvasId,
+          fixtureScopeId,
+          flushCanvasSave,
+          getEdges,
+          getNodes,
+          isCancelled,
+          isFixture,
+          modelCatalog: executorModelCatalog,
+          runId,
+          setNodes,
+          waitForCanvasRevision,
+        });
 
         const startedAt = resumeCheckpoint?.startedAt ?? Date.now();
         const nodeStates = new Map<string, WorkflowGraphNodeState>(
@@ -562,7 +570,7 @@ export function WorkflowExecutionProvider({
           startedAt,
           status: "preparing",
           successProofs: resumeCheckpoint?.successProofs ?? {},
-          lease: readGroupRunLease(scope),
+          lease: readGroupRunLease(scope, runId),
           updatedAt: Date.now(),
           version: 1,
         };
@@ -620,15 +628,17 @@ export function WorkflowExecutionProvider({
             notify("已停止整组准备，不会再提交后续生成任务");
             return;
           }
-          const registration = registrations.current.get(nodeId);
-          if (!registration) {
-            preflightFailures.push({ message: "节点尚未就绪", nodeId });
+          const executor = registry.get(nodeById.get(nodeId));
+          if (!executor) {
+            preflightFailures.push({ message: "节点执行器不可用", nodeId });
             continue;
           }
-          const result = await registration.preflight?.({
+          const result = await executor.preflight(
+            nodeId,
+            createExecutorContext(isStartingCancelled),
             executableIds,
-            phase: "static",
-          }) ?? { status: "success" as const };
+            "static",
+          );
           if (isStartingCancelled()) {
             checkpoint = {
               ...checkpoint,
@@ -706,6 +716,7 @@ export function WorkflowExecutionProvider({
             ...summaryBase(),
             status: "stopping",
           }),
+          runId,
         };
         runningGroups.current.set(groupId, running);
         startingGroupIds.current.delete(groupId);
@@ -764,17 +775,18 @@ export function WorkflowExecutionProvider({
             }
           },
           runNode: async (nodeId) => {
-            const registration = registrations.current.get(nodeId);
-            if (!registration) {
-              return { message: "节点执行上下文意外丢失", status: "failed" };
+            const node = getNodes().find((candidate) => candidate.id === nodeId);
+            const executor = registry.get(node);
+            if (!executor) {
+              return { message: "节点执行器意外丢失", status: "failed" };
             }
             running.activeNodeIds.add(nodeId);
             try {
               if (resumeInFlightNodeIds.has(nodeId)) {
-                return await waitForExistingNodeRecovery({
-                  getNode: () => getNodes().find((node) => node.id === nodeId),
-                  isCancelled: () => running.cancelled,
-                });
+                return await executor.recover(
+                  nodeId,
+                  createExecutorContext(() => running.cancelled),
+                );
               }
               return await runGroupNodeWithPersist({
                 isCancelled: () => running.cancelled,
@@ -784,9 +796,11 @@ export function WorkflowExecutionProvider({
                 }),
                 run: async () => {
                   return runRegisteredNodeWithRefreshRecovery({
+                    context: createExecutorContext(() => running.cancelled),
+                    executor,
                     executableIds,
                     isCancelled: () => running.cancelled,
-                    registration,
+                    nodeId,
                   });
                 },
               });
@@ -916,18 +930,19 @@ export function WorkflowExecutionProvider({
         notify(`${message}；可在生成任务面板核对后继续剩余节点`, "error");
       } finally {
         if (leaseTimer !== undefined) window.clearInterval(leaseTimer);
-        runningGroups.current.delete(groupId);
-        startingGroupIds.current.delete(groupId);
-        startingGroups.current.delete(groupId);
+        if (runningGroups.current.get(groupId)?.runId === runId) {
+          runningGroups.current.delete(groupId);
+        }
+        if (startingGroups.current.get(groupId)?.runId === runId) {
+          startingGroupIds.current.delete(groupId);
+          startingGroups.current.delete(groupId);
+        }
+        runLocks.current.delete(runId);
         clearGroupRunStarting(scope, runId);
         if (leaseAcquired) {
           releaseGroupRunLease(scope, runId, ownerId);
         }
-        setExecutingGroupIds(new Set());
-        if (retained) {
-          setLockedNodeIds(new Set());
-          onRetainedNodeIdsChange(new Set());
-        }
+        publishActiveRunState();
       }
     },
     [
@@ -938,9 +953,10 @@ export function WorkflowExecutionProvider({
       getNodes,
       isFixture,
       notify,
-      onRetainedNodeIdsChange,
-      waitForRegistrations,
+      publishActiveRunState,
       waitForCanvasStable,
+      executorModelCatalog,
+      registry,
     ],
   );
 
@@ -965,11 +981,11 @@ export function WorkflowExecutionProvider({
   useEffect(() => {
     const scope = { accountId, canvasId, fixtureScopeId };
     const stopForForeignLease = () => {
-      const lease = readGroupRunLease(scope);
       for (const running of runningGroups.current.values()) {
+        const lease = readGroupRunLease(scope, running.runId);
         if (
           isGroupRunLeaseActive(lease) &&
-          (lease?.ownerId !== running.ownerId || lease.runId !== running.checkpoint.runId)
+          lease?.ownerId !== running.ownerId
         ) {
           running.cancelled = true;
           running.leaseLost = true;
@@ -986,7 +1002,7 @@ export function WorkflowExecutionProvider({
       if (!detail || JSON.stringify(detail.scope) !== JSON.stringify(scope)) return;
       const starting = startingGroups.current.get(detail.groupId);
       if (starting?.runId === detail.runId) {
-        const checkpoint = readGroupRunCheckpoint(scope);
+        const checkpoint = readGroupRunCheckpoint(scope, detail.runId);
         if (checkpoint?.status === "interrupted") {
           starting.cancelled = true;
         } else {
@@ -995,7 +1011,7 @@ export function WorkflowExecutionProvider({
       }
       const running = runningGroups.current.get(detail.groupId);
       if (!running || running.checkpoint.runId !== detail.runId) return;
-      const checkpoint = readGroupRunCheckpoint(scope);
+      const checkpoint = readGroupRunCheckpoint(scope, detail.runId);
       if (checkpoint?.status !== "interrupted") {
         cancelGroup(detail.groupId);
         return;
@@ -1022,9 +1038,8 @@ export function WorkflowExecutionProvider({
       executeGroup,
       executingGroupIds,
       lockedNodeIds,
-      register,
     }),
-    [cancelGroup, executeGroup, executingGroupIds, lockedNodeIds, register],
+    [cancelGroup, executeGroup, executingGroupIds, lockedNodeIds],
   );
 
   return (
