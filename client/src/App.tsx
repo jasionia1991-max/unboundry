@@ -57,6 +57,8 @@ import {
   SettingsPageHeader,
   settingsDestination,
 } from "./navigation/SettingsPageHeader";
+import { createGroupRunSummaryScope } from "./generation/groupRunSummary";
+import { confirmGroupRunNavigation } from "./generation/groupRunCheckpoint";
 
 const CanvasShell = lazy(async () => ({
   default: (await import("./canvas/CanvasShell")).CanvasShell,
@@ -7727,6 +7729,15 @@ function AuthenticatedApplication({
       window.location.search,
       projectId,
     );
+  const currentGroupRunScope = createGroupRunSummaryScope(
+    status.user.id,
+    projectId ?? fixtureId ?? "default",
+    fixtureId ?? "",
+  );
+  const navigateFromCurrentCanvas = (path: string) => {
+    if (!confirmGroupRunNavigation(currentGroupRunScope)) return;
+    window.location.href = fromCurrentCanvas(path);
+  };
   if (pathname === "/admin/accounts") {
     return (
       <AdminRouteGuard
@@ -7845,7 +7856,7 @@ function AuthenticatedApplication({
           <span>@{status.user.loginName}</span>
           <button
             onClick={() => {
-              window.location.href = fromCurrentCanvas("/canvas/projects");
+              navigateFromCurrentCanvas("/canvas/projects");
             }}
             type="button"
           >
@@ -7853,7 +7864,7 @@ function AuthenticatedApplication({
           </button>
           <button
             onClick={() => {
-              window.location.href = fromCurrentCanvas("/connections");
+              navigateFromCurrentCanvas("/connections");
             }}
             type="button"
           >
@@ -7866,7 +7877,7 @@ function AuthenticatedApplication({
           ) && (
               <button
                 onClick={() => {
-                  window.location.href = fromCurrentCanvas("/admin/models");
+                  navigateFromCurrentCanvas("/admin/models");
                 }}
                 type="button"
               >
@@ -7880,7 +7891,7 @@ function AuthenticatedApplication({
           ) && (
               <button
                 onClick={() => {
-                  window.location.href = fromCurrentCanvas("/admin/providers");
+                  navigateFromCurrentCanvas("/admin/providers");
                 }}
                 type="button"
               >
@@ -7894,7 +7905,7 @@ function AuthenticatedApplication({
           ) && (
               <button
                 onClick={() => {
-                  window.location.href = fromCurrentCanvas("/admin/accounts");
+                  navigateFromCurrentCanvas("/admin/accounts");
                 }}
                 type="button"
               >
@@ -7908,7 +7919,7 @@ function AuthenticatedApplication({
           ) && (
               <button
                 onClick={() => {
-                  window.location.href = fromCurrentCanvas("/admin/storage");
+                  navigateFromCurrentCanvas("/admin/storage");
                 }}
                 type="button"
               >
@@ -7922,9 +7933,7 @@ function AuthenticatedApplication({
           ) && (
               <button
                 onClick={() => {
-                  window.location.href = fromCurrentCanvas(
-                    "/admin/generation-safety",
-                  );
+                  navigateFromCurrentCanvas("/admin/generation-safety");
                 }}
                 type="button"
               >
@@ -7938,7 +7947,7 @@ function AuthenticatedApplication({
           ) && (
               <button
                 onClick={() => {
-                  window.location.href = fromCurrentCanvas("/admin/templates");
+                  navigateFromCurrentCanvas("/admin/templates");
                 }}
                 type="button"
               >
@@ -7956,6 +7965,7 @@ function AuthenticatedApplication({
           </button>
           <button
             onClick={() => {
+              if (!confirmGroupRunNavigation(currentGroupRunScope)) return;
               void jsonRequest("/api/auth/logout", { method: "POST" }).then(() =>
                 setStatus({
                   authenticated: false,

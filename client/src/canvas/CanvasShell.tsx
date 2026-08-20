@@ -20,6 +20,11 @@ import {
 } from "./CanvasSurface";
 import { GenerationTasksPanel } from "./GenerationTasksPanel";
 import { createGroupRunSummaryScope } from "../generation/groupRunSummary";
+import {
+  confirmGroupRunNavigation,
+  readGroupRunCheckpoint,
+  readGroupRunStarting,
+} from "../generation/groupRunCheckpoint";
 import { useCompositionSafeText } from "./CompositionSafeText";
 import { hasInteractionProbeNodes } from "./probeFixtures";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
@@ -1690,6 +1695,7 @@ export function CanvasShell({
   };
 
   const createProjectFromMenu = async () => {
+    if (!confirmGroupRunNavigation(groupRunScope)) return;
     if (!beginProjectAction("create")) return;
     try {
       const response = await fetch("/api/projects", {
@@ -1712,6 +1718,7 @@ export function CanvasShell({
   };
 
   const cloneCurrentProject = async () => {
+    if (!confirmGroupRunNavigation(groupRunScope)) return;
     if (!projectId || !beginProjectAction("clone")) return;
     try {
       const response = await fetch(
@@ -1733,6 +1740,14 @@ export function CanvasShell({
   };
 
   const deleteCurrentProject = async () => {
+    const activeRun = readGroupRunCheckpoint(groupRunScope);
+    if (
+      readGroupRunStarting(groupRunScope) ||
+      (activeRun && ["preparing", "running", "stopping"].includes(activeRun.status))
+    ) {
+      setProjectActionError("整组执行中不能删除当前项目，请先停止后续并等待已开始节点完成");
+      return;
+    }
     if (!projectId || !beginProjectAction("delete")) return;
     try {
       const response = await fetch(
@@ -2494,6 +2509,7 @@ export function CanvasShell({
           <span className="project-menu-label">项目</span>
           <button
             onClick={() => {
+              if (!confirmGroupRunNavigation(groupRunScope)) return;
               setProjectMenuOpen(false);
               window.location.href = projectWorkspacePath(projectId);
             }}
@@ -3419,6 +3435,7 @@ export function CanvasShell({
                   className="template-browser-admin-entry"
                   data-testid="admin-templates-entry"
                   onClick={() => {
+                    if (!confirmGroupRunNavigation(groupRunScope)) return;
                     window.location.href = pathWithCurrentCanvasSource(
                       "/admin/templates",
                       userId,

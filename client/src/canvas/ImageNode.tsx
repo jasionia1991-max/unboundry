@@ -68,6 +68,7 @@ import {
   type WorkflowPreflightPhase,
 } from "../generation/workflowExecution";
 import { shouldIgnoreStaleCanvasSaveProblem } from "../generation/groupRunPersist";
+import { groupRunResultKey } from "../generation/groupRunCheckpoint";
 import { visibleGenerationError } from "../generation/generationErrors";
 import {
   generationFailureMessage,
@@ -1922,6 +1923,9 @@ function ImageNodeImpl({
                 imageGenerationRetryBlockCode: undefined,
                 imageGenerationRetryBlockReason: undefined,
                 imageGenerationTaskId: undefined,
+                groupRunSuccessOwnershipKey: run.ownershipKey,
+                groupRunSuccessResultKey: groupRunResultKey(task.resultUrl),
+                groupRunSuccessTaskId: task.id,
                 imageSrc: task.resultUrl,
               },
             }
@@ -2051,6 +2055,9 @@ function ImageNodeImpl({
                     imageGenerationRetryBlockCode: undefined,
                     imageGenerationRetryBlockReason: undefined,
                     imageGenerationTaskId: submitted.id,
+                    groupRunSuccessOwnershipKey: undefined,
+                    groupRunSuccessResultKey: undefined,
+                    groupRunSuccessTaskId: undefined,
                     imageAspectRatio: aspectRatio,
                     imageModelId: requestedModelId,
                     imageModelName: requestedModelName,
@@ -2179,7 +2186,14 @@ function ImageNodeImpl({
       pollingPausedTaskIdRef.current = undefined;
       setPollingPausedTaskId(undefined);
       setRetryTaskId(undefined);
-      return { status: "success" };
+      return {
+        status: "success",
+        successProof: {
+          ownershipKey: generationRun?.ownershipKey ?? "",
+          resultKey: groupRunResultKey(task.resultUrl),
+          taskId: task.id,
+        },
+      };
     } catch (error) {
       if (error instanceof GenerationRequestError) {
         setServerInputProblems(error.problems);
@@ -2312,7 +2326,7 @@ function ImageNodeImpl({
         status: "skipped",
       };
     }
-    return { status: "success" };
+    return { status: "success", successProof: outcome.successProof };
   };
 
   const runWorkflowNodeRef = useRef<() => Promise<NodeRunResult>>(
@@ -2401,6 +2415,9 @@ function ImageNodeImpl({
                   imageGenerationRetryBlockCode: undefined,
                   imageGenerationRetryBlockReason: undefined,
                   imageGenerationTaskId: taskId,
+                  groupRunSuccessOwnershipKey: undefined,
+                  groupRunSuccessResultKey: undefined,
+                  groupRunSuccessTaskId: undefined,
                 },
               }
             : node,
@@ -2602,6 +2619,9 @@ function ImageNodeImpl({
                   imageGenerationErrorCode: undefined,
                   imageGenerating: true,
                   imageGenerationTaskId: taskId,
+                  groupRunSuccessOwnershipKey: undefined,
+                  groupRunSuccessResultKey: undefined,
+                  groupRunSuccessTaskId: undefined,
                 },
               }
             : node,
@@ -2923,6 +2943,9 @@ function ImageNodeImpl({
               imageGenerationRetryBlockCode: undefined,
               imageGenerationRetryBlockReason: undefined,
               imageGenerationTaskId: task.id,
+              groupRunSuccessOwnershipKey: undefined,
+              groupRunSuccessResultKey: undefined,
+              groupRunSuccessTaskId: undefined,
             },
           }
         : node));
