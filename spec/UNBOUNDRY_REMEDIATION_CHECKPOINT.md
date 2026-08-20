@@ -5,6 +5,13 @@
 状态：`HISTORICAL_CHECKPOINT / APPEND_ONLY`
 用途：保留各次施工与发布时点证据，不再充当当前恢复入口。**当前状态、未发布工作区与下一步只看 `UNBOUNDRY_CURRENT_STATE.md`；本文件任何旧命令或旧授权都不可复用。**
 
+## 0. 最新已发布事件：v0.6.25 生成恢复与整组运行加固（2026-08-20 已发布，agent 技术实页通过）
+
+- 精确源码commit`57cef4ce26fc43cd0f828756850a2d3effcb161b`、tree`626b5945d64cde1a1c07c7b7765ce8a9661e82ff`；tag`v0.6.25`；PR #50 merge`e7174b0740ff1573cc8bda36f1242b8da8ff9e81`。
+- 正式安全全量`119/119 specs、1018/1018 tests PASS`，异常0；生产release`/opt/unboundry/releases/v0.6.25-generation-hardening-20260820`，冻结备份`v0.6.25-frozen-789d29`（365文件，双清单SHA`d15f3433…`），公网资源/service/schema39/integrity/FK门PASS。
+- 已知 stuck queued 任务`c479826f…`重启后可靠接力并success；11,596,744字节真实PNG通过Ark Files upload/poll/delete，文字任务`6d304853…`一次success，页面已保存、控制台0 error/warn。授权真实验证后tasks550、attempts558、active0。
+- 状态：`PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`。用户主观使用感受未冒充`USER_PASS`；本次发布和真实验证授权已消费完毕。权威回执：`spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
+
 ## 0. 最新已发布事件：v0.6.24 方舟文字模型大图原图直传（2026-08-20 已发布，待用户复验）
 
 - 用户确认版本号 `v0.6.24` 并说「可以上线」（此前已点头做真实验证）。
