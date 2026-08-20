@@ -370,7 +370,18 @@ export function WorkflowExecutionProvider({
         [...runLocks.current.values()].some((locks) => locks.has(nodeId))
       );
       if (conflictingNodeId) {
-        notify("另一轮正在使用相同节点或输入，本轮未提交任何生成任务", "error");
+        const conflictingNode = candidateNodes.find((node) =>
+          node.id === conflictingNodeId
+        );
+        const conflictRole = conflictingNodeId === groupId
+          ? "运行组"
+          : childIds.has(conflictingNodeId)
+            ? "组内节点"
+            : "直接输入";
+        notify(
+          `另一轮正在使用${conflictRole}“${workflowNodeTitle(conflictingNode, conflictingNodeId)}”（节点 ${conflictingNodeId}），本轮未提交任何生成任务`,
+          "error",
+        );
         return;
       }
       startingGroupIds.current.add(groupId);

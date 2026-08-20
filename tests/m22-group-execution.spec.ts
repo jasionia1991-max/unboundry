@@ -865,6 +865,8 @@ test("workflow execution has no component registration or render-retention depen
   const canvas = readFileSync("client/src/canvas/CanvasSurface.tsx", "utf8");
   expect(provider).not.toContain("registerWorkflowNode");
   expect(provider).not.toContain("waitForRegistrations");
+  expect(provider).toContain("另一轮正在使用${conflictRole}");
+  expect(provider).toContain("（节点 ${conflictingNodeId}）");
   expect(canvas).not.toContain("retainWorkflowNodesForRender");
   expect(executors).not.toContain("document.");
   expect(executors).not.toContain("window.");
@@ -1321,7 +1323,7 @@ test("group run stays disabled on acceptance fixtures and makes no provider requ
   expect(providerRequests).toBe(0);
 });
 
-test("group run mounts an offscreen Image for preflight and persists the real model error", async ({
+test("group run preflights a truly unmounted offscreen Image and persists the real model error", async ({
   page,
   request,
 }) => {
@@ -1483,6 +1485,7 @@ test("group run mounts an offscreen Image for preflight and persists the real mo
     const expectedMessage = "当前模型不支持image类型上游，引用已保留";
     await expect(page.getByTestId("workflow-run-toast")).toContainText(
       `整组执行已阻止：发现 1 个不兼容节点；首个“商品主图”：${expectedMessage}（未提交任何生成任务）`,
+      { timeout: 15_000 },
     );
     await page.getByTestId("tasks").click();
     const summary = page.getByTestId("tasks-group-summary");
@@ -1612,29 +1615,67 @@ test("group run mounts an offscreen Image for preflight and persists the real mo
   }
 });
 
-test("running group locks participants while unrelated canvas edits stay available", async ({
+test("disjoint group runs isolate success, failure and stop while unrelated edits stay available", async ({
   page,
   request,
 }) => {
+  test.setTimeout(120_000);
   const modelId = `fixture-group-lock-${randomUUID()}`;
-  const taskId = `fixture-group-lock-task-${randomUUID()}`;
   const created = await request.post("/api/projects", { data: {} });
   expect(created.status()).toBe(201);
   const project = await created.json() as { id: string };
   const parameterSchema = defaultParameterSchema("text");
-  const baseTask = {
-    attempt: 1,
-    canvasId: project.id,
-    costCurrency: "CNY" as const,
-    createdAt: "2026-08-20T00:00:00.000Z",
-    id: taskId,
-    kind: "text" as const,
-    model: modelId,
-    nodeId: "run-text",
-    prompt: "生成一段运行中测试文案",
-    updatedAt: "2026-08-20T00:00:01.000Z",
+  type FakeTaskState = "failed" | "running" | "success";
+  type FakeTask = {
+    attempt: number;
+    canvasId: string;
+    costCurrency: "CNY";
+    createdAt: string;
+    id: string;
+    kind: "text";
+    model: string;
+    nodeId: string;
+    prompt: string;
+    updatedAt: string;
   };
-  let taskPostSeen = false;
+  const tasks = new Map<string, FakeTask>();
+  const taskStates = new Map<string, FakeTaskState>();
+  const latestTaskByNode = new Map<string, string>();
+  const taskPostNodes: string[] = [];
+  type CapturedSummary = { groupId: string; runId: string; status: string };
+  const terminalSummaries: CapturedSummary[] = [];
+  let taskSequence = 0;
+  const taskJson = (task: FakeTask) => {
+    const state = taskStates.get(task.id) ?? "running";
+    return {
+      ...task,
+      ...(state === "failed"
+        ? { error: "故意失败，验证另一轮继续", errorCode: "FIXTURE_FAILURE" }
+        : {}),
+      ...(state === "success"
+        ? { resultText: `已完成 ${task.nodeId} / ${task.id}` }
+        : {}),
+      state,
+    };
+  };
+  const setLatestTaskState = (nodeId: string, state: FakeTaskState) => {
+    const taskId = latestTaskByNode.get(nodeId);
+    if (!taskId) throw new Error(`missing fake task for ${nodeId}`);
+    taskStates.set(taskId, state);
+  };
+  const withDeadline = async <T>(label: string, promise: Promise<T>) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => reject(new Error(`dual-run timeout: ${label}`)), 15_000);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
   await page.route("**/api/models", async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -1690,21 +1731,42 @@ test("running group locks participants while unrelated canvas edits stay availab
       return;
     }
     if (requestUrl.pathname === "/api/generation-tasks" && method === "POST") {
-      taskPostSeen = true;
+      const body = route.request().postDataJSON() as {
+        nodeId: string;
+        prompt: string;
+      };
+      taskSequence += 1;
+      const taskId = `fixture-group-lock-task-${taskSequence}-${randomUUID()}`;
+      const task: FakeTask = {
+        attempt: 1,
+        canvasId: project.id,
+        costCurrency: "CNY",
+        createdAt: new Date().toISOString(),
+        id: taskId,
+        kind: "text",
+        model: modelId,
+        nodeId: body.nodeId,
+        prompt: body.prompt,
+        updatedAt: new Date().toISOString(),
+      };
+      tasks.set(taskId, task);
+      taskStates.set(taskId, "running");
+      latestTaskByNode.set(body.nodeId, taskId);
+      taskPostNodes.push(body.nodeId);
       await route.fulfill({
         contentType: "application/json",
-        json: { ...baseTask, state: "running" },
+        json: taskJson(task),
         status: 202,
       });
       return;
     }
-    if (
-      requestUrl.pathname === `/api/generation-tasks/${taskId}` &&
-      method === "GET"
-    ) {
+    const taskId = requestUrl.pathname.startsWith("/api/generation-tasks/")
+      ? requestUrl.pathname.split("/").at(-1)
+      : undefined;
+    if (taskId && tasks.has(taskId) && method === "GET") {
       await route.fulfill({
         contentType: "application/json",
-        json: { ...baseTask, state: "running" },
+        json: taskJson(tasks.get(taskId)!),
         status: 200,
       });
       return;
@@ -1712,7 +1774,7 @@ test("running group locks participants while unrelated canvas edits stay availab
     if (requestUrl.pathname === "/api/generation-tasks" && method === "GET") {
       await route.fulfill({
         contentType: "application/json",
-        json: { tasks: [{ ...baseTask, state: "running" }] },
+        json: { tasks: [...tasks.values()].map(taskJson) },
         status: 200,
       });
       return;
@@ -1724,15 +1786,109 @@ test("running group locks participants while unrelated canvas edits stay availab
     });
   });
 
-  const readCanvasNodes = async () => {
+  const startGroup = async (
+    groupId: string,
+    nodeId: string,
+    expectedNodePostCount: number,
+  ) => {
+    await withDeadline(`${groupId} select`, page
+      .locator(`[data-testid="rf__node-${groupId}"]`)
+      .evaluate((element) => element.dispatchEvent(new MouseEvent("click", {
+        bubbles: true,
+      }))));
+    const execute = page
+      .locator(`[data-testid="rf__node-${groupId}"]`)
+      .getByTestId("group-execute-button");
+    await expect(execute).toBeEnabled();
+    await withDeadline(`${groupId} execute click`, execute.evaluate((element) =>
+      (element as HTMLButtonElement).click()
+    ));
+    await withDeadline(`${groupId} task POST`, expect.poll(() =>
+      taskPostNodes.filter((candidate) => candidate === nodeId).length
+    ).toBe(expectedNodePostCount));
+  };
+  const discardInterruptedCheckpointsForNextScenario = () => page.evaluate(() => {
+    for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+      const key = window.localStorage.key(index);
+      if (key?.startsWith("unboundry-group-run-checkpoint:v1:")) {
+        window.localStorage.removeItem(key);
+      }
+    }
+  });
+  const expectTerminalSummaryCount = (
+    groupId: string,
+    status: "cancelled" | "failed" | "success",
+    count: number,
+  ) => expect.poll(() => page.evaluate(({ groupId, status }) =>
+    ((window as typeof window & {
+      __dualRunSummaries?: Array<{ groupId: string; runId: string; status: string }>;
+    }).__dualRunSummaries ?? []).filter((summary) =>
+      summary.groupId === groupId && summary.status === status
+    ).length, { groupId, status }), { timeout: 15_000 }).toBe(count);
+  const installSummaryCapture = () => page.evaluate(() => {
+    const host = window as typeof window & {
+      __dualRunSummaries?: Array<{ groupId: string; runId: string; status: string }>;
+    };
+    host.__dualRunSummaries = [];
+    window.addEventListener("unboundry:group-run-summary", (event) => {
+      const detail = (event as CustomEvent<{
+        groupId: string;
+        runId: string;
+        status: string;
+      }>).detail;
+      host.__dualRunSummaries?.push({
+        groupId: detail.groupId,
+        runId: detail.runId,
+        status: detail.status,
+      });
+    });
+  });
+  const captureTerminalSummaries = async () => {
+    terminalSummaries.push(...await page.evaluate(() =>
+      ((window as typeof window & {
+        __dualRunSummaries?: Array<{ groupId: string; runId: string; status: string }>;
+      }).__dualRunSummaries ?? []).filter((summary) =>
+        ["cancelled", "failed", "success"].includes(summary.status)
+      )
+    ));
+  };
+  const resetGroupPositionsForNextScenario = async () => {
     const response = await request.get(`/api/canvas/${project.id}`);
     expect(response.ok()).toBeTruthy();
-    return (await response.json()) as {
+    const current = await response.json() as {
+      edges: unknown[];
+      loadToken: string;
       nodes: Array<{
         id: string;
         position: { x: number; y: number };
+        [key: string]: unknown;
       }>;
+      revision: number;
     };
+    const saved = await request.put(`/api/canvas/${project.id}`, {
+      data: {
+        edges: current.edges,
+        nodes: current.nodes.map((node) => node.id === "run-group-a"
+          ? { ...node, position: { x: 180, y: 120 } }
+          : node.id === "run-group-b"
+            ? { ...node, position: { x: 760, y: 120 } }
+            : node),
+        observedLoadToken: current.loadToken,
+        observedRevision: current.revision,
+        revision: current.revision,
+        saveAttemptId: randomUUID(),
+        saveSequence: 1,
+        saveSessionId: randomUUID(),
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+    expect(saved.ok()).toBeTruthy();
+    await page.reload();
+    await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+      "data-persistence-ready",
+      "true",
+    );
+    await installSummaryCapture();
   };
 
   try {
@@ -1741,10 +1897,10 @@ test("running group locks participants while unrelated canvas edits stay availab
       data: {
         edges: [],
         nodes: [{
-          data: { label: "Group", title: "运行中锁定组" },
-          id: "run-group",
+          data: { label: "Group", title: "运行中锁定组 A" },
+          id: "run-group-a",
           position: { x: 180, y: 120 },
-          style: { height: 620, width: 720 },
+          style: { height: 420, width: 480 },
           type: "group",
           zIndex: 0,
         }, {
@@ -1752,12 +1908,34 @@ test("running group locks participants while unrelated canvas edits stay availab
             label: "Text",
             textModelId: modelId,
             textParameters: {},
-            textPrompt: "生成一段运行中测试文案",
+            textPrompt: "生成 A 组运行中测试文案",
             textPromptReady: true,
-            title: "运行中子节点",
+            title: "运行中子节点 A",
           },
-          id: "run-text",
-          parentId: "run-group",
+          id: "run-text-a",
+          parentId: "run-group-a",
+          position: { x: 32, y: 70 },
+          style: { height: 220, width: 300 },
+          type: "text",
+          zIndex: 1,
+        }, {
+          data: { label: "Group", title: "运行中锁定组 B" },
+          id: "run-group-b",
+          position: { x: 760, y: 120 },
+          style: { height: 420, width: 480 },
+          type: "group",
+          zIndex: 0,
+        }, {
+          data: {
+            label: "Text",
+            textModelId: modelId,
+            textParameters: {},
+            textPrompt: "生成 B 组运行中测试文案",
+            textPromptReady: true,
+            title: "运行中子节点 B",
+          },
+          id: "run-text-b",
+          parentId: "run-group-b",
           position: { x: 32, y: 70 },
           style: { height: 220, width: 300 },
           type: "text",
@@ -1772,24 +1950,22 @@ test("running group locks participants while unrelated canvas edits stay availab
     await page.goto(`/canvas/${project.id}`);
     const canvas = page.getByTestId("canvas-world");
     await expect(canvas).toHaveAttribute("data-persistence-ready", "true");
-    await page.locator('[data-testid="rf__node-run-group"]').click({
-      position: { x: 8, y: 8 },
-    });
-    const execute = page.getByTestId("group-execute-button");
-    await expect(execute).toBeEnabled();
-    await execute.click();
-    await expect.poll(() => taskPostSeen).toBe(true);
+    await installSummaryCapture();
+
+    await startGroup("run-group-a", "run-text-a", 1);
+    await startGroup("run-group-b", "run-text-b", 1);
     await expect(canvas).toHaveAttribute("data-workflow-run-active", "true");
 
-    await expect(page.getByRole("button", { name: "组合框颜色" })).toBeDisabled();
-    await expect(page.getByRole("button", { name: "组合框布局" })).toBeDisabled();
-    await expect(page.getByTestId("group-template-button")).toBeDisabled();
-    await expect(page.getByRole("button", { name: "解组" })).toBeDisabled();
-    await expect(page.getByTestId("group-execute-button")).toHaveText("停止后续");
+    const groupB = page.locator('[data-testid="rf__node-run-group-b"]');
+    await expect(groupB.getByRole("button", { name: "组合框颜色" })).toBeDisabled();
+    await expect(groupB.getByRole("button", { name: "组合框布局" })).toBeDisabled();
+    await expect(groupB.getByTestId("group-template-button")).toBeDisabled();
+    await expect(groupB.getByRole("button", { name: "解组" })).toBeDisabled();
+    await expect(groupB.getByTestId("group-execute-button")).toHaveText("停止后续");
 
-    const child = page.locator('[data-testid="rf__node-run-text"]');
-    await expect(child).toHaveCount(1);
-    await expect.poll(() => child.evaluate((element) => ({
+    const childA = page.locator('[data-testid="rf__node-run-text-a"]');
+    await expect(childA).toHaveCount(1);
+    await expect.poll(() => childA.evaluate((element) => ({
       className: element.className,
       pointerEvents: getComputedStyle(element).pointerEvents,
     }))).toEqual({
@@ -1797,19 +1973,17 @@ test("running group locks participants while unrelated canvas edits stay availab
       pointerEvents: "none",
     });
 
+    // A selected running participant cannot be deleted. Copy/paste creates a
+    // disjoint graph, and that unrelated copy can be deleted while both runs
+    // keep their exact task ownership.
+    await page.keyboard.press("Backspace");
+    await expect(canvas).toHaveAttribute("data-node-count", "4");
     await page.keyboard.press("Meta+c");
-    const beforeCommands = await canvas.evaluate((element) => ({
-      nodeCount: element.getAttribute("data-node-count"),
-      selectedCount: element.getAttribute("data-selected-node-count"),
-    }));
-    for (const shortcut of ["Meta+a", "Meta+v", "Meta+x", "Meta+z", "Meta+Shift+z"]) {
-      await page.keyboard.press(shortcut);
-    }
-    await expect(canvas).toHaveAttribute(
-      "data-node-count",
-      String(Number(beforeCommands.nodeCount) + 2),
-    );
-    await expect(canvas).toHaveAttribute("data-selected-node-count", "1");
+    await page.keyboard.press("Meta+v");
+    await expect(canvas).toHaveAttribute("data-node-count", "6");
+    await page.keyboard.press("Backspace");
+    await expect(canvas).toHaveAttribute("data-node-count", "4");
+    expect(taskPostNodes).toEqual(["run-text-a", "run-text-b"]);
 
     await page.getByTestId("tasks").click();
     await expect(page.getByTestId("tasks-panel")).toBeVisible();
@@ -1818,10 +1992,10 @@ test("running group locks participants while unrelated canvas edits stay availab
       "running",
     );
 
-    await page.locator('[data-testid="rf__node-run-group"]').click({
+    await page.locator('[data-testid="rf__node-run-group-a"]').click({
       position: { x: 8, y: 8 },
     });
-    const body = page.getByTestId("group-node-run-group");
+    const body = page.getByTestId("group-node-run-group-a");
     const box = await body.boundingBox();
     if (!box) throw new Error("running group body is not mounted");
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -1829,25 +2003,70 @@ test("running group locks participants while unrelated canvas edits stay availab
     await page.mouse.move(-800, -500, { steps: 12 });
     await page.mouse.up();
 
-    await expect.poll(async () => {
-      const current = await readCanvasNodes();
-      return current.nodes.find((node) => node.id === "run-group")?.position.x ?? 0;
-    }).toBeLessThan(-200);
     await expect(canvas).toHaveAttribute("data-workflow-run-active", "true");
-    await page.getByTestId("tasks").click();
-    await expect(page.getByTestId("tasks-group-summary")).toHaveAttribute(
-      "data-status",
-      "running",
-    );
-    // The active child is truly unmounted after leaving the viewport; the
-    // headless executor and durable task keep the run alive.
-    await expect(child).toHaveCount(0);
-    await page.getByTestId("tasks-group-stop").click();
-    await expect(page.getByTestId("tasks-group-summary")).toHaveAttribute(
-      "data-status",
-      "stopping",
-    );
-    await expect(page.getByTestId("tasks-group-stop")).toBeDisabled();
+    await expect(childA).toHaveCount(0);
+
+    // Completing A must not release B's lock, task or summary.
+    setLatestTaskState("run-text-a", "success");
+    await expectTerminalSummaryCount("run-group-a", "success", 1);
+    await expect(canvas).toHaveAttribute("data-workflow-run-active", "true");
+    setLatestTaskState("run-text-b", "failed");
+    await expectTerminalSummaryCount("run-group-b", "failed", 1);
+    await expect(canvas).not.toHaveAttribute("data-workflow-run-active", "true");
+    await captureTerminalSummaries();
+    await discardInterruptedCheckpointsForNextScenario();
+    await resetGroupPositionsForNextScenario();
+
+    // A failed terminal state must likewise leave B running.
+    await startGroup("run-group-a", "run-text-a", 2);
+    await startGroup("run-group-b", "run-text-b", 2);
+    setLatestTaskState("run-text-a", "failed");
+    await expectTerminalSummaryCount("run-group-a", "failed", 1);
+    await expect(canvas).toHaveAttribute("data-workflow-run-active", "true");
+    setLatestTaskState("run-text-b", "success");
+    await expectTerminalSummaryCount("run-group-b", "success", 1);
+    await expect(canvas).not.toHaveAttribute("data-workflow-run-active", "true");
+    await captureTerminalSummaries();
+    await discardInterruptedCheckpointsForNextScenario();
+    await resetGroupPositionsForNextScenario();
+
+    // Stopping A prevents later dispatch for A but does not stop B. The active
+    // A task still reaches a durable terminal result, as promised by the UI.
+    await startGroup("run-group-a", "run-text-a", 3);
+    await startGroup("run-group-b", "run-text-b", 3);
+    await page
+      .locator('[data-testid="rf__node-run-group-a"]')
+      .getByTestId("group-execute-button")
+      .evaluate((element) => (element as HTMLButtonElement).click());
+    setLatestTaskState("run-text-a", "success");
+    await expectTerminalSummaryCount("run-group-a", "cancelled", 1);
+    await expect(canvas).toHaveAttribute("data-workflow-run-active", "true");
+    setLatestTaskState("run-text-b", "success");
+    await expectTerminalSummaryCount("run-group-b", "success", 1);
+    await expect(canvas).not.toHaveAttribute("data-workflow-run-active", "true");
+    await captureTerminalSummaries();
+    expect(taskPostNodes).toEqual([
+      "run-text-a", "run-text-b",
+      "run-text-a", "run-text-b",
+      "run-text-a", "run-text-b",
+    ]);
+    expect(terminalSummaries.filter((summary) =>
+      summary.groupId === "run-group-a" && summary.status === "success"
+    )).toHaveLength(1);
+    expect(terminalSummaries.filter((summary) =>
+      summary.groupId === "run-group-a" && summary.status === "failed"
+    )).toHaveLength(1);
+    expect(terminalSummaries.filter((summary) =>
+      summary.groupId === "run-group-a" && summary.status === "cancelled"
+    )).toHaveLength(1);
+    expect(terminalSummaries.filter((summary) =>
+      summary.groupId === "run-group-b" && summary.status === "success"
+    )).toHaveLength(2);
+    expect(terminalSummaries.filter((summary) =>
+      summary.groupId === "run-group-b" && summary.status === "failed"
+    )).toHaveLength(1);
+    expect(new Set(terminalSummaries.map((summary) => summary.runId)).size)
+      .toBe(6);
   } finally {
     await request.delete(`/api/canvas/${project.id}`);
     await request.delete(`/api/projects/${project.id}`);

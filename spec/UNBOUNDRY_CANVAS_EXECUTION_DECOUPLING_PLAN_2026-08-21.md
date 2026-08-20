@@ -1,7 +1,7 @@
 # Unboundry 画布执行解耦治理方案
 
 更新日期：2026-08-21  
-状态：`PLAN_FROZEN / IMPLEMENTATION_NOT_STARTED`  
+状态：`PLAN_FROZEN / IMPLEMENTED_PHASE_6_VALIDATION`
 适用仓库：`/Users/mymy/Documents/unboundry/app`  
 用途：作为新 Session、Goal 自动续接、上下文压缩恢复和阶段验收的治理合同。施工进度只写入 `spec/UNBOUNDRY_CANVAS_EXECUTION_CHECKPOINT.md`，验收结果只写入 `spec/UNBOUNDRY_CANVAS_EXECUTION_ACCEPTANCE_MATRIX_2026-08-21.md`。
 

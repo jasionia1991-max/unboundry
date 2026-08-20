@@ -27,13 +27,13 @@
 | ID | 级别 | 验收项 | 最低证据 | 当前状态 |
 |---|---|---|---|---|
 | EXEC-001 | P0 | Text 执行器不依赖 TextNode 挂载/registration | 不挂载组件的执行器测试 + 代码审查 | AUTO_PASS（m22） |
-| EXEC-002 | P0 | Image 执行器不依赖 ImageNode 挂载/registration | 同上，覆盖上传/结果应用 | NOT_RUN |
-| EXEC-003 | P0 | Audio 执行器不依赖 AudioNode 挂载/registration | 同上，覆盖异步任务恢复 | NOT_RUN |
-| EXEC-004 | P0 | Video 执行器不依赖 VideoNode 挂载/registration | 同上，覆盖提交/轮询/恢复 | NOT_RUN |
-| EXEC-005 | P0 | 新旧执行路径不能同时真实提交 | 互斥单元测试 + task/attempt 数量断言 | PLANNED |
-| EXEC-006 | P0 | 已有旧任务可以由新路径 exact recover，不重新提交 | 任务 fixture + Provider POST=0 | PLANNED |
-| VIEW-001 | P0 | 开始时部分子节点离屏仍能完整预检/运行 | 浏览器 fixture + DAG终态 | PLANNED |
-| VIEW-002 | P0 | 运行中把当前/下游/整组拖出屏幕后继续 | 浏览器 fixture + task/summary断言 | PLANNED |
+| EXEC-002 | P0 | Image 执行器不依赖 ImageNode 挂载/registration | 同上，覆盖上传/结果应用 | AUTO_PASS（m22 registry + m41 Image exact recover/apply） |
+| EXEC-003 | P0 | Audio 执行器不依赖 AudioNode 挂载/registration | 同上，覆盖异步任务恢复 | AUTO_PASS（m22 registry + m41 Audio exact recover/apply） |
+| EXEC-004 | P0 | Video 执行器不依赖 VideoNode 挂载/registration | 同上，覆盖提交/轮询/恢复 | AUTO_PASS（m22 registry + m41 Video exact recover/apply） |
+| EXEC-005 | P0 | 新旧执行路径不能同时真实提交 | 互斥单元测试 + task/attempt 数量断言 | AUTO_PASS（m22 双run六轮各一次POST + m40 shared admission） |
+| EXEC-006 | P0 | 已有旧任务可以由新路径 exact recover，不重新提交 | 任务 fixture + Provider POST=0 | AUTO_PASS（m41 四模态恢复POST=0） |
+| VIEW-001 | P0 | 开始时部分子节点离屏仍能完整预检/运行 | 浏览器 fixture + DAG终态 | AUTO_PASS（m22 真卸载离屏Image静态预检） |
+| VIEW-002 | P0 | 运行中把当前/下游/整组拖出屏幕后继续 | 浏览器 fixture + task/summary断言 | AUTO_PASS（m22 A组离屏卸载后success、B继续） |
 | VIEW-003 | P0 | 节点真正卸载后执行仍继续 | mount/unmount 探针 + 运行终态 | AUTO_PASS（m22） |
 | VIEW-004 | P0 | 删除 `workflowRenderRetention` 后无执行回归 | 代码不存在依赖 + VIEW-001～003 | AUTO_PASS（m22 + 文件已删除） |
 | VIEW-005 | P1 | 98/171/200 节点仍保留视口虚拟化和可接受交互 | 挂载数/长任务/浏览器指标 | PLANNED |
@@ -44,23 +44,23 @@
 |---|---|---|---|---|
 | UX-001 | P0 | 生成期间可平移、缩放、打开面板 | 浏览器交互断言 | AUTO_PASS（m22） |
 | UX-002 | P0 | 生成期间可新增和编辑无关节点 | graph diff + 保存结果 | AUTO_PASS（m22复制/粘贴） |
-| UX-003 | P0 | 无关节点可移动、连接、删除且不影响运行组 | graph/task 双断言 | PLANNED |
+| UX-003 | P0 | 无关节点可移动、连接、删除且不影响运行组 | graph/task 双断言 | AUTO_PASS（m22 运行中复制/删除无关图 + 画布交互回归） |
 | UX-004 | P0 | 运行组的 Prompt/模型/参数/输入媒体修改被阻止 | 操作级策略测试 + 可见提示 | AUTO_PASS（m22） |
-| UX-005 | P0 | 运行组节点/依赖边删除被阻止且不静默 | 浏览器交互 + 提示文本 | PLANNED |
+| UX-005 | P0 | 运行组节点/依赖边删除被阻止且不静默 | 浏览器交互 + 提示文本 | AUTO_PASS（m22 participant删除保持4节点 + edge禁用） |
 | UX-006 | P1 | 移动运行组位置不改变本轮语义输入和结果归属 | snapshot/fingerprint断言 | AUTO_PASS（m22） |
-| UX-007 | P0 | 所有被阻止操作都有持续可理解反馈，不只靠短 toast | 页面检查 + a11y/DOM证据 | PLANNED |
+| UX-007 | P0 | 所有被阻止操作都有持续可理解反馈，不只靠短 toast | 页面检查 + a11y/DOM证据 | AUTO_PASS（m22 持续锁样式、停止按钮、任务面板running摘要） |
 
 ## 4. 多工作流并发与锁
 
 | ID | 级别 | 验收项 | 最低证据 | 当前状态 |
 |---|---|---|---|---|
-| RUN-001 | P0 | 同画布两个不相交工作流可以同时运行 | 双run fixture + 独立task集合 | PLANNED |
-| RUN-002 | P0 | A完成后B继续，B状态/锁不被清除 | 状态机反例测试 | PLANNED |
-| RUN-003 | P0 | A失败后B继续 | 状态机反例测试 | PLANNED |
-| RUN-004 | P0 | A停止后B继续，A不再调度新节点 | 双run停止测试 | PLANNED |
-| RUN-005 | P0 | 两组同时完成不会互相覆盖摘要/checkpoint | 并发终态测试 | PLANNED |
+| RUN-001 | P0 | 同画布两个不相交工作流可以同时运行 | 双run fixture + 独立task集合 | AUTO_PASS（m22 双组并行，六个独立run/task） |
+| RUN-002 | P0 | A完成后B继续，B状态/锁不被清除 | 状态机反例测试 | AUTO_PASS（m22 A success后B仍active） |
+| RUN-003 | P0 | A失败后B继续 | 状态机反例测试 | AUTO_PASS（m22 A failed后B仍active并success） |
+| RUN-004 | P0 | A停止后B继续，A不再调度新节点 | 双run停止测试 | AUTO_PASS（m22 A cancelled后B仍active并success） |
+| RUN-005 | P0 | 两组同时完成不会互相覆盖摘要/checkpoint | 并发终态测试 | AUTO_PASS（m22 六个唯一runId、逐组终态计数、per-run checkpoint） |
 | RUN-006 | P0 | 共享可变输入/输出/结构时提交前阻止 | 冲突集合测试 + Provider POST=0 | AUTO_PASS（m22 lease） |
-| RUN-007 | P0 | 冲突提示列出真实冲突节点/原因 | UI摘要 + lock evidence | PLANNED |
+| RUN-007 | P0 | 冲突提示列出真实冲突节点/原因 | UI摘要 + lock evidence | AUTO_PASS（m22 lease反例 + 提示绑定角色/标题/节点ID） |
 | RUN-008 | P0 | 一轮只能释放自己的锁 | lock owner不变量测试 | AUTO_PASS（m22） |
 | RUN-009 | P0 | 双击/跨标签不能创建第二轮或第二次付费提交 | lease + idempotency测试 | AUTO_PASS（m22+m40） |
 | RUN-010 | P1 | 并行仍受账户/模态/Provider有界并发，超出明确queued | 服务端队列与状态测试 | PLANNED |
@@ -69,12 +69,12 @@
 
 | ID | 级别 | 验收项 | 最低证据 | 当前状态 |
 |---|---|---|---|---|
-| STATE-001 | P0 | 节点 `loading` 不作为任务是否提交的权威 | 代码审查 + 丢UI状态恢复测试 | PLANNED |
-| STATE-002 | P0 | 刷新后从任务/checkpoint重建每轮状态 | 浏览器刷新 + task证据 | PLANNED |
-| STATE-003 | P0 | 切换画布再回来仍能核对运行 | 多画布fixture | PLANNED |
+| STATE-001 | P0 | 节点 `loading` 不作为任务是否提交的权威 | 代码审查 + 丢UI状态恢复测试 | AUTO_PASS（m22 headless owner gate + m41 UI丢失恢复） |
+| STATE-002 | P0 | 刷新后从任务/checkpoint重建每轮状态 | 浏览器刷新 + task证据 | AUTO_PASS（m22 checkpoint proof + m41 reload exact recover） |
+| STATE-003 | P0 | 切换画布再回来仍能核对运行 | 多画布fixture | AUTO_PASS（m22导航checkpoint + m41 exact recover + m66多画布返回） |
 | STATE-004 | P0 | Provider已受理但客户端丢响应时先reconcile | Provider POST计数=1 | AUTO_PASS（m40） |
 | STATE-005 | P0 | 旧结果遇到节点新编辑时不覆盖 | revision/fingerprint冲突测试 | AUTO_PASS（m22+m41） |
-| STATE-006 | P0 | 冲突结果仍可在任务/结果入口找到 | 页面和持久化断言 | PLANNED |
+| STATE-006 | P0 | 冲突结果仍可在任务/结果入口找到 | 页面和持久化断言 | AUTO_PASS（m41旧结果不覆盖 + m68任务入口） |
 | STATE-007 | P0 | 目标节点删除后结果不写入其他节点 | ownership反例测试 | AUTO_PASS（owner gate） |
 | STATE-008 | P0 | 保存失败不清除任务事实、不触发重复提交 | save failure + POST计数断言 | AUTO_PASS（m40+m41） |
 | STATE-009 | P0 | 旧run迟到结果不能覆盖新run摘要/结果 | run sequence/ownership测试 | AUTO_PASS（m22 owner gate） |

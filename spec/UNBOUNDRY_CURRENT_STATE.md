@@ -7,6 +7,14 @@
 
 线上是 **v0.6.26 / schema39**（整组执行不受画布视野影响），2026-08-21 已发布；agent 已在真实页面启动“一键上新+自检”，随后把父组拖出屏幕，整组仍完整跑完 11/11，待用户主观复验。v0.6.25 为上一版。用户要的核心结果仍是：**上传一张图，工作流自己跑完，用户下载结果**。
 
+## v0.6.27 画布执行解耦候选（2026-08-21）
+
+- 状态：`IMPLEMENTED_TARGETED_AUTO_PASS / NOT_RELEASED`。四类整组执行已从React节点registration迁移到静态headless executor；`workflowRenderRetention.ts`已删除；同画布不相交组可并行，重叠节点/直接输入在付费提交前阻止。
+- 所有权：结果应用必须匹配runId、taskId、ownershipKey、nodeId和kind；checkpoint、lease、lock与摘要按runId隔离，一轮不能清除另一轮。
+- 自动证据：m22 `35/35`、m38 `15/15`、m40 `14/14`、m41 `51/51`、m44 `8/8`、m68 `4/4`均通过。m22包含双run浏览器反例：A成功、A失败、A停止时B均继续；运行组拖出视口、子节点真实卸载后仍有准确终态。
+- 第一轮safe full候选快照为`1024/1027`：m22等待时序与CURRENT_STATE版本行已修复并定向通过；m44进程并发WAL偶发已独立`8/8`通过；该轮同时检测到测试期间原工作区变化，不能登记为最终全量。尚需在干净最终候选HEAD上重跑full、完成真实Provider/页面、发布与生产技术验收。
+- 权威方案、矩阵与施工续接分别见 `spec/UNBOUNDRY_CANVAS_EXECUTION_DECOUPLING_PLAN_2026-08-21.md`、`spec/UNBOUNDRY_CANVAS_EXECUTION_ACCEPTANCE_MATRIX_2026-08-21.md`、`spec/UNBOUNDRY_CANVAS_EXECUTION_CHECKPOINT.md`。
+
 ## INC-GEN-012 / v0.6.26 已发布（2026-08-21）
 
 - 状态：`PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`。用户已确认 v0.6.26 并授权上线与一次真实网站技术实测；授权已执行完毕。权威方案见 `spec/INC_GEN_012_VIEWPORT_INDEPENDENT_GROUP_RUN_2026-08-20.md`，生产回执见 `spec/V0_6_26_PRODUCTION_RECEIPT_2026-08-21.json`。
@@ -19,7 +27,7 @@
 
 ## v0.6.25 发布与真实验证（2026-08-20）
 
-- 当前代码包版本：**v0.6.26**；线上版本同为 **v0.6.26**。v0.6.26 状态 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`；v0.6.25 的完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
+- 当前代码包版本：**v0.6.27**；线上版本仍为 **v0.6.26**，v0.6.27 正在完成“画布—工作流执行—任务恢复”渐进式解耦的安全验证与发布收口。v0.6.26 状态 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`；v0.6.25 的完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
 - 事二「生成任务一直排队中」已在线闭环：已知任务 `c479826f-a426-4a11-854c-79ecc802bcbc` 从 `queued / attempt 1 / provider_task_id null` 在 v0.6.25 重启后自动接力，平台任务 `111092189` 完成，最终 `success / attempt 2`；没有盲目重复。
 - 事一已查清：2026-08-19 15:23–15:26Z 上游“服装主体标准化”图片成功并产出 11,596,744 字节 PNG；v0.6.23 的 10MB 文字输入预检随后拦下四个下游文字节点，五个后代未运行。不是客户端 DAG 漏发；红字把失败错归因给已经成功的上游图片节点。
 - “2:33 三张主图从未提交”的旧说法已被生产任务表与 nginx 202 提交记录否定：该轮 7 图 + 4 文全部 success。

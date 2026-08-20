@@ -1,6 +1,6 @@
 # Unboundry 画布执行解耦施工 Checkpoint
 
-更新时间：2026-08-21（阶段0～5实现完成，最终全量/真实验证待执行）  
+更新时间：2026-08-21（阶段0～5实现完成，双run浏览器反例通过，最终全量/真实验证待收口）
 状态：`PHASE_6_VALIDATION / NOT_RELEASED`  
 用途：这是本轮治理唯一的可变施工状态。每个批次结束必须更新；上下文压缩或新 Session 接手时，先重新核对真实 Git/代码，再从“下一步唯一动作”继续。
 
@@ -9,8 +9,8 @@
 - 仓库：`/Users/mymy/Documents/unboundry/app`
 - 分支：`codex/unboundry-offline-remediation-2026-08-09`
 - 文档落地前 HEAD：`f81453234021efc2d3c9ae71c008100ee2ee46f6`
-- package：`0.6.26`
-- 当前业务代码基线：v0.6.26；线上/真实页面历史状态以 `spec/UNBOUNDRY_CURRENT_STATE.md` 和 v0.6.26 receipt 为准。
+- package：`0.6.27`
+- 当前候选代码：v0.6.27；线上仍为v0.6.26，真实页面历史状态以 `spec/UNBOUNDRY_CURRENT_STATE.md` 和 v0.6.26 receipt 为准。
 - 预期工作树保留：`spec/public-templates-director-split-revision.json` 未跟踪，禁止提交、删除、改名。
 
 新 Session 若发现分支、版本、目标、路径或权威文档与此冲突：不要开始 Goal 施工；先只读查清并报告。
@@ -32,15 +32,13 @@
 
 ## 3. 当前已实锤架构事实
 
-- `client/src/canvas/CanvasSurface.tsx`：7,793 行。
-- `client/src/generation/WorkflowExecutionProvider.tsx`：1,039 行。
-- `client/src/generation/workflowExecution.ts`：603 行。
-- TextNode、ImageNode、AudioNode、VideoNode 都调用 `registerWorkflowNode`。
-- `WorkflowExecutionProvider` 持有 `registrations Map`，并等待节点 registration。
-- `workflowRenderRetention.ts` 使用仅渲染层节点副本保持运行参与节点挂载；不会写入画布文档。
-- `executeGroup` 当前在同画布存在任意 starting/running group 时提示等待并拒绝第二组。
-- Provider 已有 runningGroups Map、runId、checkpoint、lease、ownership proof 和服务端任务恢复基础；本轮是解耦和扩展，不得破坏这些安全能力。
-- 当前 v0.6.26 已有真实页面“运行中拖出视口仍完成11/11”的历史证据；这证明止血有效，不证明新架构已经实施。
+- 四类节点组件已不再注册整组执行；静态 `NodeExecutorRegistry` 统一提供 Text/Image/Audio/Video 的preflight/run/recover/apply。
+- `WorkflowExecutionProvider` 保留DAG、run生命周期、checkpoint、lease、锁和摘要；不再读取组件registration或DOM状态。
+- `workflowRenderRetention.ts` 已删除；视口虚拟化会真实卸载离屏子节点，headless executor和durable task继续运行。
+- checkpoint、lease和lock均按runId分槽；不相交组可并行，重叠节点/直接输入在提交前阻止，一轮只清理自己的状态。
+- 结果应用必须同时匹配runId、taskId、ownershipKey、nodeId和kind；不匹配结果只留在任务事实，不覆盖当前画布。
+- m22双run浏览器fixture已证明A成功、A失败、A停止三种反例都不清除B；六轮各一次POST、六个唯一runId和逐组摘要均核对通过。
+- v0.6.26真实页面“运行中拖出视口仍完成11/11”仍是历史止血证据；v0.6.27新架构须以本轮新证据和发布回执为准。
 
 ## 4. 当前阶段
 
@@ -65,7 +63,8 @@
 
 未完成：
 
-- 尚未运行最终一次 safe full；
+- 第一轮safe full候选快照得到1024/1027，并暴露m22等待时序、CURRENT_STATE版本行和m44 WAL并发偶发；三项均已分别修正或定向复核通过，但该轮还检测到原工作区在运行中变化，不能作为最终全量；
+- 尚需在干净最终候选HEAD上重跑一次safe full；
 - 尚未执行最小真实 Provider、受控真实页面、生产发布和生产技术验收；
 - 验收矩阵中只有已有明确自动证据的项目可登记 `AUTO_PASS`，其余保持 `NOT_RUN`；
 - `workflowRenderRetention.ts` 已从候选提交真实删除；执行和渲染均不存在该依赖。
@@ -82,11 +81,11 @@
 - `client/src/canvas/TextNode.tsx`、`ImageNode.tsx`、`AudioNode.tsx`、`VideoNode.tsx`（移除 workflow registration；组件恢复避让 workflow-owned task）
 - `client/src/canvas/CanvasSurface.tsx`、`client/src/styles.css`（移除保活，改为精确参与节点锁；允许无关新增/复制/粘贴/选择/连接/删除）
 - `client/src/generation/groupRunCheckpoint.ts`、`generationTasks.ts`（runId 分槽 checkpoint/lease、跨标签节点冲突、精确释放）
-- `tests/m22-group-execution.spec.ts`（registry、无render依赖、分槽租约/checkpoint、真实卸载和无关交互）
+- `tests/m22-group-execution.spec.ts`（registry、无render依赖、分槽租约/checkpoint、真实卸载、无关交互、双run成功/失败/停止隔离）
 - `scripts/run-safe-tests.mjs`、`scripts/source-coverage-manifest.json`（测试库存从1025增至1027并同步安全manifest）
 - `package.json`、`package-lock.json`（0.6.27）
 
-除 package 候选版本外，尚未修改生产配置、TASKS、CURRENT_STATE或历史事故/发布回执。未跟踪模板文件保持原样且禁止纳入提交。
+尚未修改生产配置、TASKS或历史事故/发布回执；`CURRENT_STATE`仅同步候选包版本与线上仍为v0.6.26的事实。未跟踪模板文件保持原样且禁止纳入提交。
 
 ## 6. 本批测试与证据
 
@@ -96,10 +95,12 @@
 - `/Users/mymy/.hermes/node/bin/node node_modules/typescript/bin/tsc --noEmit`：退出码0（移除四类旧 registration 并修正 executor 类型后）。
 - 三路只读审查确认：HEAD 的四类执行均依赖 React `useEffect` registration；Provider resume 轮询不等于 exact task recover；scope 单槽 checkpoint/lease 与 scope-wide finally 无法安全支持多 run。
 - 尚未执行最终全量、真实 Provider或生产检查；定向证据不能替代这些最终闸门。
-- `node scripts/run-safe-tests.mjs run --spec tests/m22-group-execution.spec.ts`：35/35 PASS；覆盖registry、DAG、离屏真实卸载、运行期无关复制、参与节点锁、分槽lease/checkpoint；4173 unchanged。
+- `node scripts/run-safe-tests.mjs run --spec tests/m22-group-execution.spec.ts`：35/35 PASS；覆盖registry、DAG、离屏真实卸载、运行期无关复制/删除、参与节点锁、分槽lease/checkpoint，以及双run成功/失败/停止隔离；4173 unchanged。
 - `node scripts/run-safe-tests.mjs run --spec tests/m40-generation-idempotency-recovery.spec.ts`：14/14 PASS；覆盖共享四节点幂等、丢响应reconcile、一次POST。
 - `node scripts/run-safe-tests.mjs run --spec tests/m41-generation-retry-ui.spec.ts`：51/51 PASS；覆盖四节点恢复、迟到结果、输入变化、保存失败/重放。
 - `node scripts/run-safe-tests.mjs run --spec tests/m68-generation-tasks-panel.spec.ts`：4/4 PASS；任务面板和exact reconcile无回归。
+- `node scripts/run-safe-tests.mjs run --spec tests/m38-generation-runtime-incidents.spec.ts`：15/15 PASS；CURRENT_STATE候选版本权威同步通过。
+- `node scripts/run-safe-tests.mjs run --spec tests/m44-provider-profile-atomicity.spec.ts`：8/8 PASS；第一轮全量中的WAL sidecar并发偶发未复现，独立进程原子性领域通过。
 
 ## 7. 测试政策摘要
 
@@ -160,7 +161,7 @@
 
 ## 11. 下一步唯一动作
 
-提交 renderer retention 删除；随后在该提交上运行唯一一次 safe full。全量通过后执行三路最终独立复核、最小真实 Provider、受控真实页面、冻结备份/发布/生产技术验收和文档证据同步。
+提交双run反例、冲突提示和权威状态同步；随后在干净最终候选HEAD上重跑一次safe full。全量通过后执行三路最终独立复核、最小真实Provider、受控真实页面、冻结备份/发布/生产技术验收和文档证据同步。
 
 ## 12. 最终完成前复核
 
