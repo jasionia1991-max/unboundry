@@ -2256,7 +2256,11 @@ function ImageNodeImpl({
     setUploadError(problem.message, problem.code);
     setRetryTaskId(undefined);
     await flushCanvasSave();
-    return { message: problem.message, status: "failed" as const };
+    return {
+      errorCode: problem.code,
+      message: problem.message,
+      status: "failed" as const,
+    };
   };
 
   const preflightWorkflowNode = async (context: {

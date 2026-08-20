@@ -24,8 +24,10 @@ import type { CuttableEdge } from "./canvasTypes";
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
 import { useWorkflowExecution } from "../generation/WorkflowExecutionProvider";
 import {
+  createGroupRunSummaryScope,
   formatGenerationDuration,
   GROUP_RUN_SUMMARY_EVENT,
+  groupRunSummaryMatchesScope,
   readLastGroupRunSummaryForGroup,
   type GroupRunSummary,
 } from "../generation/groupRunSummary";
@@ -66,13 +68,19 @@ function GroupNodeImpl({
   const { getEdges, getNode, getNodes, getViewport } =
     useReactFlow<ProbeNodeType>();
   const { setNodes } = useCanvasGraphMutation();
-  const { canvasId, isFixture, notify } = useGenerationCanvas();
+  const { accountId, canvasId, fixtureScopeId, isFixture, notify } =
+    useGenerationCanvas();
+  const groupRunScope = createGroupRunSummaryScope(
+    accountId,
+    canvasId,
+    fixtureScopeId,
+  );
   const { canManagePublicTemplates } = useCanvasAccount();
   const { cancelGroup, executeGroup, executingGroupIds } =
     useWorkflowExecution();
   const executing = executingGroupIds.has(id);
   const [lastGroupRun, setLastGroupRun] = useState(
-    () => readLastGroupRunSummaryForGroup(canvasId, id),
+    () => readLastGroupRunSummaryForGroup(groupRunScope, id),
   );
   const allNodes = getNodes();
   const childNodes = allNodes.filter((node) => node.parentId === id);
@@ -103,17 +111,21 @@ function GroupNodeImpl({
   const [downloadBusy, setDownloadBusy] = useState(false);
 
   useEffect(() => {
-    setLastGroupRun(readLastGroupRunSummaryForGroup(canvasId, id));
+    setLastGroupRun(readLastGroupRunSummaryForGroup(groupRunScope, id));
     const onSummary = (event: Event) => {
       const summary = (event as CustomEvent<GroupRunSummary>).detail;
-      if (!summary || summary.canvasId !== canvasId || summary.groupId !== id) {
+      if (
+        !summary ||
+        !groupRunSummaryMatchesScope(summary, groupRunScope) ||
+        summary.groupId !== id
+      ) {
         return;
       }
       setLastGroupRun(summary);
     };
     window.addEventListener(GROUP_RUN_SUMMARY_EVENT, onSummary);
     return () => window.removeEventListener(GROUP_RUN_SUMMARY_EVENT, onSummary);
-  }, [canvasId, id]);
+  }, [accountId, canvasId, fixtureScopeId, id]);
   const titleControl = useCompositionSafeText({
     onCommit: (title) => {
       setNodes((nodes) =>
@@ -482,7 +494,7 @@ function GroupNodeImpl({
             </svg>
           </button>
           <button
-            aria-label={executing ? "取消整组执行" : "整组执行"}
+            aria-label={executing ? "停止后续节点" : "整组执行"}
             data-testid="group-execute-button"
             disabled={!hasExecutableChild || isFixture}
             onClick={() => {
@@ -498,7 +510,7 @@ function GroupNodeImpl({
                 : !hasExecutableChild
                   ? "组内没有可执行的生成节点"
                   : executing
-                    ? "取消整组执行"
+                    ? "停止后续节点；已经开始的任务会继续并保存结果"
                     : "整组执行"
             }
             type="button"
@@ -509,7 +521,7 @@ function GroupNodeImpl({
                 className="group-execute-spinner"
               />
             )}
-            {executing ? "取消" : "整组执行"}
+            {executing ? "停止后续" : "整组执行"}
           </button>
           <button
             data-testid="group-template-button"

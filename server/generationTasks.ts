@@ -14,8 +14,8 @@ import {
   arkFilesImageMaximumBytes,
   arkFilesImageThresholdBytes,
   ArkFilesError,
-  readArkImageBytes,
-  uploadArkImageFile,
+  prepareArkImageFile,
+  type ArkImageBytesInput,
 } from "./arkFileUploader";
 import { createPrivateAliyunOssReadUrl } from "./aliyunOss";
 import { requestIdentity } from "./auth";
@@ -186,6 +186,7 @@ let persistentGenerationWorkerStartup:
 let persistentGenerationWorkerCoordinator: RuntimeRoleCoordinator | undefined;
 let persistentGenerationWorkerDataDirectory: string | undefined;
 const launchedGenerationTasks = new Set<string>();
+const pendingGenerationRelaunches = new Map<string, GenerationTask["kind"]>();
 const runningImageRequests = new Map<string, AbortController>();
 const runningVideoRequests = new Map<string, AbortController>();
 const runningAudioRequests = new Map<string, AbortController>();
@@ -234,7 +235,7 @@ export function prepareGenerationRuntimeRoleTeardown(
   if (
     launchedGenerationTasks.size !== 0 || runningImageRequests.size !== 0 ||
     runningVideoRequests.size !== 0 || runningAudioRequests.size !== 0 ||
-    runningTextRequests.size !== 0
+    runningTextRequests.size !== 0 || pendingGenerationRelaunches.size !== 0
   ) {
     throw new Error("Generation runtime teardown still has active executions");
   }
@@ -249,6 +250,7 @@ export function prepareGenerationRuntimeRoleTeardown(
   persistentGenerationWorkerCoordinator = undefined;
   persistentGenerationWorkerDataDirectory = undefined;
   launchedGenerationTasks.clear();
+  pendingGenerationRelaunches.clear();
   runningImageRequests.clear();
   runningVideoRequests.clear();
   runningAudioRequests.clear();
@@ -266,7 +268,7 @@ export function unregisterGenerationRuntimeRoleCoordinatorBeforeStartup(
     store || persistentGenerationWorkerStartup ||
     launchedGenerationTasks.size !== 0 || runningImageRequests.size !== 0 ||
     runningVideoRequests.size !== 0 || runningAudioRequests.size !== 0 ||
-    runningTextRequests.size !== 0
+    runningTextRequests.size !== 0 || pendingGenerationRelaunches.size !== 0
   ) {
     throw new Error(
       "Generation runtime role coordinator already started durable work",
@@ -444,6 +446,10 @@ function requireTaskProviderSnapshot(
 }
 
 type GenerationLaunchOptions = {
+  executeForTest?: (
+    taskId: string,
+    kind: GenerationTask["kind"],
+  ) => Promise<void>;
   providerFetcher?: typeof fetch;
   settledExecutions?: Promise<void>[];
 };
@@ -568,6 +574,15 @@ export async function runGenerationRecoverySweep(options?: {
     } catch {
       // A concurrent terminal/fence transition wins; never force a paid retry.
     }
+  }
+  // Safety net: a committed task that is still queued after a grace period
+  // means its launch was skipped (for example an automatic retry requested
+  // while the previous execution was still registered). Relaunching is
+  // idempotent: an in-flight execution makes launchGenerationTask defer, and
+  // a task that already moved to running is no longer listed as queued.
+  for (const task of store.listQueued()) {
+    if (task.updatedAt > olderThan.toISOString()) continue;
+    launch(task.id, task.kind);
   }
 }
 
@@ -1844,9 +1859,12 @@ export async function attemptProviderResultSave(input: {
   backoffMs?: readonly number[];
   taskId: string;
   save: () => Promise<unknown>;
+  sleep?: (milliseconds: number) => Promise<void>;
 }): Promise<boolean> {
   const backoffMs = input.backoffMs ??
     [1_000, 2_000, 4_000, 8_000, 15_000];
+  const sleep = input.sleep ??
+    ((milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
   for (let attempt = 0; ; attempt += 1) {
     try {
       await input.save();
@@ -1855,12 +1873,12 @@ export async function attemptProviderResultSave(input: {
       const transient = isTransientProviderResultSaveError(error) ||
         !isDefinitiveProviderResultSaveError(error);
       if (!transient) throw error;
-      if (attempt >= backoffMs.length - 1) {
+      if (attempt >= backoffMs.length) {
         logGenerationDiagnostic(input.taskId, "save", error);
         return false;
       }
       logGenerationDiagnostic(input.taskId, "save-retry", error);
-      await new Promise((resolve) => setTimeout(resolve, backoffMs[attempt]));
+      await sleep(backoffMs[attempt]);
     }
   }
 }
@@ -1944,10 +1962,22 @@ function launchGenerationTask(
   kind: GenerationTask["kind"],
   options?: GenerationLaunchOptions,
 ) {
-  if (launchedGenerationTasks.has(taskId)) return;
+  if (launchedGenerationTasks.has(taskId)) {
+    pendingGenerationRelaunches.set(taskId, kind);
+    logGenerationDiagnostic(
+      taskId,
+      "launch-deferred",
+      new Error(
+        "生成启动请求到达时旧执行尚未退场，已登记为旧执行结束后立即重新启动",
+      ),
+    );
+    return;
+  }
   launchedGenerationTasks.add(taskId);
   const execute = () => settleDetachedGenerationExecution(
-    () => kind === "text"
+    () => options?.executeForTest
+      ? options.executeForTest(taskId, kind)
+      : kind === "text"
       ? executeTextTask(taskId, options?.providerFetcher)
       : kind === "video"
       ? executeVideoTask(taskId, options?.providerFetcher)
@@ -1957,6 +1987,14 @@ function launchGenerationTask(
     (error) => persistDetachedGenerationFailure(taskId, kind, error),
   ).finally(() => {
     launchedGenerationTasks.delete(taskId);
+    const pendingKind = pendingGenerationRelaunches.get(taskId);
+    if (pendingKind !== undefined) {
+      pendingGenerationRelaunches.delete(taskId);
+      // Register the replacement execution before runtime teardown can pass its
+      // active-work fence. If the runtime is already draining, registration
+      // fails closed and the durable queued task is left for the next owner.
+      launchGenerationTask(taskId, pendingKind, options);
+    }
   });
   const abort = () => {
     runningImageRequests.get(taskId)?.abort();
@@ -1971,6 +2009,11 @@ function launchGenerationTask(
       );
     } catch {
       launchedGenerationTasks.delete(taskId);
+      logGenerationDiagnostic(
+        taskId,
+        "launch-schedule-failed",
+        new Error("生成任务启动登记失败，任务保持排队等待巡逻恢复"),
+      );
     }
     return;
   }
@@ -1999,13 +2042,38 @@ function launchGenerationTask(
       },
     ).catch(() => {
       launchedGenerationTasks.delete(taskId);
+      logGenerationDiagnostic(
+        taskId,
+        "launch-schedule-failed",
+        new Error("生成任务后台启动失败，任务保持排队等待巡逻恢复"),
+      );
     });
   } catch {
     // Shutdown can freeze detached admission after the durable task commit but
     // before scheduling. Leave the task queued for the next active owner; no
     // Provider request has started in this branch.
     launchedGenerationTasks.delete(taskId);
+    logGenerationDiagnostic(
+      taskId,
+      "launch-schedule-failed",
+      new Error("生成任务启动被运行时退场冻结，任务保持排队等待巡逻恢复"),
+    );
   }
+}
+
+export function launchGenerationTaskForRuntimeTest(input: {
+  execute: (taskId: string, kind: GenerationTask["kind"]) => Promise<void>;
+  kind: GenerationTask["kind"];
+  settledExecutions: Promise<void>[];
+  taskId: string;
+}) {
+  if (process.env.UNBOUNDRY_SAFE_TEST !== "1") {
+    throw new Error("Generation launch test seam is unavailable");
+  }
+  launchGenerationTask(input.taskId, input.kind, {
+    executeForTest: input.execute,
+    settledExecutions: input.settledExecutions,
+  });
 }
 
 export type PersistentGenerationWorkerStartupResult = {
@@ -2334,13 +2402,14 @@ export async function executeTextTaskWithDependencies(
     ) => Promise<string>;
     signal?: AbortSignal;
     store: TextTaskStore;
-    uploadArkImage?: (input: {
-      bytes: Buffer;
-      fileName: string;
+    prepareArkImage?: (input: {
+      image: ArkImageBytesInput;
       mimeType: string;
+      ownerId: string;
       profileId: string;
       signal?: AbortSignal;
       snapshot: ProviderGenerationSnapshot;
+      taskId: string;
     }) => Promise<{
       cleanup: (cleanupSignal?: AbortSignal) => Promise<void>;
       fileId: string;
@@ -2390,11 +2459,11 @@ export async function executeTextTaskWithDependencies(
       const acquireGenerationSnapshot =
         dependencies.acquireGenerationSnapshot;
       const ossReadUrlForMedia = dependencies.ossReadUrlForMedia;
-      const uploadArkImage = dependencies.uploadArkImage;
+      const prepareArkImage = dependencies.prepareArkImage;
       const arkFilesAvailable = protocol === "native" &&
         arkFilesEnabled() &&
         acquireGenerationSnapshot !== undefined &&
-        uploadArkImage !== undefined;
+        prepareArkImage !== undefined;
       if (arkFilesAvailable && snapshot.kind === "image") {
         const media = readableMediaForOwner(
           running.ownerId!,
@@ -2420,25 +2489,25 @@ export async function executeTextTaskWithDependencies(
           const ossReadUrl = media.storageBackend === "oss"
             ? await ossReadUrlForMedia!(media)
             : undefined;
-          const { bytes, fileName } = await readArkImageBytes({
-            assetId: mediaInput.assetId,
-            byteSize: media.byteSize,
-            checksumSha256: media.checksumSha256,
-            contentType: media.contentType,
-            objectKey: media.objectKey,
-            ossReadUrl,
-            ownerId: mediaInput.ownerId,
-            signal: dependencies.signal,
-            storageBackend: media.storageBackend,
-            storageName: media.storageName,
-          });
-          const uploaded = await uploadArkImage({
-            bytes,
-            fileName,
+          const uploaded = await prepareArkImage({
+            image: {
+              assetId: mediaInput.assetId,
+              byteSize: media.byteSize,
+              checksumSha256: media.checksumSha256,
+              contentType: media.contentType,
+              objectKey: media.objectKey,
+              ossReadUrl,
+              ownerId: mediaInput.ownerId,
+              signal: dependencies.signal,
+              storageBackend: media.storageBackend,
+              storageName: media.storageName,
+            },
             mimeType: media.contentType,
+            ownerId: running.ownerId!,
             profileId: running.providerProfileId,
             signal: dependencies.signal,
             snapshot: generationSnapshot,
+            taskId,
           });
           inputs.push({
             fileId: uploaded.fileId,
@@ -2598,7 +2667,7 @@ async function executeTextTask(taskId: string, fetcher: typeof fetch = fetch) {
       },
       signal: controller.signal,
       store: taskStore(),
-      uploadArkImage: (input) => uploadArkImageFile({
+      prepareArkImage: (input) => prepareArkImageFile({
         ...input,
         fetcher,
       }),

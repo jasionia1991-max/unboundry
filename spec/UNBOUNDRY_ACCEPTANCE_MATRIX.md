@@ -42,10 +42,10 @@
 2026-08-15 `INC-ECOM-006 = PRODUCTION_PUBLISHED_USER_PASS`：用户明确“确定 发布”，第三批P0/P1/P2共12条已单事务导入生产。恢复副本与生产写后兼容审计均为全库43/43 PASS、第三批12/12 PASS、问题0；生产43条模板、42条published，第三批12/12均有graph+preview，公网12张封面HTTP200 image/jpeg。schema39 quick_check ok/FK0、service active/enabled、NRestarts0。发布前后tasks109、Provider attempts107、active0，并发/RPM均保持500，Provider/付费生成/OSS变化0。用户随后明确“都通过了”，第三批可见性与视觉验收收口为PASS。
 
 2026-08-15 `INC-ECOM-005 = PRODUCTION_PUBLISHED_USER_PASS`：用户已确认继续`v0.6.0`并允许发布，第二批P0/P1/P2共12条电商工作流已事务导入生产。生产兼容审计12/12 PASS、问题0；运行时目录读取第二批12/12 graph+preview，公网12张封面均HTTP200 image/jpeg。生产现31条模板、30条published且全部有preview；schema39 quick_check ok/FK0，service active/enabled、NRestarts0。发布前后tasks109、Provider attempts107、active0，并发/RPM仍全部500，Provider/生成/OSS变化0。模板默认图是数据库JSON数据，应用时复制为新画布节点，不是前端组件条件硬编码；用户随后明确第二批实页验收“通过1”。
-状态：`AUTHORITATIVE`  
+状态：`AUTHORITATIVE_ACCEPTANCE_LEDGER`
 状态夹具：`unboundry-state-fixtures.json`
 
-2026-08-18 当前权威状态：生产已运行 `v0.6.15/schema39`；`INC-GEN-007～001 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-UI-009～001 = PRODUCTION_PUBLISHED_USER_PASS`；`INC-VIDEO-001 = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_PASS`；`INC-ECOM-007 = PRODUCTION_PUBLISHED_USER_PASS`；`REM-010/011 = PASS`；`PRODUCTION = LIVE`。用户于2026-08-18回复「全通过」收口此前待复验旧项。既有其他用户验收与未完成状态全部保留。
+本文件只记录验收条目的历史证据与状态，不承担当前版本播报。当前线上版本、未发布候选与下一步只以 `spec/UNBOUNDRY_CURRENT_STATE.md` 为准。以下日期段落均为对应时点快照；既有用户验收与未完成状态继续保留，不因新版本自动升级。
 
 最新核验为service active+enabled、NRestarts0、current→`releases/v0.6.14-inc-gen-006-20260818`、公网version 0.6.14及精确JS/CSS哈希通过。schema39/quick_check ok/FK0、active generation0、294 tasks/296 attempts、47 public templates（46 published）。INC-GEN-006没有修改画布文档、节点坐标、连线、Provider配置或OSS对象；Provider/付费/OSS写入0。上一不可变release、冻结备份、v0.6.0原schema37备份、整机schema39包及既有用户验收继续保留。未实际运行的两张付费图片仍作为可选付费抽验延期，既有PARTIAL/PAUSED/BLOCK/NOT_STARTED条目保持不变。
 

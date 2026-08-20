@@ -26,6 +26,16 @@ import {
   stripStaleCanvasSaveErrors,
   workflowToastDurationMs,
 } from "../client/src/generation/groupRunPersist";
+import {
+  dismissGroupRunSummary,
+  GROUP_RUN_SUMMARY_CACHE_LIMIT,
+  GROUP_RUN_SUMMARY_DISMISSAL_LIMIT,
+  groupRunSummaryMatchesScope,
+  isGroupRunSummaryDismissed,
+  publishGroupRunSummary,
+  readLastGroupRunSummaryForGroup,
+  type GroupRunSummary,
+} from "../client/src/generation/groupRunSummary";
 import { defaultParameterSchema } from "../types/modelParameters";
 import { resolveNodeInputs } from "../types/nodeInputs";
 
@@ -380,6 +390,65 @@ test("workflow graph isolates a failed branch and continues independent work", a
   });
 });
 
+test("workflow graph binds the first parallel failure and blocks only its descendants", async () => {
+  let releaseSlowFailure: () => void = () => {};
+  const slowFailure = new Promise<void>((resolve) => {
+    releaseSlowFailure = resolve;
+  });
+  const executed: string[] = [];
+  const result = await runWorkflowGraph({
+    edges: [
+      { id: "slow-child", source: "listed-first", target: "slow-blocked" },
+      { id: "fast-child", source: "fails-first", target: "fast-blocked" },
+    ],
+    executableIds: new Set([
+      "listed-first",
+      "fails-first",
+      "slow-blocked",
+      "fast-blocked",
+      "independent",
+    ]),
+    isCancelled: () => false,
+    runNode: async (nodeId) => {
+      executed.push(nodeId);
+      if (nodeId === "listed-first") {
+        await slowFailure;
+        return {
+          errorCode: "SLOW_BRANCH_ERROR",
+          message: "第一分支后失败",
+          status: "failed",
+        };
+      }
+      if (nodeId !== "fails-first") return { status: "success" };
+      setTimeout(releaseSlowFailure, 5);
+      return {
+        errorCode: "FAST_BRANCH_ERROR",
+        message: "第二分支先失败",
+        status: "failed",
+      };
+    },
+  });
+  expect(result).toMatchObject({
+    errorCode: "FAST_BRANCH_ERROR",
+    firstFailure: {
+      errorCode: "FAST_BRANCH_ERROR",
+      message: "第二分支先失败",
+      nodeId: "fails-first",
+    },
+    message: "第二分支先失败",
+    status: "failed",
+  });
+  expect(result.status === "failed" ? result.failedNodeIds : []).toEqual(
+    expect.arrayContaining(["listed-first", "fails-first"]),
+  );
+  expect(result.status === "failed" ? result.blockedNodeIds : []).toEqual(
+    expect.arrayContaining(["slow-blocked", "fast-blocked"]),
+  );
+  expect(executed).toContain("independent");
+  expect(executed).not.toContain("slow-blocked");
+  expect(executed).not.toContain("fast-blocked");
+});
+
 test("workflow graph cancellation prevents new dispatch", async () => {
   let cancelled = false;
   const executed: string[] = [];
@@ -395,6 +464,134 @@ test("workflow graph cancellation prevents new dispatch", async () => {
   });
   expect(result.status).toBe("cancelled");
   expect(executed).toEqual(["a"]);
+});
+
+test("workflow graph stop waits for an active node and reports descendants pending", async () => {
+  let cancelled = false;
+  let activeStarted = false;
+  let releaseActive: () => void = () => {};
+  const activeBarrier = new Promise<void>((resolve) => {
+    releaseActive = resolve;
+  });
+  const states: string[] = [];
+  const pending = runWorkflowGraph({
+    edges: [{ id: "active-child", source: "active", target: "child" }],
+    executableIds: new Set(["active", "child"]),
+    isCancelled: () => cancelled,
+    onNodeStateChange: (nodeId, state) => states.push(`${nodeId}:${state}`),
+    runNode: async (nodeId) => {
+      expect(nodeId).toBe("active");
+      activeStarted = true;
+      await activeBarrier;
+      return { status: "success" };
+    },
+  });
+  await expect.poll(() => activeStarted).toBe(true);
+  cancelled = true;
+  let settled = false;
+  void pending.finally(() => {
+    settled = true;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  expect(settled).toBe(false);
+  releaseActive();
+  await expect(pending).resolves.toEqual({
+    completedNodeIds: ["active"],
+    pendingNodeIds: ["child"],
+    status: "cancelled",
+  });
+  expect(states).toEqual(["active:running", "active:success"]);
+});
+
+test("group run summary scope and bounded dismissal isolate accounts and fixtures", () => {
+  const summary = {
+    accountId: "account-a",
+    blockedCount: 0,
+    blockedNodeIds: [],
+    canvasId: "same-canvas",
+    completedAt: 1,
+    elapsedMs: 1,
+    failedCount: 0,
+    failedNodeIds: [],
+    fixtureScopeId: "fixture-a",
+    groupId: "group-a",
+    nodeCount: 1,
+    runId: "run-0",
+    runSequence: 1,
+    skippedCount: 0,
+    skippedNodeIds: [],
+    status: "success",
+    startedAt: 1,
+    successCount: 1,
+  } satisfies GroupRunSummary;
+  expect(groupRunSummaryMatchesScope(summary, {
+    accountId: "account-a",
+    canvasId: "same-canvas",
+    fixtureScopeId: "fixture-a",
+  })).toBe(true);
+  expect(groupRunSummaryMatchesScope(summary, {
+    accountId: "account-b",
+    canvasId: "same-canvas",
+    fixtureScopeId: "fixture-a",
+  })).toBe(false);
+  expect(groupRunSummaryMatchesScope(summary, {
+    accountId: "account-a",
+    canvasId: "same-canvas",
+    fixtureScopeId: "fixture-b",
+  })).toBe(false);
+  for (let index = 0; index <= GROUP_RUN_SUMMARY_DISMISSAL_LIMIT; index += 1) {
+    dismissGroupRunSummary({ ...summary, runId: `run-${index}` });
+  }
+  expect(isGroupRunSummaryDismissed(summary)).toBe(false);
+  expect(isGroupRunSummaryDismissed({
+    ...summary,
+    runId: `run-${GROUP_RUN_SUMMARY_DISMISSAL_LIMIT}`,
+  })).toBe(true);
+
+  const host = globalThis as unknown as { window?: Window };
+  const previousWindow = host.window;
+  host.window = new EventTarget() as unknown as Window;
+  try {
+    const current = { ...summary, runId: "new-run", runSequence: 3 };
+    publishGroupRunSummary(current);
+    publishGroupRunSummary({ ...summary, runId: "late-old-run", runSequence: 2 });
+    expect(readLastGroupRunSummaryForGroup(summary, summary.groupId)?.runId)
+      .toBe("new-run");
+    publishGroupRunSummary({
+      ...summary,
+      accountId: "account-b",
+      runId: "scope-b-run",
+      runSequence: 4,
+    });
+    expect(readLastGroupRunSummaryForGroup(summary, summary.groupId)?.runId)
+      .toBe("new-run");
+
+    const evictionScope = {
+      accountId: "eviction-account",
+      canvasId: "eviction-canvas",
+      fixtureScopeId: "",
+    };
+    for (let index = 0; index <= GROUP_RUN_SUMMARY_CACHE_LIMIT; index += 1) {
+      publishGroupRunSummary({
+        ...summary,
+        ...evictionScope,
+        groupId: `eviction-group-${index}`,
+        runId: `eviction-run-${index}`,
+        runSequence: 100 + index,
+      });
+    }
+    expect(readLastGroupRunSummaryForGroup(
+      evictionScope,
+      "eviction-group-0",
+    )).toBeUndefined();
+    expect(readLastGroupRunSummaryForGroup(
+      evictionScope,
+      `eviction-group-${GROUP_RUN_SUMMARY_CACHE_LIMIT}`,
+    )?.runId).toBe(`eviction-run-${GROUP_RUN_SUMMARY_CACHE_LIMIT}`);
+  } finally {
+    if (previousWindow) host.window = previousWindow;
+    else delete host.window;
+  }
 });
 
 test("friendly generation messages avoid long English and jargon", () => {
@@ -559,7 +756,7 @@ test("group persist retry happens once for a still-saving canvas and never for o
     }),
   });
   expect(cancelled).toEqual({
-    message: "整组执行已取消",
+    message: "已停止后续节点",
     status: "skipped",
   });
 
@@ -855,13 +1052,126 @@ test("group run persists an incompatible Image model error without creating a ta
     });
     const execute = page.getByTestId("group-execute-button");
     await expect(execute).toBeEnabled();
-    await execute.click();
+    await page.evaluate(() => {
+      const state = window as typeof window & {
+        __groupSummaryEvents?: number;
+        __lastGroupSummaryScope?: {
+          accountId: string;
+          fixtureScopeId: string;
+        };
+      };
+      state.__groupSummaryEvents = 0;
+      window.addEventListener("unboundry:group-run-summary", (event) => {
+        state.__groupSummaryEvents = (state.__groupSummaryEvents ?? 0) + 1;
+        const detail = (event as CustomEvent<{
+          accountId: string;
+          fixtureScopeId: string;
+        }>).detail;
+        state.__lastGroupSummaryScope ??= {
+          accountId: detail.accountId,
+          fixtureScopeId: detail.fixtureScopeId,
+        };
+      });
+    });
+    await execute.dblclick();
     const expectedMessage = "当前模型不支持image类型上游，引用已保留";
     await expect(page.getByTestId("workflow-run-toast")).toContainText(
       `整组执行已阻止：发现 1 个不兼容节点；首个“商品主图”：${expectedMessage}（未提交任何生成任务）`,
     );
     await expect(page.getByTestId("image-node-target-image").getByRole("alert"))
       .toContainText(expectedMessage);
+    await page.getByTestId("tasks").click();
+    const summary = page.getByTestId("tasks-group-summary");
+    await expect(summary).toContainText("最近一轮整组部分失败");
+    await expect(summary).toContainText("成功 0 · 失败 1 · 跳过 0 · 未运行 1");
+    await expect(summary).toContainText("首个失败：商品主图（MODEL_UNSUPPORTED）");
+    await expect(summary).toContainText(expectedMessage);
+    await expect.poll(() => page.evaluate(() =>
+      (window as typeof window & { __groupSummaryEvents?: number })
+        .__groupSummaryEvents
+    )).toBe(1);
+    await summary.getByTestId("tasks-group-summary-locate").click();
+    await expect(page.locator('[data-testid="rf__node-target-image"]'))
+      .toHaveClass(/selected/);
+    await summary.getByRole("button", { name: "关闭最近一轮整组摘要" }).click();
+    await expect(summary).toHaveCount(0);
+    await page.evaluate(({ canvasId }) => {
+      const state = window as typeof window & {
+        __lastGroupSummaryScope?: { accountId: string; fixtureScopeId: string };
+      };
+      const scope = state.__lastGroupSummaryScope;
+      if (!scope) throw new Error("missing captured group summary scope");
+      const base = {
+          accountId: scope.accountId,
+          blockedCount: 0,
+          blockedNodeIds: [],
+          canvasId,
+          completedAt: Date.now(),
+          elapsedMs: 25,
+          failedCount: 0,
+          failedNodeIds: [],
+          fixtureScopeId: scope.fixtureScopeId,
+          groupId: "image-group",
+          nodeCount: 1,
+          reason: "不应跨范围显示",
+          runId: "wrong-scope-run",
+          runSequence: 10_001,
+          skippedCount: 1,
+          skippedNodeIds: ["target-image"],
+          status: "skipped",
+          startedAt: Date.now() - 25,
+          successCount: 0,
+      };
+      for (const [index, override] of [
+        { accountId: `${scope.accountId}-wrong` },
+        { canvasId: `${canvasId}-wrong` },
+        { fixtureScopeId: `${scope.fixtureScopeId}-wrong` },
+      ].entries()) {
+        window.dispatchEvent(new CustomEvent("unboundry:group-run-summary", {
+          detail: {
+            ...base,
+            ...override,
+            runId: `wrong-scope-run-${index}`,
+            runSequence: 10_001 + index,
+          },
+        }));
+      }
+    }, { canvasId: project.id });
+    await expect(page.getByTestId("tasks-group-summary")).toHaveCount(0);
+    await page.evaluate(({ canvasId }) => {
+      const state = window as typeof window & {
+        __lastGroupSummaryScope?: { accountId: string; fixtureScopeId: string };
+      };
+      const scope = state.__lastGroupSummaryScope;
+      if (!scope) throw new Error("missing captured group summary scope");
+      window.dispatchEvent(new CustomEvent("unboundry:group-run-summary", {
+        detail: {
+          accountId: scope.accountId,
+          blockedCount: 0,
+          blockedNodeIds: [],
+          canvasId,
+          completedAt: Date.now(),
+          elapsedMs: 25,
+          failedCount: 0,
+          failedNodeIds: [],
+          fixtureScopeId: scope.fixtureScopeId,
+          groupId: "image-group",
+          nodeCount: 1,
+          reason: "节点仍在生成，请等待当前节点完成",
+          runId: "manual-skipped-run",
+          runSequence: 10_002,
+          skippedCount: 1,
+          skippedNodeIds: ["target-image"],
+          status: "skipped",
+          startedAt: Date.now() - 25,
+          successCount: 0,
+        },
+      }));
+    }, { canvasId: project.id });
+    const skippedSummary = page.getByTestId("tasks-group-summary");
+    await expect(skippedSummary).toContainText("跳过 1 · 未运行 0");
+    await expect(skippedSummary).toContainText("节点仍在生成，请等待当前节点完成");
+    await skippedSummary.getByRole("button", { name: "关闭最近一轮整组摘要" }).click();
     await expect.poll(async () => {
       const canvas = await (await request.get(`/api/canvas/${project.id}`)).json() as {
         nodes: Array<{
@@ -882,6 +1192,8 @@ test("group run persists an incompatible Image model error without creating a ta
     );
     await expect(page.getByTestId("image-node-target-image").getByRole("alert"))
       .toContainText(expectedMessage);
+    await page.getByTestId("tasks").click();
+    await expect(page.getByTestId("tasks-group-summary")).toHaveCount(0);
     const after = await (await request.get("/api/generation-tasks/status")).json() as {
       paidProviderRequests: number;
     };

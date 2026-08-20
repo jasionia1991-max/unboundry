@@ -1536,7 +1536,11 @@ function TextNodeImpl({
       : node));
     setGenerationError(problem.message);
     await flushCanvasSave();
-    return { message: problem.message, status: "failed" as const };
+    return {
+      errorCode: problem.code,
+      message: problem.message,
+      status: "failed" as const,
+    };
   };
 
   const preflightWorkflowNode = async (context: {

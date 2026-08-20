@@ -15,13 +15,16 @@
 5. `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md`
 6. `spec/UNBOUNDRY_HANDOFF_2026-08-09.md`
 7. `TASKS.md` 当前区块
-8. `spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md` 当前区块
+8. `spec/INCIDENT_2026-08-20_TEMPLATE_GROUP_FAILURE_AND_QUEUED_TASK_HANDOFF.md`（2026-08-20 事一/事二交接，接手必读）
+9. `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`（事一/事二查证后的全局审计结论、修复设计与验收门）
+10. `spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md` 当前区块
 
 然后只读核对 `pwd`、Git 分支、HEAD、工作树、package 版本和 Node 版本。与施工断点不一致时停止，不得继续施工。
 
 ## 2. 当前授权边界
 
-- **2026-08-19 当前权威状态**：生产运行`v0.6.20/schema39`，`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.20-inc-gen-010-20260819`。`INC-GEN-010（v0.6.20） = PRODUCTION_PUBLISHED_AUTO_PASS`（2026-08-19 已发布，待用户复验），`INC-GEN-009-UI-ALIGN（v0.6.18） = PRODUCTION_PUBLISHED_USER_PASS`（2026-08-19 用户回复「通过」），`INC-GEN-008 = PRODUCTION_PUBLISHED_USER_PASS`（2026-08-19 用户回复「通过」），`INC-GEN-009 = PRODUCTION_PUBLISHED_USER_PASS`（2026-08-19 用户回复「通过」），`INC-UI-010 = PRODUCTION_PUBLISHED_USER_PASS`。`INC-GEN-007/006/005/004 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-UI-009～001 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-GEN-003/002/001 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-VIDEO-001 = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_PASS`，`REM-000～011（含009A/009B） = PASS`。站着的产品合同和条目表见`spec/UNBOUNDRY_CURRENT_STATE.md`；
+- **2026-08-20 当前权威状态**：生产运行`v0.6.24/schema39`，`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.24-ark-files-20260820`，`UNBOUNDRY_ARK_FILES_API=1`（systemd drop-in）。`INC-GEN-011（v0.6.24） = PRODUCTION_PUBLISHED_AUTO_PASS`（2026-08-20 已发布，待用户复验），`v0.6.23 = PRODUCTION_PUBLISHED_AUTO_PASS`（已发布待复验，由 v0.6.24 取代），`INC-GEN-010（v0.6.20） = PRODUCTION_PUBLISHED_USER_PASS`（2026-08-19 用户回复「通过」），`INC-GEN-009-UI-ALIGN（v0.6.18） = PRODUCTION_PUBLISHED_USER_PASS`，`INC-GEN-008 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-GEN-009 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-UI-010 = PRODUCTION_PUBLISHED_USER_PASS`。`INC-GEN-007/006/005/004 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-UI-009～001 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-GEN-003/002/001 = PRODUCTION_PUBLISHED_USER_PASS`，`INC-VIDEO-001 = PRODUCTION_PUBLISHED_REAL_VIDEO_PASS / USER_PASS`，`REM-000～011（含009A/009B） = PASS`。站着的产品合同和条目表见`spec/UNBOUNDRY_CURRENT_STATE.md`；
+- 2026-08-20 工作区含未提交的 v0.6.25 全局审计本地修复：排队恢复、Ark Files 生命周期与 gate/取消复核、保存退避、整组“停止后续”与失败摘要/重复启动复核、文档治理均已完成；实现后正式安全全量 `119/119 specs、1018/1018 tests PASS`，异常计数 0。用户已授权本次 v0.6.25 发布和最小真实页面/11MB 模板验证；该授权只适用于本次，完成后失效。接手以 `spec/UNBOUNDRY_CURRENT_STATE.md` 与全局审计实施记录为准；
 - v0.6.18生产源码commit为`e47f50c0bde0ee23585f27b71ad8df240973161a1`、tree为`48bee3c2c050ced3d2854390ca1ef1d0aba8fae5`；注释标签`v0.6.18`精确指向该源码。PR #32已于2026-08-19合并到`main`，merge commit为`265c8f63e867e122ecab2f145c362d5bdab3bd19`。生产凭证为`spec/INC_GEN_009_UI_ALIGN_PRODUCTION_RECEIPT_2026-08-19.json`；
 - v0.6.18正式安全全量为`118/118 specs、983/983 tests PASS`，异常0。管理员后台「优创尺寸映射」面板样式对齐暗黑 UI、比例下拉、文案大白话；出图逻辑不变。优创专用协议按文档像素发 1K/2K/4K，生产默认画质保持 1K；
 - 冻结备份位于`/var/lib/unboundry-rollbacks/v0.6.18-frozen-vctAv7`，冻结源与恢复副本均365文件且清单SHA-256同为`b3bb61a68e03b810e8573f52d81c331f06b825feb3d67f9f4b202e3310aa7ca8`。发布与验证期间真实Provider请求、付费生成和OSS写入均为0；上一不可变release `v0.6.17-inc-gen-008-009-20260819`及对应冻结备份继续保留；
