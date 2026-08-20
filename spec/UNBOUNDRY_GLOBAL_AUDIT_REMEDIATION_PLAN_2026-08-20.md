@@ -1,8 +1,8 @@
 # Unboundry 全局审计结论与修复实施方案
 
 更新日期：2026-08-20
-状态：`IMPLEMENTED_AUTO_PASS / RELEASE_AUTHORIZED_NOT_RELEASED`
-用途：本轮全局审计修复的实施记录与验收门。当前一页状态以 `spec/UNBOUNDRY_CURRENT_STATE.md` 为准；**本地已实施不等于已发布，也不等于用户实页验收**。
+状态：`IMPLEMENTED_AUTO_PASS / PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`
+用途：本轮全局审计修复的实施、发布与真实验证记录。当前一页状态以 `spec/UNBOUNDRY_CURRENT_STATE.md` 为准；**agent 技术实页通过不等于用户主观 USER_PASS**。
 
 ## 0. 当前指令与边界
 
@@ -57,7 +57,7 @@ node scripts/run-safe-tests.mjs full
 | P1 | 整组失败反馈 | 摘要缺失败节点、原因、计数、定位与手动关闭 | 本地已修；m22 26/26 |
 | P1 | 文档治理 | 多份文档同时播报“当前”导致漂移 | 已收口到 CURRENT_STATE；全量 119/1018 |
 
-### 2.1 本地实施证据（尚未发布）
+### 2.1 本地实施证据（已随 v0.6.25 发布）
 
 - 排队恢复：defer 登记在旧执行 `finally` 中直接接力，teardown fence 纳入待重启表；stale queued 改看 `updatedAt`；测试已从回调计数加强为真实 SQLite `queued → running → failed` 状态/事件迁移，并断言新鲜 queued 不被误启动。
 - Ark Files：`prepareArkImageFile` 在读取大图前按 `ownerId + profileId` 取得槽位；OSS 流式限制 20MiB；上传、单次 poll、整体 poll、读取与 DELETE 都会真正 abort 底层传输；拿到 `fileId` 后的 cleanup 为 single-flight 且最多一次 DELETE。本地素材改为单一 `FileHandle`、末级 `O_NOFOLLOW`、前后 `fstat`、精确大小/校验和/PNG 校验与分块有界读取；gate 释放直接原子转交 waiter，响应体异常会 cancel/release reader，并区分 `CANCELLED` 与 `NETWORK`。
@@ -65,8 +65,8 @@ node scripts/run-safe-tests.mjs full
 - 整组交互：按钮与通知改为“停止后续”；当前已开始节点不被伪装成已取消。会话级摘要显示成功/失败/未运行/处理中数量、首个真实失败节点、错误码与原因，可关闭并可选中聚焦该节点；刷新后消失，不写画布 document。摘要 scope 统一为 `accountId + canvasId + fixtureScopeId`，缓存上限 128、关闭记录上限 256，`runSequence` 阻止旧轮次迟到覆盖新轮次；任务面板只从规范 scope 取画布并标注“最近一轮”。
 - 独立子 agent 复核补获并修正：gate 超时/取消 waiter 残留吞掉后续空位、槽位释放与 waiter 唤醒非原子导致的超并发、响应体阶段取消/断流误分类与 reader 未清理、静态预检双击重复启动、并行失败节点与原因/错误码错配、skipped 原因只存在于短 toast、摘要跨账号/画布/fixture 串线与旧轮次覆盖。相应反例已纳入 m99/m22；修正后独立终审未发现新的 P1/P2。
 - 定向结果：m38 `15/15`（含文档一致性门）、m99 `18/18`、m22 `26/26`、m57 `14/14`，均为安全入口、异常计数 0、4173 listener 不变。
-- 实现后正式安全全量：`119/119 specs、1018/1018 tests PASS`；failed、skipped、retries、reportErrors、blocked 均为 0，未访问真实 Provider、生产数据或真实媒体。证据绑定 HEAD `ca73afe49a72c0a0a1950e21116e690f3c5be799` 下 567-file 冻结工作树，source/snapshot SHA-256 均为 `e015b2d2fd7a86e4b75c46be2169296359bf9318cc04e4ec0efc776aa952e0e0`；4173 listener 前后哈希均为 `24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244`。
-- 全量证据之后只做了 m22 测试常量去硬编码与状态文档回填；产品代码和安全 runner 未再变化。同步后的 m22/m38 会单独复跑，避免把文档后的工作树冒充为同一个全量源码快照。
+- 最终 v0.6.25 正式安全全量：`119/119 specs、1018/1018 tests PASS`；failed、skipped、retries、reportErrors、blocked 均为 0。source/snapshot SHA-256 均为 `fa9fa1dbdae1e70dd1c3c308a03e01a68cd11e6280d12682174ae8ba457525b4`；4173 listener 前后哈希均为 `24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244`。版本后定向 m38/m81 `56/56 PASS`。
+- 发布源码commit`57cef4ce26fc43cd0f828756850a2d3effcb161b`、tree`626b5945d64cde1a1c07c7b7765ce8a9661e82ff`，tag`v0.6.25`，PR #50 merge`e7174b0740ff1573cc8bda36f1242b8da8ff9e81`；生产回执见`spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
 
 ## 3. 批次 A：修正 Ark Files 生命周期、超时和内存边界
 
@@ -300,18 +300,18 @@ node scripts/run-safe-tests.mjs full
 4. “停止后续”文案与实际行为一致；
 5. 整组失败摘要不会 8 秒后消失，能定位真实失败节点。
 
-### 9.3 仍需单独授权的真实验证
+### 9.3 已完成的真实验证
 
-真实 Ark 11MB 端到端模板验证仍是独立付费/外部操作，必须用户单独点头。它用于验证 Provider 当前协议和真实日志，不是本地代码施工的前置条件，也不能用本地假 Provider 结果冒充。
+用户已单独授权，agent 在原事故画布的原失败文字节点上执行一次真实验证：输入资产 `3618b38d-ac65-463a-88d9-e0a48057614e` 为 11,596,744 字节 PNG；任务 `6d304853-4f51-4141-9589-16b4390b4e34` attempt 1 success，4289 tokens、结果 1278 字符；`ark-files-upload`、一次 poll、DELETE 全 success，页面显示用时 1:06 和“已保存到云端”，控制台 0 error/warn。没有盲目重试。
 
 ## 10. 完成定义
 
-本轮已经满足以下自动完成条件；当前状态为 `IMPLEMENTED_AUTO_PASS / RELEASE_AUTHORIZED_NOT_RELEASED`：
+本轮已经完成本地自动门、发布门和 agent 技术实页门；当前状态为 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`：
 
 - A～E 的代码/文档按最终实际范围完成；
 - 所有新增测试和正式安全全量通过；
 - 当前工作树改动归属与证据清楚；
 - TASKS、CURRENT_STATE 和本文已同步；验收矩阵继续只保留历史验收账本并指向 CURRENT_STATE；
-- 没有把真实 Provider、发布或用户实页验收写成已完成。
+- 生产发布、旧 queued 接力和一次最小真实 11MB Provider 验证均有回执证据；用户主观使用感受仍保留 `USER_RECHECK`。
 
-真实页面技术验证由 agent 代做并记录证据；它不能替代用户主观使用感受的 `USER_PASS`。本次 v0.6.25 版本号与发布授权已取得，完成后立即失效；本文不提供永久授权。
+真实页面技术验证由 agent 代做并记录证据；它不能替代用户主观使用感受的 `USER_PASS`。本次 v0.6.25 版本号、发布和真实验证授权已经消费完毕；本文不提供永久授权。

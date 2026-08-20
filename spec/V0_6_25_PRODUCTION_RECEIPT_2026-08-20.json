@@ -1,0 +1,126 @@
+{
+  "incident": "V0.6.25-GLOBAL_AUDIT_REMEDIATION",
+  "version": "0.6.25",
+  "status": "PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS",
+  "publishedAt": "2026-08-20T12:53:26Z",
+  "changes": {
+    "summary": "生成恢复与整组运行加固：旧执行退场后补启动 queued 自动重试；Ark Files 补齐锁外生命周期、底层 abort、限流、流式上限、账号隔离 gate 与结构化日志；保存退避完整执行 1/2/4/8/15 秒；整组停止后续、持久失败摘要、规范 scope、重复启动保护和并行失败映射；文档当前事实收口。",
+    "scope": "server/generationTasks.ts、server/arkFileUploader.ts、server/providerProfiles.ts、server/volcengineArkTextProvider.ts、client/src/generation/*、client/src/canvas/GroupNode.tsx、client/src/canvas/GenerationTasksPanel.tsx、相关测试与文档；无数据库结构变更（schema39 不变）。",
+    "generationLogicUnchanged": false
+  },
+  "source": {
+    "commit": "57cef4ce26fc43cd0f828756850a2d3effcb161b",
+    "tree": "626b5945d64cde1a1c07c7b7765ce8a9661e82ff",
+    "tagObject": "f0da5186e217bad6f2bc5d5dd79655be846ab430",
+    "mainMergeCommit": "e7174b0740ff1573cc8bda36f1242b8da8ff9e81",
+    "mainTreeMatchesTag": true
+  },
+  "tests": {
+    "full": {
+      "specsPassed": 119,
+      "specsTotal": 119,
+      "testsPassed": 1018,
+      "testsTotal": 1018,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0
+    },
+    "sourceSnapshotSha256": "fa9fa1dbdae1e70dd1c3c308a03e01a68cd11e6280d12682174ae8ba457525b4",
+    "listenerBeforeAfterSha256": "24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244",
+    "targetedAfterVersionBump": "m38 15/15 + m81 41/41 = 56/56 PASS"
+  },
+  "backup": {
+    "path": "/var/lib/unboundry-rollbacks/v0.6.25-frozen-789d29",
+    "files": 365,
+    "frozenManifestSha256": "d15f34332d692aafd8db2aaba4c66ab475fb5790503b236b614ffb2570b7329e",
+    "restoreManifestSha256": "d15f34332d692aafd8db2aaba4c66ab475fb5790503b236b614ffb2570b7329e",
+    "databaseRows": 5117,
+    "mediaBytes": 284663380,
+    "mediaFiles": 355,
+    "restoreSchemaVersion": 39,
+    "restoreDatabaseIntegrity": "ok",
+    "restoreForeignKeyViolations": 0,
+    "restoreTasks": 549,
+    "restoreProviderAttempts": 556,
+    "restoreActiveGenerations": 1,
+    "restoreActiveGenerationExplanation": "已知长期 queued 任务 c479826f-a426-4a11-854c-79ecc802bcbc；无 provider_task_id，正是本版接力修复的生产验证对象。",
+    "restorePublicTemplates": 50,
+    "restorePublishedTemplates": 48
+  },
+  "production": {
+    "release": "/opt/unboundry/releases/v0.6.25-generation-hardening-20260820",
+    "previousRelease": "/opt/unboundry/releases/v0.6.24-ark-files-20260820",
+    "releaseInventoryFileSha256": "a058c485854660fb7d96ed81fa80a85668a162103e3e4f1ceb22e5c4b5e2591b",
+    "releaseInventoryLines": 5791,
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "restartCount": 0,
+    "schemaVersion": 39,
+    "databaseIntegrity": "ok",
+    "foreignKeyViolations": 0,
+    "tasksAfterAuthorizedValidation": 550,
+    "providerAttemptsAfterAuthorizedValidation": 558,
+    "activeGenerationsAfterAuthorizedValidation": 0,
+    "publicTemplates": 50,
+    "publishedTemplates": 48
+  },
+  "publicAssets": {
+    "version": "0.6.25",
+    "rootStatus": 200,
+    "title": "无央｜AI 无限画布",
+    "allReleaseAssetsMatchedPublic": true,
+    "assets": {
+      "/assets/CanvasShell-M3Tirqxp.js": "ef56a956cddd1b2b897666649cc2c9839c0f4d736c80785116ca4a0f9dc2c752",
+      "/assets/WorkspacePage-CUShYw0E.js": "586950cc8d10756ab212c36ed061dced38007b2ec034aeab3ea66d10a7ed1c21",
+      "/assets/index-Mo4sY8MZ.js": "0f296f0badf1b381b1dc414b95d5769ce3298b3899c4d1e7867fe7393a554fac",
+      "/assets/index-aBj-WF_3.css": "ad7ad8bf399fc06ade76c809bc41747ca33e3994a74f808d75015945b800af49",
+      "/assets/projectStorage-BPaAZ-kw.js": "37c8eb18a9eead9279b4a7ca6338b9eac9245349c627df22dc6346843f10548a"
+    }
+  },
+  "authorizedRealValidation": {
+    "queuedRelaunch": {
+      "taskId": "c479826f-a426-4a11-854c-79ecc802bcbc",
+      "before": "queued / attempt 1 / provider_task_id null",
+      "after": "success / attempt 2 / provider_task_id 111092189",
+      "resultAssetId": "2a5bf1b9-1d64-4c8e-ae91-502d9b14cc99",
+      "providerAttemptOutcome": "completed"
+    },
+    "arkFiles11Mb": {
+      "canvasId": "9dd7c462-cc1e-40e9-90c7-8e0131df490e",
+      "nodeId": "text-932053d1-2601-4f22-8ce4-931d5a3223fe",
+      "taskId": "6d304853-4f51-4141-9589-16b4390b4e34",
+      "assetId": "3618b38d-ac65-463a-88d9-e0a48057614e",
+      "byteSize": 11596744,
+      "state": "success",
+      "attempt": 1,
+      "providerUsageTokens": 4289,
+      "resultTextLength": 1278,
+      "arkFilesUpload": "success",
+      "arkFilesPoll": "success / 1 poll",
+      "arkFilesDelete": "success",
+      "pageSaveState": "已保存到云端",
+      "browserConsoleErrorsOrWarnings": 0
+    },
+    "testArtifact": "为探索最小验证路径，事故画布新增了一个空白 Text 节点 text-8175f91f-db87-447d-9efc-287a6a80125d；未删除，避免在未进行浏览器删除确认时执行破坏性操作。"
+  },
+  "externalEffects": {
+    "realProviderGenerationTasks": 2,
+    "providerRetriesBeyondPlannedValidation": 0,
+    "arkTemporaryFileUploads": 1,
+    "arkTemporaryFileDeletes": 1,
+    "ossMediaWrites": 1,
+    "productionCanvasMutated": true
+  },
+  "github": {
+    "state": "MERGED",
+    "pullRequest": 50,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/50",
+    "mergedAt": "2026-08-20T12:49:00Z",
+    "mergeCommit": "e7174b0740ff1573cc8bda36f1242b8da8ff9e81",
+    "tag": "v0.6.25",
+    "tagTarget": "57cef4ce26fc43cd0f828756850a2d3effcb161b"
+  },
+  "userAcceptance": "USER_RECHECK"
+}

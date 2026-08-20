@@ -1,15 +1,16 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-20
-状态：`v0.6.25 本地候选已获本次发布与最小真实验证授权，尚未发布；线上仍为 v0.6.24/schema39。当前权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+状态：`v0.6.25/schema39 已发布；agent 真实页面、旧 queued 接力和 11MB Ark Files 端到端均通过，待用户主观复验。当前权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
 
-### 2026-08-20 全局审计修复（当前未发布工作区）
+### 2026-08-20 全局审计修复（v0.6.25 已发布）
 
-- 状态：`IMPLEMENTED_AUTO_PASS / RELEASE_AUTHORIZED_NOT_RELEASED`。排队恢复、Ark Files 生命周期、保存退避、整组 UX 与文档单一事实源均已落地；用户已授权版本号 v0.6.25、发布和最小真实页面/11MB 模板验证，当前尚未 commit、尚未发布。
+- 状态：`PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`。排队恢复、Ark Files 生命周期、保存退避、整组 UX 与文档单一事实源均已落地并发布；一次性 v0.6.25 发布/真实验证授权已消费完毕。
 - 关键纠正：事一不是 DAG 漏发；15:23–15:26Z 是 11,596,744 字节上游 PNG 被 v0.6.23 的 10MB 下游文字预检拦截。“2:33 三张主图未提交”已被任务表和 nginx 202 记录否定。
 - 已实施：Ark Files 生命周期/abort/限流/流上限/日志、本地单句柄安全读取、原子 gate 接力及响应体错误分类/reader 清理；queued 接力、`updatedAt` 恢复与真实 SQLite 状态迁移测试；保存退避第五档；“停止后续”真实语义；按账号/画布/fixture 隔离、缓存有界、旧轮次不可覆盖新轮次且可关闭/定位的失败摘要；任务面板规范 scope 单一来源；预检重复启动保护；CURRENT_STATE 单一事实源。
-- 实现前基线：安全全量 `119/119 specs、1007/1007 tests PASS`。实现后定向：m38 `15/15`、m99 `18/18`、m22 `26/26`、m57 `14/14 PASS`；实现后正式安全全量 `119/119 specs、1018/1018 tests PASS`，failed/skipped/retries/reportErrors/blocked 均为 0，source/snapshot SHA-256 均为 `e015b2d2fd7a86e4b75c46be2169296359bf9318cc04e4ec0efc776aa952e0e0`，4173 listener 不变，真实外部请求为 0。独立子 agent 终审未发现新的 P1/P2；这仍不是用户实页或真实 Provider 验收。
-- 权威实施记录：`spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`。生产、真实数据、真实 Provider/OSS、版本号与发布均未触碰。
+- 实现前基线：安全全量 `119/119 specs、1007/1007 tests PASS`。最终 v0.6.25 正式安全全量 `119/119 specs、1018/1018 tests PASS`，异常计数 0，source/snapshot SHA-256 均为 `fa9fa1dbdae1e70dd1c3c308a03e01a68cd11e6280d12682174ae8ba457525b4`；定向 m38/m81 `56/56 PASS`。独立子 agent 终审未发现新的 P1/P2。
+- 生产：release `/opt/unboundry/releases/v0.6.25-generation-hardening-20260820`，冻结备份 `v0.6.25-frozen-789d29`（365 文件，双清单 SHA `d15f3433…`），schema39/integrity/FK/service/公网资源门通过。旧 queued 任务 `c479826f…` 自动接力并 success；事故画布的 11,596,744 字节 PNG 经 Ark Files upload/poll/delete 全成功，文字任务 `6d304853…` 一次 success，页面显示已保存到云端，控制台 0 error/warn。待用户主观使用感受复验。
+- 权威实施记录：`spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`；生产回执：`spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
 
 ### 2026-08-20 事一/事二交接（历史交接时点，已由上方审计方案接管）
 

@@ -5,34 +5,36 @@
 
 ## 一句话
 
-线上是 **v0.6.24 / schema39**（方舟文字模型大图原图直传 Files API：10–20MB PNG 不再被 10MB 限制拦下/压缩，上传后以 file_id 交文字模型；上传/轮询/删除全程锁外；生产开关已开 `UNBOUNDRY_ARK_FILES_API=1`），2026-08-20 已发布，待用户复验；v0.6.23 为上一版（生成稳定性根治修复，待用户复验并被 v0.6.24 取代）；v0.6.21、v0.6.20、v0.6.19 已于 2026-08-19 复验通过；v0.6.18 的尺寸映射面板 UI 对齐已于 2026-08-19 通过用户复验。用户要的核心结果仍是：**上传一张图，工作流自己跑完，用户下载结果**。
+线上是 **v0.6.25 / schema39**（生成恢复与整组运行加固），2026-08-20 已发布；agent 真实页面、旧 queued 接力和 11MB Ark Files 端到端均通过，待用户主观复验。v0.6.24 为上一版；v0.6.21、v0.6.20、v0.6.19 已于 2026-08-19 复验通过；v0.6.18 的尺寸映射面板 UI 对齐已于 2026-08-19 通过用户复验。用户要的核心结果仍是：**上传一张图，工作流自己跑完，用户下载结果**。
 
-## 未发布工作区与待查事件（2026-08-20）
+## v0.6.25 发布与真实验证（2026-08-20）
 
-- 当前代码包版本：**v0.6.25**。本地候选状态为 `IMPLEMENTED_AUTO_PASS / RELEASE_AUTHORIZED_NOT_RELEASED`，尚未 commit、尚未发布、尚未做本轮真实付费生成。用户已授权本次 v0.6.25 发布和最小真实页面/11MB 模板验证；完整实施记录与验收门见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`。
-- 事二「生成任务一直排队中」已完成本地闭环：defer 在旧执行退场后直接接力、teardown 等待待重启登记、stale queued 改看 `updatedAt`，并有真实竞态形状的确定性测试；m38 `15/15 PASS`。这只证明本地自动门，不代表生产已修。
+- 当前代码包版本：**v0.6.25**；线上版本同为 **v0.6.25**。状态 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`；本次发布和真实验证一次性授权已经消费完毕。完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
+- 事二「生成任务一直排队中」已在线闭环：已知任务 `c479826f-a426-4a11-854c-79ecc802bcbc` 从 `queued / attempt 1 / provider_task_id null` 在 v0.6.25 重启后自动接力，平台任务 `111092189` 完成，最终 `success / attempt 2`；没有盲目重复。
 - 事一已查清：2026-08-19 15:23–15:26Z 上游“服装主体标准化”图片成功并产出 11,596,744 字节 PNG；v0.6.23 的 10MB 文字输入预检随后拦下四个下游文字节点，五个后代未运行。不是客户端 DAG 漏发；红字把失败错归因给已经成功的上游图片节点。
 - “2:33 三张主图从未提交”的旧说法已被生产任务表与 nginx 202 提交记录否定：该轮 7 图 + 4 文全部 success。
-- Ark Files 已在本地候选补齐失败/取消清理、底层 abort、单次与整体 poll deadline、读取前限流、OSS 流式 20MiB 上限、账号隔离 gate 和脱敏结构化日志；本地大图读取改为单一 `FileHandle`、末级 `O_NOFOLLOW`、前后 `fstat` 与分块有界读取，避免 stat/readFile 换档竞态。独立复核又修正了超时 waiter 残留吞槽、释放槽位时非原子唤醒造成的超并发、响应体断流/取消误分类与 reader 未清理；m99 `18/18 PASS`。生产仍是旧 v0.6.24 实现，不能把本地结果写成线上已修。
-- Provider 成片保存已按公开合同修正为首次尝试 + 1/2/4/8/15 秒五次退避后的重试（最多六次 save）；整组按钮已改为“停止后续”，失败摘要可持续查看、关闭并定位真实失败节点。摘要按 `accountId + canvasId + fixtureScopeId` 隔离，缓存/关闭记录有界，旧执行迟到不能覆盖新一轮；任务面板只读取规范 scope，并明确显示“最近一轮”。独立复核又修正了静态预检双击重复启动、并行失败节点/原因/错误码错配、跳过原因不可见；m38 `15/15`、m22 `26/26`、m57 `14/14 PASS`。实现后正式安全全量 `119/119 specs、1018/1018 tests PASS`，异常计数 0，source/snapshot SHA-256 均为 `e015b2d2fd7a86e4b75c46be2169296359bf9318cc04e4ec0efc776aa952e0e0`；独立子 agent 终审未发现新的 P1/P2。这里只证明本地自动门，不代表生产已修、真实 Provider 已验证或用户实页通过。
+- Ark Files 已补齐失败/取消清理、底层 abort、单次与整体 poll deadline、读取前限流、OSS 流式 20MiB 上限、账号隔离 gate、脱敏结构化日志与安全本地读取。事故画布原节点 `text-932053d1…` 真实引用 `11,596,744` 字节 PNG；agent 在页面点一次生成，任务 `6d304853…` attempt 1 success、4289 tokens、结果 1278 字符；日志 upload/poll(1 次)/delete 全 success，页面显示用时 1:06 和“已保存到云端”，浏览器控制台 0 error/warn。
+- Provider 成片保存退避、整组“停止后续”、持久失败摘要、scope 隔离、旧轮次保护、预检双击保护与并行失败映射均已上线。正式安全全量 `119/119 specs、1018/1018 tests PASS`，异常计数 0，最终 v0.6.25 source/snapshot SHA-256 均为 `fa9fa1dbdae1e70dd1c3c308a03e01a68cd11e6280d12682174ae8ba457525b4`；独立子 agent 终审未发现新的 P1/P2。agent 的技术实页通过不等于用户主观 `USER_PASS`。
 
 ## 线上
 
 - 地址：https://canvas.mymy.ltd
-- 指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.24-ark-files-20260820`
-- 源码：commit `87d39d264d463d341bbc0c989bfbca2a857f3e22`，tree `d0b8396834d228170102a2e77d986a4e6918769e`
-- 标签：`v0.6.24` 精确指向该源码
-- 功能 PR：#48，merge `baf1a23fd06a43884bd2272dab1f3c30e477853d`
-- 冻结备份：`/var/lib/unboundry-rollbacks/v0.6.24-frozen-x7q2mz`（365 文件，两份清单 SHA 同为 `ec7b6397a36f18defb7fdbd33e788cfadd694e72aea0dc0b3ea006fc91a76a12`）
-- 上一不可变版：`v0.6.23-generation-stability-20260819`（以及更早版本）仍保留
-- 发布核验时：schema39、数据库 integrity ok、FK0、tasks475、attempts482、active0、公共模板49（47 published）；真实 Provider / 付费 / OSS 写入 0
+- 指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.25-generation-hardening-20260820`
+- 源码：commit `57cef4ce26fc43cd0f828756850a2d3effcb161b`，tree `626b5945d64cde1a1c07c7b7765ce8a9661e82ff`
+- 标签：`v0.6.25` 精确指向该源码
+- 功能 PR：#50，merge `e7174b0740ff1573cc8bda36f1242b8da8ff9e81`，main tree 与 tag tree 一致
+- 冻结备份：`/var/lib/unboundry-rollbacks/v0.6.25-frozen-789d29`（365 文件，两份清单 SHA 同为 `d15f34332d692aafd8db2aaba4c66ab475fb5790503b236b614ffb2570b7329e`）
+- 上一不可变版：`v0.6.24-ark-files-20260820`（以及更早版本）仍保留
+- 切换前恢复副本：schema39、integrity ok、FK0、tasks549、attempts556、active1（已知 stuck queued）、公共模板50（48 published）；授权真实验证后 tasks550、attempts558、active0
 - 生产并发配置已恢复推荐值：per_user 20 / image 10 / video 2 / audio 2 / text 10 / RPM 120
-- 正式安全全量：`119/119 specs、1006/1006 tests PASS`
-- v0.6.24 已于 2026-08-20 发布，待用户复验；v0.6.23 为上一版（已发布待复验，由 v0.6.24 取代）；v0.6.21、v0.6.20 与 v0.6.19 均已于 2026-08-19 回复「通过」；v0.6.18 与 v0.6.17 已于 2026-08-19 回复「通过」；v0.6.16 已于 2026-08-18 回复「通过」
+- 正式安全全量：`119/119 specs、1018/1018 tests PASS`
+- v0.6.25 已于 2026-08-20 发布，agent 真实页面与最小真实 Provider 验证通过，待用户主观复验；更早用户已通过版本状态保持不变
 
-## 最新发布（2026-08-20 已发布，待用户复验）
+## 最新发布（2026-08-20 已发布，agent 技术实页通过，待用户主观复验）
 
-**v0.6.24（方舟文字模型大图原图直传 Files API，INC-GEN-011）**：火山方舟文字模型引用 10–20MB PNG 参考图时，不再被 10MB 限制拦下、也不再压缩转 Base64，而是原图直传：上传到方舟临时文件后用 file_id 发给文字模型。上传/轮询/删除全程在配置锁外（避免重演线上锁死）；每个优创连接同时最多 2 个大图上传、排队最长 30 秒；超时写死（上传 60s / 等待就绪 120s / 删除 10s）；上传失败不产生计费记录；取消后独立清理信号删除文件不留孤儿；代码默认关闭，但生产已显式打开（`UNBOUNDRY_ARK_FILES_API=1`，systemd drop-in），关闭时旧路径 100% 不变。已随 v0.6.24 上线，2026-08-20 发布，待你打开线上页面复验。真实方舟验证已通过（12,019,057 字节 PNG → file_id → 文字模型正常返回 → 删除成功，一次最小推理 1375 tokens）；生产上尚未出现用户侧 `ark-files-*` 上传记录，11MB 端到端模板验证仍待补。
+**v0.6.25（生成恢复与整组运行加固）**：旧执行挡住自动重试时，退场后可靠接力；Ark Files 完整清理/abort/限流/gate/结构化日志；保存退避完整；整组“停止后续”和失败摘要/隔离/旧轮次保护上线。正式安全全量 `119/119 specs、1018/1018 tests PASS`。生产旧 queued 任务自动接力成功；原事故节点用 11,596,744 字节 PNG 在真实页面完成一次文字生成，Ark upload/poll/delete 全 success。权威凭证：`spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
+
+**v0.6.24（方舟文字模型大图原图直传 Files API，INC-GEN-011）**：火山方舟文字模型引用 10–20MB PNG 参考图时，不再被 10MB 限制拦下、也不再压缩转 Base64，而是原图直传：上传到方舟临时文件后用 file_id 发给文字模型。上传/轮询/删除全程在配置锁外（避免重演线上锁死）；每个优创连接同时最多 2 个大图上传、排队最长 30 秒；超时写死（上传 60s / 等待就绪 120s / 删除 10s）；上传失败不产生计费记录；取消后独立清理信号删除文件不留孤儿；代码默认关闭，但生产已显式打开（`UNBOUNDRY_ARK_FILES_API=1`，systemd drop-in），关闭时旧路径 100% 不变。v0.6.24 发布时真实方舟 12MB 验证通过；当时尚无用户侧 `ark-files-*` 记录。该缺口已由上方 v0.6.25 的 11MB 真实页面验证补齐。
 
 权威方案：`spec/INC_GEN_011_ARK_FILES_API_2026-08-20.md`。权威凭证：`spec/V0_6_24_PRODUCTION_RECEIPT_2026-08-20.json`。
 
