@@ -14,9 +14,16 @@ export type WorkflowEdgeShape = {
 
 export type NodeRunStatus = "busy" | "failed" | "skipped" | "success";
 
+export type NodeRunSuccessProof = {
+  ownershipKey: string;
+  resultKey: string;
+  taskId: string;
+};
+
 export type NodeRunResult = {
   errorCode?: string;
   message?: string;
+  successProof?: NodeRunSuccessProof;
   status: NodeRunStatus;
 };
 
@@ -227,7 +234,7 @@ export function workflowRuntimePreflightDisposition<
 export type NodeGenerationOutcome =
   | { message?: string; status: "failed" }
   | { status: "skipped" }
-  | { status: "success" };
+  | { status: "success"; successProof?: NodeRunSuccessProof };
 
 /**
  * A node is executable when it is a real generation node. Pure upload slots,
@@ -422,12 +429,14 @@ export type WorkflowGraphRunResult =
 export async function runWorkflowGraph(input: {
   edges: readonly WorkflowEdgeShape[];
   executableIds: ReadonlySet<string>;
+  initialSuccessNodeIds?: ReadonlySet<string>;
   isCancelled: () => boolean;
   onNodeStateChange?: (
     nodeId: string,
     state: WorkflowGraphNodeState,
     completed: number,
     total: number,
+    result?: NodeRunResult,
   ) => void;
   runNode: (nodeId: string) => Promise<NodeRunResult>;
 }): Promise<WorkflowGraphRunResult> {
@@ -443,7 +452,10 @@ export async function runWorkflowGraph(input: {
     }
   }
   const states = new Map<string, WorkflowGraphNodeState>(
-    nodeIds.map((nodeId) => [nodeId, "pending"]),
+    nodeIds.map((nodeId) => [
+      nodeId,
+      input.initialSuccessNodeIds?.has(nodeId) ? "success" : "pending",
+    ]),
   );
   const active = new Map<
     string,
@@ -455,14 +467,25 @@ export async function runWorkflowGraph(input: {
     message?: string;
     nodeId: string;
   }> = [];
-  let completed = 0;
+  let completed = nodeIds.filter((nodeId) => states.get(nodeId) === "success")
+    .length;
 
-  const transition = (nodeId: string, state: WorkflowGraphNodeState) => {
+  for (const nodeId of nodeIds) {
+    if (states.get(nodeId) === "success") {
+      input.onNodeStateChange?.(nodeId, "success", completed, nodeIds.length);
+    }
+  }
+
+  const transition = (
+    nodeId: string,
+    state: WorkflowGraphNodeState,
+    result?: NodeRunResult,
+  ) => {
     states.set(nodeId, state);
     if (["blocked", "failed", "skipped", "success"].includes(state)) {
       completed += 1;
     }
-    input.onNodeStateChange?.(nodeId, state, completed, nodeIds.length);
+    input.onNodeStateChange?.(nodeId, state, completed, nodeIds.length, result);
   };
 
   while (completed < nodeIds.length) {
@@ -543,6 +566,7 @@ export async function runWorkflowGraph(input: {
         : settled.result.status === "failed"
           ? "failed"
           : "skipped",
+      settled.result,
     );
   }
 

@@ -63,6 +63,10 @@ export type StoryboardShot = {
 export type ProbeNodeType = Node<
   {
     assetId?: string;
+    /** Durable proof for a completed group-run task; unlike live task fields it is not terminally cleared. */
+    groupRunSuccessOwnershipKey?: string;
+    groupRunSuccessResultKey?: string;
+    groupRunSuccessTaskId?: string;
     audioDuration?: number;
     audioFileSize?: number;
     audioFileName?: string;

@@ -6449,6 +6449,17 @@ sup {
   cursor: pointer;
 }
 
+/* Keep active workflow nodes mounted without allowing their configuration to
+   change midway through the frozen run snapshot. */
+.react-flow__node.workflow-run-locked {
+  pointer-events: none !important;
+  user-select: none;
+}
+
+.react-flow__node.workflow-run-group {
+  cursor: grab;
+}
+
 .generation-reconcile-task-id {
   display: flex;
   align-items: center;

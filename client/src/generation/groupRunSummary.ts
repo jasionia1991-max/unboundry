@@ -9,8 +9,10 @@ export type GroupRunSummaryScope = {
 };
 
 export type GroupRunSummary = GroupRunSummaryScope & {
+  activeCount?: number;
   blockedCount: number;
   blockedNodeIds: string[];
+  completedCount?: number;
   completedAt: number;
   elapsedMs: number;
   errorCode?: string;
@@ -25,10 +27,21 @@ export type GroupRunSummary = GroupRunSummaryScope & {
   runSequence: number;
   skippedCount: number;
   skippedNodeIds: string[];
-  status: "cancelled" | "failed" | "skipped" | "success";
+  status:
+    | "cancelled"
+    | "failed"
+    | "preparing"
+    | "running"
+    | "skipped"
+    | "stopping"
+    | "success";
   startedAt: number;
   successCount: number;
 };
+
+export function isActiveGroupRunStatus(status: GroupRunSummary["status"]) {
+  return status === "preparing" || status === "running" || status === "stopping";
+}
 
 const lastGroupRunById = new Map<string, GroupRunSummary>();
 const dismissedGroupRuns = new Set<string>();

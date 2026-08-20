@@ -79,6 +79,7 @@ function GroupNodeImpl({
   const { cancelGroup, executeGroup, executingGroupIds } =
     useWorkflowExecution();
   const executing = executingGroupIds.has(id);
+  const showGroupToolbar = singleNodeChrome || executing;
   const [lastGroupRun, setLastGroupRun] = useState(
     () => readLastGroupRunSummaryForGroup(groupRunScope, id),
   );
@@ -128,6 +129,7 @@ function GroupNodeImpl({
   }, [accountId, canvasId, fixtureScopeId, id]);
   const titleControl = useCompositionSafeText({
     onCommit: (title) => {
+      if (executing) return;
       setNodes((nodes) =>
         nodes.map((node) =>
           node.id === id
@@ -149,6 +151,13 @@ function GroupNodeImpl({
   }, [singleNodeChrome]);
 
   useEffect(() => {
+    if (!executing) return;
+    setColorMenu(false);
+    setLayoutMenu(false);
+    setTemplateDialogOpen(false);
+  }, [executing]);
+
+  useEffect(() => {
     if (!templateDialogOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !templateSaving) {
@@ -159,7 +168,8 @@ function GroupNodeImpl({
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [templateDialogOpen, templateSaving]);
 
-  const updateData = (patch: Partial<ProbeNodeType["data"]>) =>
+  const updateData = (patch: Partial<ProbeNodeType["data"]>) => {
+    if (executing) return;
     setNodes((nodes) =>
       nodes.map((node) =>
         node.id === id
@@ -167,6 +177,7 @@ function GroupNodeImpl({
           : node,
       ),
     );
+  };
   const beginMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     const group = getNode(id);
@@ -206,6 +217,7 @@ function GroupNodeImpl({
   };
 
   const ungroup = () => {
+    if (executing) return;
     checkpoint();
     setNodes((nodes) => {
       const group = nodes.find((node) => node.id === id);
@@ -230,6 +242,7 @@ function GroupNodeImpl({
   };
 
   const layout = (mode: "grid" | "horizontal") => {
+    if (executing) return;
     checkpoint();
     setNodes((nodes) => {
       const children = nodes.filter((node) => node.parentId === id);
@@ -339,6 +352,7 @@ function GroupNodeImpl({
   };
 
   const saveTemplate = async () => {
+    if (executing) return;
     const title = templateTitle.trim();
     if (title.length < 1 || title.length > 40) {
       setTemplateError("模板标题需为 1–40 个字符");
@@ -445,7 +459,7 @@ function GroupNodeImpl({
   return (
     <>
       <NodeResizer
-        isVisible={singleNodeChrome}
+        isVisible={singleNodeChrome && !executing}
         minHeight={147}
         minWidth={312}
         onResizeStart={() => checkpoint()}
@@ -460,13 +474,14 @@ function GroupNodeImpl({
           testId="group-last-duration"
         />
       )}
-      {singleNodeChrome && (
+      {showGroupToolbar && (
         <div
           className="group-node-toolbar nodrag nopan"
           data-testid="group-node-toolbar"
         >
           <button
             aria-label="组合框颜色"
+            disabled={executing}
             onClick={() => {
               setColorMenu((open) => !open);
               setLayoutMenu(false);
@@ -480,6 +495,7 @@ function GroupNodeImpl({
           </button>
           <button
             aria-label="组合框布局"
+            disabled={executing}
             onClick={() => {
               setLayoutMenu((open) => !open);
               setColorMenu(false);
@@ -497,8 +513,12 @@ function GroupNodeImpl({
             aria-label={executing ? "停止后续节点" : "整组执行"}
             data-testid="group-execute-button"
             disabled={!hasExecutableChild || isFixture}
-            onClick={() => {
+            onClick={(event) => {
               if (executing) {
+                // A fast second click from the original start double-click can
+                // arrive after React has switched the button to “stop”. Treat
+                // that pair as one start; a later single click still stops.
+                if (event.detail > 1) return;
                 cancelGroup(id);
               } else {
                 void executeGroup(id);
@@ -525,7 +545,7 @@ function GroupNodeImpl({
           </button>
           <button
             data-testid="group-template-button"
-            disabled={isFixture || childCount === 0}
+            disabled={executing || isFixture || childCount === 0}
             onClick={() => {
               setTemplateError("");
               setTemplateTitle("");
@@ -546,7 +566,7 @@ function GroupNodeImpl({
           >
             {data.groupTemplate ? "更新模板" : "创建模板"}
           </button>
-          <button onClick={ungroup} type="button">
+          <button disabled={executing} onClick={ungroup} type="button">
             解组
           </button>
           <button
@@ -567,6 +587,7 @@ function GroupNodeImpl({
               {colors.map((color) => (
                 <button
                   aria-label={color === "transparent" ? "清除颜色" : "设置颜色"}
+                  disabled={executing}
                   key={color}
                   onClick={() => {
                     checkpoint();
@@ -581,10 +602,18 @@ function GroupNodeImpl({
           )}
           {layoutMenu && (
             <div className="group-layout-menu" role="menu">
-              <button onClick={() => layout("grid")} type="button">
+              <button
+                disabled={executing}
+                onClick={() => layout("grid")}
+                type="button"
+              >
                 宫格
               </button>
-              <button onClick={() => layout("horizontal")} type="button">
+              <button
+                disabled={executing}
+                onClick={() => layout("horizontal")}
+                type="button"
+              >
                 水平
               </button>
             </div>
@@ -603,6 +632,7 @@ function GroupNodeImpl({
         {singleNodeChrome ? (
           <input
             aria-label="组合框标题"
+            disabled={executing}
             data-canvas-text-edit="graph"
             data-composition-active={titleControl.composing || undefined}
             onBlur={() => titleControl.blur()}
@@ -639,6 +669,7 @@ function GroupNodeImpl({
         className="group-node-body"
         data-child-count={childCount}
         data-testid={`group-node-${id}`}
+        data-workflow-run-active={executing ? "true" : undefined}
         onPointerEnter={() => setTitleHovered(true)}
         onPointerLeave={() => setTitleHovered(false)}
         onPointerDown={beginMove}

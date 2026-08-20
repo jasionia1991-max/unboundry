@@ -69,6 +69,7 @@ import {
   type WorkflowPreflightPhase,
 } from "../generation/workflowExecution";
 import { shouldIgnoreStaleCanvasSaveProblem } from "../generation/groupRunPersist";
+import { groupRunResultKey } from "../generation/groupRunCheckpoint";
 import {
   generationFailureMessage,
   generationInputKey as createGenerationInputKey,
@@ -853,6 +854,12 @@ function TextNodeImpl({
             textGenerationRetryBlockReason: undefined,
             textGenerating: false,
             textGenerationTaskId: task.id,
+            groupRunSuccessOwnershipKey: owner.generationOwnershipKey,
+            groupRunSuccessResultKey: groupRunResultKey({
+              content: resultText,
+              contentHtml: nextValue.html,
+            }),
+            groupRunSuccessTaskId: task.id,
           },
         }
       : node));
@@ -1407,6 +1414,9 @@ function TextNodeImpl({
                 textGenerationRetryBlockReason: undefined,
                 textGenerating: true,
                 textGenerationTaskId: submitted.id,
+                groupRunSuccessOwnershipKey: undefined,
+                groupRunSuccessResultKey: undefined,
+                groupRunSuccessTaskId: undefined,
                 textModelId: requestedModelId,
                 textModelName: requestedModelName,
                 textParameters: requestedParameters,
@@ -1449,7 +1459,17 @@ function TextNodeImpl({
           });
           if (recovered.status === "success" && recovered.task) {
             await applyGeneratedText(recovered.task, admitted.owner);
-            return { status: "success" };
+            return {
+              status: "success",
+              successProof: {
+                ownershipKey: admitted.owner.generationOwnershipKey ?? "",
+                resultKey: groupRunResultKey({
+                  content: recovered.task.resultText?.trim() ?? "",
+                  contentHtml: plainTextHtml(recovered.task.resultText?.trim() ?? ""),
+                }),
+                taskId: recovered.task.id,
+              },
+            };
           }
           return {
             message: friendlyGenerationMessage(
@@ -1467,7 +1487,18 @@ function TextNodeImpl({
           status: "failed",
         };
       }
-      return { status: "success" };
+      return {
+        status: "success",
+        successProof: {
+          ownershipKey: admitted.owner.generationOwnershipKey ?? "",
+          resultKey: groupRunResultKey({
+            content: finished?.data.content ?? submitted.resultText?.trim() ?? "",
+            contentHtml: finished?.data.contentHtml ??
+              plainTextHtml(submitted.resultText?.trim() ?? ""),
+          }),
+          taskId: submitted.id,
+        },
+      };
     } catch (error) {
       if (error instanceof GenerationRequestError && error.problems.length) {
         setServerInputProblems(error.problems);
@@ -1588,7 +1619,7 @@ function TextNodeImpl({
         status: "skipped",
       };
     }
-    return { status: "success" };
+    return { status: "success", successProof: outcome.successProof };
   };
 
   const runWorkflowNodeRef = useRef<() => Promise<NodeRunResult>>(
@@ -1674,6 +1705,9 @@ function TextNodeImpl({
               textGenerationRetryBlockCode: undefined,
               textGenerationRetryBlockReason: undefined,
               textGenerating: true,
+              groupRunSuccessOwnershipKey: undefined,
+              groupRunSuccessResultKey: undefined,
+              groupRunSuccessTaskId: undefined,
             },
           }
         : node));

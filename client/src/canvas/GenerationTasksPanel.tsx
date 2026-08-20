@@ -14,11 +14,20 @@ import {
   GROUP_RUN_SUMMARY_EVENT,
   dismissGroupRunSummary,
   groupRunSummaryMatchesScope,
+  isActiveGroupRunStatus,
   isGroupRunSummaryDismissed,
   readLastGroupRunSummary,
   type GroupRunSummary,
   type GroupRunSummaryScope,
 } from "../generation/groupRunSummary";
+import {
+  clearGroupRunCheckpoint,
+  GROUP_RUN_CHECKPOINT_EVENT,
+  readGroupRunCheckpoint,
+  requestGroupRunContinue,
+  requestGroupRunStop,
+  type GroupRunCheckpoint,
+} from "../generation/groupRunCheckpoint";
 
 const kindLabels: Record<GenerationTaskSummary["kind"], string> = {
   audio: "音频",
@@ -45,7 +54,10 @@ const activeStates = new Set<GenerationTaskSummary["state"]>([
 ]);
 
 function visibleGroupRunSummary(summary: GroupRunSummary | undefined) {
-  return summary && !isGroupRunSummaryDismissed(summary)
+  return summary && (
+    isActiveGroupRunStatus(summary.status) ||
+    !isGroupRunSummaryDismissed(summary)
+  )
     ? summary
     : undefined;
 }
@@ -338,6 +350,9 @@ export function GenerationTasksPanel({
   const [actionError, setActionError] = useState("");
   const [readError, setReadError] = useState("");
   const [groupSummary, setGroupSummary] = useState<GroupRunSummary>();
+  const [groupCheckpoint, setGroupCheckpoint] =
+    useState<GroupRunCheckpoint>();
+  const [summaryClock, setSummaryClock] = useState(() => Date.now());
   const mounted = useRef(false);
   const scope = useRef({ canvasId, canvasScopeId });
   const refreshController = useRef<AbortController | null>(null);
@@ -417,6 +432,7 @@ export function GenerationTasksPanel({
     setActionError("");
     setReadError("");
     setGroupSummary(visibleGroupRunSummary(readLastGroupRunSummary(groupRunScope)));
+    setGroupCheckpoint(readGroupRunCheckpoint(groupRunScope));
     setLoading(true);
     if (!open || !canvasId) {
       return () => currentActionController.abort("generation-task-scope-closed");
@@ -451,6 +467,25 @@ export function GenerationTasksPanel({
     };
     window.addEventListener(GROUP_RUN_SUMMARY_EVENT, onSummary);
     return () => window.removeEventListener(GROUP_RUN_SUMMARY_EVENT, onSummary);
+  }, [groupRunScope.accountId, groupRunScope.canvasId, groupRunScope.fixtureScopeId]);
+
+  useEffect(() => {
+    if (!groupSummary || !isActiveGroupRunStatus(groupSummary.status)) return;
+    setSummaryClock(Date.now());
+    const timer = window.setInterval(() => setSummaryClock(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [groupSummary?.runId, groupSummary?.status]);
+
+  useEffect(() => {
+    const onCheckpoint = () => {
+      setGroupCheckpoint(readGroupRunCheckpoint(groupRunScope));
+    };
+    window.addEventListener(GROUP_RUN_CHECKPOINT_EVENT, onCheckpoint);
+    window.addEventListener("storage", onCheckpoint);
+    return () => {
+      window.removeEventListener(GROUP_RUN_CHECKPOINT_EVENT, onCheckpoint);
+      window.removeEventListener("storage", onCheckpoint);
+    };
   }, [groupRunScope.accountId, groupRunScope.canvasId, groupRunScope.fixtureScopeId]);
 
   const active = tasks
@@ -490,7 +525,13 @@ export function GenerationTasksPanel({
         >
           <div className="tasks-group-summary-header">
             <strong>
-              {groupSummary.status === "success"
+              {groupSummary.status === "preparing"
+                ? "整组正在准备"
+                : groupSummary.status === "running"
+                  ? "整组正在执行"
+                  : groupSummary.status === "stopping"
+                    ? "正在停止后续节点"
+                    : groupSummary.status === "success"
                 ? "最近一轮整组完成"
                 : groupSummary.status === "failed"
                   ? "最近一轮整组部分失败"
@@ -498,19 +539,23 @@ export function GenerationTasksPanel({
                     ? "最近一轮已停止后续"
                     : "最近一轮整组已停止"}
             </strong>
-            <button
-              aria-label="关闭最近一轮整组摘要"
-              onClick={() => {
-                dismissGroupRunSummary(groupSummary);
-                setGroupSummary(undefined);
-              }}
-              type="button"
-            >
-              ×
-            </button>
+            {!isActiveGroupRunStatus(groupSummary.status) && (
+              <button
+                aria-label="关闭最近一轮整组摘要"
+                onClick={() => {
+                  dismissGroupRunSummary(groupSummary);
+                  setGroupSummary(undefined);
+                }}
+                type="button"
+              >
+                ×
+              </button>
+            )}
           </div>
           <p>
-            {`${groupSummary.nodeCount} 个节点 · 成功 ${groupSummary.successCount} · 失败 ${groupSummary.failedCount} · 跳过 ${groupSummary.skippedCount} · 未运行 ${groupSummary.blockedCount} · 共用时 ${formatGenerationDuration(groupSummary.elapsedMs)}`}
+            {isActiveGroupRunStatus(groupSummary.status)
+              ? `已完成 ${groupSummary.completedCount ?? 0}/${groupSummary.nodeCount} · 正在处理 ${groupSummary.activeCount ?? 0} · 已用时 ${formatGenerationDuration(summaryClock - groupSummary.startedAt)}`
+              : `${groupSummary.nodeCount} 个节点 · 成功 ${groupSummary.successCount} · 失败 ${groupSummary.failedCount} · 跳过 ${groupSummary.skippedCount} · 未运行 ${groupSummary.blockedCount} · 共用时 ${formatGenerationDuration(groupSummary.elapsedMs)}`}
           </p>
           {groupSummary.firstFailedNodeId && (
             <p className="tasks-group-summary-problem">
@@ -525,6 +570,21 @@ export function GenerationTasksPanel({
               <span>{groupSummary.reason}</span>
             </p>
           )}
+          {isActiveGroupRunStatus(groupSummary.status) && (
+            <button
+              className="tasks-group-summary-locate"
+              data-testid="tasks-group-stop"
+              disabled={groupSummary.status === "stopping"}
+              onClick={() => requestGroupRunStop({
+                groupId: groupSummary.groupId,
+                runId: groupSummary.runId,
+                scope: groupRunScope,
+              })}
+              type="button"
+            >
+              {groupSummary.status === "stopping" ? "正在停止" : "停止后续节点"}
+            </button>
+          )}
           {groupSummary.firstFailedNodeId && (
             <button
               className="tasks-group-summary-locate"
@@ -535,6 +595,46 @@ export function GenerationTasksPanel({
               定位失败节点
             </button>
           )}
+        </section>
+      )}
+      {groupCheckpoint &&
+        !isActiveGroupRunStatus(groupSummary?.status ?? "cancelled") && (
+        <section
+          className="tasks-group-summary"
+          data-status="interrupted"
+          data-testid="tasks-group-checkpoint"
+        >
+          <div className="tasks-group-summary-header">
+            <strong>上次整组未完成</strong>
+          </div>
+          <p>
+            已记录 {Object.keys(groupCheckpoint.successProofs).length}/
+            {groupCheckpoint.executableNodeIds.length} 个成功节点。继续前会核对任务凭证，
+            不会自动重新生成。
+          </p>
+          <button
+            className="tasks-group-summary-locate"
+            data-testid="tasks-group-continue"
+            onClick={() => requestGroupRunContinue(groupCheckpoint)}
+            type="button"
+          >
+            继续剩余节点
+          </button>
+          <button
+            className="tasks-group-summary-locate"
+            data-testid="tasks-group-abandon"
+            onClick={() => {
+              if (!window.confirm(
+                "放弃后不会自动删除已经提交或完成的任务；再次整组执行可能重新生成。确定放弃这条续跑记录吗？",
+              )) return;
+              if (!clearGroupRunCheckpoint(groupRunScope)) {
+                setActionError("续跑记录无法安全清理，请保留当前记录并稍后重试");
+              }
+            }}
+            type="button"
+          >
+            放弃续跑记录
+          </button>
         </section>
       )}
       {loading && tasks.length === 0 ? (
