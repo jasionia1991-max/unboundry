@@ -1,7 +1,7 @@
 # Unboundry 版本发布 Runbook
 
 给人和接手的 AI 看。作用：从「版本号 + 上线授权」到「线上验证 + 文档收口」的每一步照做，避免每次现场拼命令、用错脚本。
-基线：v0.6.24（2026-08-20）按本流程发布并核验通过（待用户复验）；v0.6.23（2026-08-19）为上一版。本文不替代 `上线规矩.md` 的授权纪律。
+基线：v0.6.26（2026-08-21）按本流程发布并完成Agent真实页面技术验收（待用户主观复验）；v0.6.25（2026-08-20）为上一版。本文不替代 `上线规矩.md` 的授权纪律。
 
 **适用范围**：本 Runbook 只用于「代码 / 构建产物」变更（bump 版本、改逻辑、重发静态资源）。纯公共模板数据变更（新增/修改模板、预览图、种子）走 `上线规矩.md` 的「加模板轻量路径」，**不需要版本号、不打标签、不跑全量**，直接提交 + 服务器灌库。
 
@@ -31,17 +31,7 @@ grep '"version"' package.json
 2. `server/bridgeRuntimeMode.ts` 的 final 角色放行清单加入新版本号。
 3. `tests/m81-deployment-hardening.spec.ts` 加对应断言。
 4. 按需同步 `上线规矩.md`、`TASKS.md`、`spec/UNBOUNDRY_CURRENT_STATE.md` 等记录。
-5. commit（如 `feat: ... bump to v0.6.19`），打**注释标签**：
-
-```bash
-git add <明确文件列表>   # 不要 git add -A，避开不可提交 json
-git commit -m "..."
-git tag -a v0.6.19 -m "v0.6.19"
-git push origin <branch>
-git push origin v0.6.19
-```
-
-6. 用 `gh` 开 PR 并合并到 `main`（squash），记录 merge commit。
+5. commit（如 `feat: ... bump to v0.6.27`）。先不要打标签、push或开PR；正式safe full必须绑定这个干净候选commit。
 
 ## 3. 发布前全量安全测试（本地 Mac）
 
@@ -50,9 +40,20 @@ node scripts/run-safe-tests.mjs preflight
 node scripts/run-safe-tests.mjs full
 ```
 
-- 需要 Node 22.23.1（`/Users/mymy/.hermes/node/bin/node`）、npm 10.9.8、Playwright 浏览器缓存、npm 离线缓存，缺了 preflight 会明说。
-- 沙箱内跑会因端口 EPERM 失败，**必须在非沙箱环境**跑。
-- 通过标准：`118/118 specs、991/991 tests PASS`，failed/skipped/retries/blocked/reportErrors 全 0，`listener4173` unchanged。
+- 需要Node 22.23.x、npm 10.9.8、Playwright浏览器缓存、npm离线缓存，缺了preflight会明说。
+- 测试必须只使用runner新建的临时数据和回环端口；本地4173、`app/data`、`/var/lib/unboundry`、真实媒体和密钥不得触碰。
+- v0.6.27候选通过标准：`119/119 specs、1029/1029 tests PASS`，failed/skipped/retries/blocked/reportErrors全0，source与snapshot SHA一致，`listener4173` unchanged。
+- 工作树除受保护的未跟踪 `spec/public-templates-director-split-revision.json` 外必须为空；它不得进入测试快照、archive、commit、tag或PR。
+
+全量通过后再打**注释标签**、push并开PR：
+
+```bash
+git tag -a v0.6.27 -m "v0.6.27"
+git push origin <branch>
+git push origin v0.6.27
+```
+
+6. 用 `gh` 开 PR 并合并到 `main`（squash），记录 merge commit。
 
 ## 4. 服务器准备发布目录（staging）
 
@@ -60,7 +61,7 @@ node scripts/run-safe-tests.mjs full
 2. 在 staging 内 `npm ci`（完整依赖），然后用 **staging 自身源码**重建产物：
 
 ```bash
-cd /opt/unboundry/staging/unboundry-v0.6.19
+cd /opt/unboundry/staging/unboundry-v0.6.27
 /opt/node22/bin/node /opt/unboundry/node_modules/typescript/bin/tsc --noEmit
 /opt/node22/bin/node node_modules/vite/bin/vite.js build
 ```
@@ -74,12 +75,12 @@ find . -type f -not -name RELEASE-INVENTORY.sha256 -print0 \
 sha256sum -c RELEASE-INVENTORY.sha256 --quiet && echo INVENTORY_OK
 ```
 
-## 5. 正式备份（v0.6.18/19 同款：明文快照 + 恢复副本 + 双清单）
+## 5. 正式备份（当前生产同款：明文快照 + 恢复副本 + 双清单）
 
 注意：正式发布备份用的是服务器 `/opt/unboundry/scripts/backup-data.mjs`（旧明文格式），**不是** release 里那套加密版 backup-data.mjs。二者不要混。
 
 ```bash
-ROOT=/var/lib/unboundry-rollbacks/v0.6.19-frozen-<随机6字符>
+ROOT=/var/lib/unboundry-rollbacks/v0.6.27-frozen-<随机6字符>
 sudo mkdir -p "$ROOT"
 sudo /opt/node22/bin/node /opt/unboundry/scripts/backup-data.mjs \
   --data-dir /var/lib/unboundry --backup-root "$ROOT"
@@ -98,19 +99,19 @@ sudo diff -q "$ROOT/frozen.sha256" "$ROOT/restore.sha256" && echo MANIFEST_MATCH
 ## 6. 切换上线
 
 ```bash
-sudo mv /opt/unboundry/staging/unboundry-v0.6.19 \
-  /opt/unboundry/releases/v0.6.19-<描述>-20260819
-sudo ln -s /opt/unboundry/releases/v0.6.19-<描述>-20260819 /opt/unboundry/current.next
+sudo mv /opt/unboundry/staging/unboundry-v0.6.27 \
+  /opt/unboundry/releases/v0.6.27-<描述>-20260821
+sudo ln -s /opt/unboundry/releases/v0.6.27-<描述>-20260821 /opt/unboundry/current.next
 sudo mv -T /opt/unboundry/current.next /opt/unboundry/current
 sudo systemctl restart unboundry
-curl -fsS http://127.0.0.1:4173/api/version   # 期望 {"version":"0.6.19"}
+curl -fsS http://127.0.0.1:4173/api/version   # 期望 {"version":"0.6.27"}
 ```
 
 ## 7. 发布核验
 
 1. 服务：`systemctl is-active unboundry` = active，`NRestarts` = 0。
 2. 数据门（只读）：schema39、integrity ok、FK0、tasks/attempts/templates/active 与备份基准**完全一致**。
-3. 公网：`https://canvas.mymy.ltd/api/version` = 0.6.19；首页引用的 `assets/*.js/css` 逐个 `sha256sum`，与 release `dist/client/assets/*` **逐字节一致**。
+3. 公网：`https://canvas.mymy.ltd/api/version` = 0.6.27；首页引用的 `assets/*.js/css` 逐个 `sha256sum`，与 release `dist/client/assets/*` **逐字节一致**。
 4. 外部影响：真实 Provider / 付费生成 / OSS 写入 = 0。
 
 ## 8. 文档收口

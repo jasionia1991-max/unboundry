@@ -10,9 +10,9 @@
 ## v0.6.27 画布执行解耦候选（2026-08-21）
 
 - 状态：`IMPLEMENTED_TARGETED_AUTO_PASS / NOT_RELEASED`。四类整组执行已从React节点registration迁移到静态headless executor；`workflowRenderRetention.ts`已删除；同画布不相交组可并行，重叠节点/直接输入在付费提交前阻止。
-- 所有权：结果应用必须匹配runId、taskId、ownershipKey、nodeId和kind；checkpoint、lease、lock与摘要按runId隔离，一轮不能清除另一轮。
-- 自动证据：m22 `35/35`、m38 `15/15`、m40 `14/14`、m41 `51/51`、m44 `8/8`、m68 `4/4`均通过。m22包含双run浏览器反例：A成功、A失败、A停止时B均继续；运行组拖出视口、子节点真实卸载后仍有准确终态。
-- 第一轮safe full候选快照为`1024/1027`：m22等待时序与CURRENT_STATE版本行已修复并定向通过；m44进程并发WAL偶发已独立`8/8`通过；该轮同时检测到测试期间原工作区变化，不能登记为最终全量。尚需在干净最终候选HEAD上重跑full、完成真实Provider/页面、发布与生产技术验收。
+- 所有权：结果应用必须匹配runId、taskId、ownershipKey、nodeId和kind；checkpoint、lease、lock与摘要按runId隔离且checkpoint写入强制匹配lease runId，一轮不能清除另一轮。手动单节点提交也必须避让同标签活跃组lease；headless executor只放行自己的runId。
+- 自动证据：m22 `37/37`、m38 `15/15`、m40 `14/14`、m41 `51/51`、m44 `8/8`、m68 `4/4`均通过。m22直接覆盖四模态headless preflight/run/recover/apply、多run导航/精确checkpoint清理，以及双run反例：A成功、A失败、A停止时B均继续；A整组和两层子节点真实卸载后，第二层仍提交、完成并落盘。运行中无关节点编辑/移动/连接/删除/复制和视图缩放仍可用。
+- 旧候选曾在干净快照得到`119/119 specs、1027/1027 tests`，但三类独立终审随后发现并促成四项P1纠正，冻结库存现为1029，因此旧全量不登记为最终回执。尚需在提交后的干净最终候选HEAD上重跑full、完成三路复审、真实Provider/页面、发布与生产技术验收。
 - 权威方案、矩阵与施工续接分别见 `spec/UNBOUNDRY_CANVAS_EXECUTION_DECOUPLING_PLAN_2026-08-21.md`、`spec/UNBOUNDRY_CANVAS_EXECUTION_ACCEPTANCE_MATRIX_2026-08-21.md`、`spec/UNBOUNDRY_CANVAS_EXECUTION_CHECKPOINT.md`。
 
 ## INC-GEN-012 / v0.6.26 已发布（2026-08-21）
@@ -37,15 +37,15 @@
 ## 线上
 
 - 地址：https://canvas.mymy.ltd
-- 指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.25-generation-hardening-20260820`
-- 源码：commit `57cef4ce26fc43cd0f828756850a2d3effcb161b`，tree `626b5945d64cde1a1c07c7b7765ce8a9661e82ff`
-- 标签：`v0.6.25` 精确指向该源码
-- 功能 PR：#50，merge `e7174b0740ff1573cc8bda36f1242b8da8ff9e81`，main tree 与 tag tree 一致
-- 冻结备份：`/var/lib/unboundry-rollbacks/v0.6.25-frozen-789d29`（365 文件，两份清单 SHA 同为 `d15f34332d692aafd8db2aaba4c66ab475fb5790503b236b614ffb2570b7329e`）
-- 上一不可变版：`v0.6.24-ark-files-20260820`（以及更早版本）仍保留
-- 切换前恢复副本：schema39、integrity ok、FK0、tasks549、attempts556、active1（已知 stuck queued）、公共模板50（48 published）；授权真实验证后 tasks550、attempts558、active0
+- 指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.26-viewport-independent-group-run-20260821`
+- 源码：commit `dc29cc00d5b379e3e8b8cb1746dc6cf85f01c140`，tree `0770cb7c03e335620906d0b3954e510aa30f9bf2`
+- 标签：`v0.6.26` 精确指向该源码
+- 功能 PR：#53，merge `4a675be056aaca4b3d3a3239136857fecbefbb94`，main tree 与 tag tree 一致
+- 冻结备份：`/var/lib/unboundry-rollbacks/v0.6.26-frozen-234452`（365 文件，两份清单 SHA 同为 `6b64da90d996446e570a60bc0454ead445defe42df09579787e796e39864b525`）
+- 上一不可变版：`v0.6.25-generation-hardening-20260820`（以及更早版本）仍保留
+- v0.6.26切换基准：schema39、integrity ok、FK0、tasks569、attempts577、公共模板50（48 published）、active0；本轮发布前只读现场为tasks590、attempts598、公共模板50（48 published）、active0。
 - 生产并发配置已恢复推荐值：per_user 20 / image 10 / video 2 / audio 2 / text 10 / RPM 120
-- 正式安全全量：`119/119 specs、1018/1018 tests PASS`
+- 正式安全全量：`119/119 specs、1025/1025 tests PASS`
 - v0.6.25 已于 2026-08-20 发布，agent 真实页面与最小真实 Provider 验证通过，待用户主观复验；更早用户已通过版本状态保持不变
 
 ## 最新发布（2026-08-20 已发布，agent 技术实页通过，待用户主观复验）

@@ -44,9 +44,12 @@ import {
   confirmGroupRunNavigation,
   groupRunSnapshotFingerprint,
   groupRunSuccessProof,
+  getGroupRunExecutionOwnerId,
+  hasConflictingActiveGroupRunLeaseForCanvas,
   hasForeignActiveGroupRunLeaseForCanvas,
   markGroupRunStarting,
   readGroupRunCheckpoint,
+  readGroupRunCheckpoints,
   readGroupRunStarting,
   releaseGroupRunLease,
   writeGroupRunCheckpoint,
@@ -54,6 +57,8 @@ import {
   type GroupRunCheckpoint,
 } from "../client/src/generation/groupRunCheckpoint";
 import { NodeExecutorRegistry } from "../client/src/generation/nodeExecutorRegistry";
+import type { NodeExecutorContext } from
+  "../client/src/generation/nodeExecutorRegistry";
 import {
   createNodeExecutorRegistry,
   workflowResultOwnerMatches,
@@ -110,6 +115,202 @@ test("headless workflow registry rejects duplicate executor ownership", () => {
   expect(() => new NodeExecutorRegistry([executor, executor])).toThrow(
     "节点执行器重复注册：text",
   );
+});
+
+test("all four headless executors preflight, run, recover and apply without mounted components", async () => {
+  const host = globalThis as unknown as { window?: Window };
+  const previousWindow = host.window;
+  const previousFetch = globalThis.fetch;
+  const values = new Map<string, string>();
+  const storage = {
+    clear: () => values.clear(),
+    getItem: (key: string) => values.get(key) ?? null,
+    key: (index: number) => [...values.keys()][index] ?? null,
+    get length() {
+      return values.size;
+    },
+    removeItem: (key: string) => values.delete(key),
+    setItem: (key: string, value: string) => values.set(key, value),
+  } satisfies Storage;
+  const fakeWindow = new EventTarget() as Window;
+  Object.defineProperties(fakeWindow, {
+    localStorage: { value: storage },
+    navigator: { configurable: true, value: {} },
+  });
+  host.window = fakeWindow;
+  const kinds = ["text", "image", "audio", "video"] as const;
+  const runId = "headless-four-kind-run";
+  const canvasId = "headless-four-kind-canvas";
+  let nodes = kinds.map((kind, index) => ({
+    data: {
+      label: `${kind} fixture`,
+      title: `${kind} fixture`,
+      [`${kind}ModelId`]: `headless-${kind}-model`,
+      [`${kind}Parameters`]: {},
+      [`${kind}Prompt`]: `${kind} headless prompt`,
+      ...(kind === "text" ? {} : { [`${kind}PromptReady`]: true }),
+    },
+    id: `headless-${kind}`,
+    position: { x: index * 100, y: 0 },
+    type: kind,
+  })) as ProbeNodeType[];
+  const models = Object.fromEntries(kinds.map((kind) => [kind, [{
+    capability: kind,
+    displayName: `Headless ${kind}`,
+    generationAvailable: true,
+    generationUnavailableReason: "",
+    generationUnavailableReasonCode: null,
+    id: `headless-${kind}-model`,
+    ...(kind === "image"
+      ? {
+          imageParameters: {
+            aspectRatios: ["auto"],
+            maxReferenceImages: 0,
+            qualities: ["auto"],
+          },
+        }
+      : {}),
+    isDefault: true,
+    parameterSchema: defaultParameterSchema(kind),
+  }]])) as NodeExecutorContext["modelCatalog"]["models"];
+  const tasks = new Map<string, Record<string, unknown>>();
+  const boundNodes = new Map<string, ProbeNodeType>();
+  const posts: string[] = [];
+  let flushes = 0;
+  const response = (body: unknown, status = 200) => new Response(
+    JSON.stringify(body),
+    { headers: { "Content-Type": "application/json" }, status },
+  );
+  globalThis.fetch = (async (input, init) => {
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? input.toString()
+        : input.url;
+    const method = init?.method ?? (input instanceof Request ? input.method : "GET");
+    if (url.startsWith("/api/generation-tasks/by-idempotency")) {
+      return response({ error: "not found" }, 404);
+    }
+    if (url === "/api/generation-tasks/preflight" && method === "POST") {
+      return response({ canEnqueue: true, canSubmit: true, problems: [] });
+    }
+    if (url === "/api/generation-tasks" && method === "POST") {
+      const body = JSON.parse(String(init?.body)) as {
+        kind: (typeof kinds)[number];
+        model: string;
+        nodeId: string;
+        prompt: string;
+      };
+      posts.push(body.nodeId);
+      const taskId = `headless-task-${body.kind}`;
+      const resultAssetId = `headless-result-${body.kind}`;
+      const task = {
+        attempt: 1,
+        canvasId,
+        costCurrency: "CNY",
+        createdAt: "2026-08-21T00:00:00.000Z",
+        id: taskId,
+        kind: body.kind,
+        model: body.model,
+        nodeId: body.nodeId,
+        prompt: body.prompt,
+        ...(body.kind === "text"
+          ? { resultText: "headless text result" }
+          : {
+              resultAssetId,
+              resultMedia: {
+                byteSize: 128,
+                contentType: body.kind === "image"
+                  ? "image/png"
+                  : body.kind === "audio"
+                    ? "audio/mpeg"
+                    : "video/mp4",
+                durationSeconds: body.kind === "image" ? null : 2,
+                durationStatus: body.kind === "image" ? "not-applicable" : "ready",
+                mediaHeight: body.kind === "image" || body.kind === "video" ? 64 : null,
+                mediaWidth: body.kind === "image" || body.kind === "video" ? 64 : null,
+                storageBackend: "local",
+              },
+              resultUrl: body.kind === "image"
+                ? `/api/assets/${resultAssetId}`
+                : body.kind === "audio"
+                  ? `/api/audio-assets/${resultAssetId}`
+                  : `/api/video-assets/${resultAssetId}`,
+            }),
+        state: "success",
+        updatedAt: "2026-08-21T00:00:01.000Z",
+      };
+      tasks.set(taskId, task);
+      return response(task, 202);
+    }
+    const taskId = url.startsWith("/api/generation-tasks/")
+      ? url.split("/").at(-1)
+      : undefined;
+    if (taskId && tasks.has(taskId)) return response(tasks.get(taskId));
+    throw new Error(`unexpected headless fetch: ${method} ${url}`);
+  }) as typeof fetch;
+  const setNodes: NodeExecutorContext["setNodes"] = (update) => {
+    nodes = typeof update === "function" ? update(nodes) : update;
+  };
+  const context: NodeExecutorContext = {
+    accountId: "headless-account",
+    canvasId,
+    fixtureScopeId: "",
+    flushCanvasSave: async () => {
+      flushes += 1;
+      for (const kind of kinds) {
+        const node = nodes.find((candidate) => candidate.id === `headless-${kind}`);
+        if (node?.data[`${kind}Generating`]) boundNodes.set(kind, structuredClone(node));
+      }
+    },
+    getEdges: () => [],
+    getNodes: () => nodes,
+    isCancelled: () => false,
+    isFixture: false,
+    modelCatalog: { models, status: "ready" },
+    runId,
+    setNodes,
+    waitForCanvasRevision: async () => 1,
+  };
+  try {
+    const registry = createNodeExecutorRegistry();
+    const executableIds = new Set(nodes.map((node) => node.id));
+    for (const kind of kinds) {
+      const nodeId = `headless-${kind}`;
+      const executor = registry.get(nodes.find((node) => node.id === nodeId));
+      expect(executor?.kind).toBe(kind);
+      await expect(executor!.preflight(nodeId, context, executableIds, "static"))
+        .resolves.toEqual({ status: "success" });
+      await expect(executor!.run(nodeId, context, executableIds))
+        .resolves.toMatchObject({ status: "success" });
+      expect(boundNodes.has(kind)).toBe(true);
+    }
+    expect(posts.sort()).toEqual(kinds.map((kind) => `headless-${kind}`).sort());
+    expect(nodes.find((node) => node.id === "headless-text")?.data.content)
+      .toBe("headless text result");
+    expect(nodes.find((node) => node.id === "headless-image")?.data.imageSrc)
+      .toBe("/api/assets/headless-result-image");
+    expect(nodes.find((node) => node.id === "headless-audio")?.data.audioSrc)
+      .toBe("/api/audio-assets/headless-result-audio");
+    expect(nodes.find((node) => node.id === "headless-video")?.data.videoSrc)
+      .toBe("/api/video-assets/headless-result-video");
+
+    for (const kind of kinds) {
+      const nodeId = `headless-${kind}`;
+      nodes = nodes.map((node) => node.id === nodeId ? boundNodes.get(kind)! : node);
+      const executor = createNodeExecutorRegistry().get(
+        nodes.find((node) => node.id === nodeId),
+      );
+      await expect(executor!.recover(nodeId, context))
+        .resolves.toMatchObject({ status: "success" });
+    }
+    expect(posts).toHaveLength(4);
+    expect(flushes).toBeGreaterThanOrEqual(12);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousWindow) host.window = previousWindow;
+    else delete host.window;
+  }
 });
 
 async function existingCanvasSaveMetadata(
@@ -801,6 +1002,15 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
       now + 2,
       ["group-c", "node-c"],
     )).toBe(true);
+    expect(await hasConflictingActiveGroupRunLeaseForCanvas(
+      "canvas",
+      "node-c",
+    )).toBe(true);
+    expect(await hasConflictingActiveGroupRunLeaseForCanvas(
+      "canvas",
+      "node-c",
+      "run-c",
+    )).toBe(false);
     const checkpoint = (runId: string, groupId: string): GroupRunCheckpoint => ({
       accountId: scope.accountId,
       canvasId: scope.canvasId,
@@ -824,6 +1034,10 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
       checkpoint("run-c", "group-c"),
       { ownerId: "owner-c", runId: "run-c" },
     )).toBe(true);
+    expect(writeGroupRunCheckpoint(
+      checkpoint("run-c", "group-c"),
+      { ownerId: "owner-a", runId: "run-a" },
+    )).toBe(false);
     expect(readGroupRunCheckpoint(scope, "run-a")?.groupId).toBe("group-a");
     expect(readGroupRunCheckpoint(scope, "run-c")?.groupId).toBe("group-c");
     expect(clearGroupRunCheckpoint(
@@ -838,6 +1052,11 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
     expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas", "node-c"))
       .toBe(true);
     expect(releaseGroupRunLease(scope, "run-c", "owner-c")).toBe(true);
+    expect(writeGroupRunCheckpoint(checkpoint("run-a", "group-a"))).toBe(true);
+    expect(writeGroupRunCheckpoint(checkpoint("run-c", "group-c"))).toBe(true);
+    expect(clearGroupRunCheckpoint(scope, undefined, "run-a")).toBe(true);
+    expect(readGroupRunCheckpoint(scope, "run-a")).toBeUndefined();
+    expect(readGroupRunCheckpoint(scope, "run-c")?.groupId).toBe("group-c");
     expect(clearGroupRunCheckpoint(scope)).toBe(true);
     expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas")).toBe(false);
     Object.defineProperty(fakeWindow, "navigator", {
@@ -870,6 +1089,96 @@ test("workflow execution has no component registration or render-retention depen
   expect(canvas).not.toContain("retainWorkflowNodesForRender");
   expect(executors).not.toContain("document.");
   expect(executors).not.toContain("window.");
+});
+
+test("navigation interrupts every locally owned concurrent run without crossing checkpoint ownership", async () => {
+  const host = globalThis as unknown as { window?: Window };
+  const previousWindow = host.window;
+  const values = new Map<string, string>();
+  const storage = {
+    clear: () => values.clear(),
+    getItem: (key: string) => values.get(key) ?? null,
+    key: (index: number) => [...values.keys()][index] ?? null,
+    get length() {
+      return values.size;
+    },
+    removeItem: (key: string) => values.delete(key),
+    setItem: (key: string, value: string) => values.set(key, value),
+  } satisfies Storage;
+  const fakeWindow = new EventTarget() as Window;
+  Object.defineProperties(fakeWindow, {
+    confirm: { value: () => true },
+    localStorage: { value: storage },
+    navigator: {
+      configurable: true,
+      value: {
+        locks: {
+          request: async (
+            _name: string,
+            _options: { ifAvailable: boolean },
+            callback: (lock: unknown) => Promise<boolean> | boolean,
+          ) => callback({}),
+        },
+      },
+    },
+  });
+  host.window = fakeWindow;
+  const scope = { accountId: "account-nav", canvasId: "canvas-nav", fixtureScopeId: "" };
+  const ownerId = getGroupRunExecutionOwnerId();
+  const now = Date.now();
+  const stopped: string[] = [];
+  fakeWindow.addEventListener("unboundry:group-run-stop", (event) => {
+    stopped.push((event as CustomEvent<{ runId: string }>).detail.runId);
+  });
+  const checkpoint = (runId: string, groupId: string): GroupRunCheckpoint => ({
+    accountId: scope.accountId,
+    canvasId: scope.canvasId,
+    executableNodeIds: [`node-${runId}`],
+    fixtureScopeId: scope.fixtureScopeId,
+    groupId,
+    nodeStates: {},
+    runId,
+    snapshotFingerprint: `snapshot-${runId}`,
+    startedAt: now,
+    status: "running",
+    successProofs: {},
+    updatedAt: now,
+    version: 1,
+  });
+  try {
+    expect(await acquireGroupRunLease(
+      scope,
+      "run-nav-a",
+      ownerId,
+      now,
+      ["node-a"],
+    )).toBe(true);
+    expect(await acquireGroupRunLease(
+      scope,
+      "run-nav-b",
+      ownerId,
+      now + 1,
+      ["node-b"],
+    )).toBe(true);
+    expect(writeGroupRunCheckpoint(
+      checkpoint("run-nav-a", "group-nav-a"),
+      { ownerId, runId: "run-nav-a" },
+    )).toBe(true);
+    expect(writeGroupRunCheckpoint(
+      checkpoint("run-nav-b", "group-nav-b"),
+      { ownerId, runId: "run-nav-b" },
+    )).toBe(true);
+    expect(confirmGroupRunNavigation(scope)).toBe(true);
+    expect(stopped.sort()).toEqual(["run-nav-a", "run-nav-b"]);
+    expect(readGroupRunCheckpoints(scope).map((item) => item.status))
+      .toEqual(["interrupted", "interrupted"]);
+  } finally {
+    releaseGroupRunLease(scope, "run-nav-a", ownerId);
+    releaseGroupRunLease(scope, "run-nav-b", ownerId);
+    clearGroupRunCheckpoint(scope);
+    if (previousWindow) host.window = previousWindow;
+    else delete host.window;
+  }
 });
 
 test("workflow graph stop waits for an active node and reports descendants pending", async () => {
@@ -1619,7 +1928,8 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
   page,
   request,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(240_000);
+  page.setDefaultTimeout(15_000);
   const modelId = `fixture-group-lock-${randomUUID()}`;
   const created = await request.post("/api/projects", { data: {} });
   expect(created.status()).toBe(201);
@@ -1895,12 +2205,19 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
     const saveMetadata = await existingCanvasSaveMetadata(request, project.id);
     const saved = await request.put(`/api/canvas/${project.id}`, {
       data: {
-        edges: [],
+        edges: [{
+          id: "run-edge-a-next",
+          source: "run-text-a",
+          sourceHandle: "source",
+          target: "run-text-a-next",
+          targetHandle: "target",
+          type: "cuttable",
+        }],
         nodes: [{
           data: { label: "Group", title: "运行中锁定组 A" },
           id: "run-group-a",
           position: { x: 180, y: 120 },
-          style: { height: 420, width: 480 },
+          style: { height: 650, width: 480 },
           type: "group",
           zIndex: 0,
         }, {
@@ -1915,6 +2232,21 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
           id: "run-text-a",
           parentId: "run-group-a",
           position: { x: 32, y: 70 },
+          style: { height: 220, width: 300 },
+          type: "text",
+          zIndex: 1,
+        }, {
+          data: {
+            label: "Text",
+            textModelId: modelId,
+            textParameters: {},
+            textPrompt: "生成 A 组第二层文案",
+            textPromptReady: true,
+            title: "运行中下游子节点 A2",
+          },
+          id: "run-text-a-next",
+          parentId: "run-group-a",
+          position: { x: 32, y: 330 },
           style: { height: 220, width: 300 },
           type: "text",
           zIndex: 1,
@@ -1940,6 +2272,32 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
           style: { height: 220, width: 300 },
           type: "text",
           zIndex: 1,
+        }, {
+          data: {
+            label: "Text",
+            textModelId: modelId,
+            textParameters: {},
+            textPrompt: "可在运行期间编辑的无关文案",
+            textPromptReady: true,
+            title: "无关文字节点",
+          },
+          id: "unrelated-text",
+          position: { x: 180, y: 850 },
+          style: { height: 220, width: 300 },
+          type: "text",
+          zIndex: 1,
+        }, {
+          data: {
+            imagePromptReady: false,
+            inputState: "empty",
+            label: "Image",
+            title: "无关图片节点",
+          },
+          id: "unrelated-image",
+          position: { x: 760, y: 850 },
+          style: { height: 250, width: 250 },
+          type: "image",
+          zIndex: 1,
         }],
         ...saveMetadata,
         viewport: { x: 0, y: 0, zoom: 1 },
@@ -1955,6 +2313,61 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
     await startGroup("run-group-a", "run-text-a", 1);
     await startGroup("run-group-b", "run-text-b", 1);
     await expect(canvas).toHaveAttribute("data-workflow-run-active", "true");
+    await expect(canvas).toHaveAttribute("data-node-count", "7");
+    await expect(canvas).toHaveAttribute("data-edge-count", "1");
+
+    // View controls and unrelated graph editing remain live while two runs own
+    // only their exact participants.
+    await page.getByTestId("fit-view").click();
+    await page.getByTestId("zoom-slider").fill("0.72");
+    await expect(canvas).toHaveAttribute("data-viewport-zoom", "0.72");
+    const unrelatedText = page.locator('[data-testid="rf__node-unrelated-text"]');
+    await unrelatedText.click({ position: { x: 12, y: 12 } });
+    await page.getByTestId("text-creator-prompt")
+      .fill("运行期间仍可编辑的无关文案");
+    await expect(page.getByTestId("text-creator-prompt"))
+      .toHaveValue("运行期间仍可编辑的无关文案");
+    await page.getByTestId("text-creator-prompt").blur();
+    await unrelatedText.evaluate((element) => element.dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    ));
+    const unrelatedBefore = await unrelatedText.boundingBox();
+    await page.mouse.move(
+      unrelatedBefore!.x + unrelatedBefore!.width / 2,
+      unrelatedBefore!.y + unrelatedBefore!.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      unrelatedBefore!.x + unrelatedBefore!.width / 2 + 28,
+      unrelatedBefore!.y + unrelatedBefore!.height / 2 + 20,
+      { steps: 6 },
+    );
+    await page.mouse.up();
+    const unrelatedAfter = await unrelatedText.boundingBox();
+    expect(unrelatedAfter!.x).toBeGreaterThan(unrelatedBefore!.x);
+    const sourceHandle = unrelatedText.locator(
+      ".react-flow__handle.source .node-handle-hit",
+    );
+    const targetNode = page.locator('[data-testid="rf__node-unrelated-image"]');
+    const sourceBox = await sourceHandle.boundingBox();
+    const targetBox = await targetNode.boundingBox();
+    if (!sourceBox || !targetBox) throw new Error("unrelated connection handles missing");
+    await page.mouse.move(
+      sourceBox.x + sourceBox.width / 2,
+      sourceBox.y + sourceBox.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      targetBox.x + targetBox.width / 2,
+      targetBox.y + targetBox.height / 2,
+      { steps: 8 },
+    );
+    await page.mouse.up();
+    await expect(canvas).toHaveAttribute("data-edge-count", "2");
+    await targetNode.click();
+    await page.keyboard.press("Backspace");
+    await expect(canvas).toHaveAttribute("data-node-count", "6");
+    await expect(canvas).toHaveAttribute("data-edge-count", "1");
 
     const groupB = page.locator('[data-testid="rf__node-run-group-b"]');
     await expect(groupB.getByRole("button", { name: "组合框颜色" })).toBeDisabled();
@@ -1976,13 +2389,22 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
     // A selected running participant cannot be deleted. Copy/paste creates a
     // disjoint graph, and that unrelated copy can be deleted while both runs
     // keep their exact task ownership.
+    await page.locator('[data-testid="rf__node-run-group-a"]').click({
+      position: { x: 8, y: 8 },
+    });
     await page.keyboard.press("Backspace");
-    await expect(canvas).toHaveAttribute("data-node-count", "4");
+    await expect(canvas).toHaveAttribute("data-node-count", "6");
+    await page.locator('[data-testid="rf__edge-run-edge-a-next"]')
+      .evaluate((element) => element.dispatchEvent(new MouseEvent("click", {
+        bubbles: true,
+      })));
+    await expect(page.getByTestId("cut-edge-run-edge-a-next")).toBeDisabled();
+    await unrelatedText.click({ position: { x: 12, y: 12 } });
     await page.keyboard.press("Meta+c");
     await page.keyboard.press("Meta+v");
-    await expect(canvas).toHaveAttribute("data-node-count", "6");
+    await expect(canvas).toHaveAttribute("data-node-count", "7");
     await page.keyboard.press("Backspace");
-    await expect(canvas).toHaveAttribute("data-node-count", "4");
+    await expect(canvas).toHaveAttribute("data-node-count", "6");
     expect(taskPostNodes).toEqual(["run-text-a", "run-text-b"]);
 
     await page.getByTestId("tasks").click();
@@ -2005,11 +2427,24 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
 
     await expect(canvas).toHaveAttribute("data-workflow-run-active", "true");
     await expect(childA).toHaveCount(0);
+    await expect(page.locator('[data-testid="rf__node-run-text-a-next"]'))
+      .toHaveCount(0);
 
-    // Completing A must not release B's lock, task or summary.
+    // Completing A's first layer while the whole group is truly unmounted must
+    // dispatch and apply the second layer without releasing B.
     setLatestTaskState("run-text-a", "success");
+    await withDeadline("run-text-a-next task POST", expect.poll(() =>
+      taskPostNodes.filter((candidate) => candidate === "run-text-a-next").length
+    ).toBe(1));
+    setLatestTaskState("run-text-a-next", "success");
     await expectTerminalSummaryCount("run-group-a", "success", 1);
     await expect(canvas).toHaveAttribute("data-workflow-run-active", "true");
+    await expect.poll(async () => {
+      const savedCanvas = await (await request.get(`/api/canvas/${project.id}`)).json() as {
+        nodes: Array<{ data: { content?: string }; id: string }>;
+      };
+      return savedCanvas.nodes.find((node) => node.id === "run-text-a-next")?.data.content;
+    }).toContain("已完成 run-text-a-next");
     setLatestTaskState("run-text-b", "failed");
     await expectTerminalSummaryCount("run-group-b", "failed", 1);
     await expect(canvas).not.toHaveAttribute("data-workflow-run-active", "true");
@@ -2022,6 +2457,8 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
     await startGroup("run-group-b", "run-text-b", 2);
     setLatestTaskState("run-text-a", "failed");
     await expectTerminalSummaryCount("run-group-a", "failed", 1);
+    expect(taskPostNodes.filter((nodeId) => nodeId === "run-text-a-next"))
+      .toHaveLength(1);
     await expect(canvas).toHaveAttribute("data-workflow-run-active", "true");
     setLatestTaskState("run-text-b", "success");
     await expectTerminalSummaryCount("run-group-b", "success", 1);
@@ -2040,6 +2477,8 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
       .evaluate((element) => (element as HTMLButtonElement).click());
     setLatestTaskState("run-text-a", "success");
     await expectTerminalSummaryCount("run-group-a", "cancelled", 1);
+    expect(taskPostNodes.filter((nodeId) => nodeId === "run-text-a-next"))
+      .toHaveLength(1);
     await expect(canvas).toHaveAttribute("data-workflow-run-active", "true");
     setLatestTaskState("run-text-b", "success");
     await expectTerminalSummaryCount("run-group-b", "success", 1);
@@ -2047,6 +2486,7 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
     await captureTerminalSummaries();
     expect(taskPostNodes).toEqual([
       "run-text-a", "run-text-b",
+      "run-text-a-next",
       "run-text-a", "run-text-b",
       "run-text-a", "run-text-b",
     ]);

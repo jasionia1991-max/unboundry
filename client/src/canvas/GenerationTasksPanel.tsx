@@ -627,7 +627,11 @@ export function GenerationTasksPanel({
               if (!window.confirm(
                 "放弃后不会自动删除已经提交或完成的任务；再次整组执行可能重新生成。确定放弃这条续跑记录吗？",
               )) return;
-              if (!clearGroupRunCheckpoint(groupRunScope)) {
+              if (!clearGroupRunCheckpoint(
+                groupRunScope,
+                undefined,
+                groupCheckpoint.runId,
+              )) {
                 setActionError("续跑记录无法安全清理，请保留当前记录并稍后重试");
               }
             }}

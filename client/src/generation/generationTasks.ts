@@ -4,7 +4,10 @@ import type {
 } from "../../../types/nodeInputs";
 import { runExclusiveCanvasSubmit } from "./saveGate";
 import { rememberFinishedTaskDuration } from "./taskDurationCache";
-import { hasForeignActiveGroupRunLeaseForCanvas } from "./groupRunCheckpoint";
+import {
+  hasConflictingActiveGroupRunLeaseForCanvas,
+  hasForeignActiveGroupRunLeaseForCanvas,
+} from "./groupRunCheckpoint";
 
 export type GenerationTaskKind = "text" | "image" | "video" | "audio";
 
@@ -80,6 +83,24 @@ export class GenerationRequestError extends Error {
   ) {
     super(message);
     this.name = "GenerationRequestError";
+  }
+}
+
+async function assertNoConflictingGroupRun(
+  canvasId: string,
+  nodeId?: string,
+  workflowRunId?: string,
+) {
+  if (await hasConflictingActiveGroupRunLeaseForCanvas(
+    canvasId,
+    nodeId,
+    workflowRunId,
+  )) {
+    throw new GenerationRequestError(
+      "当前节点正在整组执行中，请等待完成后再单独生成",
+      409,
+      "GROUP_RUN_ACTIVE",
+    );
   }
 }
 
@@ -431,6 +452,7 @@ export type GenerationRetryGate = () => Promise<number>;
 
 export type GenerationOwnershipOptions = {
   generationOwnershipKey?: string;
+  workflowRunId?: string;
 };
 
 function retryTargetMatches(
@@ -896,7 +918,11 @@ export async function ensureGenerationTask(
   assertCurrentInput?: () => void,
   options: GenerationOwnershipOptions = {},
 ): Promise<EnsuredGenerationTask> {
-  await assertNoForeignGroupRun(input.canvasId, input.nodeId);
+  await assertNoConflictingGroupRun(
+    input.canvasId,
+    input.nodeId,
+    options.workflowRunId,
+  );
   const intent = prepareGenerationSubmission(accountId, kind, input, options);
   const prepared = { ...input, idempotencyKey: intent.idempotencyKey };
   const existing = await getGenerationTaskByIdempotency(

@@ -1,6 +1,6 @@
 # Unboundry 画布执行解耦施工 Checkpoint
 
-更新时间：2026-08-21（阶段0～5实现完成，双run浏览器反例通过，最终全量/真实验证待收口）
+更新时间：2026-08-21（阶段0～5及终审纠正完成，1029项库存已冻结，最终全量/真实验证待收口）
 状态：`PHASE_6_VALIDATION / NOT_RELEASED`  
 用途：这是本轮治理唯一的可变施工状态。每个批次结束必须更新；上下文压缩或新 Session 接手时，先重新核对真实 Git/代码，再从“下一步唯一动作”继续。
 
@@ -8,7 +8,7 @@
 
 - 仓库：`/Users/mymy/Documents/unboundry/app`
 - 分支：`codex/unboundry-offline-remediation-2026-08-09`
-- 文档落地前 HEAD：`f81453234021efc2d3c9ae71c008100ee2ee46f6`
+- 终审纠正前基线 HEAD：`dcf006f9299441b2aafd1f25a40d52adeb037e72`
 - package：`0.6.27`
 - 当前候选代码：v0.6.27；线上仍为v0.6.26，真实页面历史状态以 `spec/UNBOUNDRY_CURRENT_STATE.md` 和 v0.6.26 receipt 为准。
 - 预期工作树保留：`spec/public-templates-director-split-revision.json` 未跟踪，禁止提交、删除、改名。
@@ -35,9 +35,11 @@
 - 四类节点组件已不再注册整组执行；静态 `NodeExecutorRegistry` 统一提供 Text/Image/Audio/Video 的preflight/run/recover/apply。
 - `WorkflowExecutionProvider` 保留DAG、run生命周期、checkpoint、lease、锁和摘要；不再读取组件registration或DOM状态。
 - `workflowRenderRetention.ts` 已删除；视口虚拟化会真实卸载离屏子节点，headless executor和durable task继续运行。
-- checkpoint、lease和lock均按runId分槽；不相交组可并行，重叠节点/直接输入在提交前阻止，一轮只清理自己的状态。
+- checkpoint、lease和lock均按runId分槽；checkpoint写入强制与lease runId一致；不相交组可并行，重叠节点/直接输入在提交前阻止，一轮只清理自己的状态。
+- 同页导航会先核对全部本地活跃run，再逐轮写入interrupted checkpoint并逐轮发停止事件；发现外来owner时在任何部分写入前失败关闭。
+- 手动单节点提交与整组提交共用同一canvas/node租约冲突门；只有持有该runId的headless executor可显式放行自己的租约。
 - 结果应用必须同时匹配runId、taskId、ownershipKey、nodeId和kind；不匹配结果只留在任务事实，不覆盖当前画布。
-- m22双run浏览器fixture已证明A成功、A失败、A停止三种反例都不清除B；六轮各一次POST、六个唯一runId和逐组摘要均核对通过。
+- m22双run浏览器fixture已证明A成功、A失败、A停止三种反例都不清除B；六个唯一runId、七个预期task POST和逐组摘要均核对通过；A整组真实卸载后，第二层仍提交、完成并落盘。
 - v0.6.26真实页面“运行中拖出视口仍完成11/11”仍是历史止血证据；v0.6.27新架构须以本轮新证据和发布回执为准。
 
 ## 4. 当前阶段
@@ -60,10 +62,11 @@
 - 阶段4已把 `runId + taskId + ownershipKey + nodeId/kind` 作为结果应用门槛，旧轮次/删除节点/新任务绑定不匹配时只保留任务结果，不覆盖画布；
 - 阶段5生成细节集中到 `workflowNodeExecutors.ts`，Provider保留DAG、run生命周期、锁、checkpoint和摘要，CanvasSurface只执行交互锁策略；
 - package候选版本已选择 `0.6.27`。
+- 三类独立终审已完成首轮并给出四个P1纠正项：checkpoint/lease runId一致性、精确放弃单轮、多run导航停止、同标签手动提交与组lease竞争；四项均已修复并新增反例，最终候选HEAD还需复审签字。
 
 未完成：
 
-- 第一轮safe full候选快照得到1024/1027，并暴露m22等待时序、CURRENT_STATE版本行和m44 WAL并发偶发；三项均已分别修正或定向复核通过，但该轮还检测到原工作区在运行中变化，不能作为最终全量；
+- 第一轮safe full候选快照得到1024/1027，随后同一旧候选干净全量得到119/119 specs、1027/1027 tests；终审纠正又把库存增至1029，因此两轮都不能替代最终候选HEAD的正式全量；
 - 尚需在干净最终候选HEAD上重跑一次safe full；
 - 尚未执行最小真实 Provider、受控真实页面、生产发布和生产技术验收；
 - 验收矩阵中只有已有明确自动证据的项目可登记 `AUTO_PASS`，其余保持 `NOT_RUN`；
@@ -82,10 +85,10 @@
 - `client/src/canvas/CanvasSurface.tsx`、`client/src/styles.css`（移除保活，改为精确参与节点锁；允许无关新增/复制/粘贴/选择/连接/删除）
 - `client/src/generation/groupRunCheckpoint.ts`、`generationTasks.ts`（runId 分槽 checkpoint/lease、跨标签节点冲突、精确释放）
 - `tests/m22-group-execution.spec.ts`（registry、无render依赖、分槽租约/checkpoint、真实卸载、无关交互、双run成功/失败/停止隔离）
-- `scripts/run-safe-tests.mjs`、`scripts/source-coverage-manifest.json`（测试库存从1025增至1027并同步安全manifest）
+- `scripts/run-safe-tests.mjs`、`scripts/source-coverage-manifest.json`（测试库存从1025增至1029并同步安全manifest）
 - `package.json`、`package-lock.json`（0.6.27）
 
-尚未修改生产配置、TASKS或历史事故/发布回执；`CURRENT_STATE`仅同步候选包版本与线上仍为v0.6.26的事实。未跟踪模板文件保持原样且禁止纳入提交。
+尚未修改生产配置或历史发布回执；`CURRENT_STATE`、`TASKS`、矩阵和Runbook同步候选事实与线上仍为v0.6.26。未跟踪模板文件保持原样且禁止纳入提交。
 
 ## 6. 本批测试与证据
 
@@ -95,7 +98,7 @@
 - `/Users/mymy/.hermes/node/bin/node node_modules/typescript/bin/tsc --noEmit`：退出码0（移除四类旧 registration 并修正 executor 类型后）。
 - 三路只读审查确认：HEAD 的四类执行均依赖 React `useEffect` registration；Provider resume 轮询不等于 exact task recover；scope 单槽 checkpoint/lease 与 scope-wide finally 无法安全支持多 run。
 - 尚未执行最终全量、真实 Provider或生产检查；定向证据不能替代这些最终闸门。
-- `node scripts/run-safe-tests.mjs run --spec tests/m22-group-execution.spec.ts`：35/35 PASS；覆盖registry、DAG、离屏真实卸载、运行期无关复制/删除、参与节点锁、分槽lease/checkpoint，以及双run成功/失败/停止隔离；4173 unchanged。
+- `node scripts/run-safe-tests.mjs run --spec tests/m22-group-execution.spec.ts`：37/37 PASS；覆盖四模态headless preflight/run/recover/apply、DAG、离屏真实卸载后第二层提交与结果落盘、运行期无关编辑/移动/连接/删除/复制、参与图锁、checkpoint/lease runId门、精确放弃、多run导航，以及双run成功/失败/停止隔离；4173 unchanged。
 - `node scripts/run-safe-tests.mjs run --spec tests/m40-generation-idempotency-recovery.spec.ts`：14/14 PASS；覆盖共享四节点幂等、丢响应reconcile、一次POST。
 - `node scripts/run-safe-tests.mjs run --spec tests/m41-generation-retry-ui.spec.ts`：51/51 PASS；覆盖四节点恢复、迟到结果、输入变化、保存失败/重放。
 - `node scripts/run-safe-tests.mjs run --spec tests/m68-generation-tasks-panel.spec.ts`：4/4 PASS；任务面板和exact reconcile无回归。
@@ -161,7 +164,7 @@
 
 ## 11. 下一步唯一动作
 
-提交双run反例、冲突提示和权威状态同步；随后在干净最终候选HEAD上重跑一次safe full。全量通过后执行三路最终独立复核、最小真实Provider、受控真实页面、冻结备份/发布/生产技术验收和文档证据同步。
+提交终审四项纠正、1029项测试库存和权威状态同步；随后在只保留受保护未跟踪JSON的干净最终候选HEAD上重跑一次safe full。全量通过后执行三路最终独立复审、最小真实Provider、受控真实页面、冻结备份/发布/生产技术验收和发布回执同步。
 
 ## 12. 最终完成前复核
 

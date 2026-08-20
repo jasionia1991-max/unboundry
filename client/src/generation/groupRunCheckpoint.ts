@@ -155,8 +155,11 @@ export function clearGroupRunStarting(
 }
 
 export function readGroupRunStarting(scope: GroupRunSummaryScope) {
-  return [...(activeMemoryRuns.get(groupRunSummaryScopeKey(scope))?.values() ?? [])]
-    .at(-1);
+  return readGroupRunStartings(scope).at(-1);
+}
+
+export function readGroupRunStartings(scope: GroupRunSummaryScope) {
+  return [...(activeMemoryRuns.get(groupRunSummaryScopeKey(scope))?.values() ?? [])];
 }
 
 export function isGroupRunLeaseActive(
@@ -207,9 +210,11 @@ function readGroupRunLeases(scope: GroupRunSummaryScope): GroupRunLease[] {
   }
 }
 
-export async function hasForeignActiveGroupRunLeaseForCanvas(
+async function hasActiveGroupRunLeaseForCanvas(
   canvasId: string,
   nodeId?: string,
+  allowedRunId?: string,
+  foreignOnly = false,
 ) {
   if (typeof window === "undefined") return false;
   try {
@@ -226,13 +231,14 @@ export async function hasForeignActiveGroupRunLeaseForCanvas(
         : parsed && typeof parsed === "object"
           ? Object.values(parsed as Record<string, unknown>).filter(isLease)
           : [];
-      const foreign = leases.filter((lease) =>
-        lease.ownerId !== executionOwnerId &&
+      const candidates = leases.filter((lease) =>
+        lease.runId !== allowedRunId &&
+        (!foreignOnly || lease.ownerId !== executionOwnerId) &&
         (!nodeId || lease.lockedNodeIds === undefined ||
           lease.lockedNodeIds.length === 0 || lease.lockedNodeIds.includes(nodeId))
       );
-      if (foreign.some((lease) => isGroupRunLeaseActive(lease))) return true;
-      if (foreign.length === 0) continue;
+      if (candidates.some((lease) => isGroupRunLeaseActive(lease))) return true;
+      if (candidates.length === 0) continue;
       const locks = (window.navigator as Navigator & {
         locks?: {
           request<T>(
@@ -243,24 +249,26 @@ export async function hasForeignActiveGroupRunLeaseForCanvas(
         };
       }).locks;
       if (!locks) return true;
-      const lockAvailable = await locks.request(
-        `unboundry-group-run:${JSON.stringify(scopeValue)}:${foreign[0].runId}`,
-        { ifAvailable: true },
-        (lock) => Boolean(lock),
-      );
-      if (!lockAvailable) return true;
-      // The old tab no longer holds its Web Lock. Remove only the exact stale
-      // lease we inspected so a newer owner cannot be deleted by this cleanup.
-      if (window.localStorage.getItem(key) === raw) {
-        const retained = leases.filter((lease) =>
-          lease.ownerId === executionOwnerId || isGroupRunLeaseActive(lease)
+      for (const candidate of candidates) {
+        const lockAvailable = await locks.request(
+          `unboundry-group-run:${JSON.stringify(scopeValue)}:${candidate.runId}`,
+          { ifAvailable: true },
+          (lock) => Boolean(lock),
         );
-        if (retained.length === 0) window.localStorage.removeItem(key);
-        else {
-          window.localStorage.setItem(
-            key,
-            JSON.stringify(Object.fromEntries(retained.map((lease) => [lease.runId, lease]))),
-          );
+        if (!lockAvailable) return true;
+        // The old run no longer holds its Web Lock. Remove only the exact stale
+        // lease inspected so a newer or sibling run cannot be deleted.
+        if (window.localStorage.getItem(key) === raw) {
+          const retained = leases.filter((lease) => lease.runId !== candidate.runId);
+          if (retained.length === 0) window.localStorage.removeItem(key);
+          else {
+            window.localStorage.setItem(
+              key,
+              JSON.stringify(Object.fromEntries(
+                retained.map((lease) => [lease.runId, lease]),
+              )),
+            );
+          }
         }
       }
     }
@@ -269,6 +277,21 @@ export async function hasForeignActiveGroupRunLeaseForCanvas(
     return true;
   }
   return false;
+}
+
+export async function hasForeignActiveGroupRunLeaseForCanvas(
+  canvasId: string,
+  nodeId?: string,
+) {
+  return hasActiveGroupRunLeaseForCanvas(canvasId, nodeId, undefined, true);
+}
+
+export async function hasConflictingActiveGroupRunLeaseForCanvas(
+  canvasId: string,
+  nodeId?: string,
+  allowedRunId?: string,
+) {
+  return hasActiveGroupRunLeaseForCanvas(canvasId, nodeId, allowedRunId);
 }
 
 function dispatchLeaseEvent(scope: GroupRunSummaryScope) {
@@ -501,14 +524,35 @@ export function readGroupRunCheckpoint(
   return undefined;
 }
 
+export function readGroupRunCheckpoints(scope: GroupRunSummaryScope) {
+  try {
+    const raw = window.localStorage.getItem(checkpointStorageKey(scope));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    const checkpoints = isCheckpoint(parsed)
+      ? [parsed]
+      : parsed && typeof parsed === "object"
+        ? Object.values(parsed as Record<string, unknown>).filter(isCheckpoint)
+        : [];
+    return checkpoints
+      .filter((checkpoint) =>
+        groupRunSummaryScopeKey(checkpoint) === groupRunSummaryScopeKey(scope)
+      )
+      .sort((left, right) => right.updatedAt - left.updatedAt);
+  } catch {
+    return [];
+  }
+}
+
 export function writeGroupRunCheckpoint(
   checkpoint: GroupRunCheckpoint,
   expectedLease?: { ownerId: string; runId: string },
 ) {
   try {
+    if (expectedLease && checkpoint.runId !== expectedLease.runId) return false;
     const lease = expectedLease
       ? readGroupRunLease(checkpoint, expectedLease.runId)
-      : readGroupRunLease(checkpoint);
+      : readGroupRunLease(checkpoint, checkpoint.runId);
     if (!leaseMatches(lease, expectedLease)) return false;
     const persisted = expectedLease
       ? {
@@ -544,20 +588,24 @@ export function writeGroupRunCheckpoint(
 export function clearGroupRunCheckpoint(
   scope: GroupRunSummaryScope,
   expectedLease?: { ownerId: string; runId: string },
+  targetRunId = expectedLease?.runId,
 ) {
   try {
+    if (expectedLease && targetRunId !== expectedLease.runId) return false;
     const lease = expectedLease
       ? readGroupRunLease(scope, expectedLease.runId)
-      : readGroupRunLease(scope);
+      : targetRunId
+        ? readGroupRunLease(scope, targetRunId)
+        : readGroupRunLease(scope);
     if (!leaseMatches(lease, expectedLease)) return false;
-    const current = expectedLease
-      ? readGroupRunCheckpoint(scope, expectedLease.runId)
+    const current = targetRunId
+      ? readGroupRunCheckpoint(scope, targetRunId)
       : readGroupRunCheckpoint(scope);
     if (expectedLease && current && current.runId !== expectedLease.runId) {
       return false;
     }
     const key = checkpointStorageKey(scope);
-    if (!expectedLease) {
+    if (!targetRunId) {
       window.localStorage.removeItem(key);
     } else {
       const raw = window.localStorage.getItem(key);
@@ -568,7 +616,7 @@ export function clearGroupRunCheckpoint(
           ? Object.values(parsed as Record<string, unknown>).filter(isCheckpoint)
           : [];
       const retained = checkpoints.filter((checkpoint) =>
-        checkpoint.runId !== expectedLease.runId
+        checkpoint.runId !== targetRunId
       );
       if (retained.length === 0) window.localStorage.removeItem(key);
       else {
@@ -609,47 +657,48 @@ export function requestGroupRunStop(input: {
 }
 
 export function confirmGroupRunNavigation(scope: GroupRunSummaryScope) {
-  const checkpoint = readGroupRunCheckpoint(scope);
-  const starting = readGroupRunStarting(scope);
-  const activeCheckpoint = checkpoint &&
+  const activeCheckpoints = readGroupRunCheckpoints(scope).filter((checkpoint) =>
     ["preparing", "running", "stopping"].includes(checkpoint.status)
-    ? checkpoint
-    : undefined;
-  if (!activeCheckpoint && !starting) {
-    return true;
-  }
+  );
+  const activeRunIds = new Set(activeCheckpoints.map((checkpoint) => checkpoint.runId));
+  const startings = readGroupRunStartings(scope).filter((starting) =>
+    !activeRunIds.has(starting.runId)
+  );
+  if (activeCheckpoints.length === 0 && startings.length === 0) return true;
   const confirmed = window.confirm(
     "整组仍在执行。离开后不会再启动尚未提交的后续节点；已经提交的任务仍会继续并保存结果。确定离开吗？",
   );
   if (!confirmed) return false;
-  if (!activeCheckpoint) {
+  const ownedLeases = new Map<string, GroupRunLease>();
+  for (const checkpoint of activeCheckpoints) {
+    const lease = readGroupRunLease(scope, checkpoint.runId);
+    if (isGroupRunLeaseActive(lease) && lease?.ownerId !== executionOwnerId) {
+      // Another tab owns this exact run. Do not partially interrupt sibling
+      // runs before the whole navigation decision is known to be safe.
+      return false;
+    }
+    if (lease?.ownerId === executionOwnerId) ownedLeases.set(checkpoint.runId, lease);
+  }
+  for (const checkpoint of activeCheckpoints) {
+    const lease = ownedLeases.get(checkpoint.runId);
+    const expectedLease = lease
+      ? { ownerId: lease.ownerId, runId: lease.runId }
+      : undefined;
+    const written = writeGroupRunCheckpoint({
+      ...checkpoint,
+      status: "interrupted",
+      updatedAt: Date.now(),
+    }, expectedLease);
+    if (!written) return false;
     requestGroupRunStop({
-      groupId: starting!.groupId,
-      runId: starting!.runId,
+      groupId: checkpoint.groupId,
+      runId: checkpoint.runId,
       scope,
     });
-    return true;
   }
-  const lease = readGroupRunLease(scope);
-  if (isGroupRunLeaseActive(lease) && lease?.ownerId !== executionOwnerId) {
-    // Another tab owns the active run; navigation must not overwrite its
-    // interrupted marker or make its provider stop unexpectedly.
-    return false;
+  for (const starting of startings) {
+    requestGroupRunStop({ groupId: starting.groupId, runId: starting.runId, scope });
   }
-  const expectedLease = lease && lease.ownerId === executionOwnerId
-    ? { ownerId: lease.ownerId, runId: lease.runId }
-    : undefined;
-  const written = writeGroupRunCheckpoint({
-    ...activeCheckpoint,
-    status: "interrupted",
-    updatedAt: Date.now(),
-  }, expectedLease);
-  if (!written) return false;
-  requestGroupRunStop({
-    groupId: activeCheckpoint.groupId,
-    runId: activeCheckpoint.runId,
-    scope,
-  });
   return true;
 }
 

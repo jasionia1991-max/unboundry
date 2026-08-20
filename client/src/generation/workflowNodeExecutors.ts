@@ -832,7 +832,10 @@ function createExecutor(kind: WorkflowExecutorKind): NodeExecutor {
                 throw new Error("生成输入已修改或本轮已停止，未提交新任务");
               }
             },
-            { generationOwnershipKey: plan.effectiveOwnershipKey },
+            {
+              generationOwnershipKey: plan.effectiveOwnershipKey,
+              workflowRunId: context.runId,
+            },
           );
           return { cancelled: false as const, ensured };
         });
