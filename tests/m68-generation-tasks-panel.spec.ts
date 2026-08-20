@@ -346,10 +346,56 @@ test("generation task panel reconciles one accepted retry after its response is 
 test("generation task panel shows an empty state and closes with Escape", async ({
   page,
 }) => {
-  await page.goto("/__fixture/persistence.nodes-assets-viewport");
+  const fixtureScopeId = "persistence.nodes-assets-viewport";
+  await page.goto(`/__fixture/${fixtureScopeId}`);
   await page.getByTestId("tasks").click();
   await expect(page.getByTestId("tasks-panel")).toBeVisible();
   await expect(page.getByTestId("tasks-empty")).toHaveText("还没有生成任务");
+  await page.evaluate(async ({ fixtureScopeId }) => {
+    const status = await fetch("/api/auth/status").then((response) =>
+      response.json()
+    ) as { user?: { id?: string } };
+    const accountId = status.user?.id;
+    if (!accountId) throw new Error("missing fixture account");
+    const scopeKey = JSON.stringify([
+      accountId,
+      fixtureScopeId,
+      fixtureScopeId,
+    ]);
+    localStorage.setItem(
+      `unboundry-group-run-checkpoint:v1:${scopeKey}`,
+      JSON.stringify({
+        accountId,
+        canvasId: fixtureScopeId,
+        executableNodeIds: ["text-a", "image-b"],
+        fixtureScopeId,
+        groupId: "group-a",
+        nodeStates: { "text-a": "success", "image-b": "pending" },
+        runId: "fixture-interrupted-run",
+        snapshotFingerprint: "fixture-snapshot",
+        startedAt: Date.now() - 2_000,
+        status: "interrupted",
+        successProofs: {
+          "text-a": {
+            ownershipKey: "fixture-owner",
+            resultKey: "fixture-result",
+            taskId: "fixture-task",
+          },
+        },
+        updatedAt: Date.now(),
+        version: 1,
+      }),
+    );
+    window.dispatchEvent(new CustomEvent("unboundry:group-run-checkpoint"));
+  }, { fixtureScopeId });
+  const checkpoint = page.getByTestId("tasks-group-checkpoint");
+  await expect(checkpoint).toContainText("已记录 1/2 个成功节点");
+  await checkpoint.getByTestId("tasks-group-continue").click();
+  await expect(page.getByTestId("workflow-run-toast"))
+    .toContainText("验收页面不会触发真实生成");
+  page.once("dialog", (dialog) => void dialog.accept());
+  await checkpoint.getByTestId("tasks-group-abandon").click();
+  await expect(checkpoint).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("tasks-panel")).toHaveCount(0);
 });

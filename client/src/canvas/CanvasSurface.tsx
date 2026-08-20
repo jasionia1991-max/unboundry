@@ -90,8 +90,12 @@ import {
   waitForPaint,
   workflowToastDurationMs,
 } from "../generation/groupRunPersist";
-import { WorkflowExecutionProvider } from "../generation/WorkflowExecutionProvider";
+import {
+  useWorkflowExecution,
+  WorkflowExecutionProvider,
+} from "../generation/WorkflowExecutionProvider";
 import { isExecutableWorkflowNode } from "../generation/workflowExecution";
+import { retainWorkflowNodesForRender } from "../generation/workflowRenderRetention";
 import {
   resolvePublishedModel,
   type PublishedModel,
@@ -953,15 +957,18 @@ const CuttableEdge = memo(function CuttableEdge({
   data,
   id,
   interactionWidth,
+  source,
   sourcePosition,
   sourceX,
   sourceY,
   style,
+  target,
   targetPosition,
   targetX,
   targetY,
 }: EdgeProps<CuttableEdge>) {
   const { setEdges } = useReactFlow<ProbeNodeType, CuttableEdge>();
+  const { lockedNodeIds } = useWorkflowExecution();
   const checkpoint = useCanvasCheckpoint();
   const [path, labelX, labelY] = getBezierPath({
     sourcePosition,
@@ -1000,6 +1007,7 @@ const CuttableEdge = memo(function CuttableEdge({
             className="cut-edge-button nodrag nopan"
             data-edge-cut-for={id}
             data-testid={`cut-edge-${id}`}
+            disabled={lockedNodeIds.has(source) || lockedNodeIds.has(target)}
             onClick={(event) => {
               event.stopPropagation();
               checkpoint();
@@ -2383,10 +2391,48 @@ export function CanvasSurface({
       ? createProbeNodes(fixtureId)
       : emptyNodes,
   );
+  const [workflowRetainedNodeIds, setWorkflowRetainedNodeIds] = useState<
+    ReadonlySet<string>
+  >(new Set());
+  const workflowRetainedNodeIdsRef = useRef<ReadonlySet<string>>(new Set());
+  workflowRetainedNodeIdsRef.current = workflowRetainedNodeIds;
   const [edges, setEdgesState] = useEdgesState<CuttableEdge>(
     workflowFixture || persistenceFixture
       ? emptyEdges
       : createProbeEdges(fixtureId),
+  );
+  const renderedNodes = useMemo(
+    () => {
+      const retained = retainWorkflowNodesForRender(
+        nodes,
+        workflowRetainedNodeIds,
+      );
+      if (workflowRetainedNodeIds.size === 0) return retained;
+      const retainedGroupIds = new Set(
+        nodes
+          .filter(
+            (node) =>
+              node.type === "group" && workflowRetainedNodeIds.has(node.id),
+          )
+          .map((node) => node.id),
+      );
+      if (retainedGroupIds.size === 0) return retained;
+      return retained.map((node) =>
+        retainedGroupIds.has(node.id)
+          ? {
+              ...node,
+              // Keep the group toolbar and whole-group drag interactive so a
+              // running group can be moved off-screen. Structure/configuration
+              // locks are enforced by GroupNode and CanvasSurface changes.
+              className: [node.className, "workflow-run-group"]
+                .filter(Boolean)
+                .join(" "),
+              connectable: false,
+            }
+          : node,
+      );
+    },
+    [nodes, workflowRetainedNodeIds],
   );
   // viewport 实时状态下沉到画布内部：缩放/平移不再让外壳每帧重渲染。
   const [viewport, setViewport] = useState<Viewport>(() =>
@@ -2428,6 +2474,23 @@ export function CanvasSurface({
     },
     [],
   );
+  useEffect(() => {
+    if (workflowRetainedNodeIds.size === 0) return;
+    // A run can start while an old graph menu is open. Close those menus at
+    // the lease boundary so stale actions cannot bypass the renderer lock.
+    setBatchDrag(undefined);
+    setBlankContextMenu(undefined);
+    setCreateMenu(undefined);
+    setNodeContextMenu(undefined);
+    setSourceConnectMenu(undefined);
+    const activeElement = document.activeElement;
+    if (
+      activeElement instanceof HTMLElement &&
+      activeElement.closest(".workflow-run-locked, .workflow-run-group")
+    ) {
+      activeElement.blur();
+    }
+  }, [workflowRetainedNodeIds]);
   const persistenceLoadIdentity = useRef({ epoch: 0, scopeId: "" });
   const [persistenceLoadState, setPersistenceLoadState] =
     useState<CanvasLoadState>(persistenceFixture ? "loading" : "ready");
@@ -2932,6 +2995,10 @@ export function CanvasSurface({
       setUploadError("");
       return;
     }
+    if (workflowRetainedNodeIds.size > 0) {
+      showWorkflowToast("整组执行中，不能修改画布结构", "error");
+      return;
+    }
     if (!persistenceReady) return;
     // 其他命令（例如 apply-template）只清理浮层，绝不切换“添加节点”菜单。
     const clearTransientMenus = () => {
@@ -2960,7 +3027,7 @@ export function CanvasSurface({
           },
     );
     clearTransientMenus();
-  }, [persistenceReady, shellMenuCommand]);
+  }, [persistenceReady, shellMenuCommand, showWorkflowToast, workflowRetainedNodeIds]);
 
   useEffect(() => {
     onAddMenuOpenChange?.(Boolean(createMenu));
@@ -3336,6 +3403,11 @@ export function CanvasSurface({
     if (shellMenuCommand?.action !== "apply-template") return;
     if (shellMenuCommand.sequence === appliedTemplateSequence.current) return;
     if (!persistenceReady) return;
+    if (workflowRetainedNodeIds.size > 0) {
+      appliedTemplateSequence.current = shellMenuCommand.sequence;
+      showWorkflowToast("整组执行中，不能修改画布结构", "error");
+      return;
+    }
     const graph = shellMenuCommand.graph;
     if (!graph || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) {
       return;
@@ -3598,6 +3670,8 @@ export function CanvasSurface({
     setNodes,
     persistenceReady,
     shellMenuCommand,
+    showWorkflowToast,
+    workflowRetainedNodeIds,
   ]);
   const handleCanvasWheelCapture = useCallback(
     (event: ReactWheelEvent<HTMLDivElement>) => {
@@ -3741,6 +3815,10 @@ export function CanvasSurface({
   const applyDuplicatedGraph = (
     duplicated: NonNullable<ReturnType<typeof duplicateGraph>>,
   ) => {
+    if (workflowRetainedNodeIds.size > 0) {
+      showWorkflowToast("整组执行中，不能复制或粘贴画布节点", "error");
+      return;
+    }
     checkpoint();
     setNodes((current) => [
       ...current.map((node) => ({ ...node, selected: false })),
@@ -3757,6 +3835,10 @@ export function CanvasSurface({
   };
 
   const pasteInternalNode = (pastePoint?: { x: number; y: number }) => {
+    if (workflowRetainedNodeIds.size > 0) {
+      showWorkflowToast("整组执行中，不能复制或粘贴画布节点", "error");
+      return false;
+    }
     const copied = internalClipboard.current;
     if (!copied || copied.nodes.length === 0) return false;
     clipboardPasteSequence.current += 1;
@@ -3768,6 +3850,10 @@ export function CanvasSurface({
   };
 
   const duplicateContextNode = (nodeId: string) => {
+    if (workflowRetainedNodeIds.size > 0) {
+      showWorkflowToast("整组执行中，不能复制或粘贴画布节点", "error");
+      return false;
+    }
     const node = nodesRef.current.find((candidate) => candidate.id === nodeId);
     if (!node) return false;
     const source = node.parentId
@@ -3805,6 +3891,10 @@ export function CanvasSurface({
     };
   };
   const deleteNodeFromContextMenu = (nodeId: string) => {
+    if (workflowRetainedNodeIds.size > 0) {
+      showWorkflowToast("整组执行中，不能删除画布节点", "error");
+      return;
+    }
     const root = nodesRef.current.find((node) => node.id === nodeId);
     if (!root) return;
     const deletedIds = new Set([nodeId]);
@@ -3856,7 +3946,13 @@ export function CanvasSurface({
   const addEmptyNode = (
     type: "audio" | "image" | "playlist" | "text" | "video",
   ) => {
-    if (!persistenceReadyRef.current || !createMenu) return;
+    if (
+      !persistenceReadyRef.current ||
+      workflowRetainedNodeIds.size > 0 ||
+      !createMenu
+    ) {
+      return;
+    }
     const labels = {
       audio: "Audio",
       image: "Image",
@@ -3893,7 +3989,9 @@ export function CanvasSurface({
     asset: CanvasLibraryAsset,
     screen: { x: number; y: number },
   ) => {
-    if (!persistenceReadyRef.current) return;
+    if (!persistenceReadyRef.current || workflowRetainedNodeIds.size > 0) {
+      return;
+    }
     const bounds = worldRef.current?.getBoundingClientRect();
     if (!bounds) return;
     const position = {
@@ -3962,7 +4060,13 @@ export function CanvasSurface({
     });
   }, [historyAssetRequest?.sequence, persistenceReady]);
   const uploadImage = async (file?: File) => {
-    if (!persistenceReadyRef.current || !file || !createMenu || uploading) {
+    if (
+      !persistenceReadyRef.current ||
+      workflowRetainedNodeIds.size > 0 ||
+      !file ||
+      !createMenu ||
+      uploading
+    ) {
       return;
     }
     setUploadError("");
@@ -3975,6 +4079,7 @@ export function CanvasSurface({
       createdAssetId = asset.assetId;
       if (
         !persistenceReadyRef.current ||
+        workflowRetainedNodeIdsRef.current.size > 0 ||
         persistenceLoadIdentity.current.epoch !== loadIdentity.epoch ||
         persistenceLoadIdentity.current.scopeId !== loadIdentity.scopeId
       ) {
@@ -4119,6 +4224,13 @@ export function CanvasSurface({
   };
   const addConnection = (connection: Connection) => {
     if (!persistenceReadyRef.current) return false;
+    if (
+      workflowRetainedNodeIds.has(connection.source) ||
+      workflowRetainedNodeIds.has(connection.target)
+    ) {
+      showWorkflowToast("整组执行中，不能修改参与节点的连线", "error");
+      return false;
+    }
     if (!isConnectionAllowed(connection, edgesRef.current)) {
       return false;
     }
@@ -4150,6 +4262,13 @@ export function CanvasSurface({
   };
   const addBatchConnections = (sourceIds: string[], targetId: string) => {
     if (!persistenceReadyRef.current) return;
+    if (
+      workflowRetainedNodeIds.has(targetId) ||
+      sourceIds.some((sourceId) => workflowRetainedNodeIds.has(sourceId))
+    ) {
+      showWorkflowToast("整组执行中，不能修改参与节点的连线", "error");
+      return;
+    }
     const plannedEdges = [...edgesRef.current];
     const addedSourceIds: string[] = [];
     for (const sourceId of sourceIds) {
@@ -5900,6 +6019,16 @@ export function CanvasSurface({
       const target = closestEditableControl(event.target);
       const commandKey = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
+      if (
+        !target &&
+        commandKey &&
+        workflowRetainedNodeIds.size > 0 &&
+        (key === "a" || key === "v" || key === "x" || key === "z")
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       if (!target && commandKey && !event.shiftKey && key === "a") {
         const selectableIds = new Set(
           nodesRef.current
@@ -6013,7 +6142,7 @@ export function CanvasSurface({
       window.clearTimeout(cutTimer.current);
       window.removeEventListener("keydown", cancelBatchConnection, true);
     };
-  }, [persistenceReady, primaryId, setEdges, setNodes]);
+  }, [persistenceReady, primaryId, setEdges, setNodes, workflowRetainedNodeIds]);
 
   const selectedNodes = nodes.filter((node) => node.selected);
   const selectedNodeIds = new Set(selectedNodes.map((node) => node.id));
@@ -6124,7 +6253,7 @@ export function CanvasSurface({
         }
       : undefined;
   const createGroup = () => {
-    if (!canGroupSelection) return;
+    if (!canGroupSelection || workflowRetainedNodeIds.size > 0) return;
     const bounds = groupCandidates.reduce(
       (result, node) => {
         const size = nodeSize(node);
@@ -6402,6 +6531,7 @@ export function CanvasSurface({
         getEdges={() => pendingGuardedEdges.current ?? edgesRef.current}
         getNodes={() => pendingGuardedNodes.current ?? nodesRef.current}
         notify={showWorkflowToast}
+        onRetainedNodeIdsChange={setWorkflowRetainedNodeIds}
         setNodes={guardedSetNodes}
       >
       <CanvasGraphMutationContext.Provider
@@ -6434,6 +6564,9 @@ export function CanvasSurface({
         nodes.filter((node) => node.data.variant === "group").length
       }
       data-node-count={nodes.length}
+      data-workflow-run-active={
+        workflowRetainedNodeIds.size > 0 ? "true" : undefined
+      }
       data-persistence-ready={persistenceReady ? "true" : "false"}
       data-persistence-state={effectivePersistenceLoadState}
       data-save-fingerprint-count={persistenceSentFingerprints.current.size}
@@ -6480,6 +6613,7 @@ export function CanvasSurface({
       onDoubleClick={(event) => {
         if (
           !persistenceReady ||
+          workflowRetainedNodeIds.size > 0 ||
           !worldRef.current ||
           !(event.target instanceof Element) ||
           event.target.closest(
@@ -6526,7 +6660,11 @@ export function CanvasSurface({
         connectionLineStyle={{ stroke: "#ffffff60", strokeWidth: 1 }}
         defaultViewport={viewport}
         defaultEdgeOptions={{ interactionWidth: 20 }}
-        deleteKeyCode={persistenceReady ? ["Backspace", "Delete"] : null}
+        deleteKeyCode={
+          persistenceReady && workflowRetainedNodeIds.size === 0
+            ? ["Backspace", "Delete"]
+            : null
+        }
         edges={visibleEdges}
         edgeTypes={edgeTypes}
         edgesReconnectable={false}
@@ -6537,9 +6675,9 @@ export function CanvasSurface({
         maxZoom={2}
         multiSelectionKeyCode="Shift"
         minZoom={0.15}
-        nodes={nodes}
+        nodes={renderedNodes}
         nodesDraggable={persistenceReady && !activePlaylist && !agentReferenceMode}
-        nodesConnectable={persistenceReady}
+        nodesConnectable={persistenceReady && workflowRetainedNodeIds.size === 0}
         nodeTypes={nodeTypes}
         onlyRenderVisibleElements
         onConnect={addConnection}
@@ -6645,7 +6783,12 @@ export function CanvasSurface({
           );
         }}
         onEdgesChange={(changes) => {
-          if (persistenceReady) onEdgesChange(changes);
+          if (!persistenceReady) return;
+          if (
+            workflowRetainedNodeIds.size > 0 &&
+            changes.some((change) => change.type === "remove")
+          ) return;
+          onEdgesChange(changes);
         }}
         onDelete={({ edges: deletedEdges, nodes: deletedNodes }) => {
           if (!persistenceReady) return;
@@ -6657,6 +6800,20 @@ export function CanvasSurface({
         }}
         onBeforeDelete={async ({ edges: deletingEdges, nodes: deletingNodes }) => {
           if (!persistenceReady) return false;
+          if (workflowRetainedNodeIds.size > 0) {
+            showWorkflowToast("整组执行中，不能删除画布节点或连线", "error");
+            return false;
+          }
+          if (
+            deletingNodes.some((node) => workflowRetainedNodeIds.has(node.id)) ||
+            deletingEdges.some((edge) =>
+              workflowRetainedNodeIds.has(edge.source) ||
+              workflowRetainedNodeIds.has(edge.target)
+            )
+          ) {
+            showWorkflowToast("整组执行中，不能删除参与节点或连线", "error");
+            return false;
+          }
           const groupIds = new Set(
             deletingNodes
               .filter((node) => node.type === "group")
@@ -6706,6 +6863,44 @@ export function CanvasSurface({
                   change.resizing === undefined &&
                   change.setAttributes === undefined,
               );
+          if (workflowRetainedNodeIds.size > 0) {
+            const retainedGroupIds = new Set(
+              nodesRef.current
+                .filter(
+                  (node) =>
+                    node.type === "group" &&
+                    workflowRetainedNodeIds.has(node.id),
+                )
+                .map((node) => node.id),
+            );
+            acceptedChanges = acceptedChanges.filter((change) => {
+              if (!("id" in change)) return false;
+              if (!workflowRetainedNodeIds.has(change.id)) return true;
+              // The active group may still be selected and moved so its stop
+              // button remains reachable even after dragging the group away;
+              // child selection and all structural/configuration changes stay
+              // fenced.
+              if (change.type === "select") {
+                return retainedGroupIds.has(change.id);
+              }
+              if (change.type === "position") {
+                // Moving the parent is the one permitted graph operation
+                // during a run; it keeps the whole retained group coherent
+                // when the user drags it out of the viewport.
+                return retainedGroupIds.has(change.id);
+              }
+              // React Flow can report passive measurement changes while a
+              // retained off-screen child is mounted. Keep those measurements
+              // but never accept an active resize operation.
+              if (change.type === "dimensions") {
+                return (
+                  change.resizing === undefined &&
+                  change.setAttributes === undefined
+                );
+              }
+              return false;
+            });
+          }
           if (acceptedChanges.length === 0) return;
           if (!persistenceReady) {
             onNodesChange(acceptedChanges);
@@ -6825,7 +7020,12 @@ export function CanvasSurface({
         }}
         onNodeContextMenu={(event, node) => {
           event.preventDefault();
-          if (!persistenceReady || !worldRef.current || agentReferenceMode) return;
+          if (
+            !persistenceReady ||
+            workflowRetainedNodeIds.size > 0 ||
+            !worldRef.current ||
+            agentReferenceMode
+          ) return;
           const bounds = worldRef.current.getBoundingClientRect();
           const x = Math.max(
             8,
@@ -6860,7 +7060,11 @@ export function CanvasSurface({
         }}
         onPaneContextMenu={(event) => {
           event.preventDefault();
-          if (!persistenceReady || !worldRef.current) return;
+          if (
+            !persistenceReady ||
+            workflowRetainedNodeIds.size > 0 ||
+            !worldRef.current
+          ) return;
           const bounds = worldRef.current.getBoundingClientRect();
           const x = Math.max(
             8,
@@ -6885,7 +7089,39 @@ export function CanvasSurface({
           setUploadError("");
         }}
         onSelectionChange={({ nodes: selectedNodes }) => {
-          if (persistenceReady) setPrimaryId(selectedNodes.at(-1)?.id);
+          if (!persistenceReady) return;
+          if (workflowRetainedNodeIds.size > 0) {
+            const retainedGroupIds = new Set(
+              nodesRef.current
+                .filter(
+                  (node) =>
+                    node.type === "group" &&
+                    workflowRetainedNodeIds.has(node.id),
+                )
+                .map((node) => node.id),
+            );
+            const allowedSelectedNodes = selectedNodes.filter(
+              (node) =>
+                !workflowRetainedNodeIds.has(node.id) ||
+                retainedGroupIds.has(node.id),
+            );
+            if (allowedSelectedNodes.length !== selectedNodes.length) {
+              const allowedIds = new Set(
+                allowedSelectedNodes.map((node) => node.id),
+              );
+              setNodes((current) =>
+                current.map((node) =>
+                  workflowRetainedNodeIds.has(node.id) &&
+                  !allowedIds.has(node.id)
+                    ? { ...node, selected: false }
+                    : node,
+                ),
+              );
+            }
+            setPrimaryId(allowedSelectedNodes.at(-1)?.id);
+            return;
+          }
+          setPrimaryId(selectedNodes.at(-1)?.id);
         }}
         onSelectionEnd={(event) => {
           const start = marqueeStart.current;
@@ -7121,6 +7357,7 @@ export function CanvasSurface({
             </button>
             <button
               aria-selected="false"
+              disabled={workflowRetainedNodeIds.size > 0}
               onClick={() => {
                 duplicateContextNode(contextMenuNode.id);
                 setNodeContextMenu(undefined);
@@ -7133,10 +7370,16 @@ export function CanvasSurface({
             <div className="node-context-divider" role="separator" />
             <button
               aria-selected="false"
+              disabled={workflowRetainedNodeIds.size > 0}
               onClick={() => {
                 deleteNodeFromContextMenu(contextMenuNode.id);
                 setNodeContextMenu(undefined);
               }}
+              title={
+                workflowRetainedNodeIds.size > 0
+                  ? "整组执行中不能删除画布节点"
+                  : undefined
+              }
               role="option"
               type="button"
             >
@@ -7184,6 +7427,7 @@ export function CanvasSurface({
             <button
               aria-selected="true"
               data-selected="true"
+              disabled={workflowRetainedNodeIds.size > 0}
               onClick={() => {
                 setBlankContextMenu(undefined);
                 uploadInput.current?.click();
@@ -7195,6 +7439,7 @@ export function CanvasSurface({
             </button>
             <button
               aria-selected="false"
+              disabled={workflowRetainedNodeIds.size > 0}
               onClick={() => {
                 setBlankContextMenu(undefined);
                 onOpenAssets?.();
@@ -7207,6 +7452,7 @@ export function CanvasSurface({
             <div className="blank-context-divider" role="separator" />
             <button
               aria-selected="false"
+              disabled={workflowRetainedNodeIds.size > 0}
               onClick={() => {
                 setCreateMenu({
                   flow: blankContextMenu.flow,
@@ -7221,6 +7467,7 @@ export function CanvasSurface({
             </button>
             <button
               aria-selected="false"
+              disabled={workflowRetainedNodeIds.size > 0}
               onClick={() => {
                 setCreateMenu({
                   flow: blankContextMenu.flow,
@@ -7236,7 +7483,7 @@ export function CanvasSurface({
             <div className="blank-context-divider" role="separator" />
             <button
               aria-selected="false"
-              disabled={!blankContextMenu.canUndo}
+              disabled={workflowRetainedNodeIds.size > 0 || !blankContextMenu.canUndo}
               onClick={() => {
                 window.dispatchEvent(
                   new KeyboardEvent("keydown", {
@@ -7265,7 +7512,7 @@ export function CanvasSurface({
             <div className="blank-context-divider" role="separator" />
             <button
               aria-selected="false"
-              disabled={!blankContextMenu.canPaste}
+              disabled={workflowRetainedNodeIds.size > 0 || !blankContextMenu.canPaste}
               onClick={() => {
                 pasteInternalNode(blankContextMenu.flow);
                 setBlankContextMenu(undefined);

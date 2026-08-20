@@ -1,7 +1,9 @@
 # Unboundry 绿地复刻验收矩阵
 
 基线日期：2026-07-27  
-当前状态更新：2026-08-18
+当前状态更新：2026-08-21
+
+2026-08-21 `INC-GEN-012 = V0.6.26_RELEASE_CANDIDATE_AUTO_PASS / USER_RECHECK`（未发布）：整组开始后，组内节点初始离屏或运行中把父组拖出视口，不再因 React Flow 虚拟化卸载 execution registration 而静默失败；保留全画布虚拟化。参与节点、结构及直接外部输入源运行中只读，父组仍可移动；任务面板持续显示进度并可停止后续；刷新继续必须严格核对 task/ownership/result proof，跨标签使用整轮 Web Lock，无法证明时 fail-closed。m22/m68/m79 定向 `39/39 PASS`；正式安全全量 `119/119 specs、1025/1025 tests PASS`，异常计数 0，source/snapshot SHA-256 均为 `e4f245ee689ad9158ffd97b5d81e592e60103e91e97f672d0a3ca2e5ee0f302c`，4173 listener 不变，真实 Provider/OSS 请求 0。用户已确认 v0.6.26 并授权本次上线与真实网站技术实测；待发布和用户实页确认后才能升级为 PASS，当前线上仍为 v0.6.25。
 
 2026-08-18 `INC-UI-009 = PRODUCTION_PUBLISHED_USER_PASS`：整组/模板下载改走数据盘借空间，1GB保底和原有上限不降；盘上中性临时文件名；按钮中文提示。正式安全全量`118/118 specs、969/969 tests PASS`，异常0。生产已运行v0.6.11，公网资源逐字节哈希、冻结备份恢复、service/schema39与数据不变门通过，保持246 tasks、248 attempts、active0、47 public templates（46 published）；Provider/付费生成/OSS写入0。`v0.6.11`标签与PR #18合并完成；用户随后明确回复“通过”，本项正式收口。
 

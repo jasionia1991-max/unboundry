@@ -4,6 +4,7 @@ import type {
 } from "../../../types/nodeInputs";
 import { runExclusiveCanvasSubmit } from "./saveGate";
 import { rememberFinishedTaskDuration } from "./taskDurationCache";
+import { hasForeignActiveGroupRunLeaseForCanvas } from "./groupRunCheckpoint";
 
 export type GenerationTaskKind = "text" | "image" | "video" | "audio";
 
@@ -79,6 +80,16 @@ export class GenerationRequestError extends Error {
   ) {
     super(message);
     this.name = "GenerationRequestError";
+  }
+}
+
+async function assertNoForeignGroupRun(canvasId: string) {
+  if (await hasForeignActiveGroupRunLeaseForCanvas(canvasId)) {
+    throw new GenerationRequestError(
+      "另一个标签页正在执行整组，请等待完成后再操作当前画布任务",
+      409,
+      "GROUP_RUN_ACTIVE_IN_OTHER_TAB",
+    );
   }
 }
 
@@ -302,6 +313,7 @@ export async function reconcileGenerationTask(
   providerTaskId?: string,
   signal?: AbortSignal,
 ): Promise<GenerationReconcileResult> {
+  await assertNoForeignGroupRun(target.canvasId);
   return runExclusiveCanvasSubmit(target.canvasId, () =>
     reconcileGenerationTaskUnlocked(
       target,
@@ -452,6 +464,7 @@ export async function retryGenerationTask(
   waitForCanvasRevision: GenerationRetryGate,
   signal?: AbortSignal,
 ): Promise<GenerationTaskSummary> {
+  await assertNoForeignGroupRun(target.canvasId);
   return runExclusiveCanvasSubmit(target.canvasId, () =>
     retryGenerationTaskUnlocked(target, waitForCanvasRevision, signal),
   );
@@ -883,6 +896,7 @@ export async function ensureGenerationTask(
   assertCurrentInput?: () => void,
   options: GenerationOwnershipOptions = {},
 ): Promise<EnsuredGenerationTask> {
+  await assertNoForeignGroupRun(input.canvasId);
   const intent = prepareGenerationSubmission(accountId, kind, input, options);
   const prepared = { ...input, idempotencyKey: intent.idempotencyKey };
   const existing = await getGenerationTaskByIdempotency(
@@ -1030,6 +1044,7 @@ export async function submitImageGeneration(input: {
   };
   prompt: string;
 }): Promise<GenerationTaskSummary> {
+  await assertNoForeignGroupRun(input.canvasId);
   return readJson(
     await fetch("/api/generation-tasks", {
       body: JSON.stringify({ ...input, kind: "image" }),
@@ -1136,6 +1151,7 @@ export async function preflightTextGeneration(
 export async function submitTextGeneration(
   input: TextGenerationInput,
 ): Promise<GenerationTaskSummary> {
+  await assertNoForeignGroupRun(input.canvasId);
   return readJson(
     await fetch("/api/generation-tasks", {
       body: JSON.stringify({ ...input, kind: "text" }),
@@ -1157,6 +1173,7 @@ export async function submitVideoGeneration(input: {
   parameters: Record<string, boolean | number | string>;
   prompt: string;
 }): Promise<GenerationTaskSummary> {
+  await assertNoForeignGroupRun(input.canvasId);
   return readJson(
     await fetch("/api/generation-tasks", {
       body: JSON.stringify({ ...input, kind: "video" }),
@@ -1193,6 +1210,7 @@ export async function submitAudioGeneration(input: {
   parameters: Record<string, boolean | number | string>;
   prompt: string;
 }): Promise<GenerationTaskSummary> {
+  await assertNoForeignGroupRun(input.canvasId);
   return readJson(
     await fetch("/api/generation-tasks", {
       body: JSON.stringify({ ...input, kind: "audio" }),

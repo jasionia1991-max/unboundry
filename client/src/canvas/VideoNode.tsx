@@ -55,6 +55,7 @@ import {
   type WorkflowPreflightPhase,
 } from "../generation/workflowExecution";
 import { shouldIgnoreStaleCanvasSaveProblem } from "../generation/groupRunPersist";
+import { groupRunResultKey } from "../generation/groupRunCheckpoint";
 import { visibleGenerationError } from "../generation/generationErrors";
 import {
   generationFailureMessage,
@@ -412,6 +413,9 @@ function VideoNodeImpl({
                   videoGenerationRetryAllowed: undefined,
                   videoGenerationRetryBlockCode: undefined,
                   videoGenerationRetryBlockReason: undefined,
+                  groupRunSuccessOwnershipKey: undefined,
+                  groupRunSuccessResultKey: undefined,
+                  groupRunSuccessTaskId: undefined,
                   videoGenerationTaskId: undefined,
                   videoPrompt: nextPrompt,
                 },
@@ -890,6 +894,9 @@ function VideoNodeImpl({
                 videoGenerationRetryBlockCode: undefined,
                 videoGenerationRetryBlockReason: undefined,
                 videoGenerationTaskId: undefined,
+                groupRunSuccessOwnershipKey: run.ownershipKey,
+                groupRunSuccessResultKey: groupRunResultKey(task.resultUrl),
+                groupRunSuccessTaskId: task.id,
                 videoModel:
                   videoModelSelection.displayName ??
                   node.data.videoModel ??
@@ -1019,6 +1026,9 @@ function VideoNodeImpl({
                     videoGenerationRetryBlockCode: undefined,
                     videoGenerationRetryBlockReason: undefined,
                     videoGenerationTaskId: submitted.id,
+                    groupRunSuccessOwnershipKey: undefined,
+                    groupRunSuccessResultKey: undefined,
+                    groupRunSuccessTaskId: undefined,
                     videoModel: requestedModelName,
                     videoModelId: requestedModelId,
                     videoParameters: requestedParameters,
@@ -1138,7 +1148,14 @@ function VideoNodeImpl({
       pollingPausedTaskIdRef.current = undefined;
       setPollingPausedTaskId(undefined);
       setRetryTaskId(undefined);
-      return { status: "success" };
+      return {
+        status: "success",
+        successProof: {
+          ownershipKey: pollingRun?.ownershipKey ?? "",
+          resultKey: groupRunResultKey(task.resultUrl),
+          taskId: task.id,
+        },
+      };
     } catch (error) {
       if (error instanceof GenerationRequestError && error.problems.length) {
         setServerInputProblems(error.problems);
@@ -1266,7 +1283,7 @@ function VideoNodeImpl({
         status: "skipped",
       };
     }
-    return { status: "success" };
+    return { status: "success", successProof: outcome.successProof };
   };
 
   const runWorkflowNodeRef = useRef<() => Promise<NodeRunResult>>(
@@ -1350,6 +1367,9 @@ function VideoNodeImpl({
               videoGenerationRetryAllowed: undefined,
               videoGenerationRetryBlockCode: undefined,
               videoGenerationRetryBlockReason: undefined,
+              groupRunSuccessOwnershipKey: undefined,
+              groupRunSuccessResultKey: undefined,
+              groupRunSuccessTaskId: undefined,
               videoGenerationTaskId: taskId,
             },
           }
@@ -1548,6 +1568,9 @@ function VideoNodeImpl({
                   videoGenerationErrorCode: undefined,
                   videoGenerating: true,
                   videoGenerationTaskId: taskId,
+                  groupRunSuccessOwnershipKey: undefined,
+                  groupRunSuccessResultKey: undefined,
+                  groupRunSuccessTaskId: undefined,
                 },
               }
             : node,
@@ -1875,6 +1898,9 @@ function VideoNodeImpl({
               videoGenerationRetryBlockCode: undefined,
               videoGenerationRetryBlockReason: undefined,
               videoGenerationTaskId: task.id,
+              groupRunSuccessOwnershipKey: undefined,
+              groupRunSuccessResultKey: undefined,
+              groupRunSuccessTaskId: undefined,
             },
           }
         : node));

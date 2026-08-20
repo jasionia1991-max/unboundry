@@ -54,6 +54,7 @@ import {
   type WorkflowPreflightPhase,
 } from "../generation/workflowExecution";
 import { shouldIgnoreStaleCanvasSaveProblem } from "../generation/groupRunPersist";
+import { groupRunResultKey } from "../generation/groupRunCheckpoint";
 import { visibleGenerationError } from "../generation/generationErrors";
 import {
   generationFailureMessage,
@@ -376,6 +377,9 @@ function AudioNodeImpl({
                   audioGenerationRetryAllowed: undefined,
                   audioGenerationRetryBlockCode: undefined,
                   audioGenerationRetryBlockReason: undefined,
+                  groupRunSuccessOwnershipKey: undefined,
+                  groupRunSuccessResultKey: undefined,
+                  groupRunSuccessTaskId: undefined,
                   audioGenerationTaskId: undefined,
                   audioPrompt: nextPrompt,
                 },
@@ -877,6 +881,9 @@ function AudioNodeImpl({
                 audioGenerationRetryBlockCode: undefined,
                 audioGenerationRetryBlockReason: undefined,
                 audioGenerationTaskId: undefined,
+                groupRunSuccessOwnershipKey: run.ownershipKey,
+                groupRunSuccessResultKey: groupRunResultKey(task.resultUrl),
+                groupRunSuccessTaskId: task.id,
                 audioModelId:
                   audioModelSelection.selectedId ?? node.data.audioModelId,
                 audioModelName:
@@ -1006,6 +1013,9 @@ function AudioNodeImpl({
                 audioGenerationRetryBlockCode: undefined,
                 audioGenerationRetryBlockReason: undefined,
                 audioGenerationTaskId: submitted.id,
+                groupRunSuccessOwnershipKey: undefined,
+                groupRunSuccessResultKey: undefined,
+                groupRunSuccessTaskId: undefined,
                 audioModelId: requestedModelId,
                 audioModelName: requestedModelName,
                 audioParameters: requestedParameters,
@@ -1119,7 +1129,14 @@ function AudioNodeImpl({
       pollingPausedTaskIdRef.current = undefined;
       setPollingPausedTaskId(undefined);
       setRetryTaskId(undefined);
-      return { status: "success" };
+      return {
+        status: "success",
+        successProof: {
+          ownershipKey: pollingRun?.ownershipKey ?? "",
+          resultKey: groupRunResultKey(task.resultUrl),
+          taskId: task.id,
+        },
+      };
     } catch (error) {
       if (error instanceof GenerationRequestError) {
         setServerInputProblems(error.problems);
@@ -1241,7 +1258,7 @@ function AudioNodeImpl({
         status: "skipped",
       };
     }
-    return { status: "success" };
+    return { status: "success", successProof: outcome.successProof };
   };
 
   const runWorkflowNodeRef = useRef<() => Promise<NodeRunResult>>(
@@ -1325,6 +1342,9 @@ function AudioNodeImpl({
               audioGenerationRetryAllowed: undefined,
               audioGenerationRetryBlockCode: undefined,
               audioGenerationRetryBlockReason: undefined,
+              groupRunSuccessOwnershipKey: undefined,
+              groupRunSuccessResultKey: undefined,
+              groupRunSuccessTaskId: undefined,
               audioGenerationTaskId: taskId,
             },
           }
@@ -1523,6 +1543,9 @@ function AudioNodeImpl({
                   audioGenerationErrorCode: undefined,
                   audioGenerating: true,
                   audioGenerationTaskId: taskId,
+                  groupRunSuccessOwnershipKey: undefined,
+                  groupRunSuccessResultKey: undefined,
+                  groupRunSuccessTaskId: undefined,
                 },
               }
             : node,
@@ -1835,8 +1858,11 @@ function AudioNodeImpl({
               audioGenerating: true,
               audioGenerationRetryAllowed: undefined,
               audioGenerationRetryBlockCode: undefined,
-              audioGenerationRetryBlockReason: undefined,
-              audioGenerationTaskId: task.id,
+                audioGenerationRetryBlockReason: undefined,
+                audioGenerationTaskId: task.id,
+                groupRunSuccessOwnershipKey: undefined,
+                groupRunSuccessResultKey: undefined,
+                groupRunSuccessTaskId: undefined,
             },
           }
         : node));
