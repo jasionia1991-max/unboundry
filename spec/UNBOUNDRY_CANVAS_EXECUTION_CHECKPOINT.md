@@ -1,7 +1,7 @@
 # Unboundry 画布执行解耦施工 Checkpoint
 
-更新时间：2026-08-21（最终safe full、独立复审、GitHub、冻结备份、生产发布与真实双组页面验收完成）
-状态：`PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`
+更新时间：2026-08-21（最终safe full、独立复审、GitHub、冻结备份、生产发布、真实双组页面验收与用户验收完成）
+状态：`PRODUCTION_PUBLISHED_USER_PASS`
 用途：这是本轮治理唯一的可变施工状态。每个批次结束必须更新；上下文压缩或新 Session 接手时，先重新核对真实 Git/代码，再从“下一步唯一动作”继续。
 
 ## 1. 当前身份
@@ -45,7 +45,7 @@
 
 ## 4. 当前阶段
 
-当前阶段：`COMPLETE / USER_RECHECK`
+当前阶段：`COMPLETE / USER_PASS`
 
 已完成：
 
@@ -73,7 +73,7 @@
 非阻断后续：
 
 - VIEW-005精确98/171/200档位未跑，归product engineering后续性能专项；已有m79 60节点与m1 62节点代表性回归，不冒充精确档位通过。
-- 用户尚未主观复验，状态保持`USER_RECHECK`；不得写`USER_PASS`。
+- 用户于2026-08-21明确回复「v0.6.27 验收通过，同步更新为 USER PASS。」状态已据实收口为`USER_PASS`。
 
 ## 5. 当前施工文件
 
@@ -170,7 +170,7 @@
 
 ## 11. 下一步唯一动作
 
-等待用户打开线上v0.6.27主观复验并明确回复；在此之前保持`USER_RECHECK`。精确98/171/200节点性能档位由product engineering在v0.6.27后单独处理，不阻断本Goal技术收口。
+本Goal已由用户明确验收通过，无待办验收动作。精确98/171/200节点性能档位由product engineering在v0.6.27后单独处理，仍是非阻断独立性能专项，不改写为已验证。
 
 ## 12. 最终完成前复核
 

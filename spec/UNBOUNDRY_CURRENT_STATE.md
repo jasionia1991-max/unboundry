@@ -6,11 +6,11 @@
 
 ## 一句话
 
-线上是 **v0.6.27 / schema39**（画布、工作流执行与任务恢复已解耦），2026-08-21 已发布；agent 已在新建真实项目中让两个不相交文字工作组于557ms内先后启动、同时保持active并全部完成，刷新后四个结果仍在原节点，待用户主观复验。v0.6.26 为上一版。用户要的核心结果仍是：**上传一张图，工作流自己跑完，用户下载结果**。
+线上是 **v0.6.27 / schema39**（画布、工作流执行与任务恢复已解耦），2026-08-21 已发布；agent 已在新建真实项目中让两个不相交文字工作组于557ms内先后启动、同时保持active并全部完成，刷新后四个结果仍在原节点；用户已于同日明确验收通过。v0.6.26 为上一版。用户要的核心结果仍是：**上传一张图，工作流自己跑完，用户下载结果**。
 
 ## v0.6.27 画布执行解耦已发布（2026-08-21）
 
-- 状态：`PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`。四类整组执行已从React节点registration迁移到静态headless executor；`workflowRenderRetention.ts`已删除；同画布不相交组可并行，重叠节点/直接输入在付费提交前阻止。
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户于2026-08-21明确回复「v0.6.27 验收通过，同步更新为 USER PASS。」四类整组执行已从React节点registration迁移到静态headless executor；`workflowRenderRetention.ts`已删除；同画布不相交组可并行，重叠节点/直接输入在付费提交前阻止。
 - 所有权：结果应用必须匹配runId、taskId、ownershipKey、nodeId和kind；checkpoint、lease、lock与摘要按runId隔离且checkpoint写入强制匹配lease runId，一轮不能清除另一轮。手动单节点提交也必须避让同标签活跃组lease；headless executor只放行自己的runId。
 - 自动证据：m22 `37/37`、m38 `15/15`、m40 `14/14`、m41 `51/51`、m44 `8/8`、m68 `4/4`均通过。m22直接覆盖四模态headless preflight/run/recover/apply、多run导航/精确checkpoint清理，以及双run反例：A成功、A失败、A停止时B均继续；A整组和两层子节点真实卸载后，第二层仍提交、完成并落盘。运行中无关节点编辑/移动/连接/删除/复制和视图缩放仍可用。
 - 最终自动回执：HEAD `26525387ff02a34d8de1eae4d74ed51c11529a7a`执行`node scripts/run-safe-tests.mjs full`退出码0，`119/119 specs、1029/1029 tests`，failed/skipped/retries/blocked/reportErrors均0；source/snapshot SHA均为`bef8b0f3c0204a6634dd45753d0700827eb8df6de0a7abb992f144116cf535d6`，4173 listener未变，受保护未跟踪JSON未进入快照。架构终审P0=0/P1=0，测试终审无新的P0/P1实现阻断。
