@@ -1,19 +1,21 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-21
-状态：`v0.6.29/schema39 已发布；隔离实现、定向验证、一次独立review、唯一一次safe full及失败项最小复验、GitHub、冻结备份、fresh build、原子切换和无密钥生产技术门均已完成。独立云腾profile已创建，但没有云腾自己的key；标准「我的连接」又只列已有发布模型的平台，当前不显示云腾。credential/model/binding/task/attempt和真实Provider POST均为0。当前为 PRODUCTION_CODE_PUBLISHED_CONFIGURATION_BLOCKED / USER_RECHECK；等待经批准的非回显安全运维入口准备云腾key，不能借用优创或发布占位模型绕过。权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+状态：`v0.6.29/schema39 已发布；隔离、唯一一次safe full、一次review、GitHub、冻结备份、fresh build、生产配置和三次真实创建POST均已完成。云腾独立凭据/目录/模型/任务链有效，Kling成功保存；Nano与Suno在云腾侧生成成功但Unboundry结果解析失败，已停用两条绑定并保留历史。当前为 PRODUCTION_PUBLISHED_CONFIGURATION_PARTIAL_FAIL_CLOSED / USER_RECHECK；创建POST预算已耗尽，禁止再生成、借用优创、移动tag或进入v0.6.30。权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
 
-### 2026-08-21 云腾 Provider 隔离与三模型上线（v0.6.29 代码已发布，凭据门阻断）
+### 2026-08-21 云腾 Provider 隔离与三模型上线（v0.6.29 已发布，真实验收后部分配置回滚）
 
 - 业务纠正：优创和云腾是两个独立商业平台、余额和API key互不相通；两者只是都接天空兼容API。必须各自使用独立Provider profile、凭据、模型内部ID和任务归属，不创建“天空”计费profile。
-- 生产事实：v0.6.29代码在线，独立云腾profile `06831aee…60fdf` 已创建为 `multi-protocol-relay`，base URL为`https://api.lk888.ai`；但key/catalog均unchecked，账号凭据、三条精确`model_profiles`、绑定、task和attempt均为0。禁止把三模型补进优创或使用优创key代替。
+- 生产事实：云腾profile `06831aee…60fdf`、profile/账号凭据和目录均valid；只读目录129模型、控制面请求2次。三个目标模型只归属云腾，均`media-generate`、非默认；Kling保持published/enabled，Nano与Suno在真实结果格式失败后disabled/enabled0。
 - 已实现：公共目录与节点下拉展示商业Provider；同名模型按内部ID选择；管理端区分商业平台/driver/protocol并禁止既有模型跨profile重绑；owner凭据缺失严格fail-closed；relay核对、task/attempt/recovery与结果提交强制匹配profile/model/kind/owner。
 - 自动证据：Node `22.23.1` / npm `10.9.8`，TypeScript退出0；一次独立subagent review的4项发现全部修复；review后m12/m56/m57/m73/m88有效`78/78 PASS`，真实Provider创建POST为0，4173 listener不变。实现提交`8f4a2b6`。
 - 正式门：唯一一次safe full在HEAD `0f23b19`、source/snapshot `40da52cc…20a`上执行，`1025/1034`通过、9项旧测试夹具/可访问名称失败、退出1，快照和4173 listener不变。只复验失败spec后先`30/31`，再修唯一m43并`6/6 PASS`；未重复full。测试兼容提交`19ec414`。
 - 发布证据：tag`v0.6.29`→commit`d4ccc360e2645e43005c8bdf9a05ec984d48e655`/tree`a291420309236f2b2bb53653301b2b1f1395dbfd`；PR #60 merge`af8493cdf710dc9f899aa098d725e9d034bdb032`；production current为`/opt/unboundry/releases/v0.6.29-yunteng-provider-isolation-20260821`。冻结备份`v0.6.29-frozen-6c2fff`共365文件，双清单SHA`cabcb1c0…c0b5`。
-- 生产门：service active/enabled、NRestarts0；公网/loopback0.6.29；schema39/integrity ok/FK0；tasks630/attempts638/active0、模板50/已发布48、媒体355个/284663380字节不变；公网5资源与release逐字节一致，应用/nginx/浏览器新增error/warn为0。
-- 隔离证据：优创profile、3组账号凭据身份、12个模型/绑定、281个任务和288个attempt与冻结备份逐项SHA一致。云腾无credential/model/binding/task/attempt，目录请求和真实Provider创建POST均为0；未读取、复制、覆盖或回退使用优创key。
-- 剩余流程：标准「我的连接」因云腾尚无已发布模型而不显示该profile；必须先由用户准备经批准的非回显安全运维入口，再保存云腾自己的key。不得为暴露表单提前发布占位模型。凭据身份出现后才能只读同步目录、只在云腾导入/发布/绑定三模型、跑完零付费门和最多3次有界真实smoke。当前fail-closed，不是Goal完成或USER PASS。
+- 真实调用：零付费门通过后恰好3次创建POST，分别建立Nano/Kling/Suno provider task `112083470`/`112086188`/`112087930`，provider attempt各1且只有initial admission。Kling success并保存OSS；Nano/Suno task以FORMAT失败，但云腾个人中心显示本日图片1/视频1/音频1，说明上游均已生成。
+- 成本与结果：云腾页面显示本日消耗算力4.09、余额7.14；没有第四次POST。Nano 1024×1024 JPG与Suno 217.68秒MP3已下载到本地恢复目录，未重建任务；Kling MP4为3378176字节、5.042秒、ready。
+- 生产门：service active/enabled、NRestarts0；公网/loopback0.6.29；schema39/integrity ok/FK0；tasks633/attempts641/active0、模板50/已发布48、逻辑媒体716条/1186596417字节、画布57；公网5资源与release逐字节一致，生产两页面console error/warn为0。
+- 隔离证据：优创profile、3组账号凭据身份、12个模型/绑定、281个任务和288个attempt与冻结备份逐项SHA一致；未读取、复制、覆盖或回退使用优创key。云腾3任务/3attempt全链profile/model identity正确。
+- 收口：Nano/Suno保持停用、Kling保持发布；不得删除历史或把失败模型改绑优创。受v0.6.29冻结和停止边界限制，本Goal不能写成三模型PASS或USER PASS；未来修复需要新的版本与授权，本轮不进入v0.6.30。
 - 权威方案：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_PLAN_2026-08-21.md`；施工续接：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_CHECKPOINT.md`；Goal合同：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_GOAL_PROMPT_2026-08-21.md`。
 
 ### 2026-08-21 v0.6.28 已发布（上一不可变版）

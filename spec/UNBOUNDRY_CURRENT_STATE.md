@@ -6,29 +6,30 @@
 
 ## 一句话
 
-**v0.6.29 / schema39 已发布**，代码、GitHub、冻结备份、fresh build、原子切换和不依赖云腾密钥的生产技术门均已完成。生产现有独立“云腾” profile，但安全入口没有云腾自己的 API key，因此它保持 disabled / key unchecked，账号凭据、三模型、绑定、任务和 attempt 均为 0；目录同步和真实 Provider smoke 没有执行。当前准确状态为 `PRODUCTION_CODE_PUBLISHED_CONFIGURATION_BLOCKED / USER_RECHECK`，不是 Goal 完成或 `USER_PASS`。用户要的核心结果仍是：**上传一张图，工作流自己跑完，用户下载结果**。
+**v0.6.29 / schema39 已发布**，商业 Provider 隔离、GitHub、冻结备份、fresh build、原子切换和生产配置均已完成。云腾独立 key 已经安全进入既有加密入口，未回显、未写入聊天/Git/文档/测试；目录同步得到129个模型，三个目标模型只归属云腾。三次且仅三次真实创建 POST 已用尽：Kling 在 Unboundry 内成功并保存 OSS；Nano 与 Suno 在云腾侧均已生成作品，但 Unboundry 因响应结果格式不兼容未能保存，现已分别停用、保留历史任务与审计，Kling 继续发布。当前准确状态是 `PRODUCTION_PUBLISHED_CONFIGURATION_PARTIAL_FAIL_CLOSED / USER_RECHECK`，不是 Goal 完成、三模型 PASS 或 `USER_PASS`。
 
-本 Goal 的真实 Provider 创建 POST 总数为 0，没有 OSS 写入、schema变更或生产画布修改。必须由授权用户在生产「我的连接」安全填写云腾自己的 key 后才能续接目录同步、三模型导入/发布/绑定和最多三次 smoke；密钥不得进入聊天、Git、文档、测试或终端回显，也不得借用优创。用户明确验收前不得写`USER_PASS`。
+云腾个人中心显示本日图片1、视频1、音频1，合计消耗算力4.09、余额7.14。Nano/Suno现有作品已从云腾页面下载到本地恢复目录，未重建 Provider task；真实创建 POST 预算已耗尽，禁止再次生成或自动重试。受版本冻结和“不进入v0.6.30”边界约束，本次只能保持两模型fail-closed，后续需新的版本/授权修正结果解析器后才能重新发布。
 
-## v0.6.29 已发布，云腾凭据门 fail-closed（2026-08-21）
+## v0.6.29 已发布，云腾三次真实验收后部分配置回滚（2026-08-21）
 
 - tag `v0.6.29` 指向 commit `d4ccc360e2645e43005c8bdf9a05ec984d48e655` / tree `a291420309236f2b2bb53653301b2b1f1395dbfd`；PR #60 merge `af8493cdf710dc9f899aa098d725e9d034bdb032`，发布时 main tree、tag tree 和 release archive 一致。
 - 生产 current：`/opt/unboundry/releases/v0.6.29-yunteng-provider-isolation-20260821`；冻结备份：`/var/lib/unboundry-rollbacks/v0.6.29-frozen-6c2fff`，365 文件，双清单 SHA 均为 `cabcb1c0…c0b5`。
-- 发布门：service active/enabled、NRestarts0；公网/loopback 0.6.29；schema39、integrity ok、FK0；tasks630、attempts638、active0、模板50/已发布48、媒体355个/284663380字节不变；5个公网构建资源与 release 逐字节一致；应用/nginx和浏览器新增 error/warn 均为0。
-- 云腾 profile `06831aee…60fdf` 独立存在，driver=`multi-protocol-relay`、base URL=`https://api.lk888.ai`；key/catalog 均 unchecked，credential/model/binding/task/attempt均0，Provider目录请求和真实创建POST均0。
-- 优创对冻结备份逐项哈希一致：profile 1、账号凭据身份3、模型/绑定12/12、任务/attempt 281/288；没有读取、复制、覆盖或回退使用优创 key。
-- 凭据门：安全检查了本机环境变量名、云腾精确Keychain标签、生产服务环境变量名、云腾专属配置文件名、数据库凭据身份元数据和生产「我的连接」页，均没有云腾key；该页只列有已发布模型的平台，云腾当前不会出现。不得靠先发布占位模型绕过；必须经批准的非回显安全运维入口准备云腾key后再续接。完整回执：`spec/V0_6_29_PRODUCTION_RECEIPT_2026-08-21.json`。
+- 发布后终门：service active/enabled、NRestarts0；公网/loopback 0.6.29；schema39、integrity ok、FK0；tasks633、attempts641、active0、模板50/已发布48、逻辑媒体716条/1186596417字节、画布57；5个公网构建资源与 release 逐字节一致，管理页和验收画布控制台 error/warn 均为0。
+- 云腾 profile `06831aee…60fdf` 独立存在并保持 enabled，driver=`multi-protocol-relay`、base URL=`https://api.lk888.ai`；profile key、账号凭据身份和目录凭据均 valid，credential version=1，目录129模型，控制面请求2次。
+- 三条精确模型均只在云腾：Nano `cb2e1041…2db4`、Kling `3919d490…4760`、Suno `65830fc7…5ec1`。真实验收后 Nano/Suno=`disabled`、binding enabled=0；Kling=`published`、binding enabled=1；三者均非默认、未归档，历史task/attempt保留。
+- 三次创建 POST 恰好对应 provider task `112083470`、`112086188`、`112087930`；Provider attempt均只有execution_attempt=1。Nano/Suno一次“核对原任务”只读取既有providerTaskId，没有新增admission或创建POST。Kling产物 `ec4aec38…22d.mp4` 已ready、OSS 3378176字节/5.042秒；Nano/Suno Provider作品已下载到 `/Users/mymy/Documents/unboundry/recovery/yunteng-provider-results-20260821`。
+- 优创对冻结备份逐项哈希一致：profile 1、账号凭据身份3、模型/绑定12/12、任务/attempt 281/288；没有读取、复制、覆盖或回退使用优创 key。完整回执：`spec/V0_6_29_PRODUCTION_RECEIPT_2026-08-21.json`。
 
 ## 云腾 Provider 隔离纠正（2026-08-21，v0.6.29 代码已发布）
 
 - 用户明确：优创与云腾是两个老板、两套充值余额、两套 API key 和账单，互相完全不能使用；二者只是都接入天空兼容 API。“天空”是技术兼容层，不是默认计费 Provider。
-- 发布前只读核对：当时存在优创 profile、没有云腾 profile；优创目录快照中碰巧出现三个 Provider 模型 ID，但 `model_profiles` 没有三条精确模型记录，节点绑定也为 0。当前已创建独立云腾元数据 profile，但因缺少云腾 key，三模型和绑定仍为0。目录出现不能证明模型归属，更不能证明云腾已接入完成。
+- 发布前只读核对：当时存在优创 profile、没有云腾 profile；优创目录快照中碰巧出现三个 Provider 模型 ID，但 `model_profiles` 没有三条精确模型记录。当前三个内部模型记录和绑定均只归属独立云腾 profile；Nano/Suno因结果格式不兼容停用，Kling保持发布。目录出现本身不证明模型归属，最终以profile/model/binding/task/attempt证据为准。
 - 正确数据模型：优创、云腾各自一条 `provider_profiles`；账号凭据继续按 `(account_id, provider_profile_id)` 隔离；相同 Provider model ID 可在两个 profile 下各有独立内部 model ID。三模型本轮明确归属云腾，禁止写入或回退到优创。
 - schema39 保持不变。普通 `/api/models` 已安全返回 `providerName`，节点下拉以“模型名 + 商业Provider + capability”区分同名模型并继续按内部 model ID 选择；管理端明确区分商业平台、技术 driver 与 protocol，并禁止既有模型跨 profile 原地重绑。
 - 凭据 owner 模式不再回退 profile 全局 key；task/attempt/recovery、relay 自动核对和 Generation 结果提交均把 `provider_profile_id` 纳入严格身份核对。一次独立 subagent review 找出的四项（凭据 fallback、恢复上下文串 profile、结果提交缺 profile、模型身份漂移）已全部修复。
 - Node `22.23.1` / npm `10.9.8` 定向有效覆盖：review 后 m12/m56/m57/m73/m88 `78/78 PASS`，TypeScript 退出0；另有 m9/m16/m18/m46 直接覆盖密钥表面、灰阶布局、两字号和多目录UI。全部使用隔离临时数据、动态loopback和fake fetch，真实创建POST为0，4173 listener不变。实现提交：`8f4a2b6 feat(provider): isolate commercial platform identity`。
 - 唯一一次正式safe full在HEAD `0f23b19`、source/snapshot `40da52cc…20a`上执行：`1025/1034`通过，9项旧测试夹具/可访问名称失败，退出1；源码快照和4173 listener不变。按合同只复验失败spec，首轮`30/31`，唯一剩余m43修正后`6/6 PASS`；未第二次运行full。测试兼容提交：`19ec414 test(provider): align isolation fixtures`。
-- 施工方案：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_PLAN_2026-08-21.md`；续接：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_CHECKPOINT.md`；Goal 合同：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_GOAL_PROMPT_2026-08-21.md`。GitHub与代码发布已完成；下一门只能是用户从生产安全入口提供云腾自己的key，随后续接配置和有界真实smoke。
+- 施工方案：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_PLAN_2026-08-21.md`；续接：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_CHECKPOINT.md`；Goal 合同：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_GOAL_PROMPT_2026-08-21.md`。GitHub与代码发布、凭据配置和三次真实调用均已执行；本版本停止在两模型配置fail-closed，不得再次调用、移动tag或进入v0.6.30。
 
 ## v0.6.28 已发布（2026-08-21）
 
@@ -97,7 +98,7 @@
 - 功能 PR：#60，merge `af8493cdf710dc9f899aa098d725e9d034bdb032`，发布时 main tree 与 tag tree 一致
 - 冻结备份：`/var/lib/unboundry-rollbacks/v0.6.29-frozen-6c2fff`（365 文件，两份清单 SHA 同为 `cabcb1c01ec1d157e2d9eabfcdab49b1a8bc5b1febffb6d4f6d3c23d1ae9c0b5`）
 - 上一不可变版：`/opt/unboundry/releases/v0.6.28-relay-media-models-20260821`（以及更早版本）仍保留
-- 当前数据门：schema39、integrity ok、FK0、tasks630、attempts638、公共模板50（48 published）、active0、媒体355个/284663380字节。
+- 当前数据门：schema39、integrity ok、FK0、tasks633、attempts641、公共模板50（48 published）、active0、逻辑媒体716条/1186596417字节、画布57。
 - 生产并发配置已恢复推荐值：per_user 20 / image 10 / video 2 / audio 2 / text 10 / RPM 120
 - 正式安全全量：v0.6.29 候选唯一一次执行 `1025/1034`，9项旧夹具/ARIA失败经最小复验全部转绿；未第二次运行 full
 - v0.6.25 已于 2026-08-20 发布，agent 真实页面与最小真实 Provider 验证通过，待用户主观复验；更早用户已通过版本状态保持不变
