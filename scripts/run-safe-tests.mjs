@@ -443,7 +443,10 @@ function workingSourceFiles() {
     ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
     { capture: true },
   );
-  return result.stdout.split("\0").filter(Boolean).sort();
+  return result.stdout.split("\0")
+    .filter(Boolean)
+    .filter((file) => file !== "spec/public-templates-director-split-revision.json")
+    .sort();
 }
 
 function createTrackedSnapshot(suiteRoot) {

@@ -63,6 +63,7 @@ import {
   writeGroupRunCheckpoint,
 } from "./groupRunCheckpoint";
 import { runExclusiveCanvasSubmit } from "./saveGate";
+import { listGenerationTasks } from "./generationTasks";
 
 export type { NodeRunResult };
 
@@ -90,6 +91,16 @@ function workflowNodeErrorCode(node: ProbeNodeType | undefined) {
           ? node.data.audioGenerationErrorCode
           : undefined;
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function taskBelongsToWorkflowRun(
+  node: ProbeNodeType | undefined,
+  task: { id: string; kind: "audio" | "image" | "text" | "video" },
+  runId: string,
+) {
+  if (!node || node.data.workflowExecutionRunId !== runId) return false;
+  const data = node.data as Record<string, unknown>;
+  return data[`${task.kind}GenerationTaskId`] === task.id;
 }
 
 function workflowStateCount(
@@ -516,6 +527,20 @@ export function WorkflowExecutionProvider({
             ownerId,
             Date.now(),
             [...candidateLockIds],
+            async () => {
+              const tasks = await listGenerationTasks(canvasId);
+              return !tasks.some((task) =>
+                ["queued", "running", "retrying", "recovering"].includes(
+                  task.state,
+                ) &&
+                candidateLockIds.has(task.nodeId) &&
+                !taskBelongsToWorkflowRun(
+                  nodes.find((node) => node.id === task.nodeId),
+                  task,
+                  runId,
+                )
+              );
+            },
           )
         );
         if (!leaseAcquired) {

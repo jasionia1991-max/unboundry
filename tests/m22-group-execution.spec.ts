@@ -50,6 +50,7 @@ import {
   markGroupRunStarting,
   readGroupRunCheckpoint,
   readGroupRunCheckpoints,
+  readGroupRunLease,
   readGroupRunStarting,
   releaseGroupRunLease,
   writeGroupRunCheckpoint,
@@ -988,6 +989,14 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
       now,
       ["group-a", "node-a"],
     )).toBe(true);
+    expect(await acquireGroupRunLease(
+      scope,
+      "run-a",
+      "owner-intruder",
+      now + 1,
+      ["group-a", "node-a"],
+    )).toBe(false);
+    expect(readGroupRunLease(scope, "run-a")?.ownerId).toBe("owner-a");
     expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas", "node-a"))
       .toBe(true);
     expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas", "node-c"))

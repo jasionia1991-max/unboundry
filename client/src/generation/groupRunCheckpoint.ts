@@ -23,6 +23,41 @@ const activeMemoryRuns = new Map<
 >();
 const heldGroupRunWebLocks = new Map<string, () => void>();
 
+type BrowserLockManager = {
+  request<T>(
+    name: string,
+    options: { ifAvailable: boolean },
+    callback: (lock: unknown) => Promise<T> | T,
+  ): Promise<T>;
+};
+
+function browserLocks(): BrowserLockManager | undefined {
+  if (typeof window === "undefined") return undefined;
+  return (window.navigator as (Navigator & { locks?: BrowserLockManager }) | undefined)
+    ?.locks;
+}
+
+/**
+ * Cross-tab admission boundary shared by manual task mutations and group-run
+ * lease claims. Browsers without Web Locks can still submit manually because
+ * group execution itself is disabled there.
+ */
+export function runWithGroupRunCanvasAdmission<T>(
+  canvasId: string,
+  work: () => Promise<T> | T,
+): Promise<T> {
+  const locks = browserLocks();
+  if (!locks) return Promise.resolve().then(work);
+  return locks.request(
+    `unboundry-group-run-canvas-admission:${JSON.stringify(canvasId)}`,
+    { ifAvailable: false },
+    (lock) => {
+      if (!lock) throw new Error("无法取得画布生成互斥锁");
+      return work();
+    },
+  );
+}
+
 const executionOwnerId = (() => {
   try {
     return crypto.randomUUID();
@@ -351,7 +386,15 @@ function claimGroupRunLease(
     const requestedLocks = new Set(lockedNodeIds);
     const current = readGroupRunLeases(scope);
     for (const lease of current) {
-      if (!isGroupRunLeaseActive(lease, now) || lease.runId === runId) continue;
+      if (lease.runId === runId) {
+        if (lease.ownerId !== ownerId) return false;
+        if (
+          isGroupRunLeaseActive(lease, now) &&
+          !heldGroupRunWebLocks.has(heldWebLockKey(scope, runId, ownerId))
+        ) return false;
+        continue;
+      }
+      if (!isGroupRunLeaseActive(lease, now)) continue;
       if (lease.lockedNodeIds.some((nodeId) => requestedLocks.has(nodeId))) {
         return false;
       }
@@ -389,54 +432,50 @@ export async function acquireGroupRunLease(
   ownerId = executionOwnerId,
   now = Date.now(),
   lockedNodeIds: readonly string[] = [],
+  admissionCheck?: () => Promise<boolean>,
 ) {
-  const locks = (window.navigator as Navigator & {
-    locks?: {
-      request<T>(
-        name: string,
-        options: { ifAvailable: boolean },
-        callback: (lock: unknown) => Promise<T> | T,
-      ): Promise<T>;
-    };
-  }).locks;
+  const locks = browserLocks();
   if (!locks) return false;
-  const holdKey = heldWebLockKey(scope, runId, ownerId);
-  const claimed = await locks.request(
-    `unboundry-group-run-claim:${groupRunSummaryScopeKey(scope)}`,
-    { ifAvailable: false },
-    (lock) => Boolean(lock) && claimGroupRunLease(
-      scope,
-      runId,
-      ownerId,
-      now,
-      lockedNodeIds,
-    ),
-  ).catch(() => false);
-  if (!claimed) return false;
-  return new Promise<boolean>((resolve) => {
-    let acquisitionSettled = false;
-    const settle = (acquired: boolean) => {
-      if (acquisitionSettled) return;
-      acquisitionSettled = true;
-      resolve(acquired);
-    };
-    void locks.request(
-      `unboundry-group-run:${groupRunSummaryScopeKey(scope)}:${runId}`,
-      { ifAvailable: true },
-      async (lock) => {
-        if (!lock) {
-          releaseGroupRunLease(scope, runId, ownerId);
-          settle(false);
-          return false;
-        }
-        const held = new Promise<void>((release) => {
-          heldGroupRunWebLocks.set(holdKey, release);
-        });
-        settle(true);
-        await held;
-        return true;
-      },
-    ).catch(() => settle(false));
+  return runWithGroupRunCanvasAdmission(scope.canvasId, async () => {
+    if (admissionCheck && !await admissionCheck()) return false;
+    const holdKey = heldWebLockKey(scope, runId, ownerId);
+    const claimed = await locks.request(
+      `unboundry-group-run-claim:${groupRunSummaryScopeKey(scope)}`,
+      { ifAvailable: false },
+      (lock) => Boolean(lock) && claimGroupRunLease(
+        scope,
+        runId,
+        ownerId,
+        now,
+        lockedNodeIds,
+      ),
+    ).catch(() => false);
+    if (!claimed) return false;
+    return new Promise<boolean>((resolve) => {
+      let acquisitionSettled = false;
+      const settle = (acquired: boolean) => {
+        if (acquisitionSettled) return;
+        acquisitionSettled = true;
+        resolve(acquired);
+      };
+      void locks.request(
+        `unboundry-group-run:${groupRunSummaryScopeKey(scope)}:${runId}`,
+        { ifAvailable: true },
+        async (lock) => {
+          if (!lock) {
+            releaseGroupRunLease(scope, runId, ownerId);
+            settle(false);
+            return false;
+          }
+          const held = new Promise<void>((release) => {
+            heldGroupRunWebLocks.set(holdKey, release);
+          });
+          settle(true);
+          await held;
+          return true;
+        },
+      ).catch(() => settle(false));
+    });
   });
 }
 
