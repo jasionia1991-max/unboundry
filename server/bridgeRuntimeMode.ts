@@ -41,7 +41,8 @@ export function releaseRoleFromEnvironment(
         packageVersion === "0.6.26" ||
         packageVersion === "0.6.27" ||
         packageVersion === "0.6.28" ||
-        packageVersion === "0.6.29"
+        packageVersion === "0.6.29" ||
+        packageVersion === "0.6.30"
       ? "final"
       : undefined;
   if (!packageRole) {
