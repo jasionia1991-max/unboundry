@@ -1,9 +1,9 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-21
-状态：`v0.6.30 Provider结果兼容候选已冻结，待GitHub与生产发布；用户已给版本和发布授权。实现只修Nano非PNG结果归一化、Suno多音频候选持久化/切换和既有失败任务零POST恢复。v0.6.29三次创建POST预算已耗尽，本版禁止任何新建Provider任务、借用优创密钥或删除历史。权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+状态：`v0.6.30 已发布并完成生产技术验收，状态 PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK。Nano 既有 JPEG 结果已规范化为 PNG；Suno 两个不同完整 MP3 已按 primary/alternate 保存、可切换且均可播放；三媒体模型只在云腾 Provider 下 published/enabled。Provider 创建 POST 新增 0，优创与冻结备份逐表一致。权威回执见 spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json。`
 
-### 2026-08-21 Provider 结果兼容与既有任务零 POST 恢复（v0.6.30 候选）
+### 2026-08-21 Provider 结果兼容与既有任务零 POST 恢复（v0.6.30 已发布）
 
 - 根因不是项目只支持PNG：用户上传入口已支持PNG/JPEG/WebP/GIF并统一转PNG；v0.6.29故障在Provider结果下载只接PNG和单一结果。
 - Nano真实结果是1024×1024 JPEG；v0.6.30接收PNG/JPEG/WebP/GIF，先过资源闸门，再在有界隔离进程内统一生成、验证和保存PNG。
@@ -11,7 +11,10 @@
 - schema39不变；alternate沿用原task/execution/provider profile/model/task身份，不重复成本/成功事件，并纳入恢复、完整性和删除保护。API与音频节点支持切换，整组成功证明同步更新。
 - 成本红线：v0.6.30新建Provider任务POST预算为0；只允许核对并恢复既有provider task `112083470`/`112087930`，任何未知结果或失败不得自动POST重试。
 - 实现与一次独立subagent review已完成，review阻断全部修复且复审无剩余阻断。唯一一次正式safe full在HEAD `a8c9e8f`、source/snapshot `621ac501…e6b`执行，`1035/1037`通过；失败仅为m38候选文档精确字符串和m4夹具伪assetId被持久化成不存在的API路径。按合同未重跑full；m38最小复验`15/15`、纠正夹具后m2+m4 `4/4`通过，真实Provider请求为0。
-- 候选现已冻结；尚待GitHub、冻结备份、fresh build、生产既有任务恢复/验收和正式回执。
+- 发布证据：tag `v0.6.30`→commit `bfed2f79581935882bb58279c8faf992679f12c1` / tree `9a95f30993fc9f21489d1a8acb2e7347d90845c8`；PR #64 merge `0d71d37c77423f3870e97f1e44b9745fef999cfb`。生产 current 为 `/opt/unboundry/releases/v0.6.30-provider-result-compatibility-20260821`；冻结备份 `/var/lib/unboundry-rollbacks/v0.6.30-frozen-1uQmic` 双清单和双配置 manifest 一致。
+- 零 POST 恢复：tasks/attempts 保持 `633/641`，两条任务只复用 provider task `112083470`/`112087930`。Nano 保存 1024×1024 PNG；Suno 保存两个不同 MP3（4506390/4254966 字节，217.704/189.96 秒），第一个 primary、第二个 alternate；没有新增 admission、attempt 或 Provider task。
+- 生产门：公网/loopback version、live、ready 均通过，schema39/integrity/FK、service、inventory、公网5资源、数据计数通过；媒体增量正好3条/10052117字节；实页两音频均可播放并恢复主版本，console error/warn 0。Nano/Suno 验收后与 Kling 一起只在云腾 profile 下 published/enabled；优创 profile/凭据/epoch/模型/绑定/task/attempt 对冻结备份双向差异全0。
+- 当前为 `PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK`，不冒充用户主观验收。正式回执：`spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json`。
 - 权威设计与恢复边界：`spec/UNBOUNDRY_PROVIDER_RESULT_COMPATIBILITY_V0_6_30_2026-08-21.md`。
 
 ### 2026-08-21 云腾 Provider 隔离与三模型上线（v0.6.29 已发布，真实验收后部分配置回滚）

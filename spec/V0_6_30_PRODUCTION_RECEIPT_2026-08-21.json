@@ -1,0 +1,277 @@
+{
+  "version": "v0.6.30",
+  "date": "2026-08-21",
+  "status": "PRODUCTION_PUBLISHED_TECHNICAL_PASS_USER_RECHECK",
+  "scope": {
+    "summary": "兼容云腾 Nano 的非 PNG Provider 结果，并把 Suno 的两个不同完整音频按 primary/alternate 整组持久化、恢复和切换。",
+    "schemaChanged": false,
+    "schemaVersion": 39,
+    "newProviderTaskPostBudget": 0,
+    "protectedJsonReadOrMutated": false
+  },
+  "source": {
+    "implementationCommits": [
+      "8373127 fix(media): preserve provider result variants",
+      "1d6895b test(media): cover provider result compatibility",
+      "0732481 chore(release): bump version to v0.6.30",
+      "a8c9e8f docs(release): prepare v0.6.30 recovery candidate",
+      "76b380a test(media): keep audio selector fixture downloadable",
+      "bfed2f7 docs(release): freeze v0.6.30 candidate evidence"
+    ],
+    "tag": "v0.6.30",
+    "tagObject": "a143e0f08fa997a1084554781e2dfa2396758e82",
+    "tagCommit": "bfed2f79581935882bb58279c8faf992679f12c1",
+    "tagTree": "9a95f30993fc9f21489d1a8acb2e7347d90845c8",
+    "pullRequest": 64,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/64",
+    "mergeCommit": "0d71d37c77423f3870e97f1e44b9745fef999cfb",
+    "mainTreeEqualsTagTree": true
+  },
+  "verification": {
+    "formalSafeFullRuns": 1,
+    "formalSafeFull": {
+      "head": "a8c9e8f6965",
+      "sourceAndSnapshotSha256": "621ac501681690377c44ac537fa66079c6e01dae6b99272c4c2a585899759e6b",
+      "specs": 119,
+      "tests": 1037,
+      "passed": 1035,
+      "failed": 2,
+      "exitCode": 1,
+      "failures": [
+        "m38 candidate-document exact string",
+        "m4 fixture fake assetId normalized to a nonexistent API asset"
+      ]
+    },
+    "targetedAfterFix": [
+      {
+        "scope": "m2 + m4",
+        "passed": 4,
+        "failed": 0,
+        "sourceSha256": "b86381144b5ffb48d612d2945307be3909db2e271eb7bbdf5b0389cdb3a0ba8b"
+      },
+      {
+        "scope": "m38",
+        "passed": 15,
+        "failed": 0,
+        "sourceSha256": "6698687556bf6994134dbd888cd2ab44c26cfd1dbe16eb4a701ba704f35ed8bc"
+      }
+    ],
+    "documentationSyncRecheck": {
+      "scope": "m38",
+      "passed": 15,
+      "failed": 0,
+      "sourceAndSnapshotSha256": "6bc6faa5d3d4a8f3db6631d966a224aa1cd3fa5a8fa186e3bd66594e2187091f",
+      "listener4173Unchanged": true
+    },
+    "secondFullRun": false,
+    "realProviderRequestsDuringAutomatedTests": 0,
+    "independentImplementationReview": "PASS_NO_REMAINING_BLOCKER",
+    "independentPostDeploymentReview": "PASS_WITH_DOCUMENTED_ASYNC_005_MAINTENANCE_EXCEPTION"
+  },
+  "release": {
+    "archiveSha256": "cdca982bb810702aa4860fff8da50cbd116738e06f0375f5dcaeec3f5aab0527",
+    "releasePath": "/opt/unboundry/releases/v0.6.30-provider-result-compatibility-20260821",
+    "previousRelease": "/opt/unboundry/releases/v0.6.29-yunteng-provider-isolation-20260821",
+    "currentTarget": "/opt/unboundry/releases/v0.6.30-provider-result-compatibility-20260821",
+    "freshBuild": {
+      "node": "v22.23.2",
+      "npm": "10.9.8",
+      "npmCi": "PASS",
+      "typecheck": "PASS",
+      "viteBuild": "PASS"
+    },
+    "inventory": {
+      "files": 5821,
+      "inventoryLines": 5820,
+      "sha256": "f26ef6587b81267dbaf6200ad3e718b259423a44f49e545638030a22b968fcc3",
+      "postSwitchCheck": "PASS"
+    }
+  },
+  "frozenBackup": {
+    "path": "/var/lib/unboundry-rollbacks/v0.6.30-frozen-1uQmic",
+    "createdOnce": true,
+    "frozenAndRestoreFiles": 365,
+    "frozenManifestSha256": "1515bff5719695eb28c5525ee5778ab9531cb8afd758a8165bb751cf510a9476",
+    "restoreManifestSha256": "1515bff5719695eb28c5525ee5778ab9531cb8afd758a8165bb751cf510a9476",
+    "frozenConfigManifestSha256": "7f5b0f89f1ca6e9f9a0c87f009eaad1929d2390e74e41629a6137a0c28896113",
+    "restoreConfigManifestSha256": "7f5b0f89f1ca6e9f9a0c87f009eaad1929d2390e74e41629a6137a0c28896113",
+    "schemaVersion": 39,
+    "integrity": "ok",
+    "foreignKeyViolations": 0,
+    "deletedOrOverwritten": false
+  },
+  "controlledRecovery": {
+    "providerCreatePosts": 0,
+    "providerAttemptsBefore": 641,
+    "providerAttemptsAfter": 641,
+    "generationTasksBefore": 633,
+    "generationTasksAfter": 633,
+    "admissionsAdded": 0,
+    "newProviderTaskIds": 0,
+    "firstStartupOutcome": "RESULT_DELAYED_BEFORE_GET_BECAUSE_HISTORIC_ATTEMPT_DEADLINE_EXPIRED",
+    "firstStartupCreatedProviderPost": false,
+    "recoveryWindowProcedure": "停服后精确事务核对两条 task/attempt/profile/model/providerTaskId，临时把既有 attempt 的调度时间置入 GET-only 窗口并转 recovering；成功后精确恢复原 created_at。",
+    "maintenanceException": {
+      "contract": "ASYNC-005",
+      "scope": "仅限两个已经超过普通 paid-attempt deadline 的历史任务。",
+      "ordinaryRestartDeadlineRefreshed": false,
+      "ordinaryRestartEvidence": "第一次启动严格使用原始 attempt created_at，在发 GET 前得到 RESULT_DELAYED。",
+      "controlledException": "第二次停服维护临时刷新调度时间，只允许 GET 既有 providerTaskId；这不是一般过期任务可继续轮询的产品保证。",
+      "temporaryCreatedAt": "2026-08-21T13:04:45.595Z",
+      "originalCreatedAt": {
+        "nanoAttempt664": "2026-08-21T10:42:08.186Z",
+        "sunoAttempt666": "2026-08-21T10:47:20.096Z"
+      },
+      "restoredCreatedAt": {
+        "nanoAttempt664": "2026-08-21T10:42:08.186Z",
+        "sunoAttempt666": "2026-08-21T10:47:20.096Z"
+      },
+      "eventIds": [2164, 2165, 2166, 2167, 2168, 2169, 2170, 2171, 2172, 2173, 2174, 2175]
+    },
+    "originalAttemptTimestampsRestored": true,
+    "auditEventsRetained": true,
+    "nano": {
+      "taskId": "5f24c680-1270-4bea-b29c-2b5842d4b771",
+      "providerTaskId": "112083470",
+      "providerAttemptId": 664,
+      "state": "success",
+      "resultAssetId": "da9cf347-9bc9-44ce-a4e6-b1127109d5f7",
+      "contentType": "image/png",
+      "bytes": 1290761,
+      "width": 1024,
+      "height": 1024,
+      "sha256": "cfd6d9b468a5ff702efaa06e43998cfc3bc25ac8f46805e24baa8400be7c4e43"
+    },
+    "suno": {
+      "taskId": "4cdd6e1f-3b08-4fb0-b173-3ab3a41f127a",
+      "providerTaskId": "112087930",
+      "providerAttemptId": 666,
+      "state": "success",
+      "primary": {
+        "assetId": "caa6395a-6f8c-417e-83f2-071550a7377d.mp3",
+        "contentType": "audio/mpeg",
+        "bytes": 4506390,
+        "durationSeconds": 217.704,
+        "sha256": "0314707a8583d03e073403b26ebe04ba0453e5385390f7f59f33b614ba90babb"
+      },
+      "alternate": {
+        "assetId": "86f83230-041c-4ce8-bf1d-a7d9107e4a6d.mp3",
+        "contentType": "audio/mpeg",
+        "bytes": 4254966,
+        "durationSeconds": 189.96,
+        "sha256": "64e13c5a10384c5dce1fd2498654034a0c6581bf1a4b2d8bfc4deb4462b3646c"
+      },
+      "semanticClaim": "两个不同的完整单音轨候选；不声称是 stem、cover 或同一文件重复。"
+    }
+  },
+  "providerIsolation": {
+    "yuntengProfileId": "06831aee-5794-44cd-8e43-cc613eb60fdf",
+    "youchuangProfileId": "37f7921b-18f0-43d3-91c5-dfed74f693b3",
+    "skyBillingProviderCreated": false,
+    "youchuangKeyReadCopiedOrUsed": false,
+    "yuntengModels": [
+      {
+        "providerModelId": "gemini-3-pro-image-preview",
+        "capability": "image",
+        "status": "published",
+        "bindingEnabled": true
+      },
+      {
+        "providerModelId": "kling-v3-omni-cankao",
+        "capability": "video",
+        "status": "published",
+        "bindingEnabled": true
+      },
+      {
+        "providerModelId": "suno-v4.5",
+        "capability": "audio",
+        "status": "published",
+        "bindingEnabled": true
+      }
+    ],
+    "youchuangAgainstFrozenBackup": {
+      "profiles": 1,
+      "accountCredentials": 3,
+      "models": 12,
+      "bindings": 12,
+      "tasks": 281,
+      "providerAttempts": 288,
+      "profileBidirectionalDifference": 0,
+      "credentialsBidirectionalDifference": 0,
+      "credentialEpochsBidirectionalDifference": 0,
+      "modelsBidirectionalDifference": 0,
+      "bindingsBidirectionalDifference": 0,
+      "tasksBidirectionalDifference": 0,
+      "providerAttemptsBidirectionalDifference": 0
+    },
+    "secureManifestSha256Before": "980e90a98f9dbaf8cfef09b83188a93f46c962aba2622d73107ae9f454e228d0",
+    "secureManifestSha256After": "980e90a98f9dbaf8cfef09b83188a93f46c962aba2622d73107ae9f454e228d0"
+  },
+  "productionAcceptance": {
+    "loopbackVersion": "0.6.30",
+    "publicVersion": "0.6.30",
+    "loopbackLive": 200,
+    "loopbackReady": 200,
+    "publicLive": 200,
+    "publicReady": 200,
+    "readyMode": "active",
+    "activeLeaseHeld": true,
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "serviceRestarts": 0,
+    "schemaVersion": 39,
+    "integrity": "ok",
+    "foreignKeyViolations": 0,
+    "counts": {
+      "generationTasks": 633,
+      "providerAttempts": 641,
+      "activeTasks": 0,
+      "mediaAssets": 719,
+      "mediaBytes": 1196648534,
+      "activeMediaPublications": 0,
+      "historicalFailedMediaPublications": 8,
+      "canvases": 57,
+      "publicTemplates": 50,
+      "publishedPublicTemplates": 48
+    },
+    "newLogicalMedia": 3,
+    "newLogicalMediaBytes": 10052117,
+    "publicAssetsCompared": 5,
+    "publicAssetsEqualRelease": true,
+    "journalApplicationErrors": 0,
+    "journalUnexpectedWarnings": 0,
+    "browser": {
+      "authenticatedProductionCanvasLoaded": true,
+      "nanoImageLoaded": true,
+      "nanoImageNaturalWidth": 1024,
+      "nanoImageNaturalHeight": 1024,
+      "sunoModelLabel": "Suno 音乐生成 4.5，云腾 · 音频",
+      "audioVersionButtons": 2,
+      "primaryPlayable": true,
+      "alternatePlayable": true,
+      "primaryRestoredAfterSwitchTest": true,
+      "consoleErrorsOrWarnings": 0
+    }
+  },
+  "rollback": {
+    "required": false,
+    "previousReleaseRetained": true,
+    "frozenBackupRetained": true,
+    "productionDataDeleted": false,
+    "productionMediaDeleted": false,
+    "auditDeleted": false,
+    "immutableReleaseDeleted": false
+  },
+  "postDeploymentIndependentReview": {
+    "mode": "independent read-only subagent",
+    "testsRun": 0,
+    "productionOrProviderAccess": false,
+    "filesModified": false,
+    "runtimeP0OrP1Found": false,
+    "rollbackRecommended": false,
+    "conclusion": "受控 GET-only 历史恢复可以作为零 POST 的维护证据，但不能宣称普通重启会刷新 ASYNC-005 deadline；该限定已写入回执。"
+  },
+  "authorizationConsumed": true,
+  "userAcceptanceEvidence": null,
+  "completionBoundary": "v0.6.30 技术发布与生产验收完成；等待用户主观复验。不得进入 v0.6.31、其他 Provider、额外模型、再次发布或额外付费验证。"
+}
