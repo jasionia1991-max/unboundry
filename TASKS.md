@@ -1,7 +1,7 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-21
-状态：`v0.6.29/schema39 本地候选已完成隔离实现、定向验证与一次独立review；v0.6.28/schema39仍在线，生产尚无独立云腾Provider。当前为 RELEASE_CANDIDATE_TARGETED_PASS / PRODUCTION_CONFIGURATION_BLOCKED / USER_RECHECK；下一步是唯一一次safe full、GitHub、发布、云腾安全配置与生产验收。权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+状态：`v0.6.29/schema39 本地候选已完成隔离实现、定向验证、一次独立review和唯一一次safe full及失败项最小复验；v0.6.28/schema39仍在线，生产尚无独立云腾Provider。当前为 RELEASE_CANDIDATE_VERIFIED / PRODUCTION_CONFIGURATION_BLOCKED / USER_RECHECK；下一步是GitHub、发布、云腾安全配置与生产验收。权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
 
 ### 2026-08-21 云腾 Provider 隔离与三模型上线（v0.6.29 候选定向通过）
 
@@ -9,7 +9,8 @@
 - 生产事实：v0.6.28代码在线，但当前没有云腾profile；优创目录快照里出现三模型ID不能证明归属，生产三条精确`model_profiles`和节点绑定均不存在。禁止把三模型补进优创或使用优创key代替。
 - 已实现：公共目录与节点下拉展示商业Provider；同名模型按内部ID选择；管理端区分商业平台/driver/protocol并禁止既有模型跨profile重绑；owner凭据缺失严格fail-closed；relay核对、task/attempt/recovery与结果提交强制匹配profile/model/kind/owner。
 - 自动证据：Node `22.23.1` / npm `10.9.8`，TypeScript退出0；一次独立subagent review的4项发现全部修复；review后m12/m56/m57/m73/m88有效`78/78 PASS`，真实Provider创建POST为0，4173 listener不变。实现提交`8f4a2b6`。
-- 剩余流程：候选冻结后只运行一次正式safe full；随后完成tag/push/PR/merge、冻结备份、fresh build、生产切换、云腾安全配置、零付费门、最多3次有界真实smoke和上线后完整生产技术验收。用户主观确认前保持`USER_RECHECK`。
+- 正式门：唯一一次safe full在HEAD `0f23b19`、source/snapshot `40da52cc…20a`上执行，`1025/1034`通过、9项旧测试夹具/可访问名称失败、退出1，快照和4173 listener不变。只复验失败spec后先`30/31`，再修唯一m43并`6/6 PASS`；未重复full。测试兼容提交`19ec414`。
+- 剩余流程：完成tag/push/PR/merge、冻结备份、fresh build、生产切换、云腾安全配置、零付费门、最多3次有界真实smoke和上线后完整生产技术验收。用户主观确认前保持`USER_RECHECK`。
 - 权威方案：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_PLAN_2026-08-21.md`；施工续接：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_CHECKPOINT.md`；Goal合同：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_GOAL_PROMPT_2026-08-21.md`。
 
 ### 2026-08-21 v0.6.28 已发布（当前）

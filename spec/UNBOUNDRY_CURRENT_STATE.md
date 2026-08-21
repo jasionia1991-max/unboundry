@@ -6,7 +6,7 @@
 
 ## 一句话
 
-本地候选是 **v0.6.29 / schema39**，线上仍是 **v0.6.28 / schema39**。v0.6.29 已完成云腾/优创商业平台身份、账号凭据、模型与任务恢复隔离实现和风险定向验证，正在进入唯一一次正式 safe full 与发布阶段；生产尚未创建独立“云腾” Provider，三模型也尚未作为云腾模型发布。当前准确状态为 `RELEASE_CANDIDATE_TARGETED_PASS / PRODUCTION_CONFIGURATION_BLOCKED / USER_RECHECK`。用户要的核心结果仍是：**上传一张图，工作流自己跑完，用户下载结果**。
+本地候选是 **v0.6.29 / schema39**，线上仍是 **v0.6.28 / schema39**。v0.6.29 已完成云腾/优创商业平台身份、账号凭据、模型与任务恢复隔离实现、风险定向验证、一次独立review，以及唯一一次正式safe full和失败项最小复验；正在进入GitHub与生产发布阶段。生产尚未创建独立“云腾” Provider，三模型也尚未作为云腾模型发布。当前准确状态为 `RELEASE_CANDIDATE_VERIFIED / PRODUCTION_CONFIGURATION_BLOCKED / USER_RECHECK`。用户要的核心结果仍是：**上传一张图，工作流自己跑完，用户下载结果**。
 
 截至候选冻结前没有执行真实 Provider 创建 POST，也没有 OSS 写入、schema变更或生产画布修改；用户将在真实页面自行复验，未回复“通过”前不得写`USER_PASS`。
 
@@ -18,7 +18,8 @@
 - schema39 保持不变。普通 `/api/models` 已安全返回 `providerName`，节点下拉以“模型名 + 商业Provider + capability”区分同名模型并继续按内部 model ID 选择；管理端明确区分商业平台、技术 driver 与 protocol，并禁止既有模型跨 profile 原地重绑。
 - 凭据 owner 模式不再回退 profile 全局 key；task/attempt/recovery、relay 自动核对和 Generation 结果提交均把 `provider_profile_id` 纳入严格身份核对。一次独立 subagent review 找出的四项（凭据 fallback、恢复上下文串 profile、结果提交缺 profile、模型身份漂移）已全部修复。
 - Node `22.23.1` / npm `10.9.8` 定向有效覆盖：review 后 m12/m56/m57/m73/m88 `78/78 PASS`，TypeScript 退出0；另有 m9/m16/m18/m46 直接覆盖密钥表面、灰阶布局、两字号和多目录UI。全部使用隔离临时数据、动态loopback和fake fetch，真实创建POST为0，4173 listener不变。实现提交：`8f4a2b6 feat(provider): isolate commercial platform identity`。
-- 施工方案：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_PLAN_2026-08-21.md`；续接：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_CHECKPOINT.md`；Goal 合同：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_GOAL_PROMPT_2026-08-21.md`。下一门是候选冻结后的唯一一次正式 safe full；尚未 tag/push/PR/发布/配置云腾/真实调用。
+- 唯一一次正式safe full在HEAD `0f23b19`、source/snapshot `40da52cc…20a`上执行：`1025/1034`通过，9项旧测试夹具/可访问名称失败，退出1；源码快照和4173 listener不变。按合同只复验失败spec，首轮`30/31`，唯一剩余m43修正后`6/6 PASS`；未第二次运行full。测试兼容提交：`19ec414 test(provider): align isolation fixtures`。
+- 施工方案：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_PLAN_2026-08-21.md`；续接：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_CHECKPOINT.md`；Goal 合同：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_GOAL_PROMPT_2026-08-21.md`。下一门是tag/push/PR/merge与生产发布；尚未发布、配置云腾或真实调用。
 
 ## v0.6.28 已发布（2026-08-21）
 
