@@ -2,13 +2,15 @@
 
 更新日期：2026-08-21
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.30**（生产已发布，待用户主观复验）
+当前代码包版本：**v0.6.30**（生产已发布并获用户验收通过）
 
 ## 一句话
 
-**生产是 v0.6.30 / schema39，状态 `PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK`。** Nano 的既有云腾 JPEG 结果已经有界转成规范 PNG；Suno 的两个不同完整 MP3 已整组持久化，第一个为 primary、第二个为 alternate，真实页面可以切换和播放。Provider 创建 POST 新增 0，tasks/attempts 仍为 `633/641`；Nano、Kling、Suno 三模型只在云腾 profile 下 published/enabled，优创 profile/凭据/epoch/模型/绑定/task/attempt 对冻结备份双向差异均为 0。尚未取得用户主观 PASS。
+**生产是 v0.6.30 / schema39，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。** Nano 的既有云腾 JPEG 结果已经有界转成规范 PNG；Suno 的两个不同完整 MP3 已整组持久化，第一个为 primary、第二个为 alternate，真实页面可以切换和播放。Provider 创建 POST 新增 0，tasks/attempts 仍为 `633/641`；Nano、Kling、Suno 三模型只在云腾 profile 下 published/enabled，优创 profile/凭据/epoch/模型/绑定/task/attempt 对冻结备份双向差异均为 0。用户于2026-08-21打开生产验收项目后明确回复“通过”。
 
 云腾个人中心此前显示本日图片1、视频1、音频1，合计消耗算力4.09、余额7.14。v0.6.30 只轮询既有 provider task `112083470`/`112087930` 并把成片保存进 Unboundry，没有重建 Provider task。当前版本和发布授权已消费，禁止追加真实生成、再次发布或进入下一版本。
+
+当前没有已批准或施工中的下一版本。唯一明确保留的非阻断工程验证是 `VIEW-005`（98/171/200 节点精确性能档位，`NOT_RUN`）；Mureka 真实音频、团队/多人协作、真实 Agent 协议、Storyboard 完整编辑、图片打光和其他付费内容抽验均保持原 `PARTIAL/PAUSED/BLOCK`，不会因为 v0.6.30 通过而自动启动。
 
 ## v0.6.30 Provider 结果兼容已发布（2026-08-21）
 
@@ -55,7 +57,7 @@
 
 ## 三媒体模型与Generation结果提交边界（2026-08-21，已随v0.6.28发布）
 
-- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。GenerationResultCommit在同一SQLite事务内提交media publication、Provider attempt、task success与event；MediaLifecycle/MediaRegistry不再查询或更新Generation表，TaskStore与Safety运行时循环已解除。
+- v0.6.28 发布时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；v0.6.29/30 已补齐独立云腾真实验证、结果兼容、生产与用户验收，当前聚合状态由本文顶部 v0.6.30 `USER_PASS` 承担。GenerationResultCommit在同一SQLite事务内提交media publication、Provider attempt、task success与event；MediaLifecycle/MediaRegistry不再查询或更新Generation表，TaskStore与Safety运行时循环已解除。
 - 模型：`gemini-3-pro-image-preview`、`kling-v3-omni-cankao`、`suno-v4.5`均复用`multi-protocol-relay/media-generate`。Nano/Kling只接受按edge order的图片引用（上限14/7），Suno不接受媒体引用；参数映射、`result_type`、PNG/MP4/音频保存均为fail-closed。
 - 异步安全：截止从paid attempt `created_at`计算，Nano/Kling/Suno分别10/75/15分钟，5秒起步且最多10秒；已有Provider task id只查询原任务；提交响应丢失不二次POST；status只在404/405回退；无`refunded:true`不自动付费重试。
 - 自动证据：本地Goal冻结十spec最终有效`148/148`；发布阶段另执行正式full覆盖1034条，两个失败经最小复验`16/16`通过。TypeScript、构建、source coverage、外网门禁与生产技术门均通过。
@@ -64,7 +66,7 @@
 
 ## 同步文字Provider port（2026-08-21，已随v0.6.28发布）
 
-- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。同步文字执行已统一经过`TextGenerationProvider`与`TextProviderRegistry`；Generation Task不再按Ark/relay具体文字driver调用adapter。原未使用的媒体形态`GenerationProvider`假抽象已收敛为当前真实port。
+- v0.6.28 发布时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该代码持续包含在当前 v0.6.30 生产版本中，不再是待发布工作。同步文字执行已统一经过`TextGenerationProvider`与`TextProviderRegistry`；Generation Task不再按Ark/relay具体文字driver调用adapter。原未使用的媒体形态`GenerationProvider`假抽象已收敛为当前真实port。
 - 安全边界：Provider profile/credential继续由原owner解析和租赁；Task协调器继续拥有task、attempt、幂等、reconcile、lease、结果归属与写回；adapter只返回规范化`text + providerUsageTokens`，不获得数据库、TaskStore、Canvas或MediaLifecycle。
 - 替换性：m33用可注入fake Provider完成一个task，网络fetch为0、provider-boundary attempt恰好1；未知driver/缺少实现时本地失败且fetch仍为0。
 - 自动证据：Node `22.23.1` / npm `10.9.8`下，一次`npx tsc --noEmit`退出0；安全runner定向m33 `8/8`、m39 `3/3`、m44 `8/8`、m53 `23/23`、m57 `14/14`通过，异常0，使用新临时数据和动态loopback端口，4173 listener不变。
@@ -93,30 +95,30 @@
 - 发布证据：tag `v0.6.26` 精确指向 commit `dc29cc00d5b379e3e8b8cb1746dc6cf85f01c140` / tree `0770cb7c03e335620906d0b3954e510aa30f9bf2`；PR #53 merge `4a675be056aaca4b3d3a3239136857fecbefbb94`，main tree 与 tag tree 一致。生产指针 `/opt/unboundry/current -> /opt/unboundry/releases/v0.6.26-viewport-independent-group-run-20260821`；冻结备份 `/var/lib/unboundry-rollbacks/v0.6.26-frozen-234452`，365 文件，两份清单 SHA 同为 `6b64da90d996446e570a60bc0454ead445defe42df09579787e796e39864b525`。切换前后 schema39/integrity ok/FK0/tasks569/attempts577/templates50/published48/active0 完全一致，公网 5 个构建资源逐字节一致。
 - 真实页面证据：画布 `9dd7c462-cc1e-40e9-90c7-8e0131df490e` 启动“一键上新+自检”后把父组拖出屏幕；任务面板仍从“已完成 5/11、正在处理 4”继续到“成功 11、失败 0、跳过 0、未运行 0”，总用时 3:18。生产正好新增 11 tasks / 11 attempts，全部 attempt 1 success，4 图 + 7 文，active0；页面“已保存到云端”，控制台 0 error/warn。尚缺用户主观复验，不能写 `USER_PASS`。
 
-## v0.6.25 发布与真实验证（2026-08-20）
+## v0.6.25 发布与真实验证（2026-08-20，历史时点）
 
-- 当前代码包与线上版本均为 **v0.6.28**；本节以下为 v0.6.25 历史记录。v0.6.26 状态 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`并作为历史版本保留。v0.6.25 的完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
+- 本节以下为 v0.6.25 历史记录，不承担当前版本播报；当前生产以本文顶部 v0.6.30 状态为准。v0.6.26 的 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK` 是该版本独立验收时点，继续作为历史证据保留。v0.6.25 的完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
 - 事二「生成任务一直排队中」已在线闭环：已知任务 `c479826f-a426-4a11-854c-79ecc802bcbc` 从 `queued / attempt 1 / provider_task_id null` 在 v0.6.25 重启后自动接力，平台任务 `111092189` 完成，最终 `success / attempt 2`；没有盲目重复。
 - 事一已查清：2026-08-19 15:23–15:26Z 上游“服装主体标准化”图片成功并产出 11,596,744 字节 PNG；v0.6.23 的 10MB 文字输入预检随后拦下四个下游文字节点，五个后代未运行。不是客户端 DAG 漏发；红字把失败错归因给已经成功的上游图片节点。
 - “2:33 三张主图从未提交”的旧说法已被生产任务表与 nginx 202 提交记录否定：该轮 7 图 + 4 文全部 success。
 - Ark Files 已补齐失败/取消清理、底层 abort、单次与整体 poll deadline、读取前限流、OSS 流式 20MiB 上限、账号隔离 gate、脱敏结构化日志与安全本地读取。事故画布原节点 `text-932053d1…` 真实引用 `11,596,744` 字节 PNG；agent 在页面点一次生成，任务 `6d304853…` attempt 1 success、4289 tokens、结果 1278 字符；日志 upload/poll(1 次)/delete 全 success，页面显示用时 1:06 和“已保存到云端”，浏览器控制台 0 error/warn。
 - Provider 成片保存退避、整组“停止后续”、持久失败摘要、scope 隔离、旧轮次保护、预检双击保护与并行失败映射均已上线。正式安全全量 `119/119 specs、1018/1018 tests PASS`，异常计数 0，最终 v0.6.25 source/snapshot SHA-256 均为 `fa9fa1dbdae1e70dd1c3c308a03e01a68cd11e6280d12682174ae8ba457525b4`；独立子 agent 终审未发现新的 P1/P2。agent 的技术实页通过不等于用户主观 `USER_PASS`。
 
-## 线上
+## 当前线上
 
 - 地址：https://canvas.mymy.ltd
-- 指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.29-yunteng-provider-isolation-20260821`
-- 源码：tag commit `d4ccc360e2645e43005c8bdf9a05ec984d48e655`，tree `a291420309236f2b2bb53653301b2b1f1395dbfd`
-- 标签：`v0.6.29` 精确指向上述源码
-- 功能 PR：#60，merge `af8493cdf710dc9f899aa098d725e9d034bdb032`，发布时 main tree 与 tag tree 一致
-- 冻结备份：`/var/lib/unboundry-rollbacks/v0.6.29-frozen-6c2fff`（365 文件，两份清单 SHA 同为 `cabcb1c01ec1d157e2d9eabfcdab49b1a8bc5b1febffb6d4f6d3c23d1ae9c0b5`）
-- 上一不可变版：`/opt/unboundry/releases/v0.6.28-relay-media-models-20260821`（以及更早版本）仍保留
-- 当前数据门：schema39、integrity ok、FK0、tasks633、attempts641、公共模板50（48 published）、active0、逻辑媒体716条/1186596417字节、画布57。
+- 指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.30-provider-result-compatibility-20260821`
+- 源码：tag commit `bfed2f79581935882bb58279c8faf992679f12c1`，tree `9a95f30993fc9f21489d1a8acb2e7347d90845c8`
+- 标签：`v0.6.30` 精确指向上述源码
+- 功能 PR：#64，merge `0d71d37c77423f3870e97f1e44b9745fef999cfb`；生产验收记录随后由 PR #65 合并
+- 冻结备份：`/var/lib/unboundry-rollbacks/v0.6.30-frozen-1uQmic`
+- 上一不可变版：`/opt/unboundry/releases/v0.6.29-yunteng-provider-isolation-20260821`（以及更早版本）仍保留
+- 当前数据门：schema39、integrity ok、FK0、tasks633、attempts641、公共模板50（48 published）、active0、逻辑媒体719条/1196648534字节、画布57。
 - 生产并发配置已恢复推荐值：per_user 20 / image 10 / video 2 / audio 2 / text 10 / RPM 120
-- 正式安全全量：v0.6.29 候选唯一一次执行 `1025/1034`，9项旧夹具/ARIA失败经最小复验全部转绿；未第二次运行 full
-- v0.6.25 已于 2026-08-20 发布，agent 真实页面与最小真实 Provider 验证通过，待用户主观复验；更早用户已通过版本状态保持不变
+- 正式安全全量：v0.6.30 候选唯一一次执行 `1035/1037`，两个失败项经最小受影响集合复验转绿；未第二次运行 full
+- 生产技术门、云腾结果恢复与用户主观验收均已完成；状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`
 
-## 最新发布（2026-08-20 已发布，agent 技术实页通过，待用户主观复验）
+## 历史发布记录（v0.6.25 及更早时点）
 
 **v0.6.25（生成恢复与整组运行加固）**：旧执行挡住自动重试时，退场后可靠接力；Ark Files 完整清理/abort/限流/gate/结构化日志；保存退避完整；整组“停止后续”和失败摘要/隔离/旧轮次保护上线。正式安全全量 `119/119 specs、1018/1018 tests PASS`。生产旧 queued 任务自动接力成功；原事故节点用 11,596,744 字节 PNG 在真实页面完成一次文字生成，Ark upload/poll/delete 全 success。权威凭证：`spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
 
@@ -132,7 +134,7 @@
 
 权威凭证：`spec/V0_6_22_PRODUCTION_RECEIPT_2026-08-19.json`。
 
-## 模板数据变更（2026-08-19 已上线并在 v0.6.22 更新内容，待用户复验）
+## 历史模板数据变更（2026-08-19 时点）
 
 - 新增公共模板「电商服装详情页组图（6张·1:1）」（id `e6b7f8c4-8c7d-4f8e-9d0a-3a1b2c3d4e5f`）：白底图输入 + 精品提示词母版 + 6 个 1:1·2K 出图节点（正面整体、领口/腰头与开口结构、袖口/下摆与收口边缘、细节与辅料、面料肌理、缝线与工艺）；提示词已改为通用服装描述（不写死某一款式），母版节点 contentOnly 不参与生成执行。
 - 走「加模板轻量路径」：不需要版本号、不打标签、不跑全量；初版源码 commit `ad610b6`，PR #42 合并（merge `b18742a9`）；v0.6.22 发布时用 `scripts/apply-public-template-seed.mjs --update-existing --apply` 更新生产库（published 保持 47），schema39、服务 active，公网预览图 200。
@@ -230,8 +232,8 @@
 ## 新会话默认动作
 
 1. 先读本文 + `上线规矩.md` + `TASKS.md` 顶部。
-2. 只读核对仓库分支、HEAD、工作树、`package.json` 版本是否已是 `0.6.17`。
-3. 优创 4K（INC-GEN-008/009）已随 v0.6.17 上线，等用户打开线上页面复验；真 4K 出图必须用户单独点头。
-4. OpenRouter 出图先放下。不要再放行钥匙、不要真去 OpenRouter 出图。
-5. 若用户说「还是假提交 / 工作流又停了」，先查线上任务和分类，再给方案，等他下令再改。
-6. 旧的两条假提交记录（服装格 `88c8e891`、`10324851`）若还在，同一套输入可能要先点一次「核对结果」才能再开新单。不要擅自改生产库去解锁。
+2. 只读核对仓库分支、HEAD、工作树、`package.json` 版本是否为 `0.6.30`；历史计划中的旧版本号不得当成当前施工身份。
+3. 当前生产为 v0.6.30/schema39、用户已验收；没有新 Goal 时只做用户明确要求的只读检查或文档工作，不自动进入 v0.6.31。
+4. 云腾三模型只归属云腾 Provider；不得借用优创密钥、不得新增“天空”计费 Provider、不得自动追加真实 Provider POST。
+5. `VIEW-005` 是唯一明确保留的非阻断性能专项；其余 `PAUSED/BLOCK/PARTIAL` 项只有在用户重新立项后才能施工。
+6. 若用户说生成或工作流再次异常，先查当前线上任务、Provider profile、attempt 和结果所有权，再给方案；不得擅自改生产库或重提付费请求。

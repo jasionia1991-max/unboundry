@@ -4,6 +4,8 @@
 日期：2026-08-08
 目标：把当前单机应用部署到用户的云服务器，任何设备用浏览器访问域名即可登录和操作，数据只有一份。
 
+当前生产补充：`canvas.mymy.ltd` 当前运行 v0.6.30/schema39，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。本文件以下版本、路径和剩余事项保留部署时点；当前线上身份只以 `spec/UNBOUNDRY_CURRENT_STATE.md` 和最新版本回执为准。
+
 ## 1. 目标与边界
 
 ### 1.1 目标

@@ -2,12 +2,14 @@
 
 更新日期：2026-08-21
 
-状态：`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`
+状态：`PRODUCTION_PUBLISHED / SUPERSEDED_BY_V0_6_29_30_REAL_EVIDENCE / CURRENT_V0_6_30_USER_PASS`
 施工目标：在现有 `multi-protocol-relay + media-generate` 通道中接入：
 
 - 图片：`gemini-3-pro-image-preview`（Nano Banana Pro）；
 - 视频：`kling-v3-omni-cankao`（Kling V3 Omni 参考生）；
 - 音频：`suno-v4.5`（Suno V4.5）。
+
+当前收口：本方案的本地工程随后随 v0.6.28 发布；v0.6.29 在独立云腾 Provider 下完成三次有界真实创建，v0.6.30 在零新增 POST 前提下修复 Nano JPEG 和 Suno 多音频结果并完成生产、用户验收。当前状态以 `spec/UNBOUNDRY_CURRENT_STATE.md` 为准，本方案不再是待施工入口。
 
 关联文件：
 
@@ -33,7 +35,7 @@
 5. 服务重启、页面刷新或长时间生成不产生第二次付费提交；
 6. 旧 OpenRouter 图片、Ark 视频、Mureka 音频及既有 relay 模型行为不变。
 
-## 3. 当前基线
+## 3. 方案冻结基线（历史时点）
 
 - 仓库：`/Users/mymy/Documents/unboundry/app`；
 - 分支：`codex/unboundry-offline-remediation-2026-08-09`；
@@ -41,8 +43,8 @@
 - package：`0.6.27`；
 - 正式工程运行时：Node `22.23.1` / npm `10.9.8`；
 - 工作树只允许保留受保护未跟踪文件 `spec/public-templates-director-split-revision.json`；
-- 第一批同步文字 Provider port 已本地完成，状态 `LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`，未发布；
-- 当前线上仍是 v0.6.27/schema39，状态 `PRODUCTION_PUBLISHED_USER_PASS`；任何旧发布、真实 Provider、OSS、SSH、生产和 GitHub 授权均不得复用。
+- 方案冻结时，第一批同步文字 Provider port 已本地完成，状态 `LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`，尚未发布；
+- 方案冻结时线上是 v0.6.27/schema39，状态 `PRODUCTION_PUBLISHED_USER_PASS`；该授权边界只属于当时时点。当前生产和授权边界改由 `spec/UNBOUNDRY_CURRENT_STATE.md` 负责。
 
 当前代码还有一个必须显式修复的目录发现缺口：`server/multiProtocolRelay.ts` 的通用 Gemini 图片正则不能识别 `gemini-3-pro-image-preview`（`3` 与 `image` 之间包含 `pro`），会落入 Gemini 文本分类。必须在通用 Gemini 文本规则之前增加该精确模型的图片分类，并以 m55 固定；不能靠 display name 或模糊品牌猜测兜底。
 

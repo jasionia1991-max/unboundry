@@ -6,6 +6,12 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
+## 当前生产：v0.6.30（2026-08-21，USER PASS）
+
+生产当前运行 `v0.6.30 / schema39`，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。Nano 的云腾 JPEG 结果已规范化为 PNG；Suno 返回的两个不同完整 MP3 已按 Provider 原序持久化为 primary/alternate，可切换、播放并在刷新后恢复。Nano、Kling、Suno 三模型只归属云腾 Provider，优创 profile、凭据、模型、绑定、task 与 attempt 对冻结备份均无差异；v0.6.30 没有新增 Provider 创建 POST。用户已打开生产验收项目并明确回复“通过”。完整现状见 [`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)，生产回执见 [`spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json`](spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json)。
+
+当前没有已批准的下一版本施工。历史文档中的 `PENDING`、`USER_RECHECK` 或“下一步”仅代表各自记录时点，除非 `UNBOUNDRY_CURRENT_STATE.md` 重新激活，否则不得直接执行。
+
 ## 2026-08-19 生成稳定性一次性修复（v0.6.20 已发布，待你复验）
 
 `INC-GEN-010 = PRODUCTION_PUBLISHED_AUTO_PASS（2026-08-19 已发布，待用户复验）`：生成流程少红字、少手动操作。图片主轮询 5 分钟、视频 8 分钟，主窗结束后后台继续慢速核对；任务号丢失自动从用量记录找回，确认缺失时整个任务只自动补提交一次；平台明确退款自动确认并重试一次；只有明确拒绝/本地问题才红字；结果下载网络/5xx 自动重试 3 次；熔断按账号拆分；画布保存等待放宽到 15 秒、按钮显示「正在保存画布…」。正式安全全量`118/118 specs、983/983 tests PASS`，异常0。生产已切到`v0.6.20-inc-gen-010-20260819`，冻结备份、schema39 和数据门通过；tasks358/attempts364/active0、模板48（46 published），真实 Provider/付费/OSS 写入 0。`v0.6.20` 标签指向精确生产源码，PR #35 已合并。方案见 [`spec/INC_GEN_010_GENERATION_STABILITY_2026-08-19.md`](spec/INC_GEN_010_GENERATION_STABILITY_2026-08-19.md)，凭证 [`spec/V0_6_20_PRODUCTION_RECEIPT_2026-08-19.json`](spec/V0_6_20_PRODUCTION_RECEIPT_2026-08-19.json)。

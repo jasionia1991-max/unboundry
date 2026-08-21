@@ -2,13 +2,15 @@
 
 更新日期：2026-08-21
 
-状态：`GOAL_ACTIVE / PRODUCTION_PUBLISHED / YUNTENG_PARTIAL_RESULT_FORMAT_BLOCKED / FAILED_MODELS_DISABLED / USER_RECHECK`
+状态：`HISTORICAL_V0_6_29_GOAL_COMPLETE / SUPERSEDED_BY_V0_6_30_RESULT_COMPATIBILITY / CURRENT_USER_PASS`
 
 建议目标版本：`v0.6.29`
 
 施工续接：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_CHECKPOINT.md`
 
 实施状态（2026-08-21）：v0.6.29代码、GitHub、冻结备份、fresh build、原子切换和生产配置均已完成。云腾独立凭据、129模型目录和三个目标模型归属有效；零付费门后恰好执行3次创建POST。Kling在Unboundry内完整成功；Nano/Suno虽在云腾侧生成作品，但Unboundry结果格式解析失败，已按本方案停用两条绑定、保留历史和证据。创建预算耗尽，不再调用；本版本保持部分配置fail-closed。
+
+后续收口（2026-08-21）：独立 v0.6.30 Goal 在不新增任何 Provider 创建 POST 的前提下修复 Nano JPEG 与 Suno 多结果合同，恢复既有任务并完成生产技术验收和用户确认；三模型当前只在云腾 Provider 下发布。本方案的 v0.6.29 fail-closed 结论仍作为历史时点保留，但不得再解释为当前线上阻断或活动 Goal。
 
 ## 1. 一句话结论
 

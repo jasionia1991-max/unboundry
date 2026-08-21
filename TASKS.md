@@ -1,7 +1,7 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-21
-状态：`v0.6.30 已发布并完成生产技术验收，状态 PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK。Nano 既有 JPEG 结果已规范化为 PNG；Suno 两个不同完整 MP3 已按 primary/alternate 保存、可切换且均可播放；三媒体模型只在云腾 Provider 下 published/enabled。Provider 创建 POST 新增 0，优创与冻结备份逐表一致。权威回执见 spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json。`
+状态：`v0.6.30 已发布并由用户实页验收通过，状态 PRODUCTION_PUBLISHED_USER_PASS / USER_PASS。Nano 既有 JPEG 结果已规范化为 PNG；Suno 两个不同完整 MP3 已按 primary/alternate 保存、可切换且均可播放；三媒体模型只在云腾 Provider 下 published/enabled。Provider 创建 POST 新增 0，优创与冻结备份逐表一致。权威回执见 spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json。`
 
 ### 2026-08-21 Provider 结果兼容与既有任务零 POST 恢复（v0.6.30 已发布）
 
@@ -14,8 +14,15 @@
 - 发布证据：tag `v0.6.30`→commit `bfed2f79581935882bb58279c8faf992679f12c1` / tree `9a95f30993fc9f21489d1a8acb2e7347d90845c8`；PR #64 merge `0d71d37c77423f3870e97f1e44b9745fef999cfb`。生产 current 为 `/opt/unboundry/releases/v0.6.30-provider-result-compatibility-20260821`；冻结备份 `/var/lib/unboundry-rollbacks/v0.6.30-frozen-1uQmic` 双清单和双配置 manifest 一致。
 - 零 POST 恢复：tasks/attempts 保持 `633/641`，两条任务只复用 provider task `112083470`/`112087930`。Nano 保存 1024×1024 PNG；Suno 保存两个不同 MP3（4506390/4254966 字节，217.704/189.96 秒），第一个 primary、第二个 alternate；没有新增 admission、attempt 或 Provider task。
 - 生产门：公网/loopback version、live、ready 均通过，schema39/integrity/FK、service、inventory、公网5资源、数据计数通过；媒体增量正好3条/10052117字节；实页两音频均可播放并恢复主版本，console error/warn 0。Nano/Suno 验收后与 Kling 一起只在云腾 profile 下 published/enabled；优创 profile/凭据/epoch/模型/绑定/task/attempt 对冻结备份双向差异全0。
-- 当前为 `PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK`，不冒充用户主观验收。正式回执：`spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json`。
+- 用户于2026-08-21打开生产验收项目后明确回复“通过”，当前为 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。正式回执：`spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json`。
 - 权威设计与恢复边界：`spec/UNBOUNDRY_PROVIDER_RESULT_COMPATIBILITY_V0_6_30_2026-08-21.md`。
+
+### 当前后续计划边界
+
+- 当前没有已批准或施工中的下一版本，不自动进入 v0.6.31。
+- 唯一明确保留的非阻断工程验证是 `VIEW-005`：98/171/200 节点精确性能档位，当前 `NOT_RUN`。
+- Mureka 真实音频、团队/多人协作、真实 Agent 协议、Storyboard 完整编辑、图片打光与其他付费内容抽验继续保持原 `PARTIAL/PAUSED/BLOCK`；需要用户重新立项和对应授权。
+- 下方旧段落中的“待复验”“当前阶段”“下一步”均为各自时点记录；若与本文件顶部或 `UNBOUNDRY_CURRENT_STATE.md` 冲突，以顶部 v0.6.30 状态为准。
 
 ### 2026-08-21 云腾 Provider 隔离与三模型上线（v0.6.29 已发布，真实验收后部分配置回滚）
 
@@ -41,21 +48,21 @@
 - 第七批Release只读追踪结论：当前实际入口是safe runner + 精确Git archive + staging fresh build + 冻结备份 + current原子切换；历史`0.5.2/0.6.0` bridge工具未阻塞当前发布，不扩张治理。
 - 真实Provider生成、付费请求与OSS写入均为0；用户实际页面确认前保持`USER_RECHECK`。权威回执：`spec/V0_6_28_PRODUCTION_RECEIPT_2026-08-21.json`。
 
-### 2026-08-21 同一中转站三媒体模型与结果边界（v0.6.28 已发布，待用户复验）
+### 2026-08-21 同一中转站三媒体模型与结果边界（v0.6.28 历史发布时点）
 
-- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。Generation已拥有媒体结果提交事务；MediaLifecycle/MediaRegistry不再读写generation task/attempt，TaskStore↔Safety循环已解除。
+- v0.6.28 时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该能力随后经 v0.6.29 三次有界真实验证与 v0.6.30 结果兼容修复、生产验收和用户确认收口。当前聚合状态以顶部 v0.6.30 `USER_PASS` 为准。Generation已拥有媒体结果提交事务；MediaLifecycle/MediaRegistry不再读写generation task/attempt，TaskStore↔Safety循环已解除。
 - 模型合同：Nano Banana Pro `gemini-3-pro-image-preview`、Kling V3 Omni `kling-v3-omni-cankao`、Suno V4.5 `suno-v4.5`统一走现有`multi-protocol-relay/media-generate`；参数、引用、严格结果类型和10/75/15分钟持久轮询窗口已固化。
 - 自动证据：Node `22.23.1` / npm `10.9.8`；十个目标spec最终有效`148/148`。第一次产品测试`145/148`后只重跑失败的m53+m57并`40/40`通过；TypeScript、构建、source coverage、外网门禁均通过。
 - 发布边界：已完成发布full覆盖与失败spec最小复验、GitHub、冻结备份、生产切换和零付费技术验收；没有真实Provider专用smoke，`REAL_PROVIDER_SMOKE_PAUSED`，待用户线上复验。受保护JSON保持untracked且未读/未改/未暂存/未提交。
 - 提交：`3144d7a refactor(generation): own media result commits`；第二提交为`feat(generation): add relay media model contracts`。权威矩阵和续接见`spec/UNBOUNDRY_RELAY_MEDIA_MODELS_ACCEPTANCE_MATRIX_2026-08-21.md`与`spec/UNBOUNDRY_RELAY_MEDIA_MODELS_CHECKPOINT.md`。
 
-### 2026-08-21 同步文字Provider registry/port（v0.6.28 已发布，待用户复验）
+### 2026-08-21 同步文字Provider registry/port（v0.6.28 历史发布时点）
 
-- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。代码已把同步文字执行收口到唯一`TextProviderRegistry`入口；Task协调器不再按具体文字driver调用adapter，Ark native与四类relay文字协议各由adapter实现统一port。
+- v0.6.28 时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该代码已持续包含在当前 v0.6.30 生产版本中，本段不再充当当前待发布清单。代码已把同步文字执行收口到唯一`TextProviderRegistry`入口；Task协调器不再按具体文字driver调用adapter，Ark native与四类relay文字协议各由adapter实现统一port。
 - 任务安全：profile/credential owner、lease、provider-boundary attempt、task幂等/reconcile、结果归属与错误文案保持原边界；fake Provider可注入且网络0，未知实现本地fail-closed且网络0。
 - 自动证据：Node `22.23.1` / npm `10.9.8`；一次TypeScript noEmit退出0；m33 `8/8`、m39 `3/3`、m44 `8/8`、m53 `23/23`、m57 `14/14`安全定向通过，异常0，动态loopback与新临时数据，4173 listener不变。
-- 明确未做：未跑full/默认verify，未真实调用Provider/OSS，未访问SSH/生产，未改版本/schema/Canvas/Workflow/Media publication；第二至第七批未启动。
-- 验收口径：当前不是发布PASS或USER PASS，停在用户审阅；权威矩阵与续接见`spec/UNBOUNDRY_PROVIDER_PORT_BATCH_ACCEPTANCE_MATRIX_2026-08-21.md`和`spec/UNBOUNDRY_PROGRESSIVE_MODULARIZATION_CHECKPOINT.md`。
+- 第一批施工时点明确未做：未跑full/默认verify，未真实调用Provider/OSS，未访问SSH/生产，未改版本/schema/Canvas/Workflow/Media publication。后续发布与生产证据已经由 v0.6.28～v0.6.30 回执补齐，不能继续把本段解释为“尚未发布”。
+- 验收口径：本段保留第一批自动证据；当前版本与生产状态由`spec/UNBOUNDRY_CURRENT_STATE.md`负责，矩阵与续接见`spec/UNBOUNDRY_PROVIDER_PORT_BATCH_ACCEPTANCE_MATRIX_2026-08-21.md`和`spec/UNBOUNDRY_PROGRESSIVE_MODULARIZATION_CHECKPOINT.md`。
 
 ### 2026-08-21 画布—工作流执行—任务恢复解耦（v0.6.27 已发布）
 
@@ -634,9 +641,9 @@ F14本地正式门证据绑定 HEAD `eb4f99ea525390b0dd7a39d3cad55d882ffea41d`�
 - 范围：项目工作空间、新建/打开/重命名/删除、封面三级优先级、搜索/排序/Grid/List、`projectId` 与 fixture 解耦、删除防复活（服务端墓碑）、默认项目保护；v1 不做文件夹与团队项目。
 - 当前状态：按方案实施完成（Step 1-5 + 选择功能 + 多轮 UI 调整），自动化与 CUA 实测均通过，证据见 `spec/UNBOUNDRY_MULTI_PROJECT_EVIDENCE.md`；延后修复清单 0 条；2026-08-06 用户确认后一次 commit 提交收尾。
 
-## 当前阶段
+## 历史阶段快照（2026-08-16 时点；不承担当前状态）
 
-阶段：`生产 v0.6.16/schema39 LIVE / INC-UI-010 USER PASS / INC-GEN-008方案已对齐未开工 / INC-GEN-007～001与INC-UI-009～001、INC-VIDEO-001均为USER PASS`
+当时时点：`生产 v0.6.16/schema39 LIVE / INC-UI-010 USER PASS / INC-GEN-008方案已对齐未开工 / INC-GEN-007～001与INC-UI-009～001、INC-VIDEO-001均为USER PASS`。当前状态只看本文件顶部和 `spec/UNBOUNDRY_CURRENT_STATE.md`。
 
 画布、固定界面、Text、Image、Video、Audio、Playlist、Group、外围面板、账号、管理员模型中心、生成安全和新图片私有OSS链路已通过当前范围验收；Comment、社区、TapTV、竞技场、额度和链接分享已按用户决定取消。OpenRouter GPT Image 2已完成一次用户授权的历史真实生成，图片连线参考图及真实结果零费用重启恢复均已通过；本次 cutover 未发起 Provider 或付费生成请求。
 
@@ -1514,12 +1521,12 @@ M1、Text、Image、Video、Audio及Image/Video上方工具栏已通过。M2 Pla
 - 真实库清理（用户授权）：删除 `account_provider_credentials WHERE account_id='__test__'` 3 条测试残留；删除前一致性备份 `backups/before-test-credential-cleanup-2026-08-07T07-26-54-491Z.sqlite`。`users` 表仍有 1 条 `__test__` 测试用户行，不影响真实登录，是否删除待用户决定。
 - 用户复测通过：D-03/D-04（每节点最新一次成功结果、命名与去重、文件数量均符合预期）。三功能 21 条验收全部 PASS，M11 放行门达成。
 
-### 2026-08-07 下一阶段方案（公共模板 × 账号权限）决策定稿，未开始实施
+### 2026-08-07 下一阶段方案（公共模板 × 账号权限，历史决策时点；后续已实施）
 
 - 已完成：现状调研（`spec/UNBOUNDRY_NEXT_PHASE_INVESTIGATION_2026-08-07.md`）、多步骤 WBS（`spec/UNBOUNDRY_NEXT_PHASE_WBS_2026-08-07.md`）、逐小点详拆（`spec/UNBOUNDRY_NEXT_PHASE_WBS_DETAIL_2026-08-07.md`）。
 - 8 项决策点已由用户确认：权限表 v30 / 公共模板表 v31；account-context 先加权限数组并暂留布尔字段；公共模板删除用归档+恢复且种子不可物理删除；最近使用先做本地版；`manage_accounts/manage_permissions` 不授予非管理员；P2（普通能力收回）本批不纳入；不加环境开关；不做投稿。
 - 第二批 6 项决策已由用户确认（含全量影响分析结论）：公共模板本期不携带私有素材；`public_templates` 增加 `preview_image` 列；默认能力不可撤销、权限写接口只维护额外授予集；禁止管理员修改自己的权限；公共模板管理接口对无权限账号返回 403；种子模板允许编辑但不可物理删除。
-- 当前状态：`DECISIONS CONFIRMED / IMPLEMENTATION NOT STARTED`。未经用户明确说“开始”，不实施任何代码改动。
+- 该时点状态曾为 `DECISIONS CONFIRMED / IMPLEMENTATION NOT STARTED`；后续权限管理、公共模板与正式部署均已实施并进入生产。本段只保留决策来源，不得再作为待施工入口。
 
 ### 2026-08-07 权限管理 P0 实施（第 0 批前置 + P0-1～P0-10）
 

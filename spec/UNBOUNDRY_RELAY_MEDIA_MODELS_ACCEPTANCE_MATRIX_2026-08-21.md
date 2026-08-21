@@ -2,7 +2,9 @@
 
 更新日期：2026-08-21
 
-状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
+状态：`PRODUCTION_PUBLISHED / SUPERSEDED_BY_V0_6_29_30_REAL_EVIDENCE / CURRENT_V0_6_30_USER_PASS`
+
+当前生产证据：v0.6.29 在独立云腾 Provider 下恰好创建 Nano、Kling、Suno 三个真实任务；v0.6.30 未新增 POST，只恢复既有 Nano JPEG 与 Suno 两个完整 MP3，Kling MP4 已在前版保存。三模型当前只归属云腾，优创隔离差异为0；用户已打开 v0.6.30 云腾生产验收项目并回复“通过”。本矩阵原 `AUTO_PASS/PAUSED` 行保留 v0.6.28 工程时点，当前聚合结论以 v0.6.30 回执为准。
 
 当前自动证据：Node `22.23.1` / npm `10.9.8`；最终相关代码下 safe runner 的 TypeScript、构建、source coverage、外网门禁均通过。统一集合首次进入产品测试后为 `145/148`，仅 m53/m57 三条直接失败；定向修复后只重跑失败文件 m53+m57，`40/40` 通过，因此十个目标 spec 的最终有效结果为 `148/148`。所有执行均为新临时目录、动态 loopback、fake fetch，4173 前后身份不变。
 
@@ -121,18 +123,18 @@
 
 | ID | 级别 | 验收项 | 最低证据 | 当前状态 |
 |---|---|---|---|---|
-| REAL-IMG-001 | P1 | 1次1K文字出图 | 专用凭据、POST次数1、结果保存 | PAUSED |
-| REAL-VID-001 | P1 | 1次5秒std文字视频 | 专用凭据、POST次数1、结果保存 | PAUSED |
-| REAL-AUD-001 | P1 | 1次纯音乐 | 专用凭据、POST次数1、结果保存 | PAUSED |
+| REAL-IMG-001 | P1 | 1次1K文字出图 | 专用凭据、POST次数1、结果保存 | SUPERSEDED：v0.6.29真实创建，v0.6.30零POST恢复JPEG并保存PNG |
+| REAL-VID-001 | P1 | 1次5秒std文字视频 | 专用凭据、POST次数1、结果保存 | SUPERSEDED：v0.6.29真实Kling任务与MP4保存通过 |
+| REAL-AUD-001 | P1 | 1次纯音乐 | 专用凭据、POST次数1、结果保存 | SUPERSEDED：v0.6.29真实创建，v0.6.30零POST恢复两个完整MP3；不把候选类型扩写成未证明语义 |
 | RELEASE-001 | P0 | 版本号由用户明确指定 | 当前授权 | PASS：用户指定v0.6.28，授权已消费 |
 | RELEASE-002 | P0 | push/PR/tag/发布单独明确授权 | 当前授权 | PASS：tag v0.6.28、PR #58、生产切换完成 |
-| USER-001 | P1 | 用户真实页面确认三节点可选且完成 | 用户回复 | USER_RECHECK |
+| USER-001 | P1 | 用户真实页面确认三节点可选且完成 | 用户回复 | SUPERSEDED/PARTIAL：用户已通过v0.6.30云腾生产验收项目；该回执直接记录Nano图片与Suno双音频页面证据，原v0.6.28“三节点逐项可选且完成”合同未独立重跑，不冒充该精确旧条目PASS |
 
 本地工程完成不要求 REAL/RELEASE/USER 项变为通过，也不得把 AUTO_PASS 冒充这些状态。
 
-## 10. 完成闸门
+## 10. v0.6.28 本地 Goal 完成闸门（历史）
 
-本地 Goal 完成必须：
+当时本地 Goal 完成必须：
 
 1. 所有 ARCH/MODEL/ASYNC/MEDIA 的 P0 为 AUTO_PASS；
 2. P1 未完成项有不阻断证明；
@@ -140,7 +142,7 @@
 4. 没有真实Provider、OSS、生产、4173或真实数据副作用；
 5. 文档与Checkpoint同步；
 6. 两个本地commit范围独立且不含受保护JSON；
-7. 状态只写 `LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`。
+7. 当时状态只写 `LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`；后续生产状态由对应 release receipt 追加，不反写原自动证据。
 
 ## 11. 当前执行回执
 

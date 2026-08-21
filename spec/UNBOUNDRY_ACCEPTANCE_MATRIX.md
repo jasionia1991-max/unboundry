@@ -3,6 +3,10 @@
 基线日期：2026-07-27  
 当前状态更新：2026-08-21
 
+2026-08-21 `CURRENT_RELEASE = v0.6.30 / schema39 / PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`：Nano 的云腾 JPEG 结果已有界规范化为 PNG；Suno 两个不同完整 MP3 已按 Provider 原序持久化为 primary/alternate，可切换、播放并在刷新后恢复。v0.6.30 只核对既有 provider task，新增 Provider 创建 POST、task、attempt、admission 均为0；Nano、Kling、Suno 三模型只归属云腾 Provider，优创 profile/凭据/模型/绑定/task/attempt 对冻结备份差异为0。用户打开生产验收项目后明确回复“通过”。当前没有已批准的下一版本；`VIEW-005` 仍是非阻断 P1 `NOT_RUN`，其他 `PARTIAL/PAUSED/BLOCK` 不自动升级。
+
+本文件下方旧版本的 `USER_RECHECK/PENDING` 均保留各自验收时点，不再承担当前线上版本播报，也不得被直接当成下一施工计划。当前版本、当前计划和授权边界只以 `spec/UNBOUNDRY_CURRENT_STATE.md` 为准。
+
 2026-08-21 `CANVAS-WORKFLOW-EXECUTION-DECOUPLING = PRODUCTION_PUBLISHED_USER_PASS`：v0.6.27将Text/Image/Audio/Video整组执行迁移到静态headless executor，删除render retention；同画布不相交工作组可并行，参与图、checkpoint、lease、lock、摘要和结果所有权按run精确隔离。正式安全全量`119/119 specs、1029/1029 tests PASS`，异常0；生产真实双组并发轮4 tasks/4 attempts全部attempt1 success、重复0，刷新后四个结果仍在原节点。用户于2026-08-21明确回复「v0.6.27 验收通过，同步更新为 USER PASS。」本项正式收口。精确98/171/200节点性能档位仍为非阻断独立P1，不冒充已验证。
 
 2026-08-21 `INC-GEN-012 = PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`：整组开始后，组内节点初始离屏或运行中把父组拖出视口，不再因 React Flow 虚拟化卸载 execution registration 而静默失败；保留全画布虚拟化。参与节点、结构及直接外部输入源运行中只读，父组仍可移动；任务面板持续显示进度并可停止后续；刷新继续必须严格核对 task/ownership/result proof，跨标签使用整轮 Web Lock，无法证明时 fail-closed。m22/m68/m79 定向 `39/39 PASS`；正式安全全量 `119/119 specs、1025/1025 tests PASS`，异常计数 0，4173 listener 不变。v0.6.26 已发布；agent 真实页面将“一键上新+自检”父组拖出屏幕后仍完成 11/11：成功 11、失败 0、跳过 0、未运行 0；数据库新增 11 tasks / 11 attempts 且全部 attempt 1 success，active0，页面控制台 0 error/warn。尚待用户主观复验，不能升级为 `USER_PASS`。

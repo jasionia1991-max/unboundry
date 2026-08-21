@@ -2,11 +2,11 @@
 
 更新日期：2026-08-21
 
-当前状态：`GOAL_ACTIVE / PRODUCTION_PUBLISHED / YUNTENG_PARTIAL_RESULT_FORMAT_BLOCKED / FAILED_MODELS_DISABLED / USER_RECHECK`
+当前状态：`HISTORICAL_V0_6_29_CHECKPOINT / GOAL_COMPLETE / SUPERSEDED_BY_V0_6_30_USER_PASS`
 
-本文件是新 Goal 的唯一可变施工续接点。方案合同以 `spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_PLAN_2026-08-21.md` 为准；发生上下文压缩、subagent交接或中断后，先核对真实Git/生产现场，再更新本文件，不得从旧聊天推断进度。
+本文件是 v0.6.29 Goal 的冻结施工记录，不再是当前可变续接点。v0.6.30 已在零新增 Provider POST 下修复 Nano JPEG 与 Suno 多音频结果并获用户验收；当前恢复入口是 `spec/UNBOUNDRY_CURRENT_STATE.md`。不得从本文件重启旧 Goal、恢复三次 POST 预算或把失败模型回退到优创。
 
-## 冻结身份
+## v0.6.29 冻结身份
 
 - 仓库：`/Users/mymy/Documents/unboundry/app`
 - 分支：`codex/unboundry-offline-remediation-2026-08-09`
@@ -18,7 +18,7 @@
 - 目标：`v0.6.29`（已发布，不进入 v0.6.30）
 - 受保护文件：`spec/public-templates-director-split-revision.json`，禁止读取/修改/暂存/提交
 
-新 Goal 开始时必须用实际命令刷新上述漂移项。文档未提交导致的预期 Markdown 差异可以接管，其他用户改动不得覆盖。
+上述身份只用于复核 v0.6.29 历史证据；任何新 Goal 都必须重新取得用户授权并从当前 Git/生产事实建立独立身份。
 
 ## 当前事实
 
