@@ -411,7 +411,7 @@ test("Image reference chip follows the incoming edge and undo restores both", as
     .toBeVisible();
   await expect(page.getByText("当前模型不支持参考图")).toHaveCount(0);
   await expect(
-    page.getByRole("combobox", { name: "image模型" }),
+    page.getByRole("combobox", { name: /^图片模型：/ }),
   ).toContainText("GPT Image 2");
   await expect(page.locator('.react-flow__edge[data-id="edge-image-reference"]'))
     .toHaveCount(1);
@@ -850,11 +850,11 @@ test("Image model switch retains 2K quality when both models support it", async 
   await expect(twoK).toHaveAttribute("aria-pressed", "true");
   await expect(creator).toContainText("2K");
 
-  const model = page.getByRole("combobox", { name: "image模型" });
+  const model = page.getByRole("combobox", { name: /^图片模型：/ });
   await expect(model).toContainText("Nano Banana 2 Lite");
   await model.click();
   await page.getByRole("option", { name: /GPT Image 2/ }).click();
-  await expect(page.getByRole("combobox", { name: "image模型" }))
+  await expect(page.getByRole("combobox", { name: /^图片模型：/ }))
     .toContainText("GPT Image 2");
   await expect(creator).toContainText("2K");
   await creator.getByRole("button", { name: "图片参数" }).click();

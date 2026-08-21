@@ -571,7 +571,7 @@ test("split document and metadata versions block a real task before fake fetch",
       driver: "volcengine-ark",
       label: "Ark split",
     });
-    await verifyProviderProfile(original.id, "__test__", async () =>
+    await verifyProviderProfile(original.id, async () =>
       new Response(JSON.stringify({ items: [] }), { status: 200 }));
     const updated = await saveProviderProfile({
       apiKey: `ark-new-${randomUUID()}`,
@@ -1092,13 +1092,13 @@ test("a late old Key check cannot write green after the metadata CAS changes", a
     const validResponse = () => new Response(JSON.stringify({ data: [] }), {
       status: 200,
     });
-    await verifyProviderProfile(profile.id, "__test__", async () => validResponse());
+    await verifyProviderProfile(profile.id, async () => validResponse());
 
     let release = () => {};
     let started = () => {};
     const requestStarted = new Promise<void>((resolve) => { started = resolve; });
     const requestReleased = new Promise<void>((resolve) => { release = resolve; });
-    const late = verifyProviderProfile(profile.id, "__test__", async () => {
+    const late = verifyProviderProfile(profile.id, async () => {
       started();
       await requestReleased;
       return validResponse();

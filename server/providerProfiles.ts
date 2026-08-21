@@ -1784,8 +1784,7 @@ export async function verifyProviderProfile(
   }
   let probeProfile = profile;
   if (ownerId) {
-    const apiKey =
-      (await accountKeyForOwner(ownerId, profileId))?.apiKey ?? profile.apiKey;
+    const apiKey = (await accountKeyForOwner(ownerId, profileId))?.apiKey;
     if (!apiKey) {
       throw new ProviderVerificationError("NOT_CONFIGURED");
     }

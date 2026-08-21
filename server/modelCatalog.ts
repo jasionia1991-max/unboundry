@@ -849,6 +849,7 @@ export async function publicModelsApi(
       imageParameters: imageParameters(row),
       mediaInputPolicy: mediaInputPolicy(row),
       parameterSchema: parameterSchema(row),
+      providerName: row.provider_display_name,
       providerProtocol: row.provider_protocol,
       isDefault: Boolean(row.is_default),
       ...availability.get(row.id)!,
@@ -1281,6 +1282,13 @@ export async function adminModelsApi(
         status: nextStatus,
         parameterSchema: body.parameterSchema ?? parameterSchema(current),
       });
+      if (input.providerProfileId !== current.provider_profile_id) {
+        json(response, 409, {
+          code: "MODEL_PROVIDER_REBIND_FORBIDDEN",
+          error: "已有模型不能切换商业平台；请为新平台创建独立模型",
+        });
+        return;
+      }
       const provider = store
         .prepare(`
           SELECT id, driver
@@ -1297,14 +1305,7 @@ export async function adminModelsApi(
         input.providerProtocol,
         current.capability,
       );
-      const providerChanged = input.providerProfileId !== current.provider_profile_id;
-      const nextParameterSchema = body.parameterSchema ?? (providerChanged
-        ? knownModelParameterSchema({
-            capability: current.capability,
-            providerDriver: provider.driver,
-            providerModelId: input.providerModelId,
-          })
-        : parameterSchema(current));
+      const nextParameterSchema = body.parameterSchema ?? parameterSchema(current);
       const costCurrency = provider.driver === "volcengine-ark" ? "CNY" : "USD";
       const timestamp = new Date().toISOString();
       const validatedSchema = validateParameterSchemaConstraints(

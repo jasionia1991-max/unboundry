@@ -268,6 +268,11 @@ test("OpenAI-compatible snapshots and imports stay profile-scoped, disabled and 
       [{ discoveryId: "openrouter:vendor/same-id" }],
       actorUserId,
     )).rejects.toThrow("Unknown discovered model");
+    expect(await importProviderCatalogDrafts(
+      openRouter.id,
+      [{ discoveryId: "openrouter:vendor/same-id" }],
+      actorUserId,
+    )).toEqual({ imported: 1, skipped: 0 });
     const selection = [{
       capability: "text",
       discoveryId: "openai-compatible:vendor/same-id",
@@ -300,15 +305,27 @@ test("OpenAI-compatible snapshots and imports stay profile-scoped, disabled and 
         JOIN node_model_bindings
           ON node_model_bindings.model_id = model_profiles.id
         WHERE model_profiles.provider_model_id = 'vendor/same-id'
-      `).all()).toEqual([expect.objectContaining({
-        capability: "image",
-        cost_currency: "USD",
-        enabled: 0,
-        is_default: 0,
-        provider_profile_id: compatible.id,
-        provider_model_id: "vendor/same-id",
-        status: "draft",
-      })]);
+        ORDER BY model_profiles.provider_profile_id
+      `).all()).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          capability: "image",
+          cost_currency: "USD",
+          enabled: 0,
+          is_default: 0,
+          provider_profile_id: compatible.id,
+          provider_model_id: "vendor/same-id",
+          status: "draft",
+        }),
+        expect.objectContaining({
+          capability: "text",
+          cost_currency: "USD",
+          enabled: 0,
+          is_default: 0,
+          provider_profile_id: openRouter.id,
+          provider_model_id: "vendor/same-id",
+          status: "draft",
+        }),
+      ]));
     } finally {
       store.close();
     }

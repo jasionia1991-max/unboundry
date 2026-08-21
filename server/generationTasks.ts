@@ -3661,6 +3661,7 @@ async function autoMatchRelayProviderTask(task: GenerationTask) {
     kind: task.kind,
     ownerId: task.ownerId,
     providerModelId: task.providerModelId,
+    providerProfileId: task.providerProfileId,
   });
   const siblingSuccesses = context.competitors
     .filter((item) => item.state === "success")
@@ -4621,8 +4622,13 @@ export function retrySafetyDecision(
   unsafeProviderAttempt = taskStore()
     .hasUnsafeProviderAttemptForNewPaidRetry(task.id),
 ): RetrySafetyDecision {
-  const exactAbandonedEvidence = Boolean(
+  const exactProviderIdentity = Boolean(
     providerAttempt &&
+    providerAttempt.providerProfileId === task.providerProfileId &&
+    providerAttempt.providerModelId === task.providerModelId
+  );
+  const exactAbandonedEvidence = Boolean(
+    exactProviderIdentity && providerAttempt &&
     (
       task.providerTaskId
         ? providerAttempt.providerTaskId === task.providerTaskId &&
@@ -4654,7 +4660,7 @@ export function retrySafetyDecision(
   const protocol = taskProviderProtocol(task);
   if (
     task.providerTaskId &&
-    providerAttempt &&
+    exactProviderIdentity && providerAttempt &&
     ["accepted", "response-received"].includes(providerAttempt.outcome) &&
     (
       (protocol === "media-generate" && task.kind !== "text") ||

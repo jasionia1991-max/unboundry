@@ -247,12 +247,12 @@ test("Provider model directories follow declared capabilities without paid reque
   await expect(openRouter.getByLabel("搜索发现模型")).toBeVisible();
   await expect(openRouter.getByLabel("筛选节点类型")).toBeVisible();
   const addModels = openRouter.getByRole("button", {
-    name: "添加到模型中心（0）",
+    name: /添加到“OpenRouter”模型中心（0）/,
   });
   await expect(addModels).toBeDisabled();
   await checkbox.check();
   await expect(
-    openRouter.getByRole("button", { name: "添加到模型中心（1）" }),
+    openRouter.getByRole("button", { name: /添加到“OpenRouter”模型中心（1）/ }),
   ).toBeEnabled();
 
   const compatible = page.getByTestId(
@@ -451,7 +451,7 @@ test("Provider catalog action bars stay anchored across providers and viewport w
     await expect(section.getByRole("button", { name: "收起发现模型" }))
       .toBeVisible();
   }
-  await sections[0].getByRole("button", { name: "同步模型" }).click();
+  await sections[0].getByRole("button", { name: /同步“Ark”目录/ }).click();
   await expect(sections[0]).toContainText("目录已同步，付费生成请求为0。");
 
   for (const width of [1135, 961, 760, 560]) {
@@ -648,7 +648,7 @@ test("large discovered catalogs stay searchable with the selected action always 
   });
   await targetCheckbox.check();
   await expect(
-    section.getByRole("button", { name: "添加到模型中心（1）" }),
+    section.getByRole("button", { name: /添加到“Large OpenRouter”模型中心（1）/ }),
   ).toBeInViewport();
   const rowFits = await section
     .locator(".provider-catalog-model-list > div")

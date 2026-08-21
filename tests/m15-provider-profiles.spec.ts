@@ -291,7 +291,6 @@ test("read-only Provider verification checks model lists without generating", as
     let requestedMethod = "";
     const verification = await verifyProviderProfile(
       profile.id,
-      "__test__",
       async (input, init) => {
         requestedUrl = String(input);
         requestedAuthorization = new Headers(init?.headers).get(
@@ -360,7 +359,6 @@ test("read-only Provider verification checks model lists without generating", as
     let arkRequestedUrl = "";
     const arkVerification = await verifyProviderProfile(
       ark.id,
-      "__test__",
       async (input, init) => {
         arkFetchCalled = true;
         arkRequestedUrl = String(input);
@@ -391,7 +389,6 @@ test("read-only Provider verification checks model lists without generating", as
     let murekaRequestedUrl = "";
     const murekaVerification = await verifyProviderProfile(
       mureka.id,
-      "__test__",
       async (input, init) => {
         murekaRequestedUrl = String(input);
         expect(init?.method).toBe("GET");
@@ -495,9 +492,9 @@ test("Provider Key status persists invalid and uncertain rechecks without stale 
     ];
 
     for (const check of uncertainChecks) {
-      await verifyProviderProfile(profile.id, "__test__", async () => validResponse());
+      await verifyProviderProfile(profile.id, async () => validResponse());
       await expect(
-        verifyProviderProfile(profile.id, "__test__", check.fetcher),
+        verifyProviderProfile(profile.id, check.fetcher),
       ).rejects.toThrow(check.code);
       expect(readStatus()).toMatchObject({
         key_checked_at: expect.any(String),
@@ -506,11 +503,10 @@ test("Provider Key status persists invalid and uncertain rechecks without stale 
       });
     }
 
-    await verifyProviderProfile(profile.id, "__test__", async () => validResponse());
+    await verifyProviderProfile(profile.id, async () => validResponse());
     await expect(
       verifyProviderProfile(
         profile.id,
-        "__test__",
         async () => new Response(JSON.stringify({ error: "unauthorized" }), {
           status: 401,
         }),
@@ -530,7 +526,7 @@ test("Provider Key status persists invalid and uncertain rechecks without stale 
     const responseReleased = new Promise<void>((resolve) => {
       releaseResponse = resolve;
     });
-    const staleCheck = verifyProviderProfile(profile.id, "__test__", async () => {
+    const staleCheck = verifyProviderProfile(profile.id, async () => {
       signalRequestStarted();
       await responseReleased;
       return validResponse();
@@ -583,7 +579,7 @@ test("administrator Provider page stays simple and makes zero external requests"
   await page.getByRole("button", { name: "OpenRouter" }).click();
 
   const secret = ["sk", "browser", randomUUID()].join("-");
-  await page.getByLabel("连接名称").fill("Browser OpenRouter");
+  await page.getByLabel("商业平台名称").fill("Browser OpenRouter");
   await expect(page.getByLabel("API Key")).toHaveCount(0);
   await page.getByRole("button", { name: "加密保存连接" }).click();
 

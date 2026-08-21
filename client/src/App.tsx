@@ -1790,7 +1790,7 @@ function ProviderModelCatalogSection({
       setFeedback({
         message:
           result.message ||
-          `已添加 ${result.imported} 个模型到模型中心，当前保持停用。`,
+          `已添加 ${result.imported} 个模型到“${profile.label}”模型中心，当前保持停用。`,
         status: "success",
       });
     } catch (caught) {
@@ -1847,7 +1847,8 @@ function ProviderModelCatalogSection({
     >
       <div className="provider-catalog-heading">
         <div>
-          <strong>模型目录</strong>
+          <strong>{profile.label} · 模型目录</strong>
+          <span>商业平台：{profile.label} · 技术接入：{providerDriverDetails[profile.driver].label}</span>
           <span>{capabilities.description}</span>
         </div>
         <b>{providerCatalogStatusLabel(catalog, capabilities, syncing)}</b>
@@ -2070,7 +2071,7 @@ function ProviderModelCatalogSection({
                   onClick={() => void syncCatalog()}
                   type="button"
                 >
-                  {syncing ? "同步中…" : "同步模型"}
+                  {syncing ? "同步中…" : `同步“${profile.label}”目录`}
                 </button>
               )}
               <button
@@ -2154,7 +2155,7 @@ function ProviderModelCatalogSection({
                         </span>
                       </div>
                       <p className="provider-catalog-toolbar-note">
-                        勾选后默认保持停用；管理员检查参数并手动发布后，普通用户才会看到。
+                        当前商业平台为“{profile.label}”。勾选后默认保持停用；管理员检查参数并手动发布后，普通用户才会看到。
                       </p>
                       {missingCapability && (
                         <p className="provider-catalog-warning">
@@ -2350,7 +2351,7 @@ function ProviderModelCatalogSection({
                           >
                             {importing
                               ? "正在添加…"
-                              : `添加到模型中心（${selectedModels.length}）`}
+                              : `添加到“${profile.label}”模型中心（${selectedModels.length}）`}
                           </button>
                         </div>
                       )}
@@ -2392,7 +2393,7 @@ function ProviderModelCatalogSection({
             </p>
           )}
           <p className="provider-catalog-safety-note">
-            目录同步只读取资料，不会自动发布模型、改变默认模型或发起真实生成。
+            “{profile.label}”目录同步只读取该商业平台资料，不会跨平台导入、自动发布模型、改变默认模型或发起真实生成。
           </p>
         </>
       )}
@@ -2711,7 +2712,7 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
           <h1>添加平台连接</h1>
           <p>选择平台后，只填写名称和地址；生成密钥由每个账号在「我的连接」填写。</p>
           <form onSubmit={save}>
-            <div className="provider-driver-grid" aria-label="平台类型">
+            <div className="provider-driver-grid" aria-label="技术接入方式">
               {(Object.keys(providerDriverDetails) as ProviderDriver[]).map(
                 (item) => (
                   <button
@@ -2732,11 +2733,11 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
               </button>
             </div>
             <label>
-              <span>连接名称</span>
+              <span>商业平台名称</span>
               <input
                 maxLength={40}
                 onChange={(event) => setLabel(event.target.value)}
-                placeholder={`例如：我的 ${providerDriverDetails[driver].label}`}
+                placeholder="例如：云腾（按余额和账单所有者命名）"
                 required
                 value={label}
               />
@@ -2779,8 +2780,9 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
               {profiles.map((profile) => (
                 <article key={profile.id}>
                   <div className="provider-profile-summary">
-                    <span>{providerDriverDetails[profile.driver].label}</span>
+                    <span>商业平台</span>
                     <strong>{profile.label}</strong>
+                    <small>技术 Driver：{providerDriverDetails[profile.driver].label}</small>
                     <small title={profile.baseUrl}>{profile.baseUrl}</small>
                   </div>
                   <div className="provider-profile-actions">
@@ -2814,8 +2816,12 @@ function AdminProviders({ currentUser }: { currentUser: AuthUser }) {
                   {profile.driver === "multi-protocol-relay" && (
                     <dl className="provider-relay-summary">
                       <div>
-                        <dt>第三方身份</dt>
-                        <dd>第三方中转站</dd>
+                        <dt>商业平台</dt>
+                        <dd>{profile.label}</dd>
+                      </div>
+                      <div>
+                        <dt>技术 Driver</dt>
+                        <dd>{providerDriverDetails[profile.driver].label}</dd>
                       </div>
                       <div>
                         <dt>Key状态</dt>
@@ -5141,7 +5147,7 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
         <section className="admin-card">
           <h1>添加模型</h1>
           <p>
-            显示名称给普通用户看；内部模型编号只在管理员页面保存和显示。
+            显示名称给普通用户看；模型归属由所选商业平台连接固定，技术 Driver 与调用协议另行显示。
           </p>
           <form onSubmit={createModel}>
             <div className="model-provider-choice">
@@ -5271,6 +5277,15 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
                 />
                 <small>协议由管理员明确配置，不根据模型名称猜测。</small>
               </label>
+            )}
+            {selectedProvider && (
+              <p className="model-provider-identity-note">
+                商业平台：{selectedProvider.displayName} · 技术 Driver：
+                {providerLabels[selectedProvider.driver]}
+                {selectedProviderUsesRelay && providerProtocol
+                  ? ` · 调用协议：${providerProtocolLabels[providerProtocol]}`
+                  : ""}
+              </p>
             )}
             <input
               maxLength={80}
@@ -5478,7 +5493,9 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
                       }
                       type="button"
                     >
-                      {model.status === "published" ? "停用" : "发布"}
+                      {model.status === "published"
+                        ? `停用（${model.providerName}）`
+                        : `发布到${model.providerName}`}
                     </button>
                     <button
                       disabled={
@@ -5541,34 +5558,11 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
               {!model.archived && editingParameterModelId === model.id && editingParameterSchema && (
                 <div className="admin-model-parameter-edit">
                   <div className="admin-model-provider-edit">
-                    <strong>平台连接</strong>
-                    <span>切换平台会载入该平台对这个模型的推荐参数。</span>
+                    <strong>商业平台（创建后锁定）</strong>
+                    <span>历史模型不能跨平台重绑；如需迁移，请创建独立模型。</span>
                     <div>
-                      {providers.map((provider) => (
-                        <button
-                          aria-pressed={editingParameterProviderProfileId === provider.id}
-                          data-selected={
-                            editingParameterProviderProfileId === provider.id ? "true" : "false"
-                          }
-                          key={provider.id}
-                          onClick={() => {
-                            setEditingParameterProviderProfileId(provider.id);
-                            setEditingParameterProviderProtocol(
-                              provider.driver === "multi-protocol-relay"
-                                ? ""
-                                : "native",
-                            );
-                            setEditingParameterSchema(knownModelParameterSchema({
-                              capability: model.capability,
-                              providerDriver: provider.driver,
-                              providerModelId: model.providerModelId,
-                            }));
-                          }}
-                          type="button"
-                        >
-                          {provider.displayName}
-                        </button>
-                      ))}
+                      <strong>{model.providerName}</strong>
+                      <span>技术 Driver：{providerLabels[model.providerDriver]}</span>
                     </div>
                     {providers.find(
                       (provider) =>

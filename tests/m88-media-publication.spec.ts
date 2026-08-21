@@ -1012,6 +1012,39 @@ test("generated finalize atomically settles Provider evidence with task, media, 
         provider_task_id: null,
       }]);
 
+      const wrongProfile = reserveGeneratedImage(
+        store,
+        ownerId,
+        "provider-profile-drift",
+      );
+      await publishFixture(directory, wrongProfile.reservation);
+      recordProviderAttemptFixture(
+        directory,
+        wrongProfile.task.id,
+        "response-received",
+      );
+      const driftDatabase = openAppDatabase(directory);
+      driftDatabase.prepare(`
+        UPDATE generation_provider_attempts
+        SET provider_profile_id = 'different-commercial-provider'
+        WHERE task_id = ?
+      `).run(wrongProfile.task.id);
+      driftDatabase.close();
+      expect(() => commitGenerationMediaResult(wrongProfile.reservation)).toThrow(
+        "Generation Provider attempt ownership changed",
+      );
+      expect(publicationSnapshot(directory, {
+        assetId: wrongProfile.reservation.id,
+        attemptId: wrongProfile.reservation.attemptId,
+        taskId: wrongProfile.task.id,
+      })).toMatchObject({
+        attempt: { state: "external-ready" },
+        historyCount: 0,
+        mediaStatus: "pending",
+        successEventCount: 0,
+        task: { state: "running" },
+      });
+
       const noLedger = reserveGeneratedImage(
         store,
         ownerId,

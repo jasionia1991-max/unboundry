@@ -1810,7 +1810,7 @@ sup {
 
 .workspace-latin {
   margin-top: 7px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.42em;
   color: #7f8790;
@@ -11529,10 +11529,24 @@ sup {
   cursor: pointer;
 }
 
-.node-model-control-trigger > span:first-child {
+.node-model-control-current {
+  display: grid;
+  min-width: 0;
+  line-height: 1.05;
+}
+
+.node-model-control-current > span,
+.node-model-control-current > small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.node-model-control-current > small {
+  margin-top: 2px;
+  color: #a7a7ac;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .node-model-control-trigger:focus-visible {
@@ -11588,6 +11602,29 @@ sup {
   font: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+.node-model-control-option-copy {
+  display: grid;
+  min-width: 0;
+  line-height: 1.15;
+}
+
+.node-model-control-option-copy > strong,
+.node-model-control-option-copy > small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-model-control-option-copy > strong {
+  font-weight: 500;
+}
+
+.node-model-control-option-copy > small {
+  margin-top: 3px;
+  color: #9f9fa5;
+  font-size: 10px;
 }
 
 .node-model-control-option:hover,

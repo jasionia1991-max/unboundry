@@ -18,6 +18,7 @@ type TaskRow = {
   kind: "audio" | "image" | "text" | "video";
   owner_id: string | null;
   provider_model_id: string | null;
+  provider_profile_id: string | null;
   provider_task_id: string | null;
   result_asset_id: string | null;
   state: string;
@@ -44,7 +45,8 @@ function matchingProviderAttempt(
   }>,
 ) {
   return database.prepare(`
-    SELECT execution_attempt, kind, outcome, owner_id, provider_model_id
+    SELECT execution_attempt, kind, outcome, owner_id, provider_model_id,
+           provider_profile_id
     FROM generation_provider_attempts
     WHERE task_id = ?
       AND ${input.providerTaskId
@@ -61,6 +63,7 @@ function matchingProviderAttempt(
     outcome: string;
     owner_id: string | null;
     provider_model_id: string | null;
+    provider_profile_id: string | null;
   } | undefined;
 }
 
@@ -74,7 +77,7 @@ export function commitGenerationMediaResult(
       if (!taskId) throw new Error("Generation publication task is missing");
       const task = database.prepare(`
         SELECT owner_id, kind, state, attempt, result_asset_id,
-               provider_model_id, provider_task_id
+               provider_model_id, provider_profile_id, provider_task_id
         FROM generation_tasks WHERE id = ?
       `).get(taskId) as TaskRow | undefined;
       if (
@@ -132,7 +135,8 @@ export function commitGenerationMediaResult(
         providerAttempt &&
         (providerAttempt.owner_id !== task.owner_id ||
           providerAttempt.kind !== task.kind ||
-          providerAttempt.provider_model_id !== task.provider_model_id)
+          providerAttempt.provider_model_id !== task.provider_model_id ||
+          providerAttempt.provider_profile_id !== task.provider_profile_id)
       ) {
         throw new Error("Generation Provider attempt ownership changed");
       }
@@ -222,7 +226,7 @@ export function commitGenerationTextResult(input: Readonly<{
     return transaction(database, () => {
       const task = database.prepare(`
         SELECT owner_id, kind, state, attempt, result_asset_id,
-               provider_model_id, provider_task_id
+               provider_model_id, provider_profile_id, provider_task_id
         FROM generation_tasks WHERE id = ?
       `).get(input.taskId) as TaskRow | undefined;
       if (
@@ -241,7 +245,8 @@ export function commitGenerationTextResult(input: Readonly<{
         providerAttempt &&
         (providerAttempt.owner_id !== task.owner_id ||
           providerAttempt.kind !== task.kind ||
-          providerAttempt.provider_model_id !== task.provider_model_id)
+          providerAttempt.provider_model_id !== task.provider_model_id ||
+          providerAttempt.provider_profile_id !== task.provider_profile_id)
       ) {
         throw new Error("Generation Provider attempt ownership changed");
       }

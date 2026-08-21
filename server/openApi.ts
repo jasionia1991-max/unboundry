@@ -1839,6 +1839,7 @@ export const openApiDocument = {
                 "id",
                 "displayName",
                 "capability",
+                "providerName",
                 "providerProtocol",
                 "isDefault",
                 "generationAvailable",
@@ -1849,6 +1850,7 @@ export const openApiDocument = {
               properties: {
                 id: { type: "string" },
                 displayName: { type: "string" },
+                providerName: { type: "string" },
                 capability: {
                   type: "string",
                   enum: ["text", "image", "video", "audio"],

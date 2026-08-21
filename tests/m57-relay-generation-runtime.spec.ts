@@ -865,8 +865,9 @@ test("relay media image video and audio share local-only cancel and resumable ta
   }
 
   const directory = await mkdtemp(join(tmpdir(), "unboundry-relay-image-retry-"));
+  let store: ReturnType<typeof createGenerationTaskStore> | undefined;
   try {
-    const store = createGenerationTaskStore(directory);
+    store = createGenerationTaskStore(directory);
     const created = store.create({
       canvasId: "relay-runtime-canvas",
       idempotencyKey: "relay-image-preserve-id-001",
@@ -888,9 +889,61 @@ test("relay media image video and audio share local-only cancel and resumable ta
       undefined,
       { preserveProviderTaskId: true },
     );
-    expect(store.get(created.task.id)?.providerTaskId).toBe("remote:image:001");
+    expect(store.get(created.task.id)).toMatchObject({
+      providerProfileId: relayProfile.id,
+      providerTaskId: "remote:image:001",
+    });
+    expect(store.getProviderAttemptForTask(created.task.id)).toMatchObject({
+      providerProfileId: relayProfile.id,
+      providerTaskId: "remote:image:001",
+    });
+    const createTask = (suffix: string, providerProfileId: string) => store!.create({
+      canvasId: `relay-profile-canvas-${suffix}`,
+      idempotencyKey: `relay-profile-isolation-${suffix}`,
+      kind: "image" as const,
+      modelConfiguration: { providerProtocol: "media-generate" },
+      nodeId: `relay-profile-node-${suffix}`,
+      ownerId: "__test__",
+      prompt: suffix,
+      providerModelId: "shared-provider-model",
+      providerProfileId,
+    }).task;
+    const sameProfile = createTask("same", "provider-alpha");
+    store.transition(sameProfile.id, "running");
+    store.recordProviderAttempt(sameProfile.id);
+    store.setProviderTaskId(sameProfile.id, "remote-same-profile");
+    const otherProfile = createTask("other", "provider-beta");
+    store.transition(otherProfile.id, "running");
+    store.recordProviderAttempt(otherProfile.id);
+    store.setProviderTaskId(otherProfile.id, "remote-other-profile");
+    const target = createTask("target", "provider-alpha");
+
+    expect(store.listOwnerRelayMatchContext({
+      excludeTaskId: target.id,
+      kind: "image",
+      ownerId: "__test__",
+      providerModelId: "shared-provider-model",
+      providerProfileId: "provider-alpha",
+    })).toMatchObject({
+      competitors: [{ id: sameProfile.id }],
+      occupiedTaskIds: ["remote-same-profile"],
+    });
+
+    const database = openAppDatabase(directory);
+    database.prepare(`
+      UPDATE generation_provider_attempts
+      SET provider_profile_id = 'provider-beta'
+      WHERE task_id = ?
+    `).run(sameProfile.id);
+    database.close();
+    expect(store.getProviderAttemptForTask(sameProfile.id)).toBeUndefined();
     store.close();
+    store = createGenerationTaskStore(directory);
+    expect(() => store!.resume(sameProfile.id)).toThrow(
+      "Provider task recovery requires exact accepted Provider evidence",
+    );
   } finally {
+    store?.close();
     await rm(directory, { force: true, recursive: true });
   }
 });
