@@ -2,11 +2,11 @@
 
 更新日期：2026-08-21
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.30**（生产已发布，待用户主观复验）
+当前代码包版本：**v0.6.30**（生产已发布并获用户验收通过）
 
 ## 一句话
 
-**生产是 v0.6.30 / schema39，状态 `PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK`。** Nano 的既有云腾 JPEG 结果已经有界转成规范 PNG；Suno 的两个不同完整 MP3 已整组持久化，第一个为 primary、第二个为 alternate，真实页面可以切换和播放。Provider 创建 POST 新增 0，tasks/attempts 仍为 `633/641`；Nano、Kling、Suno 三模型只在云腾 profile 下 published/enabled，优创 profile/凭据/epoch/模型/绑定/task/attempt 对冻结备份双向差异均为 0。尚未取得用户主观 PASS。
+**生产是 v0.6.30 / schema39，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。** Nano 的既有云腾 JPEG 结果已经有界转成规范 PNG；Suno 的两个不同完整 MP3 已整组持久化，第一个为 primary、第二个为 alternate，真实页面可以切换和播放。Provider 创建 POST 新增 0，tasks/attempts 仍为 `633/641`；Nano、Kling、Suno 三模型只在云腾 profile 下 published/enabled，优创 profile/凭据/epoch/模型/绑定/task/attempt 对冻结备份双向差异均为 0。用户于2026-08-21打开生产验收项目后明确回复“通过”。
 
 云腾个人中心此前显示本日图片1、视频1、音频1，合计消耗算力4.09、余额7.14。v0.6.30 只轮询既有 provider task `112083470`/`112087930` 并把成片保存进 Unboundry，没有重建 Provider task。当前版本和发布授权已消费，禁止追加真实生成、再次发布或进入下一版本。
 

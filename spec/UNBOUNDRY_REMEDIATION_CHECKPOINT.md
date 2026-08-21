@@ -11,7 +11,7 @@
 - 候选把Nano真实JPEG/WebP/GIF结果在资源闸门后有界归一化为PNG，并把Suno真实两个完整MP3先全部restart-safe持久化，再原子提交primary/alternate、恢复和展示；schema39不变。
 - 独立review的多结果竞态、资源闸门、整组成功证明、Accept协商和上传旧候选残留问题已修复，复审无剩余阻断。唯一一次正式safe full在HEAD`a8c9e8f`、source/snapshot`621ac501…e6b`执行，`1035/1037`通过；仅复验失败项后m38`15/15`、m2+m4`4/4`通过，未第二次运行full。
 - tag`v0.6.30`→commit`bfed2f79581935882bb58279c8faf992679f12c1`/tree`9a95f30993fc9f21489d1a8acb2e7347d90845c8`；PR #64 merge`0d71d37c77423f3870e97f1e44b9745fef999cfb`。生产release`/opt/unboundry/releases/v0.6.30-provider-result-compatibility-20260821`，冻结备份`v0.6.30-frozen-1uQmic`。
-- 两个既有任务零POST恢复成功：Nano为1024×1024 PNG；Suno为primary/alternate两个不同MP3且实页均可播放。tasks/attempts仍为633/641，active0；媒体719条/1196648534字节；优创全表冻结对比差异0。状态`PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK`。回执`spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json`。
+- 两个既有任务零POST恢复成功：Nano为1024×1024 PNG；Suno为primary/alternate两个不同MP3且实页均可播放。tasks/attempts仍为633/641，active0；媒体719条/1196648534字节；优创全表冻结对比差异0。用户于2026-08-21打开生产验收项目后明确回复“通过”，状态`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。回执`spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json`。
 
 ## 0. 最新已发布事件：v0.6.29 云腾 Provider 隔离代码（2026-08-21 已发布，凭据门阻断）
 

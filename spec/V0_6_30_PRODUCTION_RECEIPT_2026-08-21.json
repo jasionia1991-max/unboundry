@@ -1,7 +1,7 @@
 {
   "version": "v0.6.30",
   "date": "2026-08-21",
-  "status": "PRODUCTION_PUBLISHED_TECHNICAL_PASS_USER_RECHECK",
+  "status": "PRODUCTION_PUBLISHED_USER_PASS",
   "scope": {
     "summary": "兼容云腾 Nano 的非 PNG Provider 结果，并把 Suno 的两个不同完整音频按 primary/alternate 整组持久化、恢复和切换。",
     "schemaChanged": false,
@@ -274,6 +274,11 @@
     "conclusion": "受控 GET-only 历史恢复可以作为零 POST 的维护证据，但不能宣称普通重启会刷新 ASYNC-005 deadline；该限定已写入回执。"
   },
   "authorizationConsumed": true,
-  "userAcceptanceEvidence": null,
-  "completionBoundary": "v0.6.30 技术发布与生产验收完成；等待用户主观复验。不得进入 v0.6.31、其他 Provider、额外模型、再次发布或额外付费验证。"
+  "userAcceptanceEvidence": {
+    "accepted": true,
+    "message": "通过",
+    "acceptedAt": "2026-08-21T22:01:32+08:00",
+    "scope": "v0.6.30 云腾生产验收项目"
+  },
+  "completionBoundary": "v0.6.30 技术发布、生产验收与用户主观验收均完成。不得进入 v0.6.31、其他 Provider、额外模型、再次发布或额外付费验证。"
 }

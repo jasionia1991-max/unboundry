@@ -1,7 +1,7 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-21
-状态：`v0.6.30 已发布并完成生产技术验收，状态 PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK。Nano 既有 JPEG 结果已规范化为 PNG；Suno 两个不同完整 MP3 已按 primary/alternate 保存、可切换且均可播放；三媒体模型只在云腾 Provider 下 published/enabled。Provider 创建 POST 新增 0，优创与冻结备份逐表一致。权威回执见 spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json。`
+状态：`v0.6.30 已发布并由用户实页验收通过，状态 PRODUCTION_PUBLISHED_USER_PASS / USER_PASS。Nano 既有 JPEG 结果已规范化为 PNG；Suno 两个不同完整 MP3 已按 primary/alternate 保存、可切换且均可播放；三媒体模型只在云腾 Provider 下 published/enabled。Provider 创建 POST 新增 0，优创与冻结备份逐表一致。权威回执见 spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json。`
 
 ### 2026-08-21 Provider 结果兼容与既有任务零 POST 恢复（v0.6.30 已发布）
 
@@ -14,7 +14,7 @@
 - 发布证据：tag `v0.6.30`→commit `bfed2f79581935882bb58279c8faf992679f12c1` / tree `9a95f30993fc9f21489d1a8acb2e7347d90845c8`；PR #64 merge `0d71d37c77423f3870e97f1e44b9745fef999cfb`。生产 current 为 `/opt/unboundry/releases/v0.6.30-provider-result-compatibility-20260821`；冻结备份 `/var/lib/unboundry-rollbacks/v0.6.30-frozen-1uQmic` 双清单和双配置 manifest 一致。
 - 零 POST 恢复：tasks/attempts 保持 `633/641`，两条任务只复用 provider task `112083470`/`112087930`。Nano 保存 1024×1024 PNG；Suno 保存两个不同 MP3（4506390/4254966 字节，217.704/189.96 秒），第一个 primary、第二个 alternate；没有新增 admission、attempt 或 Provider task。
 - 生产门：公网/loopback version、live、ready 均通过，schema39/integrity/FK、service、inventory、公网5资源、数据计数通过；媒体增量正好3条/10052117字节；实页两音频均可播放并恢复主版本，console error/warn 0。Nano/Suno 验收后与 Kling 一起只在云腾 profile 下 published/enabled；优创 profile/凭据/epoch/模型/绑定/task/attempt 对冻结备份双向差异全0。
-- 当前为 `PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK`，不冒充用户主观验收。正式回执：`spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json`。
+- 用户于2026-08-21打开生产验收项目后明确回复“通过”，当前为 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。正式回执：`spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json`。
 - 权威设计与恢复边界：`spec/UNBOUNDRY_PROVIDER_RESULT_COMPATIBILITY_V0_6_30_2026-08-21.md`。
 
 ### 2026-08-21 云腾 Provider 隔离与三模型上线（v0.6.29 已发布，真实验收后部分配置回滚）

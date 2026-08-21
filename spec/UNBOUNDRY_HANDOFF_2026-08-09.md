@@ -8,7 +8,7 @@
 
 ## 当前线上：Provider 结果兼容（v0.6.30，2026-08-21 已发布）
 
-v0.6.30 已修复 Nano 真实 JPEG 结果与 Suno 真实两个完整 MP3 候选：Provider 图片先过资源闸门，非 PNG 有界转成规范 PNG；同一 Provider attempt 的所有结果先按原序持久化，整组齐全后第一个成为 primary、其余成为 alternate，API 和音频节点可切换。schema39 不变。tag commit `bfed2f79581935882bb58279c8faf992679f12c1` / tree `9a95f30993fc9f21489d1a8acb2e7347d90845c8`，PR #64 merge `0d71d37c77423f3870e97f1e44b9745fef999cfb`；生产 current `/opt/unboundry/releases/v0.6.30-provider-result-compatibility-20260821`，冻结备份 `/var/lib/unboundry-rollbacks/v0.6.30-frozen-1uQmic`。只轮询既有 provider task `112083470`/`112087930`，新增创建 POST、task、attempt、admission 均为0；Nano得到1024×1024 PNG，Suno两个MP3均可切换播放并恢复主版本。三模型只在云腾发布，优创全表与冻结备份一致。状态 `PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK`；权威文件：`spec/UNBOUNDRY_PROVIDER_RESULT_COMPATIBILITY_V0_6_30_2026-08-21.md`、`spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json`。
+v0.6.30 已修复 Nano 真实 JPEG 结果与 Suno 真实两个完整 MP3 候选：Provider 图片先过资源闸门，非 PNG 有界转成规范 PNG；同一 Provider attempt 的所有结果先按原序持久化，整组齐全后第一个成为 primary、其余成为 alternate，API 和音频节点可切换。schema39 不变。tag commit `bfed2f79581935882bb58279c8faf992679f12c1` / tree `9a95f30993fc9f21489d1a8acb2e7347d90845c8`，PR #64 merge `0d71d37c77423f3870e97f1e44b9745fef999cfb`；生产 current `/opt/unboundry/releases/v0.6.30-provider-result-compatibility-20260821`，冻结备份 `/var/lib/unboundry-rollbacks/v0.6.30-frozen-1uQmic`。只轮询既有 provider task `112083470`/`112087930`，新增创建 POST、task、attempt、admission 均为0；Nano得到1024×1024 PNG，Suno两个MP3均可切换播放并恢复主版本。三模型只在云腾发布，优创全表与冻结备份一致。用户于2026-08-21打开生产验收项目后明确回复“通过”，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`；权威文件：`spec/UNBOUNDRY_PROVIDER_RESULT_COMPATIBILITY_V0_6_30_2026-08-21.md`、`spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json`。
 
 ## 当前线上：云腾 Provider 隔离（v0.6.29，2026-08-21 已发布，真实验收后部分配置回滚）
 
