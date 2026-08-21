@@ -3,6 +3,13 @@
 更新时间：2026-08-21
 状态：`v0.6.27/schema39 在线；画布执行解耦已通过最终safe full、三路独立复审、真实双组并发页面、冻结备份与生产技术验收；用户于2026-08-21明确验收通过，当前为 USER_PASS。权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
 
+### 2026-08-21 v0.6.28 发布准备（当前）
+
+- 用户已分别确认版本号`v0.6.28`和“允许发布”；当前候选包含同步文字Provider port、Generation媒体结果原子提交与同一中转站Nano/Kling/Suno三模型合同。
+- 发布边界：按`RELEASE_RUNBOOK.md`完成版本提交、正式safe full、push/tag/PR/merge、冻结备份、fresh build、原子切换和零付费技术验收；不做真实Provider生成、不改schema、不动OSS素材。
+- 第七批Release只读追踪结论：当前实际入口是safe runner + 精确Git archive + staging fresh build + 冻结备份 + current原子切换；历史`0.5.2/0.6.0` bridge工具未阻塞当前发布，不扩张治理。
+- 当前线上仍是`v0.6.27/schema39`；只有生产门完成后才更新为已发布，用户实际页面确认前保持`USER_RECHECK`。
+
 ### 2026-08-21 同一中转站三媒体模型与结果边界（本地工程完成，未发布）
 
 - 状态：`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`。Generation已拥有媒体结果提交事务；MediaLifecycle/MediaRegistry不再读写generation task/attempt，TaskStore↔Safety循环已解除。
