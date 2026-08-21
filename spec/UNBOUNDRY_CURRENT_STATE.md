@@ -10,7 +10,15 @@
 
 云腾个人中心此前显示本日图片1、视频1、音频1，合计消耗算力4.09、余额7.14。v0.6.30 只轮询既有 provider task `112083470`/`112087930` 并把成片保存进 Unboundry，没有重建 Provider task。当前版本和发布授权已消费，禁止追加真实生成、再次发布或进入下一版本。
 
-当前没有已批准或施工中的下一版本。唯一明确保留的非阻断工程验证是 `VIEW-005`（98/171/200 节点精确性能档位，`NOT_RUN`）；Mureka 真实音频、团队/多人协作、真实 Agent 协议、Storyboard 完整编辑、图片打光和其他付费内容抽验均保持原 `PARTIAL/PAUSED/BLOCK`，不会因为 v0.6.30 通过而自动启动。
+当前没有已批准或施工中的下一版本。`VIEW-005`（98/171/200 节点精确性能档位）已用隔离安全定向证据收口为`AUTO_PASS`；Mureka 真实音频、团队/多人协作、真实 Agent 协议、Storyboard 完整编辑、图片打光和其他付费内容抽验均保持原 `PARTIAL/PAUSED/BLOCK`，不会因为 v0.6.30 通过或本次工程证据收口而自动启动。
+
+## VIEW-005 密集画布性能证据已关闭（2026-08-21，仅工程证据）
+
+- 最终被测实现commit `7d436b89e34a77b01b84de4e764d49044ba25fd2`；产品代码、schema和package版本均未修改。
+- 正式安全定向命令`node scripts/run-safe-tests.mjs run --spec m79-canvas-smoothness`退出0，精确98/171/200三档3/3通过；Node `22.23.1`、npm `10.9.8`、生产构建、动态loopback端口和fresh系统临时数据目录。
+- 三档正常zoom=1均只挂载12个可见节点且小于总数；平移后挂载/可见ID集合均改变；fit后zoom=0.15分别挂载并可见98/171/200全部节点。三档long task>=100ms均0，p95分别9.3/9.2/9.3ms，max分别25/25/17.6ms，dropped分别1/1/0。
+- 页面未处理错误、console error、外部请求、generation/Provider/OSS/媒体写请求均为0；每档临时项目finally清理成功，safe runner清理整套临时账号/数据库目录，4173监听者前后不变。
+- 该结果只把矩阵`VIEW-005`从`NOT_RUN`改为`AUTO_PASS`。v0.6.30既有`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`不变；没有新用户主观验收、版本升级、tag、release、生产访问或发布。完整回执：`spec/VIEW_005_DENSE_CANVAS_PERFORMANCE_RECEIPT_2026-08-21.md`。
 
 ## v0.6.30 Provider 结果兼容已发布（2026-08-21）
 
@@ -235,5 +243,5 @@
 2. 只读核对仓库分支、HEAD、工作树、`package.json` 版本是否为 `0.6.30`；历史计划中的旧版本号不得当成当前施工身份。
 3. 当前生产为 v0.6.30/schema39、用户已验收；没有新 Goal 时只做用户明确要求的只读检查或文档工作，不自动进入 v0.6.31。
 4. 云腾三模型只归属云腾 Provider；不得借用优创密钥、不得新增“天空”计费 Provider、不得自动追加真实 Provider POST。
-5. `VIEW-005` 是唯一明确保留的非阻断性能专项；其余 `PAUSED/BLOCK/PARTIAL` 项只有在用户重新立项后才能施工。
+5. `VIEW-005`已由本地隔离安全定向证据关闭为`AUTO_PASS`；其余`PAUSED/BLOCK/PARTIAL`项只有在用户重新立项后才能施工，本次证据不得被解释为新版本或生产授权。
 6. 若用户说生成或工作流再次异常，先查当前线上任务、Provider profile、attempt 和结果所有权，再给方案；不得擅自改生产库或重提付费请求。
