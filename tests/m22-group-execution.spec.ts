@@ -66,6 +66,10 @@ import {
 import type { ProbeNodeType } from "../client/src/canvas/ProbeNode";
 import { defaultParameterSchema } from "../types/modelParameters";
 import { resolveNodeInputs } from "../types/nodeInputs";
+import {
+  reconcileGenerationTask,
+  retryGenerationTask,
+} from "../client/src/generation/generationTasks";
 
 test("headless workflow registry owns all four executable node kinds", () => {
   expect(createNodeExecutorRegistry().kinds().sort()).toEqual([
@@ -1002,6 +1006,9 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
       now + 2,
       ["group-c", "node-c"],
     )).toBe(true);
+    expect([...values.keys()].filter((key) =>
+      key.startsWith("unboundry-group-run-lease:v1:")
+    )).toHaveLength(2);
     expect(await hasConflictingActiveGroupRunLeaseForCanvas(
       "canvas",
       "node-c",
@@ -1034,6 +1041,9 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
       checkpoint("run-c", "group-c"),
       { ownerId: "owner-c", runId: "run-c" },
     )).toBe(true);
+    expect([...values.keys()].filter((key) =>
+      key.startsWith("unboundry-group-run-checkpoint:v1:")
+    )).toHaveLength(2);
     expect(writeGroupRunCheckpoint(
       checkpoint("run-c", "group-c"),
       { ownerId: "owner-a", runId: "run-a" },
@@ -1052,6 +1062,44 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
     expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas", "node-c"))
       .toBe(true);
     expect(releaseGroupRunLease(scope, "run-c", "owner-c")).toBe(true);
+
+    const sameOwner = getGroupRunExecutionOwnerId();
+    expect(await acquireGroupRunLease(
+      scope,
+      "run-owner",
+      sameOwner,
+      now + 3,
+      ["node-owner"],
+    )).toBe(true);
+    let taskRequests = 0;
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = async () => {
+      taskRequests += 1;
+      throw new Error("task endpoint must stay unreachable while group owns node");
+    };
+    const target = {
+      canvasId: scope.canvasId,
+      generationInputKey: "input-owner",
+      kind: "text" as const,
+      nodeId: "node-owner",
+      taskId: "task-owner",
+    };
+    try {
+      await expect(retryGenerationTask(target, async () => 1)).rejects
+        .toMatchObject({
+          code: "GROUP_RUN_ACTIVE",
+          status: 409,
+        });
+      await expect(reconcileGenerationTask(target, async () => 1)).rejects
+        .toMatchObject({
+          code: "GROUP_RUN_ACTIVE",
+          status: 409,
+        });
+      expect(taskRequests).toBe(0);
+    } finally {
+      globalThis.fetch = previousFetch;
+      expect(releaseGroupRunLease(scope, "run-owner", sameOwner)).toBe(true);
+    }
     expect(writeGroupRunCheckpoint(checkpoint("run-a", "group-a"))).toBe(true);
     expect(writeGroupRunCheckpoint(checkpoint("run-c", "group-c"))).toBe(true);
     expect(clearGroupRunCheckpoint(scope, undefined, "run-a")).toBe(true);
@@ -1063,7 +1111,7 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
       configurable: true,
       value: {},
     });
-    expect(await acquireGroupRunLease(scope, "run-d", "owner-d", now + 3))
+    expect(await acquireGroupRunLease(scope, "run-d", "owner-d", now + 4))
       .toBe(false);
   } finally {
     clearGroupRunStarting(scope, "run-a");

@@ -62,6 +62,7 @@ import {
   verifiedCheckpointSuccessIds,
   writeGroupRunCheckpoint,
 } from "./groupRunCheckpoint";
+import { runExclusiveCanvasSubmit } from "./saveGate";
 
 export type { NodeRunResult };
 
@@ -508,12 +509,14 @@ export function WorkflowExecutionProvider({
         }
 
         if (isStartingCancelled()) return;
-        leaseAcquired = await acquireGroupRunLease(
-          scope,
-          runId,
-          ownerId,
-          Date.now(),
-          [...candidateLockIds],
+        leaseAcquired = await runExclusiveCanvasSubmit(canvasId, () =>
+          acquireGroupRunLease(
+            scope,
+            runId,
+            ownerId,
+            Date.now(),
+            [...candidateLockIds],
+          )
         );
         if (!leaseAcquired) {
           notify(

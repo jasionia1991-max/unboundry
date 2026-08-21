@@ -87,12 +87,43 @@ export type GroupRunCheckpoint = GroupRunSummaryScope & {
   version: 1;
 };
 
-function checkpointStorageKey(scope: GroupRunSummaryScope) {
+function checkpointStorageKey(scope: GroupRunSummaryScope, runId?: string) {
+  if (runId) {
+    return `${storagePrefix}${JSON.stringify([
+      scope.accountId,
+      scope.canvasId,
+      scope.fixtureScopeId,
+      runId,
+    ])}`;
+  }
   return `${storagePrefix}${groupRunSummaryScopeKey(scope)}`;
 }
 
-function leaseStorageKey(scope: GroupRunSummaryScope) {
+function leaseStorageKey(scope: GroupRunSummaryScope, runId?: string) {
+  if (runId) {
+    return `${leaseStoragePrefix}${JSON.stringify([
+      scope.accountId,
+      scope.canvasId,
+      scope.fixtureScopeId,
+      runId,
+    ])}`;
+  }
   return `${leaseStoragePrefix}${groupRunSummaryScopeKey(scope)}`;
+}
+
+function storageKeyMatchesScope(
+  key: string,
+  prefix: string,
+  scope: GroupRunSummaryScope,
+) {
+  if (!key.startsWith(prefix)) return false;
+  try {
+    const value = JSON.parse(key.slice(prefix.length)) as unknown;
+    return Array.isArray(value) && value[0] === scope.accountId &&
+      value[1] === scope.canvasId && value[2] === scope.fixtureScopeId;
+  } catch {
+    return false;
+  }
 }
 
 function heldWebLockKey(
@@ -174,17 +205,7 @@ export function readGroupRunLease(
   runId?: string,
 ): GroupRunLease | undefined {
   try {
-    const raw = window.localStorage.getItem(leaseStorageKey(scope));
-    if (!raw) return undefined;
-    const parsed = JSON.parse(raw) as unknown;
-    if (isLease(parsed)) {
-      const lease = { ...parsed, lockedNodeIds: parsed.lockedNodeIds ?? [] };
-      return !runId || lease.runId === runId ? lease : undefined;
-    }
-    if (!parsed || typeof parsed !== "object") return undefined;
-    const leases = Object.values(parsed as Record<string, unknown>)
-      .filter(isLease)
-      .map((lease) => ({ ...lease, lockedNodeIds: lease.lockedNodeIds ?? [] }));
+    const leases = readGroupRunLeases(scope);
     return runId
       ? leases.find((lease) => lease.runId === runId)
       : leases.sort((left, right) => right.heartbeatAt - left.heartbeatAt)[0];
@@ -195,16 +216,26 @@ export function readGroupRunLease(
 
 function readGroupRunLeases(scope: GroupRunSummaryScope): GroupRunLease[] {
   try {
-    const raw = window.localStorage.getItem(leaseStorageKey(scope));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (isLease(parsed)) {
-      return [{ ...parsed, lockedNodeIds: parsed.lockedNodeIds ?? [] }];
+    const leases = new Map<string, GroupRunLease>();
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (!key || !storageKeyMatchesScope(key, leaseStoragePrefix, scope)) continue;
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw) as unknown;
+      const values = isLease(parsed)
+        ? [parsed]
+        : parsed && typeof parsed === "object"
+          ? Object.values(parsed as Record<string, unknown>).filter(isLease)
+          : [];
+      for (const lease of values) {
+        leases.set(lease.runId, {
+          ...lease,
+          lockedNodeIds: lease.lockedNodeIds ?? [],
+        });
+      }
     }
-    if (!parsed || typeof parsed !== "object") return [];
-    return Object.values(parsed as Record<string, unknown>)
-      .filter(isLease)
-      .map((lease) => ({ ...lease, lockedNodeIds: lease.lockedNodeIds ?? [] }));
+    return [...leases.values()];
   } catch {
     return [];
   }
@@ -259,6 +290,10 @@ async function hasActiveGroupRunLeaseForCanvas(
         // The old run no longer holds its Web Lock. Remove only the exact stale
         // lease inspected so a newer or sibling run cannot be deleted.
         if (window.localStorage.getItem(key) === raw) {
+          if (Array.isArray(scopeValue) && scopeValue.length >= 4) {
+            window.localStorage.removeItem(key);
+            continue;
+          }
           const retained = leases.filter((lease) => lease.runId !== candidate.runId);
           if (retained.length === 0) window.localStorage.removeItem(key);
           else {
@@ -328,14 +363,9 @@ function claimGroupRunLease(
       ownerId,
       runId,
     };
-    const retained = current.filter((lease) =>
-      lease.runId !== runId && isGroupRunLeaseActive(lease, now)
-    );
     window.localStorage.setItem(
-      leaseStorageKey(scope),
-      JSON.stringify(Object.fromEntries(
-        [...retained, next].map((lease) => [lease.runId, lease]),
-      )),
+      leaseStorageKey(scope, runId),
+      JSON.stringify(next),
     );
     const verified = readGroupRunLease(scope, runId);
     if (!verified || verified.ownerId !== ownerId || verified.runId !== runId) {
@@ -441,18 +471,24 @@ export function releaseGroupRunLease(
     if (!current || current.ownerId !== ownerId || current.runId !== runId) {
       return false;
     }
-    const retained = readGroupRunLeases(scope).filter((lease) =>
-      lease.runId !== runId
-    );
-    if (retained.length === 0) {
-      window.localStorage.removeItem(leaseStorageKey(scope));
-    } else {
-      window.localStorage.setItem(
-        leaseStorageKey(scope),
-        JSON.stringify(Object.fromEntries(
-          retained.map((lease) => [lease.runId, lease]),
-        )),
-      );
+    window.localStorage.removeItem(leaseStorageKey(scope, runId));
+    // A v1 beta stored all runs under the scope-only key. Remove only the
+    // released entry while preserving compatibility with interrupted runs.
+    const legacyKey = leaseStorageKey(scope);
+    const legacyRaw = window.localStorage.getItem(legacyKey);
+    if (legacyRaw) {
+      const parsed = JSON.parse(legacyRaw) as unknown;
+      if (isLease(parsed)) {
+        if (parsed.runId === runId) window.localStorage.removeItem(legacyKey);
+      } else if (parsed && typeof parsed === "object") {
+        const retained = Object.values(parsed as Record<string, unknown>)
+          .filter(isLease)
+          .filter((lease) => lease.runId !== runId);
+        if (retained.length === 0) window.localStorage.removeItem(legacyKey);
+        else window.localStorage.setItem(legacyKey, JSON.stringify(
+          Object.fromEntries(retained.map((lease) => [lease.runId, lease])),
+        ));
+      }
     }
     dispatchLeaseEvent(scope);
     return true;
@@ -504,14 +540,7 @@ export function readGroupRunCheckpoint(
   runId?: string,
 ): GroupRunCheckpoint | undefined {
   try {
-    const raw = window.localStorage.getItem(checkpointStorageKey(scope));
-    if (!raw) return undefined;
-    const parsed = JSON.parse(raw) as unknown;
-    const checkpoints = isCheckpoint(parsed)
-      ? [parsed]
-      : parsed && typeof parsed === "object"
-        ? Object.values(parsed as Record<string, unknown>).filter(isCheckpoint)
-        : [];
+    const checkpoints = readGroupRunCheckpoints(scope);
     const matching = checkpoints.filter((checkpoint) =>
       groupRunSummaryScopeKey(checkpoint) === groupRunSummaryScopeKey(scope)
     );
@@ -526,15 +555,21 @@ export function readGroupRunCheckpoint(
 
 export function readGroupRunCheckpoints(scope: GroupRunSummaryScope) {
   try {
-    const raw = window.localStorage.getItem(checkpointStorageKey(scope));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    const checkpoints = isCheckpoint(parsed)
-      ? [parsed]
-      : parsed && typeof parsed === "object"
-        ? Object.values(parsed as Record<string, unknown>).filter(isCheckpoint)
-        : [];
-    return checkpoints
+    const checkpoints = new Map<string, GroupRunCheckpoint>();
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (!key || !storageKeyMatchesScope(key, storagePrefix, scope)) continue;
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw) as unknown;
+      const values = isCheckpoint(parsed)
+        ? [parsed]
+        : parsed && typeof parsed === "object"
+          ? Object.values(parsed as Record<string, unknown>).filter(isCheckpoint)
+          : [];
+      for (const checkpoint of values) checkpoints.set(checkpoint.runId, checkpoint);
+    }
+    return [...checkpoints.values()]
       .filter((checkpoint) =>
         groupRunSummaryScopeKey(checkpoint) === groupRunSummaryScopeKey(scope)
       )
@@ -560,19 +595,8 @@ export function writeGroupRunCheckpoint(
           lease,
         }
       : checkpoint;
-    const key = checkpointStorageKey(checkpoint);
-    const raw = window.localStorage.getItem(key);
-    const parsed = raw ? JSON.parse(raw) as unknown : undefined;
-    const existing = isCheckpoint(parsed)
-      ? [parsed]
-      : parsed && typeof parsed === "object"
-        ? Object.values(parsed as Record<string, unknown>).filter(isCheckpoint)
-        : [];
-    const next = Object.fromEntries(
-      [...existing.filter((item) => item.runId !== checkpoint.runId), persisted]
-        .map((item) => [item.runId, item]),
-    );
-    window.localStorage.setItem(key, JSON.stringify(next));
+    const key = checkpointStorageKey(checkpoint, checkpoint.runId);
+    window.localStorage.setItem(key, JSON.stringify(persisted));
     const verified = readGroupRunCheckpoint(checkpoint, checkpoint.runId);
     if (!verified || verified.runId !== checkpoint.runId) return false;
     window.dispatchEvent(new CustomEvent<GroupRunCheckpoint>(
@@ -606,26 +630,28 @@ export function clearGroupRunCheckpoint(
     }
     const key = checkpointStorageKey(scope);
     if (!targetRunId) {
-      window.localStorage.removeItem(key);
+      for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+        const candidate = window.localStorage.key(index);
+        if (candidate && storageKeyMatchesScope(candidate, storagePrefix, scope)) {
+          window.localStorage.removeItem(candidate);
+        }
+      }
     } else {
+      window.localStorage.removeItem(checkpointStorageKey(scope, targetRunId));
       const raw = window.localStorage.getItem(key);
-      const parsed = raw ? JSON.parse(raw) as unknown : undefined;
-      const checkpoints = isCheckpoint(parsed)
-        ? [parsed]
-        : parsed && typeof parsed === "object"
-          ? Object.values(parsed as Record<string, unknown>).filter(isCheckpoint)
-          : [];
-      const retained = checkpoints.filter((checkpoint) =>
-        checkpoint.runId !== targetRunId
-      );
-      if (retained.length === 0) window.localStorage.removeItem(key);
-      else {
-        window.localStorage.setItem(
-          key,
-          JSON.stringify(Object.fromEntries(
-            retained.map((checkpoint) => [checkpoint.runId, checkpoint]),
-          )),
-        );
+      if (raw) {
+        const parsed = JSON.parse(raw) as unknown;
+        if (isCheckpoint(parsed)) {
+          if (parsed.runId === targetRunId) window.localStorage.removeItem(key);
+        } else if (parsed && typeof parsed === "object") {
+          const retained = Object.values(parsed as Record<string, unknown>)
+            .filter(isCheckpoint)
+            .filter((checkpoint) => checkpoint.runId !== targetRunId);
+          if (retained.length === 0) window.localStorage.removeItem(key);
+          else window.localStorage.setItem(key, JSON.stringify(
+            Object.fromEntries(retained.map((checkpoint) => [checkpoint.runId, checkpoint])),
+          ));
+        }
       }
     }
   } catch {

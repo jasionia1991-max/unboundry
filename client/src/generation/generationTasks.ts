@@ -6,7 +6,6 @@ import { runExclusiveCanvasSubmit } from "./saveGate";
 import { rememberFinishedTaskDuration } from "./taskDurationCache";
 import {
   hasConflictingActiveGroupRunLeaseForCanvas,
-  hasForeignActiveGroupRunLeaseForCanvas,
 } from "./groupRunCheckpoint";
 
 export type GenerationTaskKind = "text" | "image" | "video" | "audio";
@@ -100,16 +99,6 @@ async function assertNoConflictingGroupRun(
       "当前节点正在整组执行中，请等待完成后再单独生成",
       409,
       "GROUP_RUN_ACTIVE",
-    );
-  }
-}
-
-async function assertNoForeignGroupRun(canvasId: string, nodeId?: string) {
-  if (await hasForeignActiveGroupRunLeaseForCanvas(canvasId, nodeId)) {
-    throw new GenerationRequestError(
-      "另一个标签页正在执行整组，请等待完成后再操作当前画布任务",
-      409,
-      "GROUP_RUN_ACTIVE_IN_OTHER_TAB",
     );
   }
 }
@@ -334,15 +323,15 @@ export async function reconcileGenerationTask(
   providerTaskId?: string,
   signal?: AbortSignal,
 ): Promise<GenerationReconcileResult> {
-  await assertNoForeignGroupRun(target.canvasId, target.nodeId);
-  return runExclusiveCanvasSubmit(target.canvasId, () =>
-    reconcileGenerationTaskUnlocked(
+  return runExclusiveCanvasSubmit(target.canvasId, async () => {
+    await assertNoConflictingGroupRun(target.canvasId, target.nodeId);
+    return reconcileGenerationTaskUnlocked(
       target,
       waitForCanvasRevision,
       providerTaskId,
       signal,
-    ),
-  );
+    );
+  });
 }
 
 async function reconcileGenerationTaskUnlocked(
@@ -486,10 +475,10 @@ export async function retryGenerationTask(
   waitForCanvasRevision: GenerationRetryGate,
   signal?: AbortSignal,
 ): Promise<GenerationTaskSummary> {
-  await assertNoForeignGroupRun(target.canvasId, target.nodeId);
-  return runExclusiveCanvasSubmit(target.canvasId, () =>
-    retryGenerationTaskUnlocked(target, waitForCanvasRevision, signal),
-  );
+  return runExclusiveCanvasSubmit(target.canvasId, async () => {
+    await assertNoConflictingGroupRun(target.canvasId, target.nodeId);
+    return retryGenerationTaskUnlocked(target, waitForCanvasRevision, signal);
+  });
 }
 
 async function retryGenerationTaskUnlocked(
@@ -979,6 +968,14 @@ export async function ensureGenerationTask(
   // No await is allowed between this last caller-owned semantic fence and the
   // paid POST invocation. postGeneration starts fetch synchronously.
   assertCurrentInput?.();
+  await assertNoConflictingGroupRun(
+    input.canvasId,
+    input.nodeId,
+    options.workflowRunId,
+  );
+  // Keep the semantic check immediately adjacent to the paid POST after the
+  // asynchronous lease fence above.
+  assertCurrentInput?.();
   try {
     const task = await postGeneration(kind, prepared);
     if (
@@ -1070,14 +1067,16 @@ export async function submitImageGeneration(input: {
   };
   prompt: string;
 }): Promise<GenerationTaskSummary> {
-  await assertNoForeignGroupRun(input.canvasId, input.nodeId);
-  return readJson(
-    await fetch("/api/generation-tasks", {
-      body: JSON.stringify({ ...input, kind: "image" }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    }),
-  );
+  return runExclusiveCanvasSubmit(input.canvasId, async () => {
+    await assertNoConflictingGroupRun(input.canvasId, input.nodeId);
+    return readJson(
+      await fetch("/api/generation-tasks", {
+        body: JSON.stringify({ ...input, kind: "image" }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      }),
+    );
+  });
 }
 
 export type GenerationPreflightInput = {
@@ -1177,14 +1176,16 @@ export async function preflightTextGeneration(
 export async function submitTextGeneration(
   input: TextGenerationInput,
 ): Promise<GenerationTaskSummary> {
-  await assertNoForeignGroupRun(input.canvasId, input.nodeId);
-  return readJson(
-    await fetch("/api/generation-tasks", {
-      body: JSON.stringify({ ...input, kind: "text" }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    }),
-  );
+  return runExclusiveCanvasSubmit(input.canvasId, async () => {
+    await assertNoConflictingGroupRun(input.canvasId, input.nodeId);
+    return readJson(
+      await fetch("/api/generation-tasks", {
+        body: JSON.stringify({ ...input, kind: "text" }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      }),
+    );
+  });
 }
 
 export async function submitVideoGeneration(input: {
@@ -1199,14 +1200,16 @@ export async function submitVideoGeneration(input: {
   parameters: Record<string, boolean | number | string>;
   prompt: string;
 }): Promise<GenerationTaskSummary> {
-  await assertNoForeignGroupRun(input.canvasId, input.nodeId);
-  return readJson(
-    await fetch("/api/generation-tasks", {
-      body: JSON.stringify({ ...input, kind: "video" }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    }),
-  );
+  return runExclusiveCanvasSubmit(input.canvasId, async () => {
+    await assertNoConflictingGroupRun(input.canvasId, input.nodeId);
+    return readJson(
+      await fetch("/api/generation-tasks", {
+        body: JSON.stringify({ ...input, kind: "video" }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      }),
+    );
+  });
 }
 
 export async function preflightVideoGeneration(input: {
@@ -1236,14 +1239,16 @@ export async function submitAudioGeneration(input: {
   parameters: Record<string, boolean | number | string>;
   prompt: string;
 }): Promise<GenerationTaskSummary> {
-  await assertNoForeignGroupRun(input.canvasId, input.nodeId);
-  return readJson(
-    await fetch("/api/generation-tasks", {
-      body: JSON.stringify({ ...input, kind: "audio" }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    }),
-  );
+  return runExclusiveCanvasSubmit(input.canvasId, async () => {
+    await assertNoConflictingGroupRun(input.canvasId, input.nodeId);
+    return readJson(
+      await fetch("/api/generation-tasks", {
+        body: JSON.stringify({ ...input, kind: "audio" }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      }),
+    );
+  });
 }
 
 export async function waitForGenerationTask(
