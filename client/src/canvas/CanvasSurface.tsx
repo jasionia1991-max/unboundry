@@ -1618,6 +1618,20 @@ function createProbeNodes(fixtureId?: string): ProbeNodeType[] {
         audioFileName: success ? `audio-result-${index + 1}.mp3` : undefined,
         audioFileSize: success ? 368_000 : undefined,
         audioGeneratedResult: success,
+        audioResultChoices: success && index === 0
+          ? [1, 2].map((choice) => ({
+              assetId: `fixture-audio-result-${choice}.mp3`,
+              byteSize: 368_000 + choice,
+              contentType: "audio/mpeg",
+              durationSeconds: 184,
+              durationStatus: "ready" as const,
+              mediaHeight: null,
+              mediaWidth: null,
+              role: choice === 1 ? "primary" as const : "alternate" as const,
+              storageBackend: "local" as const,
+              url: "/fixtures/audio-success.mp3",
+            }))
+          : undefined,
         audioSrc: success ? "/fixtures/audio-success.mp3" : undefined,
         audioWaveform: success
           ? Array.from(

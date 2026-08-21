@@ -2,13 +2,22 @@
 
 更新日期：2026-08-21
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.29**
+当前代码包版本：**v0.6.30**（发布候选；生产仍为 v0.6.29）
 
 ## 一句话
 
-**v0.6.29 / schema39 已发布**，商业 Provider 隔离、GitHub、冻结备份、fresh build、原子切换和生产配置均已完成。云腾独立 key 已经安全进入既有加密入口，未回显、未写入聊天/Git/文档/测试；目录同步得到129个模型，三个目标模型只归属云腾。三次且仅三次真实创建 POST 已用尽：Kling 在 Unboundry 内成功并保存 OSS；Nano 与 Suno 在云腾侧均已生成作品，但 Unboundry 因响应结果格式不兼容未能保存，现已分别停用、保留历史任务与审计，Kling 继续发布。当前准确状态是 `PRODUCTION_PUBLISHED_CONFIGURATION_PARTIAL_FAIL_CLOSED / USER_RECHECK`，不是 Goal 完成、三模型 PASS 或 `USER_PASS`。
+**生产仍是 v0.6.29 / schema39，v0.6.30 已获版本和发布授权且候选已冻结。** 本版只修 Provider 结果兼容：Nano 的JPEG/WebP/GIF结果有界归一化为PNG；Suno的两个不同完整MP3候选先全部持久化，再按primary/alternate提交并在音频节点切换。三次真实创建POST已用尽，本版新建Provider任务POST预算为0；只允许恢复既有云腾任务，绝不借用优创密钥、删除历史或未知自动重试。当前准确状态是`V0_6_30_RELEASE_CANDIDATE / PRODUCTION_V0_6_29_FAIL_CLOSED`，尚未宣称生产或用户PASS。
 
-云腾个人中心显示本日图片1、视频1、音频1，合计消耗算力4.09、余额7.14。Nano/Suno现有作品已从云腾页面下载到本地恢复目录，未重建 Provider task；真实创建 POST 预算已耗尽，禁止再次生成或自动重试。受版本冻结和“不进入v0.6.30”边界约束，本次只能保持两模型fail-closed，后续需新的版本/授权修正结果解析器后才能重新发布。
+云腾个人中心显示本日图片1、视频1、音频1，合计消耗算力4.09、余额7.14。Nano/Suno现有作品已从云腾页面下载到本地恢复目录，未重建Provider task；真实创建POST预算已耗尽，禁止再次生成或自动重试。用户已在上一Goal停止后另行给出v0.6.30版本和发布授权，因此旧的“不进入v0.6.30”边界已被当前授权替代；创建POST上限没有恢复，仍必须保持0。
+
+## v0.6.30 Provider 结果兼容候选（2026-08-21）
+
+- 用户上传一直支持PNG/JPEG/WebP/GIF；故障只在Provider结果链。Nano真实成片为JPEG，Suno真实响应为两个不同的完整MP3候选。
+- 非PNG图片经20MiB/4000万像素/私有临时目录/有界ffprobe+ffmpeg合同转成规范PNG；资源闸门在响应读取之前，资源繁忙保持可恢复语义。
+- relay结果接受1至4个同类型输出。所有候选先成为restart-safe published media，整组齐全后才以第一个为primary原子完成task/attempt；不会在主音频成功后静默丢失第二音频。
+- 后续alternate不重复成本或成功事件；任务API返回`resultOutputs`，音频节点提供持久版本选择并同步整组成功证明，上传替换会清除旧候选。
+- 独立subagent review的三个阻断和两个高风险项均已处理，复审无剩余阻断。唯一一次正式safe full在HEAD `a8c9e8f`、source/snapshot `621ac501…e6b`执行：`1035/1037`通过；只按失败项复验，m38 `15/15`、m2+m4 `4/4`通过，未第二次运行full。m4根因是测试夹具伪assetId被持久化成不存在的API路径，不是生产音频下载合同；夹具已纠正。
+- 生产恢复仅限已存在的云腾provider task `112083470`/`112087930`，零新建POST。权威设计：`spec/UNBOUNDRY_PROVIDER_RESULT_COMPATIBILITY_V0_6_30_2026-08-21.md`。
 
 ## v0.6.29 已发布，云腾三次真实验收后部分配置回滚（2026-08-21）
 

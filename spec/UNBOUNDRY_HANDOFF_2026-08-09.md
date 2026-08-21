@@ -6,9 +6,13 @@
 
 新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-21 的权威现状、产品合同和用户已点头的旧项收口。下面各节是历史增量，出现「当前」时只代表该时点。
 
+## 当前候选：Provider 结果兼容（v0.6.30，生产仍为 v0.6.29）
+
+用户已授权v0.6.30和发布。候选修复Nano真实JPEG结果与Suno真实两个完整MP3候选：Provider图片先过资源闸门，非PNG有界转成规范PNG；同一Provider attempt的所有结果先按原序持久化，整组齐全后第一个成为primary、其余成为alternate，API和音频节点可切换。schema39不变。v0.6.29的三次真实创建POST已经耗尽，本版POST预算为0，只允许核对/恢复既有云腾provider task `112083470`与`112087930`；不得借用优创密钥、删历史或未知自动重试。独立review及其修复已完成；唯一一次正式safe full、GitHub、冻结备份、fresh build、生产恢复和验收完成前不得写成PASS。权威文件：`spec/UNBOUNDRY_PROVIDER_RESULT_COMPATIBILITY_V0_6_30_2026-08-21.md`。
+
 ## 当前线上：云腾 Provider 隔离（v0.6.29，2026-08-21 已发布，真实验收后部分配置回滚）
 
-v0.6.29已上线商业Provider身份、账号凭据、模型、task/attempt/recovery/result严格隔离，以及普通模型下拉Provider标签。tag commit`d4ccc360e2645e43005c8bdf9a05ec984d48e655`/tree`a291420309236f2b2bb53653301b2b1f1395dbfd`；PR #60 merge`af8493cdf710dc9f899aa098d725e9d034bdb032`。生产current为`/opt/unboundry/releases/v0.6.29-yunteng-provider-isolation-20260821`，冻结备份`v0.6.29-frozen-6c2fff`双清单SHA`cabcb1c0…c0b5`；service/schema39/integrity/FK/公网5资源和数据门通过。云腾独立key通过加密入口保存，目录129模型；三目标模型只归属云腾。恰好3次真实创建POST：Kling在Unboundry成功保存OSS，Nano/Suno在云腾侧生成但Unboundry FORMAT失败，二者已停用且历史保留。云腾页面本日图片1/视频1/音频1、消耗4.09、余额7.14；失败两项的现有作品已下载到本地恢复目录，没有第四次POST。优创profile/3组凭据身份/12模型与绑定/281任务/288attempt和冻结备份逐项哈希一致。状态`PRODUCTION_PUBLISHED_CONFIGURATION_PARTIAL_FAIL_CLOSED / USER_RECHECK`。接手后不得再次跑full、发起Provider生成、移动tag、进入v0.6.30或借用优创key；完整回执见`spec/V0_6_29_PRODUCTION_RECEIPT_2026-08-21.json`。
+v0.6.29已上线商业Provider身份、账号凭据、模型、task/attempt/recovery/result严格隔离，以及普通模型下拉Provider标签。tag commit`d4ccc360e2645e43005c8bdf9a05ec984d48e655`/tree`a291420309236f2b2bb53653301b2b1f1395dbfd`；PR #60 merge`af8493cdf710dc9f899aa098d725e9d034bdb032`。生产current为`/opt/unboundry/releases/v0.6.29-yunteng-provider-isolation-20260821`，冻结备份`v0.6.29-frozen-6c2fff`双清单SHA`cabcb1c0…c0b5`；service/schema39/integrity/FK/公网5资源和数据门通过。云腾独立key通过加密入口保存，目录129模型；三目标模型只归属云腾。恰好3次真实创建POST：Kling在Unboundry成功保存OSS，Nano/Suno在云腾侧生成但Unboundry FORMAT失败，二者已停用且历史保留。云腾页面本日图片1/视频1/音频1、消耗4.09、余额7.14；失败两项的现有作品已下载到本地恢复目录，没有第四次POST。优创profile/3组凭据身份/12模型与绑定/281任务/288attempt和冻结备份逐项哈希一致。状态`PRODUCTION_PUBLISHED_CONFIGURATION_PARTIAL_FAIL_CLOSED / USER_RECHECK`。旧的“不进入v0.6.30”限制已被当前新授权替代，但不得发起新Provider任务或借用优创key；完整回执见`spec/V0_6_29_PRODUCTION_RECEIPT_2026-08-21.json`。
 
 ## 上一线上：Provider port 与三媒体中转模型（v0.6.28，2026-08-21 已发布，待用户复验）
 

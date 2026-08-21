@@ -33,7 +33,9 @@ import {
   GenerationTaskTransitionError,
 } from "../server/generationTaskStore";
 import {
+  commitGenerationMediaOutputSet,
   commitGenerationMediaResult,
+  publishGenerationMediaCandidate,
   recoverPendingGenerationMediaResults,
 } from "../server/generationResultCommit";
 import { assertGenerationMediaDeletionAllowedInTransaction } from "../server/generationAttemptQueries";
@@ -59,7 +61,9 @@ import {
 import {
   beginMediaDeletion,
   finishMediaDeletion,
+  publishedGenerationMediaCandidateIds,
   readableMediaForOwner,
+  readyGenerationMediaOutputs,
   readyMediaForOwner,
 } from "../server/mediaRegistry";
 import { projectsApi } from "../server/projects";
@@ -1071,6 +1075,132 @@ test("generated finalize atomically settles Provider evidence with task, media, 
         },
       });
       expect(providerAttemptSnapshot(directory, noLedger.task.id)).toEqual([]);
+    } finally {
+      store.close();
+    }
+  });
+});
+
+test("one paid task publishes its complete restart-safe ordered output set", async () => {
+  await withDataDirectory("generation-alternate", async (directory) => {
+    const ownerId = "m88-alternate-owner";
+    addOwner(directory, ownerId);
+    const store = createGenerationTaskStore(directory);
+    try {
+      const primary = reserveGeneratedImage(store, ownerId, "primary-output");
+      recordProviderAttemptFixture(
+        directory,
+        primary.task.id,
+        "response-received",
+      );
+      await publishFixture(directory, primary.reservation);
+      expect(publishGenerationMediaCandidate(primary.reservation)).toEqual({
+        assetId: primary.reservation.id,
+        state: "published",
+        taskId: primary.task.id,
+      });
+      const setup = openAppDatabase(directory);
+      try {
+        setup.prepare(`
+          UPDATE generation_tasks
+          SET model_configuration = ?
+          WHERE id = ?
+        `).run(JSON.stringify({ providerProtocol: "media-generate" }), primary.task.id);
+      } finally {
+        setup.close();
+      }
+
+      const alternateId = "m88-asset-alternate-output";
+      const alternate = reserveMediaPublication({
+        contentType: "image/png",
+        finalStorageName: `${alternateId}.png`,
+        historyLabel: "m88 alternate output",
+        id: alternateId,
+        kind: "image",
+        objectKey: `${alternateId}.png`,
+        ownerId,
+        storageBackend: "local",
+        task: {
+          actualCostMicrounits: 123,
+          executionAttempt: 1,
+          providerUsageTokens: 7,
+          taskId: primary.task.id,
+        },
+      });
+      await publishFixture(directory, alternate);
+      expect(await recoverPendingGenerationMediaResults()).toEqual([
+        { action: "finalized", assetId: alternateId, taskId: primary.task.id },
+      ]);
+      expect(store.get(primary.task.id)).toMatchObject({
+        resultAssetId: undefined,
+        state: "running",
+      });
+      const candidateDatabase = openAppDatabase(directory);
+      try {
+        expect(candidateDatabase.prepare(`
+          SELECT COUNT(*) AS count FROM asset_history
+          WHERE owner_id = ? AND id IN (?, ?)
+        `).get(ownerId, primary.reservation.id, alternateId)).toEqual({ count: 0 });
+      } finally {
+        candidateDatabase.close();
+      }
+      const outputSet = publishedGenerationMediaCandidateIds({
+        executionAttempt: 1,
+        kind: "image",
+        ownerId,
+        taskId: primary.task.id,
+      });
+      expect(outputSet).toEqual([primary.reservation.id, alternateId]);
+      expect(commitGenerationMediaOutputSet({
+        assetIds: outputSet,
+        executionAttempt: 1,
+        kind: "image",
+        ownerId,
+        taskId: primary.task.id,
+      })).toEqual({
+        assetId: primary.reservation.id,
+        state: "success",
+        taskId: primary.task.id,
+      });
+
+      const database = openAppDatabase(directory);
+      try {
+        expect(() => assertGenerationMediaDeletionAllowedInTransaction(
+          database,
+          { assetId: alternateId, kind: "image", ownerId },
+        )).toThrow("Published generation results cannot be deleted");
+        expect(database.prepare(`
+          SELECT state, result_asset_id, actual_cost_microunits
+          FROM generation_tasks WHERE id = ?
+        `).get(primary.task.id)).toEqual({
+          actual_cost_microunits: 123,
+          result_asset_id: primary.reservation.id,
+          state: "success",
+        });
+        expect(database.prepare(`
+          SELECT COUNT(*) AS count FROM generation_task_events
+          WHERE task_id = ? AND state = 'success'
+        `).get(primary.task.id)).toEqual({ count: 1 });
+        expect(database.prepare(`
+          SELECT COUNT(*) AS count FROM asset_history
+          WHERE owner_id = ? AND id IN (?, ?)
+        `).get(ownerId, primary.reservation.id, alternateId)).toEqual({ count: 2 });
+      } finally {
+        database.close();
+      }
+      expect(readyGenerationMediaOutputs({
+        executionAttempt: 1,
+        kind: "image",
+        ownerId,
+        primaryAssetId: primary.reservation.id,
+        taskId: primary.task.id,
+      }).map((output) => ({
+        assetId: output.assetId,
+        role: output.role,
+      }))).toEqual([
+        { assetId: primary.reservation.id, role: "primary" },
+        { assetId: alternateId, role: "alternate" },
+      ]);
     } finally {
       store.close();
     }

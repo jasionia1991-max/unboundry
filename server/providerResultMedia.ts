@@ -90,7 +90,7 @@ export function safeProviderResultUrl(value: string, apiKey: string) {
 
 function acceptedTypes(kind: ProviderResultMediaKind) {
   return kind === "image"
-    ? new Set(["image/png"])
+    ? new Set(["image/gif", "image/jpeg", "image/png", "image/webp"])
     : kind === "video"
       ? new Set(["video/mp4"])
       : new Set([
@@ -138,7 +138,7 @@ export async function downloadProviderResultMedia(input: {
     const response = await deadline.race(fetchPublicHttps(url, {
       headers: {
         Accept: input.kind === "image"
-          ? "image/png"
+          ? "image/png, image/jpeg, image/webp, image/gif"
           : input.kind === "video"
             ? "video/mp4"
             : "audio/*",

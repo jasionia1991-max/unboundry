@@ -171,6 +171,7 @@ function restoreAudioUploadBaseline(
       audioFileName: baseline.data.audioFileName,
       audioFileSize: baseline.data.audioFileSize,
       audioGenerationError: baseline.data.audioGenerationError,
+      audioResultChoices: baseline.data.audioResultChoices,
       audioSrc: baseline.data.audioSrc,
       audioWaveform: baseline.data.audioWaveform,
       inputState: baseline.data.inputState ?? "ready",
@@ -867,6 +868,12 @@ function AudioNodeImpl({
                   node.data.audioModelName ??
                   "Mureka",
                 audioPrompt: cleanPrompt,
+                audioResultChoices: task.resultOutputs?.map((output) => ({
+                  assetId: output.assetId,
+                  ...output.media,
+                  role: output.role,
+                  url: output.url,
+                })),
                 audioSrc: task.resultUrl,
                 audioWaveform: undefined,
               },
@@ -2077,6 +2084,10 @@ function AudioNodeImpl({
                   audioFileSize: metadata.byteSize,
                   audioFileName: file.name,
                   audioGenerationError: undefined,
+                  audioResultChoices: undefined,
+                  groupRunSuccessOwnershipKey: undefined,
+                  groupRunSuccessResultKey: undefined,
+                  groupRunSuccessTaskId: undefined,
                   audioSrc: asset.url,
                   audioWaveform: waveform(decoded),
                 },
@@ -2575,6 +2586,58 @@ function AudioNodeImpl({
         )}
         {data.audioSrc ? (
           <>
+            {(data.audioResultChoices?.length ?? 0) > 1 && (
+              <div
+                aria-label="生成音频版本"
+                className="audio-result-choices nodrag nopan"
+                role="group"
+              >
+                {data.audioResultChoices!.map((output, index) => (
+                  <button
+                    aria-label={`使用音频版本 ${index + 1}`}
+                    aria-pressed={data.assetId === output.assetId}
+                    key={output.assetId}
+                    onClick={() => {
+                      if (data.assetId === output.assetId) return;
+                      checkpoint(false);
+                      setCurrentTime(0);
+                      setPlaying(false);
+                      setNodes((nodes) => nodes.map((node) => node.id === id
+                        ? {
+                            ...node,
+                            data: {
+                              ...node.data,
+                              ...trustedMediaPatch({
+                                assetId: output.assetId,
+                                byteSize: output.byteSize,
+                                contentType: output.contentType,
+                                durationSeconds: output.durationSeconds,
+                                durationStatus: output.durationStatus,
+                                kind: "audio",
+                                mediaHeight: output.mediaHeight,
+                                mediaWidth: output.mediaWidth,
+                                storageBackend: output.storageBackend,
+                              }),
+                              assetId: output.assetId,
+                              audioDuration: output.durationSeconds ?? undefined,
+                              audioFileSize: output.byteSize,
+                              audioSrc: output.url,
+                              audioWaveform: undefined,
+                              groupRunSuccessResultKey:
+                                node.data.groupRunSuccessTaskId
+                                  ? groupRunResultKey(output.url)
+                                  : node.data.groupRunSuccessResultKey,
+                            },
+                          }
+                        : node));
+                    }}
+                    type="button"
+                  >
+                    {index + 1}
+                  </button>
+                ))}
+              </div>
+            )}
             <audio
               className={mediaLoad.failed ? "media-load-obscured" : undefined}
               data-testid="audio-node-media"

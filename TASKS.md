@@ -1,7 +1,18 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-21
-状态：`v0.6.29/schema39 已发布；隔离、唯一一次safe full、一次review、GitHub、冻结备份、fresh build、生产配置和三次真实创建POST均已完成。云腾独立凭据/目录/模型/任务链有效，Kling成功保存；Nano与Suno在云腾侧生成成功但Unboundry结果解析失败，已停用两条绑定并保留历史。当前为 PRODUCTION_PUBLISHED_CONFIGURATION_PARTIAL_FAIL_CLOSED / USER_RECHECK；创建POST预算已耗尽，禁止再生成、借用优创、移动tag或进入v0.6.30。权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+状态：`v0.6.30 Provider结果兼容候选已冻结，待GitHub与生产发布；用户已给版本和发布授权。实现只修Nano非PNG结果归一化、Suno多音频候选持久化/切换和既有失败任务零POST恢复。v0.6.29三次创建POST预算已耗尽，本版禁止任何新建Provider任务、借用优创密钥或删除历史。权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+
+### 2026-08-21 Provider 结果兼容与既有任务零 POST 恢复（v0.6.30 候选）
+
+- 根因不是项目只支持PNG：用户上传入口已支持PNG/JPEG/WebP/GIF并统一转PNG；v0.6.29故障在Provider结果下载只接PNG和单一结果。
+- Nano真实结果是1024×1024 JPEG；v0.6.30接收PNG/JPEG/WebP/GIF，先过资源闸门，再在有界隔离进程内统一生成、验证和保存PNG。
+- Suno真实返回两个不同的完整MP3候选（约217.68秒与189.92秒），不是可证明的stem/封面；两者先全部restart-safe持久化，再一次性提交task成功，按Provider原序成为primary/alternate。
+- schema39不变；alternate沿用原task/execution/provider profile/model/task身份，不重复成本/成功事件，并纳入恢复、完整性和删除保护。API与音频节点支持切换，整组成功证明同步更新。
+- 成本红线：v0.6.30新建Provider任务POST预算为0；只允许核对并恢复既有provider task `112083470`/`112087930`，任何未知结果或失败不得自动POST重试。
+- 实现与一次独立subagent review已完成，review阻断全部修复且复审无剩余阻断。唯一一次正式safe full在HEAD `a8c9e8f`、source/snapshot `621ac501…e6b`执行，`1035/1037`通过；失败仅为m38候选文档精确字符串和m4夹具伪assetId被持久化成不存在的API路径。按合同未重跑full；m38最小复验`15/15`、纠正夹具后m2+m4 `4/4`通过，真实Provider请求为0。
+- 候选现已冻结；尚待GitHub、冻结备份、fresh build、生产既有任务恢复/验收和正式回执。
+- 权威设计与恢复边界：`spec/UNBOUNDRY_PROVIDER_RESULT_COMPATIBILITY_V0_6_30_2026-08-21.md`。
 
 ### 2026-08-21 云腾 Provider 隔离与三模型上线（v0.6.29 已发布，真实验收后部分配置回滚）
 

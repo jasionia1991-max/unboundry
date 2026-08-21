@@ -5,6 +5,12 @@
 状态：`HISTORICAL_CHECKPOINT / APPEND_ONLY`
 用途：保留各次施工与发布时点证据，不再充当当前恢复入口。**当前状态、未发布工作区与下一步只看 `UNBOUNDRY_CURRENT_STATE.md`；本文件任何旧命令或旧授权都不可复用。**
 
+## 0. v0.6.30 Provider 结果兼容候选（2026-08-21，未发布）
+
+- 用户已另行授权v0.6.30和发布；生产仍为v0.6.29。旧v0.6.29停止边界不再阻止新版本，但三次创建POST预算已耗尽，本版新建POST预算为0。
+- 候选把Nano真实JPEG/WebP/GIF结果在资源闸门后有界归一化为PNG，并把Suno真实两个完整MP3先全部restart-safe持久化，再原子提交primary/alternate、恢复和展示；schema39不变。
+- 独立review的多结果竞态、资源闸门、整组成功证明、Accept协商和上传旧候选残留问题已修复，复审无剩余阻断。唯一一次正式safe full在HEAD`a8c9e8f`、source/snapshot`621ac501…e6b`执行，`1035/1037`通过；仅复验失败项后m38`15/15`、m2+m4`4/4`通过，未第二次运行full。候选已冻结，当前仍待GitHub、冻结备份、fresh build、生产既有任务恢复与验收。权威边界：`spec/UNBOUNDRY_PROVIDER_RESULT_COMPATIBILITY_V0_6_30_2026-08-21.md`。
+
 ## 0. 最新已发布事件：v0.6.29 云腾 Provider 隔离代码（2026-08-21 已发布，凭据门阻断）
 
 - 注释tag`v0.6.29`精确指向commit`d4ccc360e2645e43005c8bdf9a05ec984d48e655`、tree`a291420309236f2b2bb53653301b2b1f1395dbfd`；PR #60 merge`af8493cdf710dc9f899aa098d725e9d034bdb032`，发布时main tree一致。

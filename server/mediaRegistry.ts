@@ -22,6 +22,87 @@ export type MediaRecord = {
   storageStatus: "failed" | "pending" | "ready";
 };
 
+export type GenerationMediaOutput = MediaRecord & {
+  assetId: string;
+  role: "alternate" | "primary";
+};
+
+export function publishedGenerationMediaCandidateIds(input: Readonly<{
+  executionAttempt: number;
+  kind: MediaKind;
+  ownerId: string;
+  taskId: string;
+}>) {
+  return (db().prepare(`
+    SELECT publication.asset_id
+    FROM media_publication_attempts AS publication
+    JOIN media_assets AS media
+      ON media.owner_id = publication.owner_id
+      AND media.kind = publication.kind
+      AND media.id = publication.asset_id
+    WHERE publication.source = 'generation'
+      AND publication.state = 'published'
+      AND publication.task_id = ?
+      AND publication.task_execution_attempt = ?
+      AND publication.owner_id = ? AND publication.kind = ?
+      AND media.storage_status = 'ready'
+    ORDER BY publication.created_at, publication.attempt_id
+  `).all(
+    input.taskId,
+    input.executionAttempt,
+    input.ownerId,
+    input.kind,
+  ) as Array<{ asset_id: string }>).map((row) => row.asset_id);
+}
+
+export function readyGenerationMediaOutputs(input: Readonly<{
+  executionAttempt: number;
+  kind: MediaKind;
+  ownerId: string;
+  primaryAssetId: string;
+  taskId: string;
+}>): GenerationMediaOutput[] {
+  const rows = db().prepare(`
+    SELECT media.id
+    FROM media_publication_attempts AS publication
+    JOIN media_assets AS media
+      ON media.owner_id = publication.owner_id
+      AND media.kind = publication.kind
+      AND media.id = publication.asset_id
+    WHERE publication.source = 'generation'
+      AND publication.state = 'published'
+      AND publication.task_id = ?
+      AND publication.task_execution_attempt = ?
+      AND publication.owner_id = ?
+      AND publication.kind = ?
+      AND media.storage_status = 'ready'
+    ORDER BY
+      CASE WHEN media.id = ? THEN 0 ELSE 1 END,
+      publication.created_at,
+      publication.attempt_id
+  `).all(
+    input.taskId,
+    input.executionAttempt,
+    input.ownerId,
+    input.kind,
+    input.primaryAssetId,
+  ) as Array<{ id: string }>;
+  const ids = new Set(rows.map((row) => row.id));
+  ids.add(input.primaryAssetId);
+  return [...ids].flatMap((assetId) => {
+    const media = readyMediaForOwner(input.ownerId, input.kind, assetId);
+    return media
+      ? [{
+          ...media,
+          assetId,
+          role: assetId === input.primaryAssetId ? "primary" as const : "alternate" as const,
+        }]
+      : [];
+  }).sort((left, right) =>
+    left.role === right.role ? 0 : left.role === "primary" ? -1 : 1
+  );
+}
+
 export type MediaDeletionResult =
   | { action: "deferred"; media?: MediaRecord }
   | { action: "physical"; media: MediaRecord };

@@ -56,12 +56,23 @@ export function assertGenerationMediaDeletionAllowedInTransaction(
   }>,
 ) {
   const publishedTask = database.prepare(`
-    SELECT 1
-    FROM generation_tasks
-    WHERE owner_id = ? AND kind = ? AND result_asset_id = ?
-      AND state = 'success'
+    SELECT 1 FROM generation_tasks AS task
+    WHERE task.owner_id = ? AND task.kind = ?
+      AND (
+        (task.state = 'success' AND task.result_asset_id = ?)
+        OR EXISTS (
+          SELECT 1 FROM media_publication_attempts AS publication
+          WHERE publication.task_id = task.id
+            AND publication.task_execution_attempt = task.attempt
+            AND publication.owner_id = task.owner_id
+            AND publication.kind = task.kind
+            AND publication.asset_id = ?
+            AND publication.source = 'generation'
+            AND publication.state = 'published'
+        )
+      )
     LIMIT 1
-  `).get(input.ownerId, input.kind, input.assetId);
+  `).get(input.ownerId, input.kind, input.assetId, input.assetId);
   if (publishedTask) {
     throw new Error("Published generation results cannot be deleted");
   }
