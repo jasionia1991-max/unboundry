@@ -5,12 +5,12 @@
 状态：`HISTORICAL_CHECKPOINT / APPEND_ONLY`
 用途：保留各次施工与发布时点证据，不再充当当前恢复入口。**当前状态、未发布工作区与下一步只看 `UNBOUNDRY_CURRENT_STATE.md`；本文件任何旧命令或旧授权都不可复用。**
 
-## 0. 最新已发布事件：v0.6.27 画布执行解耦（2026-08-21 已发布，agent 技术实页通过）
+## 0. 最新已发布事件：v0.6.27 画布执行解耦（2026-08-21 已发布并获用户验收通过）
 
 - 注释tag`v0.6.27`精确指向tested commit`26525387ff02a34d8de1eae4d74ed51c11529a7a`、tree`3735ea655cc9f353b0ccfca1060221cea445ba0e`；PR #55 merge`93f0e46be78d04f7663444c3306f91081051dc9b`且main tree一致。
 - 正式safe full`119/119 specs、1029/1029 tests PASS`，异常0；生产release`/opt/unboundry/releases/v0.6.27-canvas-execution-decoupling-20260821`，冻结备份`v0.6.27-frozen-yaet3a`（365文件，双清单SHA`fb4efe7f…`），公网资源/service/schema39/integrity/FK门PASS。
 - 真实新画布A/B两个不相交文字组于557ms内先后启动并同时active；并发轮4 tasks/4 attempts全部attempt1 success、无重复，刷新后A1_OK/A2_OK/B1_OK/B2_OK仍在原节点。前置控制轮另有2个有界文字任务，生产合计新增6 tasks/6 attempts、active0、OSS写0。
-- 状态：`PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`。待用户主观复验，未冒充`USER_PASS`。权威回执：`spec/V0_6_27_PRODUCTION_RECEIPT_2026-08-21.json`。
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户于2026-08-21明确回复「v0.6.27 验收通过，同步更新为 USER PASS。」权威回执：`spec/V0_6_27_PRODUCTION_RECEIPT_2026-08-21.json`。
 
 ## 0. 最新已发布事件：v0.6.26 整组执行不受画布视野影响（2026-08-21 已发布，agent 技术实页通过）
 

@@ -1,7 +1,7 @@
 # Unboundry 画布执行解耦验收矩阵
 
 更新日期：2026-08-21  
-状态：`PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`
+状态：`PRODUCTION_PUBLISHED_USER_PASS`
 关联方案：`spec/UNBOUNDRY_CANVAS_EXECUTION_DECOUPLING_PLAN_2026-08-21.md`  
 当前进度：`spec/UNBOUNDRY_CANVAS_EXECUTION_CHECKPOINT.md`
 
@@ -23,6 +23,8 @@
 本矩阵只验收本轮新架构。v0.6.26 的历史真实页面通过是基线证据，不自动证明解耦后的实现通过。
 
 生产补充证据：v0.6.27新建技术画布`0f92bbc0-b30a-4c1d-bef2-ecf15216ac01`中，A/B两个不相交Text组于557ms内先后启动并在页面同时显示运行中；数据库证明B2未完成时A2已提交。并发轮4 tasks/4 attempts均attempt1 success且重复0；刷新后四个结果仍在原节点。完整回执见`spec/V0_6_27_PRODUCTION_RECEIPT_2026-08-21.json`。
+
+用户验收证据：2026-08-21用户明确回复「v0.6.27 验收通过，同步更新为 USER PASS。」本矩阵整体状态据此由`USER_RECHECK`收口为`USER_PASS`；未执行的非阻断P1 `VIEW-005`仍保持`NOT_RUN`，不改写为已验证。
 
 ## 2. 执行器与视口生命周期
 
@@ -127,4 +129,4 @@
 3. `REG-005` 通过；
 4. 三类独立复核完成；
 5. Checkpoint、本文、代码和 Git 状态一致；
-6. 受控真实付费验证、最终发布和生产技术验收已按证据完成；用户主观复验仍保持 `USER_RECHECK`，不得虚报为 `USER_PASS`。
+6. 受控真实付费验证、最终发布和生产技术验收已按证据完成；用户已于2026-08-21明确主观复验通过，整体状态已据实收口为 `USER_PASS`。
