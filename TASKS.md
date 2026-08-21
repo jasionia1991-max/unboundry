@@ -20,9 +20,18 @@
 ### 当前后续计划边界
 
 - 当前没有已批准或施工中的下一版本，不自动进入 v0.6.31。
-- 唯一明确保留的非阻断工程验证是 `VIEW-005`：98/171/200 节点精确性能档位，当前 `NOT_RUN`。
+- `VIEW-005`的98/171/200节点精确性能档位已由安全定向`m79`收口为`AUTO_PASS`；这只是工程证据关闭，不启动下一版本、生产发布或新的用户主观验收。
 - Mureka 真实音频、团队/多人协作、真实 Agent 协议、Storyboard 完整编辑、图片打光与其他付费内容抽验继续保持原 `PARTIAL/PAUSED/BLOCK`；需要用户重新立项和对应授权。
 - 下方旧段落中的“待复验”“当前阶段”“下一步”均为各自时点记录；若与本文件顶部或 `UNBOUNDRY_CURRENT_STATE.md` 冲突，以顶部 v0.6.30 状态为准。
+
+### 2026-08-21 VIEW-005 密集画布精确三档证据（AUTO_PASS）
+
+- 最终被测实现commit `7d436b89e34a77b01b84de4e764d49044ba25fd2`；未修改产品代码、schema或package版本。
+- 正式安全定向`node scripts/run-safe-tests.mjs run --spec m79-canvas-smoothness`退出0，98/171/200精确三档3/3通过；发现清单119 specs/1038 tests，本次仅执行m79的3项，没有运行full或m1。
+- 正常zoom=1三档均挂载12<N；真实拖拽约199px，快速平移把viewport Y从0移至约-432并改变挂载/可见ID集合；fit后zoom=0.15分别挂载并可见全部98/171/200节点。
+- 三档p95为9.3/9.2/9.3ms，max为25/25/17.6ms，dropped为1/1/0，>=100ms long task均0；页面/console错误、外部请求、Provider/OSS/媒体写请求均0，finally和safe runner临时目录清理通过，4173监听者不变。
+- 第一次启动在产品spec执行前被source-coverage manifest检测到runner hash陈旧而退出1；同步与runner变更对应的三个行为目标hash后，按合同只复验m79并通过，没有重复任何已成功产品测试。
+- 权威矩阵：`spec/UNBOUNDRY_CANVAS_EXECUTION_ACCEPTANCE_MATRIX_2026-08-21.md`；完整回执：`spec/VIEW_005_DENSE_CANVAS_PERFORMANCE_RECEIPT_2026-08-21.md`。
 
 ### 2026-08-21 云腾 Provider 隔离与三模型上线（v0.6.29 已发布，真实验收后部分配置回滚）
 

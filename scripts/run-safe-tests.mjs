@@ -31,6 +31,10 @@ import {
 const EXPECTED_NODE = "22.23.1";
 const EXPECTED_NPM = "10.9.8";
 const FORBIDDEN_PORT = 4173;
+const ALLOWED_BRANCHES = new Set([
+  "codex/unboundry-offline-remediation-2026-08-09",
+  "codex/view-005-dense-canvas-performance-2026-08-21",
+]);
 const USER_HOME = "/Users/mymy";
 const BACKUP_FINAL_CANDIDATE_SPEC = "tests/m10-backup.spec.ts";
 const EXACT_V051_SPEC = "tests/m92-version-compatibility.spec.ts";
@@ -602,7 +606,7 @@ function preflight() {
   const branch = run("git", ["branch", "--show-current"], {
     capture: true,
   }).stdout.trim();
-  if (branch !== "codex/unboundry-offline-remediation-2026-08-09") {
+  if (!ALLOWED_BRANCHES.has(branch)) {
     fail(`unexpected branch ${branch}`);
   }
   const versionFile = readFileSync(join(repositoryRoot, ".node-version"), "utf8").trim();
@@ -2044,8 +2048,8 @@ async function discover(specs, suiteRoot, sourceRoot, browserRoot) {
         })}`,
       );
     }
-    if (discovery.tests !== 1037) {
-      fail(`the frozen 1037-test inventory changed to ${discovery.tests}`);
+    if (discovery.tests !== 1038) {
+      fail(`the frozen 1038-test inventory changed to ${discovery.tests}`);
     }
     const idsByFile = {};
     const { entries } = collectReportEntries(reportFile, sourceRoot);

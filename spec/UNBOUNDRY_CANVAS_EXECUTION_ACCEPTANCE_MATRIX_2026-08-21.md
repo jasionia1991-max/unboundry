@@ -24,7 +24,9 @@
 
 生产补充证据：v0.6.27新建技术画布`0f92bbc0-b30a-4c1d-bef2-ecf15216ac01`中，A/B两个不相交Text组于557ms内先后启动并在页面同时显示运行中；数据库证明B2未完成时A2已提交。并发轮4 tasks/4 attempts均attempt1 success且重复0；刷新后四个结果仍在原节点。完整回执见`spec/V0_6_27_PRODUCTION_RECEIPT_2026-08-21.json`。
 
-用户验收证据：2026-08-21用户明确回复「v0.6.27 验收通过，同步更新为 USER PASS。」本矩阵整体状态据此由`USER_RECHECK`收口为`USER_PASS`；未执行的非阻断P1 `VIEW-005`仍保持`NOT_RUN`，不改写为已验证。
+用户验收证据：2026-08-21用户明确回复「v0.6.27 验收通过，同步更新为 USER PASS。」本矩阵整体状态据此由`USER_RECHECK`收口为`USER_PASS`；当时尚未执行的非阻断P1 `VIEW-005`保持`NOT_RUN`，后续是否关闭只由新的工程证据决定。
+
+工程补充证据：2026-08-21在不改产品代码、版本或生产的前提下，`m79-canvas-smoothness`以精确98/171/200节点三档完成生产构建下的虚拟化、拖拽、快速平移、缩放、可见集合变化和帧指标验证，3/3通过且外部请求、Provider/OSS/媒体写请求、页面错误均为0。该证据仅将`VIEW-005`更新为`AUTO_PASS`，不新增`USER_PASS`或生产发布结论。
 
 ## 2. 执行器与视口生命周期
 
@@ -40,7 +42,7 @@
 | VIEW-002 | P0 | 运行中把当前/下游/整组拖出屏幕后继续 | 浏览器 fixture + task/summary断言 | AUTO_PASS（m22 A组离屏卸载后success、B继续） |
 | VIEW-003 | P0 | 节点真正卸载后执行仍继续 | mount/unmount 探针 + 运行终态 | AUTO_PASS（m22） |
 | VIEW-004 | P0 | 删除 `workflowRenderRetention` 后无执行回归 | 代码不存在依赖 + VIEW-001～003 | AUTO_PASS（m22 + 文件已删除） |
-| VIEW-005 | P1 | 98/171/200 节点仍保留视口虚拟化和可接受交互 | 挂载数/长任务/浏览器指标 | NOT_RUN（非阻断P1；m79 60节点与m1 62节点已有代表性虚拟化/交互回归，98/171/200精确档位归后续性能专项，owner：product engineering，v0.6.27后） |
+| VIEW-005 | P1 | 98/171/200 节点仍保留视口虚拟化和可接受交互 | 挂载数/长任务/浏览器指标 | AUTO_PASS（m79精确三档3/3；正常zoom=1各挂载12<N，平移后可见ID集合变化，fit/zoom=0.15各挂载且可见N；long task>=100ms均0，p95 9.2～9.3ms，max 17.6～25ms，dropped 0～1；详见`spec/VIEW_005_DENSE_CANVAS_PERFORMANCE_RECEIPT_2026-08-21.md`） |
 
 ## 3. 运行期间使用手感与精确保护
 
