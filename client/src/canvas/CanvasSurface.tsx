@@ -1614,7 +1614,6 @@ function createProbeNodes(fixtureId?: string): ProbeNodeType[] {
       type: "audio" as const,
       position: { x: success ? 120 + index * 560 : 345, y: 300 },
       data: {
-        assetId: success ? `fixture-audio-result-${index + 1}.mp3` : undefined,
         audioDuration: success ? 184 : undefined,
         audioFileName: success ? `audio-result-${index + 1}.mp3` : undefined,
         audioFileSize: success ? 368_000 : undefined,
