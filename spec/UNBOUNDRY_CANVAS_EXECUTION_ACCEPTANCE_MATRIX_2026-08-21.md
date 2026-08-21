@@ -1,7 +1,7 @@
 # Unboundry 画布执行解耦验收矩阵
 
 更新日期：2026-08-21  
-状态：`PHASE_6 / FINAL_AUTO_PASS / RELEASE_PENDING`
+状态：`PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`
 关联方案：`spec/UNBOUNDRY_CANVAS_EXECUTION_DECOUPLING_PLAN_2026-08-21.md`  
 当前进度：`spec/UNBOUNDRY_CANVAS_EXECUTION_CHECKPOINT.md`
 
@@ -21,6 +21,8 @@
 结论标签：`已实锤 / 高可信推断 / 未验证 / 已否定`。测试输出被截断、没有退出码、环境不明确、只看代码推测时，不得写 `AUTO_PASS`。
 
 本矩阵只验收本轮新架构。v0.6.26 的历史真实页面通过是基线证据，不自动证明解耦后的实现通过。
+
+生产补充证据：v0.6.27新建技术画布`0f92bbc0-b30a-4c1d-bef2-ecf15216ac01`中，A/B两个不相交Text组于557ms内先后启动并在页面同时显示运行中；数据库证明B2未完成时A2已提交。并发轮4 tasks/4 attempts均attempt1 success且重复0；刷新后四个结果仍在原节点。完整回执见`spec/V0_6_27_PRODUCTION_RECEIPT_2026-08-21.json`。
 
 ## 2. 执行器与视口生命周期
 

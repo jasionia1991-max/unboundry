@@ -6,9 +6,9 @@
 
 新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-21 的权威现状、产品合同和用户已点头的旧项收口。下面各节是历史增量，出现「当前」时只代表该时点。
 
-## 当前未发布候选：画布执行解耦（v0.6.27，2026-08-21）
+## 当前线上：画布执行解耦（v0.6.27，2026-08-21 已发布，agent 技术实页通过）
 
-v0.6.27已完成四类静态headless executor、删除render retention、同画布不相交双run、runId分槽checkpoint/lease/lock、精确结果owner gate和运行参与图锁。终审发现的checkpoint/lease runId一致性、精确放弃单轮、多run导航停止、同标签手动提交避让组lease四项P1均已纠正；最终候选HEAD`26525387ff02a34d8de1eae4d74ed51c11529a7a`的正式safe full已以退出码0通过`119/119 specs、1029/1029 tests`，异常计数均0，source/snapshot SHA均为`bef8b0f3c0204a6634dd45753d0700827eb8df6de0a7abb992f144116cf535d6`，4173 listener未变，受保护未跟踪JSON明确排除。架构终审P0=0/P1=0、测试终审无新的P0/P1实现阻断；下一步以`spec/UNBOUNDRY_CANVAS_EXECUTION_CHECKPOINT.md`为唯一施工入口，先做release复核，再完成push/PR/tag、最小真实Provider/页面、冻结备份、发布与生产回执。线上仍为v0.6.26；不得提前写已发布或`USER_PASS`。
+v0.6.27已完成四类静态headless executor、删除render retention、同画布不相交双run、runId分槽checkpoint/lease/lock、精确结果owner gate和运行参与图锁。tested commit`26525387ff02a34d8de1eae4d74ed51c11529a7a`的正式safe full为`119/119 specs、1029/1029 tests`且异常0；注释tag `v0.6.27`精确指向该commit，PR #55 merge`93f0e46be78d04f7663444c3306f91081051dc9b`，main tree与tag tree同为`3735ea655cc9f353b0ccfca1060221cea445ba0e`。生产current为`/opt/unboundry/releases/v0.6.27-canvas-execution-decoupling-20260821`，冻结备份`v0.6.27-frozen-yaet3a`；真实新画布A/B两个不相交文字组于557ms内先后启动并同时active，并发轮4 tasks/4 attempts全部attempt1 success、无重复，刷新后四个结果仍在原节点。状态`PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`；权威回执`spec/V0_6_27_PRODUCTION_RECEIPT_2026-08-21.json`，不得提前写`USER_PASS`。
 
 ## 最新已发布事件：整组执行不受画布视野影响（v0.6.26，2026-08-21 已发布，agent 技术实页通过）
 

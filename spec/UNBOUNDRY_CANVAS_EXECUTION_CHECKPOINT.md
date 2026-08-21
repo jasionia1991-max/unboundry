@@ -1,7 +1,7 @@
 # Unboundry 画布执行解耦施工 Checkpoint
 
-更新时间：2026-08-21（阶段0～5、终审纠正与最终safe full完成；发布/真实验证待收口）
-状态：`PHASE_6_FINAL_AUTO_PASS / RELEASE_PENDING`
+更新时间：2026-08-21（最终safe full、独立复审、GitHub、冻结备份、生产发布与真实双组页面验收完成）
+状态：`PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`
 用途：这是本轮治理唯一的可变施工状态。每个批次结束必须更新；上下文压缩或新 Session 接手时，先重新核对真实 Git/代码，再从“下一步唯一动作”继续。
 
 ## 1. 当前身份
@@ -10,7 +10,8 @@
 - 分支：`codex/unboundry-offline-remediation-2026-08-09`
 - 最终自动验收候选 HEAD：`26525387ff02a34d8de1eae4d74ed51c11529a7a`
 - package：`0.6.27`
-- 当前候选代码：v0.6.27；线上仍为v0.6.26，真实页面历史状态以 `spec/UNBOUNDRY_CURRENT_STATE.md` 和 v0.6.26 receipt 为准。
+- 发布身份：tag`v0.6.27`→tested commit`26525387ff02a34d8de1eae4d74ed51c11529a7a`；tree`3735ea655cc9f353b0ccfca1060221cea445ba0e`；PR #55 merge`93f0e46be78d04f7663444c3306f91081051dc9b`且main tree一致。
+- 生产：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.27-canvas-execution-decoupling-20260821`；回执`spec/V0_6_27_PRODUCTION_RECEIPT_2026-08-21.json`。
 - 预期工作树保留：`spec/public-templates-director-split-revision.json` 未跟踪，禁止提交、删除、改名。
 
 新 Session 若发现分支、版本、目标、路径或权威文档与此冲突：不要开始 Goal 施工；先只读查清并报告。
@@ -40,11 +41,11 @@
 - 手动单节点提交与整组提交共用同一canvas/node租约冲突门；只有持有该runId的headless executor可显式放行自己的租约。
 - 结果应用必须同时匹配runId、taskId、ownershipKey、nodeId和kind；不匹配结果只留在任务事实，不覆盖当前画布。
 - m22双run浏览器fixture已证明A成功、A失败、A停止三种反例都不清除B；六个唯一runId、七个预期task POST和逐组摘要均核对通过；A整组真实卸载后，第二层仍提交、完成并落盘。
-- v0.6.26真实页面“运行中拖出视口仍完成11/11”仍是历史止血证据；v0.6.27新架构须以本轮新证据和发布回执为准。
+- v0.6.27真实新画布已证明两个不相交Text组同时active并各自2/2完成，刷新后结果仍在原节点；v0.6.26“运行中拖出视口仍完成11/11”保留为上一版历史止血证据。
 
 ## 4. 当前阶段
 
-当前阶段：`PHASE_6 / VALIDATION AND RELEASE`
+当前阶段：`COMPLETE / USER_RECHECK`
 
 已完成：
 
@@ -64,12 +65,15 @@
 - package候选版本已选择 `0.6.27`。
 - 三类独立终审已完成：架构终审在HEAD `2652538`确认P0=0、P1=0并允许final full；测试终审确认无新的P0/P1实现阻断，同时要求对组合证据边界保持诚实，矩阵已同步这些边界。
 - 最终候选HEAD `26525387ff02a34d8de1eae4d74ed51c11529a7a`已完成唯一一次正式safe full：119/119 specs、1029/1029 tests全部通过。
+- release reviewer采用“tag精确指向tested commit，PR/main保持同tree，docs/receipt后置”的不可变身份方案放行；注释tag和PR #55已发布并核对main tree一致。
+- 服务器从tag immutable archive构建；Node22.23.2/npm10.9.8、tsc、Vite build、5800行inventory校验通过。冻结备份`v0.6.27-frozen-yaet3a`含365文件，双清单SHA一致，restore DB schema39/integrity ok/FK0。
+- 生产切换成功：service active/enabled、NRestarts0，公网/回环version 0.6.27，5个构建资源逐字节一致；切换前数据590 tasks/598 attempts/50 templates/48 published/active0未变。
+- 新建真实技术画布`0f92bbc0-b30a-4c1d-bef2-ecf15216ac01`；A/B两个不相交文字组于557ms内先后启动并同时active。并发轮4 tasks/4 attempts全部attempt1 success、重复0；连同前置A组控制轮共6 tasks/6 attempts，active归零、OSS写0。A/B摘要各2/2，刷新后四个结果仍在精确原节点，已保存到云端，应用console error/warn 0。
 
-未完成：
+非阻断后续：
 
-- 尚未执行最小真实 Provider、受控真实页面、生产发布和生产技术验收；
-- VIEW-005精确98/171/200档位未跑，作为非阻断P1归后续性能专项；已有m79 60节点与m1 62节点代表性回归，不冒充精确档位通过；
-- `workflowRenderRetention.ts` 已从候选提交真实删除；执行和渲染均不存在该依赖。
+- VIEW-005精确98/171/200档位未跑，归product engineering后续性能专项；已有m79 60节点与m1 62节点代表性回归，不冒充精确档位通过。
+- 用户尚未主观复验，状态保持`USER_RECHECK`；不得写`USER_PASS`。
 
 ## 5. 当前施工文件
 
@@ -87,7 +91,7 @@
 - `scripts/run-safe-tests.mjs`、`scripts/source-coverage-manifest.json`（测试库存从1025增至1029并同步安全manifest）
 - `package.json`、`package-lock.json`（0.6.27）
 
-尚未修改生产配置或历史发布回执；`CURRENT_STATE`、`TASKS`、矩阵和Runbook同步候选事实与线上仍为v0.6.26。未跟踪模板文件保持原样且禁止纳入提交。
+生产未修改schema、Provider/Storage配置、OSS对象或历史回执；当前权威文档已同步v0.6.27发布事实。未跟踪模板文件保持原样且未进入commit、tag、PR、archive或release。
 
 ## 6. 本批测试与证据
 
@@ -96,7 +100,7 @@
 - `node scripts/run-safe-tests.mjs preflight`：退出码0；119 specs；安全入口确认；4173 listener unchanged。
 - `/Users/mymy/.hermes/node/bin/node node_modules/typescript/bin/tsc --noEmit`：退出码0（移除四类旧 registration 并修正 executor 类型后）。
 - 三路只读审查确认：HEAD 的四类执行均依赖 React `useEffect` registration；Provider resume 轮询不等于 exact task recover；scope 单槽 checkpoint/lease 与 scope-wide finally 无法安全支持多 run。
-- 尚未执行真实 Provider或生产检查；定向证据不替代下面的最终全量和后续发布闸门。
+- 真实 Provider、生产检查与正式发布证据见本节末和v0.6.27回执；此前定向证据不替代最终全量。
 - `node scripts/run-safe-tests.mjs run --spec tests/m22-group-execution.spec.ts`：37/37 PASS；覆盖四模态headless preflight/run/recover/apply、DAG、离屏真实卸载后第二层提交与结果落盘、运行期无关编辑/移动/连接/删除/复制、参与图锁、checkpoint/lease runId门、精确放弃、多run导航，以及双run成功/失败/停止隔离；4173 unchanged。
 - `node scripts/run-safe-tests.mjs run --spec tests/m40-generation-idempotency-recovery.spec.ts`：14/14 PASS；覆盖共享四节点幂等、丢响应reconcile、一次POST。
 - `node scripts/run-safe-tests.mjs run --spec tests/m41-generation-retry-ui.spec.ts`：51/51 PASS；覆盖四节点恢复、迟到结果、输入变化、保存失败/重放。
@@ -105,6 +109,7 @@
 - `node scripts/run-safe-tests.mjs run --spec tests/m44-provider-profile-atomicity.spec.ts`：8/8 PASS；第一轮全量中的WAL sidecar并发偶发未复现，独立进程原子性领域通过。
 - 最终正式回执：候选HEAD `26525387ff02a34d8de1eae4d74ed51c11529a7a`执行`node scripts/run-safe-tests.mjs full`退出码0；119/119 specs、1029/1029 tests，failed/skipped/retries/blocked/reportErrors均0；Node22.23.1、npm10.9.8、575个source files，immutable builder attempts1/invocations5/failures0，denied Vite wildcard probes 522；source/snapshot SHA均为`bef8b0f3c0204a6634dd45753d0700827eb8df6de0a7abb992f144116cf535d6`，4173 listener SHA前后同为`24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244`；受保护未跟踪JSON未进入source/snapshot。
 - 组合证据边界：UX通用锁由wrapper pointer-events、持续aria、禁用控件和任务摘要共同证明，不声称逐一点击每个同类控件；共享冲突页面fixture直接覆盖durable外部Text输入，其余重叠结构由锁集合单元反例覆盖；STATE-007删除后归属和STATE-009旧轮次结果分别由owner gate/迟到结果反例直接证明。
+- 生产回执：`spec/V0_6_27_PRODUCTION_RECEIPT_2026-08-21.json`完整记录tag/PR/main tree、archive、构建、inventory、冻结备份、生产数据门、真实group/node/task ID、并发时间窗和页面刷新结果。成功完成后checkpoint/lease按设计清理，浏览器不再持久保留runId；文档不编造runId，以持久group/node/task ID和数据库时间窗替代。
 
 ## 7. 测试政策摘要
 
@@ -165,7 +170,7 @@
 
 ## 11. 下一步唯一动作
 
-提交本次最终自动证据的docs-only同步并由release reviewer复核；随后push/PR/tag，以精确候选树制作发布产物，完成冻结备份、生产切换、最小真实Provider/受控页面技术验收和最终发布回执同步。受保护未跟踪JSON全程排除。
+等待用户打开线上v0.6.27主观复验并明确回复；在此之前保持`USER_RECHECK`。精确98/171/200节点性能档位由product engineering在v0.6.27后单独处理，不阻断本Goal技术收口。
 
 ## 12. 最终完成前复核
 
