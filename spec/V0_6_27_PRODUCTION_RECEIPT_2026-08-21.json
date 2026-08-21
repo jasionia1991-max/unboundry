@@ -1,7 +1,7 @@
 {
   "incident": "CANVAS-WORKFLOW-EXECUTION-DECOUPLING",
   "version": "0.6.27",
-  "status": "PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS",
+  "status": "PRODUCTION_PUBLISHED_USER_PASS",
   "publishedAt": "2026-08-21T02:02:43Z",
   "changes": {
     "summary": "Text、Image、Audio、Video 整组执行迁移到静态 headless executor；删除 renderer retention；同画布不相交工作组可并行，参与图精确锁定，checkpoint、lease、lock、摘要和结果所有权按 run 隔离。",
@@ -174,5 +174,9 @@
     "frozenBackup": "/var/lib/unboundry-rollbacks/v0.6.27-frozen-yaet3a",
     "required": false
   },
-  "userAcceptance": "USER_RECHECK"
+  "userAcceptance": "USER_PASS",
+  "userAcceptanceEvidence": {
+    "acceptedOn": "2026-08-21",
+    "statement": "v0.6.27 验收通过，同步更新为 USER PASS。"
+  }
 }
