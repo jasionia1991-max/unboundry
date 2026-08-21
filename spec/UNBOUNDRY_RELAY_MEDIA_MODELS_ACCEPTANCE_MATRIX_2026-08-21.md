@@ -2,7 +2,7 @@
 
 更新日期：2026-08-21
 
-状态：`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`
+状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
 
 当前自动证据：Node `22.23.1` / npm `10.9.8`；最终相关代码下 safe runner 的 TypeScript、构建、source coverage、外网门禁均通过。统一集合首次进入产品测试后为 `145/148`，仅 m53/m57 三条直接失败；定向修复后只重跑失败文件 m53+m57，`40/40` 通过，因此十个目标 spec 的最终有效结果为 `148/148`。所有执行均为新临时目录、动态 loopback、fake fetch，4173 前后身份不变。
 
@@ -124,9 +124,9 @@
 | REAL-IMG-001 | P1 | 1次1K文字出图 | 专用凭据、POST次数1、结果保存 | PAUSED |
 | REAL-VID-001 | P1 | 1次5秒std文字视频 | 专用凭据、POST次数1、结果保存 | PAUSED |
 | REAL-AUD-001 | P1 | 1次纯音乐 | 专用凭据、POST次数1、结果保存 | PAUSED |
-| RELEASE-001 | P0 | 版本号由用户明确指定 | 当前授权 | PAUSED |
-| RELEASE-002 | P0 | push/PR/tag/发布单独明确授权 | 当前授权 | PAUSED |
-| USER-001 | P1 | 用户真实页面确认三节点可选且完成 | 用户回复 | PAUSED |
+| RELEASE-001 | P0 | 版本号由用户明确指定 | 当前授权 | PASS：用户指定v0.6.28，授权已消费 |
+| RELEASE-002 | P0 | push/PR/tag/发布单独明确授权 | 当前授权 | PASS：tag v0.6.28、PR #58、生产切换完成 |
+| USER-001 | P1 | 用户真实页面确认三节点可选且完成 | 用户回复 | USER_RECHECK |
 
 本地工程完成不要求 REAL/RELEASE/USER 项变为通过，也不得把 AUTO_PASS 冒充这些状态。
 

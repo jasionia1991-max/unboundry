@@ -23,8 +23,8 @@
 
 ## 2. 当前授权边界
 
-- **2026-08-21 当前权威状态**：生产运行`v0.6.27/schema39`，`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.27-canvas-execution-decoupling-20260821`，`UNBOUNDRY_ARK_FILES_API=1`。v0.6.27画布执行解耦已发布，agent真实双组并发页面通过；用户于2026-08-21明确验收通过，状态`PRODUCTION_PUBLISHED_USER_PASS`。旧版本历史状态和产品合同见`spec/UNBOUNDRY_CURRENT_STATE.md`；
-- v0.6.27精确源码commit`26525387ff02a34d8de1eae4d74ed51c11529a7a`、tree`3735ea655cc9f353b0ccfca1060221cea445ba0e`，tag`v0.6.27`，PR #55 merge`93f0e46be78d04f7663444c3306f91081051dc9b`；正式安全全量`119/119 specs、1029/1029 tests PASS`，异常计数0。生产回执`spec/V0_6_27_PRODUCTION_RECEIPT_2026-08-21.json`。本次发布、真实验证和验收同步授权均已消费，不可复用；
+- **2026-08-21 当前权威状态**：生产运行`v0.6.28/schema39`，`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.28-relay-media-models-20260821`，`UNBOUNDRY_ARK_FILES_API=1`。同步文字 Provider port、Generation 媒体结果原子提交与 Nano/Kling/Suno 中转模型合同已发布；零付费技术验收通过，状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。旧版本历史状态和产品合同见`spec/UNBOUNDRY_CURRENT_STATE.md`；
+- v0.6.28精确源码commit`ee6ce437730cf78ef4488217b778f6b0ef2aaee5`、tree`2811ada65140779d4a5e10cbd8ed6fa54893638b`，tag`v0.6.28`，PR #58 merge`753d24f8ee6e4facb3c88e876c4a38b456addc75`；正式safe full执行`1032/1034`，两个失败分别为0.3ms性能抖动与候选文档精确字符串，修正文档后只复验失败spec并`16/16 PASS`，未重复full。生产回执`spec/V0_6_28_PRODUCTION_RECEIPT_2026-08-21.json`。本次发布授权已消费，不可复用；真实Provider/付费生成仍未授权且未执行；
 - v0.6.18生产源码commit为`e47f50c0bde0ee23585f27b71ad8df240973161a1`、tree为`48bee3c2c050ced3d2854390ca1ef1d0aba8fae5`；注释标签`v0.6.18`精确指向该源码。PR #32已于2026-08-19合并到`main`，merge commit为`265c8f63e867e122ecab2f145c362d5bdab3bd19`。生产凭证为`spec/INC_GEN_009_UI_ALIGN_PRODUCTION_RECEIPT_2026-08-19.json`；
 - v0.6.18正式安全全量为`118/118 specs、983/983 tests PASS`，异常0。管理员后台「优创尺寸映射」面板样式对齐暗黑 UI、比例下拉、文案大白话；出图逻辑不变。优创专用协议按文档像素发 1K/2K/4K，生产默认画质保持 1K；
 - 冻结备份位于`/var/lib/unboundry-rollbacks/v0.6.18-frozen-vctAv7`，冻结源与恢复副本均365文件且清单SHA-256同为`b3bb61a68e03b810e8573f52d81c331f06b825feb3d67f9f4b202e3310aa7ca8`。发布与验证期间真实Provider请求、付费生成和OSS写入均为0；上一不可变release `v0.6.17-inc-gen-008-009-20260819`及对应冻结备份继续保留；

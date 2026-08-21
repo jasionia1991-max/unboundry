@@ -2,7 +2,7 @@
 
 更新日期：2026-08-21
 
-状态：`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`
+状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
 
 ## 1. 当前身份
 
@@ -10,7 +10,8 @@
 - 分支：`codex/unboundry-offline-remediation-2026-08-09`；
 - 用户指定文档基线：`80820cb8ae9df7069837406707d4181d818b6847`；
 - 第一工程提交：`3144d7a3297251d2ba97fd585daa18b804a0c325`（结果提交所有权）；
-- package：`0.6.27`；
+- 发布源码：commit`ee6ce437730cf78ef4488217b778f6b0ef2aaee5` / tree`2811ada65140779d4a5e10cbd8ed6fa54893638b` / tag`v0.6.28`；
+- package：`0.6.28`；
 - 工程运行时：Node `22.23.1` / npm `10.9.8`；
 - 当前 shell 默认 Node/npm 可能仍为 v25/11，施工命令必须显式切换；
 - 允许存在的唯一未跟踪文件：`spec/public-templates-director-split-revision.json`；
@@ -18,8 +19,8 @@
 
 ## 2. 当前事实
 
-- 同步文字 Provider port 第一批已在本地提交 `e7016eb` 完成，状态 `AUTO_PASS / USER_REVIEW`，未发布；
-- 本三媒体本地工程已完成，未发布，状态仅为`AUTO_PASS / USER_REVIEW`；
+- 同步文字 Provider port 第一批已在本地提交 `e7016eb` 完成，并随v0.6.28发布，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；
+- 本三媒体工程已随v0.6.28发布，状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；
 - 已核实三模型共用 `https://api.lk888.ai`、`POST /v1/media/generate` 和异步 task_id/status/result_url 合同；
 - 已核实参数差异、轮询路径歧义、无稳定退款字段、无取消接口；
 - Kling已使用paid attempt `created_at`承载75分钟持久窗口；Nano/Suno分别10/15分钟，未新增schema；
@@ -80,10 +81,10 @@ Stage 0 identity/call-chain freeze: COMPLETE
   -> Stage 3 durable long-task recovery: COMPLETE
   -> Stage 4 result/error normalization: COMPLETE
   -> Stage 5 targeted verification + docs + two local commits: COMPLETE
-  -> LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW
+  -> PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK
 ```
 
-不得自动进入真实Provider、版本、push/PR/tag、发布或生产。
+版本、push/PR/tag、发布与生产技术验收均已完成；本次授权已消费。真实Provider smoke仍为`PAUSED`，不得自动执行。
 
 ## 6. 测试回执
 
@@ -96,7 +97,7 @@ Stage 0 identity/call-chain freeze: COMPLETE
 
 ## 7. 当前停止点
 
-本地工程在两个本地commit后停止。`REAL_PROVIDER_SMOKE_PAUSED`，页面选择/真实结果由用户后续审阅；版本、push/PR/tag、发布、SSH和生产都需要新的明确授权。
+v0.6.28已发布到`/opt/unboundry/releases/v0.6.28-relay-media-models-20260821`，生产与GitHub回执见`spec/V0_6_28_PRODUCTION_RECEIPT_2026-08-21.json`。`REAL_PROVIDER_SMOKE_PAUSED`，页面选择与真实结果由用户线上复验；下一次Provider、版本、push/PR/tag、发布、SSH或生产动作需要新的明确授权。
 
 ## 8. 历史施工停止条件
 

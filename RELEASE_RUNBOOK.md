@@ -1,7 +1,7 @@
 # Unboundry 版本发布 Runbook
 
 给人和接手的 AI 看。作用：从「版本号 + 上线授权」到「线上验证 + 文档收口」的每一步照做，避免每次现场拼命令、用错脚本。
-基线：v0.6.27（2026-08-21）按本流程发布并完成Agent双组并发真实页面技术验收；用户于同日明确验收通过，状态 `PRODUCTION_PUBLISHED_USER_PASS`。v0.6.26（2026-08-21）为上一版。本文不替代 `上线规矩.md` 的授权纪律。
+基线：v0.6.28（2026-08-21）按本流程发布并完成零付费生产技术验收，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。v0.6.27（2026-08-21）为上一版并已获用户验收通过。本文不替代 `上线规矩.md` 的授权纪律。
 
 **适用范围**：本 Runbook 只用于「代码 / 构建产物」变更（bump 版本、改逻辑、重发静态资源）。纯公共模板数据变更（新增/修改模板、预览图、种子）走 `上线规矩.md` 的「加模板轻量路径」，**不需要版本号、不打标签、不跑全量**，直接提交 + 服务器灌库。
 
@@ -31,7 +31,7 @@ grep '"version"' package.json
 2. `server/bridgeRuntimeMode.ts` 的 final 角色放行清单加入新版本号。
 3. `tests/m81-deployment-hardening.spec.ts` 加对应断言。
 4. 按需同步 `上线规矩.md`、`TASKS.md`、`spec/UNBOUNDRY_CURRENT_STATE.md` 等记录。
-5. commit（如 `feat: ... bump to v0.6.27`）。先不要打标签、push或开PR；正式safe full必须绑定这个干净候选commit。
+5. commit（如 `feat: ... bump to v0.6.28`）。先不要打标签、push或开PR；正式safe full必须绑定这个干净候选commit。
 
 ## 3. 发布前全量安全测试（本地 Mac）
 
@@ -42,15 +42,15 @@ node scripts/run-safe-tests.mjs full
 
 - 需要Node 22.23.x、npm 10.9.8、Playwright浏览器缓存、npm离线缓存，缺了preflight会明说。
 - 测试必须只使用runner新建的临时数据和回环端口；本地4173、`app/data`、`/var/lib/unboundry`、真实媒体和密钥不得触碰。
-- v0.6.27候选通过标准：`119/119 specs、1029/1029 tests PASS`，failed/skipped/retries/blocked/reportErrors全0，source与snapshot SHA一致，`listener4173` unchanged。
+- 发布候选标准以当前测试清单为准。v0.6.28正式full覆盖`119 specs / 1034 tests`，首次`1032/1034`；两个失败经分类后只重跑失败spec并`16/16 PASS`。记录必须保留首次失败，不得把有效覆盖改写成“full零失败”，也不得为放心重复full。
 - 工作树除受保护的未跟踪 `spec/public-templates-director-split-revision.json` 外必须为空；它不得进入测试快照、archive、commit、tag或PR。
 
 全量通过后再打**注释标签**、push并开PR：
 
 ```bash
-git tag -a v0.6.27 -m "v0.6.27"
+git tag -a v0.6.28 -m "v0.6.28"
 git push origin <branch>
-git push origin v0.6.27
+git push origin v0.6.28
 ```
 
 6. 用 `gh` 开 PR 并合并到 `main`（squash），记录 merge commit。
@@ -61,7 +61,7 @@ git push origin v0.6.27
 2. 在 staging 内 `npm ci`（完整依赖），然后用 **staging 自身源码**重建产物：
 
 ```bash
-cd /opt/unboundry/staging/unboundry-v0.6.27
+cd /opt/unboundry/staging/unboundry-v0.6.28
 /opt/node22/bin/node /opt/unboundry/node_modules/typescript/bin/tsc --noEmit
 /opt/node22/bin/node node_modules/vite/bin/vite.js build
 ```
@@ -80,7 +80,7 @@ sha256sum -c RELEASE-INVENTORY.sha256 --quiet && echo INVENTORY_OK
 注意：正式发布备份用的是服务器 `/opt/unboundry/scripts/backup-data.mjs`（旧明文格式），**不是** release 里那套加密版 backup-data.mjs。二者不要混。
 
 ```bash
-ROOT=/var/lib/unboundry-rollbacks/v0.6.27-frozen-<随机6字符>
+ROOT=/var/lib/unboundry-rollbacks/v0.6.28-frozen-<随机6字符>
 sudo mkdir -p "$ROOT"
 sudo /opt/node22/bin/node /opt/unboundry/scripts/backup-data.mjs \
   --data-dir /var/lib/unboundry --backup-root "$ROOT"
@@ -99,9 +99,9 @@ sudo diff -q "$ROOT/frozen.sha256" "$ROOT/restore.sha256" && echo MANIFEST_MATCH
 ## 6. 切换上线
 
 ```bash
-sudo mv /opt/unboundry/staging/unboundry-v0.6.27 \
-  /opt/unboundry/releases/v0.6.27-<描述>-20260821
-sudo ln -s /opt/unboundry/releases/v0.6.27-<描述>-20260821 /opt/unboundry/current.next
+sudo mv /opt/unboundry/staging/unboundry-v0.6.28 \
+  /opt/unboundry/releases/v0.6.28-<描述>-20260821
+sudo ln -s /opt/unboundry/releases/v0.6.28-<描述>-20260821 /opt/unboundry/current.next
 sudo mv -T /opt/unboundry/current.next /opt/unboundry/current
 sudo systemctl restart unboundry
 curl -fsS http://127.0.0.1:4173/api/version   # 期望 {"version":"0.6.27"}
