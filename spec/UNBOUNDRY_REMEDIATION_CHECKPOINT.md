@@ -5,7 +5,14 @@
 状态：`HISTORICAL_CHECKPOINT / APPEND_ONLY`
 用途：保留各次施工与发布时点证据，不再充当当前恢复入口。**当前状态、未发布工作区与下一步只看 `UNBOUNDRY_CURRENT_STATE.md`；本文件任何旧命令或旧授权都不可复用。**
 
-## 0. 最新已发布事件：v0.6.28 Provider port 与三媒体中转模型（2026-08-21 已发布，待用户复验）
+## 0. 最新已发布事件：v0.6.29 云腾 Provider 隔离代码（2026-08-21 已发布，凭据门阻断）
+
+- 注释tag`v0.6.29`精确指向commit`d4ccc360e2645e43005c8bdf9a05ec984d48e655`、tree`a291420309236f2b2bb53653301b2b1f1395dbfd`；PR #60 merge`af8493cdf710dc9f899aa098d725e9d034bdb032`，发布时main tree一致。
+- 唯一正式safe full执行`1025/1034`，9项旧测试夹具/ARIA名称失败；只复验失败spec后`30/31`，再单跑m43`6/6 PASS`，没有第二次full。独立review只执行一次，4项发现全部修复。
+- 生产release`/opt/unboundry/releases/v0.6.29-yunteng-provider-isolation-20260821`；冻结备份`v0.6.29-frozen-6c2fff`共365文件、双清单SHA`cabcb1c0…c0b5`。schema39/integrity ok/FK0、tasks630/attempts638/active0、模板50/已发布48、媒体355个/284663380字节不变；公网5资源逐字节一致，service active/enabled、NRestarts0，应用/nginx/浏览器新增error/warn为0。
+- 独立云腾profile存在但因安全入口没有云腾自己的key而保持disabled/unchecked；credential/model/binding/task/attempt与真实Provider创建POST均为0。优创profile、3组凭据身份、12模型/绑定、281任务/288attempt与冻结备份哈希一致。状态`PRODUCTION_CODE_PUBLISHED_CONFIGURATION_BLOCKED / USER_RECHECK`；回执`spec/V0_6_29_PRODUCTION_RECEIPT_2026-08-21.json`。
+
+## 0.1 上一已发布事件：v0.6.28 Provider port 与三媒体中转模型（2026-08-21 已发布，待用户复验）
 
 - 注释tag`v0.6.28`精确指向commit`ee6ce437730cf78ef4488217b778f6b0ef2aaee5`、tree`2811ada65140779d4a5e10cbd8ed6fa54893638b`；PR #58 merge`753d24f8ee6e4facb3c88e876c4a38b456addc75`且main tree一致。
 - 正式safe full执行`1032/1034`，仅失败为0.3ms性能抖动与候选文档精确字符串；修正文档后只复验失败spec并`16/16 PASS`。生产release`/opt/unboundry/releases/v0.6.28-relay-media-models-20260821`，冻结备份`v0.6.28-frozen-awqsNE`共365文件、双清单SHA`2897b65a…6c58e`。

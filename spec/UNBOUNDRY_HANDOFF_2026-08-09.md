@@ -6,7 +6,11 @@
 
 新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-21 的权威现状、产品合同和用户已点头的旧项收口。下面各节是历史增量，出现「当前」时只代表该时点。
 
-## 当前线上：Provider port 与三媒体中转模型（v0.6.28，2026-08-21 已发布，待用户复验）
+## 当前线上：云腾 Provider 隔离代码（v0.6.29，2026-08-21 已发布，凭据门阻断）
+
+v0.6.29已上线商业Provider身份、账号凭据、模型、task/attempt/recovery/result严格隔离，以及普通模型下拉Provider标签。tag commit`d4ccc360e2645e43005c8bdf9a05ec984d48e655`/tree`a291420309236f2b2bb53653301b2b1f1395dbfd`；PR #60 merge`af8493cdf710dc9f899aa098d725e9d034bdb032`。生产current为`/opt/unboundry/releases/v0.6.29-yunteng-provider-isolation-20260821`，冻结备份`v0.6.29-frozen-6c2fff`双清单SHA`cabcb1c0…c0b5`；service/schema39/integrity/FK/公网5资源和数据门通过。独立云腾profile已创建，但安全入口没有云腾自己的key，所以credential/model/binding/task/attempt和真实Provider POST均为0；优创profile/3组凭据身份/12模型与绑定/281任务/288attempt和冻结备份哈希一致。状态`PRODUCTION_CODE_PUBLISHED_CONFIGURATION_BLOCKED / USER_RECHECK`。接手后不得再次跑full、移动tag或借用优创key；必须等待授权用户在生产「我的连接」安全填写云腾key，完整回执见`spec/V0_6_29_PRODUCTION_RECEIPT_2026-08-21.json`。
+
+## 上一线上：Provider port 与三媒体中转模型（v0.6.28，2026-08-21 已发布，待用户复验）
 
 v0.6.28已把同步文字执行统一到`TextProviderRegistry`，由Generation拥有媒体结果原子提交，并为同一中转站加入Nano Banana Pro、Kling V3 Omni、Suno V4.5严格合同。tag commit`ee6ce437730cf78ef4488217b778f6b0ef2aaee5`/tree`2811ada65140779d4a5e10cbd8ed6fa54893638b`；PR #58 merge`753d24f8ee6e4facb3c88e876c4a38b456addc75`，main tree一致。正式full覆盖1034条并有2条可解释失败，修正文档后只复验失败spec并16/16通过；生产current为`/opt/unboundry/releases/v0.6.28-relay-media-models-20260821`，冻结备份`v0.6.28-frozen-awqsNE`双清单一致，数据/媒体计数不变，公网5资源、service、schema39、integrity和FK门通过。真实Provider、付费生成与OSS写入为0，状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；权威回执`spec/V0_6_28_PRODUCTION_RECEIPT_2026-08-21.json`。
 
