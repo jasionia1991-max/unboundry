@@ -108,21 +108,22 @@ import {
   VolcengineArkVideoError,
 } from "./volcengineArkVideoProvider";
 import {
-  createVolcengineArkTextResponse,
-  type ArkTextInput,
-  VolcengineArkTextError,
-} from "./volcengineArkTextProvider";
-import {
   prepareRelayGptImageRequest,
   pollRelayMediaTask,
   RelayProviderError,
-  requestRelayText,
   submitRelayMedia,
   type RelayMediaParamValue,
-  type RelayTextContextInput,
-  type RelayTextProviderProtocol,
   type RelayTransientMediaOutput,
 } from "./relayProviderAdapters";
+import {
+  isTextGenerationProtocol,
+  TextGenerationProviderError,
+  type TextGenerationInput,
+} from "./generationProvider";
+import {
+  textProviderRegistry as defaultTextProviderRegistry,
+  type TextProviderRegistry,
+} from "./providerRegistry";
 import {
   downloadProviderResultMedia,
   ProviderResultMediaError,
@@ -375,15 +376,6 @@ function taskProviderProtocol(
 ): ProviderProtocol {
   const value = task.modelConfiguration.providerProtocol;
   return isProviderProtocol(value) ? value : "native";
-}
-
-function relayTextProtocol(
-  protocol: ProviderProtocol,
-): protocol is RelayTextProviderProtocol {
-  return protocol === "openai-chat" ||
-    protocol === "openai-responses" ||
-    protocol === "claude-messages" ||
-    protocol === "gemini-generate-content";
 }
 
 function assertRelayProfile(
@@ -1774,7 +1766,7 @@ function safeFailure(error: unknown, kind: "text" | "audio" | "image" | "video")
   if (error instanceof MurekaAudioError) {
     return { code: error.code, message: error.message };
   }
-  if (error instanceof VolcengineArkTextError) {
+  if (error instanceof TextGenerationProviderError) {
     return { code: error.code, message: error.message };
   }
   if (error instanceof ArkFilesError) {
@@ -1846,6 +1838,7 @@ function isDefinitiveProviderResultSaveError(error: unknown) {
     error instanceof VolcengineArkVideoError ||
     error instanceof MurekaAudioError ||
     error instanceof ProviderMediaError ||
+    error instanceof TextGenerationProviderError ||
     error instanceof ProviderGenerationConfigurationError ||
     error instanceof GenerationProviderAttemptBlockedError;
 }
@@ -2305,12 +2298,12 @@ type PersistedTextTaskInput = NodeInputSnapshot & { text?: string };
 function textTaskInputSnapshots(value: unknown): PersistedTextTaskInput[] {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > 64) {
-    throw new VolcengineArkTextError("FORMAT", "文字任务保存的上下文快照无效");
+    throw new TextGenerationProviderError("FORMAT", "文字任务保存的上下文快照无效");
   }
   const seenOrders = new Set<number>();
   return value.map((raw): PersistedTextTaskInput => {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-      throw new VolcengineArkTextError("FORMAT", "文字任务保存的上下文快照无效");
+      throw new TextGenerationProviderError("FORMAT", "文字任务保存的上下文快照无效");
     }
     const item = raw as Partial<PersistedTextTaskInput>;
     if (
@@ -2323,13 +2316,13 @@ function textTaskInputSnapshots(value: unknown): PersistedTextTaskInput[] {
       !/^[a-z0-9._-]{1,160}$/i.test(item.sourceNodeId) ||
       item.role !== `context-${item.kind}`
     ) {
-      throw new VolcengineArkTextError("FORMAT", "文字任务保存的上下文顺序或角色无效");
+      throw new TextGenerationProviderError("FORMAT", "文字任务保存的上下文顺序或角色无效");
     }
     seenOrders.add(Number(item.order));
     if (item.kind === "text") {
       const text = typeof item.text === "string" ? item.text.trim() : "";
       if (!text || text.length > 100_000 || item.assetId !== undefined) {
-        throw new VolcengineArkTextError("FORMAT", "文字任务保存的文字上下文无效");
+        throw new TextGenerationProviderError("FORMAT", "文字任务保存的文字上下文无效");
       }
       return {
         kind: "text",
@@ -2344,7 +2337,7 @@ function textTaskInputSnapshots(value: unknown): PersistedTextTaskInput[] {
       !/^[a-z0-9._-]{1,160}$/i.test(item.assetId) ||
       item.text !== undefined
     ) {
-      throw new VolcengineArkTextError("FORMAT", "文字任务保存的媒体上下文无效");
+      throw new TextGenerationProviderError("FORMAT", "文字任务保存的媒体上下文无效");
     }
     return {
       assetId: item.assetId,
@@ -2374,7 +2367,10 @@ function relayContextMimeType(input: {
       ? new Set(["video/mp4", "video/quicktime", "video/webm"])
       : new Set(["audio/mpeg", "audio/wav"]);
   if (!contentType || !accepted.has(contentType)) {
-    throw new RelayProviderError("FORMAT");
+    throw new TextGenerationProviderError(
+      "FORMAT",
+      "中转站请求或响应格式无法安全识别",
+    );
   }
   return contentType;
 }
@@ -2402,6 +2398,7 @@ export async function executeTextTaskWithDependencies(
     ) => Promise<string>;
     signal?: AbortSignal;
     store: TextTaskStore;
+    textProviderRegistry?: TextProviderRegistry;
     prepareArkImage?: (input: {
       image: ArkImageBytesInput;
       mimeType: string;
@@ -2434,12 +2431,14 @@ export async function executeTextTaskWithDependencies(
   > = [];
   try {
     const protocol = taskProviderProtocol(running);
-    if (protocol !== "native" && !relayTextProtocol(protocol)) {
-      throw new RelayProviderError("FORMAT");
+    if (!isTextGenerationProtocol(protocol)) {
+      throw new TextGenerationProviderError(
+        "FORMAT",
+        "文字模型配置已失效",
+      );
     }
     const snapshots = textTaskInputSnapshots(running.parameters.inputs);
-    const inputs: ArkTextInput[] = [];
-    const relayInputs: RelayTextContextInput[] = [];
+    const inputs: TextGenerationInput[] = [];
     for (const snapshot of snapshots) {
       if (snapshot.kind === "text") {
         inputs.push({
@@ -2448,7 +2447,6 @@ export async function executeTextTaskWithDependencies(
           role: "context-text",
           text: snapshot.text,
         });
-        relayInputs.push({ kind: "text", text: snapshot.text! });
         continue;
       }
       const mediaInput = {
@@ -2524,22 +2522,19 @@ export async function executeTextTaskWithDependencies(
       });
       inputs.push({
         kind: snapshot.kind,
+        mimeType: protocol === "native"
+          ? undefined
+          : relayContextMimeType({
+              ...mediaInput,
+              contentType: dependencies.mediaContentTypeForOwner?.(mediaInput),
+            }),
         order: snapshot.order,
         role: `context-${snapshot.kind}`,
-        url,
+        transientUrl: protocol !== "native" &&
+            url.startsWith("data:audio/mp3;base64,")
+          ? url.replace("data:audio/mp3;base64,", "data:audio/mpeg;base64,")
+          : url,
       });
-      if (protocol !== "native") {
-        relayInputs.push({
-          kind: snapshot.kind,
-          mimeType: relayContextMimeType({
-            ...mediaInput,
-            contentType: dependencies.mediaContentTypeForOwner?.(mediaInput),
-          }),
-          transientUrl: url.startsWith("data:audio/mp3;base64,")
-            ? url.replace("data:audio/mp3;base64,", "data:audio/mpeg;base64,")
-            : url,
-        });
-      }
     }
     const lease = await dependencies.acquireProfile(
       running.providerProfileId,
@@ -2553,61 +2548,36 @@ export async function executeTextTaskWithDependencies(
         lease.credentialRevision,
       );
       const leasedFetch = fetchWithProviderLease(lease, dependencies.fetcher);
-      if (protocol === "native") {
-        if (lease.profile.driver !== "volcengine-ark") {
-          throw new VolcengineArkTextError("FORMAT", "文字模型配置已失效");
-        }
-        result = await createVolcengineArkTextResponse(
+      result = await (dependencies.textProviderRegistry ??
+        defaultTextProviderRegistry).generate(
           lease.profile,
           {
             inputs,
+            maxOutputTokens:
+              typeof running.parameters.maxOutputTokens === "number"
+                ? running.parameters.maxOutputTokens
+                : undefined,
             model: running.providerModelId,
             prompt: running.prompt,
+            protocol,
+            temperature: typeof running.parameters.temperature === "number"
+              ? running.parameters.temperature
+              : undefined,
             thinkingLevel: ["minimal", "medium"].includes(
               String(running.parameters.thinkingLevel),
             )
               ? running.parameters.thinkingLevel as "minimal" | "medium"
               : "medium",
           },
-          leasedFetch,
-          dependencies.signal,
-          () => dependencies.store.recordProviderAttempt(taskId),
-        );
-      } else {
-        const connection = assertRelayProfile(lease.profile, protocol);
-        const relayResult = await requestRelayText(
-          connection,
           {
-            capability: "text",
-            contextInputs: relayInputs,
-            maxOutputTokens: typeof running.parameters.maxOutputTokens === "number"
-              ? running.parameters.maxOutputTokens
-              : undefined,
-            messages: [{ role: "user", text: running.prompt }],
-            model: running.providerModelId,
-            providerProtocol: protocol,
-            temperature: typeof running.parameters.temperature === "number"
-              ? running.parameters.temperature
-              : undefined,
-          },
-          {
-            beforeProviderRequest: () => {
-              dependencies.store.recordProviderAttempt(taskId);
-              // Pinned relay transport bypasses the injected fetch wrapper,
-              // so the Provider lease must be released at the request
-              // boundary instead of waiting for the remote response.
-              lease.release();
-            },
+            beforeProviderRequest: () =>
+              dependencies.store.recordProviderAttempt(taskId),
             fetcher: leasedFetch,
+            releaseProviderLease: lease.release,
             signal: dependencies.signal,
             usePinnedTransport: dependencies.usePinnedRelayTransport,
           },
         );
-        result = {
-          providerUsageTokens: relayResult.usage?.totalTokens,
-          text: relayResult.text,
-        };
-      }
     } finally {
       lease.release();
     }

@@ -2,6 +2,10 @@ import {
   providerProtocolSupportsCapability,
   type ProviderProtocol,
 } from "../types/relayProtocols";
+import {
+  TextGenerationProviderError,
+  type TextGenerationProvider,
+} from "./generationProvider";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -1059,6 +1063,89 @@ export async function requestRelayText(
   });
   return parseTextResult(request.providerProtocol, body, connection.apiKey);
 }
+
+function relayTextContextInputs(
+  inputs: Parameters<TextGenerationProvider["generate"]>[0]["inputs"],
+): RelayTextContextInput[] {
+  return inputs.map((input) => {
+    if (input.kind === "text") {
+      if (typeof input.text !== "string") throw new RelayProviderError("FORMAT");
+      return { kind: "text", text: input.text };
+    }
+    if (
+      typeof input.mimeType !== "string" ||
+      typeof input.transientUrl !== "string"
+    ) {
+      throw new RelayProviderError("FORMAT");
+    }
+    return {
+      kind: input.kind,
+      mimeType: input.mimeType,
+      transientUrl: input.transientUrl,
+    };
+  });
+}
+
+export const relayTextGenerationProvider: TextGenerationProvider = {
+  id: "multi-protocol-relay-text",
+  registrations: [
+    { driver: "multi-protocol-relay", protocol: "openai-chat" },
+    { driver: "multi-protocol-relay", protocol: "openai-responses" },
+    { driver: "multi-protocol-relay", protocol: "claude-messages" },
+    { driver: "multi-protocol-relay", protocol: "gemini-generate-content" },
+  ],
+  async generate(request, execution) {
+    try {
+      if (
+        request.protocol === "native" ||
+        !execution.profile.apiKey
+      ) {
+        throw new RelayProviderError(
+          request.protocol === "native" ? "FORMAT" : "AUTH",
+        );
+      }
+      const result = await requestRelayText(
+        {
+          apiKey: execution.profile.apiKey,
+          baseUrl: execution.profile.baseUrl,
+        },
+        {
+          capability: "text",
+          contextInputs: relayTextContextInputs(request.inputs),
+          maxOutputTokens: request.maxOutputTokens,
+          messages: [{ role: "user", text: request.prompt }],
+          model: request.model,
+          providerProtocol: request.protocol,
+          temperature: request.temperature,
+        },
+        {
+          beforeProviderRequest: () => {
+            execution.beforeProviderRequest();
+            // The pinned relay transport bypasses the injected fetch wrapper.
+            // Releasing here preserves the existing request-boundary lease.
+            execution.releaseProviderLease();
+          },
+          fetcher: execution.fetcher,
+          signal: execution.signal,
+          usePinnedTransport: execution.usePinnedTransport,
+        },
+      );
+      return {
+        providerUsageTokens: result.usage?.totalTokens,
+        text: result.text,
+      };
+    } catch (error) {
+      if (error instanceof RelayProviderError) {
+        throw new TextGenerationProviderError(
+          error.code,
+          error.message,
+          error.providerTaskMayStillRun,
+        );
+      }
+      throw error;
+    }
+  },
+};
 
 function cleanTransientImage(value: string) {
   if (typeof value !== "string" || value.length > 50 * 1024 * 1024) {

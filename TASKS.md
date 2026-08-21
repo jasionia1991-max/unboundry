@@ -3,6 +3,14 @@
 更新时间：2026-08-21
 状态：`v0.6.27/schema39 在线；画布执行解耦已通过最终safe full、三路独立复审、真实双组并发页面、冻结备份与生产技术验收；用户于2026-08-21明确验收通过，当前为 USER_PASS。权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
 
+### 2026-08-21 同步文字Provider registry/port（本地工程完成，未发布）
+
+- 状态：`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`。本地代码已把同步文字执行收口到唯一`TextProviderRegistry`入口；Task协调器不再按具体文字driver调用adapter，Ark native与四类relay文字协议各由adapter实现统一port。
+- 任务安全：profile/credential owner、lease、provider-boundary attempt、task幂等/reconcile、结果归属与错误文案保持原边界；fake Provider可注入且网络0，未知实现本地fail-closed且网络0。
+- 自动证据：Node `22.23.1` / npm `10.9.8`；一次TypeScript noEmit退出0；m33 `8/8`、m39 `3/3`、m44 `8/8`、m53 `23/23`、m57 `14/14`安全定向通过，异常0，动态loopback与新临时数据，4173 listener不变。
+- 明确未做：未跑full/默认verify，未真实调用Provider/OSS，未访问SSH/生产，未改版本/schema/Canvas/Workflow/Media publication；第二至第七批未启动。
+- 验收口径：当前不是发布PASS或USER PASS，停在用户审阅；权威矩阵与续接见`spec/UNBOUNDRY_PROVIDER_PORT_BATCH_ACCEPTANCE_MATRIX_2026-08-21.md`和`spec/UNBOUNDRY_PROGRESSIVE_MODULARIZATION_CHECKPOINT.md`。
+
 ### 2026-08-21 画布—工作流执行—任务恢复解耦（v0.6.27 已发布）
 
 - 状态：`PRODUCTION_PUBLISHED_USER_PASS`。四类整组执行已迁移到静态headless executor，删除render retention；同画布不相交组可并行，结果应用受runId/taskId/ownershipKey/nodeId/kind共同保护。用户于2026-08-21明确回复「v0.6.27 验收通过，同步更新为 USER PASS。」
