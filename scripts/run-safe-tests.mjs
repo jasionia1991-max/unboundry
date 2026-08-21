@@ -443,7 +443,10 @@ function workingSourceFiles() {
     ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
     { capture: true },
   );
-  return result.stdout.split("\0").filter(Boolean).sort();
+  return result.stdout.split("\0")
+    .filter(Boolean)
+    .filter((file) => file !== "spec/public-templates-director-split-revision.json")
+    .sort();
 }
 
 function createTrackedSnapshot(suiteRoot) {
@@ -2041,8 +2044,8 @@ async function discover(specs, suiteRoot, sourceRoot, browserRoot) {
         })}`,
       );
     }
-    if (discovery.tests !== 1025) {
-      fail(`the frozen 1025-test inventory changed to ${discovery.tests}`);
+    if (discovery.tests !== 1029) {
+      fail(`the frozen 1029-test inventory changed to ${discovery.tests}`);
     }
     const idsByFile = {};
     const { entries } = collectReportEntries(reportFile, sourceRoot);

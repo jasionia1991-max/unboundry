@@ -67,6 +67,8 @@ export type ProbeNodeType = Node<
     groupRunSuccessOwnershipKey?: string;
     groupRunSuccessResultKey?: string;
     groupRunSuccessTaskId?: string;
+    /** Durable owner marker for a headless workflow executor. */
+    workflowExecutionRunId?: string;
     audioDuration?: number;
     audioFileSize?: number;
     audioFileName?: string;
