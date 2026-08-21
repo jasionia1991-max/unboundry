@@ -1,7 +1,7 @@
 # Unboundry v0.6.30 Provider 结果兼容与既有任务恢复
 
 日期：2026-08-21  
-状态：`RELEASE_CANDIDATE / ZERO_NEW_PROVIDER_POST`
+状态：`FROZEN_RELEASE_CANDIDATE / ZERO_NEW_PROVIDER_POST`
 
 ## 结论
 
@@ -33,6 +33,6 @@ v0.6.29 的浏览器上传入口本来就接受 PNG、JPEG、WebP、GIF，并统
 ## 验证与回滚
 
 - 定向覆盖：JPEG/WebP→PNG、资源闸门先于响应读取、Suno两结果保序、完整输出集合崩溃恢复、primary/alternate身份与删除保护、API输出、音频版本切换、版本/runtime门。
-- 候选冻结后只运行一次正式safe full；失败只复验失败项或最小受影响集合。
+- 候选冻结后唯一一次正式safe full在HEAD`a8c9e8f`、source/snapshot`621ac501…e6b`执行，`1035/1037`通过；失败仅为m38候选文档精确字符串和m4测试夹具伪assetId归一化到不存在的API路径。没有第二次运行full；m38最小复验`15/15`、纠正夹具后m2+m4`4/4`通过。独立subagent复审无剩余阻断。
 - 发布前保留v0.6.29不可变release和冻结备份；切换或恢复出现应用级问题时回切v0.6.29，但不删除任何任务、媒体、审计、备份或release。
 - 生产回执以发布后的精确commit/tag/PR/release/backup/hash、任务恢复结果和技术验收矩阵为准；本文件不提前宣称生产PASS或用户PASS。

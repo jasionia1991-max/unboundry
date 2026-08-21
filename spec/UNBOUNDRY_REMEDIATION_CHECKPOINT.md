@@ -9,7 +9,7 @@
 
 - 用户已另行授权v0.6.30和发布；生产仍为v0.6.29。旧v0.6.29停止边界不再阻止新版本，但三次创建POST预算已耗尽，本版新建POST预算为0。
 - 候选把Nano真实JPEG/WebP/GIF结果在资源闸门后有界归一化为PNG，并把Suno真实两个完整MP3先全部restart-safe持久化，再原子提交primary/alternate、恢复和展示；schema39不变。
-- 独立review的多结果竞态、资源闸门、整组成功证明、Accept协商和上传旧候选残留问题已修复。当前仍待唯一一次正式safe full、GitHub、冻结备份、fresh build、生产既有任务恢复与验收。权威边界：`spec/UNBOUNDRY_PROVIDER_RESULT_COMPATIBILITY_V0_6_30_2026-08-21.md`。
+- 独立review的多结果竞态、资源闸门、整组成功证明、Accept协商和上传旧候选残留问题已修复，复审无剩余阻断。唯一一次正式safe full在HEAD`a8c9e8f`、source/snapshot`621ac501…e6b`执行，`1035/1037`通过；仅复验失败项后m38`15/15`、m2+m4`4/4`通过，未第二次运行full。候选已冻结，当前仍待GitHub、冻结备份、fresh build、生产既有任务恢复与验收。权威边界：`spec/UNBOUNDRY_PROVIDER_RESULT_COMPATIBILITY_V0_6_30_2026-08-21.md`。
 
 ## 0. 最新已发布事件：v0.6.29 云腾 Provider 隔离代码（2026-08-21 已发布，凭据门阻断）
 
