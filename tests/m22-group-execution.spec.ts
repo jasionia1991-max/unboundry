@@ -2043,7 +2043,7 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
       if (timer) clearTimeout(timer);
     }
   };
-  await page.route("**/api/models", async (route) => {
+  await page.context().route("**/api/models", async (route) => {
     await route.fulfill({
       contentType: "application/json",
       json: {
@@ -2060,7 +2060,7 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
       status: 200,
     });
   });
-  await page.route("**/api/generation-tasks**", async (route) => {
+  await page.context().route("**/api/generation-tasks**", async (route) => {
     const requestUrl = new URL(route.request().url());
     const method = route.request().method();
     if (requestUrl.pathname.endsWith("/status")) {
@@ -2303,7 +2303,7 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
           },
           id: "run-text-a-next",
           parentId: "run-group-a",
-          position: { x: 32, y: 330 },
+          position: { x: 32, y: 900 },
           style: { height: 220, width: 300 },
           type: "text",
           zIndex: 1,
@@ -2370,6 +2370,10 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
     await startGroup("run-group-a", "run-text-a", 1);
     await startGroup("run-group-b", "run-text-b", 1);
     await expect(canvas).toHaveAttribute("data-workflow-run-active", "true");
+    // A's second layer starts genuinely outside the viewport. Static preflight
+    // must still include it before fit-view can mount it later.
+    await expect(page.locator('[data-testid="rf__node-run-text-a-next"]'))
+      .toHaveCount(0);
     await expect(canvas).toHaveAttribute("data-node-count", "7");
     await expect(canvas).toHaveAttribute("data-edge-count", "1");
 
@@ -2442,6 +2446,11 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
       className: expect.stringContaining("workflow-run-locked"),
       pointerEvents: "none",
     });
+    await childA.evaluate((element) => element.dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    ));
+    await page.keyboard.press("Backspace");
+    await expect(canvas).toHaveAttribute("data-node-count", "6");
 
     // A selected running participant cannot be deleted. Copy/paste creates a
     // disjoint graph, and that unrelated copy can be deleted while both runs
@@ -2564,6 +2573,56 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
     )).toHaveLength(1);
     expect(new Set(terminalSummaries.map((summary) => summary.runId)).size)
       .toBe(6);
+
+    // Two real tabs race the same group. The origin-wide admission lock and
+    // active-task check permit one first-layer POST only.
+    await discardInterruptedCheckpointsForNextScenario();
+    await resetGroupPositionsForNextScenario();
+    await page.reload();
+    await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+      "data-persistence-ready",
+      "true",
+    );
+    const secondPage = await page.context().newPage();
+    try {
+      await secondPage.goto(`/canvas/${project.id}`);
+      await expect(secondPage.getByTestId("canvas-world")).toHaveAttribute(
+        "data-persistence-ready",
+        "true",
+      );
+      const selectAndStart = async (targetPage: typeof page) => {
+        const group = targetPage.locator('[data-testid="rf__node-run-group-a"]');
+        await group.evaluate((element) => element.dispatchEvent(
+          new MouseEvent("click", { bubbles: true }),
+        ));
+        await group.getByTestId("group-execute-button")
+          .evaluate((element) => (element as HTMLButtonElement).click());
+      };
+      await Promise.all([selectAndStart(page), selectAndStart(secondPage)]);
+      await expect.poll(() => taskPostNodes.filter((nodeId) =>
+        nodeId === "run-text-a"
+      ).length).toBe(4);
+      await expect.poll(async () => [
+        await page.locator("body").innerText(),
+        await secondPage.locator("body").innerText(),
+      ].some((text) => text.includes("当前画布已在其他标签页执行")))
+        .toBe(true);
+      setLatestTaskState("run-text-a", "success");
+      await expect.poll(() => taskPostNodes.filter((nodeId) =>
+        nodeId === "run-text-a-next"
+      ).length).toBe(2);
+      setLatestTaskState("run-text-a-next", "success");
+      await expect.poll(() => page.evaluate(() => {
+        for (let index = 0; index < window.localStorage.length; index += 1) {
+          if (window.localStorage.key(index)?.startsWith(
+            "unboundry-group-run-lease:v1:",
+          )) return false;
+        }
+        return true;
+      })).toBe(true);
+    } finally {
+      await secondPage.close();
+    }
   } finally {
     await request.delete(`/api/canvas/${project.id}`);
     await request.delete(`/api/projects/${project.id}`);
