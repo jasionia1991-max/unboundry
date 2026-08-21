@@ -274,6 +274,14 @@ export const parameterOptionCatalog: Record<string, ModelParameterCatalogEntry> 
     summary: true,
     type: "select",
   },
+  bitrate: {
+    capability: ["audio"],
+    group: "output",
+    label: "码率",
+    options: options([128_000, 192_000, 256_000]),
+    summary: true,
+    type: "select",
+  },
   cameraMovement: {
     capability: ["image"],
     group: "advanced",
@@ -444,6 +452,14 @@ export const parameterOptionCatalog: Record<string, ModelParameterCatalogEntry> 
     summary: true,
     type: "select",
   },
+  sampleRate: {
+    capability: ["audio"],
+    group: "output",
+    label: "采样率",
+    options: options([44_100, 48_000]),
+    summary: true,
+    type: "select",
+  },
   speaker: {
     capability: ["audio"],
     group: "main",
@@ -526,7 +542,15 @@ export const parameterOptionCatalog: Record<string, ModelParameterCatalogEntry> 
     capability: ["audio"],
     group: "main",
     label: "人声",
-    options: options([["女声", "female"], ["男声", "male"]]),
+    options: options([["自动", "auto"], ["女声", "female"], ["男声", "male"]]),
+    summary: true,
+    type: "select",
+  },
+  videoMode: {
+    capability: ["video"],
+    group: "main",
+    label: "生成品质",
+    options: options([["标准", "standard"], ["高品质", "quality"]]),
     summary: true,
     type: "select",
   },
@@ -665,6 +689,93 @@ function relayDoubaoTtsParameterFields() {
 
 function relayDoubaoTtsParameterSchema() {
   return schema(relayDoubaoTtsParameterFields());
+}
+
+const relayContractPngRules: ModelReferenceMediaRules = {
+  image: {
+    contentTypes: ["image/png"],
+    maxBytes: 30 * 1024 * 1024,
+  },
+};
+
+function relayNanoBananaProParameterSchema() {
+  return schema([
+    catalogField("inputMode", ["text", "image"], "text"),
+    catalogField(
+      "aspectRatio",
+      ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"],
+      "1:1",
+    ),
+    catalogField("quality", ["1k", "2k", "4k"], "1k"),
+    catalogField("outputCount", [1], 1),
+  ], { ...emptyReferenceInputs, image: 14 }, {
+    modeKey: "inputMode",
+    modes: {
+      image: { sets: [{ ...emptyReferenceInputs, image: 14 }] },
+      text: { sets: [{ ...emptyReferenceInputs }] },
+    },
+  }, undefined, {
+    promptPolicy: "own-required",
+    rolePolicies: [{
+      enabledWhen: [{ key: "inputMode", operator: "equals", value: "image" }],
+      roles: { audio: [], image: ["reference-image"], text: ["instruction"], video: [] },
+    }],
+    roles: { audio: [], image: ["reference-image"], text: ["instruction"], video: [] },
+    switchPolicy: "keep-edge",
+  }, relayContractPngRules);
+}
+
+function relayKlingV3OmniParameterSchema() {
+  return schema([
+    catalogField("inputMode", ["text", "image"], "text"),
+    catalogField("aspectRatio", ["16:9", "9:16", "1:1"], "16:9"),
+    catalogField("duration", [5, 10, 15], 5),
+    catalogField("videoMode", ["standard", "quality"], "standard"),
+    catalogField("outputCount", [1], 1),
+  ], { ...emptyReferenceInputs, image: 7 }, {
+    modeKey: "inputMode",
+    modes: {
+      image: { sets: [{ ...emptyReferenceInputs, image: 7 }] },
+      text: { sets: [{ ...emptyReferenceInputs }] },
+    },
+  }, undefined, {
+    promptPolicy: "own-required",
+    rolePolicies: [{
+      enabledWhen: [{ key: "inputMode", operator: "equals", value: "image" }],
+      roles: { audio: [], image: ["reference-image"], text: ["instruction"], video: [] },
+    }],
+    roles: { audio: [], image: ["reference-image"], text: ["instruction"], video: [] },
+    switchPolicy: "keep-edge",
+  }, relayContractPngRules);
+}
+
+function relaySunoV45ParameterSchema() {
+  const lyricsSongOnly: ModelParameterCondition[] = [{
+    key: "musicGenerationMode",
+    operator: "equals",
+    value: "lyrics-song",
+  }];
+  return schema([
+    catalogField("inputMode", ["text"], "text"),
+    catalogField(
+      "musicGenerationMode",
+      ["instrumental", "prompt-song", "lyrics-song"],
+      "instrumental",
+    ),
+    catalogField("lyrics", [], "", {
+      maxLength: 5_000,
+      requiredWhen: lyricsSongOnly,
+      visibleWhen: lyricsSongOnly,
+    }),
+    catalogField("vocalGender", ["auto", "female", "male"], "auto"),
+    catalogField("sampleRate", [44_100, 48_000], 44_100),
+    catalogField("bitrate", [128_000, 192_000, 256_000], 192_000),
+    catalogField("outputCount", [1], 1),
+  ], emptyReferenceInputs, undefined, undefined, {
+    promptPolicy: "own-required",
+    roles: { audio: [], image: [], text: ["instruction"], video: [] },
+    switchPolicy: "keep-edge",
+  });
 }
 
 /**
@@ -810,6 +921,21 @@ export function providerParameterSchema(input: {
   providerDriver?: string;
   providerModelId?: string;
 }): ModelParameterSchema | undefined {
+  if (
+    input.providerDriver === "multi-protocol-relay" &&
+    input.capability === "image" &&
+    input.providerModelId === "gemini-3-pro-image-preview"
+  ) return relayNanoBananaProParameterSchema();
+  if (
+    input.providerDriver === "multi-protocol-relay" &&
+    input.capability === "video" &&
+    input.providerModelId === "kling-v3-omni-cankao"
+  ) return relayKlingV3OmniParameterSchema();
+  if (
+    input.providerDriver === "multi-protocol-relay" &&
+    input.capability === "audio" &&
+    input.providerModelId === "suno-v4.5"
+  ) return relaySunoV45ParameterSchema();
   if (
     input.capability === "text" &&
     input.providerDriver === "multi-protocol-relay"

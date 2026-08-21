@@ -8,7 +8,16 @@
 
 线上是 **v0.6.27 / schema39**（画布、工作流执行与任务恢复已解耦），2026-08-21 已发布；agent 已在新建真实项目中让两个不相交文字工作组于557ms内先后启动、同时保持active并全部完成，刷新后四个结果仍在原节点；用户已于同日明确验收通过。v0.6.26 为上一版。用户要的核心结果仍是：**上传一张图，工作流自己跑完，用户下载结果**。
 
-本地工程另有一批尚未发布的同步文字Provider port改造，状态为`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`；它不改变线上v0.6.27事实，也不是USER PASS。
+本地工程另有两批尚未发布的改造：同步文字Provider port，以及同一中转站三媒体模型/Generation结果提交边界；二者均为`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`，不改变线上v0.6.27事实，也不是USER PASS。
+
+## 三媒体模型与Generation结果提交边界本地工程完成（2026-08-21，未发布）
+
+- 状态：`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`。GenerationResultCommit在同一SQLite事务内提交media publication、Provider attempt、task success与event；MediaLifecycle/MediaRegistry不再查询或更新Generation表，TaskStore与Safety运行时循环已解除。
+- 模型：`gemini-3-pro-image-preview`、`kling-v3-omni-cankao`、`suno-v4.5`均复用`multi-protocol-relay/media-generate`。Nano/Kling只接受按edge order的图片引用（上限14/7），Suno不接受媒体引用；参数映射、`result_type`、PNG/MP4/音频保存均为fail-closed。
+- 异步安全：截止从paid attempt `created_at`计算，Nano/Kling/Suno分别10/75/15分钟，5秒起步且最多10秒；已有Provider task id只查询原任务；提交响应丢失不二次POST；status只在404/405回退；无`refunded:true`不自动付费重试。
+- 自动证据：Node `22.23.1` / npm `10.9.8`；冻结十spec最终有效`148/148`。首次产品测试`145/148`后只重跑失败m53+m57并`40/40`通过；TypeScript、构建、source coverage、外网门禁均通过。未跑full，理由是改动范围与冻结定向集合一致，未传播到Canvas/Workflow/schema/release。
+- 隔离和授权：新临时目录、动态loopback、fake fetch；4173 listener不变。`REAL_PROVIDER_SMOKE_PAUSED`；真实Provider、OSS、SSH、生产、版本、push/PR/tag/发布均未触碰。受保护JSON未读、未改、未暂存、未提交。
+- 本地提交：`3144d7a refactor(generation): own media result commits`；第二提交为`feat(generation): add relay media model contracts`。权威方案、矩阵与Checkpoint见`spec/UNBOUNDRY_RELAY_MEDIA_MODELS_INTEGRATION_PLAN_2026-08-21.md`、`spec/UNBOUNDRY_RELAY_MEDIA_MODELS_ACCEPTANCE_MATRIX_2026-08-21.md`、`spec/UNBOUNDRY_RELAY_MEDIA_MODELS_CHECKPOINT.md`。
 
 ## 同步文字Provider port本地工程完成（2026-08-21，未发布）
 

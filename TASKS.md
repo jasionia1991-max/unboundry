@@ -3,6 +3,14 @@
 更新时间：2026-08-21
 状态：`v0.6.27/schema39 在线；画布执行解耦已通过最终safe full、三路独立复审、真实双组并发页面、冻结备份与生产技术验收；用户于2026-08-21明确验收通过，当前为 USER_PASS。权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
 
+### 2026-08-21 同一中转站三媒体模型与结果边界（本地工程完成，未发布）
+
+- 状态：`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`。Generation已拥有媒体结果提交事务；MediaLifecycle/MediaRegistry不再读写generation task/attempt，TaskStore↔Safety循环已解除。
+- 模型合同：Nano Banana Pro `gemini-3-pro-image-preview`、Kling V3 Omni `kling-v3-omni-cankao`、Suno V4.5 `suno-v4.5`统一走现有`multi-protocol-relay/media-generate`；参数、引用、严格结果类型和10/75/15分钟持久轮询窗口已固化。
+- 自动证据：Node `22.23.1` / npm `10.9.8`；十个目标spec最终有效`148/148`。第一次产品测试`145/148`后只重跑失败的m53+m57并`40/40`通过；TypeScript、构建、source coverage、外网门禁均通过。
+- 边界：未跑full；没有真实Provider专用smoke凭据，`REAL_PROVIDER_SMOKE_PAUSED`；未触碰真实OSS、4173、真实数据、生产、版本或GitHub。受保护JSON保持untracked且未读/未改/未暂存/未提交。
+- 提交：`3144d7a refactor(generation): own media result commits`；第二提交为`feat(generation): add relay media model contracts`。权威矩阵和续接见`spec/UNBOUNDRY_RELAY_MEDIA_MODELS_ACCEPTANCE_MATRIX_2026-08-21.md`与`spec/UNBOUNDRY_RELAY_MEDIA_MODELS_CHECKPOINT.md`。
+
 ### 2026-08-21 同步文字Provider registry/port（本地工程完成，未发布）
 
 - 状态：`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`。本地代码已把同步文字执行收口到唯一`TextProviderRegistry`入口；Task协调器不再按具体文字driver调用adapter，Ark native与四类relay文字协议各由adapter实现统一port。

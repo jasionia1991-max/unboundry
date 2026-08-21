@@ -62,7 +62,7 @@ UI
 
 ## 4. 施工策略
 
-路线图分为“已完成第一批”和“功能触发批”。第一批当前停在本地`USER_REVIEW`；后续批次只在对应新功能出现前强制执行，不允许绕过，也不为了架构好看提前翻修稳定代码。
+路线图分为“已完成批次”和“功能触发批”。第一、第二批当前均停在本地`USER_REVIEW`；后续批次只在对应新功能出现前强制执行，不允许绕过，也不为了架构好看提前翻修稳定代码。
 
 ### 第一批：同步文字Provider port
 
@@ -93,11 +93,13 @@ UI
 
 ### 第二批：Task/Media结果提交边界
 
+- 状态：`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`；由三媒体异步模型Goal触发并完成，未发布、未部署、未调用真实Provider。
 - 触发：准备新增异步Provider、改变任务恢复/结果提交或修改Media publication时。
 - 目标：移除TaskStore↔Safety运行时循环；建立Task拥有的`GenerationResultCommit`。
 - 范围：`generationTaskStore.ts`、`generationSafety.ts`、`mediaLifecycle.ts`、`mediaRegistry.ts`及m5/m14/m38/m40/m88。
 - 风险：P1；必须保留同一SQLite事务和所有付费证据。
 - 完成标准：Media不拥有任务状态机；Task/Safety无运行时循环；既有attempt/idempotency行为不变。
+- 当前回执：`GenerationResultCommit`已成为唯一Generation侧结果事务编排者；MediaLifecycle/MediaRegistry已移除generation SQL；第一提交`3144d7a`。直接回归包含在三媒体Goal十spec最终有效`148/148`证据中。
 
 ### 第三批：Storage backend port
 

@@ -2,13 +2,14 @@
 
 更新日期：2026-08-21
 
-状态：`PLAN_FROZEN / IMPLEMENTATION_NOT_STARTED`
+状态：`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`
 
 ## 1. 当前身份
 
 - 仓库：`/Users/mymy/Documents/unboundry/app`；
 - 分支：`codex/unboundry-offline-remediation-2026-08-09`；
-- 方案冻结 HEAD：`e7016eb26ad3a7ae9829067a057b1206d3c2b3c4`；
+- 用户指定文档基线：`80820cb8ae9df7069837406707d4181d818b6847`；
+- 第一工程提交：`3144d7a3297251d2ba97fd585daa18b804a0c325`（结果提交所有权）；
 - package：`0.6.27`；
 - 工程运行时：Node `22.23.1` / npm `10.9.8`；
 - 当前 shell 默认 Node/npm 可能仍为 v25/11，施工命令必须显式切换；
@@ -18,15 +19,14 @@
 ## 2. 当前事实
 
 - 同步文字 Provider port 第一批已在本地提交 `e7016eb` 完成，状态 `AUTO_PASS / USER_REVIEW`，未发布；
-- 本三媒体接入尚未修改产品代码、测试、schema、版本或运行配置；
+- 本三媒体本地工程已完成，未发布，状态仅为`AUTO_PASS / USER_REVIEW`；
 - 已核实三模型共用 `https://api.lk888.ai`、`POST /v1/media/generate` 和异步 task_id/status/result_url 合同；
 - 已核实参数差异、轮询路径歧义、无稳定退款字段、无取消接口；
-- 已核实现有 Kling 通用恢复窗口短于平台文档的约70分钟上限；
-- 已核实现有 `server/multiProtocolRelay.ts` 图片识别正则不能匹配 `gemini-3-pro-image-preview`，会误入Gemini文本分类；
-- 已核实现有 MediaLifecycle/MediaRegistry 在 reserve、finalize、fail、recovery、delete 多处直接查询或更新 generation 表，不是只改 finalize 即可；
-- 已核实现有音频丢失提交响应分支没有图片/视频同等级恢复能力；
-- 已裁决：使用现有 `multi-protocol-relay/media-generate`，不新增driver、不启动Storage第三批、不新增Canvas节点；
-- 已触发路线图第二批：先完成Task/Media结果提交边界，再接模型合同。
+- Kling已使用paid attempt `created_at`承载75分钟持久窗口；Nano/Suno分别10/15分钟，未新增schema；
+- `gemini-3-pro-image-preview`已在Gemini文本规则前精确分类为image并由m55固定；
+- MediaLifecycle/MediaRegistry已移除对generation task/attempt的SQL所有权，GenerationResultCommit在同一BEGIN IMMEDIATE内编排publication、attempt、task和event；
+- 三模型继续使用现有`multi-protocol-relay/media-generate`；没有新driver、Storage第三批、Canvas节点或平行registry；
+- 提交响应丢失、已有providerTaskId恢复、404/405路径回退、严格result_type与无退款不重试均已本地固化。
 
 ## 3. 权威文档顺序
 
@@ -74,29 +74,31 @@ git diff --quiet HEAD origin/main --
 ## 5. 当前执行点
 
 ```text
-PLAN_FROZEN
-  -> Stage 0 identity/call-chain freeze
-  -> Stage 1 GenerationResultCommit + cycle removal
-  -> Stage 2 relay media model contracts
-  -> Stage 3 durable long-task recovery
-  -> Stage 4 result/error normalization
-  -> Stage 5 targeted verification + docs + local commits
+Stage 0 identity/call-chain freeze: COMPLETE
+  -> Stage 1 GenerationResultCommit + cycle removal: COMPLETE
+  -> Stage 2 relay media model contracts: COMPLETE
+  -> Stage 3 durable long-task recovery: COMPLETE
+  -> Stage 4 result/error normalization: COMPLETE
+  -> Stage 5 targeted verification + docs + two local commits: COMPLETE
   -> LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW
 ```
 
 不得自动进入真实Provider、版本、push/PR/tag、发布或生产。
 
-## 6. 测试续接
+## 6. 测试回执
 
-- 先完成全部相关实现并静态检查，不按阶段反复启动runner；
-- 最终一次统一定向集合：m5/m14/m38/m40/m44/m53/m54/m55/m57/m88；模型合同优先写进这些直接spec，确有职责隔离才新增一个合同spec并加入同一命令；
-- 仅在storage直接合同受影响时追加对应m37/m80/m87/m90；
-- 使用一次 `node scripts/run-safe-tests.mjs run --spec <exact spec> ...`；runner已包含preflight、TypeScript、构建、临时数据、动态loopback和外网门禁，不额外重复跑这些阶段；
-- 默认不跑 full；
-- 每次回执记录Node/npm、spec、tests、退出码、临时目录、动态端口、4173前后身份和外部请求计数；
-- 测试失败只诊断并重跑失败spec或更小子集；成功后没有新相关代码变化不得重复。
+- Node `22.23.1` / npm `10.9.8`；safe runner统一集合为m5/m14/m38/m40/m44/m53/m54/m55/m57/m88。
+- 前四次启动均在产品spec前被TypeScript、测试清单或source-coverage闸门阻止；修正后第一次执行产品spec为`145/148`，失败仅在m53/m57。
+- 只重跑失败文件m53+m57，退出0、`40/40`；因此最终有效十spec为`148/148`，且最终代码下TypeScript、构建、source coverage和外网门禁均绿。
+- m37/m80/m87/m90未追加：底层存储合同未改变，生成保存token与publication事务由m54/m88直接覆盖。
+- full未运行：没有Canvas/Workflow/schema/release改动，冻结定向集合已覆盖实际风险传播。
+- 全部自动执行使用新临时目录、动态loopback与fake fetch；真实路径操作0，4173 listener不变，真实Provider/OSS/生产未触碰。
 
-## 7. 停止条件
+## 7. 当前停止点
+
+本地工程在两个本地commit后停止。`REAL_PROVIDER_SMOKE_PAUSED`，页面选择/真实结果由用户后续审阅；版本、push/PR/tag、发布、SSH和生产都需要新的明确授权。
+
+## 8. 历史施工停止条件
 
 只有以下真实阻断可以中断自动推进：
 
@@ -109,9 +111,9 @@ PLAN_FROZEN
 
 普通编译错误、定向测试失败、实现困难或耗时不是停止理由；应诊断、修复并重跑最小相关测试。
 
-## 8. 交付要求
+## 9. 交付边界
 
-- 推荐两个本地commit：结果提交边界；三模型合同；
+- 两个本地commit：结果提交边界；三模型合同；
 - commit只包含本Goal代码、测试和文档；
 - 受保护JSON必须保持untracked且不进入index；
 - 最终报告列明实际文件、调用链、测试命令/结果、未跑full原因、真实Provider状态和剩余风险；

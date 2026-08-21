@@ -7,6 +7,7 @@ import { expect, test } from "./safe-test";
 import { authGate } from "../server/auth";
 import { appDataDirectory, openAppDatabase } from "../server/database";
 import { adminModelsApi } from "../server/modelCatalog";
+import { inferRelayCatalogModelHints } from "../server/multiProtocolRelay";
 import { saveProviderProfile } from "../server/providerProfiles";
 
 async function startModelServer() {
@@ -216,4 +217,10 @@ test("relay models persist an explicit compatible protocol without Provider requ
     else process.env.UNBOUNDRY_TEST_AUTH_BYPASS = previousBypass;
     await rm(directory, { force: true, recursive: true });
   }
+});
+
+test("the exact Nano Banana Pro model id is classified as image before Gemini text rules", () => {
+  expect(inferRelayCatalogModelHints("gemini-3-pro-image-preview")).toEqual({
+    capability: "image",
+  });
 });

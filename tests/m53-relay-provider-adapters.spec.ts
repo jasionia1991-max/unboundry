@@ -844,6 +844,78 @@ test("unknown task states and mismatched media results fail closed", async () =>
   expect(calls).toBe(2);
 });
 
+test("registered media polling requires result_type and only falls back on 404 or 405", async () => {
+  for (const fallbackStatus of [404, 405]) {
+    const calls: string[] = [];
+    const result = await pollRelayMediaTask(connection, {
+      capability: "image",
+      externalTaskId: `task-fallback-${fallbackStatus}`,
+      providerProtocol: "media-generate",
+      requireResultType: true,
+    }, {
+      fetcher: async (input) => {
+        calls.push(String(input));
+        return calls.length === 1
+          ? jsonResponse({}, fallbackStatus)
+          : jsonResponse({
+              is_final: true,
+              result_type: "image",
+              result_url: "https://example.test/result.png",
+              state: "success",
+            });
+      },
+    });
+    expect(result).toMatchObject({ capability: "image", state: "success" });
+    expect(calls).toEqual([
+      `https://api.example.test/v1/skills/task-status?task_id=task-fallback-${fallbackStatus}`,
+      `https://api.example.test/v1/media/status?task_id=task-fallback-${fallbackStatus}`,
+    ]);
+  }
+
+  for (const noFallbackStatus of [401, 403, 429, 500]) {
+    const calls: string[] = [];
+    await expect(pollRelayMediaTask(connection, {
+      capability: "video",
+      externalTaskId: `task-no-fallback-${noFallbackStatus}`,
+      providerProtocol: "media-generate",
+      requireResultType: true,
+    }, {
+      fetcher: async (input) => {
+        calls.push(String(input));
+        return jsonResponse({}, noFallbackStatus);
+      },
+    })).rejects.toMatchObject({ statusCode: noFallbackStatus });
+    expect(calls).toHaveLength(1);
+  }
+
+  let networkCalls = 0;
+  await expect(pollRelayMediaTask(connection, {
+    capability: "video",
+    externalTaskId: "task-no-network-fallback",
+    providerProtocol: "media-generate",
+    requireResultType: true,
+  }, {
+    fetcher: async () => {
+      networkCalls += 1;
+      throw new TypeError("synthetic network failure");
+    },
+  })).rejects.toMatchObject({ code: "NETWORK" });
+  expect(networkCalls).toBe(1);
+
+  await expect(pollRelayMediaTask(connection, {
+    capability: "audio",
+    externalTaskId: "task-missing-result-type",
+    providerProtocol: "media-generate",
+    requireResultType: true,
+  }, {
+    fetcher: async () => jsonResponse({
+      is_final: true,
+      result_url: "https://example.test/result.mp3",
+      state: "success",
+    }),
+  })).rejects.toMatchObject({ code: "FORMAT" });
+});
+
 test("HTTP failures are classified without exposing keys or upstream bodies", async () => {
   const cases = [
     { code: "AUTH", status: 401 },

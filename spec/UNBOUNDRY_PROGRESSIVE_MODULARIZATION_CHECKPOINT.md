@@ -83,7 +83,7 @@
 
 ## 5. 后续批次触发条件
 
-- 异步Provider、任务恢复或Media result commit变化前：第二批；
+- 异步Provider、任务恢复或Media result commit变化前：第二批；已由2026-08-21三媒体Goal完成，状态`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`；
 - 第三种Storage backend前：第三批；
 - 新生成节点、Canvas保存协议或单节点retry变化前：第四批；
 - 新节点/模板类型前：第五批；
@@ -120,12 +120,12 @@ node -p "require('./package.json').version"
 git diff --quiet HEAD origin/main --
 ```
 
-随后确认当前HEAD是否为本批本地交付提交、工作树除受保护JSON外是否干净，并将Node/npm切换到package约束。不要自动开始第二至第七批；第一批若要发布、推送或继续USER验收，必须获得新的明确授权。
+随后确认当前HEAD是否为本批本地交付提交、工作树除受保护JSON外是否干净，并将Node/npm切换到package约束。不要自动开始第三至第七批；第一、第二批若要发布、推送或继续USER验收，必须获得新的明确授权。
 
 ## 8. 续接规则
 
-- 第一批Goal完成后授权失效；
-- 第二至第七批必须等待各自触发条件和新的明确Goal；
+- 第一、第二批Goal完成后授权均已失效；
+- 第三至第七批必须等待各自触发条件和新的明确Goal；
 - 正常的代码、测试、文档、版本、Git和授权交付动作按Goal提示词执行；
 - 只有身份冲突、用户改动重叠、数据风险、真实外部调用状态未知、重复付费风险或无法安全回滚的真实阻断才停；
 - 任务困难、耗时或测试失败不是自动停下询问的理由，应先自行诊断、修复和重跑最小相关测试；

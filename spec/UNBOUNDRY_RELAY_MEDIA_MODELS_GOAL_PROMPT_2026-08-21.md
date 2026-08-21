@@ -1,5 +1,7 @@
 # 新 Session 一次性 Goal 提示词
 
+状态：`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`（2026-08-21）。本提示词已执行完成，仅保留为历史施工合同；不得据此自动复用Goal或发布授权。结果提交边界commit为`3144d7a`，三模型合同commit为包含本回执的`feat(generation): add relay media model contracts`。真实Provider smoke为`PAUSED`，版本、GitHub、发布和生产均未进入。
+
 将下面全文复制到新的 Codex Session：
 
 ```text

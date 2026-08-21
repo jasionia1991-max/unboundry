@@ -2,7 +2,7 @@
 
 更新日期：2026-08-21
 
-状态：`PLAN_FROZEN / IMPLEMENTATION_NOT_STARTED`
+状态：`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`
 施工目标：在现有 `multi-protocol-relay + media-generate` 通道中接入：
 
 - 图片：`gemini-3-pro-image-preview`（Nano Banana Pro）；
@@ -365,3 +365,13 @@ node scripts/run-safe-tests.mjs run \
 10. 受保护 JSON、4173、真实数据、OSS和生产均未触碰；
 11. 文档、矩阵、Checkpoint、TASKS/CURRENT_STATE同步真实状态；
 12. 本地提交边界清楚，未自动进入发布阶段。
+
+## 15. 2026-08-21 本地施工回执
+
+- 路线图第二批已完成：`GenerationResultCommit`成为Generation拥有的事务编排者；Media publication只产出并消费transaction-scoped evidence，不再查询或更新Generation task/attempt；TaskStore与Safety运行时循环已解除。
+- 三模型已登记在小型`relayMediaModelContracts`中，未登记模型仍走generic relay路径；没有新driver、平行Media registry、Google原生图片双轨、Storage backend或schema。
+- Nano：10种比例原样、1K/2K/4K映射、最多14张按edge order的`reference-image`；Kling：3种比例、字符串5/10/15秒、std/pro、最多7张图片；Suno：`chirp-v4-5`、三种歌曲模式、auto/m/f、采样率与码率，不接受媒体边。
+- 截止从paid attempt `created_at`计算：Nano 10分钟、Suno 15分钟、Kling 75分钟；5秒起步且最多10秒。已有`providerTaskId`只轮询原任务；提交响应丢失保持outcome-unknown/人工核对，不二次POST。
+- 状态路径只在404/405回退；严格核对`result_type`；图片验证PNG、视频走MP4、音频走现有格式；Provider `cost`未覆盖本地可信估算；没有`refunded:true`不自动付费重试。
+- 当前定向最终有效证据为十个spec `148/148`；完整命令、分次故障诊断和隔离回执见验收矩阵第11节。未跑full，未做真实Provider smoke（`REAL_PROVIDER_SMOKE_PAUSED`）。
+- 第一提交为`3144d7a refactor(generation): own media result commits`；第二提交使用冻结消息`feat(generation): add relay media model contracts`并包含模型合同、直接测试、runner清单同步及本文档回执。

@@ -121,6 +121,11 @@ import {
   type RelayTransientMediaOutput,
 } from "./relayProviderAdapters";
 import {
+  relayMediaModelContract,
+  relayMediaPollingDecision,
+  relayMediaSubmissionAction,
+} from "./relayMediaModelContracts";
+import {
   isTextGenerationProtocol,
   TextGenerationProviderError,
   type TextGenerationInput,
@@ -2292,7 +2297,7 @@ export function initializePersistentGenerationTaskWorker() {
 
 type TextTaskStore = Pick<
   ReturnType<typeof createGenerationTaskStore>,
-  | "complete"
+  | "dataDirectory"
   | "get"
   | "markProviderResponseReceived"
   | "recordProviderAttempt"
@@ -2596,6 +2601,7 @@ export async function executeTextTaskWithDependencies(
       // Ark does not return a reliable per-response bill. Keep budget
       // accounting conservative by recording the administrator-protected cap.
       actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+      dataDirectory: dependencies.store.dataDirectory,
       executionAttempt: running.attempt,
       providerUsageTokens: result.providerUsageTokens,
       resultText: result.text,
@@ -2735,7 +2741,8 @@ function appendRelayMediaParam(
 export async function relayMediaParametersForTask(
   task: Pick<
     GenerationTask,
-    "kind" | "modelConfiguration" | "ownerId" | "parameters" | "providerModelId"
+    "kind" | "modelConfiguration" | "ownerId" | "parameters" | "prompt" |
+      "providerModelId"
   >,
   mediaUrlForOwner: typeof providerMediaUrlForOwner,
 ) {
@@ -2743,6 +2750,77 @@ export async function relayMediaParametersForTask(
     !task.ownerId ||
     (task.kind !== "audio" && task.kind !== "image" && task.kind !== "video")
   ) throw new RelayProviderError("FORMAT");
+  const modelContract = relayMediaModelContract(task.providerModelId);
+  if (modelContract) {
+    if (modelContract.capability !== task.kind) {
+      throw new RelayProviderError("FORMAT");
+    }
+    let parameters: Record<string, RelayMediaParamValue>;
+    try {
+      parameters = modelContract.mapParameters(task.parameters, task.prompt) as
+        Record<string, RelayMediaParamValue>;
+    } catch {
+      throw new RelayProviderError("FORMAT");
+    }
+    const rawInputs = task.parameters.inputs;
+    if (rawInputs === undefined) return parameters;
+    if (!Array.isArray(rawInputs) || rawInputs.length > 64) {
+      throw new RelayProviderError("FORMAT");
+    }
+    const seenOrders = new Set<number>();
+    const mediaInputs = rawInputs.map((raw) => {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        throw new RelayProviderError("FORMAT");
+      }
+      const input = raw as Partial<NodeInputSnapshot>;
+      if (
+        !Number.isSafeInteger(input.order) || Number(input.order) < 1 ||
+        seenOrders.has(Number(input.order)) ||
+        typeof input.role !== "string" ||
+        typeof input.sourceNodeId !== "string" ||
+        !/^[a-z0-9._-]{1,160}$/i.test(input.sourceNodeId)
+      ) throw new RelayProviderError("FORMAT");
+      seenOrders.add(Number(input.order));
+      if (input.kind === "text") {
+        if (input.assetId !== undefined) throw new RelayProviderError("FORMAT");
+        return undefined;
+      }
+      if (
+        (input.kind !== "audio" && input.kind !== "image" &&
+          input.kind !== "video") ||
+        typeof input.assetId !== "string" ||
+        !/^[a-z0-9._-]{1,160}$/i.test(input.assetId) ||
+        !modelContract.referencePolicy.allowedKinds.includes(input.kind) ||
+        !modelContract.referencePolicy.allowedRoles.includes(input.role)
+      ) throw new RelayProviderError("FORMAT");
+      return {
+        assetId: input.assetId,
+        kind: input.kind,
+        order: Number(input.order),
+      };
+    }).filter((input): input is NonNullable<typeof input> => Boolean(input))
+      .sort((left, right) => left.order - right.order);
+    if (mediaInputs.length > modelContract.referencePolicy.maximumCount) {
+      throw new RelayProviderError("FORMAT");
+    }
+    if (mediaInputs.length) {
+      const urls: string[] = [];
+      for (const input of mediaInputs) {
+        urls.push(await mediaUrlForOwner({
+          assetId: input.assetId,
+          kind: input.kind,
+          ownerId: task.ownerId,
+        }, {
+          rules: referenceMediaRulesForTask(task) ?? genericReferenceMediaRules,
+        }));
+      }
+      if (modelContract.referencePolicy.parameterName !== "images") {
+        throw new RelayProviderError("FORMAT");
+      }
+      parameters.images = urls;
+    }
+    return parameters;
+  }
   const parameters: Record<string, RelayMediaParamValue> = {};
   for (const [name, value] of Object.entries(task.parameters)) {
     if (
@@ -3297,6 +3375,10 @@ async function executeRelayMediaTask(
     return;
   }
   const ownerId = running.ownerId!;
+  const modelContract = relayMediaModelContract(running.providerModelId);
+  if (modelContract && modelContract.capability !== kind) {
+    throw new RelayProviderError("FORMAT");
+  }
   const protocol = taskProviderProtocol(running);
   if (protocol !== "media-generate" && !(kind === "image" && protocol === "gpt-image")) {
     throw new RelayProviderError("FORMAT");
@@ -3307,7 +3389,7 @@ async function executeRelayMediaTask(
   let cleanup: (() => Promise<void>) | undefined;
   let cleanupDeferred = false;
   try {
-    if (!providerTaskId) {
+    if (relayMediaSubmissionAction(providerTaskId) === "submit-once") {
       const built = options?.paramsBuilder
         ? await options.paramsBuilder(running, profile)
         : undefined;
@@ -3354,6 +3436,17 @@ async function executeRelayMediaTask(
         if (
           error instanceof RelayProviderError &&
           error.providerTaskMayStillRun &&
+          modelContract
+        ) {
+          taskStore().transition(taskId, "failed", {
+            code: "PROVIDER_REQUEST_FAILED",
+            message: "已向模型提交但未收到任务号；为避免重复扣费，请人工核对",
+          });
+          return;
+        }
+        if (
+          error instanceof RelayProviderError &&
+          error.providerTaskMayStillRun &&
           (kind === "image" || kind === "video")
         ) {
           cleanupDeferred = true;
@@ -3370,7 +3463,27 @@ async function executeRelayMediaTask(
         throw error;
       }
     }
-    for (let poll = 0; poll < relayMediaPollLimit[kind]; poll += 1) {
+    const attemptCreatedAt = modelContract
+      ? taskStore().providerAttemptCreatedAt(taskId)
+      : undefined;
+    if (modelContract && !attemptCreatedAt) {
+      throw new RelayProviderError("FORMAT", true);
+    }
+    let poll = 0;
+    while (true) {
+      const polling = modelContract
+        ? relayMediaPollingDecision({
+            attemptCreatedAt: attemptCreatedAt!,
+            nowMs: Date.now(),
+            pollCount: poll,
+            policy: modelContract.pollPolicy,
+          })
+        : {
+            delayMs: 2_000,
+            expired: poll >= relayMediaPollLimit[kind],
+          };
+      if (polling.expired) break;
+      poll += 1;
       if (taskStore().get(taskId)?.state !== "running") return;
       let status: Awaited<ReturnType<typeof pollRelayMediaTask>>;
       try {
@@ -3387,6 +3500,7 @@ async function executeRelayMediaTask(
                 capability: kind,
                 externalTaskId: providerTaskId!,
                 providerProtocol: "media-generate",
+                requireResultType: Boolean(modelContract),
               },
               {
                 beforeProviderRequest: providerBoundary(),
@@ -3398,7 +3512,7 @@ async function executeRelayMediaTask(
         });
       } catch (error) {
         if (!isTransientRelayPollError(error)) throw error;
-        await waitForRelayMedia(2_000, controller.signal);
+        await waitForRelayMedia(polling.delayMs, controller.signal);
         continue;
       }
       if (status.state === "failed") {
@@ -3425,10 +3539,20 @@ async function executeRelayMediaTask(
           }),
         });
         if (saved) return;
-        await waitForRelayMedia(2_000, controller.signal);
+        await waitForRelayMedia(polling.delayMs, controller.signal);
         continue;
       }
-      await waitForRelayMedia(2_000, controller.signal);
+      await waitForRelayMedia(polling.delayMs, controller.signal);
+    }
+    if (modelContract) {
+      const currentTask = taskStore().get(taskId);
+      if (currentTask?.state === "running") {
+        taskStore().transition(taskId, "failed", {
+          code: "RESULT_DELAYED",
+          message: "平台仍在处理，任务号已保留；系统不会重新提交付费请求",
+        });
+      }
+      return;
     }
     if (kind === "image" || kind === "video") {
       await recoverRelayMediaAfterPoll(
