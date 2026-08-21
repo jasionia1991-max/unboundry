@@ -131,6 +131,14 @@ test("Audio success returns two local results without quota accounting", async (
     await expect(page.locator(".react-flow__node-audio")).toHaveCount(2);
     await expect(page.getByTestId("audio-node-media")).toHaveCount(2);
     await expect(page.locator('[data-generated-result="true"]')).toHaveCount(2);
+    const choices = page.getByRole("group", { name: "生成音频版本" });
+    await expect(choices).toBeVisible();
+    await expect(choices.getByRole("button")).toHaveCount(2);
+    await choices.getByRole("button", { name: "使用音频版本 2" }).click();
+    await expect(choices.getByRole("button", { name: "使用音频版本 2" }))
+      .toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("audio-node-audio-primary"))
+      .toHaveAttribute("data-asset-id", "fixture-audio-result-2.mp3");
     await expect(page.locator("[data-unit-cost]")).toHaveCount(0);
     await expect(page.locator("[data-batch-cost]")).toHaveCount(0);
     await expect(page.getByText("00:00/03:04", { exact: true })).toHaveCount(2);

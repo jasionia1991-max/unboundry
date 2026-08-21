@@ -4,12 +4,15 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { saveGeneratedAudio } from "../server/audioStorage";
+import { validatePng } from "../server/assetStorage";
 import { openAppDatabase } from "../server/database";
 import type { ProviderRequestDeadlineScheduler } from "../server/providerRequestDeadline";
 import {
   downloadProviderResultMedia,
   safeProviderResultUrl,
 } from "../server/providerResultMedia";
+import { normalizeProviderImageToPng } from "../server/providerImageNormalization";
+import { reserveMediaResources } from "../server/resourceBudget";
 
 function wavFixture(seconds = 5, sampleRate = 8_000) {
   const sampleCount = Math.round(seconds * sampleRate);
@@ -120,11 +123,17 @@ test("Provider result fake fetchers require both safe-test and temporary-data ga
 });
 
 test("Provider media download is unauthenticated, redirect-free and type checked", async () => {
-  const requests: Array<{ authorization: string | null; method?: string; redirect?: string }> = [];
+  const requests: Array<{
+    accept: string | null;
+    authorization: string | null;
+    method?: string;
+    redirect?: string;
+  }> = [];
   const result = await downloadProviderResultMedia({
     apiKey: "never-forward-this-key",
     testFetcher: (async (_url, init) => {
       requests.push({
+        accept: new Headers(init?.headers).get("Accept"),
         authorization: new Headers(init?.headers).get("Authorization"),
         method: init?.method,
         redirect: init?.redirect,
@@ -139,6 +148,7 @@ test("Provider media download is unauthenticated, redirect-free and type checked
   });
   expect(result.contentType).toBe("image/png");
   expect(requests).toEqual([{
+    accept: "image/png, image/jpeg, image/webp, image/gif",
     authorization: null,
     method: "GET",
     redirect: "error",
@@ -193,6 +203,94 @@ test("Provider media download is unauthenticated, redirect-free and type checked
   });
   expect(opaqueOgg.contentType).toBe("audio/ogg");
   await opaqueOgg.body.cancel();
+});
+
+test("Provider JPEG and WebP results are decoded into bounded canonical PNG assets", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-provider-image-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
+  try {
+    const ownerId = "provider-image-owner";
+    const timestamp = new Date().toISOString();
+    const database = openAppDatabase(directory);
+    database.prepare(`
+      INSERT INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, 'user', 'active', ?, ?)
+    `).run(ownerId, ownerId, "Provider image", "fixture-only", timestamp, timestamp);
+    database.close();
+
+    for (const fixture of [
+      { contentType: "image/jpeg" as const, extension: "jpg" },
+      { contentType: "image/webp" as const, extension: "webp" },
+    ]) {
+      const sourcePath = join(directory, `fixture.${fixture.extension}`);
+      if (fixture.extension === "webp") {
+        const sourcePng = join(directory, "fixture-source.png");
+        execFileSync("ffmpeg", [
+          "-y", "-loglevel", "error",
+          "-f", "lavfi", "-i", "color=c=0x336699:s=96x64",
+          "-frames:v", "1", sourcePng,
+        ]);
+        execFileSync("cwebp", ["-quiet", sourcePng, "-o", sourcePath]);
+      } else {
+        execFileSync("ffmpeg", [
+          "-y", "-loglevel", "error",
+          "-f", "lavfi", "-i", "color=c=0x336699:s=96x64",
+          "-frames:v", "1", sourcePath,
+        ]);
+      }
+      const source = await readFile(sourcePath);
+      const normalized = await normalizeProviderImageToPng({
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(source.subarray(0, 13));
+            controller.enqueue(source.subarray(13));
+            controller.close();
+          },
+        }),
+        contentType: fixture.contentType,
+        ownerId,
+      });
+      expect(normalized.subarray(0, 8)).toEqual(
+        Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+      );
+      expect(validatePng(normalized)).toEqual({ height: 64, width: 96 });
+    }
+
+    const releaseFirst = await reserveMediaResources({
+      bytes: 1,
+      directory,
+      ownerId: "provider-image-budget-a",
+    });
+    const releaseSecond = await reserveMediaResources({
+      bytes: 1,
+      directory,
+      ownerId: "provider-image-budget-b",
+    });
+    let pulls = 0;
+    try {
+      await expect(normalizeProviderImageToPng({
+        body: new ReadableStream<Uint8Array>({
+          pull() {
+            pulls += 1;
+            throw new Error("image body was read before resource admission");
+          },
+        }, { highWaterMark: 0 }),
+        contentType: "image/jpeg",
+        ownerId,
+      })).rejects.toMatchObject({ code: "RESOURCE_BUSY" });
+      expect(pulls).toBe(0);
+    } finally {
+      releaseSecond();
+      releaseFirst();
+    }
+  } finally {
+    if (previousDataDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
+    else process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
+    await rm(directory, { force: true, recursive: true });
+  }
 });
 
 test("Provider result hard deadline covers request and complete body consumption", async () => {

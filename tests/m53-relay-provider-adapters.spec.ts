@@ -821,6 +821,31 @@ test("media polling deduplicates one provider result repeated across response al
   expect(result.outputs).toHaveLength(1);
 });
 
+test("media polling preserves distinct Suno candidates in Provider order", async () => {
+  const first = "https://signed.example.test/first.mp3?signature=one";
+  const second = "https://signed.example.test/second.mp3?signature=two";
+  const result = await pollRelayMediaTask(connection, {
+    capability: "audio",
+    externalTaskId: "task_two_suno_candidates",
+    providerProtocol: "media-generate",
+  }, {
+    fetcher: async () => jsonResponse({
+      result_url: first,
+      result_urls: [first, second],
+      result_type: "audio",
+      state: "success",
+    }),
+  });
+
+  expect(result).toMatchObject({ state: "success" });
+  if (result.state !== "success") throw new Error("expected success result");
+  expect(result.outputs).toHaveLength(2);
+  expect(result.outputs.map((output) => output.kind)).toEqual([
+    "audio",
+    "audio",
+  ]);
+});
+
 test("unknown task states and mismatched media results fail closed", async () => {
   let calls = 0;
   const inspect = (body: unknown) => pollRelayMediaTask(connection, {
