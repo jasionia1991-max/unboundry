@@ -1,7 +1,7 @@
 # Unboundry 渐进式模块化 Checkpoint
 
 更新日期：2026-08-21
-状态：`FIRST_BATCH_LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`
+状态：`FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
 
 ## 1. 当前权威文件
 
@@ -36,7 +36,7 @@
 - package约束：Node `>=22.23.1 <23`、npm `10.9.8`
 - shell默认：Node `v25.9.0`、npm `11.12.1`
 - 第一批施工/验证：显式使用Node `22.23.1`、npm `10.9.8`
-- 线上状态：`PRODUCTION_PUBLISHED_USER_PASS`
+- 线上状态：`v0.6.28 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
 - 受保护未跟踪文件：`spec/public-templates-director-split-revision.json`
 
 基线会漂移，新Session必须重新只读核对；冲突时停止，不得reset、clean、checkout覆盖或自行修复。
@@ -59,7 +59,7 @@
 
 ## 4. 第一批本地交付
 
-状态：`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`。这不是发布、生产技术验收或USER PASS。
+状态：第一批已随v0.6.28发布，`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。这不是USER PASS。
 
 - 调用链：`HTTP/API → Generation Task → 输入物化 → profile/credential lease + task snapshot校验 → TextProviderRegistry → Ark/relay文字adapter → 规范化text/usage → provider response evidence → Task complete`。
 - driver选择：只在`server/providerRegistry.ts`按已解析的`profile.driver + protocol`进行；Generation Task不再按具体文字driver分支。
@@ -83,12 +83,12 @@
 
 ## 5. 后续批次触发条件
 
-- 异步Provider、任务恢复或Media result commit变化前：第二批；已由2026-08-21三媒体Goal完成，状态`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`；
+- 异步Provider、任务恢复或Media result commit变化前：第二批；已由2026-08-21三媒体Goal完成并随v0.6.28发布，状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；
 - 第三种Storage backend前：第三批；
 - 新生成节点、Canvas保存协议或单节点retry变化前：第四批；
 - 新节点/模板类型前：第五批；
 - 账号删除、用户生命周期、任务表或领域schema变化前：第六批；
-- 下一次正式发布准备时：第七批只读追踪，确认后才条件治理。
+- v0.6.28正式发布前已执行第七批只读追踪，确认现行safe runner、Git archive、fresh build、冻结备份与原子切换路径可用；下一次正式发布仍需重新触发和核对。
 
 这些批次不得遗忘或绕过，也不得在没有触发时为了“完成架构”提前施工。
 

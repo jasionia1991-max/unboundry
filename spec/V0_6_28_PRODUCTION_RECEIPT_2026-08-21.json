@@ -1,0 +1,133 @@
+{
+  "incident": "RELAY-MEDIA-MODELS-AND-PROVIDER-PORT",
+  "version": "0.6.28",
+  "status": "PRODUCTION_PUBLISHED_AUTO_PASS",
+  "publishedAt": "2026-08-21T07:36:43Z",
+  "changes": {
+    "summary": "同步文字 Provider 统一经过 TextProviderRegistry；GenerationResultCommit 原子提交媒体 publication、Provider attempt、task success 与 event；同一中转站新增 Nano Banana Pro、Kling V3 Omni 与 Suno V4.5 的严格媒体模型合同。",
+    "scope": "server Generation/Provider/Media 边界、模型参数与协议适配、安全测试及治理文档；数据库结构保持 schema39。",
+    "generationLogicUnchanged": false
+  },
+  "source": {
+    "commit": "ee6ce437730cf78ef4488217b778f6b0ef2aaee5",
+    "tree": "2811ada65140779d4a5e10cbd8ed6fa54893638b",
+    "tagObject": "cae296d99dbacafbd6ead53cbe272cca3b8b612b",
+    "mainMergeCommit": "753d24f8ee6e4facb3c88e876c4a38b456addc75",
+    "mainTreeMatchesTag": true,
+    "releaseArchiveSha256": "5ac9e26429f8c00f00fa9e6121da791ad11eaf8f99c3898593955e296ed8fc3a",
+    "protectedUntrackedJsonExcluded": true
+  },
+  "tests": {
+    "preflight": "PASS",
+    "formalFull": {
+      "specsExecuted": 119,
+      "testsPassed": 1032,
+      "testsTotal": 1034,
+      "failed": 2,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0,
+      "failureClassification": "m1 dense-canvas p95 为 25.3ms、超过 25ms 0.3ms；m38 要求精确版本字符串而候选文档带发布候选后缀。"
+    },
+    "targetedFailureRerun": {
+      "specs": [
+        "tests/m1-dense-canvas.spec.ts",
+        "tests/m38-generation-runtime-incidents.spec.ts"
+      ],
+      "testsPassed": 16,
+      "testsTotal": 16,
+      "failed": 0,
+      "exitCode": 0
+    },
+    "postProductionDocumentationRerun": {
+      "spec": "tests/m38-generation-runtime-incidents.spec.ts",
+      "testsPassed": 15,
+      "testsTotal": 15,
+      "failed": 0,
+      "sourceSnapshotSha256": "d2f0b53eb34238a0a4ae700b44cf5d286abc3c2f0c5b0a137e25a2ade14458aa"
+    },
+    "effectiveCoverage": "正式 full 覆盖 1034 条；只修正文档精确字符串后，两个失败 spec 最小复验 16/16 通过。未重复 full，也未把首次 full 写成零失败。",
+    "formalFullSourceSnapshotSha256": "8578adc7e9836ef26c58ebfa6011081134cbec94c5aa2ae5cc02b7344f948957",
+    "targetedRerunSourceSnapshotSha256": "1df40f943cbc95128d2443dbd5998a2b86553bd5322a65c87b025530f1442d35",
+    "listenerBeforeAfterSha256": "24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244",
+    "environment": "Node 22.23.1 / npm 10.9.8 / 588 source files"
+  },
+  "backup": {
+    "path": "/var/lib/unboundry-rollbacks/v0.6.28-frozen-awqsNE",
+    "files": 365,
+    "frozenManifestSha256": "2897b65a20419e38ae940b353c3f57112ab352133054052557a06d63f496c58e",
+    "restoreManifestSha256": "2897b65a20419e38ae940b353c3f57112ab352133054052557a06d63f496c58e",
+    "databaseRows": 5738,
+    "mediaBytes": 284663380,
+    "mediaFiles": 355,
+    "restoreSchemaVersion": 39,
+    "restoreDatabaseIntegrity": "ok",
+    "restoreForeignKeyViolations": 0,
+    "restoreTasks": 630,
+    "restoreProviderAttempts": 638,
+    "restoreActiveGenerations": 0,
+    "restorePublicTemplates": 50,
+    "restorePublishedTemplates": 48
+  },
+  "production": {
+    "release": "/opt/unboundry/releases/v0.6.28-relay-media-models-20260821",
+    "previousRelease": "/opt/unboundry/releases/v0.6.27-canvas-execution-decoupling-20260821",
+    "releaseInventoryFileSha256": "62bdcf4e7481e8d03cec04e8a513f77d9b5cf700ef4b869f65fca908239babc1",
+    "releaseInventoryLines": 5807,
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "restartCount": 0,
+    "schemaVersion": 39,
+    "databaseIntegrity": "ok",
+    "foreignKeyViolations": 0,
+    "tasksBefore": 630,
+    "providerAttemptsBefore": 638,
+    "tasksAfter": 630,
+    "providerAttemptsAfter": 638,
+    "activeGenerationsAfter": 0,
+    "publicTemplates": 50,
+    "publishedTemplates": 48,
+    "mediaFilesAfter": 355,
+    "mediaBytesAfter": 284663380,
+    "applicationErrorLinesSinceRestart": 0
+  },
+  "publicAssets": {
+    "version": "0.6.28",
+    "rootStatus": 200,
+    "liveStatus": 200,
+    "readyStatus": 200,
+    "allReleaseAssetsMatchedPublic": true,
+    "assets": {
+      "/assets/CanvasShell-BFFpHGTj.js": "509d2585eb83e4e74c00a7cc7ae44c211857e94f989959705e55d14d00ed0fb8",
+      "/assets/WorkspacePage-B4e7WIo8.js": "acff23615ede00076a5097b2cc1d780e1af9306971546cecf4c0e95fff4d297f",
+      "/assets/index-DZq_Pl7A.js": "1a255f49d4d6c9055908e6f64d73c014a29565dbff2d5d453220a61af19062fd",
+      "/assets/projectStorage-mJcfzD-z.js": "dc04633bf7a2b008de1823f5879d7ae348e82aa69b1b1f78b0a56c8ae246decb",
+      "/assets/index-DOTFXUZ8.css": "665f01268caade6967d85e4829aa35ce992c7c34cebb4b53236b8b2288f00d7a"
+    }
+  },
+  "externalEffects": {
+    "realProviderGenerationTasks": 0,
+    "paidProviderRequests": 0,
+    "ossMediaWrites": 0,
+    "productionCanvasMutated": false,
+    "schemaChanged": false
+  },
+  "github": {
+    "state": "MERGED",
+    "pullRequest": 58,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/58",
+    "mergedAt": "2026-08-21T07:34:06Z",
+    "mergeCommit": "753d24f8ee6e4facb3c88e876c4a38b456addc75",
+    "tag": "v0.6.28",
+    "tagTarget": "ee6ce437730cf78ef4488217b778f6b0ef2aaee5"
+  },
+  "rollback": {
+    "previousRelease": "/opt/unboundry/releases/v0.6.27-canvas-execution-decoupling-20260821",
+    "frozenBackup": "/var/lib/unboundry-rollbacks/v0.6.28-frozen-awqsNE",
+    "required": false
+  },
+  "authorizationConsumed": true,
+  "userAcceptance": "USER_RECHECK",
+  "userAcceptanceEvidence": null
+}

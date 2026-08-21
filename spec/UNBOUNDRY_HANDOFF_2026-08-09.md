@@ -6,7 +6,11 @@
 
 新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-21 的权威现状、产品合同和用户已点头的旧项收口。下面各节是历史增量，出现「当前」时只代表该时点。
 
-## 当前线上：画布执行解耦（v0.6.27，2026-08-21 已发布并获用户验收通过）
+## 当前线上：Provider port 与三媒体中转模型（v0.6.28，2026-08-21 已发布，待用户复验）
+
+v0.6.28已把同步文字执行统一到`TextProviderRegistry`，由Generation拥有媒体结果原子提交，并为同一中转站加入Nano Banana Pro、Kling V3 Omni、Suno V4.5严格合同。tag commit`ee6ce437730cf78ef4488217b778f6b0ef2aaee5`/tree`2811ada65140779d4a5e10cbd8ed6fa54893638b`；PR #58 merge`753d24f8ee6e4facb3c88e876c4a38b456addc75`，main tree一致。正式full覆盖1034条并有2条可解释失败，修正文档后只复验失败spec并16/16通过；生产current为`/opt/unboundry/releases/v0.6.28-relay-media-models-20260821`，冻结备份`v0.6.28-frozen-awqsNE`双清单一致，数据/媒体计数不变，公网5资源、service、schema39、integrity和FK门通过。真实Provider、付费生成与OSS写入为0，状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；权威回执`spec/V0_6_28_PRODUCTION_RECEIPT_2026-08-21.json`。
+
+## 上一线上：画布执行解耦（v0.6.27，2026-08-21 已发布并获用户验收通过）
 
 v0.6.27已完成四类静态headless executor、删除render retention、同画布不相交双run、runId分槽checkpoint/lease/lock、精确结果owner gate和运行参与图锁。tested commit`26525387ff02a34d8de1eae4d74ed51c11529a7a`的正式safe full为`119/119 specs、1029/1029 tests`且异常0；注释tag `v0.6.27`精确指向该commit，PR #55 merge`93f0e46be78d04f7663444c3306f91081051dc9b`，main tree与tag tree同为`3735ea655cc9f353b0ccfca1060221cea445ba0e`。生产current为`/opt/unboundry/releases/v0.6.27-canvas-execution-decoupling-20260821`，冻结备份`v0.6.27-frozen-yaet3a`；真实新画布A/B两个不相交文字组于557ms内先后启动并同时active，并发轮4 tasks/4 attempts全部attempt1 success、无重复，刷新后四个结果仍在原节点。用户于2026-08-21明确回复「v0.6.27 验收通过，同步更新为 USER PASS。」状态已收口为`PRODUCTION_PUBLISHED_USER_PASS`；权威回执`spec/V0_6_27_PRODUCTION_RECEIPT_2026-08-21.json`。
 

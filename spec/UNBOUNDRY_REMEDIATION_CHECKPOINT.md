@@ -5,7 +5,14 @@
 状态：`HISTORICAL_CHECKPOINT / APPEND_ONLY`
 用途：保留各次施工与发布时点证据，不再充当当前恢复入口。**当前状态、未发布工作区与下一步只看 `UNBOUNDRY_CURRENT_STATE.md`；本文件任何旧命令或旧授权都不可复用。**
 
-## 0. 最新已发布事件：v0.6.27 画布执行解耦（2026-08-21 已发布并获用户验收通过）
+## 0. 最新已发布事件：v0.6.28 Provider port 与三媒体中转模型（2026-08-21 已发布，待用户复验）
+
+- 注释tag`v0.6.28`精确指向commit`ee6ce437730cf78ef4488217b778f6b0ef2aaee5`、tree`2811ada65140779d4a5e10cbd8ed6fa54893638b`；PR #58 merge`753d24f8ee6e4facb3c88e876c4a38b456addc75`且main tree一致。
+- 正式safe full执行`1032/1034`，仅失败为0.3ms性能抖动与候选文档精确字符串；修正文档后只复验失败spec并`16/16 PASS`。生产release`/opt/unboundry/releases/v0.6.28-relay-media-models-20260821`，冻结备份`v0.6.28-frozen-awqsNE`共365文件、双清单SHA`2897b65a…6c58e`。
+- 公网5个资源、service active/enabled、NRestarts0、schema39/integrity ok/FK0通过；tasks630、attempts638、active0、模板50/已发布48、媒体355个/284663380字节与备份一致。真实Provider/付费生成/OSS写入0。
+- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。权威回执：`spec/V0_6_28_PRODUCTION_RECEIPT_2026-08-21.json`。
+
+## 0. 上一已发布事件：v0.6.27 画布执行解耦（2026-08-21 已发布并获用户验收通过）
 
 - 注释tag`v0.6.27`精确指向tested commit`26525387ff02a34d8de1eae4d74ed51c11529a7a`、tree`3735ea655cc9f353b0ccfca1060221cea445ba0e`；PR #55 merge`93f0e46be78d04f7663444c3306f91081051dc9b`且main tree一致。
 - 正式safe full`119/119 specs、1029/1029 tests PASS`，异常0；生产release`/opt/unboundry/releases/v0.6.27-canvas-execution-decoupling-20260821`，冻结备份`v0.6.27-frozen-yaet3a`（365文件，双清单SHA`fb4efe7f…`），公网资源/service/schema39/integrity/FK门PASS。

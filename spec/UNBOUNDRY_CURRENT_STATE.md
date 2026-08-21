@@ -6,7 +6,37 @@
 
 ## 一句话
 
-线上是 **v0.6.27 / schema39**（画布、工作流执行与任务恢复已解耦），2026-08-21 已发布；agent 已在新建真实项目中让两个不相交文字工作组于557ms内先后启动、同时保持active并全部完成，刷新后四个结果仍在原节点；用户已于同日明确验收通过。v0.6.26 为上一版。用户要的核心结果仍是：**上传一张图，工作流自己跑完，用户下载结果**。
+线上是 **v0.6.28 / schema39**。同步文字 Provider port、Generation 媒体结果原子提交与同一中转站 Nano Banana Pro、Kling V3 Omni、Suno V4.5 合同已于2026-08-21发布；冻结备份、数据不变门、公网资源、service与零付费技术验收通过，当前状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。v0.6.27 为上一版并已获用户验收通过。用户要的核心结果仍是：**上传一张图，工作流自己跑完，用户下载结果**。
+
+本轮没有执行真实 Provider 或付费生成，也没有 OSS 写入、schema变更或生产画布修改；用户将在真实页面自行复验，未回复“通过”前不得写`USER_PASS`。
+
+## v0.6.28 已发布（2026-08-21）
+
+- 用户已分别确认版本号`v0.6.28`与“允许发布”；本次授权已完成并消费。tag`v0.6.28`精确指向commit`ee6ce437730cf78ef4488217b778f6b0ef2aaee5`/tree`2811ada65140779d4a5e10cbd8ed6fa54893638b`；PR #58 merge`753d24f8ee6e4facb3c88e876c4a38b456addc75`且main tree一致。
+- 正式safe full执行`1032/1034`：dense-canvas p95 25.3ms超过25ms 0.3ms，m38候选文档精确字符串不符；修正文档后仅复验这两个失败spec并`16/16 PASS`，未重复full。真实Provider/付费/OSS请求为0。
+- 生产current为`/opt/unboundry/releases/v0.6.28-relay-media-models-20260821`；冻结备份`/var/lib/unboundry-rollbacks/v0.6.28-frozen-awqsNE`共365文件，双清单SHA均为`2897b65a20419e38ae940b353c3f57112ab352133054052557a06d63f496c58e`。
+- 生产门：schema39、integrity ok、FK0、tasks630、attempts638、active0、公共模板50/已发布48、媒体355个/284663380字节切换前后不变；service active/enabled、NRestarts0、应用错误0，公网5个构建资源与release逐字节一致。
+- Release第七批只读追踪确认：当前通用发布路径是`RELEASE_RUNBOOK.md`记录的安全runner、精确Git archive、staging fresh build、冻结备份与原子current切换；历史`0.5.2/0.6.0` bridge脚本不是本次v0.6.28发布入口，不做无关治理。
+- 权威回执：`spec/V0_6_28_PRODUCTION_RECEIPT_2026-08-21.json`。用户线上实测前保持`USER_RECHECK`。
+
+## 三媒体模型与Generation结果提交边界（2026-08-21，已随v0.6.28发布）
+
+- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。GenerationResultCommit在同一SQLite事务内提交media publication、Provider attempt、task success与event；MediaLifecycle/MediaRegistry不再查询或更新Generation表，TaskStore与Safety运行时循环已解除。
+- 模型：`gemini-3-pro-image-preview`、`kling-v3-omni-cankao`、`suno-v4.5`均复用`multi-protocol-relay/media-generate`。Nano/Kling只接受按edge order的图片引用（上限14/7），Suno不接受媒体引用；参数映射、`result_type`、PNG/MP4/音频保存均为fail-closed。
+- 异步安全：截止从paid attempt `created_at`计算，Nano/Kling/Suno分别10/75/15分钟，5秒起步且最多10秒；已有Provider task id只查询原任务；提交响应丢失不二次POST；status只在404/405回退；无`refunded:true`不自动付费重试。
+- 自动证据：本地Goal冻结十spec最终有效`148/148`；发布阶段另执行正式full覆盖1034条，两个失败经最小复验`16/16`通过。TypeScript、构建、source coverage、外网门禁与生产技术门均通过。
+- 隔离和授权：自动测试继续使用新临时目录、动态loopback与fake fetch，4173 listener不变。`REAL_PROVIDER_SMOKE_PAUSED`；发布与生产已按本次授权完成，真实Provider/付费生成/OSS写入仍为0。受保护JSON未读、未改、未暂存、未提交。
+- 本地提交：`3144d7a refactor(generation): own media result commits`；第二提交为`feat(generation): add relay media model contracts`。权威方案、矩阵与Checkpoint见`spec/UNBOUNDRY_RELAY_MEDIA_MODELS_INTEGRATION_PLAN_2026-08-21.md`、`spec/UNBOUNDRY_RELAY_MEDIA_MODELS_ACCEPTANCE_MATRIX_2026-08-21.md`、`spec/UNBOUNDRY_RELAY_MEDIA_MODELS_CHECKPOINT.md`。
+
+## 同步文字Provider port（2026-08-21，已随v0.6.28发布）
+
+- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。同步文字执行已统一经过`TextGenerationProvider`与`TextProviderRegistry`；Generation Task不再按Ark/relay具体文字driver调用adapter。原未使用的媒体形态`GenerationProvider`假抽象已收敛为当前真实port。
+- 安全边界：Provider profile/credential继续由原owner解析和租赁；Task协调器继续拥有task、attempt、幂等、reconcile、lease、结果归属与写回；adapter只返回规范化`text + providerUsageTokens`，不获得数据库、TaskStore、Canvas或MediaLifecycle。
+- 替换性：m33用可注入fake Provider完成一个task，网络fetch为0、provider-boundary attempt恰好1；未知driver/缺少实现时本地失败且fetch仍为0。
+- 自动证据：Node `22.23.1` / npm `10.9.8`下，一次`npx tsc --noEmit`退出0；安全runner定向m33 `8/8`、m39 `3/3`、m44 `8/8`、m53 `23/23`、m57 `14/14`通过，异常0，使用新临时数据和动态loopback端口，4173 listener不变。
+- 证据边界：本地第一批没有运行full；v0.6.28发布阶段已执行正式full覆盖与失败spec最小复验，并完成GitHub/生产技术门。未访问真实Provider或付费生成，OSS写入0，schema仍为39。受保护JSON未读取、修改、格式化、暂存或提交。
+- 权威文件：`spec/UNBOUNDRY_MODULAR_MONOLITH_AUDIT_2026-08-21.md`、`spec/UNBOUNDRY_PROGRESSIVE_MODULARIZATION_PLAN_2026-08-21.md`、`spec/UNBOUNDRY_PROVIDER_PORT_BATCH_ACCEPTANCE_MATRIX_2026-08-21.md`、`spec/UNBOUNDRY_PROGRESSIVE_MODULARIZATION_CHECKPOINT.md`。
+- 后续：第一、第二与发布追踪批均已随v0.6.28收口；用户页面复验前为`USER_RECHECK`。下一次Provider、发布、push/PR、版本/tag、SSH或生产动作仍需新的明确授权。
 
 本地工程另有两批尚未发布的改造：同步文字Provider port，以及同一中转站三媒体模型/Generation结果提交边界；二者均为`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`，不改变线上v0.6.27事实，也不是USER PASS。
 

@@ -1,7 +1,32 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-21
-状态：`v0.6.27/schema39 在线；画布执行解耦已通过最终safe full、三路独立复审、真实双组并发页面、冻结备份与生产技术验收；用户于2026-08-21明确验收通过，当前为 USER_PASS。权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+状态：`v0.6.28/schema39 在线；同步文字Provider port、Generation媒体结果原子提交与Nano/Kling/Suno三模型合同已发布；冻结备份、数据不变门、公网资源与零付费生产技术验收通过；当前为 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK。权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+
+### 2026-08-21 v0.6.28 已发布（当前）
+
+- 用户已分别确认版本号`v0.6.28`和“允许发布”；同步文字Provider port、Generation媒体结果原子提交与同一中转站Nano/Kling/Suno三模型合同已发布到`/opt/unboundry/releases/v0.6.28-relay-media-models-20260821`。
+- 发布证据：tag`v0.6.28`指向commit`ee6ce437730cf78ef4488217b778f6b0ef2aaee5`/tree`2811ada65140779d4a5e10cbd8ed6fa54893638b`；PR #58 merge`753d24f8ee6e4facb3c88e876c4a38b456addc75`，main tree与tag tree一致。
+- 测试证据：正式full执行`1032/1034`，失败仅为dense-canvas p95 25.3ms对25ms及候选文档精确字符串；修正文档后只复验这两个spec并`16/16 PASS`，未重复full。生产schema39、integrity ok、FK0、tasks630、attempts638、active0、模板50/已发布48、媒体355个/284663380字节均与冻结备份一致。
+- 冻结备份`/var/lib/unboundry-rollbacks/v0.6.28-frozen-awqsNE`共365文件，双清单SHA均为`2897b65a…6c58e`；公网5个构建资源逐字节一致，service active/enabled、NRestarts0、应用错误0。
+- 第七批Release只读追踪结论：当前实际入口是safe runner + 精确Git archive + staging fresh build + 冻结备份 + current原子切换；历史`0.5.2/0.6.0` bridge工具未阻塞当前发布，不扩张治理。
+- 真实Provider生成、付费请求与OSS写入均为0；用户实际页面确认前保持`USER_RECHECK`。权威回执：`spec/V0_6_28_PRODUCTION_RECEIPT_2026-08-21.json`。
+
+### 2026-08-21 同一中转站三媒体模型与结果边界（v0.6.28 已发布，待用户复验）
+
+- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。Generation已拥有媒体结果提交事务；MediaLifecycle/MediaRegistry不再读写generation task/attempt，TaskStore↔Safety循环已解除。
+- 模型合同：Nano Banana Pro `gemini-3-pro-image-preview`、Kling V3 Omni `kling-v3-omni-cankao`、Suno V4.5 `suno-v4.5`统一走现有`multi-protocol-relay/media-generate`；参数、引用、严格结果类型和10/75/15分钟持久轮询窗口已固化。
+- 自动证据：Node `22.23.1` / npm `10.9.8`；十个目标spec最终有效`148/148`。第一次产品测试`145/148`后只重跑失败的m53+m57并`40/40`通过；TypeScript、构建、source coverage、外网门禁均通过。
+- 发布边界：已完成发布full覆盖与失败spec最小复验、GitHub、冻结备份、生产切换和零付费技术验收；没有真实Provider专用smoke，`REAL_PROVIDER_SMOKE_PAUSED`，待用户线上复验。受保护JSON保持untracked且未读/未改/未暂存/未提交。
+- 提交：`3144d7a refactor(generation): own media result commits`；第二提交为`feat(generation): add relay media model contracts`。权威矩阵和续接见`spec/UNBOUNDRY_RELAY_MEDIA_MODELS_ACCEPTANCE_MATRIX_2026-08-21.md`与`spec/UNBOUNDRY_RELAY_MEDIA_MODELS_CHECKPOINT.md`。
+
+### 2026-08-21 同步文字Provider registry/port（v0.6.28 已发布，待用户复验）
+
+- 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。代码已把同步文字执行收口到唯一`TextProviderRegistry`入口；Task协调器不再按具体文字driver调用adapter，Ark native与四类relay文字协议各由adapter实现统一port。
+- 任务安全：profile/credential owner、lease、provider-boundary attempt、task幂等/reconcile、结果归属与错误文案保持原边界；fake Provider可注入且网络0，未知实现本地fail-closed且网络0。
+- 自动证据：Node `22.23.1` / npm `10.9.8`；一次TypeScript noEmit退出0；m33 `8/8`、m39 `3/3`、m44 `8/8`、m53 `23/23`、m57 `14/14`安全定向通过，异常0，动态loopback与新临时数据，4173 listener不变。
+- 明确未做：未跑full/默认verify，未真实调用Provider/OSS，未访问SSH/生产，未改版本/schema/Canvas/Workflow/Media publication；第二至第七批未启动。
+- 验收口径：当前不是发布PASS或USER PASS，停在用户审阅；权威矩阵与续接见`spec/UNBOUNDRY_PROVIDER_PORT_BATCH_ACCEPTANCE_MATRIX_2026-08-21.md`和`spec/UNBOUNDRY_PROGRESSIVE_MODULARIZATION_CHECKPOINT.md`。
 
 ### 2026-08-21 v0.6.28 发布准备（当前）
 
