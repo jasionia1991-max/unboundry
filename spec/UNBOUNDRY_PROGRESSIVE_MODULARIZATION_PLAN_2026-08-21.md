@@ -1,8 +1,10 @@
 # Unboundry 渐进式模块化施工路线图
 
 更新日期：2026-08-21
-状态：`PLAN_FROZEN / FIRST_BATCH_IMPLEMENTED_AUTO_PASS / USER_REVIEW`
+状态：`PLAN_FROZEN / FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED / CURRENT_V0_6_30_USER_PASS`
 关联审计：`spec/UNBOUNDRY_MODULAR_MONOLITH_AUDIT_2026-08-21.md`
+
+当前收口：第一批同步文字 Provider port 与第二批 Generation/Media 结果提交边界、三媒体模型合同均已发布并持续运行在 v0.6.30；云腾商业 Provider 隔离和真实结果兼容也已在 v0.6.29/30 完成。当前没有自动启动的后续批次，路线图只在真实新功能触发边界问题时重新立项；`VIEW-005` 继续作为独立非阻断性能专项。
 
 ## 1. 目标与非目标
 
@@ -62,11 +64,11 @@ UI
 
 ## 4. 施工策略
 
-路线图分为“已完成批次”和“功能触发批”。第一、第二批当前均停在本地`USER_REVIEW`；后续批次只在对应新功能出现前强制执行，不允许绕过，也不为了架构好看提前翻修稳定代码。
+路线图分为“已完成批次”和“功能触发批”。第一、第二批均已发布并包含在当前 v0.6.30；后续批次只在对应新功能出现前强制执行，不允许绕过，也不为了架构好看提前翻修稳定代码。
 
 ### 第一批：同步文字Provider port
 
-- 状态：`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`；未发布、未部署、未运行真实Provider。
+- 状态：原本地工程为 `LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`；后来随 v0.6.28 发布并持续包含在 v0.6.30。原矩阵未运行真实Provider的证据边界继续保留。
 - 触发：2026-08-21 Goal已执行完毕；授权随本批结束失效。
 - 目标：让同步文字Provider可由registry/fake替换，通用任务协调器不再按具体driver分支。
 - 精确现有范围：
@@ -93,7 +95,7 @@ UI
 
 ### 第二批：Task/Media结果提交边界
 
-- 状态：`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`；由三媒体异步模型Goal触发并完成，未发布、未部署、未调用真实Provider。
+- 状态：原本地工程为 `LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`；由三媒体异步模型Goal触发并完成，随 v0.6.28 发布，后续 v0.6.29/30 已补真实Provider与结果兼容证据。
 - 触发：准备新增异步Provider、改变任务恢复/结果提交或修改Media publication时。
 - 目标：移除TaskStore↔Safety运行时循环；建立Task拥有的`GenerationResultCommit`。
 - 范围：`generationTaskStore.ts`、`generationSafety.ts`、`mediaLifecycle.ts`、`mediaRegistry.ts`及m5/m14/m38/m40/m88。

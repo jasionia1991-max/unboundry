@@ -1,9 +1,11 @@
 # 调研报告：公共模板（跨账号分享）与账号权限管理
 
-状态：`RESEARCH COMPLETE / PENDING USER APPROVAL 2026-08-07`
+状态：`HISTORICAL_RESEARCH / IMPLEMENTATION_COMPLETED_LATER / SUPERSEDED_BY_CURRENT_STATE`
 基线：当前 `main` 提交 `04a1538`（三功能全部验收 PASS）
 范围：只做现状调研与改造影响分析，不含正式部署；正式部署方案另行立项。
 方法：全仓只读扫描 + 关键文件逐段阅读 + 现有测试盘点；所有结论附文件与行号证据。
+
+后续结果：本调研对应的公共模板、账号权限与部署能力均已在后续版本完成；当前生产为 v0.6.30/schema39。本文件不再代表当前代码结构或待批准事项。
 
 ## 0. 调研结论速览
 

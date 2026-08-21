@@ -1,12 +1,12 @@
 # Unboundry 全项目模块化单体审计
 
 更新日期：2026-08-21
-状态：`FIRST_BATCH_IMPLEMENTED_AUTO_PASS / USER_REVIEW`
+状态：`FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED / CURRENT_V0_6_30_USER_PASS / VIEW_005_NOT_RUN`
 适用仓库：`/Users/mymy/Documents/unboundry/app`
 
 ## 1. 一句话结论
 
-Unboundry 已有可靠的模块化骨架，但还不是边界受约束的模块化单体；第一批已把同步文字执行收口到唯一的Provider registry/port，Generation Task不再按具体文字driver调用adapter，fake Provider可零网络注入。其余最大瓶颈仍是Generation Tasks、Provider、Media围绕共享SQLite相互读取或修改数据；后续按触发条件渐进治理，当前不需要全项目大重构。
+Unboundry 已有可靠的模块化骨架，但还不是边界完全受约束的模块化单体；第一批同步文字 Provider port 与第二批 Generation/Media 结果提交边界、三媒体模型合同均已随 v0.6.28 发布，并继续包含在当前 v0.6.30 生产版本中。v0.6.29/30 又完成商业 Provider 隔离、真实任务验证、Provider 结果兼容和用户验收。其余边界只按新功能触发条件渐进治理，当前没有全项目大重构计划。
 
 本结论不得被解释为否定 v0.6.27 已完成的画布执行解耦：核心 P0 为 `41/41 = 100%`，完整矩阵为 `47/48 = 97.9%`；剩余 `VIEW-005` 是 98/171/200 节点性能专项，仍为 `NOT_RUN`。
 

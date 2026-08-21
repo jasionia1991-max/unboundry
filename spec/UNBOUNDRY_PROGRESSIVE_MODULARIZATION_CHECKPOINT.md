@@ -1,7 +1,9 @@
 # Unboundry 渐进式模块化 Checkpoint
 
 更新日期：2026-08-21
-状态：`FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
+状态：`FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED / CURRENT_V0_6_30_USER_PASS / NO_ACTIVE_NEXT_BATCH`
+
+当前收口：第一、第二批已在 v0.6.28 发布，随后由 v0.6.29/30 的商业 Provider 隔离、真实验证、结果兼容与用户验收继续验证当前组合。当前生产为 v0.6.30/schema39；本文件以下冻结身份和施工记录保留原时点，不得再把 `USER_RECHECK` 或旧 package 解释为当前状态。
 
 ## 1. 当前权威文件
 
@@ -25,7 +27,7 @@
 
 历史文档只用于追溯；当前事实以Git、当前代码、测试和`UNBOUNDRY_CURRENT_STATE.md`为准。
 
-## 2. 记录基线
+## 2. v0.6.27/28 冻结记录基线
 
 - 仓库：`/Users/mymy/Documents/unboundry/app`
 - 分支：`codex/unboundry-offline-remediation-2026-08-09`
@@ -36,7 +38,7 @@
 - package约束：Node `>=22.23.1 <23`、npm `10.9.8`
 - shell默认：Node `v25.9.0`、npm `11.12.1`
 - 第一批施工/验证：显式使用Node `22.23.1`、npm `10.9.8`
-- 线上状态：`v0.6.28 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
+- 当时线上状态：`v0.6.28 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；当前为 v0.6.30 `USER_PASS`
 - 受保护未跟踪文件：`spec/public-templates-director-split-revision.json`
 
 基线会漂移，新Session必须重新只读核对；冲突时停止，不得reset、clean、checkout覆盖或自行修复。
@@ -59,7 +61,7 @@
 
 ## 4. 第一批本地交付
 
-状态：第一批已随v0.6.28发布，`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。这不是USER PASS。
+状态：第一批已随v0.6.28发布；当时为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。该矩阵本身不冒充独立用户验收，当前组合版本的用户状态由 v0.6.30 回执承担。
 
 - 调用链：`HTTP/API → Generation Task → 输入物化 → profile/credential lease + task snapshot校验 → TextProviderRegistry → Ark/relay文字adapter → 规范化text/usage → provider response evidence → Task complete`。
 - driver选择：只在`server/providerRegistry.ts`按已解析的`profile.driver + protocol`进行；Generation Task不再按具体文字driver分支。
@@ -83,7 +85,7 @@
 
 ## 5. 后续批次触发条件
 
-- 异步Provider、任务恢复或Media result commit变化前：第二批；已由2026-08-21三媒体Goal完成并随v0.6.28发布，状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；
+- 异步Provider、任务恢复或Media result commit变化前：第二批；已由2026-08-21三媒体Goal完成并随v0.6.28发布，后续 v0.6.29/30 已补真实验证、结果兼容和当前用户验收；
 - 第三种Storage backend前：第三批；
 - 新生成节点、Canvas保存协议或单节点retry变化前：第四批；
 - 新节点/模板类型前：第五批；

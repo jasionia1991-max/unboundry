@@ -1,8 +1,10 @@
 # Unboundry 第一施工批：同步文字Provider Port验收矩阵
 
 更新日期：2026-08-21
-状态：`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`
+状态：`PRODUCTION_PUBLISHED / CURRENT_RELEASE_INHERITED / ORIGINAL_AUTO_PASS_EVIDENCE_PRESERVED`
 关联路线图：`spec/UNBOUNDRY_PROGRESSIVE_MODULARIZATION_PLAN_2026-08-21.md`
+
+当前说明：本矩阵记录第一批施工的自动证据，不改写当时未执行真实 Provider/生产的事实；该代码后来随 v0.6.28 发布，并持续包含在当前 v0.6.30 生产版本中。当前线上版本和用户验收由 `spec/UNBOUNDRY_CURRENT_STATE.md` 与 v0.6.30 回执负责，本矩阵不再是待发布清单。
 
 ## 1. 本批目标
 

@@ -2,9 +2,11 @@
 
 更新日期：2026-08-21
 
-状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
+状态：`HISTORICAL_V0_6_28_CHECKPOINT / SUPERSEDED_BY_V0_6_29_30 / CURRENT_V0_6_30_USER_PASS`
 
-## 1. 当前身份
+当前收口：本 Checkpoint 的 package、发布源码和 `USER_RECHECK` 是 v0.6.28 冻结时点。当前生产为 v0.6.30/schema39；三模型只归属云腾 Provider，v0.6.29 已完成三次有界真实创建，v0.6.30 以零新增 POST 恢复 Nano PNG 与 Suno 两个 MP3 并获用户验收。后续恢复只读 `spec/UNBOUNDRY_CURRENT_STATE.md`，不得从本文件重启旧 Goal。
+
+## 1. v0.6.28 冻结身份
 
 - 仓库：`/Users/mymy/Documents/unboundry/app`；
 - 分支：`codex/unboundry-offline-remediation-2026-08-09`；
@@ -17,7 +19,7 @@
 - 允许存在的唯一未跟踪文件：`spec/public-templates-director-split-revision.json`；
 - 该 JSON 受保护，禁止读取、修改、格式化、移动、删除、暂存、提交或进入任何测试/构建产物。
 
-## 2. 当前事实
+## 2. v0.6.28 时点事实
 
 - 同步文字 Provider port 第一批已在本地提交 `e7016eb` 完成，并随v0.6.28发布，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；
 - 本三媒体工程已随v0.6.28发布，状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；
