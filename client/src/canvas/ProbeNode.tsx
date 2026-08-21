@@ -87,6 +87,18 @@ export type ProbeNodeType = Node<
     audioPrompt?: string;
     audioPromptReady?: boolean;
     audioParameters?: Record<string, ModelParameterValue>;
+    audioResultChoices?: Array<{
+      assetId: string;
+      byteSize: number;
+      contentType: string;
+      durationSeconds: number | null;
+      durationStatus: "failed" | "not-applicable" | "pending" | "ready";
+      mediaHeight: number | null;
+      mediaWidth: number | null;
+      role: "alternate" | "primary";
+      storageBackend: "local" | "oss";
+      url: string;
+    }>;
     audioSrc?: string;
     audioWaveform?: number[];
     content?: string;

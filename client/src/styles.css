@@ -3947,6 +3947,35 @@ sup {
   display: none;
 }
 
+.audio-result-choices {
+  display: flex;
+  gap: 6px;
+  left: 12px;
+  position: absolute;
+  top: 12px;
+  z-index: 5;
+}
+
+.audio-result-choices button {
+  align-items: center;
+  background: rgb(255 255 255 / 86%);
+  border: 1px solid rgb(23 23 23 / 16%);
+  border-radius: 999px;
+  color: #555;
+  display: inline-flex;
+  font: 600 11px/1 system-ui, sans-serif;
+  height: 24px;
+  justify-content: center;
+  min-width: 24px;
+  padding: 0 7px;
+}
+
+.audio-result-choices button[aria-pressed="true"] {
+  background: #171717;
+  border-color: #171717;
+  color: #fff;
+}
+
 .audio-waveform {
   position: absolute;
   top: 52px;

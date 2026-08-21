@@ -52,6 +52,12 @@ export type GenerationTaskSummary = {
     mediaWidth: number | null;
     storageBackend: "local" | "oss";
   };
+  resultOutputs?: Array<{
+    assetId: string;
+    media: NonNullable<GenerationTaskSummary["resultMedia"]>;
+    role: "alternate" | "primary";
+    url: string;
+  }>;
   resultText?: string;
   resultUrl?: string;
   state: GenerationTaskState;

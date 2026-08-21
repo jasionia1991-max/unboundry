@@ -932,12 +932,21 @@ export function inspectMediaIntegrity(input: Readonly<{
           const publicationAttempt = publication.task_execution_attempt === null
             ? undefined
             : safeInteger(publication.task_execution_attempt);
-          const activeTaskMatches = publication.state === "compensating"
-            ? task.result_asset_id === null && task.state !== "success"
-            : publication.state === "published"
-              ? task.result_asset_id === publication.asset_id && task.state === "success"
-              : task.result_asset_id === publication.asset_id &&
-                ["running", "recovering"].includes(task.state);
+          const isAlternate = task.result_asset_id !== null &&
+            task.result_asset_id !== publication.asset_id;
+          const activeTaskMatches = publication.state === "published"
+            ? task.state === "success"
+              ? task.result_asset_id === publication.asset_id || isAlternate
+              : task.result_asset_id === null &&
+                ["running", "recovering"].includes(task.state)
+            : publication.state === "compensating"
+              ? task.state === "success"
+                ? isAlternate
+                : task.result_asset_id === null
+              : task.state === "success"
+                ? isAlternate
+                : task.result_asset_id === null &&
+                  ["running", "recovering"].includes(task.state);
           if (
             task.owner_id !== publication.owner_id ||
             task.kind !== publication.kind ||

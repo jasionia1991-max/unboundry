@@ -621,6 +621,12 @@ function successNodePatch(
         audioGenerationTaskId: undefined,
         audioGenerating: false,
         audioPrompt: plan.request.prompt,
+        audioResultChoices: task.resultOutputs?.map((output) => ({
+          assetId: output.assetId,
+          ...output.media,
+          role: output.role,
+          url: output.url,
+        })),
         audioSrc: task.resultUrl,
         audioWaveform: undefined,
       },

@@ -50,8 +50,11 @@ import {
 } from "./generationTaskStore";
 import { waitForProviderDelay } from "./providerRequestDeadline";
 import {
+  commitGenerationMediaOutputSet,
+  commitGenerationAlternateMediaResult,
   commitGenerationMediaResult,
   commitGenerationTextResult,
+  publishGenerationMediaCandidate,
   recoverPendingGenerationMediaResults,
 } from "./generationResultCommit";
 import {
@@ -59,7 +62,9 @@ import {
   OpenRouterImageError,
 } from "./openRouterImageProvider";
 import {
+  publishedGenerationMediaCandidateIds,
   readableMediaForOwner,
+  readyGenerationMediaOutputs,
   readyMediaForOwner,
   type MediaRecord,
 } from "./mediaRegistry";
@@ -138,6 +143,7 @@ import {
   downloadProviderResultMedia,
   ProviderResultMediaError,
 } from "./providerResultMedia";
+import { normalizeProviderImageToPng } from "./providerImageNormalization";
 import {
   listRelayUsageRecords,
   matchRelayUsageRecord,
@@ -507,7 +513,24 @@ function taskStore(launchOptions?: GenerationLaunchOptions) {
         async () => {
           if (recoverDeletions) await recoverPendingMediaDeletions();
           if (recoverUploads) await recoverPendingUploadMediaPublications();
-          if (recoverGenerated) await recoverPendingGenerationMediaResults();
+          if (recoverGenerated) {
+            const outcomes = await recoverPendingGenerationMediaResults();
+            for (const taskId of new Set(
+              outcomes
+                .filter((outcome) => outcome.action === "finalized")
+                .map((outcome) => outcome.taskId),
+            )) {
+              const recovered = store?.get(taskId);
+              if (
+                recovered?.state === "recovering" &&
+                recovered.providerTaskId &&
+                taskProviderProtocol(recovered) === "media-generate"
+              ) {
+                store!.resume(taskId);
+                launchGenerationTask(taskId, recovered.kind, launchOptions);
+              }
+            }
+          }
         },
         () => undefined,
       )
@@ -759,6 +782,21 @@ function taskSummary(
   const resultMedia = task.kind !== "text" && publishedResultAssetId && task.ownerId
     ? readyMediaForOwner(task.ownerId, task.kind, publishedResultAssetId)
     : undefined;
+  const resultOutputs = task.kind !== "text" && publishedResultAssetId &&
+      task.ownerId && resultMedia
+    ? readyGenerationMediaOutputs({
+        executionAttempt: task.attempt,
+        kind: task.kind,
+        ownerId: task.ownerId,
+        primaryAssetId: publishedResultAssetId,
+        taskId: task.id,
+      })
+    : [];
+  const resultUrlFor = (assetId: string) => task.kind === "video"
+    ? `/api/video-assets/${assetId}`
+    : task.kind === "audio"
+      ? `/api/audio-assets/${assetId}`
+      : `/api/assets/${assetId}`;
   const providerAttempt = taskStore().getProviderAttemptForTask(task.id);
   const unsafeProviderAttempt = taskStore()
     .hasUnsafeProviderAttemptForNewPaidRetry(task.id);
@@ -829,12 +867,22 @@ function taskSummary(
           storageBackend: resultMedia.storageBackend,
         }
       : undefined,
+    resultOutputs: resultOutputs.map((output) => ({
+      assetId: output.assetId,
+      media: {
+        byteSize: output.byteSize,
+        contentType: output.contentType,
+        durationSeconds: output.durationSeconds,
+        durationStatus: output.durationStatus,
+        mediaHeight: output.mediaHeight,
+        mediaWidth: output.mediaWidth,
+        storageBackend: output.storageBackend,
+      },
+      role: output.role,
+      url: resultUrlFor(output.assetId),
+    })),
     resultUrl: resultMedia && publishedResultAssetId
-      ? task.kind === "video"
-        ? `/api/video-assets/${publishedResultAssetId}`
-        : task.kind === "audio"
-          ? `/api/audio-assets/${publishedResultAssetId}`
-          : `/api/assets/${publishedResultAssetId}`
+      ? resultUrlFor(publishedResultAssetId)
       : undefined,
     state: task.state,
     updatedAt: task.updatedAt,
@@ -2956,33 +3004,22 @@ export function gptImageSizeForAspectRatio(
   return size;
 }
 
-async function readGeneratedPngBody(body: ReadableStream<Uint8Array>) {
-  const reader = body.getReader();
-  const chunks: Buffer[] = [];
-  let size = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > mediaLimits.image) {
-      await reader.cancel();
-      throw new ProviderResultMediaError("FORMAT", "模型返回的图片过大");
-    }
-    chunks.push(Buffer.from(value));
-  }
-  return Buffer.concat(chunks);
-}
-
 async function commitSavedGenerationMedia(saved: {
   assetId: string;
   publicationToken?: MediaPublicationReservation;
-}) {
+}, mode: "alternate" | "candidate" | "primary" = "primary") {
   if (!saved.publicationToken) {
     throw new MediaPublicationStateError(
       "Generated media publication token is missing",
     );
   }
-  commitGenerationMediaResult(saved.publicationToken);
+  if (mode === "candidate") {
+    publishGenerationMediaCandidate(saved.publicationToken);
+  } else if (mode === "alternate") {
+    commitGenerationAlternateMediaResult(saved.publicationToken);
+  } else {
+    commitGenerationMediaResult(saved.publicationToken);
+  }
   await cleanupPublicationStaging(saved.publicationToken).catch(() => undefined);
   return saved.assetId;
 }
@@ -3014,7 +3051,7 @@ async function saveRelayMediaOutput(input: {
         taskId: input.taskId,
       },
     });
-    return commitSavedGenerationMedia(saved);
+    return commitSavedGenerationMedia(saved, "candidate");
   }
   const downloaded = await downloadProviderResultMedia({
     apiKey: input.profile.apiKey!,
@@ -3025,8 +3062,12 @@ async function saveRelayMediaOutput(input: {
     url: input.output.transientUrl,
   });
   if (input.output.kind === "image") {
-    const bytes = await readGeneratedPngBody(downloaded.body);
-    validateRelayPng(bytes);
+    const bytes = await normalizeProviderImageToPng({
+      body: downloaded.body,
+      contentType: downloaded.contentType,
+      ownerId: input.ownerId,
+      signal: input.signal,
+    });
     const saved = await saveGeneratedPng({
       bytes,
       label: input.prompt.slice(0, 120),
@@ -3037,7 +3078,7 @@ async function saveRelayMediaOutput(input: {
         taskId: input.taskId,
       },
     });
-    return commitSavedGenerationMedia(saved);
+    return commitSavedGenerationMedia(saved, "candidate");
   }
   if (input.output.kind === "video") {
     const saved = await saveGeneratedMp4({
@@ -3050,7 +3091,7 @@ async function saveRelayMediaOutput(input: {
         taskId: input.taskId,
       },
     });
-    return commitSavedGenerationMedia(saved);
+    return commitSavedGenerationMedia(saved, "candidate");
   }
   const saved = await saveGeneratedAudio({
     body: downloaded.body,
@@ -3068,7 +3109,71 @@ async function saveRelayMediaOutput(input: {
       taskId: input.taskId,
     },
   });
-  return commitSavedGenerationMedia(saved);
+  return commitSavedGenerationMedia(saved, "candidate");
+}
+
+async function saveRelayMediaOutputs(input: {
+  actualCostMicrounits: number;
+  executionAttempt: number;
+  expectedAudioContentType?: string;
+  outputs: readonly RelayTransientMediaOutput[];
+  ownerId: string;
+  profile: ProviderProfile;
+  prompt: string;
+  signal: AbortSignal;
+  taskId: string;
+}) {
+  if (
+    input.outputs.length < 1 || input.outputs.length > 4 ||
+    input.outputs.some((output) => output.kind !== input.outputs[0].kind)
+  ) {
+    throw new RelayProviderError("PROVIDER_RESULT_FORMAT", true);
+  }
+  const kind = input.outputs[0].kind;
+  const published = publishedGenerationMediaCandidateIds({
+    executionAttempt: input.executionAttempt,
+    kind,
+    ownerId: input.ownerId,
+    taskId: input.taskId,
+  });
+  if (published.length > input.outputs.length) {
+    throw new RelayProviderError("PROVIDER_RESULT_FORMAT", true);
+  }
+  for (const output of input.outputs.slice(published.length)) {
+    const saved = await attemptProviderResultSave({
+      taskId: input.taskId,
+      save: () => saveRelayMediaOutput({
+        actualCostMicrounits: input.actualCostMicrounits,
+        executionAttempt: input.executionAttempt,
+        expectedAudioContentType: input.expectedAudioContentType,
+        output,
+        ownerId: input.ownerId,
+        profile: input.profile,
+        prompt: input.prompt,
+        signal: input.signal,
+        taskId: input.taskId,
+      }),
+    });
+    if (!saved) return false;
+    const current = publishedGenerationMediaCandidateIds({
+      executionAttempt: input.executionAttempt,
+      kind,
+      ownerId: input.ownerId,
+      taskId: input.taskId,
+    });
+    published.splice(0, published.length, ...current);
+  }
+  if (published.length !== input.outputs.length) return false;
+  return attemptProviderResultSave({
+    taskId: input.taskId,
+    save: async () => commitGenerationMediaOutputSet({
+      assetIds: published,
+      executionAttempt: input.executionAttempt,
+      kind,
+      ownerId: input.ownerId,
+      taskId: input.taskId,
+    }),
+  });
 }
 
 function validateRelayPng(bytes: Buffer) {
@@ -3223,19 +3328,15 @@ async function recoverRelayMediaAfterPoll(
         const running = taskStore().get(taskId);
         if (!running || running.state !== "running") return;
         taskStore().markProviderResponseReceivedForTask(taskId);
-        if (status.outputs.length !== 1) throw new RelayProviderError("FORMAT");
-        const saved = await attemptProviderResultSave({
+        const saved = await saveRelayMediaOutputs({
+          actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+          executionAttempt: running.attempt,
+          outputs: status.outputs,
+          ownerId: running.ownerId!,
+          profile,
+          prompt: running.prompt,
+          signal: controller.signal,
           taskId,
-          save: () => saveRelayMediaOutput({
-            actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
-            executionAttempt: running.attempt,
-            output: status.outputs[0],
-            ownerId: running.ownerId!,
-            profile,
-            prompt: running.prompt,
-            signal: controller.signal,
-            taskId,
-          }),
         });
         if (saved) return;
         await waitForRelayMedia(10_000, controller.signal);
@@ -3521,22 +3622,18 @@ async function executeRelayMediaTask(
       }
       if (status.state === "success") {
         taskStore().markProviderResponseReceivedForTask(taskId);
-        if (status.outputs.length !== 1) throw new RelayProviderError("FORMAT");
-        const saved = await attemptProviderResultSave({
+        const saved = await saveRelayMediaOutputs({
+          actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+          executionAttempt: running.attempt,
+          expectedAudioContentType: kind === "audio"
+            ? relayAudioResultContentType(running.parameters.format)
+            : undefined,
+          outputs: status.outputs,
+          ownerId,
+          profile,
+          prompt: running.prompt,
+          signal: controller.signal,
           taskId,
-          save: () => saveRelayMediaOutput({
-            actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
-            executionAttempt: running.attempt,
-            expectedAudioContentType: kind === "audio"
-              ? relayAudioResultContentType(running.parameters.format)
-              : undefined,
-            output: status.outputs[0],
-            ownerId,
-            profile,
-            prompt: running.prompt,
-            signal: controller.signal,
-            taskId,
-          }),
         });
         if (saved) return;
         await waitForRelayMedia(polling.delayMs, controller.signal);
@@ -3621,22 +3718,16 @@ async function recoverGptImageFromProviderTask(
       await waitForRelayMedia(10_000, controller.signal);
       continue;
     }
-    if (status.outputs.length !== 1) {
-      throw new RelayProviderError("PROVIDER_RESULT_FORMAT", true);
-    }
     taskStore().markProviderResponseReceivedForTask(taskId);
-    const saved = await attemptProviderResultSave({
+    const saved = await saveRelayMediaOutputs({
+      actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+      executionAttempt: running.attempt,
+      outputs: status.outputs,
+      ownerId: running.ownerId!,
+      profile,
+      prompt: running.prompt,
+      signal: controller.signal,
       taskId,
-      save: () => saveRelayMediaOutput({
-        actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
-        executionAttempt: running.attempt,
-        output: status.outputs[0],
-        ownerId: running.ownerId!,
-        profile,
-        prompt: running.prompt,
-        signal: controller.signal,
-        taskId,
-      }),
     });
     if (saved) return;
     await waitForRelayMedia(10_000, controller.signal);

@@ -16,6 +16,7 @@ const identifierPattern = /^[a-z0-9._-]+$/i;
 type TaskRow = {
   attempt: number;
   kind: "audio" | "image" | "text" | "video";
+  model_configuration?: string;
   owner_id: string | null;
   provider_model_id: string | null;
   provider_profile_id: string | null;
@@ -23,6 +24,18 @@ type TaskRow = {
   result_asset_id: string | null;
   state: string;
 };
+
+function isRelayMediaTask(task: TaskRow) {
+  if (task.kind === "text" || !task.model_configuration) return false;
+  try {
+    const configuration = JSON.parse(task.model_configuration) as {
+      providerProtocol?: unknown;
+    };
+    return configuration.providerProtocol === "media-generate";
+  } catch {
+    return false;
+  }
+}
 
 function transaction<T>(database: DatabaseSync, operation: () => T) {
   database.exec("BEGIN IMMEDIATE");
@@ -203,6 +216,312 @@ export function commitGenerationMediaResult(
   }
 }
 
+/**
+ * Publish an additional result returned by the same paid Provider attempt.
+ * The primary result has already completed the task; alternates must never
+ * rewrite its cost, terminal state, or result_asset_id.
+ */
+export function commitGenerationAlternateMediaResult(
+  publicationToken: MediaPublicationReservation,
+) {
+  const database = openAppDatabase();
+  try {
+    return transaction(database, () => {
+      const taskId = publicationToken.taskId;
+      if (!taskId) throw new Error("Generation publication task is missing");
+      const task = database.prepare(`
+        SELECT owner_id, kind, state, attempt, result_asset_id,
+               provider_model_id, provider_profile_id, provider_task_id
+        FROM generation_tasks WHERE id = ?
+      `).get(taskId) as TaskRow | undefined;
+      if (
+        !task || task.state !== "success" ||
+        task.owner_id !== publicationToken.ownerId ||
+        task.kind !== publicationToken.kind ||
+        !task.result_asset_id || task.result_asset_id === publicationToken.id
+      ) {
+        throw new Error("Generation alternate lost publication ownership");
+      }
+      const evidence = finalizeMediaPublicationInTransaction(
+        database,
+        publicationToken,
+      );
+      if (
+        !evidence || evidence.taskId !== taskId ||
+        evidence.ownerId !== publicationToken.ownerId ||
+        evidence.kind !== publicationToken.kind ||
+        evidence.assetId !== publicationToken.id ||
+        evidence.executionAttempt !== task.attempt
+      ) {
+        throw new Error("Generation alternate evidence does not match task");
+      }
+      const providerAttempt = matchingProviderAttempt(database, {
+        executionAttempt: evidence.executionAttempt,
+        providerTaskId: task.provider_task_id,
+        taskId,
+      });
+      if (
+        (task.owner_id !== "__test__" || task.provider_task_id) &&
+        !providerAttempt
+      ) {
+        throw new Error("Generation alternate has no matching paid attempt");
+      }
+      if (
+        providerAttempt &&
+        (providerAttempt.owner_id !== task.owner_id ||
+          providerAttempt.kind !== task.kind ||
+          providerAttempt.provider_model_id !== task.provider_model_id ||
+          providerAttempt.provider_profile_id !== task.provider_profile_id ||
+          providerAttempt.outcome !== "completed")
+      ) {
+        throw new Error("Generation alternate Provider ownership changed");
+      }
+      return {
+        assetId: evidence.assetId,
+        state: "success" as const,
+        taskId,
+      };
+    });
+  } finally {
+    database.close();
+  }
+}
+
+/**
+ * Make one relay output durable without completing its task. Relay Providers
+ * may return a set, so task success is committed only after every output has
+ * reached this restart-safe published state.
+ */
+export function publishGenerationMediaCandidate(
+  publicationToken: MediaPublicationReservation,
+) {
+  const database = openAppDatabase();
+  try {
+    return transaction(database, () => {
+      const taskId = publicationToken.taskId;
+      if (!taskId) throw new Error("Generation publication task is missing");
+      const task = database.prepare(`
+        SELECT owner_id, kind, state, attempt, result_asset_id,
+               provider_model_id, provider_profile_id, provider_task_id
+        FROM generation_tasks WHERE id = ?
+      `).get(taskId) as TaskRow | undefined;
+      if (
+        !task || !["running", "recovering"].includes(task.state) ||
+        task.owner_id !== publicationToken.ownerId ||
+        task.kind !== publicationToken.kind || task.result_asset_id !== null
+      ) {
+        throw new Error("Generation candidate lost publication ownership");
+      }
+      const evidence = finalizeMediaPublicationInTransaction(
+        database,
+        publicationToken,
+      );
+      if (
+        !evidence || evidence.taskId !== taskId ||
+        evidence.ownerId !== task.owner_id || evidence.kind !== task.kind ||
+        evidence.assetId !== publicationToken.id ||
+        evidence.executionAttempt !== task.attempt
+      ) {
+        throw new Error("Generation candidate evidence does not match task");
+      }
+      const providerAttempt = matchingProviderAttempt(database, {
+        executionAttempt: evidence.executionAttempt,
+        providerTaskId: task.provider_task_id,
+        taskId,
+      });
+      if (
+        (task.owner_id !== "__test__" || task.provider_task_id) &&
+        !providerAttempt
+      ) {
+        throw new Error("Generation candidate has no matching paid attempt");
+      }
+      if (
+        providerAttempt &&
+        (providerAttempt.owner_id !== task.owner_id ||
+          providerAttempt.kind !== task.kind ||
+          providerAttempt.provider_model_id !== task.provider_model_id ||
+          providerAttempt.provider_profile_id !== task.provider_profile_id ||
+          ![
+            "boundary-claimed",
+            "accepted",
+            "response-received",
+            "completed",
+          ].includes(providerAttempt.outcome))
+      ) {
+        throw new Error("Generation candidate Provider ownership changed");
+      }
+      database.prepare(`
+        DELETE FROM asset_history
+        WHERE account_id = ? AND owner_id = ? AND id = ? AND kind = ?
+      `).run(task.owner_id, task.owner_id, evidence.assetId, task.kind);
+      return { assetId: evidence.assetId, state: "published" as const, taskId };
+    });
+  } finally {
+    database.close();
+  }
+}
+
+export function commitGenerationMediaOutputSet(input: Readonly<{
+  assetIds: readonly string[];
+  executionAttempt: number;
+  kind: "audio" | "image" | "video";
+  ownerId: string;
+  taskId: string;
+}>) {
+  if (
+    input.assetIds.length < 1 || input.assetIds.length > 4 ||
+    new Set(input.assetIds).size !== input.assetIds.length
+  ) throw new Error("Invalid generation output set");
+  const database = openAppDatabase();
+  try {
+    return transaction(database, () => {
+      const task = database.prepare(`
+        SELECT owner_id, kind, state, attempt, result_asset_id,
+               provider_model_id, provider_profile_id, provider_task_id
+        FROM generation_tasks WHERE id = ?
+      `).get(input.taskId) as TaskRow | undefined;
+      if (
+        !task || !["running", "recovering"].includes(task.state) ||
+        task.owner_id !== input.ownerId || task.kind !== input.kind ||
+        task.attempt !== input.executionAttempt || task.result_asset_id !== null
+      ) {
+        throw new Error("Generation output set lost task ownership");
+      }
+      const publications = database.prepare(`
+        SELECT publication.asset_id, publication.actual_cost_microunits,
+               publication.provider_usage_tokens, publication.history_label
+        FROM media_publication_attempts AS publication
+        JOIN media_assets AS media
+          ON media.owner_id = publication.owner_id
+          AND media.kind = publication.kind
+          AND media.id = publication.asset_id
+        WHERE publication.source = 'generation'
+          AND publication.state = 'published'
+          AND publication.task_id = ?
+          AND publication.task_execution_attempt = ?
+          AND publication.owner_id = ? AND publication.kind = ?
+          AND media.storage_status = 'ready'
+        ORDER BY publication.created_at, publication.attempt_id
+      `).all(
+        input.taskId,
+        input.executionAttempt,
+        input.ownerId,
+        input.kind,
+      ) as Array<{
+        actual_cost_microunits: number;
+        asset_id: string;
+        history_label: string | null;
+        provider_usage_tokens: number | null;
+      }>;
+      if (
+        publications.length !== input.assetIds.length ||
+        publications.some((row, index) => row.asset_id !== input.assetIds[index])
+      ) {
+        throw new Error("Generation output set evidence is incomplete");
+      }
+      const providerAttempt = matchingProviderAttempt(database, {
+        executionAttempt: input.executionAttempt,
+        providerTaskId: task.provider_task_id,
+        taskId: input.taskId,
+      });
+      if (
+        (task.owner_id !== "__test__" || task.provider_task_id) &&
+        !providerAttempt
+      ) {
+        throw new Error("Generation output set has no matching paid attempt");
+      }
+      if (
+        providerAttempt &&
+        (providerAttempt.owner_id !== task.owner_id ||
+          providerAttempt.kind !== task.kind ||
+          providerAttempt.provider_model_id !== task.provider_model_id ||
+          providerAttempt.provider_profile_id !== task.provider_profile_id ||
+          ![
+            "boundary-claimed",
+            "accepted",
+            "response-received",
+            "completed",
+          ].includes(providerAttempt.outcome))
+      ) {
+        throw new Error("Generation output set Provider ownership changed");
+      }
+      const timestamp = new Date().toISOString();
+      if (providerAttempt) {
+        const completedAttempt = database.prepare(`
+          UPDATE generation_provider_attempts
+          SET outcome = 'completed', failure_code = NULL, finished_at = ?
+          WHERE task_id = ? AND execution_attempt = ?
+            AND outcome IN (
+              'boundary-claimed', 'accepted', 'response-received', 'completed'
+            )
+        `).run(timestamp, input.taskId, providerAttempt.execution_attempt);
+        if (completedAttempt.changes !== 1) {
+          throw new Error("Generation Provider attempt changed concurrently");
+        }
+      }
+      const primary = publications[0];
+      const completedTask = database.prepare(`
+        UPDATE generation_tasks
+        SET state = 'success', result_asset_id = ?,
+            actual_cost_microunits = ?, provider_usage_tokens = ?,
+            error_code = NULL, error_message = NULL, updated_at = ?
+        WHERE id = ? AND owner_id = ? AND kind = ? AND attempt = ?
+          AND state IN ('running', 'recovering') AND result_asset_id IS NULL
+      `).run(
+        primary.asset_id,
+        primary.actual_cost_microunits,
+        primary.provider_usage_tokens,
+        timestamp,
+        input.taskId,
+        input.ownerId,
+        input.kind,
+        input.executionAttempt,
+      );
+      if (completedTask.changes !== 1) {
+        throw new Error("Generation task changed concurrently");
+      }
+      database.prepare(`
+        INSERT INTO generation_task_events (
+          task_id, state, error_code, error_message, created_at
+        ) VALUES (?, 'success', NULL, NULL, ?)
+      `).run(input.taskId, timestamp);
+      const preview = (assetId: string) => input.kind === "video"
+        ? `/api/video-assets/${assetId}`
+        : input.kind === "audio"
+          ? `/api/audio-assets/${assetId}`
+          : `/api/assets/${assetId}`;
+      const defaultLabel = input.kind === "video"
+        ? "生成视频"
+        : input.kind === "audio"
+          ? "生成音频"
+          : "生成图片";
+      const insertHistory = database.prepare(`
+        INSERT INTO asset_history (
+          account_id, id, kind, label, preview, created_at, owner_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(account_id, id) DO UPDATE SET
+          kind = excluded.kind, label = excluded.label,
+          preview = excluded.preview, owner_id = excluded.owner_id
+      `);
+      for (const publication of publications) {
+        insertHistory.run(
+          input.ownerId,
+          publication.asset_id,
+          input.kind,
+          publication.history_label || defaultLabel,
+          preview(publication.asset_id),
+          timestamp,
+          input.ownerId,
+        );
+      }
+      runMediaPublicationFinalizeFaultForTests();
+      return { assetId: primary.asset_id, state: "success" as const, taskId: input.taskId };
+    });
+  } finally {
+    database.close();
+  }
+}
+
 export function commitGenerationTextResult(input: Readonly<{
   actualCostMicrounits: number;
   dataDirectory?: string;
@@ -336,6 +655,20 @@ function failGenerationMediaResult(
   }
 }
 
+function failGenerationAlternateMediaResult(
+  publicationToken: MediaPublicationReservation,
+  code: string,
+) {
+  const database = openAppDatabase();
+  try {
+    transaction(database, () => {
+      failMediaPublicationInTransaction(database, publicationToken, code);
+    });
+  } finally {
+    database.close();
+  }
+}
+
 export async function recoverPendingGenerationMediaResults() {
   const outcomes: Array<{
     action: "blocked" | "failed" | "finalized";
@@ -349,7 +682,8 @@ export async function recoverPendingGenerationMediaResults() {
     try {
       task = database.prepare(`
         SELECT owner_id, kind, state, attempt, result_asset_id,
-               provider_model_id, provider_task_id
+               provider_model_id, provider_profile_id, provider_task_id,
+               model_configuration
         FROM generation_tasks WHERE id = ?
       `).get(taskId) as TaskRow | undefined;
     } finally {
@@ -367,12 +701,24 @@ export async function recoverPendingGenerationMediaResults() {
       storageProfileId: row.storage_profile_id,
       taskId,
     };
+    const primaryRecovery = Boolean(
+      task && ["running", "recovering"].includes(task.state) &&
+      task.result_asset_id === null,
+    );
+    const alternateRecovery = Boolean(
+      task?.state === "success" && task.result_asset_id &&
+      task.result_asset_id !== row.asset_id,
+    );
     if (
-      !task || !["running", "recovering"].includes(task.state) ||
+      !task || (!primaryRecovery && !alternateRecovery) ||
       task.owner_id !== row.owner_id || task.kind !== row.kind ||
       task.attempt !== row.task_execution_attempt
     ) {
-      failGenerationMediaResult(token, "MEDIA_RECOVERY_TASK_TERMINAL");
+      if (task?.state === "success") {
+        failGenerationAlternateMediaResult(token, "MEDIA_RECOVERY_TASK_TERMINAL");
+      } else {
+        failGenerationMediaResult(token, "MEDIA_RECOVERY_TASK_TERMINAL");
+      }
       await compensateMediaPublication(token, {
         code: "MEDIA_RECOVERY_TASK_TERMINAL",
       });
@@ -385,14 +731,24 @@ export async function recoverPendingGenerationMediaResults() {
       continue;
     }
     if (prepared.action === "failed") {
-      failGenerationMediaResult(token, "MEDIA_RECOVERY_EVIDENCE_MISSING");
+      if (alternateRecovery) {
+        failGenerationAlternateMediaResult(token, "MEDIA_RECOVERY_EVIDENCE_MISSING");
+      } else {
+        failGenerationMediaResult(token, "MEDIA_RECOVERY_EVIDENCE_MISSING");
+      }
       await compensateMediaPublication(token, {
         code: "MEDIA_RECOVERY_EVIDENCE_MISSING",
       });
       outcomes.push({ action: "failed", assetId: row.asset_id, taskId });
       continue;
     }
-    commitGenerationMediaResult(prepared.reservation);
+    if (primaryRecovery && task && isRelayMediaTask(task)) {
+      publishGenerationMediaCandidate(prepared.reservation);
+    } else if (alternateRecovery) {
+      commitGenerationAlternateMediaResult(prepared.reservation);
+    } else {
+      commitGenerationMediaResult(prepared.reservation);
+    }
     await cleanupPublicationStaging(prepared.reservation).catch(() => undefined);
     outcomes.push({ action: "finalized", assetId: row.asset_id, taskId });
   }
