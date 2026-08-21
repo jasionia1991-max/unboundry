@@ -442,7 +442,7 @@ test("all four nodes preserve unavailable saved models until an explicit compati
       const control = creator.getByTestId(`${check.kind}-model-control`);
       await control.getByRole("combobox").click();
       const active = activeModels[check.kind];
-      await control.getByRole("option", { exact: true, name: active.displayName })
+      await control.getByRole("option", { name: new RegExp(active.displayName) })
         .click();
       await expect(control.getByRole("combobox"))
         .toHaveAttribute("data-value", active.id);

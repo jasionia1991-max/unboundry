@@ -40,6 +40,8 @@ export type PublishedModel = {
   isDefault: boolean;
   mediaInputPolicy?: "seedance-2";
   parameterSchema?: ModelParameterSchema;
+  /** Optional during a rolling deploy; current servers always provide it. */
+  providerName?: string;
   providerProtocol?: ProviderProtocol;
 };
 

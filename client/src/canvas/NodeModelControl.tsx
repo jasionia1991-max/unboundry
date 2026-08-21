@@ -6,6 +6,17 @@ import {
 } from "../models/ModelCatalog";
 import { useEffect, useRef, useState } from "react";
 
+const capabilityLabels: Record<ModelCapability, string> = {
+  audio: "音频",
+  image: "图片",
+  text: "文字",
+  video: "视频",
+};
+
+function providerLabel(providerName?: string) {
+  return providerName?.trim() || "平台未标注";
+}
+
 export function NodeModelControl({
   capability,
   disabled = false,
@@ -78,6 +89,11 @@ export function NodeModelControl({
   const currentUnavailable = Boolean(selection.unavailableReason);
   const currentUnavailableReason = selection.unavailableReason;
   const controlDisabled = disabled || models.length === 0;
+  const currentProvider = current ? providerLabel(current.providerName) : "";
+  const capabilityLabel = capabilityLabels[capability];
+  const currentAccessibleName = current
+    ? `${current.displayName}，${currentProvider} · ${capabilityLabel}`
+    : selection.displayName ?? "暂无可用模型";
   return (
     <div
       className="node-model-control nodrag nopan"
@@ -110,7 +126,7 @@ export function NodeModelControl({
         aria-controls={`${capability}-model-options`}
         aria-expanded={open}
         aria-haspopup="listbox"
-        aria-label={`${capability}模型`}
+        aria-label={`${capabilityLabel}模型：${currentAccessibleName}`}
         aria-description={
           currentUnavailable ? currentUnavailableReason : undefined
         }
@@ -119,16 +135,25 @@ export function NodeModelControl({
         disabled={controlDisabled}
         onClick={() => setOpen((value) => !value)}
         role="combobox"
-        title={currentUnavailable ? currentUnavailableReason : undefined}
+        title={current
+          ? `${current.displayName} · ${currentProvider} · ${capabilityLabel}${
+            currentUnavailable ? ` · ${currentUnavailableReason}` : ""
+          }`
+          : currentUnavailableReason || undefined}
         type="button"
       >
-        <span>
-          {selection.displayName ?? "暂无可用模型"}
-          {selection.savedModelUnavailable
-            ? " · 原模型不可用"
-            : currentUnavailable
-              ? " · 暂不可生成"
-              : ""}
+        <span className="node-model-control-current">
+          <span>
+            {selection.displayName ?? "暂无可用模型"}
+            {selection.savedModelUnavailable
+              ? " · 原模型不可用"
+              : currentUnavailable
+                ? " · 暂不可生成"
+                : ""}
+          </span>
+          {current && (
+            <small>{currentProvider} · {capabilityLabel}</small>
+          )}
         </span>
         <span aria-hidden="true" className="node-model-control-chevron" />
       </button>
@@ -143,11 +168,13 @@ export function NodeModelControl({
             const unavailable = model.generationAvailable === false;
             const reason = model.generationUnavailableReason ||
               "当前模型暂不可生成";
+            const modelProvider = providerLabel(model.providerName);
+            const accessibleName = `${model.displayName}，${modelProvider} · ${capabilityLabel}`;
             return (
               <button
                 aria-label={unavailable
-                  ? `${model.displayName}，暂不可生成：${reason}`
-                  : model.displayName}
+                  ? `${accessibleName}，暂不可生成：${reason}`
+                  : accessibleName}
                 aria-selected={model.id === selection.selectedId}
                 className="node-model-control-option"
                 data-generation-available={model.generationAvailable === true
@@ -165,12 +192,17 @@ export function NodeModelControl({
                   setOpen(false);
                 }}
                 role="option"
-                title={unavailable ? reason : undefined}
+                title={`${model.displayName} · ${modelProvider} · ${capabilityLabel}${
+                  unavailable ? ` · ${reason}` : ""
+                }`}
                 type="button"
               >
-                <span>
-                  {model.displayName}
-                  {unavailable ? " · 暂不可生成" : ""}
+                <span className="node-model-control-option-copy">
+                  <strong>
+                    {model.displayName}
+                    {unavailable ? " · 暂不可生成" : ""}
+                  </strong>
+                  <small>{modelProvider} · {capabilityLabel}</small>
                 </span>
                 {model.id === selection.selectedId && <span aria-hidden="true">✓</span>}
               </button>

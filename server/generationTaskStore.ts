@@ -196,6 +196,8 @@ export type GenerationProviderAttemptEvidence = {
   failureCode?: string;
   finishedAt?: string;
   outcome: GenerationProviderAttemptOutcome;
+  providerModelId: string;
+  providerProfileId: string;
   providerTaskId?: string;
 };
 
@@ -712,10 +714,14 @@ export function createGenerationTaskStore(dataDirectory: string) {
     return database.prepare(`
       SELECT
         credential_revision, execution_attempt, failure_code, finished_at,
-        outcome, provider_task_id
+        outcome, provider_model_id, provider_profile_id, provider_task_id
       FROM generation_provider_attempts
       WHERE
         task_id = ?
+        AND owner_id IS ?
+        AND kind = ?
+        AND provider_profile_id IS ?
+        AND provider_model_id IS ?
         AND ${byProviderTaskId
           ? "provider_task_id = ?"
           : "execution_attempt = ?"}
@@ -723,6 +729,10 @@ export function createGenerationTaskStore(dataDirectory: string) {
       LIMIT 1
     `).get(
       task.id,
+      task.owner_id,
+      task.kind,
+      task.provider_profile_id,
+      task.provider_model_id,
       byProviderTaskId ? task.provider_task_id : task.attempt,
     ) as
       | {
@@ -731,6 +741,8 @@ export function createGenerationTaskStore(dataDirectory: string) {
           failure_code: string | null;
           finished_at: string | null;
           outcome: GenerationProviderAttemptOutcome;
+          provider_model_id: string;
+          provider_profile_id: string;
           provider_task_id: string | null;
         }
       | undefined;
@@ -757,6 +769,8 @@ export function createGenerationTaskStore(dataDirectory: string) {
           failureCode: row.failure_code ?? undefined,
           finishedAt: row.finished_at ?? undefined,
           outcome: row.outcome,
+          providerModelId: row.provider_model_id,
+          providerProfileId: row.provider_profile_id,
           providerTaskId: row.provider_task_id ?? undefined,
         }
       : undefined;
@@ -1582,6 +1596,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
       kind: GenerationTask["kind"];
       ownerId: string;
       providerModelId: string;
+      providerProfileId: string;
     }) {
       if (
         !identifierPattern.test(input.ownerId) ||
@@ -1589,7 +1604,9 @@ export function createGenerationTaskStore(dataDirectory: string) {
         !identifierPattern.test(input.excludeTaskId) ||
         input.excludeTaskId.length > 120 ||
         !identifierPattern.test(input.providerModelId) ||
-        input.providerModelId.length > 160
+        input.providerModelId.length > 160 ||
+        !identifierPattern.test(input.providerProfileId) ||
+        input.providerProfileId.length > 120
       ) {
         throw new Error("Invalid relay match context");
       }
@@ -1598,8 +1615,11 @@ export function createGenerationTaskStore(dataDirectory: string) {
         FROM generation_tasks
         WHERE
           owner_id = ?
+          AND provider_profile_id = ?
           AND provider_task_id IS NOT NULL
-      `).all(input.ownerId) as Array<{ provider_task_id: string }>;
+      `).all(input.ownerId, input.providerProfileId) as Array<{
+        provider_task_id: string;
+      }>;
       const competitors = database.prepare(`
         SELECT id, created_at, updated_at, state
         FROM generation_tasks
@@ -1607,12 +1627,14 @@ export function createGenerationTaskStore(dataDirectory: string) {
           owner_id = ?
           AND id != ?
           AND kind = ?
+          AND provider_profile_id = ?
           AND provider_model_id = ?
           AND state IN ('failed', 'success', 'running', 'queued', 'retrying', 'recovering')
       `).all(
         input.ownerId,
         input.excludeTaskId,
         input.kind,
+        input.providerProfileId,
         input.providerModelId,
       ) as Array<{
         created_at: string;

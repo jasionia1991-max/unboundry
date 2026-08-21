@@ -211,7 +211,8 @@ test("多协议中转站在Provider页面支持明确协议、批量导入和可
   await page.goto("/admin/providers");
   await expect(page.getByRole("button", { name: "多协议中转站" })).toBeVisible();
   const profileCard = page.locator(".provider-profile-list article").first();
-  await expect(profileCard).toContainText("第三方身份第三方中转站");
+  await expect(profileCard).toContainText("商业平台业务中转站");
+  await expect(profileCard).toContainText("技术 Driver多协议中转站");
   await expect(profileCard).toContainText("Key状态Key有效");
   await expect(profileCard).toContainText("目录状态目录可读取");
   await expect(profileCard).toContainText("模型数量3");
@@ -255,18 +256,20 @@ test("多协议中转站在Provider页面支持明确协议、批量导入和可
   const bulkBar = catalog.locator(".provider-catalog-bulk-bar");
   await expect(bulkBar).toContainText("已选1个／共3个");
   await expect(bulkBar).toHaveCSS("position", "sticky");
-  await catalog.getByRole("button", { name: "同步模型" }).click();
+  await catalog.getByRole("button", { name: "同步“业务中转站”目录" }).click();
   await expect(commerceProtocol).toHaveAttribute("data-value", "");
   await expect(commerceProtocol).toContainText("选择调用协议");
   await expect(catalog).toContainText("需要选择当前目录与节点类型兼容的调用协议");
   await expect(
-    bulkBar.getByRole("button", { name: "添加到模型中心（1）" }),
+    bulkBar.getByRole("button", { name: "添加到“业务中转站”模型中心（1）" }),
   ).toBeDisabled();
   await commerceProtocol.click();
   await commerceProtocol.locator("..")
     .locator('[role="option"][data-value="openai-chat"]')
     .click();
-  await bulkBar.getByRole("button", { name: "添加到模型中心（1）" }).click();
+  await bulkBar.getByRole("button", {
+    name: "添加到“业务中转站”模型中心（1）",
+  }).click();
   await expect.poll(() => importBody).toEqual({
     models: [{ discoveryId: "relay:commerce-text", providerProtocol: "openai-chat" }],
   });
@@ -675,7 +678,9 @@ test("目录批量选择在第100个时明确限制本次添加", async ({
   await expect(catalog.getByRole("checkbox", { name: /Limit Model 100/ }))
     .toBeDisabled();
   await expect(
-    catalog.getByRole("button", { name: "添加到模型中心（100）" }),
+    catalog.getByRole("button", {
+      name: "添加到“Selection Limit”模型中心（100）",
+    }),
   ).toBeEnabled();
 });
 

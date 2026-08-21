@@ -119,6 +119,7 @@ test("account credentials are encrypted, versioned and owner-isolated", async ()
         .run(id, id, id, timestamp, timestamp);
     }
     seedProvider(store, "profile-1");
+    seedProvider(store, "profile-2");
 
     const saved = await saveAccountCredential(
       store,
@@ -137,6 +138,21 @@ test("account credentials are encrypted, versioned and owner-isolated", async ()
     );
     expect(await accountCredentialKey(store, "user-b", "profile-1")).toBe(
       undefined,
+    );
+    expect(await accountCredentialKey(store, "user-a", "profile-2")).toBe(
+      undefined,
+    );
+    await saveAccountCredential(
+      store,
+      "user-a",
+      "profile-2",
+      "sk-secret-profile-2-2222",
+    );
+    expect(await accountCredentialKey(store, "user-a", "profile-1")).toBe(
+      "sk-secret-a-1234",
+    );
+    expect(await accountCredentialKey(store, "user-a", "profile-2")).toBe(
+      "sk-secret-profile-2-2222",
     );
 
     const updated = await saveAccountCredential(
@@ -323,6 +339,23 @@ test("authenticated Provider commits serialize with actor account deletion", asy
     store = openAppDatabase(directory);
     seedActiveUser(store, "provider-save-actor");
     seedActiveUser(store, "provider-verify-actor");
+
+    let missingAccountProbeCalls = 0;
+    await expect(verifyProviderProfile(
+      profile.id,
+      "provider-verify-actor",
+      async () => {
+        missingAccountProbeCalls += 1;
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      },
+    )).rejects.toMatchObject({ code: "NOT_CONFIGURED" });
+    expect(missingAccountProbeCalls).toBe(0);
+    await saveAccountCredential(
+      store,
+      "provider-verify-actor",
+      profile.id,
+      "sk-account-exact-provider-verify-1234",
+    );
 
     let committedMutationAudits = 0;
     await expect(saveProviderProfile({

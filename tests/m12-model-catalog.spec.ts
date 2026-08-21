@@ -317,11 +317,15 @@ test("only administrators manage models while users receive a safe published cat
       "responseFormat",
       "outputCount",
     ]);
-    expect((await request(`/api/admin/models/${correctDoubao.id}`, {
+    const rejectedRebind = await request(`/api/admin/models/${correctDoubao.id}`, {
       body: JSON.stringify({ providerProfileId: "provider-unconfigured" }),
       cookie: adminCookie,
       method: "PATCH",
-    })).status).toBe(400);
+    });
+    expect(rejectedRebind.status).toBe(409);
+    expect(await rejectedRebind.json()).toMatchObject({
+      code: "MODEL_PROVIDER_REBIND_FORBIDDEN",
+    });
 
     const created = await request("/api/admin/models", {
       body: JSON.stringify({
@@ -362,6 +366,7 @@ test("only administrators manage models while users receive a safe published cat
           version: 1,
         },
         providerModelId: "internal/image-v1",
+        providerProfileId: arkProvider.id,
         sortOrder: 20,
         status: "draft",
       }),
@@ -427,13 +432,15 @@ test("only administrators manage models while users receive a safe published cat
         qualities: ["auto", "high"],
       },
       isDefault: true,
+      providerName: "Test Ark",
       parameterSchema: {
         referenceInputs: { audio: 0, image: 2, video: 0 },
         version: 2,
       },
     });
     expect(published).not.toHaveProperty("providerModelId");
-    expect(published).not.toHaveProperty("providerName");
+    expect(published).not.toHaveProperty("baseUrl");
+    expect(published).not.toHaveProperty("apiKey");
     expect(publicBody).toMatchObject({ generationEnabled: false });
 
     expect(
@@ -485,12 +492,32 @@ test("administrator model center is visible and published models reach new node 
     "暂无已配置模型",
   );
 
+  const providerAlphaResponse = await page.request.post("/api/admin/providers", {
+    data: {
+      baseUrl: "https://openrouter.ai/api/v1",
+      driver: "openrouter",
+      label: "Provider Alpha",
+    },
+  });
+  const providerBetaResponse = await page.request.post("/api/admin/providers", {
+    data: {
+      baseUrl: "https://openrouter.ai/api/v1",
+      driver: "openrouter",
+      label: "Provider Beta",
+    },
+  });
+  expect(providerAlphaResponse.status()).toBe(201);
+  expect(providerBetaResponse.status()).toBe(201);
+  const providerAlpha = (await providerAlphaResponse.json()).profile as { id: string };
+  const providerBeta = (await providerBetaResponse.json()).profile as { id: string };
+
   const createdResponse = await page.request.post("/api/admin/models", {
     data: {
       capability: "image",
       displayName: "Image Test Model",
       isDefault: true,
       providerModelId: "test/image-model",
+      providerProfileId: providerAlpha.id,
       sortOrder: 10,
       status: "published",
     },
@@ -503,17 +530,38 @@ test("administrator model center is visible and published models reach new node 
       displayName: "Image Alternate Model",
       isDefault: false,
       providerModelId: "test/image-alternate",
+      providerProfileId: providerBeta.id,
       sortOrder: 20,
       status: "published",
     },
   });
   expect(alternateResponse.status()).toBe(201);
   const alternate = (await alternateResponse.json()).model as { id: string };
+  const duplicateNameResponse = await page.request.post("/api/admin/models", {
+    data: {
+      capability: "image",
+      displayName: "Image Test Model",
+      isDefault: false,
+      providerModelId: "test/image-model-beta",
+      providerProfileId: providerBeta.id,
+      sortOrder: 30,
+      status: "published",
+    },
+  });
+  expect(duplicateNameResponse.status()).toBe(201);
+  const rejectedCrossPlatformRebind = await page.request.patch(
+    `/api/admin/models/${created.id}`,
+    { data: { providerProfileId: providerBeta.id } },
+  );
+  expect(rejectedCrossPlatformRebind.status()).toBe(409);
+  await expect(rejectedCrossPlatformRebind.json()).resolves.toMatchObject({
+    code: "MODEL_PROVIDER_REBIND_FORBIDDEN",
+  });
 
   await page.reload();
-  const createdCard = page.locator(".model-list article").filter({
-    hasText: "Image Test Model",
-  });
+  const createdCard = page.locator(".model-list article")
+    .filter({ hasText: "Image Test Model" })
+    .filter({ hasText: "Provider Alpha" });
   await createdCard.getByRole("button", { name: "参数设置" }).click();
   const editor = createdCard.locator(".admin-model-parameter-edit");
   await expect(editor).toBeVisible();
@@ -547,20 +595,41 @@ test("administrator model center is visible and published models reach new node 
   const modelTrigger = imageModel.getByRole("combobox");
   await expect(modelTrigger).toHaveAttribute("data-value", created.id);
   await expect(modelTrigger).toContainText("Image Test Model");
+  await expect(modelTrigger).toContainText("Provider Alpha · 图片");
   await modelTrigger.click();
   const modelOptions = imageModel.getByRole("listbox");
   await expect(modelOptions).toBeVisible();
   await expect(
-    modelOptions.getByRole("option", { name: /Image Test Model/ }),
+    modelOptions.getByRole("option", {
+      name: /^Image Test Model，Provider Alpha · 图片/,
+    }),
+  ).toHaveCount(1);
+  await expect(
+    modelOptions.getByRole("option", {
+      name: /^Image Test Model，Provider Beta · 图片/,
+    }),
+  ).toHaveCount(1);
+  await expect(
+    modelOptions.getByRole("option", {
+      name: /^Image Test Model，Provider Alpha · 图片/,
+    }),
   ).toHaveAttribute("data-selected", "true");
   await expect(
-    modelOptions.getByRole("option", { name: /Image Test Model/ }),
+    modelOptions.getByRole("option", {
+      name: /^Image Test Model，Provider Alpha · 图片/,
+    }),
+  ).toContainText("Provider Alpha · 图片");
+  await expect(
+    modelOptions.getByRole("option", {
+      name: /^Image Test Model，Provider Alpha · 图片/,
+    }),
   ).toHaveCSS("background-color", "rgb(58, 58, 61)");
   await modelOptions
     .getByRole("option", { name: /Image Alternate Model/ })
-    .click();
+    .press("Enter");
   await expect(modelTrigger).toHaveAttribute("data-value", alternate.id);
   await expect(modelTrigger).toContainText("Image Alternate Model");
+  await expect(modelTrigger).toContainText("Provider Beta · 图片");
   const imageParameters = page.getByRole("button", { name: "图片参数" });
   await expect(imageParameters).toContainText("自适应 · 自动");
   await imageParameters.click();
