@@ -69,6 +69,14 @@
       "sourceSnapshotSha256": "c9560566bb501a55c2129d3bde2e821c63f207aba7a366eab06b41a3e3c90bf2",
       "listener4173Unchanged": true
     },
+    "secureEntryDocumentationRerun": {
+      "spec": "tests/m38-generation-runtime-incidents.spec.ts",
+      "testsPassed": 15,
+      "testsTotal": 15,
+      "exitCode": 0,
+      "sourceSnapshotSha256": "23da186a1cfd43f72835ed6e0ca923aef822a75043c67719d190829fac532d4f",
+      "listener4173Unchanged": true
+    },
     "listener4173Unchanged": true,
     "realProviderRequestsDuringAutomation": 0
   },
@@ -187,12 +195,15 @@
       "exact Yunteng-specific Keychain service labels",
       "production service environment variable names",
       "Yunteng-specific production configuration filenames",
-      "Unboundry encrypted account-credential identity metadata"
+      "Unboundry encrypted account-credential identity metadata",
+      "authenticated production My Connections page"
     ],
     "yuntengCredentialFound": false,
+    "standardMyConnectionsExposesYunteng": false,
+    "secureEntryVisibilityReason": "The standard page lists only Providers that already have a published model; Yunteng has zero models by design at this gate.",
     "youchuangCredentialReadOrCopied": false,
     "secretPrintedOrCommitted": false,
-    "requiredNextAction": "An authorized user must enter Yunteng's own API key through the production My Connections encrypted form; never send it through chat, Git, docs, tests or terminal output."
+    "requiredNextAction": "An authorized user must provision Yunteng's own API key through an approved non-echoing secure operator channel, then report only that it is ready. Do not publish a placeholder model merely to expose the standard My Connections form, and never send the key through chat, Git, docs, tests or terminal output."
   },
   "realProviderSmoke": {
     "authorizedMaximumCreatePosts": 3,

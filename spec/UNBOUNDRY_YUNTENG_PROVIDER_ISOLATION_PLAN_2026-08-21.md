@@ -8,7 +8,7 @@
 
 施工续接：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_CHECKPOINT.md`
 
-实施状态（2026-08-21）：v0.6.29代码、GitHub、冻结备份、fresh build、原子切换和不依赖云腾key的生产技术门已完成；独立云腾元数据profile已创建。安全入口没有云腾自己的key，因此credential、三模型、binding、task、attempt和真实Provider POST均为0，后续配置按本方案fail-closed。
+实施状态（2026-08-21）：v0.6.29代码、GitHub、冻结备份、fresh build、原子切换和不依赖云腾key的生产技术门已完成；独立云腾元数据profile已创建。没有云腾自己的key，且标准「我的连接」只列已有发布模型的平台、当前不显示云腾；不得靠发布占位模型绕过。credential、三模型、binding、task、attempt和真实Provider POST均为0，后续配置按本方案fail-closed，等待经批准的非回显安全运维入口。
 
 ## 1. 一句话结论
 
