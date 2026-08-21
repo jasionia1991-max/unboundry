@@ -532,6 +532,9 @@ export function inferRelayCatalogModelHints(
   displayName?: string,
 ): RelayCatalogModelInference {
   const identities = relayModelIdentities(providerModelId, displayName);
+  if (identities.includes("gemini-3-pro-image-preview")) {
+    return { capability: "image" };
+  }
   if (matchesRelayIdentity(identities, relayImageModelPatterns)) {
     return { capability: "image" };
   }

@@ -2,6 +2,10 @@ import {
   providerProtocolSupportsCapability,
   type ProviderProtocol,
 } from "../types/relayProtocols";
+import {
+  TextGenerationProviderError,
+  type TextGenerationProvider,
+} from "./generationProvider";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -225,6 +229,7 @@ export class RelayProviderError extends Error {
     readonly code: RelayProviderErrorCode,
     readonly providerTaskMayStillRun = false,
     message?: string,
+    readonly statusCode?: number,
   ) {
     super(message || errorMessages[code]);
     this.name = "RelayProviderError";
@@ -311,6 +316,7 @@ const mediaParamNamesByCapability = {
     "lyrics",
     "lyricsMode",
     "lyrics_mode",
+    "make_instrumental",
     "musicGenerationMode",
     "music_generation_mode",
     "outputCount",
@@ -319,6 +325,7 @@ const mediaParamNamesByCapability = {
     "reference_image_url",
     "reference_video_url",
     "sample_rate",
+    "bitrate",
     "speaker",
     "speech_rate",
     "streamPlayback",
@@ -328,6 +335,7 @@ const mediaParamNamesByCapability = {
     "subject_video_url",
     "vocalGender",
     "vocal_gender",
+    "mv",
   ]),
   image: new Set([
     "aspectRatio",
@@ -340,6 +348,7 @@ const mediaParamNamesByCapability = {
     "image",
     "image_url",
     "images",
+    "imageSize",
     "inputMode",
     "input_mode",
     "lens",
@@ -370,6 +379,7 @@ const mediaParamNamesByCapability = {
     "last_frame_url",
     "multiShot",
     "multi_shot",
+    "mode",
     "outputCount",
     "output_count",
     "reference_audio_url",
@@ -491,10 +501,10 @@ function requestHeaders(apiKey: string, protocol: ProviderProtocol) {
 }
 
 function remoteError(status: number) {
-  if (status === 401) return new RelayProviderError("AUTH");
-  if (status === 403) return new RelayProviderError("PERMISSION");
-  if (status === 429) return new RelayProviderError("RATE_LIMIT");
-  return new RelayProviderError("REMOTE");
+  if (status === 401) return new RelayProviderError("AUTH", false, undefined, status);
+  if (status === 403) return new RelayProviderError("PERMISSION", false, undefined, status);
+  if (status === 429) return new RelayProviderError("RATE_LIMIT", false, undefined, status);
+  return new RelayProviderError("REMOTE", false, undefined, status);
 }
 
 async function providerErrorText(response: Response) {
@@ -566,6 +576,7 @@ async function relayJsonRequest(input: {
   maximumRequestBytes: number;
   maximumResponseBytes: number;
   method: "GET" | "POST";
+  networkFailureMayStillRun?: boolean;
   path: string;
   protocol: ProviderProtocol;
   providerTaskMayStillRun?: boolean;
@@ -623,7 +634,12 @@ async function relayJsonRequest(input: {
       const providerText = await providerErrorText(response);
       const error = remoteError(response.status);
       throw providerText
-        ? new RelayProviderError(error.code, error.providerTaskMayStillRun, providerText)
+        ? new RelayProviderError(
+            error.code,
+            error.providerTaskMayStillRun,
+            providerText,
+            error.statusCode,
+          )
         : error;
     }
     return await readLimitedJson(response, input.maximumResponseBytes);
@@ -644,7 +660,10 @@ async function relayJsonRequest(input: {
         Boolean(input.providerTaskMayStillRun),
       );
     }
-    throw new RelayProviderError("NETWORK");
+    throw new RelayProviderError(
+      "NETWORK",
+      Boolean(input.networkFailureMayStillRun),
+    );
   } finally {
     clearTimeout(timer);
     input.execution.signal?.removeEventListener("abort", abort);
@@ -1054,11 +1073,95 @@ export async function requestRelayText(
     maximumRequestBytes: textRequestLimitBytes,
     maximumResponseBytes: textResponseLimitBytes,
     method: "POST",
+    networkFailureMayStillRun: true,
     path: route.path,
     protocol: request.providerProtocol,
   });
   return parseTextResult(request.providerProtocol, body, connection.apiKey);
 }
+
+function relayTextContextInputs(
+  inputs: Parameters<TextGenerationProvider["generate"]>[0]["inputs"],
+): RelayTextContextInput[] {
+  return inputs.map((input) => {
+    if (input.kind === "text") {
+      if (typeof input.text !== "string") throw new RelayProviderError("FORMAT");
+      return { kind: "text", text: input.text };
+    }
+    if (
+      typeof input.mimeType !== "string" ||
+      typeof input.transientUrl !== "string"
+    ) {
+      throw new RelayProviderError("FORMAT");
+    }
+    return {
+      kind: input.kind,
+      mimeType: input.mimeType,
+      transientUrl: input.transientUrl,
+    };
+  });
+}
+
+export const relayTextGenerationProvider: TextGenerationProvider = {
+  id: "multi-protocol-relay-text",
+  registrations: [
+    { driver: "multi-protocol-relay", protocol: "openai-chat" },
+    { driver: "multi-protocol-relay", protocol: "openai-responses" },
+    { driver: "multi-protocol-relay", protocol: "claude-messages" },
+    { driver: "multi-protocol-relay", protocol: "gemini-generate-content" },
+  ],
+  async generate(request, execution) {
+    try {
+      if (
+        request.protocol === "native" ||
+        !execution.profile.apiKey
+      ) {
+        throw new RelayProviderError(
+          request.protocol === "native" ? "FORMAT" : "AUTH",
+        );
+      }
+      const result = await requestRelayText(
+        {
+          apiKey: execution.profile.apiKey,
+          baseUrl: execution.profile.baseUrl,
+        },
+        {
+          capability: "text",
+          contextInputs: relayTextContextInputs(request.inputs),
+          maxOutputTokens: request.maxOutputTokens,
+          messages: [{ role: "user", text: request.prompt }],
+          model: request.model,
+          providerProtocol: request.protocol,
+          temperature: request.temperature,
+        },
+        {
+          beforeProviderRequest: () => {
+            execution.beforeProviderRequest();
+            // The pinned relay transport bypasses the injected fetch wrapper.
+            // Releasing here preserves the existing request-boundary lease.
+            execution.releaseProviderLease();
+          },
+          fetcher: execution.fetcher,
+          signal: execution.signal,
+          usePinnedTransport: execution.usePinnedTransport,
+        },
+      );
+      return {
+        providerUsageTokens: result.usage?.totalTokens,
+        text: result.text,
+      };
+    } catch (error) {
+      if (error instanceof RelayProviderError) {
+        throw new TextGenerationProviderError(
+          error.code,
+          error.message,
+          error.providerTaskMayStillRun,
+        );
+      }
+      throw error;
+    }
+  },
+};
 
 function cleanTransientImage(value: string) {
   if (typeof value !== "string" || value.length > 50 * 1024 * 1024) {
@@ -1507,6 +1610,7 @@ export async function submitRelayMedia(
     maximumRequestBytes: mediaRequestLimitBytes,
     maximumResponseBytes: textResponseLimitBytes,
     method: "POST",
+    networkFailureMayStillRun: true,
     path: "/v1/media/generate",
     protocol: request.providerProtocol,
     providerTaskMayStillRun: true,
@@ -1566,6 +1670,7 @@ function resultUrls(body: Record<string, unknown>) {
 function parseMediaTaskSnapshot(
   capability: Exclude<RelayCapability, "text">,
   body: unknown,
+  requireResultType = false,
 ): RelayMediaTaskSnapshot {
   if (!isRecord(body)) throw new RelayProviderError("FORMAT");
   const state = normalizedMediaState(body.state);
@@ -1603,9 +1708,9 @@ function parseMediaTaskSnapshot(
     };
   }
   if (
-    typeof body.result_type === "string" &&
-    body.result_type &&
-    body.result_type !== capability
+    (requireResultType && body.result_type !== capability) ||
+    (typeof body.result_type === "string" && body.result_type &&
+      body.result_type !== capability)
   ) {
     throw new RelayProviderError("FORMAT");
   }
@@ -1634,6 +1739,7 @@ export async function pollRelayMediaTask(
     capability: Exclude<RelayCapability, "text">;
     externalTaskId: string;
     providerProtocol: "media-generate";
+    requireResultType?: boolean;
   }>,
   execution: RelayProviderExecution,
 ) {
@@ -1641,17 +1747,35 @@ export async function pollRelayMediaTask(
     throw new RelayProviderError("FORMAT");
   }
   const taskId = cleanExternalTaskId(input.externalTaskId, connection.apiKey);
-  const body = await relayJsonRequest({
+  const requestStatus = (path: string) => relayJsonRequest({
     connection,
     execution,
     maximumRequestBytes: 0,
     maximumResponseBytes: textResponseLimitBytes,
     method: "GET",
-    path: `/v1/skills/task-status?task_id=${encodeURIComponent(taskId)}`,
+    path,
     protocol: input.providerProtocol,
     providerTaskMayStillRun: true,
   });
-  return parseMediaTaskSnapshot(input.capability, body);
+  let body: unknown;
+  try {
+    body = await requestStatus(
+      `/v1/skills/task-status?task_id=${encodeURIComponent(taskId)}`,
+    );
+  } catch (error) {
+    if (
+      !(error instanceof RelayProviderError) ||
+      ![404, 405].includes(error.statusCode ?? 0)
+    ) throw error;
+    body = await requestStatus(
+      `/v1/media/status?task_id=${encodeURIComponent(taskId)}`,
+    );
+  }
+  return parseMediaTaskSnapshot(
+    input.capability,
+    body,
+    input.requireResultType === true,
+  );
 }
 
 export async function routeRelayProviderRequest(

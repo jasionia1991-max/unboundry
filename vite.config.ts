@@ -30,6 +30,7 @@ import { projectsApi } from "./server/projects";
 import { assetStorage } from "./server/assetStorage";
 import { audioStorage } from "./server/audioStorage";
 import { videoStorage } from "./server/videoStorage";
+import { assertGenerationMediaDeletionAllowedInTransaction } from "./server/generationAttemptQueries";
 import { mediaMetadataApi } from "./server/mediaMetadataApi";
 import {
   generationTasks,
@@ -1105,15 +1106,24 @@ function canvasPersistenceApi(runtime: RuntimeInstance): Plugin {
     );
     middlewares.use(
       "/api/assets",
-      apiBoundary("assets", assetStorage, runtime),
+      apiBoundary("assets", (request, response) => assetStorage(request, response, {
+        assertDeletionAllowedInTransaction:
+          assertGenerationMediaDeletionAllowedInTransaction,
+      }), runtime),
     );
     middlewares.use(
       "/api/audio-assets",
-      apiBoundary("audio-assets", audioStorage, runtime),
+      apiBoundary("audio-assets", (request, response) => audioStorage(request, response, {
+        assertDeletionAllowedInTransaction:
+          assertGenerationMediaDeletionAllowedInTransaction,
+      }), runtime),
     );
     middlewares.use(
       "/api/video-assets",
-      apiBoundary("video-assets", videoStorage, runtime),
+      apiBoundary("video-assets", (request, response) => videoStorage(request, response, {
+        assertDeletionAllowedInTransaction:
+          assertGenerationMediaDeletionAllowedInTransaction,
+      }), runtime),
     );
     middlewares.use(
       "/api/media-metadata",

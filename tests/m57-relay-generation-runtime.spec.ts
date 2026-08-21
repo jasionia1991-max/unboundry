@@ -26,6 +26,12 @@ import {
 import { ResourceBudgetError } from "../server/resourceBudget";
 import { ProviderResultMediaError } from "../server/providerResultMedia";
 import type { ProviderProfile } from "../server/providerProfiles";
+import {
+  relayMediaModelContract,
+  relayMediaPollingDecision,
+  relayMediaSubmissionAction,
+} from "../server/relayMediaModelContracts";
+import { providerParameterSchema } from "../types/modelParameters";
 
 const relayProfile: ProviderProfile = {
   apiKey: "relay-runtime-fixture-secret",
@@ -363,6 +369,28 @@ test("relay media parameters use explicit role mapping and keep transient URLs o
     resolution: "480p",
   });
 
+  const suno = relayMediaModelContract("suno-v4.5")!;
+  expect(suno.mapParameters({
+    bitrate: 128_000,
+    musicGenerationMode: "prompt-song",
+    sampleRate: 44_100,
+    vocalGender: "male",
+  }, "song prompt")).toMatchObject({
+    make_instrumental: "song",
+    vocal_gender: "m",
+  });
+  expect(suno.mapParameters({
+    bitrate: 192_000,
+    lyrics: "fixture lyrics",
+    musicGenerationMode: "lyrics-song",
+    sampleRate: 48_000,
+    vocalGender: "female",
+  }, "song style")).toMatchObject({
+    lyrics: "fixture lyrics",
+    make_instrumental: "song",
+    vocal_gender: "f",
+  });
+
   await expect(relayMediaParametersForTask(
     relayTask("video", "media-generate", {
       parameters: { inputSchemaVersion: 1, inputs: [] },
@@ -384,6 +412,188 @@ test("relay media parameters use explicit role mapping and keep transient URLs o
     }),
     async ({ assetId }) => `https://signed.example.test/${assetId}?expires=300`,
   )).rejects.toMatchObject({ code: "FORMAT" });
+});
+
+test("the three registered relay media models enforce exact parameters and ordered references", async () => {
+  let referenceFetches = 0;
+  const mediaUrl = async ({ assetId }: { assetId: string }) => {
+    referenceFetches += 1;
+    return `https://signed.example.test/${assetId}?expires=300`;
+  };
+
+  await expect(relayMediaParametersForTask(
+    relayTask("image", "media-generate", {
+      providerModelId: "gemini-3-pro-image-preview",
+      parameters: {
+        aspectRatio: "21:9",
+        inputSchemaVersion: 1,
+        inputs: [
+          { assetId: "later.png", kind: "image", order: 2, role: "reference-image", sourceNodeId: "later" },
+          { assetId: "first.png", kind: "image", order: 1, role: "reference-image", sourceNodeId: "first" },
+        ],
+        outputCount: 1,
+        quality: "4k",
+      },
+    }),
+    mediaUrl,
+  )).resolves.toEqual({
+    aspectRatio: "21:9",
+    imageSize: "4K",
+    images: [
+      "https://signed.example.test/first.png?expires=300",
+      "https://signed.example.test/later.png?expires=300",
+    ],
+  });
+
+  await expect(relayMediaParametersForTask(
+    relayTask("video", "media-generate", {
+      providerModelId: "kling-v3-omni-cankao",
+      parameters: {
+        aspectRatio: "9:16",
+        duration: 15,
+        inputSchemaVersion: 1,
+        inputs: [{
+          assetId: "reference.png",
+          kind: "image",
+          order: 1,
+          role: "reference-image",
+          sourceNodeId: "reference",
+        }],
+        outputCount: 1,
+        videoMode: "quality",
+      },
+    }),
+    mediaUrl,
+  )).resolves.toEqual({
+    aspect_ratio: "9:16",
+    duration: "15",
+    images: ["https://signed.example.test/reference.png?expires=300"],
+    mode: "pro",
+  });
+
+  await expect(relayMediaParametersForTask(
+    relayTask("audio", "media-generate", {
+      prompt: "cinematic instrumental",
+      providerModelId: "suno-v4.5",
+      parameters: {
+        bitrate: 256_000,
+        inputSchemaVersion: 1,
+        inputs: [],
+        lyrics: "",
+        musicGenerationMode: "instrumental",
+        outputCount: 1,
+        sampleRate: 48_000,
+        vocalGender: "auto",
+      },
+    }),
+    mediaUrl,
+  )).resolves.toEqual({
+    bitrate: 256_000,
+    make_instrumental: "instrumental",
+    mv: "chirp-v4-5",
+    sample_rate: 48_000,
+    vocal_gender: "auto",
+  });
+
+  const fetchesBeforeRejectedInputs = referenceFetches;
+  await expect(relayMediaParametersForTask(
+    relayTask("video", "media-generate", {
+      providerModelId: "kling-v3-omni-cankao",
+      parameters: {
+        aspectRatio: "16:9",
+        duration: 5,
+        inputs: [{
+          assetId: "blocked.mp3",
+          kind: "audio",
+          order: 1,
+          role: "reference-image",
+          sourceNodeId: "blocked",
+        }],
+        outputCount: 1,
+        videoMode: "standard",
+      },
+    }),
+    mediaUrl,
+  )).rejects.toMatchObject({ code: "FORMAT" });
+  await expect(relayMediaParametersForTask(
+    relayTask("audio", "media-generate", {
+      prompt: "",
+      providerModelId: "suno-v4.5",
+      parameters: {
+        bitrate: 192_000,
+        inputs: [],
+        lyrics: "",
+        musicGenerationMode: "lyrics-song",
+        outputCount: 1,
+        sampleRate: 44_100,
+        vocalGender: "female",
+      },
+    }),
+    mediaUrl,
+  )).rejects.toMatchObject({ code: "FORMAT" });
+  await expect(relayMediaParametersForTask(
+    relayTask("audio", "media-generate", {
+      providerModelId: "suno-v4.5",
+      parameters: {
+        bitrate: 192_000,
+        inputs: [{
+          assetId: "blocked.png",
+          kind: "image",
+          order: 1,
+          role: "reference-image",
+          sourceNodeId: "blocked",
+        }],
+        lyrics: "",
+        musicGenerationMode: "instrumental",
+        outputCount: 1,
+        sampleRate: 44_100,
+        vocalGender: "auto",
+      },
+    }),
+    mediaUrl,
+  )).rejects.toMatchObject({ code: "FORMAT" });
+  expect(referenceFetches).toBe(fetchesBeforeRejectedInputs);
+});
+
+test("registered relay model schemas and paid-attempt polling windows are frozen", () => {
+  const fixtures = [
+    ["image", "gemini-3-pro-image-preview", 14, 10],
+    ["video", "kling-v3-omni-cankao", 7, 75],
+    ["audio", "suno-v4.5", 0, 15],
+  ] as const;
+  for (const [capability, providerModelId, imageLimit, deadlineMinutes] of fixtures) {
+    const contract = relayMediaModelContract(providerModelId)!;
+    expect(contract.capability).toBe(capability);
+    expect(contract.pollPolicy).toEqual({
+      deadlineMs: deadlineMinutes * 60_000,
+      initialMs: 5_000,
+      maximumMs: 10_000,
+    });
+    const constraints = providerParameterSchema({
+      capability,
+      providerDriver: "multi-protocol-relay",
+      providerModelId,
+    });
+    expect(constraints?.referenceInputs.image ?? 0).toBe(imageLimit);
+  }
+
+  const kling = relayMediaModelContract("kling-v3-omni-cankao")!;
+  const createdAt = "2026-08-21T00:00:00.000Z";
+  expect(relayMediaPollingDecision({
+    attemptCreatedAt: createdAt,
+    nowMs: Date.parse(createdAt) + 74 * 60_000,
+    pollCount: 20,
+    policy: kling.pollPolicy,
+  })).toMatchObject({ delayMs: 10_000, expired: false });
+  expect(relayMediaPollingDecision({
+    attemptCreatedAt: createdAt,
+    nowMs: Date.parse(createdAt) + 75 * 60_000,
+    pollCount: 21,
+    policy: kling.pollPolicy,
+  })).toMatchObject({ expired: true });
+  expect(relayMediaModelContract("unregistered-relay-model")).toBeUndefined();
+  expect(relayMediaSubmissionAction("durable-provider-task-id")).toBe("poll-existing");
+  expect(relayMediaSubmissionAction(undefined)).toBe("submit-once");
 });
 
 test("Doubao TTS relay audio maps documented UI fields without forwarding snapshots", async () => {

@@ -306,6 +306,14 @@ export async function saveGeneratedPng(input: {
     } else {
       await publishLocalMediaPublication(reservation);
     }
+    if (input.task) {
+      return {
+        assetId: id,
+        ...dimensions,
+        publicationToken: reservation,
+        url: `/api/assets/${id}`,
+      };
+    }
     finalizeMediaPublication(reservation);
     await cleanupPublicationStaging(reservation).catch(() => undefined);
     return { assetId: id, ...dimensions, url: `/api/assets/${id}` };
@@ -397,7 +405,12 @@ export async function assetStorage(
   if (request.method === "DELETE") {
     let deletion;
     try {
-      deletion = beginMediaDeletion(request, "image", id);
+      deletion = beginMediaDeletion(
+        request,
+        "image",
+        id,
+        execution.assertDeletionAllowedInTransaction,
+      );
     } catch (error) {
       json(response, 409, {
         code: "MEDIA_DELETE_CONFLICT",

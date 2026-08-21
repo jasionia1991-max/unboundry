@@ -168,9 +168,7 @@ export async function saveGeneratedMp4(input: {
     } else {
       await publishLocalMediaPublication(reservation);
     }
-    finalizeMediaPublication(reservation);
-    await cleanupPublicationStaging(reservation).catch(() => undefined);
-    return {
+    const saved = {
       assetId: id,
       byteSize: size,
       contentType: "video/mp4",
@@ -178,6 +176,10 @@ export async function saveGeneratedMp4(input: {
       storageBackend: routing.enabled && routing.profile ? "oss" as const : "local" as const,
       url: `/api/video-assets/${id}`,
     };
+    if (input.task) return { ...saved, publicationToken: reservation };
+    finalizeMediaPublication(reservation);
+    await cleanupPublicationStaging(reservation).catch(() => undefined);
+    return saved;
   } catch (error) {
     if (!bodyConsumptionStarted) {
       await input.body.cancel().catch(() => undefined);
@@ -284,7 +286,12 @@ export async function videoStorage(
   if (request.method === "DELETE") {
     let deletion;
     try {
-      deletion = beginMediaDeletion(request, "video", id);
+      deletion = beginMediaDeletion(
+        request,
+        "video",
+        id,
+        execution.assertDeletionAllowedInTransaction,
+      );
     } catch (error) {
       json(response, 409, {
         code: "MEDIA_DELETE_CONFLICT",

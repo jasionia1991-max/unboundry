@@ -2,11 +2,38 @@
 
 更新日期：2026-08-21
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.27**
+当前代码包版本：**v0.6.28**
 
 ## 一句话
 
 线上是 **v0.6.27 / schema39**（画布、工作流执行与任务恢复已解耦），2026-08-21 已发布；agent 已在新建真实项目中让两个不相交文字工作组于557ms内先后启动、同时保持active并全部完成，刷新后四个结果仍在原节点；用户已于同日明确验收通过。v0.6.26 为上一版。用户要的核心结果仍是：**上传一张图，工作流自己跑完，用户下载结果**。
+
+本地工程另有两批尚未发布的改造：同步文字Provider port，以及同一中转站三媒体模型/Generation结果提交边界；二者均为`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`，不改变线上v0.6.27事实，也不是USER PASS。
+
+## v0.6.28 发布准备（2026-08-21）
+
+- 用户已分别确认版本号`v0.6.28`与“允许发布”；本次授权覆盖当前两批本地工程的版本提交、正式safe full、GitHub tag/PR/merge、冻结备份、生产切换和零付费技术验收。
+- 当前仅为发布候选：线上仍是`v0.6.27/schema39`，不得提前写成已发布；真实Provider生成、付费调用、OSS素材写入与数据库schema变更不在本次默认授权内。
+- Release第七批只读追踪确认：当前通用发布路径是`RELEASE_RUNBOOK.md`记录的安全runner、精确Git archive、staging fresh build、冻结备份与原子current切换；历史`0.5.2/0.6.0` bridge脚本不是本次v0.6.28发布入口，不做无关治理。
+
+## 三媒体模型与Generation结果提交边界本地工程完成（2026-08-21，未发布）
+
+- 状态：`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`。GenerationResultCommit在同一SQLite事务内提交media publication、Provider attempt、task success与event；MediaLifecycle/MediaRegistry不再查询或更新Generation表，TaskStore与Safety运行时循环已解除。
+- 模型：`gemini-3-pro-image-preview`、`kling-v3-omni-cankao`、`suno-v4.5`均复用`multi-protocol-relay/media-generate`。Nano/Kling只接受按edge order的图片引用（上限14/7），Suno不接受媒体引用；参数映射、`result_type`、PNG/MP4/音频保存均为fail-closed。
+- 异步安全：截止从paid attempt `created_at`计算，Nano/Kling/Suno分别10/75/15分钟，5秒起步且最多10秒；已有Provider task id只查询原任务；提交响应丢失不二次POST；status只在404/405回退；无`refunded:true`不自动付费重试。
+- 自动证据：Node `22.23.1` / npm `10.9.8`；冻结十spec最终有效`148/148`。首次产品测试`145/148`后只重跑失败m53+m57并`40/40`通过；TypeScript、构建、source coverage、外网门禁均通过。未跑full，理由是改动范围与冻结定向集合一致，未传播到Canvas/Workflow/schema/release。
+- 隔离和授权：新临时目录、动态loopback、fake fetch；4173 listener不变。`REAL_PROVIDER_SMOKE_PAUSED`；真实Provider、OSS、SSH、生产、版本、push/PR/tag/发布均未触碰。受保护JSON未读、未改、未暂存、未提交。
+- 本地提交：`3144d7a refactor(generation): own media result commits`；第二提交为`feat(generation): add relay media model contracts`。权威方案、矩阵与Checkpoint见`spec/UNBOUNDRY_RELAY_MEDIA_MODELS_INTEGRATION_PLAN_2026-08-21.md`、`spec/UNBOUNDRY_RELAY_MEDIA_MODELS_ACCEPTANCE_MATRIX_2026-08-21.md`、`spec/UNBOUNDRY_RELAY_MEDIA_MODELS_CHECKPOINT.md`。
+
+## 同步文字Provider port本地工程完成（2026-08-21，未发布）
+
+- 状态：`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`。同步文字执行已统一经过`TextGenerationProvider`与`TextProviderRegistry`；Generation Task不再按Ark/relay具体文字driver调用adapter。原未使用的媒体形态`GenerationProvider`假抽象已收敛为当前真实port。
+- 安全边界：Provider profile/credential继续由原owner解析和租赁；Task协调器继续拥有task、attempt、幂等、reconcile、lease、结果归属与写回；adapter只返回规范化`text + providerUsageTokens`，不获得数据库、TaskStore、Canvas或MediaLifecycle。
+- 替换性：m33用可注入fake Provider完成一个task，网络fetch为0、provider-boundary attempt恰好1；未知driver/缺少实现时本地失败且fetch仍为0。
+- 自动证据：Node `22.23.1` / npm `10.9.8`下，一次`npx tsc --noEmit`退出0；安全runner定向m33 `8/8`、m39 `3/3`、m44 `8/8`、m53 `23/23`、m57 `14/14`通过，异常0，使用新临时数据和动态loopback端口，4173 listener不变。
+- 证据边界：未运行默认`npm run verify`或full；未访问真实Provider、付费生成、OSS、SSH或生产；未改版本、schema、Canvas、Workflow、Media publication或线上配置。受保护JSON未读取、修改、格式化、暂存或提交。
+- 权威文件：`spec/UNBOUNDRY_MODULAR_MONOLITH_AUDIT_2026-08-21.md`、`spec/UNBOUNDRY_PROGRESSIVE_MODULARIZATION_PLAN_2026-08-21.md`、`spec/UNBOUNDRY_PROVIDER_PORT_BATCH_ACCEPTANCE_MATRIX_2026-08-21.md`、`spec/UNBOUNDRY_PROGRESSIVE_MODULARIZATION_CHECKPOINT.md`。
+- 后续：停在本地`USER_REVIEW`；第二至第七批未启动，发布、push/PR、版本/tag、SSH和生产仍需新的明确授权。
 
 ## v0.6.27 画布执行解耦已发布（2026-08-21）
 

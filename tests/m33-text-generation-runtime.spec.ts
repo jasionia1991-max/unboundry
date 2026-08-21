@@ -8,6 +8,8 @@ import {
   failRecoveredGenerationTasks,
 } from "../server/generationTaskStore";
 import { executeTextTaskWithDependencies } from "../server/generationTasks";
+import type { TextGenerationProvider } from "../server/generationProvider";
+import { TextProviderRegistry } from "../server/providerRegistry";
 import type { ProviderProfile } from "../server/providerProfiles";
 import {
   createVolcengineArkTextResponse,
@@ -157,6 +159,122 @@ test("Ark text rejects unsafe context before fake fetch and maps safe Provider e
     message: "火山方舟正在限流，请稍后再试",
   });
   expect(calls).toBe(1);
+});
+
+test("Text Provider registry injects a fake port with zero network and rejects missing implementations", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-text-registry-"));
+  try {
+    const store = createGenerationTaskStore(directory);
+    const created = store.create({
+      canvasId: "default",
+      costCurrency: "CNY",
+      estimatedCostMicrounits: 321_000,
+      idempotencyKey: "text-registry-fake-001",
+      kind: "text",
+      model: "model-text-registry-fake",
+      nodeId: "text-registry-target",
+      ownerId: "__test__",
+      parameters: { outputCount: 1, responseFormat: "text" },
+      prompt: "通过端口生成",
+      providerModelId: "fake-text-model",
+      providerProfileId: profile.id,
+    });
+    let fakeProviderCalls = 0;
+    let networkCalls = 0;
+    const fakeProvider: TextGenerationProvider = {
+      id: "fake-text-provider",
+      registrations: [{ driver: "volcengine-ark", protocol: "native" }],
+      async generate(request, execution) {
+        fakeProviderCalls += 1;
+        expect(execution.profile.id).toBe(profile.id);
+        expect(request).toMatchObject({
+          inputs: [],
+          model: "fake-text-model",
+          prompt: "通过端口生成",
+          protocol: "native",
+        });
+        execution.beforeProviderRequest();
+        return { providerUsageTokens: 17, text: "端口返回结果" };
+      },
+    };
+    await executeTextTaskWithDependencies(created.task.id, {
+      acquireProfile: async () => ({ profile, release() {} }),
+      fetcher: async () => {
+        networkCalls += 1;
+        throw new Error("fake port must not use network");
+      },
+      mediaUrlForOwner: async () => "https://unused.example.test",
+      store,
+      textProviderRegistry: new TextProviderRegistry([fakeProvider]),
+    });
+
+    expect(fakeProviderCalls).toBe(1);
+    expect(networkCalls).toBe(0);
+    expect(store.get(created.task.id)).toMatchObject({
+      providerUsageTokens: 17,
+      resultText: "端口返回结果",
+      state: "success",
+    });
+    const attemptsDatabase = openAppDatabase(directory);
+    try {
+      const attempts = attemptsDatabase.prepare(`
+        SELECT COUNT(*) AS count
+        FROM generation_provider_attempts
+        WHERE task_id = ? AND evidence = 'provider-boundary'
+      `).get(created.task.id) as { count: number };
+      expect(Number(attempts.count)).toBe(1);
+    } finally {
+      attemptsDatabase.close();
+    }
+
+    const unsupportedProfile: ProviderProfile = {
+      ...profile,
+      driver: "openrouter",
+      id: "unsupported-text-profile",
+    };
+    expect(() =>
+      new TextProviderRegistry([fakeProvider]).generate(
+        unsupportedProfile,
+        {
+          inputs: [],
+          model: "fake-text-model",
+          prompt: "不得发请求",
+          protocol: "native",
+        },
+        {
+          beforeProviderRequest() {},
+          fetcher: async () => {
+            networkCalls += 1;
+            throw new Error("missing implementation must not use network");
+          },
+          releaseProviderLease() {},
+        },
+      )
+    ).toThrow(/文字模型配置已失效/);
+    expect(() =>
+      new TextProviderRegistry([fakeProvider]).generate(
+        unsupportedProfile,
+        {
+          inputs: [],
+          model: "fake-text-model",
+          prompt: "不得发请求",
+          protocol: "openai-chat",
+        },
+        {
+          beforeProviderRequest() {},
+          fetcher: async () => {
+            networkCalls += 1;
+            throw new Error("missing relay implementation must not use network");
+          },
+          releaseProviderLease() {},
+        },
+      )
+    ).toThrow(/中转站请求或响应格式无法安全识别/);
+    expect(networkCalls).toBe(0);
+    store.close();
+  } finally {
+    await rm(directory, { force: true, recursive: true });
+  }
 });
 
 test("schema 14 Text tasks persist resultText, usage, events and conservative cost", async () => {

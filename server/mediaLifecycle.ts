@@ -89,6 +89,7 @@ export function setMediaPublicationFinalizeFaultForTests(
 
 export type GeneratedPublicationTask = {
   actualCostMicrounits: number;
+  executionAttempt: number;
   providerUsageTokens?: number;
   taskId: string;
 };
@@ -116,7 +117,26 @@ export type MediaPublicationMetadata = {
   mediaWidth?: number;
 };
 
+export type MediaPublicationEvidence = Readonly<{
+  actualCostMicrounits: number;
+  assetId: string;
+  executionAttempt: number;
+  kind: MediaKind;
+  ownerId: string;
+  providerUsageTokens?: number;
+  source: "generation";
+  taskId: string;
+}>;
+
 export type MediaPublicationExecution = Readonly<{
+  assertDeletionAllowedInTransaction?: (
+    database: DatabaseSync,
+    input: Readonly<{
+      assetId: string;
+      kind: MediaKind;
+      ownerId: string;
+    }>,
+  ) => void;
   beforePhysicalDelete?: (input: Readonly<{
     id: string;
     kind: MediaKind;
@@ -160,11 +180,9 @@ type AttemptRow = {
   updated_at: string;
 };
 
-type PendingGeneratedAttempt = AttemptRow & {
+export type PendingGeneratedMediaPublication = Readonly<AttemptRow & {
   media_storage_status: string | null;
-  prompt: string;
-  task_state: string;
-};
+}>;
 
 function assertBasename(value: string, label: string) {
   if (
@@ -250,6 +268,8 @@ export function reserveMediaPublication(input: {
     input.task &&
       (!identifierPattern.test(input.task.taskId) ||
         input.task.taskId.length > 120 ||
+        !Number.isSafeInteger(input.task.executionAttempt) ||
+        input.task.executionAttempt < 1 ||
         !Number.isSafeInteger(input.task.actualCostMicrounits) ||
         input.task.actualCostMicrounits < 0 ||
         input.task.providerUsageTokens !== undefined &&
@@ -274,31 +294,6 @@ export function reserveMediaPublication(input: {
       LIMIT 1
     `).get(input.ownerId, input.kind, input.id)) {
       throw new MediaPublicationConflictError();
-    }
-    let taskAttempt: number | undefined;
-    if (input.task) {
-      const task = database.prepare(`
-        SELECT owner_id, kind, state, attempt, result_asset_id
-        FROM generation_tasks WHERE id = ?
-      `).get(input.task.taskId) as
-        | {
-            attempt: number;
-            kind: string;
-            owner_id: string | null;
-            result_asset_id: string | null;
-            state: string;
-          }
-        | undefined;
-      if (
-        !task || task.owner_id !== input.ownerId || task.kind !== input.kind ||
-        task.state !== "running" || task.result_asset_id !== null ||
-        !Number.isSafeInteger(task.attempt) || task.attempt < 1
-      ) {
-        throw new MediaPublicationStateError(
-          "Generation task cannot reserve this media result",
-        );
-      }
-      taskAttempt = task.attempt;
     }
     try {
       database.prepare(`
@@ -327,7 +322,7 @@ export function reserveMediaPublication(input: {
         input.task ? "generation" : "upload",
         input.storageBackend, input.finalStorageName, input.objectKey,
         input.storageProfileId ?? null, stagingName,
-        input.task?.taskId ?? null, taskAttempt ?? null,
+        input.task?.taskId ?? null, input.task?.executionAttempt ?? null,
         input.historyLabel?.trim().slice(0, 120) || null,
         input.contentType, input.task?.actualCostMicrounits ?? null,
         input.task?.providerUsageTokens ?? null, timestamp, timestamp,
@@ -335,20 +330,6 @@ export function reserveMediaPublication(input: {
     } catch (error) {
       if (isConstraintError(error)) throw new MediaPublicationConflictError();
       throw error;
-    }
-    if (input.task) {
-      const linked = database.prepare(`
-        UPDATE generation_tasks
-        SET result_asset_id = ?, actual_cost_microunits = ?,
-            provider_usage_tokens = ?, updated_at = ?
-        WHERE id = ? AND owner_id = ? AND kind = ? AND state = 'running'
-          AND attempt = ? AND result_asset_id IS NULL
-      `).run(
-        input.id, input.task.actualCostMicrounits,
-        input.task.providerUsageTokens ?? null, timestamp,
-        input.task.taskId, input.ownerId, input.kind, taskAttempt!,
-      );
-      if (linked.changes !== 1) throw new MediaPublicationStateError();
     }
     return {
       attemptId,
@@ -540,83 +521,44 @@ export function finalizeMediaPublication(
   reservation: MediaPublicationReservation,
 ) {
   withDatabase((database) => transaction(database, () => {
+    const attempt = readAttempt(database, reservation);
+    if (attempt?.task_id) {
+      throw new MediaPublicationStateError(
+        "Generation must commit generated media",
+      );
+    }
+    finalizeMediaPublicationInTransaction(database, reservation);
+  }));
+}
+
+export function finalizeMediaPublicationInTransaction(
+  database: DatabaseSync,
+  reservation: MediaPublicationReservation,
+) {
     const row = readAttempt(database, reservation);
-    if (row?.state === "published") return;
-    const attempt = assertAttemptState(row, "external-ready");
+    const attempt = assertAttemptState(row, "external-ready", "published");
+    const evidence = attempt.source === "generation" && attempt.task_id &&
+        attempt.task_execution_attempt !== null &&
+        attempt.actual_cost_microunits !== null
+      ? {
+          actualCostMicrounits: attempt.actual_cost_microunits,
+          assetId: attempt.asset_id,
+          executionAttempt: attempt.task_execution_attempt,
+          kind: attempt.kind,
+          ownerId: attempt.owner_id,
+          ...(attempt.provider_usage_tokens === null
+            ? {}
+            : { providerUsageTokens: attempt.provider_usage_tokens }),
+          source: "generation" as const,
+          taskId: attempt.task_id,
+        }
+      : undefined;
+    if (attempt.state === "published") return evidence;
     if (
       attempt.byte_size < 1 || !attempt.checksum_sha256 ||
       !checksumPattern.test(attempt.checksum_sha256)
     ) throw new MediaPublicationStateError("Media publication is not verified");
     const timestamp = new Date().toISOString();
-    let providerAttemptExecution: number | undefined;
-    if (attempt.task_id) {
-      const task = database.prepare(`
-        SELECT owner_id, kind, state, attempt, result_asset_id, provider_task_id
-        FROM generation_tasks WHERE id = ?
-      `).get(attempt.task_id) as
-        | {
-            attempt: number;
-            kind: string;
-            owner_id: string | null;
-            provider_task_id: string | null;
-            result_asset_id: string | null;
-            state: string;
-          }
-        | undefined;
-      if (
-        !task || task.owner_id !== reservation.ownerId ||
-        task.kind !== reservation.kind ||
-        !["running", "recovering"].includes(task.state) ||
-        task.attempt !== attempt.task_execution_attempt ||
-        task.result_asset_id !== reservation.id
-      ) throw new MediaPublicationStateError("Generation task lost publication ownership");
-
-      // A resumed asynchronous task advances its local execution counter while
-      // retaining the paid Provider task from an earlier execution. That remote
-      // identity must resolve its original paid attempt; only synchronous work
-      // without a remote ID uses the current execution. Historical rows and
-      // narrow fixtures may have neither identity nor a Provider-attempt ledger,
-      // and publication must never invent paid-boundary evidence.
-      const providerAttemptByRemoteId = task.provider_task_id !== null;
-      const providerAttempt = database.prepare(`
-        SELECT execution_attempt, outcome
-        FROM generation_provider_attempts
-        WHERE
-          task_id = ?
-          AND ${providerAttemptByRemoteId
-            ? "provider_task_id = ?"
-            : "execution_attempt = ?"}
-        ORDER BY execution_attempt DESC
-        LIMIT 1
-      `).get(
-        attempt.task_id,
-        providerAttemptByRemoteId ? task.provider_task_id : task.attempt,
-      ) as
-        | { execution_attempt: number; outcome: string }
-        | undefined;
-      const realOwner = Boolean(
-        task.owner_id && task.owner_id !== "__test__",
-      );
-      if ((providerAttemptByRemoteId || realOwner) && !providerAttempt) {
-        throw new MediaPublicationStateError(
-          "Generation task has no matching paid attempt",
-        );
-      }
-      if (
-        providerAttempt &&
-        ![
-          "boundary-claimed",
-          "accepted",
-          "response-received",
-          "completed",
-        ].includes(providerAttempt.outcome)
-      ) {
-        throw new MediaPublicationStateError(
-          "Generation Provider attempt cannot complete publication",
-        );
-      }
-      providerAttemptExecution = providerAttempt?.execution_attempt;
-    }
     const ready = database.prepare(`
       UPDATE media_assets SET storage_status = 'ready', updated_at = ?
       WHERE owner_id = ? AND kind = ? AND id = ? AND storage_status = 'pending'
@@ -643,50 +585,17 @@ export function finalizeMediaPublication(
         reservation.ownerId,
       );
     }
-    if (attempt.task_id) {
-      if (providerAttemptExecution !== undefined) {
-        const providerCompleted = database.prepare(`
-          UPDATE generation_provider_attempts
-          SET outcome = 'completed', failure_code = NULL, finished_at = ?
-          WHERE
-            task_id = ?
-            AND execution_attempt = ?
-            AND outcome IN (
-              'boundary-claimed', 'accepted', 'response-received', 'completed'
-            )
-        `).run(timestamp, attempt.task_id, providerAttemptExecution);
-        if (providerCompleted.changes !== 1) {
-          throw new MediaPublicationStateError(
-            "Generation Provider attempt changed concurrently",
-          );
-        }
-      }
-      const completed = database.prepare(`
-        UPDATE generation_tasks
-        SET state = 'success', error_code = NULL, error_message = NULL,
-            updated_at = ?
-        WHERE id = ? AND owner_id = ? AND kind = ?
-          AND attempt = ? AND state IN ('running', 'recovering')
-          AND result_asset_id = ?
-      `).run(
-        timestamp, attempt.task_id, reservation.ownerId, reservation.kind,
-        attempt.task_execution_attempt, reservation.id,
-      );
-      if (completed.changes !== 1) throw new MediaPublicationStateError();
-      database.prepare(`
-        INSERT INTO generation_task_events (
-          task_id, state, error_code, error_message, created_at
-        ) VALUES (?, 'success', NULL, NULL, ?)
-      `).run(attempt.task_id, timestamp);
-      afterGeneratedSuccessEventForTests?.();
-    }
     const published = database.prepare(`
       UPDATE media_publication_attempts
       SET state = 'published', updated_at = ?
       WHERE attempt_id = ? AND state = 'external-ready'
     `).run(timestamp, reservation.attemptId);
     if (published.changes !== 1) throw new MediaPublicationStateError();
-  }));
+    return evidence;
+}
+
+export function runMediaPublicationFinalizeFaultForTests() {
+  afterGeneratedSuccessEventForTests?.();
 }
 
 export type DurableMediaReference = Readonly<{
@@ -771,10 +680,20 @@ export function failMediaPublication(
   reservation: MediaPublicationReservation,
   code = "MEDIA_PUBLICATION_FAILED",
 ) {
-  return withDatabase((database) => transaction(database, () => {
+  return withDatabase((database) => transaction(database, () =>
+    failMediaPublicationInTransaction(database, reservation, code)
+  ));
+}
+
+export function failMediaPublicationInTransaction(
+  database: DatabaseSync,
+  reservation: MediaPublicationReservation,
+  code = "MEDIA_PUBLICATION_FAILED",
+) {
     const attempt = readAttempt(database, reservation);
     if (!attempt || attempt.state === "failed") return false;
     if (attempt.state === "published") return false;
+    if (attempt.state === "compensating") return true;
     const timestamp = new Date().toISOString();
     const marked = database.prepare(`
       UPDATE media_publication_attempts
@@ -798,43 +717,7 @@ export function failMediaPublication(
       reservation.ownerId, reservation.ownerId,
       reservation.id, reservation.kind,
     );
-    if (attempt.task_id) {
-      const failed = database.prepare(`
-        UPDATE generation_tasks
-        SET state = CASE
-              WHEN state IN ('running', 'recovering') THEN 'failed' ELSE state END,
-            result_asset_id = NULL,
-            error_code = CASE
-              WHEN state IN ('running', 'recovering') THEN ? ELSE error_code END,
-            error_message = CASE
-              WHEN state IN ('running', 'recovering')
-              THEN '生成结果未能安全发布，系统未重新请求模型' ELSE error_message END,
-            updated_at = ?
-        WHERE id = ? AND owner_id = ? AND kind = ?
-          AND attempt = ? AND state <> 'success' AND result_asset_id = ?
-      `).run(
-        code.slice(0, 80), timestamp, attempt.task_id,
-        reservation.ownerId, reservation.kind,
-        attempt.task_execution_attempt, reservation.id,
-      );
-      if (failed.changes === 1) {
-        const state = database.prepare(
-          "SELECT state FROM generation_tasks WHERE id = ?",
-        ).get(attempt.task_id) as { state: string } | undefined;
-        if (state?.state === "failed") {
-          database.prepare(`
-            INSERT INTO generation_task_events (
-              task_id, state, error_code, error_message, created_at
-            ) VALUES (?, 'failed', ?, ?, ?)
-          `).run(
-            attempt.task_id, code.slice(0, 80),
-            "生成结果未能安全发布，系统未重新请求模型", timestamp,
-          );
-        }
-      }
-    }
     return true;
-  }));
 }
 
 async function removeExternal(
@@ -925,16 +808,9 @@ export async function cleanupPublicationStaging(
 }
 
 export function pendingGeneratedPublicationTaskIds() {
-  return new Set(withDatabase((database) =>
-    (database.prepare(`
-      SELECT publication.task_id AS id
-      FROM media_publication_attempts AS publication
-      JOIN generation_tasks AS task ON task.id = publication.task_id
-      WHERE publication.source = 'generation'
-        AND publication.state IN ('reserved', 'staged', 'external-ready')
-        AND task.state = 'recovering'
-    `).all() as Array<{ id: string }>).map(({ id }) => id)
-  ));
+  return new Set(pendingGeneratedMediaPublications()
+    .map(({ task_id }) => task_id)
+    .filter((taskId): taskId is string => Boolean(taskId)));
 }
 
 export function hasPendingGeneratedMediaPublications() {
@@ -1284,12 +1160,10 @@ function claimUploadRecovery(
   }));
 }
 
-function pendingGeneratedAttempts() {
+export function pendingGeneratedMediaPublications() {
   return withDatabase((database) => database.prepare(`
-    SELECT publication.*, task.state AS task_state, task.prompt,
-           media.storage_status AS media_storage_status
+    SELECT publication.*, media.storage_status AS media_storage_status
     FROM media_publication_attempts AS publication
-    JOIN generation_tasks AS task ON task.id = publication.task_id
     LEFT JOIN media_assets AS media
       ON media.owner_id = publication.owner_id
       AND media.kind = publication.kind
@@ -1299,7 +1173,7 @@ function pendingGeneratedAttempts() {
         'reserved', 'staged', 'external-ready', 'compensating'
       )
     ORDER BY publication.created_at, publication.attempt_id
-  `).all() as PendingGeneratedAttempt[]);
+  `).all() as PendingGeneratedMediaPublication[]);
 }
 
 function reservationFromAttempt(row: AttemptRow): MediaPublicationReservation {
@@ -1334,61 +1208,43 @@ async function validFile(path: string, row: AttemptRow) {
   }
 }
 
-export async function recoverPendingGeneratedMediaPublications() {
-  const outcomes: Array<{
-    action: "blocked" | "failed" | "finalized";
-    assetId: string;
-    taskId: string;
-  }> = [];
-  for (const row of pendingGeneratedAttempts()) {
+export async function preparePendingGeneratedMediaPublication(
+  row: PendingGeneratedMediaPublication,
+) {
     const reservation = reservationFromAttempt(row);
-    if (
-      !["running", "recovering"].includes(row.task_state) ||
-      row.state === "compensating" || row.media_storage_status !== "pending"
-    ) {
-      await compensateMediaPublication(reservation, {
-        code: "MEDIA_RECOVERY_TASK_TERMINAL",
-      });
-      outcomes.push({ action: "failed", assetId: row.asset_id, taskId: row.task_id! });
-      continue;
+    if (row.state === "compensating" || row.media_storage_status !== "pending") {
+      return { action: "failed" as const, reservation };
     }
     if (reservation.storageBackend === "oss") {
-      if (row.state === "external-ready") {
-        // external-ready is written only after the OSS PUT and verification
-        // HEAD both succeed. That durable database state is sufficient to
-        // finish the task/media/history transaction after a restart without
-        // another Provider or OSS request.
-        finalizeMediaPublication(reservation);
-        await cleanupPublicationStaging(reservation).catch(() => undefined);
-        outcomes.push({
-          action: "finalized",
-          assetId: row.asset_id,
-          taskId: row.task_id!,
-        });
-        continue;
-      }
-      outcomes.push({ action: "blocked", assetId: row.asset_id, taskId: row.task_id! });
-      continue;
+      return {
+        action: row.state === "external-ready" ? "ready" as const : "blocked" as const,
+        reservation,
+      };
     }
     const finalValid = await validFile(mediaPublicationFinalPath(reservation), row);
     const stagingValid = await validFile(mediaPublicationStagingPath(reservation), row);
-    if (!finalValid && !stagingValid) {
-      await compensateMediaPublication(reservation, { code: "MEDIA_RECOVERY_EVIDENCE_MISSING" });
-      outcomes.push({ action: "failed", assetId: row.asset_id, taskId: row.task_id! });
-      continue;
-    }
-    if (row.state === "reserved") {
-      // A reserved row has no committed complete-body proof. Even if a partial
-      // file happens to match its zero/default metadata, never publish it.
-      await compensateMediaPublication(reservation, { code: "MEDIA_RECOVERY_STAGE_MISSING" });
-      outcomes.push({ action: "failed", assetId: row.asset_id, taskId: row.task_id! });
-      continue;
+    if (!finalValid && !stagingValid || row.state === "reserved") {
+      return { action: "failed" as const, reservation };
     }
     if (!finalValid) await publishLocalMediaPublication(reservation);
     else if (row.state === "staged") markExternalMediaPublicationReady(reservation);
-    finalizeMediaPublication(reservation);
-    await cleanupPublicationStaging(reservation).catch(() => undefined);
-    outcomes.push({ action: "finalized", assetId: row.asset_id, taskId: row.task_id! });
+    return { action: "ready" as const, reservation };
+}
+
+/** @deprecated Generation owns generated-media recovery orchestration. */
+export async function recoverPendingGeneratedMediaPublications() {
+  const outcomes: Array<{
+    action: "blocked" | "failed" | "ready";
+    assetId: string;
+    taskId: string;
+  }> = [];
+  for (const row of pendingGeneratedMediaPublications()) {
+    const prepared = await preparePendingGeneratedMediaPublication(row);
+    outcomes.push({
+      action: prepared.action,
+      assetId: row.asset_id,
+      taskId: row.task_id!,
+    });
   }
   return outcomes;
 }

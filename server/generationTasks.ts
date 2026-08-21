@@ -50,6 +50,11 @@ import {
 } from "./generationTaskStore";
 import { waitForProviderDelay } from "./providerRequestDeadline";
 import {
+  commitGenerationMediaResult,
+  commitGenerationTextResult,
+  recoverPendingGenerationMediaResults,
+} from "./generationResultCommit";
+import {
   generateOpenRouterImage,
   OpenRouterImageError,
 } from "./openRouterImageProvider";
@@ -108,21 +113,27 @@ import {
   VolcengineArkVideoError,
 } from "./volcengineArkVideoProvider";
 import {
-  createVolcengineArkTextResponse,
-  type ArkTextInput,
-  VolcengineArkTextError,
-} from "./volcengineArkTextProvider";
-import {
   prepareRelayGptImageRequest,
   pollRelayMediaTask,
   RelayProviderError,
-  requestRelayText,
   submitRelayMedia,
   type RelayMediaParamValue,
-  type RelayTextContextInput,
-  type RelayTextProviderProtocol,
   type RelayTransientMediaOutput,
 } from "./relayProviderAdapters";
+import {
+  relayMediaModelContract,
+  relayMediaPollingDecision,
+  relayMediaSubmissionAction,
+} from "./relayMediaModelContracts";
+import {
+  isTextGenerationProtocol,
+  TextGenerationProviderError,
+  type TextGenerationInput,
+} from "./generationProvider";
+import {
+  textProviderRegistry as defaultTextProviderRegistry,
+  type TextProviderRegistry,
+} from "./providerRegistry";
 import {
   downloadProviderResultMedia,
   ProviderResultMediaError,
@@ -138,9 +149,10 @@ import {
   MediaPublicationConflictError,
   MediaPublicationStateError,
   pendingGeneratedPublicationTaskIds,
-  recoverPendingGeneratedMediaPublications,
   recoverPendingMediaDeletions,
   recoverPendingUploadMediaPublications,
+  cleanupPublicationStaging,
+  type MediaPublicationReservation,
 } from "./mediaLifecycle";
 import {
   StorageConfigurationBusyError,
@@ -377,15 +389,6 @@ function taskProviderProtocol(
   return isProviderProtocol(value) ? value : "native";
 }
 
-function relayTextProtocol(
-  protocol: ProviderProtocol,
-): protocol is RelayTextProviderProtocol {
-  return protocol === "openai-chat" ||
-    protocol === "openai-responses" ||
-    protocol === "claude-messages" ||
-    protocol === "gemini-generate-content";
-}
-
 function assertRelayProfile(
   profile: ProviderProfile,
   protocol: RelayProtocol,
@@ -504,7 +507,7 @@ function taskStore(launchOptions?: GenerationLaunchOptions) {
         async () => {
           if (recoverDeletions) await recoverPendingMediaDeletions();
           if (recoverUploads) await recoverPendingUploadMediaPublications();
-          if (recoverGenerated) await recoverPendingGeneratedMediaPublications();
+          if (recoverGenerated) await recoverPendingGenerationMediaResults();
         },
         () => undefined,
       )
@@ -1774,7 +1777,7 @@ function safeFailure(error: unknown, kind: "text" | "audio" | "image" | "video")
   if (error instanceof MurekaAudioError) {
     return { code: error.code, message: error.message };
   }
-  if (error instanceof VolcengineArkTextError) {
+  if (error instanceof TextGenerationProviderError) {
     return { code: error.code, message: error.message };
   }
   if (error instanceof ArkFilesError) {
@@ -1846,6 +1849,7 @@ function isDefinitiveProviderResultSaveError(error: unknown) {
     error instanceof VolcengineArkVideoError ||
     error instanceof MurekaAudioError ||
     error instanceof ProviderMediaError ||
+    error instanceof TextGenerationProviderError ||
     error instanceof ProviderGenerationConfigurationError ||
     error instanceof GenerationProviderAttemptBlockedError;
 }
@@ -2293,7 +2297,7 @@ export function initializePersistentGenerationTaskWorker() {
 
 type TextTaskStore = Pick<
   ReturnType<typeof createGenerationTaskStore>,
-  | "complete"
+  | "dataDirectory"
   | "get"
   | "markProviderResponseReceived"
   | "recordProviderAttempt"
@@ -2305,12 +2309,12 @@ type PersistedTextTaskInput = NodeInputSnapshot & { text?: string };
 function textTaskInputSnapshots(value: unknown): PersistedTextTaskInput[] {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > 64) {
-    throw new VolcengineArkTextError("FORMAT", "文字任务保存的上下文快照无效");
+    throw new TextGenerationProviderError("FORMAT", "文字任务保存的上下文快照无效");
   }
   const seenOrders = new Set<number>();
   return value.map((raw): PersistedTextTaskInput => {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-      throw new VolcengineArkTextError("FORMAT", "文字任务保存的上下文快照无效");
+      throw new TextGenerationProviderError("FORMAT", "文字任务保存的上下文快照无效");
     }
     const item = raw as Partial<PersistedTextTaskInput>;
     if (
@@ -2323,13 +2327,13 @@ function textTaskInputSnapshots(value: unknown): PersistedTextTaskInput[] {
       !/^[a-z0-9._-]{1,160}$/i.test(item.sourceNodeId) ||
       item.role !== `context-${item.kind}`
     ) {
-      throw new VolcengineArkTextError("FORMAT", "文字任务保存的上下文顺序或角色无效");
+      throw new TextGenerationProviderError("FORMAT", "文字任务保存的上下文顺序或角色无效");
     }
     seenOrders.add(Number(item.order));
     if (item.kind === "text") {
       const text = typeof item.text === "string" ? item.text.trim() : "";
       if (!text || text.length > 100_000 || item.assetId !== undefined) {
-        throw new VolcengineArkTextError("FORMAT", "文字任务保存的文字上下文无效");
+        throw new TextGenerationProviderError("FORMAT", "文字任务保存的文字上下文无效");
       }
       return {
         kind: "text",
@@ -2344,7 +2348,7 @@ function textTaskInputSnapshots(value: unknown): PersistedTextTaskInput[] {
       !/^[a-z0-9._-]{1,160}$/i.test(item.assetId) ||
       item.text !== undefined
     ) {
-      throw new VolcengineArkTextError("FORMAT", "文字任务保存的媒体上下文无效");
+      throw new TextGenerationProviderError("FORMAT", "文字任务保存的媒体上下文无效");
     }
     return {
       assetId: item.assetId,
@@ -2374,7 +2378,10 @@ function relayContextMimeType(input: {
       ? new Set(["video/mp4", "video/quicktime", "video/webm"])
       : new Set(["audio/mpeg", "audio/wav"]);
   if (!contentType || !accepted.has(contentType)) {
-    throw new RelayProviderError("FORMAT");
+    throw new TextGenerationProviderError(
+      "FORMAT",
+      "中转站请求或响应格式无法安全识别",
+    );
   }
   return contentType;
 }
@@ -2402,6 +2409,7 @@ export async function executeTextTaskWithDependencies(
     ) => Promise<string>;
     signal?: AbortSignal;
     store: TextTaskStore;
+    textProviderRegistry?: TextProviderRegistry;
     prepareArkImage?: (input: {
       image: ArkImageBytesInput;
       mimeType: string;
@@ -2434,12 +2442,14 @@ export async function executeTextTaskWithDependencies(
   > = [];
   try {
     const protocol = taskProviderProtocol(running);
-    if (protocol !== "native" && !relayTextProtocol(protocol)) {
-      throw new RelayProviderError("FORMAT");
+    if (!isTextGenerationProtocol(protocol)) {
+      throw new TextGenerationProviderError(
+        "FORMAT",
+        "文字模型配置已失效",
+      );
     }
     const snapshots = textTaskInputSnapshots(running.parameters.inputs);
-    const inputs: ArkTextInput[] = [];
-    const relayInputs: RelayTextContextInput[] = [];
+    const inputs: TextGenerationInput[] = [];
     for (const snapshot of snapshots) {
       if (snapshot.kind === "text") {
         inputs.push({
@@ -2448,7 +2458,6 @@ export async function executeTextTaskWithDependencies(
           role: "context-text",
           text: snapshot.text,
         });
-        relayInputs.push({ kind: "text", text: snapshot.text! });
         continue;
       }
       const mediaInput = {
@@ -2524,22 +2533,19 @@ export async function executeTextTaskWithDependencies(
       });
       inputs.push({
         kind: snapshot.kind,
+        mimeType: protocol === "native"
+          ? undefined
+          : relayContextMimeType({
+              ...mediaInput,
+              contentType: dependencies.mediaContentTypeForOwner?.(mediaInput),
+            }),
         order: snapshot.order,
         role: `context-${snapshot.kind}`,
-        url,
+        transientUrl: protocol !== "native" &&
+            url.startsWith("data:audio/mp3;base64,")
+          ? url.replace("data:audio/mp3;base64,", "data:audio/mpeg;base64,")
+          : url,
       });
-      if (protocol !== "native") {
-        relayInputs.push({
-          kind: snapshot.kind,
-          mimeType: relayContextMimeType({
-            ...mediaInput,
-            contentType: dependencies.mediaContentTypeForOwner?.(mediaInput),
-          }),
-          transientUrl: url.startsWith("data:audio/mp3;base64,")
-            ? url.replace("data:audio/mp3;base64,", "data:audio/mpeg;base64,")
-            : url,
-        });
-      }
     }
     const lease = await dependencies.acquireProfile(
       running.providerProfileId,
@@ -2553,61 +2559,36 @@ export async function executeTextTaskWithDependencies(
         lease.credentialRevision,
       );
       const leasedFetch = fetchWithProviderLease(lease, dependencies.fetcher);
-      if (protocol === "native") {
-        if (lease.profile.driver !== "volcengine-ark") {
-          throw new VolcengineArkTextError("FORMAT", "文字模型配置已失效");
-        }
-        result = await createVolcengineArkTextResponse(
+      result = await (dependencies.textProviderRegistry ??
+        defaultTextProviderRegistry).generate(
           lease.profile,
           {
             inputs,
+            maxOutputTokens:
+              typeof running.parameters.maxOutputTokens === "number"
+                ? running.parameters.maxOutputTokens
+                : undefined,
             model: running.providerModelId,
             prompt: running.prompt,
+            protocol,
+            temperature: typeof running.parameters.temperature === "number"
+              ? running.parameters.temperature
+              : undefined,
             thinkingLevel: ["minimal", "medium"].includes(
               String(running.parameters.thinkingLevel),
             )
               ? running.parameters.thinkingLevel as "minimal" | "medium"
               : "medium",
           },
-          leasedFetch,
-          dependencies.signal,
-          () => dependencies.store.recordProviderAttempt(taskId),
-        );
-      } else {
-        const connection = assertRelayProfile(lease.profile, protocol);
-        const relayResult = await requestRelayText(
-          connection,
           {
-            capability: "text",
-            contextInputs: relayInputs,
-            maxOutputTokens: typeof running.parameters.maxOutputTokens === "number"
-              ? running.parameters.maxOutputTokens
-              : undefined,
-            messages: [{ role: "user", text: running.prompt }],
-            model: running.providerModelId,
-            providerProtocol: protocol,
-            temperature: typeof running.parameters.temperature === "number"
-              ? running.parameters.temperature
-              : undefined,
-          },
-          {
-            beforeProviderRequest: () => {
-              dependencies.store.recordProviderAttempt(taskId);
-              // Pinned relay transport bypasses the injected fetch wrapper,
-              // so the Provider lease must be released at the request
-              // boundary instead of waiting for the remote response.
-              lease.release();
-            },
+            beforeProviderRequest: () =>
+              dependencies.store.recordProviderAttempt(taskId),
             fetcher: leasedFetch,
+            releaseProviderLease: lease.release,
             signal: dependencies.signal,
             usePinnedTransport: dependencies.usePinnedRelayTransport,
           },
         );
-        result = {
-          providerUsageTokens: relayResult.usage?.totalTokens,
-          text: relayResult.text,
-        };
-      }
     } finally {
       lease.release();
     }
@@ -2616,12 +2597,15 @@ export async function executeTextTaskWithDependencies(
       executionAttempt: running.attempt,
       taskId,
     });
-    dependencies.store.complete(taskId, {
+    commitGenerationTextResult({
       // Ark does not return a reliable per-response bill. Keep budget
       // accounting conservative by recording the administrator-protected cap.
       actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+      dataDirectory: dependencies.store.dataDirectory,
+      executionAttempt: running.attempt,
       providerUsageTokens: result.providerUsageTokens,
       resultText: result.text,
+      taskId,
     });
   } catch (error) {
     if (dependencies.store.get(taskId)?.state === "cancelled") return;
@@ -2757,7 +2741,8 @@ function appendRelayMediaParam(
 export async function relayMediaParametersForTask(
   task: Pick<
     GenerationTask,
-    "kind" | "modelConfiguration" | "ownerId" | "parameters" | "providerModelId"
+    "kind" | "modelConfiguration" | "ownerId" | "parameters" | "prompt" |
+      "providerModelId"
   >,
   mediaUrlForOwner: typeof providerMediaUrlForOwner,
 ) {
@@ -2765,6 +2750,77 @@ export async function relayMediaParametersForTask(
     !task.ownerId ||
     (task.kind !== "audio" && task.kind !== "image" && task.kind !== "video")
   ) throw new RelayProviderError("FORMAT");
+  const modelContract = relayMediaModelContract(task.providerModelId);
+  if (modelContract) {
+    if (modelContract.capability !== task.kind) {
+      throw new RelayProviderError("FORMAT");
+    }
+    let parameters: Record<string, RelayMediaParamValue>;
+    try {
+      parameters = modelContract.mapParameters(task.parameters, task.prompt) as
+        Record<string, RelayMediaParamValue>;
+    } catch {
+      throw new RelayProviderError("FORMAT");
+    }
+    const rawInputs = task.parameters.inputs;
+    if (rawInputs === undefined) return parameters;
+    if (!Array.isArray(rawInputs) || rawInputs.length > 64) {
+      throw new RelayProviderError("FORMAT");
+    }
+    const seenOrders = new Set<number>();
+    const mediaInputs = rawInputs.map((raw) => {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        throw new RelayProviderError("FORMAT");
+      }
+      const input = raw as Partial<NodeInputSnapshot>;
+      if (
+        !Number.isSafeInteger(input.order) || Number(input.order) < 1 ||
+        seenOrders.has(Number(input.order)) ||
+        typeof input.role !== "string" ||
+        typeof input.sourceNodeId !== "string" ||
+        !/^[a-z0-9._-]{1,160}$/i.test(input.sourceNodeId)
+      ) throw new RelayProviderError("FORMAT");
+      seenOrders.add(Number(input.order));
+      if (input.kind === "text") {
+        if (input.assetId !== undefined) throw new RelayProviderError("FORMAT");
+        return undefined;
+      }
+      if (
+        (input.kind !== "audio" && input.kind !== "image" &&
+          input.kind !== "video") ||
+        typeof input.assetId !== "string" ||
+        !/^[a-z0-9._-]{1,160}$/i.test(input.assetId) ||
+        !modelContract.referencePolicy.allowedKinds.includes(input.kind) ||
+        !modelContract.referencePolicy.allowedRoles.includes(input.role)
+      ) throw new RelayProviderError("FORMAT");
+      return {
+        assetId: input.assetId,
+        kind: input.kind,
+        order: Number(input.order),
+      };
+    }).filter((input): input is NonNullable<typeof input> => Boolean(input))
+      .sort((left, right) => left.order - right.order);
+    if (mediaInputs.length > modelContract.referencePolicy.maximumCount) {
+      throw new RelayProviderError("FORMAT");
+    }
+    if (mediaInputs.length) {
+      const urls: string[] = [];
+      for (const input of mediaInputs) {
+        urls.push(await mediaUrlForOwner({
+          assetId: input.assetId,
+          kind: input.kind,
+          ownerId: task.ownerId,
+        }, {
+          rules: referenceMediaRulesForTask(task) ?? genericReferenceMediaRules,
+        }));
+      }
+      if (modelContract.referencePolicy.parameterName !== "images") {
+        throw new RelayProviderError("FORMAT");
+      }
+      parameters.images = urls;
+    }
+    return parameters;
+  }
   const parameters: Record<string, RelayMediaParamValue> = {};
   for (const [name, value] of Object.entries(task.parameters)) {
     if (
@@ -2917,8 +2973,23 @@ async function readGeneratedPngBody(body: ReadableStream<Uint8Array>) {
   return Buffer.concat(chunks);
 }
 
+async function commitSavedGenerationMedia(saved: {
+  assetId: string;
+  publicationToken?: MediaPublicationReservation;
+}) {
+  if (!saved.publicationToken) {
+    throw new MediaPublicationStateError(
+      "Generated media publication token is missing",
+    );
+  }
+  commitGenerationMediaResult(saved.publicationToken);
+  await cleanupPublicationStaging(saved.publicationToken).catch(() => undefined);
+  return saved.assetId;
+}
+
 async function saveRelayMediaOutput(input: {
   actualCostMicrounits: number;
+  executionAttempt: number;
   expectedAudioContentType?: string;
   output: RelayTransientMediaOutput;
   ownerId: string;
@@ -2939,10 +3010,11 @@ async function saveRelayMediaOutput(input: {
       ownerId: input.ownerId,
       task: {
         actualCostMicrounits: input.actualCostMicrounits,
+        executionAttempt: input.executionAttempt,
         taskId: input.taskId,
       },
     });
-    return saved.assetId;
+    return commitSavedGenerationMedia(saved);
   }
   const downloaded = await downloadProviderResultMedia({
     apiKey: input.profile.apiKey!,
@@ -2961,10 +3033,11 @@ async function saveRelayMediaOutput(input: {
       ownerId: input.ownerId,
       task: {
         actualCostMicrounits: input.actualCostMicrounits,
+        executionAttempt: input.executionAttempt,
         taskId: input.taskId,
       },
     });
-    return saved.assetId;
+    return commitSavedGenerationMedia(saved);
   }
   if (input.output.kind === "video") {
     const saved = await saveGeneratedMp4({
@@ -2973,10 +3046,11 @@ async function saveRelayMediaOutput(input: {
       ownerId: input.ownerId,
       task: {
         actualCostMicrounits: input.actualCostMicrounits,
+        executionAttempt: input.executionAttempt,
         taskId: input.taskId,
       },
     });
-    return saved.assetId;
+    return commitSavedGenerationMedia(saved);
   }
   const saved = await saveGeneratedAudio({
     body: downloaded.body,
@@ -2990,10 +3064,11 @@ async function saveRelayMediaOutput(input: {
     ownerId: input.ownerId,
     task: {
       actualCostMicrounits: input.actualCostMicrounits,
+      executionAttempt: input.executionAttempt,
       taskId: input.taskId,
     },
   });
-  return saved.assetId;
+  return commitSavedGenerationMedia(saved);
 }
 
 function validateRelayPng(bytes: Buffer) {
@@ -3153,6 +3228,7 @@ async function recoverRelayMediaAfterPoll(
           taskId,
           save: () => saveRelayMediaOutput({
             actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+            executionAttempt: running.attempt,
             output: status.outputs[0],
             ownerId: running.ownerId!,
             profile,
@@ -3299,6 +3375,10 @@ async function executeRelayMediaTask(
     return;
   }
   const ownerId = running.ownerId!;
+  const modelContract = relayMediaModelContract(running.providerModelId);
+  if (modelContract && modelContract.capability !== kind) {
+    throw new RelayProviderError("FORMAT");
+  }
   const protocol = taskProviderProtocol(running);
   if (protocol !== "media-generate" && !(kind === "image" && protocol === "gpt-image")) {
     throw new RelayProviderError("FORMAT");
@@ -3309,7 +3389,7 @@ async function executeRelayMediaTask(
   let cleanup: (() => Promise<void>) | undefined;
   let cleanupDeferred = false;
   try {
-    if (!providerTaskId) {
+    if (relayMediaSubmissionAction(providerTaskId) === "submit-once") {
       const built = options?.paramsBuilder
         ? await options.paramsBuilder(running, profile)
         : undefined;
@@ -3356,6 +3436,17 @@ async function executeRelayMediaTask(
         if (
           error instanceof RelayProviderError &&
           error.providerTaskMayStillRun &&
+          modelContract
+        ) {
+          taskStore().transition(taskId, "failed", {
+            code: "PROVIDER_REQUEST_FAILED",
+            message: "已向模型提交但未收到任务号；为避免重复扣费，请人工核对",
+          });
+          return;
+        }
+        if (
+          error instanceof RelayProviderError &&
+          error.providerTaskMayStillRun &&
           (kind === "image" || kind === "video")
         ) {
           cleanupDeferred = true;
@@ -3372,7 +3463,27 @@ async function executeRelayMediaTask(
         throw error;
       }
     }
-    for (let poll = 0; poll < relayMediaPollLimit[kind]; poll += 1) {
+    const attemptCreatedAt = modelContract
+      ? taskStore().providerAttemptCreatedAt(taskId)
+      : undefined;
+    if (modelContract && !attemptCreatedAt) {
+      throw new RelayProviderError("FORMAT", true);
+    }
+    let poll = 0;
+    while (true) {
+      const polling = modelContract
+        ? relayMediaPollingDecision({
+            attemptCreatedAt: attemptCreatedAt!,
+            nowMs: Date.now(),
+            pollCount: poll,
+            policy: modelContract.pollPolicy,
+          })
+        : {
+            delayMs: 2_000,
+            expired: poll >= relayMediaPollLimit[kind],
+          };
+      if (polling.expired) break;
+      poll += 1;
       if (taskStore().get(taskId)?.state !== "running") return;
       let status: Awaited<ReturnType<typeof pollRelayMediaTask>>;
       try {
@@ -3389,6 +3500,7 @@ async function executeRelayMediaTask(
                 capability: kind,
                 externalTaskId: providerTaskId!,
                 providerProtocol: "media-generate",
+                requireResultType: Boolean(modelContract),
               },
               {
                 beforeProviderRequest: providerBoundary(),
@@ -3400,7 +3512,7 @@ async function executeRelayMediaTask(
         });
       } catch (error) {
         if (!isTransientRelayPollError(error)) throw error;
-        await waitForRelayMedia(2_000, controller.signal);
+        await waitForRelayMedia(polling.delayMs, controller.signal);
         continue;
       }
       if (status.state === "failed") {
@@ -3414,6 +3526,7 @@ async function executeRelayMediaTask(
           taskId,
           save: () => saveRelayMediaOutput({
             actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+            executionAttempt: running.attempt,
             expectedAudioContentType: kind === "audio"
               ? relayAudioResultContentType(running.parameters.format)
               : undefined,
@@ -3426,10 +3539,20 @@ async function executeRelayMediaTask(
           }),
         });
         if (saved) return;
-        await waitForRelayMedia(2_000, controller.signal);
+        await waitForRelayMedia(polling.delayMs, controller.signal);
         continue;
       }
-      await waitForRelayMedia(2_000, controller.signal);
+      await waitForRelayMedia(polling.delayMs, controller.signal);
+    }
+    if (modelContract) {
+      const currentTask = taskStore().get(taskId);
+      if (currentTask?.state === "running") {
+        taskStore().transition(taskId, "failed", {
+          code: "RESULT_DELAYED",
+          message: "平台仍在处理，任务号已保留；系统不会重新提交付费请求",
+        });
+      }
+      return;
     }
     if (kind === "image" || kind === "video") {
       await recoverRelayMediaAfterPoll(
@@ -3506,6 +3629,7 @@ async function recoverGptImageFromProviderTask(
       taskId,
       save: () => saveRelayMediaOutput({
         actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+        executionAttempt: running.attempt,
         output: status.outputs[0],
         ownerId: running.ownerId!,
         profile,
@@ -3713,10 +3837,11 @@ async function executeImageTask(taskId: string) {
         ownerId: current.ownerId,
         task: {
           actualCostMicrounits: result.actualCostMicrounits,
+          executionAttempt: running.attempt,
           taskId,
         },
       });
-      void saved;
+      await commitSavedGenerationMedia(saved);
       return;
     }
     throw new RelayProviderError("FORMAT");
@@ -3774,16 +3899,18 @@ async function saveVolcengineVideoResult(
     seedanceMiniAudioPriceMicrounitsPerThousandTokens /
     1_000,
   );
-  await saveGeneratedMp4({
+  const saved = await saveGeneratedMp4({
     body: downloaded.body,
     label: running.prompt.slice(0, 120),
     ownerId: running.ownerId!,
     task: {
       actualCostMicrounits,
+      executionAttempt: running.attempt,
       providerUsageTokens: status.providerUsageTokens,
       taskId,
     },
   });
+  await commitSavedGenerationMedia(saved);
 }
 
 /**
@@ -4273,7 +4400,7 @@ async function executeAudioTask(taskId: string) {
               audioUrl,
               { signal: controller.signal },
             );
-            await saveGeneratedMp3({
+            const stored = await saveGeneratedMp3({
               body: audioBody,
               label: running.prompt.slice(0, 120),
               ownerId: running.ownerId!,
@@ -4281,9 +4408,11 @@ async function executeAudioTask(taskId: string) {
                 // Mureka does not return a per-task bill. Record the configured
                 // protected maximum so budget accounting remains conservative.
                 actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+                executionAttempt: running.attempt,
                 taskId,
               },
             });
+            await commitSavedGenerationMedia(stored);
           },
         });
         if (saved) return;

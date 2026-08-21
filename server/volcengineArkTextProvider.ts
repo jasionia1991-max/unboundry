@@ -1,5 +1,9 @@
 import type { ProviderProfile } from "./providerProfiles";
 import {
+  TextGenerationProviderError,
+  type TextGenerationProvider,
+} from "./generationProvider";
+import {
   ProviderRequestDeadlineError,
   type ProviderRequestDeadline,
   type ProviderRequestDeadlineOverrides,
@@ -376,3 +380,39 @@ export async function createVolcengineArkTextResponse(
     throw new VolcengineArkTextError("NETWORK", "无法连接火山方舟");
   }
 }
+
+export const volcengineArkTextGenerationProvider: TextGenerationProvider = {
+  id: "volcengine-ark-text",
+  registrations: [{
+    driver: "volcengine-ark",
+    protocol: "native",
+  }],
+  async generate(request, execution) {
+    try {
+      return await createVolcengineArkTextResponse(
+        execution.profile,
+        {
+          inputs: request.inputs.map((input): ArkTextInput => ({
+            fileId: input.fileId,
+            kind: input.kind,
+            order: input.order,
+            role: input.role,
+            text: input.text,
+            url: input.transientUrl,
+          })),
+          model: request.model,
+          prompt: request.prompt,
+          thinkingLevel: request.thinkingLevel,
+        },
+        execution.fetcher,
+        execution.signal,
+        execution.beforeProviderRequest,
+      );
+    } catch (error) {
+      if (error instanceof VolcengineArkTextError) {
+        throw new TextGenerationProviderError(error.code, error.message);
+      }
+      throw error;
+    }
+  },
+};

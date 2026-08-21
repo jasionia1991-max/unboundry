@@ -276,6 +276,10 @@ export function beginMediaDeletion(
   request: IncomingMessage,
   kind: MediaKind,
   id: string,
+  assertDeletionAllowedInTransaction?: (
+    database: DatabaseSync,
+    input: Readonly<{ assetId: string; kind: MediaKind; ownerId: string }>,
+  ) => void,
 ): MediaDeletionResult | undefined {
   const identity = requestIdentity(request);
   if (!identity) return undefined;
@@ -295,16 +299,11 @@ export function beginMediaDeletion(
       database.exec("COMMIT");
       return { action: "deferred" };
     }
-    const publishedTask = database.prepare(`
-      SELECT 1
-      FROM generation_tasks
-      WHERE owner_id = ? AND kind = ? AND result_asset_id = ?
-        AND state = 'success'
-      LIMIT 1
-    `).get(ownerId, kind, id);
-    if (publishedTask) {
-      throw new Error("Published generation results cannot be deleted");
-    }
+    assertDeletionAllowedInTransaction?.(database, {
+      assetId: id,
+      kind,
+      ownerId,
+    });
     const publication = database.prepare(`
       SELECT attempt_id, source, state, error_code
       FROM media_publication_attempts
