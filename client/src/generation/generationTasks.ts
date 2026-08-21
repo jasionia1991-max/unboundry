@@ -4,7 +4,10 @@ import type {
 } from "../../../types/nodeInputs";
 import { runExclusiveCanvasSubmit } from "./saveGate";
 import { rememberFinishedTaskDuration } from "./taskDurationCache";
-import { hasForeignActiveGroupRunLeaseForCanvas } from "./groupRunCheckpoint";
+import {
+  hasConflictingActiveGroupRunLeaseForCanvas,
+  runWithGroupRunCanvasAdmission,
+} from "./groupRunCheckpoint";
 
 export type GenerationTaskKind = "text" | "image" | "video" | "audio";
 
@@ -83,12 +86,20 @@ export class GenerationRequestError extends Error {
   }
 }
 
-async function assertNoForeignGroupRun(canvasId: string) {
-  if (await hasForeignActiveGroupRunLeaseForCanvas(canvasId)) {
+async function assertNoConflictingGroupRun(
+  canvasId: string,
+  nodeId?: string,
+  workflowRunId?: string,
+) {
+  if (await hasConflictingActiveGroupRunLeaseForCanvas(
+    canvasId,
+    nodeId,
+    workflowRunId,
+  )) {
     throw new GenerationRequestError(
-      "另一个标签页正在执行整组，请等待完成后再操作当前画布任务",
+      "当前节点正在整组执行中，请等待完成后再单独生成",
       409,
-      "GROUP_RUN_ACTIVE_IN_OTHER_TAB",
+      "GROUP_RUN_ACTIVE",
     );
   }
 }
@@ -313,15 +324,15 @@ export async function reconcileGenerationTask(
   providerTaskId?: string,
   signal?: AbortSignal,
 ): Promise<GenerationReconcileResult> {
-  await assertNoForeignGroupRun(target.canvasId);
-  return runExclusiveCanvasSubmit(target.canvasId, () =>
-    reconcileGenerationTaskUnlocked(
+  return runExclusiveCanvasSubmit(target.canvasId, async () => {
+    await assertNoConflictingGroupRun(target.canvasId, target.nodeId);
+    return reconcileGenerationTaskUnlocked(
       target,
       waitForCanvasRevision,
       providerTaskId,
       signal,
-    ),
-  );
+    );
+  });
 }
 
 async function reconcileGenerationTaskUnlocked(
@@ -356,26 +367,29 @@ async function reconcileGenerationTaskUnlocked(
       "RETRY_TASK_CHANGED",
     );
   }
-  const body = await readMutationJson<GenerationReconcileResult>(
-    `/api/generation-tasks/${encodeURIComponent(target.taskId)}/reconcile`,
-    {
-      body: JSON.stringify({
-        canvasId: target.canvasId,
-        expectedAttempt: before.attempt,
-        expectedCanvasRevision,
-        expectedGenerationInputKey: target.generationInputKey,
-        expectedUpdatedAt: before.updatedAt,
-        kind: target.kind,
-        nodeId: target.nodeId,
-        ...(providerTaskId?.trim()
-          ? { providerTaskId: providerTaskId.trim() }
-          : {}),
-      }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    },
-    signal,
-  );
+  const body = await runWithGroupRunCanvasAdmission(target.canvasId, async () => {
+    await assertNoConflictingGroupRun(target.canvasId, target.nodeId);
+    return readMutationJson<GenerationReconcileResult>(
+      `/api/generation-tasks/${encodeURIComponent(target.taskId)}/reconcile`,
+      {
+        body: JSON.stringify({
+          canvasId: target.canvasId,
+          expectedAttempt: before.attempt,
+          expectedCanvasRevision,
+          expectedGenerationInputKey: target.generationInputKey,
+          expectedUpdatedAt: before.updatedAt,
+          kind: target.kind,
+          nodeId: target.nodeId,
+          ...(providerTaskId?.trim()
+            ? { providerTaskId: providerTaskId.trim() }
+            : {}),
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      },
+      signal,
+    );
+  });
   if (!body?.outcome || !body.task || !retryTargetMatches(body.task, target)) {
     throw new GenerationRequestError(
       "核对结果响应异常，请稍后再试",
@@ -431,6 +445,7 @@ export type GenerationRetryGate = () => Promise<number>;
 
 export type GenerationOwnershipOptions = {
   generationOwnershipKey?: string;
+  workflowRunId?: string;
 };
 
 function retryTargetMatches(
@@ -464,10 +479,10 @@ export async function retryGenerationTask(
   waitForCanvasRevision: GenerationRetryGate,
   signal?: AbortSignal,
 ): Promise<GenerationTaskSummary> {
-  await assertNoForeignGroupRun(target.canvasId);
-  return runExclusiveCanvasSubmit(target.canvasId, () =>
-    retryGenerationTaskUnlocked(target, waitForCanvasRevision, signal),
-  );
+  return runExclusiveCanvasSubmit(target.canvasId, async () => {
+    await assertNoConflictingGroupRun(target.canvasId, target.nodeId);
+    return retryGenerationTaskUnlocked(target, waitForCanvasRevision, signal);
+  });
 }
 
 async function retryGenerationTaskUnlocked(
@@ -505,14 +520,20 @@ async function retryGenerationTaskUnlocked(
     nodeId: target.nodeId,
   });
   try {
-    const accepted = await readMutationJson<GenerationTaskSummary>(
-      `/api/generation-tasks/${encodeURIComponent(target.taskId)}/retry`,
-      {
-        body,
-        headers: { "Content-Type": "application/json" },
-        method: "POST",
+    const accepted = await runWithGroupRunCanvasAdmission(
+      target.canvasId,
+      async () => {
+        await assertNoConflictingGroupRun(target.canvasId, target.nodeId);
+        return readMutationJson<GenerationTaskSummary>(
+          `/api/generation-tasks/${encodeURIComponent(target.taskId)}/retry`,
+          {
+            body,
+            headers: { "Content-Type": "application/json" },
+            method: "POST",
+          },
+          signal,
+        );
       },
-      signal,
     );
     if (!retryTargetMatches(accepted, target)) {
       throw new GenerationRequestError(
@@ -896,7 +917,11 @@ export async function ensureGenerationTask(
   assertCurrentInput?: () => void,
   options: GenerationOwnershipOptions = {},
 ): Promise<EnsuredGenerationTask> {
-  await assertNoForeignGroupRun(input.canvasId);
+  await assertNoConflictingGroupRun(
+    input.canvasId,
+    input.nodeId,
+    options.workflowRunId,
+  );
   const intent = prepareGenerationSubmission(accountId, kind, input, options);
   const prepared = { ...input, idempotencyKey: intent.idempotencyKey };
   const existing = await getGenerationTaskByIdempotency(
@@ -950,30 +975,39 @@ export async function ensureGenerationTask(
     );
   }
 
-  // No await is allowed between this last caller-owned semantic fence and the
-  // paid POST invocation. postGeneration starts fetch synchronously.
-  assertCurrentInput?.();
   try {
-    const task = await postGeneration(kind, prepared);
-    if (
-      task.canvasId !== input.canvasId ||
-      task.kind !== kind ||
-      task.nodeId !== input.nodeId ||
-      task.state === "cancelled"
-    ) {
-      throw new GenerationRequestError(
-        "生成任务关联不一致，请修改内容后再试",
-        409,
-        "IDEMPOTENCY_CONFLICT",
+    return await runWithGroupRunCanvasAdmission(input.canvasId, async () => {
+      await assertNoConflictingGroupRun(
+        input.canvasId,
+        input.nodeId,
+        options.workflowRunId,
       );
-    }
-    rememberGenerationTask(accountId, intent, task);
-    return {
-      generationOwnershipKey: intent.generationOwnershipKey,
-      idempotencyKey: intent.idempotencyKey,
-      recovered: false,
-      task: taskWithGenerationOwnership(task, intent),
-    };
+      // Keep the caller-owned semantic fence adjacent to the paid POST while
+      // the cross-tab canvas admission lock is held.
+      assertCurrentInput?.();
+      const task = await postGeneration(kind, prepared);
+      if (
+        task.canvasId !== input.canvasId ||
+        task.kind !== kind ||
+        task.nodeId !== input.nodeId ||
+        task.state === "cancelled"
+      ) {
+        throw new GenerationRequestError(
+          "生成任务关联不一致，请修改内容后再试",
+          409,
+          "IDEMPOTENCY_CONFLICT",
+        );
+      }
+      // Persist the accepted task before releasing the cross-tab admission
+      // lock so a following group claim can observe authoritative server work.
+      rememberGenerationTask(accountId, intent, task);
+      return {
+        generationOwnershipKey: intent.generationOwnershipKey,
+        idempotencyKey: intent.idempotencyKey,
+        recovered: false,
+        task: taskWithGenerationOwnership(task, intent),
+      };
+    });
   } catch (error) {
     // The POST may have reached the server even when its response did not reach
     // the browser. One read-only reconciliation prevents the next click from
@@ -1044,14 +1078,18 @@ export async function submitImageGeneration(input: {
   };
   prompt: string;
 }): Promise<GenerationTaskSummary> {
-  await assertNoForeignGroupRun(input.canvasId);
-  return readJson(
-    await fetch("/api/generation-tasks", {
-      body: JSON.stringify({ ...input, kind: "image" }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    }),
-  );
+  return runExclusiveCanvasSubmit(input.canvasId, async () => {
+    return runWithGroupRunCanvasAdmission(input.canvasId, async () => {
+      await assertNoConflictingGroupRun(input.canvasId, input.nodeId);
+      return readJson(
+        await fetch("/api/generation-tasks", {
+          body: JSON.stringify({ ...input, kind: "image" }),
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        }),
+      );
+    });
+  });
 }
 
 export type GenerationPreflightInput = {
@@ -1151,14 +1189,18 @@ export async function preflightTextGeneration(
 export async function submitTextGeneration(
   input: TextGenerationInput,
 ): Promise<GenerationTaskSummary> {
-  await assertNoForeignGroupRun(input.canvasId);
-  return readJson(
-    await fetch("/api/generation-tasks", {
-      body: JSON.stringify({ ...input, kind: "text" }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    }),
-  );
+  return runExclusiveCanvasSubmit(input.canvasId, async () => {
+    return runWithGroupRunCanvasAdmission(input.canvasId, async () => {
+      await assertNoConflictingGroupRun(input.canvasId, input.nodeId);
+      return readJson(
+        await fetch("/api/generation-tasks", {
+          body: JSON.stringify({ ...input, kind: "text" }),
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        }),
+      );
+    });
+  });
 }
 
 export async function submitVideoGeneration(input: {
@@ -1173,14 +1215,18 @@ export async function submitVideoGeneration(input: {
   parameters: Record<string, boolean | number | string>;
   prompt: string;
 }): Promise<GenerationTaskSummary> {
-  await assertNoForeignGroupRun(input.canvasId);
-  return readJson(
-    await fetch("/api/generation-tasks", {
-      body: JSON.stringify({ ...input, kind: "video" }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    }),
-  );
+  return runExclusiveCanvasSubmit(input.canvasId, async () => {
+    return runWithGroupRunCanvasAdmission(input.canvasId, async () => {
+      await assertNoConflictingGroupRun(input.canvasId, input.nodeId);
+      return readJson(
+        await fetch("/api/generation-tasks", {
+          body: JSON.stringify({ ...input, kind: "video" }),
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        }),
+      );
+    });
+  });
 }
 
 export async function preflightVideoGeneration(input: {
@@ -1210,14 +1256,18 @@ export async function submitAudioGeneration(input: {
   parameters: Record<string, boolean | number | string>;
   prompt: string;
 }): Promise<GenerationTaskSummary> {
-  await assertNoForeignGroupRun(input.canvasId);
-  return readJson(
-    await fetch("/api/generation-tasks", {
-      body: JSON.stringify({ ...input, kind: "audio" }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    }),
-  );
+  return runExclusiveCanvasSubmit(input.canvasId, async () => {
+    return runWithGroupRunCanvasAdmission(input.canvasId, async () => {
+      await assertNoConflictingGroupRun(input.canvasId, input.nodeId);
+      return readJson(
+        await fetch("/api/generation-tasks", {
+          body: JSON.stringify({ ...input, kind: "audio" }),
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        }),
+      );
+    });
+  });
 }
 
 export async function waitForGenerationTask(

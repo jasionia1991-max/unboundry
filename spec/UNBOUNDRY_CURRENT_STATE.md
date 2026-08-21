@@ -7,6 +7,14 @@
 
 线上是 **v0.6.26 / schema39**（整组执行不受画布视野影响），2026-08-21 已发布；agent 已在真实页面启动“一键上新+自检”，随后把父组拖出屏幕，整组仍完整跑完 11/11，待用户主观复验。v0.6.25 为上一版。用户要的核心结果仍是：**上传一张图，工作流自己跑完，用户下载结果**。
 
+## v0.6.27 画布执行解耦候选（2026-08-21）
+
+- 状态：`IMPLEMENTED_TARGETED_AUTO_PASS / NOT_RELEASED`。四类整组执行已从React节点registration迁移到静态headless executor；`workflowRenderRetention.ts`已删除；同画布不相交组可并行，重叠节点/直接输入在付费提交前阻止。
+- 所有权：结果应用必须匹配runId、taskId、ownershipKey、nodeId和kind；checkpoint、lease、lock与摘要按runId隔离且checkpoint写入强制匹配lease runId，一轮不能清除另一轮。手动单节点提交也必须避让同标签活跃组lease；headless executor只放行自己的runId。
+- 自动证据：m22 `37/37`、m38 `15/15`、m40 `14/14`、m41 `51/51`、m44 `8/8`、m68 `4/4`均通过。m22直接覆盖四模态headless preflight/run/recover/apply、多run导航/精确checkpoint清理，以及双run反例：A成功、A失败、A停止时B均继续；A整组和两层子节点真实卸载后，第二层仍提交、完成并落盘。运行中无关节点编辑/移动/连接/删除/复制和视图缩放仍可用。
+- 旧候选曾在干净快照得到`119/119 specs、1027/1027 tests`，但三类独立终审随后发现并促成四项P1纠正，冻结库存现为1029，因此旧全量不登记为最终回执。尚需在提交后的干净最终候选HEAD上重跑full、完成三路复审、真实Provider/页面、发布与生产技术验收。
+- 权威方案、矩阵与施工续接分别见 `spec/UNBOUNDRY_CANVAS_EXECUTION_DECOUPLING_PLAN_2026-08-21.md`、`spec/UNBOUNDRY_CANVAS_EXECUTION_ACCEPTANCE_MATRIX_2026-08-21.md`、`spec/UNBOUNDRY_CANVAS_EXECUTION_CHECKPOINT.md`。
+
 ## INC-GEN-012 / v0.6.26 已发布（2026-08-21）
 
 - 状态：`PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`。用户已确认 v0.6.26 并授权上线与一次真实网站技术实测；授权已执行完毕。权威方案见 `spec/INC_GEN_012_VIEWPORT_INDEPENDENT_GROUP_RUN_2026-08-20.md`，生产回执见 `spec/V0_6_26_PRODUCTION_RECEIPT_2026-08-21.json`。
@@ -19,7 +27,7 @@
 
 ## v0.6.25 发布与真实验证（2026-08-20）
 
-- 当前代码包版本：**v0.6.26**；线上版本同为 **v0.6.26**。v0.6.26 状态 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`；v0.6.25 的完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
+- 当前代码包版本：**v0.6.27**；线上版本仍为 **v0.6.26**，v0.6.27 正在完成“画布—工作流执行—任务恢复”渐进式解耦的安全验证与发布收口。v0.6.26 状态 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`；v0.6.25 的完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
 - 事二「生成任务一直排队中」已在线闭环：已知任务 `c479826f-a426-4a11-854c-79ecc802bcbc` 从 `queued / attempt 1 / provider_task_id null` 在 v0.6.25 重启后自动接力，平台任务 `111092189` 完成，最终 `success / attempt 2`；没有盲目重复。
 - 事一已查清：2026-08-19 15:23–15:26Z 上游“服装主体标准化”图片成功并产出 11,596,744 字节 PNG；v0.6.23 的 10MB 文字输入预检随后拦下四个下游文字节点，五个后代未运行。不是客户端 DAG 漏发；红字把失败错归因给已经成功的上游图片节点。
 - “2:33 三张主图从未提交”的旧说法已被生产任务表与 nginx 202 提交记录否定：该轮 7 图 + 4 文全部 success。
@@ -29,15 +37,15 @@
 ## 线上
 
 - 地址：https://canvas.mymy.ltd
-- 指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.25-generation-hardening-20260820`
-- 源码：commit `57cef4ce26fc43cd0f828756850a2d3effcb161b`，tree `626b5945d64cde1a1c07c7b7765ce8a9661e82ff`
-- 标签：`v0.6.25` 精确指向该源码
-- 功能 PR：#50，merge `e7174b0740ff1573cc8bda36f1242b8da8ff9e81`，main tree 与 tag tree 一致
-- 冻结备份：`/var/lib/unboundry-rollbacks/v0.6.25-frozen-789d29`（365 文件，两份清单 SHA 同为 `d15f34332d692aafd8db2aaba4c66ab475fb5790503b236b614ffb2570b7329e`）
-- 上一不可变版：`v0.6.24-ark-files-20260820`（以及更早版本）仍保留
-- 切换前恢复副本：schema39、integrity ok、FK0、tasks549、attempts556、active1（已知 stuck queued）、公共模板50（48 published）；授权真实验证后 tasks550、attempts558、active0
+- 指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.26-viewport-independent-group-run-20260821`
+- 源码：commit `dc29cc00d5b379e3e8b8cb1746dc6cf85f01c140`，tree `0770cb7c03e335620906d0b3954e510aa30f9bf2`
+- 标签：`v0.6.26` 精确指向该源码
+- 功能 PR：#53，merge `4a675be056aaca4b3d3a3239136857fecbefbb94`，main tree 与 tag tree 一致
+- 冻结备份：`/var/lib/unboundry-rollbacks/v0.6.26-frozen-234452`（365 文件，两份清单 SHA 同为 `6b64da90d996446e570a60bc0454ead445defe42df09579787e796e39864b525`）
+- 上一不可变版：`v0.6.25-generation-hardening-20260820`（以及更早版本）仍保留
+- v0.6.26切换基准：schema39、integrity ok、FK0、tasks569、attempts577、公共模板50（48 published）、active0；本轮发布前只读现场为tasks590、attempts598、公共模板50（48 published）、active0。
 - 生产并发配置已恢复推荐值：per_user 20 / image 10 / video 2 / audio 2 / text 10 / RPM 120
-- 正式安全全量：`119/119 specs、1018/1018 tests PASS`
+- 正式安全全量：`119/119 specs、1025/1025 tests PASS`
 - v0.6.25 已于 2026-08-20 发布，agent 真实页面与最小真实 Provider 验证通过，待用户主观复验；更早用户已通过版本状态保持不变
 
 ## 最新发布（2026-08-20 已发布，agent 技术实页通过，待用户主观复验）

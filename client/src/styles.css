@@ -6449,8 +6449,8 @@ sup {
   cursor: pointer;
 }
 
-/* Keep active workflow nodes mounted without allowing their configuration to
-   change midway through the frozen run snapshot. */
+/* Participating nodes stay immutable while execution itself remains headless
+   and independent of whether React Flow currently mounts the node. */
 .react-flow__node.workflow-run-locked {
   pointer-events: none !important;
   user-select: none;

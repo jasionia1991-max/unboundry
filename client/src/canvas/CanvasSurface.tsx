@@ -95,7 +95,6 @@ import {
   WorkflowExecutionProvider,
 } from "../generation/WorkflowExecutionProvider";
 import { isExecutableWorkflowNode } from "../generation/workflowExecution";
-import { retainWorkflowNodesForRender } from "../generation/workflowRenderRetention";
 import {
   resolvePublishedModel,
   type PublishedModel,
@@ -2394,8 +2393,6 @@ export function CanvasSurface({
   const [workflowRetainedNodeIds, setWorkflowRetainedNodeIds] = useState<
     ReadonlySet<string>
   >(new Set());
-  const workflowRetainedNodeIdsRef = useRef<ReadonlySet<string>>(new Set());
-  workflowRetainedNodeIdsRef.current = workflowRetainedNodeIds;
   const [edges, setEdgesState] = useEdgesState<CuttableEdge>(
     workflowFixture || persistenceFixture
       ? emptyEdges
@@ -2403,31 +2400,25 @@ export function CanvasSurface({
   );
   const renderedNodes = useMemo(
     () => {
-      const retained = retainWorkflowNodesForRender(
-        nodes,
-        workflowRetainedNodeIds,
-      );
-      if (workflowRetainedNodeIds.size === 0) return retained;
-      const retainedGroupIds = new Set(
-        nodes
-          .filter(
-            (node) =>
-              node.type === "group" && workflowRetainedNodeIds.has(node.id),
-          )
-          .map((node) => node.id),
-      );
-      if (retainedGroupIds.size === 0) return retained;
-      return retained.map((node) =>
-        retainedGroupIds.has(node.id)
+      if (workflowRetainedNodeIds.size === 0) return nodes;
+      return nodes.map((node) =>
+        workflowRetainedNodeIds.has(node.id)
           ? {
               ...node,
-              // Keep the group toolbar and whole-group drag interactive so a
-              // running group can be moved off-screen. Structure/configuration
-              // locks are enforced by GroupNode and CanvasSurface changes.
-              className: [node.className, "workflow-run-group"]
+              ariaLabel: node.type === "group"
+                ? `${node.data.title ?? "运行组"}，整组执行中，结构操作已锁定`
+                : `${node.data.title ?? node.data.label ?? node.id}，整组执行中，Prompt、模型、参数和输入已锁定`,
+              className: [
+                node.className,
+                node.type === "group"
+                  ? "workflow-run-group"
+                  : "workflow-run-locked",
+              ]
                 .filter(Boolean)
                 .join(" "),
               connectable: false,
+              deletable: false,
+              draggable: node.type === "group" ? node.draggable : false,
             }
           : node,
       );
@@ -2477,7 +2468,7 @@ export function CanvasSurface({
   useEffect(() => {
     if (workflowRetainedNodeIds.size === 0) return;
     // A run can start while an old graph menu is open. Close those menus at
-    // the lease boundary so stale actions cannot bypass the renderer lock.
+    // the lock boundary so stale actions cannot mutate participating nodes.
     setBatchDrag(undefined);
     setBlankContextMenu(undefined);
     setCreateMenu(undefined);
@@ -2995,10 +2986,6 @@ export function CanvasSurface({
       setUploadError("");
       return;
     }
-    if (workflowRetainedNodeIds.size > 0) {
-      showWorkflowToast("整组执行中，不能修改画布结构", "error");
-      return;
-    }
     if (!persistenceReady) return;
     // 其他命令（例如 apply-template）只清理浮层，绝不切换“添加节点”菜单。
     const clearTransientMenus = () => {
@@ -3027,7 +3014,7 @@ export function CanvasSurface({
           },
     );
     clearTransientMenus();
-  }, [persistenceReady, shellMenuCommand, showWorkflowToast, workflowRetainedNodeIds]);
+  }, [persistenceReady, shellMenuCommand]);
 
   useEffect(() => {
     onAddMenuOpenChange?.(Boolean(createMenu));
@@ -3403,11 +3390,6 @@ export function CanvasSurface({
     if (shellMenuCommand?.action !== "apply-template") return;
     if (shellMenuCommand.sequence === appliedTemplateSequence.current) return;
     if (!persistenceReady) return;
-    if (workflowRetainedNodeIds.size > 0) {
-      appliedTemplateSequence.current = shellMenuCommand.sequence;
-      showWorkflowToast("整组执行中，不能修改画布结构", "error");
-      return;
-    }
     const graph = shellMenuCommand.graph;
     if (!graph || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) {
       return;
@@ -3670,8 +3652,6 @@ export function CanvasSurface({
     setNodes,
     persistenceReady,
     shellMenuCommand,
-    showWorkflowToast,
-    workflowRetainedNodeIds,
   ]);
   const handleCanvasWheelCapture = useCallback(
     (event: ReactWheelEvent<HTMLDivElement>) => {
@@ -3815,10 +3795,6 @@ export function CanvasSurface({
   const applyDuplicatedGraph = (
     duplicated: NonNullable<ReturnType<typeof duplicateGraph>>,
   ) => {
-    if (workflowRetainedNodeIds.size > 0) {
-      showWorkflowToast("整组执行中，不能复制或粘贴画布节点", "error");
-      return;
-    }
     checkpoint();
     setNodes((current) => [
       ...current.map((node) => ({ ...node, selected: false })),
@@ -3835,10 +3811,6 @@ export function CanvasSurface({
   };
 
   const pasteInternalNode = (pastePoint?: { x: number; y: number }) => {
-    if (workflowRetainedNodeIds.size > 0) {
-      showWorkflowToast("整组执行中，不能复制或粘贴画布节点", "error");
-      return false;
-    }
     const copied = internalClipboard.current;
     if (!copied || copied.nodes.length === 0) return false;
     clipboardPasteSequence.current += 1;
@@ -3850,10 +3822,6 @@ export function CanvasSurface({
   };
 
   const duplicateContextNode = (nodeId: string) => {
-    if (workflowRetainedNodeIds.size > 0) {
-      showWorkflowToast("整组执行中，不能复制或粘贴画布节点", "error");
-      return false;
-    }
     const node = nodesRef.current.find((candidate) => candidate.id === nodeId);
     if (!node) return false;
     const source = node.parentId
@@ -3891,10 +3859,6 @@ export function CanvasSurface({
     };
   };
   const deleteNodeFromContextMenu = (nodeId: string) => {
-    if (workflowRetainedNodeIds.size > 0) {
-      showWorkflowToast("整组执行中，不能删除画布节点", "error");
-      return;
-    }
     const root = nodesRef.current.find((node) => node.id === nodeId);
     if (!root) return;
     const deletedIds = new Set([nodeId]);
@@ -3902,6 +3866,10 @@ export function CanvasSurface({
       nodesRef.current.forEach((node) => {
         if (node.parentId === nodeId) deletedIds.add(node.id);
       });
+    }
+    if ([...deletedIds].some((id) => workflowRetainedNodeIds.has(id))) {
+      showWorkflowToast("整组执行中，不能删除参与节点", "error");
+      return;
     }
     const deletedNodes = nodesRef.current.filter((node) =>
       deletedIds.has(node.id),
@@ -3947,9 +3915,7 @@ export function CanvasSurface({
     type: "audio" | "image" | "playlist" | "text" | "video",
   ) => {
     if (
-      !persistenceReadyRef.current ||
-      workflowRetainedNodeIds.size > 0 ||
-      !createMenu
+      !persistenceReadyRef.current || !createMenu
     ) {
       return;
     }
@@ -3989,7 +3955,7 @@ export function CanvasSurface({
     asset: CanvasLibraryAsset,
     screen: { x: number; y: number },
   ) => {
-    if (!persistenceReadyRef.current || workflowRetainedNodeIds.size > 0) {
+    if (!persistenceReadyRef.current) {
       return;
     }
     const bounds = worldRef.current?.getBoundingClientRect();
@@ -4061,9 +4027,7 @@ export function CanvasSurface({
   }, [historyAssetRequest?.sequence, persistenceReady]);
   const uploadImage = async (file?: File) => {
     if (
-      !persistenceReadyRef.current ||
-      workflowRetainedNodeIds.size > 0 ||
-      !file ||
+      !persistenceReadyRef.current || !file ||
       !createMenu ||
       uploading
     ) {
@@ -4079,7 +4043,6 @@ export function CanvasSurface({
       createdAssetId = asset.assetId;
       if (
         !persistenceReadyRef.current ||
-        workflowRetainedNodeIdsRef.current.size > 0 ||
         persistenceLoadIdentity.current.epoch !== loadIdentity.epoch ||
         persistenceLoadIdentity.current.scopeId !== loadIdentity.scopeId
       ) {
@@ -6022,8 +5985,7 @@ export function CanvasSurface({
       if (
         !target &&
         commandKey &&
-        workflowRetainedNodeIds.size > 0 &&
-        (key === "a" || key === "v" || key === "x" || key === "z")
+        workflowRetainedNodeIds.size > 0 && key === "z"
       ) {
         event.preventDefault();
         event.stopPropagation();
@@ -6032,7 +5994,10 @@ export function CanvasSurface({
       if (!target && commandKey && !event.shiftKey && key === "a") {
         const selectableIds = new Set(
           nodesRef.current
-            .filter((node) => !node.parentId)
+            .filter(
+              (node) =>
+                !node.parentId && !workflowRetainedNodeIds.has(node.id),
+            )
             .map((node) => node.id),
         );
         if (selectableIds.size) {
@@ -6253,7 +6218,10 @@ export function CanvasSurface({
         }
       : undefined;
   const createGroup = () => {
-    if (!canGroupSelection || workflowRetainedNodeIds.size > 0) return;
+    if (
+      !canGroupSelection ||
+      groupCandidates.some((node) => workflowRetainedNodeIds.has(node.id))
+    ) return;
     const bounds = groupCandidates.reduce(
       (result, node) => {
         const size = nodeSize(node);
@@ -6613,7 +6581,6 @@ export function CanvasSurface({
       onDoubleClick={(event) => {
         if (
           !persistenceReady ||
-          workflowRetainedNodeIds.size > 0 ||
           !worldRef.current ||
           !(event.target instanceof Element) ||
           event.target.closest(
@@ -6660,11 +6627,7 @@ export function CanvasSurface({
         connectionLineStyle={{ stroke: "#ffffff60", strokeWidth: 1 }}
         defaultViewport={viewport}
         defaultEdgeOptions={{ interactionWidth: 20 }}
-        deleteKeyCode={
-          persistenceReady && workflowRetainedNodeIds.size === 0
-            ? ["Backspace", "Delete"]
-            : null
-        }
+        deleteKeyCode={persistenceReady ? ["Backspace", "Delete"] : null}
         edges={visibleEdges}
         edgeTypes={edgeTypes}
         edgesReconnectable={false}
@@ -6677,7 +6640,7 @@ export function CanvasSurface({
         minZoom={0.15}
         nodes={renderedNodes}
         nodesDraggable={persistenceReady && !activePlaylist && !agentReferenceMode}
-        nodesConnectable={persistenceReady && workflowRetainedNodeIds.size === 0}
+        nodesConnectable={persistenceReady}
         nodeTypes={nodeTypes}
         onlyRenderVisibleElements
         onConnect={addConnection}
@@ -6784,11 +6747,17 @@ export function CanvasSurface({
         }}
         onEdgesChange={(changes) => {
           if (!persistenceReady) return;
-          if (
-            workflowRetainedNodeIds.size > 0 &&
-            changes.some((change) => change.type === "remove")
-          ) return;
-          onEdgesChange(changes);
+          const accepted = changes.filter((change) => {
+            if (change.type !== "remove") return true;
+            const edge = edgesRef.current.find((candidate) => candidate.id === change.id);
+            return !edge ||
+              (!workflowRetainedNodeIds.has(edge.source) &&
+                !workflowRetainedNodeIds.has(edge.target));
+          });
+          if (accepted.length !== changes.length) {
+            showWorkflowToast("整组执行中，不能删除参与节点的连线", "error");
+          }
+          onEdgesChange(accepted);
         }}
         onDelete={({ edges: deletedEdges, nodes: deletedNodes }) => {
           if (!persistenceReady) return;
@@ -6800,10 +6769,6 @@ export function CanvasSurface({
         }}
         onBeforeDelete={async ({ edges: deletingEdges, nodes: deletingNodes }) => {
           if (!persistenceReady) return false;
-          if (workflowRetainedNodeIds.size > 0) {
-            showWorkflowToast("整组执行中，不能删除画布节点或连线", "error");
-            return false;
-          }
           if (
             deletingNodes.some((node) => workflowRetainedNodeIds.has(node.id)) ||
             deletingEdges.some((edge) =>
@@ -7022,7 +6987,6 @@ export function CanvasSurface({
           event.preventDefault();
           if (
             !persistenceReady ||
-            workflowRetainedNodeIds.size > 0 ||
             !worldRef.current ||
             agentReferenceMode
           ) return;
@@ -7062,7 +7026,6 @@ export function CanvasSurface({
           event.preventDefault();
           if (
             !persistenceReady ||
-            workflowRetainedNodeIds.size > 0 ||
             !worldRef.current
           ) return;
           const bounds = worldRef.current.getBoundingClientRect();
@@ -7357,7 +7320,7 @@ export function CanvasSurface({
             </button>
             <button
               aria-selected="false"
-              disabled={workflowRetainedNodeIds.size > 0}
+              disabled={workflowRetainedNodeIds.has(contextMenuNode.id)}
               onClick={() => {
                 duplicateContextNode(contextMenuNode.id);
                 setNodeContextMenu(undefined);
@@ -7370,14 +7333,14 @@ export function CanvasSurface({
             <div className="node-context-divider" role="separator" />
             <button
               aria-selected="false"
-              disabled={workflowRetainedNodeIds.size > 0}
+              disabled={workflowRetainedNodeIds.has(contextMenuNode.id)}
               onClick={() => {
                 deleteNodeFromContextMenu(contextMenuNode.id);
                 setNodeContextMenu(undefined);
               }}
               title={
-                workflowRetainedNodeIds.size > 0
-                  ? "整组执行中不能删除画布节点"
+                workflowRetainedNodeIds.has(contextMenuNode.id)
+                  ? "整组执行中不能删除参与节点"
                   : undefined
               }
               role="option"
@@ -7427,7 +7390,6 @@ export function CanvasSurface({
             <button
               aria-selected="true"
               data-selected="true"
-              disabled={workflowRetainedNodeIds.size > 0}
               onClick={() => {
                 setBlankContextMenu(undefined);
                 uploadInput.current?.click();
@@ -7439,7 +7401,6 @@ export function CanvasSurface({
             </button>
             <button
               aria-selected="false"
-              disabled={workflowRetainedNodeIds.size > 0}
               onClick={() => {
                 setBlankContextMenu(undefined);
                 onOpenAssets?.();
@@ -7452,7 +7413,6 @@ export function CanvasSurface({
             <div className="blank-context-divider" role="separator" />
             <button
               aria-selected="false"
-              disabled={workflowRetainedNodeIds.size > 0}
               onClick={() => {
                 setCreateMenu({
                   flow: blankContextMenu.flow,
@@ -7467,7 +7427,6 @@ export function CanvasSurface({
             </button>
             <button
               aria-selected="false"
-              disabled={workflowRetainedNodeIds.size > 0}
               onClick={() => {
                 setCreateMenu({
                   flow: blankContextMenu.flow,
@@ -7512,7 +7471,7 @@ export function CanvasSurface({
             <div className="blank-context-divider" role="separator" />
             <button
               aria-selected="false"
-              disabled={workflowRetainedNodeIds.size > 0 || !blankContextMenu.canPaste}
+              disabled={!blankContextMenu.canPaste}
               onClick={() => {
                 pasteInternalNode(blankContextMenu.flow);
                 setBlankContextMenu(undefined);

@@ -4,7 +4,11 @@
 
 ## 先读当前快照
 
-新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-20 的权威现状、产品合同和用户已点头的旧项收口。下面各节是历史增量，出现「当前」时只代表该时点。
+新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-21 的权威现状、产品合同和用户已点头的旧项收口。下面各节是历史增量，出现「当前」时只代表该时点。
+
+## 当前未发布候选：画布执行解耦（v0.6.27，2026-08-21）
+
+v0.6.27已完成四类静态headless executor、删除render retention、同画布不相交双run、runId分槽checkpoint/lease/lock、精确结果owner gate和运行参与图锁。终审发现的checkpoint/lease runId一致性、精确放弃单轮、多run导航停止、同标签手动提交避让组lease四项P1均已纠正；m22 37/37、m38 15/15、m40 14/14、m41 51/51、m44 8/8、m68 4/4通过，冻结库存1029。旧1027项全量不是最终回执；下一步以`spec/UNBOUNDRY_CANVAS_EXECUTION_CHECKPOINT.md`为唯一施工入口，在提交后的干净HEAD跑一次safe full，再完成复审、最小真实Provider/页面、发布与生产回执。线上仍为v0.6.26；不得提前写已发布或`USER_PASS`。
 
 ## 最新已发布事件：整组执行不受画布视野影响（v0.6.26，2026-08-21 已发布，agent 技术实页通过）
 

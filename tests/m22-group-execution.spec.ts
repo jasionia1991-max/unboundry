@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { expect, test, type APIRequestContext } from "./safe-test";
 import {
   buildWorkflowLayers,
@@ -38,21 +39,285 @@ import {
 } from "../client/src/generation/groupRunSummary";
 import {
   acquireGroupRunLease,
+  clearGroupRunCheckpoint,
   clearGroupRunStarting,
   confirmGroupRunNavigation,
   groupRunSnapshotFingerprint,
   groupRunSuccessProof,
+  getGroupRunExecutionOwnerId,
+  hasConflictingActiveGroupRunLeaseForCanvas,
   hasForeignActiveGroupRunLeaseForCanvas,
   markGroupRunStarting,
+  readGroupRunCheckpoint,
+  readGroupRunCheckpoints,
+  readGroupRunLease,
   readGroupRunStarting,
   releaseGroupRunLease,
+  renewGroupRunLease,
+  writeGroupRunCheckpoint,
   verifiedCheckpointSuccessIds,
   type GroupRunCheckpoint,
 } from "../client/src/generation/groupRunCheckpoint";
-import { retainWorkflowNodesForRender } from "../client/src/generation/workflowRenderRetention";
+import { NodeExecutorRegistry } from "../client/src/generation/nodeExecutorRegistry";
+import type { NodeExecutorContext } from
+  "../client/src/generation/nodeExecutorRegistry";
+import {
+  createNodeExecutorRegistry,
+  workflowResultOwnerMatches,
+} from "../client/src/generation/workflowNodeExecutors";
 import type { ProbeNodeType } from "../client/src/canvas/ProbeNode";
 import { defaultParameterSchema } from "../types/modelParameters";
 import { resolveNodeInputs } from "../types/nodeInputs";
+import {
+  reconcileGenerationTask,
+  retryGenerationTask,
+} from "../client/src/generation/generationTasks";
+
+test("headless workflow registry owns all four executable node kinds", () => {
+  expect(createNodeExecutorRegistry().kinds().sort()).toEqual([
+    "audio",
+    "image",
+    "text",
+    "video",
+  ]);
+  const boundNode: ProbeNodeType = {
+    data: {
+      label: "Text",
+      textGenerationOwnershipKey: "owner-a",
+      textGenerationTaskId: "task-a",
+      workflowExecutionRunId: "run-a",
+    },
+    id: "text-a",
+    position: { x: 0, y: 0 },
+    type: "text",
+  };
+  expect(workflowResultOwnerMatches(boundNode, {
+    kind: "text",
+    ownershipKey: "owner-a",
+    runId: "run-a",
+    taskId: "task-a",
+  })).toBe(true);
+  expect(workflowResultOwnerMatches(boundNode, {
+    kind: "text",
+    ownershipKey: "owner-a",
+    runId: "run-b",
+    taskId: "task-a",
+  })).toBe(false);
+  expect(workflowResultOwnerMatches(undefined, {
+    kind: "text",
+    ownershipKey: "owner-a",
+    runId: "run-a",
+    taskId: "task-a",
+  })).toBe(false);
+});
+
+test("headless workflow registry rejects duplicate executor ownership", () => {
+  const executor = {
+    kind: "text" as const,
+    preflight: async () => ({ status: "success" as const }),
+    recover: async () => ({ status: "success" as const }),
+    run: async () => ({ status: "success" as const }),
+  };
+  expect(() => new NodeExecutorRegistry([executor, executor])).toThrow(
+    "节点执行器重复注册：text",
+  );
+});
+
+test("all four headless executors preflight, run, recover and apply without mounted components", async () => {
+  const host = globalThis as unknown as { window?: Window };
+  const previousWindow = host.window;
+  const previousFetch = globalThis.fetch;
+  const values = new Map<string, string>();
+  const storage = {
+    clear: () => values.clear(),
+    getItem: (key: string) => values.get(key) ?? null,
+    key: (index: number) => [...values.keys()][index] ?? null,
+    get length() {
+      return values.size;
+    },
+    removeItem: (key: string) => values.delete(key),
+    setItem: (key: string, value: string) => values.set(key, value),
+  } satisfies Storage;
+  const fakeWindow = new EventTarget() as Window;
+  Object.defineProperties(fakeWindow, {
+    localStorage: { value: storage },
+    navigator: { configurable: true, value: {} },
+  });
+  host.window = fakeWindow;
+  const kinds = ["text", "image", "audio", "video"] as const;
+  const runId = "headless-four-kind-run";
+  const canvasId = "headless-four-kind-canvas";
+  let nodes = kinds.map((kind, index) => ({
+    data: {
+      label: `${kind} fixture`,
+      title: `${kind} fixture`,
+      [`${kind}ModelId`]: `headless-${kind}-model`,
+      [`${kind}Parameters`]: {},
+      [`${kind}Prompt`]: `${kind} headless prompt`,
+      ...(kind === "text" ? {} : { [`${kind}PromptReady`]: true }),
+    },
+    id: `headless-${kind}`,
+    position: { x: index * 100, y: 0 },
+    type: kind,
+  })) as ProbeNodeType[];
+  const models = Object.fromEntries(kinds.map((kind) => [kind, [{
+    capability: kind,
+    displayName: `Headless ${kind}`,
+    generationAvailable: true,
+    generationUnavailableReason: "",
+    generationUnavailableReasonCode: null,
+    id: `headless-${kind}-model`,
+    ...(kind === "image"
+      ? {
+          imageParameters: {
+            aspectRatios: ["auto"],
+            maxReferenceImages: 0,
+            qualities: ["auto"],
+          },
+        }
+      : {}),
+    isDefault: true,
+    parameterSchema: defaultParameterSchema(kind),
+  }]])) as NodeExecutorContext["modelCatalog"]["models"];
+  const tasks = new Map<string, Record<string, unknown>>();
+  const boundNodes = new Map<string, ProbeNodeType>();
+  const posts: string[] = [];
+  let flushes = 0;
+  const response = (body: unknown, status = 200) => new Response(
+    JSON.stringify(body),
+    { headers: { "Content-Type": "application/json" }, status },
+  );
+  globalThis.fetch = (async (input, init) => {
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? input.toString()
+        : input.url;
+    const method = init?.method ?? (input instanceof Request ? input.method : "GET");
+    if (url.startsWith("/api/generation-tasks/by-idempotency")) {
+      return response({ error: "not found" }, 404);
+    }
+    if (url === "/api/generation-tasks/preflight" && method === "POST") {
+      return response({ canEnqueue: true, canSubmit: true, problems: [] });
+    }
+    if (url === "/api/generation-tasks" && method === "POST") {
+      const body = JSON.parse(String(init?.body)) as {
+        kind: (typeof kinds)[number];
+        model: string;
+        nodeId: string;
+        prompt: string;
+      };
+      posts.push(body.nodeId);
+      const taskId = `headless-task-${body.kind}`;
+      const resultAssetId = `headless-result-${body.kind}`;
+      const task = {
+        attempt: 1,
+        canvasId,
+        costCurrency: "CNY",
+        createdAt: "2026-08-21T00:00:00.000Z",
+        id: taskId,
+        kind: body.kind,
+        model: body.model,
+        nodeId: body.nodeId,
+        prompt: body.prompt,
+        ...(body.kind === "text"
+          ? { resultText: "headless text result" }
+          : {
+              resultAssetId,
+              resultMedia: {
+                byteSize: 128,
+                contentType: body.kind === "image"
+                  ? "image/png"
+                  : body.kind === "audio"
+                    ? "audio/mpeg"
+                    : "video/mp4",
+                durationSeconds: body.kind === "image" ? null : 2,
+                durationStatus: body.kind === "image" ? "not-applicable" : "ready",
+                mediaHeight: body.kind === "image" || body.kind === "video" ? 64 : null,
+                mediaWidth: body.kind === "image" || body.kind === "video" ? 64 : null,
+                storageBackend: "local",
+              },
+              resultUrl: body.kind === "image"
+                ? `/api/assets/${resultAssetId}`
+                : body.kind === "audio"
+                  ? `/api/audio-assets/${resultAssetId}`
+                  : `/api/video-assets/${resultAssetId}`,
+            }),
+        state: "success",
+        updatedAt: "2026-08-21T00:00:01.000Z",
+      };
+      tasks.set(taskId, task);
+      return response(task, 202);
+    }
+    const taskId = url.startsWith("/api/generation-tasks/")
+      ? url.split("/").at(-1)
+      : undefined;
+    if (taskId && tasks.has(taskId)) return response(tasks.get(taskId));
+    throw new Error(`unexpected headless fetch: ${method} ${url}`);
+  }) as typeof fetch;
+  const setNodes: NodeExecutorContext["setNodes"] = (update) => {
+    nodes = typeof update === "function" ? update(nodes) : update;
+  };
+  const context: NodeExecutorContext = {
+    accountId: "headless-account",
+    canvasId,
+    fixtureScopeId: "",
+    flushCanvasSave: async () => {
+      flushes += 1;
+      for (const kind of kinds) {
+        const node = nodes.find((candidate) => candidate.id === `headless-${kind}`);
+        if (node?.data[`${kind}Generating`]) boundNodes.set(kind, structuredClone(node));
+      }
+    },
+    getEdges: () => [],
+    getNodes: () => nodes,
+    isCancelled: () => false,
+    isFixture: false,
+    modelCatalog: { models, status: "ready" },
+    runId,
+    setNodes,
+    waitForCanvasRevision: async () => 1,
+  };
+  try {
+    const registry = createNodeExecutorRegistry();
+    const executableIds = new Set(nodes.map((node) => node.id));
+    for (const kind of kinds) {
+      const nodeId = `headless-${kind}`;
+      const executor = registry.get(nodes.find((node) => node.id === nodeId));
+      expect(executor?.kind).toBe(kind);
+      await expect(executor!.preflight(nodeId, context, executableIds, "static"))
+        .resolves.toEqual({ status: "success" });
+      await expect(executor!.run(nodeId, context, executableIds))
+        .resolves.toMatchObject({ status: "success" });
+      expect(boundNodes.has(kind)).toBe(true);
+    }
+    expect(posts.sort()).toEqual(kinds.map((kind) => `headless-${kind}`).sort());
+    expect(nodes.find((node) => node.id === "headless-text")?.data.content)
+      .toBe("headless text result");
+    expect(nodes.find((node) => node.id === "headless-image")?.data.imageSrc)
+      .toBe("/api/assets/headless-result-image");
+    expect(nodes.find((node) => node.id === "headless-audio")?.data.audioSrc)
+      .toBe("/api/audio-assets/headless-result-audio");
+    expect(nodes.find((node) => node.id === "headless-video")?.data.videoSrc)
+      .toBe("/api/video-assets/headless-result-video");
+
+    for (const kind of kinds) {
+      const nodeId = `headless-${kind}`;
+      nodes = nodes.map((node) => node.id === nodeId ? boundNodes.get(kind)! : node);
+      const executor = createNodeExecutorRegistry().get(
+        nodes.find((node) => node.id === nodeId),
+      );
+      await expect(executor!.recover(nodeId, context))
+        .resolves.toMatchObject({ status: "success" });
+    }
+    expect(posts).toHaveLength(4);
+    expect(flushes).toBeGreaterThanOrEqual(12);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousWindow) host.window = previousWindow;
+    else delete host.window;
+  }
+});
 
 async function existingCanvasSaveMetadata(
   request: APIRequestContext,
@@ -669,7 +934,7 @@ test("group run proof survives terminal cleanup and graph forwards the task proo
   }]);
 });
 
-test("group run starting guard and cross-tab lease fail closed", async () => {
+test("group run starting guard permits disjoint leases and rejects overlap", async () => {
   const host = globalThis as unknown as { window?: Window };
   const previousWindow = host.window;
   const values = new Map<string, string>();
@@ -718,16 +983,200 @@ test("group run starting guard and cross-tab lease fail closed", async () => {
     expect(readGroupRunStarting(scope)).toBeUndefined();
 
     const now = Date.now();
-    expect(await acquireGroupRunLease(scope, "run-a", "owner-a", now)).toBe(true);
-    expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas")).toBe(true);
-    expect(await acquireGroupRunLease(scope, "run-b", "owner-b", now + 1)).toBe(false);
+    expect(await acquireGroupRunLease(
+      scope,
+      "run-a",
+      "owner-a",
+      now,
+      ["group-a", "node-a"],
+    )).toBe(true);
+    expect(await acquireGroupRunLease(
+      scope,
+      "run-a",
+      "owner-intruder",
+      now + 1,
+      ["group-a", "node-a"],
+    )).toBe(false);
+    expect(readGroupRunLease(scope, "run-a")?.ownerId).toBe("owner-a");
+    expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas", "node-a"))
+      .toBe(true);
+    expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas", "node-c"))
+      .toBe(false);
+    expect(await acquireGroupRunLease(
+      scope,
+      "run-b",
+      "owner-b",
+      now + 1,
+      ["node-a"],
+    )).toBe(false);
+    expect(await acquireGroupRunLease(
+      scope,
+      "run-c",
+      "owner-c",
+      now + 2,
+      ["group-c", "node-c"],
+    )).toBe(true);
+    expect([...values.keys()].filter((key) =>
+      key.startsWith("unboundry-group-run-lease:v1:")
+    )).toHaveLength(2);
+    expect(await hasConflictingActiveGroupRunLeaseForCanvas(
+      "canvas",
+      "node-c",
+    )).toBe(true);
+    expect(await hasConflictingActiveGroupRunLeaseForCanvas(
+      "canvas",
+      "node-c",
+      "run-c",
+    )).toBe(false);
+    const checkpoint = (runId: string, groupId: string): GroupRunCheckpoint => ({
+      accountId: scope.accountId,
+      canvasId: scope.canvasId,
+      executableNodeIds: [`node-${groupId.at(-1)}`],
+      fixtureScopeId: scope.fixtureScopeId,
+      groupId,
+      nodeStates: {},
+      runId,
+      snapshotFingerprint: `snapshot-${runId}`,
+      startedAt: now,
+      status: "running",
+      successProofs: {},
+      updatedAt: now,
+      version: 1,
+    });
+    expect(writeGroupRunCheckpoint(
+      checkpoint("run-a", "group-a"),
+      { ownerId: "owner-a", runId: "run-a" },
+    )).toBe(true);
+    expect(writeGroupRunCheckpoint(
+      checkpoint("run-c", "group-c"),
+      { ownerId: "owner-c", runId: "run-c" },
+    )).toBe(true);
+    expect([...values.keys()].filter((key) =>
+      key.startsWith("unboundry-group-run-checkpoint:v1:")
+    )).toHaveLength(2);
+    expect(writeGroupRunCheckpoint(
+      checkpoint("run-c", "group-c"),
+      { ownerId: "owner-a", runId: "run-a" },
+    )).toBe(false);
+    expect(readGroupRunCheckpoint(scope, "run-a")?.groupId).toBe("group-a");
+    expect(readGroupRunCheckpoint(scope, "run-c")?.groupId).toBe("group-c");
+    expect(clearGroupRunCheckpoint(
+      scope,
+      { ownerId: "owner-a", runId: "run-a" },
+    )).toBe(true);
+    expect(readGroupRunCheckpoint(scope, "run-a")).toBeUndefined();
+    expect(readGroupRunCheckpoint(scope, "run-c")?.groupId).toBe("group-c");
     expect(releaseGroupRunLease(scope, "run-a", "owner-a")).toBe(true);
+    expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas", "node-a"))
+      .toBe(false);
+    expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas", "node-c"))
+      .toBe(true);
+    expect(releaseGroupRunLease(scope, "run-c", "owner-c")).toBe(true);
+
+    const staleRunId = "run-stale-resume";
+    const staleLeaseKey = `unboundry-group-run-lease:v1:${JSON.stringify([
+      scope.accountId,
+      scope.canvasId,
+      scope.fixtureScopeId,
+      staleRunId,
+    ])}`;
+    values.set(staleLeaseKey, JSON.stringify({
+      expiresAt: now - 1,
+      heartbeatAt: now - 60_001,
+      lockedNodeIds: ["node-stale"],
+      ownerId: "owner-before-reload",
+      runId: staleRunId,
+    }));
+    expect(await acquireGroupRunLease(
+      scope,
+      staleRunId,
+      "owner-after-reload",
+      now,
+      ["node-stale"],
+    )).toBe(true);
+    expect(readGroupRunLease(scope, staleRunId)?.ownerId)
+      .toBe("owner-after-reload");
+    expect(await renewGroupRunLease(
+      scope,
+      staleRunId,
+      "owner-after-reload",
+      now + 5_000,
+    )).toBe(true);
+    expect(readGroupRunLease(scope, staleRunId)?.heartbeatAt).toBe(now + 5_000);
+    expect(releaseGroupRunLease(
+      scope,
+      staleRunId,
+      "owner-after-reload",
+    )).toBe(true);
+
+    values.set(staleLeaseKey, JSON.stringify({
+      expiresAt: now + 60_000,
+      heartbeatAt: now,
+      lockedNodeIds: ["node-stale"],
+      ownerId: "owner-still-active",
+      runId: staleRunId,
+    }));
+    expect(await acquireGroupRunLease(
+      scope,
+      staleRunId,
+      "owner-must-wait",
+      now + 1,
+      ["node-stale"],
+    )).toBe(false);
+    expect(readGroupRunLease(scope, staleRunId)?.ownerId)
+      .toBe("owner-still-active");
+    values.delete(staleLeaseKey);
+
+    const sameOwner = getGroupRunExecutionOwnerId();
+    expect(await acquireGroupRunLease(
+      scope,
+      "run-owner",
+      sameOwner,
+      now + 3,
+      ["node-owner"],
+    )).toBe(true);
+    let taskRequests = 0;
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = async () => {
+      taskRequests += 1;
+      throw new Error("task endpoint must stay unreachable while group owns node");
+    };
+    const target = {
+      canvasId: scope.canvasId,
+      generationInputKey: "input-owner",
+      kind: "text" as const,
+      nodeId: "node-owner",
+      taskId: "task-owner",
+    };
+    try {
+      await expect(retryGenerationTask(target, async () => 1)).rejects
+        .toMatchObject({
+          code: "GROUP_RUN_ACTIVE",
+          status: 409,
+        });
+      await expect(reconcileGenerationTask(target, async () => 1)).rejects
+        .toMatchObject({
+          code: "GROUP_RUN_ACTIVE",
+          status: 409,
+        });
+      expect(taskRequests).toBe(0);
+    } finally {
+      globalThis.fetch = previousFetch;
+      expect(releaseGroupRunLease(scope, "run-owner", sameOwner)).toBe(true);
+    }
+    expect(writeGroupRunCheckpoint(checkpoint("run-a", "group-a"))).toBe(true);
+    expect(writeGroupRunCheckpoint(checkpoint("run-c", "group-c"))).toBe(true);
+    expect(clearGroupRunCheckpoint(scope, undefined, "run-a")).toBe(true);
+    expect(readGroupRunCheckpoint(scope, "run-a")).toBeUndefined();
+    expect(readGroupRunCheckpoint(scope, "run-c")?.groupId).toBe("group-c");
+    expect(clearGroupRunCheckpoint(scope)).toBe(true);
     expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas")).toBe(false);
     Object.defineProperty(fakeWindow, "navigator", {
       configurable: true,
       value: {},
     });
-    expect(await acquireGroupRunLease(scope, "run-c", "owner-c", now + 2)).toBe(false);
+    expect(await acquireGroupRunLease(scope, "run-d", "owner-d", now + 4))
+      .toBe(false);
   } finally {
     clearGroupRunStarting(scope, "run-a");
     if (previousWindow) host.window = previousWindow;
@@ -735,37 +1184,113 @@ test("group run starting guard and cross-tab lease fail closed", async () => {
   }
 });
 
-test("workflow render retention is targeted and never mutates canvas nodes", () => {
-  const nodes: ProbeNodeType[] = [
-    {
-      id: "kept",
-      type: "text",
-      data: { label: "保活" },
-      position: { x: 10, y: 20 },
-      selected: true,
+test("workflow execution has no component registration or render-retention dependency", () => {
+  const provider = readFileSync(
+    "client/src/generation/WorkflowExecutionProvider.tsx",
+    "utf8",
+  );
+  const executors = readFileSync(
+    "client/src/generation/workflowNodeExecutors.ts",
+    "utf8",
+  );
+  const canvas = readFileSync("client/src/canvas/CanvasSurface.tsx", "utf8");
+  expect(provider).not.toContain("registerWorkflowNode");
+  expect(provider).not.toContain("waitForRegistrations");
+  expect(provider).toContain("另一轮正在使用${conflictRole}");
+  expect(provider).toContain("（节点 ${conflictingNodeId}）");
+  expect(canvas).not.toContain("retainWorkflowNodesForRender");
+  expect(executors).not.toContain("document.");
+  expect(executors).not.toContain("window.");
+});
+
+test("navigation interrupts every locally owned concurrent run without crossing checkpoint ownership", async () => {
+  const host = globalThis as unknown as { window?: Window };
+  const previousWindow = host.window;
+  const values = new Map<string, string>();
+  const storage = {
+    clear: () => values.clear(),
+    getItem: (key: string) => values.get(key) ?? null,
+    key: (index: number) => [...values.keys()][index] ?? null,
+    get length() {
+      return values.size;
     },
-    {
-      id: "virtualized",
-      type: "text",
-      data: { label: "普通" },
-      position: { x: 30, y: 40 },
+    removeItem: (key: string) => values.delete(key),
+    setItem: (key: string, value: string) => values.set(key, value),
+  } satisfies Storage;
+  const fakeWindow = new EventTarget() as Window;
+  Object.defineProperties(fakeWindow, {
+    confirm: { value: () => true },
+    localStorage: { value: storage },
+    navigator: {
+      configurable: true,
+      value: {
+        locks: {
+          request: async (
+            _name: string,
+            _options: { ifAvailable: boolean },
+            callback: (lock: unknown) => Promise<boolean> | boolean,
+          ) => callback({}),
+        },
+      },
     },
-  ];
-  const before = structuredClone(nodes);
-  const rendered = retainWorkflowNodesForRender(nodes, new Set(["kept"]));
-  expect(nodes).toEqual(before);
-  expect(rendered[0]).toMatchObject({
-    className: "workflow-run-locked",
-    connectable: false,
-    deletable: false,
-    dragging: true,
-    draggable: false,
-    position: { x: 10, y: 20 },
-    selectable: false,
-    selected: false,
-    style: { pointerEvents: "none" },
   });
-  expect(rendered[1]).toBe(nodes[1]);
+  host.window = fakeWindow;
+  const scope = { accountId: "account-nav", canvasId: "canvas-nav", fixtureScopeId: "" };
+  const ownerId = getGroupRunExecutionOwnerId();
+  const now = Date.now();
+  const stopped: string[] = [];
+  fakeWindow.addEventListener("unboundry:group-run-stop", (event) => {
+    stopped.push((event as CustomEvent<{ runId: string }>).detail.runId);
+  });
+  const checkpoint = (runId: string, groupId: string): GroupRunCheckpoint => ({
+    accountId: scope.accountId,
+    canvasId: scope.canvasId,
+    executableNodeIds: [`node-${runId}`],
+    fixtureScopeId: scope.fixtureScopeId,
+    groupId,
+    nodeStates: {},
+    runId,
+    snapshotFingerprint: `snapshot-${runId}`,
+    startedAt: now,
+    status: "running",
+    successProofs: {},
+    updatedAt: now,
+    version: 1,
+  });
+  try {
+    expect(await acquireGroupRunLease(
+      scope,
+      "run-nav-a",
+      ownerId,
+      now,
+      ["node-a"],
+    )).toBe(true);
+    expect(await acquireGroupRunLease(
+      scope,
+      "run-nav-b",
+      ownerId,
+      now + 1,
+      ["node-b"],
+    )).toBe(true);
+    expect(writeGroupRunCheckpoint(
+      checkpoint("run-nav-a", "group-nav-a"),
+      { ownerId, runId: "run-nav-a" },
+    )).toBe(true);
+    expect(writeGroupRunCheckpoint(
+      checkpoint("run-nav-b", "group-nav-b"),
+      { ownerId, runId: "run-nav-b" },
+    )).toBe(true);
+    expect(confirmGroupRunNavigation(scope)).toBe(true);
+    expect(stopped.sort()).toEqual(["run-nav-a", "run-nav-b"]);
+    expect(readGroupRunCheckpoints(scope).map((item) => item.status))
+      .toEqual(["interrupted", "interrupted"]);
+  } finally {
+    releaseGroupRunLease(scope, "run-nav-a", ownerId);
+    releaseGroupRunLease(scope, "run-nav-b", ownerId);
+    clearGroupRunCheckpoint(scope);
+    if (previousWindow) host.window = previousWindow;
+    else delete host.window;
+  }
 });
 
 test("workflow graph stop waits for an active node and reports descendants pending", async () => {
@@ -1219,7 +1744,7 @@ test("group run stays disabled on acceptance fixtures and makes no provider requ
   expect(providerRequests).toBe(0);
 });
 
-test("group run mounts an offscreen Image for preflight and persists the real model error", async ({
+test("group run preflights a truly unmounted offscreen Image and persists the real model error", async ({
   page,
   request,
 }) => {
@@ -1381,6 +1906,7 @@ test("group run mounts an offscreen Image for preflight and persists the real mo
     const expectedMessage = "当前模型不支持image类型上游，引用已保留";
     await expect(page.getByTestId("workflow-run-toast")).toContainText(
       `整组执行已阻止：发现 1 个不兼容节点；首个“商品主图”：${expectedMessage}（未提交任何生成任务）`,
+      { timeout: 15_000 },
     );
     await page.getByTestId("tasks").click();
     const summary = page.getByTestId("tasks-group-summary");
@@ -1510,30 +2036,69 @@ test("group run mounts an offscreen Image for preflight and persists the real mo
   }
 });
 
-test("running group locks child edits while the parent can leave the viewport", async ({
+test("disjoint group runs isolate success, failure and stop while unrelated edits stay available", async ({
   page,
   request,
 }) => {
+  test.setTimeout(240_000);
+  page.setDefaultTimeout(15_000);
   const modelId = `fixture-group-lock-${randomUUID()}`;
-  const taskId = `fixture-group-lock-task-${randomUUID()}`;
   const created = await request.post("/api/projects", { data: {} });
   expect(created.status()).toBe(201);
   const project = await created.json() as { id: string };
   const parameterSchema = defaultParameterSchema("text");
-  const baseTask = {
-    attempt: 1,
-    canvasId: project.id,
-    costCurrency: "CNY" as const,
-    createdAt: "2026-08-20T00:00:00.000Z",
-    id: taskId,
-    kind: "text" as const,
-    model: modelId,
-    nodeId: "run-text",
-    prompt: "生成一段运行中测试文案",
-    updatedAt: "2026-08-20T00:00:01.000Z",
+  type FakeTaskState = "failed" | "running" | "success";
+  type FakeTask = {
+    attempt: number;
+    canvasId: string;
+    costCurrency: "CNY";
+    createdAt: string;
+    id: string;
+    kind: "text";
+    model: string;
+    nodeId: string;
+    prompt: string;
+    updatedAt: string;
   };
-  let taskPostSeen = false;
-  await page.route("**/api/models", async (route) => {
+  const tasks = new Map<string, FakeTask>();
+  const taskStates = new Map<string, FakeTaskState>();
+  const latestTaskByNode = new Map<string, string>();
+  const taskPostNodes: string[] = [];
+  type CapturedSummary = { groupId: string; runId: string; status: string };
+  const terminalSummaries: CapturedSummary[] = [];
+  let taskSequence = 0;
+  const taskJson = (task: FakeTask) => {
+    const state = taskStates.get(task.id) ?? "running";
+    return {
+      ...task,
+      ...(state === "failed"
+        ? { error: "故意失败，验证另一轮继续", errorCode: "FIXTURE_FAILURE" }
+        : {}),
+      ...(state === "success"
+        ? { resultText: `已完成 ${task.nodeId} / ${task.id}` }
+        : {}),
+      state,
+    };
+  };
+  const setLatestTaskState = (nodeId: string, state: FakeTaskState) => {
+    const taskId = latestTaskByNode.get(nodeId);
+    if (!taskId) throw new Error(`missing fake task for ${nodeId}`);
+    taskStates.set(taskId, state);
+  };
+  const withDeadline = async <T>(label: string, promise: Promise<T>) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => reject(new Error(`dual-run timeout: ${label}`)), 15_000);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+  await page.context().route("**/api/models", async (route) => {
     await route.fulfill({
       contentType: "application/json",
       json: {
@@ -1550,7 +2115,7 @@ test("running group locks child edits while the parent can leave the viewport", 
       status: 200,
     });
   });
-  await page.route("**/api/generation-tasks**", async (route) => {
+  await page.context().route("**/api/generation-tasks**", async (route) => {
     const requestUrl = new URL(route.request().url());
     const method = route.request().method();
     if (requestUrl.pathname.endsWith("/status")) {
@@ -1588,21 +2153,42 @@ test("running group locks child edits while the parent can leave the viewport", 
       return;
     }
     if (requestUrl.pathname === "/api/generation-tasks" && method === "POST") {
-      taskPostSeen = true;
+      const body = route.request().postDataJSON() as {
+        nodeId: string;
+        prompt: string;
+      };
+      taskSequence += 1;
+      const taskId = `fixture-group-lock-task-${taskSequence}-${randomUUID()}`;
+      const task: FakeTask = {
+        attempt: 1,
+        canvasId: project.id,
+        costCurrency: "CNY",
+        createdAt: new Date().toISOString(),
+        id: taskId,
+        kind: "text",
+        model: modelId,
+        nodeId: body.nodeId,
+        prompt: body.prompt,
+        updatedAt: new Date().toISOString(),
+      };
+      tasks.set(taskId, task);
+      taskStates.set(taskId, "running");
+      latestTaskByNode.set(body.nodeId, taskId);
+      taskPostNodes.push(body.nodeId);
       await route.fulfill({
         contentType: "application/json",
-        json: { ...baseTask, state: "running" },
+        json: taskJson(task),
         status: 202,
       });
       return;
     }
-    if (
-      requestUrl.pathname === `/api/generation-tasks/${taskId}` &&
-      method === "GET"
-    ) {
+    const taskId = requestUrl.pathname.startsWith("/api/generation-tasks/")
+      ? requestUrl.pathname.split("/").at(-1)
+      : undefined;
+    if (taskId && tasks.has(taskId) && method === "GET") {
       await route.fulfill({
         contentType: "application/json",
-        json: { ...baseTask, state: "running" },
+        json: taskJson(tasks.get(taskId)!),
         status: 200,
       });
       return;
@@ -1610,7 +2196,7 @@ test("running group locks child edits while the parent can leave the viewport", 
     if (requestUrl.pathname === "/api/generation-tasks" && method === "GET") {
       await route.fulfill({
         contentType: "application/json",
-        json: { tasks: [{ ...baseTask, state: "running" }] },
+        json: { tasks: [...tasks.values()].map(taskJson) },
         status: 200,
       });
       return;
@@ -1622,27 +2208,128 @@ test("running group locks child edits while the parent can leave the viewport", 
     });
   });
 
-  const readCanvasNodes = async () => {
+  const startGroup = async (
+    groupId: string,
+    nodeId: string,
+    expectedNodePostCount: number,
+  ) => {
+    await withDeadline(`${groupId} select`, page
+      .locator(`[data-testid="rf__node-${groupId}"]`)
+      .evaluate((element) => element.dispatchEvent(new MouseEvent("click", {
+        bubbles: true,
+      }))));
+    const execute = page
+      .locator(`[data-testid="rf__node-${groupId}"]`)
+      .getByTestId("group-execute-button");
+    await expect(execute).toBeEnabled();
+    await withDeadline(`${groupId} execute click`, execute.evaluate((element) =>
+      (element as HTMLButtonElement).click()
+    ));
+    await withDeadline(`${groupId} task POST`, expect.poll(() =>
+      taskPostNodes.filter((candidate) => candidate === nodeId).length
+    ).toBe(expectedNodePostCount));
+  };
+  const discardInterruptedCheckpointsForNextScenario = () => page.evaluate(() => {
+    for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+      const key = window.localStorage.key(index);
+      if (key?.startsWith("unboundry-group-run-checkpoint:v1:")) {
+        window.localStorage.removeItem(key);
+      }
+    }
+  });
+  const expectTerminalSummaryCount = (
+    groupId: string,
+    status: "cancelled" | "failed" | "success",
+    count: number,
+  ) => expect.poll(() => page.evaluate(({ groupId, status }) =>
+    ((window as typeof window & {
+      __dualRunSummaries?: Array<{ groupId: string; runId: string; status: string }>;
+    }).__dualRunSummaries ?? []).filter((summary) =>
+      summary.groupId === groupId && summary.status === status
+    ).length, { groupId, status }), { timeout: 15_000 }).toBe(count);
+  const installSummaryCapture = () => page.evaluate(() => {
+    const host = window as typeof window & {
+      __dualRunSummaries?: Array<{ groupId: string; runId: string; status: string }>;
+    };
+    host.__dualRunSummaries = [];
+    window.addEventListener("unboundry:group-run-summary", (event) => {
+      const detail = (event as CustomEvent<{
+        groupId: string;
+        runId: string;
+        status: string;
+      }>).detail;
+      host.__dualRunSummaries?.push({
+        groupId: detail.groupId,
+        runId: detail.runId,
+        status: detail.status,
+      });
+    });
+  });
+  const captureTerminalSummaries = async () => {
+    terminalSummaries.push(...await page.evaluate(() =>
+      ((window as typeof window & {
+        __dualRunSummaries?: Array<{ groupId: string; runId: string; status: string }>;
+      }).__dualRunSummaries ?? []).filter((summary) =>
+        ["cancelled", "failed", "success"].includes(summary.status)
+      )
+    ));
+  };
+  const resetGroupPositionsForNextScenario = async () => {
     const response = await request.get(`/api/canvas/${project.id}`);
     expect(response.ok()).toBeTruthy();
-    return (await response.json()) as {
+    const current = await response.json() as {
+      edges: unknown[];
+      loadToken: string;
       nodes: Array<{
         id: string;
         position: { x: number; y: number };
+        [key: string]: unknown;
       }>;
+      revision: number;
     };
+    const saved = await request.put(`/api/canvas/${project.id}`, {
+      data: {
+        edges: current.edges,
+        nodes: current.nodes.map((node) => node.id === "run-group-a"
+          ? { ...node, position: { x: 180, y: 120 } }
+          : node.id === "run-group-b"
+            ? { ...node, position: { x: 760, y: 120 } }
+            : node),
+        observedLoadToken: current.loadToken,
+        observedRevision: current.revision,
+        revision: current.revision,
+        saveAttemptId: randomUUID(),
+        saveSequence: 1,
+        saveSessionId: randomUUID(),
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+    expect(saved.ok()).toBeTruthy();
+    await page.reload();
+    await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+      "data-persistence-ready",
+      "true",
+    );
+    await installSummaryCapture();
   };
 
   try {
     const saveMetadata = await existingCanvasSaveMetadata(request, project.id);
     const saved = await request.put(`/api/canvas/${project.id}`, {
       data: {
-        edges: [],
+        edges: [{
+          id: "run-edge-a-next",
+          source: "run-text-a",
+          sourceHandle: "source",
+          target: "run-text-a-next",
+          targetHandle: "target",
+          type: "cuttable",
+        }],
         nodes: [{
-          data: { label: "Group", title: "运行中锁定组" },
-          id: "run-group",
+          data: { label: "Group", title: "运行中锁定组 A" },
+          id: "run-group-a",
           position: { x: 180, y: 120 },
-          style: { height: 620, width: 720 },
+          style: { height: 650, width: 480 },
           type: "group",
           zIndex: 0,
         }, {
@@ -1650,15 +2337,78 @@ test("running group locks child edits while the parent can leave the viewport", 
             label: "Text",
             textModelId: modelId,
             textParameters: {},
-            textPrompt: "生成一段运行中测试文案",
+            textPrompt: "生成 A 组运行中测试文案",
             textPromptReady: true,
-            title: "运行中子节点",
+            title: "运行中子节点 A",
           },
-          id: "run-text",
-          parentId: "run-group",
+          id: "run-text-a",
+          parentId: "run-group-a",
           position: { x: 32, y: 70 },
           style: { height: 220, width: 300 },
           type: "text",
+          zIndex: 1,
+        }, {
+          data: {
+            label: "Text",
+            textModelId: modelId,
+            textParameters: {},
+            textPrompt: "生成 A 组第二层文案",
+            textPromptReady: true,
+            title: "运行中下游子节点 A2",
+          },
+          id: "run-text-a-next",
+          parentId: "run-group-a",
+          position: { x: 32, y: 900 },
+          style: { height: 220, width: 300 },
+          type: "text",
+          zIndex: 1,
+        }, {
+          data: { label: "Group", title: "运行中锁定组 B" },
+          id: "run-group-b",
+          position: { x: 760, y: 120 },
+          style: { height: 420, width: 480 },
+          type: "group",
+          zIndex: 0,
+        }, {
+          data: {
+            label: "Text",
+            textModelId: modelId,
+            textParameters: {},
+            textPrompt: "生成 B 组运行中测试文案",
+            textPromptReady: true,
+            title: "运行中子节点 B",
+          },
+          id: "run-text-b",
+          parentId: "run-group-b",
+          position: { x: 32, y: 70 },
+          style: { height: 220, width: 300 },
+          type: "text",
+          zIndex: 1,
+        }, {
+          data: {
+            label: "Text",
+            textModelId: modelId,
+            textParameters: {},
+            textPrompt: "可在运行期间编辑的无关文案",
+            textPromptReady: true,
+            title: "无关文字节点",
+          },
+          id: "unrelated-text",
+          position: { x: 180, y: 850 },
+          style: { height: 220, width: 300 },
+          type: "text",
+          zIndex: 1,
+        }, {
+          data: {
+            imagePromptReady: false,
+            inputState: "empty",
+            label: "Image",
+            title: "无关图片节点",
+          },
+          id: "unrelated-image",
+          position: { x: 760, y: 850 },
+          style: { height: 250, width: 250 },
+          type: "image",
           zIndex: 1,
         }],
         ...saveMetadata,
@@ -1670,44 +2420,115 @@ test("running group locks child edits while the parent can leave the viewport", 
     await page.goto(`/canvas/${project.id}`);
     const canvas = page.getByTestId("canvas-world");
     await expect(canvas).toHaveAttribute("data-persistence-ready", "true");
-    await page.locator('[data-testid="rf__node-run-group"]').click({
-      position: { x: 8, y: 8 },
-    });
-    const execute = page.getByTestId("group-execute-button");
-    await expect(execute).toBeEnabled();
-    await execute.click();
-    await expect.poll(() => taskPostSeen).toBe(true);
+    await installSummaryCapture();
+
+    await startGroup("run-group-a", "run-text-a", 1);
+    await startGroup("run-group-b", "run-text-b", 1);
     await expect(canvas).toHaveAttribute("data-workflow-run-active", "true");
+    // A's second layer starts genuinely outside the viewport. Static preflight
+    // must still include it before fit-view can mount it later.
+    await expect(page.locator('[data-testid="rf__node-run-text-a-next"]'))
+      .toHaveCount(0);
+    await expect(canvas).toHaveAttribute("data-node-count", "7");
+    await expect(canvas).toHaveAttribute("data-edge-count", "1");
 
-    await expect(page.getByRole("button", { name: "组合框颜色" })).toBeDisabled();
-    await expect(page.getByRole("button", { name: "组合框布局" })).toBeDisabled();
-    await expect(page.getByTestId("group-template-button")).toBeDisabled();
-    await expect(page.getByRole("button", { name: "解组" })).toBeDisabled();
-    await expect(page.getByTestId("group-execute-button")).toHaveText("停止后续");
+    // View controls and unrelated graph editing remain live while two runs own
+    // only their exact participants.
+    await page.getByTestId("fit-view").click();
+    await page.getByTestId("zoom-slider").fill("0.72");
+    await expect(canvas).toHaveAttribute("data-viewport-zoom", "0.72");
+    const unrelatedText = page.locator('[data-testid="rf__node-unrelated-text"]');
+    await unrelatedText.click({ position: { x: 12, y: 12 } });
+    await page.getByTestId("text-creator-prompt")
+      .fill("运行期间仍可编辑的无关文案");
+    await expect(page.getByTestId("text-creator-prompt"))
+      .toHaveValue("运行期间仍可编辑的无关文案");
+    await page.getByTestId("text-creator-prompt").blur();
+    await unrelatedText.evaluate((element) => element.dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    ));
+    const unrelatedBefore = await unrelatedText.boundingBox();
+    await page.mouse.move(
+      unrelatedBefore!.x + unrelatedBefore!.width / 2,
+      unrelatedBefore!.y + unrelatedBefore!.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      unrelatedBefore!.x + unrelatedBefore!.width / 2 + 28,
+      unrelatedBefore!.y + unrelatedBefore!.height / 2 + 20,
+      { steps: 6 },
+    );
+    await page.mouse.up();
+    const unrelatedAfter = await unrelatedText.boundingBox();
+    expect(unrelatedAfter!.x).toBeGreaterThan(unrelatedBefore!.x);
+    const sourceHandle = unrelatedText.locator(
+      ".react-flow__handle.source .node-handle-hit",
+    );
+    const targetNode = page.locator('[data-testid="rf__node-unrelated-image"]');
+    const sourceBox = await sourceHandle.boundingBox();
+    const targetBox = await targetNode.boundingBox();
+    if (!sourceBox || !targetBox) throw new Error("unrelated connection handles missing");
+    await page.mouse.move(
+      sourceBox.x + sourceBox.width / 2,
+      sourceBox.y + sourceBox.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      targetBox.x + targetBox.width / 2,
+      targetBox.y + targetBox.height / 2,
+      { steps: 8 },
+    );
+    await page.mouse.up();
+    await expect(canvas).toHaveAttribute("data-edge-count", "2");
+    await targetNode.click();
+    await page.keyboard.press("Backspace");
+    await expect(canvas).toHaveAttribute("data-node-count", "6");
+    await expect(canvas).toHaveAttribute("data-edge-count", "1");
 
-    const child = page.locator('[data-testid="rf__node-run-text"]');
-    await expect(child).toHaveCount(1);
-    await expect.poll(() => child.evaluate((element) => ({
+    const groupB = page.locator('[data-testid="rf__node-run-group-b"]');
+    await expect(groupB.getByRole("button", { name: "组合框颜色" })).toBeDisabled();
+    await expect(groupB.getByRole("button", { name: "组合框布局" })).toBeDisabled();
+    await expect(groupB.getByTestId("group-template-button")).toBeDisabled();
+    await expect(groupB.getByRole("button", { name: "解组" })).toBeDisabled();
+    await expect(groupB.getByTestId("group-execute-button")).toHaveText("停止后续");
+
+    const childA = page.locator('[data-testid="rf__node-run-text-a"]');
+    await expect(childA).toHaveCount(1);
+    await expect.poll(() => childA.evaluate((element) => ({
+      ariaLabel: element.getAttribute("aria-label"),
       className: element.className,
       pointerEvents: getComputedStyle(element).pointerEvents,
     }))).toEqual({
+      ariaLabel: "运行中子节点 A，整组执行中，Prompt、模型、参数和输入已锁定",
       className: expect.stringContaining("workflow-run-locked"),
       pointerEvents: "none",
     });
+    await childA.evaluate((element) => element.dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    ));
+    await page.keyboard.press("Backspace");
+    await expect(canvas).toHaveAttribute("data-node-count", "6");
 
+    // A selected running participant cannot be deleted. Copy/paste creates a
+    // disjoint graph, and that unrelated copy can be deleted while both runs
+    // keep their exact task ownership.
+    await page.locator('[data-testid="rf__node-run-group-a"]').click({
+      position: { x: 8, y: 8 },
+    });
+    await page.keyboard.press("Backspace");
+    await expect(canvas).toHaveAttribute("data-node-count", "6");
+    await page.locator('[data-testid="rf__edge-run-edge-a-next"]')
+      .evaluate((element) => element.dispatchEvent(new MouseEvent("click", {
+        bubbles: true,
+      })));
+    await expect(page.getByTestId("cut-edge-run-edge-a-next")).toBeDisabled();
+    await unrelatedText.click({ position: { x: 12, y: 12 } });
     await page.keyboard.press("Meta+c");
-    const beforeCommands = await canvas.evaluate((element) => ({
-      nodeCount: element.getAttribute("data-node-count"),
-      selectedCount: element.getAttribute("data-selected-node-count"),
-    }));
-    for (const shortcut of ["Meta+a", "Meta+v", "Meta+x", "Meta+z", "Meta+Shift+z"]) {
-      await page.keyboard.press(shortcut);
-    }
-    await expect(canvas).toHaveAttribute("data-node-count", beforeCommands.nodeCount ?? "");
-    await expect(canvas).toHaveAttribute(
-      "data-selected-node-count",
-      beforeCommands.selectedCount ?? "",
-    );
+    await page.keyboard.press("Meta+v");
+    await expect(canvas).toHaveAttribute("data-node-count", "7");
+    await page.keyboard.press("Backspace");
+    await expect(canvas).toHaveAttribute("data-node-count", "6");
+    expect(taskPostNodes).toEqual(["run-text-a", "run-text-b"]);
 
     await page.getByTestId("tasks").click();
     await expect(page.getByTestId("tasks-panel")).toBeVisible();
@@ -1716,7 +2537,10 @@ test("running group locks child edits while the parent can leave the viewport", 
       "running",
     );
 
-    const body = page.getByTestId("group-node-run-group");
+    await page.locator('[data-testid="rf__node-run-group-a"]').click({
+      position: { x: 8, y: 8 },
+    });
+    const body = page.getByTestId("group-node-run-group-a");
     const box = await body.boundingBox();
     if (!box) throw new Error("running group body is not mounted");
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -1724,24 +2548,511 @@ test("running group locks child edits while the parent can leave the viewport", 
     await page.mouse.move(-800, -500, { steps: 12 });
     await page.mouse.up();
 
-    await expect.poll(async () => {
-      const current = await readCanvasNodes();
-      return current.nodes.find((node) => node.id === "run-group")?.position.x ?? 0;
-    }).toBeLessThan(-200);
     await expect(canvas).toHaveAttribute("data-workflow-run-active", "true");
-    await expect(page.getByTestId("tasks-group-summary")).toHaveAttribute(
-      "data-status",
-      "running",
+    await expect(childA).toHaveCount(0);
+    await expect(page.locator('[data-testid="rf__node-run-text-a-next"]'))
+      .toHaveCount(0);
+
+    // Completing A's first layer while the whole group is truly unmounted must
+    // dispatch and apply the second layer without releasing B.
+    setLatestTaskState("run-text-a", "success");
+    await withDeadline("run-text-a-next task POST", expect.poll(() =>
+      taskPostNodes.filter((candidate) => candidate === "run-text-a-next").length
+    ).toBe(1));
+    setLatestTaskState("run-text-a-next", "success");
+    await expectTerminalSummaryCount("run-group-a", "success", 1);
+    await expect(canvas).toHaveAttribute("data-workflow-run-active", "true");
+    await expect.poll(async () => {
+      const savedCanvas = await (await request.get(`/api/canvas/${project.id}`)).json() as {
+        nodes: Array<{ data: { content?: string }; id: string }>;
+      };
+      return savedCanvas.nodes.find((node) => node.id === "run-text-a-next")?.data.content;
+    }).toContain("已完成 run-text-a-next");
+    setLatestTaskState("run-text-b", "failed");
+    await expectTerminalSummaryCount("run-group-b", "failed", 1);
+    await expect(canvas).not.toHaveAttribute("data-workflow-run-active", "true");
+    await captureTerminalSummaries();
+    await discardInterruptedCheckpointsForNextScenario();
+    await resetGroupPositionsForNextScenario();
+
+    // A failed terminal state must likewise leave B running.
+    await startGroup("run-group-a", "run-text-a", 2);
+    await startGroup("run-group-b", "run-text-b", 2);
+    setLatestTaskState("run-text-a", "failed");
+    await expectTerminalSummaryCount("run-group-a", "failed", 1);
+    expect(taskPostNodes.filter((nodeId) => nodeId === "run-text-a-next"))
+      .toHaveLength(1);
+    await expect(canvas).toHaveAttribute("data-workflow-run-active", "true");
+    setLatestTaskState("run-text-b", "success");
+    await expectTerminalSummaryCount("run-group-b", "success", 1);
+    await expect(canvas).not.toHaveAttribute("data-workflow-run-active", "true");
+    await captureTerminalSummaries();
+    await discardInterruptedCheckpointsForNextScenario();
+    await resetGroupPositionsForNextScenario();
+
+    // Stopping A prevents later dispatch for A but does not stop B. The active
+    // A task still reaches a durable terminal result, as promised by the UI.
+    await startGroup("run-group-a", "run-text-a", 3);
+    await startGroup("run-group-b", "run-text-b", 3);
+    await page
+      .locator('[data-testid="rf__node-run-group-a"]')
+      .getByTestId("group-execute-button")
+      .evaluate((element) => (element as HTMLButtonElement).click());
+    setLatestTaskState("run-text-a", "success");
+    await expectTerminalSummaryCount("run-group-a", "cancelled", 1);
+    expect(taskPostNodes.filter((nodeId) => nodeId === "run-text-a-next"))
+      .toHaveLength(1);
+    await expect(canvas).toHaveAttribute("data-workflow-run-active", "true");
+    setLatestTaskState("run-text-b", "success");
+    await expectTerminalSummaryCount("run-group-b", "success", 1);
+    await expect(canvas).not.toHaveAttribute("data-workflow-run-active", "true");
+    await captureTerminalSummaries();
+    expect(taskPostNodes).toEqual([
+      "run-text-a", "run-text-b",
+      "run-text-a-next",
+      "run-text-a", "run-text-b",
+      "run-text-a", "run-text-b",
+    ]);
+    expect(terminalSummaries.filter((summary) =>
+      summary.groupId === "run-group-a" && summary.status === "success"
+    )).toHaveLength(1);
+    expect(terminalSummaries.filter((summary) =>
+      summary.groupId === "run-group-a" && summary.status === "failed"
+    )).toHaveLength(1);
+    expect(terminalSummaries.filter((summary) =>
+      summary.groupId === "run-group-a" && summary.status === "cancelled"
+    )).toHaveLength(1);
+    expect(terminalSummaries.filter((summary) =>
+      summary.groupId === "run-group-b" && summary.status === "success"
+    )).toHaveLength(2);
+    expect(terminalSummaries.filter((summary) =>
+      summary.groupId === "run-group-b" && summary.status === "failed"
+    )).toHaveLength(1);
+    expect(new Set(terminalSummaries.map((summary) => summary.runId)).size)
+      .toBe(6);
+
+    // Release the last active nodes of two groups in the same polling window.
+    // Both terminal summaries remain independently addressable and both
+    // successful checkpoints clear without deleting sibling state.
+    await discardInterruptedCheckpointsForNextScenario();
+    await resetGroupPositionsForNextScenario();
+    const simultaneousAPosts = taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-a"
+    ).length;
+    const simultaneousBPosts = taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-b"
+    ).length;
+    const simultaneousDownstreamPosts = taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-a-next"
+    ).length;
+    await startGroup("run-group-a", "run-text-a", simultaneousAPosts + 1);
+    await startGroup("run-group-b", "run-text-b", simultaneousBPosts + 1);
+    setLatestTaskState("run-text-a", "success");
+    await expect.poll(() => taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-a-next"
+    ).length).toBe(simultaneousDownstreamPosts + 1);
+    setLatestTaskState("run-text-a-next", "success");
+    setLatestTaskState("run-text-b", "success");
+    await expectTerminalSummaryCount("run-group-a", "success", 1);
+    await expectTerminalSummaryCount("run-group-b", "success", 1);
+    await expect(canvas).not.toHaveAttribute("data-workflow-run-active", "true");
+    await expect.poll(() => page.evaluate(() => {
+      for (let index = 0; index < window.localStorage.length; index += 1) {
+        if (window.localStorage.key(index)?.startsWith(
+          "unboundry-group-run-checkpoint:v1:",
+        )) return false;
+      }
+      return true;
+    })).toBe(true);
+
+    // Both groups now consume the same durable external Text input. Starting
+    // B while A owns that source must identify the exact shared node and keep
+    // B at zero task submissions.
+    await resetGroupPositionsForNextScenario();
+    const overlapResponse = await request.get(`/api/canvas/${project.id}`);
+    expect(overlapResponse.ok()).toBeTruthy();
+    const overlapCanvas = await overlapResponse.json() as {
+      edges: Array<{ id: string; [key: string]: unknown }>;
+      loadToken: string;
+      nodes: Array<{
+        data: Record<string, unknown>;
+        id: string;
+        [key: string]: unknown;
+      }>;
+      revision: number;
+    };
+    const overlapSave = await request.put(`/api/canvas/${project.id}`, {
+      data: {
+        edges: [
+          ...overlapCanvas.edges,
+          {
+            id: "run-edge-shared-a",
+            source: "unrelated-text",
+            sourceHandle: "source",
+            target: "run-text-a",
+            targetHandle: "target",
+            type: "cuttable",
+          },
+          {
+            id: "run-edge-shared-b",
+            source: "unrelated-text",
+            sourceHandle: "source",
+            target: "run-text-b",
+            targetHandle: "target",
+            type: "cuttable",
+          },
+        ],
+        nodes: overlapCanvas.nodes.map((node) => node.id === "unrelated-text"
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                content: "两个工作流共享的真实输入",
+                contentHtml: "<p>两个工作流共享的真实输入</p>",
+              },
+            }
+          : node),
+        observedLoadToken: overlapCanvas.loadToken,
+        observedRevision: overlapCanvas.revision,
+        revision: overlapCanvas.revision,
+        saveAttemptId: randomUUID(),
+        saveSequence: 1,
+        saveSessionId: randomUUID(),
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+    expect(overlapSave.ok()).toBeTruthy();
+    await page.reload();
+    await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+      "data-persistence-ready",
+      "true",
     );
-    // The parent may be virtualized after leaving the viewport, but renderer
-    // retention keeps the active child mounted and non-interactive.
-    await expect(child).toHaveCount(1);
-    await page.getByTestId("tasks-group-stop").click();
-    await expect(page.getByTestId("tasks-group-summary")).toHaveAttribute(
-      "data-status",
-      "stopping",
+    await installSummaryCapture();
+    const overlapAPosts = taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-a"
+    ).length;
+    const overlapBPosts = taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-b"
+    ).length;
+    const overlapDownstreamPosts = taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-a-next"
+    ).length;
+    await startGroup("run-group-a", "run-text-a", overlapAPosts + 1);
+    const overlapGroupB = page.locator('[data-testid="rf__node-run-group-b"]');
+    await overlapGroupB.evaluate((element) => element.dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    ));
+    await overlapGroupB.getByTestId("group-execute-button")
+      .evaluate((element) => (element as HTMLButtonElement).click());
+    await expect(page.getByTestId("workflow-run-toast")).toContainText(
+      "另一轮正在使用直接输入“无关文字节点”（节点 unrelated-text），本轮未提交任何生成任务",
     );
-    await expect(page.getByTestId("tasks-group-stop")).toBeDisabled();
+    expect(taskPostNodes.filter((nodeId) => nodeId === "run-text-b"))
+      .toHaveLength(overlapBPosts);
+    setLatestTaskState("run-text-a", "success");
+    await expect.poll(() => taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-a-next"
+    ).length).toBe(overlapDownstreamPosts + 1);
+    setLatestTaskState("run-text-a-next", "success");
+    await expectTerminalSummaryCount("run-group-a", "success", 1);
+
+    const restoreResponse = await request.get(`/api/canvas/${project.id}`);
+    expect(restoreResponse.ok()).toBeTruthy();
+    const restoreCanvas = await restoreResponse.json() as {
+      edges: Array<{ id: string; [key: string]: unknown }>;
+      loadToken: string;
+      nodes: unknown[];
+      revision: number;
+    };
+    const restoreSave = await request.put(`/api/canvas/${project.id}`, {
+      data: {
+        edges: restoreCanvas.edges.filter((edge) =>
+          !["run-edge-shared-a", "run-edge-shared-b"].includes(edge.id)
+        ),
+        nodes: restoreCanvas.nodes,
+        observedLoadToken: restoreCanvas.loadToken,
+        observedRevision: restoreCanvas.revision,
+        revision: restoreCanvas.revision,
+        saveAttemptId: randomUUID(),
+        saveSequence: 1,
+        saveSessionId: randomUUID(),
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+    expect(restoreSave.ok()).toBeTruthy();
+
+    // Two real tabs race the same group. The origin-wide admission lock and
+    // active-task check permit one first-layer POST only.
+    await discardInterruptedCheckpointsForNextScenario();
+    await resetGroupPositionsForNextScenario();
+    await page.reload();
+    await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+      "data-persistence-ready",
+      "true",
+    );
+    const secondPage = await page.context().newPage();
+    try {
+      await secondPage.goto(`/canvas/${project.id}`);
+      await expect(secondPage.getByTestId("canvas-world")).toHaveAttribute(
+        "data-persistence-ready",
+        "true",
+      );
+      const selectAndStart = async (targetPage: typeof page) => {
+        const group = targetPage.locator('[data-testid="rf__node-run-group-a"]');
+        await group.evaluate((element) => element.dispatchEvent(
+          new MouseEvent("click", { bubbles: true }),
+        ));
+        await group.getByTestId("group-execute-button")
+          .evaluate((element) => (element as HTMLButtonElement).click());
+      };
+      const groupRaceAPosts = taskPostNodes.filter((nodeId) =>
+        nodeId === "run-text-a"
+      ).length;
+      const groupRaceDownstreamPosts = taskPostNodes.filter((nodeId) =>
+        nodeId === "run-text-a-next"
+      ).length;
+      await Promise.all([selectAndStart(page), selectAndStart(secondPage)]);
+      await expect.poll(() => taskPostNodes.filter((nodeId) =>
+        nodeId === "run-text-a"
+      ).length).toBe(groupRaceAPosts + 1);
+      await expect.poll(async () => [
+        await page.locator("body").innerText(),
+        await secondPage.locator("body").innerText(),
+      ].some((text) => text.includes("当前画布已在其他标签页执行")))
+        .toBe(true);
+      setLatestTaskState("run-text-a", "success");
+      await expect.poll(() => taskPostNodes.filter((nodeId) =>
+        nodeId === "run-text-a-next"
+      ).length).toBe(groupRaceDownstreamPosts + 1);
+      setLatestTaskState("run-text-a-next", "success");
+      await expect.poll(() => page.evaluate(() => {
+        for (let index = 0; index < window.localStorage.length; index += 1) {
+          if (window.localStorage.key(index)?.startsWith(
+            "unboundry-group-run-lease:v1:",
+          )) return false;
+        }
+        return true;
+      })).toBe(true);
+    } finally {
+      await secondPage.close();
+    }
+
+    // A manual Generate and a group claim use the same origin-wide admission
+    // lock. Whichever enters first may submit, while the loser observes either
+    // the active lease or the accepted task before reaching a second POST.
+    await resetGroupPositionsForNextScenario();
+    const manualRacePage = await page.context().newPage();
+    try {
+      await manualRacePage.goto(`/canvas/${project.id}`);
+      await expect(manualRacePage.getByTestId("canvas-world")).toHaveAttribute(
+        "data-persistence-ready",
+        "true",
+      );
+      const group = page.locator('[data-testid="rf__node-run-group-a"]');
+      await group.evaluate((element) => element.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      ));
+      const manualNode = manualRacePage.locator(
+        '[data-testid="rf__node-run-text-a"]',
+      );
+      await manualNode.evaluate((element) => element.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      ));
+      const manualGenerate = manualRacePage
+        .getByTestId("text-creator")
+        .getByRole("button", { name: "Generate" });
+      await expect(manualGenerate).toBeEnabled();
+      const postsBeforeRace = taskPostNodes.filter((nodeId) =>
+        nodeId === "run-text-a"
+      ).length;
+      const downstreamBeforeRace = taskPostNodes.filter((nodeId) =>
+        nodeId === "run-text-a-next"
+      ).length;
+      await Promise.all([
+        group.getByTestId("group-execute-button")
+          .evaluate((element) => (element as HTMLButtonElement).click()),
+        manualGenerate.evaluate((element) => (element as HTMLButtonElement).click()),
+      ]);
+      await expect.poll(() => taskPostNodes.filter((nodeId) =>
+        nodeId === "run-text-a"
+      ).length).toBe(postsBeforeRace + 1);
+      await expect.poll(async () => [
+        await page.locator("body").innerText(),
+        await manualRacePage.locator("body").innerText(),
+      ].some((text) => text.includes("整组"))).toBe(true);
+      const groupWon = await page.evaluate(() => {
+        for (let index = 0; index < window.localStorage.length; index += 1) {
+          if (window.localStorage.key(index)?.startsWith(
+            "unboundry-group-run-lease:v1:",
+          )) return true;
+        }
+        return false;
+      });
+      setLatestTaskState("run-text-a", "success");
+      if (groupWon) {
+        await expect.poll(() => taskPostNodes.filter((nodeId) =>
+          nodeId === "run-text-a-next"
+        ).length).toBe(downstreamBeforeRace + 1);
+        setLatestTaskState("run-text-a-next", "success");
+      } else {
+        await expect.poll(() => taskPostNodes.filter((nodeId) =>
+          nodeId === "run-text-a-next"
+        ).length).toBe(downstreamBeforeRace);
+      }
+      await expect.poll(() => page.evaluate(() => {
+        for (let index = 0; index < window.localStorage.length; index += 1) {
+          if (window.localStorage.key(index)?.startsWith(
+            "unboundry-group-run-lease:v1:",
+          )) return false;
+        }
+        return true;
+      })).toBe(true);
+    } finally {
+      await manualRacePage.close();
+    }
+
+    // A hard refresh converts the active run to an interrupted checkpoint,
+    // releases its page owner, and resumes the exact accepted task without a
+    // duplicate first-layer POST.
+    await resetGroupPositionsForNextScenario();
+    const refreshPostsBefore = taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-a"
+    ).length;
+    const refreshDownstreamBefore = taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-a-next"
+    ).length;
+    await startGroup(
+      "run-group-a",
+      "run-text-a",
+      refreshPostsBefore + 1,
+    );
+    await expect.poll(() => page.evaluate(() => {
+      for (let index = 0; index < window.localStorage.length; index += 1) {
+        const key = window.localStorage.key(index);
+        if (!key?.startsWith("unboundry-group-run-checkpoint:v1:")) continue;
+        const value = JSON.parse(window.localStorage.getItem(key) ?? "null") as {
+          nodeStates?: Record<string, string>;
+          status?: string;
+        } | null;
+        if (
+          value?.status === "running" &&
+          value.nodeStates?.["run-text-a"] === "running"
+        ) return true;
+      }
+      return false;
+    })).toBe(true);
+    await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent(
+      "pagehide",
+    )));
+    await expect.poll(() => page.evaluate(() => {
+      let interrupted = false;
+      let leased = false;
+      for (let index = 0; index < window.localStorage.length; index += 1) {
+        const key = window.localStorage.key(index);
+        if (key?.startsWith("unboundry-group-run-lease:v1:")) leased = true;
+        if (!key?.startsWith("unboundry-group-run-checkpoint:v1:")) continue;
+        const value = JSON.parse(window.localStorage.getItem(key) ?? "null") as {
+          status?: string;
+        } | null;
+        if (value?.status === "interrupted") interrupted = true;
+      }
+      return { interrupted, leased };
+    })).toEqual({ interrupted: true, leased: false });
+    setLatestTaskState("run-text-a", "success");
+    await page.reload();
+    await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+      "data-persistence-ready",
+      "true",
+    );
+    await page.getByTestId("tasks").click();
+    await expect(page.getByTestId("tasks-group-summary")).toHaveCount(0);
+    await expect(page.getByTestId("tasks-group-checkpoint")).toBeVisible();
+    await page.getByTestId("tasks-group-continue").click();
+    await expect.poll(() => taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-a"
+    ).length).toBe(refreshPostsBefore + 1);
+    await expect.poll(() => taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-a-next"
+    ).length).toBe(refreshDownstreamBefore + 1);
+    setLatestTaskState("run-text-a-next", "success");
+    await expect.poll(() => page.evaluate(() => {
+      for (let index = 0; index < window.localStorage.length; index += 1) {
+        if (window.localStorage.key(index)?.startsWith(
+          "unboundry-group-run-lease:v1:",
+        )) return false;
+      }
+      return true;
+    })).toBe(true);
+
+    // Leaving for a different real canvas uses the same page-exit checkpoint
+    // path. Returning exposes one resumable run and keeps the accepted task
+    // exact instead of minting another paid submission.
+    const otherProjectResponse = await request.post("/api/projects", { data: {} });
+    expect(otherProjectResponse.status()).toBe(201);
+    const otherProject = await otherProjectResponse.json() as { id: string };
+    try {
+      await resetGroupPositionsForNextScenario();
+      const switchPostsBefore = taskPostNodes.filter((nodeId) =>
+        nodeId === "run-text-a"
+      ).length;
+      const switchDownstreamBefore = taskPostNodes.filter((nodeId) =>
+        nodeId === "run-text-a-next"
+      ).length;
+      await startGroup(
+        "run-group-a",
+        "run-text-a",
+        switchPostsBefore + 1,
+      );
+      await expect.poll(() => page.evaluate(() => {
+        for (let index = 0; index < window.localStorage.length; index += 1) {
+          const key = window.localStorage.key(index);
+          if (!key?.startsWith("unboundry-group-run-checkpoint:v1:")) continue;
+          const value = JSON.parse(window.localStorage.getItem(key) ?? "null") as {
+            nodeStates?: Record<string, string>;
+            status?: string;
+          } | null;
+          if (
+            value?.status === "running" &&
+            value.nodeStates?.["run-text-a"] === "running"
+          ) return true;
+        }
+        return false;
+      })).toBe(true);
+      page.once("dialog", (dialog) => void dialog.accept());
+      await page.goto(`/canvas/${otherProject.id}`);
+      await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+        "data-persistence-ready",
+        "true",
+      );
+      setLatestTaskState("run-text-a", "success");
+      await page.goto(`/canvas/${project.id}`);
+      await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+        "data-persistence-ready",
+        "true",
+      );
+      await page.getByTestId("tasks").click();
+      await expect(page.getByTestId("tasks-group-checkpoint")).toBeVisible();
+      await page.getByTestId("tasks-group-continue").click();
+      await expect.poll(() => taskPostNodes.filter((nodeId) =>
+        nodeId === "run-text-a"
+      ).length).toBe(switchPostsBefore + 1);
+      await expect.poll(() => taskPostNodes.filter((nodeId) =>
+        nodeId === "run-text-a-next"
+      ).length).toBe(switchDownstreamBefore + 1);
+      setLatestTaskState("run-text-a-next", "success");
+      await expect.poll(() => page.evaluate(() => {
+        for (let index = 0; index < window.localStorage.length; index += 1) {
+          if (window.localStorage.key(index)?.startsWith(
+            "unboundry-group-run-lease:v1:",
+          )) return false;
+        }
+        return true;
+      })).toBe(true);
+    } finally {
+      await request.delete(`/api/canvas/${otherProject.id}`);
+      await request.delete(`/api/projects/${otherProject.id}`);
+    }
+
   } finally {
     await request.delete(`/api/canvas/${project.id}`);
     await request.delete(`/api/projects/${project.id}`);

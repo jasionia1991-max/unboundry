@@ -431,8 +431,16 @@ export function GenerationTasksPanel({
     setTasks([]);
     setActionError("");
     setReadError("");
-    setGroupSummary(visibleGroupRunSummary(readLastGroupRunSummary(groupRunScope)));
-    setGroupCheckpoint(readGroupRunCheckpoint(groupRunScope));
+    const checkpoint = readGroupRunCheckpoint(groupRunScope);
+    const summary = visibleGroupRunSummary(readLastGroupRunSummary(groupRunScope));
+    setGroupCheckpoint(checkpoint);
+    setGroupSummary(
+      checkpoint?.status === "interrupted" &&
+        checkpoint.runId === summary?.runId &&
+        isActiveGroupRunStatus(summary.status)
+        ? undefined
+        : summary,
+    );
     setLoading(true);
     if (!open || !canvasId) {
       return () => currentActionController.abort("generation-task-scope-closed");
@@ -478,7 +486,16 @@ export function GenerationTasksPanel({
 
   useEffect(() => {
     const onCheckpoint = () => {
-      setGroupCheckpoint(readGroupRunCheckpoint(groupRunScope));
+      const checkpoint = readGroupRunCheckpoint(groupRunScope);
+      setGroupCheckpoint(checkpoint);
+      if (checkpoint?.status === "interrupted") {
+        setGroupSummary((current) =>
+          current?.runId === checkpoint.runId &&
+            isActiveGroupRunStatus(current.status)
+            ? undefined
+            : current
+        );
+      }
     };
     window.addEventListener(GROUP_RUN_CHECKPOINT_EVENT, onCheckpoint);
     window.addEventListener("storage", onCheckpoint);
@@ -627,7 +644,11 @@ export function GenerationTasksPanel({
               if (!window.confirm(
                 "放弃后不会自动删除已经提交或完成的任务；再次整组执行可能重新生成。确定放弃这条续跑记录吗？",
               )) return;
-              if (!clearGroupRunCheckpoint(groupRunScope)) {
+              if (!clearGroupRunCheckpoint(
+                groupRunScope,
+                undefined,
+                groupCheckpoint.runId,
+              )) {
                 setActionError("续跑记录无法安全清理，请保留当前记录并稍后重试");
               }
             }}
