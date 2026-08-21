@@ -2,19 +2,19 @@
 
 更新日期：2026-08-21
 
-状态：`GOAL_ACTIVE / PRODUCTION_CODE_PUBLISHED / YUNTENG_CREDENTIAL_GATE_BLOCKED / USER_RECHECK`
+状态：`GOAL_ACTIVE / PRODUCTION_PUBLISHED / YUNTENG_PARTIAL_RESULT_FORMAT_BLOCKED / FAILED_MODELS_DISABLED / USER_RECHECK`
 
 建议目标版本：`v0.6.29`
 
 施工续接：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_CHECKPOINT.md`
 
-实施状态（2026-08-21）：v0.6.29代码、GitHub、冻结备份、fresh build、原子切换和不依赖云腾key的生产技术门已完成；独立云腾元数据profile已创建。没有云腾自己的key，且标准「我的连接」只列已有发布模型的平台、当前不显示云腾；不得靠发布占位模型绕过。credential、三模型、binding、task、attempt和真实Provider POST均为0，后续配置按本方案fail-closed，等待经批准的非回显安全运维入口。
+实施状态（2026-08-21）：v0.6.29代码、GitHub、冻结备份、fresh build、原子切换和生产配置均已完成。云腾独立凭据、129模型目录和三个目标模型归属有效；零付费门后恰好执行3次创建POST。Kling在Unboundry内完整成功；Nano/Suno虽在云腾侧生成作品，但Unboundry结果格式解析失败，已按本方案停用两条绑定、保留历史和证据。创建预算耗尽，不再调用；本版本保持部分配置fail-closed。
 
 ## 1. 一句话结论
 
 优创和云腾必须是两个独立的 Provider profile。它们可以复用同一个“天空兼容”技术通道，也可以碰巧使用同一个 API base URL，但绝不能共享平台身份、密钥、余额、账号凭据、模型记录或任务归属。
 
-本次要修的不是三模型执行合同；该合同已经随 v0.6.28 上线。v0.6.29已发布商业Provider隔离和普通模型下拉辨认能力，并创建独立云腾元数据profile；当前真正缺失的是云腾自己的安全凭据、目录同步，以及三条只归属云腾的模型记录和节点绑定。
+v0.6.29已发布商业Provider隔离和普通模型下拉辨认能力，并完成云腾独立凭据、目录与三条模型记录。真实验收证明通用合同对Kling成立，但Nano/Suno的云腾实际结果形态与当前严格解析器不兼容；这两个模型在本版本必须保持停用，不能借用优创或放宽fail-closed规则伪造通过。
 
 ## 2. 已确认的业务结构
 
@@ -56,10 +56,10 @@
 - package：`0.6.29`；生产版本：`v0.6.29 / schema39`；
 - 生产 current：`/opt/unboundry/releases/v0.6.29-yunteng-provider-isolation-20260821`；
 - 生产已有优创 profile，driver 为 `multi-protocol-relay`；
-- 发布前生产没有云腾 profile；当前已创建独立云腾元数据 profile，但没有云腾 key、账号凭据、模型或绑定；
-- 优创的远端目录快照碰巧出现上述三个 Provider 模型 ID，但生产 `model_profiles` 中没有这三条精确模型记录，也没有节点绑定；
+- 发布前生产没有云腾 profile；当前已创建独立云腾profile、安全凭据、三条精确模型记录和绑定；
+- 优创的历史远端目录快照碰巧出现上述三个 Provider 模型 ID，但三个当前生产 `model_profiles` 均只归属云腾，没有写入或改绑优创；
 - 因此“在优创目录快照里看见 ID”不等于“模型属于优创”，也不等于“云腾已接入”；
-- v0.6.29 隔离代码已经发布，但云腾凭据、目录、模型发布和真实smoke没有完成。当前功能状态是 `PRODUCTION_CODE_PUBLISHED_CONFIGURATION_BLOCKED / USER_RECHECK`，不能写成用户可用、smoke PASS或 `USER_PASS`。
+- v0.6.29隔离代码、凭据、目录、模型配置和三次真实smoke均已执行。Kling PASS；Nano/Suno Provider已出作品但Unboundry结果解析失败并停用。当前状态是 `PRODUCTION_PUBLISHED_CONFIGURATION_PARTIAL_FAIL_CLOSED / USER_RECHECK`，不能写成三模型PASS或`USER_PASS`。
 
 受保护文件 `spec/public-templates-director-split-revision.json` 当前为未跟踪文件。后续所有阶段都禁止读取、修改、格式化、移动、删除、暂存或提交该文件，也不得让它进入 fixture、snapshot、build 或 artifact。
 
@@ -255,6 +255,6 @@ Nano Banana Pro
 - 不读取或提交受保护 JSON；
 - 不在本轮文档工作中启动 Goal、改代码、测试产品、发布或生产操作。
 
-## 11. 当前 Goal 凭据门
+## 11. 当前 Goal 凭据与付费门结果
 
-当前 Goal 已由用户明确启动并授权 v0.6.29 发布、SSH、生产配置、GitHub 与最多三次真实创建 POST。云腾 API key 仍只能通过 Unboundry 既有安全入口取得，不能写入聊天、Markdown、Git、测试或终端回显。若安全入口没有云腾自己的 key，先完成全部不依赖密钥的发布阶段，最后在凭据门 fail-closed；不得借用优创 key。
+当前Goal已由用户明确启动并授权v0.6.29发布、SSH、生产配置、GitHub与最多三次真实创建POST。云腾API key已通过既有安全入口取得，未进入聊天、Markdown、Git、测试或终端回显；优创key未读取或借用。三次创建POST预算已经耗尽，后续不得再调用或自动重试；失败模型按配置回滚停用。

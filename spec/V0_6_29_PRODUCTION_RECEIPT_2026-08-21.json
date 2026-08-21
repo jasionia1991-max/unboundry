@@ -1,17 +1,19 @@
 {
   "incident": "YUNTENG-PROVIDER-ISOLATION",
   "version": "0.6.29",
-  "status": "PRODUCTION_CODE_PUBLISHED_CONFIGURATION_BLOCKED",
+  "status": "PRODUCTION_PUBLISHED_CONFIGURATION_PARTIAL_FAIL_CLOSED",
   "publishedAt": "2026-08-21T09:50:14Z",
-  "receiptRecordedAt": "2026-08-21T09:57:52Z",
+  "receiptRecordedAt": "2026-08-21T11:05:24Z",
+  "userAcceptance": "USER_RECHECK",
   "changes": {
-    "summary": "优创与云腾按商业平台 profile 隔离；公共模型目录和节点下拉显示商业 Provider；账号凭据、模型身份、任务、attempt、恢复、relay 核对与结果提交均按 profile 严格归属。",
-    "scope": "Provider/model/task identity、管理端与节点模型选择 UI、直接风险测试和发布治理文档；数据库结构保持 schema39。",
+    "summary": "优创与云腾按独立商业平台隔离Provider、凭据、目录、模型、余额和任务身份；天空仅为兼容层。三个目标媒体模型只建立在云腾profile下。",
+    "scope": "Provider/model/task identity、管理端与节点模型选择UI、云腾安全配置、三次真实创建POST、结果保存和失败配置回滚；schema保持39。",
     "generationLogicUnchanged": false
   },
   "source": {
     "commit": "d4ccc360e2645e43005c8bdf9a05ec984d48e655",
     "tree": "a291420309236f2b2bb53653301b2b1f1395dbfd",
+    "tag": "v0.6.29",
     "tagObject": "761170048233928768621c00cbec12609fdc7ac4",
     "mainMergeCommit": "af8493cdf710dc9f899aa098d725e9d034bdb032",
     "mainTreeMatchesTag": true,
@@ -31,14 +33,14 @@
       ],
       "testsPassed": 78,
       "testsTotal": 78,
-      "additionalDirectCoverage": "m9/m16/m18/m46 passed in the affected implementation stage"
+      "additionalDirectCoverage": "m9/m16/m18/m46 passed during implementation"
     },
     "independentReview": {
       "completed": true,
       "reviewer": "one independent subagent",
       "findings": 4,
       "resolved": 4,
-      "summary": "Removed owner credential fallback, profile-scoped relay recovery context, required strict profile evidence for result/retry/resume, and blocked cross-profile model rebinding."
+      "summary": "Removed owner credential fallback, scoped relay recovery by profile, required strict profile evidence for result/retry/resume, and blocked cross-profile model rebinding."
     },
     "formalFull": {
       "command": "PATH=/Users/mymy/.local/bin:/usr/bin:/bin node scripts/run-safe-tests.mjs full",
@@ -65,46 +67,37 @@
       ],
       "testsPassed": 56,
       "testsTotal": 56,
-      "exitCode": 0,
-      "sourceSnapshotSha256": "c9560566bb501a55c2129d3bde2e821c63f207aba7a366eab06b41a3e3c90bf2",
-      "listener4173Unchanged": true
+      "exitCode": 0
     },
-    "secureEntryDocumentationRerun": {
+    "finalReceiptDocumentationRerun": {
       "spec": "tests/m38-generation-runtime-incidents.spec.ts",
       "testsPassed": 15,
       "testsTotal": 15,
       "exitCode": 0,
-      "sourceSnapshotSha256": "23da186a1cfd43f72835ed6e0ca923aef822a75043c67719d190829fac532d4f",
+      "sourceSnapshotSha256": "ca60590b217a5175c895e836e6327b3860ab499ee24cd2bc8f5866240243235a",
       "listener4173Unchanged": true
     },
-    "listener4173Unchanged": true,
-    "realProviderRequestsDuringAutomation": 0
+    "listener4173Unchanged": true
   },
   "github": {
     "state": "MERGED",
-    "pullRequest": 60,
-    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/60",
-    "mergedAt": "2026-08-21T09:46:53Z",
-    "mergeCommit": "af8493cdf710dc9f899aa098d725e9d034bdb032",
+    "pullRequests": [60, 61, 62],
+    "releasePullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/60",
+    "releaseMergedAt": "2026-08-21T09:46:53Z",
+    "releaseMergeCommit": "af8493cdf710dc9f899aa098d725e9d034bdb032",
     "tag": "v0.6.29",
     "tagTarget": "d4ccc360e2645e43005c8bdf9a05ec984d48e655"
   },
   "backup": {
     "path": "/var/lib/unboundry-rollbacks/v0.6.29-frozen-6c2fff",
     "files": 365,
-    "frozenManifestSha256": "cabcb1c01ec1d157e2d9eabfcdab49b1a8bc5b1febffb6d4f6d3c23d1ae9c0b5",
-    "restoreManifestSha256": "cabcb1c01ec1d157e2d9eabfcdab49b1a8bc5b1febffb6d4f6d3c23d1ae9c0b5",
-    "databaseRows": 5740,
-    "mediaBytes": 284663380,
-    "mediaFiles": 355,
+    "dataManifestSha256": "cabcb1c01ec1d157e2d9eabfcdab49b1a8bc5b1febffb6d4f6d3c23d1ae9c0b5",
+    "frozenManifestFileSha256": "57298821b711fdfa482de02682691afeaaec6ab667bdcfac83e764389f63838b",
+    "restoreManifestFileSha256": "57298821b711fdfa482de02682691afeaaec6ab667bdcfac83e764389f63838b",
     "restoreSchemaVersion": 39,
     "restoreDatabaseIntegrity": "ok",
     "restoreForeignKeyViolations": 0,
-    "restoreTasks": 630,
-    "restoreProviderAttempts": 638,
-    "restoreActiveGenerations": 0,
-    "restorePublicTemplates": 50,
-    "restorePublishedTemplates": 48
+    "immutable": true
   },
   "production": {
     "release": "/opt/unboundry/releases/v0.6.29-yunteng-provider-isolation-20260821",
@@ -119,30 +112,30 @@
     "foreignKeyViolations": 0,
     "tasksBefore": 630,
     "providerAttemptsBefore": 638,
-    "tasksAfter": 630,
-    "providerAttemptsAfter": 638,
+    "tasksAfter": 633,
+    "providerAttemptsAfter": 641,
     "activeGenerationsAfter": 0,
+    "logicalMediaAssetsAfter": 716,
+    "logicalMediaBytesAfter": 1186596417,
+    "canvasDocumentsAfter": 57,
     "publicTemplates": 50,
     "publishedTemplates": 48,
-    "mediaFilesAfter": 355,
-    "mediaBytesAfter": 284663380,
-    "applicationWarningOrErrorLinesSinceRestart": 0,
-    "nginxWarningOrErrorLinesSinceRestart": 0
+    "applicationErrorOrWarningLinesSinceRestartExcludingNodeExperimentalWarning": 0,
+    "secretPatternLinesSinceRestart": 0,
+    "browserConsoleErrorsOrWarnings": 0,
+    "liveStatus": 200,
+    "readyStatus": 200,
+    "readyMode": "active"
   },
   "publicAssets": {
     "version": "0.6.29",
-    "rootStatus": 200,
-    "unauthenticatedAccountContextStatus": 401,
-    "liveStatus": 200,
-    "readyStatus": 200,
     "allReleaseAssetsMatchedPublic": true,
-    "browserConsoleErrorsOrWarnings": 0,
     "assets": {
-      "/assets/CanvasShell-pGiisDDM.js": "4ef1a50b7ac77b795897d7683b950a8a867151b9f7d8fbaaeec22f5af222b87e",
-      "/assets/WorkspacePage-CqogU2RP.js": "137a3cc674c65ab7f47005f6324508968235d15488b6f7f16722ed811611ec66",
-      "/assets/index-CU_yvUMY.js": "6931e7809da2f36b4cb3eb0ad2698cb05d6f547a14d27cec0a4b8fb5807ca5d",
-      "/assets/index-DA0DWfUA.css": "734dcfacba0ed81c7d581ef938b5b7219242f00e7eb32c6bf16a4b8191a747f2",
-      "/assets/projectStorage-B_IEWHw1.js": "574d7055a3e0443f2879b283f1f19bf2ed2f67f5011699acbfa4e54f58b5910f"
+      "/assets/CanvasShell-pGiisDDM.js": "4ef1a50f3b43b929820f2dde9bc24236beb52d079c379ca921a450460d43b87e",
+      "/assets/WorkspacePage-CqogU2RP.js": "137a3c97c8efb5618fa1efb9283589c6aad14c619af1e7fe58309b8b4d38ec66",
+      "/assets/index-CU_yvUMY.js": "6931e78de60f7028f61667753fb106bed3e5048be3bd63b7c0aa0e46f74dca5d",
+      "/assets/index-DA0DWfUA.css": "734dcfa008ef1c03c801f0ce1073572bd87652422c8a799f5bff3d7836db47f2",
+      "/assets/projectStorage-B_IEWHw1.js": "574d7054826bb3560974363136aebcd3c952e71b11b220d6adbdab79a731910f"
     }
   },
   "providerIsolation": {
@@ -152,26 +145,49 @@
       "displayName": "云腾",
       "driver": "multi-protocol-relay",
       "baseUrl": "https://api.lk888.ai",
-      "status": "disabled",
-      "keyStatus": "unchecked",
-      "catalogStatus": "unchecked",
-      "catalogControlRequests": 0,
-      "accountCredentialIdentities": 0,
-      "configuredModels": 0,
-      "nodeBindings": 0,
-      "tasks": 0,
-      "providerAttempts": 0
+      "status": "enabled",
+      "keyStatus": "valid",
+      "catalogKeyStatus": "valid",
+      "catalogModels": 129,
+      "catalogControlRequests": 2,
+      "accountCredentialIdentities": 1,
+      "accountCredentialVersion": 1,
+      "tasks": 3,
+      "providerAttempts": 3,
+      "providerTaskIds": 3
     },
-    "targetModels": {
-      "providerModelIds": [
-        "gemini-3-pro-image-preview",
-        "kling-v3-omni-cankao",
-        "suno-v4.5"
-      ],
-      "productionRows": 0,
-      "productionBindings": 0,
-      "reason": "Cloud-side Yunteng credential is absent, so catalog sync/import/publish/bind is fail-closed."
-    },
+    "targetModels": [
+      {
+        "displayName": "Nano Banana Pro",
+        "internalModelId": "cb2e1041-33f5-49ff-bc99-994a97622db4",
+        "providerModelId": "gemini-3-pro-image-preview",
+        "capability": "image",
+        "protocol": "media-generate",
+        "status": "disabled",
+        "bindingEnabled": false,
+        "isDefault": false
+      },
+      {
+        "displayName": "可灵-Omni 参考生",
+        "internalModelId": "3919d490-8739-490a-8bce-0678c27e4760",
+        "providerModelId": "kling-v3-omni-cankao",
+        "capability": "video",
+        "protocol": "media-generate",
+        "status": "published",
+        "bindingEnabled": true,
+        "isDefault": false
+      },
+      {
+        "displayName": "Suno 音乐生成 4.5",
+        "internalModelId": "65830fc7-3888-48ea-a842-87db6df65ec1",
+        "providerModelId": "suno-v4.5",
+        "capability": "audio",
+        "protocol": "media-generate",
+        "status": "disabled",
+        "bindingEnabled": false,
+        "isDefault": false
+      }
+    ],
     "youchuangUnchangedAgainstFrozenBackup": {
       "equal": true,
       "profileCount": 1,
@@ -180,57 +196,120 @@
       "bindings": 12,
       "tasks": 281,
       "providerAttempts": 288,
-      "profileSha256": "71195f0d228be23675758c475e75d9d3418d5b95f4db3d5f120f5f8af0e6b528",
+      "profileSha256": "911fcdc7bef2579258a1c6a9f0f53ded5c2f52020a97dd7b47e99f871f56826f",
       "credentialIdentitySha256": "b709b764314a70d3fb2c33ed282db6d8824628f234ab4b4d90c1cff25b3d7204",
       "modelsSha256": "7550c0ca105a5465d9a7513f37e2a4ea3259dd43587062e4f58c0315311bda03",
       "bindingsSha256": "a799df62ca0cb21339f7789c4a9ec2aba41cab465abdd79a5d9a6ad31cef6c72",
-      "tasksSha256": "f5bd9a83cad0f810f36c3a43609f5e4f3f2959f259c8d3aa26242dbaa9b1f13f",
+      "tasksSha256": "31351b4d71ad52825443ef183a5806031b8acaa765b103924c23c9d20d32bacf",
       "providerAttemptsSha256": "936dc7ce43a09ce6c20dcf4f749243f3a5006dcb3fa822bc39ef3aa3a563c6b7"
     }
   },
   "credentialGate": {
-    "status": "BLOCKED_FAIL_CLOSED",
-    "safeSourcesChecked": [
-      "local environment variable names",
-      "exact Yunteng-specific Keychain service labels",
-      "production service environment variable names",
-      "Yunteng-specific production configuration filenames",
-      "Unboundry encrypted account-credential identity metadata",
-      "authenticated production My Connections page"
-    ],
-    "yuntengCredentialFound": false,
-    "standardMyConnectionsExposesYunteng": false,
-    "secureEntryVisibilityReason": "The standard page lists only Providers that already have a published model; Yunteng has zero models by design at this gate.",
+    "status": "PASSED_SECURE_ENTRY",
+    "yuntengCredentialFound": true,
+    "credentialIdentityVerifiedWithoutReadingKey": true,
     "youchuangCredentialReadOrCopied": false,
-    "secretPrintedOrCommitted": false,
-    "requiredNextAction": "An authorized user must provision Yunteng's own API key through an approved non-echoing secure operator channel, then report only that it is ready. Do not publish a placeholder model merely to expose the standard My Connections form, and never send the key through chat, Git, docs, tests or terminal output."
+    "secretPrintedOrCommitted": false
   },
   "realProviderSmoke": {
+    "zeroPaidGatePassedBeforeFirstCreate": true,
     "authorizedMaximumCreatePosts": 3,
-    "actualCreatePosts": 0,
+    "actualCreatePosts": 3,
     "duplicateCreatePosts": 0,
-    "nano": "NOT_RUN_CREDENTIAL_GATE",
-    "kling": "NOT_RUN_CREDENTIAL_GATE",
-    "suno": "NOT_RUN_CREDENTIAL_GATE"
+    "initialAdmissions": 3,
+    "providerAttempts": 3,
+    "postBudgetExhausted": true,
+    "nano": {
+      "taskId": "5f24c680-1270-4bea-b29c-2b5842d4b771",
+      "providerTaskId": "112083470",
+      "providerAttemptId": 664,
+      "executionAttempt": 1,
+      "unboundryState": "failed",
+      "errorCode": "FORMAT",
+      "providerWorkExists": true,
+      "configurationAfter": "disabled"
+    },
+    "kling": {
+      "taskId": "a7440bce-6030-4c0c-842e-8f941c33d10b",
+      "providerTaskId": "112086188",
+      "providerAttemptId": 665,
+      "executionAttempt": 1,
+      "unboundryState": "success",
+      "resultAssetId": "ec4aec38-d5b3-4b6e-ab48-5c8659bf422d.mp4",
+      "ossObjectKey": "objects/2026/08/video/205d5b82-16af-45a7-b70d-89159aa189f0.mp4",
+      "bytes": 3378176,
+      "durationSeconds": 5.042,
+      "checksumSha256": "6ca50d9d2a5fb5ab01d470e219d28c8fc4cbe9ff63f979b749eecfe21fbaef04",
+      "configurationAfter": "published"
+    },
+    "suno": {
+      "taskId": "4cdd6e1f-3b08-4fb0-b173-3ab3a41f127a",
+      "providerTaskId": "112087930",
+      "providerAttemptId": 666,
+      "executionAttempt": 1,
+      "unboundryState": "failed",
+      "errorCode": "FORMAT",
+      "providerWorkExists": true,
+      "configurationAfter": "disabled"
+    }
+  },
+  "providerCost": {
+    "providerPageDate": "2026-08-21",
+    "works": {
+      "image": 1,
+      "video": 1,
+      "audio": 1
+    },
+    "dayConsumedCompute": 4.09,
+    "balanceAfter": 7.14,
+    "source": "authenticated Yunteng personal page",
+    "noAdditionalPaidVerification": true
+  },
+  "recoveredExistingResults": {
+    "providerTasksRecreated": 0,
+    "directory": "/Users/mymy/Documents/unboundry/recovery/yunteng-provider-results-20260821",
+    "nano": {
+      "file": "gemini-3-pro-image-preview-112083470.jpg",
+      "bytes": 593919,
+      "dimensions": "1024x1024",
+      "sha256": "67af6f0c4911e1f11182603a4b99054070b45e9aa691fbed5384ca624ada19e9"
+    },
+    "suno": {
+      "file": "suno-v4.5-112087930.mp3",
+      "bytes": 4506390,
+      "durationSeconds": 217.679979,
+      "sha256": "0314707a8583d03e073403b26ebe04ba0453e5385390f7f59f33b614ba90babb"
+    }
+  },
+  "productionAcceptanceProject": {
+    "canvasId": "981e142e-9c60-45b7-893c-2801b9db9f01",
+    "title": "v0.6.29 云腾生产验收 2026-08-21",
+    "saved": true,
+    "retained": true,
+    "disabledModelNodesFailClosed": true,
+    "klingResultPlayable": true
   },
   "externalEffects": {
     "providerProfileMetadataCreated": 1,
-    "realProviderGenerationTasks": 0,
-    "paidProviderRequests": 0,
-    "providerCatalogRequests": 0,
-    "ossMediaWrites": 0,
-    "productionCanvasMutated": false,
+    "accountCredentialIdentitiesCreated": 1,
+    "providerCatalogRequests": 2,
+    "targetModelsCreated": 3,
+    "realProviderGenerationTasks": 3,
+    "paidProviderCreateRequests": 3,
+    "ossMediaWrites": 1,
+    "productionCanvasMutated": true,
     "schemaChanged": false,
     "protectedJsonReadOrMutated": false
   },
   "rollback": {
     "previousRelease": "/opt/unboundry/releases/v0.6.28-relay-media-models-20260821",
     "frozenBackup": "/var/lib/unboundry-rollbacks/v0.6.29-frozen-6c2fff",
-    "required": false,
-    "configurationState": "Yunteng profile remains disabled with zero credentials, models and bindings; no configuration rollback was needed."
+    "codeRollbackRequired": false,
+    "configurationRollbackRequired": true,
+    "configurationState": "Nano and Suno disabled with bindings off; Kling remains published. No task, attempt, media, audit, backup or immutable release was deleted; nothing was rebound to Youchuang."
   },
-  "authorizationConsumed": false,
-  "completionBlockedBy": "YUNTENG_CREDENTIAL_UNAVAILABLE_AT_SECURE_ENTRY",
-  "userAcceptance": "USER_RECHECK",
+  "authorizationConsumed": true,
+  "completionBlockedBy": "YUNTENG_NANO_AND_SUNO_RESULT_FORMAT_INCOMPATIBLE_AFTER_PROVIDER_SUCCESS",
+  "completionBoundary": "Do not create more Provider tasks, rerun formal full, move v0.6.29 tag, enter v0.6.30, or publish disabled models as passed. A future parser fix requires a new explicit version and authorization.",
   "userAcceptanceEvidence": null
 }
