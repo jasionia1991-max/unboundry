@@ -275,7 +275,7 @@ test("平台连接页展示可执行的Key和目录代理提示", async ({
   await expect(catalog.locator(".provider-catalog-state-note")).toHaveText(
     catalogProxyMessage,
   );
-  await catalog.getByRole("button", { name: "同步模型" }).click();
+  await catalog.getByRole("button", { name: "同步“代理配置测试站”目录" }).click();
   await expect(catalog.locator(".provider-catalog-feedback")).toHaveText(
     catalogProxyMessage,
   );

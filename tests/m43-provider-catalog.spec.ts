@@ -1118,7 +1118,7 @@ test("Ark catalog administration UI stays local and imports only reviewed drafts
   expect(storageValues.join("\n")).not.toContain(accessKeyId);
   expect(storageValues.join("\n")).not.toContain(secretAccessKey);
 
-  await catalogSection.getByRole("button", { name: "同步模型" }).click();
+  await catalogSection.getByRole("button", { name: "同步“Ark Catalog”目录" }).click();
   await expect(catalogSection.getByRole("status"))
     .toContainText("同步完成：2 个官方模型，1 个接入点");
   await catalogSection.getByRole("button", { name: "查看发现模型" }).click();
@@ -1175,7 +1175,7 @@ test("Ark catalog administration UI stays local and imports only reviewed drafts
     .locator('[role="option"][data-value="video"]')
     .click();
   await catalogSection.getByRole("button", {
-    name: "添加到模型中心（1）",
+    name: "添加到“Ark Catalog”模型中心（1）",
   }).click();
   await expect(catalogSection.getByRole("status"))
     .toContainText("已添加 1 个模型到模型中心，当前保持停用");
