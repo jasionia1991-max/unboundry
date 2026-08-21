@@ -10,7 +10,7 @@
 - 注释tag`v0.6.29`精确指向commit`d4ccc360e2645e43005c8bdf9a05ec984d48e655`、tree`a291420309236f2b2bb53653301b2b1f1395dbfd`；PR #60 merge`af8493cdf710dc9f899aa098d725e9d034bdb032`，发布时main tree一致。
 - 唯一正式safe full执行`1025/1034`，9项旧测试夹具/ARIA名称失败；只复验失败spec后`30/31`，再单跑m43`6/6 PASS`，没有第二次full。独立review只执行一次，4项发现全部修复。
 - 生产release`/opt/unboundry/releases/v0.6.29-yunteng-provider-isolation-20260821`；冻结备份`v0.6.29-frozen-6c2fff`共365文件、双清单SHA`cabcb1c0…c0b5`。schema39/integrity ok/FK0、tasks630/attempts638/active0、模板50/已发布48、媒体355个/284663380字节不变；公网5资源逐字节一致，service active/enabled、NRestarts0，应用/nginx/浏览器新增error/warn为0。
-- 独立云腾profile存在但因安全入口没有云腾自己的key而保持disabled/unchecked；credential/model/binding/task/attempt与真实Provider创建POST均为0。优创profile、3组凭据身份、12模型/绑定、281任务/288attempt与冻结备份哈希一致。状态`PRODUCTION_CODE_PUBLISHED_CONFIGURATION_BLOCKED / USER_RECHECK`；回执`spec/V0_6_29_PRODUCTION_RECEIPT_2026-08-21.json`。
+- 独立云腾profile存在但没有云腾自己的key而保持disabled/unchecked；标准「我的连接」只列有已发布模型的平台，云腾当前不显示，禁止靠发布占位模型绕过。credential/model/binding/task/attempt与真实Provider创建POST均为0。优创profile、3组凭据身份、12模型/绑定、281任务/288attempt与冻结备份哈希一致。状态`PRODUCTION_CODE_PUBLISHED_CONFIGURATION_BLOCKED / USER_RECHECK`；回执`spec/V0_6_29_PRODUCTION_RECEIPT_2026-08-21.json`。
 
 ## 0.1 上一已发布事件：v0.6.28 Provider port 与三媒体中转模型（2026-08-21 已发布，待用户复验）
 

@@ -1,7 +1,7 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-21
-状态：`v0.6.29/schema39 已发布；隔离实现、定向验证、一次独立review、唯一一次safe full及失败项最小复验、GitHub、冻结备份、fresh build、原子切换和无密钥生产技术门均已完成。独立云腾profile已创建，但安全入口没有云腾自己的key，因此credential/model/binding/task/attempt和真实Provider POST均为0。当前为 PRODUCTION_CODE_PUBLISHED_CONFIGURATION_BLOCKED / USER_RECHECK；等待用户在生产「我的连接」安全填写云腾key后续接，不能借用优创。权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+状态：`v0.6.29/schema39 已发布；隔离实现、定向验证、一次独立review、唯一一次safe full及失败项最小复验、GitHub、冻结备份、fresh build、原子切换和无密钥生产技术门均已完成。独立云腾profile已创建，但没有云腾自己的key；标准「我的连接」又只列已有发布模型的平台，当前不显示云腾。credential/model/binding/task/attempt和真实Provider POST均为0。当前为 PRODUCTION_CODE_PUBLISHED_CONFIGURATION_BLOCKED / USER_RECHECK；等待经批准的非回显安全运维入口准备云腾key，不能借用优创或发布占位模型绕过。权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
 
 ### 2026-08-21 云腾 Provider 隔离与三模型上线（v0.6.29 代码已发布，凭据门阻断）
 
@@ -13,7 +13,7 @@
 - 发布证据：tag`v0.6.29`→commit`d4ccc360e2645e43005c8bdf9a05ec984d48e655`/tree`a291420309236f2b2bb53653301b2b1f1395dbfd`；PR #60 merge`af8493cdf710dc9f899aa098d725e9d034bdb032`；production current为`/opt/unboundry/releases/v0.6.29-yunteng-provider-isolation-20260821`。冻结备份`v0.6.29-frozen-6c2fff`共365文件，双清单SHA`cabcb1c0…c0b5`。
 - 生产门：service active/enabled、NRestarts0；公网/loopback0.6.29；schema39/integrity ok/FK0；tasks630/attempts638/active0、模板50/已发布48、媒体355个/284663380字节不变；公网5资源与release逐字节一致，应用/nginx/浏览器新增error/warn为0。
 - 隔离证据：优创profile、3组账号凭据身份、12个模型/绑定、281个任务和288个attempt与冻结备份逐项SHA一致。云腾无credential/model/binding/task/attempt，目录请求和真实Provider创建POST均为0；未读取、复制、覆盖或回退使用优创key。
-- 剩余流程：用户必须在生产「我的连接」安全填写云腾自己的key；随后才能只读同步目录、只在云腾导入/发布/绑定三模型、跑完零付费门和最多3次有界真实smoke。当前fail-closed，不是Goal完成或USER PASS。
+- 剩余流程：标准「我的连接」因云腾尚无已发布模型而不显示该profile；必须先由用户准备经批准的非回显安全运维入口，再保存云腾自己的key。不得为暴露表单提前发布占位模型。凭据身份出现后才能只读同步目录、只在云腾导入/发布/绑定三模型、跑完零付费门和最多3次有界真实smoke。当前fail-closed，不是Goal完成或USER PASS。
 - 权威方案：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_PLAN_2026-08-21.md`；施工续接：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_CHECKPOINT.md`；Goal合同：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_GOAL_PROMPT_2026-08-21.md`。
 
 ### 2026-08-21 v0.6.28 已发布（上一不可变版）

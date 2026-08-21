@@ -17,7 +17,7 @@
 - 发布门：service active/enabled、NRestarts0；公网/loopback 0.6.29；schema39、integrity ok、FK0；tasks630、attempts638、active0、模板50/已发布48、媒体355个/284663380字节不变；5个公网构建资源与 release 逐字节一致；应用/nginx和浏览器新增 error/warn 均为0。
 - 云腾 profile `06831aee…60fdf` 独立存在，driver=`multi-protocol-relay`、base URL=`https://api.lk888.ai`；key/catalog 均 unchecked，credential/model/binding/task/attempt均0，Provider目录请求和真实创建POST均0。
 - 优创对冻结备份逐项哈希一致：profile 1、账号凭据身份3、模型/绑定12/12、任务/attempt 281/288；没有读取、复制、覆盖或回退使用优创 key。
-- 凭据门：安全检查了本机环境变量名、云腾精确Keychain标签、生产服务环境变量名、云腾专属配置文件名和数据库凭据身份元数据，均没有云腾key。按合同停在fail-closed；完整回执：`spec/V0_6_29_PRODUCTION_RECEIPT_2026-08-21.json`。
+- 凭据门：安全检查了本机环境变量名、云腾精确Keychain标签、生产服务环境变量名、云腾专属配置文件名、数据库凭据身份元数据和生产「我的连接」页，均没有云腾key；该页只列有已发布模型的平台，云腾当前不会出现。不得靠先发布占位模型绕过；必须经批准的非回显安全运维入口准备云腾key后再续接。完整回执：`spec/V0_6_29_PRODUCTION_RECEIPT_2026-08-21.json`。
 
 ## 云腾 Provider 隔离纠正（2026-08-21，v0.6.29 代码已发布）
 
