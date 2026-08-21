@@ -2,13 +2,23 @@
 
 更新日期：2026-08-21
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.28**
+当前代码包版本：**v0.6.29**
 
 ## 一句话
 
-线上是 **v0.6.28 / schema39**。同步文字 Provider port、Generation 媒体结果原子提交与同一中转站 Nano Banana Pro、Kling V3 Omni、Suno V4.5 合同已于2026-08-21发布；冻结备份、数据不变门、公网资源、service与零付费技术验收通过，当前状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。v0.6.27 为上一版并已获用户验收通过。用户要的核心结果仍是：**上传一张图，工作流自己跑完，用户下载结果**。
+本地候选是 **v0.6.29 / schema39**，线上仍是 **v0.6.28 / schema39**。v0.6.29 已完成云腾/优创商业平台身份、账号凭据、模型与任务恢复隔离实现和风险定向验证，正在进入唯一一次正式 safe full 与发布阶段；生产尚未创建独立“云腾” Provider，三模型也尚未作为云腾模型发布。当前准确状态为 `RELEASE_CANDIDATE_TARGETED_PASS / PRODUCTION_CONFIGURATION_BLOCKED / USER_RECHECK`。用户要的核心结果仍是：**上传一张图，工作流自己跑完，用户下载结果**。
 
-本轮没有执行真实 Provider 或付费生成，也没有 OSS 写入、schema变更或生产画布修改；用户将在真实页面自行复验，未回复“通过”前不得写`USER_PASS`。
+截至候选冻结前没有执行真实 Provider 创建 POST，也没有 OSS 写入、schema变更或生产画布修改；用户将在真实页面自行复验，未回复“通过”前不得写`USER_PASS`。
+
+## 云腾 Provider 隔离纠正（2026-08-21，v0.6.29 候选定向通过）
+
+- 用户明确：优创与云腾是两个老板、两套充值余额、两套 API key 和账单，互相完全不能使用；二者只是都接入天空兼容 API。“天空”是技术兼容层，不是默认计费 Provider。
+- 生产只读核对：当前存在优创 profile（`multi-protocol-relay`），不存在云腾 profile；优创目录快照中碰巧出现三个 Provider 模型 ID，但 `model_profiles` 没有三条精确模型记录，节点绑定也为 0。目录出现不能证明模型归属，更不能证明云腾已接入。
+- 正确数据模型：优创、云腾各自一条 `provider_profiles`；账号凭据继续按 `(account_id, provider_profile_id)` 隔离；相同 Provider model ID 可在两个 profile 下各有独立内部 model ID。三模型本轮明确归属云腾，禁止写入或回退到优创。
+- schema39 保持不变。普通 `/api/models` 已安全返回 `providerName`，节点下拉以“模型名 + 商业Provider + capability”区分同名模型并继续按内部 model ID 选择；管理端明确区分商业平台、技术 driver 与 protocol，并禁止既有模型跨 profile 原地重绑。
+- 凭据 owner 模式不再回退 profile 全局 key；task/attempt/recovery、relay 自动核对和 Generation 结果提交均把 `provider_profile_id` 纳入严格身份核对。一次独立 subagent review 找出的四项（凭据 fallback、恢复上下文串 profile、结果提交缺 profile、模型身份漂移）已全部修复。
+- Node `22.23.1` / npm `10.9.8` 定向有效覆盖：review 后 m12/m56/m57/m73/m88 `78/78 PASS`，TypeScript 退出0；另有 m9/m16/m18/m46 直接覆盖密钥表面、灰阶布局、两字号和多目录UI。全部使用隔离临时数据、动态loopback和fake fetch，真实创建POST为0，4173 listener不变。实现提交：`8f4a2b6 feat(provider): isolate commercial platform identity`。
+- 施工方案：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_PLAN_2026-08-21.md`；续接：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_CHECKPOINT.md`；Goal 合同：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_GOAL_PROMPT_2026-08-21.md`。下一门是候选冻结后的唯一一次正式 safe full；尚未 tag/push/PR/发布/配置云腾/真实调用。
 
 ## v0.6.28 已发布（2026-08-21）
 
@@ -38,33 +48,6 @@
 - 权威文件：`spec/UNBOUNDRY_MODULAR_MONOLITH_AUDIT_2026-08-21.md`、`spec/UNBOUNDRY_PROGRESSIVE_MODULARIZATION_PLAN_2026-08-21.md`、`spec/UNBOUNDRY_PROVIDER_PORT_BATCH_ACCEPTANCE_MATRIX_2026-08-21.md`、`spec/UNBOUNDRY_PROGRESSIVE_MODULARIZATION_CHECKPOINT.md`。
 - 后续：第一、第二与发布追踪批均已随v0.6.28收口；用户页面复验前为`USER_RECHECK`。下一次Provider、发布、push/PR、版本/tag、SSH或生产动作仍需新的明确授权。
 
-本地工程另有两批尚未发布的改造：同步文字Provider port，以及同一中转站三媒体模型/Generation结果提交边界；二者均为`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`，不改变线上v0.6.27事实，也不是USER PASS。
-
-## v0.6.28 发布准备（2026-08-21）
-
-- 用户已分别确认版本号`v0.6.28`与“允许发布”；本次授权覆盖当前两批本地工程的版本提交、正式safe full、GitHub tag/PR/merge、冻结备份、生产切换和零付费技术验收。
-- 当前仅为发布候选：线上仍是`v0.6.27/schema39`，不得提前写成已发布；真实Provider生成、付费调用、OSS素材写入与数据库schema变更不在本次默认授权内。
-- Release第七批只读追踪确认：当前通用发布路径是`RELEASE_RUNBOOK.md`记录的安全runner、精确Git archive、staging fresh build、冻结备份与原子current切换；历史`0.5.2/0.6.0` bridge脚本不是本次v0.6.28发布入口，不做无关治理。
-
-## 三媒体模型与Generation结果提交边界本地工程完成（2026-08-21，未发布）
-
-- 状态：`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`。GenerationResultCommit在同一SQLite事务内提交media publication、Provider attempt、task success与event；MediaLifecycle/MediaRegistry不再查询或更新Generation表，TaskStore与Safety运行时循环已解除。
-- 模型：`gemini-3-pro-image-preview`、`kling-v3-omni-cankao`、`suno-v4.5`均复用`multi-protocol-relay/media-generate`。Nano/Kling只接受按edge order的图片引用（上限14/7），Suno不接受媒体引用；参数映射、`result_type`、PNG/MP4/音频保存均为fail-closed。
-- 异步安全：截止从paid attempt `created_at`计算，Nano/Kling/Suno分别10/75/15分钟，5秒起步且最多10秒；已有Provider task id只查询原任务；提交响应丢失不二次POST；status只在404/405回退；无`refunded:true`不自动付费重试。
-- 自动证据：Node `22.23.1` / npm `10.9.8`；冻结十spec最终有效`148/148`。首次产品测试`145/148`后只重跑失败m53+m57并`40/40`通过；TypeScript、构建、source coverage、外网门禁均通过。未跑full，理由是改动范围与冻结定向集合一致，未传播到Canvas/Workflow/schema/release。
-- 隔离和授权：新临时目录、动态loopback、fake fetch；4173 listener不变。`REAL_PROVIDER_SMOKE_PAUSED`；真实Provider、OSS、SSH、生产、版本、push/PR/tag/发布均未触碰。受保护JSON未读、未改、未暂存、未提交。
-- 本地提交：`3144d7a refactor(generation): own media result commits`；第二提交为`feat(generation): add relay media model contracts`。权威方案、矩阵与Checkpoint见`spec/UNBOUNDRY_RELAY_MEDIA_MODELS_INTEGRATION_PLAN_2026-08-21.md`、`spec/UNBOUNDRY_RELAY_MEDIA_MODELS_ACCEPTANCE_MATRIX_2026-08-21.md`、`spec/UNBOUNDRY_RELAY_MEDIA_MODELS_CHECKPOINT.md`。
-
-## 同步文字Provider port本地工程完成（2026-08-21，未发布）
-
-- 状态：`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`。同步文字执行已统一经过`TextGenerationProvider`与`TextProviderRegistry`；Generation Task不再按Ark/relay具体文字driver调用adapter。原未使用的媒体形态`GenerationProvider`假抽象已收敛为当前真实port。
-- 安全边界：Provider profile/credential继续由原owner解析和租赁；Task协调器继续拥有task、attempt、幂等、reconcile、lease、结果归属与写回；adapter只返回规范化`text + providerUsageTokens`，不获得数据库、TaskStore、Canvas或MediaLifecycle。
-- 替换性：m33用可注入fake Provider完成一个task，网络fetch为0、provider-boundary attempt恰好1；未知driver/缺少实现时本地失败且fetch仍为0。
-- 自动证据：Node `22.23.1` / npm `10.9.8`下，一次`npx tsc --noEmit`退出0；安全runner定向m33 `8/8`、m39 `3/3`、m44 `8/8`、m53 `23/23`、m57 `14/14`通过，异常0，使用新临时数据和动态loopback端口，4173 listener不变。
-- 证据边界：未运行默认`npm run verify`或full；未访问真实Provider、付费生成、OSS、SSH或生产；未改版本、schema、Canvas、Workflow、Media publication或线上配置。受保护JSON未读取、修改、格式化、暂存或提交。
-- 权威文件：`spec/UNBOUNDRY_MODULAR_MONOLITH_AUDIT_2026-08-21.md`、`spec/UNBOUNDRY_PROGRESSIVE_MODULARIZATION_PLAN_2026-08-21.md`、`spec/UNBOUNDRY_PROVIDER_PORT_BATCH_ACCEPTANCE_MATRIX_2026-08-21.md`、`spec/UNBOUNDRY_PROGRESSIVE_MODULARIZATION_CHECKPOINT.md`。
-- 后续：停在本地`USER_REVIEW`；第二至第七批未启动，发布、push/PR、版本/tag、SSH和生产仍需新的明确授权。
-
 ## v0.6.27 画布执行解耦已发布（2026-08-21）
 
 - 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户于2026-08-21明确回复「v0.6.27 验收通过，同步更新为 USER PASS。」四类整组执行已从React节点registration迁移到静态headless executor；`workflowRenderRetention.ts`已删除；同画布不相交组可并行，重叠节点/直接输入在付费提交前阻止。
@@ -88,7 +71,7 @@
 
 ## v0.6.25 发布与真实验证（2026-08-20）
 
-- 当前代码包与线上版本均为 **v0.6.27**；v0.6.26 状态 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`并作为上一版保留。v0.6.25 的完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
+- 当前代码包与线上版本均为 **v0.6.28**；本节以下为 v0.6.25 历史记录。v0.6.26 状态 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`并作为历史版本保留。v0.6.25 的完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
 - 事二「生成任务一直排队中」已在线闭环：已知任务 `c479826f-a426-4a11-854c-79ecc802bcbc` 从 `queued / attempt 1 / provider_task_id null` 在 v0.6.25 重启后自动接力，平台任务 `111092189` 完成，最终 `success / attempt 2`；没有盲目重复。
 - 事一已查清：2026-08-19 15:23–15:26Z 上游“服装主体标准化”图片成功并产出 11,596,744 字节 PNG；v0.6.23 的 10MB 文字输入预检随后拦下四个下游文字节点，五个后代未运行。不是客户端 DAG 漏发；红字把失败错归因给已经成功的上游图片节点。
 - “2:33 三张主图从未提交”的旧说法已被生产任务表与 nginx 202 提交记录否定：该轮 7 图 + 4 文全部 success。
@@ -98,15 +81,15 @@
 ## 线上
 
 - 地址：https://canvas.mymy.ltd
-- 指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.27-canvas-execution-decoupling-20260821`
-- 源码：commit `26525387ff02a34d8de1eae4d74ed51c11529a7a`，tree `3735ea655cc9f353b0ccfca1060221cea445ba0e`
-- 标签：`v0.6.27` 精确指向该源码
-- 功能 PR：#53，merge `4a675be056aaca4b3d3a3239136857fecbefbb94`，main tree 与 tag tree 一致
-- 冻结备份：`/var/lib/unboundry-rollbacks/v0.6.26-frozen-234452`（365 文件，两份清单 SHA 同为 `6b64da90d996446e570a60bc0454ead445defe42df09579787e796e39864b525`）
+- 指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.28-relay-media-models-20260821`
+- 源码：tag commit `ee6ce437730cf78ef4488217b778f6b0ef2aaee5`，tree `2811ada65140779d4a5e10cbd8ed6fa54893638b`
+- 标签：`v0.6.28` 精确指向上述源码
+- 功能 PR：#58，merge `753d24f8ee6e4facb3c88e876c4a38b456addc75`，main tree 与 tag tree 一致
+- 冻结备份：`/var/lib/unboundry-rollbacks/v0.6.28-frozen-awqsNE`（365 文件，两份清单 SHA 同为 `2897b65a20419e38ae940b353c3f57112ab352133054052557a06d63f496c58e`）
 - 上一不可变版：`v0.6.25-generation-hardening-20260820`（以及更早版本）仍保留
 - v0.6.26切换基准：schema39、integrity ok、FK0、tasks569、attempts577、公共模板50（48 published）、active0；本轮发布前只读现场为tasks590、attempts598、公共模板50（48 published）、active0。
 - 生产并发配置已恢复推荐值：per_user 20 / image 10 / video 2 / audio 2 / text 10 / RPM 120
-- 正式安全全量：`119/119 specs、1025/1025 tests PASS`
+- 正式安全全量：v0.6.28 候选执行 `1032/1034`，两个失败经原因修正和最小复验 `16/16 PASS`；未重复 full
 - v0.6.25 已于 2026-08-20 发布，agent 真实页面与最小真实 Provider 验证通过，待用户主观复验；更早用户已通过版本状态保持不变
 
 ## 最新发布（2026-08-20 已发布，agent 技术实页通过，待用户主观复验）

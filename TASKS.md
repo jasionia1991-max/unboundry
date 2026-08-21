@@ -1,7 +1,16 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-21
-状态：`v0.6.28/schema39 在线；同步文字Provider port、Generation媒体结果原子提交与Nano/Kling/Suno三模型合同已发布；冻结备份、数据不变门、公网资源与零付费生产技术验收通过；当前为 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK。权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+状态：`v0.6.29/schema39 本地候选已完成隔离实现、定向验证与一次独立review；v0.6.28/schema39仍在线，生产尚无独立云腾Provider。当前为 RELEASE_CANDIDATE_TARGETED_PASS / PRODUCTION_CONFIGURATION_BLOCKED / USER_RECHECK；下一步是唯一一次safe full、GitHub、发布、云腾安全配置与生产验收。权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+
+### 2026-08-21 云腾 Provider 隔离与三模型上线（v0.6.29 候选定向通过）
+
+- 业务纠正：优创和云腾是两个独立商业平台、余额和API key互不相通；两者只是都接天空兼容API。必须各自使用独立Provider profile、凭据、模型内部ID和任务归属，不创建“天空”计费profile。
+- 生产事实：v0.6.28代码在线，但当前没有云腾profile；优创目录快照里出现三模型ID不能证明归属，生产三条精确`model_profiles`和节点绑定均不存在。禁止把三模型补进优创或使用优创key代替。
+- 已实现：公共目录与节点下拉展示商业Provider；同名模型按内部ID选择；管理端区分商业平台/driver/protocol并禁止既有模型跨profile重绑；owner凭据缺失严格fail-closed；relay核对、task/attempt/recovery与结果提交强制匹配profile/model/kind/owner。
+- 自动证据：Node `22.23.1` / npm `10.9.8`，TypeScript退出0；一次独立subagent review的4项发现全部修复；review后m12/m56/m57/m73/m88有效`78/78 PASS`，真实Provider创建POST为0，4173 listener不变。实现提交`8f4a2b6`。
+- 剩余流程：候选冻结后只运行一次正式safe full；随后完成tag/push/PR/merge、冻结备份、fresh build、生产切换、云腾安全配置、零付费门、最多3次有界真实smoke和上线后完整生产技术验收。用户主观确认前保持`USER_RECHECK`。
+- 权威方案：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_PLAN_2026-08-21.md`；施工续接：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_CHECKPOINT.md`；Goal合同：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_GOAL_PROMPT_2026-08-21.md`。
 
 ### 2026-08-21 v0.6.28 已发布（当前）
 
@@ -23,29 +32,6 @@
 ### 2026-08-21 同步文字Provider registry/port（v0.6.28 已发布，待用户复验）
 
 - 状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。代码已把同步文字执行收口到唯一`TextProviderRegistry`入口；Task协调器不再按具体文字driver调用adapter，Ark native与四类relay文字协议各由adapter实现统一port。
-- 任务安全：profile/credential owner、lease、provider-boundary attempt、task幂等/reconcile、结果归属与错误文案保持原边界；fake Provider可注入且网络0，未知实现本地fail-closed且网络0。
-- 自动证据：Node `22.23.1` / npm `10.9.8`；一次TypeScript noEmit退出0；m33 `8/8`、m39 `3/3`、m44 `8/8`、m53 `23/23`、m57 `14/14`安全定向通过，异常0，动态loopback与新临时数据，4173 listener不变。
-- 明确未做：未跑full/默认verify，未真实调用Provider/OSS，未访问SSH/生产，未改版本/schema/Canvas/Workflow/Media publication；第二至第七批未启动。
-- 验收口径：当前不是发布PASS或USER PASS，停在用户审阅；权威矩阵与续接见`spec/UNBOUNDRY_PROVIDER_PORT_BATCH_ACCEPTANCE_MATRIX_2026-08-21.md`和`spec/UNBOUNDRY_PROGRESSIVE_MODULARIZATION_CHECKPOINT.md`。
-
-### 2026-08-21 v0.6.28 发布准备（当前）
-
-- 用户已分别确认版本号`v0.6.28`和“允许发布”；当前候选包含同步文字Provider port、Generation媒体结果原子提交与同一中转站Nano/Kling/Suno三模型合同。
-- 发布边界：按`RELEASE_RUNBOOK.md`完成版本提交、正式safe full、push/tag/PR/merge、冻结备份、fresh build、原子切换和零付费技术验收；不做真实Provider生成、不改schema、不动OSS素材。
-- 第七批Release只读追踪结论：当前实际入口是safe runner + 精确Git archive + staging fresh build + 冻结备份 + current原子切换；历史`0.5.2/0.6.0` bridge工具未阻塞当前发布，不扩张治理。
-- 当前线上仍是`v0.6.27/schema39`；只有生产门完成后才更新为已发布，用户实际页面确认前保持`USER_RECHECK`。
-
-### 2026-08-21 同一中转站三媒体模型与结果边界（本地工程完成，未发布）
-
-- 状态：`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`。Generation已拥有媒体结果提交事务；MediaLifecycle/MediaRegistry不再读写generation task/attempt，TaskStore↔Safety循环已解除。
-- 模型合同：Nano Banana Pro `gemini-3-pro-image-preview`、Kling V3 Omni `kling-v3-omni-cankao`、Suno V4.5 `suno-v4.5`统一走现有`multi-protocol-relay/media-generate`；参数、引用、严格结果类型和10/75/15分钟持久轮询窗口已固化。
-- 自动证据：Node `22.23.1` / npm `10.9.8`；十个目标spec最终有效`148/148`。第一次产品测试`145/148`后只重跑失败的m53+m57并`40/40`通过；TypeScript、构建、source coverage、外网门禁均通过。
-- 边界：未跑full；没有真实Provider专用smoke凭据，`REAL_PROVIDER_SMOKE_PAUSED`；未触碰真实OSS、4173、真实数据、生产、版本或GitHub。受保护JSON保持untracked且未读/未改/未暂存/未提交。
-- 提交：`3144d7a refactor(generation): own media result commits`；第二提交为`feat(generation): add relay media model contracts`。权威矩阵和续接见`spec/UNBOUNDRY_RELAY_MEDIA_MODELS_ACCEPTANCE_MATRIX_2026-08-21.md`与`spec/UNBOUNDRY_RELAY_MEDIA_MODELS_CHECKPOINT.md`。
-
-### 2026-08-21 同步文字Provider registry/port（本地工程完成，未发布）
-
-- 状态：`LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`。本地代码已把同步文字执行收口到唯一`TextProviderRegistry`入口；Task协调器不再按具体文字driver调用adapter，Ark native与四类relay文字协议各由adapter实现统一port。
 - 任务安全：profile/credential owner、lease、provider-boundary attempt、task幂等/reconcile、结果归属与错误文案保持原边界；fake Provider可注入且网络0，未知实现本地fail-closed且网络0。
 - 自动证据：Node `22.23.1` / npm `10.9.8`；一次TypeScript noEmit退出0；m33 `8/8`、m39 `3/3`、m44 `8/8`、m53 `23/23`、m57 `14/14`安全定向通过，异常0，动态loopback与新临时数据，4173 listener不变。
 - 明确未做：未跑full/默认verify，未真实调用Provider/OSS，未访问SSH/生产，未改版本/schema/Canvas/Workflow/Media publication；第二至第七批未启动。
