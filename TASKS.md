@@ -1,14 +1,14 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-21
-状态：`v0.6.26/schema39 在线；v0.6.27 画布执行解耦候选已完成终审纠正和1029项库存冻结，待最终safe full、复审、真实Provider/页面与一次正式发布。当前权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+状态：`v0.6.26/schema39 在线；v0.6.27 画布执行解耦候选已完成终审纠正和最终safe full，待release复核、真实Provider/页面与一次正式发布。当前权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
 
 ### 2026-08-21 画布—工作流执行—任务恢复解耦（v0.6.27 候选）
 
-- 状态：`IMPLEMENTED_TARGETED_AUTO_PASS / FINAL_FULL_PENDING / NOT_RELEASED`。四类整组执行已迁移到静态headless executor，删除render retention；同画布不相交组可并行，结果应用受runId/taskId/ownershipKey/nodeId/kind共同保护。
+- 状态：`IMPLEMENTED_FINAL_AUTO_PASS / RELEASE_PENDING`。四类整组执行已迁移到静态headless executor，删除render retention；同画布不相交组可并行，结果应用受runId/taskId/ownershipKey/nodeId/kind共同保护。
 - 终审纠正：checkpoint写入必须匹配lease runId；放弃只清精确轮次；导航一次处理中断全部本地活跃run且外来owner前置拒绝；手动单节点提交必须避让同标签组lease，只有本轮executor可放行自己的runId。
 - 当前自动证据：m22 `37/37`、m38 `15/15`、m40 `14/14`、m41 `51/51`、m44 `8/8`、m68 `4/4`。m22已直接覆盖四模态headless preflight/run/recover/apply、整组真实卸载后第二层仍提交/落盘、双run成功/失败/停止隔离，以及运行中无关编辑/移动/连接/删除/复制。
-- 证据边界：旧候选虽有一次干净`119/119 specs、1027/1027 tests`，但终审后库存已增至1029，不能充当最终回执。下一步只在提交后的干净候选HEAD跑一次safe full，再做三路复审、最小真实Provider/页面、冻结备份、发布和生产技术验收；最终仍为`USER_RECHECK`，不得写`USER_PASS`。
+- 最终自动回执：HEAD `26525387ff02a34d8de1eae4d74ed51c11529a7a`的正式safe full退出码0，`119/119 specs、1029/1029 tests`，failed/skipped/retries/blocked/reportErrors均0，source/snapshot SHA均为`bef8b0f3c0204a6634dd45753d0700827eb8df6de0a7abb992f144116cf535d6`，4173 listener未变，受保护未跟踪JSON明确排除。架构终审P0=0/P1=0、测试终审无实现阻断；下一步release复核后完成push/PR/tag、最小真实Provider/页面、冻结备份、发布和生产技术验收，最终仍为`USER_RECHECK`，不得写`USER_PASS`。
 - 权威方案/矩阵/施工状态：`spec/UNBOUNDRY_CANVAS_EXECUTION_DECOUPLING_PLAN_2026-08-21.md`、`spec/UNBOUNDRY_CANVAS_EXECUTION_ACCEPTANCE_MATRIX_2026-08-21.md`、`spec/UNBOUNDRY_CANVAS_EXECUTION_CHECKPOINT.md`。
 
 ### 2026-08-21 整组执行不受画布视野影响（INC-GEN-012，v0.6.26 已发布）

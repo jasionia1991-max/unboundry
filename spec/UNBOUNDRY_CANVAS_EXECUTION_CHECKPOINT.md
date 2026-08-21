@@ -1,14 +1,14 @@
 # Unboundry 画布执行解耦施工 Checkpoint
 
-更新时间：2026-08-21（阶段0～5及终审纠正完成，1029项库存已冻结，最终全量/真实验证待收口）
-状态：`PHASE_6_VALIDATION / NOT_RELEASED`  
+更新时间：2026-08-21（阶段0～5、终审纠正与最终safe full完成；发布/真实验证待收口）
+状态：`PHASE_6_FINAL_AUTO_PASS / RELEASE_PENDING`
 用途：这是本轮治理唯一的可变施工状态。每个批次结束必须更新；上下文压缩或新 Session 接手时，先重新核对真实 Git/代码，再从“下一步唯一动作”继续。
 
 ## 1. 当前身份
 
 - 仓库：`/Users/mymy/Documents/unboundry/app`
 - 分支：`codex/unboundry-offline-remediation-2026-08-09`
-- 终审纠正前基线 HEAD：`dcf006f9299441b2aafd1f25a40d52adeb037e72`
+- 最终自动验收候选 HEAD：`26525387ff02a34d8de1eae4d74ed51c11529a7a`
 - package：`0.6.27`
 - 当前候选代码：v0.6.27；线上仍为v0.6.26，真实页面历史状态以 `spec/UNBOUNDRY_CURRENT_STATE.md` 和 v0.6.26 receipt 为准。
 - 预期工作树保留：`spec/public-templates-director-split-revision.json` 未跟踪，禁止提交、删除、改名。
@@ -62,14 +62,13 @@
 - 阶段4已把 `runId + taskId + ownershipKey + nodeId/kind` 作为结果应用门槛，旧轮次/删除节点/新任务绑定不匹配时只保留任务结果，不覆盖画布；
 - 阶段5生成细节集中到 `workflowNodeExecutors.ts`，Provider保留DAG、run生命周期、锁、checkpoint和摘要，CanvasSurface只执行交互锁策略；
 - package候选版本已选择 `0.6.27`。
-- 三类独立终审已完成首轮并给出四个P1纠正项：checkpoint/lease runId一致性、精确放弃单轮、多run导航停止、同标签手动提交与组lease竞争；四项均已修复并新增反例，最终候选HEAD还需复审签字。
+- 三类独立终审已完成：架构终审在HEAD `2652538`确认P0=0、P1=0并允许final full；测试终审确认无新的P0/P1实现阻断，同时要求对组合证据边界保持诚实，矩阵已同步这些边界。
+- 最终候选HEAD `26525387ff02a34d8de1eae4d74ed51c11529a7a`已完成唯一一次正式safe full：119/119 specs、1029/1029 tests全部通过。
 
 未完成：
 
-- 第一轮safe full候选快照得到1024/1027，随后同一旧候选干净全量得到119/119 specs、1027/1027 tests；终审纠正又把库存增至1029，因此两轮都不能替代最终候选HEAD的正式全量；
-- 尚需在干净最终候选HEAD上重跑一次safe full；
 - 尚未执行最小真实 Provider、受控真实页面、生产发布和生产技术验收；
-- 验收矩阵中只有已有明确自动证据的项目可登记 `AUTO_PASS`，其余保持 `NOT_RUN`；
+- VIEW-005精确98/171/200档位未跑，作为非阻断P1归后续性能专项；已有m79 60节点与m1 62节点代表性回归，不冒充精确档位通过；
 - `workflowRenderRetention.ts` 已从候选提交真实删除；执行和渲染均不存在该依赖。
 
 ## 5. 当前施工文件
@@ -97,13 +96,15 @@
 - `node scripts/run-safe-tests.mjs preflight`：退出码0；119 specs；安全入口确认；4173 listener unchanged。
 - `/Users/mymy/.hermes/node/bin/node node_modules/typescript/bin/tsc --noEmit`：退出码0（移除四类旧 registration 并修正 executor 类型后）。
 - 三路只读审查确认：HEAD 的四类执行均依赖 React `useEffect` registration；Provider resume 轮询不等于 exact task recover；scope 单槽 checkpoint/lease 与 scope-wide finally 无法安全支持多 run。
-- 尚未执行最终全量、真实 Provider或生产检查；定向证据不能替代这些最终闸门。
+- 尚未执行真实 Provider或生产检查；定向证据不替代下面的最终全量和后续发布闸门。
 - `node scripts/run-safe-tests.mjs run --spec tests/m22-group-execution.spec.ts`：37/37 PASS；覆盖四模态headless preflight/run/recover/apply、DAG、离屏真实卸载后第二层提交与结果落盘、运行期无关编辑/移动/连接/删除/复制、参与图锁、checkpoint/lease runId门、精确放弃、多run导航，以及双run成功/失败/停止隔离；4173 unchanged。
 - `node scripts/run-safe-tests.mjs run --spec tests/m40-generation-idempotency-recovery.spec.ts`：14/14 PASS；覆盖共享四节点幂等、丢响应reconcile、一次POST。
 - `node scripts/run-safe-tests.mjs run --spec tests/m41-generation-retry-ui.spec.ts`：51/51 PASS；覆盖四节点恢复、迟到结果、输入变化、保存失败/重放。
 - `node scripts/run-safe-tests.mjs run --spec tests/m68-generation-tasks-panel.spec.ts`：4/4 PASS；任务面板和exact reconcile无回归。
 - `node scripts/run-safe-tests.mjs run --spec tests/m38-generation-runtime-incidents.spec.ts`：15/15 PASS；CURRENT_STATE候选版本权威同步通过。
 - `node scripts/run-safe-tests.mjs run --spec tests/m44-provider-profile-atomicity.spec.ts`：8/8 PASS；第一轮全量中的WAL sidecar并发偶发未复现，独立进程原子性领域通过。
+- 最终正式回执：候选HEAD `26525387ff02a34d8de1eae4d74ed51c11529a7a`执行`node scripts/run-safe-tests.mjs full`退出码0；119/119 specs、1029/1029 tests，failed/skipped/retries/blocked/reportErrors均0；Node22.23.1、npm10.9.8、575个source files，immutable builder attempts1/invocations5/failures0，denied Vite wildcard probes 522；source/snapshot SHA均为`bef8b0f3c0204a6634dd45753d0700827eb8df6de0a7abb992f144116cf535d6`，4173 listener SHA前后同为`24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244`；受保护未跟踪JSON未进入source/snapshot。
+- 组合证据边界：UX通用锁由wrapper pointer-events、持续aria、禁用控件和任务摘要共同证明，不声称逐一点击每个同类控件；共享冲突页面fixture直接覆盖durable外部Text输入，其余重叠结构由锁集合单元反例覆盖；STATE-007删除后归属和STATE-009旧轮次结果分别由owner gate/迟到结果反例直接证明。
 
 ## 7. 测试政策摘要
 
@@ -164,7 +165,7 @@
 
 ## 11. 下一步唯一动作
 
-提交终审四项纠正、1029项测试库存和权威状态同步；随后在只保留受保护未跟踪JSON的干净最终候选HEAD上重跑一次safe full。全量通过后执行三路最终独立复审、最小真实Provider、受控真实页面、冻结备份/发布/生产技术验收和发布回执同步。
+提交本次最终自动证据的docs-only同步并由release reviewer复核；随后push/PR/tag，以精确候选树制作发布产物，完成冻结备份、生产切换、最小真实Provider/受控页面技术验收和最终发布回执同步。受保护未跟踪JSON全程排除。
 
 ## 12. 最终完成前复核
 

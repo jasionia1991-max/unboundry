@@ -8,7 +8,7 @@
 
 ## 当前未发布候选：画布执行解耦（v0.6.27，2026-08-21）
 
-v0.6.27已完成四类静态headless executor、删除render retention、同画布不相交双run、runId分槽checkpoint/lease/lock、精确结果owner gate和运行参与图锁。终审发现的checkpoint/lease runId一致性、精确放弃单轮、多run导航停止、同标签手动提交避让组lease四项P1均已纠正；m22 37/37、m38 15/15、m40 14/14、m41 51/51、m44 8/8、m68 4/4通过，冻结库存1029。旧1027项全量不是最终回执；下一步以`spec/UNBOUNDRY_CANVAS_EXECUTION_CHECKPOINT.md`为唯一施工入口，在提交后的干净HEAD跑一次safe full，再完成复审、最小真实Provider/页面、发布与生产回执。线上仍为v0.6.26；不得提前写已发布或`USER_PASS`。
+v0.6.27已完成四类静态headless executor、删除render retention、同画布不相交双run、runId分槽checkpoint/lease/lock、精确结果owner gate和运行参与图锁。终审发现的checkpoint/lease runId一致性、精确放弃单轮、多run导航停止、同标签手动提交避让组lease四项P1均已纠正；最终候选HEAD`26525387ff02a34d8de1eae4d74ed51c11529a7a`的正式safe full已以退出码0通过`119/119 specs、1029/1029 tests`，异常计数均0，source/snapshot SHA均为`bef8b0f3c0204a6634dd45753d0700827eb8df6de0a7abb992f144116cf535d6`，4173 listener未变，受保护未跟踪JSON明确排除。架构终审P0=0/P1=0、测试终审无新的P0/P1实现阻断；下一步以`spec/UNBOUNDRY_CANVAS_EXECUTION_CHECKPOINT.md`为唯一施工入口，先做release复核，再完成push/PR/tag、最小真实Provider/页面、冻结备份、发布与生产回执。线上仍为v0.6.26；不得提前写已发布或`USER_PASS`。
 
 ## 最新已发布事件：整组执行不受画布视野影响（v0.6.26，2026-08-21 已发布，agent 技术实页通过）
 
