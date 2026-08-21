@@ -53,6 +53,7 @@ import {
   readGroupRunLease,
   readGroupRunStarting,
   releaseGroupRunLease,
+  renewGroupRunLease,
   writeGroupRunCheckpoint,
   verifiedCheckpointSuccessIds,
   type GroupRunCheckpoint,
@@ -1071,6 +1072,60 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
     expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas", "node-c"))
       .toBe(true);
     expect(releaseGroupRunLease(scope, "run-c", "owner-c")).toBe(true);
+
+    const staleRunId = "run-stale-resume";
+    const staleLeaseKey = `unboundry-group-run-lease:v1:${JSON.stringify([
+      scope.accountId,
+      scope.canvasId,
+      scope.fixtureScopeId,
+      staleRunId,
+    ])}`;
+    values.set(staleLeaseKey, JSON.stringify({
+      expiresAt: now - 1,
+      heartbeatAt: now - 60_001,
+      lockedNodeIds: ["node-stale"],
+      ownerId: "owner-before-reload",
+      runId: staleRunId,
+    }));
+    expect(await acquireGroupRunLease(
+      scope,
+      staleRunId,
+      "owner-after-reload",
+      now,
+      ["node-stale"],
+    )).toBe(true);
+    expect(readGroupRunLease(scope, staleRunId)?.ownerId)
+      .toBe("owner-after-reload");
+    expect(await renewGroupRunLease(
+      scope,
+      staleRunId,
+      "owner-after-reload",
+      now + 5_000,
+    )).toBe(true);
+    expect(readGroupRunLease(scope, staleRunId)?.heartbeatAt).toBe(now + 5_000);
+    expect(releaseGroupRunLease(
+      scope,
+      staleRunId,
+      "owner-after-reload",
+    )).toBe(true);
+
+    values.set(staleLeaseKey, JSON.stringify({
+      expiresAt: now + 60_000,
+      heartbeatAt: now,
+      lockedNodeIds: ["node-stale"],
+      ownerId: "owner-still-active",
+      runId: staleRunId,
+    }));
+    expect(await acquireGroupRunLease(
+      scope,
+      staleRunId,
+      "owner-must-wait",
+      now + 1,
+      ["node-stale"],
+    )).toBe(false);
+    expect(readGroupRunLease(scope, staleRunId)?.ownerId)
+      .toBe("owner-still-active");
+    values.delete(staleLeaseKey);
 
     const sameOwner = getGroupRunExecutionOwnerId();
     expect(await acquireGroupRunLease(
@@ -2622,6 +2677,80 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
       })).toBe(true);
     } finally {
       await secondPage.close();
+    }
+
+    // A manual Generate and a group claim use the same origin-wide admission
+    // lock. Whichever enters first may submit, while the loser observes either
+    // the active lease or the accepted task before reaching a second POST.
+    await resetGroupPositionsForNextScenario();
+    const manualRacePage = await page.context().newPage();
+    try {
+      await manualRacePage.goto(`/canvas/${project.id}`);
+      await expect(manualRacePage.getByTestId("canvas-world")).toHaveAttribute(
+        "data-persistence-ready",
+        "true",
+      );
+      const group = page.locator('[data-testid="rf__node-run-group-a"]');
+      await group.evaluate((element) => element.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      ));
+      const manualNode = manualRacePage.locator(
+        '[data-testid="rf__node-run-text-a"]',
+      );
+      await manualNode.evaluate((element) => element.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      ));
+      const manualGenerate = manualRacePage
+        .getByTestId("text-creator")
+        .getByRole("button", { name: "Generate" });
+      await expect(manualGenerate).toBeEnabled();
+      const postsBeforeRace = taskPostNodes.filter((nodeId) =>
+        nodeId === "run-text-a"
+      ).length;
+      const downstreamBeforeRace = taskPostNodes.filter((nodeId) =>
+        nodeId === "run-text-a-next"
+      ).length;
+      await Promise.all([
+        group.getByTestId("group-execute-button")
+          .evaluate((element) => (element as HTMLButtonElement).click()),
+        manualGenerate.evaluate((element) => (element as HTMLButtonElement).click()),
+      ]);
+      await expect.poll(() => taskPostNodes.filter((nodeId) =>
+        nodeId === "run-text-a"
+      ).length).toBe(postsBeforeRace + 1);
+      await expect.poll(async () => [
+        await page.locator("body").innerText(),
+        await manualRacePage.locator("body").innerText(),
+      ].some((text) => text.includes("整组"))).toBe(true);
+      const groupWon = await page.evaluate(() => {
+        for (let index = 0; index < window.localStorage.length; index += 1) {
+          if (window.localStorage.key(index)?.startsWith(
+            "unboundry-group-run-lease:v1:",
+          )) return true;
+        }
+        return false;
+      });
+      setLatestTaskState("run-text-a", "success");
+      if (groupWon) {
+        await expect.poll(() => taskPostNodes.filter((nodeId) =>
+          nodeId === "run-text-a-next"
+        ).length).toBe(downstreamBeforeRace + 1);
+        setLatestTaskState("run-text-a-next", "success");
+      } else {
+        await expect.poll(() => taskPostNodes.filter((nodeId) =>
+          nodeId === "run-text-a-next"
+        ).length).toBe(downstreamBeforeRace);
+      }
+      await expect.poll(() => page.evaluate(() => {
+        for (let index = 0; index < window.localStorage.length; index += 1) {
+          if (window.localStorage.key(index)?.startsWith(
+            "unboundry-group-run-lease:v1:",
+          )) return false;
+        }
+        return true;
+      })).toBe(true);
+    } finally {
+      await manualRacePage.close();
     }
   } finally {
     await request.delete(`/api/canvas/${project.id}`);

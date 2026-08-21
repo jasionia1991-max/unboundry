@@ -169,6 +169,10 @@ function heldWebLockKey(
   return JSON.stringify([groupRunSummaryScopeKey(scope), runId, ownerId]);
 }
 
+function groupRunWebLockName(scope: GroupRunSummaryScope, runId: string) {
+  return `unboundry-group-run:${groupRunSummaryScopeKey(scope)}:${runId}`;
+}
+
 function hasHeldWebLock(runId: string, ownerId: string) {
   for (const key of heldGroupRunWebLocks.keys()) {
     try {
@@ -317,7 +321,11 @@ async function hasActiveGroupRunLeaseForCanvas(
       if (!locks) return true;
       for (const candidate of candidates) {
         const lockAvailable = await locks.request(
-          `unboundry-group-run:${JSON.stringify(scopeValue)}:${candidate.runId}`,
+          groupRunWebLockName({
+            accountId: String(scopeValue[0]),
+            canvasId: String(scopeValue[1]),
+            fixtureScopeId: String(scopeValue[2]),
+          }, candidate.runId),
           { ifAvailable: true },
           (lock) => Boolean(lock),
         );
@@ -347,6 +355,91 @@ async function hasActiveGroupRunLeaseForCanvas(
     return true;
   }
   return false;
+}
+
+function removeExactStaleGroupRunLease(
+  scope: GroupRunSummaryScope,
+  expected: GroupRunLease,
+) {
+  const exactKey = leaseStorageKey(scope, expected.runId);
+  const exactRaw = window.localStorage.getItem(exactKey);
+  if (exactRaw) {
+    const exact = JSON.parse(exactRaw) as unknown;
+    if (
+      isLease(exact) &&
+      exact.runId === expected.runId &&
+      exact.ownerId === expected.ownerId &&
+      exact.heartbeatAt === expected.heartbeatAt &&
+      exact.expiresAt === expected.expiresAt
+    ) {
+      window.localStorage.removeItem(exactKey);
+    }
+  }
+
+  const legacyKey = leaseStorageKey(scope);
+  const legacyRaw = window.localStorage.getItem(legacyKey);
+  if (!legacyRaw) return;
+  const legacy = JSON.parse(legacyRaw) as unknown;
+  if (isLease(legacy)) {
+    if (
+      legacy.runId === expected.runId &&
+      legacy.ownerId === expected.ownerId &&
+      legacy.heartbeatAt === expected.heartbeatAt &&
+      legacy.expiresAt === expected.expiresAt
+    ) window.localStorage.removeItem(legacyKey);
+    return;
+  }
+  if (!legacy || typeof legacy !== "object") return;
+  const retained = Object.values(legacy as Record<string, unknown>)
+    .filter(isLease)
+    .filter((lease) => !(
+      lease.runId === expected.runId &&
+      lease.ownerId === expected.ownerId &&
+      lease.heartbeatAt === expected.heartbeatAt &&
+      lease.expiresAt === expected.expiresAt
+    ));
+  if (retained.length === 0) window.localStorage.removeItem(legacyKey);
+  else {
+    window.localStorage.setItem(
+      legacyKey,
+      JSON.stringify(Object.fromEntries(
+        retained.map((lease) => [lease.runId, lease]),
+      )),
+    );
+  }
+}
+
+async function clearRecoverableSameRunLease(
+  locks: BrowserLockManager,
+  scope: GroupRunSummaryScope,
+  runId: string,
+  now: number,
+) {
+  const stale = readGroupRunLease(scope, runId);
+  if (!stale) return true;
+  if (isGroupRunLeaseActive(stale, now)) return false;
+  const lockAvailable = await locks.request(
+    groupRunWebLockName(scope, runId),
+    { ifAvailable: true },
+    (lock) => Boolean(lock),
+  ).catch(() => false);
+  if (!lockAvailable) return false;
+  const verified = readGroupRunLease(scope, runId);
+  if (
+    !verified ||
+    verified.ownerId !== stale.ownerId ||
+    verified.runId !== stale.runId ||
+    verified.heartbeatAt !== stale.heartbeatAt ||
+    verified.expiresAt !== stale.expiresAt ||
+    isGroupRunLeaseActive(verified, now)
+  ) return !verified;
+  try {
+    removeExactStaleGroupRunLease(scope, verified);
+    dispatchLeaseEvent(scope);
+    return !readGroupRunLease(scope, runId);
+  } catch {
+    return false;
+  }
 }
 
 export async function hasForeignActiveGroupRunLeaseForCanvas(
@@ -437,6 +530,9 @@ export async function acquireGroupRunLease(
   const locks = browserLocks();
   if (!locks) return false;
   return runWithGroupRunCanvasAdmission(scope.canvasId, async () => {
+    if (!await clearRecoverableSameRunLease(locks, scope, runId, now)) {
+      return false;
+    }
     if (admissionCheck && !await admissionCheck()) return false;
     const holdKey = heldWebLockKey(scope, runId, ownerId);
     const claimed = await locks.request(
@@ -459,7 +555,7 @@ export async function acquireGroupRunLease(
         resolve(acquired);
       };
       void locks.request(
-        `unboundry-group-run:${groupRunSummaryScopeKey(scope)}:${runId}`,
+        groupRunWebLockName(scope, runId),
         { ifAvailable: true },
         async (lock) => {
           if (!lock) {
@@ -479,22 +575,35 @@ export async function acquireGroupRunLease(
   });
 }
 
-export function renewGroupRunLease(
+export async function renewGroupRunLease(
   scope: GroupRunSummaryScope,
   runId: string,
   ownerId = executionOwnerId,
   now = Date.now(),
 ) {
-  const current = readGroupRunLease(scope, runId);
-  if (!current || current.ownerId !== ownerId || current.runId !== runId ||
-    !heldGroupRunWebLocks.has(heldWebLockKey(scope, runId, ownerId))) return false;
-  return claimGroupRunLease(
-    scope,
-    runId,
-    ownerId,
-    now,
-    current.lockedNodeIds,
-  );
+  const locks = browserLocks();
+  const holdKey = heldWebLockKey(scope, runId, ownerId);
+  if (!locks || !heldGroupRunWebLocks.has(holdKey)) return false;
+  return runWithGroupRunCanvasAdmission(scope.canvasId, () => locks.request(
+    `unboundry-group-run-claim:${groupRunSummaryScopeKey(scope)}`,
+    { ifAvailable: false },
+    (lock) => {
+      if (!lock || !heldGroupRunWebLocks.has(holdKey)) return false;
+      const current = readGroupRunLease(scope, runId);
+      if (
+        !current ||
+        current.ownerId !== ownerId ||
+        current.runId !== runId
+      ) return false;
+      return claimGroupRunLease(
+        scope,
+        runId,
+        ownerId,
+        now,
+        current.lockedNodeIds,
+      );
+    },
+  )).catch(() => false);
 }
 
 export function releaseGroupRunLease(

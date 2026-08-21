@@ -408,6 +408,7 @@ export function WorkflowExecutionProvider({
       let checkpoint: GroupRunCheckpoint | undefined;
       let leaseAcquired = false;
       let leaseTimer: number | undefined;
+      let leaseRenewInFlight: Promise<boolean> | undefined;
       let summaryBaseForError: (() => Omit<GroupRunSummary, "status">) | undefined;
       const ownerId = getGroupRunExecutionOwnerId();
       const isStartingCancelled = () =>
@@ -555,11 +556,18 @@ export function WorkflowExecutionProvider({
         // Start renewing immediately; registration waits and static preflight
         // are part of the lease too, not a gap before `running` is published.
         leaseTimer = window.setInterval(() => {
-          const current = runningGroups.current.get(groupId);
-          const starting = startingGroups.current.get(groupId);
-          if (!current && !starting) return;
-          if (current?.cancelled || starting?.cancelled) return;
-          if (!renewGroupRunLease(scope, runId, ownerId)) {
+          if (leaseRenewInFlight) return;
+          const renewal = renewGroupRunLease(scope, runId, ownerId);
+          leaseRenewInFlight = renewal;
+          void renewal.then((renewed) => {
+            if (renewed) return;
+            const current = runningGroups.current.get(groupId);
+            const starting = startingGroups.current.get(groupId);
+            if (
+              current?.runId !== runId &&
+              starting?.runId !== runId
+            ) return;
+            if (current?.cancelled || starting?.cancelled) return;
             if (current) {
               current.leaseLost = true;
               current.cancelled = true;
@@ -567,7 +575,9 @@ export function WorkflowExecutionProvider({
             }
             if (starting) starting.cancelled = true;
             notify("执行租约已失效，已阻止后续节点；请核对已提交任务", "error");
-          }
+          }).finally(() => {
+            if (leaseRenewInFlight === renewal) leaseRenewInFlight = undefined;
+          });
         }, groupRunLeaseHeartbeatMs);
 
         refreshRunLocks(nodes, edges);
