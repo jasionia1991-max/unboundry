@@ -50,6 +50,11 @@ import {
 } from "./generationTaskStore";
 import { waitForProviderDelay } from "./providerRequestDeadline";
 import {
+  commitGenerationMediaResult,
+  commitGenerationTextResult,
+  recoverPendingGenerationMediaResults,
+} from "./generationResultCommit";
+import {
   generateOpenRouterImage,
   OpenRouterImageError,
 } from "./openRouterImageProvider";
@@ -139,9 +144,10 @@ import {
   MediaPublicationConflictError,
   MediaPublicationStateError,
   pendingGeneratedPublicationTaskIds,
-  recoverPendingGeneratedMediaPublications,
   recoverPendingMediaDeletions,
   recoverPendingUploadMediaPublications,
+  cleanupPublicationStaging,
+  type MediaPublicationReservation,
 } from "./mediaLifecycle";
 import {
   StorageConfigurationBusyError,
@@ -496,7 +502,7 @@ function taskStore(launchOptions?: GenerationLaunchOptions) {
         async () => {
           if (recoverDeletions) await recoverPendingMediaDeletions();
           if (recoverUploads) await recoverPendingUploadMediaPublications();
-          if (recoverGenerated) await recoverPendingGeneratedMediaPublications();
+          if (recoverGenerated) await recoverPendingGenerationMediaResults();
         },
         () => undefined,
       )
@@ -2586,12 +2592,14 @@ export async function executeTextTaskWithDependencies(
       executionAttempt: running.attempt,
       taskId,
     });
-    dependencies.store.complete(taskId, {
+    commitGenerationTextResult({
       // Ark does not return a reliable per-response bill. Keep budget
       // accounting conservative by recording the administrator-protected cap.
       actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+      executionAttempt: running.attempt,
       providerUsageTokens: result.providerUsageTokens,
       resultText: result.text,
+      taskId,
     });
   } catch (error) {
     if (dependencies.store.get(taskId)?.state === "cancelled") return;
@@ -2887,8 +2895,23 @@ async function readGeneratedPngBody(body: ReadableStream<Uint8Array>) {
   return Buffer.concat(chunks);
 }
 
+async function commitSavedGenerationMedia(saved: {
+  assetId: string;
+  publicationToken?: MediaPublicationReservation;
+}) {
+  if (!saved.publicationToken) {
+    throw new MediaPublicationStateError(
+      "Generated media publication token is missing",
+    );
+  }
+  commitGenerationMediaResult(saved.publicationToken);
+  await cleanupPublicationStaging(saved.publicationToken).catch(() => undefined);
+  return saved.assetId;
+}
+
 async function saveRelayMediaOutput(input: {
   actualCostMicrounits: number;
+  executionAttempt: number;
   expectedAudioContentType?: string;
   output: RelayTransientMediaOutput;
   ownerId: string;
@@ -2909,10 +2932,11 @@ async function saveRelayMediaOutput(input: {
       ownerId: input.ownerId,
       task: {
         actualCostMicrounits: input.actualCostMicrounits,
+        executionAttempt: input.executionAttempt,
         taskId: input.taskId,
       },
     });
-    return saved.assetId;
+    return commitSavedGenerationMedia(saved);
   }
   const downloaded = await downloadProviderResultMedia({
     apiKey: input.profile.apiKey!,
@@ -2931,10 +2955,11 @@ async function saveRelayMediaOutput(input: {
       ownerId: input.ownerId,
       task: {
         actualCostMicrounits: input.actualCostMicrounits,
+        executionAttempt: input.executionAttempt,
         taskId: input.taskId,
       },
     });
-    return saved.assetId;
+    return commitSavedGenerationMedia(saved);
   }
   if (input.output.kind === "video") {
     const saved = await saveGeneratedMp4({
@@ -2943,10 +2968,11 @@ async function saveRelayMediaOutput(input: {
       ownerId: input.ownerId,
       task: {
         actualCostMicrounits: input.actualCostMicrounits,
+        executionAttempt: input.executionAttempt,
         taskId: input.taskId,
       },
     });
-    return saved.assetId;
+    return commitSavedGenerationMedia(saved);
   }
   const saved = await saveGeneratedAudio({
     body: downloaded.body,
@@ -2960,10 +2986,11 @@ async function saveRelayMediaOutput(input: {
     ownerId: input.ownerId,
     task: {
       actualCostMicrounits: input.actualCostMicrounits,
+      executionAttempt: input.executionAttempt,
       taskId: input.taskId,
     },
   });
-  return saved.assetId;
+  return commitSavedGenerationMedia(saved);
 }
 
 function validateRelayPng(bytes: Buffer) {
@@ -3123,6 +3150,7 @@ async function recoverRelayMediaAfterPoll(
           taskId,
           save: () => saveRelayMediaOutput({
             actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+            executionAttempt: running.attempt,
             output: status.outputs[0],
             ownerId: running.ownerId!,
             profile,
@@ -3384,6 +3412,7 @@ async function executeRelayMediaTask(
           taskId,
           save: () => saveRelayMediaOutput({
             actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+            executionAttempt: running.attempt,
             expectedAudioContentType: kind === "audio"
               ? relayAudioResultContentType(running.parameters.format)
               : undefined,
@@ -3476,6 +3505,7 @@ async function recoverGptImageFromProviderTask(
       taskId,
       save: () => saveRelayMediaOutput({
         actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+        executionAttempt: running.attempt,
         output: status.outputs[0],
         ownerId: running.ownerId!,
         profile,
@@ -3683,10 +3713,11 @@ async function executeImageTask(taskId: string) {
         ownerId: current.ownerId,
         task: {
           actualCostMicrounits: result.actualCostMicrounits,
+          executionAttempt: running.attempt,
           taskId,
         },
       });
-      void saved;
+      await commitSavedGenerationMedia(saved);
       return;
     }
     throw new RelayProviderError("FORMAT");
@@ -3744,16 +3775,18 @@ async function saveVolcengineVideoResult(
     seedanceMiniAudioPriceMicrounitsPerThousandTokens /
     1_000,
   );
-  await saveGeneratedMp4({
+  const saved = await saveGeneratedMp4({
     body: downloaded.body,
     label: running.prompt.slice(0, 120),
     ownerId: running.ownerId!,
     task: {
       actualCostMicrounits,
+      executionAttempt: running.attempt,
       providerUsageTokens: status.providerUsageTokens,
       taskId,
     },
   });
+  await commitSavedGenerationMedia(saved);
 }
 
 /**
@@ -4243,7 +4276,7 @@ async function executeAudioTask(taskId: string) {
               audioUrl,
               { signal: controller.signal },
             );
-            await saveGeneratedMp3({
+            const stored = await saveGeneratedMp3({
               body: audioBody,
               label: running.prompt.slice(0, 120),
               ownerId: running.ownerId!,
@@ -4251,9 +4284,11 @@ async function executeAudioTask(taskId: string) {
                 // Mureka does not return a per-task bill. Record the configured
                 // protected maximum so budget accounting remains conservative.
                 actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+                executionAttempt: running.attempt,
                 taskId,
               },
             });
+            await commitSavedGenerationMedia(stored);
           },
         });
         if (saved) return;

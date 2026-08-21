@@ -16,9 +16,9 @@ import {
   readJsonBody,
 } from "./httpRequest";
 import {
-  generationProviderAttemptCounts,
   type GenerationTaskKind,
 } from "./generationTaskStore";
+import { generationProviderAttemptCounts } from "./generationAttemptQueries";
 
 export type RunningTaskPolicy = "cancel" | "wait";
 

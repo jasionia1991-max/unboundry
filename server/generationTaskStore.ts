@@ -7,6 +7,10 @@ import {
   type GenerationAdmission,
 } from "./generationSafety";
 import {
+  generationProviderAttemptCreatedAt,
+} from "./generationAttemptQueries";
+export { generationProviderAttemptCounts } from "./generationAttemptQueries";
+import {
   cleanParameterSchema,
   knownModelParameterSchema,
   providerParameterSchema,
@@ -302,28 +306,6 @@ export class GenerationTaskAbandonError extends Error {
     );
     this.name = "GenerationTaskAbandonError";
   }
-}
-
-export function generationProviderAttemptCounts(database: DatabaseSync) {
-  const row = database.prepare(`
-    SELECT
-      COALESCE(SUM(
-        CASE WHEN evidence = 'provider-boundary' THEN 1 ELSE 0 END
-      ), 0) AS paid_provider_requests,
-      COALESCE(SUM(
-        CASE WHEN evidence = 'historical-execution-attempt' THEN 1 ELSE 0 END
-      ), 0) AS historical_estimated_provider_attempts
-    FROM generation_provider_attempts
-  `).get() as {
-    historical_estimated_provider_attempts: number;
-    paid_provider_requests: number;
-  };
-  return {
-    historicalEstimatedProviderAttempts: Number(
-      row.historical_estimated_provider_attempts,
-    ),
-    paidProviderRequests: Number(row.paid_provider_requests),
-  };
 }
 
 function assertTaskError(error?: { code: string; message: string }) {
@@ -1109,6 +1091,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
   }
 
   return {
+    dataDirectory,
     close() {
       database.close();
     },
@@ -2530,6 +2513,16 @@ export function createGenerationTaskStore(dataDirectory: string) {
         database.exec("ROLLBACK");
         throw error;
       }
+    },
+
+    providerAttemptCreatedAt(taskId: string) {
+      const task = readById.get(taskId) as GenerationTaskRow | undefined;
+      if (!task) return undefined;
+      return generationProviderAttemptCreatedAt(database, {
+        executionAttempt: task.attempt,
+        providerTaskId: task.provider_task_id ?? undefined,
+        taskId,
+      });
     },
 
     attachProviderTaskId,

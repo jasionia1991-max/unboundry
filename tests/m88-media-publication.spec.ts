@@ -33,6 +33,11 @@ import {
   GenerationTaskTransitionError,
 } from "../server/generationTaskStore";
 import {
+  commitGenerationMediaResult,
+  recoverPendingGenerationMediaResults,
+} from "../server/generationResultCommit";
+import { assertGenerationMediaDeletionAllowedInTransaction } from "../server/generationAttemptQueries";
+import {
   cleanupPublicationStaging,
   compensateMediaPublication,
   failMediaPublication,
@@ -45,7 +50,6 @@ import {
   pendingGeneratedPublicationTaskIds,
   publishLocalMediaPublication,
   recoverPendingMediaDeletions,
-  recoverPendingGeneratedMediaPublications,
   recoverPendingUploadMediaPublications,
   reserveMediaPublication,
   setMediaPublicationFinalizeFaultForTests,
@@ -229,6 +233,7 @@ function reserveGeneratedImage(
     storageBackend: "local",
     task: {
       actualCostMicrounits: 123,
+      executionAttempt: 1,
       providerUsageTokens: 7,
       taskId: task.id,
     },
@@ -921,7 +926,7 @@ test("generated finalize atomically settles Provider evidence with task, media, 
         throw new Error("m88 injected success-event failure");
       });
       try {
-        expect(() => finalizeMediaPublication(reservation)).toThrow(
+        expect(() => commitGenerationMediaResult(reservation)).toThrow(
           /m88 injected success-event failure/,
         );
       } finally {
@@ -939,9 +944,9 @@ test("generated finalize atomically settles Provider evidence with task, media, 
         mediaStatus: "pending",
         successEventCount: 0,
         task: {
-          actual_cost_microunits: 123,
-          provider_usage_tokens: 7,
-          result_asset_id: reservation.id,
+          actual_cost_microunits: null,
+          provider_usage_tokens: null,
+          result_asset_id: null,
           state: "running",
         },
       });
@@ -953,7 +958,7 @@ test("generated finalize atomically settles Provider evidence with task, media, 
         provider_task_id: null,
       }]);
 
-      finalizeMediaPublication(reservation);
+      commitGenerationMediaResult(reservation);
       expect(publicationSnapshot(directory, {
         assetId: reservation.id,
         attemptId: reservation.attemptId,
@@ -985,7 +990,7 @@ test("generated finalize atomically settles Provider evidence with task, media, 
       );
       await publishFixture(directory, blocked.reservation);
       recordProviderAttemptFixture(directory, blocked.task.id, "outcome-unknown");
-      expect(() => finalizeMediaPublication(blocked.reservation)).toThrow(
+      expect(() => commitGenerationMediaResult(blocked.reservation)).toThrow(
         "Generation Provider attempt cannot complete publication",
       );
       expect(publicationSnapshot(directory, {
@@ -1013,7 +1018,7 @@ test("generated finalize atomically settles Provider evidence with task, media, 
         "real-owner-without-provider-ledger",
       );
       await publishFixture(directory, noLedger.reservation);
-      expect(() => finalizeMediaPublication(noLedger.reservation)).toThrow(
+      expect(() => commitGenerationMediaResult(noLedger.reservation)).toThrow(
         "Generation task has no matching paid attempt",
       );
       expect(publicationSnapshot(directory, {
@@ -1026,9 +1031,9 @@ test("generated finalize atomically settles Provider evidence with task, media, 
         mediaStatus: "pending",
         successEventCount: 0,
         task: {
-          actual_cost_microunits: 123,
-          provider_usage_tokens: 7,
-          result_asset_id: noLedger.reservation.id,
+          actual_cost_microunits: null,
+          provider_usage_tokens: null,
+          result_asset_id: null,
           state: "running",
         },
       });
@@ -1055,7 +1060,7 @@ test("cancel and generated finalize preserve the winner in both transaction orde
         code: "USER_CANCELLED",
         message: "m88 cancel wins",
       })).toMatchObject({ state: "cancelled" });
-      expect(() => finalizeMediaPublication(cancelFirst.reservation)).toThrow();
+      expect(() => commitGenerationMediaResult(cancelFirst.reservation)).toThrow();
       expect(readyMediaForOwner(
         ownerId,
         "image",
@@ -1080,8 +1085,8 @@ test("cancel and generated finalize preserve the winner in both transaction orde
         mediaStatus: undefined,
         successEventCount: 0,
         task: {
-          actual_cost_microunits: 123,
-          provider_usage_tokens: 7,
+          actual_cost_microunits: null,
+          provider_usage_tokens: null,
           result_asset_id: null,
           state: "cancelled",
         },
@@ -1094,7 +1099,7 @@ test("cancel and generated finalize preserve the winner in both transaction orde
       );
       recordProviderAttemptFixture(directory, finalizeFirst.task.id);
       await publishFixture(directory, finalizeFirst.reservation);
-      finalizeMediaPublication(finalizeFirst.reservation);
+      commitGenerationMediaResult(finalizeFirst.reservation);
       expect(() => store.cancelBeforeProviderAttempt(finalizeFirst.task.id, {
         code: "USER_CANCELLED",
         message: "m88 late cancel loses",
@@ -1158,7 +1163,7 @@ test("restart finalizes staged local generation evidence without a second Provid
       const preserved = pendingGeneratedPublicationTaskIds();
       expect([...preserved]).toEqual([task.id]);
       expect(failRecoveredGenerationTasks(recoveredStore, preserved)).toEqual([]);
-      expect(await recoverPendingGeneratedMediaPublications()).toEqual([{
+      expect(await recoverPendingGenerationMediaResults()).toEqual([{
         action: "finalized",
         assetId: reservation.id,
         taskId: task.id,
@@ -1338,7 +1343,12 @@ test("canvas PUT durably adopts uploads while recovery and delete tombstones rej
     expect(readyMediaForOwner("__test__", "image", adopted.id)).toBeDefined();
 
     const deleteRequest = await authorizedRequest(`/${adopted.id}`, "DELETE");
-    const deletion = beginMediaDeletion(deleteRequest, "image", adopted.id);
+    const deletion = beginMediaDeletion(
+      deleteRequest,
+      "image",
+      adopted.id,
+      assertGenerationMediaDeletionAllowedInTransaction,
+    );
     expect(deletion).toMatchObject({ action: "physical" });
     if (!deletion || deletion.action !== "physical") {
       throw new Error("Expected adopted upload physical deletion");
@@ -1467,7 +1477,12 @@ test("deletion hides the row before physical removal and journals published to c
     expect(readyMediaForOwner("__test__", "image", id)).toBeDefined();
     expect(await pathExists(mediaPublicationFinalPath(reservation))).toBe(true);
 
-    const deletion = beginMediaDeletion(request, "image", id);
+    const deletion = beginMediaDeletion(
+      request,
+      "image",
+      id,
+      assertGenerationMediaDeletionAllowedInTransaction,
+    );
     expect(deletion).toMatchObject({
       action: "physical",
       media: { storageStatus: "ready" },
@@ -2169,6 +2184,7 @@ test("restart finalizes resumed OSS evidence against the original paid Provider 
       storageProfileId: "m88-oss-profile",
       task: {
         actualCostMicrounits: 321,
+        executionAttempt: 2,
         providerUsageTokens: 9,
         taskId: task.id,
       },
@@ -2182,7 +2198,7 @@ test("restart finalizes resumed OSS evidence against the original paid Provider 
       const preserved = pendingGeneratedPublicationTaskIds();
       expect([...preserved]).toEqual([task.id]);
       expect(failRecoveredGenerationTasks(recoveredStore, preserved)).toEqual([]);
-      expect(await recoverPendingGeneratedMediaPublications()).toEqual([{
+      expect(await recoverPendingGenerationMediaResults()).toEqual([{
         action: "finalized",
         assetId,
         taskId: task.id,
@@ -2252,7 +2268,11 @@ test("project and account deletion return 409 while schema triggers preserve act
       objectKey: "m88-project-delete-asset.png",
       ownerId: "__test__",
       storageBackend: "local",
-      task: { actualCostMicrounits: 1, taskId: task.id },
+      task: {
+        actualCostMicrounits: 1,
+        executionAttempt: 1,
+        taskId: task.id,
+      },
     });
 
     const projectRequest = await authorizedRequest(`/${projectId}`, "DELETE");

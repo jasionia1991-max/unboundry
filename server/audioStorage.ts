@@ -300,9 +300,7 @@ export async function saveGeneratedAudio(input: {
     } else {
       await publishLocalMediaPublication(reservation);
     }
-    finalizeMediaPublication(reservation);
-    await cleanupPublicationStaging(reservation).catch(() => undefined);
-    return {
+    const saved = {
       assetId: id,
       byteSize: size,
       contentType: format.contentType,
@@ -310,6 +308,10 @@ export async function saveGeneratedAudio(input: {
       storageBackend: routing.enabled && routing.profile ? "oss" as const : "local" as const,
       url: `/api/audio-assets/${id}`,
     };
+    if (input.task) return { ...saved, publicationToken: reservation };
+    finalizeMediaPublication(reservation);
+    await cleanupPublicationStaging(reservation).catch(() => undefined);
+    return saved;
   } catch (error) {
     if (!bodyConsumptionStarted) {
       await input.body.cancel().catch(() => undefined);
@@ -431,7 +433,12 @@ export async function audioStorage(
   if (request.method === "DELETE") {
     let deletion;
     try {
-      deletion = beginMediaDeletion(request, "audio", id);
+      deletion = beginMediaDeletion(
+        request,
+        "audio",
+        id,
+        execution.assertDeletionAllowedInTransaction,
+      );
     } catch (error) {
       json(response, 409, {
         code: "MEDIA_DELETE_CONFLICT",
