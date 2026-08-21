@@ -431,8 +431,16 @@ export function GenerationTasksPanel({
     setTasks([]);
     setActionError("");
     setReadError("");
-    setGroupSummary(visibleGroupRunSummary(readLastGroupRunSummary(groupRunScope)));
-    setGroupCheckpoint(readGroupRunCheckpoint(groupRunScope));
+    const checkpoint = readGroupRunCheckpoint(groupRunScope);
+    const summary = visibleGroupRunSummary(readLastGroupRunSummary(groupRunScope));
+    setGroupCheckpoint(checkpoint);
+    setGroupSummary(
+      checkpoint?.status === "interrupted" &&
+        checkpoint.runId === summary?.runId &&
+        isActiveGroupRunStatus(summary.status)
+        ? undefined
+        : summary,
+    );
     setLoading(true);
     if (!open || !canvasId) {
       return () => currentActionController.abort("generation-task-scope-closed");
@@ -478,7 +486,16 @@ export function GenerationTasksPanel({
 
   useEffect(() => {
     const onCheckpoint = () => {
-      setGroupCheckpoint(readGroupRunCheckpoint(groupRunScope));
+      const checkpoint = readGroupRunCheckpoint(groupRunScope);
+      setGroupCheckpoint(checkpoint);
+      if (checkpoint?.status === "interrupted") {
+        setGroupSummary((current) =>
+          current?.runId === checkpoint.runId &&
+            isActiveGroupRunStatus(current.status)
+            ? undefined
+            : current
+        );
+      }
     };
     window.addEventListener(GROUP_RUN_CHECKPOINT_EVENT, onCheckpoint);
     window.addEventListener("storage", onCheckpoint);

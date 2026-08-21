@@ -286,6 +286,35 @@ export function WorkflowExecutionProvider({
     return () => window.removeEventListener("beforeunload", warnBeforeUnload);
   }, [executingGroupIds]);
 
+  useEffect(() => {
+    const scope = { accountId, canvasId, fixtureScopeId };
+    const interruptForPageExit = () => {
+      const ownerId = getGroupRunExecutionOwnerId();
+      for (const starting of startingGroups.current.values()) {
+        starting.cancelled = true;
+        releaseGroupRunLease(scope, starting.runId, ownerId);
+      }
+      for (const running of runningGroups.current.values()) {
+        if (running.ownerId !== ownerId) continue;
+        running.cancelled = true;
+        running.navigationStopped = true;
+        const interrupted = {
+          ...running.checkpoint,
+          status: "interrupted" as const,
+          updatedAt: Date.now(),
+        };
+        running.checkpoint = interrupted;
+        writeGroupRunCheckpoint(interrupted, {
+          ownerId,
+          runId: running.runId,
+        });
+        releaseGroupRunLease(scope, running.runId, ownerId);
+      }
+    };
+    window.addEventListener("pagehide", interruptForPageExit);
+    return () => window.removeEventListener("pagehide", interruptForPageExit);
+  }, [accountId, canvasId, fixtureScopeId]);
+
   const cancelGroup = useCallback((groupId: string) => {
     const running = runningGroups.current.get(groupId);
     const starting = startingGroups.current.get(groupId);

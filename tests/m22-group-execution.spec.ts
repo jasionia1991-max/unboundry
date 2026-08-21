@@ -2752,6 +2752,148 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
     } finally {
       await manualRacePage.close();
     }
+
+    // A hard refresh converts the active run to an interrupted checkpoint,
+    // releases its page owner, and resumes the exact accepted task without a
+    // duplicate first-layer POST.
+    await resetGroupPositionsForNextScenario();
+    const refreshPostsBefore = taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-a"
+    ).length;
+    const refreshDownstreamBefore = taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-a-next"
+    ).length;
+    await startGroup(
+      "run-group-a",
+      "run-text-a",
+      refreshPostsBefore + 1,
+    );
+    await expect.poll(() => page.evaluate(() => {
+      for (let index = 0; index < window.localStorage.length; index += 1) {
+        const key = window.localStorage.key(index);
+        if (!key?.startsWith("unboundry-group-run-checkpoint:v1:")) continue;
+        const value = JSON.parse(window.localStorage.getItem(key) ?? "null") as {
+          nodeStates?: Record<string, string>;
+          status?: string;
+        } | null;
+        if (
+          value?.status === "running" &&
+          value.nodeStates?.["run-text-a"] === "running"
+        ) return true;
+      }
+      return false;
+    })).toBe(true);
+    await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent(
+      "pagehide",
+    )));
+    await expect.poll(() => page.evaluate(() => {
+      let interrupted = false;
+      let leased = false;
+      for (let index = 0; index < window.localStorage.length; index += 1) {
+        const key = window.localStorage.key(index);
+        if (key?.startsWith("unboundry-group-run-lease:v1:")) leased = true;
+        if (!key?.startsWith("unboundry-group-run-checkpoint:v1:")) continue;
+        const value = JSON.parse(window.localStorage.getItem(key) ?? "null") as {
+          status?: string;
+        } | null;
+        if (value?.status === "interrupted") interrupted = true;
+      }
+      return { interrupted, leased };
+    })).toEqual({ interrupted: true, leased: false });
+    setLatestTaskState("run-text-a", "success");
+    await page.reload();
+    await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+      "data-persistence-ready",
+      "true",
+    );
+    await page.getByTestId("tasks").click();
+    await expect(page.getByTestId("tasks-group-summary")).toHaveCount(0);
+    await expect(page.getByTestId("tasks-group-checkpoint")).toBeVisible();
+    await page.getByTestId("tasks-group-continue").click();
+    await expect.poll(() => taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-a"
+    ).length).toBe(refreshPostsBefore + 1);
+    await expect.poll(() => taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-a-next"
+    ).length).toBe(refreshDownstreamBefore + 1);
+    setLatestTaskState("run-text-a-next", "success");
+    await expect.poll(() => page.evaluate(() => {
+      for (let index = 0; index < window.localStorage.length; index += 1) {
+        if (window.localStorage.key(index)?.startsWith(
+          "unboundry-group-run-lease:v1:",
+        )) return false;
+      }
+      return true;
+    })).toBe(true);
+
+    // Leaving for a different real canvas uses the same page-exit checkpoint
+    // path. Returning exposes one resumable run and keeps the accepted task
+    // exact instead of minting another paid submission.
+    const otherProjectResponse = await request.post("/api/projects", { data: {} });
+    expect(otherProjectResponse.status()).toBe(201);
+    const otherProject = await otherProjectResponse.json() as { id: string };
+    try {
+      await resetGroupPositionsForNextScenario();
+      const switchPostsBefore = taskPostNodes.filter((nodeId) =>
+        nodeId === "run-text-a"
+      ).length;
+      const switchDownstreamBefore = taskPostNodes.filter((nodeId) =>
+        nodeId === "run-text-a-next"
+      ).length;
+      await startGroup(
+        "run-group-a",
+        "run-text-a",
+        switchPostsBefore + 1,
+      );
+      await expect.poll(() => page.evaluate(() => {
+        for (let index = 0; index < window.localStorage.length; index += 1) {
+          const key = window.localStorage.key(index);
+          if (!key?.startsWith("unboundry-group-run-checkpoint:v1:")) continue;
+          const value = JSON.parse(window.localStorage.getItem(key) ?? "null") as {
+            nodeStates?: Record<string, string>;
+            status?: string;
+          } | null;
+          if (
+            value?.status === "running" &&
+            value.nodeStates?.["run-text-a"] === "running"
+          ) return true;
+        }
+        return false;
+      })).toBe(true);
+      page.once("dialog", (dialog) => void dialog.accept());
+      await page.goto(`/canvas/${otherProject.id}`);
+      await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+        "data-persistence-ready",
+        "true",
+      );
+      setLatestTaskState("run-text-a", "success");
+      await page.goto(`/canvas/${project.id}`);
+      await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+        "data-persistence-ready",
+        "true",
+      );
+      await page.getByTestId("tasks").click();
+      await expect(page.getByTestId("tasks-group-checkpoint")).toBeVisible();
+      await page.getByTestId("tasks-group-continue").click();
+      await expect.poll(() => taskPostNodes.filter((nodeId) =>
+        nodeId === "run-text-a"
+      ).length).toBe(switchPostsBefore + 1);
+      await expect.poll(() => taskPostNodes.filter((nodeId) =>
+        nodeId === "run-text-a-next"
+      ).length).toBe(switchDownstreamBefore + 1);
+      setLatestTaskState("run-text-a-next", "success");
+      await expect.poll(() => page.evaluate(() => {
+        for (let index = 0; index < window.localStorage.length; index += 1) {
+          if (window.localStorage.key(index)?.startsWith(
+            "unboundry-group-run-lease:v1:",
+          )) return false;
+        }
+        return true;
+      })).toBe(true);
+    } finally {
+      await request.delete(`/api/canvas/${otherProject.id}`);
+      await request.delete(`/api/projects/${otherProject.id}`);
+    }
   } finally {
     await request.delete(`/api/canvas/${project.id}`);
     await request.delete(`/api/projects/${project.id}`);
