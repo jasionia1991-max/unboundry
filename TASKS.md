@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-更新时间：2026-08-21
+更新时间：2026-08-22
 状态：`v0.6.30 已发布并由用户实页验收通过，状态 PRODUCTION_PUBLISHED_USER_PASS / USER_PASS。Nano 既有 JPEG 结果已规范化为 PNG；Suno 两个不同完整 MP3 已按 primary/alternate 保存、可切换且均可播放；三媒体模型只在云腾 Provider 下 published/enabled。Provider 创建 POST 新增 0，优创与冻结备份逐表一致。权威回执见 spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json。`
 
 ### 2026-08-21 Provider 结果兼容与既有任务零 POST 恢复（v0.6.30 已发布）
@@ -23,6 +23,15 @@
 - `VIEW-005`的98/171/200节点精确性能档位已由安全定向`m79`收口为`AUTO_PASS`；这只是工程证据关闭，不启动下一版本、生产发布或新的用户主观验收。
 - Mureka 真实音频、团队/多人协作、真实 Agent 协议、Storyboard 完整编辑、图片打光与其他付费内容抽验继续保持原 `PARTIAL/PAUSED/BLOCK`；需要用户重新立项和对应授权。
 - 下方旧段落中的“待复验”“当前阶段”“下一步”均为各自时点记录；若与本文件顶部或 `UNBOUNDRY_CURRENT_STATE.md` 冲突，以顶部 v0.6.30 状态为准。
+
+### 2026-08-22 全项目解耦只读复核与文档同步
+
+- 真实结论：核心整组执行、同步文字Provider和Generation结果提交边界已较强；全项目仍不是完全解耦，主要短板是Canvas/节点应用层、媒体Provider→Storage具体依赖、跨域SQL和重复Node capability清单。
+- 当前静态评分：十模块平均边界成熟度`64%`，加权综合`70.8%`；核心执行矩阵`41/41`、含`VIEW-005`的完整矩阵`48/48`。百分比只用于复核变化，不作为重构KPI。
+- 已纠正旧审计：Media不再写Generation task/attempt/event，TaskStore/Safety运行时循环已关闭，当前Release通用入口已确认；`generationTasks.ts`与`CanvasSurface.tsx`仍是后续按业务触发治理的主要集中点。
+- 当前没有新P0、没有批准下一版本或施工批；第三种Storage、新生成节点/保存协议、新节点/模板类型、账号/任务schema变化分别触发第三至第六批，不为架构外观提前重构。
+- 本次仅更新审计、路线图、Checkpoint与TASKS；未修改产品代码、schema、package，未重跑测试，未访问真实Provider、OSS、SSH或生产。受保护JSON保持未读、未改、未暂存。
+- 权威文档：`spec/UNBOUNDRY_MODULAR_MONOLITH_AUDIT_2026-08-21.md`、`spec/UNBOUNDRY_PROGRESSIVE_MODULARIZATION_PLAN_2026-08-21.md`、`spec/UNBOUNDRY_PROGRESSIVE_MODULARIZATION_CHECKPOINT.md`。
 
 ### 2026-08-21 VIEW-005 密集画布精确三档证据（AUTO_PASS）
 
