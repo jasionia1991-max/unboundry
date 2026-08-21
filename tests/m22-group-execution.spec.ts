@@ -2495,9 +2495,11 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
     const childA = page.locator('[data-testid="rf__node-run-text-a"]');
     await expect(childA).toHaveCount(1);
     await expect.poll(() => childA.evaluate((element) => ({
+      ariaLabel: element.getAttribute("aria-label"),
       className: element.className,
       pointerEvents: getComputedStyle(element).pointerEvents,
     }))).toEqual({
+      ariaLabel: "运行中子节点 A，整组执行中，Prompt、模型、参数和输入已锁定",
       className: expect.stringContaining("workflow-run-locked"),
       pointerEvents: "none",
     });
@@ -2629,6 +2631,156 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
     expect(new Set(terminalSummaries.map((summary) => summary.runId)).size)
       .toBe(6);
 
+    // Release the last active nodes of two groups in the same polling window.
+    // Both terminal summaries remain independently addressable and both
+    // successful checkpoints clear without deleting sibling state.
+    await discardInterruptedCheckpointsForNextScenario();
+    await resetGroupPositionsForNextScenario();
+    const simultaneousAPosts = taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-a"
+    ).length;
+    const simultaneousBPosts = taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-b"
+    ).length;
+    const simultaneousDownstreamPosts = taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-a-next"
+    ).length;
+    await startGroup("run-group-a", "run-text-a", simultaneousAPosts + 1);
+    await startGroup("run-group-b", "run-text-b", simultaneousBPosts + 1);
+    setLatestTaskState("run-text-a", "success");
+    await expect.poll(() => taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-a-next"
+    ).length).toBe(simultaneousDownstreamPosts + 1);
+    setLatestTaskState("run-text-a-next", "success");
+    setLatestTaskState("run-text-b", "success");
+    await expectTerminalSummaryCount("run-group-a", "success", 1);
+    await expectTerminalSummaryCount("run-group-b", "success", 1);
+    await expect(canvas).not.toHaveAttribute("data-workflow-run-active", "true");
+    await expect.poll(() => page.evaluate(() => {
+      for (let index = 0; index < window.localStorage.length; index += 1) {
+        if (window.localStorage.key(index)?.startsWith(
+          "unboundry-group-run-checkpoint:v1:",
+        )) return false;
+      }
+      return true;
+    })).toBe(true);
+
+    // Both groups now consume the same durable external Text input. Starting
+    // B while A owns that source must identify the exact shared node and keep
+    // B at zero task submissions.
+    await resetGroupPositionsForNextScenario();
+    const overlapResponse = await request.get(`/api/canvas/${project.id}`);
+    expect(overlapResponse.ok()).toBeTruthy();
+    const overlapCanvas = await overlapResponse.json() as {
+      edges: Array<{ id: string; [key: string]: unknown }>;
+      loadToken: string;
+      nodes: Array<{
+        data: Record<string, unknown>;
+        id: string;
+        [key: string]: unknown;
+      }>;
+      revision: number;
+    };
+    const overlapSave = await request.put(`/api/canvas/${project.id}`, {
+      data: {
+        edges: [
+          ...overlapCanvas.edges,
+          {
+            id: "run-edge-shared-a",
+            source: "unrelated-text",
+            sourceHandle: "source",
+            target: "run-text-a",
+            targetHandle: "target",
+            type: "cuttable",
+          },
+          {
+            id: "run-edge-shared-b",
+            source: "unrelated-text",
+            sourceHandle: "source",
+            target: "run-text-b",
+            targetHandle: "target",
+            type: "cuttable",
+          },
+        ],
+        nodes: overlapCanvas.nodes.map((node) => node.id === "unrelated-text"
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                content: "两个工作流共享的真实输入",
+                contentHtml: "<p>两个工作流共享的真实输入</p>",
+              },
+            }
+          : node),
+        observedLoadToken: overlapCanvas.loadToken,
+        observedRevision: overlapCanvas.revision,
+        revision: overlapCanvas.revision,
+        saveAttemptId: randomUUID(),
+        saveSequence: 1,
+        saveSessionId: randomUUID(),
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+    expect(overlapSave.ok()).toBeTruthy();
+    await page.reload();
+    await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+      "data-persistence-ready",
+      "true",
+    );
+    await installSummaryCapture();
+    const overlapAPosts = taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-a"
+    ).length;
+    const overlapBPosts = taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-b"
+    ).length;
+    const overlapDownstreamPosts = taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-a-next"
+    ).length;
+    await startGroup("run-group-a", "run-text-a", overlapAPosts + 1);
+    const overlapGroupB = page.locator('[data-testid="rf__node-run-group-b"]');
+    await overlapGroupB.evaluate((element) => element.dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    ));
+    await overlapGroupB.getByTestId("group-execute-button")
+      .evaluate((element) => (element as HTMLButtonElement).click());
+    await expect(page.getByTestId("workflow-run-toast")).toContainText(
+      "另一轮正在使用直接输入“无关文字节点”（节点 unrelated-text），本轮未提交任何生成任务",
+    );
+    expect(taskPostNodes.filter((nodeId) => nodeId === "run-text-b"))
+      .toHaveLength(overlapBPosts);
+    setLatestTaskState("run-text-a", "success");
+    await expect.poll(() => taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-a-next"
+    ).length).toBe(overlapDownstreamPosts + 1);
+    setLatestTaskState("run-text-a-next", "success");
+    await expectTerminalSummaryCount("run-group-a", "success", 1);
+
+    const restoreResponse = await request.get(`/api/canvas/${project.id}`);
+    expect(restoreResponse.ok()).toBeTruthy();
+    const restoreCanvas = await restoreResponse.json() as {
+      edges: Array<{ id: string; [key: string]: unknown }>;
+      loadToken: string;
+      nodes: unknown[];
+      revision: number;
+    };
+    const restoreSave = await request.put(`/api/canvas/${project.id}`, {
+      data: {
+        edges: restoreCanvas.edges.filter((edge) =>
+          !["run-edge-shared-a", "run-edge-shared-b"].includes(edge.id)
+        ),
+        nodes: restoreCanvas.nodes,
+        observedLoadToken: restoreCanvas.loadToken,
+        observedRevision: restoreCanvas.revision,
+        revision: restoreCanvas.revision,
+        saveAttemptId: randomUUID(),
+        saveSequence: 1,
+        saveSessionId: randomUUID(),
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+    expect(restoreSave.ok()).toBeTruthy();
+
     // Two real tabs race the same group. The origin-wide admission lock and
     // active-task check permit one first-layer POST only.
     await discardInterruptedCheckpointsForNextScenario();
@@ -2653,10 +2805,16 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
         await group.getByTestId("group-execute-button")
           .evaluate((element) => (element as HTMLButtonElement).click());
       };
+      const groupRaceAPosts = taskPostNodes.filter((nodeId) =>
+        nodeId === "run-text-a"
+      ).length;
+      const groupRaceDownstreamPosts = taskPostNodes.filter((nodeId) =>
+        nodeId === "run-text-a-next"
+      ).length;
       await Promise.all([selectAndStart(page), selectAndStart(secondPage)]);
       await expect.poll(() => taskPostNodes.filter((nodeId) =>
         nodeId === "run-text-a"
-      ).length).toBe(4);
+      ).length).toBe(groupRaceAPosts + 1);
       await expect.poll(async () => [
         await page.locator("body").innerText(),
         await secondPage.locator("body").innerText(),
@@ -2665,7 +2823,7 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
       setLatestTaskState("run-text-a", "success");
       await expect.poll(() => taskPostNodes.filter((nodeId) =>
         nodeId === "run-text-a-next"
-      ).length).toBe(2);
+      ).length).toBe(groupRaceDownstreamPosts + 1);
       setLatestTaskState("run-text-a-next", "success");
       await expect.poll(() => page.evaluate(() => {
         for (let index = 0; index < window.localStorage.length; index += 1) {
@@ -2894,6 +3052,7 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
       await request.delete(`/api/canvas/${otherProject.id}`);
       await request.delete(`/api/projects/${otherProject.id}`);
     }
+
   } finally {
     await request.delete(`/api/canvas/${project.id}`);
     await request.delete(`/api/projects/${project.id}`);

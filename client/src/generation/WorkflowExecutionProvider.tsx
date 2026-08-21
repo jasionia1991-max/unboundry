@@ -292,6 +292,15 @@ export function WorkflowExecutionProvider({
       const ownerId = getGroupRunExecutionOwnerId();
       for (const starting of startingGroups.current.values()) {
         starting.cancelled = true;
+        const checkpoint = readGroupRunCheckpoint(scope, starting.runId);
+        const lease = readGroupRunLease(scope, starting.runId);
+        if (checkpoint && lease?.ownerId === ownerId) {
+          writeGroupRunCheckpoint({
+            ...checkpoint,
+            status: "interrupted",
+            updatedAt: Date.now(),
+          }, { ownerId, runId: starting.runId });
+        }
         releaseGroupRunLease(scope, starting.runId, ownerId);
       }
       for (const running of runningGroups.current.values()) {

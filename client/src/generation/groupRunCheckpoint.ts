@@ -530,8 +530,19 @@ export async function acquireGroupRunLease(
   const locks = browserLocks();
   if (!locks) return false;
   return runWithGroupRunCanvasAdmission(scope.canvasId, async () => {
-    if (!await clearRecoverableSameRunLease(locks, scope, runId, now)) {
+    const admittedAt = Math.max(now, Date.now());
+    if (!await clearRecoverableSameRunLease(locks, scope, runId, admittedAt)) {
       return false;
+    }
+    const conflictNodeIds = lockedNodeIds.length > 0
+      ? [...new Set(lockedNodeIds)]
+      : [undefined];
+    for (const nodeId of conflictNodeIds) {
+      if (await hasConflictingActiveGroupRunLeaseForCanvas(
+        scope.canvasId,
+        nodeId,
+        runId,
+      )) return false;
     }
     if (admissionCheck && !await admissionCheck()) return false;
     const holdKey = heldWebLockKey(scope, runId, ownerId);
@@ -542,7 +553,7 @@ export async function acquireGroupRunLease(
         scope,
         runId,
         ownerId,
-        now,
+        Math.max(admittedAt, Date.now()),
         lockedNodeIds,
       ),
     ).catch(() => false);
@@ -599,7 +610,7 @@ export async function renewGroupRunLease(
         scope,
         runId,
         ownerId,
-        now,
+        Math.max(now, Date.now()),
         current.lockedNodeIds,
       );
     },

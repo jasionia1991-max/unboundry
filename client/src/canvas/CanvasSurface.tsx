@@ -2405,6 +2405,9 @@ export function CanvasSurface({
         workflowRetainedNodeIds.has(node.id)
           ? {
               ...node,
+              ariaLabel: node.type === "group"
+                ? `${node.data.title ?? "运行组"}，整组执行中，结构操作已锁定`
+                : `${node.data.title ?? node.data.label ?? node.id}，整组执行中，Prompt、模型、参数和输入已锁定`,
               className: [
                 node.className,
                 node.type === "group"
