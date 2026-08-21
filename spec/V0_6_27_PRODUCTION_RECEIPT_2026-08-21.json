@@ -1,0 +1,178 @@
+{
+  "incident": "CANVAS-WORKFLOW-EXECUTION-DECOUPLING",
+  "version": "0.6.27",
+  "status": "PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS",
+  "publishedAt": "2026-08-21T02:02:43Z",
+  "changes": {
+    "summary": "Text、Image、Audio、Video 整组执行迁移到静态 headless executor；删除 renderer retention；同画布不相交工作组可并行，参与图精确锁定，checkpoint、lease、lock、摘要和结果所有权按 run 隔离。",
+    "scope": "client/src/canvas、client/src/generation、相关安全测试与治理文档；无数据库结构变更（schema39 不变）。",
+    "generationLogicUnchanged": false
+  },
+  "source": {
+    "commit": "26525387ff02a34d8de1eae4d74ed51c11529a7a",
+    "tree": "3735ea655cc9f353b0ccfca1060221cea445ba0e",
+    "tagObject": "3c5d95178c7ecd71ecde8c6fda24f25f93028a2c",
+    "mainMergeCommit": "93f0e46be78d04f7663444c3306f91081051dc9b",
+    "mainTreeMatchesTag": true,
+    "releaseArchiveSha256": "571a17bb1b4e56a9152a007118b3ddce6e72beb587189d6b38ec8f3fd5e4a15f",
+    "protectedUntrackedJsonExcluded": true
+  },
+  "tests": {
+    "full": {
+      "specsPassed": 119,
+      "specsTotal": 119,
+      "testsPassed": 1029,
+      "testsTotal": 1029,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0
+    },
+    "sourceSnapshotSha256": "bef8b0f3c0204a6634dd45753d0700827eb8df6de0a7abb992f144116cf535d6",
+    "listenerBeforeAfterSha256": "24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244",
+    "environment": "Node 22.23.1 / npm 10.9.8 / 575 source files",
+    "independentReview": "architecture P0=0/P1=0；test review 无新的 P0/P1 实现阻断；release review 采用 tag 精确指向 tested commit、PR/main 保持同 tree 的不可变身份方案后放行。",
+    "postEvidenceDocsOnly": "最终自动证据与生产回执为 docs-only；发布 tag 与 immutable archive 始终精确绑定已测试 commit 2652538。"
+  },
+  "backup": {
+    "path": "/var/lib/unboundry-rollbacks/v0.6.27-frozen-yaet3a",
+    "files": 365,
+    "frozenManifestSha256": "fb4efe7f219894c9ff73c9a32c550a1595346024f2c20a69b0365a1f05d95162",
+    "restoreManifestSha256": "fb4efe7f219894c9ff73c9a32c550a1595346024f2c20a69b0365a1f05d95162",
+    "databaseRows": 5447,
+    "mediaBytes": 284663380,
+    "mediaFiles": 355,
+    "restoreSchemaVersion": 39,
+    "restoreDatabaseIntegrity": "ok",
+    "restoreForeignKeyViolations": 0,
+    "restoreTasks": 590,
+    "restoreProviderAttempts": 598,
+    "restoreActiveGenerations": 0,
+    "restorePublicTemplates": 50,
+    "restorePublishedTemplates": 48
+  },
+  "production": {
+    "release": "/opt/unboundry/releases/v0.6.27-canvas-execution-decoupling-20260821",
+    "previousRelease": "/opt/unboundry/releases/v0.6.26-viewport-independent-group-run-20260821",
+    "releaseInventoryFileSha256": "cee51049195e5ff05640912776f2d787e3a40b9d344856172805a33ff2c34ea4",
+    "releaseInventoryLines": 5800,
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "restartCount": 0,
+    "schemaVersion": 39,
+    "databaseIntegrity": "ok",
+    "foreignKeyViolations": 0,
+    "tasksBeforeAuthorizedValidation": 590,
+    "providerAttemptsBeforeAuthorizedValidation": 598,
+    "tasksAfterAuthorizedValidation": 596,
+    "providerAttemptsAfterAuthorizedValidation": 604,
+    "activeGenerationsAfterAuthorizedValidation": 0,
+    "publicTemplates": 50,
+    "publishedTemplates": 48,
+    "applicationErrorLinesSinceRestart": 0,
+    "expectedRuntimeWarnings": 2
+  },
+  "publicAssets": {
+    "version": "0.6.27",
+    "rootStatus": 200,
+    "authenticatedLiveStatus": 401,
+    "authenticatedReadyStatus": 401,
+    "allReleaseAssetsMatchedPublic": true,
+    "assets": {
+      "/assets/CanvasShell-CthTvgKU.js": "ce3c45aa0a22fa62509e5894f886e795f8ea7b964e071aff71a8f68ef777e844",
+      "/assets/WorkspacePage-BLYP98oQ.js": "daf8cad4cd54ee3a9d99843da958e90bf9c432f3f0673a495bbc755f05778ffb",
+      "/assets/index-159MSkjq.js": "02777af7db16ce142156a5118c94eebcf5479bfbb7db4a0cc20910df4cee062d",
+      "/assets/index-DOTFXUZ8.css": "665f01268caade6967d85e4829aa35ce992c7c34cebb4b53236b8b2288f00d7a",
+      "/assets/projectStorage-1ZIbVrmE.js": "82b9dbe97bc2645c655dbc47ed6d247119facae50993fa37c2a046316e5b78e0"
+    }
+  },
+  "authorizedRealValidation": {
+    "canvasId": "0f92bbc0-b30a-4c1d-bef2-ecf15216ac01",
+    "projectTitle": "v0.6.27 双组并发技术验收",
+    "groups": {
+      "A": {
+        "groupId": "group-1787278218807",
+        "title": "A组 并发",
+        "nodeIds": [
+          "text-52f3e1d5-e7ee-4459-931a-17d2eee64110",
+          "text-58872b64-8ce7-471b-8a65-e4d984c73e41"
+        ]
+      },
+      "B": {
+        "groupId": "group-1787278330078",
+        "title": "B组 并发",
+        "nodeIds": [
+          "text-bf0b4f5b-0eb3-4840-b453-98d597b4c715",
+          "text-db37174d-0021-4025-865e-25cce0f405a0"
+        ]
+      }
+    },
+    "initialControlRun": {
+      "group": "A",
+      "taskIds": [
+        "8bfda858-1ef7-4927-b135-8a75424b7cf7",
+        "866052f9-82c1-4140-a209-380fa47e4cb1"
+      ],
+      "allAttemptOneSuccess": true
+    },
+    "concurrentRun": {
+      "startOrder": "B then A",
+      "uiStartDeltaMs": 557,
+      "bothGroupsObservedActiveTogether": true,
+      "taskIds": [
+        "98f720e4-d322-4099-8e4e-bbfda65dd03c",
+        "f2c5e980-6730-4704-90ed-17a1a21c3bc5",
+        "6a27d9a9-b7bc-495e-ac8b-4b9fb15f368f",
+        "e42bed4b-07b2-4ec2-a2d3-65c6b3143886"
+      ],
+      "providerAttempts": 4,
+      "allAttemptOneSuccess": true,
+      "duplicateSubmissionsObserved": 0,
+      "taskOverlapEvidence": "B2 remained active until 2026-08-21T02:14:32.878Z while A2 was submitted at 2026-08-21T02:14:31.972Z."
+    },
+    "browserRunIdEvidence": "完成后 per-run checkpoint/lease 已按设计清理，刷新后页面不再保留 runId；未编造 runId，使用精确 groupId、nodeId、taskId、UI 启动时差与数据库时间窗作为持久证据。",
+    "finalSummary": {
+      "groupA": "2 个节点，成功 2，失败 0，跳过 0，未运行 0，共用时 6 秒",
+      "groupB": "2 个节点，成功 2，失败 0，跳过 0，未运行 0，共用时 7 秒"
+    },
+    "resultText": ["A1_OK", "A2_OK", "B1_OK", "B2_OK"],
+    "databaseEvidence": {
+      "newTasks": 6,
+      "newProviderAttempts": 6,
+      "concurrentRoundTasks": 4,
+      "concurrentRoundProviderAttempts": 4,
+      "allAttemptOneSuccess": true,
+      "duplicateSubmissionsObserved": 0,
+      "activeAfter": 0,
+      "totalProviderUsageTokens": 408,
+      "totalActualCostMicrounits": 60000000,
+      "costCurrency": "CNY"
+    },
+    "pageSaveState": "已保存到云端",
+    "refreshPersistence": "刷新后 A1_OK、A2_OK、B1_OK、B2_OK 仍在精确原节点",
+    "browserConsoleApplicationErrorsOrWarnings": 0,
+    "browserConsoleUnrelatedExtensionInfoMessages": 1
+  },
+  "externalEffects": {
+    "realProviderGenerationTasks": 6,
+    "providerRetriesBeyondPlannedValidation": 0,
+    "ossMediaWrites": 0,
+    "productionCanvasMutated": true
+  },
+  "github": {
+    "state": "MERGED",
+    "pullRequest": 55,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/55",
+    "mergedAt": "2026-08-21T02:00:12Z",
+    "mergeCommit": "93f0e46be78d04f7663444c3306f91081051dc9b",
+    "tag": "v0.6.27",
+    "tagTarget": "26525387ff02a34d8de1eae4d74ed51c11529a7a"
+  },
+  "rollback": {
+    "previousRelease": "/opt/unboundry/releases/v0.6.26-viewport-independent-group-run-20260821",
+    "frozenBackup": "/var/lib/unboundry-rollbacks/v0.6.27-frozen-yaet3a",
+    "required": false
+  },
+  "userAcceptance": "USER_RECHECK"
+}
