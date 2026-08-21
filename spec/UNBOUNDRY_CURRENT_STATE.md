@@ -2,17 +2,21 @@
 
 更新日期：2026-08-21
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
+当前代码包版本：**v0.6.27**
 
 ## 一句话
 
-线上是 **v0.6.26 / schema39**（整组执行不受画布视野影响），2026-08-21 已发布；agent 已在真实页面启动“一键上新+自检”，随后把父组拖出屏幕，整组仍完整跑完 11/11，待用户主观复验。v0.6.25 为上一版。用户要的核心结果仍是：**上传一张图，工作流自己跑完，用户下载结果**。
+线上是 **v0.6.27 / schema39**（画布、工作流执行与任务恢复已解耦），2026-08-21 已发布；agent 已在新建真实项目中让两个不相交文字工作组于557ms内先后启动、同时保持active并全部完成，刷新后四个结果仍在原节点，待用户主观复验。v0.6.26 为上一版。用户要的核心结果仍是：**上传一张图，工作流自己跑完，用户下载结果**。
 
-## v0.6.27 画布执行解耦候选（2026-08-21）
+## v0.6.27 画布执行解耦已发布（2026-08-21）
 
-- 状态：`IMPLEMENTED_TARGETED_AUTO_PASS / NOT_RELEASED`。四类整组执行已从React节点registration迁移到静态headless executor；`workflowRenderRetention.ts`已删除；同画布不相交组可并行，重叠节点/直接输入在付费提交前阻止。
+- 状态：`PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`。四类整组执行已从React节点registration迁移到静态headless executor；`workflowRenderRetention.ts`已删除；同画布不相交组可并行，重叠节点/直接输入在付费提交前阻止。
 - 所有权：结果应用必须匹配runId、taskId、ownershipKey、nodeId和kind；checkpoint、lease、lock与摘要按runId隔离且checkpoint写入强制匹配lease runId，一轮不能清除另一轮。手动单节点提交也必须避让同标签活跃组lease；headless executor只放行自己的runId。
 - 自动证据：m22 `37/37`、m38 `15/15`、m40 `14/14`、m41 `51/51`、m44 `8/8`、m68 `4/4`均通过。m22直接覆盖四模态headless preflight/run/recover/apply、多run导航/精确checkpoint清理，以及双run反例：A成功、A失败、A停止时B均继续；A整组和两层子节点真实卸载后，第二层仍提交、完成并落盘。运行中无关节点编辑/移动/连接/删除/复制和视图缩放仍可用。
-- 旧候选曾在干净快照得到`119/119 specs、1027/1027 tests`，但三类独立终审随后发现并促成四项P1纠正，冻结库存现为1029，因此旧全量不登记为最终回执。尚需在提交后的干净最终候选HEAD上重跑full、完成三路复审、真实Provider/页面、发布与生产技术验收。
+- 最终自动回执：HEAD `26525387ff02a34d8de1eae4d74ed51c11529a7a`执行`node scripts/run-safe-tests.mjs full`退出码0，`119/119 specs、1029/1029 tests`，failed/skipped/retries/blocked/reportErrors均0；source/snapshot SHA均为`bef8b0f3c0204a6634dd45753d0700827eb8df6de0a7abb992f144116cf535d6`，4173 listener未变，受保护未跟踪JSON未进入快照。架构终审P0=0/P1=0，测试终审无新的P0/P1实现阻断。
+- 发布身份：注释tag `v0.6.27`精确指向上述tested commit，tree `3735ea655cc9f353b0ccfca1060221cea445ba0e`；PR #55 merge `93f0e46be78d04f7663444c3306f91081051dc9b`，main tree与tag tree一致。生产指针为`/opt/unboundry/releases/v0.6.27-canvas-execution-decoupling-20260821`；冻结备份`/var/lib/unboundry-rollbacks/v0.6.27-frozen-yaet3a`，365文件，双清单SHA均为`fb4efe7f219894c9ff73c9a32c550a1595346024f2c20a69b0365a1f05d95162`。
+- 真实页面：新画布`0f92bbc0-b30a-4c1d-bef2-ecf15216ac01`包含A/B两个不相交文字组；并发轮B后A相差557ms启动，页面同时显示两组运行中，数据库时间窗也证明B2未完成时A2已提交。并发轮4 tasks/4 attempts均attempt 1 success且无重复；连同前置A组控制轮共新增6 tasks/6 attempts，active归零。页面分别显示A组2/2用时6秒、B组2/2用时7秒，刷新后A1_OK/A2_OK/B1_OK/B2_OK仍在原节点，已保存到云端，应用console error/warn为0。
+- 生产门：公网和回环version均`0.6.27`，service active/enabled、NRestarts0，schema39/integrity ok/FK0；发布前590 tasks/598 attempts，真实验证后596/604，模板50/已发布48，所有5个构建资源与release逐字节一致。权威回执：`spec/V0_6_27_PRODUCTION_RECEIPT_2026-08-21.json`。
 - 权威方案、矩阵与施工续接分别见 `spec/UNBOUNDRY_CANVAS_EXECUTION_DECOUPLING_PLAN_2026-08-21.md`、`spec/UNBOUNDRY_CANVAS_EXECUTION_ACCEPTANCE_MATRIX_2026-08-21.md`、`spec/UNBOUNDRY_CANVAS_EXECUTION_CHECKPOINT.md`。
 
 ## INC-GEN-012 / v0.6.26 已发布（2026-08-21）
@@ -27,7 +31,7 @@
 
 ## v0.6.25 发布与真实验证（2026-08-20）
 
-- 当前代码包版本：**v0.6.27**；线上版本仍为 **v0.6.26**，v0.6.27 正在完成“画布—工作流执行—任务恢复”渐进式解耦的安全验证与发布收口。v0.6.26 状态 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`；v0.6.25 的完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
+- 当前代码包与线上版本均为 **v0.6.27**；v0.6.26 状态 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`并作为上一版保留。v0.6.25 的完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
 - 事二「生成任务一直排队中」已在线闭环：已知任务 `c479826f-a426-4a11-854c-79ecc802bcbc` 从 `queued / attempt 1 / provider_task_id null` 在 v0.6.25 重启后自动接力，平台任务 `111092189` 完成，最终 `success / attempt 2`；没有盲目重复。
 - 事一已查清：2026-08-19 15:23–15:26Z 上游“服装主体标准化”图片成功并产出 11,596,744 字节 PNG；v0.6.23 的 10MB 文字输入预检随后拦下四个下游文字节点，五个后代未运行。不是客户端 DAG 漏发；红字把失败错归因给已经成功的上游图片节点。
 - “2:33 三张主图从未提交”的旧说法已被生产任务表与 nginx 202 提交记录否定：该轮 7 图 + 4 文全部 success。
@@ -37,9 +41,9 @@
 ## 线上
 
 - 地址：https://canvas.mymy.ltd
-- 指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.26-viewport-independent-group-run-20260821`
-- 源码：commit `dc29cc00d5b379e3e8b8cb1746dc6cf85f01c140`，tree `0770cb7c03e335620906d0b3954e510aa30f9bf2`
-- 标签：`v0.6.26` 精确指向该源码
+- 指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.27-canvas-execution-decoupling-20260821`
+- 源码：commit `26525387ff02a34d8de1eae4d74ed51c11529a7a`，tree `3735ea655cc9f353b0ccfca1060221cea445ba0e`
+- 标签：`v0.6.27` 精确指向该源码
 - 功能 PR：#53，merge `4a675be056aaca4b3d3a3239136857fecbefbb94`，main tree 与 tag tree 一致
 - 冻结备份：`/var/lib/unboundry-rollbacks/v0.6.26-frozen-234452`（365 文件，两份清单 SHA 同为 `6b64da90d996446e570a60bc0454ead445defe42df09579787e796e39864b525`）
 - 上一不可变版：`v0.6.25-generation-hardening-20260820`（以及更早版本）仍保留
