@@ -1,19 +1,22 @@
 # Unboundry 绿地复刻当前任务
 
 更新时间：2026-08-21
-状态：`v0.6.29/schema39 本地候选已完成隔离实现、定向验证、一次独立review和唯一一次safe full及失败项最小复验；v0.6.28/schema39仍在线，生产尚无独立云腾Provider。当前为 RELEASE_CANDIDATE_VERIFIED / PRODUCTION_CONFIGURATION_BLOCKED / USER_RECHECK；下一步是GitHub、发布、云腾安全配置与生产验收。权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
+状态：`v0.6.29/schema39 已发布；隔离实现、定向验证、一次独立review、唯一一次safe full及失败项最小复验、GitHub、冻结备份、fresh build、原子切换和无密钥生产技术门均已完成。独立云腾profile已创建，但安全入口没有云腾自己的key，因此credential/model/binding/task/attempt和真实Provider POST均为0。当前为 PRODUCTION_CODE_PUBLISHED_CONFIGURATION_BLOCKED / USER_RECHECK；等待用户在生产「我的连接」安全填写云腾key后续接，不能借用优创。权威快照见 spec/UNBOUNDRY_CURRENT_STATE.md。`
 
-### 2026-08-21 云腾 Provider 隔离与三模型上线（v0.6.29 候选定向通过）
+### 2026-08-21 云腾 Provider 隔离与三模型上线（v0.6.29 代码已发布，凭据门阻断）
 
 - 业务纠正：优创和云腾是两个独立商业平台、余额和API key互不相通；两者只是都接天空兼容API。必须各自使用独立Provider profile、凭据、模型内部ID和任务归属，不创建“天空”计费profile。
-- 生产事实：v0.6.28代码在线，但当前没有云腾profile；优创目录快照里出现三模型ID不能证明归属，生产三条精确`model_profiles`和节点绑定均不存在。禁止把三模型补进优创或使用优创key代替。
+- 生产事实：v0.6.29代码在线，独立云腾profile `06831aee…60fdf` 已创建为 `multi-protocol-relay`，base URL为`https://api.lk888.ai`；但key/catalog均unchecked，账号凭据、三条精确`model_profiles`、绑定、task和attempt均为0。禁止把三模型补进优创或使用优创key代替。
 - 已实现：公共目录与节点下拉展示商业Provider；同名模型按内部ID选择；管理端区分商业平台/driver/protocol并禁止既有模型跨profile重绑；owner凭据缺失严格fail-closed；relay核对、task/attempt/recovery与结果提交强制匹配profile/model/kind/owner。
 - 自动证据：Node `22.23.1` / npm `10.9.8`，TypeScript退出0；一次独立subagent review的4项发现全部修复；review后m12/m56/m57/m73/m88有效`78/78 PASS`，真实Provider创建POST为0，4173 listener不变。实现提交`8f4a2b6`。
 - 正式门：唯一一次safe full在HEAD `0f23b19`、source/snapshot `40da52cc…20a`上执行，`1025/1034`通过、9项旧测试夹具/可访问名称失败、退出1，快照和4173 listener不变。只复验失败spec后先`30/31`，再修唯一m43并`6/6 PASS`；未重复full。测试兼容提交`19ec414`。
-- 剩余流程：完成tag/push/PR/merge、冻结备份、fresh build、生产切换、云腾安全配置、零付费门、最多3次有界真实smoke和上线后完整生产技术验收。用户主观确认前保持`USER_RECHECK`。
+- 发布证据：tag`v0.6.29`→commit`d4ccc360e2645e43005c8bdf9a05ec984d48e655`/tree`a291420309236f2b2bb53653301b2b1f1395dbfd`；PR #60 merge`af8493cdf710dc9f899aa098d725e9d034bdb032`；production current为`/opt/unboundry/releases/v0.6.29-yunteng-provider-isolation-20260821`。冻结备份`v0.6.29-frozen-6c2fff`共365文件，双清单SHA`cabcb1c0…c0b5`。
+- 生产门：service active/enabled、NRestarts0；公网/loopback0.6.29；schema39/integrity ok/FK0；tasks630/attempts638/active0、模板50/已发布48、媒体355个/284663380字节不变；公网5资源与release逐字节一致，应用/nginx/浏览器新增error/warn为0。
+- 隔离证据：优创profile、3组账号凭据身份、12个模型/绑定、281个任务和288个attempt与冻结备份逐项SHA一致。云腾无credential/model/binding/task/attempt，目录请求和真实Provider创建POST均为0；未读取、复制、覆盖或回退使用优创key。
+- 剩余流程：用户必须在生产「我的连接」安全填写云腾自己的key；随后才能只读同步目录、只在云腾导入/发布/绑定三模型、跑完零付费门和最多3次有界真实smoke。当前fail-closed，不是Goal完成或USER PASS。
 - 权威方案：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_PLAN_2026-08-21.md`；施工续接：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_CHECKPOINT.md`；Goal合同：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_GOAL_PROMPT_2026-08-21.md`。
 
-### 2026-08-21 v0.6.28 已发布（当前）
+### 2026-08-21 v0.6.28 已发布（上一不可变版）
 
 - 用户已分别确认版本号`v0.6.28`和“允许发布”；同步文字Provider port、Generation媒体结果原子提交与同一中转站Nano/Kling/Suno三模型合同已发布到`/opt/unboundry/releases/v0.6.28-relay-media-models-20260821`。
 - 发布证据：tag`v0.6.28`指向commit`ee6ce437730cf78ef4488217b778f6b0ef2aaee5`/tree`2811ada65140779d4a5e10cbd8ed6fa54893638b`；PR #58 merge`753d24f8ee6e4facb3c88e876c4a38b456addc75`，main tree与tag tree一致。

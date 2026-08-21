@@ -2,17 +2,19 @@
 
 更新日期：2026-08-21
 
-状态：`GOAL_ACTIVE / IMPLEMENTED_TARGETED_PASS / RELEASE_CANDIDATE_PREP`
+状态：`GOAL_ACTIVE / PRODUCTION_CODE_PUBLISHED / YUNTENG_CREDENTIAL_GATE_BLOCKED / USER_RECHECK`
 
 建议目标版本：`v0.6.29`
 
 施工续接：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_CHECKPOINT.md`
 
+实施状态（2026-08-21）：v0.6.29代码、GitHub、冻结备份、fresh build、原子切换和不依赖云腾key的生产技术门已完成；独立云腾元数据profile已创建。安全入口没有云腾自己的key，因此credential、三模型、binding、task、attempt和真实Provider POST均为0，后续配置按本方案fail-closed。
+
 ## 1. 一句话结论
 
 优创和云腾必须是两个独立的 Provider profile。它们可以复用同一个“天空兼容”技术通道，也可以碰巧使用同一个 API base URL，但绝不能共享平台身份、密钥、余额、账号凭据、模型记录或任务归属。
 
-本次要修的不是三模型执行合同；该合同已经随 v0.6.28 上线。真正缺失的是：生产环境尚未创建并配置“云腾”这一独立 Provider，三条模型也尚未以云腾自己的模型记录发布到节点目录；与此同时，普通用户的模型下拉框只显示模型名，无法清楚辨认模型属于哪个商业平台。
+本次要修的不是三模型执行合同；该合同已经随 v0.6.28 上线。v0.6.29已发布商业Provider隔离和普通模型下拉辨认能力，并创建独立云腾元数据profile；当前真正缺失的是云腾自己的安全凭据、目录同步，以及三条只归属云腾的模型记录和节点绑定。
 
 ## 2. 已确认的业务结构
 
@@ -51,13 +53,13 @@
 - 分支：`codex/unboundry-offline-remediation-2026-08-09`；
 - 本地 HEAD：`79151690e4d49045ca3c517bb2e86c17e2d64296`；
 - `origin/main`：`a4bfda3cf85cef509cb79d565daec5441896810b`；
-- package：`0.6.28`；生产版本：`v0.6.28 / schema39`；
-- 生产 current：`/opt/unboundry/releases/v0.6.28-relay-media-models-20260821`；
+- package：`0.6.29`；生产版本：`v0.6.29 / schema39`；
+- 生产 current：`/opt/unboundry/releases/v0.6.29-yunteng-provider-isolation-20260821`；
 - 生产已有优创 profile，driver 为 `multi-protocol-relay`；
-- 生产没有云腾 profile；
+- 发布前生产没有云腾 profile；当前已创建独立云腾元数据 profile，但没有云腾 key、账号凭据、模型或绑定；
 - 优创的远端目录快照碰巧出现上述三个 Provider 模型 ID，但生产 `model_profiles` 中没有这三条精确模型记录，也没有节点绑定；
 - 因此“在优创目录快照里看见 ID”不等于“模型属于优创”，也不等于“云腾已接入”；
-- v0.6.28 的代码与协议合同已经发布，但云腾生产配置和模型发布没有完成。当前功能状态应是 `PRODUCTION_CONFIGURATION_BLOCKED / USER_RECHECK`，不能写成用户可用或 `USER_PASS`。
+- v0.6.29 隔离代码已经发布，但云腾凭据、目录、模型发布和真实smoke没有完成。当前功能状态是 `PRODUCTION_CODE_PUBLISHED_CONFIGURATION_BLOCKED / USER_RECHECK`，不能写成用户可用、smoke PASS或 `USER_PASS`。
 
 受保护文件 `spec/public-templates-director-split-revision.json` 当前为未跟踪文件。后续所有阶段都禁止读取、修改、格式化、移动、删除、暂存或提交该文件，也不得让它进入 fixture、snapshot、build 或 artifact。
 

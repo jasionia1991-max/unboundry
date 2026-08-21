@@ -6,20 +6,29 @@
 
 ## 一句话
 
-本地候选是 **v0.6.29 / schema39**，线上仍是 **v0.6.28 / schema39**。v0.6.29 已完成云腾/优创商业平台身份、账号凭据、模型与任务恢复隔离实现、风险定向验证、一次独立review，以及唯一一次正式safe full和失败项最小复验；正在进入GitHub与生产发布阶段。生产尚未创建独立“云腾” Provider，三模型也尚未作为云腾模型发布。当前准确状态为 `RELEASE_CANDIDATE_VERIFIED / PRODUCTION_CONFIGURATION_BLOCKED / USER_RECHECK`。用户要的核心结果仍是：**上传一张图，工作流自己跑完，用户下载结果**。
+**v0.6.29 / schema39 已发布**，代码、GitHub、冻结备份、fresh build、原子切换和不依赖云腾密钥的生产技术门均已完成。生产现有独立“云腾” profile，但安全入口没有云腾自己的 API key，因此它保持 disabled / key unchecked，账号凭据、三模型、绑定、任务和 attempt 均为 0；目录同步和真实 Provider smoke 没有执行。当前准确状态为 `PRODUCTION_CODE_PUBLISHED_CONFIGURATION_BLOCKED / USER_RECHECK`，不是 Goal 完成或 `USER_PASS`。用户要的核心结果仍是：**上传一张图，工作流自己跑完，用户下载结果**。
 
-截至候选冻结前没有执行真实 Provider 创建 POST，也没有 OSS 写入、schema变更或生产画布修改；用户将在真实页面自行复验，未回复“通过”前不得写`USER_PASS`。
+本 Goal 的真实 Provider 创建 POST 总数为 0，没有 OSS 写入、schema变更或生产画布修改。必须由授权用户在生产「我的连接」安全填写云腾自己的 key 后才能续接目录同步、三模型导入/发布/绑定和最多三次 smoke；密钥不得进入聊天、Git、文档、测试或终端回显，也不得借用优创。用户明确验收前不得写`USER_PASS`。
 
-## 云腾 Provider 隔离纠正（2026-08-21，v0.6.29 候选定向通过）
+## v0.6.29 已发布，云腾凭据门 fail-closed（2026-08-21）
+
+- tag `v0.6.29` 指向 commit `d4ccc360e2645e43005c8bdf9a05ec984d48e655` / tree `a291420309236f2b2bb53653301b2b1f1395dbfd`；PR #60 merge `af8493cdf710dc9f899aa098d725e9d034bdb032`，发布时 main tree、tag tree 和 release archive 一致。
+- 生产 current：`/opt/unboundry/releases/v0.6.29-yunteng-provider-isolation-20260821`；冻结备份：`/var/lib/unboundry-rollbacks/v0.6.29-frozen-6c2fff`，365 文件，双清单 SHA 均为 `cabcb1c0…c0b5`。
+- 发布门：service active/enabled、NRestarts0；公网/loopback 0.6.29；schema39、integrity ok、FK0；tasks630、attempts638、active0、模板50/已发布48、媒体355个/284663380字节不变；5个公网构建资源与 release 逐字节一致；应用/nginx和浏览器新增 error/warn 均为0。
+- 云腾 profile `06831aee…60fdf` 独立存在，driver=`multi-protocol-relay`、base URL=`https://api.lk888.ai`；key/catalog 均 unchecked，credential/model/binding/task/attempt均0，Provider目录请求和真实创建POST均0。
+- 优创对冻结备份逐项哈希一致：profile 1、账号凭据身份3、模型/绑定12/12、任务/attempt 281/288；没有读取、复制、覆盖或回退使用优创 key。
+- 凭据门：安全检查了本机环境变量名、云腾精确Keychain标签、生产服务环境变量名、云腾专属配置文件名和数据库凭据身份元数据，均没有云腾key。按合同停在fail-closed；完整回执：`spec/V0_6_29_PRODUCTION_RECEIPT_2026-08-21.json`。
+
+## 云腾 Provider 隔离纠正（2026-08-21，v0.6.29 代码已发布）
 
 - 用户明确：优创与云腾是两个老板、两套充值余额、两套 API key 和账单，互相完全不能使用；二者只是都接入天空兼容 API。“天空”是技术兼容层，不是默认计费 Provider。
-- 生产只读核对：当前存在优创 profile（`multi-protocol-relay`），不存在云腾 profile；优创目录快照中碰巧出现三个 Provider 模型 ID，但 `model_profiles` 没有三条精确模型记录，节点绑定也为 0。目录出现不能证明模型归属，更不能证明云腾已接入。
+- 发布前只读核对：当时存在优创 profile、没有云腾 profile；优创目录快照中碰巧出现三个 Provider 模型 ID，但 `model_profiles` 没有三条精确模型记录，节点绑定也为 0。当前已创建独立云腾元数据 profile，但因缺少云腾 key，三模型和绑定仍为0。目录出现不能证明模型归属，更不能证明云腾已接入完成。
 - 正确数据模型：优创、云腾各自一条 `provider_profiles`；账号凭据继续按 `(account_id, provider_profile_id)` 隔离；相同 Provider model ID 可在两个 profile 下各有独立内部 model ID。三模型本轮明确归属云腾，禁止写入或回退到优创。
 - schema39 保持不变。普通 `/api/models` 已安全返回 `providerName`，节点下拉以“模型名 + 商业Provider + capability”区分同名模型并继续按内部 model ID 选择；管理端明确区分商业平台、技术 driver 与 protocol，并禁止既有模型跨 profile 原地重绑。
 - 凭据 owner 模式不再回退 profile 全局 key；task/attempt/recovery、relay 自动核对和 Generation 结果提交均把 `provider_profile_id` 纳入严格身份核对。一次独立 subagent review 找出的四项（凭据 fallback、恢复上下文串 profile、结果提交缺 profile、模型身份漂移）已全部修复。
 - Node `22.23.1` / npm `10.9.8` 定向有效覆盖：review 后 m12/m56/m57/m73/m88 `78/78 PASS`，TypeScript 退出0；另有 m9/m16/m18/m46 直接覆盖密钥表面、灰阶布局、两字号和多目录UI。全部使用隔离临时数据、动态loopback和fake fetch，真实创建POST为0，4173 listener不变。实现提交：`8f4a2b6 feat(provider): isolate commercial platform identity`。
 - 唯一一次正式safe full在HEAD `0f23b19`、source/snapshot `40da52cc…20a`上执行：`1025/1034`通过，9项旧测试夹具/可访问名称失败，退出1；源码快照和4173 listener不变。按合同只复验失败spec，首轮`30/31`，唯一剩余m43修正后`6/6 PASS`；未第二次运行full。测试兼容提交：`19ec414 test(provider): align isolation fixtures`。
-- 施工方案：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_PLAN_2026-08-21.md`；续接：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_CHECKPOINT.md`；Goal 合同：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_GOAL_PROMPT_2026-08-21.md`。下一门是tag/push/PR/merge与生产发布；尚未发布、配置云腾或真实调用。
+- 施工方案：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_PLAN_2026-08-21.md`；续接：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_CHECKPOINT.md`；Goal 合同：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_GOAL_PROMPT_2026-08-21.md`。GitHub与代码发布已完成；下一门只能是用户从生产安全入口提供云腾自己的key，随后续接配置和有界真实smoke。
 
 ## v0.6.28 已发布（2026-08-21）
 
@@ -82,15 +91,15 @@
 ## 线上
 
 - 地址：https://canvas.mymy.ltd
-- 指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.28-relay-media-models-20260821`
-- 源码：tag commit `ee6ce437730cf78ef4488217b778f6b0ef2aaee5`，tree `2811ada65140779d4a5e10cbd8ed6fa54893638b`
-- 标签：`v0.6.28` 精确指向上述源码
-- 功能 PR：#58，merge `753d24f8ee6e4facb3c88e876c4a38b456addc75`，main tree 与 tag tree 一致
-- 冻结备份：`/var/lib/unboundry-rollbacks/v0.6.28-frozen-awqsNE`（365 文件，两份清单 SHA 同为 `2897b65a20419e38ae940b353c3f57112ab352133054052557a06d63f496c58e`）
-- 上一不可变版：`v0.6.25-generation-hardening-20260820`（以及更早版本）仍保留
-- v0.6.26切换基准：schema39、integrity ok、FK0、tasks569、attempts577、公共模板50（48 published）、active0；本轮发布前只读现场为tasks590、attempts598、公共模板50（48 published）、active0。
+- 指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.29-yunteng-provider-isolation-20260821`
+- 源码：tag commit `d4ccc360e2645e43005c8bdf9a05ec984d48e655`，tree `a291420309236f2b2bb53653301b2b1f1395dbfd`
+- 标签：`v0.6.29` 精确指向上述源码
+- 功能 PR：#60，merge `af8493cdf710dc9f899aa098d725e9d034bdb032`，发布时 main tree 与 tag tree 一致
+- 冻结备份：`/var/lib/unboundry-rollbacks/v0.6.29-frozen-6c2fff`（365 文件，两份清单 SHA 同为 `cabcb1c01ec1d157e2d9eabfcdab49b1a8bc5b1febffb6d4f6d3c23d1ae9c0b5`）
+- 上一不可变版：`/opt/unboundry/releases/v0.6.28-relay-media-models-20260821`（以及更早版本）仍保留
+- 当前数据门：schema39、integrity ok、FK0、tasks630、attempts638、公共模板50（48 published）、active0、媒体355个/284663380字节。
 - 生产并发配置已恢复推荐值：per_user 20 / image 10 / video 2 / audio 2 / text 10 / RPM 120
-- 正式安全全量：v0.6.28 候选执行 `1032/1034`，两个失败经原因修正和最小复验 `16/16 PASS`；未重复 full
+- 正式安全全量：v0.6.29 候选唯一一次执行 `1025/1034`，9项旧夹具/ARIA失败经最小复验全部转绿；未第二次运行 full
 - v0.6.25 已于 2026-08-20 发布，agent 真实页面与最小真实 Provider 验证通过，待用户主观复验；更早用户已通过版本状态保持不变
 
 ## 最新发布（2026-08-20 已发布，agent 技术实页通过，待用户主观复验）
