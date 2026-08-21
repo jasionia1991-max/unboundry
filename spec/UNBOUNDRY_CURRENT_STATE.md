@@ -2,15 +2,15 @@
 
 更新日期：2026-08-21
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.30**（发布候选；生产仍为 v0.6.29）
+当前代码包版本：**v0.6.30**（生产已发布，待用户主观复验）
 
 ## 一句话
 
-**生产仍是 v0.6.29 / schema39，v0.6.30 已获版本和发布授权且候选已冻结。** 本版只修 Provider 结果兼容：Nano 的JPEG/WebP/GIF结果有界归一化为PNG；Suno的两个不同完整MP3候选先全部持久化，再按primary/alternate提交并在音频节点切换。三次真实创建POST已用尽，本版新建Provider任务POST预算为0；只允许恢复既有云腾任务，绝不借用优创密钥、删除历史或未知自动重试。当前准确状态是`V0_6_30_RELEASE_CANDIDATE / PRODUCTION_V0_6_29_FAIL_CLOSED`，尚未宣称生产或用户PASS。
+**生产是 v0.6.30 / schema39，状态 `PRODUCTION_PUBLISHED_TECHNICAL_PASS / USER_RECHECK`。** Nano 的既有云腾 JPEG 结果已经有界转成规范 PNG；Suno 的两个不同完整 MP3 已整组持久化，第一个为 primary、第二个为 alternate，真实页面可以切换和播放。Provider 创建 POST 新增 0，tasks/attempts 仍为 `633/641`；Nano、Kling、Suno 三模型只在云腾 profile 下 published/enabled，优创 profile/凭据/epoch/模型/绑定/task/attempt 对冻结备份双向差异均为 0。尚未取得用户主观 PASS。
 
-云腾个人中心显示本日图片1、视频1、音频1，合计消耗算力4.09、余额7.14。Nano/Suno现有作品已从云腾页面下载到本地恢复目录，未重建Provider task；真实创建POST预算已耗尽，禁止再次生成或自动重试。用户已在上一Goal停止后另行给出v0.6.30版本和发布授权，因此旧的“不进入v0.6.30”边界已被当前授权替代；创建POST上限没有恢复，仍必须保持0。
+云腾个人中心此前显示本日图片1、视频1、音频1，合计消耗算力4.09、余额7.14。v0.6.30 只轮询既有 provider task `112083470`/`112087930` 并把成片保存进 Unboundry，没有重建 Provider task。当前版本和发布授权已消费，禁止追加真实生成、再次发布或进入下一版本。
 
-## v0.6.30 Provider 结果兼容候选（2026-08-21）
+## v0.6.30 Provider 结果兼容已发布（2026-08-21）
 
 - 用户上传一直支持PNG/JPEG/WebP/GIF；故障只在Provider结果链。Nano真实成片为JPEG，Suno真实响应为两个不同的完整MP3候选。
 - 非PNG图片经20MiB/4000万像素/私有临时目录/有界ffprobe+ffmpeg合同转成规范PNG；资源闸门在响应读取之前，资源繁忙保持可恢复语义。
@@ -18,6 +18,10 @@
 - 后续alternate不重复成本或成功事件；任务API返回`resultOutputs`，音频节点提供持久版本选择并同步整组成功证明，上传替换会清除旧候选。
 - 独立subagent review的三个阻断和两个高风险项均已处理，复审无剩余阻断。唯一一次正式safe full在HEAD `a8c9e8f`、source/snapshot `621ac501…e6b`执行：`1035/1037`通过；只按失败项复验，m38 `15/15`、m2+m4 `4/4`通过，未第二次运行full。m4根因是测试夹具伪assetId被持久化成不存在的API路径，不是生产音频下载合同；夹具已纠正。
 - 生产恢复仅限已存在的云腾provider task `112083470`/`112087930`，零新建POST。权威设计：`spec/UNBOUNDRY_PROVIDER_RESULT_COMPATIBILITY_V0_6_30_2026-08-21.md`。
+- tag `v0.6.30` 指向 commit `bfed2f79581935882bb58279c8faf992679f12c1` / tree `9a95f30993fc9f21489d1a8acb2e7347d90845c8`；PR #64 merge `0d71d37c77423f3870e97f1e44b9745fef999cfb`。生产 release `/opt/unboundry/releases/v0.6.30-provider-result-compatibility-20260821`，冻结备份 `/var/lib/unboundry-rollbacks/v0.6.30-frozen-1uQmic`。
+- 生产恢复后 Nano task 和 Suno task 均 success，attempt 仍为原记录且 `created_at` 已恢复；逻辑媒体由716增至719，字节由1186596417增至1196648534，正好对应1张PNG和2条MP3。公网/loopback version/live/ready、schema39、integrity、FK、service、release inventory、公网5资源与实页播放全部通过。
+- 上线后独立review确认无需回滚、无新运行时P0/P1；同时限定这次“临时轮询窗口”是两个已超过deadline历史任务的受控GET-only维护例外，不是普通重启刷新ASYNC-005 deadline的证明。首次启动严格使用原始时间并在发GET前落`RESULT_DELAYED`，维护成功后attempt `created_at`已精确恢复，完整事件号见回执。
+- 完整生产回执：`spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json`。
 
 ## v0.6.29 已发布，云腾三次真实验收后部分配置回滚（2026-08-21）
 

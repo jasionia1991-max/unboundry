@@ -1,7 +1,7 @@
 # Unboundry v0.6.30 Provider 结果兼容与既有任务恢复
 
 日期：2026-08-21  
-状态：`FROZEN_RELEASE_CANDIDATE / ZERO_NEW_PROVIDER_POST`
+状态：`PRODUCTION_PUBLISHED_TECHNICAL_PASS / ZERO_NEW_PROVIDER_POST / USER_RECHECK`
 
 ## 结论
 
@@ -35,4 +35,13 @@ v0.6.29 的浏览器上传入口本来就接受 PNG、JPEG、WebP、GIF，并统
 - 定向覆盖：JPEG/WebP→PNG、资源闸门先于响应读取、Suno两结果保序、完整输出集合崩溃恢复、primary/alternate身份与删除保护、API输出、音频版本切换、版本/runtime门。
 - 候选冻结后唯一一次正式safe full在HEAD`a8c9e8f`、source/snapshot`621ac501…e6b`执行，`1035/1037`通过；失败仅为m38候选文档精确字符串和m4测试夹具伪assetId归一化到不存在的API路径。没有第二次运行full；m38最小复验`15/15`、纠正夹具后m2+m4`4/4`通过。独立subagent复审无剩余阻断。
 - 发布前保留v0.6.29不可变release和冻结备份；切换或恢复出现应用级问题时回切v0.6.29，但不删除任何任务、媒体、审计、备份或release。
-- 生产回执以发布后的精确commit/tag/PR/release/backup/hash、任务恢复结果和技术验收矩阵为准；本文件不提前宣称生产PASS或用户PASS。
+- 生产回执以发布后的精确commit/tag/PR/release/backup/hash、任务恢复结果和技术验收矩阵为准；技术验收通过不等于用户主观PASS。
+
+## 生产结果
+
+- tag `v0.6.30` 指向 commit `bfed2f79581935882bb58279c8faf992679f12c1` / tree `9a95f30993fc9f21489d1a8acb2e7347d90845c8`；PR #64 merge `0d71d37c77423f3870e97f1e44b9745fef999cfb`。生产 current 为 `/opt/unboundry/releases/v0.6.30-provider-result-compatibility-20260821`。
+- 冻结备份 `/var/lib/unboundry-rollbacks/v0.6.30-frozen-1uQmic` 的 source/restore 双清单和配置 manifest 一致；旧 release、生产数据、媒体、审计和备份均保留。
+- 历史 attempt 的原始轮询 deadline 已过，首次启动严格按 ASYNC-005 使用原始 `created_at`，在发 GET 前保守落 `RESULT_DELAYED`。随后停服做精确事务：临时打开这两个既有 providerTaskId 的 GET-only 调度窗口，成功后恢复原始 `created_at`，并保留事件 `2164`～`2175`；没有新建 Provider task、attempt 或 admission。这是两个历史任务的受控维护例外，不证明、也不改变普通重启不得刷新 paid-attempt deadline 的产品合同。
+- Nano task `5f24c680…2d771` 已 success，保存 1024×1024 PNG，1290761字节；Suno task `4cdd6e1f…127a` 已 success，保存4506390字节/217.704秒的primary和4254966字节/189.96秒的alternate。两个音频SHA不同，真实页面均可播放，验收后恢复版本1。
+- tasks/attempts保持633/641，active0；媒体增量正好3条/10052117字节。三模型只在云腾profile `06831aee…60fdf` published/enabled；优创profile、凭据、credential epoch、模型、绑定、任务和attempt对冻结备份双向差异全0。
+- 公网与loopback的version/live/ready、schema39/integrity/FK、service NRestarts0、release inventory、公网5资源和浏览器console均通过。完整回执：`spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json`。
