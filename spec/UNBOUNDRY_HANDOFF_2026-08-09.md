@@ -4,11 +4,11 @@
 
 ## 先读当前快照
 
-新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-23 的权威现状、产品合同和待用户复验边界。下面各节是历史增量，出现「当前」时只代表该时点。
+新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-23 的权威现状、产品合同和用户验收边界。下面各节是历史增量，出现「当前」时只代表该时点。
 
-## 当前线上：模块化 main-safe 集成（v0.6.31，2026-08-23 已发布待用户复验）
+## 当前线上：模块化 main-safe 集成（v0.6.31，2026-08-23 已发布并获用户验收）
 
-v0.6.31 已把用户本地验收通过的模块化成果正式送入普通 main-safe 生产路径，产品语义与 schema39 不变。tag commit `475bc675566217a017a079567caf5e9fa0772bd2` / tree `d751a82ce60f00da93939c54e473ff410da2cb51`，PR #69 merge `b0528d244b4ee8de48cafb835839986f0a7d894e` 且 main tree 相同；生产 current `/opt/unboundry/releases/v0.6.31-modular-main-20260823`，冻结备份 `/var/lib/unboundry-rollbacks/v0.6.31-frozen-5JetjX`。唯一 safe full 真实记录 `1048/1050`，只复验失败 m22/m38 后 `52/52 PASS`，未重跑 full。生产 schema/integrity/FK、切换前后数据、service、公网/回环和5资源全部通过，真实 Provider/OSS请求为0。状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；回执 `spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json`。
+v0.6.31 已把用户本地验收通过的模块化成果正式送入普通 main-safe 生产路径，产品语义与 schema39 不变。tag commit `475bc675566217a017a079567caf5e9fa0772bd2` / tree `d751a82ce60f00da93939c54e473ff410da2cb51`，PR #69 merge `b0528d244b4ee8de48cafb835839986f0a7d894e` 且 main tree 相同；生产 current `/opt/unboundry/releases/v0.6.31-modular-main-20260823`，冻结备份 `/var/lib/unboundry-rollbacks/v0.6.31-frozen-5JetjX`。唯一 safe full 真实记录 `1048/1050`，只复验失败 m22/m38 后 `52/52 PASS`，未重跑 full。生产 schema/integrity/FK、切换前后数据、service、公网/回环和5资源全部通过，真实 Provider/OSS请求为0。用户随后在生产实页明确回复“通过”，8个关键模块化边界文件与标签源码逐字节一致；状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。回执 `spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json`。
 
 ## 上一线上：Provider 结果兼容（v0.6.30，2026-08-21 已发布并获用户验收）
 

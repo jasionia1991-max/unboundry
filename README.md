@@ -6,9 +6,9 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前生产：v0.6.31（2026-08-23，等待用户复验）
+## 当前生产：v0.6.31（2026-08-23，USER PASS）
 
-生产当前运行 `v0.6.31 / schema39`，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。模块化 main-safe 成果已经过 GitHub、冻结备份、精确源码构建、原子切换和生产技术终门；切换前后数据计数一致，真实 Provider 与 OSS 写入为0。完整现状见 [`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)，生产回执见 [`spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json`](spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json)。历史文档中的 `PENDING`、`USER_RECHECK` 或“下一步”仅代表各自记录时点，不随本次发布自动启动。
+生产当前运行 `v0.6.31 / schema39`，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。模块化 main-safe 成果已经过 GitHub、冻结备份、精确源码构建、原子切换和生产技术终门；切换前后数据计数一致，真实 Provider 与 OSS 写入为0。用户随后在生产实页明确回复“通过”，且生产中的8个关键模块化边界文件与 v0.6.31 标签逐字节一致。完整现状见 [`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)，生产回执见 [`spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json`](spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json)。历史文档中的 `PENDING`、`USER_RECHECK` 或“下一步”仅代表各自记录时点，不随本次发布自动启动。
 
 ## 2026-08-19 生成稳定性一次性修复（v0.6.20 已发布，待你复验）
 

@@ -1,14 +1,14 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网已切到 v0.6.31/schema39，GitHub、冻结备份、构建、原子切换和技术终门全部通过，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。v0.6.30 的历史 `USER_PASS` 不自动升级为 v0.6.31 用户验收。
+> **状态分层**：现网已切到 v0.6.31/schema39，GitHub、冻结备份、构建、原子切换和技术终门全部通过；用户随后明确回复“通过”，当前状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。
 
 更新日期：2026-08-23
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.31**（生产已发布，等待用户实页复验）
+当前代码包版本：**v0.6.31**（生产已发布并获用户实页验收通过）
 
 ## 一句话
 
-**生产是 v0.6.31 / schema39，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。** 模块化成果已进入普通 main-safe 运行路径，产品行为保持用户本地验收通过的状态。tag `v0.6.31` 指向 commit `475bc675566217a017a079567caf5e9fa0772bd2` / tree `d751a82ce60f00da93939c54e473ff410da2cb51`，PR #69 merge `b0528d244b4ee8de48cafb835839986f0a7d894e` 且 main tree 一致；生产 current 为 `/opt/unboundry/releases/v0.6.31-modular-main-20260823`。
+**生产是 v0.6.31 / schema39，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。** 模块化成果已进入普通 main-safe 运行路径；用户在生产实页明确回复“通过”。tag `v0.6.31` 指向 commit `475bc675566217a017a079567caf5e9fa0772bd2` / tree `d751a82ce60f00da93939c54e473ff410da2cb51`，PR #69 merge `b0528d244b4ee8de48cafb835839986f0a7d894e` 且 main tree 一致；生产 current 为 `/opt/unboundry/releases/v0.6.31-modular-main-20260823`。生产中的8个关键模块化边界文件与标签源码逐字节一致。
 
 唯一 safe full 为 `1048/1050`；没有重跑 full，只复验失败的 m22/m38 并 `52/52 PASS`。冻结备份 `/var/lib/unboundry-rollbacks/v0.6.31-frozen-5JetjX` 共365文件，双清单SHA均为 `53eb5fea…deb4`；schema39、integrity ok、FK0，tasks/attempts `677/685`、active0、媒体 `738/1260901702`、模板 `50/48`、画布57在切换前后完全一致。公网/回环 version/live/ready、service、inventory 和公网5资源全部通过，真实 Provider 请求、付费生成和 OSS 写入均为0。完整回执：`spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json`。
 
@@ -107,7 +107,7 @@
 
 ## v0.6.25 发布与真实验证（2026-08-20，历史时点）
 
-- 本节以下为 v0.6.25 历史记录，不承担当前版本播报；当前生产以本文顶部 v0.6.30 状态为准。v0.6.26 的 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK` 是该版本独立验收时点，继续作为历史证据保留。v0.6.25 的完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
+- 本节以下为 v0.6.25 历史记录，不承担当前版本播报；当前生产以本文顶部 v0.6.31 状态为准。v0.6.26 的 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK` 是该版本独立验收时点，继续作为历史证据保留。v0.6.25 的完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
 - 事二「生成任务一直排队中」已在线闭环：已知任务 `c479826f-a426-4a11-854c-79ecc802bcbc` 从 `queued / attempt 1 / provider_task_id null` 在 v0.6.25 重启后自动接力，平台任务 `111092189` 完成，最终 `success / attempt 2`；没有盲目重复。
 - 事一已查清：2026-08-19 15:23–15:26Z 上游“服装主体标准化”图片成功并产出 11,596,744 字节 PNG；v0.6.23 的 10MB 文字输入预检随后拦下四个下游文字节点，五个后代未运行。不是客户端 DAG 漏发；红字把失败错归因给已经成功的上游图片节点。
 - “2:33 三张主图从未提交”的旧说法已被生产任务表与 nginx 202 提交记录否定：该轮 7 图 + 4 文全部 success。
@@ -243,7 +243,7 @@
 
 1. 先读本文 + `上线规矩.md` + `TASKS.md` 顶部。
 2. 只读核对仓库分支、HEAD、工作树、`package.json` 版本是否为 `0.6.31`；历史计划中的旧版本号不得当成当前施工身份。
-3. 当前生产为 v0.6.31/schema39，技术状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；等待用户实页确认，发布授权已消费。
+3. 当前生产为 v0.6.31/schema39，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`；技术发布和用户实页验收均完成，发布授权已消费。
 4. 云腾三模型只归属云腾 Provider；不得借用优创密钥、不得新增“天空”计费 Provider、不得自动追加真实 Provider POST。
 5. `VIEW-005`已由本地隔离安全定向证据关闭为`AUTO_PASS`；其余`PAUSED/BLOCK/PARTIAL`项只有在用户重新立项后才能施工，本次证据不得被解释为新版本或生产授权。
 6. 若用户说生成或工作流再次异常，先查当前线上任务、Provider profile、attempt 和结果所有权，再给方案；不得擅自改生产库或重提付费请求。

@@ -5,11 +5,11 @@
 状态：`HISTORICAL_CHECKPOINT / APPEND_ONLY`
 用途：保留各次施工与发布时点证据，不再充当当前恢复入口。**当前状态、未发布工作区与下一步只看 `UNBOUNDRY_CURRENT_STATE.md`；本文件任何旧命令或旧授权都不可复用。**
 
-## 0. v0.6.31 模块化 main-safe 集成（2026-08-23，已发布待用户复验）
+## 0. v0.6.31 模块化 main-safe 集成（2026-08-23，已发布并获用户验收）
 
 - tag `v0.6.31`→commit `475bc675566217a017a079567caf5e9fa0772bd2`/tree `d751a82ce60f00da93939c54e473ff410da2cb51`；PR #69 merge `b0528d244b4ee8de48cafb835839986f0a7d894e`，main tree一致。
 - 唯一 safe full 为 `1048/1050`；没有重跑 full，只复验失败 m22/m38 并 `52/52 PASS`。生产release `/opt/unboundry/releases/v0.6.31-modular-main-20260823`，冻结备份 `v0.6.31-frozen-5JetjX` 共365文件且双清单SHA `53eb5fea…deb4`。
-- schema39/integrity ok/FK0，切换前后 tasks/attempts `677/685`、active0、媒体 `738/1260901702`、模板 `50/48`、画布57完全一致；公网/回环、service、inventory和公网5资源通过，真实Provider/OSS请求0。状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；回执 `spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json`。
+- schema39/integrity ok/FK0，切换前后 tasks/attempts `677/685`、active0、媒体 `738/1260901702`、模板 `50/48`、画布57完全一致；公网/回环、service、inventory和公网5资源通过，真实Provider/OSS请求0。用户随后在生产实页明确回复“通过”，8个关键模块化边界文件与标签源码逐字节一致。状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`；回执 `spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json`。
 
 ## 0. v0.6.30 Provider 结果兼容（2026-08-21，已发布）
 

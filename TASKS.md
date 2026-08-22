@@ -1,11 +1,11 @@
 # Unboundry 绿地复刻当前任务
 
-> **v0.6.31 当前状态**：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。tag `v0.6.31` 指向 `475bc675566217a017a079567caf5e9fa0772bd2` / tree `d751a82ce60f00da93939c54e473ff410da2cb51`，PR #69 merge `b0528d244b4ee8de48cafb835839986f0a7d894e` 且 main tree 一致；生产 current 为 `/opt/unboundry/releases/v0.6.31-modular-main-20260823`。唯一 safe full 真实记录为 `1048/1050`，没有重跑；只复验 m22/m38 并 `52/52 PASS`。冻结备份365文件双清单一致，schema39和切换前后数据计数一致，公网/回环/service/inventory/5资源全部通过，真实 Provider/OSS请求为0。等待用户打开生产实页确认。
+> **v0.6.31 当前状态**：`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。tag `v0.6.31` 指向 `475bc675566217a017a079567caf5e9fa0772bd2` / tree `d751a82ce60f00da93939c54e473ff410da2cb51`，PR #69 merge `b0528d244b4ee8de48cafb835839986f0a7d894e` 且 main tree 一致；生产 current 为 `/opt/unboundry/releases/v0.6.31-modular-main-20260823`。唯一 safe full 真实记录为 `1048/1050`，没有重跑；只复验 m22/m38 并 `52/52 PASS`。冻结备份365文件双清单一致，schema39和切换前后数据计数一致，公网/回环/service/inventory/5资源全部通过，真实 Provider/OSS请求为0。用户已在生产实页明确回复“通过”；8个关键模块化边界文件与标签源码逐字节一致。
 
 更新时间：2026-08-23
-状态：`v0.6.31 已发布，技术终门通过，等待用户实页复验。权威回执见 spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json。`
+状态：`v0.6.31 已发布，技术终门与用户实页验收均通过，状态 PRODUCTION_PUBLISHED_USER_PASS / USER_PASS。权威回执见 spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json。`
 
-### 2026-08-23 模块化成果主线集成（v0.6.31 PRODUCTION PUBLISHED / USER RECHECK）
+### 2026-08-23 模块化成果主线集成（v0.6.31 PRODUCTION PUBLISHED / USER PASS）
 
 - D0：离线档案分支只提交六份治理文档，提交 `92a57e49ec89aa1e7550e8109fe1b870069792c8`。
 - D1：`git ls-remote` 复核远端 main 未漂移；冻结产品源相对 main 为45个提交、103个文件，merge-base 等于 main，merge-tree 无冲突标记；独立集成 worktree/branch 已建立。
@@ -17,7 +17,7 @@
 - D7 用户对页面、Finder拖图、适应视图、删除/撤销/保存刷新四项明确回复“通过”，新集成候选正式记为 `USER_PASS`。
 - D8 只改四份治理文档；产品源码保持在已测试提交，未重复任何成功测试。离线施工舱8项文件继续全部排除，运行路径固定身份命中0，架构baseline仍为76；57359服务已安全 drain，临时根可恢复地移入废纸篓。
 - MP-090：用户明确授权“允许本地合入main，不push”。本地 main 在新 worktree 中先 `--ff-only` 到 `dcffba3`，再由 `5476522` 明确合入 `d42a62e`；merge commit 两个 parent 为 `dcffba3` 与 `d42a62e`，其 tree 与候选完全相同。合入后的新增变化仅为本段及三份主线集成治理文档；远端 main 仍未变化，未 push。
-- MP-091：用户随后另行确认 v0.6.31 并允许 push、PR/tag 与发布。远端 main、tag、PR #69、冻结备份、精确构建、原子切换和生产技术终门均完成，当前为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；本次授权已消费。
+- MP-091：用户随后另行确认 v0.6.31 并允许 push、PR/tag 与发布。远端 main、tag、PR #69、冻结备份、精确构建、原子切换和生产技术终门均完成；用户又在生产实页明确回复“通过”，当前为 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。本次授权已消费。
 
 
 ### 2026-08-21 Provider 结果兼容与既有任务零 POST 恢复（v0.6.30 已发布）
@@ -36,10 +36,10 @@
 
 ### 当前后续计划边界
 
-- v0.6.31 的 GitHub、生产发布和技术回执已完成；发布授权已消费，当前只等待用户实页复验，不扩大到新功能或暂停项。
+- v0.6.31 的 GitHub、生产发布、技术回执和用户实页验收均已完成；发布授权已消费，不扩大到新功能或暂停项。
 - `VIEW-005`的98/171/200节点精确性能档位已由安全定向`m79`收口为`AUTO_PASS`；这只是工程证据关闭，不启动下一版本、生产发布或新的用户主观验收。
 - Mureka 真实音频、团队/多人协作、真实 Agent 协议、Storyboard 完整编辑、图片打光与其他付费内容抽验继续保持原 `PARTIAL/PAUSED/BLOCK`；需要用户重新立项和对应授权。
-- 下方旧段落中的“待复验”“当前阶段”“下一步”均为各自时点记录；若与本文件顶部或 `UNBOUNDRY_CURRENT_STATE.md` 冲突，以顶部“v0.6.31 已发布、等待用户复验”的状态为准。
+- 下方旧段落中的“待复验”“当前阶段”“下一步”均为各自时点记录；若与本文件顶部或 `UNBOUNDRY_CURRENT_STATE.md` 冲突，以顶部 v0.6.31 `USER_PASS` 状态为准。
 
 ### 2026-08-21 VIEW-005 密集画布精确三档证据（AUTO_PASS）
 
