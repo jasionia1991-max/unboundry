@@ -25,8 +25,9 @@
     "mergeCommit": "b0528d244b4ee8de48cafb835839986f0a7d894e",
     "mainTree": "d751a82ce60f00da93939c54e473ff410da2cb51",
     "mainTreeEqualsTagTree": true,
-    "productionReceiptPullRequest": null,
-    "productionReceiptPullRequestStatus": "PENDING_SELF_RECORD"
+    "productionReceiptPullRequest": 70,
+    "productionReceiptPullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/70",
+    "productionReceiptPullRequestStatus": "OPEN"
   },
   "verification": {
     "formalSafeFullRuns": 1,
