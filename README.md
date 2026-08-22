@@ -6,11 +6,9 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前生产：v0.6.30（2026-08-21，USER PASS）
+## 当前生产：v0.6.31（2026-08-23，等待用户复验）
 
-生产当前运行 `v0.6.30 / schema39`，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。Nano 的云腾 JPEG 结果已规范化为 PNG；Suno 返回的两个不同完整 MP3 已按 Provider 原序持久化为 primary/alternate，可切换、播放并在刷新后恢复。Nano、Kling、Suno 三模型只归属云腾 Provider，优创 profile、凭据、模型、绑定、task 与 attempt 对冻结备份均无差异；v0.6.30 没有新增 Provider 创建 POST。用户已打开生产验收项目并明确回复“通过”。完整现状见 [`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)，生产回执见 [`spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json`](spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json)。
-
-v0.6.31 已获版本号和发布授权，当前处于发布候选流程；生产在切换和回执完成前仍是 v0.6.30。历史文档中的 `PENDING`、`USER_RECHECK` 或“下一步”仅代表各自记录时点，不随本次发布自动启动。
+生产当前运行 `v0.6.31 / schema39`，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。模块化 main-safe 成果已经过 GitHub、冻结备份、精确源码构建、原子切换和生产技术终门；切换前后数据计数一致，真实 Provider 与 OSS 写入为0。完整现状见 [`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)，生产回执见 [`spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json`](spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json)。历史文档中的 `PENDING`、`USER_RECHECK` 或“下一步”仅代表各自记录时点，不随本次发布自动启动。
 
 ## 2026-08-19 生成稳定性一次性修复（v0.6.20 已发布，待你复验）
 

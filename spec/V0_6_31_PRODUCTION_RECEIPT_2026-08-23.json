@@ -1,0 +1,157 @@
+{
+  "version": "v0.6.31",
+  "date": "2026-08-23",
+  "status": "PRODUCTION_PUBLISHED_AUTO_PASS",
+  "scope": {
+    "summary": "把已完成并经用户本地实页验收的模块化 main-safe 产品树正式发布为 v0.6.31；产品行为、schema39、Provider 合同和数据语义不变。",
+    "schemaChanged": false,
+    "schemaVersion": 39,
+    "realProviderRequests": 0,
+    "realOssWrites": 0,
+    "protectedJsonReadOrMutated": false
+  },
+  "source": {
+    "releaseCommits": [
+      "8888abcd1ad4752c87f1c6c2e4c9982af08eeb2c release: prepare v0.6.31",
+      "5ea2e9d8478af9b12f8898439e75f4ef3a8d1342 docs: mark v0.6.31 release candidate",
+      "475bc675566217a017a079567caf5e9fa0772bd2 docs: record v0.6.31 candidate test closure"
+    ],
+    "tag": "v0.6.31",
+    "tagObject": "dda51168d18d26e1a6427a9da08a5c1f8733c5f6",
+    "tagCommit": "475bc675566217a017a079567caf5e9fa0772bd2",
+    "tagTree": "d751a82ce60f00da93939c54e473ff410da2cb51",
+    "pullRequest": 69,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/69",
+    "mergeCommit": "b0528d244b4ee8de48cafb835839986f0a7d894e",
+    "mainTree": "d751a82ce60f00da93939c54e473ff410da2cb51",
+    "mainTreeEqualsTagTree": true,
+    "productionReceiptPullRequest": 70,
+    "productionReceiptPullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/70",
+    "productionReceiptPullRequestStatus": "SELF_RECORDED_IN_PR"
+  },
+  "verification": {
+    "formalSafeFullRuns": 1,
+    "formalSafeFull": {
+      "head": "8888abcd1ad4752c87f1c6c2e4c9982af08eeb2c",
+      "sourceAndSnapshotSha256": "771ef5ab34f8760c2b6f8c7f6a5f696670235ca1297ada5192b2caa3d6998288",
+      "specs": 120,
+      "tests": 1050,
+      "passed": 1048,
+      "failed": 2,
+      "exitCode": 1,
+      "failures": [
+        "m22 unmounted offscreen Image toast was not observed within the 15 second page timing window",
+        "m38 current-state version documentation still said v0.6.30"
+      ]
+    },
+    "targetedAfterFix": {
+      "head": "5ea2e9d8478af9b12f8898439e75f4ef3a8d1342",
+      "scope": "m22-group-execution + m38-generation-runtime-incidents",
+      "tests": 52,
+      "passed": 52,
+      "failed": 0,
+      "sourceAndSnapshotSha256": "b7c23a9052d978965bbeb3157d9d0a195c06354d1779ba97cc854120d7ef8e78",
+      "listener4173Unchanged": true,
+      "classification": "m22 timing failure did not reproduce; m38 documentation omission was corrected"
+    },
+    "documentationSyncRecheck": {
+      "head": "53ddba2ac35a44d9bca6008c52026e628f8fa1ee",
+      "scope": "m38-generation-runtime-incidents",
+      "passed": 15,
+      "failed": 0,
+      "sourceAndSnapshotSha256": "fca8eeb7604b103d9c67626676d498b384793bfec3dfe6ea667eb96669059229",
+      "listener4173Unchanged": true
+    },
+    "secondFullRun": false,
+    "realProviderRequestsDuringAutomatedTests": 0,
+    "realOssWritesDuringAutomatedTests": 0
+  },
+  "release": {
+    "archiveSha256": "ea219c30fe727cd2e2b5581660bec24bd314a47d60e6d394119718656a1dc2c7",
+    "releasePath": "/opt/unboundry/releases/v0.6.31-modular-main-20260823",
+    "previousRelease": "/opt/unboundry/releases/v0.6.30-provider-result-compatibility-20260821",
+    "currentTarget": "/opt/unboundry/releases/v0.6.31-modular-main-20260823",
+    "freshBuild": {
+      "node": "v22.23.2",
+      "npm": "10.9.8",
+      "initialNpmInvocation": "completed with engine warnings because the npm shebang resolved system Node v18.19.1",
+      "correctiveCleanNpmCi": "PASS with /opt/node22/bin first in PATH",
+      "typecheck": "PASS",
+      "viteBuild": "PASS"
+    },
+    "inventory": {
+      "files": 5870,
+      "inventoryLines": 5869,
+      "sha256": "bd07cf8f6daa6b6edca94f8e4d77a15b18648398fccaf8e0d1da6243e9d68de3",
+      "postSwitchCheck": "PASS"
+    }
+  },
+  "frozenBackup": {
+    "path": "/var/lib/unboundry-rollbacks/v0.6.31-frozen-5JetjX",
+    "createdOnce": true,
+    "frozenAndRestoreFiles": 365,
+    "frozenManifestSha256": "53eb5feab018d0ce45d8a704ca8b60b31caabf9c9e23756be7e82e538701deb4",
+    "restoreManifestSha256": "53eb5feab018d0ce45d8a704ca8b60b31caabf9c9e23756be7e82e538701deb4",
+    "frozenConfigManifestSha256": "079f3eb2de24d92386cb65bd85240131c2aae07abaaefa582f8d93ef2d63cd5a",
+    "restoreConfigManifestSha256": "079f3eb2de24d92386cb65bd85240131c2aae07abaaefa582f8d93ef2d63cd5a",
+    "schemaVersion": 39,
+    "integrity": "ok",
+    "foreignKeyViolations": 0,
+    "deletedOrOverwritten": false
+  },
+  "productionAcceptance": {
+    "loopbackVersion": "0.6.31",
+    "publicVersion": "0.6.31",
+    "loopbackLive": 200,
+    "loopbackReady": 200,
+    "publicLive": 200,
+    "publicReady": 200,
+    "readyMode": "active",
+    "activeLeaseHeld": true,
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "serviceRestarts": 0,
+    "schemaVersion": 39,
+    "integrity": "ok",
+    "foreignKeyViolations": 0,
+    "countsBeforeAndAfterEqual": true,
+    "counts": {
+      "generationTasks": 677,
+      "providerAttempts": 685,
+      "activeTasks": 0,
+      "mediaAssets": 738,
+      "mediaBytes": 1260901702,
+      "activeMediaPublications": 0,
+      "historicalFailedMediaPublications": 8,
+      "canvases": 57,
+      "publicTemplates": 50,
+      "publishedPublicTemplates": 48
+    },
+    "publicAssetsCompared": 5,
+    "publicAssetsEqualRelease": true,
+    "publicAssetSha256": {
+      "CanvasShell-CAZ0h0pj.js": "b97c8ae77a66b3c85f12aa83fa3ca44bd4a13a77982b5e390361e7c8b1c5315c",
+      "WorkspacePage-7IG9g_0T.js": "098b51b8ad4331d99a967533fad23bd41b4cb6f17a62049483d0960878f7c005",
+      "index-BupC7KTk.css": "ddd8c2b3b6ee0e86de0f19a54da3d5d55f17bd0f0f419949af13cc6f92d6ef3b",
+      "index-Cph7lTr4.js": "cfc76ea8ad611387aa99049cad768f29070b8277b4c3016557177f0c4165c70a",
+      "projectStorage-cFW9-iCM.js": "e16862d5bf29ef7b2a007aaf57ea1e7aa8dc6d4d7c2dded8a536b2560131cc7b"
+    },
+    "journalHttp4xxOr5xx": 0,
+    "journalGenerationDiagnostics": 0,
+    "journalProviderOrGenerationRoutes": 0,
+    "journalUnexpectedErrorLines": 0,
+    "realProviderRequests": 0,
+    "realOssWrites": 0
+  },
+  "rollback": {
+    "required": false,
+    "previousReleaseRetained": true,
+    "frozenBackupRetained": true,
+    "productionDataDeleted": false,
+    "productionMediaDeleted": false,
+    "immutableReleaseDeleted": false
+  },
+  "authorizationConsumed": true,
+  "userAcceptance": "USER_RECHECK",
+  "completionBoundary": "v0.6.31 技术发布完成；等待用户打开生产实页确认。不得复用本次授权再次发布、真实生成、修改 schema、写 OSS 或进入下一版本。"
+}

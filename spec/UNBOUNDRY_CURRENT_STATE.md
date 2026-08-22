@@ -1,18 +1,18 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网仍为 v0.6.30；当前代码已进入用户明确授权的 v0.6.31 发布候选流程。模块化成果已本地合入并推送到远端 `main`，但 v0.6.31 尚未完成 tag、PR 合并、生产切换或用户验收。发布完成前不得把现网写成 v0.6.31，也不得用 v0.6.30 的生产 `USER_PASS` 给新候选背书。
+> **状态分层**：现网已切到 v0.6.31/schema39，GitHub、冻结备份、构建、原子切换和技术终门全部通过，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。v0.6.30 的历史 `USER_PASS` 不自动升级为 v0.6.31 用户验收。
 
 更新日期：2026-08-23
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.31**（发布候选；生产仍为 v0.6.30）
+当前代码包版本：**v0.6.31**（生产已发布，等待用户实页复验）
 
 ## 一句话
 
-**生产是 v0.6.30 / schema39，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。** Nano 的既有云腾 JPEG 结果已经有界转成规范 PNG；Suno 的两个不同完整 MP3 已整组持久化，第一个为 primary、第二个为 alternate，真实页面可以切换和播放。Provider 创建 POST 新增 0，tasks/attempts 仍为 `633/641`；Nano、Kling、Suno 三模型只在云腾 profile 下 published/enabled，优创 profile/凭据/epoch/模型/绑定/task/attempt 对冻结备份双向差异均为 0。用户于2026-08-21打开生产验收项目后明确回复“通过”。
+**生产是 v0.6.31 / schema39，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。** 模块化成果已进入普通 main-safe 运行路径，产品行为保持用户本地验收通过的状态。tag `v0.6.31` 指向 commit `475bc675566217a017a079567caf5e9fa0772bd2` / tree `d751a82ce60f00da93939c54e473ff410da2cb51`，PR #69 merge `b0528d244b4ee8de48cafb835839986f0a7d894e` 且 main tree 一致；生产 current 为 `/opt/unboundry/releases/v0.6.31-modular-main-20260823`。
 
-云腾个人中心此前显示本日图片1、视频1、音频1，合计消耗算力4.09、余额7.14。v0.6.30 只轮询既有 provider task `112083470`/`112087930` 并把成片保存进 Unboundry，没有重建 Provider task。当前版本和发布授权已消费，禁止追加真实生成、再次发布或进入下一版本。
+唯一 safe full 为 `1048/1050`；没有重跑 full，只复验失败的 m22/m38 并 `52/52 PASS`。冻结备份 `/var/lib/unboundry-rollbacks/v0.6.31-frozen-5JetjX` 共365文件，双清单SHA均为 `53eb5fea…deb4`；schema39、integrity ok、FK0，tasks/attempts `677/685`、active0、媒体 `738/1260901702`、模板 `50/48`、画布57在切换前后完全一致。公网/回环 version/live/ready、service、inventory 和公网5资源全部通过，真实 Provider 请求、付费生成和 OSS 写入均为0。完整回执：`spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json`。
 
-用户已明确确认版本号 `v0.6.31` 并允许 push main、PR/tag 与发布。发布候选的唯一 safe full 在 commit `8888abcd1ad4752c87f1c6c2e4c9982af08eeb2c` 上执行，结果为 `1048/1050`：一个为 m22 页面时序项，一个为 m38 本文版本字符串仍停在 v0.6.30；按测试合同没有重跑 full。文档修正提交 `5ea2e9d8478af9b12f8898439e75f4ef3a8d1342` 上只复验这两个失败 spec，m22 `37/37`、m38 `15/15`，合计 `52/52 PASS`，源码快照和4173监听均未变化。Mureka 真实音频、团队/多人协作、真实 Agent 协议、Storyboard 完整编辑、图片打光和其他付费内容抽验仍保持原 `PARTIAL/PAUSED/BLOCK`，不随本次发布扩大范围。
+本次版本号与发布授权已消费，禁止追加真实生成、再次发布或进入下一版本。Mureka 真实音频、团队/多人协作、真实 Agent 协议、Storyboard 完整编辑、图片打光和其他付费内容抽验仍保持原 `PARTIAL/PAUSED/BLOCK`，不随本次发布扩大范围。
 
 ## VIEW-005 密集画布性能证据已关闭（2026-08-21，仅工程证据）
 
@@ -67,7 +67,7 @@
 
 ## 三媒体模型与Generation结果提交边界（2026-08-21，已随v0.6.28发布）
 
-- v0.6.28 发布时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；v0.6.29/30 已补齐独立云腾真实验证、结果兼容、生产与用户验收，当前聚合状态由本文顶部 v0.6.30 `USER_PASS` 承担。GenerationResultCommit在同一SQLite事务内提交media publication、Provider attempt、task success与event；MediaLifecycle/MediaRegistry不再查询或更新Generation表，TaskStore与Safety运行时循环已解除。
+- v0.6.28 发布时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；v0.6.29/30 已补齐独立云腾真实验证、结果兼容、生产与用户验收，这些历史能力继续包含在当前 v0.6.31 中；当前聚合状态以本文顶部 v0.6.31 为准。GenerationResultCommit在同一SQLite事务内提交media publication、Provider attempt、task success与event；MediaLifecycle/MediaRegistry不再查询或更新Generation表，TaskStore与Safety运行时循环已解除。
 - 模型：`gemini-3-pro-image-preview`、`kling-v3-omni-cankao`、`suno-v4.5`均复用`multi-protocol-relay/media-generate`。Nano/Kling只接受按edge order的图片引用（上限14/7），Suno不接受媒体引用；参数映射、`result_type`、PNG/MP4/音频保存均为fail-closed。
 - 异步安全：截止从paid attempt `created_at`计算，Nano/Kling/Suno分别10/75/15分钟，5秒起步且最多10秒；已有Provider task id只查询原任务；提交响应丢失不二次POST；status只在404/405回退；无`refunded:true`不自动付费重试。
 - 自动证据：本地Goal冻结十spec最终有效`148/148`；发布阶段另执行正式full覆盖1034条，两个失败经最小复验`16/16`通过。TypeScript、构建、source coverage、外网门禁与生产技术门均通过。
@@ -76,7 +76,7 @@
 
 ## 同步文字Provider port（2026-08-21，已随v0.6.28发布）
 
-- v0.6.28 发布时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该代码持续包含在当前 v0.6.30 生产版本中，不再是待发布工作。同步文字执行已统一经过`TextGenerationProvider`与`TextProviderRegistry`；Generation Task不再按Ark/relay具体文字driver调用adapter。原未使用的媒体形态`GenerationProvider`假抽象已收敛为当前真实port。
+- v0.6.28 发布时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该代码持续包含在当前 v0.6.31 生产版本中，不再是待发布工作。同步文字执行已统一经过`TextGenerationProvider`与`TextProviderRegistry`；Generation Task不再按Ark/relay具体文字driver调用adapter。原未使用的媒体形态`GenerationProvider`假抽象已收敛为当前真实port。
 - 安全边界：Provider profile/credential继续由原owner解析和租赁；Task协调器继续拥有task、attempt、幂等、reconcile、lease、结果归属与写回；adapter只返回规范化`text + providerUsageTokens`，不获得数据库、TaskStore、Canvas或MediaLifecycle。
 - 替换性：m33用可注入fake Provider完成一个task，网络fetch为0、provider-boundary attempt恰好1；未知driver/缺少实现时本地失败且fetch仍为0。
 - 自动证据：Node `22.23.1` / npm `10.9.8`下，一次`npx tsc --noEmit`退出0；安全runner定向m33 `8/8`、m39 `3/3`、m44 `8/8`、m53 `23/23`、m57 `14/14`通过，异常0，使用新临时数据和动态loopback端口，4173 listener不变。
@@ -243,7 +243,7 @@
 
 1. 先读本文 + `上线规矩.md` + `TASKS.md` 顶部。
 2. 只读核对仓库分支、HEAD、工作树、`package.json` 版本是否为 `0.6.31`；历史计划中的旧版本号不得当成当前施工身份。
-3. 当前生产仍为 v0.6.30/schema39；v0.6.31 处于已授权发布候选流程，只有生产回执完成后才能写成已发布。
+3. 当前生产为 v0.6.31/schema39，技术状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；等待用户实页确认，发布授权已消费。
 4. 云腾三模型只归属云腾 Provider；不得借用优创密钥、不得新增“天空”计费 Provider、不得自动追加真实 Provider POST。
 5. `VIEW-005`已由本地隔离安全定向证据关闭为`AUTO_PASS`；其余`PAUSED/BLOCK/PARTIAL`项只有在用户重新立项后才能施工，本次证据不得被解释为新版本或生产授权。
 6. 若用户说生成或工作流再次异常，先查当前线上任务、Provider profile、attempt 和结果所有权，再给方案；不得擅自改生产库或重提付费请求。
