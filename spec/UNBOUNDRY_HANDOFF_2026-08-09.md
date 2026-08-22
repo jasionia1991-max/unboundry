@@ -4,9 +4,13 @@
 
 ## 先读当前快照
 
-新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-21 的权威现状、产品合同和用户已点头的旧项收口。下面各节是历史增量，出现「当前」时只代表该时点。
+新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-23 的权威现状、产品合同和待用户复验边界。下面各节是历史增量，出现「当前」时只代表该时点。
 
-## 当前线上：Provider 结果兼容（v0.6.30，2026-08-21 已发布）
+## 当前线上：模块化 main-safe 集成（v0.6.31，2026-08-23 已发布待用户复验）
+
+v0.6.31 已把用户本地验收通过的模块化成果正式送入普通 main-safe 生产路径，产品语义与 schema39 不变。tag commit `475bc675566217a017a079567caf5e9fa0772bd2` / tree `d751a82ce60f00da93939c54e473ff410da2cb51`，PR #69 merge `b0528d244b4ee8de48cafb835839986f0a7d894e` 且 main tree 相同；生产 current `/opt/unboundry/releases/v0.6.31-modular-main-20260823`，冻结备份 `/var/lib/unboundry-rollbacks/v0.6.31-frozen-5JetjX`。唯一 safe full 真实记录 `1048/1050`，只复验失败 m22/m38 后 `52/52 PASS`，未重跑 full。生产 schema/integrity/FK、切换前后数据、service、公网/回环和5资源全部通过，真实 Provider/OSS请求为0。状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；回执 `spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json`。
+
+## 上一线上：Provider 结果兼容（v0.6.30，2026-08-21 已发布并获用户验收）
 
 v0.6.30 已修复 Nano 真实 JPEG 结果与 Suno 真实两个完整 MP3 候选：Provider 图片先过资源闸门，非 PNG 有界转成规范 PNG；同一 Provider attempt 的所有结果先按原序持久化，整组齐全后第一个成为 primary、其余成为 alternate，API 和音频节点可切换。schema39 不变。tag commit `bfed2f79581935882bb58279c8faf992679f12c1` / tree `9a95f30993fc9f21489d1a8acb2e7347d90845c8`，PR #64 merge `0d71d37c77423f3870e97f1e44b9745fef999cfb`；生产 current `/opt/unboundry/releases/v0.6.30-provider-result-compatibility-20260821`，冻结备份 `/var/lib/unboundry-rollbacks/v0.6.30-frozen-1uQmic`。只轮询既有 provider task `112083470`/`112087930`，新增创建 POST、task、attempt、admission 均为0；Nano得到1024×1024 PNG，Suno两个MP3均可切换播放并恢复主版本。三模型只在云腾发布，优创全表与冻结备份一致。用户于2026-08-21打开生产验收项目后明确回复“通过”，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`；权威文件：`spec/UNBOUNDRY_PROVIDER_RESULT_COMPATIBILITY_V0_6_30_2026-08-21.md`、`spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json`。
 

@@ -1,11 +1,11 @@
 # Unboundry 绿地复刻当前任务
 
-> **v0.6.31 发布候选状态**：`REMOTE_MAIN_SYNCED / RELEASE_CANDIDATE_TESTS_CLOSED / PRODUCTION_STILL_V0.6.30`。用户于2026-08-23确认版本号 `v0.6.31` 并允许 push main、PR/tag 与发布。本地模块化 main 已推送，远端 `main` 为 `8d6ed903cd1852bd6b0d82c9787102c48fdf0411`；候选提交 `8888abcd1ad4752c87f1c6c2e4c9982af08eeb2c` 已升版。唯一 safe full 为120/120 specs、1050 tests 中1048通过；失败仅为 m22 页面时序和 m38 版本文档不一致。按合同没有重跑 full；文档提交 `5ea2e9d8478af9b12f8898439e75f4ef3a8d1342` 上只复验 m22/m38，`52/52 PASS`。尚未打 tag、提/合并发布 PR 或切换生产；真实 Provider/OSS请求为0。
+> **v0.6.31 当前状态**：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。tag `v0.6.31` 指向 `475bc675566217a017a079567caf5e9fa0772bd2` / tree `d751a82ce60f00da93939c54e473ff410da2cb51`，PR #69 merge `b0528d244b4ee8de48cafb835839986f0a7d894e` 且 main tree 一致；生产 current 为 `/opt/unboundry/releases/v0.6.31-modular-main-20260823`。唯一 safe full 真实记录为 `1048/1050`，没有重跑；只复验 m22/m38 并 `52/52 PASS`。冻结备份365文件双清单一致，schema39和切换前后数据计数一致，公网/回环/service/inventory/5资源全部通过，真实 Provider/OSS请求为0。等待用户打开生产实页确认。
 
 更新时间：2026-08-23
-状态：`v0.6.30 已发布并由用户实页验收通过，状态 PRODUCTION_PUBLISHED_USER_PASS / USER_PASS。Nano 既有 JPEG 结果已规范化为 PNG；Suno 两个不同完整 MP3 已按 primary/alternate 保存、可切换且均可播放；三媒体模型只在云腾 Provider 下 published/enabled。Provider 创建 POST 新增 0，优创与冻结备份逐表一致。权威回执见 spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json。`
+状态：`v0.6.31 已发布，技术终门通过，等待用户实页复验。权威回执见 spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json。`
 
-### 2026-08-23 模块化成果主线集成（REMOTE_MAIN_SYNCED / v0.6.31 RELEASE CANDIDATE）
+### 2026-08-23 模块化成果主线集成（v0.6.31 PRODUCTION PUBLISHED / USER RECHECK）
 
 - D0：离线档案分支只提交六份治理文档，提交 `92a57e49ec89aa1e7550e8109fe1b870069792c8`。
 - D1：`git ls-remote` 复核远端 main 未漂移；冻结产品源相对 main 为45个提交、103个文件，merge-base 等于 main，merge-tree 无冲突标记；独立集成 worktree/branch 已建立。
@@ -17,6 +17,7 @@
 - D7 用户对页面、Finder拖图、适应视图、删除/撤销/保存刷新四项明确回复“通过”，新集成候选正式记为 `USER_PASS`。
 - D8 只改四份治理文档；产品源码保持在已测试提交，未重复任何成功测试。离线施工舱8项文件继续全部排除，运行路径固定身份命中0，架构baseline仍为76；57359服务已安全 drain，临时根可恢复地移入废纸篓。
 - MP-090：用户明确授权“允许本地合入main，不push”。本地 main 在新 worktree 中先 `--ff-only` 到 `dcffba3`，再由 `5476522` 明确合入 `d42a62e`；merge commit 两个 parent 为 `dcffba3` 与 `d42a62e`，其 tree 与候选完全相同。合入后的新增变化仅为本段及三份主线集成治理文档；远端 main 仍未变化，未 push。
+- MP-091：用户随后另行确认 v0.6.31 并允许 push、PR/tag 与发布。远端 main、tag、PR #69、冻结备份、精确构建、原子切换和生产技术终门均完成，当前为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；本次授权已消费。
 
 
 ### 2026-08-21 Provider 结果兼容与既有任务零 POST 恢复（v0.6.30 已发布）
@@ -35,10 +36,10 @@
 
 ### 当前后续计划边界
 
-- v0.6.31 已获版本号和发布授权，当前仅执行发布候选测试、GitHub 与生产发布闭环；不扩大到新功能或暂停项。
+- v0.6.31 的 GitHub、生产发布和技术回执已完成；发布授权已消费，当前只等待用户实页复验，不扩大到新功能或暂停项。
 - `VIEW-005`的98/171/200节点精确性能档位已由安全定向`m79`收口为`AUTO_PASS`；这只是工程证据关闭，不启动下一版本、生产发布或新的用户主观验收。
 - Mureka 真实音频、团队/多人协作、真实 Agent 协议、Storyboard 完整编辑、图片打光与其他付费内容抽验继续保持原 `PARTIAL/PAUSED/BLOCK`；需要用户重新立项和对应授权。
-- 下方旧段落中的“待复验”“当前阶段”“下一步”均为各自时点记录；若与本文件顶部或 `UNBOUNDRY_CURRENT_STATE.md` 冲突，以顶部“v0.6.31 候选、生产仍为 v0.6.30”的分层状态为准。
+- 下方旧段落中的“待复验”“当前阶段”“下一步”均为各自时点记录；若与本文件顶部或 `UNBOUNDRY_CURRENT_STATE.md` 冲突，以顶部“v0.6.31 已发布、等待用户复验”的状态为准。
 
 ### 2026-08-21 VIEW-005 密集画布精确三档证据（AUTO_PASS）
 
@@ -75,7 +76,7 @@
 
 ### 2026-08-21 同一中转站三媒体模型与结果边界（v0.6.28 历史发布时点）
 
-- v0.6.28 时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该能力随后经 v0.6.29 三次有界真实验证与 v0.6.30 结果兼容修复、生产验收和用户确认收口。当前聚合状态以顶部 v0.6.30 `USER_PASS` 为准。Generation已拥有媒体结果提交事务；MediaLifecycle/MediaRegistry不再读写generation task/attempt，TaskStore↔Safety循环已解除。
+- v0.6.28 时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该能力随后经 v0.6.29 三次有界真实验证与 v0.6.30 结果兼容修复、生产验收和用户确认收口，并继续包含在 v0.6.31。当前聚合状态以顶部 v0.6.31 为准。Generation已拥有媒体结果提交事务；MediaLifecycle/MediaRegistry不再读写generation task/attempt，TaskStore↔Safety循环已解除。
 - 模型合同：Nano Banana Pro `gemini-3-pro-image-preview`、Kling V3 Omni `kling-v3-omni-cankao`、Suno V4.5 `suno-v4.5`统一走现有`multi-protocol-relay/media-generate`；参数、引用、严格结果类型和10/75/15分钟持久轮询窗口已固化。
 - 自动证据：Node `22.23.1` / npm `10.9.8`；十个目标spec最终有效`148/148`。第一次产品测试`145/148`后只重跑失败的m53+m57并`40/40`通过；TypeScript、构建、source coverage、外网门禁均通过。
 - 发布边界：已完成发布full覆盖与失败spec最小复验、GitHub、冻结备份、生产切换和零付费技术验收；没有真实Provider专用smoke，`REAL_PROVIDER_SMOKE_PAUSED`，待用户线上复验。受保护JSON保持untracked且未读/未改/未暂存/未提交。
@@ -83,7 +84,7 @@
 
 ### 2026-08-21 同步文字Provider registry/port（v0.6.28 历史发布时点）
 
-- v0.6.28 时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该代码已持续包含在当前 v0.6.30 生产版本中，本段不再充当当前待发布清单。代码已把同步文字执行收口到唯一`TextProviderRegistry`入口；Task协调器不再按具体文字driver调用adapter，Ark native与四类relay文字协议各由adapter实现统一port。
+- v0.6.28 时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该代码已持续包含在当前 v0.6.31 生产版本中，本段不再充当当前待发布清单。代码已把同步文字执行收口到唯一`TextProviderRegistry`入口；Task协调器不再按具体文字driver调用adapter，Ark native与四类relay文字协议各由adapter实现统一port。
 - 任务安全：profile/credential owner、lease、provider-boundary attempt、task幂等/reconcile、结果归属与错误文案保持原边界；fake Provider可注入且网络0，未知实现本地fail-closed且网络0。
 - 自动证据：Node `22.23.1` / npm `10.9.8`；一次TypeScript noEmit退出0；m33 `8/8`、m39 `3/3`、m44 `8/8`、m53 `23/23`、m57 `14/14`安全定向通过，异常0，动态loopback与新临时数据，4173 listener不变。
 - 第一批施工时点明确未做：未跑full/默认verify，未真实调用Provider/OSS，未访问SSH/生产，未改版本/schema/Canvas/Workflow/Media publication。后续发布与生产证据已经由 v0.6.28～v0.6.30 回执补齐，不能继续把本段解释为“尚未发布”。
