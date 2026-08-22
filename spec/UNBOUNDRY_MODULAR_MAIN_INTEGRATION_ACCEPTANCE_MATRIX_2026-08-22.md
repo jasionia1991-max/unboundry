@@ -1,8 +1,8 @@
 # Unboundry 模块化成果主线集成验收矩阵
 
-状态：`D0_LOCAL_COMMIT_PASS / D1_AUTO_PASS / D2_AUTO_PASS / D3_AUTO_PASS / D4_AUTO_PASS / D5_IN_PROGRESS / D6-D8_NOT_STARTED / MAIN_UNCHANGED / PUSH_NOT_AUTHORIZED`
+状态：`D0_LOCAL_COMMIT_PASS / D1-D5_AUTO_PASS / D6_LOCAL_AGENT_PAGE_PASS / D7_USER_PASS / D8_AUTO_PASS / READY_FOR_LOCAL_MAIN_DECISION / MAIN_UNCHANGED / PUSH_NOT_AUTHORIZED`
 
-更新日期：2026-08-22
+更新日期：2026-08-23
 
 权威方案：`spec/UNBOUNDRY_MODULAR_MAIN_INTEGRATION_PLAN_2026-08-22.md`
 
@@ -36,10 +36,10 @@
 | MP-042 | Media/Provider 回归 | reference/blob/publication/compensation/recovery，外部请求0 | `AUTO_PASS` |
 | MP-043 | 数据事务回归 | owner transaction 与失败注入 rollback 保持原合同 | `AUTO_PASS` |
 | MP-044 | Registry/Composition | replacement drill、启动顺序、runtime readiness | `AUTO_PASS` |
-| MP-050 | 唯一 safe full | 冻结 HEAD/tree/snapshot；spec/test/exit/异常；4173、临时目录和网络审计 | `IN_PROGRESS` |
-| MP-060 | Agent 实页 | 动态 loopback 页面；六个场景；console/网络证据 | `NOT_STARTED` |
-| MP-070 | 用户验收 | 页面、Finder 拖图、适应视图、删除撤销保存刷新四项明确确认 | `NOT_STARTED` |
-| MP-080 | 文档收口 | Checkpoint、矩阵、状态、残余风险与 Git 事实同步 | `NOT_STARTED` |
+| MP-050 | 唯一 safe full | 冻结 HEAD/tree/snapshot；spec/test/exit/异常；4173、临时目录和网络审计 | `AUTO_PASS` |
+| MP-060 | Agent 实页 | 动态 loopback 页面；六个场景；console/网络证据 | `LOCAL_AGENT_PAGE_PASS` |
+| MP-070 | 用户验收 | 页面、Finder 拖图、适应视图、删除撤销保存刷新四项明确确认 | `USER_PASS` |
+| MP-080 | 文档收口 | Checkpoint、矩阵、状态、残余风险与 Git 事实同步 | `AUTO_PASS` |
 | MP-090 | main 决策门 | 用户单独明确允许本地合入 main；不自动包含 push | `NOT_STARTED` |
 
 ## 失败规则
