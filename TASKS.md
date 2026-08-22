@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-> **v0.6.31 发布候选状态**：`REMOTE_MAIN_SYNCED / RELEASE_CANDIDATE_TESTING / PRODUCTION_STILL_V0.6.30`。用户于2026-08-23确认版本号 `v0.6.31` 并允许 push main、PR/tag 与发布。本地模块化 main 已推送，远端 `main` 为 `8d6ed903cd1852bd6b0d82c9787102c48fdf0411`；候选提交 `8888abcd1ad4752c87f1c6c2e4c9982af08eeb2c` 已升版。唯一 safe full 为120/120 specs、1050 tests 中1048通过；失败仅为 m22 页面时序和 m38 版本文档不一致。按合同不重跑 full，当前只修正文档并复验这两个失败 spec。尚未打 tag、提/合并发布 PR 或切换生产；真实 Provider/OSS请求为0。
+> **v0.6.31 发布候选状态**：`REMOTE_MAIN_SYNCED / RELEASE_CANDIDATE_TESTS_CLOSED / PRODUCTION_STILL_V0.6.30`。用户于2026-08-23确认版本号 `v0.6.31` 并允许 push main、PR/tag 与发布。本地模块化 main 已推送，远端 `main` 为 `8d6ed903cd1852bd6b0d82c9787102c48fdf0411`；候选提交 `8888abcd1ad4752c87f1c6c2e4c9982af08eeb2c` 已升版。唯一 safe full 为120/120 specs、1050 tests 中1048通过；失败仅为 m22 页面时序和 m38 版本文档不一致。按合同没有重跑 full；文档提交 `5ea2e9d8478af9b12f8898439e75f4ef3a8d1342` 上只复验 m22/m38，`52/52 PASS`。尚未打 tag、提/合并发布 PR 或切换生产；真实 Provider/OSS请求为0。
 
 更新时间：2026-08-23
 状态：`v0.6.30 已发布并由用户实页验收通过，状态 PRODUCTION_PUBLISHED_USER_PASS / USER_PASS。Nano 既有 JPEG 结果已规范化为 PNG；Suno 两个不同完整 MP3 已按 primary/alternate 保存、可切换且均可播放；三媒体模型只在云腾 Provider 下 published/enabled。Provider 创建 POST 新增 0，优创与冻结备份逐表一致。权威回执见 spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json。`
