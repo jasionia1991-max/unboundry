@@ -10,7 +10,7 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 生产当前运行 `v0.6.30 / schema39`，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。Nano 的云腾 JPEG 结果已规范化为 PNG；Suno 返回的两个不同完整 MP3 已按 Provider 原序持久化为 primary/alternate，可切换、播放并在刷新后恢复。Nano、Kling、Suno 三模型只归属云腾 Provider，优创 profile、凭据、模型、绑定、task 与 attempt 对冻结备份均无差异；v0.6.30 没有新增 Provider 创建 POST。用户已打开生产验收项目并明确回复“通过”。完整现状见 [`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)，生产回执见 [`spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json`](spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json)。
 
-当前没有已批准的下一版本施工。历史文档中的 `PENDING`、`USER_RECHECK` 或“下一步”仅代表各自记录时点，除非 `UNBOUNDRY_CURRENT_STATE.md` 重新激活，否则不得直接执行。
+v0.6.31 已获版本号和发布授权，当前处于发布候选流程；生产在切换和回执完成前仍是 v0.6.30。历史文档中的 `PENDING`、`USER_RECHECK` 或“下一步”仅代表各自记录时点，不随本次发布自动启动。
 
 ## 2026-08-19 生成稳定性一次性修复（v0.6.20 已发布，待你复验）
 

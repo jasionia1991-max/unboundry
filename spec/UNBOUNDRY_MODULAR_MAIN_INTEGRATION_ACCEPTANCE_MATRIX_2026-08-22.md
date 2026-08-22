@@ -1,6 +1,6 @@
 # Unboundry 模块化成果主线集成验收矩阵
 
-状态：`D0_LOCAL_COMMIT_PASS / D1-D5_AUTO_PASS / D6_LOCAL_AGENT_PAGE_PASS / D7_USER_PASS / D8_AUTO_PASS / LOCAL_MAIN_MERGED / PUSH_NOT_AUTHORIZED`
+状态：`D0_LOCAL_COMMIT_PASS / D1-D5_AUTO_PASS / D6_LOCAL_AGENT_PAGE_PASS / D7_USER_PASS / D8_AUTO_PASS / LOCAL_MAIN_MERGED / REMOTE_MAIN_SYNCED / V0_6_31_RELEASE_CANDIDATE`
 
 更新日期：2026-08-23
 
@@ -42,6 +42,7 @@
 | MP-070 | 用户验收 | 页面、Finder 拖图、适应视图、删除撤销保存刷新四项明确确认 | `USER_PASS` |
 | MP-080 | 文档收口 | Checkpoint、矩阵、状态、残余风险与 Git 事实同步 | `AUTO_PASS` |
 | MP-090 | main 决策门 | 用户单独明确允许本地合入 main；merge parents/tree 与远端未变化证据；不自动包含 push | `LOCAL_MAIN_MERGED` |
+| MP-091 | 远端与发布门 | 用户另行确认版本号 v0.6.31 并允许 push、PR/tag 与发布；远端 main、候选测试和生产回执分层记录 | `IN_PROGRESS` |
 
 ## 失败规则
 
@@ -50,4 +51,4 @@
 - 旧离线候选的 `USER_PASS` 不自动覆盖 MP-070；
 - health 或页面可打开不代表数据库、任务或用户验收通过；
 - 任一秘密、真实数据、外部请求或身份不明立即停止并更新 Checkpoint；
-- `MP-090` 只覆盖已完成的本地 main 合入；远端 main、push、PR、tag、升版和发布仍禁止。
+- `MP-090` 只覆盖已完成的本地 main 合入；后续远端 main 与 v0.6.31 发布只由用户对 `MP-091` 的新授权覆盖。

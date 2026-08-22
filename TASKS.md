@@ -1,11 +1,11 @@
 # Unboundry 绿地复刻当前任务
 
-> **本地主线集成状态**：`LOCAL_MAIN_MERGED / PUSH_NOT_AUTHORIZED / PRODUCTION_FORBIDDEN`。用户于2026-08-23明确授权“允许本地合入main，不push”；本地 `main` 已在独立 worktree `/Users/mymy/Documents/unboundry-local-main-merge-2026-08-23` 先以 `--ff-only` 从 `d3923e850f439d7ab023e6d7d9755f169a9a8420` 快进到审计远端 main `dcffba32d57af9accaa25bf01feb40f1e7828092`，再以 merge commit `5476522c28139329deeb81e465dca0106543a68c` 合入候选 `d42a62ea84f1151af6e35690b11cf7280fbadc77`。merge tree 与候选 tree 同为 `4018d9c43e10a87e0124e24c11e9f2a8c50ff4de`；唯一 safe full 仍为120/120 specs、1050/1050 tests PASS，本次没有为相同产品树重复测试。未 push、PR、tag、升版、发布或访问生产/Provider/OSS。
+> **v0.6.31 发布候选状态**：`REMOTE_MAIN_SYNCED / RELEASE_CANDIDATE_TESTING / PRODUCTION_STILL_V0.6.30`。用户于2026-08-23确认版本号 `v0.6.31` 并允许 push main、PR/tag 与发布。本地模块化 main 已推送，远端 `main` 为 `8d6ed903cd1852bd6b0d82c9787102c48fdf0411`；候选提交 `8888abcd1ad4752c87f1c6c2e4c9982af08eeb2c` 已升版。唯一 safe full 为120/120 specs、1050 tests 中1048通过；失败仅为 m22 页面时序和 m38 版本文档不一致。按合同不重跑 full，当前只修正文档并复验这两个失败 spec。尚未打 tag、提/合并发布 PR 或切换生产；真实 Provider/OSS请求为0。
 
 更新时间：2026-08-23
 状态：`v0.6.30 已发布并由用户实页验收通过，状态 PRODUCTION_PUBLISHED_USER_PASS / USER_PASS。Nano 既有 JPEG 结果已规范化为 PNG；Suno 两个不同完整 MP3 已按 primary/alternate 保存、可切换且均可播放；三媒体模型只在云腾 Provider 下 published/enabled。Provider 创建 POST 新增 0，优创与冻结备份逐表一致。权威回执见 spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json。`
 
-### 2026-08-23 模块化成果主线集成（LOCAL_MAIN_MERGED / NO_PUSH）
+### 2026-08-23 模块化成果主线集成（REMOTE_MAIN_SYNCED / v0.6.31 RELEASE CANDIDATE）
 
 - D0：离线档案分支只提交六份治理文档，提交 `92a57e49ec89aa1e7550e8109fe1b870069792c8`。
 - D1：`git ls-remote` 复核远端 main 未漂移；冻结产品源相对 main 为45个提交、103个文件，merge-base 等于 main，merge-tree 无冲突标记；独立集成 worktree/branch 已建立。
@@ -35,10 +35,10 @@
 
 ### 当前后续计划边界
 
-- 当前没有已批准或施工中的下一版本，不自动进入 v0.6.31。
+- v0.6.31 已获版本号和发布授权，当前仅执行发布候选测试、GitHub 与生产发布闭环；不扩大到新功能或暂停项。
 - `VIEW-005`的98/171/200节点精确性能档位已由安全定向`m79`收口为`AUTO_PASS`；这只是工程证据关闭，不启动下一版本、生产发布或新的用户主观验收。
 - Mureka 真实音频、团队/多人协作、真实 Agent 协议、Storyboard 完整编辑、图片打光与其他付费内容抽验继续保持原 `PARTIAL/PAUSED/BLOCK`；需要用户重新立项和对应授权。
-- 下方旧段落中的“待复验”“当前阶段”“下一步”均为各自时点记录；若与本文件顶部或 `UNBOUNDRY_CURRENT_STATE.md` 冲突，以顶部 v0.6.30 状态为准。
+- 下方旧段落中的“待复验”“当前阶段”“下一步”均为各自时点记录；若与本文件顶部或 `UNBOUNDRY_CURRENT_STATE.md` 冲突，以顶部“v0.6.31 候选、生产仍为 v0.6.30”的分层状态为准。
 
 ### 2026-08-21 VIEW-005 密集画布精确三档证据（AUTO_PASS）
 
