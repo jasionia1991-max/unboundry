@@ -66,6 +66,8 @@ import {
   workflowResultOwnerMatches,
 } from "../client/src/generation/workflowNodeExecutors";
 import type { ProbeNodeType } from "../client/src/canvas/ProbeNode";
+import { createCanvasGraphCommandPort } from
+  "../client/src/canvas/canvasPorts";
 import { defaultParameterSchema } from "../types/modelParameters";
 import { resolveNodeInputs } from "../types/nodeInputs";
 import {
@@ -255,28 +257,36 @@ test("all four headless executors preflight, run, recover and apply without moun
     if (taskId && tasks.has(taskId)) return response(tasks.get(taskId));
     throw new Error(`unexpected headless fetch: ${method} ${url}`);
   }) as typeof fetch;
-  const setNodes: NodeExecutorContext["setNodes"] = (update) => {
-    nodes = typeof update === "function" ? update(nodes) : update;
-  };
+  let revision = 1;
+  const graph = createCanvasGraphCommandPort({
+    commit: (snapshot) => {
+      nodes = [...snapshot.nodes];
+    },
+    persistenceReady: () => true,
+    snapshot: () => ({ edges: [], nodes, revision }),
+  });
   const context: NodeExecutorContext = {
     accountId: "headless-account",
     canvasId,
     fixtureScopeId: "",
-    flushCanvasSave: async () => {
-      flushes += 1;
-      for (const kind of kinds) {
-        const node = nodes.find((candidate) => candidate.id === `headless-${kind}`);
-        if (node?.data[`${kind}Generating`]) boundNodes.set(kind, structuredClone(node));
-      }
-    },
-    getEdges: () => [],
-    getNodes: () => nodes,
+    graph,
     isCancelled: () => false,
     isFixture: false,
     modelCatalog: { models, status: "ready" },
     runId,
-    setNodes,
-    waitForCanvasRevision: async () => 1,
+    save: {
+      flush: async () => {
+        flushes += 1;
+        revision += 1;
+        for (const kind of kinds) {
+          const node = nodes.find((candidate) => candidate.id === `headless-${kind}`);
+          if (node?.data[`${kind}Generating`]) {
+            boundNodes.set(kind, structuredClone(node));
+          }
+        }
+      },
+      waitForRevision: async () => ({ revision }),
+    },
   };
   try {
     const registry = createNodeExecutorRegistry();
@@ -1193,6 +1203,10 @@ test("workflow execution has no component registration or render-retention depen
     "client/src/generation/workflowNodeExecutors.ts",
     "utf8",
   );
+  const registry = readFileSync(
+    "client/src/generation/nodeExecutorRegistry.ts",
+    "utf8",
+  );
   const canvas = readFileSync("client/src/canvas/CanvasSurface.tsx", "utf8");
   expect(provider).not.toContain("registerWorkflowNode");
   expect(provider).not.toContain("waitForRegistrations");
@@ -1201,6 +1215,14 @@ test("workflow execution has no component registration or render-retention depen
   expect(canvas).not.toContain("retainWorkflowNodesForRender");
   expect(executors).not.toContain("document.");
   expect(executors).not.toContain("window.");
+  expect(executors).not.toContain("context.setNodes");
+  expect(executors).not.toContain("context.getNodes");
+  expect(executors).not.toContain("context.getEdges");
+  expect(executors).not.toContain("context.flushCanvasSave");
+  expect(executors).not.toContain("context.waitForCanvasRevision");
+  expect(registry).not.toContain('from "react"');
+  expect(registry).toContain("graph: CanvasGraphCommandPort");
+  expect(registry).toContain("save: CanvasSavePort");
 });
 
 test("navigation interrupts every locally owned concurrent run without crossing checkpoint ownership", async () => {
@@ -1631,12 +1653,14 @@ test("group persist retry happens once for a still-saving canvas and never for o
 
   const paintOrder: string[] = [];
   await persistGroupCanvasAfterNode({
-    flushCanvasSave: async () => {
-      paintOrder.push("flush");
-    },
-    waitForCanvasRevision: async () => {
-      paintOrder.push("wait");
-      return 4;
+    save: {
+      flush: async () => {
+        paintOrder.push("flush");
+      },
+      waitForRevision: async () => {
+        paintOrder.push("wait");
+        return { revision: 4 };
+      },
     },
     waitForPaint: async () => {
       paintOrder.push("paint");

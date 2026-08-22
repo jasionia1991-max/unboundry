@@ -9,6 +9,10 @@ import {
   readJsonBody,
 } from "./httpRequest";
 import { isRealCategory } from "../types/templateCategories";
+import {
+  isRegisteredTemplateNodeKind,
+} from "../types/persistedNodeSchemaRegistry";
+import type { TemplateNodeKind } from "../types/nodeVocabulary";
 
 export function accountDeletionBlocksTemplateMutation(error: unknown) {
   return error instanceof Error &&
@@ -39,14 +43,7 @@ type RawTemplateEdge = {
   targetHandle?: string;
 };
 
-export type TemplateNodeType =
-  | "audio"
-  | "group"
-  | "image"
-  | "playlist"
-  | "storyboard"
-  | "text"
-  | "video";
+export type TemplateNodeType = TemplateNodeKind;
 
 type TemplateGraphNode = {
   data: Record<string, unknown> & { label: string };
@@ -151,16 +148,6 @@ export const categories = [
 ];
 
 // 可保存/发布使用的真实分类白名单（不含筛选桶：最近使用/我的模板/全部）。
-const templateNodeTypeSet = new Set<TemplateNodeType>([
-  "audio",
-  "group",
-  "image",
-  "playlist",
-  "storyboard",
-  "text",
-  "video",
-]);
-
 let database: DatabaseSync | undefined;
 let databaseDirectory = "";
 
@@ -174,9 +161,7 @@ function db() {
 }
 
 function localNodeType(rawType: string): TemplateNodeType {
-  if (templateNodeTypeSet.has(rawType as TemplateNodeType)) {
-    return rawType as TemplateNodeType;
-  }
+  if (isRegisteredTemplateNodeKind(rawType)) return rawType;
   return "text";
 }
 
@@ -329,8 +314,7 @@ export function validTemplateGraph(value: unknown): value is TemplateGraph {
     if (!isRecord(rawNode)) return false;
     const type = rawNode.type;
     if (
-      typeof type !== "string" ||
-      !templateNodeTypeSet.has(type as TemplateNodeType)
+      !isRegisteredTemplateNodeKind(type)
     ) {
       return false;
     }

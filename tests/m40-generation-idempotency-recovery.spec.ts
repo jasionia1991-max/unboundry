@@ -1175,21 +1175,28 @@ test("server idempotency keys are owner scoped and payload conflicts stay local"
   }
 });
 
-test("Text Image Video and Audio all use the shared recoverable submit path", async () => {
+test("Text Image Video and Audio all use the shared recoverable task port", async () => {
   const nodes = [
     ["TextNode.tsx", "text"],
     ["ImageNode.tsx", "image"],
     ["VideoNode.tsx", "video"],
     ["AudioNode.tsx", "audio"],
   ] as const;
-  for (const [file, kind] of nodes) {
+  for (const [file] of nodes) {
     const source = await readFile(
       join(process.cwd(), "client/src/canvas", file),
       "utf8",
     );
-    expect(source).toMatch(
-      new RegExp(`ensureGenerationTask\\(\\s*"${kind}"\\s*,`),
-    );
+    expect(source).toContain("createBrowserSingleNodeGenerationTaskPort");
     expect(source).not.toMatch(/idempotencyKey:\s*crypto\.randomUUID\(\)/);
   }
+  const taskPort = await readFile(
+    join(
+      process.cwd(),
+      "client/src/generation/browserSingleNodeGenerationTaskPort.ts",
+    ),
+    "utf8",
+  );
+  expect(taskPort).toMatch(/ensureGenerationTask\(\s*plan\.kind\s*,/);
+  expect(taskPort).toContain("generationOwnershipKey: plan.ownershipKey");
 });

@@ -31,7 +31,7 @@ import {
   publishLocalMediaPublication,
   reserveMediaPublication,
   stageMediaPublication,
-} from "./mediaLifecycle";
+} from "./mediaPublicationService";
 import { probeTrustedMediaMetadata } from "./mediaMetadata";
 import { readableMedia, type MediaRecord } from "./mediaRegistry";
 import { runMediaProcess } from "./mediaProcess";

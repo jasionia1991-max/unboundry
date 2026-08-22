@@ -12,6 +12,10 @@ import {
 } from "react";
 import type { ProbeNodeType } from "../canvas/ProbeNode";
 import type { CuttableEdge } from "../canvas/canvasTypes";
+import type {
+  CanvasGraphCommandPort,
+  CanvasSavePort,
+} from "../canvas/canvasPorts";
 import {
   useModelCatalogStatus,
   usePublishedModels,
@@ -201,6 +205,7 @@ const WorkflowExecutionContext = createContext<WorkflowExecutionValue>({
 
 export function WorkflowExecutionProvider({
   children,
+  graph,
   getEdges,
   getNodes,
   notify,
@@ -208,6 +213,7 @@ export function WorkflowExecutionProvider({
   setNodes,
 }: {
   children: ReactNode;
+  graph: CanvasGraphCommandPort;
   getEdges: () => CuttableEdge[];
   getNodes: () => ProbeNodeType[];
   notify: (message: string, kind?: "error" | "info" | "success") => void;
@@ -222,6 +228,12 @@ export function WorkflowExecutionProvider({
     isFixture,
     waitForCanvasRevision,
   } = useGenerationCanvas();
+  const save = useMemo<CanvasSavePort>(() => ({
+    flush: flushCanvasSave,
+    waitForRevision: async (timeoutMs) => ({
+      revision: await waitForCanvasRevision(timeoutMs),
+    }),
+  }), [flushCanvasSave, waitForCanvasRevision]);
   const registry = useMemo(() => createNodeExecutorRegistry(), []);
   const modelCatalogStatus = useModelCatalogStatus();
   const textModels = usePublishedModels("text");
@@ -630,15 +642,12 @@ export function WorkflowExecutionProvider({
           accountId,
           canvasId,
           fixtureScopeId,
-          flushCanvasSave,
-          getEdges,
-          getNodes,
+          graph,
           isCancelled,
           isFixture,
           modelCatalog: executorModelCatalog,
           runId,
-          setNodes,
-          waitForCanvasRevision,
+          save,
         });
 
         const startedAt = resumeCheckpoint?.startedAt ?? Date.now();
@@ -878,8 +887,7 @@ export function WorkflowExecutionProvider({
               return await runGroupNodeWithPersist({
                 isCancelled: () => running.cancelled,
                 persist: () => persistGroupCanvasAfterNode({
-                  flushCanvasSave,
-                  waitForCanvasRevision,
+                  save,
                 }),
                 run: async () => {
                   return runRegisteredNodeWithRefreshRecovery({

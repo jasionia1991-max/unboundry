@@ -29,11 +29,13 @@ import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
 import { useFinishedGenerationDuration } from "../generation/useFinishedGenerationDuration";
 import { GenerationDurationHint } from "./GenerationDurationHint";
 import { GenerationReconcileControls } from "./GenerationReconcileControls";
-import { runExclusiveCanvasSubmit } from "../generation/saveGate";
 import {
   friendlyGenerationMessage,
   generationMessageFallback,
 } from "../generation/friendlyGenerationMessage";
+import {
+  createBrowserSingleNodeGenerationTaskPort,
+} from "../generation/browserSingleNodeGenerationTaskPort";
 import {
   isTransientPollingError,
   POLLING_PAUSED_MESSAGE,
@@ -52,22 +54,24 @@ import {
   safelyRetryableGenerationTask,
 } from "../generation/generationRetry";
 import {
-  cancelGenerationTask,
   clearGenerationSubmissionIntent,
-  ensureGenerationTask,
   GENERATION_TASK_RETRY_ACCEPTED_EVENT,
   GenerationRequestError,
   getGenerationTask,
   listGenerationTasks,
   recoverPendingGenerationTask,
-  reconcileGenerationTask,
   reconcileOutcomeMessage,
-  retryGenerationTask,
   waitForGenerationTask,
   type GenerationTaskRetryAcceptedDetail,
   type GenerationTaskSummary,
 } from "../generation/generationTasks";
-import { recoverWorkflowGenerationOnce } from "../generation/workflowGenerationRecovery";
+import {
+  createSingleNodeGenerationLifecycle,
+  type SingleNodeGenerationAdapter,
+  type SingleNodeGenerationBlocked,
+  type SingleNodeLifecycleResult,
+  type SingleNodeGenerationPlan,
+} from "../generation/singleNodeGenerationLifecycle";
 import {
   activeParameterFields,
   defaultParameterSchema,
@@ -98,6 +102,163 @@ type AudioPollingRun = {
   taskId: string;
   token: symbol;
 };
+
+function createAudioGenerationAdapter(input: {
+  bindingOwnershipKey?: string;
+  inputKey: string;
+  modelId?: string;
+  modelName?: string;
+  nodeId: string;
+  ownershipKey: string;
+  parameters?: ProbeNodeType["data"]["audioParameters"];
+  payload: unknown;
+  preserveBindingOwnership?: boolean;
+  prompt: string;
+  readBlock: () => SingleNodeGenerationBlocked | undefined;
+}): SingleNodeGenerationAdapter {
+  return {
+    applyPrepared(node) {
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          audioModelId: input.modelId,
+          audioModelName: input.modelName,
+          audioParameters: input.parameters,
+        },
+      };
+    },
+    applyBinding(node, task, plan) {
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          audioGenerating: true,
+          audioGenerationError: undefined,
+          audioGenerationErrorCode: undefined,
+          audioGenerationInputKey: plan.inputKey,
+          audioGenerationOwnershipKey: input.preserveBindingOwnership
+            ? input.bindingOwnershipKey
+            : task.generationOwnershipKey ?? plan.ownershipKey,
+          audioGenerationRetryAllowed: undefined,
+          audioGenerationRetryBlockCode: undefined,
+          audioGenerationRetryBlockReason: undefined,
+          audioGenerationTaskId: task.id,
+          audioModelId: input.modelId,
+          audioModelName: input.modelName,
+          audioParameters: input.parameters,
+          groupRunSuccessOwnershipKey: undefined,
+          groupRunSuccessResultKey: undefined,
+          groupRunSuccessTaskId: undefined,
+        },
+      };
+    },
+    applyTerminal(node, task, plan) {
+      if (task.state === "success") {
+        if (!task.resultAssetId || !task.resultUrl) {
+          throw new Error("音频结果不完整");
+        }
+        return {
+          ...node,
+          height: undefined,
+          measured: undefined,
+          style: { ...node.style, ...NODE_DEFAULT_SIZES.audio },
+          width: undefined,
+          data: {
+            ...node.data,
+            assetId: task.resultAssetId,
+            ...(task.resultMedia
+              ? trustedMediaPatch({
+                  assetId: task.resultAssetId,
+                  kind: "audio",
+                  ...task.resultMedia,
+                })
+              : {}),
+            audioDuration:
+              task.resultMedia?.durationSeconds ?? node.data.audioDuration,
+            audioFileName: `${(input.prompt || "生成音频").slice(0, 60)}.${generatedAudioExtension(task)}`,
+            audioFileSize: task.resultMedia?.byteSize ?? node.data.audioFileSize,
+            audioGeneratedResult: true,
+            audioGenerating: false,
+            audioGenerationError: undefined,
+            audioGenerationErrorCode: undefined,
+            audioGenerationInputKey: undefined,
+            audioGenerationOwnershipKey: undefined,
+            audioGenerationRetryAllowed: undefined,
+            audioGenerationRetryBlockCode: undefined,
+            audioGenerationRetryBlockReason: undefined,
+            audioGenerationTaskId: undefined,
+            audioModelId: input.modelId ?? node.data.audioModelId,
+            audioModelName:
+              input.modelName ?? node.data.audioModelName ?? "Mureka",
+            audioPrompt: input.prompt,
+            audioResultChoices: task.resultOutputs?.map((output) => ({
+              assetId: output.assetId,
+              ...output.media,
+              role: output.role,
+              url: output.url,
+            })),
+            audioSrc: task.resultUrl,
+            audioWaveform: undefined,
+            groupRunSuccessOwnershipKey: plan.ownershipKey,
+            groupRunSuccessResultKey: groupRunResultKey(task.resultUrl),
+            groupRunSuccessTaskId: task.id,
+          },
+        };
+      }
+      if (task.state === "cancelled") {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            audioGenerating: false,
+            audioGenerationError: task.errorMessage ?? "音频生成已取消",
+            audioGenerationErrorCode: undefined,
+            audioGenerationInputKey: undefined,
+            audioGenerationOwnershipKey: undefined,
+            audioGenerationRetryAllowed: undefined,
+            audioGenerationRetryBlockCode: undefined,
+            audioGenerationRetryBlockReason: undefined,
+            audioGenerationTaskId: undefined,
+          },
+        };
+      }
+      const retryAllowed = safelyRetryableGenerationTask(task);
+      const visibleMessage = generationFailureMessage(
+        task.errorMessage ?? "音频生成失败，请稍后再试",
+        retryAllowed ? undefined : task.retryBlockReason,
+        task.errorCode,
+        "audio",
+      );
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          audioGenerating: false,
+          audioGenerationError: visibleMessage,
+          audioGenerationErrorCode: task.errorCode,
+          audioGenerationInputKey: plan.inputKey,
+          audioGenerationRetryAllowed: retryAllowed,
+          audioGenerationRetryBlockCode: task.retryBlockCode,
+          audioGenerationRetryBlockReason: task.retryBlockReason,
+          audioGenerationTaskId: task.id,
+        },
+      };
+    },
+    kind: "audio",
+    readPlan(): SingleNodeGenerationBlocked | SingleNodeGenerationPlan {
+      const block = input.readBlock();
+      if (block) return block;
+      return {
+        inputKey: input.inputKey,
+        kind: "audio",
+        nodeId: input.nodeId,
+        ownershipKey: input.ownershipKey,
+        payload: input.payload,
+      };
+    },
+  };
+}
 
 function audioTaskMatchesNode(
   task: GenerationTaskSummary,
@@ -213,7 +374,8 @@ function AudioNodeImpl({
   const uploadOperation = useRef(0);
   const waveformSourceAttempted = useRef<string | undefined>(undefined);
   const { getNode, getNodes } = useReactFlow<ProbeNodeType>();
-  const { setEdges, setNodes, tryAdoptNodes } = useCanvasGraphMutation();
+  const { graphCommandPort, setEdges, setNodes, tryAdoptNodes } =
+    useCanvasGraphMutation();
   const canvasEdges = useEdges();
   const canvasNodes = useNodes<ProbeNodeType>();
   const checkpoint = useCanvasCheckpoint();
@@ -306,6 +468,12 @@ function AudioNodeImpl({
     useState<string>();
   const [recoveryEpoch, setRecoveryEpoch] = useState(0);
   const generationPollingRunRef = useRef<AudioPollingRun | undefined>(undefined);
+  const audioRecoveryControllerRef = useRef<AbortController | undefined>(
+    undefined,
+  );
+  const audioRecoveryLifecycleRef = useRef<ReturnType<
+    typeof createSingleNodeGenerationLifecycle
+  > | undefined>(undefined);
   const liveGenerationInputKeyRef = useRef<string | undefined>(undefined);
   const liveGenerationOwnershipKeyRef = useRef<string | undefined>(undefined);
   const [serverInputProblems, setServerInputProblems] = useState<NodeInputProblem[]>([]);
@@ -316,6 +484,7 @@ function AudioNodeImpl({
     inputKey?: string,
     ownershipKey?: string,
   ): AudioPollingRun => {
+    audioRecoveryLifecycleRef.current?.abort("audio-recovery-superseded");
     const run = { inputKey, ownershipKey, taskId, token: Symbol(taskId) };
     generationPollingRunRef.current = run;
     setActiveTaskId(taskId);
@@ -550,6 +719,7 @@ function AudioNodeImpl({
   }, [canvasEdges]);
 
   useEffect(() => {
+    if (pollingPausedTaskIdRef.current) return;
     setUploadError(
       data.inputState === "invalid" && data.inputStateReason
         ? data.inputStateReason
@@ -887,7 +1057,7 @@ function AudioNodeImpl({
   };
 
   const generateAudio = async (
-    options: { autoRecover?: boolean } = {},
+    _options: { autoRecover?: boolean } = {},
   ): Promise<NodeGenerationOutcome> => {
     const cleanPrompt = inputPreflight.finalPrompt;
     if (
@@ -905,219 +1075,109 @@ function AudioNodeImpl({
     setServerInputProblems([]);
     setRetryTaskId(undefined);
     setSubmitting(true);
-    let submittedTaskId: string | undefined;
     let pollingRun: AudioPollingRun | undefined;
-    let bindingPersisted = false;
     const requestedGenerationInputKey = audioGenerationInputKey;
     const requestedGenerationOwnershipKey =
       effectiveGenerationInputFingerprint;
     const requestedModelId = selectedAudioModelId;
     const requestedModelName = audioModelSelection.displayName;
     const requestedParameters = { ...audioParameters };
+    const requestedPrompt = promptControl.committedValue.trim();
+    let saveBoundary = 0;
     try {
-      setNodes((nodes) => nodes.map((node) => node.id === id
-        ? {
-            ...node,
-            data: {
-              ...node.data,
-              audioModelId: requestedModelId,
-              audioModelName: requestedModelName,
-              audioParameters: requestedParameters,
-            },
-          }
-        : node));
-      const admitted = await runExclusiveCanvasSubmit(canvasId, async () => {
-        const freshCanvasRevision = await waitForCanvasRevision();
-        if (
-          liveGenerationOwnershipKeyRef.current !==
-            requestedGenerationOwnershipKey
-        ) {
-          return {
-            message: "生成输入已修改，已停止本次生成",
-            status: "failed" as const,
-          };
-        }
-        const {
-          generationOwnershipKey: persistedGenerationOwnershipKey,
-          task: submitted,
-        } = await ensureGenerationTask(
-          "audio",
-          {
-            ...audioGenerationRequestInput,
-            canvasRevision: freshCanvasRevision,
-          },
-          accountId,
-          () => {
+      if (!graphCommandPort) return { status: "skipped" };
+      checkpoint();
+      const lifecycle = createSingleNodeGenerationLifecycle({
+        adapter: createAudioGenerationAdapter({
+          inputKey: requestedGenerationInputKey,
+          modelId: requestedModelId,
+          modelName: requestedModelName,
+          nodeId: id,
+          ownershipKey: requestedGenerationOwnershipKey,
+          parameters: requestedParameters,
+          payload: audioGenerationRequestInput,
+          prompt: requestedPrompt,
+          readBlock() {
             if (
               liveGenerationOwnershipKeyRef.current !==
                 requestedGenerationOwnershipKey
             ) {
-              throw new Error("生成输入已修改，已停止本次生成");
+              return {
+                message: "生成输入已修改，已停止本次生成",
+                status: "blocked",
+              };
             }
           },
-          { generationOwnershipKey: requestedGenerationOwnershipKey },
-        );
-        submittedTaskId = submitted.id;
-        if (
-          liveGenerationOwnershipKeyRef.current !==
-            requestedGenerationOwnershipKey
-        ) {
-          clearGenerationSubmissionIntent(
-            "audio",
-            canvasId,
-            id,
-            submitted.id,
-            accountId,
-          );
-          return {
-            message: "生成输入已修改，旧任务结果不会覆盖当前内容",
-            status: "failed" as const,
-          };
-        }
-        pollingRun = beginGenerationPollingRun(
-          submitted.id,
-          requestedGenerationInputKey,
-          requestedGenerationOwnershipKey,
-        );
-        checkpoint();
-        setNodes((nodes) => nodes.map((node) => node.id === id
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                audioGenerationError: undefined,
-                audioGenerationErrorCode: undefined,
-                audioGenerationInputKey,
-                audioGenerationOwnershipKey:
-                  persistedGenerationOwnershipKey ??
-                  requestedGenerationOwnershipKey,
-                audioGenerating: true,
-                audioGenerationRetryAllowed: undefined,
-                audioGenerationRetryBlockCode: undefined,
-                audioGenerationRetryBlockReason: undefined,
-                audioGenerationTaskId: submitted.id,
-                groupRunSuccessOwnershipKey: undefined,
-                groupRunSuccessResultKey: undefined,
-                groupRunSuccessTaskId: undefined,
-                audioModelId: requestedModelId,
-                audioModelName: requestedModelName,
-                audioParameters: requestedParameters,
-              },
-            }
-          : node));
-        await flushCanvasSave();
-        bindingPersisted = true;
-        if (
-          !pollingRun ||
-          !ownsGenerationPollingRun(pollingRun) ||
-          liveGenerationOwnershipKeyRef.current !==
-            requestedGenerationOwnershipKey
-        ) {
-          return {
-            message: "生成输入已修改，旧任务结果不会覆盖当前内容",
-            status: "failed" as const,
-          };
-        }
-        return { status: "admitted" as const, submitted };
-      });
-      if (admitted.status !== "admitted") return admitted;
-      const submitted = admitted.submitted;
-      setSubmitting(false);
-      let task: Awaited<ReturnType<typeof waitForGenerationTask>>;
-      try {
-        task = await waitForGenerationTaskWithPause(submitted.id, () => {
-          if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) return;
-          pollingPausedTaskIdRef.current = submitted.id;
-          setPollingPausedTaskId(submitted.id);
-          setUploadError(POLLING_PAUSED_MESSAGE);
-        });
-      } catch (error) {
-        if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) {
-          return { status: "skipped" };
-        }
-        if (pollingPausedTaskIdRef.current === submitted.id) {
-          return { message: POLLING_PAUSED_MESSAGE, status: "failed" };
-        }
-        throw error;
-      }
-      if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) {
-        return { status: "skipped" };
-      }
-      if (task.state === "cancelled") {
-        persistAudioGenerationCancellation(
-          task.id,
-          task.errorMessage ?? "音频生成已取消",
-        );
-        return {
-          message: friendlyGenerationMessage(
-            task.errorMessage ?? "音频生成已取消",
-            "audio",
-          ),
-          status: "failed",
-        };
-      }
-      if (task.state !== "success") {
-        if (options.autoRecover) {
-          const recovered = await recoverWorkflowGenerationOnce({
-            canvasId,
-            generationInputKey: requestedGenerationInputKey,
-            kind: "audio",
-            nodeId: id,
-            taskId: task.id,
-            waitForCanvasRevision,
-          });
-          if (recovered.status === "success" && recovered.task) {
-            task = recovered.task;
-          } else {
-            const failed = recovered.task ?? task;
-            persistAudioGenerationFailure(
-              failed.id,
-              friendlyGenerationMessage(
-                recovered.message ?? failed.errorMessage,
-                "audio",
-              ),
-              failed.errorCode,
-              safelyRetryableGenerationTask(failed),
-              failed.retryBlockCode,
-              failed.retryBlockReason,
+        }),
+        graph: graphCommandPort,
+        nodeId: id,
+        save: {
+          flush: async () => undefined,
+          async waitForRevision() {
+            const revision = await waitForCanvasRevision();
+            saveBoundary += 1;
+            if (saveBoundary === 2) setSubmitting(false);
+            return { revision };
+          },
+        },
+        tasks: createBrowserSingleNodeGenerationTaskPort({
+          accountId,
+          onPollingPaused(taskId) {
+            pollingPausedTaskIdRef.current = taskId;
+            setPollingPausedTaskId(taskId);
+            setUploadError(POLLING_PAUSED_MESSAGE);
+          },
+          onTaskObserved(task) {
+            pollingRun = beginGenerationPollingRun(
+              task.id,
+              requestedGenerationInputKey,
+              requestedGenerationOwnershipKey,
             );
-            return {
-              message: friendlyGenerationMessage(
-                recovered.message ?? failed.errorMessage,
-                "audio",
-              ),
-              status: "failed",
-            };
-          }
-        } else {
-          persistAudioGenerationFailure(
-            task.id,
-            friendlyGenerationMessage(task.errorMessage, "audio"),
-            task.errorCode,
-            safelyRetryableGenerationTask(task),
-            task.retryBlockCode,
-            task.retryBlockReason,
-          );
-          return {
-            message: friendlyGenerationMessage(task.errorMessage, "audio"),
-            status: "failed",
-          };
-        }
+          },
+        }),
+      });
+      const result = await lifecycle.generate();
+      if (!result.task) {
+        return { message: "生成输入已修改，已停止本次生成", status: "failed" };
       }
-      await applyGeneratedAudio(
-        task,
-        promptControl.committedValue.trim(),
-        pollingRun,
+      clearGenerationSubmissionIntent(
+        "audio",
+        canvasId,
+        id,
+        result.task.id,
+        accountId,
       );
       pollingPausedTaskIdRef.current = undefined;
       setPollingPausedTaskId(undefined);
+      if (result.status !== "success") {
+        const message = friendlyGenerationMessage(
+          result.task.errorMessage,
+          "audio",
+        );
+        setUploadError(generationFailureMessage(
+          message,
+          result.task.retryAllowed ? undefined : result.task.retryBlockReason,
+          result.task.errorCode,
+          "audio",
+        ));
+        setRetryTaskId(
+          safelyRetryableGenerationTask(result.task)
+            ? result.task.id
+            : undefined,
+        );
+        return { message, status: "failed" };
+      }
+      waveformSourceAttempted.current = undefined;
+      setCurrentTime(0);
+      setPlaying(false);
       setRetryTaskId(undefined);
+      setUploadError("");
       return {
         status: "success",
         successProof: {
-          ownershipKey: pollingRun?.ownershipKey ?? "",
-          resultKey: groupRunResultKey(task.resultUrl),
-          taskId: task.id,
+          ownershipKey: requestedGenerationOwnershipKey,
+          resultKey: groupRunResultKey(result.task.resultUrl),
+          taskId: result.task.id,
         },
       };
     } catch (error) {
@@ -1128,34 +1188,7 @@ function AudioNodeImpl({
         ? error.message
         : generationMessageFallback("audio");
       const friendly = friendlyGenerationMessage(message, "audio");
-      if (
-        submittedTaskId &&
-        pollingRun &&
-        ownsGenerationPollingRun(pollingRun)
-      ) {
-        if (!bindingPersisted) {
-          pollingPausedTaskIdRef.current = submittedTaskId;
-          setPollingPausedTaskId(submittedTaskId);
-          setUploadError("画布尚未安全保存，任务状态未查询；请重新检查");
-          return {
-            message: "画布尚未安全保存，任务状态未查询；请重新检查",
-            status: "failed",
-          };
-        }
-        const errorCode = error instanceof GenerationRequestError
-          ? error.code
-          : "TASK_STATUS_UNKNOWN";
-        persistAudioGenerationFailure(
-          submittedTaskId,
-          friendly,
-          errorCode,
-          false,
-          errorCode,
-          error instanceof GenerationRequestError
-            ? error.message
-            : "任务状态暂时无法确认，不能一键重试，请稍后刷新查看",
-        );
-      } else if (!pollingRun) {
+      if (!pollingRun) {
         setUploadError(friendly);
       }
       return { message: friendly, status: "failed" };
@@ -1174,90 +1207,107 @@ function AudioNodeImpl({
       generating ||
       submitting
     ) return;
+    audioRecoveryControllerRef.current?.abort("audio-recovery-superseded");
     const taskId = retryTaskId;
     const requestedGenerationInputKey = audioGenerationInputKey;
     const requestedGenerationOwnershipKey = rawGenerationInputFingerprint;
     setSubmitting(true);
     let retryAccepted = false;
+    let retrySaveGatePassed = false;
     let pollingRun: AudioPollingRun | undefined;
     try {
-      await retryGenerationTask({
-        canvasId,
-        generationInputKey: requestedGenerationInputKey,
-        kind: "audio",
+      if (!graphCommandPort) return;
+      const lifecycle = createSingleNodeGenerationLifecycle({
+        adapter: createAudioGenerationAdapter({
+          inputKey: requestedGenerationInputKey,
+          modelId: data.audioModelId,
+          modelName: data.audioModelName,
+          nodeId: id,
+          ownershipKey: requestedGenerationOwnershipKey,
+          parameters: data.audioParameters,
+          payload: audioGenerationRequestInput,
+          prompt: data.audioPrompt ?? promptControl.committedValue.trim(),
+          readBlock() {
+            if (!retrySaveGatePassed) return;
+            if (
+              liveGenerationInputKeyRef.current !==
+                requestedGenerationInputKey ||
+              liveGenerationOwnershipKeyRef.current !==
+                requestedGenerationOwnershipKey
+            ) {
+              return {
+                message: "生成输入已修改，已停止本次重试",
+                status: "blocked",
+              };
+            }
+          },
+        }),
+        graph: graphCommandPort,
         nodeId: id,
-        taskId,
-      }, async () => {
-        const revision = await waitForCanvasRevision();
-        if (
-          liveGenerationInputKeyRef.current !== requestedGenerationInputKey
-        ) {
-          throw new Error("生成输入已修改，已停止本次重试");
-        }
-        return revision;
+        save: {
+          flush: async () => undefined,
+          async waitForRevision() {
+            const revision = await waitForCanvasRevision();
+            retrySaveGatePassed = true;
+            return { revision };
+          },
+        },
+        tasks: createBrowserSingleNodeGenerationTaskPort({
+          accountId,
+          onPollingPaused(pausedTaskId) {
+            if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) return;
+            pollingPausedTaskIdRef.current = pausedTaskId;
+            setPollingPausedTaskId(pausedTaskId);
+            setUploadError(POLLING_PAUSED_MESSAGE);
+          },
+          onTaskObserved(task) {
+            if (task.id !== taskId) return;
+            retryAccepted = true;
+            pollingRun = beginGenerationPollingRun(
+              task.id,
+              requestedGenerationInputKey,
+              requestedGenerationOwnershipKey,
+            );
+          },
+        }),
       });
+      const result = await lifecycle.retry({ id: taskId });
       if (
-        liveGenerationInputKeyRef.current !== requestedGenerationInputKey
+        !result.task ||
+        result.status === "stale" ||
+        !pollingRun ||
+        !ownsGenerationPollingRun(pollingRun)
       ) return;
-      retryAccepted = true;
-      setUploadError("");
-      pollingRun = beginGenerationPollingRun(
-        taskId,
-        requestedGenerationInputKey,
-        requestedGenerationOwnershipKey,
-      );
       setServerInputProblems([]);
-      setNodes((nodes) => nodes.map((node) => node.id === id
-        ? {
-            ...node,
-            data: {
-              ...node.data,
-              audioGenerationError: undefined,
-              audioGenerationErrorCode: undefined,
-              audioGenerationInputKey,
-              audioGenerationOwnershipKey: requestedGenerationOwnershipKey,
-              audioGenerating: true,
-              audioGenerationRetryAllowed: undefined,
-              audioGenerationRetryBlockCode: undefined,
-              audioGenerationRetryBlockReason: undefined,
-              groupRunSuccessOwnershipKey: undefined,
-              groupRunSuccessResultKey: undefined,
-              groupRunSuccessTaskId: undefined,
-              audioGenerationTaskId: taskId,
-            },
-          }
-        : node));
-      const task = await waitForGenerationTaskWithPause(taskId, () => {
-        if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) return;
-        pollingPausedTaskIdRef.current = taskId;
-        setPollingPausedTaskId(taskId);
-        setUploadError(POLLING_PAUSED_MESSAGE);
-      });
-      if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) return;
-      if (task.state === "cancelled") {
-        persistAudioGenerationCancellation(
-          task.id,
-          task.errorMessage ?? "音频生成已取消",
-        );
+      clearGenerationSubmissionIntent("audio", canvasId, id, taskId, accountId);
+      pollingPausedTaskIdRef.current = undefined;
+      setPollingPausedTaskId(undefined);
+      if (result.status === "success") {
+        waveformSourceAttempted.current = undefined;
+        setCurrentTime(0);
+        setPlaying(false);
+        setRetryTaskId(undefined);
+        setUploadError("");
         return;
       }
-      if (task.state !== "success") {
-        persistAudioGenerationFailure(
-          task.id,
-          task.errorMessage ?? "音频生成失败，请稍后再试",
-          task.errorCode,
-          safelyRetryableGenerationTask(task),
-          task.retryBlockCode,
-          task.retryBlockReason,
-        );
-        return;
-      }
-      await applyGeneratedAudio(
-        task,
-        promptControl.committedValue.trim(),
-        pollingRun,
+      const message = generationFailureMessage(
+        result.task.errorMessage ?? (
+          result.status === "cancelled"
+            ? "音频生成已取消"
+            : "音频生成失败，请稍后再试"
+        ),
+        result.task.retryAllowed
+          ? undefined
+          : result.task.retryBlockReason,
+        result.task.errorCode,
+        "audio",
       );
-      setRetryTaskId(undefined);
+      setUploadError(message);
+      setRetryTaskId(
+        safelyRetryableGenerationTask(result.task)
+          ? result.task.id
+          : undefined,
+      );
     } catch (error) {
       if (
         pollingRun &&
@@ -1300,6 +1350,7 @@ function AudioNodeImpl({
   const resumeAudioPolling = async () => {
     const taskId = pollingPausedTaskIdRef.current;
     if (!taskId) return;
+    audioRecoveryControllerRef.current?.abort("audio-recovery-superseded");
     pollingPausedTaskIdRef.current = undefined;
     setPollingPausedTaskId(undefined);
     setUploadError("");
@@ -1367,89 +1418,128 @@ function AudioNodeImpl({
       isFixture ||
       !retryGenerationEnabled
     ) return;
+    const requestedGenerationInputKey = audioGenerationInputKey;
+    const requestedGenerationOwnershipKey = rawGenerationInputFingerprint;
     setReconcileBusy(true);
+    let reconcileSaveGatePassed = false;
+    let pollingRun: AudioPollingRun | undefined;
     try {
-      const result = await reconcileGenerationTask({
-        canvasId,
-        generationInputKey: data.audioGenerationInputKey || audioGenerationInputKey,
-        kind: "audio",
+      if (!graphCommandPort) return;
+      const lifecycle = createSingleNodeGenerationLifecycle({
+        adapter: createAudioGenerationAdapter({
+          inputKey: data.audioGenerationInputKey || audioGenerationInputKey,
+          modelId: data.audioModelId,
+          modelName: data.audioModelName,
+          nodeId: id,
+          ownershipKey: data.audioGenerationOwnershipKey ??
+            requestedGenerationOwnershipKey,
+          parameters: data.audioParameters,
+          payload: audioGenerationRequestInput,
+          prompt: data.audioPrompt ?? promptControl.committedValue.trim(),
+          readBlock() {
+            if (!reconcileSaveGatePassed) return;
+            if (
+              liveGenerationInputKeyRef.current !==
+                requestedGenerationInputKey ||
+              liveGenerationOwnershipKeyRef.current !==
+                requestedGenerationOwnershipKey
+            ) {
+              return {
+                message: "生成输入已修改，已停止本次核对",
+                status: "blocked",
+              };
+            }
+          },
+        }),
+        graph: graphCommandPort,
         nodeId: id,
-        taskId,
-      }, waitForCanvasRevision);
-      const message = reconcileOutcomeMessage(result.outcome);
-      if (result.outcome === "missing") {
-        setReconcileConfirmedMissing(true);
-        setRetryTaskId(result.task.id);
-        setUploadError(message);
-        setNodes((nodes) =>
-          nodes.map((node) =>
-            node.id === id
-              ? {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    audioGenerationError: message,
-                    audioGenerationErrorCode: "PROVIDER_RESULT_MISSING",
-                    audioGenerating: false,
-                    audioGenerationRetryAllowed: true,
-                    audioGenerationTaskId: result.task.id,
-                  },
-                }
-              : node,
-          ),
-        );
-        return;
-      }
-      if (result.outcome !== "recovered") {
-        setUploadError(message);
-        return;
-      }
-      setUploadError("");
-      const pollingRun = beginGenerationPollingRun(
-        taskId,
-        audioGenerationInputKey,
-        rawGenerationInputFingerprint,
-      );
-      setNodes((nodes) =>
-        nodes.map((node) =>
-          node.id === id
-            ? {
-                ...node,
-                data: {
-                  ...node.data,
-                  audioGenerationError: undefined,
-                  audioGenerationErrorCode: undefined,
-                  audioGenerating: true,
-                  audioGenerationTaskId: taskId,
-                  groupRunSuccessOwnershipKey: undefined,
-                  groupRunSuccessResultKey: undefined,
-                  groupRunSuccessTaskId: undefined,
-                },
-              }
-            : node,
-        ),
-      );
-      const task = await waitForGenerationTaskWithPause(taskId, () => {
-        if (!ownsGenerationPollingRun(pollingRun)) return;
-        pollingPausedTaskIdRef.current = taskId;
-        setPollingPausedTaskId(taskId);
-        setUploadError(POLLING_PAUSED_MESSAGE);
+        save: {
+          flush: async () => undefined,
+          async waitForRevision() {
+            const revision = await waitForCanvasRevision();
+            reconcileSaveGatePassed = true;
+            return { revision };
+          },
+        },
+        tasks: createBrowserSingleNodeGenerationTaskPort({
+          accountId,
+          onPollingPaused(pausedTaskId) {
+            if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) return;
+            pollingPausedTaskIdRef.current = pausedTaskId;
+            setPollingPausedTaskId(pausedTaskId);
+            setUploadError(POLLING_PAUSED_MESSAGE);
+          },
+          onTaskObserved(task) {
+            if (task.id !== taskId) return;
+            pollingRun = beginGenerationPollingRun(
+              task.id,
+              requestedGenerationInputKey,
+              requestedGenerationOwnershipKey,
+            );
+          },
+        }),
       });
-      if (!ownsGenerationPollingRun(pollingRun)) return;
-      if (task.state === "success") {
-        await applyGeneratedAudio(
-          task,
-          promptControl.committedValue.trim(),
-          pollingRun,
-        );
+      const result = await lifecycle.reconcile({ id: taskId });
+      const message = result.reconcileOutcome
+        ? reconcileOutcomeMessage(result.reconcileOutcome)
+        : "";
+      if (result.reconcileOutcome === "missing") {
+        setReconcileConfirmedMissing(true);
+        setRetryTaskId(result.task?.id);
+        setUploadError(message);
         return;
       }
-      setUploadError(task.errorMessage ?? "音频生成失败，请稍后再试");
+      if (result.reconcileOutcome !== "recovered") {
+        setUploadError(message);
+        return;
+      }
+      if (!result.task || result.status === "stale") return;
+      clearGenerationSubmissionIntent(
+        "audio",
+        canvasId,
+        id,
+        result.task.id,
+        accountId,
+      );
+      pollingPausedTaskIdRef.current = undefined;
+      setPollingPausedTaskId(undefined);
+      if (result.status === "success") {
+        waveformSourceAttempted.current = undefined;
+        setCurrentTime(0);
+        setPlaying(false);
+        setUploadError("");
+        setRetryTaskId(undefined);
+        return;
+      }
+      const failureMessage = generationFailureMessage(
+        result.task.errorMessage ?? (
+          result.status === "cancelled"
+            ? "音频生成已取消"
+            : "音频生成失败，请稍后再试"
+        ),
+        result.task.retryAllowed
+          ? undefined
+          : result.task.retryBlockReason,
+        result.task.errorCode,
+        "audio",
+      );
+      setUploadError(failureMessage);
+      setRetryTaskId(
+        safelyRetryableGenerationTask(result.task)
+          ? result.task.id
+          : undefined,
+      );
     } catch (error) {
+      if (
+        pollingRun &&
+        pollingPausedTaskIdRef.current === taskId &&
+        ownsGenerationPollingRun(pollingRun)
+      ) return;
       setUploadError(
         error instanceof Error ? error.message : "核对结果失败，请稍后再试",
       );
     } finally {
+      if (pollingRun) endGenerationPollingRun(pollingRun);
       setReconcileBusy(false);
     }
   };
@@ -1476,16 +1566,56 @@ function AudioNodeImpl({
       ? generationPollingRunRef.current
       : undefined;
     try {
-      const task = await cancelGenerationTask(taskId);
-      if (
-        !pollingRun ||
-        !ownsGenerationPollingRun(pollingRun) ||
-        task.id !== pollingRun.taskId
-      ) return;
-      if (task.state !== "cancelled") return;
-      persistAudioGenerationCancellation(
-        task.id,
-        task.errorMessage ?? "已停止本地等待，上游任务可能仍在运行",
+      if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) return;
+      if (!graphCommandPort) return;
+      const lifecycle = createSingleNodeGenerationLifecycle({
+        adapter: createAudioGenerationAdapter({
+          inputKey: pollingRun.inputKey ??
+            data.audioGenerationInputKey ??
+            audioGenerationInputKey,
+          modelId: data.audioModelId,
+          modelName: data.audioModelName,
+          nodeId: id,
+          ownershipKey: pollingRun.ownershipKey ??
+            data.audioGenerationOwnershipKey ??
+            rawGenerationInputFingerprint,
+          parameters: data.audioParameters,
+          payload: audioGenerationRequestInput,
+          prompt: data.audioPrompt ?? promptControl.committedValue.trim(),
+          readBlock() {
+            if (!ownsGenerationPollingRun(pollingRun)) {
+              return {
+                message: "生成输入已修改，已停止本次取消",
+                status: "blocked",
+              };
+            }
+          },
+        }),
+        graph: graphCommandPort,
+        nodeId: id,
+        save: {
+          flush: async () => undefined,
+          async waitForRevision() {
+            return { revision: await waitForCanvasRevision() };
+          },
+        },
+        tasks: createBrowserSingleNodeGenerationTaskPort({ accountId }),
+      });
+      const result = await lifecycle.cancel({ id: taskId });
+      if (result.status !== "cancelled" || !result.task) return;
+      if (!ownsGenerationPollingRun(pollingRun)) return;
+      pollingPausedTaskIdRef.current = undefined;
+      setPollingPausedTaskId(undefined);
+      setUploadError(
+        result.task.errorMessage ?? "已停止本地等待，上游任务可能仍在运行",
+      );
+      setRetryTaskId(undefined);
+      clearGenerationSubmissionIntent(
+        "audio",
+        canvasId,
+        id,
+        result.task.id,
+        accountId,
       );
       endGenerationPollingRun(pollingRun);
     } catch (error) {
@@ -1507,7 +1637,10 @@ function AudioNodeImpl({
     const catalogReady = audioModelSelection.status === "ready" &&
       Boolean(selectedAudioModel);
     const controller = new AbortController();
+    audioRecoveryControllerRef.current = controller;
     let pollingRun: AudioPollingRun | undefined;
+    let lifecycle: ReturnType<typeof createSingleNodeGenerationLifecycle> |
+      undefined;
     let persistedTaskReadPending = false;
     void (async () => {
       let task: GenerationTaskSummary | undefined;
@@ -1692,98 +1825,122 @@ function AudioNodeImpl({
         recoveredOwnershipKey ?? rawGenerationInputFingerprint,
       );
       if (!ownsGenerationPollingRun(pollingRun)) return;
-      if (task.state === "success") {
-        await applyGeneratedAudio(
-          task,
-          promptControl.committedValue.trim(),
-          pollingRun,
-        );
-        return;
-      }
-      if (task.state === "failed") {
-        const retainPersistedBlock =
-          !recoveredIntent && data.audioGenerationRetryAllowed === false;
-        persistAudioGenerationFailure(
-          task.id,
-          retainPersistedBlock && data.audioGenerationError
-            ? data.audioGenerationError
-            : task.errorMessage ?? "音频生成失败，请稍后再试",
-          retainPersistedBlock ? data.audioGenerationErrorCode : task.errorCode,
-          retainPersistedBlock ? false : safelyRetryableGenerationTask(task),
-          retainPersistedBlock
-            ? data.audioGenerationRetryBlockCode
-            : task.retryBlockCode,
-          retainPersistedBlock
-            ? data.audioGenerationRetryBlockReason
-            : task.retryBlockReason,
-          persistedInputKey ?? task.generationInputKey,
-          recoveredOwnershipKey,
-        );
-        return;
-      }
-      if (task.state === "cancelled") {
-        persistAudioGenerationCancellation(
-          task.id,
-          task.errorMessage ?? "音频生成已取消",
-        );
-        return;
-      }
-      setNodes((nodes) => nodes.map((node) => node.id === id
+      if (!graphCommandPort) return;
+      const retainPersistedBlock = task.state === "failed" &&
+        !recoveredIntent && data.audioGenerationRetryAllowed === false;
+      const recoveredTask = retainPersistedBlock
         ? {
-            ...node,
-            data: {
-              ...node.data,
-              audioGenerationError: undefined,
-              audioGenerationErrorCode: undefined,
-              audioGenerationInputKey:
-                persistedInputKey ?? task.generationInputKey,
-              audioGenerationOwnershipKey: recoveredOwnershipKey,
-              audioGenerating: true,
-              audioGenerationRetryAllowed: undefined,
-              audioGenerationRetryBlockCode: undefined,
-                audioGenerationRetryBlockReason: undefined,
-                audioGenerationTaskId: task.id,
-                groupRunSuccessOwnershipKey: undefined,
-                groupRunSuccessResultKey: undefined,
-                groupRunSuccessTaskId: undefined,
-            },
+            ...task,
+            errorCode: data.audioGenerationErrorCode,
+            errorMessage: data.audioGenerationError ??
+              task.errorMessage ??
+              "音频生成失败，请稍后再试",
+            retryAllowed: false,
+            retryBlockCode: data.audioGenerationRetryBlockCode,
+            retryBlockReason: data.audioGenerationRetryBlockReason,
           }
-        : node));
-      const finished = await waitForGenerationTaskWithPause(
-        task.id,
-        () => {
-          if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) return;
-          pollingPausedTaskIdRef.current = task.id;
-          setPollingPausedTaskId(task.id);
-          setUploadError(POLLING_PAUSED_MESSAGE);
+        : task;
+      if (recoveredTask.state === "failed") {
+        const retryAllowed = safelyRetryableGenerationTask(recoveredTask);
+        setUploadError(generationFailureMessage(
+          recoveredTask.errorMessage ?? "音频生成失败，请稍后再试",
+          retryAllowed ? undefined : recoveredTask.retryBlockReason,
+          recoveredTask.errorCode,
+          "audio",
+        ));
+        setRetryTaskId(retryAllowed ? recoveredTask.id : undefined);
+      }
+      lifecycle = createSingleNodeGenerationLifecycle({
+        adapter: createAudioGenerationAdapter({
+          bindingOwnershipKey: recoveredOwnershipKey,
+          inputKey: persistedInputKey ??
+            task.generationInputKey ??
+            audioGenerationInputKey,
+          modelId: data.audioModelId,
+          modelName: data.audioModelName,
+          nodeId: id,
+          ownershipKey: recoveredOwnershipKey ??
+            rawGenerationInputFingerprint,
+          parameters: data.audioParameters,
+          payload: audioGenerationRequestInput,
+          preserveBindingOwnership: true,
+          prompt: data.audioPrompt ?? promptControl.committedValue.trim(),
+          readBlock() {
+            if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) {
+              return {
+                message: "生成输入已修改，已停止本次恢复",
+                status: "blocked",
+              };
+            }
+          },
+        }),
+        graph: graphCommandPort,
+        nodeId: id,
+        save: {
+          flush: async () => undefined,
+          async waitForRevision() {
+            return { revision: await waitForCanvasRevision() };
+          },
         },
-        controller.signal,
+        tasks: createBrowserSingleNodeGenerationTaskPort({
+          accountId,
+          onPollingPaused(pausedTaskId) {
+            if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) return;
+            pollingPausedTaskIdRef.current = pausedTaskId;
+            setPollingPausedTaskId(pausedTaskId);
+            setUploadError(POLLING_PAUSED_MESSAGE);
+          },
+        }),
+      });
+      audioRecoveryLifecycleRef.current = lifecycle;
+      controller.signal.addEventListener(
+        "abort",
+        () => lifecycle?.abort("audio-recovery-aborted"),
+        { once: true },
       );
+      let result: SingleNodeLifecycleResult;
+      try {
+        result = await lifecycle.recover(recoveredTask);
+      } catch (error) {
+        if (
+          pollingPausedTaskIdRef.current === task.id &&
+          pollingRun &&
+          ownsGenerationPollingRun(pollingRun)
+        ) return;
+        throw error;
+      }
       if (
-        !pollingRun ||
-        !ownsGenerationPollingRun(pollingRun) ||
-        !audioTaskMatchesNode(finished, canvasId, id, task.id)
+        controller.signal.aborted ||
+        !result.task ||
+        result.status === "stale"
       ) return;
-      if (finished.state === "success") {
-        await applyGeneratedAudio(
-          finished,
-          promptControl.committedValue.trim(),
-          pollingRun,
-        );
-      } else if (finished.state === "failed") {
-        persistAudioGenerationFailure(
-          finished.id,
-          finished.errorMessage ?? "音频生成失败，请稍后再试",
-          finished.errorCode,
-          safelyRetryableGenerationTask(finished),
-          finished.retryBlockCode,
-          finished.retryBlockReason,
-        );
-      } else if (finished.state === "cancelled") {
-        persistAudioGenerationCancellation(
-          finished.id,
-          finished.errorMessage ?? "音频生成已取消",
-        );
+      clearGenerationSubmissionIntent(
+        "audio",
+        canvasId,
+        id,
+        result.task.id,
+        accountId,
+      );
+      pollingPausedTaskIdRef.current = undefined;
+      setPollingPausedTaskId(undefined);
+      if (result.status === "success") {
+        waveformSourceAttempted.current = undefined;
+        setCurrentTime(0);
+        setPlaying(false);
+        setUploadError("");
+        setRetryTaskId(undefined);
+      } else if (result.status === "cancelled") {
+        setUploadError(result.task.errorMessage ?? "音频生成已取消");
+        setRetryTaskId(undefined);
+      } else {
+        const retryAllowed = safelyRetryableGenerationTask(result.task);
+        setUploadError(generationFailureMessage(
+          result.task.errorMessage ?? "音频生成失败，请稍后再试",
+          retryAllowed ? undefined : result.task.retryBlockReason,
+          result.task.errorCode,
+          "audio",
+        ));
+        setRetryTaskId(retryAllowed ? result.task.id : undefined);
       }
     })()
       .catch((error) => {
@@ -1812,10 +1969,23 @@ function AudioNodeImpl({
         }
       })
       .finally(() => {
+        if (audioRecoveryControllerRef.current === controller) {
+          audioRecoveryControllerRef.current = undefined;
+        }
+        if (audioRecoveryLifecycleRef.current === lifecycle) {
+          audioRecoveryLifecycleRef.current = undefined;
+        }
         if (pollingRun) endGenerationPollingRun(pollingRun);
       });
     return () => {
       controller.abort();
+      if (audioRecoveryControllerRef.current === controller) {
+        audioRecoveryControllerRef.current = undefined;
+      }
+      lifecycle?.abort("audio-recovery-unmounted");
+      if (audioRecoveryLifecycleRef.current === lifecycle) {
+        audioRecoveryLifecycleRef.current = undefined;
+      }
       if (pollingRun) endGenerationPollingRun(pollingRun);
     };
   }, [
@@ -1830,6 +2000,7 @@ function AudioNodeImpl({
     data.audioGenerating,
     data.audioGenerationTaskId,
     data.workflowExecutionRunId,
+    graphCommandPort,
     id,
     persistenceReady,
     recoveryEpoch,

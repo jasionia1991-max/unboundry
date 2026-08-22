@@ -1,9 +1,9 @@
 # Unboundry 渐进式模块化 Checkpoint
 
-更新日期：2026-08-21
-状态：`FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED / CURRENT_V0_6_30_USER_PASS / NO_ACTIVE_NEXT_BATCH`
+更新日期：2026-08-22
+状态：`CURRENT_READ_ONLY_RECHECK / FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED / CURRENT_V0_6_30_USER_PASS / VIEW_005_AUTO_PASS / NO_ACTIVE_NEXT_BATCH`
 
-当前收口：第一、第二批已在 v0.6.28 发布，随后由 v0.6.29/30 的商业 Provider 隔离、真实验证、结果兼容与用户验收继续验证当前组合。当前生产为 v0.6.30/schema39；本文件以下冻结身份和施工记录保留原时点，不得再把 `USER_RECHECK` 或旧 package 解释为当前状态。
+当前收口：第一、第二批已在 v0.6.28 发布，随后由 v0.6.29/30 的商业 Provider 隔离、真实验证、结果兼容与用户验收继续验证当前组合。`VIEW-005` 已收口为 `AUTO_PASS`；当前生产仍为 v0.6.30/schema39。本次只读复核只同步治理文档，没有修改产品代码、访问生产或重新执行测试。以下冻结身份和施工记录保留原时点，不得再把 `USER_RECHECK` 或旧 package 解释为当前状态。
 
 ## 1. 当前权威文件
 
@@ -43,7 +43,18 @@
 
 基线会漂移，新Session必须重新只读核对；冲突时停止，不得reset、clean、checkout覆盖或自行修复。
 
-## 3. 已完成
+## 3. 2026-08-22 当前只读复核
+
+- 当前仓库仍为`/Users/mymy/Documents/unboundry/app`，分支为`codex/view-005-dense-canvas-performance-2026-08-21`，复核前HEAD为`9793082c3f83246c82a5fa9c43d5ccc6e31c3481`，package为`0.6.30`；
+- 当前分支相对`v0.6.30`没有`client/`、`server/`、`types/`产品代码差异；
+- v0.6.27的Workflow/Canvas整组执行解耦真实成立，但executor仍依赖React setter和Canvas保存回调，不能解释为UI完全解耦；
+- 同步文字Provider port、`GenerationResultCommit`、Media不再写Generation表、TaskStore/Safety运行时循环均已确认收口；
+- 当前主要剩余风险是`CanvasSurface.tsx`/节点应用层、`generationTasks.ts`媒体协调、Provider→Storage具体实现、跨域SQL和重复Node capability清单；
+- 没有新P0，也没有自动启动的下一批；第三至第六批继续按真实功能触发；
+- `VIEW-005`既有m79精确三档`3/3 PASS`将完整矩阵收口为`48/48`，本轮没有重跑或冒充新测试；
+- 受保护JSON未读取、修改、格式化或暂存；未访问真实Provider、OSS、SSH或生产。
+
+## 4. 已完成
 
 - 全项目只读模块审计；
 - 当前模块地图、主要调用链和跨表访问复核；
@@ -59,7 +70,7 @@
 - 一次TypeScript noEmit及m33/m39/m44/m53/m57定向安全测试；
 - 审计、路线图、验收矩阵、Checkpoint、CURRENT_STATE与TASKS当前区块同步。
 
-## 4. 第一批本地交付
+## 5. 第一批本地交付
 
 状态：第一批已随v0.6.28发布；当时为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。该矩阵本身不冒充独立用户验收，当前组合版本的用户状态由 v0.6.30 回执承担。
 
@@ -83,7 +94,7 @@
 
 未触碰：真实Provider、付费生成、OSS、SSH、生产、4173、`app/data`、`/var/lib/unboundry`、版本、schema、Canvas、Workflow、Media publication。受保护JSON未读取、修改、格式化、暂存或提交。
 
-## 5. 后续批次触发条件
+## 6. 后续批次触发条件
 
 - 异步Provider、任务恢复或Media result commit变化前：第二批；已由2026-08-21三媒体Goal完成并随v0.6.28发布，后续 v0.6.29/30 已补真实验证、结果兼容和当前用户验收；
 - 第三种Storage backend前：第三批；
@@ -94,7 +105,7 @@
 
 这些批次不得遗忘或绕过，也不得在没有触发时为了“完成架构”提前施工。
 
-## 6. 红线
+## 7. 红线
 
 - 受保护JSON禁止读取、提交、删除、改名、覆盖或格式化；
 - 禁止默认`npm run verify`；
@@ -107,7 +118,7 @@
 - 自动测试、Agent验收、生产技术验收和USER PASS必须保持区别；
 - 不得复用旧Goal、旧发布授权或历史会话授权。
 
-## 7. 新Session第一个动作
+## 8. 新Session第一个动作
 
 ```bash
 pwd
@@ -124,7 +135,7 @@ git diff --quiet HEAD origin/main --
 
 随后确认当前HEAD是否为本批本地交付提交、工作树除受保护JSON外是否干净，并将Node/npm切换到package约束。不要自动开始第三至第七批；第一、第二批若要发布、推送或继续USER验收，必须获得新的明确授权。
 
-## 8. 续接规则
+## 9. 续接规则
 
 - 第一、第二批Goal完成后授权均已失效；
 - 第三至第七批必须等待各自触发条件和新的明确Goal；

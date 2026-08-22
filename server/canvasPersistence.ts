@@ -20,7 +20,27 @@ import { canvasGraphFingerprint } from "../types/canvasFingerprint";
 import {
   adoptUploadedMediaReferences,
   MediaPublicationConflictError,
-} from "./mediaLifecycle";
+} from "./mediaPublicationService";
+import {
+  deleteProjectMetadataCommand,
+  touchProjectUpdatedAtCommand,
+  upsertProjectTitleCommand,
+} from "./projectTransactionCommands";
+import { executeTransactionScopedCommand } from "./transactionCommand";
+import { persistedNodeSchemaRegistry } from "../types/persistedNodeSchemaRegistry";
+
+function inImmediateTransaction<T>(store: DatabaseSync, operation: () => T): T {
+  const ownsTransaction = !store.isTransaction;
+  if (ownsTransaction) store.exec("BEGIN IMMEDIATE");
+  try {
+    const result = operation();
+    if (ownsTransaction) store.exec("COMMIT");
+    return result;
+  } catch (error) {
+    if (ownsTransaction && store.isTransaction) store.exec("ROLLBACK");
+    throw error;
+  }
+}
 
 type CanvasDocument = {
   edges: unknown[];
@@ -578,19 +598,12 @@ function touchProjectUpdatedAt(
   id: string,
   now: number,
 ) {
-  if (bypass) {
-    store.prepare(`
-      UPDATE project_metadata
-      SET updated_at = MAX(updated_at, ?)
-      WHERE id = ? AND is_project = 1 AND deleted_at IS NULL
-    `).run(now, id);
-  } else {
-    store.prepare(`
-      UPDATE project_metadata
-      SET updated_at = MAX(updated_at, ?)
-      WHERE owner_id = ? AND id = ? AND is_project = 1 AND deleted_at IS NULL
-    `).run(now, ownerId, id);
-  }
+  executeTransactionScopedCommand(store, touchProjectUpdatedAtCommand, {
+    bypass,
+    canvasId: id,
+    ownerId,
+    updatedAt: now,
+  });
 }
 
 function valid(value: unknown): value is CanvasDocument {
@@ -609,6 +622,12 @@ function valid(value: unknown): value is CanvasDocument {
         Number(document.observedRevision) >= 0)) &&
     Array.isArray(document.nodes) &&
     document.nodes.length <= 5_000 &&
+    document.nodes.every((node) =>
+      !node || typeof node !== "object" || Array.isArray(node) ||
+        !("type" in node)
+        ? true
+        : persistedNodeSchemaRegistry.accepts(node)
+    ) &&
     Array.isArray(document.edges) &&
     document.edges.length <= 10_000 &&
     viewport &&
@@ -1259,13 +1278,11 @@ export async function projectTitle(
       json(response, 404, { error: "Project title not found" });
       return;
     }
-    if (identity.bypass) {
-      store.prepare("DELETE FROM project_metadata WHERE id = ?").run(id);
-    } else {
-      store
-        .prepare("DELETE FROM project_metadata WHERE owner_id = ? AND id = ?")
-        .run(identity.userId, id);
-    }
+    inImmediateTransaction(store, () => executeTransactionScopedCommand(
+      store,
+      deleteProjectMetadataCommand,
+      { bypass: Boolean(identity.bypass), canvasId: id, ownerId: identity.userId },
+    ));
     json(response, 204, {});
     return;
   }
@@ -1329,20 +1346,11 @@ export async function projectTitle(
       return;
     }
     const ownerId = identity.bypass ? "__test__" : identity.userId;
-    store
-      .prepare(`
-        INSERT INTO project_metadata (owner_id, id, title, updated_at)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(owner_id, id) DO UPDATE SET
-          title = excluded.title,
-          updated_at = excluded.updated_at
-        WHERE excluded.updated_at > project_metadata.updated_at
-          OR (
-            excluded.updated_at = project_metadata.updated_at
-            AND excluded.title = project_metadata.title
-          )
-      `)
-      .run(ownerId, id, item.title, item.updatedAt);
+    inImmediateTransaction(store, () => executeTransactionScopedCommand(
+      store,
+      upsertProjectTitleCommand,
+      { canvasId: id, ownerId, title: item.title, updatedAt: item.updatedAt },
+    ));
     const saved = read();
     if (
       !saved ||

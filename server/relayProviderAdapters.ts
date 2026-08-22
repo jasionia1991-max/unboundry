@@ -22,7 +22,7 @@ import {
   reserveMediaPublication,
   stageMediaPublication,
   type MediaPublicationReservation,
-} from "./mediaLifecycle";
+} from "./mediaPublicationService";
 import {
   StorageConfigurationBusyError,
   type AliyunStorageProfile,

@@ -1,7 +1,18 @@
 # Unboundry 绿地复刻当前任务
 
-更新时间：2026-08-21
+> **本地主线集成状态**：当前独立 worktree 为 `/Users/mymy/Documents/unboundry-modular-main-integration-2026-08-22`，分支为 `codex/modular-main-integration-2026-08-22`，从远端 main `dcffba32d57af9accaa25bf01feb40f1e7828092` 建立。D0～D4 已通过，D5 正在冻结本地候选并准备唯一一次 safe full。当前不代表 main、发布或用户验收通过；`MAIN_UNCHANGED / PUSH_NOT_AUTHORIZED / PRODUCTION_FORBIDDEN / REAL_PROVIDER_NOT_RUN / REAL_OSS_NOT_RUN`。唯一续接入口：`spec/UNBOUNDRY_MODULAR_MAIN_INTEGRATION_CHECKPOINT.md`。
+
+更新时间：2026-08-22
 状态：`v0.6.30 已发布并由用户实页验收通过，状态 PRODUCTION_PUBLISHED_USER_PASS / USER_PASS。Nano 既有 JPEG 结果已规范化为 PNG；Suno 两个不同完整 MP3 已按 primary/alternate 保存、可切换且均可播放；三媒体模型只在云腾 Provider 下 published/enabled。Provider 创建 POST 新增 0，优创与冻结备份逐表一致。权威回执见 spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json。`
+
+### 2026-08-22 模块化成果主线集成（D5_IN_PROGRESS）
+
+- D0：离线档案分支只提交六份治理文档，提交 `92a57e49ec89aa1e7550e8109fe1b870069792c8`。
+- D1：`git ls-remote` 复核远端 main 未漂移；冻结产品源相对 main 为45个提交、103个文件，merge-base 等于 main，merge-tree 无冲突标记；独立集成 worktree/branch 已建立。
+- D2：93个最终态文件已一次性恢复；固定离线路径/分支、identity script、pre-script、离线 plan/matrix/checkpoint/receipt 和页面施工闸门明确排除；architecture、safe runner、source coverage、package 和状态文档已改写为 main-safe 形态；内容审计与 diff check 通过。
+- D3：TypeScript、76条精确架构 baseline、399文件 source coverage、production build 和120-spec safe preflight 均通过；4173 listener unchanged。
+- D4 首轮合并定向44 specs、666 tests 为665/666，唯一失败稳定定位为适应视图/缩放后250ms相机静默窗误吞显式 Backspace remove；最小修复后只复验 m1-delete-undo、m1-viewport、m22，共40/40通过，其余成功项未重复。当前冻结本地候选；冻结后只运行本候选唯一一次 safe full。用户四项新候选验收仍为 `NOT_STARTED`。
+
 
 ### 2026-08-21 Provider 结果兼容与既有任务零 POST 恢复（v0.6.30 已发布）
 

@@ -44,7 +44,6 @@ import { GenerationAvailabilityNotice } from "./GenerationAvailabilityNotice";
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
 import { useFinishedGenerationDuration } from "../generation/useFinishedGenerationDuration";
 import { GenerationDurationHint } from "./GenerationDurationHint";
-import { runExclusiveCanvasSubmit } from "../generation/saveGate";
 import {
   friendlyGenerationMessage,
   generationMessageFallback,
@@ -65,18 +64,23 @@ import {
 } from "../generation/generationRetry";
 import {
   clearGenerationSubmissionIntent,
-  ensureGenerationTask,
   GENERATION_TASK_RETRY_ACCEPTED_EVENT,
   GenerationRequestError,
   getGenerationTask,
   listGenerationTasks,
   recoverPendingGenerationTask,
-  retryGenerationTask,
   waitForGenerationTask,
   type GenerationTaskRetryAcceptedDetail,
   type GenerationTaskSummary,
 } from "../generation/generationTasks";
-import { recoverWorkflowGenerationOnce } from "../generation/workflowGenerationRecovery";
+import { createBrowserSingleNodeGenerationTaskPort } from "../generation/browserSingleNodeGenerationTaskPort";
+import {
+  createSingleNodeGenerationLifecycle,
+  type SingleNodeGenerationAdapter,
+  type SingleNodeGenerationBlocked,
+  type SingleNodeLifecycleResult,
+  type SingleNodeGenerationPlan,
+} from "../generation/singleNodeGenerationLifecycle";
 
 const tools = [
   ["背景颜色", "color"],
@@ -103,6 +107,130 @@ type TextTaskOwner = {
   taskId: string;
   token: symbol;
 };
+
+function createTextGenerationAdapter(input: {
+  inputKey: string;
+  modelId?: string;
+  modelName?: string;
+  nodeId: string;
+  ownershipKey: string;
+  parameters?: ProbeNodeType["data"]["textParameters"];
+  payload: unknown;
+  readBlock: () => SingleNodeGenerationBlocked | undefined;
+}): SingleNodeGenerationAdapter {
+  return {
+    applyPrepared(node) {
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          textModelId: input.modelId,
+          textModelName: input.modelName,
+          textParameters: input.parameters,
+        },
+      };
+    },
+    applyBinding(node, task, plan) {
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          groupRunSuccessOwnershipKey: undefined,
+          groupRunSuccessResultKey: undefined,
+          groupRunSuccessTaskId: undefined,
+          textGenerating: true,
+          textGenerationError: undefined,
+          textGenerationErrorCode: undefined,
+          textGenerationInputKey: plan.inputKey,
+          textGenerationOwnershipKey: task.generationOwnershipKey ?? plan.ownershipKey,
+          textGenerationRetryAllowed: undefined,
+          textGenerationRetryBlockCode: undefined,
+          textGenerationRetryBlockReason: undefined,
+          textGenerationTaskId: task.id,
+          textModelId: input.modelId,
+          textModelName: input.modelName,
+          textParameters: input.parameters,
+        },
+      };
+    },
+    applyTerminal(node, task, plan) {
+      if (task.state === "success") {
+        const resultText = task.resultText?.trim() ?? "";
+        if (!resultText) throw new Error("文字结果不完整");
+        const contentHtml = plainTextHtml(resultText);
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            content: resultText,
+            contentHtml,
+            groupRunSuccessOwnershipKey: plan.ownershipKey,
+            groupRunSuccessResultKey: groupRunResultKey({ content: resultText, contentHtml }),
+            groupRunSuccessTaskId: task.id,
+            textGenerating: false,
+            textGenerationError: undefined,
+            textGenerationErrorCode: undefined,
+            textGenerationInputKey: undefined,
+            textGenerationOwnershipKey: undefined,
+            textGenerationRetryAllowed: undefined,
+            textGenerationRetryBlockCode: undefined,
+            textGenerationRetryBlockReason: undefined,
+            textGenerationTaskId: task.id,
+          },
+        };
+      }
+      if (task.state === "cancelled") {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            textGenerating: false,
+            textGenerationError: task.errorMessage ?? "文字生成已取消",
+            textGenerationErrorCode: undefined,
+            textGenerationInputKey: undefined,
+            textGenerationOwnershipKey: undefined,
+            textGenerationRetryAllowed: undefined,
+            textGenerationRetryBlockCode: undefined,
+            textGenerationRetryBlockReason: undefined,
+            textGenerationTaskId: undefined,
+          },
+        };
+      }
+      const visibleMessage = generationFailureMessage(
+        task.errorMessage ?? "文字生成失败，请稍后再试",
+        task.retryAllowed ? undefined : task.retryBlockReason,
+        task.errorCode,
+        "text",
+      );
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          textGenerating: false,
+          textGenerationError: visibleMessage,
+          textGenerationErrorCode: task.errorCode,
+          textGenerationInputKey: plan.inputKey,
+          textGenerationRetryAllowed: task.retryAllowed === true,
+          textGenerationRetryBlockCode: task.retryBlockCode,
+          textGenerationRetryBlockReason: task.retryBlockReason,
+          textGenerationTaskId: task.id,
+        },
+      };
+    },
+    kind: "text",
+    readPlan(): SingleNodeGenerationBlocked | SingleNodeGenerationPlan {
+      const block = input.readBlock();
+      if (block) return block;
+      return {
+        inputKey: input.inputKey,
+        kind: "text",
+        nodeId: input.nodeId,
+        ownershipKey: input.ownershipKey,
+        payload: input.payload,
+      };
+    },
+  };
+}
 
 function textTaskMatchesNode(
   task: GenerationTaskSummary,
@@ -334,7 +462,7 @@ function TextNodeImpl({
     owner: TextTaskOwner;
     taskId: string;
   } | null>(null);
-  const { setEdges, setNodes } = useCanvasGraphMutation();
+  const { graphCommandPort, setEdges, setNodes } = useCanvasGraphMutation();
   const { getNodes } = useReactFlow<ProbeNodeType>();
   const canvasEdges = useEdges();
   const canvasNodes = useNodes<ProbeNodeType>();
@@ -1016,6 +1144,8 @@ function TextNodeImpl({
     let recovery:
       | { controller: AbortController; owner: TextTaskOwner; taskId: string }
       | undefined;
+    let lifecycle: ReturnType<typeof createSingleNodeGenerationLifecycle> |
+      undefined;
     let persistedTaskReadPending = false;
     void (async () => {
       let task: GenerationTaskSummary | undefined;
@@ -1165,54 +1295,122 @@ function TextNodeImpl({
       recoveryTaskRef.current = recovery;
       setRecoveringTask(true);
       if (!ownsTextTask(owner)) return;
-      setNodes((nodes) => nodes.map((node) => node.id === id
+      if (!graphCommandPort) return;
+      const retainPersistedBlock = task.state === "failed" &&
+        data.textGenerationRetryAllowed === false;
+      const recoveredTask = retainPersistedBlock
         ? {
-            ...node,
-            data: {
-              ...node.data,
-              textGenerationError: undefined,
-              textGenerationErrorCode: undefined,
-              textGenerationInputKey:
-                persistedInputKey ?? task.generationInputKey,
-              textGenerationOwnershipKey: recoveredOwnershipKey,
-              textGenerationRetryAllowed: undefined,
-              textGenerationRetryBlockCode: undefined,
-              textGenerationRetryBlockReason: undefined,
-              textGenerating: !["success", "failed", "cancelled"].includes(
-                task.state,
-              ),
-              textGenerationTaskId: task.id,
-            },
+            ...task,
+            errorCode: data.textGenerationErrorCode,
+            errorMessage: data.textGenerationError ??
+              task.errorMessage ??
+              "文字生成失败，可重试",
+            retryAllowed: false,
+            retryBlockCode: data.textGenerationRetryBlockCode,
+            retryBlockReason: data.textGenerationRetryBlockReason,
           }
-        : node));
-      if (task.state === "success") {
-        await applyGeneratedText(task, owner);
-      } else if (["queued", "running", "retrying", "recovering"].includes(task.state)) {
-        await finishTextTask(task.id, owner, controller.signal);
-      } else if (task.state === "cancelled") {
-        persistTextGenerationCancellation(
-          task.id,
-          owner,
-          task.errorMessage ?? "文字生成已取消",
-        );
-      } else {
-        const retainPersistedBlock = data.textGenerationRetryAllowed === false;
-        persistTextGenerationFailure(
-          task.id,
-          owner,
-          retainPersistedBlock && data.textGenerationError
-            ? data.textGenerationError
-            : task.errorMessage ?? "文字生成失败，可重试",
-          retainPersistedBlock ? data.textGenerationErrorCode : task.errorCode,
-          retainPersistedBlock ? false : task.retryAllowed === true,
-          retainPersistedBlock
-            ? data.textGenerationRetryBlockCode
-            : task.retryBlockCode,
-          retainPersistedBlock
-            ? data.textGenerationRetryBlockReason
-            : task.retryBlockReason,
-        );
+        : task;
+      const recoveryAdapter = createTextGenerationAdapter({
+        inputKey: persistedInputKey ??
+          task.generationInputKey ??
+          generationInputKey,
+        modelId: data.textModelId,
+        modelName: data.textModelName,
+        nodeId: id,
+        ownershipKey: recoveredOwnershipKey ??
+          rawGenerationInputFingerprint,
+        parameters: data.textParameters,
+        payload: textGenerationRequestInput,
+        readBlock() {
+          if (
+            !owner ||
+            !ownsTextTask(owner) ||
+            textManualEditVersionRef.current !== manualEditVersion
+          ) {
+            return {
+              message: "生成输入已修改，已停止本次恢复",
+              status: "blocked",
+            };
+          }
+        },
+      });
+      const applyRecoveryTerminal = recoveryAdapter.applyTerminal;
+      lifecycle = createSingleNodeGenerationLifecycle({
+        adapter: {
+          ...recoveryAdapter,
+          applyTerminal(node, terminalTask, plan) {
+            textTerminalPatchPendingTaskRef.current = terminalTask.id;
+            return applyRecoveryTerminal(node, terminalTask, plan);
+          },
+        },
+        graph: graphCommandPort,
+        nodeId: id,
+        save: {
+          flush: async () => undefined,
+          async waitForRevision() {
+            return { revision: await waitForCanvasRevision() };
+          },
+        },
+        tasks: createBrowserSingleNodeGenerationTaskPort({
+          accountId,
+          onPollingPaused(pausedTaskId) {
+            if (!owner || !ownsTextTask(owner)) return;
+            pollingPausedTaskIdRef.current = pausedTaskId;
+            setPollingPausedTaskId(pausedTaskId);
+            setGenerationError(POLLING_PAUSED_MESSAGE);
+          },
+        }),
+      });
+      controller.signal.addEventListener(
+        "abort",
+        () => lifecycle?.abort("text-recovery-aborted"),
+        { once: true },
+      );
+      let result: SingleNodeLifecycleResult;
+      try {
+        result = await lifecycle.recover(recoveredTask);
+      } catch (error) {
+        if (
+          pollingPausedTaskIdRef.current === task.id &&
+          ownsTextTask(owner)
+        ) return;
+        throw error;
       }
+      if (!result.task || result.status === "stale") {
+        return;
+      }
+      clearGenerationSubmissionIntent(
+        "text",
+        canvasId,
+        id,
+        result.task.id,
+        accountId,
+      );
+      if (textTerminalPatchPendingTaskRef.current === result.task.id) {
+        textTerminalPatchPendingTaskRef.current = undefined;
+      }
+      if (!ownsTextTask(owner)) return;
+      pollingPausedTaskIdRef.current = undefined;
+      setPollingPausedTaskId(undefined);
+      if (result.status === "success") {
+        const resultText = result.task.resultText?.trim() ?? "";
+        const nextValue = storedRichTextValue(resultText, plainTextHtml(resultText));
+        setBodyValue(nextValue);
+        bodyLocalValue.current = nextValue;
+        setEmpty(false);
+        setGenerationError("");
+        return;
+      }
+      setGenerationError(generationFailureMessage(
+        result.task.errorMessage ?? (
+          result.status === "cancelled"
+            ? "文字生成已取消"
+            : "文字生成失败，请稍后再试"
+        ),
+        result.task.retryAllowed ? undefined : result.task.retryBlockReason,
+        result.task.errorCode,
+        "text",
+      ));
     })()
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -1247,6 +1445,7 @@ function TextNodeImpl({
       });
     return () => {
       controller.abort();
+      lifecycle?.abort("text-recovery-unmounted");
       if (owner) releaseTextTask(owner);
       if (recovery && recoveryTaskRef.current === recovery) {
         recoveryTaskRef.current = null;
@@ -1267,6 +1466,7 @@ function TextNodeImpl({
     data.textGenerationRetryBlockReason,
     data.textGenerationTaskId,
     data.workflowExecutionRunId,
+    graphCommandPort,
     id,
     isFixture,
     persistenceReady,
@@ -1278,7 +1478,7 @@ function TextNodeImpl({
   ]);
 
   const generateText = async (
-    options: { autoRecover?: boolean } = {},
+    _options: { autoRecover?: boolean } = {},
   ): Promise<NodeGenerationOutcome> => {
     if (
       !inputPreflight.canSubmit ||
@@ -1292,9 +1492,7 @@ function TextNodeImpl({
     setSubmitting(true);
     setGenerationError("");
     setServerInputProblems([]);
-    let taskId: string | undefined;
     let owner: TextTaskOwner | undefined;
-    let bindingPersisted = false;
     const manualEditVersion = textManualEditVersionRef.current;
     const requestedGenerationInputKey = generationInputKey;
     const requestedGenerationOwnershipKey =
@@ -1303,173 +1501,80 @@ function TextNodeImpl({
     const requestedModelName = textModelSelection.displayName;
     const requestedParameters = { ...textParameters };
     try {
-      setNodes((nodes) => nodes.map((node) => node.id === id
-        ? {
-            ...node,
-            data: {
-              ...node.data,
-              textModelId: requestedModelId,
-              textModelName: requestedModelName,
-              textParameters: requestedParameters,
-            },
-          }
-        : node));
-      const admitted = await runExclusiveCanvasSubmit(canvasId, async () => {
-        const freshCanvasRevision = await waitForCanvasRevision();
-        if (
-          textManualEditVersionRef.current !== manualEditVersion ||
-          liveGenerationOwnershipKeyRef.current !==
-            requestedGenerationOwnershipKey
-        ) {
-          return {
-            message: "生成输入已修改，已停止本次生成",
-            status: "failed" as const,
-          };
-        }
-        const {
-          generationOwnershipKey: persistedGenerationOwnershipKey,
-          task: submitted,
-        } = await ensureGenerationTask(
-          "text",
-          {
-            ...textGenerationRequestInput,
-            canvasRevision: freshCanvasRevision,
-          },
-          accountId,
-          () => {
+      if (!graphCommandPort) return { status: "skipped" };
+      checkpoint();
+      const lifecycle = createSingleNodeGenerationLifecycle({
+        adapter: createTextGenerationAdapter({
+          inputKey: requestedGenerationInputKey,
+          modelId: requestedModelId,
+          modelName: requestedModelName,
+          nodeId: id,
+          ownershipKey: requestedGenerationOwnershipKey,
+          parameters: requestedParameters,
+          payload: textGenerationRequestInput,
+          readBlock() {
             if (
               textManualEditVersionRef.current !== manualEditVersion ||
-              liveGenerationOwnershipKeyRef.current !==
-                requestedGenerationOwnershipKey
+              liveGenerationOwnershipKeyRef.current !== requestedGenerationOwnershipKey
             ) {
-              throw new Error("生成输入已修改，已停止本次生成");
+              return { message: "生成输入已修改，已停止本次生成", status: "blocked" };
             }
           },
-          { generationOwnershipKey: requestedGenerationOwnershipKey },
-        );
-        taskId = submitted.id;
-        if (
-          textManualEditVersionRef.current !== manualEditVersion ||
-          liveGenerationOwnershipKeyRef.current !==
-            requestedGenerationOwnershipKey
-        ) {
-          clearGenerationSubmissionIntent(
-            "text",
-            canvasId,
-            id,
-            submitted.id,
-            accountId,
-          );
-          return {
-            message: "生成输入已修改，旧任务结果不会覆盖当前内容",
-            status: "failed" as const,
-          };
-        }
-        owner = claimTextTask(
-          taskId,
-          requestedGenerationOwnershipKey,
-          requestedGenerationInputKey,
-        );
-        checkpoint();
-        setNodes((nodes) => nodes.map((node) => node.id === id
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                textGenerationError: undefined,
-                textGenerationErrorCode: undefined,
-                textGenerationInputKey: generationInputKey,
-                textGenerationOwnershipKey:
-                  persistedGenerationOwnershipKey ??
-                  requestedGenerationOwnershipKey,
-                textGenerationRetryAllowed: undefined,
-                textGenerationRetryBlockCode: undefined,
-                textGenerationRetryBlockReason: undefined,
-                textGenerating: true,
-                textGenerationTaskId: submitted.id,
-                groupRunSuccessOwnershipKey: undefined,
-                groupRunSuccessResultKey: undefined,
-                groupRunSuccessTaskId: undefined,
-                textModelId: requestedModelId,
-                textModelName: requestedModelName,
-                textParameters: requestedParameters,
-              },
-            }
-          : node));
-        await flushCanvasSave();
-        bindingPersisted = true;
-        if (
-          !ownsTextTask(owner) ||
-          liveGenerationOwnershipKeyRef.current !==
-            requestedGenerationOwnershipKey
-        ) {
-          return {
-            message: "生成输入已修改，旧任务结果不会覆盖当前内容",
-            status: "failed" as const,
-          };
-        }
-        return { status: "admitted" as const, submitted, owner };
+        }),
+        graph: graphCommandPort,
+        nodeId: id,
+        save: {
+          flush: async () => undefined,
+          async waitForRevision() {
+            return { revision: await waitForCanvasRevision() };
+          },
+        },
+        tasks: createBrowserSingleNodeGenerationTaskPort({
+          accountId,
+          onPollingPaused(taskId) {
+            pollingPausedTaskIdRef.current = taskId;
+            setPollingPausedTaskId(taskId);
+            setGenerationError(POLLING_PAUSED_MESSAGE);
+          },
+          onTaskObserved(task) {
+            owner = claimTextTask(
+              task.id,
+              requestedGenerationOwnershipKey,
+              requestedGenerationInputKey,
+            );
+          },
+        }),
       });
-      if (admitted.status !== "admitted") return admitted;
-      const submitted = admitted.submitted;
-      await finishTextTask(submitted.id, admitted.owner);
-      if (pollingPausedTaskIdRef.current === submitted.id) {
-        return { message: POLLING_PAUSED_MESSAGE, status: "failed" };
+      const result = await lifecycle.generate();
+      if (!result.task) {
+        return { message: "生成输入已修改，已停止本次生成", status: "failed" };
       }
-      const finished = getNodes().find((node) => node.id === id);
-      if (
-        finished?.data.textGenerationError ||
-        finished?.data.textGenerationErrorCode
-      ) {
-        if (options.autoRecover && admitted.owner) {
-          const recovered = await recoverWorkflowGenerationOnce({
-            canvasId,
-            generationInputKey: requestedGenerationInputKey,
-            kind: "text",
-            nodeId: id,
-            taskId: submitted.id,
-            waitForCanvasRevision,
-          });
-          if (recovered.status === "success" && recovered.task) {
-            await applyGeneratedText(recovered.task, admitted.owner);
-            return {
-              status: "success",
-              successProof: {
-                ownershipKey: admitted.owner.generationOwnershipKey ?? "",
-                resultKey: groupRunResultKey({
-                  content: recovered.task.resultText?.trim() ?? "",
-                  contentHtml: plainTextHtml(recovered.task.resultText?.trim() ?? ""),
-                }),
-                taskId: recovered.task.id,
-              },
-            };
-          }
-          return {
-            message: friendlyGenerationMessage(
-              recovered.message ?? finished.data.textGenerationError,
-              "text",
-            ),
-            status: "failed",
-          };
-        }
-        return {
-          message: friendlyGenerationMessage(
-            finished.data.textGenerationError,
-            "text",
-          ),
-          status: "failed",
-        };
+      clearGenerationSubmissionIntent("text", canvasId, id, result.task.id, accountId);
+      if (result.status !== "success") {
+        const message = result.task.errorMessage ?? "文字生成失败，请稍后再试";
+        setGenerationError(generationFailureMessage(
+          message,
+          result.task.retryAllowed ? undefined : result.task.retryBlockReason,
+          result.task.errorCode,
+          "text",
+        ));
+        return { message, status: "failed" };
       }
+      const resultText = result.task.resultText?.trim() ?? "";
+      const nextValue = storedRichTextValue(resultText, plainTextHtml(resultText));
+      setBodyValue(nextValue);
+      bodyLocalValue.current = nextValue;
+      setEmpty(false);
+      setGenerationError("");
       return {
         status: "success",
         successProof: {
-          ownershipKey: admitted.owner.generationOwnershipKey ?? "",
+          ownershipKey: requestedGenerationOwnershipKey,
           resultKey: groupRunResultKey({
-            content: finished?.data.content ?? submitted.resultText?.trim() ?? "",
-            contentHtml: finished?.data.contentHtml ??
-              plainTextHtml(submitted.resultText?.trim() ?? ""),
+            content: resultText,
+            contentHtml: nextValue.html,
           }),
-          taskId: submitted.id,
+          taskId: result.task.id,
         },
       };
     } catch (error) {
@@ -1480,34 +1585,7 @@ function TextNodeImpl({
         ? error.message
         : generationMessageFallback("text");
       const friendly = friendlyGenerationMessage(message, "text");
-      if (taskId && owner && ownsTextTask(owner)) {
-        if (!bindingPersisted) {
-          pollingPausedTaskIdRef.current = taskId;
-          setPollingPausedTaskId(taskId);
-          setGenerationError(
-            "画布尚未安全保存，任务状态未查询；请重新检查",
-          );
-          return {
-            message: "画布尚未安全保存，任务状态未查询；请重新检查",
-            status: "failed",
-          };
-        }
-        persistTextGenerationFailure(
-          taskId,
-          owner,
-          friendly,
-          error instanceof GenerationRequestError
-            ? error.code
-            : "TASK_STATUS_UNKNOWN",
-          false,
-          error instanceof GenerationRequestError
-            ? error.code
-            : "TASK_STATUS_UNKNOWN",
-          error instanceof GenerationRequestError
-            ? error.message
-            : "任务状态暂时无法确认，不能一键重试，请稍后刷新查看",
-        );
-      } else if (textManualEditVersionRef.current === manualEditVersion) {
+      if (textManualEditVersionRef.current === manualEditVersion) {
         setGenerationError(friendly);
       }
       return { message: friendly, status: "failed" };
@@ -1538,51 +1616,75 @@ function TextNodeImpl({
     );
     setSubmitting(true);
     let retryAccepted = false;
+    let retrySaveGatePassed = false;
     try {
-      await retryGenerationTask({
-        canvasId,
-        generationInputKey: requestedGenerationInputKey,
-        kind: "text",
+      if (!graphCommandPort) return;
+      const lifecycle = createSingleNodeGenerationLifecycle({
+        adapter: createTextGenerationAdapter({
+          inputKey: requestedGenerationInputKey,
+          modelId: selectedTextModelId,
+          modelName: textModelSelection.displayName,
+          nodeId: id,
+          ownershipKey: requestedGenerationOwnershipKey,
+          parameters: { ...textParameters },
+          payload: textGenerationRequestInput,
+          readBlock() {
+            if (!retrySaveGatePassed) return;
+            if (!ownsTextTask(owner)) {
+              return { message: "正文已手工修改，已停止本次重试", status: "blocked" };
+            }
+            if (liveGenerationInputKeyRef.current !== requestedGenerationInputKey) {
+              return { message: "生成输入已修改，已停止本次重试", status: "blocked" };
+            }
+          },
+        }),
+        graph: graphCommandPort,
         nodeId: id,
-        taskId,
-      }, async () => {
-        const revision = await waitForCanvasRevision();
-        if (!ownsTextTask(owner)) {
-          throw new Error("正文已手工修改，已停止本次重试");
-        }
-        if (liveGenerationInputKeyRef.current !== requestedGenerationInputKey) {
-          throw new Error("生成输入已修改，已停止本次重试");
-        }
-        return revision;
+        save: {
+          flush: async () => undefined,
+          async waitForRevision() {
+            const revision = await waitForCanvasRevision();
+            retrySaveGatePassed = true;
+            return { revision };
+          },
+        },
+        tasks: createBrowserSingleNodeGenerationTaskPort({
+          accountId,
+          onPollingPaused(pausedTaskId) {
+            pollingPausedTaskIdRef.current = pausedTaskId;
+            setPollingPausedTaskId(pausedTaskId);
+            setGenerationError(POLLING_PAUSED_MESSAGE);
+          },
+          onTaskObserved(task) {
+            if (task.id === taskId) retryAccepted = true;
+          },
+        }),
       });
-      if (
-        !ownsTextTask(owner) ||
-        liveGenerationInputKeyRef.current !== requestedGenerationInputKey
-      ) return;
-      retryAccepted = true;
-      setGenerationError("");
-      setNodes((nodes) => nodes.map((node) => node.id === id
-        ? {
-            ...node,
-            data: {
-              ...node.data,
-              textGenerationError: undefined,
-              textGenerationErrorCode: undefined,
-              textGenerationInputKey: generationInputKey,
-              textGenerationOwnershipKey: requestedGenerationOwnershipKey,
-              textGenerationRetryAllowed: undefined,
-              textGenerationRetryBlockCode: undefined,
-              textGenerationRetryBlockReason: undefined,
-              textGenerating: true,
-              groupRunSuccessOwnershipKey: undefined,
-              groupRunSuccessResultKey: undefined,
-              groupRunSuccessTaskId: undefined,
-            },
-          }
-        : node));
-      await finishTextTask(taskId, owner);
+      const result = await lifecycle.retry({ id: taskId });
+      if (!result.task || result.status === "stale") return;
+      clearGenerationSubmissionIntent("text", canvasId, id, taskId, accountId);
+      if (result.status === "success") {
+        const resultText = result.task.resultText?.trim() ?? "";
+        const nextValue = storedRichTextValue(resultText, plainTextHtml(resultText));
+        setBodyValue(nextValue);
+        bodyLocalValue.current = nextValue;
+        setEmpty(false);
+        setGenerationError("");
+        pollingPausedTaskIdRef.current = undefined;
+        setPollingPausedTaskId(undefined);
+        return;
+      }
+      setGenerationError(generationFailureMessage(
+        result.task.errorMessage ?? (
+          result.status === "cancelled" ? "文字生成已取消" : "文字生成重试失败"
+        ),
+        result.task.retryAllowed ? undefined : result.task.retryBlockReason,
+        result.task.errorCode,
+        "text",
+      ));
     } catch (error) {
       if (!ownsTextTask(owner)) return;
+      if (pollingPausedTaskIdRef.current === taskId) return;
       if (!retryAccepted && !(error instanceof GenerationRequestError)) {
         setGenerationError(
           error instanceof Error ? error.message : "画布尚未安全保存，不能重试生成",

@@ -22,6 +22,24 @@ import { generationProviderAttemptCounts } from "./generationAttemptQueries";
 
 export type RunningTaskPolicy = "cancel" | "wait";
 
+type RunningTaskPolicySummary = {
+  cancelled: number;
+  error?: string;
+  failed: number;
+  waiting: number;
+};
+
+let applyRunningTaskPolicy: (() => Promise<RunningTaskPolicySummary>) | undefined;
+
+export function configureEmergencyStopRunningTaskPolicy(
+  apply: () => Promise<RunningTaskPolicySummary>,
+) {
+  if (applyRunningTaskPolicy && applyRunningTaskPolicy !== apply) {
+    throw new Error("Emergency-stop running-task policy is already configured");
+  }
+  applyRunningTaskPolicy = apply;
+}
+
 export type GenerationSafetySettings = {
   audioConcurrency: number;
   cooldownMinutes: number;
@@ -616,23 +634,15 @@ export async function adminGenerationSafetyApi(
         applyRunningTaskPolicyAfterCommit,
         settings,
       } = safetyStore().updateForAdmin(identity.userId, input);
-      let runningTaskPolicySummary:
-        | {
-            cancelled: number;
-            error?: string;
-            failed: number;
-            waiting: number;
-          }
-        | undefined;
+      let runningTaskPolicySummary: RunningTaskPolicySummary | undefined;
       // Running-task cancellation may await Provider-aware task transitions,
       // so it intentionally starts only after settings + audit have committed.
       if (applyRunningTaskPolicyAfterCommit) {
         try {
-          const { applyEmergencyStopRunningTaskPolicy } = await import(
-            "./generationTasks"
-          );
-          runningTaskPolicySummary =
-            await applyEmergencyStopRunningTaskPolicy();
+          if (!applyRunningTaskPolicy) {
+            throw new Error("Generation running-task policy is not configured");
+          }
+          runningTaskPolicySummary = await applyRunningTaskPolicy();
         } catch (error) {
           runningTaskPolicySummary = {
             cancelled: 0,

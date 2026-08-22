@@ -9,6 +9,12 @@ import {
   readJsonBody,
 } from "./httpRequest";
 import { cancelCanvasGenerationTasks } from "./generationTasks";
+import {
+  createProjectCanvasDocumentCommand,
+  deleteProjectCanvasDocumentsCommand,
+} from "./canvasTransactionCommands";
+import { deleteProjectGenerationDataCommand } from "./generationTransactionCommands";
+import { executeTransactionScopedCommand } from "./transactionCommand";
 
 const projectIdPattern = /^[a-z0-9._-]+$/i;
 const defaultProjectTitle = "未命名项目";
@@ -153,49 +159,29 @@ export function deleteProjectRows(
   now: number,
   bypass: boolean,
 ) {
-  if (bypass) {
-    store.prepare(`
-      UPDATE project_metadata
-      SET is_project = 0, deleted_at = ?
-      WHERE id = ? AND is_project = 1 AND deleted_at IS NULL
-    `).run(now, id);
-    store.prepare("DELETE FROM canvas_documents WHERE id = ?").run(id);
-  } else {
-    store.prepare(`
-      UPDATE project_metadata
-      SET is_project = 0, deleted_at = ?
-      WHERE owner_id = ? AND id = ? AND is_project = 1 AND deleted_at IS NULL
-    `).run(now, ownerId, id);
-    store.prepare(
-      "DELETE FROM canvas_documents WHERE owner_id = ? AND id = ?",
-    ).run(ownerId, id);
-  }
-  if (bypass) {
-    store.prepare(`
-      DELETE FROM generation_provider_attempts
-      WHERE task_id IN (SELECT id FROM generation_tasks WHERE canvas_id = ?)
-    `).run(id);
-    store.prepare(`
-      DELETE FROM generation_task_events
-      WHERE task_id IN (SELECT id FROM generation_tasks WHERE canvas_id = ?)
-    `).run(id);
-    store.prepare("DELETE FROM generation_tasks WHERE canvas_id = ?").run(id);
-  } else {
-    store.prepare(`
-      DELETE FROM generation_provider_attempts
-      WHERE task_id IN (
-        SELECT id FROM generation_tasks WHERE owner_id = ? AND canvas_id = ?
-      )
-    `).run(ownerId, id);
-    store.prepare(`
-      DELETE FROM generation_task_events
-      WHERE task_id IN (
-        SELECT id FROM generation_tasks WHERE owner_id = ? AND canvas_id = ?
-      )
-    `).run(ownerId, id);
-    store.prepare(`
-      DELETE FROM generation_tasks WHERE owner_id = ? AND canvas_id = ?
-    `).run(ownerId, id);
+  const ownsTransaction = !store.isTransaction;
+  if (ownsTransaction) store.exec("BEGIN IMMEDIATE");
+  try {
+    if (bypass) {
+      store.prepare(`
+        UPDATE project_metadata
+        SET is_project = 0, deleted_at = ?
+        WHERE id = ? AND is_project = 1 AND deleted_at IS NULL
+      `).run(now, id);
+    } else {
+      store.prepare(`
+        UPDATE project_metadata
+        SET is_project = 0, deleted_at = ?
+        WHERE owner_id = ? AND id = ? AND is_project = 1 AND deleted_at IS NULL
+      `).run(now, ownerId, id);
+    }
+    const input = { bypass, canvasId: id, ownerId };
+    executeTransactionScopedCommand(store, deleteProjectCanvasDocumentsCommand, input);
+    executeTransactionScopedCommand(store, deleteProjectGenerationDataCommand, input);
+    if (ownsTransaction) store.exec("COMMIT");
+  } catch (error) {
+    if (ownsTransaction && store.isTransaction) store.exec("ROLLBACK");
+    throw error;
   }
 }
 
@@ -360,18 +346,14 @@ export async function projectsApi(
           )
           VALUES (?, ?, ?, ?, 1, ?)
         `).run(ownerId, projectId, title || defaultProjectTitle, now, now);
-        store.prepare(`
-          INSERT INTO canvas_documents (
-            owner_id, id, revision, graph_revision, nodes, edges, viewport,
-            updated_at, save_sequence
-          )
-          VALUES (?, ?, 1, 1, '[]', '[]', ?, ?, 0)
-        `).run(
+        executeTransactionScopedCommand(store, createProjectCanvasDocumentCommand, {
+          canvasId: projectId,
+          edges: "[]",
+          nodes: "[]",
           ownerId,
-          projectId,
-          defaultViewport,
-          new Date(now).toISOString(),
-        );
+          updatedAt: new Date(now).toISOString(),
+          viewport: defaultViewport,
+        });
         store.exec("COMMIT");
       } catch (error) {
         store.exec("ROLLBACK");
@@ -426,20 +408,14 @@ export async function projectsApi(
         )
         VALUES (?, ?, ?, ?, 1, ?)
       `).run(ownerId, projectId, title, now, now);
-      store.prepare(`
-        INSERT INTO canvas_documents (
-          owner_id, id, revision, graph_revision, nodes, edges, viewport,
-          updated_at, save_sequence
-        )
-        VALUES (?, ?, 1, 1, ?, ?, ?, ?, 0)
-      `).run(
+      executeTransactionScopedCommand(store, createProjectCanvasDocumentCommand, {
+        canvasId: projectId,
+        edges: canvas?.edges ?? "[]",
+        nodes: canvas?.nodes ?? "[]",
         ownerId,
-        projectId,
-        canvas?.nodes ?? "[]",
-        canvas?.edges ?? "[]",
-        canvas?.viewport ?? defaultViewport,
-        new Date(now).toISOString(),
-      );
+        updatedAt: new Date(now).toISOString(),
+        viewport: canvas?.viewport ?? defaultViewport,
+      });
       store.exec("COMMIT");
     } catch (error) {
       store.exec("ROLLBACK");

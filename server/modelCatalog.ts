@@ -39,8 +39,12 @@ import {
   providerProtocolSupportsCapability,
   type ProviderProtocol,
 } from "../types/relayProtocols";
+import {
+  generationCapabilityKinds,
+  type GenerationCapabilityKind,
+} from "../types/nodeVocabulary";
 
-type Capability = "audio" | "image" | "text" | "video";
+type Capability = GenerationCapabilityKind;
 type ModelStatus = "disabled" | "draft" | "published";
 
 type ModelRow = {
@@ -180,7 +184,7 @@ function mediaInputPolicy(row: ModelSchemaRow) {
     : undefined;
 }
 
-const capabilities: readonly Capability[] = ["text", "image", "video", "audio"];
+const capabilities: readonly Capability[] = generationCapabilityKinds;
 const statuses: readonly ModelStatus[] = ["draft", "published", "disabled"];
 let database: DatabaseSync | undefined;
 let databaseDirectory = "";

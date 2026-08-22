@@ -1,0 +1,1037 @@
+import { createHash } from "node:crypto";
+import { mkdir, readFile, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import {
+  createCanvasGraphCommandPort,
+  type CanvasGraphCommand,
+  type CanvasGraphCommandPort,
+  type CanvasGraphSnapshot,
+  type CanvasSavePort,
+} from "../client/src/canvas/canvasPorts";
+import {
+  CanvasNodeRegistry,
+  canvasNodeRegistry,
+} from "../client/src/canvas/canvasNodeRegistry";
+import {
+  createSingleNodeGenerationLifecycle,
+  type SingleNodeGenerationTaskPort,
+} from "../client/src/generation/singleNodeGenerationLifecycle";
+import type { GenerationTaskSummary } from
+  "../client/src/generation/generationTasks";
+import {
+  type GenerationQueryPort,
+  type GenerationTaskQueryEvidence,
+} from "../server/generationQueryPort";
+import { applicationComposition } from "../server/applicationComposition";
+import {
+  MediaGenerationProviderRegistry,
+  type MediaGenerationExecution,
+  type MediaGenerationProvider,
+  type MediaGenerationRequest,
+} from "../server/mediaGenerationProvider";
+import { mediaProviderRegistry } from "../server/providerMediaGenerationAdapters";
+import {
+  GenerationCapabilityRegistry,
+  generationCapabilityRegistry,
+} from "../server/generationCapabilityRegistry";
+import { deleteAccountCanvasDataCommand } from "../server/canvasTransactionCommands";
+import { deleteAccountGenerationDataCommand } from "../server/generationTransactionCommands";
+import { transferAccountMediaCommand } from "../server/mediaTransactionCommands";
+import { deleteAccountProjectDataCommand } from "../server/projectTransactionCommands";
+import { transferAndDeleteAccountTemplatesCommand } from
+  "../server/templateTransactionCommands";
+import {
+  createAliyunMediaBlobStore,
+  createLocalMediaBlobStore,
+  createMemoryMediaBlobStore,
+  type AliyunMediaBlobDriver,
+} from "../server/mediaBlobStores";
+import type { ProviderProfile } from "../server/providerProfiles";
+import {
+  createMediaPublicationService,
+  mediaPublicationService,
+} from "../server/mediaPublicationService";
+import {
+  genericReferenceMediaRules,
+  providerMediaUrlForOwner,
+} from "../server/providerMedia";
+import {
+  type AcquireProviderReferenceInput,
+  type ProviderReferenceLease,
+  type ProviderReferenceStore,
+} from "../server/providerReferenceStore";
+import {
+  executeTransactionScopedCommand,
+  type TransactionScopedCommand,
+} from "../server/transactionCommand";
+import {
+  PersistedNodeSchemaRegistry,
+  persistedNodeSchemaRegistry,
+} from "../types/persistedNodeSchemaRegistry";
+import {
+  canvasNodeKinds,
+  generationCapabilityKinds,
+  persistedNodeKinds,
+  templateNodeKinds,
+} from "../types/nodeVocabulary";
+import { expect, test } from "./safe-test";
+
+const profile = (input: Pick<ProviderProfile, "driver" | "id">): ProviderProfile => ({
+  baseUrl: "https://provider.invalid/v1",
+  createdAt: "2026-08-22T00:00:00.000Z",
+  label: `P2 ${input.id}`,
+  updatedAt: "2026-08-22T00:00:00.000Z",
+  ...input,
+});
+
+class InMemoryCanvasPorts implements CanvasGraphCommandPort, CanvasSavePort {
+  #revision = 0;
+  #snapshot: CanvasGraphSnapshot;
+
+  constructor(snapshot: CanvasGraphSnapshot) {
+    this.#snapshot = snapshot;
+  }
+
+  apply(command: CanvasGraphCommand) {
+    const node = this.#snapshot.nodes.find((candidate) =>
+      candidate.id === command.fence.nodeId
+    );
+    if (
+      !node || node.type !== command.fence.kind ||
+      node.data.workflowExecutionRunId !== command.fence.runId ||
+      node.data[`${command.fence.kind}GenerationOwnershipKey`] !==
+        command.fence.ownershipKey ||
+      (command.fence.taskId !== undefined &&
+        node.data[`${command.fence.kind}GenerationTaskId`] !== command.fence.taskId) ||
+      (command.fence.expectedRevision !== undefined &&
+        command.fence.expectedRevision !== this.#revision)
+    ) {
+      return { reason: "fence-rejected", status: "rejected" } as const;
+    }
+    this.#snapshot = command.update(this.#snapshot);
+    return { status: "applied" } as const;
+  }
+
+  async flush() {}
+
+  snapshot() {
+    return this.#snapshot;
+  }
+
+  async waitForRevision() {
+    this.#revision += 1;
+    return { revision: this.#revision };
+  }
+}
+
+test("Canvas graph/save ports are independently replaceable and preserve write fences", async () => {
+  const port = new InMemoryCanvasPorts({
+    edges: [],
+    nodes: [{
+      data: {
+        imageGenerationOwnershipKey: "owner-1",
+        imageGenerationTaskId: "task-1",
+        label: "P2 image node",
+        workflowExecutionRunId: "run-1",
+      },
+      id: "node-1",
+      position: { x: 0, y: 0 },
+      type: "image",
+    }],
+  });
+  const receipt = await port.waitForRevision();
+  expect(receipt).toEqual({ revision: 1 });
+  expect(port.apply({
+    fence: {
+      expectedRevision: 1,
+      kind: "image",
+      nodeId: "node-1",
+      ownershipKey: "owner-1",
+      runId: "run-1",
+      taskId: "task-1",
+    },
+    scope: "generation",
+    update: (snapshot) => ({
+      ...snapshot,
+      nodes: snapshot.nodes.map((node) => node.id === "node-1"
+        ? { ...node, data: { ...node.data, imageGenerating: false } }
+        : node),
+    }),
+  })).toEqual({ status: "applied" });
+  expect(port.apply({
+    fence: {
+      expectedRevision: 1,
+      kind: "image",
+      nodeId: "node-1",
+      ownershipKey: "stale-owner",
+      runId: "run-1",
+      taskId: "task-1",
+    },
+    scope: "generation",
+    update: (snapshot) => snapshot,
+  })).toEqual({ reason: "fence-rejected", status: "rejected" });
+  expect(port.snapshot().nodes[0].data.imageGenerating).toBe(false);
+});
+
+test("Provider references and durable blobs remain separate replaceable stores", async () => {
+  const blobStore = createMemoryMediaBlobStore();
+  const leases = new Map<string, ProviderReferenceLease>();
+  const acquisitions: AcquireProviderReferenceInput[] = [];
+  const referenceStore: ProviderReferenceStore = {
+    async acquire(input) {
+      acquisitions.push(input);
+      const lease: ProviderReferenceLease = {
+        assetId: input.assetId,
+        byteSize: 3,
+        checksumSha256: "a".repeat(64),
+        contentType: "image/png",
+        kind: input.kind,
+        leaseId: `lease-${input.assetId}`,
+        locator: {
+          expiresAt: "2026-08-22T00:05:00.000Z",
+          transport: "signed-url",
+          url: `https://provider.invalid/${input.assetId}`,
+        },
+        ownerId: input.ownerId,
+      };
+      leases.set(lease.leaseId, lease);
+      return lease;
+    },
+    async release(lease) {
+      leases.delete(lease.leaseId);
+    },
+  };
+
+  const stored = await blobStore.put({
+    bytes: Uint8Array.from([1, 2, 3]),
+    contentType: "image/png",
+    objectKey: "asset-1.png",
+  });
+  const lease = await referenceStore.acquire({
+    assetId: "asset-1",
+    kind: "image",
+    maximumBytes: 20,
+    ownerId: "owner-1",
+    preferredTransports: ["signed-url"],
+  });
+  expect(stored.reference.backend).toBe("memory");
+  expect(lease.locator.transport).toBe("signed-url");
+  expect(leases.size).toBe(1);
+  await referenceStore.release(lease);
+  expect(leases.size).toBe(0);
+  expect((await blobStore.read(stored.reference, 3)).byteLength).toBe(3);
+  expect(await providerMediaUrlForOwner({
+    assetId: "asset-1",
+    kind: "image",
+    ownerId: "owner-1",
+  }, {
+    rules: genericReferenceMediaRules,
+    store: referenceStore,
+  })).toBe("https://provider.invalid/asset-1");
+  expect(acquisitions.at(-1)).toMatchObject({
+    assetId: "asset-1",
+    kind: "image",
+    maximumBytes: 20 * 1024 * 1024,
+    ownerId: "owner-1",
+    preferredTransports: ["signed-url", "inline-data"],
+  });
+  expect(leases.size).toBe(0);
+
+  const testRoot = process.env.UNBOUNDRY_TEST_ROOT;
+  expect(testRoot).toBeTruthy();
+  const localRoot = join(String(testRoot), "m100-local-blobs");
+  await rm(localRoot, { force: true, recursive: true });
+  const localStore = createLocalMediaBlobStore(localRoot);
+  const bytes = Uint8Array.from([9, 8, 7, 6]);
+  const local = await localStore.put({
+    bytes,
+    contentType: "image/png",
+    objectKey: "local.png",
+  });
+  expect(await localStore.head(local.reference)).toMatchObject({
+    byteSize: 4,
+    checksumSha256: createHash("sha256").update(bytes).digest("hex"),
+    contentType: "image/png",
+  });
+  expect(Array.from(await localStore.read(local.reference, 4))).toEqual([
+    9,
+    8,
+    7,
+    6,
+  ]);
+  await expect(localStore.signRead(local.reference, 60)).rejects.toMatchObject({
+    code: "UNSUPPORTED_OPERATION",
+  });
+  await localStore.delete(local.reference);
+  expect(await localStore.head(local.reference)).toBeUndefined();
+  await rm(localRoot, { force: true, recursive: true });
+
+  const ossBytes = new Map<string, Uint8Array>();
+  const ossOperations: string[] = [];
+  const ossDriver: AliyunMediaBlobDriver = {
+    async deleteObject(reference) {
+      ossOperations.push("delete");
+      ossBytes.delete(reference.objectKey);
+    },
+    async headObject(reference) {
+      ossOperations.push("head");
+      const storedBytes = ossBytes.get(reference.objectKey);
+      return storedBytes
+        ? {
+            byteSize: storedBytes.byteLength,
+            checksumSha256: createHash("sha256").update(storedBytes).digest("hex"),
+            contentType: "image/png",
+          }
+        : undefined;
+    },
+    async putObject(input) {
+      ossOperations.push("put");
+      if (!input.bytes) throw new Error("fake OSS expects bytes");
+      ossBytes.set(input.objectKey, Uint8Array.from(input.bytes));
+      return {
+        byteSize: input.bytes.byteLength,
+        checksumSha256: createHash("sha256").update(input.bytes).digest("hex"),
+        contentType: input.contentType,
+      };
+    },
+    async readObject(reference, maximumBytes) {
+      ossOperations.push("read");
+      const storedBytes = ossBytes.get(reference.objectKey);
+      if (!storedBytes || storedBytes.byteLength > maximumBytes) {
+        throw new Error("fake OSS blob unavailable");
+      }
+      return Uint8Array.from(storedBytes);
+    },
+    async signRead(reference) {
+      ossOperations.push("sign");
+      return `https://oss.invalid/${reference.objectKey}`;
+    },
+  };
+  const ossStore = createAliyunMediaBlobStore({
+    driver: ossDriver,
+    resolveProfile: async (reference) => reference.storageProfileId === "profile-1"
+      ? {
+          accessKeyId: "fake-access-key",
+          accessKeySecret: "fake-access-secret",
+          bucket: "fake-bucket",
+          endpoint: "https://oss-cn-beijing.aliyuncs.com",
+          region: "oss-cn-beijing",
+        }
+      : undefined,
+  });
+  const oss = await ossStore.put({
+    bytes,
+    contentType: "image/png",
+    objectKey: "objects/2026/08/image/fake.png",
+    storageProfileId: "profile-1",
+  });
+  expect(await ossStore.head(oss.reference)).toMatchObject({ byteSize: 4 });
+  expect((await ossStore.read(oss.reference, 4)).byteLength).toBe(4);
+  expect((await ossStore.signRead(oss.reference, 60)).url).toBe(
+    "https://oss.invalid/objects/2026/08/image/fake.png",
+  );
+  await ossStore.delete(oss.reference);
+  expect(ossOperations).toEqual(["put", "head", "read", "sign", "delete"]);
+
+  const publicationEvents: string[] = [];
+  const publicationStore = createMediaPublicationService({
+    ...mediaPublicationService,
+    async compensate() {
+      publicationEvents.push("compensate");
+      return true;
+    },
+    finalize() {
+      publicationEvents.push("finalize");
+    },
+    async recoverUploads() {
+      publicationEvents.push("recover");
+      return [{ action: "failed", assetId: "asset-1" }];
+    },
+  });
+  const fakeReservation = {
+    attemptId: "attempt-1",
+    finalStorageName: "asset-1.png",
+    id: "asset-1",
+    kind: "image" as const,
+    objectKey: "asset-1.png",
+    ownerId: "owner-1",
+    stagingName: ".publication-attempt-1.generating",
+    storageBackend: "local" as const,
+    storageProfileId: null,
+  };
+  publicationStore.finalize(fakeReservation);
+  expect(await publicationStore.compensate(fakeReservation)).toBe(true);
+  expect(await publicationStore.recoverUploads()).toEqual([
+    { action: "failed", assetId: "asset-1" },
+  ]);
+  expect(publicationEvents).toEqual(["finalize", "compensate", "recover"]);
+});
+
+test("Generation HTTP transport is isolated from the application runtime", async () => {
+  const [runtimeSource, adapterSource] = await Promise.all([
+    readFile(join(process.cwd(), "server/generationTasks.ts"), "utf8"),
+    readFile(join(process.cwd(), "server/generationTasksApi.ts"), "utf8"),
+  ]);
+  expect(runtimeSource).not.toContain('from "node:http"');
+  expect(runtimeSource).not.toContain('from "./httpRequest"');
+  expect(runtimeSource).not.toContain("requestIdentity(");
+  expect(runtimeSource).not.toContain("readJsonBody<");
+  expect(adapterSource).toContain('from "node:http"');
+  expect(adapterSource).toContain('from "./httpRequest"');
+  expect(adapterSource).toContain(
+    'import { generationTaskApplication } from "./generationTasks"',
+  );
+});
+
+test("composition root wires public module APIs and delegates readiness SQL", async () => {
+  expect(Object.isFrozen(applicationComposition)).toBe(true);
+  expect(Object.isFrozen(applicationComposition.auth)).toBe(true);
+  expect(Object.isFrozen(applicationComposition.canvas)).toBe(true);
+  expect(Object.isFrozen(applicationComposition.generation)).toBe(true);
+  expect(Object.isFrozen(applicationComposition.media)).toBe(true);
+  expect(Object.isFrozen(applicationComposition.provider)).toBe(true);
+
+  const database = new DatabaseSync(":memory:");
+  try {
+    database.exec(`
+      CREATE TABLE generation_tasks (
+        id TEXT PRIMARY KEY,
+        state TEXT NOT NULL
+      )
+    `);
+    expect(
+      applicationComposition.generation.readinessQuery
+        .hasCommittedActiveTasks(database),
+    ).toBe(false);
+    database.prepare(`
+      INSERT INTO generation_tasks (id, state) VALUES (?, ?)
+    `).run("composition-ready", "success");
+    expect(
+      applicationComposition.generation.readinessQuery
+        .hasCommittedActiveTasks(database),
+    ).toBe(false);
+    database.prepare(`
+      INSERT INTO generation_tasks (id, state) VALUES (?, ?)
+    `).run("composition-active", "recovering");
+    expect(
+      applicationComposition.generation.readinessQuery
+        .hasCommittedActiveTasks(database),
+    ).toBe(true);
+  } finally {
+    database.close();
+  }
+
+  const [compositionSource, viteSource] = await Promise.all([
+    readFile(join(process.cwd(), "server/applicationComposition.ts"), "utf8"),
+    readFile(join(process.cwd(), "vite.config.ts"), "utf8"),
+  ]);
+  expect(compositionSource).not.toMatch(/SELECT|INSERT|UPDATE|DELETE|generation_tasks/);
+  expect(compositionSource).not.toMatch(
+    /canvasPersistence|generationTasks|generationSafety|providerProfiles/,
+  );
+  expect(compositionSource.match(/from "\.\/[^\"]+(?:Application|Runtime)Api"/g))
+    .toHaveLength(6);
+  expect(viteSource).not.toMatch(
+    /server\/(?:canvasPersistence|generationAttemptQueries|generationSafety|generationTasks|providerProfiles)/,
+  );
+  expect(viteSource).not.toContain("FROM generation_tasks");
+});
+
+test("node registries align by vocabulary while remaining independently replaceable", async () => {
+  expect(canvasNodeRegistry.kinds()).toEqual([...canvasNodeKinds]);
+  expect(generationCapabilityRegistry.kinds()).toEqual([
+    ...generationCapabilityKinds,
+  ]);
+  expect(persistedNodeSchemaRegistry.kinds()).toEqual([...persistedNodeKinds]);
+  expect(templateNodeKinds.every((kind) => persistedNodeSchemaRegistry.has(kind)))
+    .toBe(true);
+  expect(generationCapabilityKinds.every((kind) => canvasNodeRegistry.get(kind)))
+    .toBe(true);
+  expect(generationCapabilityKinds.every((kind) => persistedNodeSchemaRegistry.has(kind)))
+    .toBe(true);
+  expect(templateNodeKinds).not.toContain("probe");
+
+  const canvasOnly = new CanvasNodeRegistry<string>()
+    .register("test-canvas", canvasNodeRegistry.get("probe")!);
+  expect(canvasOnly.kinds()).toEqual(["test-canvas"]);
+  expect(generationCapabilityRegistry.has("test-canvas")).toBe(false);
+  expect(persistedNodeSchemaRegistry.has("test-canvas")).toBe(false);
+
+  const generationOnly = new GenerationCapabilityRegistry<string>()
+    .register({ kind: "test-generation" });
+  expect(generationOnly.get("test-generation")).toEqual({
+    kind: "test-generation",
+  });
+  expect(canvasNodeRegistry.get("test-generation")).toBeUndefined();
+  expect(persistedNodeSchemaRegistry.has("test-generation")).toBe(false);
+
+  const persistedOnly = new PersistedNodeSchemaRegistry<string>()
+    .register({
+      kind: "test-persisted",
+      validate: (node) => node.data === "accepted",
+    });
+  expect(persistedOnly.accepts({
+    data: "accepted",
+    id: "test-node",
+    type: "test-persisted",
+  })).toBe(true);
+  expect(persistedOnly.accepts({
+    data: "rejected",
+    id: "test-node",
+    type: "test-persisted",
+  })).toBe(false);
+  expect(canvasNodeRegistry.get("test-persisted")).toBeUndefined();
+  expect(generationCapabilityRegistry.has("test-persisted")).toBe(false);
+
+  const [canvasSource, generationSource, persistedSource] = await Promise.all([
+    readFile(join(process.cwd(), "client/src/canvas/canvasNodeRegistry.ts"), "utf8"),
+    readFile(join(process.cwd(), "server/generationCapabilityRegistry.ts"), "utf8"),
+    readFile(join(process.cwd(), "types/persistedNodeSchemaRegistry.ts"), "utf8"),
+  ]);
+  expect(canvasSource).toContain("NodeTypes");
+  expect(generationSource).not.toMatch(/React|renderer|template/i);
+  expect(persistedSource).not.toMatch(/React|renderer|Provider|executor/i);
+});
+
+function execution(target: ProviderProfile): MediaGenerationExecution {
+  return {
+    absoluteDeadline: "2026-08-22T01:00:00.000Z",
+    attempt: 1,
+    beforeProviderRequest: () => undefined,
+    fetcher: async () => {
+      throw new Error("P2 fake Provider must not use network");
+    },
+    profile: target,
+  };
+}
+
+const mediaRequest: MediaGenerationRequest = {
+  inputs: [],
+  kind: "image",
+  model: "p2-image",
+  parameters: {},
+  prompt: "P2 fake image",
+};
+
+test("media Provider port supports a synchronous fake without task identity loss", async () => {
+  const target = profile({ driver: "openrouter", id: "p2-sync" });
+  const provider: MediaGenerationProvider = {
+    id: "p2-sync-provider",
+    registrations: [{ driver: "openrouter", kind: "image", protocol: "gpt-image" }],
+    async cancel(providerTaskId) {
+      return { providerTaskId, state: "unsupported" };
+    },
+    async inspect(providerTaskId) {
+      return { providerTaskId, state: "succeeded", rawResult: { url: "fixture" } };
+    },
+    normalize() {
+      return { outputs: [{ kind: "image", transientUrl: "https://result.invalid/image" }] };
+    },
+    async recover() {
+      return { state: "not-found" };
+    },
+    async submit() {
+      return { providerTaskMayStillRun: false, rawResult: { url: "fixture" }, state: "completed" };
+    },
+  };
+  const resolved = new MediaGenerationProviderRegistry([provider]).resolve(
+    target,
+    "gpt-image",
+    "image",
+  );
+  const submitted = await resolved.submit(mediaRequest, execution(target));
+  expect(submitted).toMatchObject({ providerTaskMayStillRun: false, state: "completed" });
+  expect(resolved.normalize("fixture").outputs).toHaveLength(1);
+});
+
+test("media Provider port supports async inspect/recover/cancel with one providerTaskId", async () => {
+  const target = profile({ driver: "multi-protocol-relay", id: "p2-async" });
+  let submits = 0;
+  const provider: MediaGenerationProvider = {
+    id: "p2-async-provider",
+    registrations: [{
+      driver: "multi-protocol-relay",
+      kind: "image",
+      protocol: "media-generate",
+    }],
+    async cancel(providerTaskId) {
+      return { providerTaskId, state: "cancelled" };
+    },
+    async inspect(providerTaskId) {
+      return { progress: 50, providerTaskId, state: "running" };
+    },
+    normalize(rawResult) {
+      return { outputs: [{ kind: "image", transientUrl: String(rawResult) }] };
+    },
+    async recover() {
+      return { providerTaskId: "provider-task-1", state: "matched" };
+    },
+    async submit(_request, providerExecution) {
+      submits += 1;
+      expect(providerExecution.attempt).toBe(1);
+      expect(providerExecution.absoluteDeadline).toBe("2026-08-22T01:00:00.000Z");
+      return {
+        providerTaskId: "provider-task-1",
+        providerTaskMayStillRun: true,
+        state: "accepted",
+      };
+    },
+  };
+  const resolved = new MediaGenerationProviderRegistry([provider]).resolve(
+    target,
+    "media-generate",
+    "image",
+  );
+  const submitted = await resolved.submit(mediaRequest, execution(target));
+  expect(submitted).toMatchObject({ providerTaskId: "provider-task-1", state: "accepted" });
+  expect(await resolved.inspect("provider-task-1", execution(target))).toMatchObject({
+    progress: 50,
+    providerTaskId: "provider-task-1",
+    state: "running",
+  });
+  expect(await resolved.recover(mediaRequest, execution(target))).toEqual({
+    providerTaskId: "provider-task-1",
+    state: "matched",
+  });
+  expect(await resolved.cancel("provider-task-1", execution(target))).toEqual({
+    providerTaskId: "provider-task-1",
+    state: "cancelled",
+  });
+  expect(submits).toBe(1);
+  expect(mediaProviderRegistry.resolve(
+    profile({ driver: "multi-protocol-relay", id: "relay" }),
+    "media-generate",
+    "image",
+  ).id).toBe("multi-protocol-relay-media");
+  expect(mediaProviderRegistry.resolve(
+    profile({ driver: "volcengine-ark", id: "ark" }),
+    "native",
+    "video",
+  ).id).toBe("volcengine-ark-video");
+  expect(mediaProviderRegistry.resolve(
+    profile({ driver: "mureka", id: "mureka" }),
+    "native",
+    "audio",
+  ).id).toBe("mureka-audio");
+});
+
+test("Generation query port is read-only and replaceable", () => {
+  const tasks: GenerationTaskQueryEvidence[] = [{
+    attempt: 2,
+    canvasId: "canvas-1",
+    id: "task-1",
+    kind: "video",
+    nodeId: "node-1",
+    ownerId: "owner-1",
+    providerTaskId: "provider-task-1",
+    state: "recovering",
+    updatedAt: "2026-08-22T00:00:00.000Z",
+  }];
+  const query: GenerationQueryPort = {
+    get: (taskId) => tasks.find((task) => task.id === taskId),
+    list: (input) => tasks.filter((task) =>
+      (!input.canvasId || task.canvasId === input.canvasId) &&
+      (!input.ownerId || task.ownerId === input.ownerId) &&
+      (!input.kinds || input.kinds.includes(task.kind)) &&
+      (!input.states || input.states.includes(task.state))
+    ),
+  };
+  expect(query.get("task-1")).toMatchObject({
+    attempt: 2,
+    providerTaskId: "provider-task-1",
+    state: "recovering",
+  });
+  expect(query.list({ canvasId: "canvas-1", states: ["recovering"] })).toHaveLength(1);
+});
+
+test("transaction-scoped commands join caller rollback and reject async work", async () => {
+  const testRoot = process.env.UNBOUNDRY_TEST_ROOT;
+  expect(testRoot).toBeTruthy();
+  const directory = join(String(testRoot), "m100-transaction");
+  await rm(directory, { force: true, recursive: true });
+  await mkdir(directory, { recursive: true });
+  const database = new DatabaseSync(join(directory, "ports.sqlite"));
+  try {
+    database.exec("CREATE TABLE evidence (id TEXT PRIMARY KEY, value TEXT NOT NULL)");
+    const insert: TransactionScopedCommand<Readonly<{ id: string; value: string }>, number> = {
+      execute(scope, input) {
+        return Number(scope.prepare(
+          "INSERT INTO evidence (id, value) VALUES (?, ?)",
+        ).run(input.id, input.value).changes);
+      },
+    };
+    expect(() => executeTransactionScopedCommand(
+      database,
+      insert,
+      { id: "outside", value: "rejected" },
+    )).toThrow(/active transaction/);
+
+    database.exec("BEGIN IMMEDIATE");
+    expect(executeTransactionScopedCommand(
+      database,
+      insert,
+      { id: "inside", value: "rolled-back" },
+    )).toBe(1);
+    database.exec("ROLLBACK");
+    expect((database.prepare("SELECT COUNT(*) AS count FROM evidence").get() as {
+      count: number;
+    }).count).toBe(0);
+
+    database.exec("BEGIN IMMEDIATE");
+    expect(() => executeTransactionScopedCommand(
+      database,
+      { execute: () => Promise.resolve("unsafe") },
+      undefined,
+    )).toThrow(/must be synchronous/);
+    database.exec("ROLLBACK");
+
+    database.exec("BEGIN IMMEDIATE");
+    expect(() => executeTransactionScopedCommand(
+      database,
+      { execute: (scope) => scope.prepare("COMMIT").run() },
+      undefined,
+    )).toThrow(/cannot control transactions/);
+    expect(database.isTransaction).toBe(true);
+    database.exec("ROLLBACK");
+  } finally {
+    database.close();
+    await rm(directory, { force: true, recursive: true });
+  }
+});
+
+test("account deletion owner commands share one rollback boundary", async () => {
+  const testRoot = process.env.UNBOUNDRY_TEST_ROOT;
+  expect(testRoot).toBeTruthy();
+  const directory = join(String(testRoot), "m100-account-command-rollback");
+  await rm(directory, { force: true, recursive: true });
+  await mkdir(directory, { recursive: true });
+  const database = new DatabaseSync(join(directory, "account.sqlite"));
+  try {
+    database.exec(`
+      CREATE TABLE generation_tasks (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL);
+      CREATE TABLE generation_provider_attempts (task_id TEXT NOT NULL);
+      CREATE TABLE generation_task_events (task_id TEXT NOT NULL);
+      CREATE TABLE generation_admission_events (task_id TEXT NOT NULL);
+      CREATE TABLE canvas_documents (owner_id TEXT NOT NULL);
+      CREATE TABLE asset_history (owner_id TEXT, account_id TEXT);
+      CREATE TABLE project_metadata (owner_id TEXT NOT NULL);
+      CREATE TABLE public_templates (created_by TEXT, updated_by TEXT);
+      CREATE TABLE user_templates (owner_id TEXT NOT NULL);
+      CREATE TABLE media_assets (
+        owner_id TEXT NOT NULL, kind TEXT NOT NULL, id TEXT NOT NULL,
+        storage_status TEXT NOT NULL
+      );
+      INSERT INTO generation_tasks VALUES ('task-1', 'owner-1');
+      INSERT INTO generation_provider_attempts VALUES ('task-1');
+      INSERT INTO generation_task_events VALUES ('task-1');
+      INSERT INTO generation_admission_events VALUES ('task-1');
+      INSERT INTO canvas_documents VALUES ('owner-1');
+      INSERT INTO asset_history VALUES ('owner-1', 'owner-1');
+      INSERT INTO project_metadata VALUES ('owner-1');
+      INSERT INTO public_templates VALUES ('owner-1', 'owner-1');
+      INSERT INTO user_templates VALUES ('owner-1');
+      INSERT INTO media_assets VALUES ('owner-1', 'image', 'asset-1', 'ready');
+    `);
+    database.exec("BEGIN IMMEDIATE");
+    expect(executeTransactionScopedCommand(database, transferAccountMediaCommand, {
+      assetId: "asset-1",
+      kind: "image",
+      ownerId: "owner-1",
+      rootOwnerId: "root-1",
+    })).toBe(1);
+    expect(executeTransactionScopedCommand(
+      database,
+      transferAndDeleteAccountTemplatesCommand,
+      { ownerId: "owner-1", rootOwnerId: "root-1" },
+    )).toBe(1);
+    executeTransactionScopedCommand(
+      database,
+      deleteAccountGenerationDataCommand,
+      "owner-1",
+    );
+    executeTransactionScopedCommand(database, deleteAccountCanvasDataCommand, "owner-1");
+    executeTransactionScopedCommand(database, deleteAccountProjectDataCommand, "owner-1");
+    expect(() => {
+      throw new Error("injected before final account audit");
+    }).toThrow(/injected/);
+    database.exec("ROLLBACK");
+
+    expect(database.prepare("SELECT owner_id FROM media_assets").get()).toEqual({
+      owner_id: "owner-1",
+    });
+    expect(database.prepare("SELECT created_by, updated_by FROM public_templates").get())
+      .toEqual({ created_by: "owner-1", updated_by: "owner-1" });
+    for (const table of [
+      "generation_tasks",
+      "generation_provider_attempts",
+      "generation_task_events",
+      "generation_admission_events",
+      "canvas_documents",
+      "asset_history",
+      "project_metadata",
+      "user_templates",
+    ]) {
+      expect((database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as {
+        count: number;
+      }).count).toBe(1);
+    }
+  } finally {
+    if (database.isTransaction) database.exec("ROLLBACK");
+    database.close();
+    await rm(directory, { force: true, recursive: true });
+  }
+});
+
+test("single-node lifecycle replaces React with fenced graph save and task ports", async () => {
+  let revision = 0;
+  let flushes = 0;
+  let revisionWaits = 0;
+  let snapshot: CanvasGraphSnapshot = {
+    edges: [],
+    nodes: [{
+      data: { label: "P5 text node", textPrompt: "draw a moon" },
+      id: "text-1",
+      position: { x: 0, y: 0 },
+      type: "text",
+    }],
+    revision,
+  };
+  const graph = createCanvasGraphCommandPort({
+    commit(next) {
+      snapshot = { ...next, revision: undefined };
+    },
+    persistenceReady: () => true,
+    snapshot: () => snapshot,
+  });
+  const save: CanvasSavePort = {
+    async flush() {
+      flushes += 1;
+    },
+    async waitForRevision() {
+      revisionWaits += 1;
+      revision += 1;
+      snapshot = { ...snapshot, revision };
+      return { revision };
+    },
+  };
+  const task = (state: GenerationTaskSummary["state"]): GenerationTaskSummary => ({
+    attempt: 1,
+    canvasId: "canvas-1",
+    costCurrency: "CNY",
+    createdAt: "2026-08-22T00:00:00.000Z",
+    generationInputKey: "input-1",
+    generationOwnershipKey: "owner-1",
+    id: "task-1",
+    kind: "text",
+    nodeId: "text-1",
+    prompt: "draw a moon",
+    ...(state === "success" ? { resultText: "moon result" } : {}),
+    state,
+    updatedAt: "2026-08-22T00:00:01.000Z",
+  });
+  let ensureCalls = 0;
+  let preparedCalls = 0;
+  let preparedBeforeEnsure = false;
+  let retryCalls = 0;
+  let retryRevisionWaits = 0;
+  let reconcileOutcome: "ambiguous" | "missing" | "recovered" = "recovered";
+  let watchCalls = 0;
+  const tasks: SingleNodeGenerationTaskPort = {
+    async cancel() {
+      return task("cancelled");
+    },
+    async ensure(_plan, context) {
+      ensureCalls += 1;
+      context.assertCurrent();
+      preparedBeforeEnsure = context.canvasRevision === 1 &&
+        snapshot.nodes[0]?.data.textModelId === "text-model-1";
+      return {
+        generationOwnershipKey: "owner-1",
+        idempotencyKey: "idem-1",
+        recovered: true,
+        task: task("running"),
+      };
+    },
+    async reconcile(_task, _plan, context) {
+      await context.waitForRevision();
+      const reconciledTask = task(
+        reconcileOutcome === "recovered" ? "success" : "failed",
+      );
+      return {
+        outcome: reconcileOutcome,
+        task: reconcileOutcome === "missing"
+          ? {
+              ...reconciledTask,
+              errorCode: "PROVIDER_RESULT_MISSING",
+              errorMessage: "平台没有成片，可以重试",
+              retryAllowed: true,
+            }
+          : reconciledTask,
+      };
+    },
+    async recover() {
+      return task("running");
+    },
+    async retry(_task, _plan, context) {
+      retryCalls += 1;
+      await context.waitForRevision();
+      retryRevisionWaits += 1;
+      return task("running");
+    },
+    async watch() {
+      watchCalls += 1;
+      return task("success");
+    },
+  };
+  const lifecycle = createSingleNodeGenerationLifecycle({
+    adapter: {
+      applyPrepared(node) {
+        preparedCalls += 1;
+        return {
+          ...node,
+          data: { ...node.data, textModelId: "text-model-1" },
+        };
+      },
+      applyBinding(node, boundTask, plan) {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            textGenerating: true,
+            textGenerationInputKey: plan.inputKey,
+            textGenerationOwnershipKey: plan.ownershipKey,
+            textGenerationTaskId: boundTask.id,
+          },
+        };
+      },
+      applyTerminal(node, finalTask) {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            textGenerating: false,
+            content: finalTask.state === "success"
+              ? finalTask.resultText
+              : node.data.content,
+            textGenerationErrorCode: finalTask.errorCode,
+          },
+        };
+      },
+      kind: "text",
+      readPlan() {
+        return {
+          inputKey: "input-1",
+          kind: "text",
+          nodeId: "text-1",
+          ownershipKey: "owner-1",
+          payload: { prompt: "draw a moon" },
+        };
+      },
+    },
+    graph,
+    nodeId: "text-1",
+    randomUUID: () => "single-run-1",
+    save,
+    tasks,
+  });
+  await expect(lifecycle.generate()).resolves.toMatchObject({
+    status: "success",
+    task: { id: "task-1", resultText: "moon result" },
+  });
+  expect({ ensureCalls, flushes, preparedBeforeEnsure, preparedCalls, revisionWaits, watchCalls }).toEqual({
+    ensureCalls: 1,
+    flushes: 3,
+    preparedBeforeEnsure: true,
+    preparedCalls: 1,
+    revisionWaits: 3,
+    watchCalls: 1,
+  });
+  expect(snapshot.nodes[0]?.data).toMatchObject({
+    textGenerating: false,
+    textGenerationInputKey: "input-1",
+    textGenerationOwnershipKey: "owner-1",
+    content: "moon result",
+    textGenerationTaskId: "task-1",
+  });
+
+  tasks.watch = async () => {
+    watchCalls += 1;
+    snapshot = {
+      ...snapshot,
+      nodes: snapshot.nodes.map((node) => node.id === "text-1"
+        ? {
+            ...node,
+            data: { ...node.data, textGenerationOwnershipKey: "owner-2" },
+          }
+        : node),
+    };
+    return { ...task("success"), resultText: "stale result" };
+  };
+  await expect(lifecycle.retry(task("failed"))).resolves.toEqual({
+    reason: "stale",
+    status: "stale",
+  });
+  expect(snapshot.nodes[0]?.data.content).toBe("moon result");
+  expect({ flushes, preparedCalls, retryCalls, retryRevisionWaits, revisionWaits, watchCalls }).toEqual({
+    flushes: 3,
+    preparedCalls: 1,
+    retryCalls: 1,
+    retryRevisionWaits: 1,
+    revisionWaits: 4,
+    watchCalls: 2,
+  });
+
+  snapshot = {
+    ...snapshot,
+    revision: undefined,
+    nodes: snapshot.nodes.map((node) => node.id === "text-1"
+      ? {
+          ...node,
+          data: { ...node.data, textGenerationOwnershipKey: "owner-1" },
+        }
+      : node),
+  };
+  tasks.watch = async () => {
+    watchCalls += 1;
+    return task("success");
+  };
+  await expect(lifecycle.retry(task("failed"))).resolves.toMatchObject({
+    status: "success",
+    task: { id: "task-1", resultText: "moon result" },
+  });
+  expect({ flushes, preparedCalls, retryCalls, retryRevisionWaits, revisionWaits, watchCalls }).toEqual({
+    flushes: 4,
+    preparedCalls: 1,
+    retryCalls: 2,
+    retryRevisionWaits: 2,
+    revisionWaits: 7,
+    watchCalls: 3,
+  });
+
+  reconcileOutcome = "ambiguous";
+  await expect(lifecycle.reconcile({ id: "task-1" })).resolves.toMatchObject({
+    reconcileOutcome: "ambiguous",
+    status: "failed",
+    task: { id: "task-1" },
+  });
+  expect(snapshot.nodes[0]?.data.content).toBe("moon result");
+  expect({ flushes, revisionWaits }).toEqual({ flushes: 4, revisionWaits: 8 });
+
+  reconcileOutcome = "missing";
+  await expect(lifecycle.reconcile({ id: "task-1" })).resolves.toMatchObject({
+    reconcileOutcome: "missing",
+    status: "failed",
+    task: {
+      errorCode: "PROVIDER_RESULT_MISSING",
+      id: "task-1",
+      retryAllowed: true,
+    },
+  });
+  expect(snapshot.nodes[0]?.data).toMatchObject({
+    content: "moon result",
+    textGenerating: false,
+    textGenerationErrorCode: "PROVIDER_RESULT_MISSING",
+  });
+  expect({ flushes, revisionWaits }).toEqual({ flushes: 5, revisionWaits: 10 });
+});

@@ -7,6 +7,9 @@ import {
   type MediaKind,
 } from "./mediaRegistry";
 import { storageProfileForDestructiveMedia } from "./secureStorageProfiles";
+import { deleteMediaHistoryCommand } from "./canvasTransactionCommands";
+import { detachUnpublishedGenerationAssetCommand } from "./generationTransactionCommands";
+import { executeTransactionScopedCommand } from "./transactionCommand";
 
 /**
  * Compensates a private media save when the owning relay task is cancelled or
@@ -36,16 +39,11 @@ export async function removeUnpublishedGeneratedMedia(input: {
       WHERE owner_id = ? AND kind = ? AND id = ?
         AND storage_status IN ('pending', 'ready', 'failed')
     `).run(new Date().toISOString(), input.ownerId, input.kind, input.assetId);
-    hidden.prepare(`
-      DELETE FROM asset_history
-      WHERE account_id = ? AND owner_id = ? AND id = ? AND kind = ?
-    `).run(input.ownerId, input.ownerId, input.assetId, input.kind);
-    hidden.prepare(`
-      UPDATE generation_tasks
-      SET result_asset_id = NULL, updated_at = ?
-      WHERE owner_id = ? AND kind = ? AND result_asset_id = ?
-        AND state <> 'success'
-    `).run(new Date().toISOString(), input.ownerId, input.kind, input.assetId);
+    executeTransactionScopedCommand(hidden, deleteMediaHistoryCommand, input);
+    executeTransactionScopedCommand(hidden, detachUnpublishedGenerationAssetCommand, {
+      ...input,
+      updatedAt: new Date().toISOString(),
+    });
     hidden.prepare(`
       UPDATE media_publication_attempts
       SET state = 'compensating', error_code = 'MEDIA_RESULT_DISCARDED',

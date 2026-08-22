@@ -23,17 +23,17 @@ import {
   HttpRequestError,
 } from "./httpRequest";
 import {
-  beginMediaDeletion,
-  finishMediaDeletion,
-  markMediaDeletionFailed,
   readableMedia,
   readableMediaForOwner,
 } from "./mediaRegistry";
 import {
+  beginMediaDeletion,
   cleanupPublicationStaging,
   compensateMediaPublication,
   finalizeMediaPublication,
+  finishMediaDeletion,
   markExternalMediaPublicationReady,
+  markMediaDeletionFailed,
   mediaPublicationFinalPath,
   mediaPublicationStagingPath,
   MediaPublicationConflictError,
@@ -42,7 +42,7 @@ import {
   stageMediaPublication,
   type GeneratedPublicationTask,
   type MediaPublicationExecution,
-} from "./mediaLifecycle";
+} from "./mediaPublicationService";
 import {
   storageProfileForMedia,
   storageProfileForDestructiveMedia,

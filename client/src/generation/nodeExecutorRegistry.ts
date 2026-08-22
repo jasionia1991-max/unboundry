@@ -1,21 +1,25 @@
 import type { ProbeNodeType } from "../canvas/ProbeNode";
-import type { CuttableEdge } from "../canvas/canvasTypes";
+import type {
+  CanvasGraphCommandPort,
+  CanvasSavePort,
+} from "../canvas/canvasPorts";
 import type { PublishedModel, ModelCatalogStatus } from "../models/ModelCatalog";
-import type { Dispatch, SetStateAction } from "react";
 import type {
   NodeRunResult,
   WorkflowPreflightPhase,
 } from "./workflowExecution";
+import {
+  isGenerationCapabilityKind,
+  type GenerationCapabilityKind,
+} from "../../../types/nodeVocabulary";
 
-export type WorkflowExecutorKind = "audio" | "image" | "text" | "video";
+export type WorkflowExecutorKind = GenerationCapabilityKind;
 
 export type NodeExecutorContext = {
   accountId: string;
   canvasId: string;
   fixtureScopeId: string;
-  flushCanvasSave: () => Promise<void>;
-  getEdges: () => CuttableEdge[];
-  getNodes: () => ProbeNodeType[];
+  graph: CanvasGraphCommandPort;
   isCancelled: () => boolean;
   isFixture: boolean;
   modelCatalog: {
@@ -23,8 +27,7 @@ export type NodeExecutorContext = {
     status: ModelCatalogStatus;
   };
   runId: string;
-  setNodes: Dispatch<SetStateAction<ProbeNodeType[]>>;
-  waitForCanvasRevision: (timeoutMs?: number) => Promise<number>;
+  save: CanvasSavePort;
 };
 
 export type NodeExecutor = {
@@ -79,6 +82,5 @@ export class NodeExecutorRegistry {
 export function isWorkflowExecutorKind(
   value: unknown,
 ): value is WorkflowExecutorKind {
-  return value === "audio" || value === "image" || value === "text" ||
-    value === "video";
+  return isGenerationCapabilityKind(value);
 }

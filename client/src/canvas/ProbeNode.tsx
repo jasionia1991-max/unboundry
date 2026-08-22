@@ -10,6 +10,7 @@ import { useCanvasCheckpoint } from "./CanvasHistory";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import type { ModelParameterValue } from "../../../types/modelParameters";
 import type { NodeInputState } from "../../../types/nodeInputs";
+import type { CanvasNodeKind } from "../../../types/nodeVocabulary";
 
 function stableOwnershipValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stableOwnershipValue);
@@ -174,14 +175,7 @@ export type ProbeNodeType = Node<
     videoWidth?: number;
     variant?: "group";
   },
-  | "audio"
-  | "group"
-  | "image"
-  | "playlist"
-  | "probe"
-  | "storyboard"
-  | "text"
-  | "video"
+  CanvasNodeKind
 >;
 
 function ProbeNodeImpl({

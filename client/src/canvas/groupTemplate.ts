@@ -1,15 +1,9 @@
 import type { ProbeNodeType } from "./ProbeNode";
 import type { CuttableEdge } from "./canvasTypes";
 import { NODE_DEFAULT_SIZES } from "./mediaGeometry";
+import type { TemplateNodeKind } from "../../../types/nodeVocabulary";
 
-export type TemplateNodeType =
-  | "audio"
-  | "group"
-  | "image"
-  | "playlist"
-  | "storyboard"
-  | "text"
-  | "video";
+export type TemplateNodeType = TemplateNodeKind;
 
 export type TemplateGraphNode = {
   data: Record<string, unknown> & { label: string };

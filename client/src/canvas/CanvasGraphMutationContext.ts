@@ -6,6 +6,7 @@ import {
 } from "react";
 import type { ProbeNodeType } from "./ProbeNode";
 import type { CuttableEdge } from "./canvasTypes";
+import type { CanvasGraphCommandPort } from "./canvasPorts";
 
 export function tryCommitCanvasNodeAdoption(input: {
   commit: (nodes: ProbeNodeType[]) => void;
@@ -26,6 +27,7 @@ export function tryCommitCanvasNodeAdoption(input: {
 }
 
 export const CanvasGraphMutationContext = createContext<{
+  graphCommandPort?: CanvasGraphCommandPort;
   setEdges: Dispatch<SetStateAction<CuttableEdge[]>>;
   setNodes: Dispatch<SetStateAction<ProbeNodeType[]>>;
   tryAdoptNodes: (
@@ -34,6 +36,7 @@ export const CanvasGraphMutationContext = createContext<{
   ) => boolean;
   trySetNodes: (update: SetStateAction<ProbeNodeType[]>) => boolean;
 }>({
+  graphCommandPort: undefined,
   setEdges: () => undefined,
   setNodes: () => undefined,
   tryAdoptNodes: () => false,

@@ -16,8 +16,11 @@ import {
   providerParameterSchema,
   validateParameterSchemaConstraints,
 } from "../types/modelParameters";
+import { generationCapabilityRegistry } from "./generationCapabilityRegistry";
+import type { GenerationCapabilityKind } from "../types/nodeVocabulary";
 
-export const generationTaskKinds = ["text", "image", "video", "audio"] as const;
+export const generationTaskKinds: readonly GenerationCapabilityKind[] =
+  generationCapabilityRegistry.kinds();
 export const generationTaskStates = [
   "queued",
   "running",
@@ -28,7 +31,7 @@ export const generationTaskStates = [
   "recovering",
 ] as const;
 
-export type GenerationTaskKind = (typeof generationTaskKinds)[number];
+export type GenerationTaskKind = GenerationCapabilityKind;
 export type GenerationTaskState = (typeof generationTaskStates)[number];
 
 export type GenerationTaskInput = {
