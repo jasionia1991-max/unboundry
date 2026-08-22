@@ -259,7 +259,8 @@ test("importing a template on a real project centers it and settles the save sta
   const imported = (await (
     await request.get(`/api/canvas/${project.id}`)
   ).json()) as {
-    nodes: Array<{ data: Record<string, unknown>; type: string }>;
+    edges: Array<{ id: string }>;
+    nodes: Array<{ data: Record<string, unknown>; id: string; type: string }>;
   };
   const executableWithRequiredModel = imported.nodes.filter((node) => {
     if (!["audio", "image", "text", "video"].includes(node.type)) return false;
@@ -271,6 +272,29 @@ test("importing a template on a real project centers it and settles the save sta
     node.data[node.type === "video" ? "videoModel" : `${node.type}ModelName`] ===
       "请选择兼容模型"
   )).toBe(true);
+
+  const importedNodeIds = imported.nodes.map((node) => node.id).sort();
+  const importedEdgeIds = imported.edges.map((edge) => edge.id).sort();
+  await page.getByTestId("fit-view").click();
+  await page.waitForTimeout(1_200);
+  await expect(world).toHaveAttribute("data-node-count", "12");
+  await expect(world).toHaveAttribute("data-edge-count", "29");
+  await expect(page.locator(".react-flow__node-group")).toHaveCount(1);
+
+  const fitted = (await (
+    await request.get(`/api/canvas/${project.id}`)
+  ).json()) as {
+    edges: Array<{ id: string }>;
+    nodes: Array<{ id: string }>;
+  };
+  expect(fitted.nodes.map((node) => node.id).sort()).toEqual(importedNodeIds);
+  expect(fitted.edges.map((edge) => edge.id).sort()).toEqual(importedEdgeIds);
+
+  await page.reload();
+  await expect(world).toHaveAttribute("data-persistence-ready", "true");
+  await expect(world).toHaveAttribute("data-node-count", "12");
+  await expect(world).toHaveAttribute("data-edge-count", "29");
+  await expect(page.locator(".react-flow__node-group")).toHaveCount(1);
 
   await request.delete(`/api/projects/${project.id}`);
 });

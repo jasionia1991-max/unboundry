@@ -8,9 +8,13 @@ import {
   type ModelParameterSchema,
   type ModelParameterValue,
 } from "./modelParameters";
+import {
+  generationCapabilityKinds,
+  type GenerationCapabilityKind,
+} from "./nodeVocabulary";
 
-export const nodeInputKinds = ["text", "image", "video", "audio"] as const;
-export type NodeInputKind = (typeof nodeInputKinds)[number];
+export const nodeInputKinds = generationCapabilityKinds;
+export type NodeInputKind = GenerationCapabilityKind;
 export type NodeInputState =
   | "empty"
   | "uploading"

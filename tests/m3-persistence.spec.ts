@@ -1,4 +1,120 @@
 import { expect, test, type Locator } from "./safe-test";
+import {
+  CanvasSaveSessionStorageError,
+  createCanvasPersistenceFacade,
+  createCanvasSaveJournalPort,
+  type CanvasPersistenceTransport,
+} from "../client/src/canvas/canvasPersistenceFacade";
+
+test("in-memory persistence facade replaces browser transport and journal", async () => {
+  const values = new Map<string, string>();
+  const journal = createCanvasSaveJournalPort({
+    randomUUID: () => "memory-session-0001",
+    storage: {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => {
+        values.set(key, value);
+      },
+    },
+  });
+  const calls: string[] = [];
+  const transport: CanvasPersistenceTransport = {
+    async load(input) {
+      calls.push(`load:${input.canvasId}:${input.saveSessionId}`);
+      return {
+        body: {
+          currentWriterSequence: 0,
+          currentWriterSessionId: null,
+          edges: [],
+          graphRevision: 0,
+          loadToken: "memory-load-token-1",
+          nodes: [],
+          revision: 0,
+          saveEpoch: "memory-epoch-1",
+          sessionHighWaterAttemptId: null,
+          sessionHighWaterSequence: 0,
+          viewport: { x: 0, y: 0, zoom: 1 },
+        },
+        ok: true,
+        status: 200,
+      };
+    },
+    async put(input) {
+      calls.push(`put:${input.canvasId}:${input.responseMode}:${Boolean(input.keepalive)}`);
+      return {
+        body: {
+          graphRevision: 1,
+          loadToken: "memory-load-token-2",
+          revision: 1,
+        },
+        ok: true,
+        status: 200,
+      };
+    },
+  };
+  const facade = createCanvasPersistenceFacade({ journal, transport });
+  const session = facade.journal.load("memory-scope");
+  const payload = JSON.stringify({
+    edges: [],
+    nodes: [],
+    revision: 0,
+    saveAttemptId: "memory-attempt-0001",
+    saveSequence: 1,
+    saveSessionId: session.saveSessionId,
+    viewport: { x: 0, y: 0, zoom: 1 },
+  });
+  const reserved = facade.journal.store("memory-scope", {
+    ...session,
+    pendingPagehide: {
+      attemptId: "memory-attempt-0001",
+      payload,
+      saveSequence: 1,
+      serverEpoch: "memory-epoch-1",
+    },
+    saveSequence: 1,
+    serverEpoch: "memory-epoch-1",
+  });
+  expect(reserved.storageRevision).toBe(1);
+  const loaded = await facade.transport.load({
+    canvasId: "memory-canvas",
+    saveSessionId: session.saveSessionId,
+    signal: new AbortController().signal,
+  });
+  expect(facade.isLoadedDocument(loaded.body)).toBe(true);
+  const saved = await facade.transport.put({
+    canvasId: "memory-canvas",
+    keepalive: true,
+    payload,
+    responseMode: "strict-json",
+  });
+  expect(facade.isSaveSuccess(saved.body, facade.requestFence(payload))).toBe(true);
+  expect(facade.pendingSnapshot({
+    normalizeNodes: (nodes) => nodes,
+    pending: reserved.pendingPagehide!,
+    saveSessionId: session.saveSessionId,
+  })?.fingerprint).toBeTruthy();
+  const settled = facade.journal.settleStored({
+    attemptId: "memory-attempt-0001",
+    payload,
+    saveSequence: 1,
+    saveSessionId: session.saveSessionId,
+    scopeId: "memory-scope",
+    serverEpoch: "memory-epoch-1",
+  });
+  expect(settled?.settled).toMatchObject({
+    confirmedSequence: 1,
+    saveSequence: 1,
+    storageRevision: 2,
+  });
+  expect(settled?.settled.pendingPagehide).toBeUndefined();
+  expect(() => facade.journal.store("memory-scope", session)).toThrow(
+    CanvasSaveSessionStorageError,
+  );
+  expect(calls).toEqual([
+    `load:memory-canvas:${session.saveSessionId}`,
+    "put:memory-canvas:strict-json:true",
+  ]);
+});
 
 async function composeTitle(input: Locator, value: string, finish = true) {
   await input.dispatchEvent("compositionstart");

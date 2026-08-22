@@ -83,6 +83,7 @@
     "tests/m82-update-notice.spec.ts"
   ],
   "node": [
+    "tests/m100-modular-ports.spec.ts",
     "tests/m10-backup.spec.ts",
     "tests/m15-openrouter-image-provider.spec.ts",
     "tests/m16-volcengine-ark-video-provider.spec.ts",

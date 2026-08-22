@@ -45,6 +45,28 @@ import {
   persistedTemplateMediaReferences,
   type PersistedMediaReference,
 } from "../types/persistedMediaSources";
+import {
+  claimLegacyCanvasDataCommand,
+  deleteAccountCanvasDataCommand,
+  deleteAccountHistoryCommand,
+} from "./canvasTransactionCommands";
+import {
+  claimLegacyGenerationDataCommand,
+  deleteAccountGenerationDataCommand,
+} from "./generationTransactionCommands";
+import {
+  failAccountMediaDeletionCommand,
+  finishAccountMediaDeletionCommand,
+  preparePrivateAccountMediaDeletionCommand,
+  registerLegacyMediaCommand,
+  transferAccountMediaCommand,
+} from "./mediaTransactionCommands";
+import {
+  claimLegacyProjectDataCommand,
+  deleteAccountProjectDataCommand,
+} from "./projectTransactionCommands";
+import { transferAndDeleteAccountTemplatesCommand } from "./templateTransactionCommands";
+import { executeTransactionScopedCommand } from "./transactionCommand";
 
 export type RequestIdentity = {
   bypass: boolean;
@@ -71,6 +93,16 @@ type UserInput = {
 
 const cookieName = "unboundry_session";
 const sessionLifetimeMs = 7 * 24 * 60 * 60 * 1_000;
+let legacyProviderKeyMigration: (() => Promise<unknown>) | undefined;
+
+export function configureLegacyProviderKeyMigration(
+  migrate: () => Promise<unknown>,
+) {
+  if (legacyProviderKeyMigration && legacyProviderKeyMigration !== migrate) {
+    throw new Error("Legacy Provider key migration is already configured");
+  }
+  legacyProviderKeyMigration = migrate;
+}
 const activeAccountDeletionOwners = new Set<string>();
 const activeAccountDeletionActorCounts = new Map<string, number>();
 const activeAccountMutationCounts = new Map<string, number>();
@@ -562,35 +594,14 @@ export async function authApi(
             timestamp,
             timestamp,
           );
-        store
-          .prepare("UPDATE canvas_documents SET owner_id = ? WHERE owner_id IS NULL")
-          .run(userId);
-        store
-          .prepare("UPDATE project_metadata SET owner_id = ? WHERE owner_id IS NULL")
-          .run(userId);
-        store
-          .prepare("UPDATE asset_history SET owner_id = ? WHERE owner_id IS NULL")
-          .run(userId);
-        store
-          .prepare("UPDATE generation_tasks SET owner_id = ? WHERE owner_id IS NULL")
-          .run(userId);
-        const register = store.prepare(`
-          INSERT OR IGNORE INTO media_assets (
-            kind, id, owner_id, storage_name, byte_size, created_at, updated_at
-          )
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `);
-        for (const item of media) {
-          register.run(
-            item.kind,
-            item.id,
-            userId,
-            item.storageName,
-            item.byteSize,
-            timestamp,
-            timestamp,
-          );
-        }
+        executeTransactionScopedCommand(store, claimLegacyCanvasDataCommand, userId);
+        executeTransactionScopedCommand(store, claimLegacyProjectDataCommand, userId);
+        executeTransactionScopedCommand(store, claimLegacyGenerationDataCommand, userId);
+        executeTransactionScopedCommand(store, registerLegacyMediaCommand, {
+          items: media,
+          ownerId: userId,
+          timestamp,
+        });
         recordAudit(store, userId, "bootstrap_admin", userId, {
           claimedMedia: media.length,
         });
@@ -600,9 +611,7 @@ export async function authApi(
         store.exec("ROLLBACK");
         throw error;
       }
-      await import("./providerProfiles")
-        .then((module) => module.migrateLegacyProviderKeysIfNeeded())
-        .catch(() => undefined);
+      await legacyProviderKeyMigration?.().catch(() => undefined);
       const row = store
         .prepare("SELECT * FROM users WHERE id = ?")
         .get(userId) as UserRow;
@@ -984,51 +993,21 @@ function preparePrivateAccountMediaDeletion(
   ownerId: string,
   timestamp: string,
 ) {
-  const media = store.prepare(`
-    SELECT kind, id
-    FROM media_assets
-    WHERE owner_id = ?
-    ORDER BY kind, id
-  `).all(ownerId) as Array<{
-    id: string;
-    kind: "audio" | "image" | "video";
-  }>;
-  const upsertIntent = store.prepare(`
-    INSERT INTO media_delete_intents (
-      owner_id, kind, asset_id, state, created_at, updated_at
-    ) VALUES (?, ?, ?, 'delete-requested', ?, ?)
-    ON CONFLICT(owner_id, kind, asset_id) DO UPDATE SET
-      state = 'delete-requested', updated_at = excluded.updated_at
-    WHERE media_delete_intents.state IN (
-      'tombstone', 'delete-requested', 'delete-failed'
-    )
-  `);
-  for (const row of media) {
-    const intent = upsertIntent.run(
-      ownerId,
-      row.kind,
-      row.id,
-      timestamp,
-      timestamp,
+  try {
+    return executeTransactionScopedCommand(
+      store,
+      preparePrivateAccountMediaDeletionCommand,
+      { ownerId, timestamp },
     );
-    if (intent.changes !== 1) {
-      throw new AccountDeletionActiveError("Account media deletion changed concurrently");
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "Account media deletion changed concurrently"
+    ) {
+      throw new AccountDeletionActiveError(error.message);
     }
+    throw error;
   }
-  store.prepare(`
-    UPDATE media_assets
-    SET storage_status = 'failed', duration_status = CASE
-          WHEN kind = 'image' THEN 'not-applicable' ELSE 'failed' END,
-        updated_at = ?
-    WHERE owner_id = ?
-  `).run(timestamp, ownerId);
-  store.prepare(`
-    UPDATE media_publication_attempts
-    SET state = 'failed', error_code = 'ACCOUNT_DELETE_REQUESTED',
-        updated_at = ?
-    WHERE owner_id = ? AND state = 'published'
-  `).run(timestamp, ownerId);
-  return media.length;
 }
 
 function accountDeletionRoot(store: DatabaseSync) {
@@ -1157,25 +1136,27 @@ function beginAccountDeletion(
       }
     }
     for (const reference of retainedMedia) {
-      const transferred = store.prepare(`
-        UPDATE media_assets
-        SET owner_id = ?
-        WHERE owner_id = ? AND kind = ? AND id = ?
-          AND storage_status = 'ready'
-      `).run(rootOwnerId, ownerId, reference.kind, reference.assetId);
-      if (transferred.changes !== 1) {
+      const transferred = executeTransactionScopedCommand(
+        store,
+        transferAccountMediaCommand,
+        {
+          assetId: reference.assetId,
+          kind: reference.kind,
+          ownerId,
+          rootOwnerId,
+        },
+      );
+      if (transferred !== 1) {
         throw new AccountDeletionReferencedError(
           "Public template media changed concurrently",
         );
       }
     }
-    const transferredTemplates = store.prepare(`
-      UPDATE public_templates
-      SET created_by = CASE WHEN created_by = ? THEN ? ELSE created_by END,
-          updated_by = CASE WHEN updated_by = ? THEN ? ELSE updated_by END
-      WHERE created_by = ? OR updated_by = ?
-    `).run(ownerId, rootOwnerId, ownerId, rootOwnerId, ownerId, ownerId);
-    store.prepare("DELETE FROM user_templates WHERE owner_id = ?").run(ownerId);
+    const transferredTemplateCount = executeTransactionScopedCommand(
+      store,
+      transferAndDeleteAccountTemplatesCommand,
+      { ownerId, rootOwnerId },
+    );
     const disabled = store.prepare(`
       UPDATE users SET status = 'disabled', updated_at = ?
       WHERE id = ?
@@ -1187,16 +1168,14 @@ function beginAccountDeletion(
       ownerId,
       timestamp,
     );
-    store.prepare(`
-      DELETE FROM asset_history WHERE owner_id = ? OR account_id = ?
-    `).run(ownerId, ownerId);
+    executeTransactionScopedCommand(store, deleteAccountHistoryCommand, ownerId);
     store.exec("COMMIT");
     return {
       privateMediaCount,
       rootOwnerId,
       target,
       transferredMediaCount: retainedMedia.length,
-      transferredTemplateCount: Number(transferredTemplates.changes),
+      transferredTemplateCount,
     };
   } catch (error) {
     if (store.isTransaction) store.exec("ROLLBACK");
@@ -1278,35 +1257,14 @@ function finishAccountDeletion(
     if (privateTemplates !== 0 || publicTemplates !== 0) {
       throw new AccountDeletionReferencedError("Account template transfer is incomplete");
     }
-    store.prepare(`
-      DELETE FROM generation_provider_attempts
-      WHERE task_id IN (
-        SELECT id FROM generation_tasks WHERE owner_id = ?
-      )
-    `).run(ownerId);
-    store.prepare(`
-      DELETE FROM generation_task_events
-      WHERE task_id IN (
-        SELECT id FROM generation_tasks WHERE owner_id = ?
-      )
-    `).run(ownerId);
-    store.prepare(`
-      DELETE FROM generation_admission_events
-      WHERE task_id IN (
-        SELECT id FROM generation_tasks WHERE owner_id = ?
-      )
-    `).run(ownerId);
-    store.prepare("DELETE FROM generation_tasks WHERE owner_id = ?").run(ownerId);
+    executeTransactionScopedCommand(store, deleteAccountGenerationDataCommand, ownerId);
     store.prepare(
       "DELETE FROM account_provider_credentials WHERE account_id = ?",
     ).run(ownerId);
     store.prepare("DELETE FROM account_permissions WHERE account_id = ?").run(ownerId);
     store.prepare("DELETE FROM account_permissions WHERE granted_by = ?").run(ownerId);
-    store.prepare("DELETE FROM canvas_documents WHERE owner_id = ?").run(ownerId);
-    store.prepare("DELETE FROM project_metadata WHERE owner_id = ?").run(ownerId);
-    store.prepare(`
-      DELETE FROM asset_history WHERE owner_id = ? OR account_id = ?
-    `).run(ownerId, ownerId);
+    executeTransactionScopedCommand(store, deleteAccountCanvasDataCommand, ownerId);
+    executeTransactionScopedCommand(store, deleteAccountProjectDataCommand, ownerId);
     store.prepare(`
       DELETE FROM admin_audit_events
       WHERE actor_user_id = ? OR target_user_id = ?
@@ -1898,28 +1856,10 @@ function finishAccountMediaDeletion(
 ) {
   store.exec("BEGIN IMMEDIATE");
   try {
-    const removed = store.prepare(`
-      DELETE FROM media_assets
-      WHERE owner_id = ? AND kind = ? AND id = ? AND storage_status = 'failed'
-        AND storage_name = ? AND storage_backend = ?
-        AND storage_profile_id IS ? AND object_key IS ?
-    `).run(
-      row.owner_id,
-      row.kind,
-      row.id,
-      row.storage_name,
-      row.storage_backend,
-      row.storage_profile_id,
-      row.object_key,
-    );
-    if (removed.changes !== 1) throw new Error("Account media changed concurrently");
-    const completed = store.prepare(`
-      UPDATE media_delete_intents
-      SET state = 'tombstone', updated_at = ?
-      WHERE owner_id = ? AND kind = ? AND asset_id = ?
-        AND state = 'delete-requested'
-    `).run(new Date().toISOString(), row.owner_id, row.kind, row.id);
-    if (completed.changes !== 1) throw new Error("Account media intent changed concurrently");
+    executeTransactionScopedCommand(store, finishAccountMediaDeletionCommand, {
+      row,
+      timestamp: new Date().toISOString(),
+    });
     store.exec("COMMIT");
   } catch (error) {
     if (store.isTransaction) store.exec("ROLLBACK");
@@ -1931,10 +1871,15 @@ function markAccountMediaDeletionFailed(
   store: DatabaseSync,
   row: AccountMediaRow,
 ) {
-  store.prepare(`
-    UPDATE media_delete_intents
-    SET state = 'delete-failed', updated_at = ?
-    WHERE owner_id = ? AND kind = ? AND asset_id = ?
-      AND state = 'delete-requested'
-  `).run(new Date().toISOString(), row.owner_id, row.kind, row.id);
+  store.exec("BEGIN IMMEDIATE");
+  try {
+    executeTransactionScopedCommand(store, failAccountMediaDeletionCommand, {
+      row,
+      timestamp: new Date().toISOString(),
+    });
+    store.exec("COMMIT");
+  } catch (error) {
+    if (store.isTransaction) store.exec("ROLLBACK");
+    throw error;
+  }
 }

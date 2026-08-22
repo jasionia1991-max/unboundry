@@ -1192,8 +1192,6 @@ export function CanvasShell({
       state === "loading" ? "正在加载画布..." : "已保存到云端",
     );
   }, [canvasScopeId, durableFixture]);
-  const hasProbeNodes =
-    hasInteractionProbeNodes(fixtureId) || textVideoStarted;
   const zoomRatio = Math.min(1, Math.max(0, (zoomSummary - 0.15) / 1.85));
   const normalizedSearchQuery = nodeSearchQuery.trim().toLocaleLowerCase();
   const visibleSearchEntries = nodeSearchEntries.filter(
@@ -4055,7 +4053,7 @@ export function CanvasShell({
           className="control fit"
           disabled={effectiveCanvasLoadState !== "ready"}
           onClick={() =>
-            hasProbeNodes
+            graphHasContent
               ? fitWorld?.()
               : setViewportRequest({
                   sequence: ++zoomRequestSequence.current,

@@ -12,6 +12,7 @@ import {
   recordBlockedBrowserRequest,
   safeTestEnvironment,
 } from "./test-environment";
+import "../server/applicationComposition";
 
 safeTestEnvironment();
 

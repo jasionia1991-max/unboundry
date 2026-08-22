@@ -11,9 +11,6 @@ import {
   rejectUnreadRequestBody,
 } from "./boundedBody";
 import {
-  beginMediaDeletion,
-  finishMediaDeletion,
-  markMediaDeletionFailed,
   readableMedia,
 } from "./mediaRegistry";
 import {
@@ -36,10 +33,13 @@ import {
 } from "./secureStorageProfiles";
 import { probeTrustedMediaMetadata } from "./mediaMetadata";
 import {
+  beginMediaDeletion,
   cleanupPublicationStaging,
   compensateMediaPublication,
   finalizeMediaPublication,
+  finishMediaDeletion,
   markExternalMediaPublicationReady,
+  markMediaDeletionFailed,
   mediaPublicationStagingPath,
   MediaPublicationConflictError,
   publishLocalMediaPublication,
@@ -47,7 +47,7 @@ import {
   stageMediaPublication,
   type GeneratedPublicationTask,
   type MediaPublicationExecution,
-} from "./mediaLifecycle";
+} from "./mediaPublicationService";
 import {
   reserveMediaResources,
   ResourceBudgetError,

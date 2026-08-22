@@ -9,6 +9,7 @@
     "npm": "10.9.8"
   },
   "scripts": {
+    "check:architecture": "node scripts/check-architecture.mjs",
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",

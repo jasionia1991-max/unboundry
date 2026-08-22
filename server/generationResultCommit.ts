@@ -10,6 +10,11 @@ import {
   runMediaPublicationFinalizeFaultForTests,
   type MediaPublicationReservation,
 } from "./mediaLifecycle";
+import {
+  deleteMediaHistoryCommand,
+  upsertMediaHistoryCommand,
+} from "./canvasTransactionCommands";
+import { executeTransactionScopedCommand } from "./transactionCommand";
 
 const identifierPattern = /^[a-z0-9._-]+$/i;
 
@@ -350,10 +355,11 @@ export function publishGenerationMediaCandidate(
       ) {
         throw new Error("Generation candidate Provider ownership changed");
       }
-      database.prepare(`
-        DELETE FROM asset_history
-        WHERE account_id = ? AND owner_id = ? AND id = ? AND kind = ?
-      `).run(task.owner_id, task.owner_id, evidence.assetId, task.kind);
+      executeTransactionScopedCommand(database, deleteMediaHistoryCommand, {
+        assetId: evidence.assetId,
+        kind: task.kind,
+        ownerId: task.owner_id,
+      });
       return { assetId: evidence.assetId, state: "published" as const, taskId };
     });
   } finally {
@@ -495,24 +501,15 @@ export function commitGenerationMediaOutputSet(input: Readonly<{
         : input.kind === "audio"
           ? "生成音频"
           : "生成图片";
-      const insertHistory = database.prepare(`
-        INSERT INTO asset_history (
-          account_id, id, kind, label, preview, created_at, owner_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(account_id, id) DO UPDATE SET
-          kind = excluded.kind, label = excluded.label,
-          preview = excluded.preview, owner_id = excluded.owner_id
-      `);
       for (const publication of publications) {
-        insertHistory.run(
-          input.ownerId,
-          publication.asset_id,
-          input.kind,
-          publication.history_label || defaultLabel,
-          preview(publication.asset_id),
-          timestamp,
-          input.ownerId,
-        );
+        executeTransactionScopedCommand(database, upsertMediaHistoryCommand, {
+          assetId: publication.asset_id,
+          createdAt: timestamp,
+          kind: input.kind,
+          label: publication.history_label || defaultLabel,
+          ownerId: input.ownerId,
+          preview: preview(publication.asset_id),
+        });
       }
       runMediaPublicationFinalizeFaultForTests();
       return { assetId: primary.asset_id, state: "success" as const, taskId: input.taskId };

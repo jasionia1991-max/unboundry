@@ -1,6 +1,5 @@
 import { statSync } from "node:fs";
 import { appendFile } from "node:fs/promises";
-import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
@@ -18,13 +17,7 @@ import {
   type ArkImageBytesInput,
 } from "./arkFileUploader";
 import { createPrivateAliyunOssReadUrl } from "./aliyunOss";
-import { requestIdentity } from "./auth";
 import { appDataDirectory, openAppDatabase } from "./database";
-import {
-  decodedRequestPath,
-  HttpRequestError,
-  readJsonBody,
-} from "./httpRequest";
 import {
   createGenerationSafetyStore,
   generationSafetyStatus,
@@ -74,7 +67,6 @@ import {
   arkVideoBase64Bytes,
   arkVideoBase64EnvelopeBytes,
   arkVideoMediaProblem,
-  arkVideoMediaRecordForOwner,
   arkVideoMediaRules,
   assertArkVideoMediaCombination,
   assertArkVideoBase64Budget,
@@ -101,17 +93,12 @@ import {
 import { saveGeneratedMp4 } from "./videoStorage";
 import { saveGeneratedAudio, saveGeneratedMp3 } from "./audioStorage";
 import {
-  createMurekaAudioTask,
   downloadMurekaAudioResult,
-  getMurekaAudioTask,
   MurekaAudioError,
   type MurekaAudioQueryKind,
 } from "./murekaAudioProvider";
 import {
-  cancelVolcengineArkVideoTask,
-  createVolcengineArkVideoTask,
   defaultArkVideoLimits,
-  getVolcengineArkVideoTask,
   seedanceMiniAudioPriceMicrounitsPerThousandTokens,
   type ArkVideoLimits,
   type ArkVideoMediaInput,
@@ -119,9 +106,7 @@ import {
 } from "./volcengineArkVideoProvider";
 import {
   prepareRelayGptImageRequest,
-  pollRelayMediaTask,
   RelayProviderError,
-  submitRelayMedia,
   type RelayMediaParamValue,
   type RelayTransientMediaOutput,
 } from "./relayProviderAdapters";
@@ -133,16 +118,24 @@ import {
 import {
   isTextGenerationProtocol,
   TextGenerationProviderError,
+  type TextGenerationProviderExecution,
   type TextGenerationInput,
+  type TextGenerationRequest,
 } from "./generationProvider";
-import {
-  textProviderRegistry as defaultTextProviderRegistry,
-  type TextProviderRegistry,
-} from "./providerRegistry";
+import type { TextProviderRegistry } from "./providerGenerationTextRuntime";
 import {
   downloadProviderResultMedia,
   ProviderResultMediaError,
 } from "./providerResultMedia";
+import type {
+  MediaGenerationExecution,
+  MediaGenerationRequest,
+  MediaGenerationSubmission,
+  MediaProviderCancellation,
+  MediaProviderTaskSnapshot,
+  NormalizedMediaProviderOutput,
+  NormalizedMediaProviderResult,
+} from "./mediaGenerationProvider";
 import { normalizeProviderImageToPng } from "./providerImageNormalization";
 import {
   listRelayUsageRecords,
@@ -159,7 +152,7 @@ import {
   recoverPendingUploadMediaPublications,
   cleanupPublicationStaging,
   type MediaPublicationReservation,
-} from "./mediaLifecycle";
+} from "./mediaPublicationService";
 import {
   StorageConfigurationBusyError,
   storageProfileForMedia,
@@ -195,6 +188,88 @@ import {
   type ProviderProtocol,
 } from "../types/relayProtocols";
 import type { RuntimeRoleCoordinator } from "./runtimeRole";
+
+export type GenerationRuntimeAdapters = Readonly<{
+  arkVideo: Readonly<{
+    cancel: (
+      profile: ProviderProfile,
+      providerTaskId: string,
+      execution: MediaGenerationExecution,
+    ) => Promise<MediaProviderCancellation>;
+    inspect: (
+      profile: ProviderProfile,
+      providerTaskId: string,
+      execution: MediaGenerationExecution,
+    ) => Promise<MediaProviderTaskSnapshot>;
+    normalize: (
+      profile: ProviderProfile,
+      rawResult: unknown,
+    ) => NormalizedMediaProviderResult;
+    submit: (
+      profile: ProviderProfile,
+      request: MediaGenerationRequest,
+      execution: MediaGenerationExecution,
+    ) => Promise<MediaGenerationSubmission>;
+  }>;
+  murekaAudio: Readonly<{
+    inspect: (
+      profile: ProviderProfile,
+      providerTaskId: string,
+      execution: MediaGenerationExecution,
+    ) => Promise<MediaProviderTaskSnapshot>;
+    normalize: (
+      profile: ProviderProfile,
+      rawResult: unknown,
+    ) => NormalizedMediaProviderResult;
+    submit: (
+      profile: ProviderProfile,
+      request: MediaGenerationRequest,
+      execution: MediaGenerationExecution,
+    ) => Promise<MediaGenerationSubmission>;
+  }>;
+  relayMedia: Readonly<{
+    inspect: (
+      profile: ProviderProfile,
+      kind: "audio" | "image" | "video",
+      providerTaskId: string,
+      execution: MediaGenerationExecution,
+    ) => Promise<MediaProviderTaskSnapshot>;
+    normalize: (
+      profile: ProviderProfile,
+      kind: "audio" | "image" | "video",
+      rawResult: unknown,
+    ) => NormalizedMediaProviderResult;
+    submit: (
+      profile: ProviderProfile,
+      request: MediaGenerationRequest,
+      execution: MediaGenerationExecution,
+    ) => Promise<MediaGenerationSubmission>;
+  }>;
+  text: (
+    profile: ProviderProfile,
+    request: TextGenerationRequest,
+    execution: Omit<TextGenerationProviderExecution, "profile">,
+    registry?: TextProviderRegistry,
+  ) => ReturnType<TextProviderRegistry["generate"]>;
+}>;
+
+let configuredRuntimeAdapters: GenerationRuntimeAdapters | undefined;
+
+export function configureGenerationRuntimeAdapters(
+  adapters: GenerationRuntimeAdapters,
+) {
+  if (configuredRuntimeAdapters && configuredRuntimeAdapters !== adapters) {
+    throw new Error("Generation runtime adapters are already configured");
+  }
+  configuredRuntimeAdapters = adapters;
+}
+
+function generationRuntimeAdapters() {
+  if (!configuredRuntimeAdapters) {
+    throw new Error("Generation runtime adapters are not configured");
+  }
+  return configuredRuntimeAdapters;
+}
 
 let store: ReturnType<typeof createGenerationTaskStore> | undefined;
 let storeDataDirectory: string | undefined;
@@ -726,36 +801,6 @@ async function taskProviderSnapshotProfile(
   } finally {
     lease.release();
   }
-}
-
-function json(response: ServerResponse, status: number, body: unknown) {
-  response.statusCode = status;
-  response.setHeader("Cache-Control", "no-store");
-  response.setHeader("Content-Type", "application/json; charset=utf-8");
-  response.end(JSON.stringify(body));
-}
-
-function injectInitialGenerationPostCommitFailure(request: IncomingMessage) {
-  if (
-    process.env.UNBOUNDRY_SAFE_TEST === "1" &&
-    request.headers["x-unboundry-test-generation-post-commit-failure"] ===
-      "before-launch"
-  ) {
-    throw new Error("Controlled initial generation post-commit failure");
-  }
-}
-
-function canvasRevisionConflict(response: ServerResponse, error: unknown) {
-  if (
-    !(error instanceof CanvasRevisionConflictError) &&
-    !(error instanceof GenerationTaskCanvasRevisionConflictError)
-  ) return false;
-  json(response, 409, {
-    code: "CANVAS_NOT_SAVED",
-    error: error.message,
-    revision: error.revision,
-  });
-  return true;
 }
 
 function taskAbandonAllowed(
@@ -2457,6 +2502,7 @@ export async function executeTextTaskWithDependencies(
     ) => Promise<string>;
     signal?: AbortSignal;
     store: TextTaskStore;
+    textRuntime?: GenerationRuntimeAdapters["text"];
     textProviderRegistry?: TextProviderRegistry;
     prepareArkImage?: (input: {
       image: ArkImageBytesInput;
@@ -2607,9 +2653,8 @@ export async function executeTextTaskWithDependencies(
         lease.credentialRevision,
       );
       const leasedFetch = fetchWithProviderLease(lease, dependencies.fetcher);
-      result = await (dependencies.textProviderRegistry ??
-        defaultTextProviderRegistry).generate(
-          lease.profile,
+      result = await (dependencies.textRuntime ?? generationRuntimeAdapters().text)(
+        lease.profile,
           {
             inputs,
             maxOutputTokens:
@@ -2636,7 +2681,8 @@ export async function executeTextTaskWithDependencies(
             signal: dependencies.signal,
             usePinnedTransport: dependencies.usePinnedRelayTransport,
           },
-        );
+        dependencies.textProviderRegistry,
+      );
     } finally {
       lease.release();
     }
@@ -3212,6 +3258,66 @@ const relayMediaRecoveryLimit: Record<"audio" | "image" | "video", number> = {
   video: 24,
 };
 
+function mediaProviderAbsoluteDeadline(task: GenerationTask) {
+  const contract = relayMediaModelContract(task.providerModelId);
+  const durationMs = contract?.pollPolicy.deadlineMs ??
+    (task.kind === "video" ? 75 : task.kind === "audio" ? 15 : 10) * 60_000;
+  const attemptedAt = taskStore().providerAttemptCreatedAt(task.id);
+  const origin = attemptedAt ? Date.parse(attemptedAt) : Date.now();
+  if (!Number.isFinite(origin)) {
+    throw new Error("Invalid Provider attempt creation time");
+  }
+  return new Date(origin + durationMs).toISOString();
+}
+
+function mediaProviderExecution(input: {
+  absoluteDeadline?: string;
+  beforeProviderRequest?: () => void;
+  fetcher: typeof fetch;
+  metadata?: Readonly<Record<string, unknown>>;
+  profile: ProviderProfile;
+  signal: AbortSignal;
+  task: GenerationTask;
+}): MediaGenerationExecution {
+  return {
+    absoluteDeadline: input.absoluteDeadline ??
+      mediaProviderAbsoluteDeadline(input.task),
+    attempt: input.task.attempt,
+    beforeProviderRequest: input.beforeProviderRequest ?? (() => undefined),
+    fetcher: input.fetcher,
+    metadata: input.metadata,
+    profile: input.profile,
+    signal: input.signal,
+  };
+}
+
+function relayOutputsFromNormalized(
+  outputs: readonly NormalizedMediaProviderOutput[],
+): RelayTransientMediaOutput[] {
+  return outputs.map((output) => {
+    if (output.bytes) {
+      if (output.kind !== "image" || !output.contentType) {
+        throw new RelayProviderError("PROVIDER_RESULT_FORMAT", true);
+      }
+      return {
+        bytes: output.bytes,
+        kind: "image",
+        mimeType: output.contentType,
+        transport: "bytes",
+      };
+    }
+    if (!output.transientUrl) {
+      throw new RelayProviderError("PROVIDER_RESULT_FORMAT", true);
+    }
+    return {
+      kind: output.kind,
+      ...(output.contentType ? { mimeType: output.contentType } : {}),
+      transientUrl: output.transientUrl,
+      transport: "transient-url",
+    };
+  });
+}
+
 function isTransientRelayPollError(error: unknown) {
   if (!(error instanceof RelayProviderError)) return false;
   return error.code === "NETWORK" ||
@@ -3289,7 +3395,7 @@ async function recoverRelayMediaAfterPoll(
           continue;
         }
       }
-      let status: Awaited<ReturnType<typeof pollRelayMediaTask>>;
+      let status: MediaProviderTaskSnapshot;
       try {
         const current = taskStore().get(taskId);
         if (!current || current.state !== "running") return;
@@ -3300,19 +3406,18 @@ async function recoverRelayMediaAfterPoll(
           profileId: current.providerProfileId ?? profile.id,
           task: current,
           request: (currentProfile, leasedFetch, providerBoundary) =>
-            pollRelayMediaTask(
-              assertRelayProfile(currentProfile, "media-generate"),
-              {
-                capability: kind,
-                externalTaskId: currentTaskId!,
-                providerProtocol: "media-generate",
-              },
-              {
+            generationRuntimeAdapters().relayMedia.inspect(
+              currentProfile,
+              kind,
+              currentTaskId!,
+              mediaProviderExecution({
                 beforeProviderRequest: providerBoundary(),
                 fetcher: leasedFetch,
+                metadata: { kind },
+                profile: currentProfile,
                 signal: controller.signal,
-                usePinnedTransport: true,
-              },
+                task: current,
+              }),
             ),
         });
       } catch (error) {
@@ -3324,14 +3429,20 @@ async function recoverRelayMediaAfterPoll(
         await settleRelayMediaFailed(taskId, status.refunded === true);
         return;
       }
-      if (status.state === "success") {
+      if (status.state === "succeeded") {
         const running = taskStore().get(taskId);
         if (!running || running.state !== "running") return;
         taskStore().markProviderResponseReceivedForTask(taskId);
+        const normalized = generationRuntimeAdapters().relayMedia.normalize(
+          profile,
+          kind,
+          status.rawResult,
+        );
         const saved = await saveRelayMediaOutputs({
-          actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+          actualCostMicrounits: normalized.actualCostMicrounits ??
+            running.estimatedCostMicrounits ?? 0,
           executionAttempt: running.attempt,
-          outputs: status.outputs,
+          outputs: relayOutputsFromNormalized(normalized.outputs),
           ownerId: running.ownerId!,
           profile,
           prompt: running.prompt,
@@ -3507,29 +3618,36 @@ async function executeRelayMediaTask(
           profileId: running.providerProfileId,
           task: running,
           request: async (currentProfile, leasedFetch, providerBoundary) => {
-            const created = await submitRelayMedia(
-              assertRelayProfile(currentProfile, "media-generate"),
+            const created = await generationRuntimeAdapters().relayMedia.submit(
+              currentProfile,
               {
-                capability: kind,
+                inputs: [],
+                kind,
                 model: running.providerModelId!,
-                params,
+                parameters: params,
                 prompt: running.prompt,
-                providerProtocol: "media-generate",
               },
-              {
+              mediaProviderExecution({
                 beforeProviderRequest: providerBoundary(() =>
                   taskStore().recordProviderAttempt(taskId),
                 ),
                 fetcher: leasedFetch,
+                profile: currentProfile,
                 signal: controller.signal,
-                usePinnedTransport: true,
-              },
+                task: running,
+              }),
             );
-            taskStore().setProviderTaskId(taskId, created.externalTaskId);
+            if (created.state !== "accepted") {
+              throw new RelayProviderError("FORMAT", true);
+            }
+            taskStore().setProviderTaskId(taskId, created.providerTaskId);
             return created;
           },
         });
-        providerTaskId = submission.externalTaskId;
+        if (submission.state !== "accepted") {
+          throw new RelayProviderError("FORMAT", true);
+        }
+        providerTaskId = submission.providerTaskId;
       } catch (error) {
         // The submission crossed the Provider boundary but its response was
         // lost (no durable task id). Image/video enter usage-record recovery
@@ -3586,7 +3704,7 @@ async function executeRelayMediaTask(
       if (polling.expired) break;
       poll += 1;
       if (taskStore().get(taskId)?.state !== "running") return;
-      let status: Awaited<ReturnType<typeof pollRelayMediaTask>>;
+      let status: MediaProviderTaskSnapshot;
       try {
         status = await withProviderRequestLease({
           expected: profile,
@@ -3595,20 +3713,21 @@ async function executeRelayMediaTask(
           profileId: running.providerProfileId,
           task: running,
           request: (currentProfile, leasedFetch, providerBoundary) =>
-            pollRelayMediaTask(
-              assertRelayProfile(currentProfile, "media-generate"),
-              {
-                capability: kind,
-                externalTaskId: providerTaskId!,
-                providerProtocol: "media-generate",
-                requireResultType: Boolean(modelContract),
-              },
-              {
+            generationRuntimeAdapters().relayMedia.inspect(
+              currentProfile,
+              kind,
+              providerTaskId!,
+              mediaProviderExecution({
                 beforeProviderRequest: providerBoundary(),
                 fetcher: leasedFetch,
+                metadata: {
+                  kind,
+                  requireResultType: Boolean(modelContract),
+                },
+                profile: currentProfile,
                 signal: controller.signal,
-                usePinnedTransport: true,
-              },
+                task: running,
+              }),
             ),
         });
       } catch (error) {
@@ -3620,15 +3739,20 @@ async function executeRelayMediaTask(
         await settleRelayMediaFailed(taskId, status.refunded === true);
         return;
       }
-      if (status.state === "success") {
+      if (status.state === "succeeded") {
         taskStore().markProviderResponseReceivedForTask(taskId);
+        const normalized = generationRuntimeAdapters().relayMedia.normalize(
+          profile,
+          kind,
+          status.rawResult,
+        );
         const saved = await saveRelayMediaOutputs({
           actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
           executionAttempt: running.attempt,
           expectedAudioContentType: kind === "audio"
             ? relayAudioResultContentType(running.parameters.format)
             : undefined,
-          outputs: status.outputs,
+          outputs: relayOutputsFromNormalized(normalized.outputs),
           ownerId,
           profile,
           prompt: running.prompt,
@@ -3678,7 +3802,7 @@ async function recoverGptImageFromProviderTask(
   const profile = await taskProviderSnapshotProfile(running, running.ownerId);
   for (let attempt = 0; attempt < relayMediaRecoveryLimit.image; attempt += 1) {
     if (taskStore().get(taskId)?.state !== "running") return;
-    let status: Awaited<ReturnType<typeof pollRelayMediaTask>>;
+    let status: MediaProviderTaskSnapshot;
     try {
       status = await withProviderRequestLease({
         expected: profile,
@@ -3687,19 +3811,18 @@ async function recoverGptImageFromProviderTask(
         profileId: running.providerProfileId,
         task: running,
         request: (currentProfile, leasedFetch, providerBoundary) =>
-          pollRelayMediaTask(
-            assertRelayProfile(currentProfile, "media-generate"),
-            {
-              capability: "image",
-              externalTaskId: running.providerTaskId!,
-              providerProtocol: "media-generate",
-            },
-            {
+          generationRuntimeAdapters().relayMedia.inspect(
+            currentProfile,
+            "image",
+            running.providerTaskId!,
+            mediaProviderExecution({
               beforeProviderRequest: providerBoundary(),
               fetcher: leasedFetch,
+              metadata: { kind: "image" },
+              profile: currentProfile,
               signal: controller.signal,
-              usePinnedTransport: true,
-            },
+              task: running,
+            }),
           ),
       });
     } catch (error) {
@@ -3714,15 +3837,21 @@ async function recoverGptImageFromProviderTask(
       });
       return;
     }
-    if (status.state !== "success") {
+    if (status.state !== "succeeded") {
       await waitForRelayMedia(10_000, controller.signal);
       continue;
     }
     taskStore().markProviderResponseReceivedForTask(taskId);
+    const normalized = generationRuntimeAdapters().relayMedia.normalize(
+      profile,
+      "image",
+      status.rawResult,
+    );
     const saved = await saveRelayMediaOutputs({
-      actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
+      actualCostMicrounits: normalized.actualCostMicrounits ??
+        running.estimatedCostMicrounits ?? 0,
       executionAttempt: running.attempt,
-      outputs: status.outputs,
+      outputs: relayOutputsFromNormalized(normalized.outputs),
       ownerId: running.ownerId!,
       profile,
       prompt: running.prompt,
@@ -3970,24 +4099,24 @@ async function saveVolcengineVideoResult(
   taskId: string,
   running: GenerationTask,
   profile: ProviderProfile,
-  status: {
-    providerUsageTokens?: number;
-    videoUrl?: string;
-  },
+  output: NormalizedMediaProviderOutput,
   signal: AbortSignal,
 ) {
   taskStore().markProviderResponseReceivedForTask(taskId);
-  if (!status.videoUrl || status.providerUsageTokens === undefined) {
+  if (
+    output.kind !== "video" || !output.transientUrl ||
+    output.providerUsageTokens === undefined
+  ) {
     throw new VolcengineArkVideoError("FORMAT", "方舟未返回完整的视频结果");
   }
   const downloaded = await downloadProviderResultMedia({
     apiKey: profile.apiKey ?? "",
     kind: "video",
     signal,
-    url: status.videoUrl,
+    url: output.transientUrl,
   });
   const actualCostMicrounits = Math.ceil(
-    status.providerUsageTokens *
+    output.providerUsageTokens *
     seedanceMiniAudioPriceMicrounitsPerThousandTokens /
     1_000,
   );
@@ -3998,7 +4127,7 @@ async function saveVolcengineVideoResult(
     task: {
       actualCostMicrounits,
       executionAttempt: running.attempt,
-      providerUsageTokens: status.providerUsageTokens,
+      providerUsageTokens: output.providerUsageTokens,
       taskId,
     },
   });
@@ -4019,7 +4148,7 @@ async function recoverNativeVideoAfterPoll(
 ) {
   for (let attempt = 0; attempt < relayMediaRecoveryLimit.video; attempt += 1) {
     if (taskStore().get(taskId)?.state !== "running") return;
-    let status: Awaited<ReturnType<typeof getVolcengineArkVideoTask>>;
+    let status: MediaProviderTaskSnapshot;
     try {
       status = await withProviderRequestLease({
         expected: profile,
@@ -4027,12 +4156,18 @@ async function recoverNativeVideoAfterPoll(
         ownerId: running.ownerId!,
         profileId: running.providerProfileId!,
         task: running,
-        request: (currentProfile, leasedFetch) =>
-          getVolcengineArkVideoTask(
+        request: (currentProfile, leasedFetch, providerBoundary) =>
+          generationRuntimeAdapters().arkVideo.inspect(
             currentProfile,
             providerTaskId,
-            leasedFetch,
-            controller.signal,
+            mediaProviderExecution({
+              beforeProviderRequest: providerBoundary(),
+              fetcher: leasedFetch,
+              metadata: { kind: "video" },
+              profile: currentProfile,
+              signal: controller.signal,
+              task: running,
+            }),
           ),
       });
     } catch (error) {
@@ -4057,13 +4192,17 @@ async function recoverNativeVideoAfterPoll(
       return;
     }
     if (status.state === "succeeded") {
+      const output = generationRuntimeAdapters().arkVideo.normalize(
+        profile,
+        status.rawResult,
+      ).outputs[0];
       const saved = await attemptProviderResultSave({
         taskId,
         save: () => saveVolcengineVideoResult(
           taskId,
           running,
           profile,
-          status,
+          output,
           controller.signal,
         ),
       });
@@ -4158,14 +4297,22 @@ function videoTaskMediaSnapshots(value: unknown): Array<
 async function arkVideoMediaInputs(task: GenerationTask): Promise<ArkVideoMediaInput[]> {
   const snapshots = videoTaskMediaSnapshots(task.parameters.inputs);
   const rules = referenceMediaRulesForTask(task) ?? arkVideoMediaRules;
-  const validated = snapshots.map((snapshot): ArkVideoMediaRecord => ({
-    kind: snapshot.kind,
-    media: arkVideoMediaRecordForOwner({
-      assetId: snapshot.assetId,
-      kind: snapshot.kind,
-      ownerId: task.ownerId!,
-    }, rules),
-  }));
+  const validated = snapshots.map((snapshot): ArkVideoMediaRecord => {
+    const media = readableMediaForOwner(
+      task.ownerId!,
+      snapshot.kind,
+      snapshot.assetId,
+    );
+    if (!media || media.storageStatus !== "ready") {
+      throw new ProviderMediaError(
+        "MEDIA_UNAVAILABLE",
+        "参考素材不存在、尚未保存或不属于当前账号",
+      );
+    }
+    const problem = arkVideoMediaProblem(snapshot.kind, media, rules);
+    if (problem) throw new ProviderMediaError("MEDIA_INVALID", problem);
+    return { kind: snapshot.kind, media };
+  });
   assertArkVideoMediaCombination(validated, rules);
   assertArkVideoBase64Budget(
     validated,
@@ -4244,39 +4391,55 @@ async function executeVideoTask(
         ownerId: running.ownerId!,
         profileId: running.providerProfileId,
         task: running,
-        request: async (currentProfile, leasedFetch) => {
-          const created = await createVolcengineArkVideoTask(
+        request: async (currentProfile, leasedFetch, providerBoundary) => {
+          const created = await generationRuntimeAdapters().arkVideo.submit(
             currentProfile,
             {
-              duration: typeof running.parameters.duration === "number"
-                ? running.parameters.duration
-                : 5,
-              generateAudio: running.parameters.generateAudio !== false,
-              inputs,
-              limits: adapterVideoLimitsForTask(running),
+              inputs: [],
+              kind: "video",
               model: running.providerModelId!,
+              parameters: {
+                aspectRatio: typeof running.parameters.aspectRatio === "string"
+                  ? running.parameters.aspectRatio
+                  : "16:9",
+                duration: typeof running.parameters.duration === "number"
+                  ? running.parameters.duration
+                  : 5,
+                generateAudio: running.parameters.generateAudio !== false,
+                inputs,
+                limits: adapterVideoLimitsForTask(running),
+                resolution: typeof running.parameters.resolution === "string"
+                  ? running.parameters.resolution
+                  : "480p",
+              },
               prompt: running.prompt,
-              ratio: typeof running.parameters.aspectRatio === "string"
-                ? running.parameters.aspectRatio
-                : "16:9",
-              resolution: typeof running.parameters.resolution === "string"
-                ? running.parameters.resolution
-                : "480p",
             },
-            leasedFetch,
-            controller.signal,
-            () => taskStore().recordProviderAttempt(taskId),
+            mediaProviderExecution({
+              beforeProviderRequest: providerBoundary(() =>
+                taskStore().recordProviderAttempt(taskId)
+              ),
+              fetcher: leasedFetch,
+              profile: currentProfile,
+              signal: controller.signal,
+              task: running,
+            }),
           );
-          taskStore().setProviderTaskId(taskId, created.id);
+          if (created.state !== "accepted") {
+            throw new VolcengineArkVideoError("FORMAT", "方舟没有返回视频任务编号");
+          }
+          taskStore().setProviderTaskId(taskId, created.providerTaskId);
           return created;
         },
       });
-      providerTaskId = created.id;
+      if (created.state !== "accepted") {
+        throw new VolcengineArkVideoError("FORMAT", "方舟没有返回视频任务编号");
+      }
+      providerTaskId = created.providerTaskId;
     }
 
     for (let poll = 0; poll < relayMediaPollLimit.video; poll += 1) {
       if (taskStore().get(taskId)?.state !== "running") return;
-      let status: Awaited<ReturnType<typeof getVolcengineArkVideoTask>>;
+      let status: MediaProviderTaskSnapshot;
       try {
         status = await withProviderRequestLease({
           expected: profile,
@@ -4284,12 +4447,18 @@ async function executeVideoTask(
           ownerId: running.ownerId!,
           profileId: running.providerProfileId,
           task: running,
-          request: (currentProfile, leasedFetch) =>
-            getVolcengineArkVideoTask(
+          request: (currentProfile, leasedFetch, providerBoundary) =>
+            generationRuntimeAdapters().arkVideo.inspect(
               currentProfile,
               providerTaskId,
-              leasedFetch,
-              controller.signal,
+              mediaProviderExecution({
+                beforeProviderRequest: providerBoundary(),
+                fetcher: leasedFetch,
+                metadata: { kind: "video" },
+                profile: currentProfile,
+                signal: controller.signal,
+                task: running,
+              }),
             ),
         });
       } catch (error) {
@@ -4316,13 +4485,17 @@ async function executeVideoTask(
         return;
       }
       if (status.state === "succeeded") {
+        const output = generationRuntimeAdapters().arkVideo.normalize(
+          profile,
+          status.rawResult,
+        ).outputs[0];
         const saved = await attemptProviderResultSave({
           taskId,
           save: () => saveVolcengineVideoResult(
             taskId,
             running,
             profile,
-            status,
+            output,
             controller.signal,
           ),
         });
@@ -4424,27 +4597,35 @@ async function executeAudioTask(taskId: string) {
         ownerId: running.ownerId!,
         profileId: running.providerProfileId,
         task: running,
-        request: async (currentProfile, leasedFetch) => {
-          const created = await createMurekaAudioTask(
+        request: async (currentProfile, leasedFetch, providerBoundary) => {
+          const created = await generationRuntimeAdapters().murekaAudio.submit(
             currentProfile,
             {
-              lyrics: running.parameters.lyrics,
+              inputs: [],
+              kind: "audio",
               model: running.providerModelId!,
-              musicGenerationMode: running.parameters.musicGenerationMode,
-              outputCount: running.parameters.outputCount,
+              parameters: running.parameters,
               prompt: running.prompt,
-              streamPlayback: running.parameters.streamPlayback,
-              vocalGender: running.parameters.vocalGender,
             },
-            leasedFetch,
-            controller.signal,
-            () => taskStore().recordProviderAttempt(taskId),
+            mediaProviderExecution({
+              beforeProviderRequest: providerBoundary(() =>
+                taskStore().recordProviderAttempt(taskId)
+              ),
+              fetcher: leasedFetch,
+              profile: currentProfile,
+              signal: controller.signal,
+              task: running,
+            }),
           );
-          taskStore().setProviderTaskId(taskId, created.id);
+          if (created.state !== "accepted") {
+            throw new MurekaAudioError("FORMAT");
+          }
+          taskStore().setProviderTaskId(taskId, created.providerTaskId);
           return created;
         },
       });
-      providerTaskId = created.id;
+      if (created.state !== "accepted") throw new MurekaAudioError("FORMAT");
+      providerTaskId = created.providerTaskId;
     }
 
     for (let poll = 0; poll < 450; poll += 1) {
@@ -4455,13 +4636,18 @@ async function executeAudioTask(taskId: string) {
         ownerId: running.ownerId!,
         profileId: running.providerProfileId,
         task: running,
-        request: (currentProfile, leasedFetch) =>
-          getMurekaAudioTask(
+        request: (currentProfile, leasedFetch, providerBoundary) =>
+          generationRuntimeAdapters().murekaAudio.inspect(
             currentProfile,
             providerTaskId,
-            queryKind,
-            leasedFetch,
-            controller.signal,
+            mediaProviderExecution({
+              beforeProviderRequest: providerBoundary(),
+              fetcher: leasedFetch,
+              metadata: { kind: "audio", queryKind },
+              profile: currentProfile,
+              signal: controller.signal,
+              task: running,
+            }),
           ),
       });
       if (status.state === "cancelled") {
@@ -4474,16 +4660,20 @@ async function executeAudioTask(taskId: string) {
       if (status.state === "failed") {
         taskStore().transition(taskId, "failed", {
           code: "PROVIDER_FAILED",
-          message: status.errorMessage ?? "Mureka 未完成本次音频生成",
+          message: status.failureMessage ?? "Mureka 未完成本次音频生成",
         });
         return;
       }
       if (status.state === "succeeded") {
         taskStore().markProviderResponseReceivedForTask(taskId);
-        if (!status.audioUrl) {
+        const output = generationRuntimeAdapters().murekaAudio.normalize(
+          profile,
+          status.rawResult,
+        ).outputs[0];
+        if (!output?.transientUrl) {
           throw new MurekaAudioError("FORMAT");
         }
-        const audioUrl = status.audioUrl;
+        const audioUrl = output.transientUrl;
         const saved = await attemptProviderResultSave({
           taskId,
           save: async () => {
@@ -4857,11 +5047,18 @@ async function cancelGenerationTask(task: GenerationTask) {
       ownerId: task.ownerId ?? "",
       profileId: task.providerProfileId,
       task,
-      request: (profile, leasedFetch) =>
-        cancelVolcengineArkVideoTask(
+      request: (profile, leasedFetch, providerBoundary) =>
+        generationRuntimeAdapters().arkVideo.cancel(
           profile,
           task.providerTaskId!,
-          leasedFetch,
+          mediaProviderExecution({
+            beforeProviderRequest: providerBoundary(),
+            fetcher: leasedFetch,
+            metadata: { kind: "video" },
+            profile,
+            signal: AbortSignal.timeout(30_000),
+            task,
+          }),
         ),
     });
   }
@@ -4942,6 +5139,55 @@ const lastReconcileAt = new Map<string, number>();
 
 type ReconcilePollState = "cannot-query" | "failed" | "running" | "success";
 
+async function inspectReconcileMediaProvider(
+  task: GenerationTask,
+  providerTaskId: string,
+  protocol: ProviderProtocol,
+  kind: "audio" | "image" | "video",
+  signal: AbortSignal,
+) {
+  const profile = await taskProviderSnapshotProfile(task, task.ownerId!);
+  const execution = mediaProviderExecution({
+    // Reconciliation is a new bounded read operation after the original
+    // polling window, so it owns a fresh request deadline without changing
+    // the persisted paid-attempt deadline.
+    absoluteDeadline: new Date(Date.now() + 30_000).toISOString(),
+    fetcher: fetch,
+    metadata: {
+      kind,
+      ...(kind === "audio"
+        ? { queryKind: audioQueryKind(task.parameters) }
+        : {}),
+    },
+    profile,
+    signal,
+    task,
+  });
+  if (protocol === "media-generate") {
+    return generationRuntimeAdapters().relayMedia.inspect(
+      profile,
+      kind,
+      providerTaskId,
+      execution,
+    );
+  }
+  if (protocol === "native" && kind === "video") {
+    return generationRuntimeAdapters().arkVideo.inspect(
+      profile,
+      providerTaskId,
+      execution,
+    );
+  }
+  if (protocol === "native" && kind === "audio") {
+    return generationRuntimeAdapters().murekaAudio.inspect(
+      profile,
+      providerTaskId,
+      execution,
+    );
+  }
+  throw new RelayProviderError("FORMAT");
+}
+
 async function pollReconcileProviderTask(
   task: GenerationTask,
   providerTaskId: string,
@@ -4950,26 +5196,23 @@ async function pollReconcileProviderTask(
   if (!task.ownerId || !task.providerProfileId) return "cannot-query";
   const protocol = taskProviderProtocol(task);
   if (protocol === "media-generate" && task.kind !== "text") {
-    const profile = await taskProviderSnapshotProfile(task, task.ownerId);
-    const status = await pollRelayMediaTask(
-      assertRelayProfile(profile, protocol),
-      {
-        capability: task.kind,
-        externalTaskId: providerTaskId,
-        providerProtocol: "media-generate",
-      },
-      { signal, usePinnedTransport: true },
+    const status = await inspectReconcileMediaProvider(
+      task,
+      providerTaskId,
+      protocol,
+      task.kind,
+      signal,
     );
-    if (status.state === "success") return "success";
+    if (status.state === "succeeded") return "success";
     if (status.state === "failed") return "failed";
     return "running";
   }
   if (protocol === "native" && task.kind === "video") {
-    const profile = await taskProviderSnapshotProfile(task, task.ownerId);
-    const status = await getVolcengineArkVideoTask(
-      profile,
+    const status = await inspectReconcileMediaProvider(
+      task,
       providerTaskId,
-      fetch,
+      protocol,
+      "video",
       signal,
     );
     if (status.state === "succeeded") return "success";
@@ -4977,12 +5220,11 @@ async function pollReconcileProviderTask(
     return "running";
   }
   if (protocol === "native" && task.kind === "audio") {
-    const profile = await taskProviderSnapshotProfile(task, task.ownerId);
-    const status = await getMurekaAudioTask(
-      profile,
+    const status = await inspectReconcileMediaProvider(
+      task,
       providerTaskId,
-      "song",
-      fetch,
+      protocol,
+      "audio",
       signal,
     );
     if (status.state === "succeeded") return "success";
@@ -4991,19 +5233,17 @@ async function pollReconcileProviderTask(
   }
   if (task.kind !== "text") {
     try {
-      const profile = await taskProviderSnapshotProfile(task, task.ownerId);
-      const status = await pollRelayMediaTask(
-        assertRelayProfile(profile, "media-generate"),
-        {
-          capability: task.kind === "audio" || task.kind === "video"
-            ? task.kind
-            : "image",
-          externalTaskId: providerTaskId,
-          providerProtocol: "media-generate",
-        },
-        { signal, usePinnedTransport: true },
+      const kind = task.kind === "audio" || task.kind === "video"
+        ? task.kind
+        : "image";
+      const status = await inspectReconcileMediaProvider(
+        task,
+        providerTaskId,
+        "media-generate",
+        kind,
+        signal,
       );
-      if (status.state === "success") return "success";
+      if (status.state === "succeeded") return "success";
       if (status.state === "failed") return "failed";
       return "running";
     } catch {
@@ -5013,1052 +5253,46 @@ async function pollReconcileProviderTask(
   return "cannot-query";
 }
 
-export async function generationTasks(
-  request: IncomingMessage,
-  response: ServerResponse,
-) {
-  const path = decodedRequestPath(request).replace(
-    /^\/+/,
-    "",
-  );
-  const identity = requestIdentity(request);
-  if (!identity) {
-    json(response, 401, { error: "Please sign in" });
-    return;
-  }
-
-  if (request.method === "GET" && path === "status") {
-    taskStore();
-    const safety = generationSafetyStatus();
-    const availability = await generationAvailability(
-      identity.bypass ? "__test__" : identity.userId,
-    );
-    const { providerCurrencies, ...publicAvailability } = availability;
-    json(response, 200, {
-      emergencyStop: safety.emergencyStop,
-      globalGenerationEnabled: safety.globalEnabled,
-      ...publicAvailability,
-      persistentQueueReady: true,
-      protectionReady: true,
-      submissionEnabled:
-        availability.providerConfigured &&
-        safety.globalEnabled &&
-        !safety.emergencyStop,
-      audioSubmissionEnabled:
-        availability.audioProviderConfigured &&
-        safety.globalEnabled &&
-        !safety.emergencyStop,
-      imageSubmissionEnabled:
-        availability.imageProviderConfigured &&
-        safety.globalEnabled &&
-        !safety.emergencyStop,
-      textSubmissionEnabled:
-        availability.textProviderConfigured &&
-        safety.globalEnabled &&
-        !safety.emergencyStop,
-      videoSubmissionEnabled:
-        availability.videoProviderConfigured &&
-        safety.globalEnabled &&
-        !safety.emergencyStop,
-    });
-    return;
-  }
-
-  if (request.method === "GET" && path === "") {
-    const requestUrl = new URL(request.url ?? "", "http://127.0.0.1");
-    const canvasId = requestUrl.searchParams.get("canvasId") ?? "";
-    try {
-      const generationStore = taskStore();
-      const ownerId = identity.bypass ? undefined : identity.userId;
-      const tasks = identity.bypass
-        ? generationStore.list(canvasId)
-        : generationStore.listForOwner(canvasId, identity.userId);
-      const bindings = tasks.some(({ state }) => state === "failed")
-        ? generationStore.retryBindingsForCanvas(canvasId, ownerId)
-        : new Map<string, GenerationTaskCanvasRetryBinding>();
-      json(response, 200, {
-        tasks: tasks.map((task) => taskSummary(task, bindings.get(task.id))),
-      });
-    } catch {
-      json(response, 400, { error: "Invalid canvas ID" });
-    }
-    return;
-  }
-
-  if (request.method === "GET" && path === "by-idempotency") {
-    const requestUrl = new URL(request.url ?? "", "http://127.0.0.1");
-    const canvasId = requestUrl.searchParams.get("canvasId") ?? "";
-    const idempotencyKey = requestUrl.searchParams.get("idempotencyKey") ?? "";
-    try {
-      const task = identity.bypass
-        ? taskStore().getByIdempotency(canvasId, idempotencyKey)
-        : taskStore().getByIdempotencyForOwner(
-            canvasId,
-            idempotencyKey,
-            identity.userId,
-          );
-      if (!task) {
-        json(response, 404, {
-          code: "GENERATION_TASK_NOT_FOUND",
-          error: "Generation task not found",
-        });
-        return;
-      }
-      json(response, 200, taskSummaryForOwner(
-        task,
-        identity.bypass ? undefined : identity.userId,
-      ));
-    } catch {
-      json(response, 400, { error: "Invalid idempotency lookup" });
-    }
-    return;
-  }
-
-  if (request.method === "DELETE" && /^[a-z0-9._-]+$/i.test(path)) {
-    const task = identity.bypass
-      ? taskStore().get(path)
-      : taskStore().getForOwner(path, identity.userId);
-    if (!task) {
-      json(response, 404, { error: "Generation task not found" });
-      return;
-    }
-    if (!["queued", "running", "recovering", "retrying"].includes(task.state)) {
-      json(response, 409, { error: "Generation task cannot be cancelled" });
-      return;
-    }
-    try {
-      await cancelGenerationTask(task);
-      const cancelled = taskStore().get(path);
-      if (!cancelled) throw new Error("Generation task not found");
-      json(response, 200, taskSummaryForOwner(
-        cancelled,
-        identity.bypass ? undefined : identity.userId,
-      ));
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        (error as { code?: string }).code === "PROVIDER_CANCEL_UNAVAILABLE"
-      ) {
-        json(response, 409, {
-          code: "PROVIDER_CANCEL_UNAVAILABLE",
-          error: error.message,
-        });
-        return;
-      }
-      if (error instanceof GenerationTaskProviderBoundaryError) {
-        json(response, 409, {
-          code: error.code,
-          error: error.message,
-        });
-        return;
-      }
-      json(response, 409, { error: "Generation task cannot be cancelled" });
-    }
-    return;
-  }
-
-  const abandonMatch = path.match(/^([a-z0-9._-]+)\/abandon$/i);
-  if (request.method === "POST" && abandonMatch) {
-    const taskId = abandonMatch[1];
-    const task = identity.bypass
-      ? taskStore().get(taskId)
-      : taskStore().getForOwner(taskId, identity.userId);
-    if (!task) {
-      json(response, 404, { error: "Generation task not found" });
-      return;
-    }
-    try {
-      const body = await readJsonBody<{
-        acknowledgeRemoteResultMayBeLost?: unknown;
-        expectedAttempt?: unknown;
-        expectedUpdatedAt?: unknown;
-      }>(request, 2 * 1_024);
-      if (
-        body.acknowledgeRemoteResultMayBeLost !== true ||
-        !Number.isSafeInteger(body.expectedAttempt) ||
-        Number(body.expectedAttempt) < 1 ||
-        typeof body.expectedUpdatedAt !== "string"
-      ) {
-        json(response, 400, {
-          code: "ABANDON_ACK_REQUIRED",
-          error: "必须确认将不再尝试恢复该平台结果",
-        });
-        return;
-      }
-      const abandoned = taskStore().abandonAcceptedProviderTask({
-        expectedAttempt: Number(body.expectedAttempt),
-        expectedUpdatedAt: body.expectedUpdatedAt,
-        taskId,
-      });
-      if (!abandoned) throw new Error("Generation task not found");
-      json(response, 200, taskSummaryForOwner(
-        abandoned,
-        identity.bypass ? undefined : identity.userId,
-      ));
-    } catch (error) {
-      if (error instanceof GenerationTaskAbandonError) {
-        json(response, 409, {
-          code: error.code,
-          error: error.message,
-        });
-        return;
-      }
-      json(response, 409, {
-        code: "PROVIDER_RESULT_NOT_ABANDONABLE",
-        error: "Generation task cannot be abandoned",
-      });
-    }
-    return;
-  }
-
-  const retryMatch = path.match(/^([a-z0-9._-]+)\/retry$/i);
-  if (request.method === "POST" && retryMatch) {
-    const taskId = retryMatch[1];
-    const body = await readJsonBody<{
-      canvasId?: unknown;
-      expectedAttempt?: unknown;
-      expectedCanvasRevision?: unknown;
-      expectedGenerationInputKey?: unknown;
-      expectedUpdatedAt?: unknown;
-      kind?: unknown;
-      nodeId?: unknown;
-    }>(request, 256 * 1_024);
-    if (
-      typeof body.canvasId !== "string" ||
-      !/^[a-z0-9._-]{1,120}$/i.test(body.canvasId) ||
-      !Number.isSafeInteger(body.expectedAttempt) ||
-      Number(body.expectedAttempt) < 0 ||
-      !Number.isSafeInteger(body.expectedCanvasRevision) ||
-      Number(body.expectedCanvasRevision) < 0 ||
-      typeof body.expectedGenerationInputKey !== "string" ||
-      body.expectedGenerationInputKey.length < 1 ||
-      body.expectedGenerationInputKey.length > 100_000 ||
-      typeof body.expectedUpdatedAt !== "string" ||
-      body.expectedUpdatedAt.length < 1 ||
-      body.expectedUpdatedAt.length > 80 ||
-      (body.kind !== "text" &&
-        body.kind !== "image" &&
-        body.kind !== "video" &&
-        body.kind !== "audio") ||
-      typeof body.nodeId !== "string" ||
-      !/^[a-z0-9._-]{1,160}$/i.test(body.nodeId)
-    ) {
-      json(response, 400, {
-        code: "RETRY_FENCE_REQUIRED",
-        error: "重试请求缺少当前画布与任务绑定证据",
-      });
-      return;
-    }
-    const task = identity.bypass
-      ? taskStore().get(taskId)
-      : taskStore().getForOwner(taskId, identity.userId);
-    if (!task) {
-      json(response, 404, { error: "Generation task not found" });
-      return;
-    }
-    if (
-      task.canvasId !== body.canvasId ||
-      task.nodeId !== body.nodeId ||
-      task.kind !== body.kind
-    ) {
-      json(response, 409, {
-        code: "RETRY_BINDING_STALE",
-        error: "任务已不再绑定当前画布节点",
-      });
-      return;
-    }
-    if (
-      task.attempt !== Number(body.expectedAttempt) ||
-      task.updatedAt !== body.expectedUpdatedAt
-    ) {
-      json(response, 409, {
-        code: "RETRY_TASK_CHANGED",
-        error: "任务状态已变化，请刷新后再试",
-      });
-      return;
-    }
-    const retry = retrySafetyDecision(task);
-    if (!retry.allowed) {
-      json(response, 409, {
-        code: retry.code,
-        error: retry.reason,
-      });
-      return;
-    }
-    if (retry.mode === "resume-provider-task") {
-      const compatibilityProblem = resumeProviderTaskSnapshotProblem(task);
-      if (compatibilityProblem) {
-        json(response, 409, {
-          code: "RETRY_SNAPSHOT_CHANGED",
-          error: compatibilityProblem,
-        });
-        return;
-      }
-      try {
-        if (!task.providerProfileId) throw new Error("Provider profile missing");
-        const lease = await acquireProviderGenerationRequestLease(
-          task.providerProfileId,
-          task.ownerId ?? "",
-        );
-        try {
-          requireTaskProviderSnapshot(
-            task,
-            lease.profile,
-            lease.credentialRevision,
-          );
-        } finally {
-          lease.release();
-        }
-      } catch (error) {
-        if (error instanceof ProviderProfileLockBusyError) {
-          json(response, 409, {
-            code: "PROVIDER_LOCK_BUSY",
-            error: "系统正在处理，请稍后自动重试",
-          });
-          return;
-        }
-        json(response, 409, {
-          code: "PROVIDER_CONFIGURATION_MISMATCH",
-          error: "平台连接已变化，请在节点重新提交，不能继续旧任务",
-        });
-        return;
-      }
-    }
-    let paidRetrySnapshot: GenerationPaidRetrySnapshot | undefined;
-    if (retry.mode === "new-provider-attempt") {
-      const runtime = await generationRuntimeDecision({
-        canSubmit: true,
-        kind: task.kind,
-        model: retry.model,
-        ownerId: identity.bypass ? "__test__" : identity.userId,
-      });
-      const runtimeProblem = preAdmissionRuntimeProblem(runtime);
-      if (runtimeProblem) {
-        json(response, 409, {
-          code: runtimeProblem.code,
-          error: runtimeProblem.message,
-        });
-        return;
-      }
-      if (
-        !runtime.providerProfile ||
-        !Number.isSafeInteger(runtime.credentialVersion) ||
-        Number(runtime.credentialVersion) < 1
-      ) {
-        json(response, 409, {
-          code: "ACCOUNT_CREDENTIAL_CHANGED",
-          error: "平台密钥版本已变化，请按当前配置重试",
-        });
-        return;
-      }
-      paidRetrySnapshot = {
-        credentialRevision: Number(runtime.credentialVersion),
-        modelConfiguration: {
-          credentialVersion: Number(runtime.credentialVersion),
-          modelId: retry.model.id,
-          parameterSchema: generationModelSchema(task.kind, retry.model),
-          providerConfigurationVersion: providerConfigurationVersion(
-            runtime.providerProfile,
-          ),
-          providerDriver: retry.model.provider_driver,
-          providerModelId: retry.model.provider_model_id,
-          providerProtocol: retry.model.provider_protocol ?? "native",
-          providerProfileId: retry.model.provider_profile_id,
-        },
-        providerModelId: retry.model.provider_model_id,
-        providerProfileId: retry.model.provider_profile_id,
-      };
-    }
-    let queued: GenerationTask | undefined;
-    try {
-      queued = retry.mode === "resume-provider-task"
-        ? taskStore().admitRetry({
-            canvasId: body.canvasId,
-            expectedAttempt: Number(body.expectedAttempt),
-            expectedCanvasRevision: Number(body.expectedCanvasRevision),
-            expectedGenerationInputKey: body.expectedGenerationInputKey,
-            expectedUpdatedAt: body.expectedUpdatedAt,
-            kind: body.kind,
-            mode: "resume-provider-task",
-            nodeId: body.nodeId,
-            taskId,
-          })
-        : taskStore().admitRetry({
-            canvasId: body.canvasId,
-            expectedAttempt: Number(body.expectedAttempt),
-            expectedCanvasRevision: Number(body.expectedCanvasRevision),
-            expectedGenerationInputKey: body.expectedGenerationInputKey,
-            expectedUpdatedAt: body.expectedUpdatedAt,
-            kind: body.kind,
-            mode: "new-paid-attempt",
-            nodeId: body.nodeId,
-            snapshot: paidRetrySnapshot!,
-            taskId,
-          });
-      if (!queued) {
-        json(response, 409, {
-          code: "RETRY_TASK_CHANGED",
-          error: "任务状态已变化，请刷新后再试",
-        });
-        return;
-      }
-    } catch (error) {
-      if (canvasRevisionConflict(response, error)) {
-        // The final BEGIN IMMEDIATE fence observed a newer durable graph.
-      } else if (error instanceof GenerationTaskRetryFenceError) {
-        json(response, 409, { code: error.code, error: error.message });
-      } else if (error instanceof GenerationTaskAdmissionError) {
-        json(response, 409, { code: error.code, error: error.message });
-      } else if (error instanceof GenerationProviderAttemptBlockedError) {
-        json(response, 409, { code: error.code, error: error.message });
-      } else if (error instanceof GenerationTaskOwnerDeletingError) {
-        json(response, 409, { code: error.code, error: error.message });
-      } else if (error instanceof GenerationTaskTransitionError) {
-        json(response, 409, {
-          code: "RETRY_TASK_CHANGED",
-          error: "任务状态已变化，请刷新后再试",
-        });
-      } else {
-        json(response, 500, {
-          code: "GENERATION_RETRY_FAILED",
-          error: "生成任务重试暂时无法处理，请核对任务状态后再试",
-        });
-      }
-      return;
-    }
-    let summary: ReturnType<typeof taskSummaryForOwner>;
-    try {
-      launchGenerationTask(taskId, task.kind);
-      summary = taskSummaryForOwner(
-        queued,
-        identity.bypass ? undefined : identity.userId,
-      );
-    } catch {
-      // admitRetry already committed. A 5xx lets the client reconcile the exact
-      // task without issuing a second retry mutation.
-      json(response, 500, {
-        code: "GENERATION_RETRY_ACCEPTED_RESPONSE_FAILED",
-        error: "重试已提交，任务响应暂不可用，请等待状态核对",
-      });
-      return;
-    }
-    json(response, 202, summary);
-    return;
-  }
-
-  const reconcileMatch = path.match(/^([a-z0-9._-]+)\/reconcile$/i);
-  if (request.method === "POST" && reconcileMatch) {
-    const taskId = reconcileMatch[1];
-    const body = await readJsonBody<{
-      canvasId?: unknown;
-      expectedAttempt?: unknown;
-      expectedCanvasRevision?: unknown;
-      expectedGenerationInputKey?: unknown;
-      expectedUpdatedAt?: unknown;
-      kind?: unknown;
-      nodeId?: unknown;
-      providerTaskId?: unknown;
-    }>(request, 16 * 1_024);
-    if (
-      typeof body.canvasId !== "string" ||
-      !/^[a-z0-9._-]{1,120}$/i.test(body.canvasId) ||
-      !Number.isSafeInteger(body.expectedAttempt) ||
-      Number(body.expectedAttempt) < 0 ||
-      !Number.isSafeInteger(body.expectedCanvasRevision) ||
-      Number(body.expectedCanvasRevision) < 0 ||
-      typeof body.expectedGenerationInputKey !== "string" ||
-      body.expectedGenerationInputKey.length < 1 ||
-      body.expectedGenerationInputKey.length > 100_000 ||
-      typeof body.expectedUpdatedAt !== "string" ||
-      body.expectedUpdatedAt.length < 1 ||
-      body.expectedUpdatedAt.length > 80 ||
-      (body.kind !== "text" &&
-        body.kind !== "image" &&
-        body.kind !== "video" &&
-        body.kind !== "audio") ||
-      typeof body.nodeId !== "string" ||
-      !/^[a-z0-9._-]{1,160}$/i.test(body.nodeId)
-    ) {
-      json(response, 400, {
-        code: "RECONCILE_FENCE_REQUIRED",
-        error: "核对请求缺少当前画布与任务绑定证据",
-      });
-      return;
-    }
-    const providedTaskId = typeof body.providerTaskId === "string"
-      ? body.providerTaskId.trim()
-      : "";
-    if (
-      providedTaskId &&
-      (!/^[a-z0-9._:-]{1,160}$/i.test(providedTaskId))
-    ) {
-      json(response, 400, {
-        code: "PROVIDER_TASK_ID_INVALID",
-        error: "平台任务号格式不正确",
-      });
-      return;
-    }
-    const task = identity.bypass
-      ? taskStore().get(taskId)
-      : taskStore().getForOwner(taskId, identity.userId);
-    if (!task) {
-      json(response, 404, { error: "Generation task not found" });
-      return;
-    }
-    if (
-      task.canvasId !== body.canvasId ||
-      task.nodeId !== body.nodeId ||
-      task.kind !== body.kind
-    ) {
-      json(response, 409, {
-        code: "RETRY_BINDING_STALE",
-        error: "任务已不再绑定当前画布节点",
-      });
-      return;
-    }
-    if (
-      task.attempt !== Number(body.expectedAttempt) ||
-      task.updatedAt !== body.expectedUpdatedAt
-    ) {
-      json(response, 409, {
-        code: "RETRY_TASK_CHANGED",
-        error: "任务状态已变化，请刷新后再试",
-      });
-      return;
-    }
-    if (task.state !== "failed") {
-      json(response, 409, {
-        code: "TASK_NOT_FAILED",
-        error: "只有失败任务可以核对结果",
-      });
-      return;
-    }
-    const now = Date.now();
-    const previous = lastReconcileAt.get(task.id) ?? 0;
-    if (now - previous < reconcileCooldownMs) {
-      json(response, 429, {
-        code: "RECONCILE_RATE_LIMIT",
-        error: "核对太频繁，请稍后再试",
-      });
-      return;
-    }
-    lastReconcileAt.set(task.id, now);
-    let current = task;
-    if (providedTaskId && !current.providerTaskId) {
-      try {
-        current = taskStore().bindProviderTaskIdOnFailedTask({
-          providerTaskId: providedTaskId,
-          taskId: current.id,
-        });
-      } catch {
-        json(response, 409, {
-          code: "PROVIDER_TASK_ID_CONFLICT",
-          error: "无法绑定这个平台任务号",
-        });
-        return;
-      }
-    }
-    if (!current.providerTaskId) {
-      let match: Awaited<ReturnType<typeof autoMatchRelayProviderTask>>;
-      try {
-        match = await autoMatchRelayProviderTask(current);
-      } catch {
-        json(response, 200, {
-          outcome: "check-failed",
-          task: taskSummaryForOwner(
-            current,
-            identity.bypass ? undefined : identity.userId,
-          ),
-        });
-        return;
-      }
-      if (match.status === "many") {
-        json(response, 200, {
-          outcome: "ambiguous",
-          task: taskSummaryForOwner(
-            current,
-            identity.bypass ? undefined : identity.userId,
-          ),
-        });
-        return;
-      }
-      if (match.status === "one") {
-        try {
-          current = taskStore().bindProviderTaskIdOnFailedTask({
-            providerTaskId: match.record.taskId,
-            taskId: current.id,
-          });
-        } catch {
-          json(response, 200, {
-            outcome: "check-failed",
-            task: taskSummaryForOwner(
-              current,
-              identity.bypass ? undefined : identity.userId,
-            ),
-          });
-          return;
-        }
-      }
-    }
-    if (!current.providerTaskId) {
-      try {
-        current = taskStore().confirmRemoteResultMissing({
-          expectedUpdatedAt: current.updatedAt,
-          taskId: current.id,
-        });
-      } catch {
-        json(response, 409, {
-          code: "RETRY_TASK_CHANGED",
-          error: "任务状态已变化，请刷新后再试",
-        });
-        return;
-      }
-      json(response, 200, {
-        outcome: "missing",
-        task: taskSummaryForOwner(
-          current,
-          identity.bypass ? undefined : identity.userId,
-        ),
-      });
-      return;
-    }
-    let pollState: ReconcilePollState;
-    const pollController = new AbortController();
-    const pollTimer = setTimeout(() => pollController.abort(), 20_000);
-    try {
-      pollState = await pollReconcileProviderTask(
-        current,
-        current.providerTaskId,
-        pollController.signal,
-      );
-    } catch {
-      json(response, 200, {
-        outcome: "check-failed",
-        task: taskSummaryForOwner(
-          current,
-          identity.bypass ? undefined : identity.userId,
-        ),
-      });
-      return;
-    } finally {
-      clearTimeout(pollTimer);
-    }
-    if (pollState === "cannot-query") {
-      json(response, 200, {
-        outcome: "check-failed",
-        task: taskSummaryForOwner(
-          current,
-          identity.bypass ? undefined : identity.userId,
-        ),
-      });
-      return;
-    }
-    if (pollState === "running") {
-      json(response, 200, {
-        outcome: "still-running",
-        task: taskSummaryForOwner(
-          current,
-          identity.bypass ? undefined : identity.userId,
-        ),
-      });
-      return;
-    }
-    if (pollState === "failed") {
-      try {
-        current = taskStore().confirmRemoteResultMissing({
-          expectedUpdatedAt: current.updatedAt,
-          taskId: current.id,
-        });
-      } catch {
-        json(response, 409, {
-          code: "RETRY_TASK_CHANGED",
-          error: "任务状态已变化，请刷新后再试",
-        });
-        return;
-      }
-      json(response, 200, {
-        outcome: "missing",
-        task: taskSummaryForOwner(
-          current,
-          identity.bypass ? undefined : identity.userId,
-        ),
-      });
-      return;
-    }
-    let queued: GenerationTask | undefined;
-    try {
-      queued = taskStore().admitRetry({
-        canvasId: body.canvasId,
-        expectedAttempt: current.attempt,
-        expectedCanvasRevision: Number(body.expectedCanvasRevision),
-        expectedGenerationInputKey: body.expectedGenerationInputKey,
-        expectedUpdatedAt: current.updatedAt,
-        kind: body.kind,
-        mode: "resume-provider-task",
-        nodeId: body.nodeId,
-        taskId: current.id,
-      });
-    } catch (error) {
-      if (canvasRevisionConflict(response, error)) return;
-      json(response, 409, {
-        code: "RECONCILE_RESUME_FAILED",
-        error: error instanceof Error ? error.message : "无法收回平台结果",
-      });
-      return;
-    }
-    if (!queued) {
-      json(response, 409, {
-        code: "RETRY_TASK_CHANGED",
-        error: "任务状态已变化，请刷新后再试",
-      });
-      return;
-    }
-    try {
-      launchGenerationTask(queued.id, queued.kind);
-    } catch {
-      json(response, 500, {
-        code: "GENERATION_RETRY_ACCEPTED_RESPONSE_FAILED",
-        error: "结果收回已开始，请等待状态核对",
-      });
-      return;
-    }
-    json(response, 200, {
-      outcome: "recovered",
-      task: taskSummaryForOwner(
-        queued,
-        identity.bypass ? undefined : identity.userId,
-      ),
-    });
-    return;
-  }
-
-  if (request.method === "GET" && /^[a-z0-9._-]+$/i.test(path)) {
-    const task = identity.bypass
-      ? taskStore().get(path)
-      : taskStore().getForOwner(path, identity.userId);
-    if (!task) {
-      json(response, 404, { error: "Generation task not found" });
-      return;
-    }
-    json(response, 200, taskSummaryForOwner(
-      task,
-      identity.bypass ? undefined : identity.userId,
-    ));
-    return;
-  }
-
-  if (request.method === "POST" && path === "preflight") {
-    try {
-      const body = await readJsonBody<NodeInputGenerationRequest>(
-        request,
-        64 * 1_024,
-      );
-      if (
-        body.kind !== "text" &&
-        body.kind !== "image" &&
-        body.kind !== "video" &&
-        body.kind !== "audio"
-      ) {
-        json(response, 400, { error: "输入类型无效" });
-        return;
-      }
-      const model = resolveModel(
-        body.kind,
-        body.model,
-        identity.bypass ? "__test__" : identity.userId,
-      );
-      if (!model) {
-        const message = missingModelMessage(body.kind);
-        json(response, 409, {
-          code: "MODEL_UNAVAILABLE",
-          error: message,
-          problems: generationRuntimeProblems({
-            code: "MODEL_UNAVAILABLE",
-            message,
-          }),
-        });
-        return;
-      }
-      if (
-        body.inputSchemaVersion !== undefined &&
-        body.inputSchemaVersion !== 1
-      ) {
-        json(response, 409, {
-          code: "INPUT_SCHEMA_UNSUPPORTED",
-          error: "节点输入版本不受支持",
-        });
-        return;
-      }
-      const preflight = strictGenerationPreflight({
-        body,
-        bypass: identity.bypass,
-        model,
-        ownerId: identity.bypass ? "__test__" : identity.userId,
-        requireFreshRevision: false,
-        targetKind: body.kind,
-      });
-      const runtime = await generationRuntimeDecision({
-        canSubmit: preflight.canSubmit,
-        kind: body.kind,
-        model,
-        ownerId: identity.bypass ? "__test__" : identity.userId,
-      });
-      const { providerProfile: _providerProfile, ...availability } = runtime;
-      json(response, 200, {
-        ...preflight,
-        ...availability,
-        modelId: model.id,
-        providerRequests: 0,
-      });
-    } catch (error) {
-      if (error instanceof HttpRequestError) throw error;
-      if (canvasRevisionConflict(response, error)) return;
-      json(response, 400, {
-        error: error instanceof Error ? error.message : "提交前检查失败",
-      });
-    }
-    return;
-  }
-
-  if (request.method === "POST" && (path === "" || path === "/")) {
-    try {
-      const body = await readJsonBody<NodeInputGenerationRequest>(
-        request,
-        64 * 1_024,
-      );
-      if (
-        body.kind !== "text" && body.kind !== "image" &&
-        body.kind !== "video" && body.kind !== "audio"
-      ) {
-        json(response, 503, {
-          code: "GENERATION_DISABLED",
-          error: "当前节点尚未接通生成",
-        });
-        return;
-      }
-      const ownerId = identity.bypass ? "__test__" : identity.userId;
-      const idempotencyKey = String(body.idempotencyKey ?? "");
-      const requestIntent = generationRequestIntent(body, body.kind);
-      const existing = taskStore().getIdempotentIntent({
-        canvasId: String(body.canvasId ?? ""),
-        idempotencyKey,
-        ownerId,
-        requestIntent,
-      });
-      if (existing) {
-        json(response, 200, taskSummaryForOwner(
-          existing,
-          identity.bypass ? undefined : identity.userId,
-        ));
-        return;
-      }
-      const model = resolveModel(
-        body.kind,
-        body.model,
-        ownerId,
-      );
-      if (!model) {
-        const message = missingModelMessage(body.kind);
-        json(response, 503, {
-          code: "MODEL_UNAVAILABLE",
-          error: message,
-          problems: generationRuntimeProblems({
-            code: "MODEL_UNAVAILABLE",
-            message,
-          }),
-        });
-        return;
-      }
-      if (
-        body.inputSchemaVersion !== undefined &&
-        body.inputSchemaVersion !== 1
-      ) {
-        json(response, 409, {
-          code: "INPUT_SCHEMA_UNSUPPORTED",
-          error: "节点输入版本不受支持",
-        });
-        return;
-      }
-      let strictInput: StrictGenerationPreflight;
-      try {
-        strictInput = strictGenerationPreflight({
-          body,
-          bypass: identity.bypass,
-          model,
-          ownerId,
-          requireFreshRevision: true,
-          targetKind: body.kind,
-        });
-      } catch (error) {
-        if (canvasRevisionConflict(response, error)) return;
-        json(response, 409, {
-          code: "INPUT_INVALID",
-          error: error instanceof Error ? error.message : "节点输入不完整",
-        });
-        return;
-      }
-      if (!strictInput.canSubmit) {
-        json(response, 409, {
-          code: "INPUT_INVALID",
-          error: strictInput.problems[0]?.message ?? "节点输入不完整",
-          problems: strictInput.problems,
-        });
-        return;
-      }
-      const runtime = await generationRuntimeDecision({
-        canSubmit: strictInput.canSubmit,
-        kind: body.kind,
-        model,
-        ownerId,
-      });
-      const runtimeProblem = preAdmissionRuntimeProblem(runtime);
-      if (runtimeProblem || !runtime.providerProfile) {
-        const problem = runtimeProblem ?? {
-          code: "MODEL_UNAVAILABLE",
-          message: "当前模型暂不可生成",
-        };
-        json(response, runtime.generationAvailable ? 409 : 503, {
-          code: problem.code,
-          error: problem.message,
-          problems: generationRuntimeProblems(problem),
-        });
-        return;
-      }
-      const schema = generationModelSchema(body.kind, model);
-      const { parameters, references } = strictInput;
-      if (body.kind === "audio" && parameters.outputCount !== 1) {
-        json(response, 409, {
-          code: "OUTPUT_COUNT_UNSUPPORTED",
-          error: "本次真实验收仅允许生成 1 条音频",
-        });
-        return;
-      }
-      if (body.kind === "text" && parameters.outputCount !== 1) {
-        json(response, 409, {
-          code: "OUTPUT_COUNT_UNSUPPORTED",
-          error: "当前文字任务每次只生成 1 份结果",
-        });
-        return;
-      }
-      if (body.canvasRevision !== undefined) {
-        assertPersistedCanvasRevision({
-          bypass: identity.bypass,
-          canvasId: String(body.canvasId ?? ""),
-          expectedRevision: body.canvasRevision,
-          ownerId,
-        });
-      }
-      const created = taskStore().admitOrGet({
-        canvasId: String(body.canvasId ?? ""),
-        credentialRevision: runtime.credentialVersion,
-        expectedCanvasRevision: body.canvasRevision,
-        estimatedCostMicrounits: taskAuditEstimatedCostMicrounits[
-          model.cost_currency
-        ],
-        costCurrency: model.cost_currency,
-        idempotencyKey,
-        kind: body.kind,
-        model: model.id,
-        modelConfiguration: {
-          credentialVersion: runtime.credentialVersion,
-          modelId: model.id,
-          parameterSchema: schema,
-          providerConfigurationVersion: providerConfigurationVersion(
-            runtime.providerProfile,
-          ),
-          providerDriver: model.provider_driver,
-          providerModelId: model.provider_model_id,
-          providerProtocol: model.provider_protocol ?? "native",
-          providerProfileId: model.provider_profile_id,
-        },
-        nodeId: String(body.nodeId ?? ""),
-        ownerId,
-        parameters: body.kind === "text"
-          ? {
-              ...parameters,
-              inputSchemaVersion: 1,
-              inputs: strictInput.inputs.map((item) => ({
-                assetId: item.assetId,
-                kind: item.kind,
-                order: item.order,
-                role: item.role,
-                sourceNodeId: item.sourceNodeId,
-                ...(item.kind === "text" ? { text: item.text } : {}),
-              })),
-            }
-          : body.kind === "image"
-          ? {
-              ...parameters,
-              references,
-              inputSchemaVersion: 1,
-              inputs: strictInput.snapshot,
-            }
-          : {
-              ...parameters,
-              inputSchemaVersion: 1,
-              inputs: strictInput.snapshot,
-            },
-        prompt: strictInput.finalPrompt,
-        providerModelId: model.provider_model_id,
-        providerProfileId: model.provider_profile_id,
-        requestIntent,
-      });
-      try {
-        injectInitialGenerationPostCommitFailure(request);
-        if (created.created) {
-          launchGenerationTask(created.task.id, body.kind);
-        }
-        json(
-          response,
-          created.created ? 202 : 200,
-          taskSummaryForOwner(
-            created.task,
-            identity.bypass ? undefined : identity.userId,
-          ),
-        );
-      } catch {
-        // admitOrGet already committed. A 5xx makes the browser reconcile this
-        // exact owner-scoped idempotency key instead of minting a second paid
-        // task. If the socket itself is gone, the network failure has the same
-        // reconcilable meaning and must not escape into the outer 4xx mapper.
-        try {
-          json(response, 500, {
-            code: "GENERATION_TASK_ACCEPTED_RESPONSE_FAILED",
-            error: "生成任务已提交，响应暂不可用，请等待状态核对",
-          });
-        } catch {}
-      }
-    } catch (error) {
-      if (error instanceof HttpRequestError) throw error;
-      if (canvasRevisionConflict(response, error)) {
-        return;
-      } else if (error instanceof GenerationTaskConflictError) {
-        json(response, 409, {
-          code: "IDEMPOTENCY_CONFLICT",
-          error: error.message,
-        });
-      } else if (error instanceof GenerationTaskOwnerDeletingError) {
-        json(response, 409, {
-          code: error.code,
-          error: "账号删除正在进行，不能再创建或重试生成任务",
-        });
-      } else if (error instanceof GenerationTaskAdmissionError) {
-        json(response, 409, {
-          code: error.code,
-          error: error.message,
-        });
-      } else if (error instanceof GenerationProviderAttemptBlockedError) {
-        json(response, 409, {
-          code: error.code,
-          error: error.message,
-        });
-      } else {
-        json(response, 400, { error: "生成请求无效" });
-      }
-    }
-    return;
-  }
-
-  response.setHeader("Allow", "GET, POST, DELETE");
-  json(response, 404, { error: "Generation task endpoint not found" });
-}
+/**
+ * Transport-neutral Generation application surface consumed by the Node HTTP
+ * adapter. Keeping this object narrow makes request parsing and response
+ * mapping replaceable without exposing Provider/runtime internals to Vite.
+ */
+export const generationTaskApplication = Object.freeze({
+  GenerationProviderAttemptBlockedError,
+  GenerationTaskAbandonError,
+  GenerationTaskAdmissionError,
+  GenerationTaskCanvasRevisionConflictError,
+  GenerationTaskConflictError,
+  GenerationTaskOwnerDeletingError,
+  GenerationTaskProviderBoundaryError,
+  GenerationTaskRetryFenceError,
+  GenerationTaskTransitionError,
+  ProviderProfileLockBusyError,
+  acquireProviderGenerationRequestLease,
+  assertPersistedCanvasRevision,
+  autoMatchRelayProviderTask,
+  cancelGenerationTask,
+  generationAvailability,
+  generationModelSchema,
+  generationRequestIntent,
+  generationRuntimeDecision,
+  generationRuntimeProblems,
+  generationSafetyStatus,
+  lastReconcileAt,
+  launchGenerationTask,
+  missingModelMessage,
+  pollReconcileProviderTask,
+  preAdmissionRuntimeProblem,
+  providerConfigurationVersion,
+  reconcileCooldownMs,
+  requireTaskProviderSnapshot,
+  resolveModel,
+  resumeProviderTaskSnapshotProblem,
+  retrySafetyDecision,
+  strictGenerationPreflight,
+  taskAuditEstimatedCostMicrounits,
+  taskStore,
+  taskSummary,
+  taskSummaryForOwner,
+});

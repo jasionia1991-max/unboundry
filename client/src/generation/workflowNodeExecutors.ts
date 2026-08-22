@@ -11,6 +11,7 @@ import {
 } from "../../../types/nodeInputs";
 import { NODE_DEFAULT_SIZES } from "../canvas/mediaGeometry";
 import { trustedMediaPatch } from "../canvas/mediaInputMetadata";
+import type { CanvasGraphSnapshot } from "../canvas/canvasPorts";
 import {
   generationOwnershipKey,
   type ProbeNodeType,
@@ -121,7 +122,7 @@ function supportedImageValue(values: string[], preferred?: string) {
 function generationOwnershipUpstream(
   kind: WorkflowExecutorKind,
   inputs: ReturnType<typeof resolveNodeInputs>["inputs"],
-  edges: ReturnType<NodeExecutorContext["getEdges"]>,
+  edges: CanvasGraphSnapshot["edges"],
 ) {
   return inputs.map((input) => {
     const edge = edges.find((candidate) => candidate.id === input.edgeId);
@@ -148,8 +149,9 @@ function createExecutionPlan(
   nodeId: string,
   context: NodeExecutorContext,
 ): ExecutionPlan | NodeRunResult {
-  const nodes = context.getNodes();
-  const edges = context.getEdges();
+  const snapshot = context.graph.snapshot();
+  const nodes = snapshot.nodes;
+  const edges = snapshot.edges;
   const node = nodes.find((candidate) => candidate.id === nodeId);
   if (!node || node.type !== kind) {
     return { message: "节点已不存在或类型已变化", status: "failed" };
@@ -338,7 +340,9 @@ function createBoundRecoveryPlan(
   nodeId: string,
   context: NodeExecutorContext,
 ): ExecutionPlan | NodeRunResult {
-  const node = context.getNodes().find((candidate) => candidate.id === nodeId);
+  const node = context.graph.snapshot().nodes.find((candidate) =>
+    candidate.id === nodeId
+  );
   if (!node || node.type !== kind) {
     return { message: "节点已不存在或类型已变化", status: "failed" };
   }
@@ -420,6 +424,50 @@ function isGenerating(node: ProbeNodeType, kind: WorkflowExecutorKind) {
     node.data.inputState === "uploading";
 }
 
+async function applyFencedNodeUpdate(input: {
+  context: NodeExecutorContext;
+  kind: WorkflowExecutorKind;
+  nodeId: string;
+  ownershipKey: string;
+  taskId?: string;
+  update: (node: ProbeNodeType) => ProbeNodeType;
+}) {
+  let snapshot = input.context.graph.snapshot();
+  if (snapshot.revision === undefined) {
+    const receipt = await input.context.save.waitForRevision();
+    snapshot = input.context.graph.snapshot();
+    if (snapshot.revision !== receipt.revision) {
+      return { reason: "fence-rejected", status: "rejected" } as const;
+    }
+  }
+  return input.context.graph.apply({
+    fence: {
+      expectedRevision: snapshot.revision,
+      kind: input.kind,
+      nodeId: input.nodeId,
+      ownershipKey: input.ownershipKey,
+      runId: input.context.runId,
+      taskId: input.taskId,
+    },
+    scope: "generation",
+    update: (current) => ({
+      ...current,
+      nodes: current.nodes.map((node) => node.id === input.nodeId
+        ? input.update(node)
+        : node),
+    }),
+  });
+}
+
+function nodeOwnershipKey(
+  node: ProbeNodeType,
+  kind: WorkflowExecutorKind,
+  fallback: string,
+) {
+  const value = node.data[`${kind}GenerationOwnershipKey`];
+  return typeof value === "string" && value ? value : fallback;
+}
+
 function inputFailurePatch(kind: WorkflowExecutorKind, problem: NodeInputProblem) {
   return {
     [`${kind}GenerationError`]: problem.message,
@@ -443,10 +491,29 @@ async function persistInputFailure(
   if (shouldIgnoreStaleCanvasSaveProblem(problem)) {
     return { status: "success" as const };
   }
-  context.setNodes((nodes) => nodes.map((node) => node.id === plan.node.id
-    ? { ...node, data: { ...node.data, ...inputFailurePatch(plan.kind, problem) } }
-    : node));
-  await context.flushCanvasSave();
+  const applied = await applyFencedNodeUpdate({
+    context,
+    kind: plan.kind,
+    nodeId: plan.node.id,
+    ownershipKey: nodeOwnershipKey(
+      plan.node,
+      plan.kind,
+      plan.effectiveOwnershipKey,
+    ),
+    taskId: taskIdFor(plan.node, plan.kind),
+    update: (node) => ({
+      ...node,
+      data: { ...node.data, ...inputFailurePatch(plan.kind, problem) },
+    }),
+  });
+  if (applied.status !== "applied") {
+    return {
+      errorCode: "RESULT_OWNERSHIP_CONFLICT",
+      message: "节点或画布已变化，未覆盖当前内容",
+      status: "failed" as const,
+    };
+  }
+  await context.save.flush();
   return {
     errorCode: problem.code,
     message: problem.message,
@@ -665,7 +732,9 @@ async function applyTerminalTask(
   if (!taskMatches(task, plan.kind, context.canvasId, plan.node.id)) {
     return { message: "生成任务关联不一致，已停止结果回写", status: "failed" };
   }
-  const boundNode = context.getNodes().find((node) => node.id === plan.node.id);
+  const boundNode = context.graph.snapshot().nodes.find(
+    (node) => node.id === plan.node.id,
+  );
   if (!workflowResultOwnerMatches(boundNode, {
     kind: plan.kind,
     ownershipKey,
@@ -680,10 +749,25 @@ async function applyTerminalTask(
   }
   if (task.state !== "success") {
     const message = task.errorMessage ?? `${kindLabels[plan.kind]}生成失败`;
-    context.setNodes((nodes) => nodes.map((node) => node.id === plan.node.id
-      ? { ...node, data: { ...node.data, ...failurePatch(plan.kind, task, message) } }
-      : node));
-    await context.flushCanvasSave();
+    const applied = await applyFencedNodeUpdate({
+      context,
+      kind: plan.kind,
+      nodeId: plan.node.id,
+      ownershipKey,
+      taskId: task.id,
+      update: (node) => ({
+        ...node,
+        data: { ...node.data, ...failurePatch(plan.kind, task, message) },
+      }),
+    });
+    if (applied.status !== "applied") {
+      return {
+        errorCode: "RESULT_OWNERSHIP_CONFLICT",
+        message: "节点或画布已变化，未覆盖当前内容",
+        status: "failed",
+      };
+    }
+    await context.save.flush();
     clearGenerationSubmissionIntent(
       plan.kind,
       context.canvasId,
@@ -706,21 +790,33 @@ async function applyTerminalTask(
     };
   }
   const patch = successNodePatch(isPlan(current) ? current : plan, task, ownershipKey);
-  context.setNodes((nodes) => nodes.map((node) => node.id === plan.node.id
-    ? ({
-        ...node,
-        data: { ...node.data, ...patch.data } as ProbeNodeType["data"],
-        ...(patch.style
-          ? {
-              height: undefined,
-              measured: undefined,
-              style: { ...node.style, ...patch.style },
-              width: undefined,
-            }
-          : {}),
-      } as ProbeNodeType)
-    : node));
-  await context.flushCanvasSave();
+  const applied = await applyFencedNodeUpdate({
+    context,
+    kind: plan.kind,
+    nodeId: plan.node.id,
+    ownershipKey,
+    taskId: task.id,
+    update: (node) => ({
+      ...node,
+      data: { ...node.data, ...patch.data } as ProbeNodeType["data"],
+      ...(patch.style
+        ? {
+            height: undefined,
+            measured: undefined,
+            style: { ...node.style, ...patch.style },
+            width: undefined,
+          }
+        : {}),
+    } as ProbeNodeType),
+  });
+  if (applied.status !== "applied") {
+    return {
+      errorCode: "RESULT_OWNERSHIP_CONFLICT",
+      message: "节点或画布已变化，未覆盖当前内容",
+      status: "failed",
+    };
+  }
+  await context.save.flush();
   clearGenerationSubmissionIntent(
     plan.kind,
     context.canvasId,
@@ -817,7 +913,8 @@ function createExecutor(kind: WorkflowExecutorKind): NodeExecutor {
       let ownershipKey = plan.effectiveOwnershipKey;
       try {
         const admitted = await runExclusiveCanvasSubmit(context.canvasId, async () => {
-          const canvasRevision = await context.waitForCanvasRevision();
+          const { revision: canvasRevision } =
+            await context.save.waitForRevision();
           const current = createExecutionPlan(kind, nodeId, context);
           if (!isPlan(current) ||
             current.effectiveOwnershipKey !== plan.effectiveOwnershipKey) {
@@ -851,16 +948,29 @@ function createExecutor(kind: WorkflowExecutorKind): NodeExecutor {
         admittedTask = admitted.ensured.task;
         ownershipKey = admitted.ensured.generationOwnershipKey ??
           plan.effectiveOwnershipKey;
-        context.setNodes((nodes) => nodes.map((node) => node.id === nodeId
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                ...bindingPatch(plan, admittedTask, ownershipKey, context.runId),
-              },
-            }
-          : node));
-        await context.flushCanvasSave();
+        const applied = await applyFencedNodeUpdate({
+          context,
+          kind,
+          nodeId,
+          ownershipKey: nodeOwnershipKey(
+            plan.node,
+            kind,
+            plan.currentOwnershipKey,
+          ),
+          taskId: taskIdFor(plan.node, kind),
+          update: (node) => ({
+            ...node,
+            data: {
+              ...node.data,
+              ...bindingPatch(plan, admittedTask, ownershipKey, context.runId),
+            },
+          }),
+        });
+        if (applied.status !== "applied") {
+          throw new Error("节点或画布已变化，未绑定已提交任务");
+        }
+        await context.save.flush();
+        await context.save.waitForRevision();
       } catch (error) {
         const message = error instanceof Error
           ? error.message
@@ -881,18 +991,25 @@ function createExecutor(kind: WorkflowExecutorKind): NodeExecutor {
         const message = error instanceof Error
           ? error.message
           : "任务状态暂时无法确认，不能重新提交";
-        context.setNodes((nodes) => nodes.map((node) => node.id === nodeId
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                [`${kind}GenerationError`]: friendlyGenerationMessage(message, kind),
-                [`${kind}GenerationErrorCode`]: "TASK_STATUS_UNKNOWN",
-                [`${kind}Generating`]: true,
-              },
-            }
-          : node));
-        await context.flushCanvasSave().catch(() => undefined);
+        const applied = await applyFencedNodeUpdate({
+          context,
+          kind,
+          nodeId,
+          ownershipKey,
+          taskId: admittedTask.id,
+          update: (node) => ({
+            ...node,
+            data: {
+              ...node.data,
+              [`${kind}GenerationError`]: friendlyGenerationMessage(message, kind),
+              [`${kind}GenerationErrorCode`]: "TASK_STATUS_UNKNOWN",
+              [`${kind}Generating`]: true,
+            },
+          }),
+        }).catch(() => undefined);
+        if (applied?.status === "applied") {
+          await context.save.flush().catch(() => undefined);
+        }
         return {
           errorCode: "TASK_STATUS_UNKNOWN",
           message: friendlyGenerationMessage(message, kind),

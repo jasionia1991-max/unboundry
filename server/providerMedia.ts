@@ -1,17 +1,14 @@
-import { createHash } from "node:crypto";
-import { basename, join } from "node:path";
-import { open, readFile, stat } from "node:fs/promises";
 import {
   seedance2ReferenceMediaRules,
   type ModelReferenceMediaRules,
 } from "../types/modelParameters";
-import { createPrivateAliyunOssReadUrl } from "./aliyunOss";
 import {
-  readableMediaForOwner,
-  type MediaKind,
-  type MediaRecord,
-} from "./mediaRegistry";
-import { storageProfileForMedia } from "./secureStorageProfiles";
+  type ProviderReferenceKind as MediaKind,
+  type ProviderReferenceLease,
+  type ProviderReferenceLocator,
+  type ProviderReferenceStore,
+  ProviderReferenceStoreError,
+} from "./providerReferenceStore";
 
 export class ProviderMediaError extends Error {
   constructor(
@@ -24,6 +21,13 @@ export class ProviderMediaError extends Error {
     super(message);
     this.name = "ProviderMediaError";
   }
+}
+
+let defaultReferenceStore: ProviderReferenceStore | undefined;
+
+/** Composition hook; Provider code retains only the public reference port. */
+export function configureProviderReferenceStore(store: ProviderReferenceStore) {
+  defaultReferenceStore = store;
 }
 
 /**
@@ -56,13 +60,32 @@ export function arkVideoBase64EnvelopeBytes(prompt: string) {
 
 const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
+type ProviderMediaMetadata = Readonly<{
+  byteSize: number;
+  checksumSha256: string;
+  contentType: string;
+  durationSeconds?: number | null;
+  durationSource?: "provider-task" | "server-probe" | null;
+  durationStatus?: "failed" | "not-applicable" | "pending" | "ready";
+  locator?: ProviderReferenceLocator;
+  mediaHeight?: number | null;
+  mediaWidth?: number | null;
+  storageBackend?: "local" | "oss";
+}>;
+
 export type ArkVideoMediaRecord = {
   kind: MediaKind;
-  media: MediaRecord;
+  media: ProviderMediaMetadata;
 };
 
-export function arkVideoBase64Bytes(kind: MediaKind, media: MediaRecord) {
-  if (media.storageBackend !== "local" || kind === "video") return 0;
+export function arkVideoBase64Bytes(
+  kind: MediaKind,
+  media: ProviderMediaMetadata,
+) {
+  const inline = media.locator
+    ? media.locator.transport === "inline-data"
+    : media.storageBackend === "local";
+  if (!inline || kind === "video") return 0;
   const prefix = kind === "image"
     ? "data:image/png;base64,"
     : media.contentType === "audio/wav"
@@ -98,7 +121,7 @@ function mediaFormatLabel(contentType: string) {
 
 export function arkVideoMediaProblem(
   kind: MediaKind,
-  media: MediaRecord,
+  media: ProviderMediaMetadata,
   rules: ModelReferenceMediaRules = arkVideoMediaRules,
 ) {
   const rule = rules[kind];
@@ -253,40 +276,6 @@ export function assertArkVideoMediaCombination(
   }
 }
 
-export function arkVideoMediaRecordForOwner(input: {
-  assetId: string;
-  kind: MediaKind;
-  ownerId: string;
-}, rules: ModelReferenceMediaRules = arkVideoMediaRules) {
-  if (
-    !/^[a-z0-9._-]{1,160}$/i.test(input.assetId) ||
-    !/^[a-z0-9._-]{1,160}$/i.test(input.ownerId)
-  ) {
-    throw new ProviderMediaError("MEDIA_INVALID", "参考素材编号无效");
-  }
-  const media = readableMediaForOwner(input.ownerId, input.kind, input.assetId);
-  if (!media || media.storageStatus !== "ready") {
-    throw new ProviderMediaError(
-      "MEDIA_UNAVAILABLE",
-      "参考素材不存在、尚未保存或不属于当前账号",
-    );
-  }
-  const problem = arkVideoMediaProblem(input.kind, media, rules);
-  if (problem) throw new ProviderMediaError("MEDIA_INVALID", problem);
-  return media;
-}
-
-function localMediaPath(storageName: string) {
-  if (basename(storageName) !== storageName) {
-    throw new ProviderMediaError("MEDIA_INVALID", "参考素材的本机路径无效");
-  }
-  return join(
-    process.env.UNBOUNDRY_DATA_DIR ?? join(process.cwd(), "data"),
-    "media",
-    storageName,
-  );
-}
-
 function validateHeader(kind: MediaKind, contentType: string, header: Buffer) {
   if (kind === "image") {
     if (header.length < pngSignature.length || !header.subarray(0, 8).equals(pngSignature)) {
@@ -317,77 +306,93 @@ function validateHeader(kind: MediaKind, contentType: string, header: Buffer) {
   }
 }
 
-async function verifyLocalHeader(input: {
-  byteSize: number;
-  contentType: string;
-  filePath: string;
+/**
+ * Resolve a durable asset id through the Media-owned reference port. The
+ * caller owns the lease through the Provider boundary and must release it.
+ */
+export async function providerMediaReferenceForOwner(input: {
+  assetId: string;
   kind: MediaKind;
+  ownerId: string;
+}, options: {
+  rules?: ModelReferenceMediaRules;
+  signal?: AbortSignal;
+  store: ProviderReferenceStore;
 }) {
-  const info = await stat(input.filePath).catch(() => undefined);
-  if (!info?.isFile() || info.size !== input.byteSize) {
-    throw new ProviderMediaError("MEDIA_INVALID", "参考素材文件不完整");
-  }
-  const handle = await open(input.filePath, "r").catch(() => undefined);
-  if (!handle) {
-    throw new ProviderMediaError("MEDIA_UNAVAILABLE", "参考素材暂时无法读取");
-  }
+  const rules = options.rules ?? arkVideoMediaRules;
+  let reference: ProviderReferenceLease;
   try {
-    const header = Buffer.alloc(Math.min(64, input.byteSize));
-    const { bytesRead } = await handle.read(header, 0, header.length, 0);
-    validateHeader(input.kind, input.contentType, header.subarray(0, bytesRead));
-  } finally {
-    await handle.close();
+    reference = await options.store.acquire({
+      assetId: input.assetId,
+      kind: input.kind,
+      maximumBytes: rules[input.kind]?.maxBytes ??
+        genericReferenceMediaRules[input.kind]!.maxBytes,
+      ownerId: input.ownerId,
+      preferredTransports: ["signed-url", "inline-data"],
+      signal: options.signal,
+    });
+  } catch (error) {
+    if (error instanceof ProviderReferenceStoreError) {
+      const code = error.code === "INVALID"
+        ? "MEDIA_INVALID"
+        : error.code === "NOT_ACCESSIBLE"
+          ? "MEDIA_NOT_ACCESSIBLE"
+          : "MEDIA_UNAVAILABLE";
+      throw new ProviderMediaError(code, error.message);
+    }
+    throw error;
   }
+  const problem = arkVideoMediaProblem(input.kind, reference, rules);
+  if (problem) {
+    await options.store.release(reference).catch(() => undefined);
+    throw new ProviderMediaError("MEDIA_INVALID", problem);
+  }
+  if (reference.locator.transport === "inline-data") {
+    const comma = reference.locator.dataUrl.indexOf(",");
+    const bytes = comma < 0
+      ? Buffer.alloc(0)
+      : Buffer.from(reference.locator.dataUrl.slice(comma + 1), "base64");
+    try {
+      validateHeader(input.kind, reference.contentType, bytes.subarray(0, 64));
+    } catch (error) {
+      await options.store.release(reference).catch(() => undefined);
+      throw error;
+    }
+  }
+  return reference;
 }
 
 /**
- * Resolve a durable asset id to a Provider-readable value at execution time.
- * The returned short-lived URL/data value must never be written to a task row.
+ * Compatibility helper for Provider payload builders. Inline data and signed
+ * URLs remain valid after the durable-asset lease is released.
  */
 export async function providerMediaUrlForOwner(input: {
   assetId: string;
   kind: MediaKind;
   ownerId: string;
-}, options: { rules?: ModelReferenceMediaRules } = {}) {
-  const media = arkVideoMediaRecordForOwner(input, options.rules);
-
-  if (media.storageBackend === "oss") {
-    const profile = await storageProfileForMedia(media);
-    if (!profile) {
-      throw new ProviderMediaError("MEDIA_UNAVAILABLE", "参考素材的云端存储暂不可用");
-    }
-    try {
-      return await createPrivateAliyunOssReadUrl(media.objectKey, profile, 300);
-    } catch {
-      throw new ProviderMediaError("MEDIA_UNAVAILABLE", "参考素材暂时无法安全读取");
-    }
-  }
-
-  const filePath = localMediaPath(media.storageName);
-  await verifyLocalHeader({
-    byteSize: media.byteSize,
-    contentType: media.contentType,
-    filePath,
-    kind: input.kind,
-  });
-  if (input.kind === "video") {
+}, options: {
+  rules?: ModelReferenceMediaRules;
+  signal?: AbortSignal;
+  store?: ProviderReferenceStore;
+} = {}) {
+  const store = options.store ?? defaultReferenceStore;
+  if (!store) {
     throw new ProviderMediaError(
-      "MEDIA_NOT_ACCESSIBLE",
-      "本机视频素材无法安全交给当前视频模型，请先使用私有云端素材",
+      "MEDIA_UNAVAILABLE",
+      "参考素材读取服务尚未就绪",
     );
   }
-
-  const bytes = await readFile(filePath);
-  if (
-    bytes.length !== media.byteSize ||
-    createHash("sha256").update(bytes).digest("hex") !== media.checksumSha256
-  ) {
-    throw new ProviderMediaError("MEDIA_INVALID", "参考素材校验失败");
+  const reference = await providerMediaReferenceForOwner(input, {
+    ...options,
+    store,
+  });
+  try {
+    return reference.locator.transport === "signed-url"
+      ? reference.locator.url
+      : reference.locator.transport === "inline-data"
+        ? reference.locator.dataUrl
+        : reference.locator.fileId;
+  } finally {
+    await store.release(reference).catch(() => undefined);
   }
-  validateHeader(input.kind, media.contentType, bytes.subarray(0, 64));
-  if (input.kind === "image") {
-    return `data:image/png;base64,${bytes.toString("base64")}`;
-  }
-  const format = media.contentType === "audio/wav" ? "wav" : "mp3";
-  return `data:audio/${format};base64,${bytes.toString("base64")}`;
 }

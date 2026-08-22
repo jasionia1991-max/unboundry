@@ -29,6 +29,11 @@ import {
   databaseMatchesFrozenSchema37Contract,
   databaseMatchesFrozenSchema38Contract,
 } from "./backupInspection";
+import {
+  deleteMediaHistoryCommand,
+  upsertMediaHistoryCommand,
+} from "./canvasTransactionCommands";
+import { executeTransactionScopedCommand } from "./transactionCommand";
 
 const identifierPattern = /^[a-z0-9._-]+$/i;
 const checksumPattern = /^[a-f0-9]{64}$/;
@@ -571,19 +576,14 @@ export function finalizeMediaPublicationInTransaction(
     );
     if (ready.changes !== 1) throw new MediaPublicationStateError();
     if (attempt.history_label || attempt.task_id) {
-      database.prepare(`
-        INSERT INTO asset_history (
-          account_id, id, kind, label, preview, created_at, owner_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(account_id, id) DO UPDATE SET
-          kind = excluded.kind, label = excluded.label,
-          preview = excluded.preview, owner_id = excluded.owner_id
-      `).run(
-        reservation.ownerId, reservation.id, reservation.kind,
-        attempt.history_label || defaultLabel(reservation.kind),
-        previewFor(reservation.kind, reservation.id), timestamp,
-        reservation.ownerId,
-      );
+      executeTransactionScopedCommand(database, upsertMediaHistoryCommand, {
+        assetId: reservation.id,
+        createdAt: timestamp,
+        kind: reservation.kind,
+        label: attempt.history_label || defaultLabel(reservation.kind),
+        ownerId: reservation.ownerId,
+        preview: previewFor(reservation.kind, reservation.id),
+      });
     }
     const published = database.prepare(`
       UPDATE media_publication_attempts
@@ -710,13 +710,11 @@ export function failMediaPublicationInTransaction(
           updated_at = ?
       WHERE owner_id = ? AND kind = ? AND id = ? AND storage_status <> 'ready'
     `).run(timestamp, reservation.ownerId, reservation.kind, reservation.id);
-    database.prepare(`
-      DELETE FROM asset_history
-      WHERE account_id = ? AND owner_id = ? AND id = ? AND kind = ?
-    `).run(
-      reservation.ownerId, reservation.ownerId,
-      reservation.id, reservation.kind,
-    );
+    executeTransactionScopedCommand(database, deleteMediaHistoryCommand, {
+      assetId: reservation.id,
+      kind: reservation.kind,
+      ownerId: reservation.ownerId,
+    });
     return true;
 }
 
@@ -1147,15 +1145,11 @@ function claimUploadRecovery(
       WHERE owner_id = ? AND kind = ? AND id = ?
         AND storage_status IN ('pending', 'ready', 'failed')
     `).run(timestamp, reservation.ownerId, reservation.kind, reservation.id);
-    database.prepare(`
-      DELETE FROM asset_history
-      WHERE account_id = ? AND owner_id = ? AND id = ? AND kind = ?
-    `).run(
-      reservation.ownerId,
-      reservation.ownerId,
-      reservation.id,
-      reservation.kind,
-    );
+    executeTransactionScopedCommand(database, deleteMediaHistoryCommand, {
+      assetId: reservation.id,
+      kind: reservation.kind,
+      ownerId: reservation.ownerId,
+    });
     return true;
   }));
 }

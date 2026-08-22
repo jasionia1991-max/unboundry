@@ -1,10 +1,10 @@
 # Unboundry 渐进式模块化施工路线图
 
-更新日期：2026-08-21
-状态：`PLAN_FROZEN / FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED / CURRENT_V0_6_30_USER_PASS`
+更新日期：2026-08-22
+状态：`PLAN_FROZEN / FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED / CURRENT_V0_6_30_USER_PASS / VIEW_005_AUTO_PASS / CURRENT_READ_ONLY_RECHECK`
 关联审计：`spec/UNBOUNDRY_MODULAR_MONOLITH_AUDIT_2026-08-21.md`
 
-当前收口：第一批同步文字 Provider port 与第二批 Generation/Media 结果提交边界、三媒体模型合同均已发布并持续运行在 v0.6.30；云腾商业 Provider 隔离和真实结果兼容也已在 v0.6.29/30 完成。当前没有自动启动的后续批次，路线图只在真实新功能触发边界问题时重新立项；`VIEW-005` 继续作为独立非阻断性能专项。
+当前收口：第一批同步文字 Provider port 与第二批 Generation/Media 结果提交边界、三媒体模型合同均已发布并持续运行在 v0.6.30；云腾商业 Provider 隔离和真实结果兼容也已在 v0.6.29/30 完成。`VIEW-005` 已由精确 98/171/200 节点安全定向证据收口为 `AUTO_PASS`。当前没有自动启动的后续批次，路线图只在真实新功能触发边界问题时重新立项。
 
 ## 1. 目标与非目标
 
@@ -17,7 +17,7 @@
 - 不重写Canvas、Workflow、Generation或Release系统；
 - 不为了提高百分比移动目录或机械拆文件；
 - 不重新否定v0.6.27已经通过的Canvas/Workflow解耦；
-- 不把`VIEW-005`冒充已完成；
+- 不把`VIEW-005`的`AUTO_PASS`冒充新的`USER_PASS`、生产发布或全量回归；
 - 不提前改没有功能触发、当前稳定且高风险的模块。
 
 ## 2. 目标模块边界
@@ -66,6 +66,8 @@ UI
 
 路线图分为“已完成批次”和“功能触发批”。第一、第二批均已发布并包含在当前 v0.6.30；后续批次只在对应新功能出现前强制执行，不允许绕过，也不为了架构好看提前翻修稳定代码。
 
+2026-08-22 只读复核没有发现新的P0，也没有批准下一施工批。文字Provider port、Generation结果提交、Media不再写Generation表以及TaskStore/Safety运行时循环均已确认收口；剩余主要风险是Canvas应用层仍依赖React状态、媒体Provider仍直接依赖Storage实现、跨域SQL和节点能力清单重复。本次只同步文档，没有修改产品代码，也没有重跑测试、访问Provider/OSS或生产。
+
 ### 第一批：同步文字Provider port
 
 - 状态：原本地工程为 `LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`；后来随 v0.6.28 发布并持续包含在 v0.6.30。原矩阵未运行真实Provider的证据边界继续保留。
@@ -76,7 +78,7 @@ UI
   - `server/generationTasks.ts`的同步文字执行分支；
   - `server/volcengineArkTextProvider.ts`；
   - `server/relayProviderAdapters.ts`的文字协议；
-  - 拟新增`server/providerRegistry.ts`或等价单一入口；
+  - `server/providerRegistry.ts`单一入口；
   - `tests/m33-text-generation-runtime.spec.ts`；
   - `tests/m39-ark-text-auth-errors.spec.ts`；
   - `tests/m44-provider-profile-atomicity.spec.ts`；
@@ -138,7 +140,8 @@ UI
 ### 第七批：Release调用链核对与条件治理
 
 - 触发：下一次正式发布准备阶段。
-- 第一步只读追踪v0.6.27实际构建、切换和receipt路径，确认历史`0.5.2/0.6.0`硬编码是否仍是当前入口。
+- v0.6.28正式发布前已完成首次只读追踪，确认当前通用路径为safe runner、精确Git archive、staging fresh build、冻结备份和`current`原子切换；历史`0.5.2/0.6.0` bridge不是当前通用入口。
+- 下一次正式发布仍需重新只读核对实际构建、切换和receipt路径。
 - 只有确认当前通用发布入口受阻时，才治理`build-release.mjs`、`admitted-release.mjs`、`release-source-pair.mjs`、`release-attestation.mjs`和m94/m95/m96。
 - 不得把历史migration bridge删掉或改写成当前通用流程。
 

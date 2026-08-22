@@ -40,13 +40,11 @@ import {
 import { providerCatalogCapabilities } from "./providerCatalogCapabilities";
 import { parseProviderCatalogDiagnostics } from "./providerCatalogDiagnostics";
 import { secretStoreEncryptionKey } from "./secretStore";
+import type { ProviderDriver } from "../types/providerVocabulary";
+import { migrateLegacyAccountCredentialsCommand } from "./accountTransactionCommands";
+import { executeTransactionScopedCommand } from "./transactionCommand";
 
-export type ProviderDriver =
-  | "mureka"
-  | "multi-protocol-relay"
-  | "openai-compatible"
-  | "openrouter"
-  | "volcengine-ark";
+export type { ProviderDriver } from "../types/providerVocabulary";
 
 export type ArkControlPlaneCredentials = {
   accessKeyId: string;
@@ -522,37 +520,11 @@ export async function migrateLegacyProviderKeysIfNeeded(actorUserId?: string) {
         }
       }
     }, (store) => {
-      const insert = store.prepare(`
-        INSERT OR IGNORE INTO account_provider_credentials (
-          account_id, provider_profile_id, encrypted_key, key_status,
-          key_checked_at, credential_version, updated_at
-        )
-        SELECT id, ?, ?, 'unchecked', NULL, 1, ?
-        FROM users
-        WHERE id = ? AND role = 'admin' AND status = 'active'
-          AND NOT EXISTS (
-            SELECT 1 FROM account_delete_intents WHERE owner_id = users.id
-          )
-      `);
-      const insertEpoch = store.prepare(`
-        INSERT OR IGNORE INTO account_provider_credential_epochs (
-          account_id, provider_profile_id, credential_revision, updated_at
-        )
-        SELECT account_id, provider_profile_id, credential_version, updated_at
-        FROM account_provider_credentials
-        WHERE account_id = ? AND provider_profile_id = ?
-      `);
-      for (const payload of payloads) {
-        for (const admin of admins) {
-          insert.run(
-            payload.profileId,
-            payload.encrypted,
-            timestamp,
-            admin.id,
-          );
-          insertEpoch.run(admin.id, payload.profileId);
-        }
-      }
+      executeTransactionScopedCommand(store, migrateLegacyAccountCredentialsCommand, {
+        admins,
+        payloads,
+        timestamp,
+      });
     }, actorUserId);
   } catch (error) {
     legacyKeyMigrationScheduled = false;

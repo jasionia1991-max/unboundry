@@ -1,0 +1,237 @@
+{
+  "schemaVersion": 1,
+  "tsconfig": "tsconfig.check.json",
+  "scanGlobs": [
+    "client/src/**/*.ts",
+    "client/src/**/*.tsx",
+    "server/**/*.ts",
+    "types/**/*.ts",
+    "vite.config.ts"
+  ],
+  "uiSources": ["client/src/**"],
+  "serverTargets": ["server/**", "vite.config.ts"],
+  "providerAdapterSources": [
+    "server/arkFileUploader.ts",
+    "server/multiProtocolRelay.ts",
+    "server/murekaAudioProvider.ts",
+    "server/providerGenerationArkVideoRuntime.ts",
+    "server/providerGenerationMurekaAudioRuntime.ts",
+    "server/providerGenerationRelayMediaRuntime.ts",
+    "server/providerGenerationTextRuntime.ts",
+    "server/providerMediaGenerationAdapters.ts",
+    "server/openRouterImageProvider.ts",
+    "server/providerMedia.ts",
+    "server/providerResultMedia.ts",
+    "server/relayProviderAdapters.ts",
+    "server/volcengineArkTextProvider.ts",
+    "server/volcengineArkVideoProvider.ts"
+  ],
+  "storageConcreteTargets": [
+    "server/aliyunOss.ts",
+    "server/assetStorage.ts",
+    "server/audioStorage.ts",
+    "server/cloudMediaStorage.ts",
+    "server/mediaLifecycle.ts",
+    "server/mediaRegistry.ts",
+    "server/secureStorageProfiles.ts",
+    "server/videoStorage.ts"
+  ],
+  "mediaSources": [
+    "server/assetStorage.ts",
+    "server/audioStorage.ts",
+    "server/cloudMediaStorage.ts",
+    "server/generatedMediaCleanup.ts",
+    "server/mediaIntegrity.ts",
+    "server/mediaLifecycle.ts",
+    "server/mediaMetadata.ts",
+    "server/mediaMetadataApi.ts",
+    "server/mediaRegistry.ts",
+    "server/providerResultMedia.ts",
+    "server/videoStorage.ts"
+  ],
+  "generationWriteTargets": [
+    "server/generationResultCommit.ts",
+    "server/generationTaskStore.ts",
+    "server/generationTasks.ts"
+  ],
+  "internalBoundaries": [
+    {
+      "name": "generation",
+      "internalTargets": [
+        "server/generationAttemptQueries.ts",
+        "server/generationSafety.ts",
+        "server/generationTaskStore.ts"
+      ],
+      "ownerSources": ["server/generation*.ts"]
+    },
+    {
+      "name": "media",
+      "internalTargets": ["server/mediaLifecycle.ts", "server/mediaRegistry.ts"],
+      "ownerSources": [
+        "server/assetStorage.ts",
+        "server/audioStorage.ts",
+        "server/cloudMediaStorage.ts",
+        "server/generatedMediaCleanup.ts",
+        "server/groupDownload.ts",
+        "server/media*.ts",
+        "server/providerResultMedia.ts",
+        "server/videoStorage.ts"
+      ]
+    },
+    {
+      "name": "provider",
+      "internalTargets": [
+        "server/providerProfiles.ts",
+        "server/providerRegistry.ts",
+        "server/relayProviderAdapters.ts"
+      ],
+      "ownerSources": [
+        "server/accountCredentials.ts",
+        "server/arkFileUploader.ts",
+        "server/generationProvider.ts",
+        "server/multiProtocolRelay.ts",
+        "server/murekaAudioProvider.ts",
+        "server/openRouterImageProvider.ts",
+        "server/provider*.ts",
+        "server/relay*.ts",
+        "server/volcengineArk*.ts"
+      ]
+    },
+    {
+      "name": "canvas",
+      "internalTargets": ["server/canvasPersistence.ts"],
+      "ownerSources": ["server/canvas*.ts"]
+    }
+  ],
+  "sqlDomains": [
+    { "domain": "auth", "sources": ["server/auth.ts", "server/permissions.ts", "server/account*.ts"] },
+    { "domain": "canvas", "sources": ["server/canvas*.ts"] },
+    { "domain": "generation", "sources": ["server/generation*.ts", "server/inputPreflight.ts"] },
+    { "domain": "media", "sources": ["server/media*.ts", "server/assetStorage.ts", "server/audioStorage.ts", "server/videoStorage.ts", "server/generatedMediaCleanup.ts", "server/groupDownload.ts"] },
+    { "domain": "models", "sources": ["server/model*.ts", "server/agentConfiguration.ts"] },
+    { "domain": "projects", "sources": ["server/project*.ts"] },
+    { "domain": "provider", "sources": ["server/provider*.ts", "server/secureStorageProfiles.ts", "server/storageAdmin.ts"] },
+    { "domain": "templates", "sources": ["server/template*.ts", "server/adminTemplates.ts"] }
+  ],
+  "sqlExemptSources": [
+    "server/backupInspection.ts",
+    "server/backupPackage.ts",
+    "server/database.ts",
+    "server/legacyReverseProxy.ts",
+    "server/legacyRuntimeSupervisor.ts",
+    "server/openApi.ts",
+    "server/schemaMigration.ts"
+  ],
+  "tableOwners": [
+    { "owner": "auth", "tables": ["account_consumption_limits", "account_delete_intents", "account_permissions", "account_provider_credential_epochs", "account_provider_credentials", "sessions", "users"] },
+    { "owner": "canvas", "tables": ["asset_history", "canvas_documents", "canvas_save_session_high_water"] },
+    { "owner": "generation", "tables": ["generation_admission_events", "generation_provider_attempts", "generation_safety_settings", "generation_task_events", "generation_tasks"] },
+    { "owner": "media", "tables": ["media_assets", "media_delete_intents", "media_publication_attempts"] },
+    { "owner": "models", "tables": ["model_profiles", "node_model_bindings"] },
+    { "owner": "projects", "tables": ["project_metadata"] },
+    { "owner": "provider", "tables": ["provider_profile_write_lock", "provider_profiles"] },
+    { "owner": "templates", "tables": ["public_templates", "user_templates"] }
+  ],
+  "baseline": [
+    {
+      "id": "legacy-cross-domain-internal-imports",
+      "owner": "architecture-maintainers",
+      "reason": "Exact reviewed legacy internal imports remain frozen; any change requires an owning boundary migration.",
+      "expiry": "2027-08-22",
+      "fingerprints": [
+        "CROSS_DOMAIN_INTERNAL|server/accountCredentialsApi.ts|server/providerProfiles.ts|provider:runtime",
+        "CROSS_DOMAIN_INTERNAL|server/arkFileUploader.ts|server/mediaRegistry.ts|media:type",
+        "CROSS_DOMAIN_INTERNAL|server/generationResultCommit.ts|server/mediaLifecycle.ts|media:runtime",
+        "CROSS_DOMAIN_INTERNAL|server/generationTasks.ts|server/mediaRegistry.ts|media:runtime",
+        "CROSS_DOMAIN_INTERNAL|server/generationTasks.ts|server/providerProfiles.ts|provider:runtime",
+        "CROSS_DOMAIN_INTERNAL|server/generationTasks.ts|server/relayProviderAdapters.ts|provider:runtime",
+        "CROSS_DOMAIN_INTERNAL|server/inputPreflight.ts|server/mediaRegistry.ts|media:runtime",
+        "CROSS_DOMAIN_INTERNAL|server/modelCatalog.ts|server/generationSafety.ts|generation:runtime",
+        "CROSS_DOMAIN_INTERNAL|server/modelCatalog.ts|server/providerProfiles.ts|provider:runtime",
+        "CROSS_DOMAIN_INTERNAL|server/playlistExport.ts|server/mediaRegistry.ts|media:runtime",
+        "CROSS_DOMAIN_INTERNAL|server/playlistThumbnails.ts|server/mediaRegistry.ts|media:runtime",
+        "CROSS_DOMAIN_INTERNAL|server/providerProfiles.ts|server/generationTaskStore.ts|generation:runtime"
+      ]
+    },
+    {
+      "id": "legacy-cross-domain-sql-reads",
+      "owner": "architecture-maintainers",
+      "reason": "Necessary cross-domain safety and coordination reads remain exact and reviewed; they do not authorize cross-domain writes.",
+      "expiry": "2027-08-22",
+      "fingerprints": [
+        "CROSS_DOMAIN_SQL|server/accountCredentials.ts|table:generation_provider_attempts|auth->generation:read",
+        "CROSS_DOMAIN_SQL|server/accountCredentials.ts|table:generation_tasks|auth->generation:read",
+        "CROSS_DOMAIN_SQL|server/accountCredentials.ts|table:provider_profiles|auth->provider:read",
+        "CROSS_DOMAIN_SQL|server/accountCredentialsApi.ts|table:model_profiles|auth->models:read",
+        "CROSS_DOMAIN_SQL|server/auth.ts|table:generation_admission_events|auth->generation:read",
+        "CROSS_DOMAIN_SQL|server/auth.ts|table:generation_provider_attempts|auth->generation:read",
+        "CROSS_DOMAIN_SQL|server/auth.ts|table:generation_tasks|auth->generation:read",
+        "CROSS_DOMAIN_SQL|server/auth.ts|table:media_assets|auth->media:read",
+        "CROSS_DOMAIN_SQL|server/auth.ts|table:media_delete_intents|auth->media:read",
+        "CROSS_DOMAIN_SQL|server/auth.ts|table:media_publication_attempts|auth->media:read",
+        "CROSS_DOMAIN_SQL|server/auth.ts|table:public_templates|auth->templates:read",
+        "CROSS_DOMAIN_SQL|server/auth.ts|table:user_templates|auth->templates:read",
+        "CROSS_DOMAIN_SQL|server/canvasPersistence.ts|table:media_assets|canvas->media:read",
+        "CROSS_DOMAIN_SQL|server/canvasPersistence.ts|table:project_metadata|canvas->projects:read",
+        "CROSS_DOMAIN_SQL|server/canvasPersistence.ts|table:users|canvas->auth:read",
+        "CROSS_DOMAIN_SQL|server/generatedMediaCleanup.ts|table:generation_tasks|media->generation:read",
+        "CROSS_DOMAIN_SQL|server/generationAttemptQueries.ts|table:media_publication_attempts|generation->media:read",
+        "CROSS_DOMAIN_SQL|server/generationResultCommit.ts|table:media_assets|generation->media:read",
+        "CROSS_DOMAIN_SQL|server/generationResultCommit.ts|table:media_publication_attempts|generation->media:read",
+        "CROSS_DOMAIN_SQL|server/generationSafety.ts|table:model_profiles|generation->models:read",
+        "CROSS_DOMAIN_SQL|server/generationSafety.ts|table:node_model_bindings|generation->models:read",
+        "CROSS_DOMAIN_SQL|server/generationSafety.ts|table:provider_profiles|generation->provider:read",
+        "CROSS_DOMAIN_SQL|server/generationTasks.ts|table:model_profiles|generation->models:read",
+        "CROSS_DOMAIN_SQL|server/generationTasks.ts|table:node_model_bindings|generation->models:read",
+        "CROSS_DOMAIN_SQL|server/generationTasks.ts|table:provider_profiles|generation->provider:read",
+        "CROSS_DOMAIN_SQL|server/generationTaskStore.ts|table:account_delete_intents|generation->auth:read",
+        "CROSS_DOMAIN_SQL|server/generationTaskStore.ts|table:account_provider_credential_epochs|generation->auth:read",
+        "CROSS_DOMAIN_SQL|server/generationTaskStore.ts|table:account_provider_credentials|generation->auth:read",
+        "CROSS_DOMAIN_SQL|server/generationTaskStore.ts|table:canvas_documents|generation->canvas:read",
+        "CROSS_DOMAIN_SQL|server/generationTaskStore.ts|table:model_profiles|generation->models:read",
+        "CROSS_DOMAIN_SQL|server/generationTaskStore.ts|table:node_model_bindings|generation->models:read",
+        "CROSS_DOMAIN_SQL|server/generationTaskStore.ts|table:provider_profiles|generation->provider:read",
+        "CROSS_DOMAIN_SQL|server/generationTaskStore.ts|table:users|generation->auth:read",
+        "CROSS_DOMAIN_SQL|server/groupDownload.ts|table:canvas_documents|media->canvas:read",
+        "CROSS_DOMAIN_SQL|server/groupDownload.ts|table:generation_tasks|media->generation:read",
+        "CROSS_DOMAIN_SQL|server/inputPreflight.ts|table:canvas_documents|generation->canvas:read",
+        "CROSS_DOMAIN_SQL|server/mediaIntegrity.ts|table:account_delete_intents|media->auth:read",
+        "CROSS_DOMAIN_SQL|server/mediaIntegrity.ts|table:asset_history|media->canvas:read",
+        "CROSS_DOMAIN_SQL|server/mediaIntegrity.ts|table:canvas_documents|media->canvas:read",
+        "CROSS_DOMAIN_SQL|server/mediaIntegrity.ts|table:generation_tasks|media->generation:read",
+        "CROSS_DOMAIN_SQL|server/mediaLifecycle.ts|table:account_delete_intents|media->auth:read",
+        "CROSS_DOMAIN_SQL|server/modelCatalog.ts|table:canvas_documents|models->canvas:read",
+        "CROSS_DOMAIN_SQL|server/modelCatalog.ts|table:generation_provider_attempts|models->generation:read",
+        "CROSS_DOMAIN_SQL|server/modelCatalog.ts|table:generation_tasks|models->generation:read",
+        "CROSS_DOMAIN_SQL|server/modelCatalog.ts|table:provider_profiles|models->provider:read",
+        "CROSS_DOMAIN_SQL|server/projects.ts|table:canvas_documents|projects->canvas:read",
+        "CROSS_DOMAIN_SQL|server/projects.ts|table:generation_tasks|projects->generation:read",
+        "CROSS_DOMAIN_SQL|server/projects.ts|table:media_assets|projects->media:read",
+        "CROSS_DOMAIN_SQL|server/projects.ts|table:media_publication_attempts|projects->media:read",
+        "CROSS_DOMAIN_SQL|server/providerCatalog.ts|table:model_profiles|provider->models:read",
+        "CROSS_DOMAIN_SQL|server/providerCatalog.ts|table:node_model_bindings|provider->models:read",
+        "CROSS_DOMAIN_SQL|server/providerProfiles.ts|table:account_provider_credentials|provider->auth:read",
+        "CROSS_DOMAIN_SQL|server/providerProfiles.ts|table:generation_provider_attempts|provider->generation:read",
+        "CROSS_DOMAIN_SQL|server/providerProfiles.ts|table:generation_tasks|provider->generation:read",
+        "CROSS_DOMAIN_SQL|server/providerProfiles.ts|table:model_profiles|provider->models:read",
+        "CROSS_DOMAIN_SQL|server/providerProfiles.ts|table:users|provider->auth:read",
+        "CROSS_DOMAIN_SQL|server/secureStorageProfiles.ts|table:media_assets|provider->media:read",
+        "CROSS_DOMAIN_SQL|server/secureStorageProfiles.ts|table:media_publication_attempts|provider->media:read",
+        "CROSS_DOMAIN_SQL|server/storageAdmin.ts|table:media_assets|provider->media:read",
+        "CROSS_DOMAIN_SQL|server/templateCatalog.ts|table:generation_tasks|templates->generation:read",
+        "CROSS_DOMAIN_SQL|server/templateCatalog.ts|table:media_assets|templates->media:read"
+      ]
+    },
+    {
+      "id": "legacy-provider-storage-imports",
+      "owner": "architecture-maintainers",
+      "reason": "Exact reviewed Provider to concrete Storage imports remain frozen behind the current port boundary.",
+      "expiry": "2027-08-22",
+      "fingerprints": [
+        "PROVIDER_STORAGE|server/arkFileUploader.ts|server/mediaRegistry.ts|type",
+        "PROVIDER_STORAGE|server/relayProviderAdapters.ts|server/aliyunOss.ts|runtime",
+        "PROVIDER_STORAGE|server/relayProviderAdapters.ts|server/secureStorageProfiles.ts|runtime"
+      ]
+    }
+  ]
+}

@@ -21,40 +21,13 @@ import {
   initializeGreenfieldAppDatabaseAtProcessStartup,
 } from "./server/database";
 import { databaseMatchesFrozenSchema37Contract } from "./server/backupInspection";
-import {
-  accountHistory,
-  canvasPersistence,
-  projectTitle,
-} from "./server/canvasPersistence";
 import { projectsApi } from "./server/projects";
 import { assetStorage } from "./server/assetStorage";
 import { audioStorage } from "./server/audioStorage";
 import { videoStorage } from "./server/videoStorage";
-import { assertGenerationMediaDeletionAllowedInTransaction } from "./server/generationAttemptQueries";
 import { mediaMetadataApi } from "./server/mediaMetadataApi";
-import {
-  generationTasks,
-  initializePersistentGenerationTaskWorker,
-  prepareGenerationRuntimeRoleTeardown,
-  registerGenerationRuntimeRoleCoordinator,
-  unregisterGenerationRuntimeRoleCoordinatorBeforeStartup,
-} from "./server/generationTasks";
-import {
-  mediaLifecycleStartupRecoveryAllowsReadiness,
-  recoverMediaLifecycleAtProcessStartup,
-} from "./server/mediaLifecycle";
 import { groupDownloadApi } from "./server/groupDownload";
-import {
-  adminGenerationSafetyApi,
-} from "./server/generationSafety";
-import {
-  accountContextApi,
-  adminUsersApi,
-  authApi,
-  authGate,
-} from "./server/auth";
 import { adminModelsApi, publicModelsApi } from "./server/modelCatalog";
-import { adminProviderProfilesApi } from "./server/providerProfiles";
 import { adminProviderCatalogApi } from "./server/providerCatalog";
 import { adminStorageApi } from "./server/storageAdmin";
 import { openApi } from "./server/openApi";
@@ -95,6 +68,31 @@ import {
   versionApi,
 } from "./server/version";
 import { applySecurityHeaders } from "./server/securityHeaders";
+import { applicationComposition } from "./server/applicationComposition";
+
+const {
+  auth: { accountContextApi, adminUsersApi, authApi, authGate },
+  canvas: { accountHistory, canvasPersistence, projectTitle },
+  generation: {
+    adminGenerationSafetyApi,
+    assertMediaDeletionAllowedInTransaction:
+      assertGenerationMediaDeletionAllowedInTransaction,
+    httpHandler: generationTasks,
+    initializePersistentWorker: initializePersistentGenerationTaskWorker,
+    prepareRuntimeRoleTeardown: prepareGenerationRuntimeRoleTeardown,
+    readinessQuery: generationReadinessQuery,
+    registerRuntimeRoleCoordinator: registerGenerationRuntimeRoleCoordinator,
+    unregisterRuntimeRoleCoordinatorBeforeStartup:
+      unregisterGenerationRuntimeRoleCoordinatorBeforeStartup,
+  },
+  media: { publication: mediaPublicationService },
+  provider: { adminProviderProfilesApi },
+} = applicationComposition;
+
+const mediaLifecycleStartupRecoveryAllowsReadiness =
+  mediaPublicationService.readinessAllowsStartup;
+const recoverMediaLifecycleAtProcessStartup =
+  mediaPublicationService.recoverStartup;
 
 if (process.env.UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION !== undefined) {
   throw new Error(
@@ -171,13 +169,7 @@ function createMainRuntimeLifecycle(
       if (!mediaLifecycleStartupRecoveryAllowsReadiness(database)) return false;
       if (generationStartupWorkerGate.state === "ready") return true;
       if (generationStartupWorkerGate.state !== "deferred") return false;
-      const active = database.prepare(`
-        SELECT 1
-        FROM generation_tasks
-        WHERE state IN ('queued', 'running', 'recovering', 'retrying')
-        LIMIT 1
-      `).get();
-      if (active) return false;
+      if (generationReadinessQuery.hasCommittedActiveTasks(database)) return false;
       // A startup-time marker/old snapshot may be repaired externally. A later
       // read-only readiness probe may clear the gate only when no durable work
       // was skipped; readiness never initializes the writer itself.

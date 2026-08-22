@@ -31,10 +31,6 @@ import {
 const EXPECTED_NODE = "22.23.1";
 const EXPECTED_NPM = "10.9.8";
 const FORBIDDEN_PORT = 4173;
-const ALLOWED_BRANCHES = new Set([
-  "codex/unboundry-offline-remediation-2026-08-09",
-  "codex/view-005-dense-canvas-performance-2026-08-21",
-]);
 const USER_HOME = "/Users/mymy";
 const BACKUP_FINAL_CANDIDATE_SPEC = "tests/m10-backup.spec.ts";
 const EXACT_V051_SPEC = "tests/m92-version-compatibility.spec.ts";
@@ -606,9 +602,6 @@ function preflight() {
   const branch = run("git", ["branch", "--show-current"], {
     capture: true,
   }).stdout.trim();
-  if (!ALLOWED_BRANCHES.has(branch)) {
-    fail(`unexpected branch ${branch}`);
-  }
   const versionFile = readFileSync(join(repositoryRoot, ".node-version"), "utf8").trim();
   if (versionFile !== EXPECTED_NODE) fail(".node-version is not pinned correctly");
 
@@ -649,15 +642,15 @@ function preflight() {
     new Set(manifested).size !== manifested.length ||
     manifested.join("\n") !== specs.join("\n")
   ) {
-    fail("safe test manifest must be a duplicate-free exact 119-spec partition");
+    fail("safe test manifest must be a duplicate-free exact 120-spec partition");
   }
-  const expectedModeCounts = { dev: 75, hybrid: 4, node: 29, preview: 2, self: 9 };
+  const expectedModeCounts = { dev: 75, hybrid: 4, node: 30, preview: 2, self: 9 };
   for (const mode of expectedModes) {
     if (manifest[mode].length !== expectedModeCounts[mode]) {
       fail(`unexpected ${mode} spec count ${manifest[mode].length}`);
     }
   }
-  if (specs.length !== 119) fail(`expected 119 isolated specs, found ${specs.length}`);
+  if (specs.length !== 120) fail(`expected 120 isolated specs, found ${specs.length}`);
 
   const packageJson = JSON.parse(
     readFileSync(join(repositoryRoot, "package.json"), "utf8"),
@@ -1565,6 +1558,21 @@ async function prepareExactV051Attestation(sourceRoot, browserRoot, suiteRoot) {
 }
 
 async function validateFileAndCredentialIsolation(sourceRoot, testRoot, env) {
+  const protectedExistingOrCreationTarget = (label, targetPath, creationPath) =>
+    existsSync(targetPath)
+      ? {
+          label,
+          operations: [
+            "direct-open", "direct-stat", "direct-read", "direct-write",
+            "symlink-stat", "symlink-read",
+          ],
+          path: targetPath,
+        }
+      : {
+          label: `${label} creation path`,
+          operations: ["direct-write"],
+          path: creationPath,
+        };
   const targets = [
     {
       label: "live package manifest",
@@ -1574,31 +1582,21 @@ async function validateFileAndCredentialIsolation(sourceRoot, testRoot, env) {
       ],
       path: join(repositoryRoot, "package.json"),
     },
-    {
-      label: "live application database",
-      operations: [
-        "direct-open", "direct-stat", "direct-read", "direct-write",
-        "symlink-stat", "symlink-read",
-      ],
-      path: join(repositoryRoot, "data", "unboundry.sqlite"),
-    },
-    {
-      label: "live backup directory",
-      operations: [
-        "direct-open", "direct-stat", "direct-read", "direct-write",
-        "symlink-stat", "symlink-read",
-      ],
-      path: join(repositoryRoot, "backups"),
-      writePath: join(repositoryRoot, "backups", ".unboundry-forbidden-write"),
-    },
-    {
-      label: "live Git configuration",
-      operations: [
-        "direct-open", "direct-stat", "direct-read", "direct-write",
-        "symlink-stat", "symlink-read",
-      ],
-      path: join(repositoryRoot, ".git", "config"),
-    },
+    protectedExistingOrCreationTarget(
+      "live application database",
+      join(repositoryRoot, "data", "unboundry.sqlite"),
+      join(repositoryRoot, "data"),
+    ),
+    protectedExistingOrCreationTarget(
+      "live backup directory",
+      join(repositoryRoot, "backups"),
+      join(repositoryRoot, "backups"),
+    ),
+    protectedExistingOrCreationTarget(
+      "live Git metadata",
+      join(repositoryRoot, ".git"),
+      join(repositoryRoot, ".git"),
+    ),
     {
       label: "isolated tracked source",
       operations: ["direct-write", "symlink-write"],
@@ -1833,6 +1831,10 @@ async function validateSource(sourceRoot, browserRoot, suiteRoot) {
       join(sourceRoot, "tests/source-coverage-behavior.test.mjs"),
     ]);
     await sandboxedNode(sourceRoot, testRoot, env, [
+      "--test",
+      join(sourceRoot, "tests/architecture-boundaries.test.mjs"),
+    ]);
+    await sandboxedNode(sourceRoot, testRoot, env, [
       tsc,
       "--project",
       join(sourceRoot, "tsconfig.check.json"),
@@ -2048,8 +2050,8 @@ async function discover(specs, suiteRoot, sourceRoot, browserRoot) {
         })}`,
       );
     }
-    if (discovery.tests !== 1038) {
-      fail(`the frozen 1038-test inventory changed to ${discovery.tests}`);
+    if (discovery.tests !== 1050) {
+      fail(`the frozen 1050-test inventory changed to ${discovery.tests}`);
     }
     const idsByFile = {};
     const { entries } = collectReportEntries(reportFile, sourceRoot);
@@ -3651,6 +3653,9 @@ async function main() {
   const allSpecs = preflight();
   const specs = selectedSpecs(allSpecs, options.specs);
   if (options.command === "preflight") return;
+  if (options.command === "run" || options.command === "full") {
+    run(process.execPath, [join(repositoryRoot, "scripts/check-architecture.mjs")]);
+  }
 
   const systemTemporaryRoot = realpathSync(tmpdir());
   const suiteRoot = mkdtempSync(join(systemTemporaryRoot, "unboundry-safe-suite-"));

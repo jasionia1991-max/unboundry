@@ -1,7 +1,22 @@
 # Unboundry 绿地复刻当前任务
 
-更新时间：2026-08-21
+> **本地主线集成状态**：`READY_FOR_LOCAL_MAIN_DECISION`。独立 worktree 为 `/Users/mymy/Documents/unboundry-modular-main-integration-2026-08-22`，分支为 `codex/modular-main-integration-2026-08-22`，从审计远端 main `dcffba32d57af9accaa25bf01feb40f1e7828092` 建立。D0～D5 为自动/本地提交通过，D6 为 `LOCAL_AGENT_PAGE_PASS`，用户已于2026-08-23明确通过D7四项页面验收，D8已收口；产品提交 `7e868939959e90fd4a7fc786fc60b94aee3f1a68` 的唯一 safe full 为120/120 specs、1050/1050 tests PASS。`MAIN_UNCHANGED / PUSH_NOT_AUTHORIZED / PRODUCTION_FORBIDDEN / REAL_PROVIDER_NOT_RUN / REAL_OSS_NOT_RUN`；下一步只有用户另行明确“允许本地合入main，不push”后才能进行。
+
+更新时间：2026-08-23
 状态：`v0.6.30 已发布并由用户实页验收通过，状态 PRODUCTION_PUBLISHED_USER_PASS / USER_PASS。Nano 既有 JPEG 结果已规范化为 PNG；Suno 两个不同完整 MP3 已按 primary/alternate 保存、可切换且均可播放；三媒体模型只在云腾 Provider 下 published/enabled。Provider 创建 POST 新增 0，优创与冻结备份逐表一致。权威回执见 spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json。`
+
+### 2026-08-23 模块化成果主线集成（READY_FOR_LOCAL_MAIN_DECISION）
+
+- D0：离线档案分支只提交六份治理文档，提交 `92a57e49ec89aa1e7550e8109fe1b870069792c8`。
+- D1：`git ls-remote` 复核远端 main 未漂移；冻结产品源相对 main 为45个提交、103个文件，merge-base 等于 main，merge-tree 无冲突标记；独立集成 worktree/branch 已建立。
+- D2：93个最终态文件已一次性恢复；固定离线路径/分支、identity script、pre-script、离线 plan/matrix/checkpoint/receipt 和页面施工闸门明确排除；architecture、safe runner、source coverage、package 和状态文档已改写为 main-safe 形态；内容审计与 diff check 通过。
+- D3：TypeScript、76条精确架构 baseline、399文件 source coverage、production build 和120-spec safe preflight 均通过；4173 listener unchanged。
+- D4 首轮合并定向44 specs、666 tests 为665/666，唯一失败稳定定位为适应视图/缩放后250ms相机静默窗误吞显式 Backspace remove；最小修复后只复验 m1-delete-undo、m1-viewport、m22，共40/40通过，其余成功项未重复。
+- D5 候选提交 `7e868939959e90fd4a7fc786fc60b94aee3f1a68`、tree `bda78d3456d583b89588827af9d59955e9b88294` 已冻结；唯一 safe full 为120/120 specs、1050/1050 tests PASS，异常0，source/snapshot `16477c4f…5193` 未变化，没有重复full。
+- D6 动态本地页 `http://127.0.0.1:57359/canvas` 为 `LOCAL_AGENT_PAGE_PASS`：页面无 `Failed to fetch`，console 0 error/warn，HTTP请求全为本机57359；图片上传、真实页面 File drop 默认导航抑制、适应视图、删除/撤销、保存刷新均通过。Finder跨应用实际鼠标手势没有冒充Agent证据，由D7用户亲测并已明确通过。
+- D7 用户对页面、Finder拖图、适应视图、删除/撤销/保存刷新四项明确回复“通过”，新集成候选正式记为 `USER_PASS`。
+- D8 只改四份治理文档；产品源码保持在已测试提交，未重复任何成功测试。离线施工舱8项文件继续全部排除，运行路径固定身份命中0，架构baseline仍为76；57359服务已安全 drain，临时根可恢复地移入废纸篓。main、origin/main、生产、Provider和OSS均未修改；原离线分支只保留已记录的D0治理文档提交，D8未再修改；等待单独的本地main合入授权。
+
 
 ### 2026-08-21 Provider 结果兼容与既有任务零 POST 恢复（v0.6.30 已发布）
 

@@ -2,6 +2,8 @@ import type { IncomingMessage } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
 import { appDataDirectory, openAppDatabase } from "./database";
 import { requestIdentity } from "./auth";
+import { deleteMediaHistoryCommand } from "./canvasTransactionCommands";
+import { executeTransactionScopedCommand } from "./transactionCommand";
 
 export type MediaKind = "audio" | "image" | "video";
 export type MediaStorageBackend = "local" | "oss";
@@ -478,10 +480,11 @@ export function beginMediaDeletion(
         AND storage_status IN ('pending', 'ready', 'failed')
     `).run(timestamp, ownerId, kind, id);
     if (hidden.changes !== 1) throw new Error("Media changed concurrently");
-    database.prepare(`
-      DELETE FROM asset_history
-      WHERE account_id = ? AND owner_id = ? AND id = ? AND kind = ?
-    `).run(ownerId, ownerId, id, kind);
+    executeTransactionScopedCommand(database, deleteMediaHistoryCommand, {
+      assetId: id,
+      kind,
+      ownerId,
+    });
     const journal = deferredPublicationCleanup
       ? database.prepare(`
           UPDATE media_publication_attempts

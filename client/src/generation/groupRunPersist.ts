@@ -1,4 +1,5 @@
 import type { NodeRunResult } from "./workflowExecution";
+import type { CanvasSavePort } from "../canvas/canvasPorts";
 
 export function workflowToastDurationMs(
   kind: "error" | "info" | "success",
@@ -82,14 +83,13 @@ export function waitForPaint(): Promise<void> {
 }
 
 export async function persistGroupCanvasAfterNode(input: {
-  flushCanvasSave: () => Promise<void>;
-  waitForCanvasRevision: () => Promise<unknown>;
+  save: CanvasSavePort;
   waitForPaint?: () => Promise<void>;
 }): Promise<string | undefined> {
   try {
     await (input.waitForPaint ?? waitForPaint)();
-    await input.flushCanvasSave();
-    await input.waitForCanvasRevision();
+    await input.save.flush();
+    await input.save.waitForRevision();
     return undefined;
   } catch (error) {
     return error instanceof Error ? error.message : "画布还在保存，请稍后再试";

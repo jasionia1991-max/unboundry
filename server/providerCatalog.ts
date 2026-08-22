@@ -29,6 +29,11 @@ import {
   providerCatalogCapabilities,
 } from "./providerCatalogCapabilities";
 import {
+  importModelDraftCommand,
+  restoreImportedModelCommand,
+} from "./modelTransactionCommands";
+import { executeTransactionScopedCommand } from "./transactionCommand";
+import {
   parseProviderCatalogDiagnostics,
   serializeProviderCatalogDiagnostics,
   type ProviderCatalogDiagnostics,
@@ -1512,16 +1517,11 @@ function importCatalogDrafts(
           const restoredStatus = existing.status === "published"
             ? "disabled"
             : existing.status;
-          store.prepare(`
-            UPDATE model_profiles
-            SET archived_at = NULL, status = ?, updated_at = ?
-            WHERE id = ?
-          `).run(restoredStatus, timestamp, existing.id);
-          store.prepare(`
-            UPDATE node_model_bindings
-            SET enabled = 0, is_default = 0, updated_at = ?
-            WHERE model_id = ?
-          `).run(timestamp, existing.id);
+          executeTransactionScopedCommand(store, restoreImportedModelCommand, {
+            modelId: existing.id,
+            status: restoredStatus,
+            timestamp,
+          });
           audit(store, actorUserId, "model.restore", profileId, {
             capability,
             modelId: existing.id,
@@ -1537,36 +1537,22 @@ function importCatalogDrafts(
         continue;
       }
       const modelId = randomUUID();
-      store.prepare(`
-        INSERT INTO model_profiles (
-          id, display_name, provider_profile_id, provider_model_id,
-          provider_protocol, capability, status, default_parameters,
-          cost_currency, created_at, updated_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)
-      `).run(
-        modelId,
-        model.displayName.slice(0, 80),
-        profileId,
-        model.providerModelId,
-        providerProtocol,
+      executeTransactionScopedCommand(store, importModelDraftCommand, {
         capability,
-        JSON.stringify(knownModelParameterSchema({
+        costCurrency: profile.driver === "volcengine-ark" ? "CNY" : "USD",
+        defaultParameters: JSON.stringify(knownModelParameterSchema({
           capability,
           providerDriver: profile.driver,
           providerModelId: model.providerModelId,
         })),
-        profile.driver === "volcengine-ark" ? "CNY" : "USD",
+        displayName: model.displayName.slice(0, 80),
+        modelId,
+        providerModelId: model.providerModelId,
+        providerProfileId: profileId,
+        providerProtocol,
+        sortOrder,
         timestamp,
-        timestamp,
-      );
-      store.prepare(`
-        INSERT INTO node_model_bindings (
-          node_type, model_id, enabled, is_default, sort_order,
-          created_at, updated_at
-        )
-        VALUES (?, ?, 0, 0, ?, ?, ?)
-      `).run(capability, modelId, sortOrder, timestamp, timestamp);
+      });
       sortOrder += 10;
       imported += 1;
     }
