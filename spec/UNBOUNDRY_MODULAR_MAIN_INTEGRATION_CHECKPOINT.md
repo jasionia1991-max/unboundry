@@ -2,7 +2,7 @@
 
 更新日期：2026-08-23
 
-状态：`D0-D8_PASS / LOCAL_MAIN_MERGED / REMOTE_MAIN_SYNCED / V0_6_31_PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
+状态：`D0-D8_PASS / LOCAL_MAIN_MERGED / REMOTE_MAIN_SYNCED / V0_6_31_PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`
 
 ## 1. 权威入口
 
@@ -30,7 +30,7 @@
 - 2026-08-22 D1 重新核对的远端 main：`dcffba32d57af9accaa25bf01feb40f1e7828092`
 - 冻结产品源相对远端 main：ahead 45、103 个文件
 - 当前 Git 冲突证据：merge-base 等于远端 main；只读 merge-tree 无冲突标记
-- 当前 package/schema：`0.6.31 / schema39`；生产已发布并等待用户复验
+- 当前 package/schema：`0.6.31 / schema39`；生产已发布并获用户实页验收通过
 - 原工作树：`/Users/mymy/Documents/unboundry/app`，只读且禁止施工
 - 受保护 JSON：保持未读、未改、未暂存
 
@@ -94,11 +94,11 @@
 
 ## 5. 当前动作
 
-`V0_6_31_PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：tag `475bc675...` / tree `d751a82c...`，PR #69 merge `b0528d24...` 且 main tree一致；生产 current `/opt/unboundry/releases/v0.6.31-modular-main-20260823`，冻结备份 `/var/lib/unboundry-rollbacks/v0.6.31-frozen-5JetjX`。唯一 full `1048/1050`，只复验失败 m22/m38 并 `52/52 PASS`；生产终门全部通过，等待用户实页确认。
+`V0_6_31_PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`：tag `475bc675...` / tree `d751a82c...`，PR #69 merge `b0528d24...` 且 main tree一致；生产 current `/opt/unboundry/releases/v0.6.31-modular-main-20260823`，冻结备份 `/var/lib/unboundry-rollbacks/v0.6.31-frozen-5JetjX`。唯一 full `1048/1050`，只复验失败 m22/m38 并 `52/52 PASS`；生产终门全部通过。用户随后在生产实页明确回复“通过”，且生产中的8个关键模块化边界文件与标签源码逐字节一致。
 
 ## 6. 下一步
 
-停止发布施工，等待用户打开 `https://canvas.mymy.ltd` 实页确认；本次发布授权已消费。
+v0.6.31 技术发布与用户验收均已收口；停止施工，本次发布授权已消费。
 
 ## 7. 后续每阶段记录模板
 
@@ -133,5 +133,5 @@ exit / 结果：
 - `LOCAL_MAIN_MERGED`：达到；本地 main 已以明确 merge commit 合入，产品树与已测试候选相同；
 - `USER_PASS`：本轮新集成候选已达到；
 - `REMOTE_MAIN_SYNCED`：达到，远端 main 为 `8d6ed903cd1852bd6b0d82c9787102c48fdf0411`；
-- `V0_6_31_PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`：达到，GitHub、冻结备份、精确构建、生产切换和技术终门通过，等待用户实页确认；
+- `V0_6_31_PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`：达到，GitHub、冻结备份、精确构建、生产切换、技术终门和用户生产实页验收均通过；
 - `REAL_PROVIDER_NOT_RUN / REAL_OSS_NOT_RUN`：保持。

@@ -1,6 +1,6 @@
 # Unboundry 模块化成果主线集成验收矩阵
 
-状态：`D0-D8_PASS / LOCAL_MAIN_MERGED / REMOTE_MAIN_SYNCED / V0_6_31_PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
+状态：`D0-D8_PASS / LOCAL_MAIN_MERGED / REMOTE_MAIN_SYNCED / V0_6_31_PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`
 
 更新日期：2026-08-23
 
@@ -42,7 +42,7 @@
 | MP-070 | 用户验收 | 页面、Finder 拖图、适应视图、删除撤销保存刷新四项明确确认 | `USER_PASS` |
 | MP-080 | 文档收口 | Checkpoint、矩阵、状态、残余风险与 Git 事实同步 | `AUTO_PASS` |
 | MP-090 | main 决策门 | 用户单独明确允许本地合入 main；merge parents/tree 与远端未变化证据；不自动包含 push | `LOCAL_MAIN_MERGED` |
-| MP-091 | 远端与发布门 | 用户另行确认版本号 v0.6.31 并允许 push、PR/tag 与发布；远端 main、候选测试和生产回执分层记录 | `AUTO_PASS / USER_RECHECK` |
+| MP-091 | 远端与发布门 | 用户另行确认版本号 v0.6.31 并允许 push、PR/tag 与发布；远端 main、候选测试、生产回执和用户生产实页确认分层记录 | `USER_PASS` |
 
 ## 失败规则
 

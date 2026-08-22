@@ -1,7 +1,7 @@
 {
   "version": "v0.6.31",
   "date": "2026-08-23",
-  "status": "PRODUCTION_PUBLISHED_AUTO_PASS",
+  "status": "PRODUCTION_PUBLISHED_USER_PASS",
   "scope": {
     "summary": "把已完成并经用户本地实页验收的模块化 main-safe 产品树正式发布为 v0.6.31；产品行为、schema39、Provider 合同和数据语义不变。",
     "schemaChanged": false,
@@ -152,6 +152,29 @@
     "immutableReleaseDeleted": false
   },
   "authorizationConsumed": true,
-  "userAcceptance": "USER_RECHECK",
-  "completionBoundary": "v0.6.31 技术发布完成；等待用户打开生产实页确认。不得复用本次授权再次发布、真实生成、修改 schema、写 OSS 或进入下一版本。"
+  "userAcceptance": {
+    "status": "USER_PASS",
+    "message": "通过",
+    "acceptedAt": "2026-08-23T01:50:39+08:00",
+    "scope": "v0.6.31 生产实页"
+  },
+  "postAcceptanceSourceVerification": {
+    "productionCurrent": "/opt/unboundry/releases/v0.6.31-modular-main-20260823",
+    "publicAndLoopbackVersion": "0.6.31",
+    "serviceActive": true,
+    "serviceRestarts": 0,
+    "keyModularBoundaryFilesCompared": 8,
+    "keyModularBoundaryFilesEqualTag": true,
+    "files": [
+      "client/src/canvas/canvasPorts.ts",
+      "client/src/generation/nodeExecutorRegistry.ts",
+      "client/src/generation/workflowNodeExecutors.ts",
+      "server/applicationComposition.ts",
+      "server/generationQueryPort.ts",
+      "server/mediaRegistry.ts",
+      "server/providerRegistry.ts",
+      "server/transactionCommand.ts"
+    ]
+  },
+  "completionBoundary": "v0.6.31 技术发布与用户生产实页验收均已完成。不得复用本次授权再次发布、真实生成、修改 schema、写 OSS 或进入下一版本。"
 }
