@@ -27,7 +27,7 @@
     "mainTreeEqualsTagTree": true,
     "productionReceiptPullRequest": 70,
     "productionReceiptPullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/70",
-    "productionReceiptPullRequestStatus": "OPEN"
+    "productionReceiptPullRequestStatus": "SELF_RECORDED_IN_PR"
   },
   "verification": {
     "formalSafeFullRuns": 1,
@@ -53,6 +53,14 @@
       "sourceAndSnapshotSha256": "b7c23a9052d978965bbeb3157d9d0a195c06354d1779ba97cc854120d7ef8e78",
       "listener4173Unchanged": true,
       "classification": "m22 timing failure did not reproduce; m38 documentation omission was corrected"
+    },
+    "documentationSyncRecheck": {
+      "head": "53ddba2ac35a44d9bca6008c52026e628f8fa1ee",
+      "scope": "m38-generation-runtime-incidents",
+      "passed": 15,
+      "failed": 0,
+      "sourceAndSnapshotSha256": "fca8eeb7604b103d9c67626676d498b384793bfec3dfe6ea667eb96669059229",
+      "listener4173Unchanged": true
     },
     "secondFullRun": false,
     "realProviderRequestsDuringAutomatedTests": 0,
