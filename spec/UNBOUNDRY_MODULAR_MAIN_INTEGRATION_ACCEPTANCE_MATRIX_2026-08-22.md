@@ -1,6 +1,6 @@
 # Unboundry 模块化成果主线集成验收矩阵
 
-状态：`D0_LOCAL_COMMIT_PASS / D1-D5_AUTO_PASS / D6_LOCAL_AGENT_PAGE_PASS / D7_USER_PASS / D8_AUTO_PASS / READY_FOR_LOCAL_MAIN_DECISION / MAIN_UNCHANGED / PUSH_NOT_AUTHORIZED`
+状态：`D0_LOCAL_COMMIT_PASS / D1-D5_AUTO_PASS / D6_LOCAL_AGENT_PAGE_PASS / D7_USER_PASS / D8_AUTO_PASS / LOCAL_MAIN_MERGED / PUSH_NOT_AUTHORIZED`
 
 更新日期：2026-08-23
 
@@ -15,6 +15,7 @@
 - `LOCAL_AGENT_PAGE_PASS`：Agent 已在隔离实页完成指定场景；
 - `USER_RECHECK`：等待用户检查新集成候选；
 - `USER_PASS`：仅限用户明确确认的条目；
+- `LOCAL_MAIN_MERGED`：用户已单独授权，候选已合入本地 `main`，不代表 push、PR、tag 或发布；
 - `BLOCKED`：真实停止条件成立并已写入 Checkpoint。
 
 | ID | 验收项 | 必须证据 | 当前状态 |
@@ -40,7 +41,7 @@
 | MP-060 | Agent 实页 | 动态 loopback 页面；六个场景；console/网络证据 | `LOCAL_AGENT_PAGE_PASS` |
 | MP-070 | 用户验收 | 页面、Finder 拖图、适应视图、删除撤销保存刷新四项明确确认 | `USER_PASS` |
 | MP-080 | 文档收口 | Checkpoint、矩阵、状态、残余风险与 Git 事实同步 | `AUTO_PASS` |
-| MP-090 | main 决策门 | 用户单独明确允许本地合入 main；不自动包含 push | `NOT_STARTED` |
+| MP-090 | main 决策门 | 用户单独明确允许本地合入 main；merge parents/tree 与远端未变化证据；不自动包含 push | `LOCAL_MAIN_MERGED` |
 
 ## 失败规则
 
@@ -49,4 +50,4 @@
 - 旧离线候选的 `USER_PASS` 不自动覆盖 MP-070；
 - health 或页面可打开不代表数据库、任务或用户验收通过；
 - 任一秘密、真实数据、外部请求或身份不明立即停止并更新 Checkpoint；
-- `MP-090` 未通过时，`main` 必须保持未修改。
+- `MP-090` 只覆盖已完成的本地 main 合入；远端 main、push、PR、tag、升版和发布仍禁止。

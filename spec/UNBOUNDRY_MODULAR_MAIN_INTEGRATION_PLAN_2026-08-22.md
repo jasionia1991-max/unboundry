@@ -1,6 +1,6 @@
 # Unboundry 模块化成果主线集成方案
 
-状态：`D0_LOCAL_COMMIT_PASS / D1-D5_AUTO_PASS / D6_LOCAL_AGENT_PAGE_PASS / D7_USER_PASS / D8_AUTO_PASS / READY_FOR_LOCAL_MAIN_DECISION / MAIN_UNCHANGED / PUSH_NOT_AUTHORIZED / PRODUCTION_FORBIDDEN`
+状态：`D0_LOCAL_COMMIT_PASS / D1-D5_AUTO_PASS / D6_LOCAL_AGENT_PAGE_PASS / D7_USER_PASS / D8_AUTO_PASS / LOCAL_MAIN_MERGED / PUSH_NOT_AUTHORIZED / PRODUCTION_FORBIDDEN`
 
 更新日期：2026-08-23
 
@@ -244,11 +244,12 @@
 - 允许形成 D0 文档提交以及后续 main-safe 产品提交、证据文档提交；
 - D7 必须等待用户明确验收；通过后自动执行 D8。
 
+用户于2026-08-23另行明确说“允许本地合入main，不push”。该一次性授权已用于：在新的独立 main worktree 中把过期本地 main 以 `--ff-only` 快进到审计远端 main，再以明确 merge commit 合入集成候选并提交本次状态文档。它不扩张为远端、发布或外部系统授权。
+
 当前仍不允许：
 
-- 修改或本地合入 `main`；
 - push、PR、tag、升版、发布或部署；
 - 访问真实 Provider、OSS、SSH、生产、真实数据、真实媒体、备份或秘密；
 - 读取、改动、暂存原工作树受保护的未跟踪 JSON。
 
-只有用户另行明确说“允许本地合入main，不push”，才可进入 main 写操作。
+本地 main 合入已完成；下一步停止，不 push。任何远端 main、PR、tag、版本或发布动作都必须另获明确授权。

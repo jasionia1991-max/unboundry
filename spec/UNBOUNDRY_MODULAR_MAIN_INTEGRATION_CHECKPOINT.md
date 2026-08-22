@@ -2,7 +2,7 @@
 
 更新日期：2026-08-23
 
-状态：`D0_LOCAL_COMMIT_PASS / D1-D5_AUTO_PASS / D6_LOCAL_AGENT_PAGE_PASS / D7_USER_PASS / D8_AUTO_PASS / READY_FOR_LOCAL_MAIN_DECISION / MAIN_UNCHANGED / PUSH_NOT_AUTHORIZED / PRODUCTION_FORBIDDEN`
+状态：`D0_LOCAL_COMMIT_PASS / D1-D5_AUTO_PASS / D6_LOCAL_AGENT_PAGE_PASS / D7_USER_PASS / D8_AUTO_PASS / LOCAL_MAIN_MERGED / PUSH_NOT_AUTHORIZED / PRODUCTION_FORBIDDEN`
 
 ## 1. 权威入口
 
@@ -16,11 +16,15 @@
 
 ## 2. 当前冻结身份
 
-- 当前工作根：`/Users/mymy/Documents/unboundry-modular-main-integration-2026-08-22`
-- 当前分支：`codex/modular-main-integration-2026-08-22`
+- 当前本地 main 工作根：`/Users/mymy/Documents/unboundry-local-main-merge-2026-08-23`
+- 当前分支：`main`
+- 集成候选工作根/分支：`/Users/mymy/Documents/unboundry-modular-main-integration-2026-08-22` / `codex/modular-main-integration-2026-08-22`
 - 已测试产品 HEAD / tree：`7e868939959e90fd4a7fc786fc60b94aee3f1a68` / `bda78d3456d583b89588827af9d59955e9b88294`
 - 第一个 main-safe 本地候选提交：`7e868939959e90fd4a7fc786fc60b94aee3f1a68`（`refactor(modular): integrate main-safe module boundaries`）
 - 第二个本地提交：本 Checkpoint、方案、矩阵和 `TASKS.md` 所在的 D8 证据文档提交（`docs(modular): record main integration acceptance`）；提交后的精确 HEAD/tree 由最终实时 Git 输出记录，避免文档自引用提交哈希造成递归改写；
+- 集成候选最终 HEAD / tree：`d42a62ea84f1151af6e35690b11cf7280fbadc77` / `4018d9c43e10a87e0124e24c11e9f2a8c50ff4de`；
+- 本地 main 合入提交：`5476522c28139329deeb81e465dca0106543a68c`（parents `dcffba32d57af9accaa25bf01feb40f1e7828092`、`d42a62ea84f1151af6e35690b11cf7280fbadc77`），tree 同为 `4018d9c43e10a87e0124e24c11e9f2a8c50ff4de`；
+- 本次四份状态文档提交：`docs(modular): record local main merge`；精确最终 HEAD/tree 由提交后的实时 Git 输出记录，避免自引用递归改写；
 - 冻结产品源：`1030790983ff3282330f6efea0613447dc2900c4`
 - 离线 D0 文档提交：`92a57e49ec89aa1e7550e8109fe1b870069792c8`
 - 2026-08-22 D1 重新核对的远端 main：`dcffba32d57af9accaa25bf01feb40f1e7828092`
@@ -34,9 +38,9 @@
 
 ## 3. 当前授权
 
-用户已通过本 Goal 授权并完成 D0～D8：本地施工、分阶段本地提交、安全静态/定向/full/页面验证、D7 用户四项验收与 D8 文档提交收口。该授权到 `READY_FOR_LOCAL_MAIN_DECISION` 为止。
+用户已通过本 Goal 授权并完成 D0～D8：本地施工、分阶段本地提交、安全静态/定向/full/页面验证、D7 用户四项验收与 D8 文档提交收口。
 
-用户尚未授权：修改或合入 `main`、push、PR、tag、升版、发布、部署，以及任何真实 Provider、OSS、SSH、生产、真实数据、真实媒体、备份或秘密访问。
+用户于2026-08-23明确授权“允许本地合入main，不push”。该授权只覆盖本地 main 快进、合入及必要状态文档提交，现已消费。用户仍未授权 push、PR、tag、升版、发布、部署，以及任何真实 Provider、OSS、SSH、生产、真实数据、真实媒体、备份或秘密访问。
 
 ## 4. 已完成
 
@@ -81,15 +85,20 @@
 - D8 再次确认8项离线施工舱文件全部不在候选中：`UNBOUNDRY_MODULAR_WORKTREE.md`、identity JSON、offline isolation/plan/matrix/checkpoint/receipt、identity script；AGENTS/package/scripts/client/server/tests 内固定离线路径、固定分支、`OFFLINE_WORKTREE_ONLY`、`NOT_MAIN` 和 identity script 命中0；
 - D8 直接读取 `scripts/architecture-boundaries.json` 得到3组 baseline entries、76个展开 fingerprint；这只确认最终配置数量与已通过的 D3 architecture 证据一致，不冒充重新运行 architecture；
 - D8 在确认 owner、`0700` 权限、`.unboundry-safe-owner` 和精确动态端口后，向本轮 server 发送中断；日志为 `SHUTDOWN_STARTED / SHUTDOWN_DRAINED`，57359 listener 已消失。系统临时根已可恢复地移动到 `/Users/mymy/.Trash/unboundry-main-integration-page.wvrAPU-D8-20260823`，没有删除或触碰真实数据；
-- D8 没有 push、PR、tag、升版、发布、部署、main 写入、Provider、OSS、SSH、生产或真实数据动作。最终残余边界只有：尚未获准本地合入 main；远端 main 若在未来决策前漂移，必须重新做差异/冲突审计；真实 Provider/OSS/生产仍是 `NOT_RUN`，本 Goal 也不要求运行。
+- D8 当时没有 push、PR、tag、升版、发布、部署、main 写入、Provider、OSS、SSH、生产或真实数据动作；其历史残余边界是尚未获准本地合入 main。该边界随后仅由用户本轮明确授权关闭；真实 Provider/OSS/生产仍是 `NOT_RUN`，本次也不要求运行。
+- MP-090 开始前再次确认集成候选 clean、HEAD/tree 为 `d42a62e...` / `4018d9c...`，merge-base 与远端 main 均为 `dcffba3...`，远端不存在集成分支；
+- 新建独立 main worktree `/Users/mymy/Documents/unboundry-local-main-merge-2026-08-23`，初始本地 main 为 `d3923e8...` 且落后远端165个提交；使用 `git merge --ff-only origin/main` 快进到 `dcffba3...`，没有切换或修改原工作树；
+- 使用 `git merge --no-ff codex/modular-main-integration-2026-08-22 -m "merge: integrate modular main-safe boundaries"` 形成 `5476522...`；两个 parent 精确为 `dcffba3...` 与 `d42a62e...`，tree 精确等于候选 `4018d9c...`，候选到 merge commit 的文件 diff 为空；
+- 因 merge tree 与已测试候选 tree 逐字节相同，本次没有重复 TypeScript、build、定向测试或 safe full；merge 后只更新 `TASKS.md` 与三份本集成治理文档；
+- 本次没有 push、PR、tag、升版、发布、部署、Provider、OSS、SSH、生产或真实数据动作；远端 main 的最终只读核验记录在提交后实时 Git 输出中。
 
 ## 5. 当前动作
 
-`D8_AUTO_PASS / READY_FOR_LOCAL_MAIN_DECISION`：文档、Git 边界、用户验收和资源清理均已收口；等待用户另行决定是否授权本地合入 main。
+`LOCAL_MAIN_MERGED / PUSH_NOT_AUTHORIZED`：本地 main 合入与状态文档已完成，产品树等于已测试候选；停止在本地，不 push。
 
 ## 6. 下一步
 
-停止施工。只有用户另行明确说“允许本地合入main，不push”，才可进入 main 写操作；该授权仍不包含 push、PR、tag、升版、发布或部署。
+停止施工。任何 push、PR、tag、升版、发布或部署都需要新的明确授权。
 
 ## 7. 后续每阶段记录模板
 
@@ -120,6 +129,7 @@ exit / 结果：
 - `D6_LOCAL_AGENT_PAGE_PASS`：动态 loopback 实页的打开、File drop合同、适应视图、删除/撤销、保存刷新、console和网络审计均通过；Finder跨应用实际鼠标手势没有冒充Agent证据，明确留在D7；
 - `D7_USER_PASS`：用户已对新集成候选四项实际页面验收明确回复“通过”；
 - `D8_AUTO_PASS`：最终文档、Git事实、76条例外、排除项、残余风险和安全资源清理已同步；
-- `READY_FOR_LOCAL_MAIN_DECISION`：达到；这不是 main 合入授权，也不是发布状态；
+- `READY_FOR_LOCAL_MAIN_DECISION`：历史阶段已达到，随后用户给出单独本地 main 授权；
+- `LOCAL_MAIN_MERGED`：达到；本地 main 已以明确 merge commit 合入，产品树与已测试候选相同；
 - `USER_PASS`：本轮新集成候选已达到；
-- `MAIN_UNCHANGED / PUSH_NOT_AUTHORIZED / PRODUCTION_FORBIDDEN`：确定。
+- `PUSH_NOT_AUTHORIZED / PRODUCTION_FORBIDDEN`：确定。

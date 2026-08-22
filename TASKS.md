@@ -1,11 +1,11 @@
 # Unboundry 绿地复刻当前任务
 
-> **本地主线集成状态**：`READY_FOR_LOCAL_MAIN_DECISION`。独立 worktree 为 `/Users/mymy/Documents/unboundry-modular-main-integration-2026-08-22`，分支为 `codex/modular-main-integration-2026-08-22`，从审计远端 main `dcffba32d57af9accaa25bf01feb40f1e7828092` 建立。D0～D5 为自动/本地提交通过，D6 为 `LOCAL_AGENT_PAGE_PASS`，用户已于2026-08-23明确通过D7四项页面验收，D8已收口；产品提交 `7e868939959e90fd4a7fc786fc60b94aee3f1a68` 的唯一 safe full 为120/120 specs、1050/1050 tests PASS。`MAIN_UNCHANGED / PUSH_NOT_AUTHORIZED / PRODUCTION_FORBIDDEN / REAL_PROVIDER_NOT_RUN / REAL_OSS_NOT_RUN`；下一步只有用户另行明确“允许本地合入main，不push”后才能进行。
+> **本地主线集成状态**：`LOCAL_MAIN_MERGED / PUSH_NOT_AUTHORIZED / PRODUCTION_FORBIDDEN`。用户于2026-08-23明确授权“允许本地合入main，不push”；本地 `main` 已在独立 worktree `/Users/mymy/Documents/unboundry-local-main-merge-2026-08-23` 先以 `--ff-only` 从 `d3923e850f439d7ab023e6d7d9755f169a9a8420` 快进到审计远端 main `dcffba32d57af9accaa25bf01feb40f1e7828092`，再以 merge commit `5476522c28139329deeb81e465dca0106543a68c` 合入候选 `d42a62ea84f1151af6e35690b11cf7280fbadc77`。merge tree 与候选 tree 同为 `4018d9c43e10a87e0124e24c11e9f2a8c50ff4de`；唯一 safe full 仍为120/120 specs、1050/1050 tests PASS，本次没有为相同产品树重复测试。未 push、PR、tag、升版、发布或访问生产/Provider/OSS。
 
 更新时间：2026-08-23
 状态：`v0.6.30 已发布并由用户实页验收通过，状态 PRODUCTION_PUBLISHED_USER_PASS / USER_PASS。Nano 既有 JPEG 结果已规范化为 PNG；Suno 两个不同完整 MP3 已按 primary/alternate 保存、可切换且均可播放；三媒体模型只在云腾 Provider 下 published/enabled。Provider 创建 POST 新增 0，优创与冻结备份逐表一致。权威回执见 spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json。`
 
-### 2026-08-23 模块化成果主线集成（READY_FOR_LOCAL_MAIN_DECISION）
+### 2026-08-23 模块化成果主线集成（LOCAL_MAIN_MERGED / NO_PUSH）
 
 - D0：离线档案分支只提交六份治理文档，提交 `92a57e49ec89aa1e7550e8109fe1b870069792c8`。
 - D1：`git ls-remote` 复核远端 main 未漂移；冻结产品源相对 main 为45个提交、103个文件，merge-base 等于 main，merge-tree 无冲突标记；独立集成 worktree/branch 已建立。
@@ -15,7 +15,8 @@
 - D5 候选提交 `7e868939959e90fd4a7fc786fc60b94aee3f1a68`、tree `bda78d3456d583b89588827af9d59955e9b88294` 已冻结；唯一 safe full 为120/120 specs、1050/1050 tests PASS，异常0，source/snapshot `16477c4f…5193` 未变化，没有重复full。
 - D6 动态本地页 `http://127.0.0.1:57359/canvas` 为 `LOCAL_AGENT_PAGE_PASS`：页面无 `Failed to fetch`，console 0 error/warn，HTTP请求全为本机57359；图片上传、真实页面 File drop 默认导航抑制、适应视图、删除/撤销、保存刷新均通过。Finder跨应用实际鼠标手势没有冒充Agent证据，由D7用户亲测并已明确通过。
 - D7 用户对页面、Finder拖图、适应视图、删除/撤销/保存刷新四项明确回复“通过”，新集成候选正式记为 `USER_PASS`。
-- D8 只改四份治理文档；产品源码保持在已测试提交，未重复任何成功测试。离线施工舱8项文件继续全部排除，运行路径固定身份命中0，架构baseline仍为76；57359服务已安全 drain，临时根可恢复地移入废纸篓。main、origin/main、生产、Provider和OSS均未修改；原离线分支只保留已记录的D0治理文档提交，D8未再修改；等待单独的本地main合入授权。
+- D8 只改四份治理文档；产品源码保持在已测试提交，未重复任何成功测试。离线施工舱8项文件继续全部排除，运行路径固定身份命中0，架构baseline仍为76；57359服务已安全 drain，临时根可恢复地移入废纸篓。
+- MP-090：用户明确授权“允许本地合入main，不push”。本地 main 在新 worktree 中先 `--ff-only` 到 `dcffba3`，再由 `5476522` 明确合入 `d42a62e`；merge commit 两个 parent 为 `dcffba3` 与 `d42a62e`，其 tree 与候选完全相同。合入后的新增变化仅为本段及三份主线集成治理文档；远端 main 仍未变化，未 push。
 
 
 ### 2026-08-21 Provider 结果兼容与既有任务零 POST 恢复（v0.6.30 已发布）
