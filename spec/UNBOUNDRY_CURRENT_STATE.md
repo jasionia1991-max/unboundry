@@ -19,15 +19,15 @@ v0.6.34冻结前定向`234/234 PASS`；唯一一次safe full原始`1048/1052`，
 
 v0.6.34版本号、tag和发布授权均已执行并消费，禁止移动tag或覆盖release。用户于2026-08-24明确确认`v0.6.35`并独立回复“按v0.6.35上线吧”；新授权只覆盖共同生成热修及Goal内剩余D13，不扩大到Mureka、团队/多人协作、真实Agent协议、Storyboard完整编辑、图片打光或其他既有`PARTIAL/PAUSED/BLOCK`项。
 
-## INC-IMGEDIT-004 图片工具交互与 UI 一次性返工（PLAN_FROZEN / PRE_GOAL）
+## INC-IMGEDIT-004 图片工具交互与 UI 一次性返工（R7_TARGETED_AUTO_PASS / SAFE_FULL_PENDING）
 
 - 用户在生产实页反馈图片工具“几乎都不正常”且没有对齐项目UI规范；只读复核确认多个工具可叠层、部分面板在视口底部裁切、重绘/擦除/标注与底层Creator碰撞、透明图在编辑器/全屏显示黑底、扩图与紧凑面板布局失衡。顶部400×48工具栏、更多菜单和颜色标记基本符合既有基线，作为回归保护。
 - 根因冻结为：多套独立open状态缺少互斥；多个面板依附节点`NodeToolbar`而不是screen-space Portal；缺少统一modal/popover/surface、焦点、viewport和透明背景合同。
-- 用户已批准“单一活动工具状态机 + 统一ImageToolHost + 三类共享壳层 + 逐工具浏览器矩阵”的返工方向，并要求通过文档和Checkpoint防止长任务上下文漂移。
+- R0～R6已完成单一活动状态、Portal `ImageToolHost`、modal inert、焦点返回、共享棋盘格surface、紧凑/大型面板、三目标视口和13张本地浏览器证据；当前没有生产或GitHub新事实。
 - 主方案：`spec/INC_IMGEDIT_004_IMAGE_TOOL_UI_REMEDIATION_PLAN_2026-08-24.md`；唯一断点：`spec/INC_IMGEDIT_004_IMAGE_TOOL_UI_REMEDIATION_CHECKPOINT.md`；新Session Goal：`spec/INC_IMGEDIT_004_IMAGE_TOOL_UI_REMEDIATION_GOAL_PROMPT_2026-08-24.md`。
-- 新验收条目为`IMGEDIT-021～028`，当前均`NOT_STARTED`；R0～R9同时最多一个阶段`IN_PROGRESS`，每阶段完成后先回写Checkpoint、矩阵和TASKS。
-- INC-IMGEDIT-003的6次/60 USD已全部消费；本返工真实Provider预算为0，使用fake、已有结果和零请求浏览器检查。没有具体新版本号和独立发布句子时可连续完成R0～R7，但必须停在R8前。
-- PRE_GOAL只落文档，不修改产品、测试、schema、Provider、OSS或生产；新Session明确启动Goal后从R0只读恢复开始，不自动续跑任何历史任务。
+- R7独立只读审查报告普通透明上传节点surface、标注tooltip、busy焦点、URL-only裁剪空壳和全工具zoom证据五项缺口；产品/测试候选`39cd494`已按最小范围修正。精确候选safe m2 `10/10`、m18 `2/2`、m100 `13/13 PASS`，source/snapshot`8c3cd1a6…f5b98`、4173 listener unchanged，真实Provider/OSS/费用0。
+- `IMGEDIT-021～028`当前为本地自动/浏览器分层通过或`USER_RECHECK`；R7仍为`IN_PROGRESS / SAFE_FULL_PENDING`，最终治理文档提交后只执行本Goal唯一一次safe full，通过前不进入R8、不形成发布结论。
+- 用户已在本Goal明确目标`v0.6.35`并独立写出“v0.6.35上线”，两项门有效但只在R7完成后消费。INC-IMGEDIT-003的6次/60 USD已全部消费；本返工真实Provider预算固定为0。
 
 ## INC-IMGEDIT-003 图片工具栏剩余能力单 Goal（D13技术完成，用户质量未通过并转INC-IMGEDIT-004）
 

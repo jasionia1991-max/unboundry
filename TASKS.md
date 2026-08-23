@@ -25,6 +25,8 @@
 - R4最终精确提交`e01ee2f`的safe m2 `10/10 PASS`、m18 `2/2 PASS`；大型编辑器bounds、棋盘格computed-style、裁剪安全Blob、标注IME/撤销重做/导出、重绘mask坐标和fake任务payload通过。首次m2 `9/10`只暴露新增测试把class误写成testid，最小修正后复验通过；source/snapshot`2548fe1b…5566`、4173 listener unchanged，Provider/OSS/费用0，未运行full。IMGEDIT-024为TARGETED_AUTO_PASS，022/023/026/028按实际范围保持PARTIAL。
 - R5让产品内全屏dialog透出统一棋盘格，并直接验证Escape、外点、Tab/Shift+Tab、焦点返回、reduced-motion及0.15/0.85/1.0/1.5四档zoom下screen UI几何完全不变。定向测试抓出并修复外点默认指针聚焦覆盖Host焦点返回；第二轮只暴露测试未恢复zoom，补清理后最终精确`c5b86f9` safe m2 `10/10 PASS`，source/snapshot`03febf86…75c8`、listener unchanged，Provider/OSS/费用0，未运行full。
 - R6完成全部图片工具隔离浏览器矩阵：保存13张截图和JSON receipt，覆盖1280×720、1440×900、1728×900、横竖方/真实Alpha、三类壳层、恶意切换、modal inert、控制台与CDP零请求计数；所有活动工具Host精确1个且bounds不越viewport。最终产品树与R5相同，只有m2新增Seedance busy gate；调试确定旧失败是busy后按钮文案变为“校验中…”导致旧locator失配，修正后精确`5f48f62` safe m2 `10/10 PASS`、source/snapshot`76461c61…bbfbf`、4173 listener unchanged。真实Provider/OSS/费用0；一次误从主树启动的safe命令在产品spec前被既有`backups/`负控停止，产品测试0且未绕过。证据目录为`spec/evidence/inc-imgedit-004-r6/`。
+- R7独立只读审查报告5项候选缺口：普通透明上传节点缺棋盘格、标注图标缺实际tooltip、busy后焦点可能停在disabled按钮、URL-only旧节点可打开空裁剪Host、四档zoom只有全屏直接证据。`39cd494`按最小范围修正：所有已加载图片节点使用CSS棋盘格底层surface；Host在busy收回失效焦点并保持Tab循环；标注补hover/focus-visible tooltip；无asset裁剪fail-closed；m2逐一覆盖全部12工具四zoom。
+- R7定向候选在精确`39cd494`隔离worktree完成safe m2 `10/10`、m18 `2/2`、m100 `13/13 PASS`，三次退出0，source/snapshot均`8c3cd1a6…f5b98`、4173 listener unchanged；TypeScript/build/架构/source coverage和零网络门随safe入口通过，真实Provider/OSS/费用0。当前为`R7_TARGETED_AUTO_PASS / SAFE_FULL_PENDING`，只有最终治理文档提交后的唯一一次safe full通过才进入R8。
 
 ### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，D13_AUTO_PASS / USER_QUALITY_REMEDIATION_REQUIRED）
 
