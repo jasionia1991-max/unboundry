@@ -218,13 +218,15 @@ test("Image empty and local upload states match the observed geometry", async ({
   await expect(
     toolbar.getByRole("button", { name: "下载" }),
   ).toBeVisible();
-  await toolbar.getByRole("button", { name: "全屏查看" }).click();
+  const fullscreenButton = toolbar.getByRole("button", { name: "全屏查看" });
+  await fullscreenButton.click();
   const detail = page.getByTestId("image-detail");
   await expect(detail).toBeVisible();
   await expect.soft(page.getByTestId("image-tool-host")).toHaveCount(1);
   await expect.soft(page.getByTestId("image-tool-host"))
     .toHaveAttribute("data-active-tool", "fullscreen");
   await expect.soft(page.locator("#root")).toHaveAttribute("inert", "");
+  await expect.soft(page.getByTestId("image-node-toolbar")).toBeHidden();
   const detailPreview = detail.getByTestId("image-detail-preview");
   await expect(detailPreview).toBeVisible();
   await expect(detailPreview).toHaveAttribute(
@@ -234,6 +236,8 @@ test("Image empty and local upload states match the observed geometry", async ({
   await expect(detail.getByRole("button", { name: "下载" })).toBeVisible();
   await detail.getByRole("button", { name: "关闭图片详情" }).click();
   await expect(detail).toBeHidden();
+  await expect.soft(page.locator("#root")).not.toHaveAttribute("inert", "");
+  await expect.soft(fullscreenButton).toBeFocused();
   await toolbar.getByRole("button", { name: "浏览全部" }).click();
   const moreMenu = page.getByTestId("image-node-more-menu");
   await expect(moreMenu).toBeVisible();
@@ -248,8 +252,12 @@ test("Image empty and local upload states match the observed geometry", async ({
   await moreMenu.getByRole("menuitem", { name: "扩图" }).click();
   const outpaint = page.getByTestId("image-outpaint-overlay");
   await expect(outpaint).toBeVisible();
+  await expect.soft(page.getByTestId("image-tool-host"))
+    .toHaveAttribute("data-active-tool", "outpaint");
+  await expect.soft(page.locator("#root")).toHaveAttribute("inert", "");
   await expect(outpaint.getByRole("button", { name: "提交扩图" })).toBeDisabled();
   await outpaint.getByRole("button", { name: "取消扩图" }).click();
+  await expect.soft(toolbar.getByRole("button", { name: "浏览全部" })).toBeFocused();
   await card.click({ position: { x: 20, y: 20 } });
   await toolbar.getByRole("button", { name: "浏览全部" }).click();
   await page.getByTestId("image-node-more-menu")
