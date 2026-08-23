@@ -5,8 +5,8 @@
 - 日期：2026-08-23
 - 仓库：`/Users/mymy/Documents/unboundry/app`
 - 立项基线：`main` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537` / package `0.6.33` / 生产 `v0.6.33` / schema39
-- 状态：`PLAN_FROZEN / D13_IN_PROGRESS / V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_5_OF_6 / MULTI_ANGLE_REDRAW_OUTPAINT_ERASE_CREATIVE_ENHANCE_REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`
-- 当前阶段：D0～D12已完成；v0.6.35已完成GitHub、完整备份、原子切换与生产技术门。前五项均一次真实提交、Provider完成、Media发布、Canvas挂接和刷新恢复通过，共确认50 USD；仅剩主体抠图，预算上限10 USD
+- 状态：`PLAN_FROZEN / D13_AUTO_PASS / V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`
+- 当前阶段：D0～D13技术工作已完成；v0.6.35已完成GitHub、完整备份、原子切换、生产技术门和六项真实技术冒烟。六项均一次真实提交、Provider完成、Media发布、Canvas挂接和刷新恢复通过，主体抠图另有真实Alpha证明；最终6/6、60 USD、无重试，仅剩用户视觉质量复验
 - 版本：`v0.6.35 / VERSION_GATE_VALID / RELEASE_GATE_VALID`
 - 发布候选：`v0.6.35 / SAFE_FULL_1052_OF_1052_PASS / PR_81_MERGED / TAG_FC99101 / MAIN_CC62BFB / TREE_CB13FEF / PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`
 - 本 Goal 授权：用户已于2026-08-24明确确认`v0.6.35`并独立回复“按v0.6.35上线吧”；授权只覆盖共同生成热修及Goal内剩余D13，仍须按Runbook逐门执行
@@ -390,3 +390,4 @@ USER_QUALITY_RECHECK
 - 扩图使用默认四周25%边界一次提交成功：task `9fa04634…33d0`、attempt 1/DB `758`、Provider `113888063`、10 USD；结果ready PNG `1536×2731`、3,426,058 bytes，经published Media、Canvas节点/来源边、云端保存和刷新恢复验证。当前总账`3/6 / 30 USD`；该证据只升级outpaint子项为真实技术通过，新增区域延续质量仍待用户复验。
 - 擦除使用有界地面mask一次提交成功：task `16e3bc55…2cda`、attempt 1/DB `759`、Provider `113888832`、10 USD；结果ready PNG `1440×2560`、3,036,592 bytes，经published Media、Canvas节点/来源边、云端保存和刷新恢复验证。当前总账`4/6 / 40 USD`；该证据只升级erase技术链，不代表对象移除与补景质量通过。
 - 创意增强选择一次后只形成一个task：task `2108f76b…634b`、attempt 1/DB `760`、Provider `113889816`、10 USD；结果ready PNG `1440×2560`、3,583,516 bytes，经published Media、Canvas节点/来源边、云端保存和刷新恢复验证。当前总账`5/6 / 50 USD`；该证据只升级创意增强技术链，不代表细节质量通过。
+- 主体抠图选择一次后自动形成且只形成一个task：task `a17cc9e5…a178`、attempt 1/DB `761`、Provider `113890583`、10 USD；结果ready/published PNG `1440×2560`、4,095,410 bytes，SHA-256 `c51a8508…e221`。只读OSS字节核验确认8-bit RGBA、Alpha范围0～255，透明1,474,164像素、部分透明2,212,069像素；Canvas透明输出身份、来源边、云端保存和刷新恢复通过。最终总账`6/6 / 60 USD`，无重试；D13整体只升级为`REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`，不代表抠图边缘或其他图片质量通过。
