@@ -1181,7 +1181,7 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
     role: "reference-image",
     status: "eligible",
   });
-  await seedancePanel.getByRole("button", { name: "关闭" }).click();
+  await seedancePanel.getByRole("button", { exact: true, name: "关闭" }).click();
   await page.reload();
   await expect(page.getByTestId("canvas-world")).toHaveAttribute(
     "data-persistence-ready",
