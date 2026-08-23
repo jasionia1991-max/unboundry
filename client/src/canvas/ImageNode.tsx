@@ -114,6 +114,13 @@ import {
   mediaUploadState,
   trustedMediaPatch,
 } from "./mediaInputMetadata";
+import { createImageToolDispatcher } from "../imageTools/imageToolDispatcher";
+import { createDerivedImageToolUseCase } from
+  "../imageTools/derivedImageToolUseCase";
+import {
+  createDownloadImageToolUseCase,
+  createFullscreenImageToolUseCase,
+} from "../imageTools/viewerImageToolUseCases";
 
 type CropBox = { height: number; width: number; x: number; y: number };
 type CropVisualPreview = Readonly<{
@@ -3406,14 +3413,6 @@ function ImageNodeImpl({
     }
   };
 
-  const download = () => {
-    if (!preview) return;
-    const link = document.createElement("a");
-    link.href = preview;
-    link.download = `${titleControl.committedValue || "Image"}.png`;
-    link.click();
-  };
-
   const applyCrop = async (file: File, sourceAssetId: string) => {
     const source = getNode(id);
     if (!source || source.data.assetId !== sourceAssetId) {
@@ -3422,73 +3421,64 @@ function ImageNodeImpl({
     if (!persistenceReadyLive.current) {
       throw new Error("画布尚未完成安全加载");
     }
-    const operation = uploadOperation.current;
-    const scope = mediaAdoptionScopeRef.current;
-    const asset = await uploadPngAsset(file);
-    let adopted = false;
-    try {
-      const metadata = await fetchTrustedMediaMetadata("image", asset.assetId);
-      if (
-        operation !== uploadOperation.current ||
-        scope !== mediaAdoptionScopeRef.current ||
-        !persistenceReadyLive.current ||
-        getNode(id)?.data.assetId !== sourceAssetId
-      ) {
-        throw new Error(
-          getNode(id)?.data.assetId !== sourceAssetId
-            ? "原图片已发生变化，请重新打开裁剪"
-            : "画布尚未完成安全加载",
-        );
-      }
-    const derivedId = `image-crop-${crypto.randomUUID()}`;
-    const derivedSize = fitVisualMediaSize(asset.width, asset.height);
-    const sourceWidth = typeof source.style?.width === "number"
-      ? source.style.width
-      : 250;
+    if (!graphCommandPort) throw new Error("画布写入端口暂不可用");
+    await flushCanvasSave();
+    const expectedRevision = await waitForCanvasRevision();
+    const operationId = crypto.randomUUID();
+    const runId = `image-tool-crop-${operationId}`;
+    const ownershipKey = generationOwnershipKey({
+      accountId,
+      canvasId,
+      nodeId: id,
+      operation: "crop",
+      operationId,
+      sourceAssetId,
+    });
     checkpoint();
-    adopted = tryAdoptNodes(id, (nodes) => [
-      ...nodes.map((node) => ({ ...node, selected: false })),
-      {
-        id: derivedId,
-        type: "image",
-        position: {
-          x: source.position.x + sourceWidth + 140,
-          y: source.position.y,
+    const result = await createDerivedImageToolUseCase({
+      graph: graphCommandPort,
+      media: {
+        discard: discardImageAsset,
+        async metadata(assetId) {
+          return trustedMediaPatch(
+            await fetchTrustedMediaMetadata("image", assetId),
+          );
         },
-        selected: true,
-        data: {
-          assetId: asset.assetId,
-          ...trustedMediaPatch(metadata),
-          imageSrc: asset.url,
-          label: "Image",
-          sourceKind: "image",
-          title: asset.fileName.replace(/\.[^.]+$/, "") || "Image",
-        },
-        style: { ...derivedSize },
+        upload: uploadPngAsset,
       },
-    ]);
-    if (!adopted) {
-      await discardImageAsset(asset.assetId);
-      return;
-    }
-    setEdges((edges) => [
-      ...edges,
-      {
-        id: `edge-${id}-${derivedId}`,
-        interactionWidth: 20,
-        source: id,
-        sourceHandle: "source",
-        target: derivedId,
-        targetHandle: "target",
-        type: "cuttable",
-      },
-    ]);
+      operation: "crop",
+      size: fitVisualMediaSize,
+    }).execute({
+      expectedRevision,
+      file,
+      operationId,
+      ownershipKey,
+      runId,
+      sourceAssetId,
+      sourceNodeId: id,
+      title: file.name.replace(/\.[^.]+$/, "") ||
+        titleControl.committedValue || "Image",
+    });
     setCropOpen(false);
-    } catch (error) {
-      if (!adopted) await discardImageAsset(asset.assetId);
-      throw error;
-    }
+    return result;
   };
+
+  const download = () => {
+    if (!preview) return;
+    void imageToolDispatcher.execute("download", {
+      fileName: `${titleControl.committedValue || "Image"}.png`,
+      sourceUrl: preview,
+    });
+  };
+
+  const imageToolDispatcher = createImageToolDispatcher()
+    .register({
+      operation: "crop",
+      execute: (input: Readonly<{ file: File; sourceAssetId: string }>) =>
+        applyCrop(input.file, input.sourceAssetId),
+    })
+    .register(createDownloadImageToolUseCase())
+    .register(createFullscreenImageToolUseCase());
 
   const applyPreviewAutoFit = useCallback((
     width: number,
@@ -3689,7 +3679,9 @@ function ImageNodeImpl({
         <button
           aria-label="全屏查看"
           data-tooltip="全屏查看"
-          onClick={() => setFullscreen(true)}
+          onClick={() => void imageToolDispatcher.execute("fullscreen", {
+            open: () => setFullscreen(true),
+          })}
           type="button"
         >
           <svg aria-hidden="true" viewBox="0 0 20 20">
@@ -3701,7 +3693,9 @@ function ImageNodeImpl({
         <ImageCropEditor
           assetId={cropSourceAssetId}
           onCancel={() => setCropOpen(false)}
-          onConfirm={applyCrop}
+          onConfirm={async (file, sourceAssetId) => {
+            await imageToolDispatcher.execute("crop", { file, sourceAssetId });
+          }}
           title={titleControl.committedValue}
           visualPreview={cropVisualPreview}
         />

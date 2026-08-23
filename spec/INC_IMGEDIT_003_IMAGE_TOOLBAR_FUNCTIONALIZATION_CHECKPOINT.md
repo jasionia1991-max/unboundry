@@ -2,10 +2,10 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-23 19:22:23 +0800
-- 状态：`GOAL_ACTIVE / D1_AUTO_PASS`
-- 当前阶段：`D1 合同、矩阵和架构门 / AUTO_PASS`
-- 唯一允许的下一阶段：`D2 最小图片工具应用层`
+- 更新时间：2026-08-23 19:29:05 +0800
+- 状态：`GOAL_ACTIVE / D2_AUTO_PASS`
+- 当前阶段：`D2 最小图片工具应用层 / AUTO_PASS`
+- 唯一允许的下一阶段：`D3 颜色标记、调整像素、快速分割`
 - 当前仓库：`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`
 - 记录时分支：`codex/inc-imgedit-003-v0.6.34-2026-08-23`
 - 记录时 HEAD：`6a1606cdafd3b38c1333ca6c46baecfae690bd35`
@@ -73,7 +73,7 @@ node -p "require('./package.json').version"
 |---|---|---|
 | D0 | 实时基线和文档恢复 | AUTO_PASS |
 | D1 | 合同、矩阵和架构门 | AUTO_PASS |
-| D2 | 最小图片工具应用层 | NOT_STARTED |
+| D2 | 最小图片工具应用层 | AUTO_PASS |
 | D3 | 颜色标记、调整像素、快速分割 | NOT_STARTED |
 | D4 | 标注 | NOT_STARTED |
 | D5 | 个人素材库 | NOT_STARTED |
@@ -92,7 +92,7 @@ node -p "require('./package.json').version"
 
 | 条目 | 内容 | 状态 |
 |---|---|---|
-| IMGEDIT-010 | 图片工具应用边界、状态和操作启用 | NOT_STARTED |
+| IMGEDIT-010 | 图片工具应用边界、状态和操作启用 | PARTIAL / APPLICATION_LAYER_AUTO_PASS |
 | IMGEDIT-011 | 颜色标记 | NOT_STARTED |
 | IMGEDIT-012 | 个人素材库 | NOT_STARTED |
 | IMGEDIT-013 | 调整像素 | NOT_STARTED |
@@ -157,7 +157,7 @@ package / schema / candidate：
 
 ## 10. 当前唯一下一动作
 
-进入 D2：先把 D2 标为 `IN_PROGRESS`，建立轻量 Dispatcher 与小 use case，接入 Canvas、安全图片和 Generation 公开端口；保持裁剪、下载、全屏行为不变。
+进入 D3：先把 D3 标为 `IN_PROGRESS`，实现颜色标记、调整像素和快速分割；本地确定性处理必须零 Generation、零 Provider、零真实 OSS。
 
 ## 12. D0 实时基线和文档恢复
 
@@ -196,6 +196,25 @@ package / schema / candidate：
 - 阻断：无
 - 回滚点：阶段起点 `43ccd32fdf674724d96dcc84f6739c101bac05f2`；本阶段无 schema、Provider、OSS 或生产写入
 - 唯一下一动作：进入 D2，先把 D2 标为 `IN_PROGRESS`
+
+## 14. D2 最小图片工具应用层
+
+- 时间：2026-08-23 19:29:05 +0800
+- 阶段：`D2`
+- 状态：`AUTO_PASS`
+- branch / HEAD / origin-main：`codex/inc-imgedit-003-v0.6.34-2026-08-23` / 阶段起点 `6cbd2e2bdf675853ae14c96f44bf2eac979f742b` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537`
+- 工作树摘要：新增轻量 Dispatcher、派生图片 use case、viewer use cases 和对既有 single-node Generation lifecycle 的薄适配；CanvasGraphCommandPort 增加 image-tool 原子 fence；裁剪改为媒体登记后一次原子提交 node+edge，失败精确 discard
+- 产品文件：`client/src/imageTools/imageToolDispatcher.ts`、`derivedImageToolUseCase.ts`、`viewerImageToolUseCases.ts`、`generationImageToolUseCase.ts`、`client/src/canvas/canvasPorts.ts`、`client/src/canvas/ImageNode.tsx`
+- 测试文件：`tests/m100-modular-ports.spec.ts`
+- 文档文件：本 Checkpoint、`UNBOUNDRY_ACCEPTANCE_MATRIX.md`、`TASKS.md`
+- package / schema / candidate：`0.6.33 / schema39 / 无候选`；目标版本 `v0.6.34`
+- 外部请求和付费预算：Provider `0/8`；真实 OSS `0`；m100 fake media/fake Generation，m2 仅临时本地媒体和动态 loopback
+- 测试命令、环境、结果、退出码：Node `22.23.1`、npm `10.9.8`；m100 首轮 TypeScript 因测试 fake 未收窄 union 失败，修复后 `node scripts/run-safe-tests.mjs run --spec tests/m100-modular-ports.spec.ts` 退出 0、`13/13 PASS`；`node scripts/run-safe-tests.mjs run --spec tests/m2-image-node.spec.ts` 退出 0、`10/10 PASS`；最终 m100 最小复验在 Generation 薄适配加入后仍 `13/13 PASS`。各次架构新增例外 0，TypeScript/build/source coverage/网络门通过；最终 source/snapshot `8ed05373...` 不变，4173 listener 不变
+- 架构与数据风险：ImageNode 未新增 fetch、Provider 分支或轮询；Dispatcher 只做 operation→use case 路由；派生提交使用 revision+sourceAssetId+runId+ownershipKey fence；Generation 复用现有 SingleNodeGenerationLifecycle，没有第二套任务系统。操作级服务端权威状态将在 D6 完成，因此 IMGEDIT-010 暂记 `PARTIAL`
+- 设计偏差：把原裁剪 node 与 edge 两步 React 写入收口为 CanvasGraphCommandPort 一次提交；下载和全屏通过 viewer use cases，行为和 UI 不变
+- 阻断：无
+- 回滚点：阶段起点 `6cbd2e2bdf675853ae14c96f44bf2eac979f742b`；本阶段无 schema、Provider、OSS 或生产写入
+- 唯一下一动作：进入 D3，先把 D3 标为 `IN_PROGRESS`
 
 ## 11. PRE_GOAL 文档落档记录
 

@@ -94,6 +94,12 @@ import {
   parseImageToolCapabilitySnapshot,
   type ImageToolCapability,
 } from "../types/imageTools";
+import { createImageToolDispatcher } from
+  "../client/src/imageTools/imageToolDispatcher";
+import { createDerivedImageToolUseCase } from
+  "../client/src/imageTools/derivedImageToolUseCase";
+import { createGenerationImageToolUseCase } from
+  "../client/src/imageTools/generationImageToolUseCase";
 import { expect, test } from "./safe-test";
 
 type MediaEditHandlerDependencies = NonNullable<
@@ -463,7 +469,7 @@ test("image tool capability snapshot is complete, unique and fail-closed", () =>
   })).toThrow(/cannot use AVAILABLE/);
 });
 
-test("image tool capability contract bounds payloads, cost and output formats", () => {
+test("image tool capability contract bounds payloads, cost and output formats", async () => {
   expect(() => parseImageToolCapabilitySnapshot({
     ...modularImageToolSnapshot(),
     operations: modularImageToolSnapshot().operations.map((item) =>
@@ -485,6 +491,29 @@ test("image tool capability contract bounds payloads, cost and output formats", 
         ? { ...item, estimatedCost: { amount: -1, currency: "USD", source: "provider" } }
         : item),
   })).toThrow(/estimatedCost.amount/);
+
+  const dispatcher = createImageToolDispatcher().register({
+    operation: "fullscreen",
+    execute: () => ({
+      kind: "viewer",
+      operation: "fullscreen",
+      status: "opened",
+    }),
+  });
+  await expect(dispatcher.execute("fullscreen", {})).resolves.toEqual({
+    kind: "viewer",
+    operation: "fullscreen",
+    status: "opened",
+  });
+  await expect(dispatcher.execute("download", {})).rejects.toThrow(/not registered/);
+  expect(() => dispatcher.register({
+    operation: "fullscreen",
+    execute: () => ({
+      kind: "viewer",
+      operation: "fullscreen",
+      status: "opened",
+    }),
+  })).toThrow(/Duplicate/);
 });
 
 class InMemoryCanvasPorts implements CanvasGraphCommandPort, CanvasSavePort {
@@ -496,6 +525,9 @@ class InMemoryCanvasPorts implements CanvasGraphCommandPort, CanvasSavePort {
   }
 
   apply(command: CanvasGraphCommand) {
+    if (command.scope !== "generation") {
+      return { reason: "fence-rejected", status: "rejected" } as const;
+    }
     const node = this.#snapshot.nodes.find((candidate) =>
       candidate.id === command.fence.nodeId
     );
@@ -574,6 +606,70 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
     update: (snapshot) => snapshot,
   })).toEqual({ reason: "fence-rejected", status: "rejected" });
   expect(port.snapshot().nodes[0].data.imageGenerating).toBe(false);
+
+  let imageToolSnapshot: CanvasGraphSnapshot = {
+    edges: [],
+    nodes: [{
+      data: { assetId: "source-asset", imageSrc: "/source.png", label: "Image" },
+      id: "source-node",
+      position: { x: 20, y: 30 },
+      style: { width: 250 },
+      type: "image",
+    }],
+    revision: 4,
+  };
+  const imageToolGraph = createCanvasGraphCommandPort({
+    commit(snapshot) { imageToolSnapshot = snapshot; },
+    persistenceReady: () => true,
+    snapshot: () => imageToolSnapshot,
+  });
+  const discarded: string[] = [];
+  const derived = createDerivedImageToolUseCase({
+    graph: imageToolGraph,
+    media: {
+      async discard(assetId) { discarded.push(assetId); },
+      async metadata() { return { mediaMetadataStatus: "ready" }; },
+      async upload() {
+        return {
+          assetId: `derived-${discarded.length}`,
+          fileName: "crop.png",
+          height: 120,
+          url: "/derived.png",
+          width: 200,
+        };
+      },
+    },
+    operation: "crop",
+    size: (width, height) => ({ height, width }),
+  });
+  await expect(derived.execute({
+    expectedRevision: 4,
+    file: new File([Uint8Array.from([1])], "crop.png", { type: "image/png" }),
+    operationId: "operation-1",
+    ownershipKey: "owner-1",
+    runId: "run-1",
+    sourceAssetId: "source-asset",
+    sourceNodeId: "source-node",
+    title: "Crop",
+  })).resolves.toMatchObject({
+    assetIds: ["derived-0"],
+    kind: "derived-assets",
+    operation: "crop",
+  });
+  expect(imageToolSnapshot.nodes).toHaveLength(2);
+  expect(imageToolSnapshot.edges).toHaveLength(1);
+  expect(discarded).toEqual([]);
+  await expect(derived.execute({
+    expectedRevision: 5,
+    file: new File([Uint8Array.from([2])], "crop.png", { type: "image/png" }),
+    operationId: "operation-2",
+    ownershipKey: "owner-1",
+    runId: "run-2",
+    sourceAssetId: "source-asset",
+    sourceNodeId: "source-node",
+    title: "Crop",
+  })).rejects.toThrow(/版本已发生变化/);
+  expect(discarded).toEqual(["derived-0"]);
 });
 
 test("Provider references and durable blobs remain separate replaceable stores", async () => {
@@ -1440,4 +1536,22 @@ test("single-node lifecycle replaces React with fenced graph save and task ports
     textGenerationErrorCode: "PROVIDER_RESULT_MISSING",
   });
   expect({ flushes, revisionWaits }).toEqual({ flushes: 5, revisionWaits: 10 });
+
+  const imageToolGeneration = createGenerationImageToolUseCase({
+    lifecycle: {
+      abort() {},
+      async cancel() { return { status: "cancelled", task: task("cancelled") }; },
+      async generate() { return { status: "success", task: task("success") }; },
+      async reconcile() { return { status: "success", task: task("success") }; },
+      async recover() { return { status: "success", task: task("success") }; },
+      async retry() { return { status: "success", task: task("success") }; },
+    },
+    operation: "multi-angle",
+  });
+  await expect(imageToolGeneration.execute({ action: "generate" })).resolves
+    .toMatchObject({
+      kind: "generation-task",
+      operation: "multi-angle",
+      taskId: "task-1",
+    });
 });
