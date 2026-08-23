@@ -2,13 +2,13 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-23 23:39:00 +0800
-- 状态：`GOAL_ACTIVE / D12_AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / D13_READY`
-- 当前阶段：`D12 候选冻结和统一验证 / COMPLETE`
-- 唯一允许的下一动作：提交 D12 收口文档；随后先把 D13 标为 `IN_PROGRESS`，完整阅读 `RELEASE_RUNBOOK.md` 并按版本门和发布门执行 GitHub 与生产发布
+- 更新时间：2026-08-23 23:41:42 +0800
+- 状态：`GOAL_ACTIVE / D13_IN_PROGRESS / RELEASE_AUTH_VALID`
+- 当前阶段：`D13 GitHub和生产发布 / IN_PROGRESS`
+- 唯一允许的下一动作：完整阅读 `RELEASE_RUNBOOK.md` 及其直接引用的发布资料；随后只按 Runbook 的首个未完成门继续
 - 当前仓库：`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`
 - 记录时分支：`codex/inc-imgedit-003-v0.6.34-2026-08-23`
-- 记录时 HEAD：`422408b9bafdce06491398e5c60e443522a479ec`
+- 记录时 HEAD：`93cc76aae9413a66c65e6c9c13a4ba12278000f6`
 - 记录时 `origin/main`：`14777b5dc5cf48de8b21b6eb3ee27da45070b537`
 - package：`0.6.34`
 - 生产：`v0.6.33 / schema39 / PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`
@@ -18,7 +18,7 @@
 - 本轮验证：pinned Node 22.23.1/npm 10.9.8；冻结前定向 `234/234 PASS`；唯一一次 safe full 原始 `1048/1052`，只复验四个失败规格时稳定复现 `102/106`，修复后同一精确集合 `106/106 PASS`；D12收口文档m38 `15/15 PASS`；未运行第二次 full
 - 真实 Provider/付费请求：0/8
 - 真实 OSS 测试对象：0
-- GitHub/SSH/生产操作：0
+- GitHub/SSH/生产操作：D13 尚未开始外部动作；push/PR/tag/SSH/生产写入均0
 
 ## 1. 权威恢复顺序
 
@@ -84,7 +84,7 @@ node -p "require('./package.json').version"
 | D10 | 增强与主体抠图 | TARGETED_AUTO_PASS / REAL_SMOKE_PENDING_D13 |
 | D11 | Seedance 素材校验 | AUTO_PASS |
 | D12 | 候选冻结和统一验证 | AUTO_PASS / FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS |
-| D13 | GitHub和生产发布 | NOT_STARTED / AUTH_VALID / READY |
+| D13 | GitHub和生产发布 | IN_PROGRESS / AUTH_VALID |
 
 ## 5. 验收条目状态
 
@@ -157,7 +157,26 @@ package / schema / candidate：
 
 ## 10. 当前唯一下一动作
 
-提交 D12 收口文档；随后先把 D13 标为 `IN_PROGRESS`，完整阅读 `RELEASE_RUNBOOK.md`，再执行 GitHub 与生产发布。
+完整阅读 `RELEASE_RUNBOOK.md` 及其直接引用的发布资料；随后只按 Runbook 的首个未完成门继续。
+
+## 26. D13 GitHub 和生产发布
+
+- 时间：2026-08-23 23:41:42 +0800
+- 阶段：`D13`
+- 状态：`IN_PROGRESS / VERSION_GATE_VALID / RELEASE_GATE_VALID`
+- branch / HEAD / origin-main：`codex/inc-imgedit-003-v0.6.34-2026-08-23` / `93cc76aae9413a66c65e6c9c13a4ba12278000f6` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537`
+- 工作树摘要：D12 收口提交完成后工作树干净；尚未执行任何外部发布动作
+- 产品文件：D12候选已冻结；D13开始时无新增产品修改
+- 测试文件：复用D12冻结前`234/234`、唯一一次full原始`1048/1052`和修正后精确`106/106`；不为进入发布重复full
+- 文档文件：本Checkpoint、`TASKS.md`、`UNBOUNDRY_ACCEPTANCE_MATRIX.md`
+- package / schema / candidate：`0.6.34 / schema39 / LOCAL_ENGINEERING_COMPLETE / D13_IN_PROGRESS`
+- 外部请求和付费预算：真实Provider成功预算`0/8`；真实OSS测试对象0；push/PR/tag/SSH/生产操作0
+- 测试命令、环境、结果、退出码：本阶段尚未新增验证；沿用D12 pinned Node22.23.1/npm10.9.8证据
+- 架构与数据风险：发布必须保持旧release兼容Library schema1 sidecar，先备份/恢复/旧版本读取，再允许切换；真实生成必须逐项受预算和计费状态门约束
+- 设计偏差：无
+- 阻断：无
+- 回滚点：D12文档收口提交`93cc76aae9413a66c65e6c9c13a4ba12278000f6`；当前生产仍为v0.6.33
+- 唯一下一动作：完整阅读`RELEASE_RUNBOOK.md`及其直接引用发布资料；随后执行首个未完成门
 
 ## 25. D12 候选冻结和统一验证
 
