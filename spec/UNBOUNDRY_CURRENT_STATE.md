@@ -21,6 +21,7 @@
 - 裁剪编辑器不再直接把可能跨域重定向的素材 URL 画入 Canvas，而是通过 owner-scoped 同站接口读取 local/OSS 原图，校验长度、哈希和 PNG 结构后，以 Blob URL 供预览和导出。
 - 客户端使用可替换 resolver；未来可接 `media.mymy.ltd + CDN/CORS`，当前同站接口继续作为私有素材安全兜底。来源 assetId 在打开裁剪时冻结，来源变化或持久化身份漂移时拒绝落图并补偿清理派生资产。
 - 自动证据：直接相关定向 `89/89 PASS`；唯一一次正式 safe full 为 `1049/1050`，唯一失败是未修改 m22 的既有缩放时序断言，同一源码隔离复验 m22 `37/37 PASS`。原始 full 不改写成全绿。
+- GitHub 候选：功能提交 `ca6bddb`，分支 `codex/image-edit-source-2026-08-23`，PR #75；注释标签 `v0.6.32` 只标记候选源码，不表示生产已切换。远端 Quality gates 以 GitHub 实际状态为准。
 - 权威方案与施工记录：`spec/INC_IMGEDIT_001_EDITABLE_IMAGE_SOURCE_PLAN_2026-08-23.md`。当前没有生产发布或用户线上验收，保持 `USER_RECHECK`。
 
 ## 2026-08-23 治理与 nginx 加固

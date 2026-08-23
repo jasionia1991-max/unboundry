@@ -6,7 +6,7 @@
 候选版本：`v0.6.32`（GitHub 交付候选，尚未发布生产）
 施工分支：`codex/image-edit-source-2026-08-23`
 隔离工作区：`/Users/mymy/Documents/unboundry-image-edit-source-2026-08-23`
-当前状态：`VERSIONED_V0_6_32 / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / FORMAL_FULL_1049_OF_1050 / M22_ISOLATED_RECHECK_PASS / GITHUB_DELIVERY_PENDING / USER_RECHECK`
+当前状态：`VERSIONED_V0_6_32 / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / FORMAL_FULL_1049_OF_1050 / M22_ISOLATED_RECHECK_PASS / GITHUB_PR_75_OPEN / TAG_V0_6_32 / USER_RECHECK`
 
 ## 1. 用户结果
 
@@ -208,3 +208,10 @@ type EditableImageSource = {
 - package/lock、final runtime 版本放行和对应部署测试同步为 0.6.32；权威状态文档明确拆分“候选代码版本”和“当前生产版本”，不得因 tag/PR 提前写成已上线。
 - 版本同步后只运行直接受影响的 m38+m81：`56/56 PASS`；同一次安全入口附带 preflight、TypeScript、架构76条基线、source coverage、生产build与离线/凭据/网络保护，全部通过。source/snapshot SHA-256 均为 `55708bb8e7b11750f023c1840686054c9e6af8fb60d5a9a2f321223b0488c3ca`，4173 listener 未变化。
 - 版本和文档同步没有改变已冻结的图片业务行为，因此没有重复正式 full；v0.6.32 继续继承本文件上一节如实记录的一次 full `1049/1050` 与失败规格隔离复验 `37/37 PASS`，不改写成全绿。
+
+### 2026-08-23 GitHub 交付结果
+
+- 功能与版本候选提交：`ca6bddb fix(canvas): add same-origin image editing for v0.6.32`。
+- 分支 `codex/image-edit-source-2026-08-23` 已推送到 origin；GitHub PR #75 已创建并以 main 为目标分支。
+- 注释标签 `v0.6.32` 绑定包含本记录的冻结候选分支头；标签和 PR 仅代表 GitHub 候选交付，不代表生产发布或用户验收。
+- PR 的 GitHub Quality gates 结果以 GitHub 实际检查为准；本地证据不冒充远端 CI。
