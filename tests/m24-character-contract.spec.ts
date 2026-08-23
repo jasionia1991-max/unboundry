@@ -91,7 +91,9 @@ test("the AI character overlay reads the local catalog without provider requests
 
   await overlay.getByRole("button", { name: "性别", exact: true }).click();
   await overlay.getByLabel("性别筛选").getByRole("checkbox", { name: "男" }).check();
-  const filteredCount = await page.getByTestId("ai-character-card").count();
+  const characterCards = page.getByTestId("ai-character-card");
+  await expect.poll(async () => characterCards.count()).toBeLessThan(60);
+  const filteredCount = await characterCards.count();
   expect(filteredCount).toBeGreaterThan(0);
   expect(filteredCount).toBeLessThan(60);
   const after = await (await request.get("/api/generation-tasks/status")).json() as {
