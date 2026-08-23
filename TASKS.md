@@ -5,7 +5,7 @@
 更新时间：2026-08-23
 状态：`v0.6.33 已发布并通过技术终门与用户线上复验，状态 PRODUCTION_PUBLISHED_USER_PASS / USER_PASS。权威回执见 spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json。`
 
-### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，GOAL_ACTIVE / D5_AUTO_PASS）
+### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，GOAL_ACTIVE / D6_AUTO_PASS）
 
 - 用户已批准最终 V5 方案并要求后续长任务严格由项目文档驱动，防止新 Session 或上下文压缩后失忆漂移。主方案：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md`；实时断点：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_CHECKPOINT.md`；新 Session 提示词：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_GOAL_PROMPT_2026-08-23.md`。
 - 单 Goal 连续范围：最小图片工具应用边界、颜色标记、调整像素、快速分割、标注、个人素材库、多角度、遮罩/重绘、扩图、擦除、保守/创意增强、主体抠图和 Seedance 素材校验；裁剪只回归，打光 `IMGEDIT-007` 继续 `PAUSED`。
@@ -19,6 +19,7 @@
 - D3 已完成颜色标记保存/筛选/撤销/刷新、精确像素调整和 2×2/3×3/4×4 快速分割。分割先完成全部本地 PNG 和媒体登记，再以单一 Canvas 命令提交 4/9/16 个节点与边，失败精确补偿；本地处理受 20 MiB、4000 万像素和单边 8192 限制。安全定向 m100 `13/13`、m2 `10/10`，Generation/Provider/真实 OSS 请求 0；`IMGEDIT-011/013/014 = AUTO_PASS`。唯一下一阶段为 D4 标注与显式导出。
 - D4 容量实验的 102 个元素（含 1000 点画笔和中文文字）为 29,460 bytes，只占 512 KiB 上限 5.62%，存储冻结为 Canvas 节点版本化矢量元数据，并保留 500 元素/单路径 2000 点/总 20000 点硬界。选择、画笔、矩形、箭头、编号、中文文字、删除、会话撤销重做、刷新恢复和显式安全 PNG 导出均已实现；调试期只按唯一失败根因补齐 SVG 点击命中与 IME composition，最终 m100 `13/13`、m2 `10/10`，Generation/Provider/真实 OSS 请求 0；`IMGEDIT-015 = AUTO_PASS`。唯一下一阶段为 D5 个人素材库。
 - D5 已完成个人素材库真实链路：Library 使用独立 `library.sqlite` schema1 sidecar，主库仍是 schema39，v0.6.33 精确旧源码可在 sidecar 存在时正常打开主库；同 owner+kind+asset 幂等，项目/节点删除后保留，账号删除时清理，条目删除不删媒体，媒体删除会受 Library 引用保护，团队区继续只读空态。备份/恢复含可选加密 sidecar，旧备份仍兼容；图片工具栏和素材面板已接真实 API/OpenAPI。安全定向 m10/m11/m2/m20/m25/m8/m88 共 `75/75 PASS`，架构新增例外 0、Provider/Generation/真实 OSS 请求 0；`IMGEDIT-012 = AUTO_PASS`。唯一下一阶段为 D6 真实模型和处理引擎调查。
+- D6 已按 OpenAI、ByteDance/Volc 和本地引擎官方资料以及生产只读状态，冻结 17 个 operation 的服务端五态 capability、单项管理员停用、5 分钟过期、成本/model/参考图/mask/Alpha/output DTO、唯一 adapter 注册和 fake adapter；新增 owner-scoped API/OpenAPI 与客户端 fail-closed Context。当前生产默认图片模型 `gpt-image-2` 经 GPT Image 专用协议可用；Seedream 未核实独立 mask 不冒充，rembg 模型权重许可证未闭环不引入。安全定向 m100 `13/13`、m20 `1/1`、m2 `10/10 PASS`，Provider预算仍 `0/8`，Generation/真实 OSS/生产写入 0；`IMGEDIT-010 = AUTO_PASS`。唯一下一阶段为 D7 多角度真实生成。
 - 本次落档 `git diff --check` 通过；定向 m38 safe runner 在产品测试前被 main 既有 ignored `backups/` 隔离负控以 `EISDIR` 阻断，0 个产品测试执行，source snapshot 和 4173 listener 未变。未删除/移动备份、未绕过 safe runner、未把该尝试记为自动 PASS；完整记录见 Checkpoint。
 
 ### 2026-08-23 当前版本文档残留对齐（docs-only）

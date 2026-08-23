@@ -139,6 +139,8 @@ import { emptyImageAnnotationDocument } from
   "../imageTools/imageAnnotations";
 import { createSaveLibraryAssetUseCase } from
   "../imageTools/saveLibraryAssetUseCase";
+import { useImageToolCapability } from
+  "../imageTools/ImageToolCapabilityContext";
 
 type CropBox = { height: number; width: number; x: number; y: number };
 const imageColorMarks = [
@@ -1520,6 +1522,13 @@ function ImageNodeImpl({
   parentId,
   selected,
 }: NodeProps<ProbeNodeType>) {
+  const multiAngleCapability = useImageToolCapability("multi-angle");
+  const redrawCapability = useImageToolCapability("redraw");
+  const outpaintCapability = useImageToolCapability("outpaint");
+  const eraseCapability = useImageToolCapability("erase");
+  const creativeEnhanceCapability = useImageToolCapability("enhance-creative");
+  const removeBackgroundCapability = useImageToolCapability("remove-background");
+  const seedanceCapability = useImageToolCapability("seedance-validate");
   const singleNodeChrome = useSingleNodeChrome(selected, dragging);
   const mediaLoad = useMediaLoadRecovery(data.imageSrc);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -3726,7 +3735,10 @@ function ImageNodeImpl({
         </button>
         <button
           aria-label="多角度"
-          data-tooltip="多角度"
+          data-capability-status={multiAngleCapability.status}
+          data-tooltip={multiAngleCapability.status === "available"
+            ? "多角度"
+            : multiAngleCapability.reason}
           onClick={() => {
             setCropOpen(false);
             setLightingOpen(false);
@@ -3742,7 +3754,10 @@ function ImageNodeImpl({
         </button>
         <button
           aria-label="重绘"
-          data-tooltip="重绘"
+          data-capability-status={redrawCapability.status}
+          data-tooltip={redrawCapability.status === "available"
+            ? "重绘"
+            : redrawCapability.reason}
           onClick={() => {
             setCropOpen(false);
             setLightingOpen(false);
@@ -3796,15 +3811,16 @@ function ImageNodeImpl({
               data-testid="image-node-more-menu"
               role="menu"
             >
-              {[
-                ["扩图", "expand"],
-                ["擦除", "erase"],
-                ["标注", "mark"],
-                ["增强", "enhance"],
-                ["调整像素", "pixels"],
-                ["抠图", "cutout"],
-              ].map(([label, icon]) => (
+              {([
+                ["扩图", "expand", outpaintCapability],
+                ["擦除", "erase", eraseCapability],
+                ["标注", "mark", undefined],
+                ["增强", "enhance", creativeEnhanceCapability],
+                ["调整像素", "pixels", undefined],
+                ["抠图", "cutout", removeBackgroundCapability],
+              ] as const).map(([label, icon, toolCapability]) => (
                 <button
+                  data-capability-status={toolCapability?.status}
                   disabled={label !== "调整像素" && label !== "标注"}
                   key={label}
                   onClick={() => {
@@ -3838,7 +3854,12 @@ function ImageNodeImpl({
                 <span>快速切分</span>
                 <span className="image-more-sizes">2×2　3×3　4×4　›</span>
               </button>
-              <button disabled role="menuitem" type="button">
+              <button
+                data-capability-status={seedanceCapability.status}
+                disabled={seedanceCapability.status !== "available"}
+                role="menuitem"
+                type="button"
+              >
                 <span aria-hidden="true" className="image-more-icon compliance" />
                 Seedance 合规验证
               </button>

@@ -458,6 +458,26 @@ export const openApiDocument = {
         },
       },
     },
+    "/api/image-tools/capabilities": {
+      get: {
+        operationId: "readImageToolCapabilities",
+        summary: "Read the signed-in account's safe image-tool capability snapshot",
+        responses: {
+          "200": {
+            description: "Current operation-level capability and availability snapshot",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ImageToolCapabilitySnapshot",
+                },
+              },
+            },
+          },
+          "401": { description: "Sign-in required" },
+          "503": { description: "Capability service temporarily unavailable" },
+        },
+      },
+    },
     "/api/account-context": {
       get: {
         operationId: "readAccountContext",
@@ -1289,6 +1309,110 @@ export const openApiDocument = {
   },
   components: {
     schemas: {
+      ImageToolCapabilitySnapshot: {
+        type: "object",
+        required: ["generatedAt", "operations", "revision"],
+        properties: {
+          generatedAt: { type: "string", format: "date-time" },
+          operations: {
+            type: "array",
+            minItems: 17,
+            maxItems: 17,
+            items: { $ref: "#/components/schemas/ImageToolCapability" },
+          },
+          revision: { type: "string", pattern: "^[a-f0-9]{24}$" },
+        },
+        additionalProperties: false,
+      },
+      ImageToolCapability: {
+        type: "object",
+        required: [
+          "expiresAt",
+          "maximumInputBytes",
+          "maximumInputPixels",
+          "operation",
+          "outputContentTypes",
+          "reason",
+          "reasonCode",
+          "status",
+          "supportsAlpha",
+          "supportsMask",
+          "supportsReferenceImage",
+        ],
+        properties: {
+          estimatedCost: {
+            type: "object",
+            required: ["amount", "currency", "source"],
+            properties: {
+              amount: { type: "number", minimum: 0 },
+              currency: { type: "string", enum: ["CNY", "USD", "credits"] },
+              source: { type: "string", enum: ["operator", "provider"] },
+            },
+            additionalProperties: false,
+          },
+          expiresAt: { type: "string", format: "date-time" },
+          maximumInputBytes: { type: "integer", minimum: 1 },
+          maximumInputPixels: { type: "integer", minimum: 1 },
+          modelId: { type: "string", minLength: 1 },
+          operation: {
+            type: "string",
+            enum: [
+              "crop",
+              "color-mark",
+              "resize-pixels",
+              "quick-split",
+              "annotate",
+              "save-to-library",
+              "multi-angle",
+              "redraw",
+              "outpaint",
+              "erase",
+              "enhance-conservative",
+              "enhance-creative",
+              "remove-background",
+              "seedance-validate",
+              "download",
+              "fullscreen",
+              "lighting",
+            ],
+          },
+          outputContentTypes: {
+            type: "array",
+            minItems: 1,
+            uniqueItems: true,
+            items: { type: "string", enum: ["image/jpeg", "image/png"] },
+          },
+          reason: { type: "string", minLength: 1 },
+          reasonCode: {
+            type: "string",
+            enum: [
+              "AVAILABLE",
+              "CAPABILITY_STALE",
+              "LOCAL_RUNTIME_UNAVAILABLE",
+              "MODEL_UNAVAILABLE",
+              "OPERATOR_DISABLED",
+              "PAUSED_BY_SCOPE",
+              "PROVIDER_UNAVAILABLE",
+              "REMOTE_VALIDATION_UNAVAILABLE",
+              "UNSUPPORTED",
+            ],
+          },
+          status: {
+            type: "string",
+            enum: [
+              "available",
+              "unavailable",
+              "paused",
+              "disabled_by_operator",
+              "stale",
+            ],
+          },
+          supportsAlpha: { type: "boolean" },
+          supportsMask: { type: "boolean" },
+          supportsReferenceImage: { type: "boolean" },
+        },
+        additionalProperties: false,
+      },
       AccountContext: {
         type: "object",
         required: ["user", "workspace", "permissions", "legacyPermissions"],

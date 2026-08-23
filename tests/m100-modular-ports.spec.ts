@@ -104,6 +104,11 @@ import { createBatchDerivedImageToolUseCase } from
 import { createGenerationImageToolUseCase } from
   "../client/src/imageTools/generationImageToolUseCase";
 import {
+  createFakeImageToolCapabilityAdapter,
+  ImageToolCapabilityAdapterRegistry,
+  imageToolCapabilitySnapshot,
+} from "../server/imageToolCapabilityRegistry";
+import {
   simplifyAnnotationPoints,
   validateImageAnnotationDocument,
 } from "../client/src/imageTools/imageAnnotations";
@@ -474,6 +479,47 @@ test("image tool capability snapshot is complete, unique and fail-closed", () =>
         ? { ...item, reasonCode: "AVAILABLE", status: "disabled_by_operator" }
         : item),
   })).toThrow(/cannot use AVAILABLE/);
+
+  const fake = createFakeImageToolCapabilityAdapter({
+    operations: ["multi-angle", "redraw"],
+    supportsAlpha: true,
+    supportsMask: true,
+    supportsReferenceImage: true,
+  });
+  const registry = new ImageToolCapabilityAdapterRegistry().register(fake);
+  expect(() => registry.register({ ...fake, id: "duplicate" }))
+    .toThrow(/already owns multi-angle/);
+  const serverSnapshot = imageToolCapabilitySnapshot({
+    adapters: registry,
+    disabled: "redraw,unknown-operation",
+    generation: {
+      configured: true,
+      emergencyStop: false,
+      globalEnabled: true,
+      maxCostMicrounits: 9_000,
+      modelId: "gpt-image-2",
+      providerProtocol: "gpt-image",
+    },
+    now: new Date("2026-08-23T12:00:00.000Z"),
+  });
+  expect(imageToolCapability(serverSnapshot, "multi-angle")).toMatchObject({
+    estimatedCost: { amount: 0.009, currency: "USD", source: "operator" },
+    modelId: "gpt-image-2",
+    status: "available",
+    supportsMask: true,
+  });
+  expect(imageToolCapability(serverSnapshot, "redraw")).toMatchObject({
+    reasonCode: "OPERATOR_DISABLED",
+    status: "disabled_by_operator",
+  });
+  expect(imageToolCapability(serverSnapshot, "lighting")).toMatchObject({
+    reasonCode: "PAUSED_BY_SCOPE",
+    status: "paused",
+  });
+  expect(imageToolCapability(serverSnapshot, "remove-background")).toMatchObject({
+    reasonCode: "LOCAL_RUNTIME_UNAVAILABLE",
+    status: "unavailable",
+  });
 });
 
 test("image tool capability contract bounds payloads, cost and output formats", async () => {
@@ -1036,6 +1082,7 @@ test("composition root wires public module APIs and delegates readiness SQL", as
   expect(Object.isFrozen(applicationComposition.auth)).toBe(true);
   expect(Object.isFrozen(applicationComposition.canvas)).toBe(true);
   expect(Object.isFrozen(applicationComposition.generation)).toBe(true);
+  expect(Object.isFrozen(applicationComposition.imageTools)).toBe(true);
   expect(Object.isFrozen(applicationComposition.media)).toBe(true);
   expect(Object.isFrozen(applicationComposition.provider)).toBe(true);
 
@@ -1078,7 +1125,7 @@ test("composition root wires public module APIs and delegates readiness SQL", as
     /canvasPersistence|generationTasks|generationSafety|providerProfiles/,
   );
   expect(compositionSource.match(/from "\.\/[^\"]+(?:Application|Runtime)Api"/g))
-    .toHaveLength(6);
+    .toHaveLength(8);
   expect(viteSource).not.toMatch(
     /server\/(?:canvasPersistence|generationAttemptQueries|generationSafety|generationTasks|providerProfiles)/,
   );

@@ -359,7 +359,7 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 | IMGEDIT-007 | P1 | `legacy.editor.image-lighting` | 亮度、色温、方向、轮廓光和预览几何一致 | 参考25；用户决定暂停，入口禁用且实现保留 | PAUSED |
 | IMGEDIT-008 | P0 | 全部高级编辑 | 取消/失败不发布半成品；原图不可被静默覆盖 | 裁剪取消、保存失败故障注入、原/派生asset检查及用户实页复验 | PASS |
 | IMGEDIT-009 | P0 | 全部高级编辑 | 无真实后端能力的按钮保持禁用，不伪造成功 | 高级编辑能力矩阵、真实disabled状态、零Provider请求及用户实页复验 | PASS |
-| IMGEDIT-010 | P0 | 图片工具应用边界 | 轻量Dispatcher与小use case；复用Canvas/Generation/Media公开端口；服务端权威操作启用；不把编排重新堆入ImageNode/CanvasSurface/generationTasks | 架构防火墙、导入/SQL负控、状态恢复、既有裁剪/下载/全屏回归 | PARTIAL / APPLICATION_LAYER_AUTO_PASS |
+| IMGEDIT-010 | P0 | 图片工具应用边界 | 轻量Dispatcher与小use case；复用Canvas/Generation/Media公开端口；服务端权威操作启用；不把编排重新堆入ImageNode/CanvasSurface/generationTasks | 架构防火墙、导入/SQL负控、状态恢复、既有裁剪/下载/全屏回归 | AUTO_PASS |
 | IMGEDIT-011 | P1 | 颜色标记 | 添加/移除一个或多个颜色标记，刷新、筛选、撤销重做保持；不冒充锁定/收藏 | 节点元数据、Canvas持久化、刷新和筛选实页 | AUTO_PASS |
 | IMGEDIT-012 | P0 | 个人素材库 | owner-scoped安全引用、幂等保存、读取、删除条目和Media删除保护；不保存签名URL，团队区保持禁用 | 数据所有权、migration/旧版本兼容、删除竞态、用户实页 | AUTO_PASS |
 | IMGEDIT-013 | P1 | 调整像素 | 精确宽高、默认比例锁、本地确定性处理；保留原图并创建派生节点，零Provider请求 | 像素/格式/内存边界、node/edge/asset、刷新 | AUTO_PASS |
@@ -376,6 +376,8 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 D1 已完成共享 operation/result/capability/status/error 与有界载荷合同、Library 独立表 owner 和 image-tools client/server 内部边界，架构门保持 76 个既有例外且新增例外为 0；m100 定向 `13/13 PASS`。这只是施工前合同证据，`IMGEDIT-010～020` 继续保持 `NOT_STARTED`。
 
 D2 已完成 Dispatcher、小 use case、Canvas image-tool fence、派生媒体补偿和对既有 Generation lifecycle 的薄适配；裁剪、下载、全屏定向 m2 `10/10 PASS`，模块化端口 m100 `13/13 PASS`，真实 Provider/OSS 请求 0。服务端权威 operation 状态尚待 D6，因此 `IMGEDIT-010` 只升为 `PARTIAL / APPLICATION_LAYER_AUTO_PASS`，不提前记完整 PASS。
+
+D6 已按官方一手资料和当前生产只读状态冻结 17 个 operation 的服务端五态能力快照、单项管理员停用、5 分钟过期、成本/model/参考图/mask/Alpha/output DTO、唯一 adapter 注册和 fake adapter；新增 owner-scoped `GET /api/image-tools/capabilities`、OpenAPI 与客户端 fail-closed Context，ImageNode 只消费能力 DTO。当前只为已核实的 GPT Image edits 声明参考图/mask/Alpha，Seedream 未核实 mask 不冒充，许可证未闭环的 rembg 权重不引入。安全定向 m100 `13/13`、m20 `1/1`、m2 `10/10 PASS`，Provider `0/8`、Generation/真实 OSS/生产写入均为 0；因此 `IMGEDIT-010 = AUTO_PASS`，不冒充 D7～D11 功能或用户验收。
 
 D3 已完成颜色标记 Canvas 元数据持久化、筛选和撤销；像素调整以安全同站源本地输出精确 PNG 派生图；快速分割提供 2×2/3×3/4×4 预览，并以单一 Canvas command 原子提交 4/9/16 个节点与边，stale/失败精确补偿本批媒体。安全定向 m100 `13/13 PASS`、m2 `10/10 PASS`，Generation/Provider/真实 OSS 请求 0；因此 `IMGEDIT-011/013/014 = AUTO_PASS`，尚未冒充生产或用户验收。
 

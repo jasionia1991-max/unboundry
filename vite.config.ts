@@ -85,6 +85,7 @@ const {
     unregisterRuntimeRoleCoordinatorBeforeStartup:
       unregisterGenerationRuntimeRoleCoordinatorBeforeStartup,
   },
+  imageTools: { httpHandler: imageToolCapabilitiesApi },
   library: {
     assertMediaDeletionAllowedInTransaction:
       assertLibraryMediaDeletionAllowedInTransaction,
@@ -889,6 +890,26 @@ function modelCatalogApi(runtime: RuntimeInstance): Plugin {
   };
 }
 
+function imageToolApi(runtime: RuntimeInstance): Plugin {
+  const install = (middlewares: {
+    use: (path: string, handler: (...args: any[]) => void) => void;
+  }) => {
+    middlewares.use(
+      "/api/image-tools/capabilities",
+      apiBoundary("image-tools.capabilities", imageToolCapabilitiesApi, runtime),
+    );
+  };
+  return {
+    name: "unboundry-image-tool-api",
+    configurePreviewServer(server) {
+      install(server.middlewares);
+    },
+    configureServer(server) {
+      install(server.middlewares);
+    },
+  };
+}
+
 function templatesApi(runtime: RuntimeInstance): Plugin {
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
@@ -1328,6 +1349,7 @@ export default defineConfig(({ command, isPreview }) => {
       authenticationApi(runtime),
       openApiPlugin(runtime),
       modelCatalogApi(runtime),
+      imageToolApi(runtime),
       templatesApi(runtime),
       agentConfigApi(runtime),
       charactersApi(runtime),

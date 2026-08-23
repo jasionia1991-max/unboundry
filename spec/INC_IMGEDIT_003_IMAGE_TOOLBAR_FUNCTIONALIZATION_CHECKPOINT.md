@@ -2,20 +2,20 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-23 20:38:01 +0800
-- 状态：`GOAL_ACTIVE / D5_AUTO_PASS`
-- 当前阶段：`D5 个人素材库 / AUTO_PASS`
-- 唯一允许的下一动作：提交 D5 本地 checkpoint commit；随后进入 D6 前先把 D6 标为 `IN_PROGRESS`，按官方资料核实真实模型和处理引擎，不得提前施工 D7
+- 更新时间：2026-08-23 20:58:06 +0800
+- 状态：`GOAL_ACTIVE / D6_AUTO_PASS`
+- 当前阶段：`D6 真实模型和处理引擎调查 / AUTO_PASS`
+- 唯一允许的下一动作：提交 D6 本地 checkpoint commit；随后先把 D7 标为 `IN_PROGRESS`，再接通多角度结构化参数、持久任务、恢复、幂等、派生节点和 fake 零请求验收
 - 当前仓库：`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`
 - 记录时分支：`codex/inc-imgedit-003-v0.6.34-2026-08-23`
-- 记录时 HEAD：`fb0f3eba6c1ea5c7f4785367be864dd277413aa5`
+- 记录时 HEAD：`6c6e0c32d8974568ea813201a3d9570dfbc45c8a`
 - 记录时 `origin/main`：`14777b5dc5cf48de8b21b6eb3ee27da45070b537`
 - package：`0.6.33`
 - 生产：`v0.6.33 / schema39 / PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`
 - 新版本：`v0.6.34 / VERSION_GATE_VALID`
 - 候选：无
-- 本轮代码施工：D5 已用独立 `library.sqlite` schema1 sidecar 实现 owner-scoped 个人素材引用，主库保持 schema39；完成保存/查询/幂等/条目删除、Media 删除保护、项目删除保留、账号删除清理、备份恢复、OpenAPI、图片工具栏保存和素材面板真实拖放；团队区继续只读空态
-- 本轮验证：安全定向 m10 `17/17`、m11 `8/8`、m2 `10/10`、m20 `1/1`、m25 `2/2`、m8 `1/1`、m88 `36/36 PASS`；精确 D4 v0.6.33 旧源码在带 schema1 sidecar 的 schema39 临时数据上打开并 quick_check ok；架构既有例外 76、新增 0，TypeScript/build/source coverage/网络门通过，零 Generation、零 Provider、零真实 OSS
+- 本轮代码施工：D6 已冻结 17 个 operation 的服务端五态能力快照、单项管理员停用、5 分钟过期、成本和 model/参考图/mask/Alpha/output DTO；新增独立应用 API、OpenAPI、fake adapter、客户端只读 Context，并让 ImageNode 只消费状态而不承载 Provider 查询。当前 GPT Image 适配器仅声明经官方资料和现有生产模型核实的参考图、mask 与 Alpha 能力；D10 不引入许可证不清的 rembg 权重
+- 本轮验证：安全定向 m100 `13/13`、m20 `1/1`、m2 `10/10 PASS`；架构既有例外 76、新增 0，TypeScript/build/source coverage/离线网络门通过；生产和 Ark 只做只读资源、价格、能力和余额诊断，诊断明确未创建生成任务，零 Generation、零 Provider、零真实 OSS
 - 真实 Provider/付费请求：0/8
 - 真实 OSS 测试对象：0
 - GitHub/SSH/生产操作：0
@@ -77,7 +77,7 @@ node -p "require('./package.json').version"
 | D3 | 颜色标记、调整像素、快速分割 | AUTO_PASS |
 | D4 | 标注 | AUTO_PASS |
 | D5 | 个人素材库 | AUTO_PASS |
-| D6 | 模型和处理引擎调查 | NOT_STARTED |
+| D6 | 模型和处理引擎调查 | AUTO_PASS |
 | D7 | 多角度 | NOT_STARTED |
 | D8 | 遮罩基础与重绘 | NOT_STARTED |
 | D9 | 扩图与擦除 | NOT_STARTED |
@@ -92,7 +92,7 @@ node -p "require('./package.json').version"
 
 | 条目 | 内容 | 状态 |
 |---|---|---|
-| IMGEDIT-010 | 图片工具应用边界、状态和操作启用 | PARTIAL / APPLICATION_LAYER_AUTO_PASS |
+| IMGEDIT-010 | 图片工具应用边界、状态和操作启用 | AUTO_PASS |
 | IMGEDIT-011 | 颜色标记 | AUTO_PASS |
 | IMGEDIT-012 | 个人素材库 | AUTO_PASS |
 | IMGEDIT-013 | 调整像素 | AUTO_PASS |
@@ -157,7 +157,26 @@ package / schema / candidate：
 
 ## 10. 当前唯一下一动作
 
-提交 D5 本地 checkpoint commit；随后进入 D6 前先把 D6 标为 `IN_PROGRESS`，按官方资料核实真实模型和处理引擎，不得提前施工 D7。
+提交 D6 本地 checkpoint commit；随后进入 D7 前先把 D7 标为 `IN_PROGRESS`，只施工多角度，不提前进入 D8。
+
+## 18. D6 真实模型和处理引擎调查
+
+- 时间：2026-08-23 20:58:06 +0800
+- 阶段：`D6`
+- 状态：`AUTO_PASS`
+- branch / HEAD / origin-main：`codex/inc-imgedit-003-v0.6.34-2026-08-23` / `6c6e0c32d8974568ea813201a3d9570dfbc45c8a` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537`
+- 工作树摘要：D5 已提交为 `6c6e0c3`；D6 未提交树新增服务端 operation 能力注册/快照/API、Generation 安全查询、composition/Vite 路由、OpenAPI 和客户端 capability Context，ImageNode 只消费 DTO；未进入 D7 功能执行
+- 产品文件：`server/imageToolCapabilityRegistry.ts`、`imageToolApplicationApi.ts`、`generationApplicationApi.ts`、`applicationComposition.ts`、`openApi.ts`、`vite.config.ts`、`client/src/imageTools/ImageToolCapabilityContext.tsx`、`CanvasShell.tsx`、`ImageNode.tsx`
+- 测试文件：`tests/m100-modular-ports.spec.ts`、`tests/m20-api-contract.spec.ts`
+- 文档文件：本 Checkpoint、`UNBOUNDRY_ACCEPTANCE_MATRIX.md`、`TASKS.md`
+- package / schema / candidate：`0.6.33 / schema39 / 无候选`；目标版本 `v0.6.34`
+- 外部请求和付费预算：Provider `0/8`；真实 OSS `0`；GitHub/SSH写入和生产写入 `0`。生产管理页只读确认默认图片模型为优创 `gpt-image-2` / GPT Image 协议、全局真实生成开启且紧急停止关闭；一次“读取余额/用量”诊断明确未创建生成任务。Ark SSO 到期后按登录流程刷新，价格只读确认 Seedream 5.0 Lite/4.5/4.0 当前账号单价分别为 CNY `0.22/0.25/0.20` 每图，未创建资源或任务
+- 测试命令、环境、结果、退出码：统一使用 pinned Node `22.23.1`、npm `10.9.8` 和 safe runner。m100 首轮先暴露 TypeScript tuple 窄化，修复后第二轮仅旧组合根精确计数 7 未随新增应用 API 改为 8，最小复验最终 `13/13 PASS`；m20 `1/1 PASS`；m2 首轮前 7 项通过后因能力服务在 fixture 中正确返回管理员停用而旧面板入口被禁用，主动中止退出 130，改为“入口可查看参数、实际提交再按 capability fail-closed”后最终 `10/10 PASS`。客户端增加精确过期定时 fail-closed 后，合并复验 m100+m2 `23/23 PASS`、退出 0，最终 source/snapshot `ff928f42…1cfb`，4173 listener 不变；未运行 full
+- 架构与数据风险：服务端是五态、单项停用和过期的唯一权威，客户端失败即 stale；DTO 不含凭据、余额或 Provider 配置。官方 GPT Image 2 文档确认 edits、参考图、mask、高保真输入和透明 PNG/WebP；mask 与输入需同格式同尺寸且小于 50 MiB，产品继续采用更严的 20 MiB/4000 万像素界限。ByteDance 官方 Seedream 资料确认单/多参考图编辑，但未核实独立 mask API，因此不为其声明 mask。Real-ESRGAN 代码为 BSD-3-Clause但生产资源成本未冻结；rembg 本体虽 MIT，其模型权重许可证分离且 BRIA 商用另需授权，并存在旧版路径穿越修复边界，当前不引入
+- 设计偏差：没有为每个按钮硬编码 Provider 名或把生产余额下发浏览器；只注册一个 `gpt-image-edit` 能力适配器并由当前账号安全模型查询决定可用性。多角度/重绘入口即使 Provider 暂停仍可打开查看本地参数，真正提交由后续阶段按 capability 拒绝，既保留既有面板合同也不伪造可生成。D10 主体抠图优先复用已核实的 GPT Image 透明输出，不捆绑许可证未闭环的 rembg 权重
+- 阻断：无。`agent-reach` 的 Exa MCP 和本机 `agent-reach` CLI 均不可用，但已按失败链改用 OpenAI、ByteDance、Volc、rembg、Real-ESRGAN 官方一手页面和生产只读管理页完成交叉核实；这不影响已冻结能力合同
+- 回滚点：D5 提交 `6c6e0c32d8974568ea813201a3d9570dfbc45c8a`；D6 没有 schema、Provider任务、OSS、GitHub 或生产写入
+- 唯一下一动作：提交 D6 本地 checkpoint commit；随后进入 D7 前先把 D7 标为 `IN_PROGRESS`，只施工多角度结构化生成与恢复，不提前进入 D8
 
 ## 17. D5 个人素材库
 

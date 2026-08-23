@@ -38,6 +38,8 @@ import {
 } from "../navigation/canvasReturn";
 import { normalizedPageLabel, usePageTitle } from "../pageIdentity";
 import type { AccountPermission } from "../../../types/accountPermissions";
+import { ImageToolCapabilityProvider } from
+  "../imageTools/ImageToolCapabilityContext";
 
 type ShellButtonProps = {
   label: string;
@@ -2376,46 +2378,46 @@ export function CanvasShell({
       data-fixture-ready={fixtureId ? "true" : undefined}
       data-testid="canvas-shell"
     >
-      <CanvasAccountProvider
-        canManagePublicTemplates={canManagePublicTemplates}
-      >
-      <CanvasSurface
-        key={canvasScopeId}
-        accountId={userId}
-        agentReferenceMode={agentReferenceMode}
-        fixtureId={fixtureId}
-        onProjectMissing={onProjectMissing}
-        projectId={projectId}
-        focusNodeRequest={focusNodeRequest}
-        historyAssetRequest={historyAssetRequest}
-        minimapOpen={minimapOpen}
-        onAddMenuOpenChange={setAddMenuOpen}
-        onAgentReferencePick={(reference) =>
-          setAgentReferences((current) =>
-            current.some((item) => item.id === reference.id)
-              ? current
-              : [...current, reference],
-          )
-        }
-        onReady={(fitView) => setFitWorld(() => fitView)}
-        onGraphContentChange={setGraphHasContent}
-        onGenerationRetryGateChange={registerGenerationRetryGate}
-        onLoadStateChange={markCanvasLoadState}
-        onOpenAssets={() => {
-          closePrimarySurfaces();
-          setAssetsOpen(true);
-        }}
-        onSearchIndexChange={setNodeSearchEntries}
-        onSaveConflict={markSaveConflict}
-        onSaveSuccess={markSaveSuccess}
-        onSaveStart={markSaving}
-        onZoomChange={setZoomSummary}
-        viewportRequest={viewportRequest}
-        shellMenuCommand={shellMenuCommand}
-        snapEnabled={snapEnabled}
-        textVideoStarted={textVideoStarted}
-      />
-      </CanvasAccountProvider>
+      <ImageToolCapabilityProvider>
+        <CanvasAccountProvider canManagePublicTemplates={canManagePublicTemplates}>
+          <CanvasSurface
+            key={canvasScopeId}
+            accountId={userId}
+            agentReferenceMode={agentReferenceMode}
+            fixtureId={fixtureId}
+            onProjectMissing={onProjectMissing}
+            projectId={projectId}
+            focusNodeRequest={focusNodeRequest}
+            historyAssetRequest={historyAssetRequest}
+            minimapOpen={minimapOpen}
+            onAddMenuOpenChange={setAddMenuOpen}
+            onAgentReferencePick={(reference) =>
+              setAgentReferences((current) =>
+                current.some((item) => item.id === reference.id)
+                  ? current
+                  : [...current, reference],
+              )
+            }
+            onReady={(fitView) => setFitWorld(() => fitView)}
+            onGraphContentChange={setGraphHasContent}
+            onGenerationRetryGateChange={registerGenerationRetryGate}
+            onLoadStateChange={markCanvasLoadState}
+            onOpenAssets={() => {
+              closePrimarySurfaces();
+              setAssetsOpen(true);
+            }}
+            onSearchIndexChange={setNodeSearchEntries}
+            onSaveConflict={markSaveConflict}
+            onSaveSuccess={markSaveSuccess}
+            onSaveStart={markSaving}
+            onZoomChange={setZoomSummary}
+            viewportRequest={viewportRequest}
+            shellMenuCommand={shellMenuCommand}
+            snapEnabled={snapEnabled}
+            textVideoStarted={textVideoStarted}
+          />
+        </CanvasAccountProvider>
+      </ImageToolCapabilityProvider>
 
       {agentReferenceMode && (
         <section
