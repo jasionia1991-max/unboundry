@@ -5,15 +5,15 @@
 更新时间：2026-08-23
 状态：`v0.6.33 已发布并通过技术终门与用户线上复验，状态 PRODUCTION_PUBLISHED_USER_PASS / USER_PASS。权威回执见 spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json。`
 
-### 2026-08-23 图片工具栏剩余能力单 Goal 方案（INC-IMGEDIT-003，DOCUMENT_DRIVEN_GOAL_READY）
+### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，GOAL_ACTIVE / D0_AUTO_PASS）
 
 - 用户已批准最终 V5 方案并要求后续长任务严格由项目文档驱动，防止新 Session 或上下文压缩后失忆漂移。主方案：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md`；实时断点：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_CHECKPOINT.md`；新 Session 提示词：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_GOAL_PROMPT_2026-08-23.md`。
 - 单 Goal 连续范围：最小图片工具应用边界、颜色标记、调整像素、快速分割、标注、个人素材库、多角度、遮罩/重绘、扩图、擦除、保守/创意增强、主体抠图和 Seedance 素材校验；裁剪只回归，打光 `IMGEDIT-007` 继续 `PAUSED`。
 - 防漂移门：D0～D13 同时最多一个阶段 `IN_PROGRESS`；每阶段完成后必须先更新 Checkpoint、验收矩阵和本区块，版本/候选/生产事实变化时再更新 CURRENT_STATE；上下文恢复必须重读文档、核对 Git，只从 Checkpoint 的“唯一下一动作”继续。
 - 防耦合门：轻量 Dispatcher + 小 use case，优先复用 Canvas/Generation/Media 现有端口；不把任务、Provider、媒体和 SQL 编排重新塞入 `ImageNode.tsx`、`CanvasSurface.tsx` 或 `generationTasks.ts`。
 - 真实证据门：fake 与零请求自动测试先行；真实付费技术冒烟总上限 8 次，只记 `REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，不冒充质量通过；生产技术发布最多记 `USER_QUALITY_RECHECK`，用户明确确认后才是 `USER_PASS`。
-- 当前仍为 `PLAN_FROZEN / NOT_STARTED`：`IMGEDIT-010～020` 只登记 `NOT_STARTED`；没有产品代码、schema、package、Provider、OSS、GitHub或生产变化，没有新版本或候选。
-- 新 Goal 可以连续完成工程；D13 仍必须在提示词中填写具体版本号并单独写“允许发布/上线”。模糊的“所有授权”不能绕过《上线规矩》的两项发布门。
+- D0 已恢复实时基线：`main = origin/main = 14777b5`、package `0.6.33`、生产实时 `v0.6.33 / schema39 / live / ready`；启动提交 `6a1606c` 后已进入干净隔离分支和 worktree。`IMGEDIT-010～020` 仍为 `NOT_STARTED`，没有产品代码、schema、Provider、OSS、GitHub或生产变化，没有候选。
+- 本 Goal 版本门与发布门均有效：目标 `v0.6.34`，用户已独立明确“按 v0.6.34 上线吧”；仍须 D12 通过后才进入 D13，不提前发布。当前唯一下一阶段是 D1 合同、矩阵和架构门。
 - 本次落档 `git diff --check` 通过；定向 m38 safe runner 在产品测试前被 main 既有 ignored `backups/` 隔离负控以 `EISDIR` 阻断，0 个产品测试执行，source snapshot 和 4173 listener 未变。未删除/移动备份、未绕过 safe runner、未把该尝试记为自动 PASS；完整记录见 Checkpoint。
 
 ### 2026-08-23 当前版本文档残留对齐（docs-only）

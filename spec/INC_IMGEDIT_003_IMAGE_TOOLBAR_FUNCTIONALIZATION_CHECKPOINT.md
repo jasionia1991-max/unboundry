@@ -2,13 +2,13 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-23 19:15:37 +0800
-- 状态：`GOAL_ACTIVE / D0_IN_PROGRESS`
-- 当前阶段：`D0 实时基线和文档恢复 / IN_PROGRESS`
-- 唯一允许的下一动作：`建立 codex/ 启动分支，提交不含受保护 JSON 的文档基线，再创建干净隔离 worktree`
-- 当前仓库：`/Users/mymy/Documents/unboundry/app`
-- 记录时分支：`main`
-- 记录时 HEAD：`14777b5dc5cf48de8b21b6eb3ee27da45070b537`
+- 更新时间：2026-08-23 19:16:46 +0800
+- 状态：`GOAL_ACTIVE / D0_AUTO_PASS`
+- 当前阶段：`D0 实时基线和文档恢复 / AUTO_PASS`
+- 唯一允许的下一阶段：`D1 合同、矩阵和架构门`
+- 当前仓库：`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`
+- 记录时分支：`codex/inc-imgedit-003-v0.6.34-2026-08-23`
+- 记录时 HEAD：`6a1606cdafd3b38c1333ca6c46baecfae690bd35`
 - 记录时 `origin/main`：`14777b5dc5cf48de8b21b6eb3ee27da45070b537`
 - package：`0.6.33`
 - 生产：`v0.6.33 / schema39 / PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`
@@ -71,7 +71,7 @@ node -p "require('./package.json').version"
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|
-| D0 | 实时基线和文档恢复 | IN_PROGRESS |
+| D0 | 实时基线和文档恢复 | AUTO_PASS |
 | D1 | 合同、矩阵和架构门 | NOT_STARTED |
 | D2 | 最小图片工具应用层 | NOT_STARTED |
 | D3 | 颜色标记、调整像素、快速分割 | NOT_STARTED |
@@ -157,26 +157,26 @@ package / schema / candidate：
 
 ## 10. 当前唯一下一动作
 
-在当前工作树建立 `codex/inc-imgedit-003-bootstrap-2026-08-23` 启动分支，只提交已核对的治理文档且显式排除受保护 JSON；随后从该提交创建干净隔离 worktree。D0 完成前禁止改产品代码或执行真实请求。
+进入 D1：先把 D1 标为 `IN_PROGRESS`，冻结 operation/result/capability/status/error、数据所有权、预算、migration 和操作级启用合同，并把新增模块加入架构防火墙；仍不执行真实 Provider 请求。
 
 ## 12. D0 实时基线和文档恢复
 
 - 时间：2026-08-23 19:15:37 +0800
 - 阶段：`D0`
-- 状态：`IN_PROGRESS`
+- 状态：`AUTO_PASS`
 - branch / HEAD / origin-main：写入前为 `main` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537`
-- 工作树摘要：15 个已跟踪治理 Markdown 修改；INC-IMGEDIT-003 的主方案、Checkpoint、Goal 提示词与受保护 JSON 共 4 个未跟踪文件；产品代码差异为 0
+- 工作树摘要：启动分支 `6a1606c` 已显式提交 18 个治理文档；受保护 JSON 未暂存且只保留在原工作树；隔离 worktree 创建后为 clean，产品代码差异为 0
 - 产品文件：无
-- 测试文件：无
+- 测试文件：无；发现现有 `m2-image-node` 已覆盖多角度占位参数与重绘本地遮罩取消语义，后续只扩展不把占位证据冒充真实能力
 - 文档文件：现有 v0.6.33 状态对齐文档与 INC-IMGEDIT-003 三份合同文档；受保护 JSON 不在施工范围
 - package / schema / candidate：`0.6.33 / schema39 / 无候选`；目标版本 `v0.6.34`
 - 外部请求和付费预算：Provider `0/8`；OSS 测试对象 `0`；本阶段只有生产只读 GET 探针，无写请求
-- 测试命令、环境、结果、退出码：Node `22.23.1`、npm `10.9.8`；本阶段尚未执行产品测试；生产 `/api/version`、`/api/health/live`、`/api/health/ready` 三个只读 GET 均退出 0，返回 `0.6.33 / live / ready active schema39`
-- 架构与数据风险：当前主工作树含用户文档改动和受保护未跟踪文件，不能在 main 直接施工或运行受 backups 影响的安全测试
-- 设计偏差：无；采用“启动分支承接现有文档 → 干净隔离 worktree 继续”的恢复路径
+- 测试命令、环境、结果、退出码：Node `22.23.1`、npm `10.9.8`；D0 为文档和只读恢复阶段，未执行产品测试；`git diff --cached --check` 退出 0；生产 `/api/version`、`/api/health/live`、`/api/health/ready` 三个只读 GET 均退出 0，返回 `0.6.33 / live / ready active schema39`
+- 架构与数据风险：现有 Provider 支持 Ark、OpenRouter、OpenAI-compatible 和 multi-protocol relay，图片 relay 已有 `generation/edit` 端点边界；Storage 已有 local/OSS `MediaBlobStore`、owner-scoped 读取、profile 路由与有界 PNG 校验。尚无 INC-IMGEDIT-003 操作级权威状态，也不能把现有普通 edit 直接宣称为 mask/outpaint/erase/Alpha 能力
+- 设计偏差：无；已采用“启动分支承接现有文档 → 干净隔离 worktree 继续”的恢复路径，未读取任何 profile 密钥或受保护文件
 - 阻断：无；分支、版本门、发布门、生产探针和工具链均有效
-- 回滚点：`origin/main@14777b5dc5cf48de8b21b6eb3ee27da45070b537`；不 reset、不 clean、不移动现有用户文件
-- 唯一下一动作：建立启动分支并提交显式文档路径，确认受保护 JSON 未被暂存，再创建干净隔离 worktree
+- 回滚点：`origin/main@14777b5dc5cf48de8b21b6eb3ee27da45070b537` 与文档启动提交 `6a1606cdafd3b38c1333ca6c46baecfae690bd35`；原工作树和受保护文件保持原位
+- 唯一下一动作：进入 D1，先在本文件把 D1 标为 `IN_PROGRESS`
 
 ## 11. PRE_GOAL 文档落档记录
 

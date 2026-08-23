@@ -371,7 +371,7 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 | IMGEDIT-019 | P0 | 增强与主体抠图 | 保守/创意增强语义分开；抠图端到端输出透明PNG，任一环节丢Alpha即fail-closed | 处理器合同、Alpha全链、fake、真实技术冒烟、用户质量复验 | NOT_STARTED |
 | IMGEDIT-020 | P1 | Seedance素材校验 | 本地技术预检绑定asset/model/role并可过期；仅在官方接口存在时声明远端资格，不生成视频或作法律保证 | 纯规则测试、stale、零视频生成请求、状态实页 | NOT_STARTED |
 
-`IMGEDIT-010～020` 由 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md` 和对应 Checkpoint 驱动。当前只是计划登记；历史 `IMGEDIT-001～006、008、009 = PASS` 继续只证明既有外观、安全禁用和裁剪结果合同，不自动证明新功能已经实现。`IMGEDIT-007` 继续 `PAUSED`。
+`IMGEDIT-010～020` 由 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md` 和对应 Checkpoint 驱动。D0 已完成实时基线、工具链、生产只读探针、Provider/Storage 现状和干净隔离 worktree 恢复；这些条目仍全部 `NOT_STARTED`，D0 不冒充功能验收。历史 `IMGEDIT-001～006、008、009 = PASS` 继续只证明既有外观、安全禁用和裁剪结果合同，不自动证明新功能已经实现。`IMGEDIT-007` 继续 `PAUSED`。
 
 ## 12. 未知项与范围裁决
 
