@@ -3,7 +3,7 @@
 基线日期：2026-07-27  
 当前状态更新：2026-08-23
 
-2026-08-23 `CURRENT_RELEASE = v0.6.33 / schema39 / PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`：v0.6.33在v0.6.32同站安全Blob裁剪链上，把HTTP/OSS图片准备态改为320×180紧凑加载卡片且不增加原图重复读取；用户已在线上复验并明确回复“通过”。tag、PR、main CI、冻结备份与恢复副本、精确源码构建、原子切换和生产技术终门均通过；当前没有待发布候选，v0.6.33版本号与发布授权已消费。`VIEW-005`保持`AUTO_PASS`，其他`PARTIAL/PAUSED/BLOCK`不自动升级。
+2026-08-23 `CURRENT_RELEASE = v0.6.33 / schema39 / PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`：v0.6.33在v0.6.32同站安全Blob裁剪链上，把HTTP/OSS图片准备态改为320×180紧凑加载卡片且不增加原图重复读取；用户已在线上复验并明确回复“通过”。tag、PR、main CI、冻结备份与恢复副本、精确源码构建、原子切换和生产技术终门均通过。当前另有 `v0.6.34 / INC-IMGEDIT-003 / D12_VALIDATION_IN_PROGRESS` 本地候选，尚未进入 GitHub 或生产；`VIEW-005`保持`AUTO_PASS`，其他`PARTIAL/PAUSED/BLOCK`不自动升级。
 
 本文件下方旧版本的 `USER_RECHECK/PENDING` 均保留各自验收时点，不再承担当前线上版本播报，也不得被直接当成下一施工计划。当前版本、当前计划和授权边界只以 `spec/UNBOUNDRY_CURRENT_STATE.md` 为准。
 

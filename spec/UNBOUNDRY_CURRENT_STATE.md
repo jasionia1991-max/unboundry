@@ -4,8 +4,8 @@
 
 更新日期：2026-08-23
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.33**（与生产一致）
-本地候选代码版本：**v0.6.33**
+当前代码包版本：**v0.6.34**
+本地候选代码版本：**v0.6.34**
 当前治理标记：`CURRENT_V0_6_33_USER_PASS`
 
 ## 一句话
@@ -16,15 +16,15 @@
 
 发布前确认活跃生成任务和媒体发布事务均为0；发布自身Provider请求和OSS写入均为0。完整回执：`spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json`。
 
-本次 v0.6.33 版本号与发布授权已消费，禁止追加真实生成、再次发布或进入下一版本。Mureka 真实音频、团队/多人协作、真实 Agent 协议、Storyboard 完整编辑、图片打光和其他付费内容抽验仍保持原 `PARTIAL/PAUSED/BLOCK`，不随本次发布扩大范围。
+v0.6.33 版本号与历史发布授权已消费。当前 INC-IMGEDIT-003 Goal 已由用户另行确认 `v0.6.34` 并明确“按 v0.6.34 上线吧”；该新授权只在 D12 候选验证通过后用于 D13，不扩大到 Mureka、团队/多人协作、真实 Agent 协议、Storyboard 完整编辑、图片打光或其他既有 `PARTIAL/PAUSED/BLOCK` 项。
 
-## INC-IMGEDIT-003 图片工具栏剩余能力单 Goal 方案（仅计划，尚未施工）
+## INC-IMGEDIT-003 图片工具栏剩余能力单 Goal（D12 候选验证中）
 
-- 用户已批准最终 V5 方案，状态 `PLAN_FROZEN / DOCUMENT_DRIVEN_GOAL_READY / NOT_STARTED`；主方案为 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md`。
+- 用户已批准最终 V5 方案并明确启动 Goal；D0～D11 已按阶段提交，当前状态 `D12_TARGETED_AUTO_PASS / CANDIDATE_FREEZE_PENDING_COMMIT / SAFE_FULL_PENDING / VERSION_V0_6_34`。主方案为 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md`。
 - 为防止长任务在新 Session 或上下文压缩后漂移，已建立唯一实时断点 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_CHECKPOINT.md` 和可复制 Goal 合同 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_GOAL_PROMPT_2026-08-23.md`。D0～D13 每阶段必须先回写断点、矩阵和 TASKS，再继续下一阶段。
 - 计划范围包含颜色标记、调整像素、快速分割、标注、个人素材库、多角度、遮罩/重绘、扩图、擦除、增强、主体抠图和 Seedance 素材校验；裁剪只回归，打光继续 `PAUSED`。
-- 当前没有产品代码、测试、schema、package、Provider、OSS、GitHub或生产变化；没有候选、没有新版本。`IMGEDIT-010～020` 只登记为 `NOT_STARTED`，不能解释成已经实现或验收。
-- 新 Goal 的真实付费技术冒烟总上限计划为 8 次，但只有用户在新 Goal 中重新明确该授权后才可使用；真实冒烟不等于质量通过。D13 仍要求具体版本号和单独的“允许发布/上线”句子。
+- 本地候选 package 已同步为 v0.6.34，schema 仍为39；D12 成功定向合计 `234/234 PASS`，代码/架构/数据/测试四类审查无新阻断，当前只剩冻结候选提交和唯一一次 safe full。生产仍是 v0.6.33，GitHub/SSH/生产尚未进入 D13。
+- 真实付费技术冒烟总上限为8次，当前已用0；真实冒烟只证明技术链路，不等于质量通过。具体版本号和独立发布句均有效，但必须等待 D12 通过。
 
 ## v0.6.33 图片裁剪准备态体验优化（已发布并获用户确认）
 
@@ -294,8 +294,8 @@
 ## 新会话默认动作
 
 1. 先读本文 + `上线规矩.md` + `TASKS.md` 顶部。
-2. 只读核对仓库分支、HEAD、工作树、`package.json` 版本是否为 `0.6.33`；历史计划中的旧版本号不得当成当前施工身份。
-3. 当前生产为 v0.6.33/schema39，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`；技术发布和用户对裁剪准备态的线上复验均已完成，发布授权已消费；不得自动继续GitHub或生产操作。
+2. 只读核对仓库分支、HEAD、工作树、`package.json` 版本是否为 `0.6.34`；历史计划中的旧版本号不得当成当前施工身份。
+3. 当前生产仍为 v0.6.33/schema39，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`；本地 v0.6.34 候选处于 D12 验证中，只有 D12 通过后才可按本 Goal 的新授权进入 D13。
 4. 云腾三模型只归属云腾 Provider；不得借用优创密钥、不得新增“天空”计费 Provider、不得自动追加真实 Provider POST。
 5. `VIEW-005`已由本地隔离安全定向证据关闭为`AUTO_PASS`；其余`PAUSED/BLOCK/PARTIAL`项只有在用户重新立项后才能施工，本次证据不得被解释为新版本或生产授权。
 6. 若用户说生成或工作流再次异常，先查当前线上任务、Provider profile、attempt 和结果所有权，再给方案；不得擅自改生产库或重提付费请求。
