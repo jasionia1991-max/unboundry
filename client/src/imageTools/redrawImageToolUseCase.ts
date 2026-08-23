@@ -28,7 +28,7 @@ export type RedrawGenerationPlan = Readonly<{
     inputs: readonly [Readonly<{
       assetId: string;
       kind: "image";
-      order: 0;
+      order: 1;
       role: "reference-image";
       sourceNodeId: string;
     }>];
@@ -212,7 +212,7 @@ export function createRedrawImageToolUseCase(input: Readonly<{
           type: "image",
         };
         const edge: CuttableEdge = {
-          data: { inputOrder: 0, inputRole: "reference-image" },
+          data: { inputOrder: 1, inputRole: "reference-image" },
           id: `edge-${command.sourceNodeId}-${targetNodeId}`,
           interactionWidth: 20,
           source: command.sourceNodeId,
@@ -261,7 +261,7 @@ export function createRedrawImageToolUseCase(input: Readonly<{
             inputs: [{
               assetId: command.sourceAssetId,
               kind: "image",
-              order: 0,
+              order: 1,
               role: "reference-image",
               sourceNodeId: command.sourceNodeId,
             }],

@@ -74,7 +74,7 @@ export type OutpaintEraseGenerationPlan = Readonly<{
     inputs: readonly [Readonly<{
       assetId: string;
       kind: "image";
-      order: 0;
+      order: 1;
       role: "reference-image";
       sourceNodeId: string;
     }>];
@@ -213,7 +213,7 @@ export function createOutpaintEraseImageToolUseCase(input: Readonly<{
             y: source.position.y },
           selected: true, style: { ...NODE_DEFAULT_SIZES.image }, type: "image",
         };
-        const edge: CuttableEdge = { data: { inputOrder: 0, inputRole: "reference-image" },
+        const edge: CuttableEdge = { data: { inputOrder: 1, inputRole: "reference-image" },
           id: `edge-${command.sourceNodeId}-${targetNodeId}`, interactionWidth: 20,
           source: command.sourceNodeId, sourceHandle: "source", target: targetNodeId,
           targetHandle: "target", type: "cuttable" };
@@ -236,7 +236,7 @@ export function createOutpaintEraseImageToolUseCase(input: Readonly<{
             inputKey: ownershipKey, modelId: command.modelId, modelName: command.modelName,
             modelParameters: command.modelParameters, nodeId: targetNodeId, ownershipKey,
             payload: { canvasId: command.canvasId, imageTool, inputSchemaVersion: 1,
-              inputs: [{ assetId: command.sourceAssetId, kind: "image", order: 0,
+              inputs: [{ assetId: command.sourceAssetId, kind: "image", order: 1,
                 role: "reference-image", sourceNodeId: command.sourceNodeId }],
               model: command.modelId, nodeId: targetNodeId, ownPrompt: prompt,
               parameters: command.modelParameters, prompt }, quality: command.quality }),

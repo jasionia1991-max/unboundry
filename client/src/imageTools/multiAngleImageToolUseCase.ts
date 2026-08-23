@@ -1,4 +1,5 @@
 import type {
+  ImageGenerationToolInput,
   ImageMultiAngleParameters,
   ImageToolCapability,
 } from "../../../types/imageTools";
@@ -21,11 +22,12 @@ export type MultiAngleGenerationPlan = Readonly<{
   ownershipKey: string;
   payload: Readonly<{
     canvasId: string;
+    imageTool: ImageGenerationToolInput;
     inputSchemaVersion: 1;
     inputs: readonly [Readonly<{
       assetId: string;
       kind: "image";
-      order: 0;
+      order: 1;
       role: "reference-image";
       sourceNodeId: string;
     }>];
@@ -176,7 +178,7 @@ export function createMultiAngleImageToolUseCase(input: Readonly<{
         type: "image",
       };
       const edge: CuttableEdge = {
-        data: { inputOrder: 0, inputRole: "reference-image" },
+        data: { inputOrder: 1, inputRole: "reference-image" },
         id: `edge-${command.sourceNodeId}-${targetNodeId}`,
         interactionWidth: 20,
         source: command.sourceNodeId,
@@ -212,6 +214,12 @@ export function createMultiAngleImageToolUseCase(input: Readonly<{
       // before any paid-task admission. React-backed graphs publish their
       // snapshot asynchronously, while in-memory adapters can resolve at once.
       await input.afterPlaceholderCreated();
+      const imageTool: ImageGenerationToolInput = {
+        operation: "multi-angle",
+        operationId: command.operationId,
+        sourceAssetId: command.sourceAssetId,
+        sourceNodeId: command.sourceNodeId,
+      };
       const plan: MultiAngleGenerationPlan = {
         aspectRatio: command.aspectRatio,
         inputKey: command.ownershipKey,
@@ -222,11 +230,12 @@ export function createMultiAngleImageToolUseCase(input: Readonly<{
         ownershipKey: command.ownershipKey,
         payload: {
           canvasId: command.canvasId,
+          imageTool,
           inputSchemaVersion: 1,
           inputs: [{
             assetId: command.sourceAssetId,
             kind: "image",
-            order: 0,
+            order: 1,
             role: "reference-image",
             sourceNodeId: command.sourceNodeId,
           }],

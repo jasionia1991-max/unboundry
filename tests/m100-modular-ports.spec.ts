@@ -105,7 +105,10 @@ import { createDerivedImageToolUseCase } from
   "../client/src/imageTools/derivedImageToolUseCase";
 import { createBatchDerivedImageToolUseCase } from
   "../client/src/imageTools/batchDerivedImageToolUseCase";
-import { createGenerationImageToolUseCase } from
+import {
+  createGenerationImageToolUseCase,
+  imageToolSubmissionParameterValues,
+} from
   "../client/src/imageTools/generationImageToolUseCase";
 import { createMultiAngleImageToolUseCase } from
   "../client/src/imageTools/multiAngleImageToolUseCase";
@@ -617,6 +620,35 @@ test("image tool capability snapshot is complete, unique and fail-closed", () =>
 });
 
 test("image tool capability contract bounds payloads, cost and output formats", async () => {
+  const productionLikeImageSchema = knownModelParameterSchema({
+    capability: "image",
+    providerDriver: "openrouter",
+    providerModelId: "openai/gpt-image-2",
+  });
+  productionLikeImageSchema.fields = productionLikeImageSchema.fields.map((field) =>
+    field.key === "quality"
+      ? {
+          ...field,
+          defaultValue: "2k",
+          options: [
+            { label: "1K", value: "1k" },
+            { label: "2K", value: "2k" },
+          ],
+        }
+      : field
+  );
+  expect(imageToolSubmissionParameterValues(productionLikeImageSchema, {
+    aspectRatio: "1:1",
+    inputMode: "text",
+    outputCount: 1,
+    quality: "1k",
+  })).toMatchObject({
+    aspectRatio: "1:1",
+    inputMode: "image",
+    outputCount: 1,
+    quality: "1k",
+  });
+
   expect(() => parseImageToolCapabilitySnapshot({
     ...modularImageToolSnapshot(),
     operations: modularImageToolSnapshot().operations.map((item) =>
@@ -972,7 +1004,16 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
     persistenceReady: () => true,
     snapshot: () => multiAngleSnapshot,
   });
-  let capturedPlan: { nodeId: string; payload: { ownPrompt: string } } |
+  let capturedPlan: { nodeId: string; payload: {
+    imageTool: {
+      operation: string;
+      operationId: string;
+      sourceAssetId: string;
+      sourceNodeId: string;
+    };
+    inputs: readonly [{ order: number }];
+    ownPrompt: string;
+  } } |
     undefined;
   const multiAngle = createMultiAngleImageToolUseCase({
     async afterPlaceholderCreated() {},
@@ -1035,10 +1076,18 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
   });
   expect(multiAngleSnapshot.nodes).toHaveLength(2);
   expect(multiAngleSnapshot.edges).toContainEqual(expect.objectContaining({
+    data: { inputOrder: 1, inputRole: "reference-image" },
     source: "angle-source",
     target: "image-multi-angle-angle-operation-1",
   }));
+  expect(capturedPlan?.payload.inputs[0]?.order).toBe(1);
   expect(capturedPlan?.payload.ownPrompt).toContain("水平视角旋转 45 度");
+  expect(capturedPlan?.payload.imageTool).toEqual({
+    operation: "multi-angle",
+    operationId: "angle-operation-1",
+    sourceAssetId: "angle-source-asset",
+    sourceNodeId: "angle-source",
+  });
   expect(multiAngleSnapshot.nodes[1]?.data).toMatchObject({
     imageModelId: "image-model-internal-id",
     imageMultiAngleParameters: {
@@ -1060,6 +1109,7 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
       revision: 9,
     };
     const uploads: string[] = [];
+    let capturedMaskedOrder: number | undefined;
     const masked = createOutpaintEraseImageToolUseCase({
       async afterPlaceholderCreated() {},
       capability: modularImageToolCapability(operation, {
@@ -1089,6 +1139,7 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
       operation,
       ownershipKey: (evidence) => JSON.stringify(evidence),
       createLifecycle(plan) {
+        capturedMaskedOrder = plan.payload.inputs[0].order;
         const task = { attempt: 1, canvasId: "masked-canvas", costCurrency: "USD",
           createdAt: "2026-08-23T12:00:00.000Z", generationInputKey: plan.inputKey,
           generationOwnershipKey: plan.ownershipKey, id: `${operation}-task`,
@@ -1127,6 +1178,11 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
         ? { imageToolPreparedAssetId: "outpaint-upload-1" }
         : {}),
     });
+    expect(maskedSnapshot.edges[0]?.data).toMatchObject({
+      inputOrder: 1,
+      inputRole: "reference-image",
+    });
+    expect(capturedMaskedOrder).toBe(1);
   }
   for (const operation of ["enhance-creative", "remove-background"] as const) {
     let processingSnapshot: CanvasGraphSnapshot = {
@@ -1135,7 +1191,10 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
         id: `${operation}-source`, position: { x: 0, y: 0 },
         style: { width: 250 }, type: "image" }], revision: 11,
     };
-    let capturedPayload: { imageTool: import("../types/imageTools").ImageGenerationToolInput } |
+    let capturedPayload: {
+      imageTool: import("../types/imageTools").ImageGenerationToolInput;
+      inputs: readonly [{ order: number }];
+    } |
       undefined;
     const useCase = createPromptGenerationImageToolUseCase({
       async afterPlaceholderCreated() {},
@@ -1179,6 +1238,11 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
       ...(operation === "remove-background"
         ? { outputBackground: "transparent" }
         : {}) });
+    expect(capturedPayload?.inputs[0]?.order).toBe(1);
+    expect(processingSnapshot.edges[0]?.data).toMatchObject({
+      inputOrder: 1,
+      inputRole: "reference-image",
+    });
     expect(processingSnapshot.nodes[1]?.data).toMatchObject({
       imageToolOperation: operation,
       ...(operation === "remove-background"

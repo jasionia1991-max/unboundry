@@ -91,6 +91,8 @@ import {
 } from "../generation/singleNodeGenerationLifecycle";
 import { createImageGenerationAdapter } from
   "../generation/imageGenerationAdapter";
+import { imageToolSubmissionParameterValues } from
+  "../imageTools/generationImageToolUseCase";
 import {
   defaultParameterSchema,
   defaultParameterValues,
@@ -3867,17 +3869,14 @@ function ImageNodeImpl({
       candidate.id === multiAngleCapability.modelId
     );
     if (!model || model.generationAvailable === false ||
-        (model.imageParameters?.maxReferenceImages ?? 0) < 1) {
+        !multiAngleCapability.supportsReferenceImage) {
       setMultiAngleError("当前多角度模型不支持安全参考图输入");
       return;
     }
     const schema = model.parameterSchema ?? defaultParameterSchema("image");
-    const normalizedParameters = normalizeParameterValues(schema, {
-      inputMode: "image",
-    });
-    const modelParameters = submissionParameterValues(
+    const modelParameters = imageToolSubmissionParameterValues(
       schema,
-      normalizedParameters,
+      data.imageParameters,
     );
     const aspectRatio = supportedImageValue(
       model.imageParameters?.aspectRatios ?? ["auto"],
@@ -4017,17 +4016,14 @@ function ImageNodeImpl({
       candidate.id === redrawCapability.modelId
     );
     if (!model || model.generationAvailable === false ||
-        (model.imageParameters?.maxReferenceImages ?? 0) < 1) {
+        !redrawCapability.supportsReferenceImage) {
       setRedrawError("当前重绘模型不支持安全参考图输入");
       return;
     }
     const schema = model.parameterSchema ?? defaultParameterSchema("image");
-    const normalizedParameters = normalizeParameterValues(schema, {
-      inputMode: "image",
-    });
-    const modelParameters = submissionParameterValues(
+    const modelParameters = imageToolSubmissionParameterValues(
       schema,
-      normalizedParameters,
+      data.imageParameters,
     );
     const requestedAspectRatio = supportedImageValue(
       model.imageParameters?.aspectRatios ?? ["auto"],
@@ -4166,13 +4162,15 @@ function ImageNodeImpl({
     }
     const model = imageModels?.find((candidate) => candidate.id === capability.modelId);
     if (!model || model.generationAvailable === false ||
-        (model.imageParameters?.maxReferenceImages ?? 0) < 1) {
+        !capability.supportsReferenceImage) {
       setError(`当前${operation === "outpaint" ? "扩图" : "擦除"}模型不支持安全参考图输入`);
       return;
     }
     const schema = model.parameterSchema ?? defaultParameterSchema("image");
-    const modelParameters = submissionParameterValues(schema,
-      normalizeParameterValues(schema, { inputMode: "image" }));
+    const modelParameters = imageToolSubmissionParameterValues(
+      schema,
+      data.imageParameters,
+    );
     const requestedAspectRatio = supportedImageValue(
       model.imageParameters?.aspectRatios ?? ["auto"],
       String(modelParameters.aspectRatio ?? "auto"),
@@ -4270,13 +4268,15 @@ function ImageNodeImpl({
     }
     const model = imageModels?.find((candidate) => candidate.id === capability.modelId);
     if (!model || model.generationAvailable === false ||
-        (model.imageParameters?.maxReferenceImages ?? 0) < 1) {
+        !capability.supportsReferenceImage) {
       setError("当前模型不支持安全参考图输入");
       return;
     }
     const schema = model.parameterSchema ?? defaultParameterSchema("image");
-    const modelParameters = submissionParameterValues(schema,
-      normalizeParameterValues(schema, { inputMode: "image" }));
+    const modelParameters = imageToolSubmissionParameterValues(
+      schema,
+      data.imageParameters,
+    );
     const requestedAspectRatio = supportedImageValue(
       model.imageParameters?.aspectRatios ?? ["auto"],
       String(modelParameters.aspectRatio ?? "auto"));

@@ -23,7 +23,7 @@
 
 ## 2. 当前授权边界
 
-- **2026-08-23 当前权威状态**：生产运行`v0.6.33/schema39`，`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.33-crop-loading-20260823`；状态`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。tag `v0.6.33` 指向 commit `669958f4e325cc182c31cf0f27861e26b64736b1` / tree `c3a1c27cbe0c230d7005f260c5b57b96ad274acd`，PR #77 squash merge `8675a34b14b17fdf69b5e08b0469c520e4df79cb`；冻结备份、恢复副本、schema39、切换前后数据、service、公网/回环、inventory和5个公网资源均通过。裁剪准备态现为320×180紧凑加载卡片，HTTP/OSS不增加重复读取，内存预览才显示缩略图；用户已在线上复验并明确回复“通过”；
+- **2026-08-24 当前权威状态**：生产运行`v0.6.34/schema39`，`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.34-image-toolbar-20260823`；状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`。PR #80、tag、main CI、冻结备份、恢复副本、schema39、切换前后数据、service、公网/回环和inventory均通过。D13真实生成在Provider前暴露共同热修需求，当前请求`0/6`、费用0 USD；v0.6.35冻结候选`c1a4a08`的唯一一次safe full已`1052/1052 PASS`。用户已确认`v0.6.35`并独立授权上线，当前PR_PENDING，尚未tag/发布；
 - **v0.6.28 历史时点**：精确源码commit`ee6ce437730cf78ef4488217b778f6b0ef2aaee5`、tree`2811ada65140779d4a5e10cbd8ed6fa54893638b`，tag`v0.6.28`，PR #58 merge`753d24f8ee6e4facb3c88e876c4a38b456addc75`；正式safe full执行`1032/1034`，两个失败分别为0.3ms性能抖动与候选文档精确字符串，修正文档后只复验失败spec并`16/16 PASS`，未重复full。生产回执`spec/V0_6_28_PRODUCTION_RECEIPT_2026-08-21.json`；
 - v0.6.18生产源码commit为`e47f50c0bde0ee23585f27b71ad8df240973161a1`、tree为`48bee3c2c050ced3d2854390ca1ef1d0aba8fae5`；注释标签`v0.6.18`精确指向该源码。PR #32已于2026-08-19合并到`main`，merge commit为`265c8f63e867e122ecab2f145c362d5bdab3bd19`。生产凭证为`spec/INC_GEN_009_UI_ALIGN_PRODUCTION_RECEIPT_2026-08-19.json`；
 - v0.6.18正式安全全量为`118/118 specs、983/983 tests PASS`，异常0。管理员后台「优创尺寸映射」面板样式对齐暗黑 UI、比例下拉、文案大白话；出图逻辑不变。优创专用协议按文档像素发 1K/2K/4K，生产默认画质保持 1K；

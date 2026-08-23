@@ -6,13 +6,13 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前生产：v0.6.33（2026-08-23，USER PASS）
+## 当前生产：v0.6.34（2026-08-24，USER QUALITY RECHECK）
 
-生产当前运行 `v0.6.33 / schema39`，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。裁剪安全链保持v0.6.32同站Blob合同，准备画面改为320×180紧凑加载卡片；HTTP/OSS图片不增加重复读取，只有内存`blob:`/`data:`预览显示缩略图。GitHub、冻结备份与恢复副本、精确标签源码构建、原子切换和生产技术终门均通过，切换前后数据计数一致；发布流程没有发起Provider请求或OSS写入。用户已在线上复验并明确回复“通过”。完整现状见 [`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)，生产回执见 [`spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json`](spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json)。
+生产当前运行`v0.6.34 / schema39`，状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`。产品PR #80、tag、main CI、冻结备份与恢复副本、精确标签源码构建、原子切换和生产技术终门均已完成；发布自身没有Provider请求或OSS写入。D13真实生成冒烟尚未通过，不能记作用户质量通过。完整现状见[`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)。
 
-## 当前本地候选：v0.6.34（INC-IMGEDIT-003，D12 完成，D13 待发布）
+## 当前本地候选：v0.6.35（版本门和发布门有效）
 
-图片工具栏剩余能力已完成D0～D12，package为v0.6.34、schema39。冻结前定向`234/234 PASS`；唯一一次safe full原始`1048/1052`，精确修复后同一四个失败spec`106/106 PASS`，未运行第二次full。候选已达到`LOCAL_ENGINEERING_COMPLETE / D13_READY`，尚未push、PR、tag、SSH或发布；生产和用户验收状态仍以上一节v0.6.33为准。
+生产冒烟在Provider前发现多角度身份缺失、六项生成工具共同的持久输入顺序0和源1K被默认2K覆盖。共同热修与v0.6.35版本合同已冻结为候选`c1a4a08`，m100+m2+m27 `43/43`、m38+m81 `56/56`、唯一一次safe full `1052/1052 PASS`，Provider请求`0/6`、可确认费用0 USD；用户预算门为最多6次且总额不超过60 USD。用户已明确确认`v0.6.35`并独立回复“按v0.6.35上线吧”，当前进入PR/CI，尚未tag/发布，也未继续真实冒烟。
 
 ## v0.6.32 图片裁剪同站编辑源
 

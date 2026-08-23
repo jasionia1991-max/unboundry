@@ -23,7 +23,7 @@ export type PromptGenerationPlan = Readonly<{
   ownershipKey: string; quality?: string;
   payload: Readonly<{ canvasId: string; imageTool: ImageGenerationToolInput;
     inputSchemaVersion: 1; inputs: readonly [Readonly<{ assetId: string;
-      kind: "image"; order: 0; role: "reference-image"; sourceNodeId: string }>] ;
+      kind: "image"; order: 1; role: "reference-image"; sourceNodeId: string }>] ;
     model: string; nodeId: string; ownPrompt: string;
     parameters: ProbeNodeType["data"]["imageParameters"]; prompt: string }>;
 }>;
@@ -83,7 +83,7 @@ export function createPromptGenerationImageToolUseCase(input: Readonly<{
         (typeof source.style?.width === "number" ? source.style.width : 250) + 140,
         y: source.position.y }, selected: true, style: { ...NODE_DEFAULT_SIZES.image },
       type: "image" };
-    const edge: CuttableEdge = { data: { inputOrder: 0, inputRole: "reference-image" },
+    const edge: CuttableEdge = { data: { inputOrder: 1, inputRole: "reference-image" },
       id: `edge-${command.sourceNodeId}-${targetNodeId}`, interactionWidth: 20,
       source: command.sourceNodeId, sourceHandle: "source", target: targetNodeId,
       targetHandle: "target", type: "cuttable" };
@@ -100,7 +100,7 @@ export function createPromptGenerationImageToolUseCase(input: Readonly<{
       modelName: command.modelName, modelParameters: command.modelParameters,
       nodeId: targetNodeId, ownershipKey, payload: { canvasId: command.canvasId,
         imageTool, inputSchemaVersion: 1, inputs: [{ assetId: command.sourceAssetId,
-          kind: "image", order: 0, role: "reference-image",
+          kind: "image", order: 1, role: "reference-image",
           sourceNodeId: command.sourceNodeId }], model: command.modelId,
         nodeId: targetNodeId, ownPrompt: prompt, parameters: command.modelParameters,
         prompt }, quality: command.quality }), operation: input.operation })

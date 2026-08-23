@@ -790,7 +790,7 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
   const redrawSave = await request.put(`/api/canvas/${redrawCanvasId}`, {
     data: {
       edges: [{
-        data: { inputOrder: 0, inputRole: "reference-image" },
+        data: { inputOrder: 1, inputRole: "reference-image" },
         id: "redraw-source-edge",
         source: "redraw-source",
         target: "redraw-target",
@@ -857,8 +857,9 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
   });
   expect(redrawPreflight.ok()).toBeTruthy();
   await expect(redrawPreflight.json()).resolves.toMatchObject({
-    canSubmit: false,
+    canSubmit: true,
     imageTool: redrawImageTool,
+    problems: [],
     providerRequests: 0,
   });
   const forgedRedraw = await request.post("/api/generation-tasks/preflight", {
@@ -894,7 +895,7 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
     version: 1 } as const;
   const outpaintSave = await request.put(`/api/canvas/${outpaintCanvasId}`, {
     data: {
-      edges: [{ data: { inputOrder: 0, inputRole: "reference-image" },
+      edges: [{ data: { inputOrder: 1, inputRole: "reference-image" },
         id: "outpaint-source-edge", source: "outpaint-source",
         target: "outpaint-target" }],
       nodes: [
@@ -932,7 +933,7 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
     { data: outpaintBody });
   expect(outpaintPreflight.ok()).toBeTruthy();
   await expect(outpaintPreflight.json()).resolves.toMatchObject({
-    canSubmit: false, imageTool: outpaintImageTool, providerRequests: 0,
+    canSubmit: true, imageTool: outpaintImageTool, problems: [], providerRequests: 0,
   });
   const forgedOutpaint = await request.post("/api/generation-tasks/preflight", {
     data: { ...outpaintBody, imageTool: { ...outpaintImageTool,
@@ -948,7 +949,7 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
   const cutoutOperationId = `cutout-operation-${Date.now()}`;
   const cutoutSave = await request.put(`/api/canvas/${cutoutCanvasId}`, {
     data: {
-      edges: [{ data: { inputOrder: 0, inputRole: "reference-image" },
+      edges: [{ data: { inputOrder: 1, inputRole: "reference-image" },
         id: "cutout-source-edge", source: "cutout-source", target: "cutout-target" }],
       nodes: [
         { data: { assetId: garmentAssetId,
@@ -976,7 +977,7 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
     { data: cutoutBody });
   expect(cutoutPreflight.ok()).toBeTruthy();
   await expect(cutoutPreflight.json()).resolves.toMatchObject({
-    canSubmit: false, imageTool: cutoutImageTool, providerRequests: 0,
+    canSubmit: true, imageTool: cutoutImageTool, problems: [], providerRequests: 0,
   });
   const forgedCutout = await request.post("/api/generation-tasks/preflight", {
     data: { ...cutoutBody, imageTool: { ...cutoutImageTool,

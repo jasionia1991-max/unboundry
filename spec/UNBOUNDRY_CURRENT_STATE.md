@@ -1,30 +1,31 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为 v0.6.33/schema39，技术发布终门和用户线上复验均通过；生产状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。
+> **状态分层**：现网为v0.6.34/schema39，生产技术门通过；状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`。v0.6.35共同生成热修冻结候选已通过唯一一次safe full，正在进入PR/CI，尚未发布。
 
-更新日期：2026-08-23
+更新日期：2026-08-24
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.34**
-本地候选代码版本：**v0.6.34**
-当前治理标记：`CURRENT_V0_6_33_USER_PASS`
+当前代码包版本：**v0.6.35**
+本地候选代码版本：**v0.6.35**
+当前治理标记：`CURRENT_V0_6_34_USER_RECHECK`
+当前热修门：`V0_6_35_VERSION_GATE_VALID / V0_6_35_RELEASE_GATE_VALID / CANDIDATE_C1A4A08_SAFE_FULL_PASS / PR_PENDING`
 
 ## 一句话
 
-**生产是 v0.6.33 / schema39，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。** tag `v0.6.33` 指向 commit `669958f4e325cc182c31cf0f27861e26b64736b1` / tree `c3a1c27cbe0c230d7005f260c5b57b96ad274acd`；PR #77 squash merge `8675a34b14b17fdf69b5e08b0469c520e4df79cb`，main Quality gates run `32628346283`为`SUCCESS`。生产 current 为 `/opt/unboundry/releases/v0.6.33-crop-loading-20260823`。用户已在线上复验并明确回复“通过”。
+**生产是 v0.6.34 / schema39，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`。** 产品PR #80已合并；tag `v0.6.34` 指向 commit `922f6aee7ce3c6250dbe61055542327b0aea8252`，tag与`origin/main` tree均为`279581e0a2c8008d5c7ceea6e53c3c7cb620eab5`。生产 current 为 `/opt/unboundry/releases/v0.6.34-image-toolbar-20260823`，发布技术门已通过；没有用户质量`USER_PASS`。
 
-本版本正式 safe full 原始记录为 `1049/1050`，唯一失败是未改动 m22 的多标签页提示5秒时序波动；同一冻结源码隔离复验 m22 `37/37 PASS`，没有重跑 full。冻结备份 `/var/lib/unboundry-rollbacks/v0.6.33-frozen-sLmph1` 共365文件，冻结源与恢复副本清单SHA均为 `50ccbb8d…1256`；schema39、integrity ok、FK0，切换前后 tasks/attempts `722/730`、active0、媒体 `761/1327334656`、模板 `50/48`、画布58完全一致。公网/回环 version/live/ready、service、inventory 和公网5资源全部通过。
+v0.6.34冻结前定向`234/234 PASS`；唯一一次safe full原始`1048/1052`，只修正一个真实图片预检缺陷与三个测试确定性问题后，精确四spec `106/106 PASS`，没有第二次full。GitHub、冻结备份与恢复副本、精确tag源码构建、schema39数据门、原子切换、公网/回环/service/inventory/资源门均已完成。
 
-发布前确认活跃生成任务和媒体发布事务均为0；发布自身Provider请求和OSS写入均为0。完整回执：`spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json`。
+发布自身Provider请求和OSS写入均为0。用户另行确认D13真实Provider技术冒烟最多6次、总预算上限60 USD；当前多角度和重绘都在Provider前拒绝，生产tasks/attempts保持`722/730`、active0，真实Provider请求`0/6`、可确认费用0 USD。
 
-v0.6.33 版本号与历史发布授权已消费。当前 INC-IMGEDIT-003 Goal 已由用户另行确认 `v0.6.34` 并明确“按 v0.6.34 上线吧”；该新授权只在 D12 候选验证通过后用于 D13，不扩大到 Mureka、团队/多人协作、真实 Agent 协议、Storyboard 完整编辑、图片打光或其他既有 `PARTIAL/PAUSED/BLOCK` 项。
+v0.6.34版本号、tag和发布授权均已执行并消费，禁止移动tag或覆盖release。用户于2026-08-24明确确认`v0.6.35`并独立回复“按v0.6.35上线吧”；新授权只覆盖共同生成热修及Goal内剩余D13，不扩大到Mureka、团队/多人协作、真实Agent协议、Storyboard完整编辑、图片打光或其他既有`PARTIAL/PAUSED/BLOCK`项。
 
-## INC-IMGEDIT-003 图片工具栏剩余能力单 Goal（D12 完成，D13 待发布）
+## INC-IMGEDIT-003 图片工具栏剩余能力单 Goal（D13进行中，v0.6.35候选全量通过）
 
-- 用户已批准最终 V5 方案并明确启动 Goal；D0～D12 已按阶段完成，当前状态 `LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / D13_READY / VERSION_V0_6_34`。主方案为 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md`。
+- 用户已批准最终V5方案并明确启动Goal；D0～D12已完成，D13已完成v0.6.34 GitHub与生产技术发布，当前状态`PRODUCTION_V0_6_34_AUTO_PASS / REAL_PROVIDER_SMOKE_0_OF_6 / COMMON_GENERATION_HOTFIX_LOCAL_AUTO_PASS / V0_6_35_VERSION_GATE_VALID / V0_6_35_RELEASE_GATE_VALID / USER_QUALITY_RECHECK`。主方案为`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md`。
 - 为防止长任务在新 Session 或上下文压缩后漂移，已建立唯一实时断点 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_CHECKPOINT.md` 和可复制 Goal 合同 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_GOAL_PROMPT_2026-08-23.md`。D0～D13 每阶段必须先回写断点、矩阵和 TASKS，再继续下一阶段。
 - 计划范围包含颜色标记、调整像素、快速分割、标注、个人素材库、多角度、遮罩/重绘、扩图、擦除、增强、主体抠图和 Seedance 素材校验；裁剪只回归，打光继续 `PAUSED`。
-- 本地候选 package 为v0.6.34，schema仍为39；D12定向`234/234 PASS`，代码/架构/数据/测试四类审查无新阻断。冻结提交`aa67e46`只执行一次safe full，原始`1048/1052`；一个真实预检缺陷与三个测试确定性问题由`422408b`修正，同一四spec复验`106/106 PASS`，没有第二次full。生产仍是v0.6.33，GitHub/SSH/生产尚未进入D13。
-- 真实付费技术冒烟总上限为8次，当前已用0；真实冒烟只证明技术链路，不等于质量通过。具体版本号和独立发布句均有效，但必须等待 D12 通过。
+- 生产D13冒烟先发现多角度漏传`imageTool`身份，随后重绘暴露六项生成工具共用非法持久输入顺序0；同时确认源节点1K会被模型默认2K覆盖。两次都在Provider前fail-closed，没有task/attempt/Provider和费用。本地热修提交`a411a63`，最终安全定向m100+m2+m27 `43/43 PASS`、外部/Provider请求0。
+- 真实付费技术冒烟最多6次、总预算上限60 USD，当前已用0、可确认费用0 USD；真实冒烟只证明技术链路，不等于质量通过。v0.6.35冻结候选`c1a4a08`已在Node22.23.1/npm10.9.8通过m38+m81 `56/56`和本版本唯一一次safe full `1052/1052`，外部/Provider请求0；当前唯一下一动作是证据提交后push/PR/CI，所有六项生成冒烟仍须等待生产切换。
 
 ## v0.6.33 图片裁剪准备态体验优化（已发布并获用户确认）
 
