@@ -132,6 +132,7 @@ export type ProbeNodeType = Node<
     imageSrc?: string;
     imageToolOperation?: ImageToolOperation;
     imageToolOperationId?: string;
+    imageToolOutputBackground?: "transparent";
     imageToolMaskAssetId?: string;
     imageToolMaskFeatherPixels?: number;
     imageToolMaskHeight?: number;

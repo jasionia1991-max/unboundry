@@ -5,7 +5,7 @@
 更新时间：2026-08-23
 状态：`v0.6.33 已发布并通过技术终门与用户线上复验，状态 PRODUCTION_PUBLISHED_USER_PASS / USER_PASS。权威回执见 spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json。`
 
-### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，GOAL_ACTIVE / D9_TARGETED_AUTO_PASS）
+### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，GOAL_ACTIVE / D10_TARGETED_AUTO_PASS）
 
 - 用户已批准最终 V5 方案并要求后续长任务严格由项目文档驱动，防止新 Session 或上下文压缩后失忆漂移。主方案：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md`；实时断点：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_CHECKPOINT.md`；新 Session 提示词：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_GOAL_PROMPT_2026-08-23.md`。
 - 单 Goal 连续范围：最小图片工具应用边界、颜色标记、调整像素、快速分割、标注、个人素材库、多角度、遮罩/重绘、扩图、擦除、保守/创意增强、主体抠图和 Seedance 素材校验；裁剪只回归，打光 `IMGEDIT-007` 继续 `PAUSED`。
@@ -23,6 +23,7 @@
 - D7 已把水平/垂直/距离/广角结构化参数、能力/成本/过期门、派生占位和来源边、持久 task 与语义 ownership 接入既有 Generation lifecycle；占位保存后才允许 task admission，恢复、取消、重试、终态回填和已付费结果重新挂接继续走现有链路。安全定向 m100 `13/13`、m2 `10/10 PASS`，fake 恰好一个任务、Provider请求0；`IMGEDIT-016 = TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK`。因 SSH/生产候选运行合同只在 D12 后开放，真实冒烟统一留到 D13 精确 v0.6.34 候选，不用当前 v0.6.33 普通生成冒充。唯一下一阶段为 D8 遮罩基础与重绘。
 - D8 已完成屏幕/CSS到原图像素遮罩坐标、画笔/框选/橡皮、撤销重做、0～64px羽化和透明选区PNG；遮罩以owner-scoped Media资产持久化，Canvas保存来源边、派生占位、mask版本/尺寸/feather和task identity，服务端再按已保存画布、owner、PNG/4 MiB/尺寸/来源输入严格校验。GPT Image edit会同时发送参考图和mask，临时OSS遮罩上传/签名/清理、Media adoption/删除保护、刷新恢复和防重复提交均已接通。安全定向最终 m100 `13/13`、m2 `10/10`、m27 `20/20`、m53 `25/25`、m88 `36/36`、m5+m87 `29/29 PASS`，Provider/真实OSS请求0；`IMGEDIT-017 = TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK`。任意自由旋转本就不在产品范围且Canvas无图片旋转状态；缩放/高DPI按原图像素映射覆盖。唯一下一阶段为 D9 扩图与擦除。
 - D9 已把扩图和擦除接为两个独立生成操作。扩图经owner-scoped安全读取生成“透明扩展画布+原图原尺寸定位”的准备PNG及同尺寸“原区不变/新增区可生成”mask，边界参数、准备资产、mask、来源和占位全部持久化并由服务端严格核验；Provider执行只使用准备输入。擦除复用D8遮罩编辑器，但保持独立operation、ownership、占位和默认补景语义。两项均先保存Canvas占位并完成Media adoption，再走既有持久task/retry/recovery/result挂接。安全定向 m2+m27 `30/30`、m100+m88 `49/49 PASS`，真实Provider/OSS请求0；`IMGEDIT-018 = TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK`。唯一下一阶段为 D10 增强与主体抠图。
+- D10 已完成三条分离路径：保守增强经同站安全源做同尺寸本地确定性校正并创建派生PNG，零Generation；创意增强明示会改变内容，主体抠图明示透明PNG，两者各有独立operation/ownership/占位并复用现有持久Generation生命周期。抠图身份在Canvas/task/服务端三处绑定`outputBackground=transparent`，GPT Image请求显式带透明背景；同步、异步和native结果在发布前都解码PNG滤波行，要求至少一个真实透明像素，opaque RGBA也fail-closed。节点和全屏查看器用CSS棋盘格预览透明区，不烘焙进结果。安全定向m100+m53 `38/38`、m2+m27 `30/30`、最终m2+m57 `26/26 PASS`，真实Provider/OSS请求0；`IMGEDIT-019 = TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK`。唯一下一阶段为D11 Seedance素材校验。
 - 本次落档 `git diff --check` 通过；定向 m38 safe runner 在产品测试前被 main 既有 ignored `backups/` 隔离负控以 `EISDIR` 阻断，0 个产品测试执行，source snapshot 和 4173 listener 未变。未删除/移动备份、未绕过 safe runner、未把该尝试记为自动 PASS；完整记录见 Checkpoint。
 
 ### 2026-08-23 当前版本文档残留对齐（docs-only）

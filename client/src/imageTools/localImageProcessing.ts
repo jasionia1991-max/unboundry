@@ -122,6 +122,28 @@ export async function resizeLocalImage(input: Readonly<{
   }
 }
 
+export async function enhanceConservativeLocalImage(input: Readonly<{
+  assetId: string;
+  fileName: string;
+}>) {
+  const decoded = await decodedImage(input.assetId);
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = decoded.image.naturalWidth;
+    canvas.height = decoded.image.naturalHeight;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("当前浏览器无法处理图片");
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.filter = "contrast(1.035) saturate(1.015)";
+    context.drawImage(decoded.image, 0, 0);
+    context.filter = "none";
+    return pngFile(canvas, input.fileName);
+  } finally {
+    decoded.release();
+  }
+}
+
 export async function splitLocalImage(input: Readonly<{
   assetId: string;
   fileNamePrefix: string;

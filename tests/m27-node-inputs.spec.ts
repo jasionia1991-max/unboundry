@@ -944,12 +944,56 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
     error: "扩图边界或准备图片与已保存画布不一致",
   });
 
+  const cutoutCanvasId = `node-input-cutout-${Date.now()}`;
+  const cutoutOperationId = `cutout-operation-${Date.now()}`;
+  const cutoutSave = await request.put(`/api/canvas/${cutoutCanvasId}`, {
+    data: {
+      edges: [{ data: { inputOrder: 0, inputRole: "reference-image" },
+        id: "cutout-source-edge", source: "cutout-source", target: "cutout-target" }],
+      nodes: [
+        { data: { assetId: garmentAssetId,
+          imageSrc: `/api/assets/${garmentAssetId}` },
+          id: "cutout-source", type: "image" },
+        { data: { imagePrompt: "移除背景并输出透明PNG", imagePromptReady: true,
+          imageToolOperation: "remove-background",
+          imageToolOperationId: cutoutOperationId,
+          imageToolOutputBackground: "transparent",
+          imageToolSourceAssetId: garmentAssetId },
+          id: "cutout-target", type: "image" },
+      ], revision: 0, viewport: { x: 0, y: 0, zoom: 1 },
+    },
+  });
+  expect(cutoutSave.ok()).toBeTruthy();
+  const cutoutRevision = (await cutoutSave.json() as { revision: number }).revision;
+  const cutoutImageTool = { operation: "remove-background" as const,
+    operationId: cutoutOperationId, outputBackground: "transparent" as const,
+    sourceAssetId: garmentAssetId, sourceNodeId: "cutout-source" };
+  const cutoutBody = { canvasId: cutoutCanvasId, canvasRevision: cutoutRevision,
+    imageTool: cutoutImageTool, inputSchemaVersion: 1, kind: "image",
+    model: modelId, nodeId: "cutout-target", ownPrompt: "移除背景并输出透明PNG",
+    parameters: { inputMode: "image" }, prompt: "移除背景并输出透明PNG" };
+  const cutoutPreflight = await request.post("/api/generation-tasks/preflight",
+    { data: cutoutBody });
+  expect(cutoutPreflight.ok()).toBeTruthy();
+  await expect(cutoutPreflight.json()).resolves.toMatchObject({
+    canSubmit: false, imageTool: cutoutImageTool, providerRequests: 0,
+  });
+  const forgedCutout = await request.post("/api/generation-tasks/preflight", {
+    data: { ...cutoutBody, imageTool: { ...cutoutImageTool,
+      outputBackground: undefined } },
+  });
+  expect(forgedCutout.status()).toBe(400);
+  await expect(forgedCutout.json()).resolves.toMatchObject({
+    error: "图片工具透明输出身份与已保存画布不一致",
+  });
+
   for (const canvasId of [
     roleCanvasId,
     forgedCanvasId,
     staleCanvasId,
     redrawCanvasId,
     outpaintCanvasId,
+    cutoutCanvasId,
   ]) {
     const tasks = await (await request.get(
       `/api/generation-tasks?canvasId=${encodeURIComponent(canvasId)}`,

@@ -235,6 +235,78 @@ export function validatePng(bytes: Buffer) {
   return { height, width };
 }
 
+/**
+ * Remove-background results must contain at least one genuinely transparent
+ * pixel. Merely converting an opaque JPEG to RGBA is not sufficient.
+ * Canonical Provider PNGs use non-interlaced 8/16-bit grayscale-alpha or
+ * RGBA; other encodings are rejected fail-closed for this operation.
+ */
+export function validateTransparentPng(bytes: Buffer) {
+  const dimensions = validatePng(bytes);
+  let offset = 8;
+  let bitDepth = 0;
+  let colorType = 0;
+  let interlaced = false;
+  const imageData: Buffer[] = [];
+  while (offset < bytes.length) {
+    const length = bytes.readUInt32BE(offset);
+    const type = bytes.toString("ascii", offset + 4, offset + 8);
+    const data = bytes.subarray(offset + 8, offset + 8 + length);
+    if (type === "IHDR") {
+      bitDepth = data[8];
+      colorType = data[9];
+      interlaced = data[12] !== 0;
+    } else if (type === "IDAT") imageData.push(data);
+    offset += 12 + length;
+  }
+  const channels = colorType === 4 ? 2 : colorType === 6 ? 4 : 0;
+  if (!channels || (bitDepth !== 8 && bitDepth !== 16) || interlaced) {
+    throw new Error("PNG image does not contain supported transparency");
+  }
+  const sampleBytes = bitDepth / 8;
+  const bytesPerPixel = channels * sampleBytes;
+  const rowBytes = dimensions.width * bytesPerPixel;
+  const decoded = inflateSync(Buffer.concat(imageData), {
+    maxOutputLength: dimensions.height * (rowBytes + 1),
+  });
+  let previous = Buffer.alloc(rowBytes);
+  let cursor = 0;
+  const paeth = (left: number, above: number, upperLeft: number) => {
+    const prediction = left + above - upperLeft;
+    const leftDistance = Math.abs(prediction - left);
+    const aboveDistance = Math.abs(prediction - above);
+    const upperLeftDistance = Math.abs(prediction - upperLeft);
+    return leftDistance <= aboveDistance && leftDistance <= upperLeftDistance
+      ? left
+      : aboveDistance <= upperLeftDistance ? above : upperLeft;
+  };
+  for (let y = 0; y < dimensions.height; y += 1) {
+    const filter = decoded[cursor++];
+    if (filter > 4) throw new Error("Invalid PNG image");
+    const row = Buffer.alloc(rowBytes);
+    for (let x = 0; x < rowBytes; x += 1) {
+      const encoded = decoded[cursor++];
+      const left = x >= bytesPerPixel ? row[x - bytesPerPixel] : 0;
+      const above = previous[x] ?? 0;
+      const upperLeft = x >= bytesPerPixel ? previous[x - bytesPerPixel] : 0;
+      const predictor = filter === 0 ? 0
+        : filter === 1 ? left
+          : filter === 2 ? above
+            : filter === 3 ? Math.floor((left + above) / 2)
+              : paeth(left, above, upperLeft);
+      row[x] = (encoded + predictor) & 0xff;
+    }
+    const alphaOffset = (channels - 1) * sampleBytes;
+    for (let x = alphaOffset; x < rowBytes; x += bytesPerPixel) {
+      if (sampleBytes === 1 ? row[x] < 0xff : row.readUInt16BE(x) < 0xffff) {
+        return dimensions;
+      }
+    }
+    previous = row;
+  }
+  throw new Error("PNG image does not contain transparent pixels");
+}
+
 export async function saveGeneratedPng(input: {
   bytes: Buffer;
   label: string;

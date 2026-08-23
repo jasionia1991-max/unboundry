@@ -221,7 +221,7 @@ test("Image empty and local upload states match the observed geometry", async ({
     height: 272,
   });
   await expect(moreMenu.getByRole("menuitem")).toHaveCount(8);
-  await expect(moreMenu.locator("button:not(:disabled)")).toHaveCount(5);
+  await expect(moreMenu.locator("button:not(:disabled)")).toHaveCount(7);
   await expect(moreMenu).toContainText("快速切分");
   await expect(moreMenu).toContainText("2×2　3×3　4×4");
   await moreMenu.getByRole("menuitem", { name: "扩图" }).click();
@@ -237,6 +237,25 @@ test("Image empty and local upload states match the observed geometry", async ({
   await expect(erase).toBeVisible();
   await expect(erase.getByRole("button", { name: "提交擦除" })).toBeDisabled();
   await erase.getByRole("button", { name: "取消擦除" }).click();
+  await card.click({ position: { x: 20, y: 20 } });
+  await toolbar.getByRole("button", { name: "浏览全部" }).click();
+  await page.getByTestId("image-node-more-menu")
+    .getByRole("menuitem", { name: "增强" }).click();
+  const enhance = page.getByTestId("image-enhance-panel");
+  await expect(enhance).toBeVisible();
+  await expect(enhance).toContainText("创意增强会生成新细节");
+  await expect(enhance.getByRole("button", { name: "保守增强" })).toBeEnabled();
+  await expect(enhance.getByRole("button", { name: /创意增强/ })).toBeDisabled();
+  await enhance.getByRole("button", { name: "取消" }).click();
+  await card.click({ position: { x: 20, y: 20 } });
+  await toolbar.getByRole("button", { name: "浏览全部" }).click();
+  await page.getByTestId("image-node-more-menu")
+    .getByRole("menuitem", { name: "抠图" }).click();
+  const cutout = page.getByTestId("image-cutout-panel");
+  await expect(cutout).toBeVisible();
+  await expect(cutout).toContainText("棋盘格仅用于预览透明区域");
+  await expect(cutout.getByRole("button", { name: "生成透明PNG" })).toBeDisabled();
+  await cutout.getByRole("button", { name: "取消" }).click();
   expect(generationRequests).toEqual([]);
   await card.click({ position: { x: 20, y: 20 } });
   await expect(moreMenu).toHaveCount(0);
@@ -877,6 +896,23 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   await node.click();
   await toolbar.getByRole("button", { name: "浏览全部" }).click();
   await page.getByTestId("image-node-more-menu")
+    .getByRole("menuitem", { name: "增强" }).click();
+  const enhancePanel = page.getByTestId("image-enhance-panel");
+  await enhancePanel.getByRole("button", { name: "保守增强" }).click();
+  const enhancedNode = page.locator(
+    '.react-flow__node-image[data-id^="image-enhance-conservative-"]',
+  );
+  await expect(enhancedNode).toHaveCount(1);
+  await expect.poll(() => enhancedNode.locator("img").evaluate(
+    (image: HTMLImageElement) => ({
+      height: image.naturalHeight,
+      width: image.naturalWidth,
+    }),
+  )).toEqual({ height: 720, width: 1280 });
+
+  await node.click();
+  await toolbar.getByRole("button", { name: "浏览全部" }).click();
+  await page.getByTestId("image-node-more-menu")
     .getByRole("menuitem", { name: /快速切分/ }).click();
   const splitPanel = page.getByTestId("image-split-panel");
   await expect(splitPanel.getByRole("img", { name: "分割预览" })).toBeVisible();
@@ -899,7 +935,7 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
         savedNode.id?.startsWith("image-quick-split-")
       ).length,
     };
-  }).toEqual({ edges: 6, nodes: 7, splitNodes: 4 });
+  }).toEqual({ edges: 7, nodes: 8, splitNodes: 4 });
   await expect.poll(() => splitNodes.count()).toBeGreaterThanOrEqual(1);
   await expect.poll(() => splitNodes.locator("img").evaluateAll(
     (images: HTMLImageElement[]) => images.map((image) => ({
@@ -1016,7 +1052,7 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
       edges: saved.edges?.length,
       nodes: saved.nodes?.length,
     };
-  }).toEqual({ annotationNodes: 1, edges: 7, nodes: 8 });
+  }).toEqual({ annotationNodes: 1, edges: 8, nodes: 9 });
   expect(generationRequests).toEqual([]);
 });
 

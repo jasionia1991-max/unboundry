@@ -368,7 +368,7 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 | IMGEDIT-016 | P0 | 多角度真实生成 | 真实结构化水平/垂直/距离/广角控制；持久任务、恢复、幂等和派生节点；不以提示词冒充 | fake零请求、一次真实技术冒烟、用户质量复验 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK |
 | IMGEDIT-017 | P0 | 重绘真实生成 | 真实mask局部编辑，未遮罩区域尽量保持；遮罩坐标、附件生命周期、恢复和付费安全完整 | mask像素/高DPI/旋转、fake、真实技术冒烟、用户质量复验 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK |
 | IMGEDIT-018 | P0 | 扩图与擦除 | outpaint只补新增区域；erase移除遮罩对象并补景；两者独立operation，不以拉伸/普通重绘冒充 | 安全定向m100/m2/m27/m88证明独立operation/ownership、扩展透明准备图+同尺寸mask、严格owner/尺寸/持久身份、Media adoption、面板与零真实请求；真实技术冒烟留D13，质量待用户复验 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK |
-| IMGEDIT-019 | P0 | 增强与主体抠图 | 保守/创意增强语义分开；抠图端到端输出透明PNG，任一环节丢Alpha即fail-closed | 处理器合同、Alpha全链、fake、真实技术冒烟、用户质量复验 | NOT_STARTED |
+| IMGEDIT-019 | P0 | 增强与主体抠图 | 保守/创意增强语义分开；抠图端到端输出透明PNG，任一环节丢Alpha即fail-closed | 本地保守增强真实派生、独立创意/抠图operation、持久透明身份、GPT Image background请求、PNG解码Alpha门、棋盘格、fake与零请求；真实技术冒烟留D13，质量待用户复验 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK |
 | IMGEDIT-020 | P1 | Seedance素材校验 | 本地技术预检绑定asset/model/role并可过期；仅在官方接口存在时声明远端资格，不生成视频或作法律保证 | 纯规则测试、stale、零视频生成请求、状态实页 | NOT_STARTED |
 
 `IMGEDIT-010～020` 由 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md` 和对应 Checkpoint 驱动。D0 已完成实时基线、工具链、生产只读探针、Provider/Storage 现状和干净隔离 worktree 恢复；这些条目仍全部 `NOT_STARTED`，D0 不冒充功能验收。历史 `IMGEDIT-001～006、008、009 = PASS` 继续只证明既有外观、安全禁用和裁剪结果合同，不自动证明新功能已经实现。`IMGEDIT-007` 继续 `PAUSED`。
@@ -382,6 +382,8 @@ D6 已按官方一手资料和当前生产只读状态冻结 17 个 operation �
 D7 已完成水平/垂直/距离/广角结构化参数、服务端能力/成本/过期门、原图来源与派生占位、持久 task、语义 ownership 和现有恢复/取消/重试/回填/重新挂接生命周期。安全定向 m100 `13/13`、m2 `10/10 PASS`；fake 只创建 1 个任务并持久化来源边、结构化参数和 task identity，Provider 请求 0。由于本 Goal 把 SSH 和生产候选运行明确放在 D12 后，真实技术冒烟不提前借当前 v0.6.33 通用生成冒充，统一留到 D13 精确 v0.6.34 候选环境执行；故 `IMGEDIT-016` 只记 `TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK`，不是 Provider、生产或用户质量 PASS。
 
 D8 已完成画笔/框选/橡皮、撤销重做、0～64px羽化、CSS屏幕坐标到原图像素坐标、透明选区PNG遮罩、owner-scoped附件、Canvas来源边/派生占位、持久task和GPT Image mask发送。遮罩只以assetId、版本、尺寸和feather进入Canvas/task，不保存Base64或签名URL；服务端按已保存节点、owner、ready、PNG、4 MiB、尺寸和来源输入重新校验，Media adoption、删除保护、临时OSS上传/签名/精确清理、恢复与防重复提交均有直接证据。安全定向最终 m100 `13/13`、m2 `10/10`、m27 `20/20`、m53 `25/25`、m88 `36/36`、m5+m87 `29/29 PASS`，Provider/真实OSS请求0。产品范围明确不支持任意自由旋转且Canvas无图片旋转状态，因此没有伪造旋转变换；缩放与高DPI由1280×720原图映射640×360 CSS框和越界夹取覆盖。真实技术冒烟继续按D13精确v0.6.34候选执行，故 `IMGEDIT-017` 只记 `TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK`。
+
+D10 已把保守增强冻结为本地同尺寸确定性PNG派生，不创建Generation任务；创意增强与主体抠图使用两个独立operation、来源边、派生占位、ownership和既有持久Generation生命周期。主体抠图在Canvas、task和服务端严格核验中都绑定`outputBackground=transparent`，GPT Image专用/通用relay请求显式带`background=transparent`；同步bytes、异步URL归一化和native结果保存前均执行真Alpha解码门，只有至少一个像素实际透明才允许发布，opaque RGBA也拒绝。节点与全屏查看器只用CSS棋盘格显示透明区域，不改图片字节。安全定向 m100+m53 `38/38`、m2+m27 `30/30`、最终m2+m57 `26/26 PASS`，真实Provider/OSS请求0；故 `IMGEDIT-019` 只记 `TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK`，不是Provider、生产或用户质量PASS。
 
 D3 已完成颜色标记 Canvas 元数据持久化、筛选和撤销；像素调整以安全同站源本地输出精确 PNG 派生图；快速分割提供 2×2/3×3/4×4 预览，并以单一 Canvas command 原子提交 4/9/16 个节点与边，stale/失败精确补偿本批媒体。安全定向 m100 `13/13 PASS`、m2 `10/10 PASS`，Generation/Provider/真实 OSS 请求 0；因此 `IMGEDIT-011/013/014 = AUTO_PASS`，尚未冒充生产或用户验收。
 

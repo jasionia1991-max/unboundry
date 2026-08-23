@@ -82,6 +82,7 @@ export type RelayTextRequest = Readonly<{
 }>;
 
 export type RelayGptImageRequest = Readonly<{
+  background?: "transparent";
   capability: "image";
   count?: number;
   inputImages?: readonly string[];
@@ -341,6 +342,7 @@ const mediaParamNamesByCapability = {
   image: new Set([
     "aspectRatio",
     "aspect_ratio",
+    "background",
     "cameraMovement",
     "camera_movement",
     "context_image_url",
@@ -353,6 +355,7 @@ const mediaParamNamesByCapability = {
     "inputMode",
     "input_mode",
     "lens",
+    "mask",
     "n",
     "outputCount",
     "output_count",
@@ -1215,6 +1218,7 @@ function cleanImageRequest(request: RelayGptImageRequest) {
   ) throw new RelayProviderError("FORMAT");
   return {
     body: {
+      ...(request.background ? { background: request.background } : {}),
       ...(request.operation === "edit"
         ? { image: inputImages.length === 1 ? inputImages[0] : inputImages }
         : {}),

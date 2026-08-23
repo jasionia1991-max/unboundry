@@ -7,6 +7,7 @@ import {
   imageReferenceForProvider,
   saveGeneratedPng,
   validatePng,
+  validateTransparentPng,
 } from "./assetStorage";
 import {
   arkFilesEnabled,
@@ -1093,14 +1094,21 @@ function storedImageGenerationTool(value: unknown): ImageGenerationToolInput | u
   ) throw new Error("Invalid image tool snapshot");
   const requiresMask = item.operation === "redraw" || item.operation === "erase" ||
     item.operation === "outpaint";
+  if (
+    (item.operation === "remove-background" &&
+      item.outputBackground !== "transparent") ||
+    (item.operation !== "remove-background" && item.outputBackground !== undefined)
+  ) throw new Error("Invalid image tool output background snapshot");
   if (!item.mask) {
     if (requiresMask) throw new Error("Invalid image tool mask snapshot");
     if (item.preparedInput !== undefined || item.outpaint !== undefined) {
       throw new Error("Invalid image tool outpaint snapshot");
     }
+    const outputBackground = item.outputBackground;
     return {
       operation: item.operation,
       operationId: item.operationId,
+      ...(outputBackground ? { outputBackground } : {}),
       sourceAssetId: item.sourceAssetId,
       sourceNodeId: item.sourceNodeId,
     };
@@ -1193,6 +1201,14 @@ function strictImageGenerationTool(input: {
   if (!sourceMedia) throw new Error("图片工具原图不存在或不属于当前账号");
   const requiresMask = submitted.operation === "redraw" ||
     submitted.operation === "erase" || submitted.operation === "outpaint";
+  if (
+    (submitted.operation === "remove-background" &&
+      (submitted.outputBackground !== "transparent" ||
+        input.persistedTargetData.imageToolOutputBackground !== "transparent")) ||
+    (submitted.operation !== "remove-background" &&
+      (submitted.outputBackground !== undefined ||
+        input.persistedTargetData.imageToolOutputBackground !== undefined))
+  ) throw new Error("图片工具透明输出身份与已保存画布不一致");
   if (!submitted.mask) {
     if (requiresMask) throw new Error("图片工具缺少已保存遮罩");
     if (input.persistedTargetData.imageToolMaskAssetId !== undefined ||
@@ -1200,9 +1216,11 @@ function strictImageGenerationTool(input: {
         input.persistedTargetData.imageToolOutpaintParameters !== undefined) {
       throw new Error("图片工具遮罩身份与已保存画布不一致");
     }
+    const outputBackground = submitted.outputBackground;
     return {
       operation: submitted.operation,
       operationId: submitted.operationId,
+      ...(outputBackground ? { outputBackground } : {}),
       sourceAssetId: submitted.sourceAssetId,
       sourceNodeId: submitted.sourceNodeId,
     };
@@ -3322,7 +3340,7 @@ async function saveRelayMediaOutput(input: {
       throw new ProviderResultMediaError("FORMAT", "模型结果格式不受支持");
     }
     const bytes = Buffer.from(input.output.bytes);
-    validateRelayPng(bytes);
+    validateRelayPng(bytes, input.taskId);
     const saved = await saveGeneratedPng({
       bytes,
       label: input.prompt.slice(0, 120),
@@ -3350,6 +3368,7 @@ async function saveRelayMediaOutput(input: {
       ownerId: input.ownerId,
       signal: input.signal,
     });
+    validateRelayPng(bytes, input.taskId);
     const saved = await saveGeneratedPng({
       bytes,
       label: input.prompt.slice(0, 120),
@@ -3458,9 +3477,25 @@ async function saveRelayMediaOutputs(input: {
   });
 }
 
-function validateRelayPng(bytes: Buffer) {
+export function validateImageToolResultPng(
+  bytes: Buffer,
+  imageTool: unknown,
+) {
+  const stored = imageTool === undefined
+    ? undefined
+    : storedImageGenerationTool(imageTool);
+  if (stored?.operation === "remove-background") {
+    validateTransparentPng(bytes);
+  } else validatePng(bytes);
+}
+
+function validateRelayPng(bytes: Buffer, taskId?: string) {
   try {
-    validatePng(bytes);
+    const task = taskId ? taskStore().get(taskId) : undefined;
+    if (taskId && (!task || task.kind !== "image")) {
+      throw new Error("Image generation task is missing");
+    }
+    validateImageToolResultPng(bytes, task?.parameters.imageTool);
   } catch {
     throw new RelayProviderError("PROVIDER_RESULT_FORMAT", true);
   }
@@ -4183,6 +4218,9 @@ async function executeRelayGptImageTask(
     ? await imageReferenceForProvider(ownerId, imageTool.mask.assetId, 600)
     : undefined;
   const prepared = await prepareRelayGptImageRequest({
+    ...(imageTool?.outputBackground
+      ? { background: imageTool.outputBackground }
+      : {}),
     capability: "image",
     count: 1,
     inputImages: inputReferences,
@@ -4218,6 +4256,9 @@ async function executeRelayGptImageTask(
         response_format: "url",
         size,
       };
+      if (prepared.request.background) {
+        params.background = prepared.request.background;
+      }
       if (prepared.request.inputImages?.length) {
         params.images = [...prepared.request.inputImages];
       }
@@ -4299,6 +4340,7 @@ async function executeImageTask(taskId: string) {
         executionAttempt: running.attempt,
         taskId,
       });
+      validateRelayPng(result.bytes, taskId);
       const saved = await saveGeneratedPng({
         bytes: result.bytes,
         label: running.prompt.slice(0, 120),

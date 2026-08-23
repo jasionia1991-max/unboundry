@@ -31,6 +31,7 @@ export type DerivedImageToolInput = Readonly<{
 const derivedOperations = new Set<ImageToolOperation>([
   "annotate",
   "crop",
+  "enhance-conservative",
   "quick-split",
   "resize-pixels",
 ]);
@@ -38,7 +39,8 @@ const derivedOperations = new Set<ImageToolOperation>([
 export function createDerivedImageToolUseCase(input: Readonly<{
   graph: CanvasGraphCommandPort;
   media: DerivedImageMediaPort;
-  operation: "annotate" | "crop" | "quick-split" | "resize-pixels";
+  operation: "annotate" | "crop" | "enhance-conservative" | "quick-split" |
+    "resize-pixels";
   size: (width: number, height: number) => Readonly<{
     height: number;
     width: number;

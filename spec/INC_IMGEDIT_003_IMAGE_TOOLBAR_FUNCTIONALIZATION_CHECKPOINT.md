@@ -2,20 +2,20 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-23 22:12:56 +0800
-- 状态：`GOAL_ACTIVE / D9_TARGETED_AUTO_PASS`
-- 当前阶段：`D9 扩图与擦除 / TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13`
-- 唯一允许的下一动作：提交 D9 本地 checkpoint commit；随后先把 D10 标为 IN_PROGRESS，再只施工增强与主体抠图，不得提前进入 D11
+- 更新时间：2026-08-23 22:32:26 +0800
+- 状态：`GOAL_ACTIVE / D10_TARGETED_AUTO_PASS`
+- 当前阶段：`D10 增强与主体抠图 / TARGETED_AUTO_PASS / REAL_SMOKE_PENDING_D13`
+- 唯一允许的下一动作：提交 D10 本地 checkpoint commit；随后进入 D11 前先把 D11 标为 `IN_PROGRESS`，只施工 Seedance 素材校验，不生成视频
 - 当前仓库：`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`
 - 记录时分支：`codex/inc-imgedit-003-v0.6.34-2026-08-23`
-- 记录时 HEAD：`5c7401b3a8c2a0e781fa892eaa3019158056490b`
+- 记录时 HEAD：`f8a783d8dfcfe1553bae7315fe2ba008f843fed0`
 - 记录时 `origin/main`：`14777b5dc5cf48de8b21b6eb3ee27da45070b537`
 - package：`0.6.33`
 - 生产：`v0.6.33 / schema39 / PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`
 - 新版本：`v0.6.34 / VERSION_GATE_VALID`
 - 候选：无
-- 本轮代码施工：D8 已提交为 `5c7401b`；D9 已完成独立 outpaint 准备输入/边界/遮罩、独立 erase 操作、owner-scoped Media 持久引用、严格服务端身份和既有任务生命周期，尚未提交
-- 本轮验证：pinned Node 22.23.1/npm 10.9.8；m2+m27 `30/30`、m100+m88 `49/49 PASS`，另有 D9 首轮 m100 `13/13 PASS`；未运行 full
+- 本轮代码施工：D9 已提交为 `f8a783d`；D10 未提交树完成保守增强、创意增强、透明主体抠图、棋盘格预览和服务端真 Alpha 结果门
+- 本轮验证：pinned Node 22.23.1/npm 10.9.8；D10 m100+m53 `38/38`、m2+m27 `30/30`、最终 m2+m57 `26/26 PASS`；未运行 full
 - 真实 Provider/付费请求：0/8
 - 真实 OSS 测试对象：0
 - GitHub/SSH/生产操作：0
@@ -81,7 +81,7 @@ node -p "require('./package.json').version"
 | D7 | 多角度 | TARGETED_AUTO_PASS / REAL_SMOKE_PENDING_D13 |
 | D8 | 遮罩基础与重绘 | TARGETED_AUTO_PASS / REAL_SMOKE_PENDING_D13 |
 | D9 | 扩图与擦除 | TARGETED_AUTO_PASS / REAL_SMOKE_PENDING_D13 |
-| D10 | 增强与主体抠图 | NOT_STARTED |
+| D10 | 增强与主体抠图 | TARGETED_AUTO_PASS / REAL_SMOKE_PENDING_D13 |
 | D11 | Seedance 素材校验 | NOT_STARTED |
 | D12 | 候选冻结和统一验证 | NOT_STARTED |
 | D13 | GitHub和生产发布 | NOT_STARTED / AUTH_GATED |
@@ -101,7 +101,7 @@ node -p "require('./package.json').version"
 | IMGEDIT-016 | 多角度真实生成 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK |
 | IMGEDIT-017 | 重绘真实生成 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK |
 | IMGEDIT-018 | 扩图与擦除 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK |
-| IMGEDIT-019 | 增强与主体抠图 | NOT_STARTED |
+| IMGEDIT-019 | 增强与主体抠图 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK |
 | IMGEDIT-020 | Seedance 素材校验 | NOT_STARTED |
 
 ## 6. 当前工作树保护
@@ -157,7 +157,26 @@ package / schema / candidate：
 
 ## 10. 当前唯一下一动作
 
-提交 D9 本地 checkpoint commit；随后进入 D10 前先把 D10 标为 `IN_PROGRESS`，只施工增强与主体抠图，不得提前进入 D11。
+提交 D10 本地 checkpoint commit；随后进入 D11 前先把 D11 标为 `IN_PROGRESS`，只施工 Seedance 素材校验，不生成视频。
+
+## 23. D10 增强与主体抠图
+
+- 时间：2026-08-23 22:32:26 +0800
+- 阶段：`D10`
+- 状态：`TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK`
+- branch / HEAD / origin-main：`codex/inc-imgedit-003-v0.6.34-2026-08-23` / `f8a783d8dfcfe1553bae7315fe2ba008f843fed0` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537`
+- 工作树摘要：D9 已提交为 `f8a783d`；D10 未提交树完成三项真实路径：保守增强走本地安全读取和派生媒体，创意增强/主体抠图走独立operation与既有Generation生命周期；未进入 D11
+- 产品文件：`types/imageTools.ts`、`ProbeNode.tsx`、`localImageProcessing.ts`、`derivedImageToolUseCase.ts`、`promptGenerationImageToolUseCase.ts`、`ImageNode.tsx`、`styles.css`、`assetStorage.ts`、`generationTasks.ts`、`relayProviderAdapters.ts`
+- 测试文件：`m100-modular-ports.spec.ts`、`m2-image-node.spec.ts`、`m27-node-inputs.spec.ts`、`m53-relay-provider-adapters.spec.ts`、`m57-relay-generation-runtime.spec.ts`
+- 文档文件：本Checkpoint、`UNBOUNDRY_ACCEPTANCE_MATRIX.md`、`TASKS.md`、主方案偏差段
+- package / schema / candidate：`0.6.33 / schema39 / 无候选`；目标版本`v0.6.34`
+- 外部请求和付费预算：总计`0/8`；真实Provider/OSS、GitHub/SSH/生产写入均0
+- 测试命令、环境、结果、退出码：统一使用 pinned Node `22.23.1`、npm `10.9.8` 和 safe runner。D10 首轮 m100+m53 `38/38 PASS`；m2+m27 `30/30 PASS`；补强保守增强真实派生、棋盘格和任务结果 Alpha 门后最终 m2+m57 `26/26 PASS`。最终 source/snapshot `790089b4…cffc`，4173 listener不变，均退出0；未运行full
+- 架构与数据风险：保守增强只在浏览器安全像素链做同尺寸轻量对比度/色彩校正并生成派生PNG，不创建Generation任务；创意增强明示会改变内容并使用独立operation。主体抠图的Canvas/task都持久化`outputBackground=transparent`，GPT Image请求显式发送`background=transparent`，同步/异步/下载归一化后的每条结果在保存前解码PNG滤波行并要求至少一个真实非不透明Alpha样本；丢Alpha或任务身份缺失统一fail-closed，不把棋盘格烘焙进图片
+- 设计偏差：不引入许可证未闭环的rembg权重或第二套图片任务系统。保守增强采用本地确定性轻量校正，创意增强与主体抠图复用现有GPT Image edit生命周期；真Provider技术冒烟继续放到D13精确v0.6.34候选
+- 阻断：无；自动证据不等于真实Provider、生产或用户质量验收
+- 回滚点：D9提交`f8a783d8dfcfe1553bae7315fe2ba008f843fed0`
+- 唯一下一动作：提交 D10 本地 checkpoint commit；随后进入 D11 前先把 D11 标为 `IN_PROGRESS`，只施工 Seedance 素材校验，不生成视频
 
 ## 22. D9 扩图与擦除
 

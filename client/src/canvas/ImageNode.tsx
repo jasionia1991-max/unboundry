@@ -127,6 +127,7 @@ import {
   ImageSplitPanel,
 } from "../imageTools/LocalImageToolPanels";
 import {
+  enhanceConservativeLocalImage,
   prepareOutpaintImages,
   resizeLocalImage,
   splitLocalImage,
@@ -160,6 +161,11 @@ import {
   outpaintEraseOwnershipEvidence,
   type OutpaintEraseOperation,
 } from "../imageTools/outpaintEraseImageToolUseCase";
+import {
+  createPromptGenerationImageToolUseCase,
+  promptGenerationOwnershipEvidence,
+  type PromptGenerationOperation,
+} from "../imageTools/promptGenerationImageToolUseCase";
 import type {
   ImageGenerationToolInput,
   ImageToolCapability,
@@ -1736,6 +1742,12 @@ function ImageNodeImpl({
   const [outpaintOpen, setOutpaintOpen] = useState(false);
   const [outpaintBusy, setOutpaintBusy] = useState(false);
   const [outpaintError, setOutpaintError] = useState("");
+  const [enhanceOpen, setEnhanceOpen] = useState(false);
+  const [enhanceBusy, setEnhanceBusy] = useState(false);
+  const [enhanceError, setEnhanceError] = useState("");
+  const [cutoutOpen, setCutoutOpen] = useState(false);
+  const [cutoutBusy, setCutoutBusy] = useState(false);
+  const [cutoutError, setCutoutError] = useState("");
   const [retryTaskId, setRetryTaskId] = useState<string>();
   const [reconcileBusy, setReconcileBusy] = useState(false);
   const [reconcileConfirmedMissing, setReconcileConfirmedMissing] = useState(false);
@@ -1903,6 +1915,19 @@ function ImageNodeImpl({
             preparedAssetId: data.imageToolPreparedAssetId,
             prompt: promptControl.committedValue,
             quality: data.imageQuality,
+            sourceAssetId: imageToolInput.assetId,
+            sourceNodeId: imageToolInput.sourceNodeId,
+          }))
+      : (data.imageToolOperation === "enhance-creative" ||
+          data.imageToolOperation === "remove-background") &&
+          data.imageToolOperationId && imageToolInput?.kind === "image" &&
+          imageToolInput.assetId
+        ? generationOwnershipKey(promptGenerationOwnershipEvidence({
+            accountId, aspectRatio: data.imageAspectRatio, canvasId,
+            modelId: data.imageModelId, modelParameters: data.imageParameters,
+            operation: data.imageToolOperation,
+            operationId: data.imageToolOperationId,
+            prompt: promptControl.committedValue, quality: data.imageQuality,
             sourceAssetId: imageToolInput.assetId,
             sourceNodeId: imageToolInput.sourceNodeId,
           }))
@@ -3447,6 +3472,12 @@ function ImageNodeImpl({
     setMultiAngleOpen(false);
     setMoreOpen(false);
     setRedrawOpen(false);
+    setEraseOpen(false);
+    setOutpaintOpen(false);
+    setEnhanceOpen(false);
+    setCutoutOpen(false);
+    setAnnotationOpen(false);
+    setLocalToolOpen(undefined);
   }, [singleNodeChrome]);
 
   useEffect(() => {
@@ -3622,7 +3653,7 @@ function ImageNodeImpl({
   };
 
   const applyDerivedImage = async (
-    operation: "annotate" | "crop" | "resize-pixels",
+    operation: "annotate" | "crop" | "resize-pixels" | "enhance-conservative",
     file: File,
     sourceAssetId: string,
   ) => {
@@ -3686,6 +3717,16 @@ function ImageNodeImpl({
     const result = await applyDerivedImage("resize-pixels", file, sourceAssetId);
     setLocalToolOpen(undefined);
     return result;
+  };
+
+  const enhanceConservative = async () => {
+    const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
+    if (!sourceAssetId) throw new Error("图片尚未完成安全保存");
+    const file = await enhanceConservativeLocalImage({
+      assetId: sourceAssetId,
+      fileName: `${titleControl.committedValue || "Image"}-保守增强.png`,
+    });
+    return applyDerivedImage("enhance-conservative", file, sourceAssetId);
   };
 
   const updateAnnotations = (
@@ -4157,6 +4198,91 @@ function ImageNodeImpl({
     }
   };
 
+  const submitPromptGeneration = async (
+    operation: PromptGenerationOperation,
+    prompt: string,
+  ) => {
+    const setBusy = operation === "enhance-creative" ? setEnhanceBusy : setCutoutBusy;
+    const setError = operation === "enhance-creative" ? setEnhanceError : setCutoutError;
+    const capability = operation === "enhance-creative"
+      ? creativeEnhanceCapability : removeBackgroundCapability;
+    const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
+    if (!sourceAssetId || !graphCommandPort) {
+      setError(!sourceAssetId ? "图片尚未完成安全保存" : "画布尚未完成安全加载");
+      return;
+    }
+    const model = imageModels?.find((candidate) => candidate.id === capability.modelId);
+    if (!model || model.generationAvailable === false ||
+        (model.imageParameters?.maxReferenceImages ?? 0) < 1) {
+      setError("当前模型不支持安全参考图输入");
+      return;
+    }
+    const schema = model.parameterSchema ?? defaultParameterSchema("image");
+    const modelParameters = submissionParameterValues(schema,
+      normalizeParameterValues(schema, { inputMode: "image" }));
+    const requestedAspectRatio = supportedImageValue(
+      model.imageParameters?.aspectRatios ?? ["auto"],
+      String(modelParameters.aspectRatio ?? "auto"));
+    const requestedQuality = supportedImageValue(
+      model.imageParameters?.qualities ?? ["auto"],
+      String(modelParameters.quality ?? "auto"));
+    const operationId = crypto.randomUUID();
+    const preOwnershipKey = generationOwnershipKey({ accountId, canvasId,
+      operation, operationId, prompt, sourceAssetId, sourceNodeId: id });
+    setBusy(true);
+    setError("");
+    try {
+      await flushCanvasSave();
+      const expectedRevision = await waitForCanvasRevision();
+      checkpoint();
+      await createPromptGenerationImageToolUseCase({
+        async afterPlaceholderCreated() {
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+          await flushCanvasSave();
+          await waitForCanvasRevision();
+        }, capability, graph: graphCommandPort, operation,
+        ownershipKey: generationOwnershipKey,
+        createLifecycle(plan) {
+          return createSingleNodeGenerationLifecycle({
+            adapter: createImageGenerationAdapter({ aspectRatio: plan.aspectRatio,
+              inputKey: plan.inputKey, modelId: plan.modelId,
+              modelName: plan.modelName, nodeId: plan.nodeId,
+              ownershipKey: plan.ownershipKey, parameters: plan.modelParameters,
+              payload: plan.payload, quality: plan.quality,
+              readBlock() {
+                const snapshot = graphCommandPort.snapshot();
+                const source = snapshot.nodes.find((node) => node.id === id);
+                const target = snapshot.nodes.find((node) => node.id === plan.nodeId);
+                if (!source || source.type !== "image" ||
+                    source.data.assetId !== sourceAssetId || !target ||
+                    target.type !== "image" ||
+                    target.data.imageToolOperation !== operation ||
+                    target.data.imageToolOutputBackground !==
+                      (operation === "remove-background" ? "transparent" : undefined) ||
+                    target.data.imageToolSourceAssetId !== sourceAssetId) {
+                  return { message: "图片处理来源或任务占位已变化，已停止提交",
+                    status: "blocked" };
+                }
+              } }), graph: graphCommandPort, nodeId: plan.nodeId,
+            save: { async flush() {
+              await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+              await flushCanvasSave();
+            }, async waitForRevision() {
+              return { revision: await waitForCanvasRevision() };
+            } }, tasks: createBrowserSingleNodeGenerationTaskPort({ accountId }) });
+        },
+      }).execute({ accountId, aspectRatio: requestedAspectRatio, canvasId,
+        expectedRevision, modelId: model.id, modelName: model.displayName,
+        modelParameters, operationId, preOwnershipKey, prompt,
+        quality: requestedQuality, runId: `image-tool-${operation}-${operationId}`,
+        sourceAssetId, sourceNodeId: id, title: titleControl.committedValue || "Image" });
+      if (operation === "enhance-creative") setEnhanceOpen(false);
+      else setCutoutOpen(false);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "图片处理任务提交失败");
+    } finally { setBusy(false); }
+  };
+
   const toggleColorMark = (color: string) => {
     if (imageColorFilter === color && data.imageColorMarks?.includes(color)) {
       setImageColorFilter();
@@ -4201,6 +4327,10 @@ function ImageNodeImpl({
       operation: "quick-split",
       execute: (input: Readonly<{ grid: 2 | 3 | 4 }>) =>
         quickSplit(input.grid),
+    })
+    .register({
+      operation: "enhance-conservative",
+      execute: () => enhanceConservative(),
     })
     .register({
       operation: "annotate",
@@ -4376,7 +4506,7 @@ function ImageNodeImpl({
               ] as const).map(([label, icon, toolCapability]) => (
                 <button
                   data-capability-status={toolCapability?.status}
-                  disabled={!(["调整像素", "标注", "扩图", "擦除"] as string[]).includes(label)}
+                  disabled={!(["调整像素", "标注", "扩图", "擦除", "增强", "抠图"] as string[]).includes(label)}
                   key={label}
                   onClick={() => {
                     setMoreOpen(false);
@@ -4385,8 +4515,12 @@ function ImageNodeImpl({
                     setRedrawOpen(false);
                     setEraseOpen(label === "擦除");
                     setOutpaintOpen(label === "扩图");
+                    setEnhanceOpen(label === "增强");
+                    setCutoutOpen(label === "抠图");
                     setEraseError("");
                     setOutpaintError("");
+                    setEnhanceError("");
+                    setCutoutError("");
                     setLocalToolOpen(label === "调整像素" ? "resize" : undefined);
                     setAnnotationOpen(label === "标注");
                   }}
@@ -4580,6 +4714,43 @@ function ImageNodeImpl({
           />
         </NodeToolbar>
       )}
+      <NodeToolbar className="image-local-tool-toolbar" isVisible={Boolean(
+        preview && singleNodeChrome && enhanceOpen)} offset={16}
+        position={Position.Bottom}>
+        <div className="image-processing-panel" data-testid="image-enhance-panel">
+          <strong>增强图片</strong>
+          <p>保守增强只做轻量清晰度与色彩校正；创意增强会生成新细节。</p>
+          <button disabled={enhanceBusy} onClick={() => {
+            setEnhanceBusy(true); setEnhanceError("");
+            void imageToolDispatcher.execute("enhance-conservative", {})
+              .then(() => setEnhanceOpen(false))
+              .catch((error: unknown) => setEnhanceError(error instanceof Error
+                ? error.message : "保守增强失败"))
+              .finally(() => setEnhanceBusy(false));
+          }} type="button">保守增强</button>
+          <button disabled={enhanceBusy || creativeEnhanceCapability.status !== "available"}
+            onClick={() => void submitPromptGeneration("enhance-creative",
+              "在保持主体身份、构图和主要颜色的前提下增强清晰度与细节；允许补充自然纹理，不添加无关对象。")}
+            type="button">创意增强（会改变内容）</button>
+          <button onClick={() => setEnhanceOpen(false)} type="button">取消</button>
+          {enhanceError && <div role="alert">{enhanceError}</div>}
+        </div>
+      </NodeToolbar>
+      <NodeToolbar className="image-local-tool-toolbar" isVisible={Boolean(
+        preview && singleNodeChrome && cutoutOpen)} offset={16}
+        position={Position.Bottom}>
+        <div className="image-processing-panel image-processing-alpha"
+          data-testid="image-cutout-panel">
+          <strong>主体抠图</strong>
+          <p>移除背景并生成带透明通道的PNG；棋盘格仅用于预览透明区域。</p>
+          <button disabled={cutoutBusy || removeBackgroundCapability.status !== "available"}
+            onClick={() => void submitPromptGeneration("remove-background",
+              "精确保留主要主体和边缘细节，完全移除背景，输出透明背景PNG；不要添加阴影、底色或棋盘格。")}
+            type="button">生成透明PNG</button>
+          <button onClick={() => setCutoutOpen(false)} type="button">取消</button>
+          {cutoutError && <div role="alert">{cutoutError}</div>}
+        </div>
+      </NodeToolbar>
       {preview && annotationOpen && (
         <ImageAnnotationEditor
           document={data.imageAnnotations ?? emptyImageAnnotationDocument(
@@ -5043,9 +5214,16 @@ function ImageNodeImpl({
         )}
       </div>
       <div
-        className="image-node-card"
+        className={`image-node-card${
+          data.imageToolOutputBackground === "transparent"
+            ? " image-transparent-preview"
+            : ""
+        }`}
         data-asset-id={data.assetId}
         data-empty={preview || generating || uploading ? undefined : "true"}
+        data-transparent-output={data.imageToolOutputBackground === "transparent"
+          ? "true"
+          : undefined}
         data-testid={`image-node-${id}`}
       >
         {(transientUploadError || uploadError) && (
@@ -5221,7 +5399,11 @@ function ImageNodeImpl({
             <div
               aria-label={`${titleControl.committedValue || "Image"} 图片详情`}
               aria-modal="true"
-              className="image-detail-dialog"
+              className={`image-detail-dialog${
+                data.imageToolOutputBackground === "transparent"
+                  ? " image-transparent-preview"
+                  : ""
+              }`}
               role="dialog"
             >
               <img

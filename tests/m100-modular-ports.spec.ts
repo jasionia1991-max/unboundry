@@ -59,7 +59,7 @@ import {
   mediaEditSource,
 } from "../server/mediaEditSource";
 import type { MediaRecord } from "../server/mediaRegistry";
-import { validatePng } from "../server/assetStorage";
+import { validatePng, validateTransparentPng } from "../server/assetStorage";
 import type { ProviderProfile } from "../server/providerProfiles";
 import {
   createMediaPublicationService,
@@ -108,6 +108,8 @@ import { createMultiAngleImageToolUseCase } from
   "../client/src/imageTools/multiAngleImageToolUseCase";
 import { createOutpaintEraseImageToolUseCase } from
   "../client/src/imageTools/outpaintEraseImageToolUseCase";
+import { createPromptGenerationImageToolUseCase } from
+  "../client/src/imageTools/promptGenerationImageToolUseCase";
 import {
   createFakeImageToolCapabilityAdapter,
   ImageToolCapabilityAdapterRegistry,
@@ -1044,6 +1046,74 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
         : {}),
     });
   }
+  for (const operation of ["enhance-creative", "remove-background"] as const) {
+    let processingSnapshot: CanvasGraphSnapshot = {
+      edges: [],
+      nodes: [{ data: { assetId: `${operation}-source-asset`, label: "Image" },
+        id: `${operation}-source`, position: { x: 0, y: 0 },
+        style: { width: 250 }, type: "image" }], revision: 11,
+    };
+    let capturedPayload: { imageTool: import("../types/imageTools").ImageGenerationToolInput } |
+      undefined;
+    const useCase = createPromptGenerationImageToolUseCase({
+      async afterPlaceholderCreated() {},
+      capability: modularImageToolCapability(operation, {
+        expiresAt: "2099-08-23T13:00:00.000Z",
+        modelId: "image-model-internal-id",
+        supportsAlpha: operation === "remove-background",
+      }),
+      graph: createCanvasGraphCommandPort({
+        commit(next) { processingSnapshot = next; },
+        persistenceReady: () => true,
+        snapshot: () => processingSnapshot,
+      }),
+      operation,
+      ownershipKey: (evidence) => JSON.stringify(evidence),
+      createLifecycle(plan) {
+        capturedPayload = plan.payload;
+        const task = { attempt: 1, canvasId: "processing-canvas", costCurrency: "USD",
+          createdAt: "2026-08-23T12:00:00.000Z", generationInputKey: plan.inputKey,
+          generationOwnershipKey: plan.ownershipKey, id: `${operation}-task`, kind: "image",
+          nodeId: plan.nodeId, prompt: plan.payload.prompt, state: "queued",
+          updatedAt: "2026-08-23T12:00:01.000Z" } as const;
+        return { abort() {}, async cancel() { return { status: "cancelled", task }; },
+          async generate() { return { status: "success", task }; },
+          async reconcile() { return { status: "success", task }; },
+          async recover() { return { status: "success", task }; },
+          async retry() { return { status: "success", task }; },
+          async submit() { return { status: "submitted", task }; } } satisfies
+          SingleNodeGenerationLifecycle;
+      },
+    });
+    await expect(useCase.execute({ accountId: "account", aspectRatio: "auto",
+      canvasId: "processing-canvas", expectedRevision: 11,
+      modelId: "image-model-internal-id", modelName: "GPT Image 2",
+      modelParameters: { inputMode: "image" }, operationId: `${operation}-operation`,
+      preOwnershipKey: "pre-owner", prompt: "处理图片", quality: "auto",
+      runId: `${operation}-run`, sourceAssetId: `${operation}-source-asset`,
+      sourceNodeId: `${operation}-source`, title: "Source" }))
+      .resolves.toMatchObject({ operation, taskId: `${operation}-task` });
+    expect(capturedPayload?.imageTool).toMatchObject({ operation,
+      ...(operation === "remove-background"
+        ? { outputBackground: "transparent" }
+        : {}) });
+    expect(processingSnapshot.nodes[1]?.data).toMatchObject({
+      imageToolOperation: operation,
+      ...(operation === "remove-background"
+        ? { imageToolOutputBackground: "transparent" }
+        : {}),
+    });
+  }
+  const transparentPng = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DAAAAEAQEARwbK3gAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  const opaqueAlphaPng = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64",
+  );
+  expect(validateTransparentPng(transparentPng)).toEqual({ height: 1, width: 1 });
+  expect(() => validateTransparentPng(opaqueAlphaPng)).toThrow(/transparent pixels/);
   expect(redrawCanvasPoint({
     canvasHeight: 720,
     canvasWidth: 1280,

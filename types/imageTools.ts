@@ -62,6 +62,7 @@ export type ImageGenerationToolInput = Readonly<{
     | "remove-background"
   >;
   operationId: string;
+  outputBackground?: "transparent";
   sourceAssetId: string;
   sourceNodeId: string;
 }>;
@@ -205,14 +206,14 @@ export type ImageToolResult =
   | Readonly<{
       assetIds: readonly string[];
       kind: "derived-assets";
-      operation: "crop" | "resize-pixels" | "quick-split" | "annotate";
+      operation: "crop" | "resize-pixels" | "quick-split" | "annotate" |
+        "enhance-conservative";
       sourceAssetId: string;
     }>
   | Readonly<{
       kind: "generation-task";
       operation:
         | "enhance-creative"
-        | "enhance-conservative"
         | "erase"
         | "multi-angle"
         | "outpaint"
