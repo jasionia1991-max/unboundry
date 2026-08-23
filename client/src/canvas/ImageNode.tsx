@@ -30,6 +30,10 @@ import {
   uploadImageAsset,
   uploadPngAsset,
 } from "./imageAsset";
+import {
+  resolveEditableImageSource,
+  type EditableImageSource,
+} from "./editableImageSource";
 import { withImageReferenceInputMode } from "./imageReferenceMode";
 import { fitVisualMediaSize, NODE_DEFAULT_SIZES } from "./mediaGeometry";
 import { NodeModelControl } from "./NodeModelControl";
@@ -507,14 +511,14 @@ const cropRatios: CropRatio[] = [
 ];
 
 function ImageCropEditor({
+  assetId,
   onCancel,
   onConfirm,
-  src,
   title,
 }: {
+  assetId: string;
   onCancel: () => void;
-  onConfirm: (file: File) => Promise<void>;
-  src: string;
+  onConfirm: (file: File, sourceAssetId: string) => Promise<void>;
   title: string;
 }) {
   const drag = useRef<{
@@ -531,6 +535,12 @@ function ImageCropEditor({
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [editableSource, setEditableSource] =
+    useState<EditableImageSource>();
+  const [sourceBusy, setSourceBusy] = useState(true);
+  const [sourceError, setSourceError] = useState("");
+  const [sourceEpoch, setSourceEpoch] = useState(0);
+  const imageRef = useRef<HTMLImageElement>(null);
   const [natural, setNatural] = useState({ height: 720, width: 1280 });
   const [ratio, setRatio] = useState<CropRatio>("原图");
   const [ratioOpen, setRatioOpen] = useState(false);
@@ -549,6 +559,43 @@ function ImageCropEditor({
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
   }, [busy, onCancel]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    let resolved: EditableImageSource | undefined;
+    setEditableSource(undefined);
+    setSourceBusy(true);
+    setSourceError("");
+    const start = window.setTimeout(() => {
+      void resolveEditableImageSource(assetId, controller.signal).then(
+        (source) => {
+          resolved = source;
+          if (!active) {
+            source.release();
+            return;
+          }
+          setEditableSource(source);
+          setSourceBusy(false);
+        },
+        (failure) => {
+          if (!active || controller.signal.aborted) return;
+          setSourceBusy(false);
+          setSourceError(
+            failure instanceof Error
+              ? failure.message
+              : "图片暂时无法读取，请稍后重试",
+          );
+        },
+      );
+    }, 0);
+    return () => {
+      active = false;
+      window.clearTimeout(start);
+      controller.abort(new DOMException("Crop editor closed", "AbortError"));
+      resolved?.release();
+    };
+  }, [assetId, sourceEpoch]);
 
   const chooseRatio = (next: CropRatio) => {
     setRatio(next);
@@ -606,11 +653,16 @@ function ImageCropEditor({
 
   const confirm = async () => {
     setError("");
+    if (!editableSource || !imageRef.current) {
+      setError(sourceError || "图片尚未准备完成");
+      return;
+    }
     setBusy(true);
     try {
-      const image = new window.Image();
-      image.src = src;
-      await image.decode();
+      const image = imageRef.current;
+      if (!image.complete || !image.naturalWidth || !image.naturalHeight) {
+        throw new Error("图片尚未准备完成");
+      }
       const sx = Math.round(box.x * image.naturalWidth);
       const sy = Math.round(box.y * image.naturalHeight);
       const width = Math.max(1, Math.round(box.width * image.naturalWidth));
@@ -635,9 +687,12 @@ function ImageCropEditor({
           "image/png",
         ),
       );
-      await onConfirm(new File([blob], `${title || "Image"}-crop.png`, {
-        type: "image/png",
-      }));
+      await onConfirm(
+        new File([blob], `${title || "Image"}-crop.png`, {
+          type: "image/png",
+        }),
+        editableSource.sourceAssetId,
+      );
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "裁剪保存失败");
     } finally {
@@ -658,18 +713,31 @@ function ImageCropEditor({
         data-testid="image-crop-stage"
         style={{ height: stage.height, width: stage.width }}
       >
-        <img
-          alt=""
-          draggable={false}
-          onLoad={(event) =>
-            setNatural({
-              height: event.currentTarget.naturalHeight,
-              width: event.currentTarget.naturalWidth,
-            })
-          }
-          src={src}
-        />
-        <div
+        {editableSource && (
+          <img
+            alt=""
+            crossOrigin={editableSource.crossOrigin}
+            draggable={false}
+            onError={() => {
+              setEditableSource(undefined);
+              setSourceError("图片暂时无法读取，请稍后重试");
+            }}
+            onLoad={(event) =>
+              setNatural({
+                height: event.currentTarget.naturalHeight,
+                width: event.currentTarget.naturalWidth,
+              })
+            }
+            ref={imageRef}
+            src={editableSource.url}
+          />
+        )}
+        {sourceBusy && (
+          <div className="image-crop-source-status" role="status">
+            正在准备图片…
+          </div>
+        )}
+        {editableSource && <div
           className="image-crop-selection"
           data-testid="image-crop-selection"
           onPointerDown={(event) => {
@@ -702,7 +770,7 @@ function ImageCropEditor({
               key={handle}
             />
           ))}
-        </div>
+        </div>}
       </div>
       <div className="image-crop-controls" data-testid="image-crop-controls">
         <button
@@ -741,14 +809,27 @@ function ImageCropEditor({
         </span>
         <button
           className="image-crop-confirm"
-          disabled={busy}
+          disabled={busy || sourceBusy || !editableSource}
           onClick={() => void confirm()}
           type="button"
         >
           <span aria-hidden="true">✓</span>
           <span>{busy ? "处理中" : "确认裁剪"}</span>
         </button>
-        {error && <div className="image-crop-error" role="alert">{error}</div>}
+        {(error || sourceError) && (
+          <div className="image-crop-error" role="alert">
+            <span>{error || sourceError}</span>
+            {sourceError && !sourceBusy && (
+              <button
+                className="image-crop-retry"
+                onClick={() => setSourceEpoch((epoch) => epoch + 1)}
+                type="button"
+              >
+                重试
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>,
     document.body,
@@ -1491,6 +1572,7 @@ function ImageNodeImpl({
   const [savingCanvas, setSavingCanvas] = useState(false);
   const [favorite, setFavorite] = useState(false);
   const [cropOpen, setCropOpen] = useState(false);
+  const [cropSourceAssetId, setCropSourceAssetId] = useState<string>();
   const [fullscreen, setFullscreen] = useState(false);
   const [lightingOpen, setLightingOpen] = useState(false);
   const [multiAngleOpen, setMultiAngleOpen] = useState(false);
@@ -3259,9 +3341,12 @@ function ImageNodeImpl({
     link.click();
   };
 
-  const applyCrop = async (file: File) => {
+  const applyCrop = async (file: File, sourceAssetId: string) => {
     const source = getNode(id);
-    if (!source || !persistenceReadyLive.current) {
+    if (!source || source.data.assetId !== sourceAssetId) {
+      throw new Error("原图片已发生变化，请重新打开裁剪");
+    }
+    if (!persistenceReadyLive.current) {
       throw new Error("画布尚未完成安全加载");
     }
     const operation = uploadOperation.current;
@@ -3274,10 +3359,13 @@ function ImageNodeImpl({
         operation !== uploadOperation.current ||
         scope !== mediaAdoptionScopeRef.current ||
         !persistenceReadyLive.current ||
-        !getNode(id)
+        getNode(id)?.data.assetId !== sourceAssetId
       ) {
-        await discardImageAsset(asset.assetId);
-        return;
+        throw new Error(
+          getNode(id)?.data.assetId !== sourceAssetId
+            ? "原图片已发生变化，请重新打开裁剪"
+            : "画布尚未完成安全加载",
+        );
       }
     const derivedId = `image-crop-${crypto.randomUUID()}`;
     const derivedSize = fitVisualMediaSize(asset.width, asset.height);
@@ -3389,6 +3477,9 @@ function ImageNodeImpl({
           onClick={() => {
             setLightingOpen(false);
             setMoreOpen(false);
+            setCropSourceAssetId(
+              typeof data.assetId === "string" ? data.assetId : undefined,
+            );
             setCropOpen(true);
           }}
           type="button"
@@ -3530,11 +3621,11 @@ function ImageNodeImpl({
           </svg>
         </button>
       </NodeToolbar>
-      {preview && cropOpen && (
+      {preview && cropOpen && cropSourceAssetId && (
         <ImageCropEditor
+          assetId={cropSourceAssetId}
           onCancel={() => setCropOpen(false)}
           onConfirm={applyCrop}
-          src={preview}
           title={titleControl.committedValue}
         />
       )}

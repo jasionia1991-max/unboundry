@@ -5,6 +5,22 @@
 更新时间：2026-08-23
 状态：`v0.6.31 已发布，技术终门与用户实页验收均通过，状态 PRODUCTION_PUBLISHED_USER_PASS / USER_PASS。权威回执见 spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json。`
 
+### 2026-08-23 INC-IMGEDIT-001 OSS 图片裁剪同站编辑源（v0.6.32 PR #75，生产未发布）
+
+- 用户已确认先做同站安全取图的方案 2，并要求先落地文档，避免上下文压缩后的失忆或漂移。
+- 权威方案：`spec/INC_IMGEDIT_001_EDITABLE_IMAGE_SOURCE_PLAN_2026-08-23.md`；当前状态 `VERSIONED_V0_6_32 / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / FORMAL_FULL_1049_OF_1050 / M22_ISOLATED_RECHECK_PASS / GITHUB_PR_75_OPEN / GITHUB_CI_PASS / TAG_V0_6_32 / USER_RECHECK`。
+- 基线：main `a29ac82793c2887bd252e7de16d7913fc07f026c`、package `0.6.31`、schema39；隔离分支/worktree 为 `codex/image-edit-source-2026-08-23` / `/Users/mymy/Documents/unboundry-image-edit-source-2026-08-23`。
+- 冻结范围：新增 owner-scoped 同站编辑源接口、可取消且 20 MiB 有界的 `MediaBlobStore` 读取、客户端可替换 resolver、Blob 生命周期与来源 assetId 栅栏；不增加域名/CDN/CORS，不迁移数据，不触发真实 Provider/OSS，不发布。
+- 验收边界：fake OSS 的普通素材路径即使 307 到跨域地址，裁剪也必须经同站 Blob 成功；local/OSS、权限、完整性、超时、取消、并发、上传补偿与持久化竞态均需定向测试；候选冻结后因共享媒体端口改动只允许一次正式 safe full。
+- 本地候选已落地：同站 handler、可取消 MediaBlobStore read、客户端 resolver/Blob 生命周期、StrictMode 单请求保护，以及打开裁剪时冻结的来源 assetId 栅栏。普通素材路径即使模拟307到无CORS跨域图片，编辑器仍只消费同站 `blob:` 并成功产生派生图；来源在裁剪期间被替换则拒绝且不发起新的派生上传。
+- 定向验证：m100 11/11、m2 10/10、m11+m37+m80+m99 共68/68；safe preflight、TypeScript、架构76条基线、source coverage、生产build、离线/凭据/网络保护均通过，4173 listener 不变。测试仍为固定120 specs/1050 tests，未改 safe runner/manifest；两次测试设计纠偏与两次产品竞态修复已逐项写入权威方案施工记录。
+- 冻结候选只运行一次正式 safe full：120/120 specs 已执行，1049/1050 tests 通过。唯一失败为未改动 m22 的既有画布缩放时序断言（期望0.72、当次0.6830357142857143）；同一未改源码只复验该失败规格后37/37通过，因此记为无关偶发波动，但不把原始full改写成FULL_PASS，也不重复full。
+- 最终自动证据：图片修复与直接依赖定向89/89；正式full 1049/1050；m22隔离复验37/37。source/snapshot SHA-256均为`d85e34be4ab1259df381f2b62268f72e3739d6b72dde12dd385f7ef7a58af239`，4173 listener不变，临时目录已清理，外网/凭据/真实Provider/OSS门禁通过。
+- 未访问真实OSS、Provider或生产，未commit、push、tag、PR或发布；当前只是本地候选，用户未亲测前不能记生产PASS或USER_PASS。
+- 用户随后明确授权 commit、tag、push、PR，并允许必要版本升级；候选版本确定为 v0.6.32。该授权不包含生产发布，线上继续为 v0.6.31。
+- v0.6.32 版本同步后定向 m38+m81 `56/56 PASS`；同一安全入口的preflight、TypeScript、架构、source coverage、生产build、离线/凭据/网络门禁全部通过，source/snapshot SHA为`55708bb8…c3ca`，4173 listener不变。没有因版本/文档同步重复正式full。
+- GitHub交付：功能与版本提交`ca6bddb`，分支`codex/image-edit-source-2026-08-23`已推送，PR #75已创建；注释标签`v0.6.32`解引用后精确指向`4cf9d74dec941dea8f10e73bb07de990b668e150`。Quality gates run `32623552933`已`SUCCESS`；PR/tag/CI都不等于生产发布。
+
 ### 2026-08-23 全项目治理与 nginx 加固
 
 - 状态：`MAIN_MERGED / MAIN_CI_PASS / PRODUCTION_NGINX_HARDENED / GITHUB_HYGIENE_APPLIED / NO_APP_RELEASE`。本轮不升级 package、不发布新应用版本、不修改业务代码、schema、生产数据、Provider 或 OSS。

@@ -545,12 +545,57 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   const originalAssetId = await card.getAttribute("data-asset-id");
   expect(originalAssetId).toBeTruthy();
 
+  let redirectedAssetReads = 0;
+  let editSourceReads = 0;
+  let cropUploadPosts = 0;
+  page.on("request", (browserRequest) => {
+    if (browserRequest.url().includes("/api/image-edit-sources/")) {
+      editSourceReads += 1;
+    }
+    if (
+      browserRequest.method() === "POST" &&
+      decodeURIComponent(browserRequest.headers()["x-file-name"] ?? "")
+        .endsWith("-crop.png")
+    ) {
+      cropUploadPosts += 1;
+    }
+  });
+  await page.route(
+    `**/api/assets/${originalAssetId}`,
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      redirectedAssetReads += 1;
+      await route.fulfill({
+        headers: {
+          Location: "https://cross-origin.invalid/crop-source.png",
+        },
+        status: 307,
+      });
+    },
+  );
+  await page.route(
+    "https://cross-origin.invalid/crop-source.png",
+    (route) => route.fulfill({
+      contentType: "image/png",
+      path: path.resolve(
+        "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+      ),
+      status: 200,
+    }),
+  );
+
   await page.getByRole("button", { name: "裁剪" }).click();
   const overlay = page.getByTestId("image-crop-overlay");
   const stage = page.getByTestId("image-crop-stage");
   const selection = page.getByTestId("image-crop-selection");
   const confirmCrop = page.getByRole("button", { name: "确认裁剪" });
   await expect(overlay).toBeVisible();
+  await expect(selection).toBeVisible();
+  await expect(overlay.locator("img")).toHaveAttribute("src", /^blob:/);
+  expect(redirectedAssetReads).toBe(0);
   expect(await stage.boundingBox()).toMatchObject({ height: 552 });
   expect(await page.getByTestId("image-crop-controls").boundingBox())
     .toMatchObject({ height: 42, width: 252 });
@@ -637,6 +682,27 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   await expect(page.locator(".react-flow__edge")).toHaveCount(1);
   expect((await request.get(`/api/assets/${originalAssetId}`)).ok()).toBeTruthy();
   expect((await request.get(`/api/assets/${derivedAssetId}`)).ok()).toBeTruthy();
+  expect(cropUploadPosts).toBe(2);
+
+  await node.click();
+  await page.getByRole("button", { name: "裁剪" }).click();
+  await expect(selection).toBeVisible();
+  await node.getByTestId("image-upload-input").setInputFiles(
+    path.resolve(
+      "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+    ),
+  );
+  await expect(card).not.toHaveAttribute("data-asset-id", originalAssetId!);
+  await confirmCrop.click();
+  await expect(page.getByRole("alert")).toHaveText(
+    "原图片已发生变化，请重新打开裁剪",
+  );
+  expect(cropUploadPosts).toBe(2);
+  await expect(page.locator(".react-flow__node-image")).toHaveCount(2);
+  await page.getByRole("button", { name: "取消裁剪" }).click();
+  await expect(overlay).toHaveCount(0);
+  expect(editSourceReads).toBe(4);
+  expect(redirectedAssetReads).toBe(0);
 });
 
 test("Image multi-angle panel keeps local parameters without generating", async ({
