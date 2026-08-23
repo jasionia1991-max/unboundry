@@ -1,9 +1,13 @@
 # Unboundry 渐进式模块化 Checkpoint
 
-更新日期：2026-08-22
-状态：`CURRENT_READ_ONLY_RECHECK / FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED / CURRENT_V0_6_30_USER_PASS / VIEW_005_AUTO_PASS / NO_ACTIVE_NEXT_BATCH`
+更新日期：2026-08-23
+状态：`CURRENT_GOVERNANCE_HARDENING / FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED / CURRENT_V0_6_31_USER_PASS / VIEW_005_AUTO_PASS / NO_ACTIVE_NEXT_BATCH`
 
-当前收口：第一、第二批已在 v0.6.28 发布，随后由 v0.6.29/30 的商业 Provider 隔离、真实验证、结果兼容与用户验收继续验证当前组合。`VIEW-005` 已收口为 `AUTO_PASS`；当前生产仍为 v0.6.30/schema39。本次只读复核只同步治理文档，没有修改产品代码、访问生产或重新执行测试。以下冻结身份和施工记录保留原时点，不得再把 `USER_RECHECK` 或旧 package 解释为当前状态。
+当前收口：第一、第二批已在 v0.6.28 发布，随后由 v0.6.29/30 的商业 Provider 隔离、真实验证、结果兼容与用户验收继续验证组合，并随 v0.6.31 进入普通 main-safe 生产路径。`VIEW-005` 已收口为 `AUTO_PASS`；当前生产为 v0.6.31/schema39。2026-08-23 治理加固只处理权威文档、轻量 CI、仓库卫生和 nginx 安全合同，不启动第三至第七批，不借机拆分稳定业务模块。以下冻结身份和施工记录保留原时点，不得再把 `USER_RECHECK` 或旧 package 解释为当前状态。
+
+治理门：后续批次只在真实新功能触发边界问题时立项；没有触发就不得施工。
+
+本轮验证：Node `22.23.1` / npm `10.9.8`，safe preflight通过；文档一致性m38 `15/15 PASS`，nginx运维合同m96最终`4/4 PASS`，架构基线与source coverage通过，4173 listener不变。没有运行safe full。PR #72的轻量CI已通过，用户随后明确授权合并并收口，但没有应用release授权，线上应用版本不变；生产只执行了有备份、`nginx -t`和回滚路径保护的nginx reload。
 
 ## 1. 当前权威文件
 
@@ -38,7 +42,7 @@
 - package约束：Node `>=22.23.1 <23`、npm `10.9.8`
 - shell默认：Node `v25.9.0`、npm `11.12.1`
 - 第一批施工/验证：显式使用Node `22.23.1`、npm `10.9.8`
-- 当时线上状态：`v0.6.28 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；当前为 v0.6.30 `USER_PASS`
+- 当时线上状态：`v0.6.28 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；当前为 v0.6.31 `USER_PASS`
 - 受保护未跟踪文件：`spec/public-templates-director-split-revision.json`
 
 基线会漂移，新Session必须重新只读核对；冲突时停止，不得reset、clean、checkout覆盖或自行修复。
@@ -72,7 +76,7 @@
 
 ## 5. 第一批本地交付
 
-状态：第一批已随v0.6.28发布；当时为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。该矩阵本身不冒充独立用户验收，当前组合版本的用户状态由 v0.6.30 回执承担。
+状态：第一批已随v0.6.28发布；当时为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。该矩阵本身不冒充独立用户验收，当前组合版本的用户状态由 v0.6.31 回执承担。
 
 - 调用链：`HTTP/API → Generation Task → 输入物化 → profile/credential lease + task snapshot校验 → TextProviderRegistry → Ark/relay文字adapter → 规范化text/usage → provider response evidence → Task complete`。
 - driver选择：只在`server/providerRegistry.ts`按已解析的`profile.driver + protocol`进行；Generation Task不再按具体文字driver分支。

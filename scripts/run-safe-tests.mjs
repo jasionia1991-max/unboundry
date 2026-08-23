@@ -206,8 +206,9 @@ async function runManaged(command, args, options = {}) {
 }
 
 function listener4173Snapshot() {
+  const lsofCommand = process.platform === "darwin" ? "/usr/sbin/lsof" : "lsof";
   const result = run(
-    "/usr/sbin/lsof",
+    lsofCommand,
     ["-nP", "-iTCP:4173", "-sTCP:LISTEN", "-FpcRLT"],
     { allowFailure: true, capture: true },
   );

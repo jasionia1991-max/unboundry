@@ -360,6 +360,8 @@ function assertExactNginxInventory(text) {
     "if ($unboundry_maintenance_mode = 1)",
     "location ^~ /api/",
     "if ($unboundry_maintenance_mode = 1)",
+    "location ~ ^/(?:\\.(?!well-known(?:/|$))|(?:client|server|types|scripts|spec|tests|deploy|ops)/|package(?:-lock)?\\.json$|tsconfig(?:\\.[^/]+)?\\.json$)",
+    "location = /robots.txt",
     "location /",
     "if ($unboundry_maintenance_mode = 1)",
   ].sort();
@@ -390,11 +392,12 @@ function assertExactNginxInventory(text) {
     proxy_request_buffering: 1,
     proxy_send_timeout: 3,
     proxy_set_header: 15,
-    return: 4,
+    return: 6,
     root: 1,
     send_timeout: 3,
     server: 1,
     server_name: 1,
+    server_tokens: 1,
     ssl_certificate: 1,
     ssl_certificate_key: 1,
     ssl_protocols: 1,
@@ -447,6 +450,11 @@ function uniqueBlock(text, pattern, label) {
   const open = matches[0].index + matches[0][0].lastIndexOf("{");
   const close = blockEnd(text, open);
   return text.slice(open + 1, close);
+}
+
+function literalBlockPattern(header) {
+  const escaped = header.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b${escaped}\\s*\\{`, "g");
 }
 
 function directiveValues(text, name) {
@@ -603,6 +611,7 @@ function validateNginx(text) {
     "unboundry_release '$request_id $remote_addr \"$request\" ' " +
       "'$status $request_length $bytes_sent ' '$request_time $upstream_response_time'",
   );
+  requireDirectDirective(nginx, "server_tokens", "off");
 
   const server = uniqueBlock(nginx, /\bserver\s*\{/g, "TLS server");
   for (const [name, value] of [
@@ -666,6 +675,16 @@ function validateNginx(text) {
   requireProxyContract(api, "1h");
   requireDirectDirective(api, "proxy_request_buffering", "off");
   requireDirectDirective(api, "proxy_buffering", "off");
+
+  const sensitivePaths = uniqueBlock(
+    server,
+    literalBlockPattern("location ~ ^/(?:\\.(?!well-known(?:/|$))|(?:client|server|types|scripts|spec|tests|deploy|ops)/|package(?:-lock)?\\.json$|tsconfig(?:\\.[^/]+)?\\.json$)"),
+    "sensitive source path rejection",
+  );
+  requireDirectDirective(sensitivePaths, "return", "404");
+
+  const robots = uniqueBlock(server, /\blocation\s+=\s+\/robots\.txt\s*\{/g, "robots rejection");
+  requireDirectDirective(robots, "return", "404");
 
   const publicLocation = uniqueBlock(server, /\blocation\s+\/\s*\{/g, "public route");
   requireMaintenanceGuard(publicLocation, "418", "public route");

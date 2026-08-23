@@ -14,6 +14,14 @@
 
 本次版本号与发布授权已消费，禁止追加真实生成、再次发布或进入下一版本。Mureka 真实音频、团队/多人协作、真实 Agent 协议、Storyboard 完整编辑、图片打光和其他付费内容抽验仍保持原 `PARTIAL/PAUSED/BLOCK`，不随本次发布扩大范围。
 
+## 2026-08-23 治理与 nginx 加固
+
+- 应用版本、release、schema和生产数据保持 v0.6.31/schema39 不变；本轮没有新应用发布、Provider请求或OSS写入。
+- 生产 nginx 已隐藏详细版本，并对点文件、源码目录、package/tsconfig和robots路径明确返回404；原配置有只读备份。reload后nginx与`unboundry.service`均active、应用`NRestarts=0`，公网root/version/live/ready均200。
+- GitHub已关闭冲突草稿PR #68、删除8条已合并或被取代的远端分支、启用合并后自动删分支和Vulnerability Alerts；main分支保护仍受当前私有仓库套餐限制。
+- 治理候选已补权威版本一致性门、nginx安全合同和轻量CI，通过`codex/governance-hardening-2026-08-23`专用分支和PR #72交付；PR `lightweight` check已通过，用户随后明确授权合并并收口。合并后的main check仍须单独核验；本轮没有tag或应用release授权。
+- 没有真实功能触发，第三至第七模块化批次继续保持`NO_ACTIVE_NEXT_BATCH`。完整证据见`spec/UNBOUNDRY_GOVERNANCE_NGINX_HARDENING_RECEIPT_2026-08-23.md`。
+
 ## VIEW-005 密集画布性能证据已关闭（2026-08-21，仅工程证据）
 
 - 最终被测实现commit `7d436b89e34a77b01b84de4e764d49044ba25fd2`；产品代码、schema和package版本均未修改。

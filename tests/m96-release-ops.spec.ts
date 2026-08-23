@@ -157,12 +157,14 @@ async function failureDocument(result: CommandResult) {
 }
 
 test("static ops contract validates the loopback nginx and hardened current-release unit", async () => {
-  const fixture = await createFixture();
+    const fixture = await createFixture();
   try {
     const relationship = await attestedReleaseRelationship();
     const result = await command(argumentsFor(fixture));
-    expect(result.exitCode).toBe(0);
-    expect(result.stderr).toBe("");
+    expect({ exitCode: result.exitCode, stderr: result.stderr }).toEqual({
+      exitCode: 0,
+      stderr: "",
+    });
     const document = JSON.parse(result.stdout) as {
       crossContract: Record<string, unknown>;
       evidenceClass: string;
@@ -229,6 +231,27 @@ test("tampered and incomplete templates fail closed", async () => {
     await writeFile(
       fixture.nginx,
       nginxText.replace("127.0.0.1:4173", "127.0.0.1:4174"),
+      { mode: 0o600 },
+    );
+    expect(await failureDocument(await command(argumentsFor(fixture)))).toMatchObject({
+      code: "OPS_TEMPLATE_INVALID",
+    });
+
+    await writeFile(
+      fixture.nginx,
+      nginxText.replace("server_tokens off;\n", ""),
+      { mode: 0o600 },
+    );
+    expect(await failureDocument(await command(argumentsFor(fixture)))).toMatchObject({
+      code: "OPS_TEMPLATE_INVALID",
+    });
+
+    await writeFile(
+      fixture.nginx,
+      nginxText.replace(
+        "    location = /robots.txt {\n        return 404;\n    }",
+        "    location = /robots.txt {\n        return 200;\n    }",
+      ),
       { mode: 0o600 },
     );
     expect(await failureDocument(await command(argumentsFor(fixture)))).toMatchObject({

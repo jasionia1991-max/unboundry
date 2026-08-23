@@ -90,7 +90,7 @@
       "scriptSha256": "c4ed308be00ed27239b6b53aa0f57cc51cda69422058d3ba41460657e45a8336",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "Full snapshot bridge/final fixtures prove the release closure",
-      "targetSha256": "e89499b944115adf4ea4d8615176094856f95bce8297ce4e34d1509da5e6d12a"
+      "targetSha256": "66661343c1aa36e90fc30113675c4eadce48fc973bfa6e58be5e24567d8278e9"
     },
     "scripts/check-greenfield.mjs": {
       "mode": "behavior-test",
@@ -104,14 +104,14 @@
       "scriptSha256": "9b1807c98cd6e59a288fd8b81d29299bb5b34b67e7bed9a2003c8989c95d01e7",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-restart-persistence.mjs",
-      "targetSha256": "e89499b944115adf4ea4d8615176094856f95bce8297ce4e34d1509da5e6d12a"
+      "targetSha256": "66661343c1aa36e90fc30113675c4eadce48fc973bfa6e58be5e24567d8278e9"
     },
     "scripts/check-v051-exact-runtime.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "a1dc5bfd3e5afbc67f824f6aba36ff7408f561133021a1062b6b4e92dcdcd6db",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-v051-exact-runtime.mjs",
-      "targetSha256": "e89499b944115adf4ea4d8615176094856f95bce8297ce4e34d1509da5e6d12a"
+      "targetSha256": "66661343c1aa36e90fc30113675c4eadce48fc973bfa6e58be5e24567d8278e9"
     },
     "scripts/deploy.mjs": {
       "mode": "frozen",
@@ -163,10 +163,10 @@
     },
     "scripts/validate-release-ops.mjs": {
       "mode": "behavior-test",
-      "scriptSha256": "0686c77e8c17aadb0c57961b7c8a49c32071045d6e2d7470f7d20310204b465a",
+      "scriptSha256": "c15bae176836e23d71540bfed67ba2b57f4e50731a9f8a05bee25f4ed65184ae",
       "target": "tests/m96-release-ops.spec.ts",
       "marker": "static ops contract validates the loopback nginx and hardened current-release unit",
-      "targetSha256": "5b6f68c845819d3ed151adfc7d3b3d12bfe2e8100aeecd3ae02f8b3698b38187"
+      "targetSha256": "4a5588a12e1e77bdb03c13fcc3b1986eb513710c9521247af47af68e1a579547"
     },
     "scripts/verify-ecommerce-template-covers.mjs": {
       "mode": "frozen",
