@@ -116,6 +116,37 @@ import {
 } from "./mediaInputMetadata";
 
 type CropBox = { height: number; width: number; x: number; y: number };
+type CropVisualPreview = Readonly<{
+  height: number;
+  url: string;
+  width: number;
+}>;
+
+function freezeReusableCropVisualPreview(
+  image: HTMLImageElement | null,
+): CropVisualPreview | undefined {
+  if (
+    !image?.complete ||
+    image.naturalWidth <= 0 ||
+    image.naturalHeight <= 0
+  ) return undefined;
+  const url = image.currentSrc || image.src;
+  let protocol: string;
+  try {
+    protocol = new URL(url, window.location.href).protocol;
+  } catch {
+    return undefined;
+  }
+  // Creating a second <img> for an HTTP(S) asset can issue another large OSS
+  // read when the original response is no-store. Only in-memory URLs are safe
+  // to reuse as a visual placeholder; every other source gets the compact card.
+  if (protocol !== "blob:" && protocol !== "data:") return undefined;
+  return {
+    height: image.naturalHeight,
+    url,
+    width: image.naturalWidth,
+  };
+}
 type ImageGenerationRun = {
   inputKey?: string;
   ownershipKey?: string;
@@ -515,11 +546,13 @@ function ImageCropEditor({
   onCancel,
   onConfirm,
   title,
+  visualPreview,
 }: {
   assetId: string;
   onCancel: () => void;
   onConfirm: (file: File, sourceAssetId: string) => Promise<void>;
   title: string;
+  visualPreview?: CropVisualPreview;
 }) {
   const drag = useRef<{
     box: CropBox;
@@ -537,20 +570,28 @@ function ImageCropEditor({
   const [error, setError] = useState("");
   const [editableSource, setEditableSource] =
     useState<EditableImageSource>();
+  const [sourceDecoded, setSourceDecoded] = useState(false);
   const [sourceBusy, setSourceBusy] = useState(true);
   const [sourceError, setSourceError] = useState("");
   const [sourceEpoch, setSourceEpoch] = useState(0);
+  const [visualPreviewFailed, setVisualPreviewFailed] = useState(false);
   const imageRef = useRef<HTMLImageElement>(null);
   const [natural, setNatural] = useState({ height: 720, width: 1280 });
   const [ratio, setRatio] = useState<CropRatio>("原图");
   const [ratioOpen, setRatioOpen] = useState(false);
-  const aspect = natural.width / natural.height;
+  const hasVisualPreview = Boolean(visualPreview && !visualPreviewFailed);
+  const aspect = sourceDecoded
+    ? natural.width / natural.height
+    : hasVisualPreview
+    ? visualPreview!.width / visualPreview!.height
+    : 16 / 9;
   const maxWidth = Math.min(987, window.innerWidth - 80);
   const maxHeight = Math.min(552, window.innerHeight - 180);
-  const stage =
-    maxWidth / maxHeight > aspect
-      ? { height: maxHeight, width: maxHeight * aspect }
-      : { height: maxWidth / aspect, width: maxWidth };
+  const stage = !sourceDecoded && !hasVisualPreview
+    ? { height: 180, width: 320 }
+    : maxWidth / maxHeight > aspect
+    ? { height: maxHeight, width: maxHeight * aspect }
+    : { height: maxWidth / aspect, width: maxWidth };
 
   useEffect(() => {
     const close = (event: KeyboardEvent) => {
@@ -565,6 +606,7 @@ function ImageCropEditor({
     let active = true;
     let resolved: EditableImageSource | undefined;
     setEditableSource(undefined);
+    setSourceDecoded(false);
     setSourceBusy(true);
     setSourceError("");
     const start = window.setTimeout(() => {
@@ -576,7 +618,6 @@ function ImageCropEditor({
             return;
           }
           setEditableSource(source);
-          setSourceBusy(false);
         },
         (failure) => {
           if (!active || controller.signal.aborted) return;
@@ -716,28 +757,57 @@ function ImageCropEditor({
         {editableSource && (
           <img
             alt=""
+            className={`image-crop-secure-source${
+              sourceDecoded ? " ready" : ""
+            }`}
             crossOrigin={editableSource.crossOrigin}
+            data-testid="image-crop-secure-source"
             draggable={false}
             onError={() => {
+              editableSource.release();
               setEditableSource(undefined);
+              setSourceBusy(false);
+              setSourceDecoded(false);
               setSourceError("图片暂时无法读取，请稍后重试");
             }}
-            onLoad={(event) =>
+            onLoad={(event) => {
               setNatural({
                 height: event.currentTarget.naturalHeight,
                 width: event.currentTarget.naturalWidth,
-              })
-            }
+              });
+              setSourceDecoded(true);
+              setSourceBusy(false);
+            }}
             ref={imageRef}
             src={editableSource.url}
           />
         )}
+        {hasVisualPreview && (
+          <img
+            alt=""
+            aria-hidden="true"
+            className="image-crop-visual-preview"
+            data-testid="image-crop-visual-preview"
+            draggable={false}
+            onError={() => setVisualPreviewFailed(true)}
+            src={visualPreview!.url}
+          />
+        )}
         {sourceBusy && (
-          <div className="image-crop-source-status" role="status">
-            正在准备图片…
+          <div
+            className="image-crop-source-status"
+            data-testid="image-crop-loading"
+            role="status"
+          >
+            <span aria-hidden="true" className="image-crop-loading-indicator" />
+            <span>
+              {editableSource
+                ? "正在打开高清原图…"
+                : "正在准备高清原图…"}
+            </span>
           </div>
         )}
-        {editableSource && <div
+        {editableSource && sourceDecoded && <div
           className="image-crop-selection"
           data-testid="image-crop-selection"
           onPointerDown={(event) => {
@@ -809,7 +879,7 @@ function ImageCropEditor({
         </span>
         <button
           className="image-crop-confirm"
-          disabled={busy || sourceBusy || !editableSource}
+          disabled={busy || sourceBusy || !editableSource || !sourceDecoded}
           onClick={() => void confirm()}
           type="button"
         >
@@ -1421,6 +1491,7 @@ function ImageNodeImpl({
   const mediaLoad = useMediaLoadRecovery(data.imageSrc);
   const inputRef = useRef<HTMLInputElement>(null);
   const moreRef = useRef<HTMLSpanElement>(null);
+  const previewImageRef = useRef<HTMLImageElement>(null);
   const uploadInFlight = useRef(false);
   const uploadBaseline = useRef<ProbeNodeType | undefined>(undefined);
   const uploadOperation = useRef(0);
@@ -1573,6 +1644,8 @@ function ImageNodeImpl({
   const [favorite, setFavorite] = useState(false);
   const [cropOpen, setCropOpen] = useState(false);
   const [cropSourceAssetId, setCropSourceAssetId] = useState<string>();
+  const [cropVisualPreview, setCropVisualPreview] =
+    useState<CropVisualPreview>();
   const [fullscreen, setFullscreen] = useState(false);
   const [lightingOpen, setLightingOpen] = useState(false);
   const [multiAngleOpen, setMultiAngleOpen] = useState(false);
@@ -3477,6 +3550,9 @@ function ImageNodeImpl({
           onClick={() => {
             setLightingOpen(false);
             setMoreOpen(false);
+            setCropVisualPreview(
+              freezeReusableCropVisualPreview(previewImageRef.current),
+            );
             setCropSourceAssetId(
               typeof data.assetId === "string" ? data.assetId : undefined,
             );
@@ -3627,6 +3703,7 @@ function ImageNodeImpl({
           onCancel={() => setCropOpen(false)}
           onConfirm={applyCrop}
           title={titleControl.committedValue}
+          visualPreview={cropVisualPreview}
         />
       )}
       {preview && redrawOpen && (
@@ -4104,6 +4181,7 @@ function ImageNodeImpl({
               deferredPreviewAutoFit.current = undefined;
               applyPreviewAutoFit(naturalSize.width, naturalSize.height);
             }}
+            ref={previewImageRef}
             src={mediaLoad.source}
           />
         ) : !generating && !uploading ? (

@@ -1,14 +1,26 @@
 # Unboundry 绿地复刻当前任务
 
-> **v0.6.32 当前状态**：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。tag `v0.6.32` 指向 `4cf9d74dec941dea8f10e73bb07de990b668e150` / tree `7a5db8aa2b5ac9a42f33a0da176457e74504ca20`；PR #75 squash merge `864cd2de9ad9a22a7dad7deb7a9fb268085f47f8`，main相对tag只多三份交付记录文档。生产 current 为 `/opt/unboundry/releases/v0.6.32-image-edit-source-20260823`。正式safe full真实记录`1049/1050`，只复验唯一失败m22并`37/37 PASS`，没有重跑。冻结备份与恢复副本365文件双清单一致，schema39和切换前后数据计数一致，公网/回环/service/inventory/5资源全部通过；发布自身Provider/OSS写入0。等待用户实页裁剪复验。
+> **v0.6.32 当前状态**：`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。tag `v0.6.32` 指向 `4cf9d74dec941dea8f10e73bb07de990b668e150` / tree `7a5db8aa2b5ac9a42f33a0da176457e74504ca20`；PR #75 squash merge `864cd2de9ad9a22a7dad7deb7a9fb268085f47f8`。生产 current 为 `/opt/unboundry/releases/v0.6.32-image-edit-source-20260823`。正式safe full真实记录`1049/1050`，只复验唯一失败m22并`37/37 PASS`，没有重跑。冻结备份与恢复副本365文件双清单一致，schema39和切换前后数据计数一致，公网/回环/service/inventory/5资源全部通过；发布自身Provider/OSS写入0。用户已在生产实页成功裁剪原先报错的OSS图片。
 
 更新时间：2026-08-23
-状态：`v0.6.32 已发布并通过技术终门，状态 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK。权威回执见 spec/V0_6_32_PRODUCTION_RECEIPT_2026-08-23.json。`
+状态：`v0.6.32 已发布并通过技术终门与用户实页裁剪验收，状态 PRODUCTION_PUBLISHED_USER_PASS / USER_PASS。权威回执见 spec/V0_6_32_PRODUCTION_RECEIPT_2026-08-23.json。`
 
-### 2026-08-23 INC-IMGEDIT-001 OSS 图片裁剪同站编辑源（v0.6.32 已发布，等待用户复验）
+### 2026-08-23 图片裁剪准备态体验优化（INC-IMGEDIT-002，本地工程完成、待用户复验）
+
+- 用户确认v0.6.32裁剪成功，同时指出首次打开会先出现“大黑框+正在准备图片”；根因是安全编辑源完成同站读取、校验、Blob创建和图片解码前，裁剪舞台已按默认1280×720比例展开。
+- 用户同意“当前图片视觉占位+半透明遮罩+小型加载动画+准备完成淡入”的方向。权威行动方案与施工记录：`spec/INC_IMGEDIT_002_CROP_LOADING_EXPERIENCE_PLAN_2026-08-23.md`。
+- 安全实现：视觉占位永不进入导出Canvas；实际裁剪仍只使用同站安全`blob:`。为确定性避免HTTP/OSS原图二次下载，只有已在内存中的`blob:`/`data:`预览显示缩略图；普通HTTP/OSS节点直接显示320×180紧凑加载卡片。
+- 只修改`client/src/canvas/ImageNode.tsx`、`client/src/styles.css`和`tests/m2-image-node.spec.ts`；没有修改服务端、20 MiB、并发、缓存、媒体域名、schema或数据。候选版本仍为TBD。
+- 测试先行：首轮m2在产品实现前以缺少`image-crop-visual-preview`确定性失败；初版实现暴露裁剪层z-index拦截比例菜单，增加stage层叠上下文后最小复验修复。最终safe定向m2为`10/10 PASS`，preflight、TypeScript、架构、source coverage、生产build和离线/凭据/网络门同时通过，source/snapshot SHA-256均为`425ff6ab1114589272f792c0cef28fc6171b82b0c6c355e1f6d8de22af8f603c`，4173 listener不变。
+- 自动反例同时覆盖：HTTP预览不创建第二张普通素材图且`redirectedAssetReads=0`；安全内存预览显示缩略图；准备时确认禁用且无裁剪框；解码完成后实际图片`src`为`blob:`并启用确认；既有取消、保存失败补偿、成功派生图和来源替换栅栏继续通过。
+- 本地实页使用loopback `57361`、临时隔离数据和本地fixture；暂停`image-edit-sources`请求时实测320×180卡片、加载文案、确认禁用、无secure source/裁剪框；恢复后安全源为`blob:`、裁剪框出现、确认启用，控制台error/warn为0。临时页、服务和数据已关闭清理；真实Provider/OSS写入0。
+- 当前状态：`RELEASE_CANDIDATE / TARGETED_AUTO_PASS / LOCAL_AGENT_PAGE_PASS / USER_RECHECK / VERSION_V0_6_33 / RELEASE_AUTHORIZED / NOT_COMMITTED / NOT_RELEASED`。用户已授权本次commit、push、PR和小版本发布；正式发布前按Runbook只运行一次冻结候选safe full。
+- main工作树原有受保护未跟踪文件`spec/public-templates-director-split-revision.json`保持未读、未改、未暂存；safe验证在与main HEAD tree相同的既有干净linked worktree执行，三个产品/测试文件最终SHA与main逐字节一致。
+
+### 2026-08-23 INC-IMGEDIT-001 OSS 图片裁剪同站编辑源（v0.6.32 已发布并获用户确认）
 
 - 用户已确认先做同站安全取图的方案 2，并要求先落地文档，避免上下文压缩后的失忆或漂移。
-- 权威方案：`spec/INC_IMGEDIT_001_EDITABLE_IMAGE_SOURCE_PLAN_2026-08-23.md`；当前状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。
+- 权威方案：`spec/INC_IMGEDIT_001_EDITABLE_IMAGE_SOURCE_PLAN_2026-08-23.md`；当前状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。
 - 基线：main `a29ac82793c2887bd252e7de16d7913fc07f026c`、package `0.6.31`、schema39；隔离分支/worktree 为 `codex/image-edit-source-2026-08-23` / `/Users/mymy/Documents/unboundry-image-edit-source-2026-08-23`。
 - 冻结范围：新增 owner-scoped 同站编辑源接口、可取消且 20 MiB 有界的 `MediaBlobStore` 读取、客户端可替换 resolver、Blob 生命周期与来源 assetId 栅栏；不增加域名/CDN/CORS，不迁移数据，不触发真实 Provider/OSS，不发布。
 - 验收边界：fake OSS 的普通素材路径即使 307 到跨域地址，裁剪也必须经同站 Blob 成功；local/OSS、权限、完整性、超时、取消、并发、上传补偿与持久化竞态均需定向测试；候选冻结后因共享媒体端口改动只允许一次正式 safe full。
@@ -25,6 +37,7 @@
 - 切换前后schema39/integrity ok/FK0及tasks/attempts`722/730`、active0、媒体`760/1326712238`、模板`50/48`、画布58完全一致；service active/enabled、NRestarts0，公网/回环version/live/ready、release inventory和5个公网资源逐字节一致。发布自身Provider请求和OSS写入均为0。
 - 生产回执：`spec/V0_6_32_PRODUCTION_RECEIPT_2026-08-23.json`。版本号和发布授权已消费；用户实际裁剪确认前保持`USER_RECHECK`。
 - 发布记录收口在新worktree首次运行定向安全入口时，因本地尚无`node_modules/typescript`而在测试前停止；离线执行`npm ci --ignore-scripts --offline`补齐依赖后，同一m38定向`15/15 PASS`，source/snapshot SHA为`96b0e570…f5a`，4173 listener不变，未运行safe full。
+- 用户随后在生产实页实际裁剪原先报跨域错误的OSS图片并明确反馈“成功裁剪了”，v0.6.32图片裁剪由`USER_RECHECK`收口为`USER_PASS`；准备阶段的大黑框属于新的体验优化项，不推翻本功能成功结论。
 
 ### 2026-08-23 全项目治理与 nginx 加固
 
@@ -117,7 +130,7 @@
 
 ### 2026-08-21 同一中转站三媒体模型与结果边界（v0.6.28 历史发布时点）
 
-- v0.6.28 时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该能力随后经 v0.6.29 三次有界真实验证与 v0.6.30 结果兼容修复、生产验收和用户确认收口，并继续包含在 v0.6.31。当前聚合状态以顶部 v0.6.31 为准。Generation已拥有媒体结果提交事务；MediaLifecycle/MediaRegistry不再读写generation task/attempt，TaskStore↔Safety循环已解除。
+- v0.6.28 时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该能力随后经 v0.6.29 三次有界真实验证与 v0.6.30 结果兼容修复、生产验收和用户确认收口，并继续包含在 v0.6.32。当前聚合状态以顶部 v0.6.32 为准。Generation已拥有媒体结果提交事务；MediaLifecycle/MediaRegistry不再读写generation task/attempt，TaskStore↔Safety循环已解除。
 - 模型合同：Nano Banana Pro `gemini-3-pro-image-preview`、Kling V3 Omni `kling-v3-omni-cankao`、Suno V4.5 `suno-v4.5`统一走现有`multi-protocol-relay/media-generate`；参数、引用、严格结果类型和10/75/15分钟持久轮询窗口已固化。
 - 自动证据：Node `22.23.1` / npm `10.9.8`；十个目标spec最终有效`148/148`。第一次产品测试`145/148`后只重跑失败的m53+m57并`40/40`通过；TypeScript、构建、source coverage、外网门禁均通过。
 - 发布边界：已完成发布full覆盖与失败spec最小复验、GitHub、冻结备份、生产切换和零付费技术验收；没有真实Provider专用smoke，`REAL_PROVIDER_SMOKE_PAUSED`，待用户线上复验。受保护JSON保持untracked且未读/未改/未暂存/未提交。
@@ -125,7 +138,7 @@
 
 ### 2026-08-21 同步文字Provider registry/port（v0.6.28 历史发布时点）
 
-- v0.6.28 时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该代码已持续包含在当前 v0.6.31 生产版本中，本段不再充当当前待发布清单。代码已把同步文字执行收口到唯一`TextProviderRegistry`入口；Task协调器不再按具体文字driver调用adapter，Ark native与四类relay文字协议各由adapter实现统一port。
+- v0.6.28 时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该代码已持续包含在当前 v0.6.32 生产版本中，本段不再充当当前待发布清单。代码已把同步文字执行收口到唯一`TextProviderRegistry`入口；Task协调器不再按具体文字driver调用adapter，Ark native与四类relay文字协议各由adapter实现统一port。
 - 任务安全：profile/credential owner、lease、provider-boundary attempt、task幂等/reconcile、结果归属与错误文案保持原边界；fake Provider可注入且网络0，未知实现本地fail-closed且网络0。
 - 自动证据：Node `22.23.1` / npm `10.9.8`；一次TypeScript noEmit退出0；m33 `8/8`、m39 `3/3`、m44 `8/8`、m53 `23/23`、m57 `14/14`安全定向通过，异常0，动态loopback与新临时数据，4173 listener不变。
 - 第一批施工时点明确未做：未跑full/默认verify，未真实调用Provider/OSS，未访问SSH/生产，未改版本/schema/Canvas/Workflow/Media publication。后续发布与生产证据已经由 v0.6.28～v0.6.30 回执补齐，不能继续把本段解释为“尚未发布”。

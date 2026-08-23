@@ -1,4 +1,5 @@
 import { expect, test } from "./safe-test";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { composeTextControl } from "./helpers/ime";
 import { defaultParameterSchema } from "../types/modelParameters";
@@ -544,6 +545,7 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   await expect(card).toHaveAttribute("data-asset-id", /.+/);
   const originalAssetId = await card.getAttribute("data-asset-id");
   expect(originalAssetId).toBeTruthy();
+  const preview = node.getByTestId("image-node-preview");
 
   let redirectedAssetReads = 0;
   let editSourceReads = 0;
@@ -587,14 +589,47 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
     }),
   );
 
+  let releaseFirstEditSource!: () => void;
+  const firstEditSourceGate = new Promise<void>((resolve) => {
+    releaseFirstEditSource = resolve;
+  });
+  let releaseSecondEditSource!: () => void;
+  const secondEditSourceGate = new Promise<void>((resolve) => {
+    releaseSecondEditSource = resolve;
+  });
+  const editSourceGates = [firstEditSourceGate, secondEditSourceGate];
+  let gatedEditSource = 0;
+  await page.route("**/api/image-edit-sources/*", async (route) => {
+    const response = await route.fetch();
+    const gate = editSourceGates[gatedEditSource];
+    if (gate) {
+      gatedEditSource += 1;
+      await gate;
+    }
+    await route.fulfill({ response });
+  });
+
   await page.getByRole("button", { name: "裁剪" }).click();
   const overlay = page.getByTestId("image-crop-overlay");
   const stage = page.getByTestId("image-crop-stage");
   const selection = page.getByTestId("image-crop-selection");
   const confirmCrop = page.getByRole("button", { name: "确认裁剪" });
   await expect(overlay).toBeVisible();
+  await expect(page.getByTestId("image-crop-visual-preview")).toHaveCount(0);
+  await expect(page.getByTestId("image-crop-loading")).toContainText(
+    "正在准备高清原图",
+  );
+  await expect(confirmCrop).toBeDisabled();
+  await expect(selection).toHaveCount(0);
+  expect(await stage.boundingBox()).toMatchObject({ height: 180, width: 320 });
+  expect(redirectedAssetReads).toBe(0);
+  releaseFirstEditSource();
   await expect(selection).toBeVisible();
-  await expect(overlay.locator("img")).toHaveAttribute("src", /^blob:/);
+  await expect(page.getByTestId("image-crop-secure-source")).toHaveAttribute(
+    "src",
+    /^blob:/,
+  );
+  await expect(confirmCrop).toBeEnabled();
   expect(redirectedAssetReads).toBe(0);
   expect(await stage.boundingBox()).toMatchObject({ height: 552 });
   expect(await page.getByTestId("image-crop-controls").boundingBox())
@@ -609,7 +644,25 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   await expect(overlay).toHaveCount(0);
   await expect(card).toHaveAttribute("data-asset-id", originalAssetId!);
 
+  const safeVisualPreviewUrl = `data:image/png;base64,${readFileSync(
+    path.resolve(
+      "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+    ),
+  ).toString("base64")}`;
+  await preview.evaluate((image: HTMLImageElement, url) => {
+    image.src = url;
+  }, safeVisualPreviewUrl);
+  await expect(preview).toHaveAttribute("src", /^data:image\/png;base64,/);
   await page.getByRole("button", { name: "裁剪" }).click();
+  await expect(page.getByTestId("image-crop-visual-preview")).toBeVisible();
+  await expect(page.getByTestId("image-crop-loading")).toContainText(
+    "正在准备高清原图",
+  );
+  await expect(confirmCrop).toBeDisabled();
+  await expect(selection).toHaveCount(0);
+  expect(redirectedAssetReads).toBe(0);
+  releaseSecondEditSource();
+  await expect(selection).toBeVisible();
   await page.getByRole("button", { name: "宽高比" }).click();
   const ratioMenu = page.getByRole("menu").filter({
     has: page.getByRole("menuitemradio"),

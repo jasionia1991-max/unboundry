@@ -3,10 +3,10 @@
 更新日期：2026-08-23
 项目：Unboundry
 基线：`main` / `a29ac82793c2887bd252e7de16d7913fc07f026c` / 生产 package `0.6.31` / schema39
-版本：`v0.6.32`（生产已发布，等待用户复验）
+版本：`v0.6.32`（生产已发布并获用户确认）
 施工分支：`codex/image-edit-source-2026-08-23`
 隔离工作区：`/Users/mymy/Documents/unboundry-image-edit-source-2026-08-23`
-当前状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
+当前状态：`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`
 
 ## 1. 用户结果
 
@@ -226,3 +226,9 @@ type EditableImageSource = {
 - 原子切换后公网/回环version均为0.6.32，live/ready为200，service active/enabled、NRestarts0，release inventory与5个公网资源逐字节一致；切换前后tasks/attempts`722/730`、active0、媒体`760/1326712238`、模板`50/48`、画布58完全一致。
 - 完整回执：`spec/V0_6_32_PRODUCTION_RECEIPT_2026-08-23.json`。当前技术发布通过，但用户尚未实际裁剪复验，因此保持`USER_RECHECK`；本次发布授权已消费。
 - 发布记录文档收口的新worktree首次运行定向安全入口时，因本地缺少`node_modules/typescript`在测试前停止；随后只用离线`npm ci --ignore-scripts --offline`补齐依赖，同一m38定向最终`15/15 PASS`，source/snapshot SHA-256均为`96b0e570f6bc3d93730a71b7597e5205c3cec18bea27b078b703f9124795af5a`，4173 listener不变。没有重复正式full。
+
+### 2026-08-23 用户实页验收
+
+- 用户在v0.6.32生产实页实际裁剪原先报`Tainted canvases may not be exported`的OSS图片并明确反馈“成功裁剪了”。
+- 本功能由`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`收口为`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。
+- 用户同时指出安全原图准备阶段会先出现大黑框；这不影响本功能成功结论。独立体验项`spec/INC_IMGEDIT_002_CROP_LOADING_EXPERIENCE_PLAN_2026-08-23.md`已完成本地实现和定向验收，尚未commit、定版本或发布。
