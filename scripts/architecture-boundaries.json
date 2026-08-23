@@ -115,7 +115,12 @@
     {
       "name": "library",
       "internalTargets": ["server/library/internal/**"],
-      "ownerSources": ["server/library/**"]
+      "ownerSources": [
+        "server/library/**",
+        "server/libraryApplicationApi.ts",
+        "server/libraryBackup.ts",
+        "server/libraryCatalog.ts"
+      ]
     }
   ],
   "sqlDomains": [

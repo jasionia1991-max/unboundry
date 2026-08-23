@@ -7589,7 +7589,12 @@ sup {
 }
 
 .assets-panel .assets-library-card {
+  position: relative;
+}
+
+.assets-panel .assets-library-drag {
   display: grid;
+  width: 100%;
   min-width: 0;
   padding: 6px;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -7601,16 +7606,16 @@ sup {
   text-align: left;
 }
 
-.assets-panel .assets-library-card:hover {
+.assets-panel .assets-library-drag:hover {
   border-color: rgba(255, 255, 255, 0.16);
   background: rgba(255, 255, 255, 0.07);
 }
 
-.assets-panel .assets-library-card:active {
+.assets-panel .assets-library-drag:active {
   cursor: grabbing;
 }
 
-.assets-library-card > span {
+.assets-library-drag > span {
   height: 72px;
   margin-bottom: 7px;
   grid-column: 1 / -1;
@@ -7620,14 +7625,14 @@ sup {
     linear-gradient(145deg, #253f38, #947a52);
 }
 
-.assets-library-card > span[data-preview="video"] {
+.assets-library-drag > span[data-preview="video"] {
   background:
     linear-gradient(135deg, transparent 0 42%, rgba(255, 255, 255, 0.35) 43% 57%, transparent 58%)
       center / 18px 18px no-repeat,
     linear-gradient(145deg, #15333f, #277d92 52%, #111d24);
 }
 
-.assets-library-card > span[data-preview="audio"] {
+.assets-library-drag > span[data-preview="audio"] {
   background:
     repeating-linear-gradient(
       90deg,
@@ -7638,22 +7643,34 @@ sup {
     linear-gradient(145deg, #353148, #17171d);
 }
 
-.assets-library-card strong,
-.assets-library-card small {
+.assets-library-drag strong,
+.assets-library-drag small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.assets-library-card strong {
+.assets-library-drag strong {
   min-width: 0;
   font-size: var(--tap-font-secondary);
   font-weight: 500;
 }
 
-.assets-library-card small {
+.assets-library-drag small {
   color: #777;
   font-size: var(--tap-font-secondary);
+}
+
+.assets-panel .assets-library-remove {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 50%;
+  color: #eee;
+  background: rgba(10, 10, 10, 0.72);
 }
 
 .ai-characters-overlay {

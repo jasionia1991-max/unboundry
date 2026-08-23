@@ -154,6 +154,24 @@ test("Image empty and local upload states match the observed geometry", async ({
   const titleBox = (await node.locator(".image-node-title").boundingBox())!;
   expect(toolbarBox.y + toolbarBox.height).toBeLessThan(titleBox.y);
   await expect(toolbar.getByRole("button")).toHaveCount(9);
+  const uploadedAssetId = await card.getAttribute("data-asset-id");
+  expect(uploadedAssetId).toBeTruthy();
+  const saveToLibrary = toolbar.getByRole("button", { name: "保存到素材库" });
+  await expect(saveToLibrary).toHaveAttribute("data-library-state", "idle");
+  await saveToLibrary.click();
+  await expect(saveToLibrary).toHaveAttribute("data-library-state", "saved");
+  const library = await (await request.get(
+    "/api/library?space=personal&folder=others&limit=20&offset=0",
+  )).json() as { items: Array<{ id: string; kind: string; revision: number }> };
+  expect(library.items.map(({ id, kind, revision }) => ({ id, kind, revision })))
+    .toContainEqual({
+    id: uploadedAssetId,
+    kind: "image",
+    revision: 1,
+  });
+  expect((await request.delete(
+    `/api/library/image/${encodeURIComponent(uploadedAssetId!)}`,
+  )).status()).toBe(204);
   await expect(
     toolbar.getByRole("button", { name: "下载" }),
   ).toBeVisible();

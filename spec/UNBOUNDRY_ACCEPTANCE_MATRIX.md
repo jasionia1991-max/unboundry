@@ -361,7 +361,7 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 | IMGEDIT-009 | P0 | 全部高级编辑 | 无真实后端能力的按钮保持禁用，不伪造成功 | 高级编辑能力矩阵、真实disabled状态、零Provider请求及用户实页复验 | PASS |
 | IMGEDIT-010 | P0 | 图片工具应用边界 | 轻量Dispatcher与小use case；复用Canvas/Generation/Media公开端口；服务端权威操作启用；不把编排重新堆入ImageNode/CanvasSurface/generationTasks | 架构防火墙、导入/SQL负控、状态恢复、既有裁剪/下载/全屏回归 | PARTIAL / APPLICATION_LAYER_AUTO_PASS |
 | IMGEDIT-011 | P1 | 颜色标记 | 添加/移除一个或多个颜色标记，刷新、筛选、撤销重做保持；不冒充锁定/收藏 | 节点元数据、Canvas持久化、刷新和筛选实页 | AUTO_PASS |
-| IMGEDIT-012 | P0 | 个人素材库 | owner-scoped安全引用、幂等保存、读取、删除条目和Media删除保护；不保存签名URL，团队区保持禁用 | 数据所有权、migration/旧版本兼容、删除竞态、用户实页 | NOT_STARTED |
+| IMGEDIT-012 | P0 | 个人素材库 | owner-scoped安全引用、幂等保存、读取、删除条目和Media删除保护；不保存签名URL，团队区保持禁用 | 数据所有权、migration/旧版本兼容、删除竞态、用户实页 | AUTO_PASS |
 | IMGEDIT-013 | P1 | 调整像素 | 精确宽高、默认比例锁、本地确定性处理；保留原图并创建派生节点，零Provider请求 | 像素/格式/内存边界、node/edge/asset、刷新 | AUTO_PASS |
 | IMGEDIT-014 | P1 | 快速分割 | 2×2/3×3/4×4预览与4/9/16个派生节点一次批量落地；失败不显示假成功 | 网格像素检查、批次写入、故障补偿、零Provider | AUTO_PASS |
 | IMGEDIT-015 | P1 | 标注与导出 | 可编辑画笔/矩形/箭头/编号/文字；持久化容量有界，原图不改，显式导出才生成资产 | 容量基准、IME、刷新、撤销重做、导出实页 | AUTO_PASS |
@@ -378,6 +378,8 @@ D1 已完成共享 operation/result/capability/status/error 与有界载荷合�
 D2 已完成 Dispatcher、小 use case、Canvas image-tool fence、派生媒体补偿和对既有 Generation lifecycle 的薄适配；裁剪、下载、全屏定向 m2 `10/10 PASS`，模块化端口 m100 `13/13 PASS`，真实 Provider/OSS 请求 0。服务端权威 operation 状态尚待 D6，因此 `IMGEDIT-010` 只升为 `PARTIAL / APPLICATION_LAYER_AUTO_PASS`，不提前记完整 PASS。
 
 D3 已完成颜色标记 Canvas 元数据持久化、筛选和撤销；像素调整以安全同站源本地输出精确 PNG 派生图；快速分割提供 2×2/3×3/4×4 预览，并以单一 Canvas command 原子提交 4/9/16 个节点与边，stale/失败精确补偿本批媒体。安全定向 m100 `13/13 PASS`、m2 `10/10 PASS`，Generation/Provider/真实 OSS 请求 0；因此 `IMGEDIT-011/013/014 = AUTO_PASS`，尚未冒充生产或用户验收。
+
+D5 已完成个人素材库真实数据链：Library 独立 `library.sqlite` schema1 sidecar，主库继续 schema39；同 owner+kind+asset 幂等保存，查询只返回同站媒体路径，不保存签名 URL；条目删除只解除 Library 引用，Media 删除在固定主库→Library锁序下阻止仍被引用的媒体。项目/节点删除后条目保留，账号 deletion claim 后先清 Library 再物理清理媒体；团队区继续只读空态。备份格式可选加密并恢复 sidecar，旧备份无 sidecar 仍兼容；精确 v0.6.33 D4 源码已在 schema39 主库旁存在 sidecar 时打开并 quick_check ok。安全定向 m10/m11/m2/m20/m25/m8/m88 共 `75/75 PASS`，架构既有例外 76、新增 0，Provider/Generation/真实 OSS 请求 0；因此 `IMGEDIT-012 = AUTO_PASS`，不冒充生产或用户验收。
 
 D4 容量实验使用 100 个矩形、1 条 1000 点画笔和中文文字，共 102 个元素，JSON 29,460 bytes，仅占 512 KiB 上限 5.62%，因此冻结为 Canvas 节点版本化矢量元数据；运行时继续限制 500 元素、单路径 2000 点、总点数 20000 并简化路径。标注支持选择、画笔、矩形、箭头、编号、中文文字、删除、会话撤销重做、刷新恢复；只有显式导出才通过 owner-scoped 同站安全源生成 PNG 派生节点。m100 `13/13 PASS`、m2 `10/10 PASS`，Generation/Provider/真实 OSS 请求 0；因此 `IMGEDIT-015 = AUTO_PASS`，不冒充生产或用户验收。
 

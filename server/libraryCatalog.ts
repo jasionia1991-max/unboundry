@@ -1,13 +1,16 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-
-type LibraryAsset = {
-  folderId: string;
-  id: string;
-  kind: "audio" | "image" | "video";
-  label: string;
-  spaceId: "personal" | "team";
-  src: string;
-};
+import { requestIdentity } from "./auth";
+import { readBoundedBody, rejectUnreadRequestBody } from "./boundedBody";
+import { decodedRequestPath } from "./httpRequest";
+import type { MediaLibraryReferenceLease } from "./mediaLibraryReferencePort";
+import {
+  assertLibraryMediaDeletionAllowed,
+  beginLibraryEntrySave,
+  listLibraryEntries,
+  removeLibraryEntry,
+  removeOwnerLibraryEntries,
+  type LibraryKind,
+} from "./library/internal/libraryStore";
 
 const spaces = [
   { id: "personal", label: "个人", readOnly: false },
@@ -25,32 +28,13 @@ const folders = [
   { id: "others", label: "Others", kind: "folder" },
 ] as const;
 
-const assets: LibraryAsset[] = [
-  {
-    folderId: "others",
-    id: "library-image-forest",
-    kind: "image",
-    label: "森林光影",
-    spaceId: "personal",
-    src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='800' viewBox='0 0 800 800'%3E%3Cdefs%3E%3ClinearGradient id='g' x2='1' y2='1'%3E%3Cstop stop-color='%232b4a42'/%3E%3Cstop offset='1' stop-color='%23b89b64'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='800' height='800' fill='url(%23g)'/%3E%3Ccircle cx='620' cy='160' r='92' fill='%23f4dfaa' opacity='.78'/%3E%3Cpath d='M0 650 180 360 310 650 470 270 700 650Z' fill='%231a302b' opacity='.82'/%3E%3C/svg%3E",
-  },
-  {
-    folderId: "others",
-    id: "library-video-sample",
-    kind: "video",
-    label: "海边镜头",
-    spaceId: "personal",
-    src: "/fixtures/video-success.mp4",
-  },
-  {
-    folderId: "others",
-    id: "library-audio-sample",
-    kind: "audio",
-    label: "环境音乐",
-    spaceId: "personal",
-    src: "/fixtures/audio-success.mp3",
-  },
-];
+type LibraryApiExecution = Readonly<{
+  beginMediaReference: (input: Readonly<{
+    assetId: string;
+    kind: LibraryKind;
+    ownerId: string;
+  }>) => MediaLibraryReferenceLease;
+}>;
 
 function boundedInteger(value: string | null, fallback: number, maximum: number) {
   if (value === null || value === "") return fallback;
@@ -67,58 +51,153 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.end(JSON.stringify(body));
 }
 
-export function libraryCatalogApi(
+function assetSource(kind: LibraryKind, assetId: string) {
+  const base = kind === "image"
+    ? "/api/assets"
+    : kind === "audio"
+      ? "/api/audio-assets"
+      : "/api/video-assets";
+  return `${base}/${encodeURIComponent(assetId)}`;
+}
+
+function validKind(value: unknown): value is LibraryKind {
+  return value === "audio" || value === "image" || value === "video";
+}
+
+export function deleteAccountLibraryEntries(ownerId: string) {
+  return removeOwnerLibraryEntries(ownerId);
+}
+
+export function assertLibraryDeletionAllowed(
+  _database: unknown,
+  input: Readonly<{ assetId: string; kind: LibraryKind; ownerId: string }>,
+) {
+  assertLibraryMediaDeletionAllowed(input);
+}
+
+export async function libraryCatalogApi(
   request: IncomingMessage,
   response: ServerResponse,
+  execution: LibraryApiExecution,
 ) {
-  if (request.method !== "GET") {
-    response.setHeader("Allow", "GET");
-    json(response, 405, { error: "素材目录只支持读取" });
+  const identity = requestIdentity(request);
+  if (!identity) {
+    if (request.method !== "GET") rejectUnreadRequestBody(request, response);
+    json(response, 401, { error: "请先登录" });
+    return;
+  }
+  const ownerId = identity.bypass ? "__test__" : identity.userId;
+  const path = decodedRequestPath(request).replace(/^\/+/, "");
+
+  if (request.method === "GET" && !path) {
+    const url = new URL(request.url ?? "", "http://127.0.0.1");
+    const spaceId = (url.searchParams.get("space") ?? "personal").trim();
+    const folderId = (url.searchParams.get("folder") ?? "favorites").trim();
+    const query = (url.searchParams.get("q") ?? "").trim();
+    const limit = boundedInteger(url.searchParams.get("limit"), 20, 100);
+    const offset = boundedInteger(url.searchParams.get("offset"), 0, 100_000);
+    if (!spaces.some((space) => space.id === spaceId) ||
+        !folders.some((folder) => folder.id === folderId) ||
+        limit === undefined || offset === undefined || limit === 0 ||
+        query.length > 120) {
+      json(response, 400, { error: "素材空间、文件夹或分页参数无效" });
+      return;
+    }
+    const visibleFolders = folders.filter(
+      (folder) => !query || folder.label.toLocaleLowerCase().includes(
+        query.toLocaleLowerCase(),
+      ),
+    );
+    const page = spaceId === "team"
+      ? { items: [], total: 0 }
+      : listLibraryEntries({ folderId, limit, offset, ownerId, query });
+    json(response, 200, {
+      spaces,
+      folders: visibleFolders,
+      items: page.items.map((entry) => ({
+        id: entry.assetId,
+        kind: entry.kind,
+        label: entry.label,
+        revision: entry.revision,
+        src: assetSource(entry.kind, entry.assetId),
+      })),
+      pagination: {
+        hasMore: offset + page.items.length < page.total,
+        limit,
+        offset,
+        total: page.total,
+      },
+    });
     return;
   }
 
-  const url = new URL(request.url ?? "", "http://127.0.0.1");
-  const spaceId = (url.searchParams.get("space") ?? "personal").trim();
-  const folderId = (url.searchParams.get("folder") ?? "favorites").trim();
-  const query = (url.searchParams.get("q") ?? "").trim().toLocaleLowerCase();
-  const limit = boundedInteger(url.searchParams.get("limit"), 20, 100);
-  const offset = boundedInteger(url.searchParams.get("offset"), 0, 100_000);
-
-  if (!spaces.some((space) => space.id === spaceId)) {
-    json(response, 400, { error: "素材空间无效" });
+  if (request.method === "POST" && !path) {
+    let mediaLease: MediaLibraryReferenceLease | undefined;
+    let libraryLease: ReturnType<typeof beginLibraryEntrySave> | undefined;
+    try {
+      const body = JSON.parse((await readBoundedBody(request, {
+        idleTimeoutMs: 5_000,
+        maximumBytes: 16 * 1_024,
+        totalTimeoutMs: 10_000,
+      })).toString("utf8")) as Record<string, unknown>;
+      const assetId = typeof body.assetId === "string" ? body.assetId.trim() : "";
+      const kind = body.kind;
+      const label = typeof body.label === "string" ? body.label.trim() : "";
+      const folderId = typeof body.folderId === "string"
+        ? body.folderId.trim()
+        : "others";
+      if (!/^[a-z0-9._-]{1,160}$/i.test(assetId) || !validKind(kind) ||
+          label.length < 1 || label.length > 120 ||
+          !folders.some((folder) => folder.id === folderId)) {
+        json(response, 400, { error: "素材信息无效" });
+        return;
+      }
+      mediaLease = execution.beginMediaReference({ assetId, kind, ownerId });
+      libraryLease = beginLibraryEntrySave({
+        assetId,
+        folderId,
+        kind,
+        label,
+        ownerId,
+        timestamp: new Date().toISOString(),
+      });
+      mediaLease.commit();
+      libraryLease.commit();
+      json(response, 200, {
+        item: {
+          id: libraryLease.entry.assetId,
+          kind: libraryLease.entry.kind,
+          label: libraryLease.entry.label,
+          revision: libraryLease.entry.revision,
+          src: assetSource(libraryLease.entry.kind, libraryLease.entry.assetId),
+        },
+      });
+    } catch (error) {
+      libraryLease?.rollback();
+      mediaLease?.rollback();
+      json(response, 409, {
+        error: error instanceof Error ? error.message : "素材保存失败",
+      });
+    }
     return;
   }
-  if (!folders.some((folder) => folder.id === folderId)) {
-    json(response, 400, { error: "素材文件夹无效" });
-    return;
-  }
-  if (limit === undefined || offset === undefined || limit === 0 || query.length > 120) {
-    json(response, 400, { error: "素材分页或搜索参数无效" });
+
+  const deleteMatch = path.match(/^(image|audio|video)\/([a-z0-9._-]{1,160})$/i);
+  if (request.method === "DELETE" && deleteMatch) {
+    const removed = removeLibraryEntry({
+      assetId: deleteMatch[2],
+      kind: deleteMatch[1].toLowerCase() as LibraryKind,
+      ownerId,
+    });
+    if (!removed) {
+      json(response, 404, { error: "素材条目不存在" });
+      return;
+    }
+    response.statusCode = 204;
+    response.end();
     return;
   }
 
-  const visibleFolders = folders.filter(
-    (folder) => !query || folder.label.toLocaleLowerCase().includes(query),
-  );
-  const matches = assets.filter(
-    (asset) =>
-      asset.spaceId === spaceId &&
-      asset.folderId === folderId &&
-      (!query || asset.label.toLocaleLowerCase().includes(query)),
-  );
-  const items = matches.slice(offset, offset + limit).map(
-    ({ id, kind, label, src }) => ({ id, kind, label, src }),
-  );
-
-  json(response, 200, {
-    spaces,
-    folders: visibleFolders,
-    items,
-    pagination: {
-      hasMore: offset + items.length < matches.length,
-      limit,
-      offset,
-      total: matches.length,
-    },
-  });
+  response.setHeader("Allow", "GET, POST, DELETE");
+  json(response, 405, { error: "素材目录请求方法无效" });
 }

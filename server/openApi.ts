@@ -1228,6 +1228,63 @@ export const openApiDocument = {
           "401": { description: "Sign-in required" },
         },
       },
+      post: {
+        operationId: "saveLibraryAsset",
+        summary: "Save an owner-scoped ready media asset to the personal library",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/LibrarySaveRequest" },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "The idempotently saved personal library entry",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["item"],
+                  properties: {
+                    item: { $ref: "#/components/schemas/LibraryEntry" },
+                  },
+                  additionalProperties: false,
+                },
+              },
+            },
+          },
+          "400": { description: "Invalid bounded library entry" },
+          "401": { description: "Sign-in required" },
+          "409": { description: "Media is missing, unready, deleting or not owned" },
+        },
+      },
+    },
+    "/api/library/{kind}/{assetId}": {
+      delete: {
+        operationId: "deleteLibraryEntry",
+        summary: "Remove only the owner-scoped library reference",
+        parameters: [
+          {
+            in: "path",
+            name: "kind",
+            required: true,
+            schema: { type: "string", enum: ["image", "video", "audio"] },
+          },
+          {
+            in: "path",
+            name: "assetId",
+            required: true,
+            schema: { type: "string", pattern: "^[A-Za-z0-9._-]{1,160}$" },
+          },
+        ],
+        responses: {
+          "204": { description: "Library reference removed; media is retained" },
+          "401": { description: "Sign-in required" },
+          "404": { description: "Owner-scoped library entry not found" },
+        },
+      },
     },
   },
   components: {
@@ -1424,17 +1481,7 @@ export const openApiDocument = {
           },
           items: {
             type: "array",
-            items: {
-              type: "object",
-              required: ["id", "label", "kind", "src"],
-              properties: {
-                id: { type: "string" },
-                label: { type: "string" },
-                kind: { type: "string", enum: ["image", "video", "audio"] },
-                src: { type: "string" },
-              },
-              additionalProperties: false,
-            },
+            items: { $ref: "#/components/schemas/LibraryEntry" },
           },
           pagination: {
             type: "object",
@@ -1447,6 +1494,32 @@ export const openApiDocument = {
             },
             additionalProperties: false,
           },
+        },
+        additionalProperties: false,
+      },
+      LibraryEntry: {
+        type: "object",
+        required: ["id", "label", "kind", "revision", "src"],
+        properties: {
+          id: { type: "string" },
+          label: { type: "string", minLength: 1, maxLength: 120 },
+          kind: { type: "string", enum: ["image", "video", "audio"] },
+          revision: { type: "integer", minimum: 1 },
+          src: { type: "string", pattern: "^/api/" },
+        },
+        additionalProperties: false,
+      },
+      LibrarySaveRequest: {
+        type: "object",
+        required: ["assetId", "kind", "label"],
+        properties: {
+          assetId: {
+            type: "string",
+            pattern: "^[A-Za-z0-9._-]{1,160}$",
+          },
+          folderId: { type: "string", default: "others" },
+          kind: { type: "string", enum: ["image", "video", "audio"] },
+          label: { type: "string", minLength: 1, maxLength: 120 },
         },
         additionalProperties: false,
       },

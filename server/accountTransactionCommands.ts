@@ -1,5 +1,19 @@
 import type { TransactionScopedCommand } from "./transactionCommand";
 
+export const accountAllowsDurableMediaReferenceCommand:
+  TransactionScopedCommand<string, boolean> = {
+    execute(scope, ownerId) {
+      return Boolean(scope.prepare(`
+        SELECT 1 FROM users
+        WHERE id = ? AND status = 'active'
+          AND NOT EXISTS (
+            SELECT 1 FROM account_delete_intents
+            WHERE owner_id = users.id
+          )
+      `).get(ownerId));
+    },
+  };
+
 export const migrateLegacyAccountCredentialsCommand: TransactionScopedCommand<Readonly<{
   admins: readonly Readonly<{ id: string }>[];
   payloads: readonly Readonly<{ encrypted: string; profileId: string }>[];

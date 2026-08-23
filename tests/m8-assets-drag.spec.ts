@@ -1,9 +1,63 @@
-import { expect, test } from "./safe-test";
+import { expect, test, type APIRequestContext } from "./safe-test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const canvasId = "panel.assets.drag-ready";
+const libraryFixtures = [
+  {
+    assetId: "m8-library-image.png",
+    bytes: readFileSync(resolve("client/public/templates/ecommerce-detail-workflow.png")),
+    contentType: "image/png",
+    endpoint: "/api/assets/m8-library-image.png",
+    kind: "image",
+    label: "森林光影",
+  },
+  {
+    assetId: "m8-library-video.mp4",
+    bytes: readFileSync(resolve("client/public/fixtures/video-success.mp4")),
+    contentType: "video/mp4",
+    endpoint: "/api/video-assets/m8-library-video.mp4",
+    kind: "video",
+    label: "海边镜头",
+  },
+  {
+    assetId: "m8-library-audio.mp3",
+    bytes: readFileSync(resolve("client/public/fixtures/audio-success.mp3")),
+    contentType: "audio/mpeg",
+    endpoint: "/api/audio-assets/m8-library-audio.mp3",
+    kind: "audio",
+    label: "环境音乐",
+  },
+] as const;
+
+async function removeLibraryFixtures(request: APIRequestContext) {
+  for (const fixture of libraryFixtures) {
+    await request.delete(`/api/library/${fixture.kind}/${fixture.assetId}`);
+    await request.delete(fixture.endpoint);
+  }
+}
 
 test.beforeEach(async ({ request }) => {
   await request.delete(`/api/canvas/${canvasId}`);
+  for (const fixture of libraryFixtures) {
+    const upload = await request.post(fixture.endpoint, {
+      data: fixture.bytes,
+      headers: {
+        "Content-Type": fixture.contentType,
+        "X-File-Name": encodeURIComponent(fixture.assetId),
+      },
+    });
+    expect(upload.status()).toBe(201);
+    const saved = await request.post("/api/library", {
+      data: {
+        assetId: fixture.assetId,
+        folderId: "others",
+        kind: fixture.kind,
+        label: fixture.label,
+      },
+    });
+    expect(saved.ok()).toBeTruthy();
+  }
 });
 
 test.afterEach(async ({ request }) => {
@@ -20,6 +74,7 @@ test.afterEach(async ({ request }) => {
         .map((assetId) => request.delete(`/api/assets/${assetId}`)),
     );
   }
+  await removeLibraryFixtures(request);
   await request.delete(`/api/canvas/${canvasId}`);
 });
 
@@ -39,7 +94,7 @@ test("library media and a local image file drag onto the canvas and survive relo
   const world = page.getByTestId("canvas-world");
   await expect(world).toHaveAttribute("data-persistence-ready", "true");
   const assets = page.getByTestId("assets-library-grid");
-  await expect(assets.getByRole("button")).toHaveCount(3);
+  await expect(assets.locator(".assets-library-card")).toHaveCount(3);
 
   await assets
     .getByRole("button", { name: "拖动素材 森林光影" })
@@ -56,7 +111,7 @@ test("library media and a local image file drag onto the canvas and survive relo
     .dragTo(world, { targetPosition: { x: 560, y: 610 } });
   await expect(page.locator(".react-flow__node-audio")).toHaveCount(1);
   await expect(page.locator(".audio-waveform-bars span")).toHaveCount(64);
-  await expect(assets.getByRole("button")).toHaveCount(3);
+  await expect(assets.locator(".assets-library-card")).toHaveCount(3);
 
   await expect
     .poll(async () => {

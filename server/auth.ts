@@ -135,6 +135,7 @@ type AccountDeletionClaim = Readonly<{
 }>;
 
 export type AdminUsersExecution = Readonly<{
+  afterAccountDeletionClaim?: (ownerId: string) => Promise<void> | void;
   beforeFinalAudit?: () => void;
   beforePhysicalMediaDelete?: (row: Readonly<AccountMediaRow>) =>
     Promise<void> | void;
@@ -1685,6 +1686,14 @@ export async function adminUsersApi(
       activeAccountDeletionOwners.add(targetId);
       ownsProcessClaim = true;
       const claim = beginAccountDeletion(store, identity.userId, targetId);
+      try {
+        await execution.afterAccountDeletionClaim?.(targetId);
+      } catch (error) {
+        markAccountDeletionFailed(store, targetId, "ACCOUNT_LIBRARY_CLEANUP_FAILED");
+        throw new AccountMediaCleanupError(
+          error instanceof Error ? error.message : "账号素材库清理失败",
+        );
+      }
       const mediaRows = store.prepare(`
         SELECT
           media.id, media.kind, media.owner_id, media.storage_backend,

@@ -66,6 +66,8 @@ import {
   rehydrateFakeOss,
 } from "../server/fakeOssRecovery";
 import { createRuntimeLifecycle } from "../server/runtimeLifecycle";
+import { openLibraryDatabase } from
+  "../server/library/internal/libraryStore";
 
 const execute = promisify(execFile);
 
@@ -783,6 +785,24 @@ async function createBackupFixture(root: string) {
       task_id, state, created_at
     ) VALUES (?, 'queued', ?)
   `).run("backup-task", timestamp);
+
+  const library = openLibraryDatabase(dataDirectory);
+  try {
+    library.prepare(`
+      INSERT INTO library_entries (
+        owner_id, kind, asset_id, label, folder_id,
+        revision, created_at, updated_at
+      ) VALUES (?, 'image', ?, ?, 'others', 1, ?, ?)
+    `).run(
+      userId,
+      "preserved-local-image",
+      "Preserved Library image",
+      timestamp,
+      timestamp,
+    );
+  } finally {
+    library.close();
+  }
 
   const keys = createKeys();
   const paths = {
@@ -2059,6 +2079,24 @@ test("an encrypted frozen snapshot verifies and restores without plaintext or so
       `).get(sha256(fixture.sessionToken))).toEqual({ user_id: "backup-user" });
     } finally {
       restoredDatabase.close();
+    }
+    const restoredLibrary = new DatabaseSync(
+      join(targetDirectory, "library.sqlite"),
+      { readOnly: true },
+    );
+    try {
+      expect(restoredLibrary.prepare(`
+        SELECT owner_id, kind, asset_id, label, revision
+        FROM library_entries
+      `).get()).toEqual({
+        asset_id: "preserved-local-image",
+        kind: "image",
+        label: "Preserved Library image",
+        owner_id: "backup-user",
+        revision: 1,
+      });
+    } finally {
+      restoredLibrary.close();
     }
     await expect(localAuthLogin(targetDirectory)).resolves.toMatchObject({
       body: { user: { id: "backup-user" } },

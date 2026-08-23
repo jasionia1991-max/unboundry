@@ -37,7 +37,6 @@ import { templateCatalogApi } from "./server/templateCatalog";
 import { adminTemplatesApi } from "./server/adminTemplates";
 import { agentConfigurationApi } from "./server/agentConfiguration";
 import { characterCatalogApi } from "./server/characterCatalog";
-import { libraryCatalogApi } from "./server/libraryCatalog";
 import {
   HttpRequestError,
   decodedRequestPath,
@@ -86,7 +85,16 @@ const {
     unregisterRuntimeRoleCoordinatorBeforeStartup:
       unregisterGenerationRuntimeRoleCoordinatorBeforeStartup,
   },
-  media: { publication: mediaPublicationService },
+  library: {
+    assertMediaDeletionAllowedInTransaction:
+      assertLibraryMediaDeletionAllowedInTransaction,
+    deleteAccountEntries: deleteAccountLibraryEntries,
+    httpHandler: libraryCatalogApi,
+  },
+  media: {
+    libraryReferences: mediaLibraryReferences,
+    publication: mediaPublicationService,
+  },
   provider: { adminProviderProfilesApi },
 } = applicationComposition;
 
@@ -830,7 +838,15 @@ function authenticationApi(runtime: RuntimeInstance): Plugin {
     middlewares.use("/api", apiBoundary("auth-gate", authGate, runtime));
     middlewares.use(
       "/api/admin/users",
-      apiBoundary("admin.users", adminUsersApi, runtime),
+      apiBoundary("admin.users", (request, response) => adminUsersApi(
+        request,
+        response,
+        {
+          afterAccountDeletionClaim: (ownerId) => {
+            deleteAccountLibraryEntries(ownerId);
+          },
+        },
+      ), runtime),
     );
     middlewares.use(
       "/api/account-context",
@@ -943,7 +959,11 @@ function libraryApi(runtime: RuntimeInstance): Plugin {
   }) => {
     middlewares.use(
       "/api/library",
-      apiBoundary("library", libraryCatalogApi, runtime),
+      apiBoundary("library", (request, response) => libraryCatalogApi(
+        request,
+        response,
+        { beginMediaReference: mediaLibraryReferences.begin },
+      ), runtime),
     );
   };
   return {
@@ -1100,8 +1120,11 @@ function canvasPersistenceApi(runtime: RuntimeInstance): Plugin {
     middlewares.use(
       "/api/assets",
       apiBoundary("assets", (request, response) => assetStorage(request, response, {
-        assertDeletionAllowedInTransaction:
-          assertGenerationMediaDeletionAllowedInTransaction,
+        assertDeletionAllowedInTransaction: mediaLibraryReferences
+          .composeDeletionGuards(
+            assertGenerationMediaDeletionAllowedInTransaction,
+            assertLibraryMediaDeletionAllowedInTransaction,
+          ),
       }), runtime),
     );
     middlewares.use(
@@ -1115,15 +1138,21 @@ function canvasPersistenceApi(runtime: RuntimeInstance): Plugin {
     middlewares.use(
       "/api/audio-assets",
       apiBoundary("audio-assets", (request, response) => audioStorage(request, response, {
-        assertDeletionAllowedInTransaction:
-          assertGenerationMediaDeletionAllowedInTransaction,
+        assertDeletionAllowedInTransaction: mediaLibraryReferences
+          .composeDeletionGuards(
+            assertGenerationMediaDeletionAllowedInTransaction,
+            assertLibraryMediaDeletionAllowedInTransaction,
+          ),
       }), runtime),
     );
     middlewares.use(
       "/api/video-assets",
       apiBoundary("video-assets", (request, response) => videoStorage(request, response, {
-        assertDeletionAllowedInTransaction:
-          assertGenerationMediaDeletionAllowedInTransaction,
+        assertDeletionAllowedInTransaction: mediaLibraryReferences
+          .composeDeletionGuards(
+            assertGenerationMediaDeletionAllowedInTransaction,
+            assertLibraryMediaDeletionAllowedInTransaction,
+          ),
       }), runtime),
     );
     middlewares.use(

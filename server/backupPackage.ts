@@ -65,6 +65,7 @@ import {
   createFakeOssRecoveryIndex,
   ossRecoveryIndexFileName,
 } from "./fakeOssRecovery.ts";
+import { validateLibraryBackupDatabase } from "./libraryBackup.ts";
 
 export const backupPackageFormatVersion = 2 as const;
 const backupPackageFormat = "unboundry-encrypted-backup" as const;
@@ -242,7 +243,7 @@ type TreeSnapshot = Readonly<{
   sha256: string;
 }>;
 
-type EncryptedEntryKind = "database" | "media" | "oss" | "secret";
+type EncryptedEntryKind = "database" | "library" | "media" | "oss" | "secret";
 
 type EncryptedEntry = Readonly<{
   ciphertextBytes: number;
@@ -1361,6 +1362,53 @@ async function databaseFilesSnapshot(sourceDirectory: string): Promise<TreeSnaps
     entries.some((entry) => entry.path.endsWith("-wal")) &&
     entries.some((entry) => entry.path.endsWith("-journal"))
   ) fail("BACKUP_DATABASE_STATE_INVALID", "WAL and rollback journal cannot coexist");
+  return Object.freeze({
+    entries: Object.freeze(entries),
+    present: true,
+    sha256: sha256(stableJson(entries)),
+  });
+}
+
+async function libraryDatabaseSnapshot(
+  sourceDirectory: string,
+): Promise<TreeSnapshot> {
+  const known = new Set([
+    "library.sqlite",
+    "library.sqlite-journal",
+    "library.sqlite-shm",
+    "library.sqlite-wal",
+  ]);
+  const names = await readdir(sourceDirectory);
+  for (const name of names) {
+    if (name.startsWith("library.sqlite") && !known.has(name)) {
+      fail("BACKUP_LIBRARY_SIDECAR_UNKNOWN", "Unknown Library SQLite sidecar exists");
+    }
+  }
+  const entries: TreeEntry[] = [];
+  for (const name of [...known].sort()) {
+    try {
+      entries.push(await inspectRegularFile(join(sourceDirectory, name), name));
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+  }
+  if (entries.length === 0) {
+    return Object.freeze({
+      entries: Object.freeze([]),
+      present: false,
+      sha256: sha256("absent"),
+    });
+  }
+  if (!entries.some((entry) => entry.path === "library.sqlite") ||
+      entries.some((entry) => entry.path !== "library.sqlite")) {
+    fail(
+      "BACKUP_LIBRARY_STATE_INVALID",
+      "Library database must be checkpointed before backup",
+    );
+  }
   return Object.freeze({
     entries: Object.freeze(entries),
     present: true,
@@ -2572,6 +2620,7 @@ export async function createEncryptedBackup(
       options.frozenSourceContract,
       async (lockedInspection) => {
         const databaseBefore = await databaseFilesSnapshot(sourceDirectory);
+        const libraryBefore = await libraryDatabaseSnapshot(sourceDirectory);
         const mediaDirectory = join(sourceDirectory, "media");
         const secretsDirectory = join(sourceDirectory, "secrets");
         const mediaBefore = await fingerprintTree(mediaDirectory, false);
@@ -2643,6 +2692,29 @@ export async function createEncryptedBackup(
           backupId,
         );
         entries.push(databaseEntry);
+        if (libraryBefore.present) {
+          const libraryEvidence = libraryBefore.entries.find(
+            (entry) => entry.path === "library.sqlite",
+          );
+          if (!libraryEvidence) {
+            fail("BACKUP_LIBRARY_MISSING", "Library database is missing");
+          }
+          const libraryPath = join(sourceDirectory, "library.sqlite");
+          try {
+            validateLibraryBackupDatabase(libraryPath);
+          } catch {
+            fail("BACKUP_LIBRARY_INVALID", "Library database is invalid");
+          }
+          entries.push(await encryptFile(
+            libraryPath,
+            libraryEvidence,
+            "library",
+            "library.sqlite",
+            objectsDirectory,
+            dek!,
+            backupId,
+          ));
+        }
         for (const file of mediaBefore.entries.filter((entry) => entry.kind === "file")) {
           entries.push(await encryptFile(
             join(mediaDirectory, ...file.path.split("/")),
@@ -2695,6 +2767,7 @@ export async function createEncryptedBackup(
         await checkpoint(options.onCheckpoint, "after-secrets-encryption");
 
         const databaseAfter = await databaseFilesSnapshot(sourceDirectory);
+        const libraryAfter = await libraryDatabaseSnapshot(sourceDirectory);
         const mediaAfter = await fingerprintTree(mediaDirectory, false);
         const observedSecretsAfter = await fingerprintTree(secretsDirectory, false);
         const secretsAfter = restorableSecretsSnapshot(observedSecretsAfter);
@@ -2705,6 +2778,7 @@ export async function createEncryptedBackup(
         if (
           !sameIdentity(sourceIdentity, finalSourceIdentity) ||
           !sameSnapshot(databaseBefore, databaseAfter) ||
+          !sameSnapshot(libraryBefore, libraryAfter) ||
           !sameSnapshot(mediaBefore, mediaAfter) ||
           !sameSnapshot(observedSecretsBefore, observedSecretsAfter) ||
           !sameSnapshot(secretsBefore, secretsAfter)
@@ -3142,7 +3216,9 @@ function validateManifest(
     const entry = jsonObject(raw, "BACKUP_MANIFEST_INVALID");
     if (
       !validUuid(entry.entryId) ||
-      !["database", "media", "oss", "secret"].includes(String(entry.kind)) ||
+      !["database", "library", "media", "oss", "secret"].includes(
+        String(entry.kind),
+      ) ||
       typeof entry.logicalPath !== "string" ||
       entry.objectFile !== `objects/${entry.entryId}.bin` ||
       !validSha(entry.ciphertextSha256) || !validSha(entry.plaintextSha256)
@@ -3156,6 +3232,7 @@ function validateManifest(
       : "";
     const allowedPath =
       (entry.kind === "database" && entry.logicalPath === "unboundry.sqlite") ||
+      (entry.kind === "library" && entry.logicalPath === "library.sqlite") ||
       (entry.kind === "media" && entry.logicalPath.startsWith("media/")) ||
       (entry.kind === "secret" && entry.logicalPath === `secrets/${secretName}` &&
         restorableSecretFiles.has(secretName)) ||
@@ -3196,11 +3273,15 @@ function validateManifest(
   });
   const database = jsonObject(manifest.database, "BACKUP_MANIFEST_INVALID");
   const databaseEntries = entries.filter((entry) => entry.kind === "database");
+  const libraryEntries = entries.filter((entry) => entry.kind === "library");
   if (
     !validUuid(database.entryId) ||
     databaseEntries.length !== 1 ||
     databaseEntries[0]?.entryId !== database.entryId
   ) fail("BACKUP_MANIFEST_INVALID", "Backup database entry is invalid");
+  if (libraryEntries.length > 1) {
+    fail("BACKUP_MANIFEST_INVALID", "Backup Library entry is duplicated");
+  }
   const inspection = jsonObject(database.inspection, "BACKUP_MANIFEST_INVALID");
   if (
     typeof inspection.userVersion !== "number" ||
@@ -3777,6 +3858,26 @@ async function materializeAndValidate(
       destinationRoot,
       manifest.database.inspection,
     );
+    const libraryEntry = manifest.entries.find((entry) =>
+      entry.kind === "library"
+    );
+    if (libraryEntry) {
+      await decryptEntry(
+        libraryEntry,
+        packageDirectory,
+        destinationRoot,
+        dek,
+        manifest.backupId,
+      );
+      try {
+        validateLibraryBackupDatabase(join(destinationRoot, "library.sqlite"));
+      } catch {
+        fail(
+          "BACKUP_LIBRARY_FINGERPRINT_MISMATCH",
+          "Restored Library database is invalid",
+        );
+      }
+    }
     await checkpoint(callback, "after-restore-database");
 
     for (const entry of manifest.entries.filter((candidate) =>

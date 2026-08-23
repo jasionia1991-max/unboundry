@@ -29,6 +29,8 @@ import { useCompositionSafeText } from "./CompositionSafeText";
 import { hasInteractionProbeNodes } from "./probeFixtures";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { clearProjectLocalKeys } from "../projects/projectStorage";
+import { LIBRARY_CHANGED_EVENT } from
+  "../imageTools/saveLibraryAssetUseCase";
 import {
   pathWithCurrentCanvasSource,
   projectWorkspacePath,
@@ -947,6 +949,7 @@ export function CanvasShell({
   const [libraryCatalogError, setLibraryCatalogError] = useState("");
   const [libraryCatalogLoading, setLibraryCatalogLoading] = useState(false);
   const [libraryVisibleCount, setLibraryVisibleCount] = useState(20);
+  const [libraryRevision, setLibraryRevision] = useState(0);
   const [aiCharactersOpen, setAiCharactersOpen] = useState(
     fixtureId === "overlay.ai-characters.loaded",
   );
@@ -1884,6 +1887,12 @@ export function CanvasShell({
   }, [addMenuOpen]);
 
   useEffect(() => {
+    const refresh = () => setLibraryRevision((revision) => revision + 1);
+    window.addEventListener(LIBRARY_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(LIBRARY_CHANGED_EVENT, refresh);
+  }, []);
+
+  useEffect(() => {
     if (!assetsOpen) return;
     const controller = new AbortController();
     const spaceId = assetsTab === "团队" ? "team" : "personal";
@@ -1929,7 +1938,22 @@ export function CanvasShell({
     assetsOpen,
     assetsTab,
     libraryVisibleCount,
+    libraryRevision,
   ]);
+
+  const deleteLibraryAsset = async (asset: CanvasLibraryAsset) => {
+    setLibraryCatalogError("");
+    const response = await fetch(
+      `/api/library/${asset.kind}/${encodeURIComponent(asset.id)}`,
+      { method: "DELETE" },
+    );
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({})) as { error?: string };
+      setLibraryCatalogError(body.error || "素材条目删除失败");
+      return;
+    }
+    setLibraryRevision((revision) => revision + 1);
+  };
 
   useEffect(() => {
     if (!aiCharactersOpen) return;
@@ -2966,32 +2990,40 @@ export function CanvasShell({
               </small>
               <div>
                 {visibleLibraryAssets.map((asset) => (
-                  <button
-                    aria-label={`拖动素材 ${asset.label}`}
-                    className="assets-library-card"
-                    data-kind={asset.kind}
-                    draggable
-                    key={asset.id}
-                    onDragStart={(event) => {
-                      event.dataTransfer.effectAllowed = "copy";
-                      event.dataTransfer.setData(
-                        CANVAS_LIBRARY_ASSET_MIME,
-                        JSON.stringify(asset),
-                      );
-                    }}
-                    title="拖到画布"
-                    type="button"
-                  >
-                    <span data-preview={asset.kind} />
-                    <strong>{asset.label}</strong>
-                    <small>
-                      {asset.kind === "image"
-                        ? "图片"
-                        : asset.kind === "video"
-                          ? "视频"
-                          : "音频"}
-                    </small>
-                  </button>
+                  <article className="assets-library-card" key={`${asset.kind}:${asset.id}`}>
+                    <button
+                      aria-label={`拖动素材 ${asset.label}`}
+                      className="assets-library-drag"
+                      data-kind={asset.kind}
+                      draggable
+                      onDragStart={(event) => {
+                        event.dataTransfer.effectAllowed = "copy";
+                        event.dataTransfer.setData(
+                          CANVAS_LIBRARY_ASSET_MIME,
+                          JSON.stringify(asset),
+                        );
+                      }}
+                      title="拖到画布"
+                      type="button"
+                    >
+                      <span data-preview={asset.kind} />
+                      <strong>{asset.label}</strong>
+                      <small>
+                        {asset.kind === "image"
+                          ? "图片"
+                          : asset.kind === "video"
+                            ? "视频"
+                            : "音频"}
+                      </small>
+                    </button>
+                    <button
+                      aria-label={`从素材库移除 ${asset.label}`}
+                      className="assets-library-remove"
+                      onClick={() => void deleteLibraryAsset(asset)}
+                      title="只移除素材库条目，不删除媒体"
+                      type="button"
+                    >×</button>
+                  </article>
                 ))}
               </div>
               {visibleLibraryAssets.length < libraryAssetTotal && (

@@ -137,6 +137,8 @@ import { renderAnnotatedImage } from
   "../imageTools/renderAnnotatedImage";
 import { emptyImageAnnotationDocument } from
   "../imageTools/imageAnnotations";
+import { createSaveLibraryAssetUseCase } from
+  "../imageTools/saveLibraryAssetUseCase";
 
 type CropBox = { height: number; width: number; x: number; y: number };
 const imageColorMarks = [
@@ -1723,6 +1725,9 @@ function ImageNodeImpl({
     setRawUploadError(message);
   };
   const [transientUploadError, setTransientUploadError] = useState("");
+  const [librarySaveState, setLibrarySaveState] = useState<
+    "idle" | "saving" | "saved"
+  >("idle");
   const uploading = data.inputState === "uploading";
   const referenceLimit = imageParameters.maxReferenceImages ?? 0;
   const imageInputSchema = selectedImageModel
@@ -3641,6 +3646,7 @@ function ImageNodeImpl({
         annotations: NonNullable<ProbeNodeType["data"]["imageAnnotations"]>;
       }>) => exportAnnotations(input.annotations),
     })
+    .register(createSaveLibraryAssetUseCase())
     .register(createDownloadImageToolUseCase())
     .register(createFullscreenImageToolUseCase());
 
@@ -3894,7 +3900,30 @@ function ImageNodeImpl({
         <span className="media-node-toolbar-divider" />
         <button
           aria-label="保存到素材库"
-          data-tooltip="保存到素材库"
+          data-library-state={librarySaveState}
+          data-tooltip={librarySaveState === "saved" ? "已保存到素材库" : "保存到素材库"}
+          disabled={typeof data.assetId !== "string" ||
+            !data.assetId || librarySaveState === "saving"}
+          onClick={() => {
+            const sourceAssetId = typeof data.assetId === "string"
+              ? data.assetId
+              : "";
+            if (!sourceAssetId) return;
+            setLibrarySaveState("saving");
+            setUploadError("");
+            void imageToolDispatcher.execute("save-to-library", {
+              assetId: sourceAssetId,
+              kind: "image",
+              label: titleControl.committedValue || "Image",
+            }).then(() => {
+              setLibrarySaveState("saved");
+            }).catch((failure: unknown) => {
+              setLibrarySaveState("idle");
+              setUploadError(
+                failure instanceof Error ? failure.message : "素材保存失败",
+              );
+            });
+          }}
           type="button"
         >
           <svg aria-hidden="true" viewBox="0 0 20 20">
