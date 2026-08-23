@@ -1,7 +1,7 @@
 # Unboundry 治理、仓库卫生与 nginx 加固回执
 
 日期：2026-08-23
-状态：`MAIN_MERGE_AUTHORIZED / PR_CI_PASS / PRODUCTION_NGINX_HARDENED / GITHUB_HYGIENE_APPLIED / NO_APP_RELEASE`
+状态：`MAIN_MERGED / MAIN_CI_PASS / PRODUCTION_NGINX_HARDENED / GITHUB_HYGIENE_APPLIED / NO_APP_RELEASE`
 
 ## 范围
 
@@ -50,4 +50,4 @@
 
 ## 交付边界
 
-用户先明确授权commit、push和提PR，候选通过`codex/governance-hardening-2026-08-23`专用分支与PR #72交付；PR `lightweight` check通过后，用户又明确授权合并并收口。合并后的main check仍须单独核验；tag和应用release不在本次授权内。应用版本与release没有变化，也不得把本轮nginx运维加固冒充v0.6.32发布。
+用户先明确授权commit、push和提PR，在PR `lightweight` check通过后又授权合并并收口。PR #72已于2026-08-23 squash merge为`f78e7daccd8fce58c3c30a02bc9f27794129933a`，对应main Quality gates run `32615001671`已完成且`SUCCESS`；专用远端分支、本地分支和worktree均已清理。应用版本与release没有变化，也不得把本轮nginx运维加固冒充v0.6.32发布。

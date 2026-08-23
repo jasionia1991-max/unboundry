@@ -7,10 +7,10 @@
 
 ### 2026-08-23 全项目治理与 nginx 加固
 
-- 状态：`MAIN_MERGE_AUTHORIZED / PR_CI_PASS / PRODUCTION_NGINX_HARDENED / GITHUB_HYGIENE_APPLIED / NO_APP_RELEASE`。本轮不升级 package、不发布新应用版本、不修改业务代码、schema、生产数据、Provider 或 OSS。
+- 状态：`MAIN_MERGED / MAIN_CI_PASS / PRODUCTION_NGINX_HARDENED / GITHUB_HYGIENE_APPLIED / NO_APP_RELEASE`。本轮不升级 package、不发布新应用版本、不修改业务代码、schema、生产数据、Provider 或 OSS。
 - 权威文档：`AGENTS.md`和三份渐进式模块化文档的当前版本统一为 v0.6.31；m38 增加 package、AGENTS 和三份当前模块化文档的一致性门。
 - 模块化边界：没有业务触发，不启动第三至第七批，不机械拆分 `App.tsx`、`CanvasSurface.tsx` 或 `generationTasks.ts`；后续批次只在真实新功能触发边界问题时立项。
-- CI 交付：新增 `.github/workflows/quality-gates.yml`，只运行 safe preflight、TypeScript、架构边界、source coverage 和 high-level npm audit；没有把 safe full 放进每次提交。PR #72 的 `lightweight` check 已通过，用户随后明确授权合并并收口；合并后的 main check 仍须单独核验，不继承 PR check 冒充通过。
+- CI 交付：新增 `.github/workflows/quality-gates.yml`，只运行 safe preflight、TypeScript、架构边界、source coverage 和 high-level npm audit；没有把 safe full 放进每次提交。PR #72 已于2026-08-23 squash merge为`f78e7daccd8fce58c3c30a02bc9f27794129933a`，该main提交的Quality gates run `32615001671`已完成且`SUCCESS`。
 - GitHub 卫生：冲突草稿 PR #68 已关闭；8条已合并或已被取代的远端分支删除；`delete_branch_on_merge=true`；Vulnerability Alerts 已启用；6条不存在临时目录的 worktree 元数据已 prune，另外2个干净且有可恢复Git/PR依据的`/private/tmp`旧worktree由`git worktree remove`删除；21条已合入 main 且未被有效 worktree 占用的本地分支由 `git branch -d` 安全删除。main 分支保护仍受当前私有仓库套餐限制，未伪造已开启。
 - nginx：生产配置先备份为`/etc/nginx/sites-available/canvas-mymy-ltd.before-hardening-20260823`（SHA-256 `2c6e90d1…6020f`），新配置 SHA-256 `bdc06386…a47ed`；`nginx -t`通过后仅 reload nginx，应用服务未重启、`NRestarts=0`、current 仍指向 v0.6.31 release。公网点文件、源码目录、package/tsconfig和robots路径均为404，`Server`只剩`nginx`、不再暴露版本；root/version/live/ready均200。
 - 验证：Node `22.23.1` / npm `10.9.8`；safe preflight通过；m38 `15/15 PASS`；m96修正精确directive计数后最小复验`4/4 PASS`；架构76条基线、399文件source coverage、TypeScript/build安全入口附带门均通过；4173 listener不变。未重复safe full。
@@ -18,12 +18,12 @@
 
 ### 2026-08-23 服务器运维回执收口（docs-only）
 
-- 状态：`LOCAL_DOCS_CANDIDATE / LIVE_READ_ONLY_RECHECK_PASS / AUTO_PASS / NO_PRODUCTION_WRITE / PR_PENDING`。本轮只收口`spec/UNBOUNDRY_SERVER_SECURITY_HARDENING_RECEIPT_2026-08-23.md`与`spec/UNBOUNDRY_SERVER_DISK_CLEANUP_RECEIPT_2026-08-23.md`，不修改应用、schema、生产数据、Provider、OSS或release。
+- 状态：`MAIN_MERGED / MAIN_CI_PASS / LIVE_READ_ONLY_RECHECK_PASS / AUTO_PASS / NO_PRODUCTION_WRITE / NO_APP_RELEASE`。本轮只收口`spec/UNBOUNDRY_SERVER_SECURITY_HARDENING_RECEIPT_2026-08-23.md`与`spec/UNBOUNDRY_SERVER_DISK_CLEANUP_RECEIPT_2026-08-23.md`，不修改应用、schema、生产数据、Provider、OSS或release。
 - 时间线：安全加固检查点为服务器时间`10:03`，磁盘清理检查点为`10:50`；前者记录的磁盘`76% / 28G available`是清理前状态，后者`61% / 45G available`是后续状态。
 - 线上只读复核：2026-08-23 11:24 CST，生产仍为v0.6.31/schema39；系统盘61%、45G可用；SSH密钥登录、UFW 22/80/443、Fail2ban、loopback运维面板、关键服务、备份timer与公网健康/敏感路径合同均通过，关键服务`NRestarts=0`。
 - 安全边界：两份回执未命中常见私钥、访问令牌、API Key或明文凭证模式；敏感检查点内容未复制入仓库。受保护未跟踪JSON不进入本分支、测试、commit或PR。
 - 本地验证：新worktree首次定向入口在测试执行前因缺少本地`node_modules/typescript`退出；只执行离线`npm ci --ignore-scripts --offline`补齐依赖后复验同一m38，最终`15/15 PASS`，source snapshot不变、4173 listener不变。没有运行safe full。
-- 交付：用户已授权commit、push和docs-only PR；不授权merge、tag、应用发布或新的生产写操作。
+- 交付：docs-only PR #73已于2026-08-23 squash merge为`c16139ce3a59092b6ac796ab8953fd3dc243bd27`，该main提交的Quality gates run `32615533816`已完成且`SUCCESS`。没有tag、应用发布或新的生产写操作。
 
 ### 2026-08-23 模块化成果主线集成（v0.6.31 PRODUCTION PUBLISHED / USER PASS）
 

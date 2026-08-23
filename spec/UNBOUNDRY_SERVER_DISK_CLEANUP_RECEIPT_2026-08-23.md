@@ -93,6 +93,6 @@ Canvas 验证：
 
 ## 变更边界
 
-- 用户已授权将本回执与安全加固回执通过`codex/server-ops-receipts-2026-08-23`专用分支和docs-only PR交付；这不构成应用发布。
+- 本回执与安全加固回执已通过docs-only PR #73于2026-08-23 squash merge为`c16139ce3a59092b6ac796ab8953fd3dc243bd27`，对应main Quality gates run `32615533816`已完成且`SUCCESS`；专用远端分支、本地分支和worktree均已清理。这不构成应用发布。
 - 未启用 WAF、MFA 或密码哈希升级。
 - 未设置自动删除策略；后续若要建立保留周期，应另行盘点并先做可回滚方案。

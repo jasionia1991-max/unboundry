@@ -7,7 +7,7 @@
 
 治理门：后续批次只在真实新功能触发边界问题时立项；没有触发就不得施工。
 
-本轮验证：Node `22.23.1` / npm `10.9.8`，safe preflight通过；文档一致性m38 `15/15 PASS`，nginx运维合同m96最终`4/4 PASS`，架构基线与source coverage通过，4173 listener不变。没有运行safe full。PR #72的轻量CI已通过，用户随后明确授权合并并收口，但没有应用release授权，线上应用版本不变；生产只执行了有备份、`nginx -t`和回滚路径保护的nginx reload。
+本轮验证：Node `22.23.1` / npm `10.9.8`，safe preflight通过；文档一致性m38 `15/15 PASS`，nginx运维合同m96最终`4/4 PASS`，架构基线与source coverage通过，4173 listener不变。没有运行safe full。PR #72已squash merge为`f78e7daccd8fce58c3c30a02bc9f27794129933a`，对应main Quality gates run `32615001671`为`SUCCESS`；没有应用release，线上版本不变，生产只执行了有备份、`nginx -t`和回滚路径保护的nginx reload。
 
 ## 1. 当前权威文件
 
