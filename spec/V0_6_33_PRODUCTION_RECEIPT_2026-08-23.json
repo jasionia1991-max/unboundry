@@ -142,7 +142,13 @@
   },
   "documentationClosure": {
     "scope": "m38-generation-runtime-incidents",
-    "status": "PENDING_DOCS_PR",
+    "tests": 15,
+    "passed": 15,
+    "failed": 0,
+    "sourceAndSnapshotSha256": "ec9b2e798ac94c6a6b34ee280190c70f678273d99334eeb1865ae984d35737e0",
+    "listener4173Unchanged": true,
+    "status": "PASS",
+    "finalReceiptOnlyChangeAfterTargetedRun": true,
     "safeFullRun": false
   },
   "rollback": {
