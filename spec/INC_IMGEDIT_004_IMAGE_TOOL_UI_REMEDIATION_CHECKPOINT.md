@@ -2,10 +2,10 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 03:11:52 +0800
-- 状态：`GOAL_ACTIVE / R2_IN_PROGRESS / UI_REMEDIATION_REQUIRED`
-- 当前阶段：`R2 单一活动工具与 Portal 宿主 / IN_PROGRESS`
-- 唯一允许的下一动作：完成单一 active tool、统一 Portal Host、modal inert、焦点返回和共享 checkerboard surface；使 R1 的 m2 红证据转绿并证明既有业务payload不变
+- 更新时间：2026-08-24 03:24:31 +0800
+- 状态：`GOAL_ACTIVE / R2_AUTO_PASS / UI_REMEDIATION_REQUIRED`
+- 当前阶段：`R2 单一活动工具与 Portal 宿主 / AUTO_PASS`
+- 唯一允许的下一动作：提交 R2 文档 checkpoint；随后先把 R3 标为`IN_PROGRESS`，完成多角度、调整像素、快速切分、增强、抠图和 Seedance 的统一紧凑/大型安全布局与 viewport-safe 动作区
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
 - 文档分支：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`
 - 立项 HEAD / origin-main：`f369d1dba1eef05aebc7f1a443256ceb82778ea0`
@@ -16,9 +16,9 @@
 - 目标版本：`v0.6.35 / VERSION_GATE_VALID`
 - 发布授权：用户于本 Goal 独立明确“`v0.6.35 上线`” / `RELEASE_GATE_VALID`
 - 真实 Provider/付费预算：`0次 / 0 USD`
-- 产品代码：未修改
-- 测试代码：未修改
-- 文档范围：本方案、Checkpoint、Goal 提示词、AGENTS、上线规矩、CURRENT_STATE、TASKS、验收矩阵
+- 产品代码：单一活动状态、Portal Host、modal inert、焦点返回和共享surface已实现
+- 测试代码：m2已补Host/inert/surface/焦点返回直接断言
+- 文档范围：Checkpoint、TASKS、验收矩阵；CURRENT_STATE尚无候选/版本/GitHub/生产事实变化
 
 ## 1. 权威恢复顺序
 
@@ -94,7 +94,7 @@ node -p "require('./package.json').version"
 |---|---|---|
 | R0 | 实时恢复与缺陷基线 | AUTO_PASS |
 | R1 | 状态机和共享宿主合同 | AUTO_PASS_WITH_EXPECTED_RED_UI_EVIDENCE |
-| R2 | 单一活动工具与 Portal 宿主 | IN_PROGRESS |
+| R2 | 单一活动工具与 Portal 宿主 | AUTO_PASS |
 | R3 | 紧凑面板和快速切分 | NOT_STARTED |
 | R4 | 大型编辑器与透明舞台 | NOT_STARTED |
 | R5 | 全屏与交互完整性 | NOT_STARTED |
@@ -109,13 +109,13 @@ node -p "require('./package.json').version"
 
 | ID | 内容 | 状态 |
 |---|---|---|
-| IMGEDIT-021 | 单一活动工具状态机与叠层阻断 | NOT_STARTED |
-| IMGEDIT-022 | screen-space 宿主与 viewport 安全 | NOT_STARTED |
-| IMGEDIT-023 | 透明图片统一棋盘格与 contain | NOT_STARTED |
+| IMGEDIT-021 | 单一活动工具状态机与叠层阻断 | AUTO_PASS |
+| IMGEDIT-022 | screen-space 宿主与 viewport 安全 | PARTIAL / HOST_AUTO_PASS |
+| IMGEDIT-023 | 透明图片统一棋盘格与 contain | PARTIAL / SHARED_SURFACE_AUTO_PASS |
 | IMGEDIT-024 | 重绘/擦除/扩图/标注大型编辑层 | NOT_STARTED |
 | IMGEDIT-025 | 多角度/调整像素/快速切分/增强/抠图/Seedance 面板 | NOT_STARTED |
-| IMGEDIT-026 | Escape、焦点、键盘、IME、busy 与 reduced-motion | NOT_STARTED |
-| IMGEDIT-027 | 既有工具栏、菜单、颜色、裁剪、下载回归 | NOT_STARTED |
+| IMGEDIT-026 | Escape、焦点、键盘、IME、busy 与 reduced-motion | PARTIAL / FOCUS_INERT_AUTO_PASS |
+| IMGEDIT-027 | 既有工具栏、菜单、颜色、裁剪、下载回归 | PARTIAL / DIRECT_REGRESSION_AUTO_PASS |
 | IMGEDIT-028 | 目标视口与真人逐项功能验收 | NOT_STARTED |
 
 ## 7. 版本、发布和外部调用门
@@ -212,3 +212,24 @@ Provider / OSS / 费用：
 - 阻断：无；m2失败是施工前必须保留的确定性红证据，不是环境或外部阻断
 - 回滚点：R0提交`6b1109d7bafc5288f7b4547d22ea7387c783699f`；R1合同提交`16b0acad9261394f1f33b90108d01a6c7ad06abb`
 - 唯一下一动作：提交R1文档checkpoint；随后把R2标为`IN_PROGRESS`，实现Host并只复验m2/m100最小集合
+
+## 13. R2 单一活动工具与 Portal 宿主
+
+- 时间：2026-08-24 03:24:31 +0800
+- 阶段：`R2`
+- 状态：`AUTO_PASS`
+- branch / HEAD / origin-main：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24` / 最终被测`c5f9795e178f0a198f333fd49b13efbf6e082ef4` / `f369d1dba1eef05aebc7f1a443256ceb82778ea0`
+- 工作树摘要：产品、测试和R2启动断点已分三次本地checkpoint提交；当前仅受保护JSON未跟踪且未进入diff/stage。R2隔离测试worktree均由本Goal精确创建并已安全移除
+- 产品文件：`client/src/canvas/ImageNode.tsx`以单一reducer活动状态取代annotation/crop/fullscreen/multi-angle/redraw/erase/outpaint/enhance/cutout/seedance/localTool等独立open状态；`client/src/imageTools/ImageToolHost.tsx`统一Portal、screen-space、popover flip/shift/clamp、modal inert、焦点循环/返回、Escape和共享Surface；Annotation/Crop/Redraw/Outpaint移除各自Portal，业务Dispatcher/use case不变；`client/src/styles.css`加入Host/surface/focus/reduced-motion基础壳层
+- 测试文件：`tests/m2-image-node.spec.ts`在既有图片基础用例内直接断言Host唯一活动工具、modal时`#root inert`、关闭后恢复、触发按钮焦点返回和cutout共享surface；m100的R1合同断言继续覆盖reducer/descriptor边界
+- 文档文件：本Checkpoint、验收矩阵、TASKS；CURRENT_STATE没有候选、GitHub、版本或生产事实变化，按纪律不改
+- package / schema / candidate：`0.6.35 / schema39 / 无候选`
+- 版本门 / 发布门：`v0.6.35 / VERSION_GATE_VALID`；“v0.6.35上线” / `RELEASE_GATE_VALID`，仍只允许R7通过后进入R8
+- Provider / OSS / 费用：真实Provider请求、尝试、成功0；费用0；真实OSS写入0；浏览器规格只使用临时fixture和动态loopback
+- 测试命令、环境、结果、退出码：Node22.23.1/npm10.9.8；精确提交`661a7a4`隔离worktree中safe m2 `10/10 PASS`、m100 `13/13 PASS`，均退出0，source/snapshot`b8168929…5e674`、4173 listener unchanged。加强焦点断言后的`b63489e`首次m2为`9/10`，唯一失败精确证明工具栏因modal期间卸载导致旧触发元素断连、焦点无法返回；修正为保留底层toolbar DOM并依靠root inert阻止交互后，最终精确提交`c5f9795`只复验m2 `10/10 PASS`、退出0，source/snapshot`6a3e4445…33f1e`、listener unchanged。未重复m100或full
+- 浏览器视口、zoom、素材与结果：m2隔离Playwright在现有fixture验证fullscreen/outpaint modal、cutout popover、裁剪/重绘既有交互和零Generation/Provider；R2不冒充三视口/四zoom完整矩阵，留给R3～R6
+- 架构与数据风险：Host只管理可见层、互斥、焦点、关闭、z-index和viewport，不持有业务payload、任务、上传、轮询或Media/Canvas写入；m2既有crop/redraw/本地工具链和m100架构门通过，未修改Provider/Generation/Media/Canvas/Library合同
+- 设计偏差：快速切分按R1合同进入modal checkerboard安全壳层；实现开始时新Host文件的首个未提交补丁早于Checkpoint切为R2 `IN_PROGRESS`数分钟，发现后立即先回写R2启动断点再继续，未开启第二阶段、未产生测试或外部副作用；此顺序偏差已如实记录
+- 阻断：无
+- 回滚点：R1文档提交`4ecb62bc51d9da72b201e14f931c56560ca594d0`；R2产品提交`661a7a4`、焦点测试提交`b63489e`、修正提交`c5f9795`
+- 唯一下一动作：提交R2文档checkpoint；随后先把R3标为`IN_PROGRESS`，完成六类紧凑/大型安全面板和viewport-safe动作区

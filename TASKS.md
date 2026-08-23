@@ -1,11 +1,11 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产为`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，但图片工具用户质量复验未通过。`INC-IMGEDIT-004` R0已恢复基线，R1已冻结共享UI合同并取得旧实现确定性红证据；下一阶段为R2单一活动工具与Portal宿主。
+> **当前状态**：生产为`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，但图片工具用户质量复验未通过。`INC-IMGEDIT-004` R2已完成单一活动工具与Portal宿主并把R1红证据转绿；下一阶段为R3紧凑面板和快速切分。
 
 更新时间：2026-08-24
-状态：`v0.6.35 PRODUCTION_PUBLISHED_AUTO_PASS；REAL_PROVIDER_TECHNICAL_SMOKE_PASS 6/6；INC-IMGEDIT-004 R1_CONTRACT_AUTO_PASS_WITH_RED_UI_EVIDENCE；USER_QUALITY_REMEDIATION_REQUIRED。`
+状态：`v0.6.35 PRODUCTION_PUBLISHED_AUTO_PASS；REAL_PROVIDER_TECHNICAL_SMOKE_PASS 6/6；INC-IMGEDIT-004 R2_AUTO_PASS；USER_QUALITY_REMEDIATION_REQUIRED。`
 
-### 2026-08-24 图片工具交互与 UI 一次性返工（INC-IMGEDIT-004，GOAL_ACTIVE / R1_CONTRACT_AUTO_PASS_WITH_RED_UI_EVIDENCE）
+### 2026-08-24 图片工具交互与 UI 一次性返工（INC-IMGEDIT-004，GOAL_ACTIVE / R2_AUTO_PASS）
 
 - 用户生产实页检查未通过；自动测试和六项真实Provider链只证明技术链，不能证明功能交互、UI或视觉质量正常。
 - 已确认P0/P1：多个工具可叠开；多角度/快速切分/Seedance底部裁切；重绘/擦除/标注与Creator碰撞；透明图在编辑器/全屏为黑底；扩图和紧凑面板布局失衡。顶部工具栏、更多菜单和颜色标记作为回归保护。
@@ -17,6 +17,8 @@
 - R0源码基线确认ImageNode仍有多组独立open state，紧凑/多角度面板仍依赖NodeToolbar相对定位，大型编辑层缺统一inert/focus/top-layer合同；这与登记缺陷一致。受保护JSON仍未跟踪且不在diff/stage，其他worktree没有同范围施工证据。
 - 本Goal版本门为`v0.6.35`，用户独立明确“v0.6.35上线”，两项发布门有效；只能在R7通过后进入R8。INC-IMGEDIT-003预算已用完，本Goal真实Provider/尝试/费用均为0，生产技术通过后仍需用户明确`USER_PASS`。
 - R1已冻结12个`ActiveImageTool`、modal/popover分类、checkerboard/plain surface、inert/outside-close/max-width descriptor和原子菜单互斥reducer；只管理UI可见状态，不接业务payload、任务、上传或轮询。m100合同`13/13 PASS`。旧实现m2按预期`9/10`，唯一失败精确证明统一Host、modal inert和共享透明Surface尚未实现；R2必须让同一红证据转绿。两次均为精确提交隔离worktree、Node22.23.1/npm10.9.8、source/listener unchanged，Provider/OSS/费用0。
+- R2已用单一reducer替代全部图片工具独立open状态，并把Crop/Redraw/Erase/Outpaint/Annotation/Fullscreen和六类面板接入同一个Portal `ImageToolHost`；打开工具会原子关闭更多/颜色菜单，modal给`#root`设置inert，Host统一Escape、Tab循环、焦点返回、z-index、popover flip/shift/clamp和共享棋盘格Surface。Host不持有业务payload、任务、上传或轮询。
+- 精确提交`661a7a4`的safe m2 `10/10`、m100 `13/13 PASS`；加强焦点断言后先以`9/10`抓出modal期间卸载toolbar导致旧触发元素断连，修正为保留DOM并依靠root inert后，最终`c5f9795`只复验m2 `10/10 PASS`。Node22.23.1/npm10.9.8、source/snapshot/listener均unchanged，Provider/OSS/费用0；没有运行full。IMGEDIT-021收口AUTO_PASS，022/023/026/027按真实范围保持PARTIAL。
 
 ### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，D13_AUTO_PASS / USER_QUALITY_REMEDIATION_REQUIRED）
 
