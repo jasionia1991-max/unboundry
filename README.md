@@ -6,13 +6,13 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前生产：v0.6.33（2026-08-23，待用户复验）
+## 当前生产：v0.6.33（2026-08-23，USER PASS）
 
-生产当前运行 `v0.6.33 / schema39`，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。裁剪安全链保持v0.6.32同站Blob合同，准备画面改为320×180紧凑加载卡片；HTTP/OSS图片不增加重复读取，只有内存`blob:`/`data:`预览显示缩略图。GitHub、冻结备份与恢复副本、精确标签源码构建、原子切换和生产技术终门均通过，切换前后数据计数一致；发布流程没有发起Provider请求或OSS写入。完整现状见 [`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)，生产回执见 [`spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json`](spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json)。
+生产当前运行 `v0.6.33 / schema39`，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。裁剪安全链保持v0.6.32同站Blob合同，准备画面改为320×180紧凑加载卡片；HTTP/OSS图片不增加重复读取，只有内存`blob:`/`data:`预览显示缩略图。GitHub、冻结备份与恢复副本、精确标签源码构建、原子切换和生产技术终门均通过，切换前后数据计数一致；发布流程没有发起Provider请求或OSS写入。用户已在线上复验并明确回复“通过”。完整现状见 [`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)，生产回执见 [`spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json`](spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json)。
 
 ## v0.6.32 图片裁剪同站编辑源
 
-OSS 图片裁剪改为通过 owner-scoped 同站接口读取并校验原图，客户端只把同源 Blob 画入 Canvas，避免跨域重定向污染画布；解析器保持可替换，后续可接独立媒体域名。v0.6.32 已上线并获用户实页确认。裁剪准备态的缩略图/紧凑加载体验已按 [`spec/INC_IMGEDIT_002_CROP_LOADING_EXPERIENCE_PLAN_2026-08-23.md`](spec/INC_IMGEDIT_002_CROP_LOADING_EXPERIENCE_PLAN_2026-08-23.md) 随v0.6.33上线；HTTP/OSS图片使用320×180小型加载卡片以避免重复下载，只有`blob:`/`data:`内存预览才显示缩略图。生产技术门已通过，等待用户实页确认视觉体验。
+OSS 图片裁剪改为通过 owner-scoped 同站接口读取并校验原图，客户端只把同源 Blob 画入 Canvas，避免跨域重定向污染画布；解析器保持可替换，后续可接独立媒体域名。v0.6.32 已上线并获用户实页确认。裁剪准备态的缩略图/紧凑加载体验已按 [`spec/INC_IMGEDIT_002_CROP_LOADING_EXPERIENCE_PLAN_2026-08-23.md`](spec/INC_IMGEDIT_002_CROP_LOADING_EXPERIENCE_PLAN_2026-08-23.md) 随v0.6.33上线；HTTP/OSS图片使用320×180小型加载卡片以避免重复下载，只有`blob:`/`data:`内存预览才显示缩略图。生产技术门和用户线上复验均已通过。
 
 ## 2026-08-19 生成稳定性一次性修复（v0.6.20 已发布，待你复验）
 

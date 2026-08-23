@@ -1,11 +1,11 @@
 # Unboundry 绿地复刻当前任务
 
-> **v0.6.33 当前状态**：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。tag `v0.6.33` 指向 `669958f4e325cc182c31cf0f27861e26b64736b1` / tree `c3a1c27cbe0c230d7005f260c5b57b96ad274acd`；PR #77 squash merge `8675a34b14b17fdf69b5e08b0469c520e4df79cb`。生产 current 为 `/opt/unboundry/releases/v0.6.33-crop-loading-20260823`。正式safe full真实记录`1049/1050`，同冻结源码只复验唯一失败m22并`37/37 PASS`，没有重跑。冻结备份与恢复副本365文件双清单一致，schema39和切换前后数据计数一致，公网/回环/service/inventory/5资源全部通过；发布自身Provider/OSS写入0。等待用户确认裁剪加载体验。
+> **v0.6.33 当前状态**：`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。tag `v0.6.33` 指向 `669958f4e325cc182c31cf0f27861e26b64736b1` / tree `c3a1c27cbe0c230d7005f260c5b57b96ad274acd`；PR #77 squash merge `8675a34b14b17fdf69b5e08b0469c520e4df79cb`。生产 current 为 `/opt/unboundry/releases/v0.6.33-crop-loading-20260823`。正式safe full真实记录`1049/1050`，同冻结源码只复验唯一失败m22并`37/37 PASS`，没有重跑。冻结备份与恢复副本365文件双清单一致，schema39和切换前后数据计数一致，公网/回环/service/inventory/5资源全部通过；发布自身Provider/OSS写入0。用户已在线上复验并明确回复“通过”。
 
 更新时间：2026-08-23
-状态：`v0.6.33 已发布并通过技术终门，状态 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK。权威回执见 spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json。`
+状态：`v0.6.33 已发布并通过技术终门与用户线上复验，状态 PRODUCTION_PUBLISHED_USER_PASS / USER_PASS。权威回执见 spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json。`
 
-### 2026-08-23 图片裁剪准备态体验优化（INC-IMGEDIT-002，v0.6.33已发布、待用户复验）
+### 2026-08-23 图片裁剪准备态体验优化（INC-IMGEDIT-002，v0.6.33已发布并获用户确认）
 
 - 用户确认v0.6.32裁剪成功，同时指出首次打开会先出现“大黑框+正在准备图片”；根因是安全编辑源完成同站读取、校验、Blob创建和图片解码前，裁剪舞台已按默认1280×720比例展开。
 - 用户同意“当前图片视觉占位+半透明遮罩+小型加载动画+准备完成淡入”的方向。权威行动方案与施工记录：`spec/INC_IMGEDIT_002_CROP_LOADING_EXPERIENCE_PLAN_2026-08-23.md`。
@@ -14,7 +14,7 @@
 - 测试先行：首轮m2在产品实现前以缺少`image-crop-visual-preview`确定性失败；初版实现暴露裁剪层z-index拦截比例菜单，增加stage层叠上下文后最小复验修复。最终safe定向m2为`10/10 PASS`，preflight、TypeScript、架构、source coverage、生产build和离线/凭据/网络门同时通过，source/snapshot SHA-256均为`425ff6ab1114589272f792c0cef28fc6171b82b0c6c355e1f6d8de22af8f603c`，4173 listener不变。
 - 自动反例同时覆盖：HTTP预览不创建第二张普通素材图且`redirectedAssetReads=0`；安全内存预览显示缩略图；准备时确认禁用且无裁剪框；解码完成后实际图片`src`为`blob:`并启用确认；既有取消、保存失败补偿、成功派生图和来源替换栅栏继续通过。
 - 本地实页使用loopback `57361`、临时隔离数据和本地fixture；暂停`image-edit-sources`请求时实测320×180卡片、加载文案、确认禁用、无secure source/裁剪框；恢复后安全源为`blob:`、裁剪框出现、确认启用，控制台error/warn为0。临时页、服务和数据已关闭清理；真实Provider/OSS写入0。
-- 当前状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK / VERSION_V0_6_33`。PR #77和main CI通过，生产技术门完成，发布授权已消费；等待用户实页复验。
+- 当前状态：`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS / VERSION_V0_6_33`。PR #77和main CI通过，生产技术门完成，发布授权已消费；用户线上复验已通过。
 - main工作树原有受保护未跟踪文件`spec/public-templates-director-split-revision.json`保持未读、未改、未暂存；safe验证在与main HEAD tree相同的既有干净linked worktree执行，三个产品/测试文件最终SHA与main逐字节一致。
 
 ### 2026-08-23 INC-IMGEDIT-001 OSS 图片裁剪同站编辑源（v0.6.32 已发布并获用户确认）
