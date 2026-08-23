@@ -5,6 +5,38 @@
 更新时间：2026-08-23
 状态：`v0.6.33 已发布并通过技术终门与用户线上复验，状态 PRODUCTION_PUBLISHED_USER_PASS / USER_PASS。权威回执见 spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json。`
 
+### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，D13_IN_PROGRESS / RELEASE_AUTH_VALID）
+
+- 用户已批准最终 V5 方案并要求后续长任务严格由项目文档驱动，防止新 Session 或上下文压缩后失忆漂移。主方案：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md`；实时断点：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_CHECKPOINT.md`；新 Session 提示词：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_GOAL_PROMPT_2026-08-23.md`。
+- 单 Goal 连续范围：最小图片工具应用边界、颜色标记、调整像素、快速分割、标注、个人素材库、多角度、遮罩/重绘、扩图、擦除、保守/创意增强、主体抠图和 Seedance 素材校验；裁剪只回归，打光 `IMGEDIT-007` 继续 `PAUSED`。
+- 防漂移门：D0～D13 同时最多一个阶段 `IN_PROGRESS`；每阶段完成后必须先更新 Checkpoint、验收矩阵和本区块，版本/候选/生产事实变化时再更新 CURRENT_STATE；上下文恢复必须重读文档、核对 Git，只从 Checkpoint 的“唯一下一动作”继续。
+- 防耦合门：轻量 Dispatcher + 小 use case，优先复用 Canvas/Generation/Media 现有端口；不把任务、Provider、媒体和 SQL 编排重新塞入 `ImageNode.tsx`、`CanvasSurface.tsx` 或 `generationTasks.ts`。
+- 真实证据门：fake 与零请求自动测试先行；真实付费技术冒烟总上限 8 次，只记 `REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，不冒充质量通过；生产技术发布最多记 `USER_QUALITY_RECHECK`，用户明确确认后才是 `USER_PASS`。
+- D0 已恢复实时基线：`main = origin/main = 14777b5`、package `0.6.33`、生产实时 `v0.6.33 / schema39 / live / ready`；启动提交 `6a1606c` 后已进入干净隔离分支和 worktree。`IMGEDIT-010～020` 仍为 `NOT_STARTED`，没有产品代码、schema、Provider、OSS、GitHub或生产变化，没有候选。
+- 本 Goal 版本门与发布门均有效：目标 `v0.6.34`，用户已独立明确“按 v0.6.34 上线吧”；仍须 D12 通过后才进入 D13，不提前发布。
+- D1 已冻结 17 项 operation、五态服务端权威 capability、结果/错误/执行身份、有界 input/mask/annotation、预算和 Library 数据所有权合同；架构门加入 image-tools client/server 与 Library internal 边界和 `library_entries` owner，新增架构例外 0。安全定向 m100 `13/13 PASS`，精确清单同步为 1052；功能尚未施工，矩阵仍保持 `IMGEDIT-010～020 = NOT_STARTED`。唯一下一阶段改为 D2 最小图片工具应用层。
+- D2 已建立轻量 Dispatcher 与小 use case，复用 CanvasGraphCommandPort、安全图片链和 SingleNodeGenerationLifecycle；裁剪派生 node+edge 已改为 revision/source/run/ownership fence 下的原子提交，下载、全屏和既有裁剪 UI 回归保持。安全定向 m100 `13/13`、m2 `10/10`，Provider/真实 OSS 请求 0；`IMGEDIT-010 = PARTIAL / APPLICATION_LAYER_AUTO_PASS`，待 D6 服务端权威 operation 状态后收口。唯一下一阶段为 D3。
+- D3 已完成颜色标记保存/筛选/撤销/刷新、精确像素调整和 2×2/3×3/4×4 快速分割。分割先完成全部本地 PNG 和媒体登记，再以单一 Canvas 命令提交 4/9/16 个节点与边，失败精确补偿；本地处理受 20 MiB、4000 万像素和单边 8192 限制。安全定向 m100 `13/13`、m2 `10/10`，Generation/Provider/真实 OSS 请求 0；`IMGEDIT-011/013/014 = AUTO_PASS`。唯一下一阶段为 D4 标注与显式导出。
+- D4 容量实验的 102 个元素（含 1000 点画笔和中文文字）为 29,460 bytes，只占 512 KiB 上限 5.62%，存储冻结为 Canvas 节点版本化矢量元数据，并保留 500 元素/单路径 2000 点/总 20000 点硬界。选择、画笔、矩形、箭头、编号、中文文字、删除、会话撤销重做、刷新恢复和显式安全 PNG 导出均已实现；调试期只按唯一失败根因补齐 SVG 点击命中与 IME composition，最终 m100 `13/13`、m2 `10/10`，Generation/Provider/真实 OSS 请求 0；`IMGEDIT-015 = AUTO_PASS`。唯一下一阶段为 D5 个人素材库。
+- D5 已完成个人素材库真实链路：Library 使用独立 `library.sqlite` schema1 sidecar，主库仍是 schema39，v0.6.33 精确旧源码可在 sidecar 存在时正常打开主库；同 owner+kind+asset 幂等，项目/节点删除后保留，账号删除时清理，条目删除不删媒体，媒体删除会受 Library 引用保护，团队区继续只读空态。备份/恢复含可选加密 sidecar，旧备份仍兼容；图片工具栏和素材面板已接真实 API/OpenAPI。安全定向 m10/m11/m2/m20/m25/m8/m88 共 `75/75 PASS`，架构新增例外 0、Provider/Generation/真实 OSS 请求 0；`IMGEDIT-012 = AUTO_PASS`。唯一下一阶段为 D6 真实模型和处理引擎调查。
+- D6 已按 OpenAI、ByteDance/Volc 和本地引擎官方资料以及生产只读状态，冻结 17 个 operation 的服务端五态 capability、单项管理员停用、5 分钟过期、成本/model/参考图/mask/Alpha/output DTO、唯一 adapter 注册和 fake adapter；新增 owner-scoped API/OpenAPI 与客户端 fail-closed Context。当前生产默认图片模型 `gpt-image-2` 经 GPT Image 专用协议可用；Seedream 未核实独立 mask 不冒充，rembg 模型权重许可证未闭环不引入。安全定向 m100 `13/13`、m20 `1/1`、m2 `10/10 PASS`，Provider预算仍 `0/8`，Generation/真实 OSS/生产写入 0；`IMGEDIT-010 = AUTO_PASS`。唯一下一阶段为 D7 多角度真实生成。
+- D7 已把水平/垂直/距离/广角结构化参数、能力/成本/过期门、派生占位和来源边、持久 task 与语义 ownership 接入既有 Generation lifecycle；占位保存后才允许 task admission，恢复、取消、重试、终态回填和已付费结果重新挂接继续走现有链路。安全定向 m100 `13/13`、m2 `10/10 PASS`，fake 恰好一个任务、Provider请求0；`IMGEDIT-016 = TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK`。因 SSH/生产候选运行合同只在 D12 后开放，真实冒烟统一留到 D13 精确 v0.6.34 候选，不用当前 v0.6.33 普通生成冒充。唯一下一阶段为 D8 遮罩基础与重绘。
+- D8 已完成屏幕/CSS到原图像素遮罩坐标、画笔/框选/橡皮、撤销重做、0～64px羽化和透明选区PNG；遮罩以owner-scoped Media资产持久化，Canvas保存来源边、派生占位、mask版本/尺寸/feather和task identity，服务端再按已保存画布、owner、PNG/4 MiB/尺寸/来源输入严格校验。GPT Image edit会同时发送参考图和mask，临时OSS遮罩上传/签名/清理、Media adoption/删除保护、刷新恢复和防重复提交均已接通。安全定向最终 m100 `13/13`、m2 `10/10`、m27 `20/20`、m53 `25/25`、m88 `36/36`、m5+m87 `29/29 PASS`，Provider/真实OSS请求0；`IMGEDIT-017 = TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK`。任意自由旋转本就不在产品范围且Canvas无图片旋转状态；缩放/高DPI按原图像素映射覆盖。唯一下一阶段为 D9 扩图与擦除。
+- D9 已把扩图和擦除接为两个独立生成操作。扩图经owner-scoped安全读取生成“透明扩展画布+原图原尺寸定位”的准备PNG及同尺寸“原区不变/新增区可生成”mask，边界参数、准备资产、mask、来源和占位全部持久化并由服务端严格核验；Provider执行只使用准备输入。擦除复用D8遮罩编辑器，但保持独立operation、ownership、占位和默认补景语义。两项均先保存Canvas占位并完成Media adoption，再走既有持久task/retry/recovery/result挂接。安全定向 m2+m27 `30/30`、m100+m88 `49/49 PASS`，真实Provider/OSS请求0；`IMGEDIT-018 = TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK`。唯一下一阶段为 D10 增强与主体抠图。
+- D10 已完成三条分离路径：保守增强经同站安全源做同尺寸本地确定性校正并创建派生PNG，零Generation；创意增强明示会改变内容，主体抠图明示透明PNG，两者各有独立operation/ownership/占位并复用现有持久Generation生命周期。抠图身份在Canvas/task/服务端三处绑定`outputBackground=transparent`，GPT Image请求显式带透明背景；同步、异步和native结果在发布前都解码PNG滤波行，要求至少一个真实透明像素，opaque RGBA也fail-closed。节点和全屏查看器用CSS棋盘格预览透明区，不烘焙进结果。安全定向m100+m53 `38/38`、m2+m27 `30/30`、最终m2+m57 `26/26 PASS`，真实Provider/OSS请求0；`IMGEDIT-019 = TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK`。唯一下一阶段为D11 Seedance素材校验。
+- D11 已完成 Seedance 图片素材本地技术预检：服务端按 owner 读取 ready Media 和已发布/启用的 `seedance-2` 模型，复用真实 `referenceMediaRules` 校验类型、大小、尺寸、比例和素材角色；结果绑定 asset/model/role/模型配置revision/检查与过期时间，刷新后保留，过期或任一身份漂移均 stale。DTO/UI 明确 `remoteValidationAvailable=false` 和“不是远端资格、可生成、质量或法律合规”，不生成视频。安全定向最终 m2 `10/10`、m100 `13/13 PASS`，m20既有API合同`1/1 PASS`；真实Provider/OSS/视频生成请求0。`IMGEDIT-020 = AUTO_PASS / LOCAL_TECHNICAL_PREFLIGHT_ONLY`。唯一下一阶段为 D12 候选冻结和统一验证。
+- D12 已完成：package/lock/runtime role 为v0.6.34，schema39不变；冻结前m38 `15/15`、m81 `41/41`、13-spec矩阵 `178/178 PASS`，合计`234/234`，四类审查无新阻断。冻结候选`aa67e46`只执行一次safe full，原始`1048/1052`；未改树精确复验四个失败spec为`102/106`，确认一个图片预检真实缺陷与三个确定性观测问题。
+- 修正提交`422408b`把图片预检公开结果延后到全部校验完成后构造，并收紧m0/m22/m37测试时序；同一四spec最终`106/106 PASS`。D12收口文档m38 `15/15 PASS`；首次误写不存在的spec路径只在选择阶段退出且产品测试0。没有第二次full，原始full不改写为全绿。当前候选为`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / D13_READY`；真实Provider/OSS请求仍0，生产仍为v0.6.33。
+- D13 已按文档进入`IN_PROGRESS`；版本门v0.6.34和独立发布门有效。当前尚未push、PR、tag、SSH或生产写入，唯一下一动作是完整读取`RELEASE_RUNBOOK.md`及其直接引用资料，再从首个未完成发布门继续。
+- 本次落档 `git diff --check` 通过；定向 m38 safe runner 在产品测试前被 main 既有 ignored `backups/` 隔离负控以 `EISDIR` 阻断，0 个产品测试执行，source snapshot 和 4173 listener 未变。未删除/移动备份、未绕过 safe runner、未把该尝试记为自动 PASS；完整记录见 Checkpoint。
+
+### 2026-08-23 当前版本文档残留对齐（docs-only）
+
+- 把仍以“当前/顶部/聚合状态”指向v0.6.30～v0.6.32的治理文档统一对齐到v0.6.33；历史发布、候选和运维时点原值继续保留，不改写历史证据。
+- `UNBOUNDRY_CURRENT_STATE.md`的“当前线上”段已改为v0.6.33精确release、tag commit/tree、PR、冻结备份、数据门和测试边界；验收矩阵与模块化历史文档只更新当前指针和恢复入口。
+- 本轮不修改产品代码、package、schema、测试、Provider、OSS或生产；不读取、不修改、不暂存受保护未跟踪JSON，也不获得commit、push、tag、PR或发布授权。
+- 验证：承担当前身份播报的“当前/顶部/聚合状态”残留定向扫描命中0，历史回执和候选阶段原值继续保留；`git diff --check`通过。与main HEAD同树且无`backups/`干扰的既有clean linked worktree中，m38实际读取的四份权威文档与main逐字节一致，安全入口定向`15/15 PASS`，source/snapshot不变、4173 listener不变。未运行safe full。
+
 ### 2026-08-23 图片裁剪准备态体验优化（INC-IMGEDIT-002，v0.6.33已发布并获用户确认）
 
 - 用户确认v0.6.32裁剪成功，同时指出首次打开会先出现“大黑框+正在准备图片”；根因是安全编辑源完成同站读取、校验、Blob创建和图片解码前，裁剪舞台已按默认1280×720比例展开。
@@ -90,10 +122,10 @@
 
 ### 当前后续计划边界
 
-- v0.6.31 的 GitHub、生产发布、技术回执和用户实页验收均已完成；发布授权已消费，不扩大到新功能或暂停项。
+- v0.6.33 的 GitHub、生产发布、技术回执和用户实页验收均已完成；发布授权已消费，不扩大到新功能或暂停项。
 - `VIEW-005`的98/171/200节点精确性能档位已由安全定向`m79`收口为`AUTO_PASS`；这只是工程证据关闭，不启动下一版本、生产发布或新的用户主观验收。
 - Mureka 真实音频、团队/多人协作、真实 Agent 协议、Storyboard 完整编辑、图片打光与其他付费内容抽验继续保持原 `PARTIAL/PAUSED/BLOCK`；需要用户重新立项和对应授权。
-- 下方旧段落中的“待复验”“当前阶段”“下一步”均为各自时点记录；若与本文件顶部或 `UNBOUNDRY_CURRENT_STATE.md` 冲突，以顶部 v0.6.31 `USER_PASS` 状态为准。
+- 下方旧段落中的“待复验”“当前阶段”“下一步”均为各自时点记录；若与本文件顶部或 `UNBOUNDRY_CURRENT_STATE.md` 冲突，以顶部 v0.6.33 `USER_PASS` 状态为准。
 
 ### 2026-08-21 VIEW-005 密集画布精确三档证据（AUTO_PASS）
 
@@ -130,7 +162,7 @@
 
 ### 2026-08-21 同一中转站三媒体模型与结果边界（v0.6.28 历史发布时点）
 
-- v0.6.28 时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该能力随后经 v0.6.29 三次有界真实验证与 v0.6.30 结果兼容修复、生产验收和用户确认收口，并继续包含在 v0.6.32。当前聚合状态以顶部 v0.6.32 为准。Generation已拥有媒体结果提交事务；MediaLifecycle/MediaRegistry不再读写generation task/attempt，TaskStore↔Safety循环已解除。
+- v0.6.28 时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该能力随后经 v0.6.29 三次有界真实验证与 v0.6.30 结果兼容修复、生产验收和用户确认收口，并继续包含在 v0.6.33。当前聚合状态以顶部 v0.6.33 为准。Generation已拥有媒体结果提交事务；MediaLifecycle/MediaRegistry不再读写generation task/attempt，TaskStore↔Safety循环已解除。
 - 模型合同：Nano Banana Pro `gemini-3-pro-image-preview`、Kling V3 Omni `kling-v3-omni-cankao`、Suno V4.5 `suno-v4.5`统一走现有`multi-protocol-relay/media-generate`；参数、引用、严格结果类型和10/75/15分钟持久轮询窗口已固化。
 - 自动证据：Node `22.23.1` / npm `10.9.8`；十个目标spec最终有效`148/148`。第一次产品测试`145/148`后只重跑失败的m53+m57并`40/40`通过；TypeScript、构建、source coverage、外网门禁均通过。
 - 发布边界：已完成发布full覆盖与失败spec最小复验、GitHub、冻结备份、生产切换和零付费技术验收；没有真实Provider专用smoke，`REAL_PROVIDER_SMOKE_PAUSED`，待用户线上复验。受保护JSON保持untracked且未读/未改/未暂存/未提交。
@@ -138,7 +170,7 @@
 
 ### 2026-08-21 同步文字Provider registry/port（v0.6.28 历史发布时点）
 
-- v0.6.28 时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该代码已持续包含在当前 v0.6.32 生产版本中，本段不再充当当前待发布清单。代码已把同步文字执行收口到唯一`TextProviderRegistry`入口；Task协调器不再按具体文字driver调用adapter，Ark native与四类relay文字协议各由adapter实现统一port。
+- v0.6.28 时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该代码已持续包含在当前 v0.6.33 生产版本中，本段不再充当当前待发布清单。代码已把同步文字执行收口到唯一`TextProviderRegistry`入口；Task协调器不再按具体文字driver调用adapter，Ark native与四类relay文字协议各由adapter实现统一port。
 - 任务安全：profile/credential owner、lease、provider-boundary attempt、task幂等/reconcile、结果归属与错误文案保持原边界；fake Provider可注入且网络0，未知实现本地fail-closed且网络0。
 - 自动证据：Node `22.23.1` / npm `10.9.8`；一次TypeScript noEmit退出0；m33 `8/8`、m39 `3/3`、m44 `8/8`、m53 `23/23`、m57 `14/14`安全定向通过，异常0，动态loopback与新临时数据，4173 listener不变。
 - 第一批施工时点明确未做：未跑full/默认verify，未真实调用Provider/OSS，未访问SSH/生产，未改版本/schema/Canvas/Workflow/Media publication。后续发布与生产证据已经由 v0.6.28～v0.6.30 回执补齐，不能继续把本段解释为“尚未发布”。

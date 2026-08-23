@@ -1868,6 +1868,7 @@ export function CanvasSurface({
       ? createProbeNodes(fixtureId)
       : emptyNodes,
   );
+  const [imageColorFilter, setImageColorFilter] = useState<string>();
   const [workflowRetainedNodeIds, setWorkflowRetainedNodeIds] = useState<
     ReadonlySet<string>
   >(new Set());
@@ -1878,8 +1879,9 @@ export function CanvasSurface({
   );
   const renderedNodes = useMemo(
     () => {
-      if (workflowRetainedNodeIds.size === 0) return nodes;
-      return nodes.map((node) =>
+      const workflowNodes = workflowRetainedNodeIds.size === 0
+        ? nodes
+        : nodes.map((node) =>
         workflowRetainedNodeIds.has(node.id)
           ? {
               ...node,
@@ -1900,8 +1902,18 @@ export function CanvasSurface({
             }
           : node,
       );
+      if (!imageColorFilter) return workflowNodes;
+      return workflowNodes.map((node) =>
+        node.type === "image"
+          ? {
+              ...node,
+              hidden: node.hidden ||
+                !node.data.imageColorMarks?.includes(imageColorFilter),
+            }
+          : node
+      );
     },
-    [nodes, workflowRetainedNodeIds],
+    [imageColorFilter, nodes, workflowRetainedNodeIds],
   );
   // viewport 实时状态下沉到画布内部：缩放/平移不再让外壳每帧重渲染。
   const [viewport, setViewport] = useState<Viewport>(() =>
@@ -4314,8 +4326,24 @@ export function CanvasSurface({
     edges,
     selectedNodeIds,
   );
+  const colorHiddenNodeIds = imageColorFilter
+    ? new Set(
+      nodes
+        .filter((node) =>
+          node.type === "image" &&
+          !node.data.imageColorMarks?.includes(imageColorFilter)
+        )
+        .map((node) => node.id),
+    )
+    : new Set<string>();
+  const colorFilteredEdges = colorHiddenNodeIds.size > 0
+    ? edges.filter((edge) =>
+      !colorHiddenNodeIds.has(edge.source) &&
+      !colorHiddenNodeIds.has(edge.target)
+    )
+    : edges;
   const visibleEdges = selectedNodeIds.size
-    ? edges.map((edge) =>
+    ? colorFilteredEdges.map((edge) =>
         selectedNodeIds.has(edge.source) || selectedNodeIds.has(edge.target)
           ? {
               ...edge,
@@ -4335,7 +4363,7 @@ export function CanvasSurface({
             }
           : edge,
       )
-    : edges;
+    : colorFilteredEdges;
   const contextMenuNode = nodeContextMenu
     ? nodes.find((node) => node.id === nodeContextMenu.nodeId)
     : undefined;
@@ -4713,6 +4741,8 @@ export function CanvasSurface({
       <CanvasGraphMutationContext.Provider
         value={{
           graphCommandPort: workflowGraphPort,
+          imageColorFilter,
+          setImageColorFilter,
           setEdges: guardedSetEdges,
           setNodes: guardedSetNodes,
           tryAdoptNodes,

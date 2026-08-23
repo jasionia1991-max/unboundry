@@ -17,6 +17,7 @@ import {
 } from "../client/src/canvas/canvasNodeRegistry";
 import {
   createSingleNodeGenerationLifecycle,
+  type SingleNodeGenerationLifecycle,
   type SingleNodeGenerationTaskPort,
 } from "../client/src/generation/singleNodeGenerationLifecycle";
 import type { GenerationTaskSummary } from
@@ -58,7 +59,7 @@ import {
   mediaEditSource,
 } from "../server/mediaEditSource";
 import type { MediaRecord } from "../server/mediaRegistry";
-import { validatePng } from "../server/assetStorage";
+import { validatePng, validateTransparentPng } from "../server/assetStorage";
 import type { ProviderProfile } from "../server/providerProfiles";
 import {
   createMediaPublicationService,
@@ -87,6 +88,45 @@ import {
   persistedNodeKinds,
   templateNodeKinds,
 } from "../types/nodeVocabulary";
+import {
+  imageToolCapability,
+  imageToolMaximums,
+  imageToolOperations,
+  parseImageToolCapabilitySnapshot,
+  parseSeedanceAssetValidation,
+  seedanceAssetValidationState,
+  type ImageAnnotationElement,
+  type ImageToolCapability,
+} from "../types/imageTools";
+import { knownModelParameterSchema } from "../types/modelParameters";
+import { createImageToolDispatcher } from
+  "../client/src/imageTools/imageToolDispatcher";
+import { createDerivedImageToolUseCase } from
+  "../client/src/imageTools/derivedImageToolUseCase";
+import { createBatchDerivedImageToolUseCase } from
+  "../client/src/imageTools/batchDerivedImageToolUseCase";
+import { createGenerationImageToolUseCase } from
+  "../client/src/imageTools/generationImageToolUseCase";
+import { createMultiAngleImageToolUseCase } from
+  "../client/src/imageTools/multiAngleImageToolUseCase";
+import { createOutpaintEraseImageToolUseCase } from
+  "../client/src/imageTools/outpaintEraseImageToolUseCase";
+import { createPromptGenerationImageToolUseCase } from
+  "../client/src/imageTools/promptGenerationImageToolUseCase";
+import {
+  createFakeImageToolCapabilityAdapter,
+  ImageToolCapabilityAdapterRegistry,
+  imageToolCapabilitySnapshot,
+} from "../server/imageToolCapabilityRegistry";
+import { validateSeedanceAsset } from "../server/seedanceAssetValidation";
+import {
+  simplifyAnnotationPoints,
+  validateImageAnnotationDocument,
+} from "../client/src/imageTools/imageAnnotations";
+import { redrawCanvasPoint } from
+  "../client/src/imageTools/redrawMask";
+import { persistedMediaReferences } from
+  "../types/persistedMediaSources";
 import { expect, test } from "./safe-test";
 
 type MediaEditHandlerDependencies = NonNullable<
@@ -400,6 +440,272 @@ const profile = (input: Pick<ProviderProfile, "driver" | "id">): ProviderProfile
   ...input,
 });
 
+function modularImageToolCapability(
+  operation: typeof imageToolOperations[number],
+  overrides: Partial<ImageToolCapability> = {},
+) {
+  return {
+    expiresAt: "2026-08-23T13:00:00.000Z",
+    maximumInputBytes: imageToolMaximums.inputBytes,
+    maximumInputPixels: imageToolMaximums.inputPixels,
+    operation,
+    outputContentTypes: ["image/png"],
+    reason: "Ready",
+    reasonCode: "AVAILABLE",
+    status: "available",
+    supportsAlpha: false,
+    supportsMask: false,
+    supportsReferenceImage: true,
+    ...overrides,
+  } satisfies ImageToolCapability;
+}
+
+function modularImageToolSnapshot() {
+  return {
+    generatedAt: "2026-08-23T12:00:00.000Z",
+    operations: imageToolOperations.map((operation) =>
+      modularImageToolCapability(operation)),
+    revision: "capabilities-1",
+  };
+}
+
+test("image tool capability snapshot is complete, unique and fail-closed", () => {
+  const parsed = parseImageToolCapabilitySnapshot(modularImageToolSnapshot());
+  expect(parsed.operations).toHaveLength(imageToolOperations.length);
+  expect(imageToolCapability(parsed, "redraw")).toMatchObject({
+    operation: "redraw",
+    status: "available",
+    supportsReferenceImage: true,
+  });
+
+  expect(() => parseImageToolCapabilitySnapshot({
+    ...modularImageToolSnapshot(),
+    operations: modularImageToolSnapshot().operations.slice(1),
+  })).toThrow(/every operation once/);
+  expect(() => parseImageToolCapabilitySnapshot({
+    ...modularImageToolSnapshot(),
+    operations: modularImageToolSnapshot().operations.map((item, index) =>
+      index === 1 ? { ...item, operation: "crop" } : item),
+  })).toThrow(/duplicated/);
+  expect(() => parseImageToolCapabilitySnapshot({
+    ...modularImageToolSnapshot(),
+    operations: modularImageToolSnapshot().operations.map((item) =>
+      item.operation === "redraw"
+        ? { ...item, reasonCode: "AVAILABLE", status: "disabled_by_operator" }
+        : item),
+  })).toThrow(/cannot use AVAILABLE/);
+
+  const fake = createFakeImageToolCapabilityAdapter({
+    operations: ["multi-angle", "redraw", "remove-background"],
+    supportsAlpha: true,
+    supportsMask: true,
+    supportsReferenceImage: true,
+  });
+  const registry = new ImageToolCapabilityAdapterRegistry().register(fake);
+  expect(() => registry.register({ ...fake, id: "duplicate" }))
+    .toThrow(/already owns multi-angle/);
+  const serverSnapshot = imageToolCapabilitySnapshot({
+    adapters: registry,
+    disabled: "redraw,unknown-operation",
+    generation: {
+      configured: true,
+      emergencyStop: false,
+      globalEnabled: true,
+      maxCostMicrounits: 9_000,
+      modelId: "image-model-internal-id",
+      providerModelId: "gpt-image-2",
+      providerProtocol: "gpt-image",
+    },
+    now: new Date("2026-08-23T12:00:00.000Z"),
+  });
+  expect(imageToolCapability(serverSnapshot, "multi-angle")).toMatchObject({
+    estimatedCost: { amount: 0.009, currency: "USD", source: "operator" },
+    modelId: "image-model-internal-id",
+    status: "available",
+    supportsMask: true,
+  });
+  expect(imageToolCapability(serverSnapshot, "redraw")).toMatchObject({
+    reasonCode: "OPERATOR_DISABLED",
+    status: "disabled_by_operator",
+  });
+  expect(imageToolCapability(serverSnapshot, "lighting")).toMatchObject({
+    reasonCode: "PAUSED_BY_SCOPE",
+    status: "paused",
+  });
+  expect(imageToolCapability(serverSnapshot, "remove-background")).toMatchObject({
+    reasonCode: "AVAILABLE",
+    status: "available",
+    supportsAlpha: true,
+  });
+  expect(imageToolCapability(serverSnapshot, "enhance-conservative")).toMatchObject({
+    reasonCode: "AVAILABLE",
+    status: "available",
+  });
+  expect(imageToolCapability(serverSnapshot, "seedance-validate")).toMatchObject({
+    reasonCode: "AVAILABLE",
+    status: "available",
+  });
+
+  const validation = parseSeedanceAssetValidation(validateSeedanceAsset({
+    assetId: "seedance-image-1",
+    media: {
+      byteSize: 1_048_576,
+      checksumSha256: "a".repeat(64),
+      contentType: "image/png",
+      mediaHeight: 720,
+      mediaWidth: 1280,
+      storageStatus: "ready",
+    },
+    model: {
+      configurationRevision: "rules-1",
+      displayName: "Seedance 2.0 Mini",
+      id: "seedance-model-1",
+      parameterSchema: knownModelParameterSchema({
+        capability: "video",
+        providerDriver: "volcengine-ark",
+        providerModelId: "doubao-seedance-2-0-mini-260615",
+      }),
+    },
+    now: new Date("2026-08-23T12:00:00.000Z"),
+    role: "reference-image",
+  }));
+  expect(validation).toMatchObject({
+    assetId: "seedance-image-1",
+    remoteValidationAvailable: false,
+    status: "eligible",
+  });
+  expect(seedanceAssetValidationState(validation, {
+    assetId: "seedance-image-1",
+    modelConfigurationRevision: "rules-1",
+    modelId: "seedance-model-1",
+    role: "reference-image",
+  }, new Date("2026-08-23T12:04:59.000Z"))).toBe("eligible");
+  expect(seedanceAssetValidationState(validation, {
+    assetId: "seedance-image-1",
+    modelConfigurationRevision: "rules-2",
+    modelId: "seedance-model-1",
+    role: "reference-image",
+  }, new Date("2026-08-23T12:04:59.000Z"))).toBe("stale");
+  expect(seedanceAssetValidationState(validation, {
+    assetId: "seedance-image-1",
+    modelConfigurationRevision: "rules-1",
+    modelId: "seedance-model-1",
+    role: "reference-image",
+  }, new Date("2026-08-23T12:05:00.000Z"))).toBe("stale");
+  expect(validateSeedanceAsset({
+    assetId: "seedance-image-1",
+    media: {
+      byteSize: 1_048_576,
+      checksumSha256: "b".repeat(64),
+      contentType: "image/jpeg",
+      mediaHeight: 720,
+      mediaWidth: 1280,
+      storageStatus: "ready",
+    },
+    model: {
+      configurationRevision: "rules-1",
+      displayName: "Seedance 2.0 Mini",
+      id: "seedance-model-1",
+      parameterSchema: knownModelParameterSchema({
+        capability: "video",
+        providerDriver: "volcengine-ark",
+        providerModelId: "doubao-seedance-2-0-mini-260615",
+      }),
+    },
+    role: "subject",
+  })).toMatchObject({ status: "ineligible" });
+});
+
+test("image tool capability contract bounds payloads, cost and output formats", async () => {
+  expect(() => parseImageToolCapabilitySnapshot({
+    ...modularImageToolSnapshot(),
+    operations: modularImageToolSnapshot().operations.map((item) =>
+      item.operation === "redraw"
+        ? { ...item, maximumInputBytes: imageToolMaximums.inputBytes + 1 }
+        : item),
+  })).toThrow(/maximumInputBytes/);
+  expect(() => parseImageToolCapabilitySnapshot({
+    ...modularImageToolSnapshot(),
+    operations: modularImageToolSnapshot().operations.map((item) =>
+      item.operation === "remove-background"
+        ? { ...item, outputContentTypes: ["image/webp"] }
+        : item),
+  })).toThrow(/outputContentTypes/);
+  expect(() => parseImageToolCapabilitySnapshot({
+    ...modularImageToolSnapshot(),
+    operations: modularImageToolSnapshot().operations.map((item) =>
+      item.operation === "multi-angle"
+        ? { ...item, estimatedCost: { amount: -1, currency: "USD", source: "provider" } }
+        : item),
+  })).toThrow(/estimatedCost.amount/);
+
+  const annotationElements: ImageAnnotationElement[] = Array.from(
+    { length: 100 },
+    (_, index) => ({
+      color: "#ff5b5b",
+      height: 80,
+      id: `rectangle-${index}`,
+      kind: "rectangle" as const,
+      strokeWidth: 4,
+      width: 120,
+      x: index * 3,
+      y: index * 2,
+    }),
+  );
+  const densePoints = Array.from({ length: 1_000 }, (_, index) => ({
+    x: index % 800,
+    y: index % 2 === 0 ? 200 : 201,
+  }));
+  annotationElements.push({
+    color: "#5b8cff",
+    id: "stroke-1000",
+    kind: "stroke",
+    points: densePoints,
+    strokeWidth: 6,
+  }, {
+    color: "#fff",
+    fontSize: 28,
+    id: "text-chinese",
+    kind: "text",
+    text: "中文标注刷新、自动保存、revision 与撤销恢复",
+    x: 20,
+    y: 30,
+  });
+  const annotationCapacity = validateImageAnnotationDocument({
+    elements: annotationElements,
+    height: 720,
+    version: 1,
+    width: 1280,
+  });
+  expect(annotationCapacity.bytes).toBeLessThan(
+    imageToolMaximums.annotationDocumentBytes,
+  );
+  expect(simplifyAnnotationPoints(densePoints).length).toBeLessThan(100);
+
+  const dispatcher = createImageToolDispatcher().register({
+    operation: "fullscreen",
+    execute: () => ({
+      kind: "viewer",
+      operation: "fullscreen",
+      status: "opened",
+    }),
+  });
+  await expect(dispatcher.execute("fullscreen", {})).resolves.toEqual({
+    kind: "viewer",
+    operation: "fullscreen",
+    status: "opened",
+  });
+  await expect(dispatcher.execute("download", {})).rejects.toThrow(/not registered/);
+  expect(() => dispatcher.register({
+    operation: "fullscreen",
+    execute: () => ({
+      kind: "viewer",
+      operation: "fullscreen",
+      status: "opened",
+    }),
+  })).toThrow(/Duplicate/);
+});
+
 class InMemoryCanvasPorts implements CanvasGraphCommandPort, CanvasSavePort {
   #revision = 0;
   #snapshot: CanvasGraphSnapshot;
@@ -409,6 +715,9 @@ class InMemoryCanvasPorts implements CanvasGraphCommandPort, CanvasSavePort {
   }
 
   apply(command: CanvasGraphCommand) {
+    if (command.scope !== "generation") {
+      return { reason: "fence-rejected", status: "rejected" } as const;
+    }
     const node = this.#snapshot.nodes.find((candidate) =>
       candidate.id === command.fence.nodeId
     );
@@ -487,6 +796,432 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
     update: (snapshot) => snapshot,
   })).toEqual({ reason: "fence-rejected", status: "rejected" });
   expect(port.snapshot().nodes[0].data.imageGenerating).toBe(false);
+
+  let imageToolSnapshot: CanvasGraphSnapshot = {
+    edges: [],
+    nodes: [{
+      data: { assetId: "source-asset", imageSrc: "/source.png", label: "Image" },
+      id: "source-node",
+      position: { x: 20, y: 30 },
+      style: { width: 250 },
+      type: "image",
+    }],
+    revision: 4,
+  };
+  const imageToolGraph = createCanvasGraphCommandPort({
+    commit(snapshot) { imageToolSnapshot = snapshot; },
+    persistenceReady: () => true,
+    snapshot: () => imageToolSnapshot,
+  });
+  const discarded: string[] = [];
+  const derived = createDerivedImageToolUseCase({
+    graph: imageToolGraph,
+    media: {
+      async discard(assetId) { discarded.push(assetId); },
+      async metadata() { return { mediaMetadataStatus: "ready" }; },
+      async upload() {
+        return {
+          assetId: `derived-${discarded.length}`,
+          fileName: "crop.png",
+          height: 120,
+          url: "/derived.png",
+          width: 200,
+        };
+      },
+    },
+    operation: "crop",
+    size: (width, height) => ({ height, width }),
+  });
+  await expect(derived.execute({
+    expectedRevision: 4,
+    file: new File([Uint8Array.from([1])], "crop.png", { type: "image/png" }),
+    operationId: "operation-1",
+    ownershipKey: "owner-1",
+    runId: "run-1",
+    sourceAssetId: "source-asset",
+    sourceNodeId: "source-node",
+    title: "Crop",
+  })).resolves.toMatchObject({
+    assetIds: ["derived-0"],
+    kind: "derived-assets",
+    operation: "crop",
+  });
+  expect(imageToolSnapshot.nodes).toHaveLength(2);
+  expect(imageToolSnapshot.edges).toHaveLength(1);
+  expect(discarded).toEqual([]);
+  await expect(derived.execute({
+    expectedRevision: 5,
+    file: new File([Uint8Array.from([2])], "crop.png", { type: "image/png" }),
+    operationId: "operation-2",
+    ownershipKey: "owner-1",
+    runId: "run-2",
+    sourceAssetId: "source-asset",
+    sourceNodeId: "source-node",
+    title: "Crop",
+  })).rejects.toThrow(/版本已发生变化/);
+  expect(discarded).toEqual(["derived-0"]);
+
+  let batchSequence = 0;
+  const batchDiscarded: string[] = [];
+  const batch = createBatchDerivedImageToolUseCase({
+    graph: imageToolGraph,
+    media: {
+      async discard(assetId) { batchDiscarded.push(assetId); },
+      async metadata(assetId) {
+        return {
+          mediaHeight: 60,
+          mediaMetadataStatus: "ready" as const,
+          mediaWidth: 100,
+          sourceAssetId: assetId,
+        };
+      },
+      async upload(file) {
+        const index = batchSequence++;
+        return {
+          assetId: `split-${index}`,
+          fileName: file.name,
+          height: 60,
+          url: `/split-${index}.png`,
+          width: 100,
+        };
+      },
+    },
+    operation: "quick-split",
+    size: (width, height) => ({ height, width }),
+  });
+  const splitFiles = Array.from({ length: 4 }, (_, index) =>
+    new File([Uint8Array.from([index])], `split-${index}.png`, {
+      type: "image/png",
+    })
+  );
+  await expect(batch.execute({
+    expectedRevision: 4,
+    files: splitFiles,
+    grid: 2,
+    operationId: "operation-split-1",
+    ownershipKey: "owner-split-1",
+    runId: "run-split-1",
+    sourceAssetId: "source-asset",
+    sourceNodeId: "source-node",
+    title: "Split",
+  })).resolves.toMatchObject({
+    assetIds: ["split-0", "split-1", "split-2", "split-3"],
+    kind: "derived-assets",
+    operation: "quick-split",
+  });
+  expect(imageToolSnapshot.nodes).toHaveLength(6);
+  expect(imageToolSnapshot.edges).toHaveLength(5);
+  expect(batchDiscarded).toEqual([]);
+
+  for (const grid of [3, 4] as const) {
+    const files = Array.from({ length: grid ** 2 }, (_, index) =>
+      new File([Uint8Array.from([index])], `split-${grid}-${index}.png`, {
+        type: "image/png",
+      })
+    );
+    await expect(batch.execute({
+      expectedRevision: 4,
+      files,
+      grid,
+      operationId: `operation-split-${grid}`,
+      ownershipKey: `owner-split-${grid}`,
+      runId: `run-split-${grid}`,
+      sourceAssetId: "source-asset",
+      sourceNodeId: "source-node",
+      title: `Split ${grid}`,
+    })).resolves.toMatchObject({
+      assetIds: expect.arrayContaining([`split-${grid === 3 ? 4 : 13}`]),
+      operation: "quick-split",
+    });
+  }
+  expect(imageToolSnapshot.nodes).toHaveLength(31);
+  expect(imageToolSnapshot.edges).toHaveLength(30);
+  expect(batchDiscarded).toEqual([]);
+
+  await expect(batch.execute({
+    expectedRevision: 5,
+    files: splitFiles,
+    grid: 2,
+    operationId: "operation-split-stale",
+    ownershipKey: "owner-split-stale",
+    runId: "run-split-stale",
+    sourceAssetId: "source-asset",
+    sourceNodeId: "source-node",
+    title: "Split stale",
+  })).rejects.toThrow(/版本已发生变化/);
+  expect(batchDiscarded).toEqual([
+    "split-29",
+    "split-30",
+    "split-31",
+    "split-32",
+  ]);
+
+  let multiAngleSnapshot: CanvasGraphSnapshot = {
+    edges: [],
+    nodes: [{
+      data: { assetId: "angle-source-asset", label: "Image" },
+      id: "angle-source",
+      position: { x: 10, y: 20 },
+      style: { width: 250 },
+      type: "image",
+    }],
+    revision: 7,
+  };
+  const multiAngleGraph = createCanvasGraphCommandPort({
+    commit(next) { multiAngleSnapshot = next; },
+    persistenceReady: () => true,
+    snapshot: () => multiAngleSnapshot,
+  });
+  let capturedPlan: { nodeId: string; payload: { ownPrompt: string } } |
+    undefined;
+  const multiAngle = createMultiAngleImageToolUseCase({
+    async afterPlaceholderCreated() {},
+    capability: modularImageToolCapability("multi-angle", {
+      expiresAt: "2099-08-23T13:00:00.000Z",
+      modelId: "image-model-internal-id",
+    }),
+    graph: multiAngleGraph,
+    createLifecycle(plan) {
+      capturedPlan = plan;
+      const fakeTask: GenerationTaskSummary = {
+        attempt: 1,
+        canvasId: "angle-canvas",
+        costCurrency: "USD",
+        createdAt: "2026-08-23T12:00:00.000Z",
+        generationInputKey: plan.inputKey,
+        generationOwnershipKey: plan.ownershipKey,
+        id: "angle-task-1",
+        kind: "image",
+        nodeId: plan.nodeId,
+        prompt: plan.payload.prompt,
+        state: "queued",
+        updatedAt: "2026-08-23T12:00:01.000Z",
+      };
+      return {
+        abort() {},
+        async cancel() { return { status: "cancelled", task: fakeTask }; },
+        async generate() { return { status: "success", task: fakeTask }; },
+        async reconcile() { return { status: "success", task: fakeTask }; },
+        async recover() { return { status: "success", task: fakeTask }; },
+        async retry() { return { status: "success", task: fakeTask }; },
+        async submit() { return { status: "submitted", task: fakeTask }; },
+      } satisfies SingleNodeGenerationLifecycle;
+    },
+  });
+  await expect(multiAngle.execute({
+    aspectRatio: "auto",
+    canvasId: "angle-canvas",
+    expectedRevision: 7,
+    modelId: "image-model-internal-id",
+    modelName: "GPT Image 2",
+    modelParameters: { inputMode: "image", outputCount: 1 },
+    operationId: "angle-operation-1",
+    ownershipKey: "angle-owner-1",
+    parameters: {
+      distance: 20,
+      horizontalDegrees: 45,
+      verticalDegrees: -12,
+      wideAngle: true,
+    },
+    quality: "auto",
+    runId: "angle-run-1",
+    sourceAssetId: "angle-source-asset",
+    sourceNodeId: "angle-source",
+    title: "Source",
+  })).resolves.toEqual({
+    kind: "generation-task",
+    operation: "multi-angle",
+    taskId: "angle-task-1",
+  });
+  expect(multiAngleSnapshot.nodes).toHaveLength(2);
+  expect(multiAngleSnapshot.edges).toContainEqual(expect.objectContaining({
+    source: "angle-source",
+    target: "image-multi-angle-angle-operation-1",
+  }));
+  expect(capturedPlan?.payload.ownPrompt).toContain("水平视角旋转 45 度");
+  expect(multiAngleSnapshot.nodes[1]?.data).toMatchObject({
+    imageModelId: "image-model-internal-id",
+    imageMultiAngleParameters: {
+      distance: 20,
+      horizontalDegrees: 45,
+      verticalDegrees: -12,
+      wideAngle: true,
+    },
+    imageToolOperation: "multi-angle",
+    imageToolOperationId: "angle-operation-1",
+    imageToolSourceAssetId: "angle-source-asset",
+  });
+  for (const operation of ["erase", "outpaint"] as const) {
+    let maskedSnapshot: CanvasGraphSnapshot = {
+      edges: [],
+      nodes: [{ data: { assetId: `${operation}-source-asset`, label: "Image",
+        mediaHeight: 720, mediaWidth: 1280 }, id: `${operation}-source`,
+        position: { x: 0, y: 0 }, style: { width: 250 }, type: "image" }],
+      revision: 9,
+    };
+    const uploads: string[] = [];
+    const masked = createOutpaintEraseImageToolUseCase({
+      async afterPlaceholderCreated() {},
+      capability: modularImageToolCapability(operation, {
+        expiresAt: "2099-08-23T13:00:00.000Z",
+        modelId: "image-model-internal-id",
+        supportsMask: true,
+      }),
+      graph: createCanvasGraphCommandPort({
+        commit(next) { maskedSnapshot = next; },
+        persistenceReady: () => true,
+        snapshot: () => maskedSnapshot,
+      }),
+      media: {
+        async discard() {},
+        async metadata(assetId) { return { mediaHeight: 720,
+          mediaMetadataStatus: "ready" as const, mediaWidth: 1280,
+          sourceAssetId: assetId }; },
+        async upload(file) {
+          uploads.push(file.name);
+          const expanded = operation === "outpaint";
+          return { assetId: `${operation}-upload-${uploads.length}`,
+            fileName: file.name, height: expanded ? 1080 : 720,
+            url: `/api/assets/${operation}-upload-${uploads.length}`,
+            width: expanded ? 1920 : 1280 };
+        },
+      },
+      operation,
+      ownershipKey: (evidence) => JSON.stringify(evidence),
+      createLifecycle(plan) {
+        const task = { attempt: 1, canvasId: "masked-canvas", costCurrency: "USD",
+          createdAt: "2026-08-23T12:00:00.000Z", generationInputKey: plan.inputKey,
+          generationOwnershipKey: plan.ownershipKey, id: `${operation}-task`,
+          kind: "image", nodeId: plan.nodeId, prompt: plan.payload.prompt,
+          state: "queued", updatedAt: "2026-08-23T12:00:01.000Z" } as const;
+        return { abort() {}, async cancel() { return { status: "cancelled", task }; },
+          async generate() { return { status: "success", task }; },
+          async reconcile() { return { status: "success", task }; },
+          async recover() { return { status: "success", task }; },
+          async retry() { return { status: "success", task }; },
+          async submit() { return { status: "submitted", task }; } } satisfies
+          SingleNodeGenerationLifecycle;
+      },
+    });
+    const outpaint = operation === "outpaint" ? { outputHeight: 1080,
+      outputWidth: 1920, sourceHeight: 720, sourceWidth: 1280,
+      sourceX: 320, sourceY: 180, version: 1 as const } : undefined;
+    await expect(masked.execute({ accountId: "account", aspectRatio: "auto",
+      canvasId: "masked-canvas", expectedRevision: 9, featherPixels: 0,
+      maskFile: new File([Uint8Array.from([1])], `${operation}-mask.png`, { type: "image/png" }),
+      modelId: "image-model-internal-id", modelName: "GPT Image 2",
+      modelParameters: { inputMode: "image" }, operationId: `${operation}-operation`,
+      outpaint, preOwnershipKey: "pre-owner",
+      preparedFile: operation === "outpaint"
+        ? new File([Uint8Array.from([1])], "outpaint-input.png", { type: "image/png" })
+        : undefined,
+      prompt: operation === "erase" ? "移除对象并补全背景" : "自然延展",
+      quality: "auto", runId: `${operation}-run`,
+      sourceAssetId: `${operation}-source-asset`, sourceNodeId: `${operation}-source`,
+      title: "Source" })).resolves.toMatchObject({ operation,
+        taskId: `${operation}-task` });
+    expect(maskedSnapshot.nodes[1]?.data).toMatchObject({
+      imageToolOperation: operation,
+      imageToolOutpaintParameters: outpaint,
+      ...(operation === "outpaint"
+        ? { imageToolPreparedAssetId: "outpaint-upload-1" }
+        : {}),
+    });
+  }
+  for (const operation of ["enhance-creative", "remove-background"] as const) {
+    let processingSnapshot: CanvasGraphSnapshot = {
+      edges: [],
+      nodes: [{ data: { assetId: `${operation}-source-asset`, label: "Image" },
+        id: `${operation}-source`, position: { x: 0, y: 0 },
+        style: { width: 250 }, type: "image" }], revision: 11,
+    };
+    let capturedPayload: { imageTool: import("../types/imageTools").ImageGenerationToolInput } |
+      undefined;
+    const useCase = createPromptGenerationImageToolUseCase({
+      async afterPlaceholderCreated() {},
+      capability: modularImageToolCapability(operation, {
+        expiresAt: "2099-08-23T13:00:00.000Z",
+        modelId: "image-model-internal-id",
+        supportsAlpha: operation === "remove-background",
+      }),
+      graph: createCanvasGraphCommandPort({
+        commit(next) { processingSnapshot = next; },
+        persistenceReady: () => true,
+        snapshot: () => processingSnapshot,
+      }),
+      operation,
+      ownershipKey: (evidence) => JSON.stringify(evidence),
+      createLifecycle(plan) {
+        capturedPayload = plan.payload;
+        const task = { attempt: 1, canvasId: "processing-canvas", costCurrency: "USD",
+          createdAt: "2026-08-23T12:00:00.000Z", generationInputKey: plan.inputKey,
+          generationOwnershipKey: plan.ownershipKey, id: `${operation}-task`, kind: "image",
+          nodeId: plan.nodeId, prompt: plan.payload.prompt, state: "queued",
+          updatedAt: "2026-08-23T12:00:01.000Z" } as const;
+        return { abort() {}, async cancel() { return { status: "cancelled", task }; },
+          async generate() { return { status: "success", task }; },
+          async reconcile() { return { status: "success", task }; },
+          async recover() { return { status: "success", task }; },
+          async retry() { return { status: "success", task }; },
+          async submit() { return { status: "submitted", task }; } } satisfies
+          SingleNodeGenerationLifecycle;
+      },
+    });
+    await expect(useCase.execute({ accountId: "account", aspectRatio: "auto",
+      canvasId: "processing-canvas", expectedRevision: 11,
+      modelId: "image-model-internal-id", modelName: "GPT Image 2",
+      modelParameters: { inputMode: "image" }, operationId: `${operation}-operation`,
+      preOwnershipKey: "pre-owner", prompt: "处理图片", quality: "auto",
+      runId: `${operation}-run`, sourceAssetId: `${operation}-source-asset`,
+      sourceNodeId: `${operation}-source`, title: "Source" }))
+      .resolves.toMatchObject({ operation, taskId: `${operation}-task` });
+    expect(capturedPayload?.imageTool).toMatchObject({ operation,
+      ...(operation === "remove-background"
+        ? { outputBackground: "transparent" }
+        : {}) });
+    expect(processingSnapshot.nodes[1]?.data).toMatchObject({
+      imageToolOperation: operation,
+      ...(operation === "remove-background"
+        ? { imageToolOutputBackground: "transparent" }
+        : {}),
+    });
+  }
+  const transparentPng = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DAAAAEAQEARwbK3gAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  const opaqueAlphaPng = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64",
+  );
+  expect(validateTransparentPng(transparentPng)).toEqual({ height: 1, width: 1 });
+  expect(() => validateTransparentPng(opaqueAlphaPng)).toThrow(/transparent pixels/);
+  expect(redrawCanvasPoint({
+    canvasHeight: 720,
+    canvasWidth: 1280,
+    clientX: 491,
+    clientY: 260,
+    rect: { height: 360, left: 171, top: 80, width: 640 },
+  })).toEqual({ x: 640, y: 360 });
+  expect(redrawCanvasPoint({
+    canvasHeight: 720,
+    canvasWidth: 1280,
+    clientX: 9999,
+    clientY: -9999,
+    rect: { height: 360, left: 171, top: 80, width: 640 },
+  })).toEqual({ x: 1280, y: 0 });
+  expect(persistedMediaReferences([{
+    data: {
+      imageToolMaskAssetId: "redraw-mask-asset",
+      imageToolPreparedAssetId: "outpaint-input-asset",
+      imageToolOperation: "redraw",
+    },
+    id: "redraw-placeholder",
+    type: "image",
+  }])).toEqual([
+    { assetId: "redraw-mask-asset", kind: "image" },
+    { assetId: "outpaint-input-asset", kind: "image" },
+  ]);
 });
 
 test("Provider references and durable blobs remain separate replaceable stores", async () => {
@@ -708,6 +1443,7 @@ test("composition root wires public module APIs and delegates readiness SQL", as
   expect(Object.isFrozen(applicationComposition.auth)).toBe(true);
   expect(Object.isFrozen(applicationComposition.canvas)).toBe(true);
   expect(Object.isFrozen(applicationComposition.generation)).toBe(true);
+  expect(Object.isFrozen(applicationComposition.imageTools)).toBe(true);
   expect(Object.isFrozen(applicationComposition.media)).toBe(true);
   expect(Object.isFrozen(applicationComposition.provider)).toBe(true);
 
@@ -750,7 +1486,7 @@ test("composition root wires public module APIs and delegates readiness SQL", as
     /canvasPersistence|generationTasks|generationSafety|providerProfiles/,
   );
   expect(compositionSource.match(/from "\.\/[^\"]+(?:Application|Runtime)Api"/g))
-    .toHaveLength(6);
+    .toHaveLength(8);
   expect(viteSource).not.toMatch(
     /server\/(?:canvasPersistence|generationAttemptQueries|generationSafety|generationTasks|providerProfiles)/,
   );
@@ -1353,4 +2089,29 @@ test("single-node lifecycle replaces React with fenced graph save and task ports
     textGenerationErrorCode: "PROVIDER_RESULT_MISSING",
   });
   expect({ flushes, revisionWaits }).toEqual({ flushes: 5, revisionWaits: 10 });
+
+  const imageToolGeneration = createGenerationImageToolUseCase({
+    lifecycle: {
+      abort() {},
+      async cancel() { return { status: "cancelled", task: task("cancelled") }; },
+      async generate() { return { status: "success", task: task("success") }; },
+      async reconcile() { return { status: "success", task: task("success") }; },
+      async recover() { return { status: "success", task: task("success") }; },
+      async retry() { return { status: "success", task: task("success") }; },
+      async submit() { return { status: "submitted", task: task("running") }; },
+    },
+    operation: "multi-angle",
+  });
+  await expect(imageToolGeneration.execute({ action: "generate" })).resolves
+    .toMatchObject({
+      kind: "generation-task",
+      operation: "multi-angle",
+      taskId: "task-1",
+    });
+  await expect(imageToolGeneration.execute({ action: "submit" })).resolves
+    .toMatchObject({
+      kind: "generation-task",
+      operation: "multi-angle",
+      taskId: "task-1",
+    });
 });

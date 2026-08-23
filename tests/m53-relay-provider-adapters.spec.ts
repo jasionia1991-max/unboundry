@@ -439,8 +439,10 @@ test("GPT Image generation and edits use their dedicated endpoints", async () =>
     size: "1024x1024",
   }, { fetcher });
   const editedRequest: RelayGptImageRequest = {
+    background: "transparent",
     capability: "image",
     inputImages: ["https://signed.example.test/input.png?signature=short"],
+    maskImage: "https://signed.example.test/mask.png?signature=short",
     model: "gpt-image-2",
     operation: "edit",
     prompt: "Keep the garment and replace the background",
@@ -467,7 +469,9 @@ test("GPT Image generation and edits use their dedicated endpoints", async () =>
     size: "1024x1024",
   });
   expect(JSON.parse(String(calls[1].init?.body))).toMatchObject({
+    background: "transparent",
     image: "https://signed.example.test/input.png?signature=short",
+    mask: "https://signed.example.test/mask.png?signature=short",
     model: "gpt-image-2",
     prompt: "Keep the garment and replace the background",
   });
@@ -626,7 +630,11 @@ test("generic media submission accepts image, video and audio fixtures only", as
     {
       capability: "image",
       model: "relay-image",
-      params: { images: ["https://signed.example.test/reference.png"] },
+      params: {
+        background: "transparent",
+        images: ["https://signed.example.test/reference.png"],
+        mask: "https://signed.example.test/mask.png",
+      },
       prompt: "Image fixture",
       providerProtocol: "media-generate",
     },

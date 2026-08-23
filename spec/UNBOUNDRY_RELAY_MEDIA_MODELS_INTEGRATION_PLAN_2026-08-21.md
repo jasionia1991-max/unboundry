@@ -2,7 +2,7 @@
 
 更新日期：2026-08-21
 
-状态：`PRODUCTION_PUBLISHED / SUPERSEDED_BY_V0_6_29_30_REAL_EVIDENCE / CURRENT_V0_6_30_USER_PASS`
+状态：`PRODUCTION_PUBLISHED / SUPERSEDED_BY_V0_6_29_30_REAL_EVIDENCE / CURRENT_V0_6_33_USER_PASS`
 施工目标：在现有 `multi-protocol-relay + media-generate` 通道中接入：
 
 - 图片：`gemini-3-pro-image-preview`（Nano Banana Pro）；

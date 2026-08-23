@@ -42,7 +42,7 @@
 - package约束：Node `>=22.23.1 <23`、npm `10.9.8`
 - shell默认：Node `v25.9.0`、npm `11.12.1`
 - 第一批施工/验证：显式使用Node `22.23.1`、npm `10.9.8`
-- 当时线上状态：`v0.6.28 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；当前为 v0.6.31 `USER_PASS`
+- 当时线上状态：`v0.6.28 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；当前聚合版本为 v0.6.33 `USER_PASS`
 - 受保护未跟踪文件：`spec/public-templates-director-split-revision.json`
 
 基线会漂移，新Session必须重新只读核对；冲突时停止，不得reset、clean、checkout覆盖或自行修复。
@@ -76,7 +76,7 @@
 
 ## 5. 第一批本地交付
 
-状态：第一批已随v0.6.28发布；当时为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。该矩阵本身不冒充独立用户验收，当前组合版本的用户状态由 v0.6.31 回执承担。
+状态：第一批已随v0.6.28发布；当时为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。该矩阵本身不冒充独立用户验收；当前组合版本为v0.6.33，用户状态由`UNBOUNDRY_CURRENT_STATE.md`和最新版本回执承担。
 
 - 调用链：`HTTP/API → Generation Task → 输入物化 → profile/credential lease + task snapshot校验 → TextProviderRegistry → Ark/relay文字adapter → 规范化text/usage → provider response evidence → Task complete`。
 - driver选择：只在`server/providerRegistry.ts`按已解析的`profile.driver + protocol`进行；Generation Task不再按具体文字driver分支。

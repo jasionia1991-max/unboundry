@@ -28,6 +28,8 @@ export function tryCommitCanvasNodeAdoption(input: {
 
 export const CanvasGraphMutationContext = createContext<{
   graphCommandPort?: CanvasGraphCommandPort;
+  imageColorFilter?: string;
+  setImageColorFilter: (color?: string) => void;
   setEdges: Dispatch<SetStateAction<CuttableEdge[]>>;
   setNodes: Dispatch<SetStateAction<ProbeNodeType[]>>;
   tryAdoptNodes: (
@@ -37,6 +39,7 @@ export const CanvasGraphMutationContext = createContext<{
   trySetNodes: (update: SetStateAction<ProbeNodeType[]>) => boolean;
 }>({
   graphCommandPort: undefined,
+  setImageColorFilter: () => undefined,
   setEdges: () => undefined,
   setNodes: () => undefined,
   tryAdoptNodes: () => false,

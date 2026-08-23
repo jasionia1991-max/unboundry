@@ -11,6 +11,12 @@ import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import type { ModelParameterValue } from "../../../types/modelParameters";
 import type { NodeInputState } from "../../../types/nodeInputs";
 import type { CanvasNodeKind } from "../../../types/nodeVocabulary";
+import type {
+  ImageAnnotationDocument,
+  ImageMultiAngleParameters,
+  ImageToolOperation,
+  SeedanceAssetValidation,
+} from "../../../types/imageTools";
 
 function stableOwnershipValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stableOwnershipValue);
@@ -105,6 +111,8 @@ export type ProbeNodeType = Node<
     content?: string;
     contentHtml?: string;
     imageGeneratedSuccess?: boolean;
+    imageAnnotations?: ImageAnnotationDocument;
+    imageColorMarks?: string[];
     imageGenerationErrorCode?: string;
     imageGenerationError?: string;
     imageGenerationInputKey?: string;
@@ -117,20 +125,38 @@ export type ProbeNodeType = Node<
     imageAspectRatio?: string;
     imageModelId?: string;
     imageModelName?: string;
+    imageMultiAngleParameters?: ImageMultiAngleParameters;
     imagePrompt?: string;
     imagePromptReady?: boolean;
     imageParameters?: Record<string, ModelParameterValue>;
     imageQuality?: string;
     imageSrc?: string;
+    imageToolOperation?: ImageToolOperation;
+    imageToolOperationId?: string;
+    imageToolOutputBackground?: "transparent";
+    imageToolMaskAssetId?: string;
+    imageToolMaskFeatherPixels?: number;
+    imageToolMaskHeight?: number;
+    imageToolMaskVersion?: 1;
+    imageToolMaskWidth?: number;
+    imageToolOutpaintParameters?: import("../../../types/imageTools").ImageOutpaintParameters;
+    imageToolPreparedAssetId?: string;
+    imageToolPreparedHeight?: number;
+    imageToolPreparedVersion?: 1;
+    imageToolPreparedWidth?: number;
+    imageToolSourceAssetId?: string;
+    imageSeedanceValidation?: SeedanceAssetValidation;
     inputState?: NodeInputState;
     inputStateReason?: string;
     label: string;
     mediaByteSize?: number;
     mediaContentType?: string;
     mediaDurationSeconds?: number;
+    mediaHeight?: number;
     mediaMetadataSource?: "server";
     mediaMetadataStatus?: "failed" | "pending" | "ready";
     mediaStorageBackend?: "local" | "oss";
+    mediaWidth?: number;
     playlistClips?: PlaylistClip[];
     playlistPicking?: boolean;
     sourceKind?: "audio" | "image" | "video";

@@ -103,13 +103,27 @@ export function persistedMediaReferences(
     }
     const value = (node.data as Record<string, unknown>).assetId;
     const assetId = typeof value === "string" ? value.trim() : "";
-    if (!assetId || !validAssetId(assetId)) {
-      continue;
+    if (assetId && validAssetId(assetId)) {
+      references.set(`${node.type}\0${assetId}`, {
+        assetId,
+        kind: node.type,
+      });
     }
-    references.set(`${node.type}\0${assetId}`, {
-      assetId,
-      kind: node.type,
-    });
+    if (node.type === "image") {
+      for (const field of [
+        "imageToolMaskAssetId",
+        "imageToolPreparedAssetId",
+      ] as const) {
+        const rawAssetId = (node.data as Record<string, unknown>)[field];
+        const durableId = typeof rawAssetId === "string" ? rawAssetId.trim() : "";
+        if (durableId && validAssetId(durableId)) {
+          references.set(`image\0${durableId}`, {
+            assetId: durableId,
+            kind: "image",
+          });
+        }
+      }
+    }
   }
   return [...references.values()];
 }

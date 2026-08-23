@@ -23,9 +23,23 @@ export type CanvasGraphWriteFence = Readonly<{
   taskId?: string;
 }>;
 
+export type CanvasImageToolWriteFence = Readonly<{
+  expectedRevision: number;
+  kind: "image";
+  nodeId: string;
+  operationId: string;
+  ownershipKey: string;
+  runId: string;
+  sourceAssetId: string;
+}>;
+
 export type CanvasGraphCommand = Readonly<{
   fence: CanvasGraphWriteFence;
   scope: "generation";
+  update: (snapshot: CanvasGraphSnapshot) => CanvasGraphSnapshot;
+}> | Readonly<{
+  fence: CanvasImageToolWriteFence;
+  scope: "image-tool";
   update: (snapshot: CanvasGraphSnapshot) => CanvasGraphSnapshot;
 }>;
 
@@ -71,6 +85,34 @@ function generationFenceMatches(
   return true;
 }
 
+function imageToolFenceMatches(
+  snapshot: CanvasGraphSnapshot,
+  fence: CanvasImageToolWriteFence,
+) {
+  if (
+    !Number.isSafeInteger(fence.expectedRevision) ||
+    snapshot.revision !== fence.expectedRevision ||
+    !nonEmptyString(fence.operationId) ||
+    !nonEmptyString(fence.runId) ||
+    !nonEmptyString(fence.nodeId) ||
+    !nonEmptyString(fence.ownershipKey) ||
+    !nonEmptyString(fence.sourceAssetId)
+  ) return false;
+  const node = snapshot.nodes.find((candidate) => candidate.id === fence.nodeId);
+  return Boolean(
+    node && node.type === "image" && node.data.assetId === fence.sourceAssetId,
+  );
+}
+
+function commandFenceMatches(
+  snapshot: CanvasGraphSnapshot,
+  command: CanvasGraphCommand,
+) {
+  return command.scope === "generation"
+    ? generationFenceMatches(snapshot, command.fence)
+    : imageToolFenceMatches(snapshot, command.fence);
+}
+
 /** Framework-neutral adapter used by React state and in-memory replacement tests. */
 export function createCanvasGraphCommandPort(input: {
   commit: (snapshot: CanvasGraphSnapshot) => void;
@@ -97,14 +139,11 @@ export function createCanvasGraphCommandPort(input: {
             observed.nodes === pendingCommand.nodes
           ? { ...observed, revision: pendingCommand.revision }
           : observed;
-      if (
-        command.scope !== "generation" ||
-        !generationFenceMatches(current, command.fence)
-      ) {
+      if (!commandFenceMatches(current, command)) {
         return { reason: "fence-rejected", status: "rejected" };
       }
       const next = command.update(current);
-      if (!input.persistenceReady() || !generationFenceMatches(current, command.fence)) {
+      if (!input.persistenceReady() || !commandFenceMatches(current, command)) {
         return { reason: "persistence-unavailable", status: "rejected" };
       }
       const nextNode = next.nodes.find((node) => node.id === command.fence.nodeId);

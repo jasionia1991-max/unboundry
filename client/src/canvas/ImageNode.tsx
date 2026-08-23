@@ -41,6 +41,7 @@ import { NodeParameterControl } from "./NodeParameterControl";
 import { EmptyMediaUploadToolbar } from "./EmptyMediaUploadToolbar";
 import { generationOwnershipKey, type ProbeNodeType } from "./ProbeNode";
 import {
+  usePublishedModels,
   usePublishedModelSelection,
 } from "../models/ModelCatalog";
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
@@ -86,11 +87,10 @@ import {
 } from "../generation/generationTasks";
 import {
   createSingleNodeGenerationLifecycle,
-  type SingleNodeGenerationAdapter,
-  type SingleNodeGenerationBlocked,
   type SingleNodeLifecycleResult,
-  type SingleNodeGenerationPlan,
 } from "../generation/singleNodeGenerationLifecycle";
+import { createImageGenerationAdapter } from
+  "../generation/imageGenerationAdapter";
 import {
   defaultParameterSchema,
   defaultParameterValues,
@@ -114,8 +114,80 @@ import {
   mediaUploadState,
   trustedMediaPatch,
 } from "./mediaInputMetadata";
+import { createImageToolDispatcher } from "../imageTools/imageToolDispatcher";
+import { createDerivedImageToolUseCase } from
+  "../imageTools/derivedImageToolUseCase";
+import {
+  createDownloadImageToolUseCase,
+  createFullscreenImageToolUseCase,
+} from "../imageTools/viewerImageToolUseCases";
+import { createBatchDerivedImageToolUseCase } from
+  "../imageTools/batchDerivedImageToolUseCase";
+import {
+  ImageResizePanel,
+  ImageSplitPanel,
+} from "../imageTools/LocalImageToolPanels";
+import {
+  enhanceConservativeLocalImage,
+  prepareOutpaintImages,
+  resizeLocalImage,
+  splitLocalImage,
+} from "../imageTools/localImageProcessing";
+import { ImageAnnotationEditor } from
+  "../imageTools/ImageAnnotationEditor";
+import { renderAnnotatedImage } from
+  "../imageTools/renderAnnotatedImage";
+import { emptyImageAnnotationDocument } from
+  "../imageTools/imageAnnotations";
+import { createSaveLibraryAssetUseCase } from
+  "../imageTools/saveLibraryAssetUseCase";
+import { useImageToolCapability } from
+  "../imageTools/ImageToolCapabilityContext";
+import {
+  createMultiAngleImageToolUseCase,
+  multiAngleOwnershipEvidence,
+  multiAnglePrompt,
+} from
+  "../imageTools/multiAngleImageToolUseCase";
+import {
+  createRedrawImageToolUseCase,
+  redrawOwnershipEvidence,
+} from "../imageTools/redrawImageToolUseCase";
+import {
+  createRedrawMaskFile,
+  redrawCanvasPoint,
+} from "../imageTools/redrawMask";
+import {
+  createOutpaintEraseImageToolUseCase,
+  outpaintEraseOwnershipEvidence,
+  type OutpaintEraseOperation,
+} from "../imageTools/outpaintEraseImageToolUseCase";
+import {
+  createPromptGenerationImageToolUseCase,
+  promptGenerationOwnershipEvidence,
+  type PromptGenerationOperation,
+} from "../imageTools/promptGenerationImageToolUseCase";
+import { createSeedanceAssetValidationUseCase } from
+  "../imageTools/seedanceAssetValidationUseCase";
+import type {
+  ImageGenerationToolInput,
+  ImageToolCapability,
+} from "../../../types/imageTools";
+import {
+  seedanceAssetValidationState,
+  seedanceImageRoles,
+  type SeedanceImageRole,
+} from "../../../types/imageTools";
 
 type CropBox = { height: number; width: number; x: number; y: number };
+const imageColorMarks = [
+  ["red", "红色", "#ff5b5b"],
+  ["orange", "橙色", "#ff9f43"],
+  ["yellow", "黄色", "#ffd84d"],
+  ["green", "绿色", "#55cf78"],
+  ["blue", "蓝色", "#5b8cff"],
+  ["purple", "紫色", "#a879ff"],
+] as const;
 type CropVisualPreview = Readonly<{
   height: number;
   url: string;
@@ -153,152 +225,6 @@ type ImageGenerationRun = {
   taskId: string;
   token: symbol;
 };
-
-function createImageGenerationAdapter(input: {
-  aspectRatio?: string;
-  bindingOwnershipKey?: string;
-  inputKey: string;
-  modelId?: string;
-  modelName?: string;
-  nodeId: string;
-  ownershipKey: string;
-  parameters?: ProbeNodeType["data"]["imageParameters"];
-  payload: unknown;
-  preserveBindingOwnership?: boolean;
-  quality?: string;
-  readBlock: () => SingleNodeGenerationBlocked | undefined;
-}): SingleNodeGenerationAdapter {
-  return {
-    applyPrepared(node) {
-      return {
-        ...node,
-        data: {
-          ...node.data,
-          imageAspectRatio: input.aspectRatio,
-          imageModelId: input.modelId,
-          imageModelName: input.modelName,
-          imageParameters: input.parameters,
-          imageQuality: input.quality,
-        },
-      };
-    },
-    applyBinding(node, task, plan) {
-      return {
-        ...node,
-        data: {
-          ...node.data,
-          groupRunSuccessOwnershipKey: undefined,
-          groupRunSuccessResultKey: undefined,
-          groupRunSuccessTaskId: undefined,
-          imageGeneratedSuccess: false,
-          imageGenerating: true,
-          imageGenerationError: undefined,
-          imageGenerationErrorCode: undefined,
-          imageGenerationInputKey: plan.inputKey,
-          imageGenerationOwnershipKey: input.preserveBindingOwnership
-            ? input.bindingOwnershipKey
-            : task.generationOwnershipKey ?? plan.ownershipKey,
-          imageGenerationRetryAllowed: undefined,
-          imageGenerationRetryBlockCode: undefined,
-          imageGenerationRetryBlockReason: undefined,
-          imageGenerationTaskId: task.id,
-          imageAspectRatio: input.aspectRatio,
-          imageModelId: input.modelId,
-          imageModelName: input.modelName,
-          imageParameters: input.parameters,
-          imageQuality: input.quality,
-        },
-      };
-    },
-    applyTerminal(node, task, plan) {
-      if (task.state === "success") {
-        if (!task.resultAssetId || !task.resultUrl) {
-          throw new Error("图片结果不完整");
-        }
-        return {
-          ...node,
-          height: undefined,
-          measured: undefined,
-          style: { ...node.style, ...NODE_DEFAULT_SIZES.image },
-          width: undefined,
-          data: {
-            ...node.data,
-            assetId: task.resultAssetId,
-            ...(task.resultMedia
-              ? trustedMediaPatch({
-                  assetId: task.resultAssetId,
-                  kind: "image",
-                  ...task.resultMedia,
-                })
-              : {}),
-            groupRunSuccessOwnershipKey: plan.ownershipKey,
-            groupRunSuccessResultKey: groupRunResultKey(task.resultUrl),
-            groupRunSuccessTaskId: task.id,
-            imageGeneratedSuccess: true,
-            imageGenerating: false,
-            imageGenerationError: undefined,
-            imageGenerationErrorCode: undefined,
-            imageGenerationRetryAllowed: undefined,
-            imageGenerationRetryBlockCode: undefined,
-            imageGenerationRetryBlockReason: undefined,
-            imageGenerationTaskId: undefined,
-            imageSrc: task.resultUrl,
-          },
-        };
-      }
-      if (task.state === "cancelled") {
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            imageGenerating: false,
-            imageGenerationError: task.errorMessage ?? "图片生成已取消",
-            imageGenerationErrorCode: undefined,
-            imageGenerationInputKey: undefined,
-            imageGenerationOwnershipKey: undefined,
-            imageGenerationRetryAllowed: undefined,
-            imageGenerationRetryBlockCode: undefined,
-            imageGenerationRetryBlockReason: undefined,
-            imageGenerationTaskId: undefined,
-          },
-        };
-      }
-      const retryAllowed = safelyRetryableGenerationTask(task);
-      const visibleMessage = generationFailureMessage(
-        task.errorMessage ?? "图片生成失败，请稍后再试",
-        retryAllowed ? undefined : task.retryBlockReason,
-        task.errorCode,
-        "image",
-      );
-      return {
-        ...node,
-        data: {
-          ...node.data,
-          imageGenerating: false,
-          imageGenerationError: visibleMessage,
-          imageGenerationErrorCode: task.errorCode,
-          imageGenerationInputKey: plan.inputKey,
-          imageGenerationRetryAllowed: retryAllowed,
-          imageGenerationRetryBlockCode: task.retryBlockCode,
-          imageGenerationRetryBlockReason: task.retryBlockReason,
-          imageGenerationTaskId: task.id,
-        },
-      };
-    },
-    kind: "image",
-    readPlan(): SingleNodeGenerationBlocked | SingleNodeGenerationPlan {
-      const block = input.readBlock();
-      if (block) return block;
-      return {
-        inputKey: input.inputKey,
-        kind: "image",
-        nodeId: input.nodeId,
-        ownershipKey: input.ownershipKey,
-        payload: input.payload,
-      };
-    },
-  };
-}
 
 function imageTaskMatchesNode(
   task: GenerationTaskSummary,
@@ -907,10 +833,18 @@ function ImageCropEditor({
 }
 
 function ImageMultiAnglePanel({
+  busy,
+  capability,
+  error,
   onClose,
+  onSubmit,
   src,
 }: {
+  busy: boolean;
+  capability: ImageToolCapability;
+  error: string;
   onClose: () => void;
+  onSubmit: (angle: MultiAngle) => Promise<void>;
   src: string;
 }) {
   const drag = useRef<
@@ -1032,27 +966,56 @@ function ImageMultiAnglePanel({
           />
         </label>
         <div className="image-multi-angle-submit">
+          <span data-testid="image-multi-angle-capability">
+            {capability.status === "available"
+              ? capability.estimatedCost
+                ? `预计 ${capability.estimatedCost.amount} ${capability.estimatedCost.currency}`
+                : "能力已就绪"
+              : capability.reason}
+          </span>
           <button
             aria-label="生成多角度图片"
-            data-tooltip="尚未接入生成服务"
-            disabled
+            data-tooltip={capability.status === "available"
+              ? "生成多角度图片"
+              : capability.reason}
+            disabled={busy || capability.status !== "available"}
+            onClick={() => void onSubmit(angle)}
             type="button"
           >
-            ↑
+            {busy ? "…" : "↑"}
           </button>
         </div>
+        {error && <div className="image-multi-angle-error" role="alert">{error}</div>}
       </div>
     </div>
   );
 }
 
 function ImageRedrawEditor({
+  busy,
+  capability,
+  error,
   onClose,
+  onError,
+  onSubmit,
+  operation = "redraw",
   src,
 }: {
+  busy: boolean;
+  capability: ImageToolCapability;
+  error: string;
   onClose: () => void;
+  onError: (message: string) => void;
+  onSubmit: (input: Readonly<{
+    featherPixels: number;
+    maskFile: File;
+    prompt: string;
+  }>) => Promise<void>;
+  operation?: "erase" | "redraw";
   src: string;
 }) {
+  const isErase = operation === "erase";
+  const noun = isErase ? "擦除" : "重绘";
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawRef = useRef<
     | {
@@ -1066,6 +1029,7 @@ function ImageRedrawEditor({
   const history = useRef<ImageData[]>([]);
   const redo = useRef<ImageData[]>([]);
   const [brushSize, setBrushSize] = useState(32);
+  const [featherPixels, setFeatherPixels] = useState(0);
   const [historyVersion, setHistoryVersion] = useState(0);
   const [natural, setNatural] = useState({ height: 720, width: 1280 });
   const [prompt, setPrompt] = useState("");
@@ -1108,10 +1072,13 @@ function ImageRedrawEditor({
   const point = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     const canvas = event.currentTarget;
     const bounds = canvas.getBoundingClientRect();
-    return {
-      x: ((event.clientX - bounds.left) / bounds.width) * canvas.width,
-      y: ((event.clientY - bounds.top) / bounds.height) * canvas.height,
-    };
+    return redrawCanvasPoint({
+      canvasHeight: canvas.height,
+      canvasWidth: canvas.width,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      rect: bounds,
+    });
   };
 
   const beginDraw = (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -1184,10 +1151,10 @@ function ImageRedrawEditor({
 
   return createPortal(
     <div
-      aria-label="图片重绘"
+      aria-label={`图片${noun}`}
       aria-modal="true"
       className="image-redraw-overlay nodrag nopan nowheel"
-      data-testid="image-redraw-overlay"
+      data-testid={`image-${operation}-overlay`}
       role="dialog"
     >
       <div
@@ -1211,7 +1178,7 @@ function ImageRedrawEditor({
           src={src}
         />
         <canvas
-          aria-label="重绘蒙版"
+          aria-label={`${noun}蒙版`}
           data-testid="image-redraw-canvas"
           onPointerDown={beginDraw}
           onPointerMove={moveDraw}
@@ -1224,7 +1191,7 @@ function ImageRedrawEditor({
         data-testid="image-redraw-toolbar"
         style={{ top: stageTop - 64 }}
       >
-        <button aria-label="取消重绘" onClick={onClose} type="button">×</button>
+        <button aria-label={`取消${noun}`} onClick={onClose} type="button">×</button>
         <span className="image-redraw-divider" />
         <span className="image-redraw-tools">
           {([
@@ -1295,7 +1262,7 @@ function ImageRedrawEditor({
         style={{ top: stageTop + stage.height + 8 }}
       >
         <textarea
-          aria-label="重绘提示词"
+          aria-label={`${noun}提示词`}
           data-composition-active={promptControl.composing || undefined}
           onBlur={() => promptControl.blur()}
           onChange={(event) =>
@@ -1311,18 +1278,122 @@ function ImageRedrawEditor({
           onKeyDown={(event) => {
             promptControl.keyDown(event);
           }}
-          placeholder="描述你想改变什么..."
+          placeholder={isErase ? "可补充希望如何补全背景..." : "描述你想改变什么..."}
           value={promptControl.value}
         />
         <div>
           <span aria-hidden="true">⌕</span>
-          <span>绘制蒙版以重绘</span>
+          <span>{capability.status === "available"
+            ? capability.estimatedCost
+              ? `预计 ${capability.estimatedCost.amount} ${capability.estimatedCost.currency}`
+              : `绘制蒙版以${noun}`
+            : capability.reason}</span>
+          <label className="image-redraw-feather">
+            羽化
+            <input
+              aria-label="蒙版羽化"
+              max="64"
+              min="0"
+              onChange={(event) => setFeatherPixels(Number(event.target.value))}
+              type="range"
+              value={featherPixels}
+            />
+            <output>{featherPixels}px</output>
+          </label>
           <span className="image-redraw-prompt-spacer" />
           <button type="button">1K</button>
           <button type="button">x1</button>
           <button type="button">PRO</button>
-          <button aria-label="提交重绘" disabled type="button">↑</button>
+          <button
+            aria-label={`提交${noun}`}
+            disabled={
+              busy || capability.status !== "available" ||
+              (!isErase && !promptControl.committedValue.trim()) || history.current.length < 1
+            }
+            onClick={() => {
+              const canvas = canvasRef.current;
+              if (!canvas) return;
+              void createRedrawMaskFile(canvas, { featherPixels })
+                .then((maskFile) => onSubmit({
+                  featherPixels,
+                  maskFile,
+                  prompt: promptControl.committedValue ||
+                    "移除选中对象并自然补全背景，保持未选择区域不变",
+                }))
+                .catch((caught) => onError(
+                  caught instanceof Error ? caught.message : `${noun}遮罩生成失败`,
+                ));
+            }}
+            type="button"
+          >{busy ? "…" : "↑"}</button>
         </div>
+        {error && <div className="image-redraw-error" role="alert">{error}</div>}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function ImageOutpaintEditor({
+  busy,
+  capability,
+  error,
+  naturalHeight,
+  naturalWidth,
+  onClose,
+  onSubmit,
+  src,
+}: {
+  busy: boolean;
+  capability: ImageToolCapability;
+  error: string;
+  naturalHeight: number;
+  naturalWidth: number;
+  onClose: () => void;
+  onSubmit: (input: Readonly<{ marginPercent: number; prompt: string }>) => Promise<void>;
+  src: string;
+}) {
+  const [marginPercent, setMarginPercent] = useState(25);
+  const [prompt, setPrompt] = useState("自然延展画面边缘，保持原图主体和原区域不变");
+  const promptControl = useCompositionSafeText({ onCommit: setPrompt, value: prompt });
+  useEffect(() => {
+    const close = (event: KeyboardEvent) => event.key === "Escape" && onClose();
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [onClose]);
+  return createPortal(
+    <div aria-label="图片扩图" aria-modal="true"
+      className="image-outpaint-overlay nodrag nopan nowheel"
+      data-testid="image-outpaint-overlay" role="dialog">
+      <div className="image-outpaint-stage" data-testid="image-outpaint-stage">
+        <div style={{ padding: `${marginPercent / 2}%` }}>
+          <img alt="" draggable={false} src={src} />
+        </div>
+        <small>{naturalWidth}×{naturalHeight} · 四周扩展 {marginPercent}%</small>
+      </div>
+      <div className="image-outpaint-controls">
+        <button aria-label="取消扩图" onClick={onClose} type="button">×</button>
+        <label>扩展边界
+          <input aria-label="扩图边界" max="50" min="5"
+            onChange={(event) => setMarginPercent(Number(event.target.value))}
+            type="range" value={marginPercent} />
+          <output>{marginPercent}%</output>
+        </label>
+        <textarea aria-label="扩图提示词" value={promptControl.value}
+          onBlur={() => promptControl.blur()}
+          onChange={(event) => promptControl.change(event.target.value,
+            (event.nativeEvent as InputEvent).isComposing)}
+          onCompositionEnd={(event) => promptControl.compositionEnd(event.currentTarget.value)}
+          onCompositionStart={() => promptControl.compositionStart()}
+          onKeyDown={(event) => promptControl.keyDown(event)} />
+        <span>{capability.status === "available" ? "只生成新增边界" : capability.reason}</span>
+        <button aria-label="提交扩图" disabled={busy || capability.status !== "available" ||
+          !promptControl.committedValue.trim()}
+          onClick={() => void onSubmit({ marginPercent,
+            prompt: promptControl.committedValue })} type="button">
+          {busy ? "…" : "↑"}
+        </button>
+        {error && <div role="alert">{error}</div>}
       </div>
     </div>,
     document.body,
@@ -1487,6 +1558,13 @@ function ImageNodeImpl({
   parentId,
   selected,
 }: NodeProps<ProbeNodeType>) {
+  const multiAngleCapability = useImageToolCapability("multi-angle");
+  const redrawCapability = useImageToolCapability("redraw");
+  const outpaintCapability = useImageToolCapability("outpaint");
+  const eraseCapability = useImageToolCapability("erase");
+  const creativeEnhanceCapability = useImageToolCapability("enhance-creative");
+  const removeBackgroundCapability = useImageToolCapability("remove-background");
+  const seedanceCapability = useImageToolCapability("seedance-validate");
   const singleNodeChrome = useSingleNodeChrome(selected, dragging);
   const mediaLoad = useMediaLoadRecovery(data.imageSrc);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -1500,7 +1578,14 @@ function ImageNodeImpl({
     width: number;
   } | undefined>(undefined);
   const { getEdges, getNode, getNodes } = useReactFlow<ProbeNodeType>();
-  const { graphCommandPort, setEdges, setNodes, tryAdoptNodes } =
+  const {
+    graphCommandPort,
+    imageColorFilter,
+    setEdges,
+    setImageColorFilter,
+    setNodes,
+    tryAdoptNodes,
+  } =
     useCanvasGraphMutation();
   const canvasEdges = useEdges();
   const canvasNodes = useNodes<ProbeNodeType>();
@@ -1585,6 +1670,9 @@ function ImageNodeImpl({
     data.imageModelId,
     data.imageModelName,
   );
+  const seedanceModels = (usePublishedModels("video") ?? []).filter(
+    (model) => model.mediaInputPolicy === "seedance-2",
+  );
   const imageModels = imageModelSelection.models;
   const selectedImageModel = imageModelSelection.model;
   const selectedImageModelId = imageModelSelection.selectedId;
@@ -1642,16 +1730,46 @@ function ImageNodeImpl({
   const [submitting, setSubmitting] = useState(false);
   const [savingCanvas, setSavingCanvas] = useState(false);
   const [favorite, setFavorite] = useState(false);
+  const [annotationOpen, setAnnotationOpen] = useState(false);
   const [cropOpen, setCropOpen] = useState(false);
+  const [colorMarksOpen, setColorMarksOpen] = useState(false);
   const [cropSourceAssetId, setCropSourceAssetId] = useState<string>();
   const [cropVisualPreview, setCropVisualPreview] =
     useState<CropVisualPreview>();
   const [fullscreen, setFullscreen] = useState(false);
   const [lightingOpen, setLightingOpen] = useState(false);
   const [multiAngleOpen, setMultiAngleOpen] = useState(false);
+  const [multiAngleBusy, setMultiAngleBusy] = useState(false);
+  const [multiAngleError, setMultiAngleError] = useState("");
   const [moreOpen, setMoreOpen] = useState(false);
+  const [localToolOpen, setLocalToolOpen] = useState<"resize" | "split">();
   const [modelSwitchProblem, setModelSwitchProblem] = useState("");
   const [redrawOpen, setRedrawOpen] = useState(false);
+  const [redrawBusy, setRedrawBusy] = useState(false);
+  const [redrawError, setRedrawError] = useState("");
+  const [eraseOpen, setEraseOpen] = useState(false);
+  const [eraseBusy, setEraseBusy] = useState(false);
+  const [eraseError, setEraseError] = useState("");
+  const [outpaintOpen, setOutpaintOpen] = useState(false);
+  const [outpaintBusy, setOutpaintBusy] = useState(false);
+  const [outpaintError, setOutpaintError] = useState("");
+  const [enhanceOpen, setEnhanceOpen] = useState(false);
+  const [enhanceBusy, setEnhanceBusy] = useState(false);
+  const [enhanceError, setEnhanceError] = useState("");
+  const [cutoutOpen, setCutoutOpen] = useState(false);
+  const [cutoutBusy, setCutoutBusy] = useState(false);
+  const [cutoutError, setCutoutError] = useState("");
+  const [seedanceOpen, setSeedanceOpen] = useState(false);
+  const [seedanceBusy, setSeedanceBusy] = useState(false);
+  const [seedanceError, setSeedanceError] = useState("");
+  const [seedanceModelId, setSeedanceModelId] = useState(
+    data.imageSeedanceValidation?.modelId ?? "",
+  );
+  const [seedanceRole, setSeedanceRole] =
+    useState<SeedanceImageRole>(
+      data.imageSeedanceValidation?.role ?? "reference-image",
+    );
+  const [seedanceExpiryEpoch, setSeedanceExpiryEpoch] = useState(0);
   const [retryTaskId, setRetryTaskId] = useState<string>();
   const [reconcileBusy, setReconcileBusy] = useState(false);
   const [reconcileConfirmedMissing, setReconcileConfirmedMissing] = useState(false);
@@ -1675,6 +1793,41 @@ function ImageNodeImpl({
     visibleGenerationError(data.imageGenerationError),
   );
   const [uploadErrorNeutral, setUploadErrorNeutral] = useState(false);
+  const selectedSeedanceModelId = seedanceModels.some(
+    (model) => model.id === seedanceModelId,
+  ) ? seedanceModelId : seedanceModels[0]?.id ?? "";
+  const selectedSeedanceModel = seedanceModels.find(
+    (model) => model.id === selectedSeedanceModelId,
+  );
+  const supportedSeedanceRoles = seedanceImageRoles.filter((role) =>
+    selectedSeedanceModel?.parameterSchema?.inputPolicy?.roles?.image
+      ?.includes(role)
+  );
+  const effectiveSeedanceRole = supportedSeedanceRoles.includes(seedanceRole)
+    ? seedanceRole
+    : supportedSeedanceRoles[0] ?? seedanceRole;
+  const currentSeedanceValidationState = data.imageSeedanceValidation
+    ? (() => {
+        void seedanceExpiryEpoch;
+        return seedanceAssetValidationState(data.imageSeedanceValidation, {
+          assetId: typeof data.assetId === "string" ? data.assetId : undefined,
+          modelConfigurationRevision:
+            selectedSeedanceModel?.configurationRevision,
+          modelId: selectedSeedanceModel?.id,
+          role: effectiveSeedanceRole,
+        });
+      })()
+    : undefined;
+  useEffect(() => {
+    if (!seedanceOpen || !data.imageSeedanceValidation) return;
+    const remaining = Date.parse(data.imageSeedanceValidation.expiresAt) - Date.now();
+    if (remaining <= 0) return;
+    const timer = window.setTimeout(
+      () => setSeedanceExpiryEpoch((epoch) => epoch + 1),
+      Math.min(remaining + 20, 2_147_000_000),
+    );
+    return () => window.clearTimeout(timer);
+  }, [data.imageSeedanceValidation, seedanceOpen]);
   const setUploadError = (message: string, errorCode?: string | null) => {
     setUploadErrorNeutral(
       Boolean(message) && !generationFailureIsDefinitive(errorCode),
@@ -1682,6 +1835,9 @@ function ImageNodeImpl({
     setRawUploadError(message);
   };
   const [transientUploadError, setTransientUploadError] = useState("");
+  const [librarySaveState, setLibrarySaveState] = useState<
+    "idle" | "saving" | "saved"
+  >("idle");
   const uploading = data.inputState === "uploading";
   const referenceLimit = imageParameters.maxReferenceImages ?? 0;
   const imageInputSchema = selectedImageModel
@@ -1750,6 +1906,89 @@ function ImageNodeImpl({
         text: input.kind === "text" ? input.text : undefined,
       };
     });
+  const imageToolInput = inputPreflight.inputs.length === 1
+    ? inputPreflight.inputs[0]
+    : undefined;
+  const imageToolGenerationOwnershipKey =
+    data.imageToolOperation === "multi-angle" &&
+    data.imageToolOperationId &&
+    data.imageMultiAngleParameters &&
+    imageToolInput?.kind === "image" &&
+    imageToolInput.assetId
+      ? generationOwnershipKey(multiAngleOwnershipEvidence({
+          accountId,
+          aspectRatio: data.imageAspectRatio,
+          canvasId,
+          modelId: data.imageModelId,
+          modelParameters: data.imageParameters,
+          operationId: data.imageToolOperationId,
+          parameters: data.imageMultiAngleParameters,
+          prompt: promptControl.committedValue,
+          quality: data.imageQuality,
+          sourceAssetId: imageToolInput.assetId,
+          sourceNodeId: imageToolInput.sourceNodeId,
+        }))
+      : (data.imageToolOperation === "redraw" ||
+          data.imageToolOperation === "erase" ||
+          data.imageToolOperation === "outpaint") &&
+          data.imageToolOperationId &&
+          data.imageToolMaskAssetId &&
+          data.imageToolMaskVersion === 1 &&
+          data.imageToolMaskWidth &&
+          data.imageToolMaskHeight &&
+          data.imageToolMaskFeatherPixels !== undefined &&
+          imageToolInput?.kind === "image" &&
+          imageToolInput.assetId
+        ? generationOwnershipKey(data.imageToolOperation === "redraw"
+          ? redrawOwnershipEvidence({
+            accountId,
+            aspectRatio: data.imageAspectRatio,
+            canvasId,
+            maskAssetId: data.imageToolMaskAssetId,
+            maskFeatherPixels: data.imageToolMaskFeatherPixels,
+            maskHeight: data.imageToolMaskHeight,
+            maskWidth: data.imageToolMaskWidth,
+            modelId: data.imageModelId,
+            modelParameters: data.imageParameters,
+            operationId: data.imageToolOperationId,
+            prompt: promptControl.committedValue,
+            quality: data.imageQuality,
+            sourceAssetId: imageToolInput.assetId,
+            sourceNodeId: imageToolInput.sourceNodeId,
+          })
+          : outpaintEraseOwnershipEvidence({
+            accountId,
+            aspectRatio: data.imageAspectRatio,
+            canvasId,
+            maskAssetId: data.imageToolMaskAssetId,
+            maskFeatherPixels: data.imageToolMaskFeatherPixels,
+            maskHeight: data.imageToolMaskHeight,
+            maskWidth: data.imageToolMaskWidth,
+            modelId: data.imageModelId,
+            modelParameters: data.imageParameters,
+            operation: data.imageToolOperation,
+            operationId: data.imageToolOperationId,
+            outpaint: data.imageToolOutpaintParameters,
+            preparedAssetId: data.imageToolPreparedAssetId,
+            prompt: promptControl.committedValue,
+            quality: data.imageQuality,
+            sourceAssetId: imageToolInput.assetId,
+            sourceNodeId: imageToolInput.sourceNodeId,
+          }))
+      : (data.imageToolOperation === "enhance-creative" ||
+          data.imageToolOperation === "remove-background") &&
+          data.imageToolOperationId && imageToolInput?.kind === "image" &&
+          imageToolInput.assetId
+        ? generationOwnershipKey(promptGenerationOwnershipEvidence({
+            accountId, aspectRatio: data.imageAspectRatio, canvasId,
+            modelId: data.imageModelId, modelParameters: data.imageParameters,
+            operation: data.imageToolOperation,
+            operationId: data.imageToolOperationId,
+            prompt: promptControl.committedValue, quality: data.imageQuality,
+            sourceAssetId: imageToolInput.assetId,
+            sourceNodeId: imageToolInput.sourceNodeId,
+          }))
+      : undefined;
   const effectiveGenerationInputFingerprint = generationOwnershipKey({
     aspectRatio: selectedImageModel ? aspectRatio : data.imageAspectRatio,
     modelId: selectedImageModelId,
@@ -1760,7 +1999,8 @@ function ImageNodeImpl({
     quality: selectedImageModel ? quality : data.imageQuality,
     upstream: generationOwnershipUpstream,
   });
-  const rawGenerationInputFingerprint = generationOwnershipKey({
+  const rawGenerationInputFingerprint = imageToolGenerationOwnershipKey ??
+    generationOwnershipKey({
     // Once a task is ownership-bound, catalog changes must not reinterpret its
     // saved full model snapshot. Before admission, use the effective values
     // materialized and ACKed on the canvas below.
@@ -1786,7 +2026,7 @@ function ImageNodeImpl({
     // Only durable source/edge semantics belong here. Compatibility, resolver
     // reasons, and resolved roles can drift with the model catalog.
     upstream: generationOwnershipUpstream,
-  });
+    });
   liveGenerationInputKeyRef.current = imageGenerationInputKey;
   liveGenerationOwnershipKeyRef.current = rawGenerationInputFingerprint;
   const beginImageGenerationRun = (
@@ -2032,9 +2272,56 @@ function ImageNodeImpl({
     inputProblems.length === 0 &&
     incomingImageReferences.every((reference) => Boolean(reference.assetId));
   const referenceProblem = inputProblems[0]?.message ?? "";
+  const imageGenerationToolInput: ImageGenerationToolInput | undefined =
+    data.imageToolOperation &&
+    [
+      "enhance-creative",
+      "erase",
+      "multi-angle",
+      "outpaint",
+      "redraw",
+      "remove-background",
+    ].includes(data.imageToolOperation) &&
+    data.imageToolOperationId &&
+    data.imageToolSourceAssetId &&
+    imageToolInput?.kind === "image" &&
+    imageToolInput.assetId === data.imageToolSourceAssetId
+      ? {
+          ...(data.imageToolMaskAssetId &&
+              data.imageToolMaskVersion === 1 &&
+              data.imageToolMaskWidth &&
+              data.imageToolMaskHeight &&
+              data.imageToolMaskFeatherPixels !== undefined
+            ? {
+                mask: {
+                  assetId: data.imageToolMaskAssetId,
+                  featherPixels: data.imageToolMaskFeatherPixels,
+                  height: data.imageToolMaskHeight,
+                  version: 1 as const,
+                  width: data.imageToolMaskWidth,
+                },
+              }
+            : {}),
+          ...(data.imageToolOutpaintParameters
+            ? { outpaint: data.imageToolOutpaintParameters }
+            : {}),
+          ...(data.imageToolPreparedAssetId &&
+              data.imageToolPreparedVersion === 1 &&
+              data.imageToolPreparedWidth && data.imageToolPreparedHeight
+            ? { preparedInput: { assetId: data.imageToolPreparedAssetId,
+                height: data.imageToolPreparedHeight, version: 1 as const,
+                width: data.imageToolPreparedWidth } }
+            : {}),
+          operation: data.imageToolOperation as ImageGenerationToolInput["operation"],
+          operationId: data.imageToolOperationId,
+          sourceAssetId: data.imageToolSourceAssetId,
+          sourceNodeId: imageToolInput.sourceNodeId,
+        }
+      : undefined;
   const imageGenerationRequestInput = {
     canvasId,
     canvasRevision,
+    ...(imageGenerationToolInput ? { imageTool: imageGenerationToolInput } : {}),
     inputSchemaVersion: 1 as const,
     inputs: inputPreflight.snapshot,
     model: selectedImageModelId,
@@ -3242,6 +3529,12 @@ function ImageNodeImpl({
     setMultiAngleOpen(false);
     setMoreOpen(false);
     setRedrawOpen(false);
+    setEraseOpen(false);
+    setOutpaintOpen(false);
+    setEnhanceOpen(false);
+    setCutoutOpen(false);
+    setAnnotationOpen(false);
+    setLocalToolOpen(undefined);
   }, [singleNodeChrome]);
 
   useEffect(() => {
@@ -3406,89 +3699,738 @@ function ImageNodeImpl({
     }
   };
 
-  const download = () => {
-    if (!preview) return;
-    const link = document.createElement("a");
-    link.href = preview;
-    link.download = `${titleControl.committedValue || "Image"}.png`;
-    link.click();
+  const derivedMediaPort = {
+    discard: discardImageAsset,
+    async metadata(assetId: string) {
+      return trustedMediaPatch(
+        await fetchTrustedMediaMetadata("image", assetId),
+      );
+    },
+    upload: uploadPngAsset,
   };
 
-  const applyCrop = async (file: File, sourceAssetId: string) => {
+  const applyDerivedImage = async (
+    operation: "annotate" | "crop" | "resize-pixels" | "enhance-conservative",
+    file: File,
+    sourceAssetId: string,
+  ) => {
     const source = getNode(id);
     if (!source || source.data.assetId !== sourceAssetId) {
-      throw new Error("原图片已发生变化，请重新打开裁剪");
+      throw new Error(operation === "crop"
+        ? "原图片已发生变化，请重新打开裁剪"
+        : "原图片已发生变化，请重新打开图片工具");
     }
     if (!persistenceReadyLive.current) {
       throw new Error("画布尚未完成安全加载");
     }
-    const operation = uploadOperation.current;
-    const scope = mediaAdoptionScopeRef.current;
-    const asset = await uploadPngAsset(file);
-    let adopted = false;
-    try {
-      const metadata = await fetchTrustedMediaMetadata("image", asset.assetId);
-      if (
-        operation !== uploadOperation.current ||
-        scope !== mediaAdoptionScopeRef.current ||
-        !persistenceReadyLive.current ||
-        getNode(id)?.data.assetId !== sourceAssetId
-      ) {
-        throw new Error(
-          getNode(id)?.data.assetId !== sourceAssetId
-            ? "原图片已发生变化，请重新打开裁剪"
-            : "画布尚未完成安全加载",
-        );
-      }
-    const derivedId = `image-crop-${crypto.randomUUID()}`;
-    const derivedSize = fitVisualMediaSize(asset.width, asset.height);
-    const sourceWidth = typeof source.style?.width === "number"
-      ? source.style.width
-      : 250;
+    if (!graphCommandPort) throw new Error("画布写入端口暂不可用");
+    await flushCanvasSave();
+    const expectedRevision = await waitForCanvasRevision();
+    const operationId = crypto.randomUUID();
+    const runId = `image-tool-${operation}-${operationId}`;
+    const ownershipKey = generationOwnershipKey({
+      accountId,
+      canvasId,
+      nodeId: id,
+      operation,
+      operationId,
+      sourceAssetId,
+    });
     checkpoint();
-    adopted = tryAdoptNodes(id, (nodes) => [
-      ...nodes.map((node) => ({ ...node, selected: false })),
-      {
-        id: derivedId,
-        type: "image",
-        position: {
-          x: source.position.x + sourceWidth + 140,
-          y: source.position.y,
-        },
-        selected: true,
-        data: {
-          assetId: asset.assetId,
-          ...trustedMediaPatch(metadata),
-          imageSrc: asset.url,
-          label: "Image",
-          sourceKind: "image",
-          title: asset.fileName.replace(/\.[^.]+$/, "") || "Image",
-        },
-        style: { ...derivedSize },
-      },
-    ]);
-    if (!adopted) {
-      await discardImageAsset(asset.assetId);
+    const result = await createDerivedImageToolUseCase({
+      graph: graphCommandPort,
+      media: derivedMediaPort,
+      operation,
+      size: fitVisualMediaSize,
+    }).execute({
+      expectedRevision,
+      file,
+      operationId,
+      ownershipKey,
+      runId,
+      sourceAssetId,
+      sourceNodeId: id,
+      title: file.name.replace(/\.[^.]+$/, "") ||
+        titleControl.committedValue || "Image",
+    });
+    return result;
+  };
+
+  const applyCrop = async (file: File, sourceAssetId: string) => {
+    const result = await applyDerivedImage("crop", file, sourceAssetId);
+    setCropOpen(false);
+    return result;
+  };
+
+  const resizePixels = async (width: number, height: number) => {
+    const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
+    if (!sourceAssetId) throw new Error("图片尚未完成安全保存");
+    const file = await resizeLocalImage({
+      assetId: sourceAssetId,
+      fileName: `${titleControl.committedValue || "Image"}-${width}x${height}.png`,
+      height,
+      width,
+    });
+    const result = await applyDerivedImage("resize-pixels", file, sourceAssetId);
+    setLocalToolOpen(undefined);
+    return result;
+  };
+
+  const enhanceConservative = async () => {
+    const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
+    if (!sourceAssetId) throw new Error("图片尚未完成安全保存");
+    const file = await enhanceConservativeLocalImage({
+      assetId: sourceAssetId,
+      fileName: `${titleControl.committedValue || "Image"}-保守增强.png`,
+    });
+    return applyDerivedImage("enhance-conservative", file, sourceAssetId);
+  };
+
+  const updateAnnotations = (
+    annotations: NonNullable<ProbeNodeType["data"]["imageAnnotations"]>,
+  ) => {
+    checkpoint();
+    setNodes((nodes) => nodes.map((node) => node.id === id
+      ? { ...node, data: { ...node.data, imageAnnotations: annotations } }
+      : node));
+  };
+
+  const exportAnnotations = async (
+    annotations: NonNullable<ProbeNodeType["data"]["imageAnnotations"]>,
+  ) => {
+    const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
+    if (!sourceAssetId) throw new Error("图片尚未完成安全保存");
+    const file = await renderAnnotatedImage({
+      assetId: sourceAssetId,
+      document: annotations,
+      fileName: `${titleControl.committedValue || "Image"}-annotated.png`,
+    });
+    const result = await applyDerivedImage("annotate", file, sourceAssetId);
+    setAnnotationOpen(false);
+    return result;
+  };
+
+  const quickSplit = async (grid: 2 | 3 | 4) => {
+    const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
+    if (!sourceAssetId) throw new Error("图片尚未完成安全保存");
+    if (!graphCommandPort) throw new Error("画布写入端口暂不可用");
+    const files = await splitLocalImage({
+      assetId: sourceAssetId,
+      fileNamePrefix: titleControl.committedValue || "Image",
+      grid,
+    });
+    await flushCanvasSave();
+    const expectedRevision = await waitForCanvasRevision();
+    const operationId = crypto.randomUUID();
+    const runId = `image-tool-quick-split-${operationId}`;
+    const ownershipKey = generationOwnershipKey({
+      accountId,
+      canvasId,
+      nodeId: id,
+      operation: "quick-split",
+      operationId,
+      sourceAssetId,
+    });
+    checkpoint();
+    const result = await createBatchDerivedImageToolUseCase({
+      graph: graphCommandPort,
+      media: derivedMediaPort,
+      operation: "quick-split",
+      size: fitVisualMediaSize,
+    }).execute({
+      expectedRevision,
+      files,
+      grid,
+      operationId,
+      ownershipKey,
+      runId,
+      sourceAssetId,
+      sourceNodeId: id,
+      title: titleControl.committedValue || "Image",
+    });
+    setLocalToolOpen(undefined);
+    return result;
+  };
+
+  const submitMultiAngle = async (angle: MultiAngle) => {
+    if (multiAngleBusy) return;
+    const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
+    if (!sourceAssetId) {
+      setMultiAngleError("图片尚未完成安全保存");
       return;
     }
-    setEdges((edges) => [
-      ...edges,
-      {
-        id: `edge-${id}-${derivedId}`,
-        interactionWidth: 20,
-        source: id,
-        sourceHandle: "source",
-        target: derivedId,
-        targetHandle: "target",
-        type: "cuttable",
-      },
-    ]);
-    setCropOpen(false);
+    if (!graphCommandPort) {
+      setMultiAngleError("画布尚未完成安全加载");
+      return;
+    }
+    const model = imageModels?.find((candidate) =>
+      candidate.id === multiAngleCapability.modelId
+    );
+    if (!model || model.generationAvailable === false ||
+        (model.imageParameters?.maxReferenceImages ?? 0) < 1) {
+      setMultiAngleError("当前多角度模型不支持安全参考图输入");
+      return;
+    }
+    const schema = model.parameterSchema ?? defaultParameterSchema("image");
+    const normalizedParameters = normalizeParameterValues(schema, {
+      inputMode: "image",
+    });
+    const modelParameters = submissionParameterValues(
+      schema,
+      normalizedParameters,
+    );
+    const aspectRatio = supportedImageValue(
+      model.imageParameters?.aspectRatios ?? ["auto"],
+      String(modelParameters.aspectRatio ?? "auto"),
+    );
+    const quality = supportedImageValue(
+      model.imageParameters?.qualities ?? ["auto"],
+      String(modelParameters.quality ?? "auto"),
+    );
+    const parameters = {
+      distance: angle.scale,
+      horizontalDegrees: angle.rotation,
+      verticalDegrees: angle.tilt,
+      wideAngle: angle.wide,
+    } as const;
+    const operationId = crypto.randomUUID();
+    const prompt = multiAnglePrompt(parameters);
+    const ownershipKey = generationOwnershipKey(multiAngleOwnershipEvidence({
+      accountId,
+      aspectRatio,
+      canvasId,
+      modelId: model.id,
+      modelParameters,
+      operationId,
+      parameters,
+      prompt,
+      quality,
+      sourceAssetId,
+      sourceNodeId: id,
+    }));
+    setMultiAngleBusy(true);
+    setMultiAngleError("");
+    try {
+      await flushCanvasSave();
+      const expectedRevision = await waitForCanvasRevision();
+      checkpoint();
+      await createMultiAngleImageToolUseCase({
+        async afterPlaceholderCreated() {
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve())
+          );
+          await flushCanvasSave();
+          await waitForCanvasRevision();
+        },
+        capability: multiAngleCapability,
+        graph: graphCommandPort,
+        createLifecycle(plan) {
+          return createSingleNodeGenerationLifecycle({
+            adapter: createImageGenerationAdapter({
+              aspectRatio: plan.aspectRatio,
+              inputKey: plan.inputKey,
+              modelId: plan.modelId,
+              modelName: plan.modelName,
+              nodeId: plan.nodeId,
+              ownershipKey: plan.ownershipKey,
+              parameters: plan.modelParameters,
+              payload: plan.payload,
+              quality: plan.quality,
+              readBlock() {
+                const snapshot = graphCommandPort.snapshot();
+                const source = snapshot.nodes.find((node) => node.id === id);
+                const target = snapshot.nodes.find((node) =>
+                  node.id === plan.nodeId
+                );
+                if (
+                  !source || source.type !== "image" ||
+                  source.data.assetId !== sourceAssetId ||
+                  !target || target.type !== "image" ||
+                  target.data.imageToolOperation !== "multi-angle" ||
+                  target.data.imageToolSourceAssetId !== sourceAssetId
+                ) {
+                  return {
+                    message: "多角度来源或任务占位已变化，已停止提交",
+                    status: "blocked",
+                  };
+                }
+              },
+            }),
+            graph: graphCommandPort,
+            nodeId: plan.nodeId,
+            save: {
+              async flush() {
+                await new Promise<void>((resolve) =>
+                  requestAnimationFrame(() => resolve())
+                );
+                await flushCanvasSave();
+              },
+              async waitForRevision() {
+                return { revision: await waitForCanvasRevision() };
+              },
+            },
+            tasks: createBrowserSingleNodeGenerationTaskPort({ accountId }),
+          });
+        },
+      }).execute({
+        aspectRatio,
+        canvasId,
+        expectedRevision,
+        modelId: model.id,
+        modelName: model.displayName,
+        modelParameters,
+        operationId,
+        ownershipKey,
+        parameters,
+        quality,
+        runId: `image-tool-multi-angle-${operationId}`,
+        sourceAssetId,
+        sourceNodeId: id,
+        title: titleControl.committedValue || "Image",
+      });
+      setMultiAngleOpen(false);
     } catch (error) {
-      if (!adopted) await discardImageAsset(asset.assetId);
-      throw error;
+      setMultiAngleError(
+        error instanceof Error ? error.message : "多角度任务提交失败",
+      );
+    } finally {
+      setMultiAngleBusy(false);
     }
   };
+
+  const submitRedraw = async (input: Readonly<{
+    featherPixels: number;
+    maskFile: File;
+    prompt: string;
+  }>) => {
+    if (redrawBusy) return;
+    const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
+    if (!sourceAssetId) {
+      setRedrawError("图片尚未完成安全保存");
+      return;
+    }
+    if (!graphCommandPort) {
+      setRedrawError("画布尚未完成安全加载");
+      return;
+    }
+    const model = imageModels?.find((candidate) =>
+      candidate.id === redrawCapability.modelId
+    );
+    if (!model || model.generationAvailable === false ||
+        (model.imageParameters?.maxReferenceImages ?? 0) < 1) {
+      setRedrawError("当前重绘模型不支持安全参考图输入");
+      return;
+    }
+    const schema = model.parameterSchema ?? defaultParameterSchema("image");
+    const normalizedParameters = normalizeParameterValues(schema, {
+      inputMode: "image",
+    });
+    const modelParameters = submissionParameterValues(
+      schema,
+      normalizedParameters,
+    );
+    const requestedAspectRatio = supportedImageValue(
+      model.imageParameters?.aspectRatios ?? ["auto"],
+      String(modelParameters.aspectRatio ?? "auto"),
+    );
+    const requestedQuality = supportedImageValue(
+      model.imageParameters?.qualities ?? ["auto"],
+      String(modelParameters.quality ?? "auto"),
+    );
+    const operationId = crypto.randomUUID();
+    const preOwnershipKey = generationOwnershipKey({
+      accountId,
+      canvasId,
+      featherPixels: input.featherPixels,
+      operation: "redraw",
+      operationId,
+      prompt: input.prompt.trim(),
+      sourceAssetId,
+      sourceNodeId: id,
+    });
+    setRedrawBusy(true);
+    setRedrawError("");
+    try {
+      await flushCanvasSave();
+      const expectedRevision = await waitForCanvasRevision();
+      checkpoint();
+      await createRedrawImageToolUseCase({
+        async afterPlaceholderCreated() {
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve())
+          );
+          await flushCanvasSave();
+          await waitForCanvasRevision();
+        },
+        capability: redrawCapability,
+        graph: graphCommandPort,
+        media: derivedMediaPort,
+        ownershipKey: generationOwnershipKey,
+        createLifecycle(plan) {
+          return createSingleNodeGenerationLifecycle({
+            adapter: createImageGenerationAdapter({
+              aspectRatio: plan.aspectRatio,
+              inputKey: plan.inputKey,
+              modelId: plan.modelId,
+              modelName: plan.modelName,
+              nodeId: plan.nodeId,
+              ownershipKey: plan.ownershipKey,
+              parameters: plan.modelParameters,
+              payload: plan.payload,
+              quality: plan.quality,
+              readBlock() {
+                const snapshot = graphCommandPort.snapshot();
+                const source = snapshot.nodes.find((node) => node.id === id);
+                const target = snapshot.nodes.find((node) =>
+                  node.id === plan.nodeId
+                );
+                if (
+                  !source || source.type !== "image" ||
+                  source.data.assetId !== sourceAssetId ||
+                  !target || target.type !== "image" ||
+                  target.data.imageToolOperation !== "redraw" ||
+                  target.data.imageToolSourceAssetId !== sourceAssetId ||
+                  !target.data.imageToolMaskAssetId
+                ) {
+                  return {
+                    message: "重绘来源、遮罩或任务占位已变化，已停止提交",
+                    status: "blocked",
+                  };
+                }
+              },
+            }),
+            graph: graphCommandPort,
+            nodeId: plan.nodeId,
+            save: {
+              async flush() {
+                await new Promise<void>((resolve) =>
+                  requestAnimationFrame(() => resolve())
+                );
+                await flushCanvasSave();
+              },
+              async waitForRevision() {
+                return { revision: await waitForCanvasRevision() };
+              },
+            },
+            tasks: createBrowserSingleNodeGenerationTaskPort({ accountId }),
+          });
+        },
+      }).execute({
+        accountId,
+        aspectRatio: requestedAspectRatio,
+        canvasId,
+        expectedRevision,
+        featherPixels: input.featherPixels,
+        maskFile: input.maskFile,
+        modelId: model.id,
+        modelName: model.displayName,
+        modelParameters,
+        operationId,
+        preOwnershipKey,
+        prompt: input.prompt,
+        quality: requestedQuality,
+        runId: `image-tool-redraw-${operationId}`,
+        sourceAssetId,
+        sourceNodeId: id,
+        title: titleControl.committedValue || "Image",
+      });
+      setRedrawOpen(false);
+    } catch (caught) {
+      setRedrawError(
+        caught instanceof Error ? caught.message : "重绘任务提交失败",
+      );
+    } finally {
+      setRedrawBusy(false);
+    }
+  };
+
+  const submitOutpaintErase = async (
+    operation: OutpaintEraseOperation,
+    input: Readonly<{
+      featherPixels: number;
+      maskFile: File;
+      outpaint?: import("../../../types/imageTools").ImageOutpaintParameters;
+      preparedFile?: File;
+      prompt: string;
+    }>,
+  ) => {
+    const busy = operation === "outpaint" ? outpaintBusy : eraseBusy;
+    if (busy) return;
+    const setBusy = operation === "outpaint" ? setOutpaintBusy : setEraseBusy;
+    const setError = operation === "outpaint" ? setOutpaintError : setEraseError;
+    const capability = operation === "outpaint" ? outpaintCapability : eraseCapability;
+    const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
+    if (!sourceAssetId || !graphCommandPort) {
+      setError(!sourceAssetId ? "图片尚未完成安全保存" : "画布尚未完成安全加载");
+      return;
+    }
+    const model = imageModels?.find((candidate) => candidate.id === capability.modelId);
+    if (!model || model.generationAvailable === false ||
+        (model.imageParameters?.maxReferenceImages ?? 0) < 1) {
+      setError(`当前${operation === "outpaint" ? "扩图" : "擦除"}模型不支持安全参考图输入`);
+      return;
+    }
+    const schema = model.parameterSchema ?? defaultParameterSchema("image");
+    const modelParameters = submissionParameterValues(schema,
+      normalizeParameterValues(schema, { inputMode: "image" }));
+    const requestedAspectRatio = supportedImageValue(
+      model.imageParameters?.aspectRatios ?? ["auto"],
+      String(modelParameters.aspectRatio ?? "auto"),
+    );
+    const requestedQuality = supportedImageValue(
+      model.imageParameters?.qualities ?? ["auto"],
+      String(modelParameters.quality ?? "auto"),
+    );
+    const operationId = crypto.randomUUID();
+    const preOwnershipKey = generationOwnershipKey({ accountId, canvasId,
+      operation, operationId, outpaint: input.outpaint,
+      prompt: input.prompt.trim(), sourceAssetId, sourceNodeId: id });
+    setBusy(true);
+    setError("");
+    try {
+      await flushCanvasSave();
+      const expectedRevision = await waitForCanvasRevision();
+      checkpoint();
+      await createOutpaintEraseImageToolUseCase({
+        async afterPlaceholderCreated() {
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+          await flushCanvasSave();
+          await waitForCanvasRevision();
+        },
+        capability,
+        graph: graphCommandPort,
+        media: derivedMediaPort,
+        operation,
+        ownershipKey: generationOwnershipKey,
+        createLifecycle(plan) {
+          return createSingleNodeGenerationLifecycle({
+            adapter: createImageGenerationAdapter({
+              aspectRatio: plan.aspectRatio, inputKey: plan.inputKey,
+              modelId: plan.modelId, modelName: plan.modelName, nodeId: plan.nodeId,
+              ownershipKey: plan.ownershipKey, parameters: plan.modelParameters,
+              payload: plan.payload, quality: plan.quality,
+              readBlock() {
+                const snapshot = graphCommandPort.snapshot();
+                const source = snapshot.nodes.find((node) => node.id === id);
+                const target = snapshot.nodes.find((node) => node.id === plan.nodeId);
+                if (!source || source.type !== "image" ||
+                    source.data.assetId !== sourceAssetId || !target ||
+                    target.type !== "image" ||
+                    target.data.imageToolOperation !== operation ||
+                    target.data.imageToolSourceAssetId !== sourceAssetId ||
+                    !target.data.imageToolMaskAssetId ||
+                    (operation === "outpaint" && !target.data.imageToolPreparedAssetId)) {
+                  return { message: `${operation === "outpaint" ? "扩图" : "擦除"}来源或任务占位已变化，已停止提交`,
+                    status: "blocked" };
+                }
+              },
+            }),
+            graph: graphCommandPort, nodeId: plan.nodeId,
+            save: {
+              async flush() {
+                await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+                await flushCanvasSave();
+              },
+              async waitForRevision() {
+                return { revision: await waitForCanvasRevision() };
+              },
+            },
+            tasks: createBrowserSingleNodeGenerationTaskPort({ accountId }),
+          });
+        },
+      }).execute({ accountId, aspectRatio: requestedAspectRatio, canvasId,
+        expectedRevision, featherPixels: input.featherPixels,
+        maskFile: input.maskFile, modelId: model.id, modelName: model.displayName,
+        modelParameters, operationId, outpaint: input.outpaint,
+        preOwnershipKey, preparedFile: input.preparedFile, prompt: input.prompt,
+        quality: requestedQuality, runId: `image-tool-${operation}-${operationId}`,
+        sourceAssetId, sourceNodeId: id, title: titleControl.committedValue || "Image" });
+      if (operation === "outpaint") setOutpaintOpen(false);
+      else setEraseOpen(false);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message :
+        `${operation === "outpaint" ? "扩图" : "擦除"}任务提交失败`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitPromptGeneration = async (
+    operation: PromptGenerationOperation,
+    prompt: string,
+  ) => {
+    const setBusy = operation === "enhance-creative" ? setEnhanceBusy : setCutoutBusy;
+    const setError = operation === "enhance-creative" ? setEnhanceError : setCutoutError;
+    const capability = operation === "enhance-creative"
+      ? creativeEnhanceCapability : removeBackgroundCapability;
+    const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
+    if (!sourceAssetId || !graphCommandPort) {
+      setError(!sourceAssetId ? "图片尚未完成安全保存" : "画布尚未完成安全加载");
+      return;
+    }
+    const model = imageModels?.find((candidate) => candidate.id === capability.modelId);
+    if (!model || model.generationAvailable === false ||
+        (model.imageParameters?.maxReferenceImages ?? 0) < 1) {
+      setError("当前模型不支持安全参考图输入");
+      return;
+    }
+    const schema = model.parameterSchema ?? defaultParameterSchema("image");
+    const modelParameters = submissionParameterValues(schema,
+      normalizeParameterValues(schema, { inputMode: "image" }));
+    const requestedAspectRatio = supportedImageValue(
+      model.imageParameters?.aspectRatios ?? ["auto"],
+      String(modelParameters.aspectRatio ?? "auto"));
+    const requestedQuality = supportedImageValue(
+      model.imageParameters?.qualities ?? ["auto"],
+      String(modelParameters.quality ?? "auto"));
+    const operationId = crypto.randomUUID();
+    const preOwnershipKey = generationOwnershipKey({ accountId, canvasId,
+      operation, operationId, prompt, sourceAssetId, sourceNodeId: id });
+    setBusy(true);
+    setError("");
+    try {
+      await flushCanvasSave();
+      const expectedRevision = await waitForCanvasRevision();
+      checkpoint();
+      await createPromptGenerationImageToolUseCase({
+        async afterPlaceholderCreated() {
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+          await flushCanvasSave();
+          await waitForCanvasRevision();
+        }, capability, graph: graphCommandPort, operation,
+        ownershipKey: generationOwnershipKey,
+        createLifecycle(plan) {
+          return createSingleNodeGenerationLifecycle({
+            adapter: createImageGenerationAdapter({ aspectRatio: plan.aspectRatio,
+              inputKey: plan.inputKey, modelId: plan.modelId,
+              modelName: plan.modelName, nodeId: plan.nodeId,
+              ownershipKey: plan.ownershipKey, parameters: plan.modelParameters,
+              payload: plan.payload, quality: plan.quality,
+              readBlock() {
+                const snapshot = graphCommandPort.snapshot();
+                const source = snapshot.nodes.find((node) => node.id === id);
+                const target = snapshot.nodes.find((node) => node.id === plan.nodeId);
+                if (!source || source.type !== "image" ||
+                    source.data.assetId !== sourceAssetId || !target ||
+                    target.type !== "image" ||
+                    target.data.imageToolOperation !== operation ||
+                    target.data.imageToolOutputBackground !==
+                      (operation === "remove-background" ? "transparent" : undefined) ||
+                    target.data.imageToolSourceAssetId !== sourceAssetId) {
+                  return { message: "图片处理来源或任务占位已变化，已停止提交",
+                    status: "blocked" };
+                }
+              } }), graph: graphCommandPort, nodeId: plan.nodeId,
+            save: { async flush() {
+              await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+              await flushCanvasSave();
+            }, async waitForRevision() {
+              return { revision: await waitForCanvasRevision() };
+            } }, tasks: createBrowserSingleNodeGenerationTaskPort({ accountId }) });
+        },
+      }).execute({ accountId, aspectRatio: requestedAspectRatio, canvasId,
+        expectedRevision, modelId: model.id, modelName: model.displayName,
+        modelParameters, operationId, preOwnershipKey, prompt,
+        quality: requestedQuality, runId: `image-tool-${operation}-${operationId}`,
+        sourceAssetId, sourceNodeId: id, title: titleControl.committedValue || "Image" });
+      if (operation === "enhance-creative") setEnhanceOpen(false);
+      else setCutoutOpen(false);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "图片处理任务提交失败");
+    } finally { setBusy(false); }
+  };
+
+  const validateSeedance = async () => {
+    const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
+    if (!sourceAssetId || !selectedSeedanceModel?.configurationRevision) {
+      setSeedanceError(sourceAssetId
+        ? "当前没有带有效规则版本的 Seedance 模型"
+        : "图片尚未完成安全保存");
+      return;
+    }
+    setSeedanceBusy(true);
+    setSeedanceError("");
+    try {
+      const result = await imageToolDispatcher.execute("seedance-validate", {
+        assetId: sourceAssetId,
+        modelId: selectedSeedanceModel.id,
+        role: effectiveSeedanceRole,
+      });
+      if (result.kind !== "validation") {
+        throw new Error("Seedance 素材校验返回了错误的结果类型");
+      }
+      checkpoint();
+      setNodes((nodes) => nodes.map((node) => node.id === id
+        ? { ...node, data: { ...node.data, imageSeedanceValidation: result } }
+        : node));
+    } catch (caught) {
+      setSeedanceError(caught instanceof Error
+        ? caught.message
+        : "Seedance 素材校验失败");
+    } finally {
+      setSeedanceBusy(false);
+    }
+  };
+
+  const toggleColorMark = (color: string) => {
+    if (imageColorFilter === color && data.imageColorMarks?.includes(color)) {
+      setImageColorFilter();
+    }
+    checkpoint();
+    setNodes((nodes) => nodes.map((node) => {
+      if (node.id !== id) return node;
+      const current = node.data.imageColorMarks ?? [];
+      const next = current.includes(color)
+        ? current.filter((item) => item !== color)
+        : [...current, color];
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          imageColorMarks: next.length > 0 ? next : undefined,
+        },
+      };
+    }));
+  };
+
+  const download = () => {
+    if (!preview) return;
+    void imageToolDispatcher.execute("download", {
+      fileName: `${titleControl.committedValue || "Image"}.png`,
+      sourceUrl: preview,
+    });
+  };
+
+  const imageToolDispatcher = createImageToolDispatcher()
+    .register({
+      operation: "crop",
+      execute: (input: Readonly<{ file: File; sourceAssetId: string }>) =>
+        applyCrop(input.file, input.sourceAssetId),
+    })
+    .register({
+      operation: "resize-pixels",
+      execute: (input: Readonly<{ height: number; width: number }>) =>
+        resizePixels(input.width, input.height),
+    })
+    .register({
+      operation: "quick-split",
+      execute: (input: Readonly<{ grid: 2 | 3 | 4 }>) =>
+        quickSplit(input.grid),
+    })
+    .register({
+      operation: "enhance-conservative",
+      execute: () => enhanceConservative(),
+    })
+    .register({
+      operation: "annotate",
+      execute: (input: Readonly<{
+        annotations: NonNullable<ProbeNodeType["data"]["imageAnnotations"]>;
+      }>) => exportAnnotations(input.annotations),
+    })
+    .register(createSaveLibraryAssetUseCase())
+    .register(createSeedanceAssetValidationUseCase())
+    .register(createDownloadImageToolUseCase())
+    .register(createFullscreenImageToolUseCase());
 
   const applyPreviewAutoFit = useCallback((
     width: number,
@@ -3540,7 +4482,8 @@ function ImageNodeImpl({
       <NodeToolbar
         className="media-node-toolbar image-node-toolbar nodrag nopan nowheel"
         data-testid="image-node-toolbar"
-        isVisible={Boolean(preview && singleNodeChrome && !generating && !uploading && !redrawOpen)}
+        isVisible={Boolean(preview && singleNodeChrome && !generating && !uploading &&
+          !redrawOpen && !eraseOpen && !outpaintOpen)}
         offset={28}
         position={Position.Top}
       >
@@ -3566,7 +4509,10 @@ function ImageNodeImpl({
         </button>
         <button
           aria-label="多角度"
-          data-tooltip="多角度"
+          data-capability-status={multiAngleCapability.status}
+          data-tooltip={multiAngleCapability.status === "available"
+            ? "多角度"
+            : multiAngleCapability.reason}
           onClick={() => {
             setCropOpen(false);
             setLightingOpen(false);
@@ -3582,12 +4528,16 @@ function ImageNodeImpl({
         </button>
         <button
           aria-label="重绘"
-          data-tooltip="重绘"
+          data-capability-status={redrawCapability.status}
+          data-tooltip={redrawCapability.status === "available"
+            ? "重绘"
+            : redrawCapability.reason}
           onClick={() => {
             setCropOpen(false);
             setLightingOpen(false);
             setMoreOpen(false);
             setMultiAngleOpen(false);
+            setRedrawError("");
             setRedrawOpen(true);
           }}
           type="button"
@@ -3636,39 +4586,159 @@ function ImageNodeImpl({
               data-testid="image-node-more-menu"
               role="menu"
             >
-              {[
-                ["扩图", "expand"],
-                ["擦除", "erase"],
-                ["标注", "mark"],
-                ["增强", "enhance"],
-                ["调整像素", "pixels"],
-                ["抠图", "cutout"],
-              ].map(([label, icon]) => (
-                <button disabled key={label} role="menuitem" type="button">
+              {([
+                ["扩图", "expand", outpaintCapability],
+                ["擦除", "erase", eraseCapability],
+                ["标注", "mark", undefined],
+                ["增强", "enhance", creativeEnhanceCapability],
+                ["调整像素", "pixels", undefined],
+                ["抠图", "cutout", removeBackgroundCapability],
+              ] as const).map(([label, icon, toolCapability]) => (
+                <button
+                  data-capability-status={toolCapability?.status}
+                  disabled={!(["调整像素", "标注", "扩图", "擦除", "增强", "抠图"] as string[]).includes(label)}
+                  key={label}
+                  onClick={() => {
+                    setMoreOpen(false);
+                    setCropOpen(false);
+                    setMultiAngleOpen(false);
+                    setRedrawOpen(false);
+                    setEraseOpen(label === "擦除");
+                    setOutpaintOpen(label === "扩图");
+                    setEnhanceOpen(label === "增强");
+                    setCutoutOpen(label === "抠图");
+                    setSeedanceOpen(false);
+                    setEraseError("");
+                    setOutpaintError("");
+                    setEnhanceError("");
+                    setCutoutError("");
+                    setLocalToolOpen(label === "调整像素" ? "resize" : undefined);
+                    setAnnotationOpen(label === "标注");
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
                   <span aria-hidden="true" className={`image-more-icon ${icon}`} />
                   {label}
                 </button>
               ))}
-              <button disabled role="menuitem" type="button">
+              <button
+                onClick={() => {
+                  setMoreOpen(false);
+                  setCropOpen(false);
+                  setMultiAngleOpen(false);
+                  setRedrawOpen(false);
+                  setAnnotationOpen(false);
+                  setSeedanceOpen(false);
+                  setLocalToolOpen("split");
+                }}
+                role="menuitem"
+                type="button"
+              >
                 <span aria-hidden="true" className="image-more-icon split" />
                 <span>快速切分</span>
                 <span className="image-more-sizes">2×2　3×3　4×4　›</span>
               </button>
-              <button disabled role="menuitem" type="button">
+              <button
+                data-capability-status={seedanceCapability.status}
+                disabled={seedanceCapability.status !== "available"}
+                onClick={() => {
+                  setMoreOpen(false);
+                  setCropOpen(false);
+                  setMultiAngleOpen(false);
+                  setRedrawOpen(false);
+                  setAnnotationOpen(false);
+                  setSeedanceError("");
+                  setSeedanceOpen(true);
+                }}
+                role="menuitem"
+                type="button"
+              >
                 <span aria-hidden="true" className="image-more-icon compliance" />
-                Seedance 合规验证
+                Seedance 素材校验
               </button>
             </div>
           )}
         </span>
         <span className="media-node-toolbar-divider" />
-        <button aria-label="Pin" data-tooltip="Pin" type="button">
-          <span className="media-node-color" />
-        </button>
+        <span className="image-color-mark-wrap">
+          <button
+            aria-expanded={colorMarksOpen}
+            aria-label="颜色标记"
+            data-tooltip="颜色标记"
+            onClick={() => setColorMarksOpen((open) => !open)}
+            type="button"
+          >
+            <span
+              className="media-node-color"
+              style={{
+                background: imageColorMarks.find(([color]) =>
+                  data.imageColorMarks?.includes(color))?.[2],
+              }}
+            />
+          </button>
+          {colorMarksOpen && (
+            <div
+              aria-label="图片颜色标记"
+              className="image-color-mark-menu"
+              data-testid="image-color-mark-menu"
+              role="menu"
+            >
+              {imageColorMarks.map(([color, label, value]) => (
+                <span key={color}>
+                  <button
+                    aria-checked={data.imageColorMarks?.includes(color) ?? false}
+                    aria-label={`${label}标记`}
+                    onClick={() => toggleColorMark(color)}
+                    role="menuitemcheckbox"
+                    type="button"
+                  ><i style={{ background: value }} />{label}</button>
+                  <button
+                    aria-pressed={imageColorFilter === color}
+                    aria-label={`只看${label}标记`}
+                    disabled={!data.imageColorMarks?.includes(color)}
+                    onClick={() => setImageColorFilter(
+                      imageColorFilter === color ? undefined : color,
+                    )}
+                    type="button"
+                  >筛</button>
+                </span>
+              ))}
+              {imageColorFilter && (
+                <button onClick={() => setImageColorFilter()} type="button">
+                  清除筛选
+                </button>
+              )}
+            </div>
+          )}
+        </span>
         <span className="media-node-toolbar-divider" />
         <button
           aria-label="保存到素材库"
-          data-tooltip="保存到素材库"
+          data-library-state={librarySaveState}
+          data-tooltip={librarySaveState === "saved" ? "已保存到素材库" : "保存到素材库"}
+          disabled={typeof data.assetId !== "string" ||
+            !data.assetId || librarySaveState === "saving"}
+          onClick={() => {
+            const sourceAssetId = typeof data.assetId === "string"
+              ? data.assetId
+              : "";
+            if (!sourceAssetId) return;
+            setLibrarySaveState("saving");
+            setUploadError("");
+            void imageToolDispatcher.execute("save-to-library", {
+              assetId: sourceAssetId,
+              kind: "image",
+              label: titleControl.committedValue || "Image",
+            }).then(() => {
+              setLibrarySaveState("saved");
+            }).catch((failure: unknown) => {
+              setLibrarySaveState("idle");
+              setUploadError(
+                failure instanceof Error ? failure.message : "素材保存失败",
+              );
+            });
+          }}
           type="button"
         >
           <svg aria-hidden="true" viewBox="0 0 20 20">
@@ -3689,7 +4759,9 @@ function ImageNodeImpl({
         <button
           aria-label="全屏查看"
           data-tooltip="全屏查看"
-          onClick={() => setFullscreen(true)}
+          onClick={() => void imageToolDispatcher.execute("fullscreen", {
+            open: () => setFullscreen(true),
+          })}
           type="button"
         >
           <svg aria-hidden="true" viewBox="0 0 20 20">
@@ -3701,14 +4773,209 @@ function ImageNodeImpl({
         <ImageCropEditor
           assetId={cropSourceAssetId}
           onCancel={() => setCropOpen(false)}
-          onConfirm={applyCrop}
+          onConfirm={async (file, sourceAssetId) => {
+            await imageToolDispatcher.execute("crop", { file, sourceAssetId });
+          }}
           title={titleControl.committedValue}
           visualPreview={cropVisualPreview}
         />
       )}
+      {preview && localToolOpen === "resize" && (
+        <NodeToolbar
+          className="image-local-tool-toolbar"
+          isVisible
+          offset={16}
+          position={Position.Bottom}
+        >
+          <ImageResizePanel
+            initialHeight={data.mediaHeight ??
+              previewImageRef.current?.naturalHeight ?? 1024}
+            initialWidth={data.mediaWidth ??
+              previewImageRef.current?.naturalWidth ?? 1024}
+            onCancel={() => setLocalToolOpen(undefined)}
+            onConfirm={async (width, height) => {
+              await imageToolDispatcher.execute("resize-pixels", { height, width });
+            }}
+          />
+        </NodeToolbar>
+      )}
+      {preview && localToolOpen === "split" && (
+        <NodeToolbar
+          className="image-local-tool-toolbar"
+          isVisible
+          offset={16}
+          position={Position.Bottom}
+        >
+          <ImageSplitPanel
+            onCancel={() => setLocalToolOpen(undefined)}
+            onConfirm={async (grid) => {
+              await imageToolDispatcher.execute("quick-split", { grid });
+            }}
+            preview={preview}
+          />
+        </NodeToolbar>
+      )}
+      <NodeToolbar className="image-local-tool-toolbar" isVisible={Boolean(
+        preview && singleNodeChrome && enhanceOpen)} offset={16}
+        position={Position.Bottom}>
+        <div className="image-processing-panel" data-testid="image-enhance-panel">
+          <strong>增强图片</strong>
+          <p>保守增强只做轻量清晰度与色彩校正；创意增强会生成新细节。</p>
+          <button disabled={enhanceBusy} onClick={() => {
+            setEnhanceBusy(true); setEnhanceError("");
+            void imageToolDispatcher.execute("enhance-conservative", {})
+              .then(() => setEnhanceOpen(false))
+              .catch((error: unknown) => setEnhanceError(error instanceof Error
+                ? error.message : "保守增强失败"))
+              .finally(() => setEnhanceBusy(false));
+          }} type="button">保守增强</button>
+          <button disabled={enhanceBusy || creativeEnhanceCapability.status !== "available"}
+            onClick={() => void submitPromptGeneration("enhance-creative",
+              "在保持主体身份、构图和主要颜色的前提下增强清晰度与细节；允许补充自然纹理，不添加无关对象。")}
+            type="button">创意增强（会改变内容）</button>
+          <button onClick={() => setEnhanceOpen(false)} type="button">取消</button>
+          {enhanceError && <div role="alert">{enhanceError}</div>}
+        </div>
+      </NodeToolbar>
+      <NodeToolbar className="image-local-tool-toolbar" isVisible={Boolean(
+        preview && singleNodeChrome && cutoutOpen)} offset={16}
+        position={Position.Bottom}>
+        <div className="image-processing-panel image-processing-alpha"
+          data-testid="image-cutout-panel">
+          <strong>主体抠图</strong>
+          <p>移除背景并生成带透明通道的PNG；棋盘格仅用于预览透明区域。</p>
+          <button disabled={cutoutBusy || removeBackgroundCapability.status !== "available"}
+            onClick={() => void submitPromptGeneration("remove-background",
+              "精确保留主要主体和边缘细节，完全移除背景，输出透明背景PNG；不要添加阴影、底色或棋盘格。")}
+            type="button">生成透明PNG</button>
+          <button onClick={() => setCutoutOpen(false)} type="button">取消</button>
+          {cutoutError && <div role="alert">{cutoutError}</div>}
+        </div>
+      </NodeToolbar>
+      <NodeToolbar className="image-local-tool-toolbar" isVisible={Boolean(
+        preview && singleNodeChrome && seedanceOpen)} offset={16}
+        position={Position.Bottom}>
+        <div className="image-processing-panel image-seedance-validation-panel"
+          data-testid="image-seedance-validation-panel">
+          <strong>Seedance 素材校验</strong>
+          <p>仅检查本地技术输入条件，不代表远端资格、可生成、质量或法律合规。</p>
+          <label>视频模型
+            <select aria-label="Seedance 视频模型"
+              onChange={(event) => setSeedanceModelId(event.target.value)}
+              value={selectedSeedanceModelId}>
+              {seedanceModels.map((model) => (
+                <option key={model.id} value={model.id}>{model.displayName}</option>
+              ))}
+            </select>
+          </label>
+          <label>素材角色
+            <select aria-label="Seedance 素材角色"
+              onChange={(event) => setSeedanceRole(
+                event.target.value as SeedanceImageRole)}
+              value={effectiveSeedanceRole}>
+              {supportedSeedanceRoles.map((role) => (
+                <option key={role} value={role}>{({
+                  "first-frame": "首帧",
+                  "last-frame": "尾帧",
+                  subject: "主体",
+                  "reference-image": "参考图",
+                } as const)[role]}</option>
+              ))}
+            </select>
+          </label>
+          {!selectedSeedanceModel && <div role="alert">当前没有已发布的 Seedance 模型</div>}
+          {currentSeedanceValidationState && (
+            <div className="image-seedance-validation-result"
+              data-state={currentSeedanceValidationState}>
+              {currentSeedanceValidationState === "eligible"
+                ? "本地技术预检通过"
+                : currentSeedanceValidationState === "stale"
+                  ? "校验已过期或素材、模型、角色已变化，请重新校验"
+                  : data.imageSeedanceValidation?.problems.join("；")}
+            </div>
+          )}
+          <button disabled={seedanceBusy || seedanceCapability.status !== "available" ||
+            !selectedSeedanceModel?.configurationRevision ||
+            supportedSeedanceRoles.length < 1 || typeof data.assetId !== "string"}
+            onClick={() => void validateSeedance()} type="button">
+            {seedanceBusy ? "校验中…" : "运行本地技术预检"}
+          </button>
+          <button onClick={() => setSeedanceOpen(false)} type="button">关闭</button>
+          {seedanceError && <div role="alert">{seedanceError}</div>}
+        </div>
+      </NodeToolbar>
+      {preview && annotationOpen && (
+        <ImageAnnotationEditor
+          document={data.imageAnnotations ?? emptyImageAnnotationDocument(
+            data.mediaWidth ?? previewImageRef.current?.naturalWidth ?? 1280,
+            data.mediaHeight ?? previewImageRef.current?.naturalHeight ?? 720,
+          )}
+          onChange={updateAnnotations}
+          onClose={() => setAnnotationOpen(false)}
+          onExport={async (annotations) => {
+            await imageToolDispatcher.execute("annotate", { annotations });
+          }}
+          src={preview}
+        />
+      )}
       {preview && redrawOpen && (
         <ImageRedrawEditor
+          busy={redrawBusy}
+          capability={redrawCapability}
+          error={redrawError}
           onClose={() => setRedrawOpen(false)}
+          onError={setRedrawError}
+          onSubmit={submitRedraw}
+          src={preview}
+        />
+      )}
+      {preview && eraseOpen && (
+        <ImageRedrawEditor
+          busy={eraseBusy}
+          capability={eraseCapability}
+          error={eraseError}
+          onClose={() => setEraseOpen(false)}
+          onError={setEraseError}
+          onSubmit={(input) => submitOutpaintErase("erase", input)}
+          operation="erase"
+          src={preview}
+        />
+      )}
+      {preview && outpaintOpen && (
+        <ImageOutpaintEditor
+          busy={outpaintBusy}
+          capability={outpaintCapability}
+          error={outpaintError}
+          naturalHeight={data.mediaHeight ?? previewImageRef.current?.naturalHeight ?? 720}
+          naturalWidth={data.mediaWidth ?? previewImageRef.current?.naturalWidth ?? 1280}
+          onClose={() => setOutpaintOpen(false)}
+          onSubmit={async ({ marginPercent, prompt }) => {
+            const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
+            if (!sourceAssetId) {
+              setOutpaintError("图片尚未完成安全保存");
+              return;
+            }
+            setOutpaintBusy(true);
+            setOutpaintError("");
+            try {
+              const sourceWidth = data.mediaWidth ?? previewImageRef.current?.naturalWidth ?? 0;
+              const sourceHeight = data.mediaHeight ?? previewImageRef.current?.naturalHeight ?? 0;
+              const horizontal = Math.max(1, Math.round(sourceWidth * marginPercent / 100 / 2));
+              const vertical = Math.max(1, Math.round(sourceHeight * marginPercent / 100 / 2));
+              const prepared = await prepareOutpaintImages({ assetId: sourceAssetId,
+                fileNamePrefix: `image-outpaint-${crypto.randomUUID()}`,
+                outputHeight: sourceHeight + vertical * 2,
+                outputWidth: sourceWidth + horizontal * 2,
+                sourceX: horizontal, sourceY: vertical });
+              setOutpaintBusy(false);
+              await submitOutpaintErase("outpaint", { featherPixels: 0,
+                maskFile: prepared.maskFile, outpaint: prepared.parameters,
+                preparedFile: prepared.preparedFile, prompt });
+            } catch (caught) {
+              setOutpaintError(caught instanceof Error ? caught.message : "扩图输入准备失败");
+              setOutpaintBusy(false);
+            }
+          }}
           src={preview}
         />
       )}
@@ -3720,7 +4987,11 @@ function ImageNodeImpl({
       >
         {preview && (
           <ImageMultiAnglePanel
+            busy={multiAngleBusy}
+            capability={multiAngleCapability}
+            error={multiAngleError}
             onClose={() => setMultiAngleOpen(false)}
+            onSubmit={submitMultiAngle}
             src={preview}
           />
         )}
@@ -4096,9 +5367,16 @@ function ImageNodeImpl({
         )}
       </div>
       <div
-        className="image-node-card"
+        className={`image-node-card${
+          data.imageToolOutputBackground === "transparent"
+            ? " image-transparent-preview"
+            : ""
+        }`}
         data-asset-id={data.assetId}
         data-empty={preview || generating || uploading ? undefined : "true"}
+        data-transparent-output={data.imageToolOutputBackground === "transparent"
+          ? "true"
+          : undefined}
         data-testid={`image-node-${id}`}
       >
         {(transientUploadError || uploadError) && (
@@ -4274,7 +5552,11 @@ function ImageNodeImpl({
             <div
               aria-label={`${titleControl.committedValue || "Image"} 图片详情`}
               aria-modal="true"
-              className="image-detail-dialog"
+              className={`image-detail-dialog${
+                data.imageToolOutputBackground === "transparent"
+                  ? " image-transparent-preview"
+                  : ""
+              }`}
               role="dialog"
             >
               <img

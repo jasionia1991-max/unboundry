@@ -619,6 +619,7 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
   request,
 }) => {
   const modelId = await ensureZeroProviderInputModel(request);
+  await ensureGarmentAsset(request);
   const before = await (await request.get("/api/generation-tasks/status")).json() as {
     paidProviderRequests: number;
   };
@@ -768,7 +769,232 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
     code: "CANVAS_NOT_SAVED",
   });
 
-  for (const canvasId of [roleCanvasId, forgedCanvasId, staleCanvasId]) {
+  const redrawCanvasId = `node-input-redraw-${Date.now()}`;
+  const redrawMaskAssetId = `redraw-mask-${Date.now()}`;
+  const redrawMaskBytes = await readFile(resolve(
+    process.cwd(),
+    "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+  ));
+  const redrawMaskUpload = await request.post(
+    `/api/assets/${redrawMaskAssetId}`,
+    {
+      data: redrawMaskBytes,
+      headers: {
+        "Content-Type": "image/png",
+        "X-File-Name": "redraw-mask.png",
+      },
+    },
+  );
+  expect(redrawMaskUpload.status()).toBe(201);
+  const redrawOperationId = `redraw-operation-${Date.now()}`;
+  const redrawSave = await request.put(`/api/canvas/${redrawCanvasId}`, {
+    data: {
+      edges: [{
+        data: { inputOrder: 0, inputRole: "reference-image" },
+        id: "redraw-source-edge",
+        source: "redraw-source",
+        target: "redraw-target",
+      }],
+      nodes: [
+        {
+          data: {
+            assetId: garmentAssetId,
+            imageSrc: `/api/assets/${garmentAssetId}`,
+          },
+          id: "redraw-source",
+          type: "image",
+        },
+        {
+          data: {
+            imagePrompt: "把选中区域改成蓝色陶瓷材质",
+            imagePromptReady: true,
+            imageToolMaskAssetId: redrawMaskAssetId,
+            imageToolMaskFeatherPixels: 8,
+            imageToolMaskHeight: 720,
+            imageToolMaskVersion: 1,
+            imageToolMaskWidth: 1280,
+            imageToolOperation: "redraw",
+            imageToolOperationId: redrawOperationId,
+            imageToolSourceAssetId: garmentAssetId,
+          },
+          id: "redraw-target",
+          type: "image",
+        },
+      ],
+      revision: 0,
+      viewport: { x: 0, y: 0, zoom: 1 },
+    },
+  });
+  expect(redrawSave.ok()).toBeTruthy();
+  const redrawRevision = (await redrawSave.json() as { revision: number }).revision;
+  const redrawImageTool = {
+    mask: {
+      assetId: redrawMaskAssetId,
+      featherPixels: 8,
+      height: 720,
+      version: 1,
+      width: 1280,
+    },
+    operation: "redraw",
+    operationId: redrawOperationId,
+    sourceAssetId: garmentAssetId,
+    sourceNodeId: "redraw-source",
+  };
+  const redrawBody = {
+    canvasId: redrawCanvasId,
+    canvasRevision: redrawRevision,
+    imageTool: redrawImageTool,
+    inputSchemaVersion: 1,
+    kind: "image",
+    model: modelId,
+    nodeId: "redraw-target",
+    ownPrompt: "把选中区域改成蓝色陶瓷材质",
+    parameters: { inputMode: "image" },
+    prompt: "把选中区域改成蓝色陶瓷材质",
+  };
+  const redrawPreflight = await request.post("/api/generation-tasks/preflight", {
+    data: redrawBody,
+  });
+  expect(redrawPreflight.ok()).toBeTruthy();
+  await expect(redrawPreflight.json()).resolves.toMatchObject({
+    canSubmit: false,
+    imageTool: redrawImageTool,
+    providerRequests: 0,
+  });
+  const forgedRedraw = await request.post("/api/generation-tasks/preflight", {
+    data: {
+      ...redrawBody,
+      imageTool: {
+        ...redrawImageTool,
+        mask: { ...redrawImageTool.mask, assetId: "forged-mask-asset" },
+      },
+    },
+  });
+  expect(forgedRedraw.status()).toBe(400);
+  await expect(forgedRedraw.json()).resolves.toMatchObject({
+    error: "图片工具遮罩身份或尺寸与已保存画布不一致",
+  });
+
+  const outpaintCanvasId = `node-input-outpaint-${Date.now()}`;
+  const outpaintPreparedAssetId = `outpaint-input-${Date.now()}`;
+  const outpaintMaskAssetId = `outpaint-mask-${Date.now()}`;
+  const outpaintBytes = await readFile(resolve(process.cwd(),
+    "spec/reference/upstream-v2.12.2-dense/30-viewport-1920x1080.png"));
+  for (const [assetId, name] of [
+    [outpaintPreparedAssetId, "outpaint-input.png"],
+    [outpaintMaskAssetId, "outpaint-mask.png"],
+  ] as const) {
+    expect((await request.post(`/api/assets/${assetId}`, { data: outpaintBytes,
+      headers: { "Content-Type": "image/png", "X-File-Name": name } })).status())
+      .toBe(201);
+  }
+  const outpaintOperationId = `outpaint-operation-${Date.now()}`;
+  const outpaintParameters = { outputHeight: 1080, outputWidth: 1920,
+    sourceHeight: 720, sourceWidth: 1280, sourceX: 320, sourceY: 180,
+    version: 1 } as const;
+  const outpaintSave = await request.put(`/api/canvas/${outpaintCanvasId}`, {
+    data: {
+      edges: [{ data: { inputOrder: 0, inputRole: "reference-image" },
+        id: "outpaint-source-edge", source: "outpaint-source",
+        target: "outpaint-target" }],
+      nodes: [
+        { data: { assetId: garmentAssetId,
+          imageSrc: `/api/assets/${garmentAssetId}` },
+          id: "outpaint-source", type: "image" },
+        { data: { imagePrompt: "自然延展画面", imagePromptReady: true,
+          imageToolMaskAssetId: outpaintMaskAssetId,
+          imageToolMaskFeatherPixels: 0, imageToolMaskHeight: 1080,
+          imageToolMaskVersion: 1, imageToolMaskWidth: 1920,
+          imageToolOperation: "outpaint", imageToolOperationId: outpaintOperationId,
+          imageToolOutpaintParameters: outpaintParameters,
+          imageToolPreparedAssetId: outpaintPreparedAssetId,
+          imageToolPreparedHeight: 1080, imageToolPreparedVersion: 1,
+          imageToolPreparedWidth: 1920, imageToolSourceAssetId: garmentAssetId },
+          id: "outpaint-target", type: "image" },
+      ], revision: 0, viewport: { x: 0, y: 0, zoom: 1 },
+    },
+  });
+  expect(outpaintSave.ok()).toBeTruthy();
+  const outpaintRevision = (await outpaintSave.json() as { revision: number }).revision;
+  const outpaintImageTool = { mask: { assetId: outpaintMaskAssetId,
+    featherPixels: 0, height: 1080, version: 1, width: 1920 },
+    operation: "outpaint", operationId: outpaintOperationId,
+    outpaint: outpaintParameters,
+    preparedInput: { assetId: outpaintPreparedAssetId, height: 1080,
+      version: 1, width: 1920 }, sourceAssetId: garmentAssetId,
+    sourceNodeId: "outpaint-source" };
+  const outpaintBody = { canvasId: outpaintCanvasId,
+    canvasRevision: outpaintRevision, imageTool: outpaintImageTool,
+    inputSchemaVersion: 1, kind: "image", model: modelId,
+    nodeId: "outpaint-target", ownPrompt: "自然延展画面",
+    parameters: { inputMode: "image" }, prompt: "自然延展画面" };
+  const outpaintPreflight = await request.post("/api/generation-tasks/preflight",
+    { data: outpaintBody });
+  expect(outpaintPreflight.ok()).toBeTruthy();
+  await expect(outpaintPreflight.json()).resolves.toMatchObject({
+    canSubmit: false, imageTool: outpaintImageTool, providerRequests: 0,
+  });
+  const forgedOutpaint = await request.post("/api/generation-tasks/preflight", {
+    data: { ...outpaintBody, imageTool: { ...outpaintImageTool,
+      preparedInput: { ...outpaintImageTool.preparedInput,
+        assetId: "forged-outpaint-input" } } },
+  });
+  expect(forgedOutpaint.status()).toBe(400);
+  await expect(forgedOutpaint.json()).resolves.toMatchObject({
+    error: "扩图边界或准备图片与已保存画布不一致",
+  });
+
+  const cutoutCanvasId = `node-input-cutout-${Date.now()}`;
+  const cutoutOperationId = `cutout-operation-${Date.now()}`;
+  const cutoutSave = await request.put(`/api/canvas/${cutoutCanvasId}`, {
+    data: {
+      edges: [{ data: { inputOrder: 0, inputRole: "reference-image" },
+        id: "cutout-source-edge", source: "cutout-source", target: "cutout-target" }],
+      nodes: [
+        { data: { assetId: garmentAssetId,
+          imageSrc: `/api/assets/${garmentAssetId}` },
+          id: "cutout-source", type: "image" },
+        { data: { imagePrompt: "移除背景并输出透明PNG", imagePromptReady: true,
+          imageToolOperation: "remove-background",
+          imageToolOperationId: cutoutOperationId,
+          imageToolOutputBackground: "transparent",
+          imageToolSourceAssetId: garmentAssetId },
+          id: "cutout-target", type: "image" },
+      ], revision: 0, viewport: { x: 0, y: 0, zoom: 1 },
+    },
+  });
+  expect(cutoutSave.ok()).toBeTruthy();
+  const cutoutRevision = (await cutoutSave.json() as { revision: number }).revision;
+  const cutoutImageTool = { operation: "remove-background" as const,
+    operationId: cutoutOperationId, outputBackground: "transparent" as const,
+    sourceAssetId: garmentAssetId, sourceNodeId: "cutout-source" };
+  const cutoutBody = { canvasId: cutoutCanvasId, canvasRevision: cutoutRevision,
+    imageTool: cutoutImageTool, inputSchemaVersion: 1, kind: "image",
+    model: modelId, nodeId: "cutout-target", ownPrompt: "移除背景并输出透明PNG",
+    parameters: { inputMode: "image" }, prompt: "移除背景并输出透明PNG" };
+  const cutoutPreflight = await request.post("/api/generation-tasks/preflight",
+    { data: cutoutBody });
+  expect(cutoutPreflight.ok()).toBeTruthy();
+  await expect(cutoutPreflight.json()).resolves.toMatchObject({
+    canSubmit: false, imageTool: cutoutImageTool, providerRequests: 0,
+  });
+  const forgedCutout = await request.post("/api/generation-tasks/preflight", {
+    data: { ...cutoutBody, imageTool: { ...cutoutImageTool,
+      outputBackground: undefined } },
+  });
+  expect(forgedCutout.status()).toBe(400);
+  await expect(forgedCutout.json()).resolves.toMatchObject({
+    error: "图片工具透明输出身份与已保存画布不一致",
+  });
+
+  for (const canvasId of [
+    roleCanvasId,
+    forgedCanvasId,
+    staleCanvasId,
+    redrawCanvasId,
+    outpaintCanvasId,
+    cutoutCanvasId,
+  ]) {
     const tasks = await (await request.get(
       `/api/generation-tasks?canvasId=${encodeURIComponent(canvasId)}`,
     )).json() as { tasks: unknown[] };
@@ -778,6 +1004,16 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
     paidProviderRequests: number;
   };
   expect(after.paidProviderRequests).toBe(before.paidProviderRequests);
+  expect((await request.delete(`/api/canvas/${redrawCanvasId}`)).ok())
+    .toBeTruthy();
+  expect((await request.delete(`/api/assets/${redrawMaskAssetId}`)).status())
+    .toBe(204);
+  expect((await request.delete(`/api/canvas/${outpaintCanvasId}`)).ok())
+    .toBeTruthy();
+  expect((await request.delete(`/api/assets/${outpaintMaskAssetId}`)).status())
+    .toBe(204);
+  expect((await request.delete(`/api/assets/${outpaintPreparedAssetId}`)).status())
+    .toBe(204);
 });
 
 test("allowed Video media edges pass zero-cost preflight without creating a task", async ({

@@ -1,6 +1,6 @@
 # Unboundry 渐进式模块化施工路线图
 
-更新日期：2026-08-22
+更新日期：2026-08-23
 状态：`PLAN_FROZEN / FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED / CURRENT_V0_6_33_USER_PASS / VIEW_005_AUTO_PASS / CURRENT_GOVERNANCE_HARDENING`
 关联审计：`spec/UNBOUNDRY_MODULAR_MONOLITH_AUDIT_2026-08-21.md`
 
@@ -64,13 +64,13 @@ UI
 
 ## 4. 施工策略
 
-路线图分为“已完成批次”和“功能触发批”。第一、第二批均已发布并包含在当前 v0.6.31；后续批次只在对应新功能出现前强制执行，不允许绕过，也不为了架构好看提前翻修稳定代码。
+路线图分为“已完成批次”和“功能触发批”。第一、第二批均已发布并包含在当前 v0.6.33；后续批次只在对应新功能出现前强制执行，不允许绕过，也不为了架构好看提前翻修稳定代码。
 
 2026-08-22 只读复核没有发现新的P0，也没有批准下一施工批。文字Provider port、Generation结果提交、Media不再写Generation表以及TaskStore/Safety运行时循环均已确认收口；剩余主要风险是Canvas应用层仍依赖React状态、媒体Provider仍直接依赖Storage实现、跨域SQL和节点能力清单重复。本次只同步文档，没有修改产品代码，也没有重跑测试、访问Provider/OSS或生产。
 
 ### 第一批：同步文字Provider port
 
-- 状态：原本地工程为 `LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`；后来随 v0.6.28 发布并持续包含在 v0.6.30。原矩阵未运行真实Provider的证据边界继续保留。
+- 状态：原本地工程为 `LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`；后来随 v0.6.28 发布并持续包含在当前 v0.6.33。原矩阵未运行真实Provider的证据边界继续保留。
 - 触发：2026-08-21 Goal已执行完毕；授权随本批结束失效。
 - 目标：让同步文字Provider可由registry/fake替换，通用任务协调器不再按具体driver分支。
 - 精确现有范围：

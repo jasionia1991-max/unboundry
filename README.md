@@ -10,6 +10,10 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 生产当前运行 `v0.6.33 / schema39`，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。裁剪安全链保持v0.6.32同站Blob合同，准备画面改为320×180紧凑加载卡片；HTTP/OSS图片不增加重复读取，只有内存`blob:`/`data:`预览显示缩略图。GitHub、冻结备份与恢复副本、精确标签源码构建、原子切换和生产技术终门均通过，切换前后数据计数一致；发布流程没有发起Provider请求或OSS写入。用户已在线上复验并明确回复“通过”。完整现状见 [`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)，生产回执见 [`spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json`](spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json)。
 
+## 当前本地候选：v0.6.34（INC-IMGEDIT-003，D12 完成，D13 待发布）
+
+图片工具栏剩余能力已完成D0～D12，package为v0.6.34、schema39。冻结前定向`234/234 PASS`；唯一一次safe full原始`1048/1052`，精确修复后同一四个失败spec`106/106 PASS`，未运行第二次full。候选已达到`LOCAL_ENGINEERING_COMPLETE / D13_READY`，尚未push、PR、tag、SSH或发布；生产和用户验收状态仍以上一节v0.6.33为准。
+
 ## v0.6.32 图片裁剪同站编辑源
 
 OSS 图片裁剪改为通过 owner-scoped 同站接口读取并校验原图，客户端只把同源 Blob 画入 Canvas，避免跨域重定向污染画布；解析器保持可替换，后续可接独立媒体域名。v0.6.32 已上线并获用户实页确认。裁剪准备态的缩略图/紧凑加载体验已按 [`spec/INC_IMGEDIT_002_CROP_LOADING_EXPERIENCE_PLAN_2026-08-23.md`](spec/INC_IMGEDIT_002_CROP_LOADING_EXPERIENCE_PLAN_2026-08-23.md) 随v0.6.33上线；HTTP/OSS图片使用320×180小型加载卡片以避免重复下载，只有`blob:`/`data:`内存预览才显示缩略图。生产技术门和用户线上复验均已通过。

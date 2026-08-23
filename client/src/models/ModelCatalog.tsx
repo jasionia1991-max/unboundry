@@ -27,6 +27,8 @@ export type ModelGenerationUnavailableReasonCode =
 
 export type PublishedModel = {
   capability: ModelCapability;
+  /** Optional during a rolling deploy; validation fails stale when absent. */
+  configurationRevision?: string;
   displayName: string;
   generationAvailable: boolean;
   generationUnavailableReason: string;

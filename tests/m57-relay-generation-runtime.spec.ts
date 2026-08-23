@@ -18,6 +18,7 @@ import {
   isTransientProviderResultSaveError,
   relayMediaParametersForTask,
   retrySafetyDecision,
+  validateImageToolResultPng,
 } from "../server/generationTasks";
 import {
   MediaPublicationConflictError,
@@ -112,6 +113,29 @@ test("relay save blips are transient while result and local format errors are no
     new ProviderResultMediaError("FORMAT", "模型结果格式不受支持"),
   )).toBe(false);
   expect(isTransientProviderResultSaveError(new Error("unknown"))).toBe(false);
+
+  const transparentPng = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DAAAAEAQEARwbK3gAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  const opaqueAlphaPng = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64",
+  );
+  expect(() => validateImageToolResultPng(transparentPng, {
+    operation: "remove-background",
+    operationId: "cutout-result",
+    outputBackground: "transparent",
+    sourceAssetId: "source-asset",
+    sourceNodeId: "source-node",
+  })).not.toThrow();
+  expect(() => validateImageToolResultPng(opaqueAlphaPng, {
+    operation: "remove-background",
+    operationId: "cutout-result",
+    outputBackground: "transparent",
+    sourceAssetId: "source-asset",
+    sourceNodeId: "source-node",
+  })).toThrow(/transparent pixels/);
 });
 
 test("the shared save gate retries transient errors with a bounded budget and throws real ones", async () => {

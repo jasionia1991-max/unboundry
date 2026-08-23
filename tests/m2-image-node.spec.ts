@@ -2,14 +2,31 @@ import { expect, test } from "./safe-test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { composeTextControl } from "./helpers/ime";
-import { defaultParameterSchema } from "../types/modelParameters";
+import {
+  defaultParameterSchema,
+  knownModelParameterSchema,
+} from "../types/modelParameters";
+import {
+  imageToolMaximums,
+  imageToolOperations,
+} from "../types/imageTools";
 
 test.beforeEach(async ({ page }, testInfo) => {
   const retention = testInfo.title.includes("retains 2K");
   const referenceModel = testInfo.title.includes("reference chip");
-  const displayName = referenceModel ? "GPT Image 2" : "Nano Banana 2 Lite";
-  const parameterSchema = defaultParameterSchema("image");
-  parameterSchema.referenceInputs.image = referenceModel ? 16 : 0;
+  const multiAngle = testInfo.title.includes("multi-angle submits");
+  const redraw = testInfo.title.includes("redraw submits");
+  const gptImageTool = multiAngle || redraw;
+  const gptImageModel = referenceModel || gptImageTool;
+  const displayName = gptImageModel ? "GPT Image 2" : "Nano Banana 2 Lite";
+  const parameterSchema = gptImageTool
+    ? knownModelParameterSchema({
+        capability: "image",
+        providerDriver: "openrouter",
+        providerModelId: "openai/gpt-image-2",
+      })
+    : defaultParameterSchema("image");
+  parameterSchema.referenceInputs.image = gptImageModel ? 16 : 0;
   parameterSchema.fields = parameterSchema.fields.map((field) => {
     if (field.key === "quality") {
       return {
@@ -29,8 +46,13 @@ test.beforeEach(async ({ page }, testInfo) => {
     }
     return field;
   });
+  const seedanceParameterSchema = knownModelParameterSchema({
+    capability: "video",
+    providerDriver: "volcengine-ark",
+    providerModelId: "doubao-seedance-2-0-mini-260615",
+  });
   await page.route("**/api/models", async (route) => {
-    const models = retention
+    const imageModels = retention
       ? [
           {
             capability: "image",
@@ -62,16 +84,28 @@ test.beforeEach(async ({ page }, testInfo) => {
       : [{
           capability: "image",
           displayName,
-          generationAvailable: false,
-          id: referenceModel ? "fixture-gpt-image-2" : "fixture-nano-banana-2-lite",
+          generationAvailable: gptImageTool,
+          id: gptImageModel ? "fixture-gpt-image-2" : "fixture-nano-banana-2-lite",
           imageParameters: {
             aspectRatios: ["auto"],
-            maxReferenceImages: referenceModel ? 16 : 0,
+            maxReferenceImages: gptImageModel ? 16 : 0,
             qualities: ["1k"],
           },
           isDefault: true,
           parameterSchema,
         }];
+    const models = [...imageModels, {
+      capability: "video",
+      configurationRevision: "cccccccccccccccccccccccc",
+      displayName: "Seedance 2.0 Mini",
+      generationAvailable: false,
+      generationUnavailableReason: "本测试只验证本地技术预检",
+      generationUnavailableReasonCode: "GLOBAL_GENERATION_DISABLED",
+      id: "fixture-seedance-2-mini",
+      isDefault: true,
+      mediaInputPolicy: "seedance-2",
+      parameterSchema: seedanceParameterSchema,
+    }];
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -81,6 +115,15 @@ test.beforeEach(async ({ page }, testInfo) => {
       status: 200,
     });
   });
+});
+
+test.afterEach(async ({ request }, testInfo) => {
+  if (
+    testInfo.title.includes("multi-angle submits") ||
+    testInfo.title.includes("redraw submits")
+  ) {
+    await request.delete("/api/canvas/node.image.success");
+  }
 });
 
 test("Image empty and local upload states match the observed geometry", async ({
@@ -154,6 +197,24 @@ test("Image empty and local upload states match the observed geometry", async ({
   const titleBox = (await node.locator(".image-node-title").boundingBox())!;
   expect(toolbarBox.y + toolbarBox.height).toBeLessThan(titleBox.y);
   await expect(toolbar.getByRole("button")).toHaveCount(9);
+  const uploadedAssetId = await card.getAttribute("data-asset-id");
+  expect(uploadedAssetId).toBeTruthy();
+  const saveToLibrary = toolbar.getByRole("button", { name: "保存到素材库" });
+  await expect(saveToLibrary).toHaveAttribute("data-library-state", "idle");
+  await saveToLibrary.click();
+  await expect(saveToLibrary).toHaveAttribute("data-library-state", "saved");
+  const library = await (await request.get(
+    "/api/library?space=personal&folder=others&limit=20&offset=0",
+  )).json() as { items: Array<{ id: string; kind: string; revision: number }> };
+  expect(library.items.map(({ id, kind, revision }) => ({ id, kind, revision })))
+    .toContainEqual({
+    id: uploadedAssetId,
+    kind: "image",
+    revision: 1,
+  });
+  expect((await request.delete(
+    `/api/library/image/${encodeURIComponent(uploadedAssetId!)}`,
+  )).status()).toBe(204);
   await expect(
     toolbar.getByRole("button", { name: "下载" }),
   ).toBeVisible();
@@ -177,9 +238,41 @@ test("Image empty and local upload states match the observed geometry", async ({
     height: 272,
   });
   await expect(moreMenu.getByRole("menuitem")).toHaveCount(8);
-  await expect(moreMenu.locator("button:not(:disabled)")).toHaveCount(0);
+  await expect(moreMenu.locator("button:not(:disabled)")).toHaveCount(8);
   await expect(moreMenu).toContainText("快速切分");
   await expect(moreMenu).toContainText("2×2　3×3　4×4");
+  await moreMenu.getByRole("menuitem", { name: "扩图" }).click();
+  const outpaint = page.getByTestId("image-outpaint-overlay");
+  await expect(outpaint).toBeVisible();
+  await expect(outpaint.getByRole("button", { name: "提交扩图" })).toBeDisabled();
+  await outpaint.getByRole("button", { name: "取消扩图" }).click();
+  await card.click({ position: { x: 20, y: 20 } });
+  await toolbar.getByRole("button", { name: "浏览全部" }).click();
+  await page.getByTestId("image-node-more-menu")
+    .getByRole("menuitem", { name: "擦除" }).click();
+  const erase = page.getByTestId("image-erase-overlay");
+  await expect(erase).toBeVisible();
+  await expect(erase.getByRole("button", { name: "提交擦除" })).toBeDisabled();
+  await erase.getByRole("button", { name: "取消擦除" }).click();
+  await card.click({ position: { x: 20, y: 20 } });
+  await toolbar.getByRole("button", { name: "浏览全部" }).click();
+  await page.getByTestId("image-node-more-menu")
+    .getByRole("menuitem", { name: "增强" }).click();
+  const enhance = page.getByTestId("image-enhance-panel");
+  await expect(enhance).toBeVisible();
+  await expect(enhance).toContainText("创意增强会生成新细节");
+  await expect(enhance.getByRole("button", { name: "保守增强" })).toBeEnabled();
+  await expect(enhance.getByRole("button", { name: /创意增强/ })).toBeDisabled();
+  await enhance.getByRole("button", { name: "取消" }).click();
+  await card.click({ position: { x: 20, y: 20 } });
+  await toolbar.getByRole("button", { name: "浏览全部" }).click();
+  await page.getByTestId("image-node-more-menu")
+    .getByRole("menuitem", { name: "抠图" }).click();
+  const cutout = page.getByTestId("image-cutout-panel");
+  await expect(cutout).toBeVisible();
+  await expect(cutout).toContainText("棋盘格仅用于预览透明区域");
+  await expect(cutout.getByRole("button", { name: "生成透明PNG" })).toBeDisabled();
+  await cutout.getByRole("button", { name: "取消" }).click();
   expect(generationRequests).toEqual([]);
   await card.click({ position: { x: 20, y: 20 } });
   await expect(moreMenu).toHaveCount(0);
@@ -530,6 +623,45 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   page,
   request,
 }) => {
+  const generationRequests: string[] = [];
+  const seedanceValidationBodies: Array<{
+    assetId: string;
+    modelId: string;
+    role: string;
+  }> = [];
+  await page.route("**/api/image-tools/seedance-validation", async (route) => {
+    const body = route.request().postDataJSON() as {
+      assetId: string;
+      modelId: string;
+      role: string;
+    };
+    seedanceValidationBodies.push(body);
+    await route.fulfill({
+      body: JSON.stringify({
+        assetId: body.assetId,
+        checkedAt: "2026-08-23T13:00:00.000Z",
+        expiresAt: "2099-08-23T13:05:00.000Z",
+        kind: "validation",
+        modelConfigurationRevision: "cccccccccccccccccccccccc",
+        modelDisplayName: "Seedance 2.0 Mini",
+        modelId: body.modelId,
+        operation: "seedance-validate",
+        problems: [],
+        remoteValidationAvailable: false,
+        role: body.role,
+        scope: "local-technical-preflight",
+        status: "eligible",
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+  page.on("request", (browserRequest) => {
+    if (
+      /provider|generate/i.test(browserRequest.url()) &&
+      !browserRequest.url().includes("/src/")
+    ) generationRequests.push(browserRequest.url());
+  });
   await request.delete("/api/canvas/node.image.empty");
   await page.goto("/__fixture/node.image.empty");
   const node = page.locator(
@@ -756,18 +888,372 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   await expect(overlay).toHaveCount(0);
   expect(editSourceReads).toBe(4);
   expect(redirectedAssetReads).toBe(0);
+
+  await node.click();
+  const toolbar = page.getByTestId("image-node-toolbar");
+  await toolbar.getByRole("button", { name: "颜色标记" }).click();
+  const colorMenu = page.getByTestId("image-color-mark-menu");
+  const redMark = colorMenu.getByRole("menuitemcheckbox", { name: "红色标记" });
+  const redFilter = colorMenu.getByRole("button", { name: "只看红色标记" });
+  await redMark.click();
+  await expect(redMark).toHaveAttribute("aria-checked", "true");
+  await expect(redFilter).toBeEnabled();
+  await redFilter.click();
+  await expect.poll(() => page.locator(".react-flow__node-image").evaluateAll(
+    (elements) => elements.filter((element) => {
+      const style = getComputedStyle(element);
+      return style.display !== "none" && style.visibility !== "hidden";
+    }).length,
+  )).toBe(1);
+  await expect.poll(() => page.locator(".react-flow__edge").evaluateAll(
+    (elements) => elements.filter((element) => getComputedStyle(element).display !== "none")
+      .length,
+  )).toBe(0);
+  await redFilter.click();
+  await page.keyboard.press("Meta+z");
+  await expect(redMark).toHaveAttribute("aria-checked", "false");
+  await redMark.click();
+  await expect.poll(async () => {
+    const saved = await (await request.get("/api/canvas/node.image.empty")).json() as {
+      nodes?: Array<{ data?: { imageColorMarks?: string[] }; id?: string }>;
+    };
+    return saved.nodes?.find((savedNode) => savedNode.id === "image-primary")
+      ?.data?.imageColorMarks;
+  }).toEqual(["red"]);
+  await toolbar.getByRole("button", { name: "颜色标记" }).click();
+
+  await toolbar.getByRole("button", { name: "浏览全部" }).click();
+  await page.getByTestId("image-node-more-menu")
+    .getByRole("menuitem", { name: "调整像素" }).click();
+  const resizePanel = page.getByTestId("image-resize-panel");
+  await resizePanel.getByRole("spinbutton", { name: "像素宽度" }).fill("640");
+  await expect(
+    resizePanel.getByRole("spinbutton", { name: "像素高度" }),
+  ).toHaveValue("360");
+  await resizePanel.getByRole("button", { name: "生成派生图" }).click();
+  const resizedNode = page.locator(
+    '.react-flow__node-image[data-id^="image-resize-pixels-"]',
+  );
+  await expect(resizedNode).toHaveCount(1);
+  await expect.poll(() => resizedNode.locator("img").evaluate(
+    (image: HTMLImageElement) => ({
+      height: image.naturalHeight,
+      width: image.naturalWidth,
+    }),
+  )).toEqual({ height: 360, width: 640 });
+
+  await node.click();
+  await toolbar.getByRole("button", { name: "浏览全部" }).click();
+  await page.getByTestId("image-node-more-menu")
+    .getByRole("menuitem", { name: "增强" }).click();
+  const enhancePanel = page.getByTestId("image-enhance-panel");
+  await enhancePanel.getByRole("button", { name: "保守增强" }).click();
+  const enhancedNode = page.locator(
+    '.react-flow__node-image[data-id^="image-enhance-conservative-"]',
+  );
+  await expect(enhancedNode).toHaveCount(1);
+  await expect.poll(() => enhancedNode.locator("img").evaluate(
+    (image: HTMLImageElement) => ({
+      height: image.naturalHeight,
+      width: image.naturalWidth,
+    }),
+  )).toEqual({ height: 720, width: 1280 });
+
+  await node.click();
+  await toolbar.getByRole("button", { name: "浏览全部" }).click();
+  await page.getByTestId("image-node-more-menu")
+    .getByRole("menuitem", { name: /快速切分/ }).click();
+  const splitPanel = page.getByTestId("image-split-panel");
+  await expect(splitPanel.getByRole("img", { name: "分割预览" })).toBeVisible();
+  await expect(splitPanel.getByRole("button", { name: "2×2（4张）" })).toBeVisible();
+  await expect(splitPanel.getByRole("button", { name: "3×3（9张）" })).toBeVisible();
+  await expect(splitPanel.getByRole("button", { name: "4×4（16张）" })).toBeVisible();
+  await splitPanel.getByRole("button", { name: "确认分割" }).click();
+  const splitNodes = page.locator(
+    '.react-flow__node-image[data-id^="image-quick-split-"]',
+  );
+  await expect.poll(async () => {
+    const saved = await (await request.get("/api/canvas/node.image.empty")).json() as {
+      edges?: Array<{ id?: string }>;
+      nodes?: Array<{ id?: string }>;
+    };
+    return {
+      edges: saved.edges?.length,
+      nodes: saved.nodes?.length,
+      splitNodes: saved.nodes?.filter((savedNode) =>
+        savedNode.id?.startsWith("image-quick-split-")
+      ).length,
+    };
+  }).toEqual({ edges: 7, nodes: 8, splitNodes: 4 });
+  await expect.poll(() => splitNodes.count()).toBeGreaterThanOrEqual(1);
+  await expect.poll(() => splitNodes.locator("img").evaluateAll(
+    (images: HTMLImageElement[]) => images.map((image) => ({
+      height: image.naturalHeight,
+      width: image.naturalWidth,
+    })),
+  )).toEqual(Array.from(
+    { length: await splitNodes.count() },
+    () => ({ height: 360, width: 640 }),
+  ));
+  expect(generationRequests).toEqual([]);
+
+  await page.reload();
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-persistence-ready",
+    "true",
+  );
+  const restoredNode = page.locator(
+    '.react-flow__node-image[data-id="image-primary"]',
+  );
+  await restoredNode.click();
+  const restoredToolbar = page.getByTestId("image-node-toolbar");
+  await restoredToolbar
+    .getByRole("button", { name: "颜色标记" }).click();
+  await expect(page.getByTestId("image-color-mark-menu")
+    .getByRole("menuitemcheckbox", { name: "红色标记" }))
+    .toHaveAttribute("aria-checked", "true");
+  await restoredToolbar.getByRole("button", { name: "颜色标记" }).click();
+
+  await restoredToolbar.getByRole("button", { name: "浏览全部" }).click();
+  await page.getByTestId("image-node-more-menu")
+    .getByRole("menuitem", { name: "标注" }).click();
+  const annotationOverlay = page.getByTestId("image-annotation-overlay");
+  const annotationStage = page.getByTestId("image-annotation-stage");
+  const annotationCanvas = page.getByTestId("image-annotation-canvas");
+  const annotationToolbar = page.getByTestId("image-annotation-toolbar");
+  await expect(annotationOverlay).toBeVisible();
+  const annotationBox = (await annotationStage.boundingBox())!;
+
+  await annotationToolbar.getByRole("button", { name: "画笔" }).click();
+  await expect(annotationCanvas).toHaveAttribute("data-tool", "brush");
+  await page.mouse.move(annotationBox.x + 80, annotationBox.y + 80);
+  await page.mouse.down();
+  await page.mouse.move(annotationBox.x + 180, annotationBox.y + 120, {
+    steps: 12,
+  });
+  await page.mouse.up();
+  await annotationToolbar.getByRole("button", { name: "矩形" }).click();
+  await expect(annotationCanvas).toHaveAttribute("data-tool", "rectangle");
+  await page.mouse.move(annotationBox.x + 220, annotationBox.y + 90);
+  await page.mouse.down();
+  await page.mouse.move(annotationBox.x + 360, annotationBox.y + 190);
+  await page.mouse.up();
+  await annotationToolbar.getByRole("button", { name: "箭头" }).click();
+  await expect(annotationCanvas).toHaveAttribute("data-tool", "arrow");
+  await page.mouse.move(annotationBox.x + 120, annotationBox.y + 260);
+  await page.mouse.down();
+  await page.mouse.move(annotationBox.x + 300, annotationBox.y + 300);
+  await page.mouse.up();
+  await annotationToolbar.getByRole("button", { name: "编号" }).click();
+  await expect(annotationCanvas).toHaveAttribute("data-tool", "number");
+  await page.mouse.click(annotationBox.x + 420, annotationBox.y + 120);
+  await annotationToolbar.getByRole("button", { name: "文字" }).click();
+  await expect(annotationCanvas).toHaveAttribute("data-tool", "text");
+  await annotationCanvas.click({ position: { x: 180, y: 340 } });
+  const annotationText = page.getByRole("textbox", { name: "标注文字输入" });
+  await composeTextControl(annotationText, ["zhong", "zhong wen", "中文说明"]);
+  await annotationText.press("Enter");
+  await expect(annotationOverlay).toContainText("5 个标注");
+  await annotationToolbar.getByRole("button", { name: "撤销标注" }).click();
+  await expect(annotationOverlay).toContainText("4 个标注");
+  await annotationToolbar.getByRole("button", { name: "恢复标注" }).click();
+  await expect(annotationOverlay).toContainText("5 个标注");
+
+  await annotationToolbar.getByRole("button", { name: "选择" }).click();
+  await annotationCanvas.locator("g[data-annotation-id]").last().click();
+  await annotationToolbar.getByRole("button", { name: "删除标注" }).click();
+  await expect(annotationOverlay).toContainText("4 个标注");
+  await annotationToolbar.getByRole("button", { name: "撤销标注" }).click();
+  await expect(annotationOverlay).toContainText("5 个标注");
+  await expect.poll(async () => {
+    const saved = await (await request.get("/api/canvas/node.image.empty")).json() as {
+      nodes?: Array<{
+        data?: { imageAnnotations?: { elements?: Array<{ text?: string }> } };
+        id?: string;
+      }>;
+    };
+    return saved.nodes?.find((savedNode) => savedNode.id === "image-primary")
+      ?.data?.imageAnnotations?.elements;
+  }).toEqual(expect.arrayContaining([
+    expect.objectContaining({ text: "中文说明" }),
+  ]));
+
+  await annotationToolbar.getByRole("button", { name: "关闭标注" }).click();
+  await expect(annotationOverlay).toHaveCount(0);
+  await restoredToolbar.getByRole("button", { name: "浏览全部" }).click();
+  await page.getByTestId("image-node-more-menu")
+    .getByRole("menuitem", { name: "标注" }).click();
+  await expect(page.getByTestId("image-annotation-overlay")).toContainText(
+    "5 个标注",
+  );
+  await page.getByTestId("image-annotation-toolbar")
+    .getByRole("button", { name: "导出标注图" }).click();
+  await expect(page.getByTestId("image-annotation-overlay")).toHaveCount(0);
+  await expect.poll(async () => {
+    const saved = await (await request.get("/api/canvas/node.image.empty")).json() as {
+      edges?: Array<{ id?: string }>;
+      nodes?: Array<{ id?: string }>;
+    };
+    return {
+      annotationNodes: saved.nodes?.filter((savedNode) =>
+        savedNode.id?.startsWith("image-annotate-")
+      ).length,
+      edges: saved.edges?.length,
+      nodes: saved.nodes?.length,
+    };
+  }).toEqual({ annotationNodes: 1, edges: 8, nodes: 9 });
+  await restoredNode.click();
+  await restoredToolbar.getByRole("button", { name: "浏览全部" }).click();
+  await page.getByTestId("image-node-more-menu")
+    .getByRole("menuitem", { name: "Seedance 素材校验" }).click();
+  const seedancePanel = page.getByTestId("image-seedance-validation-panel");
+  await expect(seedancePanel).toContainText("仅检查本地技术输入条件");
+  await expect(seedancePanel.getByRole("combobox", { name: "Seedance 视频模型" }))
+    .toHaveValue("fixture-seedance-2-mini");
+  await expect(seedancePanel.getByRole("combobox", { name: "Seedance 素材角色" }))
+    .toHaveValue("reference-image");
+  await seedancePanel.getByRole("button", { name: "运行本地技术预检" }).click();
+  await expect(seedancePanel.locator("[data-state=eligible]"))
+    .toContainText("本地技术预检通过");
+  expect(seedanceValidationBodies).toHaveLength(1);
+  expect(seedanceValidationBodies[0]).toMatchObject({
+    modelId: "fixture-seedance-2-mini",
+    role: "reference-image",
+  });
+  await expect.poll(async () => {
+    const saved = await (await request.get("/api/canvas/node.image.empty")).json() as {
+      nodes?: Array<{
+        data?: { imageSeedanceValidation?: Record<string, unknown> };
+        id?: string;
+      }>;
+    };
+    return saved.nodes?.find((savedNode) => savedNode.id === "image-primary")
+      ?.data?.imageSeedanceValidation;
+  }).toMatchObject({
+    modelConfigurationRevision: "cccccccccccccccccccccccc",
+    modelId: "fixture-seedance-2-mini",
+    remoteValidationAvailable: false,
+    role: "reference-image",
+    status: "eligible",
+  });
+  await seedancePanel.getByRole("button", { name: "关闭" }).click();
+  await page.reload();
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-persistence-ready",
+    "true",
+  );
+  await restoredNode.click();
+  await restoredToolbar.getByRole("button", { name: "浏览全部" }).click();
+  await page.getByTestId("image-node-more-menu")
+    .getByRole("menuitem", { name: "Seedance 素材校验" }).click();
+  await expect(seedancePanel.locator("[data-state=eligible]"))
+    .toContainText("本地技术预检通过");
+  await seedancePanel.getByRole("combobox", { name: "Seedance 素材角色" })
+    .selectOption("subject");
+  await expect(seedancePanel.locator("[data-state=stale]"))
+    .toContainText("请重新校验");
+  expect(generationRequests).toEqual([]);
 });
 
-test("Image multi-angle panel keeps local parameters without generating", async ({
+test("Image multi-angle submits a structured persistent fake task without Provider traffic", async ({
   page,
+  request,
 }) => {
-  const generationRequests: string[] = [];
-  page.on("request", (request) => {
-    if (/provider|generate/i.test(request.url()) && !request.url().includes("/src/")) {
-      generationRequests.push(request.url());
+  const providerRequests: string[] = [];
+  const taskBodies: Array<Record<string, unknown>> = [];
+  page.on("request", (entry) => {
+    if (/openrouter|api\/v1\/images|provider/i.test(entry.url()) &&
+        !entry.url().includes("/src/")) {
+      providerRequests.push(entry.url());
     }
   });
+  await page.route("**/api/image-tools/capabilities", async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        generatedAt: "2026-08-23T13:00:00.000Z",
+        operations: imageToolOperations.map((operation) => ({
+          ...(operation === "multi-angle"
+            ? {
+                estimatedCost: {
+                  amount: 0.009,
+                  currency: "USD",
+                  source: "operator",
+                },
+                modelId: "fixture-gpt-image-2",
+              }
+            : {}),
+          expiresAt: "2099-08-23T13:05:00.000Z",
+          maximumInputBytes: imageToolMaximums.inputBytes,
+          maximumInputPixels: imageToolMaximums.inputPixels,
+          operation,
+          outputContentTypes: ["image/png"],
+          reason: operation === "multi-angle" ? "能力已就绪" : "测试未启用",
+          reasonCode: operation === "multi-angle" ? "AVAILABLE" : "UNSUPPORTED",
+          status: operation === "multi-angle" ? "available" : "unavailable",
+          supportsAlpha: operation === "multi-angle",
+          supportsMask: operation === "multi-angle",
+          supportsReferenceImage: operation === "multi-angle",
+        })),
+        revision: "aaaaaaaaaaaaaaaaaaaaaaaa",
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+  await page.route("**/api/generation-tasks**", async (route) => {
+    const url = new URL(route.request().url());
+    const method = route.request().method();
+    if (url.pathname === "/api/generation-tasks/preflight" && method === "POST") {
+      await route.fulfill({
+        body: JSON.stringify({ canEnqueue: true, canSubmit: true, problems: [] }),
+        contentType: "application/json",
+        status: 200,
+      });
+      return;
+    }
+    if (url.pathname === "/api/generation-tasks/by-idempotency" && method === "GET") {
+      await route.fulfill({
+        body: JSON.stringify({ error: "not found" }),
+        contentType: "application/json",
+        status: 404,
+      });
+      return;
+    }
+    if (url.pathname === "/api/generation-tasks" && method === "POST") {
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      taskBodies.push(body);
+      await route.fulfill({
+        body: JSON.stringify({
+          attempt: 1,
+          canvasId: body.canvasId,
+          costCurrency: "USD",
+          createdAt: "2026-08-23T13:00:01.000Z",
+          id: "fake-multi-angle-task-1",
+          kind: "image",
+          model: body.model,
+          nodeId: body.nodeId,
+          prompt: body.prompt,
+          state: "queued",
+          updatedAt: "2026-08-23T13:00:01.000Z",
+        }),
+        contentType: "application/json",
+        status: 202,
+      });
+      return;
+    }
+    await route.continue();
+  });
+  await request.delete("/api/canvas/node.image.success");
   await page.goto("/__fixture/node.image.success");
+  await page.getByTestId("image-upload-input").setInputFiles(
+    path.resolve(
+      "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+    ),
+  );
+  const sourceCard = page.getByTestId("image-node-image-primary");
+  await expect.poll(() => sourceCard.getAttribute("data-asset-id"))
+    .not.toBeNull();
+  const sourceAssetId = await sourceCard.getAttribute("data-asset-id");
 
   await page.getByRole("button", { name: "多角度" }).click();
   const panel = page.getByTestId("image-multi-angle-panel");
@@ -811,25 +1297,175 @@ test("Image multi-angle panel keeps local parameters without generating", async 
   await expect(page.getByTestId("image-multi-angle-tilt")).toHaveText("0°");
   await expect(page.getByTestId("image-multi-angle-scale")).toHaveText("0");
   await expect(panel.getByRole("checkbox")).not.toBeChecked();
-  await expect(
-    panel.getByRole("button", { name: "生成多角度图片" }),
-  ).toBeDisabled();
-  expect(generationRequests).toEqual([]);
-
-  await panel.getByRole("button", { name: "关闭多角度" }).click();
+  await panel.getByRole("slider", { name: "旋转" }).fill("45");
+  await panel.getByRole("slider", { name: "倾斜" }).fill("-12");
+  await panel.getByRole("slider", { name: "缩放" }).fill("20");
+  await panel.getByRole("checkbox").check();
+  await expect(page.getByTestId("image-multi-angle-capability"))
+    .toContainText("0.009 USD");
+  const submit = panel.getByRole("button", { name: "生成多角度图片" });
+  await expect(submit).toBeEnabled();
+  await submit.click();
+  await expect.poll(async () => ({
+    error: await page.getByRole("alert").count()
+      ? await page.getByRole("alert").textContent()
+      : "",
+    taskCount: taskBodies.length,
+  })).toEqual({ error: "", taskCount: 1 });
   await expect(panel).toBeHidden();
+  expect(taskBodies[0]).toMatchObject({
+    canvasId: "node.image.success",
+    inputSchemaVersion: 1,
+    kind: "image",
+    model: "fixture-gpt-image-2",
+    parameters: expect.objectContaining({ inputMode: "image" }),
+  });
+  expect(taskBodies[0]?.nodeId).toMatch(/^image-multi-angle-/);
+  expect(String(taskBodies[0]?.prompt)).toContain("水平视角旋转 45 度");
+  expect(taskBodies[0]?.inputs).toEqual([
+    expect.objectContaining({
+      assetId: sourceAssetId,
+      kind: "image",
+      order: 0,
+      role: "reference-image",
+      sourceNodeId: "image-primary",
+    }),
+  ]);
+  await expect.poll(async () => {
+    const saved = await (await request.get("/api/canvas/node.image.success")).json() as {
+      edges?: Array<{ source?: string; target?: string }>;
+      nodes?: Array<{
+        data?: Record<string, unknown>;
+        id?: string;
+      }>;
+    };
+    const target = saved.nodes?.find((node) =>
+      node.id?.startsWith("image-multi-angle-")
+    );
+    return {
+      edge: saved.edges?.some((edge) =>
+        edge.source === "image-primary" && edge.target === target?.id
+      ),
+      operation: target?.data?.imageToolOperation,
+      parameters: target?.data?.imageMultiAngleParameters,
+      sourceAssetId: target?.data?.imageToolSourceAssetId,
+      taskId: target?.data?.imageGenerationTaskId,
+    };
+  }).toEqual({
+    edge: true,
+    operation: "multi-angle",
+    parameters: {
+      distance: 20,
+      horizontalDegrees: 45,
+      verticalDegrees: -12,
+      wideAngle: true,
+    },
+    sourceAssetId,
+    taskId: "fake-multi-angle-task-1",
+  });
+  expect(providerRequests).toEqual([]);
+
 });
 
-test("Image redraw keeps mask coordinates local and cancel is lossless", async ({
+test("Image redraw submits an owner-scoped mask fake task and cancel is lossless", async ({
   page,
+  request,
 }) => {
-  const generationRequests: string[] = [];
-  page.on("request", (request) => {
-    if (/provider|generate/i.test(request.url()) && !request.url().includes("/src/")) {
-      generationRequests.push(request.url());
+  const providerRequests: string[] = [];
+  const taskBodies: Array<Record<string, unknown>> = [];
+  page.on("request", (entry) => {
+    if (/openrouter|api\/v1\/images|provider/i.test(entry.url()) &&
+        !entry.url().includes("/src/")) {
+      providerRequests.push(entry.url());
     }
   });
+  await page.route("**/api/image-tools/capabilities", async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        generatedAt: "2026-08-23T13:00:00.000Z",
+        operations: imageToolOperations.map((operation) => ({
+          ...(operation === "redraw"
+            ? {
+                estimatedCost: {
+                  amount: 0.009,
+                  currency: "USD",
+                  source: "operator",
+                },
+                modelId: "fixture-gpt-image-2",
+              }
+            : {}),
+          expiresAt: "2099-08-23T13:05:00.000Z",
+          maximumInputBytes: imageToolMaximums.inputBytes,
+          maximumInputPixels: imageToolMaximums.inputPixels,
+          operation,
+          outputContentTypes: ["image/png"],
+          reason: operation === "redraw" ? "能力已就绪" : "测试未启用",
+          reasonCode: operation === "redraw" ? "AVAILABLE" : "UNSUPPORTED",
+          status: operation === "redraw" ? "available" : "unavailable",
+          supportsAlpha: operation === "redraw",
+          supportsMask: operation === "redraw",
+          supportsReferenceImage: operation === "redraw",
+        })),
+        revision: "bbbbbbbbbbbbbbbbbbbbbbbb",
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+  await page.route("**/api/generation-tasks**", async (route) => {
+    const url = new URL(route.request().url());
+    const method = route.request().method();
+    if (url.pathname === "/api/generation-tasks/preflight" && method === "POST") {
+      await route.fulfill({
+        body: JSON.stringify({ canEnqueue: true, canSubmit: true, problems: [] }),
+        contentType: "application/json",
+        status: 200,
+      });
+      return;
+    }
+    if (url.pathname === "/api/generation-tasks/by-idempotency" && method === "GET") {
+      await route.fulfill({
+        body: JSON.stringify({ error: "not found" }),
+        contentType: "application/json",
+        status: 404,
+      });
+      return;
+    }
+    if (url.pathname === "/api/generation-tasks" && method === "POST") {
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      taskBodies.push(body);
+      await route.fulfill({
+        body: JSON.stringify({
+          attempt: 1,
+          canvasId: body.canvasId,
+          costCurrency: "USD",
+          createdAt: "2026-08-23T13:00:01.000Z",
+          id: "fake-redraw-task-1",
+          kind: "image",
+          model: body.model,
+          nodeId: body.nodeId,
+          prompt: body.prompt,
+          state: "queued",
+          updatedAt: "2026-08-23T13:00:01.000Z",
+        }),
+        contentType: "application/json",
+        status: 202,
+      });
+      return;
+    }
+    await route.continue();
+  });
+  await request.delete("/api/canvas/node.image.success");
   await page.goto("/__fixture/node.image.success");
+  await page.getByTestId("image-upload-input").setInputFiles(
+    path.resolve(
+      "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+    ),
+  );
+  const sourceCard = page.getByTestId("image-node-image-primary");
+  await expect.poll(() => sourceCard.getAttribute("data-asset-id"))
+    .not.toBeNull();
+  const sourceAssetId = await sourceCard.getAttribute("data-asset-id");
   const preview = page
     .getByTestId("image-node-image-primary")
     .getByTestId("image-node-preview");
@@ -923,7 +1559,123 @@ test("Image redraw keeps mask coordinates local and cancel is lossless", async (
   await page.getByRole("button", { name: "取消重绘" }).click();
   await expect(overlay).toHaveCount(0);
   await expect(preview).toHaveAttribute("src", originalSrc!);
-  expect(generationRequests).toEqual([]);
+
+  await page.getByRole("button", { name: "重绘" }).click();
+  const submissionOverlay = page.getByTestId("image-redraw-overlay");
+  const submissionCanvas = page.getByTestId("image-redraw-canvas");
+  const submissionPrompt = page.getByTestId("image-redraw-prompt");
+  await submissionPrompt.getByRole("textbox", { name: "重绘提示词" })
+    .fill("把选中区域改成蓝色陶瓷材质");
+  await submissionPrompt.getByRole("slider", { name: "蒙版羽化" }).fill("8");
+  const submissionBox = (await submissionCanvas.boundingBox())!;
+  await page.mouse.move(submissionBox.x + 120, submissionBox.y + 120);
+  await page.mouse.down();
+  await page.mouse.move(submissionBox.x + 220, submissionBox.y + 170, {
+    steps: 5,
+  });
+  await page.mouse.up();
+  const submit = submissionPrompt.getByRole("button", { name: "提交重绘" });
+  await expect(submit).toBeEnabled();
+  await submit.click();
+  await expect.poll(async () => ({
+    error: await page.getByRole("alert").count()
+      ? await page.getByRole("alert").textContent()
+      : "",
+    taskCount: taskBodies.length,
+  })).toEqual({ error: "", taskCount: 1 });
+  await expect(submissionOverlay).toHaveCount(0);
+  expect(taskBodies[0]).toMatchObject({
+    canvasId: "node.image.success",
+    imageTool: {
+      mask: {
+        featherPixels: 8,
+        height: 720,
+        version: 1,
+        width: 1280,
+      },
+      operation: "redraw",
+      sourceAssetId,
+      sourceNodeId: "image-primary",
+    },
+    inputSchemaVersion: 1,
+    kind: "image",
+    model: "fixture-gpt-image-2",
+  });
+  expect(taskBodies[0]?.nodeId).toMatch(/^image-redraw-/);
+  expect(taskBodies[0]?.inputs).toEqual([
+    expect.objectContaining({
+      assetId: sourceAssetId,
+      kind: "image",
+      order: 0,
+      role: "reference-image",
+      sourceNodeId: "image-primary",
+    }),
+  ]);
+  const taskImageTool = taskBodies[0]?.imageTool as {
+    mask?: { assetId?: string };
+  };
+  const maskAssetId = taskImageTool.mask?.assetId;
+  expect(maskAssetId).toMatch(/^[0-9a-f-]{36}$/);
+  const maskMetadata = await request.get(
+    `/api/media-metadata/image/${encodeURIComponent(maskAssetId!)}`,
+  );
+  expect(maskMetadata.status()).toBe(200);
+  expect(await maskMetadata.json()).toMatchObject({
+    assetId: maskAssetId,
+    contentType: "image/png",
+    mediaHeight: 720,
+    mediaWidth: 1280,
+  });
+  await expect.poll(async () => {
+    const saved = await (await request.get("/api/canvas/node.image.success")).json() as {
+      edges?: Array<{ source?: string; target?: string }>;
+      nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+    };
+    const target = saved.nodes?.find((node) => node.id?.startsWith("image-redraw-"));
+    return {
+      edge: saved.edges?.some((edge) =>
+        edge.source === "image-primary" && edge.target === target?.id
+      ),
+      maskAssetId: target?.data?.imageToolMaskAssetId,
+      maskFeatherPixels: target?.data?.imageToolMaskFeatherPixels,
+      maskHeight: target?.data?.imageToolMaskHeight,
+      maskVersion: target?.data?.imageToolMaskVersion,
+      maskWidth: target?.data?.imageToolMaskWidth,
+      operation: target?.data?.imageToolOperation,
+      sourceAssetId: target?.data?.imageToolSourceAssetId,
+      taskId: target?.data?.imageGenerationTaskId,
+    };
+  }).toEqual({
+    edge: true,
+    maskAssetId,
+    maskFeatherPixels: 8,
+    maskHeight: 720,
+    maskVersion: 1,
+    maskWidth: 1280,
+    operation: "redraw",
+    sourceAssetId,
+    taskId: "fake-redraw-task-1",
+  });
+  await page.reload();
+  await expect(page.getByTestId("canvas-world"))
+    .toHaveAttribute("data-persistence-ready", "true");
+  await expect.poll(async () => {
+    const saved = await (await request.get("/api/canvas/node.image.success")).json() as {
+      nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+    };
+    const target = saved.nodes?.find((node) => node.id?.startsWith("image-redraw-"));
+    return {
+      maskAssetId: target?.data?.imageToolMaskAssetId,
+      operation: target?.data?.imageToolOperation,
+      taskId: target?.data?.imageGenerationTaskId,
+    };
+  }).toEqual({
+    maskAssetId,
+    operation: "redraw",
+    taskId: "fake-redraw-task-1",
+  });
+  expect(taskBodies).toHaveLength(1);
+  expect(providerRequests).toEqual([]);
 });
 
 test("Image lighting stays unavailable while the feature is paused", async ({

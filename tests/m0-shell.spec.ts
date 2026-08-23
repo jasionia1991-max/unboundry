@@ -785,17 +785,17 @@ test("AI character library matches categories, filters, grid and loading", async
     width: 1135,
     height: 917,
   });
-  await expect(
+  await expect.poll(() =>
     overlay
       .getByRole("navigation", { name: "角色分类" })
       .getByRole("button")
       .locator("span")
-      .allTextContents(),
-  ).resolves.toEqual(fixture.categories);
-  await expect(
+      .allTextContents()
+  ).toEqual(fixture.categories);
+  await expect.poll(() =>
     overlay.getByLabel("角色筛选").locator(":scope > div > button")
-      .allTextContents(),
-  ).resolves.toEqual(Object.keys(fixture.filters).map((filter) => `＋${filter}`));
+      .allTextContents()
+  ).toEqual(Object.keys(fixture.filters).map((filter) => `＋${filter}`));
 
   const grid = page.getByTestId("ai-character-grid");
   await expect(page.getByTestId("ai-character-card")).toHaveCount(

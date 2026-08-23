@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
 import {
@@ -182,6 +182,17 @@ function mediaInputPolicy(row: ModelSchemaRow) {
       /^doubao-seedance-[a-z0-9-]+$/i.test(row.provider_model_id)
     ? "seedance-2" as const
     : undefined;
+}
+
+function modelConfigurationRevision(row: ModelRow) {
+  return createHash("sha256").update(JSON.stringify({
+    id: row.id,
+    mediaInputPolicy: mediaInputPolicy(row),
+    modelConfigurationUpdatedAt: row.model_configuration_updated_at,
+    parameterSchema: parameterSchema(row),
+    providerDriver: row.provider_driver,
+    providerModelId: row.provider_model_id,
+  })).digest("hex").slice(0, 24);
 }
 
 const capabilities: readonly Capability[] = generationCapabilityKinds;
@@ -466,6 +477,35 @@ function modelRows(store: DatabaseSync, ownerId: string) {
         model_profiles.created_at
     `)
     .all(ownerId, ownerId, ownerId) as ModelRow[];
+}
+
+export type PublishedSeedanceValidationModel = Readonly<{
+  configurationRevision: string;
+  displayName: string;
+  id: string;
+  parameterSchema: ModelParameterSchema;
+}>;
+
+/** Public Model Catalog query used by the image-tool application boundary. */
+export function publishedSeedanceValidationModel(
+  ownerId: string,
+  modelId: string,
+): PublishedSeedanceValidationModel | undefined {
+  const row = modelRows(db(), ownerId).find((candidate) =>
+    candidate.id === modelId &&
+    candidate.archived_at === null &&
+    candidate.capability === "video" &&
+    candidate.status === "published" &&
+    candidate.enabled === 1 &&
+    mediaInputPolicy(candidate) === "seedance-2"
+  );
+  if (!row) return undefined;
+  return {
+    configurationRevision: modelConfigurationRevision(row),
+    displayName: row.display_name,
+    id: row.id,
+    parameterSchema: parameterSchema(row),
+  };
 }
 
 async function modelRuntimeAvailability(rows: ModelRow[], ownerId: string) {
@@ -847,6 +887,7 @@ export async function publicModelsApi(
     ),
     models: rows.map((row) => ({
       capability: row.capability,
+      configurationRevision: modelConfigurationRevision(row),
       costCurrency: row.cost_currency,
       displayName: row.display_name,
       id: row.id,

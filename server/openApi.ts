@@ -458,6 +458,54 @@ export const openApiDocument = {
         },
       },
     },
+    "/api/image-tools/capabilities": {
+      get: {
+        operationId: "readImageToolCapabilities",
+        summary: "Read the signed-in account's safe image-tool capability snapshot",
+        responses: {
+          "200": {
+            description: "Current operation-level capability and availability snapshot",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ImageToolCapabilitySnapshot",
+                },
+              },
+            },
+          },
+          "401": { description: "Sign-in required" },
+          "503": { description: "Capability service temporarily unavailable" },
+        },
+      },
+    },
+    "/api/image-tools/seedance-validation": {
+      post: {
+        operationId: "validateSeedanceImageAsset",
+        summary: "Run owner-scoped local technical preflight for a Seedance image",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/SeedanceAssetValidationRequest" },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Local technical eligibility result; not remote qualification",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/SeedanceAssetValidation" },
+              },
+            },
+          },
+          "400": { description: "Invalid asset, model or role" },
+          "401": { description: "Sign-in required" },
+          "404": { description: "Owner-scoped asset or published Seedance model not found" },
+          "503": { description: "Validation service temporarily unavailable" },
+        },
+      },
+    },
     "/api/account-context": {
       get: {
         operationId: "readAccountContext",
@@ -1228,10 +1276,221 @@ export const openApiDocument = {
           "401": { description: "Sign-in required" },
         },
       },
+      post: {
+        operationId: "saveLibraryAsset",
+        summary: "Save an owner-scoped ready media asset to the personal library",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/LibrarySaveRequest" },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "The idempotently saved personal library entry",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["item"],
+                  properties: {
+                    item: { $ref: "#/components/schemas/LibraryEntry" },
+                  },
+                  additionalProperties: false,
+                },
+              },
+            },
+          },
+          "400": { description: "Invalid bounded library entry" },
+          "401": { description: "Sign-in required" },
+          "409": { description: "Media is missing, unready, deleting or not owned" },
+        },
+      },
+    },
+    "/api/library/{kind}/{assetId}": {
+      delete: {
+        operationId: "deleteLibraryEntry",
+        summary: "Remove only the owner-scoped library reference",
+        parameters: [
+          {
+            in: "path",
+            name: "kind",
+            required: true,
+            schema: { type: "string", enum: ["image", "video", "audio"] },
+          },
+          {
+            in: "path",
+            name: "assetId",
+            required: true,
+            schema: { type: "string", pattern: "^[A-Za-z0-9._-]{1,160}$" },
+          },
+        ],
+        responses: {
+          "204": { description: "Library reference removed; media is retained" },
+          "401": { description: "Sign-in required" },
+          "404": { description: "Owner-scoped library entry not found" },
+        },
+      },
     },
   },
   components: {
     schemas: {
+      SeedanceAssetValidationRequest: {
+        type: "object",
+        required: ["assetId", "modelId", "role"],
+        properties: {
+          assetId: { type: "string", pattern: "^[A-Za-z0-9._-]{1,160}$" },
+          modelId: { type: "string", pattern: "^[A-Za-z0-9._-]{1,160}$" },
+          role: {
+            type: "string",
+            enum: ["first-frame", "last-frame", "subject", "reference-image"],
+          },
+        },
+        additionalProperties: false,
+      },
+      SeedanceAssetValidation: {
+        type: "object",
+        required: [
+          "assetId",
+          "checkedAt",
+          "expiresAt",
+          "kind",
+          "modelConfigurationRevision",
+          "modelDisplayName",
+          "modelId",
+          "operation",
+          "problems",
+          "remoteValidationAvailable",
+          "role",
+          "scope",
+          "status",
+        ],
+        properties: {
+          assetId: { type: "string" },
+          checkedAt: { type: "string", format: "date-time" },
+          expiresAt: { type: "string", format: "date-time" },
+          kind: { const: "validation", type: "string" },
+          modelConfigurationRevision: { type: "string", minLength: 1 },
+          modelDisplayName: { type: "string", minLength: 1 },
+          modelId: { type: "string", minLength: 1 },
+          operation: { const: "seedance-validate", type: "string" },
+          problems: { type: "array", maxItems: 16, items: { type: "string" } },
+          remoteValidationAvailable: { const: false, type: "boolean" },
+          role: {
+            type: "string",
+            enum: ["first-frame", "last-frame", "subject", "reference-image"],
+          },
+          scope: { const: "local-technical-preflight", type: "string" },
+          status: { type: "string", enum: ["eligible", "ineligible"] },
+        },
+        additionalProperties: false,
+      },
+      ImageToolCapabilitySnapshot: {
+        type: "object",
+        required: ["generatedAt", "operations", "revision"],
+        properties: {
+          generatedAt: { type: "string", format: "date-time" },
+          operations: {
+            type: "array",
+            minItems: 17,
+            maxItems: 17,
+            items: { $ref: "#/components/schemas/ImageToolCapability" },
+          },
+          revision: { type: "string", pattern: "^[a-f0-9]{24}$" },
+        },
+        additionalProperties: false,
+      },
+      ImageToolCapability: {
+        type: "object",
+        required: [
+          "expiresAt",
+          "maximumInputBytes",
+          "maximumInputPixels",
+          "operation",
+          "outputContentTypes",
+          "reason",
+          "reasonCode",
+          "status",
+          "supportsAlpha",
+          "supportsMask",
+          "supportsReferenceImage",
+        ],
+        properties: {
+          estimatedCost: {
+            type: "object",
+            required: ["amount", "currency", "source"],
+            properties: {
+              amount: { type: "number", minimum: 0 },
+              currency: { type: "string", enum: ["CNY", "USD", "credits"] },
+              source: { type: "string", enum: ["operator", "provider"] },
+            },
+            additionalProperties: false,
+          },
+          expiresAt: { type: "string", format: "date-time" },
+          maximumInputBytes: { type: "integer", minimum: 1 },
+          maximumInputPixels: { type: "integer", minimum: 1 },
+          modelId: { type: "string", minLength: 1 },
+          operation: {
+            type: "string",
+            enum: [
+              "crop",
+              "color-mark",
+              "resize-pixels",
+              "quick-split",
+              "annotate",
+              "save-to-library",
+              "multi-angle",
+              "redraw",
+              "outpaint",
+              "erase",
+              "enhance-conservative",
+              "enhance-creative",
+              "remove-background",
+              "seedance-validate",
+              "download",
+              "fullscreen",
+              "lighting",
+            ],
+          },
+          outputContentTypes: {
+            type: "array",
+            minItems: 1,
+            uniqueItems: true,
+            items: { type: "string", enum: ["image/jpeg", "image/png"] },
+          },
+          reason: { type: "string", minLength: 1 },
+          reasonCode: {
+            type: "string",
+            enum: [
+              "AVAILABLE",
+              "CAPABILITY_STALE",
+              "LOCAL_RUNTIME_UNAVAILABLE",
+              "MODEL_UNAVAILABLE",
+              "OPERATOR_DISABLED",
+              "PAUSED_BY_SCOPE",
+              "PROVIDER_UNAVAILABLE",
+              "REMOTE_VALIDATION_UNAVAILABLE",
+              "UNSUPPORTED",
+            ],
+          },
+          status: {
+            type: "string",
+            enum: [
+              "available",
+              "unavailable",
+              "paused",
+              "disabled_by_operator",
+              "stale",
+            ],
+          },
+          supportsAlpha: { type: "boolean" },
+          supportsMask: { type: "boolean" },
+          supportsReferenceImage: { type: "boolean" },
+        },
+        additionalProperties: false,
+      },
       AccountContext: {
         type: "object",
         required: ["user", "workspace", "permissions", "legacyPermissions"],
@@ -1424,17 +1683,7 @@ export const openApiDocument = {
           },
           items: {
             type: "array",
-            items: {
-              type: "object",
-              required: ["id", "label", "kind", "src"],
-              properties: {
-                id: { type: "string" },
-                label: { type: "string" },
-                kind: { type: "string", enum: ["image", "video", "audio"] },
-                src: { type: "string" },
-              },
-              additionalProperties: false,
-            },
+            items: { $ref: "#/components/schemas/LibraryEntry" },
           },
           pagination: {
             type: "object",
@@ -1447,6 +1696,32 @@ export const openApiDocument = {
             },
             additionalProperties: false,
           },
+        },
+        additionalProperties: false,
+      },
+      LibraryEntry: {
+        type: "object",
+        required: ["id", "label", "kind", "revision", "src"],
+        properties: {
+          id: { type: "string" },
+          label: { type: "string", minLength: 1, maxLength: 120 },
+          kind: { type: "string", enum: ["image", "video", "audio"] },
+          revision: { type: "integer", minimum: 1 },
+          src: { type: "string", pattern: "^/api/" },
+        },
+        additionalProperties: false,
+      },
+      LibrarySaveRequest: {
+        type: "object",
+        required: ["assetId", "kind", "label"],
+        properties: {
+          assetId: {
+            type: "string",
+            pattern: "^[A-Za-z0-9._-]{1,160}$",
+          },
+          folderId: { type: "string", default: "others" },
+          kind: { type: "string", enum: ["image", "video", "audio"] },
+          label: { type: "string", minLength: 1, maxLength: 120 },
         },
         additionalProperties: false,
       },
@@ -1837,6 +2112,7 @@ export const openApiDocument = {
               type: "object",
               required: [
                 "id",
+                "configurationRevision",
                 "displayName",
                 "capability",
                 "providerName",
@@ -1849,6 +2125,10 @@ export const openApiDocument = {
               ],
               properties: {
                 id: { type: "string" },
+                configurationRevision: {
+                  type: "string",
+                  pattern: "^[a-f0-9]{24}$",
+                },
                 displayName: { type: "string" },
                 providerName: { type: "string" },
                 capability: {
@@ -1885,6 +2165,7 @@ export const openApiDocument = {
                     null,
                   ],
                 },
+                mediaInputPolicy: { type: "string", enum: ["seedance-2"] },
                 parameterSchema: {
                   $ref: "#/components/schemas/ModelParameterSchema",
                 },

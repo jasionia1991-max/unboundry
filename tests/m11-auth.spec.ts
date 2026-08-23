@@ -2,12 +2,17 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "./safe-test";
 import { openAppDatabase } from "../server/database";
 
 const port = Number(process.env.UNBOUNDRY_TEST_AUX_PORT);
 const origin = `http://127.0.0.1:${port}`;
 const vite = join(process.cwd(), "node_modules/vite/bin/vite.js");
+const onePixelPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
 
 async function startServer(dataDirectory: string) {
   const child = spawn(
@@ -173,6 +178,33 @@ test("admin bootstrap, account control and per-user data isolation are enforced"
       ).status,
     ).toBe(200);
 
+    const libraryAssetId = "m11-library-owned-image";
+    expect((await request(`/api/assets/${libraryAssetId}`, {
+      body: onePixelPng,
+      cookie: userCookie,
+      headers: { "Content-Type": "image/png" },
+      method: "POST",
+    })).status).toBe(201);
+    expect((await request("/api/library", {
+      body: JSON.stringify({
+        assetId: libraryAssetId,
+        folderId: "others",
+        kind: "image",
+        label: "账号独立素材",
+      }),
+      cookie: userCookie,
+      method: "POST",
+    })).status).toBe(200);
+    const userLibrary = await (await request(
+      "/api/library?space=personal&folder=others&limit=20&offset=0",
+      { cookie: userCookie },
+    )).json() as { items: Array<{ id: string }> };
+    expect(userLibrary.items.map((item) => item.id)).toContain(libraryAssetId);
+    const adminLibrary = await (await request(
+      "/api/library?space=personal&folder=others&limit=20&offset=0",
+      { cookie: adminCookie },
+    )).json() as { items: Array<{ id: string }> };
+    expect(adminLibrary.items.map((item) => item.id)).not.toContain(libraryAssetId);
     const adminSaved = await (
       await request("/api/canvas/shared", { cookie: adminCookie })
     ).json();
@@ -181,6 +213,16 @@ test("admin bootstrap, account control and per-user data isolation are enforced"
     ).json();
     expect(adminSaved.nodes).toEqual([{ id: "admin-node" }]);
     expect(userSaved.nodes).toEqual([{ id: "ordinary-node" }]);
+    expect((await request("/api/canvas/shared", {
+      cookie: userCookie,
+      method: "DELETE",
+    })).status).toBe(204);
+    const libraryAfterProjectDelete = await (await request(
+      "/api/library?space=personal&folder=others&limit=20&offset=0",
+      { cookie: userCookie },
+    )).json() as { items: Array<{ id: string }> };
+    expect(libraryAfterProjectDelete.items.map((item) => item.id))
+      .toContain(libraryAssetId);
 
     const png = Buffer.from(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -523,6 +565,24 @@ test("admin can delete accounts with owned data and cannot delete the current ad
       ).status,
     ).toBe(200);
 
+    const libraryAssetId = "m11-library-owned-image";
+    expect((await request(`/api/assets/${libraryAssetId}`, {
+      body: onePixelPng,
+      cookie: userCookie,
+      headers: { "Content-Type": "image/png" },
+      method: "POST",
+    })).status).toBe(201);
+    expect((await request("/api/library", {
+      body: JSON.stringify({
+        assetId: libraryAssetId,
+        folderId: "others",
+        kind: "image",
+        label: "待删除账号素材",
+      }),
+      cookie: userCookie,
+      method: "POST",
+    })).status).toBe(200);
+
     const listBefore = await (
       await request("/api/admin/users", { cookie: adminCookie })
     ).json();
@@ -586,6 +646,22 @@ test("admin can delete accounts with owned data and cannot delete the current ad
           .get(ordinaryId) as { count: number }
       ).count,
     ).toBe(0);
+    expect(
+      (
+        db.prepare(
+          "SELECT COUNT(*) AS count FROM media_assets WHERE owner_id = ? AND id = ?",
+        ).get(ordinaryId, libraryAssetId) as { count: number }
+      ).count,
+    ).toBe(0);
+    const library = new DatabaseSync(join(dataDirectory, "library.sqlite"), {
+      readOnly: true,
+    });
+    expect(
+      (library.prepare(
+        "SELECT COUNT(*) AS count FROM library_entries WHERE owner_id = ?",
+      ).get(ordinaryId) as { count: number }).count,
+    ).toBe(0);
+    library.close();
 
     const secondAdminId = "22222222-2222-4222-8222-222222222222";
     const now = new Date().toISOString();

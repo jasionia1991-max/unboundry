@@ -309,7 +309,12 @@ function canvasContainsMediaReference(
       if (!node.data || typeof node.data !== "object" || Array.isArray(node.data)) {
         return false;
       }
-      return (node.data as Record<string, unknown>).assetId === assetId;
+      const data = node.data as Record<string, unknown>;
+      return data.assetId === assetId ||
+        (kind === "image" && (
+          data.imageToolMaskAssetId === assetId ||
+          data.imageToolPreparedAssetId === assetId
+        ));
     });
   } catch {
     return false;

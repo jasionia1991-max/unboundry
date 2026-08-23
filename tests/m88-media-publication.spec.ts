@@ -1505,6 +1505,61 @@ test("canvas PUT durably adopts uploads while recovery and delete tombstones rej
     })).toEqual([]);
     expect(readyMediaForOwner("__test__", "image", adopted.id)).toBeDefined();
 
+    const redrawMask = await publish("m88-adopted-redraw-mask");
+    const outpaintPrepared = await publish("m88-adopted-outpaint-input");
+    const redrawAdoptionRequest = await authorizedJsonRequest(
+      "/m88-redraw-mask-adoption-canvas",
+      "PUT",
+      {
+        edges: [{
+          id: "redraw-source-edge",
+          source: `node-${adopted.id}`,
+          target: "redraw-placeholder",
+        }],
+        nodes: [
+          canvasBody(adopted.id).nodes[0],
+          {
+            data: {
+              imageToolMaskAssetId: redrawMask.id,
+              imageToolPreparedAssetId: outpaintPrepared.id,
+              imageToolOperation: "redraw",
+              imageToolSourceAssetId: adopted.id,
+            },
+            id: "redraw-placeholder",
+            position: { x: 300, y: 0 },
+            type: "image",
+          },
+        ],
+        revision: 0,
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    );
+    const redrawAdoptionOutput = syntheticResponse();
+    await canvasPersistence(
+      redrawAdoptionRequest,
+      redrawAdoptionOutput.response,
+    );
+    expect(redrawAdoptionOutput.snapshot().statusCode).toBe(200);
+    const redrawAdoptionState = openAppDatabase(directory);
+    try {
+      expect(redrawAdoptionState.prepare(`
+        SELECT state, adopted_canvas_id
+        FROM media_publication_attempts WHERE attempt_id = ?
+      `).get(redrawMask.attemptId)).toEqual({
+        adopted_canvas_id: "m88-redraw-mask-adoption-canvas",
+        state: "published",
+      });
+      expect(redrawAdoptionState.prepare(`
+        SELECT state, adopted_canvas_id
+        FROM media_publication_attempts WHERE attempt_id = ?
+      `).get(outpaintPrepared.attemptId)).toEqual({
+        adopted_canvas_id: "m88-redraw-mask-adoption-canvas",
+        state: "published",
+      });
+    } finally {
+      redrawAdoptionState.close();
+    }
+
     const deleteRequest = await authorizedRequest(`/${adopted.id}`, "DELETE");
     const deletion = beginMediaDeletion(
       deleteRequest,
@@ -3980,6 +4035,7 @@ test("GPT Image keeps data references inline when no readable OSS profile exists
     }, {
       capability: "image",
       inputImages: [reference],
+      maskImage: reference,
       model: "gpt-image-2",
       operation: "edit",
       prompt: "m88 inline reference",
@@ -3990,6 +4046,7 @@ test("GPT Image keeps data references inline when no readable OSS profile exists
         providerCalls += 1;
         expect(JSON.parse(String(init?.body))).toMatchObject({
           image: reference,
+          mask: reference,
         });
         return new Response(JSON.stringify({
           data: [{ b64_json: png.toString("base64"), media_type: "image/png" }],
@@ -4023,11 +4080,13 @@ test("GPT Image prepares OSS references before the Provider request boundary", a
       "base64",
     );
     let providerCalls = 0;
-    let uploaded = false;
-    let signed = false;
+    const uploaded = new Set<string>();
+    const signed = new Set<string>();
+    const deleted = new Set<string>();
     const prepared = await prepareRelayGptImageRequest({
       capability: "image",
       inputImages: [`data:image/png;base64,${png.toString("base64")}`],
+      maskImage: `data:image/png;base64,${png.toString("base64")}`,
       model: "gpt-image-2",
       operation: "edit",
       prompt: "m88 ordered reference",
@@ -4037,13 +4096,15 @@ test("GPT Image prepares OSS references before the Provider request boundary", a
       mediaLifecycle: { ownerId },
       temporaryImageObjectStore: {
         createReadUrl: async (objectKey) => {
-          expect(uploaded).toBe(true);
-          signed = true;
+          expect(uploaded.has(objectKey)).toBe(true);
+          signed.add(objectKey);
           return `https://signed.example.test/${encodeURIComponent(objectKey)}`;
         },
-        deleteObject: async () => undefined,
-        uploadObject: async () => {
-          uploaded = true;
+        deleteObject: async (objectKey) => {
+          deleted.add(objectKey);
+        },
+        uploadObject: async ({ objectKey }) => {
+          uploaded.add(objectKey);
           return {
             etag: "m88-boundary-etag",
             requestId: "m88-boundary-put",
@@ -4052,8 +4113,15 @@ test("GPT Image prepares OSS references before the Provider request boundary", a
         },
       },
     });
-    expect(uploaded).toBe(true);
-    expect(signed).toBe(true);
+    expect(uploaded.size).toBe(2);
+    expect(signed).toEqual(uploaded);
+    expect(prepared.request.inputImages?.[0]).toMatch(
+      /^https:\/\/signed\.example\.test\//,
+    );
+    expect(prepared.request.maskImage).toMatch(
+      /^https:\/\/signed\.example\.test\//,
+    );
+    expect(prepared.request.maskImage).not.toBe(prepared.request.inputImages?.[0]);
     expect(providerCalls).toBe(0);
 
     try {
@@ -4063,7 +4131,10 @@ test("GPT Image prepares OSS references before the Provider request boundary", a
       }, prepared.request, {
         fetcher: async (_input, init) => {
           providerCalls += 1;
-          expect(String(init?.body)).toContain("https://signed.example.test/");
+          expect(JSON.parse(String(init?.body))).toMatchObject({
+            image: prepared.request.inputImages?.[0],
+            mask: prepared.request.maskImage,
+          });
           return new Response(JSON.stringify({
             data: [{ b64_json: png.toString("base64"), media_type: "image/png" }],
           }), {
@@ -4076,6 +4147,7 @@ test("GPT Image prepares OSS references before the Provider request boundary", a
     } finally {
       await prepared.cleanup();
     }
+    expect(deleted).toEqual(uploaded);
     expect(providerCalls).toBe(1);
   });
 });

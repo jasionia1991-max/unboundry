@@ -7,6 +7,7 @@ import {
   imageReferenceForProvider,
   saveGeneratedPng,
   validatePng,
+  validateTransparentPng,
 } from "./assetStorage";
 import {
   arkFilesEnabled,
@@ -187,6 +188,10 @@ import {
   isProviderProtocol,
   type ProviderProtocol,
 } from "../types/relayProtocols";
+import {
+  imageToolMaximums,
+  type ImageGenerationToolInput,
+} from "../types/imageTools";
 import type { RuntimeRoleCoordinator } from "./runtimeRole";
 
 export type GenerationRuntimeAdapters = Readonly<{
@@ -967,6 +972,7 @@ type ImageReference = {
 
 type NodeInputGenerationRequest = Omit<Partial<GenerationTaskInput>, "kind"> & {
   canvasRevision?: number;
+  imageTool?: ImageGenerationToolInput;
   inputSchemaVersion?: number;
   inputs?: NodeInputSnapshot[];
   kind?: NodeInputKind;
@@ -979,6 +985,7 @@ function generationRequestIntent(
 ) {
   return {
     canvasId: String(body.canvasId ?? ""),
+    imageTool: body.imageTool,
     inputSchemaVersion: body.inputSchemaVersion,
     inputs: body.inputs,
     kind,
@@ -1058,6 +1065,242 @@ function imageReferences(value: unknown): ImageReference[] {
     seen.add(sourceNodeId);
     return { assetId, kind: "image", sourceNodeId };
   });
+}
+
+const generationImageToolOperations = new Set<ImageGenerationToolInput["operation"]>([
+  "enhance-creative",
+  "erase",
+  "multi-angle",
+  "outpaint",
+  "redraw",
+  "remove-background",
+]);
+
+function storedImageGenerationTool(value: unknown): ImageGenerationToolInput | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Invalid image tool snapshot");
+  }
+  const item = value as Partial<ImageGenerationToolInput>;
+  if (
+    !item.operation ||
+    !generationImageToolOperations.has(item.operation) ||
+    typeof item.operationId !== "string" ||
+    !/^[a-z0-9._-]{1,160}$/i.test(item.operationId) ||
+    typeof item.sourceAssetId !== "string" ||
+    !/^[a-z0-9._-]{1,160}$/i.test(item.sourceAssetId) ||
+    typeof item.sourceNodeId !== "string" ||
+    !/^[a-z0-9._-]{1,160}$/i.test(item.sourceNodeId)
+  ) throw new Error("Invalid image tool snapshot");
+  const requiresMask = item.operation === "redraw" || item.operation === "erase" ||
+    item.operation === "outpaint";
+  if (
+    (item.operation === "remove-background" &&
+      item.outputBackground !== "transparent") ||
+    (item.operation !== "remove-background" && item.outputBackground !== undefined)
+  ) throw new Error("Invalid image tool output background snapshot");
+  if (!item.mask) {
+    if (requiresMask) throw new Error("Invalid image tool mask snapshot");
+    if (item.preparedInput !== undefined || item.outpaint !== undefined) {
+      throw new Error("Invalid image tool outpaint snapshot");
+    }
+    const outputBackground = item.outputBackground;
+    return {
+      operation: item.operation,
+      operationId: item.operationId,
+      ...(outputBackground ? { outputBackground } : {}),
+      sourceAssetId: item.sourceAssetId,
+      sourceNodeId: item.sourceNodeId,
+    };
+  }
+  const mask = item.mask;
+  if (
+    !requiresMask ||
+    typeof mask.assetId !== "string" ||
+    !/^[a-z0-9._-]{1,160}$/i.test(mask.assetId) ||
+    mask.version !== 1 ||
+    !Number.isSafeInteger(mask.width) || mask.width < 1 || mask.width > 8_192 ||
+    !Number.isSafeInteger(mask.height) || mask.height < 1 || mask.height > 8_192 ||
+    !Number.isSafeInteger(mask.featherPixels) ||
+    mask.featherPixels < 0 || mask.featherPixels > 64
+  ) throw new Error("Invalid image tool mask snapshot");
+  const outpaint = item.outpaint;
+  const preparedInput = item.preparedInput;
+  if (item.operation === "outpaint") {
+    if (!outpaint || !preparedInput || outpaint.version !== 1 ||
+        preparedInput.version !== 1 ||
+        !/^[a-z0-9._-]{1,160}$/i.test(preparedInput.assetId) ||
+        !Number.isSafeInteger(preparedInput.width) ||
+        !Number.isSafeInteger(preparedInput.height) ||
+        preparedInput.width !== mask.width || preparedInput.height !== mask.height ||
+        outpaint.outputWidth !== mask.width || outpaint.outputHeight !== mask.height ||
+        !Number.isSafeInteger(outpaint.sourceX) || outpaint.sourceX < 0 ||
+        !Number.isSafeInteger(outpaint.sourceY) || outpaint.sourceY < 0 ||
+        !Number.isSafeInteger(outpaint.sourceWidth) || outpaint.sourceWidth < 1 ||
+        !Number.isSafeInteger(outpaint.sourceHeight) || outpaint.sourceHeight < 1 ||
+        outpaint.sourceX + outpaint.sourceWidth > outpaint.outputWidth ||
+        outpaint.sourceY + outpaint.sourceHeight > outpaint.outputHeight ||
+        (outpaint.sourceWidth === outpaint.outputWidth &&
+          outpaint.sourceHeight === outpaint.outputHeight)) {
+      throw new Error("Invalid image tool outpaint snapshot");
+    }
+  } else if (outpaint !== undefined || preparedInput !== undefined) {
+    throw new Error("Invalid image tool outpaint snapshot");
+  }
+  return {
+    mask: {
+      assetId: mask.assetId,
+      featherPixels: mask.featherPixels,
+      height: mask.height,
+      version: 1,
+      width: mask.width,
+    },
+    ...(outpaint ? { outpaint } : {}),
+    ...(preparedInput ? { preparedInput } : {}),
+    operation: item.operation,
+    operationId: item.operationId,
+    sourceAssetId: item.sourceAssetId,
+    sourceNodeId: item.sourceNodeId,
+  };
+}
+
+function strictImageGenerationTool(input: {
+  ownerId: string;
+  persistedTargetData: Record<string, unknown>;
+  snapshot: readonly NodeInputSnapshot[];
+  submitted?: ImageGenerationToolInput;
+}): ImageGenerationToolInput | undefined {
+  const persistedOperation = input.persistedTargetData.imageToolOperation;
+  if (input.submitted === undefined && persistedOperation === undefined) {
+    return undefined;
+  }
+  const submitted = input.submitted;
+  if (
+    !submitted ||
+    !generationImageToolOperations.has(submitted.operation) ||
+    !/^[a-z0-9._-]{1,160}$/i.test(submitted.operationId) ||
+    !/^[a-z0-9._-]{1,160}$/i.test(submitted.sourceAssetId) ||
+    !/^[a-z0-9._-]{1,160}$/i.test(submitted.sourceNodeId) ||
+    persistedOperation !== submitted.operation ||
+    input.persistedTargetData.imageToolOperationId !== submitted.operationId ||
+    input.persistedTargetData.imageToolSourceAssetId !== submitted.sourceAssetId
+  ) {
+    throw new Error("图片工具任务身份与已保存画布不一致");
+  }
+  const source = input.snapshot.find((item) =>
+    item.kind === "image" &&
+    item.sourceNodeId === submitted.sourceNodeId &&
+    item.assetId === submitted.sourceAssetId
+  );
+  if (!source) throw new Error("图片工具来源与已保存画布不一致");
+  const sourceMedia = readyMediaForOwner(
+    input.ownerId,
+    "image",
+    submitted.sourceAssetId,
+  );
+  if (!sourceMedia) throw new Error("图片工具原图不存在或不属于当前账号");
+  const requiresMask = submitted.operation === "redraw" ||
+    submitted.operation === "erase" || submitted.operation === "outpaint";
+  if (
+    (submitted.operation === "remove-background" &&
+      (submitted.outputBackground !== "transparent" ||
+        input.persistedTargetData.imageToolOutputBackground !== "transparent")) ||
+    (submitted.operation !== "remove-background" &&
+      (submitted.outputBackground !== undefined ||
+        input.persistedTargetData.imageToolOutputBackground !== undefined))
+  ) throw new Error("图片工具透明输出身份与已保存画布不一致");
+  if (!submitted.mask) {
+    if (requiresMask) throw new Error("图片工具缺少已保存遮罩");
+    if (input.persistedTargetData.imageToolMaskAssetId !== undefined ||
+        input.persistedTargetData.imageToolPreparedAssetId !== undefined ||
+        input.persistedTargetData.imageToolOutpaintParameters !== undefined) {
+      throw new Error("图片工具遮罩身份与已保存画布不一致");
+    }
+    const outputBackground = submitted.outputBackground;
+    return {
+      operation: submitted.operation,
+      operationId: submitted.operationId,
+      ...(outputBackground ? { outputBackground } : {}),
+      sourceAssetId: submitted.sourceAssetId,
+      sourceNodeId: submitted.sourceNodeId,
+    };
+  }
+  const mask = submitted.mask;
+  if (
+    !requiresMask ||
+    !/^[a-z0-9._-]{1,160}$/i.test(mask.assetId) ||
+    mask.version !== 1 ||
+    !Number.isSafeInteger(mask.width) || mask.width < 1 || mask.width > 8_192 ||
+    !Number.isSafeInteger(mask.height) || mask.height < 1 || mask.height > 8_192 ||
+    !Number.isSafeInteger(mask.featherPixels) ||
+    mask.featherPixels < 0 || mask.featherPixels > 64 ||
+    input.persistedTargetData.imageToolMaskAssetId !== mask.assetId ||
+    input.persistedTargetData.imageToolMaskVersion !== 1 ||
+    input.persistedTargetData.imageToolMaskWidth !== mask.width ||
+    input.persistedTargetData.imageToolMaskHeight !== mask.height ||
+    input.persistedTargetData.imageToolMaskFeatherPixels !== mask.featherPixels
+  ) {
+    throw new Error("图片工具遮罩身份或尺寸与已保存画布不一致");
+  }
+  const maskMedia = readyMediaForOwner(input.ownerId, "image", mask.assetId);
+  const isOutpaint = submitted.operation === "outpaint";
+  const outpaint = submitted.outpaint;
+  const preparedInput = submitted.preparedInput;
+  const persistedOutpaint = input.persistedTargetData.imageToolOutpaintParameters;
+  if (isOutpaint) {
+    if (!outpaint || !preparedInput || outpaint.version !== 1 ||
+        preparedInput.version !== 1 ||
+        input.persistedTargetData.imageToolPreparedAssetId !== preparedInput.assetId ||
+        input.persistedTargetData.imageToolPreparedVersion !== 1 ||
+        input.persistedTargetData.imageToolPreparedWidth !== preparedInput.width ||
+        input.persistedTargetData.imageToolPreparedHeight !== preparedInput.height ||
+        JSON.stringify(persistedOutpaint) !== JSON.stringify(outpaint) ||
+        preparedInput.width !== mask.width || preparedInput.height !== mask.height ||
+        outpaint.outputWidth !== mask.width || outpaint.outputHeight !== mask.height ||
+        outpaint.sourceX + outpaint.sourceWidth > outpaint.outputWidth ||
+        outpaint.sourceY + outpaint.sourceHeight > outpaint.outputHeight) {
+      throw new Error("扩图边界或准备图片与已保存画布不一致");
+    }
+  } else if (outpaint !== undefined || preparedInput !== undefined ||
+      persistedOutpaint !== undefined ||
+      input.persistedTargetData.imageToolPreparedAssetId !== undefined) {
+    throw new Error("图片工具包含不允许的扩图输入");
+  }
+  const preparedMedia = preparedInput
+    ? readyMediaForOwner(input.ownerId, "image", preparedInput.assetId)
+    : undefined;
+  if (
+    !maskMedia ||
+    maskMedia.contentType !== "image/png" ||
+    maskMedia.byteSize < 1 ||
+    maskMedia.byteSize > imageToolMaximums.maskBytes ||
+    maskMedia.mediaWidth !== mask.width ||
+    maskMedia.mediaHeight !== mask.height ||
+    (!isOutpaint && sourceMedia.mediaWidth !== null && sourceMedia.mediaWidth !== mask.width) ||
+    (!isOutpaint && sourceMedia.mediaHeight !== null && sourceMedia.mediaHeight !== mask.height) ||
+    (isOutpaint && (!preparedMedia || preparedMedia.contentType !== "image/png" ||
+      preparedMedia.byteSize < 1 || preparedMedia.byteSize > imageToolMaximums.inputBytes ||
+      preparedMedia.mediaWidth !== mask.width || preparedMedia.mediaHeight !== mask.height ||
+      (sourceMedia.mediaWidth !== null && sourceMedia.mediaWidth !== outpaint!.sourceWidth) ||
+      (sourceMedia.mediaHeight !== null && sourceMedia.mediaHeight !== outpaint!.sourceHeight)))
+  ) {
+    throw new Error("图片工具遮罩不存在、越界、尺寸不匹配或不属于当前账号");
+  }
+  return {
+    mask: {
+      assetId: mask.assetId,
+      featherPixels: mask.featherPixels,
+      height: mask.height,
+      version: 1,
+      width: mask.width,
+    },
+    ...(outpaint ? { outpaint } : {}),
+    ...(preparedInput ? { preparedInput } : {}),
+    operation: submitted.operation,
+    operationId: submitted.operationId,
+    sourceAssetId: submitted.sourceAssetId,
+    sourceNodeId: submitted.sourceNodeId,
+  };
 }
 
 function resolveModel(kind: NodeInputKind, modelId: string | undefined, ownerId: string) {
@@ -1166,7 +1409,7 @@ function persistedSubmissionInputs(input: {
     targetId: String(input.body.nodeId ?? ""),
     targetKind: input.targetKind,
   });
-  const { persistedOwnPrompt, ...persisted } = resolved;
+  const { persistedOwnPrompt, persistedTargetData, ...persisted } = resolved;
   if (input.body.inputSchemaVersion === 1) {
     if (typeof input.body.ownPrompt !== "string") {
       throw new Error("节点输入版本1缺少本节点Prompt");
@@ -1178,7 +1421,7 @@ function persistedSubmissionInputs(input: {
       );
     }
   }
-  return persisted;
+  return { ...persisted, persistedTargetData };
 }
 
 const mediaLimits = {
@@ -1195,6 +1438,7 @@ const mediaContentTypes = {
 
 type StrictGenerationPreflight = NodeInputPreflight & {
   canvasRevision: number;
+  imageTool?: ImageGenerationToolInput;
   parameters: Record<string, ModelParameterValue>;
   references: ImageReference[];
 };
@@ -1389,6 +1633,14 @@ function strictGenerationPreflight(input: {
     parameters,
     targetKind: input.targetKind,
   });
+  const imageTool = input.targetKind === "image"
+    ? strictImageGenerationTool({
+        ownerId: input.ownerId,
+        persistedTargetData: persisted.persistedTargetData,
+        snapshot: persisted.snapshot,
+        submitted: input.body.imageTool,
+      })
+    : undefined;
   const referenceMediaRules = schema.referenceMediaRules ?? arkVideoMediaRules;
   if (
     input.requireFreshRevision &&
@@ -1700,7 +1952,9 @@ function strictGenerationPreflight(input: {
           sourceNodeId: item.sourceNodeId,
         }))
     : [];
-  return { ...persisted, parameters, references };
+  const { persistedTargetData: _persistedTargetData, ...publicPersisted } =
+    persisted;
+  return { ...publicPersisted, imageTool, parameters, references };
 }
 
 async function generationAvailability(ownerId: string) {
@@ -3086,7 +3340,7 @@ async function saveRelayMediaOutput(input: {
       throw new ProviderResultMediaError("FORMAT", "模型结果格式不受支持");
     }
     const bytes = Buffer.from(input.output.bytes);
-    validateRelayPng(bytes);
+    validateRelayPng(bytes, input.taskId);
     const saved = await saveGeneratedPng({
       bytes,
       label: input.prompt.slice(0, 120),
@@ -3114,6 +3368,7 @@ async function saveRelayMediaOutput(input: {
       ownerId: input.ownerId,
       signal: input.signal,
     });
+    validateRelayPng(bytes, input.taskId);
     const saved = await saveGeneratedPng({
       bytes,
       label: input.prompt.slice(0, 120),
@@ -3222,9 +3477,25 @@ async function saveRelayMediaOutputs(input: {
   });
 }
 
-function validateRelayPng(bytes: Buffer) {
+export function validateImageToolResultPng(
+  bytes: Buffer,
+  imageTool: unknown,
+) {
+  const stored = imageTool === undefined
+    ? undefined
+    : storedImageGenerationTool(imageTool);
+  if (stored?.operation === "remove-background") {
+    validateTransparentPng(bytes);
+  } else validatePng(bytes);
+}
+
+function validateRelayPng(bytes: Buffer, taskId?: string) {
   try {
-    validatePng(bytes);
+    const task = taskId ? taskStore().get(taskId) : undefined;
+    if (taskId && (!task || task.kind !== "image")) {
+      throw new Error("Image generation task is missing");
+    }
+    validateImageToolResultPng(bytes, task?.parameters.imageTool);
   } catch {
     throw new RelayProviderError("PROVIDER_RESULT_FORMAT", true);
   }
@@ -3934,15 +4205,26 @@ async function executeRelayGptImageTask(
   const profile = await taskProviderSnapshotProfile(running, ownerId);
   assertRelayProfile(profile, "media-generate");
   const references = imageReferences(running.parameters.references);
+  const imageTool = storedImageGenerationTool(running.parameters.imageTool);
+  const providerReferences = imageTool?.preparedInput
+    ? [{ assetId: imageTool.preparedInput.assetId }]
+    : references;
   const inputReferences = await Promise.all(
-    references.map((reference) =>
+    providerReferences.map((reference) =>
       imageReferenceForProvider(ownerId, reference.assetId, 600),
     ),
   );
+  const maskReference = imageTool?.mask
+    ? await imageReferenceForProvider(ownerId, imageTool.mask.assetId, 600)
+    : undefined;
   const prepared = await prepareRelayGptImageRequest({
+    ...(imageTool?.outputBackground
+      ? { background: imageTool.outputBackground }
+      : {}),
     capability: "image",
     count: 1,
     inputImages: inputReferences,
+    ...(maskReference ? { maskImage: maskReference } : {}),
     model: running.providerModelId!,
     operation: inputReferences.length ? "edit" : "generation",
     prompt: running.prompt,
@@ -3974,8 +4256,14 @@ async function executeRelayGptImageTask(
         response_format: "url",
         size,
       };
+      if (prepared.request.background) {
+        params.background = prepared.request.background;
+      }
       if (prepared.request.inputImages?.length) {
         params.images = [...prepared.request.inputImages];
+      }
+      if (prepared.request.maskImage) {
+        params.mask = prepared.request.maskImage;
       }
       if (size !== "auto" && resolutionLabel) {
         params.resolution = resolutionLabel;
@@ -4052,6 +4340,7 @@ async function executeImageTask(taskId: string) {
         executionAttempt: running.attempt,
         taskId,
       });
+      validateRelayPng(result.bytes, taskId);
       const saved = await saveGeneratedPng({
         bytes: result.bytes,
         label: running.prompt.slice(0, 120),
@@ -4737,6 +5026,13 @@ export function retrySnapshotCompatibilityProblem(
   delete parameterValues.inputSchemaVersion;
   delete parameterValues.inputs;
   delete parameterValues.references;
+  let imageTool: ImageGenerationToolInput | undefined;
+  try {
+    imageTool = storedImageGenerationTool(parameterValues.imageTool);
+  } catch {
+    return "原任务保存的图片工具身份或遮罩快照无效，请回到节点重新提交";
+  }
+  delete parameterValues.imageTool;
   const modelSchema = mode === "new-provider-attempt"
     ? model
       ? generationModelSchema(task.kind, model)
@@ -4860,6 +5156,49 @@ export function retrySnapshotCompatibilityProblem(
       snapshotImageReferences.map(referenceKey).sort().join("\n")
     ) {
       return "原任务保存的图片参考与节点输入快照不一致，请回到节点重新提交";
+    }
+    if (imageTool) {
+      const sourceMatches = snapshotImageReferences.some((reference) =>
+        reference.assetId === imageTool!.sourceAssetId &&
+        reference.sourceNodeId === imageTool!.sourceNodeId
+      );
+      if (!sourceMatches) {
+        return "原任务保存的图片工具来源与节点输入快照不一致，请回到节点重新提交";
+      }
+      if (mode === "new-provider-attempt" && imageTool.mask) {
+        const sourceMedia = task.ownerId
+          ? readyMediaForOwner(task.ownerId, "image", imageTool.sourceAssetId)
+          : undefined;
+        const maskMedia = task.ownerId
+          ? readyMediaForOwner(task.ownerId, "image", imageTool.mask.assetId)
+          : undefined;
+        const preparedMedia = imageTool.preparedInput && task.ownerId
+          ? readyMediaForOwner(task.ownerId, "image", imageTool.preparedInput.assetId)
+          : undefined;
+        const isOutpaint = imageTool.operation === "outpaint";
+        if (
+          !sourceMedia || !maskMedia ||
+          maskMedia.contentType !== "image/png" ||
+          maskMedia.byteSize < 1 ||
+          maskMedia.byteSize > imageToolMaximums.maskBytes ||
+          maskMedia.mediaWidth !== imageTool.mask.width ||
+          maskMedia.mediaHeight !== imageTool.mask.height ||
+          (!isOutpaint && sourceMedia.mediaWidth !== null &&
+            sourceMedia.mediaWidth !== imageTool.mask.width) ||
+          (!isOutpaint && sourceMedia.mediaHeight !== null &&
+            sourceMedia.mediaHeight !== imageTool.mask.height) ||
+          (isOutpaint && (!imageTool.outpaint || !imageTool.preparedInput ||
+            !preparedMedia || preparedMedia.contentType !== "image/png" ||
+            preparedMedia.mediaWidth !== imageTool.mask.width ||
+            preparedMedia.mediaHeight !== imageTool.mask.height ||
+            (sourceMedia.mediaWidth !== null &&
+              sourceMedia.mediaWidth !== imageTool.outpaint.sourceWidth) ||
+            (sourceMedia.mediaHeight !== null &&
+              sourceMedia.mediaHeight !== imageTool.outpaint.sourceHeight)))
+        ) {
+          return "原任务保存的遮罩不存在、尺寸不匹配或不属于当前账号，请回到节点重新提交";
+        }
+      }
     }
   }
 

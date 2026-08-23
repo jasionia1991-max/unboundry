@@ -146,7 +146,11 @@ export function resolvePersistedNodeInputs(input: {
   parameters?: Record<string, ModelParameterValue>;
   targetId: string;
   targetKind: NodeInputKind;
-}): NodeInputPreflight & { canvasRevision: number; persistedOwnPrompt: string } {
+}): NodeInputPreflight & {
+  canvasRevision: number;
+  persistedOwnPrompt: string;
+  persistedTargetData: Record<string, unknown>;
+} {
   const database = openAppDatabase();
   try {
     const row = (input.bypass
@@ -193,6 +197,7 @@ export function resolvePersistedNodeInputs(input: {
       }),
       canvasRevision: row.graph_revision,
       persistedOwnPrompt,
+      persistedTargetData: { ...(target.data ?? {}) },
     };
   } finally {
     database.close();
