@@ -2,10 +2,10 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 05:27:46 +0800
-- 状态：`GOAL_ACTIVE / R8_IN_PROGRESS / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / UI_REMEDIATION_REQUIRED`
-- 当前阶段：`R8 GitHub 与生产发布 / IN_PROGRESS`
-- 唯一允许的下一动作：只读核对`v0.6.35`现有本地/远端tag、GitHub release、origin/main tree和生产release身份；若同名不可变发布已绑定不同源码且Runbook没有合法同版本热修路径，先把阻断证据、恢复条件和唯一下一动作写回本Checkpoint，不移动tag、不覆盖release、不自行选择新版本
+- 更新时间：2026-08-24 05:29:02 +0800
+- 状态：`GOAL_ACTIVE / R8_BLOCKED_VERSION_IDENTITY_COLLISION / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / UI_REMEDIATION_REQUIRED`
+- 当前阶段：`R8 GitHub 与生产发布 / BLOCKED`
+- 唯一允许的下一动作：等待用户明确提供一个尚未使用的具体版本号，并独立给出按该版本上线的发布句子；恢复后重新核对tag不存在、package/runtime版本门和实时Git，再从R8继续。不得移动`v0.6.35` tag、覆盖既有release、以未授权后缀另造版本或先行push/PR/SSH发布
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
 - 文档分支：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`
 - 立项 HEAD / origin-main：`f369d1dba1eef05aebc7f1a443256ceb82778ea0`
@@ -100,7 +100,7 @@ node -p "require('./package.json').version"
 | R5 | 全屏与交互完整性 | AUTO_PASS |
 | R6 | 逐工具功能与回归验证 | AUTO_PASS / LOCAL_BROWSER_PASS |
 | R7 | 候选冻结与独立审查 | AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS |
-| R8 | GitHub 与生产发布 | IN_PROGRESS / GATES_VALID / IMMUTABLE_IDENTITY_PREFLIGHT |
+| R8 | GitHub 与生产发布 | BLOCKED / VERSION_IDENTITY_COLLISION |
 | R9 | 生产零付费验收与用户复验 | NOT_STARTED |
 
 同时最多一个阶段为 `IN_PROGRESS`。
@@ -342,15 +342,18 @@ Provider / OSS / 费用：
 
 ## 19. R8 GitHub 与生产发布
 
-- 时间：2026-08-24 05:27:46 +0800
+- 时间：2026-08-24 05:29:02 +0800
 - 阶段：`R8`
-- 状态：`IN_PROGRESS / GATES_VALID / IMMUTABLE_IDENTITY_PREFLIGHT`
-- branch / HEAD / origin-main：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24` / `323088f261f5c3ad6839865e0986fec3ce794581` / `f369d1dba1eef05aebc7f1a443256ceb82778ea0`
-- 工作树摘要：R7治理证据已提交；主工作树只剩受保护JSON未跟踪且不进入diff/stage。尚未push、PR、merge、tag、SSH或改生产
-- package / schema / candidate：`0.6.35 / schema39 / 本地R7候选323088f`
+- 状态：`BLOCKED / VERSION_IDENTITY_COLLISION`
+- branch / HEAD / origin-main：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24` / `6380723375c77a1652bcd3326e5d24b16c9354e6`、tree`8f22a7c0b46467bda9bf16e3f9ba6896103ce4e7` / `f369d1dba1eef05aebc7f1a443256ceb82778ea0`、tree`a02f56f2df0dc32568477c2f115d9101a0a556f7`
+- 工作树摘要：R7治理证据和R8预检启动均已本地提交；主工作树只剩受保护JSON未跟踪且不进入diff/stage。R8仅执行fetch/ls-remote/GitHub查询、公网GET和生产SSH只读身份检查；没有push、PR、merge、tag、备份、切换或生产写入
+- package / schema / candidate：`0.6.35 / schema39 / 本地R8预检HEAD6380723`
 - 版本门 / 发布门：`v0.6.35 / VERSION_GATE_VALID`；“v0.6.35上线” / `RELEASE_GATE_VALID`
 - Provider / OSS / 费用：真实Provider请求、尝试、成功0；费用0；真实OSS写入0
-- 风险：文档记录`v0.6.35`已是现网不可变版本，现有tag/release可能绑定INC-IMGEDIT-003的不同源码；Runbook禁止移动tag或覆盖release。本阶段必须先核对身份，不能因两项门有效就破坏不可变发布合同
-- 阻断：预检尚未完成，暂不下结论
-- 回滚点：R7最终治理提交`323088f261f5c3ad6839865e0986fec3ce794581`
-- 唯一下一动作：只读核对`v0.6.35`本地/远端tag、GitHub release、origin/main tree与生产release身份，再按真实结果决定合法发布或落档阻断
+- 预检证据：远端注释tag对象`v0.6.35=3fa72d39187b7aa5ffb10a92f61b1c18e7c0d39a`，解引用commit`fc99101327efc8fc3687406598169a6ae7dc1272`、tree`cb13fef2e71e41c3ada09ade95619c9362636b36`；PR #81已MERGED为`cc62bfbb155372ba3b1da65c029d9c97b5330ac7`。GitHub没有单独Release对象不改变tag不可变事实。当前本地候选tree`8f22a7c0…e4e7`与tag tree不同，不能用现有tag证明本候选源码身份
+- 生产只读证据：公网`/api/version=0.6.35`、live、ready active/schema39；SSH只读确认`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824`、package0.6.35、service active、NRestarts0、当前inventory文件SHA`502b15d2…dde72`
+- 已尝试方案：检查`RELEASE_RUNBOOK.md`、`上线规矩.md`、项目同版本/热修历史和GitHub release状态；没有找到能同时满足“精确源码tag”“不移动tag”“不覆盖release”“用户指定版本仍为v0.6.35”的合法路径。创建后缀tag或保持package0.6.35直接部署都会绕过用户的具体版本/精确tag合同，不能自行采用
+- 阻断原因：`v0.6.35`版本身份已被不同源码不可变占用。继续R8必须移动既有tag、覆盖release或自行发明新版本身份，均被用户和Runbook明确禁止
+- 恢复条件：用户明确提供一个尚未使用的具体版本号，并独立给出按该版本上线的发布句子；恢复时还需实时确认该tag不存在并按Runbook同步package/lock/runtime版本门
+- 回滚点：R7最终治理提交`323088f261f5c3ad6839865e0986fec3ce794581`；R8预检启动提交`6380723375c77a1652bcd3326e5d24b16c9354e6`。R8未产生外部写入，无需生产回滚
+- 唯一下一动作：等待用户提供新的具体版本号和对应独立发布句子；恢复后重新读取本Checkpoint、核对Git/tag/package，再从R8继续
