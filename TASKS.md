@@ -16,6 +16,15 @@
 - 验证：Node `22.23.1` / npm `10.9.8`；safe preflight通过；m38 `15/15 PASS`；m96修正精确directive计数后最小复验`4/4 PASS`；架构76条基线、399文件source coverage、TypeScript/build安全入口附带门均通过；4173 listener不变。未重复safe full。
 - 回执：`spec/UNBOUNDRY_GOVERNANCE_NGINX_HARDENING_RECEIPT_2026-08-23.md`。
 
+### 2026-08-23 服务器运维回执收口（docs-only）
+
+- 状态：`LOCAL_DOCS_CANDIDATE / LIVE_READ_ONLY_RECHECK_PASS / AUTO_PASS / NO_PRODUCTION_WRITE / PR_PENDING`。本轮只收口`spec/UNBOUNDRY_SERVER_SECURITY_HARDENING_RECEIPT_2026-08-23.md`与`spec/UNBOUNDRY_SERVER_DISK_CLEANUP_RECEIPT_2026-08-23.md`，不修改应用、schema、生产数据、Provider、OSS或release。
+- 时间线：安全加固检查点为服务器时间`10:03`，磁盘清理检查点为`10:50`；前者记录的磁盘`76% / 28G available`是清理前状态，后者`61% / 45G available`是后续状态。
+- 线上只读复核：2026-08-23 11:24 CST，生产仍为v0.6.31/schema39；系统盘61%、45G可用；SSH密钥登录、UFW 22/80/443、Fail2ban、loopback运维面板、关键服务、备份timer与公网健康/敏感路径合同均通过，关键服务`NRestarts=0`。
+- 安全边界：两份回执未命中常见私钥、访问令牌、API Key或明文凭证模式；敏感检查点内容未复制入仓库。受保护未跟踪JSON不进入本分支、测试、commit或PR。
+- 本地验证：新worktree首次定向入口在测试执行前因缺少本地`node_modules/typescript`退出；只执行离线`npm ci --ignore-scripts --offline`补齐依赖后复验同一m38，最终`15/15 PASS`，source snapshot不变、4173 listener不变。没有运行safe full。
+- 交付：用户已授权commit、push和docs-only PR；不授权merge、tag、应用发布或新的生产写操作。
+
 ### 2026-08-23 模块化成果主线集成（v0.6.31 PRODUCTION PUBLISHED / USER PASS）
 
 - D0：离线档案分支只提交六份治理文档，提交 `92a57e49ec89aa1e7550e8109fe1b870069792c8`。

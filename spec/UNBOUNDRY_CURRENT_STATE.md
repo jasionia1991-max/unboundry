@@ -22,6 +22,14 @@
 - 治理候选已补权威版本一致性门、nginx安全合同和轻量CI，通过`codex/governance-hardening-2026-08-23`专用分支和PR #72交付；PR `lightweight` check已通过，用户随后明确授权合并并收口。合并后的main check仍须单独核验；本轮没有tag或应用release授权。
 - 没有真实功能触发，第三至第七模块化批次继续保持`NO_ACTIVE_NEXT_BATCH`。完整证据见`spec/UNBOUNDRY_GOVERNANCE_NGINX_HARDENING_RECEIPT_2026-08-23.md`。
 
+## 2026-08-23 服务器运维回执收口
+
+- 同日P0安全加固与低风险磁盘清理没有修改Unboundry应用、schema39、生产业务数据、Provider、OSS或release指针；两份证据分别收口于`spec/UNBOUNDRY_SERVER_SECURITY_HARDENING_RECEIPT_2026-08-23.md`和`spec/UNBOUNDRY_SERVER_DISK_CLEANUP_RECEIPT_2026-08-23.md`。
+- 时间线已澄清：安全加固检查点为服务器时间`10:03`，磁盘清理检查点为`10:50`；`76% / 28G available`是清理前状态，后续清理及11:24只读复核均为`61% / 45G available`。
+- 11:24只读复核确认生产仍为v0.6.31/schema39，current release未变；SSH密钥登录、UFW、Fail2ban、loopback服务、备份timer、关键服务和公网健康/敏感路径合同均通过，`NRestarts=0`。复核没有生产写入、服务重启、Provider请求或OSS操作。
+- 本地docs-only候选在离线安装依赖后通过m38定向`15/15`，source snapshot与4173 listener均不变；没有运行safe full。
+- 本次仅通过专用分支和docs-only PR交付回执；不授权merge、tag或应用release。受保护未跟踪JSON继续完全排除。
+
 ## VIEW-005 密集画布性能证据已关闭（2026-08-21，仅工程证据）
 
 - 最终被测实现commit `7d436b89e34a77b01b84de4e764d49044ba25fd2`；产品代码、schema和package版本均未修改。
