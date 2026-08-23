@@ -3,7 +3,7 @@
 更新日期：2026-08-23
 项目：Unboundry
 基线：`main` / `b66e9f1216fc66e1b870ef8e480ef83b8e9a447a` / package `0.6.32` / 生产 `v0.6.32` / schema39
-当前状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK / VERSION_V0_6_33`
+当前状态：`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS / VERSION_V0_6_33`
 发布版本：`v0.6.33`（commit、tag、push、PR、合并和生产发布均已完成；本次授权已消费）
 
 ## 1. 用户要看到的结果
@@ -152,7 +152,7 @@
 4. **D3 定向验证：完成。** safe preflight、TypeScript/build和m2通过；初版z-index拦截比例菜单后只修复层叠上下文并复验m2。
 5. **D4 本地实页：完成。** loopback/local素材下暂停安全源读取，检查loading和恢复后的ready；真实Provider/OSS写入0。
 6. **D5 候选冻结：完成。** 实际改动、偏差、命令、结果与残余风险已回写；没有共享服务端合同变化，未运行full。
-7. **D6 用户验收：待执行。** 用户需在v0.6.33生产页面确认视觉体验；Agent证据不能代替USER_PASS。
+7. **D6 用户验收：完成。** 用户在v0.6.33生产页面完成复验并明确回复“通过”。
 8. **D7 Git/发布：完成。** 用户明确授权commit、push、PR和小版本发布；v0.6.33已通过GitHub与生产技术终门，授权已消费。
 
 ## 10. 测试策略与停止条件
@@ -171,7 +171,7 @@
 ## 12. 当前停点
 
 - 本地产品候选、直接受影响测试、本地Agent实页、冻结候选full、GitHub CI、生产备份与切换终门均已完成。
-- v0.6.33已在生产运行；当前唯一待办是用户主观复验加载画面，保持`USER_RECHECK`。
+- v0.6.33已在生产运行；用户主观复验加载画面通过，状态收口为`USER_PASS`。
 - 原main工作树中的`spec/public-templates-director-split-revision.json`保持未读、未改、未暂存、未提交。
 - safe验证使用与main HEAD tree相同的既有干净linked worktree；三个产品/测试文件与main候选逐字节一致。main原有ignored `backups/`目录未删除、未移动、未用于凑绿。
 
@@ -207,12 +207,12 @@
 ### 13.5 验证范围与残余风险
 
 - 没有服务端、鉴权、MediaBlobStore、上传、持久化、schema或发布合同变化，因此未为安心重复safe full；直接行为由m2及safe入口附带门覆盖。
-- 本地Agent页面证据只能记`LOCAL_AGENT_PAGE_PASS`，不能替代用户在以后可访问候选上的`USER_PASS`。
-- 当前生产v0.6.33已包含紧凑加载体验；用户确认前不记`USER_PASS`。
+- 本地Agent页面证据只记`LOCAL_AGENT_PAGE_PASS`；后续用户已在v0.6.33生产页面独立完成复验并确认通过。
+- 当前生产v0.6.33已包含紧凑加载体验，用户确认后已记`USER_PASS`。
 
 ## 14. 文档落地记录
 
-- 已同步`AGENTS.md`、`README.md`、`TASKS.md`、`上线规矩.md`、当前状态、handoff/checkpoint和INC-IMGEDIT-001引用；v0.6.33生产状态为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。
+- 已同步`AGENTS.md`、`README.md`、`TASKS.md`、`上线规矩.md`、当前状态、handoff/checkpoint和INC-IMGEDIT-001引用；v0.6.33生产状态为`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。
 
 ## 15. v0.6.33 发布结果
 
@@ -220,5 +220,11 @@
 - 唯一一次正式safe full执行120 specs/1050 tests，原始`1049/1050`；唯一失败为未改动m22多标签页提示5秒时序，同一冻结源码只复验m22后`37/37 PASS`。source/snapshot SHA-256均为`1b6b6bf31bf18d739143563158c600eac791881a3552e8737205c33605c03571`，没有第二次full。
 - 生产从精确tag fresh build，release `/opt/unboundry/releases/v0.6.33-crop-loading-20260823`；冻结备份 `/var/lib/unboundry-rollbacks/v0.6.33-frozen-sLmph1` 与恢复副本各365文件，双清单SHA均为`50ccbb8d7baa4b27bf2762258a85b7218931c2460308af1d44e3b333a5a31256`。
 - 切换前后schema39/integrity ok/FK0及全部业务计数一致；service active/enabled、NRestarts0，公网/回环version/live/ready、inventory和5个公网资源逐字节一致，日志异常0。发布自身Provider请求和OSS写入0。
-- 权威生产回执：`spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json`。当前技术发布通过，等待用户线上复验，故保持`USER_RECHECK`；本次发布授权已消费。
+- 权威生产回执：`spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json`。技术发布通过后，用户已在线上复验并明确回复“通过”，状态收口为`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`；本次发布授权已消费。生产回执中的`USER_RECHECK`保留其生成时点事实。
+
+## 16. 用户线上验收
+
+- 2026-08-23，用户在v0.6.33生产页面完成裁剪加载体验复验并明确回复“通过”。
+- 本项由`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`正式收口为`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。
+- 这次确认只覆盖v0.6.33裁剪准备态体验，不自动改变其他历史`USER_RECHECK / PARTIAL / PAUSED / BLOCK`项目。
 - main safe runner早先在测试前因既有ignored `backups/`目录被文件隔离负控以`EISDIR`停止；没有删除/移动该目录。最终测试改在与main HEAD tree相同的既有clean linked worktree执行，并在冻结前核对产品/测试文件哈希。

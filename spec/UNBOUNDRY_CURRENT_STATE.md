@@ -1,16 +1,16 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为 v0.6.33/schema39，技术发布终门通过；生产状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。等待用户确认裁剪准备态视觉体验。
+> **状态分层**：现网为 v0.6.33/schema39，技术发布终门和用户线上复验均通过；生产状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。
 
 更新日期：2026-08-23
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.6.33**（与生产一致）
 本地候选代码版本：**v0.6.33**
-当前治理标记：`CURRENT_V0_6_33_USER_RECHECK`
+当前治理标记：`CURRENT_V0_6_33_USER_PASS`
 
 ## 一句话
 
-**生产是 v0.6.33 / schema39，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。** tag `v0.6.33` 指向 commit `669958f4e325cc182c31cf0f27861e26b64736b1` / tree `c3a1c27cbe0c230d7005f260c5b57b96ad274acd`；PR #77 squash merge `8675a34b14b17fdf69b5e08b0469c520e4df79cb`，main Quality gates run `32628346283`为`SUCCESS`。生产 current 为 `/opt/unboundry/releases/v0.6.33-crop-loading-20260823`。
+**生产是 v0.6.33 / schema39，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。** tag `v0.6.33` 指向 commit `669958f4e325cc182c31cf0f27861e26b64736b1` / tree `c3a1c27cbe0c230d7005f260c5b57b96ad274acd`；PR #77 squash merge `8675a34b14b17fdf69b5e08b0469c520e4df79cb`，main Quality gates run `32628346283`为`SUCCESS`。生产 current 为 `/opt/unboundry/releases/v0.6.33-crop-loading-20260823`。用户已在线上复验并明确回复“通过”。
 
 本版本正式 safe full 原始记录为 `1049/1050`，唯一失败是未改动 m22 的多标签页提示5秒时序波动；同一冻结源码隔离复验 m22 `37/37 PASS`，没有重跑 full。冻结备份 `/var/lib/unboundry-rollbacks/v0.6.33-frozen-sLmph1` 共365文件，冻结源与恢复副本清单SHA均为 `50ccbb8d…1256`；schema39、integrity ok、FK0，切换前后 tasks/attempts `722/730`、active0、媒体 `761/1327334656`、模板 `50/48`、画布58完全一致。公网/回环 version/live/ready、service、inventory 和公网5资源全部通过。
 
@@ -18,12 +18,12 @@
 
 本次 v0.6.33 版本号与发布授权已消费，禁止追加真实生成、再次发布或进入下一版本。Mureka 真实音频、团队/多人协作、真实 Agent 协议、Storyboard 完整编辑、图片打光和其他付费内容抽验仍保持原 `PARTIAL/PAUSED/BLOCK`，不随本次发布扩大范围。
 
-## v0.6.33 图片裁剪准备态体验优化（已发布，待用户复验）
+## v0.6.33 图片裁剪准备态体验优化（已发布并获用户确认）
 
 - HTTP/OSS图片打开裁剪时显示320×180紧凑加载卡片，不再先撑开大幅空舞台，也不为视觉占位重复读取原图；只有已在内存中的`blob:`/`data:`预览显示缩略图。
 - 安全同站编辑源、20 MiB、owner scope、校验、取消、Blob URL和派生上传补偿合同均未改变；安全Blob仍是唯一裁剪和导出数据源。
 - 直接受影响m2 `10/10 PASS`；正式full原始`1049/1050`，同源码m22复验`37/37 PASS`。tag、PR、main CI、fresh build、冻结备份、原子切换和生产技术门全部通过。
-- 当前只缺用户在生产页面确认加载画面是否符合预期，故保持`USER_RECHECK`，不得提前记`USER_PASS`。
+- 用户已在生产页面完成复验并明确回复“通过”，本功能收口为`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。
 
 ## v0.6.32 图片裁剪同站编辑源（已发布并获用户确认）
 
@@ -37,10 +37,10 @@
 ## 图片裁剪准备态体验优化（INC-IMGEDIT-002，已随v0.6.33发布）
 
 - 用户确认当前“大黑框+正在准备图片”是可优化体验，并同意“当前图片视觉占位+半透明遮罩+小型加载动画+准备完成淡入”的方向。
-- 权威方案与施工记录：`spec/INC_IMGEDIT_002_CROP_LOADING_EXPERIENCE_PLAN_2026-08-23.md`；状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK / VERSION_V0_6_33`。
+- 权威方案与施工记录：`spec/INC_IMGEDIT_002_CROP_LOADING_EXPERIENCE_PLAN_2026-08-23.md`；状态`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS / VERSION_V0_6_33`。
 - 实际行为：`blob:`/`data:`内存预览可作为视觉缩略图；HTTP/OSS图片为避免再次请求大图，显示320×180紧凑加载卡片。两者都只作准备反馈，安全Blob仍是唯一裁剪/导出数据源。
 - 改动仅在`ImageNode.tsx`、样式和m2定向测试；服务端、20 MiB、并发、缓存、媒体域名、schema和数据未改。safe m2最终`10/10 PASS`，source/snapshot SHA-256均为`425ff6ab1114589272f792c0cef28fc6171b82b0c6c355e1f6d8de22af8f603c`；本地实页加载/ready状态和空控制台通过。
-- 用户已指定小版本v0.6.33并授权commit、push、PR和发布；该授权已完成并消费，当前等待用户线上复验。
+- 用户已指定小版本v0.6.33并授权commit、push、PR和发布；该授权已完成并消费，用户线上复验也已通过。
 
 ## 2026-08-23 治理与 nginx 加固
 
@@ -286,8 +286,8 @@
 ## 新会话默认动作
 
 1. 先读本文 + `上线规矩.md` + `TASKS.md` 顶部。
-2. 只读核对仓库分支、HEAD、工作树、`package.json` 版本是否为 `0.6.32`；历史计划中的旧版本号不得当成当前施工身份。
-3. 当前生产为 v0.6.32/schema39，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`；技术发布和用户实际裁剪均已完成，发布授权已消费。INC-IMGEDIT-002已完成本地工程和定向验收，但尚未commit、定版本或发布；不得自动继续GitHub或生产操作。
+2. 只读核对仓库分支、HEAD、工作树、`package.json` 版本是否为 `0.6.33`；历史计划中的旧版本号不得当成当前施工身份。
+3. 当前生产为 v0.6.33/schema39，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`；技术发布和用户对裁剪准备态的线上复验均已完成，发布授权已消费；不得自动继续GitHub或生产操作。
 4. 云腾三模型只归属云腾 Provider；不得借用优创密钥、不得新增“天空”计费 Provider、不得自动追加真实 Provider POST。
 5. `VIEW-005`已由本地隔离安全定向证据关闭为`AUTO_PASS`；其余`PAUSED/BLOCK/PARTIAL`项只有在用户重新立项后才能施工，本次证据不得被解释为新版本或生产授权。
 6. 若用户说生成或工作流再次异常，先查当前线上任务、Provider profile、attempt 和结果所有权，再给方案；不得擅自改生产库或重提付费请求。

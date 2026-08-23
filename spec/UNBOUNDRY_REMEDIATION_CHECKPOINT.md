@@ -5,12 +5,12 @@
 状态：`HISTORICAL_CHECKPOINT / APPEND_ONLY`
 用途：保留各次施工与发布时点证据，不再充当当前恢复入口。**当前状态、未发布工作区与下一步只看 `UNBOUNDRY_CURRENT_STATE.md`；本文件任何旧命令或旧授权都不可复用。**
 
-## 0. v0.6.33 裁剪准备态紧凑加载体验（2026-08-23，已发布待用户复验）
+## 0. v0.6.33 裁剪准备态紧凑加载体验（2026-08-23，已发布并获用户确认）
 
 - tag `v0.6.33`→commit `669958f4e325cc182c31cf0f27861e26b64736b1`/tree `c3a1c27cbe0c230d7005f260c5b57b96ad274acd`；PR #77 squash merge `8675a34b14b17fdf69b5e08b0469c520e4df79cb`。
 - 正式safe full原始记录`1049/1050`，唯一失败为未改动m22多标签页提示时序波动；同源码隔离复验m22`37/37 PASS`，没有重复full。生产release`/opt/unboundry/releases/v0.6.33-crop-loading-20260823`，冻结备份`v0.6.33-frozen-sLmph1`与恢复副本各365文件，双清单SHA`50ccbb8d…1256`。
 - schema39/integrity ok/FK0，切换前后tasks/attempts`722/730`、active0、媒体`761/1327334656`、模板`50/48`、画布58完全一致；公网/回环、service、inventory和公网5资源通过，发布自身Provider请求和OSS写入0。
-- 状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；回执`spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json`。等待用户确认裁剪加载体验。
+- 用户已在线上复验并明确回复“通过”，状态`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`；回执`spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json`。
 
 ## 0. v0.6.32 OSS 图片裁剪同站编辑源（2026-08-23，已发布并获用户验收）
 
