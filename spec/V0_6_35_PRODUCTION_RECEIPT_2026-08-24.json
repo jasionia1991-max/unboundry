@@ -1,0 +1,242 @@
+{
+  "version": "v0.6.35",
+  "date": "2026-08-24",
+  "status": "PRODUCTION_PUBLISHED_AUTO_PASS",
+  "scope": {
+    "summary": "修复图片工具生成提交的任务身份、持久输入顺序与源图片参数继承，使多角度、重绘、扩图、擦除、创意增强和主体抠图可以通过正式预检并保持源图1K成本边界。",
+    "schemaChanged": false,
+    "schemaVersion": 39,
+    "releaseInitiatedProviderRequests": 0,
+    "releaseInitiatedOssWrites": 0,
+    "protectedJsonReadOrMutated": false
+  },
+  "source": {
+    "hotfixCommit": "a411a636432fb219fefe31afa4dc81b667a71067",
+    "candidateCommit": "fc99101327efc8fc3687406598169a6ae7dc1272",
+    "tag": "v0.6.35",
+    "tagObject": "3fa72d39187b7aa5ffb10a92f61b1c18e7c0d39a",
+    "tagCommit": "fc99101327efc8fc3687406598169a6ae7dc1272",
+    "tagTree": "cb13fef2e71e41c3ada09ade95619c9362636b36",
+    "pullRequest": 81,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/81",
+    "mergeCommit": "cc62bfbb155372ba3b1da65c029d9c97b5330ac7",
+    "mainTree": "cb13fef2e71e41c3ada09ade95619c9362636b36",
+    "mainTreeEqualsTagTree": true,
+    "productionSource": "annotated tag v0.6.35",
+    "pullRequestQualityGateRun": 32654662421,
+    "pullRequestQualityGateConclusion": "SUCCESS",
+    "mainQualityGateRun": 32654691812,
+    "mainQualityGateConclusion": "SUCCESS"
+  },
+  "verification": {
+    "directlyAffectedTargeted": {
+      "scope": "m100-modular-ports + m2-image-node + m27-node-inputs",
+      "tests": 43,
+      "passed": 43,
+      "failed": 0
+    },
+    "versionSyncTargeted": {
+      "scope": "m38-generation-runtime-incidents + m81-deployment-hardening",
+      "tests": 56,
+      "passed": 56,
+      "failed": 0,
+      "sourceAndSnapshotSha256": "a5fb8cb26e81e3a84c326baca04d94c3ff2aa7206ad5ccda90db91185a60c6cc"
+    },
+    "formalSafeFullRuns": 1,
+    "formalSafeFull": {
+      "baselineHead": "c1a4a08e23bc917d85970d3bdffd82a44899970e",
+      "sourceAndSnapshotSha256": "c5eb339edd87245e99cdf53f13c3456325639a7ffb9426fcf5d312896b530135",
+      "specs": 120,
+      "tests": 1052,
+      "passed": 1052,
+      "failed": 0,
+      "blocked": 0,
+      "retries": 0,
+      "skipped": 0,
+      "reportErrors": 0,
+      "exitCode": 0,
+      "immutableReleaseBuilderPassed": true,
+      "immutableReleaseBuilderInvocations": 5
+    },
+    "documentationTargeted": {
+      "scope": "m38-generation-runtime-incidents",
+      "tests": 15,
+      "passed": 15,
+      "failed": 0,
+      "sourceAndSnapshotSha256": "505de97c83745d45a35a68f38c914f544d12cde8340f7ef14c05a5308a1e7049"
+    },
+    "secondFullRun": false,
+    "listener4173UnchangedDuringLocalTests": true,
+    "realProviderRequestsDuringAutomatedTests": 0,
+    "realOssWritesDuringAutomatedTests": 0
+  },
+  "release": {
+    "archiveSha256": "3a60149dd4be04727bfb65430460f09b456091c950e0f00b6c7c4049e390ee06",
+    "releasePath": "/opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824",
+    "previousRelease": "/opt/unboundry/releases/v0.6.34-image-toolbar-20260823",
+    "currentTarget": "/opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824",
+    "freshBuild": {
+      "node": "v22.23.2",
+      "npm": "10.9.8",
+      "npmCiIgnoreScripts": "PASS",
+      "typecheck": "PASS",
+      "viteBuild": "PASS",
+      "knownChunkSizeWarningOnly": true
+    },
+    "inventory": {
+      "files": 5912,
+      "inventoryLines": 5911,
+      "sha256": "502b15d2c4b45e530e47129c8ccf130fa515119da1b0cc92da02913f512dde72",
+      "postSwitchCheck": "PASS"
+    },
+    "temporaryTransferArchivesCreated": false
+  },
+  "preCutoverActivity": {
+    "quietGateSeconds": 60,
+    "activeTasksAtFirstCheck": 0,
+    "activeTasksAtSecondCheck": 0,
+    "activeMediaPublicationsAtFirstCheck": 0,
+    "activeMediaPublicationsAtSecondCheck": 0,
+    "releaseInitiatedProviderRequests": 0,
+    "releaseInitiatedOssWrites": 0
+  },
+  "frozenBackup": {
+    "path": "/var/lib/unboundry-rollbacks/v0.6.35-frozen-ad7b91",
+    "createdOnce": true,
+    "backupScriptInitialFiles": 365,
+    "finalFrozenAndRestoreFiles": 366,
+    "frozenManifestSha256": "041240d57985720416c80767490e8c076988c0c9508fb752616e4aa17c7b0bde",
+    "restoreManifestSha256": "041240d57985720416c80767490e8c076988c0c9508fb752616e4aa17c7b0bde",
+    "schemaVersion": 39,
+    "integrity": "ok",
+    "foreignKeyViolations": 0,
+    "librarySchemaVersion": 1,
+    "libraryIntegrity": "ok",
+    "libraryForeignKeyViolations": 0,
+    "libraryEntries": 1,
+    "librarySupplement": "The legacy plaintext server backup script omitted library.sqlite. Before cutover, a consistent SQLite online-backup snapshot was added to both frozen-source and restore-copy, then both manifests were regenerated and compared.",
+    "restoredCountsEqualPreCutover": true,
+    "deletedOrOverwritten": false
+  },
+  "productionAcceptance": {
+    "cutoverAt": "2026-08-24T01:30:33+08:00",
+    "loopbackVersion": "0.6.35",
+    "publicVersion": "0.6.35",
+    "loopbackLive": 200,
+    "loopbackReady": 200,
+    "publicLive": 200,
+    "publicReady": 200,
+    "readyMode": "active",
+    "activeLeaseHeld": true,
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "serviceRestarts": 0,
+    "schemaVersion": 39,
+    "integrity": "ok",
+    "foreignKeyViolations": 0,
+    "librarySchemaVersion": 1,
+    "libraryIntegrity": "ok",
+    "countsBeforeAndAfterEqual": true,
+    "counts": {
+      "generationTasks": 722,
+      "providerAttempts": 730,
+      "activeTasks": 0,
+      "mediaAssets": 771,
+      "mediaBytes": 1343036032,
+      "mediaPublicationAttempts": 361,
+      "activeMediaPublications": 0,
+      "canvases": 61,
+      "libraryEntries": 1,
+      "publicTemplates": 50,
+      "publishedPublicTemplates": 48
+    },
+    "publicAssetsCompared": 5,
+    "publicAssetsEqualRelease": true,
+    "publicAssetSha256": {
+      "CanvasShell-q5MHQaYO.js": "6913e489a611d31a908c1010040b7df18bd940337c052a32e4130c60b7651dd0",
+      "WorkspacePage-mx0-9AJe.js": "c42a91e18938f6949285eb61efc7f7f494aacfe6cf29f8eea5e6ebc2245d64c0",
+      "index-BueeTY_3.js": "893a86f5c9b5c221e3b2f68e68280c6db9c86062ec5d737a2702f614c4e56f59",
+      "index-CYfaQDCH.css": "40aebab6de57c5c2ea5376c96b9006f6c7f74852e84c6a0e4e2fc44645ca9bc4",
+      "projectStorage-DR0dF6d4.js": "680ec818edadf6641135c8df3d5711a173ea358b98faa16fd1319139b78e7dad"
+    },
+    "journalLinesInspected": 20,
+    "journalUnexpectedErrorLines": 0,
+    "journalGenerationOrProviderDiagnostics": 0,
+    "releaseInitiatedProviderRequests": 0,
+    "releaseInitiatedOssWrites": 0
+  },
+  "realProviderTechnicalSmoke": {
+    "budgetRequests": 6,
+    "budgetUsd": 60,
+    "requestsUsed": 1,
+    "confirmedCostUsd": 10,
+    "status": "PARTIAL_1_OF_6_REMAINING_ACTION_TIME_CONFIRMATION_PENDING",
+    "operations": {
+      "multiAngle": "REAL_PROVIDER_TECHNICAL_SMOKE_PASS_USER_QUALITY_RECHECK",
+      "redraw": "PENDING",
+      "outpaint": "PENDING",
+      "erase": "PENDING",
+      "creativeEnhancement": "PENDING",
+      "backgroundRemoval": "PENDING"
+    },
+    "multiAngleEvidence": {
+      "taskId": "a7798cf3-9473-45b3-ae4d-397a0876ed2b",
+      "executionAttempt": 1,
+      "providerTaskId": "113882656",
+      "actualCostUsd": 10,
+      "resultAssetId": "4671b388-b663-495a-9c8c-e96447a3cfa4",
+      "contentType": "image/png",
+      "width": 1088,
+      "height": 1920,
+      "byteSize": 2504877,
+      "sha256": "a67b6216213673eb78a075bb122437d5b9b5f778041f7917f3a60fc18ed53f46",
+      "canvasId": "0c913068-5e3f-4443-9ded-b49c6357ec4f",
+      "nodeId": "image-multi-angle-444194f7-ce19-4ff7-b483-26cc11bfe3ed",
+      "sourceNodeId": "image-54bbac1b-1fce-4632-8220-8cad6fa8f598-restored-1",
+      "sourceAssetId": "fc83f60d-d7d2-4f19-88fa-a85dd0ce3fad",
+      "canvasAttachmentPassed": true,
+      "refreshRecoveryPassed": true,
+      "providerRetries": 0
+    },
+    "conservativeEnhancement": "LOCAL_PROCESSOR_AUTO_PASS_NO_PROVIDER_REQUEST",
+    "evidenceBoundary": "A real Provider smoke can prove technical submission, completion, Media publication, Canvas attachment and refresh recovery only. It cannot prove subjective image quality or USER_PASS."
+  },
+  "documentationClosure": {
+    "scope": "m38-generation-runtime-incidents",
+    "initialRun": {
+      "tests": 15,
+      "passed": 14,
+      "failed": 1,
+      "cause": "CURRENT_V0_6_35_USER_QUALITY_RECHECK did not match the frozen governance marker vocabulary"
+    },
+    "firstCorrectionRun": {
+      "tests": 15,
+      "passed": 14,
+      "failed": 1,
+      "cause": "three progressive modularization recovery documents still carried CURRENT_V0_6_34_USER_RECHECK"
+    },
+    "finalRun": {
+      "tests": 15,
+      "passed": 15,
+      "failed": 0,
+      "sourceAndSnapshotSha256": "351db4c2ee30843e852c11bec4ee8600ca8f754d94bab98578584eb3391b8a5f",
+      "listener4173Unchanged": true
+    },
+    "safeFullRun": false
+  },
+  "rollback": {
+    "required": false,
+    "automaticRollbackGuardWasArmed": true,
+    "previousReleaseRetained": true,
+    "frozenBackupRetained": true,
+    "productionDataDeleted": false,
+    "productionMediaDeleted": false,
+    "immutableReleaseDeleted": false
+  },
+  "authorizationConsumed": true,
+  "userAcceptance": {
+    "status": "USER_QUALITY_RECHECK",
+    "scope": "v0.6.35 image toolbar generation hotfix and remaining image-tool quality"
+  },
+  "completionBoundary": "v0.6.35 is technically published and healthy. Multi-angle passed one real Provider technical smoke at 10 USD; the remaining five operations are pending grouped action-time confirmation. USER_PASS still requires explicit user confirmation."
+}

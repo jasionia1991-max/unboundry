@@ -1,9 +1,9 @@
 # Unboundry 渐进式模块化 Checkpoint
 
 更新日期：2026-08-23
-状态：`CURRENT_GOVERNANCE_HARDENING / FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED / CURRENT_V0_6_34_USER_RECHECK / VIEW_005_AUTO_PASS / NO_ACTIVE_NEXT_BATCH`
+状态：`CURRENT_GOVERNANCE_HARDENING / FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED / CURRENT_V0_6_35_USER_RECHECK / VIEW_005_AUTO_PASS / NO_ACTIVE_NEXT_BATCH`
 
-当前收口：第一、第二批已在 v0.6.28 发布，随后由 v0.6.29/30 的商业 Provider 隔离、真实验证、结果兼容与用户验收继续验证组合，并随 v0.6.31 进入普通 main-safe 生产路径。`VIEW-005` 已收口为 `AUTO_PASS`；当前生产为 v0.6.33/schema39。v0.6.32只在真实功能触发点增加MediaBlobStore可取消读取和客户端可替换编辑源resolver，v0.6.33只优化其客户端准备态，没有启动第三至第七批。以下冻结身份和施工记录保留原时点，不得再把旧 `USER_RECHECK` 或旧 package 解释为当前状态。
+当前收口：第一、第二批已在 v0.6.28 发布，随后由 v0.6.29/30 的商业 Provider 隔离、真实验证、结果兼容与用户验收继续验证组合，并随 v0.6.31 进入普通 main-safe 生产路径。`VIEW-005` 已收口为 `AUTO_PASS`；当前生产为 v0.6.35/schema39、`USER_QUALITY_RECHECK`。v0.6.32只在真实功能触发点增加MediaBlobStore可取消读取和客户端可替换编辑源resolver，v0.6.33只优化其客户端准备态；INC-IMGEDIT-003按第四批触发原则完成图片工具需要的最小边界并已发布，没有启动第三、第五、第六批或重做整个Canvas。当前Goal仍只在D13完成剩余真实技术冒烟。以下冻结身份和施工记录保留原时点，不得再把旧 `USER_RECHECK` 或旧 package 解释为当前状态。
 
 治理门：后续批次只在真实新功能触发边界问题时立项；没有触发就不得施工。
 
@@ -42,7 +42,7 @@
 - package约束：Node `>=22.23.1 <23`、npm `10.9.8`
 - shell默认：Node `v25.9.0`、npm `11.12.1`
 - 第一批施工/验证：显式使用Node `22.23.1`、npm `10.9.8`
-- 当时线上状态：`v0.6.28 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；当前聚合版本为 v0.6.33 `USER_PASS`
+- 当时线上状态：`v0.6.28 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；当前聚合版本为 v0.6.35 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`
 - 受保护未跟踪文件：`spec/public-templates-director-split-revision.json`
 
 基线会漂移，新Session必须重新只读核对；冲突时停止，不得reset、clean、checkout覆盖或自行修复。

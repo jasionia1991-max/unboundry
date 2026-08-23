@@ -3,7 +3,7 @@
 基线日期：2026-07-27  
 当前状态更新：2026-08-23
 
-2026-08-24 `CURRENT_RELEASE = v0.6.34 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`：PR #80、tag、main CI、冻结备份与恢复副本、精确源码构建、原子切换和生产技术终门均通过。D13真实生成冒烟在Provider前暴露共同热修需求，当前Provider请求`0/6`、可确认费用0 USD。用户已确认`v0.6.35`并独立授权上线；冻结候选`c1a4a08`已通过唯一一次safe full `1052/1052`，当前PR_PENDING。`VIEW-005`保持`AUTO_PASS`，其他`PARTIAL/PAUSED/BLOCK`不自动升级；v0.6.33的`USER_PASS`仅作为上一不可变版本历史证据保留。
+2026-08-24 `CURRENT_RELEASE = v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`：唯一一次safe full `1052/1052`，PR #81、PR/main CI、tag/main同tree、精确tag fresh build、完整主库+Library+媒体冻结备份、原子切换和生产技术终门均通过。六项各一次真实请求已完成Provider、Media、Canvas和刷新恢复技术闭环，主体抠图另有真实PNG Alpha字节证明；最终`6/6 / 60 USD`、无重试。质量仍待用户复验。`VIEW-005`保持`AUTO_PASS`，其他`PARTIAL/PAUSED/BLOCK`不自动升级。
 
 本文件下方旧版本的 `USER_RECHECK/PENDING` 均保留各自验收时点，不再承担当前线上版本播报，也不得被直接当成下一施工计划。当前版本、当前计划和授权边界只以 `spec/UNBOUNDRY_CURRENT_STATE.md` 为准。
 
@@ -365,13 +365,13 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 | IMGEDIT-013 | P1 | 调整像素 | 精确宽高、默认比例锁、本地确定性处理；保留原图并创建派生节点，零Provider请求 | 像素/格式/内存边界、node/edge/asset、刷新 | AUTO_PASS |
 | IMGEDIT-014 | P1 | 快速分割 | 2×2/3×3/4×4预览与4/9/16个派生节点一次批量落地；失败不显示假成功 | 网格像素检查、批次写入、故障补偿、零Provider | AUTO_PASS |
 | IMGEDIT-015 | P1 | 标注与导出 | 可编辑画笔/矩形/箭头/编号/文字；持久化容量有界，原图不改，显式导出才生成资产 | 容量基准、IME、刷新、撤销重做、导出实页 | AUTO_PASS |
-| IMGEDIT-016 | P0 | 多角度真实生成 | 真实结构化水平/垂直/距离/广角控制；持久任务、恢复、幂等和派生节点；不以提示词冒充 | v0.6.34生产task admission在Provider前暴露身份与共同顺序缺陷；0 task/0 attempt/0 Provider；v0.6.35冻结候选定向43/43、版本门56/56、safe full 1052/1052 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING / V0_6_35_CANDIDATE_SAFE_FULL_PASS / USER_QUALITY_RECHECK |
-| IMGEDIT-017 | P0 | 重绘真实生成 | 真实mask局部编辑，未遮罩区域尽量保持；遮罩坐标、附件生命周期、恢复和付费安全完整 | v0.6.34生产已生成owner-scoped mask和占位，客户端preflight在Provider前因输入顺序0拒绝；0 task/0 attempt/0 Provider；v0.6.35冻结候选safe full 1052/1052 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING / V0_6_35_CANDIDATE_SAFE_FULL_PASS / USER_QUALITY_RECHECK |
-| IMGEDIT-018 | P0 | 扩图与擦除 | outpaint只补新增区域；erase移除遮罩对象并补景；两者独立operation，不以拉伸/普通重绘冒充 | m100/m2/m27/m88证明独立operation/ownership、扩展准备图+mask、Media adoption与零请求；v0.6.35冻结候选safe full 1052/1052 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING / V0_6_35_CANDIDATE_SAFE_FULL_PASS / USER_QUALITY_RECHECK |
-| IMGEDIT-019 | P0 | 增强与主体抠图 | 保守/创意增强语义分开；抠图端到端输出透明PNG，任一环节丢Alpha即fail-closed | 本地保守增强已通过；创意增强/抠图共同热修定向43/43、冻结候选safe full 1052/1052、外部请求0；质量待用户复验 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING / V0_6_35_CANDIDATE_SAFE_FULL_PASS / USER_QUALITY_RECHECK |
+| IMGEDIT-016 | P0 | 多角度真实生成 | 真实结构化水平/垂直/距离/广角控制；持久任务、恢复、幂等和派生节点；不以提示词冒充 | v0.6.35已生产发布；task `a7798cf3…ed2b` / attempt 1 / Provider task `113882656`一次成功，10 USD；PNG 1088×1920、Media发布、Canvas挂接、云端保存和刷新恢复通过 | TARGETED_AUTO_PASS / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK |
+| IMGEDIT-017 | P0 | 重绘真实生成 | 真实mask局部编辑，未遮罩区域尽量保持；遮罩坐标、附件生命周期、恢复和付费安全完整 | v0.6.35一次真实提交成功：task `5fd3d1fd…8c2b`、attempt 1/DB `757`、Provider `113886725`、10 USD；ready/published PNG、Canvas节点/来源边、保存与刷新恢复通过；Goal总账`2/6 / 20 USD` | TARGETED_AUTO_PASS / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK |
+| IMGEDIT-018 | P0 | 扩图与擦除 | outpaint只补新增区域；erase移除遮罩对象并补景；两者独立operation，不以拉伸/普通重绘冒充 | 扩图task `9fa04634…33d0` / Provider `113888063`、擦除task `16e3bc55…2cda` / Provider `113888832`均一次成功、各10 USD；两项ready/published PNG、Canvas和刷新恢复通过；Goal总账`4/6 / 40 USD` | TARGETED_AUTO_PASS / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK |
+| IMGEDIT-019 | P0 | 增强与主体抠图 | 保守/创意增强语义分开；抠图端到端输出透明PNG，任一环节丢Alpha即fail-closed | 创意增强task `2108f76b…634b` / Provider `113889816`与主体抠图task `a17cc9e5…a178` / Provider `113890583`均一次成功、各10 USD；抠图ready/published PNG为1440×2560，8-bit RGBA，Alpha 0～255且透明/部分透明像素合计3,686,233；Canvas和刷新恢复通过；Goal总账`6/6 / 60 USD` | TARGETED_AUTO_PASS / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK |
 | IMGEDIT-020 | P1 | Seedance素材校验 | 本地技术预检绑定asset/model/role并可过期；仅在官方接口存在时声明远端资格，不生成视频或作法律保证 | owner-scoped Media、已发布模型真实参数规则、配置revision、过期/身份漂移stale、刷新恢复、m100/m2/m20安全定向和零视频生成/Provider请求 | AUTO_PASS / LOCAL_TECHNICAL_PREFLIGHT_ONLY |
 
-`IMGEDIT-010～020` 由 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md` 和对应 Checkpoint 驱动。D0～D12本地工程已完成，v0.6.34已发布；D13真实生成技术冒烟仍未产生任何Provider请求，016～019不得冒充真实技术或质量通过。历史 `IMGEDIT-001～006、008、009 = PASS` 继续只证明既有外观、安全禁用和裁剪结果合同，不自动证明新功能已经实现。`IMGEDIT-007` 继续 `PAUSED`。
+`IMGEDIT-010～020` 由 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md` 和对应 Checkpoint 驱动。D0～D13工程、生产技术发布及六项各一次真实Provider技术冒烟均已完成，最终总账`6/6 / 60 USD`、无重试；整体状态`REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`。016～019不得把自动、真实技术或生产证据冒充用户质量通过。历史 `IMGEDIT-001～006、008、009 = PASS` 继续只证明既有外观、安全禁用和裁剪结果合同，不自动证明新功能已经实现。`IMGEDIT-007` 继续 `PAUSED`。
 
 D12 候选验证已完成：冻结前直接受影响定向`234/234 PASS`，四类审查无新阻断；唯一一次safe full原始`1048/1052`，精确修复后同一四个失败spec`106/106 PASS`，未运行第二次full。该证据只支持`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / D13_READY`，不自动把`IMGEDIT-016～019`升级为真实Provider、生产或用户质量PASS。
 
