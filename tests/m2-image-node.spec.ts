@@ -1272,6 +1272,10 @@ test("Image multi-angle submits a structured persistent fake task without Provid
 }) => {
   const providerRequests: string[] = [];
   const taskBodies: Array<Record<string, unknown>> = [];
+  let releaseTaskCreation = () => {};
+  const taskCreationGate = new Promise<void>((resolve) => {
+    releaseTaskCreation = resolve;
+  });
   page.on("request", (entry) => {
     if (/openrouter|api\/v1\/images|provider/i.test(entry.url()) &&
         !entry.url().includes("/src/")) {
@@ -1333,6 +1337,7 @@ test("Image multi-angle submits a structured persistent fake task without Provid
     if (url.pathname === "/api/generation-tasks" && method === "POST") {
       const body = route.request().postDataJSON() as Record<string, unknown>;
       taskBodies.push(body);
+      await taskCreationGate;
       await route.fulfill({
         body: JSON.stringify({
           attempt: 1,
@@ -1419,7 +1424,17 @@ test("Image multi-angle submits a structured persistent fake task without Provid
     .toContainText("0.009 USD");
   const submit = panel.getByRole("button", { name: "生成多角度图片" });
   await expect(submit).toBeEnabled();
-  await submit.click();
+  const submitPromise = submit.click();
+  await expect.poll(() => taskBodies.length).toBe(1);
+  await expect(submit).toBeDisabled();
+  await expect(panel.getByRole("button", { name: "关闭多角度" }))
+    .toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(panel).toBeVisible();
+  await page.getByTestId("image-tool-host").click({ position: { x: 4, y: 4 } });
+  await expect(panel).toBeVisible();
+  releaseTaskCreation();
+  await submitPromise;
   await expect.poll(async () => ({
     error: await page.getByRole("alert").count()
       ? await page.getByRole("alert").textContent()
