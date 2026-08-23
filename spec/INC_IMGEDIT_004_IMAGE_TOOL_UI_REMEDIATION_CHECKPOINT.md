@@ -2,10 +2,10 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 05:25:39 +0800
-- 状态：`GOAL_ACTIVE / R7_AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / UI_REMEDIATION_REQUIRED`
-- 当前阶段：`R7 候选冻结与独立审查 / AUTO_PASS`
-- 唯一允许的下一动作：提交R7最终治理证据；随后先把R8标为`IN_PROGRESS`，对`v0.6.35`现有不可变tag/release与本候选身份执行只读发布预检，只有Runbook存在不移动tag、不覆盖release且可证明精确源码身份的合法路径时才继续GitHub和生产发布
+- 更新时间：2026-08-24 05:27:46 +0800
+- 状态：`GOAL_ACTIVE / R8_IN_PROGRESS / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / UI_REMEDIATION_REQUIRED`
+- 当前阶段：`R8 GitHub 与生产发布 / IN_PROGRESS`
+- 唯一允许的下一动作：只读核对`v0.6.35`现有本地/远端tag、GitHub release、origin/main tree和生产release身份；若同名不可变发布已绑定不同源码且Runbook没有合法同版本热修路径，先把阻断证据、恢复条件和唯一下一动作写回本Checkpoint，不移动tag、不覆盖release、不自行选择新版本
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
 - 文档分支：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`
 - 立项 HEAD / origin-main：`f369d1dba1eef05aebc7f1a443256ceb82778ea0`
@@ -100,7 +100,7 @@ node -p "require('./package.json').version"
 | R5 | 全屏与交互完整性 | AUTO_PASS |
 | R6 | 逐工具功能与回归验证 | AUTO_PASS / LOCAL_BROWSER_PASS |
 | R7 | 候选冻结与独立审查 | AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS |
-| R8 | GitHub 与生产发布 | NOT_STARTED / GATES_VALID |
+| R8 | GitHub 与生产发布 | IN_PROGRESS / GATES_VALID / IMMUTABLE_IDENTITY_PREFLIGHT |
 | R9 | 生产零付费验收与用户复验 | NOT_STARTED |
 
 同时最多一个阶段为 `IN_PROGRESS`。
@@ -339,3 +339,18 @@ Provider / OSS / 费用：
 - 阻断：R7无阻断；唯一一次full已执行，两个失败均已保留原始事实并由最小定向修正复验关闭。R8仍需核对同名不可变tag/release身份，不在R7预先作发布结论
 - 回滚点：R6文档提交`128e3cff84d0e700c1197139fcdc4126916993ff`；R7产品修正`39cd4945e847504733e425abc3a3a16e8489906c`；full前治理候选`4fd25ccb49b98573ab2e2ce8a6f28798f2ea3968`；最终定向修正候选`161f417e401e6ad332a756510fc6e4c59136b972`
 - 唯一下一动作：提交R7最终治理证据；随后先把R8标为`IN_PROGRESS`，只读核对`v0.6.35`现有tag、GitHub release、main tree与生产release身份，确认是否存在不移动tag、不覆盖release且能绑定本候选的合法发布路径
+
+## 19. R8 GitHub 与生产发布
+
+- 时间：2026-08-24 05:27:46 +0800
+- 阶段：`R8`
+- 状态：`IN_PROGRESS / GATES_VALID / IMMUTABLE_IDENTITY_PREFLIGHT`
+- branch / HEAD / origin-main：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24` / `323088f261f5c3ad6839865e0986fec3ce794581` / `f369d1dba1eef05aebc7f1a443256ceb82778ea0`
+- 工作树摘要：R7治理证据已提交；主工作树只剩受保护JSON未跟踪且不进入diff/stage。尚未push、PR、merge、tag、SSH或改生产
+- package / schema / candidate：`0.6.35 / schema39 / 本地R7候选323088f`
+- 版本门 / 发布门：`v0.6.35 / VERSION_GATE_VALID`；“v0.6.35上线” / `RELEASE_GATE_VALID`
+- Provider / OSS / 费用：真实Provider请求、尝试、成功0；费用0；真实OSS写入0
+- 风险：文档记录`v0.6.35`已是现网不可变版本，现有tag/release可能绑定INC-IMGEDIT-003的不同源码；Runbook禁止移动tag或覆盖release。本阶段必须先核对身份，不能因两项门有效就破坏不可变发布合同
+- 阻断：预检尚未完成，暂不下结论
+- 回滚点：R7最终治理提交`323088f261f5c3ad6839865e0986fec3ce794581`
+- 唯一下一动作：只读核对`v0.6.35`本地/远端tag、GitHub release、origin/main tree与生产release身份，再按真实结果决定合法发布或落档阻断
