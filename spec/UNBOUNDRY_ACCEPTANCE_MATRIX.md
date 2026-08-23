@@ -373,6 +373,8 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 
 `IMGEDIT-010～020` 由 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md` 和对应 Checkpoint 驱动。D0 已完成实时基线、工具链、生产只读探针、Provider/Storage 现状和干净隔离 worktree 恢复；这些条目仍全部 `NOT_STARTED`，D0 不冒充功能验收。历史 `IMGEDIT-001～006、008、009 = PASS` 继续只证明既有外观、安全禁用和裁剪结果合同，不自动证明新功能已经实现。`IMGEDIT-007` 继续 `PAUSED`。
 
+D1 已完成共享 operation/result/capability/status/error 与有界载荷合同、Library 独立表 owner 和 image-tools client/server 内部边界，架构门保持 76 个既有例外且新增例外为 0；m100 定向 `13/13 PASS`。这只是施工前合同证据，`IMGEDIT-010～020` 继续保持 `NOT_STARTED`。
+
 ## 12. 未知项与范围裁决
 
 | ID | 优先级 | 未知行为 | 开始实现前动作 | 状态 |

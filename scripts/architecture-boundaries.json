@@ -101,12 +101,29 @@
       "name": "canvas",
       "internalTargets": ["server/canvasPersistence.ts"],
       "ownerSources": ["server/canvas*.ts"]
+    },
+    {
+      "name": "image-tools-server",
+      "internalTargets": ["server/imageTools/internal/**"],
+      "ownerSources": ["server/imageTools/**"]
+    },
+    {
+      "name": "image-tools-client",
+      "internalTargets": ["client/src/imageTools/internal/**"],
+      "ownerSources": ["client/src/imageTools/**"]
+    },
+    {
+      "name": "library",
+      "internalTargets": ["server/library/internal/**"],
+      "ownerSources": ["server/library/**"]
     }
   ],
   "sqlDomains": [
     { "domain": "auth", "sources": ["server/auth.ts", "server/permissions.ts", "server/account*.ts"] },
     { "domain": "canvas", "sources": ["server/canvas*.ts"] },
     { "domain": "generation", "sources": ["server/generation*.ts", "server/inputPreflight.ts"] },
+    { "domain": "image-tools", "sources": ["server/imageTools/**"] },
+    { "domain": "library", "sources": ["server/library/**"] },
     { "domain": "media", "sources": ["server/media*.ts", "server/assetStorage.ts", "server/audioStorage.ts", "server/videoStorage.ts", "server/generatedMediaCleanup.ts", "server/groupDownload.ts"] },
     { "domain": "models", "sources": ["server/model*.ts", "server/agentConfiguration.ts"] },
     { "domain": "projects", "sources": ["server/project*.ts"] },
@@ -126,6 +143,7 @@
     { "owner": "auth", "tables": ["account_consumption_limits", "account_delete_intents", "account_permissions", "account_provider_credential_epochs", "account_provider_credentials", "sessions", "users"] },
     { "owner": "canvas", "tables": ["asset_history", "canvas_documents", "canvas_save_session_high_water"] },
     { "owner": "generation", "tables": ["generation_admission_events", "generation_provider_attempts", "generation_safety_settings", "generation_task_events", "generation_tasks"] },
+    { "owner": "library", "tables": ["library_entries"] },
     { "owner": "media", "tables": ["media_assets", "media_delete_intents", "media_publication_attempts"] },
     { "owner": "models", "tables": ["model_profiles", "node_model_bindings"] },
     { "owner": "projects", "tables": ["project_metadata"] },

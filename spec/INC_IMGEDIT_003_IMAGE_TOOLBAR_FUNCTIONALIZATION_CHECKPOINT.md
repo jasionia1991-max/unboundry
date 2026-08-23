@@ -2,10 +2,10 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-23 19:16:46 +0800
-- 状态：`GOAL_ACTIVE / D0_AUTO_PASS`
-- 当前阶段：`D0 实时基线和文档恢复 / AUTO_PASS`
-- 唯一允许的下一阶段：`D1 合同、矩阵和架构门`
+- 更新时间：2026-08-23 19:22:23 +0800
+- 状态：`GOAL_ACTIVE / D1_AUTO_PASS`
+- 当前阶段：`D1 合同、矩阵和架构门 / AUTO_PASS`
+- 唯一允许的下一阶段：`D2 最小图片工具应用层`
 - 当前仓库：`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`
 - 记录时分支：`codex/inc-imgedit-003-v0.6.34-2026-08-23`
 - 记录时 HEAD：`6a1606cdafd3b38c1333ca6c46baecfae690bd35`
@@ -72,7 +72,7 @@ node -p "require('./package.json').version"
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | D0 | 实时基线和文档恢复 | AUTO_PASS |
-| D1 | 合同、矩阵和架构门 | NOT_STARTED |
+| D1 | 合同、矩阵和架构门 | AUTO_PASS |
 | D2 | 最小图片工具应用层 | NOT_STARTED |
 | D3 | 颜色标记、调整像素、快速分割 | NOT_STARTED |
 | D4 | 标注 | NOT_STARTED |
@@ -157,7 +157,7 @@ package / schema / candidate：
 
 ## 10. 当前唯一下一动作
 
-进入 D1：先把 D1 标为 `IN_PROGRESS`，冻结 operation/result/capability/status/error、数据所有权、预算、migration 和操作级启用合同，并把新增模块加入架构防火墙；仍不执行真实 Provider 请求。
+进入 D2：先把 D2 标为 `IN_PROGRESS`，建立轻量 Dispatcher 与小 use case，接入 Canvas、安全图片和 Generation 公开端口；保持裁剪、下载、全屏行为不变。
 
 ## 12. D0 实时基线和文档恢复
 
@@ -177,6 +177,25 @@ package / schema / candidate：
 - 阻断：无；分支、版本门、发布门、生产探针和工具链均有效
 - 回滚点：`origin/main@14777b5dc5cf48de8b21b6eb3ee27da45070b537` 与文档启动提交 `6a1606cdafd3b38c1333ca6c46baecfae690bd35`；原工作树和受保护文件保持原位
 - 唯一下一动作：进入 D1，先在本文件把 D1 标为 `IN_PROGRESS`
+
+## 13. D1 合同、矩阵和架构门
+
+- 时间：2026-08-23 19:22:23 +0800
+- 阶段：`D1`
+- 状态：`AUTO_PASS`
+- branch / HEAD / origin-main：`codex/inc-imgedit-003-v0.6.34-2026-08-23` / 阶段起点 `43ccd32fdf674724d96dcc84f6739c101bac05f2` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537`
+- 工作树摘要：新增共享图片工具合同；扩展架构域与 Library 未来表所有权；扩展 m100 两个合同测试；安全测试总清单由 1050 精确同步为 1052，source coverage manifest 同步
+- 产品文件：`types/imageTools.ts`、`scripts/architecture-boundaries.json`
+- 测试文件：`tests/m100-modular-ports.spec.ts`、`scripts/run-safe-tests.mjs`、`scripts/source-coverage-manifest.json`
+- 文档文件：本 Checkpoint、`UNBOUNDRY_ACCEPTANCE_MATRIX.md`、`TASKS.md`
+- package / schema / candidate：`0.6.33 / schema39 / 无候选`；目标版本仍为 `v0.6.34`
+- 外部请求和付费预算：Provider `0/8`；真实 OSS `0`；测试网络只允许动态 loopback
+- 测试命令、环境、结果、退出码：Node `22.23.1`、npm `10.9.8`；`node scripts/run-safe-tests.mjs run --spec tests/m100-modular-ports.spec.ts` 首次在 TypeScript 收窄处失败、修复后发现精确测试清单需同步为 1052；同步 runner 与 source coverage manifest 后最小复验退出 0，m100 `13/13 PASS`，架构 `76` 个既有例外且新增例外 `0`，TypeScript/build/source coverage/网络门均通过，source/snapshot `028ad751...` 不变，4173 listener 不变
+- 架构与数据风险：operation、result、capability、状态、失败码、owner/revision/run/task 身份均已冻结；input/mask/annotation 有界，Library 表预分配独立 owner。尚未实现权威服务或 Dispatcher，因此 `IMGEDIT-010～020` 仍为 `NOT_STARTED`
+- 设计偏差：没有新建 m101 文件，两个合同测试并入现有模块化端口 m100；为维持安全 runner 的精确清单，同步 1052 与三个行为目标 SHA
+- 阻断：无
+- 回滚点：阶段起点 `43ccd32fdf674724d96dcc84f6739c101bac05f2`；本阶段无 schema、Provider、OSS 或生产写入
+- 唯一下一动作：进入 D2，先把 D2 标为 `IN_PROGRESS`
 
 ## 11. PRE_GOAL 文档落档记录
 

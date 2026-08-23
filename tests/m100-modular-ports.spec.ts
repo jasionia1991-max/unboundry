@@ -87,6 +87,13 @@ import {
   persistedNodeKinds,
   templateNodeKinds,
 } from "../types/nodeVocabulary";
+import {
+  imageToolCapability,
+  imageToolMaximums,
+  imageToolOperations,
+  parseImageToolCapabilitySnapshot,
+  type ImageToolCapability,
+} from "../types/imageTools";
 import { expect, test } from "./safe-test";
 
 type MediaEditHandlerDependencies = NonNullable<
@@ -398,6 +405,86 @@ const profile = (input: Pick<ProviderProfile, "driver" | "id">): ProviderProfile
   label: `P2 ${input.id}`,
   updatedAt: "2026-08-22T00:00:00.000Z",
   ...input,
+});
+
+function modularImageToolCapability(
+  operation: typeof imageToolOperations[number],
+  overrides: Partial<ImageToolCapability> = {},
+) {
+  return {
+    expiresAt: "2026-08-23T13:00:00.000Z",
+    maximumInputBytes: imageToolMaximums.inputBytes,
+    maximumInputPixels: imageToolMaximums.inputPixels,
+    operation,
+    outputContentTypes: ["image/png"],
+    reason: "Ready",
+    reasonCode: "AVAILABLE",
+    status: "available",
+    supportsAlpha: false,
+    supportsMask: false,
+    supportsReferenceImage: true,
+    ...overrides,
+  } satisfies ImageToolCapability;
+}
+
+function modularImageToolSnapshot() {
+  return {
+    generatedAt: "2026-08-23T12:00:00.000Z",
+    operations: imageToolOperations.map((operation) =>
+      modularImageToolCapability(operation)),
+    revision: "capabilities-1",
+  };
+}
+
+test("image tool capability snapshot is complete, unique and fail-closed", () => {
+  const parsed = parseImageToolCapabilitySnapshot(modularImageToolSnapshot());
+  expect(parsed.operations).toHaveLength(imageToolOperations.length);
+  expect(imageToolCapability(parsed, "redraw")).toMatchObject({
+    operation: "redraw",
+    status: "available",
+    supportsReferenceImage: true,
+  });
+
+  expect(() => parseImageToolCapabilitySnapshot({
+    ...modularImageToolSnapshot(),
+    operations: modularImageToolSnapshot().operations.slice(1),
+  })).toThrow(/every operation once/);
+  expect(() => parseImageToolCapabilitySnapshot({
+    ...modularImageToolSnapshot(),
+    operations: modularImageToolSnapshot().operations.map((item, index) =>
+      index === 1 ? { ...item, operation: "crop" } : item),
+  })).toThrow(/duplicated/);
+  expect(() => parseImageToolCapabilitySnapshot({
+    ...modularImageToolSnapshot(),
+    operations: modularImageToolSnapshot().operations.map((item) =>
+      item.operation === "redraw"
+        ? { ...item, reasonCode: "AVAILABLE", status: "disabled_by_operator" }
+        : item),
+  })).toThrow(/cannot use AVAILABLE/);
+});
+
+test("image tool capability contract bounds payloads, cost and output formats", () => {
+  expect(() => parseImageToolCapabilitySnapshot({
+    ...modularImageToolSnapshot(),
+    operations: modularImageToolSnapshot().operations.map((item) =>
+      item.operation === "redraw"
+        ? { ...item, maximumInputBytes: imageToolMaximums.inputBytes + 1 }
+        : item),
+  })).toThrow(/maximumInputBytes/);
+  expect(() => parseImageToolCapabilitySnapshot({
+    ...modularImageToolSnapshot(),
+    operations: modularImageToolSnapshot().operations.map((item) =>
+      item.operation === "remove-background"
+        ? { ...item, outputContentTypes: ["image/webp"] }
+        : item),
+  })).toThrow(/outputContentTypes/);
+  expect(() => parseImageToolCapabilitySnapshot({
+    ...modularImageToolSnapshot(),
+    operations: modularImageToolSnapshot().operations.map((item) =>
+      item.operation === "multi-angle"
+        ? { ...item, estimatedCost: { amount: -1, currency: "USD", source: "provider" } }
+        : item),
+  })).toThrow(/estimatedCost.amount/);
 });
 
 class InMemoryCanvasPorts implements CanvasGraphCommandPort, CanvasSavePort {
