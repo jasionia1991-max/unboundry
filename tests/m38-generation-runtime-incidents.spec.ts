@@ -2523,6 +2523,9 @@ test("current-state documentation has one recovery authority and matches package
     incident,
     matrix,
     packageSource,
+    progressiveAudit,
+    progressiveCheckpoint,
+    progressivePlan,
     readme,
     remediation,
   ] = await Promise.all([
@@ -2535,6 +2538,9 @@ test("current-state documentation has one recovery authority and matches package
     ),
     readFile("spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md", "utf8"),
     readFile("package.json", "utf8"),
+    readFile("spec/UNBOUNDRY_MODULAR_MONOLITH_AUDIT_2026-08-21.md", "utf8"),
+    readFile("spec/UNBOUNDRY_PROGRESSIVE_MODULARIZATION_CHECKPOINT.md", "utf8"),
+    readFile("spec/UNBOUNDRY_PROGRESSIVE_MODULARIZATION_PLAN_2026-08-21.md", "utf8"),
     readFile("README.md", "utf8"),
     readFile(
       "spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md",
@@ -2542,7 +2548,13 @@ test("current-state documentation has one recovery authority and matches package
     ),
   ]);
   const packageDocument = JSON.parse(packageSource) as { version: string };
+  const currentVersionMarker = `CURRENT_V${packageDocument.version.replaceAll(".", "_")}_USER_PASS`;
   expect(currentState).toContain(`当前代码包版本：**v${packageDocument.version}**`);
+  expect(agents).toContain(`生产运行\`v${packageDocument.version}/schema39\``);
+  for (const document of [progressiveAudit, progressiveCheckpoint, progressivePlan]) {
+    expect(document).toContain(currentVersionMarker);
+    expect(document).toContain("只在真实新功能触发");
+  }
   expect(readme).toContain(
     "当前版本、未发布工作区、待验收项和下一步只以",
   );

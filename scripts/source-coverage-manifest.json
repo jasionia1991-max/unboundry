@@ -163,10 +163,10 @@
     },
     "scripts/validate-release-ops.mjs": {
       "mode": "behavior-test",
-      "scriptSha256": "0686c77e8c17aadb0c57961b7c8a49c32071045d6e2d7470f7d20310204b465a",
+      "scriptSha256": "c15bae176836e23d71540bfed67ba2b57f4e50731a9f8a05bee25f4ed65184ae",
       "target": "tests/m96-release-ops.spec.ts",
       "marker": "static ops contract validates the loopback nginx and hardened current-release unit",
-      "targetSha256": "5b6f68c845819d3ed151adfc7d3b3d12bfe2e8100aeecd3ae02f8b3698b38187"
+      "targetSha256": "4a5588a12e1e77bdb03c13fcc3b1986eb513710c9521247af47af68e1a579547"
     },
     "scripts/verify-ecommerce-template-covers.mjs": {
       "mode": "frozen",

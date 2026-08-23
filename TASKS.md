@@ -5,6 +5,17 @@
 更新时间：2026-08-23
 状态：`v0.6.31 已发布，技术终门与用户实页验收均通过，状态 PRODUCTION_PUBLISHED_USER_PASS / USER_PASS。权威回执见 spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json。`
 
+### 2026-08-23 全项目治理与 nginx 加固
+
+- 状态：`PR_DELIVERY / CI_PENDING / PRODUCTION_NGINX_HARDENED / GITHUB_HYGIENE_APPLIED / NO_APP_RELEASE`。本轮不升级 package、不发布新应用版本、不修改业务代码、schema、生产数据、Provider 或 OSS。
+- 权威文档：`AGENTS.md`和三份渐进式模块化文档的当前版本统一为 v0.6.31；m38 增加 package、AGENTS 和三份当前模块化文档的一致性门。
+- 模块化边界：没有业务触发，不启动第三至第七批，不机械拆分 `App.tsx`、`CanvasSurface.tsx` 或 `generationTasks.ts`；后续批次只在真实新功能触发边界问题时立项。
+- CI 交付：新增 `.github/workflows/quality-gates.yml`，只运行 safe preflight、TypeScript、架构边界、source coverage 和 high-level npm audit；没有把 safe full 放进每次提交。用户已明确授权 commit、push 和提 PR；workflow 随专用分支和 PR 交付，实际 GitHub Actions 结果以 PR checks 为准，检查完成前不得写成线上 CI PASS。
+- GitHub 卫生：冲突草稿 PR #68 已关闭；8条已合并或已被取代的远端分支删除；`delete_branch_on_merge=true`；Vulnerability Alerts 已启用；6条不存在临时目录的 worktree 元数据已 prune，另外2个干净且有可恢复Git/PR依据的`/private/tmp`旧worktree由`git worktree remove`删除；21条已合入 main 且未被有效 worktree 占用的本地分支由 `git branch -d` 安全删除。main 分支保护仍受当前私有仓库套餐限制，未伪造已开启。
+- nginx：生产配置先备份为`/etc/nginx/sites-available/canvas-mymy-ltd.before-hardening-20260823`（SHA-256 `2c6e90d1…6020f`），新配置 SHA-256 `bdc06386…a47ed`；`nginx -t`通过后仅 reload nginx，应用服务未重启、`NRestarts=0`、current 仍指向 v0.6.31 release。公网点文件、源码目录、package/tsconfig和robots路径均为404，`Server`只剩`nginx`、不再暴露版本；root/version/live/ready均200。
+- 验证：Node `22.23.1` / npm `10.9.8`；safe preflight通过；m38 `15/15 PASS`；m96修正精确directive计数后最小复验`4/4 PASS`；架构76条基线、399文件source coverage、TypeScript/build安全入口附带门均通过；4173 listener不变。未重复safe full。
+- 回执：`spec/UNBOUNDRY_GOVERNANCE_NGINX_HARDENING_RECEIPT_2026-08-23.md`。
+
 ### 2026-08-23 模块化成果主线集成（v0.6.31 PRODUCTION PUBLISHED / USER PASS）
 
 - D0：离线档案分支只提交六份治理文档，提交 `92a57e49ec89aa1e7550e8109fe1b870069792c8`。
