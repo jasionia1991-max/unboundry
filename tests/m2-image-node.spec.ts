@@ -295,6 +295,8 @@ test("Image empty and local upload states match the observed geometry", async ({
     await expect(detail).toBeHidden();
     await expect(fullscreenButton).toBeFocused();
   }
+  await zoomSlider.fill("1");
+  await expect(world).toHaveAttribute("data-viewport-zoom", "1");
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.setViewportSize({ height: 900, width: 1440 });
   await toolbar.getByRole("button", { name: "浏览全部" }).click();
