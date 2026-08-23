@@ -1235,7 +1235,8 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   });
   const seedanceSubmitPromise = seedanceSubmit.click();
   await expect.poll(() => seedanceValidationStarted).toBe(true);
-  await expect(seedanceSubmit).toBeDisabled();
+  await expect(seedancePanel.getByRole("button", { name: "校验中…" }))
+    .toBeDisabled();
   await expect(seedancePanel.getByRole("button", {
     name: "关闭 Seedance 素材校验",
   })).toBeDisabled();
