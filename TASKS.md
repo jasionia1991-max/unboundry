@@ -1,9 +1,9 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产已为`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`。PR #81、PR/main CI、tag/main同tree、精确tag fresh build、完整主库+Library+媒体冻结备份、原子切换与生产技术门均通过。真实Provider请求仍`0/6`、可确认费用0 USD；第1项多角度预计10 USD按钮等待动作时确认。
+> **当前状态**：生产已为`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`。PR #81、PR/main CI、tag/main同tree、精确tag fresh build、完整主库+Library+媒体冻结备份、原子切换与生产技术门均通过。多角度真实技术冒烟一次成功，当前`1/6 / 10 USD`；剩余5项等待动作时分组确认。
 
 更新时间：2026-08-24
-状态：`v0.6.35 PRODUCTION_PUBLISHED_AUTO_PASS；REAL_PROVIDER_SMOKE 0/6 / ACTION_TIME_CONFIRMATION_PENDING；USER_QUALITY_RECHECK。`
+状态：`v0.6.35 PRODUCTION_PUBLISHED_AUTO_PASS；REAL_PROVIDER_SMOKE 1/6 / MULTI_ANGLE_TECHNICAL_PASS / REMAINING_ACTION_TIME_CONFIRMATION_PENDING；USER_QUALITY_RECHECK。`
 
 ### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，D13_IN_PROGRESS / V0_6_35_GATES_VALID）
 
@@ -28,9 +28,9 @@
 - D12 已完成：package/lock/runtime role 为v0.6.34，schema39不变；冻结前m38 `15/15`、m81 `41/41`、13-spec矩阵 `178/178 PASS`，合计`234/234`，四类审查无新阻断。冻结候选`aa67e46`只执行一次safe full，原始`1048/1052`；未改树精确复验四个失败spec为`102/106`，确认一个图片预检真实缺陷与三个确定性观测问题。
 - 修正提交`422408b`把图片预检公开结果延后到全部校验完成后构造，并收紧m0/m22/m37测试时序；同一四spec最终`106/106 PASS`。D12收口文档m38 `15/15 PASS`；首次误写不存在的spec路径只在选择阶段退出且产品测试0。没有第二次full，原始full不改写为全绿。当前候选为`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / D13_READY`；真实Provider/OSS请求仍0，生产仍为v0.6.33。
 - D13 已发布v0.6.34：产品PR #80、tag、main CI、冻结备份、精确构建、原子切换和生产技术门均完成，生产为v0.6.34/schema39，状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`，该版本号与发布授权已经消费。
-- 用户已确认真实Provider冒烟最多6次、总预算上限60 USD；多角度在task admission前拒绝，重绘在客户端preflight拒绝，两者均为0 task/0 attempt/0 Provider，当前总计`0/6`、可确认费用0 USD。
+- 用户已确认真实Provider冒烟最多6次、总预算上限60 USD；v0.6.34时多角度和重绘均在Provider前拒绝、0费用。v0.6.35载入后，多角度按动作时确认只提交一次：task `a7798cf3…ed2b` / attempt 1 / Provider task `113882656`成功，确认10 USD；当前`1/6`，剩余上限`5次 / 50 USD`。
 - D13生产冒烟确认三项客户端缺陷：多角度漏传`imageTool`身份；六项生成工具共同使用非法持久输入顺序0；源节点1K会被模型默认2K覆盖。本地热修提交`a411a63`，m100+m2+m27最终`43/43 PASS`、外部/Provider请求0；中间失败为测试设计问题，不改写最终产品证据。
-- 用户已确认`v0.6.35`并独立授权上线；唯一一次safe full `1052/1052 PASS`，PR #81、PR/main CI、tag/main同tree均通过。生产已切到`/opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824`；冻结备份`/var/lib/unboundry-rollbacks/v0.6.35-frozen-ad7b91`在补齐Library一致快照后双份各366文件、清单SHA`041240d5…0bde`。schema39/integrity/FK/全部业务计数、Library schema1/entries1、service/NRestarts/live/ready/inventory/5个公网资源与日志门通过。当前唯一下一动作是用户动作时确认后只提交第1/6次多角度真实请求；IMGEDIT-016～019仍保持`REAL_PROVIDER_TECHNICAL_SMOKE_PENDING / USER_QUALITY_RECHECK`。
+- 用户已确认`v0.6.35`并独立授权上线；唯一一次safe full `1052/1052 PASS`，PR #81、PR/main CI、tag/main同tree均通过。生产已切到`/opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824`；冻结备份`/var/lib/unboundry-rollbacks/v0.6.35-frozen-ad7b91`在补齐Library一致快照后双份各366文件、清单SHA`041240d5…0bde`。多角度结果Media `4671b388…cfa4`为PNG `1088×1920`、2,504,877 bytes，Canvas节点/来源边、云端保存和刷新恢复通过；`IMGEDIT-016 = REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`。当前唯一下一动作是等待剩余5项每项预计不超过10 USD、合计不超过50 USD的动作时分组确认。
 - 本次落档 `git diff --check` 通过；定向 m38 safe runner 在产品测试前被 main 既有 ignored `backups/` 隔离负控以 `EISDIR` 阻断，0 个产品测试执行，source snapshot 和 4173 listener 未变。未删除/移动备份、未绕过 safe runner、未把该尝试记为自动 PASS；完整记录见 Checkpoint。
 
 ### 2026-08-23 当前版本文档残留对齐（docs-only）

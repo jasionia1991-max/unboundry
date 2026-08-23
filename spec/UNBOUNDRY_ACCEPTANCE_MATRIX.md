@@ -3,7 +3,7 @@
 基线日期：2026-07-27  
 当前状态更新：2026-08-23
 
-2026-08-24 `CURRENT_RELEASE = v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`：唯一一次safe full `1052/1052`，PR #81、PR/main CI、tag/main同tree、精确tag fresh build、完整主库+Library+媒体冻结备份、原子切换和生产技术终门均通过。当前Provider请求`0/6`、可确认费用0 USD，第1项预计10 USD按钮等待动作时确认；IMGEDIT-016～019不得冒充真实技术或质量通过。`VIEW-005`保持`AUTO_PASS`，其他`PARTIAL/PAUSED/BLOCK`不自动升级。
+2026-08-24 `CURRENT_RELEASE = v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`：唯一一次safe full `1052/1052`，PR #81、PR/main CI、tag/main同tree、精确tag fresh build、完整主库+Library+媒体冻结备份、原子切换和生产技术终门均通过。多角度一次真实请求已完成Provider、Media、Canvas和刷新恢复技术闭环，当前`1/6 / 10 USD`；其质量仍待用户复验，IMGEDIT-017～019仍不得冒充真实技术或质量通过。`VIEW-005`保持`AUTO_PASS`，其他`PARTIAL/PAUSED/BLOCK`不自动升级。
 
 本文件下方旧版本的 `USER_RECHECK/PENDING` 均保留各自验收时点，不再承担当前线上版本播报，也不得被直接当成下一施工计划。当前版本、当前计划和授权边界只以 `spec/UNBOUNDRY_CURRENT_STATE.md` 为准。
 
@@ -365,7 +365,7 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 | IMGEDIT-013 | P1 | 调整像素 | 精确宽高、默认比例锁、本地确定性处理；保留原图并创建派生节点，零Provider请求 | 像素/格式/内存边界、node/edge/asset、刷新 | AUTO_PASS |
 | IMGEDIT-014 | P1 | 快速分割 | 2×2/3×3/4×4预览与4/9/16个派生节点一次批量落地；失败不显示假成功 | 网格像素检查、批次写入、故障补偿、零Provider | AUTO_PASS |
 | IMGEDIT-015 | P1 | 标注与导出 | 可编辑画笔/矩形/箭头/编号/文字；持久化容量有界，原图不改，显式导出才生成资产 | 容量基准、IME、刷新、撤销重做、导出实页 | AUTO_PASS |
-| IMGEDIT-016 | P0 | 多角度真实生成 | 真实结构化水平/垂直/距离/广角控制；持久任务、恢复、幂等和派生节点；不以提示词冒充 | v0.6.35已生产发布；候选定向43/43、版本门56/56、safe full 1052/1052；真实按钮预计10 USD，等待动作时确认，0/6 | TARGETED_AUTO_PASS / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING / USER_QUALITY_RECHECK |
+| IMGEDIT-016 | P0 | 多角度真实生成 | 真实结构化水平/垂直/距离/广角控制；持久任务、恢复、幂等和派生节点；不以提示词冒充 | v0.6.35已生产发布；task `a7798cf3…ed2b` / attempt 1 / Provider task `113882656`一次成功，10 USD；PNG 1088×1920、Media发布、Canvas挂接、云端保存和刷新恢复通过 | TARGETED_AUTO_PASS / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK |
 | IMGEDIT-017 | P0 | 重绘真实生成 | 真实mask局部编辑，未遮罩区域尽量保持；遮罩坐标、附件生命周期、恢复和付费安全完整 | v0.6.35已生产发布；输入顺序热修与safe full通过，真实请求尚未开始，0/6 | TARGETED_AUTO_PASS / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING / USER_QUALITY_RECHECK |
 | IMGEDIT-018 | P0 | 扩图与擦除 | outpaint只补新增区域；erase移除遮罩对象并补景；两者独立operation，不以拉伸/普通重绘冒充 | v0.6.35已生产发布；独立operation/ownership、准备图+mask、Media adoption自动门通过，真实请求尚未开始，0/6 | TARGETED_AUTO_PASS / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING / USER_QUALITY_RECHECK |
 | IMGEDIT-019 | P0 | 增强与主体抠图 | 保守/创意增强语义分开；抠图端到端输出透明PNG，任一环节丢Alpha即fail-closed | v0.6.35已生产发布；本地保守增强通过，创意增强/抠图真实请求尚未开始，0/6；质量待用户复验 | TARGETED_AUTO_PASS / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING / USER_QUALITY_RECHECK |

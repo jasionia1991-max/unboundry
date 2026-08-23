@@ -2,13 +2,13 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 01:33:15 +0800
-- 状态：`GOAL_ACTIVE / D13_IN_PROGRESS / V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_0_OF_6 / ACTION_TIME_CONFIRMATION_PENDING / USER_QUALITY_RECHECK`
+- 更新时间：2026-08-24 01:46:48 +0800
+- 状态：`GOAL_ACTIVE / D13_IN_PROGRESS / V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_1_OF_6 / MULTI_ANGLE_REAL_PROVIDER_TECHNICAL_SMOKE_PASS / REMAINING_ACTION_TIME_CONFIRMATION_PENDING / USER_QUALITY_RECHECK`
 - 当前阶段：`D13 GitHub和生产发布 / IN_PROGRESS`
-- 唯一允许的下一动作：等待用户对当前多角度“预计10 USD”提交按钮作动作时确认；确认后只提交第1/6次多角度真实请求并先核对task/attempt/Provider边界、终态、Media发布、Canvas挂接和计费，再决定是否进入第2项，禁止批量连点或未知计费重试
+- 唯一允许的下一动作：等待用户对剩余5项作动作时分组确认：重绘、扩图、擦除、创意增强、主体抠图每项页面预计不超过10 USD，剩余总额不超过50 USD；确认后仍须逐项串行执行并在每项后核对task/attempt/Provider/终态/Media/Canvas/计费，任一付费状态不明立即停止，禁止批量连点或未知计费重试
 - 当前仓库：`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`
-- 记录时分支：`main`
-- 记录时 HEAD：`cc62bfbb155372ba3b1da65c029d9c97b5330ac7`
+- 记录时分支：`codex/v0.6.35-production-receipt-2026-08-24`
+- 记录时 HEAD：`c5c5f718f6a927168877c2c2fecec35c4ca488c6`
 - 记录时 `origin/main`：`cc62bfbb155372ba3b1da65c029d9c97b5330ac7`
 - package：`0.6.35`
 - 生产：`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`
@@ -16,8 +16,8 @@
 - 热修版本：`v0.6.35 / SAFE_FULL_1052_OF_1052_PASS / PR_81_MERGED / TAGGED / MAIN_CI_PASS / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_PENDING`
 - 候选：`v0.6.34 / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / PR_MERGED / TAGGED / PRODUCTION_PUBLISHED_AUTO_PASS`
 - 本轮代码施工：`v0.6.34` 已冻结发布；生产真实操作在 Provider 前暴露多角度缺失 `imageTool` 身份、六项生成工具共同使用非法持久输入顺序0、以及源节点1K被模型默认2K覆盖三项缺陷；本地热修提交 `a411a63` 已补齐身份、统一顺序为1并继承经模型规范化的源参数
-- 本轮验证：pinned Node 22.23.1/npm 10.9.8；D12原证据保持冻结前定向 `234/234 PASS`、唯一一次 safe full 原始 `1048/1052`、精确修复集合 `106/106 PASS`且未运行第二次full。热修最终安全定向 m100+m2+m27 `43/43 PASS`、退出0、retries/skips/reportErrors均0、source/snapshot `1350e3adc56c98c9cafc0faea685f6c8f1648852b5a04536d933901d9c014a80`、4173监听者不变、外部/Provider请求0。v0.6.35版本同步后执行m38+m81，`56/56 PASS`。冻结候选`c1a4a08e23bc917d85970d3bdffd82a44899970e`随后只执行一次新的safe full：120/120 specs、`1052/1052 PASS`、退出0，blocked/failed/retries/skips/reportErrors均0，source/snapshot`c5eb339edd87245e99cdf53f13c3456325639a7ffb9426fcf5d312896b530135`，immutable release builder 1/1且5次builder invocation符合预期，4173监听者不变、外部/Provider请求0。证据回写后只运行m38文档/恢复权威定向，`15/15 PASS`、退出0、source/snapshot`505de97c83745d45a35a68f38c914f544d12cde8340f7ef14c05a5308a1e7049`、4173监听者不变；文档追加不重复full
-- 真实 Provider/付费请求：0/6，当前可确认费用0 USD；用户总预算上限60 USD
+- 本轮验证：pinned Node 22.23.1/npm 10.9.8；D12原证据保持冻结前定向 `234/234 PASS`、唯一一次 safe full 原始 `1048/1052`、精确修复集合 `106/106 PASS`且未运行第二次full。热修最终安全定向 m100+m2+m27 `43/43 PASS`、退出0、retries/skips/reportErrors均0、source/snapshot `1350e3adc56c98c9cafc0faea685f6c8f1648852b5a04536d933901d9c014a80`、4173监听者不变、外部/Provider请求0。v0.6.35版本同步后执行m38+m81，`56/56 PASS`。冻结候选`c1a4a08e23bc917d85970d3bdffd82a44899970e`随后只执行一次新的safe full：120/120 specs、`1052/1052 PASS`、退出0，blocked/failed/retries/skips/reportErrors均0，source/snapshot`c5eb339edd87245e99cdf53f13c3456325639a7ffb9426fcf5d312896b530135`，immutable release builder 1/1且5次builder invocation符合预期，4173监听者不变、外部/Provider请求0。多角度证据回写后只运行m38文档/恢复权威定向，`15/15 PASS`、退出0、blocked/failed/retries/skips/reportErrors均0、source/snapshot `b83d78b935a6beeeac55f1e242a739d5c3b573d5b6860bb2fda9b5dc31b61c31`、4173监听者不变；未重复full
+- 真实 Provider/付费请求：1/6，当前可确认费用10 USD；用户总预算上限60 USD。多角度 task `a7798cf3-9473-45b3-ae4d-397a0876ed2b` / attempt `756` / Provider task `113882656` 一次提交、无重试并成功；其余5项未提交
 - 真实 OSS 测试对象：本地派生技术冒烟新增8个 Media 资产并保留；无删除
 - GitHub/SSH/生产操作：v0.6.35产品PR #81已squash merge为`cc62bfbb155372ba3b1da65c029d9c97b5330ac7`；PR CI `32654662421`与main CI `32654691812`成功；注释tag `v0.6.35`解引用为`fc99101327efc8fc3687406598169a6ae7dc1272`，tag与main tree均为`cb13fef2e71e41c3ada09ade95619c9362636b36`。生产已从精确tag fresh build并原子切到`/opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824`
 
@@ -79,7 +79,7 @@ node -p "require('./package.json').version"
 | D4 | 标注 | AUTO_PASS |
 | D5 | 个人素材库 | AUTO_PASS |
 | D6 | 模型和处理引擎调查 | AUTO_PASS |
-| D7 | 多角度 | TARGETED_AUTO_PASS / REAL_SMOKE_PENDING_D13 |
+| D7 | 多角度 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK |
 | D8 | 遮罩基础与重绘 | TARGETED_AUTO_PASS / REAL_SMOKE_PENDING_D13 |
 | D9 | 扩图与擦除 | TARGETED_AUTO_PASS / REAL_SMOKE_PENDING_D13 |
 | D10 | 增强与主体抠图 | TARGETED_AUTO_PASS / REAL_SMOKE_PENDING_D13 |
@@ -99,7 +99,7 @@ node -p "require('./package.json').version"
 | IMGEDIT-013 | 调整像素 | AUTO_PASS |
 | IMGEDIT-014 | 快速分割 | AUTO_PASS |
 | IMGEDIT-015 | 标注与导出 | AUTO_PASS |
-| IMGEDIT-016 | 多角度真实生成 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK |
+| IMGEDIT-016 | 多角度真实生成 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK |
 | IMGEDIT-017 | 重绘真实生成 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK |
 | IMGEDIT-018 | 扩图与擦除 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK |
 | IMGEDIT-019 | 增强与主体抠图 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK |
@@ -123,7 +123,7 @@ node -p "require('./package.json').version"
 
 | 操作 | 成功上限 | 已用 | 备注 |
 |---|---:|---:|---|
-| 多角度 | 1 | 0 | 生产准入前因缺少任务身份明确拒绝，0 task/0 attempt/0 Provider；本地热修通过，等待新版本 |
+| 多角度 | 1 | 1 | v0.6.35一次真实提交成功：task `a7798cf3…ed2b`、attempt 1、Provider task `113882656`、10 USD；Media发布、Canvas挂接和刷新恢复通过，无重试 |
 | 重绘 | 1 | 0 | 生产 UI 已生成mask和占位，但持久输入顺序0使客户端预检拒绝，0 task/0 attempt/0 Provider；共同热修通过，等待新版本 |
 | 扩图 | 1 | 0 | fake先通过 |
 | 擦除 | 1 | 0 | fake先通过 |
@@ -131,7 +131,7 @@ node -p "require('./package.json').version"
 | 保守增强 | 0 | 0 | 本 Goal 已在生产用本地引擎完成，不占真实 Provider 预算 |
 | 主体抠图 | 1 | 0 | 付费引擎计入 |
 | 兼容复核 | 0 | 0 | 用户最新金额确认把总上限收紧为6次；不另留第7/8次 |
-| 合计 | 6 | 0 | 当前确认0 USD；无法判断计费时禁止重试 |
+| 合计 | 6 | 1 | 当前确认10 USD，剩余上限50 USD；无法判断计费时禁止重试 |
 
 ## 9. 阶段更新模板
 
@@ -158,26 +158,26 @@ package / schema / candidate：
 
 ## 10. 当前唯一下一动作
 
-用户已确认“最多6次、总预算上限60 USD”，并于2026-08-24提供新的精确版本`v0.6.35`与独立发布句“按v0.6.35上线吧”。GitHub、精确tag构建、完整冻结备份、原子切换和生产技术门均已通过。当前浏览器已停在第1项多角度的“生成多角度图片”按钮，页面预计10 USD；根据浏览器动作安全门，尚需用户在当前动作时明确确认。未点击按钮，Provider账本仍0/6、可确认费用0 USD。
+用户已确认“最多6次、总预算上限60 USD”，并于2026-08-24对第1项多角度“预计10 USD”按钮明确回复“确认提交”。首次点击发生在仍载入v0.6.34脚本的旧标签页，只形成未保存占位，数据库保持tasks/attempts `722/730`、active0、publication attempts361，0 Provider、0 USD；应用保留本地恢复副本后打开服务器版本，没有删除任何已保存数据。载入v0.6.35后，同一已确认动作一次真实提交成功：task `a7798cf3-9473-45b3-ae4d-397a0876ed2b`、attempt 1、Provider task `113882656`、10 USD；结果Media `4671b388-b663-495a-9c8c-e96447a3cfa4`为PNG `1088×1920`、2,504,877 bytes、SHA-256 `a67b6216213673eb78a075bb122437d5b9b5f778041f7917f3a60fc18ed53f46`，Canvas节点、来源边、云端保存和刷新恢复均通过。账本为1/6、10 USD；剩余5项尚未确认提交。
 
 ## 26. D13 GitHub 和生产发布
 
 - 时间：2026-08-24 01:33:15 +0800
 - 阶段：`D13`
-- 状态：`IN_PROGRESS / V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_0_OF_6 / ACTION_TIME_CONFIRMATION_PENDING / USER_QUALITY_RECHECK`
+- 状态：`IN_PROGRESS / V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_1_OF_6 / MULTI_ANGLE_REAL_PROVIDER_TECHNICAL_SMOKE_PASS / REMAINING_ACTION_TIME_CONFIRMATION_PENDING / USER_QUALITY_RECHECK`
 - branch / HEAD / origin-main：`main` / `cc62bfbb155372ba3b1da65c029d9c97b5330ac7` / `cc62bfbb155372ba3b1da65c029d9c97b5330ac7`
-- 工作树摘要：产品 PR #80 已 squash merge，tag `v0.6.34` 已发布且 tree 与 main 一致；生产已切换到 v0.6.34。多角度和重绘均在任务/attempt/Provider前拒绝，确认不是单一多角度问题：六项生成工具共同把持久输入顺序写成0，客户端预检按正式合同拒绝。热修产品与测试已提交为`a411a63`，文档同步尚未提交
-- 产品文件：`ImageNode.tsx`只消费服务端权威`supportsReferenceImage`且生成工具继承源节点有效参数；`generationImageToolUseCase.ts`加入统一提交参数规范化；四个生成use case补齐多角度`imageTool`身份并统一持久edge/request顺序为1
-- 测试文件：m2覆盖生产式参考上限0但服务端能力可用、1K和顺序1；m100覆盖多角度完整身份、源1K覆盖模型默认2K和全部生成use case顺序1；m27覆盖重绘/扩图/抠图持久边可通过预检且零Provider
+- 工作树摘要：产品PR #81和v0.6.35生产发布已完成；本轮没有产品或测试代码修改，只把多角度一次真实技术冒烟证据回写到8份权威文档。当前HEAD为上一文档checkpoint提交`c5c5f71`，本次证据更新尚未提交
+- 产品文件：本次无修改；已发布热修仍由`ImageNode.tsx`、`generationImageToolUseCase.ts`和四个生成use case承担身份、顺序1及源1K继承
+- 测试文件：本次无修改；复用热修m2/m100/m27既有43/43证据，只运行直接受文档变化影响的m38
 - 文档文件：本 Checkpoint、`TASKS.md`、验收矩阵、CURRENT_STATE、README和上线规矩同步当前阻断；不把本地热修冒充已发布能力
 - package / schema / candidate：`0.6.35 / schema39 / SAFE_FULL_1052_OF_1052_PASS / PR_81_MERGED / TAG_FC99101 / MAIN_CC62BFB / TREE_CB13FEF / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_PENDING / USER_QUALITY_RECHECK`
-- 外部请求和付费预算：用户于2026-08-24明确确认“最多6次、总预算上限60 USD”，最新指令覆盖主方案原8次上限。多角度仅产生隔离占位，POST在task admission前HTTP400；重绘仅产生owner-scoped mask与占位，客户端preflight即拒绝。数据库保持tasks/attempts`722/730`、active0，当前可确认费用0 USD、真实Provider预算`0/6`
-- 测试命令、环境、结果、退出码：热修安全定向 m100+m2+m27 `43/43 PASS`；版本同步后m38+m81 `56/56 PASS`。冻结候选`c1a4a08`上按Runbook只执行一次safe full，120/120 specs、`1052/1052 PASS`、退出0，blocked/failed/retries/skips/reportErrors均0，source/snapshot`c5eb339e…30135`，immutable release builder 1/1且builderInvocations 5/5，4173 listener不变、外部/Provider请求0。生产回执文档m38首轮`14/15`因治理marker写成测试合同外的`USER_QUALITY_RECHECK`，改为`USER_RECHECK`后第二轮仍`14/15`，精确暴露三份模块化恢复文档仍为v0.6.34 marker；只同步这三处后最终m38 `15/15 PASS`、退出0，source/snapshot`351db4c2…b8a5f`、4173 listener不变；没有重复full
+- 外部请求和付费预算：用户于2026-08-24明确确认“最多6次、总预算上限60 USD”，并对第1项预计10 USD多角度按钮作动作时确认。旧标签页首击明确未到Provider且未计费；载入v0.6.35后只提交一次真实请求，数据库由tasks/attempts `722/730`增为`723/731`，终态active0。task `a7798cf3…ed2b` / attempt 1 / Provider task `113882656`成功，actual cost `10,000,000` microunits USD；当前预算`1/6 / 10 USD`，剩余上限`5次 / 50 USD`
+- 测试命令、环境、结果、退出码：热修安全定向 m100+m2+m27 `43/43 PASS`；版本同步后m38+m81 `56/56 PASS`。冻结候选`c1a4a08`上按Runbook只执行一次safe full，120/120 specs、`1052/1052 PASS`、退出0，blocked/failed/retries/skips/reportErrors均0，source/snapshot`c5eb339e…30135`，immutable release builder 1/1且builderInvocations 5/5，4173 listener不变、外部/Provider请求0。多角度真实证据回写后执行`PATH=/Users/mymy/.local/bin:$PATH node scripts/run-safe-tests.mjs run --spec tests/m38-generation-runtime-incidents.spec.ts`，`15/15 PASS`、退出0、source/snapshot `b83d78b9…61c31`、4173 listener不变；没有重复full
 - 架构与数据风险：v0.6.34 tag/release继续不可变并保留为回滚点；真实生成逐项受预算和计费状态门约束。服务器旧明文备份脚本首次只覆盖主库与媒体365文件，漏掉现有Library sidecar；切换前已用Node SQLite online-backup形成一致`library.sqlite`并同时加入frozen-source和restore-copy，重算双清单后各366文件、SHA均`041240d5…0bde`，Library schema1/integrity ok/FK0/entries1。GPT Image 2生产参考素材上限保持1
-- 设计偏差：v0.6.35服务器fresh build直接使用显式Node22 PATH，npm ci/typecheck/vite build均通过。冻结备份首次命令已成功创建一次主库/媒体快照，但后续普通ubuntu用户因rollback根目录0700无法`cd`而退出；未重复运行备份脚本，改用root完成双清单，并补齐其遗漏的Library一致快照。D13真实冒烟仍未产生Provider请求；浏览器页面的旧身份不一致alert来自v0.6.34失败尝试，当前按钮可用但尚未点击
-- 阻断：生产与工程无阻断；真实付费冒烟当前仅等待浏览器动作时确认。未确认前仍可完成回执与文档，但不得点击会提交预计10 USD请求的按钮
+- 设计偏差：动作时确认后的首击发生在仍载入旧脚本的标签页，只形成未保存占位且明确0 task/0 attempt/0 Provider/0 USD；应用保留该本地恢复副本并另开服务器版本。载入v0.6.35后，同一已确认动作才一次真实提交并成功，未对未知计费结果重试。Media publication的`adopted_at`字段保持空，但Canvas数据库revision17明确包含结果asset、目标节点和来源边，页面显示已保存并刷新恢复；因此以实际Canvas引用证明挂接，不误用仅针对上传adoption的可选字段
+- 阻断：生产与工程无阻断；剩余五项均属新的付费动作，当前只等待每项预计不超过10 USD、合计不超过50 USD的动作时分组确认。未确认前不得点击下一项付费提交按钮
 - 回滚点：上一不可变release`/opt/unboundry/releases/v0.6.34-image-toolbar-20260823`与完整冻结备份`/var/lib/unboundry-rollbacks/v0.6.35-frozen-ad7b91`均保留；v0.6.35 release不覆盖旧目录
-- 唯一下一动作：获得用户对当前预计10 USD多角度按钮的动作时确认后，只提交第1/6次请求；先核对其task/attempt/Provider/终态/Media/Canvas/计费证据，再进入下一项。未确认前不得点击
+- 唯一下一动作：获得用户对剩余5项每项预计不超过10 USD、合计不超过50 USD的动作时分组确认；确认后按重绘→扩图→擦除→创意增强→主体抠图逐项串行执行，每项后先落档技术与计费证据。未确认前不得点击任何下一项付费提交按钮
 
 ## 25. D12 候选冻结和统一验证
 

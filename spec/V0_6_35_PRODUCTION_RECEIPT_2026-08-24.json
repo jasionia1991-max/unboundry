@@ -168,16 +168,35 @@
   "realProviderTechnicalSmoke": {
     "budgetRequests": 6,
     "budgetUsd": 60,
-    "requestsUsed": 0,
-    "confirmedCostUsd": 0,
-    "status": "ACTION_TIME_CONFIRMATION_PENDING",
+    "requestsUsed": 1,
+    "confirmedCostUsd": 10,
+    "status": "PARTIAL_1_OF_6_REMAINING_ACTION_TIME_CONFIRMATION_PENDING",
     "operations": {
-      "multiAngle": "PENDING",
+      "multiAngle": "REAL_PROVIDER_TECHNICAL_SMOKE_PASS_USER_QUALITY_RECHECK",
       "redraw": "PENDING",
       "outpaint": "PENDING",
       "erase": "PENDING",
       "creativeEnhancement": "PENDING",
       "backgroundRemoval": "PENDING"
+    },
+    "multiAngleEvidence": {
+      "taskId": "a7798cf3-9473-45b3-ae4d-397a0876ed2b",
+      "executionAttempt": 1,
+      "providerTaskId": "113882656",
+      "actualCostUsd": 10,
+      "resultAssetId": "4671b388-b663-495a-9c8c-e96447a3cfa4",
+      "contentType": "image/png",
+      "width": 1088,
+      "height": 1920,
+      "byteSize": 2504877,
+      "sha256": "a67b6216213673eb78a075bb122437d5b9b5f778041f7917f3a60fc18ed53f46",
+      "canvasId": "0c913068-5e3f-4443-9ded-b49c6357ec4f",
+      "nodeId": "image-multi-angle-444194f7-ce19-4ff7-b483-26cc11bfe3ed",
+      "sourceNodeId": "image-54bbac1b-1fce-4632-8220-8cad6fa8f598-restored-1",
+      "sourceAssetId": "fc83f60d-d7d2-4f19-88fa-a85dd0ce3fad",
+      "canvasAttachmentPassed": true,
+      "refreshRecoveryPassed": true,
+      "providerRetries": 0
     },
     "conservativeEnhancement": "LOCAL_PROCESSOR_AUTO_PASS_NO_PROVIDER_REQUEST",
     "evidenceBoundary": "A real Provider smoke can prove technical submission, completion, Media publication, Canvas attachment and refresh recovery only. It cannot prove subjective image quality or USER_PASS."
@@ -219,5 +238,5 @@
     "status": "USER_QUALITY_RECHECK",
     "scope": "v0.6.35 image toolbar generation hotfix and remaining image-tool quality"
   },
-  "completionBoundary": "v0.6.35 is technically published and healthy. The six budgeted real Provider technical smokes are still pending action-time confirmation, and USER_PASS requires explicit user confirmation."
+  "completionBoundary": "v0.6.35 is technically published and healthy. Multi-angle passed one real Provider technical smoke at 10 USD; the remaining five operations are pending grouped action-time confirmation. USER_PASS still requires explicit user confirmation."
 }

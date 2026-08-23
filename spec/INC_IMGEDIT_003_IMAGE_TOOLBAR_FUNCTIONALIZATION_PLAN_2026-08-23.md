@@ -5,8 +5,8 @@
 - 日期：2026-08-23
 - 仓库：`/Users/mymy/Documents/unboundry/app`
 - 立项基线：`main` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537` / package `0.6.33` / 生产 `v0.6.33` / schema39
-- 状态：`PLAN_FROZEN / D13_IN_PROGRESS / V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_0_OF_6 / ACTION_TIME_CONFIRMATION_PENDING / USER_QUALITY_RECHECK`
-- 当前阶段：D0～D12已完成；v0.6.35已完成GitHub、完整备份、原子切换与生产技术门。第1项多角度真实请求页面预计10 USD，等待动作时确认；Provider仍0/6、费用0 USD
+- 状态：`PLAN_FROZEN / D13_IN_PROGRESS / V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_1_OF_6 / MULTI_ANGLE_REAL_PROVIDER_TECHNICAL_SMOKE_PASS / REMAINING_ACTION_TIME_CONFIRMATION_PENDING / USER_QUALITY_RECHECK`
+- 当前阶段：D0～D12已完成；v0.6.35已完成GitHub、完整备份、原子切换与生产技术门。第1项多角度一次真实提交、Provider完成、Media发布、Canvas挂接和刷新恢复均通过，确认10 USD；剩余5项等待动作时分组确认
 - 版本：`v0.6.35 / VERSION_GATE_VALID / RELEASE_GATE_VALID`
 - 发布候选：`v0.6.35 / SAFE_FULL_1052_OF_1052_PASS / PR_81_MERGED / TAG_FC99101 / MAIN_CC62BFB / TREE_CB13FEF / PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`
 - 本 Goal 授权：用户已于2026-08-24明确确认`v0.6.35`并独立回复“按v0.6.35上线吧”；授权只覆盖共同生成热修及Goal内剩余D13，仍须按Runbook逐门执行
@@ -385,3 +385,4 @@ USER_QUALITY_RECHECK
 - D11 没有接不存在的 Seedance 远端资格接口：实现严格标识的五分钟本地技术预检，复用当前已发布 `seedance-2` 模型的真实参考媒体规则和 owner-scoped Media 元数据；结果绑定 asset/model/role/模型配置revision/时间，过期或身份漂移即 stale。DTO 和 UI 固定说明这不代表远端资格、可生成、质量或法律合规，并保证零视频生成。施工时同时修正 D10 已实现操作在 capability registry 中仍误报不可用的残留。
 - D12 冻结候选后只运行一次 safe full：120/120 specs执行，原始 `1048/1052`。未改树精确复验四个失败规格稳定为`102/106`；其中m31揭示图片预检在最终校验前展开返回对象导致`canSubmit`标量失真，产品修正为所有问题追加完成后再生成公开结果；m0/m22/m37只修正异步fixture、fit-view竞争和瞬态状态观测。最终同一四spec `106/106 PASS`，未运行第二次full，也不把原始full改写为1052/1052。
 - v0.6.34生产冒烟在Provider前先发现多角度task payload漏传`imageTool`，再由重绘暴露六项生成工具共同写入非法持久顺序0，同时发现源节点1K被模型默认2K覆盖。两次均0 task/0 attempt/0 Provider、费用0 USD。本地热修补齐身份、统一顺序1并继承规范化源参数，m100+m2+m27 `43/43 PASS`。因v0.6.34不可变且授权已消费，用户另行确认v0.6.35并授权上线；新冻结候选`c1a4a08`已完成版本门56/56和唯一一次safe full 1052/1052，下一步按Runbook进入PR/CI，再发布并继续最多6次/60 USD真实技术冒烟。
+- v0.6.35发布后，多角度真实技术冒烟一次提交成功：task `a7798cf3…ed2b`、attempt 1、Provider task `113882656`、10 USD；结果PNG `1088×1920`、2,504,877 bytes，经Media发布、Canvas节点/来源边挂接、云端保存和刷新恢复验证。首次在旧脚本标签页的预备点击明确没有task/attempt/Provider/费用，不计入1/6且未重提未知计费请求。该证据只升级多角度为`REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，质量仍为`USER_QUALITY_RECHECK`。

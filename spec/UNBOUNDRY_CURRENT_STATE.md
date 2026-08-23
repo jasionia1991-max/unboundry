@@ -1,6 +1,6 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为v0.6.35/schema39，状态`PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_0_OF_6 / ACTION_TIME_CONFIRMATION_PENDING / USER_QUALITY_RECHECK`。生产技术门已通过，真实图片工具生成尚未开始。
+> **状态分层**：现网为v0.6.35/schema39，状态`PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_1_OF_6 / MULTI_ANGLE_REAL_PROVIDER_TECHNICAL_SMOKE_PASS / REMAINING_ACTION_TIME_CONFIRMATION_PENDING / USER_QUALITY_RECHECK`。生产技术门和多角度真实技术链已通过，剩余五项尚未提交。
 
 更新日期：2026-08-24
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
@@ -15,17 +15,17 @@
 
 v0.6.34冻结前定向`234/234 PASS`；唯一一次safe full原始`1048/1052`，只修正一个真实图片预检缺陷与三个测试确定性问题后，精确四spec `106/106 PASS`，没有第二次full。GitHub、冻结备份与恢复副本、精确tag源码构建、schema39数据门、原子切换、公网/回环/service/inventory/资源门均已完成。
 
-发布自身Provider请求和OSS写入均为0。用户另行确认D13真实Provider技术冒烟最多6次、总预算上限60 USD；当前多角度和重绘都在Provider前拒绝，生产tasks/attempts保持`722/730`、active0，真实Provider请求`0/6`、可确认费用0 USD。
+发布流程自身Provider请求和OSS写入均为0。用户另行确认D13真实Provider技术冒烟最多6次、总预算上限60 USD；v0.6.35多角度一次真实提交成功，生产tasks/attempts为`723/731`、active0，当前`1/6 / 10 USD`。重绘、扩图、擦除、创意增强和主体抠图尚未提交。
 
 v0.6.34版本号、tag和发布授权均已执行并消费，禁止移动tag或覆盖release。用户于2026-08-24明确确认`v0.6.35`并独立回复“按v0.6.35上线吧”；新授权只覆盖共同生成热修及Goal内剩余D13，不扩大到Mureka、团队/多人协作、真实Agent协议、Storyboard完整编辑、图片打光或其他既有`PARTIAL/PAUSED/BLOCK`项。
 
 ## INC-IMGEDIT-003 图片工具栏剩余能力单 Goal（D13进行中，v0.6.35候选全量通过）
 
-- 用户已批准最终V5方案并明确启动Goal；D0～D12已完成，D13已完成v0.6.34 GitHub与生产技术发布，当前状态`PRODUCTION_V0_6_34_AUTO_PASS / REAL_PROVIDER_SMOKE_0_OF_6 / COMMON_GENERATION_HOTFIX_LOCAL_AUTO_PASS / V0_6_35_VERSION_GATE_VALID / V0_6_35_RELEASE_GATE_VALID / USER_QUALITY_RECHECK`。主方案为`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md`。
+- 用户已批准最终V5方案并明确启动Goal；D0～D12已完成，D13当前状态`V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_1_OF_6 / MULTI_ANGLE_REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`。主方案为`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md`。
 - 为防止长任务在新 Session 或上下文压缩后漂移，已建立唯一实时断点 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_CHECKPOINT.md` 和可复制 Goal 合同 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_GOAL_PROMPT_2026-08-23.md`。D0～D13 每阶段必须先回写断点、矩阵和 TASKS，再继续下一阶段。
 - 计划范围包含颜色标记、调整像素、快速分割、标注、个人素材库、多角度、遮罩/重绘、扩图、擦除、增强、主体抠图和 Seedance 素材校验；裁剪只回归，打光继续 `PAUSED`。
 - 生产D13冒烟先发现多角度漏传`imageTool`身份，随后重绘暴露六项生成工具共用非法持久输入顺序0；同时确认源节点1K会被模型默认2K覆盖。两次都在Provider前fail-closed，没有task/attempt/Provider和费用。本地热修提交`a411a63`，最终安全定向m100+m2+m27 `43/43 PASS`、外部/Provider请求0。
-- 真实付费技术冒烟最多6次、总预算上限60 USD，当前已用0、可确认费用0 USD；真实冒烟只证明技术链路，不等于质量通过。v0.6.35生产技术门已完成，完整冻结备份同时覆盖主库、Library sidecar和媒体。当前第1项多角度页面预计10 USD，等待用户动作时确认；按钮尚未点击，六项均保持pending。
+- 真实付费技术冒烟最多6次、总预算上限60 USD。多角度task `a7798cf3…ed2b` / attempt 1 / Provider task `113882656`一次成功、10 USD；PNG `1088×1920`、2,504,877 bytes，经Media发布、Canvas节点和来源边挂接、云端保存与刷新恢复验证。该证据只证明技术链路，不等于图片质量通过。当前已用1/6、10 USD，剩余5项/50 USD等待动作时分组确认。
 
 ## v0.6.33 图片裁剪准备态体验优化（已发布并获用户确认）
 
