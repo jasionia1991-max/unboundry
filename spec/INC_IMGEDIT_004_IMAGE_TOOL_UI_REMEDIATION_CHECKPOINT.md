@@ -3,9 +3,9 @@
 ## 0. 当前断点
 
 - 更新时间：2026-08-24 03:24:31 +0800
-- 状态：`GOAL_ACTIVE / R2_AUTO_PASS / UI_REMEDIATION_REQUIRED`
-- 当前阶段：`R2 单一活动工具与 Portal 宿主 / AUTO_PASS`
-- 唯一允许的下一动作：提交 R2 文档 checkpoint；随后先把 R3 标为`IN_PROGRESS`，完成多角度、调整像素、快速切分、增强、抠图和 Seedance 的统一紧凑/大型安全布局与 viewport-safe 动作区
+- 状态：`GOAL_ACTIVE / R3_IN_PROGRESS / UI_REMEDIATION_REQUIRED`
+- 当前阶段：`R3 紧凑面板和快速切分 / IN_PROGRESS`
+- 唯一允许的下一动作：完成多角度、调整像素、快速切分、增强、抠图和 Seedance 的统一紧凑/大型安全布局、header/body/footer、busy/error和viewport-safe动作区；定向验证全部面板不裁切且零真实提交
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
 - 文档分支：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`
 - 立项 HEAD / origin-main：`f369d1dba1eef05aebc7f1a443256ceb82778ea0`
@@ -95,7 +95,7 @@ node -p "require('./package.json').version"
 | R0 | 实时恢复与缺陷基线 | AUTO_PASS |
 | R1 | 状态机和共享宿主合同 | AUTO_PASS_WITH_EXPECTED_RED_UI_EVIDENCE |
 | R2 | 单一活动工具与 Portal 宿主 | AUTO_PASS |
-| R3 | 紧凑面板和快速切分 | NOT_STARTED |
+| R3 | 紧凑面板和快速切分 | IN_PROGRESS |
 | R4 | 大型编辑器与透明舞台 | NOT_STARTED |
 | R5 | 全屏与交互完整性 | NOT_STARTED |
 | R6 | 逐工具功能与回归验证 | NOT_STARTED |
