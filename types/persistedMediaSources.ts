@@ -110,16 +110,18 @@ export function persistedMediaReferences(
       });
     }
     if (node.type === "image") {
-      const rawMaskAssetId = (node.data as Record<string, unknown>)
-        .imageToolMaskAssetId;
-      const maskAssetId = typeof rawMaskAssetId === "string"
-        ? rawMaskAssetId.trim()
-        : "";
-      if (maskAssetId && validAssetId(maskAssetId)) {
-        references.set(`image\0${maskAssetId}`, {
-          assetId: maskAssetId,
-          kind: "image",
-        });
+      for (const field of [
+        "imageToolMaskAssetId",
+        "imageToolPreparedAssetId",
+      ] as const) {
+        const rawAssetId = (node.data as Record<string, unknown>)[field];
+        const durableId = typeof rawAssetId === "string" ? rawAssetId.trim() : "";
+        if (durableId && validAssetId(durableId)) {
+          references.set(`image\0${durableId}`, {
+            assetId: durableId,
+            kind: "image",
+          });
+        }
       }
     }
   }

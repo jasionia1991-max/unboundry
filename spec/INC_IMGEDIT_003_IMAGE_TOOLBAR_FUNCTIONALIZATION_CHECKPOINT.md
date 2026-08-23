@@ -2,20 +2,20 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-23 21:59:48 +0800
-- 状态：`GOAL_ACTIVE / D8_TARGETED_AUTO_PASS`
-- 当前阶段：`D8 遮罩基础与重绘 / TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK`
-- 唯一允许的下一动作：提交 D8 本地 checkpoint commit；随后进入 D9 前先把 D9 标为 `IN_PROGRESS`，只施工扩图与擦除，不提前进入 D10
+- 更新时间：2026-08-23 22:12:56 +0800
+- 状态：`GOAL_ACTIVE / D9_TARGETED_AUTO_PASS`
+- 当前阶段：`D9 扩图与擦除 / TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13`
+- 唯一允许的下一动作：提交 D9 本地 checkpoint commit；随后先把 D10 标为 IN_PROGRESS，再只施工增强与主体抠图，不得提前进入 D11
 - 当前仓库：`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`
 - 记录时分支：`codex/inc-imgedit-003-v0.6.34-2026-08-23`
-- 记录时 HEAD：`6f9ace949667ffa80e11e3366a88ab8a1a3f8f7c`
+- 记录时 HEAD：`5c7401b3a8c2a0e781fa892eaa3019158056490b`
 - 记录时 `origin/main`：`14777b5dc5cf48de8b21b6eb3ee27da45070b537`
 - package：`0.6.33`
 - 生产：`v0.6.33 / schema39 / PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`
 - 新版本：`v0.6.34 / VERSION_GATE_VALID`
 - 候选：无
-- 本轮代码施工：D8 已把重绘画笔、框选、橡皮、撤销重做、0～64px羽化和屏幕到原图像素坐标接入真实提交；遮罩导出为透明选区/不透明保留区的有界 PNG，上传后以 owner、source、尺寸、版本、feather、operation 和 task ownership 持久绑定。Canvas 先原子落来源边和派生占位并保存，再进入既有 SingleNodeGenerationLifecycle；服务端从已保存画布、owner-scoped原图/遮罩和节点输入重建并校验任务，GPT Image edit 把 mask 与参考图一起发送，重试/恢复继续保留快照和防重复付费边界
-- 本轮验证：safe runner 最终 m100 `13/13`、m2 `10/10`、m27 `20/20`、m53 `25/25`、m88 `36/36`、m5+m87 `29/29 PASS`；遮罩临时 OSS 双对象上传/签名/清理、mask-only Canvas adoption、伪造 mask 拒绝、缩放/高 DPI 坐标、刷新后 mask/task identity 和零重复 POST 均覆盖。m88 加强断言首轮只有测试 fake 的 uploadObject 形参类型错误，修正后只复验 m88 并通过；架构既有例外 76、新增 0，TypeScript/build/source coverage/离线网络门通过；未运行 full
+- 本轮代码施工：D8 已提交为 `5c7401b`；D9 已完成独立 outpaint 准备输入/边界/遮罩、独立 erase 操作、owner-scoped Media 持久引用、严格服务端身份和既有任务生命周期，尚未提交
+- 本轮验证：pinned Node 22.23.1/npm 10.9.8；m2+m27 `30/30`、m100+m88 `49/49 PASS`，另有 D9 首轮 m100 `13/13 PASS`；未运行 full
 - 真实 Provider/付费请求：0/8
 - 真实 OSS 测试对象：0
 - GitHub/SSH/生产操作：0
@@ -80,7 +80,7 @@ node -p "require('./package.json').version"
 | D6 | 模型和处理引擎调查 | AUTO_PASS |
 | D7 | 多角度 | TARGETED_AUTO_PASS / REAL_SMOKE_PENDING_D13 |
 | D8 | 遮罩基础与重绘 | TARGETED_AUTO_PASS / REAL_SMOKE_PENDING_D13 |
-| D9 | 扩图与擦除 | NOT_STARTED |
+| D9 | 扩图与擦除 | TARGETED_AUTO_PASS / REAL_SMOKE_PENDING_D13 |
 | D10 | 增强与主体抠图 | NOT_STARTED |
 | D11 | Seedance 素材校验 | NOT_STARTED |
 | D12 | 候选冻结和统一验证 | NOT_STARTED |
@@ -100,7 +100,7 @@ node -p "require('./package.json').version"
 | IMGEDIT-015 | 标注与导出 | AUTO_PASS |
 | IMGEDIT-016 | 多角度真实生成 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK |
 | IMGEDIT-017 | 重绘真实生成 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK |
-| IMGEDIT-018 | 扩图与擦除 | NOT_STARTED |
+| IMGEDIT-018 | 扩图与擦除 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK |
 | IMGEDIT-019 | 增强与主体抠图 | NOT_STARTED |
 | IMGEDIT-020 | Seedance 素材校验 | NOT_STARTED |
 
@@ -157,7 +157,26 @@ package / schema / candidate：
 
 ## 10. 当前唯一下一动作
 
-提交 D8 本地 checkpoint commit；随后进入 D9 前先把 D9 标为 `IN_PROGRESS`，只施工扩图与擦除，不提前进入 D10。
+提交 D9 本地 checkpoint commit；随后进入 D10 前先把 D10 标为 `IN_PROGRESS`，只施工增强与主体抠图，不得提前进入 D11。
+
+## 22. D9 扩图与擦除
+
+- 时间：2026-08-23 22:12:56 +0800
+- 阶段：`D9`
+- 状态：`TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK`
+- branch / HEAD / origin-main：`codex/inc-imgedit-003-v0.6.34-2026-08-23` / `5c7401b3a8c2a0e781fa892eaa3019158056490b` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537`
+- 工作树摘要：D9 未提交树已完成 outpaint/erase 两项独立操作；未进入 D10
+- 产品文件：`types/imageTools.ts`、`persistedMediaSources.ts`、`ProbeNode.tsx`、`localImageProcessing.ts`、`outpaintEraseImageToolUseCase.ts`、`ImageNode.tsx`、`styles.css`、`server/generationTasks.ts`、`server/mediaIntegrity.ts`
+- 测试文件：`m100-modular-ports.spec.ts`、`m2-image-node.spec.ts`、`m27-node-inputs.spec.ts`、`m88-media-publication.spec.ts`
+- 文档文件：本 Checkpoint、`UNBOUNDRY_ACCEPTANCE_MATRIX.md`、`TASKS.md`、主方案偏差段
+- package / schema / candidate：`0.6.33 / schema39 / 无候选`；目标版本 `v0.6.34`
+- 外部请求和付费预算：多角度 `0/1`、重绘 `0/1`、扩图 `0/1`、擦除 `0/1`，总计 `0/8`；真实 OSS `0`；GitHub/SSH/生产写入 `0`
+- 测试命令、环境、结果、退出码：统一使用 pinned Node `22.23.1`、npm `10.9.8` 和 safe runner。首轮 m100 `13/13 PASS`；m2 首轮唯一失败为更多菜单可用按钮旧计数，产品其余9项通过；补齐两项入口/禁用提交/零请求断言后 m2+m27 `30/30 PASS`；最终 m100+m88 `49/49 PASS`。最终 source/snapshot `6c634191…465c0`，4173 listener不变，均退出0；未运行 full
+- 架构与数据风险：outpaint由安全读取链生成扩展透明PNG与同尺寸mask，原图区域不缩放；边界、准备资产和遮罩持久化后由服务端按owner/PNG/尺寸/源图严格核验，Provider只接收准备输入。erase复用遮罩UI但保持独立operation、ownership、占位前缀和任务身份。两项均先保存Canvas占位并完成Media adoption，再允许既有Generation admission
+- 设计偏差：扩图UI采用四周等比5%～50%的全屏边界预览，强制只扩大不裁小/不拉伸；真实Provider质量与原图保持留到精确v0.6.34候选D13各一次预算内冒烟及后续用户复验
+- 阻断：无；自动证据不等于真实Provider、生产或用户质量验收
+- 回滚点：D8 提交 `5c7401b3a8c2a0e781fa892eaa3019158056490b`；D9 无schema、真实Provider/OSS、GitHub或生产写入
+- 唯一下一动作：提交 D9 本地 checkpoint commit；随后进入 D10 前先把 D10 标为 `IN_PROGRESS`
 
 ## 21. D8 遮罩基础与重绘
 

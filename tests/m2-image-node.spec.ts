@@ -221,9 +221,22 @@ test("Image empty and local upload states match the observed geometry", async ({
     height: 272,
   });
   await expect(moreMenu.getByRole("menuitem")).toHaveCount(8);
-  await expect(moreMenu.locator("button:not(:disabled)")).toHaveCount(3);
+  await expect(moreMenu.locator("button:not(:disabled)")).toHaveCount(5);
   await expect(moreMenu).toContainText("快速切分");
   await expect(moreMenu).toContainText("2×2　3×3　4×4");
+  await moreMenu.getByRole("menuitem", { name: "扩图" }).click();
+  const outpaint = page.getByTestId("image-outpaint-overlay");
+  await expect(outpaint).toBeVisible();
+  await expect(outpaint.getByRole("button", { name: "提交扩图" })).toBeDisabled();
+  await outpaint.getByRole("button", { name: "取消扩图" }).click();
+  await card.click({ position: { x: 20, y: 20 } });
+  await toolbar.getByRole("button", { name: "浏览全部" }).click();
+  await page.getByTestId("image-node-more-menu")
+    .getByRole("menuitem", { name: "擦除" }).click();
+  const erase = page.getByTestId("image-erase-overlay");
+  await expect(erase).toBeVisible();
+  await expect(erase.getByRole("button", { name: "提交擦除" })).toBeDisabled();
+  await erase.getByRole("button", { name: "取消擦除" }).click();
   expect(generationRequests).toEqual([]);
   await card.click({ position: { x: 20, y: 20 } });
   await expect(moreMenu).toHaveCount(0);

@@ -39,6 +39,63 @@ async function pngFile(canvas: HTMLCanvasElement, fileName: string) {
   return new File([blob], fileName, { type: "image/png" });
 }
 
+export async function prepareOutpaintImages(input: Readonly<{
+  assetId: string;
+  fileNamePrefix: string;
+  outputHeight: number;
+  outputWidth: number;
+  sourceX: number;
+  sourceY: number;
+}>) {
+  if (!validDimension(input.outputWidth) || !validDimension(input.outputHeight) ||
+      !Number.isSafeInteger(input.sourceX) || !Number.isSafeInteger(input.sourceY) ||
+      input.sourceX < 0 || input.sourceY < 0 ||
+      input.outputWidth * input.outputHeight > imageToolMaximums.inputPixels) {
+    throw new Error("扩图边界超出安全范围");
+  }
+  const decoded = await decodedImage(input.assetId);
+  try {
+    const sourceWidth = decoded.image.naturalWidth;
+    const sourceHeight = decoded.image.naturalHeight;
+    if (input.sourceX + sourceWidth > input.outputWidth ||
+        input.sourceY + sourceHeight > input.outputHeight ||
+        (input.outputWidth === sourceWidth && input.outputHeight === sourceHeight)) {
+      throw new Error("扩图必须在原图外增加至少一侧边界");
+    }
+    const prepared = document.createElement("canvas");
+    prepared.width = input.outputWidth;
+    prepared.height = input.outputHeight;
+    const preparedContext = prepared.getContext("2d");
+    if (!preparedContext) throw new Error("当前浏览器无法处理图片");
+    preparedContext.clearRect(0, 0, prepared.width, prepared.height);
+    preparedContext.drawImage(decoded.image, input.sourceX, input.sourceY);
+
+    const mask = document.createElement("canvas");
+    mask.width = input.outputWidth;
+    mask.height = input.outputHeight;
+    const maskContext = mask.getContext("2d");
+    if (!maskContext) throw new Error("当前浏览器无法处理图片");
+    maskContext.clearRect(0, 0, mask.width, mask.height);
+    maskContext.fillStyle = "rgba(255,255,255,1)";
+    maskContext.fillRect(input.sourceX, input.sourceY, sourceWidth, sourceHeight);
+    return {
+      maskFile: await pngFile(mask, `${input.fileNamePrefix}-mask.png`),
+      parameters: {
+        outputHeight: input.outputHeight,
+        outputWidth: input.outputWidth,
+        sourceHeight,
+        sourceWidth,
+        sourceX: input.sourceX,
+        sourceY: input.sourceY,
+        version: 1 as const,
+      },
+      preparedFile: await pngFile(prepared, `${input.fileNamePrefix}-input.png`),
+    };
+  } finally {
+    decoded.release();
+  }
+}
+
 export async function resizeLocalImage(input: Readonly<{
   assetId: string;
   fileName: string;

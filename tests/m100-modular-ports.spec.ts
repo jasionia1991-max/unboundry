@@ -106,6 +106,8 @@ import { createGenerationImageToolUseCase } from
   "../client/src/imageTools/generationImageToolUseCase";
 import { createMultiAngleImageToolUseCase } from
   "../client/src/imageTools/multiAngleImageToolUseCase";
+import { createOutpaintEraseImageToolUseCase } from
+  "../client/src/imageTools/outpaintEraseImageToolUseCase";
 import {
   createFakeImageToolCapabilityAdapter,
   ImageToolCapabilityAdapterRegistry,
@@ -965,6 +967,83 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
     imageToolOperationId: "angle-operation-1",
     imageToolSourceAssetId: "angle-source-asset",
   });
+  for (const operation of ["erase", "outpaint"] as const) {
+    let maskedSnapshot: CanvasGraphSnapshot = {
+      edges: [],
+      nodes: [{ data: { assetId: `${operation}-source-asset`, label: "Image",
+        mediaHeight: 720, mediaWidth: 1280 }, id: `${operation}-source`,
+        position: { x: 0, y: 0 }, style: { width: 250 }, type: "image" }],
+      revision: 9,
+    };
+    const uploads: string[] = [];
+    const masked = createOutpaintEraseImageToolUseCase({
+      async afterPlaceholderCreated() {},
+      capability: modularImageToolCapability(operation, {
+        expiresAt: "2099-08-23T13:00:00.000Z",
+        modelId: "image-model-internal-id",
+        supportsMask: true,
+      }),
+      graph: createCanvasGraphCommandPort({
+        commit(next) { maskedSnapshot = next; },
+        persistenceReady: () => true,
+        snapshot: () => maskedSnapshot,
+      }),
+      media: {
+        async discard() {},
+        async metadata(assetId) { return { mediaHeight: 720,
+          mediaMetadataStatus: "ready" as const, mediaWidth: 1280,
+          sourceAssetId: assetId }; },
+        async upload(file) {
+          uploads.push(file.name);
+          const expanded = operation === "outpaint";
+          return { assetId: `${operation}-upload-${uploads.length}`,
+            fileName: file.name, height: expanded ? 1080 : 720,
+            url: `/api/assets/${operation}-upload-${uploads.length}`,
+            width: expanded ? 1920 : 1280 };
+        },
+      },
+      operation,
+      ownershipKey: (evidence) => JSON.stringify(evidence),
+      createLifecycle(plan) {
+        const task = { attempt: 1, canvasId: "masked-canvas", costCurrency: "USD",
+          createdAt: "2026-08-23T12:00:00.000Z", generationInputKey: plan.inputKey,
+          generationOwnershipKey: plan.ownershipKey, id: `${operation}-task`,
+          kind: "image", nodeId: plan.nodeId, prompt: plan.payload.prompt,
+          state: "queued", updatedAt: "2026-08-23T12:00:01.000Z" } as const;
+        return { abort() {}, async cancel() { return { status: "cancelled", task }; },
+          async generate() { return { status: "success", task }; },
+          async reconcile() { return { status: "success", task }; },
+          async recover() { return { status: "success", task }; },
+          async retry() { return { status: "success", task }; },
+          async submit() { return { status: "submitted", task }; } } satisfies
+          SingleNodeGenerationLifecycle;
+      },
+    });
+    const outpaint = operation === "outpaint" ? { outputHeight: 1080,
+      outputWidth: 1920, sourceHeight: 720, sourceWidth: 1280,
+      sourceX: 320, sourceY: 180, version: 1 as const } : undefined;
+    await expect(masked.execute({ accountId: "account", aspectRatio: "auto",
+      canvasId: "masked-canvas", expectedRevision: 9, featherPixels: 0,
+      maskFile: new File([Uint8Array.from([1])], `${operation}-mask.png`, { type: "image/png" }),
+      modelId: "image-model-internal-id", modelName: "GPT Image 2",
+      modelParameters: { inputMode: "image" }, operationId: `${operation}-operation`,
+      outpaint, preOwnershipKey: "pre-owner",
+      preparedFile: operation === "outpaint"
+        ? new File([Uint8Array.from([1])], "outpaint-input.png", { type: "image/png" })
+        : undefined,
+      prompt: operation === "erase" ? "移除对象并补全背景" : "自然延展",
+      quality: "auto", runId: `${operation}-run`,
+      sourceAssetId: `${operation}-source-asset`, sourceNodeId: `${operation}-source`,
+      title: "Source" })).resolves.toMatchObject({ operation,
+        taskId: `${operation}-task` });
+    expect(maskedSnapshot.nodes[1]?.data).toMatchObject({
+      imageToolOperation: operation,
+      imageToolOutpaintParameters: outpaint,
+      ...(operation === "outpaint"
+        ? { imageToolPreparedAssetId: "outpaint-upload-1" }
+        : {}),
+    });
+  }
   expect(redrawCanvasPoint({
     canvasHeight: 720,
     canvasWidth: 1280,
@@ -982,11 +1061,15 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
   expect(persistedMediaReferences([{
     data: {
       imageToolMaskAssetId: "redraw-mask-asset",
+      imageToolPreparedAssetId: "outpaint-input-asset",
       imageToolOperation: "redraw",
     },
     id: "redraw-placeholder",
     type: "image",
-  }])).toEqual([{ assetId: "redraw-mask-asset", kind: "image" }]);
+  }])).toEqual([
+    { assetId: "redraw-mask-asset", kind: "image" },
+    { assetId: "outpaint-input-asset", kind: "image" },
+  ]);
 });
 
 test("Provider references and durable blobs remain separate replaceable stores", async () => {

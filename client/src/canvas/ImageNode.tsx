@@ -127,6 +127,7 @@ import {
   ImageSplitPanel,
 } from "../imageTools/LocalImageToolPanels";
 import {
+  prepareOutpaintImages,
   resizeLocalImage,
   splitLocalImage,
 } from "../imageTools/localImageProcessing";
@@ -154,6 +155,11 @@ import {
   createRedrawMaskFile,
   redrawCanvasPoint,
 } from "../imageTools/redrawMask";
+import {
+  createOutpaintEraseImageToolUseCase,
+  outpaintEraseOwnershipEvidence,
+  type OutpaintEraseOperation,
+} from "../imageTools/outpaintEraseImageToolUseCase";
 import type {
   ImageGenerationToolInput,
   ImageToolCapability,
@@ -978,6 +984,7 @@ function ImageRedrawEditor({
   onClose,
   onError,
   onSubmit,
+  operation = "redraw",
   src,
 }: {
   busy: boolean;
@@ -990,8 +997,11 @@ function ImageRedrawEditor({
     maskFile: File;
     prompt: string;
   }>) => Promise<void>;
+  operation?: "erase" | "redraw";
   src: string;
 }) {
+  const isErase = operation === "erase";
+  const noun = isErase ? "擦除" : "重绘";
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawRef = useRef<
     | {
@@ -1127,10 +1137,10 @@ function ImageRedrawEditor({
 
   return createPortal(
     <div
-      aria-label="图片重绘"
+      aria-label={`图片${noun}`}
       aria-modal="true"
       className="image-redraw-overlay nodrag nopan nowheel"
-      data-testid="image-redraw-overlay"
+      data-testid={`image-${operation}-overlay`}
       role="dialog"
     >
       <div
@@ -1154,7 +1164,7 @@ function ImageRedrawEditor({
           src={src}
         />
         <canvas
-          aria-label="重绘蒙版"
+          aria-label={`${noun}蒙版`}
           data-testid="image-redraw-canvas"
           onPointerDown={beginDraw}
           onPointerMove={moveDraw}
@@ -1167,7 +1177,7 @@ function ImageRedrawEditor({
         data-testid="image-redraw-toolbar"
         style={{ top: stageTop - 64 }}
       >
-        <button aria-label="取消重绘" onClick={onClose} type="button">×</button>
+        <button aria-label={`取消${noun}`} onClick={onClose} type="button">×</button>
         <span className="image-redraw-divider" />
         <span className="image-redraw-tools">
           {([
@@ -1238,7 +1248,7 @@ function ImageRedrawEditor({
         style={{ top: stageTop + stage.height + 8 }}
       >
         <textarea
-          aria-label="重绘提示词"
+          aria-label={`${noun}提示词`}
           data-composition-active={promptControl.composing || undefined}
           onBlur={() => promptControl.blur()}
           onChange={(event) =>
@@ -1254,7 +1264,7 @@ function ImageRedrawEditor({
           onKeyDown={(event) => {
             promptControl.keyDown(event);
           }}
-          placeholder="描述你想改变什么..."
+          placeholder={isErase ? "可补充希望如何补全背景..." : "描述你想改变什么..."}
           value={promptControl.value}
         />
         <div>
@@ -1262,7 +1272,7 @@ function ImageRedrawEditor({
           <span>{capability.status === "available"
             ? capability.estimatedCost
               ? `预计 ${capability.estimatedCost.amount} ${capability.estimatedCost.currency}`
-              : "绘制蒙版以重绘"
+              : `绘制蒙版以${noun}`
             : capability.reason}</span>
           <label className="image-redraw-feather">
             羽化
@@ -1281,10 +1291,10 @@ function ImageRedrawEditor({
           <button type="button">x1</button>
           <button type="button">PRO</button>
           <button
-            aria-label="提交重绘"
+            aria-label={`提交${noun}`}
             disabled={
               busy || capability.status !== "available" ||
-              !promptControl.committedValue.trim() || history.current.length < 1
+              (!isErase && !promptControl.committedValue.trim()) || history.current.length < 1
             }
             onClick={() => {
               const canvas = canvasRef.current;
@@ -1293,16 +1303,83 @@ function ImageRedrawEditor({
                 .then((maskFile) => onSubmit({
                   featherPixels,
                   maskFile,
-                  prompt: promptControl.committedValue,
+                  prompt: promptControl.committedValue ||
+                    "移除选中对象并自然补全背景，保持未选择区域不变",
                 }))
                 .catch((caught) => onError(
-                  caught instanceof Error ? caught.message : "重绘遮罩生成失败",
+                  caught instanceof Error ? caught.message : `${noun}遮罩生成失败`,
                 ));
             }}
             type="button"
           >{busy ? "…" : "↑"}</button>
         </div>
         {error && <div className="image-redraw-error" role="alert">{error}</div>}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function ImageOutpaintEditor({
+  busy,
+  capability,
+  error,
+  naturalHeight,
+  naturalWidth,
+  onClose,
+  onSubmit,
+  src,
+}: {
+  busy: boolean;
+  capability: ImageToolCapability;
+  error: string;
+  naturalHeight: number;
+  naturalWidth: number;
+  onClose: () => void;
+  onSubmit: (input: Readonly<{ marginPercent: number; prompt: string }>) => Promise<void>;
+  src: string;
+}) {
+  const [marginPercent, setMarginPercent] = useState(25);
+  const [prompt, setPrompt] = useState("自然延展画面边缘，保持原图主体和原区域不变");
+  const promptControl = useCompositionSafeText({ onCommit: setPrompt, value: prompt });
+  useEffect(() => {
+    const close = (event: KeyboardEvent) => event.key === "Escape" && onClose();
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [onClose]);
+  return createPortal(
+    <div aria-label="图片扩图" aria-modal="true"
+      className="image-outpaint-overlay nodrag nopan nowheel"
+      data-testid="image-outpaint-overlay" role="dialog">
+      <div className="image-outpaint-stage" data-testid="image-outpaint-stage">
+        <div style={{ padding: `${marginPercent / 2}%` }}>
+          <img alt="" draggable={false} src={src} />
+        </div>
+        <small>{naturalWidth}×{naturalHeight} · 四周扩展 {marginPercent}%</small>
+      </div>
+      <div className="image-outpaint-controls">
+        <button aria-label="取消扩图" onClick={onClose} type="button">×</button>
+        <label>扩展边界
+          <input aria-label="扩图边界" max="50" min="5"
+            onChange={(event) => setMarginPercent(Number(event.target.value))}
+            type="range" value={marginPercent} />
+          <output>{marginPercent}%</output>
+        </label>
+        <textarea aria-label="扩图提示词" value={promptControl.value}
+          onBlur={() => promptControl.blur()}
+          onChange={(event) => promptControl.change(event.target.value,
+            (event.nativeEvent as InputEvent).isComposing)}
+          onCompositionEnd={(event) => promptControl.compositionEnd(event.currentTarget.value)}
+          onCompositionStart={() => promptControl.compositionStart()}
+          onKeyDown={(event) => promptControl.keyDown(event)} />
+        <span>{capability.status === "available" ? "只生成新增边界" : capability.reason}</span>
+        <button aria-label="提交扩图" disabled={busy || capability.status !== "available" ||
+          !promptControl.committedValue.trim()}
+          onClick={() => void onSubmit({ marginPercent,
+            prompt: promptControl.committedValue })} type="button">
+          {busy ? "…" : "↑"}
+        </button>
+        {error && <div role="alert">{error}</div>}
       </div>
     </div>,
     document.body,
@@ -1653,6 +1730,12 @@ function ImageNodeImpl({
   const [redrawOpen, setRedrawOpen] = useState(false);
   const [redrawBusy, setRedrawBusy] = useState(false);
   const [redrawError, setRedrawError] = useState("");
+  const [eraseOpen, setEraseOpen] = useState(false);
+  const [eraseBusy, setEraseBusy] = useState(false);
+  const [eraseError, setEraseError] = useState("");
+  const [outpaintOpen, setOutpaintOpen] = useState(false);
+  const [outpaintBusy, setOutpaintBusy] = useState(false);
+  const [outpaintError, setOutpaintError] = useState("");
   const [retryTaskId, setRetryTaskId] = useState<string>();
   const [reconcileBusy, setReconcileBusy] = useState(false);
   const [reconcileConfirmedMissing, setReconcileConfirmedMissing] = useState(false);
@@ -1776,7 +1859,9 @@ function ImageNodeImpl({
           sourceAssetId: imageToolInput.assetId,
           sourceNodeId: imageToolInput.sourceNodeId,
         }))
-      : data.imageToolOperation === "redraw" &&
+      : (data.imageToolOperation === "redraw" ||
+          data.imageToolOperation === "erase" ||
+          data.imageToolOperation === "outpaint") &&
           data.imageToolOperationId &&
           data.imageToolMaskAssetId &&
           data.imageToolMaskVersion === 1 &&
@@ -1785,7 +1870,8 @@ function ImageNodeImpl({
           data.imageToolMaskFeatherPixels !== undefined &&
           imageToolInput?.kind === "image" &&
           imageToolInput.assetId
-        ? generationOwnershipKey(redrawOwnershipEvidence({
+        ? generationOwnershipKey(data.imageToolOperation === "redraw"
+          ? redrawOwnershipEvidence({
             accountId,
             aspectRatio: data.imageAspectRatio,
             canvasId,
@@ -1796,6 +1882,25 @@ function ImageNodeImpl({
             modelId: data.imageModelId,
             modelParameters: data.imageParameters,
             operationId: data.imageToolOperationId,
+            prompt: promptControl.committedValue,
+            quality: data.imageQuality,
+            sourceAssetId: imageToolInput.assetId,
+            sourceNodeId: imageToolInput.sourceNodeId,
+          })
+          : outpaintEraseOwnershipEvidence({
+            accountId,
+            aspectRatio: data.imageAspectRatio,
+            canvasId,
+            maskAssetId: data.imageToolMaskAssetId,
+            maskFeatherPixels: data.imageToolMaskFeatherPixels,
+            maskHeight: data.imageToolMaskHeight,
+            maskWidth: data.imageToolMaskWidth,
+            modelId: data.imageModelId,
+            modelParameters: data.imageParameters,
+            operation: data.imageToolOperation,
+            operationId: data.imageToolOperationId,
+            outpaint: data.imageToolOutpaintParameters,
+            preparedAssetId: data.imageToolPreparedAssetId,
             prompt: promptControl.committedValue,
             quality: data.imageQuality,
             sourceAssetId: imageToolInput.assetId,
@@ -2114,6 +2219,16 @@ function ImageNodeImpl({
                   width: data.imageToolMaskWidth,
                 },
               }
+            : {}),
+          ...(data.imageToolOutpaintParameters
+            ? { outpaint: data.imageToolOutpaintParameters }
+            : {}),
+          ...(data.imageToolPreparedAssetId &&
+              data.imageToolPreparedVersion === 1 &&
+              data.imageToolPreparedWidth && data.imageToolPreparedHeight
+            ? { preparedInput: { assetId: data.imageToolPreparedAssetId,
+                height: data.imageToolPreparedHeight, version: 1 as const,
+                width: data.imageToolPreparedWidth } }
             : {}),
           operation: data.imageToolOperation as ImageGenerationToolInput["operation"],
           operationId: data.imageToolOperationId,
@@ -3931,6 +4046,117 @@ function ImageNodeImpl({
     }
   };
 
+  const submitOutpaintErase = async (
+    operation: OutpaintEraseOperation,
+    input: Readonly<{
+      featherPixels: number;
+      maskFile: File;
+      outpaint?: import("../../../types/imageTools").ImageOutpaintParameters;
+      preparedFile?: File;
+      prompt: string;
+    }>,
+  ) => {
+    const busy = operation === "outpaint" ? outpaintBusy : eraseBusy;
+    if (busy) return;
+    const setBusy = operation === "outpaint" ? setOutpaintBusy : setEraseBusy;
+    const setError = operation === "outpaint" ? setOutpaintError : setEraseError;
+    const capability = operation === "outpaint" ? outpaintCapability : eraseCapability;
+    const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
+    if (!sourceAssetId || !graphCommandPort) {
+      setError(!sourceAssetId ? "图片尚未完成安全保存" : "画布尚未完成安全加载");
+      return;
+    }
+    const model = imageModels?.find((candidate) => candidate.id === capability.modelId);
+    if (!model || model.generationAvailable === false ||
+        (model.imageParameters?.maxReferenceImages ?? 0) < 1) {
+      setError(`当前${operation === "outpaint" ? "扩图" : "擦除"}模型不支持安全参考图输入`);
+      return;
+    }
+    const schema = model.parameterSchema ?? defaultParameterSchema("image");
+    const modelParameters = submissionParameterValues(schema,
+      normalizeParameterValues(schema, { inputMode: "image" }));
+    const requestedAspectRatio = supportedImageValue(
+      model.imageParameters?.aspectRatios ?? ["auto"],
+      String(modelParameters.aspectRatio ?? "auto"),
+    );
+    const requestedQuality = supportedImageValue(
+      model.imageParameters?.qualities ?? ["auto"],
+      String(modelParameters.quality ?? "auto"),
+    );
+    const operationId = crypto.randomUUID();
+    const preOwnershipKey = generationOwnershipKey({ accountId, canvasId,
+      operation, operationId, outpaint: input.outpaint,
+      prompt: input.prompt.trim(), sourceAssetId, sourceNodeId: id });
+    setBusy(true);
+    setError("");
+    try {
+      await flushCanvasSave();
+      const expectedRevision = await waitForCanvasRevision();
+      checkpoint();
+      await createOutpaintEraseImageToolUseCase({
+        async afterPlaceholderCreated() {
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+          await flushCanvasSave();
+          await waitForCanvasRevision();
+        },
+        capability,
+        graph: graphCommandPort,
+        media: derivedMediaPort,
+        operation,
+        ownershipKey: generationOwnershipKey,
+        createLifecycle(plan) {
+          return createSingleNodeGenerationLifecycle({
+            adapter: createImageGenerationAdapter({
+              aspectRatio: plan.aspectRatio, inputKey: plan.inputKey,
+              modelId: plan.modelId, modelName: plan.modelName, nodeId: plan.nodeId,
+              ownershipKey: plan.ownershipKey, parameters: plan.modelParameters,
+              payload: plan.payload, quality: plan.quality,
+              readBlock() {
+                const snapshot = graphCommandPort.snapshot();
+                const source = snapshot.nodes.find((node) => node.id === id);
+                const target = snapshot.nodes.find((node) => node.id === plan.nodeId);
+                if (!source || source.type !== "image" ||
+                    source.data.assetId !== sourceAssetId || !target ||
+                    target.type !== "image" ||
+                    target.data.imageToolOperation !== operation ||
+                    target.data.imageToolSourceAssetId !== sourceAssetId ||
+                    !target.data.imageToolMaskAssetId ||
+                    (operation === "outpaint" && !target.data.imageToolPreparedAssetId)) {
+                  return { message: `${operation === "outpaint" ? "扩图" : "擦除"}来源或任务占位已变化，已停止提交`,
+                    status: "blocked" };
+                }
+              },
+            }),
+            graph: graphCommandPort, nodeId: plan.nodeId,
+            save: {
+              async flush() {
+                await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+                await flushCanvasSave();
+              },
+              async waitForRevision() {
+                return { revision: await waitForCanvasRevision() };
+              },
+            },
+            tasks: createBrowserSingleNodeGenerationTaskPort({ accountId }),
+          });
+        },
+      }).execute({ accountId, aspectRatio: requestedAspectRatio, canvasId,
+        expectedRevision, featherPixels: input.featherPixels,
+        maskFile: input.maskFile, modelId: model.id, modelName: model.displayName,
+        modelParameters, operationId, outpaint: input.outpaint,
+        preOwnershipKey, preparedFile: input.preparedFile, prompt: input.prompt,
+        quality: requestedQuality, runId: `image-tool-${operation}-${operationId}`,
+        sourceAssetId, sourceNodeId: id, title: titleControl.committedValue || "Image" });
+      if (operation === "outpaint") setOutpaintOpen(false);
+      else setEraseOpen(false);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message :
+        `${operation === "outpaint" ? "扩图" : "擦除"}任务提交失败`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const toggleColorMark = (color: string) => {
     if (imageColorFilter === color && data.imageColorMarks?.includes(color)) {
       setImageColorFilter();
@@ -4036,7 +4262,8 @@ function ImageNodeImpl({
       <NodeToolbar
         className="media-node-toolbar image-node-toolbar nodrag nopan nowheel"
         data-testid="image-node-toolbar"
-        isVisible={Boolean(preview && singleNodeChrome && !generating && !uploading && !redrawOpen)}
+        isVisible={Boolean(preview && singleNodeChrome && !generating && !uploading &&
+          !redrawOpen && !eraseOpen && !outpaintOpen)}
         offset={28}
         position={Position.Top}
       >
@@ -4149,13 +4376,17 @@ function ImageNodeImpl({
               ] as const).map(([label, icon, toolCapability]) => (
                 <button
                   data-capability-status={toolCapability?.status}
-                  disabled={label !== "调整像素" && label !== "标注"}
+                  disabled={!(["调整像素", "标注", "扩图", "擦除"] as string[]).includes(label)}
                   key={label}
                   onClick={() => {
                     setMoreOpen(false);
                     setCropOpen(false);
                     setMultiAngleOpen(false);
                     setRedrawOpen(false);
+                    setEraseOpen(label === "擦除");
+                    setOutpaintOpen(label === "扩图");
+                    setEraseError("");
+                    setOutpaintError("");
                     setLocalToolOpen(label === "调整像素" ? "resize" : undefined);
                     setAnnotationOpen(label === "标注");
                   }}
@@ -4371,6 +4602,56 @@ function ImageNodeImpl({
           onClose={() => setRedrawOpen(false)}
           onError={setRedrawError}
           onSubmit={submitRedraw}
+          src={preview}
+        />
+      )}
+      {preview && eraseOpen && (
+        <ImageRedrawEditor
+          busy={eraseBusy}
+          capability={eraseCapability}
+          error={eraseError}
+          onClose={() => setEraseOpen(false)}
+          onError={setEraseError}
+          onSubmit={(input) => submitOutpaintErase("erase", input)}
+          operation="erase"
+          src={preview}
+        />
+      )}
+      {preview && outpaintOpen && (
+        <ImageOutpaintEditor
+          busy={outpaintBusy}
+          capability={outpaintCapability}
+          error={outpaintError}
+          naturalHeight={data.mediaHeight ?? previewImageRef.current?.naturalHeight ?? 720}
+          naturalWidth={data.mediaWidth ?? previewImageRef.current?.naturalWidth ?? 1280}
+          onClose={() => setOutpaintOpen(false)}
+          onSubmit={async ({ marginPercent, prompt }) => {
+            const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
+            if (!sourceAssetId) {
+              setOutpaintError("图片尚未完成安全保存");
+              return;
+            }
+            setOutpaintBusy(true);
+            setOutpaintError("");
+            try {
+              const sourceWidth = data.mediaWidth ?? previewImageRef.current?.naturalWidth ?? 0;
+              const sourceHeight = data.mediaHeight ?? previewImageRef.current?.naturalHeight ?? 0;
+              const horizontal = Math.max(1, Math.round(sourceWidth * marginPercent / 100 / 2));
+              const vertical = Math.max(1, Math.round(sourceHeight * marginPercent / 100 / 2));
+              const prepared = await prepareOutpaintImages({ assetId: sourceAssetId,
+                fileNamePrefix: `image-outpaint-${crypto.randomUUID()}`,
+                outputHeight: sourceHeight + vertical * 2,
+                outputWidth: sourceWidth + horizontal * 2,
+                sourceX: horizontal, sourceY: vertical });
+              setOutpaintBusy(false);
+              await submitOutpaintErase("outpaint", { featherPixels: 0,
+                maskFile: prepared.maskFile, outpaint: prepared.parameters,
+                preparedFile: prepared.preparedFile, prompt });
+            } catch (caught) {
+              setOutpaintError(caught instanceof Error ? caught.message : "扩图输入准备失败");
+              setOutpaintBusy(false);
+            }
+          }}
           src={preview}
         />
       )}

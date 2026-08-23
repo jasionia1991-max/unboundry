@@ -137,6 +137,11 @@ export type ProbeNodeType = Node<
     imageToolMaskHeight?: number;
     imageToolMaskVersion?: 1;
     imageToolMaskWidth?: number;
+    imageToolOutpaintParameters?: import("../../../types/imageTools").ImageOutpaintParameters;
+    imageToolPreparedAssetId?: string;
+    imageToolPreparedHeight?: number;
+    imageToolPreparedVersion?: 1;
+    imageToolPreparedWidth?: number;
     imageToolSourceAssetId?: string;
     inputState?: NodeInputState;
     inputStateReason?: string;

@@ -1091,9 +1091,13 @@ function storedImageGenerationTool(value: unknown): ImageGenerationToolInput | u
     typeof item.sourceNodeId !== "string" ||
     !/^[a-z0-9._-]{1,160}$/i.test(item.sourceNodeId)
   ) throw new Error("Invalid image tool snapshot");
-  const requiresMask = item.operation === "redraw" || item.operation === "erase";
+  const requiresMask = item.operation === "redraw" || item.operation === "erase" ||
+    item.operation === "outpaint";
   if (!item.mask) {
     if (requiresMask) throw new Error("Invalid image tool mask snapshot");
+    if (item.preparedInput !== undefined || item.outpaint !== undefined) {
+      throw new Error("Invalid image tool outpaint snapshot");
+    }
     return {
       operation: item.operation,
       operationId: item.operationId,
@@ -1112,6 +1116,29 @@ function storedImageGenerationTool(value: unknown): ImageGenerationToolInput | u
     !Number.isSafeInteger(mask.featherPixels) ||
     mask.featherPixels < 0 || mask.featherPixels > 64
   ) throw new Error("Invalid image tool mask snapshot");
+  const outpaint = item.outpaint;
+  const preparedInput = item.preparedInput;
+  if (item.operation === "outpaint") {
+    if (!outpaint || !preparedInput || outpaint.version !== 1 ||
+        preparedInput.version !== 1 ||
+        !/^[a-z0-9._-]{1,160}$/i.test(preparedInput.assetId) ||
+        !Number.isSafeInteger(preparedInput.width) ||
+        !Number.isSafeInteger(preparedInput.height) ||
+        preparedInput.width !== mask.width || preparedInput.height !== mask.height ||
+        outpaint.outputWidth !== mask.width || outpaint.outputHeight !== mask.height ||
+        !Number.isSafeInteger(outpaint.sourceX) || outpaint.sourceX < 0 ||
+        !Number.isSafeInteger(outpaint.sourceY) || outpaint.sourceY < 0 ||
+        !Number.isSafeInteger(outpaint.sourceWidth) || outpaint.sourceWidth < 1 ||
+        !Number.isSafeInteger(outpaint.sourceHeight) || outpaint.sourceHeight < 1 ||
+        outpaint.sourceX + outpaint.sourceWidth > outpaint.outputWidth ||
+        outpaint.sourceY + outpaint.sourceHeight > outpaint.outputHeight ||
+        (outpaint.sourceWidth === outpaint.outputWidth &&
+          outpaint.sourceHeight === outpaint.outputHeight)) {
+      throw new Error("Invalid image tool outpaint snapshot");
+    }
+  } else if (outpaint !== undefined || preparedInput !== undefined) {
+    throw new Error("Invalid image tool outpaint snapshot");
+  }
   return {
     mask: {
       assetId: mask.assetId,
@@ -1120,6 +1147,8 @@ function storedImageGenerationTool(value: unknown): ImageGenerationToolInput | u
       version: 1,
       width: mask.width,
     },
+    ...(outpaint ? { outpaint } : {}),
+    ...(preparedInput ? { preparedInput } : {}),
     operation: item.operation,
     operationId: item.operationId,
     sourceAssetId: item.sourceAssetId,
@@ -1163,10 +1192,12 @@ function strictImageGenerationTool(input: {
   );
   if (!sourceMedia) throw new Error("图片工具原图不存在或不属于当前账号");
   const requiresMask = submitted.operation === "redraw" ||
-    submitted.operation === "erase";
+    submitted.operation === "erase" || submitted.operation === "outpaint";
   if (!submitted.mask) {
     if (requiresMask) throw new Error("图片工具缺少已保存遮罩");
-    if (input.persistedTargetData.imageToolMaskAssetId !== undefined) {
+    if (input.persistedTargetData.imageToolMaskAssetId !== undefined ||
+        input.persistedTargetData.imageToolPreparedAssetId !== undefined ||
+        input.persistedTargetData.imageToolOutpaintParameters !== undefined) {
       throw new Error("图片工具遮罩身份与已保存画布不一致");
     }
     return {
@@ -1194,6 +1225,32 @@ function strictImageGenerationTool(input: {
     throw new Error("图片工具遮罩身份或尺寸与已保存画布不一致");
   }
   const maskMedia = readyMediaForOwner(input.ownerId, "image", mask.assetId);
+  const isOutpaint = submitted.operation === "outpaint";
+  const outpaint = submitted.outpaint;
+  const preparedInput = submitted.preparedInput;
+  const persistedOutpaint = input.persistedTargetData.imageToolOutpaintParameters;
+  if (isOutpaint) {
+    if (!outpaint || !preparedInput || outpaint.version !== 1 ||
+        preparedInput.version !== 1 ||
+        input.persistedTargetData.imageToolPreparedAssetId !== preparedInput.assetId ||
+        input.persistedTargetData.imageToolPreparedVersion !== 1 ||
+        input.persistedTargetData.imageToolPreparedWidth !== preparedInput.width ||
+        input.persistedTargetData.imageToolPreparedHeight !== preparedInput.height ||
+        JSON.stringify(persistedOutpaint) !== JSON.stringify(outpaint) ||
+        preparedInput.width !== mask.width || preparedInput.height !== mask.height ||
+        outpaint.outputWidth !== mask.width || outpaint.outputHeight !== mask.height ||
+        outpaint.sourceX + outpaint.sourceWidth > outpaint.outputWidth ||
+        outpaint.sourceY + outpaint.sourceHeight > outpaint.outputHeight) {
+      throw new Error("扩图边界或准备图片与已保存画布不一致");
+    }
+  } else if (outpaint !== undefined || preparedInput !== undefined ||
+      persistedOutpaint !== undefined ||
+      input.persistedTargetData.imageToolPreparedAssetId !== undefined) {
+    throw new Error("图片工具包含不允许的扩图输入");
+  }
+  const preparedMedia = preparedInput
+    ? readyMediaForOwner(input.ownerId, "image", preparedInput.assetId)
+    : undefined;
   if (
     !maskMedia ||
     maskMedia.contentType !== "image/png" ||
@@ -1201,8 +1258,13 @@ function strictImageGenerationTool(input: {
     maskMedia.byteSize > imageToolMaximums.maskBytes ||
     maskMedia.mediaWidth !== mask.width ||
     maskMedia.mediaHeight !== mask.height ||
-    (sourceMedia.mediaWidth !== null && sourceMedia.mediaWidth !== mask.width) ||
-    (sourceMedia.mediaHeight !== null && sourceMedia.mediaHeight !== mask.height)
+    (!isOutpaint && sourceMedia.mediaWidth !== null && sourceMedia.mediaWidth !== mask.width) ||
+    (!isOutpaint && sourceMedia.mediaHeight !== null && sourceMedia.mediaHeight !== mask.height) ||
+    (isOutpaint && (!preparedMedia || preparedMedia.contentType !== "image/png" ||
+      preparedMedia.byteSize < 1 || preparedMedia.byteSize > imageToolMaximums.inputBytes ||
+      preparedMedia.mediaWidth !== mask.width || preparedMedia.mediaHeight !== mask.height ||
+      (sourceMedia.mediaWidth !== null && sourceMedia.mediaWidth !== outpaint!.sourceWidth) ||
+      (sourceMedia.mediaHeight !== null && sourceMedia.mediaHeight !== outpaint!.sourceHeight)))
   ) {
     throw new Error("图片工具遮罩不存在、越界、尺寸不匹配或不属于当前账号");
   }
@@ -1214,6 +1276,8 @@ function strictImageGenerationTool(input: {
       version: 1,
       width: mask.width,
     },
+    ...(outpaint ? { outpaint } : {}),
+    ...(preparedInput ? { preparedInput } : {}),
     operation: submitted.operation,
     operationId: submitted.operationId,
     sourceAssetId: submitted.sourceAssetId,
@@ -4106,12 +4170,15 @@ async function executeRelayGptImageTask(
   const profile = await taskProviderSnapshotProfile(running, ownerId);
   assertRelayProfile(profile, "media-generate");
   const references = imageReferences(running.parameters.references);
+  const imageTool = storedImageGenerationTool(running.parameters.imageTool);
+  const providerReferences = imageTool?.preparedInput
+    ? [{ assetId: imageTool.preparedInput.assetId }]
+    : references;
   const inputReferences = await Promise.all(
-    references.map((reference) =>
+    providerReferences.map((reference) =>
       imageReferenceForProvider(ownerId, reference.assetId, 600),
     ),
   );
-  const imageTool = storedImageGenerationTool(running.parameters.imageTool);
   const maskReference = imageTool?.mask
     ? await imageReferenceForProvider(ownerId, imageTool.mask.assetId, 600)
     : undefined;
@@ -5063,6 +5130,10 @@ export function retrySnapshotCompatibilityProblem(
         const maskMedia = task.ownerId
           ? readyMediaForOwner(task.ownerId, "image", imageTool.mask.assetId)
           : undefined;
+        const preparedMedia = imageTool.preparedInput && task.ownerId
+          ? readyMediaForOwner(task.ownerId, "image", imageTool.preparedInput.assetId)
+          : undefined;
+        const isOutpaint = imageTool.operation === "outpaint";
         if (
           !sourceMedia || !maskMedia ||
           maskMedia.contentType !== "image/png" ||
@@ -5070,10 +5141,18 @@ export function retrySnapshotCompatibilityProblem(
           maskMedia.byteSize > imageToolMaximums.maskBytes ||
           maskMedia.mediaWidth !== imageTool.mask.width ||
           maskMedia.mediaHeight !== imageTool.mask.height ||
-          (sourceMedia.mediaWidth !== null &&
+          (!isOutpaint && sourceMedia.mediaWidth !== null &&
             sourceMedia.mediaWidth !== imageTool.mask.width) ||
-          (sourceMedia.mediaHeight !== null &&
-            sourceMedia.mediaHeight !== imageTool.mask.height)
+          (!isOutpaint && sourceMedia.mediaHeight !== null &&
+            sourceMedia.mediaHeight !== imageTool.mask.height) ||
+          (isOutpaint && (!imageTool.outpaint || !imageTool.preparedInput ||
+            !preparedMedia || preparedMedia.contentType !== "image/png" ||
+            preparedMedia.mediaWidth !== imageTool.mask.width ||
+            preparedMedia.mediaHeight !== imageTool.mask.height ||
+            (sourceMedia.mediaWidth !== null &&
+              sourceMedia.mediaWidth !== imageTool.outpaint.sourceWidth) ||
+            (sourceMedia.mediaHeight !== null &&
+              sourceMedia.mediaHeight !== imageTool.outpaint.sourceHeight)))
         ) {
           return "原任务保存的遮罩不存在、尺寸不匹配或不属于当前账号，请回到节点重新提交";
         }

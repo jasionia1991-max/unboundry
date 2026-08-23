@@ -1506,6 +1506,7 @@ test("canvas PUT durably adopts uploads while recovery and delete tombstones rej
     expect(readyMediaForOwner("__test__", "image", adopted.id)).toBeDefined();
 
     const redrawMask = await publish("m88-adopted-redraw-mask");
+    const outpaintPrepared = await publish("m88-adopted-outpaint-input");
     const redrawAdoptionRequest = await authorizedJsonRequest(
       "/m88-redraw-mask-adoption-canvas",
       "PUT",
@@ -1520,6 +1521,7 @@ test("canvas PUT durably adopts uploads while recovery and delete tombstones rej
           {
             data: {
               imageToolMaskAssetId: redrawMask.id,
+              imageToolPreparedAssetId: outpaintPrepared.id,
               imageToolOperation: "redraw",
               imageToolSourceAssetId: adopted.id,
             },
@@ -1544,6 +1546,13 @@ test("canvas PUT durably adopts uploads while recovery and delete tombstones rej
         SELECT state, adopted_canvas_id
         FROM media_publication_attempts WHERE attempt_id = ?
       `).get(redrawMask.attemptId)).toEqual({
+        adopted_canvas_id: "m88-redraw-mask-adoption-canvas",
+        state: "published",
+      });
+      expect(redrawAdoptionState.prepare(`
+        SELECT state, adopted_canvas_id
+        FROM media_publication_attempts WHERE attempt_id = ?
+      `).get(outpaintPrepared.attemptId)).toEqual({
         adopted_canvas_id: "m88-redraw-mask-adoption-canvas",
         state: "published",
       });

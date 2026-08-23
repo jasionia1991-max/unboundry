@@ -27,10 +27,27 @@ export type ImageMultiAngleParameters = Readonly<{
   wideAngle: boolean;
 }>;
 
+export type ImageOutpaintParameters = Readonly<{
+  outputHeight: number;
+  outputWidth: number;
+  sourceHeight: number;
+  sourceWidth: number;
+  sourceX: number;
+  sourceY: number;
+  version: 1;
+}>;
+
 export type ImageGenerationToolInput = Readonly<{
   mask?: Readonly<{
     assetId: string;
     featherPixels: number;
+    height: number;
+    version: 1;
+    width: number;
+  }>;
+  outpaint?: ImageOutpaintParameters;
+  preparedInput?: Readonly<{
+    assetId: string;
     height: number;
     version: 1;
     width: number;

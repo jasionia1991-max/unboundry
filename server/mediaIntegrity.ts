@@ -311,7 +311,10 @@ function canvasContainsMediaReference(
       }
       const data = node.data as Record<string, unknown>;
       return data.assetId === assetId ||
-        (kind === "image" && data.imageToolMaskAssetId === assetId);
+        (kind === "image" && (
+          data.imageToolMaskAssetId === assetId ||
+          data.imageToolPreparedAssetId === assetId
+        ));
     });
   } catch {
     return false;
