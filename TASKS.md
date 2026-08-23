@@ -1,14 +1,14 @@
 # Unboundry 绿地复刻当前任务
 
-> **v0.6.31 当前状态**：`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。tag `v0.6.31` 指向 `475bc675566217a017a079567caf5e9fa0772bd2` / tree `d751a82ce60f00da93939c54e473ff410da2cb51`，PR #69 merge `b0528d244b4ee8de48cafb835839986f0a7d894e` 且 main tree 一致；生产 current 为 `/opt/unboundry/releases/v0.6.31-modular-main-20260823`。唯一 safe full 真实记录为 `1048/1050`，没有重跑；只复验 m22/m38 并 `52/52 PASS`。冻结备份365文件双清单一致，schema39和切换前后数据计数一致，公网/回环/service/inventory/5资源全部通过，真实 Provider/OSS请求为0。用户已在生产实页明确回复“通过”；8个关键模块化边界文件与标签源码逐字节一致。
+> **v0.6.32 当前状态**：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。tag `v0.6.32` 指向 `4cf9d74dec941dea8f10e73bb07de990b668e150` / tree `7a5db8aa2b5ac9a42f33a0da176457e74504ca20`；PR #75 squash merge `864cd2de9ad9a22a7dad7deb7a9fb268085f47f8`，main相对tag只多三份交付记录文档。生产 current 为 `/opt/unboundry/releases/v0.6.32-image-edit-source-20260823`。正式safe full真实记录`1049/1050`，只复验唯一失败m22并`37/37 PASS`，没有重跑。冻结备份与恢复副本365文件双清单一致，schema39和切换前后数据计数一致，公网/回环/service/inventory/5资源全部通过；发布自身Provider/OSS写入0。等待用户实页裁剪复验。
 
 更新时间：2026-08-23
-状态：`v0.6.31 已发布，技术终门与用户实页验收均通过，状态 PRODUCTION_PUBLISHED_USER_PASS / USER_PASS。权威回执见 spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json。`
+状态：`v0.6.32 已发布并通过技术终门，状态 PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK。权威回执见 spec/V0_6_32_PRODUCTION_RECEIPT_2026-08-23.json。`
 
-### 2026-08-23 INC-IMGEDIT-001 OSS 图片裁剪同站编辑源（v0.6.32 PR #75，生产未发布）
+### 2026-08-23 INC-IMGEDIT-001 OSS 图片裁剪同站编辑源（v0.6.32 已发布，等待用户复验）
 
 - 用户已确认先做同站安全取图的方案 2，并要求先落地文档，避免上下文压缩后的失忆或漂移。
-- 权威方案：`spec/INC_IMGEDIT_001_EDITABLE_IMAGE_SOURCE_PLAN_2026-08-23.md`；当前状态 `VERSIONED_V0_6_32 / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / FORMAL_FULL_1049_OF_1050 / M22_ISOLATED_RECHECK_PASS / GITHUB_PR_75_OPEN / GITHUB_CI_PASS / TAG_V0_6_32 / USER_RECHECK`。
+- 权威方案：`spec/INC_IMGEDIT_001_EDITABLE_IMAGE_SOURCE_PLAN_2026-08-23.md`；当前状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。
 - 基线：main `a29ac82793c2887bd252e7de16d7913fc07f026c`、package `0.6.31`、schema39；隔离分支/worktree 为 `codex/image-edit-source-2026-08-23` / `/Users/mymy/Documents/unboundry-image-edit-source-2026-08-23`。
 - 冻结范围：新增 owner-scoped 同站编辑源接口、可取消且 20 MiB 有界的 `MediaBlobStore` 读取、客户端可替换 resolver、Blob 生命周期与来源 assetId 栅栏；不增加域名/CDN/CORS，不迁移数据，不触发真实 Provider/OSS，不发布。
 - 验收边界：fake OSS 的普通素材路径即使 307 到跨域地址，裁剪也必须经同站 Blob 成功；local/OSS、权限、完整性、超时、取消、并发、上传补偿与持久化竞态均需定向测试；候选冻结后因共享媒体端口改动只允许一次正式 safe full。
@@ -20,6 +20,11 @@
 - 用户随后明确授权 commit、tag、push、PR，并允许必要版本升级；候选版本确定为 v0.6.32。该授权不包含生产发布，线上继续为 v0.6.31。
 - v0.6.32 版本同步后定向 m38+m81 `56/56 PASS`；同一安全入口的preflight、TypeScript、架构、source coverage、生产build、离线/凭据/网络门禁全部通过，source/snapshot SHA为`55708bb8…c3ca`，4173 listener不变。没有因版本/文档同步重复正式full。
 - GitHub交付：功能与版本提交`ca6bddb`，分支`codex/image-edit-source-2026-08-23`已推送，PR #75已创建；注释标签`v0.6.32`解引用后精确指向`4cf9d74dec941dea8f10e73bb07de990b668e150`。Quality gates run `32623552933`已`SUCCESS`；PR/tag/CI都不等于生产发布。
+- 用户明确回复“按 v0.6.32 上线吧”后，PR #75 已squash merge为`864cd2d`，main Quality gates run `32623969904`为`SUCCESS`；生产使用精确注释tag源码构建并切换到`/opt/unboundry/releases/v0.6.32-image-edit-source-20260823`。
+- 发布前发现3个已有平台任务号的图片任务及后续文字任务正在运行；发布没有取消、重试或接管它们，而是等到active归零后才备份和重启。冻结备份`/var/lib/unboundry-rollbacks/v0.6.32-frozen-H9k2Lm`与恢复副本各365文件，双清单SHA均为`fbd7eb22…fcf4`。
+- 切换前后schema39/integrity ok/FK0及tasks/attempts`722/730`、active0、媒体`760/1326712238`、模板`50/48`、画布58完全一致；service active/enabled、NRestarts0，公网/回环version/live/ready、release inventory和5个公网资源逐字节一致。发布自身Provider请求和OSS写入均为0。
+- 生产回执：`spec/V0_6_32_PRODUCTION_RECEIPT_2026-08-23.json`。版本号和发布授权已消费；用户实际裁剪确认前保持`USER_RECHECK`。
+- 发布记录收口在新worktree首次运行定向安全入口时，因本地尚无`node_modules/typescript`而在测试前停止；离线执行`npm ci --ignore-scripts --offline`补齐依赖后，同一m38定向`15/15 PASS`，source/snapshot SHA为`96b0e570…f5a`，4173 listener不变，未运行safe full。
 
 ### 2026-08-23 全项目治理与 nginx 加固
 

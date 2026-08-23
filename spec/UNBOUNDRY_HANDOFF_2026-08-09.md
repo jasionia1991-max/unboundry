@@ -6,7 +6,11 @@
 
 新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-23 的权威现状、产品合同和用户验收边界。下面各节是历史增量，出现「当前」时只代表该时点。
 
-## 当前线上：模块化 main-safe 集成（v0.6.31，2026-08-23 已发布并获用户验收）
+## 当前线上：OSS 图片裁剪同站编辑源（v0.6.32，2026-08-23 已发布，等待用户复验）
+
+v0.6.32 已把图片裁剪改为 owner-scoped 同站取图：服务端从local/OSS读取并验证PNG，客户端只把同源Blob画入Canvas，避免跨域重定向导致`toBlob`失败；resolver保持可替换，未来可接独立媒体域名。tag commit `4cf9d74dec941dea8f10e73bb07de990b668e150` / tree `7a5db8aa2b5ac9a42f33a0da176457e74504ca20`；PR #75 squash merge `864cd2de9ad9a22a7dad7deb7a9fb268085f47f8`。生产 current `/opt/unboundry/releases/v0.6.32-image-edit-source-20260823`，冻结备份 `/var/lib/unboundry-rollbacks/v0.6.32-frozen-H9k2Lm`。正式full原始记录`1049/1050`，同源码只复验唯一失败m22后`37/37 PASS`；生产schema/integrity/FK、切换前后数据、service、公网/回环、inventory和5资源全部通过。发布前发现已有用户任务，等其自然结束后才重启；发布自身Provider请求/OSS写入0。状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，回执`spec/V0_6_32_PRODUCTION_RECEIPT_2026-08-23.json`。
+
+## 上一线上：模块化 main-safe 集成（v0.6.31，2026-08-23 已发布并获用户验收）
 
 v0.6.31 已把用户本地验收通过的模块化成果正式送入普通 main-safe 生产路径，产品语义与 schema39 不变。tag commit `475bc675566217a017a079567caf5e9fa0772bd2` / tree `d751a82ce60f00da93939c54e473ff410da2cb51`，PR #69 merge `b0528d244b4ee8de48cafb835839986f0a7d894e` 且 main tree 相同；生产 current `/opt/unboundry/releases/v0.6.31-modular-main-20260823`，冻结备份 `/var/lib/unboundry-rollbacks/v0.6.31-frozen-5JetjX`。唯一 safe full 真实记录 `1048/1050`，只复验失败 m22/m38 后 `52/52 PASS`，未重跑 full。生产 schema/integrity/FK、切换前后数据、service、公网/回环和5资源全部通过，真实 Provider/OSS请求为0。用户随后在生产实页明确回复“通过”，8个关键模块化边界文件与标签源码逐字节一致；状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。回执 `spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json`。
 

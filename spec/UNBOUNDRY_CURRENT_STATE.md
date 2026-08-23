@@ -1,28 +1,31 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网仍是 v0.6.31/schema39，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`；图片裁剪同站编辑源是 v0.6.32 未发布候选，当前仅进入 GitHub 交付，不代表已经上线。
+> **状态分层**：现网已切到 v0.6.32/schema39，技术发布终门通过；图片裁剪仍待用户实际页面复验，当前状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。
 
 更新日期：2026-08-23
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.32**（未发布候选；生产仍为 v0.6.31）
+当前代码包版本：**v0.6.32**（生产已发布，等待用户复验）
 本地候选代码版本：**v0.6.32**
+当前治理标记：`CURRENT_V0_6_32_USER_RECHECK`
 
 ## 一句话
 
-**生产是 v0.6.31 / schema39，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。** 模块化成果已进入普通 main-safe 运行路径；用户在生产实页明确回复“通过”。tag `v0.6.31` 指向 commit `475bc675566217a017a079567caf5e9fa0772bd2` / tree `d751a82ce60f00da93939c54e473ff410da2cb51`，PR #69 merge `b0528d244b4ee8de48cafb835839986f0a7d894e` 且 main tree 一致；生产 current 为 `/opt/unboundry/releases/v0.6.31-modular-main-20260823`。生产中的8个关键模块化边界文件与标签源码逐字节一致。
+**生产是 v0.6.32 / schema39，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。** tag `v0.6.32` 指向 commit `4cf9d74dec941dea8f10e73bb07de990b668e150` / tree `7a5db8aa2b5ac9a42f33a0da176457e74504ca20`；PR #75 squash merge `864cd2de9ad9a22a7dad7deb7a9fb268085f47f8`，main 相对 tag 只多三份 GitHub/CI 记录文档。生产 current 为 `/opt/unboundry/releases/v0.6.32-image-edit-source-20260823`。
 
-唯一 safe full 为 `1048/1050`；没有重跑 full，只复验失败的 m22/m38 并 `52/52 PASS`。冻结备份 `/var/lib/unboundry-rollbacks/v0.6.31-frozen-5JetjX` 共365文件，双清单SHA均为 `53eb5fea…deb4`；schema39、integrity ok、FK0，tasks/attempts `677/685`、active0、媒体 `738/1260901702`、模板 `50/48`、画布57在切换前后完全一致。公网/回环 version/live/ready、service、inventory 和公网5资源全部通过，真实 Provider 请求、付费生成和 OSS 写入均为0。完整回执：`spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json`。
+本版本正式 safe full 原始记录为 `1049/1050`，唯一失败是未改动 m22 的既有缩放时序波动；同一源码隔离复验 m22 `37/37 PASS`，没有重跑 full。冻结备份 `/var/lib/unboundry-rollbacks/v0.6.32-frozen-H9k2Lm` 共365文件，冻结源与恢复副本清单SHA均为 `fbd7eb22…fcf4`；schema39、integrity ok、FK0，切换前后 tasks/attempts `722/730`、active0、媒体 `760/1326712238`、模板 `50/48`、画布58完全一致。公网/回环 version/live/ready、service、inventory 和公网5资源全部通过。
 
-本次版本号与发布授权已消费，禁止追加真实生成、再次发布或进入下一版本。Mureka 真实音频、团队/多人协作、真实 Agent 协议、Storyboard 完整编辑、图片打光和其他付费内容抽验仍保持原 `PARTIAL/PAUSED/BLOCK`，不随本次发布扩大范围。
+发布前发现线上已有用户图片生成任务，发布流程等待其自然完成后才备份和重启；这些任务不由发布发起。发布自身 Provider 请求和 OSS 写入均为0。完整回执：`spec/V0_6_32_PRODUCTION_RECEIPT_2026-08-23.json`。
 
-## v0.6.32 图片裁剪同站编辑源（未发布候选）
+本次 v0.6.32 版本号与发布授权已消费，禁止追加真实生成、再次发布或进入下一版本。Mureka 真实音频、团队/多人协作、真实 Agent 协议、Storyboard 完整编辑、图片打光和其他付费内容抽验仍保持原 `PARTIAL/PAUSED/BLOCK`，不随本次发布扩大范围。
 
-- 用户已授权本候选执行 commit、tag、push、PR，并允许必要版本升级；版本确定为 v0.6.32。该授权不包含 SSH、生产备份、生产切换或真实 OSS/Provider 操作。
+## v0.6.32 图片裁剪同站编辑源（已发布，等待用户复验）
+
+- 用户随后明确回复“按 v0.6.32 上线吧”，版本号与生产发布授权均已执行并消费。
 - 裁剪编辑器不再直接把可能跨域重定向的素材 URL 画入 Canvas，而是通过 owner-scoped 同站接口读取 local/OSS 原图，校验长度、哈希和 PNG 结构后，以 Blob URL 供预览和导出。
 - 客户端使用可替换 resolver；未来可接 `media.mymy.ltd + CDN/CORS`，当前同站接口继续作为私有素材安全兜底。来源 assetId 在打开裁剪时冻结，来源变化或持久化身份漂移时拒绝落图并补偿清理派生资产。
 - 自动证据：直接相关定向 `89/89 PASS`；唯一一次正式 safe full 为 `1049/1050`，唯一失败是未修改 m22 的既有缩放时序断言，同一源码隔离复验 m22 `37/37 PASS`。原始 full 不改写成全绿。
-- GitHub 候选：功能提交 `ca6bddb`，分支 `codex/image-edit-source-2026-08-23`，PR #75；注释标签 `v0.6.32` 解引用后指向 `4cf9d74dec941dea8f10e73bb07de990b668e150`。Quality gates run `32623552933` 已 `SUCCESS`。PR/tag/CI 都不表示生产已切换。
-- 权威方案与施工记录：`spec/INC_IMGEDIT_001_EDITABLE_IMAGE_SOURCE_PLAN_2026-08-23.md`。当前没有生产发布或用户线上验收，保持 `USER_RECHECK`。
+- GitHub：功能提交 `ca6bddb`，PR #75 merge `864cd2d`，main Quality gates run `32623969904` 为 `SUCCESS`；注释标签 `v0.6.32` 解引用后指向生产源码 `4cf9d74dec941dea8f10e73bb07de990b668e150`。
+- 生产技术门全部通过，权威回执为 `spec/V0_6_32_PRODUCTION_RECEIPT_2026-08-23.json`。当前只缺用户实际裁剪复验，保持 `USER_RECHECK`。
 
 ## 2026-08-23 治理与 nginx 加固
 
@@ -133,7 +136,7 @@
 
 ## v0.6.25 发布与真实验证（2026-08-20，历史时点）
 
-- 本节以下为 v0.6.25 历史记录，不承担当前版本播报；当前生产以本文顶部 v0.6.31 状态为准。v0.6.26 的 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK` 是该版本独立验收时点，继续作为历史证据保留。v0.6.25 的完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
+- 本节以下为 v0.6.25 历史记录，不承担当前版本播报；当前生产以本文顶部 v0.6.32 状态为准。v0.6.26 的 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK` 是该版本独立验收时点，继续作为历史证据保留。v0.6.25 的完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
 - 事二「生成任务一直排队中」已在线闭环：已知任务 `c479826f-a426-4a11-854c-79ecc802bcbc` 从 `queued / attempt 1 / provider_task_id null` 在 v0.6.25 重启后自动接力，平台任务 `111092189` 完成，最终 `success / attempt 2`；没有盲目重复。
 - 事一已查清：2026-08-19 15:23–15:26Z 上游“服装主体标准化”图片成功并产出 11,596,744 字节 PNG；v0.6.23 的 10MB 文字输入预检随后拦下四个下游文字节点，五个后代未运行。不是客户端 DAG 漏发；红字把失败错归因给已经成功的上游图片节点。
 - “2:33 三张主图从未提交”的旧说法已被生产任务表与 nginx 202 提交记录否定：该轮 7 图 + 4 文全部 success。
@@ -143,16 +146,16 @@
 ## 当前线上
 
 - 地址：https://canvas.mymy.ltd
-- 指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.30-provider-result-compatibility-20260821`
-- 源码：tag commit `bfed2f79581935882bb58279c8faf992679f12c1`，tree `9a95f30993fc9f21489d1a8acb2e7347d90845c8`
-- 标签：`v0.6.30` 精确指向上述源码
-- 功能 PR：#64，merge `0d71d37c77423f3870e97f1e44b9745fef999cfb`；生产验收记录随后由 PR #65 合并
-- 冻结备份：`/var/lib/unboundry-rollbacks/v0.6.30-frozen-1uQmic`
-- 上一不可变版：`/opt/unboundry/releases/v0.6.29-yunteng-provider-isolation-20260821`（以及更早版本）仍保留
-- 当前数据门：schema39、integrity ok、FK0、tasks633、attempts641、公共模板50（48 published）、active0、逻辑媒体719条/1196648534字节、画布57。
+- 指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.32-image-edit-source-20260823`
+- 源码：tag commit `4cf9d74dec941dea8f10e73bb07de990b668e150`，tree `7a5db8aa2b5ac9a42f33a0da176457e74504ca20`
+- 标签：`v0.6.32` 精确指向上述源码
+- 功能 PR：#75，squash merge `864cd2de9ad9a22a7dad7deb7a9fb268085f47f8`
+- 冻结备份：`/var/lib/unboundry-rollbacks/v0.6.32-frozen-H9k2Lm`
+- 上一不可变版：`/opt/unboundry/releases/v0.6.31-modular-main-20260823`（以及更早版本）仍保留
+- 当前数据门：schema39、integrity ok、FK0、tasks722、attempts730、公共模板50（48 published）、active0、逻辑媒体760条/1326712238字节、画布58。
 - 生产并发配置已恢复推荐值：per_user 20 / image 10 / video 2 / audio 2 / text 10 / RPM 120
-- 正式安全全量：v0.6.30 候选唯一一次执行 `1035/1037`，两个失败项经最小受影响集合复验转绿；未第二次运行 full
-- 生产技术门、云腾结果恢复与用户主观验收均已完成；状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`
+- 正式安全全量：v0.6.32 候选唯一一次执行 `1049/1050`，唯一失败项经同源码m22最小复验`37/37 PASS`；未第二次运行full
+- 生产技术门已完成；图片裁剪仍待用户主观复验，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
 
 ## 历史发布记录（v0.6.25 及更早时点）
 
@@ -268,8 +271,8 @@
 ## 新会话默认动作
 
 1. 先读本文 + `上线规矩.md` + `TASKS.md` 顶部。
-2. 只读核对仓库分支、HEAD、工作树、`package.json` 版本是否为 `0.6.31`；历史计划中的旧版本号不得当成当前施工身份。
-3. 当前生产为 v0.6.31/schema39，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`；技术发布和用户实页验收均完成，发布授权已消费。
+2. 只读核对仓库分支、HEAD、工作树、`package.json` 版本是否为 `0.6.32`；历史计划中的旧版本号不得当成当前施工身份。
+3. 当前生产为 v0.6.32/schema39，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；技术发布已完成，等待用户实际裁剪复验，发布授权已消费。
 4. 云腾三模型只归属云腾 Provider；不得借用优创密钥、不得新增“天空”计费 Provider、不得自动追加真实 Provider POST。
 5. `VIEW-005`已由本地隔离安全定向证据关闭为`AUTO_PASS`；其余`PAUSED/BLOCK/PARTIAL`项只有在用户重新立项后才能施工，本次证据不得被解释为新版本或生产授权。
 6. 若用户说生成或工作流再次异常，先查当前线上任务、Provider profile、attempt 和结果所有权，再给方案；不得擅自改生产库或重提付费请求。
