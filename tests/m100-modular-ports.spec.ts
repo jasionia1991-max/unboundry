@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
+import { EventEmitter } from "node:events";
 import { mkdir, readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import {
   createCanvasGraphCommandPort,
@@ -47,6 +49,16 @@ import {
   createMemoryMediaBlobStore,
   type AliyunMediaBlobDriver,
 } from "../server/mediaBlobStores";
+import type {
+  MediaBlobStore,
+  ReadMediaBlobInput,
+} from "../server/mediaBlobStore";
+import {
+  MediaEditSourceAdmission,
+  mediaEditSource,
+} from "../server/mediaEditSource";
+import type { MediaRecord } from "../server/mediaRegistry";
+import { validatePng } from "../server/assetStorage";
 import type { ProviderProfile } from "../server/providerProfiles";
 import {
   createMediaPublicationService,
@@ -76,6 +88,309 @@ import {
   templateNodeKinds,
 } from "../types/nodeVocabulary";
 import { expect, test } from "./safe-test";
+
+type MediaEditHandlerDependencies = NonNullable<
+  Parameters<typeof mediaEditSource>[2]
+>;
+
+function mediaEditDeferred<T>() {
+  let resolvePromise!: (value: T) => void;
+  const promise = new Promise<T>((accept) => {
+    resolvePromise = accept;
+  });
+  return { promise, resolve: resolvePromise };
+}
+
+async function imageEditFixture(backend: "local" | "oss" = "oss") {
+  const bytes = await readFile(resolve(
+    "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+  ));
+  const dimensions = validatePng(bytes);
+  const media: MediaRecord = {
+    byteSize: bytes.byteLength,
+    checksumSha256: createHash("sha256").update(bytes).digest("hex"),
+    contentType: "image/png",
+    durationSeconds: null,
+    durationSource: null,
+    durationStatus: "not-applicable",
+    mediaHeight: dimensions.height,
+    mediaWidth: dimensions.width,
+    objectKey: "objects/image/source.png",
+    storageBackend: backend,
+    storageName: "source.png",
+    storageProfileId: backend === "oss" ? "profile-1" : null,
+    storageStatus: "ready",
+  };
+  return { bytes, media };
+}
+
+function imageEditBlobStore(
+  read: (input: ReadMediaBlobInput) => Promise<Uint8Array>,
+): MediaBlobStore {
+  return {
+    async delete() {},
+    async head() { return undefined; },
+    async put() { throw new Error("not used"); },
+    async read(_reference, input) { return read(input); },
+    async signRead() { throw new Error("not used"); },
+  };
+}
+
+async function invokeMediaEditSource(
+  dependencies: MediaEditHandlerDependencies,
+  path: string,
+  method = "GET",
+  afterStart?: (request: IncomingMessage) => void,
+) {
+  const request = Object.assign(new EventEmitter(), {
+    headers: {},
+    method,
+    socket: { remoteAddress: "127.0.0.1" },
+    url: path,
+  }) as unknown as IncomingMessage;
+  const headers = new Map<string, string>();
+  let body = Buffer.alloc(0);
+  const response = Object.assign(new EventEmitter(), {
+    destroyed: false,
+    headersSent: false,
+    statusCode: 200,
+    writableEnded: false,
+    setHeader(name: string, value: number | string | readonly string[]) {
+      headers.set(name.toLowerCase(), String(value));
+      return response;
+    },
+    end(value?: string | Uint8Array) {
+      if (value !== undefined) body = Buffer.from(value);
+      response.emit("finish");
+      return response;
+    },
+  }) as unknown as ServerResponse;
+  const pending = mediaEditSource(request, response, dependencies);
+  afterStart?.(request);
+  await pending;
+  return {
+    body,
+    header: (name: string) => headers.get(name.toLowerCase()) ?? null,
+    json: () => JSON.parse(body.toString("utf8")) as Record<string, unknown>,
+    status: response.statusCode,
+  };
+}
+
+function mediaEditIdentity() {
+  return {
+    bypass: false,
+    displayName: "Owner",
+    role: "admin" as const,
+    userId: "owner-1",
+  };
+}
+
+async function verifyMediaEditSourceContracts() {
+  const { bytes, media } = await imageEditFixture();
+  let reads = 0;
+  const success = await invokeMediaEditSource({
+    blobStore: imageEditBlobStore(async (input) => {
+      reads += 1;
+      expect(input.maximumBytes).toBe(20 * 1024 * 1024);
+      expect(input.signal?.aborted).toBe(false);
+      return bytes;
+    }),
+    identity: mediaEditIdentity,
+    lookup: () => media,
+  }, "/asset-1");
+  expect(success.status).toBe(200);
+  expect(success.header("content-type")).toBe("image/png");
+  expect(success.header("content-length")).toBe(String(bytes.byteLength));
+  expect(success.header("cache-control")).toBe("private, no-store");
+  expect(success.header("location")).toBeNull();
+  expect(success.body).toEqual(bytes);
+  expect(reads).toBe(1);
+
+  const invalidDependencies = {
+    blobStore: imageEditBlobStore(async () => bytes),
+    identity: mediaEditIdentity,
+    lookup: (_request, _kind, id) => id === "missing" ? undefined : {
+      ...media,
+      checksumSha256: "0".repeat(64),
+    },
+  } satisfies MediaEditHandlerDependencies;
+  const missing = await invokeMediaEditSource(invalidDependencies, "/missing");
+  expect(missing.status).toBe(404);
+  expect(missing.json()).toMatchObject({ code: "IMAGE_EDIT_SOURCE_NOT_FOUND" });
+  const invalid = await invokeMediaEditSource(invalidDependencies, "/asset-1");
+  expect(invalid.status).toBe(409);
+  expect(invalid.json()).toMatchObject({ code: "IMAGE_EDIT_SOURCE_INVALID" });
+  const method = await invokeMediaEditSource(
+    invalidDependencies,
+    "/asset-1",
+    "POST",
+  );
+  expect(method.status).toBe(405);
+  expect(method.header("allow")).toBe("GET");
+
+  const unauthenticated = await invokeMediaEditSource({
+    blobStore: imageEditBlobStore(async () => bytes),
+    identity: () => undefined,
+    lookup: () => media,
+  }, "/asset-1");
+  expect(unauthenticated.status).toBe(401);
+  const unavailable = await invokeMediaEditSource({
+    blobStore: imageEditBlobStore(async () => bytes),
+    identity: mediaEditIdentity,
+    lookup: (_request, _kind, id) => {
+      if (id === "other-owner") return undefined;
+      if (id === "pending") return { ...media, storageStatus: "pending" };
+      return media;
+    },
+  }, "/pending");
+  expect(unavailable.status).toBe(404);
+  const otherOwner = await invokeMediaEditSource({
+    blobStore: imageEditBlobStore(async () => bytes),
+    identity: mediaEditIdentity,
+    lookup: () => undefined,
+  }, "/other-owner");
+  expect(otherOwner.status).toBe(404);
+  for (const record of [
+    { ...media, byteSize: 20 * 1024 * 1024 + 1 },
+    { ...media, contentType: "image/jpeg" },
+  ]) {
+    const invalidMetadata = await invokeMediaEditSource({
+      blobStore: imageEditBlobStore(async () => bytes),
+      identity: mediaEditIdentity,
+      lookup: () => record,
+    }, "/asset-1");
+    expect(invalidMetadata.status).toBe(409);
+  }
+  const wrongLength = await invokeMediaEditSource({
+    blobStore: imageEditBlobStore(async () => bytes),
+    identity: mediaEditIdentity,
+    lookup: () => ({ ...media, byteSize: media.byteSize + 1 }),
+  }, "/asset-1");
+  expect(wrongLength.status).toBe(409);
+  const invalidPngBytes = Buffer.from("not-a-png", "utf8");
+  const invalidPng = await invokeMediaEditSource({
+    blobStore: imageEditBlobStore(async () => invalidPngBytes),
+    identity: mediaEditIdentity,
+    lookup: () => ({
+      ...media,
+      byteSize: invalidPngBytes.byteLength,
+      checksumSha256: createHash("sha256").update(invalidPngBytes).digest("hex"),
+      mediaHeight: null,
+      mediaWidth: null,
+    }),
+  }, "/asset-1");
+  expect(invalidPng.status).toBe(409);
+  const storageFailure = await invokeMediaEditSource({
+    blobStore: imageEditBlobStore(async () => {
+      throw new Error("offline fake storage unavailable");
+    }),
+    identity: mediaEditIdentity,
+    lookup: () => media,
+  }, "/asset-1");
+  expect(storageFailure.status).toBe(503);
+
+  const entered = mediaEditDeferred<void>();
+  const releaseRead = mediaEditDeferred<void>();
+  const busyAdmission = new MediaEditSourceAdmission(2, 1);
+  const busyDependencies = {
+    admission: busyAdmission,
+    blobStore: imageEditBlobStore(async () => {
+      entered.resolve();
+      await releaseRead.promise;
+      return bytes;
+    }),
+    identity: mediaEditIdentity,
+    lookup: () => media,
+  } satisfies MediaEditHandlerDependencies;
+  const first = invokeMediaEditSource(busyDependencies, "/asset-1");
+  await entered.promise;
+  const busy = await invokeMediaEditSource(busyDependencies, "/asset-2");
+  expect(busy.status).toBe(429);
+  expect(busy.header("retry-after")).toBe("1");
+  expect(busy.json()).toMatchObject({ code: "IMAGE_EDIT_SOURCE_BUSY" });
+  releaseRead.resolve();
+  expect((await first).status).toBe(200);
+  expect(busyAdmission.snapshot()).toEqual({ active: 0, owners: 0 });
+
+  const globalEntered = mediaEditDeferred<void>();
+  const releaseGlobalReads = mediaEditDeferred<void>();
+  const globalAdmission = new MediaEditSourceAdmission(2, 1);
+  let globalReadCount = 0;
+  const globalDependencies = (ownerId: string) => ({
+    admission: globalAdmission,
+    blobStore: imageEditBlobStore(async () => {
+      globalReadCount += 1;
+      if (globalReadCount === 2) globalEntered.resolve();
+      await releaseGlobalReads.promise;
+      return bytes;
+    }),
+    identity: () => ({
+      bypass: false,
+      displayName: ownerId,
+      role: "admin" as const,
+      userId: ownerId,
+    }),
+    lookup: () => media,
+  }) satisfies MediaEditHandlerDependencies;
+  const globalFirst = invokeMediaEditSource(
+    globalDependencies("owner-1"),
+    "/asset-1",
+  );
+  const globalSecond = invokeMediaEditSource(
+    globalDependencies("owner-2"),
+    "/asset-2",
+  );
+  await globalEntered.promise;
+  const globallyBusy = await invokeMediaEditSource(
+    globalDependencies("owner-3"),
+    "/asset-3",
+  );
+  expect(globallyBusy.status).toBe(429);
+  releaseGlobalReads.resolve();
+  expect((await globalFirst).status).toBe(200);
+  expect((await globalSecond).status).toBe(200);
+  expect(globalAdmission.snapshot()).toEqual({ active: 0, owners: 0 });
+
+  let disconnectedRead = false;
+  const disconnectAdmission = new MediaEditSourceAdmission(2, 1);
+  const disconnected = await invokeMediaEditSource({
+    admission: disconnectAdmission,
+    blobStore: imageEditBlobStore(async (input) => await new Promise<Uint8Array>(
+      (_accept, reject) => {
+        input.signal?.addEventListener("abort", () => {
+          disconnectedRead = true;
+          reject(input.signal?.reason);
+        }, { once: true });
+      },
+    )),
+    identity: mediaEditIdentity,
+    lookup: () => media,
+  }, "/asset-1", "GET", (request) => request.emit("aborted"));
+  expect(disconnected.status).toBe(503);
+  expect(disconnectedRead).toBe(true);
+  expect(disconnectAdmission.snapshot()).toEqual({ active: 0, owners: 0 });
+
+  let aborted = false;
+  const timeoutAdmission = new MediaEditSourceAdmission(2, 1);
+  const timeout = await invokeMediaEditSource({
+    admission: timeoutAdmission,
+    blobStore: imageEditBlobStore(async (input) => await new Promise<Uint8Array>(
+      (_accept, reject) => {
+        input.signal?.addEventListener("abort", () => {
+          aborted = true;
+          reject(input.signal?.reason);
+        }, { once: true });
+      },
+    )),
+    identity: mediaEditIdentity,
+    lookup: () => media,
+    readTimeoutMs: 20,
+  }, "/asset-1");
+  expect(timeout.status).toBe(504);
+  expect(timeout.json()).toMatchObject({ code: "IMAGE_EDIT_SOURCE_TIMEOUT" });
+  expect(aborted).toBe(true);
+  expect(timeoutAdmission.snapshot()).toEqual({ active: 0, owners: 0 });
+}
 
 const profile = (input: Pick<ProviderProfile, "driver" | "id">): ProviderProfile => ({
   baseUrl: "https://provider.invalid/v1",
@@ -220,7 +535,8 @@ test("Provider references and durable blobs remain separate replaceable stores",
   expect(leases.size).toBe(1);
   await referenceStore.release(lease);
   expect(leases.size).toBe(0);
-  expect((await blobStore.read(stored.reference, 3)).byteLength).toBe(3);
+  expect((await blobStore.read(stored.reference, { maximumBytes: 3 })).byteLength)
+    .toBe(3);
   expect(await providerMediaUrlForOwner({
     assetId: "asset-1",
     kind: "image",
@@ -254,7 +570,8 @@ test("Provider references and durable blobs remain separate replaceable stores",
     checksumSha256: createHash("sha256").update(bytes).digest("hex"),
     contentType: "image/png",
   });
-  expect(Array.from(await localStore.read(local.reference, 4))).toEqual([
+  expect(Array.from(await localStore.read(local.reference, { maximumBytes: 4 })))
+    .toEqual([
     9,
     8,
     7,
@@ -295,10 +612,10 @@ test("Provider references and durable blobs remain separate replaceable stores",
         contentType: input.contentType,
       };
     },
-    async readObject(reference, maximumBytes) {
+    async readObject(reference, input) {
       ossOperations.push("read");
       const storedBytes = ossBytes.get(reference.objectKey);
-      if (!storedBytes || storedBytes.byteLength > maximumBytes) {
+      if (!storedBytes || storedBytes.byteLength > input.maximumBytes) {
         throw new Error("fake OSS blob unavailable");
       }
       return Uint8Array.from(storedBytes);
@@ -327,7 +644,8 @@ test("Provider references and durable blobs remain separate replaceable stores",
     storageProfileId: "profile-1",
   });
   expect(await ossStore.head(oss.reference)).toMatchObject({ byteSize: 4 });
-  expect((await ossStore.read(oss.reference, 4)).byteLength).toBe(4);
+  expect((await ossStore.read(oss.reference, { maximumBytes: 4 })).byteLength)
+    .toBe(4);
   expect((await ossStore.signRead(oss.reference, 60)).url).toBe(
     "https://oss.invalid/objects/2026/08/image/fake.png",
   );
@@ -366,6 +684,7 @@ test("Provider references and durable blobs remain separate replaceable stores",
     { action: "failed", assetId: "asset-1" },
   ]);
   expect(publicationEvents).toEqual(["finalize", "compensate", "recover"]);
+  await verifyMediaEditSourceContracts();
 });
 
 test("Generation HTTP transport is isolated from the application runtime", async () => {

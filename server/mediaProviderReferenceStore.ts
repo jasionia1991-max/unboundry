@@ -127,7 +127,10 @@ export const ownerMediaProviderReferenceStore: ProviderReferenceStore =
       }
       const bytes = await mediaBlobStore().read(
         blobReference(media),
-        input.maximumBytes,
+        {
+          maximumBytes: input.maximumBytes,
+          signal: input.signal,
+        },
       ).catch(() => undefined);
       if (!bytes || bytes.byteLength !== media.byteSize) {
         throw new ProviderReferenceStoreError("INVALID", "参考素材文件不完整");

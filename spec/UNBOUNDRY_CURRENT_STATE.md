@@ -1,10 +1,11 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网已切到 v0.6.31/schema39，GitHub、冻结备份、构建、原子切换和技术终门全部通过；用户随后明确回复“通过”，当前状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。
+> **状态分层**：现网仍是 v0.6.31/schema39，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`；图片裁剪同站编辑源是 v0.6.32 未发布候选，当前仅进入 GitHub 交付，不代表已经上线。
 
 更新日期：2026-08-23
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.31**（生产已发布并获用户实页验收通过）
+当前代码包版本：**v0.6.32**（未发布候选；生产仍为 v0.6.31）
+本地候选代码版本：**v0.6.32**
 
 ## 一句话
 
@@ -13,6 +14,14 @@
 唯一 safe full 为 `1048/1050`；没有重跑 full，只复验失败的 m22/m38 并 `52/52 PASS`。冻结备份 `/var/lib/unboundry-rollbacks/v0.6.31-frozen-5JetjX` 共365文件，双清单SHA均为 `53eb5fea…deb4`；schema39、integrity ok、FK0，tasks/attempts `677/685`、active0、媒体 `738/1260901702`、模板 `50/48`、画布57在切换前后完全一致。公网/回环 version/live/ready、service、inventory 和公网5资源全部通过，真实 Provider 请求、付费生成和 OSS 写入均为0。完整回执：`spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json`。
 
 本次版本号与发布授权已消费，禁止追加真实生成、再次发布或进入下一版本。Mureka 真实音频、团队/多人协作、真实 Agent 协议、Storyboard 完整编辑、图片打光和其他付费内容抽验仍保持原 `PARTIAL/PAUSED/BLOCK`，不随本次发布扩大范围。
+
+## v0.6.32 图片裁剪同站编辑源（未发布候选）
+
+- 用户已授权本候选执行 commit、tag、push、PR，并允许必要版本升级；版本确定为 v0.6.32。该授权不包含 SSH、生产备份、生产切换或真实 OSS/Provider 操作。
+- 裁剪编辑器不再直接把可能跨域重定向的素材 URL 画入 Canvas，而是通过 owner-scoped 同站接口读取 local/OSS 原图，校验长度、哈希和 PNG 结构后，以 Blob URL 供预览和导出。
+- 客户端使用可替换 resolver；未来可接 `media.mymy.ltd + CDN/CORS`，当前同站接口继续作为私有素材安全兜底。来源 assetId 在打开裁剪时冻结，来源变化或持久化身份漂移时拒绝落图并补偿清理派生资产。
+- 自动证据：直接相关定向 `89/89 PASS`；唯一一次正式 safe full 为 `1049/1050`，唯一失败是未修改 m22 的既有缩放时序断言，同一源码隔离复验 m22 `37/37 PASS`。原始 full 不改写成全绿。
+- 权威方案与施工记录：`spec/INC_IMGEDIT_001_EDITABLE_IMAGE_SOURCE_PLAN_2026-08-23.md`。当前没有生产发布或用户线上验收，保持 `USER_RECHECK`。
 
 ## 2026-08-23 治理与 nginx 加固
 

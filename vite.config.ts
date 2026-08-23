@@ -26,6 +26,7 @@ import { assetStorage } from "./server/assetStorage";
 import { audioStorage } from "./server/audioStorage";
 import { videoStorage } from "./server/videoStorage";
 import { mediaMetadataApi } from "./server/mediaMetadataApi";
+import { mediaEditSource } from "./server/mediaEditSource";
 import { groupDownloadApi } from "./server/groupDownload";
 import { adminModelsApi, publicModelsApi } from "./server/modelCatalog";
 import { adminProviderCatalogApi } from "./server/providerCatalog";
@@ -1102,6 +1103,14 @@ function canvasPersistenceApi(runtime: RuntimeInstance): Plugin {
         assertDeletionAllowedInTransaction:
           assertGenerationMediaDeletionAllowedInTransaction,
       }), runtime),
+    );
+    middlewares.use(
+      "/api/image-edit-sources",
+      apiBoundary(
+        "image-edit-sources",
+        (request, response) => mediaEditSource(request, response),
+        runtime,
+      ),
     );
     middlewares.use(
       "/api/audio-assets",

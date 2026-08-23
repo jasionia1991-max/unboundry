@@ -25,6 +25,7 @@ import {
   type MediaBlobStore,
   MediaBlobStoreError,
   type PutMediaBlobInput,
+  type ReadMediaBlobInput,
 } from "./mediaBlobStore";
 import { fetchPublicHttps } from "./outboundNetwork";
 import {
@@ -105,6 +106,24 @@ function inputMetadata(input: PutMediaBlobInput) {
 function isMissingPath(error: unknown) {
   return typeof error === "object" && error !== null &&
     "code" in error && error.code === "ENOENT";
+}
+
+function abortReason(signal: AbortSignal) {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new DOMException("Media blob read was aborted", "AbortError");
+}
+
+function throwIfAborted(signal?: AbortSignal) {
+  if (signal?.aborted) throw abortReason(signal);
+}
+
+function readLimit(input: ReadMediaBlobInput) {
+  if (!Number.isSafeInteger(input.maximumBytes) || input.maximumBytes < 1) {
+    throw new MediaBlobStoreError("READ_TOO_LARGE", "Invalid read limit");
+  }
+  throwIfAborted(input.signal);
+  return input.maximumBytes;
 }
 
 function signedLifetimeSeconds(value: number) {
@@ -214,10 +233,8 @@ export function createLocalMediaBlobStore(rootDirectory: string): MediaBlobStore
         throw error;
       }
     },
-    async read(reference, maximumBytes) {
-      if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 1) {
-        throw new MediaBlobStoreError("READ_TOO_LARGE", "Invalid read limit");
-      }
+    async read(reference, input) {
+      const maximumBytes = readLimit(input);
       const opened = await openedLocalFile(pathFor(reference));
       try {
         if (opened.info.size > maximumBytes) {
@@ -226,7 +243,27 @@ export function createLocalMediaBlobStore(rootDirectory: string): MediaBlobStore
             "Media blob exceeds the read limit",
           );
         }
-        return await opened.handle.readFile();
+        const chunks: Buffer[] = [];
+        let byteSize = 0;
+        const stream = opened.handle.createReadStream({
+          autoClose: false,
+          signal: input.signal,
+        });
+        for await (const value of stream) {
+          throwIfAborted(input.signal);
+          const chunk = Buffer.from(value);
+          byteSize += chunk.byteLength;
+          if (byteSize > maximumBytes) {
+            stream.destroy();
+            throw new MediaBlobStoreError(
+              "READ_TOO_LARGE",
+              "Media blob exceeds the read limit",
+            );
+          }
+          chunks.push(chunk);
+        }
+        throwIfAborted(input.signal);
+        return Buffer.concat(chunks, byteSize);
       } finally {
         await opened.handle.close().catch(() => undefined);
       }
@@ -279,7 +316,8 @@ export function createMemoryMediaBlobStore(): MediaBlobStore {
       });
       return metadata;
     },
-    async read(reference, maximumBytes) {
+    async read(reference, input) {
+      const maximumBytes = readLimit(input);
       const blob = blobs.get(keyFor(reference));
       if (!blob) throw new Error("Media blob is unavailable");
       if (blob.bytes.byteLength > maximumBytes) {
@@ -288,6 +326,7 @@ export function createMemoryMediaBlobStore(): MediaBlobStore {
           "Media blob exceeds the read limit",
         );
       }
+      throwIfAborted(input.signal);
       return Uint8Array.from(blob.bytes);
     },
     async signRead(reference, lifetimeSeconds) {
@@ -320,7 +359,7 @@ export type AliyunMediaBlobDriver = Readonly<{
   ): Promise<Omit<MediaBlobMetadata, "reference">>;
   readObject(
     reference: MediaBlobReference,
-    maximumBytes: number,
+    input: ReadMediaBlobInput,
     credentials: AliyunOssCredentials,
   ): Promise<Uint8Array>;
   signRead(
@@ -341,6 +380,7 @@ async function signedObjectResponse(
   reference: MediaBlobReference,
   credentials: AliyunOssCredentials,
   range?: string,
+  signal?: AbortSignal,
 ) {
   const url = await createPrivateAliyunOssReadUrl(
     reference.objectKey,
@@ -350,6 +390,7 @@ async function signedObjectResponse(
   const response = await fetchPublicHttps(url, {
     headers: range ? { Range: range } : undefined,
     redirect: "error",
+    signal,
   }, { timeoutMs: 60_000 });
   if (!response.ok && response.status !== 206) {
     await response.body?.cancel().catch(() => undefined);
@@ -410,11 +451,14 @@ const defaultAliyunMediaBlobDriver: AliyunMediaBlobDriver = Object.freeze({
       }
     }
   },
-  async readObject(reference, maximumBytes, credentials) {
-    if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 1) {
-      throw new MediaBlobStoreError("READ_TOO_LARGE", "Invalid read limit");
-    }
-    const response = await signedObjectResponse(reference, credentials);
+  async readObject(reference, input, credentials) {
+    const maximumBytes = readLimit(input);
+    const response = await signedObjectResponse(
+      reference,
+      credentials,
+      undefined,
+      input.signal,
+    );
     const declared = responseByteSize(response);
     if (declared !== undefined && declared > maximumBytes) {
       await response.body?.cancel().catch(() => undefined);
@@ -426,8 +470,10 @@ const defaultAliyunMediaBlobDriver: AliyunMediaBlobDriver = Object.freeze({
     if (!response.body) throw new Error("OSS media blob has no response body");
     const chunks: Buffer[] = [];
     await consumeBoundedReadableStream(response.body, maximumBytes, (chunk) => {
+      throwIfAborted(input.signal);
       chunks.push(chunk);
     });
+    throwIfAborted(input.signal);
     return Buffer.concat(chunks);
   },
   async signRead(reference, lifetimeSeconds, credentials) {
@@ -493,10 +539,10 @@ export function createAliyunMediaBlobStore(options: Readonly<{
       );
       return { ...metadata, reference };
     },
-    async read(reference, maximumBytes) {
+    async read(reference, input) {
       return driver.readObject(
         reference,
-        maximumBytes,
+        input,
         await credentialsFor(reference, "read"),
       );
     },
@@ -535,8 +581,8 @@ export function createRoutedMediaBlobStore(stores: Readonly<{
     delete: (reference) => storeFor(reference.backend).delete(reference),
     head: (reference) => storeFor(reference.backend).head(reference),
     put: (input) => (input.storageProfileId ? stores.oss : stores.local).put(input),
-    read: (reference, maximumBytes) =>
-      storeFor(reference.backend).read(reference, maximumBytes),
+    read: (reference, input) =>
+      storeFor(reference.backend).read(reference, input),
     signRead: (reference, lifetimeSeconds) =>
       storeFor(reference.backend).signRead(reference, lifetimeSeconds),
   };

@@ -10,6 +10,10 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 生产当前运行 `v0.6.31 / schema39`，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。模块化 main-safe 成果已经过 GitHub、冻结备份、精确源码构建、原子切换和生产技术终门；切换前后数据计数一致，真实 Provider 与 OSS 写入为0。用户随后在生产实页明确回复“通过”，且生产中的8个关键模块化边界文件与 v0.6.31 标签逐字节一致。完整现状见 [`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)，生产回执见 [`spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json`](spec/V0_6_31_PRODUCTION_RECEIPT_2026-08-23.json)。历史文档中的 `PENDING`、`USER_RECHECK` 或“下一步”仅代表各自记录时点，不随本次发布自动启动。
 
+## 当前未发布候选：v0.6.32 图片裁剪同站编辑源
+
+OSS 图片裁剪改为通过 owner-scoped 同站接口读取并校验原图，客户端只把同源 Blob 画入 Canvas，避免跨域重定向污染画布；解析器保持可替换，后续可接独立媒体域名。当前只进入 commit/tag/push/PR 流程，没有生产发布授权，线上仍为 v0.6.31。完整方案和验证边界见 [`spec/INC_IMGEDIT_001_EDITABLE_IMAGE_SOURCE_PLAN_2026-08-23.md`](spec/INC_IMGEDIT_001_EDITABLE_IMAGE_SOURCE_PLAN_2026-08-23.md)。
+
 ## 2026-08-19 生成稳定性一次性修复（v0.6.20 已发布，待你复验）
 
 `INC-GEN-010 = PRODUCTION_PUBLISHED_AUTO_PASS（2026-08-19 已发布，待用户复验）`：生成流程少红字、少手动操作。图片主轮询 5 分钟、视频 8 分钟，主窗结束后后台继续慢速核对；任务号丢失自动从用量记录找回，确认缺失时整个任务只自动补提交一次；平台明确退款自动确认并重试一次；只有明确拒绝/本地问题才红字；结果下载网络/5xx 自动重试 3 次；熔断按账号拆分；画布保存等待放宽到 15 秒、按钮显示「正在保存画布…」。正式安全全量`118/118 specs、983/983 tests PASS`，异常0。生产已切到`v0.6.20-inc-gen-010-20260819`，冻结备份、schema39 和数据门通过；tasks358/attempts364/active0、模板48（46 published），真实 Provider/付费/OSS 写入 0。`v0.6.20` 标签指向精确生产源码，PR #35 已合并。方案见 [`spec/INC_GEN_010_GENERATION_STABILITY_2026-08-19.md`](spec/INC_GEN_010_GENERATION_STABILITY_2026-08-19.md)，凭证 [`spec/V0_6_20_PRODUCTION_RECEIPT_2026-08-19.json`](spec/V0_6_20_PRODUCTION_RECEIPT_2026-08-19.json)。

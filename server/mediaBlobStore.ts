@@ -34,6 +34,11 @@ export type SignedMediaBlobRead = Readonly<{
   url: string;
 }>;
 
+export type ReadMediaBlobInput = Readonly<{
+  maximumBytes: number;
+  signal?: AbortSignal;
+}>;
+
 /**
  * Physical object operations only. Publication, history, ownership and
  * Generation transitions remain outside this port.
@@ -42,7 +47,10 @@ export interface MediaBlobStore {
   delete(reference: MediaBlobReference): Promise<void>;
   head(reference: MediaBlobReference): Promise<MediaBlobMetadata | undefined>;
   put(input: PutMediaBlobInput): Promise<MediaBlobMetadata>;
-  read(reference: MediaBlobReference, maximumBytes: number): Promise<Uint8Array>;
+  read(
+    reference: MediaBlobReference,
+    input: ReadMediaBlobInput,
+  ): Promise<Uint8Array>;
   signRead(
     reference: MediaBlobReference,
     lifetimeSeconds: number,
