@@ -1,0 +1,186 @@
+{
+  "version": "v0.6.32",
+  "date": "2026-08-23",
+  "status": "PRODUCTION_PUBLISHED_AUTO_PASS",
+  "scope": {
+    "summary": "修复 OSS 图片裁剪时跨域重定向污染 Canvas 的问题：通过 owner-scoped 同站编辑源读取并校验 local/OSS PNG，客户端以可替换 resolver 和 Blob URL 完成预览与导出。",
+    "schemaChanged": false,
+    "schemaVersion": 39,
+    "releaseInitiatedProviderRequests": 0,
+    "releaseInitiatedOssWrites": 0,
+    "protectedJsonReadOrMutated": false
+  },
+  "source": {
+    "featureCommit": "ca6bddbe5b5ae53b87916776cad2e9694d5b5f44",
+    "tag": "v0.6.32",
+    "tagObject": "f1cccc314fba36da22bb2510196e39dc9506ca8c",
+    "tagCommit": "4cf9d74dec941dea8f10e73bb07de990b668e150",
+    "tagTree": "7a5db8aa2b5ac9a42f33a0da176457e74504ca20",
+    "pullRequest": 75,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/75",
+    "mergeCommit": "864cd2de9ad9a22a7dad7deb7a9fb268085f47f8",
+    "mainTree": "c4bd99c4f8608159bdfc81b123bc75865db25d18",
+    "mainTreeEqualsTagTree": false,
+    "mainOnlyDocumentationPaths": [
+      "TASKS.md",
+      "spec/INC_IMGEDIT_001_EDITABLE_IMAGE_SOURCE_PLAN_2026-08-23.md",
+      "spec/UNBOUNDRY_CURRENT_STATE.md"
+    ],
+    "productionSource": "annotated tag v0.6.32",
+    "mainQualityGateRun": 32623969904,
+    "mainQualityGateConclusion": "SUCCESS"
+  },
+  "verification": {
+    "directlyAffectedTargeted": {
+      "scope": "m100 + m2 + m11 + m37 + m80 + m99",
+      "tests": 89,
+      "passed": 89,
+      "failed": 0
+    },
+    "formalSafeFullRuns": 1,
+    "formalSafeFull": {
+      "baselineHead": "a29ac82793c2887bd252e7de16d7913fc07f026c",
+      "sourceAndSnapshotSha256": "d85e34be4ab1259df381f2b62268f72e3739d6b72dde12dd385f7ef7a58af239",
+      "specs": 120,
+      "tests": 1050,
+      "passed": 1049,
+      "failed": 1,
+      "exitCode": 1,
+      "failure": "m22 existing canvas zoom timing assertion expected 0.72 and observed 0.6830357142857143"
+    },
+    "isolatedFailureRecheck": {
+      "scope": "m22-group-execution",
+      "tests": 37,
+      "passed": 37,
+      "failed": 0,
+      "sameUnchangedSource": true,
+      "classification": "unrelated transient canvas timing fluctuation"
+    },
+    "versionSyncTargeted": {
+      "scope": "m38-generation-runtime-incidents + m81-deployment-hardening",
+      "tests": 56,
+      "passed": 56,
+      "failed": 0,
+      "sourceAndSnapshotSha256": "55708bb8e7b11750f023c1840686054c9e6af8fb60d5a9a2f321223b0488c3ca"
+    },
+    "secondFullRun": false,
+    "listener4173UnchangedDuringLocalTests": true,
+    "realProviderRequestsDuringAutomatedTests": 0,
+    "realOssWritesDuringAutomatedTests": 0
+  },
+  "release": {
+    "archiveSha256": "7b24b33c23183cd658b227005e94b5959b8fd4ce2f81b04f631b6aed4ad02a4d",
+    "releasePath": "/opt/unboundry/releases/v0.6.32-image-edit-source-20260823",
+    "previousRelease": "/opt/unboundry/releases/v0.6.31-modular-main-20260823",
+    "currentTarget": "/opt/unboundry/releases/v0.6.32-image-edit-source-20260823",
+    "freshBuild": {
+      "node": "v22.23.2",
+      "npm": "10.9.8",
+      "npmCiIgnoreScripts": "PASS",
+      "typecheck": "PASS",
+      "viteBuild": "PASS",
+      "knownChunkSizeWarningOnly": true
+    },
+    "inventory": {
+      "files": 5879,
+      "inventoryLines": 5878,
+      "sha256": "df1a0f62e1576d5fb0b06fbd791c92cea14525f6d5210492363085961f9441da",
+      "postSwitchCheck": "PASS"
+    },
+    "temporaryTransferArchivesRemoved": true
+  },
+  "preCutoverActivity": {
+    "activeGenerationDetected": true,
+    "observedInitially": "three running image tasks with existing provider task ids; one downstream text task was later observed",
+    "releaseWaitedForNaturalCompletion": true,
+    "serviceRestartedWhileActiveTasks": false,
+    "releaseInitiatedProviderRequests": 0,
+    "releaseInitiatedOssWrites": 0,
+    "note": "User activity completed before the frozen backup. The release did not submit, retry, cancel, or mutate those tasks."
+  },
+  "frozenBackup": {
+    "path": "/var/lib/unboundry-rollbacks/v0.6.32-frozen-H9k2Lm",
+    "createdOnce": true,
+    "frozenAndRestoreFiles": 365,
+    "frozenManifestSha256": "fbd7eb22ae1072da9d53da919ea13d8b93e51203e49c7a49ef9af35e06e9fcf4",
+    "restoreManifestSha256": "fbd7eb22ae1072da9d53da919ea13d8b93e51203e49c7a49ef9af35e06e9fcf4",
+    "schemaVersion": 39,
+    "integrity": "ok",
+    "foreignKeyViolations": 0,
+    "restoredCountsEqualPreCutover": true,
+    "deletedOrOverwritten": false
+  },
+  "productionAcceptance": {
+    "cutoverAt": "2026-08-23T14:56:18+08:00",
+    "loopbackVersion": "0.6.32",
+    "publicVersion": "0.6.32",
+    "loopbackLive": 200,
+    "loopbackReady": 200,
+    "publicLive": 200,
+    "publicReady": 200,
+    "readyMode": "active",
+    "activeLeaseHeld": true,
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "serviceRestarts": 0,
+    "schemaVersion": 39,
+    "integrity": "ok",
+    "foreignKeyViolations": 0,
+    "countsBeforeAndAfterEqual": true,
+    "counts": {
+      "generationTasks": 722,
+      "providerAttempts": 730,
+      "activeTasks": 0,
+      "mediaAssets": 760,
+      "mediaBytes": 1326712238,
+      "activeMediaPublications": 0,
+      "historicalFailedMediaPublications": 8,
+      "canvases": 58,
+      "publicTemplates": 50,
+      "publishedPublicTemplates": 48
+    },
+    "imageEditSourceUnauthenticatedStatus": 401,
+    "publicAssetsCompared": 5,
+    "publicAssetsEqualRelease": true,
+    "publicAssetSha256": {
+      "CanvasShell-DAiJLhSU.js": "508cb3b77c0ac92f9d03686b12f87f7e45471af039418fd877e5ed9bdb393394",
+      "WorkspacePage-3Z7FrL-T.js": "bed6305f94b5c40ce806f2ad1d8c504e2a60bcf0a7d9f9392b1b81268af9ab96",
+      "index-BzUCEmho.js": "be8661afcd97452ab26c084ae5ae52b1c2e650a7ce8c46886dee3fd29abfefb9",
+      "index-DgFwUDvv.css": "6b187a020d8b17ddac7187fdf7a78888c2881180782950d05c01906f3e7f19f7",
+      "projectStorage-BRSJTC9o.js": "88e062f92d86d25c8830cfdb8ebb2c11e5dd84b77e2e2242aac987b2620832d1"
+    },
+    "journalLinesInspected": 23,
+    "journalUnexpectedErrorLines": 0,
+    "journalGenerationDiagnostics": 0,
+    "journalProviderOrGenerationRoutes": 0,
+    "releaseInitiatedProviderRequests": 0,
+    "releaseInitiatedOssWrites": 0
+  },
+  "documentationClosure": {
+    "initialTargetedRunStartedTests": false,
+    "initialTargetedRunBlocker": "fresh receipt worktree had no local node_modules/typescript; the safe runner stopped before tests",
+    "dependencyRestore": "npm ci --ignore-scripts --offline PASS",
+    "scope": "m38-generation-runtime-incidents",
+    "tests": 15,
+    "passed": 15,
+    "failed": 0,
+    "sourceAndSnapshotSha256": "96b0e570f6bc3d93730a71b7597e5205c3cec18bea27b078b703f9124795af5a",
+    "listener4173Unchanged": true,
+    "safeFullRun": false
+  },
+  "rollback": {
+    "required": false,
+    "automaticRollbackGuardWasArmed": true,
+    "previousReleaseRetained": true,
+    "frozenBackupRetained": true,
+    "productionDataDeleted": false,
+    "productionMediaDeleted": false,
+    "immutableReleaseDeleted": false
+  },
+  "authorizationConsumed": true,
+  "userAcceptance": {
+    "status": "USER_RECHECK",
+    "scope": "v0.6.32 production image cropping"
+  },
+  "completionBoundary": "v0.6.32 is technically published and healthy. User confirmation is still required before USER_PASS. The release authorization is consumed and cannot be reused for another production change."
+}

@@ -3,10 +3,10 @@
 更新日期：2026-08-23
 项目：Unboundry
 基线：`main` / `a29ac82793c2887bd252e7de16d7913fc07f026c` / 生产 package `0.6.31` / schema39
-候选版本：`v0.6.32`（GitHub 交付候选，尚未发布生产）
+版本：`v0.6.32`（生产已发布，等待用户复验）
 施工分支：`codex/image-edit-source-2026-08-23`
 隔离工作区：`/Users/mymy/Documents/unboundry-image-edit-source-2026-08-23`
-当前状态：`VERSIONED_V0_6_32 / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / FORMAL_FULL_1049_OF_1050 / M22_ISOLATED_RECHECK_PASS / GITHUB_PR_75_OPEN / GITHUB_CI_PASS / TAG_V0_6_32 / USER_RECHECK`
+当前状态：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
 
 ## 1. 用户结果
 
@@ -216,3 +216,13 @@ type EditableImageSource = {
 - 注释标签 `v0.6.32` 绑定包含本记录的冻结候选分支头；标签和 PR 仅代表 GitHub 候选交付，不代表生产发布或用户验收。
 - PR 的 GitHub Quality gates run `32623552933` 已完成且结论为 `SUCCESS`：safe inventory、TypeScript、架构、source coverage inventory/behavior 和 high-level npm audit 全部通过。
 - 注释标签 `v0.6.32` 解引用后精确指向 `4cf9d74dec941dea8f10e73bb07de990b668e150`。后续这条 CI 结果只追加到 PR 文档，不移动已推送标签。
+
+### 2026-08-23 生产发布结果
+
+- 用户明确回复“按 v0.6.32 上线吧”；PR #75 已squash merge为`864cd2de9ad9a22a7dad7deb7a9fb268085f47f8`，main Quality gates run `32623969904`为`SUCCESS`。
+- 生产从注释tag `v0.6.32`的精确源码fresh build，Node `22.23.2` / npm `10.9.8`，typecheck/build/inventory均通过；release为`/opt/unboundry/releases/v0.6.32-image-edit-source-20260823`。
+- 发布前发现线上已有3个图片任务持有Provider task id，随后还有下游文字任务；发布没有打断、取消、重试或接管，而是等待active归零后才执行冻结备份和重启。发布自身Provider请求与OSS写入均为0。
+- 冻结备份`/var/lib/unboundry-rollbacks/v0.6.32-frozen-H9k2Lm`与恢复副本各365文件，双清单SHA均为`fbd7eb22ae1072da9d53da919ea13d8b93e51203e49c7a49ef9af35e06e9fcf4`；恢复副本schema39、integrity ok、FK0及全部业务计数与切换前一致。
+- 原子切换后公网/回环version均为0.6.32，live/ready为200，service active/enabled、NRestarts0，release inventory与5个公网资源逐字节一致；切换前后tasks/attempts`722/730`、active0、媒体`760/1326712238`、模板`50/48`、画布58完全一致。
+- 完整回执：`spec/V0_6_32_PRODUCTION_RECEIPT_2026-08-23.json`。当前技术发布通过，但用户尚未实际裁剪复验，因此保持`USER_RECHECK`；本次发布授权已消费。
+- 发布记录文档收口的新worktree首次运行定向安全入口时，因本地缺少`node_modules/typescript`在测试前停止；随后只用离线`npm ci --ignore-scripts --offline`补齐依赖，同一m38定向最终`15/15 PASS`，source/snapshot SHA-256均为`96b0e570f6bc3d93730a71b7597e5205c3cec18bea27b078b703f9124795af5a`，4173 listener不变。没有重复正式full。
