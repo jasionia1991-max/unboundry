@@ -1,5 +1,4 @@
-import { expect, test } from "./safe-test";
-import type { Locator } from "@playwright/test";
+import { expect, test, type Locator } from "./safe-test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { composeTextControl } from "./helpers/ime";
