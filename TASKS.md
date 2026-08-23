@@ -1,11 +1,11 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产为`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，但图片工具用户质量复验未通过。`INC-IMGEDIT-004` R6本地浏览器矩阵已通过；R7候选冻结与独立审查施工中。
+> **当前状态**：生产为`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，但图片工具用户质量复验未通过。`INC-IMGEDIT-004` R7本地候选已完成，待进入R8发布身份预检。
 
 更新时间：2026-08-24
-状态：`v0.6.35 PRODUCTION_PUBLISHED_AUTO_PASS；REAL_PROVIDER_TECHNICAL_SMOKE_PASS 6/6；INC-IMGEDIT-004 R6_LOCAL_BROWSER_PASS / R7_IN_PROGRESS；USER_QUALITY_REMEDIATION_REQUIRED。`
+状态：`v0.6.35 PRODUCTION_PUBLISHED_AUTO_PASS；REAL_PROVIDER_TECHNICAL_SMOKE_PASS 6/6；INC-IMGEDIT-004 R7_AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS；USER_QUALITY_REMEDIATION_REQUIRED。`
 
-### 2026-08-24 图片工具交互与 UI 一次性返工（INC-IMGEDIT-004，GOAL_ACTIVE / R7_IN_PROGRESS）
+### 2026-08-24 图片工具交互与 UI 一次性返工（INC-IMGEDIT-004，GOAL_ACTIVE / R7_AUTO_PASS / R8_PENDING）
 
 - 用户生产实页检查未通过；自动测试和六项真实Provider链只证明技术链，不能证明功能交互、UI或视觉质量正常。
 - 已确认P0/P1：多个工具可叠开；多角度/快速切分/Seedance底部裁切；重绘/擦除/标注与Creator碰撞；透明图在编辑器/全屏为黑底；扩图和紧凑面板布局失衡。顶部工具栏、更多菜单和颜色标记作为回归保护。
@@ -26,7 +26,8 @@
 - R5让产品内全屏dialog透出统一棋盘格，并直接验证Escape、外点、Tab/Shift+Tab、焦点返回、reduced-motion及0.15/0.85/1.0/1.5四档zoom下screen UI几何完全不变。定向测试抓出并修复外点默认指针聚焦覆盖Host焦点返回；第二轮只暴露测试未恢复zoom，补清理后最终精确`c5b86f9` safe m2 `10/10 PASS`，source/snapshot`03febf86…75c8`、listener unchanged，Provider/OSS/费用0，未运行full。
 - R6完成全部图片工具隔离浏览器矩阵：保存13张截图和JSON receipt，覆盖1280×720、1440×900、1728×900、横竖方/真实Alpha、三类壳层、恶意切换、modal inert、控制台与CDP零请求计数；所有活动工具Host精确1个且bounds不越viewport。最终产品树与R5相同，只有m2新增Seedance busy gate；调试确定旧失败是busy后按钮文案变为“校验中…”导致旧locator失配，修正后精确`5f48f62` safe m2 `10/10 PASS`、source/snapshot`76461c61…bbfbf`、4173 listener unchanged。真实Provider/OSS/费用0；一次误从主树启动的safe命令在产品spec前被既有`backups/`负控停止，产品测试0且未绕过。证据目录为`spec/evidence/inc-imgedit-004-r6/`。
 - R7独立只读审查报告5项候选缺口：普通透明上传节点缺棋盘格、标注图标缺实际tooltip、busy后焦点可能停在disabled按钮、URL-only旧节点可打开空裁剪Host、四档zoom只有全屏直接证据。`39cd494`按最小范围修正：所有已加载图片节点使用CSS棋盘格底层surface；Host在busy收回失效焦点并保持Tab循环；标注补hover/focus-visible tooltip；无asset裁剪fail-closed；m2逐一覆盖全部12工具四zoom。
-- R7定向候选在精确`39cd494`隔离worktree完成safe m2 `10/10`、m18 `2/2`、m100 `13/13 PASS`，三次退出0，source/snapshot均`8c3cd1a6…f5b98`、4173 listener unchanged；TypeScript/build/架构/source coverage和零网络门随safe入口通过，真实Provider/OSS/费用0。当前为`R7_TARGETED_AUTO_PASS / SAFE_FULL_PENDING`，只有最终治理文档提交后的唯一一次safe full通过才进入R8。
+- R7定向候选在精确`39cd494`隔离worktree完成safe m2 `10/10`、m18 `2/2`、m100 `13/13 PASS`，三次退出0，source/snapshot均`8c3cd1a6…f5b98`、4173 listener unchanged；TypeScript/build/架构/source coverage和零网络门随safe入口通过，真实Provider/OSS/费用0。
+- 本Goal唯一一次safe full在精确`4fd25cc`执行：120 specs / 1052 tests，原始`1050/1052`，异常仅m24异步目录计数时序和m37在modal inert后使用非法背景编辑前置条件；skipped/retries/blocked/reportErrors均0，source/snapshot`ce6403b6…41a8414`。未运行第二次full。m24确定性等待在`e2c412e`复验`2/2 PASS`；m37改为真实派生use case在上传后/graph adoption前关闭持久层并验证DELETE/404、无节点和Provider不变，在最终`161f417`复验`35/35 PASS`。R7收口为`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS`，不把原始full改写成全绿；下一动作是R8同名不可变tag/release身份预检。
 
 ### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，D13_AUTO_PASS / USER_QUALITY_REMEDIATION_REQUIRED）
 

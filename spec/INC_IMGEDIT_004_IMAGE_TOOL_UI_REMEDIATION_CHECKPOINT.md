@@ -2,10 +2,10 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 04:45:01 +0800
-- 状态：`GOAL_ACTIVE / R7_TARGETED_AUTO_PASS / SAFE_FULL_PENDING / UI_REMEDIATION_REQUIRED`
-- 当前阶段：`R7 候选冻结与独立审查 / IN_PROGRESS`
-- 唯一允许的下一动作：提交R7候选治理文档，在包含审查修正与最终文档的精确候选上执行本Goal唯一一次safe full；若失败只诊断并复验最小失败集合，不提前进入R8
+- 更新时间：2026-08-24 05:25:39 +0800
+- 状态：`GOAL_ACTIVE / R7_AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / UI_REMEDIATION_REQUIRED`
+- 当前阶段：`R7 候选冻结与独立审查 / AUTO_PASS`
+- 唯一允许的下一动作：提交R7最终治理证据；随后先把R8标为`IN_PROGRESS`，对`v0.6.35`现有不可变tag/release与本候选身份执行只读发布预检，只有Runbook存在不移动tag、不覆盖release且可证明精确源码身份的合法路径时才继续GitHub和生产发布
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
 - 文档分支：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`
 - 立项 HEAD / origin-main：`f369d1dba1eef05aebc7f1a443256ceb82778ea0`
@@ -18,7 +18,7 @@
 - 真实 Provider/付费预算：`0次 / 0 USD`
 - 产品代码：单一活动状态、Portal Host、modal inert、焦点返回、共享surface，以及六类紧凑/大型安全面板已实现；R7独立审查的五项发现已按最小范围修正
 - 测试代码：m2已直接覆盖Host/inert/surface/焦点返回、三目标视口、全部12工具四档zoom、busy焦点、标注tooltip、无asset裁剪fail-closed和零生成请求
-- 文档范围：Checkpoint、TASKS、验收矩阵、CURRENT_STATE候选事实；产品候选`39cd494`，最终治理文档提交后执行唯一一次safe full
+- 文档范围：Checkpoint、TASKS、验收矩阵、CURRENT_STATE候选事实；最终本地候选`161f417e401e6ad332a756510fc6e4c59136b972`，唯一一次safe full原始`1050/1052`，两项失败完成最小定向修正复验且未执行第二次full
 
 ## 1. 权威恢复顺序
 
@@ -99,7 +99,7 @@ node -p "require('./package.json').version"
 | R4 | 大型编辑器与透明舞台 | AUTO_PASS |
 | R5 | 全屏与交互完整性 | AUTO_PASS |
 | R6 | 逐工具功能与回归验证 | AUTO_PASS / LOCAL_BROWSER_PASS |
-| R7 | 候选冻结与独立审查 | IN_PROGRESS / TARGETED_AUTO_PASS / SAFE_FULL_PENDING |
+| R7 | 候选冻结与独立审查 | AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS |
 | R8 | GitHub 与生产发布 | NOT_STARTED / GATES_VALID |
 | R9 | 生产零付费验收与用户复验 | NOT_STARTED |
 
@@ -318,24 +318,24 @@ Provider / OSS / 费用：
 - 回滚点：R5文档提交`fb8f583`和R6启动提交`8795b13`；R6最终产品树保持R5，测试收口提交`5f48f62`
 - 唯一下一动作：提交R6文档与证据checkpoint；把R7标为`IN_PROGRESS`，冻结候选并执行独立只读代码/UI/可访问性审查、候选静态门和唯一一次safe full
 
-## 18. R7 候选冻结与独立审查（定向门）
+## 18. R7 候选冻结与独立审查
 
-- 时间：2026-08-24 04:45:01 +0800
+- 时间：2026-08-24 05:25:39 +0800
 - 阶段：`R7`
-- 状态：`IN_PROGRESS / TARGETED_AUTO_PASS / SAFE_FULL_PENDING`
-- branch / HEAD / origin-main：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24` / 产品与测试候选`39cd4945e847504733e425abc3a3a16e8489906c` / `f369d1dba1eef05aebc7f1a443256ceb82778ea0`
-- 工作树摘要：独立只读审查后只修改四个直接文件并提交；定向验证使用本Goal新建detached worktree`/tmp/unboundry-inc004-r7-targeted-b7a7u5`，依赖离线安装。主工作树仍只有受保护JSON未跟踪且不进入diff/stage；4173用户既有listener未触碰
+- 状态：`AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS`
+- branch / HEAD / origin-main：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24` / 最终本地候选`161f417e401e6ad332a756510fc6e4c59136b972` / `f369d1dba1eef05aebc7f1a443256ceb82778ea0`
+- 工作树摘要：独立只读审查后的产品/测试修正冻结为`39cd494`，R7治理候选为`4fd25cc`；唯一一次safe full在本Goal专用detached worktree`/private/tmp/unboundry-inc004-r7-full-6x38Xs`执行。两个失败分别以`e2c412e`和`161f417`修正测试确定性/合法前置条件后只复验最小失败spec。主工作树仍只有受保护JSON未跟踪且不进入diff/stage；4173用户既有listener未触碰
 - 独立审查：独立审查者只读检查代码/UI/无障碍与R6证据，报告5项候选阻断：普通透明上传节点缺棋盘格、标注图标缺实际tooltip、busy后焦点可能停在disabled按钮、URL-only旧节点可打开空裁剪Host、四档zoom只对全屏有直接证据。另确认没有P0、viewport溢出、重复Host、Provider/OSS或数据合同问题
 - 产品文件：`client/src/canvas/ImageNode.tsx`让所有有图片预览的节点使用共享CSS棋盘格surface，并对缺少持久assetId的裁剪入口显示原因并fail-closed；`client/src/imageTools/ImageToolHost.tsx`在busy切换后把失效焦点收回panel并让Tab/Shift+Tab从panel继续循环；`client/src/styles.css`补标注hover/focus-visible tooltip。没有新增fetch、Provider、轮询、上传、schema或业务payload变化
 - 测试文件：`tests/m2-image-node.spec.ts`直接断言普通上传节点surface、URL-only裁剪禁用原因、标注伪元素tooltip、Seedance busy焦点/Tab/Shift+Tab/Escape，以及裁剪、多角度、重绘、擦除、扩图、标注、增强、调整像素、抠图、快速切分、Seedance和全屏全部12工具在`0.15/0.85/1.0/1.5`下screen-space尺寸不变并保持viewport内
-- 文档文件：本Checkpoint、验收矩阵、TASKS和CURRENT_STATE候选事实；R7尚未完成，不提前把safe full或发布写成PASS
-- package / schema / candidate：`0.6.35 / schema39 / 产品测试候选39cd494 / SAFE_FULL_PENDING`
-- 版本门 / 发布门：`v0.6.35 / VERSION_GATE_VALID`；“v0.6.35上线” / `RELEASE_GATE_VALID`；只允许R7 safe full通过并完成文档收口后进入R8
-- Provider / OSS / 费用：真实Provider请求、尝试、成功0；费用0；真实OSS写入0；定向测试只使用fresh临时数据、动态loopback与fake能力
-- 测试命令、环境、结果、退出码：Node22.23.1/npm10.9.8；精确`39cd494`上safe m2 `10/10 PASS`、m18 `2/2 PASS`、m100 `13/13 PASS`，三次均退出0、blocked/failed/retries/skips/reportErrors为0，source/snapshot均`8c3cd1a6…f5b98`、4173 listener `24c91e57…b8244` unchanged。safe入口附带TypeScript、生产build、架构76个既有例外/新增0、source coverage、凭据和网络门均通过
+- 文档文件：本Checkpoint、验收矩阵、TASKS和CURRENT_STATE候选事实；如实保留原始full的两个失败，不把定向修正复验改写成full全绿
+- package / schema / candidate：`0.6.35 / schema39 / 最终本地候选161f417 / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS`
+- 版本门 / 发布门：`v0.6.35 / VERSION_GATE_VALID`；“v0.6.35上线” / `RELEASE_GATE_VALID`；R7收口后进入R8，但不得移动同名不可变tag或覆盖既有release，必须先做身份预检
+- Provider / OSS / 费用：真实Provider请求、尝试、成功0；费用0；真实OSS写入0；定向测试和full只使用fresh临时数据、动态loopback与fake能力
+- 测试命令、环境、结果、退出码：Node22.23.1/npm10.9.8。精确`39cd494`上safe m2 `10/10 PASS`、m18 `2/2 PASS`、m100 `13/13 PASS`，source/snapshot均`8c3cd1a6…f5b98`。精确`4fd25cc`执行本Goal唯一一次`node scripts/run-safe-tests.mjs full`：120 specs / 1052 tests，`1050 passed / 2 failed`，skipped/retries/blocked/reportErrors均0，source/snapshot`ce6403b6136452263550846c2bdc1515fdba3abf0146b83f8d2ef6c8c41a8414`，退出1；失败为m24在异步目录结果返回前读取计数，以及m37在modal inert后仍试图强改背景标题来制造裁剪持久化丢失前置条件。未重复full。m24改为确定性等待后在精确`e2c412e`复验`2/2 PASS`、退出0；m37改为直接驱动真实`createDerivedImageToolUseCase`、临时Media API与`createCanvasGraphCommandPort`，在真实上传后/graph adoption前关闭持久层并验证DELETE/404、无派生节点、Provider计数不变，精确`161f417`复验`35/35 PASS`、退出0，source/snapshot`cfd831bc023a64cc967be31c3de16227844f876f4d73871cd1937b3cc182f3d6`。各轮4173 listener unchanged；safe入口附带TypeScript、生产build、架构76个既有例外/新增0、source coverage、凭据和网络门均通过
 - 浏览器视口、zoom、素材与结果：复用R6三视口13张截图和真实Alpha浏览器证据；R7 m2新增全部12工具四zoom直接几何断言，补齐R6 receipt只在各工具单一zoom截图的证据边界。定向测试没有真实生成提交
 - 架构与数据风险：棋盘格只画在节点CSS surface，图片字节和导出不变；assetId缺失的历史URL节点不再进入空modal，已完成安全持久化后裁剪照常启用；Host仍只管理显示层/焦点/关闭，不接业务编排
 - 设计偏差：为覆盖无法在ImageNode内安全探测跨域Alpha且禁止新增fetch的合同，所有已加载图片节点都使用棋盘格底层surface；不透明像素继续覆盖surface，透明/contain留白可明确辨认。这是共享surface实现，不是输出字节处理
-- 阻断：定向候选无阻断；唯一一次safe full尚未执行，因此R7仍为IN_PROGRESS
-- 回滚点：R6文档提交`128e3cff84d0e700c1197139fcdc4126916993ff`；R7产品/测试修正提交`39cd4945e847504733e425abc3a3a16e8489906c`
-- 唯一下一动作：提交本次R7候选治理文档；在该精确最终候选上执行本Goal唯一一次safe full，失败时只复验最小失败集合，通过后才把R7收口并进入R8
+- 阻断：R7无阻断；唯一一次full已执行，两个失败均已保留原始事实并由最小定向修正复验关闭。R8仍需核对同名不可变tag/release身份，不在R7预先作发布结论
+- 回滚点：R6文档提交`128e3cff84d0e700c1197139fcdc4126916993ff`；R7产品修正`39cd4945e847504733e425abc3a3a16e8489906c`；full前治理候选`4fd25ccb49b98573ab2e2ce8a6f28798f2ea3968`；最终定向修正候选`161f417e401e6ad332a756510fc6e4c59136b972`
+- 唯一下一动作：提交R7最终治理证据；随后先把R8标为`IN_PROGRESS`，只读核对`v0.6.35`现有tag、GitHub release、main tree与生产release身份，确认是否存在不移动tag、不覆盖release且能绑定本候选的合法发布路径
