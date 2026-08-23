@@ -2,13 +2,13 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 00:04:33 +0800
-- 状态：`GOAL_ACTIVE / D13_IN_PROGRESS / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_AWAITING_ACTION_TIME_FINANCIAL_CONFIRMATION / USER_QUALITY_RECHECK`
-- 当前阶段：`D13 GitHub和生产发布 / IN_PROGRESS`
+- 更新时间：2026-08-24 00:05:24 +0800
+- 状态：`GOAL_BLOCKED / D13_BLOCKED / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_AWAITING_ACTION_TIME_FINANCIAL_CONFIRMATION / USER_QUALITY_RECHECK`
+- 当前阶段：`D13 GitHub和生产发布 / BLOCKED`
 - 唯一允许的下一动作：等待用户对生产 UI 显示的付费提示作行动时确认；确认“最多6次、总预算上限60 USD”后，才逐项提交多角度、重绘、扩图、擦除、创意增强和主体抠图真实技术冒烟
 - 当前仓库：`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`
 - 记录时分支：`codex/v0.6.34-release-receipt-2026-08-24`
-- 记录时 HEAD：`eaaafd26d71718a7a4c24185426e4e93b998109e`
+- 记录时 HEAD：`759cf3594d3538ae1e5a5acf4205ad8255ab4a7e`
 - 记录时 `origin/main`：`eaaafd26d71718a7a4c24185426e4e93b998109e`
 - package：`0.6.34`
 - 生产：`v0.6.34 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`
@@ -161,10 +161,10 @@ package / schema / candidate：
 
 ## 26. D13 GitHub 和生产发布
 
-- 时间：2026-08-24 00:04:33 +0800
+- 时间：2026-08-24 00:05:24 +0800
 - 阶段：`D13`
-- 状态：`IN_PROGRESS / PR_MERGED / TAGGED / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_AWAITING_ACTION_TIME_FINANCIAL_CONFIRMATION / USER_QUALITY_RECHECK`
-- branch / HEAD / origin-main：`codex/v0.6.34-release-receipt-2026-08-24` / `eaaafd26d71718a7a4c24185426e4e93b998109e` / `eaaafd26d71718a7a4c24185426e4e93b998109e`
+- 状态：`BLOCKED / PR_MERGED / TAGGED / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_AWAITING_ACTION_TIME_FINANCIAL_CONFIRMATION / USER_QUALITY_RECHECK`
+- branch / HEAD / origin-main：`codex/v0.6.34-release-receipt-2026-08-24` / `759cf3594d3538ae1e5a5acf4205ad8255ab4a7e` / `eaaafd26d71718a7a4c24185426e4e93b998109e`
 - 工作树摘要：产品 PR #80 已 squash merge，tag `v0.6.34` 已发布且 tree 与 main 一致；生产已切换到 v0.6.34；当前新分支只更新 D13 实时 Checkpoint，最终回执和其余权威文档待真实 Provider 冒烟结论后一次收口
 - 产品文件：D12候选已冻结；D13开始时无新增产品修改
 - 测试文件：复用D12冻结前`234/234`、唯一一次full原始`1048/1052`和修正后精确`106/106`；不为进入发布重复full
@@ -174,7 +174,7 @@ package / schema / candidate：
 - 测试命令、环境、结果、退出码：复用D12 pinned Node22.23.1/npm10.9.8证据，不重复full。发布构建在服务器以Node22.23.2/npm10.9.8完成`npm ci`、typecheck和Vite build；PR CI `32649433392`、main CI `32649471107`均成功。生产非付费技术冒烟已通过颜色标记、素材库保存、Seedance本地预检、472x833像素派生、2x2四图切分、编号标注与显式导出、保守增强和既有裁剪；Generation task/attempt保持`722/730`，证明真实Provider请求为0
 - 架构与数据风险：发布必须保持旧release兼容Library schema1 sidecar，先备份/恢复/旧版本读取，再允许切换；真实生成必须逐项受预算和计费状态门约束
 - 设计偏差：归档包首次服务器`npm ci`虽从`/opt/node22/bin/npm`启动却继承Node18并只产生engine警告，已在未切换生产前用显式`PATH=/opt/node22/bin:/usr/bin:/bin`重跑并通过Node22.23.2门；备份脚本不支持`--help`且因此额外生成一份`/home/ubuntu/backups/2026-08-23T15-46-41-597Z`备份，保留不删；正式冻结备份另在`/var/lib/unboundry-rollbacks/v0.6.34-frozen-9JKfLH`
-- 阻断：真实 Provider 提交属于会产生费用的外部动作；生产 UI 明示每项预计10 USD，必须获得行动时金额确认。此前次数授权仍有效，但不擅自把它解释成最高60 USD支出
+- 阻断：真实 Provider 提交属于会产生费用的外部动作；生产 UI 明示每项预计10 USD，必须获得行动时金额确认。此前次数授权仍有效，但不擅自把它解释成最高60 USD支出。该同一阻断已在首次请求及两次自动 Goal 续跑中连续出现三次；所有其他安全范围工作已完成，未获得用户输入前无法继续产生费用的提交，现按阻断审计规则关闭 Goal 为 BLOCKED
 - 回滚点：上一不可变 release `v0.6.33-crop-loading-20260823`；正式冻结源和恢复副本均365文件、清单SHA-256均为`637e7bdf3437cf4b101040c6503c12aebe5ef660f2b25b367bc0f57dea6c1acd`；演练根`/var/tmp/unboundry-v0.6.34-rehearsal-TKEtxk`和发布归档均保留
 - 唯一下一动作：等待用户明确确认“最多6次、总预算上限60 USD”；收到后逐项执行真实技术冒烟，任一请求计费状态不明时不重试
 
