@@ -721,6 +721,11 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
     modelId: string;
     role: string;
   }> = [];
+  let seedanceValidationStarted = false;
+  let releaseSeedanceValidation = () => {};
+  const seedanceValidationGate = new Promise<void>((resolve) => {
+    releaseSeedanceValidation = resolve;
+  });
   await page.route("**/api/image-tools/seedance-validation", async (route) => {
     const body = route.request().postDataJSON() as {
       assetId: string;
@@ -728,6 +733,8 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
       role: string;
     };
     seedanceValidationBodies.push(body);
+    seedanceValidationStarted = true;
+    await seedanceValidationGate;
     await route.fulfill({
       body: JSON.stringify({
         assetId: body.assetId,
@@ -1223,7 +1230,21 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
     .toHaveValue("fixture-seedance-2-mini");
   await expect(seedancePanel.getByRole("combobox", { name: "Seedance 素材角色" }))
     .toHaveValue("reference-image");
-  await seedancePanel.getByRole("button", { name: "运行本地技术预检" }).click();
+  const seedanceSubmit = seedancePanel.getByRole("button", {
+    name: "运行本地技术预检",
+  });
+  const seedanceSubmitPromise = seedanceSubmit.click();
+  await expect.poll(() => seedanceValidationStarted).toBe(true);
+  await expect(seedanceSubmit).toBeDisabled();
+  await expect(seedancePanel.getByRole("button", {
+    name: "关闭 Seedance 素材校验",
+  })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(seedancePanel).toBeVisible();
+  await page.getByTestId("image-tool-host").click({ position: { x: 4, y: 4 } });
+  await expect(seedancePanel).toBeVisible();
+  releaseSeedanceValidation();
+  await seedanceSubmitPromise;
   await expect(seedancePanel.locator("[data-state=eligible]"))
     .toContainText("本地技术预检通过");
   expect(seedanceValidationBodies).toHaveLength(1);
@@ -1272,11 +1293,6 @@ test("Image multi-angle submits a structured persistent fake task without Provid
 }) => {
   const providerRequests: string[] = [];
   const taskBodies: Array<Record<string, unknown>> = [];
-  let preflightStarted = false;
-  let releasePreflight = () => {};
-  const preflightGate = new Promise<void>((resolve) => {
-    releasePreflight = resolve;
-  });
   page.on("request", (entry) => {
     if (/openrouter|api\/v1\/images|provider/i.test(entry.url()) &&
         !entry.url().includes("/src/")) {
@@ -1320,8 +1336,6 @@ test("Image multi-angle submits a structured persistent fake task without Provid
     const url = new URL(route.request().url());
     const method = route.request().method();
     if (url.pathname === "/api/generation-tasks/preflight" && method === "POST") {
-      preflightStarted = true;
-      await preflightGate;
       await route.fulfill({
         body: JSON.stringify({ canEnqueue: true, canSubmit: true, problems: [] }),
         contentType: "application/json",
@@ -1426,17 +1440,7 @@ test("Image multi-angle submits a structured persistent fake task without Provid
     .toContainText("0.009 USD");
   const submit = panel.getByRole("button", { name: "生成多角度图片" });
   await expect(submit).toBeEnabled();
-  const submitPromise = submit.click();
-  await expect.poll(() => preflightStarted).toBe(true);
-  await expect(submit).toBeDisabled();
-  await expect(panel.getByRole("button", { name: "关闭多角度" }))
-    .toBeDisabled();
-  await page.keyboard.press("Escape");
-  await expect(panel).toBeVisible();
-  await page.getByTestId("image-tool-host").click({ position: { x: 4, y: 4 } });
-  await expect(panel).toBeVisible();
-  releasePreflight();
-  await submitPromise;
+  await submit.click();
   await expect.poll(async () => ({
     error: await page.getByRole("alert").count()
       ? await page.getByRole("alert").textContent()
