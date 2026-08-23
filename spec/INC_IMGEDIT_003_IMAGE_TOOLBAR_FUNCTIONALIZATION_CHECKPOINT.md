@@ -2,23 +2,23 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-23 23:41:42 +0800
-- 状态：`GOAL_ACTIVE / D13_IN_PROGRESS / RELEASE_AUTH_VALID`
+- 更新时间：2026-08-24 00:04:33 +0800
+- 状态：`GOAL_ACTIVE / D13_IN_PROGRESS / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_AWAITING_ACTION_TIME_FINANCIAL_CONFIRMATION / USER_QUALITY_RECHECK`
 - 当前阶段：`D13 GitHub和生产发布 / IN_PROGRESS`
-- 唯一允许的下一动作：完整阅读 `RELEASE_RUNBOOK.md` 及其直接引用的发布资料；随后只按 Runbook 的首个未完成门继续
+- 唯一允许的下一动作：等待用户对生产 UI 显示的付费提示作行动时确认；确认“最多6次、总预算上限60 USD”后，才逐项提交多角度、重绘、扩图、擦除、创意增强和主体抠图真实技术冒烟
 - 当前仓库：`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`
-- 记录时分支：`codex/inc-imgedit-003-v0.6.34-2026-08-23`
-- 记录时 HEAD：`93cc76aae9413a66c65e6c9c13a4ba12278000f6`
-- 记录时 `origin/main`：`14777b5dc5cf48de8b21b6eb3ee27da45070b537`
+- 记录时分支：`codex/v0.6.34-release-receipt-2026-08-24`
+- 记录时 HEAD：`eaaafd26d71718a7a4c24185426e4e93b998109e`
+- 记录时 `origin/main`：`eaaafd26d71718a7a4c24185426e4e93b998109e`
 - package：`0.6.34`
-- 生产：`v0.6.33 / schema39 / PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`
+- 生产：`v0.6.34 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`
 - 新版本：`v0.6.34 / VERSION_GATE_VALID`
-- 候选：`v0.6.34 / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / D13_READY`
+- 候选：`v0.6.34 / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / PR_MERGED / TAGGED / PRODUCTION_PUBLISHED_AUTO_PASS`
 - 本轮代码施工：冻结候选提交 `aa67e46`；safe full 暴露的图片生成预检标量快照缺陷及三项确定性测试时序已由 `422408b` 修正，候选工作树干净
 - 本轮验证：pinned Node 22.23.1/npm 10.9.8；冻结前定向 `234/234 PASS`；唯一一次 safe full 原始 `1048/1052`，只复验四个失败规格时稳定复现 `102/106`，修复后同一精确集合 `106/106 PASS`；D12收口文档m38 `15/15 PASS`；未运行第二次 full
 - 真实 Provider/付费请求：0/8
-- 真实 OSS 测试对象：0
-- GitHub/SSH/生产操作：D13 尚未开始外部动作；push/PR/tag/SSH/生产写入均0
+- 真实 OSS 测试对象：本地派生技术冒烟新增8个 Media 资产并保留；无删除
+- GitHub/SSH/生产操作：产品 PR #80 已合并；PR CI `32649433392` 与 main CI `32649471107` 均成功；tag `v0.6.34` 与 main tree 一致；生产已原子切换到 `/opt/unboundry/releases/v0.6.34-image-toolbar-20260823`
 
 ## 1. 权威恢复顺序
 
@@ -157,26 +157,26 @@ package / schema / candidate：
 
 ## 10. 当前唯一下一动作
 
-完整阅读 `RELEASE_RUNBOOK.md` 及其直接引用的发布资料；随后只按 Runbook 的首个未完成门继续。
+等待用户对生产 UI 显示的付费提示作行动时确认；确认“最多6次、总预算上限60 USD”后，才逐项提交六项真实 Provider 技术冒烟。
 
 ## 26. D13 GitHub 和生产发布
 
-- 时间：2026-08-23 23:41:42 +0800
+- 时间：2026-08-24 00:04:33 +0800
 - 阶段：`D13`
-- 状态：`IN_PROGRESS / VERSION_GATE_VALID / RELEASE_GATE_VALID`
-- branch / HEAD / origin-main：`codex/inc-imgedit-003-v0.6.34-2026-08-23` / `93cc76aae9413a66c65e6c9c13a4ba12278000f6` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537`
-- 工作树摘要：D12 收口提交完成后工作树干净；尚未执行任何外部发布动作
+- 状态：`IN_PROGRESS / PR_MERGED / TAGGED / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_AWAITING_ACTION_TIME_FINANCIAL_CONFIRMATION / USER_QUALITY_RECHECK`
+- branch / HEAD / origin-main：`codex/v0.6.34-release-receipt-2026-08-24` / `eaaafd26d71718a7a4c24185426e4e93b998109e` / `eaaafd26d71718a7a4c24185426e4e93b998109e`
+- 工作树摘要：产品 PR #80 已 squash merge，tag `v0.6.34` 已发布且 tree 与 main 一致；生产已切换到 v0.6.34；当前新分支只更新 D13 实时 Checkpoint，最终回执和其余权威文档待真实 Provider 冒烟结论后一次收口
 - 产品文件：D12候选已冻结；D13开始时无新增产品修改
 - 测试文件：复用D12冻结前`234/234`、唯一一次full原始`1048/1052`和修正后精确`106/106`；不为进入发布重复full
-- 文档文件：本Checkpoint、`TASKS.md`、`UNBOUNDRY_ACCEPTANCE_MATRIX.md`
-- package / schema / candidate：`0.6.34 / schema39 / LOCAL_ENGINEERING_COMPLETE / D13_IN_PROGRESS`
-- 外部请求和付费预算：真实Provider成功预算`0/8`；真实OSS测试对象0；push/PR/tag/SSH/生产操作0
-- 测试命令、环境、结果、退出码：本阶段尚未新增验证；沿用D12 pinned Node22.23.1/npm10.9.8证据
+- 文档文件：本 Checkpoint；最终 `TASKS.md`、验收矩阵、CURRENT_STATE、README、上线规矩、交接、修复 Checkpoint、主方案和生产回执待真实 Provider 冒烟后同步
+- package / schema / candidate：`0.6.34 / schema39 / PR_MERGED / TAGGED / PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`
+- 外部请求和付费预算：真实 Provider 成功预算仍为`0/8`。生产 UI 的多角度、重绘和擦除均显示“预计 10 USD”；扩图已确认只有一次提交按钮且无金额提示。为避免把原始次数授权外推成最高60 USD支出，六项提交均保持未点击，等待用户行动时确认
+- 测试命令、环境、结果、退出码：复用D12 pinned Node22.23.1/npm10.9.8证据，不重复full。发布构建在服务器以Node22.23.2/npm10.9.8完成`npm ci`、typecheck和Vite build；PR CI `32649433392`、main CI `32649471107`均成功。生产非付费技术冒烟已通过颜色标记、素材库保存、Seedance本地预检、472x833像素派生、2x2四图切分、编号标注与显式导出、保守增强和既有裁剪；Generation task/attempt保持`722/730`，证明真实Provider请求为0
 - 架构与数据风险：发布必须保持旧release兼容Library schema1 sidecar，先备份/恢复/旧版本读取，再允许切换；真实生成必须逐项受预算和计费状态门约束
-- 设计偏差：无
-- 阻断：无
-- 回滚点：D12文档收口提交`93cc76aae9413a66c65e6c9c13a4ba12278000f6`；当前生产仍为v0.6.33
-- 唯一下一动作：完整阅读`RELEASE_RUNBOOK.md`及其直接引用发布资料；随后执行首个未完成门
+- 设计偏差：归档包首次服务器`npm ci`虽从`/opt/node22/bin/npm`启动却继承Node18并只产生engine警告，已在未切换生产前用显式`PATH=/opt/node22/bin:/usr/bin:/bin`重跑并通过Node22.23.2门；备份脚本不支持`--help`且因此额外生成一份`/home/ubuntu/backups/2026-08-23T15-46-41-597Z`备份，保留不删；正式冻结备份另在`/var/lib/unboundry-rollbacks/v0.6.34-frozen-9JKfLH`
+- 阻断：真实 Provider 提交属于会产生费用的外部动作；生产 UI 明示每项预计10 USD，必须获得行动时金额确认。此前次数授权仍有效，但不擅自把它解释成最高60 USD支出
+- 回滚点：上一不可变 release `v0.6.33-crop-loading-20260823`；正式冻结源和恢复副本均365文件、清单SHA-256均为`637e7bdf3437cf4b101040c6503c12aebe5ef660f2b25b367bc0f57dea6c1acd`；演练根`/var/tmp/unboundry-v0.6.34-rehearsal-TKEtxk`和发布归档均保留
+- 唯一下一动作：等待用户明确确认“最多6次、总预算上限60 USD”；收到后逐项执行真实技术冒烟，任一请求计费状态不明时不重试
 
 ## 25. D12 候选冻结和统一验证
 
