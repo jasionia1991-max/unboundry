@@ -3,9 +3,9 @@
 ## 0. 当前断点
 
 - 更新时间：2026-08-24 03:36:12 +0800
-- 状态：`GOAL_ACTIVE / R3_AUTO_PASS / UI_REMEDIATION_REQUIRED`
-- 当前阶段：`R3 紧凑面板和快速切分 / AUTO_PASS`
-- 唯一允许的下一动作：提交R3文档checkpoint；随后先把R4标为`IN_PROGRESS`，再完成重绘、擦除、扩图、标注、裁剪回归和统一透明棋盘格大型舞台
+- 状态：`GOAL_ACTIVE / R4_IN_PROGRESS / UI_REMEDIATION_REQUIRED`
+- 当前阶段：`R4 大型编辑器与透明舞台 / IN_PROGRESS`
+- 唯一允许的下一动作：完成重绘、擦除、扩图、标注和裁剪的大型screen-space布局与统一`ImageToolSurface`；验证棋盘格、contain、原图/新增区、mask坐标和动作区不碰撞
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
 - 文档分支：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`
 - 立项 HEAD / origin-main：`f369d1dba1eef05aebc7f1a443256ceb82778ea0`
@@ -96,7 +96,7 @@ node -p "require('./package.json').version"
 | R1 | 状态机和共享宿主合同 | AUTO_PASS_WITH_EXPECTED_RED_UI_EVIDENCE |
 | R2 | 单一活动工具与 Portal 宿主 | AUTO_PASS |
 | R3 | 紧凑面板和快速切分 | AUTO_PASS |
-| R4 | 大型编辑器与透明舞台 | NOT_STARTED |
+| R4 | 大型编辑器与透明舞台 | IN_PROGRESS |
 | R5 | 全屏与交互完整性 | NOT_STARTED |
 | R6 | 逐工具功能与回归验证 | NOT_STARTED |
 | R7 | 候选冻结与独立审查 | NOT_STARTED |

@@ -1,11 +1,11 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产为`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，但图片工具用户质量复验未通过。`INC-IMGEDIT-004` R3已完成六类紧凑/大型安全面板与三目标视口bounds；下一阶段为R4大型编辑器与透明舞台。
+> **当前状态**：生产为`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，但图片工具用户质量复验未通过。`INC-IMGEDIT-004` R3已完成六类紧凑/大型安全面板与三目标视口bounds；R4大型编辑器与透明舞台施工中。
 
 更新时间：2026-08-24
-状态：`v0.6.35 PRODUCTION_PUBLISHED_AUTO_PASS；REAL_PROVIDER_TECHNICAL_SMOKE_PASS 6/6；INC-IMGEDIT-004 R3_AUTO_PASS；USER_QUALITY_REMEDIATION_REQUIRED。`
+状态：`v0.6.35 PRODUCTION_PUBLISHED_AUTO_PASS；REAL_PROVIDER_TECHNICAL_SMOKE_PASS 6/6；INC-IMGEDIT-004 R3_AUTO_PASS / R4_IN_PROGRESS；USER_QUALITY_REMEDIATION_REQUIRED。`
 
-### 2026-08-24 图片工具交互与 UI 一次性返工（INC-IMGEDIT-004，GOAL_ACTIVE / R3_AUTO_PASS）
+### 2026-08-24 图片工具交互与 UI 一次性返工（INC-IMGEDIT-004，GOAL_ACTIVE / R4_IN_PROGRESS）
 
 - 用户生产实页检查未通过；自动测试和六项真实Provider链只证明技术链，不能证明功能交互、UI或视觉质量正常。
 - 已确认P0/P1：多个工具可叠开；多角度/快速切分/Seedance底部裁切；重绘/擦除/标注与Creator碰撞；透明图在编辑器/全屏为黑底；扩图和紧凑面板布局失衡。顶部工具栏、更多菜单和颜色标记作为回归保护。
