@@ -1049,11 +1049,6 @@ function ImageRedrawEditor({
     maxWidth / maxHeight > aspect
       ? { height: maxHeight, width: maxHeight * aspect }
       : { height: maxWidth / aspect, width: maxWidth };
-  const stageTop = Math.max(
-    80,
-    Math.min(140, window.innerHeight - stage.height - 140),
-  );
-
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -1105,7 +1100,7 @@ function ImageRedrawEditor({
     if (drawing.tool === "box") {
       context.putImageData(drawing.image, 0, 0);
       context.globalCompositeOperation = "source-over";
-      context.fillStyle = "rgba(72, 153, 255, 0.5)";
+      context.fillStyle = "rgba(255, 255, 255, 0.5)";
       context.fillRect(
         drawing.x,
         drawing.y,
@@ -1117,7 +1112,7 @@ function ImageRedrawEditor({
 
     context.globalCompositeOperation =
       drawing.tool === "erase" ? "destination-out" : "source-over";
-    context.strokeStyle = "rgba(72, 153, 255, 0.62)";
+    context.strokeStyle = "rgba(255, 255, 255, 0.62)";
     context.lineCap = "round";
     context.lineJoin = "round";
     context.lineWidth = brushSize * scale;
@@ -1155,7 +1150,6 @@ function ImageRedrawEditor({
         data-testid="image-redraw-stage"
         style={{
           height: stage.height,
-          top: stageTop,
           width: stage.width,
         }}
       >
@@ -1182,9 +1176,8 @@ function ImageRedrawEditor({
       <div
         className="image-redraw-toolbar"
         data-testid="image-redraw-toolbar"
-        style={{ top: stageTop - 64 }}
       >
-        <button aria-label={`取消${noun}`} onClick={onClose} type="button">×</button>
+        <button aria-label={`取消${noun}`} disabled={busy} onClick={onClose} type="button">×</button>
         <span className="image-redraw-divider" />
         <span className="image-redraw-tools">
           {([
@@ -1195,6 +1188,7 @@ function ImageRedrawEditor({
             <button
               aria-label={label}
               aria-pressed={tool === value}
+              disabled={busy}
               key={value}
               onClick={() => setTool(value)}
               type="button"
@@ -1224,6 +1218,7 @@ function ImageRedrawEditor({
         </span>
         <input
           aria-label="画笔大小"
+          disabled={busy}
           max="80"
           min="5"
           onChange={(event) => setBrushSize(Number(event.target.value))}
@@ -1233,7 +1228,7 @@ function ImageRedrawEditor({
         <span className="image-redraw-divider" />
         <button
           aria-label="撤销蒙版"
-          disabled={!history.current.length}
+          disabled={busy || !history.current.length}
           onClick={() => restore(history, redo)}
           type="button"
         >
@@ -1241,7 +1236,7 @@ function ImageRedrawEditor({
         </button>
         <button
           aria-label="恢复蒙版"
-          disabled={!redo.current.length}
+          disabled={busy || !redo.current.length}
           onClick={() => restore(redo, history)}
           type="button"
         >
@@ -1252,11 +1247,11 @@ function ImageRedrawEditor({
       <div
         className="image-redraw-prompt"
         data-testid="image-redraw-prompt"
-        style={{ top: stageTop + stage.height + 8 }}
       >
         <textarea
           aria-label={`${noun}提示词`}
           data-composition-active={promptControl.composing || undefined}
+          disabled={busy}
           onBlur={() => promptControl.blur()}
           onChange={(event) =>
             promptControl.change(
@@ -1285,6 +1280,7 @@ function ImageRedrawEditor({
             羽化
             <input
               aria-label="蒙版羽化"
+              disabled={busy}
               max="64"
               min="0"
               onChange={(event) => setFeatherPixels(Number(event.target.value))}
@@ -1294,9 +1290,6 @@ function ImageRedrawEditor({
             <output>{featherPixels}px</output>
           </label>
           <span className="image-redraw-prompt-spacer" />
-          <button type="button">1K</button>
-          <button type="button">x1</button>
-          <button type="button">PRO</button>
           <button
             aria-label={`提交${noun}`}
             disabled={
@@ -1352,21 +1345,27 @@ function ImageOutpaintEditor({
     <div
       className="image-outpaint-overlay nodrag nopan nowheel"
       data-testid="image-outpaint-overlay">
+      <header className="image-editor-header">
+        <span><strong>扩图</strong><small>灰色边框内是原图，棋盘格区域为新增边界</small></span>
+        <button aria-label="取消扩图" disabled={busy} onClick={onClose} type="button">×</button>
+      </header>
       <div className="image-outpaint-stage" data-testid="image-outpaint-stage">
-        <div style={{ padding: `${marginPercent / 2}%` }}>
-          <img alt="" draggable={false} src={src} />
+        <div className="image-outpaint-frame" style={{ padding: `${marginPercent / 2}%` }}>
+          <div className="image-outpaint-original">
+            <img alt="" draggable={false} src={src} />
+            <span>原图范围</span>
+          </div>
         </div>
         <small>{naturalWidth}×{naturalHeight} · 四周扩展 {marginPercent}%</small>
       </div>
       <div className="image-outpaint-controls">
-        <button aria-label="取消扩图" onClick={onClose} type="button">×</button>
         <label>扩展边界
-          <input aria-label="扩图边界" max="50" min="5"
+          <input aria-label="扩图边界" disabled={busy} max="50" min="5"
             onChange={(event) => setMarginPercent(Number(event.target.value))}
             type="range" value={marginPercent} />
           <output>{marginPercent}%</output>
         </label>
-        <textarea aria-label="扩图提示词" value={promptControl.value}
+        <textarea aria-label="扩图提示词" disabled={busy} value={promptControl.value}
           onBlur={() => promptControl.blur()}
           onChange={(event) => promptControl.change(event.target.value,
             (event.nativeEvent as InputEvent).isComposing)}
@@ -1731,6 +1730,7 @@ function ImageNodeImpl({
   const [multiAngleBusy, setMultiAngleBusy] = useState(false);
   const [multiAngleError, setMultiAngleError] = useState("");
   const [localToolBusy, setLocalToolBusy] = useState(false);
+  const [annotationBusy, setAnnotationBusy] = useState(false);
   const [modelSwitchProblem, setModelSwitchProblem] = useState("");
   const [redrawBusy, setRedrawBusy] = useState(false);
   const [redrawError, setRedrawError] = useState("");
@@ -1769,6 +1769,8 @@ function ImageNodeImpl({
     : false;
   const imageToolBusy = activeImageTool === "multi-angle"
     ? multiAngleBusy
+    : activeImageTool === "annotation"
+    ? annotationBusy
     : activeImageTool === "resize" || activeImageTool === "split"
     ? localToolBusy
     : activeImageTool === "redraw"
@@ -1789,6 +1791,7 @@ function ImageNodeImpl({
     trigger?: HTMLElement | null,
   ) => {
     setLocalToolBusy(false);
+    setAnnotationBusy(false);
     imageToolTriggerRef.current = trigger ??
       (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     setLightingOpen(false);
@@ -1796,6 +1799,7 @@ function ImageNodeImpl({
   }, []);
   const closeImageTool = useCallback((tool?: ImageToolId) => {
     setLocalToolBusy(false);
+    setAnnotationBusy(false);
     dispatchToolUi({ tool, type: "close-tool" });
   }, []);
   const [seedanceExpiryEpoch, setSeedanceExpiryEpoch] = useState(0);
@@ -4763,15 +4767,17 @@ function ImageNodeImpl({
         returnFocus={imageToolTriggerRef.current}
       >
         {preview && cropOpen && cropSourceAssetId && (
-          <ImageCropEditor
-            assetId={cropSourceAssetId}
-            onCancel={() => closeImageTool("crop")}
-            onConfirm={async (file, sourceAssetId) => {
-              await imageToolDispatcher.execute("crop", { file, sourceAssetId });
-            }}
-            title={titleControl.committedValue}
-            visualPreview={cropVisualPreview}
-          />
+          <ImageToolSurface className="image-tool-editor-surface">
+            <ImageCropEditor
+              assetId={cropSourceAssetId}
+              onCancel={() => closeImageTool("crop")}
+              onConfirm={async (file, sourceAssetId) => {
+                await imageToolDispatcher.execute("crop", { file, sourceAssetId });
+              }}
+              title={titleControl.committedValue}
+              visualPreview={cropVisualPreview}
+            />
+          </ImageToolSurface>
         )}
         {preview && localToolOpen === "resize" && (
           <ImageResizePanel
@@ -4914,79 +4920,88 @@ function ImageNodeImpl({
           </div>
         )}
         {preview && annotationOpen && (
-          <ImageAnnotationEditor
-            document={data.imageAnnotations ?? emptyImageAnnotationDocument(
-              data.mediaWidth ?? previewImageRef.current?.naturalWidth ?? 1280,
-              data.mediaHeight ?? previewImageRef.current?.naturalHeight ?? 720,
-            )}
-            onChange={updateAnnotations}
-            onClose={() => closeImageTool("annotation")}
-            onExport={async (annotations) => {
-              await imageToolDispatcher.execute("annotate", { annotations });
-            }}
-            src={preview}
-          />
+          <ImageToolSurface className="image-tool-editor-surface">
+            <ImageAnnotationEditor
+              document={data.imageAnnotations ?? emptyImageAnnotationDocument(
+                data.mediaWidth ?? previewImageRef.current?.naturalWidth ?? 1280,
+                data.mediaHeight ?? previewImageRef.current?.naturalHeight ?? 720,
+              )}
+              onBusyChange={setAnnotationBusy}
+              onChange={updateAnnotations}
+              onClose={() => closeImageTool("annotation")}
+              onExport={async (annotations) => {
+                await imageToolDispatcher.execute("annotate", { annotations });
+              }}
+              src={preview}
+            />
+          </ImageToolSurface>
         )}
         {preview && redrawOpen && (
-          <ImageRedrawEditor
-            busy={redrawBusy}
-            capability={redrawCapability}
-            error={redrawError}
-            onClose={() => closeImageTool("redraw")}
-            onError={setRedrawError}
-            onSubmit={submitRedraw}
-            src={preview}
-          />
+          <ImageToolSurface className="image-tool-editor-surface">
+            <ImageRedrawEditor
+              busy={redrawBusy}
+              capability={redrawCapability}
+              error={redrawError}
+              onClose={() => closeImageTool("redraw")}
+              onError={setRedrawError}
+              onSubmit={submitRedraw}
+              src={preview}
+            />
+          </ImageToolSurface>
         )}
         {preview && eraseOpen && (
-          <ImageRedrawEditor
-            busy={eraseBusy}
-            capability={eraseCapability}
-            error={eraseError}
-            onClose={() => closeImageTool("erase")}
-            onError={setEraseError}
-            onSubmit={(input) => submitOutpaintErase("erase", input)}
-            operation="erase"
-            src={preview}
-          />
+          <ImageToolSurface className="image-tool-editor-surface">
+            <ImageRedrawEditor
+              busy={eraseBusy}
+              capability={eraseCapability}
+              error={eraseError}
+              onClose={() => closeImageTool("erase")}
+              onError={setEraseError}
+              onSubmit={(input) => submitOutpaintErase("erase", input)}
+              operation="erase"
+              src={preview}
+            />
+          </ImageToolSurface>
         )}
         {preview && outpaintOpen && (
-          <ImageOutpaintEditor
-            busy={outpaintBusy}
-            capability={outpaintCapability}
-            error={outpaintError}
-            naturalHeight={data.mediaHeight ?? previewImageRef.current?.naturalHeight ?? 720}
-            naturalWidth={data.mediaWidth ?? previewImageRef.current?.naturalWidth ?? 1280}
-            onClose={() => closeImageTool("outpaint")}
-            onSubmit={async ({ marginPercent, prompt }) => {
-              const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
-              if (!sourceAssetId) {
-                setOutpaintError("图片尚未完成安全保存");
-                return;
-              }
-              setOutpaintBusy(true);
-              setOutpaintError("");
-              try {
-                const sourceWidth = data.mediaWidth ?? previewImageRef.current?.naturalWidth ?? 0;
-                const sourceHeight = data.mediaHeight ?? previewImageRef.current?.naturalHeight ?? 0;
-                const horizontal = Math.max(1, Math.round(sourceWidth * marginPercent / 100 / 2));
-                const vertical = Math.max(1, Math.round(sourceHeight * marginPercent / 100 / 2));
-                const prepared = await prepareOutpaintImages({ assetId: sourceAssetId,
-                  fileNamePrefix: `image-outpaint-${crypto.randomUUID()}`,
-                  outputHeight: sourceHeight + vertical * 2,
-                  outputWidth: sourceWidth + horizontal * 2,
-                  sourceX: horizontal, sourceY: vertical });
-                setOutpaintBusy(false);
-                await submitOutpaintErase("outpaint", { featherPixels: 0,
-                  maskFile: prepared.maskFile, outpaint: prepared.parameters,
-                  preparedFile: prepared.preparedFile, prompt });
-              } catch (caught) {
-                setOutpaintError(caught instanceof Error ? caught.message : "扩图输入准备失败");
-                setOutpaintBusy(false);
-              }
-            }}
-            src={preview}
-          />
+          <ImageToolSurface className="image-tool-editor-surface">
+            <ImageOutpaintEditor
+              busy={outpaintBusy}
+              capability={outpaintCapability}
+              error={outpaintError}
+              naturalHeight={data.mediaHeight ?? previewImageRef.current?.naturalHeight ?? 720}
+              naturalWidth={data.mediaWidth ?? previewImageRef.current?.naturalWidth ?? 1280}
+              onClose={() => closeImageTool("outpaint")}
+              onSubmit={async ({ marginPercent, prompt }) => {
+                const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
+                if (!sourceAssetId) {
+                  setOutpaintError("图片尚未完成安全保存");
+                  return;
+                }
+                setOutpaintBusy(true);
+                setOutpaintError("");
+                try {
+                  const sourceWidth = data.mediaWidth ?? previewImageRef.current?.naturalWidth ?? 0;
+                  const sourceHeight = data.mediaHeight ?? previewImageRef.current?.naturalHeight ?? 0;
+                  const horizontal = Math.max(1, Math.round(sourceWidth * marginPercent / 100 / 2));
+                  const vertical = Math.max(1, Math.round(sourceHeight * marginPercent / 100 / 2));
+                  const prepared = await prepareOutpaintImages({ assetId: sourceAssetId,
+                    fileNamePrefix: `image-outpaint-${crypto.randomUUID()}`,
+                    outputHeight: sourceHeight + vertical * 2,
+                    outputWidth: sourceWidth + horizontal * 2,
+                    sourceX: horizontal, sourceY: vertical });
+                  setOutpaintBusy(false);
+                  await submitOutpaintErase("outpaint", { featherPixels: 0,
+                    maskFile: prepared.maskFile, outpaint: prepared.parameters,
+                    preparedFile: prepared.preparedFile, prompt });
+                } catch (caught) {
+                  setOutpaintError(caught instanceof Error ? caught.message : "扩图输入准备失败");
+                  setOutpaintBusy(false);
+                }
+              }}
+              src={preview}
+            />
+          </ImageToolSurface>
         )}
         {preview && multiAngleOpen && (
           <ImageMultiAnglePanel

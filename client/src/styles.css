@@ -7757,6 +7757,306 @@ sup {
   }
 }
 
+/* INC-IMGEDIT-004: large editors share one viewport-safe transparent stage. */
+.image-tool-editor-surface {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background-color: #202126;
+}
+
+.image-tool-editor-surface .image-crop-overlay,
+.image-tool-editor-surface .image-redraw-overlay,
+.image-tool-editor-surface .image-outpaint-overlay,
+.image-tool-editor-surface .image-annotation-overlay {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  background: rgba(12, 12, 12, 0.72);
+}
+
+.image-tool-editor-surface .image-crop-overlay {
+  padding: 12px;
+}
+
+.image-tool-editor-surface .image-crop-stage,
+.image-tool-editor-surface .image-redraw-stage,
+.image-tool-editor-surface .image-annotation-stage {
+  background-color: #202126;
+  background-image:
+    linear-gradient(45deg, rgb(255 255 255 / 8%) 25%, transparent 25%),
+    linear-gradient(-45deg, rgb(255 255 255 / 8%) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgb(255 255 255 / 8%) 75%),
+    linear-gradient(-45deg, transparent 75%, rgb(255 255 255 / 8%) 75%);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+}
+
+.image-tool-editor-surface .image-redraw-overlay {
+  display: grid;
+  padding: 12px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  justify-items: center;
+  gap: 10px;
+}
+
+.image-tool-editor-surface .image-redraw-toolbar,
+.image-tool-editor-surface .image-redraw-stage,
+.image-tool-editor-surface .image-redraw-prompt {
+  position: relative;
+  top: auto;
+  left: auto;
+  transform: none;
+}
+
+.image-tool-editor-surface .image-redraw-toolbar {
+  width: auto;
+  min-width: min(385px, 100%);
+  height: 48px;
+  padding: 5px;
+  border-radius: 16px;
+}
+
+.image-tool-editor-surface .image-redraw-stage {
+  align-self: center;
+  max-width: 100%;
+  max-height: 100%;
+  border-color: rgba(255, 255, 255, 0.24);
+  border-radius: 10px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.36);
+}
+
+.image-tool-editor-surface .image-redraw-prompt {
+  box-sizing: border-box;
+  width: min(720px, 100%);
+  height: auto;
+  min-height: 112px;
+  padding: 8px;
+}
+
+.image-tool-editor-surface .image-redraw-prompt textarea {
+  box-sizing: border-box;
+  width: 100%;
+  height: 56px;
+}
+
+.image-tool-editor-surface .image-redraw-error {
+  position: static;
+  max-width: 100%;
+}
+
+.image-editor-header {
+  display: flex;
+  min-height: 54px;
+  padding: 9px 12px 9px 14px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(24, 24, 24, 0.94);
+}
+
+.image-editor-header > span {
+  display: grid;
+  gap: 2px;
+}
+
+.image-editor-header strong {
+  color: #f5f5f5;
+  font-size: var(--tap-font-primary);
+}
+
+.image-editor-header small {
+  color: #999;
+  font-size: var(--tap-font-secondary);
+}
+
+.image-editor-header button {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  color: #bbb;
+  background: transparent;
+  font-size: var(--tap-font-primary);
+}
+
+.image-tool-editor-surface .image-outpaint-overlay {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.image-tool-editor-surface .image-outpaint-stage {
+  display: grid;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  padding: 14px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  place-items: center;
+}
+
+.image-tool-editor-surface .image-outpaint-frame {
+  position: relative;
+  box-sizing: border-box;
+  display: grid;
+  overflow: hidden;
+  max-width: min(820px, 100%);
+  max-height: 100%;
+  border: 1px dashed rgba(255, 255, 255, 0.4);
+  border-radius: 10px;
+  background-color: #202126;
+  background-image:
+    linear-gradient(45deg, rgb(255 255 255 / 8%) 25%, transparent 25%),
+    linear-gradient(-45deg, rgb(255 255 255 / 8%) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgb(255 255 255 / 8%) 75%),
+    linear-gradient(-45deg, transparent 75%, rgb(255 255 255 / 8%) 75%);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+  place-items: center;
+}
+
+.image-outpaint-original {
+  position: relative;
+  display: grid;
+  max-width: 100%;
+  max-height: 100%;
+  border: 2px solid rgba(245, 245, 245, 0.72);
+  place-items: center;
+}
+
+.image-outpaint-original span {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 3px 7px;
+  border-radius: 7px;
+  color: #ededed;
+  background: rgba(20, 20, 20, 0.78);
+  font-size: var(--tap-font-secondary);
+  pointer-events: none;
+}
+
+.image-tool-editor-surface .image-outpaint-stage img {
+  display: block;
+  max-width: min(680px, 100%);
+  max-height: calc(100vh - 310px);
+}
+
+.image-tool-editor-surface .image-outpaint-controls {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  max-width: none;
+  min-height: 82px;
+  padding: 10px 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  border-width: 1px 0 0;
+  border-radius: 0;
+  background: rgba(24, 24, 24, 0.94);
+  transform: none;
+}
+
+.image-tool-editor-surface .image-outpaint-controls label {
+  flex: 0 1 260px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: var(--tap-font-secondary);
+}
+
+.image-tool-editor-surface .image-outpaint-controls textarea {
+  box-sizing: border-box;
+  width: auto;
+  min-width: 260px;
+  min-height: 52px;
+  flex: 1 1 360px;
+  font-size: var(--tap-font-primary);
+}
+
+.image-tool-editor-surface .image-outpaint-controls > span,
+.image-tool-editor-surface .image-outpaint-controls [role="alert"] {
+  font-size: var(--tap-font-secondary);
+}
+
+.image-tool-editor-surface .image-outpaint-controls > button {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  flex: 0 0 34px;
+  border: 0;
+  border-radius: 50%;
+  color: #202020;
+  background: #ededed;
+  font-size: var(--tap-font-primary);
+}
+
+.image-tool-editor-surface .image-annotation-overlay {
+  display: grid;
+  padding: 12px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  justify-items: center;
+  gap: 10px;
+}
+
+.image-tool-editor-surface .image-annotation-toolbar {
+  min-height: 48px;
+  padding: 5px;
+}
+
+.image-tool-editor-surface .image-annotation-toolbar button {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  font-size: var(--tap-font-primary);
+}
+
+.image-tool-editor-surface .image-annotation-stage {
+  align-self: center;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 10px;
+}
+
+.image-tool-editor-surface .image-annotation-status {
+  width: min(786px, 100%);
+  min-height: 28px;
+  justify-content: space-between;
+}
+
+@media (max-width: 720px), (max-height: 620px) {
+  .image-tool-editor-surface .image-redraw-overlay,
+  .image-tool-editor-surface .image-annotation-overlay {
+    padding: 8px;
+    gap: 6px;
+  }
+
+  .image-tool-editor-surface .image-redraw-prompt {
+    min-height: 96px;
+  }
+
+  .image-tool-editor-surface .image-redraw-prompt textarea {
+    height: 44px;
+  }
+
+  .image-tool-editor-surface .image-outpaint-controls {
+    max-height: 180px;
+    overflow: auto;
+  }
+}
+
 .node-search-input-row {
   display: flex;
   height: 68px;

@@ -275,6 +275,12 @@ test("Image empty and local upload states match the observed geometry", async ({
     .toHaveAttribute("data-active-tool", "outpaint");
   await expect.soft(page.locator("#root")).toHaveAttribute("inert", "");
   await expect(outpaint.getByRole("button", { name: "提交扩图" })).toBeDisabled();
+  await expectInsideViewport(outpaint);
+  await expectInsideViewport(page.getByTestId("image-outpaint-stage"));
+  await expectInsideViewport(outpaint.locator(".image-outpaint-controls"));
+  await expect(outpaint.locator(".image-outpaint-original")).toContainText("原图范围");
+  await expect(page.getByTestId("image-tool-surface"))
+    .toHaveAttribute("data-surface-tone", "checkerboard");
   await outpaint.getByRole("button", { name: "取消扩图" }).click();
   await expect.soft(toolbar.getByRole("button", { name: "浏览全部" })).toBeFocused();
   await card.click({ position: { x: 20, y: 20 } });
@@ -284,6 +290,12 @@ test("Image empty and local upload states match the observed geometry", async ({
   const erase = page.getByTestId("image-erase-overlay");
   await expect(erase).toBeVisible();
   await expect(erase.getByRole("button", { name: "提交擦除" })).toBeDisabled();
+  await expectInsideViewport(erase);
+  await expectInsideViewport(page.getByTestId("image-redraw-toolbar"));
+  await expectInsideViewport(page.getByTestId("image-redraw-stage"));
+  await expectInsideViewport(page.getByTestId("image-redraw-prompt"));
+  await expect(page.getByTestId("image-redraw-stage"))
+    .not.toHaveCSS("background-image", "none");
   await erase.getByRole("button", { name: "取消擦除" }).click();
   await card.click({ position: { x: 20, y: 20 } });
   await toolbar.getByRole("button", { name: "浏览全部" }).click();
@@ -800,6 +812,11 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   await expect(confirmCrop).toBeEnabled();
   expect(redirectedAssetReads).toBe(0);
   expect(await stage.boundingBox()).toMatchObject({ height: 552 });
+  await expectInsideViewport(overlay);
+  await expectInsideViewport(stage);
+  await expect(page.getByTestId("image-tool-surface"))
+    .toHaveAttribute("data-surface-tone", "checkerboard");
+  await expect(stage).not.toHaveCSS("background-image", "none");
   expect(await page.getByTestId("image-crop-controls").boundingBox())
     .toMatchObject({ height: 42, width: 252 });
   await expect(confirmCrop).toHaveCSS("white-space", "nowrap");
@@ -1065,6 +1082,11 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   const annotationCanvas = page.getByTestId("image-annotation-canvas");
   const annotationToolbar = page.getByTestId("image-annotation-toolbar");
   await expect(annotationOverlay).toBeVisible();
+  await expectInsideViewport(annotationOverlay);
+  await expectInsideViewport(annotationToolbar);
+  await expectInsideViewport(annotationStage);
+  await expectInsideViewport(page.getByTestId("image-annotation-status"));
+  await expect(annotationStage).not.toHaveCSS("background-image", "none");
   const annotationBox = (await annotationStage.boundingBox())!;
 
   await annotationToolbar.getByRole("button", { name: "画笔" }).click();
@@ -1526,21 +1548,22 @@ test("Image redraw submits an owner-scoped mask fake task and cancel is lossless
   const prompt = page.getByTestId("image-redraw-prompt");
   const canvas = page.getByTestId("image-redraw-canvas");
   await expect(overlay).toBeVisible();
+  await expectInsideViewport(overlay);
+  await expectInsideViewport(stage);
+  await expectInsideViewport(toolbar);
+  await expectInsideViewport(prompt);
+  await expect(stage).not.toHaveCSS("background-image", "none");
+  await expect(page.getByTestId("image-tool-surface"))
+    .toHaveAttribute("data-surface-tone", "checkerboard");
   const stageBox = (await stage.boundingBox())!;
   expect(stageBox.height).toBe(440);
   expect(stageBox.width).toBeCloseTo(782.22, 1);
-  expect(await toolbar.boundingBox()).toMatchObject({
-    height: 58,
-    width: 385,
-  });
-  expect(await prompt.boundingBox()).toMatchObject({
-    height: 122,
-    width: 500,
-  });
-  expect(await prompt.getByRole("textbox").boundingBox()).toMatchObject({
-    height: 60,
-    width: 482,
-  });
+  expect((await toolbar.boundingBox())?.height).toBe(48);
+  expect((await toolbar.boundingBox())?.width).toBeGreaterThanOrEqual(385);
+  expect((await prompt.boundingBox())?.height).toBeGreaterThanOrEqual(112);
+  expect((await prompt.boundingBox())?.width).toBeGreaterThanOrEqual(500);
+  expect((await prompt.getByRole("textbox").boundingBox())?.height)
+    .toBeGreaterThanOrEqual(56);
   await expect(
     prompt.getByRole("button", { name: "提交重绘" }),
   ).toBeDisabled();
