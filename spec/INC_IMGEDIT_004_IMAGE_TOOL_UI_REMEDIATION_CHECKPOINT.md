@@ -2,10 +2,10 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 03:06:07 +0800
-- 状态：`GOAL_ACTIVE / R0_AUTO_PASS / UI_REMEDIATION_REQUIRED`
-- 当前阶段：`R0 实时恢复与缺陷基线 / AUTO_PASS`
-- 唯一允许的下一动作：提交 R0 本地 checkpoint；随后进入 R1 前先把 R1 标为 `IN_PROGRESS`，冻结 ActiveImageTool、descriptor、host/modal/popover/surface、焦点、busy、关闭、inert 和 z-index 合同，并先补失败测试
+- 更新时间：2026-08-24 03:14:00 +0800
+- 状态：`GOAL_ACTIVE / R1_IN_PROGRESS / UI_REMEDIATION_REQUIRED`
+- 当前阶段：`R1 状态机和共享宿主合同 / IN_PROGRESS`
+- 唯一允许的下一动作：冻结 ActiveImageTool、descriptor、host/modal/popover/surface、焦点、busy、关闭、inert 和 z-index 合同；在既有直接规格中先补会在旧实现稳定失败的叠层、viewport 和透明 surface 证据，不提前实现 R2 UI 宿主
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
 - 文档分支：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`
 - 立项 HEAD / origin-main：`f369d1dba1eef05aebc7f1a443256ceb82778ea0`
@@ -93,7 +93,7 @@ node -p "require('./package.json').version"
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | R0 | 实时恢复与缺陷基线 | AUTO_PASS |
-| R1 | 状态机和共享宿主合同 | NOT_STARTED |
+| R1 | 状态机和共享宿主合同 | IN_PROGRESS |
 | R2 | 单一活动工具与 Portal 宿主 | NOT_STARTED |
 | R3 | 紧凑面板和快速切分 | NOT_STARTED |
 | R4 | 大型编辑器与透明舞台 | NOT_STARTED |

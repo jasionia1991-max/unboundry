@@ -221,6 +221,10 @@ test("Image empty and local upload states match the observed geometry", async ({
   await toolbar.getByRole("button", { name: "全屏查看" }).click();
   const detail = page.getByTestId("image-detail");
   await expect(detail).toBeVisible();
+  await expect.soft(page.getByTestId("image-tool-host")).toHaveCount(1);
+  await expect.soft(page.getByTestId("image-tool-host"))
+    .toHaveAttribute("data-active-tool", "fullscreen");
+  await expect.soft(page.locator("#root")).toHaveAttribute("inert", "");
   const detailPreview = detail.getByTestId("image-detail-preview");
   await expect(detailPreview).toBeVisible();
   await expect(detailPreview).toHaveAttribute(
@@ -270,6 +274,7 @@ test("Image empty and local upload states match the observed geometry", async ({
     .getByRole("menuitem", { name: "抠图" }).click();
   const cutout = page.getByTestId("image-cutout-panel");
   await expect(cutout).toBeVisible();
+  await expect.soft(page.getByTestId("image-tool-surface")).toBeVisible();
   await expect(cutout).toContainText("棋盘格仅用于预览透明区域");
   await expect(cutout.getByRole("button", { name: "生成透明PNG" })).toBeDisabled();
   await cutout.getByRole("button", { name: "取消" }).click();
