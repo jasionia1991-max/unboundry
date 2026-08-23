@@ -10,7 +10,7 @@
 - tag `v0.6.32`→commit `4cf9d74dec941dea8f10e73bb07de990b668e150`/tree `7a5db8aa2b5ac9a42f33a0da176457e74504ca20`；PR #75 squash merge `864cd2de9ad9a22a7dad7deb7a9fb268085f47f8`。
 - 正式safe full原始记录`1049/1050`，唯一失败为未改动m22缩放时序波动；同源码隔离复验m22`37/37 PASS`，没有重复full。生产release`/opt/unboundry/releases/v0.6.32-image-edit-source-20260823`，冻结备份`v0.6.32-frozen-H9k2Lm`与恢复副本各365文件，双清单SHA`fbd7eb22…fcf4`。
 - 发布前等待已有用户生成任务自然结束，未取消、重试或接管；发布自身Provider请求和OSS写入0。schema39/integrity ok/FK0，切换前后tasks/attempts`722/730`、active0、媒体`760/1326712238`、模板`50/48`、画布58完全一致；公网/回环、service、inventory和公网5资源通过。
-- 状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；回执`spec/V0_6_32_PRODUCTION_RECEIPT_2026-08-23.json`。本次版本号和发布授权已消费。
+- 用户已在生产实页成功裁剪原先报错的OSS图片，状态`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`；回执`spec/V0_6_32_PRODUCTION_RECEIPT_2026-08-23.json`。准备态体验优化`spec/INC_IMGEDIT_002_CROP_LOADING_EXPERIENCE_PLAN_2026-08-23.md`已完成本地实现和定向验收，尚未commit、定版本或发布；本次版本号和发布授权已消费。
 
 ## 0. v0.6.31 模块化 main-safe 集成（2026-08-23，已发布并获用户验收）
 

@@ -1,16 +1,16 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网已切到 v0.6.32/schema39，技术发布终门通过；图片裁剪仍待用户实际页面复验，当前状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。
+> **状态分层**：现网为 v0.6.32/schema39，技术发布终门和用户实际裁剪均通过；生产状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。裁剪准备态体验已完成本地候选和定向验收，尚未commit、定版本或发布。
 
 更新日期：2026-08-23
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.32**（生产已发布，等待用户复验）
-本地候选代码版本：**v0.6.32**
-当前治理标记：`CURRENT_V0_6_32_USER_RECHECK`
+当前代码包版本：**v0.6.33**（本地发布候选；生产仍为v0.6.32）
+本地候选代码版本：**v0.6.33**
+当前治理标记：`CURRENT_V0_6_32_USER_PASS`
 
 ## 一句话
 
-**生产是 v0.6.32 / schema39，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。** tag `v0.6.32` 指向 commit `4cf9d74dec941dea8f10e73bb07de990b668e150` / tree `7a5db8aa2b5ac9a42f33a0da176457e74504ca20`；PR #75 squash merge `864cd2de9ad9a22a7dad7deb7a9fb268085f47f8`，main 相对 tag 只多三份 GitHub/CI 记录文档。生产 current 为 `/opt/unboundry/releases/v0.6.32-image-edit-source-20260823`。
+**生产是 v0.6.32 / schema39，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。** tag `v0.6.32` 指向 commit `4cf9d74dec941dea8f10e73bb07de990b668e150` / tree `7a5db8aa2b5ac9a42f33a0da176457e74504ca20`；PR #75 squash merge `864cd2de9ad9a22a7dad7deb7a9fb268085f47f8`。生产 current 为 `/opt/unboundry/releases/v0.6.32-image-edit-source-20260823`。用户已在生产实页成功裁剪原先报错的OSS图片。
 
 本版本正式 safe full 原始记录为 `1049/1050`，唯一失败是未改动 m22 的既有缩放时序波动；同一源码隔离复验 m22 `37/37 PASS`，没有重跑 full。冻结备份 `/var/lib/unboundry-rollbacks/v0.6.32-frozen-H9k2Lm` 共365文件，冻结源与恢复副本清单SHA均为 `fbd7eb22…fcf4`；schema39、integrity ok、FK0，切换前后 tasks/attempts `722/730`、active0、媒体 `760/1326712238`、模板 `50/48`、画布58完全一致。公网/回环 version/live/ready、service、inventory 和公网5资源全部通过。
 
@@ -18,14 +18,22 @@
 
 本次 v0.6.32 版本号与发布授权已消费，禁止追加真实生成、再次发布或进入下一版本。Mureka 真实音频、团队/多人协作、真实 Agent 协议、Storyboard 完整编辑、图片打光和其他付费内容抽验仍保持原 `PARTIAL/PAUSED/BLOCK`，不随本次发布扩大范围。
 
-## v0.6.32 图片裁剪同站编辑源（已发布，等待用户复验）
+## v0.6.32 图片裁剪同站编辑源（已发布并获用户确认）
 
 - 用户随后明确回复“按 v0.6.32 上线吧”，版本号与生产发布授权均已执行并消费。
 - 裁剪编辑器不再直接把可能跨域重定向的素材 URL 画入 Canvas，而是通过 owner-scoped 同站接口读取 local/OSS 原图，校验长度、哈希和 PNG 结构后，以 Blob URL 供预览和导出。
 - 客户端使用可替换 resolver；未来可接 `media.mymy.ltd + CDN/CORS`，当前同站接口继续作为私有素材安全兜底。来源 assetId 在打开裁剪时冻结，来源变化或持久化身份漂移时拒绝落图并补偿清理派生资产。
 - 自动证据：直接相关定向 `89/89 PASS`；唯一一次正式 safe full 为 `1049/1050`，唯一失败是未修改 m22 的既有缩放时序断言，同一源码隔离复验 m22 `37/37 PASS`。原始 full 不改写成全绿。
 - GitHub：功能提交 `ca6bddb`，PR #75 merge `864cd2d`，main Quality gates run `32623969904` 为 `SUCCESS`；注释标签 `v0.6.32` 解引用后指向生产源码 `4cf9d74dec941dea8f10e73bb07de990b668e150`。
-- 生产技术门全部通过，权威回执为 `spec/V0_6_32_PRODUCTION_RECEIPT_2026-08-23.json`。当前只缺用户实际裁剪复验，保持 `USER_RECHECK`。
+- 生产技术门全部通过，权威回执为 `spec/V0_6_32_PRODUCTION_RECEIPT_2026-08-23.json`。用户随后实际裁剪原先报错的OSS图片并明确反馈成功，本功能收口为`USER_PASS`。
+
+## 图片裁剪准备态体验优化（INC-IMGEDIT-002，本地工程完成、待用户复验）
+
+- 用户确认当前“大黑框+正在准备图片”是可优化体验，并同意“当前图片视觉占位+半透明遮罩+小型加载动画+准备完成淡入”的方向。
+- 权威方案与施工记录：`spec/INC_IMGEDIT_002_CROP_LOADING_EXPERIENCE_PLAN_2026-08-23.md`；状态`RELEASE_CANDIDATE / TARGETED_AUTO_PASS / LOCAL_AGENT_PAGE_PASS / USER_RECHECK / VERSION_V0_6_33 / RELEASE_AUTHORIZED / NOT_COMMITTED / NOT_RELEASED`。
+- 实际行为：`blob:`/`data:`内存预览可作为视觉缩略图；HTTP/OSS图片为避免再次请求大图，显示320×180紧凑加载卡片。两者都只作准备反馈，安全Blob仍是唯一裁剪/导出数据源。
+- 改动仅在`ImageNode.tsx`、样式和m2定向测试；服务端、20 MiB、并发、缓存、媒体域名、schema和数据未改。safe m2最终`10/10 PASS`，source/snapshot SHA-256均为`425ff6ab1114589272f792c0cef28fc6171b82b0c6c355e1f6d8de22af8f603c`；本地实页加载/ready状态和空控制台通过。
+- 用户已指定小版本v0.6.33并授权本次commit、push、PR和发布；生产在实际切换前仍是未包含本候选的v0.6.32，不得提前写成线上已更新。
 
 ## 2026-08-23 治理与 nginx 加固
 
@@ -96,7 +104,7 @@
 
 ## 三媒体模型与Generation结果提交边界（2026-08-21，已随v0.6.28发布）
 
-- v0.6.28 发布时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；v0.6.29/30 已补齐独立云腾真实验证、结果兼容、生产与用户验收，这些历史能力继续包含在当前 v0.6.31 中；当前聚合状态以本文顶部 v0.6.31 为准。GenerationResultCommit在同一SQLite事务内提交media publication、Provider attempt、task success与event；MediaLifecycle/MediaRegistry不再查询或更新Generation表，TaskStore与Safety运行时循环已解除。
+- v0.6.28 发布时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；v0.6.29/30 已补齐独立云腾真实验证、结果兼容、生产与用户验收，这些历史能力继续包含在当前 v0.6.32 中；当前聚合状态以本文顶部 v0.6.32 为准。GenerationResultCommit在同一SQLite事务内提交media publication、Provider attempt、task success与event；MediaLifecycle/MediaRegistry不再查询或更新Generation表，TaskStore与Safety运行时循环已解除。
 - 模型：`gemini-3-pro-image-preview`、`kling-v3-omni-cankao`、`suno-v4.5`均复用`multi-protocol-relay/media-generate`。Nano/Kling只接受按edge order的图片引用（上限14/7），Suno不接受媒体引用；参数映射、`result_type`、PNG/MP4/音频保存均为fail-closed。
 - 异步安全：截止从paid attempt `created_at`计算，Nano/Kling/Suno分别10/75/15分钟，5秒起步且最多10秒；已有Provider task id只查询原任务；提交响应丢失不二次POST；status只在404/405回退；无`refunded:true`不自动付费重试。
 - 自动证据：本地Goal冻结十spec最终有效`148/148`；发布阶段另执行正式full覆盖1034条，两个失败经最小复验`16/16`通过。TypeScript、构建、source coverage、外网门禁与生产技术门均通过。
@@ -105,7 +113,7 @@
 
 ## 同步文字Provider port（2026-08-21，已随v0.6.28发布）
 
-- v0.6.28 发布时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该代码持续包含在当前 v0.6.31 生产版本中，不再是待发布工作。同步文字执行已统一经过`TextGenerationProvider`与`TextProviderRegistry`；Generation Task不再按Ark/relay具体文字driver调用adapter。原未使用的媒体形态`GenerationProvider`假抽象已收敛为当前真实port。
+- v0.6.28 发布时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该代码持续包含在当前 v0.6.32 生产版本中，不再是待发布工作。同步文字执行已统一经过`TextGenerationProvider`与`TextProviderRegistry`；Generation Task不再按Ark/relay具体文字driver调用adapter。原未使用的媒体形态`GenerationProvider`假抽象已收敛为当前真实port。
 - 安全边界：Provider profile/credential继续由原owner解析和租赁；Task协调器继续拥有task、attempt、幂等、reconcile、lease、结果归属与写回；adapter只返回规范化`text + providerUsageTokens`，不获得数据库、TaskStore、Canvas或MediaLifecycle。
 - 替换性：m33用可注入fake Provider完成一个task，网络fetch为0、provider-boundary attempt恰好1；未知driver/缺少实现时本地失败且fetch仍为0。
 - 自动证据：Node `22.23.1` / npm `10.9.8`下，一次`npx tsc --noEmit`退出0；安全runner定向m33 `8/8`、m39 `3/3`、m44 `8/8`、m53 `23/23`、m57 `14/14`通过，异常0，使用新临时数据和动态loopback端口，4173 listener不变。
@@ -155,7 +163,7 @@
 - 当前数据门：schema39、integrity ok、FK0、tasks722、attempts730、公共模板50（48 published）、active0、逻辑媒体760条/1326712238字节、画布58。
 - 生产并发配置已恢复推荐值：per_user 20 / image 10 / video 2 / audio 2 / text 10 / RPM 120
 - 正式安全全量：v0.6.32 候选唯一一次执行 `1049/1050`，唯一失败项经同源码m22最小复验`37/37 PASS`；未第二次运行full
-- 生产技术门已完成；图片裁剪仍待用户主观复验，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`
+- 生产技术门和用户实际裁剪均已完成，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`
 
 ## 历史发布记录（v0.6.25 及更早时点）
 
@@ -272,7 +280,7 @@
 
 1. 先读本文 + `上线规矩.md` + `TASKS.md` 顶部。
 2. 只读核对仓库分支、HEAD、工作树、`package.json` 版本是否为 `0.6.32`；历史计划中的旧版本号不得当成当前施工身份。
-3. 当前生产为 v0.6.32/schema39，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；技术发布已完成，等待用户实际裁剪复验，发布授权已消费。
+3. 当前生产为 v0.6.32/schema39，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`；技术发布和用户实际裁剪均已完成，发布授权已消费。INC-IMGEDIT-002已完成本地工程和定向验收，但尚未commit、定版本或发布；不得自动继续GitHub或生产操作。
 4. 云腾三模型只归属云腾 Provider；不得借用优创密钥、不得新增“天空”计费 Provider、不得自动追加真实 Provider POST。
 5. `VIEW-005`已由本地隔离安全定向证据关闭为`AUTO_PASS`；其余`PAUSED/BLOCK/PARTIAL`项只有在用户重新立项后才能施工，本次证据不得被解释为新版本或生产授权。
 6. 若用户说生成或工作流再次异常，先查当前线上任务、Provider profile、attempt 和结果所有权，再给方案；不得擅自改生产库或重提付费请求。
