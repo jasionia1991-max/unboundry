@@ -183,7 +183,10 @@ export function ImageToolHost({
         if (
           event.target === event.currentTarget && descriptor.closeOnOutside &&
           !busy
-        ) onClose();
+        ) {
+          event.preventDefault();
+          onClose();
+        }
       }}
     >
       <div
