@@ -93,9 +93,12 @@ import {
   imageToolMaximums,
   imageToolOperations,
   parseImageToolCapabilitySnapshot,
+  parseSeedanceAssetValidation,
+  seedanceAssetValidationState,
   type ImageAnnotationElement,
   type ImageToolCapability,
 } from "../types/imageTools";
+import { knownModelParameterSchema } from "../types/modelParameters";
 import { createImageToolDispatcher } from
   "../client/src/imageTools/imageToolDispatcher";
 import { createDerivedImageToolUseCase } from
@@ -115,6 +118,7 @@ import {
   ImageToolCapabilityAdapterRegistry,
   imageToolCapabilitySnapshot,
 } from "../server/imageToolCapabilityRegistry";
+import { validateSeedanceAsset } from "../server/seedanceAssetValidation";
 import {
   simplifyAnnotationPoints,
   validateImageAnnotationDocument,
@@ -492,7 +496,7 @@ test("image tool capability snapshot is complete, unique and fail-closed", () =>
   })).toThrow(/cannot use AVAILABLE/);
 
   const fake = createFakeImageToolCapabilityAdapter({
-    operations: ["multi-angle", "redraw"],
+    operations: ["multi-angle", "redraw", "remove-background"],
     supportsAlpha: true,
     supportsMask: true,
     supportsReferenceImage: true,
@@ -529,9 +533,87 @@ test("image tool capability snapshot is complete, unique and fail-closed", () =>
     status: "paused",
   });
   expect(imageToolCapability(serverSnapshot, "remove-background")).toMatchObject({
-    reasonCode: "LOCAL_RUNTIME_UNAVAILABLE",
-    status: "unavailable",
+    reasonCode: "AVAILABLE",
+    status: "available",
+    supportsAlpha: true,
   });
+  expect(imageToolCapability(serverSnapshot, "enhance-conservative")).toMatchObject({
+    reasonCode: "AVAILABLE",
+    status: "available",
+  });
+  expect(imageToolCapability(serverSnapshot, "seedance-validate")).toMatchObject({
+    reasonCode: "AVAILABLE",
+    status: "available",
+  });
+
+  const validation = parseSeedanceAssetValidation(validateSeedanceAsset({
+    assetId: "seedance-image-1",
+    media: {
+      byteSize: 1_048_576,
+      checksumSha256: "a".repeat(64),
+      contentType: "image/png",
+      mediaHeight: 720,
+      mediaWidth: 1280,
+      storageStatus: "ready",
+    },
+    model: {
+      configurationRevision: "rules-1",
+      displayName: "Seedance 2.0 Mini",
+      id: "seedance-model-1",
+      parameterSchema: knownModelParameterSchema({
+        capability: "video",
+        providerDriver: "volcengine-ark",
+        providerModelId: "doubao-seedance-2-0-mini-260615",
+      }),
+    },
+    now: new Date("2026-08-23T12:00:00.000Z"),
+    role: "reference-image",
+  }));
+  expect(validation).toMatchObject({
+    assetId: "seedance-image-1",
+    remoteValidationAvailable: false,
+    status: "eligible",
+  });
+  expect(seedanceAssetValidationState(validation, {
+    assetId: "seedance-image-1",
+    modelConfigurationRevision: "rules-1",
+    modelId: "seedance-model-1",
+    role: "reference-image",
+  }, new Date("2026-08-23T12:04:59.000Z"))).toBe("eligible");
+  expect(seedanceAssetValidationState(validation, {
+    assetId: "seedance-image-1",
+    modelConfigurationRevision: "rules-2",
+    modelId: "seedance-model-1",
+    role: "reference-image",
+  }, new Date("2026-08-23T12:04:59.000Z"))).toBe("stale");
+  expect(seedanceAssetValidationState(validation, {
+    assetId: "seedance-image-1",
+    modelConfigurationRevision: "rules-1",
+    modelId: "seedance-model-1",
+    role: "reference-image",
+  }, new Date("2026-08-23T12:05:00.000Z"))).toBe("stale");
+  expect(validateSeedanceAsset({
+    assetId: "seedance-image-1",
+    media: {
+      byteSize: 1_048_576,
+      checksumSha256: "b".repeat(64),
+      contentType: "image/jpeg",
+      mediaHeight: 720,
+      mediaWidth: 1280,
+      storageStatus: "ready",
+    },
+    model: {
+      configurationRevision: "rules-1",
+      displayName: "Seedance 2.0 Mini",
+      id: "seedance-model-1",
+      parameterSchema: knownModelParameterSchema({
+        capability: "video",
+        providerDriver: "volcengine-ark",
+        providerModelId: "doubao-seedance-2-0-mini-260615",
+      }),
+    },
+    role: "subject",
+  })).toMatchObject({ status: "ineligible" });
 });
 
 test("image tool capability contract bounds payloads, cost and output formats", async () => {

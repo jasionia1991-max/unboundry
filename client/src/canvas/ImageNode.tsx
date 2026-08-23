@@ -41,6 +41,7 @@ import { NodeParameterControl } from "./NodeParameterControl";
 import { EmptyMediaUploadToolbar } from "./EmptyMediaUploadToolbar";
 import { generationOwnershipKey, type ProbeNodeType } from "./ProbeNode";
 import {
+  usePublishedModels,
   usePublishedModelSelection,
 } from "../models/ModelCatalog";
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
@@ -166,9 +167,16 @@ import {
   promptGenerationOwnershipEvidence,
   type PromptGenerationOperation,
 } from "../imageTools/promptGenerationImageToolUseCase";
+import { createSeedanceAssetValidationUseCase } from
+  "../imageTools/seedanceAssetValidationUseCase";
 import type {
   ImageGenerationToolInput,
   ImageToolCapability,
+} from "../../../types/imageTools";
+import {
+  seedanceAssetValidationState,
+  seedanceImageRoles,
+  type SeedanceImageRole,
 } from "../../../types/imageTools";
 
 type CropBox = { height: number; width: number; x: number; y: number };
@@ -1662,6 +1670,9 @@ function ImageNodeImpl({
     data.imageModelId,
     data.imageModelName,
   );
+  const seedanceModels = (usePublishedModels("video") ?? []).filter(
+    (model) => model.mediaInputPolicy === "seedance-2",
+  );
   const imageModels = imageModelSelection.models;
   const selectedImageModel = imageModelSelection.model;
   const selectedImageModelId = imageModelSelection.selectedId;
@@ -1748,6 +1759,17 @@ function ImageNodeImpl({
   const [cutoutOpen, setCutoutOpen] = useState(false);
   const [cutoutBusy, setCutoutBusy] = useState(false);
   const [cutoutError, setCutoutError] = useState("");
+  const [seedanceOpen, setSeedanceOpen] = useState(false);
+  const [seedanceBusy, setSeedanceBusy] = useState(false);
+  const [seedanceError, setSeedanceError] = useState("");
+  const [seedanceModelId, setSeedanceModelId] = useState(
+    data.imageSeedanceValidation?.modelId ?? "",
+  );
+  const [seedanceRole, setSeedanceRole] =
+    useState<SeedanceImageRole>(
+      data.imageSeedanceValidation?.role ?? "reference-image",
+    );
+  const [seedanceExpiryEpoch, setSeedanceExpiryEpoch] = useState(0);
   const [retryTaskId, setRetryTaskId] = useState<string>();
   const [reconcileBusy, setReconcileBusy] = useState(false);
   const [reconcileConfirmedMissing, setReconcileConfirmedMissing] = useState(false);
@@ -1771,6 +1793,41 @@ function ImageNodeImpl({
     visibleGenerationError(data.imageGenerationError),
   );
   const [uploadErrorNeutral, setUploadErrorNeutral] = useState(false);
+  const selectedSeedanceModelId = seedanceModels.some(
+    (model) => model.id === seedanceModelId,
+  ) ? seedanceModelId : seedanceModels[0]?.id ?? "";
+  const selectedSeedanceModel = seedanceModels.find(
+    (model) => model.id === selectedSeedanceModelId,
+  );
+  const supportedSeedanceRoles = seedanceImageRoles.filter((role) =>
+    selectedSeedanceModel?.parameterSchema?.inputPolicy?.roles?.image
+      ?.includes(role)
+  );
+  const effectiveSeedanceRole = supportedSeedanceRoles.includes(seedanceRole)
+    ? seedanceRole
+    : supportedSeedanceRoles[0] ?? seedanceRole;
+  const currentSeedanceValidationState = data.imageSeedanceValidation
+    ? (() => {
+        void seedanceExpiryEpoch;
+        return seedanceAssetValidationState(data.imageSeedanceValidation, {
+          assetId: typeof data.assetId === "string" ? data.assetId : undefined,
+          modelConfigurationRevision:
+            selectedSeedanceModel?.configurationRevision,
+          modelId: selectedSeedanceModel?.id,
+          role: effectiveSeedanceRole,
+        });
+      })()
+    : undefined;
+  useEffect(() => {
+    if (!seedanceOpen || !data.imageSeedanceValidation) return;
+    const remaining = Date.parse(data.imageSeedanceValidation.expiresAt) - Date.now();
+    if (remaining <= 0) return;
+    const timer = window.setTimeout(
+      () => setSeedanceExpiryEpoch((epoch) => epoch + 1),
+      Math.min(remaining + 20, 2_147_000_000),
+    );
+    return () => window.clearTimeout(timer);
+  }, [data.imageSeedanceValidation, seedanceOpen]);
   const setUploadError = (message: string, errorCode?: string | null) => {
     setUploadErrorNeutral(
       Boolean(message) && !generationFailureIsDefinitive(errorCode),
@@ -4283,6 +4340,38 @@ function ImageNodeImpl({
     } finally { setBusy(false); }
   };
 
+  const validateSeedance = async () => {
+    const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
+    if (!sourceAssetId || !selectedSeedanceModel?.configurationRevision) {
+      setSeedanceError(sourceAssetId
+        ? "当前没有带有效规则版本的 Seedance 模型"
+        : "图片尚未完成安全保存");
+      return;
+    }
+    setSeedanceBusy(true);
+    setSeedanceError("");
+    try {
+      const result = await imageToolDispatcher.execute("seedance-validate", {
+        assetId: sourceAssetId,
+        modelId: selectedSeedanceModel.id,
+        role: effectiveSeedanceRole,
+      });
+      if (result.kind !== "validation") {
+        throw new Error("Seedance 素材校验返回了错误的结果类型");
+      }
+      checkpoint();
+      setNodes((nodes) => nodes.map((node) => node.id === id
+        ? { ...node, data: { ...node.data, imageSeedanceValidation: result } }
+        : node));
+    } catch (caught) {
+      setSeedanceError(caught instanceof Error
+        ? caught.message
+        : "Seedance 素材校验失败");
+    } finally {
+      setSeedanceBusy(false);
+    }
+  };
+
   const toggleColorMark = (color: string) => {
     if (imageColorFilter === color && data.imageColorMarks?.includes(color)) {
       setImageColorFilter();
@@ -4339,6 +4428,7 @@ function ImageNodeImpl({
       }>) => exportAnnotations(input.annotations),
     })
     .register(createSaveLibraryAssetUseCase())
+    .register(createSeedanceAssetValidationUseCase())
     .register(createDownloadImageToolUseCase())
     .register(createFullscreenImageToolUseCase());
 
@@ -4517,6 +4607,7 @@ function ImageNodeImpl({
                     setOutpaintOpen(label === "扩图");
                     setEnhanceOpen(label === "增强");
                     setCutoutOpen(label === "抠图");
+                    setSeedanceOpen(false);
                     setEraseError("");
                     setOutpaintError("");
                     setEnhanceError("");
@@ -4538,6 +4629,7 @@ function ImageNodeImpl({
                   setMultiAngleOpen(false);
                   setRedrawOpen(false);
                   setAnnotationOpen(false);
+                  setSeedanceOpen(false);
                   setLocalToolOpen("split");
                 }}
                 role="menuitem"
@@ -4550,11 +4642,20 @@ function ImageNodeImpl({
               <button
                 data-capability-status={seedanceCapability.status}
                 disabled={seedanceCapability.status !== "available"}
+                onClick={() => {
+                  setMoreOpen(false);
+                  setCropOpen(false);
+                  setMultiAngleOpen(false);
+                  setRedrawOpen(false);
+                  setAnnotationOpen(false);
+                  setSeedanceError("");
+                  setSeedanceOpen(true);
+                }}
                 role="menuitem"
                 type="button"
               >
                 <span aria-hidden="true" className="image-more-icon compliance" />
-                Seedance 合规验证
+                Seedance 素材校验
               </button>
             </div>
           )}
@@ -4749,6 +4850,58 @@ function ImageNodeImpl({
             type="button">生成透明PNG</button>
           <button onClick={() => setCutoutOpen(false)} type="button">取消</button>
           {cutoutError && <div role="alert">{cutoutError}</div>}
+        </div>
+      </NodeToolbar>
+      <NodeToolbar className="image-local-tool-toolbar" isVisible={Boolean(
+        preview && singleNodeChrome && seedanceOpen)} offset={16}
+        position={Position.Bottom}>
+        <div className="image-processing-panel image-seedance-validation-panel"
+          data-testid="image-seedance-validation-panel">
+          <strong>Seedance 素材校验</strong>
+          <p>仅检查本地技术输入条件，不代表远端资格、可生成、质量或法律合规。</p>
+          <label>视频模型
+            <select aria-label="Seedance 视频模型"
+              onChange={(event) => setSeedanceModelId(event.target.value)}
+              value={selectedSeedanceModelId}>
+              {seedanceModels.map((model) => (
+                <option key={model.id} value={model.id}>{model.displayName}</option>
+              ))}
+            </select>
+          </label>
+          <label>素材角色
+            <select aria-label="Seedance 素材角色"
+              onChange={(event) => setSeedanceRole(
+                event.target.value as SeedanceImageRole)}
+              value={effectiveSeedanceRole}>
+              {supportedSeedanceRoles.map((role) => (
+                <option key={role} value={role}>{({
+                  "first-frame": "首帧",
+                  "last-frame": "尾帧",
+                  subject: "主体",
+                  "reference-image": "参考图",
+                } as const)[role]}</option>
+              ))}
+            </select>
+          </label>
+          {!selectedSeedanceModel && <div role="alert">当前没有已发布的 Seedance 模型</div>}
+          {currentSeedanceValidationState && (
+            <div className="image-seedance-validation-result"
+              data-state={currentSeedanceValidationState}>
+              {currentSeedanceValidationState === "eligible"
+                ? "本地技术预检通过"
+                : currentSeedanceValidationState === "stale"
+                  ? "校验已过期或素材、模型、角色已变化，请重新校验"
+                  : data.imageSeedanceValidation?.problems.join("；")}
+            </div>
+          )}
+          <button disabled={seedanceBusy || seedanceCapability.status !== "available" ||
+            !selectedSeedanceModel?.configurationRevision ||
+            supportedSeedanceRoles.length < 1 || typeof data.assetId !== "string"}
+            onClick={() => void validateSeedance()} type="button">
+            {seedanceBusy ? "校验中…" : "运行本地技术预检"}
+          </button>
+          <button onClick={() => setSeedanceOpen(false)} type="button">关闭</button>
+          {seedanceError && <div role="alert">{seedanceError}</div>}
         </div>
       </NodeToolbar>
       {preview && annotationOpen && (

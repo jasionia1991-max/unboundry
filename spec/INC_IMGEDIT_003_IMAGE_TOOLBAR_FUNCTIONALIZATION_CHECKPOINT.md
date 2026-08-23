@@ -2,20 +2,20 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-23 22:32:26 +0800
-- 状态：`GOAL_ACTIVE / D10_TARGETED_AUTO_PASS`
-- 当前阶段：`D10 增强与主体抠图 / TARGETED_AUTO_PASS / REAL_SMOKE_PENDING_D13`
-- 唯一允许的下一动作：提交 D10 本地 checkpoint commit；随后进入 D11 前先把 D11 标为 `IN_PROGRESS`，只施工 Seedance 素材校验，不生成视频
+- 更新时间：2026-08-23 22:52:37 +0800
+- 状态：`GOAL_ACTIVE / D11_AUTO_PASS`
+- 当前阶段：`D11 Seedance 素材校验 / AUTO_PASS`
+- 唯一允许的下一动作：提交 D11 本地 checkpoint commit；提交后先把 D12 标为 `IN_PROGRESS`，再冻结 v0.6.34 候选并执行统一验证，不得提前进入 D13
 - 当前仓库：`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`
 - 记录时分支：`codex/inc-imgedit-003-v0.6.34-2026-08-23`
-- 记录时 HEAD：`f8a783d8dfcfe1553bae7315fe2ba008f843fed0`
+- 记录时 HEAD：`2a30be84dad83bee70474135fd8b1e6df6600176`
 - 记录时 `origin/main`：`14777b5dc5cf48de8b21b6eb3ee27da45070b537`
 - package：`0.6.33`
 - 生产：`v0.6.33 / schema39 / PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`
 - 新版本：`v0.6.34 / VERSION_GATE_VALID`
 - 候选：无
-- 本轮代码施工：D9 已提交为 `f8a783d`；D10 未提交树完成保守增强、创意增强、透明主体抠图、棋盘格预览和服务端真 Alpha 结果门
-- 本轮验证：pinned Node 22.23.1/npm 10.9.8；D10 m100+m53 `38/38`、m2+m27 `30/30`、最终 m2+m57 `26/26 PASS`；未运行 full
+- 本轮代码施工：D10 已提交为 `2a30be8`；D11 已完成本地 Seedance 素材技术预检、owner/model/role/规则版本/时间绑定、过期与身份漂移 stale，待阶段提交
+- 本轮验证：pinned Node 22.23.1/npm 10.9.8；D11 最终 m2 `10/10`、m100 `13/13 PASS`；未运行 full
 - 真实 Provider/付费请求：0/8
 - 真实 OSS 测试对象：0
 - GitHub/SSH/生产操作：0
@@ -82,7 +82,7 @@ node -p "require('./package.json').version"
 | D8 | 遮罩基础与重绘 | TARGETED_AUTO_PASS / REAL_SMOKE_PENDING_D13 |
 | D9 | 扩图与擦除 | TARGETED_AUTO_PASS / REAL_SMOKE_PENDING_D13 |
 | D10 | 增强与主体抠图 | TARGETED_AUTO_PASS / REAL_SMOKE_PENDING_D13 |
-| D11 | Seedance 素材校验 | NOT_STARTED |
+| D11 | Seedance 素材校验 | AUTO_PASS |
 | D12 | 候选冻结和统一验证 | NOT_STARTED |
 | D13 | GitHub和生产发布 | NOT_STARTED / AUTH_GATED |
 
@@ -102,7 +102,7 @@ node -p "require('./package.json').version"
 | IMGEDIT-017 | 重绘真实生成 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK |
 | IMGEDIT-018 | 扩图与擦除 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK |
 | IMGEDIT-019 | 增强与主体抠图 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK |
-| IMGEDIT-020 | Seedance 素材校验 | NOT_STARTED |
+| IMGEDIT-020 | Seedance 素材校验 | AUTO_PASS / LOCAL_TECHNICAL_PREFLIGHT_ONLY |
 
 ## 6. 当前工作树保护
 
@@ -157,7 +157,26 @@ package / schema / candidate：
 
 ## 10. 当前唯一下一动作
 
-提交 D10 本地 checkpoint commit；随后进入 D11 前先把 D11 标为 `IN_PROGRESS`，只施工 Seedance 素材校验，不生成视频。
+提交 D11 本地 checkpoint commit；提交后先把 D12 标为 `IN_PROGRESS`，再冻结 v0.6.34 候选并执行统一验证，不得提前进入 D13。
+
+## 24. D11 Seedance 素材校验
+
+- 时间：2026-08-23 22:52:37 +0800
+- 阶段：`D11`
+- 状态：`AUTO_PASS / LOCAL_TECHNICAL_PREFLIGHT_ONLY`
+- branch / HEAD / origin-main：`codex/inc-imgedit-003-v0.6.34-2026-08-23` / `2a30be84dad83bee70474135fd8b1e6df6600176` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537`
+- 工作树摘要：D10 已提交为`2a30be8`；D11 未提交树完成本地技术预检 API、规则版本指纹、owner-scoped Media 与已发布 Seedance 模型查询、节点持久化结果、刷新恢复和 stale 展示，未进入 D12
+- 产品文件：`types/imageTools.ts`、`server/seedanceAssetValidation.ts`、`server/imageToolApplicationApi.ts`、`server/imageToolCapabilityRegistry.ts`、`server/modelCatalog.ts`、`server/mediaApplicationApi.ts`、`server/applicationComposition.ts`、`server/openApi.ts`、`vite.config.ts`、`client/src/imageTools/seedanceAssetValidationUseCase.ts`、`client/src/canvas/ImageNode.tsx`、`ProbeNode.tsx`、`client/src/models/ModelCatalog.tsx`、`client/src/styles.css`
+- 测试文件：`tests/m100-modular-ports.spec.ts`、`tests/m2-image-node.spec.ts`、`tests/m20-api-contract.spec.ts`
+- 文档文件：本Checkpoint、`UNBOUNDRY_ACCEPTANCE_MATRIX.md`、`TASKS.md`、主方案偏差段
+- package / schema / candidate：`0.6.33 / schema39 / 无候选`；目标版本`v0.6.34`
+- 外部请求和付费预算：总计`0/8`；视频生成、真实Provider/OSS、GitHub/SSH/生产写入均0
+- 测试命令、环境、结果、退出码：统一使用 pinned Node `22.23.1`、npm `10.9.8` 和 safe runner。m100 首轮 `13/13 PASS`，m20 `1/1 PASS`；m2 首轮 `9/10`，唯一失败为新增本地可用操作后既有可用按钮精确计数仍期望7，修正为8后复验 `10/10 PASS`。随后补强刷新恢复、非法日期 stale 和面板关闭语义，只复验直接受影响的 m2 `10/10` 与 m100 `13/13 PASS`；最终 source/snapshot `52f3aaa2…bfcb`，4173 listener 不变，均退出0；未运行 full
+- 架构与数据风险：服务端只接受当前 owner 可读且 storage ready 的图片、已发布/启用/未归档且 `mediaInputPolicy=seedance-2` 的视频模型，并复用模型 `referenceMediaRules` 校验类型、字节、尺寸和比例。结果绑定 asset/model/role、模型配置 revision、checkedAt/expiresAt；过期、asset/model/role/规则版本任一漂移均 stale。结果保存到 Canvas 节点元数据，不包含签名 URL、密钥或视频任务身份
+- 设计偏差：ByteDance 当前没有本 Goal 可安全调用的官方远端“素材资格校验”接口，因此严格实现五分钟本地技术预检，并在 DTO/UI 固定 `remoteValidationAvailable=false`、`scope=local-technical-preflight`；不生成视频，不声明远端可生成、质量或法律合规。D11 同时纠正 D10 已实现但 capability registry 仍误报不可用的保守增强/主体抠图，以及 Seedance 本地校验操作状态
+- 阻断：无；主方案明确没有官方远端资格接口不构成阻断
+- 回滚点：D10提交`2a30be84dad83bee70474135fd8b1e6df6600176`
+- 唯一下一动作：提交 D11 本地 checkpoint commit；随后先把 D12 标为 `IN_PROGRESS`，冻结 v0.6.34 候选并执行统一验证
 
 ## 23. D10 增强与主体抠图
 

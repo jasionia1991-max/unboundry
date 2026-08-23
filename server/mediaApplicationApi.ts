@@ -4,6 +4,7 @@ import {
   beginMediaLibraryReference,
   composeMediaDeletionGuards,
 } from "./mediaLibraryReferencePort";
+import { readableMediaForOwner } from "./mediaRegistry";
 
 export const mediaApplicationApi = Object.freeze({
   libraryReferences: Object.freeze({
@@ -12,4 +13,5 @@ export const mediaApplicationApi = Object.freeze({
   }),
   providerReferenceStore: ownerMediaProviderReferenceStore,
   publication: mediaPublicationService,
+  validationMetadata: Object.freeze({ readableMediaForOwner }),
 });

@@ -58,6 +58,7 @@ test("the private API documents and reads canvas, project and model configuratio
     "/api/health/live",
     "/api/health/ready",
     "/api/image-tools/capabilities",
+    "/api/image-tools/seedance-validation",
     "/api/library",
     "/api/library/{kind}/{assetId}",
     "/api/models",
@@ -81,6 +82,9 @@ test("the private API documents and reads canvas, project and model configuratio
   expect((specification.paths["/api/image-tools/capabilities"] as {
     get: { operationId: string };
   }).get.operationId).toBe("readImageToolCapabilities");
+  expect((specification.paths["/api/image-tools/seedance-validation"] as {
+    post: { operationId: string };
+  }).post.operationId).toBe("validateSeedanceImageAsset");
   const specificationText = JSON.stringify(specification);
   expect(specificationText).not.toContain("app.unboundry.ai");
   expect(specificationText).not.toMatch(/accessKey|secret/i);
@@ -374,6 +378,7 @@ test("the private API documents and reads canvas, project and model configuratio
     generationEnabled: boolean;
     models: Array<{
       capability: string;
+      configurationRevision: string;
       displayName: string;
       id: string;
       parameterSchema: { fields: unknown[]; version: number };
@@ -383,6 +388,8 @@ test("the private API documents and reads canvas, project and model configuratio
   expect(Array.isArray(catalog.models)).toBeTruthy();
   expect(catalog.models.every((model) => model.capability === "video")).toBeTruthy();
   expect(catalog.models.every((model) => model.id && model.displayName)).toBeTruthy();
+  expect(catalog.models.every((model) =>
+    /^[a-f0-9]{24}$/.test(model.configurationRevision))).toBeTruthy();
   expect(
     catalog.models.every(
       (model) =>
@@ -408,13 +415,19 @@ test("the private API documents and reads canvas, project and model configuratio
     .toBe(17);
   expect(imageToolSnapshot.operations.every(({ reason }) => reason.length > 0))
     .toBeTruthy();
+  const invalidSeedanceValidation = await request.post(
+    "/api/image-tools/seedance-validation",
+    { data: {} },
+  );
+  expect(invalidSeedanceValidation.status()).toBe(400);
+  expect(invalidSeedanceValidation.headers()["cache-control"]).toBe("no-store");
 
   await page.goto("/admin/api-contract");
   await expect(page.getByTestId("admin-api-contract-page")).toBeVisible();
   await expect(page.getByRole("heading", { name: "项目自己的数据接口" }))
     .toBeVisible();
-  await expect(page.locator(".api-contract-grid article")).toHaveCount(35);
-  await expect(page.getByText("当前共 25 条接口路径", { exact: true }))
+  await expect(page.locator(".api-contract-grid article")).toHaveCount(36);
+  await expect(page.getByText("当前共 26 条接口路径", { exact: true }))
     .toBeVisible();
 
   const finalCanvasDelete = await request.delete(`/api/canvas/${canvasId}`);

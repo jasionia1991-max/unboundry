@@ -382,3 +382,4 @@ USER_QUALITY_RECHECK
 - D7/D8 的真实 Provider 技术冒烟统一放到 D13 的精确 v0.6.34 候选环境：本机没有不读取禁区数据即可使用的专用真实 profile，而 GitHub/SSH/生产候选运行按本 Goal 只在 D12 后开放。此前阶段只记 `TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13`，不拿生产 v0.6.33 的普通生成冒充新代码证据。
 - D9 扩图没有复用允许向内裁小的裁剪框，而采用四周等比5%～50%的全屏边界预览：提交前由安全读取链构造透明扩展PNG和同尺寸mask，原图按自然像素原位放入，服务端以独立outpaint参数和准备资产严格核验；这样强制“只扩大、不拉伸、不裁小”。擦除虽复用遮罩画布，但operation、ownership、占位和任务身份均独立。两项真实技术冒烟继续按同一授权顺序留到D13精确v0.6.34候选。
 - D10 不引入许可证未闭环的rembg权重或第二套图片任务系统：保守增强冻结为本地同尺寸、确定性的轻量对比度/色彩校正并走派生媒体；创意增强与主体抠图复用既有GPT Image edit和Generation/Media生命周期。主体抠图显式发送`background=transparent`，并在所有结果保存入口解码PNG滤波行、要求至少一个真实非不透明Alpha样本，opaque RGBA也拒绝；棋盘格只属于节点/全屏CSS预览。三项真实Provider技术冒烟继续留到D13精确v0.6.34候选。
+- D11 没有接不存在的 Seedance 远端资格接口：实现严格标识的五分钟本地技术预检，复用当前已发布 `seedance-2` 模型的真实参考媒体规则和 owner-scoped Media 元数据；结果绑定 asset/model/role/模型配置revision/时间，过期或身份漂移即 stale。DTO 和 UI 固定说明这不代表远端资格、可生成、质量或法律合规，并保证零视频生成。施工时同时修正 D10 已实现操作在 capability registry 中仍误报不可用的残留。

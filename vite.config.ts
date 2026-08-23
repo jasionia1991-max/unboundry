@@ -85,7 +85,10 @@ const {
     unregisterRuntimeRoleCoordinatorBeforeStartup:
       unregisterGenerationRuntimeRoleCoordinatorBeforeStartup,
   },
-  imageTools: { httpHandler: imageToolCapabilitiesApi },
+  imageTools: {
+    httpHandler: imageToolCapabilitiesApi,
+    validationHandler: seedanceAssetValidationApi,
+  },
   library: {
     assertMediaDeletionAllowedInTransaction:
       assertLibraryMediaDeletionAllowedInTransaction,
@@ -897,6 +900,14 @@ function imageToolApi(runtime: RuntimeInstance): Plugin {
     middlewares.use(
       "/api/image-tools/capabilities",
       apiBoundary("image-tools.capabilities", imageToolCapabilitiesApi, runtime),
+    );
+    middlewares.use(
+      "/api/image-tools/seedance-validation",
+      apiBoundary(
+        "image-tools.seedance-validation",
+        seedanceAssetValidationApi,
+        runtime,
+      ),
     );
   };
   return {

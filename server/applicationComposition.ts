@@ -4,6 +4,7 @@ import { generationApplicationApi } from "./generationApplicationApi";
 import { imageToolApplicationApi } from "./imageToolApplicationApi";
 import { libraryApplicationApi } from "./libraryApplicationApi";
 import { mediaApplicationApi } from "./mediaApplicationApi";
+import { publishedSeedanceValidationModel } from "./modelCatalog";
 import { providerApplicationApi } from "./providerApplicationApi";
 import { providerRuntimeApi } from "./providerRuntimeApi";
 
@@ -19,6 +20,15 @@ authApplicationApi.configureLegacyProviderKeyMigration(
 imageToolApplicationApi.configureGenerationCapabilityQuery(
   generationApplicationApi.imageToolGenerationCapabilityQuery,
 );
+imageToolApplicationApi.configureSeedanceValidationQueries(Object.freeze({
+  media: (ownerId: string, assetId: string) =>
+    mediaApplicationApi.validationMetadata.readableMediaForOwner(
+      ownerId,
+      "image",
+      assetId,
+    ),
+  model: publishedSeedanceValidationModel,
+}));
 
 export const applicationComposition = Object.freeze({
   auth: authApplicationApi,

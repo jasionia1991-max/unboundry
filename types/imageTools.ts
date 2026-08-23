@@ -147,6 +147,34 @@ export type ImageToolExecutionIdentity = Readonly<{
   taskId?: string;
 }>;
 
+export const seedanceImageRoles = [
+  "first-frame",
+  "last-frame",
+  "subject",
+  "reference-image",
+] as const;
+
+export type SeedanceImageRole = typeof seedanceImageRoles[number];
+
+export type SeedanceAssetValidation = Readonly<{
+  assetId: string;
+  checkedAt: string;
+  expiresAt: string;
+  kind: "validation";
+  modelConfigurationRevision: string;
+  modelDisplayName: string;
+  modelId: string;
+  operation: "seedance-validate";
+  problems: readonly string[];
+  remoteValidationAvailable: false;
+  role: SeedanceImageRole;
+  scope: "local-technical-preflight";
+  status: "eligible" | "ineligible";
+}>;
+
+export type SeedanceAssetValidationState =
+  SeedanceAssetValidation["status"] | "stale";
+
 export type ImageAnnotationPoint = Readonly<{ x: number; y: number }>;
 
 export type ImageAnnotationElement =
@@ -227,13 +255,7 @@ export type ImageToolResult =
       operation: "color-mark" | "save-to-library";
       revision: number;
     }>
-  | Readonly<{
-      checkedAt: string;
-      expiresAt: string;
-      kind: "validation";
-      operation: "seedance-validate";
-      status: "eligible" | "ineligible" | "stale";
-    }>
+  | SeedanceAssetValidation
   | Readonly<{
       kind: "viewer";
       operation: "download" | "fullscreen";
@@ -308,6 +330,84 @@ function isoDate(value: unknown, label: string) {
   const text = nonEmptyString(value, label, 64);
   if (!Number.isFinite(Date.parse(text))) throw new Error(`${label} must be ISO-8601`);
   return text;
+}
+
+const seedanceImageRoleSet = new Set<string>(seedanceImageRoles);
+
+export function parseSeedanceAssetValidation(
+  value: unknown,
+): SeedanceAssetValidation {
+  const source = record(value, "Seedance asset validation");
+  if (source.kind !== "validation" || source.operation !== "seedance-validate") {
+    throw new Error("Seedance asset validation identity is invalid");
+  }
+  if (source.scope !== "local-technical-preflight" ||
+      source.remoteValidationAvailable !== false) {
+    throw new Error("Seedance asset validation scope is invalid");
+  }
+  if (source.status !== "eligible" && source.status !== "ineligible") {
+    throw new Error("Seedance asset validation status is invalid");
+  }
+  if (typeof source.role !== "string" || !seedanceImageRoleSet.has(source.role)) {
+    throw new Error("Seedance asset validation role is invalid");
+  }
+  if (!Array.isArray(source.problems) || source.problems.length > 16 ||
+      source.problems.some((problem) =>
+        typeof problem !== "string" || problem.length < 1 || problem.length > 1_024)) {
+    throw new Error("Seedance asset validation problems are invalid");
+  }
+  if (source.status === "eligible" && source.problems.length !== 0) {
+    throw new Error("Eligible Seedance asset validation cannot contain problems");
+  }
+  if (source.status === "ineligible" && source.problems.length === 0) {
+    throw new Error("Ineligible Seedance asset validation requires a problem");
+  }
+  const checkedAt = isoDate(source.checkedAt, "checkedAt");
+  const expiresAt = isoDate(source.expiresAt, "expiresAt");
+  if (Date.parse(expiresAt) <= Date.parse(checkedAt)) {
+    throw new Error("Seedance asset validation expiry is invalid");
+  }
+  return {
+    assetId: nonEmptyString(source.assetId, "assetId", 160),
+    checkedAt,
+    expiresAt,
+    kind: "validation",
+    modelConfigurationRevision: nonEmptyString(
+      source.modelConfigurationRevision,
+      "modelConfigurationRevision",
+      128,
+    ),
+    modelDisplayName: nonEmptyString(source.modelDisplayName, "modelDisplayName", 200),
+    modelId: nonEmptyString(source.modelId, "modelId", 160),
+    operation: "seedance-validate",
+    problems: [...source.problems] as string[],
+    remoteValidationAvailable: false,
+    role: source.role as SeedanceImageRole,
+    scope: "local-technical-preflight",
+    status: source.status,
+  };
+}
+
+export function seedanceAssetValidationState(
+  validation: SeedanceAssetValidation,
+  current: Readonly<{
+    assetId?: string;
+    modelConfigurationRevision?: string;
+    modelId?: string;
+    role?: SeedanceImageRole;
+  }>,
+  now: Date = new Date(),
+): SeedanceAssetValidationState {
+  const expiresAt = Date.parse(validation.expiresAt);
+  if (
+    !Number.isFinite(expiresAt) ||
+    expiresAt <= now.getTime() ||
+    validation.assetId !== current.assetId ||
+    validation.modelId !== current.modelId ||
+    validation.modelConfigurationRevision !== current.modelConfigurationRevision ||
+    validation.role !== current.role
+  ) return "stale";
+  return validation.status;
 }
 
 export function parseImageToolCapabilitySnapshot(

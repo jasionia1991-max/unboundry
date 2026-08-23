@@ -65,10 +65,12 @@ const localReadyOperations = new Set<ImageToolOperation>([
   "color-mark",
   "crop",
   "download",
+  "enhance-conservative",
   "fullscreen",
   "quick-split",
   "resize-pixels",
   "save-to-library",
+  "seedance-validate",
 ]);
 
 const providerOperations = [
@@ -77,6 +79,7 @@ const providerOperations = [
   "multi-angle",
   "outpaint",
   "redraw",
+  "remove-background",
 ] as const satisfies readonly ImageToolOperation[];
 
 export const gptImageCapabilityAdapter = Object.freeze({
@@ -176,22 +179,6 @@ export function imageToolCapabilitySnapshot(input: {
         reason: "本地图片工具已就绪",
         reasonCode: "AVAILABLE",
         status: "available",
-      });
-    }
-    if (operation === "seedance-validate") {
-      return capability(operation, {
-        expiresAt,
-        reason: "Seedance 本地资格预检将在 D11 接入",
-        reasonCode: "REMOTE_VALIDATION_UNAVAILABLE",
-        status: "unavailable",
-      });
-    }
-    if (operation === "enhance-conservative" || operation === "remove-background") {
-      return capability(operation, {
-        expiresAt,
-        reason: "本地处理适配器将在 D10 接入",
-        reasonCode: "LOCAL_RUNTIME_UNAVAILABLE",
-        status: "unavailable",
       });
     }
     const adapter = adapters.get(operation);

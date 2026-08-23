@@ -15,6 +15,7 @@ import type {
   ImageAnnotationDocument,
   ImageMultiAngleParameters,
   ImageToolOperation,
+  SeedanceAssetValidation,
 } from "../../../types/imageTools";
 
 function stableOwnershipValue(value: unknown): unknown {
@@ -144,6 +145,7 @@ export type ProbeNodeType = Node<
     imageToolPreparedVersion?: 1;
     imageToolPreparedWidth?: number;
     imageToolSourceAssetId?: string;
+    imageSeedanceValidation?: SeedanceAssetValidation;
     inputState?: NodeInputState;
     inputStateReason?: string;
     label: string;
