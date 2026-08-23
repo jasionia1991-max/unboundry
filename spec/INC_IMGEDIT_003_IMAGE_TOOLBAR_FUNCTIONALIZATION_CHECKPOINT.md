@@ -2,7 +2,7 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 01:51:36 +0800
+- 更新时间：2026-08-24 01:55:50 +0800
 - 状态：`GOAL_ACTIVE / D13_IN_PROGRESS / V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_1_OF_6 / MULTI_ANGLE_REAL_PROVIDER_TECHNICAL_SMOKE_PASS / REMAINING_ACTION_TIME_CONFIRMATION_PENDING / USER_QUALITY_RECHECK`
 - 当前阶段：`D13 GitHub和生产发布 / IN_PROGRESS`
 - 唯一允许的下一动作：等待用户对剩余5项作动作时分组确认：重绘、扩图、擦除、创意增强、主体抠图每项页面预计不超过10 USD，剩余总额不超过50 USD；确认后仍须逐项串行执行并在每项后核对task/attempt/Provider/终态/Media/Canvas/计费，任一付费状态不明立即停止，禁止批量连点或未知计费重试
@@ -166,6 +166,7 @@ package / schema / candidate：
 - 生产只读探针重新确认`version=0.6.35`、live、ready active/schema39；没有生成、Provider、OSS或生产写动作。
 - 发现并纠正`AGENTS.md`当前权威状态仍写0/6的文档漂移；真实状态继续以Checkpoint、计划、TASKS、矩阵、CURRENT_STATE、生产证据和Git为准：`1/6 / 10 USD`。本次只同步治理文档，不改变D13阶段、预算或验收等级。
 - 文档同步后按风险分层仅复验`tests/m38-generation-runtime-incidents.spec.ts`：`15/15 PASS`、0失败、0重试；safe runner确认源码快照前后不变、4173监听不变。未重复全量测试。
+- 自动续跑再次按顺序只读恢复后确认实时HEAD`9dbbe8fc3040d316e8852052c345a783578ae00a`、`origin/main=cc62bfbb155372ba3b1da65c029d9c97b5330ac7`、package `0.6.35`、跟踪工作树干净，生产version/live/ready仍为`0.6.35 / live / active schema39`。同时发现CURRENT_STATE下部“当前线上/新会话默认动作”、矩阵017～019预算说明、模块化恢复入口和裁剪专项当前生产语句仍残留v0.6.33或0/6时点，已按顶部权威事实做docs-only对齐；没有改变历史发布段、产品代码、预算或验收等级。对齐后仅复验m38：`15/15 PASS`、0失败、0重试、退出0，source/snapshot `6adff8eb99c7ee442675b20cfc4a10e240c807b3e8f797fc4adaed855f112aaa`、4173监听不变；裁剪专项末句仅澄清当前承载版本，不影响测试并按纪律未重复full。
 - 唯一下一动作保持不变：等待剩余5项每项预计不超过10 USD、合计不超过50 USD的动作时分组确认；未确认前不点击任何付费提交按钮。
 
 ## 26. D13 GitHub 和生产发布

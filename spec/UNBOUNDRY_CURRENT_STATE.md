@@ -160,7 +160,7 @@ v0.6.34版本号、tag和发布授权均已执行并消费，禁止移动tag或�
 
 ## v0.6.25 发布与真实验证（2026-08-20，历史时点）
 
-- 本节以下为 v0.6.25 历史记录，不承担当前版本播报；当前生产以本文顶部 v0.6.33 状态为准。v0.6.26 的 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK` 是该版本独立验收时点，继续作为历史证据保留。v0.6.25 的完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
+- 本节以下为 v0.6.25 历史记录，不承担当前版本播报；当前生产以本文顶部 v0.6.35 状态为准。v0.6.26 的 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK` 是该版本独立验收时点，继续作为历史证据保留。v0.6.25 的完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
 - 事二「生成任务一直排队中」已在线闭环：已知任务 `c479826f-a426-4a11-854c-79ecc802bcbc` 从 `queued / attempt 1 / provider_task_id null` 在 v0.6.25 重启后自动接力，平台任务 `111092189` 完成，最终 `success / attempt 2`；没有盲目重复。
 - 事一已查清：2026-08-19 15:23–15:26Z 上游“服装主体标准化”图片成功并产出 11,596,744 字节 PNG；v0.6.23 的 10MB 文字输入预检随后拦下四个下游文字节点，五个后代未运行。不是客户端 DAG 漏发；红字把失败错归因给已经成功的上游图片节点。
 - “2:33 三张主图从未提交”的旧说法已被生产任务表与 nginx 202 提交记录否定：该轮 7 图 + 4 文全部 success。
@@ -170,16 +170,16 @@ v0.6.34版本号、tag和发布授权均已执行并消费，禁止移动tag或�
 ## 当前线上
 
 - 地址：https://canvas.mymy.ltd
-- 指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.33-crop-loading-20260823`
-- 源码：tag commit `669958f4e325cc182c31cf0f27861e26b64736b1`，tree `c3a1c27cbe0c230d7005f260c5b57b96ad274acd`
-- 标签：`v0.6.33` 精确指向上述源码
-- 功能 PR：#77，squash merge `8675a34b14b17fdf69b5e08b0469c520e4df79cb`
-- 冻结备份：`/var/lib/unboundry-rollbacks/v0.6.33-frozen-sLmph1`
-- 上一不可变版：`/opt/unboundry/releases/v0.6.32-image-edit-source-20260823`（以及更早版本）仍保留
-- 当前数据门：schema39、integrity ok、FK0、tasks722、attempts730、公共模板50（48 published）、active0、逻辑媒体761条/1327334656字节、画布58。
+- 指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824`
+- 源码：注释tag `v0.6.35`解引用为commit `fc99101327efc8fc3687406598169a6ae7dc1272`，tree `cb13fef2e71e41c3ada09ade95619c9362636b36`
+- 标签：`v0.6.35`与`origin/main` tree一致；`origin/main=cc62bfbb155372ba3b1da65c029d9c97b5330ac7`
+- 功能 PR：#81，squash merge `cc62bfbb155372ba3b1da65c029d9c97b5330ac7`
+- 冻结备份：`/var/lib/unboundry-rollbacks/v0.6.35-frozen-ad7b91`，主库、Library sidecar与媒体恢复副本均已纳入清单
+- 上一不可变版：`/opt/unboundry/releases/v0.6.34-image-toolbar-20260823`（以及更早版本）仍保留
+- 当前数据门：schema39、integrity/外键/生产切换门均已通过；多角度技术冒烟后tasks723、attempts731、active0，真实Provider预算为`1/6 / 10 USD`。
 - 生产并发配置已恢复推荐值：per_user 20 / image 10 / video 2 / audio 2 / text 10 / RPM 120
-- 正式安全全量：v0.6.33 候选唯一一次执行 `1049/1050`，唯一失败项经同源码m22最小复验`37/37 PASS`；未第二次运行full
-- 生产技术门和用户对裁剪准备态的线上复验均已完成，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`；当前无待发布候选，v0.6.33版本号与发布授权已消费
+- 正式安全全量：v0.6.35冻结候选唯一一次执行 `1052/1052 PASS`；此前v0.6.34原始full及精确修正复验继续按原始证据保留，不改写
+- 生产技术门已完成，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_1_OF_6 / USER_QUALITY_RECHECK`；v0.6.35版本号与发布授权已消费，剩余五项仍须动作时确认
 
 ## 历史发布记录（v0.6.25 及更早时点）
 
@@ -295,8 +295,8 @@ v0.6.34版本号、tag和发布授权均已执行并消费，禁止移动tag或�
 ## 新会话默认动作
 
 1. 先读本文 + `上线规矩.md` + `TASKS.md` 顶部。
-2. 只读核对仓库分支、HEAD、工作树、`package.json` 版本是否为 `0.6.34`；历史计划中的旧版本号不得当成当前施工身份。
-3. 当前生产仍为 v0.6.33/schema39，状态 `PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`；本地 v0.6.34 候选处于 D12 验证中，只有 D12 通过后才可按本 Goal 的新授权进入 D13。
+2. 只读核对当前隔离worktree、分支、HEAD、工作树和`package.json`；当前package应为`0.6.35`，历史计划中的旧版本号不得当成当前施工身份。
+3. 当前生产为 v0.6.35/schema39，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_1_OF_6 / USER_QUALITY_RECHECK`；D13唯一下一动作以 INC-IMGEDIT-003 Checkpoint 为准，未获剩余五项动作时确认前不得提交新的付费请求。
 4. 云腾三模型只归属云腾 Provider；不得借用优创密钥、不得新增“天空”计费 Provider、不得自动追加真实 Provider POST。
 5. `VIEW-005`已由本地隔离安全定向证据关闭为`AUTO_PASS`；其余`PAUSED/BLOCK/PARTIAL`项只有在用户重新立项后才能施工，本次证据不得被解释为新版本或生产授权。
 6. 若用户说生成或工作流再次异常，先查当前线上任务、Provider profile、attempt 和结果所有权，再给方案；不得擅自改生产库或重提付费请求。
