@@ -226,7 +226,6 @@ test("Image empty and local upload states match the observed geometry", async ({
   await expect.soft(page.getByTestId("image-tool-host"))
     .toHaveAttribute("data-active-tool", "fullscreen");
   await expect.soft(page.locator("#root")).toHaveAttribute("inert", "");
-  await expect.soft(page.getByTestId("image-node-toolbar")).toBeHidden();
   const detailPreview = detail.getByTestId("image-detail-preview");
   await expect(detailPreview).toBeVisible();
   await expect(detailPreview).toHaveAttribute(

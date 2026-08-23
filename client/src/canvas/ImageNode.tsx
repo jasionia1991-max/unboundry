@@ -4480,8 +4480,7 @@ function ImageNodeImpl({
       <NodeToolbar
         className="media-node-toolbar image-node-toolbar nodrag nopan nowheel"
         data-testid="image-node-toolbar"
-        isVisible={Boolean(preview && singleNodeChrome && !generating && !uploading &&
-          !imageToolModalOpen)}
+        isVisible={Boolean(preview && singleNodeChrome && !generating && !uploading)}
         offset={28}
         position={Position.Top}
       >
