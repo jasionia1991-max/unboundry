@@ -863,130 +863,134 @@ function ImageMultiAnglePanel({
 
   return (
     <div
-      aria-label="图片多角度"
       className="image-multi-angle-panel nodrag nopan nowheel"
       data-testid="image-multi-angle-panel"
-      role="dialog"
     >
-      <header>
-        <strong>拖拽方块调整角度</strong>
-        <button aria-label="关闭多角度" onClick={onClose} type="button">×</button>
+      <header className="image-tool-panel-header">
+        <span>
+          <strong>多角度</strong>
+          <small>拖拽预览或调整参数</small>
+        </span>
+        <button aria-label="关闭多角度" disabled={busy} onClick={onClose} type="button">×</button>
       </header>
-      <div
-        className="image-multi-angle-preview"
-        onPointerDown={(event) => {
-          if ((event.target as HTMLElement).closest("button")) return;
-          drag.current = {
-            rotation: angle.rotation,
-            tilt: angle.tilt,
-            x: event.clientX,
-            y: event.clientY,
-          };
-          event.currentTarget.setPointerCapture(event.pointerId);
-        }}
-        onPointerMove={(event) => {
-          if (!drag.current) return;
-          const halfDegree = (value: number) => Math.round(value * 2) / 2;
-          setAngle((current) => ({
-            ...current,
-            rotation: halfDegree(
-              Math.max(
-                -180,
-                Math.min(
-                  180,
-                  drag.current!.rotation + event.clientX - drag.current!.x,
-                ),
-              ),
-            ),
-            tilt: halfDegree(
-              Math.max(
-                -90,
-                Math.min(
-                  90,
-                  drag.current!.tilt - event.clientY + drag.current!.y,
-                ),
-              ),
-            ),
-          }));
-        }}
-        onPointerUp={(event) => {
-          drag.current = undefined;
-          event.currentTarget.releasePointerCapture(event.pointerId);
-        }}
-      >
+      <div className="image-tool-panel-body image-multi-angle-body">
         <div
-          className="image-multi-angle-cube"
-          data-testid="image-multi-angle-cube"
-          style={{
-            transform: `rotateX(${-angle.tilt}deg) rotateY(${angle.rotation}deg) scale(${1 + angle.scale / 200})`,
+          className="image-multi-angle-preview"
+          onPointerDown={(event) => {
+            if ((event.target as HTMLElement).closest("button")) return;
+            drag.current = {
+              rotation: angle.rotation,
+              tilt: angle.tilt,
+              x: event.clientX,
+              y: event.clientY,
+            };
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={(event) => {
+            if (!drag.current) return;
+            const halfDegree = (value: number) => Math.round(value * 2) / 2;
+            setAngle((current) => ({
+              ...current,
+              rotation: halfDegree(
+                Math.max(
+                  -180,
+                  Math.min(
+                    180,
+                    drag.current!.rotation + event.clientX - drag.current!.x,
+                  ),
+                ),
+              ),
+              tilt: halfDegree(
+                Math.max(
+                  -90,
+                  Math.min(
+                    90,
+                    drag.current!.tilt - event.clientY + drag.current!.y,
+                  ),
+                ),
+              ),
+            }));
+          }}
+          onPointerUp={(event) => {
+            drag.current = undefined;
+            event.currentTarget.releasePointerCapture(event.pointerId);
           }}
         >
-          <span className="image-multi-angle-guide image-multi-angle-left">L</span>
-          <span className="image-multi-angle-guide image-multi-angle-bottom">B</span>
-          <img alt="" draggable={false} src={src} />
-        </div>
-        <button className="image-multi-angle-reset" onClick={reset} type="button">
-          ↻ 重置
-        </button>
-      </div>
-      <div className="image-multi-angle-controls">
-        {([
-          ["rotation", "旋转", -180, 180, "°"],
-          ["tilt", "倾斜", -90, 90, "°"],
-          ["scale", "缩放", -100, 100, ""],
-        ] as const).map(([key, label, min, max, suffix]) => (
-          <label key={key}>
-            <span>{label}</span>
-            <input
-              aria-label={label}
-              max={max}
-              min={min}
-              onChange={(event) =>
-                setAngle((current) => ({
-                  ...current,
-                  [key]: Number(event.target.value),
-                }))
-              }
-              type="range"
-              value={angle[key]}
-            />
-            <output data-testid={`image-multi-angle-${key}`}>
-              {formatAngle(angle[key])}{suffix}
-            </output>
-          </label>
-        ))}
-        <label className="image-multi-angle-wide">
-          <span>广角镜头</span>
-          <input
-            checked={angle.wide}
-            onChange={(event) =>
-              setAngle((current) => ({ ...current, wide: event.target.checked }))
-            }
-            type="checkbox"
-          />
-        </label>
-        <div className="image-multi-angle-submit">
-          <span data-testid="image-multi-angle-capability">
-            {capability.status === "available"
-              ? capability.estimatedCost
-                ? `预计 ${capability.estimatedCost.amount} ${capability.estimatedCost.currency}`
-                : "能力已就绪"
-              : capability.reason}
-          </span>
-          <button
-            aria-label="生成多角度图片"
-            data-tooltip={capability.status === "available"
-              ? "生成多角度图片"
-              : capability.reason}
-            disabled={busy || capability.status !== "available"}
-            onClick={() => void onSubmit(angle)}
-            type="button"
+          <div
+            className="image-multi-angle-cube"
+            data-testid="image-multi-angle-cube"
+            style={{
+              transform: `rotateX(${-angle.tilt}deg) rotateY(${angle.rotation}deg) scale(${1 + angle.scale / 200})`,
+            }}
           >
-            {busy ? "…" : "↑"}
+            <span className="image-multi-angle-guide image-multi-angle-left">L</span>
+            <span className="image-multi-angle-guide image-multi-angle-bottom">B</span>
+            <img alt="" draggable={false} src={src} />
+          </div>
+          <button className="image-multi-angle-reset" disabled={busy} onClick={reset} type="button">
+            ↻ 重置
           </button>
         </div>
-        {error && <div className="image-multi-angle-error" role="alert">{error}</div>}
+        <div className="image-multi-angle-controls">
+          {([
+            ["rotation", "旋转", -180, 180, "°"],
+            ["tilt", "倾斜", -90, 90, "°"],
+            ["scale", "缩放", -100, 100, ""],
+          ] as const).map(([key, label, min, max, suffix]) => (
+            <label key={key}>
+              <span>{label}</span>
+              <input
+                aria-label={label}
+                disabled={busy}
+                max={max}
+                min={min}
+                onChange={(event) =>
+                  setAngle((current) => ({
+                    ...current,
+                    [key]: Number(event.target.value),
+                  }))
+                }
+                type="range"
+                value={angle[key]}
+              />
+              <output data-testid={`image-multi-angle-${key}`}>
+                {formatAngle(angle[key])}{suffix}
+              </output>
+            </label>
+          ))}
+          <label className="image-multi-angle-wide">
+            <span>广角镜头</span>
+            <input
+              checked={angle.wide}
+              disabled={busy}
+              onChange={(event) =>
+                setAngle((current) => ({ ...current, wide: event.target.checked }))
+              }
+              type="checkbox"
+            />
+          </label>
+          {error && <div className="image-multi-angle-error" role="alert">{error}</div>}
+        </div>
       </div>
+      <footer className="image-tool-panel-footer">
+        <span data-testid="image-multi-angle-capability">
+          {capability.status === "available"
+            ? capability.estimatedCost
+              ? `预计 ${capability.estimatedCost.amount} ${capability.estimatedCost.currency}`
+              : "能力已就绪"
+            : capability.reason}
+        </span>
+        <button disabled={busy} onClick={onClose} type="button">取消</button>
+        <button
+          className="primary"
+          data-tooltip={capability.status === "available"
+            ? "生成多角度图片"
+            : capability.reason}
+          disabled={busy || capability.status !== "available"}
+          onClick={() => void onSubmit(angle)}
+          type="button"
+        >{busy ? "生成中…" : "生成多角度图片"}</button>
+      </footer>
     </div>
   );
 }
@@ -1726,6 +1730,7 @@ function ImageNodeImpl({
   const [lightingOpen, setLightingOpen] = useState(false);
   const [multiAngleBusy, setMultiAngleBusy] = useState(false);
   const [multiAngleError, setMultiAngleError] = useState("");
+  const [localToolBusy, setLocalToolBusy] = useState(false);
   const [modelSwitchProblem, setModelSwitchProblem] = useState("");
   const [redrawBusy, setRedrawBusy] = useState(false);
   const [redrawError, setRedrawError] = useState("");
@@ -1764,6 +1769,8 @@ function ImageNodeImpl({
     : false;
   const imageToolBusy = activeImageTool === "multi-angle"
     ? multiAngleBusy
+    : activeImageTool === "resize" || activeImageTool === "split"
+    ? localToolBusy
     : activeImageTool === "redraw"
     ? redrawBusy
     : activeImageTool === "erase"
@@ -1781,12 +1788,14 @@ function ImageNodeImpl({
     tool: ImageToolId,
     trigger?: HTMLElement | null,
   ) => {
+    setLocalToolBusy(false);
     imageToolTriggerRef.current = trigger ??
       (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     setLightingOpen(false);
     dispatchToolUi({ tool, type: "open-tool" });
   }, []);
   const closeImageTool = useCallback((tool?: ImageToolId) => {
+    setLocalToolBusy(false);
     dispatchToolUi({ tool, type: "close-tool" });
   }, []);
   const [seedanceExpiryEpoch, setSeedanceExpiryEpoch] = useState(0);
@@ -4770,6 +4779,7 @@ function ImageNodeImpl({
               previewImageRef.current?.naturalHeight ?? 1024}
             initialWidth={data.mediaWidth ??
               previewImageRef.current?.naturalWidth ?? 1024}
+            onBusyChange={setLocalToolBusy}
             onCancel={() => closeImageTool("resize")}
             onConfirm={async (width, height) => {
               await imageToolDispatcher.execute("resize-pixels", { height, width });
@@ -4779,6 +4789,7 @@ function ImageNodeImpl({
         {preview && localToolOpen === "split" && (
           <ImageToolSurface className="image-tool-split-shell">
             <ImageSplitPanel
+              onBusyChange={setLocalToolBusy}
               onCancel={() => closeImageTool("split")}
               onConfirm={async (grid) => {
                 await imageToolDispatcher.execute("quick-split", { grid });
@@ -4788,88 +4799,118 @@ function ImageNodeImpl({
           </ImageToolSurface>
         )}
         {preview && enhanceOpen && (
-          <div className="image-processing-panel" data-testid="image-enhance-panel">
-            <strong>增强图片</strong>
-            <p>保守增强只做轻量清晰度与色彩校正；创意增强会生成新细节。</p>
-            <button disabled={enhanceBusy} onClick={() => {
-              setEnhanceBusy(true); setEnhanceError("");
-              void imageToolDispatcher.execute("enhance-conservative", {})
-                .then(() => closeImageTool("enhance"))
-                .catch((error: unknown) => setEnhanceError(error instanceof Error
-                  ? error.message : "保守增强失败"))
-                .finally(() => setEnhanceBusy(false));
-            }} type="button">保守增强</button>
-            <button disabled={enhanceBusy || creativeEnhanceCapability.status !== "available"}
-              onClick={() => void submitPromptGeneration("enhance-creative",
-                "在保持主体身份、构图和主要颜色的前提下增强清晰度与细节；允许补充自然纹理，不添加无关对象。")}
-              type="button">创意增强（会改变内容）</button>
-            <button onClick={() => closeImageTool("enhance")} type="button">取消</button>
-            {enhanceError && <div role="alert">{enhanceError}</div>}
+          <div className="image-tool-compact-panel" data-testid="image-enhance-panel">
+            <header className="image-tool-panel-header">
+              <span><strong>增强图片</strong><small>选择保守处理或创意生成</small></span>
+              <button aria-label="关闭增强图片" disabled={enhanceBusy}
+                onClick={() => closeImageTool("enhance")} type="button">×</button>
+            </header>
+            <div className="image-tool-panel-body image-enhance-options">
+              <p>保守增强只做轻量清晰度与色彩校正，不改变构图。</p>
+              <button disabled={enhanceBusy} onClick={() => {
+                setEnhanceBusy(true); setEnhanceError("");
+                void imageToolDispatcher.execute("enhance-conservative", {})
+                  .then(() => closeImageTool("enhance"))
+                  .catch((error: unknown) => setEnhanceError(error instanceof Error
+                    ? error.message : "保守增强失败"))
+                  .finally(() => setEnhanceBusy(false));
+              }} type="button"><strong>保守增强</strong><small>本地处理 · 不新增内容</small></button>
+              <button disabled={enhanceBusy || creativeEnhanceCapability.status !== "available"}
+                onClick={() => void submitPromptGeneration("enhance-creative",
+                  "在保持主体身份、构图和主要颜色的前提下增强清晰度与细节；允许补充自然纹理，不添加无关对象。")}
+                type="button"><strong>创意增强</strong><small>会生成新细节 · 需要模型能力</small></button>
+              {enhanceError && <div role="alert">{enhanceError}</div>}
+            </div>
+            <footer className="image-tool-panel-footer">
+              <button disabled={enhanceBusy} onClick={() => closeImageTool("enhance")}
+                type="button">取消</button>
+            </footer>
           </div>
         )}
         {preview && cutoutOpen && (
           <ImageToolSurface>
-            <div className="image-processing-panel image-processing-alpha"
+            <div className="image-tool-compact-panel image-processing-alpha"
               data-testid="image-cutout-panel">
-              <strong>主体抠图</strong>
-              <p>移除背景并生成带透明通道的PNG；棋盘格仅用于预览透明区域。</p>
-              <button disabled={cutoutBusy || removeBackgroundCapability.status !== "available"}
-                onClick={() => void submitPromptGeneration("remove-background",
-                  "精确保留主要主体和边缘细节，完全移除背景，输出透明背景PNG；不要添加阴影、底色或棋盘格。")}
-                type="button">生成透明PNG</button>
-              <button onClick={() => closeImageTool("cutout")} type="button">取消</button>
-              {cutoutError && <div role="alert">{cutoutError}</div>}
+              <header className="image-tool-panel-header">
+                <span><strong>主体抠图</strong><small>输出带透明通道的 PNG</small></span>
+                <button aria-label="关闭主体抠图" disabled={cutoutBusy}
+                  onClick={() => closeImageTool("cutout")} type="button">×</button>
+              </header>
+              <div className="image-tool-panel-body">
+                <p>移除背景并保留主体边缘。棋盘格仅用于预览透明区域，不会写入图片。</p>
+                {cutoutError && <div role="alert">{cutoutError}</div>}
+              </div>
+              <footer className="image-tool-panel-footer">
+                <button disabled={cutoutBusy} onClick={() => closeImageTool("cutout")}
+                  type="button">取消</button>
+                <button className="primary"
+                  aria-label="生成透明PNG"
+                  disabled={cutoutBusy || removeBackgroundCapability.status !== "available"}
+                  onClick={() => void submitPromptGeneration("remove-background",
+                    "精确保留主要主体和边缘细节，完全移除背景，输出透明背景PNG；不要添加阴影、底色或棋盘格。")}
+                  type="button">{cutoutBusy ? "生成中…" : "生成透明 PNG"}</button>
+              </footer>
             </div>
           </ImageToolSurface>
         )}
         {preview && seedanceOpen && (
-          <div className="image-processing-panel image-seedance-validation-panel"
+          <div className="image-tool-compact-panel image-seedance-validation-panel"
             data-testid="image-seedance-validation-panel">
-            <strong>Seedance 素材校验</strong>
-            <p>仅检查本地技术输入条件，不代表远端资格、可生成、质量或法律合规。</p>
-            <label>视频模型
-              <select aria-label="Seedance 视频模型"
-                onChange={(event) => setSeedanceModelId(event.target.value)}
-                value={selectedSeedanceModelId}>
-                {seedanceModels.map((model) => (
-                  <option key={model.id} value={model.id}>{model.displayName}</option>
-                ))}
-              </select>
-            </label>
-            <label>素材角色
-              <select aria-label="Seedance 素材角色"
-                onChange={(event) => setSeedanceRole(
-                  event.target.value as SeedanceImageRole)}
-                value={effectiveSeedanceRole}>
-                {supportedSeedanceRoles.map((role) => (
-                  <option key={role} value={role}>{({
-                    "first-frame": "首帧",
-                    "last-frame": "尾帧",
-                    subject: "主体",
-                    "reference-image": "参考图",
-                  } as const)[role]}</option>
-                ))}
-              </select>
-            </label>
-            {!selectedSeedanceModel && <div role="alert">当前没有已发布的 Seedance 模型</div>}
-            {currentSeedanceValidationState && (
-              <div className="image-seedance-validation-result"
-                data-state={currentSeedanceValidationState}>
-                {currentSeedanceValidationState === "eligible"
-                  ? "本地技术预检通过"
-                  : currentSeedanceValidationState === "stale"
-                    ? "校验已过期或素材、模型、角色已变化，请重新校验"
-                    : data.imageSeedanceValidation?.problems.join("；")}
-              </div>
-            )}
-            <button disabled={seedanceBusy || seedanceCapability.status !== "available" ||
-              !selectedSeedanceModel?.configurationRevision ||
-              supportedSeedanceRoles.length < 1 || typeof data.assetId !== "string"}
-              onClick={() => void validateSeedance()} type="button">
-              {seedanceBusy ? "校验中…" : "运行本地技术预检"}
-            </button>
-            <button onClick={() => closeImageTool("seedance")} type="button">关闭</button>
-            {seedanceError && <div role="alert">{seedanceError}</div>}
+            <header className="image-tool-panel-header">
+              <span><strong>Seedance 素材校验</strong><small>仅本地技术预检</small></span>
+              <button aria-label="关闭 Seedance 素材校验" disabled={seedanceBusy}
+                onClick={() => closeImageTool("seedance")} type="button">×</button>
+            </header>
+            <div className="image-tool-panel-body">
+              <p>仅检查本地技术输入条件，不代表远端资格、可生成、质量或法律合规。</p>
+              <label>视频模型
+                <select aria-label="Seedance 视频模型" disabled={seedanceBusy}
+                  onChange={(event) => setSeedanceModelId(event.target.value)}
+                  value={selectedSeedanceModelId}>
+                  {seedanceModels.map((model) => (
+                    <option key={model.id} value={model.id}>{model.displayName}</option>
+                  ))}
+                </select>
+              </label>
+              <label>素材角色
+                <select aria-label="Seedance 素材角色" disabled={seedanceBusy}
+                  onChange={(event) => setSeedanceRole(
+                    event.target.value as SeedanceImageRole)}
+                  value={effectiveSeedanceRole}>
+                  {supportedSeedanceRoles.map((role) => (
+                    <option key={role} value={role}>{({
+                      "first-frame": "首帧",
+                      "last-frame": "尾帧",
+                      subject: "主体",
+                      "reference-image": "参考图",
+                    } as const)[role]}</option>
+                  ))}
+                </select>
+              </label>
+              {!selectedSeedanceModel && <div role="alert">当前没有已发布的 Seedance 模型</div>}
+              {currentSeedanceValidationState && (
+                <div className="image-seedance-validation-result"
+                  data-state={currentSeedanceValidationState}>
+                  {currentSeedanceValidationState === "eligible"
+                    ? "本地技术预检通过"
+                    : currentSeedanceValidationState === "stale"
+                      ? "校验已过期或素材、模型、角色已变化，请重新校验"
+                      : data.imageSeedanceValidation?.problems.join("；")}
+                </div>
+              )}
+              {seedanceError && <div role="alert">{seedanceError}</div>}
+            </div>
+            <footer className="image-tool-panel-footer">
+              <button disabled={seedanceBusy} onClick={() => closeImageTool("seedance")}
+                type="button">关闭</button>
+              <button className="primary"
+                disabled={seedanceBusy || seedanceCapability.status !== "available" ||
+                  !selectedSeedanceModel?.configurationRevision ||
+                  supportedSeedanceRoles.length < 1 || typeof data.assetId !== "string"}
+                onClick={() => void validateSeedance()} type="button">
+                {seedanceBusy ? "校验中…" : "运行本地技术预检"}
+              </button>
+            </footer>
           </div>
         )}
         {preview && annotationOpen && (

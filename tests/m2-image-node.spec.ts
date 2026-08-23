@@ -1,4 +1,5 @@
 import { expect, test } from "./safe-test";
+import type { Locator } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { composeTextControl } from "./helpers/ime";
@@ -10,6 +11,24 @@ import {
   imageToolMaximums,
   imageToolOperations,
 } from "../types/imageTools";
+
+async function expectInsideViewport(locator: Locator) {
+  const bounds = await locator.evaluate((element) => {
+    const rectangle = element.getBoundingClientRect();
+    return {
+      bottom: rectangle.bottom,
+      left: rectangle.left,
+      right: rectangle.right,
+      top: rectangle.top,
+      viewportHeight: window.innerHeight,
+      viewportWidth: window.innerWidth,
+    };
+  });
+  expect(bounds.left).toBeGreaterThanOrEqual(0);
+  expect(bounds.top).toBeGreaterThanOrEqual(0);
+  expect(bounds.right).toBeLessThanOrEqual(bounds.viewportWidth);
+  expect(bounds.bottom).toBeLessThanOrEqual(bounds.viewportHeight);
+}
 
 test.beforeEach(async ({ page }, testInfo) => {
   const retention = testInfo.title.includes("retains 2K");
@@ -136,6 +155,7 @@ test("Image empty and local upload states match the observed geometry", async ({
       generationRequests.push(request.url());
     }
   });
+  await page.setViewportSize({ height: 720, width: 1280 });
   await request.delete("/api/canvas/node.image.empty");
   await page.goto("/__fixture/node.image.empty");
   const node = page.locator(
@@ -237,6 +257,7 @@ test("Image empty and local upload states match the observed geometry", async ({
   await expect(detail).toBeHidden();
   await expect.soft(page.locator("#root")).not.toHaveAttribute("inert", "");
   await expect.soft(fullscreenButton).toBeFocused();
+  await page.setViewportSize({ height: 900, width: 1440 });
   await toolbar.getByRole("button", { name: "浏览全部" }).click();
   const moreMenu = page.getByTestId("image-node-more-menu");
   await expect(moreMenu).toBeVisible();
@@ -271,6 +292,8 @@ test("Image empty and local upload states match the observed geometry", async ({
     .getByRole("menuitem", { name: "增强" }).click();
   const enhance = page.getByTestId("image-enhance-panel");
   await expect(enhance).toBeVisible();
+  await expectInsideViewport(enhance);
+  await expectInsideViewport(enhance.locator(".image-tool-panel-footer"));
   await expect(enhance).toContainText("创意增强会生成新细节");
   await expect(enhance.getByRole("button", { name: "保守增强" })).toBeEnabled();
   await expect(enhance.getByRole("button", { name: /创意增强/ })).toBeDisabled();
@@ -281,6 +304,8 @@ test("Image empty and local upload states match the observed geometry", async ({
     .getByRole("menuitem", { name: "抠图" }).click();
   const cutout = page.getByTestId("image-cutout-panel");
   await expect(cutout).toBeVisible();
+  await expectInsideViewport(cutout);
+  await expectInsideViewport(cutout.locator(".image-tool-panel-footer"));
   await expect.soft(page.getByTestId("image-tool-surface")).toBeVisible();
   await expect(cutout).toContainText("棋盘格仅用于预览透明区域");
   await expect(cutout.getByRole("button", { name: "生成透明PNG" })).toBeDisabled();
@@ -938,6 +963,9 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   await page.getByTestId("image-node-more-menu")
     .getByRole("menuitem", { name: "调整像素" }).click();
   const resizePanel = page.getByTestId("image-resize-panel");
+  await expect(resizePanel).toBeVisible();
+  await expectInsideViewport(resizePanel);
+  await expectInsideViewport(resizePanel.locator(".image-tool-panel-footer"));
   await resizePanel.getByRole("spinbutton", { name: "像素宽度" }).fill("640");
   await expect(
     resizePanel.getByRole("spinbutton", { name: "像素高度" }),
@@ -954,6 +982,7 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
     }),
   )).toEqual({ height: 360, width: 640 });
 
+  await page.setViewportSize({ height: 900, width: 1728 });
   await node.click();
   await toolbar.getByRole("button", { name: "浏览全部" }).click();
   await page.getByTestId("image-node-more-menu")
@@ -976,6 +1005,8 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   await page.getByTestId("image-node-more-menu")
     .getByRole("menuitem", { name: /快速切分/ }).click();
   const splitPanel = page.getByTestId("image-split-panel");
+  await expectInsideViewport(splitPanel);
+  await expectInsideViewport(splitPanel.locator(".image-tool-panel-footer"));
   await expect(splitPanel.getByRole("img", { name: "分割预览" })).toBeVisible();
   await expect(splitPanel.getByRole("button", { name: "2×2（4张）" })).toBeVisible();
   await expect(splitPanel.getByRole("button", { name: "3×3（9张）" })).toBeVisible();
@@ -1026,6 +1057,7 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
     .toHaveAttribute("aria-checked", "true");
   await restoredToolbar.getByRole("button", { name: "颜色标记" }).click();
 
+  await page.setViewportSize({ height: 720, width: 1280 });
   await restoredToolbar.getByRole("button", { name: "浏览全部" }).click();
   await page.getByTestId("image-node-more-menu")
     .getByRole("menuitem", { name: "标注" }).click();
@@ -1119,6 +1151,8 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   await page.getByTestId("image-node-more-menu")
     .getByRole("menuitem", { name: "Seedance 素材校验" }).click();
   const seedancePanel = page.getByTestId("image-seedance-validation-panel");
+  await expectInsideViewport(seedancePanel);
+  await expectInsideViewport(seedancePanel.locator(".image-tool-panel-footer"));
   await expect(seedancePanel).toContainText("仅检查本地技术输入条件");
   await expect(seedancePanel.getByRole("combobox", { name: "Seedance 视频模型" }))
     .toHaveValue("fixture-seedance-2-mini");
@@ -1256,6 +1290,7 @@ test("Image multi-angle submits a structured persistent fake task without Provid
     await route.continue();
   });
   await request.delete("/api/canvas/node.image.success");
+  await page.setViewportSize({ height: 720, width: 1280 });
   await page.goto("/__fixture/node.image.success");
   await page.getByTestId("image-upload-input").setInputFiles(
     path.resolve(
@@ -1273,8 +1308,10 @@ test("Image multi-angle submits a structured persistent fake task without Provid
   expect(await panel.evaluate((element) => getComputedStyle(element).width))
     .toBe("600px");
   const panelBox = (await panel.boundingBox())!;
-  expect(panelBox.width).toBeCloseTo(491.4, 0);
-  expect(panelBox.height).toBeCloseTo(252.3, 0);
+  expect(panelBox.width).toBeCloseTo(600, 0);
+  expect(panelBox.height).toBeCloseTo(308, 0);
+  await expectInsideViewport(panel);
+  await expectInsideViewport(panel.locator(".image-tool-panel-footer"));
   await expect(page.getByTestId("image-multi-angle-rotation")).toHaveText("-30°");
   await expect(page.getByTestId("image-multi-angle-tilt")).toHaveText("23°");
   await expect(page.getByTestId("image-multi-angle-scale")).toHaveText("0");
