@@ -5,7 +5,6 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { createPortal } from "react-dom";
 import type {
   ImageAnnotationDocument,
   ImageAnnotationElement,
@@ -153,17 +152,15 @@ export function ImageAnnotationEditor({
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      if (textDraft) {
-        setTextComposing(false);
-        setTextDraft(undefined);
-        return;
-      }
-      onClose();
+      if (event.key !== "Escape" || !textDraft) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      setTextComposing(false);
+      setTextDraft(undefined);
     };
     window.addEventListener("keydown", closeOnEscape, true);
     return () => window.removeEventListener("keydown", closeOnEscape, true);
-  }, [onClose, textDraft]);
+  }, [textDraft]);
 
   const point = (event: Readonly<{
     clientX: number;
@@ -365,13 +362,10 @@ export function ImageAnnotationEditor({
     onChange(next);
   };
 
-  return createPortal(
+  return (
     <div
-      aria-label="图片标注"
-      aria-modal="true"
       className="image-annotation-overlay nodrag nopan nowheel"
       data-testid="image-annotation-overlay"
-      role="dialog"
     >
       <div className="image-annotation-toolbar" data-testid="image-annotation-toolbar">
         <button aria-label="关闭标注" onClick={onClose} type="button">×</button>
@@ -510,7 +504,6 @@ export function ImageAnnotationEditor({
         <span>{annotationDocument.elements.length} 个标注</span>
         {error && <span role="alert">{error}</span>}
       </div>
-    </div>,
-    document.body,
+    </div>
   );
 }

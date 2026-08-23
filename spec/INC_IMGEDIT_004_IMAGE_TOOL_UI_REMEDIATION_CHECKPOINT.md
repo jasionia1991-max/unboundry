@@ -3,9 +3,9 @@
 ## 0. 当前断点
 
 - 更新时间：2026-08-24 03:11:52 +0800
-- 状态：`GOAL_ACTIVE / R1_AUTO_PASS_WITH_EXPECTED_RED_UI_EVIDENCE / UI_REMEDIATION_REQUIRED`
-- 当前阶段：`R1 状态机和共享宿主合同 / AUTO_PASS_WITH_EXPECTED_RED_UI_EVIDENCE`
-- 唯一允许的下一动作：提交 R1 文档 checkpoint；随后进入 R2 前先把 R2 标为 `IN_PROGRESS`，实现单一 active tool、统一 Portal Host、modal inert、焦点返回和共享 checkerboard surface，使 R1 的 m2 红证据转绿
+- 状态：`GOAL_ACTIVE / R2_IN_PROGRESS / UI_REMEDIATION_REQUIRED`
+- 当前阶段：`R2 单一活动工具与 Portal 宿主 / IN_PROGRESS`
+- 唯一允许的下一动作：完成单一 active tool、统一 Portal Host、modal inert、焦点返回和共享 checkerboard surface；使 R1 的 m2 红证据转绿并证明既有业务payload不变
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
 - 文档分支：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`
 - 立项 HEAD / origin-main：`f369d1dba1eef05aebc7f1a443256ceb82778ea0`
@@ -94,7 +94,7 @@ node -p "require('./package.json').version"
 |---|---|---|
 | R0 | 实时恢复与缺陷基线 | AUTO_PASS |
 | R1 | 状态机和共享宿主合同 | AUTO_PASS_WITH_EXPECTED_RED_UI_EVIDENCE |
-| R2 | 单一活动工具与 Portal 宿主 | NOT_STARTED |
+| R2 | 单一活动工具与 Portal 宿主 | IN_PROGRESS |
 | R3 | 紧凑面板和快速切分 | NOT_STARTED |
 | R4 | 大型编辑器与透明舞台 | NOT_STARTED |
 | R5 | 全屏与交互完整性 | NOT_STARTED |

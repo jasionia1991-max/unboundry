@@ -12,11 +12,11 @@ import {
   memo,
   useCallback,
   useEffect,
+  useReducer,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { createPortal } from "react-dom";
 import { useCanvasCheckpoint } from "./CanvasHistory";
 import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
@@ -129,6 +129,16 @@ import {
   ImageResizePanel,
   ImageSplitPanel,
 } from "../imageTools/LocalImageToolPanels";
+import {
+  ImageToolHost,
+  ImageToolSurface,
+} from "../imageTools/ImageToolHost";
+import {
+  imageToolDescriptors,
+  initialImageToolUiState,
+  reduceImageToolUiState,
+  type ImageToolId,
+} from "../imageTools/imageToolUiContract";
 import {
   enhanceConservativeLocalImage,
   prepareOutpaintImages,
@@ -522,14 +532,6 @@ function ImageCropEditor({
     : { height: maxWidth / aspect, width: maxWidth };
 
   useEffect(() => {
-    const close = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !busy) onCancel();
-    };
-    window.addEventListener("keydown", close);
-    return () => window.removeEventListener("keydown", close);
-  }, [busy, onCancel]);
-
-  useEffect(() => {
     const controller = new AbortController();
     let active = true;
     let resolved: EditableImageSource | undefined;
@@ -669,13 +671,10 @@ function ImageCropEditor({
     }
   };
 
-  return createPortal(
+  return (
     <div
-      aria-label="图片裁剪"
-      aria-modal="true"
       className="image-crop-overlay nodrag nopan nowheel"
       data-testid="image-crop-overlay"
-      role="dialog"
     >
       <div
         className="image-crop-stage"
@@ -829,8 +828,7 @@ function ImageCropEditor({
           </div>
         )}
       </div>
-    </div>,
-    document.body,
+    </div>
   );
 }
 
@@ -1053,14 +1051,6 @@ function ImageRedrawEditor({
   );
 
   useEffect(() => {
-    const close = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", close);
-    return () => window.removeEventListener("keydown", close);
-  }, [onClose]);
-
-  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     canvas.width = natural.width;
@@ -1151,13 +1141,10 @@ function ImageRedrawEditor({
     setHistoryVersion((version) => version + 1);
   };
 
-  return createPortal(
+  return (
     <div
-      aria-label={`图片${noun}`}
-      aria-modal="true"
       className="image-redraw-overlay nodrag nopan nowheel"
       data-testid={`image-${operation}-overlay`}
-      role="dialog"
     >
       <div
         className="image-redraw-stage"
@@ -1331,8 +1318,7 @@ function ImageRedrawEditor({
         </div>
         {error && <div className="image-redraw-error" role="alert">{error}</div>}
       </div>
-    </div>,
-    document.body,
+    </div>
   );
 }
 
@@ -1358,15 +1344,10 @@ function ImageOutpaintEditor({
   const [marginPercent, setMarginPercent] = useState(25);
   const [prompt, setPrompt] = useState("自然延展画面边缘，保持原图主体和原区域不变");
   const promptControl = useCompositionSafeText({ onCommit: setPrompt, value: prompt });
-  useEffect(() => {
-    const close = (event: KeyboardEvent) => event.key === "Escape" && onClose();
-    window.addEventListener("keydown", close);
-    return () => window.removeEventListener("keydown", close);
-  }, [onClose]);
-  return createPortal(
-    <div aria-label="图片扩图" aria-modal="true"
+  return (
+    <div
       className="image-outpaint-overlay nodrag nopan nowheel"
-      data-testid="image-outpaint-overlay" role="dialog">
+      data-testid="image-outpaint-overlay">
       <div className="image-outpaint-stage" data-testid="image-outpaint-stage">
         <div style={{ padding: `${marginPercent / 2}%` }}>
           <img alt="" draggable={false} src={src} />
@@ -1397,8 +1378,7 @@ function ImageOutpaintEditor({
         </button>
         {error && <div role="alert">{error}</div>}
       </div>
-    </div>,
-    document.body,
+    </div>
   );
 }
 
@@ -1732,36 +1712,31 @@ function ImageNodeImpl({
   const [submitting, setSubmitting] = useState(false);
   const [savingCanvas, setSavingCanvas] = useState(false);
   const [favorite, setFavorite] = useState(false);
-  const [annotationOpen, setAnnotationOpen] = useState(false);
-  const [cropOpen, setCropOpen] = useState(false);
-  const [colorMarksOpen, setColorMarksOpen] = useState(false);
+  const [toolUiState, dispatchToolUi] = useReducer(
+    reduceImageToolUiState,
+    initialImageToolUiState,
+  );
+  const activeImageTool = toolUiState.activeTool;
+  const colorMarksOpen = toolUiState.colorMenuOpen;
+  const moreOpen = toolUiState.moreMenuOpen;
+  const imageToolTriggerRef = useRef<HTMLElement | null>(null);
   const [cropSourceAssetId, setCropSourceAssetId] = useState<string>();
   const [cropVisualPreview, setCropVisualPreview] =
     useState<CropVisualPreview>();
-  const [fullscreen, setFullscreen] = useState(false);
   const [lightingOpen, setLightingOpen] = useState(false);
-  const [multiAngleOpen, setMultiAngleOpen] = useState(false);
   const [multiAngleBusy, setMultiAngleBusy] = useState(false);
   const [multiAngleError, setMultiAngleError] = useState("");
-  const [moreOpen, setMoreOpen] = useState(false);
-  const [localToolOpen, setLocalToolOpen] = useState<"resize" | "split">();
   const [modelSwitchProblem, setModelSwitchProblem] = useState("");
-  const [redrawOpen, setRedrawOpen] = useState(false);
   const [redrawBusy, setRedrawBusy] = useState(false);
   const [redrawError, setRedrawError] = useState("");
-  const [eraseOpen, setEraseOpen] = useState(false);
   const [eraseBusy, setEraseBusy] = useState(false);
   const [eraseError, setEraseError] = useState("");
-  const [outpaintOpen, setOutpaintOpen] = useState(false);
   const [outpaintBusy, setOutpaintBusy] = useState(false);
   const [outpaintError, setOutpaintError] = useState("");
-  const [enhanceOpen, setEnhanceOpen] = useState(false);
   const [enhanceBusy, setEnhanceBusy] = useState(false);
   const [enhanceError, setEnhanceError] = useState("");
-  const [cutoutOpen, setCutoutOpen] = useState(false);
   const [cutoutBusy, setCutoutBusy] = useState(false);
   const [cutoutError, setCutoutError] = useState("");
-  const [seedanceOpen, setSeedanceOpen] = useState(false);
   const [seedanceBusy, setSeedanceBusy] = useState(false);
   const [seedanceError, setSeedanceError] = useState("");
   const [seedanceModelId, setSeedanceModelId] = useState(
@@ -1771,6 +1746,49 @@ function ImageNodeImpl({
     useState<SeedanceImageRole>(
       data.imageSeedanceValidation?.role ?? "reference-image",
     );
+  const annotationOpen = activeImageTool === "annotation";
+  const cropOpen = activeImageTool === "crop";
+  const cutoutOpen = activeImageTool === "cutout";
+  const enhanceOpen = activeImageTool === "enhance";
+  const eraseOpen = activeImageTool === "erase";
+  const fullscreen = activeImageTool === "fullscreen";
+  const localToolOpen = activeImageTool === "resize" || activeImageTool === "split"
+    ? activeImageTool
+    : undefined;
+  const multiAngleOpen = activeImageTool === "multi-angle";
+  const outpaintOpen = activeImageTool === "outpaint";
+  const redrawOpen = activeImageTool === "redraw";
+  const seedanceOpen = activeImageTool === "seedance";
+  const imageToolModalOpen = activeImageTool
+    ? imageToolDescriptors[activeImageTool].inertBackground
+    : false;
+  const imageToolBusy = activeImageTool === "multi-angle"
+    ? multiAngleBusy
+    : activeImageTool === "redraw"
+    ? redrawBusy
+    : activeImageTool === "erase"
+    ? eraseBusy
+    : activeImageTool === "outpaint"
+    ? outpaintBusy
+    : activeImageTool === "enhance"
+    ? enhanceBusy
+    : activeImageTool === "cutout"
+    ? cutoutBusy
+    : activeImageTool === "seedance"
+    ? seedanceBusy
+    : false;
+  const openImageTool = useCallback((
+    tool: ImageToolId,
+    trigger?: HTMLElement | null,
+  ) => {
+    imageToolTriggerRef.current = trigger ??
+      (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    setLightingOpen(false);
+    dispatchToolUi({ tool, type: "open-tool" });
+  }, []);
+  const closeImageTool = useCallback((tool?: ImageToolId) => {
+    dispatchToolUi({ tool, type: "close-tool" });
+  }, []);
   const [seedanceExpiryEpoch, setSeedanceExpiryEpoch] = useState(0);
   const [retryTaskId, setRetryTaskId] = useState<string>();
   const [reconcileBusy, setReconcileBusy] = useState(false);
@@ -3517,7 +3535,7 @@ function ImageNodeImpl({
     if (!moreOpen) return;
     const close = (event: PointerEvent) => {
       if (!moreRef.current?.contains(event.target as Node)) {
-        setMoreOpen(false);
+        dispatchToolUi({ type: "close-transient-ui" });
       }
     };
     document.addEventListener("pointerdown", close);
@@ -3526,27 +3544,9 @@ function ImageNodeImpl({
 
   useEffect(() => {
     if (singleNodeChrome) return;
-    setCropOpen(false);
     setLightingOpen(false);
-    setMultiAngleOpen(false);
-    setMoreOpen(false);
-    setRedrawOpen(false);
-    setEraseOpen(false);
-    setOutpaintOpen(false);
-    setEnhanceOpen(false);
-    setCutoutOpen(false);
-    setAnnotationOpen(false);
-    setLocalToolOpen(undefined);
+    dispatchToolUi({ type: "close-transient-ui" });
   }, [singleNodeChrome]);
-
-  useEffect(() => {
-    if (!fullscreen) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setFullscreen(false);
-    };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [fullscreen]);
 
   const loadFile = async (file?: File) => {
     if (!file) return;
@@ -3760,7 +3760,7 @@ function ImageNodeImpl({
 
   const applyCrop = async (file: File, sourceAssetId: string) => {
     const result = await applyDerivedImage("crop", file, sourceAssetId);
-    setCropOpen(false);
+    closeImageTool("crop");
     return result;
   };
 
@@ -3774,7 +3774,7 @@ function ImageNodeImpl({
       width,
     });
     const result = await applyDerivedImage("resize-pixels", file, sourceAssetId);
-    setLocalToolOpen(undefined);
+    closeImageTool("resize");
     return result;
   };
 
@@ -3808,7 +3808,7 @@ function ImageNodeImpl({
       fileName: `${titleControl.committedValue || "Image"}-annotated.png`,
     });
     const result = await applyDerivedImage("annotate", file, sourceAssetId);
-    setAnnotationOpen(false);
+    closeImageTool("annotation");
     return result;
   };
 
@@ -3850,7 +3850,7 @@ function ImageNodeImpl({
       sourceNodeId: id,
       title: titleControl.committedValue || "Image",
     });
-    setLocalToolOpen(undefined);
+    closeImageTool("split");
     return result;
   };
 
@@ -3987,7 +3987,7 @@ function ImageNodeImpl({
         sourceNodeId: id,
         title: titleControl.committedValue || "Image",
       });
-      setMultiAngleOpen(false);
+      closeImageTool("multi-angle");
     } catch (error) {
       setMultiAngleError(
         error instanceof Error ? error.message : "多角度任务提交失败",
@@ -4130,7 +4130,7 @@ function ImageNodeImpl({
         sourceNodeId: id,
         title: titleControl.committedValue || "Image",
       });
-      setRedrawOpen(false);
+      closeImageTool("redraw");
     } catch (caught) {
       setRedrawError(
         caught instanceof Error ? caught.message : "重绘任务提交失败",
@@ -4243,8 +4243,7 @@ function ImageNodeImpl({
         preOwnershipKey, preparedFile: input.preparedFile, prompt: input.prompt,
         quality: requestedQuality, runId: `image-tool-${operation}-${operationId}`,
         sourceAssetId, sourceNodeId: id, title: titleControl.committedValue || "Image" });
-      if (operation === "outpaint") setOutpaintOpen(false);
-      else setEraseOpen(false);
+      closeImageTool(operation);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message :
         `${operation === "outpaint" ? "扩图" : "擦除"}任务提交失败`);
@@ -4333,8 +4332,7 @@ function ImageNodeImpl({
         modelParameters, operationId, preOwnershipKey, prompt,
         quality: requestedQuality, runId: `image-tool-${operation}-${operationId}`,
         sourceAssetId, sourceNodeId: id, title: titleControl.committedValue || "Image" });
-      if (operation === "enhance-creative") setEnhanceOpen(false);
-      else setCutoutOpen(false);
+      closeImageTool(operation === "enhance-creative" ? "enhance" : "cutout");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "图片处理任务提交失败");
     } finally { setBusy(false); }
@@ -4483,23 +4481,21 @@ function ImageNodeImpl({
         className="media-node-toolbar image-node-toolbar nodrag nopan nowheel"
         data-testid="image-node-toolbar"
         isVisible={Boolean(preview && singleNodeChrome && !generating && !uploading &&
-          !redrawOpen && !eraseOpen && !outpaintOpen)}
+          !imageToolModalOpen)}
         offset={28}
         position={Position.Top}
       >
         <button
           aria-label="裁剪"
           data-tooltip="裁剪"
-          onClick={() => {
-            setLightingOpen(false);
-            setMoreOpen(false);
+          onClick={(event) => {
             setCropVisualPreview(
               freezeReusableCropVisualPreview(previewImageRef.current),
             );
             setCropSourceAssetId(
               typeof data.assetId === "string" ? data.assetId : undefined,
             );
-            setCropOpen(true);
+            openImageTool("crop", event.currentTarget);
           }}
           type="button"
         >
@@ -4513,12 +4509,7 @@ function ImageNodeImpl({
           data-tooltip={multiAngleCapability.status === "available"
             ? "多角度"
             : multiAngleCapability.reason}
-          onClick={() => {
-            setCropOpen(false);
-            setLightingOpen(false);
-            setMoreOpen(false);
-            setMultiAngleOpen(true);
-          }}
+          onClick={(event) => openImageTool("multi-angle", event.currentTarget)}
           type="button"
         >
           <svg aria-hidden="true" viewBox="0 0 20 20">
@@ -4532,13 +4523,9 @@ function ImageNodeImpl({
           data-tooltip={redrawCapability.status === "available"
             ? "重绘"
             : redrawCapability.reason}
-          onClick={() => {
-            setCropOpen(false);
-            setLightingOpen(false);
-            setMoreOpen(false);
-            setMultiAngleOpen(false);
+          onClick={(event) => {
             setRedrawError("");
-            setRedrawOpen(true);
+            openImageTool("redraw", event.currentTarget);
           }}
           type="button"
         >
@@ -4552,10 +4539,7 @@ function ImageNodeImpl({
           data-tooltip="打光（暂未开放）"
           disabled
           onClick={() => {
-            setCropOpen(false);
-            setMoreOpen(false);
-            setMultiAngleOpen(false);
-            setRedrawOpen(false);
+            dispatchToolUi({ type: "close-transient-ui" });
             setLightingOpen(true);
           }}
           type="button"
@@ -4570,7 +4554,7 @@ function ImageNodeImpl({
             aria-expanded={moreOpen}
             aria-label="浏览全部"
             data-tooltip="浏览全部"
-            onClick={() => setMoreOpen((open) => !open)}
+            onClick={() => dispatchToolUi({ type: "toggle-more-menu" })}
             type="button"
           >
             <svg aria-hidden="true" viewBox="0 0 20 20">
@@ -4598,22 +4582,23 @@ function ImageNodeImpl({
                   data-capability-status={toolCapability?.status}
                   disabled={!(["调整像素", "标注", "扩图", "擦除", "增强", "抠图"] as string[]).includes(label)}
                   key={label}
-                  onClick={() => {
-                    setMoreOpen(false);
-                    setCropOpen(false);
-                    setMultiAngleOpen(false);
-                    setRedrawOpen(false);
-                    setEraseOpen(label === "擦除");
-                    setOutpaintOpen(label === "扩图");
-                    setEnhanceOpen(label === "增强");
-                    setCutoutOpen(label === "抠图");
-                    setSeedanceOpen(false);
+                  onClick={(event) => {
                     setEraseError("");
                     setOutpaintError("");
                     setEnhanceError("");
                     setCutoutError("");
-                    setLocalToolOpen(label === "调整像素" ? "resize" : undefined);
-                    setAnnotationOpen(label === "标注");
+                    const tool = ({
+                      "扩图": "outpaint",
+                      "擦除": "erase",
+                      "标注": "annotation",
+                      "增强": "enhance",
+                      "调整像素": "resize",
+                      "抠图": "cutout",
+                    } as const)[label];
+                    openImageTool(
+                      tool,
+                      moreRef.current?.querySelector<HTMLElement>("button"),
+                    );
                   }}
                   role="menuitem"
                   type="button"
@@ -4623,15 +4608,10 @@ function ImageNodeImpl({
                 </button>
               ))}
               <button
-                onClick={() => {
-                  setMoreOpen(false);
-                  setCropOpen(false);
-                  setMultiAngleOpen(false);
-                  setRedrawOpen(false);
-                  setAnnotationOpen(false);
-                  setSeedanceOpen(false);
-                  setLocalToolOpen("split");
-                }}
+                onClick={() => openImageTool(
+                  "split",
+                  moreRef.current?.querySelector<HTMLElement>("button"),
+                )}
                 role="menuitem"
                 type="button"
               >
@@ -4643,13 +4623,11 @@ function ImageNodeImpl({
                 data-capability-status={seedanceCapability.status}
                 disabled={seedanceCapability.status !== "available"}
                 onClick={() => {
-                  setMoreOpen(false);
-                  setCropOpen(false);
-                  setMultiAngleOpen(false);
-                  setRedrawOpen(false);
-                  setAnnotationOpen(false);
                   setSeedanceError("");
-                  setSeedanceOpen(true);
+                  openImageTool(
+                    "seedance",
+                    moreRef.current?.querySelector<HTMLElement>("button"),
+                  );
                 }}
                 role="menuitem"
                 type="button"
@@ -4666,7 +4644,7 @@ function ImageNodeImpl({
             aria-expanded={colorMarksOpen}
             aria-label="颜色标记"
             data-tooltip="颜色标记"
-            onClick={() => setColorMarksOpen((open) => !open)}
+            onClick={() => dispatchToolUi({ type: "toggle-color-menu" })}
             type="button"
           >
             <span
@@ -4759,8 +4737,8 @@ function ImageNodeImpl({
         <button
           aria-label="全屏查看"
           data-tooltip="全屏查看"
-          onClick={() => void imageToolDispatcher.execute("fullscreen", {
-            open: () => setFullscreen(true),
+          onClick={(event) => void imageToolDispatcher.execute("fullscreen", {
+            open: () => openImageTool("fullscreen", event.currentTarget),
           })}
           type="button"
         >
@@ -4769,233 +4747,247 @@ function ImageNodeImpl({
           </svg>
         </button>
       </NodeToolbar>
-      {preview && cropOpen && cropSourceAssetId && (
-        <ImageCropEditor
-          assetId={cropSourceAssetId}
-          onCancel={() => setCropOpen(false)}
-          onConfirm={async (file, sourceAssetId) => {
-            await imageToolDispatcher.execute("crop", { file, sourceAssetId });
-          }}
-          title={titleControl.committedValue}
-          visualPreview={cropVisualPreview}
-        />
-      )}
-      {preview && localToolOpen === "resize" && (
-        <NodeToolbar
-          className="image-local-tool-toolbar"
-          isVisible
-          offset={16}
-          position={Position.Bottom}
-        >
+      <ImageToolHost
+        activeTool={activeImageTool}
+        anchor={imageToolTriggerRef.current}
+        busy={imageToolBusy}
+        onClose={closeImageTool}
+        returnFocus={imageToolTriggerRef.current}
+      >
+        {preview && cropOpen && cropSourceAssetId && (
+          <ImageCropEditor
+            assetId={cropSourceAssetId}
+            onCancel={() => closeImageTool("crop")}
+            onConfirm={async (file, sourceAssetId) => {
+              await imageToolDispatcher.execute("crop", { file, sourceAssetId });
+            }}
+            title={titleControl.committedValue}
+            visualPreview={cropVisualPreview}
+          />
+        )}
+        {preview && localToolOpen === "resize" && (
           <ImageResizePanel
             initialHeight={data.mediaHeight ??
               previewImageRef.current?.naturalHeight ?? 1024}
             initialWidth={data.mediaWidth ??
               previewImageRef.current?.naturalWidth ?? 1024}
-            onCancel={() => setLocalToolOpen(undefined)}
+            onCancel={() => closeImageTool("resize")}
             onConfirm={async (width, height) => {
               await imageToolDispatcher.execute("resize-pixels", { height, width });
             }}
           />
-        </NodeToolbar>
-      )}
-      {preview && localToolOpen === "split" && (
-        <NodeToolbar
-          className="image-local-tool-toolbar"
-          isVisible
-          offset={16}
-          position={Position.Bottom}
-        >
-          <ImageSplitPanel
-            onCancel={() => setLocalToolOpen(undefined)}
-            onConfirm={async (grid) => {
-              await imageToolDispatcher.execute("quick-split", { grid });
-            }}
-            preview={preview}
-          />
-        </NodeToolbar>
-      )}
-      <NodeToolbar className="image-local-tool-toolbar" isVisible={Boolean(
-        preview && singleNodeChrome && enhanceOpen)} offset={16}
-        position={Position.Bottom}>
-        <div className="image-processing-panel" data-testid="image-enhance-panel">
-          <strong>增强图片</strong>
-          <p>保守增强只做轻量清晰度与色彩校正；创意增强会生成新细节。</p>
-          <button disabled={enhanceBusy} onClick={() => {
-            setEnhanceBusy(true); setEnhanceError("");
-            void imageToolDispatcher.execute("enhance-conservative", {})
-              .then(() => setEnhanceOpen(false))
-              .catch((error: unknown) => setEnhanceError(error instanceof Error
-                ? error.message : "保守增强失败"))
-              .finally(() => setEnhanceBusy(false));
-          }} type="button">保守增强</button>
-          <button disabled={enhanceBusy || creativeEnhanceCapability.status !== "available"}
-            onClick={() => void submitPromptGeneration("enhance-creative",
-              "在保持主体身份、构图和主要颜色的前提下增强清晰度与细节；允许补充自然纹理，不添加无关对象。")}
-            type="button">创意增强（会改变内容）</button>
-          <button onClick={() => setEnhanceOpen(false)} type="button">取消</button>
-          {enhanceError && <div role="alert">{enhanceError}</div>}
-        </div>
-      </NodeToolbar>
-      <NodeToolbar className="image-local-tool-toolbar" isVisible={Boolean(
-        preview && singleNodeChrome && cutoutOpen)} offset={16}
-        position={Position.Bottom}>
-        <div className="image-processing-panel image-processing-alpha"
-          data-testid="image-cutout-panel">
-          <strong>主体抠图</strong>
-          <p>移除背景并生成带透明通道的PNG；棋盘格仅用于预览透明区域。</p>
-          <button disabled={cutoutBusy || removeBackgroundCapability.status !== "available"}
-            onClick={() => void submitPromptGeneration("remove-background",
-              "精确保留主要主体和边缘细节，完全移除背景，输出透明背景PNG；不要添加阴影、底色或棋盘格。")}
-            type="button">生成透明PNG</button>
-          <button onClick={() => setCutoutOpen(false)} type="button">取消</button>
-          {cutoutError && <div role="alert">{cutoutError}</div>}
-        </div>
-      </NodeToolbar>
-      <NodeToolbar className="image-local-tool-toolbar" isVisible={Boolean(
-        preview && singleNodeChrome && seedanceOpen)} offset={16}
-        position={Position.Bottom}>
-        <div className="image-processing-panel image-seedance-validation-panel"
-          data-testid="image-seedance-validation-panel">
-          <strong>Seedance 素材校验</strong>
-          <p>仅检查本地技术输入条件，不代表远端资格、可生成、质量或法律合规。</p>
-          <label>视频模型
-            <select aria-label="Seedance 视频模型"
-              onChange={(event) => setSeedanceModelId(event.target.value)}
-              value={selectedSeedanceModelId}>
-              {seedanceModels.map((model) => (
-                <option key={model.id} value={model.id}>{model.displayName}</option>
-              ))}
-            </select>
-          </label>
-          <label>素材角色
-            <select aria-label="Seedance 素材角色"
-              onChange={(event) => setSeedanceRole(
-                event.target.value as SeedanceImageRole)}
-              value={effectiveSeedanceRole}>
-              {supportedSeedanceRoles.map((role) => (
-                <option key={role} value={role}>{({
-                  "first-frame": "首帧",
-                  "last-frame": "尾帧",
-                  subject: "主体",
-                  "reference-image": "参考图",
-                } as const)[role]}</option>
-              ))}
-            </select>
-          </label>
-          {!selectedSeedanceModel && <div role="alert">当前没有已发布的 Seedance 模型</div>}
-          {currentSeedanceValidationState && (
-            <div className="image-seedance-validation-result"
-              data-state={currentSeedanceValidationState}>
-              {currentSeedanceValidationState === "eligible"
-                ? "本地技术预检通过"
-                : currentSeedanceValidationState === "stale"
-                  ? "校验已过期或素材、模型、角色已变化，请重新校验"
-                  : data.imageSeedanceValidation?.problems.join("；")}
+        )}
+        {preview && localToolOpen === "split" && (
+          <ImageToolSurface className="image-tool-split-shell">
+            <ImageSplitPanel
+              onCancel={() => closeImageTool("split")}
+              onConfirm={async (grid) => {
+                await imageToolDispatcher.execute("quick-split", { grid });
+              }}
+              preview={preview}
+            />
+          </ImageToolSurface>
+        )}
+        {preview && enhanceOpen && (
+          <div className="image-processing-panel" data-testid="image-enhance-panel">
+            <strong>增强图片</strong>
+            <p>保守增强只做轻量清晰度与色彩校正；创意增强会生成新细节。</p>
+            <button disabled={enhanceBusy} onClick={() => {
+              setEnhanceBusy(true); setEnhanceError("");
+              void imageToolDispatcher.execute("enhance-conservative", {})
+                .then(() => closeImageTool("enhance"))
+                .catch((error: unknown) => setEnhanceError(error instanceof Error
+                  ? error.message : "保守增强失败"))
+                .finally(() => setEnhanceBusy(false));
+            }} type="button">保守增强</button>
+            <button disabled={enhanceBusy || creativeEnhanceCapability.status !== "available"}
+              onClick={() => void submitPromptGeneration("enhance-creative",
+                "在保持主体身份、构图和主要颜色的前提下增强清晰度与细节；允许补充自然纹理，不添加无关对象。")}
+              type="button">创意增强（会改变内容）</button>
+            <button onClick={() => closeImageTool("enhance")} type="button">取消</button>
+            {enhanceError && <div role="alert">{enhanceError}</div>}
+          </div>
+        )}
+        {preview && cutoutOpen && (
+          <ImageToolSurface>
+            <div className="image-processing-panel image-processing-alpha"
+              data-testid="image-cutout-panel">
+              <strong>主体抠图</strong>
+              <p>移除背景并生成带透明通道的PNG；棋盘格仅用于预览透明区域。</p>
+              <button disabled={cutoutBusy || removeBackgroundCapability.status !== "available"}
+                onClick={() => void submitPromptGeneration("remove-background",
+                  "精确保留主要主体和边缘细节，完全移除背景，输出透明背景PNG；不要添加阴影、底色或棋盘格。")}
+                type="button">生成透明PNG</button>
+              <button onClick={() => closeImageTool("cutout")} type="button">取消</button>
+              {cutoutError && <div role="alert">{cutoutError}</div>}
             </div>
-          )}
-          <button disabled={seedanceBusy || seedanceCapability.status !== "available" ||
-            !selectedSeedanceModel?.configurationRevision ||
-            supportedSeedanceRoles.length < 1 || typeof data.assetId !== "string"}
-            onClick={() => void validateSeedance()} type="button">
-            {seedanceBusy ? "校验中…" : "运行本地技术预检"}
-          </button>
-          <button onClick={() => setSeedanceOpen(false)} type="button">关闭</button>
-          {seedanceError && <div role="alert">{seedanceError}</div>}
-        </div>
-      </NodeToolbar>
-      {preview && annotationOpen && (
-        <ImageAnnotationEditor
-          document={data.imageAnnotations ?? emptyImageAnnotationDocument(
-            data.mediaWidth ?? previewImageRef.current?.naturalWidth ?? 1280,
-            data.mediaHeight ?? previewImageRef.current?.naturalHeight ?? 720,
-          )}
-          onChange={updateAnnotations}
-          onClose={() => setAnnotationOpen(false)}
-          onExport={async (annotations) => {
-            await imageToolDispatcher.execute("annotate", { annotations });
-          }}
-          src={preview}
-        />
-      )}
-      {preview && redrawOpen && (
-        <ImageRedrawEditor
-          busy={redrawBusy}
-          capability={redrawCapability}
-          error={redrawError}
-          onClose={() => setRedrawOpen(false)}
-          onError={setRedrawError}
-          onSubmit={submitRedraw}
-          src={preview}
-        />
-      )}
-      {preview && eraseOpen && (
-        <ImageRedrawEditor
-          busy={eraseBusy}
-          capability={eraseCapability}
-          error={eraseError}
-          onClose={() => setEraseOpen(false)}
-          onError={setEraseError}
-          onSubmit={(input) => submitOutpaintErase("erase", input)}
-          operation="erase"
-          src={preview}
-        />
-      )}
-      {preview && outpaintOpen && (
-        <ImageOutpaintEditor
-          busy={outpaintBusy}
-          capability={outpaintCapability}
-          error={outpaintError}
-          naturalHeight={data.mediaHeight ?? previewImageRef.current?.naturalHeight ?? 720}
-          naturalWidth={data.mediaWidth ?? previewImageRef.current?.naturalWidth ?? 1280}
-          onClose={() => setOutpaintOpen(false)}
-          onSubmit={async ({ marginPercent, prompt }) => {
-            const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
-            if (!sourceAssetId) {
-              setOutpaintError("图片尚未完成安全保存");
-              return;
-            }
-            setOutpaintBusy(true);
-            setOutpaintError("");
-            try {
-              const sourceWidth = data.mediaWidth ?? previewImageRef.current?.naturalWidth ?? 0;
-              const sourceHeight = data.mediaHeight ?? previewImageRef.current?.naturalHeight ?? 0;
-              const horizontal = Math.max(1, Math.round(sourceWidth * marginPercent / 100 / 2));
-              const vertical = Math.max(1, Math.round(sourceHeight * marginPercent / 100 / 2));
-              const prepared = await prepareOutpaintImages({ assetId: sourceAssetId,
-                fileNamePrefix: `image-outpaint-${crypto.randomUUID()}`,
-                outputHeight: sourceHeight + vertical * 2,
-                outputWidth: sourceWidth + horizontal * 2,
-                sourceX: horizontal, sourceY: vertical });
-              setOutpaintBusy(false);
-              await submitOutpaintErase("outpaint", { featherPixels: 0,
-                maskFile: prepared.maskFile, outpaint: prepared.parameters,
-                preparedFile: prepared.preparedFile, prompt });
-            } catch (caught) {
-              setOutpaintError(caught instanceof Error ? caught.message : "扩图输入准备失败");
-              setOutpaintBusy(false);
-            }
-          }}
-          src={preview}
-        />
-      )}
-      <NodeToolbar
-        className="image-multi-angle-toolbar"
-        isVisible={Boolean(preview && singleNodeChrome && multiAngleOpen)}
-        offset={16}
-        position={Position.Bottom}
-      >
-        {preview && (
+          </ImageToolSurface>
+        )}
+        {preview && seedanceOpen && (
+          <div className="image-processing-panel image-seedance-validation-panel"
+            data-testid="image-seedance-validation-panel">
+            <strong>Seedance 素材校验</strong>
+            <p>仅检查本地技术输入条件，不代表远端资格、可生成、质量或法律合规。</p>
+            <label>视频模型
+              <select aria-label="Seedance 视频模型"
+                onChange={(event) => setSeedanceModelId(event.target.value)}
+                value={selectedSeedanceModelId}>
+                {seedanceModels.map((model) => (
+                  <option key={model.id} value={model.id}>{model.displayName}</option>
+                ))}
+              </select>
+            </label>
+            <label>素材角色
+              <select aria-label="Seedance 素材角色"
+                onChange={(event) => setSeedanceRole(
+                  event.target.value as SeedanceImageRole)}
+                value={effectiveSeedanceRole}>
+                {supportedSeedanceRoles.map((role) => (
+                  <option key={role} value={role}>{({
+                    "first-frame": "首帧",
+                    "last-frame": "尾帧",
+                    subject: "主体",
+                    "reference-image": "参考图",
+                  } as const)[role]}</option>
+                ))}
+              </select>
+            </label>
+            {!selectedSeedanceModel && <div role="alert">当前没有已发布的 Seedance 模型</div>}
+            {currentSeedanceValidationState && (
+              <div className="image-seedance-validation-result"
+                data-state={currentSeedanceValidationState}>
+                {currentSeedanceValidationState === "eligible"
+                  ? "本地技术预检通过"
+                  : currentSeedanceValidationState === "stale"
+                    ? "校验已过期或素材、模型、角色已变化，请重新校验"
+                    : data.imageSeedanceValidation?.problems.join("；")}
+              </div>
+            )}
+            <button disabled={seedanceBusy || seedanceCapability.status !== "available" ||
+              !selectedSeedanceModel?.configurationRevision ||
+              supportedSeedanceRoles.length < 1 || typeof data.assetId !== "string"}
+              onClick={() => void validateSeedance()} type="button">
+              {seedanceBusy ? "校验中…" : "运行本地技术预检"}
+            </button>
+            <button onClick={() => closeImageTool("seedance")} type="button">关闭</button>
+            {seedanceError && <div role="alert">{seedanceError}</div>}
+          </div>
+        )}
+        {preview && annotationOpen && (
+          <ImageAnnotationEditor
+            document={data.imageAnnotations ?? emptyImageAnnotationDocument(
+              data.mediaWidth ?? previewImageRef.current?.naturalWidth ?? 1280,
+              data.mediaHeight ?? previewImageRef.current?.naturalHeight ?? 720,
+            )}
+            onChange={updateAnnotations}
+            onClose={() => closeImageTool("annotation")}
+            onExport={async (annotations) => {
+              await imageToolDispatcher.execute("annotate", { annotations });
+            }}
+            src={preview}
+          />
+        )}
+        {preview && redrawOpen && (
+          <ImageRedrawEditor
+            busy={redrawBusy}
+            capability={redrawCapability}
+            error={redrawError}
+            onClose={() => closeImageTool("redraw")}
+            onError={setRedrawError}
+            onSubmit={submitRedraw}
+            src={preview}
+          />
+        )}
+        {preview && eraseOpen && (
+          <ImageRedrawEditor
+            busy={eraseBusy}
+            capability={eraseCapability}
+            error={eraseError}
+            onClose={() => closeImageTool("erase")}
+            onError={setEraseError}
+            onSubmit={(input) => submitOutpaintErase("erase", input)}
+            operation="erase"
+            src={preview}
+          />
+        )}
+        {preview && outpaintOpen && (
+          <ImageOutpaintEditor
+            busy={outpaintBusy}
+            capability={outpaintCapability}
+            error={outpaintError}
+            naturalHeight={data.mediaHeight ?? previewImageRef.current?.naturalHeight ?? 720}
+            naturalWidth={data.mediaWidth ?? previewImageRef.current?.naturalWidth ?? 1280}
+            onClose={() => closeImageTool("outpaint")}
+            onSubmit={async ({ marginPercent, prompt }) => {
+              const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
+              if (!sourceAssetId) {
+                setOutpaintError("图片尚未完成安全保存");
+                return;
+              }
+              setOutpaintBusy(true);
+              setOutpaintError("");
+              try {
+                const sourceWidth = data.mediaWidth ?? previewImageRef.current?.naturalWidth ?? 0;
+                const sourceHeight = data.mediaHeight ?? previewImageRef.current?.naturalHeight ?? 0;
+                const horizontal = Math.max(1, Math.round(sourceWidth * marginPercent / 100 / 2));
+                const vertical = Math.max(1, Math.round(sourceHeight * marginPercent / 100 / 2));
+                const prepared = await prepareOutpaintImages({ assetId: sourceAssetId,
+                  fileNamePrefix: `image-outpaint-${crypto.randomUUID()}`,
+                  outputHeight: sourceHeight + vertical * 2,
+                  outputWidth: sourceWidth + horizontal * 2,
+                  sourceX: horizontal, sourceY: vertical });
+                setOutpaintBusy(false);
+                await submitOutpaintErase("outpaint", { featherPixels: 0,
+                  maskFile: prepared.maskFile, outpaint: prepared.parameters,
+                  preparedFile: prepared.preparedFile, prompt });
+              } catch (caught) {
+                setOutpaintError(caught instanceof Error ? caught.message : "扩图输入准备失败");
+                setOutpaintBusy(false);
+              }
+            }}
+            src={preview}
+          />
+        )}
+        {preview && multiAngleOpen && (
           <ImageMultiAnglePanel
             busy={multiAngleBusy}
             capability={multiAngleCapability}
             error={multiAngleError}
-            onClose={() => setMultiAngleOpen(false)}
+            onClose={() => closeImageTool("multi-angle")}
             onSubmit={submitMultiAngle}
             src={preview}
           />
         )}
-      </NodeToolbar>
+        {fullscreen && preview && !mediaLoad.failed && (
+          <ImageToolSurface
+            className={`image-detail-surface${
+              data.imageToolOutputBackground === "transparent"
+                ? " image-transparent-preview"
+                : ""
+            }`}
+          >
+            <div className="image-detail-dialog" data-testid="image-detail">
+              <img
+                alt={titleControl.committedValue || "图片预览"}
+                className="image-detail-preview"
+                data-testid="image-detail-preview"
+                src={preview}
+              />
+              <div className="image-detail-actions">
+                <strong>{titleControl.committedValue || "Image"}</strong>
+                <button onClick={download} type="button">下载</button>
+                <button
+                  aria-label="关闭图片详情"
+                  onClick={() => closeImageTool("fullscreen")}
+                  type="button"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          </ImageToolSurface>
+        )}
+      </ImageToolHost>
       <NodeToolbar
         className="image-lighting-toolbar"
         isVisible={Boolean(preview && singleNodeChrome && lightingOpen)}
@@ -5012,7 +5004,7 @@ function ImageNodeImpl({
       <NodeToolbar
         className="image-creator nodrag nopan nowheel"
         data-testid="image-creator"
-        isVisible={Boolean(data.imagePromptReady && singleNodeChrome)}
+        isVisible={Boolean(data.imagePromptReady && singleNodeChrome && !imageToolModalOpen)}
         offset={16}
         position={Position.Bottom}
       >
@@ -5540,46 +5532,6 @@ function ImageNodeImpl({
           <span className="node-handle-plus" />
         </span>
       </Handle>
-      {fullscreen && preview && !mediaLoad.failed &&
-        createPortal(
-          <div
-            className="image-detail-backdrop"
-            data-testid="image-detail"
-            onMouseDown={(event) => {
-              if (event.target === event.currentTarget) setFullscreen(false);
-            }}
-          >
-            <div
-              aria-label={`${titleControl.committedValue || "Image"} 图片详情`}
-              aria-modal="true"
-              className={`image-detail-dialog${
-                data.imageToolOutputBackground === "transparent"
-                  ? " image-transparent-preview"
-                  : ""
-              }`}
-              role="dialog"
-            >
-              <img
-                alt={titleControl.committedValue || "图片预览"}
-                className="image-detail-preview"
-                data-testid="image-detail-preview"
-                src={preview}
-              />
-              <div className="image-detail-actions">
-                <strong>{titleControl.committedValue || "Image"}</strong>
-                <button onClick={download} type="button">下载</button>
-                <button
-                  aria-label="关闭图片详情"
-                  onClick={() => setFullscreen(false)}
-                  type="button"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
     </>
   );
 }
