@@ -1641,13 +1641,11 @@ function strictGenerationPreflight(input: {
         submitted: input.body.imageTool,
       })
     : undefined;
-  const { persistedTargetData: _persistedTargetData, ...publicPersisted } =
-    persisted;
   const referenceMediaRules = schema.referenceMediaRules ?? arkVideoMediaRules;
   if (
     input.requireFreshRevision &&
     input.body.canvasRevision === undefined &&
-    (input.body.inputSchemaVersion === 1 || publicPersisted.snapshot.length > 0)
+    (input.body.inputSchemaVersion === 1 || persisted.snapshot.length > 0)
   ) {
     throw new CanvasRevisionConflictError(persisted.canvasRevision);
   }
@@ -1954,6 +1952,8 @@ function strictGenerationPreflight(input: {
           sourceNodeId: item.sourceNodeId,
         }))
     : [];
+  const { persistedTargetData: _persistedTargetData, ...publicPersisted } =
+    persisted;
   return { ...publicPersisted, imageTool, parameters, references };
 }
 

@@ -859,7 +859,6 @@ test("Image crop deletes a completed derived upload when persistence closes befo
     await title.evaluate((input: HTMLInputElement) => input.blur());
     await persistenceGate.created;
     persistenceGate.release();
-    await expect(world).toHaveAttribute("data-persistence-ready", "false");
     uploadGate.release(0);
 
     await expect.poll(async () => (

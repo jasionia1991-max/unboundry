@@ -2458,7 +2458,10 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
 
     // View controls and unrelated graph editing remain live while two runs own
     // only their exact participants.
+    const zoomBeforeFit = await canvas.getAttribute("data-viewport-zoom");
     await page.getByTestId("fit-view").click();
+    await expect.poll(() => canvas.getAttribute("data-viewport-zoom"))
+      .not.toBe(zoomBeforeFit);
     await page.getByTestId("zoom-slider").fill("0.72");
     await expect(canvas).toHaveAttribute("data-viewport-zoom", "0.72");
     const unrelatedText = page.locator('[data-testid="rf__node-unrelated-text"]');
