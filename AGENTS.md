@@ -23,7 +23,7 @@
 
 ## 2. 当前授权边界
 
-- **2026-08-24 当前权威状态**：生产运行`v0.6.35/schema39`，`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824`；状态`PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_0_OF_6 / USER_QUALITY_RECHECK`。PR #81、PR/main CI、tag/main同tree、完整主库+Library+媒体冻结备份、原子切换和生产技术门均通过。第1项多角度页面预计10 USD，等待动作时确认；Provider请求0/6、费用0 USD；
+- **2026-08-24 当前权威状态**：生产运行`v0.6.35/schema39`，`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824`；状态`PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_1_OF_6 / MULTI_ANGLE_REAL_PROVIDER_TECHNICAL_SMOKE_PASS / REMAINING_ACTION_TIME_CONFIRMATION_PENDING / USER_QUALITY_RECHECK`。PR #81、PR/main CI、tag/main同tree、完整主库+Library+媒体冻结备份、原子切换和生产技术门均通过。第1项多角度一次真实提交、Provider完成、Media发布、Canvas挂接和刷新恢复均通过，确认10 USD；剩余5项等待动作时分组确认；
 - **v0.6.28 历史时点**：精确源码commit`ee6ce437730cf78ef4488217b778f6b0ef2aaee5`、tree`2811ada65140779d4a5e10cbd8ed6fa54893638b`，tag`v0.6.28`，PR #58 merge`753d24f8ee6e4facb3c88e876c4a38b456addc75`；正式safe full执行`1032/1034`，两个失败分别为0.3ms性能抖动与候选文档精确字符串，修正文档后只复验失败spec并`16/16 PASS`，未重复full。生产回执`spec/V0_6_28_PRODUCTION_RECEIPT_2026-08-21.json`；
 - v0.6.18生产源码commit为`e47f50c0bde0ee23585f27b71ad8df240973161a1`、tree为`48bee3c2c050ced3d2854390ca1ef1d0aba8fae5`；注释标签`v0.6.18`精确指向该源码。PR #32已于2026-08-19合并到`main`，merge commit为`265c8f63e867e122ecab2f145c362d5bdab3bd19`。生产凭证为`spec/INC_GEN_009_UI_ALIGN_PRODUCTION_RECEIPT_2026-08-19.json`；
 - v0.6.18正式安全全量为`118/118 specs、983/983 tests PASS`，异常0。管理员后台「优创尺寸映射」面板样式对齐暗黑 UI、比例下拉、文案大白话；出图逻辑不变。优创专用协议按文档像素发 1K/2K/4K，生产默认画质保持 1K；

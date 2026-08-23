@@ -2,13 +2,13 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 01:46:48 +0800
+- 更新时间：2026-08-24 01:51:36 +0800
 - 状态：`GOAL_ACTIVE / D13_IN_PROGRESS / V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_1_OF_6 / MULTI_ANGLE_REAL_PROVIDER_TECHNICAL_SMOKE_PASS / REMAINING_ACTION_TIME_CONFIRMATION_PENDING / USER_QUALITY_RECHECK`
 - 当前阶段：`D13 GitHub和生产发布 / IN_PROGRESS`
 - 唯一允许的下一动作：等待用户对剩余5项作动作时分组确认：重绘、扩图、擦除、创意增强、主体抠图每项页面预计不超过10 USD，剩余总额不超过50 USD；确认后仍须逐项串行执行并在每项后核对task/attempt/Provider/终态/Media/Canvas/计费，任一付费状态不明立即停止，禁止批量连点或未知计费重试
 - 当前仓库：`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`
 - 记录时分支：`codex/v0.6.35-production-receipt-2026-08-24`
-- 记录时 HEAD：`c5c5f718f6a927168877c2c2fecec35c4ca488c6`
+- 记录时 HEAD：`9be4255b25a14b35fd12b536ec8a6304dcbc0123`
 - 记录时 `origin/main`：`cc62bfbb155372ba3b1da65c029d9c97b5330ac7`
 - package：`0.6.35`
 - 生产：`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`
@@ -159,6 +159,14 @@ package / schema / candidate：
 ## 10. 当前唯一下一动作
 
 用户已确认“最多6次、总预算上限60 USD”，并于2026-08-24对第1项多角度“预计10 USD”按钮明确回复“确认提交”。首次点击发生在仍载入v0.6.34脚本的旧标签页，只形成未保存占位，数据库保持tasks/attempts `722/730`、active0、publication attempts361，0 Provider、0 USD；应用保留本地恢复副本后打开服务器版本，没有删除任何已保存数据。载入v0.6.35后，同一已确认动作一次真实提交成功：task `a7798cf3-9473-45b3-ae4d-397a0876ed2b`、attempt 1、Provider task `113882656`、10 USD；结果Media `4671b388-b663-495a-9c8c-e96447a3cfa4`为PNG `1088×1920`、2,504,877 bytes、SHA-256 `a67b6216213673eb78a075bb122437d5b9b5f778041f7917f3a60fc18ed53f46`，Canvas节点、来源边、云端保存和刷新恢复均通过。账本为1/6、10 USD；剩余5项尚未确认提交。
+
+### 2026-08-24 上下文恢复只读复核
+
+- 实时工作区为`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`，分支`codex/v0.6.35-production-receipt-2026-08-24`，恢复前HEAD`9be4255b25a14b35fd12b536ec8a6304dcbc0123`，跟踪工作树干净，`origin/main=cc62bfbb155372ba3b1da65c029d9c97b5330ac7`；package `0.6.35`，Node `22.23.1`、npm `10.9.8`。
+- 生产只读探针重新确认`version=0.6.35`、live、ready active/schema39；没有生成、Provider、OSS或生产写动作。
+- 发现并纠正`AGENTS.md`当前权威状态仍写0/6的文档漂移；真实状态继续以Checkpoint、计划、TASKS、矩阵、CURRENT_STATE、生产证据和Git为准：`1/6 / 10 USD`。本次只同步治理文档，不改变D13阶段、预算或验收等级。
+- 文档同步后按风险分层仅复验`tests/m38-generation-runtime-incidents.spec.ts`：`15/15 PASS`、0失败、0重试；safe runner确认源码快照前后不变、4173监听不变。未重复全量测试。
+- 唯一下一动作保持不变：等待剩余5项每项预计不超过10 USD、合计不超过50 USD的动作时分组确认；未确认前不点击任何付费提交按钮。
 
 ## 26. D13 GitHub 和生产发布
 
