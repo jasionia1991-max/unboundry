@@ -5,8 +5,8 @@
 - 日期：2026-08-23
 - 仓库：`/Users/mymy/Documents/unboundry/app`
 - 立项基线：`main` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537` / package `0.6.33` / 生产 `v0.6.33` / schema39
-- 状态：`PLAN_FROZEN / D13_IN_PROGRESS / V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_4_OF_6 / MULTI_ANGLE_REDRAW_OUTPAINT_ERASE_REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`
-- 当前阶段：D0～D12已完成；v0.6.35已完成GitHub、完整备份、原子切换与生产技术门。多角度、重绘、扩图和擦除均一次真实提交、Provider完成、Media发布、Canvas挂接和刷新恢复通过，共确认40 USD；剩余2项继续按已确认的总额20 USD内逐项串行
+- 状态：`PLAN_FROZEN / D13_IN_PROGRESS / V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_5_OF_6 / MULTI_ANGLE_REDRAW_OUTPAINT_ERASE_CREATIVE_ENHANCE_REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`
+- 当前阶段：D0～D12已完成；v0.6.35已完成GitHub、完整备份、原子切换与生产技术门。前五项均一次真实提交、Provider完成、Media发布、Canvas挂接和刷新恢复通过，共确认50 USD；仅剩主体抠图，预算上限10 USD
 - 版本：`v0.6.35 / VERSION_GATE_VALID / RELEASE_GATE_VALID`
 - 发布候选：`v0.6.35 / SAFE_FULL_1052_OF_1052_PASS / PR_81_MERGED / TAG_FC99101 / MAIN_CC62BFB / TREE_CB13FEF / PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`
 - 本 Goal 授权：用户已于2026-08-24明确确认`v0.6.35`并独立回复“按v0.6.35上线吧”；授权只覆盖共同生成热修及Goal内剩余D13，仍须按Runbook逐门执行
@@ -389,3 +389,4 @@ USER_QUALITY_RECHECK
 - 用户对剩余5项作动作时分组确认后，重绘使用有界mask一次提交成功：task `5fd3d1fd…8c2b`、attempt 1/DB `757`、Provider task `113886725`、10 USD；结果ready PNG `1536×2731`、3,576,345 bytes，经published Media、Canvas节点/来源边、云端保存和刷新恢复验证。当前总账`2/6 / 20 USD`；该证据只升级重绘为`REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，不代表局部保持或图片质量通过。
 - 扩图使用默认四周25%边界一次提交成功：task `9fa04634…33d0`、attempt 1/DB `758`、Provider `113888063`、10 USD；结果ready PNG `1536×2731`、3,426,058 bytes，经published Media、Canvas节点/来源边、云端保存和刷新恢复验证。当前总账`3/6 / 30 USD`；该证据只升级outpaint子项为真实技术通过，新增区域延续质量仍待用户复验。
 - 擦除使用有界地面mask一次提交成功：task `16e3bc55…2cda`、attempt 1/DB `759`、Provider `113888832`、10 USD；结果ready PNG `1440×2560`、3,036,592 bytes，经published Media、Canvas节点/来源边、云端保存和刷新恢复验证。当前总账`4/6 / 40 USD`；该证据只升级erase技术链，不代表对象移除与补景质量通过。
+- 创意增强选择一次后只形成一个task：task `2108f76b…634b`、attempt 1/DB `760`、Provider `113889816`、10 USD；结果ready PNG `1440×2560`、3,583,516 bytes，经published Media、Canvas节点/来源边、云端保存和刷新恢复验证。当前总账`5/6 / 50 USD`；该证据只升级创意增强技术链，不代表细节质量通过。

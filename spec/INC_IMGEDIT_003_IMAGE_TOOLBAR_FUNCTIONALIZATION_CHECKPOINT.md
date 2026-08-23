@@ -2,10 +2,10 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 02:13:10 +0800
-- 状态：`GOAL_ACTIVE / D13_IN_PROGRESS / V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_4_OF_6 / MULTI_ANGLE_REDRAW_OUTPAINT_ERASE_REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`
+- 更新时间：2026-08-24 02:18:10 +0800
+- 状态：`GOAL_ACTIVE / D13_IN_PROGRESS / V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_5_OF_6 / MULTI_ANGLE_REDRAW_OUTPAINT_ERASE_CREATIVE_ENHANCE_REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`
 - 当前阶段：`D13 GitHub和生产发布 / IN_PROGRESS`
-- 唯一允许的下一动作：用户已确认“确认提交剩余5项，总额不超过50 USD”；重绘、扩图与擦除已各只提交一次并完整核对通过。下一项只执行创意增强，完成后先核对task/attempt/Provider/终态/Media/Canvas/刷新/计费并回写文档；任一付费状态不明立即停止，禁止批量连点或未知计费重试
+- 唯一允许的下一动作：用户已确认“确认提交剩余5项，总额不超过50 USD”；重绘、扩图、擦除与创意增强已各只提交一次并完整核对通过。下一项只执行主体抠图，完成后先核对task/attempt/Provider/终态/Media/Alpha/Canvas/刷新/计费并回写文档；任一付费状态不明立即停止，禁止未知计费重试
 - 当前仓库：`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`
 - 记录时分支：`codex/v0.6.35-production-receipt-2026-08-24`
 - 记录时 HEAD：`a82bbb2a6a9f59980a6ce289d79978325de6784a`
@@ -17,7 +17,7 @@
 - 候选：`v0.6.34 / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / PR_MERGED / TAGGED / PRODUCTION_PUBLISHED_AUTO_PASS`
 - 本轮代码施工：`v0.6.34` 已冻结发布；生产真实操作在 Provider 前暴露多角度缺失 `imageTool` 身份、六项生成工具共同使用非法持久输入顺序0、以及源节点1K被模型默认2K覆盖三项缺陷；本地热修提交 `a411a63` 已补齐身份、统一顺序为1并继承经模型规范化的源参数
 - 本轮验证：pinned Node 22.23.1/npm 10.9.8；D12原证据保持冻结前定向 `234/234 PASS`、唯一一次 safe full 原始 `1048/1052`、精确修复集合 `106/106 PASS`且未运行第二次full。热修最终安全定向 m100+m2+m27 `43/43 PASS`、退出0、retries/skips/reportErrors均0、source/snapshot `1350e3adc56c98c9cafc0faea685f6c8f1648852b5a04536d933901d9c014a80`、4173监听者不变、外部/Provider请求0。v0.6.35版本同步后执行m38+m81，`56/56 PASS`。冻结候选`c1a4a08e23bc917d85970d3bdffd82a44899970e`随后只执行一次新的safe full：120/120 specs、`1052/1052 PASS`、退出0，blocked/failed/retries/skips/reportErrors均0，source/snapshot`c5eb339edd87245e99cdf53f13c3456325639a7ffb9426fcf5d312896b530135`，immutable release builder 1/1且5次builder invocation符合预期，4173监听者不变、外部/Provider请求0。多角度证据回写后只运行m38文档/恢复权威定向，`15/15 PASS`。重绘证据回写后再次只运行m38：`15/15 PASS`、退出0、blocked/failed/retries/skips/reportErrors均0、source/snapshot `5a391d5ce9c256e4625eb049a8072b57ccfe6d1440cf8010405f04fa0784f13e`、4173监听者不变；未重复full
-- 真实 Provider/付费请求：4/6，当前可确认费用40 USD；用户总预算上限60 USD。多角度、重绘、扩图与擦除四项分别对应DB attempts `756/757/758/759`、Provider `113882656/113886725/113888063/113888832`，均一次提交、无重试并成功；其余2项未提交
+- 真实 Provider/付费请求：5/6，当前可确认费用50 USD；用户总预算上限60 USD。前五项分别对应DB attempts `756～760`、Provider `113882656/113886725/113888063/113888832/113889816`，均一次提交、无重试并成功；主体抠图尚未提交
 - 真实 OSS 测试对象：本地派生技术冒烟新增8个 Media 资产并保留；无删除
 - GitHub/SSH/生产操作：v0.6.35产品PR #81已squash merge为`cc62bfbb155372ba3b1da65c029d9c97b5330ac7`；PR CI `32654662421`与main CI `32654691812`成功；注释tag `v0.6.35`解引用为`fc99101327efc8fc3687406598169a6ae7dc1272`，tag与main tree均为`cb13fef2e71e41c3ada09ade95619c9362636b36`。生产已从精确tag fresh build并原子切到`/opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824`
 
@@ -127,11 +127,11 @@ node -p "require('./package.json').version"
 | 重绘 | 1 | 1 | v0.6.35一次真实提交成功：task `5fd3d1fd…8c2b`、attempt 1/DB `757`、Provider task `113886725`、10 USD；Media发布、Canvas节点/来源边、云端保存与刷新恢复通过，无重试 |
 | 扩图 | 1 | 1 | v0.6.35一次真实提交成功：task `9fa04634…33d0`、attempt 1/DB `758`、Provider `113888063`、10 USD；Media发布、Canvas节点/来源边、云端保存与刷新恢复通过，无重试 |
 | 擦除 | 1 | 1 | v0.6.35一次真实提交成功：task `16e3bc55…2cda`、attempt 1/DB `759`、Provider `113888832`、10 USD；Media发布、Canvas节点/来源边、云端保存与刷新恢复通过，无重试 |
-| 创意增强 | 1 | 0 | fake先通过 |
+| 创意增强 | 1 | 1 | v0.6.35一次真实提交成功：task `2108f76b…634b`、attempt 1/DB `760`、Provider `113889816`、10 USD；Media发布、Canvas节点/来源边、云端保存与刷新恢复通过，无重试 |
 | 保守增强 | 0 | 0 | 本 Goal 已在生产用本地引擎完成，不占真实 Provider 预算 |
 | 主体抠图 | 1 | 0 | 付费引擎计入 |
 | 兼容复核 | 0 | 0 | 用户最新金额确认把总上限收紧为6次；不另留第7/8次 |
-| 合计 | 6 | 4 | 当前确认40 USD，剩余上限20 USD；无法判断计费时禁止重试 |
+| 合计 | 6 | 5 | 当前确认50 USD，剩余上限10 USD；无法判断计费时禁止重试 |
 
 ## 9. 阶段更新模板
 
@@ -166,6 +166,8 @@ package / schema / candidate：
 
 第4项擦除以扩图结果为安全来源，只对左下地面纹理建立有界框选mask，页面显示预计10 USD；只点击一次提交。task `16e3bc55-8aab-4947-bf1b-0974a65a2cda`、attempt 1/DB `759`、Provider `113888832`一次成功，actual cost `10,000,000` microunits USD；结果Media `127fd497-bd7d-4061-99a3-a0b6aae1faf9`为ready PNG `1440×2560`、3,036,592 bytes、SHA-256 `7b15bda86e6001209fd1d3c715e91b91eb0f2a888764c702aeb68e9bdf0759e0`，publication `baf54c05-c63a-4e40-a29c-6c1c967b0a37`为published。Canvas revision29/graphRevision28包含节点`image-erase-ff88716a-6877-46db-a402-d62525143ce7`、结果asset和来源边，页面云端保存、刷新后节点/提示词/上游引用均恢复。生产计数tasks/attempts `726/734`、active0、publication attempts369。账本为4/6、40 USD；剩余2项上限20 USD。
 
+第5项创意增强以擦除结果为安全来源，选择“创意增强（会改变内容）”一次，生成提示固定为保持主体身份、构图和主要颜色并允许补充自然纹理；只形成一个持久task且没有重复Generate。task `2108f76b-2680-40e9-aeac-4f9c52cb634b`、attempt 1/DB `760`、Provider `113889816`一次成功，actual cost `10,000,000` microunits USD；结果Media `f9479a2f-af6e-4ab5-b0a2-4dd4a324ffdc`为ready PNG `1440×2560`、3,583,516 bytes、SHA-256 `b9d2d489388ba6cbd7090305ba745416e73ae9b9b3b5ca33a0d28fa27d78298f`，publication `0f48af83-c916-4e21-a243-1c4dabbaba7c`为published。Canvas revision33/graphRevision32包含节点`image-enhance-creative-de5654a5-510d-4846-bb9a-45f68272b15a`、结果asset和来源边，页面云端保存、刷新后节点/提示词/上游引用均恢复。生产计数tasks/attempts `727/735`、active0、publication attempts370。账本为5/6、50 USD；剩余主体抠图上限10 USD。
+
 ### 2026-08-24 上下文恢复只读复核
 
 - 实时工作区为`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`，分支`codex/v0.6.35-production-receipt-2026-08-24`，恢复前HEAD`9be4255b25a14b35fd12b536ec8a6304dcbc0123`，跟踪工作树干净，`origin/main=cc62bfbb155372ba3b1da65c029d9c97b5330ac7`；package `0.6.35`，Node `22.23.1`、npm `10.9.8`。
@@ -173,26 +175,26 @@ package / schema / candidate：
 - 发现并纠正`AGENTS.md`当前权威状态仍写0/6的文档漂移；真实状态继续以Checkpoint、计划、TASKS、矩阵、CURRENT_STATE、生产证据和Git为准：`1/6 / 10 USD`。本次只同步治理文档，不改变D13阶段、预算或验收等级。
 - 文档同步后按风险分层仅复验`tests/m38-generation-runtime-incidents.spec.ts`：`15/15 PASS`、0失败、0重试；safe runner确认源码快照前后不变、4173监听不变。未重复全量测试。
 - 自动续跑再次按顺序只读恢复后确认实时HEAD`9dbbe8fc3040d316e8852052c345a783578ae00a`、`origin/main=cc62bfbb155372ba3b1da65c029d9c97b5330ac7`、package `0.6.35`、跟踪工作树干净，生产version/live/ready仍为`0.6.35 / live / active schema39`。同时发现CURRENT_STATE下部“当前线上/新会话默认动作”、矩阵017～019预算说明、模块化恢复入口和裁剪专项当前生产语句仍残留v0.6.33或0/6时点，已按顶部权威事实做docs-only对齐；没有改变历史发布段、产品代码、预算或验收等级。对齐后仅复验m38：`15/15 PASS`、0失败、0重试、退出0，source/snapshot `6adff8eb99c7ee442675b20cfc4a10e240c807b3e8f797fc4adaed855f112aaa`、4173监听不变；裁剪专项末句仅澄清当前承载版本，不影响测试并按纪律未重复full。
-- 2026-08-24 02:13擦除逐项完成；唯一下一动作改为创意增强。仍须先完成并落档创意增强技术链与费用核对，才可进入主体抠图。
+- 2026-08-24 02:18创意增强逐项完成；唯一下一动作改为主体抠图。仍须完成并落档Provider、Media Alpha、Canvas、刷新和费用核对，才可收口D13整体真实技术冒烟。
 
 ## 26. D13 GitHub 和生产发布
 
 - 时间：2026-08-24 01:33:15 +0800
 - 阶段：`D13`
-- 状态：`IN_PROGRESS / V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_4_OF_6 / MULTI_ANGLE_REDRAW_OUTPAINT_ERASE_REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`
+- 状态：`IN_PROGRESS / V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_5_OF_6 / MULTI_ANGLE_REDRAW_OUTPAINT_ERASE_CREATIVE_ENHANCE_REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`
 - branch / HEAD / origin-main：`main` / `cc62bfbb155372ba3b1da65c029d9c97b5330ac7` / `cc62bfbb155372ba3b1da65c029d9c97b5330ac7`
 - 工作树摘要：产品PR #81和v0.6.35生产发布已完成；本轮没有产品或测试代码修改，只把多角度一次真实技术冒烟证据回写到8份权威文档。当前HEAD为上一文档checkpoint提交`c5c5f71`，本次证据更新尚未提交
 - 产品文件：本次无修改；已发布热修仍由`ImageNode.tsx`、`generationImageToolUseCase.ts`和四个生成use case承担身份、顺序1及源1K继承
 - 测试文件：本次无修改；复用热修m2/m100/m27既有43/43证据，只运行直接受文档变化影响的m38
 - 文档文件：本 Checkpoint、`TASKS.md`、验收矩阵、CURRENT_STATE、README和上线规矩同步当前阻断；不把本地热修冒充已发布能力
 - package / schema / candidate：`0.6.35 / schema39 / SAFE_FULL_1052_OF_1052_PASS / PR_81_MERGED / TAG_FC99101 / MAIN_CC62BFB / TREE_CB13FEF / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_PENDING / USER_QUALITY_RECHECK`
-- 外部请求和付费预算：用户于2026-08-24明确确认“最多6次、总预算上限60 USD”，并先对多角度单项、再对“剩余5项总额不超过50 USD”作动作时确认。多角度、重绘、扩图、擦除均只提交一次并成功，Provider依次为`113882656 / 113886725 / 113888063 / 113888832`，actual cost各`10,000,000` microunits USD；数据库tasks/attempts为`726/734`、active0，当前预算`4/6 / 40 USD`，剩余上限`2次 / 20 USD`
+- 外部请求和付费预算：用户于2026-08-24明确确认“最多6次、总预算上限60 USD”，并先对多角度单项、再对“剩余5项总额不超过50 USD”作动作时确认。前五项均只提交一次并成功，Provider依次为`113882656 / 113886725 / 113888063 / 113888832 / 113889816`，actual cost各`10,000,000` microunits USD；数据库tasks/attempts为`727/735`、active0，当前预算`5/6 / 50 USD`，剩余上限`1次 / 10 USD`
 - 测试命令、环境、结果、退出码：热修安全定向 m100+m2+m27 `43/43 PASS`；版本同步后m38+m81 `56/56 PASS`。冻结候选`c1a4a08`上按Runbook只执行一次safe full，120/120 specs、`1052/1052 PASS`、退出0，blocked/failed/retries/skips/reportErrors均0，source/snapshot`c5eb339e…30135`，immutable release builder 1/1且builderInvocations 5/5，4173 listener不变、外部/Provider请求0。多角度真实证据回写后执行`PATH=/Users/mymy/.local/bin:$PATH node scripts/run-safe-tests.mjs run --spec tests/m38-generation-runtime-incidents.spec.ts`，`15/15 PASS`、退出0、source/snapshot `b83d78b9…61c31`、4173 listener不变；没有重复full
 - 架构与数据风险：v0.6.34 tag/release继续不可变并保留为回滚点；真实生成逐项受预算和计费状态门约束。服务器旧明文备份脚本首次只覆盖主库与媒体365文件，漏掉现有Library sidecar；切换前已用Node SQLite online-backup形成一致`library.sqlite`并同时加入frozen-source和restore-copy，重算双清单后各366文件、SHA均`041240d5…0bde`，Library schema1/integrity ok/FK0/entries1。GPT Image 2生产参考素材上限保持1
 - 设计偏差：动作时确认后的首击发生在仍载入旧脚本的标签页，只形成未保存占位且明确0 task/0 attempt/0 Provider/0 USD；应用保留该本地恢复副本并另开服务器版本。载入v0.6.35后，同一已确认动作才一次真实提交并成功，未对未知计费结果重试。Media publication的`adopted_at`字段保持空，但Canvas数据库revision17明确包含结果asset、目标节点和来源边，页面显示已保存并刷新恢复；因此以实际Canvas引用证明挂接，不误用仅针对上传adoption的可选字段
 - 阻断：生产与工程无阻断；剩余五项均属新的付费动作，当前只等待每项预计不超过10 USD、合计不超过50 USD的动作时分组确认。未确认前不得点击下一项付费提交按钮
 - 回滚点：上一不可变release`/opt/unboundry/releases/v0.6.34-image-toolbar-20260823`与完整冻结备份`/var/lib/unboundry-rollbacks/v0.6.35-frozen-ad7b91`均保留；v0.6.35 release不覆盖旧目录
-- 唯一下一动作：分组确认已取得，重绘、扩图与擦除已完成并落档。只执行创意增强；核对并落档task/attempt/Provider/终态/Media/Canvas/刷新/费用后，才进入主体抠图
+- 唯一下一动作：分组确认已取得，重绘、扩图、擦除与创意增强已完成并落档。只执行主体抠图；核对并落档task/attempt/Provider/终态/Media Alpha/Canvas/刷新/费用后，收口D13
 
 ## 25. D12 候选冻结和统一验证
 
