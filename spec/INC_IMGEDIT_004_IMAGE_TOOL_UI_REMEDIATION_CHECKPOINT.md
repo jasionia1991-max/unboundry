@@ -2,10 +2,10 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 03:47:57 +0800
-- 状态：`GOAL_ACTIVE / R5_IN_PROGRESS / UI_REMEDIATION_REQUIRED`
-- 当前阶段：`R5 全屏与交互完整性 / IN_PROGRESS`
-- 唯一允许的下一动作：完成产品内全屏透明棋盘格与contain；补Escape、外点、Tab/Shift+Tab、焦点返回、IME、busy、错误、reduced-motion及zoom 0.15/0.85/1.0/1.5的screen-space直接验收
+- 更新时间：2026-08-24 03:53:34 +0800
+- 状态：`GOAL_ACTIVE / R5_AUTO_PASS / UI_REMEDIATION_REQUIRED`
+- 当前阶段：`R5 全屏与交互完整性 / AUTO_PASS`
+- 唯一允许的下一动作：提交R5文档checkpoint；随后先把R6标为`IN_PROGRESS`，按全部工具、三视口、四zoom、横竖方透明素材、busy/error/切换序列和零请求门执行逐项浏览器回归
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
 - 文档分支：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`
 - 立项 HEAD / origin-main：`f369d1dba1eef05aebc7f1a443256ceb82778ea0`
@@ -97,7 +97,7 @@ node -p "require('./package.json').version"
 | R2 | 单一活动工具与 Portal 宿主 | AUTO_PASS |
 | R3 | 紧凑面板和快速切分 | AUTO_PASS |
 | R4 | 大型编辑器与透明舞台 | AUTO_PASS |
-| R5 | 全屏与交互完整性 | IN_PROGRESS |
+| R5 | 全屏与交互完整性 | AUTO_PASS |
 | R6 | 逐工具功能与回归验证 | NOT_STARTED |
 | R7 | 候选冻结与独立审查 | NOT_STARTED |
 | R8 | GitHub 与生产发布 | NOT_STARTED / GATES_VALID |
@@ -110,13 +110,13 @@ node -p "require('./package.json').version"
 | ID | 内容 | 状态 |
 |---|---|---|
 | IMGEDIT-021 | 单一活动工具状态机与叠层阻断 | AUTO_PASS |
-| IMGEDIT-022 | screen-space 宿主与 viewport 安全 | PARTIAL / LARGE_EDITOR_VIEWPORT_AUTO_PASS |
+| IMGEDIT-022 | screen-space 宿主与 viewport 安全 | TARGETED_AUTO_PASS |
 | IMGEDIT-023 | 透明图片统一棋盘格与 contain | PARTIAL / EDITOR_SURFACE_AUTO_PASS |
 | IMGEDIT-024 | 重绘/擦除/扩图/标注大型编辑层 | TARGETED_AUTO_PASS |
 | IMGEDIT-025 | 多角度/调整像素/快速切分/增强/抠图/Seedance 面板 | TARGETED_AUTO_PASS |
-| IMGEDIT-026 | Escape、焦点、键盘、IME、busy 与 reduced-motion | PARTIAL / EDITOR_BUSY_AUTO_PASS |
+| IMGEDIT-026 | Escape、焦点、键盘、IME、busy 与 reduced-motion | PARTIAL / INTERACTION_AUTO_PASS |
 | IMGEDIT-027 | 既有工具栏、菜单、颜色、裁剪、下载回归 | PARTIAL / DIRECT_REGRESSION_AUTO_PASS |
-| IMGEDIT-028 | 目标视口与真人逐项功能验收 | PARTIAL / EDITOR_VIEWPORT_AUTO_PASS |
+| IMGEDIT-028 | 目标视口与真人逐项功能验收 | PARTIAL / VIEWPORT_ZOOM_AUTO_PASS |
 
 ## 7. 版本、发布和外部调用门
 
@@ -275,3 +275,24 @@ Provider / OSS / 费用：
 - 阻断：无；首次m2失败是确定性测试定位器错误，已最小修正并只复验直接spec
 - 回滚点：R4启动提交`d0b981cf957dddb5c170d9ff69beeb005b342b47`；产品/测试提交`4fd1ba1`，locator修正`e01ee2f`
 - 唯一下一动作：提交R4文档checkpoint；随后先把R5标为`IN_PROGRESS`，完成全屏透明舞台及Escape、焦点循环/返回、IME、reduced-motion和四档zoom交互矩阵
+
+## 16. R5 全屏与交互完整性
+
+- 时间：2026-08-24 03:53:34 +0800
+- 阶段：`R5`
+- 状态：`AUTO_PASS`
+- branch / HEAD / origin-main：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24` / 最终被测`c5b86f9668146d6db9cbfd30eb2faf50b3910468` / `f369d1dba1eef05aebc7f1a443256ceb82778ea0`
+- 工作树摘要：R5产品和测试已提交；最终验证使用本Goal detached临时worktree并已安全移除。当前仅受保护JSON未跟踪且不进入diff/stage
+- 产品文件：`client/src/styles.css`让产品内全屏dialog透出共享checkerboard Surface；`client/src/imageTools/ImageToolHost.tsx`在外点关闭时preventDefault，避免浏览器默认指针聚焦覆盖Host的触发按钮焦点返回
+- 测试文件：`tests/m2-image-node.spec.ts`；全屏直接断言checkerboard、透明dialog、contain视口、Escape、Tab/Shift+Tab循环、焦点返回和reduced-motion，并在zoom 0.15/0.85/1.0/1.5逐档验证detail及关闭按钮screen-space bounds完全不变；cutout直接验证外点关闭和返回“浏览全部”按钮
+- 文档文件：本Checkpoint、矩阵、TASKS；CURRENT_STATE仍无候选/GitHub/版本/生产事实变化
+- package / schema / candidate：`0.6.35 / schema39 / 无候选`
+- 版本门 / 发布门：`v0.6.35 / VERSION_GATE_VALID`；“v0.6.35上线” / `RELEASE_GATE_VALID`，R7前不进入发布
+- Provider / OSS / 费用：真实Provider请求、尝试、成功0；费用0；真实OSS写入0；m2生成式控件不提交且请求数组为0
+- 测试命令、环境、结果、退出码：Node22.23.1/npm10.9.8。`5ec1af5`首次safe m2 `9/10`、退出1，直接抓出外点默认指针行为覆盖触发焦点返回；`1c5bd98`修正Host后m2仍`9/10`、退出1，唯一失败是新四zoom测试结束未恢复1.0而影响同spec后续世界坐标断言；显式恢复后最终`c5b86f9` safe m2 `10/10 PASS`、退出0。source/snapshot`03febf86…75c8`、4173 listener unchanged；未重复m18/m100/full
+- 浏览器视口、zoom、素材与结果：全屏在1280×720四zoom下screen UI几何逐字相等；结合R3三视口panel和R4大型编辑器bounds，IMGEDIT-022达到定向自动通过。全屏真实透明素材和横竖方逐项截图留给R6统一矩阵，不冒充已完成
+- 架构与数据风险：只改共享Host关闭事件和全屏surface背景；未调用浏览器Fullscreen API，未改下载、图片字节、Canvas zoom、业务payload或外部链
+- 设计偏差：无
+- 阻断：无；两次失败均是定向测试发现的真实焦点问题或测试状态清理问题，均最小修正并只复验m2
+- 回滚点：R5启动提交`919aa3d`；全屏/交互测试`5ec1af5`，外点焦点修正`1c5bd98`，zoom清理修正`c5b86f9`
+- 唯一下一动作：提交R5文档checkpoint；随后先把R6标为`IN_PROGRESS`，按全部工具、三视口、四zoom、横竖方透明素材、busy/error/切换序列和零请求门执行逐项浏览器回归
