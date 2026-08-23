@@ -6,7 +6,7 @@
 候选版本：`v0.6.32`（GitHub 交付候选，尚未发布生产）
 施工分支：`codex/image-edit-source-2026-08-23`
 隔离工作区：`/Users/mymy/Documents/unboundry-image-edit-source-2026-08-23`
-当前状态：`VERSIONED_V0_6_32 / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / FORMAL_FULL_1049_OF_1050 / M22_ISOLATED_RECHECK_PASS / GITHUB_PR_75_OPEN / TAG_V0_6_32 / USER_RECHECK`
+当前状态：`VERSIONED_V0_6_32 / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / FORMAL_FULL_1049_OF_1050 / M22_ISOLATED_RECHECK_PASS / GITHUB_PR_75_OPEN / GITHUB_CI_PASS / TAG_V0_6_32 / USER_RECHECK`
 
 ## 1. 用户结果
 
@@ -214,4 +214,5 @@ type EditableImageSource = {
 - 功能与版本候选提交：`ca6bddb fix(canvas): add same-origin image editing for v0.6.32`。
 - 分支 `codex/image-edit-source-2026-08-23` 已推送到 origin；GitHub PR #75 已创建并以 main 为目标分支。
 - 注释标签 `v0.6.32` 绑定包含本记录的冻结候选分支头；标签和 PR 仅代表 GitHub 候选交付，不代表生产发布或用户验收。
-- PR 的 GitHub Quality gates 结果以 GitHub 实际检查为准；本地证据不冒充远端 CI。
+- PR 的 GitHub Quality gates run `32623552933` 已完成且结论为 `SUCCESS`：safe inventory、TypeScript、架构、source coverage inventory/behavior 和 high-level npm audit 全部通过。
+- 注释标签 `v0.6.32` 解引用后精确指向 `4cf9d74dec941dea8f10e73bb07de990b668e150`。后续这条 CI 结果只追加到 PR 文档，不移动已推送标签。

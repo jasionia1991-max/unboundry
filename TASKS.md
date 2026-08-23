@@ -8,7 +8,7 @@
 ### 2026-08-23 INC-IMGEDIT-001 OSS 图片裁剪同站编辑源（v0.6.32 PR #75，生产未发布）
 
 - 用户已确认先做同站安全取图的方案 2，并要求先落地文档，避免上下文压缩后的失忆或漂移。
-- 权威方案：`spec/INC_IMGEDIT_001_EDITABLE_IMAGE_SOURCE_PLAN_2026-08-23.md`；当前状态 `VERSIONED_V0_6_32 / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / FORMAL_FULL_1049_OF_1050 / M22_ISOLATED_RECHECK_PASS / GITHUB_PR_75_OPEN / TAG_V0_6_32 / USER_RECHECK`。
+- 权威方案：`spec/INC_IMGEDIT_001_EDITABLE_IMAGE_SOURCE_PLAN_2026-08-23.md`；当前状态 `VERSIONED_V0_6_32 / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / FORMAL_FULL_1049_OF_1050 / M22_ISOLATED_RECHECK_PASS / GITHUB_PR_75_OPEN / GITHUB_CI_PASS / TAG_V0_6_32 / USER_RECHECK`。
 - 基线：main `a29ac82793c2887bd252e7de16d7913fc07f026c`、package `0.6.31`、schema39；隔离分支/worktree 为 `codex/image-edit-source-2026-08-23` / `/Users/mymy/Documents/unboundry-image-edit-source-2026-08-23`。
 - 冻结范围：新增 owner-scoped 同站编辑源接口、可取消且 20 MiB 有界的 `MediaBlobStore` 读取、客户端可替换 resolver、Blob 生命周期与来源 assetId 栅栏；不增加域名/CDN/CORS，不迁移数据，不触发真实 Provider/OSS，不发布。
 - 验收边界：fake OSS 的普通素材路径即使 307 到跨域地址，裁剪也必须经同站 Blob 成功；local/OSS、权限、完整性、超时、取消、并发、上传补偿与持久化竞态均需定向测试；候选冻结后因共享媒体端口改动只允许一次正式 safe full。
@@ -19,7 +19,7 @@
 - 未访问真实OSS、Provider或生产，未commit、push、tag、PR或发布；当前只是本地候选，用户未亲测前不能记生产PASS或USER_PASS。
 - 用户随后明确授权 commit、tag、push、PR，并允许必要版本升级；候选版本确定为 v0.6.32。该授权不包含生产发布，线上继续为 v0.6.31。
 - v0.6.32 版本同步后定向 m38+m81 `56/56 PASS`；同一安全入口的preflight、TypeScript、架构、source coverage、生产build、离线/凭据/网络门禁全部通过，source/snapshot SHA为`55708bb8…c3ca`，4173 listener不变。没有因版本/文档同步重复正式full。
-- GitHub交付：功能与版本提交`ca6bddb`，分支`codex/image-edit-source-2026-08-23`已推送，PR #75已创建；注释标签`v0.6.32`绑定包含交付记录的候选头。PR/tag都不等于生产发布，远端Quality gates以GitHub实际状态为准。
+- GitHub交付：功能与版本提交`ca6bddb`，分支`codex/image-edit-source-2026-08-23`已推送，PR #75已创建；注释标签`v0.6.32`解引用后精确指向`4cf9d74dec941dea8f10e73bb07de990b668e150`。Quality gates run `32623552933`已`SUCCESS`；PR/tag/CI都不等于生产发布。
 
 ### 2026-08-23 全项目治理与 nginx 加固
 
