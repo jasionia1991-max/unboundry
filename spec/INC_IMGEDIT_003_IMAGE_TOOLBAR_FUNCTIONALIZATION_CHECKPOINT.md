@@ -2,21 +2,22 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 00:06:36 +0800
-- 状态：`GOAL_ACTIVE / D13_IN_PROGRESS / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_FINANCIAL_CONFIRMATION_VALID / USER_QUALITY_RECHECK`
+- 更新时间：2026-08-24 00:42:03 +0800
+- 状态：`GOAL_ACTIVE / D13_IN_PROGRESS / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_0_OF_6 / COMMON_GENERATION_HOTFIX_LOCAL_AUTO_PASS / BLOCKED_NEW_VERSION_AND_RELEASE_AUTH / USER_QUALITY_RECHECK`
 - 当前阶段：`D13 GitHub和生产发布 / IN_PROGRESS`
-- 唯一允许的下一动作：在隔离生产副本提交1次多角度真实技术冒烟；数量1、1K、不得在计费状态不明时重试
+- 唯一允许的下一动作：等待用户提供新的精确不可变版本号和独立发布句；在新版本发布前不得再触发真实 Provider、改动生产 release 或覆盖/移动 `v0.6.34` tag
 - 当前仓库：`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`
 - 记录时分支：`codex/v0.6.34-release-receipt-2026-08-24`
-- 记录时 HEAD：`ec199c1e6449c5782328f3e3d6b11d96abeead92`
+- 记录时 HEAD：`a411a636432fb219fefe31afa4dc81b667a71067`
 - 记录时 `origin/main`：`eaaafd26d71718a7a4c24185426e4e93b998109e`
 - package：`0.6.34`
 - 生产：`v0.6.34 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`
-- 新版本：`v0.6.34 / VERSION_GATE_VALID`
+- 已发布版本：`v0.6.34 / VERSION_AND_RELEASE_AUTH_CONSUMED`
+- 热修版本：`未指定 / VERSION_GATE_BLOCKED / RELEASE_GATE_BLOCKED`
 - 候选：`v0.6.34 / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / PR_MERGED / TAGGED / PRODUCTION_PUBLISHED_AUTO_PASS`
-- 本轮代码施工：冻结候选提交 `aa67e46`；safe full 暴露的图片生成预检标量快照缺陷及三项确定性测试时序已由 `422408b` 修正，候选工作树干净
-- 本轮验证：pinned Node 22.23.1/npm 10.9.8；冻结前定向 `234/234 PASS`；唯一一次 safe full 原始 `1048/1052`，只复验四个失败规格时稳定复现 `102/106`，修复后同一精确集合 `106/106 PASS`；D12收口文档m38 `15/15 PASS`；未运行第二次 full
-- 真实 Provider/付费请求：0/8
+- 本轮代码施工：`v0.6.34` 已冻结发布；生产真实操作在 Provider 前暴露多角度缺失 `imageTool` 身份、六项生成工具共同使用非法持久输入顺序0、以及源节点1K被模型默认2K覆盖三项缺陷；本地热修提交 `a411a63` 已补齐身份、统一顺序为1并继承经模型规范化的源参数
+- 本轮验证：pinned Node 22.23.1/npm 10.9.8；D12原证据保持冻结前定向 `234/234 PASS`、唯一一次 safe full 原始 `1048/1052`、精确修复集合 `106/106 PASS`且未运行第二次full。热修最终安全定向 m100+m2+m27 `43/43 PASS`、退出0、retries/skips/reportErrors均0、source/snapshot `1350e3adc56c98c9cafc0faea685f6c8f1648852b5a04536d933901d9c014a80`、4173监听者不变、外部/Provider请求0。治理m38首次因新marker格式不符合既有单一标记合同而`14/15`，只修正文档marker及其三个治理消费者后精确复验`15/15 PASS`、退出0、source/snapshot`89043dff71b523063b01a66dd68b3c6bb7a698955c905a568d040eeb576970f1`
+- 真实 Provider/付费请求：0/6，当前可确认费用0 USD；用户总预算上限60 USD
 - 真实 OSS 测试对象：本地派生技术冒烟新增8个 Media 资产并保留；无删除
 - GitHub/SSH/生产操作：产品 PR #80 已合并；PR CI `32649433392` 与 main CI `32649471107` 均成功；tag `v0.6.34` 与 main tree 一致；生产已原子切换到 `/opt/unboundry/releases/v0.6.34-image-toolbar-20260823`
 
@@ -84,7 +85,7 @@ node -p "require('./package.json').version"
 | D10 | 增强与主体抠图 | TARGETED_AUTO_PASS / REAL_SMOKE_PENDING_D13 |
 | D11 | Seedance 素材校验 | AUTO_PASS |
 | D12 | 候选冻结和统一验证 | AUTO_PASS / FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS |
-| D13 | GitHub和生产发布 | IN_PROGRESS / AUTH_VALID |
+| D13 | GitHub和生产发布 | IN_PROGRESS / V0_6_34_PUBLISHED / BLOCKED_NEW_VERSION_AND_RELEASE_AUTH |
 
 ## 5. 验收条目状态
 
@@ -112,8 +113,8 @@ node -p "require('./package.json').version"
 
 ## 7. 版本、Git和发布门
 
-- 本 Goal 的目标版本由用户明确确认为 `v0.6.34`，`VERSION_GATE_VALID`；`v0.6.33` 不复用；
-- 用户已独立明确“按 v0.6.34 上线吧”，`RELEASE_GATE_VALID`；
+- 本 Goal 原目标版本由用户明确确认为`v0.6.34`且已发布；该版本号、tag和发布授权现已消费，`v0.6.33`不复用；
+- 热修没有已授权版本；继续GitHub与生产发布必须重新取得精确不可变版本号和独立发布句；
 - 只有 D12 冻结与统一验证通过后才可进入 D13，版本与发布门有效不等于提前获得发布成功结论；
 - 本次版本号和发布授权只覆盖 INC-IMGEDIT-003 当前合同，不扩大到历史任务或暂停项；
 - 自动测试、真实技术冒烟、生产技术通过和 `USER_PASS` 必须分开。
@@ -122,15 +123,15 @@ node -p "require('./package.json').version"
 
 | 操作 | 成功上限 | 已用 | 备注 |
 |---|---:|---:|---|
-| 多角度 | 1 | 0 | fake先通过 |
-| 重绘 | 1 | 0 | fake先通过 |
+| 多角度 | 1 | 0 | 生产准入前因缺少任务身份明确拒绝，0 task/0 attempt/0 Provider；本地热修通过，等待新版本 |
+| 重绘 | 1 | 0 | 生产 UI 已生成mask和占位，但持久输入顺序0使客户端预检拒绝，0 task/0 attempt/0 Provider；共同热修通过，等待新版本 |
 | 扩图 | 1 | 0 | fake先通过 |
 | 擦除 | 1 | 0 | fake先通过 |
 | 创意增强 | 1 | 0 | fake先通过 |
-| 保守增强 | 1 | 0 | 仅付费引擎计入 |
-| 主体抠图 | 1 | 0 | 仅付费引擎计入 |
-| 兼容复核 | 1 | 0 | 有明确理由才用 |
-| 合计 | 8 | 0 | 无法判断计费时禁止重试 |
+| 保守增强 | 0 | 0 | 本 Goal 已在生产用本地引擎完成，不占真实 Provider 预算 |
+| 主体抠图 | 1 | 0 | 付费引擎计入 |
+| 兼容复核 | 0 | 0 | 用户最新金额确认把总上限收紧为6次；不另留第7/8次 |
+| 合计 | 6 | 0 | 当前确认0 USD；无法判断计费时禁止重试 |
 
 ## 9. 阶段更新模板
 
@@ -157,26 +158,26 @@ package / schema / candidate：
 
 ## 10. 当前唯一下一动作
 
-等待用户对生产 UI 显示的付费提示作行动时确认；确认“最多6次、总预算上限60 USD”后，才逐项提交六项真实 Provider 技术冒烟。
+用户已确认“最多6次、总预算上限60 USD”，但真实冒烟在Provider前发现六项生成工具共用的持久输入顺序缺陷。`v0.6.34` 已发布且版本号、tag和发布授权均已消费，禁止原地热改。当前只等待用户提供新的精确版本号和独立发布句；获得两者并重新完成冻结、发布门之前，不得再提交任何真实 Provider 技术冒烟。
 
 ## 26. D13 GitHub 和生产发布
 
-- 时间：2026-08-24 00:06:36 +0800
+- 时间：2026-08-24 00:42:03 +0800
 - 阶段：`D13`
-- 状态：`IN_PROGRESS / PR_MERGED / TAGGED / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_FINANCIAL_CONFIRMATION_VALID / USER_QUALITY_RECHECK`
-- branch / HEAD / origin-main：`codex/v0.6.34-release-receipt-2026-08-24` / `ec199c1e6449c5782328f3e3d6b11d96abeead92` / `eaaafd26d71718a7a4c24185426e4e93b998109e`
-- 工作树摘要：产品 PR #80 已 squash merge，tag `v0.6.34` 已发布且 tree 与 main 一致；生产已切换到 v0.6.34；当前新分支只更新 D13 实时 Checkpoint，最终回执和其余权威文档待真实 Provider 冒烟结论后一次收口
-- 产品文件：D12候选已冻结；D13开始时无新增产品修改
-- 测试文件：复用D12冻结前`234/234`、唯一一次full原始`1048/1052`和修正后精确`106/106`；不为进入发布重复full
-- 文档文件：本 Checkpoint；最终 `TASKS.md`、验收矩阵、CURRENT_STATE、README、上线规矩、交接、修复 Checkpoint、主方案和生产回执待真实 Provider 冒烟后同步
+- 状态：`IN_PROGRESS / PR_MERGED / TAGGED / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_0_OF_6 / COMMON_GENERATION_HOTFIX_LOCAL_AUTO_PASS / BLOCKED_NEW_VERSION_AND_RELEASE_AUTH / USER_QUALITY_RECHECK`
+- branch / HEAD / origin-main：`codex/v0.6.34-release-receipt-2026-08-24` / `a411a636432fb219fefe31afa4dc81b667a71067` / `eaaafd26d71718a7a4c24185426e4e93b998109e`
+- 工作树摘要：产品 PR #80 已 squash merge，tag `v0.6.34` 已发布且 tree 与 main 一致；生产已切换到 v0.6.34。多角度和重绘均在任务/attempt/Provider前拒绝，确认不是单一多角度问题：六项生成工具共同把持久输入顺序写成0，客户端预检按正式合同拒绝。热修产品与测试已提交为`a411a63`，文档同步尚未提交
+- 产品文件：`ImageNode.tsx`只消费服务端权威`supportsReferenceImage`且生成工具继承源节点有效参数；`generationImageToolUseCase.ts`加入统一提交参数规范化；四个生成use case补齐多角度`imageTool`身份并统一持久edge/request顺序为1
+- 测试文件：m2覆盖生产式参考上限0但服务端能力可用、1K和顺序1；m100覆盖多角度完整身份、源1K覆盖模型默认2K和全部生成use case顺序1；m27覆盖重绘/扩图/抠图持久边可通过预检且零Provider
+- 文档文件：本 Checkpoint、`TASKS.md`、验收矩阵、CURRENT_STATE、README和上线规矩同步当前阻断；不把本地热修冒充已发布能力
 - package / schema / candidate：`0.6.34 / schema39 / PR_MERGED / TAGGED / PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`
-- 外部请求和付费预算：用户于2026-08-24明确确认“最多6次、总预算上限60 USD”，金额确认门有效；真实 Provider 成功预算仍为`0/8`。每项只提交1次、1K最小可验证规格，任何计费状态不明时禁止重试
-- 测试命令、环境、结果、退出码：复用D12 pinned Node22.23.1/npm10.9.8证据，不重复full。发布构建在服务器以Node22.23.2/npm10.9.8完成`npm ci`、typecheck和Vite build；PR CI `32649433392`、main CI `32649471107`均成功。生产非付费技术冒烟已通过颜色标记、素材库保存、Seedance本地预检、472x833像素派生、2x2四图切分、编号标注与显式导出、保守增强和既有裁剪；Generation task/attempt保持`722/730`，证明真实Provider请求为0
-- 架构与数据风险：发布必须保持旧release兼容Library schema1 sidecar，先备份/恢复/旧版本读取，再允许切换；真实生成必须逐项受预算和计费状态门约束
-- 设计偏差：归档包首次服务器`npm ci`虽从`/opt/node22/bin/npm`启动却继承Node18并只产生engine警告，已在未切换生产前用显式`PATH=/opt/node22/bin:/usr/bin:/bin`重跑并通过Node22.23.2门；备份脚本不支持`--help`且因此额外生成一份`/home/ubuntu/backups/2026-08-23T15-46-41-597Z`备份，保留不删；正式冻结备份另在`/var/lib/unboundry-rollbacks/v0.6.34-frozen-9JKfLH`
-- 阻断：无；用户已补充行动时金额确认，原财务阻断解除
-- 回滚点：上一不可变 release `v0.6.33-crop-loading-20260823`；正式冻结源和恢复副本均365文件、清单SHA-256均为`637e7bdf3437cf4b101040c6503c12aebe5ef660f2b25b367bc0f57dea6c1acd`；演练根`/var/tmp/unboundry-v0.6.34-rehearsal-TKEtxk`和发布归档均保留
-- 唯一下一动作：提交1次多角度真实技术冒烟；确认任务身份、Provider attempt和终态后才进入下一项
+- 外部请求和付费预算：用户于2026-08-24明确确认“最多6次、总预算上限60 USD”，最新指令覆盖主方案原8次上限。多角度仅产生隔离占位，POST在task admission前HTTP400；重绘仅产生owner-scoped mask与占位，客户端preflight即拒绝。数据库保持tasks/attempts`722/730`、active0，当前可确认费用0 USD、真实Provider预算`0/6`
+- 测试命令、环境、结果、退出码：复用D12原证据且不重复full。热修最终执行`PATH=/Users/mymy/.local/bin:/usr/bin:/bin node scripts/run-safe-tests.mjs run --spec tests/m100-modular-ports.spec.ts --spec tests/m2-image-node.spec.ts --spec tests/m27-node-inputs.spec.ts`，m100 `13/13`、m2 `10/10`、m27 `20/20`，合计`43/43 PASS`、退出0、retries/skips/reportErrors均0、source/snapshot`1350e3ad…14a80`、4173 listener不变、外部/Provider请求0。中间两次失败分别来自不存在的测试fixture按钮和测试setup PUT，均未进入产品请求；删除错误测试设计后最终精确矩阵全绿
+- 架构与数据风险：v0.6.34 tag/release不可变，不能把热修写入现有release或移动tag；真实生成继续逐项受预算和计费状态门约束。GPT Image 2生产参考素材上限已通过管理员UI从错误的0纠正为1，PATCH成功且刷新后仍为1；这不产生Provider任务
+- 设计偏差：归档包首次服务器`npm ci`虽从`/opt/node22/bin/npm`启动却继承Node18并只产生engine警告，已在未切换生产前用显式`PATH=/opt/node22/bin:/usr/bin:/bin`重跑并通过Node22.23.2门；备份脚本不支持`--help`且因此额外生成一份`/home/ubuntu/backups/2026-08-23T15-46-41-597Z`备份，保留不删。D13真实冒烟先发现多角度payload漏传`imageTool`，随后重绘暴露六项生成工具共用的顺序0缺陷；服务端/客户端均按设计fail-closed，没有创建任务或扣费。本地同时修正源节点1K被模型默认2K覆盖的成本风险
+- 阻断：六项真实生成技术冒烟都依赖共同热修。`v0.6.34` tag/release与用户发布授权已消费，不能移动tag、覆盖release或自分配版本；继续D13必须由用户提供新的精确版本号和独立发布句
+- 回滚点：当前生产不可变 release `v0.6.34-image-toolbar-20260823`；本地热修前HEAD为`c9696860bb7ddc0b7b29b2af3865c418129c7d8b`，热修提交为`a411a636432fb219fefe31afa4dc81b667a71067`；上一生产不可变release为`v0.6.33-crop-loading-20260823`
+- 唯一下一动作：等待用户明确新的精确版本号和独立发布句；此前不再触发Provider、不改生产、不push/tag/PR
 
 ## 25. D12 候选冻结和统一验证
 

@@ -1,17 +1,17 @@
 # Unboundry 绿地复刻当前任务
 
-> **v0.6.33 当前状态**：`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。tag `v0.6.33` 指向 `669958f4e325cc182c31cf0f27861e26b64736b1` / tree `c3a1c27cbe0c230d7005f260c5b57b96ad274acd`；PR #77 squash merge `8675a34b14b17fdf69b5e08b0469c520e4df79cb`。生产 current 为 `/opt/unboundry/releases/v0.6.33-crop-loading-20260823`。正式safe full真实记录`1049/1050`，同冻结源码只复验唯一失败m22并`37/37 PASS`，没有重跑。冻结备份与恢复副本365文件双清单一致，schema39和切换前后数据计数一致，公网/回环/service/inventory/5资源全部通过；发布自身Provider/OSS写入0。用户已在线上复验并明确回复“通过”。
+> **v0.6.34 当前状态**：`PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`。PR #80 已合并，tag `v0.6.34` 指向 `922f6aee7ce3c6250dbe61055542327b0aea8252`，tag 与 `origin/main` tree 均为 `279581e0a2c8008d5c7ceea6e53c3c7cb620eab5`；生产 current 为 `/opt/unboundry/releases/v0.6.34-image-toolbar-20260823`，schema39。D13真实冒烟在Provider前发现六项生成工具共同热修需求；Provider请求`0/6`、可确认费用0 USD。本地热修提交`a411a63`，安全定向m100+m2+m27 `43/43 PASS`；必须取得新的精确版本号和独立发布句后才能发布热修并继续真实冒烟。
 
-更新时间：2026-08-23
-状态：`v0.6.33 已发布并通过技术终门与用户线上复验，状态 PRODUCTION_PUBLISHED_USER_PASS / USER_PASS。权威回执见 spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json。`
+更新时间：2026-08-24
+状态：`v0.6.34 已发布并通过生产技术门，保持 PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK；共同生成热修 LOCAL_AUTO_PASS，D13 阻断于新的精确版本号和独立发布授权。`
 
-### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，D13_IN_PROGRESS / RELEASE_AUTH_VALID）
+### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，D13_IN_PROGRESS / BLOCKED_NEW_VERSION_AND_RELEASE_AUTH）
 
 - 用户已批准最终 V5 方案并要求后续长任务严格由项目文档驱动，防止新 Session 或上下文压缩后失忆漂移。主方案：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md`；实时断点：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_CHECKPOINT.md`；新 Session 提示词：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_GOAL_PROMPT_2026-08-23.md`。
 - 单 Goal 连续范围：最小图片工具应用边界、颜色标记、调整像素、快速分割、标注、个人素材库、多角度、遮罩/重绘、扩图、擦除、保守/创意增强、主体抠图和 Seedance 素材校验；裁剪只回归，打光 `IMGEDIT-007` 继续 `PAUSED`。
 - 防漂移门：D0～D13 同时最多一个阶段 `IN_PROGRESS`；每阶段完成后必须先更新 Checkpoint、验收矩阵和本区块，版本/候选/生产事实变化时再更新 CURRENT_STATE；上下文恢复必须重读文档、核对 Git，只从 Checkpoint 的“唯一下一动作”继续。
 - 防耦合门：轻量 Dispatcher + 小 use case，优先复用 Canvas/Generation/Media 现有端口；不把任务、Provider、媒体和 SQL 编排重新塞入 `ImageNode.tsx`、`CanvasSurface.tsx` 或 `generationTasks.ts`。
-- 真实证据门：fake 与零请求自动测试先行；真实付费技术冒烟总上限 8 次，只记 `REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，不冒充质量通过；生产技术发布最多记 `USER_QUALITY_RECHECK`，用户明确确认后才是 `USER_PASS`。
+- 真实证据门：fake 与零请求自动测试先行；用户最新确认真实付费技术冒烟最多6次、总预算上限60 USD，只记 `REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，不冒充质量通过；生产技术发布最多记 `USER_QUALITY_RECHECK`，用户明确确认后才是 `USER_PASS`。
 - D0 已恢复实时基线：`main = origin/main = 14777b5`、package `0.6.33`、生产实时 `v0.6.33 / schema39 / live / ready`；启动提交 `6a1606c` 后已进入干净隔离分支和 worktree。`IMGEDIT-010～020` 仍为 `NOT_STARTED`，没有产品代码、schema、Provider、OSS、GitHub或生产变化，没有候选。
 - 本 Goal 版本门与发布门均有效：目标 `v0.6.34`，用户已独立明确“按 v0.6.34 上线吧”；仍须 D12 通过后才进入 D13，不提前发布。
 - D1 已冻结 17 项 operation、五态服务端权威 capability、结果/错误/执行身份、有界 input/mask/annotation、预算和 Library 数据所有权合同；架构门加入 image-tools client/server 与 Library internal 边界和 `library_entries` owner，新增架构例外 0。安全定向 m100 `13/13 PASS`，精确清单同步为 1052；功能尚未施工，矩阵仍保持 `IMGEDIT-010～020 = NOT_STARTED`。唯一下一阶段改为 D2 最小图片工具应用层。
@@ -27,7 +27,10 @@
 - D11 已完成 Seedance 图片素材本地技术预检：服务端按 owner 读取 ready Media 和已发布/启用的 `seedance-2` 模型，复用真实 `referenceMediaRules` 校验类型、大小、尺寸、比例和素材角色；结果绑定 asset/model/role/模型配置revision/检查与过期时间，刷新后保留，过期或任一身份漂移均 stale。DTO/UI 明确 `remoteValidationAvailable=false` 和“不是远端资格、可生成、质量或法律合规”，不生成视频。安全定向最终 m2 `10/10`、m100 `13/13 PASS`，m20既有API合同`1/1 PASS`；真实Provider/OSS/视频生成请求0。`IMGEDIT-020 = AUTO_PASS / LOCAL_TECHNICAL_PREFLIGHT_ONLY`。唯一下一阶段为 D12 候选冻结和统一验证。
 - D12 已完成：package/lock/runtime role 为v0.6.34，schema39不变；冻结前m38 `15/15`、m81 `41/41`、13-spec矩阵 `178/178 PASS`，合计`234/234`，四类审查无新阻断。冻结候选`aa67e46`只执行一次safe full，原始`1048/1052`；未改树精确复验四个失败spec为`102/106`，确认一个图片预检真实缺陷与三个确定性观测问题。
 - 修正提交`422408b`把图片预检公开结果延后到全部校验完成后构造，并收紧m0/m22/m37测试时序；同一四spec最终`106/106 PASS`。D12收口文档m38 `15/15 PASS`；首次误写不存在的spec路径只在选择阶段退出且产品测试0。没有第二次full，原始full不改写为全绿。当前候选为`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / D13_READY`；真实Provider/OSS请求仍0，生产仍为v0.6.33。
-- D13 已按文档进入`IN_PROGRESS`；版本门v0.6.34和独立发布门有效。当前尚未push、PR、tag、SSH或生产写入，唯一下一动作是完整读取`RELEASE_RUNBOOK.md`及其直接引用资料，再从首个未完成发布门继续。
+- D13 已发布v0.6.34：产品PR #80、tag、main CI、冻结备份、精确构建、原子切换和生产技术门均完成，生产为v0.6.34/schema39，状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`，该版本号与发布授权已经消费。
+- 用户已确认真实Provider冒烟最多6次、总预算上限60 USD；多角度在task admission前拒绝，重绘在客户端preflight拒绝，两者均为0 task/0 attempt/0 Provider，当前总计`0/6`、可确认费用0 USD。
+- D13生产冒烟确认三项客户端缺陷：多角度漏传`imageTool`身份；六项生成工具共同使用非法持久输入顺序0；源节点1K会被模型默认2K覆盖。本地热修提交`a411a63`，m100+m2+m27最终`43/43 PASS`、外部/Provider请求0；中间失败为测试设计问题，不改写最终产品证据。
+- 唯一下一动作是等待用户提供新的精确不可变版本号和独立发布句。此前不得再触发Provider、改生产、覆盖/移动v0.6.34 tag或自行分配版本；IMGEDIT-016～019保持`REAL_PROVIDER_TECHNICAL_SMOKE_PENDING / USER_QUALITY_RECHECK`。
 - 本次落档 `git diff --check` 通过；定向 m38 safe runner 在产品测试前被 main 既有 ignored `backups/` 隔离负控以 `EISDIR` 阻断，0 个产品测试执行，source snapshot 和 4173 listener 未变。未删除/移动备份、未绕过 safe runner、未把该尝试记为自动 PASS；完整记录见 Checkpoint。
 
 ### 2026-08-23 当前版本文档残留对齐（docs-only）
