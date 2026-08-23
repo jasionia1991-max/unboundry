@@ -1,17 +1,17 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为v0.6.34/schema39，生产技术门通过；状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`。v0.6.35共同生成热修冻结候选已通过唯一一次safe full，正在进入PR/CI，尚未发布。
+> **状态分层**：现网为v0.6.35/schema39，状态`PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_0_OF_6 / ACTION_TIME_CONFIRMATION_PENDING / USER_QUALITY_RECHECK`。生产技术门已通过，真实图片工具生成尚未开始。
 
 更新日期：2026-08-24
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.6.35**
 本地候选代码版本：**v0.6.35**
-当前治理标记：`CURRENT_V0_6_34_USER_RECHECK`
-当前热修门：`V0_6_35_VERSION_GATE_VALID / V0_6_35_RELEASE_GATE_VALID / CANDIDATE_C1A4A08_SAFE_FULL_PASS / PR_PENDING`
+当前治理标记：`CURRENT_V0_6_35_USER_RECHECK`
+当前热修门：`V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_PENDING`
 
 ## 一句话
 
-**生产是 v0.6.34 / schema39，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`。** 产品PR #80已合并；tag `v0.6.34` 指向 commit `922f6aee7ce3c6250dbe61055542327b0aea8252`，tag与`origin/main` tree均为`279581e0a2c8008d5c7ceea6e53c3c7cb620eab5`。生产 current 为 `/opt/unboundry/releases/v0.6.34-image-toolbar-20260823`，发布技术门已通过；没有用户质量`USER_PASS`。
+**生产是 v0.6.35 / schema39，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`。** PR #81 squash merge为`cc62bfb`；注释tag解引用`fc99101`，tag与`origin/main` tree均为`cb13fef`。生产current为`/opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824`，发布技术门已通过；没有用户质量`USER_PASS`。
 
 v0.6.34冻结前定向`234/234 PASS`；唯一一次safe full原始`1048/1052`，只修正一个真实图片预检缺陷与三个测试确定性问题后，精确四spec `106/106 PASS`，没有第二次full。GitHub、冻结备份与恢复副本、精确tag源码构建、schema39数据门、原子切换、公网/回环/service/inventory/资源门均已完成。
 
@@ -25,7 +25,7 @@ v0.6.34版本号、tag和发布授权均已执行并消费，禁止移动tag或�
 - 为防止长任务在新 Session 或上下文压缩后漂移，已建立唯一实时断点 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_CHECKPOINT.md` 和可复制 Goal 合同 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_GOAL_PROMPT_2026-08-23.md`。D0～D13 每阶段必须先回写断点、矩阵和 TASKS，再继续下一阶段。
 - 计划范围包含颜色标记、调整像素、快速分割、标注、个人素材库、多角度、遮罩/重绘、扩图、擦除、增强、主体抠图和 Seedance 素材校验；裁剪只回归，打光继续 `PAUSED`。
 - 生产D13冒烟先发现多角度漏传`imageTool`身份，随后重绘暴露六项生成工具共用非法持久输入顺序0；同时确认源节点1K会被模型默认2K覆盖。两次都在Provider前fail-closed，没有task/attempt/Provider和费用。本地热修提交`a411a63`，最终安全定向m100+m2+m27 `43/43 PASS`、外部/Provider请求0。
-- 真实付费技术冒烟最多6次、总预算上限60 USD，当前已用0、可确认费用0 USD；真实冒烟只证明技术链路，不等于质量通过。v0.6.35冻结候选`c1a4a08`已在Node22.23.1/npm10.9.8通过m38+m81 `56/56`和本版本唯一一次safe full `1052/1052`，外部/Provider请求0；当前唯一下一动作是证据提交后push/PR/CI，所有六项生成冒烟仍须等待生产切换。
+- 真实付费技术冒烟最多6次、总预算上限60 USD，当前已用0、可确认费用0 USD；真实冒烟只证明技术链路，不等于质量通过。v0.6.35生产技术门已完成，完整冻结备份同时覆盖主库、Library sidecar和媒体。当前第1项多角度页面预计10 USD，等待用户动作时确认；按钮尚未点击，六项均保持pending。
 
 ## v0.6.33 图片裁剪准备态体验优化（已发布并获用户确认）
 

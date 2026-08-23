@@ -5,10 +5,10 @@
 - 日期：2026-08-23
 - 仓库：`/Users/mymy/Documents/unboundry/app`
 - 立项基线：`main` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537` / package `0.6.33` / 生产 `v0.6.33` / schema39
-- 状态：`PLAN_FROZEN / D13_IN_PROGRESS / V0_6_34_PRODUCTION_PUBLISHED_AUTO_PASS / V0_6_35_CANDIDATE_SAFE_FULL_PASS / PR_PENDING`
-- 当前阶段：D0～D12已完成；v0.6.34已发布。生产真实冒烟在Provider前暴露共同热修需求；v0.6.35冻结候选`c1a4a08`已通过定向43/43、版本门56/56及本版本唯一一次safe full 1052/1052，生产仍为v0.6.34/schema39
+- 状态：`PLAN_FROZEN / D13_IN_PROGRESS / V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_0_OF_6 / ACTION_TIME_CONFIRMATION_PENDING / USER_QUALITY_RECHECK`
+- 当前阶段：D0～D12已完成；v0.6.35已完成GitHub、完整备份、原子切换与生产技术门。第1项多角度真实请求页面预计10 USD，等待动作时确认；Provider仍0/6、费用0 USD
 - 版本：`v0.6.35 / VERSION_GATE_VALID / RELEASE_GATE_VALID`
-- 发布候选：`v0.6.35 / CANDIDATE_COMMIT_C1A4A08 / SAFE_FULL_1052_OF_1052_PASS / PR_PENDING`
+- 发布候选：`v0.6.35 / SAFE_FULL_1052_OF_1052_PASS / PR_81_MERGED / TAG_FC99101 / MAIN_CC62BFB / TREE_CB13FEF / PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`
 - 本 Goal 授权：用户已于2026-08-24明确确认`v0.6.35`并独立回复“按v0.6.35上线吧”；授权只覆盖共同生成热修及Goal内剩余D13，仍须按Runbook逐门执行
 
 本文档是图片节点顶部工具栏除已完成裁剪和继续暂停打光以外所有剩余能力的主施工方案。后续使用一个新 Session 的单一 Goal 连续执行 D0～D13；阶段只是内部检查点，不拆成多个 Goal，不因普通技术选择、测试失败或阶段完成中途等待用户。
