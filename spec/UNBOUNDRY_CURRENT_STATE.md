@@ -19,7 +19,7 @@
 - 应用版本、release、schema和生产数据保持 v0.6.31/schema39 不变；本轮没有新应用发布、Provider请求或OSS写入。
 - 生产 nginx 已隐藏详细版本，并对点文件、源码目录、package/tsconfig和robots路径明确返回404；原配置有只读备份。reload后nginx与`unboundry.service`均active、应用`NRestarts=0`，公网root/version/live/ready均200。
 - GitHub已关闭冲突草稿PR #68、删除8条已合并或被取代的远端分支、启用合并后自动删分支和Vulnerability Alerts；main分支保护仍受当前私有仓库套餐限制。
-- 治理候选已补权威版本一致性门、nginx安全合同和轻量CI，通过`codex/governance-hardening-2026-08-23`专用分支和PR #72交付；PR `lightweight` check已通过，用户随后明确授权合并并收口。合并后的main check仍须单独核验；本轮没有tag或应用release授权。
+- 治理候选已补权威版本一致性门、nginx安全合同和轻量CI；PR #72已于2026-08-23 squash merge为`f78e7daccd8fce58c3c30a02bc9f27794129933a`，对应main Quality gates run `32615001671`已`SUCCESS`。没有tag或新应用release。
 - 没有真实功能触发，第三至第七模块化批次继续保持`NO_ACTIVE_NEXT_BATCH`。完整证据见`spec/UNBOUNDRY_GOVERNANCE_NGINX_HARDENING_RECEIPT_2026-08-23.md`。
 
 ## 2026-08-23 服务器运维回执收口
@@ -28,7 +28,7 @@
 - 时间线已澄清：安全加固检查点为服务器时间`10:03`，磁盘清理检查点为`10:50`；`76% / 28G available`是清理前状态，后续清理及11:24只读复核均为`61% / 45G available`。
 - 11:24只读复核确认生产仍为v0.6.31/schema39，current release未变；SSH密钥登录、UFW、Fail2ban、loopback服务、备份timer、关键服务和公网健康/敏感路径合同均通过，`NRestarts=0`。复核没有生产写入、服务重启、Provider请求或OSS操作。
 - 本地docs-only候选在离线安装依赖后通过m38定向`15/15`，source snapshot与4173 listener均不变；没有运行safe full。
-- 本次仅通过专用分支和docs-only PR交付回执；不授权merge、tag或应用release。受保护未跟踪JSON继续完全排除。
+- 两份回执已通过docs-only PR #73于2026-08-23 squash merge为`c16139ce3a59092b6ac796ab8953fd3dc243bd27`，对应main Quality gates run `32615533816`已`SUCCESS`。没有tag或应用release；受保护未跟踪JSON继续完全排除。
 
 ## VIEW-005 密集画布性能证据已关闭（2026-08-21，仅工程证据）
 

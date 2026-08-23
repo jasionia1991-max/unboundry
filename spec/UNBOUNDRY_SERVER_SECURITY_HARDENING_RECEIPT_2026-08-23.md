@@ -228,7 +228,7 @@ sudo systemctl restart live-cockpit
 - Canvas公网root、version、live、ready和auth status均为HTTP 200，schema39；敏感路径均为404，安全响应头与隐藏详细Server版本继续生效。
 - 复核仅执行只读HTTP和SSH状态查询，没有修改生产配置、重启服务、读取业务数据、发起Provider请求或写入OSS。
 
-用户已授权将本回执与磁盘清理回执通过`codex/server-ops-receipts-2026-08-23`专用分支和docs-only PR交付；tag、应用release和新的生产写操作不在授权内。
+本回执与磁盘清理回执已通过docs-only PR #73于2026-08-23 squash merge为`c16139ce3a59092b6ac796ab8953fd3dc243bd27`，对应main Quality gates run `32615533816`已完成且`SUCCESS`；专用远端分支、本地分支和worktree均已清理。没有tag、应用release或新的生产写操作。
 
 ## 9. 最终状态
 
