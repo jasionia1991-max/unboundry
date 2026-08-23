@@ -251,11 +251,51 @@ test("Image empty and local upload states match the observed geometry", async ({
     "src",
     (await preview.getAttribute("src"))!,
   );
-  await expect(detail.getByRole("button", { name: "下载" })).toBeVisible();
-  await detail.getByRole("button", { name: "关闭图片详情" }).click();
+  await expectInsideViewport(detail);
+  await expect(page.getByTestId("image-tool-surface"))
+    .toHaveAttribute("data-surface-tone", "checkerboard");
+  await expect(page.getByTestId("image-tool-surface"))
+    .not.toHaveCSS("background-image", "none");
+  await expect(detail).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  const detailDownload = detail.getByRole("button", { name: "下载" });
+  const detailClose = detail.getByRole("button", { name: "关闭图片详情" });
+  await expect(detailDownload).toBeVisible();
+  await expect(detailDownload).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(detailClose).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(detailDownload).toBeFocused();
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect.poll(() => detail.evaluate((element) => ({
+    duration: getComputedStyle(element).transitionDuration,
+    reduced: matchMedia("(prefers-reduced-motion: reduce)").matches,
+    scroll: getComputedStyle(element).scrollBehavior,
+  }))).toEqual(expect.objectContaining({ reduced: true, scroll: "auto" }));
+  const baselineDetail = await detail.boundingBox();
+  const baselineClose = await detailClose.boundingBox();
+  await page.keyboard.press("Escape");
   await expect(detail).toBeHidden();
   await expect.soft(page.locator("#root")).not.toHaveAttribute("inert", "");
   await expect.soft(fullscreenButton).toBeFocused();
+  const zoomSlider = page.getByTestId("zoom-slider");
+  const world = page.getByTestId("canvas-world");
+  for (const [index, zoom] of ["0.15", "0.85", "1", "1.5"].entries()) {
+    await zoomSlider.fill(zoom);
+    await expect(world).toHaveAttribute("data-viewport-zoom", zoom);
+    await fullscreenButton.click();
+    await expect(detail).toBeVisible();
+    await expectInsideViewport(detail);
+    expect(await detail.boundingBox()).toEqual(baselineDetail);
+    expect(await detailClose.boundingBox()).toEqual(baselineClose);
+    if (index === 0) {
+      await page.getByTestId("image-tool-host").click({ position: { x: 4, y: 4 } });
+    } else {
+      await page.keyboard.press("Escape");
+    }
+    await expect(detail).toBeHidden();
+    await expect(fullscreenButton).toBeFocused();
+  }
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.setViewportSize({ height: 900, width: 1440 });
   await toolbar.getByRole("button", { name: "浏览全部" }).click();
   const moreMenu = page.getByTestId("image-node-more-menu");
@@ -320,7 +360,9 @@ test("Image empty and local upload states match the observed geometry", async ({
   await expect.soft(page.getByTestId("image-tool-surface")).toBeVisible();
   await expect(cutout).toContainText("棋盘格仅用于预览透明区域");
   await expect(cutout.getByRole("button", { name: "生成透明PNG" })).toBeDisabled();
-  await cutout.getByRole("button", { name: "取消" }).click();
+  await page.getByTestId("image-tool-host").click({ position: { x: 4, y: 4 } });
+  await expect(cutout).toBeHidden();
+  await expect(toolbar.getByRole("button", { name: "浏览全部" })).toBeFocused();
   expect(generationRequests).toEqual([]);
   await card.click({ position: { x: 20, y: 20 } });
   await expect(moreMenu).toHaveCount(0);

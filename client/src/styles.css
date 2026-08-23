@@ -1563,7 +1563,7 @@ sup {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 16px;
-  background: rgba(18, 18, 18, 0.98);
+  background: transparent;
 }
 
 .image-detail-preview {
