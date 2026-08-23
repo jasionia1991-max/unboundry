@@ -1,0 +1,162 @@
+{
+  "version": "v0.6.33",
+  "date": "2026-08-23",
+  "status": "PRODUCTION_PUBLISHED_AUTO_PASS",
+  "scope": {
+    "summary": "将图片裁剪准备态从大幅空舞台改为320x180紧凑加载卡片；仅内存blob/data预览显示缩略图，安全同站Blob仍是唯一裁剪和导出数据源。",
+    "schemaChanged": false,
+    "schemaVersion": 39,
+    "releaseInitiatedProviderRequests": 0,
+    "releaseInitiatedOssWrites": 0,
+    "protectedJsonReadOrMutated": false
+  },
+  "source": {
+    "featureCommit": "669958f4e325cc182c31cf0f27861e26b64736b1",
+    "tag": "v0.6.33",
+    "tagObject": "9af80e50e2d02141674a090ef5b9bbecfd259c37",
+    "tagCommit": "669958f4e325cc182c31cf0f27861e26b64736b1",
+    "tagTree": "c3a1c27cbe0c230d7005f260c5b57b96ad274acd",
+    "pullRequest": 77,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/77",
+    "mergeCommit": "8675a34b14b17fdf69b5e08b0469c520e4df79cb",
+    "mainTree": "c3a1c27cbe0c230d7005f260c5b57b96ad274acd",
+    "mainTreeEqualsTagTree": true,
+    "productionSource": "annotated tag v0.6.33",
+    "mainQualityGateRun": 32628346283,
+    "mainQualityGateConclusion": "SUCCESS"
+  },
+  "verification": {
+    "directlyAffectedTargeted": {
+      "scope": "m2-image-node",
+      "tests": 10,
+      "passed": 10,
+      "failed": 0
+    },
+    "formalSafeFullRuns": 1,
+    "formalSafeFull": {
+      "baselineHead": "669958f4e325cc182c31cf0f27861e26b64736b1",
+      "sourceAndSnapshotSha256": "1b6b6bf31bf18d739143563158c600eac791881a3552e8737205c33605c03571",
+      "specs": 120,
+      "tests": 1050,
+      "passed": 1049,
+      "failed": 1,
+      "exitCode": 1,
+      "failure": "m22 multi-tab timing assertion did not observe the existing-canvas warning within 5 seconds"
+    },
+    "isolatedFailureRecheck": {
+      "scope": "m22-group-execution",
+      "tests": 37,
+      "passed": 37,
+      "failed": 0,
+      "sameUnchangedSource": true,
+      "classification": "unrelated transient multi-tab timing fluctuation"
+    },
+    "secondFullRun": false,
+    "listener4173UnchangedDuringLocalTests": true,
+    "realProviderRequestsDuringAutomatedTests": 0,
+    "realOssWritesDuringAutomatedTests": 0
+  },
+  "release": {
+    "archiveSha256": "06256bff899c7e7be8fda9efd7fbfcfc38be4ef2c9e49c3e1ce8bf73ea9a9ce0",
+    "releasePath": "/opt/unboundry/releases/v0.6.33-crop-loading-20260823",
+    "previousRelease": "/opt/unboundry/releases/v0.6.32-image-edit-source-20260823",
+    "currentTarget": "/opt/unboundry/releases/v0.6.33-crop-loading-20260823",
+    "freshBuild": {
+      "node": "v22.23.2",
+      "npm": "10.9.8",
+      "npmCiIgnoreScripts": "PASS",
+      "typecheck": "PASS",
+      "viteBuild": "PASS",
+      "knownChunkSizeWarningOnly": true
+    },
+    "inventory": {
+      "filesIncludingInventory": 5881,
+      "inventoryLines": 5880,
+      "sha256": "f88ae63bb5c0de23ef1bd90e7ecdf8c7f6fa2a1a027b5dc1a06dffb65861c98d",
+      "postSwitchCheck": "PASS"
+    },
+    "localTransferArchiveRetained": "/tmp/unboundry-v0.6.33-release.zl42OO/unboundry-v0.6.33.tar.gz"
+  },
+  "preCutoverActivity": {
+    "activeGenerationDetected": false,
+    "activeTasks": 0,
+    "activeMediaPublications": 0,
+    "serviceRestartedWhileActiveTasks": false,
+    "releaseInitiatedProviderRequests": 0,
+    "releaseInitiatedOssWrites": 0
+  },
+  "frozenBackup": {
+    "path": "/var/lib/unboundry-rollbacks/v0.6.33-frozen-sLmph1",
+    "createdOnce": true,
+    "frozenAndRestoreFiles": 365,
+    "frozenManifestSha256": "50ccbb8d7baa4b27bf2762258a85b7218931c2460308af1d44e3b333a5a31256",
+    "restoreManifestSha256": "50ccbb8d7baa4b27bf2762258a85b7218931c2460308af1d44e3b333a5a31256",
+    "schemaVersion": 39,
+    "integrity": "ok",
+    "foreignKeyViolations": 0,
+    "restoredCountsEqualPreCutover": true,
+    "deletedOrOverwritten": false
+  },
+  "productionAcceptance": {
+    "cutoverAt": "2026-08-23T16:31:44+08:00",
+    "loopbackVersion": "0.6.33",
+    "publicVersion": "0.6.33",
+    "loopbackLive": 200,
+    "loopbackReady": 200,
+    "publicLive": 200,
+    "publicReady": 200,
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "serviceRestarts": 0,
+    "schemaVersion": 39,
+    "integrity": "ok",
+    "foreignKeyViolations": 0,
+    "countsBeforeAndAfterEqual": true,
+    "counts": {
+      "generationTasks": 722,
+      "providerAttempts": 730,
+      "activeTasks": 0,
+      "mediaAssets": 761,
+      "mediaBytes": 1327334656,
+      "activeMediaPublications": 0,
+      "historicalFailedMediaPublications": 8,
+      "canvases": 58,
+      "publicTemplates": 50,
+      "publishedPublicTemplates": 48
+    },
+    "imageEditSourceUnauthenticatedStatus": 401,
+    "publicAssetsCompared": 5,
+    "publicAssetsEqualRelease": true,
+    "publicAssetSha256": {
+      "CanvasShell-DjVq5TJV.js": "bead0b2d2bcbd13c6d1d546c1f5fc2f90ed59fc59b1153e94617965e01f85d60",
+      "WorkspacePage-CZqIpVpj.js": "04af6debb4c4fee2d26e44908209880cf9e72b217d96ba61b4d1f11cb2a424c1",
+      "index-BIyM6zbk.css": "992ac09efc04ad6bfa184821b889e0f0c11fdfd5fd56b08a3e2c945871b4ef4b",
+      "index-Tds4PpFJ.js": "054c2ad2f0b327aac8da9e8c990a371b07d8245e1db06fe6243ce24767fd0c98",
+      "projectStorage-bDqWmIep.js": "f3dfbbc61ae015f10972ab86f8d3bd0fbc1ae634b88a290073fdb523c3b4ff5d"
+    },
+    "journalLinesInspected": 20,
+    "journalUnexpectedErrorLines": 0,
+    "journalProviderOrGenerationRoutes": 0,
+    "releaseInitiatedProviderRequests": 0,
+    "releaseInitiatedOssWrites": 0
+  },
+  "documentationClosure": {
+    "scope": "m38-generation-runtime-incidents",
+    "status": "PENDING_DOCS_PR",
+    "safeFullRun": false
+  },
+  "rollback": {
+    "required": false,
+    "previousReleaseRetained": true,
+    "frozenBackupRetained": true,
+    "productionDataDeleted": false,
+    "productionMediaDeleted": false,
+    "immutableReleaseDeleted": false
+  },
+  "authorizationConsumed": true,
+  "userAcceptance": {
+    "status": "USER_RECHECK",
+    "scope": "v0.6.33 production crop loading experience"
+  },
+  "completionBoundary": "v0.6.33 is technically published and healthy. User confirmation is still required before USER_PASS. The release authorization is consumed and cannot be reused for another production change."
+}

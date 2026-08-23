@@ -6,9 +6,13 @@
 
 新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-23 的权威现状、产品合同和用户验收边界。下面各节是历史增量，出现「当前」时只代表该时点。
 
-## 当前线上：OSS 图片裁剪同站编辑源（v0.6.32，2026-08-23 USER PASS）
+## 当前线上：裁剪准备态紧凑加载体验（v0.6.33，2026-08-23 USER RECHECK）
 
-v0.6.32 已把图片裁剪改为 owner-scoped 同站取图：服务端从local/OSS读取并验证PNG，客户端只把同源Blob画入Canvas，避免跨域重定向导致`toBlob`失败；resolver保持可替换，未来可接独立媒体域名。tag commit `4cf9d74dec941dea8f10e73bb07de990b668e150` / tree `7a5db8aa2b5ac9a42f33a0da176457e74504ca20`；PR #75 squash merge `864cd2de9ad9a22a7dad7deb7a9fb268085f47f8`。生产 current `/opt/unboundry/releases/v0.6.32-image-edit-source-20260823`，冻结备份 `/var/lib/unboundry-rollbacks/v0.6.32-frozen-H9k2Lm`。正式full原始记录`1049/1050`，同源码只复验唯一失败m22后`37/37 PASS`；生产schema/integrity/FK、切换前后数据、service、公网/回环、inventory和5资源全部通过。用户已在生产实页成功裁剪原先报错的OSS图片，状态`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。准备态体验候选见`spec/INC_IMGEDIT_002_CROP_LOADING_EXPERIENCE_PLAN_2026-08-23.md`，已完成本地实现和定向验收，状态`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / LOCAL_AGENT_PAGE_PASS / USER_RECHECK / VERSION_TBD / NOT_COMMITTED / NOT_RELEASED`，不得自动commit、定版本或发布。
+v0.6.33把HTTP/OSS图片的裁剪准备态改为320×180紧凑加载卡片，不增加原图重复读取；仅内存`blob:`/`data:`预览显示缩略图，安全同站Blob仍是唯一裁剪/导出数据源。tag commit `669958f4e325cc182c31cf0f27861e26b64736b1` / tree `c3a1c27cbe0c230d7005f260c5b57b96ad274acd`；PR #77 squash merge `8675a34b14b17fdf69b5e08b0469c520e4df79cb`。生产 current `/opt/unboundry/releases/v0.6.33-crop-loading-20260823`，冻结备份 `/var/lib/unboundry-rollbacks/v0.6.33-frozen-sLmph1`。正式full原始记录`1049/1050`，同源码只复验唯一失败m22后`37/37 PASS`；生产schema/integrity/FK、切换前后数据、service、公网/回环、inventory和5资源全部通过。状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`，回执`spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json`。
+
+## 上一线上：OSS 图片裁剪同站编辑源（v0.6.32，2026-08-23 USER PASS）
+
+v0.6.32 已把图片裁剪改为 owner-scoped 同站取图：服务端从local/OSS读取并验证PNG，客户端只把同源Blob画入Canvas，避免跨域重定向导致`toBlob`失败；resolver保持可替换，未来可接独立媒体域名。tag commit `4cf9d74dec941dea8f10e73bb07de990b668e150` / tree `7a5db8aa2b5ac9a42f33a0da176457e74504ca20`；PR #75 squash merge `864cd2de9ad9a22a7dad7deb7a9fb268085f47f8`。生产 current `/opt/unboundry/releases/v0.6.32-image-edit-source-20260823`，冻结备份 `/var/lib/unboundry-rollbacks/v0.6.32-frozen-H9k2Lm`。正式full原始记录`1049/1050`，同源码只复验唯一失败m22后`37/37 PASS`；生产schema/integrity/FK、切换前后数据、service、公网/回环、inventory和5资源全部通过。用户已在生产实页成功裁剪原先报错的OSS图片，状态`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。其准备态体验优化已由后续v0.6.33发布。
 
 ## 上一线上：模块化 main-safe 集成（v0.6.31，2026-08-23 已发布并获用户验收）
 

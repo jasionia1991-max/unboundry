@@ -231,4 +231,4 @@ type EditableImageSource = {
 
 - 用户在v0.6.32生产实页实际裁剪原先报`Tainted canvases may not be exported`的OSS图片并明确反馈“成功裁剪了”。
 - 本功能由`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`收口为`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。
-- 用户同时指出安全原图准备阶段会先出现大黑框；这不影响本功能成功结论。独立体验项`spec/INC_IMGEDIT_002_CROP_LOADING_EXPERIENCE_PLAN_2026-08-23.md`已完成本地实现和定向验收，尚未commit、定版本或发布。
+- 用户同时指出安全原图准备阶段会先出现大黑框；这不影响本功能成功结论。独立体验项`spec/INC_IMGEDIT_002_CROP_LOADING_EXPERIENCE_PLAN_2026-08-23.md`已随v0.6.33发布并通过生产技术门，当前等待用户复验。
