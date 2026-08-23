@@ -2,9 +2,9 @@
 
 更新日期：2026-08-21
 
-状态：`HISTORICAL_V0_6_28_CHECKPOINT / SUPERSEDED_BY_V0_6_29_30 / CURRENT_V0_6_30_USER_PASS`
+状态：`HISTORICAL_V0_6_28_CHECKPOINT / SUPERSEDED_BY_V0_6_29_30 / CURRENT_V0_6_33_USER_PASS`
 
-当前收口：本 Checkpoint 的 package、发布源码和 `USER_RECHECK` 是 v0.6.28 冻结时点。当前生产为 v0.6.30/schema39；三模型只归属云腾 Provider，v0.6.29 已完成三次有界真实创建，v0.6.30 以零新增 POST 恢复 Nano PNG 与 Suno 两个 MP3 并获用户验收。后续恢复只读 `spec/UNBOUNDRY_CURRENT_STATE.md`，不得从本文件重启旧 Goal。
+当前收口：本 Checkpoint 的 package、发布源码和 `USER_RECHECK` 是 v0.6.28 冻结时点。当前生产为 v0.6.33/schema39；三模型只归属云腾 Provider，v0.6.29 已完成三次有界真实创建，v0.6.30 以零新增 POST 恢复 Nano PNG 与 Suno 两个 MP3 并获用户验收。后续恢复只读 `spec/UNBOUNDRY_CURRENT_STATE.md`，不得从本文件重启旧 Goal。
 
 ## 1. v0.6.28 冻结身份
 

@@ -3,9 +3,9 @@
 状态：`COMPLETED_WITH_USER_ACCEPTANCE`
 计划版本：`1.56-backlog-user-accepted`
 建立日期：`2026-08-09`
-当前结论：生产运行`v0.6.15`。站着的产品合同是「上传一张图，工作流自己跑完，用户下载」。`INC-GEN-007`已由用户回复通过。用户于2026-08-18再回复「全通过」，`INC-GEN-006/004`、`INC-UI-005/004/003/002/001`、`INC-VIDEO-001`一并收口为 USER PASS。`INC-GEN-005/003/002/001`、`INC-UI-009/008/007/006`、`INC-ECOM-007`、`REM-000～011`、`DEP-010`保持 PASS。其他未点头条目不自动升级。一页快照见`spec/UNBOUNDRY_CURRENT_STATE.md`。
+本方案最终收口时点结论：生产运行`v0.6.15`。站着的产品合同是「上传一张图，工作流自己跑完，用户下载」。`INC-GEN-007`已由用户回复通过。用户于2026-08-18再回复「全通过」，`INC-GEN-006/004`、`INC-UI-005/004/003/002/001`、`INC-VIDEO-001`一并收口为 USER PASS。`INC-GEN-005/003/002/001`、`INC-UI-009/008/007/006`、`INC-ECOM-007`、`REM-000～011`、`DEP-010`保持 PASS。其他未点头条目不自动升级。当前生产身份只看`spec/UNBOUNDRY_CURRENT_STATE.md`。
 
-生产当前运行 `/opt/unboundry/current -> /opt/unboundry/releases/v0.6.15-inc-gen-007-20260818`，service active/enabled、NRestarts0；公网version与schema39通过。v0.6.15源码commit为`5630dd6ee328266a27295bc9d2e7479f89147b32`、tree为`6c2e82b4824be085a3258b7b7a113ed06849cf4d`，标签`v0.6.15`精确指向该源码；PR #26已于2026-08-18合并到`main`（merge commit `714827c7152dcfd933ed96ab9427f479b57634de`）。正式安全全量`118/118 specs、976/976 tests PASS`。
+该时点生产运行 `/opt/unboundry/current -> /opt/unboundry/releases/v0.6.15-inc-gen-007-20260818`，service active/enabled、NRestarts0；公网version与schema39通过。v0.6.15源码commit为`5630dd6ee328266a27295bc9d2e7479f89147b32`、tree为`6c2e82b4824be085a3258b7b7a113ed06849cf4d`，标签`v0.6.15`精确指向该源码；PR #26已于2026-08-18合并到`main`（merge commit `714827c7152dcfd933ed96ab9427f479b57634de`）。正式安全全量`118/118 specs、976/976 tests PASS`。
 
 F14生产artifact固定为commit `eb4f99ea525390b0dd7a39d3cad55d882ffea41d` / tree `86b4e424b6d6324c5f24d4c633b0cd35baf0d626` / manifest `46e2365c48b8e8bdaa1847b1767ef2974a71f2d2b47c87743793c116e5ec2adf` / inventory `ac8ca43a9f8f6724ca67bd0899185fa3952e762e0400a1f9ce34f3ecfefc2bac` / tar `0e3a96a13299efba407ba98dc6501ae97297c9a82c067827b9f9befeb2c18944`。原schema37 raw backup `7f14c611…` 已离机恢复PASS（inspection `b4d58243…`）。最终技术凭证 SHA `5c78e7bca9af1c099e2d94e5120b63f867e4ea3b25bb61a18f751dfc8a46c2d8` 为 `TECHNICAL_CUTOVER_VERIFIED`。
 

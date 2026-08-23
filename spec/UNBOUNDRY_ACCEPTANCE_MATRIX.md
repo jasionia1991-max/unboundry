@@ -1,9 +1,9 @@
 # Unboundry 绿地复刻验收矩阵
 
 基线日期：2026-07-27  
-当前状态更新：2026-08-21
+当前状态更新：2026-08-23
 
-2026-08-21 `CURRENT_RELEASE = v0.6.30 / schema39 / PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`：Nano 的云腾 JPEG 结果已有界规范化为 PNG；Suno 两个不同完整 MP3 已按 Provider 原序持久化为 primary/alternate，可切换、播放并在刷新后恢复。v0.6.30 只核对既有 provider task，新增 Provider 创建 POST、task、attempt、admission 均为0；Nano、Kling、Suno 三模型只归属云腾 Provider，优创 profile/凭据/模型/绑定/task/attempt 对冻结备份差异为0。用户打开生产验收项目后明确回复“通过”。当前没有已批准的下一版本；`VIEW-005`已由后续精确三档隔离证据收口为`AUTO_PASS`，其他`PARTIAL/PAUSED/BLOCK`不自动升级。
+2026-08-23 `CURRENT_RELEASE = v0.6.33 / schema39 / PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`：v0.6.33在v0.6.32同站安全Blob裁剪链上，把HTTP/OSS图片准备态改为320×180紧凑加载卡片且不增加原图重复读取；用户已在线上复验并明确回复“通过”。tag、PR、main CI、冻结备份与恢复副本、精确源码构建、原子切换和生产技术终门均通过；当前没有待发布候选，v0.6.33版本号与发布授权已消费。`VIEW-005`保持`AUTO_PASS`，其他`PARTIAL/PAUSED/BLOCK`不自动升级。
 
 本文件下方旧版本的 `USER_RECHECK/PENDING` 均保留各自验收时点，不再承担当前线上版本播报，也不得被直接当成下一施工计划。当前版本、当前计划和授权边界只以 `spec/UNBOUNDRY_CURRENT_STATE.md` 为准。
 
@@ -359,6 +359,19 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 | IMGEDIT-007 | P1 | `legacy.editor.image-lighting` | 亮度、色温、方向、轮廓光和预览几何一致 | 参考25；用户决定暂停，入口禁用且实现保留 | PAUSED |
 | IMGEDIT-008 | P0 | 全部高级编辑 | 取消/失败不发布半成品；原图不可被静默覆盖 | 裁剪取消、保存失败故障注入、原/派生asset检查及用户实页复验 | PASS |
 | IMGEDIT-009 | P0 | 全部高级编辑 | 无真实后端能力的按钮保持禁用，不伪造成功 | 高级编辑能力矩阵、真实disabled状态、零Provider请求及用户实页复验 | PASS |
+| IMGEDIT-010 | P0 | 图片工具应用边界 | 轻量Dispatcher与小use case；复用Canvas/Generation/Media公开端口；服务端权威操作启用；不把编排重新堆入ImageNode/CanvasSurface/generationTasks | 架构防火墙、导入/SQL负控、状态恢复、既有裁剪/下载/全屏回归 | NOT_STARTED |
+| IMGEDIT-011 | P1 | 颜色标记 | 添加/移除一个或多个颜色标记，刷新、筛选、撤销重做保持；不冒充锁定/收藏 | 节点元数据、Canvas持久化、刷新和筛选实页 | NOT_STARTED |
+| IMGEDIT-012 | P0 | 个人素材库 | owner-scoped安全引用、幂等保存、读取、删除条目和Media删除保护；不保存签名URL，团队区保持禁用 | 数据所有权、migration/旧版本兼容、删除竞态、用户实页 | NOT_STARTED |
+| IMGEDIT-013 | P1 | 调整像素 | 精确宽高、默认比例锁、本地确定性处理；保留原图并创建派生节点，零Provider请求 | 像素/格式/内存边界、node/edge/asset、刷新 | NOT_STARTED |
+| IMGEDIT-014 | P1 | 快速分割 | 2×2/3×3/4×4预览与4/9/16个派生节点一次批量落地；失败不显示假成功 | 网格像素检查、批次写入、故障补偿、零Provider | NOT_STARTED |
+| IMGEDIT-015 | P1 | 标注与导出 | 可编辑画笔/矩形/箭头/编号/文字；持久化容量有界，原图不改，显式导出才生成资产 | 容量基准、IME、刷新、撤销重做、导出实页 | NOT_STARTED |
+| IMGEDIT-016 | P0 | 多角度真实生成 | 真实结构化水平/垂直/距离/广角控制；持久任务、恢复、幂等和派生节点；不以提示词冒充 | fake零请求、一次真实技术冒烟、用户质量复验 | NOT_STARTED |
+| IMGEDIT-017 | P0 | 重绘真实生成 | 真实mask局部编辑，未遮罩区域尽量保持；遮罩坐标、附件生命周期、恢复和付费安全完整 | mask像素/高DPI/旋转、fake、真实技术冒烟、用户质量复验 | NOT_STARTED |
+| IMGEDIT-018 | P0 | 扩图与擦除 | outpaint只补新增区域；erase移除遮罩对象并补景；两者独立operation，不以拉伸/普通重绘冒充 | fake、派生结果、真实技术冒烟、用户质量复验 | NOT_STARTED |
+| IMGEDIT-019 | P0 | 增强与主体抠图 | 保守/创意增强语义分开；抠图端到端输出透明PNG，任一环节丢Alpha即fail-closed | 处理器合同、Alpha全链、fake、真实技术冒烟、用户质量复验 | NOT_STARTED |
+| IMGEDIT-020 | P1 | Seedance素材校验 | 本地技术预检绑定asset/model/role并可过期；仅在官方接口存在时声明远端资格，不生成视频或作法律保证 | 纯规则测试、stale、零视频生成请求、状态实页 | NOT_STARTED |
+
+`IMGEDIT-010～020` 由 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md` 和对应 Checkpoint 驱动。当前只是计划登记；历史 `IMGEDIT-001～006、008、009 = PASS` 继续只证明既有外观、安全禁用和裁剪结果合同，不自动证明新功能已经实现。`IMGEDIT-007` 继续 `PAUSED`。
 
 ## 12. 未知项与范围裁决
 

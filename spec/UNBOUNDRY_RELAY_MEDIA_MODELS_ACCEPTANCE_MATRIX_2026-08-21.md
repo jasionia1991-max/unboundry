@@ -2,9 +2,9 @@
 
 更新日期：2026-08-21
 
-状态：`PRODUCTION_PUBLISHED / SUPERSEDED_BY_V0_6_29_30_REAL_EVIDENCE / CURRENT_V0_6_30_USER_PASS`
+状态：`PRODUCTION_PUBLISHED / SUPERSEDED_BY_V0_6_29_30_REAL_EVIDENCE / CURRENT_V0_6_33_USER_PASS`
 
-当前生产证据：v0.6.29 在独立云腾 Provider 下恰好创建 Nano、Kling、Suno 三个真实任务；v0.6.30 未新增 POST，只恢复既有 Nano JPEG 与 Suno 两个完整 MP3，Kling MP4 已在前版保存。三模型当前只归属云腾，优创隔离差异为0；用户已打开 v0.6.30 云腾生产验收项目并回复“通过”。本矩阵原 `AUTO_PASS/PAUSED` 行保留 v0.6.28 工程时点，当前聚合结论以 v0.6.30 回执为准。
+当前生产证据：v0.6.29 在独立云腾 Provider 下恰好创建 Nano、Kling、Suno 三个真实任务；v0.6.30 未新增 POST，只恢复既有 Nano JPEG 与 Suno 两个完整 MP3，Kling MP4 已在前版保存。三模型当前只归属云腾，优创隔离差异为0；用户已打开 v0.6.30 云腾生产验收项目并回复“通过”。本矩阵原 `AUTO_PASS/PAUSED` 行保留 v0.6.28 工程时点；当前聚合版本为v0.6.33，当前身份与验收以 `spec/UNBOUNDRY_CURRENT_STATE.md` 和最新版本回执为准。
 
 当前自动证据：Node `22.23.1` / npm `10.9.8`；最终相关代码下 safe runner 的 TypeScript、构建、source coverage、外网门禁均通过。统一集合首次进入产品测试后为 `145/148`，仅 m53/m57 三条直接失败；定向修复后只重跑失败文件 m53+m57，`40/40` 通过，因此十个目标 spec 的最终有效结果为 `148/148`。所有执行均为新临时目录、动态 loopback、fake fetch，4173 前后身份不变。
 

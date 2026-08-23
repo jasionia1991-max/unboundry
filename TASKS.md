@@ -5,6 +5,24 @@
 更新时间：2026-08-23
 状态：`v0.6.33 已发布并通过技术终门与用户线上复验，状态 PRODUCTION_PUBLISHED_USER_PASS / USER_PASS。权威回执见 spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json。`
 
+### 2026-08-23 图片工具栏剩余能力单 Goal 方案（INC-IMGEDIT-003，DOCUMENT_DRIVEN_GOAL_READY）
+
+- 用户已批准最终 V5 方案并要求后续长任务严格由项目文档驱动，防止新 Session 或上下文压缩后失忆漂移。主方案：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md`；实时断点：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_CHECKPOINT.md`；新 Session 提示词：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_GOAL_PROMPT_2026-08-23.md`。
+- 单 Goal 连续范围：最小图片工具应用边界、颜色标记、调整像素、快速分割、标注、个人素材库、多角度、遮罩/重绘、扩图、擦除、保守/创意增强、主体抠图和 Seedance 素材校验；裁剪只回归，打光 `IMGEDIT-007` 继续 `PAUSED`。
+- 防漂移门：D0～D13 同时最多一个阶段 `IN_PROGRESS`；每阶段完成后必须先更新 Checkpoint、验收矩阵和本区块，版本/候选/生产事实变化时再更新 CURRENT_STATE；上下文恢复必须重读文档、核对 Git，只从 Checkpoint 的“唯一下一动作”继续。
+- 防耦合门：轻量 Dispatcher + 小 use case，优先复用 Canvas/Generation/Media 现有端口；不把任务、Provider、媒体和 SQL 编排重新塞入 `ImageNode.tsx`、`CanvasSurface.tsx` 或 `generationTasks.ts`。
+- 真实证据门：fake 与零请求自动测试先行；真实付费技术冒烟总上限 8 次，只记 `REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，不冒充质量通过；生产技术发布最多记 `USER_QUALITY_RECHECK`，用户明确确认后才是 `USER_PASS`。
+- 当前仍为 `PLAN_FROZEN / NOT_STARTED`：`IMGEDIT-010～020` 只登记 `NOT_STARTED`；没有产品代码、schema、package、Provider、OSS、GitHub或生产变化，没有新版本或候选。
+- 新 Goal 可以连续完成工程；D13 仍必须在提示词中填写具体版本号并单独写“允许发布/上线”。模糊的“所有授权”不能绕过《上线规矩》的两项发布门。
+- 本次落档 `git diff --check` 通过；定向 m38 safe runner 在产品测试前被 main 既有 ignored `backups/` 隔离负控以 `EISDIR` 阻断，0 个产品测试执行，source snapshot 和 4173 listener 未变。未删除/移动备份、未绕过 safe runner、未把该尝试记为自动 PASS；完整记录见 Checkpoint。
+
+### 2026-08-23 当前版本文档残留对齐（docs-only）
+
+- 把仍以“当前/顶部/聚合状态”指向v0.6.30～v0.6.32的治理文档统一对齐到v0.6.33；历史发布、候选和运维时点原值继续保留，不改写历史证据。
+- `UNBOUNDRY_CURRENT_STATE.md`的“当前线上”段已改为v0.6.33精确release、tag commit/tree、PR、冻结备份、数据门和测试边界；验收矩阵与模块化历史文档只更新当前指针和恢复入口。
+- 本轮不修改产品代码、package、schema、测试、Provider、OSS或生产；不读取、不修改、不暂存受保护未跟踪JSON，也不获得commit、push、tag、PR或发布授权。
+- 验证：承担当前身份播报的“当前/顶部/聚合状态”残留定向扫描命中0，历史回执和候选阶段原值继续保留；`git diff --check`通过。与main HEAD同树且无`backups/`干扰的既有clean linked worktree中，m38实际读取的四份权威文档与main逐字节一致，安全入口定向`15/15 PASS`，source/snapshot不变、4173 listener不变。未运行safe full。
+
 ### 2026-08-23 图片裁剪准备态体验优化（INC-IMGEDIT-002，v0.6.33已发布并获用户确认）
 
 - 用户确认v0.6.32裁剪成功，同时指出首次打开会先出现“大黑框+正在准备图片”；根因是安全编辑源完成同站读取、校验、Blob创建和图片解码前，裁剪舞台已按默认1280×720比例展开。
@@ -90,10 +108,10 @@
 
 ### 当前后续计划边界
 
-- v0.6.31 的 GitHub、生产发布、技术回执和用户实页验收均已完成；发布授权已消费，不扩大到新功能或暂停项。
+- v0.6.33 的 GitHub、生产发布、技术回执和用户实页验收均已完成；发布授权已消费，不扩大到新功能或暂停项。
 - `VIEW-005`的98/171/200节点精确性能档位已由安全定向`m79`收口为`AUTO_PASS`；这只是工程证据关闭，不启动下一版本、生产发布或新的用户主观验收。
 - Mureka 真实音频、团队/多人协作、真实 Agent 协议、Storyboard 完整编辑、图片打光与其他付费内容抽验继续保持原 `PARTIAL/PAUSED/BLOCK`；需要用户重新立项和对应授权。
-- 下方旧段落中的“待复验”“当前阶段”“下一步”均为各自时点记录；若与本文件顶部或 `UNBOUNDRY_CURRENT_STATE.md` 冲突，以顶部 v0.6.31 `USER_PASS` 状态为准。
+- 下方旧段落中的“待复验”“当前阶段”“下一步”均为各自时点记录；若与本文件顶部或 `UNBOUNDRY_CURRENT_STATE.md` 冲突，以顶部 v0.6.33 `USER_PASS` 状态为准。
 
 ### 2026-08-21 VIEW-005 密集画布精确三档证据（AUTO_PASS）
 
@@ -130,7 +148,7 @@
 
 ### 2026-08-21 同一中转站三媒体模型与结果边界（v0.6.28 历史发布时点）
 
-- v0.6.28 时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该能力随后经 v0.6.29 三次有界真实验证与 v0.6.30 结果兼容修复、生产验收和用户确认收口，并继续包含在 v0.6.32。当前聚合状态以顶部 v0.6.32 为准。Generation已拥有媒体结果提交事务；MediaLifecycle/MediaRegistry不再读写generation task/attempt，TaskStore↔Safety循环已解除。
+- v0.6.28 时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该能力随后经 v0.6.29 三次有界真实验证与 v0.6.30 结果兼容修复、生产验收和用户确认收口，并继续包含在 v0.6.33。当前聚合状态以顶部 v0.6.33 为准。Generation已拥有媒体结果提交事务；MediaLifecycle/MediaRegistry不再读写generation task/attempt，TaskStore↔Safety循环已解除。
 - 模型合同：Nano Banana Pro `gemini-3-pro-image-preview`、Kling V3 Omni `kling-v3-omni-cankao`、Suno V4.5 `suno-v4.5`统一走现有`multi-protocol-relay/media-generate`；参数、引用、严格结果类型和10/75/15分钟持久轮询窗口已固化。
 - 自动证据：Node `22.23.1` / npm `10.9.8`；十个目标spec最终有效`148/148`。第一次产品测试`145/148`后只重跑失败的m53+m57并`40/40`通过；TypeScript、构建、source coverage、外网门禁均通过。
 - 发布边界：已完成发布full覆盖与失败spec最小复验、GitHub、冻结备份、生产切换和零付费技术验收；没有真实Provider专用smoke，`REAL_PROVIDER_SMOKE_PAUSED`，待用户线上复验。受保护JSON保持untracked且未读/未改/未暂存/未提交。
@@ -138,7 +156,7 @@
 
 ### 2026-08-21 同步文字Provider registry/port（v0.6.28 历史发布时点）
 
-- v0.6.28 时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该代码已持续包含在当前 v0.6.32 生产版本中，本段不再充当当前待发布清单。代码已把同步文字执行收口到唯一`TextProviderRegistry`入口；Task协调器不再按具体文字driver调用adapter，Ark native与四类relay文字协议各由adapter实现统一port。
+- v0.6.28 时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该代码已持续包含在当前 v0.6.33 生产版本中，本段不再充当当前待发布清单。代码已把同步文字执行收口到唯一`TextProviderRegistry`入口；Task协调器不再按具体文字driver调用adapter，Ark native与四类relay文字协议各由adapter实现统一port。
 - 任务安全：profile/credential owner、lease、provider-boundary attempt、task幂等/reconcile、结果归属与错误文案保持原边界；fake Provider可注入且网络0，未知实现本地fail-closed且网络0。
 - 自动证据：Node `22.23.1` / npm `10.9.8`；一次TypeScript noEmit退出0；m33 `8/8`、m39 `3/3`、m44 `8/8`、m53 `23/23`、m57 `14/14`安全定向通过，异常0，动态loopback与新临时数据，4173 listener不变。
 - 第一批施工时点明确未做：未跑full/默认verify，未真实调用Provider/OSS，未访问SSH/生产，未改版本/schema/Canvas/Workflow/Media publication。后续发布与生产证据已经由 v0.6.28～v0.6.30 回执补齐，不能继续把本段解释为“尚未发布”。

@@ -2,7 +2,7 @@
 
 状态：`IMPLEMENTED / USER_PASS / HISTORICAL_PLAN`（代码、真实配置修复、生产部署、备份与恢复演练均已完成）
 日期：2026-08-08
-历史施工仓库：`/Users/mymy/Documents/unboundry1_1复刻/app`（HEAD `554d036`，工作树干净）；当前权威仓库为 `/Users/mymy/Documents/unboundry/app`，生产版本 v0.6.30/schema39
+历史施工仓库：`/Users/mymy/Documents/unboundry1_1复刻/app`（HEAD `554d036`，工作树干净）；当前权威仓库为 `/Users/mymy/Documents/unboundry/app`，生产版本 v0.6.33/schema39
 
 当前说明：本文件保留方案 A 的原始实施时点；后续真实 OSS 备份上传、生产部署与恢复演练已经完成。当前存储和发布事实以 `spec/UNBOUNDRY_CURRENT_STATE.md`、`spec/UNBOUNDRY_DEPLOYMENT_PLAN_2026-08-08.md`及版本回执为准，文中的“首次真实运行待授权”不得再解释为当前总状态。
 
