@@ -27,7 +27,7 @@ export type SingleNodeGenerationBlocked = Readonly<{
 export type SingleNodeLifecycleResult = Readonly<{
   reconcileOutcome?: GenerationReconcileOutcome;
   reason?: "blocked" | "stale";
-  status: "cancelled" | "failed" | "stale" | "success";
+  status: "cancelled" | "failed" | "stale" | "submitted" | "success";
   task?: GenerationTaskSummary;
 }>;
 
@@ -103,6 +103,7 @@ export interface SingleNodeGenerationLifecycle {
   reconcile(task: SingleNodeGenerationTaskReference): Promise<SingleNodeLifecycleResult>;
   recover(task?: GenerationTaskSummary): Promise<SingleNodeLifecycleResult>;
   retry(task: SingleNodeGenerationTaskReference): Promise<SingleNodeLifecycleResult>;
+  submit(): Promise<SingleNodeLifecycleResult>;
 }
 
 function isBlocked(
@@ -314,6 +315,34 @@ export function createSingleNodeGenerationLifecycle(input: {
     return finish(planned, task, state, runId, bindingReceipt.revision);
   };
 
+  const submit = async (): Promise<SingleNodeLifecycleResult> => {
+    const state = begin();
+    const planned = readPlan();
+    if (isBlocked(planned)) return { reason: "blocked", status: "failed" };
+    const runId = randomUUID();
+    if (input.adapter.applyPrepared &&
+      !apply(planned, undefined, "prepare", runId)) {
+      return { reason: "stale", status: "stale" };
+    }
+    const receipt = await flush();
+    if (!current(state.operation, state.controller.signal)) {
+      return { reason: "stale", status: "stale" };
+    }
+    const ensured = await input.tasks.ensure(planned, {
+      assertCurrent: () => assertCurrentPlan(planned),
+      canvasRevision: receipt.revision,
+      signal: state.controller.signal,
+      waitForRevision: () => waitForCurrentRevision(planned, state),
+    });
+    const task = ensured.task;
+    if (!current(state.operation, state.controller.signal) ||
+      !apply(planned, task, "binding", runId)) {
+      return { reason: "stale", status: "stale" };
+    }
+    await flush();
+    return { status: "submitted", task };
+  };
+
   /**
    * Existing-task operations preserve the legacy save gate: the task command
    * owns its single revision wait, binding is in-memory, and only the terminal
@@ -438,5 +467,6 @@ export function createSingleNodeGenerationLifecycle(input: {
     retry(task) {
       return runExisting((plan, context) => input.tasks.retry(task, plan, context));
     },
+    submit,
   };
 }

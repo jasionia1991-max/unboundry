@@ -17,6 +17,7 @@ import {
 } from "../client/src/canvas/canvasNodeRegistry";
 import {
   createSingleNodeGenerationLifecycle,
+  type SingleNodeGenerationLifecycle,
   type SingleNodeGenerationTaskPort,
 } from "../client/src/generation/singleNodeGenerationLifecycle";
 import type { GenerationTaskSummary } from
@@ -103,6 +104,8 @@ import { createBatchDerivedImageToolUseCase } from
   "../client/src/imageTools/batchDerivedImageToolUseCase";
 import { createGenerationImageToolUseCase } from
   "../client/src/imageTools/generationImageToolUseCase";
+import { createMultiAngleImageToolUseCase } from
+  "../client/src/imageTools/multiAngleImageToolUseCase";
 import {
   createFakeImageToolCapabilityAdapter,
   ImageToolCapabilityAdapterRegistry,
@@ -497,14 +500,15 @@ test("image tool capability snapshot is complete, unique and fail-closed", () =>
       emergencyStop: false,
       globalEnabled: true,
       maxCostMicrounits: 9_000,
-      modelId: "gpt-image-2",
+      modelId: "image-model-internal-id",
+      providerModelId: "gpt-image-2",
       providerProtocol: "gpt-image",
     },
     now: new Date("2026-08-23T12:00:00.000Z"),
   });
   expect(imageToolCapability(serverSnapshot, "multi-angle")).toMatchObject({
     estimatedCost: { amount: 0.009, currency: "USD", source: "operator" },
-    modelId: "gpt-image-2",
+    modelId: "image-model-internal-id",
     status: "available",
     supportsMask: true,
   });
@@ -861,6 +865,102 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
     "split-31",
     "split-32",
   ]);
+
+  let multiAngleSnapshot: CanvasGraphSnapshot = {
+    edges: [],
+    nodes: [{
+      data: { assetId: "angle-source-asset", label: "Image" },
+      id: "angle-source",
+      position: { x: 10, y: 20 },
+      style: { width: 250 },
+      type: "image",
+    }],
+    revision: 7,
+  };
+  const multiAngleGraph = createCanvasGraphCommandPort({
+    commit(next) { multiAngleSnapshot = next; },
+    persistenceReady: () => true,
+    snapshot: () => multiAngleSnapshot,
+  });
+  let capturedPlan: { nodeId: string; payload: { ownPrompt: string } } |
+    undefined;
+  const multiAngle = createMultiAngleImageToolUseCase({
+    async afterPlaceholderCreated() {},
+    capability: modularImageToolCapability("multi-angle", {
+      expiresAt: "2099-08-23T13:00:00.000Z",
+      modelId: "image-model-internal-id",
+    }),
+    graph: multiAngleGraph,
+    createLifecycle(plan) {
+      capturedPlan = plan;
+      const fakeTask: GenerationTaskSummary = {
+        attempt: 1,
+        canvasId: "angle-canvas",
+        costCurrency: "USD",
+        createdAt: "2026-08-23T12:00:00.000Z",
+        generationInputKey: plan.inputKey,
+        generationOwnershipKey: plan.ownershipKey,
+        id: "angle-task-1",
+        kind: "image",
+        nodeId: plan.nodeId,
+        prompt: plan.payload.prompt,
+        state: "queued",
+        updatedAt: "2026-08-23T12:00:01.000Z",
+      };
+      return {
+        abort() {},
+        async cancel() { return { status: "cancelled", task: fakeTask }; },
+        async generate() { return { status: "success", task: fakeTask }; },
+        async reconcile() { return { status: "success", task: fakeTask }; },
+        async recover() { return { status: "success", task: fakeTask }; },
+        async retry() { return { status: "success", task: fakeTask }; },
+        async submit() { return { status: "submitted", task: fakeTask }; },
+      } satisfies SingleNodeGenerationLifecycle;
+    },
+  });
+  await expect(multiAngle.execute({
+    aspectRatio: "auto",
+    canvasId: "angle-canvas",
+    expectedRevision: 7,
+    modelId: "image-model-internal-id",
+    modelName: "GPT Image 2",
+    modelParameters: { inputMode: "image", outputCount: 1 },
+    operationId: "angle-operation-1",
+    ownershipKey: "angle-owner-1",
+    parameters: {
+      distance: 20,
+      horizontalDegrees: 45,
+      verticalDegrees: -12,
+      wideAngle: true,
+    },
+    quality: "auto",
+    runId: "angle-run-1",
+    sourceAssetId: "angle-source-asset",
+    sourceNodeId: "angle-source",
+    title: "Source",
+  })).resolves.toEqual({
+    kind: "generation-task",
+    operation: "multi-angle",
+    taskId: "angle-task-1",
+  });
+  expect(multiAngleSnapshot.nodes).toHaveLength(2);
+  expect(multiAngleSnapshot.edges).toContainEqual(expect.objectContaining({
+    source: "angle-source",
+    target: "image-multi-angle-angle-operation-1",
+  }));
+  expect(capturedPlan?.payload.ownPrompt).toContain("水平视角旋转 45 度");
+  expect(multiAngleSnapshot.nodes[1]?.data).toMatchObject({
+    imageModelId: "image-model-internal-id",
+    imageMultiAngleParameters: {
+      distance: 20,
+      horizontalDegrees: 45,
+      verticalDegrees: -12,
+      wideAngle: true,
+    },
+    imageToolOperation: "multi-angle",
+    imageToolOperationId: "angle-operation-1",
+    imageToolSourceAssetId: "angle-source-asset",
+  });
 });
 
 test("Provider references and durable blobs remain separate replaceable stores", async () => {
@@ -1737,10 +1837,17 @@ test("single-node lifecycle replaces React with fenced graph save and task ports
       async reconcile() { return { status: "success", task: task("success") }; },
       async recover() { return { status: "success", task: task("success") }; },
       async retry() { return { status: "success", task: task("success") }; },
+      async submit() { return { status: "submitted", task: task("running") }; },
     },
     operation: "multi-angle",
   });
   await expect(imageToolGeneration.execute({ action: "generate" })).resolves
+    .toMatchObject({
+      kind: "generation-task",
+      operation: "multi-angle",
+      taskId: "task-1",
+    });
+  await expect(imageToolGeneration.execute({ action: "submit" })).resolves
     .toMatchObject({
       kind: "generation-task",
       operation: "multi-angle",

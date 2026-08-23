@@ -30,8 +30,9 @@ async function imageToolGenerationCapabilityQuery(ownerId: string) {
     ...(model
       ? {
           maxCostMicrounits: model.max_cost_microunits,
-          modelId: model.provider_model_id,
+          modelId: model.id,
           providerDriver: model.provider_driver,
+          providerModelId: model.provider_model_id,
           providerProtocol: model.provider_protocol ?? "native",
         }
       : {}),

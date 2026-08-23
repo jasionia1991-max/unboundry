@@ -14,7 +14,7 @@ export type GenerationImageToolOperation =
 
 export type GenerationImageToolAction =
   | Readonly<{ action: "cancel" | "reconcile" | "retry"; taskId: string }>
-  | Readonly<{ action: "generate" | "recover" }>;
+  | Readonly<{ action: "generate" | "recover" | "submit" }>;
 
 export function createGenerationImageToolUseCase(input: Readonly<{
   lifecycle: SingleNodeGenerationLifecycle;
@@ -28,6 +28,8 @@ export function createGenerationImageToolUseCase(input: Readonly<{
         : undefined;
       const result = command.action === "generate"
         ? await input.lifecycle.generate()
+        : command.action === "submit"
+          ? await input.lifecycle.submit()
         : command.action === "recover"
           ? await input.lifecycle.recover()
           : command.action === "cancel"

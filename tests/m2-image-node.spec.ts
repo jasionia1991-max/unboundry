@@ -2,14 +2,29 @@ import { expect, test } from "./safe-test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { composeTextControl } from "./helpers/ime";
-import { defaultParameterSchema } from "../types/modelParameters";
+import {
+  defaultParameterSchema,
+  knownModelParameterSchema,
+} from "../types/modelParameters";
+import {
+  imageToolMaximums,
+  imageToolOperations,
+} from "../types/imageTools";
 
 test.beforeEach(async ({ page }, testInfo) => {
   const retention = testInfo.title.includes("retains 2K");
   const referenceModel = testInfo.title.includes("reference chip");
-  const displayName = referenceModel ? "GPT Image 2" : "Nano Banana 2 Lite";
-  const parameterSchema = defaultParameterSchema("image");
-  parameterSchema.referenceInputs.image = referenceModel ? 16 : 0;
+  const multiAngle = testInfo.title.includes("multi-angle submits");
+  const gptImageModel = referenceModel || multiAngle;
+  const displayName = gptImageModel ? "GPT Image 2" : "Nano Banana 2 Lite";
+  const parameterSchema = multiAngle
+    ? knownModelParameterSchema({
+        capability: "image",
+        providerDriver: "openrouter",
+        providerModelId: "openai/gpt-image-2",
+      })
+    : defaultParameterSchema("image");
+  parameterSchema.referenceInputs.image = gptImageModel ? 16 : 0;
   parameterSchema.fields = parameterSchema.fields.map((field) => {
     if (field.key === "quality") {
       return {
@@ -62,11 +77,11 @@ test.beforeEach(async ({ page }, testInfo) => {
       : [{
           capability: "image",
           displayName,
-          generationAvailable: false,
-          id: referenceModel ? "fixture-gpt-image-2" : "fixture-nano-banana-2-lite",
+          generationAvailable: multiAngle,
+          id: gptImageModel ? "fixture-gpt-image-2" : "fixture-nano-banana-2-lite",
           imageParameters: {
             aspectRatios: ["auto"],
-            maxReferenceImages: referenceModel ? 16 : 0,
+            maxReferenceImages: gptImageModel ? 16 : 0,
             qualities: ["1k"],
           },
           isDefault: true,
@@ -81,6 +96,12 @@ test.beforeEach(async ({ page }, testInfo) => {
       status: 200,
     });
   });
+});
+
+test.afterEach(async ({ request }, testInfo) => {
+  if (testInfo.title.includes("multi-angle submits")) {
+    await request.delete("/api/canvas/node.image.success");
+  }
 });
 
 test("Image empty and local upload states match the observed geometry", async ({
@@ -981,16 +1002,105 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   expect(generationRequests).toEqual([]);
 });
 
-test("Image multi-angle panel keeps local parameters without generating", async ({
+test("Image multi-angle submits a structured persistent fake task without Provider traffic", async ({
   page,
+  request,
 }) => {
-  const generationRequests: string[] = [];
-  page.on("request", (request) => {
-    if (/provider|generate/i.test(request.url()) && !request.url().includes("/src/")) {
-      generationRequests.push(request.url());
+  const providerRequests: string[] = [];
+  const taskBodies: Array<Record<string, unknown>> = [];
+  page.on("request", (entry) => {
+    if (/openrouter|api\/v1\/images|provider/i.test(entry.url()) &&
+        !entry.url().includes("/src/")) {
+      providerRequests.push(entry.url());
     }
   });
+  await page.route("**/api/image-tools/capabilities", async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        generatedAt: "2026-08-23T13:00:00.000Z",
+        operations: imageToolOperations.map((operation) => ({
+          ...(operation === "multi-angle"
+            ? {
+                estimatedCost: {
+                  amount: 0.009,
+                  currency: "USD",
+                  source: "operator",
+                },
+                modelId: "fixture-gpt-image-2",
+              }
+            : {}),
+          expiresAt: "2099-08-23T13:05:00.000Z",
+          maximumInputBytes: imageToolMaximums.inputBytes,
+          maximumInputPixels: imageToolMaximums.inputPixels,
+          operation,
+          outputContentTypes: ["image/png"],
+          reason: operation === "multi-angle" ? "能力已就绪" : "测试未启用",
+          reasonCode: operation === "multi-angle" ? "AVAILABLE" : "UNSUPPORTED",
+          status: operation === "multi-angle" ? "available" : "unavailable",
+          supportsAlpha: operation === "multi-angle",
+          supportsMask: operation === "multi-angle",
+          supportsReferenceImage: operation === "multi-angle",
+        })),
+        revision: "aaaaaaaaaaaaaaaaaaaaaaaa",
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+  await page.route("**/api/generation-tasks**", async (route) => {
+    const url = new URL(route.request().url());
+    const method = route.request().method();
+    if (url.pathname === "/api/generation-tasks/preflight" && method === "POST") {
+      await route.fulfill({
+        body: JSON.stringify({ canEnqueue: true, canSubmit: true, problems: [] }),
+        contentType: "application/json",
+        status: 200,
+      });
+      return;
+    }
+    if (url.pathname === "/api/generation-tasks/by-idempotency" && method === "GET") {
+      await route.fulfill({
+        body: JSON.stringify({ error: "not found" }),
+        contentType: "application/json",
+        status: 404,
+      });
+      return;
+    }
+    if (url.pathname === "/api/generation-tasks" && method === "POST") {
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      taskBodies.push(body);
+      await route.fulfill({
+        body: JSON.stringify({
+          attempt: 1,
+          canvasId: body.canvasId,
+          costCurrency: "USD",
+          createdAt: "2026-08-23T13:00:01.000Z",
+          id: "fake-multi-angle-task-1",
+          kind: "image",
+          model: body.model,
+          nodeId: body.nodeId,
+          prompt: body.prompt,
+          state: "queued",
+          updatedAt: "2026-08-23T13:00:01.000Z",
+        }),
+        contentType: "application/json",
+        status: 202,
+      });
+      return;
+    }
+    await route.continue();
+  });
+  await request.delete("/api/canvas/node.image.success");
   await page.goto("/__fixture/node.image.success");
+  await page.getByTestId("image-upload-input").setInputFiles(
+    path.resolve(
+      "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+    ),
+  );
+  const sourceCard = page.getByTestId("image-node-image-primary");
+  await expect.poll(() => sourceCard.getAttribute("data-asset-id"))
+    .not.toBeNull();
+  const sourceAssetId = await sourceCard.getAttribute("data-asset-id");
 
   await page.getByRole("button", { name: "多角度" }).click();
   const panel = page.getByTestId("image-multi-angle-panel");
@@ -1034,13 +1144,74 @@ test("Image multi-angle panel keeps local parameters without generating", async 
   await expect(page.getByTestId("image-multi-angle-tilt")).toHaveText("0°");
   await expect(page.getByTestId("image-multi-angle-scale")).toHaveText("0");
   await expect(panel.getByRole("checkbox")).not.toBeChecked();
-  await expect(
-    panel.getByRole("button", { name: "生成多角度图片" }),
-  ).toBeDisabled();
-  expect(generationRequests).toEqual([]);
-
-  await panel.getByRole("button", { name: "关闭多角度" }).click();
+  await panel.getByRole("slider", { name: "旋转" }).fill("45");
+  await panel.getByRole("slider", { name: "倾斜" }).fill("-12");
+  await panel.getByRole("slider", { name: "缩放" }).fill("20");
+  await panel.getByRole("checkbox").check();
+  await expect(page.getByTestId("image-multi-angle-capability"))
+    .toContainText("0.009 USD");
+  const submit = panel.getByRole("button", { name: "生成多角度图片" });
+  await expect(submit).toBeEnabled();
+  await submit.click();
+  await expect.poll(async () => ({
+    error: await page.getByRole("alert").count()
+      ? await page.getByRole("alert").textContent()
+      : "",
+    taskCount: taskBodies.length,
+  })).toEqual({ error: "", taskCount: 1 });
   await expect(panel).toBeHidden();
+  expect(taskBodies[0]).toMatchObject({
+    canvasId: "node.image.success",
+    inputSchemaVersion: 1,
+    kind: "image",
+    model: "fixture-gpt-image-2",
+    parameters: expect.objectContaining({ inputMode: "image" }),
+  });
+  expect(taskBodies[0]?.nodeId).toMatch(/^image-multi-angle-/);
+  expect(String(taskBodies[0]?.prompt)).toContain("水平视角旋转 45 度");
+  expect(taskBodies[0]?.inputs).toEqual([
+    expect.objectContaining({
+      assetId: sourceAssetId,
+      kind: "image",
+      order: 0,
+      role: "reference-image",
+      sourceNodeId: "image-primary",
+    }),
+  ]);
+  await expect.poll(async () => {
+    const saved = await (await request.get("/api/canvas/node.image.success")).json() as {
+      edges?: Array<{ source?: string; target?: string }>;
+      nodes?: Array<{
+        data?: Record<string, unknown>;
+        id?: string;
+      }>;
+    };
+    const target = saved.nodes?.find((node) =>
+      node.id?.startsWith("image-multi-angle-")
+    );
+    return {
+      edge: saved.edges?.some((edge) =>
+        edge.source === "image-primary" && edge.target === target?.id
+      ),
+      operation: target?.data?.imageToolOperation,
+      parameters: target?.data?.imageMultiAngleParameters,
+      sourceAssetId: target?.data?.imageToolSourceAssetId,
+      taskId: target?.data?.imageGenerationTaskId,
+    };
+  }).toEqual({
+    edge: true,
+    operation: "multi-angle",
+    parameters: {
+      distance: 20,
+      horizontalDegrees: 45,
+      verticalDegrees: -12,
+      wideAngle: true,
+    },
+    sourceAssetId,
+    taskId: "fake-multi-angle-task-1",
+  });
+  expect(providerRequests).toEqual([]);
+
 });
 
 test("Image redraw keeps mask coordinates local and cancel is lossless", async ({

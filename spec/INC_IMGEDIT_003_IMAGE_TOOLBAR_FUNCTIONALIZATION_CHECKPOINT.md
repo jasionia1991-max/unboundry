@@ -2,20 +2,20 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-23 20:58:06 +0800
-- 状态：`GOAL_ACTIVE / D6_AUTO_PASS`
-- 当前阶段：`D6 真实模型和处理引擎调查 / AUTO_PASS`
-- 唯一允许的下一动作：提交 D6 本地 checkpoint commit；随后先把 D7 标为 `IN_PROGRESS`，再接通多角度结构化参数、持久任务、恢复、幂等、派生节点和 fake 零请求验收
+- 更新时间：2026-08-23 21:30:34 +0800
+- 状态：`GOAL_ACTIVE / D7_TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13`
+- 当前阶段：`D7 多角度 / TARGETED_AUTO_PASS`
+- 唯一允许的下一动作：提交 D7 本地 checkpoint commit；随后先把 D8 标为 `IN_PROGRESS`，再施工遮罩基础与重绘；真实 Provider 冒烟因合同把 SSH/生产运行限定在 D12 后，统一留到 D13 精确候选的隔离 staging/生产技术门，不得用 v0.6.33 通用图片生成冒充 D7 证据
 - 当前仓库：`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`
 - 记录时分支：`codex/inc-imgedit-003-v0.6.34-2026-08-23`
-- 记录时 HEAD：`6c6e0c32d8974568ea813201a3d9570dfbc45c8a`
+- 记录时 HEAD：`7a161da9f2cb862fc2e7e6898c5b51de56335258`
 - 记录时 `origin/main`：`14777b5dc5cf48de8b21b6eb3ee27da45070b537`
 - package：`0.6.33`
 - 生产：`v0.6.33 / schema39 / PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`
 - 新版本：`v0.6.34 / VERSION_GATE_VALID`
 - 候选：无
-- 本轮代码施工：D6 已冻结 17 个 operation 的服务端五态能力快照、单项管理员停用、5 分钟过期、成本和 model/参考图/mask/Alpha/output DTO；新增独立应用 API、OpenAPI、fake adapter、客户端只读 Context，并让 ImageNode 只消费状态而不承载 Provider 查询。当前 GPT Image 适配器仅声明经官方资料和现有生产模型核实的参考图、mask 与 Alpha 能力；D10 不引入许可证不清的 rembg 权重
-- 本轮验证：安全定向 m100 `13/13`、m20 `1/1`、m2 `10/10 PASS`；架构既有例外 76、新增 0，TypeScript/build/source coverage/离线网络门通过；生产和 Ark 只做只读资源、价格、能力和余额诊断，诊断明确未创建生成任务，零 Generation、零 Provider、零真实 OSS
+- 本轮代码施工：D7 已把水平/垂直/距离/广角结构化参数、成本与过期能力门、来源/参数/model/operation ownership、派生占位节点和来源边接入既有 SingleNodeGenerationLifecycle；付费 admission 前强制保存占位，持久 task 绑定后复用既有恢复、取消、重试、终态回填和重新挂接，不新增轮询或第二套任务系统。原图不覆盖；服务端 capability 现返回内部 model id，Provider 判定仍只看独立 provider model id
+- 本轮验证：安全定向 m100 `13/13`、m2 `10/10 PASS`；fake task 精确为一次，Canvas 持久化包含来源边、结构化参数、operation/source/task identity，Provider 请求 0。合并复验中 D7 用例已通过，后续两个既有 m2 用例因测试删除共享 fixture 后未恢复而失败；增加 `afterEach` 清理后只复验 m2 并 `10/10 PASS`。架构既有例外 76、新增 0，TypeScript/build/source coverage/离线网络门通过；未运行 full
 - 真实 Provider/付费请求：0/8
 - 真实 OSS 测试对象：0
 - GitHub/SSH/生产操作：0
@@ -78,7 +78,7 @@ node -p "require('./package.json').version"
 | D4 | 标注 | AUTO_PASS |
 | D5 | 个人素材库 | AUTO_PASS |
 | D6 | 模型和处理引擎调查 | AUTO_PASS |
-| D7 | 多角度 | NOT_STARTED |
+| D7 | 多角度 | TARGETED_AUTO_PASS / REAL_SMOKE_PENDING_D13 |
 | D8 | 遮罩基础与重绘 | NOT_STARTED |
 | D9 | 扩图与擦除 | NOT_STARTED |
 | D10 | 增强与主体抠图 | NOT_STARTED |
@@ -98,7 +98,7 @@ node -p "require('./package.json').version"
 | IMGEDIT-013 | 调整像素 | AUTO_PASS |
 | IMGEDIT-014 | 快速分割 | AUTO_PASS |
 | IMGEDIT-015 | 标注与导出 | AUTO_PASS |
-| IMGEDIT-016 | 多角度真实生成 | NOT_STARTED |
+| IMGEDIT-016 | 多角度真实生成 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK |
 | IMGEDIT-017 | 重绘真实生成 | NOT_STARTED |
 | IMGEDIT-018 | 扩图与擦除 | NOT_STARTED |
 | IMGEDIT-019 | 增强与主体抠图 | NOT_STARTED |
@@ -157,7 +157,45 @@ package / schema / candidate：
 
 ## 10. 当前唯一下一动作
 
-提交 D6 本地 checkpoint commit；随后进入 D7 前先把 D7 标为 `IN_PROGRESS`，只施工多角度，不提前进入 D8。
+提交 D7 本地 checkpoint commit；随后先把 D8 标为 `IN_PROGRESS`，再施工遮罩基础与重绘。真实 Provider 冒烟统一留到 D13 的精确候选环境，不提前 SSH，也不拿当前生产 v0.6.33 的通用图片任务冒充新功能证据。
+
+## 20. D7 多角度完成记录
+
+- 时间：2026-08-23 21:30:34 +0800
+- 阶段：`D7`
+- 状态：`TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK`
+- branch / HEAD / origin-main：`codex/inc-imgedit-003-v0.6.34-2026-08-23` / 阶段起点 `7a161da9f2cb862fc2e7e6898c5b51de56335258` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537`
+- 工作树摘要：D7 未提交树已完成结构化多角度任务、内部 model identity 修正、占位持久屏障、task binding 和 fake UI/端口证据；未进入 D8
+- 产品文件：`types/imageTools.ts`、`client/src/canvas/ProbeNode.tsx`、`ImageNode.tsx`、`client/src/generation/imageGenerationAdapter.ts`、`singleNodeGenerationLifecycle.ts`、`client/src/imageTools/generationImageToolUseCase.ts`、`multiAngleImageToolUseCase.ts`、`client/src/styles.css`、`server/generationApplicationApi.ts`、`server/imageToolCapabilityRegistry.ts`
+- 测试文件：`tests/m100-modular-ports.spec.ts`、`tests/m2-image-node.spec.ts`
+- 文档文件：本 Checkpoint、`UNBOUNDRY_ACCEPTANCE_MATRIX.md`、`TASKS.md`
+- package / schema / candidate：`0.6.33 / schema39 / 无候选`；目标版本 `v0.6.34`
+- 外部请求和付费预算：多角度 `0/1`，总计 `0/8`；真实 OSS `0`；GitHub/SSH/生产写入 `0`。真实请求仍未消费
+- 测试命令、环境、结果、退出码：统一使用 pinned Node `22.23.1`、npm `10.9.8` 和 `node scripts/run-safe-tests.mjs run --spec ...`。m100+m2 合并执行时 m100 `13/13` 且新增多角度用例通过，m2 后续两个既有用例因测试删除共享 fixture 后未恢复而形成 `8/10`；加入 multi-angle 专属 `afterEach` 清理后只复验受影响 m2，退出 0、`10/10 PASS`，source/snapshot `1696804d…b79b`，4173 listener 不变。未运行 full
+- 架构与数据风险：结构化参数、唯一 operationId、source asset/node、account/canvas、model/参数、prompt/质量共同构成 ownership；任何来源或语义变化均 fail-closed。派生占位先通过 Canvas fence 创建并保存，再允许持久 task admission；task 绑定后现有 ImageNode lifecycle 继续拥有恢复、取消、重试、终态 Media 回填和已付费结果重新挂接。ImageNode 没有新增 fetch、Provider 分支或轮询；通用 adapter 从组件抽到 generation 模块以避免复制
+- 设计偏差：主方案原写 D7 fake 后立即真实冒烟，但 Goal 同时明确 GitHub/SSH/生产运行须等 D12。当前本机没有可安全使用且不读取禁区数据的专用真实 profile；因此不提前 SSH、不读取 `app/data`、不拿 v0.6.33 的普通图片生成冒充新代码证据。所有生成式操作的真实技术冒烟统一放到 D13 精确 v0.6.34 候选的隔离 staging/生产门执行，届时仍逐项受预算和未知计费禁止重试约束
+- 阻断：无；这是授权顺序下的证据延后，不是能力缺失。自动证据不等于真实 Provider、生产或用户质量验收
+- 回滚点：D6 提交 `7a161da9f2cb862fc2e7e6898c5b51de56335258`；本阶段无 schema、Provider、真实 OSS、GitHub 或生产写入
+- 唯一下一动作：提交 D7 本地 checkpoint commit；随后进入 D8 前先把 D8 标为 `IN_PROGRESS`
+
+## 19. D7 多角度
+
+- 时间：2026-08-23 21:01:29 +0800
+- 阶段：`D7`
+- 状态：`IN_PROGRESS`
+- branch / HEAD / origin-main：`codex/inc-imgedit-003-v0.6.34-2026-08-23` / `7a161da9f2cb862fc2e7e6898c5b51de56335258` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537`
+- 工作树摘要：D6 已提交为 `7a161da`，提交后工作树 clean；D7 仅写入阶段开始断点，尚无 D7 产品或测试改动
+- 产品文件：待复用 `generationImageToolUseCase`、`singleNodeGenerationLifecycle` 和现有多角度面板后按最小范围冻结
+- 测试文件：先扩既有 m100/m2 fake 和零请求证据，再决定真实技术冒烟最小路径
+- 文档文件：本 Checkpoint
+- package / schema / candidate：`0.6.33 / schema39 / 无候选`；目标版本 `v0.6.34`
+- 外部请求和付费预算：多角度 `0/1`，总计 `0/8`；真实 OSS `0`；GitHub/SSH/生产写入 `0`。fake 与零请求门通过前禁止真实提交
+- 测试命令、环境、结果、退出码：复用未变 D6 commit 的 m100+m2 `23/23 PASS` 与 m20 `1/1 PASS`；D7 尚未运行测试，不重复 full
+- 架构与数据风险：多角度必须进入现有持久任务、attempt、恢复、幂等、成本和 ownership 栅栏；结构化水平/垂直/距离/广角不得只拼一段无身份提示词后伪装成独立能力；结果保留原图并生成派生节点
+- 设计偏差：待施工
+- 阻断：无；当前生产能力快照已确认 GPT Image 2 编辑协议可用，但真实请求必须等 fake/零请求通过且付费状态可判断
+- 回滚点：D6 提交 `7a161da9f2cb862fc2e7e6898c5b51de56335258`；本阶段尚无 Provider、OSS、schema 或生产写入
+- 唯一下一动作：实现多角度结构化任务与完整生命周期，先完成 fake/零请求验证，不得进入 D8
 
 ## 18. D6 真实模型和处理引擎调查
 

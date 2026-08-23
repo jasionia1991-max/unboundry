@@ -20,6 +20,13 @@ export const imageToolOperations = [
 
 export type ImageToolOperation = typeof imageToolOperations[number];
 
+export type ImageMultiAngleParameters = Readonly<{
+  distance: number;
+  horizontalDegrees: number;
+  verticalDegrees: number;
+  wideAngle: boolean;
+}>;
+
 export const imageToolOperationStatuses = [
   "available",
   "unavailable",

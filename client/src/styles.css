@@ -3195,6 +3195,25 @@ sup {
   font-size: var(--tap-font-primary);
 }
 
+.image-multi-angle-submit button:not(:disabled) {
+  cursor: pointer;
+}
+
+.image-multi-angle-submit button:disabled {
+  opacity: 0.58;
+}
+
+.image-multi-angle-error {
+  position: absolute;
+  right: 0;
+  bottom: 40px;
+  max-width: 300px;
+  color: #ffaaa4;
+  font-size: var(--tap-font-secondary);
+  line-height: 16px;
+  text-align: right;
+}
+
 .image-annotation-overlay {
   position: fixed;
   inset: 0;

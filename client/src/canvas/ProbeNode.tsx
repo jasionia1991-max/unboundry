@@ -11,7 +11,11 @@ import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import type { ModelParameterValue } from "../../../types/modelParameters";
 import type { NodeInputState } from "../../../types/nodeInputs";
 import type { CanvasNodeKind } from "../../../types/nodeVocabulary";
-import type { ImageAnnotationDocument } from "../../../types/imageTools";
+import type {
+  ImageAnnotationDocument,
+  ImageMultiAngleParameters,
+  ImageToolOperation,
+} from "../../../types/imageTools";
 
 function stableOwnershipValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stableOwnershipValue);
@@ -120,11 +124,15 @@ export type ProbeNodeType = Node<
     imageAspectRatio?: string;
     imageModelId?: string;
     imageModelName?: string;
+    imageMultiAngleParameters?: ImageMultiAngleParameters;
     imagePrompt?: string;
     imagePromptReady?: boolean;
     imageParameters?: Record<string, ModelParameterValue>;
     imageQuality?: string;
     imageSrc?: string;
+    imageToolOperation?: ImageToolOperation;
+    imageToolOperationId?: string;
+    imageToolSourceAssetId?: string;
     inputState?: NodeInputState;
     inputStateReason?: string;
     label: string;

@@ -365,7 +365,7 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 | IMGEDIT-013 | P1 | 调整像素 | 精确宽高、默认比例锁、本地确定性处理；保留原图并创建派生节点，零Provider请求 | 像素/格式/内存边界、node/edge/asset、刷新 | AUTO_PASS |
 | IMGEDIT-014 | P1 | 快速分割 | 2×2/3×3/4×4预览与4/9/16个派生节点一次批量落地；失败不显示假成功 | 网格像素检查、批次写入、故障补偿、零Provider | AUTO_PASS |
 | IMGEDIT-015 | P1 | 标注与导出 | 可编辑画笔/矩形/箭头/编号/文字；持久化容量有界，原图不改，显式导出才生成资产 | 容量基准、IME、刷新、撤销重做、导出实页 | AUTO_PASS |
-| IMGEDIT-016 | P0 | 多角度真实生成 | 真实结构化水平/垂直/距离/广角控制；持久任务、恢复、幂等和派生节点；不以提示词冒充 | fake零请求、一次真实技术冒烟、用户质量复验 | NOT_STARTED |
+| IMGEDIT-016 | P0 | 多角度真实生成 | 真实结构化水平/垂直/距离/广角控制；持久任务、恢复、幂等和派生节点；不以提示词冒充 | fake零请求、一次真实技术冒烟、用户质量复验 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK |
 | IMGEDIT-017 | P0 | 重绘真实生成 | 真实mask局部编辑，未遮罩区域尽量保持；遮罩坐标、附件生命周期、恢复和付费安全完整 | mask像素/高DPI/旋转、fake、真实技术冒烟、用户质量复验 | NOT_STARTED |
 | IMGEDIT-018 | P0 | 扩图与擦除 | outpaint只补新增区域；erase移除遮罩对象并补景；两者独立operation，不以拉伸/普通重绘冒充 | fake、派生结果、真实技术冒烟、用户质量复验 | NOT_STARTED |
 | IMGEDIT-019 | P0 | 增强与主体抠图 | 保守/创意增强语义分开；抠图端到端输出透明PNG，任一环节丢Alpha即fail-closed | 处理器合同、Alpha全链、fake、真实技术冒烟、用户质量复验 | NOT_STARTED |
@@ -378,6 +378,8 @@ D1 已完成共享 operation/result/capability/status/error 与有界载荷合�
 D2 已完成 Dispatcher、小 use case、Canvas image-tool fence、派生媒体补偿和对既有 Generation lifecycle 的薄适配；裁剪、下载、全屏定向 m2 `10/10 PASS`，模块化端口 m100 `13/13 PASS`，真实 Provider/OSS 请求 0。服务端权威 operation 状态尚待 D6，因此 `IMGEDIT-010` 只升为 `PARTIAL / APPLICATION_LAYER_AUTO_PASS`，不提前记完整 PASS。
 
 D6 已按官方一手资料和当前生产只读状态冻结 17 个 operation 的服务端五态能力快照、单项管理员停用、5 分钟过期、成本/model/参考图/mask/Alpha/output DTO、唯一 adapter 注册和 fake adapter；新增 owner-scoped `GET /api/image-tools/capabilities`、OpenAPI 与客户端 fail-closed Context，ImageNode 只消费能力 DTO。当前只为已核实的 GPT Image edits 声明参考图/mask/Alpha，Seedream 未核实 mask 不冒充，许可证未闭环的 rembg 权重不引入。安全定向 m100 `13/13`、m20 `1/1`、m2 `10/10 PASS`，Provider `0/8`、Generation/真实 OSS/生产写入均为 0；因此 `IMGEDIT-010 = AUTO_PASS`，不冒充 D7～D11 功能或用户验收。
+
+D7 已完成水平/垂直/距离/广角结构化参数、服务端能力/成本/过期门、原图来源与派生占位、持久 task、语义 ownership 和现有恢复/取消/重试/回填/重新挂接生命周期。安全定向 m100 `13/13`、m2 `10/10 PASS`；fake 只创建 1 个任务并持久化来源边、结构化参数和 task identity，Provider 请求 0。由于本 Goal 把 SSH 和生产候选运行明确放在 D12 后，真实技术冒烟不提前借当前 v0.6.33 通用生成冒充，统一留到 D13 精确 v0.6.34 候选环境执行；故 `IMGEDIT-016` 只记 `TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK`，不是 Provider、生产或用户质量 PASS。
 
 D3 已完成颜色标记 Canvas 元数据持久化、筛选和撤销；像素调整以安全同站源本地输出精确 PNG 派生图；快速分割提供 2×2/3×3/4×4 预览，并以单一 Canvas command 原子提交 4/9/16 个节点与边，stale/失败精确补偿本批媒体。安全定向 m100 `13/13 PASS`、m2 `10/10 PASS`，Generation/Provider/真实 OSS 请求 0；因此 `IMGEDIT-011/013/014 = AUTO_PASS`，尚未冒充生产或用户验收。
 

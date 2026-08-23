@@ -86,11 +86,10 @@ import {
 } from "../generation/generationTasks";
 import {
   createSingleNodeGenerationLifecycle,
-  type SingleNodeGenerationAdapter,
-  type SingleNodeGenerationBlocked,
   type SingleNodeLifecycleResult,
-  type SingleNodeGenerationPlan,
 } from "../generation/singleNodeGenerationLifecycle";
+import { createImageGenerationAdapter } from
+  "../generation/imageGenerationAdapter";
 import {
   defaultParameterSchema,
   defaultParameterValues,
@@ -141,6 +140,13 @@ import { createSaveLibraryAssetUseCase } from
   "../imageTools/saveLibraryAssetUseCase";
 import { useImageToolCapability } from
   "../imageTools/ImageToolCapabilityContext";
+import {
+  createMultiAngleImageToolUseCase,
+  multiAngleOwnershipEvidence,
+  multiAnglePrompt,
+} from
+  "../imageTools/multiAngleImageToolUseCase";
+import type { ImageToolCapability } from "../../../types/imageTools";
 
 type CropBox = { height: number; width: number; x: number; y: number };
 const imageColorMarks = [
@@ -188,152 +194,6 @@ type ImageGenerationRun = {
   taskId: string;
   token: symbol;
 };
-
-function createImageGenerationAdapter(input: {
-  aspectRatio?: string;
-  bindingOwnershipKey?: string;
-  inputKey: string;
-  modelId?: string;
-  modelName?: string;
-  nodeId: string;
-  ownershipKey: string;
-  parameters?: ProbeNodeType["data"]["imageParameters"];
-  payload: unknown;
-  preserveBindingOwnership?: boolean;
-  quality?: string;
-  readBlock: () => SingleNodeGenerationBlocked | undefined;
-}): SingleNodeGenerationAdapter {
-  return {
-    applyPrepared(node) {
-      return {
-        ...node,
-        data: {
-          ...node.data,
-          imageAspectRatio: input.aspectRatio,
-          imageModelId: input.modelId,
-          imageModelName: input.modelName,
-          imageParameters: input.parameters,
-          imageQuality: input.quality,
-        },
-      };
-    },
-    applyBinding(node, task, plan) {
-      return {
-        ...node,
-        data: {
-          ...node.data,
-          groupRunSuccessOwnershipKey: undefined,
-          groupRunSuccessResultKey: undefined,
-          groupRunSuccessTaskId: undefined,
-          imageGeneratedSuccess: false,
-          imageGenerating: true,
-          imageGenerationError: undefined,
-          imageGenerationErrorCode: undefined,
-          imageGenerationInputKey: plan.inputKey,
-          imageGenerationOwnershipKey: input.preserveBindingOwnership
-            ? input.bindingOwnershipKey
-            : task.generationOwnershipKey ?? plan.ownershipKey,
-          imageGenerationRetryAllowed: undefined,
-          imageGenerationRetryBlockCode: undefined,
-          imageGenerationRetryBlockReason: undefined,
-          imageGenerationTaskId: task.id,
-          imageAspectRatio: input.aspectRatio,
-          imageModelId: input.modelId,
-          imageModelName: input.modelName,
-          imageParameters: input.parameters,
-          imageQuality: input.quality,
-        },
-      };
-    },
-    applyTerminal(node, task, plan) {
-      if (task.state === "success") {
-        if (!task.resultAssetId || !task.resultUrl) {
-          throw new Error("图片结果不完整");
-        }
-        return {
-          ...node,
-          height: undefined,
-          measured: undefined,
-          style: { ...node.style, ...NODE_DEFAULT_SIZES.image },
-          width: undefined,
-          data: {
-            ...node.data,
-            assetId: task.resultAssetId,
-            ...(task.resultMedia
-              ? trustedMediaPatch({
-                  assetId: task.resultAssetId,
-                  kind: "image",
-                  ...task.resultMedia,
-                })
-              : {}),
-            groupRunSuccessOwnershipKey: plan.ownershipKey,
-            groupRunSuccessResultKey: groupRunResultKey(task.resultUrl),
-            groupRunSuccessTaskId: task.id,
-            imageGeneratedSuccess: true,
-            imageGenerating: false,
-            imageGenerationError: undefined,
-            imageGenerationErrorCode: undefined,
-            imageGenerationRetryAllowed: undefined,
-            imageGenerationRetryBlockCode: undefined,
-            imageGenerationRetryBlockReason: undefined,
-            imageGenerationTaskId: undefined,
-            imageSrc: task.resultUrl,
-          },
-        };
-      }
-      if (task.state === "cancelled") {
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            imageGenerating: false,
-            imageGenerationError: task.errorMessage ?? "图片生成已取消",
-            imageGenerationErrorCode: undefined,
-            imageGenerationInputKey: undefined,
-            imageGenerationOwnershipKey: undefined,
-            imageGenerationRetryAllowed: undefined,
-            imageGenerationRetryBlockCode: undefined,
-            imageGenerationRetryBlockReason: undefined,
-            imageGenerationTaskId: undefined,
-          },
-        };
-      }
-      const retryAllowed = safelyRetryableGenerationTask(task);
-      const visibleMessage = generationFailureMessage(
-        task.errorMessage ?? "图片生成失败，请稍后再试",
-        retryAllowed ? undefined : task.retryBlockReason,
-        task.errorCode,
-        "image",
-      );
-      return {
-        ...node,
-        data: {
-          ...node.data,
-          imageGenerating: false,
-          imageGenerationError: visibleMessage,
-          imageGenerationErrorCode: task.errorCode,
-          imageGenerationInputKey: plan.inputKey,
-          imageGenerationRetryAllowed: retryAllowed,
-          imageGenerationRetryBlockCode: task.retryBlockCode,
-          imageGenerationRetryBlockReason: task.retryBlockReason,
-          imageGenerationTaskId: task.id,
-        },
-      };
-    },
-    kind: "image",
-    readPlan(): SingleNodeGenerationBlocked | SingleNodeGenerationPlan {
-      const block = input.readBlock();
-      if (block) return block;
-      return {
-        inputKey: input.inputKey,
-        kind: "image",
-        nodeId: input.nodeId,
-        ownershipKey: input.ownershipKey,
-        payload: input.payload,
-      };
-    },
-  };
-}
 
 function imageTaskMatchesNode(
   task: GenerationTaskSummary,
@@ -942,10 +802,18 @@ function ImageCropEditor({
 }
 
 function ImageMultiAnglePanel({
+  busy,
+  capability,
+  error,
   onClose,
+  onSubmit,
   src,
 }: {
+  busy: boolean;
+  capability: ImageToolCapability;
+  error: string;
   onClose: () => void;
+  onSubmit: (angle: MultiAngle) => Promise<void>;
   src: string;
 }) {
   const drag = useRef<
@@ -1067,15 +935,26 @@ function ImageMultiAnglePanel({
           />
         </label>
         <div className="image-multi-angle-submit">
+          <span data-testid="image-multi-angle-capability">
+            {capability.status === "available"
+              ? capability.estimatedCost
+                ? `预计 ${capability.estimatedCost.amount} ${capability.estimatedCost.currency}`
+                : "能力已就绪"
+              : capability.reason}
+          </span>
           <button
             aria-label="生成多角度图片"
-            data-tooltip="尚未接入生成服务"
-            disabled
+            data-tooltip={capability.status === "available"
+              ? "生成多角度图片"
+              : capability.reason}
+            disabled={busy || capability.status !== "available"}
+            onClick={() => void onSubmit(angle)}
             type="button"
           >
-            ↑
+            {busy ? "…" : "↑"}
           </button>
         </div>
+        {error && <div className="image-multi-angle-error" role="alert">{error}</div>}
       </div>
     </div>
   );
@@ -1700,6 +1579,8 @@ function ImageNodeImpl({
   const [fullscreen, setFullscreen] = useState(false);
   const [lightingOpen, setLightingOpen] = useState(false);
   const [multiAngleOpen, setMultiAngleOpen] = useState(false);
+  const [multiAngleBusy, setMultiAngleBusy] = useState(false);
+  const [multiAngleError, setMultiAngleError] = useState("");
   const [moreOpen, setMoreOpen] = useState(false);
   const [localToolOpen, setLocalToolOpen] = useState<"resize" | "split">();
   const [modelSwitchProblem, setModelSwitchProblem] = useState("");
@@ -1805,6 +1686,29 @@ function ImageNodeImpl({
         text: input.kind === "text" ? input.text : undefined,
       };
     });
+  const multiAngleInput = inputPreflight.inputs.length === 1
+    ? inputPreflight.inputs[0]
+    : undefined;
+  const imageToolGenerationOwnershipKey =
+    data.imageToolOperation === "multi-angle" &&
+    data.imageToolOperationId &&
+    data.imageMultiAngleParameters &&
+    multiAngleInput?.kind === "image" &&
+    multiAngleInput.assetId
+      ? generationOwnershipKey(multiAngleOwnershipEvidence({
+          accountId,
+          aspectRatio: data.imageAspectRatio,
+          canvasId,
+          modelId: data.imageModelId,
+          modelParameters: data.imageParameters,
+          operationId: data.imageToolOperationId,
+          parameters: data.imageMultiAngleParameters,
+          prompt: promptControl.committedValue,
+          quality: data.imageQuality,
+          sourceAssetId: multiAngleInput.assetId,
+          sourceNodeId: multiAngleInput.sourceNodeId,
+        }))
+      : undefined;
   const effectiveGenerationInputFingerprint = generationOwnershipKey({
     aspectRatio: selectedImageModel ? aspectRatio : data.imageAspectRatio,
     modelId: selectedImageModelId,
@@ -1815,7 +1719,8 @@ function ImageNodeImpl({
     quality: selectedImageModel ? quality : data.imageQuality,
     upstream: generationOwnershipUpstream,
   });
-  const rawGenerationInputFingerprint = generationOwnershipKey({
+  const rawGenerationInputFingerprint = imageToolGenerationOwnershipKey ??
+    generationOwnershipKey({
     // Once a task is ownership-bound, catalog changes must not reinterpret its
     // saved full model snapshot. Before admission, use the effective values
     // materialized and ACKed on the canvas below.
@@ -1841,7 +1746,7 @@ function ImageNodeImpl({
     // Only durable source/edge semantics belong here. Compatibility, resolver
     // reasons, and resolved roles can drift with the model catalog.
     upstream: generationOwnershipUpstream,
-  });
+    });
   liveGenerationInputKeyRef.current = imageGenerationInputKey;
   liveGenerationOwnershipKeyRef.current = rawGenerationInputFingerprint;
   const beginImageGenerationRun = (
@@ -3604,6 +3509,152 @@ function ImageNodeImpl({
     return result;
   };
 
+  const submitMultiAngle = async (angle: MultiAngle) => {
+    if (multiAngleBusy) return;
+    const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
+    if (!sourceAssetId) {
+      setMultiAngleError("图片尚未完成安全保存");
+      return;
+    }
+    if (!graphCommandPort) {
+      setMultiAngleError("画布尚未完成安全加载");
+      return;
+    }
+    const model = imageModels?.find((candidate) =>
+      candidate.id === multiAngleCapability.modelId
+    );
+    if (!model || model.generationAvailable === false ||
+        (model.imageParameters?.maxReferenceImages ?? 0) < 1) {
+      setMultiAngleError("当前多角度模型不支持安全参考图输入");
+      return;
+    }
+    const schema = model.parameterSchema ?? defaultParameterSchema("image");
+    const normalizedParameters = normalizeParameterValues(schema, {
+      inputMode: "image",
+    });
+    const modelParameters = submissionParameterValues(
+      schema,
+      normalizedParameters,
+    );
+    const aspectRatio = supportedImageValue(
+      model.imageParameters?.aspectRatios ?? ["auto"],
+      String(modelParameters.aspectRatio ?? "auto"),
+    );
+    const quality = supportedImageValue(
+      model.imageParameters?.qualities ?? ["auto"],
+      String(modelParameters.quality ?? "auto"),
+    );
+    const parameters = {
+      distance: angle.scale,
+      horizontalDegrees: angle.rotation,
+      verticalDegrees: angle.tilt,
+      wideAngle: angle.wide,
+    } as const;
+    const operationId = crypto.randomUUID();
+    const prompt = multiAnglePrompt(parameters);
+    const ownershipKey = generationOwnershipKey(multiAngleOwnershipEvidence({
+      accountId,
+      aspectRatio,
+      canvasId,
+      modelId: model.id,
+      modelParameters,
+      operationId,
+      parameters,
+      prompt,
+      quality,
+      sourceAssetId,
+      sourceNodeId: id,
+    }));
+    setMultiAngleBusy(true);
+    setMultiAngleError("");
+    try {
+      await flushCanvasSave();
+      const expectedRevision = await waitForCanvasRevision();
+      checkpoint();
+      await createMultiAngleImageToolUseCase({
+        async afterPlaceholderCreated() {
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve())
+          );
+          await flushCanvasSave();
+          await waitForCanvasRevision();
+        },
+        capability: multiAngleCapability,
+        graph: graphCommandPort,
+        createLifecycle(plan) {
+          return createSingleNodeGenerationLifecycle({
+            adapter: createImageGenerationAdapter({
+              aspectRatio: plan.aspectRatio,
+              inputKey: plan.inputKey,
+              modelId: plan.modelId,
+              modelName: plan.modelName,
+              nodeId: plan.nodeId,
+              ownershipKey: plan.ownershipKey,
+              parameters: plan.modelParameters,
+              payload: plan.payload,
+              quality: plan.quality,
+              readBlock() {
+                const snapshot = graphCommandPort.snapshot();
+                const source = snapshot.nodes.find((node) => node.id === id);
+                const target = snapshot.nodes.find((node) =>
+                  node.id === plan.nodeId
+                );
+                if (
+                  !source || source.type !== "image" ||
+                  source.data.assetId !== sourceAssetId ||
+                  !target || target.type !== "image" ||
+                  target.data.imageToolOperation !== "multi-angle" ||
+                  target.data.imageToolSourceAssetId !== sourceAssetId
+                ) {
+                  return {
+                    message: "多角度来源或任务占位已变化，已停止提交",
+                    status: "blocked",
+                  };
+                }
+              },
+            }),
+            graph: graphCommandPort,
+            nodeId: plan.nodeId,
+            save: {
+              async flush() {
+                await new Promise<void>((resolve) =>
+                  requestAnimationFrame(() => resolve())
+                );
+                await flushCanvasSave();
+              },
+              async waitForRevision() {
+                return { revision: await waitForCanvasRevision() };
+              },
+            },
+            tasks: createBrowserSingleNodeGenerationTaskPort({ accountId }),
+          });
+        },
+      }).execute({
+        aspectRatio,
+        canvasId,
+        expectedRevision,
+        modelId: model.id,
+        modelName: model.displayName,
+        modelParameters,
+        operationId,
+        ownershipKey,
+        parameters,
+        quality,
+        runId: `image-tool-multi-angle-${operationId}`,
+        sourceAssetId,
+        sourceNodeId: id,
+        title: titleControl.committedValue || "Image",
+      });
+      setMultiAngleOpen(false);
+    } catch (error) {
+      setMultiAngleError(
+        error instanceof Error ? error.message : "多角度任务提交失败",
+      );
+    } finally {
+      setMultiAngleBusy(false);
+    }
+  };
+
   const toggleColorMark = (color: string) => {
     if (imageColorFilter === color && data.imageColorMarks?.includes(color)) {
       setImageColorFilter();
@@ -4049,7 +4100,11 @@ function ImageNodeImpl({
       >
         {preview && (
           <ImageMultiAnglePanel
+            busy={multiAngleBusy}
+            capability={multiAngleCapability}
+            error={multiAngleError}
             onClose={() => setMultiAngleOpen(false)}
+            onSubmit={submitMultiAngle}
             src={preview}
           />
         )}

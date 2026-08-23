@@ -15,6 +15,7 @@ export type ImageToolGenerationCapability = Readonly<{
   maxCostMicrounits?: number;
   modelId?: string;
   providerDriver?: string;
+  providerModelId?: string;
   providerProtocol?: string;
 }>;
 
@@ -137,7 +138,9 @@ function capability(
 function providerAvailable(input: ImageToolGenerationCapability) {
   return input.configured && input.globalEnabled && !input.emergencyStop &&
     input.providerProtocol === "gpt-image" &&
-    /^gpt-image-(?:1(?:\.5)?|2)(?:-|$)/i.test(input.modelId ?? "");
+    /^(?:openai\/)?gpt-image-(?:1(?:\.5)?|2)(?:-|$)/i.test(
+      input.providerModelId ?? "",
+    );
 }
 
 export function imageToolCapabilitySnapshot(input: {
