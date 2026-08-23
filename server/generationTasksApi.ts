@@ -16,6 +16,7 @@ import type {
   NodeInputKind,
   NodeInputSnapshot,
 } from "../types/nodeInputs";
+import type { ImageGenerationToolInput } from "../types/imageTools";
 import { generationTaskApplication } from "./generationTasks";
 
 const {
@@ -60,6 +61,7 @@ const {
 type NodeInputGenerationRequest =
   Omit<Partial<GenerationTaskInput>, "kind"> & {
     canvasRevision?: number;
+    imageTool?: ImageGenerationToolInput;
     inputSchemaVersion?: number;
     inputs?: NodeInputSnapshot[];
     kind?: NodeInputKind;
@@ -1013,7 +1015,7 @@ export async function generationTasks(
         return;
       }
       const schema = generationModelSchema(body.kind, model);
-      const { parameters, references } = strictInput;
+      const { imageTool, parameters, references } = strictInput;
       if (body.kind === "audio" && parameters.outputCount !== 1) {
         json(response, 409, {
           code: "OUTPUT_COUNT_UNSUPPORTED",
@@ -1077,6 +1079,7 @@ export async function generationTasks(
           : body.kind === "image"
           ? {
               ...parameters,
+              ...(imageTool ? { imageTool } : {}),
               references,
               inputSchemaVersion: 1,
               inputs: strictInput.snapshot,

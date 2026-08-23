@@ -2,6 +2,7 @@ import type {
   NodeInputProblem,
   NodeInputSnapshot,
 } from "../../../types/nodeInputs";
+import type { ImageGenerationToolInput } from "../../../types/imageTools";
 import { runExclusiveCanvasSubmit } from "./saveGate";
 import { rememberFinishedTaskDuration } from "./taskDurationCache";
 import {
@@ -1101,6 +1102,7 @@ export async function submitImageGeneration(input: {
 export type GenerationPreflightInput = {
   canvasId: string;
   canvasRevision?: number;
+  imageTool?: ImageGenerationToolInput;
   idempotencyKey: string;
   inputSchemaVersion?: 1;
   inputs?: NodeInputSnapshot[];

@@ -115,6 +115,10 @@ import {
   simplifyAnnotationPoints,
   validateImageAnnotationDocument,
 } from "../client/src/imageTools/imageAnnotations";
+import { redrawCanvasPoint } from
+  "../client/src/imageTools/redrawMask";
+import { persistedMediaReferences } from
+  "../types/persistedMediaSources";
 import { expect, test } from "./safe-test";
 
 type MediaEditHandlerDependencies = NonNullable<
@@ -961,6 +965,28 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
     imageToolOperationId: "angle-operation-1",
     imageToolSourceAssetId: "angle-source-asset",
   });
+  expect(redrawCanvasPoint({
+    canvasHeight: 720,
+    canvasWidth: 1280,
+    clientX: 491,
+    clientY: 260,
+    rect: { height: 360, left: 171, top: 80, width: 640 },
+  })).toEqual({ x: 640, y: 360 });
+  expect(redrawCanvasPoint({
+    canvasHeight: 720,
+    canvasWidth: 1280,
+    clientX: 9999,
+    clientY: -9999,
+    rect: { height: 360, left: 171, top: 80, width: 640 },
+  })).toEqual({ x: 1280, y: 0 });
+  expect(persistedMediaReferences([{
+    data: {
+      imageToolMaskAssetId: "redraw-mask-asset",
+      imageToolOperation: "redraw",
+    },
+    id: "redraw-placeholder",
+    type: "image",
+  }])).toEqual([{ assetId: "redraw-mask-asset", kind: "image" }]);
 });
 
 test("Provider references and durable blobs remain separate replaceable stores", async () => {

@@ -187,6 +187,10 @@ import {
   isProviderProtocol,
   type ProviderProtocol,
 } from "../types/relayProtocols";
+import {
+  imageToolMaximums,
+  type ImageGenerationToolInput,
+} from "../types/imageTools";
 import type { RuntimeRoleCoordinator } from "./runtimeRole";
 
 export type GenerationRuntimeAdapters = Readonly<{
@@ -967,6 +971,7 @@ type ImageReference = {
 
 type NodeInputGenerationRequest = Omit<Partial<GenerationTaskInput>, "kind"> & {
   canvasRevision?: number;
+  imageTool?: ImageGenerationToolInput;
   inputSchemaVersion?: number;
   inputs?: NodeInputSnapshot[];
   kind?: NodeInputKind;
@@ -979,6 +984,7 @@ function generationRequestIntent(
 ) {
   return {
     canvasId: String(body.canvasId ?? ""),
+    imageTool: body.imageTool,
     inputSchemaVersion: body.inputSchemaVersion,
     inputs: body.inputs,
     kind,
@@ -1058,6 +1064,161 @@ function imageReferences(value: unknown): ImageReference[] {
     seen.add(sourceNodeId);
     return { assetId, kind: "image", sourceNodeId };
   });
+}
+
+const generationImageToolOperations = new Set<ImageGenerationToolInput["operation"]>([
+  "enhance-creative",
+  "erase",
+  "multi-angle",
+  "outpaint",
+  "redraw",
+  "remove-background",
+]);
+
+function storedImageGenerationTool(value: unknown): ImageGenerationToolInput | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Invalid image tool snapshot");
+  }
+  const item = value as Partial<ImageGenerationToolInput>;
+  if (
+    !item.operation ||
+    !generationImageToolOperations.has(item.operation) ||
+    typeof item.operationId !== "string" ||
+    !/^[a-z0-9._-]{1,160}$/i.test(item.operationId) ||
+    typeof item.sourceAssetId !== "string" ||
+    !/^[a-z0-9._-]{1,160}$/i.test(item.sourceAssetId) ||
+    typeof item.sourceNodeId !== "string" ||
+    !/^[a-z0-9._-]{1,160}$/i.test(item.sourceNodeId)
+  ) throw new Error("Invalid image tool snapshot");
+  const requiresMask = item.operation === "redraw" || item.operation === "erase";
+  if (!item.mask) {
+    if (requiresMask) throw new Error("Invalid image tool mask snapshot");
+    return {
+      operation: item.operation,
+      operationId: item.operationId,
+      sourceAssetId: item.sourceAssetId,
+      sourceNodeId: item.sourceNodeId,
+    };
+  }
+  const mask = item.mask;
+  if (
+    !requiresMask ||
+    typeof mask.assetId !== "string" ||
+    !/^[a-z0-9._-]{1,160}$/i.test(mask.assetId) ||
+    mask.version !== 1 ||
+    !Number.isSafeInteger(mask.width) || mask.width < 1 || mask.width > 8_192 ||
+    !Number.isSafeInteger(mask.height) || mask.height < 1 || mask.height > 8_192 ||
+    !Number.isSafeInteger(mask.featherPixels) ||
+    mask.featherPixels < 0 || mask.featherPixels > 64
+  ) throw new Error("Invalid image tool mask snapshot");
+  return {
+    mask: {
+      assetId: mask.assetId,
+      featherPixels: mask.featherPixels,
+      height: mask.height,
+      version: 1,
+      width: mask.width,
+    },
+    operation: item.operation,
+    operationId: item.operationId,
+    sourceAssetId: item.sourceAssetId,
+    sourceNodeId: item.sourceNodeId,
+  };
+}
+
+function strictImageGenerationTool(input: {
+  ownerId: string;
+  persistedTargetData: Record<string, unknown>;
+  snapshot: readonly NodeInputSnapshot[];
+  submitted?: ImageGenerationToolInput;
+}): ImageGenerationToolInput | undefined {
+  const persistedOperation = input.persistedTargetData.imageToolOperation;
+  if (input.submitted === undefined && persistedOperation === undefined) {
+    return undefined;
+  }
+  const submitted = input.submitted;
+  if (
+    !submitted ||
+    !generationImageToolOperations.has(submitted.operation) ||
+    !/^[a-z0-9._-]{1,160}$/i.test(submitted.operationId) ||
+    !/^[a-z0-9._-]{1,160}$/i.test(submitted.sourceAssetId) ||
+    !/^[a-z0-9._-]{1,160}$/i.test(submitted.sourceNodeId) ||
+    persistedOperation !== submitted.operation ||
+    input.persistedTargetData.imageToolOperationId !== submitted.operationId ||
+    input.persistedTargetData.imageToolSourceAssetId !== submitted.sourceAssetId
+  ) {
+    throw new Error("图片工具任务身份与已保存画布不一致");
+  }
+  const source = input.snapshot.find((item) =>
+    item.kind === "image" &&
+    item.sourceNodeId === submitted.sourceNodeId &&
+    item.assetId === submitted.sourceAssetId
+  );
+  if (!source) throw new Error("图片工具来源与已保存画布不一致");
+  const sourceMedia = readyMediaForOwner(
+    input.ownerId,
+    "image",
+    submitted.sourceAssetId,
+  );
+  if (!sourceMedia) throw new Error("图片工具原图不存在或不属于当前账号");
+  const requiresMask = submitted.operation === "redraw" ||
+    submitted.operation === "erase";
+  if (!submitted.mask) {
+    if (requiresMask) throw new Error("图片工具缺少已保存遮罩");
+    if (input.persistedTargetData.imageToolMaskAssetId !== undefined) {
+      throw new Error("图片工具遮罩身份与已保存画布不一致");
+    }
+    return {
+      operation: submitted.operation,
+      operationId: submitted.operationId,
+      sourceAssetId: submitted.sourceAssetId,
+      sourceNodeId: submitted.sourceNodeId,
+    };
+  }
+  const mask = submitted.mask;
+  if (
+    !requiresMask ||
+    !/^[a-z0-9._-]{1,160}$/i.test(mask.assetId) ||
+    mask.version !== 1 ||
+    !Number.isSafeInteger(mask.width) || mask.width < 1 || mask.width > 8_192 ||
+    !Number.isSafeInteger(mask.height) || mask.height < 1 || mask.height > 8_192 ||
+    !Number.isSafeInteger(mask.featherPixels) ||
+    mask.featherPixels < 0 || mask.featherPixels > 64 ||
+    input.persistedTargetData.imageToolMaskAssetId !== mask.assetId ||
+    input.persistedTargetData.imageToolMaskVersion !== 1 ||
+    input.persistedTargetData.imageToolMaskWidth !== mask.width ||
+    input.persistedTargetData.imageToolMaskHeight !== mask.height ||
+    input.persistedTargetData.imageToolMaskFeatherPixels !== mask.featherPixels
+  ) {
+    throw new Error("图片工具遮罩身份或尺寸与已保存画布不一致");
+  }
+  const maskMedia = readyMediaForOwner(input.ownerId, "image", mask.assetId);
+  if (
+    !maskMedia ||
+    maskMedia.contentType !== "image/png" ||
+    maskMedia.byteSize < 1 ||
+    maskMedia.byteSize > imageToolMaximums.maskBytes ||
+    maskMedia.mediaWidth !== mask.width ||
+    maskMedia.mediaHeight !== mask.height ||
+    (sourceMedia.mediaWidth !== null && sourceMedia.mediaWidth !== mask.width) ||
+    (sourceMedia.mediaHeight !== null && sourceMedia.mediaHeight !== mask.height)
+  ) {
+    throw new Error("图片工具遮罩不存在、越界、尺寸不匹配或不属于当前账号");
+  }
+  return {
+    mask: {
+      assetId: mask.assetId,
+      featherPixels: mask.featherPixels,
+      height: mask.height,
+      version: 1,
+      width: mask.width,
+    },
+    operation: submitted.operation,
+    operationId: submitted.operationId,
+    sourceAssetId: submitted.sourceAssetId,
+    sourceNodeId: submitted.sourceNodeId,
+  };
 }
 
 function resolveModel(kind: NodeInputKind, modelId: string | undefined, ownerId: string) {
@@ -1166,7 +1327,7 @@ function persistedSubmissionInputs(input: {
     targetId: String(input.body.nodeId ?? ""),
     targetKind: input.targetKind,
   });
-  const { persistedOwnPrompt, ...persisted } = resolved;
+  const { persistedOwnPrompt, persistedTargetData, ...persisted } = resolved;
   if (input.body.inputSchemaVersion === 1) {
     if (typeof input.body.ownPrompt !== "string") {
       throw new Error("节点输入版本1缺少本节点Prompt");
@@ -1178,7 +1339,7 @@ function persistedSubmissionInputs(input: {
       );
     }
   }
-  return persisted;
+  return { ...persisted, persistedTargetData };
 }
 
 const mediaLimits = {
@@ -1195,6 +1356,7 @@ const mediaContentTypes = {
 
 type StrictGenerationPreflight = NodeInputPreflight & {
   canvasRevision: number;
+  imageTool?: ImageGenerationToolInput;
   parameters: Record<string, ModelParameterValue>;
   references: ImageReference[];
 };
@@ -1389,11 +1551,21 @@ function strictGenerationPreflight(input: {
     parameters,
     targetKind: input.targetKind,
   });
+  const imageTool = input.targetKind === "image"
+    ? strictImageGenerationTool({
+        ownerId: input.ownerId,
+        persistedTargetData: persisted.persistedTargetData,
+        snapshot: persisted.snapshot,
+        submitted: input.body.imageTool,
+      })
+    : undefined;
+  const { persistedTargetData: _persistedTargetData, ...publicPersisted } =
+    persisted;
   const referenceMediaRules = schema.referenceMediaRules ?? arkVideoMediaRules;
   if (
     input.requireFreshRevision &&
     input.body.canvasRevision === undefined &&
-    (input.body.inputSchemaVersion === 1 || persisted.snapshot.length > 0)
+    (input.body.inputSchemaVersion === 1 || publicPersisted.snapshot.length > 0)
   ) {
     throw new CanvasRevisionConflictError(persisted.canvasRevision);
   }
@@ -1700,7 +1872,7 @@ function strictGenerationPreflight(input: {
           sourceNodeId: item.sourceNodeId,
         }))
     : [];
-  return { ...persisted, parameters, references };
+  return { ...publicPersisted, imageTool, parameters, references };
 }
 
 async function generationAvailability(ownerId: string) {
@@ -3939,10 +4111,15 @@ async function executeRelayGptImageTask(
       imageReferenceForProvider(ownerId, reference.assetId, 600),
     ),
   );
+  const imageTool = storedImageGenerationTool(running.parameters.imageTool);
+  const maskReference = imageTool?.mask
+    ? await imageReferenceForProvider(ownerId, imageTool.mask.assetId, 600)
+    : undefined;
   const prepared = await prepareRelayGptImageRequest({
     capability: "image",
     count: 1,
     inputImages: inputReferences,
+    ...(maskReference ? { maskImage: maskReference } : {}),
     model: running.providerModelId!,
     operation: inputReferences.length ? "edit" : "generation",
     prompt: running.prompt,
@@ -3976,6 +4153,9 @@ async function executeRelayGptImageTask(
       };
       if (prepared.request.inputImages?.length) {
         params.images = [...prepared.request.inputImages];
+      }
+      if (prepared.request.maskImage) {
+        params.mask = prepared.request.maskImage;
       }
       if (size !== "auto" && resolutionLabel) {
         params.resolution = resolutionLabel;
@@ -4737,6 +4917,13 @@ export function retrySnapshotCompatibilityProblem(
   delete parameterValues.inputSchemaVersion;
   delete parameterValues.inputs;
   delete parameterValues.references;
+  let imageTool: ImageGenerationToolInput | undefined;
+  try {
+    imageTool = storedImageGenerationTool(parameterValues.imageTool);
+  } catch {
+    return "原任务保存的图片工具身份或遮罩快照无效，请回到节点重新提交";
+  }
+  delete parameterValues.imageTool;
   const modelSchema = mode === "new-provider-attempt"
     ? model
       ? generationModelSchema(task.kind, model)
@@ -4860,6 +5047,37 @@ export function retrySnapshotCompatibilityProblem(
       snapshotImageReferences.map(referenceKey).sort().join("\n")
     ) {
       return "原任务保存的图片参考与节点输入快照不一致，请回到节点重新提交";
+    }
+    if (imageTool) {
+      const sourceMatches = snapshotImageReferences.some((reference) =>
+        reference.assetId === imageTool!.sourceAssetId &&
+        reference.sourceNodeId === imageTool!.sourceNodeId
+      );
+      if (!sourceMatches) {
+        return "原任务保存的图片工具来源与节点输入快照不一致，请回到节点重新提交";
+      }
+      if (mode === "new-provider-attempt" && imageTool.mask) {
+        const sourceMedia = task.ownerId
+          ? readyMediaForOwner(task.ownerId, "image", imageTool.sourceAssetId)
+          : undefined;
+        const maskMedia = task.ownerId
+          ? readyMediaForOwner(task.ownerId, "image", imageTool.mask.assetId)
+          : undefined;
+        if (
+          !sourceMedia || !maskMedia ||
+          maskMedia.contentType !== "image/png" ||
+          maskMedia.byteSize < 1 ||
+          maskMedia.byteSize > imageToolMaximums.maskBytes ||
+          maskMedia.mediaWidth !== imageTool.mask.width ||
+          maskMedia.mediaHeight !== imageTool.mask.height ||
+          (sourceMedia.mediaWidth !== null &&
+            sourceMedia.mediaWidth !== imageTool.mask.width) ||
+          (sourceMedia.mediaHeight !== null &&
+            sourceMedia.mediaHeight !== imageTool.mask.height)
+        ) {
+          return "原任务保存的遮罩不存在、尺寸不匹配或不属于当前账号，请回到节点重新提交";
+        }
+      }
     }
   }
 

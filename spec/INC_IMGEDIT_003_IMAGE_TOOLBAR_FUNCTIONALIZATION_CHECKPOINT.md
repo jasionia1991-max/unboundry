@@ -2,20 +2,20 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-23 21:30:34 +0800
-- 状态：`GOAL_ACTIVE / D7_TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13`
-- 当前阶段：`D7 多角度 / TARGETED_AUTO_PASS`
-- 唯一允许的下一动作：提交 D7 本地 checkpoint commit；随后先把 D8 标为 `IN_PROGRESS`，再施工遮罩基础与重绘；真实 Provider 冒烟因合同把 SSH/生产运行限定在 D12 后，统一留到 D13 精确候选的隔离 staging/生产技术门，不得用 v0.6.33 通用图片生成冒充 D7 证据
+- 更新时间：2026-08-23 21:59:48 +0800
+- 状态：`GOAL_ACTIVE / D8_TARGETED_AUTO_PASS`
+- 当前阶段：`D8 遮罩基础与重绘 / TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK`
+- 唯一允许的下一动作：提交 D8 本地 checkpoint commit；随后进入 D9 前先把 D9 标为 `IN_PROGRESS`，只施工扩图与擦除，不提前进入 D10
 - 当前仓库：`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`
 - 记录时分支：`codex/inc-imgedit-003-v0.6.34-2026-08-23`
-- 记录时 HEAD：`7a161da9f2cb862fc2e7e6898c5b51de56335258`
+- 记录时 HEAD：`6f9ace949667ffa80e11e3366a88ab8a1a3f8f7c`
 - 记录时 `origin/main`：`14777b5dc5cf48de8b21b6eb3ee27da45070b537`
 - package：`0.6.33`
 - 生产：`v0.6.33 / schema39 / PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`
 - 新版本：`v0.6.34 / VERSION_GATE_VALID`
 - 候选：无
-- 本轮代码施工：D7 已把水平/垂直/距离/广角结构化参数、成本与过期能力门、来源/参数/model/operation ownership、派生占位节点和来源边接入既有 SingleNodeGenerationLifecycle；付费 admission 前强制保存占位，持久 task 绑定后复用既有恢复、取消、重试、终态回填和重新挂接，不新增轮询或第二套任务系统。原图不覆盖；服务端 capability 现返回内部 model id，Provider 判定仍只看独立 provider model id
-- 本轮验证：安全定向 m100 `13/13`、m2 `10/10 PASS`；fake task 精确为一次，Canvas 持久化包含来源边、结构化参数、operation/source/task identity，Provider 请求 0。合并复验中 D7 用例已通过，后续两个既有 m2 用例因测试删除共享 fixture 后未恢复而失败；增加 `afterEach` 清理后只复验 m2 并 `10/10 PASS`。架构既有例外 76、新增 0，TypeScript/build/source coverage/离线网络门通过；未运行 full
+- 本轮代码施工：D8 已把重绘画笔、框选、橡皮、撤销重做、0～64px羽化和屏幕到原图像素坐标接入真实提交；遮罩导出为透明选区/不透明保留区的有界 PNG，上传后以 owner、source、尺寸、版本、feather、operation 和 task ownership 持久绑定。Canvas 先原子落来源边和派生占位并保存，再进入既有 SingleNodeGenerationLifecycle；服务端从已保存画布、owner-scoped原图/遮罩和节点输入重建并校验任务，GPT Image edit 把 mask 与参考图一起发送，重试/恢复继续保留快照和防重复付费边界
+- 本轮验证：safe runner 最终 m100 `13/13`、m2 `10/10`、m27 `20/20`、m53 `25/25`、m88 `36/36`、m5+m87 `29/29 PASS`；遮罩临时 OSS 双对象上传/签名/清理、mask-only Canvas adoption、伪造 mask 拒绝、缩放/高 DPI 坐标、刷新后 mask/task identity 和零重复 POST 均覆盖。m88 加强断言首轮只有测试 fake 的 uploadObject 形参类型错误，修正后只复验 m88 并通过；架构既有例外 76、新增 0，TypeScript/build/source coverage/离线网络门通过；未运行 full
 - 真实 Provider/付费请求：0/8
 - 真实 OSS 测试对象：0
 - GitHub/SSH/生产操作：0
@@ -79,7 +79,7 @@ node -p "require('./package.json').version"
 | D5 | 个人素材库 | AUTO_PASS |
 | D6 | 模型和处理引擎调查 | AUTO_PASS |
 | D7 | 多角度 | TARGETED_AUTO_PASS / REAL_SMOKE_PENDING_D13 |
-| D8 | 遮罩基础与重绘 | NOT_STARTED |
+| D8 | 遮罩基础与重绘 | TARGETED_AUTO_PASS / REAL_SMOKE_PENDING_D13 |
 | D9 | 扩图与擦除 | NOT_STARTED |
 | D10 | 增强与主体抠图 | NOT_STARTED |
 | D11 | Seedance 素材校验 | NOT_STARTED |
@@ -99,7 +99,7 @@ node -p "require('./package.json').version"
 | IMGEDIT-014 | 快速分割 | AUTO_PASS |
 | IMGEDIT-015 | 标注与导出 | AUTO_PASS |
 | IMGEDIT-016 | 多角度真实生成 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK |
-| IMGEDIT-017 | 重绘真实生成 | NOT_STARTED |
+| IMGEDIT-017 | 重绘真实生成 | TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK |
 | IMGEDIT-018 | 扩图与擦除 | NOT_STARTED |
 | IMGEDIT-019 | 增强与主体抠图 | NOT_STARTED |
 | IMGEDIT-020 | Seedance 素材校验 | NOT_STARTED |
@@ -157,7 +157,26 @@ package / schema / candidate：
 
 ## 10. 当前唯一下一动作
 
-提交 D7 本地 checkpoint commit；随后先把 D8 标为 `IN_PROGRESS`，再施工遮罩基础与重绘。真实 Provider 冒烟统一留到 D13 的精确候选环境，不提前 SSH，也不拿当前生产 v0.6.33 的通用图片任务冒充新功能证据。
+提交 D8 本地 checkpoint commit；随后进入 D9 前先把 D9 标为 `IN_PROGRESS`，只施工扩图与擦除，不提前进入 D10。
+
+## 21. D8 遮罩基础与重绘
+
+- 时间：2026-08-23 21:59:48 +0800
+- 阶段：`D8`
+- 状态：`TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK`
+- branch / HEAD / origin-main：`codex/inc-imgedit-003-v0.6.34-2026-08-23` / `6f9ace9` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537`
+- 工作树摘要：D8 未提交树已完成像素级遮罩、owner-scoped遮罩媒体、重绘派生占位、持久任务、GPT Image mask发送、重试/恢复和Media引用保护；尚未进入 D9
+- 产品文件：`types/imageTools.ts`、`types/persistedMediaSources.ts`、`client/src/imageTools/redrawMask.ts`、`redrawImageToolUseCase.ts`、`client/src/canvas/ProbeNode.tsx`、`ImageNode.tsx`、`client/src/generation/generationTasks.ts`、`client/src/styles.css`、`server/inputPreflight.ts`、`generationTasks.ts`、`generationTasksApi.ts`、`mediaIntegrity.ts`、`relayProviderAdapters.ts`
+- 测试文件：`tests/m100-modular-ports.spec.ts`、`m2-image-node.spec.ts`、`m27-node-inputs.spec.ts`、`m53-relay-provider-adapters.spec.ts`、`m88-media-publication.spec.ts`；另复用未改 m5/m87 直接依赖回归
+- 文档文件：本 Checkpoint、`UNBOUNDRY_ACCEPTANCE_MATRIX.md`、`TASKS.md`
+- package / schema / candidate：`0.6.33 / schema39 / 无候选`；目标版本 `v0.6.34`
+- 外部请求和付费预算：多角度 `0/1`、重绘 `0/1`，总计 `0/8`；真实 OSS `0`；GitHub/SSH/生产写入 `0`
+- 测试命令、环境、结果、退出码：统一使用 pinned Node `22.23.1`、npm `10.9.8` 和 `node scripts/run-safe-tests.mjs run --spec ...`。最终有效证据：m100 `13/13`、m2 `10/10`、m27 `20/20`、m53 `25/25`、m88 `36/36`、m5+m87 `29/29 PASS`，均退出0；m100首轮暴露组件props/ownership类型错误，m27调试期依次修正可用性期望和严格400响应期望，m2移除不成立的fake GET轮询假设，m88加强mask临时OSS断言首轮由测试fake形参类型错误在产品测试前失败，均只修根因并复验最小范围。最终 source/snapshot：m2与m5+m87为`d2505a85…593c1`，m88加强后为`cdbeb506…0b5e3`；4173 listener均不变；未运行 full
+- 架构与数据风险：遮罩最大4 MiB、PNG、单边8192、总像素4000万、羽化0～64；Canvas只保存assetId/尺寸/版本/feather，不保存Base64或签名URL。Canvas占位使遮罩成为durable Media引用；服务端再按owner、ready、content-type、尺寸和已保存节点身份校验。Provider临时OSS对象在提交链finally精确清理；已付费结果回填失败继续由既有task/media和重新挂接路径承接，不盲删结果
+- 设计偏差：产品冻结范围明确不支持任意自由旋转，Canvas也没有图片节点旋转状态，因此没有发明旋转变换；屏幕固定编辑器天然不随Canvas缩放，m100用1280×720原图映射到640×360 CSS框并验证越界夹取，覆盖缩放和高DPI坐标。主方案要求的真实冒烟与D7同理统一延后到D13精确v0.6.34候选，避免提前SSH或拿v0.6.33普通生成冒充新代码证据
+- 阻断：无；自动证据不等于真实Provider、生产或用户质量验收
+- 回滚点：D7 提交 `6f9ace9`；本阶段无schema、真实Provider/OSS、GitHub或生产写入
+- 唯一下一动作：提交 D8 本地 checkpoint commit；随后进入 D9 前先把 D9 标为 `IN_PROGRESS`，只施工扩图与擦除，不提前进入 D10
 
 ## 20. D7 多角度完成记录
 

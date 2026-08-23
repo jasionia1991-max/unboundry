@@ -619,6 +619,7 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
   request,
 }) => {
   const modelId = await ensureZeroProviderInputModel(request);
+  await ensureGarmentAsset(request);
   const before = await (await request.get("/api/generation-tasks/status")).json() as {
     paidProviderRequests: number;
   };
@@ -768,7 +769,118 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
     code: "CANVAS_NOT_SAVED",
   });
 
-  for (const canvasId of [roleCanvasId, forgedCanvasId, staleCanvasId]) {
+  const redrawCanvasId = `node-input-redraw-${Date.now()}`;
+  const redrawMaskAssetId = `redraw-mask-${Date.now()}`;
+  const redrawMaskBytes = await readFile(resolve(
+    process.cwd(),
+    "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+  ));
+  const redrawMaskUpload = await request.post(
+    `/api/assets/${redrawMaskAssetId}`,
+    {
+      data: redrawMaskBytes,
+      headers: {
+        "Content-Type": "image/png",
+        "X-File-Name": "redraw-mask.png",
+      },
+    },
+  );
+  expect(redrawMaskUpload.status()).toBe(201);
+  const redrawOperationId = `redraw-operation-${Date.now()}`;
+  const redrawSave = await request.put(`/api/canvas/${redrawCanvasId}`, {
+    data: {
+      edges: [{
+        data: { inputOrder: 0, inputRole: "reference-image" },
+        id: "redraw-source-edge",
+        source: "redraw-source",
+        target: "redraw-target",
+      }],
+      nodes: [
+        {
+          data: {
+            assetId: garmentAssetId,
+            imageSrc: `/api/assets/${garmentAssetId}`,
+          },
+          id: "redraw-source",
+          type: "image",
+        },
+        {
+          data: {
+            imagePrompt: "把选中区域改成蓝色陶瓷材质",
+            imagePromptReady: true,
+            imageToolMaskAssetId: redrawMaskAssetId,
+            imageToolMaskFeatherPixels: 8,
+            imageToolMaskHeight: 720,
+            imageToolMaskVersion: 1,
+            imageToolMaskWidth: 1280,
+            imageToolOperation: "redraw",
+            imageToolOperationId: redrawOperationId,
+            imageToolSourceAssetId: garmentAssetId,
+          },
+          id: "redraw-target",
+          type: "image",
+        },
+      ],
+      revision: 0,
+      viewport: { x: 0, y: 0, zoom: 1 },
+    },
+  });
+  expect(redrawSave.ok()).toBeTruthy();
+  const redrawRevision = (await redrawSave.json() as { revision: number }).revision;
+  const redrawImageTool = {
+    mask: {
+      assetId: redrawMaskAssetId,
+      featherPixels: 8,
+      height: 720,
+      version: 1,
+      width: 1280,
+    },
+    operation: "redraw",
+    operationId: redrawOperationId,
+    sourceAssetId: garmentAssetId,
+    sourceNodeId: "redraw-source",
+  };
+  const redrawBody = {
+    canvasId: redrawCanvasId,
+    canvasRevision: redrawRevision,
+    imageTool: redrawImageTool,
+    inputSchemaVersion: 1,
+    kind: "image",
+    model: modelId,
+    nodeId: "redraw-target",
+    ownPrompt: "把选中区域改成蓝色陶瓷材质",
+    parameters: { inputMode: "image" },
+    prompt: "把选中区域改成蓝色陶瓷材质",
+  };
+  const redrawPreflight = await request.post("/api/generation-tasks/preflight", {
+    data: redrawBody,
+  });
+  expect(redrawPreflight.ok()).toBeTruthy();
+  await expect(redrawPreflight.json()).resolves.toMatchObject({
+    canSubmit: false,
+    imageTool: redrawImageTool,
+    providerRequests: 0,
+  });
+  const forgedRedraw = await request.post("/api/generation-tasks/preflight", {
+    data: {
+      ...redrawBody,
+      imageTool: {
+        ...redrawImageTool,
+        mask: { ...redrawImageTool.mask, assetId: "forged-mask-asset" },
+      },
+    },
+  });
+  expect(forgedRedraw.status()).toBe(400);
+  await expect(forgedRedraw.json()).resolves.toMatchObject({
+    error: "图片工具遮罩身份或尺寸与已保存画布不一致",
+  });
+
+  for (const canvasId of [
+    roleCanvasId,
+    forgedCanvasId,
+    staleCanvasId,
+    redrawCanvasId,
+  ]) {
     const tasks = await (await request.get(
       `/api/generation-tasks?canvasId=${encodeURIComponent(canvasId)}`,
     )).json() as { tasks: unknown[] };
@@ -778,6 +890,10 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
     paidProviderRequests: number;
   };
   expect(after.paidProviderRequests).toBe(before.paidProviderRequests);
+  expect((await request.delete(`/api/canvas/${redrawCanvasId}`)).ok())
+    .toBeTruthy();
+  expect((await request.delete(`/api/assets/${redrawMaskAssetId}`)).status())
+    .toBe(204);
 });
 
 test("allowed Video media edges pass zero-cost preflight without creating a task", async ({

@@ -27,6 +27,28 @@ export type ImageMultiAngleParameters = Readonly<{
   wideAngle: boolean;
 }>;
 
+export type ImageGenerationToolInput = Readonly<{
+  mask?: Readonly<{
+    assetId: string;
+    featherPixels: number;
+    height: number;
+    version: 1;
+    width: number;
+  }>;
+  operation: Extract<
+    ImageToolOperation,
+    | "enhance-creative"
+    | "erase"
+    | "multi-angle"
+    | "outpaint"
+    | "redraw"
+    | "remove-background"
+  >;
+  operationId: string;
+  sourceAssetId: string;
+  sourceNodeId: string;
+}>;
+
 export const imageToolOperationStatuses = [
   "available",
   "unavailable",

@@ -146,7 +146,18 @@ import {
   multiAnglePrompt,
 } from
   "../imageTools/multiAngleImageToolUseCase";
-import type { ImageToolCapability } from "../../../types/imageTools";
+import {
+  createRedrawImageToolUseCase,
+  redrawOwnershipEvidence,
+} from "../imageTools/redrawImageToolUseCase";
+import {
+  createRedrawMaskFile,
+  redrawCanvasPoint,
+} from "../imageTools/redrawMask";
+import type {
+  ImageGenerationToolInput,
+  ImageToolCapability,
+} from "../../../types/imageTools";
 
 type CropBox = { height: number; width: number; x: number; y: number };
 const imageColorMarks = [
@@ -961,10 +972,24 @@ function ImageMultiAnglePanel({
 }
 
 function ImageRedrawEditor({
+  busy,
+  capability,
+  error,
   onClose,
+  onError,
+  onSubmit,
   src,
 }: {
+  busy: boolean;
+  capability: ImageToolCapability;
+  error: string;
   onClose: () => void;
+  onError: (message: string) => void;
+  onSubmit: (input: Readonly<{
+    featherPixels: number;
+    maskFile: File;
+    prompt: string;
+  }>) => Promise<void>;
   src: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -980,6 +1005,7 @@ function ImageRedrawEditor({
   const history = useRef<ImageData[]>([]);
   const redo = useRef<ImageData[]>([]);
   const [brushSize, setBrushSize] = useState(32);
+  const [featherPixels, setFeatherPixels] = useState(0);
   const [historyVersion, setHistoryVersion] = useState(0);
   const [natural, setNatural] = useState({ height: 720, width: 1280 });
   const [prompt, setPrompt] = useState("");
@@ -1022,10 +1048,13 @@ function ImageRedrawEditor({
   const point = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     const canvas = event.currentTarget;
     const bounds = canvas.getBoundingClientRect();
-    return {
-      x: ((event.clientX - bounds.left) / bounds.width) * canvas.width,
-      y: ((event.clientY - bounds.top) / bounds.height) * canvas.height,
-    };
+    return redrawCanvasPoint({
+      canvasHeight: canvas.height,
+      canvasWidth: canvas.width,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      rect: bounds,
+    });
   };
 
   const beginDraw = (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -1230,13 +1259,50 @@ function ImageRedrawEditor({
         />
         <div>
           <span aria-hidden="true">⌕</span>
-          <span>绘制蒙版以重绘</span>
+          <span>{capability.status === "available"
+            ? capability.estimatedCost
+              ? `预计 ${capability.estimatedCost.amount} ${capability.estimatedCost.currency}`
+              : "绘制蒙版以重绘"
+            : capability.reason}</span>
+          <label className="image-redraw-feather">
+            羽化
+            <input
+              aria-label="蒙版羽化"
+              max="64"
+              min="0"
+              onChange={(event) => setFeatherPixels(Number(event.target.value))}
+              type="range"
+              value={featherPixels}
+            />
+            <output>{featherPixels}px</output>
+          </label>
           <span className="image-redraw-prompt-spacer" />
           <button type="button">1K</button>
           <button type="button">x1</button>
           <button type="button">PRO</button>
-          <button aria-label="提交重绘" disabled type="button">↑</button>
+          <button
+            aria-label="提交重绘"
+            disabled={
+              busy || capability.status !== "available" ||
+              !promptControl.committedValue.trim() || history.current.length < 1
+            }
+            onClick={() => {
+              const canvas = canvasRef.current;
+              if (!canvas) return;
+              void createRedrawMaskFile(canvas, { featherPixels })
+                .then((maskFile) => onSubmit({
+                  featherPixels,
+                  maskFile,
+                  prompt: promptControl.committedValue,
+                }))
+                .catch((caught) => onError(
+                  caught instanceof Error ? caught.message : "重绘遮罩生成失败",
+                ));
+            }}
+            type="button"
+          >{busy ? "…" : "↑"}</button>
         </div>
+        {error && <div className="image-redraw-error" role="alert">{error}</div>}
       </div>
     </div>,
     document.body,
@@ -1585,6 +1651,8 @@ function ImageNodeImpl({
   const [localToolOpen, setLocalToolOpen] = useState<"resize" | "split">();
   const [modelSwitchProblem, setModelSwitchProblem] = useState("");
   const [redrawOpen, setRedrawOpen] = useState(false);
+  const [redrawBusy, setRedrawBusy] = useState(false);
+  const [redrawError, setRedrawError] = useState("");
   const [retryTaskId, setRetryTaskId] = useState<string>();
   const [reconcileBusy, setReconcileBusy] = useState(false);
   const [reconcileConfirmedMissing, setReconcileConfirmedMissing] = useState(false);
@@ -1686,15 +1754,15 @@ function ImageNodeImpl({
         text: input.kind === "text" ? input.text : undefined,
       };
     });
-  const multiAngleInput = inputPreflight.inputs.length === 1
+  const imageToolInput = inputPreflight.inputs.length === 1
     ? inputPreflight.inputs[0]
     : undefined;
   const imageToolGenerationOwnershipKey =
     data.imageToolOperation === "multi-angle" &&
     data.imageToolOperationId &&
     data.imageMultiAngleParameters &&
-    multiAngleInput?.kind === "image" &&
-    multiAngleInput.assetId
+    imageToolInput?.kind === "image" &&
+    imageToolInput.assetId
       ? generationOwnershipKey(multiAngleOwnershipEvidence({
           accountId,
           aspectRatio: data.imageAspectRatio,
@@ -1705,9 +1773,34 @@ function ImageNodeImpl({
           parameters: data.imageMultiAngleParameters,
           prompt: promptControl.committedValue,
           quality: data.imageQuality,
-          sourceAssetId: multiAngleInput.assetId,
-          sourceNodeId: multiAngleInput.sourceNodeId,
+          sourceAssetId: imageToolInput.assetId,
+          sourceNodeId: imageToolInput.sourceNodeId,
         }))
+      : data.imageToolOperation === "redraw" &&
+          data.imageToolOperationId &&
+          data.imageToolMaskAssetId &&
+          data.imageToolMaskVersion === 1 &&
+          data.imageToolMaskWidth &&
+          data.imageToolMaskHeight &&
+          data.imageToolMaskFeatherPixels !== undefined &&
+          imageToolInput?.kind === "image" &&
+          imageToolInput.assetId
+        ? generationOwnershipKey(redrawOwnershipEvidence({
+            accountId,
+            aspectRatio: data.imageAspectRatio,
+            canvasId,
+            maskAssetId: data.imageToolMaskAssetId,
+            maskFeatherPixels: data.imageToolMaskFeatherPixels,
+            maskHeight: data.imageToolMaskHeight,
+            maskWidth: data.imageToolMaskWidth,
+            modelId: data.imageModelId,
+            modelParameters: data.imageParameters,
+            operationId: data.imageToolOperationId,
+            prompt: promptControl.committedValue,
+            quality: data.imageQuality,
+            sourceAssetId: imageToolInput.assetId,
+            sourceNodeId: imageToolInput.sourceNodeId,
+          }))
       : undefined;
   const effectiveGenerationInputFingerprint = generationOwnershipKey({
     aspectRatio: selectedImageModel ? aspectRatio : data.imageAspectRatio,
@@ -1992,9 +2085,46 @@ function ImageNodeImpl({
     inputProblems.length === 0 &&
     incomingImageReferences.every((reference) => Boolean(reference.assetId));
   const referenceProblem = inputProblems[0]?.message ?? "";
+  const imageGenerationToolInput: ImageGenerationToolInput | undefined =
+    data.imageToolOperation &&
+    [
+      "enhance-creative",
+      "erase",
+      "multi-angle",
+      "outpaint",
+      "redraw",
+      "remove-background",
+    ].includes(data.imageToolOperation) &&
+    data.imageToolOperationId &&
+    data.imageToolSourceAssetId &&
+    imageToolInput?.kind === "image" &&
+    imageToolInput.assetId === data.imageToolSourceAssetId
+      ? {
+          ...(data.imageToolMaskAssetId &&
+              data.imageToolMaskVersion === 1 &&
+              data.imageToolMaskWidth &&
+              data.imageToolMaskHeight &&
+              data.imageToolMaskFeatherPixels !== undefined
+            ? {
+                mask: {
+                  assetId: data.imageToolMaskAssetId,
+                  featherPixels: data.imageToolMaskFeatherPixels,
+                  height: data.imageToolMaskHeight,
+                  version: 1 as const,
+                  width: data.imageToolMaskWidth,
+                },
+              }
+            : {}),
+          operation: data.imageToolOperation as ImageGenerationToolInput["operation"],
+          operationId: data.imageToolOperationId,
+          sourceAssetId: data.imageToolSourceAssetId,
+          sourceNodeId: imageToolInput.sourceNodeId,
+        }
+      : undefined;
   const imageGenerationRequestInput = {
     canvasId,
     canvasRevision,
+    ...(imageGenerationToolInput ? { imageTool: imageGenerationToolInput } : {}),
     inputSchemaVersion: 1 as const,
     inputs: inputPreflight.snapshot,
     model: selectedImageModelId,
@@ -3655,6 +3785,152 @@ function ImageNodeImpl({
     }
   };
 
+  const submitRedraw = async (input: Readonly<{
+    featherPixels: number;
+    maskFile: File;
+    prompt: string;
+  }>) => {
+    if (redrawBusy) return;
+    const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
+    if (!sourceAssetId) {
+      setRedrawError("图片尚未完成安全保存");
+      return;
+    }
+    if (!graphCommandPort) {
+      setRedrawError("画布尚未完成安全加载");
+      return;
+    }
+    const model = imageModels?.find((candidate) =>
+      candidate.id === redrawCapability.modelId
+    );
+    if (!model || model.generationAvailable === false ||
+        (model.imageParameters?.maxReferenceImages ?? 0) < 1) {
+      setRedrawError("当前重绘模型不支持安全参考图输入");
+      return;
+    }
+    const schema = model.parameterSchema ?? defaultParameterSchema("image");
+    const normalizedParameters = normalizeParameterValues(schema, {
+      inputMode: "image",
+    });
+    const modelParameters = submissionParameterValues(
+      schema,
+      normalizedParameters,
+    );
+    const requestedAspectRatio = supportedImageValue(
+      model.imageParameters?.aspectRatios ?? ["auto"],
+      String(modelParameters.aspectRatio ?? "auto"),
+    );
+    const requestedQuality = supportedImageValue(
+      model.imageParameters?.qualities ?? ["auto"],
+      String(modelParameters.quality ?? "auto"),
+    );
+    const operationId = crypto.randomUUID();
+    const preOwnershipKey = generationOwnershipKey({
+      accountId,
+      canvasId,
+      featherPixels: input.featherPixels,
+      operation: "redraw",
+      operationId,
+      prompt: input.prompt.trim(),
+      sourceAssetId,
+      sourceNodeId: id,
+    });
+    setRedrawBusy(true);
+    setRedrawError("");
+    try {
+      await flushCanvasSave();
+      const expectedRevision = await waitForCanvasRevision();
+      checkpoint();
+      await createRedrawImageToolUseCase({
+        async afterPlaceholderCreated() {
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve())
+          );
+          await flushCanvasSave();
+          await waitForCanvasRevision();
+        },
+        capability: redrawCapability,
+        graph: graphCommandPort,
+        media: derivedMediaPort,
+        ownershipKey: generationOwnershipKey,
+        createLifecycle(plan) {
+          return createSingleNodeGenerationLifecycle({
+            adapter: createImageGenerationAdapter({
+              aspectRatio: plan.aspectRatio,
+              inputKey: plan.inputKey,
+              modelId: plan.modelId,
+              modelName: plan.modelName,
+              nodeId: plan.nodeId,
+              ownershipKey: plan.ownershipKey,
+              parameters: plan.modelParameters,
+              payload: plan.payload,
+              quality: plan.quality,
+              readBlock() {
+                const snapshot = graphCommandPort.snapshot();
+                const source = snapshot.nodes.find((node) => node.id === id);
+                const target = snapshot.nodes.find((node) =>
+                  node.id === plan.nodeId
+                );
+                if (
+                  !source || source.type !== "image" ||
+                  source.data.assetId !== sourceAssetId ||
+                  !target || target.type !== "image" ||
+                  target.data.imageToolOperation !== "redraw" ||
+                  target.data.imageToolSourceAssetId !== sourceAssetId ||
+                  !target.data.imageToolMaskAssetId
+                ) {
+                  return {
+                    message: "重绘来源、遮罩或任务占位已变化，已停止提交",
+                    status: "blocked",
+                  };
+                }
+              },
+            }),
+            graph: graphCommandPort,
+            nodeId: plan.nodeId,
+            save: {
+              async flush() {
+                await new Promise<void>((resolve) =>
+                  requestAnimationFrame(() => resolve())
+                );
+                await flushCanvasSave();
+              },
+              async waitForRevision() {
+                return { revision: await waitForCanvasRevision() };
+              },
+            },
+            tasks: createBrowserSingleNodeGenerationTaskPort({ accountId }),
+          });
+        },
+      }).execute({
+        accountId,
+        aspectRatio: requestedAspectRatio,
+        canvasId,
+        expectedRevision,
+        featherPixels: input.featherPixels,
+        maskFile: input.maskFile,
+        modelId: model.id,
+        modelName: model.displayName,
+        modelParameters,
+        operationId,
+        preOwnershipKey,
+        prompt: input.prompt,
+        quality: requestedQuality,
+        runId: `image-tool-redraw-${operationId}`,
+        sourceAssetId,
+        sourceNodeId: id,
+        title: titleControl.committedValue || "Image",
+      });
+      setRedrawOpen(false);
+    } catch (caught) {
+      setRedrawError(
+        caught instanceof Error ? caught.message : "重绘任务提交失败",
+      );
+    } finally {
+      setRedrawBusy(false);
+    }
+  };
+
   const toggleColorMark = (color: string) => {
     if (imageColorFilter === color && data.imageColorMarks?.includes(color)) {
       setImageColorFilter();
@@ -3814,6 +4090,7 @@ function ImageNodeImpl({
             setLightingOpen(false);
             setMoreOpen(false);
             setMultiAngleOpen(false);
+            setRedrawError("");
             setRedrawOpen(true);
           }}
           type="button"
@@ -4088,7 +4365,12 @@ function ImageNodeImpl({
       )}
       {preview && redrawOpen && (
         <ImageRedrawEditor
+          busy={redrawBusy}
+          capability={redrawCapability}
+          error={redrawError}
           onClose={() => setRedrawOpen(false)}
+          onError={setRedrawError}
+          onSubmit={submitRedraw}
           src={preview}
         />
       )}

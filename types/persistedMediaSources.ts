@@ -103,13 +103,25 @@ export function persistedMediaReferences(
     }
     const value = (node.data as Record<string, unknown>).assetId;
     const assetId = typeof value === "string" ? value.trim() : "";
-    if (!assetId || !validAssetId(assetId)) {
-      continue;
+    if (assetId && validAssetId(assetId)) {
+      references.set(`${node.type}\0${assetId}`, {
+        assetId,
+        kind: node.type,
+      });
     }
-    references.set(`${node.type}\0${assetId}`, {
-      assetId,
-      kind: node.type,
-    });
+    if (node.type === "image") {
+      const rawMaskAssetId = (node.data as Record<string, unknown>)
+        .imageToolMaskAssetId;
+      const maskAssetId = typeof rawMaskAssetId === "string"
+        ? rawMaskAssetId.trim()
+        : "";
+      if (maskAssetId && validAssetId(maskAssetId)) {
+        references.set(`image\0${maskAssetId}`, {
+          assetId: maskAssetId,
+          kind: "image",
+        });
+      }
+    }
   }
   return [...references.values()];
 }

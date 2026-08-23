@@ -85,6 +85,7 @@ export type RelayGptImageRequest = Readonly<{
   capability: "image";
   count?: number;
   inputImages?: readonly string[];
+  maskImage?: string;
   model: string;
   operation: "edit" | "generation";
   prompt: string;
@@ -1196,6 +1197,9 @@ function cleanImageRequest(request: RelayGptImageRequest) {
     throw new RelayProviderError("FORMAT");
   }
   const inputImages = (request.inputImages ?? []).map(cleanTransientImage);
+  const maskImage = request.maskImage === undefined
+    ? undefined
+    : cleanTransientImage(request.maskImage);
   if (inputImages.length > 16) throw new RelayProviderError("FORMAT");
   if (request.operation === "edit" && inputImages.length < 1) {
     throw new RelayProviderError("FORMAT");
@@ -1203,11 +1207,18 @@ function cleanImageRequest(request: RelayGptImageRequest) {
   if (request.operation === "generation" && inputImages.length > 0) {
     throw new RelayProviderError("FORMAT");
   }
+  if (
+    maskImage !== undefined &&
+    (request.operation !== "edit" ||
+      !/^data:image\/png;base64,/i.test(maskImage) &&
+        !/^https:\/\//i.test(maskImage))
+  ) throw new RelayProviderError("FORMAT");
   return {
     body: {
       ...(request.operation === "edit"
         ? { image: inputImages.length === 1 ? inputImages[0] : inputImages }
         : {}),
+      ...(maskImage ? { mask: maskImage } : {}),
       model: request.model,
       n: count,
       output_format: "png",
@@ -1342,6 +1353,7 @@ export async function prepareRelayGptImageRequest(
     bytes: Buffer;
     contentType: string;
     inputIndex: number;
+    slot: "input" | "mask";
     reservation: MediaPublicationReservation;
   }> = [];
   let fixedProfile: AliyunStorageProfile | undefined;
@@ -1360,11 +1372,21 @@ export async function prepareRelayGptImageRequest(
   };
   try {
     const inputImages = [...(request.inputImages ?? [])];
-    const dataImages = inputImages.flatMap((image, inputIndex) => {
+    let maskImage = request.maskImage;
+    const references = [
+      ...inputImages.map((image, inputIndex) => ({ image, inputIndex, slot: "input" as const })),
+      ...(maskImage === undefined
+        ? []
+        : [{ image: maskImage, inputIndex: 0, slot: "mask" as const }]),
+    ];
+    const dataImages = references.flatMap(({ image, inputIndex, slot }) => {
       if (!image.startsWith("data:")) return [];
       const match =
         /^data:image\/(png|jpeg|webp);base64,([a-z0-9+/=\r\n]+)$/i.exec(image);
       if (!match) throw new RelayProviderError("FORMAT");
+      if (slot === "mask" && match[1].toLowerCase() !== "png") {
+        throw new RelayProviderError("FORMAT");
+      }
       const mime = `image/${match[1].toLowerCase()}`;
       const extension = match[1].toLowerCase() === "png"
         ? "png"
@@ -1375,7 +1397,7 @@ export async function prepareRelayGptImageRequest(
       if (!bytes.length || bytes.length > 20 * 1024 * 1024) {
         throw new RelayProviderError("FORMAT");
       }
-      return [{ bytes, contentType: mime, extension, inputIndex }];
+      return [{ bytes, contentType: mime, extension, inputIndex, slot }];
     });
 
     if (dataImages.length > 0) {
@@ -1402,6 +1424,7 @@ export async function prepareRelayGptImageRequest(
               bytes: dataImage.bytes,
               contentType: dataImage.contentType,
               inputIndex: dataImage.inputIndex,
+              slot: dataImage.slot,
               reservation,
             });
           }
@@ -1437,11 +1460,13 @@ export async function prepareRelayGptImageRequest(
             throw referencePreparationError(error, "REFERENCE_UPLOAD_FAILED");
           }
           try {
-            inputImages[temporary.inputIndex] = await objectStore.createReadUrl(
+            const url = await objectStore.createReadUrl(
               temporary.reservation.objectKey,
               fixedProfile,
               execution.referenceUrlTtlSeconds ?? 300,
             );
+            if (temporary.slot === "mask") maskImage = url;
+            else inputImages[temporary.inputIndex] = url;
           } catch (error) {
             throw referencePreparationError(error, "REFERENCE_SIGN_FAILED");
           }
@@ -1450,9 +1475,13 @@ export async function prepareRelayGptImageRequest(
     }
     return {
       cleanup,
-      request: request.inputImages === undefined
+      request: request.inputImages === undefined && request.maskImage === undefined
         ? request
-        : { ...request, inputImages },
+        : {
+            ...request,
+            ...(request.inputImages === undefined ? {} : { inputImages }),
+            ...(request.maskImage === undefined ? {} : { maskImage }),
+          },
     };
   } catch (error) {
     await cleanup();

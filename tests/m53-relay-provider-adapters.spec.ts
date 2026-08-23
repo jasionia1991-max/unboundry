@@ -441,6 +441,7 @@ test("GPT Image generation and edits use their dedicated endpoints", async () =>
   const editedRequest: RelayGptImageRequest = {
     capability: "image",
     inputImages: ["https://signed.example.test/input.png?signature=short"],
+    maskImage: "https://signed.example.test/mask.png?signature=short",
     model: "gpt-image-2",
     operation: "edit",
     prompt: "Keep the garment and replace the background",
@@ -468,6 +469,7 @@ test("GPT Image generation and edits use their dedicated endpoints", async () =>
   });
   expect(JSON.parse(String(calls[1].init?.body))).toMatchObject({
     image: "https://signed.example.test/input.png?signature=short",
+    mask: "https://signed.example.test/mask.png?signature=short",
     model: "gpt-image-2",
     prompt: "Keep the garment and replace the background",
   });

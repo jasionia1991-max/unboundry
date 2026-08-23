@@ -15,9 +15,11 @@ test.beforeEach(async ({ page }, testInfo) => {
   const retention = testInfo.title.includes("retains 2K");
   const referenceModel = testInfo.title.includes("reference chip");
   const multiAngle = testInfo.title.includes("multi-angle submits");
-  const gptImageModel = referenceModel || multiAngle;
+  const redraw = testInfo.title.includes("redraw submits");
+  const gptImageTool = multiAngle || redraw;
+  const gptImageModel = referenceModel || gptImageTool;
   const displayName = gptImageModel ? "GPT Image 2" : "Nano Banana 2 Lite";
-  const parameterSchema = multiAngle
+  const parameterSchema = gptImageTool
     ? knownModelParameterSchema({
         capability: "image",
         providerDriver: "openrouter",
@@ -77,7 +79,7 @@ test.beforeEach(async ({ page }, testInfo) => {
       : [{
           capability: "image",
           displayName,
-          generationAvailable: multiAngle,
+          generationAvailable: gptImageTool,
           id: gptImageModel ? "fixture-gpt-image-2" : "fixture-nano-banana-2-lite",
           imageParameters: {
             aspectRatios: ["auto"],
@@ -99,7 +101,10 @@ test.beforeEach(async ({ page }, testInfo) => {
 });
 
 test.afterEach(async ({ request }, testInfo) => {
-  if (testInfo.title.includes("multi-angle submits")) {
+  if (
+    testInfo.title.includes("multi-angle submits") ||
+    testInfo.title.includes("redraw submits")
+  ) {
     await request.delete("/api/canvas/node.image.success");
   }
 });
@@ -1214,16 +1219,105 @@ test("Image multi-angle submits a structured persistent fake task without Provid
 
 });
 
-test("Image redraw keeps mask coordinates local and cancel is lossless", async ({
+test("Image redraw submits an owner-scoped mask fake task and cancel is lossless", async ({
   page,
+  request,
 }) => {
-  const generationRequests: string[] = [];
-  page.on("request", (request) => {
-    if (/provider|generate/i.test(request.url()) && !request.url().includes("/src/")) {
-      generationRequests.push(request.url());
+  const providerRequests: string[] = [];
+  const taskBodies: Array<Record<string, unknown>> = [];
+  page.on("request", (entry) => {
+    if (/openrouter|api\/v1\/images|provider/i.test(entry.url()) &&
+        !entry.url().includes("/src/")) {
+      providerRequests.push(entry.url());
     }
   });
+  await page.route("**/api/image-tools/capabilities", async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        generatedAt: "2026-08-23T13:00:00.000Z",
+        operations: imageToolOperations.map((operation) => ({
+          ...(operation === "redraw"
+            ? {
+                estimatedCost: {
+                  amount: 0.009,
+                  currency: "USD",
+                  source: "operator",
+                },
+                modelId: "fixture-gpt-image-2",
+              }
+            : {}),
+          expiresAt: "2099-08-23T13:05:00.000Z",
+          maximumInputBytes: imageToolMaximums.inputBytes,
+          maximumInputPixels: imageToolMaximums.inputPixels,
+          operation,
+          outputContentTypes: ["image/png"],
+          reason: operation === "redraw" ? "能力已就绪" : "测试未启用",
+          reasonCode: operation === "redraw" ? "AVAILABLE" : "UNSUPPORTED",
+          status: operation === "redraw" ? "available" : "unavailable",
+          supportsAlpha: operation === "redraw",
+          supportsMask: operation === "redraw",
+          supportsReferenceImage: operation === "redraw",
+        })),
+        revision: "bbbbbbbbbbbbbbbbbbbbbbbb",
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+  await page.route("**/api/generation-tasks**", async (route) => {
+    const url = new URL(route.request().url());
+    const method = route.request().method();
+    if (url.pathname === "/api/generation-tasks/preflight" && method === "POST") {
+      await route.fulfill({
+        body: JSON.stringify({ canEnqueue: true, canSubmit: true, problems: [] }),
+        contentType: "application/json",
+        status: 200,
+      });
+      return;
+    }
+    if (url.pathname === "/api/generation-tasks/by-idempotency" && method === "GET") {
+      await route.fulfill({
+        body: JSON.stringify({ error: "not found" }),
+        contentType: "application/json",
+        status: 404,
+      });
+      return;
+    }
+    if (url.pathname === "/api/generation-tasks" && method === "POST") {
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      taskBodies.push(body);
+      await route.fulfill({
+        body: JSON.stringify({
+          attempt: 1,
+          canvasId: body.canvasId,
+          costCurrency: "USD",
+          createdAt: "2026-08-23T13:00:01.000Z",
+          id: "fake-redraw-task-1",
+          kind: "image",
+          model: body.model,
+          nodeId: body.nodeId,
+          prompt: body.prompt,
+          state: "queued",
+          updatedAt: "2026-08-23T13:00:01.000Z",
+        }),
+        contentType: "application/json",
+        status: 202,
+      });
+      return;
+    }
+    await route.continue();
+  });
+  await request.delete("/api/canvas/node.image.success");
   await page.goto("/__fixture/node.image.success");
+  await page.getByTestId("image-upload-input").setInputFiles(
+    path.resolve(
+      "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+    ),
+  );
+  const sourceCard = page.getByTestId("image-node-image-primary");
+  await expect.poll(() => sourceCard.getAttribute("data-asset-id"))
+    .not.toBeNull();
+  const sourceAssetId = await sourceCard.getAttribute("data-asset-id");
   const preview = page
     .getByTestId("image-node-image-primary")
     .getByTestId("image-node-preview");
@@ -1317,7 +1411,123 @@ test("Image redraw keeps mask coordinates local and cancel is lossless", async (
   await page.getByRole("button", { name: "取消重绘" }).click();
   await expect(overlay).toHaveCount(0);
   await expect(preview).toHaveAttribute("src", originalSrc!);
-  expect(generationRequests).toEqual([]);
+
+  await page.getByRole("button", { name: "重绘" }).click();
+  const submissionOverlay = page.getByTestId("image-redraw-overlay");
+  const submissionCanvas = page.getByTestId("image-redraw-canvas");
+  const submissionPrompt = page.getByTestId("image-redraw-prompt");
+  await submissionPrompt.getByRole("textbox", { name: "重绘提示词" })
+    .fill("把选中区域改成蓝色陶瓷材质");
+  await submissionPrompt.getByRole("slider", { name: "蒙版羽化" }).fill("8");
+  const submissionBox = (await submissionCanvas.boundingBox())!;
+  await page.mouse.move(submissionBox.x + 120, submissionBox.y + 120);
+  await page.mouse.down();
+  await page.mouse.move(submissionBox.x + 220, submissionBox.y + 170, {
+    steps: 5,
+  });
+  await page.mouse.up();
+  const submit = submissionPrompt.getByRole("button", { name: "提交重绘" });
+  await expect(submit).toBeEnabled();
+  await submit.click();
+  await expect.poll(async () => ({
+    error: await page.getByRole("alert").count()
+      ? await page.getByRole("alert").textContent()
+      : "",
+    taskCount: taskBodies.length,
+  })).toEqual({ error: "", taskCount: 1 });
+  await expect(submissionOverlay).toHaveCount(0);
+  expect(taskBodies[0]).toMatchObject({
+    canvasId: "node.image.success",
+    imageTool: {
+      mask: {
+        featherPixels: 8,
+        height: 720,
+        version: 1,
+        width: 1280,
+      },
+      operation: "redraw",
+      sourceAssetId,
+      sourceNodeId: "image-primary",
+    },
+    inputSchemaVersion: 1,
+    kind: "image",
+    model: "fixture-gpt-image-2",
+  });
+  expect(taskBodies[0]?.nodeId).toMatch(/^image-redraw-/);
+  expect(taskBodies[0]?.inputs).toEqual([
+    expect.objectContaining({
+      assetId: sourceAssetId,
+      kind: "image",
+      order: 0,
+      role: "reference-image",
+      sourceNodeId: "image-primary",
+    }),
+  ]);
+  const taskImageTool = taskBodies[0]?.imageTool as {
+    mask?: { assetId?: string };
+  };
+  const maskAssetId = taskImageTool.mask?.assetId;
+  expect(maskAssetId).toMatch(/^[0-9a-f-]{36}$/);
+  const maskMetadata = await request.get(
+    `/api/media-metadata/image/${encodeURIComponent(maskAssetId!)}`,
+  );
+  expect(maskMetadata.status()).toBe(200);
+  expect(await maskMetadata.json()).toMatchObject({
+    assetId: maskAssetId,
+    contentType: "image/png",
+    mediaHeight: 720,
+    mediaWidth: 1280,
+  });
+  await expect.poll(async () => {
+    const saved = await (await request.get("/api/canvas/node.image.success")).json() as {
+      edges?: Array<{ source?: string; target?: string }>;
+      nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+    };
+    const target = saved.nodes?.find((node) => node.id?.startsWith("image-redraw-"));
+    return {
+      edge: saved.edges?.some((edge) =>
+        edge.source === "image-primary" && edge.target === target?.id
+      ),
+      maskAssetId: target?.data?.imageToolMaskAssetId,
+      maskFeatherPixels: target?.data?.imageToolMaskFeatherPixels,
+      maskHeight: target?.data?.imageToolMaskHeight,
+      maskVersion: target?.data?.imageToolMaskVersion,
+      maskWidth: target?.data?.imageToolMaskWidth,
+      operation: target?.data?.imageToolOperation,
+      sourceAssetId: target?.data?.imageToolSourceAssetId,
+      taskId: target?.data?.imageGenerationTaskId,
+    };
+  }).toEqual({
+    edge: true,
+    maskAssetId,
+    maskFeatherPixels: 8,
+    maskHeight: 720,
+    maskVersion: 1,
+    maskWidth: 1280,
+    operation: "redraw",
+    sourceAssetId,
+    taskId: "fake-redraw-task-1",
+  });
+  await page.reload();
+  await expect(page.getByTestId("canvas-world"))
+    .toHaveAttribute("data-persistence-ready", "true");
+  await expect.poll(async () => {
+    const saved = await (await request.get("/api/canvas/node.image.success")).json() as {
+      nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+    };
+    const target = saved.nodes?.find((node) => node.id?.startsWith("image-redraw-"));
+    return {
+      maskAssetId: target?.data?.imageToolMaskAssetId,
+      operation: target?.data?.imageToolOperation,
+      taskId: target?.data?.imageGenerationTaskId,
+    };
+  }).toEqual({
+    maskAssetId,
+    operation: "redraw",
+    taskId: "fake-redraw-task-1",
+  });
+  expect(taskBodies).toHaveLength(1);
+  expect(providerRequests).toEqual([]);
 });
 
 test("Image lighting stays unavailable while the feature is paused", async ({

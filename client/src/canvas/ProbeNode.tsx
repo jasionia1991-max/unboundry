@@ -132,6 +132,11 @@ export type ProbeNodeType = Node<
     imageSrc?: string;
     imageToolOperation?: ImageToolOperation;
     imageToolOperationId?: string;
+    imageToolMaskAssetId?: string;
+    imageToolMaskFeatherPixels?: number;
+    imageToolMaskHeight?: number;
+    imageToolMaskVersion?: 1;
+    imageToolMaskWidth?: number;
     imageToolSourceAssetId?: string;
     inputState?: NodeInputState;
     inputStateReason?: string;
