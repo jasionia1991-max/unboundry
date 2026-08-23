@@ -1272,9 +1272,10 @@ test("Image multi-angle submits a structured persistent fake task without Provid
 }) => {
   const providerRequests: string[] = [];
   const taskBodies: Array<Record<string, unknown>> = [];
-  let releaseTaskCreation = () => {};
-  const taskCreationGate = new Promise<void>((resolve) => {
-    releaseTaskCreation = resolve;
+  let preflightStarted = false;
+  let releasePreflight = () => {};
+  const preflightGate = new Promise<void>((resolve) => {
+    releasePreflight = resolve;
   });
   page.on("request", (entry) => {
     if (/openrouter|api\/v1\/images|provider/i.test(entry.url()) &&
@@ -1319,6 +1320,8 @@ test("Image multi-angle submits a structured persistent fake task without Provid
     const url = new URL(route.request().url());
     const method = route.request().method();
     if (url.pathname === "/api/generation-tasks/preflight" && method === "POST") {
+      preflightStarted = true;
+      await preflightGate;
       await route.fulfill({
         body: JSON.stringify({ canEnqueue: true, canSubmit: true, problems: [] }),
         contentType: "application/json",
@@ -1337,7 +1340,6 @@ test("Image multi-angle submits a structured persistent fake task without Provid
     if (url.pathname === "/api/generation-tasks" && method === "POST") {
       const body = route.request().postDataJSON() as Record<string, unknown>;
       taskBodies.push(body);
-      await taskCreationGate;
       await route.fulfill({
         body: JSON.stringify({
           attempt: 1,
@@ -1425,7 +1427,7 @@ test("Image multi-angle submits a structured persistent fake task without Provid
   const submit = panel.getByRole("button", { name: "生成多角度图片" });
   await expect(submit).toBeEnabled();
   const submitPromise = submit.click();
-  await expect.poll(() => taskBodies.length).toBe(1);
+  await expect.poll(() => preflightStarted).toBe(true);
   await expect(submit).toBeDisabled();
   await expect(panel.getByRole("button", { name: "关闭多角度" }))
     .toBeDisabled();
@@ -1433,7 +1435,7 @@ test("Image multi-angle submits a structured persistent fake task without Provid
   await expect(panel).toBeVisible();
   await page.getByTestId("image-tool-host").click({ position: { x: 4, y: 4 } });
   await expect(panel).toBeVisible();
-  releaseTaskCreation();
+  releasePreflight();
   await submitPromise;
   await expect.poll(async () => ({
     error: await page.getByRole("alert").count()

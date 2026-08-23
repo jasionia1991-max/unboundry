@@ -3556,10 +3556,10 @@ function ImageNodeImpl({
   }, [moreOpen]);
 
   useEffect(() => {
-    if (singleNodeChrome || activeImageTool) return;
+    if (singleNodeChrome) return;
     setLightingOpen(false);
     dispatchToolUi({ type: "close-transient-ui" });
-  }, [activeImageTool, singleNodeChrome]);
+  }, [singleNodeChrome]);
 
   const loadFile = async (file?: File) => {
     if (!file) return;
@@ -4493,10 +4493,7 @@ function ImageNodeImpl({
       <NodeToolbar
         className="media-node-toolbar image-node-toolbar nodrag nopan nowheel"
         data-testid="image-node-toolbar"
-        isVisible={Boolean(
-          preview && (singleNodeChrome || activeImageTool) && !generating &&
-            !uploading,
-        )}
+        isVisible={Boolean(preview && singleNodeChrome && !generating && !uploading)}
         offset={28}
         position={Position.Top}
       >
