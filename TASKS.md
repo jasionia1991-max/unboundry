@@ -1,11 +1,11 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产为`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，但图片工具用户质量复验未通过。`INC-IMGEDIT-004` R3已完成六类紧凑/大型安全面板与三目标视口bounds；R4大型编辑器与透明舞台施工中。
+> **当前状态**：生产为`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，但图片工具用户质量复验未通过。`INC-IMGEDIT-004` R4已完成五类大型编辑器、透明舞台和直接回归；下一阶段为R5全屏与交互完整性。
 
 更新时间：2026-08-24
-状态：`v0.6.35 PRODUCTION_PUBLISHED_AUTO_PASS；REAL_PROVIDER_TECHNICAL_SMOKE_PASS 6/6；INC-IMGEDIT-004 R3_AUTO_PASS / R4_IN_PROGRESS；USER_QUALITY_REMEDIATION_REQUIRED。`
+状态：`v0.6.35 PRODUCTION_PUBLISHED_AUTO_PASS；REAL_PROVIDER_TECHNICAL_SMOKE_PASS 6/6；INC-IMGEDIT-004 R4_AUTO_PASS / R5_NOT_STARTED；USER_QUALITY_REMEDIATION_REQUIRED。`
 
-### 2026-08-24 图片工具交互与 UI 一次性返工（INC-IMGEDIT-004，GOAL_ACTIVE / R4_IN_PROGRESS）
+### 2026-08-24 图片工具交互与 UI 一次性返工（INC-IMGEDIT-004，GOAL_ACTIVE / R4_AUTO_PASS）
 
 - 用户生产实页检查未通过；自动测试和六项真实Provider链只证明技术链，不能证明功能交互、UI或视觉质量正常。
 - 已确认P0/P1：多个工具可叠开；多角度/快速切分/Seedance底部裁切；重绘/擦除/标注与Creator碰撞；透明图在编辑器/全屏为黑底；扩图和紧凑面板布局失衡。顶部工具栏、更多菜单和颜色标记作为回归保护。
@@ -21,6 +21,8 @@
 - 精确提交`661a7a4`的safe m2 `10/10`、m100 `13/13 PASS`；加强焦点断言后先以`9/10`抓出modal期间卸载toolbar导致旧触发元素断连，修正为保留DOM并依靠root inert后，最终`c5f9795`只复验m2 `10/10 PASS`。Node22.23.1/npm10.9.8、source/snapshot/listener均unchanged，Provider/OSS/费用0；没有运行full。IMGEDIT-021收口AUTO_PASS，022/023/026/027按真实范围保持PARTIAL。
 - R3已统一多角度、调整像素、快速切分、增强、抠图和Seedance的header/body/footer、14/12px灰阶视觉、busy关闭与固定动作区；快速切分改为920px modal sheet，多角度恢复真实600×308 screen-space尺寸并移除`scale(0.819)`。调整像素/快速切分busy同步给Host，未改任何业务payload或Generation/Media/Canvas合同。
 - R3最终精确提交`1dd3fa5`的safe m2 `10/10 PASS`、m18 `2/2 PASS`，三目标视口均有panel/footer bounds直接断言，零Generation/Provider；首次m2 `9/10`只暴露Seedance新header让旧非精确关闭locator歧义，收紧测试locator后最小复验通过。source/snapshot`288cea88…0ddf`、4173 listener unchanged，未运行full；IMGEDIT-025为TARGETED_AUTO_PASS，022/026/028按实际范围保持PARTIAL。
+- R4把裁剪、重绘、擦除、扩图和标注全部放入统一checkerboard `ImageToolSurface`和Host内screen-space大型网格；重绘/擦除拆为顶部工具条、中央contain舞台、底部Prompt，扩图明确原图/新增边界，标注使用紧凑图标和中文aria/tooltip，导出busy同步Host。棋盘格只由CSS呈现，不进入导出字节；业务Dispatcher、mask/payload、Generation/Media/Canvas合同未改。
+- R4最终精确提交`e01ee2f`的safe m2 `10/10 PASS`、m18 `2/2 PASS`；大型编辑器bounds、棋盘格computed-style、裁剪安全Blob、标注IME/撤销重做/导出、重绘mask坐标和fake任务payload通过。首次m2 `9/10`只暴露新增测试把class误写成testid，最小修正后复验通过；source/snapshot`2548fe1b…5566`、4173 listener unchanged，Provider/OSS/费用0，未运行full。IMGEDIT-024为TARGETED_AUTO_PASS，022/023/026/028按实际范围保持PARTIAL。
 
 ### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，D13_AUTO_PASS / USER_QUALITY_REMEDIATION_REQUIRED）
 

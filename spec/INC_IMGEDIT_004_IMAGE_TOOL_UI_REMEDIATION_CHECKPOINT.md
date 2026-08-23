@@ -2,10 +2,10 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 03:36:12 +0800
-- 状态：`GOAL_ACTIVE / R4_IN_PROGRESS / UI_REMEDIATION_REQUIRED`
-- 当前阶段：`R4 大型编辑器与透明舞台 / IN_PROGRESS`
-- 唯一允许的下一动作：完成重绘、擦除、扩图、标注和裁剪的大型screen-space布局与统一`ImageToolSurface`；验证棋盘格、contain、原图/新增区、mask坐标和动作区不碰撞
+- 更新时间：2026-08-24 03:46:02 +0800
+- 状态：`GOAL_ACTIVE / R4_AUTO_PASS / UI_REMEDIATION_REQUIRED`
+- 当前阶段：`R4 大型编辑器与透明舞台 / AUTO_PASS`
+- 唯一允许的下一动作：提交R4文档checkpoint；随后先把R5标为`IN_PROGRESS`，完成全屏透明舞台及Escape、焦点循环/返回、IME、reduced-motion和四档zoom交互矩阵
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
 - 文档分支：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`
 - 立项 HEAD / origin-main：`f369d1dba1eef05aebc7f1a443256ceb82778ea0`
@@ -96,7 +96,7 @@ node -p "require('./package.json').version"
 | R1 | 状态机和共享宿主合同 | AUTO_PASS_WITH_EXPECTED_RED_UI_EVIDENCE |
 | R2 | 单一活动工具与 Portal 宿主 | AUTO_PASS |
 | R3 | 紧凑面板和快速切分 | AUTO_PASS |
-| R4 | 大型编辑器与透明舞台 | IN_PROGRESS |
+| R4 | 大型编辑器与透明舞台 | AUTO_PASS |
 | R5 | 全屏与交互完整性 | NOT_STARTED |
 | R6 | 逐工具功能与回归验证 | NOT_STARTED |
 | R7 | 候选冻结与独立审查 | NOT_STARTED |
@@ -110,13 +110,13 @@ node -p "require('./package.json').version"
 | ID | 内容 | 状态 |
 |---|---|---|
 | IMGEDIT-021 | 单一活动工具状态机与叠层阻断 | AUTO_PASS |
-| IMGEDIT-022 | screen-space 宿主与 viewport 安全 | PARTIAL / COMPACT_VIEWPORT_AUTO_PASS |
-| IMGEDIT-023 | 透明图片统一棋盘格与 contain | PARTIAL / SHARED_SURFACE_AUTO_PASS |
-| IMGEDIT-024 | 重绘/擦除/扩图/标注大型编辑层 | NOT_STARTED |
+| IMGEDIT-022 | screen-space 宿主与 viewport 安全 | PARTIAL / LARGE_EDITOR_VIEWPORT_AUTO_PASS |
+| IMGEDIT-023 | 透明图片统一棋盘格与 contain | PARTIAL / EDITOR_SURFACE_AUTO_PASS |
+| IMGEDIT-024 | 重绘/擦除/扩图/标注大型编辑层 | TARGETED_AUTO_PASS |
 | IMGEDIT-025 | 多角度/调整像素/快速切分/增强/抠图/Seedance 面板 | TARGETED_AUTO_PASS |
-| IMGEDIT-026 | Escape、焦点、键盘、IME、busy 与 reduced-motion | PARTIAL / PANEL_BUSY_AUTO_PASS |
+| IMGEDIT-026 | Escape、焦点、键盘、IME、busy 与 reduced-motion | PARTIAL / EDITOR_BUSY_AUTO_PASS |
 | IMGEDIT-027 | 既有工具栏、菜单、颜色、裁剪、下载回归 | PARTIAL / DIRECT_REGRESSION_AUTO_PASS |
-| IMGEDIT-028 | 目标视口与真人逐项功能验收 | PARTIAL / PANEL_VIEWPORT_AUTO_PASS |
+| IMGEDIT-028 | 目标视口与真人逐项功能验收 | PARTIAL / EDITOR_VIEWPORT_AUTO_PASS |
 
 ## 7. 版本、发布和外部调用门
 
@@ -254,3 +254,24 @@ Provider / OSS / 费用：
 - 阻断：无；首次m2失败是确定性测试locator歧义，已按最小范围修正并只复验m2
 - 回滚点：R3启动提交`9346239657c1338759f7f1e761dc0c0549828abe`；产品提交`3cc7351`，安全fixture导入修正`39c98a8`，最终locator修正`1dd3fa5`
 - 唯一下一动作：提交R3文档checkpoint；随后先把R4标为`IN_PROGRESS`，完成重绘、擦除、扩图、标注、裁剪回归和统一透明棋盘格大型舞台
+
+## 15. R4 大型编辑器与透明舞台
+
+- 时间：2026-08-24 03:46:02 +0800
+- 阶段：`R4`
+- 状态：`AUTO_PASS`
+- branch / HEAD / origin-main：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24` / 最终被测`e01ee2f2749a9aa85c4c87bcbacd751713b5612e` / `f369d1dba1eef05aebc7f1a443256ceb82778ea0`
+- 工作树摘要：R4产品和测试已分两次本地checkpoint提交；最终验证使用本Goal精确创建的detached临时worktree并已安全移除。当前只剩受保护JSON未跟踪且不在diff/stage；旧v0.6.32 receipt worktree同名改动mtime仍停在2026-08-23，当前无同范围测试进程
+- 产品文件：`client/src/canvas/ImageNode.tsx`、`client/src/imageTools/ImageAnnotationEditor.tsx`、`client/src/styles.css`；裁剪、重绘、擦除、扩图和标注全部进入统一checkerboard `ImageToolSurface`，大型编辑层改为Host内screen-space网格；重绘/擦除分离顶部工具条、中央contain舞台和底部Prompt；扩图明确原图范围与新增棋盘格边界并允许控制区换行；标注改为紧凑图标工具条并把导出busy同步给Host
+- 测试文件：`tests/m2-image-node.spec.ts`；在既有10个spec内加入大型编辑器overlay/stage/toolbar/prompt/status viewport bounds、共享surface tone和棋盘格computed-style断言，保留裁剪安全Blob、标注IME/撤销重做/导出、重绘mask坐标与fake任务payload既有证据
+- 文档文件：本Checkpoint、验收矩阵、TASKS；CURRENT_STATE没有候选、GitHub、版本或生产事实变化，按纪律不改
+- package / schema / candidate：`0.6.35 / schema39 / 无候选`
+- 版本门 / 发布门：`v0.6.35 / VERSION_GATE_VALID`；“v0.6.35上线” / `RELEASE_GATE_VALID`，仍只允许R7通过后进入R8
+- Provider / OSS / 费用：真实Provider请求、尝试、成功0；费用0；真实OSS写入0；m2只使用临时fixture、动态loopback、fake capability/task和本地派生资产
+- 测试命令、环境、结果、退出码：Node22.23.1/npm10.9.8。精确提交`4fd1ba1`首次safe m2为`9/10`、退出1，唯一失败是测试误把现有class当成不存在的testid，产品其余9项和大型编辑器行为通过；只修locator后最终`e01ee2f` safe m2 `10/10 PASS`、退出0，safe m18 `2/2 PASS`、退出0。一次错误命令使用不存在的`m18-font-size-inventory.spec.ts`在spec选择门以0个匹配退出1、未执行产品测试；随后用真实`m18-typography.spec.ts`通过。最终source/snapshot`2548fe1b…5566`、4173 listener `24c91e57…8244` unchanged；未运行m100或full
+- 浏览器视口、zoom、素材与结果：m2隔离Playwright在1440×900验证扩图和擦除，在裁剪既有目标视口验证安全Blob/大型舞台，在1280×720验证标注工具/舞台/状态区，在重绘fixture验证mask舞台/Prompt/工具条全部不越viewport；四zoom和全屏透明素材留给R5，横竖方完整矩阵留给R6
+- 架构与数据风险：仅重排UI壳层、透明预览背景和annotation busy可见状态；棋盘格只由CSS渲染，不进入canvas/export字节；Dispatcher、operation payload、mask坐标、Generation/Media/Canvas/Library/Provider、schema和安全Blob合同未改
+- 设计偏差：重绘/擦除移除三个无业务动作的`1K/x1/PRO`伪按钮，保留真实工具、羽化、Prompt和提交；标注图标以中文aria-label和tooltip保留可访问名称。旧布局选择器继续由文件末尾R4规则覆盖，按R7冻结审查决定是否安全清理
+- 阻断：无；首次m2失败是确定性测试定位器错误，已最小修正并只复验直接spec
+- 回滚点：R4启动提交`d0b981cf957dddb5c170d9ff69beeb005b342b47`；产品/测试提交`4fd1ba1`，locator修正`e01ee2f`
+- 唯一下一动作：提交R4文档checkpoint；随后先把R5标为`IN_PROGRESS`，完成全屏透明舞台及Escape、焦点循环/返回、IME、reduced-motion和四档zoom交互矩阵
