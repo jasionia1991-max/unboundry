@@ -1085,7 +1085,7 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   await expectInsideViewport(annotationOverlay);
   await expectInsideViewport(annotationToolbar);
   await expectInsideViewport(annotationStage);
-  await expectInsideViewport(page.getByTestId("image-annotation-status"));
+  await expectInsideViewport(annotationOverlay.locator(".image-annotation-status"));
   await expect(annotationStage).not.toHaveCSS("background-image", "none");
   const annotationBox = (await annotationStage.boundingBox())!;
 
