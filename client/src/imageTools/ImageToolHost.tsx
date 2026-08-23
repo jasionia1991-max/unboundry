@@ -194,6 +194,7 @@ export function ImageToolHost({
         aria-modal={descriptor.inertBackground ? "true" : undefined}
         className="image-tool-host-panel nodrag nopan nowheel"
         data-placement={popoverPosition?.placement}
+        onClick={(event) => event.stopPropagation()}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             event.preventDefault();
@@ -220,6 +221,8 @@ export function ImageToolHost({
             first.focus();
           }
         }}
+        onMouseDown={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
         ref={panelRef}
         role="dialog"
         style={panelStyle}
