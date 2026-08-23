@@ -2,10 +2,10 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 03:14:00 +0800
-- 状态：`GOAL_ACTIVE / R1_IN_PROGRESS / UI_REMEDIATION_REQUIRED`
-- 当前阶段：`R1 状态机和共享宿主合同 / IN_PROGRESS`
-- 唯一允许的下一动作：冻结 ActiveImageTool、descriptor、host/modal/popover/surface、焦点、busy、关闭、inert 和 z-index 合同；在既有直接规格中先补会在旧实现稳定失败的叠层、viewport 和透明 surface 证据，不提前实现 R2 UI 宿主
+- 更新时间：2026-08-24 03:11:52 +0800
+- 状态：`GOAL_ACTIVE / R1_AUTO_PASS_WITH_EXPECTED_RED_UI_EVIDENCE / UI_REMEDIATION_REQUIRED`
+- 当前阶段：`R1 状态机和共享宿主合同 / AUTO_PASS_WITH_EXPECTED_RED_UI_EVIDENCE`
+- 唯一允许的下一动作：提交 R1 文档 checkpoint；随后进入 R2 前先把 R2 标为 `IN_PROGRESS`，实现单一 active tool、统一 Portal Host、modal inert、焦点返回和共享 checkerboard surface，使 R1 的 m2 红证据转绿
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
 - 文档分支：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`
 - 立项 HEAD / origin-main：`f369d1dba1eef05aebc7f1a443256ceb82778ea0`
@@ -93,7 +93,7 @@ node -p "require('./package.json').version"
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | R0 | 实时恢复与缺陷基线 | AUTO_PASS |
-| R1 | 状态机和共享宿主合同 | IN_PROGRESS |
+| R1 | 状态机和共享宿主合同 | AUTO_PASS_WITH_EXPECTED_RED_UI_EVIDENCE |
 | R2 | 单一活动工具与 Portal 宿主 | NOT_STARTED |
 | R3 | 紧凑面板和快速切分 | NOT_STARTED |
 | R4 | 大型编辑器与透明舞台 | NOT_STARTED |
@@ -191,3 +191,24 @@ Provider / OSS / 费用：
 - 阻断：无
 - 回滚点：`origin/main@f369d1dba1eef05aebc7f1a443256ceb82778ea0`；R0 只有治理文档改动，无产品、测试、schema、Provider、OSS 或生产变化
 - 唯一下一动作：提交 R0 本地 checkpoint；随后把 R1 标为 `IN_PROGRESS`，先冻结合同并补失败测试，不提前实现 R2
+
+## 12. R1 状态机和共享宿主合同
+
+- 时间：2026-08-24 03:11:52 +0800
+- 阶段：`R1`
+- 状态：`AUTO_PASS_WITH_EXPECTED_RED_UI_EVIDENCE`
+- branch / HEAD / origin-main：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24` / 合同提交 `16b0acad9261394f1f33b90108d01a6c7ad06abb` / `f369d1dba1eef05aebc7f1a443256ceb82778ea0`
+- 工作树摘要：R0提交`6b1109d`后，R1新增纯UI合同与既有两份直接规格断言；产品运行时尚未接宿主，故m2保持预期红。受保护JSON仍未跟踪且未进入提交
+- 产品文件：`client/src/imageTools/imageToolUiContract.ts`；冻结12个活动工具、modal/popover分类、checkerboard/plain surface、inert/outside-close/max-width descriptor和原子菜单互斥reducer。未新增fetch、Provider、Generation、Media、Canvas或Library编排
+- 测试文件：`tests/m100-modular-ports.spec.ts`扩展既有合同用例；`tests/m2-image-node.spec.ts`扩展既有图片基础用例，不增加spec或测试总数
+- 文档文件：本Checkpoint、验收矩阵、TASKS
+- package / schema / candidate：`0.6.35 / schema39 / 无候选`
+- 版本门 / 发布门：`v0.6.35 / VERSION_GATE_VALID`；“v0.6.35上线” / `RELEASE_GATE_VALID`
+- Provider / OSS / 费用：真实Provider请求、尝试、成功0；费用0；真实OSS写入0
+- 测试命令、环境、结果、退出码：原工作树safe run因既有ignored `backups/` direct-write负控在产品spec前以EISDIR退出1，source/listener unchanged；未删除或移动备份。随后从精确提交`16b0aca`建立本Goal专用detached临时worktree并离线安装依赖：m100 `13/13 PASS`、退出0；m2按预期`9/10 PASS`、退出1，唯一失败是新增R1断言，精确证明旧运行时没有`ImageToolHost`、modal未给`#root`设置inert、cutout没有共享`ImageToolSurface`。两次source/snapshot `34c881c9…2cc5` unchanged、4173 listener `24c91e57…8244` unchanged；临时worktree已安全移除
+- 浏览器视口、zoom、素材与结果：m2旧实现红证据来自隔离Playwright浏览器；R1未宣称viewport矩阵通过。R2后先复验同一最小用例
+- 架构与数据风险：descriptor与reducer只管理可见UI状态，不持有业务payload、任务、上传或轮询；Host必须继续限制为Portal、互斥、焦点、关闭、inert、z-index和viewport
+- 设计偏差：快速切分正式冻结为modal/checkerboard大型安全壳层，不再作为420px节点相对popover；全屏纳入同一modal host但继续保持产品内查看器
+- 阻断：无；m2失败是施工前必须保留的确定性红证据，不是环境或外部阻断
+- 回滚点：R0提交`6b1109d7bafc5288f7b4547d22ea7387c783699f`；R1合同提交`16b0acad9261394f1f33b90108d01a6c7ad06abb`
+- 唯一下一动作：提交R1文档checkpoint；随后把R2标为`IN_PROGRESS`，实现Host并只复验m2/m100最小集合

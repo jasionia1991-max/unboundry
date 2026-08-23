@@ -1,11 +1,11 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产为`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，但图片工具用户质量复验未通过。`INC-IMGEDIT-004` 已启动，R0 实时恢复与缺陷基线 `AUTO_PASS`；下一阶段为 R1 状态机和共享宿主合同。
+> **当前状态**：生产为`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，但图片工具用户质量复验未通过。`INC-IMGEDIT-004` R0已恢复基线，R1已冻结共享UI合同并取得旧实现确定性红证据；下一阶段为R2单一活动工具与Portal宿主。
 
 更新时间：2026-08-24
-状态：`v0.6.35 PRODUCTION_PUBLISHED_AUTO_PASS；REAL_PROVIDER_TECHNICAL_SMOKE_PASS 6/6；INC-IMGEDIT-004 R0_AUTO_PASS；USER_QUALITY_REMEDIATION_REQUIRED。`
+状态：`v0.6.35 PRODUCTION_PUBLISHED_AUTO_PASS；REAL_PROVIDER_TECHNICAL_SMOKE_PASS 6/6；INC-IMGEDIT-004 R1_CONTRACT_AUTO_PASS_WITH_RED_UI_EVIDENCE；USER_QUALITY_REMEDIATION_REQUIRED。`
 
-### 2026-08-24 图片工具交互与 UI 一次性返工（INC-IMGEDIT-004，GOAL_ACTIVE / R0_AUTO_PASS）
+### 2026-08-24 图片工具交互与 UI 一次性返工（INC-IMGEDIT-004，GOAL_ACTIVE / R1_CONTRACT_AUTO_PASS_WITH_RED_UI_EVIDENCE）
 
 - 用户生产实页检查未通过；自动测试和六项真实Provider链只证明技术链，不能证明功能交互、UI或视觉质量正常。
 - 已确认P0/P1：多个工具可叠开；多角度/快速切分/Seedance底部裁切；重绘/擦除/标注与Creator碰撞；透明图在编辑器/全屏为黑底；扩图和紧凑面板布局失衡。顶部工具栏、更多菜单和颜色标记作为回归保护。
@@ -16,6 +16,7 @@
 - R0实时恢复确认分支HEAD与最新`origin/main`同为`f369d1d`，package0.6.35、Node22.23.1/npm10.9.8；生产只读探针为`0.6.35 / live / ready active schema39`。safe runner preflight 120 specs通过、4173 listener不变；未运行产品spec/full，产品/测试/schema/生产未改。
 - R0源码基线确认ImageNode仍有多组独立open state，紧凑/多角度面板仍依赖NodeToolbar相对定位，大型编辑层缺统一inert/focus/top-layer合同；这与登记缺陷一致。受保护JSON仍未跟踪且不在diff/stage，其他worktree没有同范围施工证据。
 - 本Goal版本门为`v0.6.35`，用户独立明确“v0.6.35上线”，两项发布门有效；只能在R7通过后进入R8。INC-IMGEDIT-003预算已用完，本Goal真实Provider/尝试/费用均为0，生产技术通过后仍需用户明确`USER_PASS`。
+- R1已冻结12个`ActiveImageTool`、modal/popover分类、checkerboard/plain surface、inert/outside-close/max-width descriptor和原子菜单互斥reducer；只管理UI可见状态，不接业务payload、任务、上传或轮询。m100合同`13/13 PASS`。旧实现m2按预期`9/10`，唯一失败精确证明统一Host、modal inert和共享透明Surface尚未实现；R2必须让同一红证据转绿。两次均为精确提交隔离worktree、Node22.23.1/npm10.9.8、source/listener unchanged，Provider/OSS/费用0。
 
 ### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，D13_AUTO_PASS / USER_QUALITY_REMEDIATION_REQUIRED）
 
