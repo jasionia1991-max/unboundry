@@ -2,10 +2,10 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 03:24:31 +0800
-- 状态：`GOAL_ACTIVE / R3_IN_PROGRESS / UI_REMEDIATION_REQUIRED`
-- 当前阶段：`R3 紧凑面板和快速切分 / IN_PROGRESS`
-- 唯一允许的下一动作：完成多角度、调整像素、快速切分、增强、抠图和 Seedance 的统一紧凑/大型安全布局、header/body/footer、busy/error和viewport-safe动作区；定向验证全部面板不裁切且零真实提交
+- 更新时间：2026-08-24 03:36:12 +0800
+- 状态：`GOAL_ACTIVE / R3_AUTO_PASS / UI_REMEDIATION_REQUIRED`
+- 当前阶段：`R3 紧凑面板和快速切分 / AUTO_PASS`
+- 唯一允许的下一动作：提交R3文档checkpoint；随后先把R4标为`IN_PROGRESS`，再完成重绘、擦除、扩图、标注、裁剪回归和统一透明棋盘格大型舞台
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
 - 文档分支：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`
 - 立项 HEAD / origin-main：`f369d1dba1eef05aebc7f1a443256ceb82778ea0`
@@ -16,8 +16,8 @@
 - 目标版本：`v0.6.35 / VERSION_GATE_VALID`
 - 发布授权：用户于本 Goal 独立明确“`v0.6.35 上线`” / `RELEASE_GATE_VALID`
 - 真实 Provider/付费预算：`0次 / 0 USD`
-- 产品代码：单一活动状态、Portal Host、modal inert、焦点返回和共享surface已实现
-- 测试代码：m2已补Host/inert/surface/焦点返回直接断言
+- 产品代码：单一活动状态、Portal Host、modal inert、焦点返回、共享surface，以及六类紧凑/大型安全面板已实现
+- 测试代码：m2已补Host/inert/surface/焦点返回、三目标视口panel/footer bounds和零生成请求直接断言
 - 文档范围：Checkpoint、TASKS、验收矩阵；CURRENT_STATE尚无候选/版本/GitHub/生产事实变化
 
 ## 1. 权威恢复顺序
@@ -95,7 +95,7 @@ node -p "require('./package.json').version"
 | R0 | 实时恢复与缺陷基线 | AUTO_PASS |
 | R1 | 状态机和共享宿主合同 | AUTO_PASS_WITH_EXPECTED_RED_UI_EVIDENCE |
 | R2 | 单一活动工具与 Portal 宿主 | AUTO_PASS |
-| R3 | 紧凑面板和快速切分 | IN_PROGRESS |
+| R3 | 紧凑面板和快速切分 | AUTO_PASS |
 | R4 | 大型编辑器与透明舞台 | NOT_STARTED |
 | R5 | 全屏与交互完整性 | NOT_STARTED |
 | R6 | 逐工具功能与回归验证 | NOT_STARTED |
@@ -110,13 +110,13 @@ node -p "require('./package.json').version"
 | ID | 内容 | 状态 |
 |---|---|---|
 | IMGEDIT-021 | 单一活动工具状态机与叠层阻断 | AUTO_PASS |
-| IMGEDIT-022 | screen-space 宿主与 viewport 安全 | PARTIAL / HOST_AUTO_PASS |
+| IMGEDIT-022 | screen-space 宿主与 viewport 安全 | PARTIAL / COMPACT_VIEWPORT_AUTO_PASS |
 | IMGEDIT-023 | 透明图片统一棋盘格与 contain | PARTIAL / SHARED_SURFACE_AUTO_PASS |
 | IMGEDIT-024 | 重绘/擦除/扩图/标注大型编辑层 | NOT_STARTED |
-| IMGEDIT-025 | 多角度/调整像素/快速切分/增强/抠图/Seedance 面板 | NOT_STARTED |
-| IMGEDIT-026 | Escape、焦点、键盘、IME、busy 与 reduced-motion | PARTIAL / FOCUS_INERT_AUTO_PASS |
+| IMGEDIT-025 | 多角度/调整像素/快速切分/增强/抠图/Seedance 面板 | TARGETED_AUTO_PASS |
+| IMGEDIT-026 | Escape、焦点、键盘、IME、busy 与 reduced-motion | PARTIAL / PANEL_BUSY_AUTO_PASS |
 | IMGEDIT-027 | 既有工具栏、菜单、颜色、裁剪、下载回归 | PARTIAL / DIRECT_REGRESSION_AUTO_PASS |
-| IMGEDIT-028 | 目标视口与真人逐项功能验收 | NOT_STARTED |
+| IMGEDIT-028 | 目标视口与真人逐项功能验收 | PARTIAL / PANEL_VIEWPORT_AUTO_PASS |
 
 ## 7. 版本、发布和外部调用门
 
@@ -233,3 +233,24 @@ Provider / OSS / 费用：
 - 阻断：无
 - 回滚点：R1文档提交`4ecb62bc51d9da72b201e14f931c56560ca594d0`；R2产品提交`661a7a4`、焦点测试提交`b63489e`、修正提交`c5f9795`
 - 唯一下一动作：提交R2文档checkpoint；随后先把R3标为`IN_PROGRESS`，完成六类紧凑/大型安全面板和viewport-safe动作区
+
+## 14. R3 紧凑面板和快速切分
+
+- 时间：2026-08-24 03:36:12 +0800
+- 阶段：`R3`
+- 状态：`AUTO_PASS`
+- branch / HEAD / origin-main：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24` / 最终被测`1dd3fa5440436d89fe9383701d84f6a9b26e8614` / `f369d1dba1eef05aebc7f1a443256ceb82778ea0`
+- 工作树摘要：R3产品和测试已提交；测试使用本Goal精确创建的detached临时worktree，完成后已安全移除。当前只剩受保护JSON未跟踪且不在diff/stage；v0.6.32旧receipt worktree的同名历史改动mtime停在2026-08-23，当前无同范围测试或施工进程
+- 产品文件：`client/src/canvas/ImageNode.tsx`、`client/src/imageTools/LocalImageToolPanels.tsx`、`client/src/styles.css`；六类面板统一header/body/footer和14/12px灰阶壳层，调整像素/快速切分busy同步给Host，快速切分改为920px大型sheet，多角度移除随节点缩放的`scale(0.819)`并保持600×308 screen-space布局
+- 测试文件：`tests/m2-image-node.spec.ts`；在既有10个spec内加入panel/footer viewport bounds，覆盖1280×720、1440×900、1728×900下多角度、调整像素、快速切分、增强、抠图和Seedance，保持测试总数1052不变
+- 文档文件：本Checkpoint、验收矩阵、TASKS；CURRENT_STATE没有候选、GitHub、版本或生产事实变化，按纪律不改
+- package / schema / candidate：`0.6.35 / schema39 / 无候选`
+- 版本门 / 发布门：`v0.6.35 / VERSION_GATE_VALID`；“v0.6.35上线” / `RELEASE_GATE_VALID`，仍只允许R7通过后进入R8
+- Provider / OSS / 费用：真实Provider请求、尝试、成功0；费用0；真实OSS写入0；m2仅使用临时fixture、动态loopback和fake能力/任务
+- 测试命令、环境、结果、退出码：Node22.23.1/npm10.9.8。首个`39c98a8`隔离safe m2因Seedance新header关闭按钮让旧非精确“关闭”locator命中两个元素而`9/10`、退出1；产品行为和其余9项通过。只把既有footer locator收紧为`exact:true`后，最终精确提交`1dd3fa5`复验safe m2 `10/10 PASS`、退出0；同树safe m18 `2/2 PASS`、退出0。source/snapshot均`288cea88…0ddf`、4173 listener `24c91e57…8244` unchanged；未运行m100或full
+- 浏览器视口、zoom、素材与结果：m2隔离Playwright真实打开六类面板，逐一断言panel和固定footer的left/top/right/bottom不越viewport；三视口均有直接覆盖。R3不冒充四zoom、横竖方透明素材和大型编辑器完整矩阵，留给R4～R6
+- 架构与数据风险：只重排现有UI和本地busy可见状态；Dispatcher、operation payload、Generation/Media/Canvas/Library/Provider、schema和安全Blob合同未改。快速切分仍使用原子批量Canvas命令，生成式按钮在测试中均零真实提交
+- 设计偏差：多角度保留600×308目标而不再用缩放压成491×252；快速切分按冻结合同使用modal大型sheet。CSS暂保留被后置新规则覆盖的旧局部选择器，R7审查时只在证明无影响后决定是否清理，不为样式整洁扩大当前阶段
+- 阻断：无；首次m2失败是确定性测试locator歧义，已按最小范围修正并只复验m2
+- 回滚点：R3启动提交`9346239657c1338759f7f1e761dc0c0549828abe`；产品提交`3cc7351`，安全fixture导入修正`39c98a8`，最终locator修正`1dd3fa5`
+- 唯一下一动作：提交R3文档checkpoint；随后先把R4标为`IN_PROGRESS`，完成重绘、擦除、扩图、标注、裁剪回归和统一透明棋盘格大型舞台
