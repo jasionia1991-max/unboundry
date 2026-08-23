@@ -2,10 +2,10 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 03:46:02 +0800
-- 状态：`GOAL_ACTIVE / R4_AUTO_PASS / UI_REMEDIATION_REQUIRED`
-- 当前阶段：`R4 大型编辑器与透明舞台 / AUTO_PASS`
-- 唯一允许的下一动作：提交R4文档checkpoint；随后先把R5标为`IN_PROGRESS`，完成全屏透明舞台及Escape、焦点循环/返回、IME、reduced-motion和四档zoom交互矩阵
+- 更新时间：2026-08-24 03:47:57 +0800
+- 状态：`GOAL_ACTIVE / R5_IN_PROGRESS / UI_REMEDIATION_REQUIRED`
+- 当前阶段：`R5 全屏与交互完整性 / IN_PROGRESS`
+- 唯一允许的下一动作：完成产品内全屏透明棋盘格与contain；补Escape、外点、Tab/Shift+Tab、焦点返回、IME、busy、错误、reduced-motion及zoom 0.15/0.85/1.0/1.5的screen-space直接验收
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
 - 文档分支：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`
 - 立项 HEAD / origin-main：`f369d1dba1eef05aebc7f1a443256ceb82778ea0`
@@ -97,7 +97,7 @@ node -p "require('./package.json').version"
 | R2 | 单一活动工具与 Portal 宿主 | AUTO_PASS |
 | R3 | 紧凑面板和快速切分 | AUTO_PASS |
 | R4 | 大型编辑器与透明舞台 | AUTO_PASS |
-| R5 | 全屏与交互完整性 | NOT_STARTED |
+| R5 | 全屏与交互完整性 | IN_PROGRESS |
 | R6 | 逐工具功能与回归验证 | NOT_STARTED |
 | R7 | 候选冻结与独立审查 | NOT_STARTED |
 | R8 | GitHub 与生产发布 | NOT_STARTED / GATES_VALID |
