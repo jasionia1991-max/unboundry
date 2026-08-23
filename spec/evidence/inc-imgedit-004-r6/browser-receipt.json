@@ -1,0 +1,53 @@
+{
+  "status": "LOCAL_BROWSER_PASS",
+  "sourceHead": "5f48f62890e0bedd6f9d7939c9e2a8750f09ad81",
+  "environment": {
+    "node": "22.23.1",
+    "npm": "10.9.8",
+    "origin": "http://127.0.0.1:50947",
+    "dataDirectory": "/tmp/unboundry-inc004-r6-evidence-39QXvK/data",
+    "cleanup": "moved to macOS Trash after server shutdown",
+    "realProviderRequests": 0,
+    "realOssWrites": 0
+  },
+  "transparentFixture": {
+    "name": "inc-imgedit-004-alpha-512.png",
+    "assetId": "1e2c6b40-4692-4d79-ad2f-92c0f0482c64",
+    "bytes": 7171,
+    "width": 512,
+    "height": 512,
+    "hasAlpha": true
+  },
+  "console": {
+    "errors": 0,
+    "warnings": 0,
+    "expectedDevServerRestartMessages": 1
+  },
+  "networkCounter": {
+    "method": "CDP Network.requestWillBeSent",
+    "sequence": "close fullscreen -> open/close resize -> open/close split",
+    "requestCount": 0,
+    "generationOrProviderRequestCount": 0
+  },
+  "captures": [
+    { "name": "00-toolbar-more-menu", "viewport": [1280, 720], "activeTool": null, "hostCount": 0, "rootInert": false, "bounds": [532, 276, 238, 272] },
+    { "name": "01-multi-angle", "viewport": [1280, 720], "activeTool": "multi-angle", "hostCount": 1, "rootInert": false, "bounds": [134, 280, 600, 308] },
+    { "name": "02-crop", "viewport": [1280, 720], "activeTool": "crop", "hostCount": 1, "rootInert": true, "bounds": [81, 17, 1118, 686] },
+    { "name": "03-redraw", "viewport": [1280, 720], "activeTool": "redraw", "hostCount": 1, "rootInert": true, "bounds": [81, 17, 1118, 686] },
+    { "name": "04-outpaint", "viewport": [1280, 720], "activeTool": "outpaint", "hostCount": 1, "rootInert": true, "bounds": [81, 17, 1118, 686] },
+    { "name": "05-erase", "viewport": [1280, 720], "activeTool": "erase", "hostCount": 1, "rootInert": true, "bounds": [81, 17, 1118, 686] },
+    { "name": "06-annotation", "viewport": [1280, 720], "activeTool": "annotation", "hostCount": 1, "rootInert": true, "bounds": [81, 17, 1118, 686] },
+    { "name": "07-enhance-1440x900", "viewport": [1440, 900], "activeTool": "enhance", "hostCount": 1, "rootInert": false, "bounds": [360, 280, 400, 301.09375] },
+    { "name": "08-resize-1440x900", "viewport": [1440, 900], "activeTool": "resize", "hostCount": 1, "rootInert": false, "bounds": [360, 280, 400, 202] },
+    { "name": "09-cutout-1440x900", "viewport": [1440, 900], "activeTool": "cutout", "hostCount": 1, "rootInert": false, "bounds": [360, 280, 400, 180.6875] },
+    { "name": "10-seedance-1440x900", "viewport": [1440, 900], "activeTool": "seedance", "hostCount": 1, "rootInert": false, "bounds": [360, 280, 400, 339.0859375] },
+    { "name": "11-split-1728x900", "viewport": [1728, 900], "activeTool": "split", "hostCount": 1, "rootInert": true, "bounds": [404, 140, 920, 620] },
+    { "name": "12-fullscreen-transparent", "viewport": [1280, 720], "activeTool": "fullscreen", "hostCount": 1, "rootInert": true, "bounds": [16, 16, 1248, 688] }
+  ],
+  "notes": [
+    "All image-tool UI used an isolated fresh data directory and dynamic loopback port.",
+    "All capture bounds are inside their viewport and every active capture has exactly one host/dialog.",
+    "The checkerboard is CSS-only; the uploaded PNG bytes were not modified by the surface.",
+    "The single expected dev-server restart log was caused by correcting the initially missing fresh data directory before evidence capture; there were no console errors or warnings."
+  ]
+}

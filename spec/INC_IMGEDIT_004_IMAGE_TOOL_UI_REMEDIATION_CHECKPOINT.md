@@ -2,10 +2,10 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 03:54:17 +0800
-- 状态：`GOAL_ACTIVE / R6_IN_PROGRESS / UI_REMEDIATION_REQUIRED`
-- 当前阶段：`R6 逐工具功能与回归验证 / IN_PROGRESS`
-- 唯一允许的下一动作：执行全部图片工具的隔离浏览器矩阵，补齐横竖方透明素材、恶意切换、busy/error和零Generation/Provider直接证据；发现缺口先修根因再最小复验
+- 更新时间：2026-08-24 04:31:00 +0800
+- 状态：`GOAL_ACTIVE / R6_LOCAL_BROWSER_PASS / R7_IN_PROGRESS / UI_REMEDIATION_REQUIRED`
+- 当前阶段：`R7 候选冻结与独立审查 / IN_PROGRESS`
+- 唯一允许的下一动作：冻结R7候选，执行独立只读代码/UI/可访问性审查和候选门；修正阻断发现后只复验受影响集合，最终树最多执行一次safe full
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
 - 文档分支：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`
 - 立项 HEAD / origin-main：`f369d1dba1eef05aebc7f1a443256ceb82778ea0`
@@ -98,8 +98,8 @@ node -p "require('./package.json').version"
 | R3 | 紧凑面板和快速切分 | AUTO_PASS |
 | R4 | 大型编辑器与透明舞台 | AUTO_PASS |
 | R5 | 全屏与交互完整性 | AUTO_PASS |
-| R6 | 逐工具功能与回归验证 | IN_PROGRESS |
-| R7 | 候选冻结与独立审查 | NOT_STARTED |
+| R6 | 逐工具功能与回归验证 | AUTO_PASS / LOCAL_BROWSER_PASS |
+| R7 | 候选冻结与独立审查 | IN_PROGRESS |
 | R8 | GitHub 与生产发布 | NOT_STARTED / GATES_VALID |
 | R9 | 生产零付费验收与用户复验 | NOT_STARTED |
 
@@ -110,13 +110,13 @@ node -p "require('./package.json').version"
 | ID | 内容 | 状态 |
 |---|---|---|
 | IMGEDIT-021 | 单一活动工具状态机与叠层阻断 | AUTO_PASS |
-| IMGEDIT-022 | screen-space 宿主与 viewport 安全 | TARGETED_AUTO_PASS |
-| IMGEDIT-023 | 透明图片统一棋盘格与 contain | PARTIAL / EDITOR_SURFACE_AUTO_PASS |
-| IMGEDIT-024 | 重绘/擦除/扩图/标注大型编辑层 | TARGETED_AUTO_PASS |
-| IMGEDIT-025 | 多角度/调整像素/快速切分/增强/抠图/Seedance 面板 | TARGETED_AUTO_PASS |
-| IMGEDIT-026 | Escape、焦点、键盘、IME、busy 与 reduced-motion | PARTIAL / INTERACTION_AUTO_PASS |
-| IMGEDIT-027 | 既有工具栏、菜单、颜色、裁剪、下载回归 | PARTIAL / DIRECT_REGRESSION_AUTO_PASS |
-| IMGEDIT-028 | 目标视口与真人逐项功能验收 | PARTIAL / VIEWPORT_ZOOM_AUTO_PASS |
+| IMGEDIT-022 | screen-space 宿主与 viewport 安全 | TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS |
+| IMGEDIT-023 | 透明图片统一棋盘格与 contain | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS |
+| IMGEDIT-024 | 重绘/擦除/扩图/标注大型编辑层 | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS |
+| IMGEDIT-025 | 多角度/调整像素/快速切分/增强/抠图/Seedance 面板 | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS |
+| IMGEDIT-026 | Escape、焦点、键盘、IME、busy 与 reduced-motion | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS |
+| IMGEDIT-027 | 既有工具栏、菜单、颜色、裁剪、下载回归 | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS |
+| IMGEDIT-028 | 目标视口与真人逐项功能验收 | LOCAL_BROWSER_PASS / USER_RECHECK |
 
 ## 7. 版本、发布和外部调用门
 
@@ -296,3 +296,24 @@ Provider / OSS / 费用：
 - 阻断：无；两次失败均是定向测试发现的真实焦点问题或测试状态清理问题，均最小修正并只复验m2
 - 回滚点：R5启动提交`919aa3d`；全屏/交互测试`5ec1af5`，外点焦点修正`1c5bd98`，zoom清理修正`c5b86f9`
 - 唯一下一动作：提交R5文档checkpoint；随后先把R6标为`IN_PROGRESS`，按全部工具、三视口、四zoom、横竖方透明素材、busy/error/切换序列和零请求门执行逐项浏览器回归
+
+## 17. R6 逐工具功能与回归验证
+
+- 时间：2026-08-24 04:31:00 +0800
+- 阶段：`R6`
+- 状态：`AUTO_PASS / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS`
+- branch / HEAD / origin-main：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24` / 最终被测`5f48f62890e0bedd6f9d7939c9e2a8750f09ad81` / `f369d1dba1eef05aebc7f1a443256ceb82778ea0`
+- 工作树摘要：最终产品树与R5精确`c5b86f9`相同；R6只增加Seedance busy直接浏览器断言和本地截图/边界/控制台/请求计数证据。受保护JSON继续未跟踪且未进入diff/stage；本Goal临时test worktree均已移除，动态50947服务已停止，fresh data目录已移入macOS废纸篓，可恢复
+- 产品文件：无最终净变化。调试中曾以两个提交尝试保护活动工具和Portal事件，但确定性DOM诊断证明活动工具、Host和源节点均未消失，故两项未经证实的产品变更已完整撤销
+- 测试文件：`tests/m2-image-node.spec.ts`；Seedance validation路由加入受控gate，直接证明busy按钮/关闭禁用、Escape和外点不关闭、放行后只提交一次并正常恢复。既有同spec继续证明横1280×720、竖180×320、1:1裁剪、四zoom、裁剪失败错误、IME、焦点、透明surface和零Generation/Provider
+- 文档/证据文件：本Checkpoint、验收矩阵、TASKS、`spec/evidence/inc-imgedit-004-r6/`下13张PNG、README和`browser-receipt.json`；CURRENT_STATE仍无候选/GitHub/版本/生产事实变化，按纪律未改
+- package / schema / candidate：`0.6.35 / schema39 / R7前无候选`
+- 版本门 / 发布门：`v0.6.35 / VERSION_GATE_VALID`；“v0.6.35上线” / `RELEASE_GATE_VALID`，R7通过前未进入发布
+- Provider / OSS / 费用：真实Provider请求、尝试、成功0；费用0；真实OSS写入0。浏览器CDP对“关闭全屏→打开/关闭调整像素→打开/关闭快速切分”计数`Network.requestWillBeSent=0`、Generation/Provider命中0；隔离服务日志无Generation/Provider路由
+- 测试命令、环境、结果、退出码：Node22.23.1/npm10.9.8。R6 busy证据调试的多个精确提交m2均`9/10`，最终DOM诊断记录`activeTool=seedance / hostCount=1 / panelCount=1 / selected=image-primary`，确认失败根因只是busy后按钮可访问名称已从“运行本地技术预检”变为“校验中…”，旧locator自然找不到元素；修正locator并撤销无关产品尝试后，精确`5f48f62` safe m2 `10/10 PASS`、退出0，source/snapshot`76461c61…bbfbf`、4173 listener unchanged。一次从主工作树误启动的命令在产品spec前被既有`backups/`负控以EISDIR停止，产品测试0、source/listener unchanged；未绕过runner或删除备份。最终产品树未改，复用R2 m100 `13/13`、R4 m18 `2/2`有效证据，未为安心重复
+- 浏览器视口、zoom、素材与结果：动态loopback50947、fresh data、512×512真实Alpha PNG；保存1280×720工具栏/菜单、多角度、裁剪、重绘、扩图、擦除、标注、全屏，1440×900增强/调整像素/抠图/Seedance，1728×900快速切分共13张截图。每个活动工具均`hostCount=1/dialog=1`且bounds不越viewport；modal均root inert/aria-hidden，popover不误设inert。全屏surface为1248×688，透明棋盘格清晰；重绘/擦除/扩图/标注大型层均1118×686；多角度600×308；更多菜单238×272。控制台error0/warn0；启动时为修正最初漏建fresh data目录而发生1条预期Vite重连日志，已在receipt中单列，不冒充产品错误
+- 架构与数据风险：R6没有最终产品、业务payload、Generation/Media/Canvas/Library/Provider或schema变化；棋盘格仍只由CSS呈现，不改上传/导出字节。自动、隔离浏览器、生产和用户验收继续分层
+- 设计偏差：首次手工Alpha PNG由普通上传产生，没有`imageToolOutputBackground=transparent`业务标记，因此不把该节点卡截图冒充生产抠图节点证据；节点透明输出class由m2直接覆盖，编辑器/全屏真实Alpha棋盘格由本轮截图直接覆盖，生产既有抠图节点留到R9零付费复验
+- 阻断：无
+- 回滚点：R5文档提交`fb8f583`和R6启动提交`8795b13`；R6最终产品树保持R5，测试收口提交`5f48f62`
+- 唯一下一动作：提交R6文档与证据checkpoint；把R7标为`IN_PROGRESS`，冻结候选并执行独立只读代码/UI/可访问性审查、候选静态门和唯一一次safe full
