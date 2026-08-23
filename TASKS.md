@@ -1,9 +1,9 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产为`v0.6.34 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`。PR #80已合并，tag `v0.6.34`指向`922f6aee7ce3c6250dbe61055542327b0aea8252`，tag与`origin/main` tree均为`279581e0a2c8008d5c7ceea6e53c3c7cb620eab5`；生产current为`/opt/unboundry/releases/v0.6.34-image-toolbar-20260823`。D13真实冒烟在Provider前发现共同热修需求；Provider请求`0/6`、可确认费用0 USD。本地热修`a411a63`已`43/43 PASS`。用户已确认`v0.6.35`并独立授权上线，候选正在同步和冻结。
+> **当前状态**：生产为`v0.6.34 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`。PR #80已合并，tag `v0.6.34`指向`922f6aee7ce3c6250dbe61055542327b0aea8252`，tag与`origin/main` tree均为`279581e0a2c8008d5c7ceea6e53c3c7cb620eab5`；生产current为`/opt/unboundry/releases/v0.6.34-image-toolbar-20260823`。D13真实冒烟在Provider前发现共同热修需求；Provider请求`0/6`、可确认费用0 USD。v0.6.35冻结候选`c1a4a08`的唯一一次safe full已`1052/1052 PASS`，下一步为PR/CI。
 
 更新时间：2026-08-24
-状态：`v0.6.34 已发布并通过生产技术门；v0.6.35 版本门和发布门有效，共同生成热修 LOCAL_AUTO_PASS，D13 正在准备干净候选。`
+状态：`v0.6.34 已发布并通过生产技术门；v0.6.35 版本门、发布门和冻结候选safe full有效，D13 正在进入PR/CI。`
 
 ### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，D13_IN_PROGRESS / V0_6_35_GATES_VALID）
 
@@ -30,7 +30,7 @@
 - D13 已发布v0.6.34：产品PR #80、tag、main CI、冻结备份、精确构建、原子切换和生产技术门均完成，生产为v0.6.34/schema39，状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`，该版本号与发布授权已经消费。
 - 用户已确认真实Provider冒烟最多6次、总预算上限60 USD；多角度在task admission前拒绝，重绘在客户端preflight拒绝，两者均为0 task/0 attempt/0 Provider，当前总计`0/6`、可确认费用0 USD。
 - D13生产冒烟确认三项客户端缺陷：多角度漏传`imageTool`身份；六项生成工具共同使用非法持久输入顺序0；源节点1K会被模型默认2K覆盖。本地热修提交`a411a63`，m100+m2+m27最终`43/43 PASS`、外部/Provider请求0；中间失败为测试设计问题，不改写最终产品证据。
-- 用户已确认`v0.6.35`并独立授权上线；唯一下一动作是同步版本合同和权威文档、运行m81最小版本门并提交干净候选，之后按Runbook执行一次新的safe full。切换v0.6.35前不得继续Provider；IMGEDIT-016～019保持`REAL_PROVIDER_TECHNICAL_SMOKE_PENDING / USER_QUALITY_RECHECK`。
+- 用户已确认`v0.6.35`并独立授权上线；版本合同与m38+m81 `56/56 PASS`后形成冻结候选`c1a4a08`，其本版本唯一一次safe full执行120/120 specs、`1052/1052 PASS`，blocked/failed/retries/skips/reportErrors均0，source/snapshot`c5eb339e…30135`，外部/Provider请求0。唯一下一动作是提交证据回写后push/PR/CI；切换v0.6.35前不得继续Provider，IMGEDIT-016～019保持`REAL_PROVIDER_TECHNICAL_SMOKE_PENDING / USER_QUALITY_RECHECK`。
 - 本次落档 `git diff --check` 通过；定向 m38 safe runner 在产品测试前被 main 既有 ignored `backups/` 隔离负控以 `EISDIR` 阻断，0 个产品测试执行，source snapshot 和 4173 listener 未变。未删除/移动备份、未绕过 safe runner、未把该尝试记为自动 PASS；完整记录见 Checkpoint。
 
 ### 2026-08-23 当前版本文档残留对齐（docs-only）

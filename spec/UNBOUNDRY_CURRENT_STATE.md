@@ -1,13 +1,13 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为v0.6.34/schema39，生产技术门通过；状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`。六项生成工具共同热修仅本地通过；v0.6.35版本门和发布门有效，候选正在同步和冻结。
+> **状态分层**：现网为v0.6.34/schema39，生产技术门通过；状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`。v0.6.35共同生成热修冻结候选已通过唯一一次safe full，正在进入PR/CI，尚未发布。
 
 更新日期：2026-08-24
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.6.35**
 本地候选代码版本：**v0.6.35**
 当前治理标记：`CURRENT_V0_6_34_USER_RECHECK`
-当前热修门：`V0_6_35_VERSION_GATE_VALID / V0_6_35_RELEASE_GATE_VALID / CANDIDATE_PREPARING`
+当前热修门：`V0_6_35_VERSION_GATE_VALID / V0_6_35_RELEASE_GATE_VALID / CANDIDATE_C1A4A08_SAFE_FULL_PASS / PR_PENDING`
 
 ## 一句话
 
@@ -19,13 +19,13 @@ v0.6.34冻结前定向`234/234 PASS`；唯一一次safe full原始`1048/1052`，
 
 v0.6.34版本号、tag和发布授权均已执行并消费，禁止移动tag或覆盖release。用户于2026-08-24明确确认`v0.6.35`并独立回复“按v0.6.35上线吧”；新授权只覆盖共同生成热修及Goal内剩余D13，不扩大到Mureka、团队/多人协作、真实Agent协议、Storyboard完整编辑、图片打光或其他既有`PARTIAL/PAUSED/BLOCK`项。
 
-## INC-IMGEDIT-003 图片工具栏剩余能力单 Goal（D13进行中，v0.6.35候选准备）
+## INC-IMGEDIT-003 图片工具栏剩余能力单 Goal（D13进行中，v0.6.35候选全量通过）
 
 - 用户已批准最终V5方案并明确启动Goal；D0～D12已完成，D13已完成v0.6.34 GitHub与生产技术发布，当前状态`PRODUCTION_V0_6_34_AUTO_PASS / REAL_PROVIDER_SMOKE_0_OF_6 / COMMON_GENERATION_HOTFIX_LOCAL_AUTO_PASS / V0_6_35_VERSION_GATE_VALID / V0_6_35_RELEASE_GATE_VALID / USER_QUALITY_RECHECK`。主方案为`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md`。
 - 为防止长任务在新 Session 或上下文压缩后漂移，已建立唯一实时断点 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_CHECKPOINT.md` 和可复制 Goal 合同 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_GOAL_PROMPT_2026-08-23.md`。D0～D13 每阶段必须先回写断点、矩阵和 TASKS，再继续下一阶段。
 - 计划范围包含颜色标记、调整像素、快速分割、标注、个人素材库、多角度、遮罩/重绘、扩图、擦除、增强、主体抠图和 Seedance 素材校验；裁剪只回归，打光继续 `PAUSED`。
 - 生产D13冒烟先发现多角度漏传`imageTool`身份，随后重绘暴露六项生成工具共用非法持久输入顺序0；同时确认源节点1K会被模型默认2K覆盖。两次都在Provider前fail-closed，没有task/attempt/Provider和费用。本地热修提交`a411a63`，最终安全定向m100+m2+m27 `43/43 PASS`、外部/Provider请求0。
-- 真实付费技术冒烟最多6次、总预算上限60 USD，当前已用0、可确认费用0 USD；真实冒烟只证明技术链路，不等于质量通过。所有六项生成冒烟必须等待v0.6.35生产切换，当前唯一下一动作是完成版本同步、最小门和干净候选。
+- 真实付费技术冒烟最多6次、总预算上限60 USD，当前已用0、可确认费用0 USD；真实冒烟只证明技术链路，不等于质量通过。v0.6.35冻结候选`c1a4a08`已在Node22.23.1/npm10.9.8通过m38+m81 `56/56`和本版本唯一一次safe full `1052/1052`，外部/Provider请求0；当前唯一下一动作是证据提交后push/PR/CI，所有六项生成冒烟仍须等待生产切换。
 
 ## v0.6.33 图片裁剪准备态体验优化（已发布并获用户确认）
 

@@ -5,10 +5,10 @@
 - 日期：2026-08-23
 - 仓库：`/Users/mymy/Documents/unboundry/app`
 - 立项基线：`main` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537` / package `0.6.33` / 生产 `v0.6.33` / schema39
-- 状态：`PLAN_FROZEN / D13_IN_PROGRESS / V0_6_34_PRODUCTION_PUBLISHED_AUTO_PASS / V0_6_35_CANDIDATE_PREPARING`
-- 当前阶段：D0～D12已完成；v0.6.34已发布。生产真实冒烟在Provider前暴露共同热修需求，本地热修43/43通过；v0.6.35候选正在同步和冻结，生产仍为v0.6.34/schema39
+- 状态：`PLAN_FROZEN / D13_IN_PROGRESS / V0_6_34_PRODUCTION_PUBLISHED_AUTO_PASS / V0_6_35_CANDIDATE_SAFE_FULL_PASS / PR_PENDING`
+- 当前阶段：D0～D12已完成；v0.6.34已发布。生产真实冒烟在Provider前暴露共同热修需求；v0.6.35冻结候选`c1a4a08`已通过定向43/43、版本门56/56及本版本唯一一次safe full 1052/1052，生产仍为v0.6.34/schema39
 - 版本：`v0.6.35 / VERSION_GATE_VALID / RELEASE_GATE_VALID`
-- 发布候选：`v0.6.35 / COMMON_GENERATION_HOTFIX_LOCAL_AUTO_PASS / CANDIDATE_PREPARING`
+- 发布候选：`v0.6.35 / CANDIDATE_COMMIT_C1A4A08 / SAFE_FULL_1052_OF_1052_PASS / PR_PENDING`
 - 本 Goal 授权：用户已于2026-08-24明确确认`v0.6.35`并独立回复“按v0.6.35上线吧”；授权只覆盖共同生成热修及Goal内剩余D13，仍须按Runbook逐门执行
 
 本文档是图片节点顶部工具栏除已完成裁剪和继续暂停打光以外所有剩余能力的主施工方案。后续使用一个新 Session 的单一 Goal 连续执行 D0～D13；阶段只是内部检查点，不拆成多个 Goal，不因普通技术选择、测试失败或阶段完成中途等待用户。
@@ -384,4 +384,4 @@ USER_QUALITY_RECHECK
 - D10 不引入许可证未闭环的rembg权重或第二套图片任务系统：保守增强冻结为本地同尺寸、确定性的轻量对比度/色彩校正并走派生媒体；创意增强与主体抠图复用既有GPT Image edit和Generation/Media生命周期。主体抠图显式发送`background=transparent`，并在所有结果保存入口解码PNG滤波行、要求至少一个真实非不透明Alpha样本，opaque RGBA也拒绝；棋盘格只属于节点/全屏CSS预览。三项真实Provider技术冒烟继续留到D13精确v0.6.34候选。
 - D11 没有接不存在的 Seedance 远端资格接口：实现严格标识的五分钟本地技术预检，复用当前已发布 `seedance-2` 模型的真实参考媒体规则和 owner-scoped Media 元数据；结果绑定 asset/model/role/模型配置revision/时间，过期或身份漂移即 stale。DTO 和 UI 固定说明这不代表远端资格、可生成、质量或法律合规，并保证零视频生成。施工时同时修正 D10 已实现操作在 capability registry 中仍误报不可用的残留。
 - D12 冻结候选后只运行一次 safe full：120/120 specs执行，原始 `1048/1052`。未改树精确复验四个失败规格稳定为`102/106`；其中m31揭示图片预检在最终校验前展开返回对象导致`canSubmit`标量失真，产品修正为所有问题追加完成后再生成公开结果；m0/m22/m37只修正异步fixture、fit-view竞争和瞬态状态观测。最终同一四spec `106/106 PASS`，未运行第二次full，也不把原始full改写为1052/1052。
-- v0.6.34生产冒烟在Provider前先发现多角度task payload漏传`imageTool`，再由重绘暴露六项生成工具共同写入非法持久顺序0，同时发现源节点1K被模型默认2K覆盖。两次均0 task/0 attempt/0 Provider、费用0 USD。本地热修补齐身份、统一顺序1并继承规范化源参数，m100+m2+m27 `43/43 PASS`。因v0.6.34不可变且授权已消费，用户另行确认v0.6.35并授权上线；新候选须重新执行版本门和一次safe full，再发布并继续最多6次/60 USD真实技术冒烟。
+- v0.6.34生产冒烟在Provider前先发现多角度task payload漏传`imageTool`，再由重绘暴露六项生成工具共同写入非法持久顺序0，同时发现源节点1K被模型默认2K覆盖。两次均0 task/0 attempt/0 Provider、费用0 USD。本地热修补齐身份、统一顺序1并继承规范化源参数，m100+m2+m27 `43/43 PASS`。因v0.6.34不可变且授权已消费，用户另行确认v0.6.35并授权上线；新冻结候选`c1a4a08`已完成版本门56/56和唯一一次safe full 1052/1052，下一步按Runbook进入PR/CI，再发布并继续最多6次/60 USD真实技术冒烟。
