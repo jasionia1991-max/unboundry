@@ -1,11 +1,23 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产已为`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`。PR #81、PR/main CI、tag/main同tree、精确tag fresh build、完整主库+Library+媒体冻结备份、原子切换与生产技术门均通过。六项真实技术冒烟各一次成功、无重试，最终`6/6 / 60 USD`；仅剩用户视觉质量复验。
+> **当前状态**：生产为`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，但图片工具用户质量复验未通过。`INC-IMGEDIT-004` 已启动，R0 实时恢复与缺陷基线 `AUTO_PASS`；下一阶段为 R1 状态机和共享宿主合同。
 
 更新时间：2026-08-24
-状态：`v0.6.35 PRODUCTION_PUBLISHED_AUTO_PASS；REAL_PROVIDER_TECHNICAL_SMOKE_PASS 6/6；USER_QUALITY_RECHECK。`
+状态：`v0.6.35 PRODUCTION_PUBLISHED_AUTO_PASS；REAL_PROVIDER_TECHNICAL_SMOKE_PASS 6/6；INC-IMGEDIT-004 R0_AUTO_PASS；USER_QUALITY_REMEDIATION_REQUIRED。`
 
-### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，D13_AUTO_PASS / USER_QUALITY_RECHECK）
+### 2026-08-24 图片工具交互与 UI 一次性返工（INC-IMGEDIT-004，GOAL_ACTIVE / R0_AUTO_PASS）
+
+- 用户生产实页检查未通过；自动测试和六项真实Provider链只证明技术链，不能证明功能交互、UI或视觉质量正常。
+- 已确认P0/P1：多个工具可叠开；多角度/快速切分/Seedance底部裁切；重绘/擦除/标注与Creator碰撞；透明图在编辑器/全屏为黑底；扩图和紧凑面板布局失衡。顶部工具栏、更多菜单和颜色标记作为回归保护。
+- 根因方案：单一`ActiveImageTool`互斥状态、Portal化`ImageToolHost`、共享`ImageToolModal/ImageToolPopover/ImageToolSurface`，业务动作继续复用现有Dispatcher/use case，不建立大控制器。
+- 主方案：`spec/INC_IMGEDIT_004_IMAGE_TOOL_UI_REMEDIATION_PLAN_2026-08-24.md`；唯一断点：`spec/INC_IMGEDIT_004_IMAGE_TOOL_UI_REMEDIATION_CHECKPOINT.md`；新Session提示词：`spec/INC_IMGEDIT_004_IMAGE_TOOL_UI_REMEDIATION_GOAL_PROMPT_2026-08-24.md`。
+- 阶段R0～R9同时最多一个`IN_PROGRESS`；完成每阶段先同步Checkpoint、`IMGEDIT-021～028`和本区块，再进入下一阶段。
+- 验收覆盖三个视口、四档zoom、横/竖/方图、透明PNG、全部图片工具、叠层恶意切换、Escape/焦点/键盘/IME/busy/reduced-motion及零Provider请求。
+- R0实时恢复确认分支HEAD与最新`origin/main`同为`f369d1d`，package0.6.35、Node22.23.1/npm10.9.8；生产只读探针为`0.6.35 / live / ready active schema39`。safe runner preflight 120 specs通过、4173 listener不变；未运行产品spec/full，产品/测试/schema/生产未改。
+- R0源码基线确认ImageNode仍有多组独立open state，紧凑/多角度面板仍依赖NodeToolbar相对定位，大型编辑层缺统一inert/focus/top-layer合同；这与登记缺陷一致。受保护JSON仍未跟踪且不在diff/stage，其他worktree没有同范围施工证据。
+- 本Goal版本门为`v0.6.35`，用户独立明确“v0.6.35上线”，两项发布门有效；只能在R7通过后进入R8。INC-IMGEDIT-003预算已用完，本Goal真实Provider/尝试/费用均为0，生产技术通过后仍需用户明确`USER_PASS`。
+
+### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，D13_AUTO_PASS / USER_QUALITY_REMEDIATION_REQUIRED）
 
 - 用户已批准最终 V5 方案并要求后续长任务严格由项目文档驱动，防止新 Session 或上下文压缩后失忆漂移。主方案：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md`；实时断点：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_CHECKPOINT.md`；新 Session 提示词：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_GOAL_PROMPT_2026-08-23.md`。
 - 单 Goal 连续范围：最小图片工具应用边界、颜色标记、调整像素、快速分割、标注、个人素材库、多角度、遮罩/重绘、扩图、擦除、保守/创意增强、主体抠图和 Seedance 素材校验；裁剪只回归，打光 `IMGEDIT-007` 继续 `PAUSED`。
