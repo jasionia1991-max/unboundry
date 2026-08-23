@@ -26,7 +26,7 @@ test.beforeEach(async ({ page }, testInfo) => {
         providerModelId: "openai/gpt-image-2",
       })
     : defaultParameterSchema("image");
-  parameterSchema.referenceInputs.image = gptImageModel ? 16 : 0;
+  parameterSchema.referenceInputs.image = referenceModel ? 16 : 0;
   parameterSchema.fields = parameterSchema.fields.map((field) => {
     if (field.key === "quality") {
       return {
@@ -88,7 +88,7 @@ test.beforeEach(async ({ page }, testInfo) => {
           id: gptImageModel ? "fixture-gpt-image-2" : "fixture-nano-banana-2-lite",
           imageParameters: {
             aspectRatios: ["auto"],
-            maxReferenceImages: gptImageModel ? 16 : 0,
+            maxReferenceImages: referenceModel ? 16 : 0,
             qualities: ["1k"],
           },
           isDefault: true,
@@ -1318,7 +1318,7 @@ test("Image multi-angle submits a structured persistent fake task without Provid
     inputSchemaVersion: 1,
     kind: "image",
     model: "fixture-gpt-image-2",
-    parameters: expect.objectContaining({ inputMode: "image" }),
+    parameters: expect.objectContaining({ inputMode: "image", quality: "1k" }),
   });
   expect(taskBodies[0]?.nodeId).toMatch(/^image-multi-angle-/);
   expect(String(taskBodies[0]?.prompt)).toContain("水平视角旋转 45 度");
@@ -1326,7 +1326,7 @@ test("Image multi-angle submits a structured persistent fake task without Provid
     expect.objectContaining({
       assetId: sourceAssetId,
       kind: "image",
-      order: 0,
+      order: 1,
       role: "reference-image",
       sourceNodeId: "image-primary",
     }),
@@ -1600,13 +1600,14 @@ test("Image redraw submits an owner-scoped mask fake task and cancel is lossless
     inputSchemaVersion: 1,
     kind: "image",
     model: "fixture-gpt-image-2",
+    parameters: expect.objectContaining({ inputMode: "image", quality: "1k" }),
   });
   expect(taskBodies[0]?.nodeId).toMatch(/^image-redraw-/);
   expect(taskBodies[0]?.inputs).toEqual([
     expect.objectContaining({
       assetId: sourceAssetId,
       kind: "image",
-      order: 0,
+      order: 1,
       role: "reference-image",
       sourceNodeId: "image-primary",
     }),

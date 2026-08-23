@@ -2,6 +2,25 @@ import type {
   SingleNodeGenerationLifecycle,
   SingleNodeGenerationTaskReference,
 } from "../generation/singleNodeGenerationLifecycle";
+import {
+  normalizeParameterValues,
+  submissionParameterValues,
+  type ModelParameterSchema,
+  type ModelParameterValue,
+} from "../../../types/modelParameters";
+
+export function imageToolSubmissionParameterValues(
+  schema: ModelParameterSchema,
+  sourceParameters?: Record<string, ModelParameterValue>,
+) {
+  return submissionParameterValues(
+    schema,
+    normalizeParameterValues(schema, {
+      ...(sourceParameters ?? {}),
+      inputMode: "image",
+    }),
+  );
+}
 
 export type GenerationImageToolOperation =
   | "enhance-conservative"
