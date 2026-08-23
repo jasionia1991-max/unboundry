@@ -92,6 +92,7 @@ import {
   imageToolMaximums,
   imageToolOperations,
   parseImageToolCapabilitySnapshot,
+  type ImageAnnotationElement,
   type ImageToolCapability,
 } from "../types/imageTools";
 import { createImageToolDispatcher } from
@@ -102,6 +103,10 @@ import { createBatchDerivedImageToolUseCase } from
   "../client/src/imageTools/batchDerivedImageToolUseCase";
 import { createGenerationImageToolUseCase } from
   "../client/src/imageTools/generationImageToolUseCase";
+import {
+  simplifyAnnotationPoints,
+  validateImageAnnotationDocument,
+} from "../client/src/imageTools/imageAnnotations";
 import { expect, test } from "./safe-test";
 
 type MediaEditHandlerDependencies = NonNullable<
@@ -493,6 +498,49 @@ test("image tool capability contract bounds payloads, cost and output formats", 
         ? { ...item, estimatedCost: { amount: -1, currency: "USD", source: "provider" } }
         : item),
   })).toThrow(/estimatedCost.amount/);
+
+  const annotationElements: ImageAnnotationElement[] = Array.from(
+    { length: 100 },
+    (_, index) => ({
+      color: "#ff5b5b",
+      height: 80,
+      id: `rectangle-${index}`,
+      kind: "rectangle" as const,
+      strokeWidth: 4,
+      width: 120,
+      x: index * 3,
+      y: index * 2,
+    }),
+  );
+  const densePoints = Array.from({ length: 1_000 }, (_, index) => ({
+    x: index % 800,
+    y: index % 2 === 0 ? 200 : 201,
+  }));
+  annotationElements.push({
+    color: "#5b8cff",
+    id: "stroke-1000",
+    kind: "stroke",
+    points: densePoints,
+    strokeWidth: 6,
+  }, {
+    color: "#fff",
+    fontSize: 28,
+    id: "text-chinese",
+    kind: "text",
+    text: "中文标注刷新、自动保存、revision 与撤销恢复",
+    x: 20,
+    y: 30,
+  });
+  const annotationCapacity = validateImageAnnotationDocument({
+    elements: annotationElements,
+    height: 720,
+    version: 1,
+    width: 1280,
+  });
+  expect(annotationCapacity.bytes).toBeLessThan(
+    imageToolMaximums.annotationDocumentBytes,
+  );
+  expect(simplifyAnnotationPoints(densePoints).length).toBeLessThan(100);
 
   const dispatcher = createImageToolDispatcher().register({
     operation: "fullscreen",

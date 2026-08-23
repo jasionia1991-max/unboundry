@@ -100,6 +100,61 @@ export type ImageToolExecutionIdentity = Readonly<{
   taskId?: string;
 }>;
 
+export type ImageAnnotationPoint = Readonly<{ x: number; y: number }>;
+
+export type ImageAnnotationElement =
+  | Readonly<{
+      color: string;
+      id: string;
+      kind: "stroke";
+      points: readonly ImageAnnotationPoint[];
+      strokeWidth: number;
+    }>
+  | Readonly<{
+      color: string;
+      height: number;
+      id: string;
+      kind: "rectangle";
+      strokeWidth: number;
+      width: number;
+      x: number;
+      y: number;
+    }>
+  | Readonly<{
+      color: string;
+      id: string;
+      kind: "arrow";
+      strokeWidth: number;
+      x1: number;
+      x2: number;
+      y1: number;
+      y2: number;
+    }>
+  | Readonly<{
+      color: string;
+      id: string;
+      kind: "number";
+      value: number;
+      x: number;
+      y: number;
+    }>
+  | Readonly<{
+      color: string;
+      fontSize: number;
+      id: string;
+      kind: "text";
+      text: string;
+      x: number;
+      y: number;
+    }>;
+
+export type ImageAnnotationDocument = Readonly<{
+  elements: readonly ImageAnnotationElement[];
+  height: number;
+  version: 1;
+  width: number;
+}>;
+
 export type ImageToolResult =
   | Readonly<{
       assetIds: readonly string[];

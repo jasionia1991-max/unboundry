@@ -2,20 +2,20 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-23 19:45:13 +0800
-- 状态：`GOAL_ACTIVE / D3_AUTO_PASS`
-- 当前阶段：`D3 颜色标记、调整像素、快速分割 / AUTO_PASS`
-- 唯一允许的下一阶段：`D4 标注与显式导出`
+- 更新时间：2026-08-23 20:02:36 +0800
+- 状态：`GOAL_ACTIVE / D4_AUTO_PASS`
+- 当前阶段：`D4 标注与显式导出 / AUTO_PASS`
+- 唯一允许的下一动作：提交 D4 本地 checkpoint commit，然后进入 D5 前先把 D5 标为 `IN_PROGRESS`
 - 当前仓库：`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`
 - 记录时分支：`codex/inc-imgedit-003-v0.6.34-2026-08-23`
-- 记录时 HEAD：`9b33114047862d375a0dd288cd44dae0b4750965`
+- 记录时 HEAD：`0d0c0a4f58c5075b650ada8df1bd48626076f5b8`
 - 记录时 `origin/main`：`14777b5dc5cf48de8b21b6eb3ee27da45070b537`
 - package：`0.6.33`
 - 生产：`v0.6.33 / schema39 / PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`
 - 新版本：`v0.6.34 / VERSION_GATE_VALID`
 - 候选：无
-- 本轮代码施工：D3 已完成颜色标记持久化/筛选/撤销、像素调整派生图、2×2/3×3/4×4 快速分割预览与原子批量落图；尚未进入 D4
-- 本轮验证：安全定向 m100 `13/13 PASS`、m2 `10/10 PASS`；架构既有例外 76、新增 0，TypeScript/build/source coverage/网络门通过，零 Generation、零 Provider、零真实 OSS
+- 本轮代码施工：D4 已按容量实验冻结为 Canvas 节点版本化元数据，选择/画笔/矩形/箭头/编号/中文文字/删除/会话撤销重做/路径简化/刷新恢复和显式安全 PNG 导出均完成；尚未进入 D5
+- 本轮验证：D4 安全定向 m100 `13/13 PASS`、m2 `10/10 PASS`；架构既有例外 76、新增 0，TypeScript/build/source coverage/网络门通过，零 Generation、零 Provider、零真实 OSS
 - 真实 Provider/付费请求：0/8
 - 真实 OSS 测试对象：0
 - GitHub/SSH/生产操作：0
@@ -75,7 +75,7 @@ node -p "require('./package.json').version"
 | D1 | 合同、矩阵和架构门 | AUTO_PASS |
 | D2 | 最小图片工具应用层 | AUTO_PASS |
 | D3 | 颜色标记、调整像素、快速分割 | AUTO_PASS |
-| D4 | 标注 | NOT_STARTED |
+| D4 | 标注 | AUTO_PASS |
 | D5 | 个人素材库 | NOT_STARTED |
 | D6 | 模型和处理引擎调查 | NOT_STARTED |
 | D7 | 多角度 | NOT_STARTED |
@@ -97,7 +97,7 @@ node -p "require('./package.json').version"
 | IMGEDIT-012 | 个人素材库 | NOT_STARTED |
 | IMGEDIT-013 | 调整像素 | AUTO_PASS |
 | IMGEDIT-014 | 快速分割 | AUTO_PASS |
-| IMGEDIT-015 | 标注与导出 | NOT_STARTED |
+| IMGEDIT-015 | 标注与导出 | AUTO_PASS |
 | IMGEDIT-016 | 多角度真实生成 | NOT_STARTED |
 | IMGEDIT-017 | 重绘真实生成 | NOT_STARTED |
 | IMGEDIT-018 | 扩图与擦除 | NOT_STARTED |
@@ -157,7 +157,26 @@ package / schema / candidate：
 
 ## 10. 当前唯一下一动作
 
-进入 D4：先把 D4 标为 `IN_PROGRESS`，执行标注容量实验并冻结存储边界；不得提前进入 D5。
+提交 D4 本地 checkpoint commit；随后进入 D5 前先把 D5 标为 `IN_PROGRESS`，审计媒体引用、删除保护、项目/节点/账号删除语义和 migration 边界。
+
+## 16. D4 标注与显式导出
+
+- 时间：2026-08-23 20:02:36 +0800
+- 阶段：`D4`
+- 状态：`AUTO_PASS`
+- branch / HEAD / origin-main：`codex/inc-imgedit-003-v0.6.34-2026-08-23` / `0d0c0a4f58c5075b650ada8df1bd48626076f5b8` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537`
+- 工作树摘要：D3 已提交；D4 未提交树已加入版本化矢量标注文档、选择/画笔/矩形/箭头/编号/中文文字/删除/会话撤销重做/路径简化、刷新恢复和显式导出，未进入 D5
+- 产品文件：`types/imageTools.ts`、`client/src/imageTools/imageAnnotations.ts`、`renderAnnotatedImage.ts`、`ImageAnnotationEditor.tsx`、`client/src/canvas/ProbeNode.tsx`、`ImageNode.tsx`、`client/src/styles.css`
+- 测试文件：`tests/m100-modular-ports.spec.ts`、`tests/m2-image-node.spec.ts`
+- 文档文件：本 Checkpoint
+- package / schema / candidate：`0.6.33 / schema39 / 无候选`；目标版本 `v0.6.34`
+- 外部请求和付费预算：Provider `0/8`；真实 OSS `0`；GitHub/SSH/生产操作 `0`
+- 测试命令、环境、结果、退出码：pinned Node `22.23.1`、npm `10.9.8`；容量实验使用 100 个矩形、1 条 1000 点画笔和中文文字，共 102 个元素，JSON `29,460` bytes（512 KiB 上限的 `5.62%`），1000 次 stringify `61.476ms`、1000 次 structuredClone `200.448ms`，退出 0。`node scripts/run-safe-tests.mjs run --spec tests/m2-image-node.spec.ts` 调试期先后暴露 SVG 空白点击未稳定命中及 IME composition 状态缺口；只修根因并复验，最终退出 0、`10/10 PASS`。`node scripts/run-safe-tests.mjs run --spec tests/m100-modular-ports.spec.ts` 退出 0、`13/13 PASS`；最终 source/snapshot `c2a4a5e1…b85d`，4173 listener 不变
+- 架构与数据风险：容量实验支持把版本化矢量文档保存在 Canvas 节点元数据；实现仍强制 500 元素、单路径 2000 点、总点数 20000 和 512 KiB，上屏路径结束时简化。标注不改原图，只有显式导出才走 owner-scoped 同站安全源并生成派生资产；中文文字和路径简化不得丢失
+- 设计偏差：容量结果支持直接使用 Canvas 元数据，没有建立独立标注资产；单击编号/文字改由 SVG `click` 提交，拖拽工具继续使用 pointer capture，避免空白 SVG 命中差异；中文输入明确记录 composition 状态
+- 阻断：无；自动证据不等于生产或用户验收
+- 回滚点：D3 提交 `0d0c0a4f58c5075b650ada8df1bd48626076f5b8`；本阶段无 Provider、OSS、schema 或生产写入
+- 唯一下一动作：提交 D4 本地 checkpoint commit，然后进入 D5 前先把 D5 标为 `IN_PROGRESS`
 
 ## 15. D3 颜色标记、调整像素、快速分割
 

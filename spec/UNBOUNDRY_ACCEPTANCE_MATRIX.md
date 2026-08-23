@@ -364,7 +364,7 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 | IMGEDIT-012 | P0 | 个人素材库 | owner-scoped安全引用、幂等保存、读取、删除条目和Media删除保护；不保存签名URL，团队区保持禁用 | 数据所有权、migration/旧版本兼容、删除竞态、用户实页 | NOT_STARTED |
 | IMGEDIT-013 | P1 | 调整像素 | 精确宽高、默认比例锁、本地确定性处理；保留原图并创建派生节点，零Provider请求 | 像素/格式/内存边界、node/edge/asset、刷新 | AUTO_PASS |
 | IMGEDIT-014 | P1 | 快速分割 | 2×2/3×3/4×4预览与4/9/16个派生节点一次批量落地；失败不显示假成功 | 网格像素检查、批次写入、故障补偿、零Provider | AUTO_PASS |
-| IMGEDIT-015 | P1 | 标注与导出 | 可编辑画笔/矩形/箭头/编号/文字；持久化容量有界，原图不改，显式导出才生成资产 | 容量基准、IME、刷新、撤销重做、导出实页 | NOT_STARTED |
+| IMGEDIT-015 | P1 | 标注与导出 | 可编辑画笔/矩形/箭头/编号/文字；持久化容量有界，原图不改，显式导出才生成资产 | 容量基准、IME、刷新、撤销重做、导出实页 | AUTO_PASS |
 | IMGEDIT-016 | P0 | 多角度真实生成 | 真实结构化水平/垂直/距离/广角控制；持久任务、恢复、幂等和派生节点；不以提示词冒充 | fake零请求、一次真实技术冒烟、用户质量复验 | NOT_STARTED |
 | IMGEDIT-017 | P0 | 重绘真实生成 | 真实mask局部编辑，未遮罩区域尽量保持；遮罩坐标、附件生命周期、恢复和付费安全完整 | mask像素/高DPI/旋转、fake、真实技术冒烟、用户质量复验 | NOT_STARTED |
 | IMGEDIT-018 | P0 | 扩图与擦除 | outpaint只补新增区域；erase移除遮罩对象并补景；两者独立operation，不以拉伸/普通重绘冒充 | fake、派生结果、真实技术冒烟、用户质量复验 | NOT_STARTED |
@@ -378,6 +378,8 @@ D1 已完成共享 operation/result/capability/status/error 与有界载荷合�
 D2 已完成 Dispatcher、小 use case、Canvas image-tool fence、派生媒体补偿和对既有 Generation lifecycle 的薄适配；裁剪、下载、全屏定向 m2 `10/10 PASS`，模块化端口 m100 `13/13 PASS`，真实 Provider/OSS 请求 0。服务端权威 operation 状态尚待 D6，因此 `IMGEDIT-010` 只升为 `PARTIAL / APPLICATION_LAYER_AUTO_PASS`，不提前记完整 PASS。
 
 D3 已完成颜色标记 Canvas 元数据持久化、筛选和撤销；像素调整以安全同站源本地输出精确 PNG 派生图；快速分割提供 2×2/3×3/4×4 预览，并以单一 Canvas command 原子提交 4/9/16 个节点与边，stale/失败精确补偿本批媒体。安全定向 m100 `13/13 PASS`、m2 `10/10 PASS`，Generation/Provider/真实 OSS 请求 0；因此 `IMGEDIT-011/013/014 = AUTO_PASS`，尚未冒充生产或用户验收。
+
+D4 容量实验使用 100 个矩形、1 条 1000 点画笔和中文文字，共 102 个元素，JSON 29,460 bytes，仅占 512 KiB 上限 5.62%，因此冻结为 Canvas 节点版本化矢量元数据；运行时继续限制 500 元素、单路径 2000 点、总点数 20000 并简化路径。标注支持选择、画笔、矩形、箭头、编号、中文文字、删除、会话撤销重做、刷新恢复；只有显式导出才通过 owner-scoped 同站安全源生成 PNG 派生节点。m100 `13/13 PASS`、m2 `10/10 PASS`，Generation/Provider/真实 OSS 请求 0；因此 `IMGEDIT-015 = AUTO_PASS`，不冒充生产或用户验收。
 
 ## 12. 未知项与范围裁决
 

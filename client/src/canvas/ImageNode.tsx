@@ -131,6 +131,12 @@ import {
   resizeLocalImage,
   splitLocalImage,
 } from "../imageTools/localImageProcessing";
+import { ImageAnnotationEditor } from
+  "../imageTools/ImageAnnotationEditor";
+import { renderAnnotatedImage } from
+  "../imageTools/renderAnnotatedImage";
+import { emptyImageAnnotationDocument } from
+  "../imageTools/imageAnnotations";
 
 type CropBox = { height: number; width: number; x: number; y: number };
 const imageColorMarks = [
@@ -1674,6 +1680,7 @@ function ImageNodeImpl({
   const [submitting, setSubmitting] = useState(false);
   const [savingCanvas, setSavingCanvas] = useState(false);
   const [favorite, setFavorite] = useState(false);
+  const [annotationOpen, setAnnotationOpen] = useState(false);
   const [cropOpen, setCropOpen] = useState(false);
   const [colorMarksOpen, setColorMarksOpen] = useState(false);
   const [cropSourceAssetId, setCropSourceAssetId] = useState<string>();
@@ -3451,7 +3458,7 @@ function ImageNodeImpl({
   };
 
   const applyDerivedImage = async (
-    operation: "crop" | "resize-pixels",
+    operation: "annotate" | "crop" | "resize-pixels",
     file: File,
     sourceAssetId: string,
   ) => {
@@ -3514,6 +3521,30 @@ function ImageNodeImpl({
     });
     const result = await applyDerivedImage("resize-pixels", file, sourceAssetId);
     setLocalToolOpen(undefined);
+    return result;
+  };
+
+  const updateAnnotations = (
+    annotations: NonNullable<ProbeNodeType["data"]["imageAnnotations"]>,
+  ) => {
+    checkpoint();
+    setNodes((nodes) => nodes.map((node) => node.id === id
+      ? { ...node, data: { ...node.data, imageAnnotations: annotations } }
+      : node));
+  };
+
+  const exportAnnotations = async (
+    annotations: NonNullable<ProbeNodeType["data"]["imageAnnotations"]>,
+  ) => {
+    const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
+    if (!sourceAssetId) throw new Error("图片尚未完成安全保存");
+    const file = await renderAnnotatedImage({
+      assetId: sourceAssetId,
+      document: annotations,
+      fileName: `${titleControl.committedValue || "Image"}-annotated.png`,
+    });
+    const result = await applyDerivedImage("annotate", file, sourceAssetId);
+    setAnnotationOpen(false);
     return result;
   };
 
@@ -3603,6 +3634,12 @@ function ImageNodeImpl({
       operation: "quick-split",
       execute: (input: Readonly<{ grid: 2 | 3 | 4 }>) =>
         quickSplit(input.grid),
+    })
+    .register({
+      operation: "annotate",
+      execute: (input: Readonly<{
+        annotations: NonNullable<ProbeNodeType["data"]["imageAnnotations"]>;
+      }>) => exportAnnotations(input.annotations),
     })
     .register(createDownloadImageToolUseCase())
     .register(createFullscreenImageToolUseCase());
@@ -3762,15 +3799,15 @@ function ImageNodeImpl({
                 ["抠图", "cutout"],
               ].map(([label, icon]) => (
                 <button
-                  disabled={label !== "调整像素"}
+                  disabled={label !== "调整像素" && label !== "标注"}
                   key={label}
                   onClick={() => {
-                    if (label !== "调整像素") return;
                     setMoreOpen(false);
                     setCropOpen(false);
                     setMultiAngleOpen(false);
                     setRedrawOpen(false);
-                    setLocalToolOpen("resize");
+                    setLocalToolOpen(label === "调整像素" ? "resize" : undefined);
+                    setAnnotationOpen(label === "标注");
                   }}
                   role="menuitem"
                   type="button"
@@ -3785,6 +3822,7 @@ function ImageNodeImpl({
                   setCropOpen(false);
                   setMultiAngleOpen(false);
                   setRedrawOpen(false);
+                  setAnnotationOpen(false);
                   setLocalToolOpen("split");
                 }}
                 role="menuitem"
@@ -3932,6 +3970,20 @@ function ImageNodeImpl({
             preview={preview}
           />
         </NodeToolbar>
+      )}
+      {preview && annotationOpen && (
+        <ImageAnnotationEditor
+          document={data.imageAnnotations ?? emptyImageAnnotationDocument(
+            data.mediaWidth ?? previewImageRef.current?.naturalWidth ?? 1280,
+            data.mediaHeight ?? previewImageRef.current?.naturalHeight ?? 720,
+          )}
+          onChange={updateAnnotations}
+          onClose={() => setAnnotationOpen(false)}
+          onExport={async (annotations) => {
+            await imageToolDispatcher.execute("annotate", { annotations });
+          }}
+          src={preview}
+        />
       )}
       {preview && redrawOpen && (
         <ImageRedrawEditor

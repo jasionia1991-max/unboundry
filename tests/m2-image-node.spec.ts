@@ -177,7 +177,7 @@ test("Image empty and local upload states match the observed geometry", async ({
     height: 272,
   });
   await expect(moreMenu.getByRole("menuitem")).toHaveCount(8);
-  await expect(moreMenu.locator("button:not(:disabled)")).toHaveCount(2);
+  await expect(moreMenu.locator("button:not(:disabled)")).toHaveCount(3);
   await expect(moreMenu).toContainText("快速切分");
   await expect(moreMenu).toContainText("2×2　3×3　4×4");
   expect(generationRequests).toEqual([]);
@@ -864,11 +864,103 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
     '.react-flow__node-image[data-id="image-primary"]',
   );
   await restoredNode.click();
-  await page.getByTestId("image-node-toolbar")
+  const restoredToolbar = page.getByTestId("image-node-toolbar");
+  await restoredToolbar
     .getByRole("button", { name: "颜色标记" }).click();
   await expect(page.getByTestId("image-color-mark-menu")
     .getByRole("menuitemcheckbox", { name: "红色标记" }))
     .toHaveAttribute("aria-checked", "true");
+  await restoredToolbar.getByRole("button", { name: "颜色标记" }).click();
+
+  await restoredToolbar.getByRole("button", { name: "浏览全部" }).click();
+  await page.getByTestId("image-node-more-menu")
+    .getByRole("menuitem", { name: "标注" }).click();
+  const annotationOverlay = page.getByTestId("image-annotation-overlay");
+  const annotationStage = page.getByTestId("image-annotation-stage");
+  const annotationCanvas = page.getByTestId("image-annotation-canvas");
+  const annotationToolbar = page.getByTestId("image-annotation-toolbar");
+  await expect(annotationOverlay).toBeVisible();
+  const annotationBox = (await annotationStage.boundingBox())!;
+
+  await annotationToolbar.getByRole("button", { name: "画笔" }).click();
+  await expect(annotationCanvas).toHaveAttribute("data-tool", "brush");
+  await page.mouse.move(annotationBox.x + 80, annotationBox.y + 80);
+  await page.mouse.down();
+  await page.mouse.move(annotationBox.x + 180, annotationBox.y + 120, {
+    steps: 12,
+  });
+  await page.mouse.up();
+  await annotationToolbar.getByRole("button", { name: "矩形" }).click();
+  await expect(annotationCanvas).toHaveAttribute("data-tool", "rectangle");
+  await page.mouse.move(annotationBox.x + 220, annotationBox.y + 90);
+  await page.mouse.down();
+  await page.mouse.move(annotationBox.x + 360, annotationBox.y + 190);
+  await page.mouse.up();
+  await annotationToolbar.getByRole("button", { name: "箭头" }).click();
+  await expect(annotationCanvas).toHaveAttribute("data-tool", "arrow");
+  await page.mouse.move(annotationBox.x + 120, annotationBox.y + 260);
+  await page.mouse.down();
+  await page.mouse.move(annotationBox.x + 300, annotationBox.y + 300);
+  await page.mouse.up();
+  await annotationToolbar.getByRole("button", { name: "编号" }).click();
+  await expect(annotationCanvas).toHaveAttribute("data-tool", "number");
+  await page.mouse.click(annotationBox.x + 420, annotationBox.y + 120);
+  await annotationToolbar.getByRole("button", { name: "文字" }).click();
+  await expect(annotationCanvas).toHaveAttribute("data-tool", "text");
+  await annotationCanvas.click({ position: { x: 180, y: 340 } });
+  const annotationText = page.getByRole("textbox", { name: "标注文字输入" });
+  await composeTextControl(annotationText, ["zhong", "zhong wen", "中文说明"]);
+  await annotationText.press("Enter");
+  await expect(annotationOverlay).toContainText("5 个标注");
+  await annotationToolbar.getByRole("button", { name: "撤销标注" }).click();
+  await expect(annotationOverlay).toContainText("4 个标注");
+  await annotationToolbar.getByRole("button", { name: "恢复标注" }).click();
+  await expect(annotationOverlay).toContainText("5 个标注");
+
+  await annotationToolbar.getByRole("button", { name: "选择" }).click();
+  await annotationCanvas.locator("g[data-annotation-id]").last().click();
+  await annotationToolbar.getByRole("button", { name: "删除标注" }).click();
+  await expect(annotationOverlay).toContainText("4 个标注");
+  await annotationToolbar.getByRole("button", { name: "撤销标注" }).click();
+  await expect(annotationOverlay).toContainText("5 个标注");
+  await expect.poll(async () => {
+    const saved = await (await request.get("/api/canvas/node.image.empty")).json() as {
+      nodes?: Array<{
+        data?: { imageAnnotations?: { elements?: Array<{ text?: string }> } };
+        id?: string;
+      }>;
+    };
+    return saved.nodes?.find((savedNode) => savedNode.id === "image-primary")
+      ?.data?.imageAnnotations?.elements;
+  }).toEqual(expect.arrayContaining([
+    expect.objectContaining({ text: "中文说明" }),
+  ]));
+
+  await annotationToolbar.getByRole("button", { name: "关闭标注" }).click();
+  await expect(annotationOverlay).toHaveCount(0);
+  await restoredToolbar.getByRole("button", { name: "浏览全部" }).click();
+  await page.getByTestId("image-node-more-menu")
+    .getByRole("menuitem", { name: "标注" }).click();
+  await expect(page.getByTestId("image-annotation-overlay")).toContainText(
+    "5 个标注",
+  );
+  await page.getByTestId("image-annotation-toolbar")
+    .getByRole("button", { name: "导出标注图" }).click();
+  await expect(page.getByTestId("image-annotation-overlay")).toHaveCount(0);
+  await expect.poll(async () => {
+    const saved = await (await request.get("/api/canvas/node.image.empty")).json() as {
+      edges?: Array<{ id?: string }>;
+      nodes?: Array<{ id?: string }>;
+    };
+    return {
+      annotationNodes: saved.nodes?.filter((savedNode) =>
+        savedNode.id?.startsWith("image-annotate-")
+      ).length,
+      edges: saved.edges?.length,
+      nodes: saved.nodes?.length,
+    };
+  }).toEqual({ annotationNodes: 1, edges: 7, nodes: 8 });
+  expect(generationRequests).toEqual([]);
 });
 
 test("Image multi-angle panel keeps local parameters without generating", async ({
