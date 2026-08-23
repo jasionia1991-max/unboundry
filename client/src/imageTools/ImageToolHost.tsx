@@ -155,6 +155,19 @@ export function ImageToolHost({
   }, [activeTool, descriptor]);
 
   useEffect(() => {
+    if (!busy) return;
+    const animationFrame = requestAnimationFrame(() => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      const activeElement = document.activeElement;
+      const activeFocusable = activeElement instanceof HTMLElement &&
+        focusableElements(panel).includes(activeElement);
+      if (!activeFocusable) panel.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(animationFrame);
+  }, [activeTool, busy]);
+
+  useEffect(() => {
     if (activeTool) return;
     if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
   }, [activeTool, returnFocus]);
@@ -212,7 +225,10 @@ export function ImageToolHost({
           }
           const first = focusables[0]!;
           const last = focusables[focusables.length - 1]!;
-          if (event.shiftKey && document.activeElement === first) {
+          if (!focusables.includes(document.activeElement as HTMLElement)) {
+            event.preventDefault();
+            (event.shiftKey ? last : first).focus();
+          } else if (event.shiftKey && document.activeElement === first) {
             event.preventDefault();
             last.focus();
           } else if (!event.shiftKey && document.activeElement === last) {

@@ -4499,7 +4499,10 @@ function ImageNodeImpl({
       >
         <button
           aria-label="裁剪"
-          data-tooltip="裁剪"
+          data-tooltip={typeof data.assetId === "string" && data.assetId
+            ? "裁剪"
+            : "图片尚未完成安全保存"}
+          disabled={typeof data.assetId !== "string" || !data.assetId}
           onClick={(event) => {
             setCropVisualPreview(
               freezeReusableCropVisualPreview(previewImageRef.current),
@@ -5414,7 +5417,7 @@ function ImageNodeImpl({
         )}
       </div>
       <div
-        className={`image-node-card${
+        className={`image-node-card${preview ? " image-node-image-surface" : ""}${
           data.imageToolOutputBackground === "transparent"
             ? " image-transparent-preview"
             : ""

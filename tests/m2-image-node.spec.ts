@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from "./safe-test";
+import { expect, test, type Locator, type Page } from "./safe-test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { composeTextControl } from "./helpers/ime";
@@ -27,6 +27,28 @@ async function expectInsideViewport(locator: Locator) {
   expect(bounds.top).toBeGreaterThanOrEqual(0);
   expect(bounds.right).toBeLessThanOrEqual(bounds.viewportWidth);
   expect(bounds.bottom).toBeLessThanOrEqual(bounds.viewportHeight);
+}
+
+async function expectScreenSpaceSizeInvariant(page: Page, locator: Locator) {
+  const zoomSlider = page.getByTestId("zoom-slider");
+  const world = page.getByTestId("canvas-world");
+  const originalZoom = await zoomSlider.inputValue();
+  const dimensions = async () => locator.evaluate((element) => {
+    const rectangle = element.getBoundingClientRect();
+    return {
+      height: Math.round(rectangle.height * 100) / 100,
+      width: Math.round(rectangle.width * 100) / 100,
+    };
+  });
+  const baseline = await dimensions();
+  for (const zoom of ["0.15", "0.85", "1", "1.5"]) {
+    await zoomSlider.fill(zoom);
+    await expect(world).toHaveAttribute("data-viewport-zoom", zoom);
+    await expectInsideViewport(locator);
+    await expect.poll(dimensions).toEqual(baseline);
+  }
+  await zoomSlider.fill(originalZoom);
+  await expect(world).toHaveAttribute("data-viewport-zoom", originalZoom);
 }
 
 test.beforeEach(async ({ page }, testInfo) => {
@@ -202,6 +224,8 @@ test("Image empty and local upload states match the observed geometry", async ({
     })
     .toEqual({ width: 444, height: 250 });
   await expect(preview).toHaveCSS("object-fit", "contain");
+  await expect(card).toHaveClass(/image-node-image-surface/);
+  await expect(card).not.toHaveCSS("background-image", "none");
   await expect(node.locator(".react-flow__resize-control")).toHaveCount(8);
   await expect(
     node.locator(".react-flow__handle.target .node-handle-plus"),
@@ -320,6 +344,7 @@ test("Image empty and local upload states match the observed geometry", async ({
   await expectInsideViewport(outpaint);
   await expectInsideViewport(page.getByTestId("image-outpaint-stage"));
   await expectInsideViewport(outpaint.locator(".image-outpaint-controls"));
+  await expectScreenSpaceSizeInvariant(page, outpaint);
   await expect(outpaint.locator(".image-outpaint-original")).toContainText("原图范围");
   await expect(page.getByTestId("image-tool-surface"))
     .toHaveAttribute("data-surface-tone", "checkerboard");
@@ -336,6 +361,7 @@ test("Image empty and local upload states match the observed geometry", async ({
   await expectInsideViewport(page.getByTestId("image-redraw-toolbar"));
   await expectInsideViewport(page.getByTestId("image-redraw-stage"));
   await expectInsideViewport(page.getByTestId("image-redraw-prompt"));
+  await expectScreenSpaceSizeInvariant(page, erase);
   await expect(page.getByTestId("image-redraw-stage"))
     .not.toHaveCSS("background-image", "none");
   await erase.getByRole("button", { name: "取消擦除" }).click();
@@ -347,6 +373,7 @@ test("Image empty and local upload states match the observed geometry", async ({
   await expect(enhance).toBeVisible();
   await expectInsideViewport(enhance);
   await expectInsideViewport(enhance.locator(".image-tool-panel-footer"));
+  await expectScreenSpaceSizeInvariant(page, enhance);
   await expect(enhance).toContainText("创意增强会生成新细节");
   await expect(enhance.getByRole("button", { name: "保守增强" })).toBeEnabled();
   await expect(enhance.getByRole("button", { name: /创意增强/ })).toBeDisabled();
@@ -359,6 +386,7 @@ test("Image empty and local upload states match the observed geometry", async ({
   await expect(cutout).toBeVisible();
   await expectInsideViewport(cutout);
   await expectInsideViewport(cutout.locator(".image-tool-panel-footer"));
+  await expectScreenSpaceSizeInvariant(page, cutout);
   await expect.soft(page.getByTestId("image-tool-surface")).toBeVisible();
   await expect(cutout).toContainText("棋盘格仅用于预览透明区域");
   await expect(cutout.getByRole("button", { name: "生成透明PNG" })).toBeDisabled();
@@ -702,6 +730,14 @@ test("Image success keeps the material-fit result, favorite, prompt, and paramet
   await expect(
     creator.getByRole("button", { name: "Generate" }),
   ).toBeDisabled();
+  const cropButton = page.getByTestId("image-node-toolbar")
+    .getByRole("button", { name: "裁剪" });
+  await expect(cropButton).toBeDisabled();
+  await expect(cropButton).toHaveAttribute(
+    "data-tooltip",
+    "图片尚未完成安全保存",
+  );
+  await expect(page.getByTestId("image-tool-host")).toHaveCount(0);
 
   await page.locator(".react-flow__pane").click({ position: { x: 1000, y: 200 } });
   await node.click();
@@ -865,6 +901,7 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   expect(await stage.boundingBox()).toMatchObject({ height: 552 });
   await expectInsideViewport(overlay);
   await expectInsideViewport(stage);
+  await expectScreenSpaceSizeInvariant(page, overlay);
   await expect(page.getByTestId("image-tool-surface"))
     .toHaveAttribute("data-surface-tone", "checkerboard");
   await expect(stage).not.toHaveCSS("background-image", "none");
@@ -1033,6 +1070,7 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   await expect(resizePanel).toBeVisible();
   await expectInsideViewport(resizePanel);
   await expectInsideViewport(resizePanel.locator(".image-tool-panel-footer"));
+  await expectScreenSpaceSizeInvariant(page, resizePanel);
   await resizePanel.getByRole("spinbutton", { name: "像素宽度" }).fill("640");
   await expect(
     resizePanel.getByRole("spinbutton", { name: "像素高度" }),
@@ -1074,6 +1112,7 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   const splitPanel = page.getByTestId("image-split-panel");
   await expectInsideViewport(splitPanel);
   await expectInsideViewport(splitPanel.locator(".image-tool-panel-footer"));
+  await expectScreenSpaceSizeInvariant(page, splitPanel);
   await expect(splitPanel.getByRole("img", { name: "分割预览" })).toBeVisible();
   await expect(splitPanel.getByRole("button", { name: "2×2（4张）" })).toBeVisible();
   await expect(splitPanel.getByRole("button", { name: "3×3（9张）" })).toBeVisible();
@@ -1137,6 +1176,7 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   await expectInsideViewport(annotationToolbar);
   await expectInsideViewport(annotationStage);
   await expectInsideViewport(annotationOverlay.locator(".image-annotation-status"));
+  await expectScreenSpaceSizeInvariant(page, annotationOverlay);
   await expect(annotationStage).not.toHaveCSS("background-image", "none");
   const annotationBox = (await annotationStage.boundingBox())!;
 
@@ -1150,6 +1190,13 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   await page.mouse.up();
   await annotationToolbar.getByRole("button", { name: "矩形" }).click();
   await expect(annotationCanvas).toHaveAttribute("data-tool", "rectangle");
+  await expect.poll(() => annotationToolbar
+    .getByRole("button", { name: "矩形" })
+    .evaluate((element) => ({
+      content: getComputedStyle(element, "::after").content,
+      opacity: getComputedStyle(element, "::after").opacity,
+    })))
+    .toEqual({ content: '"矩形"', opacity: "1" });
   await page.mouse.move(annotationBox.x + 220, annotationBox.y + 90);
   await page.mouse.down();
   await page.mouse.move(annotationBox.x + 360, annotationBox.y + 190);
@@ -1225,6 +1272,7 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   const seedancePanel = page.getByTestId("image-seedance-validation-panel");
   await expectInsideViewport(seedancePanel);
   await expectInsideViewport(seedancePanel.locator(".image-tool-panel-footer"));
+  await expectScreenSpaceSizeInvariant(page, seedancePanel);
   await expect(seedancePanel).toContainText("仅检查本地技术输入条件");
   await expect(seedancePanel.getByRole("combobox", { name: "Seedance 视频模型" }))
     .toHaveValue("fixture-seedance-2-mini");
@@ -1240,6 +1288,17 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   await expect(seedancePanel.getByRole("button", {
     name: "关闭 Seedance 素材校验",
   })).toBeDisabled();
+  const seedanceHostPanel = page.getByTestId("image-tool-host")
+    .locator(".image-tool-host-panel");
+  await expect(seedanceHostPanel).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect.poll(() => seedanceHostPanel.evaluate((panel) =>
+    panel.contains(document.activeElement)
+  )).toBe(true);
+  await page.keyboard.press("Shift+Tab");
+  await expect.poll(() => seedanceHostPanel.evaluate((panel) =>
+    panel.contains(document.activeElement)
+  )).toBe(true);
   await page.keyboard.press("Escape");
   await expect(seedancePanel).toBeVisible();
   await page.getByTestId("image-tool-host").click({ position: { x: 4, y: 4 } });
@@ -1394,6 +1453,7 @@ test("Image multi-angle submits a structured persistent fake task without Provid
   await expect(panel).toBeVisible();
   expect(await panel.evaluate((element) => getComputedStyle(element).width))
     .toBe("600px");
+  await expectScreenSpaceSizeInvariant(page, panel);
   const panelBox = (await panel.boundingBox())!;
   expect(panelBox.width).toBeCloseTo(600, 0);
   expect(panelBox.height).toBeCloseTo(308, 0);
@@ -1618,6 +1678,7 @@ test("Image redraw submits an owner-scoped mask fake task and cancel is lossless
   await expectInsideViewport(stage);
   await expectInsideViewport(toolbar);
   await expectInsideViewport(prompt);
+  await expectScreenSpaceSizeInvariant(page, overlay);
   await expect(stage).not.toHaveCSS("background-image", "none");
   await expect(page.getByTestId("image-tool-surface"))
     .toHaveAttribute("data-surface-tone", "checkerboard");
