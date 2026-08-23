@@ -18,12 +18,12 @@
 
 v0.6.33 版本号与历史发布授权已消费。当前 INC-IMGEDIT-003 Goal 已由用户另行确认 `v0.6.34` 并明确“按 v0.6.34 上线吧”；该新授权只在 D12 候选验证通过后用于 D13，不扩大到 Mureka、团队/多人协作、真实 Agent 协议、Storyboard 完整编辑、图片打光或其他既有 `PARTIAL/PAUSED/BLOCK` 项。
 
-## INC-IMGEDIT-003 图片工具栏剩余能力单 Goal（D12 候选验证中）
+## INC-IMGEDIT-003 图片工具栏剩余能力单 Goal（D12 完成，D13 待发布）
 
-- 用户已批准最终 V5 方案并明确启动 Goal；D0～D11 已按阶段提交，当前状态 `D12_TARGETED_AUTO_PASS / CANDIDATE_FREEZE_PENDING_COMMIT / SAFE_FULL_PENDING / VERSION_V0_6_34`。主方案为 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md`。
+- 用户已批准最终 V5 方案并明确启动 Goal；D0～D12 已按阶段完成，当前状态 `LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / D13_READY / VERSION_V0_6_34`。主方案为 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md`。
 - 为防止长任务在新 Session 或上下文压缩后漂移，已建立唯一实时断点 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_CHECKPOINT.md` 和可复制 Goal 合同 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_GOAL_PROMPT_2026-08-23.md`。D0～D13 每阶段必须先回写断点、矩阵和 TASKS，再继续下一阶段。
 - 计划范围包含颜色标记、调整像素、快速分割、标注、个人素材库、多角度、遮罩/重绘、扩图、擦除、增强、主体抠图和 Seedance 素材校验；裁剪只回归，打光继续 `PAUSED`。
-- 本地候选 package 已同步为 v0.6.34，schema 仍为39；D12 成功定向合计 `234/234 PASS`，代码/架构/数据/测试四类审查无新阻断，当前只剩冻结候选提交和唯一一次 safe full。生产仍是 v0.6.33，GitHub/SSH/生产尚未进入 D13。
+- 本地候选 package 为v0.6.34，schema仍为39；D12定向`234/234 PASS`，代码/架构/数据/测试四类审查无新阻断。冻结提交`aa67e46`只执行一次safe full，原始`1048/1052`；一个真实预检缺陷与三个测试确定性问题由`422408b`修正，同一四spec复验`106/106 PASS`，没有第二次full。生产仍是v0.6.33，GitHub/SSH/生产尚未进入D13。
 - 真实付费技术冒烟总上限为8次，当前已用0；真实冒烟只证明技术链路，不等于质量通过。具体版本号和独立发布句均有效，但必须等待 D12 通过。
 
 ## v0.6.33 图片裁剪准备态体验优化（已发布并获用户确认）

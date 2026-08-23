@@ -5,7 +5,7 @@
 更新时间：2026-08-23
 状态：`v0.6.33 已发布并通过技术终门与用户线上复验，状态 PRODUCTION_PUBLISHED_USER_PASS / USER_PASS。权威回执见 spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json。`
 
-### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，D12_TARGETED_AUTO_PASS / SAFE_FULL_PENDING）
+### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，D12_AUTO_PASS / D13_READY）
 
 - 用户已批准最终 V5 方案并要求后续长任务严格由项目文档驱动，防止新 Session 或上下文压缩后失忆漂移。主方案：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md`；实时断点：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_CHECKPOINT.md`；新 Session 提示词：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_GOAL_PROMPT_2026-08-23.md`。
 - 单 Goal 连续范围：最小图片工具应用边界、颜色标记、调整像素、快速分割、标注、个人素材库、多角度、遮罩/重绘、扩图、擦除、保守/创意增强、主体抠图和 Seedance 素材校验；裁剪只回归，打光 `IMGEDIT-007` 继续 `PAUSED`。
@@ -25,8 +25,8 @@
 - D9 已把扩图和擦除接为两个独立生成操作。扩图经owner-scoped安全读取生成“透明扩展画布+原图原尺寸定位”的准备PNG及同尺寸“原区不变/新增区可生成”mask，边界参数、准备资产、mask、来源和占位全部持久化并由服务端严格核验；Provider执行只使用准备输入。擦除复用D8遮罩编辑器，但保持独立operation、ownership、占位和默认补景语义。两项均先保存Canvas占位并完成Media adoption，再走既有持久task/retry/recovery/result挂接。安全定向 m2+m27 `30/30`、m100+m88 `49/49 PASS`，真实Provider/OSS请求0；`IMGEDIT-018 = TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK`。唯一下一阶段为 D10 增强与主体抠图。
 - D10 已完成三条分离路径：保守增强经同站安全源做同尺寸本地确定性校正并创建派生PNG，零Generation；创意增强明示会改变内容，主体抠图明示透明PNG，两者各有独立operation/ownership/占位并复用现有持久Generation生命周期。抠图身份在Canvas/task/服务端三处绑定`outputBackground=transparent`，GPT Image请求显式带透明背景；同步、异步和native结果在发布前都解码PNG滤波行，要求至少一个真实透明像素，opaque RGBA也fail-closed。节点和全屏查看器用CSS棋盘格预览透明区，不烘焙进结果。安全定向m100+m53 `38/38`、m2+m27 `30/30`、最终m2+m57 `26/26 PASS`，真实Provider/OSS请求0；`IMGEDIT-019 = TARGETED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PENDING_D13 / USER_QUALITY_RECHECK`。唯一下一阶段为D11 Seedance素材校验。
 - D11 已完成 Seedance 图片素材本地技术预检：服务端按 owner 读取 ready Media 和已发布/启用的 `seedance-2` 模型，复用真实 `referenceMediaRules` 校验类型、大小、尺寸、比例和素材角色；结果绑定 asset/model/role/模型配置revision/检查与过期时间，刷新后保留，过期或任一身份漂移均 stale。DTO/UI 明确 `remoteValidationAvailable=false` 和“不是远端资格、可生成、质量或法律合规”，不生成视频。安全定向最终 m2 `10/10`、m100 `13/13 PASS`，m20既有API合同`1/1 PASS`；真实Provider/OSS/视频生成请求0。`IMGEDIT-020 = AUTO_PASS / LOCAL_TECHNICAL_PREFLIGHT_ONLY`。唯一下一阶段为 D12 候选冻结和统一验证。
-- D12 已进入候选统一验证：package/lock/runtime role 已同步为 v0.6.34，schema 保持39；当前将冻结 D0～D11 范围，运行统一直接受影响测试、代码/架构/数据/测试四类审查和最多一次 safe full。D12 通过前不进入 GitHub 或生产。
-- D12 版本/权威文档门和统一直接受影响验证已完成：m38 `15/15`、m81 `41/41`、13-spec矩阵 `178/178 PASS`，成功定向合计`234/234`；架构例外仍76且新增0，schema39、Library sidecar兼容、Canvas/Generation/Media、mask/Alpha/capability/stale/OpenAPI/UI均有直接证据。当前只剩冻结候选提交和唯一一次 safe full，真实Provider/OSS请求仍0。
+- D12 已完成：package/lock/runtime role 为v0.6.34，schema39不变；冻结前m38 `15/15`、m81 `41/41`、13-spec矩阵 `178/178 PASS`，合计`234/234`，四类审查无新阻断。冻结候选`aa67e46`只执行一次safe full，原始`1048/1052`；未改树精确复验四个失败spec为`102/106`，确认一个图片预检真实缺陷与三个确定性观测问题。
+- 修正提交`422408b`把图片预检公开结果延后到全部校验完成后构造，并收紧m0/m22/m37测试时序；同一四spec最终`106/106 PASS`。D12收口文档m38 `15/15 PASS`；首次误写不存在的spec路径只在选择阶段退出且产品测试0。没有第二次full，原始full不改写为全绿。当前候选为`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / D13_READY`；真实Provider/OSS请求仍0，生产仍为v0.6.33。
 - 本次落档 `git diff --check` 通过；定向 m38 safe runner 在产品测试前被 main 既有 ignored `backups/` 隔离负控以 `EISDIR` 阻断，0 个产品测试执行，source snapshot 和 4173 listener 未变。未删除/移动备份、未绕过 safe runner、未把该尝试记为自动 PASS；完整记录见 Checkpoint。
 
 ### 2026-08-23 当前版本文档残留对齐（docs-only）

@@ -5,11 +5,11 @@
 - 日期：2026-08-23
 - 仓库：`/Users/mymy/Documents/unboundry/app`
 - 立项基线：`main` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537` / package `0.6.33` / 生产 `v0.6.33` / schema39
-- 状态：`PLAN_FROZEN / D12_TARGETED_AUTO_PASS / SAFE_FULL_PENDING`
-- 当前阶段：D0～D11 已按文档完成并提交；v0.6.34 候选定向234/234及四类审查通过，待冻结提交和唯一一次safe full；生产仍为 v0.6.33/schema39
+- 状态：`PLAN_FROZEN / D12_AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / D13_READY`
+- 当前阶段：D0～D12 已完成；v0.6.34 候选定向234/234，唯一一次safe full原始1048/1052，精确修复复验106/106；生产仍为 v0.6.33/schema39
 - 版本：`v0.6.34 / VERSION_GATE_VALID / RELEASE_GATE_VALID`
-- 发布候选：`v0.6.34 / TARGETED_AUTO_PASS / FREEZE_PENDING_COMMIT / SAFE_FULL_PENDING`
-- 本次落档授权：只允许修改项目文档；不施工、不调用 Provider/OSS、不 commit、不 push、不 PR、不 SSH、不发布
+- 发布候选：`v0.6.34 / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / D13_READY`
+- 本 Goal 授权：D0～D12 本地施工、验证和 checkpoint commit 已执行；D13 的 v0.6.34 版本门与独立发布门均有效，仍须按 Runbook 逐门执行
 
 本文档是图片节点顶部工具栏除已完成裁剪和继续暂停打光以外所有剩余能力的主施工方案。后续使用一个新 Session 的单一 Goal 连续执行 D0～D13；阶段只是内部检查点，不拆成多个 Goal，不因普通技术选择、测试失败或阶段完成中途等待用户。
 
@@ -383,3 +383,4 @@ USER_QUALITY_RECHECK
 - D9 扩图没有复用允许向内裁小的裁剪框，而采用四周等比5%～50%的全屏边界预览：提交前由安全读取链构造透明扩展PNG和同尺寸mask，原图按自然像素原位放入，服务端以独立outpaint参数和准备资产严格核验；这样强制“只扩大、不拉伸、不裁小”。擦除虽复用遮罩画布，但operation、ownership、占位和任务身份均独立。两项真实技术冒烟继续按同一授权顺序留到D13精确v0.6.34候选。
 - D10 不引入许可证未闭环的rembg权重或第二套图片任务系统：保守增强冻结为本地同尺寸、确定性的轻量对比度/色彩校正并走派生媒体；创意增强与主体抠图复用既有GPT Image edit和Generation/Media生命周期。主体抠图显式发送`background=transparent`，并在所有结果保存入口解码PNG滤波行、要求至少一个真实非不透明Alpha样本，opaque RGBA也拒绝；棋盘格只属于节点/全屏CSS预览。三项真实Provider技术冒烟继续留到D13精确v0.6.34候选。
 - D11 没有接不存在的 Seedance 远端资格接口：实现严格标识的五分钟本地技术预检，复用当前已发布 `seedance-2` 模型的真实参考媒体规则和 owner-scoped Media 元数据；结果绑定 asset/model/role/模型配置revision/时间，过期或身份漂移即 stale。DTO 和 UI 固定说明这不代表远端资格、可生成、质量或法律合规，并保证零视频生成。施工时同时修正 D10 已实现操作在 capability registry 中仍误报不可用的残留。
+- D12 冻结候选后只运行一次 safe full：120/120 specs执行，原始 `1048/1052`。未改树精确复验四个失败规格稳定为`102/106`；其中m31揭示图片预检在最终校验前展开返回对象导致`canSubmit`标量失真，产品修正为所有问题追加完成后再生成公开结果；m0/m22/m37只修正异步fixture、fit-view竞争和瞬态状态观测。最终同一四spec `106/106 PASS`，未运行第二次full，也不把原始full改写为1052/1052。

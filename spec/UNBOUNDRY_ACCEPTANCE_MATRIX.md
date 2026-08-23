@@ -3,7 +3,7 @@
 基线日期：2026-07-27  
 当前状态更新：2026-08-23
 
-2026-08-23 `CURRENT_RELEASE = v0.6.33 / schema39 / PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`：v0.6.33在v0.6.32同站安全Blob裁剪链上，把HTTP/OSS图片准备态改为320×180紧凑加载卡片且不增加原图重复读取；用户已在线上复验并明确回复“通过”。tag、PR、main CI、冻结备份与恢复副本、精确源码构建、原子切换和生产技术终门均通过。当前另有 `v0.6.34 / INC-IMGEDIT-003 / D12_VALIDATION_IN_PROGRESS` 本地候选，尚未进入 GitHub 或生产；`VIEW-005`保持`AUTO_PASS`，其他`PARTIAL/PAUSED/BLOCK`不自动升级。
+2026-08-23 `CURRENT_RELEASE = v0.6.33 / schema39 / PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`：v0.6.33在v0.6.32同站安全Blob裁剪链上，把HTTP/OSS图片准备态改为320×180紧凑加载卡片且不增加原图重复读取；用户已在线上复验并明确回复“通过”。tag、PR、main CI、冻结备份与恢复副本、精确源码构建、原子切换和生产技术终门均通过。当前另有 `v0.6.34 / INC-IMGEDIT-003 / D12_AUTO_PASS / D13_READY` 本地候选，尚未进入 GitHub 或生产；`VIEW-005`保持`AUTO_PASS`，其他`PARTIAL/PAUSED/BLOCK`不自动升级。
 
 本文件下方旧版本的 `USER_RECHECK/PENDING` 均保留各自验收时点，不再承担当前线上版本播报，也不得被直接当成下一施工计划。当前版本、当前计划和授权边界只以 `spec/UNBOUNDRY_CURRENT_STATE.md` 为准。
 
@@ -372,6 +372,8 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 | IMGEDIT-020 | P1 | Seedance素材校验 | 本地技术预检绑定asset/model/role并可过期；仅在官方接口存在时声明远端资格，不生成视频或作法律保证 | owner-scoped Media、已发布模型真实参数规则、配置revision、过期/身份漂移stale、刷新恢复、m100/m2/m20安全定向和零视频生成/Provider请求 | AUTO_PASS / LOCAL_TECHNICAL_PREFLIGHT_ONLY |
 
 `IMGEDIT-010～020` 由 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md` 和对应 Checkpoint 驱动。D0 已完成实时基线、工具链、生产只读探针、Provider/Storage 现状和干净隔离 worktree 恢复；这些条目仍全部 `NOT_STARTED`，D0 不冒充功能验收。历史 `IMGEDIT-001～006、008、009 = PASS` 继续只证明既有外观、安全禁用和裁剪结果合同，不自动证明新功能已经实现。`IMGEDIT-007` 继续 `PAUSED`。
+
+D12 候选验证已完成：冻结前直接受影响定向`234/234 PASS`，四类审查无新阻断；唯一一次safe full原始`1048/1052`，精确修复后同一四个失败spec`106/106 PASS`，未运行第二次full。该证据只支持`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / D13_READY`，不自动把`IMGEDIT-016～019`升级为真实Provider、生产或用户质量PASS。
 
 D1 已完成共享 operation/result/capability/status/error 与有界载荷合同、Library 独立表 owner 和 image-tools client/server 内部边界，架构门保持 76 个既有例外且新增例外为 0；m100 定向 `13/13 PASS`。这只是施工前合同证据，`IMGEDIT-010～020` 继续保持 `NOT_STARTED`。
 

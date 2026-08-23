@@ -2,20 +2,20 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-23 23:02:20 +0800
-- 状态：`GOAL_ACTIVE / D12_TARGETED_AUTO_PASS / CANDIDATE_FREEZE_PENDING_COMMIT`
-- 当前阶段：`D12 候选冻结和统一验证 / SAFE_FULL_PENDING`
-- 唯一允许的下一动作：提交 v0.6.34 冻结候选，然后在该冻结产品源码上只运行一次 `node scripts/run-safe-tests.mjs full`；不得提前进入 D13
+- 更新时间：2026-08-23 23:39:00 +0800
+- 状态：`GOAL_ACTIVE / D12_AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / D13_READY`
+- 当前阶段：`D12 候选冻结和统一验证 / COMPLETE`
+- 唯一允许的下一动作：提交 D12 收口文档；随后先把 D13 标为 `IN_PROGRESS`，完整阅读 `RELEASE_RUNBOOK.md` 并按版本门和发布门执行 GitHub 与生产发布
 - 当前仓库：`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`
 - 记录时分支：`codex/inc-imgedit-003-v0.6.34-2026-08-23`
-- 记录时 HEAD：`cb41b66d6265f94f741f41dd633a2dbcc999400c`
+- 记录时 HEAD：`422408b9bafdce06491398e5c60e443522a479ec`
 - 记录时 `origin/main`：`14777b5dc5cf48de8b21b6eb3ee27da45070b537`
 - package：`0.6.34`
 - 生产：`v0.6.33 / schema39 / PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`
 - 新版本：`v0.6.34 / VERSION_GATE_VALID`
-- 候选：`v0.6.34 / TARGETED_AUTO_PASS / FREEZE_PENDING_COMMIT / SAFE_FULL_PENDING`
-- 本轮代码施工：D11 已提交为 `cb41b66`；D12 已同步 v0.6.34 package/lock/runtime/docs，统一定向与四类审查通过，待冻结候选提交
-- 本轮验证：pinned Node 22.23.1/npm 10.9.8；D12 成功定向合计 `234/234 PASS`（m38 15、m81 41、统一13-spec矩阵178）；未运行 full
+- 候选：`v0.6.34 / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / D13_READY`
+- 本轮代码施工：冻结候选提交 `aa67e46`；safe full 暴露的图片生成预检标量快照缺陷及三项确定性测试时序已由 `422408b` 修正，候选工作树干净
+- 本轮验证：pinned Node 22.23.1/npm 10.9.8；冻结前定向 `234/234 PASS`；唯一一次 safe full 原始 `1048/1052`，只复验四个失败规格时稳定复现 `102/106`，修复后同一精确集合 `106/106 PASS`；D12收口文档m38 `15/15 PASS`；未运行第二次 full
 - 真实 Provider/付费请求：0/8
 - 真实 OSS 测试对象：0
 - GitHub/SSH/生产操作：0
@@ -83,8 +83,8 @@ node -p "require('./package.json').version"
 | D9 | 扩图与擦除 | TARGETED_AUTO_PASS / REAL_SMOKE_PENDING_D13 |
 | D10 | 增强与主体抠图 | TARGETED_AUTO_PASS / REAL_SMOKE_PENDING_D13 |
 | D11 | Seedance 素材校验 | AUTO_PASS |
-| D12 | 候选冻结和统一验证 | IN_PROGRESS |
-| D13 | GitHub和生产发布 | NOT_STARTED / AUTH_GATED |
+| D12 | 候选冻结和统一验证 | AUTO_PASS / FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS |
+| D13 | GitHub和生产发布 | NOT_STARTED / AUTH_VALID / READY |
 
 ## 5. 验收条目状态
 
@@ -157,26 +157,26 @@ package / schema / candidate：
 
 ## 10. 当前唯一下一动作
 
-冻结 v0.6.34 本地候选范围，完成版本同步、统一受影响验证、独立代码/架构/数据/测试审查和最多一次 safe full；不得提前进入 D13。
+提交 D12 收口文档；随后先把 D13 标为 `IN_PROGRESS`，完整阅读 `RELEASE_RUNBOOK.md`，再执行 GitHub 与生产发布。
 
 ## 25. D12 候选冻结和统一验证
 
-- 时间：2026-08-23 23:02:20 +0800
+- 时间：2026-08-23 23:39:00 +0800
 - 阶段：`D12`
-- 状态：`TARGETED_AUTO_PASS / CANDIDATE_FREEZE_PENDING_COMMIT / SAFE_FULL_PENDING`
-- branch / HEAD / origin-main：`codex/inc-imgedit-003-v0.6.34-2026-08-23` / `cb41b66d6265f94f741f41dd633a2dbcc999400c` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537`
-- 工作树摘要：D11 已提交为 `cb41b66`；D12 未提交树只含 v0.6.34 package/lock/runtime role、对应m81断言和候选状态文档。D0～D11 产品实现已冻结，不再新增功能
-- 产品文件：`package.json`、`package-lock.json`、`server/bridgeRuntimeMode.ts`
-- 测试文件：`tests/m81-deployment-hardening.spec.ts`；D0～D11 直接受影响矩阵复用既有 m2/m5/m8/m10/m11/m20/m25/m27/m38/m53/m57/m81/m87/m88/m100
+- 状态：`AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / D13_READY`
+- branch / HEAD / origin-main：`codex/inc-imgedit-003-v0.6.34-2026-08-23` / `422408b9bafdce06491398e5c60e443522a479ec` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537`
+- 工作树摘要：v0.6.34 冻结候选为 `aa67e46`；唯一一次 safe full 后只修改一个真实产品缺陷和三个失败规格的确定性观测，修正提交为 `422408b`。本次收口前工作树干净，D0～D11 范围未扩张
+- 产品文件：冻结时为`package.json`、`package-lock.json`、`server/bridgeRuntimeMode.ts`；full 后只修正 `server/generationTasks.ts` 的图片预检拒绝标量快照
+- 测试文件：`tests/m81-deployment-hardening.spec.ts`；full 后只修正 `tests/m0-shell.spec.ts`、`tests/m22-group-execution.spec.ts`、`tests/m37-media-upload-transactions.spec.ts` 的异步/时序观测；D0～D11 直接受影响矩阵复用既有 m2/m5/m8/m10/m11/m20/m25/m27/m38/m53/m57/m81/m87/m88/m100
 - 文档文件：本 Checkpoint、`README.md`、`上线规矩.md`、`TASKS.md`、`UNBOUNDRY_CURRENT_STATE.md`、验收矩阵、主方案
-- package / schema / candidate：`0.6.34 / schema39 / TARGETED_AUTO_PASS / SAFE_FULL_PENDING`；版本门有效
+- package / schema / candidate：`0.6.34 / schema39 / LOCAL_ENGINEERING_COMPLETE / D13_READY`；版本门和发布门均有效
 - 外部请求和付费预算：总计 `0/8`；真实 Provider/OSS、GitHub/SSH/生产写入均0
-- 测试命令、环境、结果、退出码：统一使用 pinned Node `22.23.1`、npm `10.9.8` 和 safe runner。版本/文档门首轮 m38 `14/15`，唯一失败是把生产治理标记误改为候选标记；恢复 `CURRENT_V0_6_33_USER_PASS` 后只复验 m38 `15/15 PASS`。m81 `41/41 PASS`。统一矩阵首次因误写不存在的 m5 文件名在 spec 选择阶段退出1、产品测试0；改为真实 m5/m87 文件名后 m2/m5/m8/m10/m11/m20/m25/m27/m53/m57/m87/m88/m100 共 `178/178 PASS`。最终 source/snapshot `ea5df7c9…512b`，4173 listener不变；成功定向合计 `234/234`，未运行 full
+- 测试命令、环境、结果、退出码：统一使用 pinned Node `22.23.1`、npm `10.9.8` 和 safe runner。冻结前 m38 `15/15`、m81 `41/41`、13-spec统一矩阵 `178/178 PASS`，合计 `234/234`。冻结提交 `aa67e46` 上执行本 Goal 唯一一次 `node scripts/run-safe-tests.mjs full`：120/120 specs执行，原始 `1048/1052`，无retry/skip/reportError；四个失败为 m0 异步fixture观测、m22 fit-view与slider时序、m31图片预检拒绝丢失、m37瞬态persistence-ready观测。未改树精确复验四spec稳定为 `102/106`。修正后只运行同一四spec，`106/106 PASS`、退出0，source/snapshot `575f1dc5…ba8b`。D12文档收口首次误写不存在的m38路径，preflight后在选择阶段退出1且产品测试0；改用真实 `tests/m38-generation-runtime-incidents.spec.ts` 后 `15/15 PASS`、退出0，source/snapshot `b2d69412…1099`。4173 listener始终保持 `24c91e…8244`；没有第二次full，原始full不改写为全绿
 - 架构与数据风险：代码审查确认 ImageNode 没有新增原生 fetch、Provider分支、任务轮询或SQL；Dispatcher/use case承担执行编排，CanvasSurface没有按图片工具名分支，generationTasks使用统一图片工具身份校验。架构门仍为76个既有例外、新增0。数据审查确认主库schema39不变，Library schema1 sidecar对v0.6.33可忽略，固定锁序、删除保护、备份恢复、owner和Media发布由 m10/m11/m25/m87/m88覆盖。测试审查确认120 specs/1052 tests清单稳定、source coverage稳定，mask/outpaint/erase/Alpha/capability/stale/OpenAPI/UI均有直接覆盖
-- 设计偏差：当前规则不允许自行创建 subagent，故候选冻结后的独立审查由主 Agent按代码、架构、数据、测试四个互斥清单逐项执行并留下命令/证据，不虚构第二审查人；未发现新的P0/P1或阻断
-- 阻断：无；D13 版本与发布门均有效，但必须等待 D12 完成
-- 回滚点：D11 提交 `cb41b66d6265f94f741f41dd633a2dbcc999400c`
-- 唯一下一动作：提交 v0.6.34 冻结候选，然后在该冻结产品源码上只运行一次 `node scripts/run-safe-tests.mjs full`
+- 设计偏差：当前规则不允许自行创建 subagent，故候选冻结后的独立审查由主 Agent按代码、架构、数据、测试四个互斥清单逐项执行并留下命令/证据，不虚构第二审查人。full 暴露 m31 真缺陷：`strictGenerationPreflight` 在后续追加问题前展开返回对象，数组仍共享但 `canSubmit` 标量停留为true；修正为所有校验完成后再构造公开结果。其余三项只收紧测试确定性，不放宽产品合同
+- 阻断：无；D12 完成，D13 版本与发布门有效
+- 回滚点：冻结候选 `aa67e462e789cd870100e378d6a2fc1ea2ceab3e`；修正候选 `422408b9bafdce06491398e5c60e443522a479ec`
+- 唯一下一动作：提交 D12 收口文档；随后先把 D13 标为 `IN_PROGRESS`，完整阅读 `RELEASE_RUNBOOK.md` 并按其执行
 
 ## 24. D11 Seedance 素材校验
 
