@@ -98,6 +98,8 @@ import { createImageToolDispatcher } from
   "../client/src/imageTools/imageToolDispatcher";
 import { createDerivedImageToolUseCase } from
   "../client/src/imageTools/derivedImageToolUseCase";
+import { createBatchDerivedImageToolUseCase } from
+  "../client/src/imageTools/batchDerivedImageToolUseCase";
 import { createGenerationImageToolUseCase } from
   "../client/src/imageTools/generationImageToolUseCase";
 import { expect, test } from "./safe-test";
@@ -670,6 +672,101 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
     title: "Crop",
   })).rejects.toThrow(/版本已发生变化/);
   expect(discarded).toEqual(["derived-0"]);
+
+  let batchSequence = 0;
+  const batchDiscarded: string[] = [];
+  const batch = createBatchDerivedImageToolUseCase({
+    graph: imageToolGraph,
+    media: {
+      async discard(assetId) { batchDiscarded.push(assetId); },
+      async metadata(assetId) {
+        return {
+          mediaHeight: 60,
+          mediaMetadataStatus: "ready" as const,
+          mediaWidth: 100,
+          sourceAssetId: assetId,
+        };
+      },
+      async upload(file) {
+        const index = batchSequence++;
+        return {
+          assetId: `split-${index}`,
+          fileName: file.name,
+          height: 60,
+          url: `/split-${index}.png`,
+          width: 100,
+        };
+      },
+    },
+    operation: "quick-split",
+    size: (width, height) => ({ height, width }),
+  });
+  const splitFiles = Array.from({ length: 4 }, (_, index) =>
+    new File([Uint8Array.from([index])], `split-${index}.png`, {
+      type: "image/png",
+    })
+  );
+  await expect(batch.execute({
+    expectedRevision: 4,
+    files: splitFiles,
+    grid: 2,
+    operationId: "operation-split-1",
+    ownershipKey: "owner-split-1",
+    runId: "run-split-1",
+    sourceAssetId: "source-asset",
+    sourceNodeId: "source-node",
+    title: "Split",
+  })).resolves.toMatchObject({
+    assetIds: ["split-0", "split-1", "split-2", "split-3"],
+    kind: "derived-assets",
+    operation: "quick-split",
+  });
+  expect(imageToolSnapshot.nodes).toHaveLength(6);
+  expect(imageToolSnapshot.edges).toHaveLength(5);
+  expect(batchDiscarded).toEqual([]);
+
+  for (const grid of [3, 4] as const) {
+    const files = Array.from({ length: grid ** 2 }, (_, index) =>
+      new File([Uint8Array.from([index])], `split-${grid}-${index}.png`, {
+        type: "image/png",
+      })
+    );
+    await expect(batch.execute({
+      expectedRevision: 4,
+      files,
+      grid,
+      operationId: `operation-split-${grid}`,
+      ownershipKey: `owner-split-${grid}`,
+      runId: `run-split-${grid}`,
+      sourceAssetId: "source-asset",
+      sourceNodeId: "source-node",
+      title: `Split ${grid}`,
+    })).resolves.toMatchObject({
+      assetIds: expect.arrayContaining([`split-${grid === 3 ? 4 : 13}`]),
+      operation: "quick-split",
+    });
+  }
+  expect(imageToolSnapshot.nodes).toHaveLength(31);
+  expect(imageToolSnapshot.edges).toHaveLength(30);
+  expect(batchDiscarded).toEqual([]);
+
+  await expect(batch.execute({
+    expectedRevision: 5,
+    files: splitFiles,
+    grid: 2,
+    operationId: "operation-split-stale",
+    ownershipKey: "owner-split-stale",
+    runId: "run-split-stale",
+    sourceAssetId: "source-asset",
+    sourceNodeId: "source-node",
+    title: "Split stale",
+  })).rejects.toThrow(/版本已发生变化/);
+  expect(batchDiscarded).toEqual([
+    "split-29",
+    "split-30",
+    "split-31",
+    "split-32",
+  ]);
 });
 
 test("Provider references and durable blobs remain separate replaceable stores", async () => {

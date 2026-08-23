@@ -121,8 +121,26 @@ import {
   createDownloadImageToolUseCase,
   createFullscreenImageToolUseCase,
 } from "../imageTools/viewerImageToolUseCases";
+import { createBatchDerivedImageToolUseCase } from
+  "../imageTools/batchDerivedImageToolUseCase";
+import {
+  ImageResizePanel,
+  ImageSplitPanel,
+} from "../imageTools/LocalImageToolPanels";
+import {
+  resizeLocalImage,
+  splitLocalImage,
+} from "../imageTools/localImageProcessing";
 
 type CropBox = { height: number; width: number; x: number; y: number };
+const imageColorMarks = [
+  ["red", "红色", "#ff5b5b"],
+  ["orange", "橙色", "#ff9f43"],
+  ["yellow", "黄色", "#ffd84d"],
+  ["green", "绿色", "#55cf78"],
+  ["blue", "蓝色", "#5b8cff"],
+  ["purple", "紫色", "#a879ff"],
+] as const;
 type CropVisualPreview = Readonly<{
   height: number;
   url: string;
@@ -1507,7 +1525,14 @@ function ImageNodeImpl({
     width: number;
   } | undefined>(undefined);
   const { getEdges, getNode, getNodes } = useReactFlow<ProbeNodeType>();
-  const { graphCommandPort, setEdges, setNodes, tryAdoptNodes } =
+  const {
+    graphCommandPort,
+    imageColorFilter,
+    setEdges,
+    setImageColorFilter,
+    setNodes,
+    tryAdoptNodes,
+  } =
     useCanvasGraphMutation();
   const canvasEdges = useEdges();
   const canvasNodes = useNodes<ProbeNodeType>();
@@ -1650,6 +1675,7 @@ function ImageNodeImpl({
   const [savingCanvas, setSavingCanvas] = useState(false);
   const [favorite, setFavorite] = useState(false);
   const [cropOpen, setCropOpen] = useState(false);
+  const [colorMarksOpen, setColorMarksOpen] = useState(false);
   const [cropSourceAssetId, setCropSourceAssetId] = useState<string>();
   const [cropVisualPreview, setCropVisualPreview] =
     useState<CropVisualPreview>();
@@ -1657,6 +1683,7 @@ function ImageNodeImpl({
   const [lightingOpen, setLightingOpen] = useState(false);
   const [multiAngleOpen, setMultiAngleOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [localToolOpen, setLocalToolOpen] = useState<"resize" | "split">();
   const [modelSwitchProblem, setModelSwitchProblem] = useState("");
   const [redrawOpen, setRedrawOpen] = useState(false);
   const [retryTaskId, setRetryTaskId] = useState<string>();
@@ -3413,10 +3440,26 @@ function ImageNodeImpl({
     }
   };
 
-  const applyCrop = async (file: File, sourceAssetId: string) => {
+  const derivedMediaPort = {
+    discard: discardImageAsset,
+    async metadata(assetId: string) {
+      return trustedMediaPatch(
+        await fetchTrustedMediaMetadata("image", assetId),
+      );
+    },
+    upload: uploadPngAsset,
+  };
+
+  const applyDerivedImage = async (
+    operation: "crop" | "resize-pixels",
+    file: File,
+    sourceAssetId: string,
+  ) => {
     const source = getNode(id);
     if (!source || source.data.assetId !== sourceAssetId) {
-      throw new Error("原图片已发生变化，请重新打开裁剪");
+      throw new Error(operation === "crop"
+        ? "原图片已发生变化，请重新打开裁剪"
+        : "原图片已发生变化，请重新打开图片工具");
     }
     if (!persistenceReadyLive.current) {
       throw new Error("画布尚未完成安全加载");
@@ -3425,28 +3468,20 @@ function ImageNodeImpl({
     await flushCanvasSave();
     const expectedRevision = await waitForCanvasRevision();
     const operationId = crypto.randomUUID();
-    const runId = `image-tool-crop-${operationId}`;
+    const runId = `image-tool-${operation}-${operationId}`;
     const ownershipKey = generationOwnershipKey({
       accountId,
       canvasId,
       nodeId: id,
-      operation: "crop",
+      operation,
       operationId,
       sourceAssetId,
     });
     checkpoint();
     const result = await createDerivedImageToolUseCase({
       graph: graphCommandPort,
-      media: {
-        discard: discardImageAsset,
-        async metadata(assetId) {
-          return trustedMediaPatch(
-            await fetchTrustedMediaMetadata("image", assetId),
-          );
-        },
-        upload: uploadPngAsset,
-      },
-      operation: "crop",
+      media: derivedMediaPort,
+      operation,
       size: fitVisualMediaSize,
     }).execute({
       expectedRevision,
@@ -3459,8 +3494,90 @@ function ImageNodeImpl({
       title: file.name.replace(/\.[^.]+$/, "") ||
         titleControl.committedValue || "Image",
     });
+    return result;
+  };
+
+  const applyCrop = async (file: File, sourceAssetId: string) => {
+    const result = await applyDerivedImage("crop", file, sourceAssetId);
     setCropOpen(false);
     return result;
+  };
+
+  const resizePixels = async (width: number, height: number) => {
+    const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
+    if (!sourceAssetId) throw new Error("图片尚未完成安全保存");
+    const file = await resizeLocalImage({
+      assetId: sourceAssetId,
+      fileName: `${titleControl.committedValue || "Image"}-${width}x${height}.png`,
+      height,
+      width,
+    });
+    const result = await applyDerivedImage("resize-pixels", file, sourceAssetId);
+    setLocalToolOpen(undefined);
+    return result;
+  };
+
+  const quickSplit = async (grid: 2 | 3 | 4) => {
+    const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
+    if (!sourceAssetId) throw new Error("图片尚未完成安全保存");
+    if (!graphCommandPort) throw new Error("画布写入端口暂不可用");
+    const files = await splitLocalImage({
+      assetId: sourceAssetId,
+      fileNamePrefix: titleControl.committedValue || "Image",
+      grid,
+    });
+    await flushCanvasSave();
+    const expectedRevision = await waitForCanvasRevision();
+    const operationId = crypto.randomUUID();
+    const runId = `image-tool-quick-split-${operationId}`;
+    const ownershipKey = generationOwnershipKey({
+      accountId,
+      canvasId,
+      nodeId: id,
+      operation: "quick-split",
+      operationId,
+      sourceAssetId,
+    });
+    checkpoint();
+    const result = await createBatchDerivedImageToolUseCase({
+      graph: graphCommandPort,
+      media: derivedMediaPort,
+      operation: "quick-split",
+      size: fitVisualMediaSize,
+    }).execute({
+      expectedRevision,
+      files,
+      grid,
+      operationId,
+      ownershipKey,
+      runId,
+      sourceAssetId,
+      sourceNodeId: id,
+      title: titleControl.committedValue || "Image",
+    });
+    setLocalToolOpen(undefined);
+    return result;
+  };
+
+  const toggleColorMark = (color: string) => {
+    if (imageColorFilter === color && data.imageColorMarks?.includes(color)) {
+      setImageColorFilter();
+    }
+    checkpoint();
+    setNodes((nodes) => nodes.map((node) => {
+      if (node.id !== id) return node;
+      const current = node.data.imageColorMarks ?? [];
+      const next = current.includes(color)
+        ? current.filter((item) => item !== color)
+        : [...current, color];
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          imageColorMarks: next.length > 0 ? next : undefined,
+        },
+      };
+    }));
   };
 
   const download = () => {
@@ -3476,6 +3593,16 @@ function ImageNodeImpl({
       operation: "crop",
       execute: (input: Readonly<{ file: File; sourceAssetId: string }>) =>
         applyCrop(input.file, input.sourceAssetId),
+    })
+    .register({
+      operation: "resize-pixels",
+      execute: (input: Readonly<{ height: number; width: number }>) =>
+        resizePixels(input.width, input.height),
+    })
+    .register({
+      operation: "quick-split",
+      execute: (input: Readonly<{ grid: 2 | 3 | 4 }>) =>
+        quickSplit(input.grid),
     })
     .register(createDownloadImageToolUseCase())
     .register(createFullscreenImageToolUseCase());
@@ -3634,12 +3761,35 @@ function ImageNodeImpl({
                 ["调整像素", "pixels"],
                 ["抠图", "cutout"],
               ].map(([label, icon]) => (
-                <button disabled key={label} role="menuitem" type="button">
+                <button
+                  disabled={label !== "调整像素"}
+                  key={label}
+                  onClick={() => {
+                    if (label !== "调整像素") return;
+                    setMoreOpen(false);
+                    setCropOpen(false);
+                    setMultiAngleOpen(false);
+                    setRedrawOpen(false);
+                    setLocalToolOpen("resize");
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
                   <span aria-hidden="true" className={`image-more-icon ${icon}`} />
                   {label}
                 </button>
               ))}
-              <button disabled role="menuitem" type="button">
+              <button
+                onClick={() => {
+                  setMoreOpen(false);
+                  setCropOpen(false);
+                  setMultiAngleOpen(false);
+                  setRedrawOpen(false);
+                  setLocalToolOpen("split");
+                }}
+                role="menuitem"
+                type="button"
+              >
                 <span aria-hidden="true" className="image-more-icon split" />
                 <span>快速切分</span>
                 <span className="image-more-sizes">2×2　3×3　4×4　›</span>
@@ -3652,9 +3802,57 @@ function ImageNodeImpl({
           )}
         </span>
         <span className="media-node-toolbar-divider" />
-        <button aria-label="Pin" data-tooltip="Pin" type="button">
-          <span className="media-node-color" />
-        </button>
+        <span className="image-color-mark-wrap">
+          <button
+            aria-expanded={colorMarksOpen}
+            aria-label="颜色标记"
+            data-tooltip="颜色标记"
+            onClick={() => setColorMarksOpen((open) => !open)}
+            type="button"
+          >
+            <span
+              className="media-node-color"
+              style={{
+                background: imageColorMarks.find(([color]) =>
+                  data.imageColorMarks?.includes(color))?.[2],
+              }}
+            />
+          </button>
+          {colorMarksOpen && (
+            <div
+              aria-label="图片颜色标记"
+              className="image-color-mark-menu"
+              data-testid="image-color-mark-menu"
+              role="menu"
+            >
+              {imageColorMarks.map(([color, label, value]) => (
+                <span key={color}>
+                  <button
+                    aria-checked={data.imageColorMarks?.includes(color) ?? false}
+                    aria-label={`${label}标记`}
+                    onClick={() => toggleColorMark(color)}
+                    role="menuitemcheckbox"
+                    type="button"
+                  ><i style={{ background: value }} />{label}</button>
+                  <button
+                    aria-pressed={imageColorFilter === color}
+                    aria-label={`只看${label}标记`}
+                    disabled={!data.imageColorMarks?.includes(color)}
+                    onClick={() => setImageColorFilter(
+                      imageColorFilter === color ? undefined : color,
+                    )}
+                    type="button"
+                  >筛</button>
+                </span>
+              ))}
+              {imageColorFilter && (
+                <button onClick={() => setImageColorFilter()} type="button">
+                  清除筛选
+                </button>
+              )}
+            </div>
+          )}
+        </span>
         <span className="media-node-toolbar-divider" />
         <button
           aria-label="保存到素材库"
@@ -3699,6 +3897,41 @@ function ImageNodeImpl({
           title={titleControl.committedValue}
           visualPreview={cropVisualPreview}
         />
+      )}
+      {preview && localToolOpen === "resize" && (
+        <NodeToolbar
+          className="image-local-tool-toolbar"
+          isVisible
+          offset={16}
+          position={Position.Bottom}
+        >
+          <ImageResizePanel
+            initialHeight={data.mediaHeight ??
+              previewImageRef.current?.naturalHeight ?? 1024}
+            initialWidth={data.mediaWidth ??
+              previewImageRef.current?.naturalWidth ?? 1024}
+            onCancel={() => setLocalToolOpen(undefined)}
+            onConfirm={async (width, height) => {
+              await imageToolDispatcher.execute("resize-pixels", { height, width });
+            }}
+          />
+        </NodeToolbar>
+      )}
+      {preview && localToolOpen === "split" && (
+        <NodeToolbar
+          className="image-local-tool-toolbar"
+          isVisible
+          offset={16}
+          position={Position.Bottom}
+        >
+          <ImageSplitPanel
+            onCancel={() => setLocalToolOpen(undefined)}
+            onConfirm={async (grid) => {
+              await imageToolDispatcher.execute("quick-split", { grid });
+            }}
+            preview={preview}
+          />
+        </NodeToolbar>
       )}
       {preview && redrawOpen && (
         <ImageRedrawEditor

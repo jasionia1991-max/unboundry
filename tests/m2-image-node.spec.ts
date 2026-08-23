@@ -177,7 +177,7 @@ test("Image empty and local upload states match the observed geometry", async ({
     height: 272,
   });
   await expect(moreMenu.getByRole("menuitem")).toHaveCount(8);
-  await expect(moreMenu.locator("button:not(:disabled)")).toHaveCount(0);
+  await expect(moreMenu.locator("button:not(:disabled)")).toHaveCount(2);
   await expect(moreMenu).toContainText("快速切分");
   await expect(moreMenu).toContainText("2×2　3×3　4×4");
   expect(generationRequests).toEqual([]);
@@ -530,6 +530,13 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   page,
   request,
 }) => {
+  const generationRequests: string[] = [];
+  page.on("request", (browserRequest) => {
+    if (
+      /provider|generate/i.test(browserRequest.url()) &&
+      !browserRequest.url().includes("/src/")
+    ) generationRequests.push(browserRequest.url());
+  });
   await request.delete("/api/canvas/node.image.empty");
   await page.goto("/__fixture/node.image.empty");
   const node = page.locator(
@@ -756,6 +763,112 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   await expect(overlay).toHaveCount(0);
   expect(editSourceReads).toBe(4);
   expect(redirectedAssetReads).toBe(0);
+
+  await node.click();
+  const toolbar = page.getByTestId("image-node-toolbar");
+  await toolbar.getByRole("button", { name: "颜色标记" }).click();
+  const colorMenu = page.getByTestId("image-color-mark-menu");
+  const redMark = colorMenu.getByRole("menuitemcheckbox", { name: "红色标记" });
+  const redFilter = colorMenu.getByRole("button", { name: "只看红色标记" });
+  await redMark.click();
+  await expect(redMark).toHaveAttribute("aria-checked", "true");
+  await expect(redFilter).toBeEnabled();
+  await redFilter.click();
+  await expect.poll(() => page.locator(".react-flow__node-image").evaluateAll(
+    (elements) => elements.filter((element) => {
+      const style = getComputedStyle(element);
+      return style.display !== "none" && style.visibility !== "hidden";
+    }).length,
+  )).toBe(1);
+  await expect.poll(() => page.locator(".react-flow__edge").evaluateAll(
+    (elements) => elements.filter((element) => getComputedStyle(element).display !== "none")
+      .length,
+  )).toBe(0);
+  await redFilter.click();
+  await page.keyboard.press("Meta+z");
+  await expect(redMark).toHaveAttribute("aria-checked", "false");
+  await redMark.click();
+  await expect.poll(async () => {
+    const saved = await (await request.get("/api/canvas/node.image.empty")).json() as {
+      nodes?: Array<{ data?: { imageColorMarks?: string[] }; id?: string }>;
+    };
+    return saved.nodes?.find((savedNode) => savedNode.id === "image-primary")
+      ?.data?.imageColorMarks;
+  }).toEqual(["red"]);
+  await toolbar.getByRole("button", { name: "颜色标记" }).click();
+
+  await toolbar.getByRole("button", { name: "浏览全部" }).click();
+  await page.getByTestId("image-node-more-menu")
+    .getByRole("menuitem", { name: "调整像素" }).click();
+  const resizePanel = page.getByTestId("image-resize-panel");
+  await resizePanel.getByRole("spinbutton", { name: "像素宽度" }).fill("640");
+  await expect(
+    resizePanel.getByRole("spinbutton", { name: "像素高度" }),
+  ).toHaveValue("360");
+  await resizePanel.getByRole("button", { name: "生成派生图" }).click();
+  const resizedNode = page.locator(
+    '.react-flow__node-image[data-id^="image-resize-pixels-"]',
+  );
+  await expect(resizedNode).toHaveCount(1);
+  await expect.poll(() => resizedNode.locator("img").evaluate(
+    (image: HTMLImageElement) => ({
+      height: image.naturalHeight,
+      width: image.naturalWidth,
+    }),
+  )).toEqual({ height: 360, width: 640 });
+
+  await node.click();
+  await toolbar.getByRole("button", { name: "浏览全部" }).click();
+  await page.getByTestId("image-node-more-menu")
+    .getByRole("menuitem", { name: /快速切分/ }).click();
+  const splitPanel = page.getByTestId("image-split-panel");
+  await expect(splitPanel.getByRole("img", { name: "分割预览" })).toBeVisible();
+  await expect(splitPanel.getByRole("button", { name: "2×2（4张）" })).toBeVisible();
+  await expect(splitPanel.getByRole("button", { name: "3×3（9张）" })).toBeVisible();
+  await expect(splitPanel.getByRole("button", { name: "4×4（16张）" })).toBeVisible();
+  await splitPanel.getByRole("button", { name: "确认分割" }).click();
+  const splitNodes = page.locator(
+    '.react-flow__node-image[data-id^="image-quick-split-"]',
+  );
+  await expect.poll(async () => {
+    const saved = await (await request.get("/api/canvas/node.image.empty")).json() as {
+      edges?: Array<{ id?: string }>;
+      nodes?: Array<{ id?: string }>;
+    };
+    return {
+      edges: saved.edges?.length,
+      nodes: saved.nodes?.length,
+      splitNodes: saved.nodes?.filter((savedNode) =>
+        savedNode.id?.startsWith("image-quick-split-")
+      ).length,
+    };
+  }).toEqual({ edges: 6, nodes: 7, splitNodes: 4 });
+  await expect.poll(() => splitNodes.count()).toBeGreaterThanOrEqual(1);
+  await expect.poll(() => splitNodes.locator("img").evaluateAll(
+    (images: HTMLImageElement[]) => images.map((image) => ({
+      height: image.naturalHeight,
+      width: image.naturalWidth,
+    })),
+  )).toEqual(Array.from(
+    { length: await splitNodes.count() },
+    () => ({ height: 360, width: 640 }),
+  ));
+  expect(generationRequests).toEqual([]);
+
+  await page.reload();
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-persistence-ready",
+    "true",
+  );
+  const restoredNode = page.locator(
+    '.react-flow__node-image[data-id="image-primary"]',
+  );
+  await restoredNode.click();
+  await page.getByTestId("image-node-toolbar")
+    .getByRole("button", { name: "颜色标记" }).click();
+  await expect(page.getByTestId("image-color-mark-menu")
+    .getByRole("menuitemcheckbox", { name: "红色标记" }))
+    .toHaveAttribute("aria-checked", "true");
 });
 
 test("Image multi-angle panel keeps local parameters without generating", async ({

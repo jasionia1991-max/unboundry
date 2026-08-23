@@ -105,6 +105,7 @@ export type ProbeNodeType = Node<
     content?: string;
     contentHtml?: string;
     imageGeneratedSuccess?: boolean;
+    imageColorMarks?: string[];
     imageGenerationErrorCode?: string;
     imageGenerationError?: string;
     imageGenerationInputKey?: string;
@@ -128,9 +129,11 @@ export type ProbeNodeType = Node<
     mediaByteSize?: number;
     mediaContentType?: string;
     mediaDurationSeconds?: number;
+    mediaHeight?: number;
     mediaMetadataSource?: "server";
     mediaMetadataStatus?: "failed" | "pending" | "ready";
     mediaStorageBackend?: "local" | "oss";
+    mediaWidth?: number;
     playlistClips?: PlaylistClip[];
     playlistPicking?: boolean;
     sourceKind?: "audio" | "image" | "video";

@@ -2,20 +2,20 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-23 19:29:05 +0800
-- 状态：`GOAL_ACTIVE / D2_AUTO_PASS`
-- 当前阶段：`D2 最小图片工具应用层 / AUTO_PASS`
-- 唯一允许的下一阶段：`D3 颜色标记、调整像素、快速分割`
+- 更新时间：2026-08-23 19:45:13 +0800
+- 状态：`GOAL_ACTIVE / D3_AUTO_PASS`
+- 当前阶段：`D3 颜色标记、调整像素、快速分割 / AUTO_PASS`
+- 唯一允许的下一阶段：`D4 标注与显式导出`
 - 当前仓库：`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`
 - 记录时分支：`codex/inc-imgedit-003-v0.6.34-2026-08-23`
-- 记录时 HEAD：`6a1606cdafd3b38c1333ca6c46baecfae690bd35`
+- 记录时 HEAD：`9b33114047862d375a0dd288cd44dae0b4750965`
 - 记录时 `origin/main`：`14777b5dc5cf48de8b21b6eb3ee27da45070b537`
 - package：`0.6.33`
 - 生产：`v0.6.33 / schema39 / PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`
 - 新版本：`v0.6.34 / VERSION_GATE_VALID`
 - 候选：无
-- 本轮代码施工：未开始
-- 本轮验证：`git diff --check` 退出 0；定向 safe runner 尝试在产品 spec 执行前被 main 既有 ignored `backups/` 文件隔离负控以 `EISDIR` 阻断，0 个产品测试执行，不能记为自动 PASS；不删除或移动该目录
+- 本轮代码施工：D3 已完成颜色标记持久化/筛选/撤销、像素调整派生图、2×2/3×3/4×4 快速分割预览与原子批量落图；尚未进入 D4
+- 本轮验证：安全定向 m100 `13/13 PASS`、m2 `10/10 PASS`；架构既有例外 76、新增 0，TypeScript/build/source coverage/网络门通过，零 Generation、零 Provider、零真实 OSS
 - 真实 Provider/付费请求：0/8
 - 真实 OSS 测试对象：0
 - GitHub/SSH/生产操作：0
@@ -74,7 +74,7 @@ node -p "require('./package.json').version"
 | D0 | 实时基线和文档恢复 | AUTO_PASS |
 | D1 | 合同、矩阵和架构门 | AUTO_PASS |
 | D2 | 最小图片工具应用层 | AUTO_PASS |
-| D3 | 颜色标记、调整像素、快速分割 | NOT_STARTED |
+| D3 | 颜色标记、调整像素、快速分割 | AUTO_PASS |
 | D4 | 标注 | NOT_STARTED |
 | D5 | 个人素材库 | NOT_STARTED |
 | D6 | 模型和处理引擎调查 | NOT_STARTED |
@@ -93,10 +93,10 @@ node -p "require('./package.json').version"
 | 条目 | 内容 | 状态 |
 |---|---|---|
 | IMGEDIT-010 | 图片工具应用边界、状态和操作启用 | PARTIAL / APPLICATION_LAYER_AUTO_PASS |
-| IMGEDIT-011 | 颜色标记 | NOT_STARTED |
+| IMGEDIT-011 | 颜色标记 | AUTO_PASS |
 | IMGEDIT-012 | 个人素材库 | NOT_STARTED |
-| IMGEDIT-013 | 调整像素 | NOT_STARTED |
-| IMGEDIT-014 | 快速分割 | NOT_STARTED |
+| IMGEDIT-013 | 调整像素 | AUTO_PASS |
+| IMGEDIT-014 | 快速分割 | AUTO_PASS |
 | IMGEDIT-015 | 标注与导出 | NOT_STARTED |
 | IMGEDIT-016 | 多角度真实生成 | NOT_STARTED |
 | IMGEDIT-017 | 重绘真实生成 | NOT_STARTED |
@@ -157,7 +157,26 @@ package / schema / candidate：
 
 ## 10. 当前唯一下一动作
 
-进入 D3：先把 D3 标为 `IN_PROGRESS`，实现颜色标记、调整像素和快速分割；本地确定性处理必须零 Generation、零 Provider、零真实 OSS。
+进入 D4：先把 D4 标为 `IN_PROGRESS`，执行标注容量实验并冻结存储边界；不得提前进入 D5。
+
+## 15. D3 颜色标记、调整像素、快速分割
+
+- 时间：2026-08-23 19:45:13 +0800
+- 阶段：`D3`
+- 状态：`AUTO_PASS`
+- branch / HEAD / origin-main：`codex/inc-imgedit-003-v0.6.34-2026-08-23` / `9b33114047862d375a0dd288cd44dae0b4750965` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537`
+- 工作树摘要：颜色标记写入节点元数据并进入 Canvas 自动保存/历史，筛选只隐藏不匹配图片及相连边；像素调整复用同站安全编辑源并生成 PNG 派生节点；快速分割先完整生成 4/9/16 个 PNG，再登记媒体并以单一 Canvas command 提交全部 node+edge，任一失败精确 discard 本批资产
+- 产品文件：`client/src/canvas/CanvasGraphMutationContext.ts`、`CanvasSurface.tsx`、`ImageNode.tsx`、`ProbeNode.tsx`、`client/src/styles.css`、`client/src/imageTools/LocalImageToolPanels.tsx`、`batchDerivedImageToolUseCase.ts`、`localImageProcessing.ts`
+- 测试文件：`tests/m100-modular-ports.spec.ts`、`tests/m2-image-node.spec.ts`
+- 文档文件：本 Checkpoint、`UNBOUNDRY_ACCEPTANCE_MATRIX.md`、`TASKS.md`
+- package / schema / candidate：`0.6.33 / schema39 / 无候选`；目标版本 `v0.6.34`
+- 外部请求和付费预算：Provider `0/8`；真实 OSS `0`；GitHub/SSH/生产操作 `0`
+- 测试命令、环境、结果、退出码：pinned Node `22.23.1`、npm `10.9.8`；`node scripts/run-safe-tests.mjs run --spec tests/m100-modular-ports.spec.ts` 最终退出 0、`13/13 PASS`，覆盖 2/3/4 网格批量原子提交和 stale 后 4 资产精确补偿；`node scripts/run-safe-tests.mjs run --spec tests/m2-image-node.spec.ts` 最终退出 0、`10/10 PASS`，覆盖标记保存/筛选/撤销/刷新、640×360 像素派生、2×2 四节点持久落图、3×3/4×4 入口和零生成请求。调试期首轮 m100 由缺少媒体宽高类型失败；m2 两轮分别发现裁剪既有错误文案漂移和 React Flow 虚拟化导致的 DOM 计数假设，均只修复根因/测试观测并复验 m2；最终 source/snapshot `f9e65bc9…ba04` 不变，4173 listener 不变
+- 架构与数据风险：本地工具未创建 Generation task；输入/输出继续受 20 MiB、4000 万像素和单边 8192 限制；批量提交 fence 绑定 revision/source/operation/run/ownership。页面只会渲染视口内节点，因此完整 4/9/16 数量由持久 Canvas 和端口原子测试证明，不用 DOM 虚拟化数量冒充数据量
+- 设计偏差：断点在压缩前未先切到 D3 `IN_PROGRESS` 即已有 D3 初稿；恢复后先暂停编辑并补正真实断点。为不增加测试总数，D3 断言并入既有 m100/m2，用持久 Canvas 观测替代视口 DOM 总数
+- 阻断：无；HEAD、origin/main、package、版本门和发布门均未漂移，受保护文件不在本 worktree
+- 回滚点：D2 提交 `9b33114047862d375a0dd288cd44dae0b4750965`；本阶段无 schema、Provider、OSS 或生产写入
+- 唯一下一动作：进入 D4，先把 D4 标为 `IN_PROGRESS`，完成标注容量实验并冻结存储方案
 
 ## 12. D0 实时基线和文档恢复
 

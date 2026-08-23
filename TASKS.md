@@ -5,7 +5,7 @@
 更新时间：2026-08-23
 状态：`v0.6.33 已发布并通过技术终门与用户线上复验，状态 PRODUCTION_PUBLISHED_USER_PASS / USER_PASS。权威回执见 spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json。`
 
-### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，GOAL_ACTIVE / D2_AUTO_PASS）
+### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，GOAL_ACTIVE / D3_AUTO_PASS）
 
 - 用户已批准最终 V5 方案并要求后续长任务严格由项目文档驱动，防止新 Session 或上下文压缩后失忆漂移。主方案：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md`；实时断点：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_CHECKPOINT.md`；新 Session 提示词：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_GOAL_PROMPT_2026-08-23.md`。
 - 单 Goal 连续范围：最小图片工具应用边界、颜色标记、调整像素、快速分割、标注、个人素材库、多角度、遮罩/重绘、扩图、擦除、保守/创意增强、主体抠图和 Seedance 素材校验；裁剪只回归，打光 `IMGEDIT-007` 继续 `PAUSED`。
@@ -16,6 +16,7 @@
 - 本 Goal 版本门与发布门均有效：目标 `v0.6.34`，用户已独立明确“按 v0.6.34 上线吧”；仍须 D12 通过后才进入 D13，不提前发布。
 - D1 已冻结 17 项 operation、五态服务端权威 capability、结果/错误/执行身份、有界 input/mask/annotation、预算和 Library 数据所有权合同；架构门加入 image-tools client/server 与 Library internal 边界和 `library_entries` owner，新增架构例外 0。安全定向 m100 `13/13 PASS`，精确清单同步为 1052；功能尚未施工，矩阵仍保持 `IMGEDIT-010～020 = NOT_STARTED`。唯一下一阶段改为 D2 最小图片工具应用层。
 - D2 已建立轻量 Dispatcher 与小 use case，复用 CanvasGraphCommandPort、安全图片链和 SingleNodeGenerationLifecycle；裁剪派生 node+edge 已改为 revision/source/run/ownership fence 下的原子提交，下载、全屏和既有裁剪 UI 回归保持。安全定向 m100 `13/13`、m2 `10/10`，Provider/真实 OSS 请求 0；`IMGEDIT-010 = PARTIAL / APPLICATION_LAYER_AUTO_PASS`，待 D6 服务端权威 operation 状态后收口。唯一下一阶段为 D3。
+- D3 已完成颜色标记保存/筛选/撤销/刷新、精确像素调整和 2×2/3×3/4×4 快速分割。分割先完成全部本地 PNG 和媒体登记，再以单一 Canvas 命令提交 4/9/16 个节点与边，失败精确补偿；本地处理受 20 MiB、4000 万像素和单边 8192 限制。安全定向 m100 `13/13`、m2 `10/10`，Generation/Provider/真实 OSS 请求 0；`IMGEDIT-011/013/014 = AUTO_PASS`。唯一下一阶段为 D4 标注与显式导出。
 - 本次落档 `git diff --check` 通过；定向 m38 safe runner 在产品测试前被 main 既有 ignored `backups/` 隔离负控以 `EISDIR` 阻断，0 个产品测试执行，source snapshot 和 4173 listener 未变。未删除/移动备份、未绕过 safe runner、未把该尝试记为自动 PASS；完整记录见 Checkpoint。
 
 ### 2026-08-23 当前版本文档残留对齐（docs-only）
