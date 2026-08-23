@@ -5,8 +5,8 @@
 - 日期：2026-08-23
 - 仓库：`/Users/mymy/Documents/unboundry/app`
 - 立项基线：`main` / `14777b5dc5cf48de8b21b6eb3ee27da45070b537` / package `0.6.33` / 生产 `v0.6.33` / schema39
-- 状态：`PLAN_FROZEN / D13_IN_PROGRESS / V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_2_OF_6 / MULTI_ANGLE_AND_REDRAW_REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`
-- 当前阶段：D0～D12已完成；v0.6.35已完成GitHub、完整备份、原子切换与生产技术门。多角度和重绘均一次真实提交、Provider完成、Media发布、Canvas挂接和刷新恢复通过，共确认20 USD；剩余4项继续按已确认的总额40 USD内逐项串行
+- 状态：`PLAN_FROZEN / D13_IN_PROGRESS / V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_3_OF_6 / MULTI_ANGLE_REDRAW_OUTPAINT_REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`
+- 当前阶段：D0～D12已完成；v0.6.35已完成GitHub、完整备份、原子切换与生产技术门。多角度、重绘和扩图均一次真实提交、Provider完成、Media发布、Canvas挂接和刷新恢复通过，共确认30 USD；剩余3项继续按已确认的总额30 USD内逐项串行
 - 版本：`v0.6.35 / VERSION_GATE_VALID / RELEASE_GATE_VALID`
 - 发布候选：`v0.6.35 / SAFE_FULL_1052_OF_1052_PASS / PR_81_MERGED / TAG_FC99101 / MAIN_CC62BFB / TREE_CB13FEF / PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`
 - 本 Goal 授权：用户已于2026-08-24明确确认`v0.6.35`并独立回复“按v0.6.35上线吧”；授权只覆盖共同生成热修及Goal内剩余D13，仍须按Runbook逐门执行
@@ -387,3 +387,4 @@ USER_QUALITY_RECHECK
 - v0.6.34生产冒烟在Provider前先发现多角度task payload漏传`imageTool`，再由重绘暴露六项生成工具共同写入非法持久顺序0，同时发现源节点1K被模型默认2K覆盖。两次均0 task/0 attempt/0 Provider、费用0 USD。本地热修补齐身份、统一顺序1并继承规范化源参数，m100+m2+m27 `43/43 PASS`。因v0.6.34不可变且授权已消费，用户另行确认v0.6.35并授权上线；新冻结候选`c1a4a08`已完成版本门56/56和唯一一次safe full 1052/1052，下一步按Runbook进入PR/CI，再发布并继续最多6次/60 USD真实技术冒烟。
 - v0.6.35发布后，多角度真实技术冒烟一次提交成功：task `a7798cf3…ed2b`、attempt 1、Provider task `113882656`、10 USD；结果PNG `1088×1920`、2,504,877 bytes，经Media发布、Canvas节点/来源边挂接、云端保存和刷新恢复验证。首次在旧脚本标签页的预备点击明确没有task/attempt/Provider/费用，不计入1/6且未重提未知计费请求。该证据只升级多角度为`REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，质量仍为`USER_QUALITY_RECHECK`。
 - 用户对剩余5项作动作时分组确认后，重绘使用有界mask一次提交成功：task `5fd3d1fd…8c2b`、attempt 1/DB `757`、Provider task `113886725`、10 USD；结果ready PNG `1536×2731`、3,576,345 bytes，经published Media、Canvas节点/来源边、云端保存和刷新恢复验证。当前总账`2/6 / 20 USD`；该证据只升级重绘为`REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，不代表局部保持或图片质量通过。
+- 扩图使用默认四周25%边界一次提交成功：task `9fa04634…33d0`、attempt 1/DB `758`、Provider `113888063`、10 USD；结果ready PNG `1536×2731`、3,426,058 bytes，经published Media、Canvas节点/来源边、云端保存和刷新恢复验证。当前总账`3/6 / 30 USD`；该证据只升级outpaint子项为真实技术通过，新增区域延续质量仍待用户复验。

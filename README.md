@@ -8,11 +8,11 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 ## 当前生产：v0.6.35（2026-08-24，USER QUALITY RECHECK）
 
-生产当前运行`v0.6.35 / schema39`，状态`PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_2_OF_6 / USER_QUALITY_RECHECK`。PR #81、tag/main同tree、main CI、完整主库+Library+媒体冻结备份、精确tag构建、原子切换和生产技术终门均已完成；发布流程自身没有Provider请求或OSS写入。多角度与重绘真实技术冒烟各一次成功，质量仍待用户复验；其余四项继续逐项执行。完整现状见[`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)。
+生产当前运行`v0.6.35 / schema39`，状态`PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_SMOKE_3_OF_6 / USER_QUALITY_RECHECK`。PR #81、tag/main同tree、main CI、完整主库+Library+媒体冻结备份、精确tag构建、原子切换和生产技术终门均已完成；发布流程自身没有Provider请求或OSS写入。多角度、重绘与扩图真实技术冒烟各一次成功，质量仍待用户复验；其余三项继续逐项执行。完整现状见[`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)。
 
 ## 当前本地候选：v0.6.35（版本门和发布门有效）
 
-生产冒烟在Provider前发现的三项共同缺陷已随v0.6.35发布。候选m100+m2+m27 `43/43`、m38+m81 `56/56`、唯一一次safe full `1052/1052 PASS`；生产技术门通过。多角度与重绘各一次真实请求完成Provider、Media、Canvas和刷新恢复闭环，当前`2/6 / 20 USD`；剩余四项上限40 USD，已获分组确认但继续逐项核对。
+生产冒烟在Provider前发现的三项共同缺陷已随v0.6.35发布。候选m100+m2+m27 `43/43`、m38+m81 `56/56`、唯一一次safe full `1052/1052 PASS`；生产技术门通过。多角度、重绘与扩图各一次真实请求完成Provider、Media、Canvas和刷新恢复闭环，当前`3/6 / 30 USD`；剩余三项上限30 USD，已获分组确认但继续逐项核对。
 
 ## v0.6.32 图片裁剪同站编辑源
 
