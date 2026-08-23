@@ -2,10 +2,10 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 03:53:34 +0800
-- 状态：`GOAL_ACTIVE / R5_AUTO_PASS / UI_REMEDIATION_REQUIRED`
-- 当前阶段：`R5 全屏与交互完整性 / AUTO_PASS`
-- 唯一允许的下一动作：提交R5文档checkpoint；随后先把R6标为`IN_PROGRESS`，按全部工具、三视口、四zoom、横竖方透明素材、busy/error/切换序列和零请求门执行逐项浏览器回归
+- 更新时间：2026-08-24 03:54:17 +0800
+- 状态：`GOAL_ACTIVE / R6_IN_PROGRESS / UI_REMEDIATION_REQUIRED`
+- 当前阶段：`R6 逐工具功能与回归验证 / IN_PROGRESS`
+- 唯一允许的下一动作：执行全部图片工具的隔离浏览器矩阵，补齐横竖方透明素材、恶意切换、busy/error和零Generation/Provider直接证据；发现缺口先修根因再最小复验
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
 - 文档分支：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`
 - 立项 HEAD / origin-main：`f369d1dba1eef05aebc7f1a443256ceb82778ea0`
@@ -98,7 +98,7 @@ node -p "require('./package.json').version"
 | R3 | 紧凑面板和快速切分 | AUTO_PASS |
 | R4 | 大型编辑器与透明舞台 | AUTO_PASS |
 | R5 | 全屏与交互完整性 | AUTO_PASS |
-| R6 | 逐工具功能与回归验证 | NOT_STARTED |
+| R6 | 逐工具功能与回归验证 | IN_PROGRESS |
 | R7 | 候选冻结与独立审查 | NOT_STARTED |
 | R8 | GitHub 与生产发布 | NOT_STARTED / GATES_VALID |
 | R9 | 生产零付费验收与用户复验 | NOT_STARTED |
