@@ -169,6 +169,20 @@ function restoreDataDirectory(previous: string | undefined) {
 }
 
 function rollbackMigration39To38(database: DatabaseSync) {
+  if (Number((database.prepare("PRAGMA user_version").get() as {
+    user_version: number;
+  }).user_version) === 40) {
+    database.exec(`
+      BEGIN IMMEDIATE;
+      DROP TABLE seedance_asset_bindings;
+      DROP TABLE seedance_authorization_sessions;
+      DROP TABLE seedance_identity_groups;
+      DROP INDEX media_assets_owner_kind_id;
+      DELETE FROM schema_migrations WHERE version = 40;
+      PRAGMA user_version = 39;
+      COMMIT;
+    `);
+  }
   try {
     database.exec(`
       BEGIN IMMEDIATE;

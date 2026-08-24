@@ -206,32 +206,30 @@ export function createSeedanceTrustedAssetApplication(
     }
   };
 
-  const inspectProcessingAsset = async (input: Readonly<{
+  const inspectRemoteAsset = async (input: Readonly<{
     binding: SeedanceAssetBindingRecord;
     context: SeedanceTrustedAssetContext;
   }>) => {
     if (!input.binding.providerAssetId ||
-        !["ASSET_PROCESSING", "LINKED_UNVERIFIED"].includes(input.binding.status)) {
+        !["ACTIVE", "ASSET_PROCESSING", "LINKED_UNVERIFIED"].includes(
+          input.binding.status,
+        )) {
       return input.binding;
     }
-    try {
-      const inspected = await input.context.port.inspectAsset({
-        identity: input.context.identity,
-        providerAssetId: input.binding.providerAssetId,
-      });
-      return options.store.upsertBinding({
-        ...input.binding,
-        checkedAt: inspected.checkedAt,
-        failureCode: null,
-        failureMessage: null,
-        providerAssetType: inspected.providerAssetType,
-        providerStatus: inspected.providerStatus,
-        status: inspected.status,
-        updatedAt: now(),
-      });
-    } catch {
-      return input.binding;
-    }
+    const inspected = await input.context.port.inspectAsset({
+      identity: input.context.identity,
+      providerAssetId: input.binding.providerAssetId,
+    });
+    return options.store.upsertBinding({
+      ...input.binding,
+      checkedAt: inspected.checkedAt,
+      failureCode: null,
+      failureMessage: null,
+      providerAssetType: inspected.providerAssetType,
+      providerStatus: inspected.providerStatus,
+      status: inspected.status,
+      updatedAt: now(),
+    });
   };
 
   return Object.freeze({
@@ -500,7 +498,7 @@ export function createSeedanceTrustedAssetApplication(
           ownerId,
         });
         if (binding) {
-          const inspected = await inspectProcessingAsset({ binding, context });
+          const inspected = await inspectRemoteAsset({ binding, context });
           saved = options.store.upsertSession({
             ...saved,
             status: inspected.status,
@@ -528,7 +526,7 @@ export function createSeedanceTrustedAssetApplication(
           updatedAt: now(),
         }));
       }
-      return bindingView(await inspectProcessingAsset({ binding, context }));
+      return bindingView(await inspectRemoteAsset({ binding, context }));
     },
   });
 }

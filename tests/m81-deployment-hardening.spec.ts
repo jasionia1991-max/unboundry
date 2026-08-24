@@ -132,6 +132,7 @@ test("release role and bridge-mode selection are exact and fail closed", () => {
   expect(releaseRoleFromEnvironment("0.6.35", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.6.36", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.6.37", {})).toBe("final");
+  expect(releaseRoleFromEnvironment("0.6.38", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.5.2", {})).toBe("bridge");
   expect(releaseRoleFromEnvironment("0.5.2", {
     UNBOUNDRY_RELEASE_ROLE: "bridge",
@@ -1991,6 +1992,20 @@ async function writeOldLocalUploadCandidate(
 }
 
 function rollbackMigration39To38(database: DatabaseSync) {
+  if (Number((database.prepare("PRAGMA user_version").get() as {
+    user_version: number;
+  }).user_version) === 40) {
+    database.exec(`
+      BEGIN IMMEDIATE;
+      DROP TABLE seedance_asset_bindings;
+      DROP TABLE seedance_authorization_sessions;
+      DROP TABLE seedance_identity_groups;
+      DROP INDEX media_assets_owner_kind_id;
+      DELETE FROM schema_migrations WHERE version = 40;
+      PRAGMA user_version = 39;
+      COMMIT;
+    `);
+  }
   try {
     database.exec(`
       BEGIN IMMEDIATE;
@@ -3588,13 +3603,13 @@ test("bridge schema-37 routing and exact schema-38 startup never run implicit mi
     const migrated38 = new DatabaseSync(schema38Path, { readOnly: true });
     try {
       expect(migrated38.prepare("PRAGMA user_version").get()).toEqual({
-        user_version: 39,
+        user_version: currentSchemaVersion,
       });
       expect(migrated38.prepare(`
         SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1
       `).get()).toEqual({
-        name: "atomic-generation-admission-and-credential-scope",
-        version: 39,
+        name: "seedance-trusted-asset-control-plane",
+        version: 40,
       });
       expect(migrated38.prepare(`
         SELECT credential_revision FROM account_provider_credential_epochs
@@ -5953,7 +5968,7 @@ test("business schema admission retries a transient readiness guard", async () =
     await rename(currentDisplaced, databasePath);
     // This lifecycle had already admitted the original inode. Replacing it
     // with schema 37 permanently trips the stronger active-identity restart
-    // latch; restoring schema 39 cannot hot-admit a different path identity.
+    // latch; restoring the current schema cannot hot-admit a different path identity.
     expect(await dispatch(schemaTransitionLifecycle)).toEqual({
       passed: false,
       status: 503,

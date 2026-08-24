@@ -617,7 +617,7 @@ export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
         legacySchema37BusinessActive = true;
       } else if (legacySchema37BusinessActive) {
         // The legacy process is pinned to schema 37 for its entire lifetime.
-        // An in-place one-shot migration must never turn it into a schema-39
+        // An in-place one-shot migration must never turn it into a current-schema
         // writer; stop and restart through the current engine instead.
         latchSchema37Standby();
         rejectUnavailable(request, response, "SERVICE_RESTART_REQUIRED");

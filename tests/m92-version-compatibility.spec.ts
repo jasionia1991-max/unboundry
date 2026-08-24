@@ -145,7 +145,7 @@ type V051RunnerAttestation = Readonly<{
       integrityCheck: "ok";
       journalModeAfter: "wal";
       journalModeBefore: "delete";
-      latestMigration: Readonly<{ name: string; version: 39 }>;
+      latestMigration: Readonly<{ name: string; version: 40 }>;
       logicalRowsUnchanged: true;
       migrationJournalModeBeforeNormalization: "wal";
       processExitCode: number;
@@ -160,7 +160,7 @@ type V051RunnerAttestation = Readonly<{
       sidecarsAfterExit: readonly (
         "unboundry.sqlite-shm" | "unboundry.sqlite-wal"
       )[];
-      userVersion: 39;
+      userVersion: 40;
       versionEndpointBeforeDatabaseOpen: true;
     }>;
   }>;
@@ -520,8 +520,8 @@ async function readRunnerAttestation(contract: V051Contract) {
         journalModeAfter: "wal",
         journalModeBefore: "delete",
         latestMigration: {
-          name: "atomic-generation-admission-and-credential-scope",
-          version: 39,
+          name: "seedance-trusted-asset-control-plane",
+          version: 40,
         },
         logicalRowsUnchanged: contract.schema39ExactTagRuntime
           .logicalRowsUnchanged,
@@ -537,7 +537,7 @@ async function readRunnerAttestation(contract: V051Contract) {
           log: 0,
         },
         sidecarsAfterExit,
-        userVersion: 39,
+        userVersion: 40,
         versionEndpointBeforeDatabaseOpen: contract.schema39ExactTagRuntime
           .versionEndpointReturns200BeforeDatabaseOpen,
       },
@@ -1691,7 +1691,7 @@ test("runner-attested exact tag precedes attested bridge, migration, and final r
       mode: "apply",
       sourceVersion: 37,
       status: "complete",
-      targetVersion: 39,
+      targetVersion: 40,
     });
 
     runtime = await startReleaseRuntime(
@@ -1705,7 +1705,7 @@ test("runner-attested exact tag precedes attested bridge, migration, and final r
       body: {
         mode: "active",
         mutationsAccepted: true,
-        schemaVersion: 39,
+        schemaVersion: 40,
         status: "ready",
       },
       status: 200,
@@ -1909,14 +1909,14 @@ test("runner-attested exact tag precedes attested bridge, migration, and final r
     const finalDatabase = new DatabaseSync(databasePath, { readOnly: true });
     try {
       expect(finalDatabase.prepare("PRAGMA user_version").get()).toEqual({
-        user_version: 39,
+        user_version: 40,
       });
       expect(finalDatabase.prepare(`
         SELECT version, name FROM schema_migrations
         ORDER BY version DESC LIMIT 1
       `).get()).toEqual({
-        name: "atomic-generation-admission-and-credential-scope",
-        version: 39,
+        name: "seedance-trusted-asset-control-plane",
+        version: 40,
       });
       expect(finalDatabase.prepare(`
       SELECT revision, graph_revision, nodes

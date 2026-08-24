@@ -546,7 +546,7 @@ async function rehearse(input) {
   if (
     migrated.status !== "complete" || migrated.sourceVersion !== 37 ||
     migrated.targetVersion !== currentSchemaVersion || !migrated.targetLogicalSha256
-  ) fail("one-shot migration did not publish exact schema 39");
+  ) fail("one-shot migration did not publish exact schema 40");
 
   const rollbackBaseline = normalizeCurrentRollbackBaseline(databasePath);
   const beforeRejectedLogicalSha256 = logicalSha(databasePath, input.workRoot);
@@ -576,7 +576,7 @@ async function rehearse(input) {
     rejectedServer = await startOldServer(input.runtimeRoot, dataDirectory, input.port);
     const rejectedVersion = await jsonRequest(rejectedServer.origin, "/api/version");
     if (rejectedVersion.status !== 200 || rejectedVersion.body.version !== "0.5.1") {
-      fail("old binary did not expose its version before opening schema 39");
+      fail("old binary did not expose its version before opening schema 40");
     }
     rejectedRequest = await fetch(
       `${rejectedServer.origin}/api/canvas/${canvasId}`,
@@ -606,10 +606,10 @@ async function rehearse(input) {
     await waitForExit(
       rejectedServer.child,
       5_000,
-      "exact v0.5.1 process did not terminate on schema 39",
+      "exact v0.5.1 process did not terminate on schema 40",
     );
     if (rejectedServer.child.exitCode === 0) {
-      fail("exact v0.5.1 process exited successfully after rejecting schema 39");
+      fail("exact v0.5.1 process exited successfully after rejecting schema 40");
     }
     if (!Buffer.concat(rejectedServer.output).toString("utf8").includes(expectedRejection)) {
       fail("exact v0.5.1 rejection message was not observed");
@@ -654,11 +654,11 @@ async function rehearse(input) {
     JSON.stringify(afterRejectedFingerprint) ===
       JSON.stringify(beforeRejectedFingerprint) ||
     afterRejectedDatabaseSha256 === beforeRejectedDatabaseSha256 ||
-    journalMode !== "wal" || userVersion !== 39 ||
-    latestMigration?.version !== 39 ||
-    latestMigration?.name !== "atomic-generation-admission-and-credential-scope" ||
+    journalMode !== "wal" || userVersion !== 40 ||
+    latestMigration?.version !== 40 ||
+    latestMigration?.name !== "seedance-trusted-asset-control-plane" ||
     integrity !== "ok" || afterRejectedLogicalSha256 !== beforeRejectedLogicalSha256
-  ) fail(`exact v0.5.1 schema-39 rejection evidence is incomplete: ${
+  ) fail(`exact v0.5.1 current-schema rejection evidence is incomplete: ${
     JSON.stringify({
       afterLogicalSha256: afterRejectedLogicalSha256,
       beforeLogicalSha256: beforeRejectedLogicalSha256,

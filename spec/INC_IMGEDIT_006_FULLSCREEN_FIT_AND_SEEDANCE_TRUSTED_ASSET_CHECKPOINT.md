@@ -2,9 +2,9 @@
 
 > 更新时间：2026-08-24
 >
-> 当前阶段：`R8_IN_PROGRESS`
+> 当前阶段：`R8_FROZEN_PENDING_SAFE_FULL`
 >
-> 当前结论：R7已完成图片入口、A/B/C准确能力文案、状态/错误/刷新恢复、弹窗预开、幂等防重、QPM兼容轮询与三视口浏览器矩阵；R8冻结候选并执行只读审查与唯一一次safe full。
+> 当前结论：R8只读P0/P1审查已关闭Active远端复核与schema40发布链兼容缺口，v0.6.38候选版本、备份、迁移、回滚、Linux验证和v0.5.1拒绝链均已同步；受影响定向最终全绿，候选待执行本Goal唯一一次safe full。
 
 ## 1. 实时身份
 
@@ -75,7 +75,7 @@ PURCHASE_REQUIRED=NO
 | R5B/R5C | `NOT_APPLICABLE_CURRENT_BRANCH` | 仅保留能力降级合同，不作为当前实现分支 |
 | R6 | `TARGETED_AUTO_PASS` | owner/source/profile/account/region/project/checksum与远端Active共同构造可信引用；伪造asset://、错账号、失效、旧快照均在生成Provider边界前拒绝 |
 | R7 | `TARGETED_AUTO_PASS` | modal入口、A分支授权/处理/Active、错误状态、刷新恢复、双击幂等、三视口与零外网矩阵通过 |
-| R8 | `IN_PROGRESS` | 候选冻结、只读审查、版本同步与唯一一次safe full |
+| R8 | `FROZEN_PENDING_SAFE_FULL` | P0/P1只读审查与schema40发布链同步完成；受影响定向最终全绿，待唯一一次safe full |
 | R9 | `NOT_STARTED` | v0.6.38 GitHub交付 |
 | R10 | `NOT_STARTED` | 备份、必要迁移、fresh build、生产与真实控制面协议验收 |
 | R11 | `NOT_STARTED` | 生产零付费浏览器、回执、`USER_RECHECK` |
@@ -106,6 +106,10 @@ PURCHASE_REQUIRED=NO
 - R7新增图片更多菜单“角色可信素材”入口，使用共享modal Host与inert/focus/Escape合同；A分支同步预开H5页面避免异步弹窗被拦，客户端与服务端共同防重复，sessionStorage只保存不透明session ID用于同页刷新恢复，完整H5 URL仍不落库也不进入状态读取。
 - 状态UI从共享状态机显示等待、处理中、Active、拒绝、过期、撤销、删除、来源变化和失败；当前方舟账号免责声明固定显示，A/B/C文案不冒充能力，面板不显示预计金额。自动轮询改为20秒以服从write QPM3；Asset Processing由服务端后续只读inspect推进到Active，不会停在创建响应。
 - R7首轮稳定m2为`11/13`，精确暴露关闭按钮定位歧义与新增第8行仍沿用272px旧菜单高度；修正后m2 `13/13 PASS`。最终build通过，safe m100+m2+m20=`27/27 PASS`、退出0，source/snapshot`f22637b7e76184207552213434ba7cf1bd826c71586399432a87f975daf2d0d1`，architecture新增例外0、4173 unchanged，自动化真实Provider/Generation/OSS/费用0。
+- R8只读审查发现Active绑定读取仍可能只信本地旧状态，已改为用户主动读取时重新执行Provider只读inspect；远端错误直接显式失败，不再吞错并保留伪绿。m100精确断言Active读复核与生成边界再次复核，最终受影响批次通过。
+- schema40发布审查发现备份、媒体完整性、exact-v0.5.1 attestation、one-shot迁移、最终候选恢复、Linux生产验证和合成发布切换仍有schema39时代常量。已同步schema40支持、三张新表逻辑指纹、40迁移失败回滚checkpoint、final/bridge rollback合同与source coverage哈希；没有绕过历史schema37/38/39兼容。
+- 首轮schema40诊断批次原始为`35/56 PASS`，第二轮为`45/48 PASS`，失败均精确落在上述旧版本常量与三张新表断言；修正后m10+m92 `19/19 PASS`、source/snapshot`f4ad5418…11ffb`，m81+m88+m91+m95 `90/90 PASS`、source/snapshot`a3c12005…898fb`，新增schema40 checkpoint精确复验m91 `8/8 PASS`、source/snapshot`8a70ffaa…90b2f`。诊断失败保留为原始事实，不改写为全绿。
+- R8版本字段已同步为package/lock `0.6.38`、final runtime allowlist含0.6.38、当前schema40；P0/P1只读审查无剩余。真实Provider、Generation、OSS、费用和生产写入仍为0，控制面账本仍`1/200`。
 - 本Goal唯一一次safe full保留给R8冻结候选；文档同步不触发业务全量测试。
 - 自动化必须使用Node22.23.1/npm10.9.8、fresh临时data/runtime/cache和动态loopback端口，禁止4173、生产数据、真实Provider、真实OSS和任何付费生成。
 
@@ -118,4 +122,4 @@ PURCHASE_REQUIRED=NO
 
 ## 9. 唯一下一动作
 
-冻结v0.6.38候选，完成只读P0/P1审查、版本字段与治理合同同步，然后执行本Goal唯一一次safe full。
+提交冻结的v0.6.38 R8候选并执行本Goal唯一一次safe full；按原始结果收口，不为追求全绿重复运行。

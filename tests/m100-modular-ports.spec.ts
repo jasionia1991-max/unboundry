@@ -2067,6 +2067,11 @@ test("composition root wires public module APIs and delegates readiness SQL", as
       sourceAssetId: "trusted-image-app",
     })!;
     expect(appBinding.status).toBe("ACTIVE");
+    await expect(trustedApplication.readTrustedBinding({
+      assetId: "trusted-image-app",
+      ownerId: "trusted-owner",
+    })).resolves.toMatchObject({ status: "ACTIVE" });
+    expect(providerCalls.inspectAsset).toBe(2);
     const resolveTrustedVideo = createSeedanceTrustedVideoReferenceResolver({
       context: async (_ownerId, profileId) => profileId === identity.profileId
         ? { identity, port }
@@ -2112,7 +2117,7 @@ test("composition root wires public module APIs and delegates readiness SQL", as
       ownerId: "trusted-owner",
       providerProfileId: identity.profileId,
     })).rejects.toMatchObject({ code: "STALE" });
-    expect(providerCalls.inspectAsset).toBe(2);
+    expect(providerCalls.inspectAsset).toBe(3);
   } finally {
     trustedDatabase.close();
   }
