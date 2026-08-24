@@ -1,7 +1,7 @@
 # Unboundry 渐进式模块化 Checkpoint
 
 更新日期：2026-08-23
-状态：`CURRENT_GOVERNANCE_HARDENING / FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED / CURRENT_V0_6_37_USER_RECHECK / VIEW_005_AUTO_PASS / NO_ACTIVE_NEXT_BATCH`
+状态：`CURRENT_GOVERNANCE_HARDENING / FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED / CURRENT_V0_6_38_USER_RECHECK / VIEW_005_AUTO_PASS / NO_ACTIVE_NEXT_BATCH`
 
 当前收口：第一、第二批已在 v0.6.28 发布，随后由 v0.6.29/30 的商业 Provider 隔离、真实验证、结果兼容与用户验收继续验证组合，并随 v0.6.31 进入普通 main-safe 生产路径。`VIEW-005` 已收口为 `AUTO_PASS`；当前生产为 v0.6.37/schema39、`USER_RECHECK`。v0.6.32只在真实功能触发点增加MediaBlobStore可取消读取和客户端可替换编辑源resolver，v0.6.33只优化其客户端准备态；INC-IMGEDIT-003/004/005按第四批触发原则完成图片工具需要的最小业务、UI和产品质量边界，没有启动第三、第五、第六批或重做整个Canvas。INC-IMGEDIT-005生产零付费技术验收已通过，当前只剩用户主观确认。以下冻结身份和施工记录保留原时点，不得再把旧 `USER_RECHECK` 或旧 package 解释为当前状态。
 

@@ -1,0 +1,231 @@
+{
+  "version": "v0.6.38",
+  "date": "2026-08-24",
+  "status": "PRODUCTION_PUBLISHED_AUTO_PASS_PROVIDER_PROTOCOL_REAL_FAIL_CLOSED_USER_RECHECK",
+  "scope": {
+    "summary": "INC-IMGEDIT-006图片全屏双轴完整适配、透明Surface与Seedance可信素材A分支安全协议。生产发布与零付费浏览器门通过；唯一一次真实H5会话创建返回失败并按预算停止，未进入Asset创建。",
+    "schemaChanged": true,
+    "schemaBefore": 39,
+    "schemaAfter": 40,
+    "releaseInitiatedPaidGenerationAttempts": 0,
+    "releaseInitiatedPaidGenerationSuccesses": 0,
+    "releaseInitiatedOssWrites": 0,
+    "releaseCostUsd": 0,
+    "protectedJsonReadOrMutated": false
+  },
+  "source": {
+    "candidateCommit": "ff8b80c0628f94ecf1b5cf7bdb8445433aed8a6c",
+    "candidateTree": "c8e1e19b55cac6e50150cf2ee2160234d5a33726",
+    "tag": "v0.6.38",
+    "tagObject": "c2efd0187adc0c808c7b3a2caba34f317314f579",
+    "tagCommit": "ff8b80c0628f94ecf1b5cf7bdb8445433aed8a6c",
+    "tagTree": "c8e1e19b55cac6e50150cf2ee2160234d5a33726",
+    "pullRequest": 87,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/87",
+    "mergeCommit": "1a1756ae98138d8885d9043ca93d81e4d4ade67b",
+    "mainTreeAtMerge": "c8e1e19b55cac6e50150cf2ee2160234d5a33726",
+    "mainTreeEqualsTagTreeAtMerge": true,
+    "pullRequestQualityGateRun": 32723496747,
+    "pullRequestQualityGateJob": 97419689399,
+    "pullRequestQualityGateConclusion": "SUCCESS",
+    "githubRelease": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.6.38",
+    "productionSource": "annotated tag v0.6.38"
+  },
+  "verification": {
+    "formalSafeFullRuns": 1,
+    "formalSafeFull": {
+      "specs": 120,
+      "tests": 1055,
+      "passed": 1053,
+      "failed": 2,
+      "blocked": 0,
+      "skipped": 0,
+      "retries": 0,
+      "reportErrors": 0,
+      "exitCode": 1,
+      "sourceAndSnapshotSha256": "7798d77ec41581d437523b96f5b10b98be5297589eb1d0c1418c180a05784d0f"
+    },
+    "targetedCorrectionRecheck": {
+      "scope": "m10-backup + m9-security",
+      "tests": 18,
+      "passed": 18,
+      "failed": 0,
+      "sourceAndSnapshotSha256": "ad6bc903eea8af495481b50193d309593642963020f229672db8516e6c760dd3"
+    },
+    "formalSafeFullFailureClassification": "Both failures were exact new-contract coverage omissions: the schema40 migration child-error allowlist and an old security regex that misclassified legitimate authorization product names. Each was corrected and only the affected tests were rerun.",
+    "secondFullRun": false,
+    "finalGovernance": "m38 15/15 PASS",
+    "finalGovernanceSourceAndSnapshotSha256": "7c05244de80fd3a2d6bc817febd5975338785a653a1fa361e821d6b9a579e8aa",
+    "independentReview": "P0_P1_REVIEW_PASS",
+    "postReleaseDocumentationGovernance": {
+      "selectionOnlyFailure": "An invalid m38-docs-governance selector matched zero specs; no product test ran.",
+      "firstProductRun": "14/15 PASS; the governance test still hard-coded schema39 after the intentional schema40 release.",
+      "secondProductRun": "14/15 PASS after making the production schema marker dynamic; three progressive-governance headers still carried CURRENT_V0_6_37_USER_RECHECK.",
+      "correctionRun": "15/15 PASS",
+      "sourceAndSnapshotSha256": "08ab2c7ee3e579f5f509dc8abbdee322fd4afdcab0ad64d421645a839a235142",
+      "listener4173": "unchanged",
+      "productRuntimeChangedAfterTag": false,
+      "secondFullRun": false
+    }
+  },
+  "release": {
+    "archiveSha256": "20ab54b58d608e1f83a8d321fb01ae7d0bf9147cc393cecdc6674e33d4a85e9e",
+    "archiveBytes": 29593329,
+    "releasePath": "/opt/unboundry/releases/v0.6.38-inc-imgedit-006-20260824",
+    "previousRelease": "/opt/unboundry/releases/v0.6.37-inc-imgedit-005-20260824",
+    "currentTarget": "/opt/unboundry/releases/v0.6.38-inc-imgedit-006-20260824",
+    "freshBuild": {
+      "node": "v22.23.2",
+      "npm": "10.9.8",
+      "npmCiIgnoreScripts": "PASS",
+      "typecheck": "PASS",
+      "viteBuild": "PASS",
+      "knownChunkSizeWarningOnly": true,
+      "firstBuildAttempt": "FAILED_BEFORE_VITE because npm child scripts inherited system Node v18.19.1",
+      "correctedBuildEnvironment": "PATH pinned to /opt/node22/bin; build PASS without a source change"
+    },
+    "inventory": {
+      "files": 5943,
+      "inventoryLines": 5942,
+      "sha256": "afb607703c3b8a8ae772f1983f760a7dc54367548b190358750920f285fcffa3",
+      "postSwitchCheck": "PASS"
+    }
+  },
+  "backupAndMigration": {
+    "rehearsalBackup": "/var/lib/unboundry-rollbacks/v0.6.38-frozen-z7c9W6",
+    "rehearsalSourceFiles": 366,
+    "rehearsalRestorePreMigrationManifestSha256": "386db8ee905157194abba7c24dc6972b7c06a2f2291e596b93f57f6062e8852c",
+    "rehearsalSchema40Integrity": "ok",
+    "rehearsalSchema40ForeignKeyViolations": 0,
+    "rehearsalNewTableCounts": {
+      "groups": 0,
+      "sessions": 0,
+      "bindings": 0
+    },
+    "oldRuntimeCompatibility": "v0.6.37 rejected the schema40 rollback probe before writer open; database SHA-256 remained unchanged",
+    "cutoverBackup": "/var/lib/unboundry-rollbacks/v0.6.38-cutover-frozen-hoN2aM",
+    "cutoverSourceFiles": 366,
+    "cutoverRestoreFiles": 366,
+    "cutoverSourceManifestSha256": "5ebe6ef51ce2fc2d2b5a0afae3583682c4eb33bef2126dcb038152a651d4b7a7",
+    "cutoverRestoreManifestSha256": "5ebe6ef51ce2fc2d2b5a0afae3583682c4eb33bef2126dcb038152a651d4b7a7",
+    "migration": "schema39 to schema40 in one BEGIN IMMEDIATE transaction while service and port 4173 were stopped",
+    "rollbackGuard": "armed; schema39 would restart v0.6.37, committed schema40 failure would restore the exact cutover source before restarting v0.6.37",
+    "rollbackRequired": false,
+    "historicalDataOrReleaseDeleted": false
+  },
+  "productionAcceptance": {
+    "cutoverAt": "2026-08-24T19:56:36+08:00",
+    "loopbackVersion": "0.6.38",
+    "publicVersion": "0.6.38",
+    "loopbackLive": 200,
+    "loopbackReady": 200,
+    "publicLive": 200,
+    "publicReady": 200,
+    "readyMode": "active",
+    "activeLeaseHeld": true,
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "serviceRestarts": 0,
+    "schemaVersion": 40,
+    "integrity": "ok",
+    "foreignKeyViolations": 0,
+    "librarySchemaVersion": 1,
+    "libraryIntegrity": "ok",
+    "libraryForeignKeyViolations": 0,
+    "countsBeforeAndAfterEqualExceptNewSchema40Rows": true,
+    "counts": {
+      "generationTasks": 785,
+      "providerAttempts": 793,
+      "activeTasks": 0,
+      "mediaAssets": 817,
+      "mediaBytes": 1478854132,
+      "mediaPublicationAttempts": 407,
+      "activeMediaPublications": 0,
+      "canvasDocuments": 63,
+      "libraryEntries": 2,
+      "publicTemplates": 50,
+      "publishedPublicTemplates": 48
+    },
+    "publicAssetsCompared": 5,
+    "publicAssetsEqualRelease": true,
+    "publicAssetSha256": {
+      "CanvasShell-BW9Iz73X.js": "7852cbb3ee09986c7c82e9b1080af30ccbee77344f4130972b493b6dc6167ee2",
+      "WorkspacePage-BpfZstkj.js": "7703696a91fb15700ee483667351bcd28f355158ea485250d8afbdcc43568d75",
+      "index-B5ETM-Lx.css": "0486bc6d3ffbc2223df22c89f9f1609c5cc86169d46ee53a67253b21ac8f7370",
+      "index-D4nwlQ3v.js": "f65d402aaacef666fc5fa25b85ad7dcd67811454dbdbddab47ff3dcddd89366d",
+      "projectStorage-DR2Jugwn.js": "45840115be8a8fd58f7ab2b8fef961ada974b560a17e4c7a3bfed475afc2d46e"
+    },
+    "providerAccountIdentity": {
+      "storedInRootOnlyEnvironmentFile": true,
+      "valueLogged": false,
+      "length": 24,
+      "sha256": "58c420b9fc88cdfaccd88c674fef0dba555c3604888e4b8b4f91499c199d2014",
+      "loadedByRuntime": true
+    }
+  },
+  "providerControlProtocol": {
+    "status": "PROVIDER_PROTOCOL_REAL_FAIL_CLOSED",
+    "activeBranch": "A",
+    "ledger": {
+      "entitlementReads": "1/10",
+      "authorizationSessionCreates": "1/1",
+      "authorizationSessionPolls": "0/60",
+      "assetCreates": "0/1",
+      "assetPolls": "0/120",
+      "finalAssetReads": "0/5",
+      "totalControlRequests": "2/200"
+    },
+    "createResult": {
+      "applicationHttpStatus": 503,
+      "safeApplicationMessage": "方舟真人授权会话创建失败",
+      "persistedSessionStatus": "FAILED",
+      "persistedProviderStatus": "CREATE_FAILED",
+      "providerSessionIdPersisted": false,
+      "authorizationUrlReturned": false
+    },
+    "followup": "No retry was made because the one-create budget was consumed and the failed request had unknown remote side effects. No H5 poll, Asset create, Asset poll or final read was attempted.",
+    "schema40RowsAfterAttempt": {
+      "groups": 1,
+      "sessions": 1,
+      "bindings": 1
+    },
+    "paidGenerationAttempts": 0,
+    "paidGenerationSuccesses": 0,
+    "paidGenerationCost": 0,
+    "ossWrites": 0
+  },
+  "productionBrowserAcceptance": {
+    "status": "PRODUCTION_ZERO_PAID_BROWSER_PASS",
+    "project": "v0.6.34 图片工具技术冒烟副本 2026-08-23",
+    "viewports": ["1280x720", "1440x900", "1728x900"],
+    "fullscreenRepresentative": {
+      "natural": "444x818",
+      "objectFit": "contain",
+      "allEdgesInsideViewport": true,
+      "naturalRatio": 0.5427872860635696,
+      "renderedRatios": [0.5427858486622074, 0.5427779562982005, 0.5427779562982005]
+    },
+    "secondTallImage": {
+      "natural": "755x1332",
+      "objectFit": "contain",
+      "allEdgesInsideViewport": true,
+      "naturalRatio": 0.5668168168168168,
+      "renderedRatio": 0.5668079209511568
+    },
+    "detailsPanel": "visible with prompt, source, model, dimensions, ratio, quality, file size, source asset and legacy-preflight disclaimer",
+    "trustedAssetUi": "A-branch modal accurately showed not linked, remote verification incomplete, current image identity, no estimated cost and a single H5 authorization action; the real failure was shown without a false Active state",
+    "modalBackgroundInert": true,
+    "consoleErrorsOrWarnings": 0,
+    "generationTasksBeforeAndAfter": 785,
+    "providerAttemptsBeforeAndAfter": 793,
+    "activeTasksAfter": 0,
+    "paidGenerationRequests": 0,
+    "realOssWrites": 0
+  },
+  "authorizationConsumed": true,
+  "userAcceptance": {
+    "status": "USER_RECHECK",
+    "scope": "v0.6.38 INC-IMGEDIT-006 production fullscreen and truthful Seedance fail-closed state"
+  },
+  "completionBoundary": "v0.6.38 is published and the fullscreen/zero-paid production browser gates passed. The real trusted-asset protocol did not pass because the sole authorized H5 create failed; it was not retried and no Asset was created. USER_PASS is not claimed."
+}

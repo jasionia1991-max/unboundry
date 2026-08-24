@@ -1,28 +1,32 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为v0.6.37/schema39且技术健康并保持`USER_RECHECK`。INC-IMGEDIT-006本地候选为v0.6.38/schema40，R8工程门完成并进入R9；尚未GitHub交付或发布，没有`USER_PASS`。
+> **状态分层**：现网为v0.6.38/schema40且技术健康。INC-IMGEDIT-006已完成GitHub、生产发布和零付费浏览器门；真实H5创建唯一一次失败并fail-closed。当前为`USER_RECHECK`，没有`USER_PASS`。
 
 更新日期：2026-08-24
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.6.38**
 本地候选代码版本：**v0.6.38**
-当前治理标记：`CURRENT_V0_6_37_USER_RECHECK`
-当前热修门：`INC_IMGEDIT_005_LOCAL_ENGINEERING_COMPLETE / INDEPENDENT_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / PR_MERGED / PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`
+当前治理标记：`CURRENT_V0_6_38_USER_RECHECK`
+当前热修门：`INC_IMGEDIT_006_R11_COMPLETE / PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / USER_RECHECK`
 
 ## 一句话
 
-**生产是 v0.6.37 / schema39且技术健康；本地v0.6.38/schema40候选已完成R8工程门，R9 GitHub交付就绪，尚未发布。** 生产release仍为`/opt/unboundry/releases/v0.6.37-inc-imgedit-005-20260824`；v0.6.38版本门和发布门仅用于当前Goal，只有生产技术验收完成并由用户明确确认后才能写`USER_PASS`。
+**生产是 v0.6.38 / schema40且技术健康；全屏生产几何通过，Seedance真实H5创建失败后诚实停止。** 当前release为`/opt/unboundry/releases/v0.6.38-inc-imgedit-006-20260824`；发布授权已消费。只有用户生产实页明确确认后才能写`USER_PASS`。
 
-## INC-IMGEDIT-006 图片全屏完整适配与Seedance可信素材（R8_COMPLETE / R9_READY）
+## INC-IMGEDIT-006 图片全屏完整适配与Seedance可信素材（PRODUCTION_V0_6_38 / USER_RECHECK）
 
-- 权威方案为`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_PLAN_2026-08-24.md`，实时断点为`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_CHECKPOINT.md`；版本门与发布门为v0.6.38，生产仍未改变。
+- 权威方案为`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_PLAN_2026-08-24.md`，实时断点为`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_CHECKPOINT.md`，生产回执为`spec/V0_6_38_PRODUCTION_RECEIPT_2026-08-24.json`；v0.6.38发布授权已执行并消费。
 - R2已修复1086×1448、3:4、9:16、16:9、1:1和超宽图在三视口的双轴完整适配；R3移除会冒充远端可信素材的旧本地校验入口。
 - R4～R6新增schema40的owner/profile/account/region/project/source绑定、正式方舟A分支控制adapter、只由服务端构造的`asset://`判别联合、任务快照及提交/Provider边界双重复核；伪造、跨账号、失效和旧快照全部fail-closed。
 - R7新增“角色可信素材”modal、同步预开H5、双击防重、20秒QPM兼容轮询、session ID刷新恢复、Processing到Active服务端推进、A/B/C与失败状态准确文案、inert/Escape/焦点及三视口。最终build和safe m100+m2+m20 `27/27 PASS`，source/snapshot`f22637b7…d2d0d1`，自动化真实Provider/Generation/OSS/费用0。
 - R8只读审查补齐Active绑定主动远端复核与schema40发布链：备份/恢复/媒体完整性、exact-v0.5.1、one-shot迁移、40迁移失败回滚、Linux验证及bridge rollback均已同步。诊断批次原始`35/56`、`45/48`，修正后精确`19/19`、`90/90`、`8/8 PASS`，P0/P1无剩余。
 - 本Goal唯一safe full在`d5c5840`执行120 specs/1055 tests，原始`1053/1055`、退出1；m10漏收schema40迁移错误码、m9旧正则误判Authorization产品语义。精确修正后只复验m10+m9 `18/18 PASS`，source/snapshot`ad6bc903…60dd3`，未重复full；R8按原始结果收口。
 - 治理提交`34893db`后的m38精确复验`15/15 PASS`、source/snapshot`7c05244d…9e8aa`；文档同步不重复业务测试。
-- 当前Provider控制面账本仍为`1/200`，只发生R0权益只读；H5创建/轮询、Asset创建/轮询和最终核验均0，付费生成预算固定0。R9 GitHub交付就绪，生产仍未改变。
+- R9 tag`v0.6.38`→`ff8b80c`/tree`c8e1e19`，PR #87 Quality CI SUCCESS并合并为`1a1756a`，GitHub Release已发布。
+- R10/R11已完成双备份、schema39→40副本演练、旧runtime拒绝不改写、fresh build、原子切换、公网/回环/service/inventory/数据/5资源与三视口浏览器门；冻结备份`v0.6.38-cutover-frozen-hoN2aM`双清单`5ebe6ef5…b7a7`。
+- 生产全屏代表图444×818在1280×720、1440×900、1728×900均四边完整、比例不变且contain；755×1332第二竖图同样通过，console error/warn0。
+- Provider控制面账本为`2/200`：权益只读1、唯一H5创建1，其余0。H5创建返回HTTP503并保存为`FAILED/CREATE_FAILED`，没有H5 URL；因创建预算耗尽且副作用未知未重试，未进入Asset阶段。付费生成、Generation task/attempt增量、费用和OSS写入0。
+- 当前状态`PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / USER_RECHECK`。真实协议失败不得写`PROVIDER_PROTOCOL_REAL_PASS`，用户未确认不得写`USER_PASS`。
 
 ## INC-IMGEDIT-005 图片工具产品质量拒收返工（R9_COMPLETE / USER_RECHECK）
 

@@ -2,9 +2,9 @@
 
 > 更新时间：2026-08-24
 >
-> 当前阶段：`R8_COMPLETE_R9_READY`
+> 当前阶段：`R11_COMPLETE_USER_RECHECK`
 >
-> 当前结论：R8只读P0/P1审查与本Goal唯一一次safe full已执行；full原始`1053/1055`，两个精确合同遗漏已修正并定向`18/18 PASS`，没有重复full。v0.6.38候选进入R9 GitHub交付门。
+> 当前结论：v0.6.38已完成GitHub、schema40生产发布和零付费生产浏览器门。全屏技术验收通过；唯一授权的真实H5会话创建返回503并以`CREATE_FAILED`收口，因创建预算`1/1`且远端副作用未知没有重试，未进入Asset创建。当前为`PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / USER_RECHECK`，禁止写`USER_PASS`。
 
 ## 1. 实时身份
 
@@ -24,9 +24,9 @@
 - 版本门：`v0.6.38 / VERSION_GATE_VALID`
 - 发布门：用户明确给出“允许发布：v0.6.38 上线”，状态 `RELEASE_GATE_VALID`
 - R0核对：本地tag、远端tag和GitHub Release均不存在 `v0.6.38`
-- 当前生产：`v0.6.37 / schema39 / live / ready active`
-- 当前release：`/opt/unboundry/releases/v0.6.37-inc-imgedit-005-20260824`
-- 当前用户层：v0.6.37历史状态保持 `USER_RECHECK`；INC-IMGEDIT-006不得继承旧PASS。
+- 当前生产：`v0.6.38 / schema40 / live / ready active`
+- 当前release：`/opt/unboundry/releases/v0.6.38-inc-imgedit-006-20260824`
+- 当前用户层：`USER_RECHECK`；INC-IMGEDIT-006没有用户主观确认，不得写`USER_PASS`。
 
 ## 3. R0 能力分流
 
@@ -51,15 +51,15 @@ PURCHASE_REQUIRED=NO
 | 项目 | 已用/上限 | 说明 |
 |---|---:|---|
 | 权益、能力和接口只读核对 | `1/10` | `GetAssetQuota`等价稳定产品命令，只读成功 |
-| H5授权会话创建 | `0/1` | 未执行 |
+| H5授权会话创建 | `1/1` | 生产唯一一次创建返回HTTP503；本地会话`FAILED/CREATE_FAILED`，未返回H5 URL；不重试未知副作用写请求 |
 | H5会话状态查询 | `0/60` | 未执行 |
 | Asset创建 | `0/1` | 未执行 |
 | Asset状态查询 | `0/120` | 未执行 |
 | 发布前/提交前最终只读核验 | `0/5` | 未执行 |
-| Provider控制面总计 | `1/200` | 未突破分项或总上限 |
+| Provider控制面总计 | `2/200` | 权益只读1 + H5创建1；未突破分项或总上限 |
 | 付费生成尝试/成功/费用 | `0/0/0` | 固定为0 |
 | Seedance视频/图片/音频生成 | `0/0/0` | 固定为0 |
-| OSS写入 | `0` | R0无写入 |
+| OSS写入 | `0` | 全Goal真实协议与生产浏览器均为0 |
 | 购买/新账号/云权限或套餐修改 | `0/0/0` | 永久禁止 |
 
 ## 5. 阶段状态
@@ -76,13 +76,13 @@ PURCHASE_REQUIRED=NO
 | R6 | `TARGETED_AUTO_PASS` | owner/source/profile/account/region/project/checksum与远端Active共同构造可信引用；伪造asset://、错账号、失效、旧快照均在生成Provider边界前拒绝 |
 | R7 | `TARGETED_AUTO_PASS` | modal入口、A分支授权/处理/Active、错误状态、刷新恢复、双击幂等、三视口与零外网矩阵通过 |
 | R8 | `SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS` | 唯一safe full原始1053/1055；两个精确合同遗漏修正后m10+m9 18/18，未重复full |
-| R9 | `READY` | v0.6.38 GitHub交付 |
-| R10 | `NOT_STARTED` | 备份、必要迁移、fresh build、生产与真实控制面协议验收 |
-| R11 | `NOT_STARTED` | 生产零付费浏览器、回执、`USER_RECHECK` |
+| R9 | `COMPLETE` | tag`v0.6.38`、PR #87、Quality CI SUCCESS、merge`1a1756a`、GitHub Release完成；tag/main-at-merge tree均`c8e1e19` |
+| R10 | `PRODUCTION_PUBLISHED_AUTO_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED` | 双备份、schema39→40副本演练、旧runtime拒绝且不改写、fresh build、原子切换和生产技术门通过；唯一H5创建真实请求失败后停止，未创建Asset |
+| R11 | `PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK` | 三视口全屏几何、详情、A分支失败诚实呈现、console和零生成/零OSS门通过；待用户生产实页确认 |
 
 ## 6. 验收状态
 
-- `IMGEDIT-039 / 040 / 042 / 043 / 044 / 045 = TARGETED_AUTO_PASS`；`IMGEDIT-041 = R0_AUTO_PASS / ACTIVE_BRANCH_A`；`IMGEDIT-046`仍为 `NOT_STARTED`。
+- `IMGEDIT-039 = PRODUCTION_VIEWPORT_PASS`；`IMGEDIT-040 / 042 / 043 / 044 / 045 = TARGETED_AUTO_PASS`并已随schema40生产发布；`IMGEDIT-041 = ACTIVE_BRANCH_A / REAL_CREATE_FAIL_CLOSED`；`IMGEDIT-046 = PRODUCTION_PUBLISHED / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / USER_RECHECK`。
 - 自动、浏览器、Provider协议、生产技术和用户主观验收必须分层，任何Agent不得写 `USER_PASS`。
 
 ## 7. 测试与浏览器证据
@@ -116,14 +116,24 @@ PURCHASE_REQUIRED=NO
 - R8收口`LOCAL_ENGINEERING_COMPLETE / P0_P1_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS`；真实Provider/Generation/OSS/费用0，生产未改。
 - R8治理提交`34893db135cc11a2664ed4c120a2634465aa1120`后只复验m38=`15/15 PASS`、退出0，source/snapshot`7c05244de80fd3a2d6bc817febd5975338785a653a1fa361e821d6b9a579e8aa`，4173 unchanged；文档结果同步不触发业务测试重跑。
 - 自动化必须使用Node22.23.1/npm10.9.8、fresh临时data/runtime/cache和动态loopback端口，禁止4173、生产数据、真实Provider、真实OSS和任何付费生成。
+- R9冻结候选`ff8b80c0628f94ecf1b5cf7bdb8445433aed8a6c`/tree`c8e1e19b55cac6e50150cf2ee2160234d5a33726`，注释tag对象`c2efd0187adc0c808c7b3a2caba34f317314f579`；PR #87 Quality run`32723496747`/job`97419689399` SUCCESS，squash merge`1a1756ae98138d8885d9043ca93d81e4d4ade67b`，GitHub Release已发布。
+- R10 fresh生产包SHA`20ab54b58d608e1f83a8d321fb01ae7d0bf9147cc393cecdc6674e33d4a85e9e`；第一次build因npm子进程继承系统Node18在Vite前失败，固定`PATH=/opt/node22/bin`后同源码typecheck/build通过。inventory 5942行/5943文件，SHA`afb607703c3b8a8ae772f1983f760a7dc54367548b190358750920f285fcffa3`。
+- schema40副本演练通过integrity/FK0，新三表0/0/0；v0.6.37对迁移副本在writer前失败且数据库SHA保持`e998135a…44cd`。切换冻结source/restore各366文件、双清单`5ebe6ef5…b7a7`；生产迁移在停服且4173无监听时于单个`BEGIN IMMEDIATE`完成，切换后NRestarts0。
+- 发布前后既有计数保持tasks785、attempts793、active0、media817/1478854132 bytes、publication407/active0、canvas63、templates50/48、Library2；新三表在真实请求前均0。公网与回环均v0.6.38/live/ready active/schema40，5项公网资源逐字节等于release。
+- 唯一H5创建真实请求后新三表各1行：group保持`NOT_STARTED`，session为`FAILED/CREATE_FAILED`且无Provider session ID，binding未创建远端Asset。账本因此为权益1、H5创建1、其余0、总2/200；付费生成、Generation task/attempt增量和OSS写入均0。
+- R11生产浏览器三视口几何：444×818自然比`0.542787`，渲染比`0.542786/0.542778/0.542778`且四边均在viewport内；755×1332自然比`0.566817`、渲染比`0.566808`，`object-fit:contain`且四边完整。详情字段、旧本地预检免责声明、modal inert、A分支未核验/失败态与console 0 error/warn通过。
+- R11发布回执同步后的治理复验诚实保留三步：错误selector在选择阶段0产品测试；首次有效m38为`14/15`，发现测试仍把当前生产写死为schema39；改成从权威生产标记动态读取后第二次`14/15`，继续发现三份渐进治理文档顶部仍为`CURRENT_V0_6_37_USER_RECHECK`。精确同步AGENTS与三份治理头后最终m38 `15/15 PASS`、退出0，source/snapshot`08ab2c7ee3e579f5f509dc8abbdee322fd4afdcab0ad64d421645a839a235142`，4173 unchanged；未改发布tag内产品runtime，未运行第二次full。
 
 ## 8. GitHub、生产、阻断与回滚
 
-- GitHub：未push、未创建PR、未merge、未tag、未创建Release。
-- 生产：R0仅只读，无生产写入；生产仍为v0.6.37/schema39。
-- 当前阻断：无。A分支权益已确认；后续若身份、地域、项目或正式合同不能严格绑定，必须fail-closed，不得退化为伪可信状态。
-- 回滚点：工程施工起点为 `349a9157947aa3f65164d433376507982bac681d`；生产回滚点仍为现行v0.6.37 release。尚无schema或生产变更。
+- GitHub：注释tag `v0.6.38`→`ff8b80c`/tree`c8e1e19`；PR #87 Quality CI SUCCESS后合并为`1a1756a`，merge时main tree与tag tree一致；GitHub Release已发布。
+- 生产：fresh artifact SHA-256`20ab54b5…a85e9e`，release inventory`afb60770…cffa3`；current已原子切到`/opt/unboundry/releases/v0.6.38-inc-imgedit-006-20260824`。公网/回环version、live、ready、service、schema40、integrity/FK、Library、数据计数和5项静态资源均通过。
+- 备份与回滚：副本演练备份`/var/lib/unboundry-rollbacks/v0.6.38-frozen-z7c9W6`；切换冻结备份`/var/lib/unboundry-rollbacks/v0.6.38-cutover-frozen-hoN2aM`，source/restore各366文件且双清单SHA`5ebe6ef5…b7a7`。v0.6.37对schema40副本在writer前拒绝且数据库SHA不变；旧release和两份备份均保留。
+- Provider真实协议：唯一H5创建已消费`1/1`并返回应用HTTP503，session为`FAILED/CREATE_FAILED`且没有Provider session ID或H5 URL；远端副作用未知，按合同不重试。Asset创建/查询、最终读、视频/图片/音频生成、付费和OSS写入均0。
+- 生产浏览器：目标项目`v0.6.34 图片工具技术冒烟副本 2026-08-23`；444×818图片在1280×720、1440×900、1728×900均四边在viewport内、`object-fit:contain`且渲染比例等于自然比例；755×1332第二竖图同样通过。角色可信素材modal准确显示未关联/远端未核验，创建失败后没有伪Active，console error/warn 0。
+- 当前阻断：真实可信素材协议被唯一H5创建失败阻断；因为创建预算已耗尽且写请求副作用未知，本Goal不得继续重试或进入Asset阶段。全屏与生产发布不受该外部协议失败影响。
+- 回滚点：上一不可变release`/opt/unboundry/releases/v0.6.37-inc-imgedit-005-20260824`与切换冻结备份完整保留；本次没有触发回滚。
 
 ## 9. 唯一下一动作
 
-提交R8精确修正与治理收口，定向复验m38后进入R9：push分支、创建不可变注释tag v0.6.38、PR/CI/merge与GitHub Release。
+等待用户在已发布的v0.6.38生产实页复验全屏完整显示与Seedance失败态。只有用户明确确认后才可另行同步`USER_PASS`；本Goal内不再发起任何Provider控制面写请求。
