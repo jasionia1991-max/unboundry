@@ -1,9 +1,20 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.37 / schema39`且技术健康。INC-IMGEDIT-005已完成工程、GitHub、生产发布与零付费浏览器复验；当前`PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`。
+> **当前状态**：生产运行`v0.6.37 / schema39`且技术健康。INC-IMGEDIT-006已启动，`v0.6.38`版本门与发布门有效；R0已冻结Seedance A分支，R1正在补两项旧问题红证据。
 
 更新时间：2026-08-24
-状态：`生产v0.6.37 / schema39；INC-IMGEDIT-005 LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / INDEPENDENT_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / PR_MERGED / PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK。`
+状态：`生产v0.6.37 / schema39 / USER_RECHECK；INC-IMGEDIT-006 GOAL_ACTIVE / R0_AUTO_PASS / R1_IN_PROGRESS / ACTIVE_BRANCH_A / VERSION_GATE_VALID_v0.6.38 / RELEASE_GATE_VALID；Provider控制面1/200，付费生成与费用0。`
+
+### 2026-08-24 图片全屏完整适配与Seedance可信素材（INC-IMGEDIT-006，R1_IN_PROGRESS）
+
+- 权威方案：`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_PLAN_2026-08-24.md`；实时断点：`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_CHECKPOINT.md`
+- 隔离分支/工作树：`codex/inc-imgedit-006-v0.6.38-2026-08-24` / `/private/tmp/unboundry-inc006-v0.6.38-2026-08-24`；起点HEAD与`origin/main`同为`349a915`，package0.6.37、schema39
+- 用户已精确确认`v0.6.38`并允许`v0.6.38`上线；同名本地/远端tag及GitHub Release均不存在，发布门只用于本Goal
+- R0冻结`ACTIVE_BRANCH=A / OFFICIAL_API_CONTRACT=CONFIRMED / ACCOUNT_ENTITLEMENT=CONFIRMED / CONTROL_REQUEST_AUTHORIZATION=VALID / PURCHASE_REQUIRED=NO`
+- 当前账号真实权益为Assets/Asset Groups/shared pool各50、已用0、剩余50，write QPM 3；正式H5/Group/Asset合同使用服务端AK/SK与`cn-beijing`，不得暴露凭据或复制ComfyUI私有代理
+- Provider控制面账本`1/200`，其中权益/能力只读`1/10`；H5创建、H5状态、Asset创建/查询、最终核验均0。真实Seedance视频/图片/音频生成、付费尝试/成功/费用、OSS写入、购买、新账号和云权限修改均0
+- 新增验收`IMGEDIT-039～046`；当前只有能力分流`IMGEDIT-041 = R0_IN_PROGRESS`，其余不得继承INC-IMGEDIT-005的自动或生产PASS
+- R0文档、矩阵和TASKS已同步，`git diff --check`通过，R0收口`AUTO_PASS`；当前唯一下一动作是补1086×1448裁切和旧Seedance伪校验红证据，再改产品实现
 
 ### 2026-08-24 图片工具产品质量拒收返工（INC-IMGEDIT-005，R9_COMPLETE / USER_RECHECK）
 
