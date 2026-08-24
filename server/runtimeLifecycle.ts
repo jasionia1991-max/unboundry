@@ -12,6 +12,7 @@ import {
   currentSchemaManifest,
   currentSchemaVersion,
   databaseHasCompleteLegacyMediaMetadata,
+  databaseMatchesSchema40Contract,
   databaseMatchesSchemaContract,
   migrationIncompleteMarker,
 } from "./database.ts";
@@ -221,7 +222,7 @@ function json(
   response.end(JSON.stringify(body));
 }
 
-export { databaseMatchesSchemaContract };
+export { databaseMatchesSchema40Contract, databaseMatchesSchemaContract };
 
 export function createRuntimeLifecycle(options: RuntimeLifecycleOptions = {}) {
   const logger = options.logger ?? defaultLogger;

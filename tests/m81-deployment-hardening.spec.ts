@@ -1996,14 +1996,17 @@ async function writeOldLocalUploadCandidate(
 function rollbackMigration39To38(database: DatabaseSync) {
   if (Number((database.prepare("PRAGMA user_version").get() as {
     user_version: number;
-  }).user_version) === 40) {
+  }).user_version) === 41) {
     database.exec(`
       BEGIN IMMEDIATE;
+      DROP TABLE seedance_character_compliance_attempts;
+      DROP TABLE seedance_character_compliance_checks;
+      DROP TABLE seedance_character_compliance_disclosures;
       DROP TABLE seedance_asset_bindings;
       DROP TABLE seedance_authorization_sessions;
       DROP TABLE seedance_identity_groups;
       DROP INDEX media_assets_owner_kind_id;
-      DELETE FROM schema_migrations WHERE version = 40;
+      DELETE FROM schema_migrations WHERE version >= 40;
       PRAGMA user_version = 39;
       COMMIT;
     `);
@@ -3610,8 +3613,8 @@ test("bridge schema-37 routing and exact schema-38 startup never run implicit mi
       expect(migrated38.prepare(`
         SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1
       `).get()).toEqual({
-        name: "seedance-trusted-asset-control-plane",
-        version: 40,
+        name: "seedance-character-compliance-precheck",
+        version: 41,
       });
       expect(migrated38.prepare(`
         SELECT credential_revision FROM account_provider_credential_epochs

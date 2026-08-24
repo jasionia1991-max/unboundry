@@ -4721,6 +4721,16 @@ function ImageNodeImpl({
                 <span>角色可信素材</span>
               </button>
               <button
+                aria-label="角色风险预检（当前不可用）"
+                disabled
+                role="menuitem"
+                title="当前没有满足合同与隐私要求的正式审核 Provider"
+                type="button"
+              >
+                <span aria-hidden="true" className="image-more-icon seedance" />
+                <span>角色风险预检（当前不可用）</span>
+              </button>
+              <button
                 onClick={() => openImageTool(
                   "split",
                   moreRef.current?.querySelector<HTMLElement>("button"),

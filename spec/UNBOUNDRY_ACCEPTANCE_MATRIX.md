@@ -405,6 +405,18 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 | IMGEDIT-051 | P0 | 新事件治理与验收分层 | 方案、Checkpoint、CURRENT_STATE、TASKS、矩阵、交接与生产回执一致；旧USER_PASS、Provider真实PASS和技术上线状态不得串写 | v0.6.40 PR/CI/tag/Release/生产技术门与回执已同步；最小Project补权、一次H5真实失败和`1/50`账本已补录；v0.6.38既有USER_PASS仅作历史事实保留 | PRODUCTION_V0_6_40_TECHNICAL_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED |
 | IMGEDIT-052 | P0 | Provider失败可审计且不泄密 | 四个可信素材Action失败只保留HTTP状态、受限错误码与RequestId；远端Message、Body、AK/SK不得进入错误、响应或数据库 | 最终定向m42+m100+m81+m9 `71/71 PASS`；唯一safe full原始`1055/1056`，仅AGENTS治理短语失败，产品1055项均通过；修正后m38 `15/15 PASS` | TARGETED_AUTO_PASS / SAFE_FULL_EXECUTED_WITH_DOC_RECHECK_PASS |
 | IMGEDIT-053 | P0 | 当前方舟身份最小Project权限 | 只读匹配生产AK所属身份；缺失时只对对应Project和该身份补`ArkFullAccess`，不扩大用户、Project或策略 | Project `default`只为目标IAM用户新增`ArkFullAccess`，1成功0失败；用户详情显示项目限制。误加用户级策略已立即撤销且无残留，原只读策略保留 | PROJECT_PERMISSION_APPLIED / TRANSIENT_SCOPE_INCIDENT_REMEDIATED |
+| SEEDANCE-CHAR-001 | P0 | AI角色单图与真人可信Asset隔离 | 产品文案、状态、表、API和Generation引用均不复用H5/Group/Asset/`asset://`信任；历史本地预检与USER_PASS不升级 | schema41独立三表；m101 4/4；旧三表/H5请求未迁移未重提 | TARGETED_AUTO_PASS |
+| SEEDANCE-CHAR-002 | P0 | A/B/C能力分支 | 正式合同证明A风险预检、B旁路票据或C关闭；未知默认C，禁止fake | 官方合同无第三方票据提交字段；虚拟人像订阅超预算；审核Provider合同不足；自动选择C | BRANCH_C_SELECTED / OFFICIAL_CONTRACT_REVIEWED |
+| SEEDANCE-CHAR-003 | P0 | 告知与外部请求前准入 | 首次告知和明确同意；owner、ready media、checksum、capability、rate与幂等均在Provider前完成 | 应用层先验证disclosure/owner/ready/checksum/capability/idempotency；当前C零请求；m101 | APPLICATION_BOUNDARY_AUTO_PASS / C_ZERO_REQUEST |
+| SEEDANCE-CHAR-004 | P0 | 单图状态机与失效 | 16态逐图独立；替换图片、checksum、策略、模型、Provider身份、过期和撤销使旧结论不可用 | 精确16态；checksum、模型配置、profile/账号指纹/配置版本/凭据版本/策略版本、expiry/revoke持久绑定并在Generation双门重查；m101 | TARGETED_AUTO_PASS / P0_REVIEW_CLOSED |
+| SEEDANCE-CHAR-005 | P0 | Check/Attempt/Disclosure持久化 | 独立schema、owner scope、稳定幂等、accepted/response-received/outcome-unknown防重与重启恢复 | schema41三表、owner外键、稳定请求键；Attempt全局递增且outcome显式，未知结果不自动重提，只有明确未接收可在三次内手动retry；媒体删除保留审计；m91 9/9、m101 4/4 | TARGETED_AUTO_PASS / P1_REVIEW_CLOSED |
+| SEEDANCE-CHAR-006 | P0 | 保守人物/IP判定 | 真人、公众人物、版权IP、未成年人/敏感和低置信拒绝；非人物可NOT_REQUIRED，不作版权确权 | fake映射覆盖五类受限风险码与保守拒绝态；当前C不运行或声称真实判定 | FAKE_CONTRACT_AUTO_PASS / REAL_PROVIDER_NOT_APPLICABLE_C |
+| SEEDANCE-CHAR-007 | P0 | 蓝勾不可伪造 | 只在服务端当前有效APPROVED时显示；客户端、旧字段、复制、跨owner和开源模拟均不能提升信任 | C UI无蓝勾；正式B快照只由服务端Store与resolver构造，客户端票据不能单独通过 | TARGETED_AUTO_PASS / NO_BLUE_CHECK |
+| SEEDANCE-CHAR-008 | P0 | Generation双重复核 | 创建任务前与真实Provider边界重新核验check/checksum/policy/model/identity/expiry/revocation，失效在付费前拒绝 | task-create/provider-submit双门绑定当前Generation模型、Provider profile/config/credential与合规票据完整身份；A付费前拒绝；B合同缺失fail-closed；m101、m5 | TARGETED_AUTO_PASS / P0_REVIEW_CLOSED / GENERATION_ZERO |
+| SEEDANCE-CHAR-009 | P0 | Seedance旁路票据 | B分支必须有正式审核票据与Seedance提交合同；否则仅A风险预检或C关闭 | 官方CreateContentsGenerationsTasks无第三方审核票据字段，Ark adapter拒绝翻译；未伪造B | BLOCKED_EXTERNAL_CAPABILITY / BRANCH_C |
+| SEEDANCE-CHAR-010 | P0 | 隐私与安全 | 最短保留、无生物特征/原图副本/原始Body/秘密日志；callback签名、nonce、重放窗口与删除边界 | 当前C不外发、不存原图/Body/秘密/生物特征；用户附件未使用；callback不启用 | C_ZERO_EXTERNAL_DATA / TARGETED_AUTO_PASS |
+| SEEDANCE-CHAR-011 | P1 | Image工具交互与恢复 | A/B启用时由ImageToolHost承载三视口、四zoom、键盘/焦点、双击防重与刷新恢复；C必须在菜单层禁用并准确说明，不得遮蔽真人可信素材入口 | C菜单项disabled且“角色可信素材”仍可用；不创建面板/外部请求；m2 13/13；生产浏览器门待R11 | TARGETED_AUTO_PASS / P1_REVIEW_CLOSED / PRODUCTION_BROWSER_PENDING |
+| SEEDANCE-CHAR-012 | P0 | 证据与发布分层 | fake、真实审核、真实Seedance、GitHub、生产技术、零付费浏览器和USER_PASS分别记录 | fake与定向已分层；真实审核/Generation/OSS/费用0；GitHub/full/生产待R9～R11 | LOCAL_TARGETED_PASS / RELEASE_PENDING / USER_RECHECK_PENDING |
 
 `IMGEDIT-010～020` 由 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md` 和对应 Checkpoint 驱动。D0～D13工程、生产技术发布及六项各一次真实Provider技术冒烟均已完成，最终总账`6/6 / 60 USD`、无重试；整体状态`REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`。016～019不得把自动、真实技术或生产证据冒充用户质量通过。历史 `IMGEDIT-001～006、008、009 = PASS` 继续只证明既有外观、安全禁用和裁剪结果合同，不自动证明新功能已经实现。`IMGEDIT-007` 继续 `PAUSED`。
 
@@ -413,6 +425,8 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 INC-IMGEDIT-005 R0～R9已完成工程、GitHub、生产技术与零付费浏览器层。`IMGEDIT-029～037`达到生产自动复验，`IMGEDIT-038`为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；用户尚未在v0.6.37生产实页明确确认，不能写`USER_PASS`。
 
 `IMGEDIT-039～046`由`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_PLAN_2026-08-24.md`、对应Checkpoint与`spec/V0_6_38_PRODUCTION_RECEIPT_2026-08-24.json`驱动。GitHub和生产技术门已完成；用户已在生产实页明确回复“通过”，因此当前用户层收口为`USER_PASS`。真实H5创建失败仍不能写`PROVIDER_PROTOCOL_REAL_PASS`；控制面账本按分项计数，生成预算固定为0。
+
+`SEEDANCE-CHAR-001～012`由`spec/INC_SEEDANCE_002_AI_CHARACTER_SINGLE_IMAGE_COMPLIANCE_PLAN_2026-08-25.md`与对应Checkpoint驱动。v0.6.41候选已按B→A→C选择C并完成本地工程/定向层；AIGC-PineLine或fake只证明应用合同，不能作为真实审核或蓝勾证据。正式审核、Generation、OSS和费用均0；GitHub、生产、零付费浏览器与USER_RECHECK仍待R9～R11，INC-SEEDANCE-001真人可信素材状态从未迁移。
 
 D12 候选验证已完成：冻结前直接受影响定向`234/234 PASS`，四类审查无新阻断；唯一一次safe full原始`1048/1052`，精确修复后同一四个失败spec`106/106 PASS`，未运行第二次full。该证据只支持`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / D13_READY`，不自动把`IMGEDIT-016～019`升级为真实Provider、生产或用户质量PASS。
 

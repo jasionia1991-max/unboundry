@@ -981,12 +981,12 @@ async function validateRelease(
   if (!exactLegacy) {
     const expectedCompatibility = releaseRole === "bridge"
       ? {
-          activeSchemaVersions: [37, 40],
+          activeSchemaVersions: [37, 41],
           migrationMode: "external-one-shot-only",
-          rollbackTargetForSchemaVersion: 40,
+          rollbackTargetForSchemaVersion: 41,
         }
       : {
-          activeSchemaVersions: [40],
+          activeSchemaVersions: [41],
           migrationMode: "forbidden-from-final-runtime",
           standbySchemaVersions: [37],
         };
@@ -1302,7 +1302,7 @@ async function readDataContracts(options) {
   const stateBytes = stateSnapshot.bytes;
   const state = parseDocument(stateBytes, "Synthetic database state");
   if (
-    state.format !== STATE_FORMAT || !new Set([37, 40]).has(state.schemaVersion) ||
+    state.format !== STATE_FORMAT || !new Set([37, 41]).has(state.schemaVersion) ||
     !releaseIdPattern.test(state.bridgeReleaseId ?? "") ||
     !releaseIdPattern.test(state.exactOldReleaseId ?? "") ||
     !releaseIdPattern.test(state.finalReleaseId ?? "") ||
@@ -1990,21 +1990,21 @@ async function orchestrate(options) {
     steps.push("synthetic-sequencing-receipt-bound-and-current");
 
     if (options.operation === "rollback") {
-      if (contracts.state.schemaVersion === 40 && options.candidateId === contracts.state.exactOldReleaseId) {
+      if (contracts.state.schemaVersion === 41 && options.candidateId === contracts.state.exactOldReleaseId) {
         fail(
           "EXACT_OLD_ROLLBACK_FORBIDDEN",
-          "Schema 40 cannot roll back to exact v0.5.1; the verified bridge is mandatory",
+          "Schema 41 cannot roll back to exact v0.5.1; the verified bridge is mandatory",
         );
       }
-      if (contracts.state.schemaVersion === 40 && options.candidateId !== contracts.state.bridgeReleaseId) {
-        fail("BRIDGE_ROLLBACK_REQUIRED", "Schema 40 rollback target must be the verified bridge release");
+      if (contracts.state.schemaVersion === 41 && options.candidateId !== contracts.state.bridgeReleaseId) {
+        fail("BRIDGE_ROLLBACK_REQUIRED", "Schema 41 rollback target must be the verified bridge release");
       }
       if (
-        contracts.state.schemaVersion !== 40 ||
+        contracts.state.schemaVersion !== 41 ||
         initialCurrent.id !== contracts.state.finalReleaseId ||
         context.currentRelease.releaseRole !== "final" ||
         candidateRelease.releaseRole !== "bridge"
-      ) fail("BRIDGE_ROLLBACK_REQUIRED", "Rollback must switch the final schema 40 release to bridge");
+      ) fail("BRIDGE_ROLLBACK_REQUIRED", "Rollback must switch the final schema 41 release to bridge");
     } else if (options.operation === "bridge-switch") {
       if (
         contracts.state.schemaVersion !== 37 ||
@@ -2077,7 +2077,7 @@ async function orchestrate(options) {
         migrationManifestSha256: context.currentRelease.manifestSha256,
         migrationReleaseId: context.currentRelease.manifest.releaseId,
         migrationSourceStateSha256: contracts.initialStateSha256,
-        schemaVersion: 40,
+        schemaVersion: 41,
       }, {
         identity: contracts.initialStateIdentity,
         sha256: contracts.initialStateSha256,

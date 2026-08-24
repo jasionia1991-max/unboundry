@@ -5,6 +5,22 @@
 更新时间：2026-08-25
 状态：`生产v0.6.40 / schema40 / PRODUCTION_TECHNICAL_PASS；PROJECT_PERMISSION_APPLIED / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / BLOCKED_EXTERNAL_CAPABILITY / USER_RECHECK；新预算1/50、Generation/OSS/费用0。`
 
+### 2026-08-25 AI角色单图合规验证（INC-SEEDANCE-002，BRANCH_C / P0_P1_REVIEW_PASS / SAFE_FULL_PENDING）
+
+- [x] 官方一手合同复核：第三方审核票据不能进入Seedance正式提交合同；虚拟人像权益额外订阅超预算，B不成立
+- [x] Sightengine/Hive公开合同不足以完整覆盖所需风险分类和隐私边界，A不成立；按B→A→C自动选择C
+- [x] 产品名固定「角色风险预检」，入口准确关闭，不显示蓝勾，不声称Seedance验证、版权认证或法律合规
+- [x] 完成独立Port/Application/Store、fake Provider、16态、风险码、owner/checksum/model/config/provider身份失效与幂等边界
+- [x] 新增schema41三张独立Check/Attempt/Disclosure表；不复用或迁移INC-SEEDANCE-001 H5/Group/Asset/`asset://`状态
+- [x] 完成API/OpenAPI、C菜单层禁用且保留INC-SEEDANCE-001入口、Generation task-create/provider-submit双重复核和Ark票据翻译fail-closed
+- [x] 完成schema41备份/恢复/媒体/版本/bridge/release贯穿，以及精确schema40→41 dry-run/apply迁移
+- [x] 定向m101 `4/4`、m2 `13/13`、m20 `1/1`、m5 `21/21`、m10 `17/17`、m91 `9/9`、m92 `2/2`、m95 `5/5 PASS`
+- [x] 独立P0/P1终审：原始1 P0+5 P1全部关闭，无剩余P0/P1；修复后受影响定向最终全绿
+- [ ] 候选commit与本Goal唯一safe full
+- [ ] push/PR/CI/merge、v0.6.41 tag/Release、生产备份/演练/原子发布、零付费浏览器矩阵和最终权威回执
+
+权威方案：`spec/INC_SEEDANCE_002_AI_CHARACTER_SINGLE_IMAGE_COMPLIANCE_PLAN_2026-08-25.md`；实时断点：`spec/INC_SEEDANCE_002_AI_CHARACTER_SINGLE_IMAGE_COMPLIANCE_CHECKPOINT.md`。公开资料读取不计Provider控制面请求；真实审核、状态查询、Generation、OSS写入、订阅/购买、费用均0。生产在发布前仍为v0.6.40/schema40；自动技术完成后只能进入`USER_RECHECK`。
+
 ### 2026-08-24 Seedance可信素材真实链路恢复（INC-SEEDANCE-001）
 
 - [x] 对照火山方舟正式合同，确认管控面 Base URL 和可信素材四Action均使用`ark.cn-beijing.volcengineapi.com`

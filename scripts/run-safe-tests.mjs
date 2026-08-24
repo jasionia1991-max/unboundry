@@ -643,15 +643,15 @@ function preflight() {
     new Set(manifested).size !== manifested.length ||
     manifested.join("\n") !== specs.join("\n")
   ) {
-    fail("safe test manifest must be a duplicate-free exact 120-spec partition");
+    fail("safe test manifest must be a duplicate-free exact 121-spec partition");
   }
-  const expectedModeCounts = { dev: 75, hybrid: 4, node: 30, preview: 2, self: 9 };
+  const expectedModeCounts = { dev: 75, hybrid: 4, node: 31, preview: 2, self: 9 };
   for (const mode of expectedModes) {
     if (manifest[mode].length !== expectedModeCounts[mode]) {
       fail(`unexpected ${mode} spec count ${manifest[mode].length}`);
     }
   }
-  if (specs.length !== 120) fail(`expected 120 isolated specs, found ${specs.length}`);
+  if (specs.length !== 121) fail(`expected 121 isolated specs, found ${specs.length}`);
 
   const packageJson = JSON.parse(
     readFileSync(join(repositoryRoot, "package.json"), "utf8"),
@@ -1333,11 +1333,11 @@ function validateExactV051RawEvidence(raw, nonce) {
     schema39.rollbackBaselineNormalizedByCurrent !== true ||
     JSON.stringify(schema39.rollbackCheckpoint) !==
       JSON.stringify({ busy: 0, checkpointed: 0, log: 0 }) ||
-    schema39.userVersion !== 40 ||
+    schema39.userVersion !== 41 ||
     schema39.versionEndpointBeforeDatabaseOpen !== true ||
-    schema39.latestMigration?.version !== 40 ||
+    schema39.latestMigration?.version !== 41 ||
     schema39.latestMigration?.name !==
-      "seedance-trusted-asset-control-plane"
+      "seedance-character-compliance-precheck"
   ) fail("exact v0.5.1 current-schema rejection rehearsal is incomplete");
 }
 
@@ -2051,8 +2051,8 @@ async function discover(specs, suiteRoot, sourceRoot, browserRoot) {
         })}`,
       );
     }
-    if (discovery.tests !== 1056) {
-      fail(`the frozen 1056-test inventory changed to ${discovery.tests}`);
+    if (discovery.tests !== 1061) {
+      fail(`the frozen 1061-test inventory changed to ${discovery.tests}`);
     }
     const idsByFile = {};
     const { entries } = collectReportEntries(reportFile, sourceRoot);

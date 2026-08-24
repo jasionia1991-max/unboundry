@@ -264,100 +264,29 @@ test("Image fullscreen contains the complete 1086x1448 source inside the viewer"
   await expect(page.locator(".image-detail-viewer")).toHaveCSS("overflow", "hidden");
 });
 
-test("Image tools do not present local Seedance preflight as trusted-material validation", async ({
+test("Image tools accurately close character risk precheck without a false trust claim", async ({
   page,
 }) => {
-  let authorizationCreates = 0;
-  let sessionReads = 0;
-  let bindingStatus: "missing" | "ASSET_PROCESSING" | "ACTIVE" = "missing";
-  const unexpectedRemoteRequests: string[] = [];
-  await page.addInitScript(() => {
-    (window as Window & { __trustedAssetOpened?: string }).__trustedAssetOpened = "";
-    window.open = (() => {
-      return {
-        close() {},
-        location: {
-          replace(url: string | URL) {
-            (window as Window & { __trustedAssetOpened?: string })
-              .__trustedAssetOpened = String(url);
-          },
-        },
-        opener: null,
-      } as Window;
-    }) as typeof window.open;
-  });
+  const unexpectedWriteOrProviderRequests: string[] = [];
   page.on("request", (entry) => {
-    if (/seedance-validate|volcengine|ark\.cn|contents\/generations/i.test(entry.url())) {
-      unexpectedRemoteRequests.push(entry.url());
+    if (entry.method() !== "GET" ||
+        /volcengine|ark\.cn|contents\/generations/i.test(entry.url())) {
+      if (/character-compliance|volcengine|ark\.cn|contents\/generations/i.test(entry.url())) {
+        unexpectedWriteOrProviderRequests.push(`${entry.method()} ${entry.url()}`);
+      }
     }
   });
-  await page.route("**/api/seedance/trusted-assets/capability", async (route) => {
+  await page.route("**/api/seedance/character-compliance/capability", async (route) => {
     await route.fulfill({
       body: JSON.stringify({
-        branch: "A",
-        canCreateAuthorizationSession: true,
-        canInspectAsset: true,
-        providerDisplayName: "火山方舟 Seedance",
-      }),
-      contentType: "application/json",
-      status: 200,
-    });
-  });
-  await page.route("**/api/media/image/*/seedance/trusted-binding", async (route) => {
-    if (bindingStatus === "missing") {
-      await route.fulfill({
-        body: JSON.stringify({ code: "BINDING_NOT_FOUND", error: "not found" }),
-        contentType: "application/json",
-        status: 404,
-      });
-      return;
-    }
-    await route.fulfill({
-      body: JSON.stringify({
-        checkedAt: bindingStatus === "ACTIVE"
-          ? "2026-08-24T12:00:04.000Z"
-          : "2026-08-24T12:00:03.000Z",
-        createdAt: "2026-08-24T12:00:00.000Z",
-        failure: null,
-        id: "binding-fixture-1",
-        source: {
-          assetId: "asset-image-primary",
-          checksumSha256: "a".repeat(64),
-          kind: "image",
-        },
-        status: bindingStatus,
-        updatedAt: "2026-08-24T12:00:04.000Z",
-      }),
-      contentType: "application/json",
-      status: 200,
-    });
-  });
-  await page.route("**/api/media/image/*/seedance/authorization-sessions", async (route) => {
-    authorizationCreates += 1;
-    await route.fulfill({
-      body: JSON.stringify({
-        authorizationUrl: "https://visual.example.test/authorize-once",
-        createdAt: "2026-08-24T12:00:00.000Z",
-        expiresAt: null,
-        id: "session-fixture-1",
-        status: "WAITING_AUTHORIZATION",
-        updatedAt: "2026-08-24T12:00:01.000Z",
-      }),
-      contentType: "application/json",
-      status: 202,
-    });
-  });
-  await page.route("**/api/seedance/authorization-sessions/session-fixture-1", async (route) => {
-    sessionReads += 1;
-    const status = bindingStatus === "ACTIVE" ? "ACTIVE" : "ASSET_PROCESSING";
-    bindingStatus = status;
-    await route.fulfill({
-      body: JSON.stringify({
-        createdAt: "2026-08-24T12:00:00.000Z",
-        expiresAt: null,
-        id: "session-fixture-1",
-        status,
-        updatedAt: "2026-08-24T12:00:03.000Z",
+        available: false,
+        branch: "C",
+        canCreateChecks: false,
+        formalSeedanceTicketAccepted: false,
+        productName: "角色风险预检",
+        providerDisplayName: null,
+        reason: "没有同时满足用途、数据处理与风险分类合同的正式审核 Provider，入口已关闭",
+        reasonCode: "NO_COMPLIANT_PROVIDER",
       }),
       contentType: "application/json",
       status: 200,
@@ -379,66 +308,16 @@ test("Image tools do not present local Seedance preflight as trusted-material va
   const menu = page.getByTestId("image-node-more-menu");
   await expect(menu.getByRole("menuitem", { name: "Seedance 素材校验" }))
     .toHaveCount(0);
-  const trustedEntry = menu.getByRole("menuitem", { name: "角色可信素材" });
-  await expect(trustedEntry).toBeEnabled();
-  await trustedEntry.click();
-  const panel = page.getByTestId("seedance-trusted-asset-panel");
-  await expect(panel).toBeVisible();
-  await expectInsideViewport(panel);
-  await expect(panel).toContainText("尚未关联可信素材");
-  await expect(panel).toContainText("该状态来自当前方舟账号");
-  await expect(panel).not.toContainText(/预计|USD|CNY/);
-  await expect(page.locator("#root")).toHaveAttribute("inert", "");
-  const start = panel.getByRole("button", { name: "开始方舟真人授权" });
-  await start.dblclick();
-  await expect.poll(() => authorizationCreates).toBe(1);
-  await expect.poll(() => page.evaluate(() =>
-    (window as Window & { __trustedAssetOpened?: string }).__trustedAssetOpened,
-  )).toBe("https://visual.example.test/authorize-once");
-  await expect(panel).toContainText("等待完成真人授权");
-  await panel.getByRole("button", { name: "刷新状态" }).click();
-  await expect.poll(() => sessionReads).toBe(1);
-  await expect(panel).toContainText("方舟正在处理");
-  await panel.getByRole("button", { exact: true, name: "关闭" }).click();
-  await expect(panel).toHaveCount(0);
-  await expect(page.locator("#root")).not.toHaveAttribute("inert", "");
-
-  bindingStatus = "ACTIVE";
-  for (const viewport of [
-    { height: 720, width: 1280 },
-    { height: 900, width: 1440 },
-    { height: 900, width: 1728 },
-  ]) {
-    await page.setViewportSize(viewport);
-    await node.click();
-    const toolbar = page.getByTestId("image-node-toolbar");
-    await toolbar.getByRole("button", { name: "浏览全部" }).click();
-    await page.getByTestId("image-node-more-menu")
-      .getByRole("menuitem", { name: "角色可信素材" }).click();
-    await expect(panel).toContainText("方舟可信素材可用");
-    await expectInsideViewport(panel);
-    await expectScreenSpaceSizeInvariant(page, panel);
-    await page.keyboard.press("Escape");
-    await expect(panel).toHaveCount(0);
-    await expect(toolbar.getByRole("button", { name: "浏览全部" })).toBeFocused();
-  }
-
-  await page.reload();
-  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
-    "data-persistence-ready",
-    "true",
-  );
-  const restoredNode = page.locator('.react-flow__node-image[data-id="image-primary"]');
-  await restoredNode.click();
-  await page.getByTestId("image-node-toolbar")
-    .getByRole("button", { name: "浏览全部" }).click();
-  await page.getByTestId("image-node-more-menu")
-    .getByRole("menuitem", { name: "角色可信素材" }).click();
-  await expect(panel).toContainText("方舟可信素材可用");
-  await expect(panel).not.toContainText(/预计|USD|CNY/);
-  await panel.getByRole("button", { exact: true, name: "关闭" }).click();
-  await expect(page.getByTestId("image-seedance-validation-panel")).toHaveCount(0);
-  expect(unexpectedRemoteRequests).toEqual([]);
+  await expect(menu.getByRole("menuitem", { name: "角色可信素材" }))
+    .toBeEnabled();
+  const precheckEntry = menu.getByRole("menuitem", {
+    name: "角色风险预检（当前不可用）",
+  });
+  await expect(precheckEntry).toBeDisabled();
+  await expect(page.getByTestId("seedance-character-compliance-panel"))
+    .toHaveCount(0);
+  await page.keyboard.press("Escape");
+  expect(unexpectedWriteOrProviderRequests).toEqual([]);
 });
 
 test("Image empty and local upload states match the observed geometry", async ({
@@ -619,7 +498,7 @@ test("Image empty and local upload states match the observed geometry", async ({
     width: 238,
     height: 310,
   });
-  await expect(moreMenu.getByRole("menuitem")).toHaveCount(8);
+  await expect(moreMenu.getByRole("menuitem")).toHaveCount(9);
   await expect(moreMenu.locator("button:not(:disabled)")).toHaveCount(8);
   await expect(moreMenu.getByRole("menuitem", { name: "Seedance 素材校验" }))
     .toHaveCount(0);

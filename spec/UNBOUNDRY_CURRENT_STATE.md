@@ -1,17 +1,29 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为v0.6.40/schema40且技术健康；Project `default`补权已完成。唯一H5创建真实返回`403 SubscriptionRequired`，当前账号未开通Assets API，真实链按`BLOCKED_EXTERNAL_CAPABILITY`停止。
+> **状态分层**：现网仍为v0.6.40/schema40且技术健康；INC-SEEDANCE-002已获v0.6.41完整授权，按B→A→C选择最高诚实层级C并完成本地工程、独立终审与定向验证，尚待唯一safe full、GitHub和生产发布。
 
 更新日期：2026-08-25
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.40**
-本地候选代码版本：**v0.6.40**
+当前代码包版本：**v0.6.41**
+本地候选代码版本：**v0.6.41**
+本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_40_USER_RECHECK`
-当前热修门：`PRODUCTION_V0_6_40_TECHNICAL_PASS / PROJECT_PERMISSION_APPLIED / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / BLOCKED_EXTERNAL_CAPABILITY`
+当前热修门：`TARGETED_AUTO_PASS / SAFE_FULL_PENDING / PRODUCTION_V0_6_40_UNCHANGED`
 
 ## 一句话
 
-**生产是 v0.6.40 / schema40且技术健康；最小Project补权已完成，但方舟明确返回`SubscriptionRequired`，因此真实Group/Asset/Active/asset://链未完成且不得在本事件购买或重试。**
+**生产是 v0.6.40 / schema40且技术健康；v0.6.41候选已诚实实现C分支「角色风险预检」关闭态和完整可插拔工程边界，独立P0/P1终审已通过，正式审核、Generation、OSS和费用均0，下一步是唯一safe full。**
+
+## INC-SEEDANCE-002 AI角色单图合规验证（BRANCH_C / P0_P1_REVIEW_PASS / SAFE_FULL_PENDING）
+
+- 权威方案：`spec/INC_SEEDANCE_002_AI_CHARACTER_SINGLE_IMAGE_COMPLIANCE_PLAN_2026-08-25.md`；实时断点：`spec/INC_SEEDANCE_002_AI_CHARACTER_SINGLE_IMAGE_COMPLIANCE_CHECKPOINT.md`。
+- 正式一手合同只支持Seedance真人私域素材链；第三方审核票据没有正式提交字段，虚拟人像权益额外订阅超预算。Sightengine/Hive公开合同不足以完整证明人物、公众人物、版权IP、未成年人/敏感和隐私边界，因此B、A依次不成立，自动选择C。
+- C分支产品名固定「角色风险预检」：菜单入口直接禁用并标注当前不可用，保留独立的「角色可信素材」入口，不显示蓝勾，不使用「Seedance已验证」「版权已认证」「法律合规」文案；用户附件未发送到任何Provider。
+- schema41新增独立Check/Attempt/Disclosure三表；Port/Application/Store、fake Provider、16态、风险码、API/OpenAPI、ImageToolHost关闭态、刷新读模型和未来可插拔Provider边界已完成。INC-SEEDANCE-001三表、信任状态和历史H5请求未迁移、未重提。
+- Generation已在task-create和provider-submit双重支持正式B快照核验；A风险预检在付费前拒绝，Ark adapter在没有官方翻译合同时拒绝第三方ticket。当前C不会生成ticket、任务或Provider请求。
+- schema41已贯穿备份/恢复/媒体/版本/bridge/release；新增精确schema40→41 dry-run/apply迁移。最终定向：m101 `4/4`、m2 `13/13`、m20 `1/1`、m5 `21/21`、m10 `17/17`、m91 `9/9`、m92 `2/2`、m95 `5/5 PASS`。
+- 独立终审原始`1 P0 + 5 P1`已全部关闭：Generation/Provider/策略身份全绑定，旧真人入口保留，Attempt未知结果不自动重提，审计不随媒体删除，C入口菜单层禁用；无剩余P0/P1。
+- 请求账本：Provider控制面0、真实审核创建0、状态查询0、Generation0、OSS0、订阅/购买0、费用0。生产仍为v0.6.40/schema40；唯一safe full尚未执行，不能提前写生产PASS或USER_PASS。
 
 ## INC-SEEDANCE-001 Seedance可信素材真实链路恢复（PRODUCTION_V0_6_40_TECHNICAL_PASS / BLOCKED_EXTERNAL_CAPABILITY）
 
