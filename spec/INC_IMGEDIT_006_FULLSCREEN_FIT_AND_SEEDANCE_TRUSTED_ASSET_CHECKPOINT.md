@@ -2,9 +2,9 @@
 
 > 更新时间：2026-08-24
 >
-> 当前阶段：`R8_FROZEN_PENDING_SAFE_FULL`
+> 当前阶段：`R8_COMPLETE_R9_READY`
 >
-> 当前结论：R8只读P0/P1审查已关闭Active远端复核与schema40发布链兼容缺口，v0.6.38候选版本、备份、迁移、回滚、Linux验证和v0.5.1拒绝链均已同步；受影响定向最终全绿，候选待执行本Goal唯一一次safe full。
+> 当前结论：R8只读P0/P1审查与本Goal唯一一次safe full已执行；full原始`1053/1055`，两个精确合同遗漏已修正并定向`18/18 PASS`，没有重复full。v0.6.38候选进入R9 GitHub交付门。
 
 ## 1. 实时身份
 
@@ -75,8 +75,8 @@ PURCHASE_REQUIRED=NO
 | R5B/R5C | `NOT_APPLICABLE_CURRENT_BRANCH` | 仅保留能力降级合同，不作为当前实现分支 |
 | R6 | `TARGETED_AUTO_PASS` | owner/source/profile/account/region/project/checksum与远端Active共同构造可信引用；伪造asset://、错账号、失效、旧快照均在生成Provider边界前拒绝 |
 | R7 | `TARGETED_AUTO_PASS` | modal入口、A分支授权/处理/Active、错误状态、刷新恢复、双击幂等、三视口与零外网矩阵通过 |
-| R8 | `FROZEN_PENDING_SAFE_FULL` | P0/P1只读审查与schema40发布链同步完成；受影响定向最终全绿，待唯一一次safe full |
-| R9 | `NOT_STARTED` | v0.6.38 GitHub交付 |
+| R8 | `SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS` | 唯一safe full原始1053/1055；两个精确合同遗漏修正后m10+m9 18/18，未重复full |
+| R9 | `READY` | v0.6.38 GitHub交付 |
 | R10 | `NOT_STARTED` | 备份、必要迁移、fresh build、生产与真实控制面协议验收 |
 | R11 | `NOT_STARTED` | 生产零付费浏览器、回执、`USER_RECHECK` |
 
@@ -110,7 +110,10 @@ PURCHASE_REQUIRED=NO
 - schema40发布审查发现备份、媒体完整性、exact-v0.5.1 attestation、one-shot迁移、最终候选恢复、Linux生产验证和合成发布切换仍有schema39时代常量。已同步schema40支持、三张新表逻辑指纹、40迁移失败回滚checkpoint、final/bridge rollback合同与source coverage哈希；没有绕过历史schema37/38/39兼容。
 - 首轮schema40诊断批次原始为`35/56 PASS`，第二轮为`45/48 PASS`，失败均精确落在上述旧版本常量与三张新表断言；修正后m10+m92 `19/19 PASS`、source/snapshot`f4ad5418…11ffb`，m81+m88+m91+m95 `90/90 PASS`、source/snapshot`a3c12005…898fb`，新增schema40 checkpoint精确复验m91 `8/8 PASS`、source/snapshot`8a70ffaa…90b2f`。诊断失败保留为原始事实，不改写为全绿。
 - R8版本字段已同步为package/lock `0.6.38`、final runtime allowlist含0.6.38、当前schema40；P0/P1只读审查无剩余。真实Provider、Generation、OSS、费用和生产写入仍为0，控制面账本仍`1/200`。
-- 本Goal唯一一次safe full保留给R8冻结候选；文档同步不触发业务全量测试。
+- 本Goal唯一一次safe full在冻结提交`d5c5840413d5b2ebe4f60ab270e4817a273cc743`执行120 specs/1055 tests，原始`1053/1055 PASS`、退出1；blocked/skipped/retries/reportErrors均0，source/snapshot`7798d77ec41581d437523b96f5b10b98be5297589eb1d0c1418c180a05784d0f`，4173 unchanged。
+- full两个失败均为新增合同覆盖遗漏：m10的迁移子进程错误白名单缺`SCHEMA_MIGRATION_FAILED_SCHEMA40_APPLY`；m9旧正则把客户端合法的`AuthorizationSession/authorizationUrl`产品语义误判为发送Authorization凭据。前者补入精确白名单，后者收紧为实际HTTP header/Bearer发送形态且继续保留运行时出站header断言。
+- 只复验直接失败的m10+m9，最终`18/18 PASS`、退出0，source/snapshot`ad6bc903eea8af495481b50193d309593642963020f229672db8516e6c760dd3`，4173 unchanged。按Goal与测试重复控制没有运行第二次full；原始full不改写为全绿。
+- R8收口`LOCAL_ENGINEERING_COMPLETE / P0_P1_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS`；真实Provider/Generation/OSS/费用0，生产未改。
 - 自动化必须使用Node22.23.1/npm10.9.8、fresh临时data/runtime/cache和动态loopback端口，禁止4173、生产数据、真实Provider、真实OSS和任何付费生成。
 
 ## 8. GitHub、生产、阻断与回滚
@@ -122,4 +125,4 @@ PURCHASE_REQUIRED=NO
 
 ## 9. 唯一下一动作
 
-提交冻结的v0.6.38 R8候选并执行本Goal唯一一次safe full；按原始结果收口，不为追求全绿重复运行。
+提交R8精确修正与治理收口，定向复验m38后进入R9：push分支、创建不可变注释tag v0.6.38、PR/CI/merge与GitHub Release。

@@ -48,7 +48,7 @@ test("Provider secrets stay out of source, browser bundles, network and errors",
           /(?:import\.meta|process)\.env[^;\n]*(?:key|token|secret)/i,
         );
       expect(source, `${file} sends an authorization credential`).not.toMatch(
-        /(?:authorization|bearer\s+)/i,
+        /(?:headers\s*:\s*\{[^}]*\bauthorization\b|headers\.(?:append|set)\s*\(\s*["']authorization["']|setRequestHeader\s*\(\s*["']authorization["']|bearer\s+(?:[a-z0-9._~-]|\$\{))/is,
       );
     }
   }

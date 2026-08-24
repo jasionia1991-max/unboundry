@@ -1,11 +1,11 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.37 / schema39`且技术健康。INC-IMGEDIT-006 R8只读P0/P1审查与schema40发布链同步完成；冻结候选待唯一一次safe full。
+> **当前状态**：生产运行`v0.6.37 / schema39`且技术健康。INC-IMGEDIT-006 R8工程门完成；唯一safe full原始1053/1055、失败精确修正后定向18/18，未重复full，R9就绪。
 
 更新时间：2026-08-24
-状态：`生产v0.6.37 / schema39 / USER_RECHECK；INC-IMGEDIT-006 GOAL_ACTIVE / R8_FROZEN_PENDING_SAFE_FULL / P0_P1_REVIEW_PASS / ACTIVE_BRANCH_A / SCHEMA40_REQUIRED / VERSION_GATE_VALID_v0.6.38 / RELEASE_GATE_VALID；Provider控制面1/200，付费生成与费用0。`
+状态：`生产v0.6.37 / schema39 / USER_RECHECK；INC-IMGEDIT-006 GOAL_ACTIVE / R8_LOCAL_ENGINEERING_COMPLETE / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / R9_READY / ACTIVE_BRANCH_A / SCHEMA40_REQUIRED / VERSION_GATE_VALID_v0.6.38 / RELEASE_GATE_VALID；Provider控制面1/200，付费生成与费用0。`
 
-### 2026-08-24 图片全屏完整适配与Seedance可信素材（INC-IMGEDIT-006，R8_FROZEN_PENDING_SAFE_FULL）
+### 2026-08-24 图片全屏完整适配与Seedance可信素材（INC-IMGEDIT-006，R8_COMPLETE / R9_READY）
 
 - 权威方案：`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_PLAN_2026-08-24.md`；实时断点：`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_CHECKPOINT.md`
 - 隔离分支/工作树：`codex/inc-imgedit-006-v0.6.38-2026-08-24` / `/private/tmp/unboundry-inc006-v0.6.38-2026-08-24`；起点HEAD与`origin/main`同为`349a915`，package0.6.37、schema39
@@ -27,7 +27,8 @@
 - R7首轮稳定m2 `11/13`精确发现关闭按钮定位歧义和第8行菜单仍为272px，修正后m2 `13/13 PASS`；最终build及safe m100+m2+m20 `27/27 PASS`，source/snapshot`f22637b7…d2d0d1`、4173 unchanged、architecture新增例外0。
 - R8只读P0/P1审查关闭两类真实缺口：Active绑定的主动读取会重新执行Provider只读inspect且不吞错；schema40已贯穿备份/恢复/媒体完整性/exact-v0.5.1 attestation/one-shot迁移/迁移失败回滚/Linux验证/bridge rollback与合成发布切换，三张新表进入逻辑指纹。
 - schema40诊断原始两批为`35/56`与`45/48`，均因旧schema39常量和新表清单失败；修正后m10+m92 `19/19 PASS`、m81+m88+m91+m95 `90/90 PASS`、新增schema40 checkpoint m91 `8/8 PASS`。诊断失败不改写；真实Provider/Generation/OSS/费用0，账本仍1/200。
-- package/lock已为0.6.38，当前schema40，P0/P1审查无剩余。当前唯一下一动作是提交冻结R8候选并执行本Goal唯一一次safe full；不得为追求全绿重复运行。
+- package/lock已为0.6.38，当前schema40，P0/P1审查无剩余。本Goal唯一safe full在`d5c5840`执行120 specs/1055 tests，原始`1053/1055`、退出1；仅m10漏收schema40迁移错误码、m9把合法Authorization产品语义误判为凭据发送。精确修正后只复验m10+m9 `18/18 PASS`，source/snapshot`ad6bc903…60dd3`，未重复full。
+- R8收口`LOCAL_ENGINEERING_COMPLETE / P0_P1_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS`，原始full不改写。当前唯一下一动作是提交R8收口、定向m38治理复验后进入R9 GitHub交付。
 
 ### 2026-08-24 图片工具产品质量拒收返工（INC-IMGEDIT-005，R9_COMPLETE / USER_RECHECK）
 

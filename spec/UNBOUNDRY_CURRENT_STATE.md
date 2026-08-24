@@ -1,6 +1,6 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为v0.6.37/schema39且技术健康并保持`USER_RECHECK`。INC-IMGEDIT-006本地候选为v0.6.38/schema40，R8只读P0/P1审查与发布链同步完成，冻结候选待唯一一次safe full；尚未GitHub交付或发布，没有`USER_PASS`。
+> **状态分层**：现网为v0.6.37/schema39且技术健康并保持`USER_RECHECK`。INC-IMGEDIT-006本地候选为v0.6.38/schema40，R8工程门完成并进入R9；尚未GitHub交付或发布，没有`USER_PASS`。
 
 更新日期：2026-08-24
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
@@ -11,16 +11,17 @@
 
 ## 一句话
 
-**生产是 v0.6.37 / schema39且技术健康；本地v0.6.38/schema40候选已完成P0/P1审查，待唯一一次safe full，尚未发布。** 生产release仍为`/opt/unboundry/releases/v0.6.37-inc-imgedit-005-20260824`；v0.6.38版本门和发布门仅用于当前Goal，只有生产技术验收完成并由用户明确确认后才能写`USER_PASS`。
+**生产是 v0.6.37 / schema39且技术健康；本地v0.6.38/schema40候选已完成R8工程门，R9 GitHub交付就绪，尚未发布。** 生产release仍为`/opt/unboundry/releases/v0.6.37-inc-imgedit-005-20260824`；v0.6.38版本门和发布门仅用于当前Goal，只有生产技术验收完成并由用户明确确认后才能写`USER_PASS`。
 
-## INC-IMGEDIT-006 图片全屏完整适配与Seedance可信素材（R8_FROZEN_PENDING_SAFE_FULL）
+## INC-IMGEDIT-006 图片全屏完整适配与Seedance可信素材（R8_COMPLETE / R9_READY）
 
 - 权威方案为`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_PLAN_2026-08-24.md`，实时断点为`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_CHECKPOINT.md`；版本门与发布门为v0.6.38，生产仍未改变。
 - R2已修复1086×1448、3:4、9:16、16:9、1:1和超宽图在三视口的双轴完整适配；R3移除会冒充远端可信素材的旧本地校验入口。
 - R4～R6新增schema40的owner/profile/account/region/project/source绑定、正式方舟A分支控制adapter、只由服务端构造的`asset://`判别联合、任务快照及提交/Provider边界双重复核；伪造、跨账号、失效和旧快照全部fail-closed。
 - R7新增“角色可信素材”modal、同步预开H5、双击防重、20秒QPM兼容轮询、session ID刷新恢复、Processing到Active服务端推进、A/B/C与失败状态准确文案、inert/Escape/焦点及三视口。最终build和safe m100+m2+m20 `27/27 PASS`，source/snapshot`f22637b7…d2d0d1`，自动化真实Provider/Generation/OSS/费用0。
 - R8只读审查补齐Active绑定主动远端复核与schema40发布链：备份/恢复/媒体完整性、exact-v0.5.1、one-shot迁移、40迁移失败回滚、Linux验证及bridge rollback均已同步。诊断批次原始`35/56`、`45/48`，修正后精确`19/19`、`90/90`、`8/8 PASS`，P0/P1无剩余。
-- 当前Provider控制面账本仍为`1/200`，只发生R0权益只读；H5创建/轮询、Asset创建/轮询和最终核验均0，付费生成预算固定0。冻结候选完成本Goal唯一一次safe full后，才进入GitHub与生产链。
+- 本Goal唯一safe full在`d5c5840`执行120 specs/1055 tests，原始`1053/1055`、退出1；m10漏收schema40迁移错误码、m9旧正则误判Authorization产品语义。精确修正后只复验m10+m9 `18/18 PASS`，source/snapshot`ad6bc903…60dd3`，未重复full；R8按原始结果收口。
+- 当前Provider控制面账本仍为`1/200`，只发生R0权益只读；H5创建/轮询、Asset创建/轮询和最终核验均0，付费生成预算固定0。R9 GitHub交付就绪，生产仍未改变。
 
 ## INC-IMGEDIT-005 图片工具产品质量拒收返工（R9_COMPLETE / USER_RECHECK）
 
