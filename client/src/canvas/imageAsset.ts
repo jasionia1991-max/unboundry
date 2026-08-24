@@ -8,6 +8,7 @@ export type ImageAsset = {
   byteSize: number;
   contentType: "image/png";
   fileName: string;
+  hasTransparency: boolean;
   height: number;
   mediaHeight?: number;
   mediaWidth?: number;
@@ -81,6 +82,36 @@ function canvasPng(canvas: HTMLCanvasElement) {
   });
 }
 
+async function imageFileHasTransparency(file: File) {
+  const decoded = await decodeImage(file);
+  try {
+    if (
+      !decoded.width ||
+      !decoded.height ||
+      decoded.width * decoded.height > maximumImagePixels
+    ) {
+      throw new Error("图片尺寸过大，请缩小后重试");
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = decoded.width;
+    canvas.height = decoded.height;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) throw new Error("当前浏览器无法处理这张图片");
+    context.drawImage(decoded.source, 0, 0, decoded.width, decoded.height);
+    const rowsPerRead = 128;
+    for (let y = 0; y < decoded.height; y += rowsPerRead) {
+      const height = Math.min(rowsPerRead, decoded.height - y);
+      const pixels = context.getImageData(0, y, decoded.width, height).data;
+      for (let offset = 3; offset < pixels.length; offset += 4) {
+        if (pixels[offset] < 255) return true;
+      }
+    }
+    return false;
+  } finally {
+    decoded.close();
+  }
+}
+
 export async function normalizeImageToPng(file: File): Promise<File> {
   if (!acceptedImageTypes.has(file.type)) {
     throw new Error("仅支持PNG、JPEG、WebP或GIF图片");
@@ -124,6 +155,7 @@ export async function uploadPngAsset(file: File): Promise<ImageAsset> {
     throw new Error("请选择20MB以内的PNG图片");
   }
 
+  const hasTransparency = await imageFileHasTransparency(file);
   const requestedAssetId = crypto.randomUUID();
   let shouldCompensate = true;
   try {
@@ -145,7 +177,7 @@ export async function uploadPngAsset(file: File): Promise<ImageAsset> {
     if (asset.assetId !== requestedAssetId) {
       throw new Error("服务端返回的图片素材标识不一致");
     }
-    if (hasTrustedMediaDimensions(asset)) return asset;
+    if (hasTrustedMediaDimensions(asset)) return { ...asset, hasTransparency };
 
     const metadata = await fetchTrustedMediaMetadata("image", requestedAssetId);
     if (!hasTrustedMediaDimensions(metadata)) {
@@ -153,6 +185,7 @@ export async function uploadPngAsset(file: File): Promise<ImageAsset> {
     }
     return {
       ...asset,
+      hasTransparency,
       mediaHeight: metadata.mediaHeight,
       mediaWidth: metadata.mediaWidth,
     };

@@ -2,10 +2,12 @@ import type { ProbeNodeType } from "../canvas/ProbeNode";
 import type { CanvasGraphCommandPort } from "../canvas/canvasPorts";
 import type { CuttableEdge } from "../canvas/canvasTypes";
 import type { ImageToolOperation } from "../../../types/imageTools";
+import { findVacantImageToolPlacement } from "./imageToolPlacement";
 
 export type DerivedImageAsset = Readonly<{
   assetId: string;
   fileName: string;
+  hasTransparency?: boolean;
   height: number;
   url: string;
   width: number;
@@ -66,25 +68,24 @@ export function createDerivedImageToolUseCase(input: Readonly<{
       let committed = false;
       try {
         const metadata = await input.media.metadata(asset.assetId);
-        const sourceWidth = typeof source.style?.width === "number"
-          ? source.style.width
-          : 250;
         const derivedId = `image-${input.operation}-${command.operationId}`;
         const derivedNode: ProbeNodeType = {
           data: {
             assetId: asset.assetId,
             ...metadata,
+            imageAssetOrigin: "image-tool",
+            imageHasTransparency: asset.hasTransparency === true,
             imageSrc: asset.url,
+            imageToolOperation: input.operation,
+            imageToolOperationId: command.operationId,
+            imageToolSourceAssetId: command.sourceAssetId,
             label: "Image",
             sourceKind: "image",
             title: command.title ||
               asset.fileName.replace(/\.[^.]+$/, "") || "Image",
           },
           id: derivedId,
-          position: {
-            x: source.position.x + sourceWidth + 140,
-            y: source.position.y,
-          },
+          position: { x: 0, y: 0 },
           selected: true,
           style: { ...input.size(asset.width, asset.height) },
           type: "image",
@@ -109,14 +110,22 @@ export function createDerivedImageToolUseCase(input: Readonly<{
             sourceAssetId: command.sourceAssetId,
           },
           scope: "image-tool",
-          update: (snapshot) => ({
-            ...snapshot,
-            edges: [...snapshot.edges, edge],
-            nodes: [
-              ...snapshot.nodes.map((node) => ({ ...node, selected: false })),
-              derivedNode,
-            ],
-          }),
+          update: (snapshot) => {
+            const position = findVacantImageToolPlacement({
+              height: input.size(asset.width, asset.height).height,
+              nodes: snapshot.nodes,
+              sourceNodeId: command.sourceNodeId,
+              width: input.size(asset.width, asset.height).width,
+            });
+            return {
+              ...snapshot,
+              edges: [...snapshot.edges, edge],
+              nodes: [
+                ...snapshot.nodes.map((node) => ({ ...node, selected: false })),
+                { ...derivedNode, position },
+              ],
+            };
+          },
         });
         if (result.status !== "applied") {
           throw new Error(

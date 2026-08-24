@@ -5,6 +5,7 @@ import type {
   DerivedImageAsset,
   DerivedImageMediaPort,
 } from "./derivedImageToolUseCase";
+import { findVacantImageToolPlacement } from "./imageToolPlacement";
 
 export function createBatchDerivedImageToolUseCase(input: Readonly<{
   graph: CanvasGraphCommandPort;
@@ -46,27 +47,37 @@ export function createBatchDerivedImageToolUseCase(input: Readonly<{
         const metadata = await Promise.all(
           assets.map((asset) => input.media.metadata(asset.assetId)),
         );
-        const sourceWidth = typeof source.style?.width === "number"
-          ? source.style.width
-          : 250;
+        const sizes = assets.map((asset) => input.size(asset.width, asset.height));
+        const columnWidths = Array.from({ length: command.grid }, (_, column) =>
+          Math.max(...sizes.filter((_, index) => index % command.grid === column)
+            .map((size) => size.width)));
+        const rowHeights = Array.from({ length: command.grid }, (_, row) =>
+          Math.max(...sizes.slice(row * command.grid, (row + 1) * command.grid)
+            .map((size) => size.height)));
+        const columnOffsets = columnWidths.map((_, column) =>
+          columnWidths.slice(0, column).reduce((total, width) => total + width + 40, 0));
+        const rowOffsets = rowHeights.map((_, row) =>
+          rowHeights.slice(0, row).reduce((total, height) => total + height + 40, 0));
         const nodes: ProbeNodeType[] = assets.map((asset, index) => {
           const row = Math.floor(index / command.grid);
           const column = index % command.grid;
-          const size = input.size(asset.width, asset.height);
+          const size = sizes[index];
           return {
             data: {
               assetId: asset.assetId,
               ...metadata[index],
+              imageAssetOrigin: "image-tool",
+              imageHasTransparency: asset.hasTransparency === true,
               imageSrc: asset.url,
+              imageToolOperation: "quick-split",
+              imageToolOperationId: command.operationId,
+              imageToolSourceAssetId: command.sourceAssetId,
               label: "Image",
               sourceKind: "image",
               title: `${command.title}-${row + 1}-${column + 1}`,
             },
             id: `image-quick-split-${command.operationId}-${index}`,
-            position: {
-              x: source.position.x + sourceWidth + 140 + column * (size.width + 40),
-              y: source.position.y + row * (size.height + 40),
-            },
+            position: { x: columnOffsets[column], y: rowOffsets[row] },
             selected: true,
             style: { ...size },
             type: "image",
@@ -92,14 +103,30 @@ export function createBatchDerivedImageToolUseCase(input: Readonly<{
             sourceAssetId: command.sourceAssetId,
           },
           scope: "image-tool",
-          update: (snapshot) => ({
-            ...snapshot,
-            edges: [...snapshot.edges, ...edges],
-            nodes: [
-              ...snapshot.nodes.map((node) => ({ ...node, selected: false })),
-              ...nodes,
-            ],
-          }),
+          update: (snapshot) => {
+            const origin = findVacantImageToolPlacement({
+              height: rowHeights.reduce((total, height) => total + height, 0) +
+                40 * (command.grid - 1),
+              nodes: snapshot.nodes,
+              sourceNodeId: command.sourceNodeId,
+              width: columnWidths.reduce((total, width) => total + width, 0) +
+                40 * (command.grid - 1),
+            });
+            return {
+              ...snapshot,
+              edges: [...snapshot.edges, ...edges],
+              nodes: [
+                ...snapshot.nodes.map((node) => ({ ...node, selected: false })),
+                ...nodes.map((node) => ({
+                  ...node,
+                  position: {
+                    x: origin.x + node.position.x,
+                    y: origin.y + node.position.y,
+                  },
+                })),
+              ],
+            };
+          },
         });
         if (result.status !== "applied") {
           throw new Error("原图片或画布版本已发生变化，请重新打开快速分割");

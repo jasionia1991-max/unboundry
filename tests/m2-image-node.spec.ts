@@ -225,13 +225,14 @@ test("Image empty and local upload states match the observed geometry", async ({
     .toEqual({ width: 444, height: 250 });
   await expect(preview).toHaveCSS("object-fit", "contain");
   await expect(card).toHaveClass(/image-node-image-surface/);
-  await expect(card).not.toHaveCSS("background-image", "none");
+  await expect(card).toHaveCSS("background-image", "none");
   await expect(node.locator(".react-flow__resize-control")).toHaveCount(8);
   await expect(
     node.locator(".react-flow__handle.target .node-handle-plus"),
   ).toHaveCount(0);
   const toolbar = page.getByTestId("image-node-toolbar");
   await expect(toolbar).toBeVisible();
+  await expect(toolbar).toHaveCSS("z-index", "1002");
   expect(await toolbar.boundingBox()).toMatchObject({
     width: 400,
     height: 48,
@@ -277,10 +278,23 @@ test("Image empty and local upload states match the observed geometry", async ({
   );
   await expectInsideViewport(detail);
   await expect(page.getByTestId("image-tool-surface"))
-    .toHaveAttribute("data-surface-tone", "checkerboard");
+    .toHaveAttribute("data-surface-tone", "plain");
   await expect(page.getByTestId("image-tool-surface"))
-    .not.toHaveCSS("background-image", "none");
-  await expect(detail).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    .toHaveCSS("background-image", "none");
+  await expect(detail).not.toHaveClass(/image-transparent-preview/);
+  await expect(page.getByTestId("image-detail-preview"))
+    .not.toHaveClass(/image-transparent-preview/);
+  await expect(detail).toHaveCSS("background-color", "rgb(17, 17, 17)");
+  const detailPanel = detail.getByTestId("image-detail-panel");
+  await expect(detailPanel).toBeVisible();
+  await expect(detailPanel).toContainText("提示词");
+  await expect(detailPanel).toContainText("本地上传");
+  await expect(detailPanel).toContainText("1280 × 720");
+  await expect(detailPanel.locator("dt", { hasText: "模型" }).locator("..").locator("dd"))
+    .toHaveText("—");
+  await expect(detailPanel.locator("dt", { hasText: "来源素材" }).locator("..").locator("dd"))
+    .toHaveText("—");
+  await expect(detailPanel).not.toContainText(/预计|USD|CNY/);
   const detailDownload = detail.getByRole("button", { name: "下载" });
   const detailClose = detail.getByRole("button", { name: "关闭图片详情" });
   await expect(detailDownload).toBeVisible();
@@ -332,8 +346,19 @@ test("Image empty and local upload states match the observed geometry", async ({
   });
   await expect(moreMenu.getByRole("menuitem")).toHaveCount(8);
   await expect(moreMenu.locator("button:not(:disabled)")).toHaveCount(8);
+  const seedanceMenuItem = moreMenu.getByRole("menuitem", {
+    name: "Seedance 素材校验",
+  });
+  expect(await seedanceMenuItem.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return element.contains(document.elementFromPoint(
+      bounds.left + bounds.width / 2,
+      bounds.top + bounds.height / 2,
+    ));
+  })).toBe(true);
   await expect(moreMenu).toContainText("快速切分");
   await expect(moreMenu).toContainText("2×2　3×3　4×4");
+  await expect(moreMenu).not.toContainText(/预计|USD|CNY/);
   await moreMenu.getByRole("menuitem", { name: "扩图" }).click();
   const outpaint = page.getByTestId("image-outpaint-overlay");
   await expect(outpaint).toBeVisible();
@@ -346,8 +371,27 @@ test("Image empty and local upload states match the observed geometry", async ({
   await expectInsideViewport(outpaint.locator(".image-outpaint-controls"));
   await expectScreenSpaceSizeInvariant(page, outpaint);
   await expect(outpaint.locator(".image-outpaint-original")).toContainText("原图范围");
+  await expect(outpaint).toContainText("1280×720 → 1600×900");
+  await expect(outpaint).toContainText("扩展范围、原图位置和新增区域会随任务提交");
+  await expect(outpaint).toContainText("由图片模型生成新增区域");
+  await expect(outpaint).not.toContainText(/预计|USD|CNY/);
+  const outpaintFrame = outpaint.locator(".image-outpaint-frame");
+  await expect(outpaintFrame).toHaveAttribute("data-output-width", "1600");
+  await expect(outpaintFrame).toHaveAttribute("data-output-height", "900");
+  await expect(outpaintFrame).toHaveAttribute("data-source-x", "160");
+  await expect(outpaintFrame).toHaveAttribute("data-source-y", "90");
+  await expect.poll(async () => {
+    const bounds = await outpaintFrame.boundingBox();
+    return bounds ? bounds.width / bounds.height : 0;
+  }).toBeCloseTo(1_600 / 900, 2);
+  await expect(outpaint.locator(".image-outpaint-original")).toHaveAttribute(
+    "style",
+    /height: 80%; left: 10%; top: 10%; width: 80%/,
+  );
+  await expect(outpaint.getByRole("slider", { name: "扩图边界" }))
+    .toHaveCSS("accent-color", "rgb(166, 166, 166)");
   await expect(page.getByTestId("image-tool-surface"))
-    .toHaveAttribute("data-surface-tone", "checkerboard");
+    .toHaveAttribute("data-surface-tone", "plain");
   await outpaint.getByRole("button", { name: "取消扩图" }).click();
   await expect.soft(toolbar.getByRole("button", { name: "浏览全部" })).toBeFocused();
   await card.click({ position: { x: 20, y: 20 } });
@@ -362,8 +406,11 @@ test("Image empty and local upload states match the observed geometry", async ({
   await expectInsideViewport(page.getByTestId("image-redraw-stage"));
   await expectInsideViewport(page.getByTestId("image-redraw-prompt"));
   await expectScreenSpaceSizeInvariant(page, erase);
+  await expect(erase).not.toContainText(/预计|USD|CNY/);
+  await expect(erase.getByRole("textbox", { name: "擦除提示词" }))
+    .toHaveValue("移除选中对象并自然补全背景，保持未选择区域不变");
   await expect(page.getByTestId("image-redraw-stage"))
-    .not.toHaveCSS("background-image", "none");
+    .toHaveCSS("background-image", "none");
   await erase.getByRole("button", { name: "取消擦除" }).click();
   await card.click({ position: { x: 20, y: 20 } });
   await toolbar.getByRole("button", { name: "浏览全部" }).click();
@@ -375,6 +422,9 @@ test("Image empty and local upload states match the observed geometry", async ({
   await expectInsideViewport(enhance.locator(".image-tool-panel-footer"));
   await expectScreenSpaceSizeInvariant(page, enhance);
   await expect(enhance).toContainText("创意增强会生成新细节");
+  await expect(enhance).toContainText("创意增强任务指令");
+  await expect(enhance).toContainText("在保持主体身份、构图和主要颜色的前提下增强清晰度与细节");
+  await expect(enhance).not.toContainText(/预计|USD|CNY/);
   await expect(enhance.getByRole("button", { name: "保守增强" })).toBeEnabled();
   await expect(enhance.getByRole("button", { name: /创意增强/ })).toBeDisabled();
   await enhance.getByRole("button", { name: "取消" }).click();
@@ -389,6 +439,9 @@ test("Image empty and local upload states match the observed geometry", async ({
   await expectScreenSpaceSizeInvariant(page, cutout);
   await expect.soft(page.getByTestId("image-tool-surface")).toBeVisible();
   await expect(cutout).toContainText("棋盘格仅用于预览透明区域");
+  await expect(cutout).toContainText("任务指令");
+  await expect(cutout).toContainText("精确保留主要主体和边缘细节，完全移除背景");
+  await expect(cutout).not.toContainText(/预计|USD|CNY/);
   await expect(cutout.getByRole("button", { name: "生成透明PNG" })).toBeDisabled();
   await page.getByTestId("image-tool-host").click({ position: { x: 4, y: 4 } });
   await expect(cutout).toBeHidden();
@@ -538,6 +591,215 @@ test("Image empty and local upload states match the observed geometry", async ({
   await expect(
     node.locator(".react-flow__handle.target .node-handle-plus"),
   ).toHaveCount(1);
+});
+
+test("Image quick split crops transparent padding and divides only the visible body", async ({
+  page,
+  request,
+}) => {
+  const generationRequests: string[] = [];
+  page.on("request", (request) => {
+    if (/provider|generate/i.test(request.url()) && !request.url().includes("/src/")) {
+      generationRequests.push(request.url());
+    }
+  });
+  await request.delete("/api/canvas/node.image.empty");
+  await page.goto("/__fixture/node.image.empty");
+  const node = page.locator('.react-flow__node-image[data-id="image-primary"]');
+  const openSplit = async () => {
+    await node.click();
+    await page.getByTestId("image-node-toolbar")
+      .getByRole("button", { name: "浏览全部" }).click();
+    await page.getByTestId("image-node-more-menu")
+      .getByRole("menuitem", { name: /快速切分/ }).click();
+  };
+  const fullyTransparentBase64 = await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 16;
+    canvas.height = 16;
+    return canvas.toDataURL("image/png").split(",")[1];
+  });
+  await page.getByTestId("image-upload-input").setInputFiles({
+    buffer: Buffer.from(fullyTransparentBase64, "base64"),
+    mimeType: "image/png",
+    name: "fully-transparent.png",
+  });
+  await expect(node.getByTestId("image-node-preview")).toBeVisible();
+  await openSplit();
+  await expect(page.getByTestId("image-split-panel").getByRole("alert"))
+    .toContainText("图片没有可切分的可见内容");
+  await expect(page.getByTestId("image-split-panel")
+    .getByRole("button", { name: "确认切分" })).toBeDisabled();
+  await page.getByTestId("image-split-panel")
+    .getByRole("button", { name: "关闭快速切分" }).click();
+
+  const tinyVisibleBase64 = await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 4;
+    canvas.height = 4;
+    const context = canvas.getContext("2d")!;
+    context.fillStyle = "#fff";
+    context.fillRect(1, 1, 1, 1);
+    return canvas.toDataURL("image/png").split(",")[1];
+  });
+  await page.getByTestId("image-upload-input").setInputFiles({
+    buffer: Buffer.from(tinyVisibleBase64, "base64"),
+    mimeType: "image/png",
+    name: "one-visible-pixel.png",
+  });
+  await openSplit();
+  const tinySplitPanel = page.getByTestId("image-split-panel");
+  await expect(tinySplitPanel.getByRole("alert"))
+    .toContainText("可见内容至少需要 2×2 像素");
+  await expect(tinySplitPanel.getByRole("button", { name: "2×2（4张）" }))
+    .toBeDisabled();
+  await expect(tinySplitPanel.getByRole("button", { name: "4×4（16张）" }))
+    .toBeDisabled();
+  await expect(tinySplitPanel.getByRole("button", { name: "确认切分" }))
+    .toBeDisabled();
+  await tinySplitPanel.getByRole("button", { name: "关闭快速切分" }).click();
+
+  const pngBase64 = await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 400;
+    canvas.height = 300;
+    const context = canvas.getContext("2d")!;
+    context.clearRect(0, 0, 400, 300);
+    context.fillStyle = "#efefef";
+    context.fillRect(100, 50, 200, 200);
+    context.fillStyle = "#555";
+    context.fillRect(200, 150, 100, 100);
+    return canvas.toDataURL("image/png").split(",")[1];
+  });
+  await page.getByTestId("image-upload-input").setInputFiles({
+    buffer: Buffer.from(pngBase64, "base64"),
+    mimeType: "image/png",
+    name: "transparent-padded.png",
+  });
+  const nodeCard = node.getByTestId("image-node-image-primary");
+  const preview = node.getByTestId("image-node-preview");
+  await expect(preview).toBeVisible();
+  await expect(nodeCard).toHaveAttribute("data-transparent-output", "true");
+  await expect(nodeCard).not.toHaveClass(/image-transparent-preview/);
+  await expect(node.getByTestId("image-node-preview-frame"))
+    .toHaveClass(/image-transparent-preview/);
+  await expect.poll(async () => {
+    const saved = await (await request.get("/api/canvas/node.image.empty")).json() as {
+      nodes?: Array<{ data?: {
+        imageAssetOrigin?: string;
+        imageHasTransparency?: boolean;
+      }; id?: string }>;
+    };
+    return saved.nodes?.find((savedNode) => savedNode.id === "image-primary")?.data;
+  }).toMatchObject({
+    imageAssetOrigin: "local-upload",
+    imageHasTransparency: true,
+  });
+  await page.reload();
+  await expect(node.getByTestId("image-node-preview-frame"))
+    .toHaveClass(/image-transparent-preview/);
+  await node.click();
+  const toolbar = page.getByTestId("image-node-toolbar");
+  await toolbar.getByRole("button", { name: "裁剪" }).click();
+  await expect(page.getByTestId("image-crop-secure-source"))
+    .toHaveClass(/image-transparent-preview/);
+  await expect(page.getByTestId("image-crop-stage")).toContainText("本地裁剪");
+  await page.getByRole("button", { name: "取消裁剪" }).click();
+  await node.click();
+  await toolbar.getByRole("button", { name: "多角度" }).click();
+  await expect(page.getByTestId("image-multi-angle-cube").locator("img"))
+    .toHaveClass(/image-transparent-preview/);
+  await page.getByRole("button", { name: "关闭多角度" }).click();
+  await node.click();
+  await toolbar.getByRole("button", { name: "重绘" }).click();
+  await expect(page.getByTestId("image-redraw-stage").locator("img"))
+    .toHaveClass(/image-transparent-preview/);
+  await page.getByRole("button", { name: "取消重绘" }).click();
+  await node.click();
+  await toolbar.getByRole("button", { name: "浏览全部" }).click();
+  await page.getByTestId("image-node-more-menu")
+    .getByRole("menuitem", { name: "扩图" }).click();
+  await expect(page.getByTestId("image-outpaint-stage").locator("img"))
+    .toHaveClass(/image-transparent-preview/);
+  await page.getByRole("button", { name: "取消扩图" }).click();
+  await node.click();
+  await toolbar.getByRole("button", { name: "浏览全部" }).click();
+  await page.getByTestId("image-node-more-menu")
+    .getByRole("menuitem", { name: "标注" }).click();
+  await expect(page.getByTestId("image-annotation-stage").locator("img"))
+    .toHaveClass(/image-transparent-preview/);
+  await expect(page.getByTestId("image-annotation-stage")).toContainText("本地标注");
+  await page.getByRole("button", { name: "关闭标注" }).click();
+  await node.click();
+  await toolbar.getByRole("button", { name: "全屏查看" }).click();
+  await expect(page.getByTestId("image-detail-preview"))
+    .toHaveClass(/image-transparent-preview/);
+  await expect(page.getByTestId("image-detail")).toHaveCSS(
+    "background-color",
+    "rgb(17, 17, 17)",
+  );
+  await page.keyboard.press("Escape");
+  await page.getByTestId("image-node-toolbar")
+    .getByRole("button", { name: "浏览全部" }).click();
+  await page.getByTestId("image-node-more-menu")
+    .getByRole("menuitem", { name: /快速切分/ }).click();
+  const splitPanel = page.getByTestId("image-split-panel");
+  const splitPreview = splitPanel.getByRole("img", { name: "切分预览" });
+  await expect(splitPreview).toHaveAttribute("data-source-bounds", "100,50,200,200");
+  await expect(splitPanel).toContainText("只切分可见图片本体");
+  await splitPanel.getByRole("button", { name: "确认切分" }).click();
+  const splitNodes = page.locator(
+    '.react-flow__node-image[data-id^="image-quick-split-"]',
+  );
+  await expect.poll(async () => {
+    const saved = await (await request.get("/api/canvas/node.image.empty")).json() as {
+      nodes?: Array<{ id?: string }>;
+    };
+    return saved.nodes?.filter((savedNode) =>
+      savedNode.id?.startsWith("image-quick-split-")
+    ).length;
+  }).toBe(4);
+  await expect.poll(() => splitNodes.count()).toBeGreaterThanOrEqual(1);
+  await expect.poll(() => splitNodes.locator("img").evaluateAll(
+    (images: HTMLImageElement[]) => images.map((image) => ({
+      height: image.naturalHeight,
+      width: image.naturalWidth,
+    })),
+  )).toEqual(Array.from(
+    { length: await splitNodes.count() },
+    () => ({ height: 100, width: 100 }),
+  ));
+  const readSplitNodes = async () => {
+    const saved = await (await request.get("/api/canvas/node.image.empty")).json() as {
+      nodes?: Array<{ data?: { mediaHeight?: number; mediaWidth?: number }; id?: string }>;
+    };
+    return (saved.nodes ?? []).filter((savedNode) =>
+      savedNode.id?.startsWith("image-quick-split-")
+    );
+  };
+  for (const grid of [3, 4] as const) {
+    const before = await readSplitNodes();
+    const existingIds = new Set(before.map((savedNode) => savedNode.id));
+    await openSplit();
+    const panel = page.getByTestId("image-split-panel");
+    await panel.getByRole("button", { name: `${grid}×${grid}（${grid ** 2}张）` })
+      .click();
+    await panel.getByRole("button", { name: "确认切分" }).click();
+    await expect.poll(async () => (await readSplitNodes()).length)
+      .toBe(before.length + grid ** 2);
+    const created = (await readSplitNodes())
+      .filter((savedNode) => !existingIds.has(savedNode.id))
+      .sort((left, right) => Number(left.id?.split("-").at(-1)) -
+        Number(right.id?.split("-").at(-1)));
+    const expectedAxis = grid === 3 ? [67, 66, 67] : [50, 50, 50, 50];
+    expect(created.map((savedNode) => ({
+      height: savedNode.data?.mediaHeight,
+      width: savedNode.data?.mediaWidth,
+    }))).toEqual(Array.from({ length: grid }, (_, row) =>
+      expectedAxis.map((width) => ({ height: expectedAxis[row], width })))
+      .flat());
+  }
+  expect(generationRequests).toEqual([]);
 });
 
 test("Image prompt controls match the frozen ready state", async ({
@@ -691,6 +953,7 @@ test("Image generating state is visual-only and disables every control", async (
 
 test("Image success keeps the material-fit result, favorite, prompt, and parameters", async ({
   page,
+  request,
 }) => {
   const generationRequests: string[] = [];
   page.on("request", (request) => {
@@ -744,6 +1007,51 @@ test("Image success keeps the material-fit result, favorite, prompt, and paramet
   await expect(creator.getByRole("textbox")).toHaveValue(
     "A solid red square centered on a plain white background. Minimal test image.",
   );
+
+  const localReplacementBase64 = await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 64;
+    canvas.height = 32;
+    const context = canvas.getContext("2d")!;
+    context.fillStyle = "#777";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/png").split(",")[1];
+  });
+  await page.getByTestId("image-upload-input").setInputFiles({
+    buffer: Buffer.from(localReplacementBase64, "base64"),
+    mimeType: "image/png",
+    name: "local-replacement.png",
+  });
+  await expect.poll(async () => {
+    const saved = await (await request.get("/api/canvas/node.image.success")).json() as {
+      nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+    };
+    const data = saved.nodes?.find((savedNode) => savedNode.id === "image-primary")?.data;
+    return data && {
+      imageAspectRatio: data.imageAspectRatio ?? null,
+      imageAssetOrigin: data.imageAssetOrigin,
+      imageModelName: data.imageModelName ?? null,
+      imagePrompt: data.imagePrompt ?? null,
+      imageQuality: data.imageQuality ?? null,
+    };
+  }).toEqual({
+    imageAspectRatio: null,
+    imageAssetOrigin: "local-upload",
+    imageModelName: null,
+    imagePrompt: null,
+    imageQuality: null,
+  });
+  await node.click();
+  const localToolbar = page.getByTestId("image-node-toolbar");
+  await localToolbar.getByRole("button", { name: "全屏查看" }).click();
+  const localDetail = page.getByTestId("image-detail-panel");
+  await expect(localDetail).toContainText("本地上传");
+  await expect(localDetail.locator("dt", { hasText: "模型" }).locator("..").locator("dd"))
+    .toHaveText("—");
+  await expect(localDetail.locator("dt", { hasText: "质量" }).locator("..").locator("dd"))
+    .toHaveText("—");
+  await expect(localDetail.locator(".image-detail-prompt")).toHaveText("—");
+  await page.keyboard.press("Escape");
   expect(generationRequests).toEqual([]);
 });
 
@@ -882,6 +1190,7 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   const selection = page.getByTestId("image-crop-selection");
   const confirmCrop = page.getByRole("button", { name: "确认裁剪" });
   await expect(overlay).toBeVisible();
+  await expect(overlay).not.toContainText(/预计|USD|CNY/);
   await expect(page.getByTestId("image-crop-visual-preview")).toHaveCount(0);
   await expect(page.getByTestId("image-crop-loading")).toContainText(
     "正在准备高清原图",
@@ -903,8 +1212,8 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   await expectInsideViewport(stage);
   await expectScreenSpaceSizeInvariant(page, overlay);
   await expect(page.getByTestId("image-tool-surface"))
-    .toHaveAttribute("data-surface-tone", "checkerboard");
-  await expect(stage).not.toHaveCSS("background-image", "none");
+    .toHaveAttribute("data-surface-tone", "plain");
+  await expect(stage).toHaveCSS("background-image", "none");
   expect(await page.getByTestId("image-crop-controls").boundingBox())
     .toMatchObject({ height: 42, width: 252 });
   await expect(confirmCrop).toHaveCSS("white-space", "nowrap");
@@ -1068,6 +1377,7 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
     .getByRole("menuitem", { name: "调整像素" }).click();
   const resizePanel = page.getByTestId("image-resize-panel");
   await expect(resizePanel).toBeVisible();
+  await expect(resizePanel).not.toContainText(/预计|USD|CNY/);
   await expectInsideViewport(resizePanel);
   await expectInsideViewport(resizePanel.locator(".image-tool-panel-footer"));
   await expectScreenSpaceSizeInvariant(page, resizePanel);
@@ -1075,17 +1385,23 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   await expect(
     resizePanel.getByRole("spinbutton", { name: "像素高度" }),
   ).toHaveValue("360");
-  await resizePanel.getByRole("button", { name: "生成派生图" }).click();
-  const resizedNode = page.locator(
-    '.react-flow__node-image[data-id^="image-resize-pixels-"]',
-  );
-  await expect(resizedNode).toHaveCount(1);
-  await expect.poll(() => resizedNode.locator("img").evaluate(
-    (image: HTMLImageElement) => ({
-      height: image.naturalHeight,
-      width: image.naturalWidth,
-    }),
-  )).toEqual({ height: 360, width: 640 });
+  await resizePanel.getByRole("button", { name: "保存本地副本" }).click();
+  await expect.poll(async () => {
+    const saved = await (await request.get("/api/canvas/node.image.empty")).json() as {
+      nodes?: Array<{ data?: {
+        imageToolOperation?: string;
+        mediaHeight?: number;
+        mediaWidth?: number;
+      }; id?: string }>;
+    };
+    return saved.nodes?.find((savedNode) =>
+      savedNode.id?.startsWith("image-resize-pixels-")
+    )?.data;
+  }).toMatchObject({
+    imageToolOperation: "resize-pixels",
+    mediaHeight: 360,
+    mediaWidth: 640,
+  });
 
   await page.setViewportSize({ height: 900, width: 1728 });
   await node.click();
@@ -1093,31 +1409,39 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   await page.getByTestId("image-node-more-menu")
     .getByRole("menuitem", { name: "增强" }).click();
   const enhancePanel = page.getByTestId("image-enhance-panel");
+  await expect(enhancePanel).not.toContainText(/预计|USD|CNY/);
   await enhancePanel.getByRole("button", { name: "保守增强" }).click();
-  const enhancedNode = page.locator(
-    '.react-flow__node-image[data-id^="image-enhance-conservative-"]',
-  );
-  await expect(enhancedNode).toHaveCount(1);
-  await expect.poll(() => enhancedNode.locator("img").evaluate(
-    (image: HTMLImageElement) => ({
-      height: image.naturalHeight,
-      width: image.naturalWidth,
-    }),
-  )).toEqual({ height: 720, width: 1280 });
+  await expect.poll(async () => {
+    const saved = await (await request.get("/api/canvas/node.image.empty")).json() as {
+      nodes?: Array<{ data?: {
+        imageToolOperation?: string;
+        mediaHeight?: number;
+        mediaWidth?: number;
+      }; id?: string }>;
+    };
+    return saved.nodes?.find((savedNode) =>
+      savedNode.id?.startsWith("image-enhance-conservative-")
+    )?.data;
+  }).toMatchObject({
+    imageToolOperation: "enhance-conservative",
+    mediaHeight: 720,
+    mediaWidth: 1280,
+  });
 
   await node.click();
   await toolbar.getByRole("button", { name: "浏览全部" }).click();
   await page.getByTestId("image-node-more-menu")
     .getByRole("menuitem", { name: /快速切分/ }).click();
   const splitPanel = page.getByTestId("image-split-panel");
+  await expect(splitPanel).not.toContainText(/预计|USD|CNY/);
   await expectInsideViewport(splitPanel);
   await expectInsideViewport(splitPanel.locator(".image-tool-panel-footer"));
   await expectScreenSpaceSizeInvariant(page, splitPanel);
-  await expect(splitPanel.getByRole("img", { name: "分割预览" })).toBeVisible();
+  await expect(splitPanel.getByRole("img", { name: "切分预览" })).toBeVisible();
   await expect(splitPanel.getByRole("button", { name: "2×2（4张）" })).toBeVisible();
   await expect(splitPanel.getByRole("button", { name: "3×3（9张）" })).toBeVisible();
   await expect(splitPanel.getByRole("button", { name: "4×4（16张）" })).toBeVisible();
-  await splitPanel.getByRole("button", { name: "确认分割" }).click();
+  await splitPanel.getByRole("button", { name: "确认切分" }).click();
   const splitNodes = page.locator(
     '.react-flow__node-image[data-id^="image-quick-split-"]',
   );
@@ -1172,12 +1496,13 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   const annotationCanvas = page.getByTestId("image-annotation-canvas");
   const annotationToolbar = page.getByTestId("image-annotation-toolbar");
   await expect(annotationOverlay).toBeVisible();
+  await expect(annotationOverlay).not.toContainText(/预计|USD|CNY/);
   await expectInsideViewport(annotationOverlay);
   await expectInsideViewport(annotationToolbar);
   await expectInsideViewport(annotationStage);
   await expectInsideViewport(annotationOverlay.locator(".image-annotation-status"));
   await expectScreenSpaceSizeInvariant(page, annotationOverlay);
-  await expect(annotationStage).not.toHaveCSS("background-image", "none");
+  await expect(annotationStage).toHaveCSS("background-image", "none");
   const annotationBox = (await annotationStage.boundingBox())!;
 
   await annotationToolbar.getByRole("button", { name: "画笔" }).click();
@@ -1270,10 +1595,19 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   await page.getByTestId("image-node-more-menu")
     .getByRole("menuitem", { name: "Seedance 素材校验" }).click();
   const seedancePanel = page.getByTestId("image-seedance-validation-panel");
+  await expect(seedancePanel).not.toContainText(/预计|USD|CNY/);
   await expectInsideViewport(seedancePanel);
   await expectInsideViewport(seedancePanel.locator(".image-tool-panel-footer"));
   await expectScreenSpaceSizeInvariant(page, seedancePanel);
-  await expect(seedancePanel).toContainText("仅检查本地技术输入条件");
+  await expect(seedancePanel).toContainText("本工具只运行本地结构预检");
+  await expect(seedancePanel.getByTestId("seedance-local-preflight-state"))
+    .toContainText("未运行");
+  await expect(seedancePanel.getByTestId("seedance-provider-access-state"))
+    .toContainText("未执行 · 当前没有零费用只读远端资格证据");
+  await expect(seedancePanel.getByTestId("seedance-provider-access-state"))
+    .toContainText("实际提交时由方舟确认");
+  await expect(seedancePanel.getByTestId("seedance-trusted-material-state"))
+    .toContainText("未知 · 当前素材没有可核验的 asset:// 可信素材证明");
   await expect(seedancePanel.getByRole("combobox", { name: "Seedance 视频模型" }))
     .toHaveValue("fixture-seedance-2-mini");
   await expect(seedancePanel.getByRole("combobox", { name: "Seedance 素材角色" }))
@@ -1306,7 +1640,11 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   releaseSeedanceValidation();
   await seedanceSubmitPromise;
   await expect(seedancePanel.locator("[data-state=eligible]"))
-    .toContainText("本地技术预检通过");
+    .toContainText("通过 · 格式、尺寸、保存状态、模型与角色符合本地规则");
+  await expect(seedancePanel.getByTestId("seedance-provider-access-state"))
+    .toHaveAttribute("data-state", "not-checked");
+  await expect(seedancePanel.getByTestId("seedance-trusted-material-state"))
+    .toHaveAttribute("data-state", "unknown");
   expect(seedanceValidationBodies).toHaveLength(1);
   expect(seedanceValidationBodies[0]).toMatchObject({
     modelId: "fixture-seedance-2-mini",
@@ -1339,11 +1677,11 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   await page.getByTestId("image-node-more-menu")
     .getByRole("menuitem", { name: "Seedance 素材校验" }).click();
   await expect(seedancePanel.locator("[data-state=eligible]"))
-    .toContainText("本地技术预检通过");
+    .toContainText("通过 · 格式、尺寸、保存状态、模型与角色符合本地规则");
   await seedancePanel.getByRole("combobox", { name: "Seedance 素材角色" })
     .selectOption("subject");
   await expect(seedancePanel.locator("[data-state=stale]"))
-    .toContainText("请重新校验");
+    .toContainText("请重新预检");
   expect(generationRequests).toEqual([]);
 });
 
@@ -1498,7 +1836,9 @@ test("Image multi-angle submits a structured persistent fake task without Provid
   await panel.getByRole("slider", { name: "缩放" }).fill("20");
   await panel.getByRole("checkbox").check();
   await expect(page.getByTestId("image-multi-angle-capability"))
-    .toContainText("0.009 USD");
+    .toContainText("图片模型已就绪");
+  await expect(page.getByTestId("image-multi-angle-capability"))
+    .not.toContainText(/预计|USD|CNY/);
   const submit = panel.getByRole("button", { name: "生成多角度图片" });
   await expect(submit).toBeEnabled();
   await submit.click();
@@ -1679,9 +2019,11 @@ test("Image redraw submits an owner-scoped mask fake task and cancel is lossless
   await expectInsideViewport(toolbar);
   await expectInsideViewport(prompt);
   await expectScreenSpaceSizeInvariant(page, overlay);
-  await expect(stage).not.toHaveCSS("background-image", "none");
+  await expect(stage).toHaveCSS("background-image", "none");
   await expect(page.getByTestId("image-tool-surface"))
-    .toHaveAttribute("data-surface-tone", "checkerboard");
+    .toHaveAttribute("data-surface-tone", "plain");
+  await expect(prompt).not.toContainText(/预计|USD|CNY/);
+  await expect(prompt).toContainText("本地绘制蒙版 · 由图片模型完成重绘");
   const stageBox = (await stage.boundingBox())!;
   expect(stageBox.height).toBe(440);
   expect(stageBox.width).toBeCloseTo(782.22, 1);

@@ -43,7 +43,7 @@ function clamp(value: number, minimum: number, maximum: number) {
 export function ImageToolSurface({
   children,
   className = "",
-  tone = "checkerboard",
+  tone = "plain",
 }: Readonly<{
   children: ReactNode;
   className?: string;

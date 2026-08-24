@@ -36,7 +36,7 @@ export const imageToolDescriptors = Object.freeze({
     label: "图片标注",
     maximumWidth: 1120,
     presentation: "modal",
-    surface: "checkerboard",
+    surface: "plain",
   },
   crop: {
     closeOnOutside: false,
@@ -45,7 +45,7 @@ export const imageToolDescriptors = Object.freeze({
     label: "图片裁剪",
     maximumWidth: 1120,
     presentation: "modal",
-    surface: "checkerboard",
+    surface: "plain",
   },
   cutout: {
     closeOnOutside: true,
@@ -54,7 +54,7 @@ export const imageToolDescriptors = Object.freeze({
     label: "主体抠图",
     maximumWidth: 420,
     presentation: "popover",
-    surface: "checkerboard",
+    surface: "plain",
   },
   enhance: {
     closeOnOutside: true,
@@ -72,7 +72,7 @@ export const imageToolDescriptors = Object.freeze({
     label: "图片擦除",
     maximumWidth: 1120,
     presentation: "modal",
-    surface: "checkerboard",
+    surface: "plain",
   },
   fullscreen: {
     closeOnOutside: true,
@@ -81,7 +81,7 @@ export const imageToolDescriptors = Object.freeze({
     label: "图片详情",
     maximumWidth: 1440,
     presentation: "modal",
-    surface: "checkerboard",
+    surface: "plain",
   },
   "multi-angle": {
     closeOnOutside: true,
@@ -99,7 +99,7 @@ export const imageToolDescriptors = Object.freeze({
     label: "图片扩图",
     maximumWidth: 1120,
     presentation: "modal",
-    surface: "checkerboard",
+    surface: "plain",
   },
   redraw: {
     closeOnOutside: false,
@@ -108,7 +108,7 @@ export const imageToolDescriptors = Object.freeze({
     label: "图片重绘",
     maximumWidth: 1120,
     presentation: "modal",
-    surface: "checkerboard",
+    surface: "plain",
   },
   resize: {
     closeOnOutside: true,
@@ -135,7 +135,7 @@ export const imageToolDescriptors = Object.freeze({
     label: "快速切分",
     maximumWidth: 1120,
     presentation: "modal",
-    surface: "checkerboard",
+    surface: "plain",
   },
 } satisfies Record<ImageToolId, ImageToolDescriptor>);
 

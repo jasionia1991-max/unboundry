@@ -15,9 +15,11 @@ import {
   useReducer,
   useRef,
   useState,
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useCanvasCheckpoint } from "./CanvasHistory";
+import type { ImageToolOperation } from "../../../types/imageTools";
 import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
@@ -140,10 +142,12 @@ import {
   type ImageToolId,
 } from "../imageTools/imageToolUiContract";
 import {
+  analyzeVisibleImageBounds,
   enhanceConservativeLocalImage,
   prepareOutpaintImages,
   resizeLocalImage,
   splitLocalImage,
+  type VisibleImageBounds,
 } from "../imageTools/localImageProcessing";
 import { ImageAnnotationEditor } from
   "../imageTools/ImageAnnotationEditor";
@@ -293,6 +297,43 @@ const commonImageAspectRatios = [
   "4:5",
   "21:9",
 ];
+
+const imageToolSourceLabels: Partial<Record<ImageToolOperation, string>> = {
+  annotate: "标注 · 本地处理",
+  crop: "裁剪 · 本地处理",
+  "enhance-conservative": "保守增强 · 本地处理",
+  "enhance-creative": "创意增强 · AI生成",
+  erase: "擦除 · AI修补",
+  "multi-angle": "多角度 · AI生成",
+  outpaint: "扩图 · AI生成",
+  "quick-split": "快速切分 · 本地处理",
+  redraw: "重绘 · AI生成",
+  "remove-background": "主体抠图 · AI生成",
+  "resize-pixels": "调整像素 · 本地处理",
+};
+
+const creativeEnhancePrompt =
+  "在保持主体身份、构图和主要颜色的前提下增强清晰度与细节；允许补充自然纹理，不添加无关对象。";
+const removeBackgroundPrompt =
+  "精确保留主要主体和边缘细节，完全移除背景，输出透明背景PNG；不要添加阴影、底色或棋盘格。";
+const erasePrompt = "移除选中对象并自然补全背景，保持未选择区域不变";
+
+function imageDetailFileSize(bytes?: number) {
+  if (!Number.isFinite(bytes) || !bytes || bytes < 1) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function imageDetailRatio(width: number, height: number, stored?: string) {
+  if (stored && stored !== "auto") return stored;
+  if (width < 1 || height < 1) return "—";
+  const divisor = (left: number, right: number): number => right === 0
+    ? left
+    : divisor(right, left % right);
+  const common = divisor(Math.round(width), Math.round(height));
+  return `${Math.round(width) / common}:${Math.round(height) / common}`;
+}
 
 function completeImageOptions(common: string[], supported: string[]) {
   return [...common, ...supported.filter((item) => !common.includes(item))];
@@ -484,12 +525,14 @@ function ImageCropEditor({
   onCancel,
   onConfirm,
   title,
+  transparent,
   visualPreview,
 }: {
   assetId: string;
   onCancel: () => void;
   onConfirm: (file: File, sourceAssetId: string) => Promise<void>;
   title: string;
+  transparent: boolean;
   visualPreview?: CropVisualPreview;
 }) {
   const drag = useRef<{
@@ -686,7 +729,7 @@ function ImageCropEditor({
             alt=""
             className={`image-crop-secure-source${
               sourceDecoded ? " ready" : ""
-            }`}
+            }${transparent ? " image-transparent-preview" : ""}`}
             crossOrigin={editableSource.crossOrigin}
             data-testid="image-crop-secure-source"
             draggable={false}
@@ -713,7 +756,9 @@ function ImageCropEditor({
           <img
             alt=""
             aria-hidden="true"
-            className="image-crop-visual-preview"
+            className={`image-crop-visual-preview${
+              transparent ? " image-transparent-preview" : ""
+            }`}
             data-testid="image-crop-visual-preview"
             draggable={false}
             onError={() => setVisualPreviewFailed(true)}
@@ -768,6 +813,7 @@ function ImageCropEditor({
             />
           ))}
         </div>}
+        <span className="image-editor-processing-badge">本地裁剪</span>
       </div>
       <div className="image-crop-controls" data-testid="image-crop-controls">
         <button
@@ -839,6 +885,7 @@ function ImageMultiAnglePanel({
   onClose,
   onSubmit,
   src,
+  transparent,
 }: {
   busy: boolean;
   capability: ImageToolCapability;
@@ -846,6 +893,7 @@ function ImageMultiAnglePanel({
   onClose: () => void;
   onSubmit: (angle: MultiAngle) => Promise<void>;
   src: string;
+  transparent: boolean;
 }) {
   const drag = useRef<
     { rotation: number; tilt: number; x: number; y: number } | undefined
@@ -925,7 +973,8 @@ function ImageMultiAnglePanel({
           >
             <span className="image-multi-angle-guide image-multi-angle-left">L</span>
             <span className="image-multi-angle-guide image-multi-angle-bottom">B</span>
-            <img alt="" draggable={false} src={src} />
+            <img alt="" className={transparent ? "image-transparent-preview" : undefined}
+              draggable={false} src={src} />
           </div>
           <button className="image-multi-angle-reset" disabled={busy} onClick={reset} type="button">
             ↻ 重置
@@ -975,9 +1024,7 @@ function ImageMultiAnglePanel({
       <footer className="image-tool-panel-footer">
         <span data-testid="image-multi-angle-capability">
           {capability.status === "available"
-            ? capability.estimatedCost
-              ? `预计 ${capability.estimatedCost.amount} ${capability.estimatedCost.currency}`
-              : "能力已就绪"
+            ? "图片模型已就绪"
             : capability.reason}
         </span>
         <button disabled={busy} onClick={onClose} type="button">取消</button>
@@ -1004,6 +1051,7 @@ function ImageRedrawEditor({
   onSubmit,
   operation = "redraw",
   src,
+  transparent,
 }: {
   busy: boolean;
   capability: ImageToolCapability;
@@ -1017,6 +1065,7 @@ function ImageRedrawEditor({
   }>) => Promise<void>;
   operation?: "erase" | "redraw";
   src: string;
+  transparent: boolean;
 }) {
   const isErase = operation === "erase";
   const noun = isErase ? "擦除" : "重绘";
@@ -1036,7 +1085,7 @@ function ImageRedrawEditor({
   const [featherPixels, setFeatherPixels] = useState(0);
   const [historyVersion, setHistoryVersion] = useState(0);
   const [natural, setNatural] = useState({ height: 720, width: 1280 });
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState(isErase ? erasePrompt : "");
   const [tool, setTool] = useState<RedrawTool>("brush");
   const promptControl = useCompositionSafeText({
     onCommit: setPrompt,
@@ -1155,6 +1204,7 @@ function ImageRedrawEditor({
       >
         <img
           alt=""
+          className={transparent ? "image-transparent-preview" : undefined}
           draggable={false}
           onLoad={(event) =>
             setNatural({
@@ -1266,15 +1316,13 @@ function ImageRedrawEditor({
           onKeyDown={(event) => {
             promptControl.keyDown(event);
           }}
-          placeholder={isErase ? "可补充希望如何补全背景..." : "描述你想改变什么..."}
+          placeholder={isErase ? "描述擦除后应如何补全背景..." : "描述你想改变什么..."}
           value={promptControl.value}
         />
         <div>
           <span aria-hidden="true">⌕</span>
           <span>{capability.status === "available"
-            ? capability.estimatedCost
-              ? `预计 ${capability.estimatedCost.amount} ${capability.estimatedCost.currency}`
-              : `绘制蒙版以${noun}`
+            ? `本地绘制蒙版 · 由图片模型完成${noun}`
             : capability.reason}</span>
           <label className="image-redraw-feather">
             羽化
@@ -1294,7 +1342,7 @@ function ImageRedrawEditor({
             aria-label={`提交${noun}`}
             disabled={
               busy || capability.status !== "available" ||
-              (!isErase && !promptControl.committedValue.trim()) || history.current.length < 1
+              !promptControl.committedValue.trim() || history.current.length < 1
             }
             onClick={() => {
               const canvas = canvasRef.current;
@@ -1303,8 +1351,7 @@ function ImageRedrawEditor({
                 .then((maskFile) => onSubmit({
                   featherPixels,
                   maskFile,
-                  prompt: promptControl.committedValue ||
-                    "移除选中对象并自然补全背景，保持未选择区域不变",
+                  prompt: promptControl.committedValue.trim(),
                 }))
                 .catch((caught) => onError(
                   caught instanceof Error ? caught.message : `${noun}遮罩生成失败`,
@@ -1328,6 +1375,7 @@ function ImageOutpaintEditor({
   onClose,
   onSubmit,
   src,
+  transparent,
 }: {
   busy: boolean;
   capability: ImageToolCapability;
@@ -1337,29 +1385,59 @@ function ImageOutpaintEditor({
   onClose: () => void;
   onSubmit: (input: Readonly<{ marginPercent: number; prompt: string }>) => Promise<void>;
   src: string;
+  transparent: boolean;
 }) {
   const [marginPercent, setMarginPercent] = useState(25);
   const [prompt, setPrompt] = useState("自然延展画面边缘，保持原图主体和原区域不变");
   const promptControl = useCompositionSafeText({ onCommit: setPrompt, value: prompt });
+  const horizontalMargin = Math.max(
+    1,
+    Math.round(naturalWidth * marginPercent / 100 / 2),
+  );
+  const verticalMargin = Math.max(
+    1,
+    Math.round(naturalHeight * marginPercent / 100 / 2),
+  );
+  const outputWidth = naturalWidth + horizontalMargin * 2;
+  const outputHeight = naturalHeight + verticalMargin * 2;
+  const outputRatio = outputWidth / outputHeight;
+  const previewMaximumWidth = Math.max(240, Math.min(820, window.innerWidth - 80));
+  const previewMaximumHeight = Math.max(160, window.innerHeight - 300);
+  const previewWidth = Math.min(
+    previewMaximumWidth,
+    previewMaximumHeight * outputRatio,
+  );
+  const previewHeight = previewWidth / outputRatio;
   return (
     <div
       className="image-outpaint-overlay nodrag nopan nowheel"
       data-testid="image-outpaint-overlay">
       <header className="image-editor-header">
-        <span><strong>扩图</strong><small>灰色边框内是原图，棋盘格区域为新增边界</small></span>
+        <span><strong>扩图</strong><small>边框内是原图，深灰区域是新增范围</small></span>
         <button aria-label="取消扩图" disabled={busy} onClick={onClose} type="button">×</button>
       </header>
       <div className="image-outpaint-stage" data-testid="image-outpaint-stage">
-        <div className="image-outpaint-frame" style={{ padding: `${marginPercent / 2}%` }}>
-          <div className="image-outpaint-original">
-            <img alt="" draggable={false} src={src} />
+        <div className="image-outpaint-frame"
+          data-output-height={outputHeight}
+          data-output-width={outputWidth}
+          data-source-x={horizontalMargin}
+          data-source-y={verticalMargin}
+          style={{ height: previewHeight, width: previewWidth }}>
+          <div className="image-outpaint-original" style={{
+            height: `${naturalHeight / outputHeight * 100}%`,
+            left: `${horizontalMargin / outputWidth * 100}%`,
+            top: `${verticalMargin / outputHeight * 100}%`,
+            width: `${naturalWidth / outputWidth * 100}%`,
+          }}>
+            <img alt="" className={transparent ? "image-transparent-preview" : undefined}
+              draggable={false} src={src} />
             <span>原图范围</span>
           </div>
         </div>
-        <small>{naturalWidth}×{naturalHeight} · 四周扩展 {marginPercent}%</small>
+        <small>{naturalWidth}×{naturalHeight} → {outputWidth}×{outputHeight}</small>
       </div>
       <div className="image-outpaint-controls">
-        <label>扩展边界
+        <label>画布总扩展
           <input aria-label="扩图边界" disabled={busy} max="50" min="5"
             onChange={(event) => setMarginPercent(Number(event.target.value))}
             type="range" value={marginPercent} />
@@ -1372,7 +1450,9 @@ function ImageOutpaintEditor({
           onCompositionEnd={(event) => promptControl.compositionEnd(event.currentTarget.value)}
           onCompositionStart={() => promptControl.compositionStart()}
           onKeyDown={(event) => promptControl.keyDown(event)} />
-        <span>{capability.status === "available" ? "只生成新增边界" : capability.reason}</span>
+        <span>扩展范围、原图位置和新增区域会随任务提交，由图片模型生成新增区域{capability.status === "available"
+          ? ""
+          : ` · ${capability.reason}`}</span>
         <button aria-label="提交扩图" disabled={busy || capability.status !== "available" ||
           !promptControl.committedValue.trim()}
           onClick={() => void onSubmit({ marginPercent,
@@ -1539,9 +1619,11 @@ function ImageLightingPanel({
 function ImageNodeImpl({
   data,
   dragging,
+  height,
   id,
   parentId,
   selected,
+  width,
 }: NodeProps<ProbeNodeType>) {
   const multiAngleCapability = useImageToolCapability("multi-angle");
   const redrawCapability = useImageToolCapability("redraw");
@@ -1552,6 +1634,18 @@ function ImageNodeImpl({
   const seedanceCapability = useImageToolCapability("seedance-validate");
   const singleNodeChrome = useSingleNodeChrome(selected, dragging);
   const mediaLoad = useMediaLoadRecovery(data.imageSrc);
+  const imageShowsTransparency = data.imageHasTransparency === true ||
+    data.imageToolOutputBackground === "transparent";
+  const previewFrameStyle = (() => {
+    const mediaWidth = data.mediaWidth;
+    const mediaHeight = data.mediaHeight;
+    if (!width || !height || !mediaWidth || !mediaHeight) return undefined;
+    const scale = Math.min(width / mediaWidth, height / mediaHeight);
+    return {
+      height: Math.max(1, Math.round(mediaHeight * scale)),
+      width: Math.max(1, Math.round(mediaWidth * scale)),
+    } satisfies CSSProperties;
+  })();
   const inputRef = useRef<HTMLInputElement>(null);
   const moreRef = useRef<HTMLSpanElement>(null);
   const previewImageRef = useRef<HTMLImageElement>(null);
@@ -1730,6 +1824,10 @@ function ImageNodeImpl({
   const [multiAngleBusy, setMultiAngleBusy] = useState(false);
   const [multiAngleError, setMultiAngleError] = useState("");
   const [localToolBusy, setLocalToolBusy] = useState(false);
+  const [splitVisibleBounds, setSplitVisibleBounds] =
+    useState<VisibleImageBounds>();
+  const [splitPreviewError, setSplitPreviewError] = useState("");
+  const [splitPreviewBusy, setSplitPreviewBusy] = useState(false);
   const [annotationBusy, setAnnotationBusy] = useState(false);
   const [modelSwitchProblem, setModelSwitchProblem] = useState("");
   const [redrawBusy, setRedrawBusy] = useState(false);
@@ -1851,6 +1949,42 @@ function ImageNodeImpl({
         });
       })()
     : undefined;
+  useEffect(() => {
+    if (localToolOpen !== "split") {
+      setSplitVisibleBounds(undefined);
+      setSplitPreviewError("");
+      setSplitPreviewBusy(false);
+      return;
+    }
+    const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
+    if (!sourceAssetId) {
+      setSplitVisibleBounds(undefined);
+      setSplitPreviewError("图片尚未完成安全保存");
+      setSplitPreviewBusy(false);
+      return;
+    }
+    let cancelled = false;
+    setSplitVisibleBounds(undefined);
+    setSplitPreviewError("");
+    setSplitPreviewBusy(true);
+    void analyzeVisibleImageBounds(sourceAssetId)
+      .then((bounds) => {
+        if (!cancelled) setSplitVisibleBounds(bounds);
+      })
+      .catch((failure: unknown) => {
+        if (!cancelled) {
+          setSplitPreviewError(
+            failure instanceof Error ? failure.message : "无法识别图片本体",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setSplitPreviewBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [data.assetId, localToolOpen]);
   useEffect(() => {
     if (!seedanceOpen || !data.imageSeedanceValidation) return;
     const remaining = Date.parse(data.imageSeedanceValidation.expiresAt) - Date.now();
@@ -3665,8 +3799,42 @@ function ImageNodeImpl({
                   ...node.data,
                   assetId: asset.assetId,
                   ...trustedMediaPatch(metadata),
+                  imageAssetOrigin: "local-upload",
+                  imageAnnotations: undefined,
+                  imageAspectRatio: undefined,
+                  imageGeneratedSuccess: undefined,
+                  imageHasTransparency: asset.hasTransparency,
+                  imageGenerationErrorCode: undefined,
                   imageGenerationError: undefined,
+                  imageGenerationInputKey: undefined,
+                  imageGenerationOwnershipKey: undefined,
+                  imageGenerationRetryAllowed: undefined,
+                  imageGenerationRetryBlockCode: undefined,
+                  imageGenerationRetryBlockReason: undefined,
+                  imageGenerationTaskId: undefined,
+                  imageGenerating: undefined,
+                  imageModelId: undefined,
+                  imageModelName: undefined,
+                  imageMultiAngleParameters: undefined,
+                  imageParameters: undefined,
+                  imagePrompt: undefined,
+                  imageQuality: undefined,
+                  imageSeedanceValidation: undefined,
                   imageSrc: asset.url,
+                  imageToolMaskAssetId: undefined,
+                  imageToolMaskFeatherPixels: undefined,
+                  imageToolMaskHeight: undefined,
+                  imageToolMaskVersion: undefined,
+                  imageToolMaskWidth: undefined,
+                  imageToolOperation: undefined,
+                  imageToolOperationId: undefined,
+                  imageToolOutpaintParameters: undefined,
+                  imageToolOutputBackground: undefined,
+                  imageToolPreparedAssetId: undefined,
+                  imageToolPreparedHeight: undefined,
+                  imageToolPreparedVersion: undefined,
+                  imageToolPreparedWidth: undefined,
+                  imageToolSourceAssetId: undefined,
                 },
               };
           }
@@ -4751,7 +4919,8 @@ function ImageNodeImpl({
         </button>
         <button
           aria-label="全屏查看"
-          data-tooltip="全屏查看"
+          data-tooltip={mediaLoad.failed ? "图片加载失败，暂时无法查看详情" : "全屏查看"}
+          disabled={mediaLoad.failed}
           onClick={(event) => void imageToolDispatcher.execute("fullscreen", {
             open: () => openImageTool("fullscreen", event.currentTarget),
           })}
@@ -4778,6 +4947,7 @@ function ImageNodeImpl({
                 await imageToolDispatcher.execute("crop", { file, sourceAssetId });
               }}
               title={titleControl.committedValue}
+              transparent={imageShowsTransparency}
               visualPreview={cropVisualPreview}
             />
           </ImageToolSurface>
@@ -4804,6 +4974,9 @@ function ImageNodeImpl({
                 await imageToolDispatcher.execute("quick-split", { grid });
               }}
               preview={preview}
+              previewBounds={splitVisibleBounds}
+              previewBusy={splitPreviewBusy}
+              previewError={splitPreviewError}
             />
           </ImageToolSurface>
         )}
@@ -4826,8 +4999,11 @@ function ImageNodeImpl({
               }} type="button"><strong>保守增强</strong><small>本地处理 · 不新增内容</small></button>
               <button disabled={enhanceBusy || creativeEnhanceCapability.status !== "available"}
                 onClick={() => void submitPromptGeneration("enhance-creative",
-                  "在保持主体身份、构图和主要颜色的前提下增强清晰度与细节；允许补充自然纹理，不添加无关对象。")}
+                  creativeEnhancePrompt)}
                 type="button"><strong>创意增强</strong><small>会生成新细节 · 需要模型能力</small></button>
+              <div className="image-tool-task-prompt">
+                <strong>创意增强任务指令</strong><span>{creativeEnhancePrompt}</span>
+              </div>
               {enhanceError && <div role="alert">{enhanceError}</div>}
             </div>
             <footer className="image-tool-panel-footer">
@@ -4841,12 +5017,15 @@ function ImageNodeImpl({
             <div className="image-tool-compact-panel image-processing-alpha"
               data-testid="image-cutout-panel">
               <header className="image-tool-panel-header">
-                <span><strong>主体抠图</strong><small>输出带透明通道的 PNG</small></span>
+                <span><strong>主体抠图</strong><small>由图片模型生成透明 PNG</small></span>
                 <button aria-label="关闭主体抠图" disabled={cutoutBusy}
                   onClick={() => closeImageTool("cutout")} type="button">×</button>
               </header>
               <div className="image-tool-panel-body">
                 <p>移除背景并保留主体边缘。棋盘格仅用于预览透明区域，不会写入图片。</p>
+                <div className="image-tool-task-prompt">
+                  <strong>任务指令</strong><span>{removeBackgroundPrompt}</span>
+                </div>
                 {cutoutError && <div role="alert">{cutoutError}</div>}
               </div>
               <footer className="image-tool-panel-footer">
@@ -4856,7 +5035,7 @@ function ImageNodeImpl({
                   aria-label="生成透明PNG"
                   disabled={cutoutBusy || removeBackgroundCapability.status !== "available"}
                   onClick={() => void submitPromptGeneration("remove-background",
-                    "精确保留主要主体和边缘细节，完全移除背景，输出透明背景PNG；不要添加阴影、底色或棋盘格。")}
+                    removeBackgroundPrompt)}
                   type="button">{cutoutBusy ? "生成中…" : "生成透明 PNG"}</button>
               </footer>
             </div>
@@ -4866,12 +5045,12 @@ function ImageNodeImpl({
           <div className="image-tool-compact-panel image-seedance-validation-panel"
             data-testid="image-seedance-validation-panel">
             <header className="image-tool-panel-header">
-              <span><strong>Seedance 素材校验</strong><small>仅本地技术预检</small></span>
+              <span><strong>Seedance 素材校验</strong><small>三层状态，不提交视频生成</small></span>
               <button aria-label="关闭 Seedance 素材校验" disabled={seedanceBusy}
                 onClick={() => closeImageTool("seedance")} type="button">×</button>
             </header>
             <div className="image-tool-panel-body">
-              <p>仅检查本地技术输入条件，不代表远端资格、可生成、质量或法律合规。</p>
+              <p>本工具只运行本地结构预检；Provider访问与方舟可信素材资格不会在这里冒充已通过。</p>
               <label>视频模型
                 <select aria-label="Seedance 视频模型" disabled={seedanceBusy}
                   onChange={(event) => setSeedanceModelId(event.target.value)}
@@ -4897,16 +5076,32 @@ function ImageNodeImpl({
                 </select>
               </label>
               {!selectedSeedanceModel && <div role="alert">当前没有已发布的 Seedance 模型</div>}
-              {currentSeedanceValidationState && (
-                <div className="image-seedance-validation-result"
-                  data-state={currentSeedanceValidationState}>
-                  {currentSeedanceValidationState === "eligible"
-                    ? "本地技术预检通过"
+              <div className="image-seedance-validation-layers">
+                <div className="image-seedance-validation-layer"
+                  data-state={currentSeedanceValidationState ?? "not-run"}
+                  data-testid="seedance-local-preflight-state">
+                  <strong>1. 本地结构预检</strong>
+                  <span>{currentSeedanceValidationState === "eligible"
+                    ? "通过 · 格式、尺寸、保存状态、模型与角色符合本地规则"
                     : currentSeedanceValidationState === "stale"
-                      ? "校验已过期或素材、模型、角色已变化，请重新校验"
-                      : data.imageSeedanceValidation?.problems.join("；")}
+                      ? "已过期 · 素材、模型或角色已变化，请重新预检"
+                      : currentSeedanceValidationState === "ineligible"
+                        ? data.imageSeedanceValidation?.problems.join("；")
+                        : "未运行"}</span>
                 </div>
-              )}
+                <div className="image-seedance-validation-layer"
+                  data-state="not-checked"
+                  data-testid="seedance-provider-access-state">
+                  <strong>2. Provider 可访问性</strong>
+                  <span>未执行 · 当前没有零费用只读远端资格证据，实际提交时由方舟确认</span>
+                </div>
+                <div className="image-seedance-validation-layer"
+                  data-state="unknown"
+                  data-testid="seedance-trusted-material-state">
+                  <strong>3. 方舟可信素材</strong>
+                  <span>未知 · 当前素材没有可核验的 asset:// 可信素材证明</span>
+                </div>
+              </div>
               {seedanceError && <div role="alert">{seedanceError}</div>}
             </div>
             <footer className="image-tool-panel-footer">
@@ -4936,6 +5131,7 @@ function ImageNodeImpl({
                 await imageToolDispatcher.execute("annotate", { annotations });
               }}
               src={preview}
+              transparent={imageShowsTransparency}
             />
           </ImageToolSurface>
         )}
@@ -4949,6 +5145,7 @@ function ImageNodeImpl({
               onError={setRedrawError}
               onSubmit={submitRedraw}
               src={preview}
+              transparent={imageShowsTransparency}
             />
           </ImageToolSurface>
         )}
@@ -4963,6 +5160,7 @@ function ImageNodeImpl({
               onSubmit={(input) => submitOutpaintErase("erase", input)}
               operation="erase"
               src={preview}
+              transparent={imageShowsTransparency}
             />
           </ImageToolSurface>
         )}
@@ -5003,6 +5201,7 @@ function ImageNodeImpl({
                 }
               }}
               src={preview}
+              transparent={imageShowsTransparency}
             />
           </ImageToolSurface>
         )}
@@ -5014,23 +5213,61 @@ function ImageNodeImpl({
             onClose={() => closeImageTool("multi-angle")}
             onSubmit={submitMultiAngle}
             src={preview}
+            transparent={imageShowsTransparency}
           />
         )}
         {fullscreen && preview && !mediaLoad.failed && (
-          <ImageToolSurface
-            className={`image-detail-surface${
-              data.imageToolOutputBackground === "transparent"
-                ? " image-transparent-preview"
-                : ""
-            }`}
-          >
+          <ImageToolSurface className="image-detail-surface">
             <div className="image-detail-dialog" data-testid="image-detail">
-              <img
-                alt={titleControl.committedValue || "图片预览"}
-                className="image-detail-preview"
-                data-testid="image-detail-preview"
-                src={preview}
-              />
+              <div className="image-detail-viewer">
+                <img
+                  alt={titleControl.committedValue || "图片预览"}
+                  className={`image-detail-preview${
+                    imageShowsTransparency
+                      ? " image-transparent-preview"
+                      : ""
+                  }`}
+                  data-testid="image-detail-preview"
+                  src={preview}
+                />
+              </div>
+              <aside className="image-detail-panel" data-testid="image-detail-panel">
+                <section>
+                  <h3>提示词</h3>
+                  <div className="image-detail-prompt">
+                    {data.imagePrompt?.trim() || "—"}
+                  </div>
+                </section>
+                <section>
+                  <h3>信息</h3>
+                  <dl className="image-detail-info">
+                    <div><dt>来源</dt><dd>{data.imageAssetOrigin === "local-upload"
+                      ? "本地上传"
+                      : data.imageToolOperation
+                      ? imageToolSourceLabels[data.imageToolOperation] ?? "图片工具输出"
+                      : data.imageModelName ? "AI生成" : "—"}</dd></div>
+                    <div><dt>模型</dt><dd>{data.imageModelName || "—"}</dd></div>
+                    <div><dt>尺寸</dt><dd>{(() => {
+                      const detailWidth = data.mediaWidth ?? previewImageRef.current?.naturalWidth;
+                      const detailHeight = data.mediaHeight ?? previewImageRef.current?.naturalHeight;
+                      return detailWidth && detailHeight
+                        ? `${detailWidth} × ${detailHeight}`
+                        : "—";
+                    })()}</dd></div>
+                    <div><dt>宽高比</dt><dd>{imageDetailRatio(
+                      data.mediaWidth ?? previewImageRef.current?.naturalWidth ?? 0,
+                      data.mediaHeight ?? previewImageRef.current?.naturalHeight ?? 0,
+                      data.imageAspectRatio,
+                    )}</dd></div>
+                    <div><dt>质量</dt><dd>{data.imageQuality
+                      ? imageQualityLabels[data.imageQuality] ?? data.imageQuality
+                      : "—"}</dd></div>
+                    <div><dt>文件大小</dt><dd>{imageDetailFileSize(data.mediaByteSize)}</dd></div>
+                    <div><dt>来源素材</dt><dd>{data.imageToolSourceAssetId || "—"}</dd></div>
+                    <div><dt>创建日期</dt><dd>—</dd></div>
+                  </dl>
+                </section>
+              </aside>
               <div className="image-detail-actions">
                 <strong>{titleControl.committedValue || "Image"}</strong>
                 <button onClick={download} type="button">下载</button>
@@ -5417,14 +5654,10 @@ function ImageNodeImpl({
         )}
       </div>
       <div
-        className={`image-node-card${preview ? " image-node-image-surface" : ""}${
-          data.imageToolOutputBackground === "transparent"
-            ? " image-transparent-preview"
-            : ""
-        }`}
+        className={`image-node-card${preview ? " image-node-image-surface" : ""}`}
         data-asset-id={data.assetId}
         data-empty={preview || generating || uploading ? undefined : "true"}
-        data-transparent-output={data.imageToolOutputBackground === "transparent"
+        data-transparent-output={imageShowsTransparency
           ? "true"
           : undefined}
         data-testid={`image-node-${id}`}
@@ -5481,37 +5714,45 @@ function ImageNodeImpl({
           </div>
         )}
         {preview ? (
-          <img
-            alt=""
-            className={`image-node-preview${
-              mediaLoad.failed ? " media-load-obscured" : ""
+          <span
+            className={`image-node-preview-frame${
+              imageShowsTransparency ? " image-transparent-preview" : ""
             }`}
-            data-testid="image-node-preview"
-            draggable={false}
-            key={mediaLoad.key}
-            onError={mediaLoad.markFailed}
-            onLoad={(event) => {
-              mediaLoad.markLoaded();
-              const current = getNode(id);
-              if (
-                !current ||
-                typeof current.width === "number" ||
-                typeof current.height === "number"
-              ) return;
-              const naturalSize = {
-                height: event.currentTarget.naturalHeight,
-                width: event.currentTarget.naturalWidth,
-              };
-              if (!persistenceReady) {
-                deferredPreviewAutoFit.current = naturalSize;
-                return;
-              }
-              deferredPreviewAutoFit.current = undefined;
-              applyPreviewAutoFit(naturalSize.width, naturalSize.height);
-            }}
-            ref={previewImageRef}
-            src={mediaLoad.source}
-          />
+            data-testid="image-node-preview-frame"
+            style={previewFrameStyle}
+          >
+            <img
+              alt=""
+              className={`image-node-preview${
+                mediaLoad.failed ? " media-load-obscured" : ""
+              }`}
+              data-testid="image-node-preview"
+              draggable={false}
+              key={mediaLoad.key}
+              onError={mediaLoad.markFailed}
+              onLoad={(event) => {
+                mediaLoad.markLoaded();
+                const current = getNode(id);
+                if (
+                  !current ||
+                  typeof current.width === "number" ||
+                  typeof current.height === "number"
+                ) return;
+                const naturalSize = {
+                  height: event.currentTarget.naturalHeight,
+                  width: event.currentTarget.naturalWidth,
+                };
+                if (!persistenceReady) {
+                  deferredPreviewAutoFit.current = naturalSize;
+                  return;
+                }
+                deferredPreviewAutoFit.current = undefined;
+                applyPreviewAutoFit(naturalSize.width, naturalSize.height);
+              }}
+              ref={previewImageRef}
+              src={mediaLoad.source}
+            />
+          </span>
         ) : !generating && !uploading ? (
           <div aria-hidden="true" className="image-node-empty-action">
             <svg aria-hidden="true" viewBox="0 0 48 48">

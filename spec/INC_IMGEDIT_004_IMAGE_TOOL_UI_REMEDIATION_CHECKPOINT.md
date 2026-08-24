@@ -2,23 +2,33 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 12:24:00 +0800
-- 状态：`GOAL_COMPLETE / R8_AUTO_PASS / R9_AUTO_PASS / PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / USER_RECHECK`
-- 当前阶段：`R9 生产零付费验收与用户复验 / AUTO_PASS / USER_RECHECK`
-- 唯一允许的下一动作：等待用户打开`https://canvas.mymy.ltd`生产实页完成主观质量复验并明确回复；只有该明确确认可以把`USER_RECHECK`升级为`USER_PASS`，否则不得自动续跑、生成图片或改写验收状态
+- 更新时间：2026-08-24 13:10:17 +0800
+- 状态：`USER_REJECTED / PRODUCTION_V0_6_36_REJECTED / POST_RELEASE_LOCAL_REMEDIATION_TARGETED_PASS / RELEASE_NOT_AUTHORIZED`
+- 当前阶段：`生产拒收后的全工具复审与本地修复 / TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS / NOT_RELEASED`
+- 唯一允许的下一动作：保持当前隔离工作树不再编辑，等待用户决定是否进入下一版发布；如需发布，必须由用户另行给出尚未使用的具体版本号和针对该版本的独立发布句子。不得把已消费的v0.6.36授权复用于下一版
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
-- 文档分支：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`
+- 当前隔离工作树：`/private/tmp/unboundry-inc005-review-otSo4O`
+- 当前分支：`codex/inc-imgedit-005-user-rejection-2026-08-24`
+- 当前基线：`a4bb48c60dc7f62b23f4ca776da47f7931ba6e6f / origin/main`
 - 立项 HEAD / origin-main：`f369d1dba1eef05aebc7f1a443256ceb82778ea0`
 - package：`0.6.36`
 - schema：`39`
-- 生产：`v0.6.36 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；v0.6.35六项真实Provider技术链为历史证据，不在本Goal重跑
-- 用户质量：未通过；没有 `USER_PASS`
-- 目标版本：`v0.6.36 / VERSION_GATE_VALID`；用户“在现有v0.6.35上加一个小版本号”的确定性补丁递增指令按SemVer落实为v0.6.36
-- 发布授权：用户于本 Goal 独立明确“`允许发布`” / `RELEASE_GATE_VALID_FOR_V0_6_36`
+- 生产：`v0.6.36 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_REJECTED`；发布技术事实保留，但用户明确判定交互、语义与视觉不合格
+- 用户质量：`USER_REJECTED`；没有 `USER_PASS`
+- 已发布历史版本：`v0.6.36`；下一纠正版目标版本尚未指定，当前没有可用`VERSION_GATE`
+- 发布授权：v0.6.36授权已消费；当前拒收修复没有新版本门和新发布句子，`RELEASE_NOT_AUTHORIZED`
 - 真实 Provider/付费预算：`0次 / 0 USD`
-- 产品代码：单一活动状态、Portal Host、modal inert、焦点返回、共享surface，以及六类紧凑/大型安全面板已实现；R7独立审查的五项发现已按最小范围修正
-- 测试代码：m2已直接覆盖Host/inert/surface/焦点返回、三目标视口、全部12工具四档zoom、busy焦点、标注tooltip、无asset裁剪fail-closed和零生成请求
+- 产品代码：拒收修复已把快速切分改为按Alpha可见边界切分；普通图片和大型编辑舞台不再铺满棋盘格；所有图片工具用户界面移除预计费用；扩图明确显示输入/输出尺寸并说明范围参数随任务提交；更多菜单不再被Creator遮挡；图片工具焦点与原生控件恢复灰阶
+- 测试代码：m2新增透明填充PNG的100×100四片语义验证、更多菜单最底行命中、灰阶accent、无费用文案和扩图1600×900几何；测试库存1052→1053并同步safe runner/source coverage manifest
 - 文档范围：Checkpoint、TASKS、验收矩阵、CURRENT_STATE候选事实；冻结候选`c2cbd5470a733a053306363993a94da1bc27a89e`、tree`197417a580802694c8f533272f74cc3d82112ea8`已由v0.6.36注释tag和PR #83绑定；唯一一次safe full原始`1050/1052`，两项失败完成最小定向修正复验且未执行第二次full
+
+### 0.1 用户拒收后的复审事实
+
+- 用户截图确认：快速切分错误把透明填充区计入网格；重绘/擦除等放大界面把棋盘格铺成整页背景；扩图范围与任务参数关系不透明；多个图片工具显示“预计多少USD”；整体视觉仍偏离灰阶规范。用户随后要求复审顶部9项和更多菜单8项，旧`USER_RECHECK`明确降级为`USER_REJECTED`
+- 根因：`splitLocalImage`按整张自然尺寸切片；多个descriptor和大型stage默认checkerboard；多角度与遮罩编辑器直接渲染estimatedCost；更多菜单与Creator同为z-index1001且后者覆盖最底行；扩图只显示百分比，未在UI揭示实际输出几何
+- 本地修复：Alpha扫描只把`alpha>0`像素纳入可见边界，预览SVG和导出共用同一边界；棋盘格仅保留在真正透明输出节点及全屏图片自身矩形内，不进入普通工具壳层或全屏背景；删除所有图片工具预计费用展示；扩图显示`1280×720 → 1600×900`并保留可见默认提示词；工具栏z-index提高到1002并统一灰阶focus/accent
+- 全工具本地浏览器复审：顶部9项（裁剪、多角度、重绘、暂停打光、更多、颜色、素材库、下载、全屏）和更多8项（扩图、擦除、标注、增强、调整像素、抠图、快速切分、Seedance）均实际打开或执行零付费动作；1280×720、1440×900、1728×900不越界，modal inert，费用文案0，Provider/Generation请求0。复审额外抓出并修复Seedance菜单行被Creator覆盖和原生蓝色控件两项旧review漏项
+- 定向证据：Node22.23.1/npm10.9.8，`node scripts/run-safe-tests.mjs run --spec tests/m100-modular-ports.spec.ts --spec tests/m2-image-node.spec.ts`中m100 `13/13 PASS`；首轮m2真实暴露旧断言/虚拟化观测并按最小范围修正。最终把全屏透明提示限制到图片矩形后，精确树safe m2 `11/11 PASS`、退出0，source/snapshot`4df0d2882a8f95864b53a12dbe32d353bee7c85c1150a304df2bcac9fb739822`，4173 listener unchanged；没有运行full，真实Provider/OSS/费用0
 
 ## 1. 权威恢复顺序
 
@@ -101,7 +111,7 @@ node -p "require('./package.json').version"
 | R6 | 逐工具功能与回归验证 | AUTO_PASS / LOCAL_BROWSER_PASS |
 | R7 | 候选冻结与独立审查 | AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS |
 | R8 | GitHub 与生产发布 | AUTO_PASS / PRODUCTION_PUBLISHED_AUTO_PASS / VERSION_V0_6_36 |
-| R9 | 生产零付费验收与用户复验 | AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK |
+| R9 | 生产零付费验收与用户复验 | TECHNICAL_HISTORY_RETAINED / USER_REJECTED / LOCAL_REMEDIATION_NOT_RELEASED |
 
 同时最多一个阶段为 `IN_PROGRESS`。
 
@@ -110,13 +120,13 @@ node -p "require('./package.json').version"
 | ID | 内容 | 状态 |
 |---|---|---|
 | IMGEDIT-021 | 单一活动工具状态机与叠层阻断 | AUTO_PASS |
-| IMGEDIT-022 | screen-space 宿主与 viewport 安全 | TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS |
-| IMGEDIT-023 | 透明图片统一棋盘格与 contain | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS |
-| IMGEDIT-024 | 重绘/擦除/扩图/标注大型编辑层 | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS |
-| IMGEDIT-025 | 多角度/调整像素/快速切分/增强/抠图/Seedance 面板 | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS |
+| IMGEDIT-022 | screen-space 宿主与 viewport 安全 | TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / USER_RECHECK_REQUIRED_AFTER_RELEASE |
+| IMGEDIT-023 | 透明图片统一棋盘格与 contain | USER_REJECTED_V0_6_36 / LOCAL_REMEDIATION_TARGETED_PASS |
+| IMGEDIT-024 | 重绘/擦除/扩图/标注大型编辑层 | USER_REJECTED_V0_6_36 / LOCAL_REMEDIATION_TARGETED_PASS |
+| IMGEDIT-025 | 多角度/调整像素/快速切分/增强/抠图/Seedance 面板 | USER_REJECTED_V0_6_36 / LOCAL_REMEDIATION_TARGETED_PASS |
 | IMGEDIT-026 | Escape、焦点、键盘、IME、busy 与 reduced-motion | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS |
-| IMGEDIT-027 | 既有工具栏、菜单、颜色、裁剪、下载回归 | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS |
-| IMGEDIT-028 | 目标视口与真人逐项功能验收 | LOCAL_BROWSER_PASS / USER_RECHECK |
+| IMGEDIT-027 | 既有工具栏、菜单、颜色、裁剪、下载回归 | USER_REJECTED_V0_6_36 / LOCAL_REMEDIATION_TARGETED_PASS |
+| IMGEDIT-028 | 目标视口与真人逐项功能验收 | USER_REJECTED / LOCAL_BROWSER_PASS / RELEASE_AND_USER_RECHECK_REQUIRED |
 
 ## 7. 版本、发布和外部调用门
 

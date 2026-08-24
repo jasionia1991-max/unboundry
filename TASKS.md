@@ -1,11 +1,43 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产已运行`v0.6.36 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS`。`INC-IMGEDIT-004` R0～R9工程和技术验收已完成，真实Provider/OSS/费用0；只等用户生产实页主观复验，仍为`USER_RECHECK`。
+> **当前状态**：生产仍运行`v0.6.36 / schema39`且图片工具质量被拒收。INC-IMGEDIT-005已完成本地工程、定向、三视口浏览器、唯一一次safe full与第三轮独立审查；v0.6.37版本门与发布门有效，当前`LOCAL_ENGINEERING_COMPLETE / R9_IN_PROGRESS`。
 
 更新时间：2026-08-24
-状态：`生产v0.6.36；INC-IMGEDIT-004 R8_AUTO_PASS / R9_AUTO_PASS / PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_ENGINEERING_COMPLETE / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / USER_RECHECK。`
+状态：`生产v0.6.36技术发布事实保留；图片工具USER_REJECTED；INC-IMGEDIT-005 LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / INDEPENDENT_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / VERSION_GATE_VALID / RELEASE_GATE_VALID / R9_IN_PROGRESS。`
 
-### 2026-08-24 图片工具交互与 UI 一次性返工（INC-IMGEDIT-004，GOAL_COMPLETE / R9_AUTO_PASS / USER_RECHECK / VERSION_V0_6_36）
+### 2026-08-24 图片工具产品质量拒收返工（INC-IMGEDIT-005，R8_COMPLETE / R9_IN_PROGRESS）
+
+- 版本定向首转m81 `41/41 PASS`，m38仅因候选版本字段多写括号说明为`14/15`；精确改为既有治理格式后，只m38最小复验`15/15 PASS`。没有第二次full
+- 功能与版本冻结提交为`3bb6fb0`；origin/main仍为`a4bb48c`，受保护JSON未进入diff/stage，下一步是最终治理树m38与GitHub交付
+
+- 用户已明确确认`v0.6.37`并允许`v0.6.37`上线；实时身份门确认本地/远端tag与GitHub Release均不存在，package/lock/runtime/m81同步为0.6.37，R9开始执行
+
+- 用户继续确认四类产品缺口：图片全屏没有提示词/模型/尺寸等详情；扩图、增强等派生节点使用固定位置并覆盖；Seedance素材校验只有本地预检而非方舟远端/可信素材状态；擦除、重绘、扩图、增强等本地与模型处理边界不清
+- 新方案把此前截图问题与上述新增缺口统一纳入一次性返工，并要求重新review顶部9项和更多8项；现有未提交修正只作为待审输入，不继承候选或PASS
+- 权威方案：`spec/INC_IMGEDIT_005_IMAGE_TOOL_PRODUCT_REMEDIATION_PLAN_2026-08-24.md`；实时断点：`spec/INC_IMGEDIT_005_IMAGE_TOOL_PRODUCT_REMEDIATION_CHECKPOINT.md`
+- 新增验收`IMGEDIT-029～038`：图片详情、空白区放置、有效内容切分、透明Surface、扩图参数真实性、无预计金额、处理引擎语义、Seedance分层校验、17项全review和候选/用户复验分层
+- R0实时基线为隔离分支HEAD/origin-main=`a4bb48c`、package0.6.36；项目工具链固定`/Users/mymy/.local/bin`下Node22.23.1/npm10.9.8。主工作树只有受保护JSON且未进入本工作树diff/stage，其他worktree无同范围脏修改
+- R0审计决定保留并重验Alpha切分、纯灰壳、费用移除、扩图几何说明和灰阶/z-index修正；必须新增图片详情和共享空白区放置，修正普通透明上传判定、Seedance分层状态与本地/模型语义。R0收口`AUTO_PASS`，R1正在补合同与失败证据
+- R1 safe m2执行`10/11 PASS`，唯一失败精确为图片全屏不存在`image-detail-panel`；其他10项通过，source/snapshot与4173 listener unchanged，Provider/OSS/费用0。R1以预期红证据收口，R2正在实现详情与透明Surface
+- R2新增图片详情侧栏，展示真实来源、Prompt、模型、尺寸、比例、质量、文件大小，缺失日期不伪造；全屏舞台保持纯灰，透明提示只在图片自身。首次typecheck抓出漏导入后最小修正，最终safe m2 `11/11 PASS`、退出0，R3进入统一空白区放置
+- R3新增纯几何空白区放置并接入全部单项/批量图片派生use case；快速切分继续以Alpha有效边界统一预览和导出。safe m100+m2 `24/24 PASS`、退出0，Provider/OSS/费用0；R4正在加强扩图等参数与处理引擎真实性
+- R4明确扩图/重绘/擦除/主体抠图/多角度由图片模型完成的范围，并保留保守增强等本地处理语义；m100直接断言扩图/擦除的Prompt、mask、outpaint、preparedInput和结果节点，既有m2/m100覆盖重绘、多角度、创意增强与抠图。首轮m100 `13/13 PASS`、m2 `10/11`只因测试旧文案失配；精确同步断言后m2 `11/11 PASS`，Provider/OSS/费用0。R5正在实现Seedance三层准确状态
+- R5把Seedance明确拆为本地结构预检、Provider可访问性和方舟可信素材三层；本地通过不会让后两层变绿，当前分别保持not-checked/unknown，并明确实际提交时才由方舟确认。首轮m100 `13/13 PASS`、m2 `10/11`只因旧“重新校验”文案断言；同步为“重新预检”后m2 `11/11 PASS`，Generation/Provider/OSS/费用0
+- R6逐一review顶部9项与更多8项，补齐普通透明上传Alpha扫描与持久语义、本地派生节点operation/source、上传替换来源清理和全部面板无预计金额DOM门。m100+m2 `24/24 PASS`；最终m2+m18 `13/13 PASS`，source/snapshot`8f2af35a…70de`、4173 unchanged，Generation/Provider/OSS/费用0。一次错误spec名在产品测试前被身份门拒绝；R7正在执行三视口与四zoom浏览器矩阵
+- R7使用fresh临时data/runtime/cache与动态`127.0.0.1:49766`完成1280×720、1440×900、1728×900、横竖方图和透明PNG实页矩阵；透明棋盘格只位于图片实际frame，全屏壳纯灰，透明快速切分有效边界为`100,50,200,200`。连续本地派生节点坐标`(832,300)`与`(1222,300)`不覆盖源`(442,300)`且刷新保持；console error/warn0，Generation/Provider/OSS/费用0
+- 四档zoom `0.15/0.85/1.0/1.5`继续由m2对全部screen-space工具做精确几何断言；浏览器代表面板实测全屏1240×680、大型层1118×686、快速切分920×620、多角度600×308、Seedance400×539.6，全部在viewport内。R7收口`TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS`，R8进入候选冻结、独立审查与唯一一次safe full
+- v0.6.37版本门与对应发布门已由用户明确给出；v0.6.36授权保持已消费，真实Provider/尝试/成功/费用继续为0
+- R8三轮独立只读审查先后抓出并关闭透明编辑器、详情缺失/旧值、隐藏业务Prompt、扩图几何、极小Alpha、失败图片入口和measured放置问题；最终`INDEPENDENT_REVIEW_PASS`，P0/P1/P2均无剩余。最终safe m100+m2 `24/24 PASS`，source/snapshot`015a7329…95c8`
+- 本Goal唯一一次safe full原始执行120 specs / 1053 tests，`1052/1053 PASS`、退出1；唯一失败为m38旧治理正则只接受`USER_PASS/USER_RECHECK`且强制本地候选等于package版本，不能表达当前`USER_REJECTED / 未指定候选版本`事实。修正测试治理合同后只复验m38，`15/15 PASS`、退出0；最终文档同步后m38再次定向`15/15 PASS`、source/snapshot`d7eb2275…5a8e26`。未运行第二次full；4173 listener unchanged，Provider/OSS/费用0
+- R8收口`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / INDEPENDENT_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS`。用户已明确确认并允许v0.6.37上线，R9解除发布门阻断并进入候选冻结、GitHub和生产发布；切换前生产仍为v0.6.36
+
+### 2026-08-24 图片工具交互与 UI 一次性返工（INC-IMGEDIT-004，PRODUCTION_V0_6_36 / USER_REJECTED / LOCAL_REMEDIATION_NOT_RELEASED）
+
+- 用户生产截图明确拒收：快速切分把透明填充区算入网格；大型编辑层整页棋盘格；扩图参数关系不清；图片工具出现预计USD；随后要求复审顶部9项和更多8项。旧自动/生产浏览器PASS只能作为技术历史，不能覆盖`USER_REJECTED`
+- 拒收修复已按Alpha可见边界切分并新增透明400×300、可见200×200、2×2输出四张100×100的直接测试；普通节点/工具壳/大型stage取消整面棋盘格，真正透明输出节点只在节点和全屏图片自身矩形显示透明提示，且不写入导出字节
+- 图片工具用户界面已移除全部预计USD/CNY展示；扩图可见默认提示词不再追加隐藏提示词，25%范围显示为`1280×720 → 1600×900`，准备图、mask、几何和提示词继续进入节点与任务payload
+- 全工具浏览器复审额外抓出更多菜单最底Seedance行被Creator盖住、原生蓝色焦点圈/滑杆两项漏审；已用toolbar z-index1002和灰阶focus/accent修复。顶部9项与更多8项均实际打开或执行零付费动作，三目标视口不越界，Generation/Provider请求0
+- Node22.23.1/npm10.9.8；m100 `13/13 PASS`，最终safe m2 `11/11 PASS`、source/snapshot`4df0d288…fb739822`、4173 unchanged。新增1项测试后库存1053并同步safe runner/source coverage manifest；本次未运行full、未commit、未push、未发布
 
 - 用户生产实页检查未通过；自动测试和六项真实Provider链只证明技术链，不能证明功能交互、UI或视觉质量正常。
 - 已确认P0/P1：多个工具可叠开；多角度/快速切分/Seedance底部裁切；重绘/擦除/标注与Creator碰撞；透明图在编辑器/全屏为黑底；扩图和紧凑面板布局失衡。顶部工具栏、更多菜单和颜色标记作为回归保护。

@@ -1,4 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  visibleImageBoundsSupportGrid,
+  type VisibleImageBounds,
+} from "./localImageProcessing";
 
 const maximumLocalDimension = 8_192;
 
@@ -90,7 +94,7 @@ export function ImageResizePanel({
       <footer className="image-tool-panel-footer">
         <button disabled={busy} onClick={onCancel} type="button">取消</button>
         <button className="primary" disabled={busy} onClick={() => void confirm()} type="button">
-          {busy ? "处理中…" : "生成派生图"}
+          {busy ? "处理中…" : "保存本地副本"}
         </button>
       </footer>
     </div>
@@ -102,15 +106,24 @@ export function ImageSplitPanel({
   onCancel,
   onConfirm,
   preview,
+  previewBounds,
+  previewBusy,
+  previewError,
 }: Readonly<{
   onBusyChange?(busy: boolean): void;
   onCancel(): void;
   onConfirm(grid: 2 | 3 | 4): Promise<void>;
   preview: string;
+  previewBounds?: VisibleImageBounds;
+  previewBusy: boolean;
+  previewError: string;
 }>) {
   const [grid, setGrid] = useState<2 | 3 | 4>(2);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const gridSupported = Boolean(
+    previewBounds && visibleImageBoundsSupportGrid(previewBounds, grid),
+  );
   const firstButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     firstButton.current?.focus();
@@ -129,7 +142,7 @@ export function ImageSplitPanel({
     try {
       await onConfirm(grid);
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "快速分割失败");
+      setError(failure instanceof Error ? failure.message : "快速切分失败");
     } finally {
       setBusy(false);
       onBusyChange?.(false);
@@ -138,37 +151,74 @@ export function ImageSplitPanel({
   return (
     <div className="image-tool-sheet image-split-panel" data-testid="image-split-panel">
       <header className="image-tool-panel-header">
-        <span><strong>快速切分</strong><small>一次生成 {grid ** 2} 张派生图片</small></span>
+        <span><strong>快速切分</strong><small>本地处理 · 只切分可见图片本体 · 生成 {grid ** 2} 张</small></span>
         <button aria-label="关闭快速切分" disabled={busy} onClick={onCancel} type="button">×</button>
       </header>
       <div className="image-tool-panel-body image-split-body">
         <div className="image-split-preview">
-          <img alt="分割预览" src={preview} />
-          <span
-            aria-hidden="true"
-            style={{
-              backgroundImage:
-                "linear-gradient(#ffffff80 1px, transparent 1px), " +
-                "linear-gradient(90deg, #ffffff80 1px, transparent 1px)",
-              backgroundSize: `100% ${100 / grid}%, ${100 / grid}% 100%`,
-            }}
-          />
+          {previewBusy && <span className="image-split-preview-status">正在识别图片本体…</span>}
+          {!previewBusy && previewError && (
+            <span className="image-split-preview-status" role="alert">{previewError}</span>
+          )}
+          {!previewBusy && !previewError && previewBounds && (
+            <svg
+              aria-label="切分预览"
+              className="image-split-preview-frame"
+              data-source-bounds={`${previewBounds.x},${previewBounds.y},${previewBounds.width},${previewBounds.height}`}
+              preserveAspectRatio="xMidYMid meet"
+              role="img"
+              viewBox={`0 0 ${previewBounds.width} ${previewBounds.height}`}
+            >
+              <image
+                height={previewBounds.sourceHeight}
+                href={preview}
+                width={previewBounds.sourceWidth}
+                x={-previewBounds.x}
+                y={-previewBounds.y}
+              />
+              {Array.from({ length: grid - 1 }, (_, index) => index + 1).map((line) => (
+                <g key={line}>
+                  <line
+                    className="image-split-grid-line"
+                    x1={previewBounds.width * line / grid}
+                    x2={previewBounds.width * line / grid}
+                    y1="0"
+                    y2={previewBounds.height}
+                  />
+                  <line
+                    className="image-split-grid-line"
+                    x1="0"
+                    x2={previewBounds.width}
+                    y1={previewBounds.height * line / grid}
+                    y2={previewBounds.height * line / grid}
+                  />
+                </g>
+              ))}
+            </svg>
+          )}
         </div>
         <div className="image-split-options">{([2, 3, 4] as const).map((value) => (
           <button
             aria-label={`${value}×${value}（${value ** 2}张）`}
             aria-pressed={grid === value}
+            disabled={busy || Boolean(
+              previewBounds && !visibleImageBoundsSupportGrid(previewBounds, value),
+            )}
             key={value}
             onClick={() => setGrid(value)}
             ref={value === 2 ? firstButton : undefined}
             type="button"
           ><strong>{value}×{value}</strong><small>{value ** 2} 张图片</small></button>
         ))}</div>
+        {!previewBusy && !previewError && previewBounds && !gridSupported && (
+          <span role="alert">可见内容至少需要 {grid}×{grid} 像素才能使用 {grid}×{grid} 切分</span>
+        )}
         {error && <span role="alert">{error}</span>}
       </div>
       <footer className="image-tool-panel-footer">
         <button disabled={busy} onClick={onCancel} type="button">取消</button>
-        <button aria-label="确认分割" className="primary" disabled={busy}
+        <button aria-label="确认切分" className="primary"
+          disabled={busy || previewBusy || Boolean(previewError) || !gridSupported}
           onClick={() => void confirm()} type="button">
           {busy ? "处理中…" : `确认切分为 ${grid ** 2} 张`}
         </button>

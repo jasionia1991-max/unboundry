@@ -123,6 +123,7 @@ export function ImageAnnotationEditor({
   onClose,
   onExport,
   src,
+  transparent,
 }: Readonly<{
   document?: ImageAnnotationDocument;
   onBusyChange?(busy: boolean): void;
@@ -130,6 +131,7 @@ export function ImageAnnotationEditor({
   onClose(): void;
   onExport(document: ImageAnnotationDocument): Promise<void>;
   src: string;
+  transparent: boolean;
 }>) {
   const [annotationDocument, setAnnotationDocument] = useState(() =>
     initialDocument ?? emptyImageAnnotationDocument(1280, 720)
@@ -433,6 +435,7 @@ export function ImageAnnotationEditor({
       >
         <img
           alt=""
+          className={transparent ? "image-transparent-preview" : undefined}
           draggable={false}
           onLoad={(event) => resizeEmptyDocument(
             event.currentTarget.naturalWidth,
@@ -440,6 +443,7 @@ export function ImageAnnotationEditor({
           )}
           src={src}
         />
+        <span className="image-editor-processing-badge">本地标注</span>
         <svg
           aria-label="标注画布"
           data-tool={tool}

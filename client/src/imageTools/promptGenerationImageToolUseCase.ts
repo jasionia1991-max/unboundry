@@ -7,6 +7,7 @@ import type { CuttableEdge } from "../canvas/canvasTypes";
 import type { SingleNodeGenerationLifecycle } from
   "../generation/singleNodeGenerationLifecycle";
 import { createGenerationImageToolUseCase } from "./generationImageToolUseCase";
+import { findVacantImageToolPlacement } from "./imageToolPlacement";
 
 export type PromptGenerationOperation = "enhance-creative" | "remove-background";
 
@@ -79,9 +80,8 @@ export function createPromptGenerationImageToolUseCase(input: Readonly<{
       ...(outputBackground ? { imageToolOutputBackground: outputBackground } : {}),
       imageToolSourceAssetId: command.sourceAssetId, label: "Image",
       sourceKind: "image", title: `${command.title || "Image"}-${noun}` },
-      id: targetNodeId, position: { x: source.position.x +
-        (typeof source.style?.width === "number" ? source.style.width : 250) + 140,
-        y: source.position.y }, selected: true, style: { ...NODE_DEFAULT_SIZES.image },
+      id: targetNodeId, position: { x: 0, y: 0 }, selected: true,
+      style: { ...NODE_DEFAULT_SIZES.image },
       type: "image" };
     const edge: CuttableEdge = { data: { inputOrder: 1, inputRole: "reference-image" },
       id: `edge-${command.sourceNodeId}-${targetNodeId}`, interactionWidth: 20,
@@ -92,7 +92,15 @@ export function createPromptGenerationImageToolUseCase(input: Readonly<{
       ownershipKey: command.preOwnershipKey, runId: command.runId,
       sourceAssetId: command.sourceAssetId }, scope: "image-tool",
       update: (snapshot) => ({ ...snapshot, edges: [...snapshot.edges, edge],
-        nodes: [...snapshot.nodes.map((node) => ({ ...node, selected: false })), targetNode] }) });
+        nodes: [...snapshot.nodes.map((node) => ({ ...node, selected: false })), {
+          ...targetNode,
+          position: findVacantImageToolPlacement({
+            height: NODE_DEFAULT_SIZES.image.height,
+            nodes: snapshot.nodes,
+            sourceNodeId: command.sourceNodeId,
+            width: NODE_DEFAULT_SIZES.image.width,
+          }),
+        }] }) });
     if (applied.status !== "applied") throw new Error("原图片或画布版本已变化");
     await input.afterPlaceholderCreated();
     return createGenerationImageToolUseCase({ lifecycle: input.createLifecycle({
