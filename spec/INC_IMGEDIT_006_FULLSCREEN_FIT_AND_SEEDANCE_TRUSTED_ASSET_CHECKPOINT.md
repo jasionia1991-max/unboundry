@@ -114,6 +114,7 @@ PURCHASE_REQUIRED=NO
 - full两个失败均为新增合同覆盖遗漏：m10的迁移子进程错误白名单缺`SCHEMA_MIGRATION_FAILED_SCHEMA40_APPLY`；m9旧正则把客户端合法的`AuthorizationSession/authorizationUrl`产品语义误判为发送Authorization凭据。前者补入精确白名单，后者收紧为实际HTTP header/Bearer发送形态且继续保留运行时出站header断言。
 - 只复验直接失败的m10+m9，最终`18/18 PASS`、退出0，source/snapshot`ad6bc903eea8af495481b50193d309593642963020f229672db8516e6c760dd3`，4173 unchanged。按Goal与测试重复控制没有运行第二次full；原始full不改写为全绿。
 - R8收口`LOCAL_ENGINEERING_COMPLETE / P0_P1_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS`；真实Provider/Generation/OSS/费用0，生产未改。
+- R8治理提交`34893db135cc11a2664ed4c120a2634465aa1120`后只复验m38=`15/15 PASS`、退出0，source/snapshot`7c05244de80fd3a2d6bc817febd5975338785a653a1fa361e821d6b9a579e8aa`，4173 unchanged；文档结果同步不触发业务测试重跑。
 - 自动化必须使用Node22.23.1/npm10.9.8、fresh临时data/runtime/cache和动态loopback端口，禁止4173、生产数据、真实Provider、真实OSS和任何付费生成。
 
 ## 8. GitHub、生产、阻断与回滚

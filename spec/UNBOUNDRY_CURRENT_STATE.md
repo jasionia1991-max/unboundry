@@ -21,6 +21,7 @@
 - R7新增“角色可信素材”modal、同步预开H5、双击防重、20秒QPM兼容轮询、session ID刷新恢复、Processing到Active服务端推进、A/B/C与失败状态准确文案、inert/Escape/焦点及三视口。最终build和safe m100+m2+m20 `27/27 PASS`，source/snapshot`f22637b7…d2d0d1`，自动化真实Provider/Generation/OSS/费用0。
 - R8只读审查补齐Active绑定主动远端复核与schema40发布链：备份/恢复/媒体完整性、exact-v0.5.1、one-shot迁移、40迁移失败回滚、Linux验证及bridge rollback均已同步。诊断批次原始`35/56`、`45/48`，修正后精确`19/19`、`90/90`、`8/8 PASS`，P0/P1无剩余。
 - 本Goal唯一safe full在`d5c5840`执行120 specs/1055 tests，原始`1053/1055`、退出1；m10漏收schema40迁移错误码、m9旧正则误判Authorization产品语义。精确修正后只复验m10+m9 `18/18 PASS`，source/snapshot`ad6bc903…60dd3`，未重复full；R8按原始结果收口。
+- 治理提交`34893db`后的m38精确复验`15/15 PASS`、source/snapshot`7c05244d…9e8aa`；文档同步不重复业务测试。
 - 当前Provider控制面账本仍为`1/200`，只发生R0权益只读；H5创建/轮询、Asset创建/轮询和最终核验均0，付费生成预算固定0。R9 GitHub交付就绪，生产仍未改变。
 
 ## INC-IMGEDIT-005 图片工具产品质量拒收返工（R9_COMPLETE / USER_RECHECK）

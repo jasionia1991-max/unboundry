@@ -28,7 +28,7 @@
 - R8只读P0/P1审查关闭两类真实缺口：Active绑定的主动读取会重新执行Provider只读inspect且不吞错；schema40已贯穿备份/恢复/媒体完整性/exact-v0.5.1 attestation/one-shot迁移/迁移失败回滚/Linux验证/bridge rollback与合成发布切换，三张新表进入逻辑指纹。
 - schema40诊断原始两批为`35/56`与`45/48`，均因旧schema39常量和新表清单失败；修正后m10+m92 `19/19 PASS`、m81+m88+m91+m95 `90/90 PASS`、新增schema40 checkpoint m91 `8/8 PASS`。诊断失败不改写；真实Provider/Generation/OSS/费用0，账本仍1/200。
 - package/lock已为0.6.38，当前schema40，P0/P1审查无剩余。本Goal唯一safe full在`d5c5840`执行120 specs/1055 tests，原始`1053/1055`、退出1；仅m10漏收schema40迁移错误码、m9把合法Authorization产品语义误判为凭据发送。精确修正后只复验m10+m9 `18/18 PASS`，source/snapshot`ad6bc903…60dd3`，未重复full。
-- R8收口`LOCAL_ENGINEERING_COMPLETE / P0_P1_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS`，原始full不改写。当前唯一下一动作是提交R8收口、定向m38治理复验后进入R9 GitHub交付。
+- 治理提交`34893db`后m38精确复验`15/15 PASS`、source/snapshot`7c05244d…9e8aa`。R8收口`LOCAL_ENGINEERING_COMPLETE / P0_P1_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS`，原始full不改写。当前唯一下一动作是R9 GitHub交付。
 
 ### 2026-08-24 图片工具产品质量拒收返工（INC-IMGEDIT-005，R9_COMPLETE / USER_RECHECK）
 
