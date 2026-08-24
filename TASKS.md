@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产仍为`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，但图片工具用户质量复验未通过。`INC-IMGEDIT-004` R7本地候选已完成；用户已把目标补丁递增为`v0.6.36`并允许发布，R8已恢复施工。
+> **当前状态**：生产仍为`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，但图片工具用户质量复验未通过。`INC-IMGEDIT-004` v0.6.36候选已完成tag、PR、CI和merge；R8进入生产预检、备份和原子发布。
 
 更新时间：2026-08-24
 状态：`生产v0.6.35；本地候选v0.6.36 R8_IN_PROGRESS；INC-IMGEDIT-004 R7_AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS；USER_QUALITY_REMEDIATION_REQUIRED。`
@@ -32,6 +32,7 @@
 - 用户随后明确要求在v0.6.35上增加一个小版本号并写出“允许发布”；按确定性SemVer补丁递增落实为`v0.6.36 / VERSION_GATE_VALID / RELEASE_GATE_VALID`。远端`v0.6.36` tag不存在，原身份阻断解除；R8恢复为`IN_PROGRESS`，先同步package/runtime/m81与治理文档，再跑版本直接相关的safe m38+m81，不重复R7唯一一次full。
 - package/lock、`releaseRoleFromEnvironment`和m81 final角色断言已同步到0.6.36；CURRENT_STATE/README/AGENTS/上线规矩与Checkpoint同步表达“生产仍为v0.6.35、本地候选为v0.6.36”，不改写v0.6.35历史发布事实。
 - 精确版本提交`72f0b0d`在全新detached worktree完成safe m38 `15/15`+m81 `41/41`=`56/56 PASS`，退出0且异常计数0；source/snapshot`a7613c8e…903a765`、4173 listener unchanged，TypeScript/build/架构/source coverage/凭据/网络门通过，真实Provider/OSS/费用0。R7唯一一次full继续复用，不因版本与文档改动重复；最终治理文档提交后只复验m38。
+- 最终冻结候选`c2cbd54`的治理文档树safe m38 `15/15 PASS`、退出0，source/snapshot`a5e44a88…64d3`、4173 listener unchanged。注释tag`v0.6.36`已推送并指向该候选；PR #83 Quality gates run `32688680243`成功，squash merge`24d1fc6`，且tag与`origin/main` tree同为`197417a5…12ea8`。主工作树只有受保护JSON未跟踪；生产尚未切换，下一动作是Runbook生产只读预检与正式冻结备份。
 
 ### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，D13_AUTO_PASS / USER_QUALITY_REMEDIATION_REQUIRED）
 

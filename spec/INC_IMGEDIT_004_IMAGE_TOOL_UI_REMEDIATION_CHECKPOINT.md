@@ -2,10 +2,10 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 12:02:20 +0800
+- 更新时间：2026-08-24 12:06:49 +0800
 - 状态：`GOAL_ACTIVE / R8_IN_PROGRESS / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / UI_REMEDIATION_REQUIRED`
 - 当前阶段：`R8 GitHub 与生产发布 / IN_PROGRESS`
-- 唯一允许的下一动作：提交包含v0.6.36版本门与定向结果的最终GitHub候选；在该精确文档树只复验safe m38，通过后确认受保护文件不在diff/stage，创建不可变v0.6.36注释tag、push分支/tag、开PR并等待CI
+- 唯一允许的下一动作：按`RELEASE_RUNBOOK.md`执行生产只读预检；确认v0.6.35当前指针、service、schema39、integrity/FK和数据计数后，为v0.6.36创建正式冻结备份与恢复副本，再从精确注释tag源码构建不可变release并原子切换
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
 - 文档分支：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`
 - 立项 HEAD / origin-main：`f369d1dba1eef05aebc7f1a443256ceb82778ea0`
@@ -18,7 +18,7 @@
 - 真实 Provider/付费预算：`0次 / 0 USD`
 - 产品代码：单一活动状态、Portal Host、modal inert、焦点返回、共享surface，以及六类紧凑/大型安全面板已实现；R7独立审查的五项发现已按最小范围修正
 - 测试代码：m2已直接覆盖Host/inert/surface/焦点返回、三目标视口、全部12工具四档zoom、busy焦点、标注tooltip、无asset裁剪fail-closed和零生成请求
-- 文档范围：Checkpoint、TASKS、验收矩阵、CURRENT_STATE候选事实；最终本地候选`161f417e401e6ad332a756510fc6e4c59136b972`，唯一一次safe full原始`1050/1052`，两项失败完成最小定向修正复验且未执行第二次full
+- 文档范围：Checkpoint、TASKS、验收矩阵、CURRENT_STATE候选事实；冻结候选`c2cbd5470a733a053306363993a94da1bc27a89e`、tree`197417a580802694c8f533272f74cc3d82112ea8`已由v0.6.36注释tag和PR #83绑定；唯一一次safe full原始`1050/1052`，两项失败完成最小定向修正复验且未执行第二次full
 
 ## 1. 权威恢复顺序
 
@@ -370,3 +370,13 @@ Provider / OSS / 费用：
 - 阻断：原`v0.6.35`身份冲突已由新的未占用`v0.6.36`门解除；当前无阻断
 - 回滚点：R8阻断落档提交`2f857084594dd0643272351409be8bf4f26eacca`
 - 唯一下一动作：提交本次定向结果形成最终GitHub候选；在该精确文档树只复验m38，通过后进入tag/push/PR/CI
+
+### R8 GitHub 候选交付完成
+
+- 时间：2026-08-24 12:06:49 +0800
+- 冻结候选：`c2cbd5470a733a053306363993a94da1bc27a89e`，tree`197417a580802694c8f533272f74cc3d82112ea8`；最终治理文档树safe m38 `15/15 PASS`、退出0，source/snapshot`a5e44a88e9007b5c5abf0260ba6268357b148db8c4c87042b19d7961dbaa64d3`，4173 listener unchanged
+- GitHub：不可变注释tag`v0.6.36`已推送并解引用到冻结候选；PR #83 Quality gates run `32688680243` / job `97318299251`成功，随后squash merge为`24d1fc6f2af22b98f1a6aff31ac371440328d154`
+- 身份门：`origin/main`与`v0.6.36`的tree均为`197417a580802694c8f533272f74cc3d82112ea8`。合并命令在远端合并完成后仅因本地另一worktree占用`main`而无法自动切换分支；远端PR、main和tag均已只读复核，不构成发布阻断
+- 工作树与保护：主工作树只有受保护JSON未跟踪；该文件不在diff/stage/tag/PR。真实Provider请求/尝试/成功、费用和OSS写入仍为0
+- 阻断：无
+- 唯一下一动作：按`RELEASE_RUNBOOK.md`执行生产只读预检；确认v0.6.35当前指针、service、schema39、integrity/FK和数据计数后，为v0.6.36创建正式冻结备份与恢复副本，再从精确注释tag源码构建不可变release并原子切换

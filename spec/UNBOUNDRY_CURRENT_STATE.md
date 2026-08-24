@@ -23,13 +23,13 @@ v0.6.34版本号、tag和发布授权均已执行并消费，禁止移动tag或�
 
 - 用户在生产实页反馈图片工具“几乎都不正常”且没有对齐项目UI规范；只读复核确认多个工具可叠层、部分面板在视口底部裁切、重绘/擦除/标注与底层Creator碰撞、透明图在编辑器/全屏显示黑底、扩图与紧凑面板布局失衡。顶部400×48工具栏、更多菜单和颜色标记基本符合既有基线，作为回归保护。
 - 根因冻结为：多套独立open状态缺少互斥；多个面板依附节点`NodeToolbar`而不是screen-space Portal；缺少统一modal/popover/surface、焦点、viewport和透明背景合同。
-- R0～R6已完成单一活动状态、Portal `ImageToolHost`、modal inert、焦点返回、共享棋盘格surface、紧凑/大型面板、三目标视口和13张本地浏览器证据；当前没有生产或GitHub新事实。
+- R0～R6已完成单一活动状态、Portal `ImageToolHost`、modal inert、焦点返回、共享棋盘格surface、紧凑/大型面板、三目标视口和13张本地浏览器证据；生产尚未切换。
 - 主方案：`spec/INC_IMGEDIT_004_IMAGE_TOOL_UI_REMEDIATION_PLAN_2026-08-24.md`；唯一断点：`spec/INC_IMGEDIT_004_IMAGE_TOOL_UI_REMEDIATION_CHECKPOINT.md`；新Session Goal：`spec/INC_IMGEDIT_004_IMAGE_TOOL_UI_REMEDIATION_GOAL_PROMPT_2026-08-24.md`。
 - R7独立只读审查报告普通透明上传节点surface、标注tooltip、busy焦点、URL-only裁剪空壳和全工具zoom证据五项缺口；产品/测试候选`39cd494`已按最小范围修正。精确候选safe m2 `10/10`、m18 `2/2`、m100 `13/13 PASS`，source/snapshot`8c3cd1a6…f5b98`、4173 listener unchanged，真实Provider/OSS/费用0。
 - 唯一一次safe full在精确`4fd25cc`执行，原始`1050/1052`；两个失败为m24异步目录结果时序和m37在modal inert后使用非法背景编辑前置条件。未重复full；m24在`e2c412e`定向`2/2 PASS`，m37在最终候选`161f417`以真实派生use case直接验证上传后持久化关闭补偿并`35/35 PASS`。当前工程状态`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS`，不把原始full改写成全绿。
-- `IMGEDIT-021～028`当前为本地自动/浏览器分层通过或`USER_RECHECK`；R7已收口。R8只读预检曾确认`v0.6.35`已被旧源码不可变占用；用户随后明确要求补丁递增一个版本并写出“允许发布”，确定性目标变为未占用的`v0.6.36`，原身份阻断解除。当前正在同步package/runtime/test与治理合同，尚未push/PR/tag/生产写入。
+- `IMGEDIT-021～028`当前为本地自动/浏览器分层通过或`USER_RECHECK`；R7已收口。R8只读预检曾确认`v0.6.35`已被旧源码不可变占用；用户随后明确要求补丁递增一个版本并写出“允许发布”，确定性目标变为`v0.6.36`，原身份阻断解除。冻结候选`c2cbd54`已由注释tag`v0.6.36`绑定，PR #83 Quality gates成功并squash merge为`24d1fc6`；tag与`origin/main` tree同为`197417a5…12ea8`。生产仍为v0.6.35，下一步按Runbook预检、备份、精确tag构建和原子切换。
 - 本Goal当前版本门为`v0.6.36`，独立“允许发布”句子有效，只在R8/R9消费。INC-IMGEDIT-003的6次/60 USD已全部消费；本返工真实Provider成功、尝试和费用预算固定为0。
-- v0.6.36精确版本提交`72f0b0d`已通过safe m38 `15/15`与m81 `41/41`，合计`56/56 PASS`，source/snapshot`a7613c8e…903a765`、4173 listener unchanged，Provider/OSS/费用0；最终治理文档树只补跑m38后进入GitHub发布，不重复R7唯一一次full。
+- v0.6.36精确版本提交`72f0b0d`已通过safe m38 `15/15`与m81 `41/41`，合计`56/56 PASS`，source/snapshot`a7613c8e…903a765`；最终冻结候选`c2cbd54`又完成治理文档树m38 `15/15 PASS`，source/snapshot`a5e44a88…64d3`。各轮4173 listener unchanged，Provider/OSS/费用0；未重复R7唯一一次full。
 
 ## INC-IMGEDIT-003 图片工具栏剩余能力单 Goal（D13技术完成，用户质量未通过并转INC-IMGEDIT-004）
 
