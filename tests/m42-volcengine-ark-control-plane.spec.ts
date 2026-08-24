@@ -485,7 +485,7 @@ test("Ark read-only action allowlist contains only the three approved actions", 
   expect(isVolcengineArkSeedanceAssetAction("CreateAsset&Action=DeleteAsset")).toBe(false);
 });
 
-test("Ark trusted-asset authorization rejects a missing public HTTPS callback before transport", () => {
+test("Ark trusted-asset authorization validates callback and retains bounded failure diagnostics", async () => {
   const identity = Object.freeze({
     accountFingerprint: "e".repeat(64),
     profileId: "ark-profile",
@@ -500,6 +500,49 @@ test("Ark trusted-asset authorization rejects a missing public HTTPS callback be
       providerDisplayName: "Volcengine Ark",
     })).toThrow(expect.objectContaining({ code: "FORMAT" }));
   }
+  const port = createVolcengineArkSeedanceTrustedAssetPort({
+    callbackUrl: "https://canvas.example.com/",
+    credentials,
+    identity,
+    providerDisplayName: "Volcengine Ark",
+  }, {
+    fetcher: async () => new Response(JSON.stringify({
+      ResponseMetadata: {
+        Error: {
+          Code: "AccessDenied",
+          Message: "remote detail must not persist",
+        },
+        RequestId: "trusted-request-456",
+      },
+    }), {
+      headers: { "Content-Type": "application/json" },
+      status: 403,
+    }),
+    now: fixedNow,
+  });
+  let caught: unknown;
+  try {
+    await port.createAuthorizationSession({
+      idempotencyKey: "session-idempotency",
+      identity,
+      providerGroupId: null,
+    });
+  } catch (error) {
+    caught = error;
+  }
+  expect(caught).toBeInstanceOf(SeedanceTrustedAssetProviderError);
+  expect(caught).toMatchObject({
+    code: "PERMISSION",
+    diagnostic: {
+      httpStatus: 403,
+      providerCode: "AccessDenied",
+      requestId: "trusted-request-456",
+    },
+  });
+  const visible = JSON.stringify(caught);
+  expect(visible).not.toContain(credentials.accessKeyId);
+  expect(visible).not.toContain(credentials.secretAccessKey);
+  expect(visible).not.toContain("remote detail must not persist");
 });
 
 for (const scenario of [
@@ -509,21 +552,42 @@ for (const scenario of [
   { code: "REMOTE", providerCode: "InternalError", status: 500 },
 ] as const) {
   test(`Ark control-plane classifies ${scenario.code} without exposing remote details`, async () => {
-    const fetcher: typeof fetch = async () => json({
+    const requestId = `request-${scenario.code.toLowerCase()}-123`;
+    const fetcher: typeof fetch = async () => new Response(JSON.stringify({
       ResponseMetadata: {
+        RequestId: requestId,
         Error: {
           Code: scenario.providerCode,
           Message: "provider detail must stay private",
         },
       },
-    }, scenario.status);
+    }), {
+      headers: {
+        "Content-Type": "application/json",
+        "X-Tt-Logid": "header-request-must-not-override-body",
+      },
+      status: scenario.status,
+    });
 
-    await expect(listVolcengineArkFoundationModels(credentials, {
-      fetcher,
-      now: fixedNow,
-    })).rejects.toMatchObject({
+    let caught: unknown;
+    try {
+      await listVolcengineArkFoundationModels(credentials, {
+        fetcher,
+        now: fixedNow,
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(VolcengineArkControlPlaneError);
+    expect(caught).toMatchObject({
       code: scenario.code,
+      diagnostic: {
+        httpStatus: scenario.status,
+        providerCode: scenario.providerCode,
+        requestId,
+      },
     } satisfies Partial<VolcengineArkControlPlaneError>);
+    expect(JSON.stringify(caught)).not.toContain("provider detail must stay private");
   });
 }
 

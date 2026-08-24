@@ -1,9 +1,9 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产已为`v0.6.39 / schema40`且技术健康。INC-SEEDANCE-001的正式主机与CallbackURL修复已发布；新事件唯一H5创建仍返回503，创建预算已耗尽，真实链保持fail-closed。
+> **当前状态**：生产仍为`v0.6.39 / schema40`且技术健康；v0.6.40候选已冻结，Project `default`补权停在最终确认前，GitHub/生产发布与真实链尚未完成。
 
 更新时间：2026-08-24
-状态：`生产v0.6.39 / schema40 / PRODUCTION_TECHNICAL_PASS；INC-SEEDANCE-001 PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / H5_CREATE_BUDGET_EXHAUSTED；本事件Provider 1/50（H5 1/1，其余0）、Generation/OSS/费用0。`
+状态：`生产v0.6.39 / schema40 / PRODUCTION_TECHNICAL_PASS；v0.6.40 CANDIDATE_FROZEN / PROJECT_PERMISSION_CONFIRMATION_PENDING / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED；新预算0/50、Generation/OSS/费用0。`
 
 ### 2026-08-24 Seedance可信素材真实链路恢复（INC-SEEDANCE-001）
 
@@ -20,7 +20,14 @@
 - [x] 官方合同复核确认当前主机、Body和响应字段与v0.6.39实现一致，并补充AK需具备对应Project `ArkFullAccess`前提；生产未保留远端状态码/错误码/RequestId，权限原因尚不能确证
 - [ ] 生产完成H5→Group→Asset→Active→服务端`asset://`，否则保持`REAL_FAIL_CLOSED`
 - [x] 建立v0.6.39生产回执并同步权威文档；认证查询0/15、Asset创建0/1、Asset查询0/33、付费Generation0、OSS测试写入0
-- [ ] 新授权前先增加安全可审计的Provider失败类别/RequestId保留，并由用户确认对应Project的ArkFullAccess；不得移动v0.6.39 tag或复用已消费H5预算
+- [x] v0.6.40候选增加受限Provider诊断：HTTP状态、错误码、RequestId安全透传并持久化；远端Message、Body、AK/SK不进入错误或数据库
+- [x] 最终定向m42+m100+m81+m9为4 specs、`71/71 PASS`；source/snapshot `ce05428c…c64`，测试库存仍为120 specs/1056 tests，真实Provider/Generation/OSS/费用0
+- [x] 唯一safe full执行120 specs/1056 tests，原始`1055/1056`；唯一失败是AGENTS当前生产短语多一个“仍”字，产品1055项均通过，source/snapshot `ce05428c…c64`，未重复full
+- [x] 只读匹配生产AK与IAM用户`tapnow-ark-catalog-ro-20260803`；确认其只有`TapNowArkCatalogReadOnly`，Project `default`授权数为0
+- [ ] 收到浏览器最终即时确认后，仅为Project `default`向该IAM用户添加系统策略`ArkFullAccess`
+- [x] 修正治理短语后只复验m38 `15/15 PASS`，source/snapshot `c62658c6…8c70`，未重复full；v0.6.40候选冻结
+- [ ] 完成commit、push、PR/CI/merge/tag/Release和生产发布
+- [ ] 使用新账本完成H5→Group→Asset→Active→服务端`asset://`；H5创建最多1次，未知结果禁止重提
 
 权威方案：`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_PLAN_2026-08-24.md`；实时断点：`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_CHECKPOINT.md`。
 

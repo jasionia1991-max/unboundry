@@ -2,58 +2,55 @@
 
 更新日期：2026-08-24
 
-当前阶段：`R6_PRODUCTION_RECEIPT_AND_DOC_ALIGNMENT`
+当前阶段：`R5_GITHUB_AND_PRODUCTION_RELEASE`
 
-状态：`PRODUCTION_V0_6_39_TECHNICAL_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / H5_CREATE_BUDGET_EXHAUSTED`
+状态：`PRODUCTION_V0_6_39_TECHNICAL_PASS / V0_6_40_CANDIDATE_FROZEN / PROJECT_PERMISSION_CONFIRMATION_PENDING / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED`
 
 ## 实时身份
 
 - 真实仓库：`/Users/mymy/Documents/unboundry/app`
-- 产品候选工作树：`/private/tmp/unboundry-inc006-v0.6.38-2026-08-24`
-- 产品分支：`codex/inc-seedance-001-trusted-chain-2026-08-24`
-- 候选commit/tree：`8bc89c0fa5c7fbf4f37de000facd01f8de181282` / `4c5049197c40785786db4fc6a0221ecea12c5244`
-- PR #90 / merge：`1540d6bddc6ce70f788eacbb535ccc015419f1a2`，main tree与候选一致
-- package/schema：`0.6.39 / 40`
-- tag：`v0.6.39`，tag object `7e26cabd703d76c8d7ec4a8a67037eb9065e127a`，精确指向候选commit；禁止移动
-- GitHub Release：`https://github.com/jasionia1991-max/unboundry/releases/tag/v0.6.39`
-- 生产release：`/opt/unboundry/releases/v0.6.39-seedance-trusted-chain-20260824`
-- 回执文档工作树：`/private/tmp/unboundry-inc-seedance-001-v0639-receipt-20260824`
+- 隔离工作树：`/private/tmp/unboundry-inc-seedance-002-v0640-HdGrer`
+- 分支：`codex/inc-seedance-002-provider-diagnostics-v0.6.40`
+- 基线：`origin/main@8d38bd8e0e7275b90b9f21b22df84bf667807ae6`
+- package/schema：`0.6.40 / 40`
+- 版本门：`v0.6.40 / VERSION_GATE_VALID`
+- 发布门：`v0.6.40 / RELEASE_GATE_VALID`
+- 生产：`v0.6.39 / schema40 / /opt/unboundry/releases/v0.6.39-seedance-trusted-chain-20260824`
+- v0.6.39历史tag、Release与回执保持不可变。
 
 ## 已完成
 
-- 正式地域Ark主机、URL/Host/V4签名一致性、H5必填HTTPS CallbackURL及运行时fail-closed修复已发布。
-- m42 `16/16`、m81 `41/41`、最终m38 `15/15 PASS`。
-- 回执文档同步后m38首轮`14/15`只发现治理标记不符合既有机器语法；修正为`CURRENT_V0_6_39_USER_RECHECK`并同步三份模块化治理文档后，同一m38复验`15/15 PASS`。没有重复产品full。
-- 唯一safe full执行120 specs/1056 tests，原始`1055/1056`；唯一失败是m1密集画布p95 `25.10ms`相对`25.00ms`门槛的`0.10ms`抖动，长任务0、外部请求0。同源码只复验m1并`1/1 PASS`，没有第二次full。
-- PR #90 Quality CI成功；候选tag/Release与合并后main tree一致。
-- fresh build、5951文件inventory、冻结备份恢复副本、schema40 quick_check/FK、公网/回环/service/ready门全部通过。
-- release inventory SHA：`1c938bc1a0f709248c373340542bcfd676d513a7645d8a8e0d9a29f0fdb0902c`。
-- 冻结备份：`/var/lib/unboundry-rollbacks/v0.6.39-cutover-frozen-OFeGIs`；source/restore各366文件，双清单SHA `fcb8791d128655581ace932343a21b37dfad64f949043dc6c8148d8cd2848e20`。
-- `UNBOUNDRY_SEEDANCE_ARK_CALLBACK_URL=https://canvas.mymy.ltd/` 已写入root-only生产环境文件；账号密钥未暴露。
-- 切换前后业务数据不变：generation tasks 785、attempts 793、active 0、media 833、publication attempts 423、canvas 63。
+- 复核v0.6.39唯一H5创建的历史事实：本地HTTP503、`FAILED/CREATE_FAILED`、无Provider session ID/H5Link/BytedToken，历史账本`1/50`已封存。
+- 新增受限Provider诊断，只保留HTTP状态、错误码与RequestId；远端Message、Body、AK/SK不进入固定应用错误或数据库。
+- H5创建、认证结果查询、Asset创建与Asset查询失败均持久化安全分类；无远端诊断时继续fail-closed。
+- 最终定向m42+m100+m81+m9为4 specs、`71/71 PASS`；source/snapshot `ce05428c92f2bafd363011edec263598e1e2af664ae532ed79786df917e31c64`。唯一safe full执行120 specs/1056 tests，原始`1055/1056`；唯一失败为AGENTS当前生产短语多一个“仍”字，产品1055项均通过；同source/snapshot，4173 listener不变。修正后m38 `15/15 PASS`，source/snapshot `c62658c62410ca34dec0d7b6e75c0fee39bb035e4bf0390b43c9e67eb1d18c70`，未重复full。Node22.23.1/npm10.9.8，Provider/Generation/OSS/费用0。
+- 一次m100+m81组合批次因运行中源码变化被safe runner判为无效，不计入最终证据；此后只按最小受影响范围重跑m100。
+- 生产AK只读解密后仅比较尾号，精确匹配IAM用户`tapnow-ark-catalog-ro-20260803`（显示名`TapNow 方舟目录只读`）；没有输出完整密钥。
+- IAM用户当前仅有`TapNowArkCatalogReadOnly`；Project `default`授权数为0。
+- Project补权向导已精确选择Project `default`、该IAM用户和系统策略`ArkFullAccess`，停在最终“确定”前，尚未产生外部权限写入。
 
-## 真实 H5 结果
+## 未完成
 
-- 目标source asset：`82cb1dcc-0ba6-4b9c-a2a4-1bf1f45d5c62`。
-- source checksum：`631ba0264ecc3799abf1d1bed1aca049c4385c910e2835e99065142e9cbb8a1d`。
-- 本地session：`cfbdf650-a807-4a86-ab9b-9174544dfa08`，创建于`2026-08-24T13:54:10.690Z`。
-- 唯一创建返回本地HTTP503，约150ms；session为`FAILED`，provider_status为`CREATE_FAILED`，没有provider_session_id、H5Link或BytedToken。
-- 当前实现未保留Provider HTTP状态、错误码和RequestId，因此只能分类为`REMOTE_CREATE_REJECTED_UNCLASSIFIED`。
-- 正式文档复核确认v0.6.39主机、Body与响应字段匹配；同一指南明确AK必须具有对应Project的`ArkFullAccess`，但生产权限证据尚未获得，不能把权限写成本次确证根因。
+- 浏览器动作时最终确认与最小Project补权提交。
+- commit、push、PR、CI、merge、tag、GitHub Release和SSH生产发布。
+- 生产H5→Group→Asset→Active→服务端`asset://`真实链与v0.6.40生产回执。
 
-## 请求与费用账本
+## v0.6.40 请求与费用账本
 
-- `CreateVisualValidateSession`：`1/1`，已耗尽；禁止重试。
+- `CreateVisualValidateSession`：`0/1`。
 - `GetVisualValidateResult`：`0/15`。
 - `CreateAsset`：`0/1`。
 - `GetAsset`：`0/33`。
-- 控制面合计：`1/50`。
+- 控制面合计：`0/50`。
 - Generation task/attempt：0；费用：0；OSS测试写入：0。
+- H5创建超时、5xx或结果未知时禁止重提；真人认证不可自动化绕过。
 
-## 当前硬阻塞
+## 当前阻塞与回滚点
 
-没有H5Link/BytedToken，无法由真人完成认证，也无法继续Group、Asset、Active与服务端`asset://`。本次允许的唯一H5创建已消费；购买、开通、新账号和云权限修改均未授权。
+- 外部权限写入受浏览器最终动作时确认门约束；确认前保持页面停在最终“确定”前。
+- 真实链必须在v0.6.40发布并通过健康门后才能开始；此前禁止消费新控制面预算。
+- 当前生产回滚点为v0.6.39不可变release及`/var/lib/unboundry-rollbacks/v0.6.39-cutover-frozen-OFeGIs`；v0.6.40必须另建release与冻结备份。
 
 ## 唯一下一动作
 
-先在新版本中安全保留Provider失败类别与RequestId，并由用户确认当前AK在对应Project具备`ArkFullAccess`；随后必须另行取得新版本、发布、权限处置范围和新H5创建预算，才能重新发起真实链。此前只允许完成本回执和文档同步，禁止任何方舟、Generation或OSS写请求。
+提交并发布冻结的v0.6.40候选；收到用户动作时“确认授权”后，重新核对最终摘要并只点击一次Project `default`补权“确定”。生产健康门通过且权限补齐后，按新账本执行唯一H5创建。

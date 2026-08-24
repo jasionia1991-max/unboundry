@@ -9,6 +9,10 @@ import type {
   SeedanceTrustedAssetPort,
 } from "./seedanceTrustedAssetPort";
 import {
+  SeedanceTrustedAssetProviderError,
+  seedanceProviderFailureStatus,
+} from "./seedanceTrustedAssetPort";
+import {
   seedanceControlIdempotencyKey,
   type SeedanceAssetBindingRecord,
   type SeedanceAuthorizationSessionRecord,
@@ -195,8 +199,14 @@ export function createSeedanceTrustedAssetApplication(
       if (error instanceof SeedanceTrustedAssetApplicationError) throw error;
       options.store.upsertBinding({
         ...started,
-        failureCode: "PROVIDER_CREATE_FAILED",
+        failureCode: error instanceof SeedanceTrustedAssetProviderError
+          ? `PROVIDER_${error.code}`
+          : "PROVIDER_CREATE_FAILED",
         failureMessage: "方舟素材创建未完成，请核对状态后再处理",
+        providerStatus: seedanceProviderFailureStatus(
+          "CREATE_ASSET_FAILED",
+          error,
+        ),
         status: "FAILED",
         updatedAt: now(),
       });
@@ -216,10 +226,27 @@ export function createSeedanceTrustedAssetApplication(
         )) {
       return input.binding;
     }
-    const inspected = await input.context.port.inspectAsset({
-      identity: input.context.identity,
-      providerAssetId: input.binding.providerAssetId,
-    });
+    let inspected;
+    try {
+      inspected = await input.context.port.inspectAsset({
+        identity: input.context.identity,
+        providerAssetId: input.binding.providerAssetId,
+      });
+    } catch (error) {
+      options.store.upsertBinding({
+        ...input.binding,
+        failureCode: error instanceof SeedanceTrustedAssetProviderError
+          ? `PROVIDER_${error.code}`
+          : "PROVIDER_INSPECT_FAILED",
+        failureMessage: "方舟素材状态查询未完成，请稍后重试",
+        providerStatus: seedanceProviderFailureStatus(
+          "INSPECT_ASSET_FAILED",
+          error,
+        ),
+        updatedAt: now(),
+      });
+      fail("CAPABILITY_UNAVAILABLE", "方舟素材状态查询未完成，请稍后重试");
+    }
     return options.store.upsertBinding({
       ...input.binding,
       checkedAt: inspected.checkedAt,
@@ -362,10 +389,13 @@ export function createSeedanceTrustedAssetApplication(
           updatedAt: now(),
         });
         return Object.freeze({ ...sessionView(saved), authorizationUrl: created.authorizationUrl });
-      } catch {
+      } catch (error) {
         options.store.upsertSession({
           ...session,
-          providerStatus: "CREATE_FAILED",
+          providerStatus: seedanceProviderFailureStatus(
+            "CREATE_SESSION_FAILED",
+            error,
+          ),
           status: "FAILED",
           updatedAt: now(),
         });
@@ -423,8 +453,19 @@ export function createSeedanceTrustedAssetApplication(
           identity: context.identity,
           providerAssetId,
         });
-      } catch {
-        return bindingView(pending);
+      } catch (error) {
+        return bindingView(options.store.upsertBinding({
+          ...pending,
+          failureCode: error instanceof SeedanceTrustedAssetProviderError
+            ? `PROVIDER_${error.code}`
+            : "PROVIDER_INSPECT_FAILED",
+          failureMessage: "方舟素材状态查询未完成，请稍后重试",
+          providerStatus: seedanceProviderFailureStatus(
+            "INSPECT_ASSET_FAILED",
+            error,
+          ),
+          updatedAt: now(),
+        }));
       }
       return bindingView(options.store.upsertBinding({
         ...pending,
@@ -445,10 +486,23 @@ export function createSeedanceTrustedAssetApplication(
       let saved = existing;
       if (saved.providerSessionId &&
           ["SESSION_PENDING", "WAITING_AUTHORIZATION"].includes(saved.status)) {
-        const inspected = await context.port.inspectAuthorizationSession({
-          identity: context.identity,
-          providerSessionId: saved.providerSessionId,
-        });
+        let inspected;
+        try {
+          inspected = await context.port.inspectAuthorizationSession({
+            identity: context.identity,
+            providerSessionId: saved.providerSessionId,
+          });
+        } catch (error) {
+          options.store.upsertSession({
+            ...saved,
+            providerStatus: seedanceProviderFailureStatus(
+              "INSPECT_SESSION_FAILED",
+              error,
+            ),
+            updatedAt: now(),
+          });
+          fail("CAPABILITY_UNAVAILABLE", "方舟真人授权状态查询失败");
+        }
         saved = options.store.upsertSession({
           ...saved,
           expiresAt: inspected.expiresAt,
