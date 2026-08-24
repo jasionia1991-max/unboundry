@@ -166,6 +166,281 @@ test.afterEach(async ({ request }, testInfo) => {
   }
 });
 
+test("Image fullscreen contains the complete 1086x1448 source inside the viewer", async ({
+  page,
+}) => {
+  await page.setViewportSize({ height: 720, width: 1280 });
+  await page.goto("/__fixture/node.image.success");
+  const node = page.locator('.react-flow__node-image[data-id="image-primary"]');
+  await node.click();
+  await page.getByTestId("image-node-toolbar")
+    .getByRole("button", { name: "全屏查看" })
+    .click();
+
+  const preview = page.getByTestId("image-detail-preview");
+  const readGeometry = () => page.getByTestId("image-detail").evaluate((dialog) => {
+    const viewer = dialog.querySelector<HTMLElement>(".image-detail-viewer");
+    const image = dialog.querySelector<HTMLImageElement>(".image-detail-preview");
+    if (!viewer || !image) throw new Error("fullscreen geometry missing");
+    const viewerBounds = viewer.getBoundingClientRect();
+    const imageBounds = image.getBoundingClientRect();
+    return {
+      image: {
+        bottom: imageBounds.bottom,
+        height: imageBounds.height,
+        left: imageBounds.left,
+        right: imageBounds.right,
+        top: imageBounds.top,
+        width: imageBounds.width,
+      },
+      naturalRatio: image.naturalWidth / image.naturalHeight,
+      renderedRatio: imageBounds.width / imageBounds.height,
+      viewer: {
+        bottom: viewerBounds.bottom,
+        left: viewerBounds.left,
+        right: viewerBounds.right,
+        top: viewerBounds.top,
+      },
+    };
+  });
+  const imageSizes = [
+    { height: 1448, label: "1086x1448", width: 1086 },
+    { height: 1200, label: "3:4", width: 900 },
+    { height: 1600, label: "9:16", width: 900 },
+    { height: 900, label: "16:9", width: 1600 },
+    { height: 900, label: "1:1", width: 900 },
+    { height: 600, label: "ultrawide", width: 2400 },
+  ];
+  const viewports = [
+    { height: 720, width: 1280 },
+    { height: 900, width: 1440 },
+    { height: 900, width: 1728 },
+  ];
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    for (const size of imageSizes) {
+      const fixture = "data:image/svg+xml," + encodeURIComponent(
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${size.width}" height="${size.height}" viewBox="0 0 ${size.width} ${size.height}">` +
+          `<rect width="${size.width}" height="${size.height}" fill="#363636"/>` +
+          `<rect x="2" y="2" width="${size.width - 4}" height="${size.height - 4}" fill="none" stroke="#fff" stroke-width="4"/>` +
+        "</svg>",
+      );
+      await preview.evaluate((image: HTMLImageElement, src) => {
+        image.src = src;
+      }, fixture);
+      await expect.poll(() => preview.evaluate((image: HTMLImageElement) => ({
+        height: image.naturalHeight,
+        width: image.naturalWidth,
+      }))).toEqual({ height: size.height, width: size.width });
+      const geometry = await readGeometry();
+      expect.soft(geometry.image.top, `${size.label} top`).toBeGreaterThanOrEqual(
+        geometry.viewer.top,
+      );
+      expect.soft(geometry.image.left, `${size.label} left`).toBeGreaterThanOrEqual(
+        geometry.viewer.left,
+      );
+      expect.soft(geometry.image.right, `${size.label} right`).toBeLessThanOrEqual(
+        geometry.viewer.right,
+      );
+      expect.soft(geometry.image.bottom, `${size.label} bottom`).toBeLessThanOrEqual(
+        geometry.viewer.bottom,
+      );
+      expect.soft(geometry.renderedRatio, `${size.label} ratio`)
+        .toBeCloseTo(geometry.naturalRatio, 4);
+    }
+  }
+
+  await page.setViewportSize({ height: 720, width: 1280 });
+  const beforeLongPrompt = await readGeometry();
+  const prompt = page.locator(".image-detail-prompt");
+  await prompt.evaluate((element) => {
+    element.textContent = "长提示词不会挤坏图片区。".repeat(200);
+  });
+  await expect.poll(() => prompt.evaluate(
+    (element) => element.scrollHeight > element.clientHeight,
+  )).toBe(true);
+  const afterLongPrompt = await readGeometry();
+  expect(afterLongPrompt.image).toEqual(beforeLongPrompt.image);
+  await expect(page.locator(".image-detail-viewer")).toHaveCSS("overflow", "hidden");
+});
+
+test("Image tools do not present local Seedance preflight as trusted-material validation", async ({
+  page,
+}) => {
+  let authorizationCreates = 0;
+  let sessionReads = 0;
+  let bindingStatus: "missing" | "ASSET_PROCESSING" | "ACTIVE" = "missing";
+  const unexpectedRemoteRequests: string[] = [];
+  await page.addInitScript(() => {
+    (window as Window & { __trustedAssetOpened?: string }).__trustedAssetOpened = "";
+    window.open = (() => {
+      return {
+        close() {},
+        location: {
+          replace(url: string | URL) {
+            (window as Window & { __trustedAssetOpened?: string })
+              .__trustedAssetOpened = String(url);
+          },
+        },
+        opener: null,
+      } as Window;
+    }) as typeof window.open;
+  });
+  page.on("request", (entry) => {
+    if (/seedance-validate|volcengine|ark\.cn|contents\/generations/i.test(entry.url())) {
+      unexpectedRemoteRequests.push(entry.url());
+    }
+  });
+  await page.route("**/api/seedance/trusted-assets/capability", async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        branch: "A",
+        canCreateAuthorizationSession: true,
+        canInspectAsset: true,
+        providerDisplayName: "火山方舟 Seedance",
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+  await page.route("**/api/media/image/*/seedance/trusted-binding", async (route) => {
+    if (bindingStatus === "missing") {
+      await route.fulfill({
+        body: JSON.stringify({ code: "BINDING_NOT_FOUND", error: "not found" }),
+        contentType: "application/json",
+        status: 404,
+      });
+      return;
+    }
+    await route.fulfill({
+      body: JSON.stringify({
+        checkedAt: bindingStatus === "ACTIVE"
+          ? "2026-08-24T12:00:04.000Z"
+          : "2026-08-24T12:00:03.000Z",
+        createdAt: "2026-08-24T12:00:00.000Z",
+        failure: null,
+        id: "binding-fixture-1",
+        source: {
+          assetId: "asset-image-primary",
+          checksumSha256: "a".repeat(64),
+          kind: "image",
+        },
+        status: bindingStatus,
+        updatedAt: "2026-08-24T12:00:04.000Z",
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+  await page.route("**/api/media/image/*/seedance/authorization-sessions", async (route) => {
+    authorizationCreates += 1;
+    await route.fulfill({
+      body: JSON.stringify({
+        authorizationUrl: "https://visual.example.test/authorize-once",
+        createdAt: "2026-08-24T12:00:00.000Z",
+        expiresAt: null,
+        id: "session-fixture-1",
+        status: "WAITING_AUTHORIZATION",
+        updatedAt: "2026-08-24T12:00:01.000Z",
+      }),
+      contentType: "application/json",
+      status: 202,
+    });
+  });
+  await page.route("**/api/seedance/authorization-sessions/session-fixture-1", async (route) => {
+    sessionReads += 1;
+    const status = bindingStatus === "ACTIVE" ? "ACTIVE" : "ASSET_PROCESSING";
+    bindingStatus = status;
+    await route.fulfill({
+      body: JSON.stringify({
+        createdAt: "2026-08-24T12:00:00.000Z",
+        expiresAt: null,
+        id: "session-fixture-1",
+        status,
+        updatedAt: "2026-08-24T12:00:03.000Z",
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+  await page.setViewportSize({ height: 900, width: 1440 });
+  await page.goto("/__fixture/node.image.empty");
+  const node = page.locator('.react-flow__node-image[data-id="image-primary"]');
+  await node.getByTestId("image-upload-input").setInputFiles(
+    path.resolve(
+      "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+    ),
+  );
+  await expect(node.locator("img")).toBeVisible();
+  await node.click();
+  await page.getByTestId("image-node-toolbar")
+    .getByRole("button", { name: "浏览全部" })
+    .click();
+  const menu = page.getByTestId("image-node-more-menu");
+  await expect(menu.getByRole("menuitem", { name: "Seedance 素材校验" }))
+    .toHaveCount(0);
+  const trustedEntry = menu.getByRole("menuitem", { name: "角色可信素材" });
+  await expect(trustedEntry).toBeEnabled();
+  await trustedEntry.click();
+  const panel = page.getByTestId("seedance-trusted-asset-panel");
+  await expect(panel).toBeVisible();
+  await expectInsideViewport(panel);
+  await expect(panel).toContainText("尚未关联可信素材");
+  await expect(panel).toContainText("该状态来自当前方舟账号");
+  await expect(panel).not.toContainText(/预计|USD|CNY/);
+  await expect(page.locator("#root")).toHaveAttribute("inert", "");
+  const start = panel.getByRole("button", { name: "开始方舟真人授权" });
+  await start.dblclick();
+  await expect.poll(() => authorizationCreates).toBe(1);
+  await expect.poll(() => page.evaluate(() =>
+    (window as Window & { __trustedAssetOpened?: string }).__trustedAssetOpened,
+  )).toBe("https://visual.example.test/authorize-once");
+  await expect(panel).toContainText("等待完成真人授权");
+  await panel.getByRole("button", { name: "刷新状态" }).click();
+  await expect.poll(() => sessionReads).toBe(1);
+  await expect(panel).toContainText("方舟正在处理");
+  await panel.getByRole("button", { exact: true, name: "关闭" }).click();
+  await expect(panel).toHaveCount(0);
+  await expect(page.locator("#root")).not.toHaveAttribute("inert", "");
+
+  bindingStatus = "ACTIVE";
+  for (const viewport of [
+    { height: 720, width: 1280 },
+    { height: 900, width: 1440 },
+    { height: 900, width: 1728 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await node.click();
+    const toolbar = page.getByTestId("image-node-toolbar");
+    await toolbar.getByRole("button", { name: "浏览全部" }).click();
+    await page.getByTestId("image-node-more-menu")
+      .getByRole("menuitem", { name: "角色可信素材" }).click();
+    await expect(panel).toContainText("方舟可信素材可用");
+    await expectInsideViewport(panel);
+    await expectScreenSpaceSizeInvariant(page, panel);
+    await page.keyboard.press("Escape");
+    await expect(panel).toHaveCount(0);
+    await expect(toolbar.getByRole("button", { name: "浏览全部" })).toBeFocused();
+  }
+
+  await page.reload();
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-persistence-ready",
+    "true",
+  );
+  const restoredNode = page.locator('.react-flow__node-image[data-id="image-primary"]');
+  await restoredNode.click();
+  await page.getByTestId("image-node-toolbar")
+    .getByRole("button", { name: "浏览全部" }).click();
+  await page.getByTestId("image-node-more-menu")
+    .getByRole("menuitem", { name: "角色可信素材" }).click();
+  await expect(panel).toContainText("方舟可信素材可用");
+  await expect(panel).not.toContainText(/预计|USD|CNY/);
+  await panel.getByRole("button", { exact: true, name: "关闭" }).click();
+  await expect(page.getByTestId("image-seedance-validation-panel")).toHaveCount(0);
+  expect(unexpectedRemoteRequests).toEqual([]);
+});
+
 test("Image empty and local upload states match the observed geometry", async ({
   page,
   request,
@@ -342,20 +617,12 @@ test("Image empty and local upload states match the observed geometry", async ({
   await expect(moreMenu).toBeVisible();
   expect(await moreMenu.boundingBox()).toMatchObject({
     width: 238,
-    height: 272,
+    height: 310,
   });
   await expect(moreMenu.getByRole("menuitem")).toHaveCount(8);
   await expect(moreMenu.locator("button:not(:disabled)")).toHaveCount(8);
-  const seedanceMenuItem = moreMenu.getByRole("menuitem", {
-    name: "Seedance 素材校验",
-  });
-  expect(await seedanceMenuItem.evaluate((element) => {
-    const bounds = element.getBoundingClientRect();
-    return element.contains(document.elementFromPoint(
-      bounds.left + bounds.width / 2,
-      bounds.top + bounds.height / 2,
-    ));
-  })).toBe(true);
+  await expect(moreMenu.getByRole("menuitem", { name: "Seedance 素材校验" }))
+    .toHaveCount(0);
   await expect(moreMenu).toContainText("快速切分");
   await expect(moreMenu).toContainText("2×2　3×3　4×4");
   await expect(moreMenu).not.toContainText(/预计|USD|CNY/);
@@ -732,12 +999,24 @@ test("Image quick split crops transparent padding and divides only the visible b
   await page.getByRole("button", { name: "关闭标注" }).click();
   await node.click();
   await toolbar.getByRole("button", { name: "全屏查看" }).click();
-  await expect(page.getByTestId("image-detail-preview"))
+  const fullscreenPreview = page.getByTestId("image-detail-preview");
+  await expect(fullscreenPreview)
     .toHaveClass(/image-transparent-preview/);
+  await expect(fullscreenPreview).not.toHaveCSS("background-image", "none");
+  await expect(page.locator(".image-detail-viewer"))
+    .toHaveCSS("background-image", "none");
   await expect(page.getByTestId("image-detail")).toHaveCSS(
     "background-color",
     "rgb(17, 17, 17)",
   );
+  const [fullscreenDownload] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByTestId("image-detail").getByRole("button", { name: "下载" }).click(),
+  ]);
+  const fullscreenDownloadPath = await fullscreenDownload.path();
+  expect(fullscreenDownloadPath).toBeTruthy();
+  expect(readFileSync(fullscreenDownloadPath!))
+    .toEqual(Buffer.from(pngBase64, "base64"));
   await page.keyboard.press("Escape");
   await page.getByTestId("image-node-toolbar")
     .getByRole("button", { name: "浏览全部" }).click();
@@ -1060,43 +1339,13 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   request,
 }) => {
   const generationRequests: string[] = [];
-  const seedanceValidationBodies: Array<{
-    assetId: string;
-    modelId: string;
-    role: string;
-  }> = [];
-  let seedanceValidationStarted = false;
-  let releaseSeedanceValidation = () => {};
-  const seedanceValidationGate = new Promise<void>((resolve) => {
-    releaseSeedanceValidation = resolve;
-  });
+  let seedanceValidationRequests = 0;
   await page.route("**/api/image-tools/seedance-validation", async (route) => {
-    const body = route.request().postDataJSON() as {
-      assetId: string;
-      modelId: string;
-      role: string;
-    };
-    seedanceValidationBodies.push(body);
-    seedanceValidationStarted = true;
-    await seedanceValidationGate;
+    seedanceValidationRequests += 1;
     await route.fulfill({
-      body: JSON.stringify({
-        assetId: body.assetId,
-        checkedAt: "2026-08-23T13:00:00.000Z",
-        expiresAt: "2099-08-23T13:05:00.000Z",
-        kind: "validation",
-        modelConfigurationRevision: "cccccccccccccccccccccccc",
-        modelDisplayName: "Seedance 2.0 Mini",
-        modelId: body.modelId,
-        operation: "seedance-validate",
-        problems: [],
-        remoteValidationAvailable: false,
-        role: body.role,
-        scope: "local-technical-preflight",
-        status: "eligible",
-      }),
+      body: JSON.stringify({ error: "图片工具不应再发起旧本地预检请求" }),
       contentType: "application/json",
-      status: 200,
+      status: 410,
     });
   });
   page.on("request", (browserRequest) => {
@@ -1592,96 +1841,12 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   }).toEqual({ annotationNodes: 1, edges: 8, nodes: 9 });
   await restoredNode.click();
   await restoredToolbar.getByRole("button", { name: "浏览全部" }).click();
-  await page.getByTestId("image-node-more-menu")
-    .getByRole("menuitem", { name: "Seedance 素材校验" }).click();
-  const seedancePanel = page.getByTestId("image-seedance-validation-panel");
-  await expect(seedancePanel).not.toContainText(/预计|USD|CNY/);
-  await expectInsideViewport(seedancePanel);
-  await expectInsideViewport(seedancePanel.locator(".image-tool-panel-footer"));
-  await expectScreenSpaceSizeInvariant(page, seedancePanel);
-  await expect(seedancePanel).toContainText("本工具只运行本地结构预检");
-  await expect(seedancePanel.getByTestId("seedance-local-preflight-state"))
-    .toContainText("未运行");
-  await expect(seedancePanel.getByTestId("seedance-provider-access-state"))
-    .toContainText("未执行 · 当前没有零费用只读远端资格证据");
-  await expect(seedancePanel.getByTestId("seedance-provider-access-state"))
-    .toContainText("实际提交时由方舟确认");
-  await expect(seedancePanel.getByTestId("seedance-trusted-material-state"))
-    .toContainText("未知 · 当前素材没有可核验的 asset:// 可信素材证明");
-  await expect(seedancePanel.getByRole("combobox", { name: "Seedance 视频模型" }))
-    .toHaveValue("fixture-seedance-2-mini");
-  await expect(seedancePanel.getByRole("combobox", { name: "Seedance 素材角色" }))
-    .toHaveValue("reference-image");
-  const seedanceSubmit = seedancePanel.getByRole("button", {
-    name: "运行本地技术预检",
-  });
-  const seedanceSubmitPromise = seedanceSubmit.click();
-  await expect.poll(() => seedanceValidationStarted).toBe(true);
-  await expect(seedancePanel.getByRole("button", { name: "校验中…" }))
-    .toBeDisabled();
-  await expect(seedancePanel.getByRole("button", {
-    name: "关闭 Seedance 素材校验",
-  })).toBeDisabled();
-  const seedanceHostPanel = page.getByTestId("image-tool-host")
-    .locator(".image-tool-host-panel");
-  await expect(seedanceHostPanel).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect.poll(() => seedanceHostPanel.evaluate((panel) =>
-    panel.contains(document.activeElement)
-  )).toBe(true);
-  await page.keyboard.press("Shift+Tab");
-  await expect.poll(() => seedanceHostPanel.evaluate((panel) =>
-    panel.contains(document.activeElement)
-  )).toBe(true);
-  await page.keyboard.press("Escape");
-  await expect(seedancePanel).toBeVisible();
-  await page.getByTestId("image-tool-host").click({ position: { x: 4, y: 4 } });
-  await expect(seedancePanel).toBeVisible();
-  releaseSeedanceValidation();
-  await seedanceSubmitPromise;
-  await expect(seedancePanel.locator("[data-state=eligible]"))
-    .toContainText("通过 · 格式、尺寸、保存状态、模型与角色符合本地规则");
-  await expect(seedancePanel.getByTestId("seedance-provider-access-state"))
-    .toHaveAttribute("data-state", "not-checked");
-  await expect(seedancePanel.getByTestId("seedance-trusted-material-state"))
-    .toHaveAttribute("data-state", "unknown");
-  expect(seedanceValidationBodies).toHaveLength(1);
-  expect(seedanceValidationBodies[0]).toMatchObject({
-    modelId: "fixture-seedance-2-mini",
-    role: "reference-image",
-  });
-  await expect.poll(async () => {
-    const saved = await (await request.get("/api/canvas/node.image.empty")).json() as {
-      nodes?: Array<{
-        data?: { imageSeedanceValidation?: Record<string, unknown> };
-        id?: string;
-      }>;
-    };
-    return saved.nodes?.find((savedNode) => savedNode.id === "image-primary")
-      ?.data?.imageSeedanceValidation;
-  }).toMatchObject({
-    modelConfigurationRevision: "cccccccccccccccccccccccc",
-    modelId: "fixture-seedance-2-mini",
-    remoteValidationAvailable: false,
-    role: "reference-image",
-    status: "eligible",
-  });
-  await seedancePanel.getByRole("button", { exact: true, name: "关闭" }).click();
-  await page.reload();
-  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
-    "data-persistence-ready",
-    "true",
-  );
-  await restoredNode.click();
-  await restoredToolbar.getByRole("button", { name: "浏览全部" }).click();
-  await page.getByTestId("image-node-more-menu")
-    .getByRole("menuitem", { name: "Seedance 素材校验" }).click();
-  await expect(seedancePanel.locator("[data-state=eligible]"))
-    .toContainText("通过 · 格式、尺寸、保存状态、模型与角色符合本地规则");
-  await seedancePanel.getByRole("combobox", { name: "Seedance 素材角色" })
-    .selectOption("subject");
-  await expect(seedancePanel.locator("[data-state=stale]"))
-    .toContainText("请重新预检");
+  const postAnnotationMenu = page.getByTestId("image-node-more-menu");
+  await expect(postAnnotationMenu.getByRole("menuitem", {
+    name: "Seedance 素材校验",
+  })).toHaveCount(0);
+  await expect(page.getByTestId("image-seedance-validation-panel")).toHaveCount(0);
+  expect(seedanceValidationRequests).toBe(0);
   expect(generationRequests).toEqual([]);
 });
 

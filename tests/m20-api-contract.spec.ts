@@ -61,10 +61,15 @@ test("the private API documents and reads canvas, project and model configuratio
     "/api/image-tools/seedance-validation",
     "/api/library",
     "/api/library/{kind}/{assetId}",
+    "/api/media/image/{assetId}/seedance/authorization-sessions",
+    "/api/media/image/{assetId}/seedance/trusted-binding",
+    "/api/media/image/{assetId}/seedance/trusted-bindings",
     "/api/models",
     "/api/project-title/{projectId}",
     "/api/projects",
     "/api/projects/{projectId}",
+    "/api/seedance/authorization-sessions/{sessionId}",
+    "/api/seedance/trusted-assets/capability",
     "/api/templates",
     "/api/templates/{templateId}",
     "/api/version",
@@ -85,6 +90,22 @@ test("the private API documents and reads canvas, project and model configuratio
   expect((specification.paths["/api/image-tools/seedance-validation"] as {
     post: { operationId: string };
   }).post.operationId).toBe("validateSeedanceImageAsset");
+  expect((specification.paths["/api/seedance/trusted-assets/capability"] as {
+    get: { operationId: string };
+  }).get.operationId).toBe("readSeedanceTrustedAssetCapability");
+  expect((specification.paths[
+    "/api/media/image/{assetId}/seedance/authorization-sessions"
+  ] as { post: { operationId: string; responses: Record<string, unknown> } }))
+    .toMatchObject({
+      post: {
+        operationId: "createSeedanceAuthorizationSession",
+        responses: { "202": expect.any(Object) },
+      },
+    });
+  expect((specification.paths[
+    "/api/media/image/{assetId}/seedance/trusted-bindings"
+  ] as { post: { operationId: string } }).post.operationId)
+    .toBe("createSeedanceTrustedBinding");
   const specificationText = JSON.stringify(specification);
   expect(specificationText).not.toContain("app.unboundry.ai");
   expect(specificationText).not.toMatch(/accessKey|secret/i);
@@ -93,6 +114,9 @@ test("the private API documents and reads canvas, project and model configuratio
   // apiKey 只允许作为请求体字段名出现，任何响应 schema 或说明文本不得含密钥值。
   expect(specificationText).not.toMatch(
     /responses[\s\S]{0,200}?apiKey/i,
+  );
+  expect(specificationText).not.toMatch(
+    /providerAccountFingerprint|providerGroupId|providerSessionId|secretAccessKey/i,
   );
   type JsonSchemaReference = { $ref: string };
   type JsonResponse = {
@@ -426,8 +450,8 @@ test("the private API documents and reads canvas, project and model configuratio
   await expect(page.getByTestId("admin-api-contract-page")).toBeVisible();
   await expect(page.getByRole("heading", { name: "项目自己的数据接口" }))
     .toBeVisible();
-  await expect(page.locator(".api-contract-grid article")).toHaveCount(36);
-  await expect(page.getByText("当前共 26 条接口路径", { exact: true }))
+  await expect(page.locator(".api-contract-grid article")).toHaveCount(41);
+  await expect(page.getByText("当前共 31 条接口路径", { exact: true }))
     .toBeVisible();
 
   const finalCanvasDelete = await request.delete(`/api/canvas/${canvasId}`);

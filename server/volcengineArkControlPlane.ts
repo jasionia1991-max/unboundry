@@ -23,9 +23,23 @@ const readActions = [
   "ListFoundationModelVersions",
 ] as const;
 
+const seedanceAssetActions = [
+  "CreateVisualValidateSession",
+  "GetVisualValidateResult",
+  "CreateAsset",
+  "GetAsset",
+] as const;
+
 const readActionSet = new Set<string>(readActions);
+const seedanceAssetActionSet = new Set<string>(seedanceAssetActions);
+const actionSet = new Set<string>([...readActions, ...seedanceAssetActions]);
 
 export type VolcengineArkControlPlaneReadAction = (typeof readActions)[number];
+export type VolcengineArkSeedanceAssetAction =
+  (typeof seedanceAssetActions)[number];
+type VolcengineArkControlPlaneAction =
+  | VolcengineArkControlPlaneReadAction
+  | VolcengineArkSeedanceAssetAction;
 
 export type VolcengineArkControlPlaneErrorCode =
   | "AUTH"
@@ -122,7 +136,7 @@ export type ArkCatalogDiscovery = {
 };
 
 export type VolcengineArkControlPlaneRequestMetadata = {
-  action: VolcengineArkControlPlaneReadAction;
+  action: VolcengineArkControlPlaneAction;
   requestNumber: number;
 };
 
@@ -273,11 +287,11 @@ function utcTimestamp(date: Date) {
 
 function signedHeaders(
   credentials: SafeCredentials,
-  action: VolcengineArkControlPlaneReadAction,
+  action: VolcengineArkControlPlaneAction,
   body: string,
   date: Date,
 ) {
-  if (!readActionSet.has(action)) fail("FORMAT");
+  if (!actionSet.has(action)) fail("FORMAT");
   const xDate = utcTimestamp(date);
   const shortDate = xDate.slice(0, 8);
   const contentType = "application/json; charset=utf-8";
@@ -533,10 +547,11 @@ function linkedSignal(context: RequestContext) {
 
 async function requestJson(
   context: RequestContext,
-  action: VolcengineArkControlPlaneReadAction,
+  action: VolcengineArkControlPlaneAction,
   payload: JsonObject,
+  allowedProviderErrorCodes: ReadonlySet<string> = new Set(),
 ) {
-  if (!readActionSet.has(action)) fail("FORMAT");
+  if (!actionSet.has(action)) fail("FORMAT");
   if (context.requestCount >= HARD_MAX_REQUESTS) fail("FORMAT");
   let date: Date;
   try {
@@ -599,10 +614,38 @@ async function requestJson(
     linked.dispose();
   }
   const responseErrorCode = providerErrorCode(parsed);
-  if (!response.ok || responseErrorCode) {
+  if (
+    !response.ok ||
+    responseErrorCode && !allowedProviderErrorCodes.has(responseErrorCode)
+  ) {
     fail(classifyProviderError(response.status, responseErrorCode));
   }
   return parsed;
+}
+
+export function isVolcengineArkSeedanceAssetAction(
+  value: unknown,
+): value is VolcengineArkSeedanceAssetAction {
+  return typeof value === "string" && seedanceAssetActionSet.has(value);
+}
+
+/** Exact signed Assets API transport. It exposes only the four admitted actions. */
+export async function requestVolcengineArkSeedanceAssetControlPlane(
+  credentials: VolcengineArkControlPlaneCredentials,
+  action: VolcengineArkSeedanceAssetAction,
+  payload: Readonly<Record<string, unknown>>,
+  options: VolcengineArkControlPlaneOptions & Readonly<{
+    allowedProviderErrorCodes?: readonly string[];
+  }> = {},
+): Promise<Record<string, unknown>> {
+  if (!seedanceAssetActionSet.has(action)) fail("FORMAT");
+  const context = createContext(credentials, options);
+  return await requestJson(
+    context,
+    action,
+    { ...payload },
+    new Set(options.allowedProviderErrorCodes ?? []),
+  );
 }
 
 function consumeRecords(context: RequestContext, count: number) {

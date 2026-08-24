@@ -447,17 +447,17 @@ function publicationSnapshot(
   }
 }
 
-test("schema 39 grants exactly one reservation before either same-ID contender may write bytes", async () => {
+test("schema 40 grants exactly one reservation before either same-ID contender may write bytes", async () => {
   await withDataDirectory("reservation-races", async (directory) => {
     addOwner(directory, "m88-owner-a");
     addOwner(directory, "m88-owner-b");
-    expect(currentSchemaVersion).toBe(39);
+    expect(currentSchemaVersion).toBe(40);
     const schema = openAppDatabase(directory);
     try {
       expect(
         (schema.prepare("PRAGMA user_version").get() as { user_version: number })
           .user_version,
-      ).toBe(39);
+      ).toBe(40);
     } finally {
       schema.close();
     }

@@ -1,9 +1,34 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.37 / schema39`且技术健康。INC-IMGEDIT-005已完成工程、GitHub、生产发布与零付费浏览器复验；当前`PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`。
+> **当前状态**：生产运行`v0.6.37 / schema39`且技术健康。INC-IMGEDIT-006 R8工程门完成；唯一safe full原始1053/1055、失败精确修正后定向18/18，未重复full，R9就绪。
 
 更新时间：2026-08-24
-状态：`生产v0.6.37 / schema39；INC-IMGEDIT-005 LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / INDEPENDENT_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / PR_MERGED / PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK。`
+状态：`生产v0.6.37 / schema39 / USER_RECHECK；INC-IMGEDIT-006 GOAL_ACTIVE / R8_LOCAL_ENGINEERING_COMPLETE / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / R9_READY / ACTIVE_BRANCH_A / SCHEMA40_REQUIRED / VERSION_GATE_VALID_v0.6.38 / RELEASE_GATE_VALID；Provider控制面1/200，付费生成与费用0。`
+
+### 2026-08-24 图片全屏完整适配与Seedance可信素材（INC-IMGEDIT-006，R8_COMPLETE / R9_READY）
+
+- 权威方案：`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_PLAN_2026-08-24.md`；实时断点：`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_CHECKPOINT.md`
+- 隔离分支/工作树：`codex/inc-imgedit-006-v0.6.38-2026-08-24` / `/private/tmp/unboundry-inc006-v0.6.38-2026-08-24`；起点HEAD与`origin/main`同为`349a915`，package0.6.37、schema39
+- 用户已精确确认`v0.6.38`并允许`v0.6.38`上线；同名本地/远端tag及GitHub Release均不存在，发布门只用于本Goal
+- R0冻结`ACTIVE_BRANCH=A / OFFICIAL_API_CONTRACT=CONFIRMED / ACCOUNT_ENTITLEMENT=CONFIRMED / CONTROL_REQUEST_AUTHORIZATION=VALID / PURCHASE_REQUIRED=NO`
+- 当前账号真实权益为Assets/Asset Groups/shared pool各50、已用0、剩余50，write QPM 3；正式H5/Group/Asset合同使用服务端AK/SK与`cn-beijing`，不得暴露凭据或复制ComfyUI私有代理
+- Provider控制面账本`1/200`，其中权益/能力只读`1/10`；H5创建、H5状态、Asset创建/查询、最终核验均0。真实Seedance视频/图片/音频生成、付费尝试/成功/费用、OSS写入、购买、新账号和云权限修改均0
+- 新增验收`IMGEDIT-039～046`；当前只有能力分流`IMGEDIT-041 = R0_IN_PROGRESS`，其余不得继承INC-IMGEDIT-005的自动或生产PASS
+- R1 safe m2执行13项，11通过/2项预期失败：1086×1448图片bottom=1237而viewer bottom=699；旧“Seedance 素材校验”菜单仍存在1项。source/snapshot`ad7aff0c…c1789`、4173 unchanged，Provider/OSS/费用0
+- R2以Grid确定行、viewer双轴约束和img最小尺寸的最小CSS根因修复收口；safe m2中全屏/透明与其余既有12项通过，唯一失败为R3预留旧Seedance入口
+- 全屏矩阵覆盖六类比例×三视口，长提示词不改图片几何；透明下载与原PNG逐字节一致。source/snapshot`e104f1d8…ada4`、4173 unchanged，Provider/OSS/费用0
+- R3移除图片工具旧入口/panel/HTTP调用；旧记录只显示历史本地预检，视频节点对Seedance参考图自动产生本地技术预检且不进可信Asset/task snapshot。safe m100+m2+m30 `35/35 PASS`，source/snapshot`378e9526…6b5d`、4173 unchanged，Provider/OSS/费用0
+- R4已新增schema40的Group/Session/Binding分表与精确物理schema，组合外键绑定owner/profile/稳定账号指纹/region/project，Binding另绑定image asset和checksum；幂等键覆盖同一身份与source，跨owner读取失败。
+- 五条可信素材API/OpenAPI已冻结：创建快速返回202，H5完整URL只允许创建响应一次性返回，不进入status DTO或数据库；客户端不接收Provider账号指纹和Group/Session/Asset内部ID。build通过，safe m100+m20 `14/14 PASS`，source/snapshot`c505e70f…f0288f03`，4173 unchanged，真实Provider/Generation/OSS/费用0。
+- R5A已按正式`ark/2024-01-01/cn-beijing`合同只放行H5创建、认证结果、Asset创建、Asset查询四个Action，复用V4签名与凭据回显扫描；身份变化请求前拒绝，默认QPM3、10秒超时和结构化脱敏错误。safe m42 `15/15 PASS`，source/snapshot`be3b5f87…401d62c`，真实Provider/Generation/OSS/费用0。
+- R6完成owner-scoped H5/Group/Asset编排与重启恢复；服务端只在Binding的owner/source checksum/profile/account/region/project及远端Active全部匹配时构造`asset://`，任务快照冻结Binding/Provider Asset/checksum/checkedAt/角色，提交与真正Provider边界前双重只读复核。客户端伪造、跨账号、失效和旧快照均拒绝，普通HTTPS/Data URL不回归。
+- R6 build及safe m100+m16+m20+m5 `46/46 PASS`，architecture新增例外0，source/snapshot`c0266eaa…b41592b`，4173 unchanged；真实Provider/Generation/OSS/费用0。
+- R7新增图片“角色可信素材”modal与A/B/C准确能力文案，覆盖H5同步预开、双击防重、20秒QPM兼容轮询、session ID刷新恢复、Processing到Active服务端推进、全部失败状态、inert/Escape/焦点和三视口；完整H5 URL不落库，自动化外部Provider/Generation/OSS/费用0。
+- R7首轮稳定m2 `11/13`精确发现关闭按钮定位歧义和第8行菜单仍为272px，修正后m2 `13/13 PASS`；最终build及safe m100+m2+m20 `27/27 PASS`，source/snapshot`f22637b7…d2d0d1`、4173 unchanged、architecture新增例外0。
+- R8只读P0/P1审查关闭两类真实缺口：Active绑定的主动读取会重新执行Provider只读inspect且不吞错；schema40已贯穿备份/恢复/媒体完整性/exact-v0.5.1 attestation/one-shot迁移/迁移失败回滚/Linux验证/bridge rollback与合成发布切换，三张新表进入逻辑指纹。
+- schema40诊断原始两批为`35/56`与`45/48`，均因旧schema39常量和新表清单失败；修正后m10+m92 `19/19 PASS`、m81+m88+m91+m95 `90/90 PASS`、新增schema40 checkpoint m91 `8/8 PASS`。诊断失败不改写；真实Provider/Generation/OSS/费用0，账本仍1/200。
+- package/lock已为0.6.38，当前schema40，P0/P1审查无剩余。本Goal唯一safe full在`d5c5840`执行120 specs/1055 tests，原始`1053/1055`、退出1；仅m10漏收schema40迁移错误码、m9把合法Authorization产品语义误判为凭据发送。精确修正后只复验m10+m9 `18/18 PASS`，source/snapshot`ad6bc903…60dd3`，未重复full。
+- 治理提交`34893db`后m38精确复验`15/15 PASS`、source/snapshot`7c05244d…9e8aa`。R8收口`LOCAL_ENGINEERING_COMPLETE / P0_P1_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS`，原始full不改写。当前唯一下一动作是R9 GitHub交付。
 
 ### 2026-08-24 图片工具产品质量拒收返工（INC-IMGEDIT-005，R9_COMPLETE / USER_RECHECK）
 

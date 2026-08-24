@@ -506,6 +506,114 @@ export const openApiDocument = {
         },
       },
     },
+    "/api/seedance/trusted-assets/capability": {
+      get: {
+        operationId: "readSeedanceTrustedAssetCapability",
+        summary: "Read the safe owner-scoped Seedance trusted-asset capability",
+        responses: {
+          "200": {
+            description: "A/B/C capability without credentials or account identifiers",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/SeedanceTrustedAssetCapability" },
+              },
+            },
+          },
+          "401": { description: "Sign-in required" },
+          "503": { description: "Capability service temporarily unavailable" },
+        },
+      },
+    },
+    "/api/media/image/{assetId}/seedance/authorization-sessions": {
+      post: {
+        operationId: "createSeedanceAuthorizationSession",
+        summary: "Start or resume an idempotent owner-scoped authorization session",
+        parameters: [{ $ref: "#/components/parameters/SeedanceImageAssetId" }],
+        responses: {
+          "202": {
+            description: "The bounded asynchronous flow was accepted",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/SeedanceAuthorizationSessionCreated",
+                },
+              },
+            },
+          },
+          "401": { description: "Sign-in required" },
+          "404": { description: "Owner-scoped image not found" },
+          "409": { description: "The source or provider identity changed" },
+          "503": { description: "Entitlement or control-plane capability unavailable" },
+        },
+      },
+    },
+    "/api/seedance/authorization-sessions/{sessionId}": {
+      get: {
+        operationId: "readSeedanceAuthorizationSession",
+        summary: "Read one opaque owner-scoped authorization session",
+        parameters: [{ $ref: "#/components/parameters/SeedanceSessionId" }],
+        responses: {
+          "200": {
+            description: "Persisted status without the H5 URL or biometric data",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/SeedanceAuthorizationSession" },
+              },
+            },
+          },
+          "401": { description: "Sign-in required" },
+          "404": { description: "Owner-scoped session not found" },
+        },
+      },
+    },
+    "/api/media/image/{assetId}/seedance/trusted-binding": {
+      get: {
+        operationId: "readSeedanceTrustedBinding",
+        summary: "Read the current owner-scoped trusted binding for an image",
+        parameters: [{ $ref: "#/components/parameters/SeedanceImageAssetId" }],
+        responses: {
+          "200": {
+            description: "Safe binding status without Provider internal IDs",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/SeedanceTrustedBinding" },
+              },
+            },
+          },
+          "401": { description: "Sign-in required" },
+          "404": { description: "Owner-scoped binding not found" },
+        },
+      },
+    },
+    "/api/media/image/{assetId}/seedance/trusted-bindings": {
+      post: {
+        operationId: "createSeedanceTrustedBinding",
+        summary: "Link a Provider asset for subsequent owner-scoped read verification",
+        parameters: [{ $ref: "#/components/parameters/SeedanceImageAssetId" }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/SeedanceTrustedBindingRequest" },
+            },
+          },
+        },
+        responses: {
+          "202": {
+            description: "Saved as unverified until Provider inspection succeeds",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/SeedanceTrustedBinding" },
+              },
+            },
+          },
+          "400": { description: "Provider asset identifier invalid" },
+          "401": { description: "Sign-in required" },
+          "404": { description: "Owner-scoped image not found" },
+          "503": { description: "Trusted-asset service unavailable" },
+        },
+      },
+    },
     "/api/account-context": {
       get: {
         operationId: "readAccountContext",
@@ -1336,7 +1444,140 @@ export const openApiDocument = {
     },
   },
   components: {
+    parameters: {
+      SeedanceImageAssetId: {
+        in: "path",
+        name: "assetId",
+        required: true,
+        schema: { type: "string", pattern: "^[A-Za-z0-9._-]{1,160}$" },
+      },
+      SeedanceSessionId: {
+        in: "path",
+        name: "sessionId",
+        required: true,
+        schema: { type: "string", pattern: "^[A-Za-z0-9._-]{1,160}$" },
+      },
+    },
     schemas: {
+      SeedanceTrustedAssetStatus: {
+        type: "string",
+        enum: [
+          "NOT_STARTED",
+          "SESSION_PENDING",
+          "WAITING_AUTHORIZATION",
+          "AUTHORIZATION_COMPLETED",
+          "PENDING_ACCEPTANCE",
+          "ASSET_PROCESSING",
+          "LINKED_UNVERIFIED",
+          "ACTIVE",
+          "REJECTED",
+          "CONSISTENCY_FAILED",
+          "REVOKED",
+          "DELETED",
+          "ENTITLEMENT_EXPIRED",
+          "STALE_SOURCE",
+          "FAILED",
+        ],
+      },
+      SeedanceTrustedAssetCapability: {
+        type: "object",
+        required: [
+          "branch",
+          "canCreateAuthorizationSession",
+          "canInspectAsset",
+          "providerDisplayName",
+        ],
+        properties: {
+          branch: { type: "string", enum: ["A", "B", "C"] },
+          canCreateAuthorizationSession: { type: "boolean" },
+          canInspectAsset: { type: "boolean" },
+          providerDisplayName: { type: "string", minLength: 1 },
+        },
+        additionalProperties: false,
+      },
+      SeedanceAuthorizationSession: {
+        type: "object",
+        required: ["createdAt", "expiresAt", "id", "status", "updatedAt"],
+        properties: {
+          createdAt: { type: "string", format: "date-time" },
+          expiresAt: {
+            oneOf: [{ type: "string", format: "date-time" }, { type: "null" }],
+          },
+          id: { type: "string", pattern: "^[A-Za-z0-9._-]{1,160}$" },
+          status: { $ref: "#/components/schemas/SeedanceTrustedAssetStatus" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+        additionalProperties: false,
+      },
+      SeedanceAuthorizationSessionCreated: {
+        type: "object",
+        required: [
+          "createdAt", "expiresAt", "id", "status", "updatedAt",
+        ],
+        properties: {
+          authorizationUrl: { type: "string", format: "uri" },
+          createdAt: { type: "string", format: "date-time" },
+          expiresAt: {
+            oneOf: [{ type: "string", format: "date-time" }, { type: "null" }],
+          },
+          id: { type: "string", pattern: "^[A-Za-z0-9._-]{1,160}$" },
+          status: { $ref: "#/components/schemas/SeedanceTrustedAssetStatus" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+        additionalProperties: false,
+      },
+      SeedanceTrustedBindingRequest: {
+        type: "object",
+        required: ["providerAssetId"],
+        properties: {
+          providerAssetId: {
+            type: "string",
+            pattern: "^[A-Za-z0-9._-]{1,160}$",
+          },
+        },
+        additionalProperties: false,
+      },
+      SeedanceTrustedBinding: {
+        type: "object",
+        required: [
+          "checkedAt", "createdAt", "failure", "id", "source", "status",
+          "updatedAt",
+        ],
+        properties: {
+          checkedAt: {
+            oneOf: [{ type: "string", format: "date-time" }, { type: "null" }],
+          },
+          createdAt: { type: "string", format: "date-time" },
+          failure: {
+            oneOf: [
+              {
+                type: "object",
+                required: ["code", "message"],
+                properties: {
+                  code: { type: "string" },
+                  message: { type: "string" },
+                },
+                additionalProperties: false,
+              },
+              { type: "null" },
+            ],
+          },
+          id: { type: "string", pattern: "^[A-Za-z0-9._-]{1,160}$" },
+          source: {
+            type: "object",
+            required: ["assetId", "checksumSha256", "kind"],
+            properties: {
+              assetId: { type: "string" },
+              checksumSha256: { type: "string", pattern: "^[a-f0-9]{64}$" },
+              kind: { type: "string", const: "image" },
+            },
+            additionalProperties: false,
+          },
+          status: { $ref: "#/components/schemas/SeedanceTrustedAssetStatus" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+        additionalProperties: false,
+      },
       SeedanceAssetValidationRequest: {
         type: "object",
         required: ["assetId", "modelId", "role"],

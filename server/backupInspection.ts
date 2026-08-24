@@ -44,7 +44,7 @@ const providerDrivers = new Set([
 const knownMigrationNames = Object.freeze(
   currentSchemaManifest.map(({ name }) => name),
 );
-const supportedBackupSchemaVersions = new Set([37, 38, 39]);
+const supportedBackupSchemaVersions = new Set([37, 38, 39, 40]);
 const builtInProviderBaseUrls = Object.freeze({
   mureka: "https://api.mureka.ai",
   openrouter: "https://openrouter.ai/api/v1",
@@ -262,7 +262,7 @@ const schema37Contract = Object.freeze({
 // independently frozen fingerprints while the three durable-media tables,
 // indexes and guards below close the schema-38 object set exactly. Never point
 // this at currentSchemaContract: schema-38 backup packages must remain
-// inspectable after the running candidate advances to schema 39.
+// inspectable after the running candidate advances beyond schema 38.
 const schema38Contract = Object.freeze({
   columns: Object.freeze({
     ...schema37Contract.columns,

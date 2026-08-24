@@ -193,6 +193,7 @@ import {
   type ImageGenerationToolInput,
 } from "../types/imageTools";
 import type { RuntimeRoleCoordinator } from "./runtimeRole";
+import { resolveSeedanceTrustedVideoReferences } from "./seedanceTrustedVideoReferences";
 
 export type GenerationRuntimeAdapters = Readonly<{
   arkVideo: Readonly<{
@@ -4514,13 +4515,13 @@ const arkVideoMediaRoles = new Set<ArkVideoMediaInput["role"]>([
   "subject",
 ]);
 
-function videoTaskMediaSnapshots(value: unknown): Array<
-  NodeInputSnapshot & {
-    assetId: string;
-    kind: ArkVideoMediaInput["kind"];
-    role: ArkVideoMediaInput["role"];
-  }
-> {
+type VideoTaskMediaSnapshot = NodeInputSnapshot & {
+  assetId: string;
+  kind: ArkVideoMediaInput["kind"];
+  role: ArkVideoMediaInput["role"];
+};
+
+function videoTaskMediaSnapshots(value: unknown): VideoTaskMediaSnapshot[] {
   if (value === undefined) return [];
   if (!Array.isArray(value)) {
     throw new ProviderMediaError("MEDIA_INVALID", "视频任务保存的参考素材快照无效");
@@ -4572,19 +4573,46 @@ function videoTaskMediaSnapshots(value: unknown): Array<
     if (!compatible) {
       throw new ProviderMediaError("MEDIA_INVALID", "视频任务保存的参考素材角色无效");
     }
+    let trustedAsset: NodeInputSnapshot["trustedAsset"];
+    if (item.trustedAsset !== undefined) {
+      const trusted = item.trustedAsset;
+      if (
+        item.kind !== "image" ||
+        !trusted || typeof trusted !== "object" || Array.isArray(trusted) ||
+        !/^[a-z0-9._-]{1,160}$/i.test(String(trusted.bindingId ?? "")) ||
+        !/^[a-z0-9._-]{3,160}$/i.test(String(trusted.providerAssetId ?? "")) ||
+        !/^[a-z0-9._-]{1,160}$/i.test(String(trusted.providerProfileId ?? "")) ||
+        !/^[a-f0-9]{64}$/.test(String(trusted.sourceChecksumSha256 ?? "")) ||
+        !Number.isFinite(Date.parse(String(trusted.checkedAt ?? "")))
+      ) {
+        throw new ProviderMediaError("MEDIA_INVALID", "视频任务保存的方舟可信素材快照无效");
+      }
+      trustedAsset = {
+        bindingId: String(trusted.bindingId),
+        checkedAt: String(trusted.checkedAt),
+        providerAssetId: String(trusted.providerAssetId),
+        providerProfileId: String(trusted.providerProfileId),
+        sourceChecksumSha256: String(trusted.sourceChecksumSha256),
+      };
+    }
     media.push({
       assetId: item.assetId,
       kind: item.kind,
       order: Number(item.order),
       role,
       sourceNodeId: item.sourceNodeId,
+      ...(trustedAsset ? { trustedAsset } : {}),
     });
   }
   return media.sort((left, right) => left.order - right.order);
 }
 
 async function arkVideoMediaInputs(task: GenerationTask): Promise<ArkVideoMediaInput[]> {
-  const snapshots = videoTaskMediaSnapshots(task.parameters.inputs);
+  const snapshots = await resolveSeedanceTrustedVideoReferences({
+    inputs: videoTaskMediaSnapshots(task.parameters.inputs),
+    ownerId: task.ownerId!,
+    providerProfileId: task.providerProfileId!,
+  }) as VideoTaskMediaSnapshot[];
   const rules = referenceMediaRulesForTask(task) ?? arkVideoMediaRules;
   const validated = snapshots.map((snapshot): ArkVideoMediaRecord => {
     const media = readableMediaForOwner(
@@ -4609,15 +4637,32 @@ async function arkVideoMediaInputs(task: GenerationTask): Promise<ArkVideoMediaI
   );
   const inputs: ArkVideoMediaInput[] = [];
   for (const snapshot of snapshots) {
+    if (snapshot.trustedAsset) {
+      inputs.push({
+        kind: "image",
+        order: snapshot.order,
+        reference: {
+          bindingId: snapshot.trustedAsset.bindingId,
+          kind: "trusted-asset",
+          providerAssetId: snapshot.trustedAsset.providerAssetId,
+        },
+        role: snapshot.role,
+      });
+      continue;
+    }
+    const url = await providerMediaUrlForOwner({
+      assetId: snapshot.assetId,
+      kind: snapshot.kind,
+      ownerId: task.ownerId!,
+    }, { rules });
     inputs.push({
       kind: snapshot.kind,
       order: snapshot.order,
+      reference: {
+        kind: url.startsWith("data:") ? "inline-data" : "public-url",
+        value: url,
+      },
       role: snapshot.role,
-      url: await providerMediaUrlForOwner({
-        assetId: snapshot.assetId,
-        kind: snapshot.kind,
-        ownerId: task.ownerId!,
-      }, { rules }),
     });
   }
   return inputs;

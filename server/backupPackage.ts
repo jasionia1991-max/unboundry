@@ -76,7 +76,7 @@ const reservationMarkerMaximumBytes = 64 * 1024;
 const secretDocumentLockMaximumBytes = 1024 * 1024;
 const backupIncompleteMarker = ".unboundry-backup-incomplete";
 const restoreIncompleteMarker = ".unboundry-restore-incomplete";
-const supportedBackupSchemaVersions = new Set([37, 38, 39]);
+const supportedBackupSchemaVersions = new Set([37, 38, 39, 40]);
 const minimumProviderQuietMilliseconds = 60_000;
 const restorableSecretFiles = new Set([
   "config-master.key",
@@ -538,9 +538,9 @@ function validateLockedSourceContract(
     );
   }
   // Schema 37/38 have no durable Provider outcome column. Reconstruct the
-  // attempt associated with the task exactly as the one-shot 37->39 bridge
+  // attempt associated with the task exactly as the one-shot bridge migration
   // does, and reject every Provider-boundary row that cannot be proven settled
-  // from the terminal task state. Keep this check for schema 39 as a second,
+  // from the terminal task state. Keep this check for current schemas as a second,
   // conservative ledger guard: an explicit outcome must never make a legacy
   // source shape less safe to capture.
   const unsettledProviderBoundary = database.prepare(`

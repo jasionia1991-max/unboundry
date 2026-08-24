@@ -69,7 +69,7 @@ const maximumBuildArtifactNameBytes = 255;
 const maximumBuildArtifactPathBytes = 16 * 1024;
 const maximumBuildArtifactInventoryPathBytes = 16 * 1024 * 1024;
 const maximumRestoredStateBytes = 1024 * 1024 * 1024 * 1024;
-const currentStartupSchemaVersion = 39;
+const currentStartupSchemaVersion = 40;
 const startupShutdownDiagnosticMarkers = Object.freeze([
   "LEGACY_CHILD_GUARDIAN_LOST",
   "LEGACY_RUNTIME_DRAIN_TIMEOUT",
@@ -4139,7 +4139,7 @@ try {
       migrationDryRun?.mode !== "dry-run" ||
       migrationDryRun?.status !== "ready" ||
       migrationDryRun?.sourceVersion !== 37 ||
-      migrationDryRun?.targetVersion !== 39 ||
+      migrationDryRun?.targetVersion !== 40 ||
       migrationDryRun?.expectedSourceLogicalSha256 !== postBridge37LogicalSha256 ||
       migrationDryRun?.nativeDurationProbes !== 0 ||
       linuxValidationSandbox && migrationDryRun?.drainMilliseconds !== 60_000
@@ -4181,7 +4181,7 @@ try {
     migrationApplied?.mode !== "apply" ||
     migrationApplied?.status !== "complete" ||
     migrationApplied?.sourceVersion !== 37 ||
-    migrationApplied?.targetVersion !== 39 ||
+    migrationApplied?.targetVersion !== 40 ||
     migrationApplied?.expectedSourceLogicalSha256 !== postBridge37LogicalSha256 ||
     migrationApplied?.backfilledDurations !== 1 ||
     linuxValidationSandbox && migrationApplied?.drainMilliseconds !== 60_000 ||
@@ -4215,14 +4215,14 @@ try {
   ) {
     fail(
       "FINAL_BACKUP_STARTUP_SCHEMA_MISMATCH",
-      "Migrated restore is not exact schema 39 for normal startup",
+      "Migrated restore is not exact schema 40 for normal startup",
     );
   }
   const bridgeSchema39 = await validateReleaseStartup({
     expected: Object.freeze({
       mode: "active",
       mutationsAccepted: true,
-      schemaVersion: 39,
+      schemaVersion: 40,
     }),
     release: releases.bridge,
     scratchRoot,
@@ -4234,7 +4234,7 @@ try {
     expected: Object.freeze({
       mode: "active",
       mutationsAccepted: true,
-      schemaVersion: 39,
+      schemaVersion: 40,
     }),
     release: releases.final,
     scratchRoot,
@@ -4260,7 +4260,7 @@ try {
     expected: Object.freeze({
       mode: "active",
       mutationsAccepted: true,
-      schemaVersion: 39,
+      schemaVersion: 40,
     }),
     release: releases.bridge,
     scratchRoot,
@@ -4279,7 +4279,7 @@ try {
   ) {
     fail(
       "FINAL_BACKUP_STARTUP_TARGET_CHANGED",
-      "Bridge rollback runtime changed the migrated schema-39 target",
+      "Bridge rollback runtime changed the migrated schema-40 target",
     );
   }
   await revalidateRelease(releases.final, "final", runnerReleaseAttestation);
@@ -4287,7 +4287,7 @@ try {
     expected: Object.freeze({
       mode: "active",
       mutationsAccepted: true,
-      schemaVersion: 39,
+      schemaVersion: 40,
     }),
     release: releases.final,
     scratchRoot,
@@ -4306,7 +4306,7 @@ try {
   ) {
     fail(
       "FINAL_BACKUP_STARTUP_TARGET_CHANGED",
-      "Final reswitch runtime changed the migrated schema-39 target",
+      "Final reswitch runtime changed the migrated schema-40 target",
     );
   }
   const startupValidation = Object.freeze({
@@ -4319,17 +4319,17 @@ try {
     postBridge37LogicalSha256,
     runtimeSequence: Object.freeze([
       Object.freeze({ releaseRole: "bridge", schemaVersion: 37 }),
-      Object.freeze({ releaseRole: "bridge", schemaVersion: 39 }),
-      Object.freeze({ releaseRole: "final", schemaVersion: 39 }),
+      Object.freeze({ releaseRole: "bridge", schemaVersion: 40 }),
+      Object.freeze({ releaseRole: "final", schemaVersion: 40 }),
       Object.freeze({
         operation: "rollback",
         releaseRole: "bridge",
-        schemaVersion: 39,
+        schemaVersion: 40,
       }),
       Object.freeze({
         operation: "reswitch",
         releaseRole: "final",
-        schemaVersion: 39,
+        schemaVersion: 40,
       }),
     ]),
     targetLogicalSha256: postFinalReswitchInspection.logicalSha256,

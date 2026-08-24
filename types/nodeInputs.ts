@@ -46,6 +46,11 @@ export type ResolvedNodeInput = {
   /** Whether an empty Text source has an instruction waiting to be run. */
   hasGenerationPrompt?: boolean;
   kind: NodeInputKind;
+  localTechnicalPreflight?: Readonly<{
+    problems: readonly string[];
+    scope: "local-technical-preflight";
+    status: "eligible" | "ineligible";
+  }>;
   mediaHeight?: number;
   mediaWidth?: number;
   metadataStatus?: "failed" | "pending" | "ready";
@@ -69,6 +74,14 @@ export type NodeInputSnapshot = {
   order: number;
   role: NodeInputRole;
   sourceNodeId: string;
+  /** Server-authored only. Browser input is ignored and rebuilt from a verified binding. */
+  trustedAsset?: Readonly<{
+    bindingId: string;
+    checkedAt: string;
+    providerAssetId: string;
+    providerProfileId: string;
+    sourceChecksumSha256: string;
+  }>;
 };
 
 export type NodeInputProblem = {
@@ -929,6 +942,22 @@ export function resolveNodeInputs(input: {
       const message = "参考音频不能单独用于当前视频模型，请至少再连接一个图片或视频";
       if (firstAudio) policyProblem(firstAudio, message);
       else problems.push({ code: "INVALID", message });
+    }
+    for (const item of inputs.filter((candidate) => candidate.kind === "image")) {
+      const itemProblems = problems
+        .filter((problem) => problem.edgeId === item.edgeId)
+        .map((problem) => problem.message);
+      if (item.reason && !itemProblems.includes(item.reason)) {
+        itemProblems.unshift(item.reason);
+      }
+      item.localTechnicalPreflight = {
+        problems: itemProblems,
+        scope: "local-technical-preflight",
+        status: item.state === "ready" &&
+            item.compatibility === "compatible" && itemProblems.length === 0
+          ? "eligible"
+          : "ineligible",
+      };
     }
   }
 

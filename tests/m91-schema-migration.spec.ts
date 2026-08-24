@@ -1002,7 +1002,7 @@ test("quiet gate uses 60 seconds and rechecks active and unsettled paid work", a
     expect(slept).toBe(60_000);
     const migratedActive = new DatabaseSync(activePath, { readOnly: true });
     expect(migratedActive.prepare("PRAGMA user_version").get()).toEqual({
-      user_version: 39,
+      user_version: 40,
     });
     migratedActive.close();
 
@@ -1042,7 +1042,7 @@ test("quiet gate uses 60 seconds and rechecks active and unsettled paid work", a
   }
 });
 
-test("schema-38 checkpoint failures roll back atomically and retain recovery marker", async () => {
+test("schema checkpoint failures roll back atomically and retain recovery marker", async () => {
   const root = await mkdtemp(join(tmpdir(), "unboundry-m91-schema38-crash-"));
   const dataDirectory = join(root, "data");
   try {
@@ -1082,6 +1082,33 @@ test("schema-38 checkpoint failures roll back atomically and retain recovery mar
       });
       expect(result).toMatchObject({ recovered: true, status: "complete" });
     });
+
+    const schema40Directory = join(root, "schema40-data");
+    const schema40Path = await createExactSchema(schema40Directory, 37);
+    const schema40Sha = expectedLogicalSha(schema40Path, root);
+    await withSafeMigrationClock(async () => {
+      await expect(migrateSchema37To39({
+        dataDirectory: schema40Directory,
+        expectedSourceLogicalSha256: schema40Sha,
+        mode: "apply",
+        onCheckpoint: (checkpoint) => {
+          if (checkpoint === "schema-40-applied") {
+            throw new Error("simulated schema-40 process loss");
+          }
+        },
+        scratchRoot: root,
+        testClock: { drainMilliseconds: 0, sleep: async () => undefined },
+      })).rejects.toMatchObject({
+        code: "SCHEMA_MIGRATION_FAILED_SCHEMA40_APPLY",
+      });
+    });
+    const schema40RolledBack = new DatabaseSync(schema40Path, { readOnly: true });
+    expect(schema40RolledBack.prepare("PRAGMA user_version").get()).toEqual({
+      user_version: 37,
+    });
+    expect(databaseMatchesFrozenSchema37Contract(schema40RolledBack)).toBe(true);
+    schema40RolledBack.close();
+    expect(await readdir(schema40Directory)).toContain(migrationIncompleteMarker);
   } finally {
     await rm(root, { force: true, recursive: true });
   }
@@ -1198,7 +1225,7 @@ test("write lock serializes migrators and blocks replacement TOCTOU", async () =
     });
     const current = new DatabaseSync(databasePath, { readOnly: true });
     expect(current.prepare("PRAGMA user_version").get()).toEqual({
-      user_version: 39,
+      user_version: 40,
     });
     current.close();
   } finally {
@@ -1290,7 +1317,7 @@ test("marker, directory identity, and dangling links fail closed", async () => {
     ))).toMatchObject({
       expectedSourceLogicalSha256: deletedMarkerSha,
       sourceVersion: 37,
-      targetVersion: 39,
+      targetVersion: 40,
     });
     const deletedMarkerSource = new DatabaseSync(deletedMarkerPath, {
       readOnly: true,
@@ -1406,7 +1433,7 @@ test("dry-run and CLI validate exact v37 plus logical SHA without source writes"
       mode: "dry-run",
       sourceVersion: 37,
       status: "ready",
-      targetVersion: 39,
+      targetVersion: 40,
     });
     expect(await sourceFingerprint(dataDirectory)).toEqual(before);
 
@@ -2149,7 +2176,7 @@ test("apply enforces the quiet gate, strict backfill, marker recovery, and exact
       nativeDurationProbes: 6,
       recovered: true,
       status: "complete",
-      targetVersion: 39,
+      targetVersion: 40,
     });
     expect(durationRecovered.nativeDurationProbeAuditSha256).toMatch(
       /^[a-f0-9]{64}$/,
@@ -2313,13 +2340,13 @@ test("apply enforces the quiet gate, strict backfill, marker recovery, and exact
       backfilledDurations: 1,
       nativeDurationProbes: 2,
       status: "complete",
-      targetVersion: 39,
+      targetVersion: 40,
     });
     const realFfprobeCurrent = new DatabaseSync(realFfprobePath, {
       readOnly: true,
     });
     expect(realFfprobeCurrent.prepare("PRAGMA user_version").get()).toEqual({
-      user_version: 39,
+      user_version: 40,
     });
     const probedDuration = realFfprobeCurrent.prepare(`
       SELECT duration_seconds, duration_source, duration_status
@@ -2455,7 +2482,7 @@ test("apply enforces the quiet gate, strict backfill, marker recovery, and exact
     expect(await readdir(dataDirectory)).toContain(migrationIncompleteMarker);
     const committed = new DatabaseSync(databasePath, { readOnly: true });
     expect(committed.prepare("PRAGMA user_version").get()).toEqual({
-      user_version: 39,
+      user_version: 40,
     });
     expect(databaseHasCompleteLegacyMediaMetadata(committed)).toBe(true);
     committed.close();
@@ -2523,7 +2550,7 @@ test("apply enforces the quiet gate, strict backfill, marker recovery, and exact
       mode: "apply",
       recovered: true,
       status: "complete",
-      targetVersion: 39,
+      targetVersion: 40,
     });
     expect(await readdir(dataDirectory)).not.toContain(migrationIncompleteMarker);
     const current = openAppDatabase(dataDirectory);

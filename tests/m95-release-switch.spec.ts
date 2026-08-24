@@ -256,13 +256,13 @@ async function createRelease(
     : exactPlaceholders;
   const databaseCompatibility = releaseRole === "bridge"
     ? {
-        activeSchemaVersions: [37, 39],
+        activeSchemaVersions: [37, 40],
         migrationMode: "external-one-shot-only",
-        rollbackTargetForSchemaVersion: 39,
+        rollbackTargetForSchemaVersion: 40,
       }
     : releaseRole === "final"
       ? {
-          activeSchemaVersions: [39],
+          activeSchemaVersions: [40],
           migrationMode: "forbidden-from-final-runtime",
           standbySchemaVersions: [37],
         }
@@ -476,7 +476,7 @@ async function createRelease(
   await freezeDirectories(directory);
 }
 
-function stateDocument(schemaVersion: 37 | 39) {
+function stateDocument(schemaVersion: 37 | 40) {
   return {
     bridgeReleaseId: "v0.5.2",
     exactOldReleaseId: "v0.5.1",
@@ -489,7 +489,7 @@ function stateDocument(schemaVersion: 37 | 39) {
 
 async function createFixture(options: {
   currentId?: string;
-  schemaVersion?: 37 | 39;
+  schemaVersion?: 37 | 40;
 } = {}) {
   const uncanonicalRoot = await mkdtemp(join(tmpdir(), "unboundry-m95-"));
   const root = await realpath(uncanonicalRoot);
@@ -796,7 +796,7 @@ test("schema 37 bridge rehearsal migrates without HTTP, atomically switches, dra
       migrationHttpListenerStarted: false,
       migrationManifestSha256: sha256(bridgeManifestBytes),
       migrationReleaseId: "v0.5.2",
-      schemaVersion: 39,
+      schemaVersion: 40,
     });
     expect((await lstat(join(fixture.releaseRoot, "v0.5.2"))).isDirectory()).toBe(true);
     const frozenReceipt = await lstat(join(fixture.root, "migration-phase.json"));
@@ -865,7 +865,7 @@ test("every pre-publication fault leaves current on a healthy bridge and writes 
       expect((await lstat(join(fixture.root, receiptName))).mode & 0o777, failure).toBe(0o400);
       const stateAfter = await readFile(fixture.databaseState);
       if (["nginx-validate", "nginx-switch", "post-publication-health"].includes(failure)) {
-        expect(JSON.parse(stateAfter.toString("utf8")).schemaVersion, failure).toBe(39);
+        expect(JSON.parse(stateAfter.toString("utf8")).schemaVersion, failure).toBe(40);
       } else expect(stateAfter.equals(stateBefore), failure).toBe(true);
     } finally {
       await removeFixture(fixture);
@@ -903,16 +903,16 @@ test("every pre-publication fault leaves current on a healthy bridge and writes 
       if (safeCheckpoint === "state-race-before-rename") {
         expect(state.syntheticOutsideWriterCheckpoint).toMatch(/^[0-9a-f]{64}$/);
         expect(state.schemaVersion).toBe(37);
-      } else expect(state.schemaVersion).toBe(39);
+      } else expect(state.schemaVersion).toBe(40);
     } finally {
       await removeFixture(fixture);
     }
   }
 });
 
-test("schema 39 rejects exact v0.5.1 and permits only the frozen bridge rollback", async () => {
+test("schema 40 rejects exact v0.5.1 and permits only the frozen bridge rollback", async () => {
   test.setTimeout(120_000);
-  const fixture = await createFixture({ currentId: "v0.6.0", schemaVersion: 39 });
+  const fixture = await createFixture({ currentId: "v0.6.0", schemaVersion: 40 });
   try {
     const exact = await runRehearsal(fixture, {
       candidateId: "v0.5.1",
@@ -944,7 +944,7 @@ test("schema 39 rejects exact v0.5.1 and permits only the frozen bridge rollback
       syntheticStatus: "passed",
     });
     expect(await readlink(fixture.currentLink)).toBe("v0.5.2");
-    expect(JSON.parse(await readFile(fixture.databaseState, "utf8")).schemaVersion).toBe(39);
+    expect(JSON.parse(await readFile(fixture.databaseState, "utf8")).schemaVersion).toBe(40);
     expect((await lstat(join(fixture.releaseRoot, "v0.6.0"))).isDirectory()).toBe(true);
   } finally {
     await removeFixture(fixture);
@@ -985,7 +985,7 @@ test("schema 39 rejects exact v0.5.1 and permits only the frozen bridge rollback
     });
     expect(await readlink(concurrentFixture.currentLink)).toBe("v0.6.0");
     expect(JSON.parse(await readFile(concurrentFixture.databaseState, "utf8")).schemaVersion)
-      .toBe(39);
+      .toBe(40);
     expect(
       await lstat(join(concurrentFixture.root, "reservation-loser.json"))
         .then(() => true, () => false),
@@ -1140,7 +1140,7 @@ test("manifest inventory tampering fails before migration and never changes curr
     (manifest: Record<string, any>) => { manifest.releaseRole = "bridge"; },
     (manifest: Record<string, any>) => { manifest.packageVersion = "0.5.2"; },
     (manifest: Record<string, any>) => {
-      manifest.databaseCompatibility.activeSchemaVersions = [37, 39];
+      manifest.databaseCompatibility.activeSchemaVersions = [37, 40];
     },
     (manifest: Record<string, any>) => {
       manifest.migration = {

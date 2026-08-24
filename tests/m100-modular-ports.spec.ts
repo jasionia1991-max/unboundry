@@ -28,6 +28,11 @@ import {
 } from "../server/generationQueryPort";
 import { applicationComposition } from "../server/applicationComposition";
 import {
+  applyPendingSchemaMigrationsInTransaction,
+  currentSchemaVersion,
+  databaseMatchesSchemaContract,
+} from "../server/database";
+import {
   MediaGenerationProviderRegistry,
   type MediaGenerationExecution,
   type MediaGenerationProvider,
@@ -62,6 +67,17 @@ import type { MediaRecord } from "../server/mediaRegistry";
 import { validatePng, validateTransparentPng } from "../server/assetStorage";
 import type { ProviderProfile } from "../server/providerProfiles";
 import {
+  createSeedanceTrustedAssetStore,
+  seedanceControlIdempotencyKey,
+  seedanceProviderAccountFingerprint,
+} from "../server/seedanceTrustedAssetStore";
+import { createSeedanceTrustedAssetApplication } from
+  "../server/seedanceTrustedAssetApplication";
+import { createSeedanceTrustedVideoReferenceResolver } from
+  "../server/seedanceTrustedVideoReferences";
+import type { SeedanceTrustedAssetPort } from
+  "../server/seedanceTrustedAssetPort";
+import {
   createMediaPublicationService,
   mediaPublicationService,
 } from "../server/mediaPublicationService";
@@ -92,6 +108,7 @@ import {
   imageToolCapability,
   imageToolMaximums,
   imageToolOperations,
+  legacySeedancePreflightSummary,
   parseImageToolCapabilitySnapshot,
   parseSeedanceAssetValidation,
   seedanceAssetValidationState,
@@ -99,6 +116,8 @@ import {
   type ImageToolCapability,
 } from "../types/imageTools";
 import { knownModelParameterSchema } from "../types/modelParameters";
+import { seedanceTrustedAssetStatusLabels } from
+  "../types/seedanceTrustedAssets";
 import { createImageToolDispatcher } from
   "../client/src/imageTools/imageToolDispatcher";
 import {
@@ -481,6 +500,15 @@ function modularImageToolSnapshot() {
 }
 
 test("image tool capability snapshot is complete, unique and fail-closed", () => {
+  expect(seedanceTrustedAssetStatusLabels).toMatchObject({
+    ACTIVE: "方舟可信素材可用",
+    CONSISTENCY_FAILED: "素材未通过方舟校验",
+    ENTITLEMENT_EXPIRED: "当前账号权益不可用",
+    FAILED: "处理失败，可查看原因",
+    REJECTED: "素材未通过方舟校验",
+    REVOKED: "素材已撤销或不可用",
+    STALE_SOURCE: "图片已变化，需要重新处理",
+  });
   expect(Object.keys(imageToolDescriptors).sort()).toEqual(
     [...imageToolIds].sort(),
   );
@@ -719,6 +747,9 @@ test("image tool capability snapshot is complete, unique and fail-closed", () =>
     remoteValidationAvailable: false,
     status: "eligible",
   });
+  expect(legacySeedancePreflightSummary(validation)).toBe(
+    "旧版本地预检通过，不代表方舟可信素材或真人授权已通过",
+  );
   expect(seedanceAssetValidationState(validation, {
     assetId: "seedance-image-1",
     modelConfigurationRevision: "rules-1",
@@ -1732,6 +1763,365 @@ test("composition root wires public module APIs and delegates readiness SQL", as
     database.close();
   }
 
+  const trustedDatabase = new DatabaseSync(":memory:");
+  try {
+    trustedDatabase.exec(
+      "PRAGMA foreign_keys = ON;" +
+        "CREATE TABLE IF NOT EXISTS schema_migrations (\n" +
+        "      version INTEGER PRIMARY KEY,\n" +
+        "      name TEXT NOT NULL,\n" +
+        "      applied_at TEXT NOT NULL\n" +
+        "    ); BEGIN IMMEDIATE;",
+    );
+    applyPendingSchemaMigrationsInTransaction(trustedDatabase, {
+      sourceVersion: 0,
+    });
+    trustedDatabase.exec("COMMIT");
+    expect(currentSchemaVersion).toBe(40);
+    expect(databaseMatchesSchemaContract(trustedDatabase)).toBe(true);
+    const timestamp = "2026-08-24T10:00:00.000Z";
+    trustedDatabase.prepare(`
+      INSERT INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, 'user', 'active', ?, ?)
+    `).run("trusted-owner", "trusted-owner", "Trusted owner", "hash", timestamp, timestamp);
+    trustedDatabase.prepare(`
+      INSERT INTO provider_profiles (
+        id, display_name, driver, status, created_at, updated_at
+      ) VALUES (?, ?, 'volcengine-ark', 'enabled', ?, ?)
+    `).run("ark-trusted", "Volcengine Ark", timestamp, timestamp);
+    trustedDatabase.prepare(`
+      INSERT INTO media_assets (
+        kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+        content_type, checksum_sha256
+      ) VALUES ('image', ?, ?, ?, 4, ?, ?, 'image/png', ?)
+    `).run(
+      "trusted-image",
+      "trusted-owner",
+      "trusted-image.png",
+      timestamp,
+      timestamp,
+      "a".repeat(64),
+    );
+    const identity = Object.freeze({
+      accountFingerprint: seedanceProviderAccountFingerprint({
+        accountId: "account-stable-across-key-rotation",
+        project: "default",
+        region: "cn-beijing",
+      }),
+      profileId: "ark-trusted",
+      project: "default",
+      region: "cn-beijing",
+    });
+    const store = createSeedanceTrustedAssetStore(trustedDatabase);
+    const groupKey = seedanceControlIdempotencyKey({
+      identity,
+      operation: "group",
+      ownerId: "trusted-owner",
+    });
+    const group = store.upsertGroup({
+      ...identity,
+      acceptedAt: null,
+      authorizationStatus: "SESSION_PENDING",
+      createdAt: timestamp,
+      expiresAt: null,
+      id: "group-local-1",
+      idempotencyKey: groupKey,
+      ownerId: "trusted-owner",
+      providerGroupId: null,
+      providerStatus: "Pending",
+      revokedAt: null,
+      updatedAt: timestamp,
+    });
+    expect(group.id).toBe("group-local-1");
+    expect(store.upsertGroup({
+      ...group,
+      id: "must-not-create-a-second-group",
+      providerGroupId: "provider-group-1",
+      authorizationStatus: "WAITING_AUTHORIZATION",
+    })).toMatchObject({
+      id: "group-local-1",
+      providerGroupId: "provider-group-1",
+    });
+    const session = store.upsertSession({
+      ...identity,
+      createdAt: timestamp,
+      expiresAt: "2026-08-24T10:30:00.000Z",
+      groupId: "group-local-1",
+      id: "session-local-1",
+      idempotencyKey: seedanceControlIdempotencyKey({
+        identity,
+        operation: "session",
+        ownerId: "trusted-owner",
+        source: {
+          assetId: "trusted-image",
+          checksumSha256: "a".repeat(64),
+          kind: "image",
+        },
+      }),
+      ownerId: "trusted-owner",
+      providerSessionId: "provider-session-opaque-1",
+      providerStatus: "Waiting",
+      status: "WAITING_AUTHORIZATION",
+      updatedAt: timestamp,
+    });
+    expect(session).not.toHaveProperty("authorizationUrl");
+    expect(store.sessionById("different-owner", session.id)).toBeUndefined();
+    const binding = store.upsertBinding({
+      ...identity,
+      checkedAt: null,
+      createdAt: timestamp,
+      failureCode: null,
+      failureMessage: null,
+      groupId: group.id,
+      id: "binding-local-1",
+      idempotencyKey: seedanceControlIdempotencyKey({
+        identity,
+        operation: "asset",
+        ownerId: "trusted-owner",
+        source: {
+          assetId: "trusted-image",
+          checksumSha256: "a".repeat(64),
+          kind: "image",
+        },
+      }),
+      ownerId: "trusted-owner",
+      providerAssetId: null,
+      providerAssetType: null,
+      providerStatus: null,
+      sourceAssetId: "trusted-image",
+      sourceChecksumSha256: "a".repeat(64),
+      sourceKind: "image",
+      status: "ASSET_PROCESSING",
+      updatedAt: timestamp,
+    });
+    expect(binding.status).toBe("ASSET_PROCESSING");
+    expect(store.bindingForSource({
+      identity,
+      ownerId: "different-owner",
+      sourceAssetId: "trusted-image",
+    })).toBeUndefined();
+    const persistedColumns = trustedDatabase.prepare(`
+      SELECT name FROM pragma_table_info('seedance_authorization_sessions')
+      ORDER BY cid
+    `).all().map((row) => String((row as { name: unknown }).name));
+    expect(persistedColumns).not.toContain("authorization_url");
+    expect(JSON.stringify(persistedColumns)).not.toMatch(/biometric|camera|face|secret/i);
+
+    trustedDatabase.prepare(`
+      INSERT INTO media_assets (
+        kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+        content_type, checksum_sha256
+      ) VALUES ('image', ?, ?, ?, 4, ?, ?, 'image/png', ?)
+    `).run(
+      "trusted-image-app",
+      "trusted-owner",
+      "trusted-image-app.png",
+      timestamp,
+      timestamp,
+      "b".repeat(64),
+    );
+    const providerCalls = {
+      createAsset: 0,
+      createSession: 0,
+      inspectAsset: 0,
+      inspectSession: 0,
+      releases: 0,
+    };
+    const port: SeedanceTrustedAssetPort = Object.freeze<SeedanceTrustedAssetPort>({
+      async capability() {
+        return {
+          branch: "A",
+          canCreateAuthorizationSession: true,
+          canInspectAsset: true,
+          providerDisplayName: "Ark trusted fixture",
+        };
+      },
+      async createAuthorizationSession() {
+        providerCalls.createSession += 1;
+        return {
+          authorizationUrl: "https://visual.example.test/session-once",
+          expiresAt: null,
+          providerGroupId: null,
+          providerSessionId: "provider-session-app-1",
+          providerStatus: "ValidatePending",
+          status: "WAITING_AUTHORIZATION",
+        };
+      },
+      async inspectAuthorizationSession() {
+        providerCalls.inspectSession += 1;
+        return {
+          expiresAt: null,
+          providerGroupId: "provider-group-app-1",
+          providerSessionId: "provider-session-app-1",
+          providerStatus: "AUTHORIZED",
+          status: "AUTHORIZATION_COMPLETED",
+        };
+      },
+      async createAsset() {
+        providerCalls.createAsset += 1;
+        return {
+          checkedAt: "2026-08-24T11:00:03.000Z",
+          expiresAt: null,
+          providerAssetId: "provider-asset-app-1",
+          providerAssetType: "Image",
+          providerStatus: "Processing",
+          status: "ASSET_PROCESSING",
+        };
+      },
+      async inspectAsset() {
+        providerCalls.inspectAsset += 1;
+        return {
+          checkedAt: "2026-08-24T11:00:04.000Z",
+          expiresAt: null,
+          providerAssetId: "provider-asset-app-1",
+          providerAssetType: "Image",
+          providerStatus: "Active",
+          status: "ACTIVE",
+        };
+      },
+    });
+    let clock = Date.parse("2026-08-24T11:00:00.000Z");
+    let sourceChecksum = "b".repeat(64);
+    const appMedia = (): MediaRecord => ({
+      byteSize: 4,
+      checksumSha256: sourceChecksum,
+      contentType: "image/png",
+      durationSeconds: null,
+      durationSource: null,
+      durationStatus: "not-applicable",
+      mediaHeight: 1,
+      mediaWidth: 1,
+      objectKey: "trusted-image-app.png",
+      storageBackend: "oss",
+      storageProfileId: "oss-fixture",
+      storageName: "trusted-image-app.png",
+      storageStatus: "ready",
+    });
+    const providerReferences: ProviderReferenceStore = Object.freeze<ProviderReferenceStore>({
+      async acquire(input: AcquireProviderReferenceInput) {
+        return {
+          assetId: input.assetId,
+          byteSize: 4,
+          checksumSha256: sourceChecksum,
+          contentType: "image/png",
+          kind: "image" as const,
+          leaseId: "trusted-lease-1",
+          locator: {
+            expiresAt: "2026-08-24T11:05:00.000Z",
+            transport: "signed-url" as const,
+            url: "https://signed.example.test/trusted-image-app.png",
+          },
+          ownerId: input.ownerId,
+        };
+      },
+      async release() {
+        providerCalls.releases += 1;
+      },
+    });
+    const trustedApplication = createSeedanceTrustedAssetApplication({
+      context: async () => ({ identity, port }),
+      media: (ownerId, assetId) => ownerId === "trusted-owner" &&
+          assetId === "trusted-image-app"
+        ? appMedia()
+        : undefined,
+      now: () => new Date(clock += 1_000),
+      providerReferences,
+      store,
+    });
+    const firstSession = await trustedApplication.createAuthorizationSession({
+      assetId: "trusted-image-app",
+      ownerId: "trusted-owner",
+    });
+    expect(firstSession.authorizationUrl).toBe(
+      "https://visual.example.test/session-once",
+    );
+    const duplicateSession = await trustedApplication.createAuthorizationSession({
+      assetId: "trusted-image-app",
+      ownerId: "trusted-owner",
+    });
+    expect(duplicateSession.id).toBe(firstSession.id);
+    expect(duplicateSession).not.toHaveProperty("authorizationUrl");
+    expect(providerCalls.createSession).toBe(1);
+    const completedSession = await trustedApplication.readAuthorizationSession({
+      ownerId: "trusted-owner",
+      sessionId: firstSession.id,
+    });
+    expect(completedSession?.status).toBe("ASSET_PROCESSING");
+    expect(providerCalls).toMatchObject({
+      createAsset: 1,
+      createSession: 1,
+      inspectSession: 1,
+      releases: 1,
+    });
+    const activeSession = await trustedApplication.readAuthorizationSession({
+      ownerId: "trusted-owner",
+      sessionId: firstSession.id,
+    });
+    expect(activeSession?.status).toBe("ACTIVE");
+    expect(providerCalls.inspectAsset).toBe(1);
+    const appBinding = store.bindingForSource({
+      identity,
+      ownerId: "trusted-owner",
+      sourceAssetId: "trusted-image-app",
+    })!;
+    expect(appBinding.status).toBe("ACTIVE");
+    await expect(trustedApplication.readTrustedBinding({
+      assetId: "trusted-image-app",
+      ownerId: "trusted-owner",
+    })).resolves.toMatchObject({ status: "ACTIVE" });
+    expect(providerCalls.inspectAsset).toBe(2);
+    const resolveTrustedVideo = createSeedanceTrustedVideoReferenceResolver({
+      context: async (_ownerId, profileId) => profileId === identity.profileId
+        ? { identity, port }
+        : undefined,
+      media: (ownerId, assetId) => ownerId === "trusted-owner" &&
+          assetId === "trusted-image-app"
+        ? appMedia()
+        : undefined,
+      now: () => new Date("2026-08-24T11:00:05.000Z"),
+      store,
+    });
+    const trustedSnapshots = await resolveTrustedVideo({
+      inputs: [{
+        assetId: "trusted-image-app",
+        kind: "image",
+        order: 1,
+        role: "subject",
+        sourceNodeId: "image-source-app",
+      }],
+      ownerId: "trusted-owner",
+      providerProfileId: identity.profileId,
+    });
+    expect(trustedSnapshots[0]?.trustedAsset).toMatchObject({
+      bindingId: appBinding.id,
+      providerAssetId: "provider-asset-app-1",
+      providerProfileId: identity.profileId,
+      sourceChecksumSha256: "b".repeat(64),
+    });
+    await expect(resolveTrustedVideo({
+      inputs: [{
+        ...trustedSnapshots[0]!,
+        trustedAsset: {
+          ...trustedSnapshots[0]!.trustedAsset!,
+          bindingId: "forged-binding-id",
+        },
+      }],
+      ownerId: "trusted-owner",
+      providerProfileId: identity.profileId,
+    })).rejects.toMatchObject({ code: "INVALID" });
+    sourceChecksum = "c".repeat(64);
+    await expect(resolveTrustedVideo({
+      inputs: trustedSnapshots,
+      ownerId: "trusted-owner",
+      providerProfileId: identity.profileId,
+    })).rejects.toMatchObject({ code: "STALE" });
+    expect(providerCalls.inspectAsset).toBe(3);
+  } finally {
+    trustedDatabase.close();
+  }
+
   const [compositionSource, viteSource] = await Promise.all([
     readFile(join(process.cwd(), "server/applicationComposition.ts"), "utf8"),
     readFile(join(process.cwd(), "vite.config.ts"), "utf8"),
@@ -1741,7 +2131,7 @@ test("composition root wires public module APIs and delegates readiness SQL", as
     /canvasPersistence|generationTasks|generationSafety|providerProfiles/,
   );
   expect(compositionSource.match(/from "\.\/[^\"]+(?:Application|Runtime)Api"/g))
-    .toHaveLength(8);
+    .toHaveLength(10);
   expect(viteSource).not.toMatch(
     /server\/(?:canvasPersistence|generationAttemptQueries|generationSafety|generationTasks|providerProfiles)/,
   );

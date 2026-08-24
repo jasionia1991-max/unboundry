@@ -3,6 +3,7 @@ import {
   discoverArkCatalog,
   discoverVolcengineArkControlPlane,
   isVolcengineArkControlPlaneReadAction,
+  isVolcengineArkSeedanceAssetAction,
   listVolcengineArkEndpoints,
   listVolcengineArkFoundationModels,
   listVolcengineArkFoundationModelVersions,
@@ -10,6 +11,10 @@ import {
   VolcengineArkControlPlaneError,
   VOLCENGINE_ARK_CONTROL_PLANE_MAX_RESPONSE_BYTES,
 } from "../server/volcengineArkControlPlane";
+import {
+  createVolcengineArkSeedanceTrustedAssetPort,
+  SeedanceTrustedAssetProviderError,
+} from "../server/volcengineArkSeedanceTrustedAssetPort";
 
 const credentials: ArkControlPlaneCredentialsInput = {
   accessKeyId: "AKIDEXAMPLECONTROL",
@@ -97,6 +102,149 @@ test("Ark control-plane signs the official paginated model-list request with the
     }],
     requestCount: 1,
   });
+
+  const trustedCalls: Array<{
+    action: string | null;
+    body: Record<string, unknown>;
+  }> = [];
+  let visualResultReads = 0;
+  let assetReads = 0;
+  const trustedFetcher: typeof fetch = async (input, init) => {
+    const action = actionOf(input);
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    trustedCalls.push({ action, body });
+    if (action === "CreateVisualValidateSession") {
+      return json({ Result: {
+        BytedToken: "validation-token-1",
+        ExpiresIn: 120,
+        H5Link: "https://example.volcengine.com/authorize?temporary=1",
+      } });
+    }
+    if (action === "GetVisualValidateResult") {
+      visualResultReads += 1;
+      return visualResultReads === 1
+        ? json({ ResponseMetadata: { Error: { Code: "ValidatePending" } } })
+        : json({ Result: { GroupId: "group-verified-1" } });
+    }
+    if (action === "CreateAsset") {
+      return json({ Result: { Id: "asset-created-1", Status: "Processing" } });
+    }
+    if (action === "GetAsset") {
+      assetReads += 1;
+      return json({ Result: {
+        Asset: {
+          AssetType: "Image",
+          Id: "asset-created-1",
+          Status: assetReads === 1 ? "Processing" : "Active",
+        },
+      } });
+    }
+    throw new Error("unexpected trusted-asset action");
+  };
+  const identity = Object.freeze({
+    accountFingerprint: "a".repeat(64),
+    profileId: "ark-profile",
+    project: "default",
+    region: "cn-beijing",
+  });
+  const controlRequests: string[] = [];
+  const trustedPort = createVolcengineArkSeedanceTrustedAssetPort({
+    credentials,
+    identity,
+    providerDisplayName: "Volcengine Ark",
+  }, {
+    fetcher: trustedFetcher,
+    now: fixedNow,
+    nowMilliseconds: () => 0,
+    onControlRequest: (action) => controlRequests.push(action),
+    qpm: 20,
+  });
+  expect(await trustedPort.capability(identity)).toEqual({
+    branch: "A",
+    canCreateAuthorizationSession: true,
+    canInspectAsset: true,
+    providerDisplayName: "Volcengine Ark",
+  });
+  expect(trustedCalls).toHaveLength(0);
+  const session = await trustedPort.createAuthorizationSession({
+    idempotencyKey: "session-idempotency",
+    identity,
+    providerGroupId: null,
+  });
+  expect(session).toEqual({
+    authorizationUrl: "https://example.volcengine.com/authorize?temporary=1",
+    expiresAt: "2026-08-03T01:04:03.000Z",
+    providerGroupId: null,
+    providerSessionId: "validation-token-1",
+    providerStatus: "WAITING_AUTHORIZATION",
+    status: "WAITING_AUTHORIZATION",
+  });
+  expect(await trustedPort.inspectAuthorizationSession({
+    identity,
+    providerSessionId: session.providerSessionId,
+  })).toMatchObject({
+    providerGroupId: null,
+    status: "WAITING_AUTHORIZATION",
+  });
+  const completed = await trustedPort.inspectAuthorizationSession({
+    identity,
+    providerSessionId: session.providerSessionId,
+  });
+  expect(completed).toMatchObject({
+    providerGroupId: "group-verified-1",
+    status: "AUTHORIZATION_COMPLETED",
+  });
+  const createdAsset = await trustedPort.createAsset({
+    idempotencyKey: "asset-idempotency",
+    identity,
+    providerGroupId: completed.providerGroupId!,
+    source: {
+      assetId: "image-local-1",
+      checksumSha256: "b".repeat(64),
+      contentType: "image/png",
+      kind: "image",
+      providerUrl: "https://private.example.com/signed-image.png?token=temporary",
+    },
+  });
+  expect(createdAsset).toMatchObject({
+    providerAssetId: "asset-created-1",
+    status: "ASSET_PROCESSING",
+  });
+  expect(await trustedPort.inspectAsset({
+    identity,
+    providerAssetId: createdAsset.providerAssetId,
+  })).toMatchObject({ status: "ASSET_PROCESSING" });
+  expect(await trustedPort.inspectAsset({
+    identity,
+    providerAssetId: createdAsset.providerAssetId,
+  })).toMatchObject({ status: "ACTIVE" });
+  expect(controlRequests).toEqual([
+    "CreateVisualValidateSession",
+    "GetVisualValidateResult",
+    "GetVisualValidateResult",
+    "CreateAsset",
+    "GetAsset",
+    "GetAsset",
+  ]);
+  expect(trustedCalls.map(({ action }) => action)).toEqual(controlRequests);
+  expect(trustedCalls.map(({ body }) => body.ProjectName)).toEqual(
+    Array(6).fill("default"),
+  );
+  expect(trustedCalls[3].body).toEqual({
+    AssetType: "Image",
+    GroupId: "group-verified-1",
+    Name: "unboundry-bbbbbbbbbbbbbbbb",
+    ProjectName: "default",
+    URL: "https://private.example.com/signed-image.png?token=temporary",
+  });
+  expect(JSON.stringify(trustedCalls)).not.toContain(session.authorizationUrl);
+  await expect(trustedPort.inspectAsset({
+    identity: { ...identity, accountFingerprint: "c".repeat(64) },
+    providerAssetId: createdAsset.providerAssetId,
+  })).rejects.toMatchObject({
+    code: "IDENTITY_MISMATCH",
+  } satisfies Partial<SeedanceTrustedAssetProviderError>);
+  expect(trustedCalls).toHaveLength(6);
 });
 
 test("Ark catalog discovery reads every version and bounded endpoint page without a real request", async () => {
@@ -310,6 +458,12 @@ test("Ark read-only action allowlist contains only the three approved actions", 
   expect(isVolcengineArkControlPlaneReadAction("CreateEndpoint")).toBe(false);
   expect(isVolcengineArkControlPlaneReadAction("DeleteEndpoint")).toBe(false);
   expect(isVolcengineArkControlPlaneReadAction("ListEndpoints&Action=DeleteEndpoint")).toBe(false);
+  expect(isVolcengineArkSeedanceAssetAction("CreateVisualValidateSession")).toBe(true);
+  expect(isVolcengineArkSeedanceAssetAction("GetVisualValidateResult")).toBe(true);
+  expect(isVolcengineArkSeedanceAssetAction("CreateAsset")).toBe(true);
+  expect(isVolcengineArkSeedanceAssetAction("GetAsset")).toBe(true);
+  expect(isVolcengineArkSeedanceAssetAction("DeleteAsset")).toBe(false);
+  expect(isVolcengineArkSeedanceAssetAction("CreateAsset&Action=DeleteAsset")).toBe(false);
 });
 
 for (const scenario of [
@@ -546,4 +700,38 @@ test("Ark control-plane aborts a stalled injected fetch at the bounded timeout",
     { fetcher, now: fixedNow, timeoutMs: 5 },
   )).rejects.toMatchObject({ code: "NETWORK" });
   expect(calls).toBe(1);
+
+  let trustedCalls = 0;
+  const identity = Object.freeze({
+    accountFingerprint: "d".repeat(64),
+    profileId: "ark-profile",
+    project: "default",
+    region: "cn-beijing",
+  });
+  const rateLimitedPort = createVolcengineArkSeedanceTrustedAssetPort({
+    credentials,
+    identity,
+    providerDisplayName: "Volcengine Ark",
+  }, {
+    fetcher: async () => {
+      trustedCalls += 1;
+      return json({ Result: {
+        BytedToken: "rate-limit-session",
+        H5Link: "https://example.volcengine.com/authorize",
+      } });
+    },
+    now: fixedNow,
+    nowMilliseconds: () => 0,
+    qpm: 1,
+  });
+  const session = await rateLimitedPort.createAuthorizationSession({
+    idempotencyKey: "rate-limit-create",
+    identity,
+    providerGroupId: null,
+  });
+  await expect(rateLimitedPort.inspectAuthorizationSession({
+    identity,
+    providerSessionId: session.providerSessionId,
+  })).rejects.toMatchObject({ code: "RATE_LIMIT" });
+  expect(trustedCalls).toBe(1);
 });

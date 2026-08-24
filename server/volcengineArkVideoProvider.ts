@@ -15,9 +15,19 @@ export type ArkVideoStatus = {
   videoUrl?: string;
 };
 
+export type ArkVideoReference =
+  | Readonly<{ kind: "inline-data"; value: string }>
+  | Readonly<{ kind: "public-url"; value: string }>
+  | Readonly<{
+      bindingId: string;
+      kind: "trusted-asset";
+      providerAssetId: string;
+    }>;
+
 export type ArkVideoMediaInput = {
   kind: "audio" | "image" | "video";
   order: number;
+  reference: ArkVideoReference;
   role:
     | "first-frame"
     | "last-frame"
@@ -25,7 +35,6 @@ export type ArkVideoMediaInput = {
     | "reference-image"
     | "reference-video"
     | "subject";
-  url: string;
 };
 
 export type ArkVideoLimits = {
@@ -115,6 +124,35 @@ function safeProviderMediaUrl(
   }
 }
 
+function mediaReferenceUrl(
+  mediaKind: ArkVideoMediaInput["kind"],
+  value: unknown,
+  limits: ArkVideoLimits,
+) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const reference = value as Partial<ArkVideoReference>;
+  if (reference.kind === "trusted-asset") {
+    if (
+      mediaKind !== "image" ||
+      typeof reference.bindingId !== "string" ||
+      !/^[a-z0-9._-]{1,160}$/i.test(reference.bindingId) ||
+      typeof reference.providerAssetId !== "string" ||
+      !/^[a-z0-9._-]{3,160}$/i.test(reference.providerAssetId)
+    ) return undefined;
+    return `asset://${reference.providerAssetId}`;
+  }
+  if (
+    (reference.kind !== "inline-data" && reference.kind !== "public-url") ||
+    typeof reference.value !== "string" ||
+    !safeProviderMediaUrl(mediaKind, reference.value, limits)
+  ) return undefined;
+  if (
+    reference.kind === "inline-data" && !reference.value.startsWith("data:") ||
+    reference.kind === "public-url" && !reference.value.startsWith("https://")
+  ) return undefined;
+  return reference.value;
+}
+
 function normalizeMediaInputs(
   value: unknown,
   limits: ArkVideoLimits = defaultArkVideoLimits,
@@ -138,9 +176,9 @@ function normalizeMediaInputs(
       seenOrders.has(Number(item.order)) ||
       typeof item.role !== "string" ||
       !(item.role in providerRole) ||
-      !safeProviderMediaUrl(
+      !mediaReferenceUrl(
         item.kind as ArkVideoMediaInput["kind"],
-        item.url,
+        item.reference,
         limits,
       )
     ) {
@@ -168,8 +206,8 @@ function normalizeMediaInputs(
     return {
       kind,
       order: Number(item.order),
+      reference: item.reference as ArkVideoReference,
       role,
-      url: item.url!,
     };
   }).sort((left, right) => left.order - right.order);
   if (
@@ -188,13 +226,16 @@ function mediaContent(input: ArkVideoMediaInput) {
       ? "reference_image"
       : "reference_video"
     : providerRole[input.role];
+  const url = input.reference.kind === "trusted-asset"
+    ? `asset://${input.reference.providerAssetId}`
+    : input.reference.value;
   if (input.kind === "image") {
-    return { image_url: { url: input.url }, role, type: "image_url" };
+    return { image_url: { url }, role, type: "image_url" };
   }
   if (input.kind === "video") {
-    return { role, type: "video_url", video_url: { url: input.url } };
+    return { role, type: "video_url", video_url: { url } };
   }
-  return { audio_url: { url: input.url }, role, type: "audio_url" };
+  return { audio_url: { url }, role, type: "audio_url" };
 }
 
 async function limitedJson(

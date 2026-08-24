@@ -205,6 +205,20 @@ function createKeys() {
 }
 
 function rollbackMigration39To38(database: DatabaseSync) {
+  if (Number((database.prepare("PRAGMA user_version").get() as {
+    user_version: number;
+  }).user_version) === 40) {
+    database.exec(`
+      BEGIN IMMEDIATE;
+      DROP TABLE seedance_asset_bindings;
+      DROP TABLE seedance_authorization_sessions;
+      DROP TABLE seedance_identity_groups;
+      DROP INDEX media_assets_owner_kind_id;
+      DELETE FROM schema_migrations WHERE version = 40;
+      PRAGMA user_version = 39;
+      COMMIT;
+    `);
+  }
   try {
     database.exec(`
       BEGIN IMMEDIATE;
@@ -3473,7 +3487,7 @@ test("final-candidate exact-v37 chain rehydrates fake OSS offline and validates 
         backfilledDurations: 1,
         drainMilliseconds: 0,
         sourceVersion: 37,
-        targetVersion: 39,
+        targetVersion: 40,
       },
       migrationNativeAudit: {
         externalNetworkAttempts: 0,
@@ -3509,7 +3523,7 @@ test("final-candidate exact-v37 chain rehydrates fake OSS offline and validates 
           readiness: {
             mode: "active",
             mutationsAccepted: true,
-            schemaVersion: 39,
+            schemaVersion: 40,
             status: "ready",
           },
           releaseId: "v0.5.2",
@@ -4815,7 +4829,7 @@ test("logical fingerprints cover every table and sqlite_sequence independent of 
     const before = inspectBackupDatabase(original, inspectionRoot);
     const afterVacuum = inspectBackupDatabase(reorganized, inspectionRoot);
     expect(afterVacuum.logicalSha256).toBe(before.logicalSha256);
-    expect(before.tables).toHaveLength(25);
+    expect(before.tables).toHaveLength(28);
     expect(before.tables.map(({ name }) => name)).toEqual([
       "account_delete_intents",
       "account_permissions",
@@ -4838,6 +4852,9 @@ test("logical fingerprints cover every table and sqlite_sequence independent of 
       "provider_profiles",
       "public_templates",
       "schema_migrations",
+      "seedance_asset_bindings",
+      "seedance_authorization_sessions",
+      "seedance_identity_groups",
       "sessions",
       "sqlite_sequence",
       "user_templates",

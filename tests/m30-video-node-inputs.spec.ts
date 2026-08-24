@@ -241,6 +241,27 @@ test("Video accepts merged or upstream-only Text plus ready media with a URL-fre
     /https?:|signed|signature|imageSrc|videoSrc|audioSrc/i,
   );
 
+  const automaticSeedancePreflight = resolveNodeInputs({
+    edges: upstreamOnlyGraph.edges,
+    mediaInputPolicy: "seedance-2",
+    modelSchema: seedanceSchema,
+    nodes: upstreamOnlyGraph.nodes,
+    ownPrompt: "",
+    parameters: { inputMode: "multimodal" },
+    targetId: "p3-target-video",
+    targetKind: "video",
+  });
+  expect(automaticSeedancePreflight.inputs.find(({ kind }) => kind === "image"))
+    .toMatchObject({
+      localTechnicalPreflight: {
+        problems: [],
+        scope: "local-technical-preflight",
+        status: "eligible",
+      },
+    });
+  expect(JSON.stringify(automaticSeedancePreflight.inputs))
+    .not.toMatch(/trusted|asset:\/\//i);
+
   const withoutPrompt = videoPreflight({
     edges: [],
     mode: "text",

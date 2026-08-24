@@ -1333,12 +1333,12 @@ function validateExactV051RawEvidence(raw, nonce) {
     schema39.rollbackBaselineNormalizedByCurrent !== true ||
     JSON.stringify(schema39.rollbackCheckpoint) !==
       JSON.stringify({ busy: 0, checkpointed: 0, log: 0 }) ||
-    schema39.userVersion !== 39 ||
+    schema39.userVersion !== 40 ||
     schema39.versionEndpointBeforeDatabaseOpen !== true ||
-    schema39.latestMigration?.version !== 39 ||
+    schema39.latestMigration?.version !== 40 ||
     schema39.latestMigration?.name !==
-      "atomic-generation-admission-and-credential-scope"
-  ) fail("exact v0.5.1 schema-39 rejection rehearsal is incomplete");
+      "seedance-trusted-asset-control-plane"
+  ) fail("exact v0.5.1 current-schema rejection rehearsal is incomplete");
 }
 
 function exactV051AttestationEnvironment() {
@@ -2051,8 +2051,8 @@ async function discover(specs, suiteRoot, sourceRoot, browserRoot) {
         })}`,
       );
     }
-    if (discovery.tests !== 1053) {
-      fail(`the frozen 1053-test inventory changed to ${discovery.tests}`);
+    if (discovery.tests !== 1055) {
+      fail(`the frozen 1055-test inventory changed to ${discovery.tests}`);
     }
     const idsByFile = {};
     const { entries } = collectReportEntries(reportFile, sourceRoot);

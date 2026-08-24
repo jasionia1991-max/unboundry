@@ -2270,6 +2270,166 @@ const migrations: readonly Migration[] = [
       END;
     `,
   },
+  {
+    version: 40,
+    name: "seedance-trusted-asset-control-plane",
+    sql: `
+      CREATE UNIQUE INDEX media_assets_owner_kind_id
+        ON media_assets (owner_id, kind, id);
+
+      CREATE TABLE seedance_identity_groups (
+        id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        provider_profile_id TEXT NOT NULL,
+        provider_account_fingerprint TEXT NOT NULL CHECK (
+          length(provider_account_fingerprint) = 64
+          AND provider_account_fingerprint NOT GLOB '*[^0-9a-f]*'
+        ),
+        provider_region TEXT NOT NULL,
+        provider_project TEXT NOT NULL,
+        provider_group_id TEXT,
+        idempotency_key TEXT NOT NULL,
+        authorization_status TEXT NOT NULL CHECK (
+          authorization_status IN (
+            'NOT_STARTED', 'SESSION_PENDING', 'WAITING_AUTHORIZATION',
+            'AUTHORIZATION_COMPLETED', 'PENDING_ACCEPTANCE',
+            'ASSET_PROCESSING', 'LINKED_UNVERIFIED', 'ACTIVE', 'REJECTED',
+            'CONSISTENCY_FAILED', 'REVOKED', 'DELETED',
+            'ENTITLEMENT_EXPIRED', 'STALE_SOURCE', 'FAILED'
+          )
+        ),
+        provider_status TEXT,
+        accepted_at TEXT,
+        revoked_at TEXT,
+        expires_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (provider_profile_id) REFERENCES provider_profiles(id),
+        UNIQUE (
+          id, owner_id, provider_profile_id, provider_account_fingerprint,
+          provider_region, provider_project
+        ),
+        UNIQUE (
+          owner_id, provider_profile_id, provider_account_fingerprint,
+          provider_region, provider_project, idempotency_key
+        )
+      );
+      CREATE UNIQUE INDEX seedance_identity_groups_provider_identity
+        ON seedance_identity_groups (
+          provider_profile_id, provider_account_fingerprint, provider_region,
+          provider_project, provider_group_id
+        )
+        WHERE provider_group_id IS NOT NULL;
+      CREATE INDEX seedance_identity_groups_owner_updated
+        ON seedance_identity_groups (owner_id, updated_at DESC);
+
+      CREATE TABLE seedance_authorization_sessions (
+        id TEXT PRIMARY KEY,
+        group_id TEXT,
+        owner_id TEXT NOT NULL,
+        provider_profile_id TEXT NOT NULL,
+        provider_account_fingerprint TEXT NOT NULL CHECK (
+          length(provider_account_fingerprint) = 64
+          AND provider_account_fingerprint NOT GLOB '*[^0-9a-f]*'
+        ),
+        provider_region TEXT NOT NULL,
+        provider_project TEXT NOT NULL,
+        provider_session_id TEXT,
+        idempotency_key TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (
+          status IN (
+            'NOT_STARTED', 'SESSION_PENDING', 'WAITING_AUTHORIZATION',
+            'AUTHORIZATION_COMPLETED', 'PENDING_ACCEPTANCE',
+            'ASSET_PROCESSING', 'LINKED_UNVERIFIED', 'ACTIVE', 'REJECTED',
+            'CONSISTENCY_FAILED', 'REVOKED', 'DELETED',
+            'ENTITLEMENT_EXPIRED', 'STALE_SOURCE', 'FAILED'
+          )
+        ),
+        provider_status TEXT,
+        expires_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (
+          group_id, owner_id, provider_profile_id,
+          provider_account_fingerprint, provider_region, provider_project
+        ) REFERENCES seedance_identity_groups (
+          id, owner_id, provider_profile_id,
+          provider_account_fingerprint, provider_region, provider_project
+        ),
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (provider_profile_id) REFERENCES provider_profiles(id),
+        UNIQUE (
+          owner_id, provider_profile_id, provider_account_fingerprint,
+          provider_region, provider_project, idempotency_key
+        )
+      );
+      CREATE INDEX seedance_authorization_sessions_owner_updated
+        ON seedance_authorization_sessions (owner_id, updated_at DESC);
+
+      CREATE TABLE seedance_asset_bindings (
+        id TEXT PRIMARY KEY,
+        group_id TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        source_kind TEXT NOT NULL CHECK (source_kind = 'image'),
+        source_asset_id TEXT NOT NULL,
+        source_checksum_sha256 TEXT NOT NULL CHECK (
+          length(source_checksum_sha256) = 64
+          AND source_checksum_sha256 NOT GLOB '*[^0-9a-f]*'
+        ),
+        provider_profile_id TEXT NOT NULL,
+        provider_account_fingerprint TEXT NOT NULL CHECK (
+          length(provider_account_fingerprint) = 64
+          AND provider_account_fingerprint NOT GLOB '*[^0-9a-f]*'
+        ),
+        provider_region TEXT NOT NULL,
+        provider_project TEXT NOT NULL,
+        provider_asset_id TEXT,
+        provider_asset_type TEXT,
+        idempotency_key TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (
+          status IN (
+            'NOT_STARTED', 'SESSION_PENDING', 'WAITING_AUTHORIZATION',
+            'AUTHORIZATION_COMPLETED', 'PENDING_ACCEPTANCE',
+            'ASSET_PROCESSING', 'LINKED_UNVERIFIED', 'ACTIVE', 'REJECTED',
+            'CONSISTENCY_FAILED', 'REVOKED', 'DELETED',
+            'ENTITLEMENT_EXPIRED', 'STALE_SOURCE', 'FAILED'
+          )
+        ),
+        provider_status TEXT,
+        checked_at TEXT,
+        failure_code TEXT,
+        failure_message TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (
+          group_id, owner_id, provider_profile_id,
+          provider_account_fingerprint, provider_region, provider_project
+        ) REFERENCES seedance_identity_groups (
+          id, owner_id, provider_profile_id,
+          provider_account_fingerprint, provider_region, provider_project
+        ),
+        FOREIGN KEY (owner_id, source_kind, source_asset_id)
+          REFERENCES media_assets (owner_id, kind, id) ON DELETE CASCADE,
+        FOREIGN KEY (provider_profile_id) REFERENCES provider_profiles(id),
+        UNIQUE (
+          owner_id, source_kind, source_asset_id, source_checksum_sha256,
+          provider_profile_id, provider_account_fingerprint, provider_region,
+          provider_project, idempotency_key
+        )
+      );
+      CREATE UNIQUE INDEX seedance_asset_bindings_provider_identity
+        ON seedance_asset_bindings (
+          provider_profile_id, provider_account_fingerprint, provider_region,
+          provider_project, provider_asset_id
+        )
+        WHERE provider_asset_id IS NOT NULL;
+      CREATE INDEX seedance_asset_bindings_owner_source_updated
+        ON seedance_asset_bindings (
+          owner_id, source_kind, source_asset_id, updated_at DESC
+        );
+    `,
+  },
 ];
 
 export const currentSchemaManifest = Object.freeze(
@@ -2278,7 +2438,7 @@ export const currentSchemaManifest = Object.freeze(
 
 export const currentSchemaVersion = currentSchemaManifest.at(-1)?.version ?? 0;
 
-// This is the known-safe physical schema that a v39 process can use. Keep the
+// This is the known-safe physical schema that a v40 process can use. Keep the
 // migration ledger as the source of version ordering, and keep the column-name
 // checks order-independent so the finite documented v21 catalog repairs and
 // v31/v32 template repair can each be admitted only by an exact sqlite_schema
@@ -2389,6 +2549,26 @@ export const currentSchemaContract = Object.freeze({
       "updated_at", "archived_at",
     ]),
     schema_migrations: Object.freeze(["version", "name", "applied_at"]),
+    seedance_asset_bindings: Object.freeze([
+      "id", "group_id", "owner_id", "source_kind", "source_asset_id",
+      "source_checksum_sha256", "provider_profile_id",
+      "provider_account_fingerprint", "provider_region", "provider_project",
+      "provider_asset_id", "provider_asset_type", "idempotency_key", "status",
+      "provider_status", "checked_at", "failure_code", "failure_message",
+      "created_at", "updated_at",
+    ]),
+    seedance_authorization_sessions: Object.freeze([
+      "id", "group_id", "owner_id", "provider_profile_id",
+      "provider_account_fingerprint", "provider_region", "provider_project",
+      "provider_session_id", "idempotency_key", "status", "provider_status",
+      "expires_at", "created_at", "updated_at",
+    ]),
+    seedance_identity_groups: Object.freeze([
+      "id", "owner_id", "provider_profile_id", "provider_account_fingerprint",
+      "provider_region", "provider_project", "provider_group_id",
+      "idempotency_key", "authorization_status", "provider_status",
+      "accepted_at", "revoked_at", "expires_at", "created_at", "updated_at",
+    ]),
     sessions: Object.freeze([
       "id", "token_hash", "user_id", "expires_at", "created_at",
       "last_seen_at",
@@ -2432,6 +2612,33 @@ export const currentSchemaContract = Object.freeze({
       partial: true,
       sqlHash: "ada21d8be6bd9e005155da7cd938901f2da5991b6defa42b5e718b1986f9a789",
       table: "media_assets",
+      unique: true,
+    }),
+    media_assets_owner_kind_id: Object.freeze({
+      columns: Object.freeze(["owner_id", "kind", "id"]),
+      partial: false,
+      sqlHash: "c484a733cdb23d6fe1e39403dd23b0443beb33abfaabb3f25867e1a815291410",
+      table: "media_assets",
+      unique: true,
+    }),
+    seedance_asset_bindings_provider_identity: Object.freeze({
+      columns: Object.freeze([
+        "provider_profile_id", "provider_account_fingerprint",
+        "provider_region", "provider_project", "provider_asset_id",
+      ]),
+      partial: true,
+      sqlHash: "685328d0a6544c219d95ce9d027dafba6a02be94404e18f4f4e7d5c73b53951a",
+      table: "seedance_asset_bindings",
+      unique: true,
+    }),
+    seedance_identity_groups_provider_identity: Object.freeze({
+      columns: Object.freeze([
+        "provider_profile_id", "provider_account_fingerprint",
+        "provider_region", "provider_project", "provider_group_id",
+      ]),
+      partial: true,
+      sqlHash: "34a9161fe6c465b06e443ccd1317e1bf8a2f528f9f542d88414b8068f4100783",
+      table: "seedance_identity_groups",
       unique: true,
     }),
     media_publication_attempts_active_asset: Object.freeze({
@@ -2545,6 +2752,10 @@ export const currentSchemaContract = Object.freeze({
       sqlHash: "566cfd24a9bdf80384f08b4544a0d7d2cb86a00e73f94b5d214188776f34460f",
       table: "media_assets",
     }),
+    media_assets_owner_kind_id: Object.freeze({
+      sqlHash: "c484a733cdb23d6fe1e39403dd23b0443beb33abfaabb3f25867e1a815291410",
+      table: "media_assets",
+    }),
     media_assets_owner_storage: Object.freeze({
       sqlHash: "795bdfac70e907fe1ff5201fcdb84a5dc9cd75ad80b4b946b4b651312f039549",
       table: "media_assets",
@@ -2604,6 +2815,26 @@ export const currentSchemaContract = Object.freeze({
     sessions_user_expires: Object.freeze({
       sqlHash: "e52358562e4cccce65828dbe358431c188e35ba2204cc4c0e53d9649cb68beb4",
       table: "sessions",
+    }),
+    seedance_asset_bindings_owner_source_updated: Object.freeze({
+      sqlHash: "f18d684fa7f286fd7f443c534e78afe168edc7c4253893f426859b55bf9b1de7",
+      table: "seedance_asset_bindings",
+    }),
+    seedance_asset_bindings_provider_identity: Object.freeze({
+      sqlHash: "685328d0a6544c219d95ce9d027dafba6a02be94404e18f4f4e7d5c73b53951a",
+      table: "seedance_asset_bindings",
+    }),
+    seedance_authorization_sessions_owner_updated: Object.freeze({
+      sqlHash: "067946208bb04421d5a8bb8eeee02541c8d9e4093553066ab1d329fba10869d9",
+      table: "seedance_authorization_sessions",
+    }),
+    seedance_identity_groups_owner_updated: Object.freeze({
+      sqlHash: "facf255f0047fde7bf8e98789f67fe413246ad7d09825457c6481a873a9e88db",
+      table: "seedance_identity_groups",
+    }),
+    seedance_identity_groups_provider_identity: Object.freeze({
+      sqlHash: "34a9161fe6c465b06e443ccd1317e1bf8a2f528f9f542d88414b8068f4100783",
+      table: "seedance_identity_groups",
     }),
     user_templates_owner_updated: Object.freeze({
       sqlHash: "451f2da493e6b738635ed059b645d2899e9b873e2802e893201de3a53e66bd68",
@@ -2707,6 +2938,15 @@ export const currentSchemaContract = Object.freeze({
     ]),
     schema_migrations: Object.freeze([
       "c1b7313cc662808476c3815653e069743817c9d0a29a423d0c7810d995d94ec7",
+    ]),
+    seedance_asset_bindings: Object.freeze([
+      "f186f39949cd380e63efd18b2e356e814e99b18f6867397c6429528023109cef",
+    ]),
+    seedance_authorization_sessions: Object.freeze([
+      "cdde1923b77c943259dd2eab38127a1418bc009047ba7a69a9342a35c089d6c6",
+    ]),
+    seedance_identity_groups: Object.freeze([
+      "6aef3d605fb941c2225b5bd126f1de3d63ebaf1e9d93d839ff0d462b699521dc",
     ]),
     sessions: Object.freeze([
       "01b47e65e5743d9b335e194619fc4b12520644e7146b935502de8f273a73cbd1",
