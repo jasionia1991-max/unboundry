@@ -13,7 +13,7 @@
 - package：`0.6.37`
 - schema：`39`
 - 生产：`v0.6.36 / TECHNICALLY_HEALTHY / USER_REJECTED`
-- 本地工作树：INC-IMGEDIT-005未提交候选已完成本地工程、定向、浏览器、独立审查和唯一一次safe full；未commit或发布
+- 本地候选：功能与版本冻结提交`3bb6fb0`；已完成本地工程、定向、浏览器、独立审查和唯一一次safe full；尚未push/PR/tag/发布
 - 候选版本：`v0.6.37 / VERSION_GATE_VALID`
 - 发布授权：用户明确“允许发布：v0.6.37 上线” / `RELEASE_GATE_VALID`；一次性授权尚未消费
 - 真实Provider/尝试/成功/费用：`0 / 0 / 0 / 0`
@@ -209,7 +209,8 @@
 - 精确修正：只将本地候选字段改为`**v0.6.37**`；不重复已通过的m81
 - 最小复验：同一safe入口仅运行m38，`15/15 PASS`、退出0；source/snapshot SHA-256同为`3096a3615431a705d490f29c30da5b45003220ce07877f27ca6056b1f0f354b1`，4173 listener unchanged
 - 版本定向结论：m81 `41/41 PASS`与m38最小复验`15/15 PASS`；首转`55/56`的治理格式失败保留，不写成合并`56/56`一次全通过
-- 唯一下一动作：执行diff/architecture/受保护文件提交前门，冻结并提交v0.6.37候选
+- 提交前门：origin/main仍为`a4bb48c`，`git diff --check`通过，受保护JSON未进入diff/stage；功能与版本候选已提交为`3bb6fb0`
+- 唯一下一动作：提交本次候选身份文档收口，对最终治理树仅复验m38；通过后创建不可变注释v0.6.37 tag并push分支/tag、PR/CI/merge
 
 ## 14. Checkpoint更新模板
 
