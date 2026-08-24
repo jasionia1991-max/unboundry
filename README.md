@@ -8,7 +8,7 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 ## 当前候选：v0.6.41 角色风险预检关闭态（2026-08-25，发布前）
 
-INC-SEEDANCE-002已按正式合同核验自动选择C分支：第三方审核票据没有Seedance正式提交字段，虚拟人像权益订阅超预算，公开审核Provider合同也不足以完成A的分类与隐私证明。候选把产品准确命名为「角色风险预检」并在菜单层禁用入口，同时保留独立的「角色可信素材」入口；不显示蓝勾，不声称Seedance验证、版权认证或法律合规。独立终审原始`1 P0 + 5 P1`已全部关闭，无剩余P0/P1；schema41、可插拔应用边界、Generation付费前双门和schema40→41迁移的受影响定向均已绿。真实审核、Generation、OSS、订阅/购买和费用均0；生产仍为v0.6.40，唯一safe full、GitHub和生产发布尚未完成。详情以[`spec/INC_SEEDANCE_002_AI_CHARACTER_SINGLE_IMAGE_COMPLIANCE_CHECKPOINT.md`](spec/INC_SEEDANCE_002_AI_CHARACTER_SINGLE_IMAGE_COMPLIANCE_CHECKPOINT.md)为准。
+INC-SEEDANCE-002已按正式合同核验自动选择C分支：第三方审核票据没有Seedance正式提交字段，虚拟人像权益订阅超预算，公开审核Provider合同也不足以完成A的分类与隐私证明。候选把产品准确命名为「角色风险预检」并在菜单层禁用入口，同时保留独立的「角色可信素材」入口；不显示蓝勾，不声称Seedance验证、版权认证或法律合规。独立终审原始`1 P0 + 5 P1`已全部关闭，无剩余P0/P1；schema41、可插拔应用边界、Generation付费前双门和schema40→41迁移的受影响定向均已绿。冻结功能commit的本Goal唯一safe full为`121/121 specs、1061/1061 tests PASS`。真实审核、Generation、OSS、订阅/购买和费用均0；生产仍为v0.6.40，GitHub和生产发布尚未完成。详情以[`spec/INC_SEEDANCE_002_AI_CHARACTER_SINGLE_IMAGE_COMPLIANCE_CHECKPOINT.md`](spec/INC_SEEDANCE_002_AI_CHARACTER_SINGLE_IMAGE_COMPLIANCE_CHECKPOINT.md)为准。
 
 ## 当前事件：v0.6.40 已技术发布（2026-08-25，真实链受外部订阅阻断）
 

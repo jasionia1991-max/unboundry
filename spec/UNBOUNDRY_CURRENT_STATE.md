@@ -1,6 +1,6 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网仍为v0.6.40/schema40且技术健康；INC-SEEDANCE-002已获v0.6.41完整授权，按B→A→C选择最高诚实层级C并完成本地工程、独立终审与定向验证，尚待唯一safe full、GitHub和生产发布。
+> **状态分层**：现网仍为v0.6.40/schema40且技术健康；INC-SEEDANCE-002已获v0.6.41完整授权，按B→A→C选择最高诚实层级C，本地工程、独立终审、定向验证和唯一safe full均已通过，尚待GitHub和生产发布。
 
 更新日期：2026-08-25
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
@@ -8,13 +8,13 @@
 本地候选代码版本：**v0.6.41**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_40_USER_RECHECK`
-当前热修门：`TARGETED_AUTO_PASS / SAFE_FULL_PENDING / PRODUCTION_V0_6_40_UNCHANGED`
+当前热修门：`TARGETED_AUTO_PASS / SAFE_FULL_PASS / RELEASE_CANDIDATE_FROZEN / PRODUCTION_V0_6_40_UNCHANGED`
 
 ## 一句话
 
-**生产是 v0.6.40 / schema40且技术健康；v0.6.41候选已诚实实现C分支「角色风险预检」关闭态和完整可插拔工程边界，独立P0/P1终审已通过，正式审核、Generation、OSS和费用均0，下一步是唯一safe full。**
+**生产是 v0.6.40 / schema40且技术健康；v0.6.41候选已诚实实现C分支「角色风险预检」关闭态和完整可插拔工程边界，独立P0/P1终审与唯一safe full已通过，正式审核、Generation、OSS和费用均0，下一步是GitHub与生产发布。**
 
-## INC-SEEDANCE-002 AI角色单图合规验证（BRANCH_C / P0_P1_REVIEW_PASS / SAFE_FULL_PENDING）
+## INC-SEEDANCE-002 AI角色单图合规验证（BRANCH_C / P0_P1_REVIEW_PASS / SAFE_FULL_PASS）
 
 - 权威方案：`spec/INC_SEEDANCE_002_AI_CHARACTER_SINGLE_IMAGE_COMPLIANCE_PLAN_2026-08-25.md`；实时断点：`spec/INC_SEEDANCE_002_AI_CHARACTER_SINGLE_IMAGE_COMPLIANCE_CHECKPOINT.md`。
 - 正式一手合同只支持Seedance真人私域素材链；第三方审核票据没有正式提交字段，虚拟人像权益额外订阅超预算。Sightengine/Hive公开合同不足以完整证明人物、公众人物、版权IP、未成年人/敏感和隐私边界，因此B、A依次不成立，自动选择C。
@@ -23,7 +23,8 @@
 - Generation已在task-create和provider-submit双重支持正式B快照核验；A风险预检在付费前拒绝，Ark adapter在没有官方翻译合同时拒绝第三方ticket。当前C不会生成ticket、任务或Provider请求。
 - schema41已贯穿备份/恢复/媒体/版本/bridge/release；新增精确schema40→41 dry-run/apply迁移。最终定向：m101 `4/4`、m2 `13/13`、m20 `1/1`、m5 `21/21`、m10 `17/17`、m91 `9/9`、m92 `2/2`、m95 `5/5 PASS`。
 - 独立终审原始`1 P0 + 5 P1`已全部关闭：Generation/Provider/策略身份全绑定，旧真人入口保留，Attempt未知结果不自动重提，审计不随媒体删除，C入口菜单层禁用；无剩余P0/P1。
-- 请求账本：Provider控制面0、真实审核创建0、状态查询0、Generation0、OSS0、订阅/购买0、费用0。生产仍为v0.6.40/schema40；唯一safe full尚未执行，不能提前写生产PASS或USER_PASS。
+- 冻结功能commit `9f4ed1589bb4d8d65619186035a076f572409255`的本Goal唯一safe full为`121/121 specs、1061/1061 tests PASS`，异常0，source/snapshot `07a69e52…a60c2863`，4173 unchanged；后续文档收口不重复full。
+- 请求账本：Provider控制面0、真实审核创建0、状态查询0、Generation0、OSS0、订阅/购买0、费用0。生产仍为v0.6.40/schema40；不能提前写生产PASS或USER_PASS。
 
 ## INC-SEEDANCE-001 Seedance可信素材真实链路恢复（PRODUCTION_V0_6_40_TECHNICAL_PASS / BLOCKED_EXTERNAL_CAPABILITY）
 

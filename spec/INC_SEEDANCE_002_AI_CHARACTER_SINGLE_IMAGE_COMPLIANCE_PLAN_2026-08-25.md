@@ -436,6 +436,8 @@ SHA256(
 
 完成门：证据绑定同一源码快照、Node22.23.1/npm10.9.8、动态 loopback、临时数据、4173不变、非loopback/Provider/OSS为授权账本值。
 
+2026-08-25执行结果：冻结功能commit `9f4ed1589bb4d8d65619186035a076f572409255`上执行本Goal唯一safe full，`121/121 specs、1061/1061 tests PASS`，failed/skipped/retries/blocked/reportErrors均0，source/snapshot均为`07a69e52e9b10cf5fcab53a576792ccd23cf5fcbd129f3830fc7b9a2a60c2863`，4173 listener unchanged。后续文档收口不重复full。
+
 ### R11：版本、GitHub、生产与用户验收
 
 - 用户分别确认版本号和发布；

@@ -416,7 +416,7 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 | SEEDANCE-CHAR-009 | P0 | Seedance旁路票据 | B分支必须有正式审核票据与Seedance提交合同；否则仅A风险预检或C关闭 | 官方CreateContentsGenerationsTasks无第三方审核票据字段，Ark adapter拒绝翻译；未伪造B | BLOCKED_EXTERNAL_CAPABILITY / BRANCH_C |
 | SEEDANCE-CHAR-010 | P0 | 隐私与安全 | 最短保留、无生物特征/原图副本/原始Body/秘密日志；callback签名、nonce、重放窗口与删除边界 | 当前C不外发、不存原图/Body/秘密/生物特征；用户附件未使用；callback不启用 | C_ZERO_EXTERNAL_DATA / TARGETED_AUTO_PASS |
 | SEEDANCE-CHAR-011 | P1 | Image工具交互与恢复 | A/B启用时由ImageToolHost承载三视口、四zoom、键盘/焦点、双击防重与刷新恢复；C必须在菜单层禁用并准确说明，不得遮蔽真人可信素材入口 | C菜单项disabled且“角色可信素材”仍可用；不创建面板/外部请求；m2 13/13；生产浏览器门待R11 | TARGETED_AUTO_PASS / P1_REVIEW_CLOSED / PRODUCTION_BROWSER_PENDING |
-| SEEDANCE-CHAR-012 | P0 | 证据与发布分层 | fake、真实审核、真实Seedance、GitHub、生产技术、零付费浏览器和USER_PASS分别记录 | fake与定向已分层；真实审核/Generation/OSS/费用0；GitHub/full/生产待R9～R11 | LOCAL_TARGETED_PASS / RELEASE_PENDING / USER_RECHECK_PENDING |
+| SEEDANCE-CHAR-012 | P0 | 证据与发布分层 | fake、真实审核、真实Seedance、GitHub、生产技术、零付费浏览器和USER_PASS分别记录 | fake与定向已分层；唯一safe full 121/121 specs、1061/1061 tests PASS；真实审核/Generation/OSS/费用0；GitHub/生产待R11 | LOCAL_FULL_PASS / RELEASE_PENDING / USER_RECHECK_PENDING |
 
 `IMGEDIT-010～020` 由 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md` 和对应 Checkpoint 驱动。D0～D13工程、生产技术发布及六项各一次真实Provider技术冒烟均已完成，最终总账`6/6 / 60 USD`、无重试；整体状态`REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`。016～019不得把自动、真实技术或生产证据冒充用户质量通过。历史 `IMGEDIT-001～006、008、009 = PASS` 继续只证明既有外观、安全禁用和裁剪结果合同，不自动证明新功能已经实现。`IMGEDIT-007` 继续 `PAUSED`。
 

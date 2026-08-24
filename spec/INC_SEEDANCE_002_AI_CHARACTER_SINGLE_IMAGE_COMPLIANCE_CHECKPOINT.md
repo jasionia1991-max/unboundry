@@ -2,7 +2,7 @@
 
 更新时间：2026-08-25
 
-状态：`BRANCH_C_SELECTED / LOCAL_ENGINEERING_COMPLETE / P0_P1_REVIEW_PASS / TARGETED_AUTO_PASS / SAFE_FULL_PENDING / PRODUCTION_V0_6_40_UNCHANGED`
+状态：`BRANCH_C_SELECTED / LOCAL_ENGINEERING_COMPLETE / P0_P1_REVIEW_PASS / TARGETED_AUTO_PASS / SAFE_FULL_PASS / RELEASE_CANDIDATE_FROZEN / PRODUCTION_V0_6_40_UNCHANGED`
 
 权威方案：`spec/INC_SEEDANCE_002_AI_CHARACTER_SINGLE_IMAGE_COMPLIANCE_PLAN_2026-08-25.md`
 
@@ -52,7 +52,9 @@
 | m92版本兼容 | `2/2 PASS` |
 | m95切换 | `5/5 PASS` |
 
-历史诊断红均按最小范围修复：m91新增迁移最初因SQLite同连接事务backup及inspection root约束失败，修正为写锁连接+独立只读snapshot，并只复验m91；R9修复后受影响6-spec原始`63/65`，仅m2菜单项计数与m20新增retry路径展示计数失败，精确修正期望后只复验m2+m20并`14/14 PASS`，其余`51/51`有效通过未重复。冻结候选的唯一safe full尚未运行，必须在候选commit后只执行一次。
+历史诊断红均按最小范围修复：m91新增迁移最初因SQLite同连接事务backup及inspection root约束失败，修正为写锁连接+独立只读snapshot，并只复验m91；R9修复后受影响6-spec原始`63/65`，仅m2菜单项计数与m20新增retry路径展示计数失败，精确修正期望后只复验m2+m20并`14/14 PASS`，其余`51/51`有效通过未重复。
+
+冻结功能候选commit `9f4ed1589bb4d8d65619186035a076f572409255`上已执行本Goal唯一safe full：`121/121 specs、1061/1061 tests PASS`，failed/skipped/retries/blocked/reportErrors均0，退出码0。source/snapshot均为`07a69e52e9b10cf5fcab53a576792ccd23cf5fcbd129f3830fc7b9a2a60c2863`，4173 listener unchanged。本次文档收口不改产品代码，不再运行第二次full。
 
 ## 5. 请求、费用与数据账本
 
@@ -71,4 +73,4 @@
 
 ## 6. 下一动作
 
-冻结并commit候选，执行本Goal唯一safe full。随后连续完成push/PR/CI/merge、v0.6.41 tag/Release、生产冻结备份和恢复副本schema40→41演练、fresh原子发布、技术门与零付费浏览器矩阵；最终只进入`USER_RECHECK`，不得写`USER_PASS`。
+候选与唯一safe full已冻结。继续完成push/PR/CI/merge、v0.6.41 tag/Release、生产冻结备份和恢复副本schema40→41演练、fresh原子发布、技术门与零付费浏览器矩阵；最终只进入`USER_RECHECK`，不得写`USER_PASS`。
