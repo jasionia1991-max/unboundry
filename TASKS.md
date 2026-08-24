@@ -3,7 +3,7 @@
 > **当前状态**：生产仍为`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，但图片工具用户质量复验未通过。`INC-IMGEDIT-004` R7本地候选已完成；用户已把目标补丁递增为`v0.6.36`并允许发布，R8已恢复施工。
 
 更新时间：2026-08-24
-状态：`v0.6.35 PRODUCTION_PUBLISHED_AUTO_PASS；REAL_PROVIDER_TECHNICAL_SMOKE_PASS 6/6；INC-IMGEDIT-004 R7_AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS；USER_QUALITY_REMEDIATION_REQUIRED。`
+状态：`生产v0.6.35；本地候选v0.6.36 R8_IN_PROGRESS；INC-IMGEDIT-004 R7_AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS；USER_QUALITY_REMEDIATION_REQUIRED。`
 
 ### 2026-08-24 图片工具交互与 UI 一次性返工（INC-IMGEDIT-004，GOAL_ACTIVE / R7_AUTO_PASS / R8_IN_PROGRESS / VERSION_V0_6_36）
 
@@ -15,7 +15,7 @@
 - 验收覆盖三个视口、四档zoom、横/竖/方图、透明PNG、全部图片工具、叠层恶意切换、Escape/焦点/键盘/IME/busy/reduced-motion及零Provider请求。
 - R0实时恢复确认分支HEAD与最新`origin/main`同为`f369d1d`，package0.6.35、Node22.23.1/npm10.9.8；生产只读探针为`0.6.35 / live / ready active schema39`。safe runner preflight 120 specs通过、4173 listener不变；未运行产品spec/full，产品/测试/schema/生产未改。
 - R0源码基线确认ImageNode仍有多组独立open state，紧凑/多角度面板仍依赖NodeToolbar相对定位，大型编辑层缺统一inert/focus/top-layer合同；这与登记缺陷一致。受保护JSON仍未跟踪且不在diff/stage，其他worktree没有同范围施工证据。
-- 本Goal版本门为`v0.6.35`，用户独立明确“v0.6.35上线”，两项发布门有效；只能在R7通过后进入R8。INC-IMGEDIT-003预算已用完，本Goal真实Provider/尝试/费用均为0，生产技术通过后仍需用户明确`USER_PASS`。
+- R0时版本门为`v0.6.35`；R8身份预检发现同名版本已不可变发布后，用户明确要求补丁递增一个版本并写出“允许发布”，当前两项门更新为`v0.6.36 / RELEASE_GATE_VALID`。INC-IMGEDIT-003预算已用完，本Goal真实Provider/尝试/费用均为0，生产技术通过后仍需用户明确`USER_PASS`。
 - R1已冻结12个`ActiveImageTool`、modal/popover分类、checkerboard/plain surface、inert/outside-close/max-width descriptor和原子菜单互斥reducer；只管理UI可见状态，不接业务payload、任务、上传或轮询。m100合同`13/13 PASS`。旧实现m2按预期`9/10`，唯一失败精确证明统一Host、modal inert和共享透明Surface尚未实现；R2必须让同一红证据转绿。两次均为精确提交隔离worktree、Node22.23.1/npm10.9.8、source/listener unchanged，Provider/OSS/费用0。
 - R2已用单一reducer替代全部图片工具独立open状态，并把Crop/Redraw/Erase/Outpaint/Annotation/Fullscreen和六类面板接入同一个Portal `ImageToolHost`；打开工具会原子关闭更多/颜色菜单，modal给`#root`设置inert，Host统一Escape、Tab循环、焦点返回、z-index、popover flip/shift/clamp和共享棋盘格Surface。Host不持有业务payload、任务、上传或轮询。
 - 精确提交`661a7a4`的safe m2 `10/10`、m100 `13/13 PASS`；加强焦点断言后先以`9/10`抓出modal期间卸载toolbar导致旧触发元素断连，修正为保留DOM并依靠root inert后，最终`c5f9795`只复验m2 `10/10 PASS`。Node22.23.1/npm10.9.8、source/snapshot/listener均unchanged，Provider/OSS/费用0；没有运行full。IMGEDIT-021收口AUTO_PASS，022/023/026/027按真实范围保持PARTIAL。
@@ -30,6 +30,7 @@
 - 本Goal唯一一次safe full在精确`4fd25cc`执行：120 specs / 1052 tests，原始`1050/1052`，异常仅m24异步目录计数时序和m37在modal inert后使用非法背景编辑前置条件；skipped/retries/blocked/reportErrors均0，source/snapshot`ce6403b6…41a8414`。未运行第二次full。m24确定性等待在`e2c412e`复验`2/2 PASS`；m37改为真实派生use case在上传后/graph adoption前关闭持久层并验证DELETE/404、无节点和Provider不变，在最终`161f417`复验`35/35 PASS`。R7收口为`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS`，不把原始full改写成全绿；下一动作是R8同名不可变tag/release身份预检。
 - R8只读预检确认远端`v0.6.35`注释tag对象`3fa72d3`已解引用到旧候选`fc99101`/tree`cb13fef`，生产仍指向`/opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824`；本候选`6380723`/tree`8f22a7c`与其不同。Runbook不存在既不移动tag/覆盖release、又能让另一棵源码继续使用同一精确版本身份的合法路径。R8已落档为`BLOCKED_VERSION_IDENTITY_COLLISION`；唯一恢复条件是用户提供尚未使用的具体版本号，并独立给出按该版本上线的发布句子。未push、PR、merge、tag或改生产。
 - 用户随后明确要求在v0.6.35上增加一个小版本号并写出“允许发布”；按确定性SemVer补丁递增落实为`v0.6.36 / VERSION_GATE_VALID / RELEASE_GATE_VALID`。远端`v0.6.36` tag不存在，原身份阻断解除；R8恢复为`IN_PROGRESS`，先同步package/runtime/m81与治理文档，再跑版本直接相关的safe m38+m81，不重复R7唯一一次full。
+- package/lock、`releaseRoleFromEnvironment`和m81 final角色断言已同步到0.6.36；CURRENT_STATE/README/AGENTS/上线规矩与Checkpoint同步表达“生产仍为v0.6.35、本地候选为v0.6.36”，不改写v0.6.35历史发布事实。
 
 ### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，D13_AUTO_PASS / USER_QUALITY_REMEDIATION_REQUIRED）
 

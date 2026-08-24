@@ -9,7 +9,7 @@
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
 - 文档分支：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`
 - 立项 HEAD / origin-main：`f369d1dba1eef05aebc7f1a443256ceb82778ea0`
-- package：`0.6.35`
+- package：`0.6.36`
 - schema：`39`
 - 生产：`v0.6.35 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_REMEDIATION_REQUIRED`
 - 用户质量：未通过；没有 `USER_PASS`
@@ -120,8 +120,8 @@ node -p "require('./package.json').version"
 
 ## 7. 版本、发布和外部调用门
 
-- 本 Goal 目标版本由用户明确填写为 `v0.6.35`，版本门有效；
-- 用户另行明确“`v0.6.35 上线`”，发布门有效；
+- 本 Goal 当前目标版本由用户“在v0.6.35上加一个小版本号”的确定性补丁递增指令更新为`v0.6.36`，版本门有效；
+- 用户另行明确“`允许发布`”，`v0.6.36`发布门有效；
 - 两项门只允许在 R7 通过后进入 R8，不提前产生候选或发布结论；
 - INC-IMGEDIT-003 的 v0.6.34/v0.6.35 授权和 6 次/60 USD 预算均已消费；
 - 本 Goal 默认真实 Provider、真实付费生成和新增 OSS 测试写入均为 0；
@@ -364,8 +364,8 @@ Provider / OSS / 费用：
 - 用户最新指令：在现有v0.6.35上“加一个小版本号”，并独立写出“允许发布”；按确定性SemVer补丁递增解释为`v0.6.36 / VERSION_GATE_VALID / RELEASE_GATE_VALID`
 - 实时恢复：branch`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`，HEAD`2f857084594dd0643272351409be8bf4f26eacca`、tree`5b20d766ce0248a325783120be32a1667e9295a0`，origin/main`f369d1dba1eef05aebc7f1a443256ceb82778ea0`；主工作树只有受保护JSON未跟踪
 - 版本身份：`git ls-remote`确认远端`refs/tags/v0.6.36`及其解引用均不存在；v0.6.35 tag/release保持不可变，不移动、不覆盖
-- 工具链与生产：Node22.23.1/npm10.9.8、package当前仍0.6.35；生产只读仍为v0.6.35/schema39。R8版本候选尚未形成，未push、PR、merge、tag或改生产
+- 工具链与生产：Node22.23.1/npm10.9.8、package/lock/runtime/m81已同步为0.6.36；生产只读仍为v0.6.35/schema39。R8版本候选尚待定向门冻结，未push、PR、merge、tag或改生产
 - Provider / OSS / 费用：真实Provider请求、尝试、成功0；费用0；真实OSS写入0
 - 阻断：原`v0.6.35`身份冲突已由新的未占用`v0.6.36`门解除；当前无阻断
 - 回滚点：R8阻断落档提交`2f857084594dd0643272351409be8bf4f26eacca`
-- 唯一下一动作：提交本恢复断点；同步v0.6.36 package/runtime/test/治理合同并运行版本直接相关的safe m38+m81定向门
+- 唯一下一动作：提交v0.6.36版本合同候选；在精确提交的隔离worktree运行版本直接相关safe m38+m81定向门，通过后冻结GitHub候选
