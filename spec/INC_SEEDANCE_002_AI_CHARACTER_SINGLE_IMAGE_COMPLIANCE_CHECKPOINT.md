@@ -2,7 +2,7 @@
 
 更新时间：2026-08-25
 
-状态：`BRANCH_C_SELECTED / LOCAL_ENGINEERING_COMPLETE / P0_P1_REVIEW_PASS / TARGETED_AUTO_PASS / SAFE_FULL_PASS / RELEASE_CANDIDATE_FROZEN / PRODUCTION_V0_6_40_UNCHANGED`
+状态：`BRANCH_C_SELECTED / PRODUCTION_V0_6_41_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`
 
 权威方案：`spec/INC_SEEDANCE_002_AI_CHARACTER_SINGLE_IMAGE_COMPLIANCE_PLAN_2026-08-25.md`
 
@@ -23,7 +23,7 @@
 | 基线 / origin/main | `73f63adfa294f0d13c55d9998100115baa967c44`（2026-08-25冻结前复核一致） |
 | package | `0.6.41` |
 | schema | `41` |
-| 生产 | 当前仍为`v0.6.40 / schema40`；v0.6.41尚未发布 |
+| 生产 | `v0.6.41 / schema41 / /opt/unboundry/releases/v0.6.41-seedance-character-compliance-20260825` |
 
 主工作树未清理；受保护`spec/public-templates-director-split-revision.json`未读取、修改、移动、删除、stage或提交。
 
@@ -56,7 +56,19 @@
 
 冻结功能候选commit `9f4ed1589bb4d8d65619186035a076f572409255`上已执行本Goal唯一safe full：`121/121 specs、1061/1061 tests PASS`，failed/skipped/retries/blocked/reportErrors均0，退出码0。source/snapshot均为`07a69e52e9b10cf5fcab53a576792ccd23cf5fcbd129f3830fc7b9a2a60c2863`，4173 listener unchanged。本次文档收口不改产品代码，不再运行第二次full。
 
-## 5. 请求、费用与数据账本
+## 5. R10～R11 GitHub与生产发布
+
+- PR #96在Quality CI通过后squash merge为`59599df43898d45b25fadb422cfa3bfc8bc42dfb`，tree `2e7f1cd61da8e729a69b15d0299c71ab54f84eb6`；main Quality run `32776214629`成功。
+- 注释tag `v0.6.41`精确指向merge commit，GitHub Release已发布；历史tag/Release未移动。
+- 精确tag源码archive SHA-256 `b924bd6e…c6edfc1`；生产Node `22.23.2`、npm `10.9.8`完成fresh install/typecheck/build。release共5968文件，inventory `7a2f12dd…e884b3`。
+- 冻结备份`/var/lib/unboundry-rollbacks/v0.6.41-cutover-frozen-K1ASo1`的source/restore各366文件，双清单SHA `5a5b2f9e…adb5a`。旧host wrapper因硬编码schema39拒绝schema40后，其本事件目录已原位隔离为`.legacy-backup-rejected-schema40`，未用于恢复或发布。
+- 恢复副本完成schema40→41 dry-run与apply，源逻辑SHA `900f0df5…ad73`，目标schema41、integrity ok、FK0；同一源SHA的生产迁移成功，随后原子切换。
+- 公网/回环version `0.6.41`、live/ready 200 active/schema41；service active+enabled、NRestarts0，新增service warning与NGINX error均0；release inventory与5项公网资源逐字节一致。
+- 切换前后tasks785、attempts793、active0、media833、publications423、canvases63、data files366、media files355不变；新合规三表均0行，INC-SEEDANCE-001 sessions/groups/bindings仍为3/1/3。
+- 生产浏览器三视口`1280×720 / 1440×900 / 1920×1080`均显示disabled「角色风险预检（当前不可用）」与enabled「角色可信素材」，刷新后状态一致；console error/warn 0，任务/attempt/合规行增量0，未点击真实审核或生成。
+- 完整生产回执：`spec/V0_6_41_PRODUCTION_RECEIPT_2026-08-25.json`。
+
+## 6. 请求、费用与数据账本
 
 | 动作 | 已用 / 上限 |
 |---|---:|
@@ -71,6 +83,6 @@
 
 没有发送用户附件或任何真人、明星、公众人物、未成年人、版权IP图片；没有生成测试图，因为C分支不需要外部审核。
 
-## 6. 下一动作
+## 7. 下一动作
 
-候选与唯一safe full已冻结。继续完成push/PR/CI/merge、v0.6.41 tag/Release、生产冻结备份和恢复副本schema40→41演练、fresh原子发布、技术门与零付费浏览器矩阵；最终只进入`USER_RECHECK`，不得写`USER_PASS`。
+自动技术链已完成，当前仅进入`USER_RECHECK`。下一动作是用户打开v0.6.41生产图片工具菜单，确认disabled「角色风险预检（当前不可用）」与保留的enabled「角色可信素材」；无需新增授权。用户明确回复通过前不得写`USER_PASS`。
