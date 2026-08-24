@@ -1,0 +1,143 @@
+{
+  "receiptType": "UNBOUNDRY_V0_6_40_PRODUCTION_AND_SEEDANCE_TRUSTED_CHAIN_RECEIPT",
+  "recordedAt": "2026-08-24",
+  "status": {
+    "production": "PRODUCTION_V0_6_40_TECHNICAL_PASS",
+    "providerProtocol": "PROVIDER_PROTOCOL_REAL_RECHECK_PENDING",
+    "projectPermission": "PROJECT_PERMISSION_CONFIRMATION_PENDING",
+    "requestGate": "CONTROL_PLANE_NOT_STARTED",
+    "userAcceptance": "USER_RECHECK"
+  },
+  "source": {
+    "version": "0.6.40",
+    "candidateCommit": "70e373015fa56e2445ef0b17b1d3f55453b9691e",
+    "tree": "1defaa5aaaa508f3ed0040fb6792ec190f248e68",
+    "pullRequest": 92,
+    "mergeCommit": "21eb483ff04e4a403c0b4e35e9361e68d90efcf3",
+    "qualityRun": 32744976578,
+    "qualityJob": 97488219464,
+    "qualityConclusion": "success",
+    "tag": "v0.6.40",
+    "tagObject": "3808a6ceb081d869f27d761caa78efb0f58dbb5f",
+    "tagPeeledCommit": "70e373015fa56e2445ef0b17b1d3f55453b9691e",
+    "releaseUrl": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.6.40",
+    "sourceArchiveSha256": "1dcf0e00ae016bba105ffb64c503319eddf87d82881b10f670d38d46f8f43b98",
+    "sourceArchiveBytes": 29641080
+  },
+  "verification": {
+    "targeted": {
+      "scope": "m42+m100+m81+m9",
+      "specs": 4,
+      "passed": 71,
+      "total": 71,
+      "sourceSnapshotSha256": "ce05428c92f2bafd363011edec263598e1e2af664ae532ed79786df917e31c64"
+    },
+    "safeFull": {
+      "specs": 120,
+      "testsPassed": 1055,
+      "testsTotal": 1056,
+      "externalRequests": 0,
+      "singleFailure": "m38 exact current-production phrase differed by one Chinese character",
+      "productTestsPassed": 1055,
+      "secondFullRun": false
+    },
+    "documentationFocusedRecheck": {
+      "scope": "m38",
+      "passed": 15,
+      "total": 15,
+      "sourceSnapshotSha256": "c62658c62410ca34dec0d7b6e75c0fee39bb035e4bf0390b43c9e67eb1d18c70"
+    },
+    "postReleaseDocumentationRecheck": {
+      "scope": "m38",
+      "passed": 15,
+      "total": 15,
+      "sourceSnapshotSha256": "b15679631a0c3530f41c1671bb41afeb9ffca77cf9b83c33cb990937b6223717",
+      "productFullRepeated": false,
+      "providerRequests": 0
+    }
+  },
+  "production": {
+    "releasePath": "/opt/unboundry/releases/v0.6.40-seedance-provider-diagnostics-20260824",
+    "previousReleasePath": "/opt/unboundry/releases/v0.6.39-seedance-trusted-chain-20260824",
+    "node": "22.23.2",
+    "npm": "10.9.8",
+    "releaseFileCount": 5952,
+    "releaseInventorySha256": "1f44038106a719236f78f39f325862e9b17d956e95efe0e350f37053b25a4084",
+    "backupPath": "/var/lib/unboundry-rollbacks/v0.6.40-cutover-frozen-OtzczQ",
+    "backupSourceFileCount": 366,
+    "backupRestoreFileCount": 366,
+    "backupManifestSha256": "f88135d568181c0627ce807de01d36a40ffc7c6cd42904c57156c3330a31b51a",
+    "schema": 40,
+    "databaseQuickCheck": "ok",
+    "foreignKeyViolations": 0,
+    "service": {
+      "active": true,
+      "enabled": true,
+      "nRestarts": 0,
+      "newWarnings": 0,
+      "newNginxErrors": 0
+    },
+    "health": {
+      "loopbackVersion": "0.6.40",
+      "publicVersion": "0.6.40",
+      "liveHttpStatus": 200,
+      "readyHttpStatus": 200,
+      "readyState": "active",
+      "schemaVersion": 40
+    },
+    "callback": {
+      "configured": true,
+      "url": "https://canvas.mymy.ltd/",
+      "storage": "root-only environment file",
+      "secretValuesExposed": false
+    },
+    "dataCountsBeforeAndAfter": {
+      "generationTasks": 785,
+      "generationAttempts": 793,
+      "generationByState": { "success": 746, "failed": 32, "cancelled": 7 },
+      "activeGenerationTasks": 0,
+      "mediaAssets": 833,
+      "publicationAttempts": 423,
+      "canvases": 63,
+      "dataFiles": 366,
+      "mediaFiles": 355,
+      "mediaBytes": 284663380,
+      "unchanged": true
+    },
+    "publicAssetSha256": {
+      "/": "b211d70cd709b1f4746d5ec55db0b73dcff7b576c08ee083d2d7488034360c69",
+      "/assets/index-DV3-WiXw.js": "1b818ae4df2aa7e61df35acf807389aca6ed0ccffc855d18ea3171115adff681",
+      "/assets/index-B5ETM-Lx.css": "0486bc6d3ffbc2223df22c89f9f1609c5cc86169d46ee53a67253b21ac8f7370",
+      "/favicon.svg": "6d2795e7ca70fe26408c5f057c59224421cafe44288ac1a1c2b19bf6e4f2010b",
+      "/templates/ecommerce-image-expert-213.png": "48f64fe87da50860cc669b0835497b041f5b93f7deb14acb3116447891fab82f"
+    }
+  },
+  "projectPermission": {
+    "productionArkIdentity": "tapnow-ark-catalog-ro-20260803",
+    "project": "default",
+    "existingPolicy": "TapNowArkCatalogReadOnly",
+    "requestedPolicy": "ArkFullAccess",
+    "finalConfirmationSubmitted": false,
+    "otherUsersProjectsKeysOrPoliciesChanged": false
+  },
+  "requestLedger": {
+    "controlPlaneUsed": 0,
+    "controlPlaneAuthorized": 50,
+    "createVisualValidateSession": { "used": 0, "authorized": 1 },
+    "getVisualValidateResult": { "used": 0, "authorized": 15 },
+    "createAsset": { "used": 0, "authorized": 1 },
+    "getAsset": { "used": 0, "authorized": 33 },
+    "paidGeneration": { "used": 0, "authorized": 0 },
+    "ossTestWrites": { "used": 0, "authorized": 0 },
+    "cost": 0
+  },
+  "nextGate": {
+    "reason": "Production is healthy, but the Project permission change still awaits action-time user confirmation and the real H5 authentication requires the user.",
+    "nextActions": [
+      "After the user replies 确认授权, verify the final summary and submit the Project default ArkFullAccess change exactly once",
+      "Create exactly one H5 validation session from a ready source that does not reuse the failed v0.6.39 idempotency record",
+      "Ask the user to finish H5 face authentication, then poll within the authorized read budget",
+      "Create exactly one Asset and poll it to Active before verifying the server-generated asset:// binding"
+    ]
+  }
+}

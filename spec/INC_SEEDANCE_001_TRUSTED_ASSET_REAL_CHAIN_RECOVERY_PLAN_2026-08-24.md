@@ -93,13 +93,13 @@ v0.6.40候选：
 | R2 | 当前生产AK身份与Project权限只读核验 | PASS |
 | R3 | 仅为Project `default`的当前IAM用户补`ArkFullAccess` | PROJECT_PERMISSION_CONFIRMATION_PENDING |
 | R4 | 文档、验收矩阵、候选测试与检查点对齐 | PASS |
-| R5 | commit/GitHub/CI/merge/tag/Release与生产发布 | IN_PROGRESS |
-| R6 | 生产真实H5/Group/Asset/Active/asset://链 | PENDING / REAL_FAIL_CLOSED |
-| R7 | 生产健康、数据、零付费账本与v0.6.40新回执 | PENDING |
+| R5 | commit/GitHub/CI/merge/tag/Release与生产发布 | PASS |
+| R6 | 生产真实H5/Group/Asset/Active/asset://链 | IN_PROGRESS / USER_CONFIRMATION_PENDING |
+| R7 | 生产健康、数据、零付费账本与v0.6.40新回执 | TECHNICAL_PASS / REAL_CHAIN_PENDING |
 
 ## 7. 回滚
 
-当前生产不可变release为`/opt/unboundry/releases/v0.6.39-seedance-trusted-chain-20260824`；切换冻结备份为`/var/lib/unboundry-rollbacks/v0.6.39-cutover-frozen-OFeGIs`。source/restore各366文件且双清单SHA一致。v0.6.40发布必须建立新不可变release与新冻结备份；回滚须保留schema40、现有数据和CallbackURL安全配置。
+当前生产不可变release为`/opt/unboundry/releases/v0.6.40-seedance-provider-diagnostics-20260824`；切换冻结备份为`/var/lib/unboundry-rollbacks/v0.6.40-cutover-frozen-OtzczQ`。source/restore各366文件且双清单SHA一致。上一release v0.6.39继续保留；回滚须保留schema40、现有数据和CallbackURL安全配置。
 
 ## 8. 当前硬门与下一步
 

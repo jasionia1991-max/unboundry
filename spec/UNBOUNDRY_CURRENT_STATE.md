@@ -1,19 +1,19 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为v0.6.39/schema40且技术健康；v0.6.40已获版本、发布、GitHub、SSH、当前身份最小Project补权及新50次控制面预算授权。候选已补受限Provider诊断，Project `default`补权停在浏览器最终确认前，真实链尚未重启。
+> **状态分层**：现网为v0.6.40/schema40且技术健康；GitHub与生产技术发布已完成。Project `default`补权停在浏览器最终确认前，真实链尚未重启，新50次控制面预算仍为0消费。
 
 更新日期：2026-08-24
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.6.40**
 本地候选代码版本：**v0.6.40**
 当前治理标记：`CURRENT_V0_6_40_USER_RECHECK`
-当前热修门：`PRODUCTION_V0_6_39_TECHNICAL_PASS / V0_6_40_CANDIDATE_FROZEN / PROJECT_PERMISSION_CONFIRMATION_PENDING / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED`
+当前热修门：`PRODUCTION_V0_6_40_TECHNICAL_PASS / PROJECT_PERMISSION_CONFIRMATION_PENDING / PROVIDER_PROTOCOL_REAL_RECHECK_PENDING`
 
 ## 一句话
 
-**生产是 v0.6.39 / schema40且技术健康；v0.6.40候选已能安全记录远端HTTP状态、错误码和RequestId，且已定位生产AK对应IAM用户及缺失的Project授权，但补权、发布与真实Group/Asset/Active/asset://链尚未完成。**
+**生产是 v0.6.40 / schema40且技术健康；受限Provider诊断已上线并已定位生产AK对应IAM用户及缺失的Project授权，但补权和真实Group/Asset/Active/asset://链尚未完成。**
 
-## INC-SEEDANCE-001 Seedance可信素材真实链路恢复（V0_6_40_CANDIDATE_FROZEN / REAL_FAIL_CLOSED）
+## INC-SEEDANCE-001 Seedance可信素材真实链路恢复（PRODUCTION_V0_6_40_TECHNICAL_PASS / REAL_RECHECK_PENDING）
 
 - 权威方案：`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_PLAN_2026-08-24.md`；实时断点：`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_CHECKPOINT.md`。
 - 正式合同确认管控面 Base URL 与四个私域素材 Action 使用`ark.cn-beijing.volcengineapi.com`；H5创建另要求必填公网HTTPS `CallbackURL`。
@@ -23,9 +23,12 @@
 - 新事件唯一`CreateVisualValidateSession`于`2026-08-24T13:54:10Z`返回本地HTTP503，session保存`FAILED/CREATE_FAILED`，没有Provider session ID、H5Link或BytedToken。现有脱敏层丢弃远端HTTP状态、错误码与RequestId，只能确认远端边界快速失败，不能把原因写成ArkFullAccess、参数、签名或格式中的任一项。
 - 官方私域人像指南明确AK需具备对应Project的`ArkFullAccess`；这是下一轮必须人工核对的前提，不是本次已证实根因。账本：H5创建`1/1`，认证查询`0/15`，Asset创建`0/1`，Asset查询`0/33`，总计`1/50`；Generation task/attempt、费用、OSS测试写入均0。
 - v0.6.40候选在既有固定安全错误响应之外，受限保留并持久化Provider HTTP状态、错误码和RequestId；远端Message、Body、AK/SK不进入应用错误或数据库。最终定向m42+m100+m81+m9为4 specs、`71/71 PASS`；唯一safe full原始`1055/1056`，唯一失败为AGENTS治理短语多一个“仍”字，产品1055项均通过，修正后m38 `15/15 PASS`，未重复full。full source/snapshot `ce05428c…c64`；m38 source/snapshot `c62658c6…8c70`；真实Provider、Generation、OSS和费用0。
+- commit`70e3730`、PR #92、Quality CI run`32744976578`、merge`21eb483`、tag与GitHub Release `v0.6.40`均已完成；tag与main tree同为`1defaa5`。
+- fresh release`/opt/unboundry/releases/v0.6.40-seedance-provider-diagnostics-20260824`共5952文件，inventory SHA`1f440381…a4084`；冻结备份`/var/lib/unboundry-rollbacks/v0.6.40-cutover-frozen-OtzczQ`的source/restore各366文件且双清单SHA`f88135d5…b51a`。
+- 生产已原子切换到v0.6.40；公网/回环version、live、ready active/schema40、service active+enabled/NRestarts0、数据库quick_check/FK、切换前后数据与媒体、5项公网资源均通过，新增service warning与NGINX error均0。回执：`spec/V0_6_40_PRODUCTION_RECEIPT_2026-08-24.json`。
 - 只读核验已确认生产AK属于IAM用户`tapnow-ark-catalog-ro-20260803`，其仅有`TapNowArkCatalogReadOnly`，Project `default`授权数为0；最小补权向导已精确选择该Project、该用户和系统策略`ArkFullAccess`，但浏览器最终“确定”尚未点击。
 - 用户已确认`v0.6.40`并允许本事件commit、push、PR、合并、tag、GitHub Release、SSH生产发布及缺失时为当前身份补对应Project的`ArkFullAccess`。新账本独立为H5创建`0/1`、认证查询`0/15`、Asset创建`0/1`、Asset查询`0/33`，总计`0/50`；Generation、费用、OSS测试写入均0。
-- 当前`PRODUCTION_V0_6_39_TECHNICAL_PASS / V0_6_40_CANDIDATE_FROZEN / PROJECT_PERMISSION_CONFIRMATION_PENDING / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED`。v0.6.39回执保持历史不可变；只有补权确认与发布完成后才能按新账本重启真实链。
+- 当前`PRODUCTION_V0_6_40_TECHNICAL_PASS / PROJECT_PERMISSION_CONFIRMATION_PENDING / PROVIDER_PROTOCOL_REAL_RECHECK_PENDING / USER_RECHECK`。历史回执保持不可变；只有补权确认后才能按新账本重启真实链。
 
 ## INC-IMGEDIT-006 图片全屏完整适配与Seedance可信素材（PRODUCTION_V0_6_38 / USER_PASS）
 

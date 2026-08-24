@@ -8,11 +8,11 @@
 
 ## 当前事件：INC-SEEDANCE-001 可信素材真实链路恢复
 
-真实仓库`/Users/mymy/Documents/unboundry/app`；v0.6.40隔离候选工作树`/private/tmp/unboundry-inc-seedance-002-v0640-HdGrer`，分支`codex/inc-seedance-002-provider-diagnostics-v0.6.40`，基线`origin/main@8d38bd8`。生产仍运行v0.6.39 release`/opt/unboundry/releases/v0.6.39-seedance-trusted-chain-20260824`；其tag/Release/回执不可变。先读AGENTS规定路线，再读`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_PLAN_2026-08-24.md`和对应Checkpoint。
+真实仓库`/Users/mymy/Documents/unboundry/app`；v0.6.40隔离工作树`/private/tmp/unboundry-inc-seedance-002-v0640-HdGrer`，分支`codex/inc-seedance-002-provider-diagnostics-v0.6.40`。生产运行v0.6.40 release`/opt/unboundry/releases/v0.6.40-seedance-provider-diagnostics-20260824`；上一v0.6.39 release/tag/Release/回执不可变。先读AGENTS规定路线，再读`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_PLAN_2026-08-24.md`和对应Checkpoint。
 
 v0.6.39已把管控面Base URL与可信素材四Action统一到`ark.cn-beijing.volcengineapi.com`，H5创建发送公网HTTPS CallbackURL，缺失或非法时零请求fail-closed。m42 `16/16`、m81 `41/41`、m38 `15/15 PASS`；唯一safe full原始`1055/1056`，同源码只复验唯一m1性能抖动并`1/1 PASS`。冻结备份恢复、fresh build、CallbackURL配置、原子切换、公网/回环/service/schema40/数据/inventory门均通过。
 
-v0.6.39唯一H5创建返回HTTP503并保存`FAILED/CREATE_FAILED`，没有H5Link/BytedToken；该历史账本`1/50`已封存。v0.6.40候选只安全保留Provider HTTP状态、错误码和RequestId并覆盖四个失败边界，远端Message、Body、AK/SK不落库；m42 `16/16`、m100 `13/13 PASS`。只读核验确认生产AK属于IAM用户`tapnow-ark-catalog-ro-20260803`，其仅有目录只读策略，Project `default`授权数0；最小`ArkFullAccess`补权向导停在最终确认前。v0.6.40版本、发布、GitHub、SSH、最小补权及新50次控制面预算均已授权，新账本仍为`0/50`，Generation/OSS/费用0。不得移动v0.6.39 tag、复用历史预算或读受保护`spec/public-templates-director-split-revision.json`；唯一下一动作以Checkpoint为准。
+v0.6.39唯一H5创建返回HTTP503并保存`FAILED/CREATE_FAILED`，没有H5Link/BytedToken；该历史账本`1/50`已封存。v0.6.40只安全保留Provider HTTP状态、错误码和RequestId并覆盖四个失败边界，远端Message、Body、AK/SK不落库；最终定向`71/71 PASS`，唯一safe full原始`1055/1056`后仅复验治理m38并`15/15 PASS`。PR #92/CI/merge/tag/Release已完成，生产fresh release、冻结双副本、原子切换、公网/回环、schema40、数据不变和5资源门通过；回执`spec/V0_6_40_PRODUCTION_RECEIPT_2026-08-24.json`。只读核验确认生产AK属于IAM用户`tapnow-ark-catalog-ro-20260803`，其仅有目录只读策略，Project `default`授权数0；最小`ArkFullAccess`补权向导停在最终确认前。新账本仍为`0/50`，Generation/OSS/费用0。不得移动任何历史tag、复用历史预算或读受保护`spec/public-templates-director-split-revision.json`；唯一下一动作以Checkpoint为准。
 
 ## 当前线上：图片全屏完整适配与Seedance可信素材（v0.6.38，2026-08-24 USER PASS）
 
