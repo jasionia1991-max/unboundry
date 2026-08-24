@@ -154,6 +154,8 @@ import { renderAnnotatedImage } from
   "../imageTools/renderAnnotatedImage";
 import { emptyImageAnnotationDocument } from
   "../imageTools/imageAnnotations";
+import { SeedanceTrustedAssetPanel } from
+  "../imageTools/SeedanceTrustedAssetPanel";
 import { createSaveLibraryAssetUseCase } from
   "../imageTools/saveLibraryAssetUseCase";
 import { useImageToolCapability } from
@@ -1831,6 +1833,7 @@ function ImageNodeImpl({
   const [enhanceError, setEnhanceError] = useState("");
   const [cutoutBusy, setCutoutBusy] = useState(false);
   const [cutoutError, setCutoutError] = useState("");
+  const [seedanceBusy, setSeedanceBusy] = useState(false);
   const annotationOpen = activeImageTool === "annotation";
   const cropOpen = activeImageTool === "crop";
   const cutoutOpen = activeImageTool === "cutout";
@@ -1843,6 +1846,7 @@ function ImageNodeImpl({
   const multiAngleOpen = activeImageTool === "multi-angle";
   const outpaintOpen = activeImageTool === "outpaint";
   const redrawOpen = activeImageTool === "redraw";
+  const seedanceOpen = activeImageTool === "seedance";
   const imageToolModalOpen = activeImageTool
     ? imageToolDescriptors[activeImageTool].inertBackground
     : false;
@@ -1862,6 +1866,8 @@ function ImageNodeImpl({
     ? enhanceBusy
     : activeImageTool === "cutout"
     ? cutoutBusy
+    : activeImageTool === "seedance"
+    ? seedanceBusy
     : false;
   const openImageTool = useCallback((
     tool: ImageToolId,
@@ -1869,6 +1875,7 @@ function ImageNodeImpl({
   ) => {
     setLocalToolBusy(false);
     setAnnotationBusy(false);
+    setSeedanceBusy(false);
     imageToolTriggerRef.current = trigger ??
       (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     setLightingOpen(false);
@@ -1877,6 +1884,7 @@ function ImageNodeImpl({
   const closeImageTool = useCallback((tool?: ImageToolId) => {
     setLocalToolBusy(false);
     setAnnotationBusy(false);
+    setSeedanceBusy(false);
     dispatchToolUi({ tool, type: "close-tool" });
   }, []);
   const [retryTaskId, setRetryTaskId] = useState<string>();
@@ -4701,6 +4709,18 @@ function ImageNodeImpl({
                 </button>
               ))}
               <button
+                disabled={typeof data.assetId !== "string" || !data.assetId}
+                onClick={() => openImageTool(
+                  "seedance",
+                  moreRef.current?.querySelector<HTMLElement>("button"),
+                )}
+                role="menuitem"
+                type="button"
+              >
+                <span aria-hidden="true" className="image-more-icon seedance" />
+                <span>角色可信素材</span>
+              </button>
+              <button
                 onClick={() => openImageTool(
                   "split",
                   moreRef.current?.querySelector<HTMLElement>("button"),
@@ -5032,6 +5052,14 @@ function ImageNodeImpl({
             onSubmit={submitMultiAngle}
             src={preview}
             transparent={imageShowsTransparency}
+          />
+        )}
+        {preview && seedanceOpen && typeof data.assetId === "string" &&
+            data.assetId && (
+          <SeedanceTrustedAssetPanel
+            assetId={data.assetId}
+            onBusyChange={setSeedanceBusy}
+            onClose={() => closeImageTool("seedance")}
           />
         )}
         {fullscreen && preview && !mediaLoad.failed && (

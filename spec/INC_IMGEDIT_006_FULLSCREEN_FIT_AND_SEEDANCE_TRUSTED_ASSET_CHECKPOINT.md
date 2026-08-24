@@ -2,9 +2,9 @@
 
 > 更新时间：2026-08-24
 >
-> 当前阶段：`R7_IN_PROGRESS`
+> 当前阶段：`R8_IN_PROGRESS`
 >
-> 当前结论：R6已完成owner-scoped编排、重启可恢复持久状态、服务端判别联合与生成提交前远端Active复核；R7实现图片入口、状态UI、错误与三视口浏览器矩阵。
+> 当前结论：R7已完成图片入口、A/B/C准确能力文案、状态/错误/刷新恢复、弹窗预开、幂等防重、QPM兼容轮询与三视口浏览器矩阵；R8冻结候选并执行只读审查与唯一一次safe full。
 
 ## 1. 实时身份
 
@@ -74,15 +74,15 @@ PURCHASE_REQUIRED=NO
 | R5A | `TARGETED_AUTO_PASS` | 仅允许CreateVisualValidateSession/GetVisualValidateResult/CreateAsset/GetAsset；V4签名、A分支状态映射、10秒上限、QPM门、身份锁与脱敏错误fake通过 |
 | R5B/R5C | `NOT_APPLICABLE_CURRENT_BRANCH` | 仅保留能力降级合同，不作为当前实现分支 |
 | R6 | `TARGETED_AUTO_PASS` | owner/source/profile/account/region/project/checksum与远端Active共同构造可信引用；伪造asset://、错账号、失效、旧快照均在生成Provider边界前拒绝 |
-| R7 | `IN_PROGRESS` | UI、错误、刷新、幂等、三视口浏览器矩阵 |
-| R8 | `NOT_STARTED` | 候选冻结、独立只读审查、唯一一次safe full |
+| R7 | `TARGETED_AUTO_PASS` | modal入口、A分支授权/处理/Active、错误状态、刷新恢复、双击幂等、三视口与零外网矩阵通过 |
+| R8 | `IN_PROGRESS` | 候选冻结、只读审查、版本同步与唯一一次safe full |
 | R9 | `NOT_STARTED` | v0.6.38 GitHub交付 |
 | R10 | `NOT_STARTED` | 备份、必要迁移、fresh build、生产与真实控制面协议验收 |
 | R11 | `NOT_STARTED` | 生产零付费浏览器、回执、`USER_RECHECK` |
 
 ## 6. 验收状态
 
-- `IMGEDIT-039 / 040 / 042 / 043 / 044 = TARGETED_AUTO_PASS`；`IMGEDIT-041 = R0_AUTO_PASS / ACTIVE_BRANCH_A`；其余仍为 `NOT_STARTED`。
+- `IMGEDIT-039 / 040 / 042 / 043 / 044 / 045 = TARGETED_AUTO_PASS`；`IMGEDIT-041 = R0_AUTO_PASS / ACTIVE_BRANCH_A`；`IMGEDIT-046`仍为 `NOT_STARTED`。
 - 自动、浏览器、Provider协议、生产技术和用户主观验收必须分层，任何Agent不得写 `USER_PASS`。
 
 ## 7. 测试与浏览器证据
@@ -103,6 +103,9 @@ PURCHASE_REQUIRED=NO
 - R6新增应用编排：H5链接只在首次POST返回，重复点击复用同一session；真人授权完成后绑定同一owner/profile/account/region/project/source checksum创建Asset，Provider URL仅来自owner-scoped短期签名引用，远端不确定结果不自动重复创建。
 - Ark视频媒体引用升级为`inline-data / public-url / trusted-asset`判别联合；`asset://`只由服务端用已持久Binding构造，普通HTTPS/Data URL保持原路径。任务快照冻结binding ID、profile、Provider Asset ID、source checksum、checkedAt和角色；初次提交与实际Provider提交前都重新核验远端Active，身份/校验和/过期/撤销/删除/伪造快照均fail-closed。
 - R6 build通过；safe m100+m16+m20+m5=`46/46 PASS`、退出0，测试库存仍为120 specs/1055 tests，architecture76既有例外且新增0，source/snapshot`c0266eaa022251a063c10ecfb688f9392815bc9064ec7e5d3438fe7a2b41592b`，4173 unchanged，真实Provider/Generation/OSS/费用0。
+- R7新增图片更多菜单“角色可信素材”入口，使用共享modal Host与inert/focus/Escape合同；A分支同步预开H5页面避免异步弹窗被拦，客户端与服务端共同防重复，sessionStorage只保存不透明session ID用于同页刷新恢复，完整H5 URL仍不落库也不进入状态读取。
+- 状态UI从共享状态机显示等待、处理中、Active、拒绝、过期、撤销、删除、来源变化和失败；当前方舟账号免责声明固定显示，A/B/C文案不冒充能力，面板不显示预计金额。自动轮询改为20秒以服从write QPM3；Asset Processing由服务端后续只读inspect推进到Active，不会停在创建响应。
+- R7首轮稳定m2为`11/13`，精确暴露关闭按钮定位歧义与新增第8行仍沿用272px旧菜单高度；修正后m2 `13/13 PASS`。最终build通过，safe m100+m2+m20=`27/27 PASS`、退出0，source/snapshot`f22637b7e76184207552213434ba7cf1bd826c71586399432a87f975daf2d0d1`，architecture新增例外0、4173 unchanged，自动化真实Provider/Generation/OSS/费用0。
 - 本Goal唯一一次safe full保留给R8冻结候选；文档同步不触发业务全量测试。
 - 自动化必须使用Node22.23.1/npm10.9.8、fresh临时data/runtime/cache和动态loopback端口，禁止4173、生产数据、真实Provider、真实OSS和任何付费生成。
 
@@ -115,4 +118,4 @@ PURCHASE_REQUIRED=NO
 
 ## 9. 唯一下一动作
 
-实现“角色可信素材”A分支UI：首次H5授权、处理中/Active/失败状态、刷新恢复、双击幂等、modal inert/焦点/键盘与三视口零Provider浏览器矩阵。
+冻结v0.6.38候选，完成只读P0/P1审查、版本字段与治理合同同步，然后执行本Goal唯一一次safe full。

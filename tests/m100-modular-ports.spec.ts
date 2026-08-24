@@ -116,6 +116,8 @@ import {
   type ImageToolCapability,
 } from "../types/imageTools";
 import { knownModelParameterSchema } from "../types/modelParameters";
+import { seedanceTrustedAssetStatusLabels } from
+  "../types/seedanceTrustedAssets";
 import { createImageToolDispatcher } from
   "../client/src/imageTools/imageToolDispatcher";
 import {
@@ -498,6 +500,15 @@ function modularImageToolSnapshot() {
 }
 
 test("image tool capability snapshot is complete, unique and fail-closed", () => {
+  expect(seedanceTrustedAssetStatusLabels).toMatchObject({
+    ACTIVE: "方舟可信素材可用",
+    CONSISTENCY_FAILED: "素材未通过方舟校验",
+    ENTITLEMENT_EXPIRED: "当前账号权益不可用",
+    FAILED: "处理失败，可查看原因",
+    REJECTED: "素材未通过方舟校验",
+    REVOKED: "素材已撤销或不可用",
+    STALE_SOURCE: "图片已变化，需要重新处理",
+  });
   expect(Object.keys(imageToolDescriptors).sort()).toEqual(
     [...imageToolIds].sort(),
   );
@@ -2044,18 +2055,18 @@ test("composition root wires public module APIs and delegates readiness SQL", as
       inspectSession: 1,
       releases: 1,
     });
+    const activeSession = await trustedApplication.readAuthorizationSession({
+      ownerId: "trusted-owner",
+      sessionId: firstSession.id,
+    });
+    expect(activeSession?.status).toBe("ACTIVE");
+    expect(providerCalls.inspectAsset).toBe(1);
     const appBinding = store.bindingForSource({
       identity,
       ownerId: "trusted-owner",
       sourceAssetId: "trusted-image-app",
     })!;
-    store.upsertBinding({
-      ...appBinding,
-      checkedAt: "2026-08-24T11:00:04.000Z",
-      providerStatus: "Active",
-      status: "ACTIVE",
-      updatedAt: "2026-08-24T11:00:04.000Z",
-    });
+    expect(appBinding.status).toBe("ACTIVE");
     const resolveTrustedVideo = createSeedanceTrustedVideoReferenceResolver({
       context: async (_ownerId, profileId) => profileId === identity.profileId
         ? { identity, port }
@@ -2101,7 +2112,7 @@ test("composition root wires public module APIs and delegates readiness SQL", as
       ownerId: "trusted-owner",
       providerProfileId: identity.profileId,
     })).rejects.toMatchObject({ code: "STALE" });
-    expect(providerCalls.inspectAsset).toBe(1);
+    expect(providerCalls.inspectAsset).toBe(2);
   } finally {
     trustedDatabase.close();
   }

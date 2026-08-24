@@ -1,11 +1,11 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.37 / schema39`且技术健康。INC-IMGEDIT-006 R6定向通过；R7正在实现可信素材UI、恢复与三视口验收。
+> **当前状态**：生产运行`v0.6.37 / schema39`且技术健康。INC-IMGEDIT-006 R7定向通过；R8正在冻结v0.6.38候选并执行最终工程门。
 
 更新时间：2026-08-24
-状态：`生产v0.6.37 / schema39 / USER_RECHECK；INC-IMGEDIT-006 GOAL_ACTIVE / R6_TARGETED_AUTO_PASS / R7_IN_PROGRESS / ACTIVE_BRANCH_A / SCHEMA40_REQUIRED / VERSION_GATE_VALID_v0.6.38 / RELEASE_GATE_VALID；Provider控制面1/200，付费生成与费用0。`
+状态：`生产v0.6.37 / schema39 / USER_RECHECK；INC-IMGEDIT-006 GOAL_ACTIVE / R7_TARGETED_AUTO_PASS / R8_IN_PROGRESS / ACTIVE_BRANCH_A / SCHEMA40_REQUIRED / VERSION_GATE_VALID_v0.6.38 / RELEASE_GATE_VALID；Provider控制面1/200，付费生成与费用0。`
 
-### 2026-08-24 图片全屏完整适配与Seedance可信素材（INC-IMGEDIT-006，R7_IN_PROGRESS）
+### 2026-08-24 图片全屏完整适配与Seedance可信素材（INC-IMGEDIT-006，R8_IN_PROGRESS）
 
 - 权威方案：`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_PLAN_2026-08-24.md`；实时断点：`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_CHECKPOINT.md`
 - 隔离分支/工作树：`codex/inc-imgedit-006-v0.6.38-2026-08-24` / `/private/tmp/unboundry-inc006-v0.6.38-2026-08-24`；起点HEAD与`origin/main`同为`349a915`，package0.6.37、schema39
@@ -23,7 +23,9 @@
 - R5A已按正式`ark/2024-01-01/cn-beijing`合同只放行H5创建、认证结果、Asset创建、Asset查询四个Action，复用V4签名与凭据回显扫描；身份变化请求前拒绝，默认QPM3、10秒超时和结构化脱敏错误。safe m42 `15/15 PASS`，source/snapshot`be3b5f87…401d62c`，真实Provider/Generation/OSS/费用0。
 - R6完成owner-scoped H5/Group/Asset编排与重启恢复；服务端只在Binding的owner/source checksum/profile/account/region/project及远端Active全部匹配时构造`asset://`，任务快照冻结Binding/Provider Asset/checksum/checkedAt/角色，提交与真正Provider边界前双重只读复核。客户端伪造、跨账号、失效和旧快照均拒绝，普通HTTPS/Data URL不回归。
 - R6 build及safe m100+m16+m20+m5 `46/46 PASS`，architecture新增例外0，source/snapshot`c0266eaa…b41592b`，4173 unchanged；真实Provider/Generation/OSS/费用0。
-- 当前唯一下一动作是实现图片“角色可信素材”A分支UI、刷新/失败恢复、双击幂等、modal inert/焦点/键盘及三视口零Provider浏览器矩阵
+- R7新增图片“角色可信素材”modal与A/B/C准确能力文案，覆盖H5同步预开、双击防重、20秒QPM兼容轮询、session ID刷新恢复、Processing到Active服务端推进、全部失败状态、inert/Escape/焦点和三视口；完整H5 URL不落库，自动化外部Provider/Generation/OSS/费用0。
+- R7首轮稳定m2 `11/13`精确发现关闭按钮定位歧义和第8行菜单仍为272px，修正后m2 `13/13 PASS`；最终build及safe m100+m2+m20 `27/27 PASS`，source/snapshot`f22637b7…d2d0d1`、4173 unchanged、architecture新增例外0。
+- 当前唯一下一动作是冻结v0.6.38候选，完成只读P0/P1审查、版本/治理合同同步，并执行本Goal唯一一次safe full
 
 ### 2026-08-24 图片工具产品质量拒收返工（INC-IMGEDIT-005，R9_COMPLETE / USER_RECHECK）
 

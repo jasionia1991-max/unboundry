@@ -206,6 +206,34 @@ export function createSeedanceTrustedAssetApplication(
     }
   };
 
+  const inspectProcessingAsset = async (input: Readonly<{
+    binding: SeedanceAssetBindingRecord;
+    context: SeedanceTrustedAssetContext;
+  }>) => {
+    if (!input.binding.providerAssetId ||
+        !["ASSET_PROCESSING", "LINKED_UNVERIFIED"].includes(input.binding.status)) {
+      return input.binding;
+    }
+    try {
+      const inspected = await input.context.port.inspectAsset({
+        identity: input.context.identity,
+        providerAssetId: input.binding.providerAssetId,
+      });
+      return options.store.upsertBinding({
+        ...input.binding,
+        checkedAt: inspected.checkedAt,
+        failureCode: null,
+        failureMessage: null,
+        providerAssetType: inspected.providerAssetType,
+        providerStatus: inspected.providerStatus,
+        status: inspected.status,
+        updatedAt: now(),
+      });
+    } catch {
+      return input.binding;
+    }
+  };
+
   return Object.freeze({
     async capability(ownerId) {
       const context = await requiredContext(options, ownerId);
@@ -410,52 +438,72 @@ export function createSeedanceTrustedAssetApplication(
       }));
     },
     async readAuthorizationSession({ ownerId, sessionId }) {
-      const session = options.store.sessionById(ownerId, sessionId);
-      if (!session) return undefined;
+      const existing = options.store.sessionById(ownerId, sessionId);
+      if (!existing) return undefined;
       const context = await requiredContext(options, ownerId);
-      if (!sameIdentity(session, context.identity)) {
+      if (!sameIdentity(existing, context.identity)) {
         fail("CONFLICT", "方舟账号身份已变化，不能复用旧授权会话");
       }
-      if (!session.providerSessionId ||
-          !["SESSION_PENDING", "WAITING_AUTHORIZATION"].includes(session.status)) {
-        return sessionView(session);
-      }
-      const inspected = await context.port.inspectAuthorizationSession({
-        identity: context.identity,
-        providerSessionId: session.providerSessionId,
-      });
-      let saved = options.store.upsertSession({
-        ...session,
-        expiresAt: inspected.expiresAt,
-        providerStatus: inspected.providerStatus,
-        status: inspected.status,
-        updatedAt: now(),
-      });
-      const group = session.groupId
-        ? options.store.groupById(ownerId, session.groupId)
-        : undefined;
-      if (group && inspected.status === "AUTHORIZATION_COMPLETED" &&
-          inspected.providerGroupId) {
-        const authorizedGroup = options.store.upsertGroup({
-          ...group,
-          acceptedAt: now(),
-          authorizationStatus: inspected.status,
+      let saved = existing;
+      if (saved.providerSessionId &&
+          ["SESSION_PENDING", "WAITING_AUTHORIZATION"].includes(saved.status)) {
+        const inspected = await context.port.inspectAuthorizationSession({
+          identity: context.identity,
+          providerSessionId: saved.providerSessionId,
+        });
+        saved = options.store.upsertSession({
+          ...saved,
           expiresAt: inspected.expiresAt,
-          providerGroupId: inspected.providerGroupId,
           providerStatus: inspected.providerStatus,
+          status: inspected.status,
           updatedAt: now(),
         });
+        const group = saved.groupId
+          ? options.store.groupById(ownerId, saved.groupId)
+          : undefined;
+        if (group && inspected.status === "AUTHORIZATION_COMPLETED" &&
+            inspected.providerGroupId) {
+          const authorizedGroup = options.store.upsertGroup({
+            ...group,
+            acceptedAt: now(),
+            authorizationStatus: inspected.status,
+            expiresAt: inspected.expiresAt,
+            providerGroupId: inspected.providerGroupId,
+            providerStatus: inspected.providerStatus,
+            updatedAt: now(),
+          });
+          const binding = options.store.bindingForGroup({
+            groupId: group.id,
+            identity: context.identity,
+            ownerId,
+          });
+          if (binding) {
+            const media = sourceFor(options, ownerId, binding.sourceAssetId);
+            const created = await createAsset({
+              binding,
+              context,
+              group: authorizedGroup,
+              media,
+            });
+            return sessionView(options.store.upsertSession({
+              ...saved,
+              status: created.status,
+              updatedAt: now(),
+            }));
+          }
+        }
+      }
+      if (saved.status === "ASSET_PROCESSING" && saved.groupId) {
         const binding = options.store.bindingForGroup({
-          groupId: group.id,
+          groupId: saved.groupId,
           identity: context.identity,
           ownerId,
         });
         if (binding) {
-          const media = sourceFor(options, ownerId, binding.sourceAssetId);
-          const created = await createAsset({ binding, context, group: authorizedGroup, media });
+          const inspected = await inspectProcessingAsset({ binding, context });
           saved = options.store.upsertSession({
             ...saved,
-            status: created.status,
+            status: inspected.status,
             updatedAt: now(),
           });
         }
@@ -480,7 +528,7 @@ export function createSeedanceTrustedAssetApplication(
           updatedAt: now(),
         }));
       }
-      return bindingView(binding);
+      return bindingView(await inspectProcessingAsset({ binding, context }));
     },
   });
 }

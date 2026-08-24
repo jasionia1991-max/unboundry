@@ -2749,7 +2749,7 @@ sup {
   z-index: 20;
   display: flex;
   width: 238px;
-  height: 272px;
+  height: 310px;
   padding: 8px 4px;
   flex-direction: column;
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -2837,12 +2837,14 @@ sup {
   border-radius: 50%;
 }
 
-.image-more-icon.compliance::before {
+.image-more-icon.compliance::before,
+.image-more-icon.seedance::before {
   inset: 1px 3px;
   border-radius: 7px 7px 9px 9px;
 }
 
-.image-more-icon.compliance::after {
+.image-more-icon.compliance::after,
+.image-more-icon.seedance::after {
   inset: 6px 7px 5px 7px;
   border-width: 0 1.5px 1.5px 0;
   transform: rotate(45deg);
@@ -3922,6 +3924,122 @@ sup {
   background-image: linear-gradient(45deg, rgb(255 255 255 / 3%) 25%, transparent 25%),
     linear-gradient(-45deg, rgb(255 255 255 / 3%) 25%, transparent 25%);
   background-size: 16px 16px;
+}
+
+.seedance-trusted-asset-shell {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(600px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  transform: translate(-50%, -50%);
+}
+
+.seedance-trusted-asset-panel {
+  display: grid;
+  overflow: hidden;
+  max-height: calc(100vh - 48px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  color: #f2f2f2;
+  background: rgba(31, 31, 31, 0.98);
+  box-shadow: 0 22px 64px rgba(0, 0, 0, 0.52);
+}
+
+.seedance-trusted-asset-panel .image-tool-panel-body,
+.seedance-trusted-guidance,
+.seedance-trusted-details {
+  display: grid;
+  gap: 12px;
+}
+
+.seedance-trusted-status {
+  display: flex;
+  padding: 12px;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.seedance-trusted-status > span {
+  width: 8px;
+  height: 8px;
+  margin-top: 4px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: #9c9c9c;
+}
+
+.seedance-trusted-status[data-status="ACTIVE"] > span {
+  background: #65c98b;
+}
+
+.seedance-trusted-status[data-status="REJECTED"] > span,
+.seedance-trusted-status[data-status="CONSISTENCY_FAILED"] > span,
+.seedance-trusted-status[data-status="FAILED"] > span {
+  background: #e1737d;
+}
+
+.seedance-trusted-status > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.seedance-trusted-status small,
+.seedance-trusted-details,
+.seedance-trusted-guidance label {
+  color: #a9a9a9;
+  font-size: var(--tap-font-secondary);
+  line-height: 1.5;
+}
+
+.seedance-trusted-details {
+  margin: 0;
+}
+
+.seedance-trusted-details > div {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.seedance-trusted-details dt {
+  color: #8f8f8f;
+}
+
+.seedance-trusted-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #d8d8d8;
+}
+
+.seedance-trusted-guidance input {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 9px;
+  color: #fff;
+  background: #171717;
+}
+
+.seedance-trusted-guidance button,
+.seedance-trusted-asset-panel .image-tool-panel-body > button {
+  min-height: 34px;
+  padding: 0 12px;
+  justify-self: start;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 9px;
+  color: #ededed;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.seedance-trusted-guidance button.primary {
+  color: #111;
+  background: #f1f1f1;
 }
 
 .image-lighting-toolbar {
